@@ -1,9 +1,33 @@
 # M32: One syntax, one semantic domain — closures are the only suspensions
 
-**Status: UNDER CONSTRUCTION — design under review with the user; this revision
-records the capture model the user stated and the review converged on (raw closures
-at rest; cooking derived, not chosen). Depends on: M31 Stage A (merged), Stage C
-(at the merge gate).**
+**Status: IMPLEMENTED, except the residuals named below.** Six stages ran — V
+(viability probe, not for merge), R1, R2, R3, R3b, R4 — each with the whole corpus
+green, each carrying the sabotage control, and every stage's implementation
+addendum is at the bottom of this file. The model of §2 is built: `Term` is the
+only syntax, `Val` is the state skeleton over `Sem`, every λ value is one closure,
+cooking is persistent exactly at generalization, arrows are exceptionless, every
+binder spells its mode, and there is one application node.
+
+**The residuals, all post-M32, all pinned by tests rather than remembered:**
+
+  1. **§2.5's two spellings** (`S32Backstop.sigmaTailProof`). ⇒ still constructs
+     function values at exactly two sites — a λ written literally in a constructor
+     argument, and a Σ chain's TAIL, which has no binder to carry a mode. The fix
+     is a SURFACE design question (a marker for a Σ's tail, or spelling trailing
+     proofs as components over a `Unit` tail), which is why it is not M32's. The
+     invariant is one boundary shy of enforceable and the tripwires stay accepted
+     and unflipped.
+  2. **Match-arm binder mode checking** (R3b). The test files' spec Σ binders are
+     still lowercase, because the CONSUMER does not check a match-arm binder's
+     case against the Σ's. Four assertions are not green with them capital.
+  3. **The Class-3 call-graph fixpoint** (R3b). Capitalising a proof parameter
+     makes every onward hand-off a ⇝-read, so the migration is a fixpoint over the
+     call graph; it landed in `ArraySort` and `Arrays` only.
+  4. **`abstractInto`'s α-insensitive key** (R2, filed as a demand). A generalized
+     spine containing a binder misses its own occurrence one binder deeper,
+     because abstraction matches by binder NAME while readback names by level.
+
+Depends on: M31 Stage A (merged), Stage C (merged).
 
 ## 0. Motivation: three inherited problems, and what does NOT need fixing
 
@@ -38,11 +62,31 @@ persistent case, derived in §3.**
 
 ## 1. What dies here
 
-The mixed domain (Val's syntax embedding); `Term.lamR` and `Val.rfn`; `callV` (app
-spines; nullary `fn` desugars to `λ (U : Unit)`); `Var.comptimeRhs`'s carve-outs (the
-let-arrow invariant becomes exceptionless); Stage A's backstop scatter (one
-structural fact, §2.5); the pure lift's λ case; the modeless-pure-binder exemption
-(§2.1); and E2's id machinery.
+The list, with each item's verdict as of R4's close (re-walked against the tree,
+not against this list — every stage found the enumeration incomplete):
+
+  * **the mixed domain** (Val's syntax embedding) — DEAD (R1). The store skeleton
+    is `Val`, the transient semantic domain is `Sem`; the names are swapped
+    against §2.3 deliberately, and R1's addendum says why.
+  * **`Term.lamR` and `Val.rfn`** — DEAD (R2). `Val.closure ρ node` is the one
+    suspension, body raw.
+  * **`callV`** — DEAD (R4). `f(a, b)` is sugar for the spine; the nullary
+    Unit-desugar arrived early, at R2, because `lamTel [] body` is the body and
+    the seal could no longer tell a nullary `fn` from an ascription.
+  * **`Var.comptimeRhs`'s carve-outs** — DEAD (R3). The invariant is one sentence
+    with no footnote.
+  * **Stage A's backstop scatter** — REDUCED, not deleted (R3, R3b). Three
+    enforcement sites became one (`refuseFnBinding` at the `let`); it cannot
+    become derivable while §2.5's two spellings survive.
+  * **the pure lift's λ case** — SURVIVES, and this entry is REFUTED rather than
+    unfinished (R3, twice). A proof of a ∀-statement IS a λ; refusing function
+    results at the lift rejects quicksort's count equation. See §2.5.
+  * **the modeless-pure-binder exemption** — DEAD (R3b). `lowerComptime
+    flagship` is 0, from 10,777.
+  * **E2's id machinery** — DEAD (R4). The frame shift, the `keep` sets,
+    `progBase`'s arithmetic and its collision check. What survives is two TAGS
+    (`noSlot`, `declSlot`) and the elaborator's own binder identity; nothing in
+    the kernel compares, orders, offsets or windows an id.
 
 ## 2. Target representation and semantics
 
@@ -75,8 +119,18 @@ included).
 
 There is no difference between the fragments in the closure or application
 mechanics; the single irreducible difference is what evaluating the body MEANS
-(pure reduction vs the effectful walk), recomputed by body classification at
-application and seal — a property, never a species tag, never a substitution.
+(pure reduction vs the effectful walk), recomputed at application and seal by
+**binder-AND-body classification** (R2 correction: a λ is imperative when its body
+contains effectful formers OR when a binder names an Ω slot — `fn UseTrans (a,b,c,
+p,q) { LeTrans a b c p q }` has a spine-only body and is still ⇒'s, which four
+programs caught) — a property, never a species tag, never a substitution.
+
+**ρ's type, corrected by R2 (R1 predicted why without predicting where): ρ is an Ω
+SLICE, not a name→Term list.** A λ captures `SetAt`, and `SetAt` is a recursor over
+runtime arms — a function value with no Term form (§2.3's §rec) — and a λ captures
+λs. For the Term leaves, knowledge-only holds by construction; for the two function
+forms it holds by CHECK at the capture (`hasStateMarker`, refused by name). R1's
+purchase survives; the "by construction" sentence is scoped to leaves.
 
 Store-wide REFINEMENT sweeps (σ := v) rewrite captured ρ's like everything else,
 and later evaluation agrees — substitution commutes with evaluation (§3).
@@ -89,12 +143,24 @@ closures per §2.2. Conversion involving a λ value cooks TRANSIENTLY (evaluate 
 body under ρ + a fresh `§`-binder, read back, compare) — on demand; Stage V measured
 it a wash (the raw pair was fastest — `convert` normalizes both sides either way).
 
+**NAMING, as built (R1; coordinator-ratified):** the store skeleton kept the name
+`Val` (Machine.lean's 4,600 lines are about store values) and the transient semantic
+domain is `Sem` (eleven call sites, all in Pure.lean). Read this doc's "Val shrinks
+to a semantic domain" with the two names exchanged: the STRUCTURE is as specified;
+the semantic domain is `Sem`, the skeleton is `Val`.
+
 **R1 DECISION — MADE (user ruling): `Term` does NOT grow state formers.** ⊥, loan
 markers, and borrow values reach store-wide sweeps, and giving `Term` formers for
 them would make a marker grammatically writable — the objection that killed the
 union-tree horizon. Instead the store-value type is the **state skeleton**:
-constructor structure, ⊥, `loanM ℓ`, `borrowM ℓ ·`, closures `(ρ, Term)`, and Term
-LEAVES wherever marker-free knowledge sits. Sweeps are two-layered (walk the
+constructor structure, ⊥, `loanM ℓ`, `borrowM ℓ ·`, closures `(ρ, Term)`,
+**recursor spines over runtime arms** (R1 finding: a function value whose arms are
+bodies — no Term can hold it; never-collapsing, index-kind so it copies on read,
+`hasType`-rejected as a neutral), and Term LEAVES wherever marker-free knowledge
+sits. The collapse is a smart-constructor invariant, not a discipline (R1's
+`Val.ctor`: an all-knowledge node collapses to one `know` leaf). Realized deletion:
+`capturedMarkers`/`hasStateMarkerEnv` are gone — nbe.md §3.2's capture assertion is
+a fact about the types. Sweeps are two-layered (walk the
 skeleton; switch to `substP`/Term-abstraction at leaves); a value with no live
 markers collapses to a bare Term leaf and re-splits only when state intrudes (a
 borrow-mode match pushing field loans in), so the skeleton is exactly as large as
@@ -114,40 +180,60 @@ judgment (imperative — it already runs in its own fresh store); forget half by
 structure — the sealed value is the **seal SITE applied to its captured inputs**, a
 structured neutral, deterministic and distinguishing (`fsig` keys by site).
 
-### 2.5 No function in a runtime slot — REFUTED TWICE (R3, R3b); residual named
+### 2.5 No function in a runtime slot — REFUTED as stated (R3 finding), subsumed into R3b
 
-λ formation is ⇝-only, so the invariant needs ONE enforcement point: the pure
-lift's result must be data, not a function (`let f = Add 1` fails there). Stage A's
-backstop is deleted; the corpus's lowercase partial-application bindings migrate
-capital in the same commit.
+**The premise "⇒ can no longer construct a function value" is false: a proof of a
+∀-statement IS a λ.** Measured twice by R3, both built and reverted: refusing the
+pure lift's function results reds quicksort's count equation (the count-preservation
+proof is `λ(§0 : Nat). …`, a proof of a Π), and refusing `readR`'s λ arm reds the
+programs that carry proof-λs in Σ components and constructor fields as DATA. The
+corpus's lowercase function-valued bindings number SEVEN (measured), all partial
+applications of proof-builders (`let cnt = MkL lo hi hcnt`) — and capitalising them
+TODAY walls at the fence (`Cnt cannot be ⇒-moved`) because Σ components and argument
+positions still ⇒-read; nothing separates them from `let f = Add 1`.
 
-**R3 CORRECTION — this section's premise is false, measured.** ⇒ still constructs
-function values, because **a proof of a ∀-statement is a λ** and this calculus
-returns them in Σ tails; refusing at the pure lift or at `readR`'s λ arm rejects
-quicksort's count equation and `sort2`. And the migration cannot run yet: the
-seven lowercase bindings that hold a function are mostly partial applications of
-staged proof-builders, and capitalising one makes it unreadable where it is
-RETURNED (a Σ component is ⇒-read; the erasure fence refuses a ⇒-read of a
-capital binding). What R3 delivers is the SCATTER: three enforcement sites become
-one (`refuseFnBinding`, at the `let`). Derivability, and the migration, need
-§2.1's binder migration first — **R3b subsumes both**.
+So the invariant's enforcement and the §2.1 binder migration are blocked on the SAME
+fact and cannot land separately: a returned proof needs a capital binder, which
+needs Σ-component and parameter binder modes to change — which IS the migration.
+What R3's demolition DID buy at zero cost: three enforcement sites became one
+(`refuseFnBinding` at the `let`; `fenceComptime` owns the rule and its advice).
 
-**R3b CORRECTION — the migration ran, and §2.5 is false for a SMALLER reason.**
-R3's blocker (a Σ component is ⇒-read) is gone: a Σ binder's mode now rides on
-its domain and `readResult` reads it at a body's tail, so a proof at a capital Σ
-binder is ⇝-read and the fence is not in the way. What still makes ⇒ construct a
-function value is two SPELLINGS, not a missing distinction: **a λ written
-literally in a constructor argument** (no type in hand at that site) and **a Σ
-chain's TAIL, which has no binder and therefore no mode** — which is exactly
-where quicksort's `cnt` sits. Closing §2.5 is now a surface question: give a Σ's
-tail a way to say it is comptime, or spell a proof-carrying tail
-`Σ (X : A) → Σ (P : B) → Unit`. `S32Backstop.sigmaTailProof` pins it.
+**R3b ran the migration and the terminal attempt: RE-REFUTED, residual now two
+precise spellings.** With 10,777 → 0 lowercase comptime binders in the flagship and
+Σ components operative, R3's named blocker is gone — and no-⇒-λ still reds 13,
+because two shapes remain that carry a proof-λ with no binder to mode: **a λ
+written literally in a constructor argument** (no type in hand), and **a Σ chain's
+TAIL** (no binder at all — exactly where quicksort's `cnt` proof sits, pinned as
+`S32Backstop.sigmaTailProof`). The fix is named at the site: a surface marker for a
+Σ's tail, or spelling trailing proofs as components over a Unit tail — a SURFACE
+design question, post-M32. The tripwires stay accepted and unflipped; the invariant
+remains one-boundary-SHY of enforceable, and the doc says so rather than rounding
+up.
 
-### 2.6 Application surface: spines only
+### 2.6 Application surface: spines only — RUN (R4), with one correction
 
 `callV` retires for app spines (nullary via Unit-desugar), preserving the
 arrow-keyed mint-vs-remember split (§12 decision 5) and saturation for imperative
-entry (§12 decision 4). Capture reaches M31-deferred generality — a fn body cites
+entry (§12 decision 4).
+
+**R4 CORRECTION — "saturation for imperative entry" is the whole of it, and the
+word IMPERATIVE is load-bearing.** With two application nodes, `f(2)` on a
+comptime λ was refused as unsaturated while `f 2` β'd, and the difference was
+invisible. With one node the corpus decides: the flagship applies its staged
+proof-builders PARTIALLY and goes red under the refusal. §12 decision 4's reason
+is that "a partial application at runtime is a closure holding its arguments —
+including, in general, borrows — while it waits", and a comptime capture is
+knowledge-only, so there is no borrow to hold. **A comptime λ's partial
+application is a value**; saturation is enforced at the two sites that ENTER (an
+imperative closure, an abstract `σ : Π`). Two corpus assertions flipped to
+accepts and say so in place.
+
+**And the split is arrow-keyed as promised, but it needed the callee's VALUE to
+stay that way.** `reflectC` refused `.callV` BY NAME, so deleting the node deleted
+⇝'s refusal to read a CALL — silently. Restated on the value (`calleeMustEnter`):
+a sealed function or an imperative closure is ENTERED, entering is an event, and
+⇝ has none; an ABSTRACT function still reflects as the structured neutral, which
+is what the old message told the programmer to write instead. Capture reaches M31-deferred generality — a fn body cites
 enclosing comptime data, escape-safe because the closure carries its knowledge
 (Stage C's measured narrowing: program-scope citation already works today; the
 closure is what makes the ESCAPING case safe). Requires the fn body scope fix
@@ -224,6 +310,114 @@ went red at 22 assertions — M30's failure mode is silent by construction).
 **Stage R1 — the domain split.** Readback emits Terms; at-rest non-λ knowledge
 becomes canonical Terms; sweeps re-target to Term level; Val loses its syntax
 embedding. Zero differential.
+
+**Stage R2 — one λ, one closure: RUN** (branch `m32-r2` @ 09b18152, stacked on R1;
+corpus green; canary run both directions, sabotage control re-run — 21 red including
+the flagship). As landed: `lamR`/`rfn` gone; `Val.closure ρ node` the one suspension,
+body raw, formation a check; `admitGlobals` revealed as ALREADY the capture filter;
+cook-at-generalization support-scoped with write-back; capture generality + scope
+fix (the id collision verified-not-assumed — `freeRVars` re-keyed by name, λ binders
+bind there only when they bind a SLOT); nullary `fn` Unit-desugar pulled forward
+from R4 (forced: `lamTel [] body` = the body, so nullary `fn` and ascription became
+one term — the binder is the unwritable `U§ : ⇝Unit`). Known limit recorded, not
+new at R2: `abstractInto` matches by binder-NAME `beq` while readback names by
+level, so a generalized spine containing a binder misses its own occurrence one
+binder deeper — the fix is an α-insensitive key at the abstraction site; filed as a
+demand.
+
+**The §2.1 binder migration did NOT land in R2 and becomes its own stage (R3b,
+coordinator decision):** R2 measured it — 10,777 lowercase comptime binders in the
+flagship alone, ~3,700 λ/Π binders in source — and correctly refused to run it
+blind: each rename is scope-sensitive, and capitalising a Π binder in a spec
+position deliberately flips `valBinderModes` at every ⇒-application of that type —
+§2.1's intent, therefore a behaviour change wanting its own enumerated differential,
+not a rider on a representation stage. Sequencing: R3b after R3, before R4 (R4's
+`Var.bindsSlot` replacement can only become a case test after the migration — the
+coupling is now measured). Meanwhile the fragment keys on `Var.bindsSlot`.
+
+**Stage R3 — arrows exceptionless: RUN** (branch `m32-r3` @ fdb83166, stacked on
+R2; corpus green; goldens BYTE-UNCHANGED across six files including σ numbering).
+Items 1–2 landed at zero differential: the seal has a SITE (assigned by a boundary
+pass — stable across macros and α by construction, asserted); the "structured
+neutral" landed INTERNED (a (site, inputs) → σ table, so rendering is identical to
+the ⇒-seal's and the audit runs once per (site, inputs) — recorded deviation);
+`sealNode` is one rule with two callers and the audit's isolation carries
+`sealSites` out with the supplies; **`Var.comptimeRhs` is DELETED** and the
+invariant is one sentence, no footnote: *"A capital `let` ⇝-reads its right-hand
+side; a lowercase `let` ⇒-reads it."* The executing machine is byte-for-byte the
+pre-R3 call. Items 3–4 (no-⇒-λ, backstop derivability) REFUTED as stated — see
+§2.5 — and re-staged onto R3b; the demolition's consolidation (three sites → one)
+kept. Controls: sabotage red at 21 including flagship and both canary directions;
+seal determinism §B with its §C control (same site + different inputs distinguishes
+— without which a site-only table would pass §B).
+
+**Stage R3b — the binder migration, now carrying §2.5.** The §2.1 universal-binder
+migration (measured: 10,777 flagship binders, ~3,700 source sites, seven
+function-valued lowercase bindings), executed as the deliberate behaviour-change
+stage it is: capital = binds comptime knowledge (proofs, types, specs,
+pure-function values), lowercase = runtime data/borrows; scope-sensitive renames,
+per-class enumerated differentials (stdlib pure binders; signature Σ/Π binders —
+these flip component/argument reading, which is the intent; telescope proof
+parameters; the seven §2.5 bindings). TERMINAL ATTEMPT: with the migration landed,
+retry no-⇒-λ and the one-boundary rule; the `S32Backstop` tripwires must flip
+deliberately or the attempt reverts and the residual is reported as a finding.
+
+**Stage R3b — RUN** (branch `m32-r3b` @ c360d359, stacked on R3; corpus green;
+controls at 21 red both times, restored). Per-class: StdLemmas 3,836 binder sites /
+20,476 occurrences; hand-written kernel terms via new `Term.clam`/`cpi`; spec λ/Π
+549 sites; telescope proof params in the array corpus; **flagship
+`lowerComptime` = 0**. The behaviour flips landed as intended: the library declares
+its arguments comptime (zero changed verdicts — it is only ⇝-applied), and a Σ
+component's binder became OPERATIVE — which surfaced the finding that §2.1's Σ half
+was INERT all along (`readback` names binders by level, so name-carried Σ modes
+were destroyed before any rule could consult them; fixed by putting the mode on the
+Σ domain + `readResult`, DECISION-LOG'd with the rejected alternative). Method note
+carried forward: **an absent failure is not a pass** — grep that the module BUILT
+before reading its absence from the failure list. Judgment calls recorded (proof
+components capitalise, data do not, decided by domain head and measured both ways).
+Residuals stated, not hidden: test-file spec Σ binders (blocked on match-arm binder
+mode checking) and the Class-3 call-graph fixpoint — both post-M32 items.
+
+**Stage R4 — spines + sweep: RUN, and the LAST** (branch `m32-r4` @ δ, stacked on
+R3b; corpus green at each commit; sabotage control re-run after BOTH the spine
+change and the id deletion, 21 red each time including the flagship, `sort2` and
+both `S32Cook` canary directions). `callV` retired and the mint-vs-remember split
+survived it, keyed on the callee's VALUE (`S32Spine` §A–§E; §A asserts the two
+spellings are one `Term`). E2's id machinery is gone — the frame shift, the
+`keep` sets, `progBase`'s arithmetic and its collision check — with `progBase`
+replaced by the tag `Var.declSlot`, which the three harness projections need.
+**Two of the plan's own predictions were refuted**: the `keep` sets are not
+empty-by-construction (they hold §8's globals) but INERT, which is a different
+claim with its own differential; and `Var.bindsSlot` does NOT become the case
+test, because the telescope rule says the two answer different questions — see
+the addendum.
+
+## 6. Sharp edges to interrogate before dispatch
+
+  * **σ-names in Terms**: reserved-namespace unwritability end to end; `substP`'s
+    rebinding guard vacuous for `§`-names (nothing rebinds them) — verify.
+  * **Seal-site identity**: stable across macro expansion and α-canonicalization.
+  * **Audit-from-⇝ reentrancy**: state isolation of the audit's fresh store.
+  * **Cook-at-generalization mechanics**: cooking evaluates bodies mid-sweep —
+    confirm it cannot cascade (cooking normalizes; it cannot trigger a split) and
+    that write-back composes with the sweep's own traversal order; post-cook, the
+    raw form is gone — confirm nothing (error messages, pretty-printing) depended
+    on showing source syntax for cooked closures.
+  * **Obligations**: owed types swept wherever they live — the Term-level sweep
+    must reach O (Stage 0's `firstHeldBorrow` precedent: enumerate the traversal
+    set, don't assume it).
+  * **Executing mode**: never converts — confirm no executing path compares, so
+    closures in executing state are entry-only.
+  * **Universal binder migration**: stdlib λ/Π binders capitalise — mechanical, but
+    elim arms bind `ih`-style names the macro mints; confirm minted binders follow
+    the convention or are `§`-reserved.
+
+## 7. Non-goals
+
+Borrow refounding (shape/contract split, store-relative types — SUGGESTIONS.md,
+post-M32); surface juxtaposition syntax (interacts with R4's spines — decide there
+or defer); consistency proofs; lazy *bindings* (only λ bodies suspend — §0);
+assumption-indexed evaluation (rejected with precedent, §3).
 
 > **Implementation addendum (R1, landed on `m32-r1`).** Two commits, corpus green
 > at each. Recorded where the plan is, in the order the plan would be read.
@@ -307,68 +501,6 @@ embedding. Zero differential.
 > a real check at the `fn` declaration (`Surface.lemmaShadowCheckAt`, against
 > `Dllbc.StdLemmas` specifically — "any Lean global" would refuse `fn` names that
 > shadow nothing writable). Silent on the corpus, positive control run.
-
-**Stage R2 — one λ, one closure.** `lamR`/`rfn` fold into `(ρ, raw body)`;
-formation captures the filtered slice; application per §2.2; cook-at-generalization
-with write-back; universal binder convention + stdlib binder migration; capture
-generality + body scope fix. Zero differential except enumerated flips (binder-case
-migrations, capture legality).
-
-**Stage R3 — arrows exceptionless: RUN, with one item REFUTED** (branch
-`m32-r3` @ b5f94934, stacked on R2; corpus green at each commit; sabotage control
-re-run, 21 red including the flagship). ⇝-sealing landed (site assigned by a
-boundary pass; the "structured neutral" landed INTERNED — see the addendum) and
-`comptimeRhs` is deleted, both at ZERO differential. **§2.5's no-⇒-λ did not
-land, and its premise is false**: a proof of a ∀-statement is a λ, so ⇒ must
-still construct function values, and the partial-application migration cannot run
-until §2.1 gives a RETURNED proof a capital binder. Three enforcement sites
-became one; the migration and the derivability claim move to R3b.
-
-**Stage R3b — the binder migration, carrying §2.5: RUN, with §2.5 REFUTED a
-second time** (branch `m32-r3b` @ γ, stacked on R3; corpus green at each commit;
-sabotage control re-run, 21 red including the flagship and both canary
-directions). The migration LANDED: `lowerComptime flagship` is **0**, from
-10,777. §2.1's Σ half was found INERT and made real — a Σ binder's mode now
-rides on its domain, as λ's and Π's do, because `readback` destroys a binder's
-NAME and preserves its domain — and `readResult` reads it at the one site that
-has a type in hand, the tail of a body against its return type. §2.5's wall is
-down for every Σ component with a binder; it survives at a λ written literally
-in a constructor argument and at a Σ chain's TAIL, which has no binder to carry
-a mode, and which is where quicksort's `cnt` sits. See the addendum.
-
-**Stage R4 — spines + sweep.** `callV` retires; §1's deletion list completed; E2's
-id machinery removed; docs/logs currency. **R4 inherits a measured coupling**:
-`keyDisagree` is 4 on the flagship, all of one shape (a capital telescope
-parameter binds an Ω slot), so the case test is not a drop-in for `bindsSlot` at
-`Term.lamImperative` — a `fn` all of whose parameters are capital would flip from
-imperative to pure.
-
-## 6. Sharp edges to interrogate before dispatch
-
-  * **σ-names in Terms**: reserved-namespace unwritability end to end; `substP`'s
-    rebinding guard vacuous for `§`-names (nothing rebinds them) — verify.
-  * **Seal-site identity**: stable across macro expansion and α-canonicalization.
-  * **Audit-from-⇝ reentrancy**: state isolation of the audit's fresh store.
-  * **Cook-at-generalization mechanics**: cooking evaluates bodies mid-sweep —
-    confirm it cannot cascade (cooking normalizes; it cannot trigger a split) and
-    that write-back composes with the sweep's own traversal order; post-cook, the
-    raw form is gone — confirm nothing (error messages, pretty-printing) depended
-    on showing source syntax for cooked closures.
-  * **Obligations**: owed types swept wherever they live — the Term-level sweep
-    must reach O (Stage 0's `firstHeldBorrow` precedent: enumerate the traversal
-    set, don't assume it).
-  * **Executing mode**: never converts — confirm no executing path compares, so
-    closures in executing state are entry-only.
-  * **Universal binder migration**: stdlib λ/Π binders capitalise — mechanical, but
-    elim arms bind `ih`-style names the macro mints; confirm minted binders follow
-    the convention or are `§`-reserved.
-
-## 7. Non-goals
-
-Borrow refounding (shape/contract split, store-relative types — SUGGESTIONS.md,
-post-M32); surface juxtaposition syntax (interacts with R4's spines — decide there
-or defer); consistency proofs; lazy *bindings* (only λ bodies suspend — §0);
-assumption-indexed evaluation (rejected with precedent, §3).
 
 > **Implementation addendum (R2, landed on `m32-r2`).** Four commits, corpus
 > green at each. Recorded in the order the plan would be read.
@@ -634,3 +766,80 @@ assumption-indexed evaluation (rejected with precedent, §3).
 > correction: an ABSENT failure is not a pass. An early run of the terminal
 > attempt looked far better than it was because the build had not reached
 > `Direct` at all.
+
+> **Implementation addendum (R4, landed on `m32-r4`).** Four commits, corpus
+> green at each, stacked on R3b @ c360d359. R4 is the milestone's last stage, and
+> two of the plan's own predictions did not survive contact with the corpus.
+>
+> **0. THE HEADLINE: the mint-vs-remember split was never the node's, and three
+> other things WERE.** `Term.callV` is gone; `f(a, b)` is surface sugar for
+> `.app (.app f a) b`, asserted as `Term.beq spelledCall spelledJux = true` —
+> literally the same term, which is the strongest form the claim has and makes
+> every assertion about calls apply to juxtaposition automatically. §12 decision
+> 5's split survived, keyed on the callee's VALUE. But `callV` had quietly been
+> carrying three rules that the arrows were NOT, each found by a red assertion:
+> §12 decision 4's saturation applied to a COMPTIME λ (§2.6's correction), ⇝'s
+> refusal to read a CALL (`reflectC` refused the node by name, so deleting it
+> deleted the refusal — restated on `calleeMustEnter`), and §5.2's demand
+> collapse plus the ⊥ rejection at the callee slot.
+>
+> **1. The strengthening, and its four needles.** Routing comptime closures
+> through the call rule means their applications are ARITY- and DOMAIN-checked,
+> where juxtaposition handed them to the normalizer unchecked. Four spec-lie
+> controls — two in `Direct`, two in `ArraySort` — are still REJECTED but now die
+> at the ARGUMENT rather than at the return, so their needles move from "does not
+> have return type" to "does not have its parameter type". Verdicts unchanged;
+> the honest flagships still check, which is what says the rejection
+> discriminates. **`Traces.lean` is byte-unchanged and no golden moved anywhere**:
+> the executing machine's every trace, environment and comparison is what it was.
+>
+> **2. `Term.imperative` needs the `.var`-HEADED SPINE by name.** Read off the
+> arguments alone, a nullary `fn F () { g() }` — whose only binder is R2's
+> comptime `U§` Unit-desugar, and whose body is now `.app (.var g) .unit` — would
+> classify PURE. `Term.appSpineVar?` moved into `Syntax.lean` for this.
+>
+> **3. `keep` IS NOT EMPTY-BY-CONSTRUCTION. It is INERT, which is a different
+> claim.** §5's R4 block says to verify the first ("§2.4's capture rule is what
+> empties them"). Asserted as a hard failure and run: the corpus goes red, and
+> `swap` reports `keep = [901]` — §8's globals are exactly what a body has free.
+> What is true is that emptying `keep` while KEEPING the shift is green, because
+> since R1 no lookup reads an id, and THAT is the differential that licensed
+> deleting `freshFrame`/`shiftVarsK`/`nextFrame` outright. Also green, at zero
+> differential.
+>
+> **4. `progBase` becomes a TAG, and its collision check retires as spurious.**
+> Of its three jobs, two were about id resolution and are void under name-keying;
+> the third — *is this Ω entry a declaration?* — is `Var.declSlot`. The tag exists
+> rather than the ids simply going because of the three harness projections
+> (`tailEnvs`, `runExec`, `symEnvs`): deleting the filter puts every `fn` into the
+> corpus's expected environments, and keying it on the VALUE would also drop
+> `let F = (λ… : Π…)`, which is a σ a program deliberately leaves. **`bindFn`'s
+> two-chain refusal is deleted**: the collision was on the ID and never the NAME
+> (`withA (withB …)` collided `A` with `B`), so it had been refusing a working
+> program since R1. `FnStmt` §A asserts the composition ACCEPTS, with the two
+> declarations given DIFFERENT ARITIES so the accept is discriminating.
+>
+> **5. `Var.bindsSlot` does NOT become the case test, and the telescope rule is
+> why.** R4 named R3b's four: all are `Hf`, one `fn`'s proof parameter, capital,
+> `⇝`-domained, slotted. **A telescope binder binds a slot regardless of case;
+> capital marks the READ MODE, not the LOCATION.** The two keys answer different
+> questions, and swapping them would classify an all-capital-parameter `fn` pure
+> — taking away its §5.4 audit. So R2's `keyDisagree` splits: the direction that
+> is an invariant (lowercase with no slot — an argument with nowhere to land) is
+> **0**, and the direction that is the rule (`comptimeSlotParams`) is **4** and is
+> content. `impLams flagship = 22` is asserted as the count the rule protects, so
+> a later swap made from the name rather than the docstring is loud.
+>
+> **6. The re-grep found two beyond the list**, which is the fifth stage in a row
+> to find the enumeration incomplete. `maxVarId` needed `declSlot` excluded as
+> `noSlot` already was (a sentinel would swamp the maximum). And
+> `entrySyms`/`exitSyms` and `reflectC`'s `lets` are still id-keyed and STAY —
+> they are per-seal maps over a telescope's own positional ids, minted and
+> consumed inside one seeding, resolving nothing in Ω. Named so the next reader
+> does not re-derive that they were considered.
+>
+> **7. Controls.** Sabotage (`abstractInto` abstracting nothing) re-run after the
+> spine change AND after the id deletion: **21** red both times, including
+> `progOk flagship`, `progOk sort2` and both `S32Cook` canary directions — the
+> same count and shape as R2's, R3's and R3b's. `S32Cook`'s two directions and
+> `S32Seal`'s §B determinism with its §C control are green throughout.

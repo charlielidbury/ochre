@@ -171,7 +171,7 @@ syntax:10 "λ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- lambda
 -- start — this is the surface returning to it, not a new decision.
 declare_syntax_cat ulamb
 syntax ident ":" uterm : ulamb
-syntax:max "λ" "(" ulamb,* ")" "{" ublk "}" : uterm          -- .lamR
+syntax:max "λ" "(" ulamb,* ")" "{" ublk "}" : uterm          -- an imperative λ
 syntax:10 "Π" "(" ident ":" uterm ")" "→" uterm:10 : uterm   -- Pi
 syntax:10 "Σ" "(" ident ":" uterm ")" "→" uterm:10 : uterm   -- Sigma (arrow form)
 syntax:10 "Σ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- Sigma (dot form)

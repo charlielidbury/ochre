@@ -1,5 +1,52 @@
 # Progress
 
+## 2026-08-11 — dllbc/: **M32 R4 — spines + sweep, and M32 closes**
+
+Four commits on `m32-r4` (stacked on the unmerged `m32-r3b`), whole corpus green
+at each. `suspensions.md` §5's last stage: one application node, no id machinery,
+and the milestone's close-out.
+
+    Term.callV           DELETED       `f(a,b)` is sugar for the app spine
+    Term.appSpine        NEW           the builder `retarget`/the surface use
+    Term.appSpineVar?    MOVED         to Syntax — `Term.imperative` reads it
+    calleeIsRuntime      NEW           does ⇒ own this spine's head?
+    calleeMustEnter      NEW           ⇝'s refusal to read a CALL, on the value
+    applyCallee          renamed       was `callVValue`
+    freshFrame           DELETED       no frame windows — a call is a SCOPE
+    shiftVarsK family    DELETED       resolution is by name; the shift was inert
+    St.nextFrame         DELETED
+    applyClosure's keep  DELETED       measured INERT, not empty
+    FnMacro.progBase     DELETED       arithmetic, collision check, maxVarId guard
+    Var.declSlot         NEW           the TAG the harness projections need
+    FnMacro.fnSlots      DELETED       the collision it fed was id-only
+    S32Spine             NEW battery   §A–§E: the split, the rule, E8's permutation
+
+**The differential is four needles and two verdict flips, and `Traces.lean` is
+byte-unchanged.** Routing comptime closures through the call rule domain-checks
+their arguments, so four spec-lie controls (two in `Direct`, two in `ArraySort`)
+still reject but now die at the ARGUMENT rather than the return. The two verdict
+flips are `Functions.c4`/`Programs.g1` (a comptime λ's partial application is a
+value — §12 decision 4 is about ⇒-entry) and `FnStmt` §A (composing two `fn`
+chains through a `%` splice is legal, the collision having been id-only).
+
+**Two of the plan's predictions were refuted and are recorded as findings.** The
+`keep` sets are not empty-by-construction — `swap` reports `keep = [901]`, §8's
+globals — but INERT, which is a different claim and got its own differential
+before the shift was deleted. And `Var.bindsSlot` does not become the case test:
+R4 named R3b's four disagreeing binders (all `Hf`, one `fn`'s capital proof
+parameter) and the TELESCOPE RULE says a telescope binder binds a slot regardless
+of case, so location and read mode are different axes. `keyDisagree` splits into
+the direction that is an invariant (**0**) and the direction that is the rule
+(**4**), with `impLams flagship = 22` asserted as what the rule protects.
+
+Controls: sabotage re-run after the spine change AND after the id deletion, 21
+red each time including the flagship, `sort2` and both cook-canary directions.
+
+**M32 is closed except its residuals**, which `suspensions.md`'s status line now
+names: §2.5's two spellings, match-arm binder mode checking, the Class-3
+call-graph fixpoint, and `abstractInto`'s α-insensitive key. `DECISION-LOG.md`
+carries the whole arc, V through R4, one paragraph per stage.
+
 ## 2026-08-11 — dllbc/: **M32 R3 — arrows exceptionless (and §2.5 refuted)**
 
 Two commits on `m32-r3` (stacked on the unmerged `m32-r2`), whole corpus green at

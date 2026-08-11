@@ -615,6 +615,15 @@ owner, not an open question):**
     existential at the instantiated codomain; `readC` remembers the structured
     neutral) is arrow-keyed (§12 decision 5), not node-keyed — the spine rule must
     keep it.
+    **DONE at M32 R2 (the desugar) and R4 (the retirement), and the warning was
+    half right.** The split survived, keyed on the callee's VALUE, and `f(a, b)`
+    and `f a b` are now literally the same `Term`. What the warning did not
+    anticipate is that `callV` was also carrying THREE rules the arrows were not,
+    each of which had to be restated on the value or lost silently: §12 decision
+    4's saturation applied to a comptime λ (which the flagship refutes — it
+    applies its proof-builders partially), ⇝'s refusal to read a CALL
+    (`reflectC` refused the node BY NAME), and §5.2's demand collapse at the
+    callee slot. See suspensions.md's R4 addendum.
 
 ## 6. Sharp edges (the interrogation)
 
@@ -738,7 +747,9 @@ must be the plain slot read it already does for `rfn`, not a detour through the
 normalizer. Also confirm seal transparency (`3251`) composes with the mode flip. Risk:
 LOW.
 
-**E8 — `[k]` hoisting and call-site permutation.** The sealed telescope hoists the
+**E8 — `[k]` hoisting and call-site permutation.** **KEPT, and asserted at M32 R4**
+(`S32Spine` §E, directly against `retarget` with the no-hint case as its control).
+ The sealed telescope hoists the
 decreasing parameter to the front; call sites written in declaration order are permuted
 by `retarget` today. Under comptime resolution the *name* resolves without `retarget` —
 but the permutation must still happen somewhere. Options: put it in the `fn` sugar's
