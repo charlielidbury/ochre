@@ -1,4 +1,6 @@
 import Dllbc.StageV
+import Dllbc.Tests.Direct
+import Dllbc.Tests.ArraySort
 
 /-!
 # M32 Stage V — bet (c)'s cost line
@@ -15,6 +17,8 @@ by the iteration is what makes each call a fresh problem.
 -/
 
 open Dllbc Dllbc.StageV
+open Dllbc.Tests.S25ArrSort
+
 
 /-- Wall-clock `f` over `[0, n)`, returning milliseconds. -/
 def timeIt (n : Nat) (label : String) (f : Nat → Bool) : IO Unit := do
@@ -44,7 +48,7 @@ def deepRaw (i : Nat) : Val := .lam "a" listNat (.closure (deepRho i) deepBody)
     `Pure.lean`'s exported entry points read back before the value escapes. -/
 def deepCooked (i : Nat) : Val := cook (deepRaw i)
 
-def main : IO Unit := do
+def main (argv : List String) : IO Unit := do
   IO.println "== M32 Stage V, bet (c): transient cooking at a comparison site =="
   IO.println s!"raw and cooked convert: {Val.convert 1000 (deepRaw 0) (deepCooked 0)}"
   let n := 20000
@@ -63,3 +67,25 @@ def main : IO Unit := do
     (fun i => (substSym (4 * i) (Val.nat 3) (deepRaw i)).symIds.length > 0)
   timeIt n "sweep cooked (substSym)    "
     (fun i => (substSym (4 * i) (Val.nat 3) (deepCooked i)).symIds.length > 0)
+
+  -- === Bet (a)'s cost line: two real corpus workloads ===
+  -- `lookupSlot` is the machine's hottest operation and name-keying changes it
+  -- from a short-circuiting `find?` to a filter-and-last over the whole of Ω, so
+  -- the number that matters is not a microbenchmark but a real check and a real
+  -- execution. Run this binary on both keyings and compare.
+  IO.println "-- bet (a): corpus workloads --"
+  -- `lookupSlot` is the machine's hottest operation and name-keying changes it
+  -- from a short-circuiting `find?` to a filter-and-last over the whole of Ω, so
+  -- the number that matters is a real check and a real execution, not a
+  -- microbenchmark. Run this binary on both keyings and compare.
+  --
+  -- The input is a function of the ITERATION, and that is load-bearing twice
+  -- over: a first draft timing `progOk flagship` in a literal-count loop
+  -- reported 0 ms for 20 reps, because a closed application is lifted to an
+  -- initialized constant and computed once. Varying the input defeats it.
+  let reps := (argv.head?.bind String.toNat?).getD 8
+  timeIt reps "CHECK arrUnder+qsCallerA   "
+    (fun i => progOk (arrUnder sHonest pHonest qHonest qSuffHonest
+      (qsCallerA (List.range (2 + i % 2)).reverse)))
+  timeIt reps "EXEC  runQsA (array sort)  "
+    (fun i => (runQsA (List.range (7 + i % 3)).reverse).isSome)
