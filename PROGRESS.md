@@ -3477,3 +3477,39 @@ on a neutral bvar. If the eliminator were Church-with-ι (per
 under an abstract n binder via dependent elimination. That's a
 structural DNat redesign — orthogonal to, but unblocking, this swap.
 `lake build` passes.
+
+## M32 R3b — the binder migration, carrying §2.5 (branch `m32-r3b`)
+
+§2.1's universal binder convention, executed. Three commits, corpus green at
+each, sabotage control re-run at 21 red (flagship, `sort2`, both cook-canary
+directions) at every one.
+
+**The headline is a number.** `lowerComptime flagship` — R2's own counter for the
+size of this migration — goes **10,777 → 0**. Every comptime binder in the
+largest program in the corpus spells its mode: `StdLemmas` (3,836 binder sites,
+20,476 occurrences), the test files' spec binders, and the hand-written kernel
+library (`Std`, `Pure`'s `kAddFn`/`kLeFn`), which needed its `⇝` domains written
+by hand and got `Term.clam`/`Term.cpi` so the two halves cannot be spelled apart.
+
+**The sweep is a scanner that models `Uni.resolveName` and is checked by a
+resolution FINGERPRINT** — for every identifier occurrence, the binder site it
+resolves to, before and after. That is α-equivalence as something a script can
+verify, and it caught three captures reading would not have: `s → S`/`z → Z` are
+constructors, and `lb → Lb` shadows the `Lb` predicate.
+
+**§2.1's Σ half was INERT, and that was the discovery.** `Uni`'s Σ rows put no
+mode marker on the domain, so a Σ binder's case lived in its name — and
+`Pure.readback` names every binder by its LEVEL, so the case was destroyed before
+any rule could read it. λ and Π survive only because `⇝` rides on the domain. Σ
+binders now carry theirs the same way, and `readResult` reads it at the one site
+with a type in hand: a body's tail against its return type.
+
+**§2.5 is refuted a second time, with a much smaller residual.** The no-⇒-λ
+refusal was rebuilt and reverted again (13 red, the flagship among them). R3's
+blocker is gone; what survives is two spellings — a λ written literally in a
+constructor argument, and a Σ chain's TAIL, which has no binder to carry a mode
+and is exactly where quicksort's `cnt` sits. Pinned as `sigmaTailProof`.
+
+**R4 inherits a measured number**: `keyDisagree` = 4 on the flagship, all one
+shape (a capital telescope parameter binds an Ω slot), so the case test is not a
+drop-in for `Var.bindsSlot`.

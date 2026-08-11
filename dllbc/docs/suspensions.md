@@ -114,7 +114,7 @@ judgment (imperative — it already runs in its own fresh store); forget half by
 structure — the sealed value is the **seal SITE applied to its captured inputs**, a
 structured neutral, deterministic and distinguishing (`fsig` keys by site).
 
-### 2.5 No function in a runtime slot — structurally
+### 2.5 No function in a runtime slot — REFUTED TWICE (R3, R3b); residual named
 
 λ formation is ⇝-only, so the invariant needs ONE enforcement point: the pure
 lift's result must be data, not a function (`let f = Add 1` fails there). Stage A's
@@ -131,6 +131,17 @@ RETURNED (a Σ component is ⇒-read; the erasure fence refuses a ⇒-read of a
 capital binding). What R3 delivers is the SCATTER: three enforcement sites become
 one (`refuseFnBinding`, at the `let`). Derivability, and the migration, need
 §2.1's binder migration first — **R3b subsumes both**.
+
+**R3b CORRECTION — the migration ran, and §2.5 is false for a SMALLER reason.**
+R3's blocker (a Σ component is ⇒-read) is gone: a Σ binder's mode now rides on
+its domain and `readResult` reads it at a body's tail, so a proof at a capital Σ
+binder is ⇝-read and the fence is not in the way. What still makes ⇒ construct a
+function value is two SPELLINGS, not a missing distinction: **a λ written
+literally in a constructor argument** (no type in hand at that site) and **a Σ
+chain's TAIL, which has no binder and therefore no mode** — which is exactly
+where quicksort's `cnt` sits. Closing §2.5 is now a surface question: give a Σ's
+tail a way to say it is comptime, or spell a proof-carrying tail
+`Σ (X : A) → Σ (P : B) → Unit`. `S32Backstop.sigmaTailProof` pins it.
 
 ### 2.6 Application surface: spines only
 
@@ -313,8 +324,24 @@ still construct function values, and the partial-application migration cannot ru
 until §2.1 gives a RETURNED proof a capital binder. Three enforcement sites
 became one; the migration and the derivability claim move to R3b.
 
+**Stage R3b — the binder migration, carrying §2.5: RUN, with §2.5 REFUTED a
+second time** (branch `m32-r3b` @ γ, stacked on R3; corpus green at each commit;
+sabotage control re-run, 21 red including the flagship and both canary
+directions). The migration LANDED: `lowerComptime flagship` is **0**, from
+10,777. §2.1's Σ half was found INERT and made real — a Σ binder's mode now
+rides on its domain, as λ's and Π's do, because `readback` destroys a binder's
+NAME and preserves its domain — and `readResult` reads it at the one site that
+has a type in hand, the tail of a body against its return type. §2.5's wall is
+down for every Σ component with a binder; it survives at a λ written literally
+in a constructor argument and at a Σ chain's TAIL, which has no binder to carry
+a mode, and which is where quicksort's `cnt` sits. See the addendum.
+
 **Stage R4 — spines + sweep.** `callV` retires; §1's deletion list completed; E2's
-id machinery removed; docs/logs currency.
+id machinery removed; docs/logs currency. **R4 inherits a measured coupling**:
+`keyDisagree` is 4 on the flagship, all of one shape (a capital telescope
+parameter binds an Ω slot), so the case test is not a drop-in for `bindsSlot` at
+`Term.lamImperative` — a `fn` all of whose parameters are capital would flip from
+imperative to pure.
 
 ## 6. Sharp edges to interrogate before dispatch
 
@@ -517,3 +544,93 @@ assumption-indexed evaluation (rejected with precedent, §3).
 > at **21** assertions including `progOk flagship` and BOTH `S32Cook` canary
 > directions — the same count and shape as R2's, so the sweep is still attached
 > and the cook canary is live enough to notice.
+
+> **Implementation addendum (R3b, landed on `m32-r3b`).** Three commits, corpus
+> green at each, stacked on R3 @ fdb83166. R3b is §2.1's binder migration
+> carrying §2.5, and it is the pipeline's deliberate behaviour-change stage.
+>
+> **0. THE HEADLINE IS A NUMBER, AND A SECOND REFUTATION.**
+> `lowerComptime flagship`, the counter R2 introduced to size the migration,
+> goes **10,777 → 0**: every comptime binder in the largest program in the
+> corpus now spells its mode. **§2.5 is refuted a second time**, but the
+> residual has shrunk from a rule to two spellings — details at 4.
+>
+> **1. The sweep is a scanner that models `resolveName`, checked by a
+> FINGERPRINT.** `pctx` first (a pure binder outranks a runtime local, a
+> constructor, a kernel constant, an alias and a Lean global), and the one place
+> it loses is `let`, which filters the name out of `pctx` for the rest of its
+> block. For every identifier occurrence inside a `prog{ … }` the scanner records
+> the binder SITE it resolves to; a rename is correct iff that sequence is
+> unchanged, which is α-equivalence stated as something a script can verify.
+> `StdLemmas` alone: 3,836 binder sites, 20,476 occurrences, 35,179 resolutions
+> identical. It earned its keep on captures the eye missed — `s → S` and
+> `z → Z` are CONSTRUCTORS, and `lb → Lb` shadows the `Lb` PREDICATE, which
+> showed up as a single `none → site` flip. House rule for a colliding target: a
+> `0` suffix (`S0`, `Z0`, `Bound0`, `Lb0`), four names out of 229.
+>
+> **2. A hand-written `Term` must write BOTH halves of a comptime binder**, so
+> `Term.clam`/`Term.cpi` exist: capital name and `⇝` domain, unspellable apart.
+> The kernel library (`Std`, `Pure`'s `kAddFn`/`kLeFn`) migrated with them, which
+> is a real mode flip — `Len`, `Count`, `Le`, `Add`, `Sorted` now declare their
+> arguments comptime — measured at ZERO changed verdicts, because the library is
+> only ever applied in ⇝ positions. Unused binders take §6's other branch: `§_`,
+> the reserved name the surface already mints, which carries no mode because
+> nothing can cite it.
+>
+> **3. §2.1's Σ HALF WAS INERT, and the reason is `readback`.** `Uni`'s Σ rows
+> emitted `.sigmaT x τ b` with no `binderDom`, so a Σ's mode lived in its NAME —
+> and `Pure.readback` names every binder it reaches by its LEVEL. A return type
+> is normalized before any rule reads it, so the case was gone before it could be
+> consulted; λ and Π survive only because `⇝` rides on the domain. **Σ binders
+> now carry their mode on their domain**, and `readResult` is the site that reads
+> it: the tail of a body, checked against its return type, reads a `Pair` at a
+> `Σ` by each component's binder — capital ⇒ comptime ⇒ ⇝-read. Asserted as two
+> programs differing in one character, with the lowercase one REJECTED as the
+> control. **§2.5's wall is therefore down for every Σ component that has a
+> binder**, which was R3's named blocker.
+>
+> **4. §2.5 IS STILL FALSE, and the residual is two named shapes.** The no-⇒-λ
+> refusal was rebuilt (checking-mode-gated — ungated it reds the executing
+> machine's own differentials) and reverted: 13 red, the flagship at
+> `readR (⇒): a λ is a function value`, `sort2` with it. What survives the
+> migration:
+>
+>   * **a λ written literally in a constructor argument** — `Pair(SplitANil …,
+>     λ (Q : Nat). Refl)` is not a body's tail, so no type is in hand;
+>   * **a Σ chain's TAIL, which has no binder** and therefore no mode. This is
+>     exactly where quicksort's `cnt` sits (`Σ (hi : List Nat) → … → Π n. Id …`).
+>     Pinned as `sigmaTailProof`, with the fix named: a surface marker for a Σ's
+>     tail, or spelling a proof-carrying tail `Σ (X : A) → Σ (P : B) → Unit`.
+>
+> **§2.5 should now read**: ⇒ still constructs function values, at two sites, and
+> closing them is a SURFACE question (how a component with no binder says it is
+> comptime) rather than the "nothing separates a proof from a computation"
+> impasse R3 recorded.
+>
+> **5. Three couplings a rename must not break**, each found by a red assertion:
+> a hand-written signature's Π binders track the λ they ascribe (47 assertions in
+> `Functions`, 10 more in `Programs`); a recursor motive is derived from its
+> signature, and `alphaEq` is mode-sensitive; a sealed recursor's scrutinee
+> parameter must stay runtime, because ι splits on it. `fn` cannot hit the first
+> — `telePi` builds the Π from the parameters.
+>
+> **6. What R4 inherits, measured.** `keyDisagree` counts the binders on which
+> `Var.bindsSlot` and the case test disagree: **4 in the whole flagship**, all
+> one construct — a capital telescope parameter binds an Ω slot. So the rename
+> backlog is gone and what is left is a rule about telescopes: under a case test,
+> a `fn` all of whose parameters are capital flips from imperative to pure, which
+> is R4's differential to own.
+>
+> **7. What R3b did NOT finish**, stated so it is not mistaken for done: the test
+> files' spec Σ binders are still lowercase (four assertions are not green with
+> them capital, and the reason is the CONSUMER — a match-arm binder's case is
+> unchecked against the Σ's); Class 3 landed in `ArraySort` and `Arrays` only,
+> because capitalising a proof parameter makes every onward hand-off a ⇒-read and
+> the migration is a fixpoint over the call graph.
+>
+> **8. Controls.** Sabotage (`abstractInto` abstracting nothing): **21** red at
+> every commit, including `progOk flagship`, `sort2` and both `S32Cook` canary
+> directions — same count and shape as R2's and R3's. One methodological
+> correction: an ABSENT failure is not a pass. An early run of the terminal
+> attempt looked far better than it was because the build had not reached
+> `Direct` at all.

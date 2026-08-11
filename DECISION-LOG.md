@@ -2261,3 +2261,35 @@ with A1 fixed (bidirectional neutral args, Pair re-encoded) and
 A2 taken as a model axiom (`⟦Type⟧ = universe of all values`).
 The architecture follows `Och/Simple/CheckSoundness.lean`:
 algorithmic → declarative `Subtype'` → semantic model.
+
+## M32 R3b — a Σ binder's mode goes on its DOMAIN, not in its name
+
+**Decision.** `Uni`'s Σ rows call `binderDom`, so `Σ (H : τ)` elaborates to
+`.sigmaT "H" (⇝τ) b`, exactly as λ and Π have done since M31 Stage A.
+
+**Why, and it is not symmetry for its own sake.** §2.1 makes a binder's case its
+mode. For a Σ that was true of the NAME and of nothing else, and
+`Pure.readback` names every binder it reaches by its LEVEL — so any type that
+passed through normalization lost the case before a rule could consult it, and a
+return type is normalized (`retTyVal = readC ret`) before anything reads it. λ
+and Π never noticed because `binderDom` had put the mode somewhere readback
+preserves. This is why §2.5's wall could not be taken down by renaming: the mode
+was being destroyed, not ignored.
+
+**Cost, paid at the sites the house pattern names.** `⇝` becomes legal as a Σ
+domain; `Pure.ctorSig`'s `Pair` entry strips it before TYPING a component, while
+`readResult` asks `domComptime` to ROUTE one. Rules that type a domain strip;
+rules that route one ask.
+
+**Consequence, deliberate.** A capital Σ binder's component is ⇝-read at
+construction — non-consuming — where a lowercase one is ⇒-read. Data components
+must therefore stay lowercase: capitalising `Σ (hi : List Nat)` makes the
+returned list copied instead of moved, and the flagship's audit stops
+recognising its result. Measured, not reasoned: a blanket rename reds 13
+assertions the moment the marker exists.
+
+**Rejected alternative.** Relaxing `fenceComptime` to permit a ⇒-read of a
+capital binding whose value is index-kind (a proof, a λ, a Nat) would also
+unblock §2.5 and is a genuine weakening of erasure: it makes `let n = N` legal
+for a comptime `Nat`, which is precisely the "no Prop/Type split" hole R3
+recorded. The mode is put where the type can carry it instead.
