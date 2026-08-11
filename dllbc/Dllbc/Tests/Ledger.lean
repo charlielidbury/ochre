@@ -556,6 +556,7 @@ partial def keyDisagree : Term → Nat
 
 -- The in-place quicksort — the flagship, the largest program in the corpus, with
 -- its specs and library lemmas elaborated in.
+
 example : lowerComptime Dllbc.Tests.S23Direct.flagship = 0 := by native_decide
 example : slotBinders Dllbc.Tests.S23Direct.flagship = 22 := by native_decide
 

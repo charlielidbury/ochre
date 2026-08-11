@@ -1021,7 +1021,7 @@ example : progOk Tests.S6Call.toNatProg = true := by native_decide
     could not do this: two `%`-spliced chains both number their slots from
     `progBase` and the inner would shadow the outer.) -/
 def withSwapS01 (rest : Term) : Term := prog{
-  fn SwapS01 (v : &mut (s : List Nat ~> Σ (L : List Nat) → Id Nat (Len L) (Len s)),
+  fn SwapS01 (v : &mut (s : List Nat ~> Σ (l : List Nat) → Id Nat (Len l) (Len s)),
                     p : Le 2 (Len (*v))) -> Unit {
     let proof = StdLemmas.LenSwapL 0 1 (*v);
     match v {

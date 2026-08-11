@@ -4933,10 +4933,53 @@ mutual
         | .error e _ => [.error e]
         | .ok _ st' => explore fuel rest st'
       | other =>                                     -- final expression
-        match (readR fuel other).run st with
+        match (readResult fuel st.retTyVal other).run st with
         | .error e _ => [.error e]
         | .ok v st' => [.ok (v, st')]
   termination_by fuel _ _ => (fuel, 0, 0)
+  /-- **The tail of a body is read AGAINST its return type** (M32 R3b,
+      suspensions.md §2.1/§2.5), and this is the one place a Σ component's binder
+      MODE becomes operative rather than decorative.
+
+      §2.1 makes every binder's case its mode, Σ binders included. Until here that
+      was true of the name and of nothing else: `Uni`'s Σ rows emit `.sigmaT x τ b`
+      with no `binderDom`, so `Σ (H : Le a b)` and `Σ (h : Le a b)` were the same
+      term to every judgment, and a Σ was BUILT by `readArgs`, which reads a
+      `ctorApp`'s arguments with no type in hand and therefore ⇒-reads all of them.
+
+      That is precisely §2.5's wall. A proof of a ∀-statement is a λ, the corpus
+      returns one in a Σ tail, and capitalising the binding that holds it (which
+      §2.5 requires) then fails at the RETURN — `fence: 'Cnt' … cannot be ⇒-moved`
+      — because the `Pair` that carries it out is a ⇒-read of a capital binding.
+      R3 measured that wall and named the fix: a Σ component's binder mode has to
+      move first.
+
+      This is that move, at the smallest site that carries it. A `Pair` checked
+      against a `Σ` reads each component by that component's binder: a CAPITAL Σ
+      binder names a comptime component, so its value is ⇝-read — non-consuming,
+      and the erasure fence is not in the way because nothing is being moved; a
+      lowercase one is ⇒-read exactly as before. Everywhere else — a non-`Pair`
+      tail, a non-`Σ` return type, an unpinned return type — this is `readR`, so
+      the change reaches nothing that does not return a dependent pair.
+
+      The second component is read against `B[a]`, the Σ's tail instantiated at
+      what the first component turned out to be, which is what makes the chain
+      `Σ (hi : List Nat) → Σ (Hub : …) → … → Π n. Id …` decide each of its
+      components separately rather than all of them by the outermost binder. -/
+  def readResult : Nat → Option Term → Term → M Val
+    | 0, _, t => readR 0 t
+    | fuel + 1, some ty, .ctorApp "Pair" [a, b] => do
+      match Pure.whnf fuel ty with
+      | .sigmaT x dom cod => do
+        let va ←
+          if Term.domComptime dom then pure (Val.know (← readComptimeArg fuel a))
+          else readResult fuel (some dom) a
+        let cod' := Pure.openBinder fuel x cod (subsKnowledge va)
+        let vb ← readResult fuel (some cod') b
+        pure (.ctor "Pair" [va, vb])
+      | _ => readR (fuel + 1) (.ctorApp "Pair" [a, b])
+    | fuel + 1, _, t => readR (fuel + 1) t
+  termination_by fuel _ t => (fuel, 1, sizeOf t)
   def exploreMatch : Nat → Var → Option Var → List Branch → St → List (Except String (Val × St))
     | fuel, scrut, eqn, branches, st =>
       -- §6's fence at the OTHER match site. `readR`'s `.matchE` case only ever

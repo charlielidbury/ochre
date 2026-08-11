@@ -500,8 +500,8 @@ example : expectErr prog{ let a = Arr(3, 1, 2, 7, 5);
     demanded because `Le b b` and `Le x x` are `LeRefl`. That asymmetry is the general
     shape of an exhaustive split, and it is why this costs ONE proof rather than two. -/
 def halves : Term := prog{
-  fn Halves (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; k | h];
+  fn Halves (n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
+    let l = &m (*a)[Z ; k | H];
     let r = &m (*a)[k ; ..];
     () };
   () }
@@ -524,8 +524,8 @@ example : progOk halves = true := by native_decide
     said they were separately recorded. -/
 
 def halvesBoth : Term := prog{
-  fn HalvesBoth (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; k | h];
+  fn HalvesBoth (n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
+    let l = &m (*a)[Z ; k | H];
     let r = &m (*a)[k ; ..];
     let y = *r;
     *r := y;
@@ -540,9 +540,9 @@ example : progOk halvesBoth = true := by native_decide
 -- which is the invariant biting, and what says the acceptance above is about the
 -- ranges being disjoint and not about carving twice being allowed.
 def halvesSame : Term := prog{
-  fn HalvesSame (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; k | h];
-    let r = &m (*a)[Z ; k | h];
+  fn HalvesSame (n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
+    let l = &m (*a)[Z ; k | H];
+    let r = &m (*a)[Z ; k | H];
     let y = *r;
     *r := y;
     let x = *l;
@@ -585,7 +585,7 @@ example : progRejects halvesSame "cannot peel a vacant slot" = true := by
 -- Premise (2), UNPROVED BOUND — "the *interesting* rejection: the program is not
 -- wrong, it is unjustified". Same body, evidence not cited.
 def noEvidence : Term := prog{
-  fn NoEvidence (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
+  fn NoEvidence (n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; k]; () };
   () }
 example : progRejects noEvidence "containment obligation" = true := by native_decide
@@ -594,8 +594,8 @@ example : progRejects noEvidence "containment obligation" = true := by native_de
 -- good type; it is just not the obligation. The evidence's TYPE is the selector, so a
 -- term of the wrong type selects no leaf.
 def wrongEvidence : Term := prog{
-  fn WrongEvidence (n : Nat, k : Nat, h : Le n k, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; k | h]; () };
+  fn WrongEvidence (n : Nat, k : Nat, H : Le n k, a : &mut (Array n Nat)) -> Unit {
+    let l = &m (*a)[Z ; k | H]; () };
   () }
 example : progRejects wrongEvidence "containment obligation" = true := by native_decide
 
@@ -604,9 +604,9 @@ example : progRejects wrongEvidence "containment obligation" = true := by native
 -- solution by refinement. Rejected with the remedy in the message, which is the one
 -- the north star already uses: take the length as a parameter.
 def rigidLength : Term := prog{
-  fn RigidLength (p : Nat, q : Nat, k : Nat, h : Le k (Add p q),
+  fn RigidLength (p : Nat, q : Nat, k : Nat, H : Le k (Add p q),
                   a : &mut (Array (Add p q) Nat)) -> Unit {
-    let l = &m (*a)[Z ; k | h]; () };
+    let l = &m (*a)[Z ; k | H]; () };
   () }
 example : progRejects rigidLength "premise (3) is stuck" = true := by native_decide
 example : progRejects rigidLength "Take the length as a telescope PARAMETER"
@@ -625,10 +625,10 @@ example : progRejects rigidLength "Take the length as a telescope PARAMETER"
     A function that recurses on fuel and carves on the way checks. -/
 
 def walk : Term := prog{
-  fn Walk [fuel] (fuel : Nat, n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
+  fn Walk [fuel] (fuel : Nat, n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
     match fuel {
       Z => (),
-      S(f2) => { let l = &m (*a)[Z ; k | h]; Walk(f2, k, k, LeRefl k, l) }
+      S(f2) => { let l = &m (*a)[Z ; k | H]; Walk(f2, k, k, LeRefl k, l) }
     } };
   () }
 example : progOk walk = true := by native_decide
@@ -646,10 +646,10 @@ example : progOk walk = true := by native_decide
     checks; what is gone is this particular witness to it. -/
 
 def walkArr : Term := prog{
-  fn WalkArr [a] (fuel : Nat, n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
+  fn WalkArr [a] (fuel : Nat, n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
     match fuel {
       Z => (),
-      S(f2) => { let l = &m (*a)[Z ; k | h]; WalkArr(f2, k, k, LeRefl k, l) }
+      S(f2) => { let l = &m (*a)[Z ; k | H]; WalkArr(f2, k, k, LeRefl k, l) }
     } };
   () }
 -- The twin differs from `walk` in the HINT ALONE — `[a]` where `walk` says
@@ -698,8 +698,8 @@ example : progOk touch = true := by native_decide
 
 def callSeg : Term := prog{
   fn Touch (p : Nat, l : &mut (Array p Nat)) -> Unit { () };
-  fn CallSeg (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; k | h];
+  fn CallSeg (n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
+    let l = &m (*a)[Z ; k | H];
     let r = &m (*a)[k ; ..];
     Touch(k, l);
     () };
@@ -895,23 +895,23 @@ example : arrCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 b)
     should be too. -/
 
 def idxCited : Term := prog{
-  fn IdxCited (n : Nat, i : Nat, h : Le (S i) n, a : &mut (Array n Nat)) -> Unit {
-    let e = &m (*a)[i | h]; () };
+  fn IdxCited (n : Nat, i : Nat, H : Le (S i) n, a : &mut (Array n Nat)) -> Unit {
+    let e = &m (*a)[i | H]; () };
   () }
 example : progOk idxCited = true := by native_decide
 
 -- The same bound serves a width-1 RANGE, so the two spellings of "one slot" agree on
 -- what they demand even though they differ on what they hand back (¶2.1).
 def rng1Cited : Term := prog{
-  fn Rng1Cited (n : Nat, i : Nat, h : Le (S i) n, a : &mut (Array n Nat)) -> Unit {
-    let e = &m (*a)[i ; 1 | h]; () };
+  fn Rng1Cited (n : Nat, i : Nat, H : Le (S i) n, a : &mut (Array n Nat)) -> Unit {
+    let e = &m (*a)[i ; 1 | H]; () };
   () }
 example : progOk rng1Cited = true := by native_decide
 
 -- Not vacuous: the bound is the one thing being checked, and a weaker one fails.
 def idxWeakBound : Term := prog{
-  fn IdxWeakBound (n : Nat, i : Nat, h : Le i n, a : &mut (Array n Nat)) -> Unit {
-    let e = &m (*a)[i | h]; () };
+  fn IdxWeakBound (n : Nat, i : Nat, H : Le i n, a : &mut (Array n Nat)) -> Unit {
+    let e = &m (*a)[i | H]; () };
   () }
 example : progRejects idxWeakBound "containment obligation" = true := by native_decide
 
@@ -929,8 +929,8 @@ example : progOk threeWayTouch = true := by native_decide
 
 def splitTwo : Term := prog{
   fn ThreeWayTouch (p : Nat, l : &mut (Array p Nat)) -> Unit { () };
-  fn SplitTwo (n : Nat, i : Nat, h1 : Le i n, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i | h1];
+  fn SplitTwo (n : Nat, i : Nat, H1 : Le i n, a : &mut (Array n Nat)) -> Unit {
+    let l = &m (*a)[Z ; i | H1];
     let r = &m (*a)[i ; ..];
     ThreeWayTouch(i, l);
     () };
@@ -978,8 +978,8 @@ example : progOk splitTwo = true := by native_decide
     lead's call, not this milestone's. -/
 
 def pivotCarve : Term := prog{
-  fn PivotCarve (n : Nat, i : Nat, h1 : Le i n, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i | h1];
+  fn PivotCarve (n : Nat, i : Nat, H1 : Le i n, a : &mut (Array n Nat)) -> Unit {
+    let l = &m (*a)[Z ; i | H1];
     let p = &m (*a)[i];
     let r = &m (*a)[S i ; ..];
     () };
@@ -1006,28 +1006,28 @@ example : progRejects pivotCarve "containment obligation" = true := by native_de
     it. The tests below are the settlement, not a feature demo. -/
 
 def sigSlice : Term := prog{
-  fn SigSlice (s : Σ (C : Nat) → &mut (Array C Nat)) -> Unit { () };
+  fn SigSlice (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () };
   () }
 example : progOk sigSlice = true := by native_decide
 
 -- The callee can DESTRUCTURE it: an owned match hands back the length and the borrow,
 -- and inside the body the length is an ordinary nameable term.
 def useSlice : Term := prog{
-  fn UseSlice (s : Σ (C : Nat) → &mut (Array C Nat)) -> Unit {
+  fn UseSlice (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit {
     match s { Pair(c, sl) => () } };
   () }
 example : progOk useSlice = true := by native_decide
 
 def sliceTouch : Term := prog{
-  fn SliceTouch (s : Σ (C : Nat) → &mut (Array C Nat)) -> Unit { () };
+  fn SliceTouch (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () };
   () }
 example : progOk sliceTouch = true := by native_decide
 
 -- A caller passing a slice whose length it can NAME: green, end to end.
 def sigCallerOk : Term := prog{
-  fn SliceTouch (s : Σ (C : Nat) → &mut (Array C Nat)) -> Unit { () };
-  fn SigCallerOk (n : Nat, i : Nat, h1 : Le i n, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i | h1];
+  fn SliceTouch (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () };
+  fn SigCallerOk (n : Nat, i : Nat, H1 : Le i n, a : &mut (Array n Nat)) -> Unit {
+    let l = &m (*a)[Z ; i | H1];
     let r = &m (*a)[i ; ..];
     SliceTouch(Pair(i, l));
     () };
@@ -1042,9 +1042,9 @@ example : progOk sigCallerOk = true := by native_decide
     term to write, because the residue's length is the σ premise (3) minted. -/
 
 def sigCallerWrong : Term := prog{
-  fn SliceTouch (s : Σ (C : Nat) → &mut (Array C Nat)) -> Unit { () };
-  fn SigCallerWrong (n : Nat, i : Nat, h1 : Le i n, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i | h1];
+  fn SliceTouch (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () };
+  fn SigCallerWrong (n : Nat, i : Nat, H1 : Le i n, a : &mut (Array n Nat)) -> Unit {
+    let l = &m (*a)[Z ; i | H1];
     let r = &m (*a)[i ; ..];
     SliceTouch(Pair(i, r));
     () };
@@ -1057,7 +1057,7 @@ example : progRejects sigCallerWrong "does not have its parameter type"
 -- telescope entry can mention it. Nesting the proof inside too is where it goes, and
 -- that is a second level the machinery does not have.
 def recSlice : Term := prog{
-  fn RecSlice [fuel] (fuel : Nat, s : Σ (C : Nat) → Σ (H : Le C fuel) → &mut (Array C Nat)) -> Unit {
+  fn RecSlice [fuel] (fuel : Nat, s : Σ (c : Nat) → Σ (h : Le c fuel) → &mut (Array c Nat)) -> Unit {
     () };
   () }
 example : progRejects recSlice "only valid at a telescope position" = true := by native_decide
@@ -1112,9 +1112,9 @@ example : (Pure.nf 300 (Pure.kLe (Term.nat 1) (.sym 0)) == .const "Unit")
     reduces to `Le Z j` and then to ⊤, so **the carve that could not be written at all
     now needs no evidence whatsoever**. -/
 def threeWay : Term := prog{
-  fn ThreeWay (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S j)),
+  fn ThreeWay (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
                a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | heq];
+    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | Heq];
     let p = &m (*a)[i ; 1 ; j];
     let r = &m (*a)[S i ; ..];
     () };
@@ -1125,9 +1125,9 @@ example : progOk threeWay = true := by native_decide
 -- doing real work: `[Z ; i ; S j]`, `[i ; 1 ; j]` and `[S i ; ..]` are pairwise
 -- disjoint by the decomposition the carves cite, and all three stay usable.
 def threeWayAll : Term := prog{
-  fn ThreeWayAll (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S j)),
+  fn ThreeWayAll (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
                   a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | heq];
+    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | Heq];
     let p = &m (*a)[i ; 1 ; j];
     let r = &m (*a)[S i ; ..];
     let z = *r;
@@ -1148,9 +1148,9 @@ example : progOk threeWayAll = true := by native_decide
 -- `rest := S j` the obligation is ⊤. Dropping `LeAdd` from the FIRST carve, whose
 -- obligation does not compute away, is still rejected.
 def threeWayNoFirstEv : Term := prog{
-  fn ThreeWayNoFirstEv (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S j)),
+  fn ThreeWayNoFirstEv (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
                         a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeRefl i | heq];
+    let l = &m (*a)[Z ; i ; S j | LeRefl i | Heq];
     let p = &m (*a)[i ; 1 ; j];
     () };
   () }
@@ -1174,9 +1174,9 @@ example : progRejects threeWayUncited "may not impose it by refining" = true := 
 -- …and the citation's TYPE is what licenses: a well-typed equation about the wrong
 -- decomposition selects nothing.
 def threeWayWrongEq : Term := prog{
-  fn ThreeWayWrongEq (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S (S j))),
+  fn ThreeWayWrongEq (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S (S j))),
                       a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | heq];
+    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | Heq];
     () };
   () }
 example : progRejects threeWayWrongEq "cited decomposition does not have type" = true := by
@@ -1186,9 +1186,9 @@ example : progRejects threeWayWrongEq "cited decomposition does not have type" =
 -- and premise (3) is the thing that checks it. Here `j` is claimed where `S j` is
 -- needed, so the solution transition has no solution.
 def threeWayLyingResidue : Term := prog{
-  fn ThreeWayLyingResidue (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i j),
+  fn ThreeWayLyingResidue (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i j),
                            a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; j | LeAdd i j | heq];
+    let l = &m (*a)[Z ; i ; j | LeAdd i j | Heq];
     let p = &m (*a)[i ; 1 ; j];
     () };
   () }
@@ -1205,9 +1205,9 @@ example : progOk sliceTake = true := by native_decide
 
 def threeWayCall : Term := prog{
   fn SliceTake (q : Nat, s : &mut (Array q Nat)) -> Unit { () };
-  fn ThreeWayCall (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S j)),
+  fn ThreeWayCall (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
                    a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | heq];
+    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | Heq];
     let p = &m (*a)[i ; 1 ; j];
     let r = &m (*a)[S i ; ..];
     SliceTake(i, l);
@@ -1225,9 +1225,9 @@ example : progOk threeWayCall = true := by native_decide
     `(*a)[S i ; ..]` cannot find the segment it just created. -/
 
 example : progOk (prog{
-  fn BaseSpelling (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S j)),
+  fn BaseSpelling (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
                    a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | heq];
+    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | Heq];
     let p = &m (*a)[i ; 1 ; j];
     let r = &m (*a)[S i ; j];
     () };
@@ -1423,7 +1423,7 @@ example : progOk readSame = true := by native_decide
     names `*a` (exit) and `old *a` (entry). -/
 def sort2 : Term := prog{
   fn Sort2 (a : &mut (Array 2 Nat))
-      -> Σ (Hs : SortedA 2 (*a)) → (Π (X : Nat) → Id Nat (CountA X 2 (*a)) (CountA X 2 (old *a))) {
+      -> Σ (hs : SortedA 2 (*a)) → (Π (X : Nat) → Id Nat (CountA X 2 (*a)) (CountA X 2 (old *a))) {
     let x = (*a)[0];
     let y = (*a)[1];
     if h : Leb x y {
@@ -1464,7 +1464,7 @@ example : progOk sort2LieSorted = false := by native_decide
 -- bearing: `Refl` in its place is rejected.
 def sort2LieCount : Term := prog{
   fn Sort2LieCount (a : &mut (Array 2 Nat))
-      -> Σ (Hs : SortedA 2 (*a)) → (Π (X : Nat) → Id Nat (CountA X 2 (*a)) (CountA X 2 (old *a))) {
+      -> Σ (hs : SortedA 2 (*a)) → (Π (X : Nat) → Id Nat (CountA X 2 (*a)) (CountA X 2 (old *a))) {
     let x = (*a)[0];
     let y = (*a)[1];
     if h : Leb x y {

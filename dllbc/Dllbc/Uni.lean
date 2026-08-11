@@ -577,18 +577,27 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
   -- Σ binders are name-checked but carry NO mode. §6 gives modes to "λ, Π, and
   -- `let` alike" — the binders of *parameters* — and a Σ's binder names a
   -- projection, not a parameter: erasing one component of a pair is QTT
-  -- territory this phase does not enter. A capital Σ binder is therefore legal
-  -- and inert, exactly as a capital binder is inert everywhere under ⇝.
+  -- **A Σ BINDER CARRIES ITS MODE ON ITS DOMAIN, exactly as λ and Π do** (M32
+  -- R3b). It used not to, and the sentence that stood here — "a capital Σ binder
+  -- is legal and inert" — was true and was the whole problem: §2.1 makes a
+  -- binder's case its mode, and a Σ whose case lived only in the NAME lost it at
+  -- the first normalization, because `Pure.readback` names every binder it
+  -- reaches by its LEVEL (`§0`). λ and Π survive that because `binderDom` puts a
+  -- `⇝` on the domain and readback preserves it; a Σ had no domain marker and so
+  -- had nothing to survive with. That is why §2.5's wall could not be taken down
+  -- by renaming alone — the mode was gone before anything could read it.
   | `(uterm| Σ ($x:ident : $τ:uterm) → $b:uterm) => do
     checkBinder x
     let (τ', n1) ← elabUTerm rctx pctx next τ
     let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
-    return (← `(Dllbc.Term.sigmaT $(quote (x.getId.toString)) $τ' $b'), n2)
+    return (← `(Dllbc.Term.sigmaT $(quote (x.getId.toString))
+      $(← binderDom (x.getId.toString) τ') $b'), n2)
   | `(uterm| Σ ($x:ident : $τ:uterm). $b:uterm) => do
     checkBinder x
     let (τ', n1) ← elabUTerm rctx pctx next τ
     let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
-    return (← `(Dllbc.Term.sigmaT $(quote (x.getId.toString)) $τ' $b'), n2)
+    return (← `(Dllbc.Term.sigmaT $(quote (x.getId.toString))
+      $(← binderDom (x.getId.toString) τ') $b'), n2)
   -- The non-dependent arrow's binder is reserved and is NOT pushed onto `pctx`:
   -- nothing can refer to it, which is what "non-dependent" means. (The de Bruijn
   -- version had to push a placeholder, because every binder crossed moved the

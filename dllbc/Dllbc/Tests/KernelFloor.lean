@@ -613,7 +613,7 @@ example : progOk (prog{
 -- Storing a proof: a J-application (which ⇝-reduces to `Refl`) is ⇒-lifted into a
 -- `Pair`'s dependent second field and audited against `Id Nat a a`.
 example : progOk (prog{
-  fn StoreProof (a : Nat) -> Σ (X : Nat) → Id Nat X X
+  fn StoreProof (a : Nat) -> Σ (x : Nat) → Id Nat x x
     { Pair(a, j Nat a (λ (X : Nat). λ (Q : Id Nat a X). Id Nat a X) Refl a Refl) };
   () }) = true := by native_decide
 
@@ -1236,7 +1236,17 @@ example : progRejects fieldFn "cannot be ⇒-moved" = true := by native_decide
 
     Pinned as ACCEPTED rather than left silent, so R3b (§2.1's binder migration,
     which is what has to move first) inherits a test that goes red if someone
-    concludes the rule already holds. -/
+    concludes the rule already holds.
+
+    **R3b RAN the migration and re-ran the attempt, and these two are still
+    ACCEPTED — §2.5 is refuted a SECOND time.** With `readR`'s λ arm made to
+    refuse, the flagship reds at `readR (⇒): a λ is a function value and ⇒ may
+    not construct one`, exactly where R3 measured it, and `sort2` goes with it.
+    The migration moved the Σ COMPONENT's mode (below); it did not and could not
+    move the two places a λ still reaches ⇒ — a literal λ written in a
+    constructor argument (`Pair(SplitANil …, λ (Q : Nat). Refl)`), which is not a
+    body's tail and so has no type in hand, and a Σ chain's TAIL, which has no
+    binder to put a mode on. The refusal was reverted; these stay accepted. -/
 
 -- §2.5's own example, ACCEPTED: `Add 1` is a function and `f` is a runtime
 -- binding.
@@ -1248,6 +1258,58 @@ example : progOk computePartial = true := by native_decide
 -- MUST be, because the flagship returns values built this way.
 def lamValued : Term := prog{ let f = λ (N : Nat). Add N 1; () }
 example : progOk lamValued = true := by native_decide
+
+/-! ## R3b: THE Σ COMPONENT'S BINDER MODE, and exactly how far it reaches
+
+    R3's wall was `fence: 'Cnt' … cannot be ⇒-moved` — a capital binding handed
+    out as a Σ component, where `readArgs` reads a `ctorApp`'s arguments with no
+    type in hand and therefore ⇒-reads all of them. R3b gives the tail of a body
+    a type-directed read (`readResult`): a `Pair` checked against a `Σ` reads each
+    component by that component's BINDER, so a capital Σ binder makes its
+    component comptime and its value ⇝-read.
+
+    These two programs are that rule and its negative control, and they differ in
+    ONE CHARACTER — the case of the Σ's binder. -/
+
+open Dllbc.StdLemmas in
+/-- A proof returned as a Σ component at a **capital** binder: ⇝-read, accepted. -/
+def sigmaProofCapital : Term := prog{
+  fn F (n : Nat) -> Σ (H : Le n n) → Nat { let H0 = LeRefl n; Pair(H0, n) };
+  () }
+example : progOk sigmaProofCapital = true := by native_decide
+
+open Dllbc.StdLemmas in
+/-- The same program with the Σ binder LOWERCASE: the component is ⇒-read, and
+    the fence refuses the capital binding — which is the wall R3 measured, still
+    standing where §2.1 says it should. Without this control the acceptance above
+    would also pass for a rule that simply stopped fencing. -/
+def sigmaProofLower : Term := prog{
+  fn F (n : Nat) -> Σ (h : Le n n) → Nat { let H0 = LeRefl n; Pair(H0, n) };
+  () }
+example : progRejects sigmaProofLower "cannot be ⇒-moved" = true := by native_decide
+
+open Dllbc.StdLemmas in
+/-- **THE RESIDUAL, pinned as a program**: a Σ chain's LAST component has no
+    binder, so §2.1 gives it no mode and there is nothing for `readResult` to
+    read. The same proof, at the same capital binding, in the tail position
+    instead of a bindered one — REJECTED, and the rejection is the wall itself.
+
+    This is where quicksort's `cnt` sits. Its ensures is
+    `Σ (hi : List Nat) → … → Π n. Id …`, and the trailing `Π n. Id …` is the
+    ∀-proof: five components have binders and the sixth is the tail. So the
+    corpus's own instance of §2.5's blocker survives the migration for a reason
+    that is now structural and small — a spelling, not a rule.
+
+    What it would take: a mode for the tail. `⇝τ` already exists and already
+    survives readback; what does not exist is a surface way to write it there,
+    because `Σ (x : A) → B` gives `A` a binder and `B` none. Either the surface
+    grows a marker for a Σ's tail, or a proof-carrying tail is spelled
+    `Σ (X : A) → Σ (P : B) → Unit` and the corpus's consumers destructure one
+    level deeper. -/
+def sigmaTailProof : Term := prog{
+  fn F (n : Nat) -> Σ (H : Le n n) → Le n n { let H0 = LeRefl n; Pair(H0, H0) };
+  () }
+example : progRejects sigmaTailProof "cannot be ⇒-moved" = true := by native_decide
 
 end Dllbc.Tests.S32Backstop
 end

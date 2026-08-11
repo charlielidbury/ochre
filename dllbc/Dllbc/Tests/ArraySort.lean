@@ -163,19 +163,19 @@ def aQ : Term := .var ⟨3, "a"⟩
 def fuelQ : Term := .var ⟨0, "fuel"⟩
 
 def sHonest : Term := prog{
-  Σ (K : Nat) → Σ (R : Nat)
-    → Σ (Hlen : Id Nat %mS (Add K R))
-    → Σ (Hsp : SplitAL %pS K %mS (*%tS))
+  Σ (k : Nat) → Σ (r : Nat)
+    → Σ (hlen : Id Nat %mS (Add k r))
+    → Σ (hsp : SplitAL %pS k %mS (*%tS))
     → Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (CountA Q %mS (old *%tS)) }
 
 def pHonest : Term := prog{
-  Σ (Pvv : Nat) → Σ (K : Nat) → Σ (Jj : Nat)
-    → Σ (Hlen : Id Nat %nP (Add K (S Jj)))
-    → Σ (Hp : PartA Pvv K %nP (*%aP))
+  Σ (pvv : Nat) → Σ (k : Nat) → Σ (jj : Nat)
+    → Σ (hlen : Id Nat %nP (Add k (S jj)))
+    → Σ (hp : PartA pvv k %nP (*%aP))
     → Π (Q : Nat) → Id Nat (CountA Q %nP (*%aP)) (CountA Q %nP (old *%aP)) }
 
 def qHonest : Term := prog{
-  Σ (Hs : SortedA %nQ (*%aQ))
+  Σ (hs : SortedA %nQ (*%aQ))
     → Π (Q : Nat) → Id Nat (CountA Q %nQ (*%aQ)) (CountA Q %nQ (old *%aQ)) }
 
 def qSuffHonest : Term := prog{ Le %nQ %fuelQ }
@@ -326,12 +326,12 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
             }
           }
         } };
-  fn PartitionA (fuel : Nat, n : Nat, hfuel : Le n fuel, hne : Le (S Z) n,
+  fn PartitionA (fuel : Nat, n : Nat, hfuel : Le n fuel, Hne : Le (S Z) n,
                  a : &mut (Array n Nat))
       -> %pret
       { match n {
           -- An empty array has no pivot, so the caller owes `Le 1 n`; here it IS `Bot`.
-          Z => botElim Unit hne,
+          Z => botElim Unit Hne,
           S(m2) => {
             let hd = &m (*a)[Z ; 1 ; m2];
             let x = (*hd)[0];
@@ -541,25 +541,25 @@ example : progOk arrChain = true := by native_decide
 
 -- `splitA`, conjunct 1: the length accounting says the two parts overlap by one.
 example : progOk (arrUnder (prog{
-    Σ (K : Nat) → Σ (R : Nat)
-      → Σ (Hlen : Id Nat %mS (Add K (S R)))
-      → Σ (Hsp : SplitAL %pS K %mS (*%tS))
+    Σ (k : Nat) → Σ (r : Nat)
+      → Σ (hlen : Id Nat %mS (Add k (S r)))
+      → Σ (hsp : SplitAL %pS k %mS (*%tS))
       → Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (CountA Q %mS (old *%tS)) })
     pHonest qHonest qSuffHonest .unit) = false := by native_decide
 
 -- `splitA`, conjunct 2: the ordering claimed of the ENTRY array rather than the exit.
 example : progOk (arrUnder (prog{
-    Σ (K : Nat) → Σ (R : Nat)
-      → Σ (Hlen : Id Nat %mS (Add K R))
-      → Σ (Hsp : SplitAL %pS K %mS (old *%tS))
+    Σ (k : Nat) → Σ (r : Nat)
+      → Σ (hlen : Id Nat %mS (Add k r))
+      → Σ (hsp : SplitAL %pS k %mS (old *%tS))
       → Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (CountA Q %mS (old *%tS)) })
     pHonest qHonest qSuffHonest .unit) = false := by native_decide
 
 -- `splitA`, conjunct 3: the counts off by one, which no path can reach.
 example : progOk (arrUnder (prog{
-    Σ (K : Nat) → Σ (R : Nat)
-      → Σ (Hlen : Id Nat %mS (Add K R))
-      → Σ (Hsp : SplitAL %pS K %mS (*%tS))
+    Σ (k : Nat) → Σ (r : Nat)
+      → Σ (hlen : Id Nat %mS (Add k r))
+      → Σ (hsp : SplitAL %pS k %mS (*%tS))
       → Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (S (CountA Q %mS (old *%tS))) })
     pHonest qHonest qSuffHonest .unit) = false := by native_decide
 
@@ -650,31 +650,31 @@ example : progOk splitANoSwap = false := by native_decide
 
 -- `partitionA`, conjunct 1: the length accounting forgets the pivot cell.
 example : progRejects (arrUnder sHonest (prog{
-    Σ (Pvv : Nat) → Σ (K : Nat) → Σ (Jj : Nat)
-      → Σ (Hlen : Id Nat %nP (Add K Jj))
-      → Σ (Hp : PartA Pvv K %nP (*%aP))
+    Σ (pvv : Nat) → Σ (k : Nat) → Σ (jj : Nat)
+      → Σ (hlen : Id Nat %nP (Add k jj))
+      → Σ (hp : PartA pvv k %nP (*%aP))
       → Π (Q : Nat) → Id Nat (CountA Q %nP (*%aP)) (CountA Q %nP (old *%aP)) })
     qHonest qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 -- `partitionA`, conjunct 2: the partition claimed of the ENTRY array.
 example : progRejects (arrUnder sHonest (prog{
-    Σ (Pvv : Nat) → Σ (K : Nat) → Σ (Jj : Nat)
-      → Σ (Hlen : Id Nat %nP (Add K (S Jj)))
-      → Σ (Hp : PartA Pvv K %nP (old *%aP))
+    Σ (pvv : Nat) → Σ (k : Nat) → Σ (jj : Nat)
+      → Σ (hlen : Id Nat %nP (Add k (S jj)))
+      → Σ (hp : PartA pvv k %nP (old *%aP))
       → Π (Q : Nat) → Id Nat (CountA Q %nP (*%aP)) (CountA Q %nP (old *%aP)) })
     qHonest qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 -- `quicksortA`, conjunct 1: sortedness lied onto the ENTRY. True at the empty array,
 -- so the base path still passes and only the recursive one is blamed.
 example : progRejects (arrUnder sHonest pHonest (prog{
-    Σ (Hs : SortedA %nQ (old *%aQ))
+    Σ (hs : SortedA %nQ (old *%aQ))
       → Π (Q : Nat) → Id Nat (CountA Q %nQ (*%aQ)) (CountA Q %nQ (old *%aQ)) })
     qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 -- `quicksortA`, conjunct 2: the permutation lied by DIRECTION. Again `Refl` at the
 -- empty array, and again the body's evidence points the other way once anything moves.
 example : progRejects (arrUnder sHonest pHonest (prog{
-    Σ (Hs : SortedA %nQ (*%aQ))
+    Σ (hs : SortedA %nQ (*%aQ))
       → Π (Q : Nat) → Id Nat (CountA Q %nQ (old *%aQ)) (CountA Q %nQ (*%aQ)) })
     qSuffHonest .unit) "does not have return type" = true := by native_decide
 
@@ -684,7 +684,7 @@ example : progRejects (arrUnder sHonest pHonest (prog{
 -- carve has nothing to select a leaf with. (The pivot carve needs no evidence at all —
 -- route (a) reduces `Le 1 (S jj)` to ⊤ — so this is the only citation in the body.)
 def carveNoEv : Term := prog{
-  fn CarveNoEv (n : Nat, k : Nat, jj : Nat, heq : Id Nat n (Add k (S jj)),
+  fn CarveNoEv (n : Nat, k : Nat, jj : Nat, Heq : Id Nat n (Add k (S jj)),
                 a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; k ; S jj];
     let pcell = &m (*a)[k ; 1 ; jj];
@@ -696,9 +696,9 @@ example : progRejects carveNoEv "may not impose it by refining" = true := by nat
 -- …and the positive control at the same shape, so the rejection is about the missing
 -- citation and not about the carve. (`quicksortA` itself is the other positive control.)
 def carveWithEv : Term := prog{
-  fn CarveWithEv (n : Nat, k : Nat, jj : Nat, heq : Id Nat n (Add k (S jj)),
+  fn CarveWithEv (n : Nat, k : Nat, jj : Nat, Heq : Id Nat n (Add k (S jj)),
                   a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; k ; S jj | LeAdd k (S jj) | heq];
+    let l = &m (*a)[Z ; k ; S jj | LeAdd k (S jj) | Heq];
     let pcell = &m (*a)[k ; 1 ; jj];
     let r = &m (*a)[S k ; ..];
     () };
@@ -923,13 +923,13 @@ example : progOk c6PeelCall = true := by native_decide
 
 -- (2) Carve inside the tail, with NO call first. Always worked.
 def c6CarveNoCall : Term := prog{
-  fn C6CarveNoCall (n : Nat, k3 : Nat, r2 : Nat, hq : Id Nat n (S (Add k3 (S r2))),
+  fn C6CarveNoCall (n : Nat, k3 : Nat, r2 : Nat, Hq : Id Nat n (S (Add k3 (S r2))),
              a : &mut (Array n Nat)) -> Unit {
     match n { Z => (),
       S(m) => { let hd = &m (*a)[Z ; 1 ; m]; let x = (*hd)[0];
                 let tl = &m (*a)[S Z ; m];
                 let lo = &m (*tl)[Z ; k3 ; S r2 | LeAdd k3 (S r2)
-                                      | SInj m (Add k3 (S r2)) hq];
+                                      | SInj m (Add k3 (S r2)) Hq];
                 let mid = &m (*tl)[k3 ; 1 ; r2];
                 let hi = &m (*tl)[S k3 ; r2]; () } } };
   () }
@@ -937,13 +937,13 @@ example : progOk c6CarveNoCall = true := by native_decide
 
 -- (3) …and the swap's writes on top of it. Always worked.
 def c6Swap : Term := prog{
-  fn C6Swap (n : Nat, k3 : Nat, r2 : Nat, hq : Id Nat n (S (Add k3 (S r2))),
+  fn C6Swap (n : Nat, k3 : Nat, r2 : Nat, Hq : Id Nat n (S (Add k3 (S r2))),
              a : &mut (Array n Nat)) -> Unit {
     match n { Z => (),
       S(m) => { let hd = &m (*a)[Z ; 1 ; m]; let x = (*hd)[0];
                 let tl = &m (*a)[S Z ; m];
                 let lo = &m (*tl)[Z ; k3 ; S r2 | LeAdd k3 (S r2)
-                                      | SInj m (Add k3 (S r2)) hq];
+                                      | SInj m (Add k3 (S r2)) Hq];
                 let mid = &m (*tl)[k3 ; 1 ; r2];
                 let hi = &m (*tl)[S k3 ; r2];
                 let y = (*mid)[0]; (*mid)[0] := x; (*hd)[0] := y; () } } };
@@ -967,14 +967,14 @@ example : progOk c6Rec = true := by native_decide
     its recursive call, i.e. every one of them. -/
 def c6CarveAfterCall : Term := prog{
   fn C6Touch (q : Nat, s : &mut (Array q Nat)) -> Unit { () };
-  fn C6CarveAfterCall (n : Nat, k3 : Nat, r2 : Nat, hq : Id Nat n (S (Add k3 (S r2))),
+  fn C6CarveAfterCall (n : Nat, k3 : Nat, r2 : Nat, Hq : Id Nat n (S (Add k3 (S r2))),
              a : &mut (Array n Nat)) -> Unit {
     match n { Z => (),
       S(m) => { let hd = &m (*a)[Z ; 1 ; m]; let x = (*hd)[0];
                 let tl = &m (*a)[S Z ; m];
                 C6Touch(m, &m *tl);
                 let lo = &m (*tl)[Z ; k3 ; S r2 | LeAdd k3 (S r2)
-                                      | SInj m (Add k3 (S r2)) hq];
+                                      | SInj m (Add k3 (S r2)) Hq];
                 let mid = &m (*tl)[k3 ; 1 ; r2];
                 let hi = &m (*tl)[S k3 ; r2]; () } } };
   () }
@@ -995,10 +995,10 @@ example : progOk c6CarveAfterCall = true := by native_decide
     chosen. ¶6's "a segment with its own zero" is a constraint, not a convenience. -/
 
 def twoCursor : Term := prog{
-  fn TwoCursor (n : Nat, i : Nat, j : Nat, pij : Le (S i) j, pjn : Le (S j) n,
+  fn TwoCursor (n : Nat, i : Nat, j : Nat, Pij : Le (S i) j, Pjn : Le (S j) n,
                 a : &mut (Array n Nat)) -> Unit {
-    let x = (*a)[i | LeTrans (S i) j n pij (LePredL j n pjn)];
-    let y = (*a)[j | pjn];
+    let x = (*a)[i | LeTrans (S i) j n Pij (LePredL j n Pjn)];
+    let y = (*a)[j | Pjn];
     () };
   () }
 example : progRejects twoCursor "no leaf" = true := by native_decide
@@ -1022,9 +1022,9 @@ example : progRejects twoCursorRes "no segment starts at" = true := by native_de
 /-- The subject, as a prefix: its three callers below ride the same chain, so the
     callee is in scope by being declared above the code that calls it. -/
 def withCitedCarve (rest : Term) : Term := prog{
-  fn CitedCarve (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S j)),
+  fn CitedCarve (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
                  a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | heq];
+    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | Heq];
     () };
   %rest }
 example : progOk (withCitedCarve prog{ () }) = true := by native_decide

@@ -462,8 +462,13 @@ def ctorSig : String → Option CtorSig
   -- The one DEPENDENT entry in the table: `Pair`'s second field type is the Σ's
   -- codomain, a body under the Σ's own binder — so that binder is the name
   -- `checkFields` opens it at.
+  -- The domain STRIPS (M32 R3b): since §2.1 reaches Σ binders, a capital one
+  -- carries `⇝` on its domain exactly as a λ's or Π's does, and `⇝τ` is not a
+  -- type — a value inhabits it exactly when it inhabits `τ`, so every rule that
+  -- TYPES a component strips first and only the rules that ROUTE one ask
+  -- `domComptime`. This is the house pattern (`Term.stripCmp` at the site).
   | "Pair"  => some { fieldTypes := fun ty =>
-      match ty with | .sigmaT x a b => some [(x, a), ("_", b)] | _ => none }
+      match ty with | .sigmaT x a b => some [(x, a.stripCmp), ("_", b)] | _ => none }
   -- `Arr` — the array literal (¶1.4). Its field telescope for a CONCRETE `n` is `T`
   -- repeated `n` times; at a symbolic `n` there is no constructor signature, and
   -- correctly so — one cannot write an array literal of unknown length.
