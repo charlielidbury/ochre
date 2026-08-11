@@ -167,6 +167,102 @@ rule stages have enumerated flips only.
 comparison sites and one X-Gen path; (c) raw-closure conversion-on-demand against
 the three `alphaEq` sites (cook-transiently correctness + cost).
 
+> **Probe addendum (Stage V, branch `m32-stage-v`).** All three bets came back
+> VIABLE, corpus green at each. Six things the plan could not have known,
+> recorded where the plan is. Scaffolding: `Dllbc/StageVCore.lean`,
+> `Dllbc/StageV.lean`, `StageVBench.lean` — none of it merges.
+>
+> **1. The canary was run, not simulated, and it has a positive control.**
+> `generalizeStuck`'s entire stored-state sweep was routed through the
+> `Term`-level twin (convert at the boundary, abstract as syntax, convert back)
+> and the machine KEPT the Term-routed answer, so the flagship proofs ran on it.
+> Zero divergences, zero round-trip losses, whole corpus green. With the twin
+> sabotaged to abstract nothing, the corpus goes red at 22 assertions —
+> including `Direct.lean:1592`, `progOk flagship`, which IS quicksort's count
+> equation — and 46 divergences print. **A Stage-V-shaped green result is worth
+> exactly the sabotage run that accompanies it; run one.**
+>
+> **2. §6's first sharp edge is answered YES, and mechanically.** `substP`'s
+> rebinding guard is vacuous for σ-names because the kernel's complete
+> minted-binder inventory is `§<digits>`, `§gen`, `§let<digits>`, `§p<digits>`,
+> `§_`, and nine hand-written recursor premise binders (`§k §ih §h §t §x §y §n
+> §xs §lo`) — `§σ<digits>` misses all of them. Asserted as behaviour
+> (substituting under a binder of each shape reaches the occurrence), not as a
+> name comparison.
+>
+> **3. §2.3's "at rest is a canonical Term" is TRUE OF THE KNOWLEDGE AND SILENT
+> ABOUT THE STATE, and that is R1's real cost line.** The values a store-wide
+> sweep meets include ⊥, loan markers, borrows, `§segs` array state and
+> (executing) `rfn`s, and `Term` has a form for NONE of them. The probe carried
+> them as reserved-name `ctorApp` sentinels; R1 must choose between a `Val`
+> skeleton with `Term` knowledge leaves and four new `Term` formers, and say
+> which in the plan rather than discover it at the first `borrowM ℓ p`.
+>
+> **4. One semantic choice hides in the re-targeting, and the house already has
+> a pattern for it.** `Val.beq` is MODE-BLIND (it unwraps `cmpT`, §6's "case is
+> inert under ⇝"); `Term.beq` is mode-sensitive by design (`absOcc` must see a
+> marker). A target `τ` therefore matches an occurrence `⇝τ` under the `Val`
+> sweep and not under the `Term` one. The corpus never reaches the difference —
+> zero divergences — so both are currently safe. The precedent to follow rather
+> than re-decide: `piAgree` and `checkArm` call `Term.alphaEq` on
+> `.stripCmp`-ed arguments, i.e. they strip AT THE SITE and leave the equality
+> honest. R1's Term-level sweep should do the same.
+>
+> **4b. The `alphaEq` comparison sites are FOUR, not three.** §5 and the M31
+> ledger both say three; the fourth is `trivialOwedT` (`Syntax.lean`, two arms),
+> comparing a borrow's owed type against its payload type. nbe.md §5's own
+> docstring lists it and the milestone prose does not. It happens to be
+> unaffected by R1 — `borrowT` is `Term`-only already — but a plan that
+> enumerates three will enumerate three again at R3, where owed types are live.
+> The four: `piAgree` (`Machine.lean:2533`), `checkArm` (`4243`), `sealRec`
+> (`4287`), `trivialOwedT` (`Syntax.lean:742–743`).
+>
+> **5. Bet (a) is nine sites, and the ninth is a DIRECTION flip, not a rewrite.**
+> `readCWith` PREPENDS the callee's instantiation, because under id keying the
+> decl's parameter ids collide with caller locals and first-match was how the
+> actuals won. Under rightmost-wins, front is the OLDEST position: it must
+> APPEND. The other eight are `find?`-by-id → last-match-by-name
+> (`lookupSlot`, `setSlot`, `mergeRoot`, `collapseCDerefs` ×2, `admitGlobals`
+> ×2, `readR`'s `.callV` head); `bindSlot` needs nothing, because append IS
+> newest-wins. `applyRFn`'s `freshFrame`/`shiftVarsK` did NOT have to go, and
+> that is the finding that makes the bet cheap: the shift renumbers ids and
+> PRESERVES names, so store resolution is indifferent to it and E2's payoff
+> becomes its own commit with its own differential rather than a precondition.
+> Deleting it is a separate question with at least one thing to check —
+> `reflectC` derives a reserved pure binder from a runtime id (`letName x.id`),
+> so unshifted frames would mint one name where two frames mint two today.
+>
+> **6. §3's cooking schedule is CONFIRMED, and its criterion is sharper than
+> stated.** The split is not raw-versus-cooked, it is MATERIALIZED-versus-LATENT,
+> because `abstractInto` already descends captured environments: a spine
+> materialized in ρ survives the sweep and raw agrees with cooked, while a spine
+> the body re-mints from ρ's ingredients diverges (`Add (Len σ5) 7` against
+> `Add σ99 7`). §3's optimization note — cook only closures whose ρ mentions σ's
+> in the abstracted spine's support — is therefore the exactly right rule, not a
+> refinement. Separately, **conversion-on-demand needs no new machinery**:
+> `convert` is `nfV a == nfV b`, `eval` leaves a closure in body position alone
+> and `readback` opens the binder through `instBody`, so today's `convert`
+> already cooks transiently. Cost at a comparison site is a wash (raw-vs-raw is
+> the fastest of the three variants, because the cooked tree is the bigger one);
+> resting raw is ~6× cheaper to store and ~3× cheaper to sweep.
+>
+> **7. Name-keying's cost was predicted as a regression and MEASURED as noise.**
+> `findSlot?` is `filter`-then-`getLast?` — it allocates per lookup and cannot
+> short-circuit, where `find?` did both — and `lookupSlot` is the machine's
+> hottest operation, so the probe's own commit message said to expect a
+> regression. Same compiled binary, same 12 iterations, two runs each:
+>
+> | workload | id-keyed | name-keyed |
+> |---|---|---|
+> | CHECK `arrUnder`+`qsCallerA` | 2169 / 2176 ms | 2201 / 2175 ms |
+> | EXEC `runQsA` | 18642 / 18678 ms | 18813 / 18866 ms |
+>
+> About 1%, which is inside the run-to-run spread on the check. Ω is short (tens
+> of entries) and the scan is nothing beside the evaluation around it. The
+> non-allocating `foldl` version stays available and is not needed to fund the
+> decision — first-readings-err-dramatic, arriving as a predicted cost that was
+> not there.
+
 **Stage R1 — the domain split.** Readback emits Terms; at-rest non-λ knowledge
 becomes canonical Terms; sweeps re-target to Term level; Val loses its syntax
 embedding. Zero differential.
