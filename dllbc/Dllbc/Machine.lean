@@ -586,6 +586,66 @@ mutual
   termination_by ps => sizeOf ps
 end
 
+/-- **COOK a closure** (M32 R2, suspensions.md §2.3/§3): evaluate the raw body
+    under its captured ρ, canonically.
+
+    `Term.underRho` is the whole of it plus `Pure.nf`, and cooking is therefore
+    NOT a new judgment — it is the pure fragment reading the suspension, using the
+    `let` rule it already had. It deliberately does not go through `readC`: a
+    comptime λ's free names are all in ρ (`admitGlobals` is what guarantees that
+    at formation), so there is no live place left to resolve, and keeping cooking
+    out of `reflectC` keeps ⇝ a structural recursion instead of a fuelled one.
+
+    Used three ways, differing only in what is done with the answer: TRANSIENTLY
+    for a conversion or a typing (§2.3 — Stage V measured the raw pair a wash,
+    since `convert` normalizes both sides either way), PERSISTENTLY at a
+    generalization sweep (§3, `cookForGen`), and as the formation CHECK (§2.2). -/
+def cookClosure (fuel : Nat) (ρ : List (Var × Val)) (node : Term) : Term :=
+  Pure.nf fuel (Term.underRho (Val.rhoTerms ρ) node)
+
+/-- **COOK-AT-GENERALIZATION** (M32 R2, suspensions.md §3) — the one place cooking
+    is PERSISTENT, and the rule is derived rather than chosen.
+
+    The criterion: a store-wide sweep is safe iff it commutes with evaluation.
+    Refinement (σ := v) is atom-keyed and commutes, so raw closures are fully
+    correct under it and `substSym` above just rewrites ρ. Generalization is
+    keyed on a COMPOUND — a whole spine — and does not: a raw body plus its ρ
+    holds the spine's INGREDIENTS and can re-mint it after the sweep has passed,
+    speaking pre-generalization vocabulary while the branch speaks σb.
+
+    Stage V sharpened it to MATERIALIZED-vs-LATENT: `abstractInto` already
+    descends captured environments, so a spine materialized in ρ survives the
+    sweep and raw agrees with cooked. Only a spine the body RE-MINTS from ρ's
+    ingredients diverges. Hence **the rule is support-scoped**: cook exactly the
+    closures whose ρ mentions a σ in the abstracted spine's support, and leave
+    every other closure raw. Not an optimization — a closure with no σ of the
+    support in its ρ cannot re-mint the spine, so cooking it would be work with
+    no question attached.
+
+    **Imperative bodies are never cooked, ever** (§3): they never participate in
+    conversion — audited once at formation, then only entered — and cooking one
+    is not merely pointless, it is undefined (`readC` has no rule for a body).
+    Their ρ's are still descended, because a comptime closure can sit inside one.
+
+    Cannot cascade: cooking normalizes, and normalization cannot trigger a split
+    (a split is a ⇒ event, and this is ⇝). Composes with the sweep's traversal
+    order because it is a separate pass over the same targets, run first — the
+    cooked form is what `abstractInto` then rewrites. -/
+partial def cookForGen (fuel : Nat) (support : List Nat) : Val → Val
+  | .closure ρ node =>
+    let ρ' := ρ.map (fun p => (p.1, cookForGen fuel support p.2))
+    if Term.lamImperative node then .closure ρ' node
+    else if (Val.symIdsRho ρ).any (fun σ => support.contains σ) then
+      -- Cooked, and WRITTEN BACK: the cooked body is closed, so its ρ is empty
+      -- and the raw syntax is gone. §6's sharp edge answered — nothing downstream
+      -- shows source syntax for a λ (the renderer prints binders and elides), so
+      -- no message depended on it.
+      .closure [] (cookClosure fuel ρ node)
+    else .closure ρ' node
+  | .node n args => .ctor n (args.map (cookForGen fuel support))
+  | .borrowM ℓ p => .borrowM ℓ (cookForGen fuel support p)
+  | v => v
+
 /-! ## The two Ω-primitives
 
     Everything the borrow machinery does is one of these two, aimed at Ω's
@@ -922,6 +982,15 @@ def refineSym (σ : Nat) (v : Val) : M Unit := do
 def generalizeStuck (fuel : Nat) (spine : Term) : M (Nat × Term) := do
   let sp := Pure.nf fuel spine
   let σb ← freshSym
+  -- **COOK FIRST, THEN SWEEP** (M32 R2, suspensions.md §3). This is the one
+  -- non-commuting sweep in the system and therefore the one event at which
+  -- cooking is persistent. `cookForGen` is support-scoped — only closures whose
+  -- ρ mentions a σ of `sp` can re-mint `sp` after the sweep has passed — and it
+  -- writes the cooked form back, so what `abstractInto` rewrites below is the
+  -- cooked body and the raw syntax is gone. Ω only: sctx, obligations, groups
+  -- and retTyVal hold `Term`s, and a `Term` is not a suspension.
+  let support := sp.symIds
+  modify (fun s => { s with env := s.env.map (fun kv => (kv.1, cookForGen fuel support kv.2)) })
   modify (fun s => { s with
     env := s.env.map (fun kv => (kv.1, abstractInto sp σb kv.2)),
     sctx := (σb, .const "Bool") :: s.sctx.map (fun p => (p.1, Term.abstractInto sp σb p.2)),
@@ -1156,23 +1225,6 @@ def readCWith (fuel : Nat) (extra : Omega) (t : Term) : M Term := do
   let v ← readC fuel t
   modify (fun s => { s with env := saved })
   pure v
-
-/-- **COOK a closure** (M32 R2, suspensions.md §2.3/§3): evaluate the raw body
-    under its captured ρ, canonically.
-
-    `Term.underRho` is the whole of it plus `Pure.nf`, and cooking is therefore
-    NOT a new judgment — it is the pure fragment reading the suspension, using the
-    `let` rule it already had. It deliberately does not go through `readC`: a
-    comptime λ's free names are all in ρ (`admitGlobals` is what guarantees that
-    at formation), so there is no live place left to resolve, and keeping cooking
-    out of `reflectC` keeps ⇝ a structural recursion instead of a fuelled one.
-
-    Used three ways, differing only in what is done with the answer: TRANSIENTLY
-    for a conversion or a typing (§2.3 — Stage V measured the raw pair a wash,
-    since `convert` normalizes both sides either way), PERSISTENTLY at a
-    generalization sweep (§3, `cookForGen`), and as the formation CHECK (§2.2). -/
-def cookClosure (fuel : Nat) (ρ : List (Var × Val)) (node : Term) : Term :=
-  Pure.nf fuel (Term.underRho (Val.rhoTerms ρ) node)
 
 -- §5.4 exit-snapshot transform on a RETURN TYPE (moved here from Boundary so the
 -- call rule can reach it too). A bare borrow-parameter `*v` (`v.id ∈ borrowIds`) is

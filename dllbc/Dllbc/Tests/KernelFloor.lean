@@ -846,3 +846,132 @@ example : (Term.beq (Term.substSym 0 (Term.nat 4)
 end Dllbc.Tests.S32Sigma
 end
 -- └── end of the M32 R1 σ-namespace battery ────────────────────────────────────
+
+-- ┌── the M32 R2 cook-at-generalization canary ─────────────────────────────────
+section
+namespace Dllbc.Tests.S32Cook
+open Dllbc
+
+/-! # Cook-at-generalization, with the control that makes it mean something
+
+    suspensions.md §3 derives ONE persistent cooking event from one criterion: a
+    store-wide sweep is safe iff it commutes with evaluation. Refinement is
+    atom-keyed and commutes; X-Gen's generalization is compound-keyed and does
+    not. Stage V sharpened the failing case to MATERIALIZED-vs-LATENT — a spine
+    materialized in ρ survives the sweep untouched, and only a spine the body
+    RE-MINTS from ρ's ingredients speaks pre-generalization vocabulary
+    afterwards.
+
+    This is Stage V bet (c)(iii), built and run **in both directions**, because a
+    green result here is worth exactly the negative control that accompanies it:
+    the failure mode is silent by construction (M30's measured count-equation
+    break).
+
+    The suspension: ρ binds `V ↦ σ5` and `W ↦ σ6`, and the body is the stuck
+    spine `leb V W`. The generalized spine `leb σ5 σ6` is therefore **LATENT** —
+    it is nowhere in ρ and nowhere in the raw body, and it comes into existence
+    only when the body is evaluated. (`leb` stands here for §19's own scrutinee,
+    an unknown head that `whnfN` leaves neutral; the shape is what matters.) -/
+
+def vSlot : Var := ⟨700, "V"⟩
+def wSlot : Var := ⟨701, "W"⟩
+def latentRho : List (Var × Val) :=
+  [(vSlot, .know (Term.sym 5)), (wSlot, .know (Term.sym 6))]
+def latentBody : Term := .app (.app (.const "leb") (.var vSlot)) (.var wSlot)
+def latentNode : Term := .lam "§x" (.const "Nat") latentBody
+def latent : Val := .closure latentRho latentNode
+
+/-- The spine the split generalizes, normalized as `generalizeStuck` normalizes
+    it, and the fresh σ it is abstracted into. -/
+def sp : Term := Pure.nf 1000 (.app (.app (.const "leb") (Term.sym 5)) (Term.sym 6))
+def σb : Nat := 99
+
+/-- Cook a value that is a closure; anything else is not this test's subject. -/
+def cooked : Val → Term
+  | .closure ρ n => cookClosure 1000 ρ n
+  | v => .const s!"NOT-A-CLOSURE:{v.pretty}"
+
+/-- **The eager answer**: cook, THEN sweep. What a cook-at-formation system would
+    have produced, and the vocabulary the branch equation speaks. -/
+def eager : Term := Term.abstractInto sp σb (cooked latent)
+
+/-- **R2's rule**: `cookForGen` at the spine's support, then the sweep, then
+    apply (= cook) afterwards. -/
+def withCooking : Term := cooked (abstractInto sp σb (cookForGen 1000 sp.symIds latent))
+
+/-- **The control**: the same with cook-at-generalization DISABLED — the sweep
+    alone, then apply. -/
+def withoutCooking : Term := cooked (abstractInto sp σb latent)
+
+-- The instrument first, so a pass cannot be vacuous: the support is what the
+-- spine is over, and the closure IS in scope of the support-scoped rule.
+example : sp.symIds = [5, 6] := by native_decide
+example : (Val.symIdsRho latentRho).any (fun s => sp.symIds.contains s) = true := by native_decide
+
+-- POSITIVE: with cooking, the raw suspension agrees with the eager answer.
+example : Term.beq withCooking eager = true := by native_decide
+
+-- NEGATIVE, and this is the half that makes the positive mean something: with
+-- cooking disabled the same suspension DIVERGES — it re-mints `leb σ5 σ6` from
+-- ingredients the sweep never touched, and speaks the pre-generalization
+-- vocabulary the branch has stopped using.
+example : Term.beq withoutCooking eager = false := by native_decide
+
+-- Named, so a reader sees WHICH two answers those are rather than taking the
+-- disagreement on trust.
+example : eager.pretty = "λ(§0 : Nat). σ99" := by native_decide
+example : withoutCooking.pretty = "λ(§0 : Nat). leb σ5 σ6" := by native_decide
+
+/-! ## The rule is SUPPORT-SCOPED, and that is asserted rather than described
+
+    A closure whose ρ mentions no σ of the spine's support cannot re-mint the
+    spine, so it is left RAW — the difference between §3's rule and
+    "normalize at every split", which §3 rejects because it pays at the commuting
+    sweeps that need nothing. -/
+def unrelated : Val := .closure [(vSlot, .know (Term.sym 7))] latentNode
+example : (match cookForGen 1000 sp.symIds unrelated with
+           | .closure ρ n => ρ.length == 1 && Term.beq n latentNode
+           | _ => false) = true := by native_decide
+
+/-! ## An IMPERATIVE body is never cooked, ever (§3)
+
+    It never participates in conversion — audited once at formation, then only
+    entered — and cooking one is not merely pointless but undefined, since ⇝ has
+    no rule for a write. Its ρ is still descended, because a comptime closure can
+    sit inside one. -/
+def impNode : Term := Term.lamTel [(⟨702, "w"⟩, .const "Nat")] (.seq (.var vSlot) .unit)
+def impClosure : Val := .closure latentRho impNode
+example : (match cookForGen 1000 sp.symIds impClosure with
+           | .closure ρ n => ρ.length == 2 && Term.beq n impNode
+           | _ => false) = true := by native_decide
+
+/-! ## A LIMIT of the sweep, found by building this canary and pinned here
+
+    `Term.abstractInto` matches by `Term.beq`, which compares binder NAMES, and
+    `readback` names a binder by its LEVEL. So a generalized spine that itself
+    CONTAINS a binder does not match its own occurrence under a λ: normalized at
+    depth 0 the spine says `§0`, and the same spine normalized one binder deeper
+    says `§1`. `len σ5` is such a spine — it unfolds to a `listRec` over λ arms —
+    and abstracting it reaches every knowledge leaf in Ω and none of the
+    occurrences inside a cooked closure body.
+
+    This is not new at R2 (a λ at rest was normalized knowledge before it was a
+    closure, with the same level shift), and it is not what cook-at-generalization
+    is about — cooking fixes LATENCY, and this is a matching question underneath
+    it. Recorded as a demand rather than argued away: the fix is an α-insensitive
+    match at the abstraction site, which is `Term.alphaEq`'s job and a change to
+    the sweep's key. -/
+def lenBody : Term := Std.lenT (.var vSlot)
+def lenLatent : Val := .closure [(vSlot, .know (Term.sym 5))] (.lam "§x" (.const "Nat") lenBody)
+def lenSp : Term := Pure.nf 1000 (Std.lenT (Term.sym 5))
+-- The spine BINDS: it unfolds to a `listRec` over λ arms, so its normal form
+-- carries binders and their names are levels.
+example : strContains lenSp.pretty "λ(§0" = true := by native_decide
+-- …and the sweep therefore finds nothing to abstract inside the cooked body,
+-- so cooked-then-swept and swept-then-cooked agree only because NEITHER fired.
+example : Term.beq (Term.abstractInto lenSp 98 (cooked lenLatent)) (cooked lenLatent)
+          = true := by native_decide
+
+end Dllbc.Tests.S32Cook
+end
+-- └── end of the M32 R2 cook-at-generalization canary ─────────────────────────
