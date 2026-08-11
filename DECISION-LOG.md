@@ -3,6 +3,71 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-08-11: M31 — functions are comptime knowledge (Stage A merged; the representation half becomes M32)
+
+**Decided: a function is comptime knowledge. Every application fetches its head
+by ⇝ and reads its arguments by their binder modes; no runtime-moded binding ever
+holds a function.** The full design, its interrogation (E1–E9) and both
+implementation addenda are in `dllbc/docs/functions-are-comptime.md`; this entry
+records the shape and the rulings, not the argument.
+
+What changed is the MODE of a function binding (comptime — ⇝-read, erased, never
+consumed) and how a callee is REACHED (evaluated as knowledge, not located as
+state). Bodies are still entered by ⇒: once at the seal by audit, once per call
+in a fresh frame. Function names capitalise, because §6's capital-means-comptime
+is one rule with no carve-outs.
+
+**Stage A, four commits on `m31-stage-a`, merged at 262a45cf**, whole corpus green
+at each: α tolerate (369467bd — the `callV` fence dies, heads are ⇝-fetched),
+β rename (f8290856 — 215 `fn` names and the `aliasMap` keys go PascalCase),
+γ enforce (61e0b793 — the surface refuses a lowercase `fn`, the kernel backstops
+it from below, the function-read refusal dies), δ citation (033adda8 — §2.4).
+**The planned order was wrong and the corrected one is tolerate → rename →
+enforce**: under the unmodified kernel a capitalised `fn` name is refused by three
+independent rules before any call happens, so a rename-first commit is not "zero
+behaviour delta", it is one in which every renamed function is unusable.
+
+Two behaviour flips were DERIVED rather than chosen, and both are the interesting
+kind — the design implied them and the plan had not listed them. `let C = (proof
+: T)` becomes legal, because a function declaration IS a comptime `let` of a
+sealed λ, so the old sealed-vs-comptime exclusion would have refused every
+declaration in the language; the `Qed` binding and the function declaration are
+one form. And the lowercase λ-valued `let`, which §2.1 requires be capital, was
+used 111 times in the corpus.
+
+**E4, measured rather than predicted:** passing a borrow-free function as an
+argument WORKS (§7's promise closed for that case); passing one whose signature
+has a `&mut` binder is REFUSED, by an honest named rejection one step before
+`hasType` is reached. So the `piAgree`-style agreement path E4 predicted does not
+exist and nothing silently mistypes. Building it is M32's.
+
+**Rulings from the Stage A review**, each now a debt with an owner in the doc's
+M32 scope ledger: the **let-arrow invariant with zero carve-outs** (capital `let`
+⇝-reads its RHS, lowercase ⇒-reads it — `Var.comptimeRhs`'s seal/λ exceptions are
+transitional); **no runtime λ**, which makes Stage A's backstop derivable and
+therefore deletable; **nullary `fn` desugars to `λ (U : Unit)`** with call sites
+passing `unit`, which takes `callV`'s last unique job and retires it; and σ
+**generativity by SITE APPLIED TO ITS CAPTURED INPUTS** — occurrence-keying alone
+is wrong, because a seal under a binder evaluates at different inputs and those
+must not compare equal.
+
+**Stage B was extracted to M32 (decision: skip the intermediate representation).**
+It would have built a `Val ⊕ Term` closure payload that M32's suspensions rewrite
+again, double-touching the same ~40 `lamR`/`rfn` sites. So `Term.lamR`/`Val.rfn`
+survive M31, and the λ merge, the seal's body-classification dispatch and E2's
+binder keying all land once, in final form, in M32. The sequencing that remains is
+M31 = semantics (enumerable differential), M32 = representation (zero
+differential), and semantics-first is still hardest-first.
+
+**Stage C (this entry's occasion)** completed §2.1's rule at the library half:
+446 stdlib lemma names capitalised, which Stage A had explicitly declined on the
+ground that a Lean identifier carries no mode marker — sound about the kernel,
+silent about the reader. Two `fn`-vs-lemma collisions took the `L` suffix
+(`nth`→`NthL`, and `SplitA`→`SplitAL`, which was already latent on main). It also
+deleted `globalKind`, the value-directed capture test Stage A had superseded and
+left standing, and pinned what its deletion means: a capital proof IS citable from
+inside a λ body, measured.
+
 ## 2026-08-08: M30 step 2 (source names) — every index is gone, and three things the design did not predict
 
 **Decided: implement nbe.md §5 in full — `Term` and `Val` binders carry plain

@@ -441,7 +441,9 @@ windows, E7's executing-mode env — we find out before spending on representati
 > **8. The rename policy, and the one name where it mattered.** PascalCase =
 > capitalise the initial and each letter after an underscore, then drop them.
 > Applied to all 215 `fn` names and the `aliasMap` keys (`Len`, `Add`, `Count`, …).
-> **Lemma reference names are NOT renamed**: `le_refl`, `nth`, `swapL` are *Lean*
+> **Lemma reference names are NOT renamed** — *reversed in Stage C; see its
+> addendum below, which is where the collision analysis this item starts now
+> lives*: `le_refl`, `nth`, `swapL` are *Lean*
 > identifiers reached by the raw fallthrough, with no `Var` for `isUpperInit` to
 > read, so no mode marker is being suppressed. That decision was forced by `nth`,
 > which is BOTH a `fn` and a `Std` lemma Term in the same block, coexisting at HEAD
@@ -483,6 +485,80 @@ language.md currency (chapter 12's deviations block shrinks by one bullet — th
 call-position containment dies; the `f(a, b)` spelling remains a surface question, out
 of scope here). `callV` survives M31 (E6); `sealFn`'s rename waits for M32's dispatch
 change.
+
+> **Implementation addendum (Stage C, landed on `m31-stage-c`).** Two commits.
+> The first reverses Stage A's addendum item 8; the second deletes what Stage A
+> superseded and left standing. Both are recorded here because both found
+> something the plan could not have.
+>
+> **1. Item 8 is reversed: the stdlib lemmas capitalise too (446 names).** Its
+> argument — a Lean identifier has no `Var` for `isUpperInit` to read, so
+> lowercase suppresses no mode marker — is sound about the KERNEL and silent
+> about the READER, who sees one surface vocabulary in which `SwapL` and
+> `Quicksort` are both functions and only one of them looks like one. §2.1 says
+> "one rule for every name that denotes a function, library or user's"; the
+> lemmas are the library half, and leaving them out made the rule a rule about
+> `fn` rather than about functions.
+>
+> **2. The collision surface item 8 identified is real, and has two members, not
+> one.** `resolveName` consults `fnSlotId` BEFORE the raw-Lean fallthrough, so a
+> capital lemma name is shadowed by a `fn` of the same spelling. Both take the
+> `L` suffix on the LEMMA (`swapL`'s L-for-list-spec, generalised — the function
+> is the user-facing name and should not move):
+>
+>   * `nth` → `NthL`, the case item 8 predicted.
+>   * `SplitA` → `SplitAL`, which it did not, **because `SplitA` was already
+>     PascalCase and so was invisible to a policy stated as a capitalisation
+>     rule.** `def SplitA` (the split predicate) and `fn SplitA` (the routine
+>     that establishes it) have coexisted on main since ArraySort was written.
+>     They are kept apart only by living in different `prog{}` blocks: the spec
+>     defs elaborate with an empty `rctx`, so the fallthrough reaches the lemma,
+>     while inside the fn's own block the slot would win. Not a bug today. The
+>     general lesson for M32's name-keyed store: **a rename policy checks the
+>     names it MOVES, and the collisions live among the names it does not.**
+>
+> The invariant that made `fnSlotId` safe has therefore expired — Stage A could
+> say every lemma was lowercase, and that is now false. The replacement is a
+> convention, recorded at the definition: a library lemma sharing a spelling with
+> a `fn` takes the suffix, checkable in one grep. Making it a real condition
+> belongs with M32's keying.
+>
+> **3. What a mechanical sweep gets wrong in this corpus, measured on a dry run.**
+> Two failure modes, neither anticipated. Lean **dot-notation**: `tel.take k`,
+> `hoisted.drop 1` are `List.take`/`List.drop`, so the identifier boundary must
+> exclude a preceding `.` — which then misses the **qualified** references
+> (`Dllbc.StdLemmas.le_refl` across four test modules and Measure's
+> `lemmaEntries`), and those are what broke the first build. And **English
+> prose**: 16 of the 446 names are all-lowercase single words (`add`, `count`,
+> `set`, `sub`, `take`, `drop`, `len`, `append`, `nth`, `pred`, …) and the
+> comments contain "a sub-slice", "set closed and small", "would take it". The
+> sweep that worked is region-aware (a comment/string/code scanner, not a regex
+> over lines): the full map in code spans, and in comment spans the full map only
+> inside `backticks`, the unambiguous 430 everywhere.
+>
+> **4. `globalKind` deleted, and the claim it was propping up corrected.** Found
+> by scanning every kernel definition for one with no call site, rather than by
+> guessing which helpers Stage A orphaned — five exist, one is M31's.
+> `admitGlobals` was its only caller, and §2.4's mode test replaced the call in
+> Stage A δ without removing the predicate. `Programs.lean` still said a λ body's
+> naming is "decided by `globalKind`, which admits functions and not proofs, so
+> `cert` remains un-nameable whether it is bound capital or lowercase". Measured:
+> a capital proof cited at a ⇝ position inside a body is **accepted** (the
+> predicate would have refused it — a `Le 3 3` σ is not a function value); the
+> same binder ⇒-MOVED is refused by `fenceComptime`, which gets there before
+> §2.4; lowercase is refused by §2.4. Two tests pin it. **Consequence for M32**:
+> "citing enclosing comptime DATA needs a value-carried environment and arrives
+> with suspensions" (Stage B's extraction note above) is not true of citation as
+> such — a proof at program scope cites fine today. The suspension requirement is
+> about the ESCAPING case, and the note should be read that way.
+>
+> **5. Left undone, deliberately.** `Dllbc.Std`'s Val-level twins (`le_refl`,
+> `le_refl_ty`, `le_reflT`) keep their Lean names: they have no surface reading
+> at all, and renaming would put `Std.LeRefl` one letter from
+> `StdLemmas.LeRefl`, two different objects. Four dead definitions that predate
+> M31 (`FnMacro.progOf`, `FnMacro.succBinder`, `Pure.arrRun?`,
+> `Value.prettyOmega`) are reported rather than deleted — `progOf` in particular
+> is cited in test prose as an equivalence, so removing it costs documentation.
 
 The sequencing rationale, restated for the new shape: M31 is the SEMANTICS milestone
 (mode flip, naming, capture/citation rules — enumerable differential), M32 is the
