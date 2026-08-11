@@ -535,14 +535,14 @@ partial def slotBinders : Term → Nat
   | .borrow t | .deref t | .cmpT t => slotBinders t
   | _ => 0
 
-/-- …and the binders on which the two keys DISAGREE, which is the number R4 is
-    actually waiting for: `bindsSlot` says comptime exactly when the binder has no
-    Ω slot, the case test says it when the name is capital (or reserved, since a
-    `§`-name is unwritable and carries no mode to contradict). Wherever these
-    differ, swapping one key for the other changes an answer. -/
+/-- **The direction that must be ZERO: a runtime binder with nowhere to put its
+    argument.** Lowercase says the argument arrives by ⇒ — moved or loan-seeded
+    into the store — so a lowercase binder that binds no Ω slot is a binder whose
+    argument has no destination. This is the half of R2's `keyDisagree` that is a
+    real invariant, and R4 asserts it at 0. -/
 partial def keyDisagree : Term → Nat
   | .lam x d b =>
-    (if x.bindsSlot == (isUpperInit x.name || isReservedName x.name) then 1 else 0)
+    (if !x.bindsSlot && !(isUpperInit x.name || isReservedName x.name) then 1 else 0)
       + keyDisagree d + keyDisagree b
   | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => keyDisagree d + keyDisagree b
   | .app f a | .seq f a | .seal _ f a => keyDisagree f + keyDisagree a
@@ -552,6 +552,40 @@ partial def keyDisagree : Term → Nat
   | .ctorApp _ as | .call _ as => (as.map keyDisagree).foldl (· + ·) 0
   | .matchE _ _ bs => (bs.map (fun br => keyDisagree br.body)).foldl (· + ·) 0
   | .borrow t | .deref t | .cmpT t => keyDisagree t
+  | _ => 0
+
+/-- …and **the other direction, which is the TELESCOPE RULE and is not zero**: a
+    CAPITAL binder that binds an Ω slot. Comptime read mode, store location —
+    both, and legitimately, because `seedTelescopeV` slots every parameter and
+    capital says how the argument is READ, not where it lands. -/
+partial def comptimeSlotParams : Term → Nat
+  | .lam x d b =>
+    (if x.bindsSlot && (isUpperInit x.name || isReservedName x.name) then 1 else 0)
+      + comptimeSlotParams d + comptimeSlotParams b
+  | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => comptimeSlotParams d + comptimeSlotParams b
+  | .app f a | .seq f a | .seal _ f a => comptimeSlotParams f + comptimeSlotParams a
+  | .letIn _ r t => comptimeSlotParams r + comptimeSlotParams t
+  | .assign p e r => comptimeSlotParams p + comptimeSlotParams e + comptimeSlotParams r
+  | .idT a b c => comptimeSlotParams a + comptimeSlotParams b + comptimeSlotParams c
+  | .ctorApp _ as | .call _ as => (as.map comptimeSlotParams).foldl (· + ·) 0
+  | .matchE _ _ bs => (bs.map (fun br => comptimeSlotParams br.body)).foldl (· + ·) 0
+  | .borrow t | .deref t | .cmpT t => comptimeSlotParams t
+  | _ => 0
+
+/-- **λ nodes this term classifies IMPERATIVE.** The number the telescope rule
+    protects: if the slot test were swapped for a case test, every `fn` whose
+    parameters are all capital would leave this count and lose its audit. -/
+partial def impLams : Term → Nat
+  | .lam x d b =>
+    (if Term.lamImperative (.lam x d b) then 1 else 0) + impLams d + impLams b
+  | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => impLams d + impLams b
+  | .app f a | .seq f a | .seal _ f a => impLams f + impLams a
+  | .letIn _ r t => impLams r + impLams t
+  | .assign p e r => impLams p + impLams e + impLams r
+  | .idT a b c => impLams a + impLams b + impLams c
+  | .ctorApp _ as | .call _ as => (as.map impLams).foldl (· + ·) 0
+  | .matchE _ _ bs => (bs.map (fun br => impLams br.body)).foldl (· + ·) 0
+  | .borrow t | .deref t | .cmpT t => impLams t
   | _ => 0
 
 -- The in-place quicksort — the flagship, the largest program in the corpus, with
@@ -591,18 +625,51 @@ example : lowerComptime Pure.kLeFn = 0 := by native_decide
     **`slotBinders` is UNMOVED at 22, and that is the point, not an oversight**:
     those are the runtime binders, and the migration was never about them. -/
 
-/-! **What R4 inherits.** The two keys still disagree — measured, not assumed —
-    and the disagreement is **4 binders in the whole flagship**, all in ONE direction
-    and one construct: a **capital telescope parameter binds an Ω slot**
-    (`seedTelescopeV` gives every parameter a slot, comptime or not), so
-    `bindsSlot` says runtime where the name says comptime. Four, against 10,777
-    before the migration — and the residue is a rule about telescopes rather than
-    a backlog of renames. R4's case test is therefore not a drop-in for `bindsSlot` at
-    `Term.lamImperative`: a `fn` all of whose parameters are capital would flip
-    from imperative to pure, which is a rule change and wants its own stage. -/
-example : keyDisagree Dllbc.Tests.S23Direct.flagship = 4 := by native_decide
+/-! **R4 SPENT THE INHERITANCE, AND THE ANSWER IS A RULE RATHER THAN A SWAP.**
+
+    R2 keyed the fragment on `Var.bindsSlot` and R3b measured what swapping it
+    for a case test would cost: **4 binders in the whole flagship**, all one
+    construct — a capital telescope parameter binding an Ω slot, because
+    `seedTelescopeV` slots every parameter, comptime or not.
+
+    R4 named them: all four are `Hf`, one `fn`'s proof parameter, appearing once
+    per copy of that `fn`; capital, `⇝`-domained, slotted. And the swap does not
+    happen, because those two keys **answer different questions**:
+
+      * **case** is the READ MODE — ⇝ or ⇒, erased or moved. §2.1's axis.
+      * **`bindsSlot`** is the LOCATION — does the argument land in Ω. The
+        TELESCOPE rule: a telescope binder binds a slot regardless of case.
+
+    So R2's `keyDisagree` was counting the two axes' disagreement and calling it
+    a residue. It splits here into the direction that is an INVARIANT and the
+    direction that is the rule:
+
+      * `keyDisagree` — lowercase and NO slot: a runtime binder whose argument
+        has nowhere to land. **Zero**, and it is R4's own assertion.
+      * `comptimeSlotParams` — capital and slotted: the telescope rule's own
+        population. **Four**, and that is content, not debt.
+
+    What R4 did deliver against the plan is narrower and real: `noSlot` is a TAG
+    now, beside `declSlot`, and no arithmetic, ordering or window survives
+    anywhere in the kernel. The test stayed; E2's machinery around it went. -/
+example : keyDisagree Dllbc.Tests.S23Direct.flagship = 0 := by native_decide
 example : keyDisagree Std.lenFnT = 0 := by native_decide
 example : keyDisagree Pure.kLeFn = 0 := by native_decide
+
+-- The telescope rule's population, named rather than deprecated.
+example : comptimeSlotParams Dllbc.Tests.S23Direct.flagship = 4 := by native_decide
+
+/-! …and **the count the rule protects**. A case test at `Term.lamImperative`
+    would take every all-capital-parameter `fn` out of this number and with it
+    its §5.4 audit, replacing it with `hasType`. Asserted so that a swap made
+    later — by someone reading `bindsSlot`'s name and not its docstring — is loud
+    rather than silent.
+
+    It lands on `slotBinders`' own 22, and that is arithmetic rather than
+    coincidence: a telescope is nested λs, so a λ node is imperative exactly when
+    a slot binder sits at or below it in its own chain, and each slot binder is
+    the innermost such node for exactly one prefix. -/
+example : impLams Dllbc.Tests.S23Direct.flagship = 22 := by native_decide
 
 end Dllbc.Tests.S32Binders
 end

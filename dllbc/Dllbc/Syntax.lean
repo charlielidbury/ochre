@@ -454,15 +454,30 @@ end
     entry, into the store, rather than by ⇝ into the comptime environment?
 
     This is `noSlot`'s other half and the one fact that separates the two λ
-    fragments at the BINDER (§2.1 separates them at argument-READING, which is a
-    different axis and already lives on the case and the `⇝` domain marker). A
-    comptime binder is coerced from a name and has no slot; a runtime binder is
-    minted by the surface or by `teleVars` and has one.
+    fragments at the BINDER. A comptime λ binder is coerced from a name and has
+    no slot; a TELESCOPE binder — a `fn` parameter, a runtime λ's — is minted by
+    the surface or by `teleVars` and has one.
 
-    **R4 is where this becomes the CASE.** §2.1's migration makes capitalisation
-    reach every binder, at which point "binds a slot" is "is lowercase" and the id
-    can go with the rest of E2's machinery. Until then the id is the honest
-    statement, because it is the thing that is actually true today. -/
+    **R4 was to make this the CASE test, and the corpus says NO** (M32 R4). The
+    plan reads: §2.1's migration makes capitalisation reach every binder, so
+    "binds a slot" becomes "is lowercase" and the id goes with E2's machinery.
+    R3b measured the residue at four binders in the flagship and R4 named them —
+    all four are `Hf`, one `fn`'s proof parameter, capital, `⇝`-domained, and
+    holding an Ω slot.
+
+    **THE RULE IS ABOUT TELESCOPES: a telescope binder binds a slot regardless of
+    case.** Capital marks the READ MODE — the argument arrives by ⇝, erased and
+    non-consuming — and says nothing about the LOCATION, which is where the
+    argument lands. `seedTelescopeV` slots every parameter because every
+    parameter is something the body cites by name, comptime or not. So the case
+    test and this one answer DIFFERENT QUESTIONS, and swapping them would flip a
+    `fn` all of whose parameters are capital from imperative to pure — the exact
+    regression R3b's number was measuring the exposure to.
+
+    What R4 does deliver is that this is no longer E2's machinery: `noSlot` is a
+    TAG, alongside `declSlot`, and nothing in the kernel compares, orders or
+    offsets an id any more. The test survives; the arithmetic it used to sit
+    among does not. -/
 def Var.bindsSlot (x : Var) : Bool := x.id != noSlot
 
 /-- Is this λ an IMPERATIVE one — is applying it ⇒-ENTRY rather than ⇝ reduction?
@@ -473,6 +488,13 @@ def Var.bindsSlot (x : Var) : Bool := x.id != noSlot
     redundant — `fn Identity (n : Nat) -> Nat { n }` has a body both arrows can
     read, and it is still a function whose argument is ⇒-read into a slot and
     whose contract is checked by §5.4's audit rather than by `hasType`.
+
+    **The second half is LOCATION and not case** (M32 R4, the telescope rule —
+    see `Var.bindsSlot`). A `fn` all of whose parameters are capital is still
+    entered: its arguments still land in Ω, its contract is still the audit's.
+    Reading this half off the binders' CASE instead would classify such a `fn`
+    pure and take its audit away, which is what R3b's `keyDisagree` was
+    measuring the exposure to.
 
     Asked of the whole node, so `λ(x : τ, y : υ){ … }` is judged by all its
     binders and by what is under them, rather than by the inner λ it is sugar
