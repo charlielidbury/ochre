@@ -4241,7 +4241,7 @@ mutual
       -- the body itself rather than carried on the value: no capture list, no
       -- state. (`readR`'s `.lamR` case has already refused any free variable that
       -- is not a function in scope.)
-      let keep := (Term.freeRVars (names.map (·.id)) body).map (·.id)
+      let keep := (Term.freeRVars (names.map (·.name)) body).map (·.id)
       -- **The body is normalized here too** (M31 Stage 0). `checkRFnBody` has
       -- always walked `pushContinuations body`; the executing machine walked the
       -- body raw, and the two agreed about match-arm scope only by accident —
@@ -4445,7 +4445,7 @@ mutual
       -- capture check happens at all: a sealed λ goes straight to `sealFn`
       -- without ever forming the closure, so `readR`'s own capture filter never
       -- runs on it.
-      let gl ← admitGlobals "seal" tel.length (Term.freeRVars (tel.map (·.1.id)) body)
+      let gl ← admitGlobals "seal" tel.length (Term.freeRVars (tel.map (·.1.name)) body)
       -- `scopeMarks` joins the wipe for the same reason as Ω: a watermark is an
       -- index INTO Ω, so an enclosing scope's mark means nothing against the
       -- fresh one, and the sealed body's own scopes are its own (M31 Stage 0).

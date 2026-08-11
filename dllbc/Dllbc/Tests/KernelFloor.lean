@@ -975,3 +975,61 @@ example : Term.beq (Term.abstractInto lenSp 98 (cooked lenLatent)) (cooked lenLa
 end Dllbc.Tests.S32Cook
 end
 -- └── end of the M32 R2 cook-at-generalization canary ─────────────────────────
+
+-- ┌── the M32 R2 capture-generality battery ────────────────────────────────────
+section
+namespace Dllbc.Tests.S32Capture
+open Dllbc
+
+/-! # What a body may name, and what a closure carries out (suspensions.md §2.6)
+
+    Two things landed together and only look like one rule. The SURFACE stopped
+    elaborating a `fn` body in a params-only context, so a body can now cite the
+    bindings lexically above it. The KERNEL started keeping what such a citation
+    resolves to, in ρ, so the citation survives the λ escaping the scope it was
+    written in. Stage C measured that program-scope citation already worked; the
+    closure is what makes the escaping case safe. -/
+
+-- ACCEPTED, and this is the flip: a `fn` body citing a comptime binding above
+-- it. Before R2 this was a Lean elaboration error — `H0` resolved against the
+-- parameters and there were none by that name.
+def fnCitesEnclosing : Term := prog{
+  let H0 = 3;
+  fn Uses (n : Nat) -> Nat { let Snap = H0; n };
+  () }
+example : progOk fnCitesEnclosing = true := by native_decide
+
+-- The same for a λ bound as a value: the citation is admitted, and what it
+-- resolves to is CAPTURED — the closure carries `H0`, so applying it later reads
+-- what the λ saw.
+def lamCitesEnclosing : Term := prog{
+  let H0 = 3;
+  let G = λ(a : Nat) { let Snap = H0; a };
+  let r = G(1);
+  () }
+example : progOk lamCitesEnclosing = true := by native_decide
+
+-- REFUSED, by the capture rule and not by scoping: a RUNTIME (lowercase)
+-- binding is not capturable, because a λ is formed now and used later and a
+-- runtime citation would be an implicit snapshot taken in that gap (§2.4). The
+-- surface can see `h0` now; the kernel is what says no.
+def lamCitesRuntime : Term := prog{
+  let h0 = 3;
+  let G = λ(a : Nat) { let Snap = h0; a };
+  () }
+example : progRejects lamCitesRuntime "a runtime (lowercase) binding" = true := by native_decide
+
+-- And the capture really is in the VALUE rather than resolved dynamically: the
+-- closure sitting in `G`'s slot carries a one-entry ρ naming `H0`.
+def capturedProg : Term := prog{ let H0 = 3; let G = λ(a : Nat) { let Snap = H0; a }; () }
+def capturedRho : List String :=
+  match (Dllbc.tailEnvs capturedProg).head! with
+  | Except.ok env => match env.lookup "G" with
+    | some (Val.closure ρ _) => ρ.map (·.1.name)
+    | _ => ["NOT-A-CLOSURE"]
+  | Except.error e => [e]
+example : capturedRho = ["H0"] := by native_decide
+
+end Dllbc.Tests.S32Capture
+end
+-- └── end of the M32 R2 capture-generality battery ────────────────────────────

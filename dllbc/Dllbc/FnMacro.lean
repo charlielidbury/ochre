@@ -457,7 +457,7 @@ def fnElab (d : FnDef) : Except String Term := do
     -- non-closed. Said here rather than left to the kernel's closedness rejection,
     -- which would name the variable without naming the cause.
     let restIds := rest.map (·.1)
-    let stray := (Term.freeRVars ((restIds.map (·.id))) zBody).find? (fun y => y.id == kv.id)
+    let stray := (Term.freeRVars (restIds.map (·.name)) zBody).find? (fun y => y.name == kv.name)
     match stray with
     | some _ =>
       .error s!"fn: the base arm still mentions '{kv.name}' after `match {kv.name}` was resolved to its `{baseCtor}` branch. The scrutinee does not exist inside an arm — it is the recursor's argument — so a body may only reach it through a match on it."

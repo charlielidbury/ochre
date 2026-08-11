@@ -832,8 +832,24 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- — deliberately, since the `FnDef` this produces has to BE the one it builds.
     let fullRctx : List (String × Nat) := names.zip (List.range n)
     let teleSyns ← buildTele [] 0 parsed
-    let (retT, _) ← elabUTerm fullRctx [] 0 ret
-    let (bodyT, _) ← elabUBlk fullRctx [] n body
+    -- **THE BODY SEES THE ENCLOSING SCOPE** (M32 R2, suspensions.md §2.6). The
+    -- `decl{}`-era params-only context retires here: a `fn` body may cite the
+    -- comptime bindings lexically above it — a sibling `fn`'s name, a `let H0 =
+    -- *hd` snapshot, a proof — and the kernel's citation rule (`admitGlobals`) is
+    -- what decides which of them are admissible, as it always was. Its parameters
+    -- come FIRST, so a parameter shadows an enclosing binding of the same name.
+    --
+    -- **What gated this was an id collision, and R1 voided it.** The telescope is
+    -- numbered `0 … n-1` by §5.2's positional convention while the enclosing
+    -- block numbers its bindings from its own counter, so the two spaces overlap
+    -- — and `Term.freeRVars`, which computes the capture, asked by id. It asks by
+    -- NAME now (R2, Syntax.lean), which is the question the store has answered
+    -- since R1, and the overlap stops meaning anything. Verified rather than
+    -- assumed: with id-keying the citation is bound by whichever parameter shares
+    -- its number, drops out of ρ, and the sealed body's fresh Ω has nothing to
+    -- resolve it against.
+    let (retT, _) ← elabUTerm (fullRctx ++ rctx) pctx 0 ret
+    let (bodyT, _) ← elabUBlk (fullRctx ++ rctx) pctx n body
     let decT ← match dec with
       | none => `((none : Option Nat))
       | some d =>

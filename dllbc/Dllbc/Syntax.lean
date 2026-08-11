@@ -679,20 +679,31 @@ end
 
 def Term.freePNames (t : Term) : List String := Term.freePNamesGo [] t
 
-/-! ## Free runtime variables (M26-C)
+/-! ## Free runtime variables (M26-C; keyed by NAME since M32 R2)
 
     §7 cost 2 says a runtime λ is the *boring* kind of function value: "closed —
     arms reference only their own binders and globals". This is what makes that
-    **checked rather than assumed**. A body is entered under a fresh id window
-    (`shiftVars`), so a free variable escaping into a `.lamR` would not dangle —
-    it would be silently rebound to whatever the frame shift lands on, which is
-    environment capture arriving by accident in the one phase that defers it
-    (constraint 5). Rejecting at the point the value is formed is the honest
-    alternative. -/
+    **checked rather than assumed** — and since R2 it is what computes ρ, because
+    the free variables of a λ node ARE its capture (`admitGlobals`).
+
+    **The bound set is NAMES, not ids** (M32 R2). R1 made Ω resolve by name,
+    newest wins, so a name IS a binder's identity and asking "does one of this
+    term's binders bind this occurrence" by id asks a question the store stopped
+    answering. It is not a widening either: within one elaboration the macro
+    mints unique ids, so id-keying and name-keying agree — EXCEPT where they
+    genuinely disagree, and there the name is right, because an occurrence under
+    a rebinding of its name resolves to the inner binder in the store too. What
+    it unblocks is §2.6: a `fn` body may now be elaborated in the enclosing
+    scope, whose bindings are numbered from the block's own counter and therefore
+    collide with the telescope's positional ids `0 … n-1`.
+
+    A λ binder binds here only when it BINDS A SLOT: a comptime binder's argument
+    lands in the comptime environment, and `.var` names an Ω slot, so a pure
+    `λ (N : Nat). …` must not shadow a citation of the runtime slot `N`. -/
 mutual
-  def Term.freeRVars (bound : List Nat) : Term → List Var
-    | .var x => if bound.contains x.id then [] else [x]
-    | .letIn x rhs rest => Term.freeRVars bound rhs ++ Term.freeRVars (x.id :: bound) rest
+  def Term.freeRVars (bound : List String) : Term → List Var
+    | .var x => if bound.contains x.name then [] else [x]
+    | .letIn x rhs rest => Term.freeRVars bound rhs ++ Term.freeRVars (x.name :: bound) rest
     | .assign p e rest => Term.freeRVars bound p ++ Term.freeRVars bound e ++ Term.freeRVars bound rest
     | .ctorApp _ args => Term.freeRVarsList bound args
     | .borrow t | .deref t => Term.freeRVars bound t
@@ -706,13 +717,13 @@ mutual
         ++ (match ev with | some e => Term.freeRVars bound e | none => [])
         ++ (match eqc with | some e => Term.freeRVars bound e | none => [])
     | .matchE scrut eqn brs =>
-      (if bound.contains scrut.id then [] else [scrut])
-        ++ Term.freeRVarsBranches (match eqn with | some h => h.id :: bound | none => bound) brs
+      (if bound.contains scrut.name then [] else [scrut])
+        ++ Term.freeRVarsBranches (match eqn with | some h => h.name :: bound | none => bound) brs
     | .seq a b => Term.freeRVars bound a ++ Term.freeRVars bound b
     | .call _ args => Term.freeRVarsList bound args
     | .seal t u => Term.freeRVars bound t ++ Term.freeRVars bound u
     | .callV x args =>
-      (if bound.contains x.id then [] else [x]) ++ Term.freeRVarsList bound args
+      (if bound.contains x.name then [] else [x]) ++ Term.freeRVarsList bound args
     -- **The one λ, scoped as the telescope it is** (M32 R2). The domain is read
     -- OUTSIDE the binder and the body inside it, which is exactly what
     -- `freeRVarsBinders` did to `lamR`'s list — a binder type is dependent (`ih`'s
@@ -720,7 +731,9 @@ mutual
     -- mentions the borrow bound to its left), and nesting says so without a
     -- second traversal. A comptime binder's `noSlot` id binds nothing here, which
     -- is the whole of why it is a sentinel.
-    | .lam x d b => Term.freeRVars bound d ++ Term.freeRVars (x.id :: bound) b
+    | .lam x d b =>
+      Term.freeRVars bound d
+        ++ Term.freeRVars (if x.bindsSlot then x.name :: bound else bound) b
     | .app a b => Term.freeRVars bound a ++ Term.freeRVars bound b
     | .pi _ a b | .sigmaT _ a b | .borrowT _ a b =>
       Term.freeRVars bound a ++ Term.freeRVars bound b
@@ -728,14 +741,14 @@ mutual
     | .cmpT τ => Term.freeRVars bound τ
     | _ => []
   termination_by t => sizeOf t
-  def Term.freeRVarsList (bound : List Nat) : List Term → List Var
+  def Term.freeRVarsList (bound : List String) : List Term → List Var
     | [] => []
     | t :: ts => Term.freeRVars bound t ++ Term.freeRVarsList bound ts
   termination_by ts => sizeOf ts
-  def Term.freeRVarsBranches (bound : List Nat) : List Branch → List Var
+  def Term.freeRVarsBranches (bound : List String) : List Branch → List Var
     | [] => []
     | (.mk _ bs body) :: rest =>
-      Term.freeRVars (bs.map (·.id) ++ bound) body ++ Term.freeRVarsBranches bound rest
+      Term.freeRVars (bs.map (·.name) ++ bound) body ++ Term.freeRVarsBranches bound rest
   termination_by bs => sizeOf bs
 end
 
