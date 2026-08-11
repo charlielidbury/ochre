@@ -1,4 +1,4 @@
-# M31: Functions are comptime — one λ, heads by ⇝, and the death of `rfn`
+# Functions are comptime. M31: heads by ⇝ (semantics). M32: suspensions, one λ, the death of `rfn` (representation)
 
 **Status: UNDER CONSTRUCTION — design under review with the user; committed early so
 Stage 0 (independent of every open design question) could be dispatched. Written to
@@ -160,7 +160,8 @@ simply "free runtime variables are refused". One rule where there were two
 (`admitGlobals`' slot exemption, `mkClosure`'s marker scan), and they were always the
 same rule seen from two fragments.
 
-`Val.rfn` and `Term.lamR` are deleted; `applyRFn`'s *rule* (frame-bind-and-walk, now
+`Val.rfn` and `Term.lamR` are deleted (in M32, with the representation — see §5 Stage
+B's extraction); `applyRFn`'s *rule* (frame-bind-and-walk, now
 with the closure's knowledge environment in scope for the body's ⇝-reads) survives as
 the entry rule for closures with imperative bodies. An imperative λ with no ascribed Π
 has nothing to audit its body against and is refused at binding — the seal is the check
@@ -304,30 +305,87 @@ even if M31 stalls: deterministic cleanup, nbe.md §7's deferred item closed.
 **Stage A — function bindings become comptime-moded (semantics, on today's
 representations).** `fn` bindings and λ-valued `let`s stay in Ω but flip mode (value:
 today's σ / `rfn` unchanged); call heads fetch by ⇝ (`readC` on the slot); fence and
-function-read refusal deleted (backstop installed); `.app` router deleted. **The corpus
-rename lands first, as its own mechanical commit** — every `fn` name and stdlib function
-name capitalises (§2.1) — so the semantic differential is not buried inside a rename
-diff. The remaining *behaviour* deltas are enumerable in advance: `let F = Main` flips
+function-read refusal deleted (backstop installed); `.app` router deleted. **Ordering: tolerate → rename → enforce** — the rename cannot
+land first as once planned, because capital fn names hit the callV fence under the
+unmodified kernel; so commit 1 deletes the fence and tolerates both name-cases, commit
+2 is the mechanical rename (every `fn` name and stdlib function name capitalises,
+§2.1, zero behaviour delta), commit 3 installs the backstop and removes the tolerance.
+The semantic differential still is not buried inside the rename diff — the semantic
+commits and the rename commit stay separate. The remaining *behaviour* deltas are enumerable in advance: `let F = Main` flips
 to accepted; spec-vs-call twin tests collapse; lowercase-function-binding tests flip to
 the backstop message; everything else must differential to zero. **This stage is the model; it is also the riskiest, so
 it goes first** (hardest-first: if functions-in-comptime-scope walls somewhere — E2's id
 windows, E7's executing-mode env — we find out before spending on representation work).
 
-**Stage B — one λ.** Merge `.lamR` into the λ former (comma-list as sugar for the
-telescope; binder representation per E3); `rfn` becomes a closure under the
-knowledge-only capture rule (body payload per E4); `applyRFn` re-keyed, with the
-closure's environment in scope for the body's ⇝-reads. Semantics-neutral by construction —
-differential must be *exactly* zero, no enumerated flips.
+**Stage B — EXTRACTED to M32 (decision: skip the intermediate representation).** The
+original Stage B built the merged λ with a `Val ⊕ Term` body payload — a waypoint
+representation that M32's suspensions would rewrite again, double-touching the same ~40
+`lamR`/`rfn` sites. Skipped: the λ merge, the death of `rfn`/`lamR`, the seal's
+body-classification dispatch (vacuous while two formers exist — term-shape dispatch IS
+body classification when `.lamR` means imperative), and E2's binder keying all land
+ONCE, in M32, directly in the final form. Two scope consequences inside M31: `.lamR`
+and `rfn` survive it (their deletion moves to M32), and §2.4's capture generality is
+delivered in the restricted form today's representation supports — a fn body may
+reference the *functions* above it (today's `admitGlobals` rule, restated in §2.4's
+vocabulary); citing enclosing comptime *data* needs a value-carried environment
+(escape-via-return dangles under scope-based access) and arrives with M32's
+suspensions.
 
-**Stage C — the seal made honest + deletions sweep.** Body-classification dispatch;
-`sealFn` renamed/absorbed; `callV` → app spines if E8 resolves cleanly; delete the
-inventory in §3; PROGRESS/DECISION-LOG; paper and language.md currency (chapter 12's
-deviations block shrinks by one bullet — the call-position containment dies; the
-`f(a, b)` spelling remains a surface question, out of scope here).
+**Stage C — close-out.** Deletions Stage A enables (fence, function-read refusal,
+`.app` router — done in A itself; anything residual); PROGRESS/DECISION-LOG; paper and
+language.md currency (chapter 12's deviations block shrinks by one bullet — the
+call-position containment dies; the `f(a, b)` spelling remains a surface question, out
+of scope here). `callV` survives M31 (E6); `sealFn`'s rename waits for M32's dispatch
+change.
 
-Stage A before B is a deliberate inversion of "representation first": A is where the
-unknowns are, B is mechanical given A, and A's differential is enumerable while B's is
-zero. If A walls, nothing was spent on B.
+The sequencing rationale, restated for the new shape: M31 is the SEMANTICS milestone
+(mode flip, naming, capture/citation rules — enumerable differential), M32 is the
+REPRESENTATION milestone (suspensions, one λ, one store keying — zero differential).
+Semantics first is still hardest-first: if functions-as-comptime walls anywhere, we
+find out before the representation rewrite is funded; and every M31 rule (citation ⇒
+σ-free self-contained suspensions; capture ⇒ formation check; Stage 0 ⇒ store hygiene)
+shrinks M32.
+
+**M32 scope ledger (rulings from the Stage A review; each item is a debt with a named
+owner, not an open question):**
+
+  * **The let-arrow invariant, no exceptions** (user ruling): capital `let` ⇝-reads
+    its RHS, lowercase `let` ⇒-reads it — a programmer-statable rule with zero
+    carve-outs. `Var.comptimeRhs`'s seal/λ exceptions (Stage A) are transitional debt.
+    Deleting them needs the two items below.
+  * **Sealing under ⇝.** The check half is already fragment-appropriate (conversion
+    for pure, audit for imperative — the audit becomes a judgment invocable from ⇝).
+    The genuinely hard part is σ GENERATIVITY: ⇝ evaluation is a function (same term,
+    same value — `convert` is `==` on canonical forms), and minting a fresh σ per
+    evaluation breaks that. Occurrence-keying ALONE is wrong (user correction): a seal
+    site under a binder evaluates at different captured inputs, and those must not
+    look equal. Resolution: **the σ is the seal SITE applied to its captured inputs**
+    — a structured neutral (`sealσ(site, v₁…vₙ)` over the free variables' values),
+    compared structurally like any stuck spine. Deterministic (same site + same
+    inputs → same value, so evaluation stays a function; no counter under ⇝) and
+    distinguishing (different inputs → different values). `fsig` keys by site. This is
+    generativity done the way stuck recursors already do it: nominal head + applied
+    arguments.
+  * **No runtime λ** (user ruling): λ formation is ⇝-only; the pure lift's λ case and
+    `rfn` formation die with `lamR` (already M32's). Consequence: ⇒ can no longer
+    construct a function value, so the Stage A backstop becomes DERIVABLE and is
+    deleted — the residual enforcement collapses to one rule at one boundary (the
+    pure lift's result must be data, not a function), replacing today's scattered
+    checks (`backstopFnRhs`/`backstopFnBinding`/species test). The remaining
+    lowercase bindings of pure-function values (partial applications, `let f =
+    Add 1`) migrate capital in the same commit.
+  * **fn body scope**: bodies elaborate seeing sibling and enclosing bindings (the
+    decl{}-era params-only context retires). Gated today on `fnElab`'s fresh-binder
+    base colliding with program slots; trivial under M32's name-keying.
+  * **The agreement path** for passing borrow-moded-signature functions as arguments
+    (`piAgree` at argument positions — E4's measured gap).
+  * **Nullary fns desugar to `λ (U : Unit)`** with call sites passing `unit` (user
+    decision, overriding E6's keep-callV recommendation) — which removes `callV`'s
+    last unique job, so **M32 retires `callV` for app spines**. One preserved
+    distinction to carry: the mint-vs-remember split (`callVValue` mints a fresh
+    existential at the instantiated codomain; `readC` remembers the structured
+    neutral) is arrow-keyed (§12 decision 5), not node-keyed — the spine rule must
+    keep it.
 
 ## 6. Sharp edges (the interrogation)
 
@@ -357,10 +415,12 @@ would wrongly shadow later lookups, so Ω entries must pop with their lexical sc
 brings deterministic loan-ending at scope exit with it). (ii) Fallback: merged λ binds `Var` (id+name), pure
 use keys the name, runtime use keys the id — smallest change, keeps the id machinery.
 Recommendation: probe (i) first — it is the larger simplification and its preconditions
-are all invariants M31 already establishes; fall back to (ii) only if the probe walls on
-pop-with-drop. Risk: MEDIUM — this is where Stage B's mechanical-ness lives or dies; the
-viability probe (an agent building the merged former + newest-wins Ω against
-`checkRFnBody` and the executing differential only) precedes full dispatch.
+are all invariants M31 establishes; fall back to (ii) only if the probe walls.
+**Resolution moved to M32** with the rest of the representation work (Stage B's
+extraction): under suspensions the knowledge side is name-keyed anyway, so (i) is the
+natural fit and the newest-wins probe becomes part of M32's design phase, not a Stage B
+gate. Stage 0's merge already met the precondition (pop-with-drop on main) and narrowed
+the hazard (only ended scopes, both now popping).
 
 **E3 — closure body payload.** Pure bodies live in `Val` (the mixed domain embeds pure
 syntax); imperative bodies are `Term` (no `Val` embedding for assign/letIn/matchE — and
@@ -380,26 +440,36 @@ of duplication this milestone exists to kill) or pay eval/readback at every boun
 It re-litigates M30's central representation choice (the mixed domain is why 18
 substitution sites became 18 one-word edits) at rewrite cost, for payload uniformity.
 
-Recommendation: (i) FOR M31 — the `Val ⊕ Term` split materializes the same semantic
-line the seal's two check engines draw (§2.3) and the capture/snapshot distinction
-draws (§2.4): a pure body is *conversed with* structurally; an imperative body is
-*entered* and never traversed. One line, three independent appearances.
+**Resolution: DISSOLVED by skipping the intermediate (user decision).** Option (i) —
+the `Val ⊕ Term` payload — is never built: Stage B's extraction to M32 means the λ
+merge lands directly in the suspension representation, where the payload question is
+unaskable (every body is a Term under an env). The analysis above stands as the reason
+(ii) was rejected *as an increment on the mixed domain*, and as background for M32's
+design: the traversal set it enumerates is exactly what M32's rewrite must convert, and
+the conversed-with/entered line it draws is exactly what normalize-at-splits preserves.
 
-**The horizon (post-M31, its own milestone): suspensions everywhere — the classic NbE
-split.** Term becomes the ONLY syntax; Val shrinks to a semantic domain (constructors,
+**M32: suspensions everywhere — the classic NbE split.** Term becomes the ONLY syntax; Val shrinks to a semantic domain (constructors,
 neutrals, closures, borrow/loan markers, ⊥); Ω stores `(Term, knowledge-env)`
 suspensions and normalizes on demand; the mixed domain — Val embedding pure syntax, the
 fact that generated this E — dies. This supersedes the earlier union-tree horizon,
 which admitted machine forms grammatically everywhere; the suspension endpoint
 separates syntax from semantics instead of unioning them. Made viable by this
 milestone: §2.4's citation rule is what makes every suspension self-contained (σ-free
-Term + small knowledge-only env). The one design obligation is the identity-keyed
-machinery: X-Gen finds spine occurrences structurally, and a spine can be latent inside
-a suspension (materializing only on evaluation) — the M30 count-equation failure mode,
-measured, silent. The known answer: **normalize at splits** — `refineSym` already
-sweeps the whole store at every symbolic split, so evaluating suspensions during that
-sweep restores canonicality exactly where abstraction needs it, at the cost the split
-already pays; between splits everything stays lazy. Convert-site comparisons are
+Term + small knowledge-only env). The one design obligation has a precise criterion: **a store-wide sweep is safe on
+suspensions iff it commutes with evaluation.** Substitution (refinement, σ := v) is
+keyed on an atom, which every representation preserves — it commutes, so it propagates
+through captured environments and later evaluation gets it right. X-Gen's abstraction
+(spine ↦ fresh σb) is keyed on a COMPOUND that evaluation can mint (the env holds the
+spine's ingredients, not the spine), so it does not commute — occurrences latent in a
+suspension are missed, and later evaluation speaks the pre-abstraction vocabulary:
+propositionally still linked by the branch equation, but definitional equality is lost,
+which presents as flagship proofs failing (the M30 count-equation mode, measured,
+silent). The known answer: **normalize at splits, with write-back** — `refineSym`
+already sweeps the whole store at every symbolic split, so evaluating suspensions
+during that sweep (and keeping the normalized form — re-deriving later from the
+original suspension would replay old vocabulary) materializes every occurrence exactly
+where the non-commuting sweep needs it, at the cost the split already pays; between
+splits everything stays lazy. Convert-site comparisons are
 timing-only (checker is 1.3% of the build — slack exists). Canary: quicksort's count
 equation. Cost print: at least M30-sized — every consumer of Val's syntax embedding is
 touched.
@@ -426,10 +496,10 @@ zero-argument application — the ambiguity returns. Options: (i) `fn F()` desug
 `λ (u : Unit)`
 with call sites passing `unit` — uniform, slightly dishonest; (ii) keep an explicit
 saturated-call node (`callV` survives) so "enter with zero arguments" is a form, not a
-spine; (iii) refuse nullary `fn`. Recommendation: (ii) for M31 — `callV` was staged to
-die *last* precisely because this is the one thing it still says that a spine cannot.
-Revisit (i) when the surface call-syntax question (juxtaposition) is decided. Risk: LOW,
-contained.
+spine; (iii) refuse nullary `fn`. **Decided: (i)** (user ruling at the Stage A review)
+— `fn F()` desugars to `λ (U : Unit)`, call sites pass `unit`; `callV` loses its last
+unique job and retires in M32 (see the scope ledger's nullary item for the
+mint-vs-remember distinction the spine rule must preserve). Risk: LOW, contained.
 
 **E7 — the executing machine and comptime-moded slots.** Functions stay in Ω, which
 execution already reads, so there is no store-access question here. What must be
@@ -464,7 +534,8 @@ discovered after (first-readings-err-dramatic).
     only ⇒-enter. No second signature, no capability bit.
   * The `let F = main` playground failure, both layers of it.
   * The spec-parameter vs callable-parameter split, the fence, the function-read
-    refusal, the `.app` router, `rfn`, `lamR` — the §3 inventory.
+    refusal, the `.app` router — the §3 inventory's M31 half. (`rfn` and `lamR` close
+    in M32, with the representation.)
   * The "pass it as an argument" promise: passing a function is a ⇝ argument read,
     which is the name-use the current error message describes and the code refuses.
 
@@ -475,7 +546,7 @@ discovered after (first-readings-err-dramatic).
     Fn/FnMut/FnOnce door (nbe.md §3) stays representable-not-open.
   * **Surface call syntax** (juxtaposition vs `f(a, b)`) — orthogonal, already tracked
     in language.md chapter 12's deviations block.
-  * **Suspensions everywhere** (E3's horizon: Term the only syntax, Val a semantic
-    domain, normalize-at-splits) — the post-M31 milestone, not attempted here; M31's
-    capture/citation rules are what make it viable.
+  * **M32's representation work** (suspensions, one λ, `rfn`/`lamR` deletion, E2's
+    keying, the seal dispatch rename) — planned, specified in E3's M32 section, not
+    attempted in M31; M31's capture/citation rules are what make it viable.
   * **Consistency/soundness proofs** — unchanged scope; the checker remains the claim.

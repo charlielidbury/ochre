@@ -46,6 +46,48 @@ Partial correctness first (signature-only recursion — no termination
 story); totality later via fuel or §8 measures. Known caveat: type-in-type
 means "verified modulo Girard" until the universe hierarchy returns.
 
+## dllbc/ — borrow types re-founded: shape/contract split, loan-attached debts (2026-08-10, from the M31 design review)
+
+Successor to the "protocol pairs" observation (pair-of-borrows inexpressible;
+`split_at_mut`'s signature unwritable; the M24 slice Σ is a special-cased crack in a
+general wall). The user's two-step diagnosis, recorded because it re-founds `&mut`:
+
+**1. The shape half is a value predicate, not a position.** `&mut τ` says "this value
+is `borrowM ℓ v` with `v : τ`, for some linked ℓ" — every borrow rule fires in
+straight-line code, functions nowhere involved. The "telescope-position marker"
+doctrine (M26-C) is a lineage artifact: the type language was identified with the pure
+fragment before borrows arrived from the Aeneas side, so `&mut` was classified by which
+machine owned it, not by what it denotes. The positional restriction's real job —
+keeping every boundary-crossing borrow visible to the obligation walk — is obsolete:
+the ℓ-keyed machinery (obligations by ℓ, audit-by-search, Stage 0's drop sweep) already
+finds borrows wherever they hide, value-directed.
+
+**2. The contract half is loan-attached, not boundary-attached.** `~> S` means "when
+the loan ends, the payload is asserted to be S" — a store event with three trigger
+sites (demand, scope pop, function exit), of which today's system installs at one mint
+site (telescope seeding) and asserts at one end site (the exit audit) purely by
+inheritance: `~>` descends from Aeneas's backward functions, a genuinely
+boundary-shaped concept in its parent, arriving here wearing function clothes. The
+general form: debt registered on ℓ at mint (`let b = (&m v : &mut (s : τ ~> S))`,
+snapshot pinned at mint exactly as the seed pins entry), asserted at ℓ's end wherever
+that is. Signatures become one mint site among many. Stage 0's escaping-borrow finding
+(retention as a heuristic) gets its principled answer: a scope pop is an assertion
+site.
+
+**Typing consequence:** borrow types become store-relative judgments — `Ω ⊢ v : &mut
+(s : τ ~> S)` = shape conjunct (pure) + debt-registered-on-ℓ conjunct (store) — the
+`Ω ⊢ v : τ` shape the user asked precedent for during the M30 design discussions;
+precedent is separation logic's points-to, lifetimes-in-types, LLBC's store-indexed
+judgments. The knowledge/state split relocates rather than dies: pure types are
+Ω-independent and converted; borrow types are Ω-relative and met. E4's enumeration
+shrinks to the contract form.
+
+**Scope:** its own milestone, after M32 (it wants the suspension representation's
+uniform value story). Design obligations: value-directed seeding/audit generalizing
+the slice case; §19 move semantics for borrow-carrying data; escape rules for borrows
+in returned data. Acceptance test: `split_at_mut` as an ordinary library function
+returning a pair of borrows.
+
 ## pss/ (branch pss-2) — Problem D2: what to try next, what not to
 
 `pss/docs/05-conservation-law-and-escape-routes.md` (2026-06-10) maps the
