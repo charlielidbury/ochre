@@ -1,6 +1,7 @@
 import Dllbc.Syntax
 import Dllbc.Value
 import Dllbc.Pure
+import Dllbc.StageVCore
 
 /-!
 # DLLBC Concrete Machine (§2)
@@ -851,6 +852,31 @@ def refineSym (σ : Nat) (v : Val) : M Unit := do
     -- how `match fuel { S(f2) => … }` makes the guard's comparison possible.
     })
 
+/-- **M32 STAGE V, BET (b) — THE CANARY (probe scaffolding, not a design).**
+
+    §19's sweep, routed through the `Term`-level twin: convert at the boundary,
+    abstract as syntax, convert back. The result the machine keeps is the
+    `Term`-routed one, so the flagship proofs really do run on it — which is what
+    makes this a canary rather than an assertion.
+
+    It also differentials itself against the `Val` sweep and `dbg_trace`s each
+    divergence, so a silent miss (M30's measured failure mode: "no conversion is
+    wrong anywhere; a comparison simply stops seeing") is reported rather than
+    absorbed. Two failures are reported separately because they are different: a
+    ROUNDTRIP loss means `valToTerm`/`termToVal` is unfaithful on a shape that
+    occurs, a SWEEP divergence means the two traversals disagree on a value both
+    represent. -/
+def gsAbstract (target : Val) (σb : Nat) (v : Val) : Val :=
+  let viaVal := abstractInto target σb v
+  let viaTerm := StageV.abstractIntoViaTerm target σb v
+  if !StageV.roundTrips v then
+    dbg_trace s!"@@StageV-b ROUNDTRIP {v.pretty}"
+    viaTerm
+  else if viaVal == viaTerm then viaTerm
+  else
+    dbg_trace s!"@@StageV-b SWEEP val={viaVal.pretty} term={viaTerm.pretty}"
+    viaTerm
+
 /-- **Generalize a stuck Bool spine** (§19) — the inverse of `refineSym`, and the
     two-layer principle at the machine level. When a match/`if` scrutinee reduces
     to a stuck spine `leb σ σp` (a neutral, not a bare σ), the ⇜ split cannot fire
@@ -872,14 +898,14 @@ def generalizeStuck (fuel : Nat) (spine : Val) : M (Nat × Val) := do
   let sp := Val.nfV fuel spine
   let σb ← freshSym
   modify (fun s => { s with
-    env := s.env.map (fun kv => (kv.1, abstractInto sp σb kv.2)),
-    sctx := (σb, .const "Bool") :: s.sctx.map (fun p => (p.1, abstractInto sp σb p.2)),
-    obligations := s.obligations.map (fun ob => { ob with owed := abstractInto sp σb ob.owed }),
+    env := s.env.map (fun kv => (kv.1, gsAbstract sp σb kv.2)),
+    sctx := (σb, .const "Bool") :: s.sctx.map (fun p => (p.1, gsAbstract sp σb p.2)),
+    obligations := s.obligations.map (fun ob => { ob with owed := gsAbstract sp σb ob.owed }),
     groups := s.groups.map (fun g => { g with
-      captured := g.captured.map (fun p => (p.1, abstractInto sp σb p.2)),
-      issued := g.issued.map (fun p => (p.1, abstractInto sp σb p.2)),
+      captured := g.captured.map (fun p => (p.1, gsAbstract sp σb p.2)),
+      issued := g.issued.map (fun p => (p.1, gsAbstract sp σb p.2)),
       }),
-    retTyVal := s.retTyVal.map (abstractInto sp σb),
+    retTyVal := s.retTyVal.map (gsAbstract sp σb),
     })
   pure (σb, sp)
 

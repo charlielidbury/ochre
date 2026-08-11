@@ -19,3 +19,7 @@ lean_lib «Dllbc» where
 -- counter gets compiled away and an interpreted harness measures the interpreter.
 lean_exe phasec where
   root := `Measure
+
+-- M32 Stage V, bet (c)'s cost line. Compiled for the same reason `phasec` is.
+lean_exe stagev where
+  root := `StageVBench
