@@ -88,8 +88,8 @@ example : chk prog{ Arr(3, True) } prog{ Array 2 Nat } = false := by native_deci
 
 -- A symbolic length has no constructor signature at all — the honest `none`, not a
 -- guess. (`n` here is a Π-bound σ, so `natOfVal?` fails on it.)
-def arrSymLen : Term := prog{ λ (n : Nat). Arr(3) }
-example : chk arrSymLen prog{ Π (n : Nat) → Array n Nat } = false := by native_decide
+def arrSymLen : Term := prog{ λ (N : Nat). Arr(3) }
+example : chk arrSymLen prog{ Π (N : Nat) → Array N Nat } = false := by native_decide
 
 /-! ## (i.b) `arrCat` — the split view, and §3.2's knowledge/state line
 
@@ -124,7 +124,7 @@ example : (pv prog{ aget Nat 3 2 Arr(3, 1, 2) } == Term.nat 2) = true := by nati
 
 -- Stuck on a symbolic index and on a symbolic array — a legal neutral either way, so
 -- a type may mention `aget i (*v)` while `i` is unknown.
-def agetSymIdx : Term := Pure.nf 200 (pv prog{ λ (i : Nat). aget Nat 3 i Arr(3, 1, 2) })
+def agetSymIdx : Term := Pure.nf 200 (pv prog{ λ (I : Nat). aget Nat 3 I Arr(3, 1, 2) })
 example : (agetSymIdx == Pure.nf 200 agetSymIdx) = true := by native_decide
 
 /-! ## (i.d) The cons view: `acons` and `arrRec`
@@ -139,23 +139,23 @@ example : (pv prog{ acons 2 3 Arr(1, 2) } == pv arr3) = true := by native_decide
 -- `alen` by `arrRec` — deliberately, since ¶1.1 says an array's length is read off
 -- its TYPE and never computed from its contents. This exists only to exercise ι.
 def alen : Term := prog{
-  λ (n : Nat). λ (a : Array n Nat).
-    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Nat) Z
-      (λ (k : Nat). λ (x : Nat). λ (xs : Array k Nat). λ (ih : Nat). S ih) n a }
+  λ (N : Nat). λ (A : Array N Nat).
+    arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Nat) Z
+      (λ (K : Nat). λ (X : Nat). λ (Xs : Array K Nat). λ (Ih : Nat). S Ih) N A }
 example : (pv prog{ alen 3 Arr(3, 1, 2) } == Term.nat 3) = true := by native_decide
 example : (pv prog{ alen 0 Arr() } == Term.nat 0) = true := by native_decide
 
 -- A sum, so the recursive arm's element binder is exercised too.
 def asum : Term := prog{
-  λ (n : Nat). λ (a : Array n Nat).
-    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Nat) Z
-      (λ (k : Nat). λ (x : Nat). λ (xs : Array k Nat). λ (ih : Nat). Add x ih) n a }
+  λ (N : Nat). λ (A : Array N Nat).
+    arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Nat) Z
+      (λ (K : Nat). λ (X : Nat). λ (Xs : Array K Nat). λ (Ih : Nat). Add X Ih) N A }
 example : (pv prog{ asum 3 Arr(3, 1, 2) } == Term.nat 6) = true := by native_decide
 
 -- Stuck on a symbolic target: no `Arr` to fire on, so the spine is a legal value
 -- rather than an error — which is what lets a predicate family over arrays be stated
 -- about a σ at all.
-def arrRecStuck : Term := Pure.nf 500 (pv prog{ λ (n : Nat). λ (a : Array n Nat). alen n a })
+def arrRecStuck : Term := Pure.nf 500 (pv prog{ λ (N : Nat). λ (A : Array N Nat). alen N A })
 example : (arrRecStuck == Pure.nf 500 arrRecStuck) = true := by native_decide
 
 /-! ## (i.e) Segments: merge, drop-empty, and the ⇝ fold
@@ -1006,26 +1006,26 @@ example : progRejects pivotCarve "containment obligation" = true := by native_de
     it. The tests below are the settlement, not a feature demo. -/
 
 def sigSlice : Term := prog{
-  fn SigSlice (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () };
+  fn SigSlice (s : Σ (C : Nat) → &mut (Array C Nat)) -> Unit { () };
   () }
 example : progOk sigSlice = true := by native_decide
 
 -- The callee can DESTRUCTURE it: an owned match hands back the length and the borrow,
 -- and inside the body the length is an ordinary nameable term.
 def useSlice : Term := prog{
-  fn UseSlice (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit {
+  fn UseSlice (s : Σ (C : Nat) → &mut (Array C Nat)) -> Unit {
     match s { Pair(c, sl) => () } };
   () }
 example : progOk useSlice = true := by native_decide
 
 def sliceTouch : Term := prog{
-  fn SliceTouch (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () };
+  fn SliceTouch (s : Σ (C : Nat) → &mut (Array C Nat)) -> Unit { () };
   () }
 example : progOk sliceTouch = true := by native_decide
 
 -- A caller passing a slice whose length it can NAME: green, end to end.
 def sigCallerOk : Term := prog{
-  fn SliceTouch (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () };
+  fn SliceTouch (s : Σ (C : Nat) → &mut (Array C Nat)) -> Unit { () };
   fn SigCallerOk (n : Nat, i : Nat, h1 : Le i n, a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; i | h1];
     let r = &m (*a)[i ; ..];
@@ -1042,7 +1042,7 @@ example : progOk sigCallerOk = true := by native_decide
     term to write, because the residue's length is the σ premise (3) minted. -/
 
 def sigCallerWrong : Term := prog{
-  fn SliceTouch (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () };
+  fn SliceTouch (s : Σ (C : Nat) → &mut (Array C Nat)) -> Unit { () };
   fn SigCallerWrong (n : Nat, i : Nat, h1 : Le i n, a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; i | h1];
     let r = &m (*a)[i ; ..];
@@ -1057,7 +1057,7 @@ example : progRejects sigCallerWrong "does not have its parameter type"
 -- telescope entry can mention it. Nesting the proof inside too is where it goes, and
 -- that is a second level the machinery does not have.
 def recSlice : Term := prog{
-  fn RecSlice [fuel] (fuel : Nat, s : Σ (c : Nat) → Σ (h : Le c fuel) → &mut (Array c Nat)) -> Unit {
+  fn RecSlice [fuel] (fuel : Nat, s : Σ (C : Nat) → Σ (H : Le C fuel) → &mut (Array C Nat)) -> Unit {
     () };
   () }
 example : progRejects recSlice "only valid at a telescope position" = true := by native_decide
@@ -1423,11 +1423,11 @@ example : progOk readSame = true := by native_decide
     names `*a` (exit) and `old *a` (entry). -/
 def sort2 : Term := prog{
   fn Sort2 (a : &mut (Array 2 Nat))
-      -> Σ (hs : SortedA 2 (*a)) → (Π (x : Nat) → Id Nat (CountA x 2 (*a)) (CountA x 2 (old *a))) {
+      -> Σ (Hs : SortedA 2 (*a)) → (Π (X : Nat) → Id Nat (CountA X 2 (*a)) (CountA X 2 (old *a))) {
     let x = (*a)[0];
     let y = (*a)[1];
     if h : Leb x y {
-      Pair(Pair(LebTrueLe x y h, Pair(unit, unit)), λ (n : Nat). Refl)
+      Pair(Pair(LebTrueLe x y h, Pair(unit, unit)), λ (N : Nat). Refl)
     } else {
       (*a)[0] := y;
       (*a)[1] := x;
@@ -1439,7 +1439,7 @@ def sort2 : Term := prog{
       let X0 = x;
       let Y0 = y;
       Pair(Pair(LePredL y x (LebFalseGt x y h), Pair(unit, unit)),
-           λ (n : Nat). CountSwap2 n X0 Y0)
+           λ (N : Nat). CountSwap2 N X0 Y0)
     } };
   () }
 example : progOk sort2 = true := by native_decide
@@ -1464,15 +1464,15 @@ example : progOk sort2LieSorted = false := by native_decide
 -- bearing: `Refl` in its place is rejected.
 def sort2LieCount : Term := prog{
   fn Sort2LieCount (a : &mut (Array 2 Nat))
-      -> Σ (hs : SortedA 2 (*a)) → (Π (x : Nat) → Id Nat (CountA x 2 (*a)) (CountA x 2 (old *a))) {
+      -> Σ (Hs : SortedA 2 (*a)) → (Π (X : Nat) → Id Nat (CountA X 2 (*a)) (CountA X 2 (old *a))) {
     let x = (*a)[0];
     let y = (*a)[1];
     if h : Leb x y {
-      Pair(Pair(LebTrueLe x y h, Pair(unit, unit)), λ (n : Nat). Refl)
+      Pair(Pair(LebTrueLe x y h, Pair(unit, unit)), λ (N : Nat). Refl)
     } else {
       (*a)[0] := y;
       (*a)[1] := x;
-      Pair(Pair(LePredL y x (LebFalseGt x y h), Pair(unit, unit)), λ (n : Nat). Refl)
+      Pair(Pair(LePredL y x (LebFalseGt x y h), Pair(unit, unit)), λ (N : Nat). Refl)
     } };
   () }
 example : progOk sort2LieCount = false := by native_decide

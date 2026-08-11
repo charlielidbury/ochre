@@ -96,7 +96,7 @@ example : progRejects (prog{
 -- in place; the audit computes `VecF Nat (S σₗ)` under the (now concrete)
 -- index and closes the pair.
 def vecPush : Term := prog{
-  fn Push (e : Nat, v : &mut (Σ (l : Nat) → vecFT Nat l)) -> Unit {
+  fn Push (e : Nat, v : &mut (Σ (L : Nat) → vecFT Nat L)) -> Unit {
     match v { Pair(l, xs) => { *xs := Pair(e, *xs); *l := S(*l); () } }
   };
   () }
@@ -109,7 +109,7 @@ example : progOk vecPush = true := by native_decide
 -- dependent correctness catching the forgotten length update — the ownership
 -- machinery makes the mutation safe, the dependent types make it correct.
 example : progRejects (prog{
-    fn Push (e : Nat, v : &mut (Σ (l : Nat) → vecFT Nat l)) -> Unit {
+    fn Push (e : Nat, v : &mut (Σ (L : Nat) → vecFT Nat L)) -> Unit {
       match v { Pair(l, xs) => { *xs := Pair(e, *xs); () } } };
     () })
   "owed type" = true := by native_decide
@@ -118,7 +118,7 @@ example : progRejects (prog{
 -- index argument, so — per §4.2's mechanization note — the order is NOT forced
 -- and both are honest (unlike the native `VCons` presentation).
 example : progOk (prog{
-    fn Push (e : Nat, v : &mut (Σ (l : Nat) → vecFT Nat l)) -> Unit {
+    fn Push (e : Nat, v : &mut (Σ (L : Nat) → vecFT Nat L)) -> Unit {
       match v { Pair(l, xs) => { *l := S(*l); *xs := Pair(e, *xs); () } } };
     () }) = true := by
   native_decide
@@ -727,7 +727,7 @@ def withCursors (rest : Term) : Term := prog{
       }
     } };
   fn Nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
-                 pij : Le (S i) j, p2 : Le (S j) (Len *v)) -> Σ (x : &mut Nat) → &mut Nat {
+                 pij : Le (S i) j, p2 : Le (S j) (Len *v)) -> Σ (X : &mut Nat) → &mut Nat {
     match v {
       Nil => botElim Unit p2,
       Cons(hd, tl) => match i {

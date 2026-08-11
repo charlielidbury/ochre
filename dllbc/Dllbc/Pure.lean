@@ -93,18 +93,18 @@ def kNatRecS (P z s n : Term) : Term := .app (.app (.app (.app (.const "natRec")
 
 /-- `add a b` by recursion on `a` (`add Z b = b`, `add (S a') b = S (add a' b)`). -/
 def kAddFn : Term :=
-  .lam "a" kNatTy (.lam "b" kNatTy (kNatRecS (.lam "_" kNatTy kNatTy) (.pvar "b")
-    (.lam "a'" kNatTy (.lam "r" kNatTy (.ctorApp "S" [.pvar "r"]))) (.pvar "a")))
+  Term.clam "A" kNatTy (Term.clam "B" kNatTy (kNatRecS (.lam "§_" kNatTy kNatTy) (.pvar "B")
+    (Term.clam "A'" kNatTy (Term.clam "R" kNatTy (.ctorApp "S" [.pvar "R"]))) (.pvar "A")))
 def kAdd (a b : Term) : Term := .app (.app kAddFn a) b
 
 /-- `Le : Nat → Nat → Type` as a computing predicate (`Z ≤ _ ↦ ⊤`, `S ≤ Z ↦ ⊥`,
     `S ≤ S ↦ recurse`). Premise (2)'s obligation type is built from this. -/
 def kLeFn : Term :=
-  .lam "a" kNatTy (kNatRecS (.lam "_" kNatTy (.pi "_" kNatTy .type)) (.lam "_" kNatTy kUnitTy)
-    (.lam "a'" kNatTy (.lam "f" (.pi "_" kNatTy .type) (.lam "b" kNatTy
-      (kNatRecS (.lam "_" kNatTy .type) kBotTy
-        (.lam "b'" kNatTy (.lam "_" .type (.app (.pvar "f") (.pvar "b'")))) (.pvar "b")))))
-    (.pvar "a"))
+  Term.clam "A" kNatTy (kNatRecS (.lam "§_" kNatTy (.pi "§_" kNatTy .type)) (.lam "§_" kNatTy kUnitTy)
+    (Term.clam "A'" kNatTy (Term.clam "F" (.pi "§_" kNatTy .type) (Term.clam "B" kNatTy
+      (kNatRecS (.lam "§_" kNatTy .type) kBotTy
+        (Term.clam "B'" kNatTy (.lam "§_" .type (.app (.pvar "F") (.pvar "B'")))) (.pvar "B")))))
+    (.pvar "A"))
 def kLe (a b : Term) : Term := .app (.app kLeFn a) b
 
 /-- `Array n T` — the ¶1.1 former, in the FIXED BASIS rather than §7's declaration

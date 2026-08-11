@@ -1313,6 +1313,29 @@ def Term.stripCmp : Term → Term
   | .cmpT τ => τ
   | t => t
 
+/-! ### Building a comptime binder, both halves at once (M32 R3b)
+
+    §2.1 makes a binder's NAME its mode and `binderDom`/`markDom` puts the
+    matching `⇝` on its domain — so the two halves of a comptime binder are
+    written together everywhere the SURFACE builds one. The kernel's own library
+    terms (`Std.lenFn`, `Pure.kLeFn`, …) are hand-written `Term`s with no macro
+    between them and the datatype, and R3b's migration is where they acquire the
+    same obligation. These are that obligation as a constructor: there is no way
+    to spell the capital name and forget the marker, which is the failure mode
+    (`piAgree` and the seal's binder/domain check compare them, and a mismatch is
+    a rejection of a program that is fine).
+
+    The UNUSED binder is the other half of the convention and needs no marker:
+    `Surface.unusedSnapName` is what the surface mints for a non-dependent
+    arrow's domain and for a motive nothing refers to, and a name in the reserved
+    namespace carries no mode because nothing can cite it. -/
+
+/-- A λ binding COMPTIME knowledge: capital name, `⇝` domain. -/
+def Term.clam (x : String) (τ b : Term) : Term := .lam (⟨noSlot, x⟩ : Var) (.cmpT τ) b
+
+/-- A Π binding COMPTIME knowledge — the type of a `clam`. -/
+def Term.cpi (x : String) (τ b : Term) : Term := .pi x (.cmpT τ) b
+
 /-! ## The let-arrow invariant (M31 Stage A; exceptionless since M32 R3)
 
     **A capital `let` ⇝-reads its right-hand side; a lowercase `let` ⇒-reads it.**

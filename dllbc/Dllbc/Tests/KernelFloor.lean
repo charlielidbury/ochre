@@ -585,22 +585,22 @@ namespace Dllbc.Tests.S11Lib
 
 /-- `NatCode`'s `Z` row: `Z ↦ ⊤`, `S _ ↦ ⊥`. -/
 def zCase : Term := prog{
-  λ (m : Nat). natRec (λ (x : Nat). Type) Unit (λ (x : Nat). λ (r : Type). Bot) m }
+  λ (M : Nat). natRec (λ (X : Nat). Type) Unit (λ (X : Nat). λ (R : Type). Bot) M }
 
 /-- `NatCode`'s `S` row: `Z ↦ ⊥`, `S m2 ↦ code of the predecessors` (the
     outer recursor's `ih`, applied). -/
 def sCase : Term := prog{
-  λ (n : Nat). λ (f : Π (x : Nat) → Type). λ (m : Nat).
-    natRec (λ (x : Nat). Type) Bot (λ (m2 : Nat). λ (r : Type). f m2) m }
+  λ (N : Nat). λ (F : Π (X : Nat) → Type). λ (M : Nat).
+    natRec (λ (X : Nat). Type) Bot (λ (M2 : Nat). λ (R : Type). F M2) M }
 
 /-- `NatCode : Nat → Nat → Type`, by `natRec` at a Π-valued motive. -/
 def natCode : Term := prog{
-  λ (a : Nat). natRec (λ (x : Nat). Π (y : Nat) → Type) zCase sCase a }
+  λ (A : Nat). natRec (λ (X : Nat). Π (Y : Nat) → Type) zCase sCase A }
 
 /-- The no-confusion motive at `Z`: `λ m. λ (q : Id Nat Z m). NatCode Z m`. With
     `j`'s `d := unit : NatCode Z Z`, `j Nat Z nncMotive unit (S n) p` has type
     `NatCode Z (S n)`, which computes to `Bot`. -/
-def nncMotive : Term := prog{ λ (m : Nat). λ (q : Id Nat Z m). natCode Z m }
+def nncMotive : Term := prog{ λ (M : Nat). λ (Q : Id Nat Z M). natCode Z M }
 
 /-! ## §11.1 The pure lift — ⇒ produces proof terms -/
 
@@ -613,8 +613,8 @@ example : progOk (prog{
 -- Storing a proof: a J-application (which ⇝-reduces to `Refl`) is ⇒-lifted into a
 -- `Pair`'s dependent second field and audited against `Id Nat a a`.
 example : progOk (prog{
-  fn StoreProof (a : Nat) -> Σ (x : Nat) → Id Nat x x
-    { Pair(a, j Nat a (λ (x : Nat). λ (q : Id Nat a x). Id Nat a x) Refl a Refl) };
+  fn StoreProof (a : Nat) -> Σ (X : Nat) → Id Nat X X
+    { Pair(a, j Nat a (λ (X : Nat). λ (Q : Id Nat a X). Id Nat a X) Refl a Refl) };
   () }) = true := by native_decide
 
 -- The M10 conflict discharge, as a dead branch in a checked `fn` (the shape the
@@ -688,7 +688,7 @@ example : expectConv [] [] Dllbc.StdLemmas.LeRefl Std.le_reflT = true := by nati
     counterfactual), not a hypothesis. -/
 
 -- (1) The merged `let` means what the β-redex it replaced meant.
-example : expectConv [] [] prog{ let a = 2 ; Add a a } prog{ (λ (a : Nat). Add a a) 2 } = true := by
+example : expectConv [] [] prog{ let a = 2 ; Add a a } prog{ (λ (A : Nat). Add A A) 2 } = true := by
   native_decide
 -- (2) …and a `let` chain still means its nesting.
 example : expectConv [] [] prog{ let a = 2 ; let b = S a ; Add a b } prog{ 5 } = true := by
@@ -700,7 +700,7 @@ example : expectConv [] [] prog{ let a = 2 ; let b = S a ; Add a b } prog{ 5 } =
 -- reachable route. `resolveName` consults that context FIRST, so without the
 -- surface's mask this reads the ARM's `k` — measured as `Z`, not `7`.
 example : expectConv [] []
-    prog{ elim 1 return (λ (x : Nat). Nat) { Z => 0, S(k) ih => let k = 7 ; k } }
+    prog{ elim 1 return (λ (X : Nat). Nat) { Z => 0, S(K) Ih => let k = 7 ; k } }
     prog{ 7 } = true := by native_decide
 
 -- (4) A let-bound value MENTIONING a pure binder, read two binders deeper. ⇝
@@ -708,11 +708,11 @@ example : expectConv [] []
 -- depth it is used at; the Ω-binding reading this replaced did not, and returned
 -- a value pointing at the inner arm's binders instead. `s = S k = 1`.
 example : expectConv [] []
-    prog{ elim 1 return (λ (x : Nat). Nat) {
+    prog{ elim 1 return (λ (X : Nat). Nat) {
             Z => 0,
-            S(k) ih =>
-              let s = S k ;
-              elim 1 return (λ (y : Nat). Nat) { Z => 0, S(j) ih2 => s } } }
+            S(K) Ih =>
+              let s = S K ;
+              elim 1 return (λ (Y : Nat). Nat) { Z => 0, S(J) Ih2 => s } } }
     prog{ 1 } = true := by native_decide
 
 /-! ## The lemmas check at their stated types -/
@@ -745,7 +745,7 @@ example : progOk useTrans = true := by native_decide
 -- is: "audit: result (…) does not have return type (…)".
 def LeFn : Term := Std.LeFnT
 def badReflClosed : Term := prog{
-  λ (n : Nat). elim n return (λ (m : Nat). LeFn Z m) { Z => unit, S (k) ih => ih } }
+  λ (N : Nat). elim N return (λ (M : Nat). LeFn Z M) { Z => unit, S (K) Ih => Ih } }
 -- SUBJECT: a deliberately-lying function — the return type claims `Le n n` while
 -- the body proves `Le Z n`. It was a hand-built `FnDef` record on the argument that
 -- a surface form would obscure the lie; written as a `fn` the lie is the two lines
@@ -1072,7 +1072,7 @@ def sealOf (t : Term) : Option (Nat × Term × Term) := firstSeal (Term.numberSe
     in program order allocates them exactly where `sealMint`'s `freshSym` did. -/
 
 def c2 : Term := prog{
-  let F = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = F(2); () }
+  let F = (λ (X : Nat). S X : Π (X : Nat) → Nat); let y = F(2); () }
 
 example : tailEnv c2 [("F", .sym 0), ("y", .sym 1)] = true := by native_decide
 -- …and the instrument before the conclusion: there IS one seal here, so the
@@ -1087,7 +1087,7 @@ example : (Term.numberSeals c2).1 = 1 := by native_decide
     rule is applied twice directly, in the state the first application left. -/
 
 def capSeal : Term := prog{
-  let N = 1; let F = (λ (x : Nat). N : Π (x : Nat) → Nat); () }
+  let N = 1; let F = (λ (X : Nat). N : Π (X : Nat) → Nat); () }
 
 def stAt (n : Nat) : St := { initSt with env := [(⟨0, "N"⟩, .know (Term.nat n))] }
 
@@ -1145,12 +1145,12 @@ example : (twiceDiff.map (fun p => p.1 == p.2)) = some false := by native_decide
     name, so renaming every binder leaves every site where it was. -/
 
 def twoSeals : Term := prog{
-  let F = (λ (x : Nat). S x : Π (x : Nat) → Nat);
-  let G = (λ (y : Nat). S y : Π (y : Nat) → Nat);
+  let F = (λ (X : Nat). S X : Π (X : Nat) → Nat);
+  let G = (λ (Y : Nat). S Y : Π (Y : Nat) → Nat);
   () }
 def twoSealsRenamed : Term := prog{
-  let F = (λ (aa : Nat). S aa : Π (aa : Nat) → Nat);
-  let G = (λ (bb : Nat). S bb : Π (bb : Nat) → Nat);
+  let F = (λ (Aa : Nat). S Aa : Π (Aa : Nat) → Nat);
+  let G = (λ (Bb : Nat). S Bb : Π (Bb : Nat) → Nat);
   () }
 
 /-- Every site in a term, in traversal order. -/
@@ -1246,7 +1246,7 @@ example : progOk computePartial = true := by native_decide
 -- Its indistinguishable twin — a λ-valued runtime binding, which is the shape a
 -- staged proof-builder takes. Accepted by the same rule, and it is the one that
 -- MUST be, because the flagship returns values built this way.
-def lamValued : Term := prog{ let f = λ (n : Nat). Add n 1; () }
+def lamValued : Term := prog{ let f = λ (N : Nat). Add N 1; () }
 example : progOk lamValued = true := by native_decide
 
 end Dllbc.Tests.S32Backstop

@@ -535,34 +535,73 @@ partial def slotBinders : Term → Nat
   | .borrow t | .deref t | .cmpT t => slotBinders t
   | _ => 0
 
--- The in-place quicksort — the flagship, the largest program in the corpus.
+/-- …and the binders on which the two keys DISAGREE, which is the number R4 is
+    actually waiting for: `bindsSlot` says comptime exactly when the binder has no
+    Ω slot, the case test says it when the name is capital (or reserved, since a
+    `§`-name is unwritable and carries no mode to contradict). Wherever these
+    differ, swapping one key for the other changes an answer. -/
+partial def keyDisagree : Term → Nat
+  | .lam x d b =>
+    (if x.bindsSlot == (isUpperInit x.name || isReservedName x.name) then 1 else 0)
+      + keyDisagree d + keyDisagree b
+  | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => keyDisagree d + keyDisagree b
+  | .app f a | .seq f a | .seal _ f a => keyDisagree f + keyDisagree a
+  | .letIn _ r t => keyDisagree r + keyDisagree t
+  | .assign p e r => keyDisagree p + keyDisagree e + keyDisagree r
+  | .idT a b c => keyDisagree a + keyDisagree b + keyDisagree c
+  | .ctorApp _ as | .call _ as | .callV _ as => (as.map keyDisagree).foldl (· + ·) 0
+  | .matchE _ _ bs => (bs.map (fun br => keyDisagree br.body)).foldl (· + ·) 0
+  | .borrow t | .deref t | .cmpT t => keyDisagree t
+  | _ => 0
+
 -- The in-place quicksort — the flagship, the largest program in the corpus, with
 -- its specs and library lemmas elaborated in.
-example : lowerComptime Dllbc.Tests.S23Direct.flagship = 9545 := by native_decide
+example : lowerComptime Dllbc.Tests.S23Direct.flagship = 0 := by native_decide
 example : slotBinders Dllbc.Tests.S23Direct.flagship = 22 := by native_decide
 
 -- Two kernel library terms, hand-written rather than elaborated: `len` and the
 -- `Le` predicate the carve rule's premises are stated against.
-example : lowerComptime Std.lenFnT = 5 := by native_decide
-example : lowerComptime Pure.kLeFn = 9 := by native_decide
+example : lowerComptime Std.lenFnT = 0 := by native_decide
+example : lowerComptime Pure.kLeFn = 0 := by native_decide
 
-/-! **The reading.** Every one of those is a comptime binder — its argument lands
-    in the comptime environment, not in an Ω slot — spelled lowercase, so a case
-    test would call it runtime and route its application to ⇒-entry. Renaming
-    them is not textual: a pure binder's occurrences are `pvar`s inside its own
-    scope, so each rename is scope-sensitive, and capitalising a Π binder in a
-    SPEC position additionally flips `valBinderModes` at every ⇒-application of a
-    value of that type — which is §2.1's intent (`λ (L : List Nat)` snapshot-reads
-    where `λ (l : List Nat)` consumes).
+/-! **THE MIGRATION IS COMPLETE ON THE FLAGSHIP: 10,777 → 0.**
 
-    **R3b α moved the flagship's number from 10,777 to 9,545** by migrating
-    `StdLemmas` — 3,836 binder sites, 20,476 source occurrences — which the
-    flagship inherits because its specs elaborate the library lemmas in. That
-    class was BEHAVIOUR-INVISIBLE and the corpus said so: this assertion is the
-    only one in the tree that moved. The two hand-written kernel terms are
-    untouched at α (they are built as raw `Term`s, so capitalising one means
-    marking its domain `⇝` as well — a mode flip, and therefore β's business),
-    which is why their numbers are the same as R2 measured them. -/
+    R2 measured the debt and refused to run it blind; R3b ran it, in two classes
+    and against two enumerated differentials. Every comptime binder in the
+    largest program in the corpus — its specs, its library lemmas, and the kernel
+    functions those unfold to — now SPELLS its mode, which is what §2.1 asks and
+    what R4 needs, since R4 deletes the ids this counter's twin reads.
+
+    Where the number went, since two migrations produced it and they are not the
+    same kind of thing:
+
+      * **α, `StdLemmas`: 10,777 → 9,545.** Surface syntax, so `binderDom` put
+        the `⇝` on each domain and the rename was the whole change. Behaviour
+        invisible; this counter was the only assertion in the tree that moved.
+      * **β, `Std`/`Pure`'s hand-written terms: 9,545 → 0**, with 33 of that from
+        the test files' own spec binders. These are raw `Term`s with no macro
+        between them and the datatype, so capitalising a binder means writing its
+        `⇝` too (`Term.clam`/`Term.cpi` exist so the two cannot be written apart).
+        That IS a mode flip — `Len`, `Count`, `Le`, `Add` and `Sorted` now
+        declare their arguments comptime, so a ⇒-application of one snapshot-reads
+        where it used to consume — and the corpus measured the flip at ZERO
+        changed verdicts, because the library is only ever applied in ⇝ positions.
+
+    **`slotBinders` is UNMOVED at 22, and that is the point, not an oversight**:
+    those are the runtime binders, and the migration was never about them. -/
+
+/-! **What R4 inherits.** The two keys still disagree — measured, not assumed —
+    and the disagreement is **4 binders in the whole flagship**, all in ONE direction
+    and one construct: a **capital telescope parameter binds an Ω slot**
+    (`seedTelescopeV` gives every parameter a slot, comptime or not), so
+    `bindsSlot` says runtime where the name says comptime. Four, against 10,777
+    before the migration — and the residue is a rule about telescopes rather than
+    a backlog of renames. R4's case test is therefore not a drop-in for `bindsSlot` at
+    `Term.lamImperative`: a `fn` all of whose parameters are capital would flip
+    from imperative to pure, which is a rule change and wants its own stage. -/
+example : keyDisagree Dllbc.Tests.S23Direct.flagship = 4 := by native_decide
+example : keyDisagree Std.lenFnT = 0 := by native_decide
+example : keyDisagree Pure.kLeFn = 0 := by native_decide
 
 end Dllbc.Tests.S32Binders
 end

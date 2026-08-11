@@ -50,9 +50,9 @@ def listRecS (A P pn pc l : Term) : Term := .app (.app (.app (.app (.app (.const
 /-- The successor-recurse arm shared by `Le`/`NatCode`-shaped double recursions:
     `λa'. λrecA. λb. natRec (λ_.Type) falseCase (λb'. λ_. recA b') b`. -/
 def sucArm (falseCase : Term) : Term :=
-  .lam "a'" natTy (.lam "recA" (.pi "_" natTy .type) (.lam "b" natTy
-    (natRecS (.lam "_" natTy .type) falseCase
-      (.lam "b'" natTy (.lam "_" .type (.app (.pvar "recA") (.pvar "b'")))) (.pvar "b"))))
+  Term.clam "A'" natTy (Term.clam "RecA" (.pi "§_" natTy .type) (Term.clam "B" natTy
+    (natRecS (.lam "§_" natTy .type) falseCase
+      (Term.clam "B'" natTy (.lam "§_" .type (.app (.pvar "RecA") (.pvar "B'")))) (.pvar "B"))))
 
 /-! ## `Le : Nat → Nat → Type`  (Z ≤ _ ↦ ⊤ ; S ≤ Z ↦ ⊥ ; S ≤ S ↦ recurse) -/
 
@@ -66,19 +66,19 @@ def Le (a b : Term) : Term := .app (.app LeFn a) b
 
 /-! ## `eqb, leb : Nat → Nat → Bool` — runtime-usable decision procedures -/
 
-def eqbFn : Term := .lam "a" natTy (natRecS (.lam "_" natTy (.pi "_" natTy boolTy))
-  (.lam "b" natTy (natRecS (.lam "_" natTy boolTy) tt (.lam "_" natTy (.lam "_" boolTy ff)) (.pvar "b")))
-  (.lam "a'" natTy (.lam "recA" (.pi "_" natTy boolTy) (.lam "b" natTy
-    (natRecS (.lam "_" natTy boolTy) ff
-      (.lam "b'" natTy (.lam "_" boolTy (.app (.pvar "recA") (.pvar "b'")))) (.pvar "b")))))
-  (.pvar "a"))
+def eqbFn : Term := Term.clam "A" natTy (natRecS (.lam "§_" natTy (.pi "§_" natTy boolTy))
+  (Term.clam "B" natTy (natRecS (.lam "§_" natTy boolTy) tt (.lam "§_" natTy (.lam "§_" boolTy ff)) (.pvar "B")))
+  (Term.clam "A'" natTy (Term.clam "RecA" (.pi "§_" natTy boolTy) (Term.clam "B" natTy
+    (natRecS (.lam "§_" natTy boolTy) ff
+      (Term.clam "B'" natTy (.lam "§_" boolTy (.app (.pvar "RecA") (.pvar "B'")))) (.pvar "B")))))
+  (.pvar "A"))
 def eqb (a b : Term) : Term := .app (.app eqbFn a) b
 
-def lebFn : Term := .lam "a" natTy (natRecS (.lam "_" natTy (.pi "_" natTy boolTy)) (.lam "_" natTy tt)
-  (.lam "a'" natTy (.lam "recA" (.pi "_" natTy boolTy) (.lam "b" natTy
-    (natRecS (.lam "_" natTy boolTy) ff
-      (.lam "b'" natTy (.lam "_" boolTy (.app (.pvar "recA") (.pvar "b'")))) (.pvar "b")))))
-  (.pvar "a"))
+def lebFn : Term := Term.clam "A" natTy (natRecS (.lam "§_" natTy (.pi "§_" natTy boolTy)) (.lam "§_" natTy tt)
+  (Term.clam "A'" natTy (Term.clam "RecA" (.pi "§_" natTy boolTy) (Term.clam "B" natTy
+    (natRecS (.lam "§_" natTy boolTy) ff
+      (Term.clam "B'" natTy (.lam "§_" boolTy (.app (.pvar "RecA") (.pvar "B'")))) (.pvar "B")))))
+  (.pvar "A"))
 def leb (a b : Term) : Term := .app (.app lebFn a) b
 
 /-! ## `count : Nat → List Nat → Nat` — the multiset counter (`listRec` + `boolRec`) -/
@@ -87,30 +87,30 @@ def leb (a b : Term) : Term := .app (.app lebFn a) b
 -- reaches the outer parameter the recursion is about. That was `pvar 4` and had to
 -- be counted; under names it says which variable it means, and `countFn` binding it
 -- is visible one line down.
-def countArm : Term := .lam "h" natTy (.lam "t" listNatTy (.lam "rec" natTy
-  (boolRecS (.lam "_" boolTy natTy) (suc (.pvar "rec")) (.pvar "rec")
-    (eqb (.pvar "n") (.pvar "h")))))
+def countArm : Term := Term.clam "H" natTy (Term.clam "T" listNatTy (Term.clam "Rec" natTy
+  (boolRecS (.lam "§_" boolTy natTy) (suc (.pvar "Rec")) (.pvar "Rec")
+    (eqb (.pvar "N") (.pvar "H")))))
 def countFn : Term :=
-  .lam "n" natTy (.lam "l" listNatTy
-    (listRecS natTy (.lam "_" listNatTy natTy) zero countArm (.pvar "l")))
+  Term.clam "N" natTy (Term.clam "L" listNatTy
+    (listRecS natTy (.lam "§_" listNatTy natTy) zero countArm (.pvar "L")))
 def count (n l : Term) : Term := .app (.app countFn n) l
 
 /-! ## `Bound : Nat → List Nat → Type` and `Sorted : List Nat → Type` -/
 
 -- Bound h l : the head of l is ≥ h (Nil ↦ ⊤, Cons h' _ ↦ Le h h').
 def boundArm : Term :=                                    -- OPEN in `h`, like `countArm`
-  .lam "h'" natTy (.lam "t" listNatTy (.lam "_" .type (Le (.pvar "h") (.pvar "h'"))))
+  Term.clam "H'" natTy (Term.clam "T" listNatTy (.lam "§_" .type (Le (.pvar "H") (.pvar "H'"))))
 def BoundFn : Term :=
-  .lam "h" natTy (.lam "l" listNatTy
-    (listRecS natTy (.lam "_" listNatTy .type) unitTy boundArm (.pvar "l")))
+  Term.clam "H" natTy (Term.clam "L" listNatTy
+    (listRecS natTy (.lam "§_" listNatTy .type) unitTy boundArm (.pvar "L")))
 def Bound (h l : Term) : Term := .app (.app BoundFn h) l
 
 -- Sorted l : Nil ↦ ⊤ ; Cons h t ↦ Bound h t × Sorted t.
 def sortedArm : Term :=
-  .lam "h" natTy (.lam "t" listNatTy (.lam "rec" .type
-    (.sigmaT "_" (Bound (.pvar "h") (.pvar "t")) (.pvar "rec"))))
+  Term.clam "H" natTy (Term.clam "T" listNatTy (Term.clam "Rec" .type
+    (.sigmaT "§_" (Bound (.pvar "H") (.pvar "T")) (.pvar "Rec"))))
 def SortedFn : Term :=
-  .lam "l" listNatTy (listRecS natTy (.lam "_" listNatTy .type) unitTy sortedArm (.pvar "l"))
+  Term.clam "L" listNatTy (listRecS natTy (.lam "§_" listNatTy .type) unitTy sortedArm (.pvar "L"))
 def Sorted (l : Term) : Term := .app SortedFn l
 
 /-! ## `len`, `take`, `drop` — the segment vocabulary (§14)
@@ -120,30 +120,30 @@ def Sorted (l : Term) : Term := .app SortedFn l
     recursion shape. These are the length bound and the prefix/suffix a
     segment-scoped spec talks about. -/
 
-def lenArm : Term := .lam "h" natTy (.lam "t" listNatTy (.lam "rec" natTy (suc (.pvar "rec"))))
+def lenArm : Term := Term.clam "H" natTy (Term.clam "T" listNatTy (Term.clam "Rec" natTy (suc (.pvar "Rec"))))
 def lenFn : Term :=
-  .lam "l" listNatTy (listRecS natTy (.lam "_" listNatTy natTy) zero lenArm (.pvar "l"))
+  Term.clam "L" listNatTy (listRecS natTy (.lam "§_" listNatTy natTy) zero lenArm (.pvar "L"))
 def len (l : Term) : Term := .app lenFn l
 
 def takeArm : Term :=
-  .lam "n'" natTy (.lam "recN" (.pi "_" listNatTy listNatTy) (.lam "l" listNatTy
-    (listRecS natTy (.lam "_" listNatTy listNatTy) nilV
-      (.lam "h" natTy (.lam "t" listNatTy (.lam "r" listNatTy
-        (consV (.pvar "h") (.app (.pvar "recN") (.pvar "t"))))))
-      (.pvar "l"))))
+  Term.clam "N'" natTy (Term.clam "RecN" (.pi "§_" listNatTy listNatTy) (Term.clam "L" listNatTy
+    (listRecS natTy (.lam "§_" listNatTy listNatTy) nilV
+      (Term.clam "H" natTy (Term.clam "T" listNatTy (Term.clam "R" listNatTy
+        (consV (.pvar "H") (.app (.pvar "RecN") (.pvar "T"))))))
+      (.pvar "L"))))
 def takeFn : Term :=
-  .lam "n" natTy (natRecS (.lam "_" natTy (.pi "_" listNatTy listNatTy))
-    (.lam "_" listNatTy nilV) takeArm (.pvar "n"))
+  Term.clam "N" natTy (natRecS (.lam "§_" natTy (.pi "§_" listNatTy listNatTy))
+    (.lam "§_" listNatTy nilV) takeArm (.pvar "N"))
 def take (n l : Term) : Term := .app (.app takeFn n) l
 
 def dropArm : Term :=
-  .lam "n'" natTy (.lam "recN" (.pi "_" listNatTy listNatTy) (.lam "l" listNatTy
-    (listRecS natTy (.lam "_" listNatTy listNatTy) nilV
-      (.lam "h" natTy (.lam "t" listNatTy (.lam "r" listNatTy (.app (.pvar "recN") (.pvar "t")))))
-      (.pvar "l"))))
+  Term.clam "N'" natTy (Term.clam "RecN" (.pi "§_" listNatTy listNatTy) (Term.clam "L" listNatTy
+    (listRecS natTy (.lam "§_" listNatTy listNatTy) nilV
+      (Term.clam "H" natTy (Term.clam "T" listNatTy (Term.clam "R" listNatTy (.app (.pvar "RecN") (.pvar "T")))))
+      (.pvar "L"))))
 def dropFn : Term :=
-  .lam "n" natTy (natRecS (.lam "_" natTy (.pi "_" listNatTy listNatTy))
-    (.lam "l" listNatTy (.pvar "l")) dropArm (.pvar "n"))
+  Term.clam "N" natTy (natRecS (.lam "§_" natTy (.pi "§_" listNatTy listNatTy))
+    (Term.clam "L" listNatTy (.pvar "L")) dropArm (.pvar "N"))
 def drop (n l : Term) : Term := .app (.app dropFn n) l
 
 /-- `add a b` by recursion on `a` (`add Z b = b`, `add (S a') b = S (add a' b)`).
@@ -154,10 +154,10 @@ def add (a b : Term) : Term := .app (.app addFn a) b
 
 /-- `append a b` by recursion on `a` (`Nil ↦ b`, `Cons h t ↦ Cons h (append t b)`). -/
 def appendFn : Term :=
-  .lam "a" listNatTy (.lam "b" listNatTy
-    (listRecS natTy (.lam "_" listNatTy listNatTy) (.pvar "b")
-      (.lam "h" natTy (.lam "t" listNatTy (.lam "r" listNatTy (consV (.pvar "h") (.pvar "r")))))
-      (.pvar "a")))
+  Term.clam "A" listNatTy (Term.clam "B" listNatTy
+    (listRecS natTy (.lam "§_" listNatTy listNatTy) (.pvar "B")
+      (Term.clam "H" natTy (Term.clam "T" listNatTy (Term.clam "R" listNatTy (consV (.pvar "H") (.pvar "R")))))
+      (.pvar "A")))
 def append (a b : Term) : Term := .app (.app appendFn a) b
 
 /-! ## First lemma: `le_refl : Π n. Le n n`, by `natRec`
@@ -167,9 +167,9 @@ def append (a b : Term) : Term := .app (.app appendFn a) b
     definitionally equal. -/
 
 def le_refl : Term :=
-  .lam "n" natTy (natRecS (.lam "m" natTy (Le (.pvar "m") (.pvar "m"))) star
-    (.lam "m" natTy (.lam "rec" (Le (.pvar "m") (.pvar "m")) (.pvar "rec"))) (.pvar "n"))
-def le_refl_ty : Term := .pi "n" natTy (Le (.pvar "n") (.pvar "n"))
+  Term.clam "N" natTy (natRecS (Term.clam "M" natTy (Le (.pvar "M") (.pvar "M"))) star
+    (Term.clam "M" natTy (Term.clam "Rec" (Le (.pvar "M") (.pvar "M")) (.pvar "Rec"))) (.pvar "N"))
+def le_refl_ty : Term := Term.cpi "N" natTy (Le (.pvar "N") (.pvar "N"))
 
 /-! ## Term-level Std (§12): the library at telescope/return/owed positions
 

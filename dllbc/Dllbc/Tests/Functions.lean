@@ -393,13 +393,13 @@ example : progRejects c13s "does not have its parameter type" = true := by nativ
     for the re-minted borrow payloads, and this test says the coarse version is
     already usable. -/
 
-def sigLemTy : Term := prog{ Π (x : Nat) → Σ (h : Le x x) → Le x x }
+def sigLemTy : Term := prog{ Π (x : Nat) → Σ (H : Le x x) → Le x x }
 def sigLem : Term := prog{ λ (x : Nat). Pair (LeRefl x) (LeRefl x) }
 
 def c14 : Term := prog{
   let f = (%sigLem : %sigLemTy);
   let p = f(2);
-  elim p return (λ (w : Σ (h : Le 2 2) → Le 2 2). Le 2 2) { Pair (a) (b) => LeTrans 2 2 2 a b } }
+  elim p return (λ (W : Σ (H : Le 2 2) → Le 2 2). Le 2 2) { Pair (a) (b) => LeTrans 2 2 2 a b } }
 -- The program's RESULT is the projection, so its return type is what the audit
 -- checks it at — stated as `progOk`'s second argument, where the old form stated
 -- it as the wrapper declaration's `-> Le 2 2`.
@@ -412,7 +412,7 @@ example : progOk c14 (prog{ Le 2 2 }) = true := by native_decide
 def c14bad : Term := prog{
   let f = (%sigLem : %sigLemTy);
   let p = f(2);
-  elim p return (λ (w : Σ (h : Le 2 2) → Le 2 2). Le 3 2) { Pair (a) (b) => a } }
+  elim p return (λ (W : Σ (H : Le 2 2) → Le 2 2). Le 3 2) { Pair (a) (b) => a } }
 example : progRejects c14bad "does not have return type" (prog{ Le 3 2 }) = true := by native_decide
 
 /-! ## §D. The executing machine, and a NEW simulation-relation case
@@ -867,7 +867,7 @@ example : slotOf b2 "y" = some "Cons Z (Cons Z Nil)" := by native_decide
 -- B3. `listRec`, and a motive that is a function type — which is the shape §7
 -- always has, since the trailing binders are what carry the borrows. The
 -- structural recursion needs no fuel: the scrutinee is the list itself.
-def bumpMot : Term := prog{ λ (l : List Nat). Π (v : &mut Nat) → Unit }
+def bumpMot : Term := prog{ λ (L : List Nat). Π (v : &mut Nat) → Unit }
 def b3 : Term := prog{
   let l = Cons(7, Cons(8, Nil));
   let acc = 0;
@@ -1006,7 +1006,7 @@ example :
     motive is not a function type has ordinary terms for arms, and the PURE
     recursor already computes those. -/
 
-def lenMot : Term := prog{ λ (l : List Nat). Nat }
+def lenMot : Term := prog{ λ (L : List Nat). Nat }
 def d1 : Term := prog{ fn Caller () -> Nat {
   let l = Cons(7, Cons(8, Nil));
   let f = listRec Nat %lenMot Z (λ(h : Nat, t : List Nat, ih : Nat) { S(ih) });
@@ -1248,7 +1248,7 @@ example :
     conversion to be compared up to. Phase D's macro will derive it, so the
     comparison is free there; a hand-written mismatch is told what was expected. -/
 
-def wrongMot : Term := prog{ λ (f : Nat). Π (v : &mut List Nat) → Nat }
+def wrongMot : Term := prog{ λ (F : Nat). Π (v : &mut List Nat) → Nat }
 def f2 : Term := prog{
   let F = (natRec %wrongMot
                  (λ(v : &mut List Nat) { () })
@@ -1295,13 +1295,13 @@ example : progRejects f3 "holds a hole (⊥) at return" = true := by native_deci
 
 def splitTy : Term := prog{
   Π (i : Nat) → Π (v : &mut List Nat) → Π (hi : Le i (Len *v))
-    → Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (Take i (old *v)))
-         → Id (List Nat) ret (Drop i (old *v)) }
+    → Σ (Ret : List Nat) → Σ (H1 : Id (List Nat) (*v) (Take i (old *v)))
+         → Id (List Nat) Ret (Drop i (old *v)) }
 
 def splitMot : Term := prog{
   λ (i : Nat). Π (v : &mut List Nat) → Π (hi : Le i (Len *v))
-    → Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (Take i (old *v)))
-         → Id (List Nat) ret (Drop i (old *v)) }
+    → Σ (Ret : List Nat) → Σ (H1 : Id (List Nat) (*v) (Take i (old *v)))
+         → Id (List Nat) Ret (Drop i (old *v)) }
 
 /-- `split_off` as §7 says a `fn` elaborates. The body is `S23Direct.splitOff`'s,
     transcribed with one change and one deletion: the self-call
@@ -1314,8 +1314,8 @@ def splitSealed : Term := prog{
          { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
       (λ(i2 : Nat,
          ih : Π (v : &mut List Nat) → Π (hi : Le i2 (Len *v))
-                → Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (Take i2 (old *v)))
-                     → Id (List Nat) ret (Drop i2 (old *v)),
+                → Σ (Ret : List Nat) → Σ (H1 : Id (List Nat) (*v) (Take i2 (old *v)))
+                     → Id (List Nat) Ret (Drop i2 (old *v)),
          v : &mut List Nat,
          hi : Le (S i2) (Len *v)) {
          match v {
@@ -1348,12 +1348,12 @@ example : progOk splitSealed = true := by native_decide
 
 def splitMotLie : Term := prog{
   λ (i : Nat). Π (v : &mut List Nat) → Π (hi : Le i (Len *v))
-    → Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (Drop i (old *v)))
-         → Id (List Nat) ret (Drop i (old *v)) }
+    → Σ (Ret : List Nat) → Σ (H1 : Id (List Nat) (*v) (Drop i (old *v)))
+         → Id (List Nat) Ret (Drop i (old *v)) }
 def splitTyLie : Term := prog{
   Π (i : Nat) → Π (v : &mut List Nat) → Π (hi : Le i (Len *v))
-    → Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (Drop i (old *v)))
-         → Id (List Nat) ret (Drop i (old *v)) }
+    → Σ (Ret : List Nat) → Σ (H1 : Id (List Nat) (*v) (Drop i (old *v)))
+         → Id (List Nat) Ret (Drop i (old *v)) }
 
 -- A SPEC lie: the prefix conjunct claims `Drop` where the body leaves `Take`.
 def splitSpecLie : Term := prog{
@@ -1362,8 +1362,8 @@ def splitSpecLie : Term := prog{
          { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
       (λ(i2 : Nat,
          ih : Π (v : &mut List Nat) → Π (hi : Le i2 (Len *v))
-                → Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (Drop i2 (old *v)))
-                     → Id (List Nat) ret (Drop i2 (old *v)),
+                → Σ (Ret : List Nat) → Σ (H1 : Id (List Nat) (*v) (Drop i2 (old *v)))
+                     → Id (List Nat) Ret (Drop i2 (old *v)),
          v : &mut List Nat,
          hi : Le (S i2) (Len *v)) {
          match v {
@@ -1388,8 +1388,8 @@ def splitBodyLie : Term := prog{
          { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
       (λ(i2 : Nat,
          ih : Π (v : &mut List Nat) → Π (hi : Le i2 (Len *v))
-                → Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (Take i2 (old *v)))
-                     → Id (List Nat) ret (Drop i2 (old *v)),
+                → Σ (Ret : List Nat) → Σ (H1 : Id (List Nat) (*v) (Take i2 (old *v)))
+                     → Id (List Nat) Ret (Drop i2 (old *v)),
          v : &mut List Nat,
          hi : Le (S i2) (Len *v)) {
          match v {
@@ -1557,8 +1557,8 @@ def j1 : Term := prog{
          { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
       (λ(i2 : Nat,
          ih : Π (v : &mut List Nat) → Π (hi : Le i2 (Len *v))
-                → Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (Take i2 (old *v)))
-                     → Id (List Nat) ret (Drop i2 (old *v)),
+                → Σ (Ret : List Nat) → Σ (H1 : Id (List Nat) (*v) (Take i2 (old *v)))
+                     → Id (List Nat) Ret (Drop i2 (old *v)),
          v : &mut List Nat,
          hi : Le (S i2) (Len *v)) {
          match v {
@@ -2226,7 +2226,7 @@ example : progOk juxLam (.const "Nat") = true := by native_decide
 
 def juxPure : Term := prog{
   fn Caller (v : &mut List Nat) -> Unit
-  { let Mk = (λ (l : List Nat). l);
+  { let Mk = (λ (L : List Nat). L);
     let y = Mk (*v);
     () };
   () }
