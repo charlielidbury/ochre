@@ -1196,3 +1196,59 @@ example : progRunsTo execProg [("Inc", .closure [] (Term.lamTel
 end Dllbc.Tests.S32Seal
 end
 -- └── end of the M32 R3 ⇝-sealing battery ─────────────────────────────────────
+
+-- ┌── the M32 R3 backstop-demolition battery ───────────────────────────────────
+section
+namespace Dllbc.Tests.S32Backstop
+open Dllbc
+
+/-! # What is left of the mode backstop (suspensions.md §2.5, M32 R3)
+
+    Stage A enforced "a function may not land in a runtime binding" at THREE
+    sites. R3 leaves ONE — `refuseFnBinding`, at the `let`, whose survivor
+    assertion is `S27Lam.m1` (`let g = ih`, still refused with the fix in the
+    message) and `S31A.f1read`/`f2read` for the message that moved. This battery
+    is the evidence for the site that went and the pin on the rule that could
+    not land. -/
+
+-- **`bindFields`' site went because it is UNREACHABLE**, not because it is
+-- redundant, and this is the argument as a program: to put a function in a
+-- constructor field you must ⇒-read one, and the bindings that hold one are
+-- capital, which the erasure fence refuses. The field never receives a function,
+-- so the check there had nothing left to catch.
+def fieldFn : Term := prog{
+  fn Inc (n : Nat) -> Nat { S n };
+  let p = Pair(Inc, 1);
+  () }
+example : progRejects fieldFn "cannot be ⇒-moved" = true := by native_decide
+
+/-! ## THE PIN: §2.5's rule, and the corpus fact that blocks it
+
+    §2.5 asks that a runtime binding never hold a function, `let f = Add 1`
+    included, and that the backstop then be derivable. It cannot be had yet, and
+    the reason is not effort: **a proof of a ∀-statement is a λ**, the corpus
+    binds those at lowercase names (`let cnt = MkL lo hi hcnt` and its siblings,
+    in quicksort and the array sort), and capitalising them fails at the RETURN —
+    a Σ component is read by ⇒, and the fence refuses a ⇒-read of a capital
+    binding. Nothing in this calculus distinguishes the two shapes: both bind a
+    partial application at a Π type, and there is no Prop/Type split to say one
+    is a proof and the other a computation.
+
+    Pinned as ACCEPTED rather than left silent, so R3b (§2.1's binder migration,
+    which is what has to move first) inherits a test that goes red if someone
+    concludes the rule already holds. -/
+
+-- §2.5's own example, ACCEPTED: `Add 1` is a function and `f` is a runtime
+-- binding.
+def computePartial : Term := prog{ let f = Add 1; () }
+example : progOk computePartial = true := by native_decide
+
+-- Its indistinguishable twin — a λ-valued runtime binding, which is the shape a
+-- staged proof-builder takes. Accepted by the same rule, and it is the one that
+-- MUST be, because the flagship returns values built this way.
+def lamValued : Term := prog{ let f = λ (n : Nat). Add n 1; () }
+example : progOk lamValued = true := by native_decide
+
+end Dllbc.Tests.S32Backstop
+end
+-- └── end of the M32 R3 backstop-demolition battery ───────────────────────────

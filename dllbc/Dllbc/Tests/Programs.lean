@@ -1113,7 +1113,8 @@ example : (match tailEnvs swapCaller with
     for the two machines to disagree about.
 
     What is still refused is the LOWERCASE destination, and the tests below say so
-    in pairs: `let g = F` is refused by `backstopFnBinding`, `let G = F` is
+    in pairs: `let g = F` is refused (by `fenceComptime` since M32 R3, which is
+    where the rule it breaks lives), `let G = F` is
     accepted. Same programs rejected as under the previous two rules — the verdict
     has now outlived two complete changes of reason — but the needle is the FIX,
     which is the part a reader can act on. -/
@@ -1126,11 +1127,16 @@ def f1read : Term := prog{
   let F = (λ(v : &mut List Nat) { () } : %fSeal);
   let g = F;
   () }
--- The needle moved with the rule a second time (M31 Stage A): what is refused is
--- no longer the READ but the BINDER. `let G = F` is now accepted — it copies
--- comptime knowledge — and `let g = F` is refused because a runtime binding
--- cannot hold a function.
-example : progRejects f1read "capitalise the binder" = true := by native_decide
+-- **The needle moved a THIRD time** (M32 R3), and this one is a deletion rather
+-- than a rule change. `backstopFnRhs` existed for exactly this program: it fired
+-- BEFORE the right-hand side was evaluated, because evaluating `F` hits
+-- `fenceComptime` first, and its advice ("lower-case it") is wrong when the
+-- value is a function. R3 deletes the backstop's scatter, so `fenceComptime` is
+-- what refuses this now — the honest owner, since the rule the program breaks IS
+-- erasure — and the advice was widened there to cover the case where
+-- lower-casing is not the repair. Same program, same verdict, third message.
+example : progRejects f1read "the binder to capitalise is the destination" = true := by
+  native_decide
 
 -- The migrated twin, which is the whole content of the change: capitalise the
 -- second binder and the program is fine. c1's §G3b divergence cannot arise from
@@ -1156,7 +1162,8 @@ def f2read : Term := prog{
   let F = (λ(x : Nat) { x } : %gSeal);
   let g = F;
   () }
-example : progRejects f2read "capitalise the binder" = true := by native_decide
+example : progRejects f2read "the binder to capitalise is the destination" = true := by
+  native_decide
 
 -- F2b. The ISOLATING CONTROL that survives, and it has to be a different one now:
 -- an ordinary value in a second slot is still an ordinary read. So F1/F2 are about

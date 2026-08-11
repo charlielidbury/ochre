@@ -136,7 +136,7 @@ structure St where
       ask — the same site at the same inputs is one value (here, literally one
       σ), different inputs are different values — and they differ in what the
       value IS: a spine there, an atom here. Interning is what lets `fsig`,
-      `sctx`, `callDeclC`, `isFnValue` and every golden go on speaking about a
+      `sctx`, `callDeclC` and every golden go on speaking about a
       bare σ, and it is what makes a sealed function's type a plain entry rather
       than one that has to be instantiated at the spine's arguments before it
       can be read. Recorded as a deviation, with the reasoning, in the R3
@@ -2267,106 +2267,88 @@ def placeRoot? : Term → Option Var
 /-- **The fence.** Reject a ⇒-use of a comptime binder, naming the use. -/
 def fenceComptime (x : Var) (what : String) : M Unit :=
   if x.isComptime then
-    throwErr s!"fence: '{x.name}' is a COMPTIME binder (capitalized — §6) and {what}. A comptime binder is erased: it is never moved, never scrutinized, never borrowed or written through, and exists only in ⇝-positions (types, proofs, and the capital argument positions of other calls). If it must exist at runtime, lower-case it."
+    throwErr s!"fence: '{x.name}' is a COMPTIME binder (capitalized — §6) and {what}. A comptime binder is erased: it is never moved, never scrutinized, never borrowed or written through, and exists only in ⇝-positions (types, proofs, and the capital argument positions of other calls). If it must exist at runtime, lower-case it — unless it holds a FUNCTION, which cannot be lower-cased (§2.1: functions are comptime), in which case the binder to capitalise is the destination's."
   else pure ()
 
-/-! ## The mode backstop: a function may not land in a runtime binding
+/-- **⇒'s function values**: an IMPERATIVE closure, or a σ the kernel recorded in
+    `fsig` (which is where a sealed imperative function goes; a sealed pure λ has
+    a `Val` and lives in `sctx` alone, and binding one at a lowercase name has
+    always been legal).
 
-    **§2.1's rule seen from below** (M31 Stage A). The surface refuses a lowercase
-    `fn` name, which is the rule stated where a reader writes it; this is the same
-    rule stated where the kernel can still see it — at the moment a value is bound
-    — and it catches what the surface cannot: `let f = SomeFn` where the
-    right-hand side only PRODUCES a function, through a read, a call result, or a
-    match arm's field.
+    **A COMPTIME closure is excluded, and M32 R3 tried to stop excluding it.**
+    Stage A wrote the exclusion with a reason — "it is what every staged
+    proof-builder in the corpus binds" — and deferred `let f = Add 1` as "a
+    second corpus migration". R3 ran that migration and it does not exist yet.
+    The measurement, since it is the kind of thing a reader will otherwise
+    re-derive:
 
-    It is the honest successor of the function-read refusal M27 α.2 installed
-    ("functions are reached by NAME"), and it succeeds it rather than joining it:
-    that rule refused the READ, on a model in which a function had no value form
-    a second binding could hold. M31 gives functions a mode instead, so the read
-    is fine — `let F = Main` is a ⇝ copy of knowledge — and what is wrong is the
-    MODE of the binder that catches it. Same programs refused, and the message
-    now names the fix.
+      * Including comptime closures refuses **seven** corpus bindings — `cnt`,
+        `cnt1`, `cnt2`, `top1`, `f`, `c`, `g` — of which the first four are
+        `let cnt = MkL lo hi hcnt` and its siblings in quicksort and the array
+        sort: PARTIAL APPLICATIONS of staged proof-builders, whose value is a
+        proof of a ∀-statement and therefore a λ.
+      * Capitalising them, which is what the rule asks, then FAILS at the
+        RETURN: the proof is handed back as a Σ component —
+        `Pair(hi, Pair(hub2, …, Pair(hl2b, cnt)))` — and `fenceComptime`
+        refuses a ⇒-read of a capital binding ("'Cnt' is a COMPTIME binder …
+        cannot be ⇒-moved"). Measured on the flagship.
 
-    **Checking-side only**, inherited verbatim from the rule it replaces and for
-    the same reason: the executing machine holds a real function value and copies
-    it correctly, so refusing there would break running programs to protect a
-    checker.
+    So the two rules contradict each other on ∀-proofs, and nothing distinguishes
+    `let cnt = MkL lo hi hcnt` from `let f = Add 1`: both bind a partial
+    application whose type is a Π, and this calculus has no Prop/Type split to
+    separate a proof from a computation. What has to move first is a Σ
+    component's binder mode — §2.1's migration, staged as R3b — after which a
+    returned proof can be capital and this exclusion can go. Recorded as the
+    blocker rather than as a preference. -/
+def isFnValue (st : St) : Val → Bool
+  | .closure _ t => Term.lamImperative t
+  | v => match v.symOf? with
+    | some σ => (st.fsig.lookup σ).isSome
+    | none => false
 
-    **What counts as a function here is ⇒'s function values** — a runtime λ and a
-    σ the kernel recorded as a function in `fsig`. A pure `.lam` is deliberately
-    NOT included, exactly as the refusal it succeeds excluded it: it is an
-    index-kind comptime object living in the ⇝ fragment, it is what every staged
-    proof-builder in the corpus binds, and §2.4's citation rule (Stage A's last
-    commit) is what governs those. `let f = Add 1` — a lowercase binding of a pure
-    partial application — is therefore NOT caught in Stage A; recorded as a
-    deferral rather than an oversight, since catching it is a second corpus
-    migration and not the one this rule is for. -/
+/-- **A runtime binding may not hold a function** (§2.1), at the ONE place R3
+    leaves the rule.
+
+    **Checking-side**, inherited verbatim from the rule it replaces and for the
+    same reason: the executing machine holds a real function value and computes
+    with it correctly, so refusing there would break running programs to protect
+    a checker. -/
+def refuseFnBinding (x : Var) (v : Val) : M Unit := do
+  let st ← get
+  if !st.executing && !x.isComptime && isFnValue st v then
+    throwErr s!"'{x.name}' is a runtime binding and its right-hand side produced a function ({v.pretty}) — functions are comptime; capitalise the binder. A function is comptime knowledge (§2.1): it is ⇝-read, erased, and never ⇒-consumed, so the binding that holds one must be capital. Write `{x.name.capitalize}` instead. (A partial application is a function too: `Add 1` awaits its second argument.)"
+  else pure ()
+
+/-! ## The mode backstop's SCATTER is gone (M32 R3, suspensions.md §2.5)
+
+    Stage A enforced "a function may not land in a runtime binding" at THREE
+    sites — `backstopFnRhs` (before a `let`'s right-hand side was evaluated),
+    `backstopFnBinding` (after), and `bindFields` (a constructor field). §2.5
+    predicted all three would go, because with λ formation ⇝-only "⇒ can no
+    longer construct a function value". What landed is ONE site, and the two
+    that went, went for different reasons:
+
+      * **`backstopFnRhs` is deleted.** It existed only to improve a message:
+        `let g = F` is a ⇒-read of a capital binder, `fenceComptime` gets there
+        first, and its advice ("lower-case it") is wrong when the value is a
+        function. R3 takes the trade — the rule the program breaks IS erasure,
+        so `fenceComptime` should be the one to say so — and widens that
+        message instead, so the advice survives where the check does not.
+        (`S31A.f1read`/`f2read` assert the new sentence.)
+      * **`bindFields`' site is deleted** because it is unreachable, not because
+        it is redundant. Putting a function in a constructor field requires
+        ⇒-reading one, and the only bindings that hold one are capital, which
+        `fenceComptime` refuses. Asserted rather than argued (`S32Backstop`).
+      * **`backstopFnBinding` — renamed `refuseFnBinding` — SURVIVES**, at the
+        `let`, because §2.5's premise is false: see `pureLift`, where the
+        refutation is recorded with the measurement. ⇒ still constructs function
+        values, since a proof of a ∀-statement is a λ. -/
 
 /-- Weak-head a store value: knowledge reduces, state is already a head. -/
 def whnfV (fuel : Nat) (v : Val) : Val :=
   match v with
   | .know t => .know (Pure.whnf fuel t)
   | v => v
-
-/-- ⇒'s function values: a runtime λ, or a σ whose signature the kernel recorded
-    in `fsig` (which is where a sealed function and a Π-typed parameter go). -/
-def isFnValue (st : St) : Val → Bool
-  -- An IMPERATIVE closure. A comptime λ is deliberately excluded, exactly as it
-  -- was when this said `.rfn` and a pure `.lam` was a different former: it is an
-  -- index-kind comptime object living in the ⇝ fragment, it is what every staged
-  -- proof-builder in the corpus binds, and §2.4's citation rule governs those.
-  | .closure _ t => Term.lamImperative t
-  | v => match v.symOf? with
-    | some σ => (st.fsig.lookup σ).isSome
-    | none => false
-
-/-- The refusal itself, shared by the two sites below so the rule has one needle. -/
-def refuseFnBinding (x : Var) (what : String) : M Unit :=
-  throwErr s!"'{x.name}' is a runtime binding and its right-hand side {what} — functions are comptime; capitalise the binder. A function is comptime knowledge (§2.1): it is ⇝-read, erased, and never ⇒-consumed, so the binding that holds one must be capital. Write `{x.name.capitalize}` instead."
-
-/-- Refuse a function value landing in a runtime-moded (lowercase) binding. -/
-def backstopFnBinding (x : Var) (v : Val) : M Unit := do
-  let st ← get
-  if !st.executing && !x.isComptime && isFnValue st v then
-    refuseFnBinding x s!"produced a function ({v.pretty})"
-  else pure ()
-
-/-- **§2.4's citation rule at a λ formed in VALUE position** (M31 Stage A).
-
-    The node's free RUNTIME variables must be empty: a λ body may reference its
-    own binders and the capital bindings in scope, nothing more and nothing less.
-    The whole node is read, domains included, because a λ's binder domain is
-    stored with the λ and consulted whenever it is applied — it has the same
-    formation-vs-use gap the body has, which is what §2.4's exemption for type
-    positions does NOT cover.
-
-    Called from the two places a λ becomes a value: `readR`'s `.lam` arm (a λ
-    evaluated as an expression) and a `let` whose right-hand side is one. A λ
-    inside a TYPE reaches `readC` directly and never passes here, which is
-    exactly §2.4's boundary — a type is consumed at its own event. -/
-def checkLamCitation (t : Term) : M Unit :=
-  match (Term.freeRVars [] t).find? (fun y => !y.isComptime) with
-  | some y =>
-    throwErr s!"λ: the body cites '{y.name}', a runtime (lowercase) binding, and a λ body may reference only its own binders and the capital bindings in scope (§2.4). A λ is formed now and used later, and a runtime citation would be an implicit snapshot taken in that gap. Make it a parameter, or name the snapshot first: `let {y.name.capitalize} = …;` above the λ, and cite `{y.name.capitalize}`."
-  | none => pure ()
-
-/-- The same rule, asked BEFORE the right-hand side is evaluated, for the one
-    shape where evaluating it would hit a different rule first.
-
-    `let g = F` — a lowercase binding of a name that already holds a function — is
-    a ⇒-read of a capital binder, so `fenceComptime` gets there first and refuses
-    it as an erasure violation. That is not wrong, but its advice is ("if it must
-    exist at runtime, lower-case it"), because `F` is a function and lowercasing
-    it is exactly what §2.1 forbids. The binder that is wrong is `g`, and this is
-    the one place both names are in view. -/
-def backstopFnRhs (x : Var) (rhs : Term) : M Unit := do
-  let st ← get
-  if st.executing || x.isComptime then pure () else
-    match rhs with
-    | .var y => if isFnValue st (← lookupSlot y) then
-                  refuseFnBinding x s!"names the function '{y.name}'"
-                else pure ()
-    | _ => pure ()
 
 /-- …and the same at a place expression, keyed on the place's root. -/
 def fencePlace (t : Term) (what : String) : M Unit :=
@@ -2534,11 +2516,10 @@ def armSeamed? : Term → Bool
     move in as owned values). Errors on arity mismatch. -/
 def bindFields : List Var → List Val → M Unit
   | [], [] => pure ()
-  -- The backstop's third acquisition site (M31 Stage A, E1): a constructor field
-  -- holding a function reaches a binding HERE, and this is the only place it can
-  -- — borrow-mode arms bind `borrowM ℓ field`, which is a borrow and not a
-  -- function value however its payload looks.
-  | x :: xs, v :: vs => do backstopFnBinding x v; bindSlot x v; bindFields xs vs
+  -- (The backstop's third acquisition site was here — M31 Stage A, E1 — and went
+  -- with the rest of it at M32 R3: a constructor field cannot hold a function,
+  -- because nothing could have put one there.)
+  | x :: xs, v :: vs => do bindSlot x v; bindFields xs vs
   | _, _ => throwErr "match: constructor arity mismatch (binders vs fields)"
 
 /-- Bind each field binder to a whole-value reborrow `borrowM ℓᵢ fieldᵢ`
@@ -3606,6 +3587,69 @@ def admitGlobals (what : String) (nbinders : Nat) (free : List Var) : M Omega :=
           throwErr s!"{what}: the body cites '{x.name}', a runtime (lowercase) binding, and a λ body may reference only its own binders and the capital bindings in scope (§2.4). A λ is formed now and used later, and a runtime citation would be an implicit snapshot taken in that gap. Make it a parameter, or name the snapshot first: `let {x.name.capitalize} = …;` above the λ, and cite `{x.name.capitalize}`."
         else pure (acc ++ [kv])) []
 
+/-- **λ formation** (M32 R2/R3, suspensions.md §2.2), and since R3 the ONE
+    place a function value comes into being.
+
+    CAPTURE IS A FILTER, not a guard. `admitGlobals` is §8's globals rule and
+    §2.4's citation rule — a body may name its own binders and the capital
+    bindings in scope — and its RESULT is ρ. Nothing extra had to be written
+    to decide what a λ may capture, because that question was already
+    answered here; what R2 added is that the answer is kept.
+
+    CLOSEDNESS is therefore not a separate check any more. §7's "arms
+    reference only their own binders and globals" used to be a real premise
+    because a body was entered under a fresh id window with nothing carried:
+    a free variable would be silently rebound to whatever the shift landed
+    on. A closure carries its bindings, so the rule survives as the FILTER
+    (which bindings are admissible) rather than as a refusal to have any. -/
+def mkClosure (fuel : Nat) (node : Term) : M Val := do
+    let (tel, _) := Term.peelLams node
+    let imper := Term.lamImperative node
+    let what := if imper then "λr" else "λ"
+    let ρω ← admitGlobals what tel.length (Term.freeRVars [] node)
+    -- **The knowledge-only invariant, as a rejection with a place to stand.**
+    -- R1 made it a fact about `Sem`; here it is a fact about ρ's type, and the
+    -- one way to violate it is to cite a capital binding that holds state — a
+    -- capital slot holding a borrow. §2.2: captured ρ supplies knowledge only,
+    -- and state arrives through arguments.
+    let ρ ← ρω.mapM (fun kv => do
+      if Val.hasStateMarker kv.2 then
+        throwErr s!"{what}: the body captures '{kv.1.name}', which holds {kv.2.pretty} — a λ captures KNOWLEDGE only (§2.2), and that value carries a hole, a loan marker or a borrow. State reaches a body through its arguments, so make it a parameter."
+      else pure kv)
+    -- **FORMATION EVALUATES THE BODY AS A CHECK** (§2.2), and stores the
+    -- syntax. For the comptime fragment that check is the ⇝ reading this arm
+    -- used to store; the result is discarded, which is the whole difference
+    -- between R2 and cook-at-formation (user-rejected, §3).
+    if !imper then do
+      collapseCDerefs fuel node
+      let _ ← readC fuel node
+      pure ()
+    pure (.closure ρ node)
+
+/-- **The pure lift** (§1.3): on the borrow-free fragment ⇒ coincides with ⇝ up
+    to variable consumption, so a comptime-only former — a proof term, an
+    eliminator application, `Id A a b`, a type — is read by ⇝ and handed back as
+    an ordinary runtime datum. It can be stored in a constructor field, passed to
+    a call, or returned. (Snapshot reads are non-destructive; that is the "up to
+    consumption" — these values are copyable/erasable, so nothing is moved out.)
+
+    **suspensions.md §2.5 wanted the function invariant enforced HERE — "the pure
+    lift's result must be data, not a function" — and the corpus refuted it.**
+    Recorded at the site rather than in a log, because the next reader will have
+    the same idea. The refusal was written, and quicksort's count equation went
+    red: what the lift returns at `Direct.lean:1592` is
+
+        λ(§0 : Nat). boolRec … (j Nat … Refl …) …
+
+    — the PROOF of `Π (n : Nat) → Id Nat (Count n …) (Count n …)`, computed by
+    lifting a lemma spine. A proof of a ∀-statement is a λ, this calculus returns
+    them in Σ tails, and the pure lift is how they are read. There is no
+    reformulation that separates them from `Add 1` here, because there is nothing
+    to separate: both are functions, and only one of them is being BOUND at a
+    runtime binder. So the rule lives where the binder is (`readR`'s `.letIn`),
+    and it is still ONE point. -/
+def pureLift (fuel : Nat) (t : Term) : M Val := do pure (.know (← readC fuel t))
+
 /-! ## Seal sites, and the σ a site has (M32 R3, suspensions.md §2.4)
 
     §2.4 makes the seal ⇝-evaluable, and the whole of what that needed is a
@@ -3711,9 +3755,10 @@ mutual
             -- Main` copies knowledge and leaves the original exactly where it was
             -- — and there is no second owner for the two machines to disagree
             -- about. What IS still wrong is binding a function to a runtime slot,
-            -- which is a claim about the BINDER, and `backstopFnBinding` is where
-            -- that is now said. Same programs refused, one layer later, with the
-            -- fix in the message.
+            -- which is a claim about the BINDER — and since M32 R3 nothing says
+            -- it, because nothing has to: ⇒ cannot construct a function and
+            -- cannot read one out of a capital binding, so no function ever
+            -- reaches a runtime slot to be refused there.
             --
             -- §2.1 copy-on-read: an INDEX-KIND value (a Nat/Bool/Unit tree, a
             -- proof, a type, a λ, or a σ typed as one of these) is read by COPY,
@@ -3801,10 +3846,11 @@ mutual
         -- because two right-hand sides were ⇒-formation events ⇝ had no rule for.
         -- ⇝ has the rules now (`readComptimeVal`), so the predicate is gone and
         -- this line is the invariant.
-        backstopFnRhs x rhs                              -- M31 Stage A: §2.1, before the fence
-        (match rhs with | .lam _ _ _ => checkLamCitation rhs | _ => pure ())
         let v ← if x.isComptime then readComptimeVal fuel rhs else readR fuel rhs
-        backstopFnBinding x v                            -- …and §2.1 from below
+        -- **THE ONE ENFORCEMENT POINT** (M32 R3, suspensions.md §2.5): a
+        -- runtime-moded binding may not receive a function. Stage A said this at
+        -- THREE sites with two predicates; this is the one that is left.
+        refuseFnBinding x v
         bindSlot x v
         readR fuel rest
       | .assign place rhs rest => do
@@ -3936,22 +3982,25 @@ mutual
                 | .ok (tel, ret) => callDeclC fuel (tel.map (fun p => (p.1.name, p.2))) ret args
               | none => callVValue fuel x callee args
             | none => callVValue fuel x callee args
-      -- **The runtime λ** (§7 cost 2). Evaluating one is only forming its value:
-      -- the body is a suspension until the binders have arguments.
+      -- **⇒ LIFTS a comptime λ; it does not BIND one** (M32 R3, and this is
+      -- where §2.5's premise had to be corrected — see `.letIn` below).
       --
-      -- CLOSEDNESS IS CHECKED HERE, at the one point the value is formed. §7's
-      -- "arms reference only their own binders and globals" is a real premise,
-      -- not a description: a body is entered under a fresh id window, so a free
-      -- variable would not dangle — it would be silently rebound to whatever the
-      -- shift lands on, which is environment capture arriving by accident in the
-      -- phase that defers it (constraint 5). Rejecting is the honest option, and
-      -- the rejection names the variable.
-      -- **THE λ, still ⇒-reachable at R3 α, delegating** (M32 R3). Formation
-      -- moved to `readComptimeVal`, which is ⇝'s reader at a binding; this arm
-      -- is what a λ in an EXPRESSION position (or under a lowercase `let`) still
-      -- reaches, and it is deleted in R3 β, where ⇒ stops constructing functions
-      -- altogether (suspensions.md §2.5).
-      | .lam _ _ _ => readComptimeVal fuel t
+      -- suspensions.md §2.5 reasoned that with λ formation ⇝-only, ⇒ could no
+      -- longer construct a function at all, and the backstop would follow. The
+      -- corpus disagreed, and it is not a corner: **a proof of a ∀-statement IS
+      -- a λ**, and this calculus returns them in Σ tails —
+      -- `Pair(SplitANil …, λ (q : Nat). Refl)`, `Pair(…, λ (n : Nat). CountSwap2
+      -- n X0 Y0)` — where the λ is a constructor ARGUMENT read by `readArgs`,
+      -- which is here. Refusing here rejects the flagship's count equation and
+      -- `sort2`, measured.
+      --
+      -- So this arm stays what R2 made it, and the reading is the pure lift's
+      -- own (§1.3, whose docstring already listed "a Π-typed λ" among the
+      -- comptime-only formers ⇒ delegates): the λ is comptime KNOWLEDGE, and
+      -- lifting knowledge is what ⇒ does with it. What R3 removes is not the
+      -- lift but the BINDING.
+      | .lam _ _ _ => mkClosure fuel t
+
       | .unit => pure (.ctor "unit" [])
       -- **The match-arm seam** (M31 Stage 0). `pushContinuations` fuses a
       -- statement-position match with the continuation that followed it, which
@@ -3989,11 +4038,11 @@ mutual
       -- goes through (§5.2's "proper payload" premise; see `collapseCDerefs`).
       -- Only on the lift, where a body reads live places — `readC` proper is used
       -- on types/specs too and stays the read-only projection it is documented as.
-      | .type => do pure (.know (← readC fuel t))
-      | .const _ => do pure (.know (← readC fuel t))
-      | .pvar _ => do pure (.know (← readC fuel t))
-      | .pi _ _ _ => do pure (.know (← readC fuel t))
-      | .sigmaT _ _ _ => do pure (.know (← readC fuel t))
+      | .type => pureLift fuel t
+      | .const _ => pureLift fuel t
+      | .pvar _ => pureLift fuel t
+      | .pi _ _ _ => pureLift fuel t
+      | .sigmaT _ _ _ => pureLift fuel t
       -- **A recursor over runtime arms is ⇒'s, not ⇝'s** (§7 cost 5). The pure
       -- lift below sends every other application spine to `readC`; one whose arms
       -- are BODIES has no comptime reading at all (`readC` refuses `.lamR`), so ⇒
@@ -4054,10 +4103,10 @@ mutual
                     | some c => (recLayout c).isSome
                     | none => false
               if isFn then readR fuel (.callV x args)
-              else do collapseCDerefs fuel t; pure (.know (← readC fuel t))
-            | none => do collapseCDerefs fuel t; pure (.know (← readC fuel t))
-          | none => do collapseCDerefs fuel t; pure (.know (← readC fuel t))
-      | .idT _ _ _ => do collapseCDerefs fuel t; pure (.know (← readC fuel t))
+              else do collapseCDerefs fuel t; pureLift fuel t
+            | none => do collapseCDerefs fuel t; pureLift fuel t
+          | none => do collapseCDerefs fuel t; pureLift fuel t
+      | .idT _ _ _ => do collapseCDerefs fuel t; pureLift fuel t
       -- ¶2.2's ⇒ column at the two new steps, and the regularity §1.3 asks the
       -- reader to notice: each behaves the way the corresponding column behaves at
       -- `*`. `t[i]` moves the element out (a hole in the slot) or copies it under
@@ -4571,46 +4620,6 @@ mutual
         if (← get).executing then readR fuel a else sealNode fuel site a b
       | _ => do pure (.know (← readComptimeArg fuel t))
   termination_by fuel _ => (fuel, 15, 0)
-  /-- **λ formation** (M32 R2/R3, suspensions.md §2.2), and since R3 the ONE
-      place a function value comes into being.
-
-      CAPTURE IS A FILTER, not a guard. `admitGlobals` is §8's globals rule and
-      §2.4's citation rule — a body may name its own binders and the capital
-      bindings in scope — and its RESULT is ρ. Nothing extra had to be written
-      to decide what a λ may capture, because that question was already
-      answered here; what R2 added is that the answer is kept.
-
-      CLOSEDNESS is therefore not a separate check any more. §7's "arms
-      reference only their own binders and globals" used to be a real premise
-      because a body was entered under a fresh id window with nothing carried:
-      a free variable would be silently rebound to whatever the shift landed
-      on. A closure carries its bindings, so the rule survives as the FILTER
-      (which bindings are admissible) rather than as a refusal to have any. -/
-  def mkClosure : Nat → Term → M Val
-    | fuel, node => do
-      let (tel, _) := Term.peelLams node
-      let imper := Term.lamImperative node
-      let what := if imper then "λr" else "λ"
-      let ρω ← admitGlobals what tel.length (Term.freeRVars [] node)
-      -- **The knowledge-only invariant, as a rejection with a place to stand.**
-      -- R1 made it a fact about `Sem`; here it is a fact about ρ's type, and the
-      -- one way to violate it is to cite a capital binding that holds state — a
-      -- capital slot holding a borrow. §2.2: captured ρ supplies knowledge only,
-      -- and state arrives through arguments.
-      let ρ ← ρω.mapM (fun kv => do
-        if Val.hasStateMarker kv.2 then
-          throwErr s!"{what}: the body captures '{kv.1.name}', which holds {kv.2.pretty} — a λ captures KNOWLEDGE only (§2.2), and that value carries a hole, a loan marker or a borrow. State reaches a body through its arguments, so make it a parameter."
-        else pure kv)
-      -- **FORMATION EVALUATES THE BODY AS A CHECK** (§2.2), and stores the
-      -- syntax. For the comptime fragment that check is the ⇝ reading this arm
-      -- used to store; the result is discarded, which is the whole difference
-      -- between R2 and cook-at-formation (user-rejected, §3).
-      if !imper then do
-        collapseCDerefs fuel node
-        let _ ← readC fuel node
-        pure ()
-      pure (.closure ρ node)
-  termination_by fuel _ => (fuel, 16, 0)
   /-- Sealing a VALUE — phase A's rule, verbatim, in its own definition since
       M26-C so that `readR`'s seal arm is a two-line dispatch.
 
@@ -4629,7 +4638,14 @@ mutual
       -- re-read afterwards would find a ⊥. §5.3's entry-pinning lesson, arriving
       -- at the seal for the same reason it arrived at a dependent return type.
       let uV ← readC fuel u
-      let v ← readR fuel t
+      -- **A λ here is FORMED, not ⇒-read** (M32 R3). `readR`'s λ arm refuses on
+      -- the checking side now, and it is right to: this is the one caller that
+      -- wants a closure rather than a refusal, because the sealed term of a
+      -- value-seal is exactly a comptime λ. Everything else — an ascribed match,
+      -- a spine — is ⇒'s as it was.
+      let v ← match t with
+              | .lam _ _ _ => mkClosure fuel t
+              | _ => readR fuel t
       if ← hasType fuel v uV then do
         -- …then FORGET. The σ is the one this SITE has at these inputs (M32 R3):
         -- `.seal` is generalization, so what the caller keeps is exactly what the
@@ -4903,10 +4919,8 @@ mutual
         -- duplication is two lines; a mode that silently stopped applying at the
         -- top level of a function body would have been a phantom.
         match (do
-            backstopFnRhs x rhs
-            (match rhs with | .lam _ _ _ => checkLamCitation rhs | _ => pure ())
             let v ← if x.isComptime then readComptimeVal fuel rhs else readR fuel rhs
-            backstopFnBinding x v
+            refuseFnBinding x v          -- …and the same rule, at the explore `let`
             bindSlot x v).run st with
         | .error e _ => [.error e]
         | .ok _ st' => explore fuel rest st'
