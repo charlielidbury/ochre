@@ -83,11 +83,20 @@ and later evaluation agrees — substitution commutes with evaluation (§3).
 
 ### 2.3 At rest: canonical Terms for knowledge, raw closures for λs
 
-Non-λ knowledge at rest is a canonical Term (σ's as reserved `§`-names; comparison
+Non-λ KNOWLEDGE at rest is a canonical Term (σ's as reserved `§`-names; comparison
 by `alphaEq`/`==`; swept by Term-level `substP`/abstraction). λ values at rest are
 closures per §2.2. Conversion involving a λ value cooks TRANSIENTLY (evaluate the
-body under ρ + a fresh `§`-binder, read back, compare) — on demand, cost measured
-as noise (checker = 1.3% of build).
+body under ρ + a fresh `§`-binder, read back, compare) — on demand; Stage V measured
+it a wash (the raw pair was fastest — `convert` normalizes both sides either way).
+
+**R1 DECISION REQUIRED (Stage V finding): the STATE wrapped around knowledge has no
+Term form.** ⊥, loan markers, borrow values, `§segs` nodes, and executing `rfn`s all
+reach store-wide sweeps, and `Term` has a former for none of them. The probe carried
+them as reserved-name sentinels; R1 must choose — a Val skeleton with Term knowledge
+leaves, or new Term formers for the state constructors — and state the choice before
+code is written. It is met at the first `borrowM ℓ p` the sweep touches.
+Relatedly: the Term-level sweep is mode-SENSITIVE with `.stripCmp` at comparison
+sites (the house pattern `piAgree` already uses), where `Val.beq` was mode-blind.
 
 ### 2.4 One λ, the let-arrow invariant, ⇝-sealing
 
@@ -141,13 +150,21 @@ application, per §2.2. Imperative bodies are exempt entirely — they never
 participate in conversion (audited once at formation, then only entered), so they
 are never cooked, ever.
 
+**Stage V sharpened the criterion: the split is MATERIALIZED-vs-LATENT, not
+raw-vs-cooked.** `abstractInto` already descends captured environments, so a spine
+materialized in ρ survives the sweep and raw agrees with cooked; only a spine the
+body RE-MINTS from ρ's ingredients diverges (measured: cooked gives `Add σ99 7`,
+raw gives `Add (Len σ5) 7` — the pre-generalization vocabulary; cooking before the
+sweep repairs it). Consequence: "cook only closures whose ρ mentions σ's in the
+abstracted spine's support" is THE rule, not an optimization.
+
 Rejected alternatives, for the record: cook-at-formation (pre-bakes everything;
 user-rejected); normalize-at-every-split (pays at commuting sweeps that need
 nothing); assumption-indexed evaluation (smart case/Zombie — coherent, never
 mainstream, makes conversion path-relative; rejected with precedent at #19);
-propositional-only generalization (M30's wall). Optimization note, not requirement:
-a generalization need only cook closures whose ρ mentions σ's in the abstracted
-spine's support. **Canary: quicksort's count equation.**
+propositional-only generalization (M30's wall). **Canary: quicksort's count
+equation — run by Stage V through the Term-level path with a positive control (the
+sabotaged twin goes red at 22 assertions including the count equation itself).**
 
 ## 4. Also landing here (from the M31 ledger)
 
@@ -161,11 +178,19 @@ an unenforced convention — under name-keying it becomes a real check).
 Corpus green at every stage; representation stages differential to exactly zero;
 rule stages have enumerated flips only.
 
-**Stage V — viability probe (before any dispatch).** One agent, three cheap bets:
-(a) newest-wins name-keyed Ω against `checkRFnBody` + the executing differential
-(E2; fallback dual-key `Var`); (b) readback-to-Term with `§`-σ-names against the
-comparison sites and one X-Gen path; (c) raw-closure conversion-on-demand against
-the three `alphaEq` sites (cook-transiently correctness + cost).
+**Stage V — viability probe: RUN, all three bets VIABLE** (branch `m32-stage-v` @
+3a0102d7 — probe artifacts, not for merge; findings addendum there). Highlights that
+amend the plan: (a) newest-wins is nine sites, one non-local (`readCWith` flips from
+prepend to append — the id collision that forced prepending is void under names);
+the frame shift is name-preserving, so **bet (a) rides with R1** while the
+id-machinery deletion stays its own commit with its own differential; cost measured
+at noise (~1%). The lemma/fn L-suffix convention goes from style to SOUNDNESS
+CONDITION under name-keying — R1 adds the check. (b) The `alphaEq` comparison sites
+are FOUR, not three (`trivialOwedT` is the fourth — live at R3 where owed types
+are). (c) `convert` already cooks transiently — the mechanics need no new code.
+**Every representation stage carries a SABOTAGE RUN alongside its green corpus**
+(Stage V's zero-divergence result meant something only because the sabotaged twin
+went red at 22 assertions — M30's failure mode is silent by construction).
 
 **Stage R1 — the domain split.** Readback emits Terms; at-rest non-λ knowledge
 becomes canonical Terms; sweeps re-target to Term level; Val loses its syntax
