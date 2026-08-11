@@ -53,11 +53,11 @@ namespace Dllbc.Tests.S25ArrSort
 
 /-- Type-check a closed term against a closed type in the pure seed (as §23/§24). -/
 def chkL (tm ty : Term) : Bool :=
-  match (do let v ← readC 8000 tm; let t ← readC 8000 ty; hasType 8000 v t).run (seedPure [] []) with
+  match (do let v ← readC 8000 tm; let t ← readC 8000 ty; hasTypeT 8000 v t).run (seedPure [] []) with
   | .ok r _ => r
   | .error _ _ => false
 
-def pv (t : Term) : Val := Val.nfV 4000 (Val.Term.toValPure t)
+def pv (t : Term) : Term := Pure.nf 4000 t
 
 -- (`progMsg`, the debugging helper that printed a declaration's check message,
 -- retired in M28 D9 with `Migrate.cohort`.)
@@ -111,7 +111,7 @@ example : chkL CountSwapA CountSwapATy = true := by native_decide
 
 -- There IS no η at length zero, which is why the nil lemmas exist at all: `SortedA Z`
 -- of an opaque payload is a stuck `arrRec`, not `Unit`.
-example : (Val.nfV 2000 (Val.Term.toValPure prog{ SortedA Z Arr() }) == .const "Unit")
+example : (Pure.nf 2000 prog{ SortedA Z Arr() } == .const "Unit")
     = true := by native_decide
 
 /-! ## (ii) `splitA` — the scan
@@ -738,21 +738,26 @@ def tnatT : Nat → Term | 0 => .ctorApp "Z" [] | k + 1 => .ctorApp "S" [tnatT k
 def tarrT (l : List Nat) : Term := .ctorApp "Arr" (l.map tnatT)
 
 def natOfV : Nat → Val → Option Nat
-  | _, .ctor "Z" [] => some 0
-  | (f + 1), .ctor "S" [v] => (natOfV f v).map (· + 1)
-  | _, _ => none
+  | f, v =>
+    match Val.asCtor? v, f with
+    | some ("Z", []), _ => some 0
+    | some ("S", [w]), f' + 1 => (natOfV f' w).map (· + 1)
+    | _, _ => none
 
 def listOfV : Nat → Val → Option (List Nat)
-  | _, .ctor "Nil" [] => some []
-  | (f + 1), .ctor "Cons" [h, t] =>
-    match natOfV 2000 h, listOfV f t with
-    | some x, some xs => some (x :: xs)
+  | f, v =>
+    match Val.asCtor? v, f with
+    | some ("Nil", []), _ => some []
+    | some ("Cons", [h, t]), f' + 1 =>
+      match natOfV 2000 h, listOfV f' t with
+      | some x, some xs => some (x :: xs)
+      | _, _ => none
     | _, _ => none
-  | _, _ => none
 
 def arrOfV : Val → Option (List Nat)
-  | .ctor "Arr" vs => vs.mapM (natOfV 2000)
-  | _ => none
+  | v => match Val.asCtor? v with
+    | some ("Arr", vs) => vs.mapM (natOfV 2000)
+    | _ => none
 
 /-- Build the array, borrow it, sort it in place, read it back. `hfuel` is `Le n n`,
     which computes to `Unit` at a concrete length. -/

@@ -201,7 +201,7 @@ example : progRejects a7 "only a statement-position match may split" = true := b
 
 /-- The pure fragment's own check (S23Direct's `chk`, verbatim). -/
 def chk (tm ty : Term) : Bool :=
-  match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasType 3000 v t).run (seedPure [] []) with
+  match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasTypeT 3000 v t).run (seedPure [] []) with
   | .ok r _ => r
   | .error _ _ => false
 
@@ -263,7 +263,7 @@ example : sealChk (StdLemmas.LeRefl) (StdLemmas.IdSymTy) = false := by native_de
 -- `x` is canonicalized to its level (M30 step 2), the same renaming that makes two
 -- α-variant functions compare equal. The slot holds the same function it always
 -- held; what moved is how a normal form spells a binder.
-def vlam : Val := .lam "§0" (.const "Nat") (.ctor "S" [.pvar "§0"])
+def vlam : Val := .know (.lam "§0" (.const "Nat") (.ctorApp "S" [.pvar "§0"]))
 
 -- C1. **Body known ⟹ unfold.** A literal λ callee β-reduces, so the caller knows
 -- the result exactly: `y ↦ 3`, not an existential.

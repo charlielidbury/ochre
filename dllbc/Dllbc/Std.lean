@@ -23,33 +23,33 @@ motivation for a later dependent-elimination surface syntax.
 -/
 
 namespace Dllbc.Std
-open Dllbc.Val
+open Dllbc.Pure
 
 /-! ## Value constructors and recursor spines -/
 
-def natTy : Val := .const "Nat"
-def listNatTy : Val := .app (.const "List") natTy
-def boolTy : Val := .const "Bool"
-def unitTy : Val := .const "Unit"
-def botTy : Val := .const "Bot"
-def zero : Val := .ctor "Z" []
-def suc (v : Val) : Val := .ctor "S" [v]
-def ofNat : Nat → Val | 0 => zero | n + 1 => suc (ofNat n)
-def tt : Val := .ctor "True" []
-def ff : Val := .ctor "False" []
-def star : Val := .ctor "unit" []                     -- the ⊤ inhabitant
-def consV (h t : Val) : Val := .ctor "Cons" [h, t]
-def nilV : Val := .ctor "Nil" []
-def ofList : List Val → Val | [] => nilV | h :: t => consV h (ofList t)
-def pairV (a b : Val) : Val := .ctor "Pair" [a, b]
+def natTy : Term := .const "Nat"
+def listNatTy : Term := .app (.const "List") natTy
+def boolTy : Term := .const "Bool"
+def unitTy : Term := .const "Unit"
+def botTy : Term := .const "Bot"
+def zero : Term := .ctorApp "Z" []
+def suc (v : Term) : Term := .ctorApp "S" [v]
+def ofNat : Nat → Term | 0 => zero | n + 1 => suc (ofNat n)
+def tt : Term := .ctorApp "True" []
+def ff : Term := .ctorApp "False" []
+def star : Term := .ctorApp "unit" []                     -- the ⊤ inhabitant
+def consV (h t : Term) : Term := .ctorApp "Cons" [h, t]
+def nilV : Term := .ctorApp "Nil" []
+def ofList : List Term → Term | [] => nilV | h :: t => consV h (ofList t)
+def pairV (a b : Term) : Term := .ctorApp "Pair" [a, b]
 
-def natRecS (P z s n : Val) : Val := .app (.app (.app (.app (.const "natRec") P) z) s) n
-def boolRecS (P t f b : Val) : Val := .app (.app (.app (.app (.const "boolRec") P) t) f) b
-def listRecS (A P pn pc l : Val) : Val := .app (.app (.app (.app (.app (.const "listRec") A) P) pn) pc) l
+def natRecS (P z s n : Term) : Term := .app (.app (.app (.app (.const "natRec") P) z) s) n
+def boolRecS (P t f b : Term) : Term := .app (.app (.app (.app (.const "boolRec") P) t) f) b
+def listRecS (A P pn pc l : Term) : Term := .app (.app (.app (.app (.app (.const "listRec") A) P) pn) pc) l
 
 /-- The successor-recurse arm shared by `Le`/`NatCode`-shaped double recursions:
     `λa'. λrecA. λb. natRec (λ_.Type) falseCase (λb'. λ_. recA b') b`. -/
-def sucArm (falseCase : Val) : Val :=
+def sucArm (falseCase : Term) : Term :=
   .lam "a'" natTy (.lam "recA" (.pi "_" natTy .type) (.lam "b" natTy
     (natRecS (.lam "_" natTy .type) falseCase
       (.lam "b'" natTy (.lam "_" .type (.app (.pvar "recA") (.pvar "b'")))) (.pvar "b"))))
@@ -61,25 +61,25 @@ def sucArm (falseCase : Val) : Val :=
 -- import; two syntactically different `Le`s would never convert, which would break
 -- the one conversion the residue transition exists to make definitional. Single
 -- source of truth, asserted in S24Arrays (i.h).
-def LeFn : Val := kLeFn
-def Le (a b : Val) : Val := .app (.app LeFn a) b
+def LeFn : Term := kLeFn
+def Le (a b : Term) : Term := .app (.app LeFn a) b
 
 /-! ## `eqb, leb : Nat → Nat → Bool` — runtime-usable decision procedures -/
 
-def eqbFn : Val := .lam "a" natTy (natRecS (.lam "_" natTy (.pi "_" natTy boolTy))
+def eqbFn : Term := .lam "a" natTy (natRecS (.lam "_" natTy (.pi "_" natTy boolTy))
   (.lam "b" natTy (natRecS (.lam "_" natTy boolTy) tt (.lam "_" natTy (.lam "_" boolTy ff)) (.pvar "b")))
   (.lam "a'" natTy (.lam "recA" (.pi "_" natTy boolTy) (.lam "b" natTy
     (natRecS (.lam "_" natTy boolTy) ff
       (.lam "b'" natTy (.lam "_" boolTy (.app (.pvar "recA") (.pvar "b'")))) (.pvar "b")))))
   (.pvar "a"))
-def eqb (a b : Val) : Val := .app (.app eqbFn a) b
+def eqb (a b : Term) : Term := .app (.app eqbFn a) b
 
-def lebFn : Val := .lam "a" natTy (natRecS (.lam "_" natTy (.pi "_" natTy boolTy)) (.lam "_" natTy tt)
+def lebFn : Term := .lam "a" natTy (natRecS (.lam "_" natTy (.pi "_" natTy boolTy)) (.lam "_" natTy tt)
   (.lam "a'" natTy (.lam "recA" (.pi "_" natTy boolTy) (.lam "b" natTy
     (natRecS (.lam "_" natTy boolTy) ff
       (.lam "b'" natTy (.lam "_" boolTy (.app (.pvar "recA") (.pvar "b'")))) (.pvar "b")))))
   (.pvar "a"))
-def leb (a b : Val) : Val := .app (.app lebFn a) b
+def leb (a b : Term) : Term := .app (.app lebFn a) b
 
 /-! ## `count : Nat → List Nat → Nat` — the multiset counter (`listRec` + `boolRec`) -/
 
@@ -87,31 +87,31 @@ def leb (a b : Val) : Val := .app (.app lebFn a) b
 -- reaches the outer parameter the recursion is about. That was `pvar 4` and had to
 -- be counted; under names it says which variable it means, and `countFn` binding it
 -- is visible one line down.
-def countArm : Val := .lam "h" natTy (.lam "t" listNatTy (.lam "rec" natTy
+def countArm : Term := .lam "h" natTy (.lam "t" listNatTy (.lam "rec" natTy
   (boolRecS (.lam "_" boolTy natTy) (suc (.pvar "rec")) (.pvar "rec")
     (eqb (.pvar "n") (.pvar "h")))))
-def countFn : Val :=
+def countFn : Term :=
   .lam "n" natTy (.lam "l" listNatTy
     (listRecS natTy (.lam "_" listNatTy natTy) zero countArm (.pvar "l")))
-def count (n l : Val) : Val := .app (.app countFn n) l
+def count (n l : Term) : Term := .app (.app countFn n) l
 
 /-! ## `Bound : Nat → List Nat → Type` and `Sorted : List Nat → Type` -/
 
 -- Bound h l : the head of l is ≥ h (Nil ↦ ⊤, Cons h' _ ↦ Le h h').
-def boundArm : Val :=                                    -- OPEN in `h`, like `countArm`
+def boundArm : Term :=                                    -- OPEN in `h`, like `countArm`
   .lam "h'" natTy (.lam "t" listNatTy (.lam "_" .type (Le (.pvar "h") (.pvar "h'"))))
-def BoundFn : Val :=
+def BoundFn : Term :=
   .lam "h" natTy (.lam "l" listNatTy
     (listRecS natTy (.lam "_" listNatTy .type) unitTy boundArm (.pvar "l")))
-def Bound (h l : Val) : Val := .app (.app BoundFn h) l
+def Bound (h l : Term) : Term := .app (.app BoundFn h) l
 
 -- Sorted l : Nil ↦ ⊤ ; Cons h t ↦ Bound h t × Sorted t.
-def sortedArm : Val :=
+def sortedArm : Term :=
   .lam "h" natTy (.lam "t" listNatTy (.lam "rec" .type
     (.sigmaT "_" (Bound (.pvar "h") (.pvar "t")) (.pvar "rec"))))
-def SortedFn : Val :=
+def SortedFn : Term :=
   .lam "l" listNatTy (listRecS natTy (.lam "_" listNatTy .type) unitTy sortedArm (.pvar "l"))
-def Sorted (l : Val) : Val := .app SortedFn l
+def Sorted (l : Term) : Term := .app SortedFn l
 
 /-! ## `len`, `take`, `drop` — the segment vocabulary (§14)
 
@@ -120,45 +120,45 @@ def Sorted (l : Val) : Val := .app SortedFn l
     recursion shape. These are the length bound and the prefix/suffix a
     segment-scoped spec talks about. -/
 
-def lenArm : Val := .lam "h" natTy (.lam "t" listNatTy (.lam "rec" natTy (suc (.pvar "rec"))))
-def lenFn : Val :=
+def lenArm : Term := .lam "h" natTy (.lam "t" listNatTy (.lam "rec" natTy (suc (.pvar "rec"))))
+def lenFn : Term :=
   .lam "l" listNatTy (listRecS natTy (.lam "_" listNatTy natTy) zero lenArm (.pvar "l"))
-def len (l : Val) : Val := .app lenFn l
+def len (l : Term) : Term := .app lenFn l
 
-def takeArm : Val :=
+def takeArm : Term :=
   .lam "n'" natTy (.lam "recN" (.pi "_" listNatTy listNatTy) (.lam "l" listNatTy
     (listRecS natTy (.lam "_" listNatTy listNatTy) nilV
       (.lam "h" natTy (.lam "t" listNatTy (.lam "r" listNatTy
         (consV (.pvar "h") (.app (.pvar "recN") (.pvar "t"))))))
       (.pvar "l"))))
-def takeFn : Val :=
+def takeFn : Term :=
   .lam "n" natTy (natRecS (.lam "_" natTy (.pi "_" listNatTy listNatTy))
     (.lam "_" listNatTy nilV) takeArm (.pvar "n"))
-def take (n l : Val) : Val := .app (.app takeFn n) l
+def take (n l : Term) : Term := .app (.app takeFn n) l
 
-def dropArm : Val :=
+def dropArm : Term :=
   .lam "n'" natTy (.lam "recN" (.pi "_" listNatTy listNatTy) (.lam "l" listNatTy
     (listRecS natTy (.lam "_" listNatTy listNatTy) nilV
       (.lam "h" natTy (.lam "t" listNatTy (.lam "r" listNatTy (.app (.pvar "recN") (.pvar "t")))))
       (.pvar "l"))))
-def dropFn : Val :=
+def dropFn : Term :=
   .lam "n" natTy (natRecS (.lam "_" natTy (.pi "_" listNatTy listNatTy))
     (.lam "l" listNatTy (.pvar "l")) dropArm (.pvar "n"))
-def drop (n l : Val) : Val := .app (.app dropFn n) l
+def drop (n l : Term) : Term := .app (.app dropFn n) l
 
 /-- `add a b` by recursion on `a` (`add Z b = b`, `add (S a') b = S (add a' b)`).
     Aliased from the kernel for the same reason as `Le`: premise (3) of CARVE
     decomposes an extent with `add`, so the kernel needs it. -/
-def addFn : Val := kAddFn
-def add (a b : Val) : Val := .app (.app addFn a) b
+def addFn : Term := kAddFn
+def add (a b : Term) : Term := .app (.app addFn a) b
 
 /-- `append a b` by recursion on `a` (`Nil ↦ b`, `Cons h t ↦ Cons h (append t b)`). -/
-def appendFn : Val :=
+def appendFn : Term :=
   .lam "a" listNatTy (.lam "b" listNatTy
     (listRecS natTy (.lam "_" listNatTy listNatTy) (.pvar "b")
       (.lam "h" natTy (.lam "t" listNatTy (.lam "r" listNatTy (consV (.pvar "h") (.pvar "r")))))
       (.pvar "a")))
-def append (a b : Val) : Val := .app (.app appendFn a) b
+def append (a b : Term) : Term := .app (.app appendFn a) b
 
 /-! ## First lemma: `le_refl : Π n. Le n n`, by `natRec`
 
@@ -166,64 +166,48 @@ def append (a b : Val) : Val := .app (.app appendFn a) b
     the step returns the IH unchanged, because `Le (S m) (S m)` and `Le m m` are
     definitionally equal. -/
 
-def le_refl : Val :=
+def le_refl : Term :=
   .lam "n" natTy (natRecS (.lam "m" natTy (Le (.pvar "m") (.pvar "m"))) star
     (.lam "m" natTy (.lam "rec" (Le (.pvar "m") (.pvar "m")) (.pvar "rec"))) (.pvar "n"))
-def le_refl_ty : Val := .pi "n" natTy (Le (.pvar "n") (.pvar "n"))
+def le_refl_ty : Term := .pi "n" natTy (Le (.pvar "n") (.pvar "n"))
 
 /-! ## Term-level Std (§12): the library at telescope/return/owed positions
 
-    A program's telescope, return, and owed types are `Term`s; the library above
-    is `Val`s. `toTerm` reifies the (pure) library `Val`s back to `Term`s once —
-    single source of truth — so `LeT`/`SortedT`/`countT`/`BoundT`/`le_reflT` can
-    sit in a `FnDef`. Runtime `Val` forms (`sym`/`loanM`/`borrowM`/`bot`) never
-    occur in the pure library, so `toTerm`'s fallback is unreachable here. -/
+    **The `toTerm` bridge is GONE** (M32 R1). It existed because a program's
+    telescope, return and owed types were `Term`s while the library above was
+    `Val`s, and it reified one into the other so there was a single source of
+    truth. With knowledge at rest BEING a `Term`, the two are the same
+    representation and the reification is the identity — so the `…T` names below
+    are the library terms themselves, kept because 400 call sites spell them that
+    way and because the distinction they marked (a library value versus the term
+    that denotes it) no longer exists to be marked. -/
 
-mutual
-  def toTerm : Val → Dllbc.Term
-    | .type => .type
-    | .const c => .const c
-    | .pvar x => .pvar x
-    | .lam x d b => .lam x (toTerm d) (toTerm b)
-    | .pi x d c => .pi x (toTerm d) (toTerm c)
-    | .sigmaT x d c => .sigmaT x (toTerm d) (toTerm c)
-    | .app f a => .app (toTerm f) (toTerm a)
-    | .idT a b c => .idT (toTerm a) (toTerm b) (toTerm c)
-    | .ctor n args => .ctorApp n (toTermList args)
-    | _ => .unit                                   -- runtime forms: unreachable in the pure library
-  termination_by v => sizeOf v
-  def toTermList : List Val → List Dllbc.Term
-    | [] => []
-    | v :: vs => toTerm v :: toTermList vs
-  termination_by vs => sizeOf vs
-end
-
-def LeFnT : Dllbc.Term := toTerm LeFn
+def LeFnT : Dllbc.Term := LeFn
 def LeT (a b : Dllbc.Term) : Dllbc.Term := .app (.app LeFnT a) b
-def countFnT : Dllbc.Term := toTerm countFn
+def countFnT : Dllbc.Term := countFn
 def countT (n l : Dllbc.Term) : Dllbc.Term := .app (.app countFnT n) l
-def BoundFnT : Dllbc.Term := toTerm BoundFn
+def BoundFnT : Dllbc.Term := BoundFn
 def BoundT (h l : Dllbc.Term) : Dllbc.Term := .app (.app BoundFnT h) l
-def SortedFnT : Dllbc.Term := toTerm SortedFn
+def SortedFnT : Dllbc.Term := SortedFn
 def SortedT (l : Dllbc.Term) : Dllbc.Term := .app SortedFnT l
-def le_reflT : Dllbc.Term := toTerm le_refl
+def le_reflT : Dllbc.Term := le_refl
 
 /-- Normalize a pure `Term` (reflect → `nfV` → reify). §18: exposes a computed
     subterm (e.g. an `eqb`-spine hidden in a `count`-unfolding) so
     `abstractOccurrences` can find it in a natural goal. Emitted by the
     generalize-elim macro by NAME, so no import cycle with the macro layer. -/
-def nfTerm (t : Dllbc.Term) : Dllbc.Term := toTerm (Dllbc.Val.nfV 1000 (Dllbc.Val.Term.toValPure t))
-def lenFnT : Dllbc.Term := toTerm lenFn
+def nfTerm (t : Dllbc.Term) : Dllbc.Term := Dllbc.Pure.nf 1000 t
+def lenFnT : Dllbc.Term := lenFn
 def lenT (l : Dllbc.Term) : Dllbc.Term := .app lenFnT l
-def takeFnT : Dllbc.Term := toTerm takeFn
+def takeFnT : Dllbc.Term := takeFn
 def takeT (n l : Dllbc.Term) : Dllbc.Term := .app (.app takeFnT n) l
-def dropFnT : Dllbc.Term := toTerm dropFn
+def dropFnT : Dllbc.Term := dropFn
 def dropT (n l : Dllbc.Term) : Dllbc.Term := .app (.app dropFnT n) l
-def eqbFnT : Dllbc.Term := toTerm eqbFn
-def lebFnT : Dllbc.Term := toTerm lebFn
-def addFnT : Dllbc.Term := toTerm addFn
+def eqbFnT : Dllbc.Term := eqbFn
+def lebFnT : Dllbc.Term := lebFn
+def addFnT : Dllbc.Term := addFn
 def addT (a b : Dllbc.Term) : Dllbc.Term := .app (.app addFnT a) b
-def appendFnT : Dllbc.Term := toTerm appendFn
+def appendFnT : Dllbc.Term := appendFn
 def appendT (a b : Dllbc.Term) : Dllbc.Term := .app (.app appendFnT a) b
 
 end Dllbc.Std

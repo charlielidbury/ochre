@@ -63,7 +63,7 @@ namespace Dllbc.Tests.S23Direct
 
 /-- Type-check a closed term against a closed type in the pure seed (as in §18/§19). -/
 def chk (tm ty : Term) : Bool :=
-  match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasType 3000 v t).run (seedPure [] []) with
+  match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasTypeT 3000 v t).run (seedPure [] []) with
   | .ok r _ => r
   | .error _ _ => false
 
@@ -131,10 +131,10 @@ example : chk ssnd ssnd_ty = true := by native_decide
 /-! ## (i.c) The ι-rule computes -/
 
 -- `sfst (Pair 2 (LeRefl 2)) ⇝ 2`, by ι on a concrete Pair.
-def pv (t : Term) : Val := Val.nfV 4000 (Val.Term.toValPure t)
+def pv (t : Term) : Term := Pure.nf 4000 t
 def vnat : Nat → Val | 0 => .ctor "Z" [] | k + 1 => .ctor "S" [vnat k]
 def sfstApp : Term := prog{ sfst (Pair (S (S Z)) (LeRefl (S (S Z)))) }
-example : (pv sfstApp == vnat 2) = true := by native_decide
+example : (Val.know (pv sfstApp) == vnat 2) = true := by native_decide
 
 -- ι fires under binders on a Pair whose COMPONENTS are neutral — the case that
 -- matters, since a caller destructures a certificate about symbolic values, never
@@ -815,11 +815,11 @@ example : progRejects (insUnder (exitIs oldvT) .unit)
 
 -- `InsertL` computes, including the past-the-end case the `Nil` branch implements.
 def insLC (k x : Nat) (l : List Nat) : Term := insLT (tnatT k) (tnatT x) (tlistT l)
-example : (pv (insLC 0 9 [1,2,3]) == vlistV [9,1,2,3]) = true := by native_decide
-example : (pv (insLC 2 9 [1,2,3]) == vlistV [1,2,9,3]) = true := by native_decide
-example : (pv (insLC 3 9 [1,2,3]) == vlistV [1,2,3,9]) = true := by native_decide
-example : (pv (insLC 5 9 [1,2,3]) == vlistV [1,2,3,9]) = true := by native_decide
-example : (pv (insLC 0 9 []) == vlistV [9]) = true := by native_decide
+example : (Val.know (pv (insLC 0 9 [1,2,3])) == vlistV [9,1,2,3]) = true := by native_decide
+example : (Val.know (pv (insLC 2 9 [1,2,3])) == vlistV [1,2,9,3]) = true := by native_decide
+example : (Val.know (pv (insLC 3 9 [1,2,3])) == vlistV [1,2,3,9]) = true := by native_decide
+example : (Val.know (pv (insLC 5 9 [1,2,3])) == vlistV [1,2,3,9]) = true := by native_decide
+example : (Val.know (pv (insLC 0 9 [])) == vlistV [9]) = true := by native_decide
 
 -- SUBJECT: executing-mode raw Term caller.
 def insCallerTail (l : List Nat) (k x : Nat) : Term :=
@@ -1965,7 +1965,7 @@ def natT : Term := .const "Nat"
 
 /-- Type-check a closed term against a closed type in the pure seed (as in §18). -/
 def chk (tm ty : Term) : Bool :=
-  match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasType 3000 v t).run (seedPure [] []) with
+  match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasTypeT 3000 v t).run (seedPure [] []) with
   | .ok r _ => r
   | .error _ _ => false
 
@@ -2385,16 +2385,16 @@ example : progRejects stuckProbeNonExh "non-exhaustive" = true := by native_deci
 
 -- SUBJECT: raw Val/Term builders (pv/vnat/vlist/tlist) — construct the pure-model expected
 -- values and the executing-mode inputs; the raw Val/Term IS the subject under test here.
-def pv (t : Term) : Val := Val.nfV 4000 (Val.Term.toValPure t)
+def pv (t : Term) : Term := Pure.nf 4000 t
 def vnat : Nat → Val | 0 => .ctor "Z" [] | k + 1 => .ctor "S" [vnat k]
 def vlist : List Nat → Val | [] => .ctor "Nil" [] | x :: xs => .ctor "Cons" [vnat x, vlist xs]
 def tlist : List Nat → Term | [] => .ctorApp "Nil" [] | x :: xs => .ctorApp "Cons" [tnat x, tlist xs]
 def partLT (n : Nat) (l : List Nat) : Term := .app (.app StdLemmas.PartitionL (tnat n)) (tlist l)
 
-example : (pv (partLT 3 [3,1,2]) == vlist [2,1,3]) = true := by native_decide
-example : (pv (partLT 3 [1,2,3]) == vlist [1,2,3]) = true := by native_decide          -- already partitioned
-example : (pv (partLT 3 [3,2,1]) == vlist [1,2,3]) = true := by native_decide          -- reverse sorted
-example : (pv (partLT 5 [3,5,1,2,4]) == vlist [2,1,3,5,4]) = true := by native_decide   -- exercises the swap
+example : (Val.know (pv (partLT 3 [3,1,2])) == vlist [2,1,3]) = true := by native_decide
+example : (Val.know (pv (partLT 3 [1,2,3])) == vlist [1,2,3]) = true := by native_decide          -- already partitioned
+example : (Val.know (pv (partLT 3 [3,2,1])) == vlist [1,2,3]) = true := by native_decide          -- reverse sorted
+example : (Val.know (pv (partLT 5 [3,5,1,2,4])) == vlist [2,1,3,5,4]) = true := by native_decide   -- exercises the swap
 
 /-! ## M21-2 — PartIdxL (the boundary index) and SortL (the quicksort model) -/
 
@@ -2402,17 +2402,17 @@ def idxLT (n : Nat) (l : List Nat) : Term := .app (.app StdLemmas.PartIdxL (tnat
 def sortLT (fuel n : Nat) (l : List Nat) : Term := .app (.app (.app StdLemmas.SortL (tnat fuel)) (tnat n)) (tlist l)
 
 -- PartIdxL = the pivot's final position (matches where the partition run lands it):
-example : (pv (idxLT 3 [3,1,2]) == vnat 2) = true := by native_decide    -- pivot 3 → index 2
-example : (pv (idxLT 3 [1,2,3]) == vnat 0) = true := by native_decide     -- pivot 1 stays at 0
-example : (pv (idxLT 3 [3,2,1]) == vnat 2) = true := by native_decide
-example : (pv (idxLT 5 [3,5,1,2,4]) == vnat 2) = true := by native_decide -- [2,1,3,5,4], pivot at 2
+example : (Val.know (pv (idxLT 3 [3,1,2])) == vnat 2) = true := by native_decide    -- pivot 3 → index 2
+example : (Val.know (pv (idxLT 3 [1,2,3])) == vnat 0) = true := by native_decide     -- pivot 1 stays at 0
+example : (Val.know (pv (idxLT 3 [3,2,1])) == vnat 2) = true := by native_decide
+example : (Val.know (pv (idxLT 5 [3,5,1,2,4])) == vnat 2) = true := by native_decide -- [2,1,3,5,4], pivot at 2
 
 -- SortL sorts (fuel = length). Small cases only — sortL's toValPure inlines the
 -- whole partition/scan stack, so pv/nfV on it is heavy; the executing quicksort
 -- (M21-3) validates it on the larger input classes far more cheaply.
-example : (pv (sortLT 2 2 [2,1]) == vlist [1,2]) = true := by native_decide          -- the smallest sort
-example : (pv (sortLT 1 1 [7]) == vlist [7]) = true := by native_decide              -- singleton
-example : (pv (sortLT 0 0 []) == vlist []) = true := by native_decide                -- empty
+example : (Val.know (pv (sortLT 2 2 [2,1])) == vlist [1,2]) = true := by native_decide          -- the smallest sort
+example : (Val.know (pv (sortLT 1 1 [7])) == vlist [7]) = true := by native_decide              -- singleton
+example : (Val.know (pv (sortLT 0 0 [])) == vlist []) = true := by native_decide                -- empty
 
 /-! ## M21-3 — SortRangeL (the index-bounded quicksort spec, plan of record) -/
 
@@ -2421,14 +2421,14 @@ def sortRangeLT (fuel lo cnt : Nat) (l : List Nat) : Term :=
 
 -- Full-range (lo=0, cnt=len): SortRangeL 0 (len l) l is a full sort — the top-
 -- level shape the imperative quicksort's back carries.
-example : (pv (sortRangeLT 2 0 2 [2,1]) == vlist [1,2]) = true := by native_decide
-example : (pv (sortRangeLT 1 0 1 [7]) == vlist [7]) = true := by native_decide
-example : (pv (sortRangeLT 0 0 0 []) == vlist []) = true := by native_decide
-example : (pv (sortRangeLT 3 0 3 [3,2,1]) == vlist [1,2,3]) = true := by native_decide   -- recursion fires
+example : (Val.know (pv (sortRangeLT 2 0 2 [2,1])) == vlist [1,2]) = true := by native_decide
+example : (Val.know (pv (sortRangeLT 1 0 1 [7])) == vlist [7]) = true := by native_decide
+example : (Val.know (pv (sortRangeLT 0 0 0 [])) == vlist []) = true := by native_decide
+example : (Val.know (pv (sortRangeLT 3 0 3 [3,2,1])) == vlist [1,2,3]) = true := by native_decide   -- recursion fires
 -- Sub-range (lo>0): sort only [lo, lo+cnt), leaving the rest untouched — the new
 -- capability the recursion rides. [5,3,2,9] sorting [3,2] at offset 1 → [5,2,3,9].
-example : (pv (sortRangeLT 2 1 2 [5,3,2,9]) == vlist [5,2,3,9]) = true := by native_decide
-example : (pv (sortRangeLT 3 1 3 [9,3,1,2,7]) == vlist [9,1,2,3,7]) = true := by native_decide
+example : (Val.know (pv (sortRangeLT 2 1 2 [5,3,2,9])) == vlist [5,2,3,9]) = true := by native_decide
+example : (Val.know (pv (sortRangeLT 3 1 3 [9,3,1,2,7])) == vlist [9,1,2,3,7]) = true := by native_decide
 
 /-! ## M19-C (imperative, executing mode) — the body computes `PartitionL`
 
@@ -2453,7 +2453,7 @@ def partCaller (lst : List Nat) (n : Nat) : Term :=
 
 def runPart (lst : List Nat) (n : Nat) : Bool :=
   match Dllbc.Tests.S9Diff.runExec (withScan (partCaller lst n)) with
-  | .ok env => env.lookup "y" == some (pv (partLT n lst))
+  | .ok env => env.lookup "y" == some (Val.know (pv (partLT n lst)))
   | .error _ => false
 
 -- The executing-mode partition agrees with the pure model on every input class:

@@ -62,6 +62,30 @@ def isReservedName (s : String) : Bool := s.startsWith "§"
     would destroy that. -/
 def readbackName (d : Nat) : String := "§" ++ toString d
 
+/-! ### σ's, as reserved names (M32 R1)
+
+    At rest, knowledge is a canonical `Term` (suspensions.md §2.3), so a symbolic
+    value — which used to be its own value former, `Val.sym σ` — is a `pvar` in
+    the reserved namespace. One atom former instead of two, and the payoff is
+    that ⇜'s refinement becomes literally `Term.substP` at a name and §19's
+    generalization becomes an occurrence rewrite: the two sweeps stop being
+    value-tree machinery and become the substitution the pure fragment already
+    has.
+
+    `§σ<digits>` is disjoint from every binder the kernel mints — `§<digits>`
+    (readback), `§gen`, `§let<digits>`, `§p<digits>`, `§_`, and the hand-written
+    recursor premise binders (`§k §ih §h §t §x §y §n §xs §lo`) — which is what
+    makes `substP`'s "stop at a binder that rebinds the name" guard vacuous for
+    them (suspensions.md §6, first sharp edge). Nothing rebinds a σ, so nothing
+    can shadow one. -/
+
+/-- The reserved pure name a σ is written as. -/
+def symName (σ : Nat) : String := "§σ" ++ toString σ
+
+/-- Recognize one. -/
+def symOfName? (s : String) : Option Nat :=
+  if s.startsWith "§σ" then (s.drop 2).toNat? else none
+
 /-- A runtime variable: a globally-unique `id` plus a display `name`. -/
 structure Var where
   id : Nat
@@ -742,6 +766,284 @@ def trivialOwedT : Term → Bool
   | .borrowT _ τ s => Term.alphaEq s τ
   | .sigmaT _ _ (.borrowT _ τ s) => Term.alphaEq s τ
   | _ => true
+
+/-! ## The σ atom and the two sweeps, at `Term` level (M32 R1)
+
+    ⇜'s refinement and §19's generalization used to be `Val`-tree traversals
+    (`substSym`, `abstractInto`). With knowledge at rest being a canonical `Term`
+    they are `Term` traversals, and one of them stops being a traversal at all:
+    **refinement is `substP` at a σ's reserved name.** Only generalization needs
+    its own function, because it is keyed on a COMPOUND (a whole spine) rather
+    than on an atom — which is the same fact that makes it the one non-commuting
+    sweep in the system (suspensions.md §3). -/
+
+/-- A σ as a term. -/
+def Term.sym (σ : Nat) : Term := .pvar (symName σ)
+
+/-- The σ a term IS, if it is a bare one. -/
+def Term.symOf? : Term → Option Nat
+  | .pvar x => symOfName? x
+  | _ => none
+
+/-! Symbolic ids occurring in `t`, in pre-order of first appearance.
+
+    It walks exactly the forms `Term.substP` walks, and that agreement is
+    load-bearing rather than tidy: canonicalization reads the σ order off this
+    traversal and applies it with `renumberSyms`, so a σ visible to one and
+    untouched by the other would be renumbered out of existence. -/
+mutual
+  def Term.symIds : Term → List Nat
+    | .pvar x => match symOfName? x with | some σ => [σ] | none => []
+    | .cmpT τ => Term.symIds τ
+    | .lam _ d b | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => Term.symIds d ++ Term.symIds b
+    | .app f a => Term.symIds f ++ Term.symIds a
+    | .idT a b c => Term.symIds a ++ Term.symIds b ++ Term.symIds c
+    | .ctorApp _ args => Term.symIdsList args
+    | .deref t => Term.symIds t
+    | .index t i ev =>
+      Term.symIds t ++ Term.symIds i ++ (match ev with | some e => Term.symIds e | none => [])
+    | .range t lo cnt rest ev eqc =>
+      Term.symIds t ++ Term.symIds lo
+        ++ (match cnt with | some c => Term.symIds c | none => [])
+        ++ (match rest with | some r => Term.symIds r | none => [])
+        ++ (match ev with | some e => Term.symIds e | none => [])
+        ++ (match eqc with | some e => Term.symIds e | none => [])
+    | _ => []
+  termination_by t => sizeOf t
+  def Term.symIdsList : List Term → List Nat
+    | [] => []
+    | t :: ts => Term.symIds t ++ Term.symIdsList ts
+  termination_by ts => sizeOf ts
+end
+
+/-! Rewrite every σ id by `f` — canonicalization's other half. -/
+mutual
+  def Term.renumberSyms (f : Nat → Nat) : Term → Term
+    | .pvar x => match symOfName? x with | some σ => .pvar (symName (f σ)) | none => .pvar x
+    | .cmpT τ => .cmpT (Term.renumberSyms f τ)
+    | .lam y d b => .lam y (Term.renumberSyms f d) (Term.renumberSyms f b)
+    | .pi y d b => .pi y (Term.renumberSyms f d) (Term.renumberSyms f b)
+    | .sigmaT y d b => .sigmaT y (Term.renumberSyms f d) (Term.renumberSyms f b)
+    | .borrowT y d b => .borrowT y (Term.renumberSyms f d) (Term.renumberSyms f b)
+    | .app g a => .app (Term.renumberSyms f g) (Term.renumberSyms f a)
+    | .idT a b c => .idT (Term.renumberSyms f a) (Term.renumberSyms f b) (Term.renumberSyms f c)
+    | .ctorApp n args => .ctorApp n (Term.renumberSymsList f args)
+    | .deref t => .deref (Term.renumberSyms f t)
+    | .index t i ev => .index (Term.renumberSyms f t) (Term.renumberSyms f i)
+        (match ev with | some e => some (Term.renumberSyms f e) | none => none)
+    | .range t lo cnt rest ev eqc =>
+      .range (Term.renumberSyms f t) (Term.renumberSyms f lo)
+        (match cnt with | some c => some (Term.renumberSyms f c) | none => none)
+        (match rest with | some r => some (Term.renumberSyms f r) | none => none)
+        (match ev with | some e => some (Term.renumberSyms f e) | none => none)
+        (match eqc with | some e => some (Term.renumberSyms f e) | none => none)
+    | t => t
+  termination_by t => sizeOf t
+  def Term.renumberSymsList (f : Nat → Nat) : List Term → List Term
+    | [] => []
+    | t :: ts => Term.renumberSyms f t :: Term.renumberSymsList f ts
+  termination_by ts => sizeOf ts
+end
+
+/-- **Refine `σ := repl` in a term** — ⇜'s substitution half. It is `substP` at
+    the σ's name and nothing else: the rebinding guard `substP` carries is vacuous
+    here (nothing binds a `§σ`-name), so the whole of refinement is the
+    substitution the pure fragment already had. -/
+def Term.substSym (σ : Nat) (repl : Term) (t : Term) : Term :=
+  Term.substP (symName σ) repl t
+
+/-! **Abstract a whole subterm `target` into the σ `σb`, everywhere** — §19's
+    generalization at `Term` level, the inverse of `substSym` and keyed on a
+    compound rather than an atom.
+
+    No shadowing guard, and the reason is the reserved namespace rather than an
+    omission: the targets are stuck spines over σ's, whose free names are all
+    `§σ`-names, and no binder anywhere rebinds one. `absOcc`'s `shadowed` set
+    would therefore be permanently empty.
+
+    The comparison is `Term.beq`, which is MODE-SENSITIVE, where the `Val` sweep
+    this replaces was mode-blind (`Val.beq` unwrapped `cmpT`). That is the house
+    pattern rather than a change of heart: `absOcc` wants to see a marker, and the
+    sites that must not — `piAgree`, `checkArm`, `sealRec`, `trivialOwedT` — strip
+    with `.stripCmp` AT THE SITE and leave the equality honest. Stage V measured
+    the difference unreachable by the corpus (zero divergences over the whole
+    suite). -/
+mutual
+  def Term.abstractInto (target : Term) (σb : Nat) : Term → Term
+    | .ctorApp n args =>
+      if Term.beq (.ctorApp n args) target then Term.sym σb
+      else .ctorApp n (Term.abstractIntoList target σb args)
+    | .app f a =>
+      if Term.beq (.app f a) target then Term.sym σb
+      else .app (Term.abstractInto target σb f) (Term.abstractInto target σb a)
+    | .idT a b c =>
+      if Term.beq (.idT a b c) target then Term.sym σb
+      else .idT (Term.abstractInto target σb a) (Term.abstractInto target σb b)
+        (Term.abstractInto target σb c)
+    | .lam x d b =>
+      if Term.beq (.lam x d b) target then Term.sym σb
+      else .lam x (Term.abstractInto target σb d) (Term.abstractInto target σb b)
+    | .pi x d c =>
+      if Term.beq (.pi x d c) target then Term.sym σb
+      else .pi x (Term.abstractInto target σb d) (Term.abstractInto target σb c)
+    | .sigmaT x d c =>
+      if Term.beq (.sigmaT x d c) target then Term.sym σb
+      else .sigmaT x (Term.abstractInto target σb d) (Term.abstractInto target σb c)
+    | .borrowT x d c =>
+      if Term.beq (.borrowT x d c) target then Term.sym σb
+      else .borrowT x (Term.abstractInto target σb d) (Term.abstractInto target σb c)
+    -- A mode marker is never itself an abstraction target (it is not a term), so
+    -- recurse straight through rather than testing it — `absOcc`'s precedent.
+    | .cmpT τ => .cmpT (Term.abstractInto target σb τ)
+    | .deref u =>
+      if Term.beq (.deref u) target then Term.sym σb
+      else .deref (Term.abstractInto target σb u)
+    | s => if Term.beq s target then Term.sym σb else s
+  termination_by t => sizeOf t
+  def Term.abstractIntoList (target : Term) (σb : Nat) : List Term → List Term
+    | [] => []
+    | t :: ts => Term.abstractInto target σb t :: Term.abstractIntoList target σb ts
+  termination_by ts => sizeOf ts
+end
+
+/-! ## Conversion equality: structural, and MODE-BLIND (M32 R1)
+
+    `convert` is `nf a == nf b`, and `Val.beq` — the equality it used to be built
+    on — unwrapped `cmpT` on either side so that no comptime judgment could
+    observe a binder's mode (§6, "case is inert under ⇝"). `Term.beq` is
+    deliberately mode-SENSITIVE (`absOcc` must see a marker), so conversion needs
+    its own equality rather than inheriting one, and this is it: `Term.beq` plus
+    the three `cmpT` arms.
+
+    The alternative — modes part of type identity — was rejected on the calculus's
+    own evidence and the evidence has not moved: the machine builds recursor
+    premise types with no modes, and `prog{}`'s motive binders are capitalised by
+    convention, so under a mode-sensitive conversion every one of those would have
+    to agree on a mode that ⇝ has no use for. -/
+mutual
+  def Term.convEq : Term → Term → Bool
+    | .cmpT a, .cmpT b => Term.convEq a b
+    | .cmpT a, b => Term.convEq a b
+    | a, .cmpT b => Term.convEq a b
+    | .pvar x, .pvar y => x == y
+    | .type, .type => true
+    | .const n, .const m => n == m
+    | .unit, .unit => true
+    | .var x, .var y => x == y
+    | .ctorApp n as, .ctorApp m bs => n == m && Term.convEqList as bs
+    | .app a b, .app c d => Term.convEq a c && Term.convEq b d
+    | .idT a b c, .idT d e f => Term.convEq a d && Term.convEq b e && Term.convEq c f
+    | .lam x a b, .lam y c d => x == y && Term.convEq a c && Term.convEq b d
+    | .pi x a b, .pi y c d => x == y && Term.convEq a c && Term.convEq b d
+    | .sigmaT x a b, .sigmaT y c d => x == y && Term.convEq a c && Term.convEq b d
+    | .borrowT x a b, .borrowT y c d => x == y && Term.convEq a c && Term.convEq b d
+    | .deref a, .deref b => Term.convEq a b
+    | .borrow a, .borrow b => Term.convEq a b
+    -- Everything else is a runtime statement form, which cannot occur in a normal
+    -- form; `beq` keeps the function total without a second scoping story.
+    | a, b => Term.beq a b
+  termination_by t u => sizeOf t + sizeOf u
+  def Term.convEqList : List Term → List Term → Bool
+    | [], [] => true
+    | a :: as, b :: bs => Term.convEq a b && Term.convEqList as bs
+    | _, _ => false
+  termination_by ts us => sizeOf ts + sizeOf us
+end
+
+/-! ## Rendering (M32 R1)
+
+    Knowledge prints where values used to, so this reproduces `Val.prettyPrec`
+    case for case — including the two renderings that are about the ARRAY layer
+    (`Arr` as `[…]`, `§segs` as `Arr⟨…⟩`) and the σ sigil, which is why a `pvar`
+    asks `symOfName?` before falling back to `#name`. Rejections quote values, and
+    a suite that asserts on distinctive substrings is what holds this to it. -/
+mutual
+  def Term.prettyPrec (prec : Nat) : Term → String
+    | .pvar x => match symOfName? x with | some σ => s!"σ{σ}" | none => s!"#{x}"
+    | .type => "Type"
+    | .const c => c
+    | .unit => "()"
+    | .var x => s!"{x.name}#{x.id}"
+    | .cmpT τ => "⇝" ++ Term.prettyPrec 1 τ
+    | .ctorApp "Arr" vs => "[" ++ Term.prettyCommas vs ++ "]"
+    | .ctorApp "§segs" segs => "Arr⟨" ++ Term.prettyCommas segs ++ "⟩"
+    | .ctorApp "§seg" [c, b] => Term.prettyPrec 1 c ++ " ▷ " ++ Term.prettyPrec 0 b
+    | .ctorApp name [] => name
+    | .ctorApp name args =>
+      let s := name ++ Term.prettyArgs args
+      if prec > 0 then s!"({s})" else s
+    | .pi x d c =>
+      let s := s!"Π({x} : {Term.prettyPrec 1 d}). {Term.prettyPrec 0 c}"
+      if prec > 0 then s!"({s})" else s
+    | .sigmaT x d c =>
+      let s := s!"Σ({x} : {Term.prettyPrec 1 d}). {Term.prettyPrec 0 c}"
+      if prec > 0 then s!"({s})" else s
+    | .lam x d b =>
+      let s := s!"λ({x} : {Term.prettyPrec 1 d}). {Term.prettyPrec 0 b}"
+      if prec > 0 then s!"({s})" else s
+    | .app f a =>
+      let s := Term.prettyPrec 0 f ++ " " ++ Term.prettyPrec 1 a
+      if prec > 0 then s!"({s})" else s
+    | .idT _ a b =>
+      let s := s!"Id {Term.prettyPrec 1 a} {Term.prettyPrec 1 b}"
+      if prec > 0 then s!"({s})" else s
+    | .borrowT x τ S =>
+      let s := s!"&mut ({x} : {Term.prettyPrec 0 τ} ↝ {Term.prettyPrec 0 S})"
+      if prec > 0 then s!"({s})" else s
+    | .deref t => "*" ++ Term.prettyPrec 1 t
+    | .borrow t => "&mut " ++ Term.prettyPrec 1 t
+    -- The binders, not the body — a rejection naming a function wants to say WHICH
+    -- one, and the body is a whole program (`Val.rfn`'s rendering, unchanged).
+    | .lamR xs _ => "λr(" ++ String.intercalate ", " (xs.map (·.1.name)) ++ "){…}"
+    | .seal t _ => "(" ++ Term.prettyPrec 0 t ++ " : …)"
+    | .call f _ => f ++ "(…)"
+    | .callV x _ => x.name ++ "(…)"
+    | .index t i _ => Term.prettyPrec 1 t ++ "[" ++ Term.prettyPrec 0 i ++ "]"
+    | .range t lo _ _ _ _ => Term.prettyPrec 1 t ++ "[" ++ Term.prettyPrec 0 lo ++ " ; …]"
+    | .letIn x _ _ => s!"let {x.name} = …"
+    | .assign _ _ _ => "… := …"
+    | .seq _ _ => "… ; …"
+    | .matchE x _ _ => s!"match {x.name} " ++ "{…}"
+  termination_by t => sizeOf t
+  def Term.prettyArgs : List Term → String
+    | [] => ""
+    | a :: as => " " ++ Term.prettyPrec 1 a ++ Term.prettyArgs as
+  termination_by as => sizeOf as
+  def Term.prettyCommas : List Term → String
+    | [] => ""
+    | [a] => Term.prettyPrec 0 a
+    | a :: as => Term.prettyPrec 0 a ++ ", " ++ Term.prettyCommas as
+  termination_by as => sizeOf as
+end
+
+/-- Doc-trace rendering of a term (top level, no surrounding parens). -/
+def Term.pretty (t : Term) : String := Term.prettyPrec 0 t
+
+/-! ## Numerals and the small constructor vocabulary, at `Term` level
+
+    The twins of `Val.zero`/`succ`/`nat`/`nil`/`cons`, which now build knowledge
+    leaves through the skeleton's smart constructor while these build the
+    knowledge itself. Numerals abbreviate `Nat` (doc §1.1), so they are sugar
+    rather than a form. -/
+
+/-- `Z`, the numeral zero. -/
+def Term.zero : Term := .ctorApp "Z" []
+/-- Successor. -/
+def Term.succ (t : Term) : Term := .ctorApp "S" [t]
+/-- Church-style `Nat` numeral abbreviation. -/
+def Term.nat : Nat → Term
+  | 0 => Term.zero
+  | n + 1 => Term.succ (Term.nat n)
+/-- The empty list. -/
+def Term.nil : Term := .ctorApp "Nil" []
+/-- List cons. -/
+def Term.cons (h t : Term) : Term := .ctorApp "Cons" [h, t]
+
+/-- Read a `Nat` term as a Lean numeral, if it is concrete. -/
+def Term.natOf? : Term → Option Nat
+  | .ctorApp "Z" [] => some 0
+  | .ctorApp "S" [n] => (Term.natOf? n).map (· + 1)
+  | _ => none
 
 /-! ## Reading a binder's mode off its domain (combining-fns §6)
 

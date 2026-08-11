@@ -27,162 +27,170 @@ compare equal up to ℓ-renaming.
 
 namespace Dllbc
 
-/-- Runtime value tree.
+/-- **The state skeleton** (M32 R1, suspensions.md §2.3): what a store slot holds.
 
-    `ctor` is a declared/anonymous constructor applied to argument values.
-    `bot`/`loanM`/`borrowM` are the ownership machinery of §0. `sym σ` is a
-    **symbolic value** (§3.2): an unknown value of the borrow-free
-    (*unrestricted*) fragment — a snapshot the checker knows the type of but
-    not the value of. Because snapshots are unrestricted, a `sym` never
-    contains or hides borrows or loan markers: it is a leaf, it moves like any
-    owned value, and `drop` discards it. (No σ-context/types yet — those
-    arrive with the pure layer; here σ is just a fresh id.) -/
+    `Term` does not grow state formers — giving it one would make a marker
+    grammatically writable, which is the objection that killed the union-tree
+    horizon. So the split runs the other way: **knowledge at rest is a canonical
+    `Term`, and the store holds a SKELETON whose leaves are knowledge.**
+
+      * `know t` — marker-free knowledge, canonical. A σ is `Term.sym σ`, a
+        constructor tree is a `ctorApp` spine, a type is a type.
+      * `node n args` — constructor structure that HOLDS state somewhere inside.
+      * `bot`/`loanM`/`borrowM` — the ownership machinery of §0, unchanged.
+      * `rfn` — a runtime function value (R2 folds it into a closure `(ρ, Term)`).
+
+    The skeleton is exactly as large as the live state: `Val.ctor` below collapses
+    a node whose children are all knowledge back to one `know` leaf, and state
+    intruding (a borrow-mode match pushing field loans in, a carve) re-splits it.
+
+    **The invariant this buys is type-enforced rather than guarded**: knowledge
+    cannot contain state, because a `Term` has nowhere to put a marker. nbe.md
+    §3.2's capture assertion and `Val.capturedMarkers`, the whole-corpus
+    instrumentation that policed it, are gone — not because the rule was dropped
+    but because the representation now states it. State containing knowledge (the
+    leaves) stays possible, which is the correct asymmetry.
+
+    The environment Ω maps variables to these. It is insertion-ordered and slots
+    are **overwritten in place, never removed** — matching the doc's traces, where
+    a moved-out slot becomes ⊥ and stays present. -/
 inductive Val where
-  | ctor    : String → List Val → Val
+  | know    : Term → Val
+  | node    : String → List Val → Val
   | bot     : Val
   | loanM   : Nat → Val
   | borrowM : Nat → Val → Val
-  | sym     : Nat → Val
-  -- Pure fragment (§4): types are terms of universe sort, and the borrow-free
-  -- ("pure") fragment is an ordinary tiny type theory whose formers live in
-  -- `Val` too, so a pure value (a type, a stuck neutral, a λ) is a first-class
-  -- runtime value. Pure binders carry their SOURCE NAME (M30 step 2) and are
-  -- looked up in the comptime environment `Pure.lean`'s evaluator carries;
-  -- runtime var ids, σ ids and ℓ ids are a different namespace entirely.
-  | pvar    : String → Val           -- pure variable occurrence, by name
-  | type    : Val                    -- the single universe (type-in-type)
-  | pi      : String → Val → Val → Val    -- Π (x : dom) → cod
-  | sigmaT  : String → Val → Val → Val    -- Σ (x : fst-type) → snd-type
-  | lam     : String → Val → Val → Val    -- λ (x : dom). body
-  | app     : Val → Val → Val        -- application (a redex, or a stuck neutral spine)
-  | const   : String → Val           -- a built-in constant: a recursor or a type former
-  -- The identity type `Id A a b` (§10): the v0 basis's one genuine indexed
-  -- family. Its constructor is `Refl` (a nullary `ctor "Refl" []` whose type
-  -- `Id A a a` determines the endpoints); eliminated by the constants `j`
-  -- (Paulin-Mohring J) and `k` (Streicher K).
-  | idT     : Val → Val → Val → Val  -- Id (type) (lhs) (rhs); no binders
-  /-- `⇝τ` — the comptime binder-mode marker on a λ/Π domain (combining-fns §6;
-      see `Term.cmpT`). Reflected from the term form so that ⇒'s application
-      rules can read a *value* callee's binder modes; **invisible to `beq`**, and
-      therefore to `convert` and every comptime judgment above it, because §6's
-      "case is inert under ⇝" is a claim this calculus should not be able to
-      violate by accident. -/
-  | cmpT    : Val → Val
   /-- **A runtime function value** (combining-fns §7 cost 2, M26-C): the value a
       `Term.lamR` evaluates to — named binders and a suspended *body*.
-
-      It carries a `Term`, which no other `Val` does, and the reason is the same
-      one that forces `lamR`'s named binders: a body is not a value and cannot be
-      reflected into one. So a transparent runtime function is a *suspension* —
-      a body plus the names it will bind — and applying it is `readR` on that
-      body under a fresh frame, not `substPure` into a `Val`.
 
       It is CLOSED (checked at formation), which is what lets it be a leaf for
       every traversal below: no loans, no σ's, no state markers, nothing to
       renumber. `ih` is exactly this shape (§7 cost 2's "the boring kind").
 
-      **AND ITS BINDERS STAY UNTYPED, where `Term.lamR`'s became annotated (M27).**
-      The asymmetry is ratified and is the erasure principle rather than an
-      oversight: `readR` drops the domains at the moment it forms this value.
-      Types exist here for one consumer, the seal, and a seal happens at FORMATION
-      with the annotated term in hand — after that the executing machine binds and
-      runs, and never converts. A value that carried its domains would be a second
-      copy of a contract nothing downstream reads. The symmetric change would look
-      tidier and would be wrong. -/
+      **Its binders stay UNTYPED, where `Term.lamR`'s are annotated** (M27): the
+      erasure principle — `readR` drops the domains at the moment it forms this
+      value, because types exist here for one consumer (the seal) and a seal
+      happens at FORMATION with the annotated term in hand.
+
+      It is `(∅, body)` — a closure whose environment is empty — and R2 is where
+      it says so, folding into the one suspension form with `ρ` filled in. -/
   | rfn     : List Var → Term → Val
-  /-- **A comptime closure** (M30/NbE, `docs/nbe.md` §2): a λ/Π/Σ body stored *as
-      written*, together with the comptime environment it was born in. It sits in
-      the BODY position of `lam`/`pi`/`sigmaT`, which is what keeps every consumer
-      that matches those three formers matching them unchanged — opening the binder
-      is the thing that changes, from `substPure 0 a b` to `instBody x b a`.
-
-      The environment is the whole environment in scope (nbe.md §3.1, resolved to
-      option (a)): capture is a pointer, and in an immutable fragment the retention
-      of unmentioned bindings is unobservable.
-
-      **What may be in it is the invariant** (§3.2): knowledge only — no hole (⊥),
-      no loan marker, no borrow value, no runtime slot reference. Under substitution
-      that held by construction, because there was no environment for state to sit
-      in; here it is a rule someone maintains, which is why `capturedMarkers` below
-      exists to be run over the corpus rather than trusted.
-
-      **Keyed by NAME since M30 step 2**, and prepending is the whole of what
-      shadowing is: `λ (x : τ). λ (x : υ). x` extends the same key twice and the
-      lookup finds the inner binding, with no index anywhere to renumber. The
-      `lvl` former that used to sit below this one is gone with the indices —
-      `readback` now opens a binder at a fresh NAME (`readbackName`), and a name
-      is already a `pvar`, so the second variable former earned its keep only
-      while the two read back by different arithmetic. -/
-  | closure : List (String × Val) → Val → Val
 deriving Inhabited
 
 namespace Val
 
+/-! ## Building and viewing a constructor node
+
+    `Val.ctor` is a smart constructor, not a former, and that is the whole of
+    §2.3's "a value with no live markers collapses to a bare `Term` leaf": a node
+    whose children are all knowledge IS knowledge, and is stored as one leaf.
+    Every site that used to write `.ctor n args` goes on writing it and gets the
+    collapse for free, which is also what keeps the trace suite's expected
+    environments spelled as they were.
+
+    **Two names are exempt, and they are the array layer's** (¶1.1). A `§segs`
+    node is STATE — it records a carve, i.e. who currently holds which stretch —
+    even when every body in it happens to be owned, and `hasType`'s
+    extent-consistency check is stated on that state form. Collapsing it would put
+    a carve history inside a knowledge leaf, where the ⇝ bridge (`arrFoldDeep`) is
+    what is supposed to turn a carve into knowledge. `§seg` follows its parent so
+    that segment navigation has one shape to match. -/
+
+/-- Is this one of the reserved names a node may never collapse under?
+
+    `§segs`/`§seg` are the array layer's carve (state, even when every body in it
+    is owned). `§rec` is the RECURSOR SPINE OVER RUNTIME ARMS (§7 cost 5) — a
+    `natRec P z s` whose step arm is a runtime λ. It is a function value with
+    non-knowledge children, so it cannot be a `Term`; and it must not collapse
+    even when its children happen to be knowledge, because the collapsed form
+    would be a `ctorApp "§rec"` where the evaluator expects an application spine.
+    `recSpine` below is what builds one, and it collapses to the honest spine
+    itself rather than to a node. -/
+def stateCtorName (n : String) : Bool :=
+  n == "§segs" || n == "§seg" || n == "§rec"
+
+/-- All-knowledge children, as terms. -/
+def knowArgs? : List Val → Option (List Term)
+  | [] => some []
+  | .know t :: rest => (knowArgs? rest).map (t :: ·)
+  | _ => none
+
+/-- Build a constructor node, collapsing to a knowledge leaf when nothing in it
+    is state. -/
+def ctor (n : String) (args : List Val) : Val :=
+  if stateCtorName n then .node n args
+  else match knowArgs? args with
+    | some ts => .know (.ctorApp n ts)
+    | none => .node n args
+
+/-- View a value as a constructor application, seeing THROUGH a collapsed leaf.
+    The two-layer principle at its smallest: walk the skeleton, and where the
+    skeleton has bottomed out into knowledge, keep walking at `Term` level. -/
+def asCtor? : Val → Option (String × List Val)
+  | .node n args => some (n, args)
+  | .know (.ctorApp n ts) => some (n, ts.map Val.know)
+  | _ => none
+
+/-- The knowledge a value is, if it is knowledge. -/
+def know? : Val → Option Term
+  | .know t => some t
+  | _ => none
+
+/-- **A recursor spine, at the store**. All-knowledge arguments give the ordinary
+    application spine, which is what a pure recursor is; an argument that is a
+    runtime function value (a `.lamR`'s value — §7 cost 5's arms-as-bodies) forces
+    the skeleton form, because there is no `Term` that could hold it. -/
+def recSpine (c : String) (args : List Val) : Val :=
+  match knowArgs? args with
+  | some ts => .know (ts.foldl (fun acc t => Term.app acc t) (Term.const c))
+  | none => .node "§rec" (.know (.const c) :: args)
+
+/-- View one, seeing through the knowledge form. -/
+def asRecSpine? : Val → Option (String × List Val)
+  | .node "§rec" (.know (.const c) :: args) => some (c, args)
+  | .know t =>
+    let rec go : Term → Option (String × List Term)
+      | .const c => some (c, [])
+      | .app f a => (go f).map (fun p => (p.1, p.2 ++ [a]))
+      | _ => none
+    (go t).map (fun p => (p.1, p.2.map Val.know))
+  | _ => none
+
+/-- The store value a σ is: a knowledge leaf holding the reserved name. A former
+    until M32 R1, a smart constructor after it — which is the honest shape, since
+    a σ is knowledge like any other and the store's business with it is only that
+    it is a leaf. -/
+def sym (σ : Nat) : Val := .know (Term.sym σ)
+
+/-- The σ a value IS, if it is a bare one. -/
+def symOf? : Val → Option Nat
+  | .know (.pvar x) => symOfName? x
+  | _ => none
+
 /-! Structural equality on values. Written by hand (mutually with the list
     case) because the `List Val` nesting defeats the `deriving BEq` handler;
-    still total — `beq` recurses on subterms, `beqList` on the list tail. -/
+    still total — `beq` recurses on subterms, `beqList` on the list tail.
+
+    Knowledge compares by `Term.beq`, which is MODE-SENSITIVE where the old
+    `Val.beq` unwrapped `cmpT` on either side. Conversion — the judgment that
+    unwrapping existed for — has its own equality now (`Term.convEq`, used by
+    `Val.convert`), so mode-blindness lives at the site that needs it instead of
+    in the equality every incidental comparison reaches for. -/
 mutual
   def beq : Val → Val → Bool
-    | .ctor n1 a1, .ctor n2 a2 => n1 == n2 && beqList a1 a2
+    | .know a,     .know b     => Term.beq a b
+    | .node n1 a1, .node n2 a2 => n1 == n2 && beqList a1 a2
     | .bot,        .bot        => true
     | .loanM x,    .loanM y    => x == y
     | .borrowM x p, .borrowM y q => x == y && beq p q
-    | .sym x,      .sym y       => x == y
-    | .pvar x,     .pvar y      => x == y
-    | .type,       .type        => true
-    -- Binder NAMES are compared. That is not up-to-α, and it does not need to be:
-    -- `convert` is `nfV a == nfV b`, and readback renames every binder it opens to
-    -- `readbackName ⟨its level⟩` — so two α-variant functions arrive here as the
-    -- SAME tree and everything else that reaches this function is comparing values
-    -- that came out of the same normalizer. An α-insensitive `beq` would be the
-    -- wrong repair anyway: it would make `λ (x : τ). x` equal `λ (y : τ). x`.
-    | .pi x d1 c1,   .pi y d2 c2    => x == y && beq d1 d2 && beq c1 c2
-    | .sigmaT x d1 c1, .sigmaT y d2 c2 => x == y && beq d1 d2 && beq c1 c2
-    | .lam x d1 b1,  .lam y d2 b2   => x == y && beq d1 d2 && beq b1 b2
-    | .app f1 a1,  .app f2 a2   => beq f1 f2 && beq a1 a2
-    | .const x,    .const y     => x == y
-    | .idT a1 b1 c1, .idT a2 b2 c2 => beq a1 a2 && beq b1 b2 && beq c1 c2
-    -- **Mode-blind, deliberately** (§6, "case is inert under ⇝"). `convert` is
-    -- `nfV a == nfV b`, so unwrapping here is what makes the whole comptime layer
-    -- unable to observe a binder's mode — congruence, `hasType`, the audit, the
-    -- pure lift. Three arms rather than a traversal, so it costs nothing.
-    --
-    -- The alternative — modes part of type identity — was rejected on the
-    -- calculus's own evidence: the machine builds recursor premise types
-    -- (`natRec`'s `Π (k : Nat) → Π (ih : P k) → P (S k)`) in Lean with no modes,
-    -- and `prog{}`'s motive binders are capitalized by long-standing convention
-    -- (`λ (P : …)`, `λ (A : Type)`). Under a mode-sensitive equality every one of
-    -- those would have to agree on a mode that ⇝ has no use for. Modes exist to
-    -- route ⇒'s arguments and to fence its bodies; ⇝ is the room where the
-    -- distinction was never meant to reach.
-    | .cmpT a,     .cmpT b     => beq a b
-    | .cmpT a,     b           => beq a b
-    | a,           .cmpT b     => beq a b
     -- Syntactic, on binder names AND body: a runtime function value is a
-    -- suspension, so there is no reduction to compare it up to. Two `lamR`s that
-    -- differ only in binder ids are different values here — which is correct,
-    -- because the ids are what their bodies reach Ω through.
+    -- suspension, so there is no reduction to compare it up to.
     | .rfn xs a,   .rfn ys b   => xs == ys && a == b
-    -- STRUCTURAL, and the deviation from "equality never traverses a closure"
-    -- (nbe.md Q5) is deliberate and unreachable. That policy is a claim about
-    -- CONVERSION, and `convert` is `nfV a == nfV b` — it reads back first, so no
-    -- closure ever arrives here through it. What is left is the incidental
-    -- comparisons (Ω canonicalization, `abstractInto`'s target test), where a
-    -- literal env-and-body match is a sound under-approximation: two structurally
-    -- equal closures ARE equal, and the converse failure cannot be observed by a
-    -- judgment, only by a comparison that should have gone through readback.
-    | .closure ρ1 b1, .closure ρ2 b2 => beqEnv ρ1 ρ2 && beq b1 b2
     | _,           _           => false
-  -- Both sides: the mode-blind arms peel a `cmpT` from one side only.
   termination_by v w => sizeOf v + sizeOf w
   def beqList : List Val → List Val → Bool
     | [],      []      => true
     | x :: xs, y :: ys => beq x y && beqList xs ys
-    | _,       _       => false
-  termination_by vs ws => sizeOf vs + sizeOf ws
-  def beqEnv : List (String × Val) → List (String × Val) → Bool
-    | [],      []      => true
-    | (a, x) :: xs, (b, y) :: ys => a == b && beq x y && beqEnv xs ys
     | _,       _       => false
   termination_by vs ws => sizeOf vs + sizeOf ws
 end
@@ -206,11 +214,14 @@ def cons (h t : Val) : Val := .ctor "Cons" [h, t]
 
 /-! Render a value like the doc's trace comments: `loanₘ ℓ0`,
     `borrowₘ ℓ0 (S (S (S Z)))`, `Cons 3 Nil`, `⊥`. `prec` guards parens.
-    Total (list helper `prettyArgs` handles the `List Val` nesting). -/
+
+    The knowledge half is `Term.prettyPrec`, which reproduces what these cases
+    used to print for the pure formers — including `Arr` as `[…]` and a σ as
+    `σ0` — so a rejection quoting a value reads the way it always did. -/
 mutual
   def prettyPrec (prec : Nat) : Val → String
+    | .know t => Term.prettyPrec prec t
     | .bot => "⊥"
-    | .sym σ => s!"σ{σ}"
     | .loanM ℓ => s!"loanₘ ℓ{ℓ}"
     | .borrowM ℓ p =>
       let s := "borrowₘ ℓ" ++ toString ℓ ++ " " ++ prettyPrec 1 p
@@ -218,44 +229,23 @@ mutual
     -- ¶1.1's array forms, rendered the way the design note's traces read (the trace
     -- suite IS the test suite): an owned run as `[3, 1, 2]`, a carved node as
     -- `Arr⟨1 ▷ [3], 2 ▷ loanₘ ℓ0⟩`.
-    | .ctor "Arr" vs => "[" ++ prettyCommas vs ++ "]"
-    | .ctor "§segs" segs => "Arr⟨" ++ prettySegs segs ++ "⟩"
-    | .ctor "§seg" [c, b] => prettyPrec 1 c ++ " ▷ " ++ prettyPrec 0 b
-    | .ctor name [] => name
-    | .ctor name args =>
+    -- A recursor spine over runtime arms prints as the SPINE it is; the `§rec`
+    -- wrapper is where the skeleton keeps a function value whose arms are not
+    -- knowledge, and it is not part of what the value means.
+    | .node "§rec" (.know (.const c) :: args) =>
+      let s := c ++ prettyArgs args
+      if prec > 0 then s!"({s})" else s
+    | .node "Arr" vs => "[" ++ prettyCommas vs ++ "]"
+    | .node "§segs" segs => "Arr⟨" ++ prettyCommas segs ++ "⟩"
+    | .node "§seg" [c, b] => prettyPrec 1 c ++ " ▷ " ++ prettyPrec 0 b
+    | .node name [] => name
+    | .node name args =>
       let s := name ++ prettyArgs args
-      if prec > 0 then s!"({s})" else s
-    -- A pure variable prints as its NAME (M30 step 2). `#` is kept as the sigil
-    -- so a rejection still says at a glance which namespace a variable is from,
-    -- which was the whole job `#0` was doing.
-    | .pvar x => s!"#{x}"
-    | .type => "Type"
-    | .const c => c
-    | .cmpT τ => "⇝" ++ prettyPrec 1 τ
-    | .pi x d c =>
-      let s := s!"Π({x} : {prettyPrec 1 d}). {prettyPrec 0 c}"
-      if prec > 0 then s!"({s})" else s
-    | .sigmaT x d c =>
-      let s := s!"Σ({x} : {prettyPrec 1 d}). {prettyPrec 0 c}"
-      if prec > 0 then s!"({s})" else s
-    | .lam x d b =>
-      let s := s!"λ({x} : {prettyPrec 1 d}). {prettyPrec 0 b}"
-      if prec > 0 then s!"({s})" else s
-    | .app f a =>
-      let s := prettyPrec 0 f ++ " " ++ prettyPrec 1 a
-      if prec > 0 then s!"({s})" else s
-    | .idT _ a b =>
-      let s := s!"Id {prettyPrec 1 a} {prettyPrec 1 b}"
       if prec > 0 then s!"({s})" else s
     | .rfn xs _ =>
       -- The binders, not the body: a rejection naming a function value wants to
       -- say WHICH function, and the body is a whole program.
       "λr(" ++ String.intercalate ", " (xs.map (·.name)) ++ "){…}"
-    -- The body, not the environment — the `.rfn` precedent read the other way
-    -- round. A closure's body is what it MEANS; its captured environment is how it
-    -- gets there, and printing every binding in scope at every λ would bury the
-    -- one line a rejection is trying to say.
-    | .closure _ b => "clo{" ++ prettyPrec 0 b ++ "}"
   termination_by v => sizeOf v
   def prettyArgs : List Val → String
     | [] => ""
@@ -265,11 +255,6 @@ mutual
     | [] => ""
     | [a] => prettyPrec 0 a
     | a :: as => prettyPrec 0 a ++ ", " ++ prettyCommas as
-  termination_by as => sizeOf as
-  def prettySegs : List Val → String
-    | [] => ""
-    | [a] => prettyPrec 0 a
-    | a :: as => prettyPrec 0 a ++ ", " ++ prettySegs as
   termination_by as => sizeOf as
 end
 
@@ -282,26 +267,18 @@ instance : ToString Val where
 /-! ## Loan-id traversal, for canonical renumbering -/
 
 /-! Loan ids occurring in `v`, in pre-order of first appearance
-    (`borrowM ℓ` contributes ℓ before descending into its payload). The list
-    helper keeps the recursion structural through the `List Val` nesting. -/
+    (`borrowM ℓ` contributes ℓ before descending into its payload).
+
+    A knowledge leaf is a LEAF here, and that is now a theorem of the
+    representation rather than a licensed opacity: a `Term` cannot hold a loan. -/
 mutual
   def loanIds : Val → List Nat
     | .loanM ℓ => [ℓ]
     | .borrowM ℓ p => ℓ :: loanIds p
-    | .ctor _ args => loanIdsList args
+    | .node _ args => loanIdsList args
+    | .know _ => []                                     -- knowledge: no loans, by type
     | .bot => []
-    | .sym _ => []
-    | .pvar _ => []
-    | .type => []
-    | .const _ => []
-    | .cmpT τ => loanIds τ
     | .rfn _ _ => []                                    -- closed: no loans to find
-    | .closure _ _ => []                                -- §3.2: no loans in a captured env
-    | .pi _ d c => loanIds d ++ loanIds c
-    | .sigmaT _ d c => loanIds d ++ loanIds c
-    | .lam _ d c => loanIds d ++ loanIds c
-    | .app d c => loanIds d ++ loanIds c
-    | .idT a b c => loanIds a ++ loanIds b ++ loanIds c
   termination_by v => sizeOf v
   def loanIdsList : List Val → List Nat
     | [] => []
@@ -309,166 +286,76 @@ mutual
   termination_by vs => sizeOf vs
 end
 
--- (`loanToPvar` — §6.2's "suspension tree with holes", a captured borrow's payload
--- rewritten as the backward function of the surrendered values, by mapping each
--- loan marker to the de Bruijn `pvar` at its position in a list — was deleted in
--- M30 step 2. It had no caller: declared `back`s went in M27-δ and took its only
--- one with them, and it was the last thing in this file that treated a `pvar` as a
--- POSITION. Under names its signature would have had to invent a name per loan id,
--- which is a design decision, and making one for a dead function is how a dead
--- function survives another five milestones.)
-
--- (`Term.toValPure` — the monad-free reflection of a pure `Term` — lives in
--- `Pure.lean` since M29 α. `let` is a form of the pure fragment now, and reading
--- one is β; the β is built as a redex over `Val.letName`, which is declared there,
--- so the reflection that uses it has to be below it.)
-
 /-! Does a value carry a STATE marker — a hole (`⊥`), a loan, or a borrow —
     anywhere in its tree? §3.2's knowledge/state invariant: a σ names ENTRY
-    knowledge (a constructor shape true at entry, or an equation solution), never
-    the present state of a slot. So a σ-substitution's replacement must be
-    marker-free; a marker is state and belongs in an Ω tree, never substituted for
-    a σ. Asserted at the substitution site (`refineSym`) so a regression that tries
-    to substitute state is caught immediately, not layers downstream.
+    knowledge, never the present state of a slot, so a σ-substitution's
+    replacement must be marker-free.
 
-    It lives here rather than with `refineSym` because ¶1.1's array layer needs the
-    same predicate for a second job: a segment body is **owned** exactly when it is
-    marker-free, so a run with a hole or an element loan in it is not a carve
-    candidate and does not merge with its neighbour. Both jobs are the same
-    question — is this a value, or a record of who currently holds what. -/
+    It survives the domain split as a two-line function, because the split
+    answered most of it: knowledge cannot carry a marker, so the question is only
+    ever about the skeleton above the leaves. ¶1.1's array layer uses it for its
+    second job — a segment body is **owned** exactly when it is marker-free — and
+    that job is now the same question as "is this body a knowledge leaf". -/
 mutual
   def hasStateMarker : Val → Bool
     | .bot => true
     | .loanM _ => true
     | .borrowM _ _ => true
-    | .ctor _ args => hasStateMarkerList args
-    | .app d c => hasStateMarker d || hasStateMarker c
-    | .pi _ d c | .sigmaT _ d c | .lam _ d c => hasStateMarker d || hasStateMarker c
-    | .idT a b c => hasStateMarker a || hasStateMarker b || hasStateMarker c
-    | _ => false
+    | .node _ args => hasStateMarkerList args
+    | .know _ => false
+    | .rfn _ _ => false
+  termination_by v => sizeOf v
   def hasStateMarkerList : List Val → Bool
     | [] => false
     | v :: vs => hasStateMarker v || hasStateMarkerList vs
-end
-
-/-- The §3.2 capture guard's question, asked of an ENVIRONMENT: does any binding
-    hold state? Named separately from `hasStateMarkerList` because the environment
-    is name-keyed and the values are what the invariant is about. -/
-def hasStateMarkerEnv : List (String × Val) → Bool
-  | [] => false
-  | (_, v) :: ρ => hasStateMarker v || hasStateMarkerEnv ρ
-
-/-! **The capture assertion of nbe.md §3.2, as instrumentation** (M30).
-
-    §3.2 promotes "a mathematical λ closes over copyable knowledge" from accident
-    to asserted invariant, and says to assert it at closure formation "the same way
-    `refineSym` asserts it at substitution". The two sites are not equally
-    affordable, and pretending otherwise would be the wrong reading:
-
-      * `refineSym` fires once per solved σ and lives in `M`, so it throws.
-      * closure formation fires at every λ *evaluation* — the innermost loop of the
-        comptime fragment — and `eval` is a pure total function with no monad to
-        throw into. A guard there is a marker traversal per β.
-
-    So the assertion is carried out the way the FIRST site's zero-violations claim
-    was actually established: as a whole-corpus instrumentation pass. This returns
-    every offending captured environment in a value; the harness runs it over every
-    state the corpus reaches and the answer is expected to be empty. What stays
-    permanently is the assertion at the one site where a closure enters *persistent*
-    state — the sealed contracts of §4.3 — which is rare, is in `M`, and is exactly
-    parallel to `refineSym`.
-
-    Descends through the body too, since a closure's body may itself contain λs. -/
-mutual
-  def capturedMarkers : Val → List Val
-    | .closure ρ b =>
-      (if hasStateMarkerEnv ρ then [Val.closure ρ b] else []) ++ capturedMarkersEnv ρ ++ capturedMarkers b
-    | .ctor _ args => capturedMarkersList args
-    | .borrowM _ p => capturedMarkers p
-    | .cmpT τ => capturedMarkers τ
-    | .app d c => capturedMarkers d ++ capturedMarkers c
-    | .pi _ d c | .sigmaT _ d c | .lam _ d c => capturedMarkers d ++ capturedMarkers c
-    | .idT a b c => capturedMarkers a ++ capturedMarkers b ++ capturedMarkers c
-    | _ => []
-  termination_by v => sizeOf v
-  def capturedMarkersList : List Val → List Val
-    | [] => []
-    | v :: vs => capturedMarkers v ++ capturedMarkersList vs
   termination_by vs => sizeOf vs
-  def capturedMarkersEnv : List (String × Val) → List Val
-    | [] => []
-    | (_, v) :: ρ => capturedMarkers v ++ capturedMarkersEnv ρ
-  termination_by ρ => sizeOf ρ
 end
 
-/-! Symbolic ids occurring in `v`, in pre-order of first appearance. -/
+/-! (`Val.capturedMarkers` and `Val.hasStateMarkerEnv` — nbe.md §3.2's capture
+    assertion, carried as whole-corpus instrumentation and then as a live guard in
+    `mkClosure` — are DELETED here, and not because the rule was dropped. A
+    captured environment binds `Sem` values; `Sem` has no ⊥, no loan marker and no
+    borrow; so "a captured environment contains knowledge only" is a fact about
+    the types rather than a property to scan for. This is §2.3's stated
+    consequence arriving: the capture filter and the knowledge-only environment
+    invariant become theorems of the representation.) -/
+
+/-! Symbolic ids occurring in `v`, in pre-order of first appearance. The σ's are
+    inside the knowledge leaves now, which is where `Term.symIds` reads them. -/
 mutual
   def symIds : Val → List Nat
-    | .sym σ => [σ]
+    | .know t => Term.symIds t
     | .borrowM _ p => symIds p
-    | .ctor _ args => symIdsList args
+    | .node _ args => symIdsList args
     | .loanM _ => []
     | .bot => []
-    | .pvar _ => []
-    | .type => []
-    | .const _ => []
-    | .cmpT τ => symIds τ
     | .rfn _ _ => []                                    -- closed: no σ's to find
-    -- DESCENDS — the deviation §6.2 demands. σ's genuinely live inside captured
-    -- environments (a sealed contract's entry snapshot is one), and both halves
-    -- matter: the env holds the σ's the body was closed over, the body holds the
-    -- ones written into it. Omitting either would leave a σ that refinement can
-    -- reach (`substSym` descends) but canonicalization cannot see, and the two
-    -- disagreeing is how an α-equal pair of states stops comparing equal.
-    | .closure ρ b => symIdsEnv ρ ++ symIds b
-    | .pi _ d c => symIds d ++ symIds c
-    | .sigmaT _ d c => symIds d ++ symIds c
-    | .lam _ d c => symIds d ++ symIds c
-    | .app d c => symIds d ++ symIds c
-    | .idT a b c => symIds a ++ symIds b ++ symIds c
   termination_by v => sizeOf v
   def symIdsList : List Val → List Nat
     | [] => []
     | v :: vs => symIds v ++ symIdsList vs
   termination_by vs => sizeOf vs
-  def symIdsEnv : List (String × Val) → List Nat
-    | [] => []
-    | (_, v) :: ρ => symIds v ++ symIdsEnv ρ
-  termination_by ρ => sizeOf ρ
 end
 
 /-! Rewrite every loan id `ℓ` to `fℓ ℓ` and every symbolic id `σ` to `fσ σ`
-    (used by canonicalization, which renumbers both id spaces). -/
+    (used by canonicalization, which renumbers both id spaces).
+
+    Paired with `symIds` above: canonicalization reads the σ order off one
+    traversal and applies it with the other, so a σ visible to the first and
+    untouched by the second would be renumbered out of existence. -/
 mutual
   def renumber (fℓ fσ : Nat → Nat) : Val → Val
     | .loanM ℓ => .loanM (fℓ ℓ)
     | .borrowM ℓ p => .borrowM (fℓ ℓ) (renumber fℓ fσ p)
-    | .ctor n args => .ctor n (renumberList fℓ fσ args)
+    | .node n args => .node n (renumberList fℓ fσ args)
+    | .know t => .know (Term.renumberSyms fσ t)
     | .bot => .bot
-    | .sym σ => .sym (fσ σ)
-    | .pvar x => .pvar x
-    | .type => .type
-    | .const c => .const c
-    | .cmpT τ => .cmpT (renumber fℓ fσ τ)
     | .rfn xs b => .rfn xs b                            -- closed: nothing to renumber
-    -- DESCENDS, paired with `symIds` above: canonicalization reads the σ order off
-    -- one traversal and applies it with the other, so a σ visible to the first and
-    -- untouched by the second would be renumbered out of existence.
-    | .closure ρ b => .closure (renumberEnv fℓ fσ ρ) (renumber fℓ fσ b)
-    | .pi x d c => .pi x (renumber fℓ fσ d) (renumber fℓ fσ c)
-    | .sigmaT x d c => .sigmaT x (renumber fℓ fσ d) (renumber fℓ fσ c)
-    | .lam x d b => .lam x (renumber fℓ fσ d) (renumber fℓ fσ b)
-    | .app f a => .app (renumber fℓ fσ f) (renumber fℓ fσ a)
-    | .idT a b c => .idT (renumber fℓ fσ a) (renumber fℓ fσ b) (renumber fℓ fσ c)
   termination_by v => sizeOf v
   def renumberList (fℓ fσ : Nat → Nat) : List Val → List Val
     | [] => []
     | v :: vs => renumber fℓ fσ v :: renumberList fℓ fσ vs
   termination_by vs => sizeOf vs
-  def renumberEnv (fℓ fσ : Nat → Nat) : List (String × Val) → List (String × Val)
-    | [] => []
-    | (x, v) :: ρ => (x, renumber fℓ fσ v) :: renumberEnv fℓ fσ ρ
-  termination_by ρ => sizeOf ρ
 end
 
 end Val

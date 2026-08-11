@@ -62,7 +62,7 @@ CHOICE about what is under test, not a gap in the grammar.
 -/
 
 open Dllbc
-open Dllbc.Val (nat)
+open Dllbc.Term (nat)
 
 namespace Dllbc.Tests.S4Pure
 
@@ -122,7 +122,7 @@ example : expectReadC seedS [] (.app (.app (.const "botElim") natT) sVar)
 -- the canonicality property this file is the control group for, written down.
 example : expectReadC seedS [] (.app (.app addT sVar) (tnat 1))
   (.app (.app (.app (.app (.const "natRec") (.lam "§0" (.const "Nat") (.const "Nat"))) (nat 1))
-    (.lam "§0" (.const "Nat") (.lam "§1" (.const "Nat") (.ctor "S" [.pvar "§1"])))) (.sym 0)) = true := by
+    (.lam "§0" (.const "Nat") (.lam "§1" (.const "Nat") (.ctorApp "S" [.pvar "§1"])))) (.sym 0)) = true := by
   native_decide
 
 -- Conversion of stuck neutrals: reflexive, and sensitive to the argument.
@@ -143,38 +143,38 @@ example : expectConv seedS []
 /-! ## Value typing -/
 
 -- Val-level library (hasType works on values).
-def natV : Val := .const "Nat"
-def listNat : Val := .app (.const "List") natV
-def vecFV : Val :=
+def natV : Term := .const "Nat"
+def listNat : Term := .app (.const "List") natV
+def vecFV : Term :=
   .lam "T" .type (.lam "n" natV
     (.app (.app (.app (.app (.const "natRec") (.lam "_" natV .type)) (.const "Unit"))
       (.lam "n'" natV (.lam "rec" .type (.sigmaT "_" (.pvar "T") (.pvar "rec"))))) (.pvar "n")))
 /-- `Σ (l : Nat). VecF Nat l` (the l is a genuine dependency). -/
-def sigVecF : Val := .sigmaT "l" natV (.app (.app vecFV natV) (.pvar "l"))
+def sigVecF : Term := .sigmaT "l" natV (.app (.app vecFV natV) (.pvar "l"))
 
 -- Positives: `Cons σₑ σ : List Nat` under sctx = {σₑ : Nat, σ : List Nat};
 -- `Pair 1 p : Σ (l:Nat). VecF Nat l` with `p = Pair 5 unit : VecF Nat 1` — the
 -- second field's type is instantiated at the first field's value.
 example : expectHasType [] [(0, natV), (1, listNat)]
-  (.ctor "Cons" [.sym 0, .sym 1]) listNat = true := by native_decide
+  (.ctorApp "Cons" [.sym 0, .sym 1]) listNat = true := by native_decide
 
 example : expectHasType [] []
-  (.ctor "Pair" [nat 1, .ctor "Pair" [nat 5, .ctor "unit" []]]) sigVecF = true := by native_decide
+  (.ctorApp "Pair" [nat 1, .ctorApp "Pair" [nat 5, .ctorApp "unit" []]]) sigVecF = true := by native_decide
 
 -- Negatives: wrong constructor for the type; a `Pair` whose second field fails
 -- the instantiated type (`True` does not inhabit `VecF Nat 1`).
 example : expectHasType [] [(0, natV), (1, listNat)]
-  (.ctor "Cons" [.sym 0, .sym 1]) (.const "Bool") = false := by native_decide
+  (.ctorApp "Cons" [.sym 0, .sym 1]) (.const "Bool") = false := by native_decide
 
 example : expectHasType [] []
-  (.ctor "Pair" [nat 1, .ctor "True" []]) sigVecF = false := by native_decide
+  (.ctorApp "Pair" [nat 1, .ctorApp "True" []]) sigVecF = false := by native_decide
 
 /-! ## Conversion negative under a binder -/
 
 -- Two λ's that differ only in their bodies are not convertible (no eta; bodies
 -- compared structurally after normalization, which renames both binders to the
 -- same level name and so cannot be what tells them apart).
-example : Val.convert 1000 (.lam "u" natV (.pvar "u")) (.lam "u" natV (.ctor "Z" [])) = false := by
+example : Pure.convert 1000 (.lam "u" natV (.pvar "u")) (.lam "u" natV (.ctorApp "Z" [])) = false := by
   native_decide
 
 /-! ## Readback is CANONICAL (M30 step 2)
@@ -201,36 +201,36 @@ example : Val.convert 1000 (.lam "u" natV (.pvar "u")) (.lam "u" natV (.ctor "Z"
 -- (1) and (2): the binder a normal form carries is its level, in the reserved
 -- namespace. Written as the whole tree rather than as a predicate, so a change to
 -- the naming scheme fails HERE and says what it changed to.
-example : (Val.nfV 1000 (.lam "x" natV (.pvar "x")) == .lam "§0" natV (.pvar "§0")) = true := by
+example : (Pure.nf 1000 (.lam "x" natV (.pvar "x")) == .lam "§0" natV (.pvar "§0")) = true := by
   native_decide
-example : (Val.nfV 1000 (.lam "a" natV (.lam "b" natV (.app (.pvar "a") (.pvar "b"))))
+example : (Pure.nf 1000 (.lam "a" natV (.lam "b" natV (.app (.pvar "a") (.pvar "b"))))
             == .lam "§0" natV (.lam "§1" natV (.app (.pvar "§0") (.pvar "§1")))) = true := by
   native_decide
 
 -- (3): two α-variants of one function read back to the SAME tree — not merely to
 -- convertible ones, which is the weaker fact `convert` would still give if
 -- readback minted from a counter.
-example : (Val.nfV 1000 (.lam "a" natV (.lam "b" natV (.app (.pvar "a") (.pvar "b"))))
-            == Val.nfV 1000 (.lam "p" natV (.lam "q" natV (.app (.pvar "p") (.pvar "q"))))) = true := by
+example : (Pure.nf 1000 (.lam "a" natV (.lam "b" natV (.app (.pvar "a") (.pvar "b"))))
+            == Pure.nf 1000 (.lam "p" natV (.lam "q" natV (.app (.pvar "p") (.pvar "q"))))) = true := by
   native_decide
 
 -- (4): and so they convert. (Under the de Bruijn representation this was true for
 -- a reason that no longer exists — the binders had no names to differ in.)
-example : Val.convert 1000 (.lam "x" natV (.pvar "x")) (.lam "y" natV (.pvar "y")) = true := by
+example : Pure.convert 1000 (.lam "x" natV (.pvar "x")) (.lam "y" natV (.pvar "y")) = true := by
   native_decide
 
 -- (5): SHADOWING IS THE SCOPE RULE. `λ (x : Nat). λ (x : Nat). x` is the second
 -- projection, and both halves are asserted — it converts with `λ a. λ b. b` and
 -- does NOT convert with `λ a. λ b. a`. Nothing was renamed to make this work;
 -- the evaluator's environment is prepended to and the lookup finds the first hit.
-example : Val.convert 1000 (.lam "x" natV (.lam "x" natV (.pvar "x")))
+example : Pure.convert 1000 (.lam "x" natV (.lam "x" natV (.pvar "x")))
                            (.lam "a" natV (.lam "b" natV (.pvar "b"))) = true := by native_decide
-example : Val.convert 1000 (.lam "x" natV (.lam "x" natV (.pvar "x")))
+example : Pure.convert 1000 (.lam "x" natV (.lam "x" natV (.pvar "x")))
                            (.lam "a" natV (.lam "b" natV (.pvar "a"))) = false := by native_decide
 
 -- (6): the renaming is not an erasure — two functions that differ in WHICH binder
 -- they return stay distinct after it.
-example : Val.convert 1000 (.lam "a" natV (.lam "b" natV (.pvar "a")))
+example : Pure.convert 1000 (.lam "a" natV (.lam "b" natV (.pvar "a")))
                            (.lam "a" natV (.lam "b" natV (.pvar "b"))) = false := by native_decide
 
 -- The namespace itself: what readback mints is reserved, and a source binder may
@@ -275,38 +275,38 @@ never went through a declaration form at all.
 -/
 
 open Dllbc
-open Dllbc.Val
+open Dllbc.Term
 
 namespace Dllbc.Tests.S10Ford
 
 /-! ## Pure library, as `Val`s (types and proofs are terms) -/
 
-def natV : Val := .const "Nat"
-def sZ : Val := .ctor "Z" []
-def sS (v : Val) : Val := .ctor "S" [v]
-def vnat : Nat → Val | 0 => sZ | n + 1 => sS (vnat n)
-def refl : Val := .ctor "Refl" []
-def unitV : Val := .ctor "unit" []
+def natV : Term := .const "Nat"
+def sZ : Term := .ctorApp "Z" []
+def sS (v : Term) : Term := .ctorApp "S" [v]
+def vnat : Nat → Term | 0 => sZ | n + 1 => sS (vnat n)
+def refl : Term := .ctorApp "Refl" []
+def unitV : Term := .ctorApp "unit" []
 
-def natRecV (P z s n : Val) : Val := .app (.app (.app (.app (.const "natRec") P) z) s) n
-def jV (a aa P d b p : Val) : Val := .app (.app (.app (.app (.app (.app (.const "j") a) aa) P) d) b) p
-def kV (a aa P d p : Val) : Val := .app (.app (.app (.app (.app (.const "k") a) aa) P) d) p
-def botElimV (t x : Val) : Val := .app (.app (.const "botElim") t) x
+def natRecV (P z s n : Term) : Term := .app (.app (.app (.app (.const "natRec") P) z) s) n
+def jV (a aa P d b p : Term) : Term := .app (.app (.app (.app (.app (.app (.const "j") a) aa) P) d) b) p
+def kV (a aa P d p : Term) : Term := .app (.app (.app (.app (.app (.const "k") a) aa) P) d) p
+def botElimV (t x : Term) : Term := .app (.app (.const "botElim") t) x
 
 /-- `NatCode : Nat → Nat → Type` by double `natRec`: `(Z,Z) ↦ ⊤`, `(S,S) ↦`
     code of predecessors, mixed `↦ ⊥`. The diagonal `NatCode a a` is `⊤`. -/
-def zCase : Val :=
+def zCase : Term :=
   .lam "b" natV (natRecV (.lam "_" natV .type) (.const "Unit")
     (.lam "_" natV (.lam "_" .type (.const "Bot"))) (.pvar "b"))
-def sCase : Val :=
+def sCase : Term :=
   .lam "a'" natV (.lam "recA" (.pi "_" natV .type) (.lam "b" natV
     (natRecV (.lam "_" natV .type) (.const "Bot")
       (.lam "b'" natV (.lam "_" .type (.app (.pvar "recA") (.pvar "b'")))) (.pvar "b"))))
-def natCodeV : Val := .lam "a" natV (natRecV (.lam "_" natV (.pi "_" natV .type)) zCase sCase (.pvar "a"))
-def natCode (a b : Val) : Val := .app (.app natCodeV a) b
+def natCodeV : Term := .lam "a" natV (natRecV (.lam "_" natV (.pi "_" natV .type)) zCase sCase (.pvar "a"))
+def natCode (a b : Term) : Term := .app (.app natCodeV a) b
 
 /-- `Pred : Nat → Nat` (`Pred Z = Z`, `Pred (S n) = n`). -/
-def predV : Val :=
+def predV : Term :=
   .lam "n" natV (natRecV (.lam "_" natV natV) sZ (.lam "m" natV (.lam "_" natV (.pvar "m"))) (.pvar "n"))
 
 /-! ## §10 kernel: the ι-rules (`j` and `k` fire on `Refl`)
@@ -316,14 +316,14 @@ def predV : Val :=
     to reduction — ι fires on the proof.) -/
 
 -- j Nat Z P 42 Z Refl ↦ 42
-example : (Val.nfV 1000 (jV natV sZ (.lam "b" natV (.lam "q" natV natV)) (vnat 42) sZ refl) == vnat 42) = true := by
+example : (Pure.nf 1000 (jV natV sZ (.lam "b" natV (.lam "q" natV natV)) (vnat 42) sZ refl) == vnat 42) = true := by
   native_decide
 
 -- k Nat Z P 7 Refl ↦ 7
-example : (Val.nfV 1000 (kV natV sZ (.lam "q" natV natV) (vnat 7) refl) == vnat 7) = true := by native_decide
+example : (Pure.nf 1000 (kV natV sZ (.lam "q" natV natV) (vnat 7) refl) == vnat 7) = true := by native_decide
 
 -- On a *symbolic* proof (sym 0), `j` does not fire — it is a stuck value, not 42.
-example : (Val.nfV 1000 (jV natV sZ (.lam "b" natV (.lam "q" natV natV)) (vnat 42) sZ (.sym 0)) == vnat 42) = false := by
+example : (Pure.nf 1000 (jV natV sZ (.lam "b" natV (.lam "q" natV natV)) (vnat 42) sZ (.sym 0)) == vnat 42) = false := by
   native_decide
 
 /-! ## The Refl-match: the solution transition (owned and through a borrow)
@@ -457,11 +457,11 @@ example : progRejects (prog{
     any type. This is the impossible branch, discharged with ordinary terms. -/
 
 -- P = λb'. λ_ : Id Nat Z b'. NatCode Z b'
-def nncMotive : Val :=
+def nncMotive : Term :=
   .lam "b" natV (.lam "q" (.idT natV sZ (.pvar "b")) (.app (.app natCodeV sZ) (.pvar "b")))
-def nncProof (n p : Val) : Val := jV natV sZ nncMotive unitV (sS n) p
+def nncProof (n p : Term) : Term := jV natV sZ nncMotive unitV (sS n) p
 -- σ0 = n : Nat, σ1 = p : Id Nat Z (S n)
-def nncSctx : List (Nat × Val) := [(0, natV), (1, .idT natV sZ (sS (.sym 0)))]
+def nncSctx : List (Nat × Term) := [(0, natV), (1, .idT natV sZ (sS (.sym 0)))]
 
 -- `natNoConf p : NatCode Z (S n)`, and — since that code reduces — `: ⊥`.
 example : expectHasType [] nncSctx (nncProof (.sym 0) (.sym 1)) (natCode sZ (sS (.sym 0))) = true := by
@@ -481,10 +481,10 @@ example : expectHasType [] nncSctx (botElimV (.const "Bool") (nncProof (.sym 0) 
     (pred (S a)) = Id Nat a a`; transported to `Id Nat a (pred (S b)) = Id Nat a
     b`. (`pred (S σ)` reduces because the `S` is concrete around the symbol.) -/
 
-def injMotive (a : Val) : Val :=
+def injMotive (a : Term) : Term :=
   .lam "y" natV (.lam "q" (.idT natV (sS a) (.pvar "y")) (.idT natV a (.app predV (.pvar "y"))))
-def injProof (a b p : Val) : Val := jV natV (sS a) (injMotive a) refl (sS b) p
-def injSctx : List (Nat × Val) := [(0, natV), (1, natV), (2, .idT natV (sS (.sym 0)) (sS (.sym 1)))]
+def injProof (a b p : Term) : Term := jV natV (sS a) (injMotive a) refl (sS b) p
+def injSctx : List (Nat × Term) := [(0, natV), (1, natV), (2, .idT natV (sS (.sym 0)) (sS (.sym 1)))]
 
 example : expectHasType [] injSctx (injProof (.sym 0) (.sym 1) (.sym 2)) (.idT natV (.sym 0) (.sym 1)) = true := by
   native_decide
@@ -499,20 +499,20 @@ example : expectHasType [] injSctx (injProof (.sym 0) (.sym 1) (.sym 2)) (.idT n
     Refl`, so `k … p : Id (Id Nat a a) p Refl` — uniqueness of identity proofs,
     a decided commitment of this kernel. -/
 
-def idAA (a : Val) : Val := .idT natV a a
-def uipMotive (a : Val) : Val := .lam "q" (idAA a) (.idT (idAA a) (.pvar "q") refl)
-def uipProof (a p : Val) : Val := kV natV a (uipMotive a) refl p
-def uipSctx : List (Nat × Val) := [(0, natV), (1, idAA (.sym 0))]
+def idAA (a : Term) : Term := .idT natV a a
+def uipMotive (a : Term) : Term := .lam "q" (idAA a) (.idT (idAA a) (.pvar "q") refl)
+def uipProof (a p : Term) : Term := kV natV a (uipMotive a) refl p
+def uipSctx : List (Nat × Term) := [(0, natV), (1, idAA (.sym 0))]
 
 example : expectHasType [] uipSctx (uipProof (.sym 0) (.sym 1)) (.idT (idAA (.sym 0)) (.sym 1) refl) = true := by
   native_decide
 
 /-! ### `NatCode` computes (the double-`natRec` corners) -/
 
-example : (Val.convert 1000 (natCode sZ sZ) (.const "Unit")) = true := by native_decide       -- (Z,Z) ↦ ⊤
-example : (Val.convert 1000 (natCode sZ (sS sZ)) (.const "Bot")) = true := by native_decide    -- (Z,S) ↦ ⊥
-example : (Val.convert 1000 (natCode (sS sZ) sZ) (.const "Bot")) = true := by native_decide    -- (S,Z) ↦ ⊥
-example : (Val.convert 1000 (natCode (vnat 2) (vnat 2)) (.const "Unit")) = true := by native_decide  -- diagonal ↦ ⊤
+example : (Pure.convert 1000 (natCode sZ sZ) (.const "Unit")) = true := by native_decide       -- (Z,Z) ↦ ⊤
+example : (Pure.convert 1000 (natCode sZ (sS sZ)) (.const "Bot")) = true := by native_decide    -- (Z,S) ↦ ⊥
+example : (Pure.convert 1000 (natCode (sS sZ) sZ) (.const "Bot")) = true := by native_decide    -- (S,Z) ↦ ⊥
+example : (Pure.convert 1000 (natCode (vnat 2) (vnat 2)) (.const "Unit")) = true := by native_decide  -- diagonal ↦ ⊤
 
 end Dllbc.Tests.S10Ford
 end
@@ -536,7 +536,7 @@ field, and a proof CONSUMED to close a dead branch.
 **The rest of §11 dissolved (M28).** The milestone also landed `listRec`,
 `natRec`/`boolRec` neutral synthesis, λ-vs-Π typing, pure `let` in `readC`, and
 `Dllbc.Std` (`Le`, `Eqb`/`Leb`, `Count`, `Bound`/`Sorted`, `LeRefl`). Those were
-tested here by `Val.convert`/`Val.nfV` computation probes and `expectHasType`
+tested here by `Pure.convert`/`Pure.nf` computation probes and `expectHasType`
 inhabitation probes — granular meta-assertions that the corpus has long since
 subsumed. Every bound in a checked program forces `Le` to compute (an ex-falso
 branch is precisely `Le (S n) Z` computing to `Bot`); every count postcondition
@@ -667,7 +667,7 @@ namespace Dllbc.Tests.S15Elab
 
 /-- Check a pure `Term` against a pure type `Term` (deep fuel — lemmas nest). -/
 def chk (tm ty : Term) : Bool :=
-  match (do let v ← readC 2000 tm; let t ← readC 2000 ty; hasType 2000 v t).run (seedPure [] []) with
+  match (do let v ← readC 2000 tm; let t ← readC 2000 ty; hasTypeT 2000 v t).run (seedPure [] []) with
   | .ok r _ => r
   | .error _ _ => false
 

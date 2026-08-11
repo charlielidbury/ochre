@@ -55,7 +55,7 @@ namespace Dllbc
 structure Obligation where
   arg : Var
   loan : Nat
-  owed : Val
+  owed : Term
   /-- Was this parameter's owed type TRIVIAL (`&mut τ`, owing back the type it was
       lent) as written? Recorded at seeding, where the `Term` is still in hand, and
       read by the M27 containment in `auditObligation`: §6.1 exempts a borrow
@@ -79,8 +79,8 @@ structure Obligation where
     carry a case for a rule it does not have. -/
 structure Group where
   id : Nat                      -- the group node's ρ, its identity in the table
-  captured : List (Nat × Val)   -- (ℓ, owed type)
-  issued : List (Nat × Val)     -- (ℓ, owed type)
+  captured : List (Nat × Term)  -- (ℓ, owed type)
+  issued : List (Nat × Term)    -- (ℓ, owed type)
   /-- §5.4 caller-side exit-snapshot σ-sharing: per captured loan, the σ its release
       is PINNED to — the same σ the callee's return type reads as the exit `*v`
       (`buildResult`'s `@exit`). So the caller holds the owner recovering σ′ AND the
@@ -96,8 +96,9 @@ structure St where
   nextLoan : Nat
   nextVar : Nat
   nextSym : Nat
-  /-- The σ-context (§3.2's seam, §4): each symbolic id's type. -/
-  sctx : List (Nat × Val) := []
+  /-- The σ-context (§3.2's seam, §4): each symbolic id's type. Types are
+      KNOWLEDGE, so since M32 R1 they are canonical `Term`s. -/
+  sctx : List (Nat × Term) := []
   /-- **The moded-Π context** (M26-C): for a σ minted by sealing a function, the
       signature it was sealed at — **the Π itself**, peeled on demand at the call
       (M27-δ). It used to be an `FnDef`, "a telescope and a return type with no
@@ -137,7 +138,7 @@ structure St where
       it is fixed at entry and refined per-path with the σ's (like obligations).
       `none` for a borrow-returning body, whose owed type is read at return
       against the surrendered payload. -/
-  retTyVal : Option Val := none
+  retTyVal : Option Term := none
   /-- §5.4 exit-snapshot: per borrow parameter `v` (by var id), a fresh σ that
       the transformed return type pins a bare `*v` to. It lives ONLY here and in
       the pinned `retTyVal` — never in `sctx`/`obligations` — until the audit
@@ -319,8 +320,8 @@ mutual
       match firstOwnNode p with
       | some r => some r            -- payload (deeper) first
       | none => some (ℓ, .borrowNode)
-    | .ctor _ args => firstOwnNodeList args
-    | _ => none                    -- sym and pure values hold no ownership nodes
+    | .node _ args => firstOwnNodeList args
+    | _ => none                    -- a knowledge leaf holds no ownership node, by type
   termination_by v => sizeOf v
   def firstOwnNodeList : List Val → Option (Nat × OwnKind)
     | [] => none
@@ -343,7 +344,7 @@ end
 mutual
   def firstHeldBorrow (keep : List Nat) : Val → Option Nat
     | .borrowM ℓ p => if keep.contains ℓ then firstHeldBorrow keep p else some ℓ
-    | .ctor _ args => firstHeldBorrowList keep args
+    | .node _ args => firstHeldBorrowList keep args
     | _ => none
   termination_by v => sizeOf v
   def firstHeldBorrowList (keep : List Nat) : List Val → Option Nat
@@ -359,7 +360,7 @@ end
 mutual
   def findBorrowPayload (ℓ : Nat) : Val → Option Val
     | .borrowM ℓ' p => if ℓ' == ℓ then some p else findBorrowPayload ℓ p
-    | .ctor _ args => findBorrowPayloadList ℓ args
+    | .node _ args => findBorrowPayloadList ℓ args
     | _ => none
   termination_by v => sizeOf v
   def findBorrowPayloadList (ℓ : Nat) : List Val → Option Val
@@ -376,8 +377,8 @@ mutual
   def replaceLoanMarker (ℓ : Nat) (newV : Val) : Val → Val
     | .loanM ℓ' => if ℓ' == ℓ then newV else .loanM ℓ'
     | .borrowM ℓ' p => .borrowM ℓ' (replaceLoanMarker ℓ newV p)
-    | .ctor n args => .ctor n (replaceLoanMarkerList ℓ newV args)
-    | v => v                       -- ⊥, sym, pure values: no loan markers
+    | .node n args => .ctor n (replaceLoanMarkerList ℓ newV args)
+    | v => v                       -- ⊥, knowledge: no loan markers
   termination_by v => sizeOf v
   def replaceLoanMarkerList (ℓ : Nat) (newV : Val) : List Val → List Val
     | [] => []
@@ -390,8 +391,8 @@ mutual
   def replaceBorrowWithBot (ℓ : Nat) : Val → Val
     | .borrowM ℓ' p => if ℓ' == ℓ then .bot else .borrowM ℓ' (replaceBorrowWithBot ℓ p)
     | .loanM ℓ' => .loanM ℓ'
-    | .ctor n args => .ctor n (replaceBorrowWithBotList ℓ args)
-    | v => v                       -- ⊥, sym, pure values: no borrow to kill
+    | .node n args => .ctor n (replaceBorrowWithBotList ℓ args)
+    | v => v                       -- ⊥, knowledge: no borrow to kill
   termination_by v => sizeOf v
   def replaceBorrowWithBotList (ℓ : Nat) : List Val → List Val
     | [] => []
@@ -404,8 +405,8 @@ mutual
   def containsLoan (ℓ : Nat) : Val → Bool
     | .loanM ℓ' => ℓ' == ℓ
     | .borrowM _ p => containsLoan ℓ p
-    | .ctor _ args => containsLoanList ℓ args
-    | _ => false                   -- ⊥, sym, pure values: no loan markers
+    | .node _ args => containsLoanList ℓ args
+    | _ => false                   -- ⊥, knowledge: no loan markers
   termination_by v => sizeOf v
   def containsLoanList (ℓ : Nat) : List Val → Bool
     | [] => false
@@ -424,8 +425,8 @@ mutual
   def firstLoanMarker : Val → Option Nat
     | .loanM ℓ => some ℓ
     | .borrowM _ _ => none
-    | .ctor _ args => firstLoanMarkerList args
-    | _ => none                    -- ⊥, sym, pure values: no owned loan marker
+    | .node _ args => firstLoanMarkerList args
+    | _ => none                    -- ⊥, knowledge: no owned loan marker
   termination_by v => sizeOf v
   def firstLoanMarkerList : List Val → Option Nat
     | [] => none
@@ -439,7 +440,7 @@ end
 /-! Is a **type** index-kind (§2.1) — `Nat`/`Bool`/`Unit`, or a pure-former type
     (an `Id` proof type, a `Type`, a function type)? A σ of such a type reads by
     copy. `List`/`Σ`/user types are data. -/
-def indexKindTy : Val → Bool
+def indexKindTy : Term → Bool
   | .const "Nat" => true
   | .const "Bool" => true
   | .const "Unit" => true
@@ -448,7 +449,7 @@ def indexKindTy : Val → Bool
   | .pi _ _ _ => true
   | _ => false
 
-/-! Is a **value** index-kind, so §2.1's copy-on-read applies? A concrete
+/-! Is a piece of KNOWLEDGE index-kind, so §2.1's copy-on-read applies? A concrete
     `Nat`/`Bool`/`Unit` tree, a pure-former value (a proof — `Refl` or a neutral
     proof spine — a type, a λ), or a σ whose `sctx` type is index-kind. Data
     proper (`Cons`-trees, pairs, user constructors) MOVES even when marker-free:
@@ -459,125 +460,113 @@ def indexKindTy : Val → Bool
     measured pain, per team-lead): tuple-of-copyables (a `Pair Nat Nat` as Copy,
     Rust-style) — a data ctor all of whose fields are index-kind stays a MOVE for
     now. -/
-def indexKindV (fuel : Nat) (sctx : List (Nat × Val)) : Val → Bool
-  | .ctor "Z" [] => true
-  | .ctor "S" [n] => indexKindV fuel sctx n
-  | .ctor "True" [] => true
-  | .ctor "False" [] => true
-  | .ctor "unit" [] => true
-  | .ctor "Refl" _ => true                                  -- a proof
-  | .ctor _ _ => false                                      -- data → move
-  -- whnf the σ's type before classifying: a redex-headed type that reduces to
-  -- Nat should copy, not be mistaken for data. Misclassification is otherwise
-  -- only ever toward MOVE (conservative), but the whnf hardens the σ side.
-  | .sym σ => match sctx.lookup σ with | some τ => indexKindTy (Val.whnfOut fuel τ) | none => false
+def indexKindT (fuel : Nat) (sctx : List (Nat × Term)) : Term → Bool
+  | .ctorApp "Z" [] => true
+  | .ctorApp "S" [n] => indexKindT fuel sctx n
+  | .ctorApp "True" [] => true
+  | .ctorApp "False" [] => true
+  | .ctorApp "unit" [] => true
+  | .ctorApp "Refl" _ => true                               -- a proof
+  | .ctorApp _ _ => false                                   -- data → move
+  -- A σ, which is a reserved pure NAME since M32 R1. Whnf its type before
+  -- classifying: a redex-headed type that reduces to Nat should copy, not be
+  -- mistaken for data. Misclassification is otherwise only ever toward MOVE
+  -- (conservative), but the whnf hardens the σ side. An ordinary pure name is a
+  -- proof/type variable and copies, which is what `.pvar => true` used to say
+  -- when σ's were a former of their own.
+  | .pvar x =>
+    match symOfName? x with
+    | some σ => match sctx.lookup σ with
+      | some τ => indexKindTy (Pure.whnf fuel τ)
+      | none => false
+    | none => true
   | .type => true
   | .const _ => true
   | .pi _ _ _ => true
   | .lam _ _ _ => true
-  -- A runtime function value is closed and marker-free, so the ownership
-  -- machinery is doubly vacuous on it exactly as it is on a λ; §7 cost 2's "never
-  -- partially applied, closed" is what earns this. A CONSERVATIVE DEFAULT, and
-  -- corrected here (M27-P3) because the justification that used to stand in its
-  -- place was wrong twice: it said copy-on-read is "what makes a body able to
-  -- recurse twice (`quicksort`'s two halves)", but `ih` is CALLED and `.callV`
-  -- LOCATES its callee rather than moving it (M26-E), so a recursive call never
-  -- reaches here at all. Flipping this case to `false` leaves the whole suite
-  -- green. It is also unreachable from the CHECKING machine, where `ih` is a σ
-  -- whose signature lives in `fsig` and not `sctx`, so the `.sym` case below takes
-  -- the move default — the two machines therefore disagree about reading `ih` into
-  -- a slot, in the safe direction (the checker refuses what the machine runs).
-  -- Both sides are pinned in `Tests/S26Rec.lean` §M.
-  | .rfn _ _ => true
-  | .idT _ _ _ => true
-  | .app _ _ => true                                        -- a pure-former spine (proof/type)
-  | .pvar _ => true
-  -- A closure is a function value, so it gets `.lam`'s answer for `.lam`'s reason.
-  -- It cannot reach a slot (it is knowledge, and it never leaves `Pure.lean`), so
-  -- this arm exists to keep the match total rather than to decide anything.
-  | .closure _ _ => true
   | .sigmaT _ _ _ => true                                   -- a type
-  | .borrowM _ _ => false
-  | .loanM _ => false
+  | .idT _ _ _ => true
+  | .app _ _ => true                                        -- a pure-former spine
   -- A binder-mode marker is not a value and never stands in a slot (§6); it
   -- reaches here only through a malformed term, and the conservative answer is
   -- the one every unclassifiable shape gets.
-  | .cmpT _ => false
+  | _ => false
+
+/-- The same question of a STORE value. Two lines of it are new information and
+    the rest is dispatch: a node holds state, so it is data and it moves; a
+    marker is not a value at all. -/
+def indexKindV (fuel : Nat) (sctx : List (Nat × Term)) : Val → Bool
+  | .know t => indexKindT fuel sctx t
+  -- A recursor spine over runtime arms is a FUNCTION VALUE, so it copies for the
+  -- same reason a λ does — and it must, because that spine is what `ih` holds in
+  -- executing mode and a body may name `ih` twice. Before R1 it was a `.app`
+  -- spine and took the pure-former answer; the skeleton is where it lives now,
+  -- and the answer travels with it rather than with the former it used to be.
+  | .node "§rec" _ => true
+  | .node _ _ => false                                      -- data → move
+  -- A runtime function value is closed and marker-free, so the ownership
+  -- machinery is doubly vacuous on it exactly as it is on a λ; §7 cost 2's "never
+  -- partially applied, closed" is what earns this. A CONSERVATIVE DEFAULT, and
+  -- corrected at M27-P3: `ih` is CALLED, and a call LOCATES its callee rather
+  -- than moving it, so a recursive call never reaches here at all.
+  | .rfn _ _ => true
+  | .borrowM _ _ => false
+  | .loanM _ => false
   | .bot => false
 
-/-! Substitute `newV` for every `sym σ` occurrence in `v` — the value-tree
-    core of ⇜ (§3.2 refinement substitutes σ *everywhere*). -/
+/-! ## The two store-wide sweeps, two-layered (M32 R1)
+
+    Both used to be `Val`-tree traversals over a domain that was sometimes
+    semantics and sometimes syntax. With knowledge at rest being a canonical
+    `Term`, each is a walk down the STATE SKELETON that switches to `Term`-level
+    machinery the moment it reaches a leaf — and at the leaf, refinement is not a
+    traversal at all but `substP` at the σ's reserved name.
+
+    A knowledge leaf is where every σ lives, so the skeleton walk exists only to
+    find the leaves: markers hold no σ's, and a node's job here is to be descended
+    through. -/
+
+/-! Substitute the knowledge `repl` for every occurrence of σ in a store value —
+    the store half of ⇜ (§3.2 refinement substitutes σ *everywhere*). -/
 mutual
-  def substSym (σ : Nat) (newV : Val) : Val → Val
-    | .sym σ' => if σ' == σ then newV else .sym σ'
+  def substSym (σ : Nat) (repl : Term) : Val → Val
+    | .know t => .know (Term.substSym σ repl t)
+    | .node n args => .ctor n (substSymList σ repl args)
+    | .borrowM ℓ p => .borrowM ℓ (substSym σ repl p)
     | .rfn xs b => .rfn xs b                             -- closed: no σ inside
-    -- **⇜'s reach widens to captured environments** (nbe.md §6.2). A σ inside a
-    -- closure is a σ like any other: the sealed contracts of §4.3 are closures
-    -- built over the entry snapshot, and a refinement that solved σ everywhere
-    -- EXCEPT there would leave the audit reading a frozen entry it was told had
-    -- been solved. Both halves are swept — the environment holds what the body was
-    -- closed over, the body holds what was written into it.
-    | .closure ρ b => .closure (substSymEnv σ newV ρ) (substSym σ newV b)
-    | .borrowM ℓ p => .borrowM ℓ (substSym σ newV p)
-    | .cmpT τ => .cmpT (substSym σ newV τ)
-    | .ctor n args => .ctor n (substSymList σ newV args)
     | .loanM ℓ => .loanM ℓ
     | .bot => .bot
-    | .pvar x => .pvar x
-    | .type => .type
-    | .const c => .const c
-    | .pi x d c => .pi x (substSym σ newV d) (substSym σ newV c)
-    | .sigmaT x d c => .sigmaT x (substSym σ newV d) (substSym σ newV c)
-    | .lam x d c => .lam x (substSym σ newV d) (substSym σ newV c)
-    | .app d c => .app (substSym σ newV d) (substSym σ newV c)
-    | .idT a b c => .idT (substSym σ newV a) (substSym σ newV b) (substSym σ newV c)
   termination_by v => sizeOf v
-  def substSymList (σ : Nat) (newV : Val) : List Val → List Val
+  def substSymList (σ : Nat) (repl : Term) : List Val → List Val
     | [] => []
-    | v :: vs => substSym σ newV v :: substSymList σ newV vs
+    | v :: vs => substSym σ repl v :: substSymList σ repl vs
   termination_by vs => sizeOf vs
-  def substSymEnv (σ : Nat) (newV : Val) : List (String × Val) → List (String × Val)
-    | [] => []
-    | (x, v) :: ρ => (x, substSym σ newV v) :: substSymEnv σ newV ρ
-  termination_by ρ => sizeOf ρ
 end
 
-/-! Abstract a whole sub-value `target` into `sym σb` **everywhere** — the
-    inverse of `substSym`, keyed on structural identity of the whole subterm
-    rather than a σ id. It is the value-level core of the §19 stuck-spine split:
-    a Bool scrutinee that reduced to a stuck spine (`leb σ σp`, not a bare σ) is
-    generalized to a fresh σb, so the ordinary True/False refinement can fire.
-    `target` must be pvar-free (a spine over σ's — no bound variables to shift),
-    which the Bool spines it is used on always are; NF it before abstracting so
-    the match is up to conversion-stable syntactic identity. -/
+/-! Abstract a whole sub-TERM `target` into the σ `σb` everywhere — the inverse of
+    `substSym`, keyed on structural identity of the whole subterm rather than a σ
+    id. It is the store half of the §19 stuck-spine split: a Bool scrutinee that
+    reduced to a stuck spine (`leb σ σp`, not a bare σ) is generalized to a fresh
+    σb, so the ordinary True/False refinement can fire.
+
+    Only the leaves are rewritten, and that is exact rather than approximate: the
+    target is a spine over σ's, which is knowledge, and knowledge cannot be a
+    marker or a node — so an occurrence of it inside a store value is inside a
+    knowledge leaf, always. NF the target before abstracting so the match is up to
+    conversion-stable syntactic identity. -/
 mutual
-  def abstractInto (target : Val) (σb : Nat) (v : Val) : Val :=
-    if v == target then .sym σb
-    else match v with
-      | .borrowM ℓ p => .borrowM ℓ (abstractInto target σb p)
-      | .ctor n args => .ctor n (abstractIntoList target σb args)
-      | .pi x d c => .pi x (abstractInto target σb d) (abstractInto target σb c)
-      | .sigmaT x d c => .sigmaT x (abstractInto target σb d) (abstractInto target σb c)
-      | .lam x d c => .lam x (abstractInto target σb d) (abstractInto target σb c)
-      | .app d c => .app (abstractInto target σb d) (abstractInto target σb c)
-      | .idT a b c => .idT (abstractInto target σb a) (abstractInto target σb b) (abstractInto target σb c)
-      -- Paired with `substSym`'s closure arm, and for the same reason: §19's
-      -- generalization sweeps exactly the state a refinement sweeps, so a spine
-      -- reachable by one and not the other would leave a branch equation that
-      -- talks about a term the refinement has already made unnameable.
-      | .closure ρ b => .closure (abstractIntoEnv target σb ρ) (abstractInto target σb b)
-      | v' => v'
-  termination_by sizeOf v
-  def abstractIntoList (target : Val) (σb : Nat) (vs : List Val) : List Val :=
-    match vs with
+  def abstractInto (target : Term) (σb : Nat) : Val → Val
+    | .know t => .know (Term.abstractInto target σb t)
+    | .node n args => .ctor n (abstractIntoList target σb args)
+    | .borrowM ℓ p => .borrowM ℓ (abstractInto target σb p)
+    | .rfn xs b => .rfn xs b
+    | .loanM ℓ => .loanM ℓ
+    | .bot => .bot
+  termination_by v => sizeOf v
+  def abstractIntoList (target : Term) (σb : Nat) : List Val → List Val
     | [] => []
-    | v :: rest => abstractInto target σb v :: abstractIntoList target σb rest
-  termination_by sizeOf vs
-  def abstractIntoEnv (target : Val) (σb : Nat) (ρ : List (String × Val)) : List (String × Val) :=
-    match ρ with
-    | [] => []
-    | (x, v) :: rest => (x, abstractInto target σb v) :: abstractIntoEnv target σb rest
-  termination_by sizeOf ρ
+    | v :: vs => abstractInto target σb v :: abstractIntoList target σb vs
+  termination_by vs => sizeOf vs
 end
 
 /-! ## The two Ω-primitives
@@ -665,11 +654,11 @@ inductive Step where
   /-- `[i | ev]` — the index step. `ev` is the cited containment evidence, `none`
       when the bound computes: ¶3.2's supply route 1, "every literal-indexed array
       access is free". -/
-  | idx : Val → Option Val → Step
+  | idx : Term → Option Term → Step
   /-- `[lo ; cnt | ev]` — the range step, in OFFSET-AND-COUNT (¶2.1), so that
       `a[lo ; cnt] : Array cnt T` is read straight off the syntax with no arithmetic
       and no rule below ever produces a `sub`. -/
-  | rng : Val → Val → Option Val → Step
+  | rng : Term → Term → Option Term → Step
 
 /-- A resolved place: a root variable and the path from it. -/
 structure Pos where
@@ -687,19 +676,19 @@ def peels : Nat → List Step
     which is the one case only the machine can serve. That partiality is what lets
     ¶1.1's abbreviation stand — an uncarved array needs no wrapper stamping it with
     its length. -/
-def arrExtent (fuel : Nat) (v : Val) : M Val := do
+def arrExtent (fuel : Nat) (v : Val) : M Term := do
   match Val.arrExtentPure? v with
-  | some c => pure (Val.nfV fuel c)
+  | some c => pure (Pure.nf fuel c)
   | none =>
-    match v with
-    | .sym σ =>
+    match v.symOf? with
+    | some σ =>
       match (← get).sctx.lookup σ with
       | some τ =>
-        match Val.asArrayTy? (Val.whnfOut fuel τ) with
-        | some (n, _) => pure (Val.nfV fuel n)
+        match Pure.asArrayTy? (Pure.whnf fuel τ) with
+        | some (n, _) => pure (Pure.nf fuel n)
         | none => throwErr s!"array: σ{σ} is not of array type (its sctx type is {τ.pretty})"
       | none => throwErr s!"array: σ{σ} has no type in sctx — cannot read its extent"
-    | _ => throwErr s!"array: {v.pretty} is not an array value (no extent to read)"
+    | none => throwErr s!"array: {v.pretty} is not an array value (no extent to read)"
 
 /-- One entry of ¶3.1's **extent map**: an offset, a count, and the body sitting
     there. `Arr⟨1 ▷ [3], 2 ▷ loanₘ ℓ⟩` induces `[(0,1,owned), (1,2,loaned ℓ)]`.
@@ -710,8 +699,8 @@ def arrExtent (fuel : Nat) (v : Val) : M Val := do
     *test* anywhere below — only the question of whether a requested range can be
     MADE into a segment, which is what the carve answers. -/
 structure Leaf where
-  base : Val
-  count : Val
+  base : Term
+  count : Term
   body : Val
 
 /-- The range's exclusive end, `lo + cnt`, spelled the way a program can write it.
@@ -723,18 +712,18 @@ structure Leaf where
     which is ¶3.5's own observation that range places "take the same terms" the swap
     sites have been threading since M13. So a CONCRETE count is unrolled into
     successors and a symbolic one keeps `add`, where it computes. -/
-def rangeEnd (fuel : Nat) (lo cnt : Val) : Val :=
-  match Val.natOfVal? (Val.nfV fuel cnt) with
-  | some k => (List.range k).foldl (fun acc _ => .ctor "S" [acc]) lo
-  | none => Val.kAdd lo cnt
+def rangeEnd (fuel : Nat) (lo cnt : Term) : Term :=
+  match Term.natOf? (Pure.nf fuel cnt) with
+  | some k => (List.range k).foldl (fun acc _ => Term.succ acc) lo
+  | none => Pure.kAdd lo cnt
 
-def extentMapGo (fuel : Nat) (b : Val) : List Val → M (List Leaf)
+def extentMapGo (fuel : Nat) (b : Term) : List Val → M (List Leaf)
   | [] => pure []
   | s :: rest =>
     match Val.asSeg? s with
     | none => throwErr "array: malformed segment node (expected §seg [c, body])"
     | some (c, body) => do
-      let tl ← extentMapGo fuel (Val.nfV fuel (rangeEnd fuel b c)) rest
+      let tl ← extentMapGo fuel (Pure.nf fuel (rangeEnd fuel b c)) rest
       pure (⟨b, c, body⟩ :: tl)
 
 /-- The sum of a leaf list's extents, RIGHT-NESTED and with no trailing `Z`.
@@ -745,24 +734,24 @@ def extentMapGo (fuel : Nat) (b : Val) : List Val → M (List Leaf)
     which is the one conversion premise (3)'s residue transition exists to make
     definitional. Right-nesting also matches the `arrCat` spine the ⇝ fold builds and
     the `m ≡ add lo' (add cnt rest)` the transition solves, so all three agree. -/
-def sumExtents : List Leaf → Val
-  | [] => Val.zero
+def sumExtents : List Leaf → Term
+  | [] => Term.zero
   | [l] => l.count
-  | l :: rest => Val.kAdd l.count (sumExtents rest)
+  | l :: rest => Pure.kAdd l.count (sumExtents rest)
 
 /-- The extent map of an array node. An UNCARVED array is a single leaf spanning it. -/
 def extentMap (fuel : Nat) (v : Val) : M (List Leaf) :=
   match v with
-  | .ctor "§segs" segs => extentMapGo fuel Val.zero segs
-  | _ => do pure [⟨Val.zero, ← arrExtent fuel v, v⟩]
+  | .node "§segs" segs => extentMapGo fuel Term.zero segs
+  | _ => do pure [⟨Term.zero, ← arrExtent fuel v, v⟩]
 
 /-- Locate the segment a step designates, by its (base, count) rather than by its
     position in the list — so navigation survives a sibling's body changing under it
     (a drop that ends a loan elsewhere in the same node, a merge that ran in between).
     Returns the segment's index and its leaf. -/
-def findSeg (fuel : Nat) (lo cnt : Val) (v : Val) : M (Nat × Leaf) := do
+def findSeg (fuel : Nat) (lo cnt : Term) (v : Val) : M (Nat × Leaf) := do
   let leaves ← extentMap fuel v
-  match leaves.findIdx? (fun l => Val.convert fuel l.base lo && Val.convert fuel l.count cnt) with
+  match leaves.findIdx? (fun l => Pure.convert fuel l.base lo && Pure.convert fuel l.count cnt) with
   | some i =>
     match leaves.get? i with
     | some l => pure (i, l)
@@ -770,40 +759,48 @@ def findSeg (fuel : Nat) (lo cnt : Val) (v : Val) : M (Nat × Leaf) := do
   | none =>
     throwErr s!"array: no segment at [{lo.pretty} ; {cnt.pretty}] in {v.pretty} (the place was never carved there)"
 
+/-- The distinctive rejection for peeling a non-borrow, stated once because two
+    rules need it and each used to spell all five cases out. A knowledge leaf
+    answers for the three shapes it can be (a σ, a constructor tree, anything
+    else pure), which is the two-layer principle at its smallest. -/
+def notABorrow (v : Val) : String :=
+  match v with
+  | .bot => "*: cannot peel a vacant slot (⊥)"
+  | .loanM ℓ => s!"*: cannot peel loanₘ ℓ{ℓ} (suspended borrow)"
+  | v =>
+    match v.symOf? with
+    | some σ => s!"*: cannot peel symbolic value σ{σ} (not a borrow)"
+    | none =>
+      match Val.asCtor? v with
+      | some (n, _) => s!"*: cannot peel constructor '{n}' (not a borrow)"
+      | none => "*: cannot peel a pure value (not a borrow)"
+
 /-- Read through one step. -/
 def navStep (fuel : Nat) : Step → Val → M Val
   | .peel, v =>
     match v with
     | .borrowM _ p => pure p
-    | .bot => throwErr "*: cannot peel a vacant slot (⊥)"
-    | .loanM ℓ => throwErr s!"*: cannot peel loanₘ ℓ{ℓ} (suspended borrow)"
-    | .ctor n _ => throwErr s!"*: cannot peel constructor '{n}' (not a borrow)"
-    | .sym σ => throwErr s!"*: cannot peel symbolic value σ{σ} (not a borrow)"
-    | _ => throwErr "*: cannot peel a pure value (not a borrow)"
+    | v => throwErr (notABorrow v)
   | .rng lo cnt _, v => do pure (← findSeg fuel lo cnt v).2.body
   | .idx i _, v => do
     -- ¶2.1: `a[i]` is NOT `a[i ; 1]`. They carve identically, but the range place's
     -- payload is an `Array 1 T` while the index place's is the ELEMENT itself, of
     -- type `T` — which is what spares every element access a coercion.
-    let (_, l) ← findSeg fuel i (Val.nat 1) v
-    match l.body with
-    | .ctor "Arr" [e] => pure e
-    | b => throwErr s!"a[i]: the one-slot segment at {i.pretty} holds {b.pretty}, not a single-element run"
+    let (_, l) ← findSeg fuel i (Term.nat 1) v
+    match Val.asCtor? l.body with
+    | some ("Arr", [e]) => pure e
+    | _ => throwErr s!"a[i]: the one-slot segment at {i.pretty} holds {l.body.pretty}, not a single-element run"
 
 /-- Write `inner` back through one step, rebuilding the node around it. -/
 def setStep (fuel : Nat) : Step → Val → Val → M Val
   | .peel, v, inner =>
     match v with
     | .borrowM ℓ _ => pure (.borrowM ℓ inner)
-    | .bot => throwErr "*: cannot peel a vacant slot (⊥)"
-    | .loanM ℓ => throwErr s!"*: cannot peel loanₘ ℓ{ℓ} (suspended borrow)"
-    | .ctor n _ => throwErr s!"*: cannot peel constructor '{n}' (not a borrow)"
-    | .sym σ => throwErr s!"*: cannot peel symbolic value σ{σ} (not a borrow)"
-    | _ => throwErr "*: cannot peel a pure value (not a borrow)"
+    | v => throwErr (notABorrow v)
   | .rng lo cnt _, v, inner => do
     let (i, _) ← findSeg fuel lo cnt v
     match v with
-    | .ctor "§segs" segs =>
+    | .node "§segs" segs =>
       pure (Val.segsNode (segs.enum.map (fun (j, s) =>
         if j == i then (match Val.asSeg? s with
                         | some (c, _) => Val.segNode c inner
@@ -811,9 +808,9 @@ def setStep (fuel : Nat) : Step → Val → Val → M Val
         else s)))
     | _ => pure inner                              -- degenerate: the node IS the request
   | .idx i _, v, inner => do
-    let (j, _) ← findSeg fuel i (Val.nat 1) v
+    let (j, _) ← findSeg fuel i (Term.nat 1) v
     match v with
-    | .ctor "§segs" segs =>
+    | .node "§segs" segs =>
       pure (Val.segsNode (segs.enum.map (fun (k, s) =>
         if k == j then (match Val.asSeg? s with
                         | some (c, _) => Val.segNode c (.ctor "Arr" [inner])
@@ -864,21 +861,26 @@ def placeToPosRaw : Term → M Pos
     (§3.2 knowledge/state): substituting a hole/loan/borrow for a σ would smuggle
     state into entry-knowledge — the etiology of the M21 `PartIdxL n ⊥` bug. -/
 def refineSym (σ : Nat) (v : Val) : M Unit := do
-  if Val.hasStateMarker v then
-    throwErr s!"refineSym: σ{σ} := {v.pretty} carries a state marker (⊥/loan/borrow) — knowledge/state violation (§3.2)"
+  -- The knowledge/state premise, which is now the SHAPE of the argument rather
+  -- than a scan of it: a store value is knowledge exactly when it is a `know`
+  -- leaf, so the guard that used to walk the tree for a marker is the match
+  -- below, and the rejection it produces is the same sentence.
+  let repl ← match v with
+    | .know t => pure t
+    | _ => throwErr s!"refineSym: σ{σ} := {v.pretty} carries a state marker (⊥/loan/borrow) — knowledge/state violation (§3.2)"
   modify (fun s => { s with
-    env := s.env.map (fun kv => (kv.1, substSym σ v kv.2)),
-    sctx := s.sctx.map (fun p => (p.1, substSym σ v p.2)),
-    obligations := s.obligations.map (fun ob => { ob with owed := substSym σ v ob.owed }),
+    env := s.env.map (fun kv => (kv.1, substSym σ repl kv.2)),
+    sctx := s.sctx.map (fun p => (p.1, Term.substSym σ repl p.2)),
+    obligations := s.obligations.map (fun ob => { ob with owed := Term.substSym σ repl ob.owed }),
     -- A dependent call's captured/issued owed types may mention a caller σ (via
     -- an instantiated actual, §5.3); they live in group state, so a refinement
     -- must reach them too — the "refinement reaches all σ-bearing state"
     -- invariant (§3.2), of which §5.3 instantiation is the first consumer.
     groups := s.groups.map (fun g => { g with
-      captured := g.captured.map (fun p => (p.1, substSym σ v p.2)),
-      issued := g.issued.map (fun p => (p.1, substSym σ v p.2)),
+      captured := g.captured.map (fun p => (p.1, Term.substSym σ repl p.2)),
+      issued := g.issued.map (fun p => (p.1, Term.substSym σ repl p.2)),
       }),
-    retTyVal := s.retTyVal.map (substSym σ v),
+    retTyVal := s.retTyVal.map (Term.substSym σ repl),
     -- The decreasing parameter's snapshot refines with everything else — this is
     -- how `match fuel { S(f2) => … }` makes the guard's comparison possible.
     })
@@ -900,18 +902,19 @@ def refineSym (σ : Nat) (v : Val) : M Unit := do
     a term the refinement never touched — so the value returned here is the only
     thing a branch EQUATION can be built from (M23). The caller threads it to the
     branch setup. -/
-def generalizeStuck (fuel : Nat) (spine : Val) : M (Nat × Val) := do
-  let sp := Val.nfV fuel spine
+def generalizeStuck (fuel : Nat) (spine : Term) : M (Nat × Term) := do
+  let sp := Pure.nf fuel spine
   let σb ← freshSym
   modify (fun s => { s with
     env := s.env.map (fun kv => (kv.1, abstractInto sp σb kv.2)),
-    sctx := (σb, .const "Bool") :: s.sctx.map (fun p => (p.1, abstractInto sp σb p.2)),
-    obligations := s.obligations.map (fun ob => { ob with owed := abstractInto sp σb ob.owed }),
+    sctx := (σb, .const "Bool") :: s.sctx.map (fun p => (p.1, Term.abstractInto sp σb p.2)),
+    obligations := s.obligations.map
+      (fun ob => { ob with owed := Term.abstractInto sp σb ob.owed }),
     groups := s.groups.map (fun g => { g with
-      captured := g.captured.map (fun p => (p.1, abstractInto sp σb p.2)),
-      issued := g.issued.map (fun p => (p.1, abstractInto sp σb p.2)),
+      captured := g.captured.map (fun p => (p.1, Term.abstractInto sp σb p.2)),
+      issued := g.issued.map (fun p => (p.1, Term.abstractInto sp σb p.2)),
       }),
-    retTyVal := s.retTyVal.map (abstractInto sp σb),
+    retTyVal := s.retTyVal.map (Term.abstractInto sp σb),
     })
   pure (σb, sp)
 
@@ -921,19 +924,19 @@ def generalizeStuck (fuel : Nat) (spine : Val) : M (Nat × Val) := do
     everywhere; if already equal, nothing; if BOTH are rigid, the match is
     STUCK — no unification beyond solution (no injectivity/conflict/cycle in the
     kernel; those are the fording library's job via j/k). -/
-def reflUnify (fuel : Nat) (a b : Val) : M Unit := do
-  let a' := Val.whnfOut fuel a
-  let b' := Val.whnfOut fuel b
-  if Val.convert fuel a' b' then pure ()                         -- endpoints already equal
-  else match a', b' with
-    | .sym σa, _ =>
+def reflUnify (fuel : Nat) (a b : Term) : M Unit := do
+  let a' := Pure.whnf fuel a
+  let b' := Pure.whnf fuel b
+  if Pure.convert fuel a' b' then pure ()                         -- endpoints already equal
+  else match a'.symOf?, b'.symOf? with
+    | some σa, _ =>
       if b'.symIds.contains σa then
         throwErr s!"Refl: occurs check — endpoint σ{σa} occurs in the other endpoint ({b'.pretty})"
-      else refineSym σa b'
-    | _, .sym σb =>
+      else refineSym σa (.know b')
+    | _, some σb =>
       if a'.symIds.contains σb then
         throwErr s!"Refl: occurs check — endpoint σ{σb} occurs in the other endpoint ({a'.pretty})"
-      else refineSym σb a'
+      else refineSym σb (.know a')
     | _, _ =>
       throwErr s!"Refl: both endpoints are rigid ({a'.pretty} vs {b'.pretty}) — no solution by refinement; use j/k to eliminate the identity"
 
@@ -943,9 +946,10 @@ def reflUnify (fuel : Nat) (a b : Val) : M Unit := do
     refinement `σ := refined` (Ω and sctx). Errors distinctively otherwise. -/
 def writeC (place : Term) (refined : Val) : M Unit := do
   let pos ← placeToPosRaw place
-  match ← getAtPos 1000 pos with
-  | .sym σ => refineSym σ refined
-  | v => throwErr s!"writeC (⇜): place holds {v.pretty}, expected a symbolic value (sym σ)"
+  let v ← getAtPos 1000 pos
+  match v.symOf? with
+  | some σ => refineSym σ refined
+  | none => throwErr s!"writeC (⇜): place holds {v.pretty}, expected a symbolic value (sym σ)"
 
 /-! ## ⇝ (comptime read) and value typing (§4)
 
@@ -956,50 +960,41 @@ def writeC (place : Term) (refined : Val) : M Unit := do
     through a loan are all outside the fragment (errors). Reflected pure terms
     are then normalized by `nfV`. -/
 
-/-! Reflect a comptime term into a value, resolving Ω snapshot reads. Pure
-    formers map to their `Val` counterparts; runtime-only constructs error.
+/-! Reflect a comptime term, resolving Ω snapshot reads.
 
-    **`let` is read by β** (M29 α), as the redex `Val.letRedex` declared in
-    `Pure.lean` — shared with `Term.toValPure`, the monad-free reflection, so that
-    the rule is stated once. The reading it replaces bound the reflected value
-    into Ω, and that was wrong twice over. Both were measured before this was
-    written (M29 step-0 probe 2), because both are the silent kind:
+    **It produces a store value, not knowledge, and that is the domain split
+    showing where it belongs** (M32 R1). A reflection resolves places — `x`, `*x`,
+    `a[i]` — and a place is exactly the thing that may hold state, so a
+    half-resolved term is a skeleton with knowledge leaves. `readC` is where the
+    demand for knowledge is made, once, after the ⇝ bridge has had its chance to
+    fold a carve back into an `arrCat` spine.
 
-      * **Binder depth was ignored.** The value went into Ω and came back
-        unshifted, so `λ. let y = #0 ; λ. y` reflected to `λ. λ. #0` where β gives
-        `λ. λ. #1`.
-      * **Ids collided, and the OLDER binding won.** The Ω entry was minted at the
-        `letIn`'s ABSOLUTE id, and `bindSlot` appends where `lookupSlot` takes the
-        first match — so a `let` whose id was already a slot bound a shadow that
-        nothing ever read: `readC` of `let h = S Z ; h` against an Ω holding
-        `#0 ↦ Z` returned `Z`. Absolute ids make that reachable rather than
-        hypothetical, since a `prog{ }` block numbers its binders from 0 and so
-        does every telescope.
+    Everything above the places is knowledge by construction, which is what
+    `needKnow` asks at each pure former: `Cons(3, *b)` where `*b` is a borrowed
+    field reflects to a NODE and is refused at `readC`, exactly where a value
+    carrying a marker used to be refused by whatever tried to type it.
 
-    Neither had ever been hit, because the surface's ⇝ `let` was a β-redex and
-    emitted no `letIn` at all; pointing it at one — which is what merges the two
-    fragments' `let` — is exactly what would have hit both. A scope that is local
-    to the reflection, innermost-first, and discarded when it returns has neither,
-    and it also retires §1.3's "the comptime read's one sanctioned footprint on Ω"
-    caveat: ⇝ now writes nothing whatsoever.
+    **`let` is read by β, and `eval` performs it** (M32 R1). M29 α carried a
+    substitution and M30 step 2 built a redex here; both existed because the
+    let-bound VALUE must not be carried under a binder, which is the one move a
+    named representation cannot make safely. An environment extension cannot make
+    it either — the argument is a value before the inner binder is entered — and
+    `eval` has an environment, so the `letIn` rides through as itself and the
+    evaluator binds `Pure.letName x.id`. The redex construction is gone. -/
 
-    **And the β is BUILT, not carried** (M30 step 2). M29 α carried the
-    substitution — a `LetCtx` recording each binding with the pure-binder DEPTH it
-    was made at, so an occurrence read under further binders could be lifted to
-    where it sat — because building the redex meant abstracting the binder out of
-    the body, which is not a subterm of anything. Under names there is nothing to
-    abstract: `lets` is the list of ids in scope, an occurrence of one is the
-    reserved pure name `letName x.id`, and the `letIn` case wraps the whole thing
-    in the λ that binds it. What that buys is not tidiness — it is that the
-    let-bound VALUE is never carried under a binder, which is the one move a named
-    representation cannot do safely and the one this reflection used to make. -/
+/-- A ⇝ position demands knowledge; a store value that is not a leaf is state. -/
+def needKnow (what : String) (v : Val) : M Term :=
+  match v with
+  | .know t => pure t
+  | v => throwErr s!"readC (⇝{what}): {v.pretty} is state, not knowledge — a comptime read reaches a hole, a loan marker or a borrow through the place grammar only (§3.2)"
+
 mutual
   def reflectC (lets : List Nat) : Term → M Val
     | .var x => do
       -- A ⇝ `let` binding first: it is the innermost scope there is, and it is
-      -- the one Ω knows nothing about. Its occurrences are the redex's pure
-      -- binder, which the `letIn` case below wraps around this body.
-      if lets.contains x.id then pure (.pvar (Val.letName x.id)) else
+      -- the one Ω knows nothing about. Its occurrences ride through to `eval`,
+      -- which resolves them against the environment the `letIn` case extends.
+      if lets.contains x.id then pure (.know (.var x)) else
         -- snapshot read (non-destructive) — but §2.1: every read-shaped rule
         -- excludes ⊥. A comptime read of a moved/uninitialized slot is a
         -- use-after-move; rejecting it here stops a silent ⊥ from riding into a
@@ -1013,46 +1008,47 @@ mutual
       | .borrowM _ p => pure p                       -- *(borrowₘ ℓ v) ⇝ v
       | _ => throwErr "readC (⇝ *): dereferenced value is not a borrow"
     | .ctorApp n args => do pure (.ctor n (← reflectCList lets args))
-    | .type => pure .type
-    | .const c => pure (.const c)
-    | .pvar x => pure (.pvar x)
+    | .type => pure (.know .type)
+    | .const c => pure (.know (.const c))
+    | .pvar x => pure (.know (.pvar x))
     -- The mode marker reflects structurally. ⇝ carries it without ever reading
-    -- it: `beq` is mode-blind, so no comptime judgment can branch on a mode
+    -- it: conversion is mode-blind, so no comptime judgment can branch on a mode
     -- (§6, "case is inert under ⇝"). It is here so that ⇒ can read it off a
     -- value callee's Π — the one arrow that is entitled to ask.
-    | .cmpT τ => do pure (.cmpT (← reflectC lets τ))
-    -- The three pure BINDERS, carrying their names across unchanged. There is no
-    -- longer anything to do at one: a `let` binding made outside is a VALUE bound
-    -- in the redex's environment, not a term to be lifted to this depth.
-    | .pi x d c => do pure (.pi x (← reflectC lets d) (← reflectC lets c))
-    | .sigmaT x d c => do pure (.sigmaT x (← reflectC lets d) (← reflectC lets c))
-    | .lam x d b => do pure (.lam x (← reflectC lets d) (← reflectC lets b))
+    | .cmpT τ => do pure (.know (.cmpT (← needKnow " ⇝τ" (← reflectC lets τ))))
+    -- The three pure BINDERS, carrying their names across unchanged.
+    | .pi x d c => do
+      pure (.know (.pi x (← needKnow " Π" (← reflectC lets d)) (← needKnow " Π" (← reflectC lets c))))
+    | .sigmaT x d c => do
+      pure (.know (.sigmaT x (← needKnow " Σ" (← reflectC lets d)) (← needKnow " Σ" (← reflectC lets c))))
+    | .lam x d b => do
+      pure (.know (.lam x (← needKnow " λ" (← reflectC lets d)) (← needKnow " λ" (← reflectC lets b))))
     -- §5.4 exit-snapshot marker: `markExit` stamps a bare borrow-param `*v` in a
     -- return type as `@exit(*v)`; here it pins to that borrow's fresh σ_exit (the
     -- audit later defines it as the collapsed final payload). Unmarked bare `*v`
     -- and `old *v` both fall to the plain `.deref` read (the entry snapshot).
     | .app (.const "@exit") (.deref (.var v)) => do
       match (← get).exitSyms.lookup v.id with
-      | some σ => pure (.sym σ)
+      | some σ => pure (.know (Term.sym σ))
       | none => reflectC lets (.deref (.var v))
     -- §5.4 `old *v`: the ENTRY snapshot σ (recorded at seed) — a non-consuming read
     -- of the entry value, in the return type OR the body (where `*v`'s live payload
     -- has since been mutated). Falls back to the live deref outside a borrow-param.
     | .app (.const "old") (.deref (.var v)) => do
       match (← get).entrySyms.lookup v.id with
-      | some σ => pure (.sym σ)
+      | some σ => pure (.know (Term.sym σ))
       | none => reflectC lets (.deref (.var v))
-    | .app f a => do pure (.app (← reflectC lets f) (← reflectC lets a))
-    | .idT a b c => do pure (.idT (← reflectC lets a) (← reflectC lets b) (← reflectC lets c))
+    | .app f a => do
+      pure (.know (.app (← needKnow "" (← reflectC lets f)) (← needKnow "" (← reflectC lets a))))
+    | .idT a b c => do
+      pure (.know (.idT (← needKnow " Id" (← reflectC lets a)) (← needKnow " Id" (← reflectC lets b))
+        (← needKnow " Id" (← reflectC lets c))))
     | .unit => pure (.ctor "unit" [])
     | .letIn x rhs rest => do
-      -- **⇝'s `let` is β** (M29 α; see the header for what this replaces), and
-      -- since M30 step 2 it is the redex itself: the rhs reflects here, the body
-      -- reflects with `x` in scope as a reserved pure name, and the λ that binds
-      -- that name goes round the outside. Nothing is written to Ω, so a comptime
-      -- read has no footprint and two reads cannot disagree.
-      let v ← reflectC lets rhs
-      pure (Val.letRedex x.id v (← reflectC (x.id :: lets) rest))
+      -- Nothing is written to Ω, so a comptime read has no footprint and two
+      -- reads cannot disagree.
+      let v ← needKnow " let" (← reflectC lets rhs)
+      pure (.know (.letIn x v (← needKnow " let" (← reflectC (x.id :: lets) rest))))
     -- ¶2.2's ⇝ column at the two new steps. The snapshot of an array place is the
     -- snapshot of the SEGMENT sitting there — exact, and needing no new constant.
     -- Read-only, as ⇝ must be: it merges a local copy to find the segment but never
@@ -1060,10 +1056,11 @@ mutual
     -- than silently reorganized inside a type.
     | .index t i _ => do
       let a := Val.mergeArrays (← reflectC lets t)
-      navStep 1000 (.idx (Val.nfV 1000 (← reflectC lets i)) none) a
+      navStep 1000 (.idx (Pure.nf 1000 (← needKnow " a[i]" (← reflectC lets i))) none) a
     | .range t lo (some cnt) _ _ _ => do
       let a := Val.mergeArrays (← reflectC lets t)
-      navStep 1000 (.rng (Val.nfV 1000 (← reflectC lets lo)) (Val.nfV 1000 (← reflectC lets cnt)) none) a
+      navStep 1000 (.rng (Pure.nf 1000 (← needKnow " a[lo ; cnt]" (← reflectC lets lo)))
+        (Pure.nf 1000 (← needKnow " a[lo ; cnt]" (← reflectC lets cnt))) none) a
     | .range _ _ none _ _ _ =>
       -- `a[lo ; ..]` reads its count off the extent map, which is STATE; ⇝ is the
       -- read-only projection and may not consult it. Write the count in a type.
@@ -1074,48 +1071,33 @@ mutual
     | .matchE _ _ _ => throwErr "readC (⇝): match not implemented in the comptime fragment this milestone"
     | .borrowT _ _ _ => throwErr "readC (⇝): borrow type `&mut (τ ↝ S)` is only valid at a telescope position"
     -- **The callee is NAMED** (M31 Stage A), and it is load-bearing rather than
-    -- cosmetic. `fn`'s statement lowering turns a refusal into a term the checker
-    -- rejects distinctively — an unbound `.call` whose NAME carries `fnElab`'s
-    -- own message — and FnMacro's header rests that device on three properties,
-    -- the third being "the diagnosis survives to the message". It survived
-    -- because `readR`'s `.call` names the function it could not find. Now that a
-    -- `fn` slot is a COMPTIME binding, its right-hand side is reached by ⇝ when
-    -- the lowering succeeded and by ⇝ when it did not, so this arm became the
-    -- one that reports a refused lowering — and it was swallowing the diagnosis,
-    -- replacing ten distinct `fnElab` refusals with one generic sentence.
+    -- cosmetic: `fn`'s statement lowering turns a refusal into an unbound `.call`
+    -- whose NAME carries the diagnosis, and this arm is what reports it.
     | .call f _ => throwErr s!"readC (⇝): a call is not in the comptime fragment (its result is a fresh existential) — '{f}'"
     -- The seal is a ⇒-form and only a ⇒-form (combining-fns §5). Minting needs an
     -- EVENT; ⇝ is a pure judgment with none, so a seal reduced twice under ⇝ would
-    -- disagree with itself. It is listed here with the other five runtime-only
-    -- forms because that list IS this calculus's definition of the pure
-    -- sub-grammar (§1.3) — and, unlike a mode flag, the exclusion is structural
-    -- twice over: `.seal` is its own constructor (⇝'s `.app` rule cannot see it)
-    -- and `Val` has no seal former (no comptime RULE for it can be written).
+    -- disagree with itself.
     | .seal _ _ => throwErr "readC (⇝): `seal` is not in the comptime fragment — the seal is a ⇒-form, because minting a fresh σ needs an event and ⇝ has none (§5)"
     | .callV _ _ => throwErr "readC (⇝): a value-callee call is not in the comptime fragment — comptime application of an abstract function is the structured neutral `f a`, written as an application (§2.1)"
     -- The runtime λ joins the same list, and for the same structural reason as
-    -- the seal: it is its own constructor, and its body is a BODY. ⇝'s λ is
-    -- `.lam` — domain-annotated, body a pure term reduced against a comptime
-    -- environment — and a `.lamR` would have to be reduced by binding Ω slots,
-    -- which is ⇒'s move.
+    -- the seal: it is its own constructor, and its body is a BODY.
     | .lamR _ _ => throwErr "readC (⇝): a runtime λ (`λ(x : τ, …){ … }`) is not in the comptime fragment — its body is a body (writes, calls, borrows) and its binders are Ω slots. The comptime λ is `λ (x : τ). e` (§1.3)"
   def reflectCList (lets : List Nat) : List Term → M (List Val)
     | [] => pure []
     | t :: ts => do pure ((← reflectC lets t) :: (← reflectCList lets ts))
 end
 
-/-- ⇝: reflect, FOLD, then normalize. Ω is read-only throughout.
+/-- ⇝: reflect, FOLD, demand knowledge, then normalize. Ω is read-only throughout.
 
     The fold is ¶1.3's bridge, and putting it here rather than at the audit is the
     doc's own preference ("the latter is cleaner, since merge is then part of what
     *the snapshot of an array* means rather than a step the audit remembers to
     take"). A collapsed segment list becomes its `arrCat` spine — knowledge, never
     mentioning a marker — and `arrCat`'s ι then computes it back to a run when the
-    bodies are runs, so a carved-and-rejoined array has the SAME snapshot as one that
-    was never carved. A still-suspended one is left as the state form it is and is
-    rejected at the one place that judges. -/
-def readC (fuel : Nat) (t : Term) : M Val := do
-  pure (Val.nfV fuel (Val.arrFoldDeep (← reflectC [] t)))
+    bodies are runs, so a carved-and-rejoined array has the SAME snapshot as one
+    that was never carved. A still-suspended one is state, and is refused here. -/
+def readC (fuel : Nat) (t : Term) : M Term := do
+  pure (Pure.nf fuel (← needKnow "" (Val.arrFoldDeep (← reflectC [] t))))
 
 /-- ⇝ against extra bindings prepended to Ω — how a dependent call instantiates a
     callee telescope type (§5.3): the decl's parameter vars are bound to the
@@ -1133,7 +1115,7 @@ def readC (fuel : Nat) (t : Term) : M Val := do
     void.
 
     Env is restored afterward (the reflection's let-footprint is discarded). -/
-def readCWith (fuel : Nat) (extra : Omega) (t : Term) : M Val := do
+def readCWith (fuel : Nat) (extra : Omega) (t : Term) : M Term := do
   let saved := (← get).env
   modify (fun s => { s with env := s.env ++ extra })
   let v ← readC fuel t
@@ -1168,6 +1150,19 @@ end
 def borrowParamIds (telescope : List (String × Term)) : List Nat :=
   telescope.enum.filterMap (fun (i, p) => match p.2 with | .borrowT _ _ _ => some i | _ => none)
 
+/-- What a built result component contributes to the dependent tail's context:
+    its knowledge. A borrow node surrenders its payload; anything else is already
+    a leaf. -/
+def subsKnowledge : Val → Term
+  | .know t => t
+  | .borrowM _ p => subsKnowledge p
+  -- A component that is neither: a node holding state, which no return type in
+  -- this calculus can produce (`retMixesBorrow`). It contributes a name that
+  -- converts with nothing, so a type that reached for it would be rejected
+  -- rather than silently typed against a marker.
+  | _ => .const "@stateComponent"
+  termination_by v => sizeOf v
+
 /-- Build a call's fresh result value from the (instantiated) return type, and
     collect the loans it ISSUES (§6.1). Each `&mut (τ ↝ S)` position mints a
     fresh issued reborrow `borrowₘ ℓ σ` with `σ : τ` in `sctx` and owed type
@@ -1187,28 +1182,36 @@ def borrowParamIds (telescope : List (String × Term)) : List Nat :=
     (Before M23 the tail was built independently, leaving a dangling `pvar` in the
     σ's sctx type, so the pin was unusable at the call site — `useIt(a, h)` failed
     with `argument (σ1) does not have its parameter type (Id σ0 (S Z))`.) -/
-def buildResult (fuel : Nat) (inst : Omega) (subs : List (String × Val)) :
-    Term → M (Val × List (Nat × Val))
+def buildResult (fuel : Nat) (inst : Omega) (subs : List (String × Term)) :
+    Term → M (Val × List (Nat × Term))
   | .borrowT s τ S => do
-    let τVal := (subs.foldl (fun t p => Val.instBodyOut fuel p.1 t p.2) (← readCWith fuel inst τ))
+    let τVal := (subs.foldl (fun t p => Pure.openBinder fuel p.1 t p.2) (← readCWith fuel inst τ))
     let σ ← freshSym
     let ℓr ← freshLoan
     -- `S` binds the snapshot at `s`; the enclosing Σ binders are named too, so
     -- opening one no longer disturbs the others.
     let sVal ← readCWith fuel inst S
-    let sVal := Val.instBodyOut fuel s sVal (Val.sym σ)
-    let owedR := Val.nfV fuel (subs.foldl (fun t p => Val.instBodyOut fuel p.1 t p.2) sVal)
+    let sVal := Pure.openBinder fuel s sVal (Term.sym σ)
+    let owedR := Pure.nf fuel (subs.foldl (fun t p => Pure.openBinder fuel p.1 t p.2) sVal)
     modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
-    pure (.borrowM ℓr (.sym σ), [(ℓr, owedR)])
+    pure (.borrowM ℓr (.know (Term.sym σ)), [(ℓr, owedR)])
   | .sigmaT x a b => do
     let (vA, issA) ← buildResult fuel inst subs a
-    let (vB, issB) ← buildResult fuel inst ((x, vA) :: subs) b
+    -- **What a later component SEES of an earlier one is its knowledge** (M32
+    -- R1), which for a borrow component is the payload σ rather than the
+    -- `borrowₘ ℓ σ` node the caller receives. The old code pushed the node, i.e.
+    -- put a loan marker in a type; under the split it cannot, and the payload is
+    -- the only reading of "what this component is" a type could have meant.
+    -- Unreachable in this corpus — `retMixesBorrow` refuses a return type that
+    -- mixes borrow and value components, so a dependent tail over a borrow
+    -- component has no way to be written — and recorded rather than assumed.
+    let (vB, issB) ← buildResult fuel inst ((x, subsKnowledge vA) :: subs) b
     pure (.ctor "Pair" [vA, vB], issA ++ issB)
   | rt => do
-    let retTy := (subs.foldl (fun t p => Val.instBodyOut fuel p.1 t p.2) (← readCWith fuel inst rt))
+    let retTy := (subs.foldl (fun t p => Pure.openBinder fuel p.1 t p.2) (← readCWith fuel inst rt))
     let σ ← freshSym
     modify (fun s => { s with sctx := (σ, retTy) :: s.sctx })
-    pure (.sym σ, [])
+    pure (.know (Term.sym σ), [])
   termination_by t => sizeOf t
 
 /-! ## §8's snapshot-subterm guard — what makes a self-call admissible
@@ -1249,51 +1252,84 @@ partial def calleeNames : Term → List String
     field against its (dependently instantiated) type; a type former inhabits
     the universe. Cases no test forces error distinctively (M5 grows them). -/
 mutual
-  def hasType : Nat → Val → Val → M Bool
+  /-- **Value typing of a STORE value** (§4) — the skeleton half. Two lines of it
+      decide anything; the rest routes. A knowledge leaf is judged by `hasTypeT`
+      below; a node is either the array layer's carved form or a constructor whose
+      fields are store values; a marker is not a value of any type and says so. -/
+  def hasType : Nat → Val → Term → M Bool
     | 0, _, _ => throwErr "hasType: out of fuel"
     | fuel + 1, v, ty => do
       -- `⇝τ` is a binder MODE, not a type (§6): a value inhabits it exactly when
       -- it inhabits `τ`. Stripped once here rather than at each of the rules that
       -- consult a binder's domain, so no path can accidentally ask `Z : ⇝Nat` and
       -- get `false` for the wrong reason.
-      let ty := Val.stripCmp ty
-      -- Whnf the value first: a β-redex or stuck recursor (e.g. `eqb m a`,
-      -- a λ-headed spine) must reduce to its weak head before we can type it.
-      let v := Val.whnfOut fuel v
+      let ty := Term.stripCmp ty
       match v with
-      | .sym σ =>
-        match (← get).sctx.lookup σ with
-        | some vty => pure (Val.convert fuel vty ty)
-        | none => throwErr s!"hasType: σ{σ} has no type in sctx"
+      | .know t => hasTypeT fuel t ty
       -- ¶1.1's carved array node, and ruling 2's **extent-consistency invariant**,
       -- machine-asserted here: the segments' extents must sum to the array's own
       -- length index, and each body must hold its own extent's worth. This is the
       -- guard on the representation's one redundancy (extents are carried in the
       -- tree AND implied by the type), and it is exactly the conversion that
-      -- premise (3)'s residue transition arranges to be definitional — ¶3.4's "this
-      -- is the single place where the residue-transition decision pays out, and it
-      -- pays out at every array-mutating function in the program".
-      | .ctor "§segs" segs =>
-        match Val.asArrayTy? (Val.whnfOut fuel ty) with
+      -- premise (3)'s residue transition arranges to be definitional.
+      | .node "§segs" segs =>
+        match Pure.asArrayTy? (Pure.whnf fuel ty) with
         | none => pure false
         | some (n, t) => do
-          let leaves ← extentMap fuel v
-          if !(Val.convert fuel (sumExtents leaves) n) then pure false
+          let leaves ← extentMap fuel (.node "§segs" segs)
+          if !(Pure.convert fuel (sumExtents leaves) n) then pure false
           else leaves.allM (fun l => do
             if !Val.segOwned l.body then
               throwErr s!"hasType: array segment at [{l.base.pretty} ; {l.count.pretty}) holds {l.body.pretty} — a suspended array has no value of its type (§5.2)"
-            else hasType fuel l.body (Val.arrayTy l.count t))
-      | .ctor name args =>
-        match Val.ctorSig name with
+            else hasType fuel l.body (Pure.arrayTy l.count t))
+      -- A recursor spine over RUNTIME arms is a neutral the checker cannot type:
+      -- its arms are BODIES, so there is nothing to synthesize from. Same
+      -- rejection the `.app` case gives a neutral it does not recognise, and
+      -- deliberately so — before R1 this value WAS an `.app` spine and took that
+      -- path, and the skeleton is a representation change, not a rule change.
+      | .node "§rec" _ => throwErr s!"hasType: cannot type neutral {v.pretty}"
+      | .node name args =>
+        match Pure.ctorSig name with
         | none => throwErr s!"hasType: unknown constructor '{name}'"
         | some sig =>
-          match sig.fieldTypes (Val.whnfOut fuel ty) with
+          match sig.fieldTypes (Pure.whnf fuel ty) with
           | none => pure false                       -- constructor does not inhabit this type
           | some ftys => checkFields fuel args ftys
-      | .type => pure (Val.convert fuel ty .type)     -- Type : Type (type-in-type)
-      | .pi _ _ _ => pure (Val.convert fuel ty .type)
-      | .sigmaT _ _ _ => pure (Val.convert fuel ty .type)
-      | .idT _ _ _ => pure (Val.convert fuel ty .type)   -- Id A a b : Type
+      | _ => throwErr s!"hasType: cannot type value {v.pretty} (λ/neutral typing deferred to M5)"
+  termination_by fuel _ _ => (fuel, 0, 0)
+  /-- **Value typing of KNOWLEDGE** — the judgment §4 was always about, now stated
+      on the one representation knowledge has. `sym σ` is typed by `sctx` and
+      conversion; a constructor value by the signature table, checking each field
+      against its (dependently instantiated) type; a type former inhabits the
+      universe. Cases no test forces error distinctively (M5 grows them). -/
+  def hasTypeT : Nat → Term → Term → M Bool
+    | 0, _, _ => throwErr "hasType: out of fuel"
+    | fuel + 1, v, ty => do
+      let ty := Term.stripCmp ty
+      -- Whnf the value first: a β-redex or stuck recursor (e.g. `eqb m a`,
+      -- a λ-headed spine) must reduce to its weak head before we can type it.
+      let v := Pure.whnf fuel v
+      match v.symOf? with
+      | some σ =>
+        match (← get).sctx.lookup σ with
+        | some vty => pure (Pure.convert fuel vty ty)
+        | none => throwErr s!"hasType: σ{σ} has no type in sctx"
+      | none =>
+      match v with
+      -- A carved array node that collapsed into knowledge cannot occur — the
+      -- skeleton's smart constructor refuses to collapse a `§segs` — so this
+      -- judgment never meets one, and the state form above is the only reading.
+      | .ctorApp name args =>
+        match Pure.ctorSig name with
+        | none => throwErr s!"hasType: unknown constructor '{name}'"
+        | some sig =>
+          match sig.fieldTypes (Pure.whnf fuel ty) with
+          | none => pure false                       -- constructor does not inhabit this type
+          | some ftys => checkFields fuel (args.map Val.know) ftys
+      | .type => pure (Pure.convert fuel ty .type)     -- Type : Type (type-in-type)
+      | .pi _ _ _ => pure (Pure.convert fuel ty .type)
+      | .sigmaT _ _ _ => pure (Pure.convert fuel ty .type)
+      | .idT _ _ _ => pure (Pure.convert fuel ty .type)   -- Id A a b : Type
       | .app _ _ =>
         -- A neutral spine. We synthesize a type only for the eliminator
         -- constants (§10 elaboration of `match` to eliminators): their result
@@ -1301,149 +1337,137 @@ mutual
         -- checked recursively. This is what lets the *library* fording terms
         -- (`natNoConf` via `j`, `botElim` on a derived ⊥) type-check as ordinary
         -- terms — no new machine rule, just the eliminators' typing.
-        let (head, args) := Val.collectSpine v
+        let (head, args) := Pure.collectSpineT v
         -- An eliminator may be OVER-applied (its result is a function further
         -- applied — `natRec … n` returning `P n = A → B`, then given the `A`):
         -- type the fixed part to its base result, then `synthSpine` the extras.
-        let finish (baseTy : Val) (rest : List Val) (premises : Bool) : M Bool := do
+        let finish (baseTy : Term) (rest : List Term) (premises : Bool) : M Bool := do
           match ← synthSpine fuel baseTy rest with
-          | some resTy => pure (Val.convert fuel ty resTy && premises)
+          | some resTy => pure (Pure.convert fuel ty resTy && premises)
           | none => pure false
         match head, args with
         | .const "botElim", t :: x :: rest =>            -- botElim T x : T   (x : ⊥)
-          let xOk ← hasType fuel x (.const "Bot")
+          let xOk ← hasTypeT fuel x (.const "Bot")
           finish t rest xOk
         | .const "j", a :: aa :: p :: d :: b :: pf :: rest =>   -- j A a P d b p : P b p
-          let dOk ← hasType fuel d (Val.nfV fuel (.app (.app p aa) (.ctor "Refl" [])))
-          let pOk ← hasType fuel pf (.idT a aa b)
-          finish (Val.nfV fuel (.app (.app p b) pf)) rest (dOk && pOk)
+          let dOk ← hasTypeT fuel d (Pure.nf fuel (.app (.app p aa) (.ctorApp "Refl" [])))
+          let pOk ← hasTypeT fuel pf (.idT a aa b)
+          finish (Pure.nf fuel (.app (.app p b) pf)) rest (dOk && pOk)
         | .const "k", a :: aa :: p :: d :: pf :: rest =>        -- k A a P d p : P p
-          let dOk ← hasType fuel d (Val.nfV fuel (.app p (.ctor "Refl" [])))
-          let pOk ← hasType fuel pf (.idT a aa aa)
-          finish (Val.nfV fuel (.app p pf)) rest (dOk && pOk)
+          let dOk ← hasTypeT fuel d (Pure.nf fuel (.app p (.ctorApp "Refl" [])))
+          let pOk ← hasTypeT fuel pf (.idT a aa aa)
+          finish (Pure.nf fuel (.app p pf)) rest (dOk && pOk)
         | .const "natRec", p :: z :: s :: n :: rest =>   -- natRec P z s n : P n
-          let zOk ← hasType fuel z (Val.nfV fuel (.app p (.ctor "Z" [])))
-          let sTy : Val :=
+          let zOk ← hasTypeT fuel z (Pure.nf fuel (.app p (.ctorApp "Z" [])))
+          let sTy : Term :=
             .pi "§k" (.const "Nat")
-              (.pi "§ih" (.app p (.pvar "§k")) (.app p (.ctor "S" [.pvar "§k"])))
-          let sOk ← hasType fuel s sTy
-          let nOk ← hasType fuel n (.const "Nat")
-          finish (Val.nfV fuel (.app p n)) rest (zOk && sOk && nOk)
+              (.pi "§ih" (.app p (.pvar "§k")) (.app p (.ctorApp "S" [.pvar "§k"])))
+          let sOk ← hasTypeT fuel s sTy
+          let nOk ← hasTypeT fuel n (.const "Nat")
+          finish (Pure.nf fuel (.app p n)) rest (zOk && sOk && nOk)
         | .const "boolRec", p :: t :: f :: b :: rest =>  -- boolRec P t f b : P b
-          let tOk ← hasType fuel t (Val.nfV fuel (.app p (.ctor "True" [])))
-          let fOk ← hasType fuel f (Val.nfV fuel (.app p (.ctor "False" [])))
-          let bOk ← hasType fuel b (.const "Bool")
-          finish (Val.nfV fuel (.app p b)) rest (tOk && fOk && bOk)
+          let tOk ← hasTypeT fuel t (Pure.nf fuel (.app p (.ctorApp "True" [])))
+          let fOk ← hasTypeT fuel f (Pure.nf fuel (.app p (.ctorApp "False" [])))
+          let bOk ← hasTypeT fuel b (.const "Bool")
+          finish (Pure.nf fuel (.app p b)) rest (tOk && fOk && bOk)
         | .const "listRec", a :: p :: pn :: pc :: l :: rest =>  -- listRec A P pn pc l : P l
-          let listA : Val := .app (.const "List") a
-          let pnOk ← hasType fuel pn (Val.nfV fuel (.app p (.ctor "Nil" [])))
-          let pcTy : Val :=
+          let listA : Term := .app (.const "List") a
+          let pnOk ← hasTypeT fuel pn (Pure.nf fuel (.app p (.ctorApp "Nil" [])))
+          let pcTy : Term :=
             .pi "§h" a
               (.pi "§t" listA
                 (.pi "§ih" (.app p (.pvar "§t"))
-                  (.app p (.ctor "Cons" [.pvar "§h", .pvar "§t"]))))
-          let pcOk ← hasType fuel pc pcTy
-          let lOk ← hasType fuel l listA
-          finish (Val.nfV fuel (.app p l)) rest (pnOk && pcOk && lOk)
+                  (.app p (.ctorApp "Cons" [.pvar "§h", .pvar "§t"]))))
+          let pcOk ← hasTypeT fuel pc pcTy
+          let lOk ← hasTypeT fuel l listA
+          finish (Pure.nf fuel (.app p l)) rest (pnOk && pcOk && lOk)
         | .const "sigmaRec", a :: b :: p :: f :: s :: rest =>  -- sigmaRec A B P f s : P s
           -- Σ's parameters are a type `A` and a FAMILY `B : A → Type`, so unlike
           -- List's uniform parameter both premises cross binders and `B`/`P` are
-          -- read under them. Three `shiftPure` calls used to sit here, written
-          -- "for correctness under an open motive"; M30 step 1 deleted them because
-          -- under NbE the premise they were insuring against cannot arise, and no
-          -- shift would have helped if it could. `b` and `p` are SPINE ARGUMENTS of
-          -- an evaluated neutral — values — and a value has no free variable to
-          -- lift: its variables were resolved into an environment when it was
-          -- built. An honestly open motive would need to arrive in an ENVIRONMENT,
-          -- not in a syntactic hole, and a shift is not what carries it there.
-          -- (Checked, not assumed: dropping them was bisected against the corpus
-          -- on its own, and changed nothing.)
-          --
-          -- The binders are RESERVED names (M30 step 2), and that is what has taken
-          -- the shifts' place as the reason `b` and `p` may be spliced under them:
-          -- a source program cannot write `§x`, so no value embedded here can have
-          -- a free occurrence of one to capture.
-          let sigTy : Val := .sigmaT "§x" a (.app b (.pvar "§x"))
-          let fTy : Val :=
+          -- read under them. The binders are RESERVED names, and that is what
+          -- makes splicing `b` and `p` under them safe: a source program cannot
+          -- write `§x`, so nothing embedded here has a free occurrence to capture.
+          let sigTy : Term := .sigmaT "§x" a (.app b (.pvar "§x"))
+          let fTy : Term :=
             .pi "§x" a (.pi "§y" (.app b (.pvar "§x"))
-              (.app p (.ctor "Pair" [.pvar "§x", .pvar "§y"])))
-          let fOk ← hasType fuel f fTy
-          let sOk ← hasType fuel s sigTy
-          finish (Val.nfV fuel (.app p s)) rest (fOk && sOk)
+              (.app p (.ctorApp "Pair" [.pvar "§x", .pvar "§y"])))
+          let fOk ← hasTypeT fuel f fTy
+          let sOk ← hasTypeT fuel s sigTy
+          finish (Pure.nf fuel (.app p s)) rest (fOk && sOk)
         -- ¶1.3's array basis. `arrCat`/`acons` are CHECKED rather than synthesized —
         -- their element type is recovered from the expected type, which is why
-        -- neither carries a `T` argument (Pure.lean's deviation note). `aget` and
-        -- `arrRec` synthesize, so they keep theirs.
+        -- neither carries a `T` argument. `aget` and `arrRec` synthesize, so they
+        -- keep theirs.
         | .const "arrCat", [m, k, a, b] =>
-          match Val.asArrayTy? (Val.whnfOut fuel ty) with
+          match Pure.asArrayTy? (Pure.whnf fuel ty) with
           | none => pure false
           | some (n, t) =>
-            if !(Val.convert fuel n (Val.kAdd m k)) then pure false
+            if !(Pure.convert fuel n (Pure.kAdd m k)) then pure false
             else do
-              let aOk ← hasType fuel a (Val.arrayTy m t)
-              let bOk ← hasType fuel b (Val.arrayTy k t)
+              let aOk ← hasTypeT fuel a (Pure.arrayTy m t)
+              let bOk ← hasTypeT fuel b (Pure.arrayTy k t)
               pure (aOk && bOk)
         | .const "acons", [n, x, xs] =>
-          match Val.asArrayTy? (Val.whnfOut fuel ty) with
+          match Pure.asArrayTy? (Pure.whnf fuel ty) with
           | none => pure false
           | some (n', t) =>
-            if !(Val.convert fuel n' (.ctor "S" [n])) then pure false
+            if !(Pure.convert fuel n' (.ctorApp "S" [n])) then pure false
             else do
-              let xOk ← hasType fuel x t
-              let xsOk ← hasType fuel xs (Val.arrayTy n t)
+              let xOk ← hasTypeT fuel x t
+              let xsOk ← hasTypeT fuel xs (Pure.arrayTy n t)
               pure (xOk && xsOk)
         | .const "aget", tt :: n :: i :: a :: rest =>       -- aget T n i a : T
-          let iOk ← hasType fuel i (.const "Nat")
-          let aOk ← hasType fuel a (Val.arrayTy n tt)
+          let iOk ← hasTypeT fuel i (.const "Nat")
+          let aOk ← hasTypeT fuel a (Pure.arrayTy n tt)
           finish tt rest (iOk && aOk)
         | .const "arrRec", tt :: p :: pn :: pc :: n :: a :: rest =>   -- arrRec T P pn pc n a : P n a
           -- The cons view's recursor, so the pure library over arrays is written
-          -- exactly like the one over lists (¶1.3). Its step crosses four binders,
-          -- and `T` and `P` are read under all four with no lifting at any of them
-          -- — see `sigmaRec` above for why the five `shiftPure` calls that used to
-          -- be on these lines are gone rather than merely unnecessary.
-          let pnOk ← hasType fuel pn (Val.nfV fuel (.app (.app p Val.zero) (.ctor "Arr" [])))
-          let pcTy : Val :=
+          -- exactly like the one over lists (¶1.3).
+          let pnOk ← hasTypeT fuel pn
+            (Pure.nf fuel (.app (.app p Term.zero) (.ctorApp "Arr" [])))
+          let pcTy : Term :=
             .pi "§n" (.const "Nat")
               (.pi "§x" tt
-                (.pi "§xs" (Val.arrayTy (.pvar "§n") tt)
+                (.pi "§xs" (Pure.arrayTy (.pvar "§n") tt)
                   (.pi "§ih" (.app (.app p (.pvar "§n")) (.pvar "§xs"))
-                    (.app (.app p (.ctor "S" [.pvar "§n"]))
+                    (.app (.app p (.ctorApp "S" [.pvar "§n"]))
                       (.app (.app (.app (.const "acons") (.pvar "§n")) (.pvar "§x"))
                         (.pvar "§xs"))))))
-          let pcOk ← hasType fuel pc pcTy
-          let nOk ← hasType fuel n (.const "Nat")
-          let aOk ← hasType fuel a (Val.arrayTy n tt)
-          finish (Val.nfV fuel (.app (.app p n) a)) rest (pnOk && pcOk && nOk && aOk)
-        | .sym σ, args =>
+          let pcOk ← hasTypeT fuel pc pcTy
+          let nOk ← hasTypeT fuel n (.const "Nat")
+          let aOk ← hasTypeT fuel a (Pure.arrayTy n tt)
+          finish (Pure.nf fuel (.app (.app p n) a)) rest (pnOk && pcOk && nOk && aOk)
+        | hd, args =>
           -- A bound function variable applied (`ih b c hab hbc`): synthesize by
           -- iterating Π-instantiation from its `sctx` type, checking each argument
           -- against the domain. This is ordinary application typing — what a
           -- surface lemma application (§15) or a proof reused under a binder needs.
-          match (← get).sctx.lookup σ with
-          | none => throwErr s!"hasType: σ{σ} (applied) has no type in sctx"
-          | some hty =>
-            match ← synthSpine fuel hty args with
-            | some resTy => pure (Val.convert fuel ty resTy)
-            | none => pure false
-        | _, _ => throwErr s!"hasType: cannot type neutral {v.pretty}"
+          match hd.symOf? with
+          | some σ =>
+            match (← get).sctx.lookup σ with
+            | none => throwErr s!"hasType: σ{σ} (applied) has no type in sctx"
+            | some hty =>
+              match ← synthSpine fuel hty args with
+              | some resTy => pure (Pure.convert fuel ty resTy)
+              | none => pure false
+          | none => throwErr s!"hasType: cannot type neutral {v.pretty}"
       | .lam x d b =>
         -- λ against Π: check the domains convert, then the body under a fresh σ
         -- witness for the binder (a checking-time hypothesis added to `sctx`).
         -- This is what lets a Π-typed lemma (`LeRefl : Π n. Le n n`) and the
-        -- recursors' step arguments — both λs — type-check. No arrow of its own;
-        -- it is the elaboration of dependent elimination (§10/§11).
+        -- recursors' step arguments — both λs — type-check.
         --
         -- The λ's binder and the Π's need not agree in NAME, and the two openings
         -- below use each side's own — which is what makes checking `λ (a : τ). …`
         -- against `Π (b : τ) → …` work, i.e. what makes the rule α-insensitive
         -- where `beq` is not.
-        match Val.whnfOut fuel ty with
+        match Pure.whnf fuel ty with
         | .pi y d' c =>
-          if Val.convert fuel d d' then do
+          if Pure.convert fuel d d' then do
             let σ ← freshSym
             modify (fun st => { st with sctx := (σ, d') :: st.sctx })
-            hasType fuel (Val.instBodyOut fuel x b (.sym σ)) (Val.instBodyOut fuel y c (.sym σ))
+            hasTypeT fuel (Pure.openBinder fuel x b (Term.sym σ))
+              (Pure.openBinder fuel y c (Term.sym σ))
           else pure false
         | _ => pure false
       | _ => throwErr s!"hasType: cannot type value {v.pretty} (λ/neutral typing deferred to M5)"
@@ -1451,26 +1475,27 @@ mutual
   /-- Synthesize the result type of applying a value of type `hty` to `args`:
       each argument's domain (a Π) is checked, and the codomain is instantiated at
       the argument. `none` if an argument mistypes or a non-Π is applied. -/
-  def synthSpine : Nat → Val → List Val → M (Option Val)
+  def synthSpine : Nat → Term → List Term → M (Option Term)
     | _, hty, [] => pure (some hty)
     | fuel, hty, a :: rest => do
-      match Val.whnfOut fuel hty with
+      match Pure.whnf fuel hty with
       | .pi x dom cod =>
-        if ← hasType fuel a dom then synthSpine fuel (Val.instBodyOut fuel x cod a) rest
+        if ← hasTypeT fuel a dom then synthSpine fuel (Pure.openBinder fuel x cod a) rest
         else pure none
       | _ => pure none                                 -- applied a non-function
   termination_by fuel _ args => (fuel, 2, args.length)
   /-- Check a constructor's fields against its field-type telescope, threading
       each checked field value into the remaining (dependent) field types.
 
-      A telescope entry carries the NAME later entries reach this field by (M30
-      step 2) — `Pair`'s first entry carries the Σ's own binder, and every
-      non-dependent entry carries a placeholder nothing looks up. -/
-  def checkFields : Nat → List Val → List (String × Val) → M Bool
+      The fields are STORE values — a constructor node's children may be state —
+      while the telescope is knowledge, which is the asymmetry §2.3 calls correct.
+      A dependent later entry is opened at the field's knowledge, which is what a
+      type can mean by an earlier field. -/
+  def checkFields : Nat → List Val → List (String × Term) → M Bool
     | _, [], [] => pure true
     | fuel, v :: vs, (x, ty) :: tys => do
       if ← hasType fuel v ty then
-        checkFields fuel vs (tys.map (fun e => (e.1, Val.instBodyOut fuel x e.2 v)))
+        checkFields fuel vs (tys.map (fun e => (e.1, Pure.openBinder fuel x e.2 (subsKnowledge v))))
       else pure false
     | _, _, _ => pure false                          -- arity mismatch
   termination_by fuel _ tys => (fuel, 1, tys.length)
@@ -1487,7 +1512,7 @@ end
 
 /-- End one issued borrow: locate it in Ω, audit its (collapsed) payload against
     its owed type, kill it, and return the surrendered payload. -/
-def endIssued (fuel : Nat) (ℓ : Nat) (owed : Val) : M Val := do
+def endIssued (fuel : Nat) (ℓ : Nat) (owed : Term) : M Val := do
   match (← getEnv).findSome? (fun kv => findBorrowPayload ℓ kv.2) with
   | none => throwErr s!"group end: issued borrow ℓ{ℓ} is not locatable in Ω (cannot end the group)"
   | some payload => do
@@ -1517,11 +1542,11 @@ def endGroup (fuel : Nat) (grp : Group) : M Unit := do
   -- for that captured loan.
   grp.captured.forM (fun (ℓc, owed) => do
     match grp.exitRelease.lookup ℓc with
-    | some σ' => releaseCaptured ℓc (.sym σ')            -- §5.4: pinned exit-snapshot release (σ' already in sctx)
+    | some σ' => releaseCaptured ℓc (.know (Term.sym σ'))  -- §5.4: pinned exit-snapshot release (σ' already in sctx)
     | none => do                                        -- opaque: fresh existential each
       let σ ← freshSym
       modify (fun s => { s with sctx := (σ, owed) :: s.sctx })
-      releaseCaptured ℓc (.sym σ))
+      releaseCaptured ℓc (.know (Term.sym σ)))
 
 /-- **End loan** ℓ (§6.1-aware). If ℓ is a group's captured loan, ending it
     ends the whole group (issued first, then captured). Otherwise it is an
@@ -1644,70 +1669,70 @@ partial def popArmScope (fuel : Nat) (retain : Nat) (keep : List Nat) : M Unit :
     starts at the node's base — "the overwhelmingly common case" — it is the single
     `Le (add lo cnt) n` that ¶3.2 says is "character for character, the bound the M22
     quicksort already threads through every call as `hbnd`". -/
-def carveObligation (fuel : Nat) (b m lo cnt : Val) : Val :=
+def carveObligation (fuel : Nat) (b m lo cnt : Term) : Term :=
   -- LEAF-RELATIVE wherever the leaf-relative offset is already known, which is both
   -- cases the design's programs actually produce. `Le` computes by double `natRec`,
   -- so `Le (add b cnt) (add b m)` is STUCK on a symbolic `b` and never converts with
   -- the `Le cnt m` a program can supply — stating the obligation absolutely would
   -- demand evidence about the leaf's absolute end that nothing can produce. Premise
   -- (3)'s own logic says the offsets are leaf-relative; premise (2) should be too.
-  if Val.convert fuel lo b then Val.kLe cnt m                       -- base-aligned: lo' = Z
-  else if Val.convert fuel b Val.zero then Val.kLe (rangeEnd fuel lo cnt) m  -- leaf at the node base
+  if Pure.convert fuel lo b then Pure.kLe cnt m                       -- base-aligned: lo' = Z
+  else if Pure.convert fuel b Term.zero then Pure.kLe (rangeEnd fuel lo cnt) m  -- leaf at the node base
   else
-    let low := Val.kLe b lo
-    let high := Val.kLe (rangeEnd fuel lo cnt) (Val.kAdd b m)
+    let low := Pure.kLe b lo
+    let high := Pure.kLe (rangeEnd fuel lo cnt) (Pure.kAdd b m)
     .sigmaT "§lo" low high
 
 /-- Is the cited evidence good for this leaf? With no evidence cited we try the
     canonical inhabitant of ⊤ — ¶3.2's supply route 1, "conversion alone", which is
     what makes every literal-indexed access free. Route 3 is that there is no route
     3: no inference, no decision procedure, no `omega`. -/
-def carveEvidenceOk (fuel : Nat) (ev : Option Val) (oblig : Val) : M Bool := do
+def carveEvidenceOk (fuel : Nat) (ev : Option Term) (oblig : Term) : M Bool := do
   match ev with
-  | some e => hasType fuel e oblig
+  | some e => hasTypeT fuel e oblig
   | none =>
-    let star : Val := .ctor "unit" []
-    if ← hasType fuel star oblig then pure true
-    else hasType fuel (.ctor "Pair" [star, star]) oblig
+    let star : Term := .ctorApp "unit" []
+    if ← hasTypeT fuel star oblig then pure true
+    else hasTypeT fuel (.ctorApp "Pair" [star, star]) oblig
 
 /-- Split an owned body into the three pieces the carve's extents name. Only the two
     forms ¶3.2 defines the split on: a literal run (split positionally, which needs
     concrete extents — one cannot cut a run at an offset one does not know) and a σ
     (refined to the `arrCat` spine, which is ordinary ⇜, marker-free, and true of the
     value timelessly). Returns the three bodies. -/
-def carveBody (fuel : Nat) (body : Val) (loN cntN restN : Nat) (lo' cnt rest : Val)
+def carveBody (fuel : Nat) (body : Val) (loN cntN restN : Nat) (lo' cnt rest : Term)
     : M (Val × Val × Val) := do
-  match body with
-  | .ctor "Arr" vs =>
+  match Val.asCtor? body, body.symOf? with
+  | some ("Arr", vs), _ =>
     pure (.ctor "Arr" (vs.take loN),
           .ctor "Arr" ((vs.drop loN).take cntN),
           .ctor "Arr" (vs.drop (loN + cntN)))
-  | .sym σ =>
+  | _, some σ =>
     match (← get).sctx.lookup σ with
     | none => throwErr s!"carve: σ{σ} has no type in sctx"
     | some τ =>
-      match Val.asArrayTy? (Val.whnfOut fuel τ) with
+      match Pure.asArrayTy? (Pure.whnf fuel τ) with
       | none => throwErr s!"carve: σ{σ} is not of array type ({τ.pretty})"
       | some (_, t) => do
-        let mk : Val → M Val := fun c => do
+        let mk : Term → M Term := fun c => do
           let s ← freshSym
-          modify (fun st => { st with sctx := (s, Val.arrayTy c t) :: st.sctx })
-          pure (.sym s)
+          modify (fun st => { st with sctx := (s, Pure.arrayTy c t) :: st.sctx })
+          pure (Term.sym s)
         let b₁ ← mk lo'; let b₂ ← mk cnt; let b₃ ← mk rest
         -- The spine is built over the NONEMPTY pieces only. A zero-extent σ would be
         -- a name for the empty array that nothing can ever compute away (`arrCat`'s
         -- ι absorbs an empty RUN, not an empty σ), and it would leave every rejoin
         -- conversion needing a lemma. `restN`/`loN` are meaningful only in the
         -- concrete case; the symbolic test is `convert c Z`, below.
-        let isZ : Val → Bool := fun c => Val.convert fuel c Val.zero
+        let isZ : Term → Bool := fun c => Pure.convert fuel c Term.zero
         let spine :=
-          if isZ lo' then (if isZ rest then b₂ else Val.arrCatS cnt rest b₂ b₃)
-          else if isZ rest then Val.arrCatS lo' cnt b₁ b₂
-          else Val.arrCatS lo' (Val.kAdd cnt rest) b₁ (Val.arrCatS cnt rest b₂ b₃)
-        refineSym σ spine
-        pure (b₁, b₂, b₃)
-  | b =>
-    throwErr s!"carve: leaf body {b.pretty} cannot be split (¶3.2 defines the split on an owned run or a σ; a compound neutral is stuck)"
+          if isZ lo' then (if isZ rest then b₂ else Pure.arrCatS cnt rest b₂ b₃)
+          else if isZ rest then Pure.arrCatS lo' cnt b₁ b₂
+          else Pure.arrCatS lo' (Pure.kAdd cnt rest) b₁ (Pure.arrCatS cnt rest b₂ b₃)
+        refineSym σ (.know spine)
+        pure (.know b₁, .know b₂, .know b₃)
+  | _, _ =>
+    throwErr s!"carve: leaf body {body.pretty} cannot be split (¶3.2 defines the split on an owned run or a σ; a compound neutral is stuck)"
 
 /-- Make a one-slot segment's body an explicit single-element run, so that an INDEX
     place reaches the element as a subterm. When the body is a σ this fires a
@@ -1720,20 +1745,20 @@ def carveBody (fuel : Nat) (body : Val) (loN cntN restN : Nat) (lo' cnt rest : V
     a lot of σ churn for what compiles to one load." It costs exactly one σ per
     symbolic element access, and none at all on a run. -/
 def elementize (fuel : Nat) (body : Val) : M Val := do
-  match body with
-  | .ctor "Arr" [_] => pure body
-  | .sym σ =>
+  match Val.asCtor? body, body.symOf? with
+  | some ("Arr", [_]), _ => pure body
+  | _, some σ =>
     match (← get).sctx.lookup σ with
     | none => throwErr s!"a[i]: σ{σ} has no type in sctx"
     | some τ =>
-      match Val.asArrayTy? (Val.whnfOut fuel τ) with
+      match Pure.asArrayTy? (Pure.whnf fuel τ) with
       | none => throwErr s!"a[i]: σ{σ} is not of array type ({τ.pretty})"
       | some (_, t) => do
         let e ← freshSym
         modify (fun st => { st with sctx := (e, t) :: st.sctx })
-        refineSym σ (.ctor "Arr" [.sym e])
-        pure (.ctor "Arr" [.sym e])
-  | b => throwErr s!"a[i]: the one-slot segment holds {b.pretty}, which is not a single-element run"
+        refineSym σ (.know (.ctorApp "Arr" [Term.sym e]))
+        pure (.ctor "Arr" [.know (Term.sym e)])
+  | _, _ => throwErr s!"a[i]: the one-slot segment holds {body.pretty}, which is not a single-element run"
 
 /-- §5.2's demand-end, at the NODE rather than at a leaf.
 
@@ -1760,8 +1785,8 @@ partial def demandNode (fuel : Nat) (pos : Pos) : M Unit := do
     both REFINE: the residue transition rewrites a length index everywhere and the
     body split rewrites the leaf's σ everywhere, so a detached copy of the node goes
     stale the moment either fires. -/
-partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (given : Option Val)
-    (ev : Option Val) (eqc : Option Val) (isIdx : Bool) : M Unit := do
+partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Term) (given : Option Term)
+    (ev : Option Term) (eqc : Option Term) (isIdx : Bool) : M Unit := do
   demandNode fuel pos
   -- G5, THIRD SITE (EXECUTING only). A ZERO-WIDTH request is the empty slice at `lo`:
   -- it must borrow nothing and disturb nothing. In particular it must not select the
@@ -1774,21 +1799,21 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (given : Option Val)
   -- concretely, since an empty right half is what a runtime split produces constantly.
   -- So: give the empty slice its own zero-extent segment, inserted at `lo` without
   -- touching any existing leaf, and let the ordinary degenerate path borrow it.
-  if (← get).executing && !isIdx && Val.convert fuel cnt Val.zero then do
+  if (← get).executing && !isIdx && Pure.convert fuel cnt Term.zero then do
     setAtPos fuel pos (Val.mergeArrays (← getAtPos fuel pos))
     let leaves ← extentMap fuel (← getAtPos fuel pos)
-    if (leaves.any (fun l => Val.convert fuel l.base lo && Val.convert fuel l.count Val.zero))
+    if (leaves.any (fun l => Pure.convert fuel l.base lo && Pure.convert fuel l.count Term.zero))
     then pure ()
     else do
       let segs := leaves.map (fun l => Val.segNode l.count l.body)
-      let rec place (acc : List Val) (bse : Val) : List Val → List Val
-        | [] => acc ++ [Val.segNode Val.zero (.ctor "Arr" [])]
+      let rec place (acc : List Val) (bse : Term) : List Val → List Val
+        | [] => acc ++ [Val.segNode Term.zero (.ctor "Arr" [])]
         | sg :: rest =>
-          if Val.convert fuel bse lo then acc ++ [Val.segNode Val.zero (.ctor "Arr" [])] ++ (sg :: rest)
+          if Pure.convert fuel bse lo then acc ++ [Val.segNode Term.zero (.ctor "Arr" [])] ++ (sg :: rest)
           else match Val.asSeg? sg with
-            | some (c, _) => place (acc ++ [sg]) (Val.kAdd bse c) rest
+            | some (c, _) => place (acc ++ [sg]) (Pure.kAdd bse c) rest
             | none => acc ++ (sg :: rest)
-      setAtPos fuel pos (.ctor "§segs" (place [] Val.zero segs))
+      setAtPos fuel pos (.node "§segs" (place [] Term.zero segs))
   else pure ()
   -- ROUTE (a), step one: the program SUPPLIED the residue's extent, so solve premise
   -- (3)'s equation against it HERE, before premise (2) is even formed. That ordering is
@@ -1812,10 +1837,10 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (given : Option Val)
   | some rest => do
     setAtPos fuel pos (Val.mergeArrays (← getAtPos fuel pos))
     let leaves ← extentMap fuel (← getAtPos fuel pos)
-    let aligned := leaves.filter (fun l => Val.convert fuel l.base lo)
+    let aligned := leaves.filter (fun l => Pure.convert fuel l.base lo)
     let pick :=
-      (aligned.find? (fun l => Val.convert fuel l.count (Val.kAdd cnt rest)))
-        <|> (aligned.find? (fun l => !(Val.convert fuel l.count Val.zero)))
+      (aligned.find? (fun l => Pure.convert fuel l.count (Pure.kAdd cnt rest)))
+        <|> (aligned.find? (fun l => !(Pure.convert fuel l.count Term.zero)))
         <|> aligned.head?
     match pick with
     | none =>
@@ -1833,12 +1858,12 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (given : Option Val)
       -- provenance, an unrecorded unification against a universal is not. So the
       -- program cites the equation and premise (3) solves ALONG it — the same refl-match
       -- solution transition, now licensed.
-      if Val.convert fuel l.count (Val.kAdd cnt rest) then pure ()
+      if Pure.convert fuel l.count (Pure.kAdd cnt rest) then pure ()
       else
-        let owed := Val.idT (.const "Nat") l.count (Val.kAdd cnt rest)
+        let owed := Term.idT (.const "Nat") l.count (Pure.kAdd cnt rest)
         match eqc with
         | some q =>
-          if ← hasType fuel q owed then reflUnify fuel l.count (Val.kAdd cnt rest)
+          if ← hasTypeT fuel q owed then reflUnify fuel l.count (Pure.kAdd cnt rest)
           else throwErr s!"carve: the cited decomposition does not have type {owed.pretty} (¶3.2 premise 3: the citation is the license, and its TYPE is what licenses)"
         | none =>
           throwErr s!"carve: the supplied residue asserts {owed.pretty}, which does not hold by conversion, and premise (3) may not impose it by refining a telescope parameter's σ — that would constrain this function's callers without recording it in its signature (M17). Cite the equation as a[lo ; cnt ; rest | h | heq]"
@@ -1852,7 +1877,7 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (given : Option Val)
   -- no refinement happen at all". No obligation either — `Le b b` and `Le x x` are
   -- `LeRefl`, so demanding evidence would be friction with no content. This is the
   -- asymmetry ¶3.4 says IS the design: an exhaustive split costs ONE proof, not two.
-  let degenerate := leaves.find? (fun l => Val.convert fuel l.base lo && Val.convert fuel l.count cnt)
+  let degenerate := leaves.find? (fun l => Pure.convert fuel l.base lo && Pure.convert fuel l.count cnt)
   -- Premise (2): form each candidate leaf's obligation and check the evidence against
   -- it; the first that types SELECTS the leaf — "the evidence's type is the selector".
   -- Deterministic without a tie-break, because leaves are disjoint. A degenerate
@@ -1917,13 +1942,13 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (given : Option Val)
         -- the leaf's base (`lo' = Z`). The general case mints a witness and solves
         -- `lo ≡ add b lo'` by the §10 solution transition — M10's machinery, unchanged.
         let lo' ←
-          if Val.convert fuel lo l.base then pure Val.zero
-          else if Val.convert fuel l.base Val.zero then pure lo
+          if Pure.convert fuel lo l.base then pure Term.zero
+          else if Pure.convert fuel l.base Term.zero then pure lo
           else do
             let d ← freshSym
             modify (fun st => { st with sctx := (d, .const "Nat") :: st.sctx })
-            reflUnify fuel lo (Val.kAdd l.base (.sym d))
-            pure (.sym d)
+            reflUnify fuel lo (Pure.kAdd l.base (Term.sym d))
+            pure (Term.sym d)
         -- Then the residue. Concrete extents COMPUTE (¶3.3's trace: "n = 3 concrete,
         -- both sides compute — nothing refined"), and the arithmetic is meta-level on
         -- numerals, never a `sub` in the object language. Symbolic extents mint `rest`
@@ -1931,9 +1956,9 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (given : Option Val)
         -- `le_split` twice plus `AddCancelL`, asserted here in its cancelled form
         -- because the checker unpacks the witnesses itself and no program term ever
         -- projects them.
-        let lo'N := Val.natOfVal? (Val.nfV fuel lo')
-        let cntN := Val.natOfVal? (Val.nfV fuel cnt)
-        let mN := Val.natOfVal? (Val.nfV fuel l.count)
+        let lo'N := Term.natOf? (Pure.nf fuel lo')
+        let cntN := Term.natOf? (Pure.nf fuel cnt)
+        let mN := Term.natOf? (Pure.nf fuel l.count)
         let rest ←
           match given, lo'N, cntN, mN with
           -- ROUTE (a), step two: premise (3)'s residue is the term the program wrote.
@@ -1941,7 +1966,7 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (given : Option Val)
           -- left nameless.
           | some r, _, _, _ => pure r
           | none, some a, some c, some m =>
-            if a + c ≤ m then pure (Val.valOfNat (m - a - c))
+            if a + c ≤ m then pure (Term.nat (m - a - c))
             else throwErr s!"carve: [{lo.pretty} ; {cnt.pretty}) runs past the leaf at [{l.base.pretty} ; {l.count.pretty})"
           | none, _, _, _ => do
             let r ← freshSym
@@ -1953,17 +1978,17 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (given : Option Val)
             -- here on. RIGID — a compound neutral like `add p q` — is stuck, and the
             -- remedy is the one the north star already uses: take the length as a
             -- parameter. A real restriction on which signatures are carvable (¶8.4).
-            (do reflUnify fuel l.count (Val.kAdd lo' (Val.kAdd cnt (.sym r)))) <|>
+            (do reflUnify fuel l.count (Pure.kAdd lo' (Pure.kAdd cnt (Term.sym r)))) <|>
               throwErr s!"carve: premise (3) is stuck — the leaf's extent ({l.count.pretty}) is a compound neutral, not a flexible σ, so `m ≡ add lo' (add cnt rest)` has no solution by refinement. Take the length as a telescope PARAMETER rather than an expression (¶3.2, ¶8.4's rigid-length restriction)"
-            pure (.sym r)
+            pure (Term.sym r)
         -- The bodies. Positional on a run (which needs concrete extents — one cannot
         -- cut a literal at an offset one does not know), ⇜ on a σ.
-        let restN := Val.natOfVal? (Val.nfV fuel rest)
+        let restN := Term.natOf? (Pure.nf fuel rest)
         let (b₁, b₂, b₃) ←
-          match body, lo'N, cntN, restN with
-          | .ctor "Arr" _, none, _, _ =>
+          match Val.asCtor? body, lo'N, cntN, restN with
+          | some ("Arr", _), none, _, _ =>
             throwErr s!"carve: cannot split the literal run {body.pretty} at a symbolic offset"
-          | .ctor "Arr" _, _, none, _ =>
+          | some ("Arr", _), _, none, _ =>
             throwErr s!"carve: cannot split the literal run {body.pretty} at a symbolic count"
           | _, a, c, r =>
             carveBody fuel body (a.getD 0) (c.getD 0) (r.getD 0) lo' cnt rest
@@ -1977,14 +2002,14 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (given : Option Val)
         -- half is — selects the NEIGHBOURING segment instead and demand-ends the live
         -- borrow pinned to it. Kept unconditionally here; the extent map sums the same
         -- (`add Z k ⇝ k`) and the ⇝ fold absorbs an empty run definitionally.
-        let isZ : Val → Bool := fun c => Val.convert fuel c Val.zero
+        let isZ : Term → Bool := fun c => Pure.convert fuel c Term.zero
         let ex := (← get).executing
         let pieces := (if isZ lo' && !ex then [] else [Val.segNode lo' b₁])
                    ++ [Val.segNode cnt b₂]
                    ++ (if isZ rest && !ex then [] else [Val.segNode rest b₃])
         let node' ← getAtPos fuel pos                    -- re-read: (3) may have refined
         match node' with
-        | .ctor "§segs" segs => do
+        | .node "§segs" segs => do
           let (i, _) ← findSeg fuel l.base l.count node'
           setAtPos fuel pos (Val.segsNode ((segs.take i) ++ pieces ++ (segs.drop (i + 1))))
         | _ => setAtPos fuel pos (Val.segsNode pieces)
@@ -1999,16 +2024,16 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (given : Option Val)
     σ with no surface name. (A `lo` that does not START a segment is resolvable only
     when everything is concrete, where the arithmetic is meta-level on numerals; the
     symbolic case is rejected rather than papered over with a subtraction.) -/
-def restOfLeaf (fuel : Nat) (pos : Pos) (lo : Val) : M Val := do
+def restOfLeaf (fuel : Nat) (pos : Pos) (lo : Term) : M Term := do
   let node := Val.mergeArrays (← getAtPos fuel pos)
   let leaves ← extentMap fuel node
-  match leaves.find? (fun l => Val.convert fuel l.base lo) with
+  match leaves.find? (fun l => Pure.convert fuel l.base lo) with
   | some l => pure l.count
   | none =>
-    let loN := Val.natOfVal? (Val.nfV fuel lo)
+    let loN := Term.natOf? (Pure.nf fuel lo)
     let hit := leaves.findSome? (fun l =>
-      match loN, Val.natOfVal? (Val.nfV fuel l.base), Val.natOfVal? (Val.nfV fuel l.count) with
-      | some i, some b, some m => if b ≤ i && i < b + m then some (Val.valOfNat (b + m - i)) else none
+      match loN, Term.natOf? (Pure.nf fuel l.base), Term.natOf? (Pure.nf fuel l.count) with
+      | some i, some b, some m => if b ≤ i && i < b + m then some (Term.nat (b + m - i)) else none
       | _, _, _ => none)
     match hit with
     | some c => pure c
@@ -2031,7 +2056,7 @@ def placeToPos (fuel : Nat) : Term → M Pos
     let p ← placeToPos fuel t
     let iv ← readC fuel i
     let evv ← ev.mapM (fun e => readC fuel e)
-    carveAt fuel p iv (Val.nat 1) none evv none true
+    carveAt fuel p iv (Term.nat 1) none evv none true
     pure ⟨p.root, p.path ++ [.idx iv evv]⟩
   | .range t lo cnt rest ev eqc => do
     let p ← placeToPos fuel t
@@ -2111,12 +2136,19 @@ def fenceComptime (x : Var) (what : String) : M Unit :=
     deferral rather than an oversight, since catching it is a second corpus
     migration and not the one this rule is for. -/
 
+/-- Weak-head a store value: knowledge reduces, state is already a head. -/
+def whnfV (fuel : Nat) (v : Val) : Val :=
+  match v with
+  | .know t => .know (Pure.whnf fuel t)
+  | v => v
+
 /-- ⇒'s function values: a runtime λ, or a σ whose signature the kernel recorded
     in `fsig` (which is where a sealed function and a Π-typed parameter go). -/
 def isFnValue (st : St) : Val → Bool
   | .rfn _ _ => true
-  | .sym σ => (st.fsig.lookup σ).isSome
-  | _ => false
+  | v => match v.symOf? with
+    | some σ => (st.fsig.lookup σ).isSome
+    | none => false
 
 /-- The refusal itself, shared by the two sites below so the rule has one needle. -/
 def refuseFnBinding (x : Var) (what : String) : M Unit :=
@@ -2608,7 +2640,7 @@ inductive Dispatch where
       spine** when σ was minted by `generalizeStuck` from a stuck scrutinee —
       the one split where the branch equation says something the refinement
       does not (M23); `none` for an ordinary σ, whose equation is `Refl`. -/
-  | ownedSym   : Nat → Option Val → Dispatch
+  | ownedSym   : Nat → Option Term → Dispatch
   | borrowSym  : Nat → Nat → Dispatch                -- borrow mode, loan ℓ + payload sym σ
 
 /-- Reorganize a match scrutinee (exactly as `readR`'s match would — End-Mut a
@@ -2620,36 +2652,41 @@ def reorgScrut : Nat → Var → M Dispatch
     match ← lookupSlot scrut with
     | .bot => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} holds ⊥ (use-after-move)"
     | .borrowM ℓ payload =>
-      match payload with
-      | .ctor name fields => pure (.borrowCtor ℓ name fields)
-      | .sym σ => pure (.borrowSym ℓ σ)
-      | .loanM ℓ' => do endLoan fuel ℓ'; reorgScrut fuel scrut
-      | .bot => throwErr s!"match: matching through a hole (⊥) at {scrut.name}#{scrut.id}"
-      | .borrowM _ _ => throwErr s!"match: scrutinee payload is a nested borrow (unsupported in §3)"
-      | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} payload is not a constructor"
+      match payload.symOf?, Val.asCtor? payload with
+      | _, some (name, fields) => pure (.borrowCtor ℓ name fields)
+      | some σ, _ => pure (.borrowSym ℓ σ)
+      | _, _ =>
+        match payload with
+        | .loanM ℓ' => do endLoan fuel ℓ'; reorgScrut fuel scrut
+        | .bot => throwErr s!"match: matching through a hole (⊥) at {scrut.name}#{scrut.id}"
+        | .borrowM _ _ => throwErr s!"match: scrutinee payload is a nested borrow (unsupported in §3)"
+        | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} payload is not a constructor"
     | v =>
       match firstLoanMarker v with
       | some ℓ => do endLoan fuel ℓ; reorgScrut fuel scrut
       | none =>
-        match v with
-        | .ctor name fields => pure (.ownedCtor name fields)
-        | .sym σ => pure (.ownedSym σ none)
+        match v.symOf?, Val.asCtor? v with
+        | _, some (name, fields) => pure (.ownedCtor name fields)
+        | some σ, _ => pure (.ownedSym σ none)
         -- §19: a stuck spine (`leb σ σp`, a neutral application). Generalize it to
         -- a fresh σb : Bool across all σ-bearing state, then split on σb as an
         -- ordinary owned sym — the True/False refinement rewrites the spine per path.
         -- The spine itself rides along so the branch can bind an equation about it.
-        | .app _ _ => do let (σb, sp) ← generalizeStuck fuel v; pure (.ownedSym σb (some sp))
-        | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} is not a constructor or symbolic value"
+        | _, _ =>
+          match v with
+          | .know (.app f a) => do
+            let (σb, sp) ← generalizeStuck fuel (.app f a); pure (.ownedSym σb (some sp))
+          | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} is not a constructor or symbolic value"
 
 /-- Mint fresh σ's for the given field types, typing each in `sctx`
     (dependent positions instantiated at earlier fresh σ's — a real telescope).
     Returns the fresh σ ids. -/
-def typeFieldSyms (fuel : Nat) : List Var → List (String × Val) → M (List Nat)
+def typeFieldSyms (fuel : Nat) : List Var → List (String × Term) → M (List Nat)
   | [], [] => pure []
   | _ :: bs, (x, ty) :: tys => do
     let σ ← freshSym
     modify (fun s => { s with sctx := (σ, ty) :: s.sctx })
-    let rest ← typeFieldSyms fuel bs (tys.map (fun e => (e.1, Val.instBodyOut fuel x e.2 (Val.sym σ))))
+    let rest ← typeFieldSyms fuel bs (tys.map (fun e => (e.1, Pure.openBinder fuel x e.2 (Term.sym σ))))
     pure (σ :: rest)
   | _, _ => throwErr "match: constructor arity mismatch (σ-typing)"
 
@@ -2665,13 +2702,13 @@ def mintFieldSyms (fuel : Nat) (scrutσ : Nat) (br : Branch) : M (List Nat) := d
   | none => br.binders.mapM (fun _ => freshSym)     -- untyped scrutinee (M3)
   | some τ =>
     if br.ctor == "Refl" then
-      match Val.whnfOut fuel τ with
+      match Pure.whnf fuel τ with
       | .idT _ a b => do reflUnify fuel a b; pure []            -- unify endpoints, no fields
       | _ => throwErr "match: Refl branch on a non-Id scrutinee"
-    else match Val.ctorSig br.ctor with
+    else match Pure.ctorSig br.ctor with
     | none => throwErr s!"match: unknown constructor '{br.ctor}'"
     | some sig =>
-      match sig.fieldTypes (Val.whnfOut fuel τ) with
+      match sig.fieldTypes (Pure.whnf fuel τ) with
       | none => throwErr s!"match: constructor '{br.ctor}' does not belong to the scrutinee's type"
       | some ftys => typeFieldSyms fuel br.binders ftys
 
@@ -2687,13 +2724,13 @@ def mintFieldSyms (fuel : Nat) (scrutσ : Nat) (br : Branch) : M (List Nat) := d
     the branch is entered exactly when the scrutinee evaluates to `C`.
     Registered in `sctx` BEFORE the ⇜ fires, so `refineSym` sweeps its type with
     the rest of the σ-bearing state (the M10 invariant). -/
-def mintStuckEqn (scrutσ : Nat) (spine : Val) (ctor : String) (σs : List Nat) : M Nat := do
+def mintStuckEqn (scrutσ : Nat) (spine : Term) (ctor : String) (σs : List Nat) : M Nat := do
   let σe ← freshSym
   match (← get).sctx.lookup scrutσ with
   | none => pure σe                                      -- untyped scrutinee: untyped equation
   | some τ =>
     modify (fun s => { s with
-      sctx := (σe, .idT τ spine (.ctor ctor (σs.map Val.sym))) :: s.sctx })
+      sctx := (σe, .idT τ spine (.ctorApp ctor (σs.map Term.sym))) :: s.sctx })
     pure σe
 
 /-- Symbolic **owned** branch entry (§3.2): mint (σ-typed) fresh σ's for the
@@ -2702,17 +2739,18 @@ def mintStuckEqn (scrutσ : Nat) (spine : Val) (ctor : String) (σs : List Nat) 
     `sym σᵢ`). Returns the branch body. `stuck` carries the pre-abstraction spine
     when there was one; the declared equation binder (M23) is bound to its
     hypothesis, or to `Refl` when refinement has already equated the endpoints. -/
-def symOwnedSetup (fuel : Nat) (scrut : Var) (scrutσ : Nat) (stuck : Option Val)
+def symOwnedSetup (fuel : Nat) (scrut : Var) (scrutσ : Nat) (stuck : Option Term)
     (eqn : Option Var) (br : Branch) : M Term := do
   let σs ← mintFieldSyms fuel scrutσ br
   let eqv : Option Val ← match eqn, stuck with
     | none, _ => pure none
     | some _, none => pure (some (.ctor "Refl" []))
-    | some _, some spine => do pure (some (.sym (← mintStuckEqn scrutσ spine br.ctor σs)))
+    | some _, some spine => do
+      pure (some (.know (Term.sym (← mintStuckEqn scrutσ spine br.ctor σs))))
   openScope (armSeamed? br.body)                         -- M31 Stage 0: the arm is a scope
-  writeC (.var scrut) (.ctor br.ctor (σs.map Val.sym))   -- ⇜ everywhere (refinement first)
+  writeC (.var scrut) (.know (.ctorApp br.ctor (σs.map Term.sym)))   -- ⇜ everywhere
   setSlot scrut .bot                                     -- owned consume
-  bindFields br.binders (σs.map Val.sym)
+  bindFields br.binders (σs.map (fun σ => Val.know (Term.sym σ)))
   match eqn, eqv with | some h, some v => bindSlot h v | _, _ => pure ()
   pure br.body
 
@@ -2726,10 +2764,10 @@ def symBorrowSetup (fuel : Nat) (scrut : Var) (ℓ : Nat) (scrutσ : Nat)
     (eqn : Option Var) (br : Branch) : M Term := do
   let σs ← mintFieldSyms fuel scrutσ br
   openScope (armSeamed? br.body)                                 -- M31 Stage 0: the arm is a scope
-  writeC (.deref (.var scrut)) (.ctor br.ctor (σs.map Val.sym))   -- ⇜ at payload, everywhere
+  writeC (.deref (.var scrut)) (.know (.ctorApp br.ctor (σs.map Term.sym)))  -- ⇜ at payload
   let ℓs ← br.binders.mapM (fun _ => freshLoan)
   setSlot scrut (.borrowM ℓ (.ctor br.ctor (ℓs.map Val.loanM)))   -- suspend the parent
-  bindBorrowFields br.binders ℓs (σs.map Val.sym)
+  bindBorrowFields br.binders ℓs (σs.map (fun σ => Val.know (Term.sym σ)))
   -- A borrow payload is a bare σ (a stuck spine has no `&mut`), so the refinement
   -- has already equated the equation's endpoints.
   bindEqnRefl eqn
@@ -2748,7 +2786,7 @@ def checkExhaustive (fuel : Nat) (scrutσ : Nat) (branches : List Branch) : M Un
   match (← get).sctx.lookup scrutσ with
   | none => pure ()                                   -- untyped scrutinee: skip
   | some τ =>
-    match Val.typeCtors (Val.whnfOut fuel τ) with
+    match Pure.typeCtors (Pure.whnf fuel τ) with
     | none => pure ()                                 -- unknown type: nothing to check against
     | some ctors =>
       let covered := branches.map (·.ctor)
@@ -2824,11 +2862,11 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
       let τVal ← readC fuel τ
       let σ ← freshSym
       let ℓ ← freshLoan
-      bindSlot x (.borrowM ℓ (.sym σ))
+      bindSlot x (.borrowM ℓ (.know (Term.sym σ)))
       -- record σ as this borrow's entry snapshot (§5.4 `old *v`).
       modify (fun s => { s with sctx := (σ, τVal) :: s.sctx, entrySyms := (x.id, σ) :: s.entrySyms })
       let SVal ← readC fuel S
-      let owed := Val.nfV fuel (Val.instBodyOut fuel sn SVal (Val.sym σ))   -- S[s := σ]
+      let owed := Pure.nf fuel (Pure.openBinder fuel sn SVal (Term.sym σ))   -- S[s := σ]
       pure (⟨x, ℓ, owed, trivialOwedT tyTerm⟩ :: (← seedTelescopeV fuel rest))
     -- ¶4's RUNTIME-LENGTH SLICE, `Σ (c : Nat). &mut (Array c T)`, as a parameter.
     -- §5's second opacity ("borrows stored under a type constructor") reaching a
@@ -2840,16 +2878,16 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
       let aVal ← readC fuel aTy
       let σc ← freshSym
       modify (fun s => { s with sctx := (σc, aVal) :: s.sctx })
-      let τVal := Val.instBodyOut fuel cn (← readC fuel τ) (.sym σc)
+      let τVal := Pure.openBinder fuel cn (← readC fuel τ) (Term.sym σc)
       let σ ← freshSym
       let ℓ ← freshLoan
-      bindSlot x (.ctor "Pair" [.sym σc, .borrowM ℓ (.sym σ)])
+      bindSlot x (.ctor "Pair" [.know (Term.sym σc), .borrowM ℓ (.know (Term.sym σ))])
       modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
       -- `S` binds the payload snapshot at `sn`, the Σ's own binder is `cn`, and
       -- the two are opened by name — where under de Bruijn the second opening had
       -- to know that the first had dropped it from index 1 to index 0.
       let SVal ← readC fuel S
-      let owed := Val.nfV fuel (Val.instBodyOut fuel cn (Val.instBodyOut fuel sn SVal (.sym σ)) (.sym σc))
+      let owed := Pure.nf fuel (Pure.openBinder fuel cn (Pure.openBinder fuel sn SVal (Term.sym σ)) (Term.sym σc))
       pure (⟨x, ℓ, owed, trivialOwedT tyTerm⟩ :: (← seedTelescopeV fuel rest))
     -- **`ih` — a parameter whose type is a borrow-moded Π** (M26-C, §7 cost 1).
     -- It has no `Val` (`readC` refuses `borrowT`), so it cannot be a σ in `sctx`;
@@ -2861,7 +2899,7 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
     | .pi _ _ _ => do
       if hasBorrowT tyTerm then do
         let σ ← freshSym
-        bindSlot x (.sym σ)
+        bindSlot x (.know (Term.sym σ))
         -- **`fsig` stores the Π ITSELF** (M27-δ), peeled on demand at the call.
         -- A signature IS a Π and the AST already has one; a record beside it was
         -- a second representation of the same thing, kept in step by hand.
@@ -2870,13 +2908,13 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
       else do
         let τVal ← readC fuel tyTerm
         let σ ← freshSym
-        bindSlot x (.sym σ)
+        bindSlot x (.know (Term.sym σ))
         modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
         seedTelescopeV fuel rest
     | tyTerm => do
       let τVal ← readC fuel tyTerm
       let σ ← freshSym
-      bindSlot x (.sym σ)
+      bindSlot x (.know (Term.sym σ))
       modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
       seedTelescopeV fuel rest
 
@@ -2990,18 +3028,21 @@ def auditObligation (fuel : Nat) (resultLoans : List Nat) (ob : Obligation) : M 
 /-- Walk a return type against the result value, collecting each borrow position
     as `(issued loan, payload, owed type)`. `none` = value-returning (no borrow);
     a `Σ`/`Pair` of borrows gives the multi-issued list (`nth2`, §6.1). -/
-def collectResultBorrows (fuel : Nat) : Term → Val → M (Option (List (Nat × Val × Val)))
+def collectResultBorrows (fuel : Nat) : Term → Val → M (Option (List (Nat × Val × Term)))
   | .borrowT sn _ S, .borrowM ℓ payload => do
-    let owed := Val.nfV fuel (Val.instBodyOut fuel sn (← readC fuel S) payload)
+    let owed := Pure.nf fuel (Pure.openBinder fuel sn (← readC fuel S) (subsKnowledge payload))
     pure (some [(ℓ, payload, owed)])
   | .borrowT _ _ _, other =>
     throwErr s!"audit: borrow-returning body did not return a borrow (got {other.pretty})"
-  | .sigmaT _ a b, .ctor "Pair" [va, vb] => do
-    let ra ← collectResultBorrows fuel a va
-    let rb ← collectResultBorrows fuel b vb
-    match ra, rb with
-    | none, none => pure none                        -- a genuine value pair, not borrows
-    | _, _ => pure (some (ra.getD [] ++ rb.getD []))
+  | .sigmaT _ a b, pr => do
+    match Val.asCtor? pr with
+    | some ("Pair", [va, vb]) => do
+      let ra ← collectResultBorrows fuel a va
+      let rb ← collectResultBorrows fuel b vb
+      match ra, rb with
+      | none, none => pure none                      -- a genuine value pair, not borrows
+      | _, _ => pure (some (ra.getD [] ++ rb.getD []))
+    | _ => pure none
   | _, _ => pure none                                -- value-returning
   termination_by t _ => sizeOf t
 
@@ -3018,9 +3059,9 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
   -- unreachable (a bounds-proof `nth`'s `Nil` branch, where `p : Le (S i) 0 = ⊥`).
   -- It is vacuously well-formed at ANY return type — no borrow/obligation audit,
   -- and the `botElim` motive need not be the (unreflectable) borrow return type.
-  match Val.collectSpine resultVal with
+  match (match resultVal with | .know t => Pure.collectSpineT t | _ => (.unit, [])) with
   | (.const "botElim", [_, x]) =>
-    if ← hasType fuel x (.const "Bot") then pure ()
+    if ← hasTypeT fuel x (.const "Bot") then pure ()
     else throwErr s!"audit: botElim result on a non-⊥ argument ({x.pretty})"
   | _ =>
   match ← collectResultBorrows fuel retType resultVal with
@@ -3057,7 +3098,7 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
       | none => pure acc
       | some σ => do
         match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
-        | some payload => pure (Val.nfV fuel (substSym σ (Val.arrFoldDeep payload) acc))
+        | some payload => pure (Pure.nf fuel (Term.substSym σ (subsKnowledge (Val.arrFoldDeep payload)) acc))
         | none => pure acc) retTy0
     if ← hasType fuel resultVal retTy then pure ()
     else throwErr s!"audit: result ({resultVal.pretty}) does not have return type ({retTy.pretty})"
@@ -3089,7 +3130,7 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
     `v`'s payload holds a parked loan must end it before the projection, exactly
     as the pure lift's own `.app`/`.lam` cases do. Non-consuming is the whole
     point, so nothing else here writes a slot. -/
-def readComptimeArg (fuel : Nat) (t : Term) : M Val := do
+def readComptimeArg (fuel : Nat) (t : Term) : M Term := do
   collapseCDerefs fuel t
   readC fuel t
 
@@ -3113,15 +3154,15 @@ def readComptimeArg (fuel : Nat) (t : Term) : M Val := do
     domains as written, so nothing should reduce on the way, and a neutral keeps
     every dependent domain honestly stuck instead of computing at a made-up
     value. -/
-def modeProbe : Val := .const "@modeProbe"
+def modeProbe : Term := .const "@modeProbe"
 
-def binderModes : Nat → Val → Nat → List Bool
+def binderModes : Nat → Term → Nat → List Bool
   | _, _, 0 => []
   | 0, _, n => List.replicate n false
   | fuel + 1, v, n + 1 =>
-    match Val.whnfOut fuel v with
-    | .lam x dom body => Val.domComptime dom :: binderModes fuel (Val.instBodyOut fuel x body modeProbe) n
-    | .pi x dom cod => Val.domComptime dom :: binderModes fuel (Val.instBodyOut fuel x cod modeProbe) n
+    match Pure.whnf fuel v with
+    | .lam x dom body => Term.domComptime dom :: binderModes fuel (Pure.openBinder fuel x body modeProbe) n
+    | .pi x dom cod => Term.domComptime dom :: binderModes fuel (Pure.openBinder fuel x cod modeProbe) n
     | _ => List.replicate (n + 1) false
 
 /-! ## Value-callee application (combining-fns §7 cost 2, M26-A)
@@ -3187,10 +3228,10 @@ def recLayout : String → Option (Nat × Nat × Nat)
     fragments — and filled with this marker, which no rule reads. The motive a
     program writes is checked where it can be: at the seal, against the one
     derived from the ascribed Π. -/
-def erasedMotive : Val := .const "@motive"
+def erasedMotive : Term := .const "@motive"
 
 /-- Collect a `Term` application spine into head and arguments (the mirror of
-    `Val.collectSpine`, needed because ⇒ meets recursors as terms first). -/
+    `Pure.collectSpineT`, needed because ⇒ meets recursors as terms first). -/
 def collectAppT : Term → Term × List Term
   | .app f a => let (h, as) := collectAppT f; (h, as ++ [a])
   | t => (t, [])
@@ -3219,11 +3260,15 @@ def appSpineVar? : Term → Option (Var × List Term)
   | .var x => some (x, [])
   | _ => none
 
-/-- The head constant of a `Val` application spine, if it has one. -/
-partial def valSpineHead : Val → Option String
+/-- The head constant of a `Term` application spine, if it has one. -/
+partial def termSpineHead : Term → Option String
   | .const c => some c
-  | .app f _ => valSpineHead f
+  | .app f _ => termSpineHead f
   | _ => none
+
+/-- The head constant of a knowledge application spine, if it has one. -/
+partial def valSpineHead : Val → Option String
+  | v => (Val.asRecSpine? v).map (·.1)
 
 /-- Mint a fresh frame window for an inlined body's slots (the executing call
     rule's device, now shared with runtime-λ application). -/
@@ -3246,33 +3291,47 @@ def valBinderModes : Nat → Val → Nat → M (List Bool)
   | _, _, 0 => pure []
   | 0, _, n => pure (List.replicate n false)
   | fuel + 1, v, n + 1 => do
-    let (head, args) := Val.collectSpine v
-    match head with
-    | .rfn names _ => pure ((names.map Var.isComptime ++ List.replicate (n + 1) false).take (n + 1))
-    | .const c =>
-      match recLayout c with
-      | none => pure (binderModes fuel v (n + 1))
-      | some (k, _, b) =>
-        if args.length == k then pure (false :: (← valBinderModes fuel (args.getD b .bot) n))
-        else if args.length == k + 1 then valBinderModes fuel (args.getD b .bot) (n + 1)
-        else pure (List.replicate (n + 1) false)
-    | .sym σ =>
-      match (← get).sctx.lookup σ with
-      | some σty => pure (binderModes fuel σty (n + 1))
-      | none => pure (List.replicate (n + 1) false)
-    | _ => pure (binderModes fuel v (n + 1))
+    match v with
+    | .rfn names _ =>
+      pure ((names.map Var.isComptime ++ List.replicate (n + 1) false).take (n + 1))
+    | v =>
+      match Val.asRecSpine? v with
+      | some (c, args) =>
+        match recLayout c with
+        | none =>
+          match v with
+          | .know t => pure (binderModes fuel t (n + 1))
+          | _ => pure (List.replicate (n + 1) false)
+        | some (k, _, b) =>
+          if args.length == k then
+            pure (false :: (← valBinderModes fuel (args.getD b .bot) n))
+          else if args.length == k + 1 then
+            valBinderModes fuel (args.getD b .bot) (n + 1)
+          else pure (List.replicate (n + 1) false)
+      | none =>
+        match v with
+        | .know t =>
+          let (head, _) := Pure.collectSpineT t
+          match head.symOf? with
+          | some σ =>
+            match (← get).sctx.lookup σ with
+            | some σty => pure (binderModes fuel σty (n + 1))
+            | none => pure (List.replicate (n + 1) false)
+          | none => pure (binderModes fuel t (n + 1))
+        | _ => pure (List.replicate (n + 1) false)
 
 /-- Instantiate an abstract callee's Π-type at the arguments, returning the result
     type. This is `synthSpine` with the errors kept apart: a mistyped argument and
     an over-applied callee are different rejections, and `synthSpine`'s `none`
     collapses them. -/
-def instantiatePi : Nat → Val → List Val → M Val
+def instantiatePi : Nat → Term → List Val → M Term
   | 0, _, _ => throwErr "callV: out of fuel (Π instantiation)"
   | _, ty, [] => pure ty
   | fuel + 1, ty, a :: rest =>
-    match Val.whnfOut fuel ty with
+    match Pure.whnf fuel ty with
     | .pi x dom cod => do
-      if ← hasType fuel a dom then instantiatePi fuel (Val.instBodyOut fuel x cod a) rest
+      if ← hasType fuel a dom then
+        instantiatePi fuel (Pure.openBinder fuel x cod (subsKnowledge a)) rest
       else throwErr s!"callV: argument ({a.pretty}) does not have its parameter type ({dom.pretty})"
     | other => throwErr s!"callV: too many arguments — the callee's type is {other.pretty}, not a function type"
 
@@ -3508,7 +3567,8 @@ mutual
         -- by the explore driver both.
         backstopFnRhs x rhs                              -- M31 Stage A: §2.1, before the fence
         (match rhs with | .lam _ _ _ => checkLamCitation rhs | _ => pure ())
-        let v ← if x.comptimeRhs rhs then readComptimeArg fuel rhs else readR fuel rhs
+        let v ← if x.comptimeRhs rhs then (do pure (Val.know (← readComptimeArg fuel rhs)))
+                else readR fuel rhs
         backstopFnBinding x v                            -- …and §2.1 from below
         bindSlot x v
         readR fuel rest
@@ -3527,21 +3587,27 @@ mutual
         match ← lookupSlot scrut with
         | .bot => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} holds ⊥ (use-after-move)"
         | .borrowM ℓ payload =>
-          match payload with
-          | .ctor name fields => do readR fuel (← borrowSelect scrut eqn branches ℓ name fields)
-          | .loanM ℓ' => do endLoan fuel ℓ'; readR fuel (.matchE scrut eqn branches)  -- reborrowed payload: end, retry
-          | .bot => throwErr s!"match: matching through a hole (⊥) at {scrut.name}#{scrut.id}"
-          | .sym _ => throwErr s!"match: symbolic scrutinee {scrut.name}#{scrut.id} in expression position — only a statement-position match may split (use the explore driver)"
-          | .borrowM _ _ => throwErr s!"match: scrutinee payload is a nested borrow (unsupported in §3)"
-          | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} payload is not a constructor"
+          match Val.asCtor? payload with
+          | some (name, fields) => do readR fuel (← borrowSelect scrut eqn branches ℓ name fields)
+          | none =>
+            match payload with
+            | .loanM ℓ' => do endLoan fuel ℓ'; readR fuel (.matchE scrut eqn branches)  -- reborrowed payload: end, retry
+            | .bot => throwErr s!"match: matching through a hole (⊥) at {scrut.name}#{scrut.id}"
+            | .borrowM _ _ => throwErr s!"match: scrutinee payload is a nested borrow (unsupported in §3)"
+            | p =>
+              if p.symOf?.isSome then
+                throwErr s!"match: symbolic scrutinee {scrut.name}#{scrut.id} in expression position — only a statement-position match may split (use the explore driver)"
+              else throwErr s!"match: scrutinee {scrut.name}#{scrut.id} payload is not a constructor"
         | v =>
           match firstLoanMarker v with
           | some ℓ => do endLoan fuel ℓ; readR fuel (.matchE scrut eqn branches)  -- suspended owner: end, retry
           | none =>
-            match v with
-            | .ctor name fields => do readR fuel (← ownedSelect scrut eqn branches name fields)
-            | .sym _ => throwErr s!"match: symbolic scrutinee {scrut.name}#{scrut.id} in expression position — only a statement-position match may split (use the explore driver)"
-            | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} is not a constructor value"
+            match Val.asCtor? v with
+            | some (name, fields) => do readR fuel (← ownedSelect scrut eqn branches name fields)
+            | none =>
+              if v.symOf?.isSome then
+                throwErr s!"match: symbolic scrutinee {scrut.name}#{scrut.id} in expression position — only a statement-position match may split (use the explore driver)"
+              else throwErr s!"match: scrutinee {scrut.name}#{scrut.id} is not a constructor value"
       | .seq e rest => do
         let _ ← readR fuel e                             -- evaluate for effect, discard
         readR fuel rest
@@ -3638,8 +3704,8 @@ mutual
           -- own §6 mode routing off the telescope — pre-reading them would
           -- consume a comptime argument the callee promised never to touch.
           | none =>
-            match callee with
-            | .sym σ =>
+            match callee.symOf? with
+            | some σ =>
               match (← get).fsig.lookup σ with
               | some piT =>
                 -- Peel the stored Π at POSITIONAL binders, which is the convention
@@ -3649,7 +3715,7 @@ mutual
                 | .error e => throwErr e
                 | .ok (tel, ret) => callDeclC fuel (tel.map (fun p => (p.1.name, p.2))) ret args
               | none => callVValue fuel x callee args
-            | _ => callVValue fuel x callee args
+            | none => callVValue fuel x callee args
       -- **The runtime λ** (§7 cost 2). Evaluating one is only forming its value:
       -- the body is a suspension until the binders have arguments.
       --
@@ -3727,11 +3793,11 @@ mutual
       -- goes through (§5.2's "proper payload" premise; see `collapseCDerefs`).
       -- Only on the lift, where a body reads live places — `readC` proper is used
       -- on types/specs too and stays the read-only projection it is documented as.
-      | .type => readC fuel t
-      | .const _ => readC fuel t
-      | .pvar _ => readC fuel t
-      | .pi _ _ _ => readC fuel t
-      | .sigmaT _ _ _ => readC fuel t
+      | .type => do pure (.know (← readC fuel t))
+      | .const _ => do pure (.know (← readC fuel t))
+      | .pvar _ => do pure (.know (← readC fuel t))
+      | .pi _ _ _ => do pure (.know (← readC fuel t))
+      | .sigmaT _ _ _ => do pure (.know (← readC fuel t))
       -- **A λ FORMED IN VALUE POSITION takes the citation rule too** (M31 Stage A,
       -- §2.4), which is what makes the check "identical for both λ species".
       --
@@ -3745,7 +3811,7 @@ mutual
       -- all and is untouched.
       | .lam _ _ _ => do
         checkLamCitation t
-        collapseCDerefs fuel t; readC fuel t
+        collapseCDerefs fuel t; pure (.know (← readC fuel t))
       -- **A recursor over runtime arms is ⇒'s, not ⇝'s** (§7 cost 5). The pure
       -- lift below sends every other application spine to `readC`; one whose arms
       -- are BODIES has no comptime reading at all (`readC` refuses `.lamR`), so ⇒
@@ -3757,7 +3823,7 @@ mutual
         match runtimeRecSpine? t with
         | some (c, args) => do
           let vs ← readRecArgs fuel (match recLayout c with | some (_, m, _) => m | none => 0) 0 args
-          applyR fuel (Val.rebuildSpine (.const c) vs) []
+          applyR fuel (Val.recSpine c vs) []
         | none => do
           -- **JUXTAPOSITION APPLICATION** (M27 β). The document's grammar has one
           -- application form, `t t′`; the n-ary `f(a, …)` is the declaration era's
@@ -3800,15 +3866,16 @@ mutual
               let isFn : Bool :=
                 match kv.2 with
                 | .rfn _ _ => true
-                | .sym σ => (st.fsig.lookup σ).isSome
-                | v => match valSpineHead v with
-                       | some c => (recLayout c).isSome
-                       | none => false
+                | v => match v.symOf? with
+                  | some σ => (st.fsig.lookup σ).isSome
+                  | none => match valSpineHead v with
+                    | some c => (recLayout c).isSome
+                    | none => false
               if isFn then readR fuel (.callV x args)
-              else do collapseCDerefs fuel t; readC fuel t
-            | none => do collapseCDerefs fuel t; readC fuel t
-          | none => do collapseCDerefs fuel t; readC fuel t
-      | .idT _ _ _ => do collapseCDerefs fuel t; readC fuel t
+              else do collapseCDerefs fuel t; pure (.know (← readC fuel t))
+            | none => do collapseCDerefs fuel t; pure (.know (← readC fuel t))
+          | none => do collapseCDerefs fuel t; pure (.know (← readC fuel t))
+      | .idT _ _ _ => do collapseCDerefs fuel t; pure (.know (← readC fuel t))
       -- ¶2.2's ⇒ column at the two new steps, and the regularity §1.3 asks the
       -- reader to notice: each behaves the way the corresponding column behaves at
       -- `*`. `t[i]` moves the element out (a hole in the slot) or copies it under
@@ -3846,7 +3913,7 @@ mutual
     | _, _, [] => pure []
     | fuel, ms, a :: as => do
       let v ← match ms.head? with
-        | some true => readComptimeArg fuel a
+        | some true => do pure (Val.know (← readComptimeArg fuel a))
         | _ => readR fuel a
       pure (v :: (← readArgsModed fuel (ms.drop 1) as))
   termination_by fuel _ as => (fuel, 1, as.length)
@@ -3856,7 +3923,7 @@ mutual
   def readRecArgs : Nat → Nat → Nat → List Term → M (List Val)
     | _, _, _, [] => pure []
     | fuel, mi, i, a :: as => do
-      let v ← if i == mi then pure erasedMotive else readR fuel a
+      let v ← if i == mi then pure (Val.know erasedMotive) else readR fuel a
       pure (v :: (← readRecArgs fuel mi (i + 1) as))
   termination_by fuel _ _ as => (fuel, 1, as.length)
   /-- β for a literal λ callee: check each argument against its binder's domain,
@@ -3867,23 +3934,27 @@ mutual
       may be a runtime function, and application composes through `applyR`.) -/
   def applyLam : Nat → Val → List Val → M Val
     | 0, _, _ => throwErr "callV: out of fuel (λ application)"
-    | fuel + 1, f, [] =>
-      match Val.whnfOut fuel f with
+    | fuel + 1, .know ft, [] =>
+      match Pure.whnf fuel ft with
       | .lam _ d _ => throwErr s!"callV: partial application — the callee still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4). A function-VALUED result is refused here too, and M26-B confirms binder modes do NOT separate the two cases: `Π (x : A) → (Π (y : B) → C)` and `Π (x : A) → Π (y : B) → C` are the same term, so the residual binder's own mode says nothing about whose it is. The separating fact is elsewhere — a residual telescope with no borrow-moded binder could be curried soundly — and that is a phase C/D decision against §12 decision 4, not a mode question."
-      | v => pure v
-    | fuel + 1, f, a :: rest =>
-      match Val.whnfOut fuel f with
+      | v => pure (.know v)
+    | _ + 1, f, [] => pure f
+    | fuel + 1, .know ft, a :: rest =>
+      match Pure.whnf fuel ft with
       | .lam x dom body => do
-        if (← get).executing then applyLam fuel (Val.instBodyOut fuel x body a) rest
+        let ak := subsKnowledge a
+        if (← get).executing then applyLam fuel (.know (Pure.openBinder fuel x body ak)) rest
         -- `hasType` strips the mode marker: which arrow READ the argument was
         -- settled before this call (`valBinderModes`), and what remains is the
         -- ordinary domain check.
-        else if ← hasType fuel a dom then applyLam fuel (Val.instBodyOut fuel x body a) rest
+        else if ← hasType fuel a dom then
+          applyLam fuel (.know (Pure.openBinder fuel x body ak)) rest
         else throwErr s!"callV: argument ({a.pretty}) does not have its parameter type ({dom.pretty})"
       -- A pure λ whose body turns out to be a runtime function (or a recursor):
       -- hand the remaining spine to the ⇒-application rule rather than calling it
       -- an arity error. One application story, two reduction rules.
-      | other => applyR fuel other (a :: rest)
+      | other => applyR fuel (.know other) (a :: rest)
+    | fuel + 1, f, a :: rest => applyR fuel f (a :: rest)
   termination_by fuel _ args => (fuel, 1, args.length)
   /-- **⇒-application of a function VALUE to a saturated spine** (§7 costs 2/3/5).
 
@@ -3907,40 +3978,48 @@ mutual
       arms-as-bodies checking, and is rejected here until that rule lands. -/
   def applyR : Nat → Val → List Val → M Val
     | 0, _, _ => throwErr "applyR: out of fuel"
+    | fuel + 1, .rfn names body, args =>
+      if args.length == names.length then applyRFn fuel names body args
+      else if args.length < names.length then
+        throwErr s!"callV: partial application — the runtime λ {(Val.rfn names body).pretty} binds {names.length} argument(s) and was given {args.length}. Runtime application is saturated (§12 decision 4): a partial application at runtime is a closure holding its arguments — including, in general, borrows — while it waits."
+      else
+        throwErr s!"callV: too many arguments — the runtime λ {(Val.rfn names body).pretty} binds {names.length} argument(s) and was given {args.length}"
     | fuel + 1, f, args => do
-      let (head, sargs) := Val.collectSpine f
+      let (headName, sargs) := (Val.asRecSpine? f).getD ("", [])
       let all := sargs ++ args
-      match head, all with
-      | .rfn names body, _ =>
-        if all.length == names.length then applyRFn fuel names body all
-        else if all.length < names.length then
-          throwErr s!"callV: partial application — the runtime λ {(Val.rfn names body).pretty} binds {names.length} argument(s) and was given {all.length}. Runtime application is saturated (§12 decision 4): a partial application at runtime is a closure holding its arguments — including, in general, borrows — while it waits."
-        else
-          throwErr s!"callV: too many arguments — the runtime λ {(Val.rfn names body).pretty} binds {names.length} argument(s) and was given {all.length}"
+      match (Term.const headName : Term), all with
       | .const "natRec", motive :: z :: s :: n :: rest =>
-        match Val.whnfOut fuel n with
-        | .ctor "Z" [] => applyRest fuel z rest
-        | .ctor "S" [m] =>
-          applyRest fuel s (m :: Val.rebuildSpine (.const "natRec") [motive, z, s, m] :: rest)
-        | n' => stuckRec fuel (.const "natRec") [motive, z, s, n'] rest
+        match Val.asCtor? (whnfV fuel n) with
+        | some ("Z", []) => applyRest fuel z rest
+        | some ("S", [m]) =>
+          applyRest fuel s (m :: Val.recSpine "natRec" [motive, z, s, m] :: rest)
+        | _ => stuckRec fuel "natRec" [motive, z, s, whnfV fuel n] rest
       | .const "boolRec", motive :: t :: e :: b :: rest =>
-        match Val.whnfOut fuel b with
-        | .ctor "True" [] => applyRest fuel t rest
-        | .ctor "False" [] => applyRest fuel e rest
-        | b' => stuckRec fuel (.const "boolRec") [motive, t, e, b'] rest
+        match Val.asCtor? (whnfV fuel b) with
+        | some ("True", []) => applyRest fuel t rest
+        | some ("False", []) => applyRest fuel e rest
+        | _ => stuckRec fuel "boolRec" [motive, t, e, whnfV fuel b] rest
       | .const "listRec", a :: motive :: pn :: pc :: l :: rest =>
-        match Val.whnfOut fuel l with
-        | .ctor "Nil" [] => applyRest fuel pn rest
-        | .ctor "Cons" [h, tl] =>
-          applyRest fuel pc (h :: tl :: Val.rebuildSpine (.const "listRec") [a, motive, pn, pc, tl] :: rest)
-        | l' => stuckRec fuel (.const "listRec") [a, motive, pn, pc, l'] rest
-      | .lam _ _ _, _ => applyLam fuel head all
-      -- Not a redex. Applied to nothing — the under-applied `natRec P z s` a seal
-      -- ascribes, or a recursor stuck on a σ — it is a VALUE; applied to
-      -- something it cannot consume, it is over-application.
+        match Val.asCtor? (whnfV fuel l) with
+        | some ("Nil", []) => applyRest fuel pn rest
+        | some ("Cons", [h, tl]) =>
+          applyRest fuel pc (h :: tl :: Val.recSpine "listRec" [a, motive, pn, pc, tl] :: rest)
+        | _ => stuckRec fuel "listRec" [a, motive, pn, pc, whnfV fuel l] rest
+      -- Not a recursor redex. A pure λ (or a λ-headed spine) is β; applied to
+      -- nothing — the under-applied `natRec P z s` a seal ascribes, or a recursor
+      -- stuck on a σ — it is a VALUE; applied to something it cannot consume, it
+      -- is over-application.
       | _, _ =>
-        if args.isEmpty then pure (Val.whnfOut fuel f)
-        else throwErr s!"callV: too many arguments — {head.pretty} is not a function (expected a λ, a runtime λ, or a recursor spine)"
+        match f with
+        | .know ft =>
+          match Pure.whnf fuel ft with
+          | .lam x d b => applyLam fuel (.know (.lam x d b)) args
+          | w =>
+            if args.isEmpty then pure (.know w)
+            else throwErr s!"callV: too many arguments — {w.pretty} is not a function (expected a λ, a runtime λ, or a recursor spine)"
+        | v =>
+          if args.isEmpty then pure v
+          else throwErr s!"callV: too many arguments — {v.pretty} is not a function (expected a λ, a runtime λ, or a recursor spine)"
   termination_by fuel _ _ => (fuel, 2, 0)
   /-- ι's continuation: the selected arm, applied to whatever the caller still
       owed. **With nothing owed the arm IS the value** — `natRec P z s Z` at a
@@ -3948,17 +4027,17 @@ mutual
       and keeping that distinct from `applyR arm []` is what lets a zero-argument
       value-callee call (`f()`) still be the partial application it is. -/
   def applyRest : Nat → Val → List Val → M Val
-    | fuel, arm, [] => pure (Val.whnfOut fuel arm)
+    | fuel, arm, [] => pure (whnfV fuel arm)
     | fuel, arm, rest => applyR fuel arm rest
   termination_by fuel _ _ => (fuel, 3, 0)
   /-- A recursor that did not ι. With nothing owed it is a VALUE — the abstract
       self-view `ih` at a symbolic predecessor, which is precisely what §7's
       convergence argument says a recursive occurrence must be. With arguments
       owed it is arms-as-bodies checking at a symbolic scrutinee. -/
-  def stuckRec : Nat → Val → List Val → List Val → M Val
-    | _, head, spine, [] => pure (Val.rebuildSpine head spine)
+  def stuckRec : Nat → String → List Val → List Val → M Val
+    | _, head, spine, [] => pure (Val.recSpine head spine)
     | _, head, spine, _ =>
-      throwErr s!"applyR: {head.pretty} is stuck on a symbolic scrutinee ({(spine.getD (spine.length - 1) .bot).pretty}) and cannot ι. Applying a recursor at a symbolic scrutinee is arms-as-bodies CHECKING (§7 cost 1) — reachable through a seal, not through a call."
+      throwErr s!"applyR: {head} is stuck on a symbolic scrutinee ({(spine.getD (spine.length - 1) .bot).pretty}) and cannot ι. Applying a recursor at a symbolic scrutinee is arms-as-bodies CHECKING (§7 cost 1) — reachable through a seal, not through a call."
   /-- Apply a runtime function: bind its named binders in a **fresh frame** and
       ⇒-evaluate its body.
 
@@ -4006,7 +4085,7 @@ mutual
       borrow's loan ℓ with its owed type `S[s := v]`. A pure argument must
       `hasType` its parameter type; a borrow argument must be a `borrowM ℓ v`
       whose payload `v` has the parameter type τ, and is consumed. -/
-  def processArgs : Nat → Nat → Omega → List (String × Term) → List Term → M (List (Nat × Val) × Omega)
+  def processArgs : Nat → Nat → Omega → List (String × Term) → List Term → M (List (Nat × Term) × Omega)
     | _, _, inst, [], [] => pure ([], inst)
     | fuel, i, inst, (name, tyTerm) :: tRest, arg :: aRest => do
       -- Parameter `i`'s runtime var (the §5.2 convention: a later type mentions
@@ -4033,8 +4112,8 @@ mutual
         | _ => do
           let argVal ← readComptimeArg fuel arg
           let τVal ← readCWith fuel inst tyTerm.stripCmp
-          if ← hasType fuel argVal τVal then
-            processArgs fuel (i + 1) ((declVar, argVal) :: inst) tRest aRest
+          if ← hasTypeT fuel argVal τVal then
+            processArgs fuel (i + 1) ((declVar, .know argVal) :: inst) tRest aRest
           else throwErr s!"call: comptime argument ({argVal.pretty}) does not have its parameter type ({τVal.pretty})"
       else
       match tyTerm with
@@ -4044,7 +4123,7 @@ mutual
           let τVal ← readCWith fuel inst τ
           if ← hasType fuel payload τVal then do
             let SVal ← readCWith fuel inst S
-            let owed := Val.nfV fuel (Val.instBodyOut fuel sn SVal payload)
+            let owed := Pure.nf fuel (Pure.openBinder fuel sn SVal (subsKnowledge payload))
             -- A borrow parameter is bound to the actual borrow itself, so a later
             -- type mentioning `*b` (§5.2's comptime-deref at the call site)
             -- reflects the peel to the payload snapshot just passed.
@@ -4057,22 +4136,24 @@ mutual
       -- genuine pair — a length and a borrow — so the capture is the borrow's loan and
       -- the length is checked like any other argument. See `docs/DELTAS.md` G2.
       | .sigmaT cn aTy (.borrowT sn τ S) => do
-        match ← readR fuel arg with
-        | .ctor "Pair" [cv, .borrowM ℓ payload] => do
-          let aVal ← readCWith fuel inst aTy
-          if !(← hasType fuel cv aVal) then
-            throwErr s!"call: slice length ({cv.pretty}) does not have its parameter type ({aVal.pretty})"
-          else
-            let τVal := Val.instBodyOut fuel cn (← readCWith fuel inst τ) cv
+        let pr ← readR fuel arg
+        match Val.asCtor? pr with
+          | some ("Pair", [cv, .borrowM ℓ payload]) => do
+            let aVal ← readCWith fuel inst aTy
+            if !(← hasType fuel cv aVal) then
+              throwErr s!"call: slice length ({cv.pretty}) does not have its parameter type ({aVal.pretty})"
+            else
+            let τVal := Pure.openBinder fuel cn (← readCWith fuel inst τ) (subsKnowledge cv)
             if ← hasType fuel payload τVal then do
               let SVal ← readCWith fuel inst S
-              let owed := Val.nfV fuel (Val.instBodyOut fuel cn (Val.instBodyOut fuel sn SVal payload) cv)
+              let owed := Pure.nf fuel (Pure.openBinder fuel cn
+                (Pure.openBinder fuel sn SVal (subsKnowledge payload)) (subsKnowledge cv))
               let pairV : Val := .ctor "Pair" [cv, .borrowM ℓ payload]
               let (rest, inst') ← processArgs fuel (i + 1) ((declVar, pairV) :: inst) tRest aRest
               pure ((ℓ, owed) :: rest, inst')
             else
               throwErr s!"call: slice payload ({payload.pretty}) does not have its parameter type ({τVal.pretty})"
-        | v => throwErr s!"call: expected a Σ-typed slice (a Pair of a length and a borrow), got {v.pretty}"
+          | _ => throwErr s!"call: expected a Σ-typed slice (a Pair of a length and a borrow), got {pr.pretty}"
       | tyTerm => do
         let argVal ← readR fuel arg
         let τVal ← readCWith fuel inst tyTerm
@@ -4108,18 +4189,25 @@ mutual
           let modes ← valBinderModes fuel callee args.length
           let argVals ← readArgsModed fuel modes args  -- ⇒ or ⇝ per binder, left to right
           match callee with
-          | .lam _ _ _ => applyLam fuel callee argVals   -- body known ⟹ β
+          | .know (.lam _ _ _) => applyLam fuel callee argVals   -- body known ⟹ β
           -- A runtime function, or a recursor over runtime arms: ⇒-application
           -- (bind-and-run, and ι with the arm as a body). `ih` arrives here.
           | .rfn _ _ => applyR fuel callee argVals
-          | .app _ _ => applyR fuel callee argVals
-          | .const _ => applyR fuel callee argVals
-          | .sym σ =>
+          -- A recursor spine over RUNTIME arms (§7 cost 5). It is a function
+          -- value with non-knowledge children, so the skeleton is where it lives
+          -- (`Val.recSpine`) and `applyR` is what ι's it.
+          | .node "§rec" _ => applyR fuel callee argVals
+          | .know (.app _ _) => applyR fuel callee argVals
+          | .know (.const _) => applyR fuel callee argVals
+          | .know (.pvar cx) =>
+            match symOfName? cx with
+            | none => applyR fuel callee argVals
+            | some σ =>
             match (← get).sctx.lookup σ with
             | none => throwErr s!"callV: callee {x.name} is σ{σ}, which has no type in sctx"
             | some σty => do
               let resTy ← instantiatePi fuel σty argVals
-              match Val.whnfOut fuel resTy with
+              match Pure.whnf fuel resTy with
               | .pi _ d _ => throwErr s!"callV: partial application — σ{σ} still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4)"
               | resTy => do
                 -- The runtime column of §2.3: the call FORGETS the application
@@ -4131,7 +4219,7 @@ mutual
                 -- write it as a statement and ⇒ mints.
                 let σ' ← freshSym
                 modify (fun s => { s with sctx := (σ', resTy) :: s.sctx })
-                pure (.sym σ')
+                pure (.know (Term.sym σ'))
           | v => throwErr s!"callV: {x.name}#{x.id} holds {v.pretty}, which is not a function value (expected a λ or a σ : Π)"
   termination_by fuel _ _ _ => (fuel, 8, 0)
   /-- **§5.4's audit, relocated to the seal** (M26-C, phase A's deferral).
@@ -4217,7 +4305,7 @@ mutual
         -- property ⇝ lacks and the reason the node is a ⇒-form (§2.1).
         let σ ← freshSym
         modify (fun s => { s with sctx := (σ, uV) :: s.sctx })
-        pure (.sym σ)
+        pure (.know (Term.sym σ))
       else
         throwErr s!"seal: the sealed term ({v.pretty}) does not have its ascribed type ({uV.pretty})"
   termination_by fuel _ _ => (fuel, 9, 0)
@@ -4367,7 +4455,7 @@ mutual
         if !hasBorrowT u then do
           let uV ← readC fuel u
           modify (fun s => { s with sctx := (σ, uV) :: s.sctx })
-        pure (.sym σ)
+        pure (.know (Term.sym σ))
   termination_by fuel _ _ => (fuel, 12, 0)
   /-- Sealing a runtime λ: check it, then forget it.
 
@@ -4484,7 +4572,8 @@ mutual
         match (do
             backstopFnRhs x rhs
             (match rhs with | .lam _ _ _ => checkLamCitation rhs | _ => pure ())
-            let v ← if x.comptimeRhs rhs then readComptimeArg fuel rhs else readR fuel rhs
+            let v ← if x.comptimeRhs rhs then (do pure (Val.know (← readComptimeArg fuel rhs)))
+                    else readR fuel rhs
             backstopFnBinding x v
             bindSlot x v).run st with
         | .error e _ => [.error e]
@@ -4538,7 +4627,7 @@ mutual
       setup; `ℓ` is the parent loan (borrow mode only); `σ` is the scrutinee's
       symbolic id (used to type the field σ's); `stuck` is the pre-abstraction
       spine, when the σ came from one; `eqn` the declared equation binder. -/
-  def exploreSymBranches : Nat → Var → Bool → Nat → Nat → Option Val → Option Var →
+  def exploreSymBranches : Nat → Var → Bool → Nat → Nat → Option Term → Option Var →
       List Branch → St → List (Except String (Val × St))
     | _, _, _, _, _, _, _, [], _ => []
     | fuel, scrut, borrow, ℓ, σ, stuck, eqn, br :: rest, st =>
@@ -4627,27 +4716,27 @@ def expectMErr (seed : Omega) (m : M Unit) (needle : String) : Bool :=
 /-! ## Pure test helpers -/
 
 /-- Seed a state with an Ω and a σ-context. -/
-def seedPure (env : Omega) (sctx : List (Nat × Val)) : St := { seedSt env with sctx := sctx }
+def seedPure (env : Omega) (sctx : List (Nat × Term)) : St := { seedSt env with sctx := sctx }
 
 /-- Test helper: `readC t` equals `expected` (by structural value equality). -/
-def expectReadC (env : Omega) (sctx : List (Nat × Val)) (t : Term) (expected : Val)
+def expectReadC (env : Omega) (sctx : List (Nat × Term)) (t : Term) (expected : Term)
     (fuel : Nat := defaultFuel) : Bool :=
   match (readC fuel t).run (seedPure env sctx) with
   | .ok v _ => v == expected
   | .error _ _ => false
 
 /-- Test helper: `readC t₁` and `readC t₂` are convertible. -/
-def expectConv (env : Omega) (sctx : List (Nat × Val)) (t1 t2 : Term)
+def expectConv (env : Omega) (sctx : List (Nat × Term)) (t1 t2 : Term)
     (fuel : Nat := defaultFuel) : Bool :=
-  match (do let a ← readC fuel t1; let b ← readC fuel t2; pure (Val.convert fuel a b)).run
+  match (do let a ← readC fuel t1; let b ← readC fuel t2; pure (Pure.convert fuel a b)).run
       (seedPure env sctx) with
   | .ok r _ => r
   | .error _ _ => false
 
 /-- Test helper: value `v` has type `ty` under the σ-context. -/
-def expectHasType (env : Omega) (sctx : List (Nat × Val)) (v ty : Val)
+def expectHasType (env : Omega) (sctx : List (Nat × Term)) (v ty : Term)
     (fuel : Nat := defaultFuel) : Bool :=
-  match (hasType fuel v ty).run (seedPure env sctx) with
+  match (hasTypeT fuel v ty).run (seedPure env sctx) with
   | .ok r _ => r
   | .error _ _ => false
 

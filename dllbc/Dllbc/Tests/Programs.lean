@@ -413,12 +413,12 @@ example : progRejects d3 "cannot be the scrutinee of a runtime match" = true := 
     comptime judgment, and ⇒ still tells them apart. -/
 
 -- E1. The mode is invisible to conversion…
-example : Val.convert 1000 (.pi "X" (.cmpT (.const "Nat")) (.const "Nat"))
+example : Pure.convert 1000 (.pi "X" (.cmpT (.const "Nat")) (.const "Nat"))
                            (.pi "x" (.const "Nat") (.const "Nat")) = true := by native_decide
 -- …and NOT erased by normalization, which is what leaves ⇒ something to read.
 -- (`==` is mode-blind, so this has to be asked structurally.)
-example : (match Val.nfV 1000 (Val.pi "X" (.cmpT (.const "Nat")) (.const "Nat")) with
-           | .pi _ d _ => Val.domComptime d
+example : (match Pure.nf 1000 (Term.pi "X" (.cmpT (.const "Nat")) (.const "Nat")) with
+           | .pi _ d _ => Term.domComptime d
            | _ => false) = true := by native_decide
 
 -- E2. `Add` stays all-lowercase and is cited in a spec regardless — you never
@@ -452,7 +452,12 @@ example : progOk e3hi = true := by native_decide
     the other is not" is exactly the kind of asymmetry a later reader would
     otherwise assume was an oversight. -/
 
-example : ((Val.cmpT (.const "Nat") : Val) == Val.const "Nat") = true := by native_decide
+-- **The mode-blind equality is `Term.convEq` since M32 R1**, where it used to be
+-- `Val.beq`. The asymmetry is the same one and it moved with the domain split:
+-- conversion is what §6's "case is inert under ⇝" is about, so the unwrapping
+-- lives in the equality `convert` is built on, and the structural `==` every
+-- incidental comparison reaches for stays honest.
+example : (Term.convEq (.cmpT (.const "Nat")) (.const "Nat")) = true := by native_decide
 example : ((Term.cmpT (.const "Nat") : Term) == Term.const "Nat") = false := by native_decide
 
 /-! ## §F. Modes at a VALUE callee — the shape phase C's `ih` stands on
@@ -1802,7 +1807,7 @@ example : (rawEnvs push).any (fun r => match r with
 -- …and the ended one has released it into a σ, which the concrete list then
 -- instantiates (that is why §A's `progDiff push` is green).
 example : (programEnvs push).any (fun r => match r with
-    | .ok env => (env.lookup "l").any (fun v => match v with | .sym _ => true | _ => false)
+    | .ok env => (env.lookup "l").any (fun v => v.symOf?.isSome)
     | .error _ => false) = true := by native_decide
 
 /-! ## §F. The flagship — RETIRED HERE (M28 D3), because the source is fuel-threaded
