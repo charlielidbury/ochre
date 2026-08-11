@@ -486,24 +486,23 @@ section
 namespace Dllbc.Tests.S32Binders
 open Dllbc
 
-/-! # §2.1's migration, sized rather than claimed
+/-! # §2.1's migration, sized — and then RUN against the size
 
     suspensions.md §2.1 makes capitalisation reach EVERY binder: a capital binder
     is comptime, a lowercase one is runtime, and the modeless-pure-binder
-    exemption dies. R2 implements the READING of that rule everywhere it is
-    consulted, and it implements the fragment split the rule is for — but it does
-    NOT rename the corpus's pure binders, and this battery is why that is a
-    measurement rather than an assertion.
+    exemption dies. R2 implemented the READING of that rule everywhere it is
+    consulted and measured what renaming the corpus would cost. **R3b spends the
+    measurement**, and this battery is where the spending shows: the same
+    counter, re-run, is the acceptance evidence for the migration's own class.
 
-    **What R2 keys the fragment on instead**: `Var.bindsSlot`, i.e. whether the
+    **What R2 keyed the fragment on meanwhile**: `Var.bindsSlot`, i.e. whether the
     binder has an Ω slot id at all (`noSlot` is the sentinel). That is the fact
-    that is actually true today, and it is exactly what §2.1's migration would
-    make derivable from the NAME — which is what R4 needs, since R4 deletes the
-    ids.
+    that is actually true today, and it is exactly what §2.1's migration makes
+    derivable from the NAME — which is what R4 needs, since R4 deletes the ids.
 
-    So the migration's size is the number of binders on which the two disagree:
-    comptime by slot, lowercase by name. Counted here over the flagship and over
-    two stdlib terms, so R4 inherits a number and not an adjective. -/
+    So the residual is the number of binders on which the two keys still
+    disagree: comptime by slot, lowercase by name. Counted over the flagship and
+    over two stdlib terms, so R4 inherits a number and not an adjective. -/
 
 /-- Comptime binders (no slot) whose name is neither capitalised nor reserved —
     the ones §2.1's migration would rename, and the ones R4 cannot key on a case
@@ -539,7 +538,7 @@ partial def slotBinders : Term → Nat
 -- The in-place quicksort — the flagship, the largest program in the corpus.
 -- The in-place quicksort — the flagship, the largest program in the corpus, with
 -- its specs and library lemmas elaborated in.
-example : lowerComptime Dllbc.Tests.S23Direct.flagship = 10777 := by native_decide
+example : lowerComptime Dllbc.Tests.S23Direct.flagship = 9545 := by native_decide
 example : slotBinders Dllbc.Tests.S23Direct.flagship = 22 := by native_decide
 
 -- Two kernel library terms, hand-written rather than elaborated: `len` and the
@@ -554,9 +553,16 @@ example : lowerComptime Pure.kLeFn = 9 := by native_decide
     scope, so each rename is scope-sensitive, and capitalising a Π binder in a
     SPEC position additionally flips `valBinderModes` at every ⇒-application of a
     value of that type — which is §2.1's intent (`λ (L : List Nat)` snapshot-reads
-    where `λ (l : List Nat)` consumes) and therefore a behaviour change to be
-    made deliberately, not a spelling sweep. Recorded as R2's one unlanded
-    contract item, with its size. -/
+    where `λ (l : List Nat)` consumes).
+
+    **R3b α moved the flagship's number from 10,777 to 9,545** by migrating
+    `StdLemmas` — 3,836 binder sites, 20,476 source occurrences — which the
+    flagship inherits because its specs elaborate the library lemmas in. That
+    class was BEHAVIOUR-INVISIBLE and the corpus said so: this assertion is the
+    only one in the tree that moved. The two hand-written kernel terms are
+    untouched at α (they are built as raw `Term`s, so capitalising one means
+    marking its domain `⇝` as well — a mode flip, and therefore β's business),
+    which is why their numbers are the same as R2 measured them. -/
 
 end Dllbc.Tests.S32Binders
 end
