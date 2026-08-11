@@ -95,7 +95,9 @@ namespace Dllbc.Tests.S26Modes
 
 -- `useLe` and its capital twin `useLeC` are the callees of every pair below, one
 -- character apart. Each cohort is written as ONE chain — callee above caller —
--- because a `%`-spliced tail could not itself declare functions until M32 R4 (both chains numbered their slots from `progBase` and collided by id); it can now, and this shape is kept because it is what was written, so the callee line is repeated rather than factored.
+-- because a `%`-spliced tail could not itself declare functions until M32 R4
+-- (both chains numbered their slots from `progBase` and collided by id). It can
+-- now; the callee line stays repeated because that is what was written.
 
 -- A1. THE PAIN. The proof is passed, and citing it afterwards is a use-after-move.
 def a1 : Term := prog{

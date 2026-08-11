@@ -397,7 +397,10 @@ namespace Dllbc.Tests.S3Sym
     typecheck.
 
     Both are written as a PREFIX: every test below is `withAny prog{ … }` and gets
-    them in scope. This was once the only legal shape — a `%`-spliced tail could not itself declare functions until M32 R4 (both chains numbered their slots from `progBase` and collided by id); it can now, and this shape is kept because it is what was written. -/
+    them in scope. This was once the only legal shape: a `%`-spliced tail could
+    not itself declare functions until M32 R4, because both chains numbered their
+    slots from `progBase` and collided by id. It can now; the prefix form is kept
+    because it is what was written. -/
 def withAny (rest : Term) : Term := prog{
   fn AnyNat () -> Nat { 0 };
   fn AnyList () -> List Nat { Nil };

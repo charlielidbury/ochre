@@ -506,7 +506,10 @@ sit at telescope positions) and `if`-sugar over the Bool match.
 caller, which is what "a callee is a binding lexically above the call" means when
 said in the grammar rather than assembled into a table. The shared callees
 (`use_refl`, `needs`, `observe`) are written into each cohort that uses one
-rather than factored into a prefix helper. That was forced until M32 R4 — a `%`-spliced tail could not itself declare functions until M32 R4 (both chains numbered their slots from `progBase` and collided by id); it can now, and this shape is kept because it is what was written — so the repetition below is history rather than a rule; it is four lines.
+rather than factored into a prefix helper. That was FORCED until M32 R4: a
+`%`-spliced tail could not itself declare functions, because both chains numbered
+their slots from `progBase` and collided by id. It can now, so the repetition
+below is history rather than a rule; it is four lines.
 -/
 
 open Dllbc

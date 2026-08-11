@@ -1033,7 +1033,10 @@ example : progOk concreteEq = true := by native_decide
     definitionally. (This is a better program anyway: index arithmetic, not control
     flow, which is how the mutation was going to be expressed regardless.) -/
 
--- `insert_at`'s header is repeated here rather than spliced: a `%`-spliced tail could not itself declare functions until M32 R4 (both chains numbered their slots from `progBase` and collided by id); it can now, and this shape is kept because it is what was written. One chain, both functions.
+-- `insert_at`'s header is repeated here rather than spliced: a `%`-spliced tail
+-- could not itself declare functions until M32 R4, because both chains numbered
+-- their slots from `progBase` and collided by id. It can now; one chain, both
+-- functions, is kept because it is what was written.
 def pick : Term := prog{
   fn InsertAt [k] (v : &mut List Nat, k : Nat, x : Nat) -> %insHonest
         { match k {
