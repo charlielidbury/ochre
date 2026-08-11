@@ -203,6 +203,89 @@ went red at 22 assertions — M30's failure mode is silent by construction).
 becomes canonical Terms; sweeps re-target to Term level; Val loses its syntax
 embedding. Zero differential.
 
+> **Implementation addendum (R1, landed on `m32-r1`).** Two commits, corpus green
+> at each. Recorded where the plan is, in the order the plan would be read.
+>
+> **0. THE NAMES ARE SWAPPED against §2.3, deliberately.** The doc reserves `Val`
+> for the transient semantic domain and calls the other "the store-value type".
+> As built, **`Val` is the state skeleton and `Sem` is the semantic domain**,
+> because `Machine.lean`'s 4,600 lines are about store values and that is the
+> name they should keep, while the transient domain has eleven call sites and all
+> of them are in `Pure.lean`. Read §2.3 with the two names exchanged; the
+> structure is the one it specifies. As landed:
+>
+>     Val ::= know Term | node String (List Val) | bot | loanM ℓ
+>           | borrowM ℓ Val | rfn (List Var) Term
+>
+> `Val.ctor` is a smart CONSTRUCTOR that collapses an all-knowledge node into one
+> `know` leaf — which is §2.3's "collapses to a bare Term leaf" as a datatype
+> invariant, and is also why the trace suite's expected environments are spelled
+> exactly as they were.
+>
+> **1. The ruling held, and it paid the deletion it promised.** No path needed a
+> state former inside a `Term`. `Val.capturedMarkers` and `hasStateMarkerEnv` —
+> nbe.md §3.2's capture assertion, carried as whole-corpus instrumentation and
+> then as a live guard in `mkClosure` — are GONE, because a captured environment
+> binds `Sem` values and `Sem` has no ⊥, no loan marker and no borrow. The
+> knowledge-only environment invariant is a fact about the types now.
+>
+> **2. THREE things are state that the ruling's list does not name, and each was
+> found by the corpus rather than predicted.** `§segs`/`§seg` (a carve is state
+> even when every body in it is owned — collapsing one would put a carve history
+> inside a knowledge leaf) and, the genuine surprise, **a recursor spine over
+> RUNTIME arms**: `natRec P z (λr(k, ih, v){…})` is a function value whose arms
+> are BODIES, so no `Term` can hold it. `§rec` is its skeleton form, and it
+> needed three separate consequences chased — it renders as the spine it is (so
+> `slotOf`'s golden is unchanged), it is INDEX-KIND so it copies on read (a body
+> may name `ih` twice; found by executing-mode `m1` zeroing half a list), and
+> `hasType` rejects it with "cannot type neutral", the same sentence the `.app`
+> case gave it before. **§2.3's list should read: constructor structure, ⊥,
+> loanM, borrowM, closures, recursor spines over runtime arms, and Term leaves.**
+>
+> **3. `whnf` and `nf` COINCIDE at Term level, and that is the cost line.**
+> `readback` begins with `whnfN`, so there is no way to expose a head as a `Term`
+> without reading the result back — and reading back normalizes. `Pure.whnf` is
+> `Pure.nf` under a name kept for what the call sites mean. Clean build 4:45
+> against a 4:03 baseline, ~17%, not clawed back (checker-perf debt is parked by
+> house rule until a workload demands it). R2 should expect the same shape.
+>
+> **4. §6's first sharp edge is answered YES, and the reason is not the guard.**
+> A `§σ`-name is unwritable end to end — but `Surface.reservedBinder`, which M30's
+> note credits with closing the escaped-identifier route, NEVER FIRES on it:
+> `Name.toString` re-escapes, so a program writing `«§σ0»` binds a name that is
+> literally `«§σ0»`, guillemets and all, which is a different name and not in the
+> reserved namespace. A reader who checked only the guard would conclude the
+> opposite. `substP`'s rebinding guard is correspondingly vacuous for σ-names,
+> asserted as behaviour in `KernelFloor`'s new `S32Sigma` battery over the whole
+> minted-binder inventory rather than argued.
+>
+> **5. The sabotage run, both directions.** With `Term.abstractInto` sabotaged to
+> abstract nothing, the corpus goes RED at **19 assertions**, `Direct.lean:1592`
+> (`progOk flagship`, quicksort's count equation) among them. Green with it
+> restored. The count is lower than Stage V's 22 for a mechanical reason worth
+> knowing: a Lean module that fails stops its dependents from building at all, so
+> `Direct`'s failure hides whatever `Functions`/`ArraySort` would have added.
+> The control is the flagship, not the count.
+>
+> **6. Two seams where a store value must become knowledge, and neither is a
+> conversion.** `buildResult`'s dependent Σ tail used to push the `borrowₘ ℓ σ`
+> NODE into the substitution for the binder — a loan marker in a type. It pushes
+> the payload σ now, which is the only reading a type could have meant
+> (unreachable in this corpus: `retMixesBorrow` refuses a return type mixing
+> borrow and value components). And the differential harness needs a σ to stand
+> for a runtime function value (`F ↦ σ0` faces `F ↦ λr(v){…}`), so its
+> substitution is at the STORE level: knowledge replacements go through
+> `Term.substSym` at the leaves, a non-knowledge replacement can only fill a whole
+> leaf. Both are the same seam — `subsKnowledge`, the one-way door from skeleton
+> to knowledge — and R2 inherits it, because a closure `(ρ, Term)` is the third
+> thing that is a value and not a `Term`.
+>
+> **7. Bet (a) landed first, as its own commit** (`M32 R1 α`): the nine sites,
+> `readCWith`'s prepend→append flip among them, plus the L-suffix condition made
+> a real check at the `fn` declaration (`Surface.lemmaShadowCheckAt`, against
+> `Dllbc.StdLemmas` specifically — "any Lean global" would refuse `fn` names that
+> shadow nothing writable). Silent on the corpus, positive control run.
+
 **Stage R2 — one λ, one closure.** `lamR`/`rfn` fold into `(ρ, raw body)`;
 formation captures the filtered slice; application per §2.2; cook-at-generalization
 with write-back; universal binder convention + stdlib binder migration; capture

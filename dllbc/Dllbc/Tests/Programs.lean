@@ -51,8 +51,9 @@ same sentence:
 they record their identity differently. A *runtime* binder is a `Var` — an id
 and a name — so its mode is its name's case (`Var.isComptime`); this covers
 telescope parameters, `let`, and match binders, and needs no representation
-change at all. A *pure* binder is de Bruijn and has no name, so its mode rides
-on the domain: `Π (X : τ) → …` is `.pi (.cmpT τ) …`. `Term.cmpT`/`Val.cmpT` is
+change at all. A *pure* binder carries a source name (M30 step 2) but not its
+mode — the two namespaces are separate — so its mode rides
+on the domain: `Π (X : τ) → …` is `.pi (.cmpT τ) …`. `Term.cmpT` is
 the sibling of `borrowT` — three modes at one syntactic place, the two
 non-default ones marked.
 

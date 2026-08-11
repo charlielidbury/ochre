@@ -3835,7 +3835,7 @@ mutual
           --
           -- **The router is §7 cost 5's own distinction, not a new test.** The two
           -- λs are "the same former in the document, two representations in the
-          -- machine, because one substitutes and the other binds". A `Val.lam`
+          -- machine, because one substitutes and the other binds". A pure `.lam`
           -- substitutes — that is ⇝'s rule, and the staged proof-builders across
           -- the corpus are exactly this, applied to snapshots and proofs that a ⇒
           -- read would MOVE. A `Val.rfn`, a σ with a signature, or a recursor spine

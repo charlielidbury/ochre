@@ -2120,7 +2120,7 @@ example : progRejects annBad "a domain the ascription does not bind it at" = tru
 
     **And the router is §7 cost 5's own distinction rather than a new test**: the
     two λs are "the same former in the document, two representations in the
-    machine, because one substitutes and the other binds". A `Val.lam` substitutes;
+    machine, because one substitutes and the other binds". A pure `.lam` substitutes;
     a `Val.rfn`, a σ with a signature, or a recursor spine binds. §G5 is the pair
     that makes that observable — the same source line, two λ representations, two
     arrows, two verdicts. -/

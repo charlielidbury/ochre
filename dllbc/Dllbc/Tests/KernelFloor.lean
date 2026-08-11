@@ -778,3 +778,71 @@ example : progRejects badRefl "does not have return type" = true := by native_de
 end Dllbc.Tests.S15Elab
 end
 -- └── end of what was `S15Elab.lean` ───────────────────────────────────────────────
+
+-- ┌── M32 R1: the σ namespace ────────────────────────────────────────────────
+section
+/-!
+# The `§σ` namespace — unwritable, and unshadowed
+
+M32 R1 makes a σ a reserved pure NAME (`Term.sym σ` = `pvar "§σ<id>"`), which
+puts two claims on the critical path. Both are asserted as behaviour here rather
+than argued in a comment, because both are the silent kind: a violation would
+present as a refinement that quietly stops reaching an occurrence.
+
+  1. **`Term.substP`'s rebinding guard is vacuous for a σ-name.** The guard stops
+     at a binder that rebinds the name, so a binder called `§σ0` would fence a
+     refinement out of its body. The kernel's complete minted-binder inventory is
+     `§<digits>` (readback), `§gen`, `§let<digits>`, `§p<digits>`, `§_` and the
+     hand-written recursor premise binders — none of which is `§σ<digits>`.
+  2. **No program can write one.** An ordinary Lean `ident` cannot contain `§`.
+     An ESCAPED one can (`«§σ0»`) — and the reason that route is closed is
+     stronger than the guard `Surface.reservedBinder` puts in front of it:
+     `Name.toString` re-escapes, so the binder such a program writes is literally
+     named `«§σ0»`, guillemets and all, which is a DIFFERENT name from `§σ0` and
+     is not in the reserved namespace at all. (Measured, not assumed — the guard
+     never fires on this input, so a reader who checked only the guard would
+     conclude the opposite.)
+-/
+
+open Dllbc
+
+namespace Dllbc.Tests.S32Sigma
+
+/-- Substituting a σ reaches an occurrence under a binder of each shape the
+    kernel mints. -/
+def underBinder (nm : String) : Term :=
+  .lam nm (.const "Nat") (.ctorApp "S" [Term.sym 0])
+
+def refined (nm : String) : Term :=
+  Term.substSym 0 (Term.nat 4) (underBinder nm)
+
+def reaches (nm : String) : Bool :=
+  Term.beq (refined nm) (.lam nm (.const "Nat") (.ctorApp "S" [Term.nat 4]))
+
+example : reaches (readbackName 0) = true := by native_decide
+example : reaches genName = true := by native_decide
+example : reaches (Pure.letName 7) = true := by native_decide
+example : reaches "§p3" = true := by native_decide
+example : reaches "§_" = true := by native_decide
+example : reaches "§k" = true := by native_decide
+example : reaches "§ih" = true := by native_decide
+example : reaches "§xs" = true := by native_decide
+-- The one name that WOULD fence it out is the σ's own, which is exactly what
+-- makes the guard's vacuity a claim about the inventory above and not about
+-- `substP`.
+example : reaches (symName 0) = false := by native_decide
+
+-- An escaped identifier does not land in the namespace: the escape is part of
+-- the name.
+def escapedSigma : Term := prog{ λ («§σ0» : Nat). «§σ0» }
+example : (match escapedSigma with
+           | .lam nm _ _ => isReservedName nm
+           | _ => true) = false := by native_decide
+-- …so a refinement of σ0 passes straight through it, unfenced.
+example : (Term.beq (Term.substSym 0 (Term.nat 4)
+             (.lam "«§σ0»" (.const "Nat") (.ctorApp "S" [Term.sym 0])))
+           (.lam "«§σ0»" (.const "Nat") (.ctorApp "S" [Term.nat 4]))) = true := by native_decide
+
+end Dllbc.Tests.S32Sigma
+end
+-- └── end of the M32 R1 σ-namespace battery ────────────────────────────────────

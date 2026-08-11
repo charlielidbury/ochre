@@ -1,5 +1,45 @@
 # Progress
 
+## 2026-08-11 — dllbc/: **M32 R1 — the domain split; `Term` is the only syntax**
+
+Two commits on `m32-r1`, whole corpus green at each. `suspensions.md` §5's
+representation stage: knowledge at rest becomes a canonical `Term`, the store
+becomes a state SKELETON whose leaves are knowledge, and the two store-wide
+sweeps become two-layered walks that switch to `Term` machinery at the leaves.
+
+    Val (the store)      know | node | bot | loanM | borrowM | rfn   the skeleton
+    Sem (Pure.lean)      NEW           the transient semantic domain
+    Val.sym/pvar/lam/…   deleted       a σ at rest is `Term.sym σ` = `pvar "§σ<id>"`
+    Val.capturedMarkers  DELETED       the capture invariant is a TYPE now
+    ⇜'s refinement       `Term.substP` at the σ's name — not a traversal at all
+    §19's abstraction    `Term.abstractInto`, mode-SENSITIVE (was mode-blind)
+    conversion equality  `Term.convEq`  — where mode-blindness moved to
+    Ω resolution         by NAME, newest wins (Stage V bet (a), 9 sites)
+    L-suffix convention  a real check at the `fn` declaration
+    acceptance flips     0             4 representation-assertion test edits
+    sabotage control     19 red        flagship count equation among them
+    clean build          4:45          against a 4:03 baseline (~17%)
+
+**What the split buys is a deletion.** nbe.md §3.2's capture assertion — carried
+first as whole-corpus instrumentation, then as a live guard inside `mkClosure` —
+is gone, because a captured environment binds `Sem` values and `Sem` has no ⊥,
+no loan marker and no borrow. "A captured environment contains knowledge only"
+stopped being a property to scan for.
+
+**Three findings the plan could not have had.** (i) A recursor spine over
+RUNTIME arms is state — its arms are bodies, so no `Term` can hold it — and
+needed its own skeleton form (`§rec`) plus three chased consequences: rendering,
+copy-on-read (a body may name `ih` twice), and the "cannot type neutral"
+rejection. (ii) `whnf` and `nf` coincide at `Term` level, because readback
+begins with weak-head and there is no way to expose a head without reading back;
+that is where the 17% went. (iii) §6's σ-unwritability edge is answered yes, but
+NOT by the guard that claims it: `Name.toString` re-escapes, so `«§σ0»` binds a
+name that is literally `«§σ0»` and is not in the reserved namespace at all.
+
+The R1 implementation addendum is at the bottom of `suspensions.md` §5's R1
+entry, including the naming deviation (`Val` is the skeleton, `Sem` the semantic
+domain — read §2.3 with the two names exchanged).
+
 ## 2026-08-10 — dllbc/: **M31 Stage A — function bindings become comptime-moded**
 
 Four commits on `m31-stage-a`, whole corpus green at each. `functions-are-comptime.md`
