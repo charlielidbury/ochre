@@ -1502,7 +1502,7 @@ open Dllbc.Tests.S9Diff (progDiff)
 /-- The walk WITHOUT the end-of-scope demand — for showing that `endScope` is not
     vacuous (it is the difference between a parked loan and a released value). -/
 def rawEnvs (t : Term) : List (Except String Env) :=
-  (explore defaultFuel (pushContinuations t) initSt).map
+  (explore defaultFuel (atBoundary t) initSt).map
     (fun r => r.map (fun p => canonicalize p.2.env))
 
 /-! ## §A. A program is a term
@@ -1730,7 +1730,7 @@ example : progRejects d2borrow "a runtime (lowercase) binding" = true := by nati
 -- downward. (Reached here through a `.callV`-free body, so it is the variable
 -- rule and not the call rule doing the work — c1 covers the call side.)
 def d2free : Term :=
-  .letIn ⟨0, "g"⟩ (.seal (Term.lamTel [(⟨1, "a"⟩, .const "Nat")] (.letIn ⟨2, "z"⟩ (.var ⟨9, "nope"⟩) (.var ⟨1, "a"⟩)))
+  .letIn ⟨0, "g"⟩ (.seal 0 (Term.lamTel [(⟨1, "a"⟩, .const "Nat")] (.letIn ⟨2, "z"⟩ (.var ⟨9, "nope"⟩) (.var ⟨1, "a"⟩)))
     (prog{ Π (a : Nat) → Nat })) .unit
 example : progRejects d2free "not bound anywhere above it" = true := by native_decide
 
@@ -1929,7 +1929,7 @@ example : progRejects hCapture "a runtime (lowercase) binding" = true := by nati
 def hSeal (bad : Bool) : Term :=
   hSplit .unit
     (.letIn ⟨3, "Sf"⟩
-      (.seal (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (.var ⟨4, "y"⟩))
+      (.seal 0 (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (.var ⟨4, "y"⟩))
         (if bad then prog{ Π (y : Nat) → Bool } else prog{ Π (y : Nat) → Nat }))
       .unit)
 example : progOk (hSeal false) = true := by native_decide

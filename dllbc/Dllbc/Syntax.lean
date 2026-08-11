@@ -219,27 +219,35 @@ inductive Term where
   /-- `f(a, …)` — a call to a declared function (§5.3), checked against the
       signature alone. Unifying `fn` with λ is deferred (§10). -/
   | call   : String → List Term → Term
-  /-- `.seal t u` — **opacity as syntax** (combining-fns §5). Programmer-invoked
+  /-- `.seal s t u` — **opacity as syntax** (combining-fns §5). Programmer-invoked
       generalization: "forget everything about this value except its type".
 
         * EXECUTING (⇒, concrete): evaluate `t`. Execution is always transparent.
         * CHECKING (⇒, symbolic): verify `t : u` ONCE, at the node — this check
-          *is* the audit — then yield a fresh `σ : u`. Everything downstream sees
-          only the type.
+          *is* the audit — then yield a σ : u. Everything downstream sees only the
+          type.
 
-      **Absent from the comptime fragment by construction, in the two places that
-      carry the risk.** (i) It is its OWN constructor, not an `.app` of a magic
-      `.const` (the route `@exit`/`old` take): ⇝'s application rule can therefore
-      never meet it, and no check inside that rule distinguishes it. (ii) There is
-      no `Val.seal` — every comptime rule (`eval`, `whnfN`, `readback`, `nfV`,
-      `convert`, `hasType`) is a function on `Val`, so *no comptime rule for the
-      seal exists or can be written* without adding a value former. That is what makes §2.1's
-      question unaskable: minting needs an event, ⇝ has none, and ⇝ has no seal to
-      mint at. `reflectC` rejects the node in the one uniform way it already
-      rejects `&mut`, `:=`, `;` and `f(…)` — "not in the comptime fragment" — which
-      is this calculus's standing definition of the pure sub-grammar (§1.3), not a
-      mode flag consulted at runtime. -/
-  | seal   : Term → Term → Term
+      **`s` is the SEAL SITE** (M32 R3, suspensions.md §2.4), and it is what makes
+      the second bullet's "a σ" a definite article rather than an indefinite one.
+      A site is a `Nat` assigned by `Term.numberSeals`, a pass at the program
+      boundary that walks the elaborated term in evaluation order — so it is
+      stable across macro expansion (it runs after every macro) and across
+      α-canonicalization (it reads structure, never names). What the site buys is
+      that the seal has an identity independent of WHEN it is evaluated, which is
+      exactly what ⇝ needs: the old refusal below said minting a fresh σ needs an
+      event and ⇝ has none, and a site-keyed σ needs no event because it is not
+      fresh — it is the σ this site at these inputs always has (`St.sealSites`).
+
+      **Absent from the comptime fragment by construction** — this WAS the reading,
+      and R3 replaced it with a rule rather than deleting the reasoning, because
+      the reasoning is what the rule had to answer. (i) It is its OWN constructor,
+      not an `.app` of a magic `.const` (the route `@exit`/`old` take): ⇝'s
+      application rule can therefore never meet it, and no check inside that rule
+      distinguishes it — still true, and still what keeps the seal from arriving
+      anywhere by accident. (ii) There is no `Val.seal`, so a seal never sits at
+      rest as a suspension; ⇝'s rule for it (`readComptimeVal`) is a rule at the
+      NODE, which reduces it to the σ its site names. -/
+  | seal   : Nat → Term → Term → Term
   /-- `x(a, …)` — **application of a value callee** (combining-fns §7 cost 2):
       the callee is resolved from a runtime SLOT, not the declaration table. The
       slot's contents decide the rule (`readR`):
@@ -366,7 +374,7 @@ def Term.peelLams : Term → List (Var × Term) × Term
 mutual
   def Term.imperative : Term → Bool
     | .assign _ _ _ | .borrow _ | .seq _ _ | .matchE _ _ _
-    | .call _ _ | .callV _ _ | .seal _ _ => true
+    | .call _ _ | .callV _ _ | .seal _ _ _ => true
     -- `a[lo ; ..]` reads its count off the extent map, which is state.
     | .range _ _ none _ _ _ => true
     | .letIn _ rhs rest => Term.imperative rhs || Term.imperative rest
@@ -456,7 +464,13 @@ mutual
     | .matchE x e as, .matchE y f bs => x == y && e == f && Term.beqBranches as bs
     | .seq a b, .seq c d => Term.beq a c && Term.beq b d
     | .call f as, .call g bs => f == g && Term.beqList as bs
-    | .seal a b, .seal c d => Term.beq a c && Term.beq b d
+    -- **The SITE is decoration here** (M32 R3), for the reason R2 gave for a λ's
+    -- binder id: comparison is what readback canonicality and `abstractInto` are
+    -- built on, and two seals that differ only in when the numbering pass reached
+    -- them are the same term to every judgment. The site is what the STORE keys a
+    -- sealed σ by, and that is a question about identity over time rather than
+    -- about equality of syntax.
+    | .seal _ a b, .seal _ c d => Term.beq a c && Term.beq b d
     | .callV x as, .callV y bs => x == y && Term.beqList as bs
     | .unit, .unit => true
     | .pvar x, .pvar y => x == y
@@ -721,7 +735,7 @@ mutual
         ++ Term.freeRVarsBranches (match eqn with | some h => h.name :: bound | none => bound) brs
     | .seq a b => Term.freeRVars bound a ++ Term.freeRVars bound b
     | .call _ args => Term.freeRVarsList bound args
-    | .seal t u => Term.freeRVars bound t ++ Term.freeRVars bound u
+    | .seal _ t u => Term.freeRVars bound t ++ Term.freeRVars bound u
     | .callV x args =>
       (if bound.contains x.name then [] else [x]) ++ Term.freeRVarsList bound args
     -- **The one λ, scoped as the telescope it is** (M32 R2). The domain is read
@@ -1115,7 +1129,7 @@ mutual
       if prec > 0 then s!"({s})" else s
     | .deref t => "*" ++ Term.prettyPrec 1 t
     | .borrow t => "&mut " ++ Term.prettyPrec 1 t
-    | .seal t _ => "(" ++ Term.prettyPrec 0 t ++ " : …)"
+    | .seal _ t _ => "(" ++ Term.prettyPrec 0 t ++ " : …)"
     | .call f _ => f ++ "(…)"
     | .callV x _ => x.name ++ "(…)"
     | .index t i _ => Term.prettyPrec 1 t ++ "[" ++ Term.prettyPrec 0 i ++ "]"
@@ -1165,6 +1179,123 @@ def Term.natOf? : Term → Option Nat
   | .ctorApp "S" [n] => (Term.natOf? n).map (· + 1)
   | _ => none
 
+/-! ## Seal sites (M32 R3, suspensions.md §2.4)
+
+    A seal's SITE is its identity as a program point, and `numberSeals` is what
+    assigns one. It runs at the program boundary — after every macro, on the
+    finished term — and numbers the seals in the order a left-to-right traversal
+    meets them, which for a `let`-chain is the order they are evaluated in.
+
+    **Why a pass and not a counter in the elaborator.** §6's sharp edge asks for
+    a site identity stable across macro expansion and α-canonicalization. A pass
+    over the elaborated term gets both by construction rather than by argument:
+    it runs after expansion, so nothing a macro does can move a site; and it
+    reads STRUCTURE, never a name, so renaming a binder cannot move one either.
+    A counter threaded through `Uni.elabUTerm` would have neither property —
+    `fnElab` is not in that monad at all, and it is where most seals come from.
+
+    The field the elaborators write is therefore not the site: they write `0` and
+    this pass overwrites it. That is deliberate — a `Term` that has not been
+    through the boundary has no sites, and giving it fake ones would let a
+    hand-written term silently share an identity with a real one. -/
+
+mutual
+  /-- Number the seals in `t`, starting at `n`; returns the next free site. -/
+  def Term.numberSealsGo (n : Nat) : Term → (Nat × Term)
+    | .seal _ t u =>
+      -- The site is taken BEFORE the children are numbered, so a seal's own
+      -- number is smaller than any seal nested inside it — which is the order
+      -- evaluation reaches them (the outer node is entered first) and the order
+      -- a reader of `§σ` ids would expect.
+      let (n1, t') := Term.numberSealsGo (n + 1) t
+      let (n2, u') := Term.numberSealsGo n1 u
+      (n2, .seal n t' u')
+    | .letIn x a b =>
+      let (n1, a') := Term.numberSealsGo n a
+      let (n2, b') := Term.numberSealsGo n1 b
+      (n2, .letIn x a' b')
+    | .assign a b c =>
+      let (n1, a') := Term.numberSealsGo n a
+      let (n2, b') := Term.numberSealsGo n1 b
+      let (n3, c') := Term.numberSealsGo n2 c
+      (n3, .assign a' b' c')
+    | .ctorApp c args =>
+      let (n1, args') := Term.numberSealsList n args
+      (n1, .ctorApp c args')
+    | .call f args =>
+      let (n1, args') := Term.numberSealsList n args
+      (n1, .call f args')
+    | .callV x args =>
+      let (n1, args') := Term.numberSealsList n args
+      (n1, .callV x args')
+    | .matchE x eqn brs =>
+      let (n1, brs') := Term.numberSealsBranches n brs
+      (n1, .matchE x eqn brs')
+    | .seq a b =>
+      let (n1, a') := Term.numberSealsGo n a
+      let (n2, b') := Term.numberSealsGo n1 b
+      (n2, .seq a' b')
+    | .app a b =>
+      let (n1, a') := Term.numberSealsGo n a
+      let (n2, b') := Term.numberSealsGo n1 b
+      (n2, .app a' b')
+    | .lam x d b =>
+      let (n1, d') := Term.numberSealsGo n d
+      let (n2, b') := Term.numberSealsGo n1 b
+      (n2, .lam x d' b')
+    | .pi x d c =>
+      let (n1, d') := Term.numberSealsGo n d
+      let (n2, c') := Term.numberSealsGo n1 c
+      (n2, .pi x d' c')
+    | .sigmaT x d c =>
+      let (n1, d') := Term.numberSealsGo n d
+      let (n2, c') := Term.numberSealsGo n1 c
+      (n2, .sigmaT x d' c')
+    | .borrowT x d c =>
+      let (n1, d') := Term.numberSealsGo n d
+      let (n2, c') := Term.numberSealsGo n1 c
+      (n2, .borrowT x d' c')
+    | .idT a b c =>
+      let (n1, a') := Term.numberSealsGo n a
+      let (n2, b') := Term.numberSealsGo n1 b
+      let (n3, c') := Term.numberSealsGo n2 c
+      (n3, .idT a' b' c')
+    | .borrow a => let (n1, a') := Term.numberSealsGo n a; (n1, .borrow a')
+    | .deref a => let (n1, a') := Term.numberSealsGo n a; (n1, .deref a')
+    | .cmpT a => let (n1, a') := Term.numberSealsGo n a; (n1, .cmpT a')
+    | .index a i k =>
+      let (n1, a') := Term.numberSealsGo n a
+      let (n2, i') := Term.numberSealsGo n1 i
+      (n2, .index a' i' k)
+    | .range a lo cnt p q r =>
+      let (n1, a') := Term.numberSealsGo n a
+      let (n2, lo') := Term.numberSealsGo n1 lo
+      let (n3, cnt') := Term.numberSealsOpt n2 cnt
+      (n3, .range a' lo' cnt' p q r)
+    | t => (n, t)
+  def Term.numberSealsList (n : Nat) : List Term → (Nat × List Term)
+    | [] => (n, [])
+    | t :: ts =>
+      let (n1, t') := Term.numberSealsGo n t
+      let (n2, ts') := Term.numberSealsList n1 ts
+      (n2, t' :: ts')
+  def Term.numberSealsOpt (n : Nat) : Option Term → (Nat × Option Term)
+    | none => (n, none)
+    | some t => let (n1, t') := Term.numberSealsGo n t; (n1, some t')
+  def Term.numberSealsBranches (n : Nat) : List Branch → (Nat × List Branch)
+    | [] => (n, [])
+    | .mk c bs body :: rest =>
+      let (n1, body') := Term.numberSealsGo n body
+      let (n2, rest') := Term.numberSealsBranches n1 rest
+      (n2, .mk c bs body' :: rest')
+end
+
+/-- The boundary pass: number every seal in a program, and report how many there
+    were. The count is not a supply the machine has to start above — sites live
+    in their own space and are `St.sealSites`' key, never a σ id — it is there so
+    a test can say "this program has a seal" before asserting about the seal. -/
+def Term.numberSeals (t : Term) : (Nat × Term) := Term.numberSealsGo 0 t
+
 /-! ## Reading a binder's mode off its domain (combining-fns §6)
 
     Three modes at one syntactic place: `&mut τ` runtime-borrow, `⇝τ` comptime,
@@ -1182,42 +1313,27 @@ def Term.stripCmp : Term → Term
   | .cmpT τ => τ
   | t => t
 
-/-- **Which arrow evaluates a `let`'s right-hand side** (M31 Stage A).
+/-! ## The let-arrow invariant (M31 Stage A; exceptionless since M32 R3)
 
-    `let X = e` reads `e` under ⇝ — that is what §6's comptime binding means, and
-    it is why a capital binder is non-consuming. Two right-hand sides are
-    exceptions, and they are the two that are not READINGS at all but ⇒-FORMATION
-    EVENTS, each producing a value ⇝ has no rule to produce:
+    **A capital `let` ⇝-reads its right-hand side; a lowercase `let` ⇒-reads it.**
 
-      * `(t : T)` — the seal mints a fresh σ, and `readC` refuses it by name for
-        exactly that reason ("minting a fresh σ needs an event and ⇝ has none").
-      * `λ(x : τ, …){ … }` — a runtime λ's formation is where its closedness is
-        checked (`admitGlobals`) and where its value comes into being, and
-        `readC` refuses it by name too ("its body is a body and its binders are
-        Ω slots").
+    That sentence is the whole rule, and `Var.comptimeRhs` — the predicate that
+    used to carry its exceptions — is gone, because `Var.isComptime` at the two
+    reading sites says it with nothing left over. The two carve-outs it held were
+    both of the same shape: a right-hand side that was not a READING at all but a
+    ⇒-FORMATION EVENT, producing a value ⇝ had no rule to produce. R3 gave ⇝ the
+    rules instead of giving the invariant exceptions —
 
-    So the arrow here is a property of the RIGHT-HAND SIDE, not only of the
-    binder: a formation event stays ⇒ whatever the binder's case, and what the
-    capital binder changes is the BINDING — erased, ⇝-readable, never ⇒-consumed
-    — not the event that produced its value. This is what lets `fn F …` desugar,
-    exactly as §2.1 says it does, to a comptime `let` of a λ ascribed its Π: the
-    declaration is still the event it always was, and only its mode moved. And it
-    is what lets `let Double = λ(n : Nat){ … }` be written at all, which §2.1 also
-    requires — the same sentence for the sugar and for the thing it desugars to.
+      * `(t : T)` was ⇒ because the seal mints a fresh σ and minting needs an
+        event. It is ⇝'s now because the σ is no longer fresh: it is the one the
+        seal's SITE has at its inputs (`sealNode`, suspensions.md §2.4).
+      * `λ(x : τ, …){ … }` was ⇒ because a runtime λ's formation is where its
+        closedness is checked and where its value comes into being. It is ⇝'s
+        now because formation IS a ⇝ event and always was — R2 made both
+        fragments one closure, and R3 moved the one arm that built it out of ⇒
+        (`readComptimeVal`), which is what leaves ⇒ unable to construct a
+        function at all (§2.5).
 
-    Stated as one predicate because two sites read it (`readR`'s `.letIn` and the
-    explore driver's), and a rule that applied at one of them would be a phantom
-    at the other — the lesson the comptime `let` itself already taught. -/
-def Var.comptimeRhs (x : Var) : Term → Bool
-  | .seal _ _ => false
-  -- **The λ carve-out is now the PROPERTY, not the former** (M32 R2). It was
-  -- `.lamR _ _ => false` — the runtime λ, whose formation is where closedness is
-  -- checked and where its value comes into being. Under one former the same
-  -- sentence has to name what it always meant: a λ whose body is a BODY is that
-  -- formation event, and a comptime λ is an ordinary ⇝ term that a capital `let`
-  -- reads under ⇝ exactly as it reads any other. (Both carve-outs die at R3, when
-  -- the let-arrow invariant becomes exceptionless.)
-  | .lam x' d b => if Term.lamImperative (.lam x' d b) then false else x.isComptime
-  | _ => x.isComptime
+    — so the arrow is a property of the BINDER, and of nothing else. -/
 
 end Dllbc

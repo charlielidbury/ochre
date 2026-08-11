@@ -472,7 +472,7 @@ def runExec (body : Term) : Except String Env :=
 
 /-- Checking mode: the accepted symbolic paths' final environments. -/
 def symEnvs (body : Term) : List (Except String Env) :=
-  (explore defaultFuel (pushContinuations body) initSt).map
+  (explore defaultFuel (atBoundary body) initSt).map
     (fun r => r.map (fun p => canonicalize (p.2.env.filter (fun kv =>
       kv.1.id < FnMacro.progBase && kv.1.id < 10000))))
 

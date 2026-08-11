@@ -157,7 +157,7 @@ partial def maxVarId : Term → Nat
   | .matchE s eqn brs =>
     brs.foldl (fun a b => max a (max (b.binders.foldl (fun c v => max c v.id) 0) (maxVarId b.body)))
       (max s.id ((eqn.map (·.id)).getD 0))
-  | .seq a b | .app a b | .seal a b => max (maxVarId a) (maxVarId b)
+  | .seq a b | .app a b | .seal _ a b => max (maxVarId a) (maxVarId b)
   -- The one λ (M32 R2): the BINDER's id counts too, which is what the `lamR`
   -- fold over its telescope was for. A comptime binder's `noSlot` would swamp
   -- the maximum, so it is excluded — it is not an id in the program's space.
@@ -378,7 +378,7 @@ def fnElab (d : FnDef) : Except String Term := do
   -- binder's mode on its domain, which is what `telePi` does to build the Π the
   -- seal converts against, so the λ and its ascription are built from one source.
   | none =>
-    .ok (.seal (Term.lamTel (tel.map (fun p => (p.1, markDom p.1 p.2))) d.body)
+    .ok (.seal 0 (Term.lamTel (tel.map (fun p => (p.1, markDom p.1 p.2))) d.body)
                (telePi tel d.retType))
   | some k => do
     let (kv, kτ) ← match tel.get? k with
@@ -491,7 +491,7 @@ def fnElab (d : FnDef) : Except String Term := do
     | none =>
       let zTel ← armTel restIds (Term.substP (paramName kv) (.ctorApp "Z" []) R)
       let sTel ← armTel restIds (Term.substP (paramName kv) (.ctorApp "S" [.var dec]) R)
-      .ok (.seal
+      .ok (.seal 0
         (.app (.app (.app (.const "natRec") motive)
           (Term.lamTel zTel zBody))
           (Term.lamTel ((dec, scrutDom) :: (ih, ihTy) :: sTel) sBody))
@@ -501,7 +501,7 @@ def fnElab (d : FnDef) : Except String Term := do
       let zTel ← armTel restIds (Term.substP (paramName kv) (.ctorApp "Nil" []) R)
       let sTel ← armTel restIds
         (Term.substP (paramName kv) (.ctorApp "Cons" [.var hd, .var dec]) R)
-      .ok (.seal
+      .ok (.seal 0
         (.app (.app (.app (.app (.const "listRec") a) motive)
           (Term.lamTel zTel zBody))
           (Term.lamTel ((hd, a) :: (dec, scrutDom) :: (ih, ihTy) :: sTel) sBody))
@@ -560,7 +560,7 @@ partial def retarget (binds : List (String × Var × Option Nat)) : Term → Ter
   | .deref t => .deref (retarget binds t)
   | .matchE s eqn brs =>
     .matchE s eqn (brs.map (fun b => Branch.mk b.ctor b.binders (retarget binds b.body)))
-  | .seal t u => .seal (retarget binds t) (retarget binds u)
+  | .seal s t u => .seal s (retarget binds t) (retarget binds u)
   | .app a b => .app (retarget binds a) (retarget binds b)
   | .idT a b c => .idT (retarget binds a) (retarget binds b) (retarget binds c)
   | .pi n a b => .pi n (retarget binds a) (retarget binds b)
@@ -629,7 +629,7 @@ partial def fnSlots : Term → List Nat
     fnSlots t ++ fnSlots lo ++ (cnt.map fnSlots).getD [] ++ (rest.map fnSlots).getD []
       ++ (ev.map fnSlots).getD [] ++ (eq.map fnSlots).getD []
   | .matchE _ _ brs => brs.flatMap (fun b => fnSlots b.body)
-  | .seq a b | .app a b | .seal a b => fnSlots a ++ fnSlots b
+  | .seq a b | .app a b | .seal _ a b => fnSlots a ++ fnSlots b
   | .pi _ a b | .lam _ a b | .sigmaT _ a b | .borrowT _ a b => fnSlots a ++ fnSlots b
   | .idT a b c => fnSlots a ++ fnSlots b ++ fnSlots c
   | _ => []

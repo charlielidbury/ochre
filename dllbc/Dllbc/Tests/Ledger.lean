@@ -283,7 +283,7 @@ def deepStepArm : Term :=
       , .mk "S" [⟨2, "b"⟩] (.var ⟨1, "ih"⟩) ])
 def deepRec : Term :=
   .app (.app (.app (.const "natRec") deepMotT) deepBaseArm) deepStepArm
-def recDeepProg : Term := .letIn ⟨900, "F"⟩ (.seal deepRec deepSealT) .unit
+def recDeepProg : Term := .letIn ⟨900, "F"⟩ (.seal 0 deepRec deepSealT) .unit
 
 example : progOk recDeepProg = true := by native_decide
 
@@ -292,7 +292,7 @@ example : progOk recDeepProg = true := by native_decide
     and the arms cannot inhabit it. -/
 def deepSealLie : Term := prog{ Π (n : Nat) → Id Nat Z (S Z) }
 def recDeepLie : Term :=
-  .letIn ⟨900, "F"⟩ (.seal (.app (.app (.app (.const "natRec")
+  .letIn ⟨900, "F"⟩ (.seal 0 (.app (.app (.app (.const "natRec")
     (prog{ λ (n : Nat). Id Nat Z (S Z) })) deepBaseArm) deepStepArm) deepSealLie) .unit
 example : progOk recDeepLie = false := by native_decide
 
@@ -513,7 +513,7 @@ partial def lowerComptime : Term → Nat
     (if !x.bindsSlot && !isUpperInit x.name && !isReservedName x.name then 1 else 0)
       + lowerComptime d + lowerComptime b
   | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => lowerComptime d + lowerComptime b
-  | .app f a | .seq f a | .seal f a => lowerComptime f + lowerComptime a
+  | .app f a | .seq f a | .seal _ f a => lowerComptime f + lowerComptime a
   | .letIn _ r t => lowerComptime r + lowerComptime t
   | .assign p e r => lowerComptime p + lowerComptime e + lowerComptime r
   | .idT a b c => lowerComptime a + lowerComptime b + lowerComptime c
@@ -527,7 +527,7 @@ partial def lowerComptime : Term → Nat
 partial def slotBinders : Term → Nat
   | .lam x d b => (if x.bindsSlot then 1 else 0) + slotBinders d + slotBinders b
   | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => slotBinders d + slotBinders b
-  | .app f a | .seq f a | .seal f a => slotBinders f + slotBinders a
+  | .app f a | .seq f a | .seal _ f a => slotBinders f + slotBinders a
   | .letIn _ r t => slotBinders r + slotBinders t
   | .assign p e r => slotBinders p + slotBinders e + slotBinders r
   | .idT a b c => slotBinders a + slotBinders b + slotBinders c

@@ -67,7 +67,7 @@ partial def endScope (fuel : Nat) : M Unit := do
     `retType`. No table: scope is the call table (§8). -/
 def checkProgram (t : Term) (retType : Term := .const "Unit") : Except String Unit :=
   auditPaths retType
-    ((explore defaultFuel (pushContinuations t) initSt).map
+    ((explore defaultFuel (atBoundary t) initSt).map
       (fun r => r.bind (fun p =>
         match (endScope defaultFuel).run p.2 with
         | .ok _ st => .ok (p.1, st)
@@ -84,7 +84,7 @@ def checkProgram (t : Term) (retType : Term := .const "Unit") : Except String Un
     standing assertion: if a frame slot ever survived its frame, it would appear
     here under the callee's own binder name. -/
 def runProgram (t : Term) : Except String Env :=
-  match (do let _ ← readR defaultFuel (pushContinuations t); endScope defaultFuel).run
+  match (do let _ ← readR defaultFuel (atBoundary t); endScope defaultFuel).run
       { initSt with executing := true } with
   | .ok _ st => .ok (canonicalize st.env)
   | .error e _ => .error e
@@ -92,7 +92,7 @@ def runProgram (t : Term) : Except String Env :=
 /-- The symbolic paths' final environments — for inspecting *what* a program
     leaves in Ω, and for the differential's checking side. -/
 def programEnvs (t : Term) : List (Except String Env) :=
-  (explore defaultFuel (pushContinuations t) initSt).map
+  (explore defaultFuel (atBoundary t) initSt).map
     (fun r => r.bind (fun p =>
       match (endScope defaultFuel).run p.2 with
       | .ok _ st => .ok (canonicalize st.env)
@@ -150,7 +150,7 @@ def progRunsTo (t : Term) (expected : Env) : Bool :=
     `FnDef` path; it retired with its users in M28 ο, so this is now the only
     statement of it.) -/
 def tailEnvs (t : Term) : List (Except String Env) :=
-  (explore defaultFuel (pushContinuations t) initSt).map
+  (explore defaultFuel (atBoundary t) initSt).map
     (fun r => r.bind (fun p =>
       match (endScope defaultFuel).run p.2 with
       | .ok _ st => .ok (canonicalize (st.env.filter (fun kv =>

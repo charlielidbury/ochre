@@ -604,7 +604,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     -- ascribed type is a ⇝ position. That asymmetry is the seal itself.
     let (t', n1) ← elabUTerm rctx pctx next t
     let (u', n2) ← elabUTerm rctx pctx n1 u
-    return (← `(Dllbc.Term.seal $t' $u'), n2)
+    return (← `(Dllbc.Term.seal 0 $t' $u'), n2)
   | `(uterm| $c:ident($args,*)) => do                 -- no-space paren: call / ctorApp
     let (args', n) ← elabUList rctx pctx next args.getElems.toList
     let name := c.getId.toString

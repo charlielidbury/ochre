@@ -129,11 +129,11 @@ def readCOn (t : Term) : String :=
   | .ok v _ => "ACCEPTED " ++ v.pretty
   | .error e _ => e
 
-example : strContains (readCOn (.seal (.ctorApp "Z" []) (.const "Nat")))
+example : strContains (readCOn (.seal 0 (.ctorApp "Z" []) (.const "Nat")))
   "not in the comptime fragment" = true := by native_decide
 -- …including buried inside a pure former, which is the position that would pose
 -- §2.1's identity question if ⇝ could reduce it.
-example : strContains (readCOn (.app (.const "S") (.seal (.ctorApp "Z" []) (.const "Nat"))))
+example : strContains (readCOn (.app (.const "S") (.seal 0 (.ctorApp "Z" []) (.const "Nat"))))
   "not in the comptime fragment" = true := by native_decide
 
 /-! ### A6. "Legal anywhere ⇒ evaluates" (§5), exercised at the positions that
@@ -208,7 +208,7 @@ def chk (tm ty : Term) : Bool :=
 /-- Does sealing `tm` at `ty` pass the checker? The subject is a one-`let`
     PROGRAM now; it used to be that `let` wrapped in a nullary declaration. -/
 def sealChk (tm ty : Term) : Bool :=
-  progOk (.letIn ⟨0, "f"⟩ (.seal tm ty) .unit)
+  progOk (.letIn ⟨0, "f"⟩ (.seal 0 tm ty) .unit)
 
 def natT : Term := .const "Nat"
 def listNatT : Term := .app (.const "List") natT
@@ -589,7 +589,7 @@ def citeProg (k : Nat) (rhs : Term) : Term := prog{
   %(citeK k rhs) }
 
 def unsealedK (k : Nat) : Term := citeProg k big
-def sealedK (k : Nat) : Term := citeProg k (.seal big bigTy)
+def sealedK (k : Nat) : Term := citeProg k (.seal 0 big bigTy)
 
 def unsealed1 : Term := unsealedK 1
 def sealed1 : Term := sealedK 1
@@ -1932,7 +1932,7 @@ def bndDeclHn : Term := .cmpT (Std.LeT (Std.lenT (.deref (.var ⟨1, "v"⟩))) (
 /-- The two arms of the emitted `natRec`, as annotated binder lists. -/
 def bndArms : Option (List (Var × Term) × List (Var × Term)) :=
   match bndSeal with
-  | some (.seal (.app (.app (.app (.const "natRec") _) zArm) sArm) _) =>
+  | some (.seal _ (.app (.app (.app (.const "natRec") _) zArm) sArm) _) =>
     some ((Term.peelLams zArm).1, (Term.peelLams sArm).1)
   | _ => none
 
@@ -2009,9 +2009,9 @@ def bndProg (t : Term) : Term := .letIn ⟨900, "F"⟩ t .unit
     touched. `none` when the elaboration is not the shape this section reads. -/
 def stepArmWith (i : Nat) (τ : Term) : Option Term :=
   match bndSeal with
-  | some (.seal (.app (.app (.app (.const "natRec") mot) zArm) sArm) piT) =>
+  | some (.seal _ (.app (.app (.app (.const "natRec") mot) zArm) sArm) piT) =>
     let (s, sb) := Term.peelLams sArm
-    some (.seal (.app (.app (.app (.const "natRec") mot) zArm)
+    some (.seal 0 (.app (.app (.app (.const "natRec") mot) zArm)
                   (Term.lamTel (s.set i ((s.get! i).1, τ)) sb)) piT)
   | _ => none
 
@@ -2020,7 +2020,7 @@ def stepArmWith (i : Nat) (τ : Term) : Option Term :=
     type is an instance of that `R` at some constructor of `n`. -/
 def bndR : Option (String × Term) :=
   match bndSeal with
-  | some (.seal _ (.pi n _ R)) => some (n, R)
+  | some (.seal _ _ (.pi n _ R)) => some (n, R)
   | _ => none
 
 /-- The step arm's predecessor binder. -/

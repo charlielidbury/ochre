@@ -63,7 +63,7 @@ partial def tsize : Term → Nat
   | .matchE _ _ bs => 1 + tsizeB bs
   | .seq a b => 1 + tsize a + tsize b
   | .call _ as => 1 + tsizeL as
-  | .seal a b => 1 + tsize a + tsize b
+  | .seal _ a b => 1 + tsize a + tsize b
   | .callV _ as => 1 + tsizeL as
   | .app a b => 1 + tsize a + tsize b
   | .pi _ a b | .sigmaT _ a b | .lam _ a b | .borrowT _ a b => 1 + tsize a + tsize b
@@ -109,7 +109,7 @@ partial def occ (needle : Term) : Term → Nat
     | .matchE _ _ bs => occB needle bs
     | .seq a b => occ needle a + occ needle b
     | .call _ as => occL needle as
-    | .seal a b => occ needle a + occ needle b
+    | .seal _ a b => occ needle a + occ needle b
     | .callV _ as => occL needle as
     | .app a b => occ needle a + occ needle b
     | .pi _ a b | .sigmaT _ a b | .lam _ a b | .borrowT _ a b =>
@@ -151,7 +151,7 @@ partial def cov (ns : List (String × Term)) : Term → Nat
     | .matchE _ _ bs => covB ns bs
     | .seq a b => cov ns a + cov ns b
     | .call _ as => covL ns as
-    | .seal a b => cov ns a + cov ns b
+    | .seal _ a b => cov ns a + cov ns b
     | .callV _ as => covL ns as
     | .app a b => cov ns a + cov ns b
     | .pi _ a b | .sigmaT _ a b | .lam _ a b | .borrowT _ a b => cov ns a + cov ns b

@@ -118,6 +118,33 @@ structure St where
       `sctx` still holds the borrow-free case (phase A's `σ : Π`), so the two
       contexts partition abstract callees by whether their type has a value. -/
   fsig : List (Nat × Term) := []
+  /-- **What σ a seal SITE has at given inputs** (M32 R3, suspensions.md §2.4) —
+      the table that makes the seal ⇝-evaluable.
+
+      ⇝ is a judgment with no events, and the old rule refused the seal for
+      exactly that reason: minting a fresh σ needs one, so a seal reduced twice
+      under ⇝ would disagree with itself. What the refusal actually needed was
+      not an event but a FUNCTION — a rule that gives the same answer both times
+      — and this is that function, tabulated. The key is the seal's site
+      (`Term.seal`'s first field, assigned at the program boundary) paired with
+      its CAPTURED INPUTS: the values its admitted citations resolve to at the
+      moment it is read. The value is the σ that pair names.
+
+      **§2.4's "the seal site applied to its captured inputs", with the
+      application interned rather than written out.** The doc's structured
+      neutral `§σs i₁ … iₙ` and this table agree on everything a judgment can
+      ask — the same site at the same inputs is one value (here, literally one
+      σ), different inputs are different values — and they differ in what the
+      value IS: a spine there, an atom here. Interning is what lets `fsig`,
+      `sctx`, `callDeclC`, `isFnValue` and every golden go on speaking about a
+      bare σ, and it is what makes a sealed function's type a plain entry rather
+      than one that has to be instantiated at the spine's arguments before it
+      can be read. Recorded as a deviation, with the reasoning, in the R3
+      addendum.
+
+      `nextSym` is what fills it, first-come, so a program whose seals are read
+      in program order numbers them exactly as the ⇒-seal did. -/
+  sealSites : List ((Nat × List Val) × Nat) := []
   /-- Loan groups (§6.1). A call mints one; ending a captured loan ends the
       whole group. Replaces M6's flat owed map — a wire is the degenerate
       `issued = []` group. -/
@@ -1184,7 +1211,15 @@ mutual
     -- The seal is a ⇒-form and only a ⇒-form (combining-fns §5). Minting needs an
     -- EVENT; ⇝ is a pure judgment with none, so a seal reduced twice under ⇝ would
     -- disagree with itself.
-    | .seal _ _ => throwErr "readC (⇝): `seal` is not in the comptime fragment — the seal is a ⇒-form, because minting a fresh σ needs an event and ⇝ has none (§5)"
+    -- **Still refused HERE, and R3 did not weaken it** (M32 R3). What became
+    -- ⇝-evaluable is the seal at a BINDING (`readComptimeVal`), where the σ its
+    -- site names is a value a slot can hold. `reflectC` is the read-only
+    -- projection INTO A TYPE, and a type is consumed at its own event (§2.4) —
+    -- there is no binding for a seal inside one to be the seal of, and a σ
+    -- appearing in a type by being written there is generalization in a position
+    -- that cannot mean it. The sentence is unchanged for the case it still
+    -- covers.
+    | .seal _ _ _ => throwErr "readC (⇝): `seal` is not in the comptime fragment — a seal inside a TYPE has no reading, because a type is consumed at its own event and there is no binding for the sealed σ to land in. A seal is read at a `let` (§2.4)"
     | .callV _ _ => throwErr "readC (⇝): a value-callee call is not in the comptime fragment — comptime application of an abstract function is the structured neutral `f a`, written as an application (§2.1)"
   def reflectCList (lets : List Nat) : List Term → M (List Val)
     | [] => pure []
@@ -1342,7 +1377,7 @@ partial def calleeNames : Term → List String
   | .call f args => f :: (args.flatMap calleeNames)
   -- A seal's body is ordinary runtime code and may call; a value-callee call
   -- names no DECLARATION (that is the point of it), but its arguments may.
-  | .seal t u => calleeNames t ++ calleeNames u
+  | .seal _ t u => calleeNames t ++ calleeNames u
   | .callV _ args => args.flatMap calleeNames
   | .letIn _ a b => calleeNames a ++ calleeNames b
   | .assign a b c => calleeNames a ++ calleeNames b ++ calleeNames c
@@ -2597,7 +2632,7 @@ mutual
     -- A seal's BODY is a runtime term (it may name the frame's slots); its TYPE is
     -- a type, whose runtime-var occurrences (`*v` in an ensures, §5.2) shift for
     -- the same reason the pure formers below do.
-    | .seal t u => .seal (shiftVarsK keep d t) (shiftVarsK keep d u)
+    | .seal s t u => .seal s (shiftVarsK keep d t) (shiftVarsK keep d u)
     -- The callee is a slot, so it shifts exactly as a `.matchE` scrutinee does —
     -- and a callee that is a PROGRAM-level binding (§8: scope is the call table)
     -- is precisely the `keep` case, which is why it is the same test.
@@ -3571,6 +3606,54 @@ def admitGlobals (what : String) (nbinders : Nat) (free : List Var) : M Omega :=
           throwErr s!"{what}: the body cites '{x.name}', a runtime (lowercase) binding, and a λ body may reference only its own binders and the capital bindings in scope (§2.4). A λ is formed now and used later, and a runtime citation would be an implicit snapshot taken in that gap. Make it a parameter, or name the snapshot first: `let {x.name.capitalize} = …;` above the λ, and cite `{x.name.capitalize}`."
         else pure (acc ++ [kv])) []
 
+/-! ## Seal sites, and the σ a site has (M32 R3, suspensions.md §2.4)
+
+    §2.4 makes the seal ⇝-evaluable, and the whole of what that needed is a
+    forgetting half that is a FUNCTION of the node rather than of the moment.
+    The node's half of the argument is `Term.seal`'s site, assigned once at the
+    program boundary. This is the other half: what the site is applied to.
+
+    **The inputs are the values the seal READS.** A seal's own free runtime
+    variables are exactly the slots its check consults — `readC u` and `readC t`
+    resolve `.var` through Ω, and `checkRFnBody` seeds its fresh Ω from
+    `admitGlobals` over the same set — so two readings of one site that agree on
+    them agree on everything the check can see, and therefore on its outcome.
+    That is the argument that licenses the table to be a memo rather than a
+    cache with a soundness hole: a hit skips a check whose answer is already
+    determined, not one that might have changed.
+
+    **What a hit buys, beyond ⇝-legality**: the audit of a `fn` runs once per
+    (site, inputs) rather than once per reading, which is what makes a sealed
+    function inside a body entered twice cost what it costs inside a body
+    entered once. -/
+
+/-- The identity of one sealed value: its site, and what that site was read at. -/
+abbrev SealKey := Nat × List Val
+
+/-- The captured inputs of a seal node: what each of its free runtime variables
+    holds, in the order the term mentions them. A citation Ω cannot resolve
+    contributes nothing — the check that follows is what reports it, and with
+    the message that names the citation rather than the table. -/
+def sealInputs (t : Term) : M (List Val) := do
+  let ω ← getEnv
+  pure ((Term.freeRVars [] t).filterMap (fun x => (findSlot? ω x).map (·.2)))
+
+/-- The σ this site has at these inputs: the one already recorded, or a fresh
+    one recorded now.
+
+    Minting on a MISS, from `nextSym`, is what keeps the numbering the ⇒-seal
+    produced: a program whose seals are read in program order — a let-chain of
+    declarations, which is every program — allocates them in exactly the order
+    and at exactly the moment `sealMint`'s `freshSym` did. -/
+def sealSym (key : SealKey) : M Nat := do
+  let st ← get
+  match st.sealSites.find? (fun e => e.1.1 == key.1 && e.1.2 == key.2) with
+  | some e => pure e.2
+  | none => do
+    let σ ← freshSym
+    modify (fun s => { s with sealSites := (key, σ) :: s.sealSites })
+    pure σ
+
 /-! ## ⇒ (read): the move arrow
 
     `readR` evaluates a term to a value with move semantics. Fuel decreases on
@@ -3713,13 +3796,14 @@ mutual
         -- without a new form — and without the capture-before-call staging that
         -- a runtime `let` of a proof forces. `let x = e` is unchanged.
         --
-        -- **The seal keeps ⇒ whatever the binder's case** (M31 Stage A) — see
-        -- `Var.comptimeRhs`, which is the whole of that rule and is read here and
-        -- by the explore driver both.
+        -- **The arrow is the BINDER'S CASE, and nothing else** (M32 R3). It used
+        -- to be `Var.comptimeRhs`, a predicate on the right-hand side as well,
+        -- because two right-hand sides were ⇒-formation events ⇝ had no rule for.
+        -- ⇝ has the rules now (`readComptimeVal`), so the predicate is gone and
+        -- this line is the invariant.
         backstopFnRhs x rhs                              -- M31 Stage A: §2.1, before the fence
         (match rhs with | .lam _ _ _ => checkLamCitation rhs | _ => pure ())
-        let v ← if x.comptimeRhs rhs then (do pure (Val.know (← readComptimeArg fuel rhs)))
-                else readR fuel rhs
+        let v ← if x.isComptime then readComptimeVal fuel rhs else readR fuel rhs
         backstopFnBinding x v                            -- …and §2.1 from below
         bindSlot x v
         readR fuel rest
@@ -3770,54 +3854,19 @@ mutual
       -- migrated programs left.
       | .call f _ => throwErr s!"call: unknown function '{f}'"
       -- **The seal** (combining-fns §5): opacity as one node. The two readings
-      -- are the two machines'.
-      | .seal t u => do
+      -- are the two machines'. Since M32 R3 there is ONE seal rule and both
+      -- arrows call it (`sealNode`); this arm is the executing machine's
+      -- transparency plus that call.
+      | .seal site t u => do
         if (← get).executing then
           -- Concrete evaluation is always transparent: the body exists and runs.
           -- No check here — execution does not verify, it computes (and the
           -- checker has already accepted the node, or this program was never
-          -- admitted). This is why a sealed value costs nothing at runtime.
+          -- admitted). This is why a sealed value costs nothing at runtime, and
+          -- why R3's site table is not consulted here: the executing machine
+          -- never asks which σ a seal has, because it never has one.
           readR fuel t
-        else do
-          -- **SEALING A FUNCTION** (M26-C): the shape of the sealed TERM picks the
-          -- rule, not the shape of the type. A runtime λ has no value the pure
-          -- fragment could type — its body is a body — so the check that `t : u`
-          -- is not `hasType` at all, it is §5.4's audit: seed `u`'s telescope,
-          -- explore the body, audit each path. That is `sealFn`, and it is what
-          -- phase A deferred when it rejected borrow-moded `u` by name.
-          --
-          -- Everything else keeps phase A's rule EXACTLY, which is what preserves
-          -- §12-open-4's identity (a borrow-free sealed λ costs precisely
-          -- `hasType`, over the whole 16-pair battery) — the new rule is reached
-          -- by being a `.lamR`, never by the ascription happening to have a
-          -- `&mut` in it.
-          -- **Dispatch by BODY CLASSIFICATION** (M32 R2, suspensions.md §4). It was
-          -- "the shape of the sealed TERM picks the rule" and it still is — what
-          -- changed is that the shape is one former, so the question the shape
-          -- answers has to be asked: is what sits under the binders a BODY? If it
-          -- is, there is no value the pure fragment could type and the check is
-          -- §5.4's audit; if it is not, the λ is an ordinary comptime term and
-          -- takes phase A's rule, exactly as a `.lam` always did.
-          --
-          -- **And it is asked of the TERM, not of a λ**, which the fold forces and
-          -- which is the honest statement anyway: a NULLARY `fn` has no binders,
-          -- so `Term.lamTel [] body` is the body itself and there is no λ left to
-          -- match on. `Term.lamImperative` of a non-λ is `Term.imperative` of it,
-          -- so `fn UsePin () -> Unit { let p = …; match p { … } }` reaches the
-          -- audit by being a BODY rather than by being a λ with none. (A nullary
-          -- `fn` whose body is a pure expression is genuinely a sealed VALUE now,
-          -- and is checked as one — R4's Unit-desugar is what gives it binders.)
-          match t with
-          -- A spine MAY be a recursor over runtime arms — §7's `fn` elaboration —
-          -- in which case sealing it is arms-as-bodies checking. Any other spine
-          -- is an ordinary term and takes phase A's rule.
-          | .app _ _ => sealApp fuel t u
-          | .lam _ _ _ =>
-            if Term.lamImperative t then
-              let (tel, body) := Term.peelLams t
-              sealFn fuel tel body u
-            else sealValue fuel t u
-          | _ => sealValue fuel t u
+        else sealNode fuel site t u
       -- **Application of a NAMED callee** (§7 cost 2). The callee is LOCATED, not
       -- consumed: calling a function is a place read, like a match scrutinee's,
       -- so a slot can be called twice — which `ih` needs, since `quicksort`
@@ -3897,47 +3946,12 @@ mutual
       -- shift lands on, which is environment capture arriving by accident in the
       -- phase that defers it (constraint 5). Rejecting is the honest option, and
       -- the rejection names the variable.
-      -- **THE λ — and forming one is creating a CLOSURE** (M32 R2,
-      -- suspensions.md §2.2). One arm where there were two, because there is one
-      -- former; what the two arms disagreed about is recomputed here instead of
-      -- being carried by the syntax.
-      --
-      -- CAPTURE IS A FILTER, not a guard. `admitGlobals` is §8's globals rule and
-      -- §2.4's citation rule — a body may name its own binders and the capital
-      -- bindings in scope — and its RESULT is ρ. Nothing extra had to be written
-      -- to decide what a λ may capture, because that question was already
-      -- answered here; what R2 adds is that the answer is kept.
-      --
-      -- CLOSEDNESS is therefore not a separate check any more. §7's "arms
-      -- reference only their own binders and globals" used to be a real premise
-      -- because a body was entered under a fresh id window with nothing carried:
-      -- a free variable would be silently rebound to whatever the shift landed
-      -- on. A closure carries its bindings, so the rule survives as the FILTER
-      -- (which bindings are admissible) rather than as a refusal to have any.
-      | .lam x dom body => do
-        let node : Term := .lam x dom body
-        let (tel, _) := Term.peelLams node
-        let imper := Term.lamImperative node
-        let what := if imper then "λr" else "λ"
-        let ρω ← admitGlobals what tel.length (Term.freeRVars [] node)
-        -- **The knowledge-only invariant, as a rejection with a place to stand.**
-        -- R1 made it a fact about `Sem`; here it is a fact about ρ's type, and the
-        -- one way to violate it is to cite a capital binding that holds state — a
-        -- capital slot holding a borrow. §2.2: captured ρ supplies knowledge only,
-        -- and state arrives through arguments.
-        let ρ ← ρω.mapM (fun kv => do
-          if Val.hasStateMarker kv.2 then
-            throwErr s!"{what}: the body captures '{kv.1.name}', which holds {kv.2.pretty} — a λ captures KNOWLEDGE only (§2.2), and that value carries a hole, a loan marker or a borrow. State reaches a body through its arguments, so make it a parameter."
-          else pure kv)
-        -- **FORMATION EVALUATES THE BODY AS A CHECK** (§2.2), and stores the
-        -- syntax. For the comptime fragment that check is the ⇝ reading this arm
-        -- used to store; the result is discarded, which is the whole difference
-        -- between R2 and cook-at-formation (user-rejected, §3).
-        if !imper then do
-          collapseCDerefs fuel node
-          let _ ← readC fuel node
-          pure ()
-        pure (.closure ρ node)
+      -- **THE λ, still ⇒-reachable at R3 α, delegating** (M32 R3). Formation
+      -- moved to `readComptimeVal`, which is ⇝'s reader at a binding; this arm
+      -- is what a λ in an EXPRESSION position (or under a lowercase `let`) still
+      -- reaches, and it is deleted in R3 β, where ⇒ stops constructing functions
+      -- altogether (suspensions.md §2.5).
+      | .lam _ _ _ => readComptimeVal fuel t
       | .unit => pure (.ctor "unit" [])
       -- **The match-arm seam** (M31 Stage 0). `pushContinuations` fuses a
       -- statement-position match with the continuation that followed it, which
@@ -4468,9 +4482,135 @@ mutual
         modify (fun s => { s with retTyVal := some rv })
       let st0 ← get
       let advanced ← auditAllPaths fuel ret (explore fuel (pushContinuations body) st0) st0
+      -- `sealSites` crosses back out with the supplies, and for the same reason
+      -- (M32 R3): it is a fact about which σ ids are spoken for, so restoring the
+      -- caller's copy would let a later mint hand out a σ this audit already
+      -- gave to a nested seal. It is also what makes a seal inside an audited
+      -- body deterministic across two audits of that body.
       set { saved with nextLoan := advanced.nextLoan, nextSym := advanced.nextSym
-                       nextGroup := advanced.nextGroup, nextFrame := advanced.nextFrame }
+                       nextGroup := advanced.nextGroup, nextFrame := advanced.nextFrame
+                       sealSites := advanced.sealSites }
   termination_by fuel _ _ _ => (fuel, 6, 0)
+  /-- **The seal, at either arrow** (M32 R3, suspensions.md §2.4). One rule, two
+      callers: `readR`'s `.seal` arm and the `let` arrow's ⇝ reader
+      (`readComptimeVal`). That there is one rule is the content of "the seal
+      becomes ⇝-evaluable" — not a second ⇝ rule beside the ⇒ one, which would be
+      two things to keep in step, but the same rule reached from both sides.
+
+      **CHECK half, unchanged, dispatched `.lam`-shaped** (M32 R2): a spine may
+      be a recursor over runtime arms (§7's `fn` elaboration), a λ whose body is a
+      BODY takes §5.4's audit, and everything else takes phase A's `hasType`.
+      Nothing here is arrow-sensitive, and that is the observation §2.4 rests on:
+      the audit already runs in its own fresh store, and `hasType` is a comptime
+      judgment, so neither half ever needed the caller's arrow.
+
+      **FORGET half, site-keyed.** The σ comes from `sealSym` at (site, inputs),
+      so reading one seal twice yields the same value — the property whose
+      absence was the whole reason ⇝ refused the node. A HIT skips the check as
+      well as the mint: the inputs are what the check consults, so its answer is
+      already known. -/
+  def sealNode : Nat → Nat → Term → Term → M Val
+    | fuel, site, t, u => do
+      let inputs ← sealInputs (.seal site t u)
+      let key : SealKey := (site, inputs)
+      match (← get).sealSites.find? (fun e => e.1.1 == site && e.1.2 == inputs) with
+      | some e => pure (.know (Term.sym e.2))
+      | none =>
+        match t with
+        -- A spine MAY be a recursor over runtime arms — §7's `fn` elaboration —
+        -- in which case sealing it is arms-as-bodies checking. Any other spine
+        -- is an ordinary term and takes phase A's rule.
+        | .app _ _ => sealApp fuel key t u
+        -- **Asked of a λ, and only of a λ** (M32 R2 finding 7). A nullary `fn`
+        -- binds the unwritable `U§ : ⇝Unit`, so there is always a λ here when
+        -- there is a function here, and `(match n { … } : Nat)` is not diverted
+        -- into frame isolation and an audit by having a body.
+        | .lam _ _ _ =>
+          if Term.lamImperative t then
+            let (tel, body) := Term.peelLams t
+            sealFn fuel key tel body u
+          else sealValue fuel key t u
+        | _ => sealValue fuel key t u
+  termination_by fuel _ _ _ => (fuel, 14, 0)
+  /-- **⇝ at a binding** (M32 R3, suspensions.md §2.4): what a capital `let`
+      reads its right-hand side with.
+
+      `readComptimeArg` — plain `readC` — is not enough on its own, because ⇝
+      produces two things that are not knowledge and therefore have no `Term` to
+      be read back to: a CLOSURE (a λ, either fragment) and a SEALED σ. Both are
+      values whose formation is a ⇝ event, which is what §2.4's "λ formation is
+      ⇝-only" and "the seal is ⇝-evaluable" say between them. This is the one
+      place they are said in code.
+
+      **The three cases are the whole comptime fragment at a binding**, and the
+      third is the old rule verbatim: anything that is not a λ and not a seal is
+      knowledge, read by `readC` and stored as a leaf.
+
+      Note what is NOT here: `reflectC` still refuses the seal by name, so a seal
+      inside a TYPE is as unwritable as it ever was. The seal became readable at
+      an EVENT under ⇝, not readable everywhere — a type is consumed at its own
+      event (§2.4) and has no binding to be the event of. -/
+  def readComptimeVal : Nat → Term → M Val
+    | fuel, t =>
+      match t with
+      | .lam _ _ _ => mkClosure fuel t
+      -- **The seal, and the executing machine keeps EXACTLY the transparency it
+      -- had** (M32 R3). Concrete evaluation does not verify and does not
+      -- generalize: the body exists and runs, which is why a sealed value costs
+      -- nothing at runtime. The read is `readR`'s, byte for byte the call this
+      -- node made before R3 moved the capital `let` onto ⇝ — no site lookup, no
+      -- comparison, no ⇝ detour. It is not a ⇝ rule wearing a disguise: under
+      -- concrete evaluation there is one arrow, because erasure has nothing left
+      -- to be about.
+      --
+      -- Spelling it `readComptimeArg` was tried and is WRONG, in a way worth
+      -- leaving recorded: a RECURSIVE `fn` seals an `.app` — §7's `natRec P z s`
+      -- over runtime arms — not a λ, and ⇝ refuses that spine by name. Three
+      -- executing-mode differentials found it (`runSplit`, `swapBody`).
+      | .seal site a b => do
+        if (← get).executing then readR fuel a else sealNode fuel site a b
+      | _ => do pure (.know (← readComptimeArg fuel t))
+  termination_by fuel _ => (fuel, 15, 0)
+  /-- **λ formation** (M32 R2/R3, suspensions.md §2.2), and since R3 the ONE
+      place a function value comes into being.
+
+      CAPTURE IS A FILTER, not a guard. `admitGlobals` is §8's globals rule and
+      §2.4's citation rule — a body may name its own binders and the capital
+      bindings in scope — and its RESULT is ρ. Nothing extra had to be written
+      to decide what a λ may capture, because that question was already
+      answered here; what R2 added is that the answer is kept.
+
+      CLOSEDNESS is therefore not a separate check any more. §7's "arms
+      reference only their own binders and globals" used to be a real premise
+      because a body was entered under a fresh id window with nothing carried:
+      a free variable would be silently rebound to whatever the shift landed
+      on. A closure carries its bindings, so the rule survives as the FILTER
+      (which bindings are admissible) rather than as a refusal to have any. -/
+  def mkClosure : Nat → Term → M Val
+    | fuel, node => do
+      let (tel, _) := Term.peelLams node
+      let imper := Term.lamImperative node
+      let what := if imper then "λr" else "λ"
+      let ρω ← admitGlobals what tel.length (Term.freeRVars [] node)
+      -- **The knowledge-only invariant, as a rejection with a place to stand.**
+      -- R1 made it a fact about `Sem`; here it is a fact about ρ's type, and the
+      -- one way to violate it is to cite a capital binding that holds state — a
+      -- capital slot holding a borrow. §2.2: captured ρ supplies knowledge only,
+      -- and state arrives through arguments.
+      let ρ ← ρω.mapM (fun kv => do
+        if Val.hasStateMarker kv.2 then
+          throwErr s!"{what}: the body captures '{kv.1.name}', which holds {kv.2.pretty} — a λ captures KNOWLEDGE only (§2.2), and that value carries a hole, a loan marker or a borrow. State reaches a body through its arguments, so make it a parameter."
+        else pure kv)
+      -- **FORMATION EVALUATES THE BODY AS A CHECK** (§2.2), and stores the
+      -- syntax. For the comptime fragment that check is the ⇝ reading this arm
+      -- used to store; the result is discarded, which is the whole difference
+      -- between R2 and cook-at-formation (user-rejected, §3).
+      if !imper then do
+        collapseCDerefs fuel node
+        let _ ← readC fuel node
+        pure ()
+      pure (.closure ρ node)
+  termination_by fuel _ => (fuel, 16, 0)
   /-- Sealing a VALUE — phase A's rule, verbatim, in its own definition since
       M26-C so that `readR`'s seal arm is a two-line dispatch.
 
@@ -4480,8 +4620,8 @@ mutual
       by the sealed TERM being a runtime λ, never by the ascription happening to
       have a `&mut` in it — so nothing that used to take this path can be
       diverted onto the other one. -/
-  def sealValue : Nat → Term → Term → M Val
-    | fuel, t, u => do
+  def sealValue : Nat → SealKey → Term → Term → M Val
+    | fuel, key, t, u => do
       if hasBorrowT u then
         throwErr "seal: this term cannot be sealed at a borrow-moded type. A Π with `&mut` binders is a FUNCTION signature, and §5.4's audit is what checks a function against one — so the sealed term must be a runtime λ (`λ(v : τ, …){ … }`) whose binders match it. Sealing anything else at such a Π would be asking `hasType` a question §5.4 does not ask."
       -- The type is read FIRST, while the body's free variables are still live:
@@ -4491,25 +4631,26 @@ mutual
       let uV ← readC fuel u
       let v ← readR fuel t
       if ← hasType fuel v uV then do
-        -- …then FORGET. A fresh σ at the ascribed type is the whole downstream
-        -- view: `.seal` is generalization, so what the caller keeps is exactly
-        -- what the programmer wrote (§5 point 4). The mint is coherent because
-        -- this is an EVENT — ⇒ evaluates it once, in order — which is the
-        -- property ⇝ lacks and the reason the node is a ⇒-form (§2.1).
-        let σ ← freshSym
+        -- …then FORGET. The σ is the one this SITE has at these inputs (M32 R3):
+        -- `.seal` is generalization, so what the caller keeps is exactly what the
+        -- programmer wrote (§5 point 4), and WHICH σ that is is a function of the
+        -- node and its inputs rather than of when the node was reached. That is
+        -- what replaced "the mint is coherent because this is an EVENT, which is
+        -- the property ⇝ lacks": ⇝ still lacks the event, and no longer needs one.
+        let σ ← sealSym key
         modify (fun s => { s with sctx := (σ, uV) :: s.sctx })
         pure (.know (Term.sym σ))
       else
         throwErr s!"seal: the sealed term ({v.pretty}) does not have its ascribed type ({uV.pretty})"
-  termination_by fuel _ _ => (fuel, 9, 0)
+  termination_by fuel _ _ _ => (fuel, 9, 0)
   /-- A sealed application spine: a recursor over runtime arms takes the
       arms-as-bodies rule, anything else takes phase A's. -/
-  def sealApp : Nat → Term → Term → M Val
-    | fuel, t, u =>
+  def sealApp : Nat → SealKey → Term → Term → M Val
+    | fuel, key, t, u =>
       match runtimeRecSpine? t with
-      | some (c, as) => sealRec fuel c as u
-      | none => sealValue fuel t u
-  termination_by fuel _ _ => (fuel, 13, 0)
+      | some (c, as) => sealRec fuel key c as u
+      | none => sealValue fuel key t u
+  termination_by fuel _ _ _ => (fuel, 13, 0)
   /-- Check ONE recursor arm as a body (§7 cost 1, "the one real kernel
       addition"): its leading binders are the ones the recursor's premise gives —
       the predecessor and `ih` — and the rest are the motive instantiated at this
@@ -4572,8 +4713,8 @@ mutual
       whole story: a recursive occurrence never sees the body, so self-ensures is
       FORCED, not stipulated. The `[k]` guard evaporates with it: `ih` is a
       binder, a binder cannot be a self-call, and there is no rule left to police. -/
-  def sealRec : Nat → String → List Term → Term → M Val
-    | fuel, c, args, u => do
+  def sealRec : Nat → SealKey → String → List Term → Term → M Val
+    | fuel, key, c, args, u => do
       match u with
       | .pi sn scrutDom R => do
         let mi := match recLayout c with | some (_, m, _) => m | none => 0
@@ -4592,7 +4733,7 @@ mutual
                 checkArm fuel sbody [(k.1, scrutDom), (ihv.1, Term.substP sn (.var k.1) R)]
                   (k :: ihv :: rest)
                   (Term.substP sn (.ctorApp "S" [.var k.1]) R)
-                sealMint fuel (piBinderNames u) u
+                sealMint fuel key (piBinderNames u) u
               | _, _ => throwErr "seal: natRec's arms must be runtime λs, and the step arm must bind at least the predecessor and `ih` (§7's `λ f'. λ ih. λ v Hfuel. …`)"
             | "listRec", [_, _, pn, pc] => do
               match Term.peelLams pn, Term.peelLams pc with
@@ -4607,17 +4748,17 @@ mutual
                   [(h.1, elemTy), (tl.1, scrutDom), (ihv.1, Term.substP sn (.var tl.1) R)]
                   (h :: tl :: ihv :: rest)
                   (Term.substP sn (.ctorApp "Cons" [.var h.1, .var tl.1]) R)
-                sealMint fuel (piBinderNames u) u
+                sealMint fuel key (piBinderNames u) u
               | _, _ => throwErr "seal: listRec's arms must be runtime λs, and the Cons arm must bind at least the head, the tail and `ih`"
             | "boolRec", [_, tArm, fArm] => do
               match Term.peelLams tArm, Term.peelLams fArm with
               | (tn, tbody), (fn, fbody) => do
                 checkArm fuel tbody [] tn (Term.substP sn (.ctorApp "True" []) R)
                 checkArm fuel fbody [] fn (Term.substP sn (.ctorApp "False" []) R)
-                sealMint fuel (piBinderNames u) u
+                sealMint fuel key (piBinderNames u) u
             | _, _ => throwErr s!"seal: `{c}` is not a recursor this phase checks as a sealed function, or its spine is not the bare `{c} P ⟨arms⟩` (the scrutinee is the SEALED Π's own binder, so it must not be applied)"
       | _ => throwErr "seal: a recursor sealed as a function must be ascribed a Π — its first binder is the scrutinee the recursion is on (§7's derived motive)"
-  termination_by fuel _ _ _ => (fuel, 11, 0)
+  termination_by fuel _ _ _ _ => (fuel, 11, 0)
   /-- The forgetting half, shared by both sealed-function rules: a fresh σ whose
       signature is the ascribed Π peeled at the given binders — which must be
       POSITIONAL, the convention `processArgs`/`buildResult` read a telescope by.
@@ -4631,8 +4772,8 @@ mutual
       since they are peeled and read from the same term. (Found by a seal in
       return position: `hasType: σ has no type in sctx`, from a function whose
       result IS a sealed function.) -/
-  def sealMint : Nat → List Var → Term → M Val
-    | fuel, _names, u => do
+  def sealMint : Nat → SealKey → List Var → Term → M Val
+    | fuel, key, _names, u => do
         -- **The Π itself goes into `fsig`** (M27-δ). It used to be peeled here
         -- into a record at POSITIONAL binders, which is the convention
         -- `processArgs`/`buildResult` read a telescope by — but the peel is
@@ -4642,13 +4783,13 @@ mutual
         -- since `piBinderNames` encodes each one in the name it synthesizes; what
         -- does not survive is the λ's own display names, which cost a call-site
         -- message its programmer-written parameter name and nothing else.
-        let σ ← freshSym
+        let σ ← sealSym key
         modify (fun s => { s with fsig := (σ, u) :: s.fsig })
         if !hasBorrowT u then do
           let uV ← readC fuel u
           modify (fun s => { s with sctx := (σ, uV) :: s.sctx })
         pure (.know (Term.sym σ))
-  termination_by fuel _ _ => (fuel, 12, 0)
+  termination_by fuel _ _ _ => (fuel, 12, 0)
   /-- Sealing a runtime λ: check it, then forget it.
 
       The two halves are §5's two sentences. The check is ONE conversion (M27
@@ -4659,8 +4800,8 @@ mutual
       which is the convention `processArgs`/`buildResult` read a telescope by, so
       what a caller sees is a callee indistinguishable from a table entry. Both
       peels come from the same `u`, so they cannot disagree. -/
-  def sealFn : Nat → List (Var × Term) → Term → Term → M Val
-    | fuel, binders, body, u => do
+  def sealFn : Nat → SealKey → List (Var × Term) → Term → Term → M Val
+    | fuel, key, binders, body, u => do
       -- **ONE CONVERSION** (M27 α.1b). The λ states its own telescope, so the seal
       -- compares that against the ascription rather than descending the ascription
       -- to supply it. The return type still comes from `u`, and that is not an
@@ -4674,8 +4815,8 @@ mutual
         -- The caller-visible signature keeps the λ's own binder NAMES (so a
         -- rejection at a call site names what the programmer wrote) at POSITIONAL
         -- ids (so `processArgs` reads it like any telescope).
-        sealMint fuel (binders.enum.map (fun p => Var.mk p.1 p.2.1.name)) u
-  termination_by fuel _ _ _ => (fuel, 7, 0)
+        sealMint fuel key (binders.enum.map (fun p => Var.mk p.1 p.2.1.name)) u
+  termination_by fuel _ _ _ _ => (fuel, 7, 0)
   /-- **The checking-mode call rule** (§5.3/§6.1), factored out of `.call` (M26-C)
       because a SEALED function is called by exactly the same rule: a σ whose
       signature is a borrow-moded Π is a callee whose telescope and return type
@@ -4764,8 +4905,7 @@ mutual
         match (do
             backstopFnRhs x rhs
             (match rhs with | .lam _ _ _ => checkLamCitation rhs | _ => pure ())
-            let v ← if x.comptimeRhs rhs then (do pure (Val.know (← readComptimeArg fuel rhs)))
-                    else readR fuel rhs
+            let v ← if x.isComptime then readComptimeVal fuel rhs else readR fuel rhs
             backstopFnBinding x v
             bindSlot x v).run st with
         | .error e _ => [.error e]
@@ -4839,6 +4979,23 @@ def initSt : St := { env := [], nextLoan := 0, nextVar := 0, nextSym := 0 }
 /-- Generous default fuel; §2 programs use only a handful. -/
 def defaultFuel : Nat := 1000
 
+/-- **The program boundary** (M32 R3): number the seals, then normalize the
+    statement spine. Every entry point that turns a `Term` into a run goes
+    through here, and nothing else does.
+
+    The ORDER is load-bearing in one direction only. `pushContinuations`
+    DUPLICATES a continuation into each arm of a match, so numbering afterwards
+    would give the copies different sites — and they are one program point, on
+    paths that are alternatives to each other. Numbering first means the copies
+    share a site, which is the reading that makes "the same seal at the same
+    inputs" mean what it says.
+
+    Bodies entered later (`checkRFnBody`, a callee frame) re-normalize but are
+    NOT re-numbered: they were part of the program when it crossed this boundary,
+    so their seals already carry their sites. Renumbering one from zero is
+    exactly the collision this function exists to make unwritable. -/
+def atBoundary (t : Term) : Term := pushContinuations (Term.numberSeals t).2
+
 /-- Run a program with a fresh state: ⇒-read it, then return the final
     canonicalized Ω (loan ids renumbered to first-appearance order), or the
     error. The return value of the read is discarded — §2 tests inspect Ω. -/
@@ -4847,7 +5004,7 @@ def runProg (t : Term) (fuel : Nat := defaultFuel) : Except String Env :=
   -- was: the seam markers `pushContinuations` inserts are what close a match
   -- arm's scope, and a harness that walked the raw term would be the one place in
   -- the machine where arm binders still outlived their arm.
-  match (readR fuel (pushContinuations t)).run initSt with
+  match (readR fuel (atBoundary t)).run initSt with
   | .ok _ st => .ok (canonicalize st.env)
   | .error e _ => .error e
 
@@ -4884,7 +5041,7 @@ def seedSt (seed : Omega) : St :=
 /-- Explore a program from a seeded Ω, returning one canonicalized final
     environment (or error) per execution path, in branch-declaration order. -/
 def runExplore (seed : Omega) (t : Term) (fuel : Nat := defaultFuel) : List (Except String Env) :=
-  (explore fuel (pushContinuations t) (seedSt seed)).map
+  (explore fuel (atBoundary t) (seedSt seed)).map
     (fun r => r.map (fun p => canonicalize p.2.env))
 
 /-- Test helper: the program has exactly the given paths (each an `Env`), in

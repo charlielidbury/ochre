@@ -1033,3 +1033,166 @@ example : capturedRho = ["H0"] := by native_decide
 end Dllbc.Tests.S32Capture
 end
 -- └── end of the M32 R2 capture-generality battery ────────────────────────────
+
+-- ┌── the M32 R3 ⇝-sealing battery ─────────────────────────────────────────────
+section
+namespace Dllbc.Tests.S32Seal
+open Dllbc
+
+/-! # The seal, ⇝-evaluated (suspensions.md §2.4, M32 R3)
+
+    ⇝ refused the seal because minting a fresh σ needs an event and ⇝ has none —
+    so a seal reduced twice under ⇝ would disagree with itself. R3's answer is
+    that the σ is not fresh: it is the one this seal's SITE has at these INPUTS,
+    and the two halves of that sentence are what this battery asserts.
+
+    Sites come from `Term.numberSeals`, a pass at the program boundary. Inputs
+    are what the seal's free runtime variables hold when it is read — the values
+    its check consults, which is why agreeing on them means agreeing on the
+    check's answer.
+
+    §6's sharp edge ("seal-site identity: stable across macro expansion and
+    α-canonicalization") is asked here rather than assumed. -/
+
+/-- The first seal in a term, with its site as the boundary pass assigned it. -/
+partial def firstSeal : Term → Option (Nat × Term × Term)
+  | .seal s t u => some (s, t, u)
+  | .letIn _ a b => (firstSeal a).orElse (fun _ => firstSeal b)
+  | .seq a b | .app a b => (firstSeal a).orElse (fun _ => firstSeal b)
+  | .lam _ d b | .pi _ d b | .sigmaT _ d b => (firstSeal d).orElse (fun _ => firstSeal b)
+  | _ => none
+
+def sealOf (t : Term) : Option (Nat × Term × Term) := firstSeal (Term.numberSeals t).2
+
+/-! ## A. THE GOLDEN IS UNCHANGED — the flip is behaviour-identical
+
+    `let F = (…)` was ⇒'s (`Var.comptimeRhs`'s seal carve-out) and is ⇝'s. What
+    a caller sees is the σ it always saw, at the number it always had: the site
+    table is filled from `nextSym` on a miss, so a program whose seals are read
+    in program order allocates them exactly where `sealMint`'s `freshSym` did. -/
+
+def c2 : Term := prog{
+  let F = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = F(2); () }
+
+example : tailEnv c2 [("F", .sym 0), ("y", .sym 1)] = true := by native_decide
+-- …and the instrument before the conclusion: there IS one seal here, so the
+-- assertion above is about a ⇝-read seal and not about a program without one.
+example : (Term.numberSeals c2).1 = 1 := by native_decide
+
+/-! ## B. DETERMINISTIC — the same site at the same inputs is one value
+
+    Asserted at the rule rather than through a program, because a program cannot
+    reach one seal site twice in one state thread: `explore` forks a match into
+    paths that carry their own states, and a `fn` body is audited once. So the
+    rule is applied twice directly, in the state the first application left. -/
+
+def capSeal : Term := prog{
+  let N = 1; let F = (λ (x : Nat). N : Π (x : Nat) → Nat); () }
+
+def stAt (n : Nat) : St := { initSt with env := [(⟨0, "N"⟩, .know (Term.nat n))] }
+
+/-- Read a seal node in a given state: the value, and the state it leaves. -/
+def readSeal (node : Nat × Term × Term) (st : St) : Except String (Val × St) :=
+  match (sealNode defaultFuel node.1 node.2.1 node.2.2).run st with
+  | .ok v st' => .ok (v, st')
+  | .error e _ => .error e
+
+/-- Twice in one state: the values, whether they agree, and how many σs the
+    SECOND reading minted. -/
+def twiceSame : Option (Val × Val × Nat) :=
+  match sealOf capSeal with
+  | none => none
+  | some nd =>
+    match readSeal nd (stAt 1) with
+    | .error _ => none
+    | .ok (v1, st1) =>
+      match readSeal nd st1 with
+      | .error _ => none
+      | .ok (v2, st2) => some (v1, v2, st2.nextSym - st1.nextSym)
+
+-- ==-equal, and the second reading mints NOTHING — which is the stronger claim:
+-- the rule is a lookup the second time, so nothing downstream can tell the two
+-- readings apart even by counting.
+example : (twiceSame.map (fun p => p.1 == p.2.1)) = some true := by native_decide
+example : (twiceSame.map (fun p => p.2.2)) = some 0 := by native_decide
+
+/-! ## C. DISTINGUISHING — the same site at different inputs is not
+
+    The negative control the determinism assertion needs: if the table were keyed
+    on the site alone, B would pass for the wrong reason and a `fn` that returns
+    a sealed function would give every caller the same σ. Same state thread, same
+    node, one citation changed underneath it. -/
+
+def twiceDiff : Option (Val × Val) :=
+  match sealOf capSeal with
+  | none => none
+  | some nd =>
+    match readSeal nd (stAt 1) with
+    | .error _ => none
+    | .ok (v1, st1) =>
+      match readSeal nd { st1 with env := [(⟨0, "N"⟩, .know (Term.nat 2))] } with
+      | .error _ => none
+      | .ok (v2, _) => some (v1, v2)
+
+example : (twiceDiff.map (fun p => p.1 == p.2)) = some false := by native_decide
+
+/-! ## D. SITE STABILITY (§6's sharp edge, asked not assumed)
+
+    A site must survive the two things that rewrite a program without changing
+    it. **Macro expansion**: the numbering pass runs at the boundary, after every
+    macro, so `fn`'s elaboration cannot move one — asserted by numbering the
+    elaborated term. **α-canonicalization**: the pass reads structure and never a
+    name, so renaming every binder leaves every site where it was. -/
+
+def twoSeals : Term := prog{
+  let F = (λ (x : Nat). S x : Π (x : Nat) → Nat);
+  let G = (λ (y : Nat). S y : Π (y : Nat) → Nat);
+  () }
+def twoSealsRenamed : Term := prog{
+  let F = (λ (aa : Nat). S aa : Π (aa : Nat) → Nat);
+  let G = (λ (bb : Nat). S bb : Π (bb : Nat) → Nat);
+  () }
+
+/-- Every site in a term, in traversal order. -/
+partial def sites : Term → List Nat
+  | .seal s t u => s :: sites t ++ sites u
+  | .letIn _ a b => sites a ++ sites b
+  | .seq a b | .app a b => sites a ++ sites b
+  | .lam _ d b | .pi _ d b | .sigmaT _ d b => sites d ++ sites b
+  | _ => []
+
+example : sites (Term.numberSeals twoSeals).2 = [0, 1] := by native_decide
+-- α-INSENSITIVE: rename every binder and the sites do not move.
+example : sites (Term.numberSeals twoSeals).2
+        = sites (Term.numberSeals twoSealsRenamed).2 := by native_decide
+-- And they are DISTINCT, so two textually identical seals at two program points
+-- stay two functions — which is what makes the site a site and not a hash.
+example : (Term.numberSeals twoSeals).1 = 2 := by native_decide
+
+/-! ## E. THE EXECUTING MACHINE GAINS NOTHING
+
+    The acceptance contract's own words: no comparison, no ⇝ detour. Concrete
+    evaluation reads a seal transparently, so it never asks which σ a site has —
+    and the table it would have to compare against is empty when the program
+    ends. (The `fn` here is REACHED, so the assertion is not vacuous: `y` holds
+    what the callee computed.) -/
+
+def execProg : Term := prog{
+  fn Inc (n : Nat) -> Nat { S n };
+  let y = Inc(2);
+  () }
+
+def execSealSites : Option Nat :=
+  match (do let _ ← readR defaultFuel (atBoundary execProg); endScope defaultFuel).run
+      { initSt with executing := true } with
+  | .ok _ st => some st.sealSites.length
+  | .error _ _ => none
+
+example : execSealSites = some 0 := by native_decide
+example : progRunsTo execProg [("Inc", .closure [] (Term.lamTel
+            [(⟨0, "n"⟩, .const "Nat")] (.ctorApp "S" [.var ⟨0, "n"⟩]))),
+          ("y", Val.nat 3)] = true := by native_decide
+
+end Dllbc.Tests.S32Seal
+end
+-- └── end of the M32 R3 ⇝-sealing battery ─────────────────────────────────────
