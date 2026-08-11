@@ -368,23 +368,43 @@ def localId (rctx : List (String × Nat)) (s : String) : Option Nat :=
     Every such name is capital, because the `fn` row refuses a lowercase one
     (§2.1).
 
-    **Stage A's safety argument for this lookup has expired, and the replacement
-    is a naming convention rather than a condition here.** Stage A could say the
-    names this answers for are exactly the ones the raw-Lean fallthrough never
-    had a reading for, because every lemma Term was lowercase. Stage C
-    capitalised the lemmas, so the two families now share one namespace and this
-    lookup — consulted BEFORE the fallthrough — shadows a lemma of the same name.
-    Two names collided and both took the **`L` suffix on the lemma** (`swapL`'s
+    **Stage A's safety argument for this lookup expired at Stage C, and M32 R1
+    turns the replacement convention into a CHECK.** Stage A could say the names
+    this answers for are exactly the ones the raw-Lean fallthrough never had a
+    reading for, because every lemma Term was lowercase. Stage C capitalised the
+    lemmas, so the two families now share one namespace and this lookup —
+    consulted BEFORE the fallthrough — shadows a lemma of the same name. Two names
+    collided and both took the **`L` suffix on the lemma** (`swapL`'s
     L-for-list-spec, generalised): `fn Nth` against the cursor lemma, now `NthL`;
-    `fn SplitA` against the split predicate, now `SplitAL`. The invariant to hold
-    going forward is therefore stated in the corpus, not enforced in the code: a
-    library lemma that shares a spelling with a `fn` takes the suffix. It is
-    checkable in one grep — `StdLemmas` definition names against `fn` heads — and
-    M32's name-keyed store is where making it a real condition would belong. -/
+    `fn SplitA` against the split predicate, now `SplitAL`. The invariant was
+    stated in the corpus and enforced nowhere; `lemmaShadowCheck` below enforces
+    it, at the one place both names are in view. -/
 def fnSlotId (rctx : List (String × Nat)) (s : String) : Option Nat :=
   match rctx.lookup s with
   | some id => if id ≥ Dllbc.FnMacro.progBase then some id else none
   | none => none
+
+/-- **The L-suffix condition, checked** (M32 R1).
+
+    A `fn` slot wins over the raw-Lean fallthrough, so a `fn` whose name spells a
+    `StdLemmas` lemma makes that lemma unreachable in every block the `fn` is
+    above — silently, since both readings are well-typed. Under M32's name-keyed Ω
+    the same spelling additionally resolves the same STORE entry, so what was a
+    surface-level shadowing is now a store-level one too, and a convention nobody
+    checks is the wrong size of guarantee for it.
+
+    The test is asked of the collision family the convention is about — a
+    `Dllbc.StdLemmas` definition of that exact name — rather than of any Lean
+    global, because "is this identifier bound somewhere in Lean" answers yes for
+    reasons that have nothing to do with the corpus (a `List` combinator, an
+    opened namespace) and would refuse `fn` names that shadow nothing anyone can
+    write here. The fix named in the message is the one the corpus already took
+    twice: the LEMMA takes the suffix, because the function is the user-facing
+    name (Stage C addendum item 2). -/
+def lemmaShadowCheckAt (ref : Syntax) (s : String) : MacroM Unit := do
+  let cands ← Macro.resolveGlobalName (`Dllbc.StdLemmas ++ Name.mkSimple s)
+  if !cands.isEmpty then
+    Macro.throwErrorAt ref s!"fn: '{s}' shadows the library lemma `Dllbc.StdLemmas.{s}`. A `fn` slot is resolved before the raw-Lean fallthrough, so no block below this declaration can name the lemma, and under M32's name-keyed Ω the two spellings resolve one store entry. Give the LEMMA the `L` suffix ({s} → {s}L) — the function is the user-facing name and does not move."
 
 /-- Resolve a bare identifier in a type/back position. Pure binder in scope →
     `pvar` at that very name; earlier telescope param → `var`; constructor →
@@ -790,6 +810,10 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- is a comptime value — so the surface says so rather than hiding it.
     if !Dllbc.isUpperInit (name.getId.toString) then
       Macro.throwErrorAt name s!"fn: '{name.getId}' must be capitalised. A function is COMPTIME knowledge (§2.1) — ⇝-read, erased, never ⇒-consumed — and §6 makes capitalisation the mode marker, so a function name is a capital name. Write `fn {(name.getId.toString).capitalize} …`."
+    -- **The L-suffix condition** (M32 R1), asked at the DECLARATION rather than at
+    -- `resolveName`'s slot hit, because a `fn` that is never referenced shadows
+    -- the lemma just as thoroughly and would go unasked there.
+    lemmaShadowCheckAt name (name.getId.toString)
     let parsed ← ps.getElems.toList.mapM fun (p : TSyntax `ulamb) => match p with
       | `(ulamb| $x:ident : $τ:uterm) => pure (x.getId.toString, τ)
       | _ => Macro.throwErrorAt p "fn: malformed parameter (expected `x : τ`)"

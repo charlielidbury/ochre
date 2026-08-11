@@ -179,11 +179,12 @@ structure St where
       `mergeRoot` all `map` over Ω and so are length- and order-preserving), so
       an index taken before a drop sweep is still valid after it.
 
-      **The one site that is neither** is `readCWith`, which PREPENDS a callee's
-      actuals and restores Ω exactly before returning — so the violation cannot be
-      observed: it opens no scope, closes none, and nothing inside a ⇝ reflection
-      takes a watermark. Enumerated here rather than trusted, because a second
-      prepending site would break the mechanism silently. -/
+      **The one site that is neither** is `readCWith`, which APPENDS a callee's
+      actuals (it PREPENDED until M32 R1 re-keyed resolution by name) and restores
+      Ω exactly before returning — so the violation cannot be observed: it opens no
+      scope, closes none, and nothing inside a ⇝ reflection takes a watermark.
+      Enumerated here rather than trusted, because a second Ω-splicing site would
+      break the mechanism silently. -/
   scopeMarks : List (Nat × Bool) := []
 deriving Inhabited
 
@@ -220,9 +221,41 @@ def getEnv : M Omega := do pure (← get).env
 /-- Replace Ω. -/
 def setEnv (ω : Omega) : M Unit := modify (fun s => { s with env := ω })
 
-/-- Look up a slot by variable id. Errors if the id is not an entry. -/
+/-! ### Resolution is by NAME, newest entry wins (M32 R1, E2 option (i))
+
+    Ω is still an insertion-ordered `List (Var × Val)` and every `Var` still
+    carries its id; what changed is that RESOLUTION ignores the id. `bindSlot`
+    appends, so the newest binding of a name is the RIGHTMOST entry and "newest
+    wins" is "take the last match" — which is why every reader below is a
+    `getLast?` over a filter rather than a `find?`.
+
+    What makes it sound is M31 Stage 0's pop-with-drop: an ended scope leaves no
+    entry behind to shadow a later lookup, and a body may name only its own
+    binders and the capital bindings above it (functions-are-comptime §2.4), so a
+    live duplicate name is always a genuine shadowing and newest-wins is what it
+    means. Everything that crosses frames — loans, borrows, obligations, the
+    audit — is ℓ-keyed and shadow-immune by construction.
+
+    The frame shift (`freshFrame`/`shiftVarsK`) is untouched and stays: it
+    renumbers ids and PRESERVES names, so store resolution is indifferent to it.
+    Its deletion is a separate question with its own differential (Stage R4).
+
+    **The soundness condition this creates** is the L-suffix convention (M31
+    Stage C's addendum item 2), which stops being style the moment a name is what
+    resolves: a library lemma sharing a spelling with a `fn` is genuinely shadowed
+    by it. `Dllbc.Std.lemmaFnCollisions` is that check. -/
+
+/-- The newest binding of `x`'s NAME in `ω`, if any. -/
+def findSlot? (ω : Omega) (x : Var) : Option (Var × Val) :=
+  (ω.filter (fun kv => kv.1.name == x.name)).getLast?
+
+/-- Its position, for the in-place update `setSlot` must make. -/
+def slotIdx? (ω : Omega) (x : Var) : Option Nat :=
+  (ω.enum.filter (fun p => p.2.1.name == x.name)).getLast?.map (·.1)
+
+/-- Look up a slot by name, newest wins. Errors if the name is not an entry. -/
 def lookupSlot (x : Var) : M Val := do
-  match (← getEnv).find? (fun kv => kv.1.id == x.id) with
+  match findSlot? (← getEnv) x with
   | some kv => pure kv.2
   | none => throwErr s!"lookupSlot: {x.name}#{x.id} is not an entry of Ω (unbound at runtime)"
 
@@ -258,10 +291,9 @@ def takeScopeMark : M (Option (Nat × Bool)) := do
 /-- Overwrite an existing slot in place, preserving order. Errors if absent. -/
 def setSlot (x : Var) (v : Val) : M Unit := do
   let ω ← getEnv
-  if ω.any (fun kv => kv.1.id == x.id) then
-    setEnv (ω.map (fun kv => if kv.1.id == x.id then (kv.1, v) else kv))
-  else
-    throwErr s!"setSlot: {x.name}#{x.id} is not an entry of Ω"
+  match slotIdx? ω x with
+  | some j => setEnv (ω.enum.map (fun p => if p.1 == j then (p.2.1, v) else p.2))
+  | none => throwErr s!"setSlot: {x.name}#{x.id} is not an entry of Ω"
 
 /-! ## Value-tree search and rewrite
 
@@ -1088,12 +1120,22 @@ def readC (fuel : Nat) (t : Term) : M Val := do
 /-- ⇝ against extra bindings prepended to Ω — how a dependent call instantiates a
     callee telescope type (§5.3): the decl's parameter vars are bound to the
     caller's actuals in `extra`, so a `.var`-reference to an earlier parameter
-    (the §5.2 convention) reflects to the value passed for it. The decl's types
-    mention only decl vars, so `extra` shadows any id clash with caller slots.
+    (the §5.2 convention) reflects to the value passed for it.
+
+    **The instantiation is APPENDED, and this is the one site where re-keying is
+    not a local rewrite** (M32 R1). Under id keying `extra` had to go in FRONT,
+    because `find?` takes the first match and the decl's parameter ids (`0 … k`)
+    collide with the caller's own locals — prepending was how the actuals won.
+    Under rightmost-wins name keying, front is the OLDEST position, so prepending
+    would make the CALLER's binding of a parameter's name win: the parameter type
+    would be read at the caller's value instead of the actual. Appending restores
+    the intended shadowing, and the id collision that forced the original order is
+    void.
+
     Env is restored afterward (the reflection's let-footprint is discarded). -/
 def readCWith (fuel : Nat) (extra : Omega) (t : Term) : M Val := do
   let saved := (← get).env
-  modify (fun s => { s with env := extra ++ s.env })
+  modify (fun s => { s with env := s.env ++ extra })
   let v ← readC fuel t
   modify (fun s => { s with env := saved })
   pure v
@@ -2016,7 +2058,7 @@ def placeToPos (fuel : Nat) : Term → M Pos
     before it scans and every operation merges after it finishes, so no site can be
     forgotten. Cheap and total on non-array values. -/
 def mergeRoot (root : Var) : M Unit := do
-  match (← getEnv).find? (fun kv => kv.1.id == root.id) with
+  match findSlot? (← getEnv) root with
   | some kv => setSlot root (Val.mergeArrays kv.2)
   | none => pure ()
 
@@ -2242,7 +2284,7 @@ def peek? : Nat → Val → Option Val
     arrows disagree about the same slot and the pure read silently yields the marker. -/
 partial def collapseCDerefs (fuel : Nat) : Term → M Unit
   | .var x => do
-    match (← getEnv).find? (fun kv => kv.1.id == x.id) with
+    match findSlot? (← getEnv) x with
     | some ⟨_, .loanM ℓ⟩ => do endLoan fuel ℓ; collapseCDerefs fuel (.var x)
     | _ => pure ()
   | .deref inner => do
@@ -2250,7 +2292,7 @@ partial def collapseCDerefs (fuel : Nat) : Term → M Unit
     match placeOf? (.deref inner) with
     | none => pure ()
     | some (root, d) =>
-      match (← getEnv).find? (fun kv => kv.1.id == root.id) with
+      match findSlot? (← getEnv) root with
       | none => pure ()
       | some kv =>
         match peek? d kv.2 with
@@ -3288,7 +3330,7 @@ def auditAllPaths : Nat → Term → List (Except String (Val × St)) → St →
 def admitGlobals (what : String) (nbinders : Nat) (free : List Var) : M Omega := do
   let st ← get
   free.foldlM (fun acc x => do
-    if acc.any (fun kv => kv.1.id == x.id) then pure acc
+    if acc.any (fun kv => kv.1.name == x.name) then pure acc
     else
       -- **THE CITATION RULE** (M31 Stage A, §2.4). The test is the binder's MODE,
       -- and it is asked before the lookup because it is a fact about the name
@@ -3311,7 +3353,7 @@ def admitGlobals (what : String) (nbinders : Nat) (free : List Var) : M Omega :=
       -- bound nowhere is a forward reference, and saying "it is lowercase" of one
       -- would diagnose the wrong thing about a program whose real problem is that
       -- the name does not exist.
-      match st.env.find? (fun kv => kv.1.id == x.id) with
+      match findSlot? st.env x with
       | none =>
         throwErr s!"{what}: the body mentions {x.name}#{x.id}, which is none of its {nbinders} binder(s) and is not bound anywhere above it. §8 makes SCOPE the call table — a body may call the functions bound lexically above it, and a let-chain cannot reference downward, so a forward reference is unwritable rather than merely rejected."
       | some kv =>
@@ -3752,7 +3794,7 @@ mutual
           -- what M31 dissolves.
           match appSpineVar? t with
           | some (x, args) =>
-            match (← get).env.find? (fun kv => kv.1.id == x.id) with
+            match findSlot? (← get).env x with
             | some kv => do
               let st ← get
               let isFn : Bool :=
