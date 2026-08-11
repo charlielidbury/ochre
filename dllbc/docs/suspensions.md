@@ -136,12 +136,25 @@ judgment (imperative — it already runs in its own fresh store); forget half by
 structure — the sealed value is the **seal SITE applied to its captured inputs**, a
 structured neutral, deterministic and distinguishing (`fsig` keys by site).
 
-### 2.5 No function in a runtime slot — structurally
+### 2.5 No function in a runtime slot — REFUTED as stated (R3 finding), subsumed into R3b
 
-λ formation is ⇝-only, so the invariant needs ONE enforcement point: the pure
-lift's result must be data, not a function (`let f = Add 1` fails there). Stage A's
-backstop is deleted; the corpus's lowercase partial-application bindings migrate
-capital in the same commit.
+**The premise "⇒ can no longer construct a function value" is false: a proof of a
+∀-statement IS a λ.** Measured twice by R3, both built and reverted: refusing the
+pure lift's function results reds quicksort's count equation (the count-preservation
+proof is `λ(§0 : Nat). …`, a proof of a Π), and refusing `readR`'s λ arm reds the
+programs that carry proof-λs in Σ components and constructor fields as DATA. The
+corpus's lowercase function-valued bindings number SEVEN (measured), all partial
+applications of proof-builders (`let cnt = MkL lo hi hcnt`) — and capitalising them
+TODAY walls at the fence (`Cnt cannot be ⇒-moved`) because Σ components and argument
+positions still ⇒-read; nothing separates them from `let f = Add 1`.
+
+So the invariant's enforcement and the §2.1 binder migration are blocked on the SAME
+fact and cannot land separately: a returned proof needs a capital binder, which
+needs Σ-component and parameter binder modes to change — which IS the migration.
+**§2.5 is subsumed into R3b**, attempted terminally there; `S32Backstop` pins two
+accepted programs as tripwires against anyone concluding the rule already holds.
+What R3's demolition DID buy at zero cost: three enforcement sites became one
+(`refuseFnBinding` at the `let`; `fenceComptime` owns the rule and its advice).
 
 ### 2.6 Application surface: spines only
 
@@ -249,8 +262,32 @@ not a rider on a representation stage. Sequencing: R3b after R3, before R4 (R4's
 `Var.bindsSlot` replacement can only become a case test after the migration — the
 coupling is now measured). Meanwhile the fragment keys on `Var.bindsSlot`.
 
-**Stage R3 — arrows exceptionless.** ⇝-sealing (site-σ); `comptimeRhs` carve-outs
-deleted; no-⇒-λ + backstop demolition + the partial-application migration.
+**Stage R3 — arrows exceptionless: RUN** (branch `m32-r3` @ fdb83166, stacked on
+R2; corpus green; goldens BYTE-UNCHANGED across six files including σ numbering).
+Items 1–2 landed at zero differential: the seal has a SITE (assigned by a boundary
+pass — stable across macros and α by construction, asserted); the "structured
+neutral" landed INTERNED (a (site, inputs) → σ table, so rendering is identical to
+the ⇒-seal's and the audit runs once per (site, inputs) — recorded deviation);
+`sealNode` is one rule with two callers and the audit's isolation carries
+`sealSites` out with the supplies; **`Var.comptimeRhs` is DELETED** and the
+invariant is one sentence, no footnote: *"A capital `let` ⇝-reads its right-hand
+side; a lowercase `let` ⇒-reads it."* The executing machine is byte-for-byte the
+pre-R3 call. Items 3–4 (no-⇒-λ, backstop derivability) REFUTED as stated — see
+§2.5 — and re-staged onto R3b; the demolition's consolidation (three sites → one)
+kept. Controls: sabotage red at 21 including flagship and both canary directions;
+seal determinism §B with its §C control (same site + different inputs distinguishes
+— without which a site-only table would pass §B).
+
+**Stage R3b — the binder migration, now carrying §2.5.** The §2.1 universal-binder
+migration (measured: 10,777 flagship binders, ~3,700 source sites, seven
+function-valued lowercase bindings), executed as the deliberate behaviour-change
+stage it is: capital = binds comptime knowledge (proofs, types, specs,
+pure-function values), lowercase = runtime data/borrows; scope-sensitive renames,
+per-class enumerated differentials (stdlib pure binders; signature Σ/Π binders —
+these flip component/argument reading, which is the intent; telescope proof
+parameters; the seven §2.5 bindings). TERMINAL ATTEMPT: with the migration landed,
+retry no-⇒-λ and the one-boundary rule; the `S32Backstop` tripwires must flip
+deliberately or the attempt reverts and the residual is reported as a finding.
 
 **Stage R4 — spines + sweep.** `callV` retires; §1's deletion list completed; E2's
 id machinery removed; docs/logs currency.
