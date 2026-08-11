@@ -54,7 +54,7 @@ range borrow an ordinary `&mut` rather than a new aliasing judgment.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (le_refl le_add)
+open Dllbc.StdLemmas (LeRefl LeAdd)
 
 namespace Dllbc.Tests.S24Arrays
 
@@ -112,7 +112,7 @@ example : (pv prog{ arrCat 2 1 (arrCat 1 1 Arr(3) Arr(1)) Arr(2) } ==
 def catSyms : Val := Val.arrCatS (Val.nat 2) (Val.nat 1) (.sym 0) (.sym 1)
 example : (Val.nfV 100 catSyms == catSyms) = true := by native_decide
 
--- `arrCat m k a b : Array (add m k) T` — the empty-run absorption is what makes a
+-- `arrCat m k a b : Array (Add m k) T` — the empty-run absorption is what makes a
 -- DEGENERATE carve's rejoin conversion definitional instead of lemma-mediated.
 example : (Val.nfV 200 (Val.arrCatS (Val.nat 0) (Val.nat 2) (.ctor "Arr" []) (.sym 0)) ==
            Val.sym 0) = true := by native_decide
@@ -130,7 +130,7 @@ example : (agetSymIdx == Val.nfV 200 agetSymIdx) = true := by native_decide
 /-! ## (i.d) The cons view: `acons` and `arrRec`
 
     ¶1.3's reason for the second view: "Every lemma in the quicksort library —
-    `count`, `Sorted`, `Bound`, the order stack — transfers to arrays by replacing
+    `Count`, `Sorted`, `Bound`, the order stack — transfers to arrays by replacing
     `listRec` with `arrRec` and `Cons` with `acons`." The library transfer itself is
     ¶6's migration; what is checked here is that the recursor computes. -/
 
@@ -263,12 +263,12 @@ example : ((.ctor "Arr" [Val.nat 3, Val.nat 1, Val.nat 2] : Val).symIds == []) =
 example : (Val.renumber id (· + 10) carvedWithLoan == segsOf [(1, .sym 10), (2, .loanM 7), (1, .sym 11)])
     = true := by native_decide
 
-/-! ## (i.h) `Le` and `add` moved into the kernel
+/-! ## (i.h) `Le` and `Add` moved into the kernel
 
-    A DEVIATION worth flagging: `Le` and `add` were library terms (`Std`), but the
+    A DEVIATION worth flagging: `Le` and `Add` were library terms (`Std`), but the
     CARVE rule's premises are *stated* against them — premise (2) IS a `Le`, premise
-    (3) decomposes an extent with `add` — and a kernel rule cannot cite a library it
-    does not import. Two syntactically different `add`s would never convert, which
+    (3) decomposes an extent with `Add` — and a kernel rule cannot cite a library it
+    does not import. Two syntactically different `Add`s would never convert, which
     would break the one conversion the whole residue-transition decision exists to
     make definitional (¶3.4's audit). So both moved to `Pure.lean` and `Std` aliases
     them; these two tests are the single-source-of-truth check. -/
@@ -349,11 +349,11 @@ example : expectEnv prog{
    ("m", .borrowM 0 (.ctor "Arr" [Val.nat 7, Val.nat 2])),
    ("x", Val.nat 3)] = true := by native_decide
 
-/-! ### `get` and `set` are not primitives (¶2.3)
+/-! ### `get` and `Set` are not primitives (¶2.3)
 
     They are the two arrows at the index place. No kernel primitive is added for
-    either, and the M22 `nth`/`nth2`/`set` library — 26 lines of recursive cursor plus
-    a pure `set` model — is what this DELETES rather than ports. -/
+    either, and the M22 `NthL`/`nth2`/`Set` library — 26 lines of recursive cursor plus
+    a pure `Set` model — is what this DELETES rather than ports. -/
 
 -- ⇐ at an index place: write the element (with §2.3's drop of the displaced value
 -- forced first — a Nat, so discard).
@@ -389,7 +389,7 @@ example : expectEnv prog{ let a = Arr(3, 1, 2);
 
 /-! ### Carve of carve collapses definitionally (¶3.2's fourth Low\* lemma)
 
-    `carve_carve : (a[lo₁ ; cnt₁])[lo₂ ; cnt₂] ≡ a[add lo₁ lo₂ ; cnt₂]` is the one the
+    `carve_carve : (a[lo₁ ; cnt₁])[lo₂ ; cnt₂] ≡ a[Add lo₁ lo₂ ; cnt₂]` is the one the
     doc says "a DLLBC implementer will underestimate", because without it every
     sub-slice of a sub-slice accumulates a chain of offsets no conversion sees through.
     It holds with no lemma at all, and for the reason the doc predicts: premise (3)
@@ -423,7 +423,7 @@ example : expectErr prog{ let a = Arr(3, 1, 2, 7, 5);
   "no leaf" = true := by native_decide
 
 -- OUT OF RANGE — premise (2) has no inhabitant and none can be supplied, because
--- `Le (add lo cnt) n` computes to ⊥.
+-- `Le (Add lo cnt) n` computes to ⊥.
 example : expectErr prog{ let a = Arr(3, 1, 2); let m = &m a[1 ; 3]; () }
   "containment obligation" = true := by native_decide
 example : expectErr prog{ let a = Arr(3, 1, 2); let x = a[3]; () }
@@ -492,12 +492,12 @@ example : expectErr prog{ let a = Arr(3, 1, 2, 7, 5);
     ```
 
     Read the two carves against each other, because the contrast IS the design. The
-    FIRST does everything: its obligation is `Le Z Z × Le (add Z k) (add Z n)`, which
+    FIRST does everything: its obligation is `Le Z Z × Le (Add Z k) (Add Z n)`, which
     computes to `⊤ × Le k n` and is discharged by `h`; its residue transition solves
-    `n ≡ add k rest` with `n` flex, refining the LENGTH INDEX everywhere; and its body
+    `n ≡ Add k rest` with `n` flex, refining the LENGTH INDEX everywhere; and its body
     split refines `σ := arrCat k rest σ_l σ_r`. The SECOND does nothing at all — its
     request IS the leaf, so no split and no refinement fire, and no evidence is
-    demanded because `Le b b` and `Le x x` are `le_refl`. That asymmetry is the general
+    demanded because `Le b b` and `Le x x` are `LeRefl`. That asymmetry is the general
     shape of an exhaustive split, and it is why this costs ONE proof rather than two. -/
 def halves : Term := prog{
   fn Halves (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
@@ -565,18 +565,18 @@ example : progRejects halvesSame "cannot peel a vacant slot" = true := by
 /-! ### Why the audit converts, and what it cost
 
     ¶3.4: "the obligation type for `a` is `Array n Nat`; the collapsed payload's
-    snapshot is `arrCat σ_l′ σ_r′` at `Array (add σₖ rest) Nat`; and these convert
-    DEFINITIONALLY, because the residue transition refined `σₙ := add σₖ rest` at the
-    carve. Had the carve computed `rest := sub n k` instead, this final conversion
-    would have needed `add k (sub n k) ≡ n`, which is not definitional and would have
+    snapshot is `arrCat σ_l′ σ_r′` at `Array (Add σₖ rest) Nat`; and these convert
+    DEFINITIONALLY, because the residue transition refined `σₙ := Add σₖ rest` at the
+    carve. Had the carve computed `rest := Sub n k` instead, this final conversion
+    would have needed `Add k (Sub n k) ≡ n`, which is not definitional and would have
     required a cited lemma at every audit of every array-mutating function in the
     program. That is the entire argument for premise (3)."
 
     The `progOk` above IS that conversion succeeding. One implementation detail
     turned out to be load-bearing and is worth naming, because getting it wrong looks
     like the design failing: the extent sum must be RIGHT-NESTED with no trailing `Z`.
-    `add` recurses on its first argument, so `add rest Z` is stuck the moment `rest` is
-    symbolic, and `Array (add k (add rest Z))` never converts with `Array (add k rest)`.
+    `Add` recurses on its first argument, so `Add rest Z` is stuck the moment `rest` is
+    symbolic, and `Array (Add k (Add rest Z))` never converts with `Array (Add k rest)`.
     The first version of the audit had the trailing zero and this exact test failed —
     not because premise (3) was wrong but because the sum was shaped wrong. -/
 
@@ -600,7 +600,7 @@ def wrongEvidence : Term := prog{
 example : progRejects wrongEvidence "containment obligation" = true := by native_decide
 
 -- Premise (3), RIGID LENGTH (¶8.4's named restriction). The leaf's extent is a
--- compound neutral rather than a flexible σ, so `m ≡ add lo' (add cnt rest)` has no
+-- compound neutral rather than a flexible σ, so `m ≡ Add lo' (Add cnt rest)` has no
 -- solution by refinement. Rejected with the remedy in the message, which is the one
 -- the north star already uses: take the length as a parameter.
 def rigidLength : Term := prog{
@@ -628,7 +628,7 @@ def walk : Term := prog{
   fn Walk [fuel] (fuel : Nat, n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
     match fuel {
       Z => (),
-      S(f2) => { let l = &m (*a)[Z ; k | h]; Walk(f2, k, k, le_refl k, l) }
+      S(f2) => { let l = &m (*a)[Z ; k | h]; Walk(f2, k, k, LeRefl k, l) }
     } };
   () }
 example : progOk walk = true := by native_decide
@@ -649,7 +649,7 @@ def walkArr : Term := prog{
   fn WalkArr [a] (fuel : Nat, n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
     match fuel {
       Z => (),
-      S(f2) => { let l = &m (*a)[Z ; k | h]; WalkArr(f2, k, k, le_refl k, l) }
+      S(f2) => { let l = &m (*a)[Z ; k | h]; WalkArr(f2, k, k, LeRefl k, l) }
     } };
   () }
 -- The twin differs from `walk` in the HINT ALONE — `[a]` where `walk` says
@@ -714,7 +714,7 @@ example : progOk callSeg = true := by native_decide
     no binder any program can write. The doc notices the tension at ¶5 ("more honestly
     written after the carve has run") but never resolves it.
 
-    `a[lo ; ..]` is the resolution, and it is not the `sub` ¶2.1 bans: it reads the
+    `a[lo ; ..]` is the resolution, and it is not the `Sub` ¶2.1 bans: it reads the
     residue's extent off the extent map, where premise (3) already parked it as a
     GIVEN. No arithmetic, no new obligation.
 
@@ -872,7 +872,7 @@ example : arrCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 b)
 /-! ## (v) Symbolic element access, the exhaustive split, and where it stops
 
     ¶3.5's note on what range places replace: M13's `nth2` carries
-    `pij : Le (S i) j` and `p2 : Le (S j) (len *v)`, and "the evidence has been
+    `pij : Le (S i) j` and `p2 : Le (S j) (Len *v)`, and "the evidence has been
     threaded through every swap site since M13 … Range places take the same terms and
     give them their real job". So the obligation at `a[i]` had better BE that term. -/
 
@@ -881,15 +881,15 @@ example : arrCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 b)
     Two adjustments, neither changing what the premise MEANS, both required for it to
     be dischargeable at all.
 
-    First, the end of the range. `add` recurses on its FIRST argument, so `add lo cnt`
+    First, the end of the range. `Add` recurses on its FIRST argument, so `Add lo cnt`
     is stuck whenever `lo` is symbolic — and at every `a[i]` the count is literally 1,
-    making the obligation read `Le (add i (S Z)) n`. No program writes that, and no
+    making the obligation read `Le (Add i (S Z)) n`. No program writes that, and no
     lemma in the library produces it. `S i` denotes the same number, is definitionally
     a constructor tree, and is exactly M14's cursor bound. A concrete count is
-    therefore unrolled into successors; a symbolic one keeps `add`, where it computes.
+    therefore unrolled into successors; a symbolic one keeps `Add`, where it computes.
 
     Second, the containment is stated LEAF-RELATIVELY when the leaf-relative offset is
-    already known. `Le` computes by double `natRec`, so `Le (add b cnt) (add b m)` is
+    already known. `Le` computes by double `natRec`, so `Le (Add b cnt) (Add b m)` is
     stuck on a symbolic `b` and never converts with the `Le cnt m` a program can
     supply. Premise (3)'s own logic is that offsets are leaf-relative; premise (2)
     should be too. -/
@@ -965,7 +965,7 @@ example : progOk splitTwo = true := by native_decide
     Three routes. (a) Let the program SUPPLY the residue rather than have the checker
     mint it — `a[lo ; cnt ; rest | h]`, with premise (3) solving `m ≡ add lo' (add cnt
     rest)` against the supplied term instead of a fresh σ. This keeps premise (3)
-    exactly as it is (still a solution transition, still no `sub`), reduces to the
+    exactly as it is (still a solution transition, still no `Sub`), reduces to the
     current behaviour when omitted, and is ¶8.4's own escape hatch: "name the equation
     and carry it, rather than solving it". (b) Let the carve BIND its residue in the
     surface. (c) Σ-typed slices, `Σ (c : Nat). &mut (Array c T)`, which ¶4 claims needs
@@ -1078,7 +1078,7 @@ example : (Val.nfV 300 (Val.kLe (Val.nat 1) (.sym 0)) == .const "Unit")
 
     `a[lo ; cnt ; rest | h]` supplies premise (3)'s residue extent instead of letting
     the checker mint a σ no binder can name. Premise (3) is otherwise untouched — the
-    same solution transition, still no `sub` — and omitting the slot restores the
+    same solution transition, still no `Sub` — and omitting the slot restores the
     minting behaviour exactly.
 
     This is the third instance of a house pattern: an OPTIONAL surface element that
@@ -1097,7 +1097,7 @@ example : (Val.nfV 300 (Val.kLe (Val.nat 1) (.sym 0)) == .const "Unit")
 /-- ¶6's THREE-WAY carve: left half | pivot slot | right half, all three live at once.
 
     ```rust
-    let l = &mut (*v)[Z    ; i ; S j | le_add i (S j)];
+    let l = &mut (*v)[Z    ; i ; S j | LeAdd i (S j)];
     let p = &mut (*v)[i    ; 1 ; j];        -- obligation ⊤; no evidence needed
     let r = &mut (*v)[S i  ; ..];           -- degenerate
     ```
@@ -1107,14 +1107,14 @@ example : (Val.nfV 300 (Val.kLe (Val.nat 1) (.sym 0)) == .const "Unit")
     is correct: the pivot is in its final position and must not move. The calculus is
     enforcing that, for free, by the same mechanism that keeps the halves apart.)"
 
-    The two obligations are the two the design predicts. The first is `Le i (add i (S j))`
-    — `le_add`, which the library already had for M22. The second is `Le 1 (S j)`, which
+    The two obligations are the two the design predicts. The first is `Le i (Add i (S j))`
+    — `LeAdd`, which the library already had for M22. The second is `Le 1 (S j)`, which
     reduces to `Le Z j` and then to ⊤, so **the carve that could not be written at all
     now needs no evidence whatsoever**. -/
 def threeWay : Term := prog{
   fn ThreeWay (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S j)),
                a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | le_add i (S j) | heq];
+    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | heq];
     let p = &m (*a)[i ; 1 ; j];
     let r = &m (*a)[S i ; ..];
     () };
@@ -1127,7 +1127,7 @@ example : progOk threeWay = true := by native_decide
 def threeWayAll : Term := prog{
   fn ThreeWayAll (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S j)),
                   a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | le_add i (S j) | heq];
+    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | heq];
     let p = &m (*a)[i ; 1 ; j];
     let r = &m (*a)[S i ; ..];
     let z = *r;
@@ -1145,19 +1145,19 @@ example : progOk threeWayAll = true := by native_decide
 
 -- The pivot carve needs NO cited evidence, which is route (a)'s second payoff and the
 -- reason it beats merely naming the residue: `Le 1 rest` was unwritable, and after
--- `rest := S j` the obligation is ⊤. Dropping `le_add` from the FIRST carve, whose
+-- `rest := S j` the obligation is ⊤. Dropping `LeAdd` from the FIRST carve, whose
 -- obligation does not compute away, is still rejected.
 def threeWayNoFirstEv : Term := prog{
   fn ThreeWayNoFirstEv (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S j)),
                         a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | le_refl i | heq];
+    let l = &m (*a)[Z ; i ; S j | LeRefl i | heq];
     let p = &m (*a)[i ; 1 ; j];
     () };
   () }
 example : progRejects threeWayNoFirstEv "containment obligation" = true := by native_decide
 
 /-- **The DECOMPOSITION CITATION's negative control**, and the one the M25 ruling turns
-    on. Supplying a residue asserts that the leaf's extent decomposes as `add cnt rest`.
+    on. Supplying a residue asserts that the leaf's extent decomposes as `Add cnt rest`.
     When the extent is a telescope parameter's σ that assertion is a constraint on this
     function's CALLERS, and premise (3) refuses to impose it by unification — the
     program must CITE the equation, exactly as M17 requires of every other cross-boundary
@@ -1165,7 +1165,7 @@ example : progRejects threeWayNoFirstEv "containment obligation" = true := by na
     `i = j = 5` checked with it and then got STUCK when executed. -/
 def threeWayUncited : Term := prog{
   fn ThreeWayUncited (n : Nat, i : Nat, j : Nat, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | le_add i (S j)];
+    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j)];
     () };
   () }
 example : progRejects threeWayUncited "may not impose it by refining" = true := by
@@ -1176,7 +1176,7 @@ example : progRejects threeWayUncited "may not impose it by refining" = true := 
 def threeWayWrongEq : Term := prog{
   fn ThreeWayWrongEq (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S (S j))),
                       a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | le_add i (S j) | heq];
+    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | heq];
     () };
   () }
 example : progRejects threeWayWrongEq "cited decomposition does not have type" = true := by
@@ -1188,7 +1188,7 @@ example : progRejects threeWayWrongEq "cited decomposition does not have type" =
 def threeWayLyingResidue : Term := prog{
   fn ThreeWayLyingResidue (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i j),
                            a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; j | le_add i j | heq];
+    let l = &m (*a)[Z ; i ; j | LeAdd i j | heq];
     let p = &m (*a)[i ; 1 ; j];
     () };
   () }
@@ -1207,7 +1207,7 @@ def threeWayCall : Term := prog{
   fn SliceTake (q : Nat, s : &mut (Array q Nat)) -> Unit { () };
   fn ThreeWayCall (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S j)),
                    a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | le_add i (S j) | heq];
+    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | heq];
     let p = &m (*a)[i ; 1 ; j];
     let r = &m (*a)[S i ; ..];
     SliceTake(i, l);
@@ -1219,15 +1219,15 @@ example : progOk threeWayCall = true := by native_decide
 /-! ### The extent map's running base is spelled `S^k b` too
 
     Same reason as R7's range end, found by the third carve: the segment after a
-    width-1 pivot has base `add i 1`, which is stuck on a symbolic `i` and never
+    width-1 pivot has base `Add i 1`, which is stuck on a symbolic `i` and never
     converts with the `S i` a program writes. A concrete count advances the base by
-    successors; a symbolic one keeps `add`, where it computes. Without this,
+    successors; a symbolic one keeps `Add`, where it computes. Without this,
     `(*a)[S i ; ..]` cannot find the segment it just created. -/
 
 example : progOk (prog{
   fn BaseSpelling (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S j)),
                    a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | le_add i (S j) | heq];
+    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | heq];
     let p = &m (*a)[i ; 1 ; j];
     let r = &m (*a)[S i ; j];
     () };
@@ -1236,11 +1236,11 @@ example : progOk (prog{
 
 /-! ## (viii) The ARRAY LIBRARY — ¶1.3's promise, and ¶6's crux claim
 
-    ¶1.3: "Every lemma in the quicksort library — `count`, `Sorted`, `Bound`, the order
+    ¶1.3: "Every lemma in the quicksort library — `Count`, `Sorted`, `Bound`, the order
     stack — transfers to arrays by replacing `listRec` with `arrRec` and `Cons` with
     `acons`. Nothing about the migration requires re-deriving that mathematics."
 
-    ¶6, on the glue: "Set `append ↦ arrCat` and `Cons p b ↦ arrCat (asingle p) r` and it
+    ¶6, on the glue: "Set `Append ↦ arrCat` and `Cons p b ↦ arrCat (Asingle p) r` and it
     IS the array lemma, hypothesis for hypothesis — not merely the same shape but the
     same statement modulo the container … So the migration INHERITS that proof rather
     than opening a stratum. Claim exactly that and no wider: **one stratum deleted
@@ -1254,19 +1254,19 @@ def chkL (tm ty : Term) : Bool :=
   | .ok r _ => r
   | .error _ _ => false
 
-open Dllbc.StdLemmas (countA SortedA UbA LbA BoundA asingle
-  sorted_headA sorted_headA_ty sorted_tailA sorted_tailA_ty
-  ub_headA ub_headA_ty ub_tailA ub_tailA_ty lb_boundA lb_boundA_ty
-  bound_arrCat bound_arrCat_ty sorted_arrCat sorted_arrCat_ty
-  count_arrCat count_arrCat_ty
-  count_acons_hit count_acons_hit_ty count_acons_miss count_acons_miss_ty
-  noAbove_of_ubA noAbove_of_ubA_ty ub_of_noAboveA ub_of_noAboveA_ty
-  ub_permA ub_permA_ty noBelow_of_lbA noBelow_of_lbA_ty
-  lb_of_noBelowA lb_of_noBelowA_ty lb_permA lb_permA_ty
-  count_swap2 count_swap2_ty leb_true_le leb_false_gt le_pred_l)
+open Dllbc.StdLemmas (CountA SortedA UbA LbA BoundA Asingle
+  SortedHeadA SortedHeadATy SortedTailA SortedTailATy
+  UbHeadA UbHeadATy UbTailA UbTailATy LbBoundA LbBoundATy
+  BoundArrCat BoundArrCatTy SortedArrCat SortedArrCatTy
+  CountArrCat CountArrCatTy
+  CountAconsHit CountAconsHitTy CountAconsMiss CountAconsMissTy
+  NoAboveOfUbA NoAboveOfUbATy UbOfNoAboveA UbOfNoAboveATy
+  UbPermA UbPermATy NoBelowOfLbA NoBelowOfLbATy
+  LbOfNoBelowA LbOfNoBelowATy LbPermA LbPermATy
+  CountSwap2 CountSwap2Ty LebTrueLe LebFalseGt LePredL)
 
 -- The predicates COMPUTE, on a run and on the cons view alike.
-example : (pv prog{ countA 2 4 Arr(1, 2, 2, 3) } == Val.nat 2) = true := by native_decide
+example : (pv prog{ CountA 2 4 Arr(1, 2, 2, 3) } == Val.nat 2) = true := by native_decide
 example : (pv prog{ SortedA 3 Arr(1, 2, 3) } == pv prog{ SortedA 3 Arr(1, 2, 3) })
     = true := by native_decide
 example : chk prog{ Pair(unit, Pair(unit, Pair(unit, unit))) } prog{ SortedA 3 Arr(1, 2, 3) }
@@ -1275,46 +1275,46 @@ example : chk prog{ Pair(unit, Pair(unit, Pair(unit, unit))) } prog{ SortedA 3 A
 example : chk prog{ Pair(unit, Pair(unit, Pair(unit, unit))) } prog{ SortedA 3 Arr(3, 2, 1) }
     = false := by native_decide
 
--- `arrCat (asingle p) b` IS the array `Cons p b`: the doc's spelling of the pivot
+-- `arrCat (Asingle p) b` IS the array `Cons p b`: the doc's spelling of the pivot
 -- splice reaches the cons view by computation, with no lemma relating them.
-example : (pv prog{ arrCat 1 2 (asingle 9) Arr(1, 2) } == pv prog{ Arr(9, 1, 2) })
+example : (pv prog{ arrCat 1 2 (Asingle 9) Arr(1, 2) } == pv prog{ Arr(9, 1, 2) })
     = true := by native_decide
 
 /-! ### The five helpers and the glue, each its list proof with the container swapped -/
 
-example : chkL sorted_headA sorted_headA_ty = true := by native_decide
-example : chkL sorted_tailA sorted_tailA_ty = true := by native_decide
-example : chkL ub_headA ub_headA_ty = true := by native_decide
-example : chkL ub_tailA ub_tailA_ty = true := by native_decide
-example : chkL lb_boundA lb_boundA_ty = true := by native_decide
-example : chkL bound_arrCat bound_arrCat_ty = true := by native_decide
+example : chkL SortedHeadA SortedHeadATy = true := by native_decide
+example : chkL SortedTailA SortedTailATy = true := by native_decide
+example : chkL UbHeadA UbHeadATy = true := by native_decide
+example : chkL UbTailA UbTailATy = true := by native_decide
+example : chkL LbBoundA LbBoundATy = true := by native_decide
+example : chkL BoundArrCat BoundArrCatTy = true := by native_decide
 
-/-- **The crux.** `sorted_append_pivot` with `append ↦ arrCat` and `Cons p b ↦
+/-- **The crux.** `SortedAppendPivot` with `Append ↦ arrCat` and `Cons p b ↦
     arrCat (asingle p) r`, hypothesis for hypothesis, and nothing else changed. -/
-example : chkL sorted_arrCat sorted_arrCat_ty = true := by native_decide
+example : chkL SortedArrCat SortedArrCatTy = true := by native_decide
 
-/-- ¶6's other named survivor: "the one lemma that replaces `count_append`/`take`/`drop`
-    is `count_arrCat`, which is the same induction". It is the same induction — the
-    dependent Bool-elim on `eqb x h` transfers unchanged, because `countA` unfolds on an
-    `acons` exactly as `count` unfolds on a `Cons`. First try. -/
-example : chkL count_arrCat count_arrCat_ty = true := by native_decide
+/-- ¶6's other named survivor: "the one lemma that replaces `CountAppend`/`Take`/`Drop`
+    is `CountArrCat`, which is the same induction". It is the same induction — the
+    dependent Bool-elim on `Eqb x h` transfers unchanged, because `CountA` unfolds on an
+    `acons` exactly as `Count` unfolds on a `Cons`. First try. -/
+example : chkL CountArrCat CountArrCatTy = true := by native_decide
 
 /-! ### The permutation keystone, transferred
 
     M23's hardest single step: "`Ub`/`Lb` (Σ-chains over the spine) are not natively
     permutation-invariant. M22 named the route at the positional encoding: cross to the
-    multiset, where the property is `Π x. x > p → count x l = Z` and permutation-
-    invariance is a one-line `id_trans`." The crossing transfers with the container like
+    multiset, where the property is `Π x. x > p → Count x l = Z` and permutation-
+    invariance is a one-line `IdTrans`." The crossing transfers with the container like
     everything else — all eight lemmas, first try. -/
 
-example : chkL count_acons_hit count_acons_hit_ty = true := by native_decide
-example : chkL count_acons_miss count_acons_miss_ty = true := by native_decide
-example : chkL noAbove_of_ubA noAbove_of_ubA_ty = true := by native_decide
-example : chkL ub_of_noAboveA ub_of_noAboveA_ty = true := by native_decide
-example : chkL ub_permA ub_permA_ty = true := by native_decide
-example : chkL noBelow_of_lbA noBelow_of_lbA_ty = true := by native_decide
-example : chkL lb_of_noBelowA lb_of_noBelowA_ty = true := by native_decide
-example : chkL lb_permA lb_permA_ty = true := by native_decide
+example : chkL CountAconsHit CountAconsHitTy = true := by native_decide
+example : chkL CountAconsMiss CountAconsMissTy = true := by native_decide
+example : chkL NoAboveOfUbA NoAboveOfUbATy = true := by native_decide
+example : chkL UbOfNoAboveA UbOfNoAboveATy = true := by native_decide
+example : chkL UbPermA UbPermATy = true := by native_decide
+example : chkL NoBelowOfLbA NoBelowOfLbATy = true := by native_decide
+example : chkL LbOfNoBelowA LbOfNoBelowATy = true := by native_decide
+example : chkL LbPermA LbPermATy = true := by native_decide
 
 /-! ### FINDING — the transfer needed three ι-rules to be MECHANICAL rather than merely possible
 
@@ -1327,14 +1327,14 @@ example : chkL lb_permA lb_permA_ty = true := by native_decide
     (`arrCat (acons x xs) b ⇝ acons x (arrCat xs b)`), which is `append (Cons h t) u ⇝
     Cons h (append t u)`; and `arrRec` fires on the cons view, so a predicate over arrays
     unfolds on an `acons` exactly as its counterpart unfolds on a `Cons`. Without them
-    `SortedA (arrCat (acons h t) …)` does not UNFOLD, and `sorted_append_pivot`'s proof
+    `SortedA (arrCat (acons h t) …)` does not UNFOLD, and `SortedAppendPivot`'s proof
     turns entirely on that unfolding — its own docstring says "Both components are
-    definitional … which is why no `list_rw` transport appears anywhere in this proof."
+    definitional … which is why no `ListRw` transport appears anywhere in this proof."
 
     A third rule was needed and is the one worth recording, because it was invisible
     until the glue was written: a nonempty RUN on the left with a non-run on the right
-    peels its head into an `acons`. `asingle p` COMPUTES to the run `[p]`, so ¶6's own
-    spelling `arrCat (asingle p) r` was stuck for symbolic `r` — the doc's chosen
+    peels its head into an `acons`. `Asingle p` COMPUTES to the run `[p]`, so ¶6's own
+    spelling `arrCat (Asingle p) r` was stuck for symbolic `r` — the doc's chosen
     notation could not reach the cons view it is notation FOR. The rule is the same one
     read through the other view: a literal is a cons spine that happens to be written
     flat. -/
@@ -1347,7 +1347,7 @@ example : chkL lb_permA lb_permA_ty = true := by native_decide
     equations, the transferred library, `old *v`, and the §5.4 exit-snapshot audit. The
     postcondition is M23's quicksort signature at width two —
 
-        Σ (hs : SortedA 2 (*a)) → (Π x. Id Nat (countA x 2 (*a)) (countA x 2 (old *a)))
+        Σ (hs : SortedA 2 (*a)) → (Π x. Id Nat (CountA x 2 (*a)) (CountA x 2 (old *a)))
 
     — sortedness AND count-preservation over the exit snapshot, with **zero declared
     backs**. It is not the full quicksort (¶6's partition is a new program, ledger G4),
@@ -1423,11 +1423,11 @@ example : progOk readSame = true := by native_decide
     names `*a` (exit) and `old *a` (entry). -/
 def sort2 : Term := prog{
   fn Sort2 (a : &mut (Array 2 Nat))
-      -> Σ (hs : SortedA 2 (*a)) → (Π (x : Nat) → Id Nat (countA x 2 (*a)) (countA x 2 (old *a))) {
+      -> Σ (hs : SortedA 2 (*a)) → (Π (x : Nat) → Id Nat (CountA x 2 (*a)) (CountA x 2 (old *a))) {
     let x = (*a)[0];
     let y = (*a)[1];
     if h : Leb x y {
-      Pair(Pair(leb_true_le x y h, Pair(unit, unit)), λ (n : Nat). Refl)
+      Pair(Pair(LebTrueLe x y h, Pair(unit, unit)), λ (n : Nat). Refl)
     } else {
       (*a)[0] := y;
       (*a)[1] := x;
@@ -1438,8 +1438,8 @@ def sort2 : Term := prog{
       -- moved. The rule asks for the name, not for a different program.
       let X0 = x;
       let Y0 = y;
-      Pair(Pair(le_pred_l y x (leb_false_gt x y h), Pair(unit, unit)),
-           λ (n : Nat). count_swap2 n X0 Y0)
+      Pair(Pair(LePredL y x (LebFalseGt x y h), Pair(unit, unit)),
+           λ (n : Nat). CountSwap2 n X0 Y0)
     } };
   () }
 example : progOk sort2 = true := by native_decide
@@ -1453,26 +1453,26 @@ def sort2LieSorted : Term := prog{
     let x = (*a)[0];
     let y = (*a)[1];
     if h : Leb x y {
-      Pair(leb_true_le x y h, Pair(unit, unit))
+      Pair(LebTrueLe x y h, Pair(unit, unit))
     } else {
-      Pair(le_pred_l y x (leb_false_gt x y h), Pair(unit, unit))
+      Pair(LePredL y x (LebFalseGt x y h), Pair(unit, unit))
     } };
   () }
 example : progOk sort2LieSorted = false := by native_decide
 
--- Do the swap, then claim the counts did not move. `count_swap2` is genuinely load-
+-- Do the swap, then claim the counts did not move. `CountSwap2` is genuinely load-
 -- bearing: `Refl` in its place is rejected.
 def sort2LieCount : Term := prog{
   fn Sort2LieCount (a : &mut (Array 2 Nat))
-      -> Σ (hs : SortedA 2 (*a)) → (Π (x : Nat) → Id Nat (countA x 2 (*a)) (countA x 2 (old *a))) {
+      -> Σ (hs : SortedA 2 (*a)) → (Π (x : Nat) → Id Nat (CountA x 2 (*a)) (CountA x 2 (old *a))) {
     let x = (*a)[0];
     let y = (*a)[1];
     if h : Leb x y {
-      Pair(Pair(leb_true_le x y h, Pair(unit, unit)), λ (n : Nat). Refl)
+      Pair(Pair(LebTrueLe x y h, Pair(unit, unit)), λ (n : Nat). Refl)
     } else {
       (*a)[0] := y;
       (*a)[1] := x;
-      Pair(Pair(le_pred_l y x (leb_false_gt x y h), Pair(unit, unit)), λ (n : Nat). Refl)
+      Pair(Pair(LePredL y x (LebFalseGt x y h), Pair(unit, unit)), λ (n : Nat). Refl)
     } };
   () }
 example : progOk sort2LieCount = false := by native_decide

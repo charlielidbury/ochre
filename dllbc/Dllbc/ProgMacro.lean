@@ -77,9 +77,9 @@ namespace Dllbc
       * an earlier telescope parameter → its absolute runtime `var`;
       * a known **constructor** (`Z`, `S`, `Cons`, `Refl`, `unit`, …) → `ctorApp`;
       * a kernel **constant** (`Nat`, `List`, `natRec`, `j`, …) → `const`;
-      * a reified-function alias (`Le`, `len`, `add`, …) → its `…FnT` Term constant;
+      * a reified-function alias (`Le`, `Len`, `Add`, …) → its `…FnT` Term constant;
       * anything else → the **Lean identifier** of that name, which must denote a
-        `Dllbc.Term` in scope (a library definition like `swapL`); an unbound name
+        `Dllbc.Term` in scope (a library definition like `SwapL`); an unbound name
         is a Lean elaboration error, never a silent fallback.
 
     `%e` splices a Lean-level `Term` expression `e` directly (an escape hatch), and

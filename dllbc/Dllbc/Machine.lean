@@ -830,7 +830,7 @@ def placeToPosRaw : Term → M Pos
     mentions the refined σ, e.g. `Id Nat σ 2`, is substituted like anything
     else — the seam §10 exercises). The replacement `v` must be marker-free
     (§3.2 knowledge/state): substituting a hole/loan/borrow for a σ would smuggle
-    state into entry-knowledge — the etiology of the M21 `partIdxL n ⊥` bug. -/
+    state into entry-knowledge — the etiology of the M21 `PartIdxL n ⊥` bug. -/
 def refineSym (σ : Nat) (v : Val) : M Unit := do
   if Val.hasStateMarker v then
     throwErr s!"refineSym: σ{σ} := {v.pretty} carries a state marker (⊥/loan/borrow) — knowledge/state violation (§3.2)"
@@ -972,7 +972,7 @@ mutual
         -- excludes ⊥. A comptime read of a moved/uninitialized slot is a
         -- use-after-move; rejecting it here stops a silent ⊥ from riding into a
         -- pure value and surfacing layers later as an opaque untypeable ⊥ (the
-        -- M21 `partIdxL n ⊥` etiology: reading the owned-consumed scrutinee).
+        -- M21 `PartIdxL n ⊥` etiology: reading the owned-consumed scrutinee).
         match ← lookupSlot x with
         | .bot => throwErr s!"readC (⇝): {x.name}#{x.id} holds ⊥ (use-after-move or uninitialized in a comptime read)"
         | v => pure v
@@ -1388,7 +1388,7 @@ mutual
       | .lam x d b =>
         -- λ against Π: check the domains convert, then the body under a fresh σ
         -- witness for the binder (a checking-time hypothesis added to `sctx`).
-        -- This is what lets a Π-typed lemma (`le_refl : Π n. Le n n`) and the
+        -- This is what lets a Π-typed lemma (`LeRefl : Π n. Le n n`) and the
         -- recursors' step arguments — both λs — type-check. No arrow of its own;
         -- it is the elaboration of dependent elimination (§10/§11).
         --
@@ -1808,13 +1808,13 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (given : Option Val)
   let leaves ← extentMap fuel node
   -- Degenerate carve (¶3.2): "when the request coincides with the leaf, no split and
   -- no refinement happen at all". No obligation either — `Le b b` and `Le x x` are
-  -- `le_refl`, so demanding evidence would be friction with no content. This is the
+  -- `LeRefl`, so demanding evidence would be friction with no content. This is the
   -- asymmetry ¶3.4 says IS the design: an exhaustive split costs ONE proof, not two.
   let degenerate := leaves.find? (fun l => Val.convert fuel l.base lo && Val.convert fuel l.count cnt)
   -- Premise (2): form each candidate leaf's obligation and check the evidence against
   -- it; the first that types SELECTS the leaf — "the evidence's type is the selector".
   -- Deterministic without a tie-break, because leaves are disjoint. A degenerate
-  -- request needs no evidence at all: its two `Le`s are `le_refl`, so demanding a term
+  -- request needs no evidence at all: its two `Le`s are `LeRefl`, so demanding a term
   -- would be friction with no content. That asymmetry is ¶3.4's, and it is why an
   -- exhaustive split costs ONE proof rather than two.
   let sel ← match degenerate with
@@ -1886,7 +1886,7 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (given : Option Val)
         -- both sides compute — nothing refined"), and the arithmetic is meta-level on
         -- numerals, never a `sub` in the object language. Symbolic extents mint `rest`
         -- and solve `m ≡ add lo' (add cnt rest)` — the equation ¶3.2 reaches with
-        -- `le_split` twice plus `add_cancel_l`, asserted here in its cancelled form
+        -- `le_split` twice plus `AddCancelL`, asserted here in its cancelled form
         -- because the checker unpacks the witnesses itself and no program term ever
         -- projects them.
         let lo'N := Val.natOfVal? (Val.nfV fuel lo')
@@ -3263,37 +3263,17 @@ def auditAllPaths : Nat → Term → List (Except String (Val × St)) → St →
     lexically above it"), so the phrase acquires a referent: a body's free
     variables are its **callees**, resolved against the enclosing Ω.
 
-    The line between a global and a capture is drawn at what the body can DO with
-    it: a function is called (a place read — `.callV` locates its callee, it never
-    moves it), while data is moved, borrowed or written. So `globalKind` admits
-    exactly the function values, and everything else keeps M26-C's rejection —
-    constraint 5's deferral of environment capture is untouched, and the test that
-    pins it (a captured `Nat`) still fails for the same reason with the same
-    words. -/
-
-/-- Is this slot's value a **function** — the one thing a body may name without
-    capturing it? A runtime λ, a pure λ, or a σ that is a sealed function (its
-    signature in `fsig` when the Π is borrow-moded and so has no `Val`, in `sctx`
-    when it has one). -/
-def globalKind (st : St) : Val → Bool
-  | .rfn _ _ => true
-  | .lam _ _ _ => true
-  | .sym σ =>
-    (st.fsig.lookup σ).isSome ||
-      (match st.sctx.lookup σ with
-       | some τ => (match Val.whnfOut 100 τ with | .pi _ _ _ => true | _ => false)
-       | none => false)
-  -- A RECURSOR SPINE is a function too, and this case is the executing machine's
-  -- half of the same binding: sealing `natRec P z s` mints a σ when checking (so
-  -- the `.sym` case above admits it) but EVALUATES to the spine itself when
-  -- running, since execution is always transparent (§5). The two machines see the
-  -- same `let` as two different values, and both are the program's callee. Found
-  -- by running the flagship, not by reading the rule — the checking side had been
-  -- green for an hour.
-  | v =>
-    match Val.collectSpine v with
-    | (.const c, _) => (recLayout c).isSome
-    | _ => false
+    That line USED to be drawn at what the body can do with the binding: a
+    function is called (a place read — `.callV` locates its callee, it never moves
+    it), while data is moved, borrowed or written, so a `globalKind` predicate
+    admitted exactly the function VALUES and everything else kept M26-C's
+    rejection. **M31 Stage A (§2.4) replaced that with the binder's MODE**, and
+    the predicate is gone with it (M31 Stage C): a λ body may name its own binders
+    and the capital bindings in scope, which subsumes the function case — a
+    function is a comptime binding — and additionally admits proofs and snapshots,
+    which is what makes §2.4's migration writable. `admitGlobals` below is the
+    whole rule now; the value-directed test it superseded is recorded there in the
+    one place a reader looking at the rule will meet it. -/
 
 /-- Resolve a function body's free variables against the enclosing scope, and
     return the bindings — the globals it is entitled to name. Rejects a free

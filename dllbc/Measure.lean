@@ -88,9 +88,9 @@ end
     A hit is not descended into — an occurrence of `Le` inside `Le` would be the
     same copy counted twice.
 
-    **These per-constant counts OVERLAP and must not be summed.** `count`'s body
-    contains `eqb`, and `Sorted`'s contains `Le`, so a scan for `eqb` descends
-    through every `count` copy (a `count` node is not an `eqb` hit) and finds the
+    **These per-constant counts OVERLAP and must not be summed.** `Count`'s body
+    contains `Eqb`, and `Sorted`'s contains `Le`, so a scan for `Eqb` descends
+    through every `Count` copy (a `Count` node is not an `Eqb` hit) and finds the
     nested one. Summing the columns therefore double-counts the nesting — it gave
     "103% of the term" on the first run, which is how the overlap announced
     itself. `coverage` below is the honest total: ONE traversal that stops at the
@@ -203,23 +203,23 @@ def timeN (label : String) (n : Nat) (f : Unit → String) : IO Unit := do
     "a fresh σ at the ascribed type is the whole downstream view". So a seal
     destroys computational content, and that sorts the library in two:
 
-      * **DEFINITIONS** (`Le`, `count`, `eqb`, `len`, `add`, …) must stay
+      * **DEFINITIONS** (`Le`, `Count`, `Eqb`, `Len`, `Add`, …) must stay
         TRANSPARENT. The corpus converts by ι-reducing them: `Le (S a) (S b)` IS
         `Le a b` (M14's bounds-cursor descent, which is what lets quicksort hand
         `hfuel` to its callee unchanged), and an ex-falso branch is exactly
         `Le (S n) Z` computing to `Bot`. Seal `Le` and both stop holding.
-      * **PROOFS** (`le_trans`, `count_cons_l`, …) may be sealed, because nothing
+      * **PROOFS** (`LeTrans`, `CountConsL`, …) may be sealed, because nothing
         reduces them — they are cited at a type and never computed with.
 
     So the two censuses below are not two views of one number. The first is mass
     a seal-based tier CANNOT touch; the second is the mass it could. -/
 
 def lemmaEntries : List (String × Term) :=
-  [ ("le_refl",      StdLemmas.le_refl),      ("le_trans",     StdLemmas.le_trans),
-    ("le_up_r",      StdLemmas.le_up_r),      ("id_trans",     StdLemmas.id_trans),
-    ("id_congr",     StdLemmas.id_congr),     ("leb_true_le",  StdLemmas.leb_true_le),
-    ("leb_false_gt", StdLemmas.leb_false_gt), ("le_pred_l",    StdLemmas.le_pred_l),
-    ("count_cons_l", StdLemmas.count_cons_l), ("count_cons_r", StdLemmas.count_cons_r) ]
+  [ ("LeRefl",      StdLemmas.LeRefl),      ("LeTrans",     StdLemmas.LeTrans),
+    ("LeUpR",       StdLemmas.LeUpR),       ("IdTrans",     StdLemmas.IdTrans),
+    ("IdCongr",     StdLemmas.IdCongr),     ("LebTrueLe",   StdLemmas.LebTrueLe),
+    ("LebFalseGt",  StdLemmas.LebFalseGt),  ("LePredL",     StdLemmas.LePredL),
+    ("CountConsL",  StdLemmas.CountConsL),  ("CountConsR",  StdLemmas.CountConsR) ]
 
 /-- `timeN`, but the subject depends on the iteration index, so a pure call
     cannot be hoisted out of the loop as a loop invariant. -/
@@ -283,7 +283,7 @@ def main : IO Unit := do
     IO.println s!"    PROOF mass (sealable): {pcvg} of {total} nodes \
 ({if total == 0 then 0 else pcvg * 100 / total}%)"
     -- The two censuses above OVERLAP each other, and the trap is one level up
-    -- from the first one: a PROOF body contains DEFINITIONS (`le_trans` is 1373
+    -- from the first one: a PROOF body contains DEFINITIONS (`LeTrans` is 1373
     -- nodes of mostly `Le`), so the definition scan descends through lemmas and
     -- counts what the lemma scan already claimed whole. Summing them gave 113%.
     -- The partition below is one traversal over both lists with PROOFS taking

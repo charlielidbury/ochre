@@ -51,16 +51,16 @@ convention in Syntax.lean.
 
 Every identifier resolves or errors: pure binder → `pvar`; earlier telescope
 param → `var`; known constructor → `ctorApp`; kernel const → `const`; a friendly
-reified-function alias (`Le`, `len`, `add`, …) → its `…FnT` Term constant; else
+reified-function alias (`Le`, `Len`, `Add`, …) → its `…FnT` Term constant; else
 the **Lean identifier** of that name, which must denote a `Dllbc.Term` in scope
-(a library lemma like `swapL`, `set`, `sortRangeL`) — the documented fallback.
+(a library lemma like `SwapL`, `Set`, `SortRangeL`) — the documented fallback.
 
 ## Body
 
 A function's body is `ublk` with the telescope names pre-bound in
 order at ids `0 .. n-1` and fresh binders minted from `n`, the `seedTelescope`
 convention. That is the only place in the surface where a name arrives pre-bound.
-Bodies laden with pure proof terms (a `botElim` ex-falso branch, a `le_rw_r` bound
+Bodies laden with pure proof terms (a `botElim` ex-falso branch, a `LeRwR` bound
 derivation) can be spliced whole with `%term`, which is a `uterm` and therefore a
 block's final expression — the escape hatch `decl{ … = %t }` used to provide,
 available uniformly wherever an expression is.
@@ -92,7 +92,7 @@ statement layer.
 **no-whitespace** paren argument list — is a runtime **call** (lowercase head) or
 **ctorApp** (uppercase). Space-separated **juxtaposition** `f a b` (incl.
 `f (a) b`) is **pure application** (`ctorApp` when the head is a known ctor). So
-`nth(&m *tl, k, p)` is a call, `botElim Unit p` and `le_rw_r (S x) y` are
+`Nth(&m *tl, k, p)` is a call, `botElim Unit p` and `LeRwR (S x) y` are
 application spines, `S(*l)` / `S *l` both mean `ctorApp "S" [*l]`. -/
 
 declare_syntax_cat uterm
@@ -268,16 +268,21 @@ def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "
   "Array", "arrCat", "acons", "arrRec", "aget"]
 /-- Friendly aliases for the reified library functions whose surface name differs
     from their `…FnT` Term-constant (`Le` ↦ `LeFnT`, etc.). Everything else falls
-    through to the raw-Lean-identifier resolution, so lemma Terms (`swapL`, `set`,
-    `sortRangeL`, …) are referenced by their own names via the use-site `open`s.
+    through to the raw-Lean-identifier resolution, so lemma Terms (`SwapL`, `Set`,
+    `SortRangeL`, …) are referenced by their own names via the use-site `open`s.
 
     **The keys are PascalCase since M31 Stage A** (§2.1): "the standard
     vocabulary capitalises with everything else — `Len`, `Add`, `Count`, `Take`
     join the already-capital `Le`, `Sorted` — one rule for every name that denotes
     a function, library or user's." The `…FnT` Terms they map to keep their Lean
-    names: a Lean identifier is not a DLLBC binder and carries no mode, which is
-    also why the lemma Terms below the alias table were left alone (see the
-    rename policy recorded in the Stage A addendum). -/
+    names, because a Lean identifier is not a DLLBC binder and carries no mode.
+
+    **Stage C completed the rule at the lemmas** (§2.1's "library or user's").
+    Stage A had left them lowercase on the same carries-no-mode argument; that
+    argument is sound about the KERNEL and wrong about the READER, who sees one
+    surface vocabulary in which `SwapL` and `Quicksort` are both functions. So
+    the lemma Terms below the alias table are PascalCase too, and the abbrevs
+    here — `Add`, `Count`, `Take`, … — now merely restate their alias key. -/
 def aliasMap : List (String × Name) :=
   [("Le", `Dllbc.Std.LeFnT), ("Len", `Dllbc.Std.lenFnT), ("Add", `Dllbc.Std.addFnT),
    ("Leb", `Dllbc.Std.lebFnT), ("Count", `Dllbc.Std.countFnT), ("Eqb", `Dllbc.Std.eqbFnT),
@@ -361,12 +366,21 @@ def localId (rctx : List (String × Nat)) (s : String) : Option Nat :=
 /-- A `fn` slot bound above this point, by the name it was declared with.
 
     Every such name is capital, because the `fn` row refuses a lowercase one
-    (§2.1). That is what keeps this lookup from disturbing anything: the names it
-    can answer for are exactly the ones the raw-Lean fallthrough below it never
-    had a reading for, since a Lean lemma Term in this corpus is lowercase. The
-    one name where the two families met — `fn nth` against `Std`'s `nth` — is
-    resolved by the rename policy rather than by a condition here (see the Stage A
-    addendum): the function capitalised and the lemma did not. -/
+    (§2.1).
+
+    **Stage A's safety argument for this lookup has expired, and the replacement
+    is a naming convention rather than a condition here.** Stage A could say the
+    names this answers for are exactly the ones the raw-Lean fallthrough never
+    had a reading for, because every lemma Term was lowercase. Stage C
+    capitalised the lemmas, so the two families now share one namespace and this
+    lookup — consulted BEFORE the fallthrough — shadows a lemma of the same name.
+    Two names collided and both took the **`L` suffix on the lemma** (`swapL`'s
+    L-for-list-spec, generalised): `fn Nth` against the cursor lemma, now `NthL`;
+    `fn SplitA` against the split predicate, now `SplitAL`. The invariant to hold
+    going forward is therefore stated in the corpus, not enforced in the code: a
+    library lemma that shares a spelling with a `fn` takes the suffix. It is
+    checkable in one grep — `StdLemmas` definition names against `fn` heads — and
+    M32's name-keyed store is where making it a real condition would belong. -/
 def fnSlotId (rctx : List (String × Nat)) (s : String) : Option Nat :=
   match rctx.lookup s with
   | some id => if id ≥ Dllbc.FnMacro.progBase then some id else none

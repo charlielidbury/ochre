@@ -395,7 +395,7 @@ example : (match runProgram throughCaller with
     §5.2's rule is that every demand collapses first, and OVERWRITING a place is a
     demand on it exactly as reading one is. The two arrows used to disagree:
     `readR`'s `.var` ended a parked loan through the group-aware `endLoan`, while
-    ⇐ let the marker reach `drop`, which ends it with `killBorrowInΩ` — no group
+    ⇐ let the marker reach `Drop`, which ends it with `killBorrowInΩ` — no group
     check — and a captured loan's borrow is by definition not an Ω entry, since
     the callee holds it. So `let y = a` after `keep(&m a)` was accepted and
     `a := 5` was refused, with "its other end is in flight".
@@ -515,8 +515,8 @@ namespace Dllbc.Tests.S12Inst
 
 /-! ## The dependent return type, instantiated at the actual -/
 
--- `use_refl (n : Nat) → Le n n = le_refl n`. The body ⇒-lifts the proof term
--- `le_refl n` (pure lift, §11); the audit checks it against the pinned `Le n n`.
+-- `use_refl (n : Nat) → Le n n = LeRefl n`. The body ⇒-lifts the proof term
+-- `LeRefl n` (pure lift, §11); the audit checks it against the pinned `Le n n`.
 def useRefl : Term := prog{
   fn UseRefl (n : Nat) -> Le n n { le_reflT n };
   () }
@@ -633,7 +633,7 @@ example : progOk classify = true := by native_decide
     * GAP[Term-level Std] (gap 2) — `LeT`/`SortedT`/`countT`/`BoundT` sit at
       telescope, return, and owed positions now.
     * GAP[bool guard] / `if` (gap 5) — `if e { … } else { … }` is macro sugar
-      over the Bool match; `leb`/`eqb` reflect to `Bool` and guard directly.
+      over the Bool match; `Leb`/`Eqb` reflect to `Bool` and guard directly.
 
     STILL OPEN (the M13+ train, unchanged in priority order):
     * GAP[two-cursor swap / access-at-depth-i] — the naturalness make-or-break.
@@ -641,11 +641,11 @@ example : progOk classify = true := by native_decide
       the swap BODY (two reborrow cursors to depths i and j, cross-write) still
       has no depth-indexed idiom. This is the next milestone.
     * GAP[slice split: take/drop reborrows] — a prefix riding the length bound, a
-      suffix as a depth-(k+1) reborrow. `take`/`drop` on list snapshots are a
+      suffix as a depth-(k+1) reborrow. `Take`/`Drop` on list snapshots are a
       mechanical Std addition (for the SPECS); the reborrow OPERATIONS are not.
-    * GAP[nested-induction lemmas] — `le_trans` and `count_swap` are the proofs
+    * GAP[nested-induction lemmas] — `LeTrans` and `count_swap` are the proofs
       the specs above will consume. As raw eliminator terms they are impractical
-      (the M11 le_trans wall); this is the dependent-match-elaboration milestone,
+      (the M11 LeTrans wall); this is the dependent-match-elaboration milestone,
       which instantiation (this milestone) is the precondition for.
     * ~~GAP[bounded recursion / decreasing [k]] — partial correctness is fine with
       signature-only recursion; the totality index (§8) is deferred.~~ **CLOSED
@@ -673,14 +673,14 @@ out-of-range branch is a ⊥-conflict discharge, and an out-of-bounds call is
 rejected *at the call site* because no proof of the false bound exists.
 
 The prerequisite — that borrow-mode symbolic match refines the payload snapshot,
-so a parameter type mentioning `len *v` computes per branch — was verified
+so a parameter type mentioning `Len *v` computes per branch — was verified
 standalone before building any of this (M3 refinement at the payload + the M10
 "refinement reaches all σ-bearing state" invariant, confirmed by a probe whose
 `Nil` branch discharges `Le (S i) 0 = ⊥` and whose negative controls fail).
 
-Shape decision for `nth2`: `(pij : Le (S i) j, p2 : Le (S j) (len *v))` with
-`i < j` from `pij`. Chosen over `(p1 : Le (S i) (len *v), p2 : …)` because it
-needs no third proof and no `le_trans`: `p2` discharges `Nil` (`Le (S j) 0 = ⊥`),
+Shape decision for `nth2`: `(pij : Le (S i) j, p2 : Le (S j) (Len *v))` with
+`i < j` from `pij`. Chosen over `(p1 : Le (S i) (Len *v), p2 : …)` because it
+needs no third proof and no `LeTrans`: `p2` discharges `Nil` (`Le (S j) 0 = ⊥`),
 `pij` discharges the `j ≤ i` branches (`Le (S i) j = ⊥` there), the valid branch
 needs no proof for the head element, and both proofs pass to the recursive call
 *definitionally* (`Le (S(S k)) (S j') ≡ Le (S k) j'`). At concrete calls the
@@ -695,7 +695,7 @@ namespace Dllbc.Tests.S14Bounds
 def vnat : Nat → Val | 0 => .ctor "Z" [] | n + 1 => .ctor "S" [vnat n]
 def vlist : List Nat → Val | [] => .ctor "Nil" [] | h :: t => .ctor "Cons" [vnat h, vlist t]
 
-/-! ## The segment vocabulary computes (`len`/`take`/`drop`) -/
+/-! ## The segment vocabulary computes (`Len`/`Take`/`Drop`) -/
 
 example : (Val.nfV 1000 (Dllbc.Std.len (Dllbc.Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3])) == vnat 3) = true := by
   native_decide
@@ -706,12 +706,12 @@ example : (Val.nfV 1000 (Dllbc.Std.drop (Std.ofNat 2) (Dllbc.Std.ofList [Std.ofN
 
 /-! ## The cursor family, as a PREFIX
 
-    `nth`, `nth2` and `swap` are one chain: `nth2` calls `nth`, `swap` calls `nth2`,
+    `NthL`, `nth2` and `swap` are one chain: `nth2` calls `NthL`, `swap` calls `nth2`,
     and a callee is in scope by being written above its caller (§8). Every caller
     below rides the same chain as its tail, so what is checked and what is run is
     the function declared above the code that calls it — no table anywhere.
 
-    `nth (v, i, p : Le (S i) (len *v)) → &mut Nat`. Nil: `p : Le (S i) 0 = ⊥`,
+    `NthL (v, i, p : Le (S i) (Len *v)) → &mut Nat`. Nil: `p : Le (S i) 0 = ⊥`,
     discharged. Cons/S(k): the recursive call takes `p` unchanged — `Le (S(S k))
     (S (len *tl)) ≡ Le (S k) (len *tl)` definitionally, no lemma. `nth2` is the
     multi-issued group with two bounds proofs; `swap` is the pair, taken and
@@ -751,8 +751,8 @@ def withCursors (rest : Term) : Term := prog{
       () } } };
   %rest }
 
-/-- All three check, as the one program they are. `nth2`'s call to `nth` and
-    `swap`'s to `nth2` are retargeted into the chain, which for `nth`/`nth2` also
+/-- All three check, as the one program they are. `nth2`'s call to `NthL` and
+    `swap`'s to `nth2` are retargeted into the chain, which for `NthL`/`nth2` also
     exercises the `[i]` HOIST: the decreasing parameter is second, so a caller
     writing declaration order is permuted into the sealed telescope. -/
 def cursors : Term := withCursors prog{ () }
@@ -776,7 +776,7 @@ example :
      | .error _ => false) = true := by native_decide
 
 -- OUT OF BOUNDS is rejected at the CALL SITE: `swap(bb, 0, 4, (), ())` needs
--- `p2 : Le (S 4) (len [1,2,3]) = Le 5 3 = ⊥`, and `()` cannot inhabit ⊥.
+-- `p2 : Le (S 4) (Len [1,2,3]) = Le 5 3 = ⊥`, and `()` cannot inhabit ⊥.
 def oobBody : Term := withCursors prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let bb = &m x;
