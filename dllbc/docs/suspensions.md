@@ -324,3 +324,93 @@ Borrow refounding (shape/contract split, store-relative types — SUGGESTIONS.md
 post-M32); surface juxtaposition syntax (interacts with R4's spines — decide there
 or defer); consistency proofs; lazy *bindings* (only λ bodies suspend — §0);
 assumption-indexed evaluation (rejected with precedent, §3).
+
+> **Implementation addendum (R2, landed on `m32-r2`).** Four commits, corpus
+> green at each. Recorded in the order the plan would be read.
+>
+> **0. THE SPECIES IS A PROPERTY, and it needed TWO halves.** `Term.lamImperative`
+> is what replaces the second λ former, and it is true when what sits under the
+> binders is a BODY (`Term.imperative`: the forms `reflectC` refuses by name)
+> **or when some binder names an Ω slot**. The second half is not redundant and
+> was found by the corpus rather than predicted: `fn UseTrans (a, b, c, p, q) ->
+> Le a c { LeTrans a b c p q }` has a body both arrows can read, so on body
+> classification alone it is comptime, and its seal takes `hasType` instead of
+> §5.4's audit. Four corpus programs found it. §2.2's "recomputed by body
+> classification" should read **by binder-and-body classification**.
+>
+> **1. `noSlot` is the fold's load-bearing detail.** One former means one binder
+> type, and a `Var` is the one that carries both things a binder can need — the
+> NAME (what every resolution keys on since R1) and the SLOT id (which only a
+> binder whose argument lands in Ω has any use for). A comptime binder is written
+> `"x"` and read as `⟨noSlot, "x"⟩` through a `Coe`. The sentinel is not
+> cosmetic: `Term.freeRVars` asks which of a term's binders bind a `.var`, and a
+> comptime binder must bind NOTHING there while an imperative λ's binder must
+> bind its own, exactly as `lamR`'s telescope did.
+>
+> **2. ρ CANNOT BE `List (Var × Term)`, and R1 predicted the reason.** A λ
+> captures `SetAt`, and `SetAt` is a `natRec` over runtime arms — R1's §rec
+> finding: a function value with no `Term` form. A λ also captures a λ. So ρ is
+> an **Ω slice**, and §2.2's "knowledge-only by construction" is, for the two
+> function forms, knowledge-only by CHECK (`Val.hasStateMarker` at the capture,
+> refused by name). What R1 bought is not lost — the leaves are still `Term`s and
+> still cannot hold a marker. Found by executing-mode `runSetAt` going red at
+> formation, not by reading.
+>
+> **3. THE CAPTURE FILTER WAS ALREADY WRITTEN.** `admitGlobals` — §8's globals
+> rule and §2.4's citation rule — decides which bindings a body may name, at
+> exactly the point a λ becomes a value, and R2 keeps its RESULT. Nothing new
+> decides what a λ may capture. Closedness stops being a separate premise: it
+> existed because a body was entered under a fresh id window carrying nothing, so
+> a free variable would be silently rebound to whatever the shift landed on.
+>
+> **4. Cooking is not a new judgment.** ρ binds knowledge; `eval`'s `letIn` rule
+> binds a runtime slot's reserved pure name and resolves `.var` through it; so
+> "evaluate the body under ρ" is `Term.underRho` — a `let`-chain `foldr` — plus
+> `Pure.nf`. No `.var`-substitution had to be written, and cooking deliberately
+> does NOT go through `readC`, which would otherwise have to become a fuelled
+> recursion to call something that calls it.
+>
+> **5. §3's rule landed support-scoped, written back, imperative-exempt** —
+> `cookForGen`, run as a pass over Ω before `abstractInto`. Both controls run
+> (`Dllbc.Tests.S32Cook`): a closure with a LATENT spine agrees with the eager
+> answer when cooking is on (`λ(§0 : Nat). σ99`) and DIVERGES when it is off
+> (`λ(§0 : Nat). leb σ5 σ6`), which is Stage V's measurement in this canary's
+> vocabulary. §6's two questions are answered: cooking cannot cascade (a split is
+> a ⇒ event, cooking is ⇝), and nothing depended on showing source syntax for a
+> cooked closure (the renderer prints binders and elides bodies).
+>
+> **6. A LIMIT of the sweep, found by building that canary.** `abstractInto`
+> matches by `Term.beq`, which compares binder NAMES, and readback names a binder
+> by its LEVEL — so a generalized spine that itself contains a binder does not
+> match its own occurrence one binder deeper. `len σ5` is such a spine. Not new
+> at R2 (a λ at rest was normalized knowledge before it was a closure, with the
+> same shift) and not what cooking is about; asserted as behaviour and left as a
+> demand, whose fix is an α-insensitive key at the abstraction site.
+>
+> **7. THE NULLARY `fn` COLLIDES WITH THE SURFACE ASCRIPTION.** `Term.lamTel []
+> body` is the body, so `fn F () -> T { … }` and `(e : T)` elaborate to the same
+> term and the seal can no longer tell a nullary FUNCTION from an ascribed
+> expression. Dispatching on "the sealed term is a body" gets it wrong the other
+> way — it would give `(match n { … } : Nat)` frame isolation and an audit. §1's
+> Unit-desugar is therefore an R2 item, not an R4 one: `fnElab` gives a nullary
+> `fn` the comptime, unwritable binder `U§ : ⇝Unit` and `retarget` supplies the
+> `()` at every no-argument call site.
+>
+> **8. §2.6 needed `freeRVars` re-keyed, and that was VERIFIED not assumed.** The
+> telescope is numbered `0 … n-1` positionally while the enclosing block numbers
+> from its own counter, so letting a `fn` body see its scope makes the two id
+> spaces overlap. Measured with id keying in place: the citation is treated as
+> bound by whichever parameter shares its number, drops out of ρ, and the sealed
+> body's fresh Ω has nothing to resolve it against. `Term.freeRVars` is keyed by
+> NAME now — R1's question, asked of the term — with one case stated rather than
+> inherited: **a λ binder binds there only when it binds a SLOT**, or a pure
+> `λ (N : Nat). …` would shadow a citation of the runtime slot `N`.
+>
+> **9. §2.1's corpus migration did NOT land, and is sized instead**
+> (`Dllbc.Tests.S32Binders`): 10,777 comptime binders spelled lowercase in the
+> flagship alone, 5 in `len`, 9 in `Le`. It is not a spelling sweep — each rename
+> is scope-sensitive, and capitalising a Π binder in a SPEC position deliberately
+> changes argument reading at every ⇒-application of a value of that type, which
+> is §2.1's intent and therefore a behaviour change to make on purpose. R2 keys
+> the fragment on `Var.bindsSlot` meanwhile, which is the fact that is true today
+> and precisely the one R4's id deletion must replace with the case test.

@@ -480,3 +480,84 @@ example : progOk S19Partition.twoRec = true := by native_decide
 end Dllbc.Tests.S27Dispose
 end
 -- └── end of what was `S27Dispose.lean` ───────────────────────────────────────────────
+
+-- ┌── the M32 R2 binder-convention debt, measured ───────────────────────────────
+section
+namespace Dllbc.Tests.S32Binders
+open Dllbc
+
+/-! # §2.1's migration, sized rather than claimed
+
+    suspensions.md §2.1 makes capitalisation reach EVERY binder: a capital binder
+    is comptime, a lowercase one is runtime, and the modeless-pure-binder
+    exemption dies. R2 implements the READING of that rule everywhere it is
+    consulted, and it implements the fragment split the rule is for — but it does
+    NOT rename the corpus's pure binders, and this battery is why that is a
+    measurement rather than an assertion.
+
+    **What R2 keys the fragment on instead**: `Var.bindsSlot`, i.e. whether the
+    binder has an Ω slot id at all (`noSlot` is the sentinel). That is the fact
+    that is actually true today, and it is exactly what §2.1's migration would
+    make derivable from the NAME — which is what R4 needs, since R4 deletes the
+    ids.
+
+    So the migration's size is the number of binders on which the two disagree:
+    comptime by slot, lowercase by name. Counted here over the flagship and over
+    two stdlib terms, so R4 inherits a number and not an adjective. -/
+
+/-- Comptime binders (no slot) whose name is neither capitalised nor reserved —
+    the ones §2.1's migration would rename, and the ones R4 cannot key on a case
+    test until it does. -/
+partial def lowerComptime : Term → Nat
+  | .lam x d b =>
+    (if !x.bindsSlot && !isUpperInit x.name && !isReservedName x.name then 1 else 0)
+      + lowerComptime d + lowerComptime b
+  | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => lowerComptime d + lowerComptime b
+  | .app f a | .seq f a | .seal f a => lowerComptime f + lowerComptime a
+  | .letIn _ r t => lowerComptime r + lowerComptime t
+  | .assign p e r => lowerComptime p + lowerComptime e + lowerComptime r
+  | .idT a b c => lowerComptime a + lowerComptime b + lowerComptime c
+  | .ctorApp _ as | .call _ as | .callV _ as => (as.map lowerComptime).foldl (· + ·) 0
+  | .matchE _ _ bs => (bs.map (fun br => lowerComptime br.body)).foldl (· + ·) 0
+  | .borrow t | .deref t | .cmpT t => lowerComptime t
+  | _ => 0
+
+/-- …and the binders that DO bind a slot, for the ratio: these are the ones whose
+    case already carries their mode (§6's rule, which M31 Stage A landed). -/
+partial def slotBinders : Term → Nat
+  | .lam x d b => (if x.bindsSlot then 1 else 0) + slotBinders d + slotBinders b
+  | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => slotBinders d + slotBinders b
+  | .app f a | .seq f a | .seal f a => slotBinders f + slotBinders a
+  | .letIn _ r t => slotBinders r + slotBinders t
+  | .assign p e r => slotBinders p + slotBinders e + slotBinders r
+  | .idT a b c => slotBinders a + slotBinders b + slotBinders c
+  | .ctorApp _ as | .call _ as | .callV _ as => (as.map slotBinders).foldl (· + ·) 0
+  | .matchE _ _ bs => (bs.map (fun br => slotBinders br.body)).foldl (· + ·) 0
+  | .borrow t | .deref t | .cmpT t => slotBinders t
+  | _ => 0
+
+-- The in-place quicksort — the flagship, the largest program in the corpus.
+-- The in-place quicksort — the flagship, the largest program in the corpus, with
+-- its specs and library lemmas elaborated in.
+example : lowerComptime Dllbc.Tests.S23Direct.flagship = 10777 := by native_decide
+example : slotBinders Dllbc.Tests.S23Direct.flagship = 22 := by native_decide
+
+-- Two kernel library terms, hand-written rather than elaborated: `len` and the
+-- `Le` predicate the carve rule's premises are stated against.
+example : lowerComptime Std.lenFnT = 5 := by native_decide
+example : lowerComptime Pure.kLeFn = 9 := by native_decide
+
+/-! **The reading.** Every one of those is a comptime binder — its argument lands
+    in the comptime environment, not in an Ω slot — spelled lowercase, so a case
+    test would call it runtime and route its application to ⇒-entry. Renaming
+    them is not textual: a pure binder's occurrences are `pvar`s inside its own
+    scope, so each rename is scope-sensitive, and capitalising a Π binder in a
+    SPEC position additionally flips `valBinderModes` at every ⇒-application of a
+    value of that type — which is §2.1's intent (`λ (L : List Nat)` snapshot-reads
+    where `λ (l : List Nat)` consumes) and therefore a behaviour change to be
+    made deliberately, not a spelling sweep. Recorded as R2's one unlanded
+    contract item, with its size. -/
+
+end Dllbc.Tests.S32Binders
+end
+-- └── end of the M32 R2 binder-convention debt ────────────────────────────────

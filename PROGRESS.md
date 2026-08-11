@@ -1,5 +1,56 @@
 # Progress
 
+## 2026-08-11 — dllbc/: **M32 R2 — one λ, one closure; the species becomes a property**
+
+Four commits on `m32-r2` (stacked on the unmerged `m32-r1`), whole corpus green
+at each. `suspensions.md` §5's second representation stage: the two λ species
+fold into one former and one suspension, and everything the second species
+carried is redistributed onto facts that were already there.
+
+    Term.lamR            DELETED       arity is nesting; `lamTel`/`peelLams`
+    Term.lam             Var binder    `Coe String Var` at `noSlot`
+    Val.rfn              DELETED       and so is `know (.lam …)` at rest
+    Val.closure ρ node   NEW           the ONE suspension, body RAW
+    the species          a PROPERTY    `Term.lamImperative`, recomputed
+    capture filter       `admitGlobals`, and its result IS ρ
+    cooking              `underRho` + `Pure.nf` — the `let` rule, not a new one
+    cook-at-generalization  support-scoped, written back, imperative-exempt
+    Term.freeRVars       keyed by NAME (R1's question, asked of the term)
+    fn body scope        sees the enclosing scope (§2.6); params shadow
+    nullary fn           `U§ : ⇝Unit` (§1's desugar, forced by the fold)
+    acceptance flips     2             enumerated below
+    canary control       both ways     agrees cooked / diverges raw
+    sabotage control     21 red        flagship count equation among them
+    clean build          5:04          against R1's 4:49 (~5%)
+
+**The capture filter was already written.** `admitGlobals` — §8's globals rule
+and §2.4's citation rule — decides which bindings a body may name, at exactly
+the point a λ becomes a value. R2 changes nothing about that decision and keeps
+its RESULT: the admitted bindings are ρ. Closedness stops being a separate
+premise, because it existed only because a body was entered carrying nothing.
+
+**Two things the plan could not have known.** (1) ρ cannot be
+`List (Var × Term)`: a λ captures `SetAt`, and `SetAt` is a `natRec` over
+runtime arms — R1's §rec finding, which has no `Term` form. ρ is an Ω slice and
+the knowledge-only invariant is a premise checked at the capture rather than a
+theorem of ρ's type. (2) With one former, a nullary `fn`'s seal and the surface
+ascription `(e : T)` are the SAME TERM, so §1's Unit-desugar had to arrive at R2
+rather than at R4.
+
+**Flips.** A comptime λ at rest is a raw closure, so one golden spells source
+where it spelled readback output; `λ(){ … }` is refused at the surface rather
+than by the kernel (same sentence, unwritable rather than rejected). A `fn` body
+citing an enclosing comptime binding flips from elaboration error to accepted
+(§2.6), with the lowercase citation still refused by the capture rule.
+
+**One contract item did NOT land, and is sized instead of claimed**: §2.1's
+corpus binder migration. `Dllbc.Tests.S32Binders` counts it — 10,777 comptime
+binders spelled lowercase in the flagship alone — and records why it is not a
+spelling sweep: each rename is scope-sensitive, and capitalising a Π binder in a
+spec position deliberately changes argument reading at every ⇒-application of a
+value of that type. R2 keys the fragment on `Var.bindsSlot` (the id) meanwhile,
+which is the fact that is true today and the one R4's deletion needs to replace.
+
 ## 2026-08-11 — dllbc/: **M32 R1 — the domain split; `Term` is the only syntax**
 
 Two commits on `m32-r1`, whole corpus green at each. `suspensions.md` §5's
