@@ -151,10 +151,20 @@ positions still ⇒-read; nothing separates them from `let f = Add 1`.
 So the invariant's enforcement and the §2.1 binder migration are blocked on the SAME
 fact and cannot land separately: a returned proof needs a capital binder, which
 needs Σ-component and parameter binder modes to change — which IS the migration.
-**§2.5 is subsumed into R3b**, attempted terminally there; `S32Backstop` pins two
-accepted programs as tripwires against anyone concluding the rule already holds.
 What R3's demolition DID buy at zero cost: three enforcement sites became one
 (`refuseFnBinding` at the `let`; `fenceComptime` owns the rule and its advice).
+
+**R3b ran the migration and the terminal attempt: RE-REFUTED, residual now two
+precise spellings.** With 10,777 → 0 lowercase comptime binders in the flagship and
+Σ components operative, R3's named blocker is gone — and no-⇒-λ still reds 13,
+because two shapes remain that carry a proof-λ with no binder to mode: **a λ
+written literally in a constructor argument** (no type in hand), and **a Σ chain's
+TAIL** (no binder at all — exactly where quicksort's `cnt` proof sits, pinned as
+`S32Backstop.sigmaTailProof`). The fix is named at the site: a surface marker for a
+Σ's tail, or spelling trailing proofs as components over a Unit tail — a SURFACE
+design question, post-M32. The tripwires stay accepted and unflipped; the invariant
+remains one-boundary-SHY of enforceable, and the doc says so rather than rounding
+up.
 
 ### 2.6 Application surface: spines only
 
@@ -289,8 +299,33 @@ parameters; the seven §2.5 bindings). TERMINAL ATTEMPT: with the migration land
 retry no-⇒-λ and the one-boundary rule; the `S32Backstop` tripwires must flip
 deliberately or the attempt reverts and the residual is reported as a finding.
 
-**Stage R4 — spines + sweep.** `callV` retires; §1's deletion list completed; E2's
-id machinery removed; docs/logs currency.
+**Stage R3b — RUN** (branch `m32-r3b` @ c360d359, stacked on R3; corpus green;
+controls at 21 red both times, restored). Per-class: StdLemmas 3,836 binder sites /
+20,476 occurrences; hand-written kernel terms via new `Term.clam`/`cpi`; spec λ/Π
+549 sites; telescope proof params in the array corpus; **flagship
+`lowerComptime` = 0**. The behaviour flips landed as intended: the library declares
+its arguments comptime (zero changed verdicts — it is only ⇝-applied), and a Σ
+component's binder became OPERATIVE — which surfaced the finding that §2.1's Σ half
+was INERT all along (`readback` names binders by level, so name-carried Σ modes
+were destroyed before any rule could consult them; fixed by putting the mode on the
+Σ domain + `readResult`, DECISION-LOG'd with the rejected alternative). Method note
+carried forward: **an absent failure is not a pass** — grep that the module BUILT
+before reading its absence from the failure list. Judgment calls recorded (proof
+components capitalise, data do not, decided by domain head and measured both ways).
+Residuals stated, not hidden: test-file spec Σ binders (blocked on match-arm binder
+mode checking) and the Class-3 call-graph fixpoint — both post-M32 items.
+
+**Stage R4 — spines + sweep (LAST).** `callV` retires for app spines (preserve the
+arrow-keyed mint-vs-remember split, `atBoundary` as the entry point, the 3-ary
+seal); E2's id machinery removed (`freshFrame`/`shiftVarsK`, `nextFrame + 128`,
+`progBase` arithmetic, `keep` sets — verify empty-by-construction first, plus the
+two harness display filters and `tailEnvs`' progBase key); §1's deletion list
+completed; docs/logs currency. **`Var.bindsSlot` → case test is NOT a drop-in**
+(R3b measured `keyDisagree` = 4, all one construct: a capital telescope parameter
+binds an Ω slot, so a naive case test flips an all-capital-param `fn`
+imperative→pure) — what remains is a RULE ABOUT TELESCOPES (a telescope binder
+binds a slot regardless of case; capital marks the read mode, not the location),
+and it is R4's own differential.
 
 ## 6. Sharp edges to interrogate before dispatch
 
