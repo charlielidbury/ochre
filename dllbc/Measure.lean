@@ -64,7 +64,6 @@ partial def tsize : Term → Nat
   | .seq a b => 1 + tsize a + tsize b
   | .call _ as => 1 + tsizeL as
   | .seal _ a b => 1 + tsize a + tsize b
-  | .callV _ as => 1 + tsizeL as
   | .app a b => 1 + tsize a + tsize b
   | .pi _ a b | .sigmaT _ a b | .lam _ a b | .borrowT _ a b => 1 + tsize a + tsize b
   | .idT a b c => 1 + tsize a + tsize b + tsize c
@@ -110,7 +109,6 @@ partial def occ (needle : Term) : Term → Nat
     | .seq a b => occ needle a + occ needle b
     | .call _ as => occL needle as
     | .seal _ a b => occ needle a + occ needle b
-    | .callV _ as => occL needle as
     | .app a b => occ needle a + occ needle b
     | .pi _ a b | .sigmaT _ a b | .lam _ a b | .borrowT _ a b =>
       occ needle a + occ needle b
@@ -152,7 +150,6 @@ partial def cov (ns : List (String × Term)) : Term → Nat
     | .seq a b => cov ns a + cov ns b
     | .call _ as => covL ns as
     | .seal _ a b => cov ns a + cov ns b
-    | .callV _ as => covL ns as
     | .app a b => cov ns a + cov ns b
     | .pi _ a b | .sigmaT _ a b | .lam _ a b | .borrowT _ a b => cov ns a + cov ns b
     | .idT a b c => cov ns a + cov ns b + cov ns c

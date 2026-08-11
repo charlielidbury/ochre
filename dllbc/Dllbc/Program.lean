@@ -23,7 +23,7 @@ snapshots — a program has no need of: it takes no arguments. So `checkProgram`
 `explore` plus the audit of each path's result, and nothing else.
 
 **Scope is the call table.** A callee is a binding lexically above the call
-(`.callV` on a slot, resolved by the surface from scope alone), so there is no
+(an app spine on a slot, resolved by the surface from scope alone), so there is no
 table at all — not an empty one. The `table` parameter these entry points carried
 was J1's bridge for half-migrated programs, whose un-migrated callees were still
 `FnDef`s; the corpus has none, and the bridge retired with `FnDef`'s departure

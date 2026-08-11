@@ -147,7 +147,6 @@ partial def maxVarId : Term → Nat
   | .letIn x rhs rest => max x.id (max (maxVarId rhs) (maxVarId rest))
   | .assign p e rest => max (maxVarId p) (max (maxVarId e) (maxVarId rest))
   | .ctorApp _ args | .call _ args => args.foldl (fun a t => max a (maxVarId t)) 0
-  | .callV x args => args.foldl (fun a t => max a (maxVarId t)) x.id
   | .borrow t | .deref t | .cmpT t => maxVarId t
   | .index t i ev =>
     max (maxVarId t) (max (maxVarId i) ((ev.map maxVarId).getD 0))
@@ -178,8 +177,6 @@ partial def renameVar (from_ to : Var) : Term → Term
   | .seq a b => .seq (renameVar from_ to a) (renameVar from_ to b)
   | .ctorApp n args => .ctorApp n (args.map (renameVar from_ to))
   | .call n args => .call n (args.map (renameVar from_ to))
-  | .callV x args =>
-    .callV (if x.id == from_.id then to else x) (args.map (renameVar from_ to))
   | .borrow t => .borrow (renameVar from_ to t)
   | .deref t => .deref (renameVar from_ to t)
   | .matchE s eqn brs =>
@@ -223,7 +220,7 @@ partial def resolveScrut (k : Var) (ctor : String) (rebind : List Var) : Term �
   | .seq a b => .seq (resolveScrut k ctor rebind a) (resolveScrut k ctor rebind b)
   | .ctorApp n args => .ctorApp n (args.map (resolveScrut k ctor rebind))
   | .call n args => .call n (args.map (resolveScrut k ctor rebind))
-  | .callV x args => .callV x (args.map (resolveScrut k ctor rebind))
+  | .app f a => .app (resolveScrut k ctor rebind f) (resolveScrut k ctor rebind a)
   | .borrow t => .borrow (resolveScrut k ctor rebind t)
   | .deref t => .deref (resolveScrut k ctor rebind t)
   | t => t
@@ -270,7 +267,8 @@ partial def selfScrutArgs (name : String) (k : Nat) : Term → List Term
   | .assign p e rest =>
     selfScrutArgs name k p ++ selfScrutArgs name k e ++ selfScrutArgs name k rest
   | .seq a b => selfScrutArgs name k a ++ selfScrutArgs name k b
-  | .ctorApp _ args | .callV _ args => args.flatMap (selfScrutArgs name k)
+  | .ctorApp _ args => args.flatMap (selfScrutArgs name k)
+  | .app f a => selfScrutArgs name k f ++ selfScrutArgs name k a
   | .borrow t | .deref t => selfScrutArgs name k t
   | .matchE _ _ brs => brs.flatMap (fun b => selfScrutArgs name k b.body)
   | _ => []
@@ -281,7 +279,7 @@ partial def selfScrutArgs (name : String) (k : Nat) : Term → List Term
 partial def renameSelf (from_ to : String) : Term → Term
   | .call f args =>
     .call (if f == from_ then to else f) (args.map (renameSelf from_ to))
-  | .callV x args => .callV x (args.map (renameSelf from_ to))
+  | .app f a => .app (renameSelf from_ to f) (renameSelf from_ to a)
   | .ctorApp n args => .ctorApp n (args.map (renameSelf from_ to))
   | .letIn x rhs rest => .letIn x (renameSelf from_ to rhs) (renameSelf from_ to rest)
   | .assign p e rest =>
@@ -301,13 +299,13 @@ partial def renameSelf (from_ to : String) : Term → Term
 partial def selfToIh (name : String) (k : Nat) (ih : Var) : Term → Term
   | .call f args =>
     let args' := args.map (selfToIh name k ih)
-    if f == name then .callV ih (args'.eraseIdx k) else .call f args'
+    if f == name then Term.appSpine (.var ih) (args'.eraseIdx k) else .call f args'
   | .letIn x rhs rest => .letIn x (selfToIh name k ih rhs) (selfToIh name k ih rest)
   | .assign p e rest =>
     .assign (selfToIh name k ih p) (selfToIh name k ih e) (selfToIh name k ih rest)
   | .seq a b => .seq (selfToIh name k ih a) (selfToIh name k ih b)
   | .ctorApp n args => .ctorApp n (args.map (selfToIh name k ih))
-  | .callV x args => .callV x (args.map (selfToIh name k ih))
+  | .app f a => .app (selfToIh name k ih f) (selfToIh name k ih a)
   | .borrow t => .borrow (selfToIh name k ih t)
   | .deref t => .deref (selfToIh name k ih t)
   | .matchE s eqn brs =>
@@ -525,6 +523,11 @@ def fnElab (d : FnDef) : Except String Term := do
     with no binding is left as a `.call`, so a half-migrated program still
     reaches the J1 table for whatever has not moved yet.
 
+    **The target is an app SPINE** (M32 R4). `.callV v args` retired, so `f(a, b)`
+    lands as `.app (.app (.var v) a) b` — surface sugar for the one application
+    form. This function is where the surface's n-ary shape becomes the grammar's
+    binary one, and it is the only place in the pipeline that ever built a call.
+
     **And the arguments are permuted to match the callee's hoist.** `[k]` is a
     scrutinee-selection hint, and `fnElab` hoists that parameter to the FRONT
     because the motive is the sealed Π with the scrutinee peeled off the front —
@@ -541,17 +544,16 @@ partial def retarget (binds : List (String × Var × Option Nat)) : Term → Ter
     match binds.lookup f with
     | some (v, some k) =>
       match args'.get? k with
-      | some a => .callV v (a :: args'.eraseIdx k)
-      | none => .callV v args'                  -- arity mismatch: the kernel reports it
+      | some a => Term.appSpine (.var v) (a :: args'.eraseIdx k)
+      | none => Term.appSpine (.var v) args'    -- arity mismatch: the kernel reports it
     -- **A no-argument call supplies the nullary desugar's `()`** (M32 R2). A
     -- declared callee with an empty argument list is a nullary `fn`, and
     -- `fnElab` gave it the comptime `U§ : ⇝Unit` binder that §1 prescribes; the
     -- unit is put here rather than written, so the desugar is invisible at the
     -- surface from both ends. (A no-argument call of a callee that is NOT nullary
     -- is an arity error either way, and the kernel still reports it.)
-    | some (v, none) => .callV v (if args'.isEmpty then [.unit] else args')
+    | some (v, none) => Term.appSpine (.var v) (if args'.isEmpty then [.unit] else args')
     | none => .call f args'
-  | .callV x args => .callV x (args.map (retarget binds))
   | .ctorApp n args => .ctorApp n (args.map (retarget binds))
   | .letIn x rhs rest => .letIn x (retarget binds rhs) (retarget binds rest)
   | .assign p e rest => .assign (retarget binds p) (retarget binds e) (retarget binds rest)
@@ -622,7 +624,7 @@ partial def fnSlots : Term → List Nat
   | .letIn x rhs rest =>
     (if x.id ≥ progBase then [x.id] else []) ++ fnSlots rhs ++ fnSlots rest
   | .assign p e rest => fnSlots p ++ fnSlots e ++ fnSlots rest
-  | .ctorApp _ args | .call _ args | .callV _ args => args.flatMap fnSlots
+  | .ctorApp _ args | .call _ args => args.flatMap fnSlots
   | .borrow t | .deref t | .cmpT t => fnSlots t
   | .index t i ev => fnSlots t ++ fnSlots i ++ (ev.map fnSlots).getD []
   | .range t lo cnt rest ev eq =>

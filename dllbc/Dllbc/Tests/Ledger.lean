@@ -516,7 +516,7 @@ partial def lowerComptime : Term → Nat
   | .letIn _ r t => lowerComptime r + lowerComptime t
   | .assign p e r => lowerComptime p + lowerComptime e + lowerComptime r
   | .idT a b c => lowerComptime a + lowerComptime b + lowerComptime c
-  | .ctorApp _ as | .call _ as | .callV _ as => (as.map lowerComptime).foldl (· + ·) 0
+  | .ctorApp _ as | .call _ as => (as.map lowerComptime).foldl (· + ·) 0
   | .matchE _ _ bs => (bs.map (fun br => lowerComptime br.body)).foldl (· + ·) 0
   | .borrow t | .deref t | .cmpT t => lowerComptime t
   | _ => 0
@@ -530,7 +530,7 @@ partial def slotBinders : Term → Nat
   | .letIn _ r t => slotBinders r + slotBinders t
   | .assign p e r => slotBinders p + slotBinders e + slotBinders r
   | .idT a b c => slotBinders a + slotBinders b + slotBinders c
-  | .ctorApp _ as | .call _ as | .callV _ as => (as.map slotBinders).foldl (· + ·) 0
+  | .ctorApp _ as | .call _ as => (as.map slotBinders).foldl (· + ·) 0
   | .matchE _ _ bs => (bs.map (fun br => slotBinders br.body)).foldl (· + ·) 0
   | .borrow t | .deref t | .cmpT t => slotBinders t
   | _ => 0
@@ -549,7 +549,7 @@ partial def keyDisagree : Term → Nat
   | .letIn _ r t => keyDisagree r + keyDisagree t
   | .assign p e r => keyDisagree p + keyDisagree e + keyDisagree r
   | .idT a b c => keyDisagree a + keyDisagree b + keyDisagree c
-  | .ctorApp _ as | .call _ as | .callV _ as => (as.map keyDisagree).foldl (· + ·) 0
+  | .ctorApp _ as | .call _ as => (as.map keyDisagree).foldl (· + ·) 0
   | .matchE _ _ bs => (bs.map (fun br => keyDisagree br.body)).foldl (· + ·) 0
   | .borrow t | .deref t | .cmpT t => keyDisagree t
   | _ => 0

@@ -248,21 +248,6 @@ inductive Term where
       rest as a suspension; ⇝'s rule for it (`readComptimeVal`) is a rule at the
       NODE, which reduces it to the σ its site names. -/
   | seal   : Nat → Term → Term → Term
-  /-- `x(a, …)` — **application of a value callee** (combining-fns §7 cost 2):
-      the callee is resolved from a runtime SLOT, not the declaration table. The
-      slot's contents decide the rule (`readR`):
-
-        * a literal λ — bind and run (β), both modes: body known ⟹ unfold;
-        * a `σ : Π` — checking only: abstract application at the Π, minting the
-          result from the instantiated return type (§2.3's runtime column, §12
-          decision 5 — runtime calls do not opt into remembered-spine semantics).
-
-      Application is **saturated** (§12 decision 4): a spine, consumed whole like
-      a telescope, so no partial application ever holds a borrow while awaiting an
-      argument. Under-application is rejected distinctively, not curried. The
-      callee is a `Var` because that is all §7 needs (`ih` is a bound variable) and
-      it keeps the form's shape identical to `.matchE`'s scrutinee. -/
-  | callV  : Var → List Term → Term
   /-- Terminal form, the value a statement sequence returns when it has no
       final expression. -/
   | unit   : Term
@@ -295,6 +280,18 @@ inductive Term where
       **Church-style: the binder carries its domain** (M27, the ratified function
       model), which is what the document's grammar said all along. -/
   | lam    : Var → Term → Term → Term
+  /-- **Application, and there is only one form of it** (M32 R4). `callV` — the
+      n-ary `x(a, …)` the declaration era's telescope left behind — retired here,
+      so `f(a, b)` is surface sugar for the spine `.app (.app f a) b` and the
+      document's grammar (`t t′`) is the machine's.
+
+      What retiring it must NOT lose is the **mint-vs-remember split**, and that
+      split is ARROW-keyed rather than node-keyed (§12 decision 5): ⇒ applied to a
+      spine whose head holds a function MINTS a fresh existential at the
+      instantiated codomain, while ⇝ applied to the same spine REMEMBERS the
+      structured neutral. `callV` used to carry that distinction in the syntax,
+      which made it look node-keyed; with one node the arrows carry it alone,
+      which is what the decision always said. Asserted in `S32Spine` §A/§B. -/
   | app    : Term → Term → Term      -- application
   | const  : String → Term           -- a built-in constant (recursor or type former)
   | idT    : Term → Term → Term → Term  -- Id A a b (§10): the identity type
@@ -342,6 +339,31 @@ def Branch.binders : Branch → List Var | .mk _ b _ => b
 /-- The branch's body. -/
 def Branch.body : Branch → Term | .mk _ _ t => t
 
+/-! ## Application spines (M32 R4) -/
+
+/-- `f a₁ … aₙ` — the spine `callV` used to spell as one node. Left-nested, so
+    `collectAppT`/`appSpineVar?` read it back in the order it was written. -/
+def Term.appSpine (head : Term) : List Term → Term
+  | [] => head
+  | a :: rest => Term.appSpine (.app head a) rest
+
+/-- A spine whose HEAD is a runtime variable, i.e. what `.callV x args` was.
+
+    This is the one structural fact that survived `callV`'s retirement, and it is
+    needed in `Syntax.lean` rather than only in the machine because
+    `Term.imperative` consults it: a `.var` head names an Ω SLOT, so applying one
+    is ⇒-entry, exactly as the `.callV` case said. A `.const`/`.pvar` head is a
+    pure spine and stays comptime — which is why `fn UseTrans (…) { LeTrans a b c
+    p q }` is still classified by its BINDERS (M32 R2's second half) and not by
+    this. -/
+def Term.appSpineVar? : Term → Option (Var × List Term)
+  | .app f a =>
+    match Term.appSpineVar? f with
+    | some (x, as) => some (x, as ++ [a])
+    | none => none
+  | .var x => some (x, [])
+  | _ => none
+
 /-! ## The λ telescope, and the property that replaces the second species (M32 R2) -/
 
 /-- `λ(x : τ, y : υ){ b }` — the comma list, as the nesting it abbreviates. -/
@@ -374,13 +396,21 @@ def Term.peelLams : Term → List (Var × Term) × Term
 mutual
   def Term.imperative : Term → Bool
     | .assign _ _ _ | .borrow _ | .seq _ _ | .matchE _ _ _
-    | .call _ _ | .callV _ _ | .seal _ _ _ => true
+    | .call _ _ | .seal _ _ _ => true
     -- `a[lo ; ..]` reads its count off the extent map, which is state.
     | .range _ _ none _ _ _ => true
     | .letIn _ rhs rest => Term.imperative rhs || Term.imperative rest
     | .lam _ d b | .pi _ d b | .sigmaT _ d b | .borrowT _ d b =>
       Term.imperative d || Term.imperative b
-    | .app f a => Term.imperative f || Term.imperative a
+    -- **A `.var`-headed spine is what `.callV` was** (M32 R4), and keeping it
+    -- named here is the whole of what retiring the node costs. Without this the
+    -- classification would be read off the ARGUMENTS alone, and a nullary
+    -- `fn F () { g() }` — whose only binder is the Unit-desugar's comptime `U§`,
+    -- and whose body is now `.app (.var g) .unit` — would classify PURE. A
+    -- `.const`/`.pvar` head stays comptime, which is the pure spine `readC`
+    -- remembers.
+    | .app f a =>
+      (Term.appSpineVar? (.app f a)).isSome || Term.imperative f || Term.imperative a
     | .idT a b c => Term.imperative a || Term.imperative b || Term.imperative c
     | .ctorApp _ args => Term.imperativeList args
     | .deref t | .cmpT t => Term.imperative t
@@ -471,7 +501,6 @@ mutual
     -- sealed σ by, and that is a question about identity over time rather than
     -- about equality of syntax.
     | .seal _ a b, .seal _ c d => Term.beq a c && Term.beq b d
-    | .callV x as, .callV y bs => x == y && Term.beqList as bs
     | .unit, .unit => true
     | .pvar x, .pvar y => x == y
     | .type, .type => true
@@ -736,8 +765,6 @@ mutual
     | .seq a b => Term.freeRVars bound a ++ Term.freeRVars bound b
     | .call _ args => Term.freeRVarsList bound args
     | .seal _ t u => Term.freeRVars bound t ++ Term.freeRVars bound u
-    | .callV x args =>
-      (if bound.contains x.name then [] else [x]) ++ Term.freeRVarsList bound args
     -- **The one λ, scoped as the telescope it is** (M32 R2). The domain is read
     -- OUTSIDE the binder and the body inside it, which is exactly what
     -- `freeRVarsBinders` did to `lamR`'s list — a binder type is dependent (`ih`'s
@@ -1131,7 +1158,6 @@ mutual
     | .borrow t => "&mut " ++ Term.prettyPrec 1 t
     | .seal _ t _ => "(" ++ Term.prettyPrec 0 t ++ " : …)"
     | .call f _ => f ++ "(…)"
-    | .callV x _ => x.name ++ "(…)"
     | .index t i _ => Term.prettyPrec 1 t ++ "[" ++ Term.prettyPrec 0 i ++ "]"
     | .range t lo _ _ _ _ => Term.prettyPrec 1 t ++ "[" ++ Term.prettyPrec 0 lo ++ " ; …]"
     | .letIn x _ _ => s!"let {x.name} = …"
@@ -1225,9 +1251,6 @@ mutual
     | .call f args =>
       let (n1, args') := Term.numberSealsList n args
       (n1, .call f args')
-    | .callV x args =>
-      let (n1, args') := Term.numberSealsList n args
-      (n1, .callV x args')
     | .matchE x eqn brs =>
       let (n1, brs') := Term.numberSealsBranches n brs
       (n1, .matchE x eqn brs')

@@ -549,9 +549,13 @@ example : progRejects f5 "holds ⊥" = true := by native_decide
     closure holding its arguments — including, in general, borrows". That is a
     decision against a settled one, not a mode question, and it is left filed. -/
 
+-- **FLIPPED at M32 R4**, with the reason recorded above at `Functions.c4`: a
+-- comptime λ's partial application is a VALUE, because §12 decision 4 is a rule
+-- about ⇒-ENTRY and a comptime capture holds no borrow. The refusal reached this
+-- program only because `f(2)` and `f 2` were different nodes. Saturation is
+-- still enforced where entry happens — `g2`/`g3` below, and `Functions.a5`.
 def g1 : Term := prog{ let f = λ (x : Nat). λ (y : Nat). x; let z = f(2); () }
-example : progRejects g1 "partial application" = true := by native_decide
-example : progRejects g1 "binder modes do NOT separate the two cases" = true := by native_decide
+example : progOk g1 = true := by native_decide
 
 -- The legitimate-return case, pinned as the LIMITATION it is: `mk` means to be
 -- "the constant function at 1", and is refused.
@@ -1908,7 +1912,7 @@ example : progDiff (Tests.S23Direct.qsRun [3, 1, 2]) = true := by native_decide
     is a σ, and matching on one is what forks the driver's paths. -/
 def hSplit (inZ inS : Term) : Term :=
   .letIn ⟨0, "F"⟩ (prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) })
-    (.letIn ⟨1, "n"⟩ (.callV ⟨0, "F"⟩ [prog{ 3 }])
+    (.letIn ⟨1, "n"⟩ (Term.appSpine (.var ⟨0, "F"⟩) [prog{ 3 }])
       (.matchE ⟨1, "n"⟩ none [Branch.mk "Z" [] inZ, Branch.mk "S" [⟨2, "k"⟩] inS]))
 
 -- H0. The split is real: two paths, not one.
@@ -1919,8 +1923,8 @@ example : (programEnvs (hSplit .unit .unit)).length == 2 := by native_decide
 -- `admitGlobals` reached through the driver.
 def hGlobal (bad : Bool) : Term :=
   hSplit .unit
-    (.letIn ⟨3, "G"⟩ (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (.callV ⟨0, "F"⟩ [.var ⟨4, "y"⟩]))
-      (.letIn ⟨5, "r"⟩ (.callV ⟨3, "G"⟩ [.var ⟨2, "k"⟩])
+    (.letIn ⟨3, "G"⟩ (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (Term.appSpine (.var ⟨0, "F"⟩) [.var ⟨4, "y"⟩]))
+      (.letIn ⟨5, "r"⟩ (Term.appSpine (.var ⟨3, "G"⟩) [.var ⟨2, "k"⟩])
         (if bad then prog{ True } else .unit)))
 example : progOk (hGlobal false) = true := by native_decide
 -- The negative twin at the SAME position: the branch is entered and its result
@@ -1956,11 +1960,11 @@ def hLend : Term :=
                   let tail = *v; *v := Cons(e, tail); () } : Π (e : Nat) → Π (v : &mut (s : List Nat ~> List Nat)) → Unit) })
     (.letIn ⟨1, "l"⟩ (prog{ Cons(1, Nil) })
       (.letIn ⟨2, "id"⟩ (prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) })
-        (.letIn ⟨3, "n"⟩ (.callV ⟨2, "id"⟩ [prog{ 3 }])
+        (.letIn ⟨3, "n"⟩ (Term.appSpine (.var ⟨2, "id"⟩) [prog{ 3 }])
           (.matchE ⟨3, "n"⟩ none
             [Branch.mk "Z" [] .unit,
              Branch.mk "S" [⟨4, "k"⟩]
-               (.letIn ⟨5, "r"⟩ (.callV ⟨0, "Push"⟩ [.var ⟨4, "k"⟩, .borrow (.var ⟨1, "l"⟩)])
+               (.letIn ⟨5, "r"⟩ (Term.appSpine (.var ⟨0, "Push"⟩) [.var ⟨4, "k"⟩, .borrow (.var ⟨1, "l"⟩)])
                  .unit)]))))
 example : progOk hLend = true := by native_decide
 example : progDiff hLend = true := by native_decide

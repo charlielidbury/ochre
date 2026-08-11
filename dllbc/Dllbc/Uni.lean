@@ -637,8 +637,10 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
       -- `localId`, not `rctx.lookup`: a `fn` slot deliberately falls through to
       -- `.call`, because `retarget` is what rewrites those — and permutes a
       -- `[k]`-hoisted callee's arguments on the way (see `localId`'s header).
+      -- The SPINE (M32 R4): `f(a, b)` is sugar for `.app (.app (.var f) a) b`.
       match localId rctx name with
-      | some id => return (← `(Dllbc.Term.callV ⟨$(quote id), $(quote name)⟩ [$args',*]), n)
+      | some id =>
+        return (← `(Dllbc.Term.appSpine (.var ⟨$(quote id), $(quote name)⟩) [$args',*]), n)
       | none => return (← `(Dllbc.Term.call $(quote name) [$args',*]), n)
   | `(uterm| match $x:ident { $arms,* }) => do
     let s := x.getId.toString

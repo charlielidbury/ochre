@@ -111,7 +111,7 @@ structure St where
       and not a type anything inhabits. So the sealed view of a function that
       takes a `&mut` cannot be recorded where `sctx` records types, and the
       honest place is one that keeps it as a `Term` telescope: exactly the shape
-      the call rule already reads. That is what makes `.callV` on such a σ the
+      the call rule already reads. That is what makes a CALL on such a σ the
       SAME rule as `.call` on a table entry (`callDeclC`) rather than a second
       one — §3's "abstract application at a moded Π", with nothing new under it.
 
@@ -153,7 +153,7 @@ structure St where
   nextGroup : Nat := 0
   -- (`decls`, the function table the `.call` rule looked names up in, retired in
   -- M28 D9 with `FnDef`. Scope is the call table: a callee is a binding lexically
-  -- above the call, resolved by the surface into a `.callV` on that slot.)
+  -- above the call, resolved by the surface into a spine on that slot.)
   /-- The argument-borrow obligations (§5.1), seeded from the telescope and
       audited at return. Held in state (not just returned by `seedTelescope`)
       so a §10 Refl refinement propagates into the owed types — see
@@ -276,6 +276,28 @@ def setEnv (ω : Omega) : M Unit := modify (fun s => { s with env := ω })
 /-- The newest binding of `x`'s NAME in `ω`, if any. -/
 def findSlot? (ω : Omega) (x : Var) : Option (Var × Val) :=
   (ω.filter (fun kv => kv.1.name == x.name)).getLast?
+
+/-- **Must a call of this callee be ENTERED?** — i.e. is applying it an EVENT?
+    (M32 R4.)
+
+    True for a sealed function (its σ has a moded signature in `fsig`) and for an
+    imperative closure. Both are entered: a fresh frame, a fresh existential, an
+    audit — things that happen once, at a point in time.
+
+    This is what `reflectC` needs, and it is the same fact `.callV`'s retired
+    refusal was keyed on, moved from the NODE to the VALUE. ⇝ has no events, so
+    it has no reading of an application of one of these; what it does have a
+    reading of is application of an ABSTRACT function — a `σ : Π` with no
+    signature, a pure λ, a constant — which is the structured neutral `f a`, and
+    which reflects structurally. The old refusal's advice ("written as an
+    application") is now vacuous, because `f(a)` IS the application. -/
+def calleeMustEnter (st : St) (v : Val) : Bool :=
+  match v with
+  | .closure _ node => Term.lamImperative node
+  | v =>
+    match v.symOf? with
+    | some σ => (st.fsig.lookup σ).isSome
+    | none => false
 
 /-- Its position, for the in-place update `setSlot` must make. -/
 def slotIdx? (ω : Omega) (x : Var) : Option Nat :=
@@ -1172,7 +1194,27 @@ mutual
       match (← get).entrySyms.lookup v.id with
       | some σ => pure (.know (Term.sym σ))
       | none => reflectC lets (.deref (.var v))
+    -- **A CALL HAS NO ⇝ READING, and R4 moved that fact from the node to the
+    -- value.** `reflectC` used to refuse `.callV` by name; with one application
+    -- node the refusal has to ask what the head HOLDS. A sealed function or an
+    -- imperative closure is ENTERED, and entering is an event — its result is a
+    -- fresh existential minted once, so a ⇝ reading of the same term would have
+    -- to invent one, and two reads would disagree. An ABSTRACT function is
+    -- different and still reflects below: `σ a` is the structured neutral, which
+    -- is §12 decision 5's ⇝ half and exactly what the old message told the
+    -- programmer to write instead.
     | .app f a => do
+      let entered ← match Term.appSpineVar? (.app f a) with
+        | some (x, _) =>
+          if lets.contains x.id then pure false
+          else do
+            let st ← get
+            pure (match findSlot? st.env x with
+              | some kv => calleeMustEnter st kv.2
+              | none => false)
+        | none => pure false
+      if entered then
+        throwErr "readC (⇝): a call is not in the comptime fragment — its result is a fresh existential, minted at an EVENT, and ⇝ has none. (Comptime application of an ABSTRACT function is the structured neutral `f a` and does reflect; a sealed or imperative callee must be entered, which is ⇒'s.)"
       pure (.know (.app (← needKnow "" (← reflectC lets f)) (← needKnow "" (← reflectC lets a))))
     | .idT a b c => do
       pure (.know (.idT (← needKnow " Id" (← reflectC lets a)) (← needKnow " Id" (← reflectC lets b))
@@ -1220,7 +1262,6 @@ mutual
     -- that cannot mean it. The sentence is unchanged for the case it still
     -- covers.
     | .seal _ _ _ => throwErr "readC (⇝): `seal` is not in the comptime fragment — a seal inside a TYPE has no reading, because a type is consumed at its own event and there is no binding for the sealed σ to land in. A seal is read at a `let` (§2.4)"
-    | .callV _ _ => throwErr "readC (⇝): a value-callee call is not in the comptime fragment — comptime application of an abstract function is the structured neutral `f a`, written as an application (§2.1)"
   def reflectCList (lets : List Nat) : List Term → M (List Val)
     | [] => pure []
     | t :: ts => do pure ((← reflectC lets t) :: (← reflectCList lets ts))
@@ -1378,7 +1419,6 @@ partial def calleeNames : Term → List String
   -- A seal's body is ordinary runtime code and may call; a value-callee call
   -- names no DECLARATION (that is the point of it), but its arguments may.
   | .seal _ t u => calleeNames t ++ calleeNames u
-  | .callV _ args => args.flatMap calleeNames
   | .letIn _ a b => calleeNames a ++ calleeNames b
   | .assign a b c => calleeNames a ++ calleeNames b ++ calleeNames c
   | .seq a b => calleeNames a ++ calleeNames b
@@ -2617,8 +2657,6 @@ mutual
     -- The callee is a slot, so it shifts exactly as a `.matchE` scrutinee does —
     -- and a callee that is a PROGRAM-level binding (§8: scope is the call table)
     -- is precisely the `keep` case, which is why it is the same test.
-    | .callV x args =>
-      .callV ⟨(if keep.contains x.id then x.id else x.id + d), x.name⟩ (shiftVarsListK keep d args)
     -- A runtime λ's binders shift WITH its body, which is the property that makes
     -- frames compose: applying a `lamR` shifts the whole node into a fresh
     -- window, so binder ids and their occurrences stay in step no matter how many
@@ -3322,7 +3360,7 @@ def binderModes : Nat → Term → Nat → List Bool
 
 /-! ## Value-callee application (combining-fns §7 cost 2, M26-A)
 
-    `.callV x [a₁ … aₙ]` applies whatever slot `x` holds. The two rules are §2's
+    `x a₁ … aₙ` applies whatever slot `x` holds. The two rules are §2's
     two rows for "what does applying a function yield", and the slot's contents —
     not a flag, not a table — pick the row:
 
@@ -3407,14 +3445,12 @@ def runtimeRecSpine? (t : Term) : Option (String × List Term) :=
 /-- A juxtaposition spine `x a b …` whose head is a runtime variable (M27 β).
 
     `Nil` when the head is anything else — a constant, a pure former, a peel — in
-    which case the spine is an ordinary term and ⇒'s pure lift reads it. -/
-def appSpineVar? : Term → Option (Var × List Term)
-  | .app f a =>
-    match appSpineVar? f with
-    | some (x, as) => some (x, as ++ [a])
-    | none => none
-  | .var x => some (x, [])
-  | _ => none
+    which case the spine is an ordinary term and ⇒'s pure lift reads it.
+
+    (`Term.appSpineVar?` since R4, because `Term.imperative` consults it too; the
+    name is kept here for the machine's call sites.) -/
+abbrev appSpineVar? : Term → Option (Var × List Term) := Term.appSpineVar?
+
 
 /-- The head constant of a `Term` application spine, if it has one. -/
 partial def termSpineHead : Term → Option String
@@ -3425,6 +3461,54 @@ partial def termSpineHead : Term → Option String
 /-- The head constant of a knowledge application spine, if it has one. -/
 partial def valSpineHead : Val → Option String
   | v => (Val.asRecSpine? v).map (·.1)
+
+/-- **Does ⇒ own the application of this callee value?** (M32 R4.)
+
+    With `callV` retired there is one application node, so this is the whole of
+    what used to be carried by the choice between two of them — and it is a
+    question about the VALUE the head slot holds, asked after the ⇝ fetch.
+
+    `true` means the ⇒ call rule runs (entry, ι, β-with-saturation, the mint, or
+    an honest rejection); `false` means the pure lift, where ⇝ remembers the
+    structured neutral. The `true` cases, and why each is not the lift's:
+
+      * a **closure**, either fragment. An imperative one is ⇒-ENTRY; a comptime
+        one is β, but β that CHECKS — arity and each argument against its
+        binder's domain, which the normalizer does not do (c6, c7).
+      * **a value holding a loan marker** — §5.2's "every demand collapses
+        first" at the callee slot. The lift would read the marker as knowledge
+        instead of ending the loan and retrying (c11).
+      * **⊥** — a call on a moved slot is a use-after-move, and ⇒ is where it is
+        named. The lift would report it as a comptime read of ⊥, which is a
+        true sentence about the wrong event.
+      * a **recursor spine** over runtime arms — ι is ⇒'s (§7 cost 5).
+      * a **σ**, and this is the case that carries §12 decision 5. With an
+        `fsig` it is a sealed function and `callDeclC` enters it. With only an
+        `sctx` type it is ABSTRACT, and the call MINTS a fresh existential at
+        the instantiated codomain rather than remembering `σ a` — deliberately
+        not the structured neutral, which is ⇝'s reading of the same term.
+      * a **constructor value** — data at the head of a call. Not a function,
+        and ⇒ says so rather than handing `3 2` to the normalizer to remember as
+        a neutral nobody can ever use.
+
+    Everything else is knowledge with a comptime reading and no ⇒ entry — a
+    stuck spine, a constant, a pure variable that is not a σ — and the lift is
+    exactly right for it. That is where the corpus's staged proof-builders live
+    (`let Cnt = MkL lo hi hcnt` applied later), and it is why this is a value
+    test and not "a `.var` head means a call". -/
+def calleeIsRuntime (st : St) (v : Val) : Bool :=
+  match v with
+  | .closure _ _ => true
+  | .bot => true
+  | v => if (firstLoanMarker v).isSome then true else
+  match v with
+  | v =>
+    match valSpineHead v with
+    | some c => (recLayout c).isSome
+    | none =>
+      match v.symOf? with
+      | some σ => (st.fsig.lookup σ).isSome || (st.sctx.lookup σ).isSome
+      | none => (Val.asCtor? v).isSome
 
 /-- Mint a fresh frame window for an inlined body's slots (the executing call
     rule's device, now shared with runtime-λ application). -/
@@ -3492,15 +3576,15 @@ def valBinderModes : Nat → Val → Nat → M (List Bool)
     an over-applied callee are different rejections, and `synthSpine`'s `none`
     collapses them. -/
 def instantiatePi : Nat → Term → List Val → M Term
-  | 0, _, _ => throwErr "callV: out of fuel (Π instantiation)"
+  | 0, _, _ => throwErr "call: out of fuel (Π instantiation)"
   | _, ty, [] => pure ty
   | fuel + 1, ty, a :: rest =>
     match Pure.whnf fuel ty with
     | .pi x dom cod => do
       if ← hasType fuel a dom then
         instantiatePi fuel (Pure.openBinder fuel x cod (subsKnowledge a)) rest
-      else throwErr s!"callV: argument ({a.pretty}) does not have its parameter type ({dom.pretty})"
-    | other => throwErr s!"callV: too many arguments — the callee's type is {other.pretty}, not a function type"
+      else throwErr s!"call: argument ({a.pretty}) does not have its parameter type ({dom.pretty})"
+    | other => throwErr s!"call: too many arguments — the callee's type is {other.pretty}, not a function type"
 
 /-- Audit every explored path of a sealed body, and return the fresh supplies
     advanced past everything those paths minted.
@@ -3532,7 +3616,7 @@ def auditAllPaths : Nat → Term → List (Except String (Val × St)) → St →
     variables are its **callees**, resolved against the enclosing Ω.
 
     That line USED to be drawn at what the body can do with the binding: a
-    function is called (a place read — `.callV` locates its callee, it never moves
+    function is called (a place read — the call rule locates its callee, never moves
     it), while data is moved, borrowed or written, so a `globalKind` predicate
     admitted exactly the function VALUES and everything else kept M26-C's
     rejection. **M31 Stage A (§2.4) replaced that with the binder's MODE**, and
@@ -3893,7 +3977,7 @@ mutual
         let _ ← readR fuel e                             -- evaluate for effect, discard
         readR fuel rest
       -- **A `.call` never resolves** (M28 D9). §8's scope IS the call table: the
-      -- surface turns `f(…)` into a `.callV` on the binding lexically above it, so
+      -- surface turns `f(…)` into a SPINE on the binding lexically above it, so
       -- a `.call` that survives to here names nothing — a forward reference, a
       -- typo, or a function that was never declared. It used to consult `St.decls`,
       -- the J1 bridge for half-migrated programs, and the corpus has no half-
@@ -3913,75 +3997,6 @@ mutual
           -- never asks which σ a seal has, because it never has one.
           readR fuel t
         else sealNode fuel site t u
-      -- **Application of a NAMED callee** (§7 cost 2). The callee is LOCATED, not
-      -- consumed: calling a function is a place read, like a match scrutinee's,
-      -- so a slot can be called twice — which `ih` needs, since `quicksort`
-      -- recurses twice from one arm.
-      --
-      -- **The old parenthesis here argued this backwards, and c1 caught it.** It
-      -- said that stating the rule as LOCATION rather than as §2.1's copy-on-read
-      -- "keeps the rule true of the borrow-capturing closures §7 defers, which are
-      -- NOT copyable". That is exactly inverted: for a non-copyable closure,
-      -- located-not-consumed is the rule that would let it be called twice, and
-      -- copy-on-read's index-kind restriction is precisely what would EXCLUDE it.
-      -- Location is not the more conservative statement; it is the more permissive
-      -- one, and it happened to be safe only because the values phase A admits are
-      -- all index-kind anyway.
-      --
-      -- What actually licenses it is M27's model: **functions are reached by
-      -- NAME** (§8 — a declaration is a `let`, and the binding IS the name), and
-      -- calling where bound is a name-use rather than a read. `readR`'s `.var`
-      -- case refuses reading a function into a second binding for the same reason,
-      -- so the two rules are one sentence seen from both ends. A capturing closure,
-      -- if §7's deferral ever ends, is a value and will need its own rule; it will
-      -- not inherit this one.
-      | .callV x args => do
-        -- **THE FENCE IS GONE** (M31 Stage A, §2.2). It read: a capital
-        -- function-typed binder is a SPEC parameter, citable in a type and never
-        -- callable, with `map_apply (g : …)` as the lowercase twin that could be
-        -- called. That distinction was the whole of §6.3, and M31 dissolves it —
-        -- a function IS comptime knowledge, so a capital binder is what every
-        -- function binding now looks like, and refusing to call one would refuse
-        -- every call there is.
-        --
-        -- What replaces it is not a weaker fence but a different sentence: the
-        -- head of a call is FETCHED BY ⇝ — the non-destructive slot read directly
-        -- below, which is what this rule already did and what `reflectC`'s own
-        -- `.var` case does (`lookupSlot` plus the ⊥ rejection). Nothing was
-        -- consuming a callee before, so nothing about erasure is weakened by
-        -- letting an erased binder be the callee: `G a` in a spec and `G(a)` in a
-        -- body reach the same value by the same read.
-        match ← lookupSlot x with
-        | .bot => throwErr s!"callV: callee {x.name}#{x.id} holds ⊥ (use-after-move or uninitialized)"
-        | callee =>
-          -- §5.2's "every demand collapses first": a call is a demand on its
-          -- callee slot, so a parked loan there ends before we look at what the
-          -- slot holds. Vacuous for the closed function values of phase A, and
-          -- listed rather than omitted — every UNLISTED demand site in this
-          -- calculus has so far turned out to be a bug waiting for its first
-          -- program (§5.2's own account of how that rule was earned).
-          match firstLoanMarker callee with
-          | some ℓ => do endLoan fuel ℓ; readR fuel (.callV x args)
-          -- **A SEALED FUNCTION is called by the table's own rule** (M26-C).
-          -- Its σ carries a moded signature rather than a `Val` type (see
-          -- `St.fsig`), and `callDeclC` is what reads one: telescope in,
-          -- ensures out, one loan group, borrow payloads re-minted. Dispatched
-          -- HERE, before the arguments are read, because `processArgs` does its
-          -- own §6 mode routing off the telescope — pre-reading them would
-          -- consume a comptime argument the callee promised never to touch.
-          | none =>
-            match callee.symOf? with
-            | some σ =>
-              match (← get).fsig.lookup σ with
-              | some piT =>
-                -- Peel the stored Π at POSITIONAL binders, which is the convention
-                -- `processArgs`/`buildResult` read a telescope by, and which
-                -- `piBinderNames` reproduces mode and all.
-                match piPeel (piBinderNames piT) piT with
-                | .error e => throwErr e
-                | .ok (tel, ret) => callDeclC fuel (tel.map (fun p => (p.1.name, p.2))) ret args
-              | none => callVValue fuel x callee args
-            | none => callVValue fuel x callee args
       -- **⇒ LIFTS a comptime λ; it does not BIND one** (M32 R3, and this is
       -- where §2.5's premise had to be corrected — see `.letIn` below).
       --
@@ -4082,27 +4097,71 @@ mutual
           --
           -- What survives is NOT arrow-inspection by mode but §2.2's own step 3:
           -- the head is fetched (a non-destructive slot read, the ⇝ fetch), and
-          -- the value decides ENTER-or-β. A function that must be entered — an
-          -- `rfn`, a σ with a signature, a recursor spine — is `.callV`'s; a pure
-          -- λ or a stuck spine is the normalizer's, where β and the structured
-          -- neutral both live. That split is arrow-keyed rather than head-keyed
+          -- the value decides which rule applies (`calleeIsRuntime`). The
+          -- mint-vs-remember split it keys is arrow-keyed rather than node-keyed
           -- (§12 decision 5: write an application in a type and ⇝ remembers the
-          -- spine, write it as a statement and ⇒ mints), which is why it is not
-          -- what M31 dissolves.
+          -- spine, write it as a statement and ⇒ mints) — which is exactly why
+          -- retiring `callV` could take the node away without taking the split.
+          --
+          -- **THE CALL RULE LIVES HERE NOW** (M32 R4). Everything below the
+          -- router was `readR`'s `.callV` arm; `f(a, b)` is the same term as
+          -- `f a b`, so there is one arm and it is this one.
+          --
+          -- **The callee is LOCATED, not consumed** (§7 cost 2): calling a
+          -- function is a place read, like a match scrutinee's, so a slot can be
+          -- called twice — which `ih` needs, since `quicksort` recurses twice
+          -- from one arm. What licenses that is M27's model — **functions are
+          -- reached by NAME** (§8: a declaration is a `let`, and the binding IS
+          -- the name), so calling where bound is a name-use rather than a read.
+          -- `readR`'s `.var` case refuses reading a function into a second
+          -- binding for the same reason; the two rules are one sentence seen
+          -- from both ends. (The old note here argued location was the
+          -- CONSERVATIVE statement, which c1 caught as exactly inverted: for a
+          -- non-copyable closure it is the permissive one, and it was safe only
+          -- because phase A's values are all index-kind.)
+          --
+          -- **THE FENCE IS GONE** (M31 Stage A, §2.2): a capital binder is what
+          -- every function binding now looks like, so refusing to call one would
+          -- refuse every call there is. The head is FETCHED BY ⇝ — the
+          -- non-destructive slot read below — so nothing about erasure is
+          -- weakened by letting an erased binder be the callee: `G a` in a spec
+          -- and `G(a)` in a body reach the same value by the same read, and
+          -- since R4 they are also the same term.
           match appSpineVar? t with
           | some (x, args) =>
             match findSlot? (← get).env x with
             | some kv => do
-              let st ← get
-              let isFn : Bool :=
+              if calleeIsRuntime (← get) kv.2 then
                 match kv.2 with
-                | .closure _ t => Term.lamImperative t
-                | v => match v.symOf? with
-                  | some σ => (st.fsig.lookup σ).isSome
-                  | none => match valSpineHead v with
-                    | some c => (recLayout c).isSome
-                    | none => false
-              if isFn then readR fuel (.callV x args)
+                | .bot => throwErr s!"call: callee {x.name}#{x.id} holds ⊥ (use-after-move or uninitialized)"
+                | callee =>
+                  -- §5.2's "every demand collapses first": a call is a demand on
+                  -- its callee slot, so a parked loan there ends before we look
+                  -- at what the slot holds. Listed rather than omitted — every
+                  -- UNLISTED demand site in this calculus has so far turned out
+                  -- to be a bug waiting for its first program.
+                  match firstLoanMarker callee with
+                  | some ℓ => do endLoan fuel ℓ; readR fuel t
+                  -- **A SEALED FUNCTION is called by the table's own rule**
+                  -- (M26-C). Its σ carries a moded signature rather than a `Val`
+                  -- type (`St.fsig`), and `callDeclC` is what reads one.
+                  -- Dispatched HERE, before the arguments are read, because
+                  -- `processArgs` does its own §6 mode routing off the telescope
+                  -- — pre-reading them would consume a comptime argument the
+                  -- callee promised never to touch.
+                  | none =>
+                    match callee.symOf? with
+                    | some σ =>
+                      match (← get).fsig.lookup σ with
+                      | some piT =>
+                        -- Peel the stored Π at POSITIONAL binders, which is the
+                        -- convention `processArgs`/`buildResult` read a telescope
+                        -- by, and which `piBinderNames` reproduces mode and all.
+                        match piPeel (piBinderNames piT) piT with
+                        | .error e => throwErr e
+                        | .ok (tel, ret) => callDeclC fuel (tel.map (fun p => (p.1.name, p.2))) ret args
+                      | none => applyCallee fuel x callee args
+                    | none => applyCallee fuel x callee args
               else do collapseCDerefs fuel t; pureLift fuel t
             | none => do collapseCDerefs fuel t; pureLift fuel t
           | none => do collapseCDerefs fuel t; pureLift fuel t
@@ -4164,11 +4223,22 @@ mutual
       verify. (In the mutual block since M26-C: a residual that is not a `.lam`
       may be a runtime function, and application composes through `applyR`.) -/
   def applyLam : Nat → Val → List Val → M Val
-    | 0, _, _ => throwErr "callV: out of fuel (λ application)"
-    | fuel + 1, .know ft, [] =>
-      match Pure.whnf fuel ft with
-      | .lam _ d _ => throwErr s!"callV: partial application — the callee still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4). A function-VALUED result is refused here too, and M26-B confirms binder modes do NOT separate the two cases: `Π (x : A) → (Π (y : B) → C)` and `Π (x : A) → Π (y : B) → C` are the same term, so the residual binder's own mode says nothing about whose it is. The separating fact is elsewhere — a residual telescope with no borrow-moded binder could be curried soundly — and that is a phase C/D decision against §12 decision 4, not a mode question."
-      | v => pure (.know v)
+    | 0, _, _ => throwErr "call: out of fuel (λ application)"
+    -- **A residual λ is a VALUE here, and R4 is where that was measured**
+    -- (M32 R4). This case used to refuse it as §12 decision 4's unsaturated
+    -- application. That decision is about ⇒-ENTRY — "a partial application at
+    -- runtime is a closure holding its arguments, including in general borrows,
+    -- while it waits" — and it is enforced where entry happens: `applyR`'s
+    -- closure case for an imperative λ, and `applyCallee`'s residual-Π case for
+    -- a sealed σ. Neither is this rule. What reaches HERE is β of a COMPTIME λ,
+    -- whose capture is knowledge-only, which holds no borrow, and which the
+    -- flagship applies partially — its staged proof-builders are exactly that.
+    --
+    -- The refusal survived this long because `callV` and juxtaposition were two
+    -- nodes: `f(2)` came here and was refused, `f 2` went to the pure lift and
+    -- β'd. Retiring the node made them one term and forced the question, and
+    -- the corpus answered it — the flagship goes red the other way.
+    | fuel + 1, .know ft, [] => pure (.know (Pure.whnf fuel ft))
     | _ + 1, f, [] => pure f
     -- **A comptime closure is β'd by COOKING it** (M32 R2, §2.2/§2.3). The
     -- suspension has a knowledge reading and application is where the demand for
@@ -4188,7 +4258,7 @@ mutual
         -- ordinary domain check.
         else if ← hasType fuel a dom then
           applyLam fuel (.know (Pure.openBinder fuel x.name body ak)) rest
-        else throwErr s!"callV: argument ({a.pretty}) does not have its parameter type ({dom.pretty})"
+        else throwErr s!"call: argument ({a.pretty}) does not have its parameter type ({dom.pretty})"
       -- A pure λ whose body turns out to be a runtime function (or a recursor):
       -- hand the remaining spine to the ⇒-application rule rather than calling it
       -- an arity error. One application story, two reduction rules.
@@ -4226,9 +4296,9 @@ mutual
         let names := tel.map (·.1)
         if args.length == names.length then applyClosure fuel ρ names body args
         else if args.length < names.length then
-          throwErr s!"callV: partial application — the runtime λ {(Val.closure ρ node).pretty} binds {names.length} argument(s) and was given {args.length}. Runtime application is saturated (§12 decision 4): a partial application at runtime is a closure holding its arguments — including, in general, borrows — while it waits."
+          throwErr s!"call: partial application — the runtime λ {(Val.closure ρ node).pretty} binds {names.length} argument(s) and was given {args.length}. Runtime application is saturated (§12 decision 4): a partial application at runtime is a closure holding its arguments — including, in general, borrows — while it waits."
         else
-          throwErr s!"callV: too many arguments — the runtime λ {(Val.closure ρ node).pretty} binds {names.length} argument(s) and was given {args.length}"
+          throwErr s!"call: too many arguments — the runtime λ {(Val.closure ρ node).pretty} binds {names.length} argument(s) and was given {args.length}"
       else applyLam (fuel + 1) (.closure ρ node) args
     | fuel + 1, f, args => do
       let (headName, sargs) := (Val.asRecSpine? f).getD ("", [])
@@ -4262,10 +4332,10 @@ mutual
           | .lam x d b => applyLam fuel (.know (.lam x d b)) args
           | w =>
             if args.isEmpty then pure (.know w)
-            else throwErr s!"callV: too many arguments — {w.pretty} is not a function (expected a λ, a runtime λ, or a recursor spine)"
+            else throwErr s!"call: too many arguments — {w.pretty} is not a function (expected a λ, a runtime λ, or a recursor spine)"
         | v =>
           if args.isEmpty then pure v
-          else throwErr s!"callV: too many arguments — {v.pretty} is not a function (expected a λ, a runtime λ, or a recursor spine)"
+          else throwErr s!"call: too many arguments — {v.pretty} is not a function (expected a λ, a runtime λ, or a recursor spine)"
   termination_by fuel _ _ => (fuel, 2, 0)
   /-- ι's continuation: the selected arm, applied to whatever the caller still
       owed. **With nothing owed the arm IS the value** — `natRec P z s Z` at a
@@ -4424,9 +4494,9 @@ mutual
   /-- Application of a value callee that is NOT a sealed function: the phase-A
       rules (β for a λ, abstract application at a `Val` Π) plus M26-C's
       ⇒-application (`applyR`) for a runtime λ or a recursor spine. Split out
-      of `.callV` only so the sealed case can be dispatched before the
+      of the call rule only so the sealed case can be dispatched before the
       arguments are read; the rules themselves are unchanged. -/
-  def callVValue : Nat → Var → Val → List Term → M Val
+  def applyCallee : Nat → Var → Val → List Term → M Val
     | fuel, x, callee, args => do
       -- **The callee is inspected BEFORE any argument is read** (M26-B).
           -- Which arrow evaluates an argument is a property of the *binder it
@@ -4460,11 +4530,11 @@ mutual
             | none => applyR fuel callee argVals
             | some σ =>
             match (← get).sctx.lookup σ with
-            | none => throwErr s!"callV: callee {x.name} is σ{σ}, which has no type in sctx"
+            | none => throwErr s!"call: callee {x.name} is σ{σ}, which has no type in sctx"
             | some σty => do
               let resTy ← instantiatePi fuel σty argVals
               match Pure.whnf fuel resTy with
-              | .pi _ d _ => throwErr s!"callV: partial application — σ{σ} still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4)"
+              | .pi _ d _ => throwErr s!"call: partial application — σ{σ} still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4)"
               | resTy => do
                 -- The runtime column of §2.3: the call FORGETS the application
                 -- and keeps only what the type promised. Deliberately NOT the
@@ -4476,7 +4546,7 @@ mutual
                 let σ' ← freshSym
                 modify (fun s => { s with sctx := (σ', resTy) :: s.sctx })
                 pure (.know (Term.sym σ'))
-          | v => throwErr s!"callV: {x.name}#{x.id} holds {v.pretty}, which is not a function value (expected a λ or a σ : Π)"
+          | v => throwErr s!"call: {x.name}#{x.id} holds {v.pretty}, which is not a function value (expected a λ or a σ : Π)"
   termination_by fuel _ _ _ => (fuel, 8, 0)
   /-- **§5.4's audit, relocated to the seal** (M26-C, phase A's deferral).
 

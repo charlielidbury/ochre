@@ -1624,7 +1624,7 @@ example : progRejects (qsUnder (prog{
     Σ (hi : List Nat) → Σ (hub : Ub %pT (*%vfT)) → Σ (hlb : Lb %pT hi)
       → Σ (hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ (hl2 : Le (Len hi) (Len (old *%vfT)))
       → Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) })
-    qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
+    qsHonest suffHonest .unit) "does not have its parameter type" = true := by native_decide
 
 -- (4) …and the count off by one, which no `Nil`-path argument can reach.
 example : progRejects (qsUnder (prog{
@@ -1651,7 +1651,7 @@ example : progRejects (qsUnder partHonest (prog{
 -- `Nil`, and again the body's evidence points the other way once anything moves.
 example : progRejects (qsUnder partHonest (prog{
     Σ (hs : Sorted (*%vfT)) → Π (N : Nat) → Id Nat (Count N (old *%vfT)) (Count N (*%vfT)) })
-    suffHonest .unit) "does not have return type" = true := by native_decide
+    suffHonest .unit) "does not have its parameter type" = true := by native_decide
 
 -- (3) The SUFFICIENCY HYPOTHESIS is load-bearing, not decoration. Keep the
 -- parameter (so the body still elaborates and the rejection is about TYPING, not an

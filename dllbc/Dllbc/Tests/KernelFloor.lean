@@ -1314,3 +1314,126 @@ example : progRejects sigmaTailProof "cannot be ⇒-moved" = true := by native_d
 end Dllbc.Tests.S32Backstop
 end
 -- └── end of the M32 R3 backstop-demolition battery ───────────────────────────
+
+-- ┌── M32 R4: `callV` retires, and the split it looked like it carried ─────────
+section
+namespace Dllbc.Tests.S32Spine
+
+open Dllbc Dllbc.Tests
+open Dllbc.StdLemmas (LeRefl)
+
+/-! # The application spine, and what retiring a node must not take with it
+
+    `Term.callV` is gone: `f(a, b)` is surface sugar for `.app (.app f a) b`, so
+    the surface's n-ary shape and the document's binary grammar are one thing.
+
+    The hazard the plan named is that `callV` LOOKED like it carried the
+    mint-vs-remember split, when §12 decision 5 says that split is ARROW-keyed —
+    ⇒ mints a fresh existential at the instantiated codomain, ⇝ remembers the
+    structured neutral. With two nodes you cannot tell which key is load-bearing;
+    with one you can, and these are the assertions that say so. -/
+
+/-! ## §A. The two spellings are ONE TERM
+
+    Not "behave the same" — the same `Term`, which is the strongest form the
+    claim has and the one that makes every other assertion about calls apply to
+    juxtaposition automatically. -/
+
+def spelledCall : Term := prog{ let f = λ (x : Nat). x; let z = f(2); () }
+def spelledJux  : Term := prog{ let f = λ (x : Nat). x; let z = f 2; () }
+example : Term.beq spelledCall spelledJux = true := by native_decide
+
+/-! ## §B. ⇒ MINTS at the instantiated codomain
+
+    An abstract `σ : Π` applied under ⇒ forgets the application and keeps what
+    the type promised — a FRESH σ per call, which is why the two calls below get
+    distinct ones. This is `callV`'s old rule, and it now runs off the value. -/
+
+def mintTwice : Term := prog{
+  let F = (λ (x : Nat). x : Π (x : Nat) → Nat); let y = F(2); let z = F(2); () }
+example : tailEnv mintTwice [("F", .sym 0), ("y", .sym 1), ("z", .sym 2)] = true := by
+  native_decide
+
+-- …and the juxtaposed spelling mints too, which is §A's consequence made
+-- explicit: if this ever diverges from the line above, the split has gone
+-- node-keyed again.
+def mintTwiceJux : Term := prog{
+  let F = (λ (x : Nat). x : Π (x : Nat) → Nat); let y = F 2; let z = F 2; () }
+example : tailEnv mintTwiceJux [("F", .sym 0), ("y", .sym 1), ("z", .sym 2)] = true := by
+  native_decide
+
+/-! ## §C. ⇝ REMEMBERS the structured neutral — and refuses to ENTER
+
+    The other half, and it needs both directions. ⇝ has a reading of an
+    application of an ABSTRACT function (the neutral `f a`), and no reading at
+    all of an application that must be ENTERED — a sealed function's result is a
+    fresh existential minted at an event, and ⇝ has no events. `reflectC` keyed
+    that on the `.callV` node until R4; it keys it on the callee's VALUE now. -/
+
+-- REMEMBERED: a Π-typed comptime parameter applied inside a spec position. The
+-- program checks, which is the assertion — the neutral has a reading.
+def rememberNeutral : Term := prog{
+  fn Use (G : Π (x : Nat) → Nat, n : Nat) -> Id Nat (G n) (G n) { Refl };
+  () }
+example : progOk rememberNeutral = true := by native_decide
+
+-- REFUSED: a SEALED function's call, ⇝-read at a capital `let`. Entering is an
+-- event; this is the refusal that retired with `.callV` and came back on the
+-- value.
+def enterRefused : Term := prog{
+  fn GiveLe (a : Nat) -> Le a a { %LeRefl a };
+  fn Caller (n : Nat) -> Unit { let P = GiveLe(n); () };
+  () }
+example : progRejects enterRefused "not in the comptime fragment" = true := by native_decide
+
+/-! ## §D. A `.var`-headed spine is IMPERATIVE
+
+    `Term.imperative` named `.callV` explicitly, and the classification is what
+    `Term.lamImperative` reads to decide whether applying a λ is ⇒-entry. Read
+    off the arguments alone, a nullary `fn` whose body is only a call would
+    classify PURE — its one binder is the Unit-desugar's comptime `U§`, so the
+    binder half cannot save it, and `.app (.var g) .unit` has no imperative
+    leaf. A `.const`/`.pvar` head stays comptime, which is the pure spine. -/
+
+example : Term.imperative (.app (.var ⟨0, "g"⟩) .unit) = true := by native_decide
+example : Term.imperative (.app (.const "Len") (.var ⟨0, "l"⟩)) = false := by native_decide
+example : Term.imperative (.app (.pvar "Le") (.pvar "a")) = false := by native_decide
+-- A bare `.var` is a snapshot read, not a call, and both arrows have a rule.
+example : Term.imperative (.var ⟨0, "g"⟩) = false := by native_decide
+
+/-! ## §E. The `[k]` PERMUTATION survives (E8's standing decision)
+
+    `retarget` reorders a call's arguments to match a `[k]`-hoisted callee's
+    telescope — the hoist puts the scrutinee first, so a call written in
+    declaration order has to be reordered the same way, and omitting it silently
+    passes a borrow where a `Nat` is expected. E8 keeps that at the surface.
+    Retiring `callV` changed what `retarget` BUILDS and not what it decides, and
+    these assert the decision against the new shape rather than against a
+    program that could pass for other reasons. -/
+
+-- `[k]` at parameter 1: the built spine puts argument 1 FIRST.
+example : Term.beq
+    (FnMacro.retarget [("f", ⟨7, "f"⟩, some 1)] (.call "f" [.unit, .type]))
+    (Term.appSpine (.var ⟨7, "f"⟩) [.type, .unit]) = true := by native_decide
+
+-- …and with no hint, declaration order is kept — without which the line above
+-- would pass on a `retarget` that reordered unconditionally.
+example : Term.beq
+    (FnMacro.retarget [("f", ⟨7, "f"⟩, none)] (.call "f" [.unit, .type]))
+    (Term.appSpine (.var ⟨7, "f"⟩) [.unit, .type]) = true := by native_decide
+
+-- The nullary desugar's `()` still arrives at the call site (M32 R2), which is
+-- what makes a no-argument `fn` a spine at all rather than a bare variable.
+example : Term.beq
+    (FnMacro.retarget [("f", ⟨7, "f"⟩, none)] (.call "f" []))
+    (.app (.var ⟨7, "f"⟩) .unit) = true := by native_decide
+
+-- And the spine reader inverts the builder, head and all.
+example : (Term.appSpineVar? (Term.appSpine (.var ⟨9, "f"⟩) [.unit, .type]))
+    == some (⟨9, "f"⟩, [.unit, .type]) := by native_decide
+example : (Term.appSpineVar? (Term.appSpine (.const "Len") [.unit])).isSome = false := by
+  native_decide
+
+end Dllbc.Tests.S32Spine
+end
+-- └── end of the M32 R4 spine battery ─────────────────────────────────────────

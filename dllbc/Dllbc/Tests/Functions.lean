@@ -289,9 +289,22 @@ example : tailEnv c3 [("F", .sym 0), ("y", .sym 1), ("z", .sym 2)] = true := by 
 
 /-! ### C4–C8. The negative controls, one per rule branch -/
 
--- Partial application: refused, not curried (§12 decision 4).
+-- **Partial application of a COMPTIME λ is a value** (M32 R4 — this assertion
+-- FLIPPED, and the flip is the finding). It read "refused, not curried (§12
+-- decision 4)" and was rejected. §12 decision 4 is about ⇒-ENTRY — "a partial
+-- application at runtime is a closure holding its arguments, including in
+-- general borrows, while it waits" — and a comptime λ's capture is knowledge, so
+-- there is no borrow for it to hold. The refusal reached here only because
+-- `callV` and juxtaposition were two nodes: `f(2)` took the call rule and was
+-- refused, `f 2` took the pure lift and β'd. With one node the corpus decided
+-- it — the flagship applies its staged proof-builders PARTIALLY and goes red the
+-- other way.
+--
+-- Saturation is still enforced on both branches that ENTER, and those are the
+-- two assertions below and at A5: an abstract `σ : Π` (c5) and an imperative λ
+-- (a5). This one is now the positive statement of what a comptime λ does.
 def c4 : Term := prog{ let f = λ (x : Nat). λ (y : Nat). x; let z = f(2); () }
-example : progRejects c4 "partial application" = true := by native_decide
+example : progOk c4 = true := by native_decide
 -- …and the same refusal on the abstract side, which is the branch that matters
 -- for phase C (a σ : Π under-applied is a closure holding its arguments).
 def c5 : Term := prog{

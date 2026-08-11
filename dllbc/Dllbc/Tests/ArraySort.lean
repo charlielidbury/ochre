@@ -669,14 +669,14 @@ example : progRejects (arrUnder sHonest (prog{
 example : progRejects (arrUnder sHonest pHonest (prog{
     Σ (hs : SortedA %nQ (old *%aQ))
       → Π (Q : Nat) → Id Nat (CountA Q %nQ (*%aQ)) (CountA Q %nQ (old *%aQ)) })
-    qSuffHonest .unit) "does not have return type" = true := by native_decide
+    qSuffHonest .unit) "does not have its parameter type" = true := by native_decide
 
 -- `quicksortA`, conjunct 2: the permutation lied by DIRECTION. Again `Refl` at the
 -- empty array, and again the body's evidence points the other way once anything moves.
 example : progRejects (arrUnder sHonest pHonest (prog{
     Σ (hs : SortedA %nQ (*%aQ))
       → Π (Q : Nat) → Id Nat (CountA Q %nQ (old *%aQ)) (CountA Q %nQ (*%aQ)) })
-    qSuffHonest .unit) "does not have return type" = true := by native_decide
+    qSuffHonest .unit) "does not have its parameter type" = true := by native_decide
 
 /-! ### Honest typing rejections, probed through `checkFn` -/
 
