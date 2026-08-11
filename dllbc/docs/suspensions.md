@@ -89,12 +89,19 @@ closures per §2.2. Conversion involving a λ value cooks TRANSIENTLY (evaluate 
 body under ρ + a fresh `§`-binder, read back, compare) — on demand; Stage V measured
 it a wash (the raw pair was fastest — `convert` normalizes both sides either way).
 
-**R1 DECISION REQUIRED (Stage V finding): the STATE wrapped around knowledge has no
-Term form.** ⊥, loan markers, borrow values, `§segs` nodes, and executing `rfn`s all
-reach store-wide sweeps, and `Term` has a former for none of them. The probe carried
-them as reserved-name sentinels; R1 must choose — a Val skeleton with Term knowledge
-leaves, or new Term formers for the state constructors — and state the choice before
-code is written. It is met at the first `borrowM ℓ p` the sweep touches.
+**R1 DECISION — MADE (user ruling): `Term` does NOT grow state formers.** ⊥, loan
+markers, and borrow values reach store-wide sweeps, and giving `Term` formers for
+them would make a marker grammatically writable — the objection that killed the
+union-tree horizon. Instead the store-value type is the **state skeleton**:
+constructor structure, ⊥, `loanM ℓ`, `borrowM ℓ ·`, closures `(ρ, Term)`, and Term
+LEAVES wherever marker-free knowledge sits. Sweeps are two-layered (walk the
+skeleton; switch to `substP`/Term-abstraction at leaves); a value with no live
+markers collapses to a bare Term leaf and re-splits only when state intrudes (a
+borrow-mode match pushing field loans in), so the skeleton is exactly as large as
+the live state. Consequence, type-enforced: **knowledge cannot contain state** —
+the capture filter and the knowledge-only environment invariant become theorems of
+the representation, not guards. State containing knowledge (the leaves) remains
+possible, which is the correct asymmetry — §3.2's doctrine as a datatype.
 Relatedly: the Term-level sweep is mode-SENSITIVE with `.stripCmp` at comparison
 sites (the house pattern `piAgree` already uses), where `Val.beq` was mode-blind.
 
