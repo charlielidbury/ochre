@@ -75,8 +75,18 @@ included).
 
 There is no difference between the fragments in the closure or application
 mechanics; the single irreducible difference is what evaluating the body MEANS
-(pure reduction vs the effectful walk), recomputed by body classification at
-application and seal — a property, never a species tag, never a substitution.
+(pure reduction vs the effectful walk), recomputed at application and seal by
+**binder-AND-body classification** (R2 correction: a λ is imperative when its body
+contains effectful formers OR when a binder names an Ω slot — `fn UseTrans (a,b,c,
+p,q) { LeTrans a b c p q }` has a spine-only body and is still ⇒'s, which four
+programs caught) — a property, never a species tag, never a substitution.
+
+**ρ's type, corrected by R2 (R1 predicted why without predicting where): ρ is an Ω
+SLICE, not a name→Term list.** A λ captures `SetAt`, and `SetAt` is a recursor over
+runtime arms — a function value with no Term form (§2.3's §rec) — and a λ captures
+λs. For the Term leaves, knowledge-only holds by construction; for the two function
+forms it holds by CHECK at the capture (`hasStateMarker`, refused by name). R1's
+purchase survives; the "by construction" sentence is scoped to leaves.
 
 Store-wide REFINEMENT sweeps (σ := v) rewrite captured ρ's like everything else,
 and later evaluation agrees — substitution commutes with evaluation (§3).
@@ -215,11 +225,29 @@ went red at 22 assertions — M30's failure mode is silent by construction).
 becomes canonical Terms; sweeps re-target to Term level; Val loses its syntax
 embedding. Zero differential.
 
-**Stage R2 — one λ, one closure.** `lamR`/`rfn` fold into `(ρ, raw body)`;
-formation captures the filtered slice; application per §2.2; cook-at-generalization
-with write-back; universal binder convention + stdlib binder migration; capture
-generality + body scope fix. Zero differential except enumerated flips (binder-case
-migrations, capture legality).
+**Stage R2 — one λ, one closure: RUN** (branch `m32-r2` @ 09b18152, stacked on R1;
+corpus green; canary run both directions, sabotage control re-run — 21 red including
+the flagship). As landed: `lamR`/`rfn` gone; `Val.closure ρ node` the one suspension,
+body raw, formation a check; `admitGlobals` revealed as ALREADY the capture filter;
+cook-at-generalization support-scoped with write-back; capture generality + scope
+fix (the id collision verified-not-assumed — `freeRVars` re-keyed by name, λ binders
+bind there only when they bind a SLOT); nullary `fn` Unit-desugar pulled forward
+from R4 (forced: `lamTel [] body` = the body, so nullary `fn` and ascription became
+one term — the binder is the unwritable `U§ : ⇝Unit`). Known limit recorded, not
+new at R2: `abstractInto` matches by binder-NAME `beq` while readback names by
+level, so a generalized spine containing a binder misses its own occurrence one
+binder deeper — the fix is an α-insensitive key at the abstraction site; filed as a
+demand.
+
+**The §2.1 binder migration did NOT land in R2 and becomes its own stage (R3b,
+coordinator decision):** R2 measured it — 10,777 lowercase comptime binders in the
+flagship alone, ~3,700 λ/Π binders in source — and correctly refused to run it
+blind: each rename is scope-sensitive, and capitalising a Π binder in a spec
+position deliberately flips `valBinderModes` at every ⇒-application of that type —
+§2.1's intent, therefore a behaviour change wanting its own enumerated differential,
+not a rider on a representation stage. Sequencing: R3b after R3, before R4 (R4's
+`Var.bindsSlot` replacement can only become a case test after the migration — the
+coupling is now measured). Meanwhile the fragment keys on `Var.bindsSlot`.
 
 **Stage R3 — arrows exceptionless.** ⇝-sealing (site-σ); `comptimeRhs` carve-outs
 deleted; no-⇒-λ + backstop demolition + the partial-application migration.
