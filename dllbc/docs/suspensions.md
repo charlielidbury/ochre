@@ -41,10 +41,12 @@ Two things explicitly do NOT need fixing, and the design refuses to touch them:
     normalize-at-splits/write-back apparatus purely to repair what eager-at-rest
     gives free. Dropped.
 
-**The model in one sentence: `Term` becomes the only syntax — at-rest normalized
-knowledge moves OUT of `Val` into canonical Terms — and `Val` shrinks to a true
-semantic domain used transiently by evaluation and at execution; the closure
-`(ρ, Term)` is the one suspension form, replacing both Pure.lean closures and `rfn`.**
+**The model in one sentence: `Term` becomes the only syntax — EVERY at-rest value is
+a self-contained canonical Term (pure λs with normalized bodies, imperative λs with
+raw ones) — and `Val` shrinks to a true semantic domain whose closures exist only
+transiently inside the evaluator, replacing both Pure.lean closures and `rfn`.**
+#19(a)'s confinement becomes a totality rather than a policy: closures never leave
+the evaluator at all.
 
 ## 1. What dies here
 
@@ -80,12 +82,20 @@ X-Gen abstraction is Term-spine abstraction (the Term-level machinery `substP`,
 original). Runtime bindings hold runtime `Val`s (data, markers) — never a function
 (§2.5).
 
-The ONE at-rest exception is the imperative function value: a closure `(ρ, Term)`
-whose body is never normalized (entering it is ⇒'s job) and whose environment is
-knowledge-only (M31's capture rule). It is opaque to conversion by design — the
-audited-not-conversed line — and its env is sweepable (atom-keyed substitution
-reaches it; latent-spine hazard does not arise because the body never participates
-in conversion and env VALUES are canonical).
+There is NO at-rest closure — not even for imperative λs (user review: the species
+distinction dies entirely, not mostly). An imperative λ's captured environment is
+**discharged at formation**: `substP` its PascalCase names by their canonical-Term
+values into the body. This is not the substitution M30 banned (index arithmetic
+under runtime ids); it is name-keyed splicing of knowledge at canonical `§`-names,
+capture-free by the reserved namespace, and for immutable bindings it is
+observationally identical to env capture (§2.4 of functions-are-comptime.md). The
+stored imperative λ is therefore a self-contained Term whose body is raw (never
+normalized — entering it is ⇒'s job); it is opaque to conversion by design — the
+audited-not-conversed line — and fully sweepable as the Term tree it is. What
+distinguishes pure from imperative at rest is only how cooked the body is; nothing
+structural. The pure-vs-imperative fork is recomputed where it matters — at
+application and at the seal — by BODY CLASSIFICATION (does the body contain
+effectful formers), a property, not a species tag.
 
 ### 2.3 Evaluation: eval : ρ → Term → Val, readback : Val → Term
 
@@ -124,11 +134,11 @@ migrate capital in the same commit.
 `callV` retires for app spines (nullary via Unit-desugar), preserving the arrow-keyed
 mint-vs-remember split (§12 decision 5): ⇒ call results mint fresh existentials at
 the instantiated codomain; ⇝ remembers structured neutrals. Saturation for imperative
-entry survives (§12 decision 4). With value-carried environments, capture reaches
-M31-deferred generality: a fn body may cite enclosing comptime DATA (escape-safe —
-the closure carries its knowledge), which also requires the **fn body scope fix**
-(bodies elaborate seeing sibling and enclosing bindings; the `fnElab` id-collision
-that gated it is void under name-keying).
+entry survives (§12 decision 4). Capture reaches M31-deferred generality: a fn body
+may cite enclosing comptime DATA, discharged into the body at formation (§2.2) —
+escape-safe trivially, since the stored value is self-contained. Requires the
+**fn body scope fix** (bodies elaborate seeing sibling and enclosing bindings; the
+`fnElab` id-collision that gated it is void under name-keying).
 
 ## 3. The safety criterion (why at-rest stays eager)
 
@@ -140,11 +150,13 @@ spine AFTER the sweep passed, leaving later evaluations speaking pre-abstraction
 vocabulary: propositionally linked by the branch equation, definitionally divergent,
 presenting as flagship proofs failing (M30's count-equation mode — measured, silent).
 This criterion is WHY §0 refuses laziness: eager canonical Terms at rest make every
-sweep total over what exists, with no normalize-at-splits apparatus. The two
-remaining unevaluated things are closures, and both are hazard-free by construction:
-imperative bodies never participate in conversion (audited once, at formation, env in
-hand), and pure λ values at rest are stored in readback form (bodies normalized under
-their binder — today's discipline, kept). **Canary: quicksort's count equation.**
+sweep total over what exists, with no normalize-at-splits apparatus. The one
+remaining unevaluated thing at rest is the imperative λ's raw body, and it is
+hazard-free by construction: it never participates in conversion (audited once, at
+formation, with its knowledge already discharged in), and as a Term tree it is fully
+material to every sweep. Pure λ values at rest are in readback form (bodies
+normalized under their binder — today's discipline, kept). **Canary: quicksort's
+count equation.**
 
 ## 4. Also landing here (from the M31 ledger)
 
@@ -171,9 +183,11 @@ canonical Terms; sweeps re-target (substP-at-σ-name; Term abstraction); Val los
 syntax embedding. The big rewrite — the E3 traversal set is the checklist. Zero
 differential.
 
-**Stage R2 — one λ.** `lamR`/`rfn` fold into the closure; frame-bind-and-walk
-re-keyed with the knowledge env in scope for the body's ⇝-reads; capture generality +
-body scope fix. Zero differential except enumerated capture-legality flips.
+**Stage R2 — one λ.** `lamR`/`rfn` fold into the one former; imperative λ values
+become self-contained Terms via formation-time discharge (no at-rest closure);
+frame-bind-and-walk enters the body with its knowledge already spliced in; capture
+generality + body scope fix. Zero differential except enumerated capture-legality
+flips.
 
 **Stage R3 — arrows exceptionless.** ⇝-sealing (site-σ); `comptimeRhs` carve-outs
 deleted; no-⇒-λ + backstop demolition + the partial-application migration
@@ -197,8 +211,14 @@ machinery removed; docs/logs currency.
   * **Executing mode**: never converts; confirm no executing path compares, so
     closures in executing state need entry only.
   * **Term-level sweep completeness**: `abstractInto`'s Term twin must sweep
-    everywhere the Val original did — Ω, sctx, O, closure environments (Stage 0's
-    `firstHeldBorrow` precedent: the traversal set grows; enumerate, don't assume).
+    everywhere the Val original did — Ω, sctx, O (Stage 0's `firstHeldBorrow`
+    precedent: the traversal set grows; enumerate, don't assume).
+  * **Formation-time discharge at scale**: splicing captured knowledge into a body
+    duplicates trees (a builder citing a large snapshot n times stores n copies) —
+    measure on the flagship before declaring it free; and confirm `substP`'s
+    stop-at-rebinding semantics does the right thing inside imperative bodies
+    (shadowing a PascalCase name inside a body is refused by §2.1 anyway, which
+    should make the guard vacuous — verify, don't assume).
 
 ## 7. Non-goals
 
