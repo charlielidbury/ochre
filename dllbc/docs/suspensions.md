@@ -89,12 +89,24 @@ closures per §2.2. Conversion involving a λ value cooks TRANSIENTLY (evaluate 
 body under ρ + a fresh `§`-binder, read back, compare) — on demand; Stage V measured
 it a wash (the raw pair was fastest — `convert` normalizes both sides either way).
 
+**NAMING, as built (R1; coordinator-ratified):** the store skeleton kept the name
+`Val` (Machine.lean's 4,600 lines are about store values) and the transient semantic
+domain is `Sem` (eleven call sites, all in Pure.lean). Read this doc's "Val shrinks
+to a semantic domain" with the two names exchanged: the STRUCTURE is as specified;
+the semantic domain is `Sem`, the skeleton is `Val`.
+
 **R1 DECISION — MADE (user ruling): `Term` does NOT grow state formers.** ⊥, loan
 markers, and borrow values reach store-wide sweeps, and giving `Term` formers for
 them would make a marker grammatically writable — the objection that killed the
 union-tree horizon. Instead the store-value type is the **state skeleton**:
-constructor structure, ⊥, `loanM ℓ`, `borrowM ℓ ·`, closures `(ρ, Term)`, and Term
-LEAVES wherever marker-free knowledge sits. Sweeps are two-layered (walk the
+constructor structure, ⊥, `loanM ℓ`, `borrowM ℓ ·`, closures `(ρ, Term)`,
+**recursor spines over runtime arms** (R1 finding: a function value whose arms are
+bodies — no Term can hold it; never-collapsing, index-kind so it copies on read,
+`hasType`-rejected as a neutral), and Term LEAVES wherever marker-free knowledge
+sits. The collapse is a smart-constructor invariant, not a discipline (R1's
+`Val.ctor`: an all-knowledge node collapses to one `know` leaf). Realized deletion:
+`capturedMarkers`/`hasStateMarkerEnv` are gone — nbe.md §3.2's capture assertion is
+a fact about the types. Sweeps are two-layered (walk the
 skeleton; switch to `substP`/Term-abstraction at leaves); a value with no live
 markers collapses to a bare Term leaf and re-splits only when state intrudes (a
 borrow-mode match pushing field loans in), so the skeleton is exactly as large as
