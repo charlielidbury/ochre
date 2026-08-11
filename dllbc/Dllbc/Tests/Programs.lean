@@ -1478,7 +1478,7 @@ run is exactly what the polarity doctrine forbids.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (LeTrans LeRefl IdCongr Append Len Le)
+open Dllbc.StdLemmas (LeTrans LeRefl LeUpR IdCongr Append Len Le)
 
 namespace Dllbc.Tests.S26Prog
 
@@ -1756,12 +1756,35 @@ example : progRejects d3 "a runtime (lowercase) binding" = true := by native_dec
 -- language. The `Qed` binding and the function declaration are the same form, and
 -- M31's answer for one is its answer for both.
 --
--- D3 above is UNMOVED, and the pair is worth reading together: what a λ body may
--- NAME is still decided by `globalKind`, which admits functions and not proofs,
--- so `cert` remains un-nameable from inside a body whether it is bound capital or
--- lowercase. Binding it comptime is what changed; capturing it is not.
+-- D3 above is UNMOVED, and the pair is worth reading together — but note WHY it
+-- is unmoved, because the reason changed under it. D3's `cert` is refused for
+-- being LOWERCASE: that is the citation rule (§2.4) reading the binder's mode,
+-- not the old value-directed test that admitted function VALUES and refused
+-- proofs (`globalKind`, which Stage A superseded and Stage C deleted). Under the
+-- rule as it now stands a proof bound CAPITAL *is* citable from inside a body,
+-- so "captured" changed too, and D3c below pins it rather than leaving it to be
+-- inferred from this paragraph.
 def d3cap : Term := prog{ let C = (LeRefl 3 : Le 3 3); () }
 example : progOk d3cap = true := by native_decide
+
+-- D3c. The citation half, which D3/D3b together imply and neither checks: the
+-- capital proof CITED from inside a λ body, at a ⇝ position. Accepted — this is
+-- what `globalKind`'s deletion means operationally, since the predicate would
+-- have refused it (a `Le 3 3` σ is not a function value).
+def d3cite : Term := prog{
+  let C = (LeRefl 3 : Le 3 3);
+  let G = (λ(a : Nat){ LeUpR 3 3 C } : Π (a : Nat) → Le 3 (S 3));
+  () }
+example : progOk d3cite = true := by native_decide
+
+-- And the ⇒ half is still shut, which is why "citable" is not "usable anywhere":
+-- `let z = C` inside the body MOVES a comptime binder, and the fence takes it
+-- before §2.4 is consulted. Capture is open; consumption is not (§8 non-goals).
+def d3move : Term := prog{
+  let C = (LeRefl 3 : Le 3 3);
+  let G = (λ(a : Nat){ let z = C; a } : Π (a : Nat) → Nat);
+  () }
+example : progRejects d3move "cannot be ⇒-moved" = true := by native_decide
 
 /-! ## §E. The end of a program is a demand on everything it still holds
 
