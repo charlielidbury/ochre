@@ -131,12 +131,12 @@ def vBodies : List Term := leafBodies ++ matchBodies
     seeds a telescope by hand any more, because a call does it. -/
 
 def vCheck (body : Term) : Term := prog{
-  fn f (v : &mut List Nat) -> Unit { %body };
+  fn F (v : &mut List Nat) -> Unit { %body };
   () }
 
 def vRun (body arg : Term) : Term := prog{
-  fn f (v : &mut List Nat) -> Unit { %body };
-  let x = %arg; let p = &m x; f(p); () }
+  fn F (v : &mut List Nat) -> Unit { %body };
+  let x = %arg; let p = &m x; F(p); () }
 
 /-- Concrete payloads for v: the small list pool, as the terms a caller writes. -/
 def vArgs : List Term := [prog{ Nil }, prog{ Cons(1, Nil) }, prog{ Cons(1, Cons(2, Nil)) }]
@@ -179,10 +179,10 @@ def nBodies : List Term :=
        (nLeaf.take 5).map fun b2 =>
          .matchE ⟨0, "n"⟩ none [.mk "Z" [] b1, .mk "S" [⟨1, "m"⟩] b2]
 
-def nCheck (body : Term) : Term := prog{ fn f (n : Nat) -> Nat { %body }; () }
+def nCheck (body : Term) : Term := prog{ fn F (n : Nat) -> Nat { %body }; () }
 def nRun (body arg : Term) : Term := prog{
-  fn f (n : Nat) -> Nat { %body };
-  let r = f(%arg); () }
+  fn F (n : Nat) -> Nat { %body };
+  let r = F(%arg); () }
 def nArgs : List Term := [prog{ 0 }, prog{ 1 }, prog{ 2 }]
 
 def nAccepted : List Term := nBodies.filter (fun b => progOk (nCheck b))
@@ -206,11 +206,11 @@ def bcBodies : List Term :=
          .matchE ⟨1, "c"⟩ none [.mk "True" [] b1, .mk "False" [] b2]
 
 def bcCheck (body : Term) : Term := prog{
-  fn f (b : &mut Nat, c : Bool) -> Unit { %body };
+  fn F (b : &mut Nat, c : Bool) -> Unit { %body };
   () }
 def bcRun (body a0 a1 : Term) : Term := prog{
-  fn f (b : &mut Nat, c : Bool) -> Unit { %body };
-  let x = %a0; let p = &m x; f(p, %a1); () }
+  fn F (b : &mut Nat, c : Bool) -> Unit { %body };
+  let x = %a0; let p = &m x; F(p, %a1); () }
 def bcArgs : List (Term × Term) :=
   [ (prog{ 0 }, prog{ True }), (prog{ 0 }, prog{ False }),
     (prog{ 1 }, prog{ True }), (prog{ 1 }, prog{ False }) ]
@@ -296,10 +296,10 @@ namespace Dllbc.Tests.S9Diff
     sealed), the concrete side runs its body. -/
 
 def withPool (rest : Term) : Term := prog{
-  fn through (b : &mut List Nat) -> &mut List Nat { b };
-  fn advance (b : &mut List Nat) -> &mut List Nat { match b { Nil => b, Cons(hd, tl) => tl } };
-  fn choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat { match c { True => x, False => y } };
-  fn push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; *v := Cons(e, tail); () };
+  fn Through (b : &mut List Nat) -> &mut List Nat { b };
+  fn Advance (b : &mut List Nat) -> &mut List Nat { match b { Nil => b, Cons(hd, tl) => tl } };
+  fn Choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat { match c { True => x, False => y } };
+  fn Push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; *v := Cons(e, tail); () };
   %rest }
 
 /-! ## The simulation relation: `instanceOf` -/
@@ -476,20 +476,20 @@ def progDiff (t : Term) : Bool :=
 /-- The choose caller from §6.1, demanding BOTH owners. -/
 def chooseCaller : Term := withPool (prog{
   let a = 0; let b = 0; let pa = &m a; let pb = &m b;
-  let r = choose(True, pa, pb);
+  let r = Choose(True, pa, pb);
   *r := 7;
   let za = a; let zb = b;
   () })
 
 /-- A push caller. -/
 def pushCaller : Term := withPool (prog{
-  let x = Cons(1, Nil); let b = &m x; push(7, b); let y = x; () })
+  let x = Cons(1, Nil); let b = &m x; Push(7, b); let y = x; () })
 
 /-! ## The property, over the caller set -/
 
 def callers : List Term :=
-  [ withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = through(b); *r := Cons(9, Nil); let y = x; () }),
-    withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = advance(b); *r := Cons(9, Nil); let y = x; () }),
+  [ withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = Through(b); *r := Cons(9, Nil); let y = x; () }),
+    withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = Advance(b); *r := Cons(9, Nil); let y = x; () }),
     chooseCaller,
     pushCaller ]
 
@@ -503,7 +503,7 @@ example : accepted.all (fun b => diffV2 b) = true := by native_decide
 /-! ## The advance caller, which the validation below is about -/
 
 def advCallerBody : Term :=
-  withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = advance(b); *r := Cons(9, Nil); let y = x; () })
+  withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = Advance(b); *r := Cons(9, Nil); let y = x; () })
 
 -- The real behaviour: the opaque σ matches the concrete value. GREEN.
 example : diffV2 advCallerBody = true := by native_decide

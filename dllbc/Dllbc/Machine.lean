@@ -1041,7 +1041,17 @@ mutual
     | .seq _ _ => throwErr "readC (⇝): statement sequencing is not a comptime read"
     | .matchE _ _ _ => throwErr "readC (⇝): match not implemented in the comptime fragment this milestone"
     | .borrowT _ _ _ => throwErr "readC (⇝): borrow type `&mut (τ ↝ S)` is only valid at a telescope position"
-    | .call _ _ => throwErr "readC (⇝): a call is not in the comptime fragment (its result is a fresh existential)"
+    -- **The callee is NAMED** (M31 Stage A), and it is load-bearing rather than
+    -- cosmetic. `fn`'s statement lowering turns a refusal into a term the checker
+    -- rejects distinctively — an unbound `.call` whose NAME carries `fnElab`'s
+    -- own message — and FnMacro's header rests that device on three properties,
+    -- the third being "the diagnosis survives to the message". It survived
+    -- because `readR`'s `.call` names the function it could not find. Now that a
+    -- `fn` slot is a COMPTIME binding, its right-hand side is reached by ⇝ when
+    -- the lowering succeeded and by ⇝ when it did not, so this arm became the
+    -- one that reports a refused lowering — and it was swallowing the diagnosis,
+    -- replacing ten distinct `fnElab` refusals with one generic sentence.
+    | .call f _ => throwErr s!"readC (⇝): a call is not in the comptime fragment (its result is a fresh existential) — '{f}'"
     -- The seal is a ⇒-form and only a ⇒-form (combining-fns §5). Minting needs an
     -- EVENT; ⇝ is a pure judgment with none, so a seal reduced twice under ⇝ would
     -- disagree with itself. It is listed here with the other five runtime-only
@@ -2027,6 +2037,93 @@ def fenceComptime (x : Var) (what : String) : M Unit :=
     throwErr s!"fence: '{x.name}' is a COMPTIME binder (capitalized — §6) and {what}. A comptime binder is erased: it is never moved, never scrutinized, never borrowed or written through, and exists only in ⇝-positions (types, proofs, and the capital argument positions of other calls). If it must exist at runtime, lower-case it."
   else pure ()
 
+/-! ## The mode backstop: a function may not land in a runtime binding
+
+    **§2.1's rule seen from below** (M31 Stage A). The surface refuses a lowercase
+    `fn` name, which is the rule stated where a reader writes it; this is the same
+    rule stated where the kernel can still see it — at the moment a value is bound
+    — and it catches what the surface cannot: `let f = SomeFn` where the
+    right-hand side only PRODUCES a function, through a read, a call result, or a
+    match arm's field.
+
+    It is the honest successor of the function-read refusal M27 α.2 installed
+    ("functions are reached by NAME"), and it succeeds it rather than joining it:
+    that rule refused the READ, on a model in which a function had no value form
+    a second binding could hold. M31 gives functions a mode instead, so the read
+    is fine — `let F = Main` is a ⇝ copy of knowledge — and what is wrong is the
+    MODE of the binder that catches it. Same programs refused, and the message
+    now names the fix.
+
+    **Checking-side only**, inherited verbatim from the rule it replaces and for
+    the same reason: the executing machine holds a real function value and copies
+    it correctly, so refusing there would break running programs to protect a
+    checker.
+
+    **What counts as a function here is ⇒'s function values** — a runtime λ and a
+    σ the kernel recorded as a function in `fsig`. A pure `.lam` is deliberately
+    NOT included, exactly as the refusal it succeeds excluded it: it is an
+    index-kind comptime object living in the ⇝ fragment, it is what every staged
+    proof-builder in the corpus binds, and §2.4's citation rule (Stage A's last
+    commit) is what governs those. `let f = Add 1` — a lowercase binding of a pure
+    partial application — is therefore NOT caught in Stage A; recorded as a
+    deferral rather than an oversight, since catching it is a second corpus
+    migration and not the one this rule is for. -/
+
+/-- ⇒'s function values: a runtime λ, or a σ whose signature the kernel recorded
+    in `fsig` (which is where a sealed function and a Π-typed parameter go). -/
+def isFnValue (st : St) : Val → Bool
+  | .rfn _ _ => true
+  | .sym σ => (st.fsig.lookup σ).isSome
+  | _ => false
+
+/-- The refusal itself, shared by the two sites below so the rule has one needle. -/
+def refuseFnBinding (x : Var) (what : String) : M Unit :=
+  throwErr s!"'{x.name}' is a runtime binding and its right-hand side {what} — functions are comptime; capitalise the binder. A function is comptime knowledge (§2.1): it is ⇝-read, erased, and never ⇒-consumed, so the binding that holds one must be capital. Write `{x.name.capitalize}` instead."
+
+/-- Refuse a function value landing in a runtime-moded (lowercase) binding. -/
+def backstopFnBinding (x : Var) (v : Val) : M Unit := do
+  let st ← get
+  if !st.executing && !x.isComptime && isFnValue st v then
+    refuseFnBinding x s!"produced a function ({v.pretty})"
+  else pure ()
+
+/-- **§2.4's citation rule at a λ formed in VALUE position** (M31 Stage A).
+
+    The node's free RUNTIME variables must be empty: a λ body may reference its
+    own binders and the capital bindings in scope, nothing more and nothing less.
+    The whole node is read, domains included, because a λ's binder domain is
+    stored with the λ and consulted whenever it is applied — it has the same
+    formation-vs-use gap the body has, which is what §2.4's exemption for type
+    positions does NOT cover.
+
+    Called from the two places a λ becomes a value: `readR`'s `.lam` arm (a λ
+    evaluated as an expression) and a `let` whose right-hand side is one. A λ
+    inside a TYPE reaches `readC` directly and never passes here, which is
+    exactly §2.4's boundary — a type is consumed at its own event. -/
+def checkLamCitation (t : Term) : M Unit :=
+  match (Term.freeRVars [] t).find? (fun y => !y.isComptime) with
+  | some y =>
+    throwErr s!"λ: the body cites '{y.name}', a runtime (lowercase) binding, and a λ body may reference only its own binders and the capital bindings in scope (§2.4). A λ is formed now and used later, and a runtime citation would be an implicit snapshot taken in that gap. Make it a parameter, or name the snapshot first: `let {y.name.capitalize} = …;` above the λ, and cite `{y.name.capitalize}`."
+  | none => pure ()
+
+/-- The same rule, asked BEFORE the right-hand side is evaluated, for the one
+    shape where evaluating it would hit a different rule first.
+
+    `let g = F` — a lowercase binding of a name that already holds a function — is
+    a ⇒-read of a capital binder, so `fenceComptime` gets there first and refuses
+    it as an erasure violation. That is not wrong, but its advice is ("if it must
+    exist at runtime, lower-case it"), because `F` is a function and lowercasing
+    it is exactly what §2.1 forbids. The binder that is wrong is `g`, and this is
+    the one place both names are in view. -/
+def backstopFnRhs (x : Var) (rhs : Term) : M Unit := do
+  let st ← get
+  if st.executing || x.isComptime then pure () else
+    match rhs with
+    | .var y => if isFnValue st (← lookupSlot y) then
+                  refuseFnBinding x s!"names the function '{y.name}'"
+                else pure ()
+    | _ => pure ()
+
 /-- …and the same at a place expression, keyed on the place's root. -/
 def fencePlace (t : Term) (what : String) : M Unit :=
   match placeRoot? t with
@@ -2193,7 +2290,11 @@ def armSeamed? : Term → Bool
     move in as owned values). Errors on arity mismatch. -/
 def bindFields : List Var → List Val → M Unit
   | [], [] => pure ()
-  | x :: xs, v :: vs => do bindSlot x v; bindFields xs vs
+  -- The backstop's third acquisition site (M31 Stage A, E1): a constructor field
+  -- holding a function reaches a binding HERE, and this is the only place it can
+  -- — borrow-mode arms bind `borrowM ℓ field`, which is a borrow and not a
+  -- function value however its payload looks.
+  | x :: xs, v :: vs => do backstopFnBinding x v; bindSlot x v; bindFields xs vs
   | _, _ => throwErr "match: constructor arity mismatch (binders vs fields)"
 
 /-- Bind each field binder to a whole-value reborrow `borrowM ℓᵢ fieldᵢ`
@@ -3208,13 +3309,35 @@ def admitGlobals (what : String) (nbinders : Nat) (free : List Var) : M Omega :=
   let st ← get
   free.foldlM (fun acc x => do
     if acc.any (fun kv => kv.1.id == x.id) then pure acc
-    else match st.env.find? (fun kv => kv.1.id == x.id) with
+    else
+      -- **THE CITATION RULE** (M31 Stage A, §2.4). The test is the binder's MODE,
+      -- and it is asked before the lookup because it is a fact about the name
+      -- rather than about what the name happens to hold.
+      --
+      -- This dissolves the old check rather than relocating it. `admitGlobals`
+      -- used to admit exactly the FUNCTION values (`globalKind`) and refuse
+      -- everything else as the deferred environment capture — "may name a
+      -- function to call it, captures nothing". Under M31 the exemption IS the
+      -- rule: functions are comptime, so naming one is comptime capture, and what
+      -- is left to say is simply that a λ body may reference its own binders and
+      -- the capital bindings in scope, nothing more and nothing less.
+      --
+      -- What that buys, beyond one rule where there were two: a λ may now close
+      -- over a PROOF or a snapshot (`let H0 = *hd`), which is what makes §2.4's
+      -- migration writable at all. Nothing is lost by it — comptime bindings are
+      -- immutable, so capture and eager inlining are indistinguishable, and the
+      -- freeze merely becomes visible as a binding.
+      -- The LOOKUP comes first, and the order is load-bearing: a name that is
+      -- bound nowhere is a forward reference, and saying "it is lowercase" of one
+      -- would diagnose the wrong thing about a program whose real problem is that
+      -- the name does not exist.
+      match st.env.find? (fun kv => kv.1.id == x.id) with
       | none =>
         throwErr s!"{what}: the body mentions {x.name}#{x.id}, which is none of its {nbinders} binder(s) and is not bound anywhere above it. §8 makes SCOPE the call table — a body may call the functions bound lexically above it, and a let-chain cannot reference downward, so a forward reference is unwritable rather than merely rejected."
       | some kv =>
-        if globalKind st kv.2 then pure (acc ++ [kv])
-        else
-          throwErr s!"{what}: the body mentions {x.name}#{x.id}, which is none of its {nbinders} binder(s). It names a binding in scope, but that binding is not a function ({kv.2.pretty}) — §7 cost 2 admits only the CLOSED kind of function value, whose body may name its own binders and the FUNCTIONS above it, and environment capture stays deferred (constraint 5). Make what it needs a parameter.") []
+        if !x.isComptime then
+          throwErr s!"{what}: the body cites '{x.name}', a runtime (lowercase) binding, and a λ body may reference only its own binders and the capital bindings in scope (§2.4). A λ is formed now and used later, and a runtime citation would be an implicit snapshot taken in that gap. Make it a parameter, or name the snapshot first: `let {x.name.capitalize} = …;` above the λ, and cite `{x.name.capitalize}`."
+        else pure (acc ++ [kv])) []
 
 /-! ## ⇒ (read): the move arrow
 
@@ -3255,49 +3378,28 @@ mutual
           match firstLoanMarker v with
           | some ℓ => do endLoan fuel ℓ; readR fuel (.var x)
           | none => do
-            -- **FUNCTIONS ARE REACHED BY NAME** (M27 α.2, the ratified model),
-            -- and this is the one rule that says so.
+            -- **THE FUNCTION-READ REFUSAL IS GONE** (M31 Stage A), and what stood
+            -- here is worth recording because the deletion is a change of model
+            -- rather than a relaxation.
             --
-            -- The binding a declaration creates IS the name (§8: a declaration is
-            -- a `let`), so `let f = (λ… : Π…)` stays writable — it is the
-            -- declaration idiom, §12 decision 6. CALLING where bound is a
-            -- name-use, and `.callV` LOCATES its callee rather than reading it
-            -- (M26-E), so it never arrives here. PASSING as an argument is a
-            -- name-use too. What the model forbids is the one move that turns a
-            -- function from a name into a VALUE: reading it out of its slot into a
-            -- second binding.
+            -- It said: functions are reached by NAME (M27 α.2), so the one move
+            -- forbidden is reading a function out of its slot into a second
+            -- binding — `let g = ih`. That rule existed because a function had no
+            -- mode: it lived in a runtime slot, so a second runtime binding of it
+            -- was a second OWNER, and M27's third containment (c1's curry probe)
+            -- had measured the resulting simulation break on an accepted program
+            -- (`f = ⊥` checking, the λ-spine executing).
             --
-            -- **THE CONTAINMENT GRADUATED INTO THE MODEL.** M27's third
-            -- containment (c1's curry probe §G3b, generalizing M27-P3 §M) refused
-            -- exactly this for one case, keyed on a mechanism: a σ whose Π is
-            -- BORROW-MODED has no `Val` — M26-C's founding fact — so it lives in
-            -- `fsig` alone, `indexKindV` consults `sctx`, finds nothing, and takes
-            -- the move default while the executing machine copies. That was a
-            -- simulation break and the key was "absent from `sctx`". The key is now
-            -- **being a function at all**, which is a claim about the language
-            -- rather than about a table, and the borrow-free case flips with it —
-            -- c1 measured it as sound (§G3a), and it is refused anyway, because
-            -- soundness was never what made it wrong.
+            -- M31 gives functions a mode, and that dissolves the premise rather
+            -- than the symptom. A function binding is comptime: ⇝-read, erased,
+            -- never ⇒-consumed. So reading one is not a move at all — `let F =
+            -- Main` copies knowledge and leaves the original exactly where it was
+            -- — and there is no second owner for the two machines to disagree
+            -- about. What IS still wrong is binding a function to a runtime slot,
+            -- which is a claim about the BINDER, and `backstopFnBinding` is where
+            -- that is now said. Same programs refused, one layer later, with the
+            -- fix in the message.
             --
-            -- The test is `fsig` membership because that is the kernel's own record
-            -- of "this σ is a function": `sealMint` writes every sealed function
-            -- there, and `seedTelescopeV` writes a Π-typed parameter there. A pure
-            -- `.lam` is deliberately NOT included — it is a comptime object,
-            -- index-kind, living in the ⇝ fragment, and the model's sentence is
-            -- about ⇒'s function values.
-            --
-            -- CHECKING-SIDE ONLY, unchanged: the executing machine holds a real
-            -- function value and copies it correctly, so refusing there would
-            -- break running programs to protect a checker.
-            if !(← get).executing then do
-              let st ← get
-              let isFnVal : Bool :=
-                match v with
-                | .rfn _ _ => true
-                | .sym σ => (st.fsig.lookup σ).isSome
-                | _ => false
-              if isFnVal then
-                throwErr s!"read: '{x.name}' holds a function, and a function is reached by NAME rather than read as a value (§8 — a declaration is a `let`, and the binding IS the name). CALL it where it is bound, or pass it as an argument."
             -- §2.1 copy-on-read: an INDEX-KIND value (a Nat/Bool/Unit tree, a
             -- proof, a type, a λ, or a σ typed as one of these) is read by COPY,
             -- leaving the owner intact — the ownership machinery is doubly vacuous
@@ -3378,7 +3480,14 @@ mutual
         -- ⇝-positions. Local spec abbreviations and locally-derived certificates
         -- without a new form — and without the capture-before-call staging that
         -- a runtime `let` of a proof forces. `let x = e` is unchanged.
-        let v ← if x.isComptime then readComptimeArg fuel rhs else readR fuel rhs
+        --
+        -- **The seal keeps ⇒ whatever the binder's case** (M31 Stage A) — see
+        -- `Var.comptimeRhs`, which is the whole of that rule and is read here and
+        -- by the explore driver both.
+        backstopFnRhs x rhs                              -- M31 Stage A: §2.1, before the fence
+        (match rhs with | .lam _ _ _ => checkLamCitation rhs | _ => pure ())
+        let v ← if x.comptimeRhs rhs then readComptimeArg fuel rhs else readR fuel rhs
+        backstopFnBinding x v                            -- …and §2.1 from below
         bindSlot x v
         readR fuel rest
       | .assign place rhs rest => do
@@ -3473,13 +3582,21 @@ mutual
       -- if §7's deferral ever ends, is a value and will need its own rule; it will
       -- not inherit this one.
       | .callV x args => do
-        -- §6.3's distinction, made mechanical. A capital function-typed binder —
-        -- `map_spec (G : Nat → Nat, v)` — is a SPEC parameter: the caller may
-        -- supply an abstract or sealed function with no runtime existence, so the
-        -- body may cite `G a` in a type (⇝ gives the structured neutral) but may
-        -- not CALL it. `map_apply (g : …)` is the lowercase twin, and calling it
-        -- is exactly what the lowercase buys.
-        fenceComptime x "cannot be CALLED under ⇒ (a capital function-typed binder is a SPEC parameter — cite it in a type or a proof, where ⇝ gives its applications as structured neutrals; a caller need not supply anything with a runtime existence)"
+        -- **THE FENCE IS GONE** (M31 Stage A, §2.2). It read: a capital
+        -- function-typed binder is a SPEC parameter, citable in a type and never
+        -- callable, with `map_apply (g : …)` as the lowercase twin that could be
+        -- called. That distinction was the whole of §6.3, and M31 dissolves it —
+        -- a function IS comptime knowledge, so a capital binder is what every
+        -- function binding now looks like, and refusing to call one would refuse
+        -- every call there is.
+        --
+        -- What replaces it is not a weaker fence but a different sentence: the
+        -- head of a call is FETCHED BY ⇝ — the non-destructive slot read directly
+        -- below, which is what this rule already did and what `reflectC`'s own
+        -- `.var` case does (`lookupSlot` plus the ⊥ rejection). Nothing was
+        -- consuming a callee before, so nothing about erasure is weakened by
+        -- letting an erased binder be the callee: `G a` in a spec and `G(a)` in a
+        -- body reach the same value by the same read.
         match ← lookupSlot x with
         | .bot => throwErr s!"callV: callee {x.name}#{x.id} holds ⊥ (use-after-move or uninitialized)"
         | callee =>
@@ -3593,7 +3710,20 @@ mutual
       | .pvar _ => readC fuel t
       | .pi _ _ _ => readC fuel t
       | .sigmaT _ _ _ => readC fuel t
-      | .lam _ _ _ => do collapseCDerefs fuel t; readC fuel t
+      -- **A λ FORMED IN VALUE POSITION takes the citation rule too** (M31 Stage A,
+      -- §2.4), which is what makes the check "identical for both λ species".
+      --
+      -- Reached HERE and not in `readC`, and the difference is exactly §2.4's own
+      -- boundary. This arm is ⇒'s: a λ evaluated as a VALUE — bound, passed,
+      -- stored — which is the form that is formed now and used later, and the gap
+      -- an implicit snapshot could hide in. A λ inside a TYPE reaches `readC`
+      -- directly (from a telescope, a motive, an ascription) and is consumed at
+      -- its own event, so it keeps citing whatever is in scope, as §2.4 says it
+      -- must. Statement-level pure computation (`let n = Len *v`) is not a λ at
+      -- all and is untouched.
+      | .lam _ _ _ => do
+        checkLamCitation t
+        collapseCDerefs fuel t; readC fuel t
       -- **A recursor over runtime arms is ⇒'s, not ⇝'s** (§7 cost 5). The pure
       -- lift below sends every other application spine to `readC`; one whose arms
       -- are BODIES has no comptime reading at all (`readC` refuses `.lamR`), so ⇒
@@ -3623,27 +3753,38 @@ mutual
           -- read would MOVE. A `Val.rfn`, a σ with a signature, or a recursor spine
           -- binds Ω slots — that is ⇒'s. Same room, two doors (§2.3).
           --
-          -- A capital head is excluded before anything is looked up: §6.3 makes a
-          -- capital function-typed binder a SPEC parameter, citable in a type or a
-          -- proof and never callable, so routing one here could only ever produce
-          -- `fenceComptime`'s rejection — including for a body's `let X = …` proof.
+          -- **THE MODE PRE-FILTER IS GONE** (M31 Stage A, §2.2). This used to
+          -- exclude a capital head *before anything was looked up*, on the ground
+          -- that §6.3 made such a binder a SPEC parameter which routing here could
+          -- only ever get `fenceComptime`'s rejection for. With the fence deleted
+          -- that ground is gone, and the exclusion would now be the one thing
+          -- preventing the model's own sentence — every function binding is
+          -- capital, so a mode filter on heads filters out all of them.
+          --
+          -- What survives is NOT arrow-inspection by mode but §2.2's own step 3:
+          -- the head is fetched (a non-destructive slot read, the ⇝ fetch), and
+          -- the value decides ENTER-or-β. A function that must be entered — an
+          -- `rfn`, a σ with a signature, a recursor spine — is `.callV`'s; a pure
+          -- λ or a stuck spine is the normalizer's, where β and the structured
+          -- neutral both live. That split is arrow-keyed rather than head-keyed
+          -- (§12 decision 5: write an application in a type and ⇝ remembers the
+          -- spine, write it as a statement and ⇒ mints), which is why it is not
+          -- what M31 dissolves.
           match appSpineVar? t with
           | some (x, args) =>
-            if x.isComptime then do collapseCDerefs fuel t; readC fuel t
-            else
-              match (← get).env.find? (fun kv => kv.1.id == x.id) with
-              | some kv => do
-                let st ← get
-                let isFn : Bool :=
-                  match kv.2 with
-                  | .rfn _ _ => true
-                  | .sym σ => (st.fsig.lookup σ).isSome
-                  | v => match valSpineHead v with
-                         | some c => (recLayout c).isSome
-                         | none => false
-                if isFn then readR fuel (.callV x args)
-                else do collapseCDerefs fuel t; readC fuel t
-              | none => do collapseCDerefs fuel t; readC fuel t
+            match (← get).env.find? (fun kv => kv.1.id == x.id) with
+            | some kv => do
+              let st ← get
+              let isFn : Bool :=
+                match kv.2 with
+                | .rfn _ _ => true
+                | .sym σ => (st.fsig.lookup σ).isSome
+                | v => match valSpineHead v with
+                       | some c => (recLayout c).isSome
+                       | none => false
+              if isFn then readR fuel (.callV x args)
+              else do collapseCDerefs fuel t; readC fuel t
+            | none => do collapseCDerefs fuel t; readC fuel t
           | none => do collapseCDerefs fuel t; readC fuel t
       | .idT _ _ _ => do collapseCDerefs fuel t; readC fuel t
       -- ¶2.2's ⇒ column at the two new steps, and the regularity §1.3 asks the
@@ -4319,7 +4460,10 @@ mutual
         -- duplication is two lines; a mode that silently stopped applying at the
         -- top level of a function body would have been a phantom.
         match (do
-            let v ← if x.isComptime then readComptimeArg fuel rhs else readR fuel rhs
+            backstopFnRhs x rhs
+            (match rhs with | .lam _ _ _ => checkLamCitation rhs | _ => pure ())
+            let v ← if x.comptimeRhs rhs then readComptimeArg fuel rhs else readR fuel rhs
+            backstopFnBinding x v
             bindSlot x v).run st with
         | .error e _ => [.error e]
         | .ok _ st' => explore fuel rest st'

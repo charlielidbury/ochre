@@ -1,5 +1,65 @@
 # Progress
 
+## 2026-08-10 — dllbc/: **M31 Stage A — function bindings become comptime-moded**
+
+Four commits on `m31-stage-a`, whole corpus green at each. `functions-are-comptime.md`
+§5's riskiest stage, taken first as the plan intends: a function is comptime
+knowledge, so a function BINDING is a capital binding, a call's head is fetched by
+⇝, and no runtime-moded binding may hold a function.
+
+    `callV` fence                  deleted       every call is a ⇝-held callee now
+    function-read refusal          deleted       succeeded by the mode backstop
+    `.app` router's mode filter    deleted       enter-or-β classification KEPT (§2.2 step 3)
+    `Var.comptimeRhs`              NEW           a formation event keeps ⇒, whatever the binder
+    `backstopFnBinding`/`…Rhs`     NEW           §2.1 from below, 3 acquisition sites
+    `checkLamCitation`             NEW           §2.4, both λ species
+    `admitGlobals`                 rewritten     globalKind → the binder's MODE
+    surface: lowercase `fn`        refused       + bare `fn` names now resolve
+    `fn` names renamed             215           PascalCase; aliasMap keys with them
+    lowercase fn-valued bindings   111           migrated to capital
+    acceptance flips               2 off-list    both derived, both reported
+
+**The plan's stage order is infeasible and the correction is tolerate → rename →
+enforce.** "The rename lands first, as its own mechanical commit" cannot be taken:
+capitalising a `fn` name under the old kernel makes its slot comptime, and the
+`.letIn` row then ⇝-reads its `.seal` right-hand side, which `readC` refuses by
+name. Rename-first is a commit in which every renamed function is unusable. The
+motive survives — the semantic differential is still not buried in a rename diff,
+it is in the commit before it.
+
+**The rule §2.1 needs but does not state: the seal's arrow belongs to the seal.**
+`fn F …` desugars "as today, to a `let` of a λ ascribed its Π, comptime-moded",
+and those halves conflict, because a comptime `let` ⇝-reads its right-hand side
+and the seal is the one form ⇝ refuses. The arrow is a property of the RIGHT-HAND
+SIDE: a formation event stays ⇒ whatever the binder's case; what the capital
+binder changes is the binding, not the event. Its first consequence is an
+unlisted flip — `let C = (le_refl 3 : Le 3 3)` becomes legal, because a function
+declaration is *precisely* a comptime `let` of a sealed λ and refusing one would
+refuse them all.
+
+**E4, measured rather than argued.** A borrow-moded Π has no `Val`, so it can
+never be `hasType`'s expected type and the enumeration collapses. Passing a
+borrow-FREE function as an argument now works — §7's promise, closed. Passing one
+whose signature has a `&mut` binder is refused by `processArgs`' `readC` of the
+parameter type, one step *before* `hasType`: E4's predicted `piAgree` path does
+not exist, and building it is Stage B's. A second wall sits in front of it — a
+`fn` body cannot name a sibling function as a bare identifier, because bodies are
+elaborated in their own parameter context, and that is load-bearing rather than
+incidental: if bodies saw sibling slots, `fnElab`'s fresh-binder base would climb
+above `progBase` and the synthesized `ih` would collide with a `fn` slot.
+
+**What §2.4 was worth.** quicksort's staged builders freeze `*v` before the two
+recursive sorts (`mkUb`) and after them (`fin`), and they were the same three
+characters in the source. They are `V0` and `V1` now, and the lying twin's lie is
+the visible difference between `Hub0` and `Hub2` instead of something a reader
+dates by position.
+
+**Deferred, deliberately.** The backstop's function test is ⇒'s function values
+(`.rfn`, `fsig`-σ), so §2.1's own `let f = Add 1` is not caught — catching it
+refuses every staged proof-builder, a second migration. `nextFrame + 128` and
+`applyRFn`'s keep set both stay: §2.4 empties the keep set by construction, but
+the deletion belongs after E2's newest-wins probe with a differential to show it.
+
 ## 2026-08-10 — dllbc/: **M31 Stage 0 — Ω entries pop with their lexical scope**
 
 Two commits on `m31-stage0-popdrop`, full suite green at each. `functions-are-comptime.md`

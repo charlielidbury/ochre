@@ -269,11 +269,19 @@ def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "
 /-- Friendly aliases for the reified library functions whose surface name differs
     from their `…FnT` Term-constant (`Le` ↦ `LeFnT`, etc.). Everything else falls
     through to the raw-Lean-identifier resolution, so lemma Terms (`swapL`, `set`,
-    `sortRangeL`, …) are referenced by their own names via the use-site `open`s. -/
+    `sortRangeL`, …) are referenced by their own names via the use-site `open`s.
+
+    **The keys are PascalCase since M31 Stage A** (§2.1): "the standard
+    vocabulary capitalises with everything else — `Len`, `Add`, `Count`, `Take`
+    join the already-capital `Le`, `Sorted` — one rule for every name that denotes
+    a function, library or user's." The `…FnT` Terms they map to keep their Lean
+    names: a Lean identifier is not a DLLBC binder and carries no mode, which is
+    also why the lemma Terms below the alias table were left alone (see the
+    rename policy recorded in the Stage A addendum). -/
 def aliasMap : List (String × Name) :=
-  [("Le", `Dllbc.Std.LeFnT), ("len", `Dllbc.Std.lenFnT), ("add", `Dllbc.Std.addFnT),
-   ("leb", `Dllbc.Std.lebFnT), ("count", `Dllbc.Std.countFnT), ("eqb", `Dllbc.Std.eqbFnT),
-   ("take", `Dllbc.Std.takeFnT), ("drop", `Dllbc.Std.dropFnT),
+  [("Le", `Dllbc.Std.LeFnT), ("Len", `Dllbc.Std.lenFnT), ("Add", `Dllbc.Std.addFnT),
+   ("Leb", `Dllbc.Std.lebFnT), ("Count", `Dllbc.Std.countFnT), ("Eqb", `Dllbc.Std.eqbFnT),
+   ("Take", `Dllbc.Std.takeFnT), ("Drop", `Dllbc.Std.dropFnT),
    ("Sorted", `Dllbc.Std.SortedFnT), ("Bound", `Dllbc.Std.BoundFnT)]
 
 /-! ## Binder names, and what capitalisation may mean (combining-fns §6)
@@ -325,22 +333,69 @@ def checkBinder (x : Ident) : MacroM Unit := do
 def binderDom (nm : String) (τ : TSyntax `term) : MacroM (TSyntax `term) :=
   if Dllbc.isUpperInit nm then `(Dllbc.Term.cmpT $τ) else pure τ
 
+/-! ## Locals and `fn` slots in one context (M31 Stage A)
+
+    A `fn` statement's name now goes into `rctx` alongside the ordinary runtime
+    locals, because §2.1 makes a function an ordinary comptime BINDING and a
+    binding is something a bare name may denote (`let F = Main`). They are told
+    apart by the id: a `fn` slot is numbered from `progBase`, which is the same
+    invariant `FnMacro.fnSlots` reads, so no second context has to be threaded
+    through the elaborator to keep them separate.
+
+    Separate they must stay, because two rows want the LOCALS only:
+
+      * `f(a, b)` must keep falling through to `.call`, whose rewrite into
+        `.callV` is `retarget`'s — and `retarget` also PERMUTES the arguments of a
+        `[k]`-hoisted callee (E8). Resolving the name here instead would produce a
+        `.callV` in declaration order against a telescope that has been reordered,
+        which is silent: it passes a borrow where a `Nat` is expected, and it was
+        found once already, by a migration disagreement list rather than by a test.
+      * `match x { … }` wants a runtime scrutinee, and a function is not one. -/
+
+/-- An ordinary runtime local — a `fn` slot is not one. -/
+def localId (rctx : List (String × Nat)) (s : String) : Option Nat :=
+  match rctx.lookup s with
+  | some id => if id ≥ Dllbc.FnMacro.progBase then none else some id
+  | none => none
+
+/-- A `fn` slot bound above this point, by the name it was declared with.
+
+    Every such name is capital, because the `fn` row refuses a lowercase one
+    (§2.1). That is what keeps this lookup from disturbing anything: the names it
+    can answer for are exactly the ones the raw-Lean fallthrough below it never
+    had a reading for, since a Lean lemma Term in this corpus is lowercase. The
+    one name where the two families met — `fn nth` against `Std`'s `nth` — is
+    resolved by the rename policy rather than by a condition here (see the Stage A
+    addendum): the function capitalised and the lemma did not. -/
+def fnSlotId (rctx : List (String × Nat)) (s : String) : Option Nat :=
+  match rctx.lookup s with
+  | some id => if id ≥ Dllbc.FnMacro.progBase then some id else none
+  | none => none
+
 /-- Resolve a bare identifier in a type/back position. Pure binder in scope →
     `pvar` at that very name; earlier telescope param → `var`; constructor →
     nullary `ctorApp`; kernel const → `const`; reified-function alias → its `…FnT`
-    Term; else the Lean identifier of that name (a `Term` in scope). -/
+    Term; a `fn` slot above it → `var` at that slot; else the Lean identifier of
+    that name (a `Term` in scope).
+
+    The `fn` slot is consulted LAST but one, after the alias table and before the
+    raw fallthrough, so that adding it changes the answer for no name that already
+    had one. -/
 def resolveName (rctx : List (String × Nat)) (pctx : List String) (x : Ident) : MacroM (TSyntax `term) := do
   let s := x.getId.toString
   if pctx.contains s then `(Dllbc.Term.pvar $(quote s))
   else
-    match rctx.lookup s with
+    match localId rctx s with
     | some id => `(Dllbc.Term.var ⟨$(quote id), $(quote s)⟩)
     | none =>
       if ctorSet.contains s then `(Dllbc.Term.ctorApp $(quote s) [])
       else if constSet.contains s then `(Dllbc.Term.const $(quote s))
       else match aliasMap.lookup s with
         | some n => pure ⟨(mkIdent n).raw⟩
-        | none => pure ⟨x.raw⟩
+        | none =>
+          match fnSlotId rctx s with
+          | some id => `(Dllbc.Term.var ⟨$(quote id), $(quote s)⟩)
+          | none => pure ⟨x.raw⟩
 
 /-! ## Unified `uterm` / `ublk` elaborators (§ points 1–3)
 
@@ -528,12 +583,15 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
       -- call, and only a head that names nothing in scope falls through to the
       -- declaration table. No new token and no annotation — the same `f(x)`
       -- surface means both, which is what "one application form" has to mean.
-      match rctx.lookup name with
+      -- `localId`, not `rctx.lookup`: a `fn` slot deliberately falls through to
+      -- `.call`, because `retarget` is what rewrites those — and permutes a
+      -- `[k]`-hoisted callee's arguments on the way (see `localId`'s header).
+      match localId rctx name with
       | some id => return (← `(Dllbc.Term.callV ⟨$(quote id), $(quote name)⟩ [$args',*]), n)
       | none => return (← `(Dllbc.Term.call $(quote name) [$args',*]), n)
   | `(uterm| match $x:ident { $arms,* }) => do
     let s := x.getId.toString
-    match rctx.lookup s with
+    match localId rctx s with
     | none => Macro.throwErrorAt x s!"decl: match scrutinee '{s}' is not a bound runtime variable"
     | some id =>
       let (arms', n) ← elabUArms rctx pctx next arms.getElems.toList
@@ -543,7 +601,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
   | `(uterm| match $h:ident : $x:ident { $arms,* }) => do
     checkBinder h
     let s := x.getId.toString
-    match rctx.lookup s with
+    match localId rctx s with
     | none => Macro.throwErrorAt x s!"decl: match scrutinee '{s}' is not a bound runtime variable"
     | some id =>
       let hName := h.getId.toString
@@ -577,7 +635,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     | `(uterm| $h:ident) =>
       let hs := h.getId.toString
       let (argTerms, n) ← elabUList rctx pctx next args.toList
-      if ctorSet.contains hs && !pctx.contains hs && (rctx.lookup hs).isNone then
+      if ctorSet.contains hs && !pctx.contains hs && (localId rctx hs).isNone then
         return (← `(Dllbc.Term.ctorApp $(quote hs) [$argTerms,*]), n)
       -- **JUXTAPOSITION IS ALREADY ONE FORM, and β leaves the surface alone**
       -- (M27). `f a b` elaborates to a `.app` spine over the head's resolution,
@@ -702,6 +760,22 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
   -- terms of the arrow; deleting it loses no rejection, only a duplicate.
   | `(ublk| fn $name:ident $[[$dec:ident]]? ( $ps,* ) -> $ret:uterm { $body:ublk } ; $rest:ublk) => do
     checkBinder name
+    -- **A FUNCTION NAME IS CAPITALISED** (M31 Stage A, §2.1). A `fn` desugars to
+    -- a `let` of a λ ascribed its Π, and a function is comptime knowledge — so
+    -- the binding that holds one must be a capital binding, by the same one rule
+    -- that makes every other capital binder comptime. There is no carve-out and
+    -- no second marker.
+    --
+    -- Stated here, at the row that writes the binder, because this is where a
+    -- reader can be told the fix. The kernel says it again from below
+    -- (`backstopFnBinding`), where it catches what the surface cannot see: a
+    -- lowercase binding whose right-hand side merely PRODUCES a function.
+    --
+    -- The divergence from Rust's snake_case is deliberate and tracks a real
+    -- semantic difference — a Rust function is a runtime item, a DLLBC function
+    -- is a comptime value — so the surface says so rather than hiding it.
+    if !Dllbc.isUpperInit (name.getId.toString) then
+      Macro.throwErrorAt name s!"fn: '{name.getId}' must be capitalised. A function is COMPTIME knowledge (§2.1) — ⇝-read, erased, never ⇒-consumed — and §6 makes capitalisation the mode marker, so a function name is a capital name. Write `fn {(name.getId.toString).capitalize} …`."
     let parsed ← ps.getElems.toList.mapM fun (p : TSyntax `ulamb) => match p with
       | `(ulamb| $x:ident : $τ:uterm) => pure (x.getId.toString, τ)
       | _ => Macro.throwErrorAt p "fn: malformed parameter (expected `x : τ`)"
@@ -728,7 +802,13 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- is emitted rather than computed, so `progBase` stays the single definition of
     -- where globals live.
     let slot ← `((⟨Dllbc.FnMacro.progBase + $(quote next), $(quote nm)⟩ : Dllbc.Var))
-    let (rest', n2) ← elabUBlk rctx pctx (next + 1) rest
+    -- **The name goes into scope for the rest of the block** (M31 Stage A). A
+    -- function is an ordinary comptime binding now (§2.1), so a bare `Main` is a
+    -- name-use of one and `let F = Main` is the ⇝ copy of knowledge the model says
+    -- it is. `retarget` below still owns the `f(…)` rewrite — `localId` keeps this
+    -- entry out of the call row for exactly that reason — so what this adds is the
+    -- BARE-name reading `retarget` never had, and nothing it did have is removed.
+    let (rest', n2) ← elabUBlk ((nm, Dllbc.FnMacro.progBase + next) :: rctx) pctx (next + 1) rest
     return (← `(Dllbc.Term.letIn $slot
                   (Dllbc.FnMacro.fnElabOrFail
                     (Dllbc.FnDef.mk $(quote nm) [$teleSyns,*] $retT $bodyT $decT))

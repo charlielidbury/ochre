@@ -760,4 +760,35 @@ def Term.stripCmp : Term → Term
   | .cmpT τ => τ
   | t => t
 
+/-- **Which arrow evaluates a `let`'s right-hand side** (M31 Stage A).
+
+    `let X = e` reads `e` under ⇝ — that is what §6's comptime binding means, and
+    it is why a capital binder is non-consuming. Two right-hand sides are
+    exceptions, and they are the two that are not READINGS at all but ⇒-FORMATION
+    EVENTS, each producing a value ⇝ has no rule to produce:
+
+      * `(t : T)` — the seal mints a fresh σ, and `readC` refuses it by name for
+        exactly that reason ("minting a fresh σ needs an event and ⇝ has none").
+      * `λ(x : τ, …){ … }` — a runtime λ's formation is where its closedness is
+        checked (`admitGlobals`) and where its value comes into being, and
+        `readC` refuses it by name too ("its body is a body and its binders are
+        Ω slots").
+
+    So the arrow here is a property of the RIGHT-HAND SIDE, not only of the
+    binder: a formation event stays ⇒ whatever the binder's case, and what the
+    capital binder changes is the BINDING — erased, ⇝-readable, never ⇒-consumed
+    — not the event that produced its value. This is what lets `fn F …` desugar,
+    exactly as §2.1 says it does, to a comptime `let` of a λ ascribed its Π: the
+    declaration is still the event it always was, and only its mode moved. And it
+    is what lets `let Double = λ(n : Nat){ … }` be written at all, which §2.1 also
+    requires — the same sentence for the sugar and for the thing it desugars to.
+
+    Stated as one predicate because two sites read it (`readR`'s `.letIn` and the
+    explore driver's), and a rule that applied at one of them would be a phantom
+    at the other — the lesson the comptime `let` itself already taught. -/
+def Var.comptimeRhs (x : Var) : Term → Bool
+  | .seal _ _ => false
+  | .lamR _ _ => false
+  | _ => x.isComptime
+
 end Dllbc
