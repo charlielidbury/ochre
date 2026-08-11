@@ -158,10 +158,14 @@ partial def maxVarId : Term → Nat
     brs.foldl (fun a b => max a (max (b.binders.foldl (fun c v => max c v.id) 0) (maxVarId b.body)))
       (max s.id ((eqn.map (·.id)).getD 0))
   | .seq a b | .app a b | .seal a b => max (maxVarId a) (maxVarId b)
-  | .pi _ a b | .lam _ a b | .sigmaT _ a b | .borrowT _ a b =>
+  -- The one λ (M32 R2): the BINDER's id counts too, which is what the `lamR`
+  -- fold over its telescope was for. A comptime binder's `noSlot` would swamp
+  -- the maximum, so it is excluded — it is not an id in the program's space.
+  | .lam x a b =>
+    max (if x.id == noSlot then 0 else x.id) (max (maxVarId a) (maxVarId b))
+  | .pi _ a b | .sigmaT _ a b | .borrowT _ a b =>
     max (maxVarId a) (maxVarId b)
   | .idT a b c => max (maxVarId a) (max (maxVarId b) (maxVarId c))
-  | .lamR xs body => xs.foldl (fun a p => max a (max p.1.id (maxVarId p.2))) (maxVarId body)
   | _ => 0
 
 /-- Rename one runtime variable throughout (binding occurrences included). -/
@@ -287,7 +291,7 @@ partial def renameSelf (from_ to : String) : Term → Term
   | .deref t => .deref (renameSelf from_ to t)
   | .matchE s eqn brs =>
     .matchE s eqn (brs.map (fun b => Branch.mk b.ctor b.binders (renameSelf from_ to b.body)))
-  | .lamR xs body => .lamR xs (renameSelf from_ to body)
+  | .lam x d body => .lam x d (renameSelf from_ to body)
   | t => t
 
 /-- A self-call becomes an `ih` application with the scrutinee argument dropped:
@@ -334,13 +338,33 @@ def hoist (k : Nat) (tel : List (Var × Term)) : Except String (List (Var × Ter
       .error s!"fn: the decreasing parameter '{kv.name}' cannot be hoisted to the front of the telescope — its type mentions '{y.name}', which is declared before it. §7 makes [k] a scrutinee-selection hint and the motive is the sealed Π with that binder peeled off the FRONT, so the scrutinee's own type must be statable first."
     | none => .ok ((kv, kτ) :: (tel.take k ++ tel.drop (k + 1)))
 
+/-- **The nullary `fn`'s Unit parameter** (M32 R2, suspensions.md §1).
+
+    One λ former means a λ has a binder, so `Term.lamTel [] body` is the body
+    itself and `fn F () -> T { … }` would elaborate to `.seal ⟨body⟩ T` — which is
+    exactly what the surface ascription `(e : T)` elaborates to. The two were
+    different terms while `lamR []` existed and are the same term after the fold,
+    so the seal could no longer tell a nullary FUNCTION from an ascribed
+    expression. §1 already prescribes the resolution — "nullary `fn` desugars to
+    `λ (U : Unit)`" — and this is it, arriving here rather than at R4 because the
+    fold is what forces it.
+
+    The binder is **comptime and unwritable**: capitalized, so `piPeel`'s mode
+    check agrees with the `⇝Unit` domain `markDom` gives it and the argument is
+    ⇝-read (a nullary function consumes nothing, which is the property being
+    preserved); and spelled with a `§`, which no Lean `ident` can contain, so no
+    program can bind or shadow it. `retarget` supplies the `()` at every call
+    site, so the desugar is invisible to the surface in both directions. -/
+def nullaryVar : Var := ⟨0, "U§"⟩
+
 /-- `fn` as a macro: a `FnDef` becomes the term §7 says it is — `.seal ⟨recursor⟩
     ⟨Π⟩` when it recurses, `.seal ⟨runtime λ⟩ ⟨Π⟩` when it does not.
 
     Returns the sealed TERM. Binding it is the caller's business, which is §8's
     direction: a declaration is a `let`, and this is its right-hand side. -/
 def fnElab (d : FnDef) : Except String Term := do
-  let tel := teleVars d.telescope
+  let tel := if d.telescope.isEmpty then [(nullaryVar, Term.const "Unit")]
+             else teleVars d.telescope
   match d.dec with
   -- NON-RECURSIVE: the whole function is one runtime λ, sealed at its signature.
   -- A self-call here is deliberately NOT refused, and that is §8's own mechanism
@@ -354,7 +378,7 @@ def fnElab (d : FnDef) : Except String Term := do
   -- binder's mode on its domain, which is what `telePi` does to build the Π the
   -- seal converts against, so the λ and its ascription are built from one source.
   | none =>
-    .ok (.seal (.lamR (tel.map (fun p => (p.1, markDom p.1 p.2))) d.body)
+    .ok (.seal (Term.lamTel (tel.map (fun p => (p.1, markDom p.1 p.2))) d.body)
                (telePi tel d.retType))
   | some k => do
     let (kv, kτ) ← match tel.get? k with
@@ -469,8 +493,8 @@ def fnElab (d : FnDef) : Except String Term := do
       let sTel ← armTel restIds (Term.substP (paramName kv) (.ctorApp "S" [.var dec]) R)
       .ok (.seal
         (.app (.app (.app (.const "natRec") motive)
-          (.lamR zTel zBody))
-          (.lamR ((dec, scrutDom) :: (ih, ihTy) :: sTel) sBody))
+          (Term.lamTel zTel zBody))
+          (Term.lamTel ((dec, scrutDom) :: (ih, ihTy) :: sTel) sBody))
         piT)
     | some a =>
       let hd : Var := stepBs.head!
@@ -479,8 +503,8 @@ def fnElab (d : FnDef) : Except String Term := do
         (Term.substP (paramName kv) (.ctorApp "Cons" [.var hd, .var dec]) R)
       .ok (.seal
         (.app (.app (.app (.app (.const "listRec") a) motive)
-          (.lamR zTel zBody))
-          (.lamR ((hd, a) :: (dec, scrutDom) :: (ih, ihTy) :: sTel) sBody))
+          (Term.lamTel zTel zBody))
+          (Term.lamTel ((hd, a) :: (dec, scrutDom) :: (ih, ihTy) :: sTel) sBody))
         piT)
 
 /-! ## §8: assembling a program from declarations
@@ -519,7 +543,13 @@ partial def retarget (binds : List (String × Var × Option Nat)) : Term → Ter
       match args'.get? k with
       | some a => .callV v (a :: args'.eraseIdx k)
       | none => .callV v args'                  -- arity mismatch: the kernel reports it
-    | some (v, none) => .callV v args'
+    -- **A no-argument call supplies the nullary desugar's `()`** (M32 R2). A
+    -- declared callee with an empty argument list is a nullary `fn`, and
+    -- `fnElab` gave it the comptime `U§ : ⇝Unit` binder that §1 prescribes; the
+    -- unit is put here rather than written, so the desugar is invisible at the
+    -- surface from both ends. (A no-argument call of a callee that is NOT nullary
+    -- is an arity error either way, and the kernel still reports it.)
+    | some (v, none) => .callV v (if args'.isEmpty then [.unit] else args')
     | none => .call f args'
   | .callV x args => .callV x (args.map (retarget binds))
   | .ctorApp n args => .ctorApp n (args.map (retarget binds))
@@ -530,7 +560,6 @@ partial def retarget (binds : List (String × Var × Option Nat)) : Term → Ter
   | .deref t => .deref (retarget binds t)
   | .matchE s eqn brs =>
     .matchE s eqn (brs.map (fun b => Branch.mk b.ctor b.binders (retarget binds b.body)))
-  | .lamR xs body => .lamR xs (retarget binds body)
   | .seal t u => .seal (retarget binds t) (retarget binds u)
   | .app a b => .app (retarget binds a) (retarget binds b)
   | .idT a b c => .idT (retarget binds a) (retarget binds b) (retarget binds c)
@@ -603,7 +632,6 @@ partial def fnSlots : Term → List Nat
   | .seq a b | .app a b | .seal a b => fnSlots a ++ fnSlots b
   | .pi _ a b | .lam _ a b | .sigmaT _ a b | .borrowT _ a b => fnSlots a ++ fnSlots b
   | .idT a b c => fnSlots a ++ fnSlots b ++ fnSlots c
-  | .lamR _ body => fnSlots body
   | _ => []
 
 /-- **Bind a `fn` statement's slot over the rest of the block.** `retarget`, with

@@ -509,7 +509,7 @@ def indexKindV (fuel : Nat) (sctx : List (Nat × Term)) : Val → Bool
   -- partially applied, closed" is what earns this. A CONSERVATIVE DEFAULT, and
   -- corrected at M27-P3: `ih` is CALLED, and a call LOCATES its callee rather
   -- than moving it, so a recursive call never reaches here at all.
-  | .rfn _ _ => true
+  | .closure _ _ => true
   | .borrowM _ _ => false
   | .loanM _ => false
   | .bot => false
@@ -533,7 +533,13 @@ mutual
     | .know t => .know (Term.substSym σ repl t)
     | .node n args => .ctor n (substSymList σ repl args)
     | .borrowM ℓ p => .borrowM ℓ (substSym σ repl p)
-    | .rfn xs b => .rfn xs b                             -- closed: no σ inside
+    -- **Refinement reaches a captured environment** (M32 R2, suspensions.md §3):
+    -- σ := v is atom-keyed and COMMUTES with evaluation, so rewriting ρ and
+    -- evaluating the body later agrees with cooking first. No cooking here, and
+    -- that is the criterion's answer rather than an optimisation. The body is
+    -- rewritten too: raw it holds no σ (a program cannot write one), cooked it
+    -- holds exactly the ones a later comparison would see.
+    | .closure ρ b => .closure (substSymRho σ repl ρ) (Term.substSym σ repl b)
     | .loanM ℓ => .loanM ℓ
     | .bot => .bot
   termination_by v => sizeOf v
@@ -541,6 +547,10 @@ mutual
     | [] => []
     | v :: vs => substSym σ repl v :: substSymList σ repl vs
   termination_by vs => sizeOf vs
+  def substSymRho (σ : Nat) (repl : Term) : List (Var × Val) → List (Var × Val)
+    | [] => []
+    | (x, v) :: ps => (x, substSym σ repl v) :: substSymRho σ repl ps
+  termination_by ps => sizeOf ps
 end
 
 /-! Abstract a whole sub-TERM `target` into the σ `σb` everywhere — the inverse of
@@ -559,7 +569,10 @@ mutual
     | .know t => .know (Term.abstractInto target σb t)
     | .node n args => .ctor n (abstractIntoList target σb args)
     | .borrowM ℓ p => .borrowM ℓ (abstractInto target σb p)
-    | .rfn xs b => .rfn xs b
+    -- The generalization sweep reaches ρ and the body alike. What it does NOT do
+    -- is cook — `cookForGen` below has already run on the values this sweep is
+    -- about, because cooking is an evaluation and this is a rewrite (§3).
+    | .closure ρ b => .closure (abstractIntoRho target σb ρ) (Term.abstractInto target σb b)
     | .loanM ℓ => .loanM ℓ
     | .bot => .bot
   termination_by v => sizeOf v
@@ -567,6 +580,10 @@ mutual
     | [] => []
     | v :: vs => abstractInto target σb v :: abstractIntoList target σb vs
   termination_by vs => sizeOf vs
+  def abstractIntoRho (target : Term) (σb : Nat) : List (Var × Val) → List (Var × Val)
+    | [] => []
+    | (x, v) :: ps => (x, abstractInto target σb v) :: abstractIntoRho target σb ps
+  termination_by ps => sizeOf ps
 end
 
 /-! ## The two Ω-primitives
@@ -986,6 +1003,17 @@ def writeC (place : Term) (refined : Val) : M Unit := do
 def needKnow (what : String) (v : Val) : M Term :=
   match v with
   | .know t => pure t
+  -- **A comptime λ COOKS on demand** (M32 R2, §2.3). A closure is not knowledge —
+  -- it is a suspension — but a comptime one has a knowledge reading, and the
+  -- demand for it is exactly here. `underRho` hands back the body under its
+  -- capture and `readC`'s own `Pure.nf` is what canonicalizes it, so a snapshot
+  -- read of a slot holding a λ is the λ's normal form, which is what it was
+  -- before R2 made the value raw. An IMPERATIVE closure keeps the rejection
+  -- below, and keeps it for the same reason `.rfn` had it: its body is a body.
+  | .closure ρ node =>
+    if Term.lamImperative node then
+      throwErr s!"readC (⇝{what}): {v.pretty} is state, not knowledge — a comptime read reaches a hole, a loan marker or a borrow through the place grammar only (§3.2)"
+    else pure (Term.underRho (Val.rhoTerms ρ) node)
   | v => throwErr s!"readC (⇝{what}): {v.pretty} is state, not knowledge — a comptime read reaches a hole, a loan marker or a borrow through the place grammar only (§3.2)"
 
 mutual
@@ -1021,7 +1049,17 @@ mutual
       pure (.know (.pi x (← needKnow " Π" (← reflectC lets d)) (← needKnow " Π" (← reflectC lets c))))
     | .sigmaT x d c => do
       pure (.know (.sigmaT x (← needKnow " Σ" (← reflectC lets d)) (← needKnow " Σ" (← reflectC lets c))))
+    -- **The λ, both fragments, told apart by its BODY** (M32 R2). ⇝ reflects a
+    -- comptime λ structurally, as it always did. An IMPERATIVE λ keeps the exact
+    -- refusal `.lamR` had, and the sentence is unchanged because the reason is:
+    -- its body is a body, and ⇝ has no rule for a write, a call or a borrow.
+    -- (A λ reached HERE is one inside a TYPE — a motive, a spec, an ascription —
+    -- which §2.4 says is consumed at its own event, so its citations are inlined.
+    -- A λ formed as a VALUE reaches `readR`'s λ arm and becomes a closure, which
+    -- is where the raw body and its ρ come from.)
     | .lam x d b => do
+      if Term.lamImperative (.lam x d b) then
+        throwErr "readC (⇝): a runtime λ (`λ(x : τ, …){ … }`) is not in the comptime fragment — its body is a body (writes, calls, borrows) and its binders are Ω slots. The comptime λ is `λ (x : τ). e` (§1.3)"
       pure (.know (.lam x (← needKnow " λ" (← reflectC lets d)) (← needKnow " λ" (← reflectC lets b))))
     -- §5.4 exit-snapshot marker: `markExit` stamps a bare borrow-param `*v` in a
     -- return type as `@exit(*v)`; here it pins to that borrow's fresh σ_exit (the
@@ -1079,9 +1117,6 @@ mutual
     -- disagree with itself.
     | .seal _ _ => throwErr "readC (⇝): `seal` is not in the comptime fragment — the seal is a ⇒-form, because minting a fresh σ needs an event and ⇝ has none (§5)"
     | .callV _ _ => throwErr "readC (⇝): a value-callee call is not in the comptime fragment — comptime application of an abstract function is the structured neutral `f a`, written as an application (§2.1)"
-    -- The runtime λ joins the same list, and for the same structural reason as
-    -- the seal: it is its own constructor, and its body is a BODY.
-    | .lamR _ _ => throwErr "readC (⇝): a runtime λ (`λ(x : τ, …){ … }`) is not in the comptime fragment — its body is a body (writes, calls, borrows) and its binders are Ω slots. The comptime λ is `λ (x : τ). e` (§1.3)"
   def reflectCList (lets : List Nat) : List Term → M (List Val)
     | [] => pure []
     | t :: ts => do pure ((← reflectC lets t) :: (← reflectCList lets ts))
@@ -1122,6 +1157,23 @@ def readCWith (fuel : Nat) (extra : Omega) (t : Term) : M Term := do
   modify (fun s => { s with env := saved })
   pure v
 
+/-- **COOK a closure** (M32 R2, suspensions.md §2.3/§3): evaluate the raw body
+    under its captured ρ, canonically.
+
+    `Term.underRho` is the whole of it plus `Pure.nf`, and cooking is therefore
+    NOT a new judgment — it is the pure fragment reading the suspension, using the
+    `let` rule it already had. It deliberately does not go through `readC`: a
+    comptime λ's free names are all in ρ (`admitGlobals` is what guarantees that
+    at formation), so there is no live place left to resolve, and keeping cooking
+    out of `reflectC` keeps ⇝ a structural recursion instead of a fuelled one.
+
+    Used three ways, differing only in what is done with the answer: TRANSIENTLY
+    for a conversion or a typing (§2.3 — Stage V measured the raw pair a wash,
+    since `convert` normalizes both sides either way), PERSISTENTLY at a
+    generalization sweep (§3, `cookForGen`), and as the formation CHECK (§2.2). -/
+def cookClosure (fuel : Nat) (ρ : List (Var × Val)) (node : Term) : Term :=
+  Pure.nf fuel (Term.underRho (Val.rhoTerms ρ) node)
+
 -- §5.4 exit-snapshot transform on a RETURN TYPE (moved here from Boundary so the
 -- call rule can reach it too). A bare borrow-parameter `*v` (`v.id ∈ borrowIds`) is
 -- stamped `@exit(*v)` — it pins to that borrow's σ_exit; `old *v` is left intact
@@ -1156,6 +1208,14 @@ def borrowParamIds (telescope : List (String × Term)) : List Nat :=
 def subsKnowledge : Val → Term
   | .know t => t
   | .borrowM _ p => subsKnowledge p
+  -- **A closure COOKS here** (M32 R2), and this is the seam R1 named and
+  -- predicted the third case of: a closure `(ρ, body)` is a value and not a
+  -- `Term`, so the only way to hand one to a type — a dependent field, a Π
+  -- codomain being instantiated, a Σ tail — is to evaluate it. That is a
+  -- TRANSIENT cook (§2.3): the closure at rest is untouched, and what the type
+  -- receives is the body under its capture, which the `Pure.nf` every one of
+  -- these call sites already applies then normalizes.
+  | .closure ρ node => Term.underRho (Val.rhoTerms ρ) node
   -- A component that is neither: a node holding state, which no return type in
   -- this calculus can produce (`retMixesBorrow`). It contributes a name that
   -- converts with nothing, so a type that reached for it would be rejected
@@ -1232,10 +1292,6 @@ partial def calleeNames : Term → List String
   -- names no DECLARATION (that is the point of it), but its arguments may.
   | .seal t u => calleeNames t ++ calleeNames u
   | .callV _ args => args.flatMap calleeNames
-  -- A runtime λ's body is ordinary runtime code and may call declared functions;
-  -- the reachability check must see through it or a recursion routed through an
-  -- arm would be invisible to it.
-  | .lamR _ body => calleeNames body
   | .letIn _ a b => calleeNames a ++ calleeNames b
   | .assign a b c => calleeNames a ++ calleeNames b ++ calleeNames c
   | .seq a b => calleeNames a ++ calleeNames b
@@ -1243,6 +1299,10 @@ partial def calleeNames : Term → List String
   | .borrow t | .deref t => calleeNames t
   | .matchE _ _ bs => bs.flatMap (fun b => calleeNames b.body)
   | .app f a => calleeNames f ++ calleeNames a
+  -- The one λ covers what `.lamR` used to need its own line for: an imperative
+  -- body is ordinary runtime code and may call declared functions, so the
+  -- reachability check must see through it or a recursion routed through an arm
+  -- would be invisible to it.
   | .lam _ d b | .pi _ d b | .sigmaT _ d b => calleeNames d ++ calleeNames b
   | .idT a b c => calleeNames a ++ calleeNames b ++ calleeNames c
   | _ => []
@@ -1295,6 +1355,25 @@ mutual
           match sig.fieldTypes (Pure.whnf fuel ty) with
           | none => pure false                       -- constructor does not inhabit this type
           | some ftys => checkFields fuel args ftys
+      -- **A closure is typed by COOKING it, transiently** (M32 R2, §2.3) — and
+      -- only when there is a judgment to reach. The two exclusions are the two
+      -- halves of R1's §rec checklist arriving at the λ:
+      --
+      --   * an IMPERATIVE closure has no value the pure fragment could type (its
+      --     body is a body), so it is a neutral here and says so in the sentence
+      --     the `.app` case gives one. What checks such a λ is §5.4's audit,
+      --     reached through the seal, and never this;
+      --   * a BORROW-MODED Π is not a type a value inhabits — it is a function
+      --     SIGNATURE, and `fsig` is where one lives (`callDeclC` reads it). It
+      --     cannot be `readC`'d at all (`borrowT` is telescope-position), so the
+      --     question is unaskable rather than merely unanswered.
+      --
+      -- What is left is a comptime λ against a borrow-free Π, which is exactly
+      -- the judgment `hasTypeT`'s own λ case makes.
+      | .closure ρ node =>
+        if Term.lamImperative node || hasBorrowT ty then
+          throwErr s!"hasType: cannot type neutral {v.pretty}"
+        else hasTypeT fuel (cookClosure fuel ρ node) ty
       | _ => throwErr s!"hasType: cannot type value {v.pretty} (λ/neutral typing deferred to M5)"
   termination_by fuel _ _ => (fuel, 0, 0)
   /-- **Value typing of KNOWLEDGE** — the judgment §4 was always about, now stated
@@ -1466,7 +1545,7 @@ mutual
           if Pure.convert fuel d d' then do
             let σ ← freshSym
             modify (fun st => { st with sctx := (σ, d') :: st.sctx })
-            hasTypeT fuel (Pure.openBinder fuel x b (Term.sym σ))
+            hasTypeT fuel (Pure.openBinder fuel x.name b (Term.sym σ))
               (Pure.openBinder fuel y c (Term.sym σ))
           else pure false
         | _ => pure false
@@ -2145,7 +2224,11 @@ def whnfV (fuel : Nat) (v : Val) : Val :=
 /-- ⇒'s function values: a runtime λ, or a σ whose signature the kernel recorded
     in `fsig` (which is where a sealed function and a Π-typed parameter go). -/
 def isFnValue (st : St) : Val → Bool
-  | .rfn _ _ => true
+  -- An IMPERATIVE closure. A comptime λ is deliberately excluded, exactly as it
+  -- was when this said `.rfn` and a pure `.lam` was a different former: it is an
+  -- index-kind comptime object living in the ⇝ fragment, it is what every staged
+  -- proof-builder in the corpus binds, and §2.4's citation rule governs those.
+  | .closure _ t => Term.lamImperative t
   | v => match v.symOf? with
     | some σ => (st.fsig.lookup σ).isSome
     | none => false
@@ -2477,7 +2560,11 @@ mutual
     -- leaving it unshifted would point the annotation at the PREVIOUS frame's
     -- ids while the binder it annotates moved, which is the same silent
     -- rebinding this whole function exists to avoid.
-    | .lamR xs body => .lamR (shiftBindersK keep d xs) (shiftVarsK keep d body)
+    -- The one λ. The binder moves with the body, and a comptime binder's `noSlot`
+    -- id is left alone — it is not an id in a window, it is the absence of one.
+    | .lam x a b =>
+      .lam (if keep.contains x.id || x.id == noSlot then x else ⟨x.id + d, x.name⟩)
+        (shiftVarsK keep d a) (shiftVarsK keep d b)
     -- Pure formers can EMBED runtime vars (a §19 body computes `leb (nth j (*v))`
     -- — a pure spine over the runtime `v`, `i`, `g`). Their `.var` leaves must
     -- shift with the executing-mode frame too; `.pvar`/`.type`/`.const` (no
@@ -2485,7 +2572,6 @@ mutual
     | .app f a => .app (shiftVarsK keep d f) (shiftVarsK keep d a)
     | .idT a b c => .idT (shiftVarsK keep d a) (shiftVarsK keep d b) (shiftVarsK keep d c)
     | .pi x a b => .pi x (shiftVarsK keep d a) (shiftVarsK keep d b)
-    | .lam x a b => .lam x (shiftVarsK keep d a) (shiftVarsK keep d b)
     | .sigmaT x a b => .sigmaT x (shiftVarsK keep d a) (shiftVarsK keep d b)
     | t => t                                            -- unit / pure formers: no runtime vars
   termination_by t => sizeOf t
@@ -3161,7 +3247,8 @@ def binderModes : Nat → Term → Nat → List Bool
   | 0, _, n => List.replicate n false
   | fuel + 1, v, n + 1 =>
     match Pure.whnf fuel v with
-    | .lam x dom body => Term.domComptime dom :: binderModes fuel (Pure.openBinder fuel x body modeProbe) n
+    | .lam x dom body =>
+      Term.domComptime dom :: binderModes fuel (Pure.openBinder fuel x.name body modeProbe) n
     | .pi x dom cod => Term.domComptime dom :: binderModes fuel (Pure.openBinder fuel x cod modeProbe) n
     | _ => List.replicate (n + 1) false
 
@@ -3244,7 +3331,8 @@ def collectAppT : Term → Term × List Term
 def runtimeRecSpine? (t : Term) : Option (String × List Term) :=
   match collectAppT t with
   | (.const c, args) =>
-    if (recLayout c).isSome && args.any (fun a => match a with | .lamR _ _ => true | _ => false)
+    if (recLayout c).isSome && args.any (fun a => match a with
+        | .lam _ _ _ => Term.lamImperative a | _ => false)
     then some (c, args) else none
   | _ => none
 
@@ -3292,8 +3380,19 @@ def valBinderModes : Nat → Val → Nat → M (List Bool)
   | 0, _, n => pure (List.replicate n false)
   | fuel + 1, v, n + 1 => do
     match v with
-    | .rfn names _ =>
-      pure ((names.map Var.isComptime ++ List.replicate (n + 1) false).take (n + 1))
+    -- **A closure's binder modes are its own binders'** (M32 R2). `rfn` read them
+    -- off the binder NAMES because its value had dropped the domains; the closure
+    -- keeps the λ as written, so both sources are present and they agree by
+    -- construction (`markDom` puts a capital binder's mode on its domain). The
+    -- name is what is read, unchanged, because that is §6's rule for every other
+    -- runtime binder and the corpus's hand-written `.lam "T" .type` λs are
+    -- capital-by-spelling without ever having been comptime.
+    | .closure _ node =>
+      let names := (Term.peelLams node).1
+      if Term.lamImperative node then
+        pure ((names.map (fun q => q.1.isComptime) ++ List.replicate (n + 1) false).take (n + 1))
+      else pure ((names.map (fun q => Term.domComptime q.2)
+                    ++ List.replicate (n + 1) false).take (n + 1))
     | v =>
       match Val.asRecSpine? v with
       | some (c, args) =>
@@ -3640,12 +3739,32 @@ mutual
           -- `hasType`, over the whole 16-pair battery) — the new rule is reached
           -- by being a `.lamR`, never by the ascription happening to have a
           -- `&mut` in it.
+          -- **Dispatch by BODY CLASSIFICATION** (M32 R2, suspensions.md §4). It was
+          -- "the shape of the sealed TERM picks the rule" and it still is — what
+          -- changed is that the shape is one former, so the question the shape
+          -- answers has to be asked: is what sits under the binders a BODY? If it
+          -- is, there is no value the pure fragment could type and the check is
+          -- §5.4's audit; if it is not, the λ is an ordinary comptime term and
+          -- takes phase A's rule, exactly as a `.lam` always did.
+          --
+          -- **And it is asked of the TERM, not of a λ**, which the fold forces and
+          -- which is the honest statement anyway: a NULLARY `fn` has no binders,
+          -- so `Term.lamTel [] body` is the body itself and there is no λ left to
+          -- match on. `Term.lamImperative` of a non-λ is `Term.imperative` of it,
+          -- so `fn UsePin () -> Unit { let p = …; match p { … } }` reaches the
+          -- audit by being a BODY rather than by being a λ with none. (A nullary
+          -- `fn` whose body is a pure expression is genuinely a sealed VALUE now,
+          -- and is checked as one — R4's Unit-desugar is what gives it binders.)
           match t with
-          | .lamR names body => sealFn fuel names body u
           -- A spine MAY be a recursor over runtime arms — §7's `fn` elaboration —
           -- in which case sealing it is arms-as-bodies checking. Any other spine
           -- is an ordinary term and takes phase A's rule.
           | .app _ _ => sealApp fuel t u
+          | .lam _ _ _ =>
+            if Term.lamImperative t then
+              let (tel, body) := Term.peelLams t
+              sealFn fuel tel body u
+            else sealValue fuel t u
           | _ => sealValue fuel t u
       -- **Application of a NAMED callee** (§7 cost 2). The callee is LOCATED, not
       -- consumed: calling a function is a place read, like a match scrutinee's,
@@ -3726,36 +3845,47 @@ mutual
       -- shift lands on, which is environment capture arriving by accident in the
       -- phase that defers it (constraint 5). Rejecting is the honest option, and
       -- the rejection names the variable.
-      | .lamR names body => do
-        -- A NULLARY runtime λ is refused, and the reason is a genuine ambiguity
-        -- rather than tidiness: `λ(){ e }` is a thunk, and at ι there is no way
-        -- to tell "the arm applied to no arguments" (force it) from "the arm with
-        -- nothing owed" (it IS the value) — `applyRest` has to answer one way.
-        -- Nothing in §7 wants a thunk: a recursor whose motive is not a function
-        -- type has no trailing binders, so its arms are ordinary terms and the
-        -- pure recursor already computes them.
-        if names.isEmpty then
-          throwErr "λr: a runtime λ must bind at least one argument. `λ(){ … }` is a thunk, and a thunk makes ι ambiguous — an arm applied to no arguments and an arm with nothing owed become the same spine. A recursor arm at a non-functional motive is an ordinary term; write it as one."
-        -- The free variables are checked against the enclosing scope, not merely
-        -- counted: §8's globals are what a body may name, and `admitGlobals` is
-        -- the one place that decides it (the checking side reaches the same
-        -- function from `checkRFnBody`). Nothing is stored in the value — the
-        -- bindings stay where they are, and `applyRFn` keeps their ids out of the
-        -- frame shift, which is what makes "the program's, not the frame's" true
-        -- of the executing machine too.
-        -- The whole NODE's free variables, domains included (M27): a binder type
-        -- may name a slot, so it is subject to the same admission as the body.
-        -- `Term.freeRVars` scopes the domains as a telescope, which is why the
-        -- node is passed rather than the body.
-        let _ ← admitGlobals "λr" names.length (Term.freeRVars [] (.lamR names body))
-        -- **AND THE TYPES ARE DROPPED HERE** (M27, ratified). `Val.rfn` binds
-        -- names only. The executing machine binds and runs; it never converts, so
-        -- there is nothing downstream of this point for a domain to be used BY.
-        -- The seal is the one consumer, it happens at formation, and it has the
-        -- annotated term in hand. Carrying the types into the value would be a
-        -- second representation of a contract nothing reads — §5 point 4 with the
-        -- erasure principle applied to the value side.
-        pure (.rfn (names.map (·.1)) body)
+      -- **THE λ — and forming one is creating a CLOSURE** (M32 R2,
+      -- suspensions.md §2.2). One arm where there were two, because there is one
+      -- former; what the two arms disagreed about is recomputed here instead of
+      -- being carried by the syntax.
+      --
+      -- CAPTURE IS A FILTER, not a guard. `admitGlobals` is §8's globals rule and
+      -- §2.4's citation rule — a body may name its own binders and the capital
+      -- bindings in scope — and its RESULT is ρ. Nothing extra had to be written
+      -- to decide what a λ may capture, because that question was already
+      -- answered here; what R2 adds is that the answer is kept.
+      --
+      -- CLOSEDNESS is therefore not a separate check any more. §7's "arms
+      -- reference only their own binders and globals" used to be a real premise
+      -- because a body was entered under a fresh id window with nothing carried:
+      -- a free variable would be silently rebound to whatever the shift landed
+      -- on. A closure carries its bindings, so the rule survives as the FILTER
+      -- (which bindings are admissible) rather than as a refusal to have any.
+      | .lam x dom body => do
+        let node : Term := .lam x dom body
+        let (tel, _) := Term.peelLams node
+        let imper := Term.lamImperative node
+        let what := if imper then "λr" else "λ"
+        let ρω ← admitGlobals what tel.length (Term.freeRVars [] node)
+        -- **The knowledge-only invariant, as a rejection with a place to stand.**
+        -- R1 made it a fact about `Sem`; here it is a fact about ρ's type, and the
+        -- one way to violate it is to cite a capital binding that holds state — a
+        -- capital slot holding a borrow. §2.2: captured ρ supplies knowledge only,
+        -- and state arrives through arguments.
+        let ρ ← ρω.mapM (fun kv => do
+          if Val.hasStateMarker kv.2 then
+            throwErr s!"{what}: the body captures '{kv.1.name}', which holds {kv.2.pretty} — a λ captures KNOWLEDGE only (§2.2), and that value carries a hole, a loan marker or a borrow. State reaches a body through its arguments, so make it a parameter."
+          else pure kv)
+        -- **FORMATION EVALUATES THE BODY AS A CHECK** (§2.2), and stores the
+        -- syntax. For the comptime fragment that check is the ⇝ reading this arm
+        -- used to store; the result is discarded, which is the whole difference
+        -- between R2 and cook-at-formation (user-rejected, §3).
+        if !imper then do
+          collapseCDerefs fuel node
+          let _ ← readC fuel node
+          pure ()
+        pure (.closure ρ node)
       | .unit => pure (.ctor "unit" [])
       -- **The match-arm seam** (M31 Stage 0). `pushContinuations` fuses a
       -- statement-position match with the continuation that followed it, which
@@ -3798,20 +3928,6 @@ mutual
       | .pvar _ => do pure (.know (← readC fuel t))
       | .pi _ _ _ => do pure (.know (← readC fuel t))
       | .sigmaT _ _ _ => do pure (.know (← readC fuel t))
-      -- **A λ FORMED IN VALUE POSITION takes the citation rule too** (M31 Stage A,
-      -- §2.4), which is what makes the check "identical for both λ species".
-      --
-      -- Reached HERE and not in `readC`, and the difference is exactly §2.4's own
-      -- boundary. This arm is ⇒'s: a λ evaluated as a VALUE — bound, passed,
-      -- stored — which is the form that is formed now and used later, and the gap
-      -- an implicit snapshot could hide in. A λ inside a TYPE reaches `readC`
-      -- directly (from a telescope, a motive, an ascription) and is consumed at
-      -- its own event, so it keeps citing whatever is in scope, as §2.4 says it
-      -- must. Statement-level pure computation (`let n = Len *v`) is not a λ at
-      -- all and is untouched.
-      | .lam _ _ _ => do
-        checkLamCitation t
-        collapseCDerefs fuel t; pure (.know (← readC fuel t))
       -- **A recursor over runtime arms is ⇒'s, not ⇝'s** (§7 cost 5). The pure
       -- lift below sends every other application spine to `readC`; one whose arms
       -- are BODIES has no comptime reading at all (`readC` refuses `.lamR`), so ⇒
@@ -3865,7 +3981,7 @@ mutual
               let st ← get
               let isFn : Bool :=
                 match kv.2 with
-                | .rfn _ _ => true
+                | .closure _ t => Term.lamImperative t
                 | v => match v.symOf? with
                   | some σ => (st.fsig.lookup σ).isSome
                   | none => match valSpineHead v with
@@ -3939,16 +4055,24 @@ mutual
       | .lam _ d _ => throwErr s!"callV: partial application — the callee still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4). A function-VALUED result is refused here too, and M26-B confirms binder modes do NOT separate the two cases: `Π (x : A) → (Π (y : B) → C)` and `Π (x : A) → Π (y : B) → C` are the same term, so the residual binder's own mode says nothing about whose it is. The separating fact is elsewhere — a residual telescope with no borrow-moded binder could be curried soundly — and that is a phase C/D decision against §12 decision 4, not a mode question."
       | v => pure (.know v)
     | _ + 1, f, [] => pure f
+    -- **A comptime closure is β'd by COOKING it** (M32 R2, §2.2/§2.3). The
+    -- suspension has a knowledge reading and application is where the demand for
+    -- it is made; what the rest of this function then sees is the `.know` λ it
+    -- always saw. An imperative closure is not this rule's — it is ⇒-entry, and
+    -- `applyR` owns it.
+    | fuel + 1, .closure ρ node, a :: rest =>
+      if Term.lamImperative node then applyR fuel (.closure ρ node) (a :: rest)
+      else applyLam fuel (.know (cookClosure fuel ρ node)) (a :: rest)
     | fuel + 1, .know ft, a :: rest =>
       match Pure.whnf fuel ft with
       | .lam x dom body => do
         let ak := subsKnowledge a
-        if (← get).executing then applyLam fuel (.know (Pure.openBinder fuel x body ak)) rest
+        if (← get).executing then applyLam fuel (.know (Pure.openBinder fuel x.name body ak)) rest
         -- `hasType` strips the mode marker: which arrow READ the argument was
         -- settled before this call (`valBinderModes`), and what remains is the
         -- ordinary domain check.
         else if ← hasType fuel a dom then
-          applyLam fuel (.know (Pure.openBinder fuel x body ak)) rest
+          applyLam fuel (.know (Pure.openBinder fuel x.name body ak)) rest
         else throwErr s!"callV: argument ({a.pretty}) does not have its parameter type ({dom.pretty})"
       -- A pure λ whose body turns out to be a runtime function (or a recursor):
       -- hand the remaining spine to the ⇒-application rule rather than calling it
@@ -3978,12 +4102,19 @@ mutual
       arms-as-bodies checking, and is rejected here until that rule lands. -/
   def applyR : Nat → Val → List Val → M Val
     | 0, _, _ => throwErr "applyR: out of fuel"
-    | fuel + 1, .rfn names body, args =>
-      if args.length == names.length then applyRFn fuel names body args
-      else if args.length < names.length then
-        throwErr s!"callV: partial application — the runtime λ {(Val.rfn names body).pretty} binds {names.length} argument(s) and was given {args.length}. Runtime application is saturated (§12 decision 4): a partial application at runtime is a closure holding its arguments — including, in general, borrows — while it waits."
-      else
-        throwErr s!"callV: too many arguments — the runtime λ {(Val.rfn names body).pretty} binds {names.length} argument(s) and was given {args.length}"
+    -- **A closure over an imperative body: ⇒-ENTRY** (M32 R2, §2.2). A comptime
+    -- closure falls through to the β rule below, which is the fragments' one
+    -- difference and the only place it is consulted.
+    | fuel + 1, .closure ρ node, args =>
+      if Term.lamImperative node then
+        let (tel, body) := Term.peelLams node
+        let names := tel.map (·.1)
+        if args.length == names.length then applyClosure fuel ρ names body args
+        else if args.length < names.length then
+          throwErr s!"callV: partial application — the runtime λ {(Val.closure ρ node).pretty} binds {names.length} argument(s) and was given {args.length}. Runtime application is saturated (§12 decision 4): a partial application at runtime is a closure holding its arguments — including, in general, borrows — while it waits."
+        else
+          throwErr s!"callV: too many arguments — the runtime λ {(Val.closure ρ node).pretty} binds {names.length} argument(s) and was given {args.length}"
+      else applyLam (fuel + 1) (.closure ρ node) args
     | fuel + 1, f, args => do
       let (headName, sargs) := (Val.asRecSpine? f).getD ("", [])
       let all := sargs ++ args
@@ -4048,8 +4179,8 @@ mutual
       frame is a SCOPE (M31 Stage 0): its borrows are surrendered and its slots
       taken on the way out, so neither a frame's loans nor its environment can
       outlive it. -/
-  def applyRFn : Nat → List Var → Term → List Val → M Val
-    | fuel, names, body, args => do
+  def applyClosure : Nat → Omega → List Var → Term → List Val → M Val
+    | fuel, ρ, names, body, args => do
       let offset ← freshFrame
       -- §8's globals are the program's bindings, not this frame's, so they are
       -- carried through the shift UNCHANGED — a body calling `quicksort#901` must
@@ -4075,11 +4206,19 @@ mutual
       -- by never popping anything at all.
       openScope false
       let depth ← scopeDepth
+      -- **ρ ENTERS THE FRAME FIRST** (M32 R2, §2.2): the captured knowledge, then
+      -- the arguments, so a parameter shadows a capture of the same name and the
+      -- body reads what the λ SAW rather than what the caller's Ω holds now. This
+      -- is the escape-safety §2.6 is about, and it is one `bindSlot` loop: under
+      -- name-keyed newest-wins Ω (M32 R1) "shadow the ambient binding" is just
+      -- binding later. `keep` above left these citations unshifted, so their ids
+      -- still name the entries going in here.
+      ρ.forM (fun kv => bindSlot kv.1 kv.2)
       (names.zip args).forM (fun p => bindSlot ⟨p.1.id + offset, p.1.name⟩ p.2)
       let res ← readR fuel shifted
       popScopesTo fuel (depth - 1) 0 res.loanIds
       pure res
-  termination_by fuel _ _ _ => (fuel, 4, 0)
+  termination_by fuel _ _ _ _ => (fuel, 4, 0)
   /-- Consume a call's arguments left-to-right, checking each against its
       telescope entry, and RETURN the captured loans (§6.1): each argument
       borrow's loan ℓ with its owed type `S[s := v]`. A pure argument must
@@ -4189,10 +4328,12 @@ mutual
           let modes ← valBinderModes fuel callee args.length
           let argVals ← readArgsModed fuel modes args  -- ⇒ or ⇝ per binder, left to right
           match callee with
-          | .know (.lam _ _ _) => applyLam fuel callee argVals   -- body known ⟹ β
+          -- A COMPTIME closure: body known ⟹ β (`applyLam` cooks it).
+          | .closure _ node =>
+            if Term.lamImperative node then applyR fuel callee argVals
+            else applyLam fuel callee argVals
           -- A runtime function, or a recursor over runtime arms: ⇒-application
           -- (bind-and-run, and ι with the arm as a body). `ih` arrives here.
-          | .rfn _ _ => applyR fuel callee argVals
           -- A recursor spine over RUNTIME arms (§7 cost 5). It is a function
           -- value with non-knowledge children, so the skeleton is where it lives
           -- (`Val.recSpine`) and `applyR` is what ι's it.
@@ -4249,9 +4390,9 @@ mutual
       -- variables are its callees — bindings lexically above it — and the fresh Ω
       -- is seeded with exactly those, resolved (and admitted) against the
       -- enclosing scope BEFORE the wipe. This is also where a sealed function's
-      -- capture check happens at all: `.seal (.lamR …) u` goes straight to
-      -- `sealFn` without ever forming the `.rfn` value, so `readR`'s own check
-      -- never runs on it.
+      -- capture check happens at all: a sealed λ goes straight to `sealFn`
+      -- without ever forming the closure, so `readR`'s own capture filter never
+      -- runs on it.
       let gl ← admitGlobals "seal" tel.length (Term.freeRVars (tel.map (·.1.id)) body)
       -- `scopeMarks` joins the wipe for the same reason as Ω: a watermark is an
       -- index INTO Ω, so an enclosing scope's mark means nothing against the
@@ -4393,8 +4534,8 @@ mutual
           else
             match c, args with
             | "natRec", [_, z, s] => do
-              match z, s with
-              | .lamR zn zbody, .lamR (k :: ihv :: rest) sbody => do
+              match Term.peelLams z, Term.peelLams s with
+              | (zn, zbody), (k :: ihv :: rest, sbody) => do
                 checkArm fuel zbody [] zn (Term.substP sn (.ctorApp "Z" []) R)
                 checkArm fuel sbody [(k.1, scrutDom), (ihv.1, Term.substP sn (.var k.1) R)]
                   (k :: ihv :: rest)
@@ -4402,8 +4543,8 @@ mutual
                 sealMint fuel (piBinderNames u) u
               | _, _ => throwErr "seal: natRec's arms must be runtime λs, and the step arm must bind at least the predecessor and `ih` (§7's `λ f'. λ ih. λ v Hfuel. …`)"
             | "listRec", [_, _, pn, pc] => do
-              match pn, pc with
-              | .lamR nn nbody, .lamR (h :: tl :: ihv :: rest) cbody => do
+              match Term.peelLams pn, Term.peelLams pc with
+              | (nn, nbody), (h :: tl :: ihv :: rest, cbody) => do
                 checkArm fuel nbody [] nn (Term.substP sn (.ctorApp "Nil" []) R)
                 -- `h`'s type is the element type, read off the scrutinee's own
                 -- `List A`; anything else and the arm is not this recursor's.
@@ -4417,12 +4558,11 @@ mutual
                 sealMint fuel (piBinderNames u) u
               | _, _ => throwErr "seal: listRec's arms must be runtime λs, and the Cons arm must bind at least the head, the tail and `ih`"
             | "boolRec", [_, tArm, fArm] => do
-              match tArm, fArm with
-              | .lamR tn tbody, .lamR fn fbody => do
+              match Term.peelLams tArm, Term.peelLams fArm with
+              | (tn, tbody), (fn, fbody) => do
                 checkArm fuel tbody [] tn (Term.substP sn (.ctorApp "True" []) R)
                 checkArm fuel fbody [] fn (Term.substP sn (.ctorApp "False" []) R)
                 sealMint fuel (piBinderNames u) u
-              | _, _ => throwErr "seal: boolRec's arms must be runtime λs"
             | _, _ => throwErr s!"seal: `{c}` is not a recursor this phase checks as a sealed function, or its spine is not the bare `{c} P ⟨arms⟩` (the scrutinee is the SEALED Π's own binder, so it must not be applied)"
       | _ => throwErr "seal: a recursor sealed as a function must be ascribed a Π — its first binder is the scrutinee the recursion is on (§7's derived motive)"
   termination_by fuel _ _ _ => (fuel, 11, 0)

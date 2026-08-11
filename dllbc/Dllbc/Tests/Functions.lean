@@ -259,11 +259,14 @@ example : sealChk (StdLemmas.LeRefl) (StdLemmas.IdSymTy) = false := by native_de
     branch, per §6.2's lesson that a rule branch nobody probes is a rule branch
     nobody checked. -/
 
--- The λ as it SITS IN Ω, which is readback output: the binder the source wrote
--- `x` is canonicalized to its level (M30 step 2), the same renaming that makes two
--- α-variant functions compare equal. The slot holds the same function it always
--- held; what moved is how a normal form spells a binder.
-def vlam : Val := .know (.lam "§0" (.const "Nat") (.ctorApp "S" [.pvar "§0"]))
+-- The λ as it SITS IN Ω, which since M32 R2 is a **raw closure**: the syntax as
+-- written, under the environment it captured (empty here — the body cites
+-- nothing). It used to be readback OUTPUT, with the source binder `x`
+-- canonicalized to its level `§0`, because forming a λ value normalized it;
+-- formation is a CHECK now and what is stored is the source (§2.2). The slot
+-- holds the same function it always held — `C1` below still gets `y ↦ 3`, by
+-- cooking at the application — and what moved is when the normal form is taken.
+def vlam : Val := .closure [] (.lam "x" (.const "Nat") (.ctorApp "S" [.pvar "x"]))
 
 -- C1. **Body known ⟹ unfold.** A literal λ callee β-reduces, so the caller knows
 -- the result exactly: `y ↦ 3`, not an existential.
@@ -753,8 +756,16 @@ example : progOk a3ok = true := by native_decide
 -- tidiness: `λ(){ e }` is a thunk, and at ι there is no way to tell "the arm
 -- applied to no arguments" from "the arm with nothing owed" — `applyRest` has to
 -- answer one way. Nothing in §7 wants a thunk.
-def a4 : Term := prog{ let G = λ() { () }; () }
-example : progRejects a4 "must bind at least one argument" = true := by native_decide
+-- **The refusal moved to the surface** (M32 R2) and the reason is the fold: with
+-- one λ former the comma list is a TELESCOPE, so `λ(){ … }` has no binders and
+-- elaborates to its body — there is no term left for the kernel to refuse. The
+-- rule and its sentence are unchanged; what changed is that the program is now
+-- unwritable rather than rejected, which is the stronger of the two.
+-- `prog{ let G = λ() { () }; () }` is a Lean ELABORATION error now, in the same
+-- way an unbound name in a `prog{ }` block is (KernelFloor's note): it cannot be
+-- written, so there is no term to hand `progRejects`. What is assertable here is
+-- the fact that made the refusal move — an empty telescope is not a λ:
+example : Term.beq (Term.lamTel [] .unit) .unit = true := by native_decide
 
 -- A5/A6. Saturation, both directions (§12 decision 4).
 def a5 : Term := prog{ let G = λ(a : Nat, b : Nat) { () }; G(1); () }
@@ -775,11 +786,11 @@ def readCOn (t : Term) : String :=
   | .ok v _ => "ACCEPTED " ++ v.pretty
   | .error e _ => e
 
-example : strContains (readCOn (.lamR [(⟨0, "x"⟩, .const "Nat")] (.var ⟨0, "x"⟩)))
+example : strContains (readCOn (Term.lamTel [(⟨0, "x"⟩, .const "Nat")] (.var ⟨0, "x"⟩)))
   "not in the comptime fragment" = true := by native_decide
 -- …including buried inside a pure former, which is where a mode flag consulted
 -- at the top would have let it through.
-example : strContains (readCOn (.app (.const "S") (.lamR [(⟨0, "x"⟩, .const "Nat")] (.var ⟨0, "x"⟩))))
+example : strContains (readCOn (.app (.const "S") (Term.lamTel [(⟨0, "x"⟩, .const "Nat")] (.var ⟨0, "x"⟩))))
   "not in the comptime fragment" = true := by native_decide
 
 /-! ## §B. ι with the arms as bodies — the executing machine (§7 cost 5)
@@ -1795,14 +1806,14 @@ open Dllbc
 def annotated : Term := prog{ let G = λ(a : Nat) { a }; () }
 
 example : (match annotated with
-           | .letIn _ (.lamR [(_, τ)] _) _ => Term.beq τ (.const "Nat")
+           | .letIn _ (.lam _ τ _) _ => Term.beq τ (.const "Nat")
            | _ => false) = true := by native_decide
 
 -- A capitalized binder's domain carries §6's comptime marker, which is what makes
 -- the annotation agree with the ascription `piPeel` checks a mode against.
 def annotatedCmp : Term := prog{ let G = λ(A : Nat) { A }; () }
 example : (match annotatedCmp with
-           | .letIn _ (.lamR [(_, τ)] _) _ => Term.beq τ (.cmpT (.const "Nat"))
+           | .letIn _ (.lam _ τ _) _ => Term.beq τ (.cmpT (.const "Nat"))
            | _ => false) = true := by native_decide
 
 /-! ## §B. …and the VALUE drops it (the erasure, ratified)
@@ -1815,7 +1826,7 @@ example : (match annotatedCmp with
 -- The type-level half, and it is the stronger of the two: this expression
 -- typechecks exactly because `Val.rfn`'s binders are `Var` and not `Var × Term`.
 -- A ledger that fails to compile is the one that cannot drift.
-example : Val := .rfn [⟨0, "a"⟩] .unit
+example : Val := .closure [] (Term.lamTel [(⟨0, "a"⟩, .const "Nat")] .unit)
 
 -- The live half: an ANNOTATED λ evaluates to a value printed with names alone.
 example : (match runProgram annotated with
@@ -1860,10 +1871,10 @@ example : progOk telType = true := by native_decide
 
 -- `Term.beq` compares them structurally (via `Term.beq`, not `==`: the `BEq Term`
 -- instance is declared below the mutual block this case lives in).
-example : Term.beq (.lamR [(⟨0, "a"⟩, .const "Nat")] .unit)
-                   (.lamR [(⟨0, "a"⟩, .const "Bool")] .unit) = false := by native_decide
-example : Term.beq (.lamR [(⟨0, "a"⟩, .const "Nat")] .unit)
-                   (.lamR [(⟨0, "a"⟩, .const "Nat")] .unit) = true := by native_decide
+example : Term.beq (Term.lamTel [(⟨0, "a"⟩, .const "Nat")] .unit)
+                   (Term.lamTel [(⟨0, "a"⟩, .const "Bool")] .unit) = false := by native_decide
+example : Term.beq (Term.lamTel [(⟨0, "a"⟩, .const "Nat")] .unit)
+                   (Term.lamTel [(⟨0, "a"⟩, .const "Nat")] .unit) = true := by native_decide
 
 -- **The α-normalization half of §D went with `AlphaEq.lean`** (M28 cluster C).
 -- Three assertions built `.lamR`s whose second binder's DOMAIN cited the first
@@ -1921,7 +1932,8 @@ def bndDeclHn : Term := .cmpT (Std.LeT (Std.lenT (.deref (.var ⟨1, "v"⟩))) (
 /-- The two arms of the emitted `natRec`, as annotated binder lists. -/
 def bndArms : Option (List (Var × Term) × List (Var × Term)) :=
   match bndSeal with
-  | some (.seal (.app (.app (.app (.const "natRec") _) (.lamR z _)) (.lamR s _)) _) => some (z, s)
+  | some (.seal (.app (.app (.app (.const "natRec") _) zArm) sArm) _) =>
+    some ((Term.peelLams zArm).1, (Term.peelLams sArm).1)
   | _ => none
 
 -- The shape first — assert the instrument before the conclusion.
@@ -1997,9 +2009,10 @@ def bndProg (t : Term) : Term := .letIn ⟨900, "F"⟩ t .unit
     touched. `none` when the elaboration is not the shape this section reads. -/
 def stepArmWith (i : Nat) (τ : Term) : Option Term :=
   match bndSeal with
-  | some (.seal (.app (.app (.app (.const "natRec") mot) zArm) (.lamR s sb)) piT) =>
+  | some (.seal (.app (.app (.app (.const "natRec") mot) zArm) sArm) piT) =>
+    let (s, sb) := Term.peelLams sArm
     some (.seal (.app (.app (.app (.const "natRec") mot) zArm)
-                  (.lamR (s.set i ((s.get! i).1, τ)) sb)) piT)
+                  (Term.lamTel (s.set i ((s.get! i).1, τ)) sb)) piT)
   | _ => none
 
 /-- The motive's body, read off the ascription the statement emitted, WITH the

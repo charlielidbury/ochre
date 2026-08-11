@@ -38,7 +38,8 @@ namespace Dllbc
         constructor tree is a `ctorApp` spine, a type is a type.
       * `node n args` — constructor structure that HOLDS state somewhere inside.
       * `bot`/`loanM`/`borrowM` — the ownership machinery of §0, unchanged.
-      * `rfn` — a runtime function value (R2 folds it into a closure `(ρ, Term)`).
+      * `closure` — a λ value: the raw body plus its captured ρ (M32 R2). The ONE
+        suspension form, for both fragments.
 
     The skeleton is exactly as large as the live state: `Val.ctor` below collapses
     a node whose children are all knowledge back to one `know` leaf, and state
@@ -60,21 +61,33 @@ inductive Val where
   | bot     : Val
   | loanM   : Nat → Val
   | borrowM : Nat → Val → Val
-  /-- **A runtime function value** (combining-fns §7 cost 2, M26-C): the value a
-      `Term.lamR` evaluates to — named binders and a suspended *body*.
+  /-- **THE SUSPENSION** (M32 R2, suspensions.md §2.2): a λ value is the λ as
+      WRITTEN plus the environment it was born in. One form for both fragments,
+      replacing `rfn` and the normalized `know (.lam …)` a comptime λ used to
+      become.
 
-      It is CLOSED (checked at formation), which is what lets it be a leaf for
-      every traversal below: no loans, no σ's, no state markers, nothing to
-      renumber. `ih` is exactly this shape (§7 cost 2's "the boring kind").
+        * `ρ` — the capture: an Ω SLICE, and the reason it is not
+          `List (Var × Term)` is R1's own §rec finding arriving at the capture
+          model. Two comptime values have no `Term` form — a closure, and a
+          recursor spine over runtime arms — and a λ captures both (an arm cites
+          the `SetAt` bound above it, and `SetAt` is a `natRec` over bodies). So
+          the knowledge-only invariant is a PREMISE checked where the capture is
+          taken (`readR`'s λ arm refuses a marker-bearing binding, naming it)
+          rather than a theorem of ρ's type. What R1 bought is not lost: the
+          leaves are still `Term`s and still cannot hold a marker; what is
+          admitted above them is the two function forms, which cannot either.
+        * the body — **raw**, the syntax as written. Formation evaluates it as a
+          CHECK and throws the result away (§2.2); what is stored is the source.
+          Cooking is on demand — transiently for a conversion, and persistently at
+          exactly one event (a generalization sweep, §3), where the cooked form is
+          written back.
 
-      **Its binders stay UNTYPED, where `Term.lamR`'s are annotated** (M27): the
-      erasure principle — `readR` drops the domains at the moment it forms this
-      value, because types exist here for one consumer (the seal) and a seal
-      happens at FORMATION with the annotated term in hand.
-
-      It is `(∅, body)` — a closure whose environment is empty — and R2 is where
-      it says so, folding into the one suspension form with `ρ` filled in. -/
-  | rfn     : List Var → Term → Val
+      There is no arity field and no binder list: the node IS a `Term.lam` chain,
+      so `Term.peelLams` answers both. And there is no species tag —
+      `Term.imperative` of what is under the binders is what decides whether
+      applying this means ⇝ reduction or ⇒-entry, recomputed at every application
+      (§2.2). -/
+  | closure : List (Var × Val) → Term → Val
 deriving Inhabited
 
 namespace Val
@@ -136,6 +149,23 @@ def know? : Val → Option Term
   | .know t => some t
   | _ => none
 
+/-- **The knowledge half of a captured environment** (M32 R2) — ρ as the `let`
+    chain `Term.underRho` wants, which is what COOKING evaluates the body under.
+
+    A knowledge leaf contributes itself; a captured closure contributes its own
+    body under its own capture, recursively, which is the only reading a nested
+    suspension could have. Anything else is DROPPED, and that is not a silent
+    approximation: the two other things a ρ can hold are a recursor spine over
+    runtime arms and (unreachably) a state form, and a body that cites one is a
+    body — an imperative λ, which is never cooked (§3: "imperative bodies are
+    exempt entirely"). A comptime body cannot cite a runtime function, because
+    citing one is a call and a call is not in the comptime fragment. -/
+partial def rhoTerms : List (Var × Val) → List (Var × Term)
+  | [] => []
+  | (x, .know t) :: ps => (x, t) :: rhoTerms ps
+  | (x, .closure ρ n) :: ps => (x, Term.underRho (rhoTerms ρ) n) :: rhoTerms ps
+  | _ :: ps => rhoTerms ps
+
 /-- **A recursor spine, at the store**. All-knowledge arguments give the ordinary
     application spine, which is what a pure recursor is; an argument that is a
     runtime function value (a `.lamR`'s value — §7 cost 5's arms-as-bodies) forces
@@ -183,9 +213,10 @@ mutual
     | .bot,        .bot        => true
     | .loanM x,    .loanM y    => x == y
     | .borrowM x p, .borrowM y q => x == y && beq p q
-    -- Syntactic, on binder names AND body: a runtime function value is a
-    -- suspension, so there is no reduction to compare it up to.
-    | .rfn xs a,   .rfn ys b   => xs == ys && a == b
+    -- Syntactic, on the captured environment AND the raw body: a closure is a
+    -- suspension, so there is no reduction to compare it up to HERE. Conversion
+    -- of two λs is `Val.convert`, which cooks both sides first (§2.3).
+    | .closure r a, .closure q b => beqRho r q && Term.beq a b
     | _,           _           => false
   termination_by v w => sizeOf v + sizeOf w
   def beqList : List Val → List Val → Bool
@@ -193,6 +224,12 @@ mutual
     | x :: xs, y :: ys => beq x y && beqList xs ys
     | _,       _       => false
   termination_by vs ws => sizeOf vs + sizeOf ws
+  /-- A captured environment: the binders by `Var`, their values structurally. -/
+  def beqRho : List (Var × Val) → List (Var × Val) → Bool
+    | [], [] => true
+    | (x, t) :: xs, (y, u) :: ys => x == y && beq t u && beqRho xs ys
+    | _, _ => false
+  termination_by xs ys => sizeOf xs + sizeOf ys
 end
 
 instance : BEq Val := ⟨Val.beq⟩
@@ -242,10 +279,11 @@ mutual
     | .node name args =>
       let s := name ++ prettyArgs args
       if prec > 0 then s!"({s})" else s
-    | .rfn xs _ =>
-      -- The binders, not the body: a rejection naming a function value wants to
-      -- say WHICH function, and the body is a whole program.
-      "λr(" ++ String.intercalate ", " (xs.map (·.name)) ++ "){…}"
+    -- The closure renders as its λ does, which is `Term.prettyPrec`'s business:
+    -- a comptime λ prints as the term it is, an imperative one prints its binders
+    -- and elides the body. The captured environment is not shown — it is what the
+    -- body's free names MEAN, not part of what the function is.
+    | .closure _ t => Term.prettyPrec prec t
   termination_by v => sizeOf v
   def prettyArgs : List Val → String
     | [] => ""
@@ -278,12 +316,16 @@ mutual
     | .node _ args => loanIdsList args
     | .know _ => []                                     -- knowledge: no loans, by type
     | .bot => []
-    | .rfn _ _ => []                                    -- closed: no loans to find
+    | .closure ρ _ => loanIdsRho ρ                      -- state-free by the capture premise
   termination_by v => sizeOf v
   def loanIdsList : List Val → List Nat
     | [] => []
     | v :: vs => loanIds v ++ loanIdsList vs
   termination_by vs => sizeOf vs
+  def loanIdsRho : List (Var × Val) → List Nat
+    | [] => []
+    | (_, v) :: ps => loanIds v ++ loanIdsRho ps
+  termination_by ps => sizeOf ps
 end
 
 /-! Does a value carry a STATE marker — a hole (`⊥`), a loan, or a borrow —
@@ -303,12 +345,16 @@ mutual
     | .borrowM _ _ => true
     | .node _ args => hasStateMarkerList args
     | .know _ => false
-    | .rfn _ _ => false
+    | .closure ρ _ => hasStateMarkerRho ρ
   termination_by v => sizeOf v
   def hasStateMarkerList : List Val → Bool
     | [] => false
     | v :: vs => hasStateMarker v || hasStateMarkerList vs
   termination_by vs => sizeOf vs
+  def hasStateMarkerRho : List (Var × Val) → Bool
+    | [] => false
+    | (_, v) :: ps => hasStateMarker v || hasStateMarkerRho ps
+  termination_by ps => sizeOf ps
 end
 
 /-! (`Val.capturedMarkers` and `Val.hasStateMarkerEnv` — nbe.md §3.2's capture
@@ -329,12 +375,21 @@ mutual
     | .node _ args => symIdsList args
     | .loanM _ => []
     | .bot => []
-    | .rfn _ _ => []                                    -- closed: no σ's to find
+    -- **A closure is no longer closed** (M32 R2), and canonicalization has to see
+    -- that: ρ is captured knowledge and captured knowledge holds σ's. The BODY is
+    -- read too — raw it is source syntax, where `Term.symIds` finds nothing
+    -- because a program cannot write a σ; cooked it is a pure normal form, and
+    -- then the σ's it mentions are exactly the ones a comparison would see.
+    | .closure ρ t => symIdsRho ρ ++ Term.symIds t
   termination_by v => sizeOf v
   def symIdsList : List Val → List Nat
     | [] => []
     | v :: vs => symIds v ++ symIdsList vs
   termination_by vs => sizeOf vs
+  def symIdsRho : List (Var × Val) → List Nat
+    | [] => []
+    | (_, v) :: ps => symIds v ++ symIdsRho ps
+  termination_by ps => sizeOf ps
 end
 
 /-! Rewrite every loan id `ℓ` to `fℓ ℓ` and every symbolic id `σ` to `fσ σ`
@@ -350,12 +405,19 @@ mutual
     | .node n args => .node n (renumberList fℓ fσ args)
     | .know t => .know (Term.renumberSyms fσ t)
     | .bot => .bot
-    | .rfn xs b => .rfn xs b                            -- closed: nothing to renumber
+    -- Paired with `symIds` above, and for the reason stated there: whatever that
+    -- traversal can see, this one must rewrite, or canonicalization renumbers a
+    -- σ out of existence.
+    | .closure ρ b => .closure (renumberRho fℓ fσ ρ) (Term.renumberSyms fσ b)
   termination_by v => sizeOf v
   def renumberList (fℓ fσ : Nat → Nat) : List Val → List Val
     | [] => []
     | v :: vs => renumber fℓ fσ v :: renumberList fℓ fσ vs
   termination_by vs => sizeOf vs
+  def renumberRho (fℓ fσ : Nat → Nat) : List (Var × Val) → List (Var × Val)
+    | [] => []
+    | (x, v) :: ps => (x, renumber fℓ fσ v) :: renumberRho fℓ fσ ps
+  termination_by ps => sizeOf ps
 end
 
 end Val

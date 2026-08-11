@@ -836,7 +836,7 @@ example : reaches (symName 0) = false := by native_decide
 -- the name.
 def escapedSigma : Term := prog{ λ («§σ0» : Nat). «§σ0» }
 example : (match escapedSigma with
-           | .lam nm _ _ => isReservedName nm
+           | .lam nm _ _ => isReservedName nm.name
            | _ => true) = false := by native_decide
 -- …so a refinement of σ0 passes straight through it, unfenced.
 example : (Term.beq (Term.substSym 0 (Term.nat 4)

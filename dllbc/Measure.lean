@@ -65,7 +65,6 @@ partial def tsize : Term → Nat
   | .call _ as => 1 + tsizeL as
   | .seal a b => 1 + tsize a + tsize b
   | .callV _ as => 1 + tsizeL as
-  | .lamR xs b => 1 + tsizeBnd xs + tsize b
   | .app a b => 1 + tsize a + tsize b
   | .pi _ a b | .sigmaT _ a b | .lam _ a b | .borrowT _ a b => 1 + tsize a + tsize b
   | .idT a b c => 1 + tsize a + tsize b + tsize c
@@ -78,9 +77,6 @@ partial def tsizeO : Option Term → Nat
 partial def tsizeB : List Branch → Nat
   | [] => 0
   | .mk _ _ b :: rest => tsize b + tsizeB rest
-partial def tsizeBnd : List (Var × Term) → Nat
-  | [] => 0
-  | (_, τ) :: rest => tsize τ + tsizeBnd rest
 end
 
 /-! ## Occurrence counting: how many copies of `needle` does a term carry?
@@ -115,7 +111,6 @@ partial def occ (needle : Term) : Term → Nat
     | .call _ as => occL needle as
     | .seal a b => occ needle a + occ needle b
     | .callV _ as => occL needle as
-    | .lamR xs b => occBnd needle xs + occ needle b
     | .app a b => occ needle a + occ needle b
     | .pi _ a b | .sigmaT _ a b | .lam _ a b | .borrowT _ a b =>
       occ needle a + occ needle b
@@ -129,9 +124,6 @@ partial def occO (needle : Term) : Option Term → Nat
 partial def occB (needle : Term) : List Branch → Nat
   | [] => 0
   | .mk _ _ b :: rest => occ needle b + occB needle rest
-partial def occBnd (needle : Term) : List (Var × Term) → Nat
-  | [] => 0
-  | (_, τ) :: rest => occ needle τ + occBnd needle rest
 end
 
 /-! ## Non-overlapping coverage
@@ -161,7 +153,6 @@ partial def cov (ns : List (String × Term)) : Term → Nat
     | .call _ as => covL ns as
     | .seal a b => cov ns a + cov ns b
     | .callV _ as => covL ns as
-    | .lamR xs b => covBnd ns xs + cov ns b
     | .app a b => cov ns a + cov ns b
     | .pi _ a b | .sigmaT _ a b | .lam _ a b | .borrowT _ a b => cov ns a + cov ns b
     | .idT a b c => cov ns a + cov ns b + cov ns c
@@ -174,9 +165,6 @@ partial def covO (ns : List (String × Term)) : Option Term → Nat
 partial def covB (ns : List (String × Term)) : List Branch → Nat
   | [] => 0
   | .mk _ _ b :: rest => cov ns b + covB ns rest
-partial def covBnd (ns : List (String × Term)) : List (Var × Term) → Nat
-  | [] => 0
-  | (_, τ) :: rest => cov ns τ + covBnd ns rest
 end
 
 /-! ## Timing -/

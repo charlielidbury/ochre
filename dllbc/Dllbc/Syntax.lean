@@ -92,6 +92,26 @@ structure Var where
   name : String
 deriving DecidableEq, BEq, Repr, Inhabited
 
+/-- **A pure binder is a `Var` with no slot** (M32 R2). One λ former means one
+    binder type, and a `Var` is the one that carries both things a binder can
+    need: the NAME, which is what every resolution keys on since M32 R1, and the
+    `id`, which only a binder whose argument lands in Ω has any use for.
+
+    So a comptime binder is written `"x"` and read as `⟨noSlot, "x"⟩`. The id is
+    the residue of the runtime half and it leaves with the rest of E2's id
+    machinery at R4; until then this coercion is what keeps the ~150 hand-written
+    pure λs spelled the way they were written.
+
+    **`noSlot` is a real sentinel and not a zero**, because `Term.freeRVars` asks
+    which of a term's binders bind a `.var` occurrence and it asks by id: a pure
+    binder must bind NOTHING there (its argument lands in the comptime
+    environment, not in Ω, and `.var` names an Ω slot), while an imperative λ's
+    binder must bind its own id exactly as `lamR`'s telescope did. Zero would have
+    silently bound every occurrence of runtime slot `#0`. -/
+def noSlot : Nat := 0xFFFF_FFFF_FFFF
+
+instance : Coe String Var := ⟨fun s => ⟨noSlot, s⟩⟩
+
 /-- Does this identifier start with an uppercase letter? **The mode marker**
     (combining-fns §6): a capitalized binder is COMPTIME, a lowercase one is
     RUNTIME. Lives here rather than in the macro layer because the kernel reads
@@ -235,41 +255,6 @@ inductive Term where
       callee is a `Var` because that is all §7 needs (`ih` is a bound variable) and
       it keeps the form's shape identical to `.matchE`'s scrutinee. -/
   | callV  : Var → List Term → Term
-  /-- `λ(x : τ, y : υ, …) { body }` — **the runtime λ** (combining-fns §7 cost 2), the
-      form phase A filed and could not build: a λ whose body is a *body* (writes,
-      calls, borrows, matches) rather than a pure term.
-
-      Its binders are **runtime `Var`s** — id-and-name pairs — and that is forced
-      rather than chosen: a body reaches its binders through Ω, so a binder has to
-      name a SLOT. (Until M30 step 2 the contrast was with de Bruijn; now both
-      fragments' binders have names and the difference is what a name resolves
-      against — an Ω slot here, a comptime environment there.) So the pure λ
-      (`.lam`, domain-annotated, body a `Val`) and this one are the two halves §7
-      cost 5 predicts: same former in the document, two representations in the
-      machine, because one is knowledge and the other is state.
-
-      **Church-style: every binder carries its domain** (M27, the ratified
-      function model), which is what the document's grammar said all along —
-      `λ (x : τ). t`. M26-C built the Curry form on the argument that an
-      annotation would be a second source of truth for the contract, since a
-      runtime λ is checked against an *ascription* (the seal's Π, §5) and §5
-      point 4 makes the ascription the contract. That argument is sound about the
-      CONTRACT and wrong about the CHECK: without domains the seal has to descend
-      the ascription bidirectionally, handing each binder the type the Π supplies,
-      and with them the seal is ONE conversion — synthesize the λ's Π, compare it
-      against what was written. The ascription stays the contract; what changes is
-      that the λ can now be read on its own.
-
-      The `Val` side does NOT follow (`Val.rfn`, `Value.lean`), and the asymmetry
-      is the erasure principle rather than an oversight: `readR` drops the domains
-      when it forms the value, because the executing machine binds and runs and
-      never converts. Types are for the seal, which happens once, at formation.
-
-      **Saturated** (§12 decision 4) and **closed** (§7 cost 2's "arms reference
-      only their own binders and globals"). Closedness is CHECKED where the value
-      is formed, not assumed: an escaping free variable would otherwise be
-      silently captured by the frame shift. -/
-  | lamR   : List (Var × Term) → Term → Term
   /-- Terminal form, the value a statement sequence returns when it has no
       final expression. -/
   | unit   : Term
@@ -280,7 +265,28 @@ inductive Term where
   | type   : Term                    -- the universe
   | pi     : String → Term → Term → Term      -- Π (x : dom) → cod
   | sigmaT : String → Term → Term → Term      -- Σ (x : fst-type) → snd-type
-  | lam    : String → Term → Term → Term      -- λ (x : dom). body
+  /-- `λ (x : dom). body` — **the λ, and there is only one** (M32 R2,
+      suspensions.md §2.4).
+
+      Until R2 there were two: this one, whose body is a pure term ⇝ reduces, and
+      `lamR`, whose body is a *body* (writes, calls, borrows, matches) and whose
+      binders name Ω slots. They were "the same former in the document, two
+      representations in the machine". They are one former now, and what the two
+      species carried is redistributed onto things that were already there:
+
+        * the **arity** was `lamR`'s binder LIST; it is nesting now, and
+          `λ(x : τ, y : υ){ … }` is sugar for `λ(x : τ). λ(y : υ). …`
+          (`Term.lamTel` builds it, `Term.peelLams` reads it back);
+        * the **binder's mode** — whether its argument is ⇝-snapshot-read or
+          ⇒-moved — is the domain's `⇝` marker and the binder's case, as it
+          already was for every other binder (§2.1);
+        * the **fragment** — whether evaluating the body means pure reduction or
+          the effectful walk — is `Term.imperative` below, recomputed at every
+          application and at the seal. A property, never a species tag.
+
+      **Church-style: the binder carries its domain** (M27, the ratified function
+      model), which is what the document's grammar said all along. -/
+  | lam    : Var → Term → Term → Term
   | app    : Term → Term → Term      -- application
   | const  : String → Term           -- a built-in constant (recursor or type former)
   | idT    : Term → Term → Term → Term  -- Id A a b (§10): the identity type
@@ -328,6 +334,111 @@ def Branch.binders : Branch → List Var | .mk _ b _ => b
 /-- The branch's body. -/
 def Branch.body : Branch → Term | .mk _ _ t => t
 
+/-! ## The λ telescope, and the property that replaces the second species (M32 R2) -/
+
+/-- `λ(x : τ, y : υ){ b }` — the comma list, as the nesting it abbreviates. -/
+def Term.lamTel : List (Var × Term) → Term → Term
+  | [], b => b
+  | (x, τ) :: rest, b => .lam x τ (Term.lamTel rest b)
+
+/-- …and reading one back off a λ chain: every leading binder, then what is under
+    them. The inverse of `lamTel`, and what every site that used to match
+    `.lamR xs body` asks for. -/
+def Term.peelLams : Term → List (Var × Term) × Term
+  | .lam x τ b => let (tel, body) := Term.peelLams b; ((x, τ) :: tel, body)
+  | t => ([], t)
+
+/-! **Is this term outside the comptime fragment?** (M32 R2, suspensions.md §2.2.)
+
+    The one irreducible difference between the two λ species was what evaluating
+    the body MEANS — pure reduction, or the effectful walk — and this is that
+    difference stated as a property of the body instead of carried as a tag on the
+    former. It is recomputed wherever it matters (application, the seal, the
+    `let` arrow, rendering), so nothing can go stale and no substitution can lose
+    it.
+
+    The forms it names are exactly the ones `reflectC` refuses BY NAME — writes,
+    borrows, sequencing, matching, calls, the seal — which is this calculus's
+    standing definition of the pure sub-grammar (§1.3). `.var`, `.letIn`, `.deref`
+    and the index steps are absent on purpose: ⇝ has rules for all of them (a
+    snapshot read, β, a payload projection, a segment read), so a body built from
+    those is one both arrows agree about. -/
+mutual
+  def Term.imperative : Term → Bool
+    | .assign _ _ _ | .borrow _ | .seq _ _ | .matchE _ _ _
+    | .call _ _ | .callV _ _ | .seal _ _ => true
+    -- `a[lo ; ..]` reads its count off the extent map, which is state.
+    | .range _ _ none _ _ _ => true
+    | .letIn _ rhs rest => Term.imperative rhs || Term.imperative rest
+    | .lam _ d b | .pi _ d b | .sigmaT _ d b | .borrowT _ d b =>
+      Term.imperative d || Term.imperative b
+    | .app f a => Term.imperative f || Term.imperative a
+    | .idT a b c => Term.imperative a || Term.imperative b || Term.imperative c
+    | .ctorApp _ args => Term.imperativeList args
+    | .deref t | .cmpT t => Term.imperative t
+    | .index t i ev =>
+      Term.imperative t || Term.imperative i
+        || (match ev with | some e => Term.imperative e | none => false)
+    | .range t lo (some cnt) rest ev eqc =>
+      Term.imperative t || Term.imperative lo || Term.imperative cnt
+        || (match rest with | some r => Term.imperative r | none => false)
+        || (match ev with | some e => Term.imperative e | none => false)
+        || (match eqc with | some e => Term.imperative e | none => false)
+    | _ => false
+  termination_by t => sizeOf t
+  def Term.imperativeList : List Term → Bool
+    | [] => false
+    | t :: ts => Term.imperative t || Term.imperativeList ts
+  termination_by ts => sizeOf ts
+end
+
+/-- **Does this binder name an Ω SLOT?** — i.e. does its argument arrive by ⇒, at
+    entry, into the store, rather than by ⇝ into the comptime environment?
+
+    This is `noSlot`'s other half and the one fact that separates the two λ
+    fragments at the BINDER (§2.1 separates them at argument-READING, which is a
+    different axis and already lives on the case and the `⇝` domain marker). A
+    comptime binder is coerced from a name and has no slot; a runtime binder is
+    minted by the surface or by `teleVars` and has one.
+
+    **R4 is where this becomes the CASE.** §2.1's migration makes capitalisation
+    reach every binder, at which point "binds a slot" is "is lowercase" and the id
+    can go with the rest of E2's machinery. Until then the id is the honest
+    statement, because it is the thing that is actually true today. -/
+def Var.bindsSlot (x : Var) : Bool := x.id != noSlot
+
+/-- Is this λ an IMPERATIVE one — is applying it ⇒-ENTRY rather than ⇝ reduction?
+
+    Two ways to be, and they are the two halves of what §2.2 calls "the effectful
+    walk": what sits under the binders is a BODY (writes, calls, borrows), or a
+    binder names an Ω slot, so entering means binding one. The second is not
+    redundant — `fn Identity (n : Nat) -> Nat { n }` has a body both arrows can
+    read, and it is still a function whose argument is ⇒-read into a slot and
+    whose contract is checked by §5.4's audit rather than by `hasType`.
+
+    Asked of the whole node, so `λ(x : τ, y : υ){ … }` is judged by all its
+    binders and by what is under them, rather than by the inner λ it is sugar
+    for. -/
+def Term.lamImperative : Term → Bool
+  | t =>
+    let (tel, body) := Term.peelLams t
+    Term.imperative body || tel.any (fun p => p.1.bindsSlot)
+
+/-- **A suspension, spelled as a term** (M32 R2): the raw body under the bindings
+    it captured, as the `let`-chain the evaluator already knows how to perform.
+
+    This is the whole of cooking's syntax half, and it is a `foldr` rather than a
+    traversal for a reason worth stating: ρ binds KNOWLEDGE, and `eval`'s `letIn`
+    rule binds a runtime slot's reserved pure name and resolves `.var` through it
+    (`Pure.letName`). So "evaluate the body under ρ" is already a rule this
+    calculus has — no `.var`-substitution had to be written, and no second scoping
+    story exists to disagree with the first.
+
+    Innermost-last, so an earlier ρ entry is visible to a later one's knowledge,
+    which is the order Ω records them in. -/
+def Term.underRho (ρ : List (Var × Term)) (node : Term) : Term :=
+  ρ.foldr (fun p acc => .letIn p.1 p.2 acc) node
+
 /-! ## Structural term equality (manual; `deriving` can't cross the nesting) -/
 
 mutual
@@ -347,12 +458,6 @@ mutual
     | .call f as, .call g bs => f == g && Term.beqList as bs
     | .seal a b, .seal c d => Term.beq a c && Term.beq b d
     | .callV x as, .callV y bs => x == y && Term.beqList as bs
-    -- The binder DOMAINS are compared by `Term.beq`, not by `==`: the `BEq Term`
-    -- instance is declared below this mutual block, so `==` on a
-    -- `List (Var × Term)` would not resolve to this function even if it resolved
-    -- at all. Recursing explicitly also keeps the mode marker visible, which is
-    -- the property the `.cmpT` note at the foot of this function is about.
-    | .lamR xs a, .lamR ys b => Term.beqBinders xs ys && Term.beq a b
     | .unit, .unit => true
     | .pvar x, .pvar y => x == y
     | .type, .type => true
@@ -365,7 +470,13 @@ mutual
     -- before that comparison ever happens.
     | .pi x a b, .pi y c d => x == y && Term.beq a c && Term.beq b d
     | .sigmaT x a b, .sigmaT y c d => x == y && Term.beq a c && Term.beq b d
-    | .lam x a b, .lam y c d => x == y && Term.beq a c && Term.beq b d
+    -- **By NAME, not by `Var`** (M32 R2). The binder of the one λ former carries
+    -- an id, and comparing it would make two λs written in different frames
+    -- unequal for a reason no judgment means: resolution is by name (M32 R1), so
+    -- the name is the binder's identity and the id is decoration. This is also
+    -- what keeps readback CANONICAL — `readbackName` mints a name, and the id it
+    -- coerces to is the same zero for every level.
+    | .lam x a b, .lam y c d => x.name == y.name && Term.beq a c && Term.beq b d
     | .app a b, .app c d => Term.beq a c && Term.beq b d
     | .const n, .const m => n == m
     | .idT a b c, .idT d e f => Term.beq a d && Term.beq b e && Term.beq c f
@@ -395,12 +506,6 @@ mutual
   def Term.beqBranches : List Branch → List Branch → Bool
     | [], [] => true
     | .mk c bs a :: r, .mk d es b :: s => c == d && bs == es && Term.beq a b && Term.beqBranches r s
-    | _, _ => false
-  termination_by ts us => sizeOf ts + sizeOf us
-  /-- An annotated runtime λ's binders: names by `==`, domains structurally. -/
-  def Term.beqBinders : List (Var × Term) → List (Var × Term) → Bool
-    | [], [] => true
-    | (x, τ) :: as, (y, υ) :: bs => x == y && Term.beq τ υ && Term.beqBinders as bs
     | _, _ => false
   termination_by ts us => sizeOf ts + sizeOf us
 end
@@ -449,7 +554,7 @@ mutual
     | .unit, .unit => true
     | .cmpT a, .cmpT b => Term.alphaEqGo lc rc a b
     | .lam x da ba, .lam y db bb =>
-      Term.alphaEqGo lc rc da db && Term.alphaEqGo (x :: lc) (y :: rc) ba bb
+      Term.alphaEqGo lc rc da db && Term.alphaEqGo (x.name :: lc) (y.name :: rc) ba bb
     | .pi x da ba, .pi y db bb =>
       Term.alphaEqGo lc rc da db && Term.alphaEqGo (x :: lc) (y :: rc) ba bb
     | .sigmaT x da ba, .sigmaT y db bb =>
@@ -509,7 +614,7 @@ mutual
     -- outside the binder, the body inside it — so a body whose binder rebinds `x`
     -- is left alone, which is the whole of the scope discipline.
     | x, s, .lam y dom b =>
-      .lam y (Term.substP x s dom) (if y == x then b else Term.substP x s b)
+      .lam y (Term.substP x s dom) (if y.name == x then b else Term.substP x s b)
     | x, s, .pi y dom cod =>
       .pi y (Term.substP x s dom) (if y == x then cod else Term.substP x s cod)
     | x, s, .sigmaT y dom cod =>
@@ -547,7 +652,8 @@ mutual
   def Term.freePNamesGo (bound : List String) : Term → List String
     | .pvar x => if bound.contains x then [] else [x]
     | .cmpT τ => Term.freePNamesGo bound τ
-    | .lam y dom b | .pi y dom b | .sigmaT y dom b | .borrowT y dom b =>
+    | .lam y dom b => Term.freePNamesGo bound dom ++ Term.freePNamesGo (y.name :: bound) b
+    | .pi y dom b | .sigmaT y dom b | .borrowT y dom b =>
       Term.freePNamesGo bound dom ++ Term.freePNamesGo (y :: bound) b
     | .app f a => Term.freePNamesGo bound f ++ Term.freePNamesGo bound a
     | .idT a b c =>
@@ -607,17 +713,16 @@ mutual
     | .seal t u => Term.freeRVars bound t ++ Term.freeRVars bound u
     | .callV x args =>
       (if bound.contains x.id then [] else [x]) ++ Term.freeRVarsList bound args
-    -- The DOMAINS are traversed too (M27), and as a TELESCOPE: a runtime λ's
-    -- binder types are dependent — `ih`'s mentions the predecessor bound to its
-    -- left, `hfuel : Le (len *v) fuel` mentions the borrow bound to its left — so
-    -- each domain is read under the binders before it and nothing else. Treating
-    -- them as closed would let a genuinely free variable into a type and past the
-    -- closedness check the whole traversal exists to feed.
-    | .lamR xs body =>
-      Term.freeRVarsBinders bound xs
-        ++ Term.freeRVars (xs.map (·.1.id) ++ bound) body
+    -- **The one λ, scoped as the telescope it is** (M32 R2). The domain is read
+    -- OUTSIDE the binder and the body inside it, which is exactly what
+    -- `freeRVarsBinders` did to `lamR`'s list — a binder type is dependent (`ih`'s
+    -- mentions the predecessor bound to its left, `hfuel : Le (len *v) fuel`
+    -- mentions the borrow bound to its left), and nesting says so without a
+    -- second traversal. A comptime binder's `noSlot` id binds nothing here, which
+    -- is the whole of why it is a sentinel.
+    | .lam x d b => Term.freeRVars bound d ++ Term.freeRVars (x.id :: bound) b
     | .app a b => Term.freeRVars bound a ++ Term.freeRVars bound b
-    | .pi _ a b | .lam _ a b | .sigmaT _ a b | .borrowT _ a b =>
+    | .pi _ a b | .sigmaT _ a b | .borrowT _ a b =>
       Term.freeRVars bound a ++ Term.freeRVars bound b
     | .idT a b c => Term.freeRVars bound a ++ Term.freeRVars bound b ++ Term.freeRVars bound c
     | .cmpT τ => Term.freeRVars bound τ
@@ -632,12 +737,6 @@ mutual
     | (.mk _ bs body) :: rest =>
       Term.freeRVars (bs.map (·.id) ++ bound) body ++ Term.freeRVarsBranches bound rest
   termination_by bs => sizeOf bs
-  /-- A runtime λ's annotated binders, scoped as a telescope: each domain sees the
-      binders to its left. -/
-  def Term.freeRVarsBinders (bound : List Nat) : List (Var × Term) → List Var
-    | [] => []
-    | (x, τ) :: rest => Term.freeRVars bound τ ++ Term.freeRVarsBinders (x.id :: bound) rest
-  termination_by xs => sizeOf xs
 end
 
 /-! Abstract every occurrence of `e` into the pure variable `x` (mutual with the
@@ -655,7 +754,7 @@ mutual
     | .lam y dom b =>
       if Term.beq (.lam y dom b) e then .pvar x
       else .lam y (absOcc e x shadowed dom)
-        (if shadowed.contains y then b else absOcc e x shadowed b)
+        (if shadowed.contains y.name then b else absOcc e x shadowed b)
     | .pi y dom cod =>
       if Term.beq (.pi y dom cod) e then .pvar x
       else .pi y (absOcc e x shadowed dom)
@@ -978,9 +1077,20 @@ mutual
     | .sigmaT x d c =>
       let s := s!"Σ({x} : {Term.prettyPrec 1 d}). {Term.prettyPrec 0 c}"
       if prec > 0 then s!"({s})" else s
+    -- **One former, two renderings, and the same property picks them** (M32 R2).
+    -- A comptime λ prints as the term it is. An imperative one prints its BINDERS
+    -- and elides what is under them — a rejection naming a function wants to say
+    -- WHICH function, and the body is a whole program — which is what `lamR`/`rfn`
+    -- printed and is why `slotOf`'s goldens are unchanged.
     | .lam x d b =>
-      let s := s!"λ({x} : {Term.prettyPrec 1 d}). {Term.prettyPrec 0 b}"
-      if prec > 0 then s!"({s})" else s
+      if Term.lamImperative (.lam x d b) then
+        -- No paren guard, exactly as `lamR`/`rfn` had none: the form brackets
+        -- itself, and `slotOf`'s golden spells it unparenthesized in argument
+        -- position.
+        "λr(" ++ String.intercalate ", " ((Term.peelLams (.lam x d b)).1.map (·.1.name)) ++ "){…}"
+      else
+        let s := s!"λ({x.name} : {Term.prettyPrec 1 d}). {Term.prettyPrec 0 b}"
+        if prec > 0 then s!"({s})" else s
     | .app f a =>
       let s := Term.prettyPrec 0 f ++ " " ++ Term.prettyPrec 1 a
       if prec > 0 then s!"({s})" else s
@@ -992,9 +1102,6 @@ mutual
       if prec > 0 then s!"({s})" else s
     | .deref t => "*" ++ Term.prettyPrec 1 t
     | .borrow t => "&mut " ++ Term.prettyPrec 1 t
-    -- The binders, not the body — a rejection naming a function wants to say WHICH
-    -- one, and the body is a whole program (`Val.rfn`'s rendering, unchanged).
-    | .lamR xs _ => "λr(" ++ String.intercalate ", " (xs.map (·.1.name)) ++ "){…}"
     | .seal t _ => "(" ++ Term.prettyPrec 0 t ++ " : …)"
     | .call f _ => f ++ "(…)"
     | .callV x _ => x.name ++ "(…)"
@@ -1090,7 +1197,14 @@ def Term.stripCmp : Term → Term
     at the other — the lesson the comptime `let` itself already taught. -/
 def Var.comptimeRhs (x : Var) : Term → Bool
   | .seal _ _ => false
-  | .lamR _ _ => false
+  -- **The λ carve-out is now the PROPERTY, not the former** (M32 R2). It was
+  -- `.lamR _ _ => false` — the runtime λ, whose formation is where closedness is
+  -- checked and where its value comes into being. Under one former the same
+  -- sentence has to name what it always meant: a λ whose body is a BODY is that
+  -- formation event, and a comptime λ is an ordinary ⇝ term that a capital `let`
+  -- reads under ⇝ exactly as it reads any other. (Both carve-outs die at R3, when
+  -- the let-arrow invariant becomes exceptionless.)
+  | .lam x' d b => if Term.lamImperative (.lam x' d b) then false else x.isComptime
   | _ => x.isComptime
 
 end Dllbc

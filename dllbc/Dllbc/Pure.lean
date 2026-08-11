@@ -258,7 +258,10 @@ mutual
       | .type => .type
       | .const c => .const c
       | .unit => .ctor "unit" []
-      | .lam x dom body => .lam x (eval (fuel + 1) ρ dom) (.closure ρ body)
+      -- The binder's NAME is what the semantic domain binds: `Sem` is the
+      -- comptime domain and a comptime occurrence is a `pvar`, so the `Var`'s
+      -- slot id (`noSlot` for a binder written here) has nothing to resolve.
+      | .lam x dom body => .lam x.name (eval (fuel + 1) ρ dom) (.closure ρ body)
       | .pi x dom cod => .pi x (eval (fuel + 1) ρ dom) (.closure ρ cod)
       | .sigmaT x dom cod => .sigmaT x (eval (fuel + 1) ρ dom) (.closure ρ cod)
       | .cmpT τ => .cmpT (eval (fuel + 1) ρ τ)

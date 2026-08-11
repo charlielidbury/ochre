@@ -1730,7 +1730,7 @@ example : progRejects d2borrow "a runtime (lowercase) binding" = true := by nati
 -- downward. (Reached here through a `.callV`-free body, so it is the variable
 -- rule and not the call rule doing the work — c1 covers the call side.)
 def d2free : Term :=
-  .letIn ⟨0, "g"⟩ (.seal (.lamR [(⟨1, "a"⟩, .const "Nat")] (.letIn ⟨2, "z"⟩ (.var ⟨9, "nope"⟩) (.var ⟨1, "a"⟩)))
+  .letIn ⟨0, "g"⟩ (.seal (Term.lamTel [(⟨1, "a"⟩, .const "Nat")] (.letIn ⟨2, "z"⟩ (.var ⟨9, "nope"⟩) (.var ⟨1, "a"⟩)))
     (prog{ Π (a : Nat) → Nat })) .unit
 example : progRejects d2free "not bound anywhere above it" = true := by native_decide
 
@@ -1908,7 +1908,7 @@ example : (programEnvs (hSplit .unit .unit)).length == 2 := by native_decide
 -- `admitGlobals` reached through the driver.
 def hGlobal (bad : Bool) : Term :=
   hSplit .unit
-    (.letIn ⟨3, "G"⟩ (.lamR [(⟨4, "y"⟩, .const "Nat")] (.callV ⟨0, "F"⟩ [.var ⟨4, "y"⟩]))
+    (.letIn ⟨3, "G"⟩ (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (.callV ⟨0, "F"⟩ [.var ⟨4, "y"⟩]))
       (.letIn ⟨5, "r"⟩ (.callV ⟨3, "G"⟩ [.var ⟨2, "k"⟩])
         (if bad then prog{ True } else .unit)))
 example : progOk (hGlobal false) = true := by native_decide
@@ -1921,7 +1921,7 @@ example : progRejects (hGlobal true) "does not have return type" = true := by na
 -- is data capture: the same rejection §D2a pins, reached the other way.)
 def hCapture : Term :=
   hSplit .unit
-    (.letIn ⟨3, "g"⟩ (.lamR [(⟨4, "y"⟩, .const "Nat")] (.letIn ⟨6, "z"⟩ (.var ⟨2, "k"⟩) (.var ⟨4, "y"⟩)))
+    (.letIn ⟨3, "g"⟩ (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (.letIn ⟨6, "z"⟩ (.var ⟨2, "k"⟩) (.var ⟨4, "y"⟩)))
       .unit)
 example : progRejects hCapture "a runtime (lowercase) binding" = true := by native_decide
 
@@ -1929,7 +1929,7 @@ example : progRejects hCapture "a runtime (lowercase) binding" = true := by nati
 def hSeal (bad : Bool) : Term :=
   hSplit .unit
     (.letIn ⟨3, "Sf"⟩
-      (.seal (.lamR [(⟨4, "y"⟩, .const "Nat")] (.var ⟨4, "y"⟩))
+      (.seal (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (.var ⟨4, "y"⟩))
         (if bad then prog{ Π (y : Nat) → Bool } else prog{ Π (y : Nat) → Nat }))
       .unit)
 example : progOk (hSeal false) = true := by native_decide

@@ -556,10 +556,18 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     let parsed ← bs.getElems.toList.mapM fun (p : TSyntax `ulamb) => match p with
       | `(ulamb| $x:ident : $τ:uterm) => pure (x, τ)
       | _ => Macro.throwErrorAt p "λ: malformed binder (expected `x : τ`)"
+    -- **The nullary refusal moved HERE** (M32 R2). `λ(){ … }` used to be refused
+    -- by the kernel, at the point `Term.lamR []` became a value; under one λ
+    -- former there is no such term to refuse — the comma list is a TELESCOPE, and
+    -- an empty telescope elaborates to the body itself. The reason is unchanged
+    -- and so is the sentence: a thunk makes ι ambiguous, and nothing in §7 wants
+    -- one.
+    if parsed.isEmpty then
+      Macro.throwErrorAt stx "λr: a runtime λ must bind at least one argument. `λ(){ … }` is a thunk, and a thunk makes ι ambiguous — an arm applied to no arguments and an arm with nothing owed become the same spine. A recursor arm at a non-functional motive is an ordinary term; write it as one."
     parsed.forM (fun p => checkBinder p.1)
     let (rctx', next', binderSyns) ← elabLamBinders rctx pctx next parsed
     let (b', n) ← elabUBlk rctx' pctx next' b
-    return (← `(Dllbc.Term.lamR [$binderSyns,*] $b'), n)
+    return (← `(Dllbc.Term.lamTel [$binderSyns,*] $b'), n)
   | `(uterm| Π ($x:ident : $τ:uterm) → $b:uterm) => do
     checkBinder x
     let (τ', n1) ← elabUTerm rctx pctx next τ
