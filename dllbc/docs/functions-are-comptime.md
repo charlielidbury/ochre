@@ -596,6 +596,13 @@ owner, not an open question):**
     checks (`backstopFnRhs`/`backstopFnBinding`/species test). The remaining
     lowercase bindings of pure-function values (partial applications, `let f =
     Add 1`) migrate capital in the same commit.
+    **REFUTED at M32 R3, measured** (see suspensions.md §2.5's correction and the
+    R3 addendum): ⇒ still constructs function values, because a proof of a
+    ∀-statement IS a λ and this calculus returns them in Σ tails — the refusal
+    rejects quicksort's count equation and `sort2`. The migration is blocked by
+    the same fact from the other side: capitalising a proof binding makes it
+    unreadable where it is RETURNED. What R3 delivered is three enforcement sites
+    becoming one; derivability and the migration move to R3b, behind §2.1.
   * **fn body scope**: bodies elaborate seeing sibling and enclosing bindings (the
     decl{}-era params-only context retires). Gated today on `fnElab`'s fresh-binder
     base colliding with program slots; trivial under M32's name-keying.

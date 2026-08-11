@@ -1715,7 +1715,8 @@ def m1 : Term := prog{
 -- read stops being the wrong move: `let G = ih` copies comptime knowledge and
 -- leaves `ih` exactly where it was, which is what every call already did. What
 -- is still wrong is the lowercase `g`, because a runtime binding cannot hold a
--- function, and that is what `backstopFnBinding` says one layer later.
+-- function, and that is what `refuseFnBinding` says one layer later — the one
+-- site M32 R3 leaves the rule at, where Stage A had three.
 --
 -- Same program, same verdict, third message. Worth noticing that the verdict has
 -- now survived two complete changes of reason: a mechanism (a borrow-moded Π has

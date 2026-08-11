@@ -1,5 +1,65 @@
 # Progress
 
+## 2026-08-11 — dllbc/: **M32 R3 — arrows exceptionless (and §2.5 refuted)**
+
+Two commits on `m32-r3` (stacked on the unmerged `m32-r2`), whole corpus green at
+each. `suspensions.md` §5's third stage: the two remaining exceptions to the
+let-arrow invariant are deleted by giving ⇝ the rules it was missing — and the
+fourth item, §2.5's no-⇒-λ, is REFUTED by the corpus and re-staged.
+
+    Term.seal            grows a SITE  `.seal (site : Nat) t u`
+    Term.numberSeals     NEW           boundary pass, traversal order
+    atBoundary           NEW           the one entry every runner uses
+    St.sealSites         NEW           (site, inputs) ↦ σ — the seal's identity
+    sealNode             NEW           ONE seal rule, both arrows call it
+    readComptimeVal      NEW           "⇝ at a binding": closure | seal | know
+    mkClosure            factored out  λ formation, its own definition
+    Var.comptimeRhs      DELETED       the invariant needs no predicate
+    backstopFnRhs        DELETED       `fenceComptime` owns the rule
+    bindFields' site     DELETED       unreachable, asserted as a program
+    checkLamCitation     DELETED       `mkClosure`'s `admitGlobals` asks it
+    refuseFnBinding      SURVIVES      one site where Stage A had three
+    isFnValue            KEPT          §2.5's extension refuted — see below
+    differential         ZERO          for ⇝-sealing and the let-arrow
+    acceptance flips     1             two needles, same verdict
+    sabotage control     21 red        flagship + both cook-canary directions
+    clean build          4:47          against a 4:50 R2 baseline — noise
+
+**The invariant, in one sentence with no footnote:** *a capital `let` ⇝-reads its
+right-hand side; a lowercase `let` ⇒-reads it.* Both carve-outs were the same
+shape — a right-hand side that was a ⇒-FORMATION EVENT producing a value ⇝ had no
+rule to produce — and R3 gives ⇝ the rules rather than the invariant the
+exceptions. The seal's σ is no longer fresh: it is the one this SITE has at these
+INPUTS, so reading a seal twice agrees with itself, which is the whole of what ⇝
+lacked. λ formation moves to `readComptimeVal`, ⇝'s reader at a binding.
+
+**Zero differential, including the σ NUMBERING.** §2.4's "structured neutral"
+landed INTERNED — `sealSites` maps (site, inputs) to a σ minted from `nextSym` on
+a miss — which keeps `fsig`, `sctx`, `callV` and every golden speaking about a
+bare σ, and is why a change that touches every `fn` declaration in the corpus
+moved nothing. Recorded as a deviation with its reasoning.
+
+**§2.5 IS REFUTED, and this is R3's finding.** "⇒ can no longer construct a
+function value" is false: **a proof of a ∀-statement is a λ**, this calculus
+returns them in Σ tails, and refusing at the pure lift or at `readR`'s λ arm
+rejects quicksort's count equation and `sort2` — measured, both. The species-test
+extension §2.5 asks for was then run and its class measured at seven bindings
+(`cnt`, `cnt1`, `cnt2`, `top1` — partial applications of staged proof-builders —
+plus `f`, `c`, `g`); capitalising them fails at the RETURN, because a Σ component
+is ⇒-read and the erasure fence refuses a ⇒-read of a capital binding. Nothing
+separates `let cnt = MkL lo hi hcnt` from `let f = Add 1`. **R3b (§2.1's binder
+migration) has to subsume both the migration and the derivability claim**, and
+`S32Backstop` pins two accepted programs so it inherits a test that goes red if
+someone concludes otherwise.
+
+**Three sharp edges answered as behaviour rather than argued** (`S32Seal`): the
+site is stable across macro expansion (the pass runs after) and across
+α-canonicalization (it reads structure, never a name), with two identical seals at
+two program points keeping distinct sites; the same site at the same inputs is
+==-equal and mints nothing on the second reading, and at different inputs is not;
+and the executing machine consults no site table, its `sealSites` empty when a
+program that reached its `fn` ends.
+
 ## 2026-08-11 — dllbc/: **M32 R2 — one λ, one closure; the species becomes a property**
 
 Four commits on `m32-r2` (stacked on the unmerged `m32-r1`), whole corpus green

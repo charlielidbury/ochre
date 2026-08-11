@@ -121,6 +121,17 @@ lift's result must be data, not a function (`let f = Add 1` fails there). Stage 
 backstop is deleted; the corpus's lowercase partial-application bindings migrate
 capital in the same commit.
 
+**R3 CORRECTION — this section's premise is false, measured.** ⇒ still constructs
+function values, because **a proof of a ∀-statement is a λ** and this calculus
+returns them in Σ tails; refusing at the pure lift or at `readR`'s λ arm rejects
+quicksort's count equation and `sort2`. And the migration cannot run yet: the
+seven lowercase bindings that hold a function are mostly partial applications of
+staged proof-builders, and capitalising one makes it unreadable where it is
+RETURNED (a Σ component is ⇒-read; the erasure fence refuses a ⇒-read of a
+capital binding). What R3 delivers is the SCATTER: three enforcement sites become
+one (`refuseFnBinding`, at the `let`). Derivability, and the migration, need
+§2.1's binder migration first — **R3b subsumes both**.
+
 ### 2.6 Application surface: spines only
 
 `callV` retires for app spines (nullary via Unit-desugar), preserving the
@@ -292,8 +303,15 @@ with write-back; universal binder convention + stdlib binder migration; capture
 generality + body scope fix. Zero differential except enumerated flips (binder-case
 migrations, capture legality).
 
-**Stage R3 — arrows exceptionless.** ⇝-sealing (site-σ); `comptimeRhs` carve-outs
-deleted; no-⇒-λ + backstop demolition + the partial-application migration.
+**Stage R3 — arrows exceptionless: RUN, with one item REFUTED** (branch
+`m32-r3` @ b5f94934, stacked on R2; corpus green at each commit; sabotage control
+re-run, 21 red including the flagship). ⇝-sealing landed (site assigned by a
+boundary pass; the "structured neutral" landed INTERNED — see the addendum) and
+`comptimeRhs` is deleted, both at ZERO differential. **§2.5's no-⇒-λ did not
+land, and its premise is false**: a proof of a ∀-statement is a λ, so ⇒ must
+still construct function values, and the partial-application migration cannot run
+until §2.1 gives a RETURNED proof a capital binder. Three enforcement sites
+became one; the migration and the derivability claim move to R3b.
 
 **Stage R4 — spines + sweep.** `callV` retires; §1's deletion list completed; E2's
 id machinery removed; docs/logs currency.
@@ -414,3 +432,88 @@ assumption-indexed evaluation (rejected with precedent, §3).
 > is §2.1's intent and therefore a behaviour change to make on purpose. R2 keys
 > the fragment on `Var.bindsSlot` meanwhile, which is the fact that is true today
 > and precisely the one R4's id deletion must replace with the case test.
+
+> **Implementation addendum (R3, landed on `m32-r3`).** Two commits, corpus green
+> at each, stacked on R2 @ 09b18152. Recorded in the order the plan would be read.
+>
+> **0. THE HEADLINE, because it is a correction and not a completion.** §2.4's
+> ⇝-sealing and §2.4's exceptionless let-arrow LANDED, with zero differential —
+> not one golden, verdict, rejection needle or trace moved. **§2.5 did not, and
+> its premise is refuted by the corpus**: "⇒ can no longer construct a function
+> value" is false, because **a proof of a ∀-statement is a λ**. Details at 4.
+>
+> **1. The seal has a SITE, assigned at the program boundary.** `Term.seal` grows
+> a first field; `Term.numberSeals` numbers them in traversal order; `atBoundary`
+> is the one function every entry point goes through. A pass rather than a counter
+> in the elaborator, which answers §6's sharp edge by construction: it runs after
+> every macro (so `fnElab`, where most seals come from and which is not in
+> `Uni.elabUTerm`'s monad at all, cannot move one) and it reads structure, never a
+> name (so α-canonicalization cannot either). Both asserted, plus that two
+> identical seals at two program points keep DISTINCT sites — which is what makes
+> this a site and not a content hash (`S32Seal` §D). Numbering runs BEFORE
+> `pushContinuations`, which duplicates a continuation into each match arm: the
+> copies are one program point, on paths that are alternatives.
+>
+> **2. §2.4's structured neutral landed INTERNED, and that is a deviation.** The
+> doc says the sealed value is "the seal SITE applied to its captured inputs — a
+> structured neutral". As built, `St.sealSites` maps (site, inputs) to a σ and the
+> value is that σ. The two agree on everything a judgment can ask; they differ in
+> whether the value is a spine or an atom. The atom was chosen because `fsig`,
+> `sctx`, `callV`, `hasType` and every golden are σ-keyed — a spine needs both
+> contexts re-keyed by `Term` and a sealed function's signature stored abstracted
+> over its captured inputs — and because it is what made the flip
+> behaviour-identical rather than moving every `.sym` golden in the corpus. **The
+> inputs are the seal's free runtime variables' values**, which is exactly what
+> its check consults (`readC u`, `readC t`, and `checkRFnBody`'s `admitGlobals`
+> over the same set), so a table hit skips a check whose answer is already
+> determined — the argument that makes it a memo rather than a cache with a hole.
+> Deterministic and distinguishing both asserted (`S32Seal` §B/§C), the second
+> being the control the first needs.
+>
+> **3. `Var.comptimeRhs` is DELETED, not simplified.** The invariant is
+> **"a capital `let` ⇝-reads its right-hand side; a lowercase `let` ⇒-reads
+> it"**, and the two reading sites say `x.isComptime` so there is no predicate
+> left to grow a footnote. `readComptimeVal` is "⇝ at a binding" — three cases,
+> because ⇝ produces two things with no `Term` to be read back to (a closure, a
+> sealed σ) and everything else is knowledge. **`reflectC` still refuses the seal**
+> and R3 did not weaken that: what became ⇝-evaluable is the seal at a BINDING,
+> where the σ has a slot to land in; a seal inside a TYPE has no reading, because
+> a type is consumed at its own event. `sealNode` is ONE rule with two callers,
+> which is the honest content of "the seal becomes ⇝-evaluable".
+>
+> **4. §2.5 IS REFUTED, twice, by programs.** The pure lift was given the refusal
+> §2.5 specifies and quicksort's count equation went red: what it returns at
+> `Direct.lean:1592` is `λ(§0 : Nat). boolRec … (j Nat … Refl …) …`, the proof of
+> `Π (n : Nat) → Id Nat (Count n …) (Count n …)`. `readR`'s λ arm was given it too
+> and `sort2` and the flagship went red: `Pair(SplitANil …, λ (q : Nat). Refl)`
+> puts the λ in a constructor argument. **The species-test extension was then run
+> and MEASURED**: seven corpus bindings — `cnt`, `cnt1`, `cnt2`, `top1` (partial
+> applications of staged proof-builders), `f`, `c`, `g` — and capitalising them
+> fails at the RETURN, because a Σ component is read by ⇒ and `fenceComptime`
+> refuses a ⇒-read of a capital binding. Nothing separates `let cnt = MkL lo hi
+> hcnt` from `let f = Add 1`: both bind a partial application at a Π type, and
+> there is no Prop/Type split. **§2.5 should read: the invariant is enforced at
+> ONE site (the `let`), and becomes derivable only after §2.1's migration gives a
+> returned proof a capital binder — i.e. after R3b, which therefore has to
+> subsume it.** Pinned as two accepted programs in `S32Backstop`.
+>
+> **5. What §2.5 DID buy: three enforcement sites become one.**
+> `backstopFnRhs` went (it existed only to improve a message; `fenceComptime` owns
+> the rule and its advice was widened instead — the one enumerated flip, two
+> needles); `bindFields`' site went as UNREACHABLE, asserted as a program;
+> `checkLamCitation` went because `mkClosure` asks its question.
+> `backstopFnBinding` survives as `refuseFnBinding`, at the `let`.
+>
+> **6. The executing machine gained nothing, and it took two tries to keep it
+> that way.** Routing the capital `let` onto ⇝ sent `fn` declarations into the
+> checking-mode seal while `executing` was true (three trace/differential
+> assertions red); and the restated transparency must be `readR`'s read, not
+> `readComptimeArg`'s, because a RECURSIVE `fn` seals an `.app` — §7's `natRec P z
+> s` — which ⇝ refuses by name (three more). The line is byte-for-byte the call
+> the node made before R3. Asserted: `sealSites` is empty when an executing
+> program ends, with the `fn` asserted reached (`S32Seal` §E).
+>
+> **7. Controls.** The sabotage run (`abstractInto` abstracting nothing) goes RED
+> at **21** assertions including `progOk flagship` and BOTH `S32Cook` canary
+> directions — the same count and shape as R2's, so the sweep is still attached
+> and the cook canary is live enough to notice.

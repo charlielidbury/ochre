@@ -1758,10 +1758,14 @@ example : progRejects d3 "a runtime (lowercase) binding" = true := by native_dec
 -- It used to be refused, on the ground that `let X = e` reads `e` under ⇝ while
 -- the seal is a ⇒-form because minting needs an event — so "sealed" and
 -- "comptime-bound" were mutually exclusive, and `let Cert = (… : …)` as a `Qed`
--- form was told which half to drop. M31 drops neither: `Var.comptimeRhs` makes
--- the seal's arrow a property of the SEAL rather than of the binder, so the event
--- still happens under ⇒ and what the capital binder changes is the binding —
--- erased, ⇝-readable, never ⇒-consumed.
+-- form was told which half to drop. M31 dropped neither, by making the seal's
+-- arrow a property of the SEAL as well as of the binder (`Var.comptimeRhs`) — the
+-- event still happened under ⇒, and what the capital binder changed was the
+-- binding. **M32 R3 removes the carve-out that bought that** (`Var.comptimeRhs`
+-- is gone): the seal is ⇝-evaluable now, because its σ is the one its SITE has at
+-- its inputs rather than a fresh one, so a capital `let` reads it under ⇝ like
+-- everything else and the arrow is the binder's case with nothing left over. Same
+-- program, same verdict, one fewer exception.
 --
 -- This is not a concession made for proofs; it is forced. `fn F …` desugars to
 -- exactly this term — a comptime `let` of a λ ascribed its Π (§2.1) — so a rule
