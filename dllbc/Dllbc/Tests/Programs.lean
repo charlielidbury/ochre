@@ -71,7 +71,7 @@ rejection is about the mode and not about the program.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (le_refl le_trans)
+open Dllbc.StdLemmas (LeRefl LeTrans)
 -- `diffC` moved to `S9Diff` when M26-C merged the two simulation relations into
 -- one (segments AND computation); same name, same property, one definition.
 open Dllbc.Tests.S9Diff (diffC)
@@ -151,12 +151,12 @@ example : progRejects a5hi "cannot be the scrutinee of a runtime match" = true :
 -- silent fall-back to ⇒, and the `let`-bound form immediately above works.
 def a6bad : Term := prog{
   fn UseLeC (a : Nat, b : Nat, H : Le a b) -> Unit { () };
-  fn GiveLe (a : Nat) -> Le a a { %le_refl a };
+  fn GiveLe (a : Nat) -> Le a a { %LeRefl a };
   fn Caller (n : Nat) -> Unit { UseLeC(n, n, GiveLe(n)); () };
   () }
 def a6ok : Term := prog{
   fn UseLeC (a : Nat, b : Nat, H : Le a b) -> Unit { () };
-  fn GiveLe (a : Nat) -> Le a a { %le_refl a };
+  fn GiveLe (a : Nat) -> Le a a { %LeRefl a };
   fn Caller (n : Nat) -> Unit
   { let p = GiveLe(n); UseLeC(n, n, p); UseLeC(n, n, p); () };
   () }
@@ -368,7 +368,7 @@ example : progRejects c2 "cannot be ⇒-moved" = true := by native_decide
 -- existential and has none, so a capital `let` cannot bind one — honest, and
 -- pointing at the lowercase `let` that can.
 def c3bad : Term := prog{
-  fn GiveLe (a : Nat) -> Le a a { %le_refl a };
+  fn GiveLe (a : Nat) -> Le a a { %LeRefl a };
   fn Caller (n : Nat) -> Unit { let P = GiveLe(n); () };
   () }
 example : progRejects c3bad "not in the comptime fragment" = true := by native_decide
@@ -378,7 +378,7 @@ example : progRejects c3bad "not in the comptime fragment" = true := by native_d
 def c4 : Term := prog{
   fn UseLeC (a : Nat, b : Nat, H : Le a b) -> Unit { () };
   fn Caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
-  { let Q = le_trans n m m hnm (%le_refl m);
+  { let Q = LeTrans n m m hnm (%LeRefl m);
     UseLeC(n, m, Q); UseLeC(n, m, Q); hnm };
   () }
 example : progOk c4 = true := by native_decide
@@ -421,7 +421,7 @@ example : (match Val.nfV 1000 (Val.pi "X" (.cmpT (.const "Nat")) (.const "Nat"))
            | .pi _ d _ => Val.domComptime d
            | _ => false) = true := by native_decide
 
--- E2. `add` stays all-lowercase and is cited in a spec regardless — you never
+-- E2. `Add` stays all-lowercase and is cited in a spec regardless — you never
 -- capitalize a definition to use it in a type. Both cases of the CITING
 -- function's own binders work, because the citation happens under ⇝.
 def e2lo : Term := prog{ fn E2lo (a : Nat, b : Nat) -> Id Nat (Add a b) (Add a b) { Refl }; () }
@@ -429,7 +429,7 @@ def e2hi : Term := prog{ fn E2hi (A : Nat, B : Nat) -> Id Nat (Add A B) (Add A B
 example : progOk e2lo = true := by native_decide
 example : progOk e2hi = true := by native_decide
 
--- E3. The structured neutral — §2.1's `id_congr` mechanism — is unchanged by the
+-- E3. The structured neutral — §2.1's `IdCongr` mechanism — is unchanged by the
 -- Π's binder case. An abstract function applied twice in a type position is ONE
 -- term either way, which is what `Refl` inhabiting the `Id` says.
 def e3lo : Term := prog{ fn E3lo (f : Π (x : Nat) → Nat, a : Nat) -> Id Nat (f a) (f a) { Refl }; () }
@@ -616,7 +616,7 @@ def qsish : Term := prog{
         Z => (),
         S(f2) => {
           Step(&m *v, S(f2), Hfuel);                       -- passed to a call…
-          let Q = le_trans (Len (old *v)) (S f2) (S f2) Hfuel (le_refl (S f2));
+          let Q = LeTrans (Len (old *v)) (S f2) (S f2) Hfuel (LeRefl (S f2));
                                                               -- …and cited AFTERWARDS
           UseLeC(Len (old *v), S(f2), Q);                     -- the derived certificate, used
           () } } };
@@ -635,7 +635,7 @@ def qsishLo : Term := prog{
         Z => (),
         S(f2) => {
           StepLo(&m *v, S(f2), Hfuel);
-          let Q = le_trans (Len (old *v)) (S f2) (S f2) Hfuel (le_refl (S f2));
+          let Q = LeTrans (Len (old *v)) (S f2) (S f2) Hfuel (LeRefl (S f2));
           UseLeC(Len (old *v), S(f2), Q);
           () } } };
   () }
@@ -663,7 +663,7 @@ example : progOk qsish2 = true := by native_decide
 
     A bound stated about `*v` is invalidated by any call through `v`: the call
     re-mints the payload, so the second `step(&mut *v, …, Hfuel)` wants
-    `Le (len σ') …` where `Hfuel` says `Le (len σ_entry) …`. That is M23's
+    `Le (Len σ') …` where `Hfuel` says `Le (Len σ_entry) …`. That is M23's
     opacity working exactly as designed (§2.2 — "the forgetting is wanted"), and
     it is why the real `quicksort` derives a fresh bound per recursive call
     rather than reusing one.
@@ -830,7 +830,7 @@ the endgame keeps.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (len Le znots)
+open Dllbc.StdLemmas (Len Le Znots)
 
 namespace Dllbc.Tests.S27Mixed
 
@@ -891,14 +891,14 @@ example : progRejects a2lie "does not have return type" = true := by native_deci
 
 -- A5a: the direct route to the same absurdity, refused as it always was.
 def a5direct : Term := prog{
-  fn Direct () -> Bot { znots Z Refl };
+  fn Direct () -> Bot { Znots Z Refl };
   () }
 example : progRejects a5direct "does not have return type" = true := by native_decide
 
 /-! ## §C. Not over-broad: the shapes the corpus actually uses still check
 
     A containment that refused real cursors would be a regression wearing a fix's
-    clothes. The two live shapes are a bare borrow and a Σ of borrows — `nth`'s and
+    clothes. The two live shapes are a bare borrow and a Σ of borrows — `NthL`'s and
     `nth2`'s — and both are all-borrow, so neither mixes. -/
 
 def bare : Term := prog{
@@ -994,14 +994,14 @@ example : progOk Tests.S6Call.toNatProg = true := by native_decide
 /-! ### `swapS01` — the other rich owed type, moved here when `S16Spec` retired
 
     A spec-carrying in-place swap of positions 0,1, its `↝`-obligation the Σ
-    `Σ (l : List Nat). Id Nat (len l) (len s)`. The cursor work stays inside ONE
+    `Σ (l : List Nat). Id Nat (Len l) (Len s)`. The cursor work stays inside ONE
     body (the contract-free interior, where collapse is transparent): the entry
-    proof `len_swapL 0 1 (*v)` is captured non-destructively; the two element
+    proof `LenSwapL 0 1 (*v)` is captured non-destructively; the two element
     cursors (h0 from v, h1 from its tail — disjoint by the suspension tree) swap by
     take-and-fill; `let l = *v` collapses the field loans TRANSPARENTLY to the
     swapped list; `*v := Pair(l, proof)` fills the Σ. The proof's type refines with
     the match (σ-bearing-state invariant), and the cursor output converges with
-    `swapL 0 1 s` by computation — so it type-checks against `Id (len l) (len s)`.
+    `SwapL 0 1 s` by computation — so it type-checks against `Id (Len l) (Len s)`.
     The cursor writes and the pure specification agree, verified.
 
     It lives here because this section is the one that reads it: §E's containment
@@ -1017,7 +1017,7 @@ example : progOk Tests.S6Call.toNatProg = true := by native_decide
 def withSwapS01 (rest : Term) : Term := prog{
   fn SwapS01 (v : &mut (s : List Nat ~> Σ (l : List Nat) → Id Nat (Len l) (Len s)),
                     p : Le 2 (Len (*v))) -> Unit {
-    let proof = StdLemmas.len_swapL 0 1 (*v);
+    let proof = StdLemmas.LenSwapL 0 1 (*v);
     match v {
       Nil => botElim Unit p,
       Cons(h0, t0) => {
@@ -1042,7 +1042,7 @@ def swapS01 : Term := withSwapS01 prog{ () }
 example : progOk swapS01 = true := by native_decide
 
 -- Caller: borrow, call swapS01, demand the owner (recovering the Σ), open it to
--- l + the carried proof `pf : Id (len l) (len [1,2,3])`. The evidence survives the
+-- l + the carried proof `pf : Id (Len l) (Len [1,2,3])`. The evidence survives the
 -- opaque group-end — pf is in scope downstream though l itself is opaque.
 def swapCaller : Term := withSwapS01 prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
@@ -1205,7 +1205,7 @@ else (§B).
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (le_refl len Le)
+open Dllbc.StdLemmas (LeRefl Len Le)
 
 namespace Dllbc.Tests.S26Fuel
 
@@ -1280,13 +1280,13 @@ example : progOk zeroAllF = true := by native_decide
     §7 demotes `[k]` to a **scrutinee-selection hint**, and that changes what a
     mis-chosen one costs. The declaration-era guard was happy with `[v]` whenever
     the payload decreases — which it does — so there was never a reason to name
-    anything else, and `nth`/`nth2` name the borrow. But they ALSO decrease on
+    anything else, and `NthL`/`nth2` name the borrow. But they ALSO decrease on
     their INDEX, which is a `Nat`, and the macro serves that directly.
 
     **Correcting the hint is free.** No fuel, no signature change, no caller
     change, no dead branch — the same body, the same telescope, the same return
     type, one field of the `FnDef` different. The bound descends definitionally
-    exactly as it did (`p : Le (S (S k)) (S (len *tl))` IS `Le (S k) (len *tl)` —
+    exactly as it did (`p : Le (S (S k)) (S (Len *tl))` IS `Le (S k) (Len *tl)` —
     M14's own bounds-cursor property), which is why nothing else moves.
 
     With two hints corrected the WHOLE S14 family migrates: four accepted on both
@@ -1301,7 +1301,7 @@ example : progOk zeroAllF = true := by native_decide
     same function under another name).
 
     **M26-F ADOPTED this**, so the section reads differently than it did when it was
-    written. `nth`/`nth2` in S14Bounds and S17Spec now declare `[i]` at the source,
+    written. `NthL`/`nth2` in S14Bounds and S17Spec now declare `[i]` at the source,
     and the twins below are no longer twins — each is equal to the corpus
     declaration it was a correction of. The measurements stay because what they
     pin is still a claim: that the hint is the ONLY thing that moved, and that the
@@ -1326,7 +1326,7 @@ example : progOk zeroAllF = true := by native_decide
 -- **And those two went the same way in M28 D6**: `S14Bounds`'s cursor family is
 -- one `fn` chain now, `progOk` on itself, so restating its verdict here would be
 -- the third copy of one fact. What this section asserts is the FINDING, and the
--- finding is legible in the source it describes — `nth`/`nth2` say `[i]`.
+-- finding is legible in the source it describes — `NthL`/`nth2` say `[i]`.
 
 /-! The whole family, hints corrected: 4 accept, 1 rejects (`rejectProbe` is S14's
     own negative control), NOTHING declines. It was a verdict VECTOR read off
@@ -1344,7 +1344,7 @@ example : progOk zeroAllF = true := by native_decide
 
     After §B and §C the `[v]` class is: `zero_all` and `recCursor` (the same
     function, twice in the corpus) — a cursor with no decreasing argument but the
-    payload — plus S17/S19's `nth`/`nth2`/`swapS`, which since M26-F carry the
+    payload — plus S17/S19's `NthL`/`nth2`/`swapS`, which since M26-F carry the
     corrected hint (or, for `swapS`, never had one) and are blocked by their
     declared `back` alone. §A pays the first; the second waits on the `back`
     question, which is now the only thing standing under 49 declarations.
@@ -1393,7 +1393,7 @@ example : progOk zeroAllF = true := by native_decide
 
     Neither fix alone does much and together they collapse the map, because a
     cohort is a CLOSURE: one un-migratable leaf declines everything above it. S17's
-    `nth` has both a declared `back` and a `[v]` hint, so fixing either leaves it
+    `NthL` has both a declared `back` and a `[v]` hint, so fixing either leaves it
     declining, and everything in S17 and S19 that reaches it declines with it.
     "Fix the biggest class first" is exactly the wrong strategy against a closure —
     the blockers have to come off together or the report barely moves, which is why
@@ -1433,7 +1433,7 @@ example : progOk zeroAllF = true := by native_decide
       * **Per-declaration verdicts** — §C above, positional, which is what the
         p14 tally became.
 
-    `fixHints` went with them: it corrected `nth`/`nth2`'s `[k]` hint, M26-F adopted
+    `fixHints` went with them: it corrected `NthL`/`nth2`'s `[k]` hint, M26-F adopted
     the correction at the source, and the assertion that it had become a no-op was
     one of the four. That claim is now structural — there is no `fixHints` to be a
     no-op — and it is checked where it still bites, by `S27Dispose`'s residue list
@@ -1478,7 +1478,7 @@ run is exactly what the polarity doctrine forbids.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (le_trans le_refl id_congr append len Le)
+open Dllbc.StdLemmas (LeTrans LeRefl IdCongr Append Len Le)
 
 namespace Dllbc.Tests.S26Prog
 
@@ -1733,7 +1733,7 @@ example : progRejects d2free "not bound anywhere above it" = true := by native_d
 -- take it as a capital parameter (which is exactly what §6 built). Recorded as a
 -- limitation with its route beside it, not as a defect.
 def d3 : Term := prog{
-  let cert = (le_refl 3 : Le 3 3);
+  let cert = (LeRefl 3 : Le 3 3);
   let G = (λ(a : Nat){ let z = cert; a } : Π (a : Nat) → Nat);
   () }
 example : progRejects d3 "a runtime (lowercase) binding" = true := by native_decide
@@ -1760,7 +1760,7 @@ example : progRejects d3 "a runtime (lowercase) binding" = true := by native_dec
 -- NAME is still decided by `globalKind`, which admits functions and not proofs,
 -- so `cert` remains un-nameable from inside a body whether it is bound capital or
 -- lowercase. Binding it comptime is what changed; capturing it is not.
-def d3cap : Term := prog{ let C = (le_refl 3 : Le 3 3); () }
+def d3cap : Term := prog{ let C = (LeRefl 3 : Le 3 3); () }
 example : progOk d3cap = true := by native_decide
 
 /-! ## §E. The end of a program is a demand on everything it still holds
@@ -1807,7 +1807,7 @@ example : (programEnvs push).any (fun r => match r with
         — was a `calleeNames` probe of a term-rewriter's output, and it retires with
         the rewriter rather than with a claim. The call sites are now written, not
         computed: `partition(f2, &mut *v, x, hfuel)` and `append_back(lv, &mut *v,
-        w, le_refl lv)` are lines of the source.
+        w, LeRefl lv)` are lines of the source.
 
     What does NOT move is the DIFFERENTIAL, which is this file's own business and
     the one thing §F asserted that is about programs rather than about quicksort:
@@ -1832,7 +1832,7 @@ example : progDiff (Tests.S23Direct.qsRun [3, 1, 2]) = true := by native_decide
     Every one of those is now asserted in `S25ArrSort` itself, on the same program:
     the flagship is one `fn` chain there (`arrUnder`), with the three return types
     and `quicksortA`'s sufficiency hypothesis as PARAMETERS — so the twin
-    substitution this section implemented as `sub` (replace the cohort member whose
+    substitution this section implemented as `Sub` (replace the cohort member whose
     name matches) is a varied argument, and the cross-differential's two sides are
     two programs rather than two tables.
 

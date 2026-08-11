@@ -74,7 +74,7 @@ open Dllbc
 namespace Dllbc.Tests.S27Dispose
 
 open Dllbc.Tests
-open Dllbc.StdLemmas (Ub Lb len)
+open Dllbc.StdLemmas (Ub Lb Len)
 
 /-! ## §A. The instrument, asserted before any conclusion
 
@@ -320,7 +320,7 @@ example : progRejects S23Direct.recDeep "not the predecessor" = true := by nativ
 
     `quicksortSig` is the one worth naming individually, because it is labelled
     THE CROWN: it is the M22-era quicksort signature — the `hbnd` telescope and
-    `back = sortRangeL fuel lo cnt (*v)` — verified against `SInternals`'
+    `back = SortRangeL fuel lo cnt (*v)` — verified against `SInternals`'
     transcription of the corpus. It is the highest-water mark of the declaration
     surface, and it is exactly what Architecture A's retirement retires. -/
 
@@ -344,10 +344,10 @@ example : progRejects S23Direct.recDeep "not the predecessor" = true := by nativ
         swapped list.
 
     **The replacement for the last two is not new work — M23 wrote it.**
-    `S23Direct.setAt` is `nth`-plus-write with the relationship as an ENSURES
-    (`Id (List Nat) (*v) (set i x (old *v))`) rather than as a backward spec, and
-    `swapAt` is `swapS` the same way (`Id (List Nat) (*v) (swapL i j (old *v))`) —
-    the same two model functions, `set` and `swapL`, moved from the `back` field
+    `S23Direct.setAt` is `NthL`-plus-write with the relationship as an ENSURES
+    (`Id (List Nat) (*v) (Set i x (old *v))`) rather than as a backward spec, and
+    `swapAt` is `swapS` the same way (`Id (List Nat) (*v) (SwapL i j (old *v))`) —
+    the same two model functions, `Set` and `SwapL`, moved from the `back` field
     into the return type. What the caller learns is strictly more, not less: a
     propositional equation it can rewrite along, rather than a value the group-end
     happened to compute. Asserted below on both paths, with the lie twins that make
@@ -365,8 +365,8 @@ example : progOk S23Direct.setSwap = true := by native_decide
 -- them through `neitherWay` on `FnDef` record updates; the restatement is what
 -- retires, not the coverage.
 
--- That the two name the SAME model function (`swapL` in `swapSN`'s declared back,
--- `swapL` in `swapAt`'s return type) is a reading of two source lines and is left
+-- That the two name the SAME model function (`SwapL` in `swapSN`'s declared back,
+-- `SwapL` in `swapAt`'s return type) is a reading of two source lines and is left
 -- as one — an equality assertion between a `back` and a `retType` would compare
 -- two differently-shaped terms and pass for the wrong reason. What IS asserted is
 -- the instrument: the corpus still carries the back this section proposes to
@@ -376,7 +376,7 @@ example : progOk S23Direct.setSwap = true := by native_decide
 
     `pivotPlace`, `pivotPlaceH`, `partScan`, `partScanRange`, `partition`,
     `partitionQ`, `partitionRange`, `quicksort` and their lie twins are the M22-era
-    model-conformance corpus: `back = partitionL …`, `back = sortRangeL …`, an
+    model-conformance corpus: `back = PartitionL …`, `back = SortRangeL …`, an
     imperative program checked as an implementation of a pure model, correctness
     proved about the model. dllbc-arrows §6.2 calls this "the comparison baseline,
     not the mission", and the endgame retires it to history.
@@ -452,14 +452,14 @@ example : progOk S19Partition.twoRec = true := by native_decide
 
     | retired | its claim | live carrier |
     |---|---|---|
-    | `partScan`, `partScanRange` | an in-place swap scan CONFORMS to `partScanL` | the conformance claim IS the retired architecture; the PROGRAM is carried by `S23Direct.partition` (relational `Ub`/`Lb`/count) and `S25ArrSort.partitionA` |
-    | `partition`, `partitionQ`, `partitionRange` | conforms to `partitionL`; returned index = `partIdxL` | `S23Direct.partition`; `S25ArrSort.partitionA`, which returns an index under its own ensures |
-    | `quicksort`, `quicksortLie` | conforms to `sortRangeL` | `S23Direct.quicksort` — `Σ (Sorted (*v)) → Π n. count`-preservation, zero declared backs. Strictly stronger, and 21 ms against 21.8 s |
-    | `exitAccept` | `Id (*v) (swapL i j (old *v))` | `S23Direct.swapAt` — literally the same statement, asserted in §C2 |
-    | `lenPreserve` | `Id (len *v) (len (old *v))` across a swap | derivable from `swapAt`'s equation by `len_swapL` + `id_congr`; the equation implies the length fact |
+    | `partScan`, `partScanRange` | an in-place swap scan CONFORMS to `PartScanL` | the conformance claim IS the retired architecture; the PROGRAM is carried by `S23Direct.partition` (relational `Ub`/`Lb`/count) and `S25ArrSort.partitionA` |
+    | `partition`, `partitionQ`, `partitionRange` | conforms to `PartitionL`; returned index = `PartIdxL` | `S23Direct.partition`; `S25ArrSort.partitionA`, which returns an index under its own ensures |
+    | `quicksort`, `quicksortLie` | conforms to `SortRangeL` | `S23Direct.quicksort` — `Σ (Sorted (*v)) → Π n. Count`-preservation, zero declared backs. Strictly stronger, and 21 ms against 21.8 s |
+    | `exitAccept` | `Id (*v) (SwapL i j (old *v))` | `S23Direct.swapAt` — literally the same statement, asserted in §C2 |
+    | `lenPreserve` | `Id (Len *v) (Len (old *v))` across a swap | derivable from `swapAt`'s equation by `LenSwapL` + `IdCongr`; the equation implies the length fact |
     | `shareCaller` | caller-side σ-sharing: a callee's fact about its own exit forwarded as the caller's | the same mechanism at scale in `S23Direct.quicksort`, which forwards `partition`'s count equation into its own postcondition |
     | `swapSE`, `partitionRangeE`, `quicksortE` | count preservation for swap / partition / sort | the count conjunct of `S23Direct.partition` and `S23Direct.quicksort` |
-    | `quicksortSorted` | `Σ (SortedR cnt lo (*v)) → Π n. count`-preservation | `S23Direct.quicksort` — whole-list structural `Sorted` in place of positional `SortedR cnt lo`, same count conjunct |
+    | `quicksortSorted` | `Σ (SortedR cnt lo (*v)) → Π n. Count`-preservation | `S23Direct.quicksort` — whole-list structural `Sorted` in place of positional `SortedR cnt lo`, same count conjunct |
     | `qsSpc` | a caller recovers the exact sorted list in CHECKING mode | **no carrier — deleted by design.** §5 point 4: what you keep across a boundary is what you ascribe, and an opaque call ascribes nothing about the payload. The BEHAVIOUR is carried by S23Direct's executing differential against Lean's `mergeSort` and by the list-vs-array cross-differential |
     | `nth2Lie`, `partScanLie`, `partitionLie` | a LYING backward spec is caught at the callee check | tests of the deleted mechanism; retire with it |
 

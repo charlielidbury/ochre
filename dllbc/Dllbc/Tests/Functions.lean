@@ -72,7 +72,7 @@ This is the mechanism phase C's `ih` stands on, and §C below exercises it in th
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (le_refl le_trans)
+open Dllbc.StdLemmas (LeRefl LeTrans)
 
 namespace Dllbc.Tests.S26Seal
 
@@ -229,14 +229,14 @@ def battery : List (Term × Term) :=
   , (.ctorApp "Cons" [n3, .ctorApp "Nil" []], listNatT)
   , (.ctorApp "Refl" [], .idT natT n3 n3)
   , (.ctorApp "Refl" [], .idT natT n3 n4)                                     -- ✗
-  , (StdLemmas.le_refl, StdLemmas.le_refl_ty)
-  , (StdLemmas.le_refl, StdLemmas.id_sym_ty)                                  -- ✗
-  , (StdLemmas.id_sym, StdLemmas.id_sym_ty)
-  , (StdLemmas.add_zero, StdLemmas.add_zero_ty)
+  , (StdLemmas.LeRefl, StdLemmas.LeReflTy)
+  , (StdLemmas.LeRefl, StdLemmas.IdSymTy)                                  -- ✗
+  , (StdLemmas.IdSym, StdLemmas.IdSymTy)
+  , (StdLemmas.AddZero, StdLemmas.AddZeroTy)
   -- The §2.1 flagship: congruence, whose whole content is that an abstract
   -- function's applications are one term. Sealing it must cost exactly what
   -- checking it costs.
-  , (StdLemmas.id_congr, StdLemmas.id_congr_ty) ]
+  , (StdLemmas.IdCongr, StdLemmas.IdCongrTy) ]
 
 /-- THE SMELL TEST: the seal's audit and the pure fragment's `hasType` agree,
     pair for pair. -/
@@ -251,7 +251,7 @@ example : (battery.any (fun p => chk p.1 p.2)
         && battery.any (fun p => !chk p.1 p.2)) = true := by native_decide
 -- The harness itself is live: a deliberately wrong pairing disagrees with the
 -- seal only if the seal is doing something other than `hasType` — it does not.
-example : sealChk (StdLemmas.le_refl) (StdLemmas.id_sym_ty) = false := by native_decide
+example : sealChk (StdLemmas.LeRefl) (StdLemmas.IdSymTy) = false := by native_decide
 
 /-! ## §C. Application of a value callee
 
@@ -391,12 +391,12 @@ example : progRejects c13s "does not have its parameter type" = true := by nativ
     already usable. -/
 
 def sigLemTy : Term := prog{ Π (x : Nat) → Σ (h : Le x x) → Le x x }
-def sigLem : Term := prog{ λ (x : Nat). Pair (le_refl x) (le_refl x) }
+def sigLem : Term := prog{ λ (x : Nat). Pair (LeRefl x) (LeRefl x) }
 
 def c14 : Term := prog{
   let f = (%sigLem : %sigLemTy);
   let p = f(2);
-  elim p return (λ (w : Σ (h : Le 2 2) → Le 2 2). Le 2 2) { Pair (a) (b) => le_trans 2 2 2 a b } }
+  elim p return (λ (w : Σ (h : Le 2 2) → Le 2 2). Le 2 2) { Pair (a) (b) => LeTrans 2 2 2 a b } }
 -- The program's RESULT is the projection, so its return type is what the audit
 -- checks it at — stated as `progOk`'s second argument, where the old form stated
 -- it as the wrapper declaration's `-> Le 2 2`.
@@ -425,7 +425,7 @@ example : progRejects c14bad "does not have return type" (prog{ Le 3 2 }) = true
     binds a bare `sym σ` to whatever concrete value sits opposite, and compares
     everything else structurally. That suffices while every σ stands at a whole
     slot, which is where calls and group-ends put them. A seal puts a σ *inside
-    ordinary arithmetic*: after `let a = (3 : Nat); let b = add a 1` the
+    ordinary arithmetic*: after `let a = (3 : Nat); let b = Add a 1` the
     symbolic side holds the neutral spine `natRec … σ0` where the concrete side
     holds `4`. Structurally these differ, and the old relation reports a
     counterexample that is not one.
@@ -539,7 +539,7 @@ example :
     certificate costs — "a reject costs the same as an accept", the audit descents
     — become O(statement).
 
-    The subject is `count_swapA`, the largest proof in `StdLemmas` (9156 term nodes
+    The subject is `CountSwapA`, the largest proof in `StdLemmas` (9156 term nodes
     against a 400-node statement). `useIt`'s parameter type IS the statement, so
     each citation forces `processArgs`' `hasType` on whatever the slot holds: the
     whole proof value when the certificate is transparent, a σ when it is sealed.
@@ -564,8 +564,8 @@ example :
     larger throughout — the interpreter tax this project has measured before. The
     ratio is unaffected; the numbers above are the compiled ones.) -/
 
-def big : Term := StdLemmas.count_swapA
-def bigTy : Term := StdLemmas.count_swapA_ty
+def big : Term := StdLemmas.CountSwapA
+def bigTy : Term := StdLemmas.CountSwapATy
 
 /-- `let c = rhs ; useIt(c) ; … ; ()` with `k` citations. Built rather than
     written out so the citation count can be swept: the claim is about the SLOPE,
@@ -603,7 +603,7 @@ example : progOk sealed4 = true := by native_decide
 -- certificate sealed at a statement it does not inhabit is rejected at the node.
 def sealedWrong : Term := prog{
   fn UseIt (h : %bigTy) -> Unit { () };
-  let c = (%StdLemmas.le_refl : %bigTy); UseIt(c); () }
+  let c = (%StdLemmas.LeRefl : %bigTy); UseIt(c); () }
 example : progRejects sealedWrong "does not have its ascribed type" = true := by
   native_decide
 
@@ -669,7 +669,7 @@ borrow while it waits. That is not an accident of the encoding — it is the rea
 
 open Dllbc
 open Dllbc.Tests.S9Diff (runExec symEnvs instanceOfC diffC)
-open Dllbc.StdLemmas (id_congr)
+open Dllbc.StdLemmas (IdCongr)
 
 namespace Dllbc.Tests.S26Rec
 
@@ -1313,7 +1313,7 @@ def splitSealed : Term := prog{
              let y1 = Take i2 (*tl);
              let p = ih(&m *tl, hi);
              match p { Pair(rr, q) => match q { Pair(h1, h2) => {
-               let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
+               let c1 = IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                           (*tl) y1 h1;
                Pair(rr, Pair(c1, h2)) } } } } } }) : %splitTy);
   () }
@@ -1344,7 +1344,7 @@ def splitTyLie : Term := prog{
     → Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (Drop i (old *v)))
          → Id (List Nat) ret (Drop i (old *v)) }
 
--- A SPEC lie: the prefix conjunct claims `drop` where the body leaves `take`.
+-- A SPEC lie: the prefix conjunct claims `Drop` where the body leaves `Take`.
 def splitSpecLie : Term := prog{
   let F = (natRec %splitMotLie
       (λ(v : &mut List Nat, hi : Le Z (Len *v))
@@ -1361,7 +1361,7 @@ def splitSpecLie : Term := prog{
              let y1 = Take i2 (*tl);
              let p = ih(&m *tl, hi);
              match p { Pair(rr, q) => match q { Pair(h1, h2) => {
-               let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
+               let c1 = IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                           (*tl) y1 h1;
                Pair(rr, Pair(c1, h2)) } } } } } }) : %splitTyLie);
   () }
@@ -1387,7 +1387,7 @@ def splitBodyLie : Term := prog{
              let y1 = Take i2 (*tl);
              let p = ih(&m *tl, hi);
              match p { Pair(rr, q) => match q { Pair(h1, h2) => {
-               let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
+               let c1 = IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                           (*tl) y1 h1;
                Pair(rr, Pair(h1, h2)) } } } } } }) : %splitTy);
   () }
@@ -1490,8 +1490,8 @@ example : progOk h2step = true := by native_decide
     comparison the checker performs; it is the type `ih` was given.
 
     The motive below carries a fuel bound, which is what makes the levels visible:
-    `Hn : Le (len *v) n`. In the step arm `Hn : Le (len *v) (S n2)` and `ih` wants
-    `Le (len *v) n2` — one successor apart, and no term bridges them. The accepted
+    `Hn : Le (Len *v) n`. In the step arm `Hn : Le (Len *v) (S n2)` and `ih` wants
+    `Le (Len *v) n2` — one successor apart, and no term bridges them. The accepted
     twin derives the predecessor's bound properly and passes THAT, so the rejection
     is about the level and not about the program being unwritable. -/
 
@@ -1500,8 +1500,8 @@ def bndMot : Term := prog{
 def bndTy : Term := prog{
   Π (n : Nat) → Π (v : &mut List Nat) → Π (Hn : Le (Len *v) n) → Unit }
 
--- The arm hands `ih` its OWN bound, `Le (len *v) (S n2)`, where `ih` binds
--- `Le (len *v) n2`. Refused, by the argument check at the abstract call.
+-- The arm hands `ih` its OWN bound, `Le (Len *v) (S n2)`, where `ih` binds
+-- `Le (Len *v) n2`. Refused, by the argument check at the abstract call.
 def i1 : Term := prog{
   let F = (natRec %bndMot
                  (λ(v : &mut List Nat, Hn : Le (Len *v) Z) { () })
@@ -1513,8 +1513,8 @@ example : progRejects i1 "does not have its parameter type" = true := by native_
 
 -- …and the twin that recurses at the predecessor's level is ACCEPTED — which is
 -- what says the discipline is usable and not merely restrictive. Matching `v`
--- makes `*v` a `Cons`, so `len *v` is `S (len *tl)` and the arm's own
--- `Le (S (len *tl)) (S n2)` IS `Le (len *tl) n2` definitionally: the bound the
+-- makes `*v` a `Cons`, so `Len *v` is `S (Len *tl)` and the arm's own
+-- `Le (S (Len *tl)) (S n2)` IS `Le (Len *tl) n2` definitionally: the bound the
 -- predecessor wants, obtained by the list getting shorter rather than by a lemma.
 -- That is M14's bounds-cursor property, doing here exactly what §8's guard used to
 -- do by comparing snapshots — except it is the TYPE, so nothing checks it.
@@ -1536,7 +1536,7 @@ example : progOk i2 = true := by native_decide
     checker only, and §12 decision 7's whole point is that the executing machine is
     where this project's surprises live.
 
-    `hi : Le 1 (len *v)` is supplied as `()`: `Le` computes, the payload is
+    `hi : Le 1 (Len *v)` is supplied as `()`: `Le` computes, the payload is
     concrete, and `Le 1 2` reduces to `Unit`. That is the ordinary route — the
     bound holds by computation, not by citation. -/
 
@@ -1556,7 +1556,7 @@ def j1 : Term := prog{
              let y1 = Take i2 (*tl);
              let p = ih(&m *tl, hi);
              match p { Pair(rr, q) => match q { Pair(h1, h2) => {
-               let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
+               let c1 = IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                           (*tl) y1 h1;
                Pair(rr, Pair(c1, h2)) } } } } } }) : %splitTy);
   let x = Cons(1, Cons(2, Cons(3, Nil)));
@@ -1826,7 +1826,7 @@ example : (match runProgram annotated with
 
     `Term.freeRVars` traverses the binder types, as a TELESCOPE — each domain
     under the binders to its left and none of its own. That is a real rule and not
-    a tidiness: a domain names runtime slots (`Le (len *v) fuel` names two), so
+    a tidiness: a domain names runtime slots (`Le (Len *v) fuel` names two), so
     leaving them untraversed would let a genuinely free variable into a type and
     straight past the closedness check the traversal exists to feed.
 
@@ -1886,8 +1886,8 @@ example : Term.beq (.lamR [(⟨0, "a"⟩, .const "Nat")] .unit)
       * and the trailing binders do NOT come through unchanged, because
         `absVar kv 0` abstracts the scrutinee over the whole nested Π, domains
         included. A parameter whose type mentions the decreasing one — the fuel
-        bound `Le (len *v) n`, which is exactly what §12 decision 8 blessed — is
-        annotated `Le (len *v) Z` in the base arm and `Le (len *v) (S n')` in the
+        bound `Le (Len *v) n`, which is exactly what §12 decision 8 blessed — is
+        annotated `Le (Len *v) Z` in the base arm and `Le (Len *v) (S n')` in the
         step arm.
 
     The declaration below is that shape, minimal. The assertions compare against
@@ -1912,7 +1912,7 @@ def bndProgram : Term := prog{
 def bndSeal : Option Term :=
   match bndProgram with | .letIn _ t _ => some t | _ => none
 
-/-- The declaration's own domain for `Hn`, as the header writes it: `Le (len *v) n`
+/-- The declaration's own domain for `Hn`, as the header writes it: `Le (Len *v) n`
     with §6's marker, since `Hn` is capitalized. Written out because it is what a
     TRANSCRIPTION would have produced, and E2/F3b are the controls that say the
     elaboration produces something else. -/
@@ -1929,7 +1929,7 @@ example : (match bndArms with
            | some (z, s) => z.length == 2 && s.length == 4
            | none => false) = true := by native_decide
 
-/-- `Le (len *v) b`, at the positional `v` the residual telescope keeps. -/
+/-- `Le (Len *v) b`, at the positional `v` the residual telescope keeps. -/
 def leLen (b : Term) : Term := Std.LeT (Std.lenT (.deref (.var ⟨1, "v"⟩))) b
 
 -- E1. The bound binder, at each constructor. `Hn` is capitalized, so its domain
@@ -1950,7 +1950,7 @@ example : (match bndArms with
            | none => false) = true := by native_decide
 
 -- E3. `ih` is the motive at the predecessor: peel it at the residual telescope's
--- own binders and its bound reads `Le (len *v) n2`, one successor BELOW the arm's
+-- own binders and its bound reads `Le (Len *v) n2`, one successor BELOW the arm's
 -- own. M26-C established that wrong-level `ih` is a type error rather than a
 -- check (`S26Rec` §I); this is the macro's half of the same fact, and it is the
 -- one that would compile and pass while being silently wrong.
@@ -2056,7 +2056,7 @@ example : (match bndDec with
 
 -- F3b. **THE UNINSTANTIATED ANNOTATION** — the transcription itself, rather than
 -- an off-by-one near it: the arm annotated with the DECLARATION's own domain,
--- `Le (len *v) n`, where the motive at this constructor gives `Le (len *v) (S n')`.
+-- `Le (Len *v) n`, where the motive at this constructor gives `Le (Len *v) (S n')`.
 -- This is the control that would have caught the handoff's "`rest` is already a
 -- telescope, so those come for free", and it is in the battery for that reason.
 --

@@ -46,10 +46,10 @@ that asserts about the kernel directly, and the exemption is load-bearing:
   file says whether the rules moved or only their surface did; a test suite whose
   every subject is elaborated cannot answer that question about itself.
 * **It is the hand-built anchor.** The surface layers are pinned by round-trips
-  against terms built by hand (S15Elab checks `StdLemmas.le_refl`, authored in
+  against terms built by hand (S15Elab checks `StdLemmas.LeRefl`, authored in
   `prog{ }`, convertible with the hand-built `Std.le_reflT`). Those anchors are
   only worth something if the hand-built side is independently exercised, which is
-  this file's `add`/`VecF`/recursor library.
+  this file's `Add`/`VecF`/recursor library.
 
 **The OLD reason is superseded, and is recorded here so a future simplification
 pass does not refute it and delete an exempted file.** The header used to say
@@ -77,7 +77,7 @@ namespace Dllbc.Tests.S4Pure
 def natT : Term := .const "Nat"
 def tnat : Nat → Term | 0 => .ctorApp "Z" [] | n + 1 => .ctorApp "S" [tnat n]
 
-/-- `add m n = natRec (λ_.Nat) n (λ_. λr. S r) m`. -/
+/-- `Add m n = natRec (λ_.Nat) n (λ_. λr. S r) m`. -/
 def addT : Term :=
   .lam "m" natT (.lam "n" natT
     (.app (.app (.app (.app (.const "natRec") (.lam "_" natT natT)) (.pvar "n"))
@@ -305,7 +305,7 @@ def sCase : Val :=
 def natCodeV : Val := .lam "a" natV (natRecV (.lam "_" natV (.pi "_" natV .type)) zCase sCase (.pvar "a"))
 def natCode (a b : Val) : Val := .app (.app natCodeV a) b
 
-/-- `pred : Nat → Nat` (`pred Z = Z`, `pred (S n) = n`). -/
+/-- `Pred : Nat → Nat` (`Pred Z = Z`, `Pred (S n) = n`). -/
 def predV : Val :=
   .lam "n" natV (natRecV (.lam "_" natV natV) sZ (.lam "m" natV (.lam "_" natV (.pvar "m"))) (.pvar "n"))
 
@@ -477,7 +477,7 @@ example : expectHasType [] nncSctx (botElimV (.const "Bool") (nncProof (.sym 0) 
 
 /-! ### Injectivity of `S`: `Id Nat (S a) (S b) → Id Nat a b`, via `J`
 
-    Motive `P y (_ : Id Nat (S a) y) = Id Nat a (pred y)`; base `Refl : Id Nat a
+    Motive `P y (_ : Id Nat (S a) y) = Id Nat a (Pred y)`; base `Refl : Id Nat a
     (pred (S a)) = Id Nat a a`; transported to `Id Nat a (pred (S b)) = Id Nat a
     b`. (`pred (S σ)` reduces because the `S` is concrete around the symbol.) -/
 
@@ -535,21 +535,21 @@ field, and a proof CONSUMED to close a dead branch.
 
 **The rest of §11 dissolved (M28).** The milestone also landed `listRec`,
 `natRec`/`boolRec` neutral synthesis, λ-vs-Π typing, pure `let` in `readC`, and
-`Dllbc.Std` (`Le`, `eqb`/`leb`, `count`, `Bound`/`Sorted`, `le_refl`). Those were
+`Dllbc.Std` (`Le`, `Eqb`/`Leb`, `Count`, `Bound`/`Sorted`, `LeRefl`). Those were
 tested here by `Val.convert`/`Val.nfV` computation probes and `expectHasType`
 inhabitation probes — granular meta-assertions that the corpus has long since
 subsumed. Every bound in a checked program forces `Le` to compute (an ex-falso
 branch is precisely `Le (S n) Z` computing to `Bot`); every count postcondition
-forces `count`, and `count` is `listRec` threading a `boolRec` on `eqb`; every
+forces `Count`, and `Count` is `listRec` threading a `boolRec` on `Eqb`; every
 `Sorted`/`Bound` spec forces the predicates by inhabitation, and the
-out-of-bounds rejections are the no-inhabitant fact. `le_refl` is checked at its
+out-of-bounds rejections are the no-inhabitant fact. `LeRefl` is checked at its
 stated type in S15Elab and round-tripped there against `Std.le_reflT`.
 
 **§11.4's naturalness probe is gone too.** It was the M12+ work-list — the
 quicksort program we wanted, annotated line by line with what the calculus could
 not yet express — and every gap it named has since closed: dependent call-site
 instantiation (§12), Term-level `Std` at telescope positions (§12), the
-two-cursor access-at-depth idiom (M14's bounds cursor), `take`/`drop` (Std, and
+two-cursor access-at-depth idiom (M14's bounds cursor), `Take`/`Drop` (Std, and
 the array slices of ¶2.1), `if`-sugar over the Bool match (§12), and bounded
 recursion, which turned out not to need a bound at all once `fn` became a sealed
 recursor (M26). The program it described is `S23Direct.quicksort`.
@@ -647,11 +647,11 @@ end
 -- ┌── was `Dllbc/Tests/S15Elab.lean` ──────────────────────────────────────────────
 section
 /-!
-# §15 test suite — the pure surface authoring layer, and `le_trans`
+# §15 test suite — the pure surface authoring layer, and `LeTrans`
 
 The M11 wall was mis-indexed de Bruijn failing silently. This milestone's claim:
 names + explicit motives collapse it without a unifier. The evidence is here —
-`le_trans`, the lemma I abandoned as a raw term, authored in `prog{ }` and
+`LeTrans`, the lemma I abandoned as a raw term, authored in `prog{ }` and
 checked; plus the J warm-ups and the round-trip that a hand-built term and its
 surface elaboration are convertible.
 
@@ -671,11 +671,11 @@ def chk (tm ty : Term) : Bool :=
   | .ok r _ => r
   | .error _ _ => false
 
-/-! ## Elaboration round-trip: surface `le_refl` = the hand-built kernel term -/
+/-! ## Elaboration round-trip: surface `LeRefl` = the hand-built kernel term -/
 
--- The surface `le_refl` (StdLemmas) elaborates to a `Term` convertible with the
+-- The surface `LeRefl` (StdLemmas) elaborates to a `Term` convertible with the
 -- M11 hand-built `Std.le_reflT`.
-example : expectConv [] [] Dllbc.StdLemmas.le_refl Std.le_reflT = true := by native_decide
+example : expectConv [] [] Dllbc.StdLemmas.LeRefl Std.le_reflT = true := by native_decide
 
 /-! ## `let` is ONE form, and the two ways it can capture (M29 α)
 
@@ -717,22 +717,22 @@ example : expectConv [] []
 
 /-! ## The lemmas check at their stated types -/
 
-example : chk Dllbc.StdLemmas.le_refl Dllbc.StdLemmas.le_refl_ty = true := by native_decide
--- THE ACCEPTANCE TEST — `le_trans` authored in the surface, checked.
-example : chk Dllbc.StdLemmas.le_trans Dllbc.StdLemmas.le_trans_ty = true := by native_decide
-example : chk Dllbc.StdLemmas.id_trans Dllbc.StdLemmas.id_trans_ty = true := by native_decide
-example : chk Dllbc.StdLemmas.id_congr Dllbc.StdLemmas.id_congr_ty = true := by native_decide
+example : chk Dllbc.StdLemmas.LeRefl Dllbc.StdLemmas.LeReflTy = true := by native_decide
+-- THE ACCEPTANCE TEST — `LeTrans` authored in the surface, checked.
+example : chk Dllbc.StdLemmas.LeTrans Dllbc.StdLemmas.LeTransTy = true := by native_decide
+example : chk Dllbc.StdLemmas.IdTrans Dllbc.StdLemmas.IdTransTy = true := by native_decide
+example : chk Dllbc.StdLemmas.IdCongr Dllbc.StdLemmas.IdCongrTy = true := by native_decide
 
-/-! ## `le_trans` APPLIED in a checked function — closing the loop with §12
+/-! ## `LeTrans` APPLIED in a checked function — closing the loop with §12
 
-    A body that ⇒-lifts `le_trans Nat a b c p q` (the pure lift, §11) and returns
+    A body that ⇒-lifts `LeTrans Nat a b c p q` (the pure lift, §11) and returns
     it at the dependent type `Le a c` (instantiated at the actuals, §12). -/
 
--- `le_trans a b c p q` (Le is monomorphic at Nat — no type argument), cited by
+-- `LeTrans a b c p q` (Le is monomorphic at Nat — no type argument), cited by
 -- name through the surface's identifier fallback.
 def useTrans : Term := prog{
   fn UseTrans (a : Nat, b : Nat, c : Nat, p : Le a b, q : Le b c) -> Le a c
-        { StdLemmas.le_trans a b c p q };
+        { StdLemmas.LeTrans a b c p q };
   () }
 example : progOk useTrans = true := by native_decide
 
@@ -765,7 +765,7 @@ example : progRejects badRefl "does not have return type" = true := by native_de
 
 /-! ## The measure (§15's report card)
 
-    `le_trans` in the surface: 14 lines (`StdLemmas.le_trans`), every binder named,
+    `LeTrans` in the surface: 14 lines (`StdLemmas.LeTrans`), every binder named,
     every motive written once and visible on its `return` clause. The M11 raw-term
     attempt was ABANDONED at the wall: a three-level nested dependent induction
     over ~15 distinct de Bruijn binder contexts, each mis-index failing silently
