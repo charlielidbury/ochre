@@ -3809,7 +3809,21 @@ mutual
         -- rejection R16's staging pains were the absence of: with it, the only
         -- way a capital binder reaches a call is the capital argument position,
         -- which reads it by ⇝ and leaves it where it was.
-        fenceComptime x "cannot be ⇒-moved"
+        --
+        -- **CHECKING-SIDE ONLY (M33a), for `refuseFnBinding`'s own reason**,
+        -- and the corpus is what forced it. A body's tail is read against its
+        -- return type — `readResult`, where a capital Σ binder makes its
+        -- component ⇝-read — and `retTyVal` is `checkRFnBody`'s, so the
+        -- EXECUTING machine enters a callee through `applyClosure` with no
+        -- return type in hand and ⇒-reads the same tail. With the flagship's
+        -- proof components capital, `Pair(hi, Pair(Hub2, …))` is then a ⇒-move
+        -- of a capital binding, and nine executing differentials died on a
+        -- discipline the checker had already enforced on that very program.
+        -- Erasure is a STATIC claim; refusing here breaks running programs to
+        -- protect a checker, which is the sentence `refuseFnBinding` already
+        -- carries. The two match-scrutinee fences are NOT gated — they refuse a
+        -- rule, not a read, and no executing path reaches them.
+        if !(← get).executing then fenceComptime x "cannot be ⇒-moved"
         match ← lookupSlot x with
         -- The M26-B pointer, in the one message that R16's pain surfaces at: a
         -- proof consumed by a call is reported here, one line later, and the fix

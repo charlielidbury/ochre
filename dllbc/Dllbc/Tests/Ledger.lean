@@ -657,7 +657,16 @@ example : keyDisagree Std.lenFnT = 0 := by native_decide
 example : keyDisagree Pure.kLeFn = 0 := by native_decide
 
 -- The telescope rule's population, named rather than deprecated.
-example : comptimeSlotParams Dllbc.Tests.S23Direct.flagship = 4 := by native_decide
+--
+-- **M33a: 4 → 6, and the two arrivals are named.** The list is
+-- `[Hf, Hf, Hf, Hf, Hfuel, Hfuel]` — R4's four (`Partition`'s and
+-- `AppendBack`'s proof parameter, two λ nodes each) plus `Quicksort`'s
+-- `hfuel → Hfuel`, at the same two-per-`fn` multiplicity. It flipped because the
+-- Class-3 fixpoint reached it: with `partition`'s length conjuncts capital,
+-- `let Hf1 = LeTrans … Hl1 Hfuel` must be a capital binding, and a capital
+-- argument at a lowercase parameter is a ⇒-move of a capital binding. The
+-- telescope rule is unchanged; its population grew.
+example : comptimeSlotParams Dllbc.Tests.S23Direct.flagship = 6 := by native_decide
 
 /-! …and **the count the rule protects**. A case test at `Term.lamImperative`
     would take every all-capital-parameter `fn` out of this number and with it
@@ -670,6 +679,82 @@ example : comptimeSlotParams Dllbc.Tests.S23Direct.flagship = 4 := by native_dec
     a slot binder sits at or below it in its own chain, and each slot binder is
     the innermost such node for exactly one prefix. -/
 example : impLams Dllbc.Tests.S23Direct.flagship = 22 := by native_decide
+
+
+/-! ## M33a: the Σ HALF of the migration, and the arm binders that answer it
+
+    `lowerComptime` above counts λ binders and is blind to Σ's — `.sigmaT` is on
+    the line that recurses without inspecting the binder — so R3b's 10,777 → 0
+    never spoke about the position §2.1's Σ half lives in. These are that
+    position, on both sides of it, so the producer/consumer pair is one
+    measurement rather than two claims. -/
+
+/-- Σ binders that declare their component COMPTIME (`⇝` on the domain) — the
+    producer side. -/
+partial def cmpSigmas : Term → Nat
+  | .sigmaT _ d b => (if Term.domComptime d then 1 else 0) + cmpSigmas d + cmpSigmas b
+  | .lam _ d b | .pi _ d b | .borrowT _ d b => cmpSigmas d + cmpSigmas b
+  | .app f a | .seq f a | .seal _ f a => cmpSigmas f + cmpSigmas a
+  | .letIn _ r t => cmpSigmas r + cmpSigmas t
+  | .assign p e r => cmpSigmas p + cmpSigmas e + cmpSigmas r
+  | .idT a b c => cmpSigmas a + cmpSigmas b + cmpSigmas c
+  | .ctorApp _ as | .call _ as => (as.map cmpSigmas).foldl (· + ·) 0
+  | .matchE _ _ bs => (bs.map (fun br => cmpSigmas br.body)).foldl (· + ·) 0
+  | .borrow t | .deref t | .cmpT t => cmpSigmas t
+  | _ => 0
+
+/-- Match-arm binders spelled CAPITAL — the consumer side, and the population
+    `checkArmModes` refuses to leave lowercase. -/
+partial def capArms : Term → Nat
+  | .matchE _ _ bs =>
+    (bs.map (fun br =>
+      (br.binders.filter (fun x => isUpperInit x.name)).length + capArms br.body)).foldl (· + ·) 0
+  | .lam _ d b | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => capArms d + capArms b
+  | .app f a | .seq f a | .seal _ f a => capArms f + capArms a
+  | .letIn _ r t => capArms r + capArms t
+  | .assign p e r => capArms p + capArms e + capArms r
+  | .idT a b c => capArms a + capArms b + capArms c
+  | .ctorApp _ as | .call _ as => (as.map capArms).foldl (· + ·) 0
+  | .borrow t | .deref t | .cmpT t => capArms t
+  | _ => 0
+
+/-- …and the ones that stay LOWERCASE, which is the other half of the claim: the
+    check is bidirectional, so this number is asserted by the same run. -/
+partial def lowerArms : Term → Nat
+  | .matchE _ _ bs =>
+    (bs.map (fun br =>
+      (br.binders.filter (fun x => !isUpperInit x.name)).length + lowerArms br.body)).foldl (· + ·) 0
+  | .lam _ d b | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => lowerArms d + lowerArms b
+  | .app f a | .seq f a | .seal _ f a => lowerArms f + lowerArms a
+  | .letIn _ r t => lowerArms r + lowerArms t
+  | .assign p e r => lowerArms p + lowerArms e + lowerArms r
+  | .idT a b c => lowerArms a + lowerArms b + lowerArms c
+  | .ctorApp _ as | .call _ as => (as.map lowerArms).foldl (· + ·) 0
+  | .borrow t | .deref t | .cmpT t => lowerArms t
+  | _ => 0
+
+example : cmpSigmas Dllbc.Tests.S23Direct.flagship = 91 := by native_decide
+example : capArms Dllbc.Tests.S23Direct.flagship = 10 := by native_decide
+example : lowerArms Dllbc.Tests.S23Direct.flagship = 26 := by native_decide
+
+/-! **The three numbers, read together.**
+
+      * **91 comptime Σ components.** Most are the library's: `Ub`, `Lb` and
+        `Sorted` unfold to Σ chains and R3b's `Term.cpi`/`clam` migration made
+        their binders capital, so the flagship's ensures is built out of them.
+        Five are the spec's own, written by hand at M33a (`Hub`, `Hlb`, `Hl1`,
+        `Hl2`, `Hs`).
+      * **10 capital arm binders**, from 0. These are the five spec components'
+        consumers: `Partition`'s four in each of its two consumer chains, plus
+        `Quicksort`'s `Hs1`/`Hs2`. Every one of them is a site
+        `checkArmModes` refuses to leave lowercase, which is what makes this
+        number the check's own population and not a style count.
+      * **26 lowercase arm binders**, and they matter because the check runs in
+        BOTH directions: each is a component the rule positively requires to
+        stay lowercase — the data components (`hi`, `x`, `rest`, `lo`), and
+        every Σ chain's TAIL, which has no binder and so has no mode
+        (suspensions.md §2.5's surviving spelling, visible here as a number).
+        A rule that only pushed one way would let all 36 be capital. -/
 
 end Dllbc.Tests.S32Binders
 end

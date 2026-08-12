@@ -164,18 +164,18 @@ def fuelQ : Term := .var ⟨0, "fuel"⟩
 
 def sHonest : Term := prog{
   Σ (k : Nat) → Σ (r : Nat)
-    → Σ (hlen : Id Nat %mS (Add k r))
-    → Σ (hsp : SplitAL %pS k %mS (*%tS))
+    → Σ (Hlen : Id Nat %mS (Add k r))
+    → Σ (Hsp : SplitAL %pS k %mS (*%tS))
     → Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (CountA Q %mS (old *%tS)) }
 
 def pHonest : Term := prog{
   Σ (pvv : Nat) → Σ (k : Nat) → Σ (jj : Nat)
-    → Σ (hlen : Id Nat %nP (Add k (S jj)))
-    → Σ (hp : PartA pvv k %nP (*%aP))
+    → Σ (Hlen : Id Nat %nP (Add k (S jj)))
+    → Σ (Hp : PartA pvv k %nP (*%aP))
     → Π (Q : Nat) → Id Nat (CountA Q %nP (*%aP)) (CountA Q %nP (old *%aP)) }
 
 def qHonest : Term := prog{
-  Σ (hs : SortedA %nQ (*%aQ))
+  Σ (Hs : SortedA %nQ (*%aQ))
     → Π (Q : Nat) → Id Nat (CountA Q %nQ (*%aQ)) (CountA Q %nQ (old *%aQ)) }
 
 def qSuffHonest : Term := prog{ Le %nQ %fuelQ }
@@ -276,20 +276,20 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                                    (CountA Q (S M2) (acons M2 X0 Tl0))
                         (Hsw Q) (CountAconsCongr Q X0 M2 T2 Tl0 (Hc Q)));
               let res = SplitA(f2, m2, hfuel, p, &m *tl);
-              match res { Pair(k2, z1) => match z1 { Pair(r2, z2) => match z2 { Pair(hlen2, z3) =>
-              match z3 { Pair(hsp2, hcnt2) => {
+              match res { Pair(k2, z1) => match z1 { Pair(r2, z2) => match z2 { Pair(Hlen2, z3) =>
+              match z3 { Pair(Hsp2, hcnt2) => {
                 if e : Leb x p {
                   -- x ≤ p: the head is already in the left part; the boundary moves up.
                   Pair(S k2, Pair(r2,
-                    Pair(IdCongr Nat Nat (λ (Z0 : Nat). S Z0) m2 (Add k2 r2) hlen2,
-                    Pair(Pair(LebTrueLe x p e, hsp2),
+                    Pair(IdCongr Nat Nat (λ (Z0 : Nat). S Z0) m2 (Add k2 r2) Hlen2,
+                    Pair(Pair(LebTrueLe x p e, Hsp2),
                          MkC (*tl) hcnt2 (acons m2 x (*tl)) (λ (Q : Nat). Refl)))))
                 } else {
                   match k2 {
                     -- x > p with nothing to its left: the whole array is ≥ p already.
                     Z => Pair(Z, Pair(S r2,
-                           Pair(IdCongr Nat Nat (λ (Z0 : Nat). S Z0) m2 (Add Z r2) hlen2,
-                           Pair(Pair(LePredL p x (LebFalseGt x p e), hsp2),
+                           Pair(IdCongr Nat Nat (λ (Z0 : Nat). S Z0) m2 (Add Z r2) Hlen2,
+                           Pair(Pair(LePredL p x (LebFalseGt x p e), Hsp2),
                                 MkC (*tl) hcnt2 (acons m2 x (*tl)) (λ (Q : Nat). Refl))))),
                     -- x > p with a non-empty left part: THE SWAP. Three carves put the
                     -- left part, the boundary cell and the right part in three segments,
@@ -300,25 +300,25 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                       -- returned is cited and solved along. `AddSucc` is the whole
                       -- distance between what the callee proved and what the carve
                       -- asks for.
-                      let hdec = IdTrans Nat m2 (S (Add k3 r2)) (Add k3 (S r2)) hlen2
+                      let Hdec = IdTrans Nat m2 (S (Add k3 r2)) (Add k3 (S r2)) Hlen2
                                    (IdSym Nat (Add k3 (S r2)) (S (Add k3 r2))
                                       (AddSucc k3 r2));
-                      let lo = &m (*tl)[Z ; k3 ; S r2 | LeAdd k3 (S r2) | hdec];
+                      let lo = &m (*tl)[Z ; k3 ; S r2 | LeAdd k3 (S r2) | Hdec];
                       let mid = &m (*tl)[k3 ; 1 ; r2];
                       let hi = &m (*tl)[S k3 ; r2];
                       let y = (*mid)[0];
                       (*mid)[0] := x;
                       (*hd)[0] := y;
-                      let hrest = SplitACatRest p k3 (S r2) (*lo) (acons r2 y (*hi)) hsp2;
-                      let hy = SplitA1Head p r2 (*hi) y hrest;
-                      let hub = SplitACatUb p k3 (S r2) (*lo) (acons r2 y (*hi)) hsp2;
-                      let hg = SplitA1Tail p r2 (*hi) y hrest;
-                      let hnew = SplitACatI0 p k3 (S r2) (*lo) (acons r2 x (*hi)) hub
-                                   (Pair(LePredL p x (LebFalseGt x p e), hg));
+                      let Hrest = SplitACatRest p k3 (S r2) (*lo) (acons r2 y (*hi)) Hsp2;
+                      let Hy = SplitA1Head p r2 (*hi) y Hrest;
+                      let Hub = SplitACatUb p k3 (S r2) (*lo) (acons r2 y (*hi)) Hsp2;
+                      let Hg = SplitA1Tail p r2 (*hi) y Hrest;
+                      let Hnew = SplitACatI0 p k3 (S r2) (*lo) (acons r2 x (*hi)) Hub
+                                   (Pair(LePredL p x (LebFalseGt x p e), Hg));
                       let cnt = MkC (arrCat k3 (S r2) (*lo) (acons r2 y (*hi))) hcnt2
                                     (acons m2 y (arrCat k3 (S r2) (*lo) (acons r2 x (*hi))))
                                     (λ (Q : Nat). CountSwapA Q x y k3 (*lo) r2 (*hi));
-                      Pair(S k3, Pair(S r2, Pair(Refl, Pair(Pair(hy, hnew), cnt))))
+                      Pair(S k3, Pair(S r2, Pair(Refl, Pair(Pair(Hy, Hnew), cnt))))
                     }
                   }
                 }
@@ -353,39 +353,39 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                                  (CountA Q (S M2) (acons M2 X0 Tl0))
                       (Hsw Q) (CountAconsCongr Q X0 M2 T2 Tl0 (Hc Q)));
             let res = SplitA(fuel, m2, LePredL m2 fuel hfuel, x, &m *tl);
-            match res { Pair(k2, z1) => match z1 { Pair(r2, z2) => match z2 { Pair(hlen2, z3) =>
-            match z3 { Pair(hsp2, hcnt2) => {
+            match res { Pair(k2, z1) => match z1 { Pair(r2, z2) => match z2 { Pair(Hlen2, z3) =>
+            match z3 { Pair(Hsp2, hcnt2) => {
               match k2 {
                 -- Nothing is ≤ the pivot, so the pivot is already in its final place at
                 -- index 0. `PartA`'s identity conjunct is `Refl` and its lower bound is
                 -- the split's own invariant, crossed by `SplitA0Lb`.
                 Z => Pair(x, Pair(Z, Pair(m2,
                        Pair(Refl,
-                       Pair(Pair(Refl, SplitA0Lb x m2 (*tl) hsp2),
+                       Pair(Pair(Refl, SplitA0Lb x m2 (*tl) Hsp2),
                             MkC (*tl) hcnt2 (acons m2 x (*tl)) (λ (Q : Nat). Refl)))))),
                 -- The pivot must cross the left part: swap it with that part's LAST
                 -- element. The displaced element is ≤ the pivot, so it may sit at the
                 -- front; the pivot lands at index `S k3`, which is the boundary.
                 S(k3) => {
-                  let hdec = IdTrans Nat m2 (S (Add k3 r2)) (Add k3 (S r2)) hlen2
+                  let Hdec = IdTrans Nat m2 (S (Add k3 r2)) (Add k3 (S r2)) Hlen2
                                (IdSym Nat (Add k3 (S r2)) (S (Add k3 r2))
                                   (AddSucc k3 r2));
-                  let lo = &m (*tl)[Z ; k3 ; S r2 | LeAdd k3 (S r2) | hdec];
+                  let lo = &m (*tl)[Z ; k3 ; S r2 | LeAdd k3 (S r2) | Hdec];
                   let mid = &m (*tl)[k3 ; 1 ; r2];
                   let hi = &m (*tl)[S k3 ; r2];
                   let y = (*mid)[0];
                   (*mid)[0] := x;
                   (*hd)[0] := y;
-                  let hrest = SplitACatRest x k3 (S r2) (*lo) (acons r2 y (*hi)) hsp2;
-                  let hy = SplitA1Head x r2 (*hi) y hrest;
-                  let hub = SplitACatUb x k3 (S r2) (*lo) (acons r2 y (*hi)) hsp2;
-                  let hg = SplitA1Tail x r2 (*hi) y hrest;
-                  let hnew = PartACatI0 x k3 (S r2) (*lo) (acons r2 x (*hi)) hub
-                               (Pair(Refl, SplitA0Lb x r2 (*hi) hg));
+                  let Hrest = SplitACatRest x k3 (S r2) (*lo) (acons r2 y (*hi)) Hsp2;
+                  let Hy = SplitA1Head x r2 (*hi) y Hrest;
+                  let Hub = SplitACatUb x k3 (S r2) (*lo) (acons r2 y (*hi)) Hsp2;
+                  let Hg = SplitA1Tail x r2 (*hi) y Hrest;
+                  let Hnew = PartACatI0 x k3 (S r2) (*lo) (acons r2 x (*hi)) Hub
+                               (Pair(Refl, SplitA0Lb x r2 (*hi) Hg));
                   let cnt = MkC (arrCat k3 (S r2) (*lo) (acons r2 y (*hi))) hcnt2
                                 (acons m2 y (arrCat k3 (S r2) (*lo) (acons r2 x (*hi))))
                                 (λ (Q : Nat). CountSwapA Q x y k3 (*lo) r2 (*hi));
-                  Pair(x, Pair(S k3, Pair(r2, Pair(Refl, Pair(Pair(hy, hnew), cnt)))))
+                  Pair(x, Pair(S k3, Pair(r2, Pair(Refl, Pair(Pair(Hy, Hnew), cnt)))))
                 }
               }
             } } } } }
@@ -425,18 +425,18 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                             LeTrans (S Kv) N0 (S F2) H Hfuel0);
               let pr = PartitionA(S(f2), n, hfuel, LebTrueLe 1 n he, &m *a);
               match pr { Pair(pvv, w1) => match w1 { Pair(k, w2) => match w2 { Pair(jj, w3) =>
-              match w3 { Pair(hlen, w4) => match w4 { Pair(hp, hcnt) => {
+              match w3 { Pair(Hlen, w4) => match w4 { Pair(Hp, hcnt) => {
                 -- ¶6's three-way carve, at the index the partition just returned. The
                 -- first obligation is `LeAdd`; the second is `Le 1 (S jj)`, which route
                 -- (a) reduces to ⊤; the third is degenerate.
-                let l = &m (*a)[Z ; k ; S jj | LeAdd k (S jj) | hlen];
+                let l = &m (*a)[Z ; k ; S jj | LeAdd k (S jj) | Hlen];
                 let pcell = &m (*a)[k ; 1 ; jj];
                 let e = (*pcell)[0];
                 let r = &m (*a)[S k ; jj];
-                let hub = PartACatUb pvv k (S jj) (*l) (acons jj e (*r)) hp;
-                let hrest = PartACatRest pvv k (S jj) (*l) (acons jj e (*r)) hp;
-                let heq = PartA0Eq pvv jj (*r) e hrest;
-                let hlb = PartA0Lb pvv jj (*r) e hrest;
+                let Hub = PartACatUb pvv k (S jj) (*l) (acons jj e (*r)) Hp;
+                let Hrest = PartACatRest pvv k (S jj) (*l) (acons jj e (*r)) Hp;
+                let Heq = PartA0Eq pvv jj (*r) e Hrest;
+                let Hlb = PartA0Lb pvv jj (*r) e Hrest;
                 let top1 = MkTop (arrCat k (S jj) (*l) (acons jj e (*r))) hcnt;
                 -- The glue, staged: both bounds are about to be invalidated as VALUES by
                 -- the recursive sorts, so their transports are set up now.
@@ -447,9 +447,9 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                 let R0 = *r;
                 let Pvv0 = pvv;
                 let E0 = e;
-                let Heq0 = heq;
-                let Hub0 = hub;
-                let Hlb0 = hlb;
+                let Heq0 = Heq;
+                let Hub0 = Hub;
+                let Hlb0 = Hlb;
                 let K0 = k;
                 let Jj0 = jj;
                 let MkS = (λ (L2 : Array K0 Nat). λ (R2 : Array Jj0 Nat).
@@ -504,11 +504,11 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                 -- that, and each composes with this frame's own bound.
                 let hf1 = MkHf k (LeAddSucc k jj);
                 let s1 = QuicksortA(f2, k, hf1, &m *l);
-                match s1 { Pair(hs1, hc1) => {
+                match s1 { Pair(Hs1, hc1) => {
                   let hf2 = MkHf jj (LeAddL (S jj) k);
                   let s2 = QuicksortA(f2, jj, hf2, &m *r);
-                  match s2 { Pair(hs2, hc2) => {
-                    Pair(MkS (*l) (*r) hc1 hc2 hs1 hs2,
+                  match s2 { Pair(Hs2, hc2) => {
+                    Pair(MkS (*l) (*r) hc1 hc2 Hs1 Hs2,
                          top1 (arrCat k (S jj) (*l) (acons jj e (*r))) (MkAD (*l) (*r) hc1 hc2))
                   } }
                 } }
@@ -542,24 +542,24 @@ example : progOk arrChain = true := by native_decide
 -- `splitA`, conjunct 1: the length accounting says the two parts overlap by one.
 example : progOk (arrUnder (prog{
     Σ (k : Nat) → Σ (r : Nat)
-      → Σ (hlen : Id Nat %mS (Add k (S r)))
-      → Σ (hsp : SplitAL %pS k %mS (*%tS))
+      → Σ (Hlen : Id Nat %mS (Add k (S r)))
+      → Σ (Hsp : SplitAL %pS k %mS (*%tS))
       → Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (CountA Q %mS (old *%tS)) })
     pHonest qHonest qSuffHonest .unit) = false := by native_decide
 
 -- `splitA`, conjunct 2: the ordering claimed of the ENTRY array rather than the exit.
 example : progOk (arrUnder (prog{
     Σ (k : Nat) → Σ (r : Nat)
-      → Σ (hlen : Id Nat %mS (Add k r))
-      → Σ (hsp : SplitAL %pS k %mS (old *%tS))
+      → Σ (Hlen : Id Nat %mS (Add k r))
+      → Σ (Hsp : SplitAL %pS k %mS (old *%tS))
       → Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (CountA Q %mS (old *%tS)) })
     pHonest qHonest qSuffHonest .unit) = false := by native_decide
 
 -- `splitA`, conjunct 3: the counts off by one, which no path can reach.
 example : progOk (arrUnder (prog{
     Σ (k : Nat) → Σ (r : Nat)
-      → Σ (hlen : Id Nat %mS (Add k r))
-      → Σ (hsp : SplitAL %pS k %mS (*%tS))
+      → Σ (Hlen : Id Nat %mS (Add k r))
+      → Σ (Hsp : SplitAL %pS k %mS (*%tS))
       → Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (S (CountA Q %mS (old *%tS))) })
     pHonest qHonest qSuffHonest .unit) = false := by native_decide
 
@@ -602,18 +602,18 @@ def splitANoSwap : Term := prog{
                                    (CountA Q (S M2) (acons M2 X0 Tl0))
                         (Hsw Q) (CountAconsCongr Q X0 M2 T2 Tl0 (Hc Q)));
               let res = splitANoSwap(f2, m2, hfuel, p, &m *tl);
-              match res { Pair(k2, z1) => match z1 { Pair(r2, z2) => match z2 { Pair(hlen2, z3) =>
-              match z3 { Pair(hsp2, hcnt2) => {
+              match res { Pair(k2, z1) => match z1 { Pair(r2, z2) => match z2 { Pair(Hlen2, z3) =>
+              match z3 { Pair(Hsp2, hcnt2) => {
                 if e : Leb x p {
                   Pair(S k2, Pair(r2,
-                    Pair(IdCongr Nat Nat (λ (Z0 : Nat). S Z0) m2 (Add k2 r2) hlen2,
-                    Pair(Pair(LebTrueLe x p e, hsp2),
+                    Pair(IdCongr Nat Nat (λ (Z0 : Nat). S Z0) m2 (Add k2 r2) Hlen2,
+                    Pair(Pair(LebTrueLe x p e, Hsp2),
                          MkC (*tl) hcnt2 (acons m2 x (*tl)) (λ (Q : Nat). Refl)))))
                 } else {
                   match k2 {
                     Z => Pair(Z, Pair(S r2,
-                           Pair(IdCongr Nat Nat (λ (Z0 : Nat). S Z0) m2 (Add Z r2) hlen2,
-                           Pair(Pair(LePredL p x (LebFalseGt x p e), hsp2),
+                           Pair(IdCongr Nat Nat (λ (Z0 : Nat). S Z0) m2 (Add Z r2) Hlen2,
+                           Pair(Pair(LePredL p x (LebFalseGt x p e), Hsp2),
                                 MkC (*tl) hcnt2 (acons m2 x (*tl)) (λ (Q : Nat). Refl))))),
                     S(k3) => {
                       -- The decomposition is DECLARED: premise (3) may not refine
@@ -621,23 +621,23 @@ def splitANoSwap : Term := prog{
                       -- returned is cited and solved along. `AddSucc` is the whole
                       -- distance between what the callee proved and what the carve
                       -- asks for.
-                      let hdec = IdTrans Nat m2 (S (Add k3 r2)) (Add k3 (S r2)) hlen2
+                      let Hdec = IdTrans Nat m2 (S (Add k3 r2)) (Add k3 (S r2)) Hlen2
                                    (IdSym Nat (Add k3 (S r2)) (S (Add k3 r2))
                                       (AddSucc k3 r2));
-                      let lo = &m (*tl)[Z ; k3 ; S r2 | LeAdd k3 (S r2) | hdec];
+                      let lo = &m (*tl)[Z ; k3 ; S r2 | LeAdd k3 (S r2) | Hdec];
                       let mid = &m (*tl)[k3 ; 1 ; r2];
                       let hi = &m (*tl)[S k3 ; r2];
                       let y = (*mid)[0];
-                      let hrest = SplitACatRest p k3 (S r2) (*lo) (acons r2 y (*hi)) hsp2;
-                      let hy = SplitA1Head p r2 (*hi) y hrest;
-                      let hub = SplitACatUb p k3 (S r2) (*lo) (acons r2 y (*hi)) hsp2;
-                      let hg = SplitA1Tail p r2 (*hi) y hrest;
-                      let hnew = SplitACatI0 p k3 (S r2) (*lo) (acons r2 x (*hi)) hub
-                                   (Pair(LePredL p x (LebFalseGt x p e), hg));
+                      let Hrest = SplitACatRest p k3 (S r2) (*lo) (acons r2 y (*hi)) Hsp2;
+                      let Hy = SplitA1Head p r2 (*hi) y Hrest;
+                      let Hub = SplitACatUb p k3 (S r2) (*lo) (acons r2 y (*hi)) Hsp2;
+                      let Hg = SplitA1Tail p r2 (*hi) y Hrest;
+                      let Hnew = SplitACatI0 p k3 (S r2) (*lo) (acons r2 x (*hi)) Hub
+                                   (Pair(LePredL p x (LebFalseGt x p e), Hg));
                       let cnt = MkC (arrCat k3 (S r2) (*lo) (acons r2 y (*hi))) hcnt2
                                     (acons m2 y (arrCat k3 (S r2) (*lo) (acons r2 x (*hi))))
                                     (λ (Q : Nat). CountSwapA Q x y k3 (*lo) r2 (*hi));
-                      Pair(S k3, Pair(S r2, Pair(Refl, Pair(Pair(hy, hnew), cnt))))
+                      Pair(S k3, Pair(S r2, Pair(Refl, Pair(Pair(Hy, Hnew), cnt))))
                     }
                   }
                 }
@@ -651,32 +651,39 @@ example : progOk splitANoSwap = false := by native_decide
 -- `partitionA`, conjunct 1: the length accounting forgets the pivot cell.
 example : progRejects (arrUnder sHonest (prog{
     Σ (pvv : Nat) → Σ (k : Nat) → Σ (jj : Nat)
-      → Σ (hlen : Id Nat %nP (Add k jj))
-      → Σ (hp : PartA pvv k %nP (*%aP))
+      → Σ (Hlen : Id Nat %nP (Add k jj))
+      → Σ (Hp : PartA pvv k %nP (*%aP))
       → Π (Q : Nat) → Id Nat (CountA Q %nP (*%aP)) (CountA Q %nP (old *%aP)) })
     qHonest qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 -- `partitionA`, conjunct 2: the partition claimed of the ENTRY array.
 example : progRejects (arrUnder sHonest (prog{
     Σ (pvv : Nat) → Σ (k : Nat) → Σ (jj : Nat)
-      → Σ (hlen : Id Nat %nP (Add k (S jj)))
-      → Σ (hp : PartA pvv k %nP (old *%aP))
+      → Σ (Hlen : Id Nat %nP (Add k (S jj)))
+      → Σ (Hp : PartA pvv k %nP (old *%aP))
       → Π (Q : Nat) → Id Nat (CountA Q %nP (*%aP)) (CountA Q %nP (old *%aP)) })
     qHonest qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 -- `quicksortA`, conjunct 1: sortedness lied onto the ENTRY. True at the empty array,
 -- so the base path still passes and only the recursive one is blamed.
+--
+-- **The needle MOVED at M33a** (both of these), and the verdict did not. With
+-- `Hs` capital the sortedness component is ⇝-read at `readResult`, so the lie is
+-- caught where it is WRITTEN — at this body's own return — instead of one call
+-- later, where the caller found the argument ill-typed. Was "does not have its
+-- parameter type"; the two Direct.lean twins of these did not move, because
+-- quicksort's own caller re-checks the conjunct either way.
 example : progRejects (arrUnder sHonest pHonest (prog{
-    Σ (hs : SortedA %nQ (old *%aQ))
+    Σ (Hs : SortedA %nQ (old *%aQ))
       → Π (Q : Nat) → Id Nat (CountA Q %nQ (*%aQ)) (CountA Q %nQ (old *%aQ)) })
-    qSuffHonest .unit) "does not have its parameter type" = true := by native_decide
+    qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 -- `quicksortA`, conjunct 2: the permutation lied by DIRECTION. Again `Refl` at the
 -- empty array, and again the body's evidence points the other way once anything moves.
 example : progRejects (arrUnder sHonest pHonest (prog{
-    Σ (hs : SortedA %nQ (*%aQ))
+    Σ (Hs : SortedA %nQ (*%aQ))
       → Π (Q : Nat) → Id Nat (CountA Q %nQ (old *%aQ)) (CountA Q %nQ (*%aQ)) })
-    qSuffHonest .unit) "does not have its parameter type" = true := by native_decide
+    qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 /-! ### Honest typing rejections, probed through `checkFn` -/
 

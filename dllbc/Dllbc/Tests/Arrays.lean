@@ -1057,7 +1057,7 @@ example : progRejects sigCallerWrong "does not have its parameter type"
 -- telescope entry can mention it. Nesting the proof inside too is where it goes, and
 -- that is a second level the machinery does not have.
 def recSlice : Term := prog{
-  fn RecSlice [fuel] (fuel : Nat, s : Σ (c : Nat) → Σ (h : Le c fuel) → &mut (Array c Nat)) -> Unit {
+  fn RecSlice [fuel] (fuel : Nat, s : Σ (c : Nat) → Σ (H : Le c fuel) → &mut (Array c Nat)) -> Unit {
     () };
   () }
 example : progRejects recSlice "only valid at a telescope position" = true := by native_decide
@@ -1423,7 +1423,7 @@ example : progOk readSame = true := by native_decide
     names `*a` (exit) and `old *a` (entry). -/
 def sort2 : Term := prog{
   fn Sort2 (a : &mut (Array 2 Nat))
-      -> Σ (hs : SortedA 2 (*a)) → (Π (X : Nat) → Id Nat (CountA X 2 (*a)) (CountA X 2 (old *a))) {
+      -> Σ (Hs : SortedA 2 (*a)) → (Π (X : Nat) → Id Nat (CountA X 2 (*a)) (CountA X 2 (old *a))) {
     let x = (*a)[0];
     let y = (*a)[1];
     if h : Leb x y {
@@ -1464,7 +1464,7 @@ example : progOk sort2LieSorted = false := by native_decide
 -- bearing: `Refl` in its place is rejected.
 def sort2LieCount : Term := prog{
   fn Sort2LieCount (a : &mut (Array 2 Nat))
-      -> Σ (hs : SortedA 2 (*a)) → (Π (X : Nat) → Id Nat (CountA X 2 (*a)) (CountA X 2 (old *a))) {
+      -> Σ (Hs : SortedA 2 (*a)) → (Π (X : Nat) → Id Nat (CountA X 2 (*a)) (CountA X 2 (old *a))) {
     let x = (*a)[0];
     let y = (*a)[1];
     if h : Leb x y {
