@@ -734,8 +734,8 @@ partial def lowerArms : Term → Nat
   | _ => 0
 
 example : cmpSigmas Dllbc.Tests.S23Direct.flagship = 91 := by native_decide
-example : capArms Dllbc.Tests.S23Direct.flagship = 10 := by native_decide
-example : lowerArms Dllbc.Tests.S23Direct.flagship = 26 := by native_decide
+example : capArms Dllbc.Tests.S23Direct.flagship = 14 := by native_decide
+example : lowerArms Dllbc.Tests.S23Direct.flagship = 22 := by native_decide
 
 /-! **The three numbers, read together.**
 
@@ -744,17 +744,22 @@ example : lowerArms Dllbc.Tests.S23Direct.flagship = 26 := by native_decide
         their binders capital, so the flagship's ensures is built out of them.
         Five are the spec's own, written by hand at M33a (`Hub`, `Hlb`, `Hl1`,
         `Hl2`, `Hs`).
-      * **10 capital arm binders**, from 0. These are the five spec components'
-        consumers: `Partition`'s four in each of its two consumer chains, plus
-        `Quicksort`'s `Hs1`/`Hs2`. Every one of them is a site
-        `checkArmModes` refuses to leave lowercase, which is what makes this
-        number the check's own population and not a style count.
-      * **26 lowercase arm binders**, and they matter because the check runs in
-        BOTH directions: each is a component the rule positively requires to
-        stay lowercase — the data components (`hi`, `x`, `rest`, `lo`), and
-        every Σ chain's TAIL, which has no binder and so has no mode
-        (suspensions.md §2.5's surviving spelling, visible here as a number).
-        A rule that only pushed one way would let all 36 be capital. -/
+      * **14 capital arm binders**, from M33a's 10 and originally 0. Ten are the
+        five spec components' consumers: `Partition`'s four in each of its two
+        consumer chains, plus `Quicksort`'s `Hs1`/`Hs2`. **The four that arrived
+        at M33 are the TAILS** — `Hcnt` (twice), `Hpc`, `Hc1`/`Hc2` across the
+        chains — and they are the flip §2.7 predicted this counter would
+        register: with the ensures spelled `Σ0`, the tail's `sctx` entry carries
+        `⇝` and `checkArmModes` refuses to leave its receiver lowercase.
+      * **22 lowercase arm binders**, from 26, and the pair of numbers is the
+        whole content: four moved and the other twenty-two did not. They matter
+        because the check runs in BOTH directions — each is a component the rule
+        positively requires to stay lowercase (the data components: `hi`, `x`,
+        `rest`, `lo`). A rule that only pushed one way would let all 36 be
+        capital. What is NO LONGER in this number is "every Σ chain's TAIL, which
+        has no binder and so has no mode": that was suspensions.md §2.5's
+        surviving spelling, visible here as a number, and Σ0 is what took it
+        out. -/
 
 end Dllbc.Tests.S32Binders
 end

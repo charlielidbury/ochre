@@ -270,9 +270,9 @@ def vlam : Val := .closure [] (.lam "x" (.const "Nat") (.ctorApp "S" [.pvar "x"]
 
 -- C1. **Body known ⟹ unfold.** A literal λ callee β-reduces, so the caller knows
 -- the result exactly: `y ↦ 3`, not an existential.
-def c1 : Term := prog{ let f = λ (x : Nat). S x; let y = f(2); () }
+def c1 : Term := prog{ let F = λ (x : Nat). S x; let y = F(2); () }
 example : progOk c1 = true := by native_decide
-example : tailEnv c1 [("f", vlam), ("y", Val.nat 3)] = true := by native_decide
+example : tailEnv c1 [("F", vlam), ("y", Val.nat 3)] = true := by native_decide
 
 -- C2. **Body withheld ⟹ the type's promise and nothing more.** Seal the same λ
 -- and the same call yields an opaque σ. This is §5 point 4 made mechanical: what
@@ -303,7 +303,7 @@ example : tailEnv c3 [("F", .sym 0), ("y", .sym 1), ("z", .sym 2)] = true := by 
 -- Saturation is still enforced on both branches that ENTER, and those are the
 -- two assertions below and at A5: an abstract `σ : Π` (c5) and an imperative λ
 -- (a5). This one is now the positive statement of what a comptime λ does.
-def c4 : Term := prog{ let f = λ (x : Nat). λ (y : Nat). x; let z = f(2); () }
+def c4 : Term := prog{ let F = λ (x : Nat). λ (y : Nat). x; let z = F(2); () }
 example : progOk c4 = true := by native_decide
 -- …and the same refusal on the abstract side, which is the branch that matters
 -- for phase C (a σ : Π under-applied is a closure holding its arguments).
@@ -313,11 +313,11 @@ def c5 : Term := prog{
 example : progRejects c5 "partial application" = true := by native_decide
 
 -- Over-application.
-def c6 : Term := prog{ let f = λ (x : Nat). x; let z = f(2, 3); () }
+def c6 : Term := prog{ let F = λ (x : Nat). x; let z = F(2, 3); () }
 example : progRejects c6 "too many arguments" = true := by native_decide
 
 -- A mistyped argument, on both branches.
-def c7 : Term := prog{ let f = λ (x : Nat). x; let z = f(Nil); () }
+def c7 : Term := prog{ let F = λ (x : Nat). x; let z = F(Nil); () }
 example : progRejects c7 "does not have its parameter type" = true := by native_decide
 def c8 : Term := prog{ let F = (λ (x : Nat). x : Π (x : Nat) → Nat); let z = F(Nil); () }
 example : progRejects c8 "does not have its parameter type" = true := by native_decide
@@ -345,7 +345,7 @@ example : progRejects c11 "is not a function value" = true := by native_decide
     branch in the program. -/
 
 def apply1 : Term := prog{
-  fn Apply1 (g : Π (x : Nat) → Nat, n : Nat) -> Nat { g(n) };
+  fn Apply1 (G : Π (x : Nat) → Nat, n : Nat) -> Nat { G(n) };
   () }
 example : progOk apply1 = true := by native_decide
 
@@ -353,17 +353,17 @@ example : progOk apply1 = true := by native_decide
 -- result (the call is opaque), which is §5.3's promise, unchanged by the callee
 -- being applied through a variable inside.
 def c12 : Term := prog{
-  fn Apply1 (g : Π (x : Nat) → Nat, n : Nat) -> Nat { g(n) };
-  let f = λ (x : Nat). S x; let r = Apply1(f, 2); () }
+  fn Apply1 (G : Π (x : Nat) → Nat, n : Nat) -> Nat { G(n) };
+  let F = λ (x : Nat). S x; let r = Apply1(F, 2); () }
 example : progOk c12 = true := by native_decide
 -- `tailEnv` drops the program's own function binding, so the expected Ω is the
 -- one this assertion always had — `r ↦ σ0` and not `σ1`.
-example : tailEnv c12 [("f", vlam), ("r", .sym 0)] = true := by native_decide
+example : tailEnv c12 [("F", vlam), ("r", .sym 0)] = true := by native_decide
 
 -- The negative control for the parameter branch: a body that under-applies its
 -- Π-typed parameter is rejected at the callee's own check, not at a caller's.
 def apply1bad : Term := prog{
-  fn Apply1bad (g : Π (x : Nat) → Π (y : Nat) → Nat, n : Nat) -> Nat { g(n) };
+  fn Apply1bad (G : Π (x : Nat) → Π (y : Nat) → Nat, n : Nat) -> Nat { G(n) };
   () }
 example : progRejects apply1bad "partial application" = true := by native_decide
 
@@ -384,7 +384,7 @@ example : progRejects apply1bad "partial application" = true := by native_decide
 
 def c13t : Term := prog{
   fn NeedsEq (n : Nat, h : Id Nat n 3) -> Unit { () };
-  let f = λ (x : Nat). S x; let y = f(2); NeedsEq(y, Refl); () }
+  let F = λ (x : Nat). S x; let y = F(2); NeedsEq(y, Refl); () }
 def c13s : Term := prog{
   fn NeedsEq (n : Nat, h : Id Nat n 3) -> Unit { () };
   let F = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = F(2); NeedsEq(y, Refl); () }
@@ -517,8 +517,8 @@ def d2c : Term := prog{
   let F = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = F(2); let z = F(5); () }
 -- a transparent function callee, passed to a declared fn and called inside it
 def d2d : Term := prog{
-  fn Apply1 (g : Π (x : Nat) → Nat, n : Nat) -> Nat { g(n) };
-  let f = λ (x : Nat). S x; let r = Apply1(f, 2); let s = f(7); () }
+  fn Apply1 (G : Π (x : Nat) → Nat, n : Nat) -> Nat { G(n) };
+  let F = λ (x : Nat). S x; let r = Apply1(F, 2); let s = F(7); () }
 
 -- A shape is the whole program now — no table beside it, because there is no
 -- table (M28 D9).
@@ -587,7 +587,7 @@ def bigTy : Term := StdLemmas.CountSwapATy
     written out so the citation count can be swept: the claim is about the SLOPE,
     and one hand-written pair would only show a point. -/
 def citeK (k : Nat) (rhs : Term) : Term :=
-  let c : Var := ⟨0, "c"⟩
+  let c : Var := ⟨0, "C"⟩
   let rec go : Nat → Term
     | 0 => .unit
     | n + 1 => .seq (.call "UseIt" [.var c]) (go n)
@@ -598,7 +598,7 @@ def citeK (k : Nat) (rhs : Term) : Term :=
     the slot by `bindFn` — which is the same mechanism a hand-written call goes
     through, so a swept program and a written one mean the same thing. -/
 def citeProg (k : Nat) (rhs : Term) : Term := prog{
-  fn UseIt (h : %bigTy) -> Unit { () };
+  fn UseIt (H : %bigTy) -> Unit { () };
   %(citeK k rhs) }
 
 def unsealedK (k : Nat) : Term := citeProg k big
@@ -618,7 +618,7 @@ example : progOk sealed4 = true := by native_decide
 -- Negative control: sealing does not launder a WRONG proof past the citation. A
 -- certificate sealed at a statement it does not inhabit is rejected at the node.
 def sealedWrong : Term := prog{
-  fn UseIt (h : %bigTy) -> Unit { () };
+  fn UseIt (H : %bigTy) -> Unit { () };
   let c = (%StdLemmas.LeRefl : %bigTy); UseIt(c); () }
 example : progRejects sealedWrong "does not have its ascribed type" = true := by
   native_decide

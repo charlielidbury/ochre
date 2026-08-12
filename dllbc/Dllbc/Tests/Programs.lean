@@ -131,7 +131,7 @@ def a4 : Term := prog{
   fn UseLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
   fn Caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
   { let Hnm = hnm;                          -- §2.4: the snapshot, named
-    let mk = λ (u : Unit). Hnm; UseLe(n, m, hnm); mk unit };
+    let Mk = λ (u : Unit). Hnm; UseLe(n, m, hnm); Mk unit };
   () }
 example : progOk a4 = true := by native_decide
 
@@ -517,7 +517,7 @@ example : progOk f3 = true := by native_decide
 def f4 : Term := prog{
   fn Caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
   { let N0 = n; let M0 = m;                 -- §2.4: the domains cite them
-    let g = λ (H : Le N0 M0). Z; let r = g(hnm); let s = g(hnm); hnm };
+    let G = λ (H : Le N0 M0). Z; let r = G(hnm); let s = G(hnm); hnm };
   () }
 example : progOk f4 = true := by native_decide
 
@@ -525,7 +525,7 @@ example : progOk f4 = true := by native_decide
 def f5 : Term := prog{
   fn Caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
   { let N0 = n; let M0 = m;                 -- §2.4: the domains cite them
-    let g = λ (h : Le N0 M0). Z; let r = g(hnm); let s = g(hnm); hnm };
+    let G = λ (h : Le N0 M0). Z; let r = G(hnm); let s = G(hnm); hnm };
   () }
 example : progRejects f5 "holds ⊥" = true := by native_decide
 
@@ -554,7 +554,7 @@ example : progRejects f5 "holds ⊥" = true := by native_decide
 -- about ⇒-ENTRY and a comptime capture holds no borrow. The refusal reached this
 -- program only because `f(2)` and `f 2` were different nodes. Saturation is
 -- still enforced where entry happens — `g2`/`g3` below, and `Functions.a5`.
-def g1 : Term := prog{ let f = λ (x : Nat). λ (y : Nat). x; let z = f(2); () }
+def g1 : Term := prog{ let F = λ (x : Nat). λ (y : Nat). x; let z = F(2); () }
 example : progOk g1 = true := by native_decide
 
 -- The legitimate-return case, pinned as the LIMITATION it is: `mk` means to be
@@ -779,7 +779,7 @@ example : progOk i2 = true := by native_decide
 
 -- I3. Through a VALUE callee, transparent and sealed.
 def i3 : Term := prog{
-  let a = Cons(1, Nil); let g = λ (L : List Nat). Z; let r = g(a); let b = a; () }
+  let a = Cons(1, Nil); let G = λ (L : List Nat). Z; let r = G(a); let b = a; () }
 def i3s : Term := prog{
   let a = Cons(1, Nil); let G = (λ (L : List Nat). Z : Π (L : List Nat) → Nat);
   let r = G(a); let b = a; () }
@@ -1937,7 +1937,7 @@ example : progRejects (hGlobal true) "does not have return type" = true := by na
 -- is data capture: the same rejection §D2a pins, reached the other way.)
 def hCapture : Term :=
   hSplit .unit
-    (.letIn ⟨3, "g"⟩ (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (.letIn ⟨6, "z"⟩ (.var ⟨2, "k"⟩) (.var ⟨4, "y"⟩)))
+    (.letIn ⟨3, "G"⟩ (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (.letIn ⟨6, "z"⟩ (.var ⟨2, "k"⟩) (.var ⟨4, "y"⟩)))
       .unit)
 example : progRejects hCapture "a runtime (lowercase) binding" = true := by native_decide
 

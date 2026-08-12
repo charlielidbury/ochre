@@ -1355,11 +1355,11 @@ def fuelT : Term := .var ⟨0, "fuel"⟩
 
 def partHonest : Term := prog{
   Σ (hi : List Nat) → Σ (Hub : Ub %pT (*%vfT)) → Σ (Hlb : Lb %pT hi)
-    → Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ (Hl2 : Le (Len hi) (Len (old *%vfT)))
+    → Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT)))
     → Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (Count N (old *%vfT)) }
 
 def qsHonest : Term := prog{
-  Σ (Hs : Sorted (*%vfT)) → Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) }
+  Σ0 (Hs : Sorted (*%vfT)) → Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) }
 
 /-- The sufficiency hypothesis's type — a telescope entry, so it is a parameter of
     the chain too. Its twin is the one that weakens it to `Unit`. -/
@@ -1419,7 +1419,7 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
             -- already IS `Le (Len rest) f2`.
             let r = Partition(f2, &m *v, p, Hf);
             match r { Pair(hi, q1) => match q1 { Pair(Hub, q2) => match q2 { Pair(Hlb, q3) =>
-            match q3 { Pair(Hl1, q4) => match q4 { Pair(Hl2, hcnt) => {
+            match q3 { Pair(Hl1, q4) => match q4 { Pair(Hl2, Hcnt) => {
               -- THE BRANCH EQUATION, in its first real use. `e` is the only reason
               -- either arm can build its bound: the split abstracted `Leb σ_x σ_p`
               -- away, so `LebTrueLe x p Refl` is rejected here (see the wall test)
@@ -1431,7 +1431,7 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
                 let lo = *v;
                 let Hub2 = Pair(LebTrueLe x p e, Hub);
                 let Hl2b = LeUpR (Len hi) lr Hl2;
-                let cnt = MkL lo hi hcnt;
+                let cnt = MkL lo hi Hcnt;
                 *v := Cons(x, lo);
                 Pair(hi, Pair(Hub2, Pair(Hlb, Pair(Hl1, Pair(Hl2b, cnt)))))
               } else {
@@ -1439,7 +1439,7 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
                 -- so `hub` passes straight through.
                 let Hlb2 = Pair(LePredL p x (LebFalseGt x p e), Hlb);
                 let Hl1b = LeUpR (Len *v) lr Hl1;
-                let cnt = MkR (*v) hi hcnt;
+                let cnt = MkR (*v) hi Hcnt;
                 Pair(Cons(x, hi), Pair(Hub, Pair(Hlb2, Pair(Hl1b, Pair(Hl2, cnt)))))
               }
             } } } } } }
@@ -1529,7 +1529,7 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
               -- It SURVIVES the call because `Partition`'s `Hf` is capital.
               let pr = Partition(f2, &m *v, x, Hfuel);
               match pr { Pair(hi, q1) => match q1 { Pair(Hub, q2) => match q2 { Pair(Hlb, q3) =>
-              match q3 { Pair(Hl1, q4) => match q4 { Pair(Hl2, hpc) => {
+              match q3 { Pair(Hl1, q4) => match q4 { Pair(Hl2, Hpc) => {
                 -- Both bounds are about to be invalidated as VALUES (the sorts
                 -- replace both lists), so their transports are staged now, while the
                 -- pre-sort lists are still nameable.
@@ -1548,20 +1548,20 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
                 let MkLb = (λ (B2 : List Nat).
                     λ (H2 : Π (N : Nat) → Id Nat (Count N B2) (Count N Hi0)).
                       LbPerm X0 B2 Hi0 H2 Hlb0);
-                let cnt1 = MkCnt (*v) hi hpc;
+                let cnt1 = MkCnt (*v) hi Hpc;
                 -- Sort the kept part in place. Its sufficiency is the partition's
                 -- length conjunct composed with this frame's.
                 let Hf1 = LeTrans (Len *v) lr f2 Hl1 Hfuel;
                 let s1 = Quicksort(f2, &m *v, Hf1);
-                match s1 { Pair(Hs1, hc1) => {
+                match s1 { Pair(Hs1, Hc1) => {
                   -- …and the returned part, through a borrow of the local that
                   -- holds it. Nothing about it is in `*v`; it is an ordinary value.
                   let Hf2 = LeTrans (Len hi) lr f2 Hl2 Hfuel;
                   let s2 = Quicksort(f2, &m hi, Hf2);
-                  match s2 { Pair(Hs2, hc2) => {
-                    let hub2 = MkUb (*v) hc1;
-                    let hlb2 = MkLb hi hc2;
-                    let cnt2 = cnt1 (*v) hi hc1 hc2;
+                  match s2 { Pair(Hs2, Hc2) => {
+                    let hub2 = MkUb (*v) Hc1;
+                    let hlb2 = MkLb hi Hc2;
+                    let cnt2 = cnt1 (*v) hi Hc1 Hc2;
                     -- The last staged builder: the glue's evidence arrives only
                     -- from `AppendBack`, by which time both parts are consumed.
                     -- §2.4: and the POST-sort snapshots, which are DIFFERENT values
@@ -1614,28 +1614,28 @@ example : progOk flagship = true := by native_decide
 -- the entry is not what the caller gets back.
 example : progRejects (qsUnder (prog{
     Σ (hi : List Nat) → Σ (Hub : Ub %pT (old *%vfT)) → Σ (Hlb : Lb %pT hi)
-      → Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ (Hl2 : Le (Len hi) (Len (old *%vfT)))
+      → Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT)))
       → Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (Count N (old *%vfT)) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (2) LOWER BOUND on the kept part instead of the returned one.
 example : progRejects (qsUnder (prog{
     Σ (hi : List Nat) → Σ (Hub : Ub %pT (*%vfT)) → Σ (Hlb : Lb %pT (*%vfT))
-      → Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ (Hl2 : Le (Len hi) (Len (old *%vfT)))
+      → Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT)))
       → Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (Count N (old *%vfT)) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (3) The returned part DROPPED from the count: "everything stayed in `*v`".
 example : progRejects (qsUnder (prog{
     Σ (hi : List Nat) → Σ (Hub : Ub %pT (*%vfT)) → Σ (Hlb : Lb %pT hi)
-      → Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ (Hl2 : Le (Len hi) (Len (old *%vfT)))
+      → Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT)))
       → Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) })
     qsHonest suffHonest .unit) "does not have its parameter type" = true := by native_decide
 
 -- (4) …and the count off by one, which no `Nil`-path argument can reach.
 example : progRejects (qsUnder (prog{
     Σ (hi : List Nat) → Σ (Hub : Ub %pT (*%vfT)) → Σ (Hlb : Lb %pT hi)
-      → Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ (Hl2 : Le (Len hi) (Len (old *%vfT)))
+      → Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT)))
       → Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (S (Count N (old *%vfT))) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
@@ -1650,13 +1650,13 @@ example : progRejects (qsUnder (prog{
 -- `Nil` (so the base path still passes) and false for any unsorted input, and the
 -- body's evidence is about the exit.
 example : progRejects (qsUnder partHonest (prog{
-    Σ (Hs : Sorted (old *%vfT)) → Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) })
+    Σ0 (Hs : Sorted (old *%vfT)) → Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) })
     suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (2) PERMUTATION lied by DIRECTION: the two endpoints swapped. Again `Refl` at
 -- `Nil`, and again the body's evidence points the other way once anything moves.
 example : progRejects (qsUnder partHonest (prog{
-    Σ (Hs : Sorted (*%vfT)) → Π (N : Nat) → Id Nat (Count N (old *%vfT)) (Count N (*%vfT)) })
+    Σ0 (Hs : Sorted (*%vfT)) → Π (N : Nat) → Id Nat (Count N (old *%vfT)) (Count N (*%vfT)) })
     suffHonest .unit) "does not have its parameter type" = true := by native_decide
 
 -- (3) The SUFFICIENCY HYPOTHESIS is load-bearing, not decoration. Keep the
@@ -1712,19 +1712,19 @@ def partitionLoses : Term := prog{
             *v := rest;
             let r = Partition(f2, &m *v, p, Hf);
             match r { Pair(hi, q1) => match q1 { Pair(Hub, q2) => match q2 { Pair(Hlb, q3) =>
-            match q3 { Pair(Hl1, q4) => match q4 { Pair(Hl2, hcnt) => {
+            match q3 { Pair(Hl1, q4) => match q4 { Pair(Hl2, Hcnt) => {
               if e : Leb x p {
                 let lo = *v;
                 let Hub2 = Pair(LebTrueLe x p e, Hub);
                 let Hl2b = LeUpR (Len hi) lr Hl2;
-                let cnt = MkL lo hi hcnt;
+                let cnt = MkL lo hi Hcnt;
                 -- THE LIE, and the only line that differs: the head is dropped.
                 *v := lo;
                 Pair(hi, Pair(Hub2, Pair(Hlb, Pair(Hl1, Pair(Hl2b, cnt)))))
               } else {
                 let Hlb2 = Pair(LePredL p x (LebFalseGt x p e), Hlb);
                 let Hl1b = LeUpR (Len *v) lr Hl1;
-                let cnt = MkR (*v) hi hcnt;
+                let cnt = MkR (*v) hi Hcnt;
                 Pair(Cons(x, hi), Pair(Hub, Pair(Hlb2, Pair(Hl1b, Pair(Hl2, cnt)))))
               }
             } } } } } }
@@ -1765,18 +1765,18 @@ def qsStaleBound : Term := prog{
             *v := rest;
             let r = Partition(f2, &m *v, p, Hf);
             match r { Pair(hi, q1) => match q1 { Pair(Hub, q2) => match q2 { Pair(Hlb, q3) =>
-            match q3 { Pair(Hl1, q4) => match q4 { Pair(Hl2, hcnt) => {
+            match q3 { Pair(Hl1, q4) => match q4 { Pair(Hl2, Hcnt) => {
               if e : Leb x p {
                 let lo = *v;
                 let Hub2 = Pair(LebTrueLe x p e, Hub);
                 let Hl2b = LeUpR (Len hi) lr Hl2;
-                let cnt = MkL lo hi hcnt;
+                let cnt = MkL lo hi Hcnt;
                 *v := Cons(x, lo);
                 Pair(hi, Pair(Hub2, Pair(Hlb, Pair(Hl1, Pair(Hl2b, cnt)))))
               } else {
                 let Hlb2 = Pair(LePredL p x (LebFalseGt x p e), Hlb);
                 let Hl1b = LeUpR (Len *v) lr Hl1;
-                let cnt = MkR (*v) hi hcnt;
+                let cnt = MkR (*v) hi Hcnt;
                 Pair(Cons(x, hi), Pair(Hub, Pair(Hlb2, Pair(Hl1b, Pair(Hl2, cnt)))))
               }
             } } } } } }
@@ -1838,7 +1838,7 @@ def qsStaleBound : Term := prog{
               *v := rest;
               let pr = Partition(f2, &m *v, x, Hfuel);
               match pr { Pair(hi, q1) => match q1 { Pair(Hub, q2) => match q2 { Pair(Hlb, q3) =>
-              match q3 { Pair(Hl1, q4) => match q4 { Pair(Hl2, hpc) => {
+              match q3 { Pair(Hl1, q4) => match q4 { Pair(Hl2, Hpc) => {
                 -- §2.4: the PRE-sort snapshots, named. `V0` and `Hi0` are the two
                 -- parts as they are HERE, before either sort replaces them, and that
                 -- is exactly what these builders were freezing implicitly. The
@@ -1854,16 +1854,16 @@ def qsStaleBound : Term := prog{
                 let MkLb = (λ (B2 : List Nat).
                     λ (H2 : Π (N : Nat) → Id Nat (Count N B2) (Count N Hi0)).
                       LbPerm X0 B2 Hi0 H2 Hlb0);
-                let cnt1 = MkCnt (*v) hi hpc;
+                let cnt1 = MkCnt (*v) hi Hpc;
                 let Hf1 = LeTrans (Len *v) lr f2 Hl1 Hfuel;
                 let s1 = Quicksort(f2, &m *v, Hf1);
-                match s1 { Pair(Hs1, hc1) => {
+                match s1 { Pair(Hs1, Hc1) => {
                   let Hf2 = LeTrans (Len hi) lr f2 Hl2 Hfuel;
                   let s2 = Quicksort(f2, &m hi, Hf2);
-                  match s2 { Pair(Hs2, hc2) => {
-                    let hub2 = MkUb (*v) hc1;
-                    let hlb2 = MkLb hi hc2;
-                    let cnt2 = cnt1 (*v) hi hc1 hc2;
+                  match s2 { Pair(Hs2, Hc2) => {
+                    let hub2 = MkUb (*v) Hc1;
+                    let hlb2 = MkLb hi Hc2;
+                    let cnt2 = cnt1 (*v) hi Hc1 Hc2;
                     -- §2.4: and the POST-sort snapshots, which are DIFFERENT values
                     -- from `V0`/`Hi0` above — both sorts wrote in place. The rule
                     -- makes that difference visible instead of leaving the reader to

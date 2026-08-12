@@ -1351,11 +1351,23 @@ example : progRejects fieldFn "cannot be ⇒-moved" = true := by native_decide
 def computePartial : Term := prog{ let f = Add 1; () }
 example : progOk computePartial = true := by native_decide
 
--- Its indistinguishable twin — a λ-valued runtime binding, which is the shape a
--- staged proof-builder takes. Accepted by the same rule, and it is the one that
--- MUST be, because the flagship returns values built this way.
+-- Its twin — a λ-valued runtime binding — **FLIPPED at M33, deliberately, and it
+-- is the first of the three tripwires to go.** It read "indistinguishable …
+-- Accepted by the same rule, and it is the one that MUST be, because the flagship
+-- returns values built this way", and both halves of that have been overtaken: the
+-- flagship's values now reach their destinations (a Σ0 tail, a capital `let`), and
+-- a λ WRITTEN OUT is distinguishable from `Add 1` after all — not by what it
+-- means, but by whether the kernel can see it is a λ before evaluating anything.
+-- The destination rule refuses it at `readR`'s λ arm and names every destination
+-- there is. `computePartial` above is still accepted, because a partial
+-- application is a SPINE and the lift is where that dies (M33 commit 4).
 def lamValued : Term := prog{ let f = λ (N : Nat). Add N 1; () }
-example : progOk lamValued = true := by native_decide
+example : progRejects lamValued "needs a comptime destination" = true := by native_decide
+
+-- …and the accepting twin, one character away: the same λ at a capital binder.
+-- Without it the rejection above would also pass for a rule that refused λs.
+def lamValuedCap : Term := prog{ let F = λ (N : Nat). Add N 1; () }
+example : progOk lamValuedCap = true := by native_decide
 
 /-! ## R3b: THE Σ COMPONENT'S BINDER MODE, and exactly how far it reaches
 
@@ -1568,8 +1580,8 @@ open Dllbc.StdLemmas (LeRefl)
     claim has and the one that makes every other assertion about calls apply to
     juxtaposition automatically. -/
 
-def spelledCall : Term := prog{ let f = λ (x : Nat). x; let z = f(2); () }
-def spelledJux  : Term := prog{ let f = λ (x : Nat). x; let z = f 2; () }
+def spelledCall : Term := prog{ let F = λ (x : Nat). x; let z = F(2); () }
+def spelledJux  : Term := prog{ let F = λ (x : Nat). x; let z = F 2; () }
 example : Term.beq spelledCall spelledJux = true := by native_decide
 
 /-! ## §B. ⇒ MINTS at the instantiated codomain

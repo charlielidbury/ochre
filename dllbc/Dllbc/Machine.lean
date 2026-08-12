@@ -4187,24 +4187,29 @@ mutual
           -- suspensions.md §2.7): `sealExec`.
           sealExec fuel t u
         else sealNode fuel site t u
-      -- **⇒ LIFTS a comptime λ; it does not BIND one** (M32 R3, and this is
-      -- where §2.5's premise had to be corrected — see `.letIn` below).
+      -- **THE DESTINATION RULE** (M33, suspensions.md §2.7): a λ is knowledge and
+      -- needs a comptime destination. Reaching HERE is the definition of not
+      -- having one — every comptime destination there is routes a λ somewhere
+      -- else before ⇒ ever sees it:
       --
-      -- suspensions.md §2.5 reasoned that with λ formation ⇝-only, ⇒ could no
-      -- longer construct a function at all, and the backstop would follow. The
-      -- corpus disagreed, and it is not a corner: **a proof of a ∀-statement IS
-      -- a λ**, and this calculus returns them in Σ tails —
-      -- `Pair(SplitANil …, λ (q : Nat). Refl)`, `Pair(…, λ (n : Nat). CountSwap2
-      -- n X0 Y0)` — where the λ is a constructor ARGUMENT read by `readArgs`,
-      -- which is here. Refusing here rejects the flagship's count equation and
-      -- `sort2`, measured.
+      --   * a capital `let` → `readComptimeVal`'s own λ case;
+      --   * a ⇝ parameter → `readComptimeArg` (`processArgs`, `readArgsModed`);
+      --   * a Σ0 component or tail → `readResult`'s `⇝` arm;
+      --   * an ascription → `sealValue`, where a λ is FORMED, not ⇒-read.
       --
-      -- So this arm stays what R2 made it, and the reading is the pure lift's
-      -- own (§1.3, whose docstring already listed "a Π-typed λ" among the
-      -- comptime-only formers ⇒ delegates): the λ is comptime KNOWLEDGE, and
-      -- lifting knowledge is what ⇒ does with it. What R3 removes is not the
-      -- lift but the BINDING.
-      | .lam _ _ _ => mkClosure fuel t
+      -- What is left is a λ written in a position with nothing to say it is
+      -- knowledge — R3's `Pair(SplitANil …, λ (q : Nat). Refl)`, a constructor
+      -- ARGUMENT read by `readArgs`, which had no type in hand and so no way to
+      -- decide. That is §2.5's FIRST surviving spelling, and Σ0 is what makes
+      -- refusing it a rule with a fix rather than a rule with a wall: the fix is
+      -- always to give the λ a destination, and the message lists them.
+      --
+      -- (What stood here was R2's LIFT, with R3's correction recorded on it: "a
+      -- proof of a ∀-statement IS a λ, and this calculus returns them in Σ tails
+      -- — refusing here rejects the flagship's count equation and `sort2`,
+      -- measured". That measurement was correct and is what §2.7 exists to
+      -- answer: a Σ tail is now a destination, so the λ never arrives.)
+      | .lam _ _ _ => throwErr s!"a λ is knowledge and needs a comptime destination — a capital `let`, a ⇝ parameter, a Σ0 component or tail, or an ascription. This one ({t.pretty}) is in none of them: it is being ⇒-read, which is the arrow that MOVES runtime data, and a function value is not runtime data. Bind it to a capital name first (`let F = λ …`), pass it at a capital parameter, put it under a `Σ0` tail, or ascribe it (`(λ … : Π …)`)."
 
       | .unit => pure (.ctor "unit" [])
       -- **The match-arm seam** (M31 Stage 0). `pushContinuations` fuses a
@@ -4467,7 +4472,18 @@ mutual
   def readRecArgs : Nat → Nat → Nat → List Term → M (List Val)
     | _, _, _, [] => pure []
     | fuel, mi, i, a :: as => do
-      let v ← if i == mi then pure (Val.know erasedMotive) else readR fuel a
+      -- **A RECURSOR ARM IS A DESTINATION** (M33's destination rule), and it is
+      -- the fifth one — the list in `readR`'s λ arm names the four a programmer
+      -- writes, and this is the one the `fn [k]` elaboration writes for them. An
+      -- arm is a BODY, the seal ascribes the whole spine, and `sealRec`/`checkArm`
+      -- check each arm against the Π §7 derives for it (which `ascribeRecArms`
+      -- also hands the executing machine, since M33's prerequisite). So the arm
+      -- is formed here rather than ⇒-read: it has a contract, and having one is
+      -- exactly what the destination rule asks for.
+      let v ← if i == mi then pure (Val.know erasedMotive)
+              else match a with
+                   | .lam _ _ _ => mkClosure fuel a
+                   | _ => readR fuel a
       pure (v :: (← readRecArgs fuel mi (i + 1) as))
   termination_by fuel _ _ as => (fuel, 1, as.length)
   /-- β for a literal λ callee: check each argument against its binder's domain,
