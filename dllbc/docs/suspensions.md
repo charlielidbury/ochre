@@ -278,6 +278,25 @@ capital `let`, a capital/⇝ parameter, a Σ0 component or tail, or an ascriptio
 Kernel-side this is ONE refusal (the pure lift's λ case); every destination is a
 position read by ⇝.
 
+**PREREQUISITE (M33a finding, do FIRST): both machines must be able to read the
+tail's mode.** Today only the checking machine has a return type at a body's tail
+(`readResult` reads `St.retTyVal`, set only by `checkRFnBody`); the executing
+machine's `applyClosure` has none — the ascription is dropped at the seal. Any tail
+mode `readResult` consults is invisible to execution unless an executing closure
+CARRIES ITS ASCRIPTION — a small representation change, landed before the Σ0
+routing, not discovered after (M33a had to checking-side-gate the ⇒-move fence for
+exactly this asymmetry).
+
+**Alternative recorded with at-scale UX data (M33a's recommendation), decision held
+by the user**: spelling trailing proofs as components over a `Unit` tail — no new
+surface former at all, the position becomes ordinary rather than special, consumers
+destructure one level deeper (~10 sites). M33a's migration experience: the friction
+is that today's tail is INVISIBLY special (a six-component chain reads uniformly for
+five and silently reverts to ⇒ at the sixth, and the error names the consequence,
+not the tail). Σ0-as-marker also fixes the visibility (the last former is spelled
+differently); the Unit-tail fixes it by removing the special position. If the
+marker wins, the thing to get right is the MESSAGE at the tail.
+
 **Acceptance = the terminal no-⇒-λ attempt, third and final**: with Σ0 landed and
 M33a's migration complete, quicksort's `cnt` spells its type with Σ0, the
 `S32Backstop` tripwires flip DELIBERATELY, and the pure lift's λ refusal lands
