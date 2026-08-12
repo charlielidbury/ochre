@@ -972,6 +972,69 @@ example : strContains lenSp.pretty "λ(§0" = true := by native_decide
 example : Term.beq (Term.abstractInto lenSp 98 (cooked lenLatent)) (cooked lenLatent)
           = true := by native_decide
 
+/-! ### The same limit as a PROGRAM (M33), and the pair that isolates it
+
+    The assertion above is the limit at unit level, where it was found. This is
+    the limit as something a programmer meets: two programs differing in ONE
+    thing — whether the occurrence of the split spine sits under a binder — with
+    opposite verdicts.
+
+    Both split on `Leb (Len L) 2`, so both generalize the SAME spine, and that
+    spine binds (`Leb` unfolds to a `natRec` over λ arms and `Len` to a `listRec`
+    over λ arms, so it binds twice over). Both then ask the True branch to show
+    that a value which recomputes the spine is `True`, which is exactly what the
+    ⇜ refinement of `σb` delivers — provided the sweep reached the occurrence.
+
+      * `alphaControlDepth0` holds the spine in a comptime `let`. Its knowledge
+        leaf sits at binder depth ZERO, which is the depth `generalizeStuck`
+        normalized the needle at, so the names agree and `Term.beq` matches.
+      * `alphaRepro` holds it in a comptime λ. `cookForGen` cooks the closure
+        (its ρ mentions L's σ, so it is in the support), and the cooked body puts
+        the spine one binder deeper — where readback numbered the spine's own
+        binders from 1 instead of from 0. The sweep walks straight past it, the
+        body keeps speaking pre-generalization vocabulary, and the `Refl` dies.
+
+    The rejection is asserted with its needle, and the control's acceptance is
+    what says the needle is about the KEY rather than about the program. -/
+
+def alphaControlDepth0 : Term := prog{
+  fn NeedTrue (B : Bool, h : Id Bool B True) -> Unit { () };
+  fn AlphaControlDepth0 (L : List Nat) -> Unit
+        { let C = Leb (Len L) (S (S Z));
+          let c = Leb (Len L) (S (S Z));
+          match e : c {
+            True => { NeedTrue(C, Refl); () },
+            False => ()
+          } };
+  () }
+example : progOk alphaControlDepth0 = true := by native_decide
+
+def alphaRepro : Term := prog{
+  fn NeedTrue (B : Bool, h : Id Bool B True) -> Unit { () };
+  fn AlphaRepro (L : List Nat) -> Unit
+        { let F = λ (X : Nat). Leb (Len L) (S (S Z));
+          let c = Leb (Len L) (S (S Z));
+          match e : c {
+            True => { NeedTrue(F Z, Refl); () },
+            False => ()
+          } };
+  () }
+example : progRejects alphaRepro "does not have its parameter type" = true := by native_decide
+
+/-! ### The diagnosis, stated as the two keys disagreeing
+
+    Why the pair splits is not left to the prose: the needle and the occurrence
+    one binder deeper are the same term up to α and different terms up to names,
+    and these two lines say so. `Term.alphaEq` already returns the right answer
+    today — nothing about the gap is hard to DECIDE, which is why the residual is
+    a change to the sweep's key rather than to its traversal. -/
+def lenSpDeeper : Term :=
+  match Pure.nf 1000 (Term.cpi "X" (.const "Nat") (Std.lenT (Term.sym 5))) with
+  | .pi _ _ c => c
+  | t => t
+example : Term.beq lenSp lenSpDeeper = false := by native_decide
+example : Term.alphaEq lenSp lenSpDeeper = true := by native_decide
+
 end Dllbc.Tests.S32Cook
 end
 -- └── end of the M32 R2 cook-at-generalization canary ─────────────────────────
