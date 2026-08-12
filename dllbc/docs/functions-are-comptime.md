@@ -1,8 +1,15 @@
 # Functions are comptime. M31: heads by ⇝ (semantics). M32: suspensions, one λ, the death of `rfn` (representation)
 
-**Status: UNDER CONSTRUCTION — design under review with the user; committed early so
-Stage 0 (independent of every open design question) could be dispatched. Written to
-interrogate the idea, not to glaze it.**
+**Status: THE ARC IS FINISHED (M33 Σ0).** Written to interrogate the idea rather
+than glaze it, and committed early so Stage 0 could be dispatched; what it
+interrogated held. M31 landed the semantics (Stage 0, A, C), M32 the
+representation (R1–R4), M33 α the α-insensitive key, M33a the arm-binder modes,
+and M33 Σ0 the comptime tail — with which **§0's model is enforced rather than
+merely built**: no runtime-moded binding ever holds a function, and ⇒ cannot
+construct one. The mode story has no open positions left: **every binder spells
+its mode, and every position that is not a binder spells it on its type.** Two
+predictions in the M32 scope ledger below were refuted along the way and are
+corrected in place rather than dropped.
 
 ## 0. The model in one sentence
 
@@ -603,6 +610,21 @@ owner, not an open question):**
     the same fact from the other side: capitalising a proof binding makes it
     unreadable where it is RETURNED. What R3 delivered is three enforcement sites
     becoming one; derivability and the migration move to R3b, behind §2.1.
+    **REFUTED a second time at R3b, and then LAW at M33 Σ0** (suspensions.md
+    §2.7 and its addendum). The ruling holds as stated: λ formation is ⇝-only and
+    ⇒ constructs no function value, enforced at TWO refusals rather than one —
+    `readR`'s λ arm for a λ that is written, the pure lift for one that is
+    computed, since `Add 1` is a spine until it is evaluated. What unblocked it
+    was not a way to tell a proof from a computation (this calculus still has
+    none) but `Σ0`, a mode for the one position that had none: a Σ chain's TAIL.
+    The rule is about the DESTINATION, so both machines can check it. **Two of
+    this bullet's predictions were wrong and are corrected here rather than
+    quietly dropped**: the Stage A backstop does NOT become derivable — a
+    function can also arrive by being COPIED between runtime slots (`let g = ih`),
+    which no rule about construction reaches, so `refuseFnBinding` keeps its one
+    site; and "the remaining lowercase bindings of pure-function values migrate
+    capital in the same commit" took three milestones, because each of them sits
+    in a Σ tail and the tail had to acquire a spelling first.
   * **fn body scope**: bodies elaborate seeing sibling and enclosing bindings (the
     decl{}-era params-only context retires). Gated today on `fnElab`'s fresh-binder
     base colliding with program slots; trivial under M32's name-keying.

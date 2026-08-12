@@ -1,5 +1,62 @@
 # Progress
 
+## 2026-08-12 — dllbc/: **M33 Σ0 — the comptime tail, and the terminal no-⇒-λ attempt LANDS**
+
+Five commits on `m33-sigma0` (based on main @ 478cadb8), corpus green at each.
+Sabotage control 26 red at commits 1, 2 and 4 — the same count and shape as
+M33a's, `progOk flagship` and both `S32Cook` directions confirmed present each
+time — so Σ0 adds nothing to the sabotage surface. `Traces.lean` byte-unchanged.
+
+**§2.5 IS LAW at the third attempt: ⇒ cannot construct a function value.** R3
+measured the refusal twice and R3b once, and each time the corpus said no. The
+diagnosis was right and is what was NOT solved: a proof of a ∀-statement is a λ,
+and this calculus has no Prop/Type split to tell one from a computation. **M33
+did not find that distinction; it made the distinction unnecessary.** suspensions.md
+§2.7's `Σ0` gives the one position that held a function and could not say so — a Σ
+chain's TAIL, which has no binder — a way to say it on the type. Once every
+position that legitimately holds a function DOES say so, the rule stops being
+"tell a proof from a computation" and becomes *a function value must arrive
+somewhere that reads by ⇝*: a question about the DESTINATION, which both machines
+can answer. Enforced at two refusals, because a function arrives two ways —
+WRITTEN (`readR`'s λ arm) and COMPUTED (the pure lift, which is the only one that
+can see `Add 1`, a spine until it is evaluated).
+
+**Σ0 is one arm, and it deleted a special case rather than adding one.**
+`Σ0 (x : A) → P` is `sigmaT` with the existing `cmpT` on the CODOMAIN — no `Term`
+former, no `Val` form, no constructor, no eliminator. `readResult`'s explicit
+domain test and its unrouted tail collapse into one rule: **a position is comptime
+iff its type carries `⇝`**, which now covers a λ's argument, a Π's, a Σ's
+component and a Σ's tail where it covered three and left the fourth silently
+runtime.
+
+**The prerequisite found a second source of the asymmetry M33a named, and it is
+the one that mattered.** Carrying the ascription on an executing closure was not
+enough: a recursive `fn` seals a `natRec` over runtime arms, not a λ, and the
+ARMS are the bodies — which is the road quicksort's own tail takes. With
+`ascribeRecArms` deriving each arm's contract the way `sealRec` does, the ⇒-move
+fence is both-machine again and M33a's gate is gone.
+
+**Enumerated flips, all deliberate**: the three `S32Backstop` tripwires
+(`sigmaTailProof`'s needle, then `lamValued` and `computePartial` flipping to
+rejected), each kept with a one-character accepting twin; one spec-lie needle
+moving from "does not have its parameter type" to "does not have return type"
+with its verdict unchanged; `lowerArms flagship` 26 → 22 and `capArms` 10 → 14,
+which is the counter M33a predicted would register the tails. Corpus respell: 20
+return types take `Σ0`, 8 tail arm binders, 11 λ-valued bindings, 4 function-typed
+parameters and the seven §2.5 bindings (`cnt`, `cnt1`, `cnt2`, `top1`, …)
+capitalise — every one demanded by name by a message that said which binder and
+which fix.
+
+**One promise measured and found false, rather than assumed**: `refuseFnBinding`
+does NOT become derivable. Neutralising it reds exactly one assertion —
+`let g = ih`, an imperative function value COPIED from one runtime slot to
+another. Nothing constructs a function there, so no rule about construction
+reaches it: "⇒ cannot construct a function" and "a runtime binding may not hold
+one" are different claims and the second is strictly stronger.
+
+With this the M31–M33 "functions are comptime" arc closes, and all four of M32's
+residuals are struck.
+
 ## 2026-08-12 — dllbc/: **M33a — the match-arm mode check, and R3b's last two residuals**
 
 Four commits on `m33-arm-modes` (based on `m32-r4` @ ab6921ae, rebased onto main

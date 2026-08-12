@@ -8,18 +8,25 @@ only syntax, `Val` is the state skeleton over `Sem`, every λ value is one closu
 cooking is persistent exactly at generalization, arrows are exceptionless, every
 binder spells its mode, and there is one application node.
 
-**The residuals, all post-M32, all pinned by tests rather than remembered.**
-Three of the four have since closed — 4 at M33 α, 2 and 3 at M33a — and each is
-struck through rather than deleted, so the enumeration a reader met in M32 stays
-legible. **Only 1 is open**, and §2.7 is where its design question now lives.
+**The residuals, all post-M32, all pinned by tests rather than remembered. ALL
+FOUR ARE NOW CLOSED** — 4 at M33 α, 2 and 3 at M33a, and 1 at M33 Σ0 — and each
+is struck through rather than deleted, so the enumeration a reader met in M32
+stays legible.
 
-  1. **§2.5's two spellings** (`S32Backstop.sigmaTailProof`). ⇒ still constructs
-     function values at exactly two sites — a λ written literally in a constructor
-     argument, and a Σ chain's TAIL, which has no binder to carry a mode. The fix
-     is a SURFACE design question (a marker for a Σ's tail, or spelling trailing
-     proofs as components over a `Unit` tail), which is why it is not M32's. The
-     invariant is one boundary shy of enforceable and the tripwires stay accepted
-     and unflipped.
+**§2.5's invariant is LAW: ⇒ cannot construct a function value.** It took three
+attempts (R3, R3b, M33), and the third did not succeed by finding the
+distinction the first two said did not exist — it succeeded by making the
+distinction unnecessary. See §2.7 and the M33 Σ0 addendum.
+
+  1. ~~**§2.5's two spellings**~~ (`S32Backstop.sigmaTailProof`) — **CLOSED at
+     M33 Σ0.** ⇒ constructed function values at exactly two sites — a λ written
+     literally in a constructor argument, and a Σ chain's TAIL, which had no
+     binder to carry a mode. The fix was correctly identified as a SURFACE design
+     question, and it is `Σ0` (§2.7): the tail carries the mode on the Σ's
+     CODOMAIN, so every position that holds a function can say so, and the rule
+     becomes "a function value must arrive somewhere read by ⇝" rather than "tell
+     a proof from a computation". All three tripwires flipped deliberately, each
+     with a one-character accepting twin.
   2. ~~**Match-arm binder mode checking**~~ — **CLOSED at M33a, and R3b's
      DIAGNOSIS was wrong.** The four assertions were not blocked by the consumer;
      they were blocked by `markExit` having no `.cmpT` case, so a comptime Σ
@@ -204,7 +211,30 @@ judgment (imperative — it already runs in its own fresh store); forget half by
 structure — the sealed value is the **seal SITE applied to its captured inputs**, a
 structured neutral, deterministic and distinguishing (`fsig` keys by site).
 
-### 2.5 No function in a runtime slot — REFUTED as stated (R3 finding), subsumed into R3b
+### 2.5 No function in a runtime slot — refuted twice, **LAW at M33 Σ0**
+
+**CLOSED.** The two refutations below are correct history and are kept; this
+paragraph is the answer. **⇒ can no longer construct a function value**, enforced
+at two refusals — `readR`'s λ arm for a λ that is WRITTEN (the destination rule)
+and the pure lift for one that is COMPUTED (`Add 1` is a spine until it is
+evaluated) — with the whole corpus green and all three `S32Backstop` tripwires
+flipped deliberately, each with a one-character accepting twin.
+
+**The win was not finding the distinction the two refutations say does not
+exist.** It is §2.7's `Σ0`: the one position that held a function and had no way
+to say so — a Σ chain's tail, which has no binder — says it on the type now, and
+once every position that legitimately holds a function DOES say so, the rule
+stops being *tell a proof from a computation* and becomes ***a function value
+must arrive somewhere that reads by ⇝***. That is a question about the
+DESTINATION, and both machines can answer it.
+
+One thing this does NOT buy, measured rather than assumed: **`refuseFnBinding`
+is not derivable.** Neutralising it with everything else in place reds exactly
+one assertion — `let g = ih`, where an imperative function value is COPIED from
+one runtime slot to another. Nothing constructs a function there, so no rule
+about ⇒ constructing one can reach it. "⇒ cannot construct a function" and "a
+runtime binding may not hold one" are different claims, and the second is
+strictly stronger. Addendum item 6.
 
 **The premise "⇒ can no longer construct a function value" is false: a proof of a
 ∀-statement IS a λ.** Measured twice by R3, both built and reverted: refusing the
@@ -264,7 +294,13 @@ closure is what makes the ESCAPING case safe). Requires the fn body scope fix
 (params-only elaboration context retires; the id-collision that gated it is void
 under name-keying).
 
-### 2.7 Σ0 — the comptime tail (M33 design, user-proposed, ratified in review)
+### 2.7 Σ0 — the comptime tail (M33 design, user-proposed, ratified in review) — **RUN**
+
+**Status: IMPLEMENTED** (branch `m33-sigma0`, five commits, corpus green at each;
+addendum at the bottom of this file). The spelling is `Σ0`, the prerequisite
+landed first and found a second source of the asymmetry the doc did not name, and
+**the terminal attempt LANDED** — §2.5's invariant is enforced, at two refusals
+which are one rule seen at the two ways a function can arrive.
 
 **The problem it closes**: a Σ chain's TAIL has no binder, hence no mode marker —
 §2.5's second escape hatch, and where quicksort's `cnt` proof sits. **The design**:
@@ -323,6 +359,16 @@ M33a's migration complete, quicksort's `cnt` spells its type with Σ0, the
 `S32Backstop` tripwires flip DELIBERATELY, and the pure lift's λ refusal lands
 green — or the residual is reported precisely and the doc says one-boundary-shy a
 third time rather than rounding up.
+
+**MET.** Quicksort's ensures spells its tail `Σ0`, all three tripwires flipped
+with accepting twins, and the pure lift's refusal is green with the whole corpus.
+The enforcement is TWO refusals rather than one, and that is a correction to this
+paragraph rather than a compromise: a function arrives at ⇒ two ways, WRITTEN (a λ
+literal — `readR`'s λ arm, the destination rule) and COMPUTED (a spine whose value
+is a λ — the pure lift), and `Add 1` is only visible to the second because it is a
+spine until it is evaluated. **`refuseFnBinding` does NOT become derivable**, and
+the residual is one measured shape rather than a suspicion — see the addendum's
+item 6.
 
 ## 3. The cooking schedule — derived, not chosen
 
@@ -1138,3 +1184,108 @@ assumption-indexed evaluation (rejected with precedent, §3).
 > ArraySort 2,507, Arrays 1,314). The new `⇝`-transparency test was verified
 > DISCRIMINATING by removing the `markExit` case again: exactly one of its three
 > assertions reds, and the lowercase control and the lie both stay green.
+
+> **Implementation addendum (M33 Σ0, landed on `m33-sigma0`).** Five commits,
+> corpus green at each, based on main @ 478cadb8 (M32 + M33 α + M33a). This is
+> §2.7 run, and with it residual 1 and the whole M31–M33 "functions are comptime"
+> arc close.
+>
+> **0. THE HEADLINE: §2.5 IS LAW, at the third attempt, and it was not won by
+> finding what R3 said did not exist.** R3's diagnosis was right and is worth
+> keeping: "there is no reformulation that separates them from `Add 1` here,
+> because there is nothing to separate: both are functions, and only one of them
+> is being BOUND at a runtime binder", and this calculus still has no Prop/Type
+> split. What Σ0 changed is the other side of the question. The one position that
+> held a function and had no way to say so — a Σ chain's tail, with no binder —
+> can say so now, and once every position that legitimately holds a function DOES
+> say so, the rule stops being "tell a proof from a computation" and becomes **"a
+> function value must arrive somewhere that reads by ⇝"**, which is a question
+> about the DESTINATION and one both machines can answer.
+>
+> **1. THE PREREQUISITE FOUND A SECOND SOURCE OF THE ASYMMETRY, and it is the one
+> that mattered.** §2.7 and M33a's item 5 name one: an executing closure drops its
+> ascription at the seal, so `applyClosure` has no return type and cannot read a
+> tail's mode. `Val.closure` grows a third field (`Option Term`) and `sealExec`
+> fills it — and with only that, all nine of M33a's executing differentials STILL
+> died on the un-gated fence. **A recursive `fn` does not seal a λ**: `fn [k]
+> Partition …` elaborates to `natRec P z s` over runtime arms, and the ARMS are
+> the bodies. That is the road quicksort's own tail takes (`cnt` is returned from
+> `Partition`), so it is not a corner — Σ0 would have been a rule the executing
+> machine could not read for exactly the program it exists for.
+> `recArmPis`/`ascribeRecArms` close it with `sealRec`'s own derivation (peel the
+> scrutinee off the ascribed Π; the codomain IS the motive's body; an arm's
+> contract is that at the arm's constructor, under the leading binders the
+> recursor's premise gives it), differing from `checkArm` only in not checking it.
+> With both halves the ⇒-move fence is **both-machine again** and M33a's gate is
+> deleted with its reason.
+>
+> **2. Σ0 IS ONE ARM, and it deleted a special case rather than adding one.**
+> `Σ0 (x : A) → P` elaborates to `.sigmaT x dom (.cmpT P)` — no `Term` former, no
+> `Val` form, no constructor, no eliminator. `readResult`'s first component used to
+> be routed by an explicit `Term.domComptime dom` test and its tail by nothing;
+> both are now one arm at the top of `readResult`: **a position is comptime iff its
+> type carries `⇝`**. One sentence covers a λ's argument, a Π's, a Σ's component
+> and a Σ's tail, where it covered three and left the fourth silently runtime.
+>
+> **3. THE M33a HOOK NOTE IS ONE STEP OFF, and the correction is worth having.**
+> §5b predicted the destruction change would be `componentMode`'s `Pair` case. It
+> is not: `componentMode` already asks `sctx` per field and needed no case at all.
+> What moved are the two places that WRITE the mode — `reattachSigmaMode`
+> (symbolic), which now re-attaches at BOTH ends, and `buildResult` (concrete),
+> which gets the codomain's `⇝` for free through `readCWith`. `Pure.ctorSig
+> "Pair"` strips the codomain as it has stripped the domain since R3b.
+> `lowerArms flagship` **26 → 22** and `capArms` **10 → 14**, which is the flip
+> §5b said that counter would register, and the four that moved are the tails.
+>
+> **4. A FIFTH DESTINATION, found by the corpus: a RECURSOR ARM.** Stated at
+> `readR`'s λ arm alone, the destination rule refused every runtime recursor's
+> arms — 46 assertions red, four executing differentials among them — because
+> `readRecArgs` reads arms with `readR` and an arm is a λ. An arm has a contract
+> (the seal ascribes the spine; `checkArm` checks it; `ascribeRecArms` now hands
+> the executing machine the same Π), so `readRecArgs` FORMS its arms. 46 → 24. The
+> programmer-facing list in the error message is the other four.
+>
+> **5. THE MESSAGE AT THE TAIL was a first-class deliverable and earned it.**
+> M33a's UX finding — a six-component chain reads uniformly for five and silently
+> reverts to ⇒ at the sixth, and `fenceComptime` names the consequence and advises
+> lower-casing a proof — is answered by `tailFence`, which fires only at the second
+> component of the INNERMOST Σ and says the position and the spelling. It is also
+> what made the corpus migration mechanical: every rename in commits 2–4 was
+> demanded by name, by a message that said which binder and which fix.
+>
+> **6. `refuseFnBinding` DOES NOT BECOME DERIVABLE, and the residual is one
+> measured shape.** §2.5 promised the backstop would be deleted once ⇒ could not
+> construct a function. Measured by neutralising it with everything else in place:
+> the corpus goes red at **exactly one** assertion, `Functions.m1` — `let g = ih`,
+> where `ih` is a recursor arm's lowercase self-view holding an imperative
+> function value. Nothing CONSTRUCTS a function there; the σ is COPIED out of one
+> runtime slot into another. So the two claims are genuinely different, and the
+> doc should say so: **"⇒ cannot construct a function value" is now law and is
+> enforced by two refusals; "a runtime binding may not hold a function" is
+> strictly stronger, because a function can also arrive by being copied, and it
+> keeps its one site.** (The deeper fix is §2.1's: `ih` is a binder holding a
+> function and should be `Ih`. `m1` is a negative control whose whole subject is
+> that `let g = ih` is refused, so capitalising it there would delete the test;
+> the sweep is a separate item.)
+>
+> **7. Controls.** `abstractInto` sabotage (its nine `alphaEq` tests forced
+> false): **26** red at commits 1, 2 and 4 — the same count and the same shape as
+> M33a's re-measurement (Direct 18, KernelFloor 7, Arrays 1), with `progOk
+> flagship` (Direct.lean:1605) and both `S32Cook` directions confirmed present
+> each time; green with it restored. So Σ0 adds NOTHING to the sabotage surface,
+> which is the semantic check that none of this touches the generalization sweep.
+> `S32Cook` both directions, `S32Seal` §B/§C and M33a's arm-check discriminator
+> green throughout. Ten test modules built at every measurement (R3b's
+> absent-failure lesson applied, not recited). **`Traces.lean` byte-unchanged.**
+>
+> **8. Enumerated flips, the whole list.** Commit 0: one, a value shape —
+> `KernelFloor`'s S32Seal §E golden spells `Inc`'s closure, which now carries
+> `some (Π(§p0 : Nat). Nat)`. Commit 1: one — `sigmaTailProof`'s needle moves to
+> the tail message, verdict unchanged. Commits 2+3: `lamValued` flips to rejected;
+> 20 return types take `Σ0`; 8 tail arm binders, 11 λ-valued bindings and 4
+> function-typed parameters capitalise; `lowerArms`/`capArms` move. Commit 4:
+> `computePartial` flips to rejected; the seven §2.5 bindings capitalise; ONE
+> spec-lie needle moves ("does not have its parameter type" → "does not have
+> return type", verdict unchanged) for the same reason M33a recorded for
+> `quicksortA`'s two lies — with `Cnt` capital the lie is caught where it is
+> written rather than one call later. No other verdict in the corpus moved.

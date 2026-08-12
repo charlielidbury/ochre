@@ -3,6 +3,73 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-08-12: M33 Σ0 — a mode for the tail, and no-⇒-λ becomes law
+
+**Decided: a Σ chain's tail gets its mode from a marker on the Σ's CODOMAIN,
+spelled `Σ0 (x : A) → P`; and with that, ⇒ is forbidden from constructing a
+function value.** The design is suspensions.md §2.7 (user-proposed, ratified in
+review before the work); the implementation and its measurements are that file's
+M33 Σ0 addendum. This entry records the decision and the alternatives.
+
+**The problem.** Every binder in the language spells its mode by its case
+(§2.1), and since R3b a Σ binder spells its component's mode on the DOMAIN. A Σ
+chain's tail has no binder, so it had no way to say anything and was silently
+⇒-read. That was the last position where a function could reach the move arrow
+with no way to object, and it is exactly where quicksort's count-equation proof
+sits — so the invariant "⇒ constructs no function value" was one boundary shy of
+enforceable, refuted by measurement at R3 and again at R3b.
+
+**Why the marker won over the alternative.** M33a recommended the other option
+with at-scale UX data: spell trailing proofs as components over a `Unit` tail, so
+the position becomes ordinary rather than special and no new surface former is
+needed, at the cost of consumers destructuring one level deeper (~10 sites). The
+user chose the marker, and the reason it is the better decision is legible in what
+M33a measured about the friction: today's tail is INVISIBLY special — a
+six-component chain reads uniformly for five and reverts to ⇒ at the sixth. The
+Unit-tail fixes that by deleting the special position; `Σ0` fixes it by making the
+position VISIBLE, which is the same cure and also gives the error message a name
+and a spelling to offer. It also lands on a well-trodden design: `Σ0` is DLLBC's
+subset type, with comptime as the erasure axis where Lean's `Subtype`, Coq's
+`sig` and NuPRL/PVS set types use Prop or irrelevance.
+
+**What was NOT decided, and this is the interesting part.** The two refutations
+said there is no way to distinguish a proof from a computation in this calculus —
+`let cnt = MkL lo hi hcnt` and `let f = Add 1` both bind a partial application at
+a Π type, and there is no Prop/Type split. **That is still true.** The rule was
+not obtained by finding the distinction; it was obtained by making it
+unnecessary. Once every position that legitimately holds a function can SAY so,
+the question stops being about the value and becomes about the DESTINATION —
+which is decidable, local, and readable by both machines. Recorded because the
+next person to meet a "we cannot tell X from Y" wall should know that widening
+what the other side can say is a move.
+
+**Two consequences accepted rather than absorbed.**
+
+  * **The enforcement is two refusals, not one.** §2.5 predicted one. A function
+    arrives at ⇒ two ways: written as a λ (caught at `readR`'s λ arm) and computed
+    by a spine (caught at the pure lift, and `Add 1` is only visible there because
+    it is a spine until it is evaluated). Both say the same sentence, which is the
+    programmer-facing rule: *a λ is knowledge and needs a comptime destination — a
+    capital `let`, a ⇝ parameter, a Σ0 component or tail, or an ascription.*
+  * **`refuseFnBinding` is NOT derivable, measured.** §2.5 promised it would be
+    deleted. Neutralising it with everything else in place reds exactly one
+    assertion: `let g = ih`, where an imperative function value is COPIED between
+    runtime slots. No rule about ⇒ CONSTRUCTING a function can reach a copy, so
+    "⇒ cannot construct a function" and "a runtime binding may not hold one" are
+    genuinely different claims and the second keeps its one site. The deeper fix
+    is §2.1's — `ih` is a binder holding a function and should be capital — and
+    is filed rather than taken, because `m1` is the negative control whose whole
+    subject is that spelling.
+
+**Also decided, at the prerequisite: an executing closure carries its
+ascription.** M33a named the asymmetry (only the checking machine has a return
+type at a body's tail) and the fix. Implementing it found a second source the doc
+did not name: a recursive `fn` seals a recursor spine, not a λ, and the ARMS are
+the bodies — so the arms take the contract §7 derives for them, by the same
+derivation `sealRec` uses and differing only in not checking it. With both halves
+the ⇒-move fence is one rule for two machines again, which is what any rule about
+a tail's mode requires.
+
 ## 2026-08-11: M32 — one syntax, one semantic domain, and closures are the only suspensions
 
 **Decided: `Term` is the only syntax; the store holds a small state skeleton over
