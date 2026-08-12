@@ -945,32 +945,40 @@ example : (match cookForGen 1000 sp.symIds impClosure with
            | .closure ρ n => ρ.length == 2 && Term.beq n impNode
            | _ => false) = true := by native_decide
 
-/-! ## A LIMIT of the sweep, found by building this canary and pinned here
+/-! ## A limit of the sweep, found by building this canary — CLOSED at M33
 
-    `Term.abstractInto` matches by `Term.beq`, which compares binder NAMES, and
-    `readback` names a binder by its LEVEL. So a generalized spine that itself
-    CONTAINS a binder does not match its own occurrence under a λ: normalized at
-    depth 0 the spine says `§0`, and the same spine normalized one binder deeper
-    says `§1`. `len σ5` is such a spine — it unfolds to a `listRec` over λ arms —
-    and abstracting it reaches every knowledge leaf in Ω and none of the
-    occurrences inside a cooked closure body.
+    R2 found it here and recorded it as a demand. `Term.abstractInto` matched by
+    `Term.beq`, which compares binder NAMES, and `readback` names a binder by its
+    LEVEL. So a generalized spine that itself CONTAINS a binder did not match its
+    own occurrence under a λ: normalized at depth 0 the spine says `§0`, and the
+    same spine normalized one binder deeper says `§1`. `len σ5` is such a spine —
+    it unfolds to a `listRec` over λ arms — and abstracting it reached every
+    knowledge leaf in Ω and none of the occurrences inside a cooked closure body.
 
-    This is not new at R2 (a λ at rest was normalized knowledge before it was a
-    closure, with the same level shift), and it is not what cook-at-generalization
-    is about — cooking fixes LATENCY, and this is a matching question underneath
-    it. Recorded as a demand rather than argued away: the fix is an α-insensitive
-    match at the abstraction site, which is `Term.alphaEq`'s job and a change to
-    the sweep's key. -/
+    This was not new at R2 (a λ at rest was normalized knowledge before it was a
+    closure, with the same level shift), and it was never what
+    cook-at-generalization is about — cooking fixes LATENCY, and this was a
+    matching question underneath it.
+
+    **M33 made the key `Term.alphaEq`**, which is what R2 named as the fix. The
+    assertion below is kept, flipped: it is the same probe, and its verdict is now
+    the opposite one. That is deliberately more informative than deleting it —
+    the line that used to say "the sweep finds nothing here" now says "the sweep
+    finds it", and the two are the same measurement. -/
 def lenBody : Term := Std.lenT (.var vSlot)
 def lenLatent : Val := .closure [(vSlot, .know (Term.sym 5))] (.lam "§x" (.const "Nat") lenBody)
 def lenSp : Term := Pure.nf 1000 (Std.lenT (Term.sym 5))
 -- The spine BINDS: it unfolds to a `listRec` over λ arms, so its normal form
 -- carries binders and their names are levels.
 example : strContains lenSp.pretty "λ(§0" = true := by native_decide
--- …and the sweep therefore finds nothing to abstract inside the cooked body,
--- so cooked-then-swept and swept-then-cooked agree only because NEITHER fired.
+-- …and the sweep now FIRES inside the cooked body, where under the name key it
+-- walked past. (FLIPPED at M33: this read `= true` while the key was `beq`.)
 example : Term.beq (Term.abstractInto lenSp 98 (cooked lenLatent)) (cooked lenLatent)
-          = true := by native_decide
+          = false := by native_decide
+-- Named, so the flip is a rewrite and not merely a difference: the cooked body's
+-- occurrence reads `σ98`, which is what the branch's refinement can then reach.
+example : (Term.abstractInto lenSp 98 (cooked lenLatent)).pretty
+          = "λ(§0 : Nat). σ98" := by native_decide
 
 /-! ### The same limit as a PROGRAM (M33), and the pair that isolates it
 
@@ -991,11 +999,15 @@ example : Term.beq (Term.abstractInto lenSp 98 (cooked lenLatent)) (cooked lenLa
       * `alphaRepro` holds it in a comptime λ. `cookForGen` cooks the closure
         (its ρ mentions L's σ, so it is in the support), and the cooked body puts
         the spine one binder deeper — where readback numbered the spine's own
-        binders from 1 instead of from 0. The sweep walks straight past it, the
-        body keeps speaking pre-generalization vocabulary, and the `Refl` dies.
+        binders from 1 instead of from 0. Under the NAME key the sweep walked
+        straight past it, the body kept speaking pre-generalization vocabulary,
+        and the `Refl` died at the call.
 
-    The rejection is asserted with its needle, and the control's acceptance is
-    what says the needle is about the KEY rather than about the program. -/
+    **FLIPPED at M33**: with the key α-insensitive, `alphaRepro` is accepted, and
+    the pair now asserts that the two programs agree — which is the property that
+    was wanted all along, since binder depth is not something a programmer should
+    be able to observe. The rejected version is not deleted but recorded in the
+    commit that pinned it (`M33 α.1`), where the needle it died with is quoted. -/
 
 def alphaControlDepth0 : Term := prog{
   fn NeedTrue (B : Bool, h : Id Bool B True) -> Unit { () };
@@ -1019,15 +1031,31 @@ def alphaRepro : Term := prog{
             False => ()
           } };
   () }
-example : progRejects alphaRepro "does not have its parameter type" = true := by native_decide
+example : progOk alphaRepro = true := by native_decide
+
+-- The accept DISCRIMINATES: the same program asking the True branch to show the
+-- spine is `False` is still rejected. Without this, "α-insensitive" could have
+-- been read as "matches more things than it should", and an accept that a
+-- rubber-stamping sweep would also produce says nothing about the key.
+def alphaReproLie : Term := prog{
+  fn NeedFalse (B : Bool, h : Id Bool B False) -> Unit { () };
+  fn AlphaReproLie (L : List Nat) -> Unit
+        { let F = λ (X : Nat). Leb (Len L) (S (S Z));
+          let c = Leb (Len L) (S (S Z));
+          match e : c {
+            True => { NeedFalse(F Z, Refl); () },
+            False => ()
+          } };
+  () }
+example : progRejects alphaReproLie "does not have its parameter type" = true := by native_decide
 
 /-! ### The diagnosis, stated as the two keys disagreeing
 
-    Why the pair splits is not left to the prose: the needle and the occurrence
-    one binder deeper are the same term up to α and different terms up to names,
-    and these two lines say so. `Term.alphaEq` already returns the right answer
-    today — nothing about the gap is hard to DECIDE, which is why the residual is
-    a change to the sweep's key rather than to its traversal. -/
+    Why the pair used to split is not left to the prose: the needle and the
+    occurrence one binder deeper are the same term up to α and different terms up
+    to names, and these two lines say so. Nothing about the gap was ever hard to
+    DECIDE — `Term.alphaEq` already returned the right answer at R2 — which is why
+    the residual was a change to the sweep's KEY rather than to its traversal. -/
 def lenSpDeeper : Term :=
   match Pure.nf 1000 (Term.cpi "X" (.const "Nat") (Std.lenT (Term.sym 5))) with
   | .pi _ _ c => c

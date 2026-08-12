@@ -1056,44 +1056,68 @@ def Term.substSym (σ : Nat) (repl : Term) (t : Term) : Term :=
     `§σ`-names, and no binder anywhere rebinds one. `absOcc`'s `shadowed` set
     would therefore be permanently empty.
 
-    The comparison is `Term.beq`, which is MODE-SENSITIVE, where the `Val` sweep
-    this replaces was mode-blind (`Val.beq` unwrapped `cmpT`). That is the house
-    pattern rather than a change of heart: `absOcc` wants to see a marker, and the
-    sites that must not — `piAgree`, `checkArm`, `sealRec`, `trivialOwedT` — strip
-    with `.stripCmp` AT THE SITE and leave the equality honest. Stage V measured
-    the difference unreachable by the corpus (zero divergences over the whole
-    suite). -/
+    The comparison is `Term.alphaEq`, and it is MODE-SENSITIVE, where the `Val`
+    sweep this replaces was mode-blind (`Val.beq` unwrapped `cmpT`). That is the
+    house pattern rather than a change of heart: `absOcc` wants to see a marker,
+    and the sites that must not — `piAgree`, `checkArm`, `sealRec`,
+    `trivialOwedT` — strip with `.stripCmp` AT THE SITE and leave the equality
+    honest. `alphaEq` keeps that: it has no case that unwraps `cmpT` on one side
+    only, and it compares a binder's DOMAIN, which is where a mode lives. Stage V
+    measured the difference unreachable by the corpus (zero divergences over the
+    whole suite).
+
+    **Why α and not names** (M33, closing M32's residual 4). The key was
+    `Term.beq`, which compares binder NAMES, and `Pure.readback` names every
+    binder it opens by its LEVEL. `generalizeStuck` normalizes the needle at depth
+    0, so the needle's own binders are numbered from 0 — and an occurrence sitting
+    one binder deeper reads back with them numbered from 1. Under a name key those
+    are two terms, so a spine that itself BINDS missed its own occurrences under
+    every λ, `cookForGen`'s cooked bodies included. Corpus spines bind routinely:
+    `Leb a b` alone unfolds to a `natRec` over λ arms.
+
+    The needle is a stuck spine over σ's; its free names are all `§σ`-names, which
+    no binder rebinds, so comparing with EMPTY contexts on both sides is exact —
+    a free name in the needle can only meet a free name in the occurrence. What α
+    adds is that the needle's OWN binders are matched positionally, which is the
+    whole of the fix.
+
+    Two alternatives were considered and are recorded at the M33 commit: shifting
+    the needle's `§`-names as the traversal descends (rejected — it assumes every
+    binder the traversal crosses was counted by readback, and the swept state
+    mixes declared syntax with normalized spines, so the assumption is false); and
+    a de-Bruijn key computed on the fly (that IS this function, since `alphaEq` is
+    de-Bruijn-on-the-fly, with no second representation to keep in step). -/
 mutual
   def Term.abstractInto (target : Term) (σb : Nat) : Term → Term
     | .ctorApp n args =>
-      if Term.beq (.ctorApp n args) target then Term.sym σb
+      if Term.alphaEq (.ctorApp n args) target then Term.sym σb
       else .ctorApp n (Term.abstractIntoList target σb args)
     | .app f a =>
-      if Term.beq (.app f a) target then Term.sym σb
+      if Term.alphaEq (.app f a) target then Term.sym σb
       else .app (Term.abstractInto target σb f) (Term.abstractInto target σb a)
     | .idT a b c =>
-      if Term.beq (.idT a b c) target then Term.sym σb
+      if Term.alphaEq (.idT a b c) target then Term.sym σb
       else .idT (Term.abstractInto target σb a) (Term.abstractInto target σb b)
         (Term.abstractInto target σb c)
     | .lam x d b =>
-      if Term.beq (.lam x d b) target then Term.sym σb
+      if Term.alphaEq (.lam x d b) target then Term.sym σb
       else .lam x (Term.abstractInto target σb d) (Term.abstractInto target σb b)
     | .pi x d c =>
-      if Term.beq (.pi x d c) target then Term.sym σb
+      if Term.alphaEq (.pi x d c) target then Term.sym σb
       else .pi x (Term.abstractInto target σb d) (Term.abstractInto target σb c)
     | .sigmaT x d c =>
-      if Term.beq (.sigmaT x d c) target then Term.sym σb
+      if Term.alphaEq (.sigmaT x d c) target then Term.sym σb
       else .sigmaT x (Term.abstractInto target σb d) (Term.abstractInto target σb c)
     | .borrowT x d c =>
-      if Term.beq (.borrowT x d c) target then Term.sym σb
+      if Term.alphaEq (.borrowT x d c) target then Term.sym σb
       else .borrowT x (Term.abstractInto target σb d) (Term.abstractInto target σb c)
     -- A mode marker is never itself an abstraction target (it is not a term), so
     -- recurse straight through rather than testing it — `absOcc`'s precedent.
     | .cmpT τ => .cmpT (Term.abstractInto target σb τ)
     | .deref u =>
-      if Term.beq (.deref u) target then Term.sym σb
+      if Term.alphaEq (.deref u) target then Term.sym σb
       else .deref (Term.abstractInto target σb u)
-    | s => if Term.beq s target then Term.sym σb else s
+    | s => if Term.alphaEq s target then Term.sym σb else s
   termination_by t => sizeOf t
   def Term.abstractIntoList (target : Term) (σb : Nat) : List Term → List Term
     | [] => []
