@@ -177,6 +177,47 @@ closure is what makes the ESCAPING case safe). Requires the fn body scope fix
 (params-only elaboration context retires; the id-collision that gated it is void
 under name-keying).
 
+### 2.7 Σ0 — the comptime tail (M33 design, user-proposed, ratified in review)
+
+**The problem it closes**: a Σ chain's TAIL has no binder, hence no mode marker —
+§2.5's second escape hatch, and where quicksort's `cnt` proof sits. **The design**:
+`Σ0 (x : A) → P` is the pair whose second projection is comptime — DLLBC's subset
+type, with the standard precedent (Lean's `Subtype {x : A // P}`, Coq's `sig`,
+NuPRL/PVS set types), and with comptime as the erasure axis where those systems use
+Prop/irrelevance.
+
+**Representation: NOT a new former.** Σ0 is surface sugar for the existing `sigmaT`
+with the existing `cmpT` mode marker on its CODOMAIN — exactly how λ/Π domains
+carry modes, routed by the machinery R3b already built (`readResult` dispatches on
+domain modes; the codomain is one more site). Same `Pair` constructor serves both
+(the marker lives on the type; the read routes off it). No new value former, no new
+constructor, no new eliminator. Rules:
+
+  * **Construction**: `Pair(a, p)` at a Σ0 reads `a` by the first binder's mode and
+    `p` by ⇝ — non-consuming, and a λ literal there is legal (it lands in a ⇝
+    channel). Where no Σ0 type is in hand (a bare un-ascribed Pair), the λ literal
+    is refused with the destination rule's message (below).
+  * **Destruction**: `match p { Pair(x, H) => … }` — the arm binder receiving the
+    Σ0 component MUST be capital (M33a's arm check extended to the tail position;
+    the two features enforce each other).
+  * **Erasure**: the component is comptime knowledge — evaluated today, dropped by
+    compilation, exactly as capital Σ components already are. The executing machine
+    is untouched.
+  * **Chains**: intermediate Σs' RHS is another Σ (mode structural); Σ0 only ever
+    matters as the innermost former, marking the final tail.
+
+**The destination rule** (the surface statement of no-⇒-λ, taught in the error
+message and language.md): *a λ is knowledge and needs a comptime destination — a
+capital `let`, a capital/⇝ parameter, a Σ0 component or tail, or an ascription.*
+Kernel-side this is ONE refusal (the pure lift's λ case); every destination is a
+position read by ⇝.
+
+**Acceptance = the terminal no-⇒-λ attempt, third and final**: with Σ0 landed and
+M33a's migration complete, quicksort's `cnt` spells its type with Σ0, the
+`S32Backstop` tripwires flip DELIBERATELY, and the pure lift's λ refusal lands
+green — or the residual is reported precisely and the doc says one-boundary-shy a
+third time rather than rounding up.
+
 ## 3. The cooking schedule — derived, not chosen
 
 **The criterion: a store-wide sweep is safe iff it commutes with evaluation, and a
