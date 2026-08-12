@@ -1317,6 +1317,14 @@ mutual
     | .sigmaT x d c => .sigmaT x (markExit borrowIds d) (markExit borrowIds c)
     | .lam x d b => .lam x (markExit borrowIds d) (markExit borrowIds b)
     | .idT a b c => .idT (markExit borrowIds a) (markExit borrowIds b) (markExit borrowIds c)
+    -- **The mode marker is TRANSPARENT to this walk** (M33a), and its absence was
+    -- a silent skip rather than a refusal. Since R3b a Σ/Π/λ domain may be `⇝τ`,
+    -- and the fallthrough below treats an unrecognised former as a leaf — so a
+    -- comptime Σ component's type kept its `*v` UNMARKED and read the ENTRY
+    -- payload where every other component read the exit. Measured on `splitOff`:
+    -- capitalising one Σ binder made the audit demand `Id σ0 Nil` of a branch
+    -- that returns `Refl` at `Id Nil Nil`.
+    | .cmpT τ => .cmpT (markExit borrowIds τ)
     | t => t
   termination_by t => sizeOf t
   def markExitList (borrowIds : List Nat) : List Term → List Term
@@ -1431,6 +1439,7 @@ partial def calleeNames : Term → List String
   -- would be invisible to it.
   | .lam _ d b | .pi _ d b | .sigmaT _ d b => calleeNames d ++ calleeNames b
   | .idT a b c => calleeNames a ++ calleeNames b ++ calleeNames c
+  | .cmpT τ => calleeNames τ                             -- M33a: ⇝ is transparent here
   | _ => []
 
 /-! Value typing (§4), the future audit's engine. `sym σ` is typed by `sctx`
@@ -2527,6 +2536,7 @@ partial def collapseCDerefs (fuel : Nat) : Term → M Unit
   | .lam _ d b => do collapseCDerefs fuel d; collapseCDerefs fuel b
   | .pi _ d b => do collapseCDerefs fuel d; collapseCDerefs fuel b
   | .sigmaT _ d b => do collapseCDerefs fuel d; collapseCDerefs fuel b
+  | .cmpT τ => collapseCDerefs fuel τ                    -- M33a: ⇝ is transparent here
   | .letIn _ rhs rest => do collapseCDerefs fuel rhs; collapseCDerefs fuel rest
   | _ => pure ()
 

@@ -1528,3 +1528,58 @@ example : (Term.appSpineVar? (Term.appSpine (.const "Len") [.unit])).isSome = fa
 end Dllbc.Tests.S32Spine
 end
 -- └── end of the M32 R4 spine battery ─────────────────────────────────────────
+
+-- ┌── the M33a ⇝-transparency battery ──────────────────────────────────────────
+section
+namespace Dllbc.Tests.S33Cmp
+open Dllbc
+
+/-! # A `⇝` domain is TRANSPARENT to the kernel's type walks (M33a)
+
+    R3b put §2.1's mode on the Σ DOMAIN — `Σ (H : τ)` elaborates to
+    `.sigmaT "H" (⇝τ) …` — and that made the Σ half of the convention operative.
+    What it did not do is tell the walks that traverse a return type about the
+    new former, and three of them had no case for it: they end in a
+    `| t => t`-shaped fallthrough, so a `⇝τ` was treated as a LEAF and its
+    subterm was skipped in silence.
+
+    `markExit` is the one with teeth. §5.4's exit-snapshot transform stamps a
+    borrow parameter's `*v` as `@exit(*v)` throughout the return type, and a
+    comptime component's type was not reached — so that component alone read the
+    ENTRY payload while every other component read the exit. The symptom is a
+    type error at a branch whose proof is correct: `splitOff`'s `Z` arm returns
+    `Refl` at `Id Nil Nil` and the audit demanded `Id σ0 Nil` of it.
+
+    **This is what actually blocked R3b's residual 2, and it is not what R3b
+    said blocked it.** R3b recorded the four red assertions as a CONSUMER
+    problem — "a match-arm binder's case is unchecked against the Σ's" — and
+    with these three cases added, the same four go green with their arm binders
+    untouched and still lowercase. The consumer check is worth having on its own
+    terms (S33Arms, below) but it is not the unblocker; a producer-side silent
+    skip was.
+
+    Pinned as one program in two spellings one character apart, plus the lie that
+    makes the accept discriminating. -/
+
+def zapUnder (dom : Term) : Term := prog{
+  fn Zap (v : &mut List Nat) -> %dom { *v := Nil; Pair(Refl, unit) };
+  () }
+
+def zapV : Term := .var ⟨0, "v"⟩
+
+-- The COMPTIME component: its `Id` mentions `*v`, so it is exactly the type
+-- `markExit` has to reach through the `⇝` to stamp.
+def zapCmp : Term := prog{ Σ (H : Id (List Nat) (*%zapV) Nil) → Unit }
+-- …and its one-character twin, which was green before M33a and is the control
+-- that says the `⇝` is the whole difference.
+def zapRun : Term := prog{ Σ (h : Id (List Nat) (*%zapV) Nil) → Unit }
+-- …and the lie, so neither accept is vacuous: the exit is `Nil`, not `[Z]`.
+def zapLie : Term := prog{ Σ (H : Id (List Nat) (*%zapV) (Cons Z Nil)) → Unit }
+
+example : progOk (zapUnder zapCmp) = true := by native_decide
+example : progOk (zapUnder zapRun) = true := by native_decide
+example : progRejects (zapUnder zapLie) "does not have return type" = true := by native_decide
+
+end Dllbc.Tests.S33Cmp
+end
+-- └── end of the M33a ⇝-transparency battery ──────────────────────────────────
