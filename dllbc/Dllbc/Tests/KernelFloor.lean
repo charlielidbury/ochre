@@ -879,7 +879,7 @@ def latentRho : List (Var × Val) :=
   [(vSlot, .know (Term.sym 5)), (wSlot, .know (Term.sym 6))]
 def latentBody : Term := .app (.app (.const "leb") (.var vSlot)) (.var wSlot)
 def latentNode : Term := .lam "§x" (.const "Nat") latentBody
-def latent : Val := .closure latentRho latentNode
+def latent : Val := .closure latentRho latentNode none
 
 /-- The spine the split generalizes, normalized as `generalizeStuck` normalizes
     it, and the fresh σ it is abstracted into. -/
@@ -888,7 +888,7 @@ def σb : Nat := 99
 
 /-- Cook a value that is a closure; anything else is not this test's subject. -/
 def cooked : Val → Term
-  | .closure ρ n => cookClosure 1000 ρ n
+  | .closure ρ n _ => cookClosure 1000 ρ n
   | v => .const s!"NOT-A-CLOSURE:{v.pretty}"
 
 /-- **The eager answer**: cook, THEN sweep. What a cook-at-formation system would
@@ -928,9 +928,9 @@ example : withoutCooking.pretty = "λ(§0 : Nat). leb σ5 σ6" := by native_deci
     spine, so it is left RAW — the difference between §3's rule and
     "normalize at every split", which §3 rejects because it pays at the commuting
     sweeps that need nothing. -/
-def unrelated : Val := .closure [(vSlot, .know (Term.sym 7))] latentNode
+def unrelated : Val := .closure [(vSlot, .know (Term.sym 7))] latentNode none
 example : (match cookForGen 1000 sp.symIds unrelated with
-           | .closure ρ n => ρ.length == 1 && Term.beq n latentNode
+           | .closure ρ n _ => ρ.length == 1 && Term.beq n latentNode
            | _ => false) = true := by native_decide
 
 /-! ## An IMPERATIVE body is never cooked, ever (§3)
@@ -940,9 +940,9 @@ example : (match cookForGen 1000 sp.symIds unrelated with
     no rule for a write. Its ρ is still descended, because a comptime closure can
     sit inside one. -/
 def impNode : Term := Term.lamTel [(⟨702, "w"⟩, .const "Nat")] (.seq (.var vSlot) .unit)
-def impClosure : Val := .closure latentRho impNode
+def impClosure : Val := .closure latentRho impNode none
 example : (match cookForGen 1000 sp.symIds impClosure with
-           | .closure ρ n => ρ.length == 2 && Term.beq n impNode
+           | .closure ρ n _ => ρ.length == 2 && Term.beq n impNode
            | _ => false) = true := by native_decide
 
 /-! ## A limit of the sweep, found by building this canary — CLOSED at M33
@@ -966,7 +966,7 @@ example : (match cookForGen 1000 sp.symIds impClosure with
     the line that used to say "the sweep finds nothing here" now says "the sweep
     finds it", and the two are the same measurement. -/
 def lenBody : Term := Std.lenT (.var vSlot)
-def lenLatent : Val := .closure [(vSlot, .know (Term.sym 5))] (.lam "§x" (.const "Nat") lenBody)
+def lenLatent : Val := .closure [(vSlot, .know (Term.sym 5))] (.lam "§x" (.const "Nat") lenBody) none
 def lenSp : Term := Pure.nf 1000 (Std.lenT (Term.sym 5))
 -- The spine BINDS: it unfolds to a `listRec` over λ arms, so its normal form
 -- carries binders and their names are levels.
@@ -1116,7 +1116,7 @@ def capturedProg : Term := prog{ let H0 = 3; let G = λ(a : Nat) { let Snap = H0
 def capturedRho : List String :=
   match (Dllbc.tailEnvs capturedProg).head! with
   | Except.ok env => match env.lookup "G" with
-    | some (Val.closure ρ _) => ρ.map (·.1.name)
+    | some (Val.closure ρ _ _) => ρ.map (·.1.name)
     | _ => ["NOT-A-CLOSURE"]
   | Except.error e => [e]
 example : capturedRho = ["H0"] := by native_decide
@@ -1280,8 +1280,15 @@ def execSealSites : Option Nat :=
   | .error _ _ => none
 
 example : execSealSites = some 0 := by native_decide
-example : progRunsTo execProg [("Inc", .closure [] (Term.lamTel
-            [(⟨0, "n"⟩, .const "Nat")] (.ctorApp "S" [.var ⟨0, "n"⟩]))),
+-- **The closure CARRIES ITS ASCRIPTION** (M33 Σ0's prerequisite): the `Π(…). Nat`
+-- is the third field, and this golden is where it is spelled. It is `some` here
+-- and `none` for every un-sealed λ in this file, which is the whole distinction —
+-- a λ that was never ascribed promises nothing about its result. The binder is
+-- `§p0` because the return type does not depend on the argument, so the surface
+-- mints its unused name for it.
+example : progRunsTo execProg [("Inc", .closure []
+            (Term.lamTel [(⟨0, "n"⟩, .const "Nat")] (.ctorApp "S" [.var ⟨0, "n"⟩]))
+            (some (.pi "§p0" (.const "Nat") (.const "Nat")))),
           ("y", Val.nat 3)] = true := by native_decide
 
 end Dllbc.Tests.S32Seal

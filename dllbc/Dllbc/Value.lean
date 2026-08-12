@@ -86,8 +86,24 @@ inductive Val where
       so `Term.peelLams` answers both. And there is no species tag —
       `Term.imperative` of what is under the binders is what decides whether
       applying this means ⇝ reduction or ⇒-entry, recomputed at every application
-      (§2.2). -/
-  | closure : List (Var × Val) → Term → Val
+      (§2.2).
+
+        * **the ASCRIPTION** (M33 Σ0's prerequisite, suspensions.md §2.7): the Π
+          the seal checked this λ against, when there was one. A closure used to
+          drop it — `readR`'s `.seal` arm handed the λ on and the type went no
+          further — and M33a measured the consequence: `readResult` reads a body's
+          tail against its return type, `St.retTyVal` is `checkRFnBody`'s, and the
+          EXECUTING machine entered every callee with no return type in hand. So a
+          rule stated on a tail's type was a rule only one machine could read, and
+          M33a had to gate the ⇒-move fence checking-side rather than let the two
+          disagree. Carrying it here is what makes a tail's MODE a fact both
+          machines can consult, which is the whole of Σ0.
+
+          `none` is honest and common: a λ that was never ascribed (the pure
+          fragment's `λ (N : Nat). …`, a proof term lifted at a constructor
+          argument) has no contract to carry, and a tail read under `none` is
+          `readR`'s, exactly as before. -/
+  | closure : List (Var × Val) → Term → Option Term → Val
 deriving Inhabited
 
 namespace Val
@@ -163,7 +179,7 @@ def know? : Val → Option Term
 partial def rhoTerms : List (Var × Val) → List (Var × Term)
   | [] => []
   | (x, .know t) :: ps => (x, t) :: rhoTerms ps
-  | (x, .closure ρ n) :: ps => (x, Term.underRho (rhoTerms ρ) n) :: rhoTerms ps
+  | (x, .closure ρ n _) :: ps => (x, Term.underRho (rhoTerms ρ) n) :: rhoTerms ps
   | _ :: ps => rhoTerms ps
 
 /-- **A recursor spine, at the store**. All-knowledge arguments give the ordinary
@@ -206,6 +222,18 @@ def symOf? : Val → Option Nat
     unwrapping existed for — has its own equality now (`Term.convEq`, used by
     `Val.convert`), so mode-blindness lives at the site that needs it instead of
     in the equality every incidental comparison reaches for. -/
+
+/-- Two closures' ASCRIPTIONS (M33 Σ0's prerequisite). Compared, not ignored: the
+    contract is a field of the value, two λs with the same body and different
+    promised return types are two different functions, and an equality that
+    skipped it would be the kind of near-miss that shows up as a golden agreeing
+    for the wrong reason. `Term.beq` rather than `alphaEq` for the same reason the
+    body uses it — a stored ascription is source syntax, not a normal form. -/
+def beqAscr : Option Term → Option Term → Bool
+  | none, none => true
+  | some a, some b => Term.beq a b
+  | _, _ => false
+
 mutual
   def beq : Val → Val → Bool
     | .know a,     .know b     => Term.beq a b
@@ -216,7 +244,7 @@ mutual
     -- Syntactic, on the captured environment AND the raw body: a closure is a
     -- suspension, so there is no reduction to compare it up to HERE. Conversion
     -- of two λs is `Val.convert`, which cooks both sides first (§2.3).
-    | .closure r a, .closure q b => beqRho r q && Term.beq a b
+    | .closure r a u, .closure q b w => beqRho r q && Term.beq a b && beqAscr u w
     | _,           _           => false
   termination_by v w => sizeOf v + sizeOf w
   def beqList : List Val → List Val → Bool
@@ -283,7 +311,7 @@ mutual
     -- a comptime λ prints as the term it is, an imperative one prints its binders
     -- and elides the body. The captured environment is not shown — it is what the
     -- body's free names MEAN, not part of what the function is.
-    | .closure _ t => Term.prettyPrec prec t
+    | .closure _ t _ => Term.prettyPrec prec t
   termination_by v => sizeOf v
   def prettyArgs : List Val → String
     | [] => ""
@@ -316,7 +344,7 @@ mutual
     | .node _ args => loanIdsList args
     | .know _ => []                                     -- knowledge: no loans, by type
     | .bot => []
-    | .closure ρ _ => loanIdsRho ρ                      -- state-free by the capture premise
+    | .closure ρ _ _ => loanIdsRho ρ                    -- state-free by the capture premise
   termination_by v => sizeOf v
   def loanIdsList : List Val → List Nat
     | [] => []
@@ -345,7 +373,7 @@ mutual
     | .borrowM _ _ => true
     | .node _ args => hasStateMarkerList args
     | .know _ => false
-    | .closure ρ _ => hasStateMarkerRho ρ
+    | .closure ρ _ _ => hasStateMarkerRho ρ
   termination_by v => sizeOf v
   def hasStateMarkerList : List Val → Bool
     | [] => false
@@ -380,7 +408,7 @@ mutual
     -- read too — raw it is source syntax, where `Term.symIds` finds nothing
     -- because a program cannot write a σ; cooked it is a pure normal form, and
     -- then the σ's it mentions are exactly the ones a comparison would see.
-    | .closure ρ t => symIdsRho ρ ++ Term.symIds t
+    | .closure ρ t u => symIdsRho ρ ++ Term.symIds t ++ (u.map Term.symIds).getD []
   termination_by v => sizeOf v
   def symIdsList : List Val → List Nat
     | [] => []
@@ -408,7 +436,7 @@ mutual
     -- Paired with `symIds` above, and for the reason stated there: whatever that
     -- traversal can see, this one must rewrite, or canonicalization renumbers a
     -- σ out of existence.
-    | .closure ρ b => .closure (renumberRho fℓ fσ ρ) (Term.renumberSyms fσ b)
+    | .closure ρ b u => .closure (renumberRho fℓ fσ ρ) (Term.renumberSyms fσ b) (u.map (Term.renumberSyms fσ))
   termination_by v => sizeOf v
   def renumberList (fℓ fσ : Nat → Nat) : List Val → List Val
     | [] => []

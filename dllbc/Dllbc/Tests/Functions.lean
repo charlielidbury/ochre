@@ -266,7 +266,7 @@ example : sealChk (StdLemmas.LeRefl) (StdLemmas.IdSymTy) = false := by native_de
 -- formation is a CHECK now and what is stored is the source (§2.2). The slot
 -- holds the same function it always held — `C1` below still gets `y ↦ 3`, by
 -- cooking at the application — and what moved is when the normal form is taken.
-def vlam : Val := .closure [] (.lam "x" (.const "Nat") (.ctorApp "S" [.pvar "x"]))
+def vlam : Val := .closure [] (.lam "x" (.const "Nat") (.ctorApp "S" [.pvar "x"])) none
 
 -- C1. **Body known ⟹ unfold.** A literal λ callee β-reduces, so the caller knows
 -- the result exactly: `y ↦ 3`, not an existential.
@@ -1840,7 +1840,7 @@ example : (match annotatedCmp with
 -- The type-level half, and it is the stronger of the two: this expression
 -- typechecks exactly because `Val.rfn`'s binders are `Var` and not `Var × Term`.
 -- A ledger that fails to compile is the one that cannot drift.
-example : Val := .closure [] (Term.lamTel [(⟨0, "a"⟩, .const "Nat")] .unit)
+example : Val := .closure [] (Term.lamTel [(⟨0, "a"⟩, .const "Nat")] .unit) none
 
 -- The live half: an ANNOTATED λ evaluates to a value printed with names alone.
 example : (match runProgram annotated with

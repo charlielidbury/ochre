@@ -292,7 +292,7 @@ def findSlot? (ω : Omega) (x : Var) : Option (Var × Val) :=
     application") is now vacuous, because `f(a)` IS the application. -/
 def calleeMustEnter (st : St) (v : Val) : Bool :=
   match v with
-  | .closure _ node => Term.lamImperative node
+  | .closure _ node _ => Term.lamImperative node
   | v =>
     match v.symOf? with
     | some σ => (st.fsig.lookup σ).isSome
@@ -557,7 +557,7 @@ def indexKindV (fuel : Nat) (sctx : List (Nat × Term)) : Val → Bool
   -- partially applied, closed" is what earns this. A CONSERVATIVE DEFAULT, and
   -- corrected at M27-P3: `ih` is CALLED, and a call LOCATES its callee rather
   -- than moving it, so a recursive call never reaches here at all.
-  | .closure _ _ => true
+  | .closure _ _ _ => true
   | .borrowM _ _ => false
   | .loanM _ => false
   | .bot => false
@@ -587,7 +587,8 @@ mutual
     -- that is the criterion's answer rather than an optimisation. The body is
     -- rewritten too: raw it holds no σ (a program cannot write one), cooked it
     -- holds exactly the ones a later comparison would see.
-    | .closure ρ b => .closure (substSymRho σ repl ρ) (Term.substSym σ repl b)
+    | .closure ρ b u => .closure (substSymRho σ repl ρ) (Term.substSym σ repl b)
+                                 (u.map (Term.substSym σ repl))
     | .loanM ℓ => .loanM ℓ
     | .bot => .bot
   termination_by v => sizeOf v
@@ -620,7 +621,8 @@ mutual
     -- The generalization sweep reaches ρ and the body alike. What it does NOT do
     -- is cook — `cookForGen` below has already run on the values this sweep is
     -- about, because cooking is an evaluation and this is a rewrite (§3).
-    | .closure ρ b => .closure (abstractIntoRho target σb ρ) (Term.abstractInto target σb b)
+    | .closure ρ b u => .closure (abstractIntoRho target σb ρ) (Term.abstractInto target σb b)
+                                 (u.map (Term.abstractInto target σb))
     | .loanM ℓ => .loanM ℓ
     | .bot => .bot
   termination_by v => sizeOf v
@@ -680,16 +682,17 @@ def cookClosure (fuel : Nat) (ρ : List (Var × Val)) (node : Term) : Term :=
     order because it is a separate pass over the same targets, run first — the
     cooked form is what `abstractInto` then rewrites. -/
 partial def cookForGen (fuel : Nat) (support : List Nat) : Val → Val
-  | .closure ρ node =>
+  | .closure ρ node u =>
     let ρ' := ρ.map (fun p => (p.1, cookForGen fuel support p.2))
-    if Term.lamImperative node then .closure ρ' node
+    if Term.lamImperative node then .closure ρ' node u
     else if (Val.symIdsRho ρ).any (fun σ => support.contains σ) then
       -- Cooked, and WRITTEN BACK: the cooked body is closed, so its ρ is empty
       -- and the raw syntax is gone. §6's sharp edge answered — nothing downstream
       -- shows source syntax for a λ (the renderer prints binders and elides), so
-      -- no message depended on it.
-      .closure [] (cookClosure fuel ρ node)
-    else .closure ρ' node
+      -- no message depended on it. The ascription rides through untouched: it is
+      -- the contract, not the code, and cooking is about the body.
+      .closure [] (cookClosure fuel ρ node) u
+    else .closure ρ' node u
   | .node n args => .ctor n (args.map (cookForGen fuel support))
   | .borrowM ℓ p => .borrowM ℓ (cookForGen fuel support p)
   | v => v
@@ -1127,7 +1130,7 @@ def needKnow (what : String) (v : Val) : M Term :=
   -- read of a slot holding a λ is the λ's normal form, which is what it was
   -- before R2 made the value raw. An IMPERATIVE closure keeps the rejection
   -- below, and keeps it for the same reason `.rfn` had it: its body is a body.
-  | .closure ρ node =>
+  | .closure ρ node _ =>
     if Term.lamImperative node then
       throwErr s!"readC (⇝{what}): {v.pretty} is state, not knowledge — a comptime read reaches a hole, a loan marker or a borrow through the place grammar only (§3.2)"
     else pure (Term.underRho (Val.rhoTerms ρ) node)
@@ -1350,7 +1353,7 @@ def subsKnowledge : Val → Term
   -- TRANSIENT cook (§2.3): the closure at rest is untouched, and what the type
   -- receives is the body under its capture, which the `Pure.nf` every one of
   -- these call sites already applies then normalizes.
-  | .closure ρ node => Term.underRho (Val.rhoTerms ρ) node
+  | .closure ρ node _ => Term.underRho (Val.rhoTerms ρ) node
   -- A component that is neither: a node holding state, which no return type in
   -- this calculus can produce (`retMixesBorrow`). It contributes a name that
   -- converts with nothing, so a type that reached for it would be rejected
@@ -1505,7 +1508,7 @@ mutual
       --
       -- What is left is a comptime λ against a borrow-free Π, which is exactly
       -- the judgment `hasTypeT`'s own λ case makes.
-      | .closure ρ node =>
+      | .closure ρ node _ =>
         if Term.lamImperative node || hasBorrowT ty then
           throwErr s!"hasType: cannot type neutral {v.pretty}"
         else hasTypeT fuel (cookClosure fuel ρ node) ty
@@ -2349,7 +2352,7 @@ def fenceComptime (x : Var) (what : String) : M Unit :=
     returned proof can be capital and this exclusion can go. Recorded as the
     blocker rather than as a preference. -/
 def isFnValue (st : St) : Val → Bool
-  | .closure _ t => Term.lamImperative t
+  | .closure _ t _ => Term.lamImperative t
   | v => match v.symOf? with
     | some σ => (st.fsig.lookup σ).isSome
     | none => false
@@ -2787,6 +2790,82 @@ def piBinderNames (t : Term) : List Var :=
     counterpart for a telescope that brought its own names). -/
 def borrowVarIds (tel : List (Var × Term)) : List Nat :=
   tel.filterMap (fun p => match p.2 with | .borrowT _ _ _ => some p.1.id | _ => none)
+
+/-- **The return type an ENTERED callee's tail is read against** (M33 Σ0's
+    prerequisite, suspensions.md §2.7) — the executing machine's counterpart of
+    the `retTyVal` that `checkRFnBody` pins.
+
+    The closure carries the ascribed Π; peeling one binder per parameter leaves
+    the return type, which is what `readResult` consults for a returned `Pair`'s
+    component MODES. Two deliberate differences from the checking side, each
+    because this is EXECUTION and execution does not verify:
+
+      * a `piPeel` failure is `none`, not a rejection. `piPeel` re-checks the
+        binder/domain mode agreement, and that check belongs to the seal; a
+        program that got here was already accepted, and re-refusing it at every
+        call would be the checker's rule enforced twice, in the one place M33a
+        recorded that doing so "breaks running programs to protect a checker".
+      * the type is left RAW — not `readC`'d, not `markExit`'d. What is wanted
+        from it is the Σ binders' modes, and those survive evaluation of a term
+        with free runtime `.var`s untouched (`Pure.eval` leaves an unbound `.var`
+        stuck and `.cmpT`/`.sigmaT` structural). `markExit` is §5.4's exit-snapshot
+        transform, which is about a symbolic audit and means nothing here.
+
+    A borrow-carrying return type gets `none`: `retMixesBorrow` already forbids
+    mixing borrow and value components, so such a type has no comptime component
+    to find, and `hasBorrowT` is the same guard `checkRFnBody` puts in front of
+    its own pin. -/
+def calleeRetTy (names : List Var) : Option Term → Option Term
+  | none => none
+  | some u =>
+    match piPeel names u with
+    | .error _ => none
+    | .ok (_, ret) => if hasBorrowT ret then none else some ret
+
+/-- **Selecting a match's branch, as ONE rule with two drivers** (M33 Σ0's
+    prerequisite). This is `readR`'s `.matchE` case with the continuation lifted
+    out: it fences, reorganizes a suspended scrutinee (End-Mut, then retry), picks
+    the branch, binds its fields, and returns the BODY to go on with — leaving
+    "and then read that body" to the caller, which is the only thing `readR` and
+    the tail-typed `readRTail` disagree about.
+
+    Extracted rather than duplicated because the alternative was a third copy of a
+    30-line rule; the two retries stay recursion here, on the same decreasing
+    fuel they had when they were `readR fuel (.matchE …)`. -/
+def matchStep : Nat → Var → Option Var → List Branch → M Term
+  | 0, _, _, _ => throwErr "match: out of fuel"
+  | fuel + 1, scrut, eqn, branches => do
+    -- §6's fence. A runtime match on a comptime binder is the erasure
+    -- violation the fence exists for: it is the rule that would make an
+    -- erased value's CONSTRUCTOR observable to ⇒ (and, in borrow mode, would
+    -- reborrow its fields). Scrutinize it in a type or a proof instead.
+    fenceComptime scrut "cannot be the scrutinee of a runtime match"
+    -- Mode is chosen by what the scrutinee's slot holds, after the usual
+    -- lazy reorganization. Both retries decrease fuel.
+    match ← lookupSlot scrut with
+    | .bot => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} holds ⊥ (use-after-move)"
+    | .borrowM ℓ payload =>
+      match Val.asCtor? payload with
+      | some (name, fields) => borrowSelect scrut eqn branches ℓ name fields
+      | none =>
+        match payload with
+        | .loanM ℓ' => do endLoan fuel ℓ'; matchStep fuel scrut eqn branches  -- reborrowed payload: end, retry
+        | .bot => throwErr s!"match: matching through a hole (⊥) at {scrut.name}#{scrut.id}"
+        | .borrowM _ _ => throwErr s!"match: scrutinee payload is a nested borrow (unsupported in §3)"
+        | p =>
+          if p.symOf?.isSome then
+            throwErr s!"match: symbolic scrutinee {scrut.name}#{scrut.id} in expression position — only a statement-position match may split (use the explore driver)"
+          else throwErr s!"match: scrutinee {scrut.name}#{scrut.id} payload is not a constructor"
+    | v =>
+      match firstLoanMarker v with
+      | some ℓ => do endLoan fuel ℓ; matchStep fuel scrut eqn branches  -- suspended owner: end, retry
+      | none =>
+        match Val.asCtor? v with
+        | some (name, fields) => ownedSelect scrut eqn branches name fields
+        | none =>
+          if v.symOf?.isSome then
+            throwErr s!"match: symbolic scrutinee {scrut.name}#{scrut.id} in expression position — only a statement-position match may split (use the explore driver)"
+          else throwErr s!"match: scrutinee {scrut.name}#{scrut.id} is not a constructor value"
 
 /-! ## The symbolic driver and the boundary audit (relocated here, M26-C)
 
@@ -3452,6 +3531,85 @@ def runtimeRecSpine? (t : Term) : Option (String × List Term) :=
     then some (c, args) else none
   | _ => none
 
+/-! ## A sealed RECURSOR's arms carry their ascriptions too (M33 Σ0's prerequisite)
+
+    A recursive `fn` does not seal a λ. `fn [k] Partition …` elaborates to
+    `natRec P z s` and the seal ascribes the whole spine, so `sealExec`'s λ case
+    never fires and the arms — which ARE the bodies — would enter with no return
+    type in hand. That is the same asymmetry M33a measured, arriving by a second
+    road, and it is the road quicksort's tail actually takes: `cnt` is returned
+    from `Partition`, and `Partition` is `fn [k]`.
+
+    **The derivation is `sealRec`'s, not a new one.** §7 derives the motive from
+    the signature — peel the scrutinee off the ascribed Π and the codomain `R` IS
+    the motive's body — so an arm's contract is `R` at that arm's constructor,
+    under the leading binders the recursor's premise gives it (the predecessor,
+    and `ih` at the predecessor). `checkArm` states exactly this on the checking
+    side; these two functions state it on the executing side, and the only thing
+    they do differently is not check it. -/
+
+/-- A leading binder's domain, wearing the mode its binder's case declares — so
+    that `piPeel` (which compares the two) agrees by construction. The checking
+    side has already verified the real agreement at the seal; re-deriving it here
+    would be the checker's rule enforced twice, in execution. -/
+def preDom (x : Var) (dom : Term) : Term := if x.isComptime then .cmpT dom else dom
+
+/-- The Π each argument of a sealed recursor spine is checked against, aligned
+    with the spine's arguments (`none` at the motive and the type parameter, which
+    are not arms). `u` is the ascription; `arms` are the argument VALUES, consulted
+    only for the arms' own binder names and cases. -/
+def recArmPis (c : String) (u : Term) (arms : List Val) : List (Option Term) :=
+  match u with
+  | .pi sn scrutDom R =>
+    let leading : Val → List (Var × Term) := fun v =>
+      match v with | .closure _ node _ => (Term.peelLams node).1 | _ => []
+    let atCtor : Term → Term := fun ct => Term.substP sn ct R
+    -- The arm's leading binders, wrapped back into Πs. Names are unwritable and
+    -- unused: `piPeel` substitutes each for the λ's own binder, and `R` already
+    -- speaks of the λ's binders (`sealRec` substituted them in).
+    let wrap : List (Var × Term) → Term → Term := fun pre ret =>
+      pre.foldr (fun p acc => .pi "§pre" (preDom p.1 p.2) acc) ret
+    match c with
+    | "natRec" =>
+      -- args: P z s
+      let step : Option Term :=
+        match (arms.get? 2).map leading with
+        | some (k :: ih :: _) =>
+          some (wrap [(k.1, scrutDom), (ih.1, atCtor (.var k.1))]
+                 (atCtor (.ctorApp "S" [.var k.1])))
+        | _ => none
+      [none, some (atCtor (.ctorApp "Z" [])), step]
+    | "listRec" =>
+      -- args: A P pn pc
+      let elemTy : Term := match scrutDom with
+        | .app (.const "List") a => a
+        | _ => .const "Nat"
+      let cons : Option Term :=
+        match (arms.get? 3).map leading with
+        | some (h :: tl :: ih :: _) =>
+          some (wrap [(h.1, elemTy), (tl.1, scrutDom), (ih.1, atCtor (.var tl.1))]
+                 (atCtor (.ctorApp "Cons" [.var h.1, .var tl.1])))
+        | _ => none
+      [none, none, some (atCtor (.ctorApp "Nil" [])), cons]
+    | "boolRec" =>
+      [none, some (atCtor (.ctorApp "True" [])), some (atCtor (.ctorApp "False" []))]
+    | _ => []
+  | _ => []
+
+/-- Give a sealed recursor spine's arm closures the contracts `recArmPis` derives.
+    Anything that is not an un-ascribed closure is left exactly as it was — a
+    knowledge arm has no closure to carry one, and an arm that somehow arrived
+    with an ascription keeps its own. -/
+def ascribeRecArms (u : Term) (v : Val) : Val :=
+  match Val.asRecSpine? v with
+  | some (c, args) =>
+    let pis := recArmPis c u args
+    Val.recSpine c ((args.zipWith (fun a p =>
+      match a, p with
+      | .closure ρ node none, some π => .closure ρ node (some π)
+      | a, _ => a) (pis ++ List.replicate args.length none)))
+  | none => v
+
 /-- A juxtaposition spine `x a b …` whose head is a runtime variable (M27 β).
 
     `Nil` when the head is anything else — a constant, a pure former, a peel — in
@@ -3508,7 +3666,7 @@ partial def valSpineHead : Val → Option String
     test and not "a `.var` head means a call". -/
 def calleeIsRuntime (st : St) (v : Val) : Bool :=
   match v with
-  | .closure _ _ => true
+  | .closure _ _ _ => true
   | .bot => true
   | v => if (firstLoanMarker v).isSome then true else
   match v with
@@ -3542,7 +3700,7 @@ def valBinderModes : Nat → Val → Nat → M (List Bool)
     -- name is what is read, unchanged, because that is §6's rule for every other
     -- runtime binder and the corpus's hand-written `.lam "T" .type` λs are
     -- capital-by-spelling without ever having been comptime.
-    | .closure _ node =>
+    | .closure _ node _ =>
       let names := (Term.peelLams node).1
       if Term.lamImperative node then
         pure ((names.map (fun q => q.1.isComptime) ++ List.replicate (n + 1) false).take (n + 1))
@@ -3688,7 +3846,7 @@ def admitGlobals (what : String) (nbinders : Nat) (free : List Var) : M Omega :=
     a free variable would be silently rebound to whatever the shift landed
     on. A closure carries its bindings, so the rule survives as the FILTER
     (which bindings are admissible) rather than as a refusal to have any. -/
-def mkClosure (fuel : Nat) (node : Term) : M Val := do
+def mkClosure (fuel : Nat) (node : Term) (ascr : Option Term := none) : M Val := do
     let (tel, _) := Term.peelLams node
     let imper := Term.lamImperative node
     let what := if imper then "λr" else "λ"
@@ -3710,7 +3868,7 @@ def mkClosure (fuel : Nat) (node : Term) : M Val := do
       collapseCDerefs fuel node
       let _ ← readC fuel node
       pure ()
-    pure (.closure ρ node)
+    pure (.closure ρ node ascr)
 
 /-- **The pure lift** (§1.3): on the borrow-free fragment ⇒ coincides with ⇝ up
     to variable consumption, so a comptime-only former — a proof term, an
@@ -3810,20 +3968,29 @@ mutual
         -- way a capital binder reaches a call is the capital argument position,
         -- which reads it by ⇝ and leaves it where it was.
         --
-        -- **CHECKING-SIDE ONLY (M33a), for `refuseFnBinding`'s own reason**,
-        -- and the corpus is what forced it. A body's tail is read against its
-        -- return type — `readResult`, where a capital Σ binder makes its
-        -- component ⇝-read — and `retTyVal` is `checkRFnBody`'s, so the
-        -- EXECUTING machine enters a callee through `applyClosure` with no
-        -- return type in hand and ⇒-reads the same tail. With the flagship's
-        -- proof components capital, `Pair(hi, Pair(Hub2, …))` is then a ⇒-move
-        -- of a capital binding, and nine executing differentials died on a
-        -- discipline the checker had already enforced on that very program.
-        -- Erasure is a STATIC claim; refusing here breaks running programs to
-        -- protect a checker, which is the sentence `refuseFnBinding` already
-        -- carries. The two match-scrutinee fences are NOT gated — they refuse a
-        -- rule, not a read, and no executing path reaches them.
-        if !(← get).executing then fenceComptime x "cannot be ⇒-moved"
+        -- **BOTH MACHINES AGAIN** (M33 Σ0's prerequisite), and the gate that was
+        -- here is worth recording because its removal is the prerequisite's whole
+        -- point rather than a tidy-up.
+        --
+        -- M33a made this line checking-side-only. A body's tail is read against
+        -- its return type — `readResult`, where a capital Σ binder makes its
+        -- component ⇝-read — and `retTyVal` was `checkRFnBody`'s alone, so the
+        -- EXECUTING machine entered a callee through `applyClosure` with no
+        -- return type in hand and ⇒-read the same tail. With the flagship's proof
+        -- components capital, `Pair(hi, Pair(Hub2, …))` was then a ⇒-move of a
+        -- capital binding, and nine executing differentials died on a discipline
+        -- the checker had already enforced on that very program. The gate was the
+        -- honest response to an ASYMMETRY, not to a disagreement about the rule.
+        --
+        -- The asymmetry is gone: an executing closure carries its ascription
+        -- (`Val.closure`'s third field, `sealExec`), `applyClosure` peels the
+        -- return type off it (`calleeRetTy`) and reads the tail with
+        -- `readRTail`, so a comptime component is ⇝-read on both sides and never
+        -- reaches this line. Measured: with the gate removed the corpus is green,
+        -- those nine differentials included. Erasure is one rule for two machines
+        -- again — which is what the Σ0 tail needs, since a rule stated on a
+        -- tail's MODE has to be a rule both machines can read.
+        fenceComptime x "cannot be ⇒-moved"
         match ← lookupSlot x with
         -- The M26-B pointer, in the one message that R16's pain surfaces at: a
         -- proof consumed by a call is reported here, one line later, and the fix
@@ -3946,51 +4113,17 @@ mutual
         -- because two right-hand sides were ⇒-formation events ⇝ had no rule for.
         -- ⇝ has the rules now (`readComptimeVal`), so the predicate is gone and
         -- this line is the invariant.
-        let v ← if x.isComptime then readComptimeVal fuel rhs else readR fuel rhs
-        -- **THE ONE ENFORCEMENT POINT** (M32 R3, suspensions.md §2.5): a
-        -- runtime-moded binding may not receive a function. Stage A said this at
-        -- THREE sites with two predicates; this is the one that is left.
-        refuseFnBinding x v
-        bindSlot x v
+        letStep fuel x rhs
         readR fuel rest
       | .assign place rhs rest => do
-        let v ← readR fuel rhs                           -- RHS by ⇒ first (§2.5 ordering)
-        writeR fuel place v                              -- target by ⇐
+        assignStep fuel place rhs
         readR fuel rest
-      | .matchE scrut eqn branches => do
-        -- §6's fence. A runtime match on a comptime binder is the erasure
-        -- violation the fence exists for: it is the rule that would make an
-        -- erased value's CONSTRUCTOR observable to ⇒ (and, in borrow mode, would
-        -- reborrow its fields). Scrutinize it in a type or a proof instead.
-        fenceComptime scrut "cannot be the scrutinee of a runtime match"
-        -- Mode is chosen by what the scrutinee's slot holds, after the usual
-        -- lazy reorganization. Both retries decrease fuel.
-        match ← lookupSlot scrut with
-        | .bot => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} holds ⊥ (use-after-move)"
-        | .borrowM ℓ payload =>
-          match Val.asCtor? payload with
-          | some (name, fields) => do readR fuel (← borrowSelect scrut eqn branches ℓ name fields)
-          | none =>
-            match payload with
-            | .loanM ℓ' => do endLoan fuel ℓ'; readR fuel (.matchE scrut eqn branches)  -- reborrowed payload: end, retry
-            | .bot => throwErr s!"match: matching through a hole (⊥) at {scrut.name}#{scrut.id}"
-            | .borrowM _ _ => throwErr s!"match: scrutinee payload is a nested borrow (unsupported in §3)"
-            | p =>
-              if p.symOf?.isSome then
-                throwErr s!"match: symbolic scrutinee {scrut.name}#{scrut.id} in expression position — only a statement-position match may split (use the explore driver)"
-              else throwErr s!"match: scrutinee {scrut.name}#{scrut.id} payload is not a constructor"
-        | v =>
-          match firstLoanMarker v with
-          | some ℓ => do endLoan fuel ℓ; readR fuel (.matchE scrut eqn branches)  -- suspended owner: end, retry
-          | none =>
-            match Val.asCtor? v with
-            | some (name, fields) => do readR fuel (← ownedSelect scrut eqn branches name fields)
-            | none =>
-              if v.symOf?.isSome then
-                throwErr s!"match: symbolic scrutinee {scrut.name}#{scrut.id} in expression position — only a statement-position match may split (use the explore driver)"
-              else throwErr s!"match: scrutinee {scrut.name}#{scrut.id} is not a constructor value"
+      -- **One match rule, two drivers** (M33 Σ0's prerequisite): `matchStep` is
+      -- what used to be spelled out here, and `readRTail` reaches the same rule
+      -- rather than a copy of it.
+      | .matchE scrut eqn branches => do readR fuel (← matchStep fuel scrut eqn branches)
       | .seq e rest => do
-        let _ ← readR fuel e                             -- evaluate for effect, discard
+        seqStep fuel e
         readR fuel rest
       -- **A `.call` never resolves** (M28 D9). §8's scope IS the call table: the
       -- surface turns `f(…)` into a SPINE on the binding lexically above it, so
@@ -4011,7 +4144,10 @@ mutual
           -- admitted). This is why a sealed value costs nothing at runtime, and
           -- why R3's site table is not consulted here: the executing machine
           -- never asks which σ a seal has, because it never has one.
-          readR fuel t
+          --
+          -- **Transparent is not the same as FORGETFUL** (M33 Σ0's prerequisite,
+          -- suspensions.md §2.7): `sealExec`.
+          sealExec fuel t u
         else sealNode fuel site t u
       -- **⇒ LIFTS a comptime λ; it does not BIND one** (M32 R3, and this is
       -- where §2.5's premise had to be corrected — see `.letIn` below).
@@ -4205,6 +4341,70 @@ mutual
       -- standing as `borrowT` on the line above, and the same rejection.
       | .cmpT _ => throwErr "readR (⇒): `⇝τ` is a binder-mode marker (§6), legal only as a λ/Π domain — not a term and not a movable value"
   termination_by fuel _ => (fuel, 0, 0)
+  /-- **One rule per statement former, three drivers** (M33 Σ0's prerequisite).
+
+      A body's statement spine is walked by `readR` (⇒, single path), by `explore`
+      (the checking driver, one path per symbolic branch) and now by `readRTail`
+      (⇒ again, with the tail's type in hand). They differ ONLY in how they
+      continue; the step each takes is the same step, and `letStep`/`assignStep`/
+      `seqStep` are those steps.
+
+      `explore` used to spell its own `let` step out, with a comment explaining
+      that "the duplication is two lines" and that a rule living only in `readR`
+      would be dead for every real body. That reasoning was right and the
+      duplication was the wrong answer to it: a third driver would have made it
+      three copies of `refuseFnBinding`.
+
+      This one: ⇝ for a capital binder, ⇒ for a lowercase one, and **the ONE
+      enforcement point** (M32 R3, suspensions.md §2.5) between them — a
+      runtime-moded binding may not receive a function. -/
+  def letStep : Nat → Var → Term → M Unit
+    | fuel, x, rhs => do
+      let v ← if x.isComptime then readComptimeVal fuel rhs else readR fuel rhs
+      refuseFnBinding x v
+      bindSlot x v
+  termination_by fuel _ _ => (fuel, 16, 0)
+  /-- The `assign` step: RHS by ⇒ first (§2.5 ordering), target by ⇐. -/
+  def assignStep : Nat → Term → Term → M Unit
+    | fuel, place, rhs => do
+      let v ← readR fuel rhs
+      writeR fuel place v
+  termination_by fuel _ _ => (fuel, 16, 0)
+  /-- The `seq` step: evaluate for effect, discard. -/
+  def seqStep : Nat → Term → M Unit
+    | fuel, e => do let _ ← readR fuel e; pure ()
+  termination_by fuel _ => (fuel, 16, 0)
+  /-- **⇒ with the tail's type in hand** (M33 Σ0's prerequisite, suspensions.md
+      §2.7) — `readR` for every step of a body's statement spine, and `readResult`
+      at the end of it.
+
+      This is the executing machine's half of the rule `readResult` states: a
+      `Pair` returned at a `Σ` is read component by component, each by ITS binder's
+      mode. The checker has read tails that way since R3b (`explore`, against
+      `St.retTyVal`); execution could not, because a closure had dropped its
+      ascription at the seal and `applyClosure` had no return type to read. M33a
+      measured what that costs — nine executing differentials — and gated the
+      ⇒-move fence checking-side rather than let the machines disagree. With the
+      closure carrying its contract, the two read a tail by the same rule.
+
+      `none` is the ordinary case and means `readR`: a λ with no ascription
+      promises nothing about its result, and there is no mode to consult. -/
+  def readRTail : Nat → Option Term → Term → M Val
+    | 0, _, _ => throwErr "readRTail: out of fuel"
+    | fuel + 1, ty, t =>
+      match t with
+      | .letIn x rhs rest => do letStep fuel x rhs; readRTail fuel ty rest
+      | .assign place rhs rest => do assignStep fuel place rhs; readRTail fuel ty rest
+      | .seq e rest => do seqStep fuel e; readRTail fuel ty rest
+      | .matchE scrut eqn branches => do
+        -- A match in TAIL position: every arm's body ends where this one does, so
+        -- the type goes into the arm. This is what `pushContinuations` makes the
+        -- common case — a statement-position match is fused with the continuation
+        -- that followed it, so a body whose source ends in `Pair(…)` after a match
+        -- has that `Pair` inside each arm.
+        readRTail fuel ty (← matchStep fuel scrut eqn branches)
+      | other => readResult fuel ty other
+  termination_by fuel _ _ => (fuel, 0, 0)
   def readArgs : Nat → List Term → M (List Val)
     | _, [] => pure []
     | fuel, a :: as => do
@@ -4261,8 +4461,8 @@ mutual
     -- it is made; what the rest of this function then sees is the `.know` λ it
     -- always saw. An imperative closure is not this rule's — it is ⇒-entry, and
     -- `applyR` owns it.
-    | fuel + 1, .closure ρ node, a :: rest =>
-      if Term.lamImperative node then applyR fuel (.closure ρ node) (a :: rest)
+    | fuel + 1, .closure ρ node u, a :: rest =>
+      if Term.lamImperative node then applyR fuel (.closure ρ node u) (a :: rest)
       else applyLam fuel (.know (cookClosure fuel ρ node)) (a :: rest)
     | fuel + 1, .know ft, a :: rest =>
       match Pure.whnf fuel ft with
@@ -4306,16 +4506,16 @@ mutual
     -- **A closure over an imperative body: ⇒-ENTRY** (M32 R2, §2.2). A comptime
     -- closure falls through to the β rule below, which is the fragments' one
     -- difference and the only place it is consulted.
-    | fuel + 1, .closure ρ node, args =>
+    | fuel + 1, .closure ρ node ascr, args =>
       if Term.lamImperative node then
         let (tel, body) := Term.peelLams node
         let names := tel.map (·.1)
-        if args.length == names.length then applyClosure fuel ρ names body args
+        if args.length == names.length then applyClosure fuel ρ names body ascr args
         else if args.length < names.length then
-          throwErr s!"call: partial application — the runtime λ {(Val.closure ρ node).pretty} binds {names.length} argument(s) and was given {args.length}. Runtime application is saturated (§12 decision 4): a partial application at runtime is a closure holding its arguments — including, in general, borrows — while it waits."
+          throwErr s!"call: partial application — the runtime λ {(Val.closure ρ node ascr).pretty} binds {names.length} argument(s) and was given {args.length}. Runtime application is saturated (§12 decision 4): a partial application at runtime is a closure holding its arguments — including, in general, borrows — while it waits."
         else
-          throwErr s!"call: too many arguments — the runtime λ {(Val.closure ρ node).pretty} binds {names.length} argument(s) and was given {args.length}"
-      else applyLam (fuel + 1) (.closure ρ node) args
+          throwErr s!"call: too many arguments — the runtime λ {(Val.closure ρ node ascr).pretty} binds {names.length} argument(s) and was given {args.length}"
+      else applyLam (fuel + 1) (.closure ρ node ascr) args
     | fuel + 1, f, args => do
       let (headName, sargs) := (Val.asRecSpine? f).getD ("", [])
       let all := sargs ++ args
@@ -4393,8 +4593,8 @@ mutual
       The scope survives all of this and does the real work (M31 Stage 0): its
       borrows are surrendered and its slots taken on the way out, so neither a
       frame's loans nor its environment can outlive it. -/
-  def applyClosure : Nat → Omega → List Var → Term → List Val → M Val
-    | fuel, ρ, names, body, args => do
+  def applyClosure : Nat → Omega → List Var → Term → Option Term → List Val → M Val
+    | fuel, ρ, names, body, ascr, args => do
       -- **The body is normalized here too** (M31 Stage 0). `checkRFnBody` has
       -- always walked `pushContinuations body`; the executing machine walked the
       -- body raw, and the two agreed about match-arm scope only by accident.
@@ -4415,10 +4615,10 @@ mutual
       -- later — which is now also the whole of what a frame is.
       ρ.forM (fun kv => bindSlot kv.1 kv.2)
       (names.zip args).forM (fun p => bindSlot p.1 p.2)
-      let res ← readR fuel normalized
+      let res ← readRTail fuel (calleeRetTy names ascr) normalized
       popScopesTo fuel (depth - 1) 0 res.loanIds
       pure res
-  termination_by fuel _ _ _ _ => (fuel, 4, 0)
+  termination_by fuel _ _ _ _ _ => (fuel, 4, 0)
   /-- Consume a call's arguments left-to-right, checking each against its
       telescope entry, and RETURN the captured loans (§6.1): each argument
       borrow's loan ℓ with its owed type `S[s := v]`. A pure argument must
@@ -4529,7 +4729,7 @@ mutual
           let argVals ← readArgsModed fuel modes args  -- ⇒ or ⇝ per binder, left to right
           match callee with
           -- A COMPTIME closure: body known ⟹ β (`applyLam` cooks it).
-          | .closure _ node =>
+          | .closure _ node _ =>
             if Term.lamImperative node then applyR fuel callee argVals
             else applyLam fuel callee argVals
           -- A runtime function, or a recursor over runtime arms: ⇒-application
@@ -4702,9 +4902,35 @@ mutual
       -- over runtime arms — not a λ, and ⇝ refuses that spine by name. Three
       -- executing-mode differentials found it (`runSplit`, `swapBody`).
       | .seal site a b => do
-        if (← get).executing then readR fuel a else sealNode fuel site a b
+        if (← get).executing then sealExec fuel a b else sealNode fuel site a b
       | _ => do pure (.know (← readComptimeArg fuel t))
   termination_by fuel _ => (fuel, 15, 0)
+  /-- **The seal, executing: transparent, and since M33 not FORGETFUL** (Σ0's
+      prerequisite, suspensions.md §2.7).
+
+      Concrete evaluation reads a seal through — the body exists and runs, no
+      check, no site lookup, no ⇝ detour, which is why a sealed value costs
+      nothing at runtime. What changed is that the ASCRIPTION no longer stops
+      here. `u` is the contract the seal checked the λ against, and it is the only
+      place a function's return type exists in executing mode: `St.retTyVal` is
+      `checkRFnBody`'s, and `applyClosure` entered every callee with nothing to
+      read a tail's mode from (M33a, nine executing differentials). A λ therefore
+      leaves this rule carrying its Π.
+
+      A NON-λ sealed term keeps the plain read, and the reason is recorded at
+      `readComptimeVal`: a recursive `fn` seals an `.app` (§7's `natRec P z s`
+      over runtime arms), which has no closure to carry anything. -/
+  def sealExec : Nat → Term → Term → M Val
+    | fuel, t, u =>
+      match t with
+      | .lam _ _ _ => mkClosure fuel t (some u)
+      -- A recursive `fn` seals a `natRec P z s` over runtime arms, and the ARMS
+      -- are the bodies. `ascribeRecArms` gives each the contract §7 derives for
+      -- it, which is the road quicksort's own tail takes.
+      | _ => do
+        let v ← readR fuel t
+        pure (if (runtimeRecSpine? t).isSome then ascribeRecArms u v else v)
+  termination_by fuel _ _ => (fuel, 14, 0)
   /-- Sealing a VALUE — phase A's rule, verbatim, in its own definition since
       M26-C so that `readR`'s seal arm is a two-line dispatch.
 
@@ -4996,25 +5222,22 @@ mutual
     | fuel + 1, t, st =>
       match t with
       | .matchE scrut eqn branches => exploreMatch fuel scrut eqn branches st
+      -- §6's comptime `let`, HERE as well as in `readR`. The explore driver does
+      -- not route statement-spine steps through `readR`'s own `.letIn` case, so a
+      -- rule that lives only there would be dead for every real body — which is
+      -- what `pushContinuations` normalizes a body into. Since M33's Σ0
+      -- prerequisite that is not two copies of the rule but ONE (`letStep`), for
+      -- the reason the third driver made unignorable.
       | .letIn x rhs rest =>
-        -- §6's comptime `let`, HERE as well as in `readR`. The explore driver
-        -- does not route statement-spine steps through `readR`'s own `.letIn`
-        -- case, so a rule that lives only there would be dead for every real
-        -- body — which is what `pushContinuations` normalizes a body into. The
-        -- duplication is two lines; a mode that silently stopped applying at the
-        -- top level of a function body would have been a phantom.
-        match (do
-            let v ← if x.isComptime then readComptimeVal fuel rhs else readR fuel rhs
-            refuseFnBinding x v          -- …and the same rule, at the explore `let`
-            bindSlot x v).run st with
+        match (letStep fuel x rhs).run st with
         | .error e _ => [.error e]
         | .ok _ st' => explore fuel rest st'
       | .seq e rest =>
-        match (do let _ ← readR fuel e; pure ()).run st with
+        match (seqStep fuel e).run st with
         | .error e _ => [.error e]
         | .ok _ st' => explore fuel rest st'
       | .assign p rhs rest =>
-        match (do let v ← readR fuel rhs; writeR fuel p v).run st with
+        match (assignStep fuel p rhs).run st with
         | .error e _ => [.error e]
         | .ok _ st' => explore fuel rest st'
       | other =>                                     -- final expression
