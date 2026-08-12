@@ -1,5 +1,51 @@
 # Progress
 
+## 2026-08-12 — dllbc/: **M33 α — the sweep's key becomes α-insensitive (M32 residual 4)**
+
+Two commits on `m33-alpha-key` (based on `m32-r4`, rebased onto main at merge),
+corpus green at each. Called **M33 α** because `suspensions.md` §2.7's Σ0 design
+carries the same milestone number and is a different lane — that one is surface
+design for residual 1, this is a kernel key closing residual 4. R2 filed the α-insensitive key as a demand and named its fix; this runs
+it. **Nine characters of kernel:** `Term.abstractInto` compares with
+`Term.alphaEq` instead of `Term.beq`, at all nine of its comparison points.
+
+`beq` compares binder NAMES and `Pure.readback` names a binder by its LEVEL, so a
+needle normalized at depth 0 missed its own occurrence one binder deeper —
+including in the cooked closure bodies `cookForGen` had just written back for the
+sweep to find. Corpus spines bind routinely: `Leb a b` alone unfolds to a
+`natRec` over λ arms.
+
+**The reproduction is a program, and it was pinned REJECTED before it was fixed.**
+`alphaRepro` and `alphaControlDepth0` split on the same `Leb (Len L) 2` and
+differ in one thing — whether the occurrence sits under a binder. The depth-0
+twin was accepted all along; the λ twin died at "does not have its parameter
+type" and is now accepted. `alphaReproLie` (same program, True branch asked to
+show the spine is `False`) is still rejected, so the accept discriminates.
+
+**Zero other flips, and the red list was collected before any assertion was
+touched** — exactly two moved, both intended, the second being R2's unit-level
+limit assertion, kept and FLIPPED rather than deleted. All ten test modules
+reached the compiler and only `KernelFloor` failed, so nothing hid behind it.
+
+**The two cost numbers point opposite ways, and both are the answer.** The key in
+isolation is dearer, as predicted: over the flagship's 64,729-node term, 73 µs
+with `beq` against 104 µs with `alphaEq` (+42%). End to end on the corpus it is
+FASTER: list flagship 189 → 186 ms, array flagship 493 → 482 ms (means of 50
+checks, two runs each, noise under 1%) — a match replaces a subtree with one σ
+atom, so matching more shrinks what everything downstream normalizes. The first
+isolated reading said "a wash" and was quantization; re-measured at 2000
+iterations.
+
+**Rejected alternative, on correctness rather than cost:** shifting the needle's
+`§`-names as the traversal descends assumes every binder crossed was counted by
+readback at the same depth, and the swept state mixes declared syntax with
+normalized spines. A de-Bruijn key computed on the fly is subsumed — `alphaEq`
+already is one.
+
+Controls: sabotage **21** pre-existing red (same count and shape as R2/R3/R3b/R4,
+`progOk flagship` included), green restored; `S32Cook` both directions and
+`S32Seal` §B/§C green; **`Traces.lean` byte-unchanged**.
+
 ## 2026-08-11 — dllbc/: **M32 R4 — spines + sweep, and M32 closes**
 
 Four commits on `m32-r4` (stacked on the unmerged `m32-r3b`), whole corpus green

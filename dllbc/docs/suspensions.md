@@ -8,7 +8,9 @@ only syntax, `Val` is the state skeleton over `Sem`, every λ value is one closu
 cooking is persistent exactly at generalization, arrows are exceptionless, every
 binder spells its mode, and there is one application node.
 
-**The residuals, all post-M32, all pinned by tests rather than remembered:**
+**The residuals, all post-M32, all pinned by tests rather than remembered.** One
+of the four (4, `abstractInto`'s key) has since closed; it is struck through
+rather than deleted, so the enumeration a reader met in M32 stays legible.
 
   1. **§2.5's two spellings** (`S32Backstop.sigmaTailProof`). ⇒ still constructs
      function values at exactly two sites — a λ written literally in a constructor
@@ -23,9 +25,10 @@ binder spells its mode, and there is one application node.
   3. **The Class-3 call-graph fixpoint** (R3b). Capitalising a proof parameter
      makes every onward hand-off a ⇝-read, so the migration is a fixpoint over the
      call graph; it landed in `ArraySort` and `Arrays` only.
-  4. **`abstractInto`'s α-insensitive key** (R2, filed as a demand). A generalized
-     spine containing a binder misses its own occurrence one binder deeper,
-     because abstraction matches by binder NAME while readback names by level.
+  4. ~~**`abstractInto`'s α-insensitive key**~~ — **CLOSED at M33 α** (branch
+     `m33-alpha-key`; addendum at the bottom of this file). The key is
+     `Term.alphaEq`, the reproduction is an accepted program with a rejected
+     twin, and the corpus moved no other verdict.
 
 Depends on: M31 Stage A (merged), Stage C (merged).
 
@@ -432,6 +435,20 @@ empty-by-construction (they hold §8's globals) but INERT, which is a different
 claim with its own differential; and `Var.bindsSlot` does NOT become the case
 test, because the telescope rule says the two answer different questions — see
 the addendum.
+
+**M33 α — residual 4's close-out, not a stage** (branch `m33-alpha-key`, based on
+R4 @ ab6921ae and rebased onto main at merge; two commits, corpus green at each).
+**"M33 α" to distinguish it from §2.7's Σ0 design, which the doc also calls
+M33** — they are separate lanes that happen to share a milestone number: §2.7 is
+surface design for residual 1, this is a kernel key closing residual 4. R2 filed
+the α-insensitive key as a demand and named its fix; this ran it.
+`Term.abstractInto` compares with
+`Term.alphaEq` at all nine of its comparison points, the reproduction is an
+ACCEPTED program whose depth-0 twin was already accepted and whose lying twin is
+still rejected, and **no other verdict in the corpus moved**. Addendum at the
+bottom of this file. What it constrains for later sweeps: the key is a pure
+function of (needle, σb, term) — no depth, no context — which is what keeps it
+exactly as available as substitution's sweep, cooked closure bodies included.
 
 ## 6. Sharp edges to interrogate before dispatch
 
@@ -884,3 +901,91 @@ assumption-indexed evaluation (rejected with precedent, §3).
 > `progOk flagship`, `progOk sort2` and both `S32Cook` canary directions — the
 > same count and shape as R2's, R3's and R3b's. `S32Cook`'s two directions and
 > `S32Seal`'s §B determinism with its §C control are green throughout.
+
+> **Implementation addendum (M33 α, landed on `m33-alpha-key`).** Two commits,
+> corpus green at each, based on R4 @ ab6921ae and rebased onto main at merge.
+> This closes residual 4 and is not a stage — the fix R2 named, run. ("M33 α"
+> because §2.7's Σ0 design carries the same milestone number and is a different
+> lane; see §5.)
+>
+> **0. THE HEADLINE IS NINE CHARACTERS, and the interesting part is the two
+> numbers.** `Term.abstractInto` compares with `Term.alphaEq` instead of
+> `Term.beq`, at all nine of its comparison points. Nothing else in the kernel
+> moved. `beq` compares binder NAMES and `readback` names a binder by its LEVEL,
+> so a needle normalized at depth 0 missed its own occurrence one binder deeper —
+> and corpus spines bind routinely, `Leb a b` alone unfolding to a `natRec` over
+> λ arms.
+>
+> **1. The reproduction is a PROGRAM, and it was pinned REJECTED before it was
+> fixed** (`S32Cook`, next to R2's unit-level limit assertion). Two programs
+> split on the same `Leb (Len L) 2` and differ in one thing: whether the
+> occurrence sits under a binder. `alphaControlDepth0` holds the spine in a
+> comptime `let` — its knowledge leaf is at binder depth zero, the depth the
+> needle was normalized at, so the names agreed and it was accepted all along.
+> `alphaRepro` holds it in a comptime λ, whose cooked body puts the spine one
+> binder deeper; it was rejected at "does not have its parameter type" and is now
+> accepted. `alphaReproLie` — the same program asking the True branch to show the
+> spine is `False` — is still rejected, because an accept a rubber-stamping sweep
+> would also produce says nothing about the key.
+>
+> **2. A REFUTED first attempt at the control, recorded so it is not re-run.**
+> The control was first written with a "binder-free" spine (`Leb N 2`), on the
+> reading that `Len` was what contributed the binders — R2's note names `len σ5`
+> as "such a spine". Measured: that control is also rejected, because `Leb`
+> alone unfolds to a `natRec` whose arms are λs. **Binder-freeness is not a
+> property this corpus's spines have.** What discriminates is the DEPTH of the
+> occurrence, not the shape of the needle, and the control is the depth-0 twin.
+>
+> **3. THE COST MEASUREMENTS POINT OPPOSITE WAYS, and both are the answer.** On
+> the compiled `phasec` exe. The key in isolation is dearer, as the plan
+> predicted: applied at every node of the flagship's 64,729-node term, 73 µs with
+> `beq` against 104 µs with `alphaEq` (+42%); over a synthetic tree that is
+> nothing but occurrences, 96 µs finding 0 against 156 µs finding 201. End to end
+> on the corpus it is FASTER: list flagship 189 → 186 ms, array flagship 493 →
+> 482 ms, means of 50 checks, two runs each, run-to-run noise under 1%. The
+> mechanism — a match replaces a subtree with one σ atom, so matching more
+> shrinks what everything downstream normalizes — is an INFERENCE from the two
+> numbers, not itself measured. **The first isolated reading was "100 µs vs
+> 100 µs, a wash", and it was quantization** (20 iterations against a millisecond
+> clock); re-measured at 2000. The wash is the reading a reader would expect to
+> have been stopped at.
+>
+> **4. Two alternatives rejected, one on correctness rather than cost.**
+> Shifting the needle's `§`-names as the traversal descends assumes every binder
+> the traversal crosses was counted by readback at the same depth — and the swept
+> state MIXES declared syntax with normalized spines (`retTyVal` and `sctx` hold
+> source-named binders above depth-0 normalized subterms), so the assumption
+> fails exactly where the state is most mixed; it would also have to thread a
+> depth through `Machine.abstractInto`'s Val traversal, which records no such
+> thing. A de-Bruijn key computed on the fly is SUBSUMED: `Term.alphaEq` is
+> de-Bruijn-on-the-fly already — it exists because deleting the indices deleted
+> the α-insensitivity they had given for free.
+>
+> **5. Two invariants checked rather than assumed.** The key must stay
+> MODE-SENSITIVE (§2.3: `absOcc` has to see a `⇝` marker, and a mode-blind key
+> would abstract the marker away with the domain) — `alphaEq` has no case
+> unwrapping `cmpT` on one side only and it compares a binder's DOMAIN, measured
+> as `alphaEq (⇝Nat) Nat = false` where `convEq` says true. And it stays exactly
+> as available as substitution's sweep (R1's two-layer discipline): the key is a
+> pure function of (needle, σb, term) with no depth, context or state, so it
+> behaves identically at an Ω leaf, in `sctx`, in an owed type, and inside
+> `cookForGen`'s cooked closure bodies — which is the one place the old key's
+> answer differed from its answer everywhere else, and the whole reason the gap
+> existed.
+>
+> **6. ZERO other flips, and the red list was collected BEFORE any assertion was
+> touched** — so it is the flip inventory rather than a confirmation of one.
+> Exactly two assertions moved, both intended: the reproduction, and R2's
+> unit-level limit assertion, which is kept and FLIPPED rather than deleted (the
+> line that said "the sweep finds nothing here" now says "the sweep finds it",
+> and they are the same measurement). All ten test modules reached the compiler;
+> only `KernelFloor` failed and only the root imports it, so nothing hid behind
+> it — R3b's absent-failure lesson applied rather than recited.
+>
+> **7. Controls.** Sabotage (`abstractInto` abstracting nothing): **21**
+> pre-existing assertions red — the same count and shape as R2's, R3's, R3b's and
+> R4's — including `progOk flagship` (Direct.lean:1601) and both `S32Cook` canary
+> directions, plus 5 of this stage's own assertions; green with the key restored.
+> `S32Cook` both directions and `S32Seal`'s §B determinism with its §C control
+> green throughout. **`Traces.lean` is byte-unchanged**: the executing machine's
+> every trace, environment and comparison is what it was.
