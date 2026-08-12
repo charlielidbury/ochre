@@ -23,7 +23,7 @@ snapshots — a program has no need of: it takes no arguments. So `checkProgram`
 `explore` plus the audit of each path's result, and nothing else.
 
 **Scope is the call table.** A callee is a binding lexically above the call
-(`.callV` on a slot, resolved by the surface from scope alone), so there is no
+(an app spine on a slot, resolved by the surface from scope alone), so there is no
 table at all — not an empty one. The `table` parameter these entry points carried
 was J1's bridge for half-migrated programs, whose un-migrated callees were still
 `FnDef`s; the corpus has none, and the bridge retired with `FnDef`'s departure
@@ -67,7 +67,7 @@ partial def endScope (fuel : Nat) : M Unit := do
     `retType`. No table: scope is the call table (§8). -/
 def checkProgram (t : Term) (retType : Term := .const "Unit") : Except String Unit :=
   auditPaths retType
-    ((explore defaultFuel (pushContinuations t) initSt).map
+    ((explore defaultFuel (atBoundary t) initSt).map
       (fun r => r.bind (fun p =>
         match (endScope defaultFuel).run p.2 with
         | .ok _ st => .ok (p.1, st)
@@ -84,7 +84,7 @@ def checkProgram (t : Term) (retType : Term := .const "Unit") : Except String Un
     standing assertion: if a frame slot ever survived its frame, it would appear
     here under the callee's own binder name. -/
 def runProgram (t : Term) : Except String Env :=
-  match (do let _ ← readR defaultFuel (pushContinuations t); endScope defaultFuel).run
+  match (do let _ ← readR defaultFuel (atBoundary t); endScope defaultFuel).run
       { initSt with executing := true } with
   | .ok _ st => .ok (canonicalize st.env)
   | .error e _ => .error e
@@ -92,7 +92,7 @@ def runProgram (t : Term) : Except String Env :=
 /-- The symbolic paths' final environments — for inspecting *what* a program
     leaves in Ω, and for the differential's checking side. -/
 def programEnvs (t : Term) : List (Except String Env) :=
-  (explore defaultFuel (pushContinuations t) initSt).map
+  (explore defaultFuel (atBoundary t) initSt).map
     (fun r => r.bind (fun p =>
       match (endScope defaultFuel).run p.2 with
       | .ok _ st => .ok (canonicalize st.env)
@@ -145,16 +145,25 @@ def progRunsTo (t : Term) (expected : Env) : Bool :=
     first-appearance σ ordering and shifts the index of every σ after it — filter
     afterwards and an unchanged tail's `y ↦ σ0` reads `σ2`, which would look like a
     rewrite having changed what the code leaves. So the walk is done here and the
-    filter is on the VAR ID against `FnMacro.progBase`, which is what a declaration
-    is. (`Migrate.progEnvsOfT` said the same thing about the same hazard for the
+    filter asks the VAR whether it is a declaration's.
+
+    **The key is `Var.declSlot`, a tag** (M32 R4). It was `id < FnMacro.progBase`
+    — declarations lived above a base, so "not a declaration" was "below 900".
+    R4 deleted the arithmetic (name-keyed Ω never read those ids), and this
+    projection is the reason the tag exists at all rather than the ids simply
+    going: dropping the filter would put every `fn` in the corpus's expected
+    environments, and keying it on the VALUE instead would drop `let F = (λ… :
+    Π…)`, which is a σ a program deliberately leaves. So the question "is this
+    entry a declaration?" is answered by the binder that made it.
+    (`Migrate.progEnvsOfT` said the same thing about the same hazard for the
     `FnDef` path; it retired with its users in M28 ο, so this is now the only
     statement of it.) -/
 def tailEnvs (t : Term) : List (Except String Env) :=
-  (explore defaultFuel (pushContinuations t) initSt).map
+  (explore defaultFuel (atBoundary t) initSt).map
     (fun r => r.bind (fun p =>
       match (endScope defaultFuel).run p.2 with
       | .ok _ st => .ok (canonicalize (st.env.filter (fun kv =>
-          kv.1.id < FnMacro.progBase)))
+          kv.1.id != declSlot)))
       | .error e _ => .error e))
 
 /-- One path, and the tail leaves exactly this Ω. -/

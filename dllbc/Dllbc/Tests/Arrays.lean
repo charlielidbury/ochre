@@ -60,12 +60,12 @@ namespace Dllbc.Tests.S24Arrays
 
 /-- Type-check a closed term against a closed type in the pure seed (as §18/§19/§23). -/
 def chk (tm ty : Term) : Bool :=
-  match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasType 3000 v t).run (seedPure [] []) with
+  match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasTypeT 3000 v t).run (seedPure [] []) with
   | .ok r _ => r
   | .error _ _ => false
 
 /-- Normalize a closed pure term to a value (§23's `pv`). -/
-def pv (t : Term) : Val := Val.nfV 4000 (Val.Term.toValPure t)
+def pv (t : Term) : Term := Pure.nf 4000 t
 
 /-! ## (i.a) The former and its literal
 
@@ -88,8 +88,8 @@ example : chk prog{ Arr(3, True) } prog{ Array 2 Nat } = false := by native_deci
 
 -- A symbolic length has no constructor signature at all — the honest `none`, not a
 -- guess. (`n` here is a Π-bound σ, so `natOfVal?` fails on it.)
-def arrSymLen : Term := prog{ λ (n : Nat). Arr(3) }
-example : chk arrSymLen prog{ Π (n : Nat) → Array n Nat } = false := by native_decide
+def arrSymLen : Term := prog{ λ (N : Nat). Arr(3) }
+example : chk arrSymLen prog{ Π (N : Nat) → Array N Nat } = false := by native_decide
 
 /-! ## (i.b) `arrCat` — the split view, and §3.2's knowledge/state line
 
@@ -109,23 +109,23 @@ example : (pv prog{ arrCat 2 1 (arrCat 1 1 Arr(3) Arr(1)) Arr(2) } ==
 
 -- The stuck case: two σ's have no name for their concatenation, but they do have a
 -- term for it (¶1.1), which is all merge and the ⇝ fold need.
-def catSyms : Val := Val.arrCatS (Val.nat 2) (Val.nat 1) (.sym 0) (.sym 1)
-example : (Val.nfV 100 catSyms == catSyms) = true := by native_decide
+def catSyms : Term := Pure.arrCatS (Term.nat 2) (Term.nat 1) (.sym 0) (.sym 1)
+example : (Pure.nf 100 catSyms == catSyms) = true := by native_decide
 
 -- `arrCat m k a b : Array (Add m k) T` — the empty-run absorption is what makes a
 -- DEGENERATE carve's rejoin conversion definitional instead of lemma-mediated.
-example : (Val.nfV 200 (Val.arrCatS (Val.nat 0) (Val.nat 2) (.ctor "Arr" []) (.sym 0)) ==
-           Val.sym 0) = true := by native_decide
+example : (Pure.nf 200 (Pure.arrCatS (Term.nat 0) (Term.nat 2) (.ctorApp "Arr" []) (.sym 0)) ==
+           Term.sym 0) = true := by native_decide
 
 /-! ## (i.c) `aget` — the ⇝ column at an index place -/
 
-example : (pv prog{ aget Nat 3 0 Arr(3, 1, 2) } == Val.nat 3) = true := by native_decide
-example : (pv prog{ aget Nat 3 2 Arr(3, 1, 2) } == Val.nat 2) = true := by native_decide
+example : (pv prog{ aget Nat 3 0 Arr(3, 1, 2) } == Term.nat 3) = true := by native_decide
+example : (pv prog{ aget Nat 3 2 Arr(3, 1, 2) } == Term.nat 2) = true := by native_decide
 
 -- Stuck on a symbolic index and on a symbolic array — a legal neutral either way, so
 -- a type may mention `aget i (*v)` while `i` is unknown.
-def agetSymIdx : Val := Val.nfV 200 (pv prog{ λ (i : Nat). aget Nat 3 i Arr(3, 1, 2) })
-example : (agetSymIdx == Val.nfV 200 agetSymIdx) = true := by native_decide
+def agetSymIdx : Term := Pure.nf 200 (pv prog{ λ (I : Nat). aget Nat 3 I Arr(3, 1, 2) })
+example : (agetSymIdx == Pure.nf 200 agetSymIdx) = true := by native_decide
 
 /-! ## (i.d) The cons view: `acons` and `arrRec`
 
@@ -139,24 +139,24 @@ example : (pv prog{ acons 2 3 Arr(1, 2) } == pv arr3) = true := by native_decide
 -- `alen` by `arrRec` — deliberately, since ¶1.1 says an array's length is read off
 -- its TYPE and never computed from its contents. This exists only to exercise ι.
 def alen : Term := prog{
-  λ (n : Nat). λ (a : Array n Nat).
-    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Nat) Z
-      (λ (k : Nat). λ (x : Nat). λ (xs : Array k Nat). λ (ih : Nat). S ih) n a }
-example : (pv prog{ alen 3 Arr(3, 1, 2) } == Val.nat 3) = true := by native_decide
-example : (pv prog{ alen 0 Arr() } == Val.nat 0) = true := by native_decide
+  λ (N : Nat). λ (A : Array N Nat).
+    arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Nat) Z
+      (λ (K : Nat). λ (X : Nat). λ (Xs : Array K Nat). λ (Ih : Nat). S Ih) N A }
+example : (pv prog{ alen 3 Arr(3, 1, 2) } == Term.nat 3) = true := by native_decide
+example : (pv prog{ alen 0 Arr() } == Term.nat 0) = true := by native_decide
 
 -- A sum, so the recursive arm's element binder is exercised too.
 def asum : Term := prog{
-  λ (n : Nat). λ (a : Array n Nat).
-    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Nat) Z
-      (λ (k : Nat). λ (x : Nat). λ (xs : Array k Nat). λ (ih : Nat). Add x ih) n a }
-example : (pv prog{ asum 3 Arr(3, 1, 2) } == Val.nat 6) = true := by native_decide
+  λ (N : Nat). λ (A : Array N Nat).
+    arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Nat) Z
+      (λ (K : Nat). λ (X : Nat). λ (Xs : Array K Nat). λ (Ih : Nat). Add X Ih) N A }
+example : (pv prog{ asum 3 Arr(3, 1, 2) } == Term.nat 6) = true := by native_decide
 
 -- Stuck on a symbolic target: no `Arr` to fire on, so the spine is a legal value
 -- rather than an error — which is what lets a predicate family over arrays be stated
 -- about a σ at all.
-def arrRecStuck : Val := Val.nfV 500 (pv prog{ λ (n : Nat). λ (a : Array n Nat). alen n a })
-example : (arrRecStuck == Val.nfV 500 arrRecStuck) = true := by native_decide
+def arrRecStuck : Term := Pure.nf 500 (pv prog{ λ (N : Nat). λ (A : Array N Nat). alen N A })
+example : (arrRecStuck == Pure.nf 500 arrRecStuck) = true := by native_decide
 
 /-! ## (i.e) Segments: merge, drop-empty, and the ⇝ fold
 
@@ -164,7 +164,7 @@ example : (arrRecStuck == Val.nfV 500 arrRecStuck) = true := by native_decide
     syntax, so these are built as values — which is the point: they are STATE. -/
 
 def segsOf (l : List (Nat × Val)) : Val :=
-  Val.segsNode (l.map (fun p => Val.segNode (Val.nat p.1) p.2))
+  Val.segsNode (l.map (fun p => Val.segNode (Term.nat p.1) p.2))
 
 -- ¶3.3's rejoin: "There is no rejoin rule. When the last marker under an array node
 -- is gone, the merge normalization collapses the segments, and the array is a run
@@ -184,7 +184,7 @@ example : (Val.mergeArrays (.borrowM 0 (segsOf [(1, .ctor "Arr" [Val.nat 3]),
 
 -- Drop-empty: a segment of extent Z is deleted, and a single remaining segment is
 -- unwrapped to its body — so a carve whose residue is empty leaves NO wrapper behind.
-example : (Val.segsNode [Val.segNode (Val.nat 3) (.ctor "Arr" [Val.nat 3, Val.nat 1, Val.nat 2])]
+example : (Val.segsNode [Val.segNode (Term.nat 3) (.ctor "Arr" [Val.nat 3, Val.nat 1, Val.nat 2])]
            == .ctor "Arr" [Val.nat 3, Val.nat 1, Val.nat 2]) = true := by native_decide
 
 -- A LOANED segment blocks the merge, which is what keeps a carved-and-borrowed array
@@ -193,25 +193,25 @@ example : (Val.mergeArrays (segsOf [(1, .ctor "Arr" [Val.nat 3]), (2, .loanM 0)]
            == segsOf [(1, .ctor "Arr" [Val.nat 3]), (2, .loanM 0)]) = true := by native_decide
 
 -- The ⇝ bridge (¶1.3): the fold of a collapsed segment list is its `arrCat` spine.
-example : (Val.arrFoldSegs? [Val.segNode (Val.nat 1) (.sym 0), Val.segNode (Val.nat 2) (.sym 1)]
-           == some (Val.arrCatS (Val.nat 1) (Val.nat 2) (.sym 0) (.sym 1))) = true := by native_decide
+example : (Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.sym 0), Val.segNode (Term.nat 2) (.sym 1)]
+           == some (Pure.arrCatS (Term.nat 1) (Term.nat 2) (.sym 0) (.sym 1))) = true := by native_decide
 
 -- "A suspended array has no snapshot; only a collapsed one does" — §5.2's
 -- proper-payload premise, arriving at an array node. Both markers are rejected.
-example : (Val.arrFoldSegs? [Val.segNode (Val.nat 1) (.loanM 0),
-                             Val.segNode (Val.nat 2) (.sym 1)]).isNone = true := by native_decide
-example : (Val.arrFoldSegs? [Val.segNode (Val.nat 1) (.bot),
-                             Val.segNode (Val.nat 2) (.sym 1)]).isNone = true := by native_decide
+example : (Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.loanM 0),
+                             Val.segNode (Term.nat 2) (.sym 1)]).isNone = true := by native_decide
+example : (Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.bot),
+                             Val.segNode (Term.nat 2) (.sym 1)]).isNone = true := by native_decide
 
 -- Folding a run-only split gives back the run itself, by `arrCat`'s ι-rule — the
 -- knowledge form of a rejoined array IS the uncarved one, definitionally.
-example : (Val.arrFoldSegs? [Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 3]),
-                             Val.segNode (Val.nat 2) (.ctor "Arr" [Val.nat 7, Val.nat 2])]
-           == some (Val.arrCatS (Val.nat 1) (Val.nat 2) (.ctor "Arr" [Val.nat 3])
-                     (.ctor "Arr" [Val.nat 7, Val.nat 2]))) = true := by native_decide
-example : (Val.nfV 200 (Val.arrCatS (Val.nat 1) (Val.nat 2) (.ctor "Arr" [Val.nat 3])
-             (.ctor "Arr" [Val.nat 7, Val.nat 2]))
-           == .ctor "Arr" [Val.nat 3, Val.nat 7, Val.nat 2]) = true := by native_decide
+example : (Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.ctor "Arr" [Val.nat 3]),
+                             Val.segNode (Term.nat 2) (.ctor "Arr" [Val.nat 7, Val.nat 2])]
+           == some (Pure.arrCatS (Term.nat 1) (Term.nat 2) (.ctorApp "Arr" [Term.nat 3])
+                     (.ctorApp "Arr" [Term.nat 7, Term.nat 2]))) = true := by native_decide
+example : (Pure.nf 200 (Pure.arrCatS (Term.nat 1) (Term.nat 2) (.ctorApp "Arr" [Term.nat 3])
+             (.ctorApp "Arr" [Term.nat 7, Term.nat 2]))
+           == .ctorApp "Arr" [Term.nat 3, Term.nat 7, Term.nat 2]) = true := by native_decide
 
 /-! ## (i.f) Extents read off the value
 
@@ -222,12 +222,12 @@ example : (Val.nfV 200 (Val.arrCatS (Val.nat 1) (Val.nat 2) (.ctor "Arr" [Val.na
     on an uncarved array) instead of stamping every array value with its length. -/
 
 example : (Val.arrExtentPure? (.ctor "Arr" [Val.nat 3, Val.nat 1, Val.nat 2])
-           == some (Val.nat 3)) = true := by native_decide
-example : (Val.nfV 100 ((Val.arrExtentPure? (segsOf [(1, .sym 0), (2, .sym 1)])).getD Val.zero)
-           == Val.nat 3) = true := by native_decide
-example : (Val.nfV 100 ((Val.arrExtentPure?
-             (Val.arrCatS (Val.nat 1) (Val.nat 2) (.sym 0) (.sym 1))).getD Val.zero)
-           == Val.nat 3) = true := by native_decide
+           == some (Term.nat 3)) = true := by native_decide
+example : (Pure.nf 100 ((Val.arrExtentPure? (segsOf [(1, .sym 0), (2, .sym 1)])).getD Term.zero)
+           == Term.nat 3) = true := by native_decide
+example : (Pure.nf 100 ((Val.arrExtentPure? (Val.know
+             (Pure.arrCatS (Term.nat 1) (Term.nat 2) (.sym 0) (.sym 1)))).getD Term.zero)
+           == Term.nat 3) = true := by native_decide
 example : (Val.arrExtentPure? (.sym 0)).isNone = true := by native_decide
 
 /-! ## (i.g) Every generic walker traverses an array node unchanged
@@ -273,11 +273,11 @@ example : (Val.renumber id (· + 10) carvedWithLoan == segsOf [(1, .sym 10), (2,
     make definitional (¶3.4's audit). So both moved to `Pure.lean` and `Std` aliases
     them; these two tests are the single-source-of-truth check. -/
 
-example : (Val.kAddFn == Dllbc.Std.addFn) = true := by native_decide
-example : (Val.kLeFn == Dllbc.Std.LeFn) = true := by native_decide
-example : (Val.nfV 200 (Val.kAdd (Val.nat 2) (Val.nat 3)) == Val.nat 5) = true := by native_decide
-example : (Val.nfV 200 (Val.kLe (Val.nat 2) (Val.nat 3)) == .const "Unit") = true := by native_decide
-example : (Val.nfV 200 (Val.kLe (Val.nat 3) (Val.nat 2)) == .const "Bot") = true := by native_decide
+example : (Pure.kAddFn == Dllbc.Std.addFn) = true := by native_decide
+example : (Pure.kLeFn == Dllbc.Std.LeFn) = true := by native_decide
+example : (Pure.nf 200 (Pure.kAdd (Term.nat 2) (Term.nat 3)) == Term.nat 5) = true := by native_decide
+example : (Pure.nf 200 (Pure.kLe (Term.nat 2) (Term.nat 3)) == .const "Unit") = true := by native_decide
+example : (Pure.nf 200 (Pure.kLe (Term.nat 3) (Term.nat 2)) == .const "Bot") = true := by native_decide
 
 /-! ## (ii) CARVE, at concrete indices
 
@@ -302,16 +302,16 @@ example : (Val.nfV 200 (Val.kLe (Val.nat 3) (Val.nat 2)) == .const "Bot") = true
 def carveMid : Term := prog{ let a = Arr(3, 1, 2); let m = &m a[1 ; 2]; () }
 
 example : expectEnv carveMid
-  [("a", Val.segsNode [Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 3]),
-                       Val.segNode (Val.nat 2) (.loanM 0)]),
+  [("a", Val.segsNode [Val.segNode (Term.nat 1) (.ctor "Arr" [Val.nat 3]),
+                       Val.segNode (Term.nat 2) (.loanM 0)]),
    ("m", .borrowM 0 (.ctor "Arr" [Val.nat 1, Val.nat 2]))] = true := by native_decide
 
 def carveWritten : Term := prog{
   let a = Arr(3, 1, 2); let m = &m a[1 ; 2]; (*m)[0] := 7; () }
 
 example : expectEnv carveWritten
-  [("a", Val.segsNode [Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 3]),
-                       Val.segNode (Val.nat 2) (.loanM 0)]),
+  [("a", Val.segsNode [Val.segNode (Term.nat 1) (.ctor "Arr" [Val.nat 3]),
+                       Val.segNode (Term.nat 2) (.loanM 0)]),
    ("m", .borrowM 0 (.ctor "Arr" [Val.nat 7, Val.nat 2]))] = true := by native_decide
 
 /-- **Rejoin is merge** (¶3.3), and here it is: demand the whole array and the loan
@@ -344,8 +344,8 @@ example : expectEnv prog{
 
 example : expectEnv prog{
     let a = Arr(3, 1, 2); let m = &m a[1 ; 2]; (*m)[0] := 7; let x = a[0]; () }
-  [("a", Val.segsNode [Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 3]),
-                       Val.segNode (Val.nat 2) (.loanM 0)]),
+  [("a", Val.segsNode [Val.segNode (Term.nat 1) (.ctor "Arr" [Val.nat 3]),
+                       Val.segNode (Term.nat 2) (.loanM 0)]),
    ("m", .borrowM 0 (.ctor "Arr" [Val.nat 7, Val.nat 2])),
    ("x", Val.nat 3)] = true := by native_decide
 
@@ -500,8 +500,8 @@ example : expectErr prog{ let a = Arr(3, 1, 2, 7, 5);
     demanded because `Le b b` and `Le x x` are `LeRefl`. That asymmetry is the general
     shape of an exhaustive split, and it is why this costs ONE proof rather than two. -/
 def halves : Term := prog{
-  fn Halves (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; k | h];
+  fn Halves (n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
+    let l = &m (*a)[Z ; k | H];
     let r = &m (*a)[k ; ..];
     () };
   () }
@@ -524,8 +524,8 @@ example : progOk halves = true := by native_decide
     said they were separately recorded. -/
 
 def halvesBoth : Term := prog{
-  fn HalvesBoth (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; k | h];
+  fn HalvesBoth (n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
+    let l = &m (*a)[Z ; k | H];
     let r = &m (*a)[k ; ..];
     let y = *r;
     *r := y;
@@ -540,9 +540,9 @@ example : progOk halvesBoth = true := by native_decide
 -- which is the invariant biting, and what says the acceptance above is about the
 -- ranges being disjoint and not about carving twice being allowed.
 def halvesSame : Term := prog{
-  fn HalvesSame (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; k | h];
-    let r = &m (*a)[Z ; k | h];
+  fn HalvesSame (n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
+    let l = &m (*a)[Z ; k | H];
+    let r = &m (*a)[Z ; k | H];
     let y = *r;
     *r := y;
     let x = *l;
@@ -585,7 +585,7 @@ example : progRejects halvesSame "cannot peel a vacant slot" = true := by
 -- Premise (2), UNPROVED BOUND — "the *interesting* rejection: the program is not
 -- wrong, it is unjustified". Same body, evidence not cited.
 def noEvidence : Term := prog{
-  fn NoEvidence (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
+  fn NoEvidence (n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; k]; () };
   () }
 example : progRejects noEvidence "containment obligation" = true := by native_decide
@@ -594,8 +594,8 @@ example : progRejects noEvidence "containment obligation" = true := by native_de
 -- good type; it is just not the obligation. The evidence's TYPE is the selector, so a
 -- term of the wrong type selects no leaf.
 def wrongEvidence : Term := prog{
-  fn WrongEvidence (n : Nat, k : Nat, h : Le n k, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; k | h]; () };
+  fn WrongEvidence (n : Nat, k : Nat, H : Le n k, a : &mut (Array n Nat)) -> Unit {
+    let l = &m (*a)[Z ; k | H]; () };
   () }
 example : progRejects wrongEvidence "containment obligation" = true := by native_decide
 
@@ -604,9 +604,9 @@ example : progRejects wrongEvidence "containment obligation" = true := by native
 -- solution by refinement. Rejected with the remedy in the message, which is the one
 -- the north star already uses: take the length as a parameter.
 def rigidLength : Term := prog{
-  fn RigidLength (p : Nat, q : Nat, k : Nat, h : Le k (Add p q),
+  fn RigidLength (p : Nat, q : Nat, k : Nat, H : Le k (Add p q),
                   a : &mut (Array (Add p q) Nat)) -> Unit {
-    let l = &m (*a)[Z ; k | h]; () };
+    let l = &m (*a)[Z ; k | H]; () };
   () }
 example : progRejects rigidLength "premise (3) is stuck" = true := by native_decide
 example : progRejects rigidLength "Take the length as a telescope PARAMETER"
@@ -625,10 +625,10 @@ example : progRejects rigidLength "Take the length as a telescope PARAMETER"
     A function that recurses on fuel and carves on the way checks. -/
 
 def walk : Term := prog{
-  fn Walk [fuel] (fuel : Nat, n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
+  fn Walk [fuel] (fuel : Nat, n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
     match fuel {
       Z => (),
-      S(f2) => { let l = &m (*a)[Z ; k | h]; Walk(f2, k, k, LeRefl k, l) }
+      S(f2) => { let l = &m (*a)[Z ; k | H]; Walk(f2, k, k, LeRefl k, l) }
     } };
   () }
 example : progOk walk = true := by native_decide
@@ -646,10 +646,10 @@ example : progOk walk = true := by native_decide
     checks; what is gone is this particular witness to it. -/
 
 def walkArr : Term := prog{
-  fn WalkArr [a] (fuel : Nat, n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
+  fn WalkArr [a] (fuel : Nat, n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
     match fuel {
       Z => (),
-      S(f2) => { let l = &m (*a)[Z ; k | h]; WalkArr(f2, k, k, LeRefl k, l) }
+      S(f2) => { let l = &m (*a)[Z ; k | H]; WalkArr(f2, k, k, LeRefl k, l) }
     } };
   () }
 -- The twin differs from `walk` in the HINT ALONE — `[a]` where `walk` says
@@ -698,8 +698,8 @@ example : progOk touch = true := by native_decide
 
 def callSeg : Term := prog{
   fn Touch (p : Nat, l : &mut (Array p Nat)) -> Unit { () };
-  fn CallSeg (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; k | h];
+  fn CallSeg (n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
+    let l = &m (*a)[Z ; k | H];
     let r = &m (*a)[k ; ..];
     Touch(k, l);
     () };
@@ -777,26 +777,26 @@ example : expectEnv prog{
     negative test per rule branch. Rewritten as a structural recursion where the two
     `none`s cannot be confused. -/
 
-example : (Val.arrFoldSegs? [Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 7]),
-                             Val.segNode (Val.nat 1) (.loanM 0),
-                             Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 9])]).isNone
+example : (Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.ctor "Arr" [Val.nat 7]),
+                             Val.segNode (Term.nat 1) (.loanM 0),
+                             Val.segNode (Term.nat 1) (.ctor "Arr" [Val.nat 9])]).isNone
     = true := by native_decide
 
 -- …and the three positions a marker can take, so the branch cannot be lost again.
-example : (Val.arrFoldSegs? [Val.segNode (Val.nat 1) (.loanM 0),
-                             Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 9])]).isNone
+example : (Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.loanM 0),
+                             Val.segNode (Term.nat 1) (.ctor "Arr" [Val.nat 9])]).isNone
     = true := by native_decide
-example : (Val.arrFoldSegs? [Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 7]),
-                             Val.segNode (Val.nat 1) (.bot)]).isNone
+example : (Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.ctor "Arr" [Val.nat 7]),
+                             Val.segNode (Term.nat 1) (.bot)]).isNone
     = true := by native_decide
 
 -- The positive control the bug would also have broken: three owned segments fold to
 -- the full three-element run, not a prefix of it.
-example : ((Val.arrFoldSegs? [Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 7]),
-                              Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 8]),
-                              Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 9])]).map
-             (Val.nfV 200)
-           == some (.ctor "Arr" [Val.nat 7, Val.nat 8, Val.nat 9])) = true := by native_decide
+example : ((Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.ctor "Arr" [Val.nat 7]),
+                              Val.segNode (Term.nat 1) (.ctor "Arr" [Val.nat 8]),
+                              Val.segNode (Term.nat 1) (.ctor "Arr" [Val.nat 9])]).map
+             (Pure.nf 200)
+           == some (.ctorApp "Arr" [Term.nat 7, Term.nat 8, Term.nat 9])) = true := by native_decide
 
 /-! ### The differential harness, given array bodies
 
@@ -895,23 +895,23 @@ example : arrCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 b)
     should be too. -/
 
 def idxCited : Term := prog{
-  fn IdxCited (n : Nat, i : Nat, h : Le (S i) n, a : &mut (Array n Nat)) -> Unit {
-    let e = &m (*a)[i | h]; () };
+  fn IdxCited (n : Nat, i : Nat, H : Le (S i) n, a : &mut (Array n Nat)) -> Unit {
+    let e = &m (*a)[i | H]; () };
   () }
 example : progOk idxCited = true := by native_decide
 
 -- The same bound serves a width-1 RANGE, so the two spellings of "one slot" agree on
 -- what they demand even though they differ on what they hand back (¶2.1).
 def rng1Cited : Term := prog{
-  fn Rng1Cited (n : Nat, i : Nat, h : Le (S i) n, a : &mut (Array n Nat)) -> Unit {
-    let e = &m (*a)[i ; 1 | h]; () };
+  fn Rng1Cited (n : Nat, i : Nat, H : Le (S i) n, a : &mut (Array n Nat)) -> Unit {
+    let e = &m (*a)[i ; 1 | H]; () };
   () }
 example : progOk rng1Cited = true := by native_decide
 
 -- Not vacuous: the bound is the one thing being checked, and a weaker one fails.
 def idxWeakBound : Term := prog{
-  fn IdxWeakBound (n : Nat, i : Nat, h : Le i n, a : &mut (Array n Nat)) -> Unit {
-    let e = &m (*a)[i | h]; () };
+  fn IdxWeakBound (n : Nat, i : Nat, H : Le i n, a : &mut (Array n Nat)) -> Unit {
+    let e = &m (*a)[i | H]; () };
   () }
 example : progRejects idxWeakBound "containment obligation" = true := by native_decide
 
@@ -929,8 +929,8 @@ example : progOk threeWayTouch = true := by native_decide
 
 def splitTwo : Term := prog{
   fn ThreeWayTouch (p : Nat, l : &mut (Array p Nat)) -> Unit { () };
-  fn SplitTwo (n : Nat, i : Nat, h1 : Le i n, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i | h1];
+  fn SplitTwo (n : Nat, i : Nat, H1 : Le i n, a : &mut (Array n Nat)) -> Unit {
+    let l = &m (*a)[Z ; i | H1];
     let r = &m (*a)[i ; ..];
     ThreeWayTouch(i, l);
     () };
@@ -978,8 +978,8 @@ example : progOk splitTwo = true := by native_decide
     lead's call, not this milestone's. -/
 
 def pivotCarve : Term := prog{
-  fn PivotCarve (n : Nat, i : Nat, h1 : Le i n, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i | h1];
+  fn PivotCarve (n : Nat, i : Nat, H1 : Le i n, a : &mut (Array n Nat)) -> Unit {
+    let l = &m (*a)[Z ; i | H1];
     let p = &m (*a)[i];
     let r = &m (*a)[S i ; ..];
     () };
@@ -1026,8 +1026,8 @@ example : progOk sliceTouch = true := by native_decide
 -- A caller passing a slice whose length it can NAME: green, end to end.
 def sigCallerOk : Term := prog{
   fn SliceTouch (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () };
-  fn SigCallerOk (n : Nat, i : Nat, h1 : Le i n, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i | h1];
+  fn SigCallerOk (n : Nat, i : Nat, H1 : Le i n, a : &mut (Array n Nat)) -> Unit {
+    let l = &m (*a)[Z ; i | H1];
     let r = &m (*a)[i ; ..];
     SliceTouch(Pair(i, l));
     () };
@@ -1043,8 +1043,8 @@ example : progOk sigCallerOk = true := by native_decide
 
 def sigCallerWrong : Term := prog{
   fn SliceTouch (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () };
-  fn SigCallerWrong (n : Nat, i : Nat, h1 : Le i n, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i | h1];
+  fn SigCallerWrong (n : Nat, i : Nat, H1 : Le i n, a : &mut (Array n Nat)) -> Unit {
+    let l = &m (*a)[Z ; i | H1];
     let r = &m (*a)[i ; ..];
     SliceTouch(Pair(i, r));
     () };
@@ -1069,9 +1069,9 @@ example : progRejects recSlice "only valid at a telescope position" = true := by
     obligation `Le 1 σ_rest` reduces to `Le Z j`, which is ⊤ and needs no evidence at
     all. Stuck while the residue is a bare σ; free the moment it has a shape. -/
 
-example : (Val.nfV 300 (Val.kLe (Val.nat 1) (.ctor "S" [.sym 0])) == .const "Unit")
+example : (Pure.nf 300 (Pure.kLe (Term.nat 1) (.ctorApp "S" [.sym 0])) == .const "Unit")
     = true := by native_decide
-example : (Val.nfV 300 (Val.kLe (Val.nat 1) (.sym 0)) == .const "Unit")
+example : (Pure.nf 300 (Pure.kLe (Term.nat 1) (.sym 0)) == .const "Unit")
     = false := by native_decide
 
 /-! ## (vii) ROUTE (a) — the program supplies the residue, and ¶6's carve unblocks
@@ -1112,9 +1112,9 @@ example : (Val.nfV 300 (Val.kLe (Val.nat 1) (.sym 0)) == .const "Unit")
     reduces to `Le Z j` and then to ⊤, so **the carve that could not be written at all
     now needs no evidence whatsoever**. -/
 def threeWay : Term := prog{
-  fn ThreeWay (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S j)),
+  fn ThreeWay (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
                a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | heq];
+    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | Heq];
     let p = &m (*a)[i ; 1 ; j];
     let r = &m (*a)[S i ; ..];
     () };
@@ -1125,9 +1125,9 @@ example : progOk threeWay = true := by native_decide
 -- doing real work: `[Z ; i ; S j]`, `[i ; 1 ; j]` and `[S i ; ..]` are pairwise
 -- disjoint by the decomposition the carves cite, and all three stay usable.
 def threeWayAll : Term := prog{
-  fn ThreeWayAll (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S j)),
+  fn ThreeWayAll (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
                   a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | heq];
+    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | Heq];
     let p = &m (*a)[i ; 1 ; j];
     let r = &m (*a)[S i ; ..];
     let z = *r;
@@ -1148,9 +1148,9 @@ example : progOk threeWayAll = true := by native_decide
 -- `rest := S j` the obligation is ⊤. Dropping `LeAdd` from the FIRST carve, whose
 -- obligation does not compute away, is still rejected.
 def threeWayNoFirstEv : Term := prog{
-  fn ThreeWayNoFirstEv (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S j)),
+  fn ThreeWayNoFirstEv (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
                         a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeRefl i | heq];
+    let l = &m (*a)[Z ; i ; S j | LeRefl i | Heq];
     let p = &m (*a)[i ; 1 ; j];
     () };
   () }
@@ -1174,9 +1174,9 @@ example : progRejects threeWayUncited "may not impose it by refining" = true := 
 -- …and the citation's TYPE is what licenses: a well-typed equation about the wrong
 -- decomposition selects nothing.
 def threeWayWrongEq : Term := prog{
-  fn ThreeWayWrongEq (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S (S j))),
+  fn ThreeWayWrongEq (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S (S j))),
                       a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | heq];
+    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | Heq];
     () };
   () }
 example : progRejects threeWayWrongEq "cited decomposition does not have type" = true := by
@@ -1186,9 +1186,9 @@ example : progRejects threeWayWrongEq "cited decomposition does not have type" =
 -- and premise (3) is the thing that checks it. Here `j` is claimed where `S j` is
 -- needed, so the solution transition has no solution.
 def threeWayLyingResidue : Term := prog{
-  fn ThreeWayLyingResidue (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i j),
+  fn ThreeWayLyingResidue (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i j),
                            a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; j | LeAdd i j | heq];
+    let l = &m (*a)[Z ; i ; j | LeAdd i j | Heq];
     let p = &m (*a)[i ; 1 ; j];
     () };
   () }
@@ -1205,9 +1205,9 @@ example : progOk sliceTake = true := by native_decide
 
 def threeWayCall : Term := prog{
   fn SliceTake (q : Nat, s : &mut (Array q Nat)) -> Unit { () };
-  fn ThreeWayCall (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S j)),
+  fn ThreeWayCall (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
                    a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | heq];
+    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | Heq];
     let p = &m (*a)[i ; 1 ; j];
     let r = &m (*a)[S i ; ..];
     SliceTake(i, l);
@@ -1225,9 +1225,9 @@ example : progOk threeWayCall = true := by native_decide
     `(*a)[S i ; ..]` cannot find the segment it just created. -/
 
 example : progOk (prog{
-  fn BaseSpelling (n : Nat, i : Nat, j : Nat, heq : Id Nat n (Add i (S j)),
+  fn BaseSpelling (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
                    a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | heq];
+    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | Heq];
     let p = &m (*a)[i ; 1 ; j];
     let r = &m (*a)[S i ; j];
     () };
@@ -1250,7 +1250,7 @@ example : progOk (prog{
     are their list counterparts with that substitution applied and nothing else. -/
 
 def chkL (tm ty : Term) : Bool :=
-  match (do let v ← readC 8000 tm; let t ← readC 8000 ty; hasType 8000 v t).run (seedPure [] []) with
+  match (do let v ← readC 8000 tm; let t ← readC 8000 ty; hasTypeT 8000 v t).run (seedPure [] []) with
   | .ok r _ => r
   | .error _ _ => false
 
@@ -1266,7 +1266,7 @@ open Dllbc.StdLemmas (CountA SortedA UbA LbA BoundA Asingle
   CountSwap2 CountSwap2Ty LebTrueLe LebFalseGt LePredL)
 
 -- The predicates COMPUTE, on a run and on the cons view alike.
-example : (pv prog{ CountA 2 4 Arr(1, 2, 2, 3) } == Val.nat 2) = true := by native_decide
+example : (pv prog{ CountA 2 4 Arr(1, 2, 2, 3) } == Term.nat 2) = true := by native_decide
 example : (pv prog{ SortedA 3 Arr(1, 2, 3) } == pv prog{ SortedA 3 Arr(1, 2, 3) })
     = true := by native_decide
 example : chk prog{ Pair(unit, Pair(unit, Pair(unit, unit))) } prog{ SortedA 3 Arr(1, 2, 3) }
@@ -1423,11 +1423,11 @@ example : progOk readSame = true := by native_decide
     names `*a` (exit) and `old *a` (entry). -/
 def sort2 : Term := prog{
   fn Sort2 (a : &mut (Array 2 Nat))
-      -> Σ (hs : SortedA 2 (*a)) → (Π (x : Nat) → Id Nat (CountA x 2 (*a)) (CountA x 2 (old *a))) {
+      -> Σ (hs : SortedA 2 (*a)) → (Π (X : Nat) → Id Nat (CountA X 2 (*a)) (CountA X 2 (old *a))) {
     let x = (*a)[0];
     let y = (*a)[1];
     if h : Leb x y {
-      Pair(Pair(LebTrueLe x y h, Pair(unit, unit)), λ (n : Nat). Refl)
+      Pair(Pair(LebTrueLe x y h, Pair(unit, unit)), λ (N : Nat). Refl)
     } else {
       (*a)[0] := y;
       (*a)[1] := x;
@@ -1439,7 +1439,7 @@ def sort2 : Term := prog{
       let X0 = x;
       let Y0 = y;
       Pair(Pair(LePredL y x (LebFalseGt x y h), Pair(unit, unit)),
-           λ (n : Nat). CountSwap2 n X0 Y0)
+           λ (N : Nat). CountSwap2 N X0 Y0)
     } };
   () }
 example : progOk sort2 = true := by native_decide
@@ -1464,15 +1464,15 @@ example : progOk sort2LieSorted = false := by native_decide
 -- bearing: `Refl` in its place is rejected.
 def sort2LieCount : Term := prog{
   fn Sort2LieCount (a : &mut (Array 2 Nat))
-      -> Σ (hs : SortedA 2 (*a)) → (Π (x : Nat) → Id Nat (CountA x 2 (*a)) (CountA x 2 (old *a))) {
+      -> Σ (hs : SortedA 2 (*a)) → (Π (X : Nat) → Id Nat (CountA X 2 (*a)) (CountA X 2 (old *a))) {
     let x = (*a)[0];
     let y = (*a)[1];
     if h : Leb x y {
-      Pair(Pair(LebTrueLe x y h, Pair(unit, unit)), λ (n : Nat). Refl)
+      Pair(Pair(LebTrueLe x y h, Pair(unit, unit)), λ (N : Nat). Refl)
     } else {
       (*a)[0] := y;
       (*a)[1] := x;
-      Pair(Pair(LePredL y x (LebFalseGt x y h), Pair(unit, unit)), λ (n : Nat). Refl)
+      Pair(Pair(LePredL y x (LebFalseGt x y h), Pair(unit, unit)), λ (N : Nat). Refl)
     } };
   () }
 example : progOk sort2LieCount = false := by native_decide

@@ -258,10 +258,14 @@ example : progOk (prog{
 -- `push(7, &mut *b)` — the reborrow Rust inserts silently; the child loan gets
 -- the owed annotation and the parent recovers when it ends.
 --
--- Written as ONE chain rather than `withPush (prog{ fn Caller … })`: a spliced
--- tail may not declare functions, because both chains number their slots from
--- `progBase` and the inner would shadow `push`. `bindFn` refuses it — which is how
--- this line was found, having been written the wrong way first and passed green.
+-- Written as ONE chain rather than `withPush (prog{ fn Caller … })`. That was
+-- once FORCED — a spliced tail could not declare functions, because both chains
+-- numbered their slots from `progBase` and the inner collided with the outer by
+-- id, and `bindFn` refused it (which is how this line was found, having been
+-- written the wrong way first and passed green). **M32 R4 retired both the
+-- arithmetic and the check**: the collision was on the id and never on the name,
+-- and Ω has resolved by name since R1. The one-chain shape is kept because it is
+-- what is written and reads no worse; the spliced form is now legal too.
 example : progOk (prog{
   fn Push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; *v := Cons(e, tail); () };
   fn Caller () -> List Nat { let x = Cons(1, Nil); let b = &m x; Push(7, &m *b); let y = x; y };
@@ -502,10 +506,10 @@ sit at telescope positions) and `if`-sugar over the Bool match.
 caller, which is what "a callee is a binding lexically above the call" means when
 said in the grammar rather than assembled into a table. The shared callees
 (`use_refl`, `needs`, `observe`) are written into each cohort that uses one
-rather than factored into a prefix helper: a `%`-spliced tail may not declare
-functions, because both chains number their slots from `progBase` and the inner
-would shadow the outer, so a cohort whose members are all `fn`s has to be one
-chain. The repetition is the honest cost of that, and it is four lines.
+rather than factored into a prefix helper. That was FORCED until M32 R4: a
+`%`-spliced tail could not itself declare functions, because both chains numbered
+their slots from `progBase` and collided by id. It can now, so the repetition
+below is history rather than a rule; it is four lines.
 -/
 
 open Dllbc
@@ -697,12 +701,12 @@ def vlist : List Nat → Val | [] => .ctor "Nil" [] | h :: t => .ctor "Cons" [vn
 
 /-! ## The segment vocabulary computes (`Len`/`Take`/`Drop`) -/
 
-example : (Val.nfV 1000 (Dllbc.Std.len (Dllbc.Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3])) == vnat 3) = true := by
-  native_decide
-example : (Val.nfV 1000 (Dllbc.Std.take (Std.ofNat 2) (Dllbc.Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]))
-    == vlist [1, 2]) = true := by native_decide
-example : (Val.nfV 1000 (Dllbc.Std.drop (Std.ofNat 2) (Dllbc.Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]))
-    == vlist [3]) = true := by native_decide
+example : (Pure.nf 1000 (Dllbc.Std.len (Dllbc.Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]))
+    == Std.ofNat 3) = true := by native_decide
+example : (Pure.nf 1000 (Dllbc.Std.take (Std.ofNat 2) (Dllbc.Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]))
+    == Dllbc.Std.ofList [Std.ofNat 1, Std.ofNat 2]) = true := by native_decide
+example : (Pure.nf 1000 (Dllbc.Std.drop (Std.ofNat 2) (Dllbc.Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]))
+    == Dllbc.Std.ofList [Std.ofNat 3]) = true := by native_decide
 
 /-! ## The cursor family, as a PREFIX
 
@@ -768,6 +772,10 @@ def swapBody : Term := withCursors prog{
   let y = x;
   () }
 example : progOk swapBody = true := by native_decide
+
+#eval match Dllbc.Tests.S9Diff.runExec swapBody with
+  | .ok _ => "KEEP: exec OK"
+  | .error e => "KEEP: " ++ e.take 300
 
 -- CONCRETELY: `swap(v, 0, 2)` on `[1,2,3]` yields `[3,2,1]`.
 example :

@@ -140,14 +140,20 @@ def telePi : List (Var × Term) → Term → Term
 
 /-! ## Resolving the scrutinee's match, and rewriting self-calls -/
 
+/-- A `Var`'s id if it is one, and `0` if it is a sentinel — `noSlot` (a comptime
+    binder) or `declSlot` (a program declaration). Neither is an id in the
+    program's space and either would swamp a maximum. -/
+def realId (x : Var) : Nat := if x.id == noSlot || x.id == declSlot then 0 else x.id
+
 /-- The largest runtime var id anywhere in a term — for minting `ih` above every
     id the body already uses. -/
 partial def maxVarId : Term → Nat
   | .var x => x.id
-  | .letIn x rhs rest => max x.id (max (maxVarId rhs) (maxVarId rest))
+  -- Both SENTINELS are excluded (M32 R4 adds `declSlot` beside `noSlot`): they
+  -- are tags, not ids in the program's space, and either would swamp the max.
+  | .letIn x rhs rest => max (realId x) (max (maxVarId rhs) (maxVarId rest))
   | .assign p e rest => max (maxVarId p) (max (maxVarId e) (maxVarId rest))
   | .ctorApp _ args | .call _ args => args.foldl (fun a t => max a (maxVarId t)) 0
-  | .callV x args => args.foldl (fun a t => max a (maxVarId t)) x.id
   | .borrow t | .deref t | .cmpT t => maxVarId t
   | .index t i ev =>
     max (maxVarId t) (max (maxVarId i) ((ev.map maxVarId).getD 0))
@@ -157,11 +163,14 @@ partial def maxVarId : Term → Nat
   | .matchE s eqn brs =>
     brs.foldl (fun a b => max a (max (b.binders.foldl (fun c v => max c v.id) 0) (maxVarId b.body)))
       (max s.id ((eqn.map (·.id)).getD 0))
-  | .seq a b | .app a b | .seal a b => max (maxVarId a) (maxVarId b)
-  | .pi _ a b | .lam _ a b | .sigmaT _ a b | .borrowT _ a b =>
+  | .seq a b | .app a b | .seal _ a b => max (maxVarId a) (maxVarId b)
+  -- The one λ (M32 R2): the BINDER's id counts too, which is what the `lamR`
+  -- fold over its telescope was for. A comptime binder's `noSlot` would swamp
+  -- the maximum, so it is excluded — it is not an id in the program's space.
+  | .lam x a b => max (realId x) (max (maxVarId a) (maxVarId b))
+  | .pi _ a b | .sigmaT _ a b | .borrowT _ a b =>
     max (maxVarId a) (maxVarId b)
   | .idT a b c => max (maxVarId a) (max (maxVarId b) (maxVarId c))
-  | .lamR xs body => xs.foldl (fun a p => max a (max p.1.id (maxVarId p.2))) (maxVarId body)
   | _ => 0
 
 /-- Rename one runtime variable throughout (binding occurrences included). -/
@@ -174,8 +183,6 @@ partial def renameVar (from_ to : Var) : Term → Term
   | .seq a b => .seq (renameVar from_ to a) (renameVar from_ to b)
   | .ctorApp n args => .ctorApp n (args.map (renameVar from_ to))
   | .call n args => .call n (args.map (renameVar from_ to))
-  | .callV x args =>
-    .callV (if x.id == from_.id then to else x) (args.map (renameVar from_ to))
   | .borrow t => .borrow (renameVar from_ to t)
   | .deref t => .deref (renameVar from_ to t)
   | .matchE s eqn brs =>
@@ -219,7 +226,7 @@ partial def resolveScrut (k : Var) (ctor : String) (rebind : List Var) : Term �
   | .seq a b => .seq (resolveScrut k ctor rebind a) (resolveScrut k ctor rebind b)
   | .ctorApp n args => .ctorApp n (args.map (resolveScrut k ctor rebind))
   | .call n args => .call n (args.map (resolveScrut k ctor rebind))
-  | .callV x args => .callV x (args.map (resolveScrut k ctor rebind))
+  | .app f a => .app (resolveScrut k ctor rebind f) (resolveScrut k ctor rebind a)
   | .borrow t => .borrow (resolveScrut k ctor rebind t)
   | .deref t => .deref (resolveScrut k ctor rebind t)
   | t => t
@@ -266,7 +273,8 @@ partial def selfScrutArgs (name : String) (k : Nat) : Term → List Term
   | .assign p e rest =>
     selfScrutArgs name k p ++ selfScrutArgs name k e ++ selfScrutArgs name k rest
   | .seq a b => selfScrutArgs name k a ++ selfScrutArgs name k b
-  | .ctorApp _ args | .callV _ args => args.flatMap (selfScrutArgs name k)
+  | .ctorApp _ args => args.flatMap (selfScrutArgs name k)
+  | .app f a => selfScrutArgs name k f ++ selfScrutArgs name k a
   | .borrow t | .deref t => selfScrutArgs name k t
   | .matchE _ _ brs => brs.flatMap (fun b => selfScrutArgs name k b.body)
   | _ => []
@@ -277,7 +285,7 @@ partial def selfScrutArgs (name : String) (k : Nat) : Term → List Term
 partial def renameSelf (from_ to : String) : Term → Term
   | .call f args =>
     .call (if f == from_ then to else f) (args.map (renameSelf from_ to))
-  | .callV x args => .callV x (args.map (renameSelf from_ to))
+  | .app f a => .app (renameSelf from_ to f) (renameSelf from_ to a)
   | .ctorApp n args => .ctorApp n (args.map (renameSelf from_ to))
   | .letIn x rhs rest => .letIn x (renameSelf from_ to rhs) (renameSelf from_ to rest)
   | .assign p e rest =>
@@ -287,7 +295,7 @@ partial def renameSelf (from_ to : String) : Term → Term
   | .deref t => .deref (renameSelf from_ to t)
   | .matchE s eqn brs =>
     .matchE s eqn (brs.map (fun b => Branch.mk b.ctor b.binders (renameSelf from_ to b.body)))
-  | .lamR xs body => .lamR xs (renameSelf from_ to body)
+  | .lam x d body => .lam x d (renameSelf from_ to body)
   | t => t
 
 /-- A self-call becomes an `ih` application with the scrutinee argument dropped:
@@ -297,13 +305,13 @@ partial def renameSelf (from_ to : String) : Term → Term
 partial def selfToIh (name : String) (k : Nat) (ih : Var) : Term → Term
   | .call f args =>
     let args' := args.map (selfToIh name k ih)
-    if f == name then .callV ih (args'.eraseIdx k) else .call f args'
+    if f == name then Term.appSpine (.var ih) (args'.eraseIdx k) else .call f args'
   | .letIn x rhs rest => .letIn x (selfToIh name k ih rhs) (selfToIh name k ih rest)
   | .assign p e rest =>
     .assign (selfToIh name k ih p) (selfToIh name k ih e) (selfToIh name k ih rest)
   | .seq a b => .seq (selfToIh name k ih a) (selfToIh name k ih b)
   | .ctorApp n args => .ctorApp n (args.map (selfToIh name k ih))
-  | .callV x args => .callV x (args.map (selfToIh name k ih))
+  | .app f a => .app (selfToIh name k ih f) (selfToIh name k ih a)
   | .borrow t => .borrow (selfToIh name k ih t)
   | .deref t => .deref (selfToIh name k ih t)
   | .matchE s eqn brs =>
@@ -334,13 +342,33 @@ def hoist (k : Nat) (tel : List (Var × Term)) : Except String (List (Var × Ter
       .error s!"fn: the decreasing parameter '{kv.name}' cannot be hoisted to the front of the telescope — its type mentions '{y.name}', which is declared before it. §7 makes [k] a scrutinee-selection hint and the motive is the sealed Π with that binder peeled off the FRONT, so the scrutinee's own type must be statable first."
     | none => .ok ((kv, kτ) :: (tel.take k ++ tel.drop (k + 1)))
 
+/-- **The nullary `fn`'s Unit parameter** (M32 R2, suspensions.md §1).
+
+    One λ former means a λ has a binder, so `Term.lamTel [] body` is the body
+    itself and `fn F () -> T { … }` would elaborate to `.seal ⟨body⟩ T` — which is
+    exactly what the surface ascription `(e : T)` elaborates to. The two were
+    different terms while `lamR []` existed and are the same term after the fold,
+    so the seal could no longer tell a nullary FUNCTION from an ascribed
+    expression. §1 already prescribes the resolution — "nullary `fn` desugars to
+    `λ (U : Unit)`" — and this is it, arriving here rather than at R4 because the
+    fold is what forces it.
+
+    The binder is **comptime and unwritable**: capitalized, so `piPeel`'s mode
+    check agrees with the `⇝Unit` domain `markDom` gives it and the argument is
+    ⇝-read (a nullary function consumes nothing, which is the property being
+    preserved); and spelled with a `§`, which no Lean `ident` can contain, so no
+    program can bind or shadow it. `retarget` supplies the `()` at every call
+    site, so the desugar is invisible to the surface in both directions. -/
+def nullaryVar : Var := ⟨0, "U§"⟩
+
 /-- `fn` as a macro: a `FnDef` becomes the term §7 says it is — `.seal ⟨recursor⟩
     ⟨Π⟩` when it recurses, `.seal ⟨runtime λ⟩ ⟨Π⟩` when it does not.
 
     Returns the sealed TERM. Binding it is the caller's business, which is §8's
     direction: a declaration is a `let`, and this is its right-hand side. -/
 def fnElab (d : FnDef) : Except String Term := do
-  let tel := teleVars d.telescope
+  let tel := if d.telescope.isEmpty then [(nullaryVar, Term.const "Unit")]
+             else teleVars d.telescope
   match d.dec with
   -- NON-RECURSIVE: the whole function is one runtime λ, sealed at its signature.
   -- A self-call here is deliberately NOT refused, and that is §8's own mechanism
@@ -354,7 +382,7 @@ def fnElab (d : FnDef) : Except String Term := do
   -- binder's mode on its domain, which is what `telePi` does to build the Π the
   -- seal converts against, so the λ and its ascription are built from one source.
   | none =>
-    .ok (.seal (.lamR (tel.map (fun p => (p.1, markDom p.1 p.2))) d.body)
+    .ok (.seal 0 (Term.lamTel (tel.map (fun p => (p.1, markDom p.1 p.2))) d.body)
                (telePi tel d.retType))
   | some k => do
     let (kv, kτ) ← match tel.get? k with
@@ -433,7 +461,7 @@ def fnElab (d : FnDef) : Except String Term := do
     -- non-closed. Said here rather than left to the kernel's closedness rejection,
     -- which would name the variable without naming the cause.
     let restIds := rest.map (·.1)
-    let stray := (Term.freeRVars ((restIds.map (·.id))) zBody).find? (fun y => y.id == kv.id)
+    let stray := (Term.freeRVars (restIds.map (·.name)) zBody).find? (fun y => y.name == kv.name)
     match stray with
     | some _ =>
       .error s!"fn: the base arm still mentions '{kv.name}' after `match {kv.name}` was resolved to its `{baseCtor}` branch. The scrutinee does not exist inside an arm — it is the recursor's argument — so a body may only reach it through a match on it."
@@ -467,20 +495,20 @@ def fnElab (d : FnDef) : Except String Term := do
     | none =>
       let zTel ← armTel restIds (Term.substP (paramName kv) (.ctorApp "Z" []) R)
       let sTel ← armTel restIds (Term.substP (paramName kv) (.ctorApp "S" [.var dec]) R)
-      .ok (.seal
+      .ok (.seal 0
         (.app (.app (.app (.const "natRec") motive)
-          (.lamR zTel zBody))
-          (.lamR ((dec, scrutDom) :: (ih, ihTy) :: sTel) sBody))
+          (Term.lamTel zTel zBody))
+          (Term.lamTel ((dec, scrutDom) :: (ih, ihTy) :: sTel) sBody))
         piT)
     | some a =>
       let hd : Var := stepBs.head!
       let zTel ← armTel restIds (Term.substP (paramName kv) (.ctorApp "Nil" []) R)
       let sTel ← armTel restIds
         (Term.substP (paramName kv) (.ctorApp "Cons" [.var hd, .var dec]) R)
-      .ok (.seal
+      .ok (.seal 0
         (.app (.app (.app (.app (.const "listRec") a) motive)
-          (.lamR zTel zBody))
-          (.lamR ((hd, a) :: (dec, scrutDom) :: (ih, ihTy) :: sTel) sBody))
+          (Term.lamTel zTel zBody))
+          (Term.lamTel ((hd, a) :: (dec, scrutDom) :: (ih, ihTy) :: sTel) sBody))
         piT)
 
 /-! ## §8: assembling a program from declarations
@@ -501,6 +529,11 @@ def fnElab (d : FnDef) : Except String Term := do
     with no binding is left as a `.call`, so a half-migrated program still
     reaches the J1 table for whatever has not moved yet.
 
+    **The target is an app SPINE** (M32 R4). `.callV v args` retired, so `f(a, b)`
+    lands as `.app (.app (.var v) a) b` — surface sugar for the one application
+    form. This function is where the surface's n-ary shape becomes the grammar's
+    binary one, and it is the only place in the pipeline that ever built a call.
+
     **And the arguments are permuted to match the callee's hoist.** `[k]` is a
     scrutinee-selection hint, and `fnElab` hoists that parameter to the FRONT
     because the motive is the sealed Π with the scrutinee peeled off the front —
@@ -517,11 +550,16 @@ partial def retarget (binds : List (String × Var × Option Nat)) : Term → Ter
     match binds.lookup f with
     | some (v, some k) =>
       match args'.get? k with
-      | some a => .callV v (a :: args'.eraseIdx k)
-      | none => .callV v args'                  -- arity mismatch: the kernel reports it
-    | some (v, none) => .callV v args'
+      | some a => Term.appSpine (.var v) (a :: args'.eraseIdx k)
+      | none => Term.appSpine (.var v) args'    -- arity mismatch: the kernel reports it
+    -- **A no-argument call supplies the nullary desugar's `()`** (M32 R2). A
+    -- declared callee with an empty argument list is a nullary `fn`, and
+    -- `fnElab` gave it the comptime `U§ : ⇝Unit` binder that §1 prescribes; the
+    -- unit is put here rather than written, so the desugar is invisible at the
+    -- surface from both ends. (A no-argument call of a callee that is NOT nullary
+    -- is an arity error either way, and the kernel still reports it.)
+    | some (v, none) => Term.appSpine (.var v) (if args'.isEmpty then [.unit] else args')
     | none => .call f args'
-  | .callV x args => .callV x (args.map (retarget binds))
   | .ctorApp n args => .ctorApp n (args.map (retarget binds))
   | .letIn x rhs rest => .letIn x (retarget binds rhs) (retarget binds rest)
   | .assign p e rest => .assign (retarget binds p) (retarget binds e) (retarget binds rest)
@@ -530,8 +568,7 @@ partial def retarget (binds : List (String × Var × Option Nat)) : Term → Ter
   | .deref t => .deref (retarget binds t)
   | .matchE s eqn brs =>
     .matchE s eqn (brs.map (fun b => Branch.mk b.ctor b.binders (retarget binds b.body)))
-  | .lamR xs body => .lamR xs (retarget binds body)
-  | .seal t u => .seal (retarget binds t) (retarget binds u)
+  | .seal s t u => .seal s (retarget binds t) (retarget binds u)
   | .app a b => .app (retarget binds a) (retarget binds b)
   | .idT a b c => .idT (retarget binds a) (retarget binds b) (retarget binds c)
   | .pi n a b => .pi n (retarget binds a) (retarget binds b)
@@ -542,15 +579,6 @@ partial def retarget (binds : List (String × Var × Option Nat)) : Term → Ter
     .range (retarget binds t) (retarget binds lo) (cnt.map (retarget binds))
       (rest.map (retarget binds)) (ev.map (retarget binds)) (eq.map (retarget binds))
   | t => t
-
-/-- The program-level binding ids. Chosen above every id a body mints (the
-    elaborated terms are checked against this below) and below the executing
-    machine's frame base, so a global is neither shadowed by a local nor mistaken
-    for a frame slot. Nothing in the surface names these ids: a tail written as
-    an ordinary program calls its callees by name, and `retarget` below binds
-    those calls into the slots — which is why there is no `…With` form to keep in
-    step with this number. -/
-def progBase : Nat := 900
 
 /-! ## The statement form's lowering (M28 θ)
 
@@ -586,41 +614,24 @@ def fnElabOrFail (d : FnDef) : Term :=
   | .ok t => t
   | .error e => .call s!"{fnRefusedNeedle}: {e}" []
 
-/-- Every FUNCTION slot a term binds — the ids at or above `progBase`, which only
-    a `fn` statement mints. Mirrors `maxVarId`'s walk because it has to see the
-    same places: a `%` splice can land anywhere an expression can. -/
-partial def fnSlots : Term → List Nat
-  | .letIn x rhs rest =>
-    (if x.id ≥ progBase then [x.id] else []) ++ fnSlots rhs ++ fnSlots rest
-  | .assign p e rest => fnSlots p ++ fnSlots e ++ fnSlots rest
-  | .ctorApp _ args | .call _ args | .callV _ args => args.flatMap fnSlots
-  | .borrow t | .deref t | .cmpT t => fnSlots t
-  | .index t i ev => fnSlots t ++ fnSlots i ++ (ev.map fnSlots).getD []
-  | .range t lo cnt rest ev eq =>
-    fnSlots t ++ fnSlots lo ++ (cnt.map fnSlots).getD [] ++ (rest.map fnSlots).getD []
-      ++ (ev.map fnSlots).getD [] ++ (eq.map fnSlots).getD []
-  | .matchE _ _ brs => brs.flatMap (fun b => fnSlots b.body)
-  | .seq a b | .app a b | .seal a b => fnSlots a ++ fnSlots b
-  | .pi _ a b | .lam _ a b | .sigmaT _ a b | .borrowT _ a b => fnSlots a ++ fnSlots b
-  | .idT a b c => fnSlots a ++ fnSlots b ++ fnSlots c
-  | .lamR _ body => fnSlots body
-  | _ => []
+/-- **Bind a `fn` statement's slot over the rest of the block.** `retarget`, and
+    since M32 R4 nothing else.
 
-/-- **Bind a `fn` statement's slot over the rest of the block.** `retarget`, with
-    the one thing the surface cannot check for itself in front of it.
+    It used to carry an id-collision check in front of `retarget`: each `fn`
+    chain numbered its slots from `progBase`, so two chains composed through a
+    `%` splice — `withA (withB (prog{ … }))`, the obvious way to share a prefix —
+    both started at `900`, and the inner chain's FIRST declaration landed on the
+    outer chain's first. `bindFn` refused that.
 
-    Each `fn` chain numbers its slots from `progBase`, so two chains composed
-    through a `%` splice — `withA (withB (prog{ … }))`, the obvious way to share a
-    prefix — both start at `progBase` and the inner chain SHADOWS the outer one.
-    Left alone that is not an error but a wrong program that checks: measured, the
-    nested pair above accepts, with both `a` and `b` resolving to whichever
-    function landed second. A bulk migration's failure mode is exactly "a quietly
-    wrong rewrite that still builds" (Migrate.lean's header), so the collision is
-    detected and refused by the same sentinel a refused lowering uses. -/
+    **R4 retires it, because the hazard was the arithmetic's and R1 removed the
+    arithmetic's teeth.** The collision was on the ID and never on the NAME —
+    `withA (withB …)` collided `A` with `B` — and Ω resolves by name, so the two
+    entries were never confusable in the first place. Composing chains is now
+    ordinary let-chain composition, which is what `%` splicing always looked
+    like. What genuinely shadows is a chain redeclaring an outer chain's NAME,
+    and that is lexical shadowing doing its job. -/
 def bindFn (v : Var) (dec : Option Nat) (rest : Term) : Term :=
-  if (fnSlots rest).contains v.id then
-    .call s!"{fnRefusedNeedle}: '{v.name}' would bind function slot {v.id}, which a function BELOW it already binds. Two `fn` chains have been composed (a `%` splice of one program into another), and each numbers its slots from progBase, so the inner chain shadows this one and both names resolve to the same function. Declare them in ONE chain — `prog\{ fn a …; fn b …; tail }` — or splice only a tail that declares no functions." []
-  else retarget [(v.name, v, dec)] rest
+  retarget [(v.name, v, dec)] rest
 
 
 /-- **A program from a cohort of declarations** (§8), in dependency order: each
@@ -630,7 +641,7 @@ def bindFn (v : Var) (dec : Option Nat) (rest : Term) : Term :=
     unknown function it is. -/
 def progOf (ds : List FnDef) (tail : Term) : Except String Term := do
   let binds : List (String × Var × Option Nat) :=
-    ds.enum.map (fun p => (p.2.name, ⟨progBase + p.1, p.2.name⟩, p.2.dec))
+    ds.map (fun d => (d.name, ⟨declSlot, d.name⟩, d.dec))
   let rec go (i : Nat) : List FnDef → Except String Term
     -- The tail is in the accumulated scope, so its calls are retargeted too — which
     -- is what lets an existing `FnDef`-era caller term be handed over unchanged and
@@ -638,14 +649,12 @@ def progOf (ds : List FnDef) (tail : Term) : Except String Term := do
     | [] => .ok (retarget binds tail)
     | d :: rest => do
       let t ← fnElab d
-      if maxVarId t ≥ progBase then
-        .error s!"prog: '{d.name}' elaborates to a term using variable id {maxVarId t}, at or above the program-binding base {progBase} — a global would collide with one of its own locals."
       -- Only the bindings STRICTLY ABOVE this one are in scope for it — a binding
       -- is not in scope in its own right-hand side — which is what makes both a
       -- forward reference and a residual self-call show up as the unknown
       -- function they are, rather than as a dangling variable.
       let above := binds.take i
-      pure (.letIn ⟨progBase + i, d.name⟩ (retarget above t) (← go (i + 1) rest))
+      pure (.letIn ⟨declSlot, d.name⟩ (retarget above t) (← go (i + 1) rest))
   go 0 ds
 
 end FnMacro

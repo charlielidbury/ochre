@@ -1,5 +1,203 @@
 # Progress
 
+## 2026-08-11 — dllbc/: **M32 R4 — spines + sweep, and M32 closes**
+
+Four commits on `m32-r4` (stacked on the unmerged `m32-r3b`), whole corpus green
+at each. `suspensions.md` §5's last stage: one application node, no id machinery,
+and the milestone's close-out.
+
+    Term.callV           DELETED       `f(a,b)` is sugar for the app spine
+    Term.appSpine        NEW           the builder `retarget`/the surface use
+    Term.appSpineVar?    MOVED         to Syntax — `Term.imperative` reads it
+    calleeIsRuntime      NEW           does ⇒ own this spine's head?
+    calleeMustEnter      NEW           ⇝'s refusal to read a CALL, on the value
+    applyCallee          renamed       was `callVValue`
+    freshFrame           DELETED       no frame windows — a call is a SCOPE
+    shiftVarsK family    DELETED       resolution is by name; the shift was inert
+    St.nextFrame         DELETED
+    applyClosure's keep  DELETED       measured INERT, not empty
+    FnMacro.progBase     DELETED       arithmetic, collision check, maxVarId guard
+    Var.declSlot         NEW           the TAG the harness projections need
+    FnMacro.fnSlots      DELETED       the collision it fed was id-only
+    S32Spine             NEW battery   §A–§E: the split, the rule, E8's permutation
+
+**The differential is four needles and two verdict flips, and `Traces.lean` is
+byte-unchanged.** Routing comptime closures through the call rule domain-checks
+their arguments, so four spec-lie controls (two in `Direct`, two in `ArraySort`)
+still reject but now die at the ARGUMENT rather than the return. The two verdict
+flips are `Functions.c4`/`Programs.g1` (a comptime λ's partial application is a
+value — §12 decision 4 is about ⇒-entry) and `FnStmt` §A (composing two `fn`
+chains through a `%` splice is legal, the collision having been id-only).
+
+**Two of the plan's predictions were refuted and are recorded as findings.** The
+`keep` sets are not empty-by-construction — `swap` reports `keep = [901]`, §8's
+globals — but INERT, which is a different claim and got its own differential
+before the shift was deleted. And `Var.bindsSlot` does not become the case test:
+R4 named R3b's four disagreeing binders (all `Hf`, one `fn`'s capital proof
+parameter) and the TELESCOPE RULE says a telescope binder binds a slot regardless
+of case, so location and read mode are different axes. `keyDisagree` splits into
+the direction that is an invariant (**0**) and the direction that is the rule
+(**4**), with `impLams flagship = 22` asserted as what the rule protects.
+
+Controls: sabotage re-run after the spine change AND after the id deletion, 21
+red each time including the flagship, `sort2` and both cook-canary directions.
+
+**M32 is closed except its residuals**, which `suspensions.md`'s status line now
+names: §2.5's two spellings, match-arm binder mode checking, the Class-3
+call-graph fixpoint, and `abstractInto`'s α-insensitive key. `DECISION-LOG.md`
+carries the whole arc, V through R4, one paragraph per stage.
+
+## 2026-08-11 — dllbc/: **M32 R3 — arrows exceptionless (and §2.5 refuted)**
+
+Two commits on `m32-r3` (stacked on the unmerged `m32-r2`), whole corpus green at
+each. `suspensions.md` §5's third stage: the two remaining exceptions to the
+let-arrow invariant are deleted by giving ⇝ the rules it was missing — and the
+fourth item, §2.5's no-⇒-λ, is REFUTED by the corpus and re-staged.
+
+    Term.seal            grows a SITE  `.seal (site : Nat) t u`
+    Term.numberSeals     NEW           boundary pass, traversal order
+    atBoundary           NEW           the one entry every runner uses
+    St.sealSites         NEW           (site, inputs) ↦ σ — the seal's identity
+    sealNode             NEW           ONE seal rule, both arrows call it
+    readComptimeVal      NEW           "⇝ at a binding": closure | seal | know
+    mkClosure            factored out  λ formation, its own definition
+    Var.comptimeRhs      DELETED       the invariant needs no predicate
+    backstopFnRhs        DELETED       `fenceComptime` owns the rule
+    bindFields' site     DELETED       unreachable, asserted as a program
+    checkLamCitation     DELETED       `mkClosure`'s `admitGlobals` asks it
+    refuseFnBinding      SURVIVES      one site where Stage A had three
+    isFnValue            KEPT          §2.5's extension refuted — see below
+    differential         ZERO          for ⇝-sealing and the let-arrow
+    acceptance flips     1             two needles, same verdict
+    sabotage control     21 red        flagship + both cook-canary directions
+    clean build          4:47          against a 4:50 R2 baseline — noise
+
+**The invariant, in one sentence with no footnote:** *a capital `let` ⇝-reads its
+right-hand side; a lowercase `let` ⇒-reads it.* Both carve-outs were the same
+shape — a right-hand side that was a ⇒-FORMATION EVENT producing a value ⇝ had no
+rule to produce — and R3 gives ⇝ the rules rather than the invariant the
+exceptions. The seal's σ is no longer fresh: it is the one this SITE has at these
+INPUTS, so reading a seal twice agrees with itself, which is the whole of what ⇝
+lacked. λ formation moves to `readComptimeVal`, ⇝'s reader at a binding.
+
+**Zero differential, including the σ NUMBERING.** §2.4's "structured neutral"
+landed INTERNED — `sealSites` maps (site, inputs) to a σ minted from `nextSym` on
+a miss — which keeps `fsig`, `sctx`, `callV` and every golden speaking about a
+bare σ, and is why a change that touches every `fn` declaration in the corpus
+moved nothing. Recorded as a deviation with its reasoning.
+
+**§2.5 IS REFUTED, and this is R3's finding.** "⇒ can no longer construct a
+function value" is false: **a proof of a ∀-statement is a λ**, this calculus
+returns them in Σ tails, and refusing at the pure lift or at `readR`'s λ arm
+rejects quicksort's count equation and `sort2` — measured, both. The species-test
+extension §2.5 asks for was then run and its class measured at seven bindings
+(`cnt`, `cnt1`, `cnt2`, `top1` — partial applications of staged proof-builders —
+plus `f`, `c`, `g`); capitalising them fails at the RETURN, because a Σ component
+is ⇒-read and the erasure fence refuses a ⇒-read of a capital binding. Nothing
+separates `let cnt = MkL lo hi hcnt` from `let f = Add 1`. **R3b (§2.1's binder
+migration) has to subsume both the migration and the derivability claim**, and
+`S32Backstop` pins two accepted programs so it inherits a test that goes red if
+someone concludes otherwise.
+
+**Three sharp edges answered as behaviour rather than argued** (`S32Seal`): the
+site is stable across macro expansion (the pass runs after) and across
+α-canonicalization (it reads structure, never a name), with two identical seals at
+two program points keeping distinct sites; the same site at the same inputs is
+==-equal and mints nothing on the second reading, and at different inputs is not;
+and the executing machine consults no site table, its `sealSites` empty when a
+program that reached its `fn` ends.
+
+## 2026-08-11 — dllbc/: **M32 R2 — one λ, one closure; the species becomes a property**
+
+Four commits on `m32-r2` (stacked on the unmerged `m32-r1`), whole corpus green
+at each. `suspensions.md` §5's second representation stage: the two λ species
+fold into one former and one suspension, and everything the second species
+carried is redistributed onto facts that were already there.
+
+    Term.lamR            DELETED       arity is nesting; `lamTel`/`peelLams`
+    Term.lam             Var binder    `Coe String Var` at `noSlot`
+    Val.rfn              DELETED       and so is `know (.lam …)` at rest
+    Val.closure ρ node   NEW           the ONE suspension, body RAW
+    the species          a PROPERTY    `Term.lamImperative`, recomputed
+    capture filter       `admitGlobals`, and its result IS ρ
+    cooking              `underRho` + `Pure.nf` — the `let` rule, not a new one
+    cook-at-generalization  support-scoped, written back, imperative-exempt
+    Term.freeRVars       keyed by NAME (R1's question, asked of the term)
+    fn body scope        sees the enclosing scope (§2.6); params shadow
+    nullary fn           `U§ : ⇝Unit` (§1's desugar, forced by the fold)
+    acceptance flips     2             enumerated below
+    canary control       both ways     agrees cooked / diverges raw
+    sabotage control     21 red        flagship count equation among them
+    clean build          5:04          against R1's 4:49 (~5%)
+
+**The capture filter was already written.** `admitGlobals` — §8's globals rule
+and §2.4's citation rule — decides which bindings a body may name, at exactly
+the point a λ becomes a value. R2 changes nothing about that decision and keeps
+its RESULT: the admitted bindings are ρ. Closedness stops being a separate
+premise, because it existed only because a body was entered carrying nothing.
+
+**Two things the plan could not have known.** (1) ρ cannot be
+`List (Var × Term)`: a λ captures `SetAt`, and `SetAt` is a `natRec` over
+runtime arms — R1's §rec finding, which has no `Term` form. ρ is an Ω slice and
+the knowledge-only invariant is a premise checked at the capture rather than a
+theorem of ρ's type. (2) With one former, a nullary `fn`'s seal and the surface
+ascription `(e : T)` are the SAME TERM, so §1's Unit-desugar had to arrive at R2
+rather than at R4.
+
+**Flips.** A comptime λ at rest is a raw closure, so one golden spells source
+where it spelled readback output; `λ(){ … }` is refused at the surface rather
+than by the kernel (same sentence, unwritable rather than rejected). A `fn` body
+citing an enclosing comptime binding flips from elaboration error to accepted
+(§2.6), with the lowercase citation still refused by the capture rule.
+
+**One contract item did NOT land, and is sized instead of claimed**: §2.1's
+corpus binder migration. `Dllbc.Tests.S32Binders` counts it — 10,777 comptime
+binders spelled lowercase in the flagship alone — and records why it is not a
+spelling sweep: each rename is scope-sensitive, and capitalising a Π binder in a
+spec position deliberately changes argument reading at every ⇒-application of a
+value of that type. R2 keys the fragment on `Var.bindsSlot` (the id) meanwhile,
+which is the fact that is true today and the one R4's deletion needs to replace.
+
+## 2026-08-11 — dllbc/: **M32 R1 — the domain split; `Term` is the only syntax**
+
+Two commits on `m32-r1`, whole corpus green at each. `suspensions.md` §5's
+representation stage: knowledge at rest becomes a canonical `Term`, the store
+becomes a state SKELETON whose leaves are knowledge, and the two store-wide
+sweeps become two-layered walks that switch to `Term` machinery at the leaves.
+
+    Val (the store)      know | node | bot | loanM | borrowM | rfn   the skeleton
+    Sem (Pure.lean)      NEW           the transient semantic domain
+    Val.sym/pvar/lam/…   deleted       a σ at rest is `Term.sym σ` = `pvar "§σ<id>"`
+    Val.capturedMarkers  DELETED       the capture invariant is a TYPE now
+    ⇜'s refinement       `Term.substP` at the σ's name — not a traversal at all
+    §19's abstraction    `Term.abstractInto`, mode-SENSITIVE (was mode-blind)
+    conversion equality  `Term.convEq`  — where mode-blindness moved to
+    Ω resolution         by NAME, newest wins (Stage V bet (a), 9 sites)
+    L-suffix convention  a real check at the `fn` declaration
+    acceptance flips     0             4 representation-assertion test edits
+    sabotage control     19 red        flagship count equation among them
+    clean build          4:45          against a 4:03 baseline (~17%)
+
+**What the split buys is a deletion.** nbe.md §3.2's capture assertion — carried
+first as whole-corpus instrumentation, then as a live guard inside `mkClosure` —
+is gone, because a captured environment binds `Sem` values and `Sem` has no ⊥,
+no loan marker and no borrow. "A captured environment contains knowledge only"
+stopped being a property to scan for.
+
+**Three findings the plan could not have had.** (i) A recursor spine over
+RUNTIME arms is state — its arms are bodies, so no `Term` can hold it — and
+needed its own skeleton form (`§rec`) plus three chased consequences: rendering,
+copy-on-read (a body may name `ih` twice), and the "cannot type neutral"
+rejection. (ii) `whnf` and `nf` coincide at `Term` level, because readback
+begins with weak-head and there is no way to expose a head without reading back;
+that is where the 17% went. (iii) §6's σ-unwritability edge is answered yes, but
+NOT by the guard that claims it: `Name.toString` re-escapes, so `«§σ0»` binds a
+name that is literally `«§σ0»` and is not in the reserved namespace at all.
+
+The R1 implementation addendum is at the bottom of `suspensions.md` §5's R1
+entry, including the naming deviation (`Val` is the skeleton, `Sem` the semantic
+domain — read §2.3 with the two names exchanged).
+
 ## 2026-08-10 — dllbc/: **M31 Stage A — function bindings become comptime-moded**
 
 Four commits on `m31-stage-a`, whole corpus green at each. `functions-are-comptime.md`
@@ -3326,3 +3524,39 @@ on a neutral bvar. If the eliminator were Church-with-ι (per
 under an abstract n binder via dependent elimination. That's a
 structural DNat redesign — orthogonal to, but unblocking, this swap.
 `lake build` passes.
+
+## M32 R3b — the binder migration, carrying §2.5 (branch `m32-r3b`)
+
+§2.1's universal binder convention, executed. Three commits, corpus green at
+each, sabotage control re-run at 21 red (flagship, `sort2`, both cook-canary
+directions) at every one.
+
+**The headline is a number.** `lowerComptime flagship` — R2's own counter for the
+size of this migration — goes **10,777 → 0**. Every comptime binder in the
+largest program in the corpus spells its mode: `StdLemmas` (3,836 binder sites,
+20,476 occurrences), the test files' spec binders, and the hand-written kernel
+library (`Std`, `Pure`'s `kAddFn`/`kLeFn`), which needed its `⇝` domains written
+by hand and got `Term.clam`/`Term.cpi` so the two halves cannot be spelled apart.
+
+**The sweep is a scanner that models `Uni.resolveName` and is checked by a
+resolution FINGERPRINT** — for every identifier occurrence, the binder site it
+resolves to, before and after. That is α-equivalence as something a script can
+verify, and it caught three captures reading would not have: `s → S`/`z → Z` are
+constructors, and `lb → Lb` shadows the `Lb` predicate.
+
+**§2.1's Σ half was INERT, and that was the discovery.** `Uni`'s Σ rows put no
+mode marker on the domain, so a Σ binder's case lived in its name — and
+`Pure.readback` names every binder by its LEVEL, so the case was destroyed before
+any rule could read it. λ and Π survive only because `⇝` rides on the domain. Σ
+binders now carry theirs the same way, and `readResult` reads it at the one site
+with a type in hand: a body's tail against its return type.
+
+**§2.5 is refuted a second time, with a much smaller residual.** The no-⇒-λ
+refusal was rebuilt and reverted again (13 red, the flagship among them). R3's
+blocker is gone; what survives is two spellings — a λ written literally in a
+constructor argument, and a Σ chain's TAIL, which has no binder to carry a mode
+and is exactly where quicksort's `cnt` sits. Pinned as `sigmaTailProof`.
+
+**R4 inherits a measured number**: `keyDisagree` = 4 on the flagship, all one
+shape (a capital telescope parameter binds an Ω slot), so the case test is not a
+drop-in for `Var.bindsSlot`.

@@ -272,18 +272,18 @@ def deepMotT : Term := prog{ λ (n : Nat). Id Nat Z Z }
     own inner `match a` — so the two-constructors-down SHAPE is still there — and
     reaches `ih` from inside it, which is exactly the move the macro refuses to
     make on the author's behalf. -/
-def deepBaseArm : Term := .lamR [] (.ctorApp "Refl" [])
+def deepBaseArm : Term := Term.lamTel [] (.ctorApp "Refl" [])
 def deepStepArm : Term :=
   -- `ih`'s domain is the motive at the predecessor, and `deepMotT` is CONSTANT —
   -- which is the whole content of the correction this section records: `ih : P a`
   -- already IS `P b` for every `b` when `P` ignores its index.
-  .lamR [(⟨0, "a"⟩, .const "Nat"), (⟨1, "ih"⟩, prog{ Id Nat Z Z })]
+  Term.lamTel [(⟨0, "a"⟩, .const "Nat"), (⟨1, "ih"⟩, prog{ Id Nat Z Z })]
     (.matchE ⟨0, "a"⟩ none
       [ .mk "Z" [] (.ctorApp "Refl" [])
       , .mk "S" [⟨2, "b"⟩] (.var ⟨1, "ih"⟩) ])
 def deepRec : Term :=
   .app (.app (.app (.const "natRec") deepMotT) deepBaseArm) deepStepArm
-def recDeepProg : Term := .letIn ⟨900, "F"⟩ (.seal deepRec deepSealT) .unit
+def recDeepProg : Term := .letIn ⟨900, "F"⟩ (.seal 0 deepRec deepSealT) .unit
 
 example : progOk recDeepProg = true := by native_decide
 
@@ -292,7 +292,7 @@ example : progOk recDeepProg = true := by native_decide
     and the arms cannot inhabit it. -/
 def deepSealLie : Term := prog{ Π (n : Nat) → Id Nat Z (S Z) }
 def recDeepLie : Term :=
-  .letIn ⟨900, "F"⟩ (.seal (.app (.app (.app (.const "natRec")
+  .letIn ⟨900, "F"⟩ (.seal 0 (.app (.app (.app (.const "natRec")
     (prog{ λ (n : Nat). Id Nat Z (S Z) })) deepBaseArm) deepStepArm) deepSealLie) .unit
 example : progOk recDeepLie = false := by native_decide
 
@@ -480,3 +480,197 @@ example : progOk S19Partition.twoRec = true := by native_decide
 end Dllbc.Tests.S27Dispose
 end
 -- └── end of what was `S27Dispose.lean` ───────────────────────────────────────────────
+
+-- ┌── the M32 R2 binder-convention debt, measured ───────────────────────────────
+section
+namespace Dllbc.Tests.S32Binders
+open Dllbc
+
+/-! # §2.1's migration, sized — and then RUN against the size
+
+    suspensions.md §2.1 makes capitalisation reach EVERY binder: a capital binder
+    is comptime, a lowercase one is runtime, and the modeless-pure-binder
+    exemption dies. R2 implemented the READING of that rule everywhere it is
+    consulted and measured what renaming the corpus would cost. **R3b spends the
+    measurement**, and this battery is where the spending shows: the same
+    counter, re-run, is the acceptance evidence for the migration's own class.
+
+    **What R2 keyed the fragment on meanwhile**: `Var.bindsSlot`, i.e. whether the
+    binder has an Ω slot id at all (`noSlot` is the sentinel). That is the fact
+    that is actually true today, and it is exactly what §2.1's migration makes
+    derivable from the NAME — which is what R4 needs, since R4 deletes the ids.
+
+    So the residual is the number of binders on which the two keys still
+    disagree: comptime by slot, lowercase by name. Counted over the flagship and
+    over two stdlib terms, so R4 inherits a number and not an adjective. -/
+
+/-- Comptime binders (no slot) whose name is neither capitalised nor reserved —
+    the ones §2.1's migration would rename, and the ones R4 cannot key on a case
+    test until it does. -/
+partial def lowerComptime : Term → Nat
+  | .lam x d b =>
+    (if !x.bindsSlot && !isUpperInit x.name && !isReservedName x.name then 1 else 0)
+      + lowerComptime d + lowerComptime b
+  | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => lowerComptime d + lowerComptime b
+  | .app f a | .seq f a | .seal _ f a => lowerComptime f + lowerComptime a
+  | .letIn _ r t => lowerComptime r + lowerComptime t
+  | .assign p e r => lowerComptime p + lowerComptime e + lowerComptime r
+  | .idT a b c => lowerComptime a + lowerComptime b + lowerComptime c
+  | .ctorApp _ as | .call _ as => (as.map lowerComptime).foldl (· + ·) 0
+  | .matchE _ _ bs => (bs.map (fun br => lowerComptime br.body)).foldl (· + ·) 0
+  | .borrow t | .deref t | .cmpT t => lowerComptime t
+  | _ => 0
+
+/-- …and the binders that DO bind a slot, for the ratio: these are the ones whose
+    case already carries their mode (§6's rule, which M31 Stage A landed). -/
+partial def slotBinders : Term → Nat
+  | .lam x d b => (if x.bindsSlot then 1 else 0) + slotBinders d + slotBinders b
+  | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => slotBinders d + slotBinders b
+  | .app f a | .seq f a | .seal _ f a => slotBinders f + slotBinders a
+  | .letIn _ r t => slotBinders r + slotBinders t
+  | .assign p e r => slotBinders p + slotBinders e + slotBinders r
+  | .idT a b c => slotBinders a + slotBinders b + slotBinders c
+  | .ctorApp _ as | .call _ as => (as.map slotBinders).foldl (· + ·) 0
+  | .matchE _ _ bs => (bs.map (fun br => slotBinders br.body)).foldl (· + ·) 0
+  | .borrow t | .deref t | .cmpT t => slotBinders t
+  | _ => 0
+
+/-- **The direction that must be ZERO: a runtime binder with nowhere to put its
+    argument.** Lowercase says the argument arrives by ⇒ — moved or loan-seeded
+    into the store — so a lowercase binder that binds no Ω slot is a binder whose
+    argument has no destination. This is the half of R2's `keyDisagree` that is a
+    real invariant, and R4 asserts it at 0. -/
+partial def keyDisagree : Term → Nat
+  | .lam x d b =>
+    (if !x.bindsSlot && !(isUpperInit x.name || isReservedName x.name) then 1 else 0)
+      + keyDisagree d + keyDisagree b
+  | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => keyDisagree d + keyDisagree b
+  | .app f a | .seq f a | .seal _ f a => keyDisagree f + keyDisagree a
+  | .letIn _ r t => keyDisagree r + keyDisagree t
+  | .assign p e r => keyDisagree p + keyDisagree e + keyDisagree r
+  | .idT a b c => keyDisagree a + keyDisagree b + keyDisagree c
+  | .ctorApp _ as | .call _ as => (as.map keyDisagree).foldl (· + ·) 0
+  | .matchE _ _ bs => (bs.map (fun br => keyDisagree br.body)).foldl (· + ·) 0
+  | .borrow t | .deref t | .cmpT t => keyDisagree t
+  | _ => 0
+
+/-- …and **the other direction, which is the TELESCOPE RULE and is not zero**: a
+    CAPITAL binder that binds an Ω slot. Comptime read mode, store location —
+    both, and legitimately, because `seedTelescopeV` slots every parameter and
+    capital says how the argument is READ, not where it lands. -/
+partial def comptimeSlotParams : Term → Nat
+  | .lam x d b =>
+    (if x.bindsSlot && (isUpperInit x.name || isReservedName x.name) then 1 else 0)
+      + comptimeSlotParams d + comptimeSlotParams b
+  | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => comptimeSlotParams d + comptimeSlotParams b
+  | .app f a | .seq f a | .seal _ f a => comptimeSlotParams f + comptimeSlotParams a
+  | .letIn _ r t => comptimeSlotParams r + comptimeSlotParams t
+  | .assign p e r => comptimeSlotParams p + comptimeSlotParams e + comptimeSlotParams r
+  | .idT a b c => comptimeSlotParams a + comptimeSlotParams b + comptimeSlotParams c
+  | .ctorApp _ as | .call _ as => (as.map comptimeSlotParams).foldl (· + ·) 0
+  | .matchE _ _ bs => (bs.map (fun br => comptimeSlotParams br.body)).foldl (· + ·) 0
+  | .borrow t | .deref t | .cmpT t => comptimeSlotParams t
+  | _ => 0
+
+/-- **λ nodes this term classifies IMPERATIVE.** The number the telescope rule
+    protects: if the slot test were swapped for a case test, every `fn` whose
+    parameters are all capital would leave this count and lose its audit. -/
+partial def impLams : Term → Nat
+  | .lam x d b =>
+    (if Term.lamImperative (.lam x d b) then 1 else 0) + impLams d + impLams b
+  | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => impLams d + impLams b
+  | .app f a | .seq f a | .seal _ f a => impLams f + impLams a
+  | .letIn _ r t => impLams r + impLams t
+  | .assign p e r => impLams p + impLams e + impLams r
+  | .idT a b c => impLams a + impLams b + impLams c
+  | .ctorApp _ as | .call _ as => (as.map impLams).foldl (· + ·) 0
+  | .matchE _ _ bs => (bs.map (fun br => impLams br.body)).foldl (· + ·) 0
+  | .borrow t | .deref t | .cmpT t => impLams t
+  | _ => 0
+
+-- The in-place quicksort — the flagship, the largest program in the corpus, with
+-- its specs and library lemmas elaborated in.
+
+example : lowerComptime Dllbc.Tests.S23Direct.flagship = 0 := by native_decide
+example : slotBinders Dllbc.Tests.S23Direct.flagship = 22 := by native_decide
+
+-- Two kernel library terms, hand-written rather than elaborated: `len` and the
+-- `Le` predicate the carve rule's premises are stated against.
+example : lowerComptime Std.lenFnT = 0 := by native_decide
+example : lowerComptime Pure.kLeFn = 0 := by native_decide
+
+/-! **THE MIGRATION IS COMPLETE ON THE FLAGSHIP: 10,777 → 0.**
+
+    R2 measured the debt and refused to run it blind; R3b ran it, in two classes
+    and against two enumerated differentials. Every comptime binder in the
+    largest program in the corpus — its specs, its library lemmas, and the kernel
+    functions those unfold to — now SPELLS its mode, which is what §2.1 asks and
+    what R4 needs, since R4 deletes the ids this counter's twin reads.
+
+    Where the number went, since two migrations produced it and they are not the
+    same kind of thing:
+
+      * **α, `StdLemmas`: 10,777 → 9,545.** Surface syntax, so `binderDom` put
+        the `⇝` on each domain and the rename was the whole change. Behaviour
+        invisible; this counter was the only assertion in the tree that moved.
+      * **β, `Std`/`Pure`'s hand-written terms: 9,545 → 0**, with 33 of that from
+        the test files' own spec binders. These are raw `Term`s with no macro
+        between them and the datatype, so capitalising a binder means writing its
+        `⇝` too (`Term.clam`/`Term.cpi` exist so the two cannot be written apart).
+        That IS a mode flip — `Len`, `Count`, `Le`, `Add` and `Sorted` now
+        declare their arguments comptime, so a ⇒-application of one snapshot-reads
+        where it used to consume — and the corpus measured the flip at ZERO
+        changed verdicts, because the library is only ever applied in ⇝ positions.
+
+    **`slotBinders` is UNMOVED at 22, and that is the point, not an oversight**:
+    those are the runtime binders, and the migration was never about them. -/
+
+/-! **R4 SPENT THE INHERITANCE, AND THE ANSWER IS A RULE RATHER THAN A SWAP.**
+
+    R2 keyed the fragment on `Var.bindsSlot` and R3b measured what swapping it
+    for a case test would cost: **4 binders in the whole flagship**, all one
+    construct — a capital telescope parameter binding an Ω slot, because
+    `seedTelescopeV` slots every parameter, comptime or not.
+
+    R4 named them: all four are `Hf`, one `fn`'s proof parameter, appearing once
+    per copy of that `fn`; capital, `⇝`-domained, slotted. And the swap does not
+    happen, because those two keys **answer different questions**:
+
+      * **case** is the READ MODE — ⇝ or ⇒, erased or moved. §2.1's axis.
+      * **`bindsSlot`** is the LOCATION — does the argument land in Ω. The
+        TELESCOPE rule: a telescope binder binds a slot regardless of case.
+
+    So R2's `keyDisagree` was counting the two axes' disagreement and calling it
+    a residue. It splits here into the direction that is an INVARIANT and the
+    direction that is the rule:
+
+      * `keyDisagree` — lowercase and NO slot: a runtime binder whose argument
+        has nowhere to land. **Zero**, and it is R4's own assertion.
+      * `comptimeSlotParams` — capital and slotted: the telescope rule's own
+        population. **Four**, and that is content, not debt.
+
+    What R4 did deliver against the plan is narrower and real: `noSlot` is a TAG
+    now, beside `declSlot`, and no arithmetic, ordering or window survives
+    anywhere in the kernel. The test stayed; E2's machinery around it went. -/
+example : keyDisagree Dllbc.Tests.S23Direct.flagship = 0 := by native_decide
+example : keyDisagree Std.lenFnT = 0 := by native_decide
+example : keyDisagree Pure.kLeFn = 0 := by native_decide
+
+-- The telescope rule's population, named rather than deprecated.
+example : comptimeSlotParams Dllbc.Tests.S23Direct.flagship = 4 := by native_decide
+
+/-! …and **the count the rule protects**. A case test at `Term.lamImperative`
+    would take every all-capital-parameter `fn` out of this number and with it
+    its §5.4 audit, replacing it with `hasType`. Asserted so that a swap made
+    later — by someone reading `bindsSlot`'s name and not its docstring — is loud
+    rather than silent.
+
+    It lands on `slotBinders`' own 22, and that is arithmetic rather than
+    coincidence: a telescope is nested λs, so a λ node is imperative exactly when
+    a slot binder sits at or below it in its own chain, and each slot binder is
+    the innermost such node for exactly one prefix. -/
+example : impLams Dllbc.Tests.S23Direct.flagship = 22 := by native_decide
+
+end Dllbc.Tests.S32Binders
+end
+-- └── end of the M32 R2 binder-convention debt ────────────────────────────────

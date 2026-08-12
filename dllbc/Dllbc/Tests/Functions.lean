@@ -129,11 +129,11 @@ def readCOn (t : Term) : String :=
   | .ok v _ => "ACCEPTED " ++ v.pretty
   | .error e _ => e
 
-example : strContains (readCOn (.seal (.ctorApp "Z" []) (.const "Nat")))
+example : strContains (readCOn (.seal 0 (.ctorApp "Z" []) (.const "Nat")))
   "not in the comptime fragment" = true := by native_decide
 -- …including buried inside a pure former, which is the position that would pose
 -- §2.1's identity question if ⇝ could reduce it.
-example : strContains (readCOn (.app (.const "S") (.seal (.ctorApp "Z" []) (.const "Nat"))))
+example : strContains (readCOn (.app (.const "S") (.seal 0 (.ctorApp "Z" []) (.const "Nat"))))
   "not in the comptime fragment" = true := by native_decide
 
 /-! ### A6. "Legal anywhere ⇒ evaluates" (§5), exercised at the positions that
@@ -201,14 +201,14 @@ example : progRejects a7 "only a statement-position match may split" = true := b
 
 /-- The pure fragment's own check (S23Direct's `chk`, verbatim). -/
 def chk (tm ty : Term) : Bool :=
-  match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasType 3000 v t).run (seedPure [] []) with
+  match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasTypeT 3000 v t).run (seedPure [] []) with
   | .ok r _ => r
   | .error _ _ => false
 
 /-- Does sealing `tm` at `ty` pass the checker? The subject is a one-`let`
     PROGRAM now; it used to be that `let` wrapped in a nullary declaration. -/
 def sealChk (tm ty : Term) : Bool :=
-  progOk (.letIn ⟨0, "f"⟩ (.seal tm ty) .unit)
+  progOk (.letIn ⟨0, "f"⟩ (.seal 0 tm ty) .unit)
 
 def natT : Term := .const "Nat"
 def listNatT : Term := .app (.const "List") natT
@@ -259,11 +259,14 @@ example : sealChk (StdLemmas.LeRefl) (StdLemmas.IdSymTy) = false := by native_de
     branch, per §6.2's lesson that a rule branch nobody probes is a rule branch
     nobody checked. -/
 
--- The λ as it SITS IN Ω, which is readback output: the binder the source wrote
--- `x` is canonicalized to its level (M30 step 2), the same renaming that makes two
--- α-variant functions compare equal. The slot holds the same function it always
--- held; what moved is how a normal form spells a binder.
-def vlam : Val := .lam "§0" (.const "Nat") (.ctor "S" [.pvar "§0"])
+-- The λ as it SITS IN Ω, which since M32 R2 is a **raw closure**: the syntax as
+-- written, under the environment it captured (empty here — the body cites
+-- nothing). It used to be readback OUTPUT, with the source binder `x`
+-- canonicalized to its level `§0`, because forming a λ value normalized it;
+-- formation is a CHECK now and what is stored is the source (§2.2). The slot
+-- holds the same function it always held — `C1` below still gets `y ↦ 3`, by
+-- cooking at the application — and what moved is when the normal form is taken.
+def vlam : Val := .closure [] (.lam "x" (.const "Nat") (.ctorApp "S" [.pvar "x"]))
 
 -- C1. **Body known ⟹ unfold.** A literal λ callee β-reduces, so the caller knows
 -- the result exactly: `y ↦ 3`, not an existential.
@@ -286,9 +289,22 @@ example : tailEnv c3 [("F", .sym 0), ("y", .sym 1), ("z", .sym 2)] = true := by 
 
 /-! ### C4–C8. The negative controls, one per rule branch -/
 
--- Partial application: refused, not curried (§12 decision 4).
+-- **Partial application of a COMPTIME λ is a value** (M32 R4 — this assertion
+-- FLIPPED, and the flip is the finding). It read "refused, not curried (§12
+-- decision 4)" and was rejected. §12 decision 4 is about ⇒-ENTRY — "a partial
+-- application at runtime is a closure holding its arguments, including in
+-- general borrows, while it waits" — and a comptime λ's capture is knowledge, so
+-- there is no borrow for it to hold. The refusal reached here only because
+-- `callV` and juxtaposition were two nodes: `f(2)` took the call rule and was
+-- refused, `f 2` took the pure lift and β'd. With one node the corpus decided
+-- it — the flagship applies its staged proof-builders PARTIALLY and goes red the
+-- other way.
+--
+-- Saturation is still enforced on both branches that ENTER, and those are the
+-- two assertions below and at A5: an abstract `σ : Π` (c5) and an imperative λ
+-- (a5). This one is now the positive statement of what a comptime λ does.
 def c4 : Term := prog{ let f = λ (x : Nat). λ (y : Nat). x; let z = f(2); () }
-example : progRejects c4 "partial application" = true := by native_decide
+example : progOk c4 = true := by native_decide
 -- …and the same refusal on the abstract side, which is the branch that matters
 -- for phase C (a σ : Π under-applied is a closure holding its arguments).
 def c5 : Term := prog{
@@ -396,7 +412,7 @@ def sigLem : Term := prog{ λ (x : Nat). Pair (LeRefl x) (LeRefl x) }
 def c14 : Term := prog{
   let f = (%sigLem : %sigLemTy);
   let p = f(2);
-  elim p return (λ (w : Σ (h : Le 2 2) → Le 2 2). Le 2 2) { Pair (a) (b) => LeTrans 2 2 2 a b } }
+  elim p return (λ (W : Σ (h : Le 2 2) → Le 2 2). Le 2 2) { Pair (a) (b) => LeTrans 2 2 2 a b } }
 -- The program's RESULT is the projection, so its return type is what the audit
 -- checks it at — stated as `progOk`'s second argument, where the old form stated
 -- it as the wrapper declaration's `-> Le 2 2`.
@@ -409,7 +425,7 @@ example : progOk c14 (prog{ Le 2 2 }) = true := by native_decide
 def c14bad : Term := prog{
   let f = (%sigLem : %sigLemTy);
   let p = f(2);
-  elim p return (λ (w : Σ (h : Le 2 2) → Le 2 2). Le 3 2) { Pair (a) (b) => a } }
+  elim p return (λ (W : Σ (h : Le 2 2) → Le 2 2). Le 3 2) { Pair (a) (b) => a } }
 example : progRejects c14bad "does not have return type" (prog{ Le 3 2 }) = true := by native_decide
 
 /-! ## §D. The executing machine, and a NEW simulation-relation case
@@ -586,7 +602,7 @@ def citeProg (k : Nat) (rhs : Term) : Term := prog{
   %(citeK k rhs) }
 
 def unsealedK (k : Nat) : Term := citeProg k big
-def sealedK (k : Nat) : Term := citeProg k (.seal big bigTy)
+def sealedK (k : Nat) : Term := citeProg k (.seal 0 big bigTy)
 
 def unsealed1 : Term := unsealedK 1
 def sealed1 : Term := sealedK 1
@@ -753,8 +769,16 @@ example : progOk a3ok = true := by native_decide
 -- tidiness: `λ(){ e }` is a thunk, and at ι there is no way to tell "the arm
 -- applied to no arguments" from "the arm with nothing owed" — `applyRest` has to
 -- answer one way. Nothing in §7 wants a thunk.
-def a4 : Term := prog{ let G = λ() { () }; () }
-example : progRejects a4 "must bind at least one argument" = true := by native_decide
+-- **The refusal moved to the surface** (M32 R2) and the reason is the fold: with
+-- one λ former the comma list is a TELESCOPE, so `λ(){ … }` has no binders and
+-- elaborates to its body — there is no term left for the kernel to refuse. The
+-- rule and its sentence are unchanged; what changed is that the program is now
+-- unwritable rather than rejected, which is the stronger of the two.
+-- `prog{ let G = λ() { () }; () }` is a Lean ELABORATION error now, in the same
+-- way an unbound name in a `prog{ }` block is (KernelFloor's note): it cannot be
+-- written, so there is no term to hand `progRejects`. What is assertable here is
+-- the fact that made the refusal move — an empty telescope is not a λ:
+example : Term.beq (Term.lamTel [] .unit) .unit = true := by native_decide
 
 -- A5/A6. Saturation, both directions (§12 decision 4).
 def a5 : Term := prog{ let G = λ(a : Nat, b : Nat) { () }; G(1); () }
@@ -775,11 +799,11 @@ def readCOn (t : Term) : String :=
   | .ok v _ => "ACCEPTED " ++ v.pretty
   | .error e _ => e
 
-example : strContains (readCOn (.lamR [(⟨0, "x"⟩, .const "Nat")] (.var ⟨0, "x"⟩)))
+example : strContains (readCOn (Term.lamTel [(⟨0, "x"⟩, .const "Nat")] (.var ⟨0, "x"⟩)))
   "not in the comptime fragment" = true := by native_decide
 -- …including buried inside a pure former, which is where a mode flag consulted
 -- at the top would have let it through.
-example : strContains (readCOn (.app (.const "S") (.lamR [(⟨0, "x"⟩, .const "Nat")] (.var ⟨0, "x"⟩))))
+example : strContains (readCOn (.app (.const "S") (Term.lamTel [(⟨0, "x"⟩, .const "Nat")] (.var ⟨0, "x"⟩))))
   "not in the comptime fragment" = true := by native_decide
 
 /-! ## §B. ι with the arms as bodies — the executing machine (§7 cost 5)
@@ -856,7 +880,7 @@ example : slotOf b2 "y" = some "Cons Z (Cons Z Nil)" := by native_decide
 -- B3. `listRec`, and a motive that is a function type — which is the shape §7
 -- always has, since the trailing binders are what carry the borrows. The
 -- structural recursion needs no fuel: the scrutinee is the list itself.
-def bumpMot : Term := prog{ λ (l : List Nat). Π (v : &mut Nat) → Unit }
+def bumpMot : Term := prog{ λ (L : List Nat). Π (v : &mut Nat) → Unit }
 def b3 : Term := prog{
   let l = Cons(7, Cons(8, Nil));
   let acc = 0;
@@ -995,7 +1019,7 @@ example :
     motive is not a function type has ordinary terms for arms, and the PURE
     recursor already computes those. -/
 
-def lenMot : Term := prog{ λ (l : List Nat). Nat }
+def lenMot : Term := prog{ λ (L : List Nat). Nat }
 def d1 : Term := prog{ fn Caller () -> Nat {
   let l = Cons(7, Cons(8, Nil));
   let f = listRec Nat %lenMot Z (λ(h : Nat, t : List Nat, ih : Nat) { S(ih) });
@@ -1237,7 +1261,7 @@ example :
     conversion to be compared up to. Phase D's macro will derive it, so the
     comparison is free there; a hand-written mismatch is told what was expected. -/
 
-def wrongMot : Term := prog{ λ (f : Nat). Π (v : &mut List Nat) → Nat }
+def wrongMot : Term := prog{ λ (F : Nat). Π (v : &mut List Nat) → Nat }
 def f2 : Term := prog{
   let F = (natRec %wrongMot
                  (λ(v : &mut List Nat) { () })
@@ -1704,7 +1728,8 @@ def m1 : Term := prog{
 -- read stops being the wrong move: `let G = ih` copies comptime knowledge and
 -- leaves `ih` exactly where it was, which is what every call already did. What
 -- is still wrong is the lowercase `g`, because a runtime binding cannot hold a
--- function, and that is what `backstopFnBinding` says one layer later.
+-- function, and that is what `refuseFnBinding` says one layer later — the one
+-- site M32 R3 leaves the rule at, where Stage A had three.
 --
 -- Same program, same verdict, third message. Worth noticing that the verdict has
 -- now survived two complete changes of reason: a mechanism (a borrow-moded Π has
@@ -1795,14 +1820,14 @@ open Dllbc
 def annotated : Term := prog{ let G = λ(a : Nat) { a }; () }
 
 example : (match annotated with
-           | .letIn _ (.lamR [(_, τ)] _) _ => Term.beq τ (.const "Nat")
+           | .letIn _ (.lam _ τ _) _ => Term.beq τ (.const "Nat")
            | _ => false) = true := by native_decide
 
 -- A capitalized binder's domain carries §6's comptime marker, which is what makes
 -- the annotation agree with the ascription `piPeel` checks a mode against.
 def annotatedCmp : Term := prog{ let G = λ(A : Nat) { A }; () }
 example : (match annotatedCmp with
-           | .letIn _ (.lamR [(_, τ)] _) _ => Term.beq τ (.cmpT (.const "Nat"))
+           | .letIn _ (.lam _ τ _) _ => Term.beq τ (.cmpT (.const "Nat"))
            | _ => false) = true := by native_decide
 
 /-! ## §B. …and the VALUE drops it (the erasure, ratified)
@@ -1815,7 +1840,7 @@ example : (match annotatedCmp with
 -- The type-level half, and it is the stronger of the two: this expression
 -- typechecks exactly because `Val.rfn`'s binders are `Var` and not `Var × Term`.
 -- A ledger that fails to compile is the one that cannot drift.
-example : Val := .rfn [⟨0, "a"⟩] .unit
+example : Val := .closure [] (Term.lamTel [(⟨0, "a"⟩, .const "Nat")] .unit)
 
 -- The live half: an ANNOTATED λ evaluates to a value printed with names alone.
 example : (match runProgram annotated with
@@ -1860,10 +1885,10 @@ example : progOk telType = true := by native_decide
 
 -- `Term.beq` compares them structurally (via `Term.beq`, not `==`: the `BEq Term`
 -- instance is declared below the mutual block this case lives in).
-example : Term.beq (.lamR [(⟨0, "a"⟩, .const "Nat")] .unit)
-                   (.lamR [(⟨0, "a"⟩, .const "Bool")] .unit) = false := by native_decide
-example : Term.beq (.lamR [(⟨0, "a"⟩, .const "Nat")] .unit)
-                   (.lamR [(⟨0, "a"⟩, .const "Nat")] .unit) = true := by native_decide
+example : Term.beq (Term.lamTel [(⟨0, "a"⟩, .const "Nat")] .unit)
+                   (Term.lamTel [(⟨0, "a"⟩, .const "Bool")] .unit) = false := by native_decide
+example : Term.beq (Term.lamTel [(⟨0, "a"⟩, .const "Nat")] .unit)
+                   (Term.lamTel [(⟨0, "a"⟩, .const "Nat")] .unit) = true := by native_decide
 
 -- **The α-normalization half of §D went with `AlphaEq.lean`** (M28 cluster C).
 -- Three assertions built `.lamR`s whose second binder's DOMAIN cited the first
@@ -1921,7 +1946,8 @@ def bndDeclHn : Term := .cmpT (Std.LeT (Std.lenT (.deref (.var ⟨1, "v"⟩))) (
 /-- The two arms of the emitted `natRec`, as annotated binder lists. -/
 def bndArms : Option (List (Var × Term) × List (Var × Term)) :=
   match bndSeal with
-  | some (.seal (.app (.app (.app (.const "natRec") _) (.lamR z _)) (.lamR s _)) _) => some (z, s)
+  | some (.seal _ (.app (.app (.app (.const "natRec") _) zArm) sArm) _) =>
+    some ((Term.peelLams zArm).1, (Term.peelLams sArm).1)
   | _ => none
 
 -- The shape first — assert the instrument before the conclusion.
@@ -1997,9 +2023,10 @@ def bndProg (t : Term) : Term := .letIn ⟨900, "F"⟩ t .unit
     touched. `none` when the elaboration is not the shape this section reads. -/
 def stepArmWith (i : Nat) (τ : Term) : Option Term :=
   match bndSeal with
-  | some (.seal (.app (.app (.app (.const "natRec") mot) zArm) (.lamR s sb)) piT) =>
-    some (.seal (.app (.app (.app (.const "natRec") mot) zArm)
-                  (.lamR (s.set i ((s.get! i).1, τ)) sb)) piT)
+  | some (.seal _ (.app (.app (.app (.const "natRec") mot) zArm) sArm) piT) =>
+    let (s, sb) := Term.peelLams sArm
+    some (.seal 0 (.app (.app (.app (.const "natRec") mot) zArm)
+                  (Term.lamTel (s.set i ((s.get! i).1, τ)) sb)) piT)
   | _ => none
 
 /-- The motive's body, read off the ascription the statement emitted, WITH the
@@ -2007,7 +2034,7 @@ def stepArmWith (i : Nat) (τ : Term) : Option Term :=
     type is an instance of that `R` at some constructor of `n`. -/
 def bndR : Option (String × Term) :=
   match bndSeal with
-  | some (.seal _ (.pi n _ R)) => some (n, R)
+  | some (.seal _ _ (.pi n _ R)) => some (n, R)
   | _ => none
 
 /-- The step arm's predecessor binder. -/
@@ -2120,7 +2147,7 @@ example : progRejects annBad "a domain the ascription does not bind it at" = tru
 
     **And the router is §7 cost 5's own distinction rather than a new test**: the
     two λs are "the same former in the document, two representations in the
-    machine, because one substitutes and the other binds". A `Val.lam` substitutes;
+    machine, because one substitutes and the other binds". A pure `.lam` substitutes;
     a `Val.rfn`, a σ with a signature, or a recursor spine binds. §G5 is the pair
     that makes that observable — the same source line, two λ representations, two
     arrows, two verdicts. -/
@@ -2212,7 +2239,7 @@ example : progOk juxLam (.const "Nat") = true := by native_decide
 
 def juxPure : Term := prog{
   fn Caller (v : &mut List Nat) -> Unit
-  { let Mk = (λ (l : List Nat). l);
+  { let Mk = (λ (L : List Nat). L);
     let y = Mk (*v);
     () };
   () }
@@ -2322,9 +2349,10 @@ It was **the sweep's safety net** (M28 θ). While `decl{ … }` still produced a
     prog{ fn A …; fn B …; TAIL }   ==   progOf [declA, declB] (prog{ TAIL })
 
 as `Term`s, by `==` — literal equality, not α-equivalence, because the statement
-binds its slot at `progBase + next` and `progOf` binds the `i`-th declaration at
-`progBase + i`, and those agree exactly when the statements are consecutive and
-start a block. Four cases covered the shapes the lowering treats differently: a
+and `progOf` bound a declaration at the same id. That was `progBase + next`
+against `progBase + i`, agreeing exactly when the statements were consecutive and
+started a block; since M32 R4 both write the tag `Var.declSlot` and the agreement
+is unconditional. Four cases covered the shapes the lowering treats differently: a
 non-recursive function and a caller, `[k]` on parameter 0, `[k]` NOT on parameter
 0 (the permutation case the design exists for), and a dependent return type.
 
@@ -2354,31 +2382,44 @@ open Dllbc
 
 namespace Dllbc.Tests.FnStmt
 
-/-! ## §A. Two `fn` chains composed through a `%` splice
+/-! ## §A. Two `fn` chains composed through a `%` splice — NOW LEGAL (M32 R4)
 
-    Sharing a prefix is ordinary let-chain composition — a Lean function taking the
-    rest of the block and splicing it — and half the corpus is written that way.
-    But each chain numbers its slots from `progBase`, so NESTING two of them makes
-    the inner chain shadow the outer, and left alone that is not an error:
-    measured before the check existed, `withA (withB …)` ACCEPTED with both names
-    resolving to whichever function landed second. `bindFn` refuses it instead. -/
+    Sharing a prefix is ordinary let-chain composition — a Lean function taking
+    the rest of the block and splicing it — and half the corpus is written that
+    way. NESTING two chains used to be refused, and this assertion FLIPPED when
+    R4 deleted `progBase`.
 
+    The history, because the flip is only correct if the original hazard is
+    genuinely gone. Each chain numbered its slots from `progBase`, so the inner
+    chain's first declaration landed on the SAME id as the outer chain's first,
+    and under id-keyed Ω both names resolved to whichever function landed second
+    — measured, and accepted silently, which is why `bindFn` grew a check.
+
+    **The collision was on the ID and never on the NAME.** `withA (withB …)`
+    collided `A` with `B`. M32 R1 made Ω resolve by name, at which point the two
+    entries stopped being confusable and the check was refusing a program that
+    would have worked; R4 removed the arithmetic that produced the collision and
+    the check with it. What still shadows is a chain redeclaring an outer
+    chain's NAME, which is lexical shadowing doing its job. -/
+
+-- **The two declarations have DIFFERENT ARITIES**, which is what makes the
+-- assertion below discriminating rather than merely green: under the old
+-- collision both names denoted whichever function landed second, so `A(1)`
+-- would have reached a two-parameter callee and been an arity error. An accept
+-- can only happen if each name reaches its OWN declaration.
 def withA (rest : Term) : Term := prog{ fn A (n : Nat) -> Nat { n }; %rest }
-def withB (rest : Term) : Term := prog{ fn B (n : Nat) -> Nat { n }; %rest }
+def withB (rest : Term) : Term := prog{ fn B (n : Nat, m : Nat) -> Nat { n }; %rest }
 
--- Nested: refused, by the same needle a refused lowering uses, naming the slot
--- and the fix.
-example : progRejects (withA (withB (prog{ let r = A(1); let s = B(2); () })))
-  FnMacro.fnRefusedNeedle = true := by native_decide
-example : progOk (withA (withB (prog{ let r = A(1); let s = B(2); () }))) = false := by
+-- Nested: ACCEPTED.
+example : progOk (withA (withB (prog{ let r = A(1); let s = B(2, 3); () }))) = true := by
   native_decide
 
--- The two shapes that are FINE, so the check above is not simply banning
--- composition: one chain declaring both, and a prefix whose tail declares nothing.
+-- The shapes that were always fine, kept: one chain declaring both, and a
+-- prefix whose tail declares nothing.
 example : progOk (prog{
   fn A (n : Nat) -> Nat { n };
-  fn B (n : Nat) -> Nat { n };
-  let r = A(1); let s = B(2); () }) = true := by native_decide
+  fn B (n : Nat, m : Nat) -> Nat { n };
+  let r = A(1); let s = B(2, 3); () }) = true := by native_decide
 example : progOk (withA (prog{ let r = A(1); () })) = true := by native_decide
 
 /-! ## §B. The seal is ASCRIPTION, and its one confusable neighbour (M28 ξ)

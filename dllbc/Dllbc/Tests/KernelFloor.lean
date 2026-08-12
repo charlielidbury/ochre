@@ -62,7 +62,7 @@ CHOICE about what is under test, not a gap in the grammar.
 -/
 
 open Dllbc
-open Dllbc.Val (nat)
+open Dllbc.Term (nat)
 
 namespace Dllbc.Tests.S4Pure
 
@@ -122,7 +122,7 @@ example : expectReadC seedS [] (.app (.app (.const "botElim") natT) sVar)
 -- the canonicality property this file is the control group for, written down.
 example : expectReadC seedS [] (.app (.app addT sVar) (tnat 1))
   (.app (.app (.app (.app (.const "natRec") (.lam "§0" (.const "Nat") (.const "Nat"))) (nat 1))
-    (.lam "§0" (.const "Nat") (.lam "§1" (.const "Nat") (.ctor "S" [.pvar "§1"])))) (.sym 0)) = true := by
+    (.lam "§0" (.const "Nat") (.lam "§1" (.const "Nat") (.ctorApp "S" [.pvar "§1"])))) (.sym 0)) = true := by
   native_decide
 
 -- Conversion of stuck neutrals: reflexive, and sensitive to the argument.
@@ -143,38 +143,38 @@ example : expectConv seedS []
 /-! ## Value typing -/
 
 -- Val-level library (hasType works on values).
-def natV : Val := .const "Nat"
-def listNat : Val := .app (.const "List") natV
-def vecFV : Val :=
+def natV : Term := .const "Nat"
+def listNat : Term := .app (.const "List") natV
+def vecFV : Term :=
   .lam "T" .type (.lam "n" natV
     (.app (.app (.app (.app (.const "natRec") (.lam "_" natV .type)) (.const "Unit"))
       (.lam "n'" natV (.lam "rec" .type (.sigmaT "_" (.pvar "T") (.pvar "rec"))))) (.pvar "n")))
 /-- `Σ (l : Nat). VecF Nat l` (the l is a genuine dependency). -/
-def sigVecF : Val := .sigmaT "l" natV (.app (.app vecFV natV) (.pvar "l"))
+def sigVecF : Term := .sigmaT "l" natV (.app (.app vecFV natV) (.pvar "l"))
 
 -- Positives: `Cons σₑ σ : List Nat` under sctx = {σₑ : Nat, σ : List Nat};
 -- `Pair 1 p : Σ (l:Nat). VecF Nat l` with `p = Pair 5 unit : VecF Nat 1` — the
 -- second field's type is instantiated at the first field's value.
 example : expectHasType [] [(0, natV), (1, listNat)]
-  (.ctor "Cons" [.sym 0, .sym 1]) listNat = true := by native_decide
+  (.ctorApp "Cons" [.sym 0, .sym 1]) listNat = true := by native_decide
 
 example : expectHasType [] []
-  (.ctor "Pair" [nat 1, .ctor "Pair" [nat 5, .ctor "unit" []]]) sigVecF = true := by native_decide
+  (.ctorApp "Pair" [nat 1, .ctorApp "Pair" [nat 5, .ctorApp "unit" []]]) sigVecF = true := by native_decide
 
 -- Negatives: wrong constructor for the type; a `Pair` whose second field fails
 -- the instantiated type (`True` does not inhabit `VecF Nat 1`).
 example : expectHasType [] [(0, natV), (1, listNat)]
-  (.ctor "Cons" [.sym 0, .sym 1]) (.const "Bool") = false := by native_decide
+  (.ctorApp "Cons" [.sym 0, .sym 1]) (.const "Bool") = false := by native_decide
 
 example : expectHasType [] []
-  (.ctor "Pair" [nat 1, .ctor "True" []]) sigVecF = false := by native_decide
+  (.ctorApp "Pair" [nat 1, .ctorApp "True" []]) sigVecF = false := by native_decide
 
 /-! ## Conversion negative under a binder -/
 
 -- Two λ's that differ only in their bodies are not convertible (no eta; bodies
 -- compared structurally after normalization, which renames both binders to the
 -- same level name and so cannot be what tells them apart).
-example : Val.convert 1000 (.lam "u" natV (.pvar "u")) (.lam "u" natV (.ctor "Z" [])) = false := by
+example : Pure.convert 1000 (.lam "u" natV (.pvar "u")) (.lam "u" natV (.ctorApp "Z" [])) = false := by
   native_decide
 
 /-! ## Readback is CANONICAL (M30 step 2)
@@ -201,36 +201,36 @@ example : Val.convert 1000 (.lam "u" natV (.pvar "u")) (.lam "u" natV (.ctor "Z"
 -- (1) and (2): the binder a normal form carries is its level, in the reserved
 -- namespace. Written as the whole tree rather than as a predicate, so a change to
 -- the naming scheme fails HERE and says what it changed to.
-example : (Val.nfV 1000 (.lam "x" natV (.pvar "x")) == .lam "§0" natV (.pvar "§0")) = true := by
+example : (Pure.nf 1000 (.lam "x" natV (.pvar "x")) == .lam "§0" natV (.pvar "§0")) = true := by
   native_decide
-example : (Val.nfV 1000 (.lam "a" natV (.lam "b" natV (.app (.pvar "a") (.pvar "b"))))
+example : (Pure.nf 1000 (.lam "a" natV (.lam "b" natV (.app (.pvar "a") (.pvar "b"))))
             == .lam "§0" natV (.lam "§1" natV (.app (.pvar "§0") (.pvar "§1")))) = true := by
   native_decide
 
 -- (3): two α-variants of one function read back to the SAME tree — not merely to
 -- convertible ones, which is the weaker fact `convert` would still give if
 -- readback minted from a counter.
-example : (Val.nfV 1000 (.lam "a" natV (.lam "b" natV (.app (.pvar "a") (.pvar "b"))))
-            == Val.nfV 1000 (.lam "p" natV (.lam "q" natV (.app (.pvar "p") (.pvar "q"))))) = true := by
+example : (Pure.nf 1000 (.lam "a" natV (.lam "b" natV (.app (.pvar "a") (.pvar "b"))))
+            == Pure.nf 1000 (.lam "p" natV (.lam "q" natV (.app (.pvar "p") (.pvar "q"))))) = true := by
   native_decide
 
 -- (4): and so they convert. (Under the de Bruijn representation this was true for
 -- a reason that no longer exists — the binders had no names to differ in.)
-example : Val.convert 1000 (.lam "x" natV (.pvar "x")) (.lam "y" natV (.pvar "y")) = true := by
+example : Pure.convert 1000 (.lam "x" natV (.pvar "x")) (.lam "y" natV (.pvar "y")) = true := by
   native_decide
 
 -- (5): SHADOWING IS THE SCOPE RULE. `λ (x : Nat). λ (x : Nat). x` is the second
 -- projection, and both halves are asserted — it converts with `λ a. λ b. b` and
 -- does NOT convert with `λ a. λ b. a`. Nothing was renamed to make this work;
 -- the evaluator's environment is prepended to and the lookup finds the first hit.
-example : Val.convert 1000 (.lam "x" natV (.lam "x" natV (.pvar "x")))
+example : Pure.convert 1000 (.lam "x" natV (.lam "x" natV (.pvar "x")))
                            (.lam "a" natV (.lam "b" natV (.pvar "b"))) = true := by native_decide
-example : Val.convert 1000 (.lam "x" natV (.lam "x" natV (.pvar "x")))
+example : Pure.convert 1000 (.lam "x" natV (.lam "x" natV (.pvar "x")))
                            (.lam "a" natV (.lam "b" natV (.pvar "a"))) = false := by native_decide
 
 -- (6): the renaming is not an erasure — two functions that differ in WHICH binder
 -- they return stay distinct after it.
-example : Val.convert 1000 (.lam "a" natV (.lam "b" natV (.pvar "a")))
+example : Pure.convert 1000 (.lam "a" natV (.lam "b" natV (.pvar "a")))
                            (.lam "a" natV (.lam "b" natV (.pvar "b"))) = false := by native_decide
 
 -- The namespace itself: what readback mints is reserved, and a source binder may
@@ -275,38 +275,38 @@ never went through a declaration form at all.
 -/
 
 open Dllbc
-open Dllbc.Val
+open Dllbc.Term
 
 namespace Dllbc.Tests.S10Ford
 
 /-! ## Pure library, as `Val`s (types and proofs are terms) -/
 
-def natV : Val := .const "Nat"
-def sZ : Val := .ctor "Z" []
-def sS (v : Val) : Val := .ctor "S" [v]
-def vnat : Nat → Val | 0 => sZ | n + 1 => sS (vnat n)
-def refl : Val := .ctor "Refl" []
-def unitV : Val := .ctor "unit" []
+def natV : Term := .const "Nat"
+def sZ : Term := .ctorApp "Z" []
+def sS (v : Term) : Term := .ctorApp "S" [v]
+def vnat : Nat → Term | 0 => sZ | n + 1 => sS (vnat n)
+def refl : Term := .ctorApp "Refl" []
+def unitV : Term := .ctorApp "unit" []
 
-def natRecV (P z s n : Val) : Val := .app (.app (.app (.app (.const "natRec") P) z) s) n
-def jV (a aa P d b p : Val) : Val := .app (.app (.app (.app (.app (.app (.const "j") a) aa) P) d) b) p
-def kV (a aa P d p : Val) : Val := .app (.app (.app (.app (.app (.const "k") a) aa) P) d) p
-def botElimV (t x : Val) : Val := .app (.app (.const "botElim") t) x
+def natRecV (P z s n : Term) : Term := .app (.app (.app (.app (.const "natRec") P) z) s) n
+def jV (a aa P d b p : Term) : Term := .app (.app (.app (.app (.app (.app (.const "j") a) aa) P) d) b) p
+def kV (a aa P d p : Term) : Term := .app (.app (.app (.app (.app (.const "k") a) aa) P) d) p
+def botElimV (t x : Term) : Term := .app (.app (.const "botElim") t) x
 
 /-- `NatCode : Nat → Nat → Type` by double `natRec`: `(Z,Z) ↦ ⊤`, `(S,S) ↦`
     code of predecessors, mixed `↦ ⊥`. The diagonal `NatCode a a` is `⊤`. -/
-def zCase : Val :=
+def zCase : Term :=
   .lam "b" natV (natRecV (.lam "_" natV .type) (.const "Unit")
     (.lam "_" natV (.lam "_" .type (.const "Bot"))) (.pvar "b"))
-def sCase : Val :=
+def sCase : Term :=
   .lam "a'" natV (.lam "recA" (.pi "_" natV .type) (.lam "b" natV
     (natRecV (.lam "_" natV .type) (.const "Bot")
       (.lam "b'" natV (.lam "_" .type (.app (.pvar "recA") (.pvar "b'")))) (.pvar "b"))))
-def natCodeV : Val := .lam "a" natV (natRecV (.lam "_" natV (.pi "_" natV .type)) zCase sCase (.pvar "a"))
-def natCode (a b : Val) : Val := .app (.app natCodeV a) b
+def natCodeV : Term := .lam "a" natV (natRecV (.lam "_" natV (.pi "_" natV .type)) zCase sCase (.pvar "a"))
+def natCode (a b : Term) : Term := .app (.app natCodeV a) b
 
 /-- `Pred : Nat → Nat` (`Pred Z = Z`, `Pred (S n) = n`). -/
-def predV : Val :=
+def predV : Term :=
   .lam "n" natV (natRecV (.lam "_" natV natV) sZ (.lam "m" natV (.lam "_" natV (.pvar "m"))) (.pvar "n"))
 
 /-! ## §10 kernel: the ι-rules (`j` and `k` fire on `Refl`)
@@ -316,14 +316,14 @@ def predV : Val :=
     to reduction — ι fires on the proof.) -/
 
 -- j Nat Z P 42 Z Refl ↦ 42
-example : (Val.nfV 1000 (jV natV sZ (.lam "b" natV (.lam "q" natV natV)) (vnat 42) sZ refl) == vnat 42) = true := by
+example : (Pure.nf 1000 (jV natV sZ (.lam "b" natV (.lam "q" natV natV)) (vnat 42) sZ refl) == vnat 42) = true := by
   native_decide
 
 -- k Nat Z P 7 Refl ↦ 7
-example : (Val.nfV 1000 (kV natV sZ (.lam "q" natV natV) (vnat 7) refl) == vnat 7) = true := by native_decide
+example : (Pure.nf 1000 (kV natV sZ (.lam "q" natV natV) (vnat 7) refl) == vnat 7) = true := by native_decide
 
 -- On a *symbolic* proof (sym 0), `j` does not fire — it is a stuck value, not 42.
-example : (Val.nfV 1000 (jV natV sZ (.lam "b" natV (.lam "q" natV natV)) (vnat 42) sZ (.sym 0)) == vnat 42) = false := by
+example : (Pure.nf 1000 (jV natV sZ (.lam "b" natV (.lam "q" natV natV)) (vnat 42) sZ (.sym 0)) == vnat 42) = false := by
   native_decide
 
 /-! ## The Refl-match: the solution transition (owned and through a borrow)
@@ -457,11 +457,11 @@ example : progRejects (prog{
     any type. This is the impossible branch, discharged with ordinary terms. -/
 
 -- P = λb'. λ_ : Id Nat Z b'. NatCode Z b'
-def nncMotive : Val :=
+def nncMotive : Term :=
   .lam "b" natV (.lam "q" (.idT natV sZ (.pvar "b")) (.app (.app natCodeV sZ) (.pvar "b")))
-def nncProof (n p : Val) : Val := jV natV sZ nncMotive unitV (sS n) p
+def nncProof (n p : Term) : Term := jV natV sZ nncMotive unitV (sS n) p
 -- σ0 = n : Nat, σ1 = p : Id Nat Z (S n)
-def nncSctx : List (Nat × Val) := [(0, natV), (1, .idT natV sZ (sS (.sym 0)))]
+def nncSctx : List (Nat × Term) := [(0, natV), (1, .idT natV sZ (sS (.sym 0)))]
 
 -- `natNoConf p : NatCode Z (S n)`, and — since that code reduces — `: ⊥`.
 example : expectHasType [] nncSctx (nncProof (.sym 0) (.sym 1)) (natCode sZ (sS (.sym 0))) = true := by
@@ -481,10 +481,10 @@ example : expectHasType [] nncSctx (botElimV (.const "Bool") (nncProof (.sym 0) 
     (pred (S a)) = Id Nat a a`; transported to `Id Nat a (pred (S b)) = Id Nat a
     b`. (`pred (S σ)` reduces because the `S` is concrete around the symbol.) -/
 
-def injMotive (a : Val) : Val :=
+def injMotive (a : Term) : Term :=
   .lam "y" natV (.lam "q" (.idT natV (sS a) (.pvar "y")) (.idT natV a (.app predV (.pvar "y"))))
-def injProof (a b p : Val) : Val := jV natV (sS a) (injMotive a) refl (sS b) p
-def injSctx : List (Nat × Val) := [(0, natV), (1, natV), (2, .idT natV (sS (.sym 0)) (sS (.sym 1)))]
+def injProof (a b p : Term) : Term := jV natV (sS a) (injMotive a) refl (sS b) p
+def injSctx : List (Nat × Term) := [(0, natV), (1, natV), (2, .idT natV (sS (.sym 0)) (sS (.sym 1)))]
 
 example : expectHasType [] injSctx (injProof (.sym 0) (.sym 1) (.sym 2)) (.idT natV (.sym 0) (.sym 1)) = true := by
   native_decide
@@ -499,20 +499,20 @@ example : expectHasType [] injSctx (injProof (.sym 0) (.sym 1) (.sym 2)) (.idT n
     Refl`, so `k … p : Id (Id Nat a a) p Refl` — uniqueness of identity proofs,
     a decided commitment of this kernel. -/
 
-def idAA (a : Val) : Val := .idT natV a a
-def uipMotive (a : Val) : Val := .lam "q" (idAA a) (.idT (idAA a) (.pvar "q") refl)
-def uipProof (a p : Val) : Val := kV natV a (uipMotive a) refl p
-def uipSctx : List (Nat × Val) := [(0, natV), (1, idAA (.sym 0))]
+def idAA (a : Term) : Term := .idT natV a a
+def uipMotive (a : Term) : Term := .lam "q" (idAA a) (.idT (idAA a) (.pvar "q") refl)
+def uipProof (a p : Term) : Term := kV natV a (uipMotive a) refl p
+def uipSctx : List (Nat × Term) := [(0, natV), (1, idAA (.sym 0))]
 
 example : expectHasType [] uipSctx (uipProof (.sym 0) (.sym 1)) (.idT (idAA (.sym 0)) (.sym 1) refl) = true := by
   native_decide
 
 /-! ### `NatCode` computes (the double-`natRec` corners) -/
 
-example : (Val.convert 1000 (natCode sZ sZ) (.const "Unit")) = true := by native_decide       -- (Z,Z) ↦ ⊤
-example : (Val.convert 1000 (natCode sZ (sS sZ)) (.const "Bot")) = true := by native_decide    -- (Z,S) ↦ ⊥
-example : (Val.convert 1000 (natCode (sS sZ) sZ) (.const "Bot")) = true := by native_decide    -- (S,Z) ↦ ⊥
-example : (Val.convert 1000 (natCode (vnat 2) (vnat 2)) (.const "Unit")) = true := by native_decide  -- diagonal ↦ ⊤
+example : (Pure.convert 1000 (natCode sZ sZ) (.const "Unit")) = true := by native_decide       -- (Z,Z) ↦ ⊤
+example : (Pure.convert 1000 (natCode sZ (sS sZ)) (.const "Bot")) = true := by native_decide    -- (Z,S) ↦ ⊥
+example : (Pure.convert 1000 (natCode (sS sZ) sZ) (.const "Bot")) = true := by native_decide    -- (S,Z) ↦ ⊥
+example : (Pure.convert 1000 (natCode (vnat 2) (vnat 2)) (.const "Unit")) = true := by native_decide  -- diagonal ↦ ⊤
 
 end Dllbc.Tests.S10Ford
 end
@@ -536,7 +536,7 @@ field, and a proof CONSUMED to close a dead branch.
 **The rest of §11 dissolved (M28).** The milestone also landed `listRec`,
 `natRec`/`boolRec` neutral synthesis, λ-vs-Π typing, pure `let` in `readC`, and
 `Dllbc.Std` (`Le`, `Eqb`/`Leb`, `Count`, `Bound`/`Sorted`, `LeRefl`). Those were
-tested here by `Val.convert`/`Val.nfV` computation probes and `expectHasType`
+tested here by `Pure.convert`/`Pure.nf` computation probes and `expectHasType`
 inhabitation probes — granular meta-assertions that the corpus has long since
 subsumed. Every bound in a checked program forces `Le` to compute (an ex-falso
 branch is precisely `Le (S n) Z` computing to `Bot`); every count postcondition
@@ -585,22 +585,22 @@ namespace Dllbc.Tests.S11Lib
 
 /-- `NatCode`'s `Z` row: `Z ↦ ⊤`, `S _ ↦ ⊥`. -/
 def zCase : Term := prog{
-  λ (m : Nat). natRec (λ (x : Nat). Type) Unit (λ (x : Nat). λ (r : Type). Bot) m }
+  λ (M : Nat). natRec (λ (X : Nat). Type) Unit (λ (X : Nat). λ (R : Type). Bot) M }
 
 /-- `NatCode`'s `S` row: `Z ↦ ⊥`, `S m2 ↦ code of the predecessors` (the
     outer recursor's `ih`, applied). -/
 def sCase : Term := prog{
-  λ (n : Nat). λ (f : Π (x : Nat) → Type). λ (m : Nat).
-    natRec (λ (x : Nat). Type) Bot (λ (m2 : Nat). λ (r : Type). f m2) m }
+  λ (N : Nat). λ (F : Π (X : Nat) → Type). λ (M : Nat).
+    natRec (λ (X : Nat). Type) Bot (λ (M2 : Nat). λ (R : Type). F M2) M }
 
 /-- `NatCode : Nat → Nat → Type`, by `natRec` at a Π-valued motive. -/
 def natCode : Term := prog{
-  λ (a : Nat). natRec (λ (x : Nat). Π (y : Nat) → Type) zCase sCase a }
+  λ (A : Nat). natRec (λ (X : Nat). Π (Y : Nat) → Type) zCase sCase A }
 
 /-- The no-confusion motive at `Z`: `λ m. λ (q : Id Nat Z m). NatCode Z m`. With
     `j`'s `d := unit : NatCode Z Z`, `j Nat Z nncMotive unit (S n) p` has type
     `NatCode Z (S n)`, which computes to `Bot`. -/
-def nncMotive : Term := prog{ λ (m : Nat). λ (q : Id Nat Z m). natCode Z m }
+def nncMotive : Term := prog{ λ (M : Nat). λ (Q : Id Nat Z M). natCode Z M }
 
 /-! ## §11.1 The pure lift — ⇒ produces proof terms -/
 
@@ -614,7 +614,7 @@ example : progOk (prog{
 -- `Pair`'s dependent second field and audited against `Id Nat a a`.
 example : progOk (prog{
   fn StoreProof (a : Nat) -> Σ (x : Nat) → Id Nat x x
-    { Pair(a, j Nat a (λ (x : Nat). λ (q : Id Nat a x). Id Nat a x) Refl a Refl) };
+    { Pair(a, j Nat a (λ (X : Nat). λ (Q : Id Nat a X). Id Nat a X) Refl a Refl) };
   () }) = true := by native_decide
 
 -- The M10 conflict discharge, as a dead branch in a checked `fn` (the shape the
@@ -667,7 +667,7 @@ namespace Dllbc.Tests.S15Elab
 
 /-- Check a pure `Term` against a pure type `Term` (deep fuel — lemmas nest). -/
 def chk (tm ty : Term) : Bool :=
-  match (do let v ← readC 2000 tm; let t ← readC 2000 ty; hasType 2000 v t).run (seedPure [] []) with
+  match (do let v ← readC 2000 tm; let t ← readC 2000 ty; hasTypeT 2000 v t).run (seedPure [] []) with
   | .ok r _ => r
   | .error _ _ => false
 
@@ -688,7 +688,7 @@ example : expectConv [] [] Dllbc.StdLemmas.LeRefl Std.le_reflT = true := by nati
     counterfactual), not a hypothesis. -/
 
 -- (1) The merged `let` means what the β-redex it replaced meant.
-example : expectConv [] [] prog{ let a = 2 ; Add a a } prog{ (λ (a : Nat). Add a a) 2 } = true := by
+example : expectConv [] [] prog{ let a = 2 ; Add a a } prog{ (λ (A : Nat). Add A A) 2 } = true := by
   native_decide
 -- (2) …and a `let` chain still means its nesting.
 example : expectConv [] [] prog{ let a = 2 ; let b = S a ; Add a b } prog{ 5 } = true := by
@@ -700,7 +700,7 @@ example : expectConv [] [] prog{ let a = 2 ; let b = S a ; Add a b } prog{ 5 } =
 -- reachable route. `resolveName` consults that context FIRST, so without the
 -- surface's mask this reads the ARM's `k` — measured as `Z`, not `7`.
 example : expectConv [] []
-    prog{ elim 1 return (λ (x : Nat). Nat) { Z => 0, S(k) ih => let k = 7 ; k } }
+    prog{ elim 1 return (λ (X : Nat). Nat) { Z => 0, S(K) Ih => let k = 7 ; k } }
     prog{ 7 } = true := by native_decide
 
 -- (4) A let-bound value MENTIONING a pure binder, read two binders deeper. ⇝
@@ -708,11 +708,11 @@ example : expectConv [] []
 -- depth it is used at; the Ω-binding reading this replaced did not, and returned
 -- a value pointing at the inner arm's binders instead. `s = S k = 1`.
 example : expectConv [] []
-    prog{ elim 1 return (λ (x : Nat). Nat) {
+    prog{ elim 1 return (λ (X : Nat). Nat) {
             Z => 0,
-            S(k) ih =>
-              let s = S k ;
-              elim 1 return (λ (y : Nat). Nat) { Z => 0, S(j) ih2 => s } } }
+            S(K) Ih =>
+              let s = S K ;
+              elim 1 return (λ (Y : Nat). Nat) { Z => 0, S(J) Ih2 => s } } }
     prog{ 1 } = true := by native_decide
 
 /-! ## The lemmas check at their stated types -/
@@ -745,7 +745,7 @@ example : progOk useTrans = true := by native_decide
 -- is: "audit: result (…) does not have return type (…)".
 def LeFn : Term := Std.LeFnT
 def badReflClosed : Term := prog{
-  λ (n : Nat). elim n return (λ (m : Nat). LeFn Z m) { Z => unit, S (k) ih => ih } }
+  λ (N : Nat). elim N return (λ (M : Nat). LeFn Z M) { Z => unit, S (K) Ih => Ih } }
 -- SUBJECT: a deliberately-lying function — the return type claims `Le n n` while
 -- the body proves `Le Z n`. It was a hand-built `FnDef` record on the argument that
 -- a surface form would obscure the lie; written as a `fn` the lie is the two lines
@@ -778,3 +778,662 @@ example : progRejects badRefl "does not have return type" = true := by native_de
 end Dllbc.Tests.S15Elab
 end
 -- └── end of what was `S15Elab.lean` ───────────────────────────────────────────────
+
+-- ┌── M32 R1: the σ namespace ────────────────────────────────────────────────
+section
+/-!
+# The `§σ` namespace — unwritable, and unshadowed
+
+M32 R1 makes a σ a reserved pure NAME (`Term.sym σ` = `pvar "§σ<id>"`), which
+puts two claims on the critical path. Both are asserted as behaviour here rather
+than argued in a comment, because both are the silent kind: a violation would
+present as a refinement that quietly stops reaching an occurrence.
+
+  1. **`Term.substP`'s rebinding guard is vacuous for a σ-name.** The guard stops
+     at a binder that rebinds the name, so a binder called `§σ0` would fence a
+     refinement out of its body. The kernel's complete minted-binder inventory is
+     `§<digits>` (readback), `§gen`, `§let<digits>`, `§p<digits>`, `§_` and the
+     hand-written recursor premise binders — none of which is `§σ<digits>`.
+  2. **No program can write one.** An ordinary Lean `ident` cannot contain `§`.
+     An ESCAPED one can (`«§σ0»`) — and the reason that route is closed is
+     stronger than the guard `Surface.reservedBinder` puts in front of it:
+     `Name.toString` re-escapes, so the binder such a program writes is literally
+     named `«§σ0»`, guillemets and all, which is a DIFFERENT name from `§σ0` and
+     is not in the reserved namespace at all. (Measured, not assumed — the guard
+     never fires on this input, so a reader who checked only the guard would
+     conclude the opposite.)
+-/
+
+open Dllbc
+
+namespace Dllbc.Tests.S32Sigma
+
+/-- Substituting a σ reaches an occurrence under a binder of each shape the
+    kernel mints. -/
+def underBinder (nm : String) : Term :=
+  .lam nm (.const "Nat") (.ctorApp "S" [Term.sym 0])
+
+def refined (nm : String) : Term :=
+  Term.substSym 0 (Term.nat 4) (underBinder nm)
+
+def reaches (nm : String) : Bool :=
+  Term.beq (refined nm) (.lam nm (.const "Nat") (.ctorApp "S" [Term.nat 4]))
+
+example : reaches (readbackName 0) = true := by native_decide
+example : reaches genName = true := by native_decide
+example : reaches (Pure.letName 7) = true := by native_decide
+example : reaches "§p3" = true := by native_decide
+example : reaches "§_" = true := by native_decide
+example : reaches "§k" = true := by native_decide
+example : reaches "§ih" = true := by native_decide
+example : reaches "§xs" = true := by native_decide
+-- The one name that WOULD fence it out is the σ's own, which is exactly what
+-- makes the guard's vacuity a claim about the inventory above and not about
+-- `substP`.
+example : reaches (symName 0) = false := by native_decide
+
+-- An escaped identifier does not land in the namespace: the escape is part of
+-- the name.
+def escapedSigma : Term := prog{ λ («§σ0» : Nat). «§σ0» }
+example : (match escapedSigma with
+           | .lam nm _ _ => isReservedName nm.name
+           | _ => true) = false := by native_decide
+-- …so a refinement of σ0 passes straight through it, unfenced.
+example : (Term.beq (Term.substSym 0 (Term.nat 4)
+             (.lam "«§σ0»" (.const "Nat") (.ctorApp "S" [Term.sym 0])))
+           (.lam "«§σ0»" (.const "Nat") (.ctorApp "S" [Term.nat 4]))) = true := by native_decide
+
+end Dllbc.Tests.S32Sigma
+end
+-- └── end of the M32 R1 σ-namespace battery ────────────────────────────────────
+
+-- ┌── the M32 R2 cook-at-generalization canary ─────────────────────────────────
+section
+namespace Dllbc.Tests.S32Cook
+open Dllbc
+
+/-! # Cook-at-generalization, with the control that makes it mean something
+
+    suspensions.md §3 derives ONE persistent cooking event from one criterion: a
+    store-wide sweep is safe iff it commutes with evaluation. Refinement is
+    atom-keyed and commutes; X-Gen's generalization is compound-keyed and does
+    not. Stage V sharpened the failing case to MATERIALIZED-vs-LATENT — a spine
+    materialized in ρ survives the sweep untouched, and only a spine the body
+    RE-MINTS from ρ's ingredients speaks pre-generalization vocabulary
+    afterwards.
+
+    This is Stage V bet (c)(iii), built and run **in both directions**, because a
+    green result here is worth exactly the negative control that accompanies it:
+    the failure mode is silent by construction (M30's measured count-equation
+    break).
+
+    The suspension: ρ binds `V ↦ σ5` and `W ↦ σ6`, and the body is the stuck
+    spine `leb V W`. The generalized spine `leb σ5 σ6` is therefore **LATENT** —
+    it is nowhere in ρ and nowhere in the raw body, and it comes into existence
+    only when the body is evaluated. (`leb` stands here for §19's own scrutinee,
+    an unknown head that `whnfN` leaves neutral; the shape is what matters.) -/
+
+def vSlot : Var := ⟨700, "V"⟩
+def wSlot : Var := ⟨701, "W"⟩
+def latentRho : List (Var × Val) :=
+  [(vSlot, .know (Term.sym 5)), (wSlot, .know (Term.sym 6))]
+def latentBody : Term := .app (.app (.const "leb") (.var vSlot)) (.var wSlot)
+def latentNode : Term := .lam "§x" (.const "Nat") latentBody
+def latent : Val := .closure latentRho latentNode
+
+/-- The spine the split generalizes, normalized as `generalizeStuck` normalizes
+    it, and the fresh σ it is abstracted into. -/
+def sp : Term := Pure.nf 1000 (.app (.app (.const "leb") (Term.sym 5)) (Term.sym 6))
+def σb : Nat := 99
+
+/-- Cook a value that is a closure; anything else is not this test's subject. -/
+def cooked : Val → Term
+  | .closure ρ n => cookClosure 1000 ρ n
+  | v => .const s!"NOT-A-CLOSURE:{v.pretty}"
+
+/-- **The eager answer**: cook, THEN sweep. What a cook-at-formation system would
+    have produced, and the vocabulary the branch equation speaks. -/
+def eager : Term := Term.abstractInto sp σb (cooked latent)
+
+/-- **R2's rule**: `cookForGen` at the spine's support, then the sweep, then
+    apply (= cook) afterwards. -/
+def withCooking : Term := cooked (abstractInto sp σb (cookForGen 1000 sp.symIds latent))
+
+/-- **The control**: the same with cook-at-generalization DISABLED — the sweep
+    alone, then apply. -/
+def withoutCooking : Term := cooked (abstractInto sp σb latent)
+
+-- The instrument first, so a pass cannot be vacuous: the support is what the
+-- spine is over, and the closure IS in scope of the support-scoped rule.
+example : sp.symIds = [5, 6] := by native_decide
+example : (Val.symIdsRho latentRho).any (fun s => sp.symIds.contains s) = true := by native_decide
+
+-- POSITIVE: with cooking, the raw suspension agrees with the eager answer.
+example : Term.beq withCooking eager = true := by native_decide
+
+-- NEGATIVE, and this is the half that makes the positive mean something: with
+-- cooking disabled the same suspension DIVERGES — it re-mints `leb σ5 σ6` from
+-- ingredients the sweep never touched, and speaks the pre-generalization
+-- vocabulary the branch has stopped using.
+example : Term.beq withoutCooking eager = false := by native_decide
+
+-- Named, so a reader sees WHICH two answers those are rather than taking the
+-- disagreement on trust.
+example : eager.pretty = "λ(§0 : Nat). σ99" := by native_decide
+example : withoutCooking.pretty = "λ(§0 : Nat). leb σ5 σ6" := by native_decide
+
+/-! ## The rule is SUPPORT-SCOPED, and that is asserted rather than described
+
+    A closure whose ρ mentions no σ of the spine's support cannot re-mint the
+    spine, so it is left RAW — the difference between §3's rule and
+    "normalize at every split", which §3 rejects because it pays at the commuting
+    sweeps that need nothing. -/
+def unrelated : Val := .closure [(vSlot, .know (Term.sym 7))] latentNode
+example : (match cookForGen 1000 sp.symIds unrelated with
+           | .closure ρ n => ρ.length == 1 && Term.beq n latentNode
+           | _ => false) = true := by native_decide
+
+/-! ## An IMPERATIVE body is never cooked, ever (§3)
+
+    It never participates in conversion — audited once at formation, then only
+    entered — and cooking one is not merely pointless but undefined, since ⇝ has
+    no rule for a write. Its ρ is still descended, because a comptime closure can
+    sit inside one. -/
+def impNode : Term := Term.lamTel [(⟨702, "w"⟩, .const "Nat")] (.seq (.var vSlot) .unit)
+def impClosure : Val := .closure latentRho impNode
+example : (match cookForGen 1000 sp.symIds impClosure with
+           | .closure ρ n => ρ.length == 2 && Term.beq n impNode
+           | _ => false) = true := by native_decide
+
+/-! ## A LIMIT of the sweep, found by building this canary and pinned here
+
+    `Term.abstractInto` matches by `Term.beq`, which compares binder NAMES, and
+    `readback` names a binder by its LEVEL. So a generalized spine that itself
+    CONTAINS a binder does not match its own occurrence under a λ: normalized at
+    depth 0 the spine says `§0`, and the same spine normalized one binder deeper
+    says `§1`. `len σ5` is such a spine — it unfolds to a `listRec` over λ arms —
+    and abstracting it reaches every knowledge leaf in Ω and none of the
+    occurrences inside a cooked closure body.
+
+    This is not new at R2 (a λ at rest was normalized knowledge before it was a
+    closure, with the same level shift), and it is not what cook-at-generalization
+    is about — cooking fixes LATENCY, and this is a matching question underneath
+    it. Recorded as a demand rather than argued away: the fix is an α-insensitive
+    match at the abstraction site, which is `Term.alphaEq`'s job and a change to
+    the sweep's key. -/
+def lenBody : Term := Std.lenT (.var vSlot)
+def lenLatent : Val := .closure [(vSlot, .know (Term.sym 5))] (.lam "§x" (.const "Nat") lenBody)
+def lenSp : Term := Pure.nf 1000 (Std.lenT (Term.sym 5))
+-- The spine BINDS: it unfolds to a `listRec` over λ arms, so its normal form
+-- carries binders and their names are levels.
+example : strContains lenSp.pretty "λ(§0" = true := by native_decide
+-- …and the sweep therefore finds nothing to abstract inside the cooked body,
+-- so cooked-then-swept and swept-then-cooked agree only because NEITHER fired.
+example : Term.beq (Term.abstractInto lenSp 98 (cooked lenLatent)) (cooked lenLatent)
+          = true := by native_decide
+
+end Dllbc.Tests.S32Cook
+end
+-- └── end of the M32 R2 cook-at-generalization canary ─────────────────────────
+
+-- ┌── the M32 R2 capture-generality battery ────────────────────────────────────
+section
+namespace Dllbc.Tests.S32Capture
+open Dllbc
+
+/-! # What a body may name, and what a closure carries out (suspensions.md §2.6)
+
+    Two things landed together and only look like one rule. The SURFACE stopped
+    elaborating a `fn` body in a params-only context, so a body can now cite the
+    bindings lexically above it. The KERNEL started keeping what such a citation
+    resolves to, in ρ, so the citation survives the λ escaping the scope it was
+    written in. Stage C measured that program-scope citation already worked; the
+    closure is what makes the escaping case safe. -/
+
+-- ACCEPTED, and this is the flip: a `fn` body citing a comptime binding above
+-- it. Before R2 this was a Lean elaboration error — `H0` resolved against the
+-- parameters and there were none by that name.
+def fnCitesEnclosing : Term := prog{
+  let H0 = 3;
+  fn Uses (n : Nat) -> Nat { let Snap = H0; n };
+  () }
+example : progOk fnCitesEnclosing = true := by native_decide
+
+-- The same for a λ bound as a value: the citation is admitted, and what it
+-- resolves to is CAPTURED — the closure carries `H0`, so applying it later reads
+-- what the λ saw.
+def lamCitesEnclosing : Term := prog{
+  let H0 = 3;
+  let G = λ(a : Nat) { let Snap = H0; a };
+  let r = G(1);
+  () }
+example : progOk lamCitesEnclosing = true := by native_decide
+
+-- REFUSED, by the capture rule and not by scoping: a RUNTIME (lowercase)
+-- binding is not capturable, because a λ is formed now and used later and a
+-- runtime citation would be an implicit snapshot taken in that gap (§2.4). The
+-- surface can see `h0` now; the kernel is what says no.
+def lamCitesRuntime : Term := prog{
+  let h0 = 3;
+  let G = λ(a : Nat) { let Snap = h0; a };
+  () }
+example : progRejects lamCitesRuntime "a runtime (lowercase) binding" = true := by native_decide
+
+-- And the capture really is in the VALUE rather than resolved dynamically: the
+-- closure sitting in `G`'s slot carries a one-entry ρ naming `H0`.
+def capturedProg : Term := prog{ let H0 = 3; let G = λ(a : Nat) { let Snap = H0; a }; () }
+def capturedRho : List String :=
+  match (Dllbc.tailEnvs capturedProg).head! with
+  | Except.ok env => match env.lookup "G" with
+    | some (Val.closure ρ _) => ρ.map (·.1.name)
+    | _ => ["NOT-A-CLOSURE"]
+  | Except.error e => [e]
+example : capturedRho = ["H0"] := by native_decide
+
+end Dllbc.Tests.S32Capture
+end
+-- └── end of the M32 R2 capture-generality battery ────────────────────────────
+
+-- ┌── the M32 R3 ⇝-sealing battery ─────────────────────────────────────────────
+section
+namespace Dllbc.Tests.S32Seal
+open Dllbc
+
+/-! # The seal, ⇝-evaluated (suspensions.md §2.4, M32 R3)
+
+    ⇝ refused the seal because minting a fresh σ needs an event and ⇝ has none —
+    so a seal reduced twice under ⇝ would disagree with itself. R3's answer is
+    that the σ is not fresh: it is the one this seal's SITE has at these INPUTS,
+    and the two halves of that sentence are what this battery asserts.
+
+    Sites come from `Term.numberSeals`, a pass at the program boundary. Inputs
+    are what the seal's free runtime variables hold when it is read — the values
+    its check consults, which is why agreeing on them means agreeing on the
+    check's answer.
+
+    §6's sharp edge ("seal-site identity: stable across macro expansion and
+    α-canonicalization") is asked here rather than assumed. -/
+
+/-- The first seal in a term, with its site as the boundary pass assigned it. -/
+partial def firstSeal : Term → Option (Nat × Term × Term)
+  | .seal s t u => some (s, t, u)
+  | .letIn _ a b => (firstSeal a).orElse (fun _ => firstSeal b)
+  | .seq a b | .app a b => (firstSeal a).orElse (fun _ => firstSeal b)
+  | .lam _ d b | .pi _ d b | .sigmaT _ d b => (firstSeal d).orElse (fun _ => firstSeal b)
+  | _ => none
+
+def sealOf (t : Term) : Option (Nat × Term × Term) := firstSeal (Term.numberSeals t).2
+
+/-! ## A. THE GOLDEN IS UNCHANGED — the flip is behaviour-identical
+
+    `let F = (…)` was ⇒'s (`Var.comptimeRhs`'s seal carve-out) and is ⇝'s. What
+    a caller sees is the σ it always saw, at the number it always had: the site
+    table is filled from `nextSym` on a miss, so a program whose seals are read
+    in program order allocates them exactly where `sealMint`'s `freshSym` did. -/
+
+def c2 : Term := prog{
+  let F = (λ (X : Nat). S X : Π (X : Nat) → Nat); let y = F(2); () }
+
+example : tailEnv c2 [("F", .sym 0), ("y", .sym 1)] = true := by native_decide
+-- …and the instrument before the conclusion: there IS one seal here, so the
+-- assertion above is about a ⇝-read seal and not about a program without one.
+example : (Term.numberSeals c2).1 = 1 := by native_decide
+
+/-! ## B. DETERMINISTIC — the same site at the same inputs is one value
+
+    Asserted at the rule rather than through a program, because a program cannot
+    reach one seal site twice in one state thread: `explore` forks a match into
+    paths that carry their own states, and a `fn` body is audited once. So the
+    rule is applied twice directly, in the state the first application left. -/
+
+def capSeal : Term := prog{
+  let N = 1; let F = (λ (X : Nat). N : Π (X : Nat) → Nat); () }
+
+def stAt (n : Nat) : St := { initSt with env := [(⟨0, "N"⟩, .know (Term.nat n))] }
+
+/-- Read a seal node in a given state: the value, and the state it leaves. -/
+def readSeal (node : Nat × Term × Term) (st : St) : Except String (Val × St) :=
+  match (sealNode defaultFuel node.1 node.2.1 node.2.2).run st with
+  | .ok v st' => .ok (v, st')
+  | .error e _ => .error e
+
+/-- Twice in one state: the values, whether they agree, and how many σs the
+    SECOND reading minted. -/
+def twiceSame : Option (Val × Val × Nat) :=
+  match sealOf capSeal with
+  | none => none
+  | some nd =>
+    match readSeal nd (stAt 1) with
+    | .error _ => none
+    | .ok (v1, st1) =>
+      match readSeal nd st1 with
+      | .error _ => none
+      | .ok (v2, st2) => some (v1, v2, st2.nextSym - st1.nextSym)
+
+-- ==-equal, and the second reading mints NOTHING — which is the stronger claim:
+-- the rule is a lookup the second time, so nothing downstream can tell the two
+-- readings apart even by counting.
+example : (twiceSame.map (fun p => p.1 == p.2.1)) = some true := by native_decide
+example : (twiceSame.map (fun p => p.2.2)) = some 0 := by native_decide
+
+/-! ## C. DISTINGUISHING — the same site at different inputs is not
+
+    The negative control the determinism assertion needs: if the table were keyed
+    on the site alone, B would pass for the wrong reason and a `fn` that returns
+    a sealed function would give every caller the same σ. Same state thread, same
+    node, one citation changed underneath it. -/
+
+def twiceDiff : Option (Val × Val) :=
+  match sealOf capSeal with
+  | none => none
+  | some nd =>
+    match readSeal nd (stAt 1) with
+    | .error _ => none
+    | .ok (v1, st1) =>
+      match readSeal nd { st1 with env := [(⟨0, "N"⟩, .know (Term.nat 2))] } with
+      | .error _ => none
+      | .ok (v2, _) => some (v1, v2)
+
+example : (twiceDiff.map (fun p => p.1 == p.2)) = some false := by native_decide
+
+/-! ## D. SITE STABILITY (§6's sharp edge, asked not assumed)
+
+    A site must survive the two things that rewrite a program without changing
+    it. **Macro expansion**: the numbering pass runs at the boundary, after every
+    macro, so `fn`'s elaboration cannot move one — asserted by numbering the
+    elaborated term. **α-canonicalization**: the pass reads structure and never a
+    name, so renaming every binder leaves every site where it was. -/
+
+def twoSeals : Term := prog{
+  let F = (λ (X : Nat). S X : Π (X : Nat) → Nat);
+  let G = (λ (Y : Nat). S Y : Π (Y : Nat) → Nat);
+  () }
+def twoSealsRenamed : Term := prog{
+  let F = (λ (Aa : Nat). S Aa : Π (Aa : Nat) → Nat);
+  let G = (λ (Bb : Nat). S Bb : Π (Bb : Nat) → Nat);
+  () }
+
+/-- Every site in a term, in traversal order. -/
+partial def sites : Term → List Nat
+  | .seal s t u => s :: sites t ++ sites u
+  | .letIn _ a b => sites a ++ sites b
+  | .seq a b | .app a b => sites a ++ sites b
+  | .lam _ d b | .pi _ d b | .sigmaT _ d b => sites d ++ sites b
+  | _ => []
+
+example : sites (Term.numberSeals twoSeals).2 = [0, 1] := by native_decide
+-- α-INSENSITIVE: rename every binder and the sites do not move.
+example : sites (Term.numberSeals twoSeals).2
+        = sites (Term.numberSeals twoSealsRenamed).2 := by native_decide
+-- And they are DISTINCT, so two textually identical seals at two program points
+-- stay two functions — which is what makes the site a site and not a hash.
+example : (Term.numberSeals twoSeals).1 = 2 := by native_decide
+
+/-! ## E. THE EXECUTING MACHINE GAINS NOTHING
+
+    The acceptance contract's own words: no comparison, no ⇝ detour. Concrete
+    evaluation reads a seal transparently, so it never asks which σ a site has —
+    and the table it would have to compare against is empty when the program
+    ends. (The `fn` here is REACHED, so the assertion is not vacuous: `y` holds
+    what the callee computed.) -/
+
+def execProg : Term := prog{
+  fn Inc (n : Nat) -> Nat { S n };
+  let y = Inc(2);
+  () }
+
+def execSealSites : Option Nat :=
+  match (do let _ ← readR defaultFuel (atBoundary execProg); endScope defaultFuel).run
+      { initSt with executing := true } with
+  | .ok _ st => some st.sealSites.length
+  | .error _ _ => none
+
+example : execSealSites = some 0 := by native_decide
+example : progRunsTo execProg [("Inc", .closure [] (Term.lamTel
+            [(⟨0, "n"⟩, .const "Nat")] (.ctorApp "S" [.var ⟨0, "n"⟩]))),
+          ("y", Val.nat 3)] = true := by native_decide
+
+end Dllbc.Tests.S32Seal
+end
+-- └── end of the M32 R3 ⇝-sealing battery ─────────────────────────────────────
+
+-- ┌── the M32 R3 backstop-demolition battery ───────────────────────────────────
+section
+namespace Dllbc.Tests.S32Backstop
+open Dllbc
+
+/-! # What is left of the mode backstop (suspensions.md §2.5, M32 R3)
+
+    Stage A enforced "a function may not land in a runtime binding" at THREE
+    sites. R3 leaves ONE — `refuseFnBinding`, at the `let`, whose survivor
+    assertion is `S27Lam.m1` (`let g = ih`, still refused with the fix in the
+    message) and `S31A.f1read`/`f2read` for the message that moved. This battery
+    is the evidence for the site that went and the pin on the rule that could
+    not land. -/
+
+-- **`bindFields`' site went because it is UNREACHABLE**, not because it is
+-- redundant, and this is the argument as a program: to put a function in a
+-- constructor field you must ⇒-read one, and the bindings that hold one are
+-- capital, which the erasure fence refuses. The field never receives a function,
+-- so the check there had nothing left to catch.
+def fieldFn : Term := prog{
+  fn Inc (n : Nat) -> Nat { S n };
+  let p = Pair(Inc, 1);
+  () }
+example : progRejects fieldFn "cannot be ⇒-moved" = true := by native_decide
+
+/-! ## THE PIN: §2.5's rule, and the corpus fact that blocks it
+
+    §2.5 asks that a runtime binding never hold a function, `let f = Add 1`
+    included, and that the backstop then be derivable. It cannot be had yet, and
+    the reason is not effort: **a proof of a ∀-statement is a λ**, the corpus
+    binds those at lowercase names (`let cnt = MkL lo hi hcnt` and its siblings,
+    in quicksort and the array sort), and capitalising them fails at the RETURN —
+    a Σ component is read by ⇒, and the fence refuses a ⇒-read of a capital
+    binding. Nothing in this calculus distinguishes the two shapes: both bind a
+    partial application at a Π type, and there is no Prop/Type split to say one
+    is a proof and the other a computation.
+
+    Pinned as ACCEPTED rather than left silent, so R3b (§2.1's binder migration,
+    which is what has to move first) inherits a test that goes red if someone
+    concludes the rule already holds.
+
+    **R3b RAN the migration and re-ran the attempt, and these two are still
+    ACCEPTED — §2.5 is refuted a SECOND time.** With `readR`'s λ arm made to
+    refuse, the flagship reds at `readR (⇒): a λ is a function value and ⇒ may
+    not construct one`, exactly where R3 measured it, and `sort2` goes with it.
+    The migration moved the Σ COMPONENT's mode (below); it did not and could not
+    move the two places a λ still reaches ⇒ — a literal λ written in a
+    constructor argument (`Pair(SplitANil …, λ (Q : Nat). Refl)`), which is not a
+    body's tail and so has no type in hand, and a Σ chain's TAIL, which has no
+    binder to put a mode on. The refusal was reverted; these stay accepted. -/
+
+-- §2.5's own example, ACCEPTED: `Add 1` is a function and `f` is a runtime
+-- binding.
+def computePartial : Term := prog{ let f = Add 1; () }
+example : progOk computePartial = true := by native_decide
+
+-- Its indistinguishable twin — a λ-valued runtime binding, which is the shape a
+-- staged proof-builder takes. Accepted by the same rule, and it is the one that
+-- MUST be, because the flagship returns values built this way.
+def lamValued : Term := prog{ let f = λ (N : Nat). Add N 1; () }
+example : progOk lamValued = true := by native_decide
+
+/-! ## R3b: THE Σ COMPONENT'S BINDER MODE, and exactly how far it reaches
+
+    R3's wall was `fence: 'Cnt' … cannot be ⇒-moved` — a capital binding handed
+    out as a Σ component, where `readArgs` reads a `ctorApp`'s arguments with no
+    type in hand and therefore ⇒-reads all of them. R3b gives the tail of a body
+    a type-directed read (`readResult`): a `Pair` checked against a `Σ` reads each
+    component by that component's BINDER, so a capital Σ binder makes its
+    component comptime and its value ⇝-read.
+
+    These two programs are that rule and its negative control, and they differ in
+    ONE CHARACTER — the case of the Σ's binder. -/
+
+open Dllbc.StdLemmas in
+/-- A proof returned as a Σ component at a **capital** binder: ⇝-read, accepted. -/
+def sigmaProofCapital : Term := prog{
+  fn F (n : Nat) -> Σ (H : Le n n) → Nat { let H0 = LeRefl n; Pair(H0, n) };
+  () }
+example : progOk sigmaProofCapital = true := by native_decide
+
+open Dllbc.StdLemmas in
+/-- The same program with the Σ binder LOWERCASE: the component is ⇒-read, and
+    the fence refuses the capital binding — which is the wall R3 measured, still
+    standing where §2.1 says it should. Without this control the acceptance above
+    would also pass for a rule that simply stopped fencing. -/
+def sigmaProofLower : Term := prog{
+  fn F (n : Nat) -> Σ (h : Le n n) → Nat { let H0 = LeRefl n; Pair(H0, n) };
+  () }
+example : progRejects sigmaProofLower "cannot be ⇒-moved" = true := by native_decide
+
+open Dllbc.StdLemmas in
+/-- **THE RESIDUAL, pinned as a program**: a Σ chain's LAST component has no
+    binder, so §2.1 gives it no mode and there is nothing for `readResult` to
+    read. The same proof, at the same capital binding, in the tail position
+    instead of a bindered one — REJECTED, and the rejection is the wall itself.
+
+    This is where quicksort's `cnt` sits. Its ensures is
+    `Σ (hi : List Nat) → … → Π n. Id …`, and the trailing `Π n. Id …` is the
+    ∀-proof: five components have binders and the sixth is the tail. So the
+    corpus's own instance of §2.5's blocker survives the migration for a reason
+    that is now structural and small — a spelling, not a rule.
+
+    What it would take: a mode for the tail. `⇝τ` already exists and already
+    survives readback; what does not exist is a surface way to write it there,
+    because `Σ (x : A) → B` gives `A` a binder and `B` none. Either the surface
+    grows a marker for a Σ's tail, or a proof-carrying tail is spelled
+    `Σ (X : A) → Σ (P : B) → Unit` and the corpus's consumers destructure one
+    level deeper. -/
+def sigmaTailProof : Term := prog{
+  fn F (n : Nat) -> Σ (H : Le n n) → Le n n { let H0 = LeRefl n; Pair(H0, H0) };
+  () }
+example : progRejects sigmaTailProof "cannot be ⇒-moved" = true := by native_decide
+
+end Dllbc.Tests.S32Backstop
+end
+-- └── end of the M32 R3 backstop-demolition battery ───────────────────────────
+
+-- ┌── M32 R4: `callV` retires, and the split it looked like it carried ─────────
+section
+namespace Dllbc.Tests.S32Spine
+
+open Dllbc Dllbc.Tests
+open Dllbc.StdLemmas (LeRefl)
+
+/-! # The application spine, and what retiring a node must not take with it
+
+    `Term.callV` is gone: `f(a, b)` is surface sugar for `.app (.app f a) b`, so
+    the surface's n-ary shape and the document's binary grammar are one thing.
+
+    The hazard the plan named is that `callV` LOOKED like it carried the
+    mint-vs-remember split, when §12 decision 5 says that split is ARROW-keyed —
+    ⇒ mints a fresh existential at the instantiated codomain, ⇝ remembers the
+    structured neutral. With two nodes you cannot tell which key is load-bearing;
+    with one you can, and these are the assertions that say so. -/
+
+/-! ## §A. The two spellings are ONE TERM
+
+    Not "behave the same" — the same `Term`, which is the strongest form the
+    claim has and the one that makes every other assertion about calls apply to
+    juxtaposition automatically. -/
+
+def spelledCall : Term := prog{ let f = λ (x : Nat). x; let z = f(2); () }
+def spelledJux  : Term := prog{ let f = λ (x : Nat). x; let z = f 2; () }
+example : Term.beq spelledCall spelledJux = true := by native_decide
+
+/-! ## §B. ⇒ MINTS at the instantiated codomain
+
+    An abstract `σ : Π` applied under ⇒ forgets the application and keeps what
+    the type promised — a FRESH σ per call, which is why the two calls below get
+    distinct ones. This is `callV`'s old rule, and it now runs off the value. -/
+
+def mintTwice : Term := prog{
+  let F = (λ (x : Nat). x : Π (x : Nat) → Nat); let y = F(2); let z = F(2); () }
+example : tailEnv mintTwice [("F", .sym 0), ("y", .sym 1), ("z", .sym 2)] = true := by
+  native_decide
+
+-- …and the juxtaposed spelling mints too, which is §A's consequence made
+-- explicit: if this ever diverges from the line above, the split has gone
+-- node-keyed again.
+def mintTwiceJux : Term := prog{
+  let F = (λ (x : Nat). x : Π (x : Nat) → Nat); let y = F 2; let z = F 2; () }
+example : tailEnv mintTwiceJux [("F", .sym 0), ("y", .sym 1), ("z", .sym 2)] = true := by
+  native_decide
+
+/-! ## §C. ⇝ REMEMBERS the structured neutral — and refuses to ENTER
+
+    The other half, and it needs both directions. ⇝ has a reading of an
+    application of an ABSTRACT function (the neutral `f a`), and no reading at
+    all of an application that must be ENTERED — a sealed function's result is a
+    fresh existential minted at an event, and ⇝ has no events. `reflectC` keyed
+    that on the `.callV` node until R4; it keys it on the callee's VALUE now. -/
+
+-- REMEMBERED: a Π-typed comptime parameter applied inside a spec position. The
+-- program checks, which is the assertion — the neutral has a reading.
+def rememberNeutral : Term := prog{
+  fn Use (G : Π (x : Nat) → Nat, n : Nat) -> Id Nat (G n) (G n) { Refl };
+  () }
+example : progOk rememberNeutral = true := by native_decide
+
+-- REFUSED: a SEALED function's call, ⇝-read at a capital `let`. Entering is an
+-- event; this is the refusal that retired with `.callV` and came back on the
+-- value.
+def enterRefused : Term := prog{
+  fn GiveLe (a : Nat) -> Le a a { %LeRefl a };
+  fn Caller (n : Nat) -> Unit { let P = GiveLe(n); () };
+  () }
+example : progRejects enterRefused "not in the comptime fragment" = true := by native_decide
+
+/-! ## §D. A `.var`-headed spine is IMPERATIVE
+
+    `Term.imperative` named `.callV` explicitly, and the classification is what
+    `Term.lamImperative` reads to decide whether applying a λ is ⇒-entry. Read
+    off the arguments alone, a nullary `fn` whose body is only a call would
+    classify PURE — its one binder is the Unit-desugar's comptime `U§`, so the
+    binder half cannot save it, and `.app (.var g) .unit` has no imperative
+    leaf. A `.const`/`.pvar` head stays comptime, which is the pure spine. -/
+
+example : Term.imperative (.app (.var ⟨0, "g"⟩) .unit) = true := by native_decide
+example : Term.imperative (.app (.const "Len") (.var ⟨0, "l"⟩)) = false := by native_decide
+example : Term.imperative (.app (.pvar "Le") (.pvar "a")) = false := by native_decide
+-- A bare `.var` is a snapshot read, not a call, and both arrows have a rule.
+example : Term.imperative (.var ⟨0, "g"⟩) = false := by native_decide
+
+/-! ## §E. The `[k]` PERMUTATION survives (E8's standing decision)
+
+    `retarget` reorders a call's arguments to match a `[k]`-hoisted callee's
+    telescope — the hoist puts the scrutinee first, so a call written in
+    declaration order has to be reordered the same way, and omitting it silently
+    passes a borrow where a `Nat` is expected. E8 keeps that at the surface.
+    Retiring `callV` changed what `retarget` BUILDS and not what it decides, and
+    these assert the decision against the new shape rather than against a
+    program that could pass for other reasons. -/
+
+-- `[k]` at parameter 1: the built spine puts argument 1 FIRST.
+example : Term.beq
+    (FnMacro.retarget [("f", ⟨7, "f"⟩, some 1)] (.call "f" [.unit, .type]))
+    (Term.appSpine (.var ⟨7, "f"⟩) [.type, .unit]) = true := by native_decide
+
+-- …and with no hint, declaration order is kept — without which the line above
+-- would pass on a `retarget` that reordered unconditionally.
+example : Term.beq
+    (FnMacro.retarget [("f", ⟨7, "f"⟩, none)] (.call "f" [.unit, .type]))
+    (Term.appSpine (.var ⟨7, "f"⟩) [.unit, .type]) = true := by native_decide
+
+-- The nullary desugar's `()` still arrives at the call site (M32 R2), which is
+-- what makes a no-argument `fn` a spine at all rather than a bare variable.
+example : Term.beq
+    (FnMacro.retarget [("f", ⟨7, "f"⟩, none)] (.call "f" []))
+    (.app (.var ⟨7, "f"⟩) .unit) = true := by native_decide
+
+-- And the spine reader inverts the builder, head and all.
+example : (Term.appSpineVar? (Term.appSpine (.var ⟨9, "f"⟩) [.unit, .type]))
+    == some (⟨9, "f"⟩, [.unit, .type]) := by native_decide
+example : (Term.appSpineVar? (Term.appSpine (.const "Len") [.unit])).isSome = false := by
+  native_decide
+
+end Dllbc.Tests.S32Spine
+end
+-- └── end of the M32 R4 spine battery ─────────────────────────────────────────

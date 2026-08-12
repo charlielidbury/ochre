@@ -63,7 +63,7 @@ namespace Dllbc.Tests.S23Direct
 
 /-- Type-check a closed term against a closed type in the pure seed (as in §18/§19). -/
 def chk (tm ty : Term) : Bool :=
-  match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasType 3000 v t).run (seedPure [] []) with
+  match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasTypeT 3000 v t).run (seedPure [] []) with
   | .ok r _ => r
   | .error _ _ => false
 
@@ -77,21 +77,21 @@ def chk (tm ty : Term) : Bool :=
     assembled, never taken apart. -/
 
 def and_left : Term := prog{
-  λ (a : Nat). λ (b : Nat). λ (c : Nat).
-    λ (p : Σ (h : Le a b) → Le b c).
-      elim p return (λ (q : Σ (h : Le a b) → Le b c). Le a b) {
-        Pair (x) (y) => x } }
+  λ (A : Nat). λ (B : Nat). λ (C : Nat).
+    λ (P : Σ (h : Le A B) → Le B C).
+      elim P return (λ (Q : Σ (h : Le A B) → Le B C). Le A B) {
+        Pair (X) (Y) => X } }
 def and_left_ty : Term := prog{
-  Π (a : Nat) → Π (b : Nat) → Π (c : Nat) → (Σ (h : Le a b) → Le b c) → Le a b }
+  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → (Σ (h : Le A B) → Le B C) → Le A B }
 example : chk and_left and_left_ty = true := by native_decide
 
 def and_right : Term := prog{
-  λ (a : Nat). λ (b : Nat). λ (c : Nat).
-    λ (p : Σ (h : Le a b) → Le b c).
-      elim p return (λ (q : Σ (h : Le a b) → Le b c). Le b c) {
-        Pair (x) (y) => y } }
+  λ (A : Nat). λ (B : Nat). λ (C : Nat).
+    λ (P : Σ (h : Le A B) → Le B C).
+      elim P return (λ (Q : Σ (h : Le A B) → Le B C). Le B C) {
+        Pair (X) (Y) => Y } }
 def and_right_ty : Term := prog{
-  Π (a : Nat) → Π (b : Nat) → Π (c : Nat) → (Σ (h : Le a b) → Le b c) → Le b c }
+  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → (Σ (h : Le A B) → Le B C) → Le B C }
 example : chk and_right and_right_ty = true := by native_decide
 
 -- The projections COMPOSE with an ordinary lemma: destructure the conjunction and
@@ -99,12 +99,12 @@ example : chk and_right and_right_ty = true := by native_decide
 -- returned certificate — the reason the recursor is a prerequisite for the rest of
 -- M23 rather than a nicety.
 def and_trans : Term := prog{
-  λ (a : Nat). λ (b : Nat). λ (c : Nat).
-    λ (p : Σ (h : Le a b) → Le b c).
-      elim p return (λ (q : Σ (h : Le a b) → Le b c). Le a c) {
-        Pair (x) (y) => LeTrans a b c x y } }
+  λ (A : Nat). λ (B : Nat). λ (C : Nat).
+    λ (P : Σ (h : Le A B) → Le B C).
+      elim P return (λ (Q : Σ (h : Le A B) → Le B C). Le A C) {
+        Pair (X) (Y) => LeTrans A B C X Y } }
 def and_trans_ty : Term := prog{
-  Π (a : Nat) → Π (b : Nat) → Π (c : Nat) → (Σ (h : Le a b) → Le b c) → Le a c }
+  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → (Σ (h : Le A B) → Le B C) → Le A C }
 example : chk and_trans and_trans_ty = true := by native_decide
 
 /-! ## (i.b) Dependent Σ: the second projection needs a dependent motive
@@ -115,32 +115,32 @@ example : chk and_trans and_trans_ty = true := by native_decide
     elimination proper, not a pair of independent projections. -/
 
 def sfst : Term := prog{
-  λ (p : Σ (n : Nat) → Le (S Z) n).
-    elim p return (λ (q : Σ (n : Nat) → Le (S Z) n). Nat) {
-      Pair (x) (y) => x } }
+  λ (P : Σ (n : Nat) → Le (S Z) n).
+    elim P return (λ (Q : Σ (n : Nat) → Le (S Z) n). Nat) {
+      Pair (X) (Y) => X } }
 def sfst_ty : Term := prog{ (Σ (n : Nat) → Le (S Z) n) → Nat }
 example : chk sfst sfst_ty = true := by native_decide
 
 def ssnd : Term := prog{
-  λ (p : Σ (n : Nat) → Le (S Z) n).
-    elim p return (λ (q : Σ (n : Nat) → Le (S Z) n). Le (S Z) (sfst q)) {
-      Pair (x) (y) => y } }
-def ssnd_ty : Term := prog{ Π (p : Σ (n : Nat) → Le (S Z) n) → Le (S Z) (sfst p) }
+  λ (P : Σ (n : Nat) → Le (S Z) n).
+    elim P return (λ (Q : Σ (n : Nat) → Le (S Z) n). Le (S Z) (sfst Q)) {
+      Pair (X) (Y) => Y } }
+def ssnd_ty : Term := prog{ Π (P : Σ (n : Nat) → Le (S Z) n) → Le (S Z) (sfst P) }
 example : chk ssnd ssnd_ty = true := by native_decide
 
 /-! ## (i.c) The ι-rule computes -/
 
 -- `sfst (Pair 2 (LeRefl 2)) ⇝ 2`, by ι on a concrete Pair.
-def pv (t : Term) : Val := Val.nfV 4000 (Val.Term.toValPure t)
+def pv (t : Term) : Term := Pure.nf 4000 t
 def vnat : Nat → Val | 0 => .ctor "Z" [] | k + 1 => .ctor "S" [vnat k]
 def sfstApp : Term := prog{ sfst (Pair (S (S Z)) (LeRefl (S (S Z)))) }
-example : (pv sfstApp == vnat 2) = true := by native_decide
+example : (Val.know (pv sfstApp) == vnat 2) = true := by native_decide
 
 -- ι fires under binders on a Pair whose COMPONENTS are neutral — the case that
 -- matters, since a caller destructures a certificate about symbolic values, never
 -- a closed one: `λ n. λ h. sfst (Pair n h)` normalizes to `λ n. λ h. n`.
-example : (pv (prog{ λ (n : Nat). λ (h : Le (S Z) n). sfst (Pair n h) }) ==
-           pv (prog{ λ (n : Nat). λ (h : Le (S Z) n). n })) = true := by native_decide
+example : (pv (prog{ λ (N : Nat). λ (H : Le (S Z) N). sfst (Pair N H) }) ==
+           pv (prog{ λ (N : Nat). λ (H : Le (S Z) N). N })) = true := by native_decide
 
 -- The dual: a neutral TARGET has no `Pair` to fire on, so the spine is a legal
 -- stuck value rather than an error — which is what lets `ssnd`'s motive above
@@ -155,10 +155,10 @@ example : (pv (prog{ λ (n : Nat). λ (h : Le (S Z) n). sfst (Pair n h) }) ==
 -- (1) Wrong arm component: `Pair(x)(y) => y` at the FIRST projection's type. The
 -- arm must inhabit `P (Pair x y)`, which is `Le a b` — `y : Le b c` does not.
 def and_left_lie : Term := prog{
-  λ (a : Nat). λ (b : Nat). λ (c : Nat).
-    λ (p : Σ (h : Le a b) → Le b c).
-      elim p return (λ (q : Σ (h : Le a b) → Le b c). Le a b) {
-        Pair (x) (y) => y } }
+  λ (A : Nat). λ (B : Nat). λ (C : Nat).
+    λ (P : Σ (h : Le A B) → Le B C).
+      elim P return (λ (Q : Σ (h : Le A B) → Le B C). Le A B) {
+        Pair (X) (Y) => Y } }
 example : chk and_left_lie and_left_ty = false := by native_decide
 
 -- (2) Wrong RESULT type: `sfst` returns `Nat`, and the claim is that it returns a
@@ -172,10 +172,10 @@ example : chk sfst sfst_lie_ty = false := by native_decide
 -- off by one, and nothing bridges it. This is the branch that would silently pass
 -- if the motive were inferred from the arm rather than read off what is written.
 def ssnd_lie : Term := prog{
-  λ (p : Σ (n : Nat) → Le (S Z) n).
-    elim p return (λ (q : Σ (n : Nat) → Le (S Z) n). Le (S Z) (S (sfst q))) {
-      Pair (x) (y) => y } }
-def ssnd_lie_ty : Term := prog{ Π (p : Σ (n : Nat) → Le (S Z) n) → Le (S Z) (S (sfst p)) }
+  λ (P : Σ (n : Nat) → Le (S Z) n).
+    elim P return (λ (Q : Σ (n : Nat) → Le (S Z) n). Le (S Z) (S (sfst Q))) {
+      Pair (X) (Y) => Y } }
+def ssnd_lie_ty : Term := prog{ Π (P : Σ (n : Nat) → Le (S Z) n) → Le (S Z) (S (sfst P)) }
 example : chk ssnd_lie ssnd_lie_ty = false := by native_decide
 
 -- (4) Wrong TARGET: `sigmaRec` applied to something that is not of the Σ type it
@@ -496,7 +496,7 @@ def soUnder (ret tail : Term) : Term := prog{
                   -- The suffix conjunct needs nothing: `Drop (S i2) (Cons h t)` IS
                   -- `Drop i2 t`, so the callee's `h2` is already the goal.
                   let H0 = *hd;
-                  let c1 = IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons H0 a)
+                  let c1 = IdCongr (List Nat) (List Nat) (λ (A : List Nat). Cons H0 A)
                              (*tl) y1 h1;
                   Pair(rr, Pair(c1, h2)) } } }
               }
@@ -548,7 +548,7 @@ def splitOffLieHead : Term := prog{
                 let y1 = Take i2 (*tl);
                 let p = SplitOff(&m *tl, i2, hi);
                 match p { Pair(rr, q) => match q { Pair(h1, h2) => {
-                  let c1 = IdCongr (List Nat) (List Nat) (λ (a : List Nat). a)
+                  let c1 = IdCongr (List Nat) (List Nat) (λ (A : List Nat). A)
                              (*tl) y1 h1;
                   Pair(rr, Pair(c1, h2)) } } }
               }
@@ -619,8 +619,9 @@ example : runSplit [1,2,3] 3 = true := by native_decide      -- take everything,
 
     **One chain serves both twin families, and that is a refinement of M28 χ's
     forced-duplication note.** χ wrote `insert_at`'s header a second time inside
-    `pick`'s program because two `%`-spliced chains collide at `progBase`, and read
-    it as the price of the guard. The price is only paid when the two functions need
+    `pick`'s program because two `%`-spliced chains collided at `progBase` (an id
+    collision M32 R4 retired along with the arithmetic), and read it as the price
+    of the guard. The price is only paid when the two functions need
     to be varied through DIFFERENT prefixes. Here they do not: a lying `set_at` is
     refused at its own seal, and a sealed `let` fires its audit at its own node in
     PROGRAM ORDER (§8, and `S26Prog` §B asserts it), so the message a `set_at` twin
@@ -641,7 +642,7 @@ def setSwapUnder (sret wret tail : Term) : Term := prog{
                 let y = Set i2 x (*tl);
                 let h = SetAt(&m *tl, i2, x, hi);
                 let H0 = *hd;
-                IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons H0 a) (*tl) y h
+                IdCongr (List Nat) (List Nat) (λ (A : List Nat). Cons H0 A) (*tl) y h
               }
             }
         } };
@@ -692,12 +693,12 @@ def setSwapUnder (sret wret tail : Term) : Term := prog{
           let OldV0 = old *v;
           let H1 = h1;
           let Bridge0 = bridge;
-          let Finish = (λ (e : List Nat). λ (hh : Id (List Nat) e (Set I0 B0 V0)).
-                          IdTrans (List Nat) e (Set I0 B0 V0) (SwapL I0 J0 OldV0)
-                            hh
+          let Finish = (λ (E : List Nat). λ (Hh : Id (List Nat) E (Set I0 B0 V0)).
+                          IdTrans (List Nat) E (Set I0 B0 V0) (SwapL I0 J0 OldV0)
+                            Hh
                             (IdTrans (List Nat) (Set I0 B0 V0) (Set I0 B0 (Set J0 A0 OldV0))
                                (SwapL I0 J0 OldV0)
-                               (IdCongr (List Nat) (List Nat) (λ (z : List Nat). Set I0 B0 z)
+                               (IdCongr (List Nat) (List Nat) (λ (Z0 : List Nat). Set I0 B0 Z0)
                                  V0 (Set J0 A0 OldV0) H1)
                                Bridge0));
           let h2 = SetAt(&m *v, i, b, hi2);
@@ -797,7 +798,7 @@ def insUnder (ret tail : Term) : Term := prog{
                 let y = InsertL k2 x (*tl);
                 let h = InsertAt(&m *tl, k2, x);
                 let H0 = *hd;
-                IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons H0 a) (*tl) y h
+                IdCongr (List Nat) (List Nat) (λ (A : List Nat). Cons H0 A) (*tl) y h
               }
             }
         } };
@@ -815,11 +816,11 @@ example : progRejects (insUnder (exitIs oldvT) .unit)
 
 -- `InsertL` computes, including the past-the-end case the `Nil` branch implements.
 def insLC (k x : Nat) (l : List Nat) : Term := insLT (tnatT k) (tnatT x) (tlistT l)
-example : (pv (insLC 0 9 [1,2,3]) == vlistV [9,1,2,3]) = true := by native_decide
-example : (pv (insLC 2 9 [1,2,3]) == vlistV [1,2,9,3]) = true := by native_decide
-example : (pv (insLC 3 9 [1,2,3]) == vlistV [1,2,3,9]) = true := by native_decide
-example : (pv (insLC 5 9 [1,2,3]) == vlistV [1,2,3,9]) = true := by native_decide
-example : (pv (insLC 0 9 []) == vlistV [9]) = true := by native_decide
+example : (Val.know (pv (insLC 0 9 [1,2,3])) == vlistV [9,1,2,3]) = true := by native_decide
+example : (Val.know (pv (insLC 2 9 [1,2,3])) == vlistV [1,2,9,3]) = true := by native_decide
+example : (Val.know (pv (insLC 3 9 [1,2,3])) == vlistV [1,2,3,9]) = true := by native_decide
+example : (Val.know (pv (insLC 5 9 [1,2,3])) == vlistV [1,2,3,9]) = true := by native_decide
+example : (Val.know (pv (insLC 0 9 [])) == vlistV [9]) = true := by native_decide
 
 -- SUBJECT: executing-mode raw Term caller.
 def insCallerTail (l : List Nat) (k x : Nat) : Term :=
@@ -1032,9 +1033,10 @@ example : progOk concreteEq = true := by native_decide
     definitionally. (This is a better program anyway: index arithmetic, not control
     flow, which is how the mutation was going to be expressed regardless.) -/
 
--- `insert_at`'s header is repeated here rather than spliced: a `%`-spliced tail may
--- not declare functions (both chains number their function slots from `progBase`, so
--- the inner would shadow the outer — `bindFn` refuses it). One chain, both functions.
+-- `insert_at`'s header is repeated here rather than spliced: a `%`-spliced tail
+-- could not itself declare functions until M32 R4, because both chains numbered
+-- their slots from `progBase` and collided by id. It can now; one chain, both
+-- functions, is kept because it is what was written.
 def pick : Term := prog{
   fn InsertAt [k] (v : &mut List Nat, k : Nat, x : Nat) -> %insHonest
         { match k {
@@ -1046,19 +1048,19 @@ def pick : Term := prog{
                 let y = InsertL k2 x (*tl);
                 let h = InsertAt(&m *tl, k2, x);
                 let H0 = *hd;
-                IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons H0 a) (*tl) y h
+                IdCongr (List Nat) (List Nat) (λ (A : List Nat). Cons H0 A) (*tl) y h
               }
             }
         } };
   fn Pick (v : &mut List Nat, x : Nat, p : Nat)
         -> Id (List Nat) (*v)
-             (InsertL (boolRec (λ (b : Bool). Nat) Z (S Z) (Leb x p)) x (old *v))
+             (InsertL (boolRec (λ (B : Bool). Nat) Z (S Z) (Leb x p)) x (old *v))
         -- (M26-B) `ki`, not `K`. §6 makes capitalisation the binder-mode marker,
         -- and this binder is genuinely RUNTIME: `InsertAt` matches on the index
         -- it is passed. The capital was stylistic — this was the only binder in
         -- the whole corpus whose name contradicted its role, and the fence is
         -- what found it.
-        { let ki = boolRec (λ (b : Bool). Nat) Z (S Z) (Leb x p);
+        { let ki = boolRec (λ (B : Bool). Nat) Z (S Z) (Leb x p);
           InsertAt(&m *v, ki, x) };
   () }
 example : progOk pick = true := by native_decide
@@ -1071,24 +1073,31 @@ example : progOk pick = true := by native_decide
     the problem. `ub_pick` is the shape every partition-invariant lemma will take. -/
 
 def ub_pick : Term := prog{
-  λ (x : Nat). λ (p : Nat). λ (l : List Nat). λ (h : Ub p l).
-    elim (Leb x p) return (λ (b : Bool).
-        Id Bool (Leb x p) b →
-        Ub p (Take (boolRec (λ (bb : Bool). Nat) (S Z) Z b)
-                (InsertL (boolRec (λ (bb : Bool). Nat) Z (S Z) b) x l))) {
-      True => λ (e : Id Bool (Leb x p) True). Pair(LebTrueLe x p e, unit),
-      False => λ (e : Id Bool (Leb x p) False). unit
+  λ (X : Nat). λ (P : Nat). λ (L : List Nat). λ (H : Ub P L).
+    elim (Leb X P) return (λ (B : Bool).
+        Id Bool (Leb X P) B →
+        Ub P (Take (boolRec (λ (Bb : Bool). Nat) (S Z) Z B)
+                (InsertL (boolRec (λ (Bb : Bool). Nat) Z (S Z) B) X L))) {
+      True => λ (E : Id Bool (Leb X P) True). Pair(LebTrueLe X P E, unit),
+      False => λ (E : Id Bool (Leb X P) False). unit
     } Refl }
 def ub_pick_ty : Term := prog{
-  Π (x : Nat) → Π (p : Nat) → Π (l : List Nat) → Ub p l →
-    Ub p (Take (boolRec (λ (bb : Bool). Nat) (S Z) Z (Leb x p))
-            (InsertL (boolRec (λ (bb : Bool). Nat) Z (S Z) (Leb x p)) x l)) }
+  Π (X : Nat) → Π (P : Nat) → Π (L : List Nat) → Ub P L →
+    Ub P (Take (boolRec (λ (Bb : Bool). Nat) (S Z) Z (Leb X P))
+            (InsertL (boolRec (λ (Bb : Bool). Nat) Z (S Z) (Leb X P)) X L)) }
 example : chk ub_pick ub_pick_ty = true := by native_decide
 
 -- `Ub`/`Lb` compute, and are Σ-chained (so `sigmaRec` consumes them).
+--
+-- **The hand-written side's Σ binders are CAPITAL since M32 R3b**, and that is a
+-- claim rather than a spelling: `Ub`/`Lb` chain PROOF components, §2.1 makes a
+-- proof component's binder capital, and a capital Σ binder now carries `⇝` on its
+-- domain — so a lowercase twin here would no longer be the same type. The
+-- comparison is by `pv`, which prints the marker, so this is the assertion that
+-- the library's own components declare themselves comptime.
 example : (pv (prog{ Ub (S (S Z)) (Cons (S Z) (Cons (S (S Z)) Nil)) }) ==
-           pv (prog{ Σ (h : Le (S Z) (S (S Z))) → Σ (h2 : Le (S (S Z)) (S (S Z))) → Unit })) = true := by native_decide
-example : (pv (prog{ Lb Z (Cons (S Z) Nil) }) == pv (prog{ Σ (h : Le Z (S Z)) → Unit })) = true := by native_decide
+           pv (prog{ Σ (H : Le (S Z) (S (S Z))) → Σ (H2 : Le (S (S Z)) (S (S Z))) → Unit })) = true := by native_decide
+example : (pv (prog{ Lb Z (Cons (S Z) Nil) }) == pv (prog{ Σ (H : Le Z (S Z)) → Unit })) = true := by native_decide
 
 /-! ### The unshifted-motive question, settled: LATENT AND UNREACHABLE
 
@@ -1117,15 +1126,15 @@ example : (pv (prog{ Lb Z (Cons (S Z) Nil) }) == pv (prog{ Σ (h : Le Z (S Z)) �
     first. -/
 
 def openMotiveL : Term := prog{
-  λ (p : Nat). λ (l : List Nat).
-    elim l return (λ (lz : List Nat). Le p p) { Nil => LeRefl p, Cons (h) (t) ih => ih } }
-def openMotiveL_ty : Term := prog{ Π (p : Nat) → Π (l : List Nat) → Le p p }
+  λ (P : Nat). λ (L : List Nat).
+    elim L return (λ (Lz : List Nat). Le P P) { Nil => LeRefl P, Cons (H) (T) Ih => Ih } }
+def openMotiveL_ty : Term := prog{ Π (P : Nat) → Π (L : List Nat) → Le P P }
 example : chk openMotiveL openMotiveL_ty = true := by native_decide
 
 def openMotiveN : Term := prog{
-  λ (p : Nat). λ (n : Nat).
-    elim n return (λ (nz : Nat). Le p p) { Z => LeRefl p, S (m) ih => ih } }
-def openMotiveN_ty : Term := prog{ Π (p : Nat) → Π (n : Nat) → Le p p }
+  λ (P : Nat). λ (N : Nat).
+    elim N return (λ (Nz : Nat). Le P P) { Z => LeRefl P, S (M) Ih => Ih } }
+def openMotiveN_ty : Term := prog{ Π (P : Nat) → Π (N : Nat) → Le P P }
 example : chk openMotiveN openMotiveN_ty = true := by native_decide
 
 /-! ### A CHECKER GAP, filed for §9: a `let`-bound value is never type-checked
@@ -1189,26 +1198,26 @@ example : chk sap_app sap_app_ty = true := by native_decide
 -- where it wants `Σ (Le h p) → Ub p t`. Without a's elements being BELOW the pivot
 -- the splice is not sorted, and the check says so.
 def sap_lie_ub_ty : Term := prog{
-  Π (p : Nat) → Π (a : List Nat) → Π (b : List Nat) →
-    Sorted a → Lb p a → Sorted b → Lb p b → Sorted (Append a (Cons p b)) }
+  Π (P : Nat) → Π (A : List Nat) → Π (B : List Nat) →
+    Sorted A → Lb P A → Sorted B → Lb P B → Sorted (Append A (Cons P B)) }
 example : chk SortedAppendPivot sap_lie_ub_ty = false := by native_decide
 
 -- (2) `Lb p b` weakened to `Ub p b`: `LbBound` is fed the wrong direction, so the
 -- pivot no longer bounds b's head.
 def sap_lie_lb_ty : Term := prog{
-  Π (p : Nat) → Π (a : List Nat) → Π (b : List Nat) →
-    Sorted a → Ub p a → Sorted b → Ub p b → Sorted (Append a (Cons p b)) }
+  Π (P : Nat) → Π (A : List Nat) → Π (B : List Nat) →
+    Sorted A → Ub P A → Sorted B → Ub P B → Sorted (Append A (Cons P B)) }
 example : chk SortedAppendPivot sap_lie_lb_ty = false := by native_decide
 
 -- (3) The `Nil` arm of the transport returning the wrong hypothesis: past the end of
 -- `t` the new head is the PIVOT, so only `Le h p` inhabits the goal; handing back the
 -- (vacuous) `Bound h Nil` does not.
 def bound_append_lie : Term := prog{
-  λ (h : Nat). λ (p : Nat). λ (t : List Nat). λ (b : List Nat).
-    elim t return (λ (tz : List Nat).
-        Bound h tz → Le h p → Bound h (Append tz (Cons p b))) {
-      Nil => λ (hb : Unit). λ (hp : Le h p). hb,
-      Cons (h2) (t2) ih => λ (hb : Le h h2). λ (hp : Le h p). hb } }
+  λ (H : Nat). λ (P : Nat). λ (T : List Nat). λ (B : List Nat).
+    elim T return (λ (Tz : List Nat).
+        Bound H Tz → Le H P → Bound H (Append Tz (Cons P B))) {
+      Nil => λ (Hb : Unit). λ (Hp : Le H P). Hb,
+      Cons (H2) (T2) Ih => λ (Hb : Le H H2). λ (Hp : Le H P). Hb } }
 example : chk bound_append_lie Dllbc.StdLemmas.BoundAppendTy = false := by native_decide
 
 -- (4) Liveness of the `Ub` hypothesis at concrete values: pivot 0 under a left part
@@ -1347,10 +1356,10 @@ def fuelT : Term := .var ⟨0, "fuel"⟩
 def partHonest : Term := prog{
   Σ (hi : List Nat) → Σ (hub : Ub %pT (*%vfT)) → Σ (hlb : Lb %pT hi)
     → Σ (hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ (hl2 : Le (Len hi) (Len (old *%vfT)))
-    → Π (n : Nat) → Id Nat (Add (Count n (*%vfT)) (Count n hi)) (Count n (old *%vfT)) }
+    → Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (Count N (old *%vfT)) }
 
 def qsHonest : Term := prog{
-  Σ (hs : Sorted (*%vfT)) → Π (n : Nat) → Id Nat (Count n (*%vfT)) (Count n (old *%vfT)) }
+  Σ (hs : Sorted (*%vfT)) → Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) }
 
 /-- The sufficiency hypothesis's type — a telescope entry, so it is a parameter of
     the chain too. Its twin is the one that weakens it to `Unit`. -/
@@ -1371,7 +1380,7 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
           -- `Ub p Nil` and `Lb p Nil` are both `Unit`, and the Count goal is
           -- `Add Z Z = Z` — the empty Partition proves itself.
           Nil => { *v := Nil;
-                   Pair(Nil, Pair(unit, Pair(unit, Pair(unit, Pair(unit, λ (n : Nat). Refl))))) },
+                   Pair(Nil, Pair(unit, Pair(unit, Pair(unit, Pair(unit, λ (N : Nat). Refl))))) },
           Cons(x, rest) => match fuel {
             -- Out of fuel with a non-empty list: `Hf : Le (S (Len rest)) Z` IS
             -- `Bot`, so the path is dead and the audit admits an ex-falso at any
@@ -1394,12 +1403,12 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
             -- the name says so.
             let Rest0 = rest;
             let X0 = x;
-            let MkL = (λ (a : List Nat). λ (b : List Nat).
-                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n Rest0)).
-                          λ (n : Nat). CountConsL n X0 a b Rest0 (h n));
-            let MkR = (λ (a : List Nat). λ (b : List Nat).
-                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n Rest0)).
-                          λ (n : Nat). CountConsR n X0 a b Rest0 (h n));
+            let MkL = (λ (A : List Nat). λ (B : List Nat).
+                        λ (H : Π (N : Nat) → Id Nat (Add (Count N A) (Count N B)) (Count N Rest0)).
+                          λ (N : Nat). CountConsL N X0 A B Rest0 (H N));
+            let MkR = (λ (A : List Nat). λ (B : List Nat).
+                        λ (H : Π (N : Nat) → Id Nat (Add (Count N A) (Count N B)) (Count N Rest0)).
+                          λ (N : Nat). CountConsR N X0 A B Rest0 (H N));
             -- The lengths need no staged lambda: `Len rest` is a NAT, so naming the
             -- computed value once, while `rest` is live, is enough. (The counts
             -- cannot do this — `Count n rest` is a family over `n`, and it is the
@@ -1460,14 +1469,14 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
               let y = Append (*tl) w;
               let h = AppendBack(f2, &m *tl, w, Hf);
               let H0 = *hd;
-              IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons H0 a) (*tl) y h
+              IdCongr (List Nat) (List Nat) (λ (A : List Nat). Cons H0 A) (*tl) y h
             }
           }
       } };
   fn Quicksort [fuel] (fuel : Nat, v : &mut List Nat, hfuel : %suff) -> %qret
       { let l = *v;
         match l {
-          Nil => { *v := Nil; Pair(unit, λ (n : Nat). Refl) },
+          Nil => { *v := Nil; Pair(unit, λ (N : Nat). Refl) },
           Cons(x, rest) => match fuel {
             -- Out of fuel with a non-empty list: `hfuel : Le (S (Len rest)) Z` IS
             -- `Bot`, so the path is dead and the audit admits an ex-falso at any
@@ -1487,32 +1496,32 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
               -- over — which is the value this builder was freezing implicitly.
               let Rest0 = rest;
               let X0 = x;
-              let MkCnt = (λ (a : List Nat). λ (b : List Nat).
-                  λ (hp : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n Rest0)).
-                  λ (a2 : List Nat). λ (b2 : List Nat).
-                  λ (h1 : Π (n : Nat) → Id Nat (Count n a2) (Count n a)).
-                  λ (h2 : Π (n : Nat) → Id Nat (Count n b2) (Count n b)).
-                  λ (e : List Nat). λ (hap : Id (List Nat) e (Append a2 (Cons X0 b2))).
-                    λ (n : Nat).
-                      IdTrans Nat (Count n e) (Add (Count n a2) (Count n (Cons X0 b2)))
-                                   (Count n (Cons X0 Rest0))
-                        (IdTrans Nat (Count n e) (Count n (Append a2 (Cons X0 b2)))
-                                      (Add (Count n a2) (Count n (Cons X0 b2)))
-                           (IdCongr (List Nat) Nat (λ (z : List Nat). Count n z)
-                              e (Append a2 (Cons X0 b2)) hap)
-                           (CountAppend n a2 (Cons X0 b2)))
-                        (IdTrans Nat (Add (Count n a2) (Count n (Cons X0 b2)))
-                                      (Add (Count n a) (Count n (Cons X0 b)))
-                                      (Count n (Cons X0 Rest0))
-                           (IdTrans Nat (Add (Count n a2) (Count n (Cons X0 b2)))
-                                         (Add (Count n a) (Count n (Cons X0 b2)))
-                                         (Add (Count n a) (Count n (Cons X0 b)))
-                              (IdCongr Nat Nat (λ (r : Nat). Add r (Count n (Cons X0 b2)))
-                                 (Count n a2) (Count n a) (h1 n))
-                              (IdCongr Nat Nat (λ (r : Nat). Add (Count n a) r)
-                                 (Count n (Cons X0 b2)) (Count n (Cons X0 b))
-                                 (CountConsCongr n X0 b2 b (h2 n))))
-                           (CountConsR n X0 a b Rest0 (hp n))));
+              let MkCnt = (λ (A : List Nat). λ (B : List Nat).
+                  λ (Hp : Π (N : Nat) → Id Nat (Add (Count N A) (Count N B)) (Count N Rest0)).
+                  λ (A2 : List Nat). λ (B2 : List Nat).
+                  λ (H1 : Π (N : Nat) → Id Nat (Count N A2) (Count N A)).
+                  λ (H2 : Π (N : Nat) → Id Nat (Count N B2) (Count N B)).
+                  λ (E : List Nat). λ (Hap : Id (List Nat) E (Append A2 (Cons X0 B2))).
+                    λ (N : Nat).
+                      IdTrans Nat (Count N E) (Add (Count N A2) (Count N (Cons X0 B2)))
+                                   (Count N (Cons X0 Rest0))
+                        (IdTrans Nat (Count N E) (Count N (Append A2 (Cons X0 B2)))
+                                      (Add (Count N A2) (Count N (Cons X0 B2)))
+                           (IdCongr (List Nat) Nat (λ (Z0 : List Nat). Count N Z0)
+                              E (Append A2 (Cons X0 B2)) Hap)
+                           (CountAppend N A2 (Cons X0 B2)))
+                        (IdTrans Nat (Add (Count N A2) (Count N (Cons X0 B2)))
+                                      (Add (Count N A) (Count N (Cons X0 B)))
+                                      (Count N (Cons X0 Rest0))
+                           (IdTrans Nat (Add (Count N A2) (Count N (Cons X0 B2)))
+                                         (Add (Count N A) (Count N (Cons X0 B2)))
+                                         (Add (Count N A) (Count N (Cons X0 B)))
+                              (IdCongr Nat Nat (λ (R : Nat). Add R (Count N (Cons X0 B2)))
+                                 (Count N A2) (Count N A) (H1 N))
+                              (IdCongr Nat Nat (λ (R : Nat). Add (Count N A) R)
+                                 (Count N (Cons X0 B2)) (Count N (Cons X0 B))
+                                 (CountConsCongr N X0 B2 B (H2 N))))
+                           (CountConsR N X0 A B Rest0 (Hp N))));
               *v := rest;
               -- Decision 8's price at a CALL SITE: the fuel and the bound go with
               -- the call, and the bound is `hfuel` UNCHANGED — after `*v := rest`
@@ -1533,12 +1542,12 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
                 let Hi0 = hi;
                 let Hub0 = hub;
                 let Hlb0 = hlb;
-                let MkUb = (λ (a2 : List Nat).
-                    λ (h1 : Π (n : Nat) → Id Nat (Count n a2) (Count n V0)).
-                      UbPerm X0 a2 V0 h1 Hub0);
-                let MkLb = (λ (b2 : List Nat).
-                    λ (h2 : Π (n : Nat) → Id Nat (Count n b2) (Count n Hi0)).
-                      LbPerm X0 b2 Hi0 h2 Hlb0);
+                let MkUb = (λ (A2 : List Nat).
+                    λ (H1 : Π (N : Nat) → Id Nat (Count N A2) (Count N V0)).
+                      UbPerm X0 A2 V0 H1 Hub0);
+                let MkLb = (λ (B2 : List Nat).
+                    λ (H2 : Π (N : Nat) → Id Nat (Count N B2) (Count N Hi0)).
+                      LbPerm X0 B2 Hi0 H2 Hlb0);
                 let cnt1 = MkCnt (*v) hi hpc;
                 -- Sort the kept part in place. Its sufficiency is the partition's
                 -- length conjunct composed with this frame's.
@@ -1565,10 +1574,10 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
                     let Hs2 = hs2;
                     let Hub2 = hub2;
                     let Hlb2 = hlb2;
-                    let Fin = (λ (e : List Nat).
-                        λ (hap : Id (List Nat) e (Append V1 (Cons X0 Hi1))).
-                          ListRw (λ (z : List Nat). Sorted z) (Append V1 (Cons X0 Hi1)) e
-                            (IdSym (List Nat) e (Append V1 (Cons X0 Hi1)) hap)
+                    let Fin = (λ (E : List Nat).
+                        λ (Hap : Id (List Nat) E (Append V1 (Cons X0 Hi1))).
+                          ListRw (λ (Z0 : List Nat). Sorted Z0) (Append V1 (Cons X0 Hi1)) E
+                            (IdSym (List Nat) E (Append V1 (Cons X0 Hi1)) Hap)
                             (SortedAppendPivot X0 V1 Hi1 Hs1 Hub2 Hs2 Hlb2));
                     let w = Cons(x, hi);
                     -- The fuel that is exactly enough, staged BEFORE the borrow is
@@ -1602,28 +1611,28 @@ example : progOk flagship = true := by native_decide
 example : progRejects (qsUnder (prog{
     Σ (hi : List Nat) → Σ (hub : Ub %pT (old *%vfT)) → Σ (hlb : Lb %pT hi)
       → Σ (hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ (hl2 : Le (Len hi) (Len (old *%vfT)))
-      → Π (n : Nat) → Id Nat (Add (Count n (*%vfT)) (Count n hi)) (Count n (old *%vfT)) })
+      → Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (Count N (old *%vfT)) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (2) LOWER BOUND on the kept part instead of the returned one.
 example : progRejects (qsUnder (prog{
     Σ (hi : List Nat) → Σ (hub : Ub %pT (*%vfT)) → Σ (hlb : Lb %pT (*%vfT))
       → Σ (hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ (hl2 : Le (Len hi) (Len (old *%vfT)))
-      → Π (n : Nat) → Id Nat (Add (Count n (*%vfT)) (Count n hi)) (Count n (old *%vfT)) })
+      → Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (Count N (old *%vfT)) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (3) The returned part DROPPED from the count: "everything stayed in `*v`".
 example : progRejects (qsUnder (prog{
     Σ (hi : List Nat) → Σ (hub : Ub %pT (*%vfT)) → Σ (hlb : Lb %pT hi)
       → Σ (hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ (hl2 : Le (Len hi) (Len (old *%vfT)))
-      → Π (n : Nat) → Id Nat (Count n (*%vfT)) (Count n (old *%vfT)) })
-    qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
+      → Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) })
+    qsHonest suffHonest .unit) "does not have its parameter type" = true := by native_decide
 
 -- (4) …and the count off by one, which no `Nil`-path argument can reach.
 example : progRejects (qsUnder (prog{
     Σ (hi : List Nat) → Σ (hub : Ub %pT (*%vfT)) → Σ (hlb : Lb %pT hi)
       → Σ (hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ (hl2 : Le (Len hi) (Len (old *%vfT)))
-      → Π (n : Nat) → Id Nat (Add (Count n (*%vfT)) (Count n hi)) (S (Count n (old *%vfT))) })
+      → Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (S (Count N (old *%vfT))) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 /-! ### Not vacuous: `quicksort`'s two spec lies, and the sufficiency hypothesis
@@ -1637,14 +1646,14 @@ example : progRejects (qsUnder (prog{
 -- `Nil` (so the base path still passes) and false for any unsorted input, and the
 -- body's evidence is about the exit.
 example : progRejects (qsUnder partHonest (prog{
-    Σ (hs : Sorted (old *%vfT)) → Π (n : Nat) → Id Nat (Count n (*%vfT)) (Count n (old *%vfT)) })
+    Σ (hs : Sorted (old *%vfT)) → Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) })
     suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (2) PERMUTATION lied by DIRECTION: the two endpoints swapped. Again `Refl` at
 -- `Nil`, and again the body's evidence points the other way once anything moves.
 example : progRejects (qsUnder partHonest (prog{
-    Σ (hs : Sorted (*%vfT)) → Π (n : Nat) → Id Nat (Count n (old *%vfT)) (Count n (*%vfT)) })
-    suffHonest .unit) "does not have return type" = true := by native_decide
+    Σ (hs : Sorted (*%vfT)) → Π (N : Nat) → Id Nat (Count N (old *%vfT)) (Count N (*%vfT)) })
+    suffHonest .unit) "does not have its parameter type" = true := by native_decide
 
 -- (3) The SUFFICIENCY HYPOTHESIS is load-bearing, not decoration. Keep the
 -- parameter (so the body still elaborates and the rejection is about TYPING, not an
@@ -1677,7 +1686,7 @@ def partitionLoses : Term := prog{
       { let l = *v;
         match l {
           Nil => { *v := Nil;
-                   Pair(Nil, Pair(unit, Pair(unit, Pair(unit, Pair(unit, λ (n : Nat). Refl))))) },
+                   Pair(Nil, Pair(unit, Pair(unit, Pair(unit, Pair(unit, λ (N : Nat). Refl))))) },
           Cons(x, rest) => match fuel {
             Z => botElim Unit Hf,
             S(f2) => {
@@ -1689,12 +1698,12 @@ def partitionLoses : Term := prog{
             -- the name says so.
             let Rest0 = rest;
             let X0 = x;
-            let MkL = (λ (a : List Nat). λ (b : List Nat).
-                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n Rest0)).
-                          λ (n : Nat). CountConsL n X0 a b Rest0 (h n));
-            let MkR = (λ (a : List Nat). λ (b : List Nat).
-                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n Rest0)).
-                          λ (n : Nat). CountConsR n X0 a b Rest0 (h n));
+            let MkL = (λ (A : List Nat). λ (B : List Nat).
+                        λ (H : Π (N : Nat) → Id Nat (Add (Count N A) (Count N B)) (Count N Rest0)).
+                          λ (N : Nat). CountConsL N X0 A B Rest0 (H N));
+            let MkR = (λ (A : List Nat). λ (B : List Nat).
+                        λ (H : Π (N : Nat) → Id Nat (Add (Count N A) (Count N B)) (Count N Rest0)).
+                          λ (N : Nat). CountConsR N X0 A B Rest0 (H N));
             let lr = Len rest;
             *v := rest;
             let r = Partition(f2, &m *v, p, Hf);
@@ -1730,7 +1739,7 @@ def qsStaleBound : Term := prog{
       { let l = *v;
         match l {
           Nil => { *v := Nil;
-                   Pair(Nil, Pair(unit, Pair(unit, Pair(unit, Pair(unit, λ (n : Nat). Refl))))) },
+                   Pair(Nil, Pair(unit, Pair(unit, Pair(unit, Pair(unit, λ (N : Nat). Refl))))) },
           Cons(x, rest) => match fuel {
             Z => botElim Unit Hf,
             S(f2) => {
@@ -1742,12 +1751,12 @@ def qsStaleBound : Term := prog{
             -- the name says so.
             let Rest0 = rest;
             let X0 = x;
-            let MkL = (λ (a : List Nat). λ (b : List Nat).
-                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n Rest0)).
-                          λ (n : Nat). CountConsL n X0 a b Rest0 (h n));
-            let MkR = (λ (a : List Nat). λ (b : List Nat).
-                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n Rest0)).
-                          λ (n : Nat). CountConsR n X0 a b Rest0 (h n));
+            let MkL = (λ (A : List Nat). λ (B : List Nat).
+                        λ (H : Π (N : Nat) → Id Nat (Add (Count N A) (Count N B)) (Count N Rest0)).
+                          λ (N : Nat). CountConsL N X0 A B Rest0 (H N));
+            let MkR = (λ (A : List Nat). λ (B : List Nat).
+                        λ (H : Π (N : Nat) → Id Nat (Add (Count N A) (Count N B)) (Count N Rest0)).
+                          λ (N : Nat). CountConsR N X0 A B Rest0 (H N));
             let lr = Len rest;
             *v := rest;
             let r = Partition(f2, &m *v, p, Hf);
@@ -1779,14 +1788,14 @@ def qsStaleBound : Term := prog{
               let y = Append (*tl) w;
               let h = AppendBack(f2, &m *tl, w, Hf);
               let H0 = *hd;
-              IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons H0 a) (*tl) y h
+              IdCongr (List Nat) (List Nat) (λ (A : List Nat). Cons H0 A) (*tl) y h
             }
           }
       } };
   fn Quicksort [fuel] (fuel : Nat, v : &mut List Nat, hfuel : %suffHonest) -> %qsHonest
       { let l = *v;
         match l {
-          Nil => { *v := Nil; Pair(unit, λ (n : Nat). Refl) },
+          Nil => { *v := Nil; Pair(unit, λ (N : Nat). Refl) },
           Cons(x, rest) => match fuel {
             Z => botElim Unit hfuel,
             S(f2) => {
@@ -1796,32 +1805,32 @@ def qsStaleBound : Term := prog{
               -- over — which is the value this builder was freezing implicitly.
               let Rest0 = rest;
               let X0 = x;
-              let MkCnt = (λ (a : List Nat). λ (b : List Nat).
-                  λ (hp : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n Rest0)).
-                  λ (a2 : List Nat). λ (b2 : List Nat).
-                  λ (h1 : Π (n : Nat) → Id Nat (Count n a2) (Count n a)).
-                  λ (h2 : Π (n : Nat) → Id Nat (Count n b2) (Count n b)).
-                  λ (e : List Nat). λ (hap : Id (List Nat) e (Append a2 (Cons X0 b2))).
-                    λ (n : Nat).
-                      IdTrans Nat (Count n e) (Add (Count n a2) (Count n (Cons X0 b2)))
-                                   (Count n (Cons X0 Rest0))
-                        (IdTrans Nat (Count n e) (Count n (Append a2 (Cons X0 b2)))
-                                      (Add (Count n a2) (Count n (Cons X0 b2)))
-                           (IdCongr (List Nat) Nat (λ (z : List Nat). Count n z)
-                              e (Append a2 (Cons X0 b2)) hap)
-                           (CountAppend n a2 (Cons X0 b2)))
-                        (IdTrans Nat (Add (Count n a2) (Count n (Cons X0 b2)))
-                                      (Add (Count n a) (Count n (Cons X0 b)))
-                                      (Count n (Cons X0 Rest0))
-                           (IdTrans Nat (Add (Count n a2) (Count n (Cons X0 b2)))
-                                         (Add (Count n a) (Count n (Cons X0 b2)))
-                                         (Add (Count n a) (Count n (Cons X0 b)))
-                              (IdCongr Nat Nat (λ (r : Nat). Add r (Count n (Cons X0 b2)))
-                                 (Count n a2) (Count n a) (h1 n))
-                              (IdCongr Nat Nat (λ (r : Nat). Add (Count n a) r)
-                                 (Count n (Cons X0 b2)) (Count n (Cons X0 b))
-                                 (CountConsCongr n X0 b2 b (h2 n))))
-                           (CountConsR n X0 a b Rest0 (hp n))));
+              let MkCnt = (λ (A : List Nat). λ (B : List Nat).
+                  λ (Hp : Π (N : Nat) → Id Nat (Add (Count N A) (Count N B)) (Count N Rest0)).
+                  λ (A2 : List Nat). λ (B2 : List Nat).
+                  λ (H1 : Π (N : Nat) → Id Nat (Count N A2) (Count N A)).
+                  λ (H2 : Π (N : Nat) → Id Nat (Count N B2) (Count N B)).
+                  λ (E : List Nat). λ (Hap : Id (List Nat) E (Append A2 (Cons X0 B2))).
+                    λ (N : Nat).
+                      IdTrans Nat (Count N E) (Add (Count N A2) (Count N (Cons X0 B2)))
+                                   (Count N (Cons X0 Rest0))
+                        (IdTrans Nat (Count N E) (Count N (Append A2 (Cons X0 B2)))
+                                      (Add (Count N A2) (Count N (Cons X0 B2)))
+                           (IdCongr (List Nat) Nat (λ (Z0 : List Nat). Count N Z0)
+                              E (Append A2 (Cons X0 B2)) Hap)
+                           (CountAppend N A2 (Cons X0 B2)))
+                        (IdTrans Nat (Add (Count N A2) (Count N (Cons X0 B2)))
+                                      (Add (Count N A) (Count N (Cons X0 B)))
+                                      (Count N (Cons X0 Rest0))
+                           (IdTrans Nat (Add (Count N A2) (Count N (Cons X0 B2)))
+                                         (Add (Count N A) (Count N (Cons X0 B2)))
+                                         (Add (Count N A) (Count N (Cons X0 B)))
+                              (IdCongr Nat Nat (λ (R : Nat). Add R (Count N (Cons X0 B2)))
+                                 (Count N A2) (Count N A) (H1 N))
+                              (IdCongr Nat Nat (λ (R : Nat). Add (Count N A) R)
+                                 (Count N (Cons X0 B2)) (Count N (Cons X0 B))
+                                 (CountConsCongr N X0 B2 B (H2 N))))
+                           (CountConsR N X0 A B Rest0 (Hp N))));
               *v := rest;
               let pr = Partition(f2, &m *v, x, hfuel);
               match pr { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
@@ -1835,12 +1844,12 @@ def qsStaleBound : Term := prog{
                 let Hi0 = hi;
                 let Hub0 = hub;
                 let Hlb0 = hlb;
-                let MkUb = (λ (a2 : List Nat).
-                    λ (h1 : Π (n : Nat) → Id Nat (Count n a2) (Count n V0)).
-                      UbPerm X0 a2 V0 h1 Hub0);
-                let MkLb = (λ (b2 : List Nat).
-                    λ (h2 : Π (n : Nat) → Id Nat (Count n b2) (Count n Hi0)).
-                      LbPerm X0 b2 Hi0 h2 Hlb0);
+                let MkUb = (λ (A2 : List Nat).
+                    λ (H1 : Π (N : Nat) → Id Nat (Count N A2) (Count N V0)).
+                      UbPerm X0 A2 V0 H1 Hub0);
+                let MkLb = (λ (B2 : List Nat).
+                    λ (H2 : Π (N : Nat) → Id Nat (Count N B2) (Count N Hi0)).
+                      LbPerm X0 B2 Hi0 H2 Hlb0);
                 let cnt1 = MkCnt (*v) hi hpc;
                 let hf1 = LeTrans (Len *v) lr f2 hl1 hfuel;
                 let s1 = Quicksort(f2, &m *v, hf1);
@@ -1859,10 +1868,10 @@ def qsStaleBound : Term := prog{
                     let Hi1 = hi;
                     let Hs1 = hs1;
                     let Hs2 = hs2;
-                    let Fin = (λ (e : List Nat).
-                        λ (hap : Id (List Nat) e (Append V1 (Cons X0 Hi1))).
-                          ListRw (λ (z : List Nat). Sorted z) (Append V1 (Cons X0 Hi1)) e
-                            (IdSym (List Nat) e (Append V1 (Cons X0 Hi1)) hap)
+                    let Fin = (λ (E : List Nat).
+                        λ (Hap : Id (List Nat) E (Append V1 (Cons X0 Hi1))).
+                          ListRw (λ (Z0 : List Nat). Sorted Z0) (Append V1 (Cons X0 Hi1)) E
+                            (IdSym (List Nat) E (Append V1 (Cons X0 Hi1)) Hap)
                             -- THE LIE, and the only line that differs: the PRE-sort
                             -- bounds (`Hub0`/`Hlb0`), not their transports across the
                             -- sorts (`Hub2`/`Hlb2`). §2.4 sharpens the lie rather than
@@ -1965,7 +1974,7 @@ def natT : Term := .const "Nat"
 
 /-- Type-check a closed term against a closed type in the pure seed (as in §18). -/
 def chk (tm ty : Term) : Bool :=
-  match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasType 3000 v t).run (seedPure [] []) with
+  match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasTypeT 3000 v t).run (seedPure [] []) with
   | .ok r _ => r
   | .error _ _ => false
 
@@ -2006,8 +2015,9 @@ def ejT : Term := .var ⟨2, "j"⟩
     claims moved to `S7Group`, and this is the only place left that CALLS a cursor.
     They are written once, at the head of one chain, with every subject that needs
     them declared below them — because a callee is in scope by being written above
-    its caller (§8), and a `%`-spliced second chain cannot declare functions (both
-    number their slots from `progBase`, and `bindFn` refuses the shadowing).
+    its caller (§8). (A `%`-spliced second chain could not declare functions until
+    M32 R4 retired the `progBase` collision; it can now, and this shape is kept
+    because it is what was written.)
 
     Two return types are PARAMETERS, because two subjects have lying twins:
     `certSwapCount`'s (the count-preservation certificate) and `exitReject`'s (the
@@ -2343,8 +2353,8 @@ def Refl : Term := .ctorApp "Refl" []
 -- a hand-built `Term`.
 def stuckProbe : Term := prog{
   fn StuckProbe (n : Nat) -> Id Nat
-        (boolRec (λ (b : Bool). Nat) (S Z) Z (Leb n (S (S Z))))
-        (boolRec (λ (b : Bool). Nat) (Add Z (S Z)) (Add Z Z) (Leb n (S (S Z))))
+        (boolRec (λ (B : Bool). Nat) (S Z) Z (Leb n (S (S Z))))
+        (boolRec (λ (B : Bool). Nat) (Add Z (S Z)) (Add Z Z) (Leb n (S (S Z))))
         { let c = Leb n (S (S Z));
           match c { True => Refl, False => Refl } };
   () }
@@ -2369,8 +2379,8 @@ example : progRejects stuckProbeLie "does not have return type" = true := by nat
 def stuckProbeNonExhBody : Term := .letIn ⟨1, "c"⟩ (lebSp (V 0 "n")) (.matchE ⟨1, "c"⟩ none [.mk "True" [] Refl])
 def stuckProbeNonExh : Term := prog{
   fn StuckProbeNonExh (n : Nat) -> Id Nat
-        (boolRec (λ (b : Bool). Nat) (S Z) Z (Leb n (S (S Z))))
-        (boolRec (λ (b : Bool). Nat) (Add Z (S Z)) (Add Z Z) (Leb n (S (S Z))))
+        (boolRec (λ (B : Bool). Nat) (S Z) Z (Leb n (S (S Z))))
+        (boolRec (λ (B : Bool). Nat) (Add Z (S Z)) (Add Z Z) (Leb n (S (S Z))))
         { %stuckProbeNonExhBody };
   () }
 example : progRejects stuckProbeNonExh "non-exhaustive" = true := by native_decide
@@ -2385,16 +2395,16 @@ example : progRejects stuckProbeNonExh "non-exhaustive" = true := by native_deci
 
 -- SUBJECT: raw Val/Term builders (pv/vnat/vlist/tlist) — construct the pure-model expected
 -- values and the executing-mode inputs; the raw Val/Term IS the subject under test here.
-def pv (t : Term) : Val := Val.nfV 4000 (Val.Term.toValPure t)
+def pv (t : Term) : Term := Pure.nf 4000 t
 def vnat : Nat → Val | 0 => .ctor "Z" [] | k + 1 => .ctor "S" [vnat k]
 def vlist : List Nat → Val | [] => .ctor "Nil" [] | x :: xs => .ctor "Cons" [vnat x, vlist xs]
 def tlist : List Nat → Term | [] => .ctorApp "Nil" [] | x :: xs => .ctorApp "Cons" [tnat x, tlist xs]
 def partLT (n : Nat) (l : List Nat) : Term := .app (.app StdLemmas.PartitionL (tnat n)) (tlist l)
 
-example : (pv (partLT 3 [3,1,2]) == vlist [2,1,3]) = true := by native_decide
-example : (pv (partLT 3 [1,2,3]) == vlist [1,2,3]) = true := by native_decide          -- already partitioned
-example : (pv (partLT 3 [3,2,1]) == vlist [1,2,3]) = true := by native_decide          -- reverse sorted
-example : (pv (partLT 5 [3,5,1,2,4]) == vlist [2,1,3,5,4]) = true := by native_decide   -- exercises the swap
+example : (Val.know (pv (partLT 3 [3,1,2])) == vlist [2,1,3]) = true := by native_decide
+example : (Val.know (pv (partLT 3 [1,2,3])) == vlist [1,2,3]) = true := by native_decide          -- already partitioned
+example : (Val.know (pv (partLT 3 [3,2,1])) == vlist [1,2,3]) = true := by native_decide          -- reverse sorted
+example : (Val.know (pv (partLT 5 [3,5,1,2,4])) == vlist [2,1,3,5,4]) = true := by native_decide   -- exercises the swap
 
 /-! ## M21-2 — PartIdxL (the boundary index) and SortL (the quicksort model) -/
 
@@ -2402,17 +2412,17 @@ def idxLT (n : Nat) (l : List Nat) : Term := .app (.app StdLemmas.PartIdxL (tnat
 def sortLT (fuel n : Nat) (l : List Nat) : Term := .app (.app (.app StdLemmas.SortL (tnat fuel)) (tnat n)) (tlist l)
 
 -- PartIdxL = the pivot's final position (matches where the partition run lands it):
-example : (pv (idxLT 3 [3,1,2]) == vnat 2) = true := by native_decide    -- pivot 3 → index 2
-example : (pv (idxLT 3 [1,2,3]) == vnat 0) = true := by native_decide     -- pivot 1 stays at 0
-example : (pv (idxLT 3 [3,2,1]) == vnat 2) = true := by native_decide
-example : (pv (idxLT 5 [3,5,1,2,4]) == vnat 2) = true := by native_decide -- [2,1,3,5,4], pivot at 2
+example : (Val.know (pv (idxLT 3 [3,1,2])) == vnat 2) = true := by native_decide    -- pivot 3 → index 2
+example : (Val.know (pv (idxLT 3 [1,2,3])) == vnat 0) = true := by native_decide     -- pivot 1 stays at 0
+example : (Val.know (pv (idxLT 3 [3,2,1])) == vnat 2) = true := by native_decide
+example : (Val.know (pv (idxLT 5 [3,5,1,2,4])) == vnat 2) = true := by native_decide -- [2,1,3,5,4], pivot at 2
 
 -- SortL sorts (fuel = length). Small cases only — sortL's toValPure inlines the
 -- whole partition/scan stack, so pv/nfV on it is heavy; the executing quicksort
 -- (M21-3) validates it on the larger input classes far more cheaply.
-example : (pv (sortLT 2 2 [2,1]) == vlist [1,2]) = true := by native_decide          -- the smallest sort
-example : (pv (sortLT 1 1 [7]) == vlist [7]) = true := by native_decide              -- singleton
-example : (pv (sortLT 0 0 []) == vlist []) = true := by native_decide                -- empty
+example : (Val.know (pv (sortLT 2 2 [2,1])) == vlist [1,2]) = true := by native_decide          -- the smallest sort
+example : (Val.know (pv (sortLT 1 1 [7])) == vlist [7]) = true := by native_decide              -- singleton
+example : (Val.know (pv (sortLT 0 0 [])) == vlist []) = true := by native_decide                -- empty
 
 /-! ## M21-3 — SortRangeL (the index-bounded quicksort spec, plan of record) -/
 
@@ -2421,14 +2431,14 @@ def sortRangeLT (fuel lo cnt : Nat) (l : List Nat) : Term :=
 
 -- Full-range (lo=0, cnt=len): SortRangeL 0 (len l) l is a full sort — the top-
 -- level shape the imperative quicksort's back carries.
-example : (pv (sortRangeLT 2 0 2 [2,1]) == vlist [1,2]) = true := by native_decide
-example : (pv (sortRangeLT 1 0 1 [7]) == vlist [7]) = true := by native_decide
-example : (pv (sortRangeLT 0 0 0 []) == vlist []) = true := by native_decide
-example : (pv (sortRangeLT 3 0 3 [3,2,1]) == vlist [1,2,3]) = true := by native_decide   -- recursion fires
+example : (Val.know (pv (sortRangeLT 2 0 2 [2,1])) == vlist [1,2]) = true := by native_decide
+example : (Val.know (pv (sortRangeLT 1 0 1 [7])) == vlist [7]) = true := by native_decide
+example : (Val.know (pv (sortRangeLT 0 0 0 [])) == vlist []) = true := by native_decide
+example : (Val.know (pv (sortRangeLT 3 0 3 [3,2,1])) == vlist [1,2,3]) = true := by native_decide   -- recursion fires
 -- Sub-range (lo>0): sort only [lo, lo+cnt), leaving the rest untouched — the new
 -- capability the recursion rides. [5,3,2,9] sorting [3,2] at offset 1 → [5,2,3,9].
-example : (pv (sortRangeLT 2 1 2 [5,3,2,9]) == vlist [5,2,3,9]) = true := by native_decide
-example : (pv (sortRangeLT 3 1 3 [9,3,1,2,7]) == vlist [9,1,2,3,7]) = true := by native_decide
+example : (Val.know (pv (sortRangeLT 2 1 2 [5,3,2,9])) == vlist [5,2,3,9]) = true := by native_decide
+example : (Val.know (pv (sortRangeLT 3 1 3 [9,3,1,2,7])) == vlist [9,1,2,3,7]) = true := by native_decide
 
 /-! ## M19-C (imperative, executing mode) — the body computes `PartitionL`
 
@@ -2453,7 +2463,7 @@ def partCaller (lst : List Nat) (n : Nat) : Term :=
 
 def runPart (lst : List Nat) (n : Nat) : Bool :=
   match Dllbc.Tests.S9Diff.runExec (withScan (partCaller lst n)) with
-  | .ok env => env.lookup "y" == some (pv (partLT n lst))
+  | .ok env => env.lookup "y" == some (Val.know (pv (partLT n lst)))
   | .error _ => false
 
 -- The executing-mode partition agrees with the pure model on every input class:

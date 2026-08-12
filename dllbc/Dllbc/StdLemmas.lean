@@ -32,31 +32,31 @@ abbrev Leb : Term := Std.lebFnT
 /-! ## `LeRefl`, `LeTrans` — the acceptance test -/
 
 def LeRefl : Term := prog{
-  λ (n : Nat). elim n return (λ (m : Nat). Le m m) {
+  λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
     Z => unit,
-    S (k) ih => ih } }
-def LeReflTy : Term := prog{ Π (n : Nat) → Le n n }
+    S (K) Ih => Ih } }
+def LeReflTy : Term := prog{ Π (N : Nat) → Le N N }
 
 -- The wall. Single outer elim on `a`; the `S` case elims on `b`, whose `S` case
 -- elims on `c`, with the IH applied at the peeled proofs — every step
 -- definitional through the `Le` equations. Nested, but every binder is NAMED and
 -- every motive is written once and visible.
 def LeTrans : Term := prog{
-  λ (a : Nat).
-    elim a return (λ (a0 : Nat). Π (b : Nat) → Π (c : Nat) → Le a0 b → Le b c → Le a0 c) {
-      Z => λ (b : Nat). λ (c : Nat). λ (hab : Le Z b). λ (hbc : Le b c). unit,
-      S (a') ih => λ (b : Nat). λ (c : Nat). λ (hab : Le (S a') b). λ (hbc : Le b c).
-        elim b return (λ (b0 : Nat). Le (S a') b0 → Le b0 c → Le (S a') c) {
-          Z => λ (hab0 : Le (S a') Z). λ (hbc0 : Le Z c). botElim (Le (S a') c) hab0,
-          S (b') ihb => λ (hab0 : Le (S a') (S b')). λ (hbc0 : Le (S b') c).
-            elim c return (λ (c0 : Nat). Le (S b') c0 → Le (S a') c0) {
-              Z => λ (hbc1 : Le (S b') Z). botElim (Le (S a') Z) hbc1,
-              S (c') ihc => λ (hbc1 : Le (S b') (S c')). ih b' c' hab0 hbc1
-            } hbc0
-        } hab hbc
+  λ (A : Nat).
+    elim A return (λ (A0 : Nat). Π (B : Nat) → Π (C : Nat) → Le A0 B → Le B C → Le A0 C) {
+      Z => λ (B : Nat). λ (C : Nat). λ (Hab : Le Z B). λ (Hbc : Le B C). unit,
+      S (A') Ih => λ (B : Nat). λ (C : Nat). λ (Hab : Le (S A') B). λ (Hbc : Le B C).
+        elim B return (λ (B0 : Nat). Le (S A') B0 → Le B0 C → Le (S A') C) {
+          Z => λ (Hab0 : Le (S A') Z). λ (Hbc0 : Le Z C). botElim (Le (S A') C) Hab0,
+          S (B') Ihb => λ (Hab0 : Le (S A') (S B')). λ (Hbc0 : Le (S B') C).
+            elim C return (λ (C0 : Nat). Le (S B') C0 → Le (S A') C0) {
+              Z => λ (Hbc1 : Le (S B') Z). botElim (Le (S A') Z) Hbc1,
+              S (C') Ihc => λ (Hbc1 : Le (S B') (S C')). Ih B' C' Hab0 Hbc1
+            } Hbc0
+        } Hab Hbc
     } }
 def LeTransTy : Term := prog{
-  Π (a : Nat) → Π (b : Nat) → Π (c : Nat) → Le a b → Le b c → Le a c }
+  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → Le A B → Le B C → Le A C }
 
 -- Right-successor monotonicity: `a ≤ b ⟹ a ≤ S b`. Double induction (on `a`,
 -- casing `b`): the `Z` head is trivial (`Le Z _ = ⊤`); the `S a'` head cases `b`
@@ -64,53 +64,53 @@ def LeTransTy : Term := prog{
 -- The glue `CountSwapL'` needs to bend swapS's `Le (S i) j` into count_swapL's
 -- `Le (S i) (Len l)` via one `LeTrans`.
 def LeUpR : Term := prog{
-  λ (a : Nat). elim a return (λ (az : Nat). Π (b : Nat) → Le az b → Le az (S b)) {
-    Z => λ (b : Nat). λ (h : Le Z b). unit,
-    S (a') ih => λ (b : Nat). λ (h : Le (S a') b).
-      elim b return (λ (bz : Nat). Le (S a') bz → Le (S a') (S bz)) {
-        Z => λ (h0 : Le (S a') Z). botElim (Le (S a') (S Z)) h0,
-        S (b') ihb => λ (h0 : Le (S a') (S b')). ih b' h0
-      } h } }
-def LeUpRTy : Term := prog{ Π (a : Nat) → Π (b : Nat) → Le a b → Le a (S b) }
+  λ (A : Nat). elim A return (λ (Az : Nat). Π (B : Nat) → Le Az B → Le Az (S B)) {
+    Z => λ (B : Nat). λ (H : Le Z B). unit,
+    S (A') Ih => λ (B : Nat). λ (H : Le (S A') B).
+      elim B return (λ (Bz : Nat). Le (S A') Bz → Le (S A') (S Bz)) {
+        Z => λ (H0 : Le (S A') Z). botElim (Le (S A') (S Z)) H0,
+        S (B') Ihb => λ (H0 : Le (S A') (S B')). Ih B' H0
+      } H } }
+def LeUpRTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Le A B → Le A (S B) }
 
 -- `i ≤ i + g`: the boundary never passes the scan position it feeds. A clean
 -- induction on `i` (`Add (S i') g = S (Add i' g)`, so `Le (S i') (Add (S i') g)`
 -- reduces to the IH). The partition swaps consume this as their `pij`.
 def LeAdd : Term := prog{
-  λ (i : Nat). elim i return (λ (iz : Nat). Π (g : Nat) → Le iz (Add iz g)) {
-    Z => λ (g : Nat). unit,
-    S (i') ih => λ (g : Nat). ih g } }
-def LeAddTy : Term := prog{ Π (i : Nat) → Π (g : Nat) → Le i (Add i g) }
+  λ (I : Nat). elim I return (λ (Iz : Nat). Π (G : Nat) → Le Iz (Add Iz G)) {
+    Z => λ (G : Nat). unit,
+    S (I') Ih => λ (G : Nat). Ih G } }
+def LeAddTy : Term := prog{ Π (I : Nat) → Π (G : Nat) → Le I (Add I G) }
 
 -- `b ≤ a + b` — the companion where the summand is on the LEFT (`LeAdd` has it on
 -- the right). Induction on `a`: base is `LeRefl` (`Add Z b = b`), step lifts the
 -- IH with `LeUpR` (`Add (S a') b = S (Add a' b)`). The scan-position bound uses
 -- this because the length equation carries the remaining count `k` on the left.
 def LeAddL : Term := prog{
-  λ (b : Nat). λ (a : Nat).
-    elim a return (λ (az : Nat). Le b (Add az b)) {
-      Z => LeRefl b,
-      S (a') ih => LeUpR b (Add a' b) ih } }
-def LeAddLTy : Term := prog{ Π (b : Nat) → Π (a : Nat) → Le b (Add a b) }
+  λ (B : Nat). λ (A : Nat).
+    elim A return (λ (Az : Nat). Le B (Add Az B)) {
+      Z => LeRefl B,
+      S (A') Ih => LeUpR B (Add A' B) Ih } }
+def LeAddLTy : Term := prog{ Π (B : Nat) → Π (A : Nat) → Le B (Add A B) }
 
 -- `S i ≤ i + (S g)` — the swap's `pij`: the boundary `S i` is below the scan
 -- position `S (Add i (S g))` whenever the gap is non-empty. Induction on `i`
 -- avoids an AddSucc transport (`Add (S i') x = S (Add i' x)` is definitional),
 -- so no rewrite is needed here.
 def LeAddSucc : Term := prog{
-  λ (i : Nat). elim i return (λ (iz : Nat). Π (g : Nat) → Le (S iz) (Add iz (S g))) {
-    Z => λ (g : Nat). unit,
-    S (i') ih => λ (g : Nat). ih g } }
-def LeAddSuccTy : Term := prog{ Π (i : Nat) → Π (g : Nat) → Le (S i) (Add i (S g)) }
+  λ (I : Nat). elim I return (λ (Iz : Nat). Π (G : Nat) → Le (S Iz) (Add Iz (S G))) {
+    Z => λ (G : Nat). unit,
+    S (I') Ih => λ (G : Nat). Ih G } }
+def LeAddSuccTy : Term := prog{ Π (I : Nat) → Π (G : Nat) → Le (S I) (Add I (S G)) }
 
 -- Transport a `Le` along an `Id` on its SECOND argument: `x = y ⟹ Le a x → Le a
 -- y`. The bounds derived over the arithmetic normal form are moved onto `len *v`
 -- (and back through `LenSwapL`) with this J-transport — the "LeTrans/le_step
 -- glue where descent is not definitional".
 def LeRwR : Term := prog{
-  λ (a : Nat). λ (x : Nat). λ (y : Nat). λ (h : Id Nat x y). λ (p : Le a x).
-    j Nat x (λ (y' : Nat). λ (hh : Id Nat x y'). Le a y') p y h }
-def LeRwRTy : Term := prog{ Π (a : Nat) → Π (x : Nat) → Π (y : Nat) → Id Nat x y → Le a x → Le a y }
+  λ (A : Nat). λ (X : Nat). λ (Y : Nat). λ (H : Id Nat X Y). λ (P : Le A X).
+    j Nat X (λ (Y' : Nat). λ (Hh : Id Nat X Y'). Le A Y') P Y H }
+def LeRwRTy : Term := prog{ Π (A : Nat) → Π (X : Nat) → Π (Y : Nat) → Id Nat X Y → Le A X → Le A Y }
 
 -- Transport a `Le` along an `Id` on its FIRST (smaller) argument: `x = y ⟹ Le x
 -- b → Le y b`. The range partition's bound `Le (add lo (S (add k (add i g))))
@@ -119,9 +119,9 @@ def LeRwRTy : Term := prog{ Π (a : Nat) → Π (x : Nat) → Π (y : Nat) → I
 -- between forms via the hshift identities — the Le mirror of LeRwR, and the one
 -- lemma the M20 Id-toolkit lacked for the subrange generalization (§21).
 def LeRwL : Term := prog{
-  λ (b : Nat). λ (x : Nat). λ (y : Nat). λ (h : Id Nat x y). λ (p : Le x b).
-    j Nat x (λ (y' : Nat). λ (hh : Id Nat x y'). Le y' b) p y h }
-def LeRwLTy : Term := prog{ Π (b : Nat) → Π (x : Nat) → Π (y : Nat) → Id Nat x y → Le x b → Le y b }
+  λ (B : Nat). λ (X : Nat). λ (Y : Nat). λ (H : Id Nat X Y). λ (P : Le X B).
+    j Nat X (λ (Y' : Nat). λ (Hh : Id Nat X Y'). Le Y' B) P Y H }
+def LeRwLTy : Term := prog{ Π (B : Nat) → Π (X : Nat) → Π (Y : Nat) → Id Nat X Y → Le X B → Le Y B }
 
 -- Left-add monotonicity: `a ≤ b ⟹ lo + a ≤ lo + b`. Induction on `lo`: base is
 -- the hypothesis (`Add Z x = x`), step is the IH verbatim (`add (S lo') x =
@@ -129,61 +129,61 @@ def LeRwLTy : Term := prog{ Π (b : Nat) → Π (x : Nat) → Π (y : Nat) → I
 -- partition's swap bounds shift the entry bound `Le (S i) (S (Add i g))` through
 -- `Add lo` to reach `Le (Add lo (S i)) (Add lo (S (Add i g)))` (§21).
 def LeAddMonoL : Term := prog{
-  λ (lo : Nat). λ (a : Nat). λ (b : Nat). λ (h : Le a b).
-    elim lo return (λ (loz : Nat). Le (Add loz a) (Add loz b)) {
-      Z => h,
-      S (lo') ih => ih } }
-def LeAddMonoLTy : Term := prog{ Π (lo : Nat) → Π (a : Nat) → Π (b : Nat) → Le a b → Le (Add lo a) (Add lo b) }
+  λ (Lo : Nat). λ (A : Nat). λ (B : Nat). λ (H : Le A B).
+    elim Lo return (λ (Loz : Nat). Le (Add Loz A) (Add Loz B)) {
+      Z => H,
+      S (Lo') Ih => Ih } }
+def LeAddMonoLTy : Term := prog{ Π (Lo : Nat) → Π (A : Nat) → Π (B : Nat) → Le A B → Le (Add Lo A) (Add Lo B) }
 
 /-! ## `IdTrans`, `IdCongr` — the J warm-ups partition's count-chaining consumes -/
 
 def IdTrans : Term := prog{
-  λ (A : Type). λ (x : A). λ (y : A). λ (z : A). λ (p : Id A x y). λ (q : Id A y z).
-    j A x (λ (y' : A). λ (h : Id A x y'). Id A y' z → Id A x z) (λ (h : Id A x z). h) y p q }
+  λ (A : Type). λ (X : A). λ (Y : A). λ (Z0 : A). λ (P : Id A X Y). λ (Q : Id A Y Z0).
+    j A X (λ (Y' : A). λ (H : Id A X Y'). Id A Y' Z0 → Id A X Z0) (λ (H : Id A X Z0). H) Y P Q }
 def IdTransTy : Term := prog{
-  Π (A : Type) → Π (x : A) → Π (y : A) → Π (z : A) → Id A x y → Id A y z → Id A x z }
+  Π (A : Type) → Π (X : A) → Π (Y : A) → Π (Z0 : A) → Id A X Y → Id A Y Z0 → Id A X Z0 }
 
 def IdCongr : Term := prog{
-  λ (A : Type). λ (B : Type). λ (f : A → B). λ (x : A). λ (y : A). λ (p : Id A x y).
-    j A x (λ (y' : A). λ (h : Id A x y'). Id B (f x) (f y')) Refl y p }
+  λ (A : Type). λ (B : Type). λ (F : A → B). λ (X : A). λ (Y : A). λ (P : Id A X Y).
+    j A X (λ (Y' : A). λ (H : Id A X Y'). Id B (F X) (F Y')) Refl Y P }
 def IdCongrTy : Term := prog{
-  Π (A : Type) → Π (B : Type) → Π (f : A → B) → Π (x : A) → Π (y : A) → Id A x y → Id B (f x) (f y) }
+  Π (A : Type) → Π (B : Type) → Π (F : A → B) → Π (X : A) → Π (Y : A) → Id A X Y → Id B (F X) (F Y) }
 
 def IdSym : Term := prog{
-  λ (A : Type). λ (x : A). λ (y : A). λ (p : Id A x y).
-    j A x (λ (y' : A). λ (h : Id A x y'). Id A y' x) Refl y p }
-def IdSymTy : Term := prog{ Π (A : Type) → Π (x : A) → Π (y : A) → Id A x y → Id A y x }
+  λ (A : Type). λ (X : A). λ (Y : A). λ (P : Id A X Y).
+    j A X (λ (Y' : A). λ (H : Id A X Y'). Id A Y' X) Refl Y P }
+def IdSymTy : Term := prog{ Π (A : Type) → Π (X : A) → Π (Y : A) → Id A X Y → Id A Y X }
 
 /-! ## Arithmetic — the first double-inductions after the wall (§16 calibration) -/
 
 def AddZero : Term := prog{
-  λ (a : Nat). elim a return (λ (x : Nat). Id Nat (Add x Z) x) {
+  λ (A : Nat). elim A return (λ (X : Nat). Id Nat (Add X Z) X) {
     Z => Refl,
-    S (a') ih => IdCongr Nat Nat (λ (n : Nat). S n) (Add a' Z) a' ih } }
-def AddZeroTy : Term := prog{ Π (a : Nat) → Id Nat (Add a Z) a }
+    S (A') Ih => IdCongr Nat Nat (λ (N : Nat). S N) (Add A' Z) A' Ih } }
+def AddZeroTy : Term := prog{ Π (A : Nat) → Id Nat (Add A Z) A }
 
 def AddSucc : Term := prog{
-  λ (a : Nat). λ (b : Nat). elim a return (λ (x : Nat). Id Nat (Add x (S b)) (S (Add x b))) {
+  λ (A : Nat). λ (B : Nat). elim A return (λ (X : Nat). Id Nat (Add X (S B)) (S (Add X B))) {
     Z => Refl,
-    S (a') ih => IdCongr Nat Nat (λ (n : Nat). S n) (Add a' (S b)) (S (Add a' b)) ih } }
-def AddSuccTy : Term := prog{ Π (a : Nat) → Π (b : Nat) → Id Nat (Add a (S b)) (S (Add a b)) }
+    S (A') Ih => IdCongr Nat Nat (λ (N : Nat). S N) (Add A' (S B)) (S (Add A' B)) Ih } }
+def AddSuccTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Id Nat (Add A (S B)) (S (Add A B)) }
 
 -- Commutativity: the classic proof, authored in the surface and checked first try.
 def AddComm : Term := prog{
-  λ (a : Nat). elim a return (λ (x : Nat). Π (b : Nat) → Id Nat (Add x b) (Add b x)) {
-    Z => λ (b : Nat). IdSym Nat (Add b Z) b (AddZero b),
-    S (a') ih => λ (b : Nat).
-      IdTrans Nat (S (Add a' b)) (S (Add b a')) (Add b (S a'))
-        (IdCongr Nat Nat (λ (n : Nat). S n) (Add a' b) (Add b a') (ih b))
-        (IdSym Nat (Add b (S a')) (S (Add b a')) (AddSucc b a')) } }
-def AddCommTy : Term := prog{ Π (a : Nat) → Π (b : Nat) → Id Nat (Add a b) (Add b a) }
+  λ (A : Nat). elim A return (λ (X : Nat). Π (B : Nat) → Id Nat (Add X B) (Add B X)) {
+    Z => λ (B : Nat). IdSym Nat (Add B Z) B (AddZero B),
+    S (A') Ih => λ (B : Nat).
+      IdTrans Nat (S (Add A' B)) (S (Add B A')) (Add B (S A'))
+        (IdCongr Nat Nat (λ (N : Nat). S N) (Add A' B) (Add B A') (Ih B))
+        (IdSym Nat (Add B (S A')) (S (Add B A')) (AddSucc B A')) } }
+def AddCommTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Id Nat (Add A B) (Add B A) }
 
 def AddAssoc : Term := prog{
-  λ (a : Nat). elim a return (λ (x : Nat). Π (b : Nat) → Π (c : Nat) → Id Nat (Add (Add x b) c) (Add x (Add b c))) {
-    Z => λ (b : Nat). λ (c : Nat). Refl,
-    S (a') ih => λ (b : Nat). λ (c : Nat).
-      IdCongr Nat Nat (λ (n : Nat). S n) (Add (Add a' b) c) (Add a' (Add b c)) (ih b c) } }
-def AddAssocTy : Term := prog{ Π (a : Nat) → Π (b : Nat) → Π (c : Nat) → Id Nat (Add (Add a b) c) (Add a (Add b c)) }
+  λ (A : Nat). elim A return (λ (X : Nat). Π (B : Nat) → Π (C : Nat) → Id Nat (Add (Add X B) C) (Add X (Add B C))) {
+    Z => λ (B : Nat). λ (C : Nat). Refl,
+    S (A') Ih => λ (B : Nat). λ (C : Nat).
+      IdCongr Nat Nat (λ (N : Nat). S N) (Add (Add A' B) C) (Add A' (Add B C)) (Ih B C) } }
+def AddAssocTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → Id Nat (Add (Add A B) C) (Add A (Add B C)) }
 
 /-! ## The length-equation shift lemmas — `hlen` updates for the recursive partScan
 
@@ -198,28 +198,28 @@ def AddAssocTy : Term := prog{ Π (a : Nat) → Π (b : Nat) → Π (c : Nat) �
 -- from k to i). `Add (S i) g = S (Add i g)` is definitional, so only the `add k
 -- (S ·)` step needs AddSucc.
 def HshiftTrue : Term := prog{
-  λ (k : Nat). λ (i : Nat). λ (g : Nat).
-    IdSym Nat (Add k (S (Add i g))) (S (Add k (Add i g))) (AddSucc k (Add i g)) }
-def HshiftTrueTy : Term := prog{ Π (k : Nat) → Π (i : Nat) → Π (g : Nat) →
-  Id Nat (Add (S k) (Add i g)) (Add k (Add (S i) g)) }
+  λ (K : Nat). λ (I : Nat). λ (G : Nat).
+    IdSym Nat (Add K (S (Add I G))) (S (Add K (Add I G))) (AddSucc K (Add I G)) }
+def HshiftTrueTy : Term := prog{ Π (K : Nat) → Π (I : Nat) → Π (G : Nat) →
+  Id Nat (Add (S K) (Add I G)) (Add K (Add (S I) G)) }
 
 -- Gap growth: `Add (S k) (Add i g) = Add k (Add i (S g))` (move a successor from k
 -- to g). `Add i (S g)` is stuck (add recurses on i), so this needs AddSucc TWICE
 -- — once under `Add k` to grow the gap, once to pull the successor out front.
 def HshiftFalse : Term := prog{
-  λ (k : Nat). λ (i : Nat). λ (g : Nat).
-    IdSym Nat (Add k (Add i (S g))) (S (Add k (Add i g)))
-      (IdTrans Nat (Add k (Add i (S g))) (Add k (S (Add i g))) (S (Add k (Add i g)))
-        (IdCongr Nat Nat (λ (x : Nat). Add k x) (Add i (S g)) (S (Add i g)) (AddSucc i g))
-        (AddSucc k (Add i g))) }
-def HshiftFalseTy : Term := prog{ Π (k : Nat) → Π (i : Nat) → Π (g : Nat) →
-  Id Nat (Add (S k) (Add i g)) (Add k (Add i (S g))) }
+  λ (K : Nat). λ (I : Nat). λ (G : Nat).
+    IdSym Nat (Add K (Add I (S G))) (S (Add K (Add I G)))
+      (IdTrans Nat (Add K (Add I (S G))) (Add K (S (Add I G))) (S (Add K (Add I G)))
+        (IdCongr Nat Nat (λ (X : Nat). Add K X) (Add I (S G)) (S (Add I G)) (AddSucc I G))
+        (AddSucc K (Add I G))) }
+def HshiftFalseTy : Term := prog{ Π (K : Nat) → Π (I : Nat) → Π (G : Nat) →
+  Id Nat (Add (S K) (Add I G)) (Add K (Add I (S G))) }
 
 -- `Count`'s Cons-unfolding equation as an Id — definitional, a `Refl` after whnf.
-def CountCons : Term := prog{ λ (m : Nat). λ (h : Nat). λ (t : List Nat). Refl }
+def CountCons : Term := prog{ λ (M : Nat). λ (H : Nat). λ (T : List Nat). Refl }
 def CountConsTy : Term := prog{
-  Π (m : Nat) → Π (h : Nat) → Π (t : List Nat) →
-    Id Nat (Count m (Cons h t)) (boolRec (λ (b : Bool). Nat) (S (Count m t)) (Count m t) (Eqb m h)) }
+  Π (M : Nat) → Π (H : Nat) → Π (T : List Nat) →
+    Id Nat (Count M (Cons H T)) (boolRec (λ (B : Bool). Nat) (S (Count M T)) (Count M T) (Eqb M H)) }
 
 /-! ## The `Count`/`Append`/`Take`/`Drop` lemmas (§16-2)
 
@@ -229,33 +229,33 @@ def CountConsTy : Term := prog{
     prefix and suffix. Both are the building blocks the swap-count lemma consumes. -/
 
 def CountAppend : Term := prog{
-  λ (m : Nat). λ (a : List Nat). λ (b : List Nat).
-    elim a return (λ (x : List Nat). Id Nat (Count m (Append x b)) (Add (Count m x) (Count m b))) {
+  λ (M : Nat). λ (A : List Nat). λ (B : List Nat).
+    elim A return (λ (X : List Nat). Id Nat (Count M (Append X B)) (Add (Count M X) (Count M B))) {
       Nil => Refl,
-      Cons (h) (t) ih =>
-        elim (Eqb m h) return (λ (bv : Bool).
-          Id Nat (boolRec (λ (w : Bool). Nat) (S (Count m (Append t b))) (Count m (Append t b)) bv)
-                 (Add (boolRec (λ (w : Bool). Nat) (S (Count m t)) (Count m t) bv) (Count m b))) {
-          True => IdCongr Nat Nat (λ (n : Nat). S n) (Count m (Append t b)) (Add (Count m t) (Count m b)) ih,
-          False => ih
+      Cons (H) (T) Ih =>
+        elim (Eqb M H) return (λ (Bv : Bool).
+          Id Nat (boolRec (λ (W : Bool). Nat) (S (Count M (Append T B))) (Count M (Append T B)) Bv)
+                 (Add (boolRec (λ (W : Bool). Nat) (S (Count M T)) (Count M T) Bv) (Count M B))) {
+          True => IdCongr Nat Nat (λ (N : Nat). S N) (Count M (Append T B)) (Add (Count M T) (Count M B)) Ih,
+          False => Ih
         }
     } }
 def CountAppendTy : Term := prog{
-  Π (m : Nat) → Π (a : List Nat) → Π (b : List Nat) →
-    Id Nat (Count m (Append a b)) (Add (Count m a) (Count m b)) }
+  Π (M : Nat) → Π (A : List Nat) → Π (B : List Nat) →
+    Id Nat (Count M (Append A B)) (Add (Count M A) (Count M B)) }
 
 def TakeDropId : Term := prog{
-  λ (i : Nat). elim i return (λ (k : Nat). Π (l : List Nat) → Id (List Nat) (Append (Take k l) (Drop k l)) l) {
-    Z => λ (l : List Nat). Refl,
-    S (i') ih => λ (l : List Nat).
-      elim l return (λ (x : List Nat). Id (List Nat) (Append (Take (S i') x) (Drop (S i') x)) x) {
+  λ (I : Nat). elim I return (λ (K : Nat). Π (L : List Nat) → Id (List Nat) (Append (Take K L) (Drop K L)) L) {
+    Z => λ (L : List Nat). Refl,
+    S (I') Ih => λ (L : List Nat).
+      elim L return (λ (X : List Nat). Id (List Nat) (Append (Take (S I') X) (Drop (S I') X)) X) {
         Nil => Refl,
-        Cons (h) (t) ihl =>
-          IdCongr (List Nat) (List Nat) (λ (r : List Nat). Cons h r)
-            (Append (Take i' t) (Drop i' t)) t (ih t)
+        Cons (H) (T) Ihl =>
+          IdCongr (List Nat) (List Nat) (λ (R : List Nat). Cons H R)
+            (Append (Take I' T) (Drop I' T)) T (Ih T)
       } } }
 def TakeDropIdTy : Term := prog{
-  Π (i : Nat) → Π (l : List Nat) → Id (List Nat) (Append (Take i l) (Drop i l)) l }
+  Π (I : Nat) → Π (L : List Nat) → Id (List Nat) (Append (Take I L) (Drop I L)) L }
 
 /-! ## `NthL`, `Set`, `SwapL` — the pure specification of swap (§16-2)
 
@@ -268,27 +268,27 @@ def TakeDropIdTy : Term := prog{
     `Z`, breaking count preservation), so it decomposes into a bounded stack. -/
 
 def NthL : Term := prog{
-  λ (k : Nat). elim k return (λ (z : Nat). List Nat → Nat) {
-    Z => λ (l : List Nat). elim l return (λ (z : List Nat). Nat) { Nil => Z, Cons (h) (t) ihl => h },
-    S (k') rec => λ (l : List Nat). elim l return (λ (z : List Nat). Nat) { Nil => Z, Cons (h) (t) ihl => rec t } } }
+  λ (K : Nat). elim K return (λ (Z0 : Nat). List Nat → Nat) {
+    Z => λ (L : List Nat). elim L return (λ (Z0 : List Nat). Nat) { Nil => Z, Cons (H) (T) Ihl => H },
+    S (K') Rec => λ (L : List Nat). elim L return (λ (Z0 : List Nat). Nat) { Nil => Z, Cons (H) (T) Ihl => Rec T } } }
 
 def Set : Term := prog{
-  λ (k : Nat). λ (v : Nat). elim k return (λ (z : Nat). List Nat → List Nat) {
-    Z => λ (l : List Nat). elim l return (λ (z : List Nat). List Nat) { Nil => Nil, Cons (h) (t) ihl => Cons v t },
-    S (k') rec => λ (l : List Nat). elim l return (λ (z : List Nat). List Nat) { Nil => Nil, Cons (h) (t) ihl => Cons h (rec t) } } }
+  λ (K : Nat). λ (V : Nat). elim K return (λ (Z0 : Nat). List Nat → List Nat) {
+    Z => λ (L : List Nat). elim L return (λ (Z0 : List Nat). List Nat) { Nil => Nil, Cons (H) (T) Ihl => Cons V T },
+    S (K') Rec => λ (L : List Nat). elim L return (λ (Z0 : List Nat). List Nat) { Nil => Nil, Cons (H) (T) Ihl => Cons H (Rec T) } } }
 
 def SwapL : Term := prog{
-  λ (i : Nat). elim i return (λ (z : Nat). Nat → List Nat → List Nat) {
-    Z => λ (j : Nat). λ (l : List Nat). elim l return (λ (z : List Nat). List Nat) {
+  λ (I : Nat). elim I return (λ (Z0 : Nat). Nat → List Nat → List Nat) {
+    Z => λ (J : Nat). λ (L : List Nat). elim L return (λ (Z0 : List Nat). List Nat) {
       Nil => Nil,
-      Cons (x) (xs) ihl => elim j return (λ (z : Nat). List Nat) {
-        Z => Cons x xs,
-        S (j') jih => Cons (NthL j' xs) (Set j' x xs) } },
-    S (i') reci => λ (j : Nat). λ (l : List Nat). elim l return (λ (z : List Nat). List Nat) {
+      Cons (X) (Xs) Ihl => elim J return (λ (Z0 : Nat). List Nat) {
+        Z => Cons X Xs,
+        S (J') Jih => Cons (NthL J' Xs) (Set J' X Xs) } },
+    S (I') Reci => λ (J : Nat). λ (L : List Nat). elim L return (λ (Z0 : List Nat). List Nat) {
       Nil => Nil,
-      Cons (x) (xs) ihl => elim j return (λ (z : Nat). List Nat) {
-        Z => Cons x xs,
-        S (j') jih => Cons x (reci j' xs) } } } }
+      Cons (X) (Xs) Ihl => elim J return (λ (Z0 : Nat). List Nat) {
+        Z => Cons X Xs,
+        S (J') Jih => Cons X (Reci J' Xs) } } } }
 
 /-! ## Length preservation — the spec `swapS` carries (§16, len variant)
 
@@ -300,31 +300,31 @@ def SwapL : Term := prog{
 abbrev Len : Term := Std.lenFnT
 
 def LenSet : Term := prog{
-  λ (k : Nat). λ (v : Nat).
-    elim k return (λ (z : Nat). Π (l : List Nat) → Id Nat (Len (Set z v l)) (Len l)) {
-      Z => λ (l : List Nat). elim l return (λ (x : List Nat). Id Nat (Len (Set Z v x)) (Len x)) {
-        Nil => Refl, Cons (h) (t) ihl => Refl },
-      S (k') ih => λ (l : List Nat). elim l return (λ (x : List Nat). Id Nat (Len (Set (S k') v x)) (Len x)) {
+  λ (K : Nat). λ (V : Nat).
+    elim K return (λ (Z0 : Nat). Π (L : List Nat) → Id Nat (Len (Set Z0 V L)) (Len L)) {
+      Z => λ (L : List Nat). elim L return (λ (X : List Nat). Id Nat (Len (Set Z V X)) (Len X)) {
+        Nil => Refl, Cons (H) (T) Ihl => Refl },
+      S (K') Ih => λ (L : List Nat). elim L return (λ (X : List Nat). Id Nat (Len (Set (S K') V X)) (Len X)) {
         Nil => Refl,
-        Cons (h) (t) ihl => IdCongr Nat Nat (λ (n : Nat). S n) (Len (Set k' v t)) (Len t) (ih t) } } }
-def LenSetTy : Term := prog{ Π (k : Nat) → Π (v : Nat) → Π (l : List Nat) → Id Nat (Len (Set k v l)) (Len l) }
+        Cons (H) (T) Ihl => IdCongr Nat Nat (λ (N : Nat). S N) (Len (Set K' V T)) (Len T) (Ih T) } } }
+def LenSetTy : Term := prog{ Π (K : Nat) → Π (V : Nat) → Π (L : List Nat) → Id Nat (Len (Set K V L)) (Len L) }
 
 def LenSwapL : Term := prog{
-  λ (i : Nat).
-    elim i return (λ (z : Nat). Π (j : Nat) → Π (l : List Nat) → Id Nat (Len (SwapL z j l)) (Len l)) {
-      Z => λ (j : Nat). λ (l : List Nat).
-        elim l return (λ (x : List Nat). Id Nat (Len (SwapL Z j x)) (Len x)) {
+  λ (I : Nat).
+    elim I return (λ (Z0 : Nat). Π (J : Nat) → Π (L : List Nat) → Id Nat (Len (SwapL Z0 J L)) (Len L)) {
+      Z => λ (J : Nat). λ (L : List Nat).
+        elim L return (λ (X : List Nat). Id Nat (Len (SwapL Z J X)) (Len X)) {
           Nil => Refl,
-          Cons (y) (ys) ihl => elim j return (λ (w : Nat). Id Nat (Len (SwapL Z w (Cons y ys))) (Len (Cons y ys))) {
+          Cons (Y) (Ys) Ihl => elim J return (λ (W : Nat). Id Nat (Len (SwapL Z W (Cons Y Ys))) (Len (Cons Y Ys))) {
             Z => Refl,
-            S (j') jih => IdCongr Nat Nat (λ (n : Nat). S n) (Len (Set j' y ys)) (Len ys) (LenSet j' y ys) } },
-      S (i') ih => λ (j : Nat). λ (l : List Nat).
-        elim l return (λ (x : List Nat). Id Nat (Len (SwapL (S i') j x)) (Len x)) {
+            S (J') Jih => IdCongr Nat Nat (λ (N : Nat). S N) (Len (Set J' Y Ys)) (Len Ys) (LenSet J' Y Ys) } },
+      S (I') Ih => λ (J : Nat). λ (L : List Nat).
+        elim L return (λ (X : List Nat). Id Nat (Len (SwapL (S I') J X)) (Len X)) {
           Nil => Refl,
-          Cons (y) (ys) ihl => elim j return (λ (w : Nat). Id Nat (Len (SwapL (S i') w (Cons y ys))) (Len (Cons y ys))) {
+          Cons (Y) (Ys) Ihl => elim J return (λ (W : Nat). Id Nat (Len (SwapL (S I') W (Cons Y Ys))) (Len (Cons Y Ys))) {
             Z => Refl,
-            S (j') jih => IdCongr Nat Nat (λ (n : Nat). S n) (Len (SwapL i' j' ys)) (Len ys) (ih j' ys) } } } }
-def LenSwapLTy : Term := prog{ Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) → Id Nat (Len (SwapL i j l)) (Len l) }
+            S (J') Jih => IdCongr Nat Nat (λ (N : Nat). S N) (Len (SwapL I' J' Ys)) (Len Ys) (Ih J' Ys) } } } }
+def LenSwapLTy : Term := prog{ Π (I : Nat) → Π (J : Nat) → Π (L : List Nat) → Id Nat (Len (SwapL I J L)) (Len L) }
 
 /-! ## The bounded `CountSwapL` stack (§18)
 
@@ -357,26 +357,26 @@ def LenSwapLTy : Term := prog{ Π (i : Nat) → Π (j : Nat) → Π (l : List Na
     construction. -/
 
 def Cons2Comm : Term := prog{
-  λ (m : Nat). λ (a : Nat). λ (b : Nat). λ (l : List Nat).
-    elim (Eqb m a) generalizing (Id Nat (Count m (Cons a (Cons b l))) (Count m (Cons b (Cons a l)))) {
-      True => elim (Eqb m b) generalizing
-        (Id Nat (S (Count m (Cons b l)))
-                (boolRec (λ (w : Bool). Nat) (S (S (Count m l))) (S (Count m l)) (Eqb m b))) {
+  λ (M : Nat). λ (A : Nat). λ (B : Nat). λ (L : List Nat).
+    elim (Eqb M A) generalizing (Id Nat (Count M (Cons A (Cons B L))) (Count M (Cons B (Cons A L)))) {
+      True => elim (Eqb M B) generalizing
+        (Id Nat (S (Count M (Cons B L)))
+                (boolRec (λ (W : Bool). Nat) (S (S (Count M L))) (S (Count M L)) (Eqb M B))) {
         True => Refl, False => Refl },
       False => Refl } }
 def Cons2CommTy : Term := prog{
-  Π (m : Nat) → Π (a : Nat) → Π (b : Nat) → Π (l : List Nat) →
-    Id Nat (Count m (Cons a (Cons b l))) (Count m (Cons b (Cons a l))) }
+  Π (M : Nat) → Π (A : Nat) → Π (B : Nat) → Π (L : List Nat) →
+    Id Nat (Count M (Cons A (Cons B L))) (Count M (Cons B (Cons A L))) }
 
 -- Congruence of `Count` under `Cons`: the `f` abstracts `Count m ·` out of BOTH
 -- occurrences in the `boolRec` that `Count m (Cons h ·)` whnf's to, so a single
 -- `IdCongr` transports the tail equation through the head.
 def CountConsCongr : Term := prog{
-  λ (m : Nat). λ (h : Nat). λ (l1 : List Nat). λ (l2 : List Nat). λ (p : Id Nat (Count m l1) (Count m l2)).
-    IdCongr Nat Nat (λ (r : Nat). boolRec (λ (w : Bool). Nat) (S r) r (Eqb m h)) (Count m l1) (Count m l2) p }
+  λ (M : Nat). λ (H : Nat). λ (L1 : List Nat). λ (L2 : List Nat). λ (P : Id Nat (Count M L1) (Count M L2)).
+    IdCongr Nat Nat (λ (R : Nat). boolRec (λ (W : Bool). Nat) (S R) R (Eqb M H)) (Count M L1) (Count M L2) P }
 def CountConsCongrTy : Term := prog{
-  Π (m : Nat) → Π (h : Nat) → Π (l1 : List Nat) → Π (l2 : List Nat) →
-    Id Nat (Count m l1) (Count m l2) → Id Nat (Count m (Cons h l1)) (Count m (Cons h l2)) }
+  Π (M : Nat) → Π (H : Nat) → Π (L1 : List Nat) → Π (L2 : List Nat) →
+    Id Nat (Count M L1) (Count M L2) → Id Nat (Count M (Cons H L1)) (Count M (Cons H L2)) }
 
 -- The §18 rewrite-by-Id lemma, named: from a RECEIVED equation `Eqb m a = True`,
 -- resolve the STUCK `Count m (Cons a l)` to `S (Count m l)`. J transports `Refl`
@@ -385,14 +385,14 @@ def CountConsCongrTy : Term := prog{
 -- hides behind the scrutinee's own reduction); this is the knowledge half. The
 -- imperative tie-in returns THIS applied to its params.
 def CountConsHit : Term := prog{
-  λ (m : Nat). λ (a : Nat). λ (l : List Nat). λ (hq : Id Bool (Eqb m a) True).
+  λ (M : Nat). λ (A : Nat). λ (L : List Nat). λ (Hq : Id Bool (Eqb M A) True).
     j Bool True
-      (λ (z : Bool). λ (h : Id Bool True z).
-        Id Nat (boolRec (λ (w : Bool). Nat) (S (Count m l)) (Count m l) z) (S (Count m l)))
-      Refl (Eqb m a) (IdSym Bool (Eqb m a) True hq) }
+      (λ (Z0 : Bool). λ (H : Id Bool True Z0).
+        Id Nat (boolRec (λ (W : Bool). Nat) (S (Count M L)) (Count M L) Z0) (S (Count M L)))
+      Refl (Eqb M A) (IdSym Bool (Eqb M A) True Hq) }
 def CountConsHitTy : Term := prog{
-  Π (m : Nat) → Π (a : Nat) → Π (l : List Nat) → Id Bool (Eqb m a) True →
-    Id Nat (Count m (Cons a l)) (S (Count m l)) }
+  Π (M : Nat) → Π (A : Nat) → Π (L : List Nat) → Id Bool (Eqb M A) True →
+    Id Nat (Count M (Cons A L)) (S (Count M L)) }
 
 -- Bounded head-swap: exchanging the head `x` with position `j` of the tail `xs`
 -- preserves count, PROVIDED `j` is in range (`Le (S j) (Len xs)`). Induction on
@@ -402,39 +402,39 @@ def CountConsHitTy : Term := prog{
 -- swapped-in element past the head with `Cons2Comm`, apply the IH under the head
 -- via `CountConsCongr`, then `Cons2Comm` back.
 def CountHeadswap : Term := prog{
-  λ (m : Nat). λ (x : Nat). λ (j : Nat).
-    elim j return (λ (jz : Nat).
-        Π (xs : List Nat) → Le (S jz) (Len xs) →
-          Id Nat (Count m (Cons (NthL jz xs) (Set jz x xs))) (Count m (Cons x xs))) {
-      Z => λ (xs : List Nat).
-        elim xs return (λ (xz : List Nat).
-            Le (S Z) (Len xz) →
-              Id Nat (Count m (Cons (NthL Z xz) (Set Z x xz))) (Count m (Cons x xz))) {
-          Nil => λ (bnd0 : Le (S Z) (Len Nil)).
-            botElim (Id Nat (Count m (Cons (NthL Z Nil) (Set Z x Nil))) (Count m (Cons x Nil))) bnd0,
-          Cons (y) (ys) ihx => λ (bnd0 : Le (S Z) (Len (Cons y ys))).
-            Cons2Comm m y x ys },
-      S (j') ih => λ (xs : List Nat).
-        elim xs return (λ (xz : List Nat).
-            Le (S (S j')) (Len xz) →
-              Id Nat (Count m (Cons (NthL (S j') xz) (Set (S j') x xz))) (Count m (Cons x xz))) {
-          Nil => λ (bnd0 : Le (S (S j')) (Len Nil)).
-            botElim (Id Nat (Count m (Cons (NthL (S j') Nil) (Set (S j') x Nil))) (Count m (Cons x Nil))) bnd0,
-          Cons (y) (ys) ihx => λ (bnd0 : Le (S (S j')) (Len (Cons y ys))).
+  λ (M : Nat). λ (X : Nat). λ (J : Nat).
+    elim J return (λ (Jz : Nat).
+        Π (Xs : List Nat) → Le (S Jz) (Len Xs) →
+          Id Nat (Count M (Cons (NthL Jz Xs) (Set Jz X Xs))) (Count M (Cons X Xs))) {
+      Z => λ (Xs : List Nat).
+        elim Xs return (λ (Xz : List Nat).
+            Le (S Z) (Len Xz) →
+              Id Nat (Count M (Cons (NthL Z Xz) (Set Z X Xz))) (Count M (Cons X Xz))) {
+          Nil => λ (Bnd0 : Le (S Z) (Len Nil)).
+            botElim (Id Nat (Count M (Cons (NthL Z Nil) (Set Z X Nil))) (Count M (Cons X Nil))) Bnd0,
+          Cons (Y) (Ys) Ihx => λ (Bnd0 : Le (S Z) (Len (Cons Y Ys))).
+            Cons2Comm M Y X Ys },
+      S (J') Ih => λ (Xs : List Nat).
+        elim Xs return (λ (Xz : List Nat).
+            Le (S (S J')) (Len Xz) →
+              Id Nat (Count M (Cons (NthL (S J') Xz) (Set (S J') X Xz))) (Count M (Cons X Xz))) {
+          Nil => λ (Bnd0 : Le (S (S J')) (Len Nil)).
+            botElim (Id Nat (Count M (Cons (NthL (S J') Nil) (Set (S J') X Nil))) (Count M (Cons X Nil))) Bnd0,
+          Cons (Y) (Ys) Ihx => λ (Bnd0 : Le (S (S J')) (Len (Cons Y Ys))).
             IdTrans Nat
-              (Count m (Cons (NthL j' ys) (Cons y (Set j' x ys))))
-              (Count m (Cons y (Cons (NthL j' ys) (Set j' x ys))))
-              (Count m (Cons x (Cons y ys)))
-              (Cons2Comm m (NthL j' ys) y (Set j' x ys))
+              (Count M (Cons (NthL J' Ys) (Cons Y (Set J' X Ys))))
+              (Count M (Cons Y (Cons (NthL J' Ys) (Set J' X Ys))))
+              (Count M (Cons X (Cons Y Ys)))
+              (Cons2Comm M (NthL J' Ys) Y (Set J' X Ys))
               (IdTrans Nat
-                (Count m (Cons y (Cons (NthL j' ys) (Set j' x ys))))
-                (Count m (Cons y (Cons x ys)))
-                (Count m (Cons x (Cons y ys)))
-                (CountConsCongr m y (Cons (NthL j' ys) (Set j' x ys)) (Cons x ys) (ih ys bnd0))
-                (Cons2Comm m y x ys)) } } }
+                (Count M (Cons Y (Cons (NthL J' Ys) (Set J' X Ys))))
+                (Count M (Cons Y (Cons X Ys)))
+                (Count M (Cons X (Cons Y Ys)))
+                (CountConsCongr M Y (Cons (NthL J' Ys) (Set J' X Ys)) (Cons X Ys) (Ih Ys Bnd0))
+                (Cons2Comm M Y X Ys)) } } }
 def CountHeadswapTy : Term := prog{
-  Π (m : Nat) → Π (x : Nat) → Π (j : Nat) → Π (xs : List Nat) → Le (S j) (Len xs) →
-    Id Nat (Count m (Cons (NthL j xs) (Set j x xs))) (Count m (Cons x xs)) }
+  Π (M : Nat) → Π (X : Nat) → Π (J : Nat) → Π (Xs : List Nat) → Le (S J) (Len Xs) →
+    Id Nat (Count M (Cons (NthL J Xs) (Set J X Xs))) (Count M (Cons X Xs)) }
 
 -- The top: `SwapL i j` preserves count when both indices are in range. Induction
 -- on `i`, casing `l` then `j`. The head case (`i = Z`, `j = S j'`) is exactly a
@@ -443,39 +443,39 @@ def CountHeadswapTy : Term := prog{
 -- discharged by `CountConsCongr` on the IH; the degenerate `j = Z` / `i > j`
 -- cases are the identity swap (`Refl`); `Nil` is ⊥-discharged by `Le (S i) …`.
 def CountSwapL : Term := prog{
-  λ (m : Nat). λ (i : Nat).
-    elim i return (λ (iz : Nat).
-        Π (j : Nat) → Π (l : List Nat) → Le (S iz) (Len l) → Le (S j) (Len l) →
-          Id Nat (Count m (SwapL iz j l)) (Count m l)) {
-      Z => λ (j : Nat). λ (l : List Nat).
-        elim l return (λ (lz : List Nat).
-            Le (S Z) (Len lz) → Le (S j) (Len lz) → Id Nat (Count m (SwapL Z j lz)) (Count m lz)) {
-          Nil => λ (bi0 : Le (S Z) (Len Nil)). λ (bj0 : Le (S j) (Len Nil)).
-            botElim (Id Nat (Count m (SwapL Z j Nil)) (Count m Nil)) bi0,
-          Cons (y) (ys) ihl => λ (bi0 : Le (S Z) (Len (Cons y ys))). λ (bj0 : Le (S j) (Len (Cons y ys))).
-            elim j return (λ (jz : Nat).
-                Le (S jz) (Len (Cons y ys)) →
-                  Id Nat (Count m (SwapL Z jz (Cons y ys))) (Count m (Cons y ys))) {
-              Z => λ (bj1 : Le (S Z) (Len (Cons y ys))). Refl,
-              S (j') jih => λ (bj1 : Le (S (S j')) (Len (Cons y ys))).
-                CountHeadswap m y j' ys bj1
-            } bj0 },
-      S (i') ih => λ (j : Nat). λ (l : List Nat).
-        elim l return (λ (lz : List Nat).
-            Le (S (S i')) (Len lz) → Le (S j) (Len lz) → Id Nat (Count m (SwapL (S i') j lz)) (Count m lz)) {
-          Nil => λ (bi0 : Le (S (S i')) (Len Nil)). λ (bj0 : Le (S j) (Len Nil)).
-            botElim (Id Nat (Count m (SwapL (S i') j Nil)) (Count m Nil)) bi0,
-          Cons (y) (ys) ihl => λ (bi0 : Le (S (S i')) (Len (Cons y ys))). λ (bj0 : Le (S j) (Len (Cons y ys))).
-            elim j return (λ (jz : Nat).
-                Le (S jz) (Len (Cons y ys)) →
-                  Id Nat (Count m (SwapL (S i') jz (Cons y ys))) (Count m (Cons y ys))) {
-              Z => λ (bj1 : Le (S Z) (Len (Cons y ys))). Refl,
-              S (j') jih => λ (bj1 : Le (S (S j')) (Len (Cons y ys))).
-                CountConsCongr m y (SwapL i' j' ys) ys (ih j' ys bi0 bj1)
-            } bj0 } } }
+  λ (M : Nat). λ (I : Nat).
+    elim I return (λ (Iz : Nat).
+        Π (J : Nat) → Π (L : List Nat) → Le (S Iz) (Len L) → Le (S J) (Len L) →
+          Id Nat (Count M (SwapL Iz J L)) (Count M L)) {
+      Z => λ (J : Nat). λ (L : List Nat).
+        elim L return (λ (Lz : List Nat).
+            Le (S Z) (Len Lz) → Le (S J) (Len Lz) → Id Nat (Count M (SwapL Z J Lz)) (Count M Lz)) {
+          Nil => λ (Bi0 : Le (S Z) (Len Nil)). λ (Bj0 : Le (S J) (Len Nil)).
+            botElim (Id Nat (Count M (SwapL Z J Nil)) (Count M Nil)) Bi0,
+          Cons (Y) (Ys) Ihl => λ (Bi0 : Le (S Z) (Len (Cons Y Ys))). λ (Bj0 : Le (S J) (Len (Cons Y Ys))).
+            elim J return (λ (Jz : Nat).
+                Le (S Jz) (Len (Cons Y Ys)) →
+                  Id Nat (Count M (SwapL Z Jz (Cons Y Ys))) (Count M (Cons Y Ys))) {
+              Z => λ (Bj1 : Le (S Z) (Len (Cons Y Ys))). Refl,
+              S (J') Jih => λ (Bj1 : Le (S (S J')) (Len (Cons Y Ys))).
+                CountHeadswap M Y J' Ys Bj1
+            } Bj0 },
+      S (I') Ih => λ (J : Nat). λ (L : List Nat).
+        elim L return (λ (Lz : List Nat).
+            Le (S (S I')) (Len Lz) → Le (S J) (Len Lz) → Id Nat (Count M (SwapL (S I') J Lz)) (Count M Lz)) {
+          Nil => λ (Bi0 : Le (S (S I')) (Len Nil)). λ (Bj0 : Le (S J) (Len Nil)).
+            botElim (Id Nat (Count M (SwapL (S I') J Nil)) (Count M Nil)) Bi0,
+          Cons (Y) (Ys) Ihl => λ (Bi0 : Le (S (S I')) (Len (Cons Y Ys))). λ (Bj0 : Le (S J) (Len (Cons Y Ys))).
+            elim J return (λ (Jz : Nat).
+                Le (S Jz) (Len (Cons Y Ys)) →
+                  Id Nat (Count M (SwapL (S I') Jz (Cons Y Ys))) (Count M (Cons Y Ys))) {
+              Z => λ (Bj1 : Le (S Z) (Len (Cons Y Ys))). Refl,
+              S (J') Jih => λ (Bj1 : Le (S (S J')) (Len (Cons Y Ys))).
+                CountConsCongr M Y (SwapL I' J' Ys) Ys (Ih J' Ys Bi0 Bj1)
+            } Bj0 } } }
 def CountSwapLTy : Term := prog{
-  Π (m : Nat) → Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) →
-    Le (S i) (Len l) → Le (S j) (Len l) → Id Nat (Count m (SwapL i j l)) (Count m l) }
+  Π (M : Nat) → Π (I : Nat) → Π (J : Nat) → Π (L : List Nat) →
+    Le (S I) (Len L) → Le (S J) (Len L) → Id Nat (Count M (SwapL I J L)) (Count M L) }
 
 -- The friction-free corollary: CountSwapL with swapS's telescope-mirrored
 -- premises (`Le (S i) j`, `Le (S j) (Len l)` — exactly the `pij`/`p2` a swapS
@@ -484,12 +484,12 @@ def CountSwapLTy : Term := prog{
 -- it. `Le (S i) (Len l)` comes by `LeTrans (S i) (S j) (Len l)`: `LeUpR` lifts
 -- `pij : Le (S i) j` to `Le (S i) (S j)`, then chain with `p2`.
 def CountSwapL' : Term := prog{
-  λ (m : Nat). λ (i : Nat). λ (j : Nat). λ (l : List Nat).
-    λ (pij : Le (S i) j). λ (p2 : Le (S j) (Len l)).
-      CountSwapL m i j l (LeTrans (S i) (S j) (Len l) (LeUpR (S i) j pij) p2) p2 }
+  λ (M : Nat). λ (I : Nat). λ (J : Nat). λ (L : List Nat).
+    λ (Pij : Le (S I) J). λ (P2 : Le (S J) (Len L)).
+      CountSwapL M I J L (LeTrans (S I) (S J) (Len L) (LeUpR (S I) J Pij) P2) P2 }
 def CountSwapL'Ty : Term := prog{
-  Π (m : Nat) → Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) →
-    Le (S i) j → Le (S j) (Len l) → Id Nat (Count m (SwapL i j l)) (Count m l) }
+  Π (M : Nat) → Π (I : Nat) → Π (J : Nat) → Π (L : List Nat) →
+    Le (S I) J → Le (S J) (Len L) → Id Nat (Count M (SwapL I J L)) (Count M L) }
 
 /-! ## The BRIDGE — set/nth exit form ≡ `SwapL` (§22, direct proving)
 
@@ -513,38 +513,38 @@ def CountSwapL'Ty : Term := prog{
     (both sides reduce to `Cons (NthL j' ys) (Set j' y ys)`), the `i = S i'` step is
     the IH under `Cons y ·`. -/
 def SwapLSet : Term := prog{
-  λ (i : Nat).
-    elim i return (λ (iz : Nat). Π (j : Nat) → Π (l : List Nat) → Le (S iz) j → Le (S j) (Len l) →
-        Id (List Nat) (Set iz (NthL j l) (Set j (NthL iz l) l)) (SwapL iz j l)) {
-      Z => λ (j : Nat). λ (l : List Nat).
-        elim l return (λ (lz : List Nat). Le (S Z) j → Le (S j) (Len lz) →
-            Id (List Nat) (Set Z (NthL j lz) (Set j (NthL Z lz) lz)) (SwapL Z j lz)) {
-          Nil => λ (pij : Le (S Z) j). λ (p2 : Le (S j) (Len Nil)).
-            botElim (Id (List Nat) (Set Z (NthL j Nil) (Set j (NthL Z Nil) Nil)) (SwapL Z j Nil)) p2,
-          Cons (y) (ys) ihl => λ (pij : Le (S Z) j). λ (p2 : Le (S j) (Len (Cons y ys))).
-            elim j return (λ (jz : Nat). Le (S Z) jz → Le (S jz) (Len (Cons y ys)) →
-                Id (List Nat) (Set Z (NthL jz (Cons y ys)) (Set jz (NthL Z (Cons y ys)) (Cons y ys))) (SwapL Z jz (Cons y ys))) {
-              Z => λ (pijz : Le (S Z) Z). λ (p2z : Le (S Z) (Len (Cons y ys))).
-                botElim (Id (List Nat) (Set Z (NthL Z (Cons y ys)) (Set Z (NthL Z (Cons y ys)) (Cons y ys))) (SwapL Z Z (Cons y ys))) pijz,
-              S (j') jih => λ (pijs : Le (S Z) (S j')). λ (p2s : Le (S (S j')) (Len (Cons y ys))). Refl
-            } pij p2 },
-      S (i') ih => λ (j : Nat). λ (l : List Nat).
-        elim l return (λ (lz : List Nat). Le (S (S i')) j → Le (S j) (Len lz) →
-            Id (List Nat) (Set (S i') (NthL j lz) (Set j (NthL (S i') lz) lz)) (SwapL (S i') j lz)) {
-          Nil => λ (pij : Le (S (S i')) j). λ (p2 : Le (S j) (Len Nil)).
-            botElim (Id (List Nat) (Set (S i') (NthL j Nil) (Set j (NthL (S i') Nil) Nil)) (SwapL (S i') j Nil)) p2,
-          Cons (y) (ys) ihl => λ (pij : Le (S (S i')) j). λ (p2 : Le (S j) (Len (Cons y ys))).
-            elim j return (λ (jz : Nat). Le (S (S i')) jz → Le (S jz) (Len (Cons y ys)) →
-                Id (List Nat) (Set (S i') (NthL jz (Cons y ys)) (Set jz (NthL (S i') (Cons y ys)) (Cons y ys))) (SwapL (S i') jz (Cons y ys))) {
-              Z => λ (pijz : Le (S (S i')) Z). λ (p2z : Le (S Z) (Len (Cons y ys))).
-                botElim (Id (List Nat) (Set (S i') (NthL Z (Cons y ys)) (Set Z (NthL (S i') (Cons y ys)) (Cons y ys))) (SwapL (S i') Z (Cons y ys))) pijz,
-              S (j') jih => λ (pijs : Le (S (S i')) (S j')). λ (p2s : Le (S (S j')) (Len (Cons y ys))).
-                IdCongr (List Nat) (List Nat) (λ (t : List Nat). Cons y t)
-                  (Set i' (NthL j' ys) (Set j' (NthL i' ys) ys)) (SwapL i' j' ys) (ih j' ys pijs p2s)
-            } pij p2 } } }
+  λ (I : Nat).
+    elim I return (λ (Iz : Nat). Π (J : Nat) → Π (L : List Nat) → Le (S Iz) J → Le (S J) (Len L) →
+        Id (List Nat) (Set Iz (NthL J L) (Set J (NthL Iz L) L)) (SwapL Iz J L)) {
+      Z => λ (J : Nat). λ (L : List Nat).
+        elim L return (λ (Lz : List Nat). Le (S Z) J → Le (S J) (Len Lz) →
+            Id (List Nat) (Set Z (NthL J Lz) (Set J (NthL Z Lz) Lz)) (SwapL Z J Lz)) {
+          Nil => λ (Pij : Le (S Z) J). λ (P2 : Le (S J) (Len Nil)).
+            botElim (Id (List Nat) (Set Z (NthL J Nil) (Set J (NthL Z Nil) Nil)) (SwapL Z J Nil)) P2,
+          Cons (Y) (Ys) Ihl => λ (Pij : Le (S Z) J). λ (P2 : Le (S J) (Len (Cons Y Ys))).
+            elim J return (λ (Jz : Nat). Le (S Z) Jz → Le (S Jz) (Len (Cons Y Ys)) →
+                Id (List Nat) (Set Z (NthL Jz (Cons Y Ys)) (Set Jz (NthL Z (Cons Y Ys)) (Cons Y Ys))) (SwapL Z Jz (Cons Y Ys))) {
+              Z => λ (Pijz : Le (S Z) Z). λ (P2z : Le (S Z) (Len (Cons Y Ys))).
+                botElim (Id (List Nat) (Set Z (NthL Z (Cons Y Ys)) (Set Z (NthL Z (Cons Y Ys)) (Cons Y Ys))) (SwapL Z Z (Cons Y Ys))) Pijz,
+              S (J') Jih => λ (Pijs : Le (S Z) (S J')). λ (P2s : Le (S (S J')) (Len (Cons Y Ys))). Refl
+            } Pij P2 },
+      S (I') Ih => λ (J : Nat). λ (L : List Nat).
+        elim L return (λ (Lz : List Nat). Le (S (S I')) J → Le (S J) (Len Lz) →
+            Id (List Nat) (Set (S I') (NthL J Lz) (Set J (NthL (S I') Lz) Lz)) (SwapL (S I') J Lz)) {
+          Nil => λ (Pij : Le (S (S I')) J). λ (P2 : Le (S J) (Len Nil)).
+            botElim (Id (List Nat) (Set (S I') (NthL J Nil) (Set J (NthL (S I') Nil) Nil)) (SwapL (S I') J Nil)) P2,
+          Cons (Y) (Ys) Ihl => λ (Pij : Le (S (S I')) J). λ (P2 : Le (S J) (Len (Cons Y Ys))).
+            elim J return (λ (Jz : Nat). Le (S (S I')) Jz → Le (S Jz) (Len (Cons Y Ys)) →
+                Id (List Nat) (Set (S I') (NthL Jz (Cons Y Ys)) (Set Jz (NthL (S I') (Cons Y Ys)) (Cons Y Ys))) (SwapL (S I') Jz (Cons Y Ys))) {
+              Z => λ (Pijz : Le (S (S I')) Z). λ (P2z : Le (S Z) (Len (Cons Y Ys))).
+                botElim (Id (List Nat) (Set (S I') (NthL Z (Cons Y Ys)) (Set Z (NthL (S I') (Cons Y Ys)) (Cons Y Ys))) (SwapL (S I') Z (Cons Y Ys))) Pijz,
+              S (J') Jih => λ (Pijs : Le (S (S I')) (S J')). λ (P2s : Le (S (S J')) (Len (Cons Y Ys))).
+                IdCongr (List Nat) (List Nat) (λ (T : List Nat). Cons Y T)
+                  (Set I' (NthL J' Ys) (Set J' (NthL I' Ys) Ys)) (SwapL I' J' Ys) (Ih J' Ys Pijs P2s)
+            } Pij P2 } } }
 def SwapLSetTy : Term := prog{
-  Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) → Le (S i) j → Le (S j) (Len l) →
-    Id (List Nat) (Set i (NthL j l) (Set j (NthL i l) l)) (SwapL i j l) }
+  Π (I : Nat) → Π (J : Nat) → Π (L : List Nat) → Le (S I) J → Le (S J) (Len L) →
+    Id (List Nat) (Set I (NthL J L) (Set J (NthL I L) L)) (SwapL I J L) }
 
 /-! ## `PartScanL` / `PartitionL` — the pure Lomuto model (§19)
 
@@ -568,25 +568,25 @@ def SwapLSetTy : Term := prog{
     `(i, Len)`). partition exposes it as its return value; SortL rides it. -/
 
 def PartScanL : Term := prog{
-  λ (pivot : Nat). λ (k : Nat).
-    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → List Nat → List Nat) {
-      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        elim i return (λ (iz : Nat). List Nat) {
-          Z => l,
-          S (i') iih => SwapL Z (S i') l },
-      S (k') rec => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        elim (Leb (NthL (S (Add i g)) l) pivot) return (λ (w : Bool). List Nat) {
-          True => elim g return (λ (gz : Nat). List Nat) {
-            Z => rec (S i) Z l,
-            S (g') gih => rec (S i) (S g') (SwapL (S i) (S (Add i g)) l) },
-          False => rec i (S g) l } } }
+  λ (Pivot : Nat). λ (K : Nat).
+    elim K return (λ (Kz : Nat). Π (I : Nat) → Π (G : Nat) → List Nat → List Nat) {
+      Z => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        elim I return (λ (Iz : Nat). List Nat) {
+          Z => L,
+          S (I') Iih => SwapL Z (S I') L },
+      S (K') Rec => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        elim (Leb (NthL (S (Add I G)) L) Pivot) return (λ (W : Bool). List Nat) {
+          True => elim G return (λ (Gz : Nat). List Nat) {
+            Z => Rec (S I) Z L,
+            S (G') Gih => Rec (S I) (S G') (SwapL (S I) (S (Add I G)) L) },
+          False => Rec I (S G) L } } }
 
 def PartitionL : Term := prog{
-  λ (n : Nat). λ (l : List Nat).
-    elim n return (λ (nz : Nat). List Nat) {
-      Z => l,
-      S (n') rec => PartScanL (NthL Z l) n' Z Z l } }
-def PartitionLTy : Term := prog{ Π (n : Nat) → List Nat → List Nat }
+  λ (N : Nat). λ (L : List Nat).
+    elim N return (λ (Nz : Nat). List Nat) {
+      Z => L,
+      S (N') Rec => PartScanL (NthL Z L) N' Z Z L } }
+def PartitionLTy : Term := prog{ Π (N : Nat) → List Nat → List Nat }
 
 /-! ## `PartScanIdxL` / `PartIdxL` — the boundary INDEX the scan produces (§21)
 
@@ -597,22 +597,22 @@ def PartitionLTy : Term := prog{ Π (n : Nat) → List Nat → List Nat }
     PartScanL, so the two stay in lockstep. -/
 
 def PartScanIdxL : Term := prog{
-  λ (pivot : Nat). λ (k : Nat).
-    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → List Nat → Nat) {
-      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat). i,
-      S (k') rec => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        elim (Leb (NthL (S (Add i g)) l) pivot) return (λ (w : Bool). Nat) {
-          True => elim g return (λ (gz : Nat). Nat) {
-            Z => rec (S i) Z l,
-            S (g') gih => rec (S i) (S g') (SwapL (S i) (S (Add i g)) l) },
-          False => rec i (S g) l } } }
+  λ (Pivot : Nat). λ (K : Nat).
+    elim K return (λ (Kz : Nat). Π (I : Nat) → Π (G : Nat) → List Nat → Nat) {
+      Z => λ (I : Nat). λ (G : Nat). λ (L : List Nat). I,
+      S (K') Rec => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        elim (Leb (NthL (S (Add I G)) L) Pivot) return (λ (W : Bool). Nat) {
+          True => elim G return (λ (Gz : Nat). Nat) {
+            Z => Rec (S I) Z L,
+            S (G') Gih => Rec (S I) (S G') (SwapL (S I) (S (Add I G)) L) },
+          False => Rec I (S G) L } } }
 
 def PartIdxL : Term := prog{
-  λ (n : Nat). λ (l : List Nat).
-    elim n return (λ (nz : Nat). Nat) {
+  λ (N : Nat). λ (L : List Nat).
+    elim N return (λ (Nz : Nat). Nat) {
       Z => Z,
-      S (n') rec => PartScanIdxL (NthL Z l) n' Z Z l } }
-def PartIdxLTy : Term := prog{ Π (n : Nat) → List Nat → Nat }
+      S (N') Rec => PartScanIdxL (NthL Z L) N' Z Z L } }
+def PartIdxLTy : Term := prog{ Π (N : Nat) → List Nat → Nat }
 
 /-! ## `SortL` — the pure quicksort model (§21)
 
@@ -626,20 +626,20 @@ def PartIdxLTy : Term := prog{ Π (n : Nat) → List Nat → Nat }
     `i`, both recursions ride it), so the conformance is conversion. -/
 
 def SortL : Term := prog{
-  λ (fuel : Nat).
-    elim fuel return (λ (fz : Nat). Π (n : Nat) → List Nat → List Nat) {
-      Z => λ (n : Nat). λ (l : List Nat). l,
-      S (f') rec => λ (n : Nat). λ (l : List Nat).
-        elim n return (λ (nz : Nat). List Nat) {
-          Z => l,
-          S (n') nih => elim n' return (λ (mz : Nat). List Nat) {
-            Z => l,
-            S (n'') n2ih =>
-              let p = PartitionL n l;
-              let i = PartIdxL n l;
-              Append (rec i (Take i p)) (Cons (NthL i p) (rec (Len (Drop (S i) p)) (Drop (S i) p)))
+  λ (Fuel : Nat).
+    elim Fuel return (λ (Fz : Nat). Π (N : Nat) → List Nat → List Nat) {
+      Z => λ (N : Nat). λ (L : List Nat). L,
+      S (F') Rec => λ (N : Nat). λ (L : List Nat).
+        elim N return (λ (Nz : Nat). List Nat) {
+          Z => L,
+          S (N') Nih => elim N' return (λ (Mz : Nat). List Nat) {
+            Z => L,
+            S (N'') N2ih =>
+              let p = PartitionL N L;
+              let i = PartIdxL N L;
+              Append (Rec i (Take i p)) (Cons (NthL i p) (Rec (Len (Drop (S i) p)) (Drop (S i) p)))
           } } } }
-def SortLTy : Term := prog{ Π (fuel : Nat) → Π (n : Nat) → List Nat → List Nat }
+def SortLTy : Term := prog{ Π (Fuel : Nat) → Π (N : Nat) → List Nat → List Nat }
 
 /-! ## Range-aware models — the index-bounded quicksort spec (§21, plan of record)
 
@@ -655,58 +655,58 @@ def SortLTy : Term := prog{ Π (fuel : Nat) → Π (n : Nat) → List Nat → Li
     maintains `i + g = k`, so no `hi - lo` ever appears. -/
 
 def PartScanRangeL : Term := prog{
-  λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
-    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → List Nat → List Nat) {
-      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        elim i return (λ (iz : Nat). List Nat) {
-          Z => l,
-          S (i') iih => SwapL lo (Add lo (S i')) l },
-      S (k') rec => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        elim (Leb (NthL (Add lo (S (Add i g))) l) pivot) return (λ (w : Bool). List Nat) {
-          True => elim g return (λ (gz : Nat). List Nat) {
-            Z => rec (S i) Z l,
-            S (g') gih => rec (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) },
-          False => rec i (S g) l } } }
+  λ (Pivot : Nat). λ (Lo : Nat). λ (K : Nat).
+    elim K return (λ (Kz : Nat). Π (I : Nat) → Π (G : Nat) → List Nat → List Nat) {
+      Z => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        elim I return (λ (Iz : Nat). List Nat) {
+          Z => L,
+          S (I') Iih => SwapL Lo (Add Lo (S I')) L },
+      S (K') Rec => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        elim (Leb (NthL (Add Lo (S (Add I G))) L) Pivot) return (λ (W : Bool). List Nat) {
+          True => elim G return (λ (Gz : Nat). List Nat) {
+            Z => Rec (S I) Z L,
+            S (G') Gih => Rec (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) },
+          False => Rec I (S G) L } } }
 
 def PartitionRangeL : Term := prog{
-  λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-    elim cnt return (λ (cz : Nat). List Nat) {
-      Z => l,
-      S (cnt') rec => PartScanRangeL (NthL lo l) lo cnt' Z Z l } }
+  λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+    elim Cnt return (λ (Cz : Nat). List Nat) {
+      Z => L,
+      S (Cnt') Rec => PartScanRangeL (NthL Lo L) Lo Cnt' Z Z L } }
 
 def PartScanIdxRangeL : Term := prog{
-  λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
-    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → List Nat → Nat) {
-      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat). i,
-      S (k') rec => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        elim (Leb (NthL (Add lo (S (Add i g))) l) pivot) return (λ (w : Bool). Nat) {
-          True => elim g return (λ (gz : Nat). Nat) {
-            Z => rec (S i) Z l,
-            S (g') gih => rec (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) },
-          False => rec i (S g) l } } }
+  λ (Pivot : Nat). λ (Lo : Nat). λ (K : Nat).
+    elim K return (λ (Kz : Nat). Π (I : Nat) → Π (G : Nat) → List Nat → Nat) {
+      Z => λ (I : Nat). λ (G : Nat). λ (L : List Nat). I,
+      S (K') Rec => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        elim (Leb (NthL (Add Lo (S (Add I G))) L) Pivot) return (λ (W : Bool). Nat) {
+          True => elim G return (λ (Gz : Nat). Nat) {
+            Z => Rec (S I) Z L,
+            S (G') Gih => Rec (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) },
+          False => Rec I (S G) L } } }
 
 def PartIdxRangeL : Term := prog{
-  λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-    elim cnt return (λ (cz : Nat). Nat) {
+  λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+    elim Cnt return (λ (Cz : Nat). Nat) {
       Z => Z,
-      S (cnt') rec => PartScanIdxRangeL (NthL lo l) lo cnt' Z Z l } }
+      S (Cnt') Rec => PartScanIdxRangeL (NthL Lo L) Lo Cnt' Z Z L } }
 
 def PartScanGapRangeL : Term := prog{
-  λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
-    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → List Nat → Nat) {
-      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat). g,
-      S (k') rec => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        elim (Leb (NthL (Add lo (S (Add i g))) l) pivot) return (λ (w : Bool). Nat) {
-          True => elim g return (λ (gz : Nat). Nat) {
-            Z => rec (S i) Z l,
-            S (g') gih => rec (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) },
-          False => rec i (S g) l } } }
+  λ (Pivot : Nat). λ (Lo : Nat). λ (K : Nat).
+    elim K return (λ (Kz : Nat). Π (I : Nat) → Π (G : Nat) → List Nat → Nat) {
+      Z => λ (I : Nat). λ (G : Nat). λ (L : List Nat). G,
+      S (K') Rec => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        elim (Leb (NthL (Add Lo (S (Add I G))) L) Pivot) return (λ (W : Bool). Nat) {
+          True => elim G return (λ (Gz : Nat). Nat) {
+            Z => Rec (S I) Z L,
+            S (G') Gih => Rec (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) },
+          False => Rec I (S G) L } } }
 
 def PartGapRangeL : Term := prog{
-  λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-    elim cnt return (λ (cz : Nat). Nat) {
+  λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+    elim Cnt return (λ (Cz : Nat). Nat) {
       Z => Z,
-      S (cnt') rec => PartScanGapRangeL (NthL lo l) lo cnt' Z Z l } }
+      S (Cnt') Rec => PartScanGapRangeL (NthL Lo L) Lo Cnt' Z Z L } }
 
 -- The scan's size invariant: the boundary `idx` plus the gap `gap` always sum to
 -- `k + i + g` — the scan neither creates nor destroys total budget, it only shifts
@@ -717,55 +717,55 @@ def PartGapRangeL : Term := prog{
 -- `PartScanGapRangeL` branch on, abstracting that `Bool` uniformly across the idx
 -- and gap elims; each leaf is one `hshift` transport (`IdSym`/`IdTrans`).
 def PartScanSizeL : Term := prog{
-  λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
-    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
-        Id Nat (Add (PartScanIdxRangeL pivot lo kz i g l) (PartScanGapRangeL pivot lo kz i g l)) (Add kz (Add i g))) {
-      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat). Refl,
-      S (k') ih => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        elim (Leb (NthL (Add lo (S (Add i g))) l) pivot)
-          return (λ (w : Bool). Id Nat
-            (Add (elim w return (λ (ww : Bool). Nat) {
-                    True => elim g return (λ (gz : Nat). Nat) {
-                      Z => PartScanIdxRangeL pivot lo k' (S i) Z l,
-                      S (g') gih => PartScanIdxRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) },
-                    False => PartScanIdxRangeL pivot lo k' i (S g) l })
-                 (elim w return (λ (ww : Bool). Nat) {
-                    True => elim g return (λ (gz : Nat). Nat) {
-                      Z => PartScanGapRangeL pivot lo k' (S i) Z l,
-                      S (g') gih => PartScanGapRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) },
-                    False => PartScanGapRangeL pivot lo k' i (S g) l }))
-            (Add (S k') (Add i g))) {
-          True => elim g return (λ (gz : Nat). Id Nat
-                    (Add (elim gz return (λ (gy : Nat). Nat) {
-                            Z => PartScanIdxRangeL pivot lo k' (S i) Z l,
-                            S (g') gih => PartScanIdxRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) })
-                         (elim gz return (λ (gy : Nat). Nat) {
-                            Z => PartScanGapRangeL pivot lo k' (S i) Z l,
-                            S (g') gih => PartScanGapRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) }))
-                    (Add (S k') (Add i gz))) {
+  λ (Pivot : Nat). λ (Lo : Nat). λ (K : Nat).
+    elim K return (λ (Kz : Nat). Π (I : Nat) → Π (G : Nat) → Π (L : List Nat) →
+        Id Nat (Add (PartScanIdxRangeL Pivot Lo Kz I G L) (PartScanGapRangeL Pivot Lo Kz I G L)) (Add Kz (Add I G))) {
+      Z => λ (I : Nat). λ (G : Nat). λ (L : List Nat). Refl,
+      S (K') Ih => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        elim (Leb (NthL (Add Lo (S (Add I G))) L) Pivot)
+          return (λ (W : Bool). Id Nat
+            (Add (elim W return (λ (Ww : Bool). Nat) {
+                    True => elim G return (λ (Gz : Nat). Nat) {
+                      Z => PartScanIdxRangeL Pivot Lo K' (S I) Z L,
+                      S (G') Gih => PartScanIdxRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) },
+                    False => PartScanIdxRangeL Pivot Lo K' I (S G) L })
+                 (elim W return (λ (Ww : Bool). Nat) {
+                    True => elim G return (λ (Gz : Nat). Nat) {
+                      Z => PartScanGapRangeL Pivot Lo K' (S I) Z L,
+                      S (G') Gih => PartScanGapRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) },
+                    False => PartScanGapRangeL Pivot Lo K' I (S G) L }))
+            (Add (S K') (Add I G))) {
+          True => elim G return (λ (Gz : Nat). Id Nat
+                    (Add (elim Gz return (λ (Gy : Nat). Nat) {
+                            Z => PartScanIdxRangeL Pivot Lo K' (S I) Z L,
+                            S (G') Gih => PartScanIdxRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) })
+                         (elim Gz return (λ (Gy : Nat). Nat) {
+                            Z => PartScanGapRangeL Pivot Lo K' (S I) Z L,
+                            S (G') Gih => PartScanGapRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) }))
+                    (Add (S K') (Add I Gz))) {
             Z => IdTrans Nat
-                   (Add (PartScanIdxRangeL pivot lo k' (S i) Z l) (PartScanGapRangeL pivot lo k' (S i) Z l))
-                   (Add k' (Add (S i) Z))
-                   (Add (S k') (Add i Z))
-                   (ih (S i) Z l)
-                   (IdSym Nat (Add (S k') (Add i Z)) (Add k' (Add (S i) Z)) (HshiftTrue k' i Z)),
-            S (g') gih => IdTrans Nat
-                   (Add (PartScanIdxRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l)) (PartScanGapRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l)))
-                   (Add k' (Add (S i) (S g')))
-                   (Add (S k') (Add i (S g')))
-                   (ih (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l))
-                   (IdSym Nat (Add (S k') (Add i (S g'))) (Add k' (Add (S i) (S g'))) (HshiftTrue k' i (S g')))
+                   (Add (PartScanIdxRangeL Pivot Lo K' (S I) Z L) (PartScanGapRangeL Pivot Lo K' (S I) Z L))
+                   (Add K' (Add (S I) Z))
+                   (Add (S K') (Add I Z))
+                   (Ih (S I) Z L)
+                   (IdSym Nat (Add (S K') (Add I Z)) (Add K' (Add (S I) Z)) (HshiftTrue K' I Z)),
+            S (G') Gih => IdTrans Nat
+                   (Add (PartScanIdxRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L)) (PartScanGapRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L)))
+                   (Add K' (Add (S I) (S G')))
+                   (Add (S K') (Add I (S G')))
+                   (Ih (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L))
+                   (IdSym Nat (Add (S K') (Add I (S G'))) (Add K' (Add (S I) (S G'))) (HshiftTrue K' I (S G')))
           },
           False => IdTrans Nat
-                     (Add (PartScanIdxRangeL pivot lo k' i (S g) l) (PartScanGapRangeL pivot lo k' i (S g) l))
-                     (Add k' (Add i (S g)))
-                     (Add (S k') (Add i g))
-                     (ih i (S g) l)
-                     (IdSym Nat (Add (S k') (Add i g)) (Add k' (Add i (S g))) (HshiftFalse k' i g))
+                     (Add (PartScanIdxRangeL Pivot Lo K' I (S G) L) (PartScanGapRangeL Pivot Lo K' I (S G) L))
+                     (Add K' (Add I (S G)))
+                     (Add (S K') (Add I G))
+                     (Ih I (S G) L)
+                     (IdSym Nat (Add (S K') (Add I G)) (Add K' (Add I (S G))) (HshiftFalse K' I G))
         }
     } }
-def PartScanSizeLTy : Term := prog{ Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
-  Id Nat (Add (PartScanIdxRangeL pivot lo k i g l) (PartScanGapRangeL pivot lo k i g l)) (Add k (Add i g)) }
+def PartScanSizeLTy : Term := prog{ Π (Pivot : Nat) → Π (Lo : Nat) → Π (K : Nat) → Π (I : Nat) → Π (G : Nat) → Π (L : List Nat) →
+  Id Nat (Add (PartScanIdxRangeL Pivot Lo K I G L) (PartScanGapRangeL Pivot Lo K I G L)) (Add K (Add I G)) }
 
 -- The range scan preserves length — it only ever rebuilds the same spine (SwapL,
 -- which LenSwapL knows preserves length) or leaves it. Same induction shape as
@@ -775,54 +775,54 @@ def PartScanSizeLTy : Term := prog{ Π (pivot : Nat) → Π (lo : Nat) → Π (k
 -- needs this because partitionRange MUTATES *v, and the two recursive-call range
 -- bounds refer to len (*v-after-partition) — this moves them back onto len (entry).
 def LenPartScanRangeL : Term := prog{
-  λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
-    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
-        Id Nat (Len (PartScanRangeL pivot lo kz i g l)) (Len l)) {
-      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        elim i return (λ (iz : Nat). Id Nat
-            (Len (elim iz return (λ (iy : Nat). List Nat) { Z => l, S (i') iih => SwapL lo (Add lo (S i')) l }))
-            (Len l)) {
+  λ (Pivot : Nat). λ (Lo : Nat). λ (K : Nat).
+    elim K return (λ (Kz : Nat). Π (I : Nat) → Π (G : Nat) → Π (L : List Nat) →
+        Id Nat (Len (PartScanRangeL Pivot Lo Kz I G L)) (Len L)) {
+      Z => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        elim I return (λ (Iz : Nat). Id Nat
+            (Len (elim Iz return (λ (Iy : Nat). List Nat) { Z => L, S (I') Iih => SwapL Lo (Add Lo (S I')) L }))
+            (Len L)) {
           Z => Refl,
-          S (i') iih => LenSwapL lo (Add lo (S i')) l },
-      S (k') ih => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        elim (Leb (NthL (Add lo (S (Add i g))) l) pivot)
-          return (λ (w : Bool). Id Nat
-            (Len (elim w return (λ (ww : Bool). List Nat) {
-                    True => elim g return (λ (gz : Nat). List Nat) {
-                      Z => PartScanRangeL pivot lo k' (S i) Z l,
-                      S (g') gih => PartScanRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) },
-                    False => PartScanRangeL pivot lo k' i (S g) l }))
-            (Len l)) {
-          True => elim g return (λ (gz : Nat). Id Nat
-                    (Len (elim gz return (λ (gy : Nat). List Nat) {
-                            Z => PartScanRangeL pivot lo k' (S i) Z l,
-                            S (g') gih => PartScanRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) }))
-                    (Len l)) {
-            Z => ih (S i) Z l,
-            S (g') gih => IdTrans Nat
-                   (Len (PartScanRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l)))
-                   (Len (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l))
-                   (Len l)
-                   (ih (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l))
-                   (LenSwapL (Add lo (S i)) (Add lo (S (Add i g))) l)
+          S (I') Iih => LenSwapL Lo (Add Lo (S I')) L },
+      S (K') Ih => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        elim (Leb (NthL (Add Lo (S (Add I G))) L) Pivot)
+          return (λ (W : Bool). Id Nat
+            (Len (elim W return (λ (Ww : Bool). List Nat) {
+                    True => elim G return (λ (Gz : Nat). List Nat) {
+                      Z => PartScanRangeL Pivot Lo K' (S I) Z L,
+                      S (G') Gih => PartScanRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) },
+                    False => PartScanRangeL Pivot Lo K' I (S G) L }))
+            (Len L)) {
+          True => elim G return (λ (Gz : Nat). Id Nat
+                    (Len (elim Gz return (λ (Gy : Nat). List Nat) {
+                            Z => PartScanRangeL Pivot Lo K' (S I) Z L,
+                            S (G') Gih => PartScanRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) }))
+                    (Len L)) {
+            Z => Ih (S I) Z L,
+            S (G') Gih => IdTrans Nat
+                   (Len (PartScanRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L)))
+                   (Len (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L))
+                   (Len L)
+                   (Ih (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L))
+                   (LenSwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L)
           },
-          False => ih i (S g) l
+          False => Ih I (S G) L
         }
     } }
-def LenPartScanRangeLTy : Term := prog{ Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
-  Id Nat (Len (PartScanRangeL pivot lo k i g l)) (Len l) }
+def LenPartScanRangeLTy : Term := prog{ Π (Pivot : Nat) → Π (Lo : Nat) → Π (K : Nat) → Π (I : Nat) → Π (G : Nat) → Π (L : List Nat) →
+  Id Nat (Len (PartScanRangeL Pivot Lo K I G L)) (Len L) }
 
 -- The wrapper form the quicksort recursion consumes: PartitionRangeL is
 -- PartScanRangeL after picking the pivot, so its length preservation is the scan's
 -- (Z base is Refl, S cnt' is LenPartScanRangeL at the entry offsets).
 def LenPartitionRangeL : Term := prog{
-  λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-    elim cnt return (λ (cz : Nat). Id Nat
-        (Len (elim cz return (λ (cy : Nat). List Nat) { Z => l, S (cnt') rec => PartScanRangeL (NthL lo l) lo cnt' Z Z l }))
-        (Len l)) {
+  λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+    elim Cnt return (λ (Cz : Nat). Id Nat
+        (Len (elim Cz return (λ (Cy : Nat). List Nat) { Z => L, S (Cnt') Rec => PartScanRangeL (NthL Lo L) Lo Cnt' Z Z L }))
+        (Len L)) {
       Z => Refl,
-      S (cnt') rec => LenPartScanRangeL (NthL lo l) lo cnt' Z Z l } }
-def LenPartitionRangeLTy : Term := prog{ Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Id Nat (Len (PartitionRangeL lo cnt l)) (Len l) }
+      S (Cnt') Rec => LenPartScanRangeL (NthL Lo L) Lo Cnt' Z Z L } }
+def LenPartitionRangeLTy : Term := prog{ Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) → Id Nat (Len (PartitionRangeL Lo Cnt L)) (Len L) }
 
 /-! ## Count preservation of the range scan/partition (§22, the partition rung)
 
@@ -836,90 +836,90 @@ def LenPartitionRangeLTy : Term := prog{ Π (lo : Nat) → Π (cnt : Nat) → Π
     proves. This is the proof-linearity-vs-count asymmetry made concrete: length is
     friction-free, count pays the bound tax at every swap. -/
 def CountPartScanRangeL : Term := prog{
-  λ (pivot : Nat). λ (lo : Nat). λ (m : Nat). λ (k : Nat).
-    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
-        Le (Add lo (S (Add kz (Add i g)))) (Len l) →
-        Id Nat (Count m (PartScanRangeL pivot lo kz i g l)) (Count m l)) {
-      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        elim i return (λ (iz : Nat).
-            Le (Add lo (S (Add Z (Add iz g)))) (Len l) →
-            Id Nat (Count m (elim iz return (λ (iy : Nat). List Nat) {
-                Z => l, S (i') iih => SwapL lo (Add lo (S i')) l })) (Count m l)) {
-          Z => λ (hle : Le (Add lo (S (Add Z (Add Z g)))) (Len l)). Refl,
-          S (i') iih => λ (hle : Le (Add lo (S (Add Z (Add (S i') g)))) (Len l)).
-            CountSwapL' m lo (Add lo (S i')) l (LeAddSucc lo i')
-              (LeTrans (S (Add lo (S i'))) (Add lo (S (S (Add i' g)))) (Len l)
-                (LeRwL (Add lo (S (S (Add i' g)))) (Add lo (S (S i'))) (S (Add lo (S i')))
-                  (AddSucc lo (S i'))
-                  (LeAddMonoL lo (S (S i')) (S (S (Add i' g))) (LeAdd i' g)))
-                hle)
+  λ (Pivot : Nat). λ (Lo : Nat). λ (M : Nat). λ (K : Nat).
+    elim K return (λ (Kz : Nat). Π (I : Nat) → Π (G : Nat) → Π (L : List Nat) →
+        Le (Add Lo (S (Add Kz (Add I G)))) (Len L) →
+        Id Nat (Count M (PartScanRangeL Pivot Lo Kz I G L)) (Count M L)) {
+      Z => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        elim I return (λ (Iz : Nat).
+            Le (Add Lo (S (Add Z (Add Iz G)))) (Len L) →
+            Id Nat (Count M (elim Iz return (λ (Iy : Nat). List Nat) {
+                Z => L, S (I') Iih => SwapL Lo (Add Lo (S I')) L })) (Count M L)) {
+          Z => λ (Hle : Le (Add Lo (S (Add Z (Add Z G)))) (Len L)). Refl,
+          S (I') Iih => λ (Hle : Le (Add Lo (S (Add Z (Add (S I') G)))) (Len L)).
+            CountSwapL' M Lo (Add Lo (S I')) L (LeAddSucc Lo I')
+              (LeTrans (S (Add Lo (S I'))) (Add Lo (S (S (Add I' G)))) (Len L)
+                (LeRwL (Add Lo (S (S (Add I' G)))) (Add Lo (S (S I'))) (S (Add Lo (S I')))
+                  (AddSucc Lo (S I'))
+                  (LeAddMonoL Lo (S (S I')) (S (S (Add I' G))) (LeAdd I' G)))
+                Hle)
         },
-      S (k') ih => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        λ (hle : Le (Add lo (S (Add (S k') (Add i g)))) (Len l)).
-        elim (Leb (NthL (Add lo (S (Add i g))) l) pivot)
-          return (λ (w : Bool). Id Nat
-            (Count m (elim w return (λ (ww : Bool). List Nat) {
-                True => elim g return (λ (gz : Nat). List Nat) {
-                  Z => PartScanRangeL pivot lo k' (S i) Z l,
-                  S (g') gih => PartScanRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) },
-                False => PartScanRangeL pivot lo k' i (S g) l }))
-            (Count m l)) {
+      S (K') Ih => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        λ (Hle : Le (Add Lo (S (Add (S K') (Add I G)))) (Len L)).
+        elim (Leb (NthL (Add Lo (S (Add I G))) L) Pivot)
+          return (λ (W : Bool). Id Nat
+            (Count M (elim W return (λ (Ww : Bool). List Nat) {
+                True => elim G return (λ (Gz : Nat). List Nat) {
+                  Z => PartScanRangeL Pivot Lo K' (S I) Z L,
+                  S (G') Gih => PartScanRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) },
+                False => PartScanRangeL Pivot Lo K' I (S G) L }))
+            (Count M L)) {
           True =>
-            (elim g return (λ (gz : Nat).
-                Le (Add lo (S (Add (S k') (Add i gz)))) (Len l) →
-                Id Nat (Count m (elim gz return (λ (gy : Nat). List Nat) {
-                    Z => PartScanRangeL pivot lo k' (S i) Z l,
-                    S (g') gih => PartScanRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i gz))) l) })) (Count m l)) {
-              Z => λ (hleZ : Le (Add lo (S (Add (S k') (Add i Z)))) (Len l)).
-                ih (S i) Z l
-                  (LeRwL (Len l)
-                    (Add lo (S (Add (S k') (Add i Z))))
-                    (Add lo (S (Add k' (Add (S i) Z))))
-                    (IdCongr Nat Nat (λ (a : Nat). Add lo (S a))
-                      (Add (S k') (Add i Z)) (Add k' (Add (S i) Z)) (HshiftTrue k' i Z))
-                    hleZ),
-              S (g') gih => λ (hleS : Le (Add lo (S (Add (S k') (Add i (S g'))))) (Len l)).
+            (elim G return (λ (Gz : Nat).
+                Le (Add Lo (S (Add (S K') (Add I Gz)))) (Len L) →
+                Id Nat (Count M (elim Gz return (λ (Gy : Nat). List Nat) {
+                    Z => PartScanRangeL Pivot Lo K' (S I) Z L,
+                    S (G') Gih => PartScanRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I Gz))) L) })) (Count M L)) {
+              Z => λ (HleZ : Le (Add Lo (S (Add (S K') (Add I Z)))) (Len L)).
+                Ih (S I) Z L
+                  (LeRwL (Len L)
+                    (Add Lo (S (Add (S K') (Add I Z))))
+                    (Add Lo (S (Add K' (Add (S I) Z))))
+                    (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A))
+                      (Add (S K') (Add I Z)) (Add K' (Add (S I) Z)) (HshiftTrue K' I Z))
+                    HleZ),
+              S (G') Gih => λ (HleS : Le (Add Lo (S (Add (S K') (Add I (S G'))))) (Len L)).
                 IdTrans Nat
-                  (Count m (PartScanRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)))
-                  (Count m (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l))
-                  (Count m l)
-                  (ih (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)
-                    (LeRwR (Add lo (S (Add k' (Add (S i) (S g'))))) (Len l)
-                       (Len (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l))
-                       (IdSym Nat (Len (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)) (Len l)
-                         (LenSwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l))
-                       (LeRwL (Len l)
-                         (Add lo (S (Add (S k') (Add i (S g')))))
-                         (Add lo (S (Add k' (Add (S i) (S g')))))
-                         (IdCongr Nat Nat (λ (a : Nat). Add lo (S a))
-                           (Add (S k') (Add i (S g'))) (Add k' (Add (S i) (S g'))) (HshiftTrue k' i (S g')))
-                         hleS)))
-                  (CountSwapL' m (Add lo (S i)) (Add lo (S (Add i (S g')))) l
-                    (LeRwL (Add lo (S (Add i (S g')))) (Add lo (S (S i))) (S (Add lo (S i)))
-                      (AddSucc lo (S i))
-                      (LeAddMonoL lo (S (S i)) (S (Add i (S g'))) (LeAddSucc i g')))
-                    (LeTrans (S (Add lo (S (Add i (S g'))))) (Add lo (S (S (Add k' (Add i (S g')))))) (Len l)
-                      (LeRwL (Add lo (S (S (Add k' (Add i (S g'))))))
-                        (Add lo (S (S (Add i (S g'))))) (S (Add lo (S (Add i (S g')))))
-                        (AddSucc lo (S (Add i (S g'))))
-                        (LeAddMonoL lo (S (S (Add i (S g')))) (S (S (Add k' (Add i (S g')))))
-                          (LeAddL (Add i (S g')) k')))
-                      hleS))
-            }) hle,
+                  (Count M (PartScanRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)))
+                  (Count M (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L))
+                  (Count M L)
+                  (Ih (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)
+                    (LeRwR (Add Lo (S (Add K' (Add (S I) (S G'))))) (Len L)
+                       (Len (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L))
+                       (IdSym Nat (Len (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)) (Len L)
+                         (LenSwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L))
+                       (LeRwL (Len L)
+                         (Add Lo (S (Add (S K') (Add I (S G')))))
+                         (Add Lo (S (Add K' (Add (S I) (S G')))))
+                         (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A))
+                           (Add (S K') (Add I (S G'))) (Add K' (Add (S I) (S G'))) (HshiftTrue K' I (S G')))
+                         HleS)))
+                  (CountSwapL' M (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L
+                    (LeRwL (Add Lo (S (Add I (S G')))) (Add Lo (S (S I))) (S (Add Lo (S I)))
+                      (AddSucc Lo (S I))
+                      (LeAddMonoL Lo (S (S I)) (S (Add I (S G'))) (LeAddSucc I G')))
+                    (LeTrans (S (Add Lo (S (Add I (S G'))))) (Add Lo (S (S (Add K' (Add I (S G')))))) (Len L)
+                      (LeRwL (Add Lo (S (S (Add K' (Add I (S G'))))))
+                        (Add Lo (S (S (Add I (S G'))))) (S (Add Lo (S (Add I (S G')))))
+                        (AddSucc Lo (S (Add I (S G'))))
+                        (LeAddMonoL Lo (S (S (Add I (S G')))) (S (S (Add K' (Add I (S G')))))
+                          (LeAddL (Add I (S G')) K')))
+                      HleS))
+            }) Hle,
           False =>
-            ih i (S g) l
-              (LeRwL (Len l)
-                (Add lo (S (Add (S k') (Add i g))))
-                (Add lo (S (Add k' (Add i (S g)))))
-                (IdCongr Nat Nat (λ (a : Nat). Add lo (S a))
-                  (Add (S k') (Add i g)) (Add k' (Add i (S g))) (HshiftFalse k' i g))
-                hle)
+            Ih I (S G) L
+              (LeRwL (Len L)
+                (Add Lo (S (Add (S K') (Add I G))))
+                (Add Lo (S (Add K' (Add I (S G)))))
+                (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A))
+                  (Add (S K') (Add I G)) (Add K' (Add I (S G))) (HshiftFalse K' I G))
+                Hle)
         }
     } }
 def CountPartScanRangeLTy : Term := prog{
-  Π (pivot : Nat) → Π (lo : Nat) → Π (m : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
-    Le (Add lo (S (Add k (Add i g)))) (Len l) →
-    Id Nat (Count m (PartScanRangeL pivot lo k i g l)) (Count m l) }
+  Π (Pivot : Nat) → Π (Lo : Nat) → Π (M : Nat) → Π (K : Nat) → Π (I : Nat) → Π (G : Nat) → Π (L : List Nat) →
+    Le (Add Lo (S (Add K (Add I G)))) (Len L) →
+    Id Nat (Count M (PartScanRangeL Pivot Lo K I G L)) (Count M L) }
 
 -- Wrapper: PartitionRangeL is PartScanRangeL after picking the pivot, so count
 -- preservation is the scan's (Z base Refl, S cnt' is the scan at entry offsets).
@@ -927,21 +927,21 @@ def CountPartScanRangeLTy : Term := prog{
 -- cnt = S cnt' it needs an AddZero nudge (`Add cnt' (Add Z Z) = Add cnt' Z`, and
 -- `Add` recurses on its FIRST arg so `Add cnt' Z` is stuck at a free cnt').
 def CountPartitionRangeL : Term := prog{
-  λ (lo : Nat). λ (m : Nat). λ (cnt : Nat). λ (l : List Nat).
-    elim cnt return (λ (cz : Nat).
-        Le (Add lo cz) (Len l) →
-        Id Nat (Count m (elim cz return (λ (cy : Nat). List Nat) {
-            Z => l, S (cnt') rec => PartScanRangeL (NthL lo l) lo cnt' Z Z l })) (Count m l)) {
-      Z => λ (hb : Le (Add lo Z) (Len l)). Refl,
-      S (cnt') rec => λ (hb : Le (Add lo (S cnt')) (Len l)).
-        CountPartScanRangeL (NthL lo l) lo m cnt' Z Z l
-          (LeRwL (Len l) (Add lo (S cnt')) (Add lo (S (Add cnt' Z)))
-            (IdCongr Nat Nat (λ (a : Nat). Add lo (S a)) cnt' (Add cnt' Z)
-              (IdSym Nat (Add cnt' Z) cnt' (AddZero cnt')))
-            hb) } }
+  λ (Lo : Nat). λ (M : Nat). λ (Cnt : Nat). λ (L : List Nat).
+    elim Cnt return (λ (Cz : Nat).
+        Le (Add Lo Cz) (Len L) →
+        Id Nat (Count M (elim Cz return (λ (Cy : Nat). List Nat) {
+            Z => L, S (Cnt') Rec => PartScanRangeL (NthL Lo L) Lo Cnt' Z Z L })) (Count M L)) {
+      Z => λ (Hb : Le (Add Lo Z) (Len L)). Refl,
+      S (Cnt') Rec => λ (Hb : Le (Add Lo (S Cnt')) (Len L)).
+        CountPartScanRangeL (NthL Lo L) Lo M Cnt' Z Z L
+          (LeRwL (Len L) (Add Lo (S Cnt')) (Add Lo (S (Add Cnt' Z)))
+            (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A)) Cnt' (Add Cnt' Z)
+              (IdSym Nat (Add Cnt' Z) Cnt' (AddZero Cnt')))
+            Hb) } }
 def CountPartitionRangeLTy : Term := prog{
-  Π (lo : Nat) → Π (m : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
-    Le (Add lo cnt) (Len l) → Id Nat (Count m (PartitionRangeL lo cnt l)) (Count m l) }
+  Π (Lo : Nat) → Π (M : Nat) → Π (Cnt : Nat) → Π (L : List Nat) →
+    Le (Add Lo Cnt) (Len L) → Id Nat (Count M (PartitionRangeL Lo Cnt L)) (Count M L) }
 
 /-- `SortRangeL fuel lo cnt l` — sort the `cnt` elements of `l` at offset `lo` in
     place. Fuel-structural; base = out of fuel or `cnt ≤ 1`; step partitions the
@@ -949,21 +949,21 @@ def CountPartitionRangeLTy : Term := prog{
     `[lo+i+1, …)` (count `g`), the right on the result of the left — the raw
     composition the imperative body implements. `partitionQ` is the `lo = 0` slice. -/
 def SortRangeL : Term := prog{
-  λ (fuel : Nat).
-    elim fuel return (λ (fz : Nat). Π (lo : Nat) → Π (cnt : Nat) → List Nat → List Nat) {
-      Z => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat). l,
-      S (f') rec => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-        elim cnt return (λ (cz : Nat). List Nat) {
-          Z => l,
-          S (cnt') nih => elim cnt' return (λ (mz : Nat). List Nat) {
-            Z => l,
-            S (cnt'') n2ih =>
-              let p = PartitionRangeL lo cnt l;
-              let i = PartIdxRangeL lo cnt l;
-              let g = PartGapRangeL lo cnt l;
-              rec (S (Add lo i)) g (rec lo i p)
+  λ (Fuel : Nat).
+    elim Fuel return (λ (Fz : Nat). Π (Lo : Nat) → Π (Cnt : Nat) → List Nat → List Nat) {
+      Z => λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat). L,
+      S (F') Rec => λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+        elim Cnt return (λ (Cz : Nat). List Nat) {
+          Z => L,
+          S (Cnt') Nih => elim Cnt' return (λ (Mz : Nat). List Nat) {
+            Z => L,
+            S (Cnt'') N2ih =>
+              let p = PartitionRangeL Lo Cnt L;
+              let i = PartIdxRangeL Lo Cnt L;
+              let g = PartGapRangeL Lo Cnt L;
+              Rec (S (Add Lo i)) g (Rec Lo i p)
           } } } }
-def SortRangeLTy : Term := prog{ Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → List Nat → List Nat }
+def SortRangeLTy : Term := prog{ Π (Fuel : Nat) → Π (Lo : Nat) → Π (Cnt : Nat) → List Nat → List Nat }
 
 -- SortRangeL is a permutation, so it preserves length. Fuel-structural induction
 -- mirroring sortRangeL's own shape (base fuel Z / cnt ≤ 1 are Refl); the step is
@@ -972,34 +972,34 @@ def SortRangeLTy : Term := prog{ Π (fuel : Nat) → Π (lo : Nat) → Π (cnt :
 -- this for its SECOND range bound: the second recursive call runs after the first
 -- has permuted *v, so the bound (over len *v-after-first) moves back through this.
 def LenSortRangeL : Term := prog{
-  λ (fuel : Nat).
-    elim fuel return (λ (fz : Nat). Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Id Nat (Len (SortRangeL fz lo cnt l)) (Len l)) {
-      Z => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat). Refl,
-      S (f') ih => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-        elim cnt return (λ (cz : Nat). Id Nat (Len (elim cz return (λ (cy : Nat). List Nat) {
-              Z => l,
-              S (cnt') nih => elim cnt' return (λ (my : Nat). List Nat) {
-                Z => l,
-                S (cnt'') n2ih => SortRangeL f' (S (Add lo (PartIdxRangeL lo cnt l))) (PartGapRangeL lo cnt l) (SortRangeL f' lo (PartIdxRangeL lo cnt l) (PartitionRangeL lo cnt l)) } })) (Len l)) {
+  λ (Fuel : Nat).
+    elim Fuel return (λ (Fz : Nat). Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) → Id Nat (Len (SortRangeL Fz Lo Cnt L)) (Len L)) {
+      Z => λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat). Refl,
+      S (F') Ih => λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+        elim Cnt return (λ (Cz : Nat). Id Nat (Len (elim Cz return (λ (Cy : Nat). List Nat) {
+              Z => L,
+              S (Cnt') Nih => elim Cnt' return (λ (My : Nat). List Nat) {
+                Z => L,
+                S (Cnt'') N2ih => SortRangeL F' (S (Add Lo (PartIdxRangeL Lo Cnt L))) (PartGapRangeL Lo Cnt L) (SortRangeL F' Lo (PartIdxRangeL Lo Cnt L) (PartitionRangeL Lo Cnt L)) } })) (Len L)) {
           Z => Refl,
-          S (cnt') nih => elim cnt' return (λ (my : Nat). Id Nat (Len (elim my return (λ (myy : Nat). List Nat) {
-                Z => l,
-                S (cnt'') n2ih => SortRangeL f' (S (Add lo (PartIdxRangeL lo cnt l))) (PartGapRangeL lo cnt l) (SortRangeL f' lo (PartIdxRangeL lo cnt l) (PartitionRangeL lo cnt l)) })) (Len l)) {
+          S (Cnt') Nih => elim Cnt' return (λ (My : Nat). Id Nat (Len (elim My return (λ (Myy : Nat). List Nat) {
+                Z => L,
+                S (Cnt'') N2ih => SortRangeL F' (S (Add Lo (PartIdxRangeL Lo Cnt L))) (PartGapRangeL Lo Cnt L) (SortRangeL F' Lo (PartIdxRangeL Lo Cnt L) (PartitionRangeL Lo Cnt L)) })) (Len L)) {
             Z => Refl,
-            S (cnt'') n2ih =>
+            S (Cnt'') N2ih =>
               IdTrans Nat
-                (Len (SortRangeL f' (S (Add lo (PartIdxRangeL lo cnt l))) (PartGapRangeL lo cnt l) (SortRangeL f' lo (PartIdxRangeL lo cnt l) (PartitionRangeL lo cnt l))))
-                (Len (SortRangeL f' lo (PartIdxRangeL lo cnt l) (PartitionRangeL lo cnt l)))
-                (Len l)
-                (ih (S (Add lo (PartIdxRangeL lo cnt l))) (PartGapRangeL lo cnt l) (SortRangeL f' lo (PartIdxRangeL lo cnt l) (PartitionRangeL lo cnt l)))
+                (Len (SortRangeL F' (S (Add Lo (PartIdxRangeL Lo Cnt L))) (PartGapRangeL Lo Cnt L) (SortRangeL F' Lo (PartIdxRangeL Lo Cnt L) (PartitionRangeL Lo Cnt L))))
+                (Len (SortRangeL F' Lo (PartIdxRangeL Lo Cnt L) (PartitionRangeL Lo Cnt L)))
+                (Len L)
+                (Ih (S (Add Lo (PartIdxRangeL Lo Cnt L))) (PartGapRangeL Lo Cnt L) (SortRangeL F' Lo (PartIdxRangeL Lo Cnt L) (PartitionRangeL Lo Cnt L)))
                 (IdTrans Nat
-                  (Len (SortRangeL f' lo (PartIdxRangeL lo cnt l) (PartitionRangeL lo cnt l)))
-                  (Len (PartitionRangeL lo cnt l))
-                  (Len l)
-                  (ih lo (PartIdxRangeL lo cnt l) (PartitionRangeL lo cnt l))
-                  (LenPartitionRangeL lo cnt l))
+                  (Len (SortRangeL F' Lo (PartIdxRangeL Lo Cnt L) (PartitionRangeL Lo Cnt L)))
+                  (Len (PartitionRangeL Lo Cnt L))
+                  (Len L)
+                  (Ih Lo (PartIdxRangeL Lo Cnt L) (PartitionRangeL Lo Cnt L))
+                  (LenPartitionRangeL Lo Cnt L))
           } } } }
-def LenSortRangeLTy : Term := prog{ Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Id Nat (Len (SortRangeL fuel lo cnt l)) (Len l) }
+def LenSortRangeLTy : Term := prog{ Π (Fuel : Nat) → Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) → Id Nat (Len (SortRangeL Fuel Lo Cnt L)) (Len L) }
 
 /-! ## Count preservation of the full sort (§22, the quicksort rung)
 
@@ -1019,107 +1019,107 @@ def LenSortRangeLTy : Term := prog{ Π (fuel : Nat) → Π (lo : Nat) → Π (cn
 -- Lifted verbatim from the quicksort FnDef's `bl` (PartScanSizeL gives i+g = cnt-1,
 -- LenPartitionRangeL moves the entry bound onto the partitioned list).
 def SortRangeBL : Term := prog{
-  λ (lo : Nat). λ (cnt'' : Nat). λ (l : List Nat). λ (hb : Le (Add lo (S (S cnt''))) (Len l)).
-    LeRwR (Add lo (PartIdxRangeL lo (S (S cnt'')) l)) (Len l) (Len (PartitionRangeL lo (S (S cnt'')) l))
-      (IdSym Nat (Len (PartitionRangeL lo (S (S cnt'')) l)) (Len l)
-        (LenPartitionRangeL lo (S (S cnt'')) l))
-      (LeTrans (Add lo (PartIdxRangeL lo (S (S cnt'')) l)) (Add lo (S (S cnt''))) (Len l)
-        (LeRwR (Add lo (PartIdxRangeL lo (S (S cnt'')) l))
-          (Add lo (S (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l))))
-          (Add lo (S (S cnt'')))
-          (IdCongr Nat Nat (λ (a : Nat). Add lo a)
-            (S (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l))) (S (S cnt''))
-            (IdCongr Nat Nat (λ (a : Nat). S a)
-              (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)) (S cnt'')
-              (IdTrans Nat (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l))
-                (S (Add cnt'' Z)) (S cnt'')
-                (PartScanSizeL (NthL lo l) lo (S cnt'') Z Z l)
-                (IdCongr Nat Nat (λ (a : Nat). S a) (Add cnt'' Z) cnt'' (AddZero cnt'')))))
-          (LeAddMonoL lo (PartIdxRangeL lo (S (S cnt'')) l)
-            (S (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)))
-            (LeUpR (PartIdxRangeL lo (S (S cnt'')) l)
-              (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l))
-              (LeAdd (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)))))
-        hb) }
+  λ (Lo : Nat). λ (Cnt'' : Nat). λ (L : List Nat). λ (Hb : Le (Add Lo (S (S Cnt''))) (Len L)).
+    LeRwR (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L)) (Len L) (Len (PartitionRangeL Lo (S (S Cnt'')) L))
+      (IdSym Nat (Len (PartitionRangeL Lo (S (S Cnt'')) L)) (Len L)
+        (LenPartitionRangeL Lo (S (S Cnt'')) L))
+      (LeTrans (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L)) (Add Lo (S (S Cnt''))) (Len L)
+        (LeRwR (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L))
+          (Add Lo (S (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L))))
+          (Add Lo (S (S Cnt'')))
+          (IdCongr Nat Nat (λ (A : Nat). Add Lo A)
+            (S (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L))) (S (S Cnt''))
+            (IdCongr Nat Nat (λ (A : Nat). S A)
+              (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)) (S Cnt'')
+              (IdTrans Nat (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L))
+                (S (Add Cnt'' Z)) (S Cnt'')
+                (PartScanSizeL (NthL Lo L) Lo (S Cnt'') Z Z L)
+                (IdCongr Nat Nat (λ (A : Nat). S A) (Add Cnt'' Z) Cnt'' (AddZero Cnt'')))))
+          (LeAddMonoL Lo (PartIdxRangeL Lo (S (S Cnt'')) L)
+            (S (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)))
+            (LeUpR (PartIdxRangeL Lo (S (S Cnt'')) L)
+              (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L))
+              (LeAdd (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)))))
+        Hb) }
 def SortRangeBLTy : Term := prog{
-  Π (lo : Nat) → Π (cnt'' : Nat) → Π (l : List Nat) → Le (Add lo (S (S cnt''))) (Len l) →
-    Le (Add lo (PartIdxRangeL lo (S (S cnt'')) l)) (Len (PartitionRangeL lo (S (S cnt'')) l)) }
+  Π (Lo : Nat) → Π (Cnt'' : Nat) → Π (L : List Nat) → Le (Add Lo (S (S Cnt''))) (Len L) →
+    Le (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L)) (Len (PartitionRangeL Lo (S (S Cnt'')) L)) }
 
 -- Right sub-range bound: `Le (Add (S (Add lo i)) g) (Len (sort left (partition …)))`.
 -- Lifted verbatim from the quicksort FnDef's `br` (LenSortRangeL then
 -- LenPartitionRangeL move the bound back over both mutations; the arithmetic
 -- `Add (S (Add lo i)) g = Add lo (S (i+g)) = Add lo cnt` uses AddAssoc/AddSucc).
 def SortRangeBR : Term := prog{
-  λ (f' : Nat). λ (lo : Nat). λ (cnt'' : Nat). λ (l : List Nat). λ (hb : Le (Add lo (S (S cnt''))) (Len l)).
-    LeRwR (Add (S (Add lo (PartIdxRangeL lo (S (S cnt'')) l))) (PartGapRangeL lo (S (S cnt'')) l)) (Len l)
-      (Len (SortRangeL f' lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l)))
-      (IdSym Nat (Len (SortRangeL f' lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l))) (Len l)
-        (IdTrans Nat (Len (SortRangeL f' lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l)))
-          (Len (PartitionRangeL lo (S (S cnt'')) l)) (Len l)
-          (LenSortRangeL f' lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l))
-          (LenPartitionRangeL lo (S (S cnt'')) l)))
-      (LeRwL (Len l) (Add lo (S (S cnt'')))
-        (Add (S (Add lo (PartIdxRangeL lo (S (S cnt'')) l))) (PartGapRangeL lo (S (S cnt'')) l))
-        (IdSym Nat (Add (S (Add lo (PartIdxRangeL lo (S (S cnt'')) l))) (PartGapRangeL lo (S (S cnt'')) l)) (Add lo (S (S cnt'')))
-          (IdTrans Nat (Add (S (Add lo (PartIdxRangeL lo (S (S cnt'')) l))) (PartGapRangeL lo (S (S cnt'')) l))
-            (S (Add lo (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)))) (Add lo (S (S cnt'')))
-            (IdCongr Nat Nat (λ (a : Nat). S a)
-              (Add (Add lo (PartIdxRangeL lo (S (S cnt'')) l)) (PartGapRangeL lo (S (S cnt'')) l))
-              (Add lo (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)))
-              (AddAssoc lo (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)))
-            (IdTrans Nat (S (Add lo (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l))))
-              (Add lo (S (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)))) (Add lo (S (S cnt'')))
-              (IdSym Nat (Add lo (S (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l))))
-                (S (Add lo (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l))))
-                (AddSucc lo (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l))))
-              (IdCongr Nat Nat (λ (a : Nat). Add lo a)
-                (S (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l))) (S (S cnt''))
-                (IdCongr Nat Nat (λ (a : Nat). S a)
-                  (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)) (S cnt'')
-                  (IdTrans Nat (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l))
-                    (S (Add cnt'' Z)) (S cnt'')
-                    (PartScanSizeL (NthL lo l) lo (S cnt'') Z Z l)
-                    (IdCongr Nat Nat (λ (a : Nat). S a) (Add cnt'' Z) cnt'' (AddZero cnt''))))))))
-        hb) }
+  λ (F' : Nat). λ (Lo : Nat). λ (Cnt'' : Nat). λ (L : List Nat). λ (Hb : Le (Add Lo (S (S Cnt''))) (Len L)).
+    LeRwR (Add (S (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L))) (PartGapRangeL Lo (S (S Cnt'')) L)) (Len L)
+      (Len (SortRangeL F' Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L)))
+      (IdSym Nat (Len (SortRangeL F' Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L))) (Len L)
+        (IdTrans Nat (Len (SortRangeL F' Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L)))
+          (Len (PartitionRangeL Lo (S (S Cnt'')) L)) (Len L)
+          (LenSortRangeL F' Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L))
+          (LenPartitionRangeL Lo (S (S Cnt'')) L)))
+      (LeRwL (Len L) (Add Lo (S (S Cnt'')))
+        (Add (S (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L))) (PartGapRangeL Lo (S (S Cnt'')) L))
+        (IdSym Nat (Add (S (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L))) (PartGapRangeL Lo (S (S Cnt'')) L)) (Add Lo (S (S Cnt'')))
+          (IdTrans Nat (Add (S (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L))) (PartGapRangeL Lo (S (S Cnt'')) L))
+            (S (Add Lo (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)))) (Add Lo (S (S Cnt'')))
+            (IdCongr Nat Nat (λ (A : Nat). S A)
+              (Add (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L)) (PartGapRangeL Lo (S (S Cnt'')) L))
+              (Add Lo (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)))
+              (AddAssoc Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)))
+            (IdTrans Nat (S (Add Lo (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L))))
+              (Add Lo (S (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)))) (Add Lo (S (S Cnt'')))
+              (IdSym Nat (Add Lo (S (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L))))
+                (S (Add Lo (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L))))
+                (AddSucc Lo (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L))))
+              (IdCongr Nat Nat (λ (A : Nat). Add Lo A)
+                (S (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L))) (S (S Cnt''))
+                (IdCongr Nat Nat (λ (A : Nat). S A)
+                  (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)) (S Cnt'')
+                  (IdTrans Nat (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L))
+                    (S (Add Cnt'' Z)) (S Cnt'')
+                    (PartScanSizeL (NthL Lo L) Lo (S Cnt'') Z Z L)
+                    (IdCongr Nat Nat (λ (A : Nat). S A) (Add Cnt'' Z) Cnt'' (AddZero Cnt''))))))))
+        Hb) }
 def SortRangeBRTy : Term := prog{
-  Π (f' : Nat) → Π (lo : Nat) → Π (cnt'' : Nat) → Π (l : List Nat) → Le (Add lo (S (S cnt''))) (Len l) →
-    Le (Add (S (Add lo (PartIdxRangeL lo (S (S cnt'')) l))) (PartGapRangeL lo (S (S cnt'')) l))
-       (Len (SortRangeL f' lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l))) }
+  Π (F' : Nat) → Π (Lo : Nat) → Π (Cnt'' : Nat) → Π (L : List Nat) → Le (Add Lo (S (S Cnt''))) (Len L) →
+    Le (Add (S (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L))) (PartGapRangeL Lo (S (S Cnt'')) L))
+       (Len (SortRangeL F' Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L))) }
 
 def CountSortRangeL : Term := prog{
-  λ (m : Nat). λ (fuel : Nat).
-    elim fuel return (λ (fz : Nat). Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
-        Le (Add lo cnt) (Len l) → Id Nat (Count m (SortRangeL fz lo cnt l)) (Count m l)) {
-      Z => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat). λ (hb : Le (Add lo cnt) (Len l)). Refl,
-      S (f') ih => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-        elim cnt return (λ (cz : Nat). Le (Add lo cz) (Len l) →
-            Id Nat (Count m (SortRangeL (S f') lo cz l)) (Count m l)) {
-          Z => λ (hb : Le (Add lo Z) (Len l)). Refl,
-          S (cnt') nih => elim cnt' return (λ (cz' : Nat). Le (Add lo (S cz')) (Len l) →
-              Id Nat (Count m (SortRangeL (S f') lo (S cz') l)) (Count m l)) {
-            Z => λ (hb : Le (Add lo (S Z)) (Len l)). Refl,
-            S (cnt'') n2ih => λ (hb : Le (Add lo (S (S cnt''))) (Len l)).
+  λ (M : Nat). λ (Fuel : Nat).
+    elim Fuel return (λ (Fz : Nat). Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) →
+        Le (Add Lo Cnt) (Len L) → Id Nat (Count M (SortRangeL Fz Lo Cnt L)) (Count M L)) {
+      Z => λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat). λ (Hb : Le (Add Lo Cnt) (Len L)). Refl,
+      S (F') Ih => λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+        elim Cnt return (λ (Cz : Nat). Le (Add Lo Cz) (Len L) →
+            Id Nat (Count M (SortRangeL (S F') Lo Cz L)) (Count M L)) {
+          Z => λ (Hb : Le (Add Lo Z) (Len L)). Refl,
+          S (Cnt') Nih => elim Cnt' return (λ (Cz' : Nat). Le (Add Lo (S Cz')) (Len L) →
+              Id Nat (Count M (SortRangeL (S F') Lo (S Cz') L)) (Count M L)) {
+            Z => λ (Hb : Le (Add Lo (S Z)) (Len L)). Refl,
+            S (Cnt'') N2ih => λ (Hb : Le (Add Lo (S (S Cnt''))) (Len L)).
               IdTrans Nat
-                (Count m (SortRangeL f' (S (Add lo (PartIdxRangeL lo (S (S cnt'')) l))) (PartGapRangeL lo (S (S cnt'')) l)
-                          (SortRangeL f' lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l))))
-                (Count m (SortRangeL f' lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l)))
-                (Count m l)
-                (ih (S (Add lo (PartIdxRangeL lo (S (S cnt'')) l))) (PartGapRangeL lo (S (S cnt'')) l)
-                    (SortRangeL f' lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l))
-                    (SortRangeBR f' lo cnt'' l hb))
+                (Count M (SortRangeL F' (S (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L))) (PartGapRangeL Lo (S (S Cnt'')) L)
+                          (SortRangeL F' Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L))))
+                (Count M (SortRangeL F' Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L)))
+                (Count M L)
+                (Ih (S (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L))) (PartGapRangeL Lo (S (S Cnt'')) L)
+                    (SortRangeL F' Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L))
+                    (SortRangeBR F' Lo Cnt'' L Hb))
                 (IdTrans Nat
-                  (Count m (SortRangeL f' lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l)))
-                  (Count m (PartitionRangeL lo (S (S cnt'')) l))
-                  (Count m l)
-                  (ih lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l)
-                      (SortRangeBL lo cnt'' l hb))
-                  (CountPartitionRangeL lo m (S (S cnt'')) l hb))
+                  (Count M (SortRangeL F' Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L)))
+                  (Count M (PartitionRangeL Lo (S (S Cnt'')) L))
+                  (Count M L)
+                  (Ih Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L)
+                      (SortRangeBL Lo Cnt'' L Hb))
+                  (CountPartitionRangeL Lo M (S (S Cnt'')) L Hb))
           }
         }
     } }
 def CountSortRangeLTy : Term := prog{
-  Π (m : Nat) → Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
-    Le (Add lo cnt) (Len l) → Id Nat (Count m (SortRangeL fuel lo cnt l)) (Count m l) }
+  Π (M : Nat) → Π (Fuel : Nat) → Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) →
+    Le (Add Lo Cnt) (Len L) → Id Nat (Count M (SortRangeL Fuel Lo Cnt L)) (Count M L) }
 
 /-! ## Range-order predicates — the sortedness axis (§22, M22-c)
 
@@ -1140,38 +1140,38 @@ def CountSortRangeLTy : Term := prog{
     APPLIED forms that appear in lemma statements, and those reduce and check fine
     (exercised by AllLeRHead / AllLeREmpty below, both kernel-green). -/
 def AllLeR : Term := prog{
-  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
-    Π (k : Nat) → Le (S k) w → Le (NthL (Add k lo) l) p }
+  λ (W : Nat). λ (Lo : Nat). λ (P : Nat). λ (L : List Nat).
+    Π (K : Nat) → Le (S K) W → Le (NthL (Add K Lo) L) P }
 def AllGtR : Term := prog{
-  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
-    Π (k : Nat) → Le (S k) w → Le (S p) (NthL (Add k lo) l) }
+  λ (W : Nat). λ (Lo : Nat). λ (P : Nat). λ (L : List Nat).
+    Π (K : Nat) → Le (S K) W → Le (S P) (NthL (Add K Lo) L) }
 
 -- Head extraction: a width-(S w) AllLeR gives the bound at position lo (apply at
 -- k=Z; Le (S Z)(S w) whnf's to ⊤, discharged by `unit`; add Z lo = lo).
 def AllLeRHead : Term := prog{
-  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat). λ (h : AllLeR (S w) lo p l).
-    h Z unit }
+  λ (W : Nat). λ (Lo : Nat). λ (P : Nat). λ (L : List Nat). λ (H : AllLeR (S W) Lo P L).
+    H Z unit }
 def AllLeRHeadTy : Term := prog{
-  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
-    AllLeR (S w) lo p l → Le (NthL lo l) p }
+  Π (W : Nat) → Π (Lo : Nat) → Π (P : Nat) → Π (L : List Nat) →
+    AllLeR (S W) Lo P L → Le (NthL Lo L) P }
 def AllGtRHead : Term := prog{
-  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat). λ (h : AllGtR (S w) lo p l).
-    h Z unit }
+  λ (W : Nat). λ (Lo : Nat). λ (P : Nat). λ (L : List Nat). λ (H : AllGtR (S W) Lo P L).
+    H Z unit }
 def AllGtRHeadTy : Term := prog{
-  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
-    AllGtR (S w) lo p l → Le (S p) (NthL lo l) }
+  Π (W : Nat) → Π (Lo : Nat) → Π (P : Nat) → Π (L : List Nat) →
+    AllGtR (S W) Lo P L → Le (S P) (NthL Lo L) }
 
 -- The empty range is vacuously bounded (Le (S k) Z = ⊥ ⇒ botElim).
 def AllLeREmpty : Term := prog{
-  λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
-    λ (k : Nat). λ (hk : Le (S k) Z). botElim (Le (NthL (Add k lo) l) p) hk }
+  λ (Lo : Nat). λ (P : Nat). λ (L : List Nat).
+    λ (K : Nat). λ (Hk : Le (S K) Z). botElim (Le (NthL (Add K Lo) L) P) Hk }
 def AllLeREmptyTy : Term := prog{
-  Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) → AllLeR Z lo p l }
+  Π (Lo : Nat) → Π (P : Nat) → Π (L : List Nat) → AllLeR Z Lo P L }
 def AllGtREmpty : Term := prog{
-  λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
-    λ (k : Nat). λ (hk : Le (S k) Z). botElim (Le (S p) (NthL (Add k lo) l)) hk }
+  λ (Lo : Nat). λ (P : Nat). λ (L : List Nat).
+    λ (K : Nat). λ (Hk : Le (S K) Z). botElim (Le (S P) (NthL (Add K Lo) L)) Hk }
 def AllGtREmptyTy : Term := prog{
-  Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) → AllGtR Z lo p l }
+  Π (Lo : Nat) → Π (P : Nat) → Π (L : List Nat) → AllGtR Z Lo P L }
 
 /-! ## Segment count — the multiset vehicle for perm-survival (§22, M22-c step 3)
 
@@ -1182,9 +1182,9 @@ def AllGtREmptyTy : Term := prog{
     positional bound over the segment survives the sort. Its preservation-under-the-
     model-functions and the model-function LOCALITY lemmas are the mechanical stratum. -/
 def SegCount : Term := prog{
-  λ (x : Nat). λ (lo : Nat). λ (w : Nat). λ (l : List Nat).
-    Count x (Take w (Drop lo l)) }
-def SegCountTy : Term := prog{ Π (x : Nat) → Π (lo : Nat) → Π (w : Nat) → Π (l : List Nat) → Nat }
+  λ (X : Nat). λ (Lo : Nat). λ (W : Nat). λ (L : List Nat).
+    Count X (Take W (Drop Lo L)) }
+def SegCountTy : Term := prog{ Π (X : Nat) → Π (Lo : Nat) → Π (W : Nat) → Π (L : List Nat) → Nat }
 
 /-! ## Range sortedness (§22, M22-c step 4)
 
@@ -1195,28 +1195,28 @@ def SegCountTy : Term := prog{ Π (x : Nat) → Π (lo : Nat) → Π (w : Nat) �
     vacuously sorted. The glue lemma (SortedR left ∧ AllLeR left≤pivot ∧ AllGtR right>pivot
     ∧ SortedR right ⟹ SortedR whole) assembles on these; then SortedSortRangeL. -/
 def SortedR : Term := prog{
-  λ (w : Nat). λ (lo : Nat). λ (l : List Nat).
-    Π (k : Nat) → Le (S (S k)) w → Le (NthL (Add k lo) l) (NthL (Add (S k) lo) l) }
+  λ (W : Nat). λ (Lo : Nat). λ (L : List Nat).
+    Π (K : Nat) → Le (S (S K)) W → Le (NthL (Add K Lo) L) (NthL (Add (S K) Lo) L) }
 
 -- Head adjacent-bound from a width-(S (S w)) SortedR (apply at k=Z).
 def SortedRHead : Term := prog{
-  λ (w : Nat). λ (lo : Nat). λ (l : List Nat). λ (h : SortedR (S (S w)) lo l).
-    h Z unit }
+  λ (W : Nat). λ (Lo : Nat). λ (L : List Nat). λ (H : SortedR (S (S W)) Lo L).
+    H Z unit }
 def SortedRHeadTy : Term := prog{
-  Π (w : Nat) → Π (lo : Nat) → Π (l : List Nat) →
-    SortedR (S (S w)) lo l → Le (NthL lo l) (NthL (S lo) l) }
+  Π (W : Nat) → Π (Lo : Nat) → Π (L : List Nat) →
+    SortedR (S (S W)) Lo L → Le (NthL Lo L) (NthL (S Lo) L) }
 
 -- Width 0 and width 1 are vacuously sorted (Le (S (S k)) (Z / S Z) = ⊥ ⇒ botElim).
 def SortedRZero : Term := prog{
-  λ (lo : Nat). λ (l : List Nat).
-    λ (k : Nat). λ (hk : Le (S (S k)) Z). botElim (Le (NthL (Add k lo) l) (NthL (Add (S k) lo) l)) hk }
+  λ (Lo : Nat). λ (L : List Nat).
+    λ (K : Nat). λ (Hk : Le (S (S K)) Z). botElim (Le (NthL (Add K Lo) L) (NthL (Add (S K) Lo) L)) Hk }
 def SortedRZeroTy : Term := prog{
-  Π (lo : Nat) → Π (l : List Nat) → SortedR Z lo l }
+  Π (Lo : Nat) → Π (L : List Nat) → SortedR Z Lo L }
 def SortedROne : Term := prog{
-  λ (lo : Nat). λ (l : List Nat).
-    λ (k : Nat). λ (hk : Le (S (S k)) (S Z)). botElim (Le (NthL (Add k lo) l) (NthL (Add (S k) lo) l)) hk }
+  λ (Lo : Nat). λ (L : List Nat).
+    λ (K : Nat). λ (Hk : Le (S (S K)) (S Z)). botElim (Le (NthL (Add K Lo) L) (NthL (Add (S K) Lo) L)) Hk }
 def SortedROneTy : Term := prog{
-  Π (lo : Nat) → Π (l : List Nat) → SortedR (S Z) lo l }
+  Π (Lo : Nat) → Π (L : List Nat) → SortedR (S Z) Lo L }
 
 /-! ## leb ↔ Le bridges (§22, M22-c) — the Bool-comparison / order-proposition link
 
@@ -1228,52 +1228,52 @@ def SortedROneTy : Term := prog{
     induction with a Bool-DISCRIMINATE at the mismatched base (BoolFT/BoolTF:
     False ≠ True, by transporting `unit` along the false equation to `⊥`). -/
 def BoolFT : Term := prog{
-  λ (h : Id Bool False True).
-    j Bool False (λ (y' : Bool). λ (hh : Id Bool False y'). elim y' return (λ (z : Bool). Type) { True => Bot, False => Unit })
-      unit True h }
+  λ (H : Id Bool False True).
+    j Bool False (λ (Y' : Bool). λ (Hh : Id Bool False Y'). elim Y' return (λ (Z0 : Bool). Type) { True => Bot, False => Unit })
+      unit True H }
 def BoolFTTy : Term := prog{ Id Bool False True → Bot }
 def BoolTF : Term := prog{
-  λ (h : Id Bool True False).
-    j Bool True (λ (y' : Bool). λ (hh : Id Bool True y'). elim y' return (λ (z : Bool). Type) { True => Unit, False => Bot })
-      unit False h }
+  λ (H : Id Bool True False).
+    j Bool True (λ (Y' : Bool). λ (Hh : Id Bool True Y'). elim Y' return (λ (Z0 : Bool). Type) { True => Unit, False => Bot })
+      unit False H }
 def BoolTFTy : Term := prog{ Id Bool True False → Bot }
 
 def LebTrueLe : Term := prog{
-  λ (a : Nat).
-    elim a return (λ (az : Nat). Π (b : Nat) → Id Bool (Leb az b) True → Le az b) {
-      Z => λ (b : Nat). λ (h : Id Bool (Leb Z b) True). unit,
-      S (a') ih => λ (b : Nat).
-        elim b return (λ (bz : Nat). Id Bool (Leb (S a') bz) True → Le (S a') bz) {
-          Z => λ (h : Id Bool (Leb (S a') Z) True). botElim (Le (S a') Z) (BoolFT h),
-          S (b') ihb => λ (h : Id Bool (Leb (S a') (S b')) True). ih b' h } } }
-def LebTrueLeTy : Term := prog{ Π (a : Nat) → Π (b : Nat) → Id Bool (Leb a b) True → Le a b }
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Id Bool (Leb Az B) True → Le Az B) {
+      Z => λ (B : Nat). λ (H : Id Bool (Leb Z B) True). unit,
+      S (A') Ih => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Id Bool (Leb (S A') Bz) True → Le (S A') Bz) {
+          Z => λ (H : Id Bool (Leb (S A') Z) True). botElim (Le (S A') Z) (BoolFT H),
+          S (B') Ihb => λ (H : Id Bool (Leb (S A') (S B')) True). Ih B' H } } }
+def LebTrueLeTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Id Bool (Leb A B) True → Le A B }
 
 def LebFalseGt : Term := prog{
-  λ (a : Nat).
-    elim a return (λ (az : Nat). Π (b : Nat) → Id Bool (Leb az b) False → Le (S b) az) {
-      Z => λ (b : Nat). λ (h : Id Bool (Leb Z b) False). botElim (Le (S b) Z) (BoolTF h),
-      S (a') ih => λ (b : Nat).
-        elim b return (λ (bz : Nat). Id Bool (Leb (S a') bz) False → Le (S bz) (S a')) {
-          Z => λ (h : Id Bool (Leb (S a') Z) False). unit,
-          S (b') ihb => λ (h : Id Bool (Leb (S a') (S b')) False). ih b' h } } }
-def LebFalseGtTy : Term := prog{ Π (a : Nat) → Π (b : Nat) → Id Bool (Leb a b) False → Le (S b) a }
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Id Bool (Leb Az B) False → Le (S B) Az) {
+      Z => λ (B : Nat). λ (H : Id Bool (Leb Z B) False). botElim (Le (S B) Z) (BoolTF H),
+      S (A') Ih => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Id Bool (Leb (S A') Bz) False → Le (S Bz) (S A')) {
+          Z => λ (H : Id Bool (Leb (S A') Z) False). unit,
+          S (B') Ihb => λ (H : Id Bool (Leb (S A') (S B')) False). Ih B' H } } }
+def LebFalseGtTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Id Bool (Leb A B) False → Le (S B) A }
 
 -- Nat antisymmetry (Le a b → Le b a → a = b) — the glue derives its boundary equality
 -- (`S k = i` at the last-left/pivot pair) from the two-sided Le bounds a leb-split
 -- yields. Double induction; mixed-parity bases are ⊥, equal-parity step is IdCongr S.
 def LeAntisym : Term := prog{
-  λ (a : Nat).
-    elim a return (λ (az : Nat). Π (b : Nat) → Le az b → Le b az → Id Nat az b) {
-      Z => λ (b : Nat).
-        elim b return (λ (bz : Nat). Le Z bz → Le bz Z → Id Nat Z bz) {
-          Z => λ (h1 : Le Z Z). λ (h2 : Le Z Z). Refl,
-          S (b') ihb => λ (h1 : Le Z (S b')). λ (h2 : Le (S b') Z). botElim (Id Nat Z (S b')) h2 },
-      S (a') ih => λ (b : Nat).
-        elim b return (λ (bz : Nat). Le (S a') bz → Le bz (S a') → Id Nat (S a') bz) {
-          Z => λ (h1 : Le (S a') Z). λ (h2 : Le Z (S a')). botElim (Id Nat (S a') Z) h1,
-          S (b') ihb => λ (h1 : Le (S a') (S b')). λ (h2 : Le (S b') (S a')).
-            IdCongr Nat Nat (λ (n : Nat). S n) a' b' (ih b' h1 h2) } } }
-def LeAntisymTy : Term := prog{ Π (a : Nat) → Π (b : Nat) → Le a b → Le b a → Id Nat a b }
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Le Az B → Le B Az → Id Nat Az B) {
+      Z => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Le Z Bz → Le Bz Z → Id Nat Z Bz) {
+          Z => λ (H1 : Le Z Z). λ (H2 : Le Z Z). Refl,
+          S (B') Ihb => λ (H1 : Le Z (S B')). λ (H2 : Le (S B') Z). botElim (Id Nat Z (S B')) H2 },
+      S (A') Ih => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Le (S A') Bz → Le Bz (S A') → Id Nat (S A') Bz) {
+          Z => λ (H1 : Le (S A') Z). λ (H2 : Le Z (S A')). botElim (Id Nat (S A') Z) H1,
+          S (B') Ihb => λ (H1 : Le (S A') (S B')). λ (H2 : Le (S B') (S A')).
+            IdCongr Nat Nat (λ (N : Nat). S N) A' B' (Ih B' H1 H2) } } }
+def LeAntisymTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Le A B → Le B A → Id Nat A B }
 
 /-! ## AllLeR growth/transport helpers — the region-invariant toolkit (§22, M22-c step 2)
 
@@ -1287,67 +1287,67 @@ def LeAntisymTy : Term := prog{ Π (a : Nat) → Π (b : Nat) → Le a b → Le 
     to `Add b (S a)` — the recurring predicate↔model add-order glue. -/
 
 def AllLeRExtendFar : Term := prog{
-  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
-    λ (h : AllLeR w lo p l). λ (hnew : Le (NthL (Add w lo) l) p).
-    λ (m : Nat).
-      elim (Leb (S m) w) return (λ (b : Bool). Id Bool (Leb (S m) w) b → Le (S m) (S w) → Le (NthL (Add m lo) l) p) {
-        True => λ (e : Id Bool (Leb (S m) w) True). λ (hm : Le (S m) (S w)). h m (LebTrueLe (S m) w e),
-        False => λ (e : Id Bool (Leb (S m) w) False). λ (hm : Le (S m) (S w)).
-          LeRwL p (NthL (Add w lo) l) (NthL (Add m lo) l)
-            (IdCongr Nat Nat (λ (q : Nat). NthL q l) (Add w lo) (Add m lo)
-              (IdCongr Nat Nat (λ (z : Nat). Add z lo) w m (IdSym Nat m w (LeAntisym m w hm (LebFalseGt (S m) w e)))))
-            hnew
+  λ (W : Nat). λ (Lo : Nat). λ (P : Nat). λ (L : List Nat).
+    λ (H : AllLeR W Lo P L). λ (Hnew : Le (NthL (Add W Lo) L) P).
+    λ (M : Nat).
+      elim (Leb (S M) W) return (λ (B : Bool). Id Bool (Leb (S M) W) B → Le (S M) (S W) → Le (NthL (Add M Lo) L) P) {
+        True => λ (E : Id Bool (Leb (S M) W) True). λ (Hm : Le (S M) (S W)). H M (LebTrueLe (S M) W E),
+        False => λ (E : Id Bool (Leb (S M) W) False). λ (Hm : Le (S M) (S W)).
+          LeRwL P (NthL (Add W Lo) L) (NthL (Add M Lo) L)
+            (IdCongr Nat Nat (λ (Q : Nat). NthL Q L) (Add W Lo) (Add M Lo)
+              (IdCongr Nat Nat (λ (Z0 : Nat). Add Z0 Lo) W M (IdSym Nat M W (LeAntisym M W Hm (LebFalseGt (S M) W E)))))
+            Hnew
       } Refl }
 def AllLeRExtendFarTy : Term := prog{
-  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
-    AllLeR w lo p l → Le (NthL (Add w lo) l) p → AllLeR (S w) lo p l }
+  Π (W : Nat) → Π (Lo : Nat) → Π (P : Nat) → Π (L : List Nat) →
+    AllLeR W Lo P L → Le (NthL (Add W Lo) L) P → AllLeR (S W) Lo P L }
 
 def AllLeRExtendLo : Term := prog{
-  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
-    λ (h0 : Le (NthL lo l) p). λ (h : AllLeR w (S lo) p l).
-    λ (m : Nat).
-      elim m return (λ (mz : Nat). Le (S mz) (S w) → Le (NthL (Add mz lo) l) p) {
-        Z => λ (hm : Le (S Z) (S w)). h0,
-        S (m') mih => λ (hm : Le (S (S m')) (S w)).
-          LeRwL p (NthL (Add m' (S lo)) l) (NthL (Add (S m') lo) l)
-            (IdCongr Nat Nat (λ (q : Nat). NthL q l) (Add m' (S lo)) (Add (S m') lo) (AddSucc m' lo))
-            (h m' hm) } }
+  λ (W : Nat). λ (Lo : Nat). λ (P : Nat). λ (L : List Nat).
+    λ (H0 : Le (NthL Lo L) P). λ (H : AllLeR W (S Lo) P L).
+    λ (M : Nat).
+      elim M return (λ (Mz : Nat). Le (S Mz) (S W) → Le (NthL (Add Mz Lo) L) P) {
+        Z => λ (Hm : Le (S Z) (S W)). H0,
+        S (M') Mih => λ (Hm : Le (S (S M')) (S W)).
+          LeRwL P (NthL (Add M' (S Lo)) L) (NthL (Add (S M') Lo) L)
+            (IdCongr Nat Nat (λ (Q : Nat). NthL Q L) (Add M' (S Lo)) (Add (S M') Lo) (AddSucc M' Lo))
+            (H M' Hm) } }
 def AllLeRExtendLoTy : Term := prog{
-  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
-    Le (NthL lo l) p → AllLeR w (S lo) p l → AllLeR (S w) lo p l }
+  Π (W : Nat) → Π (Lo : Nat) → Π (P : Nat) → Π (L : List Nat) →
+    Le (NthL Lo L) P → AllLeR W (S Lo) P L → AllLeR (S W) Lo P L }
 
 def AllLeRCong : Term := prog{
-  λ (w : Nat). λ (off : Nat). λ (p : Nat). λ (l : List Nat). λ (l' : List Nat).
-    λ (heq : Π (m : Nat) → Le (S m) w → Id Nat (NthL (Add m off) l') (NthL (Add m off) l)).
-    λ (h : AllLeR w off p l).
-    λ (m : Nat). λ (hm : Le (S m) w).
-      LeRwL p (NthL (Add m off) l) (NthL (Add m off) l')
-        (IdSym Nat (NthL (Add m off) l') (NthL (Add m off) l) (heq m hm))
-        (h m hm) }
+  λ (W : Nat). λ (Off : Nat). λ (P : Nat). λ (L : List Nat). λ (L' : List Nat).
+    λ (Heq : Π (M : Nat) → Le (S M) W → Id Nat (NthL (Add M Off) L') (NthL (Add M Off) L)).
+    λ (H : AllLeR W Off P L).
+    λ (M : Nat). λ (Hm : Le (S M) W).
+      LeRwL P (NthL (Add M Off) L) (NthL (Add M Off) L')
+        (IdSym Nat (NthL (Add M Off) L') (NthL (Add M Off) L) (Heq M Hm))
+        (H M Hm) }
 def AllLeRCongTy : Term := prog{
-  Π (w : Nat) → Π (off : Nat) → Π (p : Nat) → Π (l : List Nat) → Π (l' : List Nat) →
-    (Π (m : Nat) → Le (S m) w → Id Nat (NthL (Add m off) l') (NthL (Add m off) l)) →
-    AllLeR w off p l → AllLeR w off p l' }
+  Π (W : Nat) → Π (Off : Nat) → Π (P : Nat) → Π (L : List Nat) → Π (L' : List Nat) →
+    (Π (M : Nat) → Le (S M) W → Id Nat (NthL (Add M Off) L') (NthL (Add M Off) L)) →
+    AllLeR W Off P L → AllLeR W Off P L' }
 
 def AddSwapSucc : Term := prog{
-  λ (a : Nat). λ (b : Nat).
-    IdTrans Nat (Add a (S b)) (S (Add a b)) (Add b (S a))
-      (AddSucc a b)
-      (IdTrans Nat (S (Add a b)) (S (Add b a)) (Add b (S a))
-        (IdCongr Nat Nat (λ (z : Nat). S z) (Add a b) (Add b a) (AddComm a b))
-        (IdSym Nat (Add b (S a)) (S (Add b a)) (AddSucc b a))) }
-def AddSwapSuccTy : Term := prog{ Π (a : Nat) → Π (b : Nat) → Id Nat (Add a (S b)) (Add b (S a)) }
+  λ (A : Nat). λ (B : Nat).
+    IdTrans Nat (Add A (S B)) (S (Add A B)) (Add B (S A))
+      (AddSucc A B)
+      (IdTrans Nat (S (Add A B)) (S (Add B A)) (Add B (S A))
+        (IdCongr Nat Nat (λ (Z0 : Nat). S Z0) (Add A B) (Add B A) (AddComm A B))
+        (IdSym Nat (Add B (S A)) (S (Add B A)) (AddSucc B A))) }
+def AddSwapSuccTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Id Nat (Add A (S B)) (Add B (S A)) }
 
 -- Left cancellation (Le (add a b)(add a c) → Le b c) — the glue's pivot-right case
 -- derives g ≥ 1 (Le (S Z) g) from the range bound Le (S i)(add i g) by cancelling i
 -- (after bridging S i = add i (S Z) via AddSucc/AddZero). Induction on a.
 def LeAddCancelL : Term := prog{
-  λ (a : Nat).
-    elim a return (λ (az : Nat). Π (b : Nat) → Π (c : Nat) → Le (Add az b) (Add az c) → Le b c) {
-      Z => λ (b : Nat). λ (c : Nat). λ (h : Le (Add Z b) (Add Z c)). h,
-      S (a') ih => λ (b : Nat). λ (c : Nat). λ (h : Le (Add (S a') b) (Add (S a') c)). ih b c h } }
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Π (C : Nat) → Le (Add Az B) (Add Az C) → Le B C) {
+      Z => λ (B : Nat). λ (C : Nat). λ (H : Le (Add Z B) (Add Z C)). H,
+      S (A') Ih => λ (B : Nat). λ (C : Nat). λ (H : Le (Add (S A') B) (Add (S A') C)). Ih B C H } }
 def LeAddCancelLTy : Term := prog{
-  Π (a : Nat) → Π (b : Nat) → Π (c : Nat) → Le (Add a b) (Add a c) → Le b c }
+  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → Le (Add A B) (Add A C) → Le B C }
 /-! ## `NthL`-under-`SwapL` locality — the positional stratum (§22, M22-c)
 
     Where `CountSwapL` says the swap preserves the MULTISET, these say WHERE each
@@ -1383,93 +1383,93 @@ def LeAddCancelLTy : Term := prog{
 
 -- `NthL k (Set j v l) = NthL k l` for k strictly above the written index j.
 def NthSetGt : Term := prog{
-  λ (v : Nat). λ (j : Nat).
-    elim j return (λ (jz : Nat). Π (k : Nat) → Π (l : List Nat) → Le (S jz) k → Id Nat (NthL k (Set jz v l)) (NthL k l)) {
-      Z => λ (k : Nat). λ (l : List Nat). λ (h : Le (S Z) k).
-        elim k return (λ (kz : Nat). Le (S Z) kz → Id Nat (NthL kz (Set Z v l)) (NthL kz l)) {
-          Z => λ (h0 : Le (S Z) Z). botElim (Id Nat (NthL Z (Set Z v l)) (NthL Z l)) h0,
-          S (k') kih => λ (h0 : Le (S Z) (S k')).
-            elim l return (λ (lz : List Nat). Id Nat (NthL (S k') (Set Z v lz)) (NthL (S k') lz)) {
+  λ (V : Nat). λ (J : Nat).
+    elim J return (λ (Jz : Nat). Π (K : Nat) → Π (L : List Nat) → Le (S Jz) K → Id Nat (NthL K (Set Jz V L)) (NthL K L)) {
+      Z => λ (K : Nat). λ (L : List Nat). λ (H : Le (S Z) K).
+        elim K return (λ (Kz : Nat). Le (S Z) Kz → Id Nat (NthL Kz (Set Z V L)) (NthL Kz L)) {
+          Z => λ (H0 : Le (S Z) Z). botElim (Id Nat (NthL Z (Set Z V L)) (NthL Z L)) H0,
+          S (K') Kih => λ (H0 : Le (S Z) (S K')).
+            elim L return (λ (Lz : List Nat). Id Nat (NthL (S K') (Set Z V Lz)) (NthL (S K') Lz)) {
               Nil => Refl,
-              Cons (hh) (tt) ihl => Refl } } h,
-      S (j') ih => λ (k : Nat). λ (l : List Nat). λ (h : Le (S (S j')) k).
-        elim k return (λ (kz : Nat). Le (S (S j')) kz → Id Nat (NthL kz (Set (S j') v l)) (NthL kz l)) {
-          Z => λ (h0 : Le (S (S j')) Z). botElim (Id Nat (NthL Z (Set (S j') v l)) (NthL Z l)) h0,
-          S (k') kih => λ (h0 : Le (S (S j')) (S k')).
-            elim l return (λ (lz : List Nat). Id Nat (NthL (S k') (Set (S j') v lz)) (NthL (S k') lz)) {
+              Cons (Hh) (Tt) Ihl => Refl } } H,
+      S (J') Ih => λ (K : Nat). λ (L : List Nat). λ (H : Le (S (S J')) K).
+        elim K return (λ (Kz : Nat). Le (S (S J')) Kz → Id Nat (NthL Kz (Set (S J') V L)) (NthL Kz L)) {
+          Z => λ (H0 : Le (S (S J')) Z). botElim (Id Nat (NthL Z (Set (S J') V L)) (NthL Z L)) H0,
+          S (K') Kih => λ (H0 : Le (S (S J')) (S K')).
+            elim L return (λ (Lz : List Nat). Id Nat (NthL (S K') (Set (S J') V Lz)) (NthL (S K') Lz)) {
               Nil => Refl,
-              Cons (hh) (tt) ihl => ih k' tt h0 } } h } }
+              Cons (Hh) (Tt) Ihl => Ih K' Tt H0 } } H } }
 def NthSetGtTy : Term := prog{
-  Π (v : Nat) → Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) →
-    Le (S j) k → Id Nat (NthL k (Set j v l)) (NthL k l) }
+  Π (V : Nat) → Π (J : Nat) → Π (K : Nat) → Π (L : List Nat) →
+    Le (S J) K → Id Nat (NthL K (Set J V L)) (NthL K L) }
 
 -- `NthL k (Set k v l) = v` when k is in range (off the end set no-ops, giving Z ≠ v).
 def NthSetSame : Term := prog{
-  λ (v : Nat). λ (k : Nat).
-    elim k return (λ (kz : Nat). Π (l : List Nat) → Le (S kz) (Len l) → Id Nat (NthL kz (Set kz v l)) v) {
-      Z => λ (l : List Nat).
-        elim l return (λ (lz : List Nat). Le (S Z) (Len lz) → Id Nat (NthL Z (Set Z v lz)) v) {
-          Nil => λ (h : Le (S Z) (Len Nil)). botElim (Id Nat (NthL Z (Set Z v Nil)) v) h,
-          Cons (hh) (tt) ihl => λ (h : Le (S Z) (Len (Cons hh tt))). Refl },
-      S (k') ih => λ (l : List Nat).
-        elim l return (λ (lz : List Nat). Le (S (S k')) (Len lz) → Id Nat (NthL (S k') (Set (S k') v lz)) v) {
-          Nil => λ (h : Le (S (S k')) (Len Nil)). botElim (Id Nat (NthL (S k') (Set (S k') v Nil)) v) h,
-          Cons (hh) (tt) ihl => λ (h : Le (S (S k')) (Len (Cons hh tt))). ih tt h } } }
+  λ (V : Nat). λ (K : Nat).
+    elim K return (λ (Kz : Nat). Π (L : List Nat) → Le (S Kz) (Len L) → Id Nat (NthL Kz (Set Kz V L)) V) {
+      Z => λ (L : List Nat).
+        elim L return (λ (Lz : List Nat). Le (S Z) (Len Lz) → Id Nat (NthL Z (Set Z V Lz)) V) {
+          Nil => λ (H : Le (S Z) (Len Nil)). botElim (Id Nat (NthL Z (Set Z V Nil)) V) H,
+          Cons (Hh) (Tt) Ihl => λ (H : Le (S Z) (Len (Cons Hh Tt))). Refl },
+      S (K') Ih => λ (L : List Nat).
+        elim L return (λ (Lz : List Nat). Le (S (S K')) (Len Lz) → Id Nat (NthL (S K') (Set (S K') V Lz)) V) {
+          Nil => λ (H : Le (S (S K')) (Len Nil)). botElim (Id Nat (NthL (S K') (Set (S K') V Nil)) V) H,
+          Cons (Hh) (Tt) Ihl => λ (H : Le (S (S K')) (Len (Cons Hh Tt))). Ih Tt H } } }
 def NthSetSameTy : Term := prog{
-  Π (v : Nat) → Π (k : Nat) → Π (l : List Nat) →
-    Le (S k) (Len l) → Id Nat (NthL k (Set k v l)) v }
+  Π (V : Nat) → Π (K : Nat) → Π (L : List Nat) →
+    Le (S K) (Len L) → Id Nat (NthL K (Set K V L)) V }
 
 -- Locality below the swap: positions `k < i` are untouched by `SwapL i j`. Induct
 -- on i (mirroring SwapL); i = Z is vacuous (Le (S k) Z = ⊥); the recursive leaf is
 -- the IH under `Cons x ·`, the j = Z / head leaves are Refl.
 def NthSwapLLt : Term := prog{
-  λ (i : Nat).
-    elim i return (λ (iz : Nat). Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) → Le (S k) iz → Id Nat (NthL k (SwapL iz j l)) (NthL k l)) {
-      Z => λ (j : Nat). λ (k : Nat). λ (l : List Nat). λ (h : Le (S k) Z).
-        botElim (Id Nat (NthL k (SwapL Z j l)) (NthL k l)) h,
-      S (i') ih => λ (j : Nat). λ (k : Nat). λ (l : List Nat). λ (h : Le (S k) (S i')).
-        elim l return (λ (lz : List Nat). Id Nat (NthL k (SwapL (S i') j lz)) (NthL k lz)) {
+  λ (I : Nat).
+    elim I return (λ (Iz : Nat). Π (J : Nat) → Π (K : Nat) → Π (L : List Nat) → Le (S K) Iz → Id Nat (NthL K (SwapL Iz J L)) (NthL K L)) {
+      Z => λ (J : Nat). λ (K : Nat). λ (L : List Nat). λ (H : Le (S K) Z).
+        botElim (Id Nat (NthL K (SwapL Z J L)) (NthL K L)) H,
+      S (I') Ih => λ (J : Nat). λ (K : Nat). λ (L : List Nat). λ (H : Le (S K) (S I')).
+        elim L return (λ (Lz : List Nat). Id Nat (NthL K (SwapL (S I') J Lz)) (NthL K Lz)) {
           Nil => Refl,
-          Cons (x) (xs) ihl =>
-            elim j return (λ (jz : Nat). Id Nat (NthL k (SwapL (S i') jz (Cons x xs))) (NthL k (Cons x xs))) {
+          Cons (X) (Xs) Ihl =>
+            elim J return (λ (Jz : Nat). Id Nat (NthL K (SwapL (S I') Jz (Cons X Xs))) (NthL K (Cons X Xs))) {
               Z => Refl,
-              S (j') jih =>
-                elim k return (λ (kz : Nat). Le (S kz) (S i') → Id Nat (NthL kz (Cons x (SwapL i' j' xs))) (NthL kz (Cons x xs))) {
-                  Z => λ (h0 : Le (S Z) (S i')). Refl,
-                  S (k') kih => λ (h0 : Le (S (S k')) (S i')). ih j' k' xs h0 } h } } } }
+              S (J') Jih =>
+                elim K return (λ (Kz : Nat). Le (S Kz) (S I') → Id Nat (NthL Kz (Cons X (SwapL I' J' Xs))) (NthL Kz (Cons X Xs))) {
+                  Z => λ (H0 : Le (S Z) (S I')). Refl,
+                  S (K') Kih => λ (H0 : Le (S (S K')) (S I')). Ih J' K' Xs H0 } H } } } }
 def NthSwapLLtTy : Term := prog{
-  Π (i : Nat) → Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) →
-    Le (S k) i → Id Nat (NthL k (SwapL i j l)) (NthL k l) }
+  Π (I : Nat) → Π (J : Nat) → Π (K : Nat) → Π (L : List Nat) →
+    Le (S K) I → Id Nat (NthL K (SwapL I J L)) (NthL K L) }
 
 -- Locality above the swap: positions `k > j` are untouched by `SwapL i j`. Induct
 -- on i; the i = Z / j = S j' leaf floats through the set-branch via `NthSetGt`,
 -- the i = S i' / j = S j' leaf is the IH, the j = Z / Nil leaves are Refl.
 def NthSwapLGt : Term := prog{
-  λ (i : Nat).
-    elim i return (λ (iz : Nat). Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) → Le (S j) k → Id Nat (NthL k (SwapL iz j l)) (NthL k l)) {
-      Z => λ (j : Nat). λ (k : Nat). λ (l : List Nat). λ (h : Le (S j) k).
-        elim l return (λ (lz : List Nat). Id Nat (NthL k (SwapL Z j lz)) (NthL k lz)) {
+  λ (I : Nat).
+    elim I return (λ (Iz : Nat). Π (J : Nat) → Π (K : Nat) → Π (L : List Nat) → Le (S J) K → Id Nat (NthL K (SwapL Iz J L)) (NthL K L)) {
+      Z => λ (J : Nat). λ (K : Nat). λ (L : List Nat). λ (H : Le (S J) K).
+        elim L return (λ (Lz : List Nat). Id Nat (NthL K (SwapL Z J Lz)) (NthL K Lz)) {
           Nil => Refl,
-          Cons (x) (xs) ihl =>
-            elim j return (λ (jz : Nat). Le (S jz) k → Id Nat (NthL k (SwapL Z jz (Cons x xs))) (NthL k (Cons x xs))) {
-              Z => λ (h0 : Le (S Z) k). Refl,
-              S (j') jih => λ (h0 : Le (S (S j')) k).
-                elim k return (λ (kz : Nat). Le (S (S j')) kz → Id Nat (NthL kz (Cons (NthL j' xs) (Set j' x xs))) (NthL kz (Cons x xs))) {
-                  Z => λ (h1 : Le (S (S j')) Z). botElim (Id Nat (NthL Z (Cons (NthL j' xs) (Set j' x xs))) (NthL Z (Cons x xs))) h1,
-                  S (k') kih => λ (h1 : Le (S (S j')) (S k')). NthSetGt x j' k' xs h1 } h0 } h },
-      S (i') ih => λ (j : Nat). λ (k : Nat). λ (l : List Nat). λ (h : Le (S j) k).
-        elim l return (λ (lz : List Nat). Id Nat (NthL k (SwapL (S i') j lz)) (NthL k lz)) {
+          Cons (X) (Xs) Ihl =>
+            elim J return (λ (Jz : Nat). Le (S Jz) K → Id Nat (NthL K (SwapL Z Jz (Cons X Xs))) (NthL K (Cons X Xs))) {
+              Z => λ (H0 : Le (S Z) K). Refl,
+              S (J') Jih => λ (H0 : Le (S (S J')) K).
+                elim K return (λ (Kz : Nat). Le (S (S J')) Kz → Id Nat (NthL Kz (Cons (NthL J' Xs) (Set J' X Xs))) (NthL Kz (Cons X Xs))) {
+                  Z => λ (H1 : Le (S (S J')) Z). botElim (Id Nat (NthL Z (Cons (NthL J' Xs) (Set J' X Xs))) (NthL Z (Cons X Xs))) H1,
+                  S (K') Kih => λ (H1 : Le (S (S J')) (S K')). NthSetGt X J' K' Xs H1 } H0 } H },
+      S (I') Ih => λ (J : Nat). λ (K : Nat). λ (L : List Nat). λ (H : Le (S J) K).
+        elim L return (λ (Lz : List Nat). Id Nat (NthL K (SwapL (S I') J Lz)) (NthL K Lz)) {
           Nil => Refl,
-          Cons (x) (xs) ihl =>
-            elim j return (λ (jz : Nat). Le (S jz) k → Id Nat (NthL k (SwapL (S i') jz (Cons x xs))) (NthL k (Cons x xs))) {
-              Z => λ (h0 : Le (S Z) k). Refl,
-              S (j') jih => λ (h0 : Le (S (S j')) k).
-                elim k return (λ (kz : Nat). Le (S (S j')) kz → Id Nat (NthL kz (Cons x (SwapL i' j' xs))) (NthL kz (Cons x xs))) {
-                  Z => λ (h1 : Le (S (S j')) Z). botElim (Id Nat (NthL Z (Cons x (SwapL i' j' xs))) (NthL Z (Cons x xs))) h1,
-                  S (k') kih => λ (h1 : Le (S (S j')) (S k')). ih j' k' xs h1 } h0 } h } } }
+          Cons (X) (Xs) Ihl =>
+            elim J return (λ (Jz : Nat). Le (S Jz) K → Id Nat (NthL K (SwapL (S I') Jz (Cons X Xs))) (NthL K (Cons X Xs))) {
+              Z => λ (H0 : Le (S Z) K). Refl,
+              S (J') Jih => λ (H0 : Le (S (S J')) K).
+                elim K return (λ (Kz : Nat). Le (S (S J')) Kz → Id Nat (NthL Kz (Cons X (SwapL I' J' Xs))) (NthL Kz (Cons X Xs))) {
+                  Z => λ (H1 : Le (S (S J')) Z). botElim (Id Nat (NthL Z (Cons X (SwapL I' J' Xs))) (NthL Z (Cons X Xs))) H1,
+                  S (K') Kih => λ (H1 : Le (S (S J')) (S K')). Ih J' K' Xs H1 } H0 } H } } }
 def NthSwapLGtTy : Term := prog{
-  Π (i : Nat) → Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) →
-    Le (S j) k → Id Nat (NthL k (SwapL i j l)) (NthL k l) }
+  Π (I : Nat) → Π (J : Nat) → Π (K : Nat) → Π (L : List Nat) →
+    Le (S J) K → Id Nat (NthL K (SwapL I J L)) (NthL K L) }
 
 -- The lower endpoint: position i of `SwapL i j l` reads old position j. Induct on
 -- i; the recursive leaf is the IH under `Cons x ·`. NO length bound — off the end
@@ -1477,27 +1477,27 @@ def NthSwapLGtTy : Term := prog{
 -- leaves case j so the stuck `NthL j Nil` reduces to Z on both sides, and the j = Z
 -- leaf (impossible with i ≥ 1) is the sole botElim, discharged by `Le (S i) j`.
 def NthSwapLLo : Term := prog{
-  λ (i : Nat).
-    elim i return (λ (iz : Nat). Π (j : Nat) → Π (l : List Nat) → Le (S iz) j → Id Nat (NthL iz (SwapL iz j l)) (NthL j l)) {
-      Z => λ (j : Nat). λ (l : List Nat). λ (h : Le (S Z) j).
-        elim l return (λ (lz : List Nat). Id Nat (NthL Z (SwapL Z j lz)) (NthL j lz)) {
-          Nil => elim j return (λ (jz : Nat). Id Nat (NthL Z (SwapL Z jz Nil)) (NthL jz Nil)) {
-            Z => Refl, S (j') jih => Refl },
-          Cons (x) (xs) ihl =>
-            elim j return (λ (jz : Nat). Le (S Z) jz → Id Nat (NthL Z (SwapL Z jz (Cons x xs))) (NthL jz (Cons x xs))) {
-              Z => λ (h0 : Le (S Z) Z). botElim (Id Nat (NthL Z (SwapL Z Z (Cons x xs))) (NthL Z (Cons x xs))) h0,
-              S (j') jih => λ (h0 : Le (S Z) (S j')). Refl } h },
-      S (i') ih => λ (j : Nat). λ (l : List Nat). λ (h : Le (S (S i')) j).
-        elim l return (λ (lz : List Nat). Id Nat (NthL (S i') (SwapL (S i') j lz)) (NthL j lz)) {
-          Nil => elim j return (λ (jz : Nat). Id Nat (NthL (S i') (SwapL (S i') jz Nil)) (NthL jz Nil)) {
-            Z => Refl, S (j') jih => Refl },
-          Cons (x) (xs) ihl =>
-            elim j return (λ (jz : Nat). Le (S (S i')) jz → Id Nat (NthL (S i') (SwapL (S i') jz (Cons x xs))) (NthL jz (Cons x xs))) {
-              Z => λ (h0 : Le (S (S i')) Z). botElim (Id Nat (NthL (S i') (SwapL (S i') Z (Cons x xs))) (NthL Z (Cons x xs))) h0,
-              S (j') jih => λ (h0 : Le (S (S i')) (S j')). ih j' xs h0 } h } } }
+  λ (I : Nat).
+    elim I return (λ (Iz : Nat). Π (J : Nat) → Π (L : List Nat) → Le (S Iz) J → Id Nat (NthL Iz (SwapL Iz J L)) (NthL J L)) {
+      Z => λ (J : Nat). λ (L : List Nat). λ (H : Le (S Z) J).
+        elim L return (λ (Lz : List Nat). Id Nat (NthL Z (SwapL Z J Lz)) (NthL J Lz)) {
+          Nil => elim J return (λ (Jz : Nat). Id Nat (NthL Z (SwapL Z Jz Nil)) (NthL Jz Nil)) {
+            Z => Refl, S (J') Jih => Refl },
+          Cons (X) (Xs) Ihl =>
+            elim J return (λ (Jz : Nat). Le (S Z) Jz → Id Nat (NthL Z (SwapL Z Jz (Cons X Xs))) (NthL Jz (Cons X Xs))) {
+              Z => λ (H0 : Le (S Z) Z). botElim (Id Nat (NthL Z (SwapL Z Z (Cons X Xs))) (NthL Z (Cons X Xs))) H0,
+              S (J') Jih => λ (H0 : Le (S Z) (S J')). Refl } H },
+      S (I') Ih => λ (J : Nat). λ (L : List Nat). λ (H : Le (S (S I')) J).
+        elim L return (λ (Lz : List Nat). Id Nat (NthL (S I') (SwapL (S I') J Lz)) (NthL J Lz)) {
+          Nil => elim J return (λ (Jz : Nat). Id Nat (NthL (S I') (SwapL (S I') Jz Nil)) (NthL Jz Nil)) {
+            Z => Refl, S (J') Jih => Refl },
+          Cons (X) (Xs) Ihl =>
+            elim J return (λ (Jz : Nat). Le (S (S I')) Jz → Id Nat (NthL (S I') (SwapL (S I') Jz (Cons X Xs))) (NthL Jz (Cons X Xs))) {
+              Z => λ (H0 : Le (S (S I')) Z). botElim (Id Nat (NthL (S I') (SwapL (S I') Z (Cons X Xs))) (NthL Z (Cons X Xs))) H0,
+              S (J') Jih => λ (H0 : Le (S (S I')) (S J')). Ih J' Xs H0 } H } } }
 def NthSwapLLoTy : Term := prog{
-  Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) →
-    Le (S i) j → Id Nat (NthL i (SwapL i j l)) (NthL j l) }
+  Π (I : Nat) → Π (J : Nat) → Π (L : List Nat) →
+    Le (S I) J → Id Nat (NthL I (SwapL I J L)) (NthL J L) }
 
 -- The upper endpoint: position j of `SwapL i j l` reads old position i. Induct on
 -- i; the base (i = Z) reads `NthL j (Set j x xs) = x` via `NthSetSame`, so the
@@ -1505,83 +1505,83 @@ def NthSwapLLoTy : Term := prog{
 -- feeds NthSetSame) — UNLIKE _lo. The recursive leaf is the IH under `Cons x ·`,
 -- threading both bounds; the j = Z leaf is botElim by `Le (S i) j`.
 def NthSwapLHi : Term := prog{
-  λ (i : Nat).
-    elim i return (λ (iz : Nat). Π (j : Nat) → Π (l : List Nat) → Le (S iz) j → Le (S j) (Len l) → Id Nat (NthL j (SwapL iz j l)) (NthL iz l)) {
-      Z => λ (j : Nat). λ (l : List Nat). λ (h1 : Le (S Z) j). λ (h2 : Le (S j) (Len l)).
-        elim l return (λ (lz : List Nat). Le (S j) (Len lz) → Id Nat (NthL j (SwapL Z j lz)) (NthL Z lz)) {
-          Nil => λ (a2 : Le (S j) (Len Nil)).
-            botElim (Id Nat (NthL j (SwapL Z j Nil)) (NthL Z Nil)) a2,
-          Cons (x) (xs) ihl => λ (a2 : Le (S j) (Len (Cons x xs))).
-            elim j return (λ (jz : Nat). Le (S Z) jz → Le (S jz) (Len (Cons x xs)) → Id Nat (NthL jz (SwapL Z jz (Cons x xs))) (NthL Z (Cons x xs))) {
-              Z => λ (b1 : Le (S Z) Z). λ (b2 : Le (S Z) (Len (Cons x xs))).
-                botElim (Id Nat (NthL Z (SwapL Z Z (Cons x xs))) (NthL Z (Cons x xs))) b1,
-              S (j') jih => λ (b1 : Le (S Z) (S j')). λ (b2 : Le (S (S j')) (Len (Cons x xs))).
-                NthSetSame x j' xs b2 } h1 a2 } h2,
-      S (i') ih => λ (j : Nat). λ (l : List Nat). λ (h1 : Le (S (S i')) j). λ (h2 : Le (S j) (Len l)).
-        elim l return (λ (lz : List Nat). Le (S j) (Len lz) → Id Nat (NthL j (SwapL (S i') j lz)) (NthL (S i') lz)) {
-          Nil => λ (a2 : Le (S j) (Len Nil)).
-            botElim (Id Nat (NthL j (SwapL (S i') j Nil)) (NthL (S i') Nil)) a2,
-          Cons (x) (xs) ihl => λ (a2 : Le (S j) (Len (Cons x xs))).
-            elim j return (λ (jz : Nat). Le (S (S i')) jz → Le (S jz) (Len (Cons x xs)) → Id Nat (NthL jz (SwapL (S i') jz (Cons x xs))) (NthL (S i') (Cons x xs))) {
-              Z => λ (b1 : Le (S (S i')) Z). λ (b2 : Le (S Z) (Len (Cons x xs))).
-                botElim (Id Nat (NthL Z (SwapL (S i') Z (Cons x xs))) (NthL (S i') (Cons x xs))) b1,
-              S (j') jih => λ (b1 : Le (S (S i')) (S j')). λ (b2 : Le (S (S j')) (Len (Cons x xs))).
-                ih j' xs b1 b2 } h1 a2 } h2 } }
+  λ (I : Nat).
+    elim I return (λ (Iz : Nat). Π (J : Nat) → Π (L : List Nat) → Le (S Iz) J → Le (S J) (Len L) → Id Nat (NthL J (SwapL Iz J L)) (NthL Iz L)) {
+      Z => λ (J : Nat). λ (L : List Nat). λ (H1 : Le (S Z) J). λ (H2 : Le (S J) (Len L)).
+        elim L return (λ (Lz : List Nat). Le (S J) (Len Lz) → Id Nat (NthL J (SwapL Z J Lz)) (NthL Z Lz)) {
+          Nil => λ (A2 : Le (S J) (Len Nil)).
+            botElim (Id Nat (NthL J (SwapL Z J Nil)) (NthL Z Nil)) A2,
+          Cons (X) (Xs) Ihl => λ (A2 : Le (S J) (Len (Cons X Xs))).
+            elim J return (λ (Jz : Nat). Le (S Z) Jz → Le (S Jz) (Len (Cons X Xs)) → Id Nat (NthL Jz (SwapL Z Jz (Cons X Xs))) (NthL Z (Cons X Xs))) {
+              Z => λ (B1 : Le (S Z) Z). λ (B2 : Le (S Z) (Len (Cons X Xs))).
+                botElim (Id Nat (NthL Z (SwapL Z Z (Cons X Xs))) (NthL Z (Cons X Xs))) B1,
+              S (J') Jih => λ (B1 : Le (S Z) (S J')). λ (B2 : Le (S (S J')) (Len (Cons X Xs))).
+                NthSetSame X J' Xs B2 } H1 A2 } H2,
+      S (I') Ih => λ (J : Nat). λ (L : List Nat). λ (H1 : Le (S (S I')) J). λ (H2 : Le (S J) (Len L)).
+        elim L return (λ (Lz : List Nat). Le (S J) (Len Lz) → Id Nat (NthL J (SwapL (S I') J Lz)) (NthL (S I') Lz)) {
+          Nil => λ (A2 : Le (S J) (Len Nil)).
+            botElim (Id Nat (NthL J (SwapL (S I') J Nil)) (NthL (S I') Nil)) A2,
+          Cons (X) (Xs) Ihl => λ (A2 : Le (S J) (Len (Cons X Xs))).
+            elim J return (λ (Jz : Nat). Le (S (S I')) Jz → Le (S Jz) (Len (Cons X Xs)) → Id Nat (NthL Jz (SwapL (S I') Jz (Cons X Xs))) (NthL (S I') (Cons X Xs))) {
+              Z => λ (B1 : Le (S (S I')) Z). λ (B2 : Le (S Z) (Len (Cons X Xs))).
+                botElim (Id Nat (NthL Z (SwapL (S I') Z (Cons X Xs))) (NthL (S I') (Cons X Xs))) B1,
+              S (J') Jih => λ (B1 : Le (S (S I')) (S J')). λ (B2 : Le (S (S J')) (Len (Cons X Xs))).
+                Ih J' Xs B1 B2 } H1 A2 } H2 } }
 def NthSwapLHiTy : Term := prog{
-  Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) →
-    Le (S i) j → Le (S j) (Len l) → Id Nat (NthL j (SwapL i j l)) (NthL i l) }
+  Π (I : Nat) → Π (J : Nat) → Π (L : List Nat) →
+    Le (S I) J → Le (S J) (Len L) → Id Nat (NthL J (SwapL I J L)) (NthL I L) }
 
 -- `NthL k (Set j v l) = NthL k l` for k strictly BELOW the written index j (mirror of
 -- NthSetGt). The below-index companion the partition-invariant base case needs.
 def NthSetLt : Term := prog{
-  λ (v : Nat). λ (j : Nat).
-    elim j return (λ (jz : Nat). Π (k : Nat) → Π (l : List Nat) → Le (S k) jz → Id Nat (NthL k (Set jz v l)) (NthL k l)) {
-      Z => λ (k : Nat). λ (l : List Nat). λ (h : Le (S k) Z). botElim (Id Nat (NthL k (Set Z v l)) (NthL k l)) h,
-      S (j') ih => λ (k : Nat). λ (l : List Nat). λ (h : Le (S k) (S j')).
-        elim k return (λ (kz : Nat). Le (S kz) (S j') → Id Nat (NthL kz (Set (S j') v l)) (NthL kz l)) {
-          Z => λ (h0 : Le (S Z) (S j')).
-            elim l return (λ (lz : List Nat). Id Nat (NthL Z (Set (S j') v lz)) (NthL Z lz)) {
+  λ (V : Nat). λ (J : Nat).
+    elim J return (λ (Jz : Nat). Π (K : Nat) → Π (L : List Nat) → Le (S K) Jz → Id Nat (NthL K (Set Jz V L)) (NthL K L)) {
+      Z => λ (K : Nat). λ (L : List Nat). λ (H : Le (S K) Z). botElim (Id Nat (NthL K (Set Z V L)) (NthL K L)) H,
+      S (J') Ih => λ (K : Nat). λ (L : List Nat). λ (H : Le (S K) (S J')).
+        elim K return (λ (Kz : Nat). Le (S Kz) (S J') → Id Nat (NthL Kz (Set (S J') V L)) (NthL Kz L)) {
+          Z => λ (H0 : Le (S Z) (S J')).
+            elim L return (λ (Lz : List Nat). Id Nat (NthL Z (Set (S J') V Lz)) (NthL Z Lz)) {
               Nil => Refl,
-              Cons (hh) (tt) ihl => Refl },
-          S (k') kih => λ (h0 : Le (S (S k')) (S j')).
-            elim l return (λ (lz : List Nat). Id Nat (NthL (S k') (Set (S j') v lz)) (NthL (S k') lz)) {
+              Cons (Hh) (Tt) Ihl => Refl },
+          S (K') Kih => λ (H0 : Le (S (S K')) (S J')).
+            elim L return (λ (Lz : List Nat). Id Nat (NthL (S K') (Set (S J') V Lz)) (NthL (S K') Lz)) {
               Nil => Refl,
-              Cons (hh) (tt) ihl => ih k' tt h0 } } h } }
+              Cons (Hh) (Tt) Ihl => Ih K' Tt H0 } } H } }
 def NthSetLtTy : Term := prog{
-  Π (v : Nat) → Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) →
-    Le (S k) j → Id Nat (NthL k (Set j v l)) (NthL k l) }
+  Π (V : Nat) → Π (J : Nat) → Π (K : Nat) → Π (L : List Nat) →
+    Le (S K) J → Id Nat (NthL K (Set J V L)) (NthL K L) }
 
 -- The MIDDLE band left unstated in Step A: positions strictly between i and j are
 -- untouched by `SwapL i j` (two-sided bound). Induction on i mirroring SwapL; the
 -- i=Z base floats through the set-branch via NthSetLt, the recursive leaf is the IH.
 def NthSwapLMid : Term := prog{
-  λ (i : Nat).
-    elim i return (λ (iz : Nat). Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) → Le (S iz) k → Le (S k) j → Id Nat (NthL k (SwapL iz j l)) (NthL k l)) {
-      Z => λ (j : Nat). λ (k : Nat). λ (l : List Nat). λ (hik : Le (S Z) k). λ (hkj : Le (S k) j).
-        elim l return (λ (lz : List Nat). Id Nat (NthL k (SwapL Z j lz)) (NthL k lz)) {
+  λ (I : Nat).
+    elim I return (λ (Iz : Nat). Π (J : Nat) → Π (K : Nat) → Π (L : List Nat) → Le (S Iz) K → Le (S K) J → Id Nat (NthL K (SwapL Iz J L)) (NthL K L)) {
+      Z => λ (J : Nat). λ (K : Nat). λ (L : List Nat). λ (Hik : Le (S Z) K). λ (Hkj : Le (S K) J).
+        elim L return (λ (Lz : List Nat). Id Nat (NthL K (SwapL Z J Lz)) (NthL K Lz)) {
           Nil => Refl,
-          Cons (x) (xs) ihl =>
-            elim j return (λ (jz : Nat). Le (S k) jz → Id Nat (NthL k (SwapL Z jz (Cons x xs))) (NthL k (Cons x xs))) {
-              Z => λ (hkj0 : Le (S k) Z). botElim (Id Nat (NthL k (SwapL Z Z (Cons x xs))) (NthL k (Cons x xs))) hkj0,
-              S (j') jih => λ (hkj0 : Le (S k) (S j')).
-                elim k return (λ (kz : Nat). Le (S Z) kz → Le (S kz) (S j') → Id Nat (NthL kz (Cons (NthL j' xs) (Set j' x xs))) (NthL kz (Cons x xs))) {
-                  Z => λ (hik1 : Le (S Z) Z). λ (hkj1 : Le (S Z) (S j')). botElim (Id Nat (NthL Z (Cons (NthL j' xs) (Set j' x xs))) (NthL Z (Cons x xs))) hik1,
-                  S (k') kih => λ (hik1 : Le (S Z) (S k')). λ (hkj1 : Le (S (S k')) (S j')).
-                    NthSetLt x j' k' xs hkj1 } hik hkj0 } hkj },
-      S (i') ih => λ (j : Nat). λ (k : Nat). λ (l : List Nat). λ (hik : Le (S (S i')) k). λ (hkj : Le (S k) j).
-        elim l return (λ (lz : List Nat). Id Nat (NthL k (SwapL (S i') j lz)) (NthL k lz)) {
+          Cons (X) (Xs) Ihl =>
+            elim J return (λ (Jz : Nat). Le (S K) Jz → Id Nat (NthL K (SwapL Z Jz (Cons X Xs))) (NthL K (Cons X Xs))) {
+              Z => λ (Hkj0 : Le (S K) Z). botElim (Id Nat (NthL K (SwapL Z Z (Cons X Xs))) (NthL K (Cons X Xs))) Hkj0,
+              S (J') Jih => λ (Hkj0 : Le (S K) (S J')).
+                elim K return (λ (Kz : Nat). Le (S Z) Kz → Le (S Kz) (S J') → Id Nat (NthL Kz (Cons (NthL J' Xs) (Set J' X Xs))) (NthL Kz (Cons X Xs))) {
+                  Z => λ (Hik1 : Le (S Z) Z). λ (Hkj1 : Le (S Z) (S J')). botElim (Id Nat (NthL Z (Cons (NthL J' Xs) (Set J' X Xs))) (NthL Z (Cons X Xs))) Hik1,
+                  S (K') Kih => λ (Hik1 : Le (S Z) (S K')). λ (Hkj1 : Le (S (S K')) (S J')).
+                    NthSetLt X J' K' Xs Hkj1 } Hik Hkj0 } Hkj },
+      S (I') Ih => λ (J : Nat). λ (K : Nat). λ (L : List Nat). λ (Hik : Le (S (S I')) K). λ (Hkj : Le (S K) J).
+        elim L return (λ (Lz : List Nat). Id Nat (NthL K (SwapL (S I') J Lz)) (NthL K Lz)) {
           Nil => Refl,
-          Cons (x) (xs) ihl =>
-            elim j return (λ (jz : Nat). Le (S k) jz → Id Nat (NthL k (SwapL (S i') jz (Cons x xs))) (NthL k (Cons x xs))) {
-              Z => λ (hkj0 : Le (S k) Z). botElim (Id Nat (NthL k (SwapL (S i') Z (Cons x xs))) (NthL k (Cons x xs))) hkj0,
-              S (j') jih => λ (hkj0 : Le (S k) (S j')).
-                elim k return (λ (kz : Nat). Le (S (S i')) kz → Le (S kz) (S j') → Id Nat (NthL kz (Cons x (SwapL i' j' xs))) (NthL kz (Cons x xs))) {
-                  Z => λ (hik1 : Le (S (S i')) Z). λ (hkj1 : Le (S Z) (S j')). botElim (Id Nat (NthL Z (Cons x (SwapL i' j' xs))) (NthL Z (Cons x xs))) hik1,
-                  S (k') kih => λ (hik1 : Le (S (S i')) (S k')). λ (hkj1 : Le (S (S k')) (S j')).
-                    ih j' k' xs hik1 hkj1 } hik hkj0 } hkj } } }
+          Cons (X) (Xs) Ihl =>
+            elim J return (λ (Jz : Nat). Le (S K) Jz → Id Nat (NthL K (SwapL (S I') Jz (Cons X Xs))) (NthL K (Cons X Xs))) {
+              Z => λ (Hkj0 : Le (S K) Z). botElim (Id Nat (NthL K (SwapL (S I') Z (Cons X Xs))) (NthL K (Cons X Xs))) Hkj0,
+              S (J') Jih => λ (Hkj0 : Le (S K) (S J')).
+                elim K return (λ (Kz : Nat). Le (S (S I')) Kz → Le (S Kz) (S J') → Id Nat (NthL Kz (Cons X (SwapL I' J' Xs))) (NthL Kz (Cons X Xs))) {
+                  Z => λ (Hik1 : Le (S (S I')) Z). λ (Hkj1 : Le (S Z) (S J')). botElim (Id Nat (NthL Z (Cons X (SwapL I' J' Xs))) (NthL Z (Cons X Xs))) Hik1,
+                  S (K') Kih => λ (Hik1 : Le (S (S I')) (S K')). λ (Hkj1 : Le (S (S K')) (S J')).
+                    Ih J' K' Xs Hik1 Hkj1 } Hik Hkj0 } Hkj } } }
 def NthSwapLMidTy : Term := prog{
-  Π (i : Nat) → Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) →
-    Le (S i) k → Le (S k) j → Id Nat (NthL k (SwapL i j l)) (NthL k l) }
+  Π (I : Nat) → Π (J : Nat) → Π (K : Nat) → Π (L : List Nat) →
+    Le (S I) K → Le (S K) J → Id Nat (NthL K (SwapL I J L)) (NthL K L) }
 
 /-! ## `NthL`-under-scan/partition LOCALITY — positions outside the range unchanged (§22)
 
@@ -1608,149 +1608,149 @@ def NthSwapLMidTy : Term := prog{
 -- Below-lo locality of the range scan. Bound `Le (S j) lo` is invariant (bound
 -- outside the k-elim); each swap discharged by NthSwapLLt (j < lo ≤ swap index).
 def NthPartScanRangeLLt : Term := prog{
-  λ (pivot : Nat). λ (lo : Nat). λ (j : Nat). λ (hlt : Le (S j) lo). λ (k : Nat).
-    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) → Id Nat (NthL j (PartScanRangeL pivot lo kz i g l)) (NthL j l)) {
-      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        elim i return (λ (iz : Nat). Id Nat (NthL j (elim iz return (λ (iy : Nat). List Nat) { Z => l, S (i') iih => SwapL lo (Add lo (S i')) l })) (NthL j l)) {
+  λ (Pivot : Nat). λ (Lo : Nat). λ (J : Nat). λ (Hlt : Le (S J) Lo). λ (K : Nat).
+    elim K return (λ (Kz : Nat). Π (I : Nat) → Π (G : Nat) → Π (L : List Nat) → Id Nat (NthL J (PartScanRangeL Pivot Lo Kz I G L)) (NthL J L)) {
+      Z => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        elim I return (λ (Iz : Nat). Id Nat (NthL J (elim Iz return (λ (Iy : Nat). List Nat) { Z => L, S (I') Iih => SwapL Lo (Add Lo (S I')) L })) (NthL J L)) {
           Z => Refl,
-          S (i') iih => NthSwapLLt lo (Add lo (S i')) j l hlt },
-      S (k') ih => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        elim (Leb (NthL (Add lo (S (Add i g))) l) pivot)
-          return (λ (w : Bool). Id Nat (NthL j (elim w return (λ (ww : Bool). List Nat) {
-              True => elim g return (λ (gz : Nat). List Nat) {
-                Z => PartScanRangeL pivot lo k' (S i) Z l,
-                S (g') gih => PartScanRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) },
-              False => PartScanRangeL pivot lo k' i (S g) l })) (NthL j l)) {
-          True => elim g return (λ (gz : Nat). Id Nat (NthL j (elim gz return (λ (gy : Nat). List Nat) {
-                    Z => PartScanRangeL pivot lo k' (S i) Z l,
-                    S (g') gih => PartScanRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) })) (NthL j l)) {
-            Z => ih (S i) Z l,
-            S (g') gih => IdTrans Nat
-                   (NthL j (PartScanRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l)))
-                   (NthL j (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l))
-                   (NthL j l)
-                   (ih (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l))
-                   (NthSwapLLt (Add lo (S i)) (Add lo (S (Add i g))) j l
-                     (LeTrans (S j) lo (Add lo (S i)) hlt (LeAdd lo (S i))))
+          S (I') Iih => NthSwapLLt Lo (Add Lo (S I')) J L Hlt },
+      S (K') Ih => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        elim (Leb (NthL (Add Lo (S (Add I G))) L) Pivot)
+          return (λ (W : Bool). Id Nat (NthL J (elim W return (λ (Ww : Bool). List Nat) {
+              True => elim G return (λ (Gz : Nat). List Nat) {
+                Z => PartScanRangeL Pivot Lo K' (S I) Z L,
+                S (G') Gih => PartScanRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) },
+              False => PartScanRangeL Pivot Lo K' I (S G) L })) (NthL J L)) {
+          True => elim G return (λ (Gz : Nat). Id Nat (NthL J (elim Gz return (λ (Gy : Nat). List Nat) {
+                    Z => PartScanRangeL Pivot Lo K' (S I) Z L,
+                    S (G') Gih => PartScanRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) })) (NthL J L)) {
+            Z => Ih (S I) Z L,
+            S (G') Gih => IdTrans Nat
+                   (NthL J (PartScanRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L)))
+                   (NthL J (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L))
+                   (NthL J L)
+                   (Ih (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L))
+                   (NthSwapLLt (Add Lo (S I)) (Add Lo (S (Add I G))) J L
+                     (LeTrans (S J) Lo (Add Lo (S I)) Hlt (LeAdd Lo (S I))))
           },
-          False => ih i (S g) l
+          False => Ih I (S G) L
         }
     } }
 def NthPartScanRangeLLtTy : Term := prog{
-  Π (pivot : Nat) → Π (lo : Nat) → Π (j : Nat) → Le (S j) lo → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
-    Id Nat (NthL j (PartScanRangeL pivot lo k i g l)) (NthL j l) }
+  Π (Pivot : Nat) → Π (Lo : Nat) → Π (J : Nat) → Le (S J) Lo → Π (K : Nat) → Π (I : Nat) → Π (G : Nat) → Π (L : List Nat) →
+    Id Nat (NthL J (PartScanRangeL Pivot Lo K I G L)) (NthL J L) }
 
 -- At/above-top locality of the range scan. Same threaded invariant as
 -- CountPartScanRangeL but on position q, so hshift transports apply and NO
 -- LenSwapL is needed; each swap discharged by NthSwapLGt.
 def NthPartScanRangeLGe : Term := prog{
-  λ (pivot : Nat). λ (lo : Nat). λ (q : Nat). λ (k : Nat).
-    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
-        Le (Add lo (S (Add kz (Add i g)))) q →
-        Id Nat (NthL q (PartScanRangeL pivot lo kz i g l)) (NthL q l)) {
-      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        elim i return (λ (iz : Nat).
-            Le (Add lo (S (Add Z (Add iz g)))) q →
-            Id Nat (NthL q (elim iz return (λ (iy : Nat). List Nat) {
-                Z => l, S (i') iih => SwapL lo (Add lo (S i')) l })) (NthL q l)) {
-          Z => λ (hle : Le (Add lo (S (Add Z (Add Z g)))) q). Refl,
-          S (i') iih => λ (hle : Le (Add lo (S (Add Z (Add (S i') g)))) q).
-            NthSwapLGt lo (Add lo (S i')) q l
-              (LeTrans (S (Add lo (S i'))) (Add lo (S (S (Add i' g)))) q
-                (LeRwL (Add lo (S (S (Add i' g)))) (Add lo (S (S i'))) (S (Add lo (S i')))
-                  (AddSucc lo (S i'))
-                  (LeAddMonoL lo (S (S i')) (S (S (Add i' g))) (LeAdd i' g)))
-                hle)
+  λ (Pivot : Nat). λ (Lo : Nat). λ (Q : Nat). λ (K : Nat).
+    elim K return (λ (Kz : Nat). Π (I : Nat) → Π (G : Nat) → Π (L : List Nat) →
+        Le (Add Lo (S (Add Kz (Add I G)))) Q →
+        Id Nat (NthL Q (PartScanRangeL Pivot Lo Kz I G L)) (NthL Q L)) {
+      Z => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        elim I return (λ (Iz : Nat).
+            Le (Add Lo (S (Add Z (Add Iz G)))) Q →
+            Id Nat (NthL Q (elim Iz return (λ (Iy : Nat). List Nat) {
+                Z => L, S (I') Iih => SwapL Lo (Add Lo (S I')) L })) (NthL Q L)) {
+          Z => λ (Hle : Le (Add Lo (S (Add Z (Add Z G)))) Q). Refl,
+          S (I') Iih => λ (Hle : Le (Add Lo (S (Add Z (Add (S I') G)))) Q).
+            NthSwapLGt Lo (Add Lo (S I')) Q L
+              (LeTrans (S (Add Lo (S I'))) (Add Lo (S (S (Add I' G)))) Q
+                (LeRwL (Add Lo (S (S (Add I' G)))) (Add Lo (S (S I'))) (S (Add Lo (S I')))
+                  (AddSucc Lo (S I'))
+                  (LeAddMonoL Lo (S (S I')) (S (S (Add I' G))) (LeAdd I' G)))
+                Hle)
         },
-      S (k') ih => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        λ (hle : Le (Add lo (S (Add (S k') (Add i g)))) q).
-        elim (Leb (NthL (Add lo (S (Add i g))) l) pivot)
-          return (λ (w : Bool). Id Nat
-            (NthL q (elim w return (λ (ww : Bool). List Nat) {
-                True => elim g return (λ (gz : Nat). List Nat) {
-                  Z => PartScanRangeL pivot lo k' (S i) Z l,
-                  S (g') gih => PartScanRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) },
-                False => PartScanRangeL pivot lo k' i (S g) l }))
-            (NthL q l)) {
+      S (K') Ih => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        λ (Hle : Le (Add Lo (S (Add (S K') (Add I G)))) Q).
+        elim (Leb (NthL (Add Lo (S (Add I G))) L) Pivot)
+          return (λ (W : Bool). Id Nat
+            (NthL Q (elim W return (λ (Ww : Bool). List Nat) {
+                True => elim G return (λ (Gz : Nat). List Nat) {
+                  Z => PartScanRangeL Pivot Lo K' (S I) Z L,
+                  S (G') Gih => PartScanRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) },
+                False => PartScanRangeL Pivot Lo K' I (S G) L }))
+            (NthL Q L)) {
           True =>
-            (elim g return (λ (gz : Nat).
-                Le (Add lo (S (Add (S k') (Add i gz)))) q →
-                Id Nat (NthL q (elim gz return (λ (gy : Nat). List Nat) {
-                    Z => PartScanRangeL pivot lo k' (S i) Z l,
-                    S (g') gih => PartScanRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i gz))) l) })) (NthL q l)) {
-              Z => λ (hleZ : Le (Add lo (S (Add (S k') (Add i Z)))) q).
-                ih (S i) Z l
-                  (LeRwL q
-                    (Add lo (S (Add (S k') (Add i Z))))
-                    (Add lo (S (Add k' (Add (S i) Z))))
-                    (IdCongr Nat Nat (λ (a : Nat). Add lo (S a))
-                      (Add (S k') (Add i Z)) (Add k' (Add (S i) Z)) (HshiftTrue k' i Z))
-                    hleZ),
-              S (g') gih => λ (hleS : Le (Add lo (S (Add (S k') (Add i (S g'))))) q).
+            (elim G return (λ (Gz : Nat).
+                Le (Add Lo (S (Add (S K') (Add I Gz)))) Q →
+                Id Nat (NthL Q (elim Gz return (λ (Gy : Nat). List Nat) {
+                    Z => PartScanRangeL Pivot Lo K' (S I) Z L,
+                    S (G') Gih => PartScanRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I Gz))) L) })) (NthL Q L)) {
+              Z => λ (HleZ : Le (Add Lo (S (Add (S K') (Add I Z)))) Q).
+                Ih (S I) Z L
+                  (LeRwL Q
+                    (Add Lo (S (Add (S K') (Add I Z))))
+                    (Add Lo (S (Add K' (Add (S I) Z))))
+                    (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A))
+                      (Add (S K') (Add I Z)) (Add K' (Add (S I) Z)) (HshiftTrue K' I Z))
+                    HleZ),
+              S (G') Gih => λ (HleS : Le (Add Lo (S (Add (S K') (Add I (S G'))))) Q).
                 IdTrans Nat
-                  (NthL q (PartScanRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)))
-                  (NthL q (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l))
-                  (NthL q l)
-                  (ih (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)
-                    (LeRwL q
-                      (Add lo (S (Add (S k') (Add i (S g')))))
-                      (Add lo (S (Add k' (Add (S i) (S g')))))
-                      (IdCongr Nat Nat (λ (a : Nat). Add lo (S a))
-                        (Add (S k') (Add i (S g'))) (Add k' (Add (S i) (S g'))) (HshiftTrue k' i (S g')))
-                      hleS))
-                  (NthSwapLGt (Add lo (S i)) (Add lo (S (Add i (S g')))) q l
-                    (LeTrans (S (Add lo (S (Add i (S g'))))) (Add lo (S (S (Add k' (Add i (S g')))))) q
-                      (LeRwL (Add lo (S (S (Add k' (Add i (S g'))))))
-                        (Add lo (S (S (Add i (S g'))))) (S (Add lo (S (Add i (S g')))))
-                        (AddSucc lo (S (Add i (S g'))))
-                        (LeAddMonoL lo (S (S (Add i (S g')))) (S (S (Add k' (Add i (S g')))))
-                          (LeAddL (Add i (S g')) k')))
-                      hleS))
-            }) hle,
+                  (NthL Q (PartScanRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)))
+                  (NthL Q (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L))
+                  (NthL Q L)
+                  (Ih (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)
+                    (LeRwL Q
+                      (Add Lo (S (Add (S K') (Add I (S G')))))
+                      (Add Lo (S (Add K' (Add (S I) (S G')))))
+                      (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A))
+                        (Add (S K') (Add I (S G'))) (Add K' (Add (S I) (S G'))) (HshiftTrue K' I (S G')))
+                      HleS))
+                  (NthSwapLGt (Add Lo (S I)) (Add Lo (S (Add I (S G')))) Q L
+                    (LeTrans (S (Add Lo (S (Add I (S G'))))) (Add Lo (S (S (Add K' (Add I (S G')))))) Q
+                      (LeRwL (Add Lo (S (S (Add K' (Add I (S G'))))))
+                        (Add Lo (S (S (Add I (S G'))))) (S (Add Lo (S (Add I (S G')))))
+                        (AddSucc Lo (S (Add I (S G'))))
+                        (LeAddMonoL Lo (S (S (Add I (S G')))) (S (S (Add K' (Add I (S G')))))
+                          (LeAddL (Add I (S G')) K')))
+                      HleS))
+            }) Hle,
           False =>
-            ih i (S g) l
-              (LeRwL q
-                (Add lo (S (Add (S k') (Add i g))))
-                (Add lo (S (Add k' (Add i (S g)))))
-                (IdCongr Nat Nat (λ (a : Nat). Add lo (S a))
-                  (Add (S k') (Add i g)) (Add k' (Add i (S g))) (HshiftFalse k' i g))
-                hle)
+            Ih I (S G) L
+              (LeRwL Q
+                (Add Lo (S (Add (S K') (Add I G))))
+                (Add Lo (S (Add K' (Add I (S G)))))
+                (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A))
+                  (Add (S K') (Add I G)) (Add K' (Add I (S G))) (HshiftFalse K' I G))
+                Hle)
         }
     } }
 def NthPartScanRangeLGeTy : Term := prog{
-  Π (pivot : Nat) → Π (lo : Nat) → Π (q : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
-    Le (Add lo (S (Add k (Add i g)))) q →
-    Id Nat (NthL q (PartScanRangeL pivot lo k i g l)) (NthL q l) }
+  Π (Pivot : Nat) → Π (Lo : Nat) → Π (Q : Nat) → Π (K : Nat) → Π (I : Nat) → Π (G : Nat) → Π (L : List Nat) →
+    Le (Add Lo (S (Add K (Add I G)))) Q →
+    Id Nat (NthL Q (PartScanRangeL Pivot Lo K I G L)) (NthL Q L) }
 
 -- Below-lo locality wrapper (partition = scan after pivot pick), mirroring LenPartitionRangeL.
 def NthPartitionRangeLLt : Term := prog{
-  λ (lo : Nat). λ (j : Nat). λ (hlt : Le (S j) lo). λ (cnt : Nat). λ (l : List Nat).
-    elim cnt return (λ (cz : Nat). Id Nat
-        (NthL j (elim cz return (λ (cy : Nat). List Nat) { Z => l, S (cnt') rec => PartScanRangeL (NthL lo l) lo cnt' Z Z l }))
-        (NthL j l)) {
+  λ (Lo : Nat). λ (J : Nat). λ (Hlt : Le (S J) Lo). λ (Cnt : Nat). λ (L : List Nat).
+    elim Cnt return (λ (Cz : Nat). Id Nat
+        (NthL J (elim Cz return (λ (Cy : Nat). List Nat) { Z => L, S (Cnt') Rec => PartScanRangeL (NthL Lo L) Lo Cnt' Z Z L }))
+        (NthL J L)) {
       Z => Refl,
-      S (cnt') rec => NthPartScanRangeLLt (NthL lo l) lo j hlt cnt' Z Z l } }
+      S (Cnt') Rec => NthPartScanRangeLLt (NthL Lo L) Lo J Hlt Cnt' Z Z L } }
 def NthPartitionRangeLLtTy : Term := prog{
-  Π (lo : Nat) → Π (j : Nat) → Le (S j) lo → Π (cnt : Nat) → Π (l : List Nat) →
-    Id Nat (NthL j (PartitionRangeL lo cnt l)) (NthL j l) }
+  Π (Lo : Nat) → Π (J : Nat) → Le (S J) Lo → Π (Cnt : Nat) → Π (L : List Nat) →
+    Id Nat (NthL J (PartitionRangeL Lo Cnt L)) (NthL J L) }
 
 -- At/above-(lo+cnt) locality wrapper. The top bound Le (add lo cnt) q supplies the
 -- scan's Le (add lo (S (add cnt' Z))) q via one AddZero nudge (cf CountPartitionRangeL).
 def NthPartitionRangeLGe : Term := prog{
-  λ (lo : Nat). λ (q : Nat). λ (cnt : Nat). λ (l : List Nat).
-    elim cnt return (λ (cz : Nat).
-        Le (Add lo cz) q →
-        Id Nat (NthL q (elim cz return (λ (cy : Nat). List Nat) { Z => l, S (cnt') rec => PartScanRangeL (NthL lo l) lo cnt' Z Z l })) (NthL q l)) {
-      Z => λ (hb : Le (Add lo Z) q). Refl,
-      S (cnt') rec => λ (hb : Le (Add lo (S cnt')) q).
-        NthPartScanRangeLGe (NthL lo l) lo q cnt' Z Z l
-          (LeRwL q (Add lo (S cnt')) (Add lo (S (Add cnt' Z)))
-            (IdCongr Nat Nat (λ (a : Nat). Add lo (S a)) cnt' (Add cnt' Z)
-              (IdSym Nat (Add cnt' Z) cnt' (AddZero cnt')))
-            hb) } }
+  λ (Lo : Nat). λ (Q : Nat). λ (Cnt : Nat). λ (L : List Nat).
+    elim Cnt return (λ (Cz : Nat).
+        Le (Add Lo Cz) Q →
+        Id Nat (NthL Q (elim Cz return (λ (Cy : Nat). List Nat) { Z => L, S (Cnt') Rec => PartScanRangeL (NthL Lo L) Lo Cnt' Z Z L })) (NthL Q L)) {
+      Z => λ (Hb : Le (Add Lo Z) Q). Refl,
+      S (Cnt') Rec => λ (Hb : Le (Add Lo (S Cnt')) Q).
+        NthPartScanRangeLGe (NthL Lo L) Lo Q Cnt' Z Z L
+          (LeRwL Q (Add Lo (S Cnt')) (Add Lo (S (Add Cnt' Z)))
+            (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A)) Cnt' (Add Cnt' Z)
+              (IdSym Nat (Add Cnt' Z) Cnt' (AddZero Cnt')))
+            Hb) } }
 def NthPartitionRangeLGeTy : Term := prog{
-  Π (lo : Nat) → Π (q : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
-    Le (Add lo cnt) q → Id Nat (NthL q (PartitionRangeL lo cnt l)) (NthL q l) }
+  Π (Lo : Nat) → Π (Q : Nat) → Π (Cnt : Nat) → Π (L : List Nat) →
+    Le (Add Lo Cnt) Q → Id Nat (NthL Q (PartitionRangeL Lo Cnt L)) (NthL Q L) }
 
 /-! ## `NthL`-under-sort LOCALITY — positions outside the sorted range unchanged (§22)
 
@@ -1769,137 +1769,137 @@ def NthPartitionRangeLGeTy : Term := prog{
 -- Below-lo locality of the full sort. Fuel induction (mirror LenSortRangeL);
 -- step composes right-sort, left-sort, partition localities via NthPartitionRangeLLt.
 def NthSortRangeLLt : Term := prog{
-  λ (fuel : Nat). λ (j : Nat).
-    elim fuel return (λ (fz : Nat). Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Le (S j) lo → Id Nat (NthL j (SortRangeL fz lo cnt l)) (NthL j l)) {
-      Z => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat). λ (hlt : Le (S j) lo). Refl,
-      S (f') ih => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat). λ (hlt : Le (S j) lo).
-        elim cnt return (λ (cz : Nat). Id Nat (NthL j (elim cz return (λ (cy : Nat). List Nat) {
-              Z => l,
-              S (cnt') nih => elim cnt' return (λ (my : Nat). List Nat) {
-                Z => l,
-                S (cnt'') n2ih => SortRangeL f' (S (Add lo (PartIdxRangeL lo cnt l))) (PartGapRangeL lo cnt l) (SortRangeL f' lo (PartIdxRangeL lo cnt l) (PartitionRangeL lo cnt l)) } })) (NthL j l)) {
+  λ (Fuel : Nat). λ (J : Nat).
+    elim Fuel return (λ (Fz : Nat). Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) → Le (S J) Lo → Id Nat (NthL J (SortRangeL Fz Lo Cnt L)) (NthL J L)) {
+      Z => λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat). λ (Hlt : Le (S J) Lo). Refl,
+      S (F') Ih => λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat). λ (Hlt : Le (S J) Lo).
+        elim Cnt return (λ (Cz : Nat). Id Nat (NthL J (elim Cz return (λ (Cy : Nat). List Nat) {
+              Z => L,
+              S (Cnt') Nih => elim Cnt' return (λ (My : Nat). List Nat) {
+                Z => L,
+                S (Cnt'') N2ih => SortRangeL F' (S (Add Lo (PartIdxRangeL Lo Cnt L))) (PartGapRangeL Lo Cnt L) (SortRangeL F' Lo (PartIdxRangeL Lo Cnt L) (PartitionRangeL Lo Cnt L)) } })) (NthL J L)) {
           Z => Refl,
-          S (cnt') nih => elim cnt' return (λ (my : Nat). Id Nat (NthL j (elim my return (λ (myy : Nat). List Nat) {
-                Z => l,
-                S (cnt'') n2ih => SortRangeL f' (S (Add lo (PartIdxRangeL lo cnt l))) (PartGapRangeL lo cnt l) (SortRangeL f' lo (PartIdxRangeL lo cnt l) (PartitionRangeL lo cnt l)) })) (NthL j l)) {
+          S (Cnt') Nih => elim Cnt' return (λ (My : Nat). Id Nat (NthL J (elim My return (λ (Myy : Nat). List Nat) {
+                Z => L,
+                S (Cnt'') N2ih => SortRangeL F' (S (Add Lo (PartIdxRangeL Lo Cnt L))) (PartGapRangeL Lo Cnt L) (SortRangeL F' Lo (PartIdxRangeL Lo Cnt L) (PartitionRangeL Lo Cnt L)) })) (NthL J L)) {
             Z => Refl,
-            S (cnt'') n2ih =>
+            S (Cnt'') N2ih =>
               IdTrans Nat
-                (NthL j (SortRangeL f' (S (Add lo (PartIdxRangeL lo cnt l))) (PartGapRangeL lo cnt l) (SortRangeL f' lo (PartIdxRangeL lo cnt l) (PartitionRangeL lo cnt l))))
-                (NthL j (SortRangeL f' lo (PartIdxRangeL lo cnt l) (PartitionRangeL lo cnt l)))
-                (NthL j l)
-                (ih (S (Add lo (PartIdxRangeL lo cnt l))) (PartGapRangeL lo cnt l) (SortRangeL f' lo (PartIdxRangeL lo cnt l) (PartitionRangeL lo cnt l))
-                    (LeTrans (S j) lo (S (Add lo (PartIdxRangeL lo cnt l))) hlt
-                      (LeUpR lo (Add lo (PartIdxRangeL lo cnt l)) (LeAdd lo (PartIdxRangeL lo cnt l)))))
+                (NthL J (SortRangeL F' (S (Add Lo (PartIdxRangeL Lo Cnt L))) (PartGapRangeL Lo Cnt L) (SortRangeL F' Lo (PartIdxRangeL Lo Cnt L) (PartitionRangeL Lo Cnt L))))
+                (NthL J (SortRangeL F' Lo (PartIdxRangeL Lo Cnt L) (PartitionRangeL Lo Cnt L)))
+                (NthL J L)
+                (Ih (S (Add Lo (PartIdxRangeL Lo Cnt L))) (PartGapRangeL Lo Cnt L) (SortRangeL F' Lo (PartIdxRangeL Lo Cnt L) (PartitionRangeL Lo Cnt L))
+                    (LeTrans (S J) Lo (S (Add Lo (PartIdxRangeL Lo Cnt L))) Hlt
+                      (LeUpR Lo (Add Lo (PartIdxRangeL Lo Cnt L)) (LeAdd Lo (PartIdxRangeL Lo Cnt L)))))
                 (IdTrans Nat
-                  (NthL j (SortRangeL f' lo (PartIdxRangeL lo cnt l) (PartitionRangeL lo cnt l)))
-                  (NthL j (PartitionRangeL lo cnt l))
-                  (NthL j l)
-                  (ih lo (PartIdxRangeL lo cnt l) (PartitionRangeL lo cnt l) hlt)
-                  (NthPartitionRangeLLt lo j hlt cnt l))
+                  (NthL J (SortRangeL F' Lo (PartIdxRangeL Lo Cnt L) (PartitionRangeL Lo Cnt L)))
+                  (NthL J (PartitionRangeL Lo Cnt L))
+                  (NthL J L)
+                  (Ih Lo (PartIdxRangeL Lo Cnt L) (PartitionRangeL Lo Cnt L) Hlt)
+                  (NthPartitionRangeLLt Lo J Hlt Cnt L))
           } } } }
 def NthSortRangeLLtTy : Term := prog{
-  Π (fuel : Nat) → Π (j : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
-    Le (S j) lo → Id Nat (NthL j (SortRangeL fuel lo cnt l)) (NthL j l) }
+  Π (Fuel : Nat) → Π (J : Nat) → Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) →
+    Le (S J) Lo → Id Nat (NthL J (SortRangeL Fuel Lo Cnt L)) (NthL J L) }
 
 -- The pivot index plus the gap equals cnt-1 (= S cnt'' for cnt = S(S cnt'')).
 -- Lifted from sortRangeBL's inner IdTrans (PartScanSizeL then AddZero).
 def PartSizeCnt : Term := prog{
-  λ (lo : Nat). λ (cnt'' : Nat). λ (l : List Nat).
+  λ (Lo : Nat). λ (Cnt'' : Nat). λ (L : List Nat).
     IdTrans Nat
-      (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l))
-      (S (Add cnt'' Z))
-      (S cnt'')
-      (PartScanSizeL (NthL lo l) lo (S cnt'') Z Z l)
-      (IdCongr Nat Nat (λ (a : Nat). S a) (Add cnt'' Z) cnt'' (AddZero cnt'')) }
+      (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L))
+      (S (Add Cnt'' Z))
+      (S Cnt'')
+      (PartScanSizeL (NthL Lo L) Lo (S Cnt'') Z Z L)
+      (IdCongr Nat Nat (λ (A : Nat). S A) (Add Cnt'' Z) Cnt'' (AddZero Cnt'')) }
 def PartSizeCntTy : Term := prog{
-  Π (lo : Nat) → Π (cnt'' : Nat) → Π (l : List Nat) →
-    Id Nat (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)) (S cnt'') }
+  Π (Lo : Nat) → Π (Cnt'' : Nat) → Π (L : List Nat) →
+    Id Nat (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)) (S Cnt'') }
 
 -- Left sub-range position bound: Le (add lo i) q from Le (add lo cnt) q (i ≤ cnt-1 < cnt).
 def SortRangeGeBL : Term := prog{
-  λ (lo : Nat). λ (cnt'' : Nat). λ (q : Nat). λ (l : List Nat). λ (hb : Le (Add lo (S (S cnt''))) q).
-    LeTrans (Add lo (PartIdxRangeL lo (S (S cnt'')) l)) (Add lo (S (S cnt''))) q
-      (LeAddMonoL lo (PartIdxRangeL lo (S (S cnt'')) l) (S (S cnt''))
-        (LeUpR (PartIdxRangeL lo (S (S cnt'')) l) (S cnt'')
-          (LeRwR (PartIdxRangeL lo (S (S cnt'')) l)
-            (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l))
-            (S cnt'')
-            (PartSizeCnt lo cnt'' l)
-            (LeAdd (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)))))
-      hb }
+  λ (Lo : Nat). λ (Cnt'' : Nat). λ (Q : Nat). λ (L : List Nat). λ (Hb : Le (Add Lo (S (S Cnt''))) Q).
+    LeTrans (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L)) (Add Lo (S (S Cnt''))) Q
+      (LeAddMonoL Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (S (S Cnt''))
+        (LeUpR (PartIdxRangeL Lo (S (S Cnt'')) L) (S Cnt'')
+          (LeRwR (PartIdxRangeL Lo (S (S Cnt'')) L)
+            (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L))
+            (S Cnt'')
+            (PartSizeCnt Lo Cnt'' L)
+            (LeAdd (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)))))
+      Hb }
 def SortRangeGeBLTy : Term := prog{
-  Π (lo : Nat) → Π (cnt'' : Nat) → Π (q : Nat) → Π (l : List Nat) → Le (Add lo (S (S cnt''))) q →
-    Le (Add lo (PartIdxRangeL lo (S (S cnt'')) l)) q }
+  Π (Lo : Nat) → Π (Cnt'' : Nat) → Π (Q : Nat) → Π (L : List Nat) → Le (Add Lo (S (S Cnt''))) Q →
+    Le (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L)) Q }
 
 -- Right sub-range position bound: Le (add (S (add lo i)) g) q from Le (add lo cnt) q,
 -- using add (S (add lo i)) g = add lo (S (add i g)) = add lo cnt (PartSizeCnt).
 def SortRangeGeBR : Term := prog{
-  λ (lo : Nat). λ (cnt'' : Nat). λ (q : Nat). λ (l : List Nat). λ (hb : Le (Add lo (S (S cnt''))) q).
-    LeRwL q (Add lo (S (S cnt''))) (Add (S (Add lo (PartIdxRangeL lo (S (S cnt'')) l))) (PartGapRangeL lo (S (S cnt'')) l))
+  λ (Lo : Nat). λ (Cnt'' : Nat). λ (Q : Nat). λ (L : List Nat). λ (Hb : Le (Add Lo (S (S Cnt''))) Q).
+    LeRwL Q (Add Lo (S (S Cnt''))) (Add (S (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L))) (PartGapRangeL Lo (S (S Cnt'')) L))
       (IdSym Nat
-        (Add (S (Add lo (PartIdxRangeL lo (S (S cnt'')) l))) (PartGapRangeL lo (S (S cnt'')) l))
-        (Add lo (S (S cnt'')))
+        (Add (S (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L))) (PartGapRangeL Lo (S (S Cnt'')) L))
+        (Add Lo (S (S Cnt'')))
         (IdTrans Nat
-          (Add (S (Add lo (PartIdxRangeL lo (S (S cnt'')) l))) (PartGapRangeL lo (S (S cnt'')) l))
-          (Add lo (S (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l))))
-          (Add lo (S (S cnt'')))
+          (Add (S (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L))) (PartGapRangeL Lo (S (S Cnt'')) L))
+          (Add Lo (S (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L))))
+          (Add Lo (S (S Cnt'')))
           (IdTrans Nat
-            (Add (S (Add lo (PartIdxRangeL lo (S (S cnt'')) l))) (PartGapRangeL lo (S (S cnt'')) l))
-            (S (Add lo (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l))))
-            (Add lo (S (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l))))
-            (IdCongr Nat Nat (λ (a : Nat). S a)
-              (Add (Add lo (PartIdxRangeL lo (S (S cnt'')) l)) (PartGapRangeL lo (S (S cnt'')) l))
-              (Add lo (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)))
-              (AddAssoc lo (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)))
+            (Add (S (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L))) (PartGapRangeL Lo (S (S Cnt'')) L))
+            (S (Add Lo (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L))))
+            (Add Lo (S (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L))))
+            (IdCongr Nat Nat (λ (A : Nat). S A)
+              (Add (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L)) (PartGapRangeL Lo (S (S Cnt'')) L))
+              (Add Lo (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)))
+              (AddAssoc Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)))
             (IdSym Nat
-              (Add lo (S (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l))))
-              (S (Add lo (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l))))
-              (AddSucc lo (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)))))
-          (IdCongr Nat Nat (λ (a : Nat). Add lo (S a))
-            (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)) (S cnt'')
-            (PartSizeCnt lo cnt'' l))))
-      hb }
+              (Add Lo (S (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L))))
+              (S (Add Lo (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L))))
+              (AddSucc Lo (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)))))
+          (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A))
+            (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)) (S Cnt'')
+            (PartSizeCnt Lo Cnt'' L))))
+      Hb }
 def SortRangeGeBRTy : Term := prog{
-  Π (lo : Nat) → Π (cnt'' : Nat) → Π (q : Nat) → Π (l : List Nat) → Le (Add lo (S (S cnt''))) q →
-    Le (Add (S (Add lo (PartIdxRangeL lo (S (S cnt'')) l))) (PartGapRangeL lo (S (S cnt'')) l)) q }
+  Π (Lo : Nat) → Π (Cnt'' : Nat) → Π (Q : Nat) → Π (L : List Nat) → Le (Add Lo (S (S Cnt''))) Q →
+    Le (Add (S (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L))) (PartGapRangeL Lo (S (S Cnt'')) L)) Q }
 
 -- At/above-(lo+cnt) locality of the full sort. CountSortRangeL structure with
 -- position bounds SortRangeGeBL/BR feeding the two recursive-sort IHs.
 def NthSortRangeLGe : Term := prog{
-  λ (fuel : Nat). λ (q : Nat).
-    elim fuel return (λ (fz : Nat). Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
-        Le (Add lo cnt) q → Id Nat (NthL q (SortRangeL fz lo cnt l)) (NthL q l)) {
-      Z => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat). λ (hb : Le (Add lo cnt) q). Refl,
-      S (f') ih => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-        elim cnt return (λ (cz : Nat). Le (Add lo cz) q →
-            Id Nat (NthL q (SortRangeL (S f') lo cz l)) (NthL q l)) {
-          Z => λ (hb : Le (Add lo Z) q). Refl,
-          S (cnt') nih => elim cnt' return (λ (cz' : Nat). Le (Add lo (S cz')) q →
-              Id Nat (NthL q (SortRangeL (S f') lo (S cz') l)) (NthL q l)) {
-            Z => λ (hb : Le (Add lo (S Z)) q). Refl,
-            S (cnt'') n2ih => λ (hb : Le (Add lo (S (S cnt''))) q).
+  λ (Fuel : Nat). λ (Q : Nat).
+    elim Fuel return (λ (Fz : Nat). Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) →
+        Le (Add Lo Cnt) Q → Id Nat (NthL Q (SortRangeL Fz Lo Cnt L)) (NthL Q L)) {
+      Z => λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat). λ (Hb : Le (Add Lo Cnt) Q). Refl,
+      S (F') Ih => λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+        elim Cnt return (λ (Cz : Nat). Le (Add Lo Cz) Q →
+            Id Nat (NthL Q (SortRangeL (S F') Lo Cz L)) (NthL Q L)) {
+          Z => λ (Hb : Le (Add Lo Z) Q). Refl,
+          S (Cnt') Nih => elim Cnt' return (λ (Cz' : Nat). Le (Add Lo (S Cz')) Q →
+              Id Nat (NthL Q (SortRangeL (S F') Lo (S Cz') L)) (NthL Q L)) {
+            Z => λ (Hb : Le (Add Lo (S Z)) Q). Refl,
+            S (Cnt'') N2ih => λ (Hb : Le (Add Lo (S (S Cnt''))) Q).
               IdTrans Nat
-                (NthL q (SortRangeL f' (S (Add lo (PartIdxRangeL lo (S (S cnt'')) l))) (PartGapRangeL lo (S (S cnt'')) l)
-                          (SortRangeL f' lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l))))
-                (NthL q (SortRangeL f' lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l)))
-                (NthL q l)
-                (ih (S (Add lo (PartIdxRangeL lo (S (S cnt'')) l))) (PartGapRangeL lo (S (S cnt'')) l)
-                    (SortRangeL f' lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l))
-                    (SortRangeGeBR lo cnt'' q l hb))
+                (NthL Q (SortRangeL F' (S (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L))) (PartGapRangeL Lo (S (S Cnt'')) L)
+                          (SortRangeL F' Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L))))
+                (NthL Q (SortRangeL F' Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L)))
+                (NthL Q L)
+                (Ih (S (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L))) (PartGapRangeL Lo (S (S Cnt'')) L)
+                    (SortRangeL F' Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L))
+                    (SortRangeGeBR Lo Cnt'' Q L Hb))
                 (IdTrans Nat
-                  (NthL q (SortRangeL f' lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l)))
-                  (NthL q (PartitionRangeL lo (S (S cnt'')) l))
-                  (NthL q l)
-                  (ih lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l)
-                      (SortRangeGeBL lo cnt'' q l hb))
-                  (NthPartitionRangeLGe lo q (S (S cnt'')) l hb))
+                  (NthL Q (SortRangeL F' Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L)))
+                  (NthL Q (PartitionRangeL Lo (S (S Cnt'')) L))
+                  (NthL Q L)
+                  (Ih Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L)
+                      (SortRangeGeBL Lo Cnt'' Q L Hb))
+                  (NthPartitionRangeLGe Lo Q (S (S Cnt'')) L Hb))
           }
         }
     } }
 def NthSortRangeLGeTy : Term := prog{
-  Π (fuel : Nat) → Π (q : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
-    Le (Add lo cnt) q → Id Nat (NthL q (SortRangeL fuel lo cnt l)) (NthL q l) }
+  Π (Fuel : Nat) → Π (Q : Nat) → Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) →
+    Le (Add Lo Cnt) Q → Id Nat (NthL Q (SortRangeL Fuel Lo Cnt L)) (NthL Q L) }
 
 /-! ## Reusable bridges — cancellation, no-confusion, list/take/drop extensionality (§22)
 
@@ -1921,116 +1921,116 @@ def NthSortRangeLGeTy : Term := prog{
     - `CountSplit` : `Count x l = Count x (Take w l) + Count x (Drop w l)` (CountAppend ∘ TakeDropId). -/
 
 def Znots : Term := prog{
-  λ (x : Nat). λ (h : Id Nat Z (S x)).
-    j Nat Z (λ (y : Nat). λ (hy : Id Nat Z y). elim y return (λ (yy : Nat). Type) { Z => Unit, S (k) ih => Bot })
-      unit (S x) h }
-def ZnotsTy : Term := prog{ Π (x : Nat) → Id Nat Z (S x) → Bot }
+  λ (X : Nat). λ (H : Id Nat Z (S X)).
+    j Nat Z (λ (Y : Nat). λ (Hy : Id Nat Z Y). elim Y return (λ (Yy : Nat). Type) { Z => Unit, S (K) Ih => Bot })
+      unit (S X) H }
+def ZnotsTy : Term := prog{ Π (X : Nat) → Id Nat Z (S X) → Bot }
 
-def Pred : Term := prog{ λ (n : Nat). elim n return (λ (z : Nat). Nat) { Z => Z, S (k) ih => k } }
+def Pred : Term := prog{ λ (N : Nat). elim N return (λ (Z0 : Nat). Nat) { Z => Z, S (K) Ih => K } }
 def SInj : Term := prog{
-  λ (m : Nat). λ (n : Nat). λ (h : Id Nat (S m) (S n)).
-    IdCongr Nat Nat Pred (S m) (S n) h }
-def SInjTy : Term := prog{ Π (m : Nat) → Π (n : Nat) → Id Nat (S m) (S n) → Id Nat m n }
+  λ (M : Nat). λ (N : Nat). λ (H : Id Nat (S M) (S N)).
+    IdCongr Nat Nat Pred (S M) (S N) H }
+def SInjTy : Term := prog{ Π (M : Nat) → Π (N : Nat) → Id Nat (S M) (S N) → Id Nat M N }
 
 def AddCancelL : Term := prog{
-  λ (a : Nat).
-    elim a return (λ (az : Nat). Π (x : Nat) → Π (y : Nat) → Id Nat (Add az x) (Add az y) → Id Nat x y) {
-      Z => λ (x : Nat). λ (y : Nat). λ (h : Id Nat (Add Z x) (Add Z y)). h,
-      S (a') ih => λ (x : Nat). λ (y : Nat). λ (h : Id Nat (Add (S a') x) (Add (S a') y)).
-        ih x y (SInj (Add a' x) (Add a' y) h) } }
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (X : Nat) → Π (Y : Nat) → Id Nat (Add Az X) (Add Az Y) → Id Nat X Y) {
+      Z => λ (X : Nat). λ (Y : Nat). λ (H : Id Nat (Add Z X) (Add Z Y)). H,
+      S (A') Ih => λ (X : Nat). λ (Y : Nat). λ (H : Id Nat (Add (S A') X) (Add (S A') Y)).
+        Ih X Y (SInj (Add A' X) (Add A' Y) H) } }
 def AddCancelLTy : Term := prog{
-  Π (a : Nat) → Π (x : Nat) → Π (y : Nat) → Id Nat (Add a x) (Add a y) → Id Nat x y }
+  Π (A : Nat) → Π (X : Nat) → Π (Y : Nat) → Id Nat (Add A X) (Add A Y) → Id Nat X Y }
 
 def NthDrop : Term := prog{
-  λ (b : Nat).
-    elim b return (λ (bz : Nat). Π (k : Nat) → Π (l : List Nat) → Id Nat (NthL k (Drop bz l)) (NthL (Add bz k) l)) {
-      Z => λ (k : Nat). λ (l : List Nat). Refl,
-      S (b') ih => λ (k : Nat). λ (l : List Nat).
-        elim l return (λ (lz : List Nat). Id Nat (NthL k (Drop (S b') lz)) (NthL (Add (S b') k) lz)) {
-          Nil => elim k return (λ (kz : Nat). Id Nat (NthL kz (Drop (S b') Nil)) (NthL (Add (S b') kz) Nil)) {
-            Z => Refl, S (k') kih => Refl },
-          Cons (h) (t) ihl => ih k t } } }
+  λ (B : Nat).
+    elim B return (λ (Bz : Nat). Π (K : Nat) → Π (L : List Nat) → Id Nat (NthL K (Drop Bz L)) (NthL (Add Bz K) L)) {
+      Z => λ (K : Nat). λ (L : List Nat). Refl,
+      S (B') Ih => λ (K : Nat). λ (L : List Nat).
+        elim L return (λ (Lz : List Nat). Id Nat (NthL K (Drop (S B') Lz)) (NthL (Add (S B') K) Lz)) {
+          Nil => elim K return (λ (Kz : Nat). Id Nat (NthL Kz (Drop (S B') Nil)) (NthL (Add (S B') Kz) Nil)) {
+            Z => Refl, S (K') Kih => Refl },
+          Cons (H) (T) Ihl => Ih K T } } }
 def NthDropTy : Term := prog{
-  Π (b : Nat) → Π (k : Nat) → Π (l : List Nat) → Id Nat (NthL k (Drop b l)) (NthL (Add b k) l) }
+  Π (B : Nat) → Π (K : Nat) → Π (L : List Nat) → Id Nat (NthL K (Drop B L)) (NthL (Add B K) L) }
 
 def ListExt : Term := prog{
-  λ (a : List Nat).
-    elim a return (λ (az : List Nat). Π (b : List Nat) → Id Nat (Len az) (Len b) → (Π (k : Nat) → Id Nat (NthL k az) (NthL k b)) → Id (List Nat) az b) {
-      Nil => λ (b : List Nat).
-        elim b return (λ (bz : List Nat). Id Nat (Len Nil) (Len bz) → (Π (k : Nat) → Id Nat (NthL k Nil) (NthL k bz)) → Id (List Nat) Nil bz) {
-          Nil => λ (hlen : Id Nat (Len Nil) (Len Nil)). λ (hnth : Π (k : Nat) → Id Nat (NthL k Nil) (NthL k Nil)). Refl,
-          Cons (hb) (tb) ihb => λ (hlen : Id Nat (Len Nil) (Len (Cons hb tb))). λ (hnth : Π (k : Nat) → Id Nat (NthL k Nil) (NthL k (Cons hb tb))).
-            botElim (Id (List Nat) Nil (Cons hb tb)) (Znots (Len tb) hlen) },
-      Cons (ha) (ta) iha => λ (b : List Nat).
-        elim b return (λ (bz : List Nat). Id Nat (Len (Cons ha ta)) (Len bz) → (Π (k : Nat) → Id Nat (NthL k (Cons ha ta)) (NthL k bz)) → Id (List Nat) (Cons ha ta) bz) {
-          Nil => λ (hlen : Id Nat (Len (Cons ha ta)) (Len Nil)). λ (hnth : Π (k : Nat) → Id Nat (NthL k (Cons ha ta)) (NthL k Nil)).
-            botElim (Id (List Nat) (Cons ha ta) Nil) (Znots (Len ta) (IdSym Nat (Len (Cons ha ta)) (Len Nil) hlen)),
-          Cons (hb) (tb) ihb => λ (hlen : Id Nat (Len (Cons ha ta)) (Len (Cons hb tb))). λ (hnth : Π (k : Nat) → Id Nat (NthL k (Cons ha ta)) (NthL k (Cons hb tb))).
-            IdTrans (List Nat) (Cons ha ta) (Cons hb ta) (Cons hb tb)
-              (IdCongr Nat (List Nat) (λ (hh : Nat). Cons hh ta) ha hb (hnth Z))
-              (IdCongr (List Nat) (List Nat) (λ (tt : List Nat). Cons hb tt) ta tb
-                (iha tb (SInj (Len ta) (Len tb) hlen) (λ (k : Nat). hnth (S k)))) } } }
+  λ (A : List Nat).
+    elim A return (λ (Az : List Nat). Π (B : List Nat) → Id Nat (Len Az) (Len B) → (Π (K : Nat) → Id Nat (NthL K Az) (NthL K B)) → Id (List Nat) Az B) {
+      Nil => λ (B : List Nat).
+        elim B return (λ (Bz : List Nat). Id Nat (Len Nil) (Len Bz) → (Π (K : Nat) → Id Nat (NthL K Nil) (NthL K Bz)) → Id (List Nat) Nil Bz) {
+          Nil => λ (Hlen : Id Nat (Len Nil) (Len Nil)). λ (Hnth : Π (K : Nat) → Id Nat (NthL K Nil) (NthL K Nil)). Refl,
+          Cons (Hb) (Tb) Ihb => λ (Hlen : Id Nat (Len Nil) (Len (Cons Hb Tb))). λ (Hnth : Π (K : Nat) → Id Nat (NthL K Nil) (NthL K (Cons Hb Tb))).
+            botElim (Id (List Nat) Nil (Cons Hb Tb)) (Znots (Len Tb) Hlen) },
+      Cons (Ha) (Ta) Iha => λ (B : List Nat).
+        elim B return (λ (Bz : List Nat). Id Nat (Len (Cons Ha Ta)) (Len Bz) → (Π (K : Nat) → Id Nat (NthL K (Cons Ha Ta)) (NthL K Bz)) → Id (List Nat) (Cons Ha Ta) Bz) {
+          Nil => λ (Hlen : Id Nat (Len (Cons Ha Ta)) (Len Nil)). λ (Hnth : Π (K : Nat) → Id Nat (NthL K (Cons Ha Ta)) (NthL K Nil)).
+            botElim (Id (List Nat) (Cons Ha Ta) Nil) (Znots (Len Ta) (IdSym Nat (Len (Cons Ha Ta)) (Len Nil) Hlen)),
+          Cons (Hb) (Tb) Ihb => λ (Hlen : Id Nat (Len (Cons Ha Ta)) (Len (Cons Hb Tb))). λ (Hnth : Π (K : Nat) → Id Nat (NthL K (Cons Ha Ta)) (NthL K (Cons Hb Tb))).
+            IdTrans (List Nat) (Cons Ha Ta) (Cons Hb Ta) (Cons Hb Tb)
+              (IdCongr Nat (List Nat) (λ (Hh : Nat). Cons Hh Ta) Ha Hb (Hnth Z))
+              (IdCongr (List Nat) (List Nat) (λ (Tt : List Nat). Cons Hb Tt) Ta Tb
+                (Iha Tb (SInj (Len Ta) (Len Tb) Hlen) (λ (K : Nat). Hnth (S K)))) } } }
 def ListExtTy : Term := prog{
-  Π (a : List Nat) → Π (b : List Nat) → Id Nat (Len a) (Len b) →
-    (Π (k : Nat) → Id Nat (NthL k a) (NthL k b)) → Id (List Nat) a b }
+  Π (A : List Nat) → Π (B : List Nat) → Id Nat (Len A) (Len B) →
+    (Π (K : Nat) → Id Nat (NthL K A) (NthL K B)) → Id (List Nat) A B }
 
 def TakeExtBounded : Term := prog{
-  λ (w : Nat).
-    elim w return (λ (wz : Nat). Π (a : List Nat) → Π (b : List Nat) → Id Nat (Len a) (Len b) → (Π (k : Nat) → Le (S k) wz → Id Nat (NthL k a) (NthL k b)) → Id (List Nat) (Take wz a) (Take wz b)) {
-      Z => λ (a : List Nat). λ (b : List Nat). λ (hlen : Id Nat (Len a) (Len b)). λ (hnth : Π (k : Nat) → Le (S k) Z → Id Nat (NthL k a) (NthL k b)). Refl,
-      S (w') ih => λ (a : List Nat). λ (b : List Nat). λ (hlen : Id Nat (Len a) (Len b)). λ (hnth : Π (k : Nat) → Le (S k) (S w') → Id Nat (NthL k a) (NthL k b)).
-        elim a return (λ (az : List Nat). Id Nat (Len az) (Len b) → (Π (k : Nat) → Le (S k) (S w') → Id Nat (NthL k az) (NthL k b)) → Id (List Nat) (Take (S w') az) (Take (S w') b)) {
-          Nil => λ (hlenA : Id Nat (Len Nil) (Len b)). λ (hnthA : Π (k : Nat) → Le (S k) (S w') → Id Nat (NthL k Nil) (NthL k b)).
-            elim b return (λ (bz : List Nat). Id Nat (Len Nil) (Len bz) → Id (List Nat) (Take (S w') Nil) (Take (S w') bz)) {
-              Nil => λ (hl : Id Nat (Len Nil) (Len Nil)). Refl,
-              Cons (hb) (tb) ihb => λ (hl : Id Nat (Len Nil) (Len (Cons hb tb))).
-                botElim (Id (List Nat) (Take (S w') Nil) (Take (S w') (Cons hb tb))) (Znots (Len tb) hl) } hlenA,
-          Cons (ha) (ta) iha => λ (hlenA : Id Nat (Len (Cons ha ta)) (Len b)). λ (hnthA : Π (k : Nat) → Le (S k) (S w') → Id Nat (NthL k (Cons ha ta)) (NthL k b)).
-            elim b return (λ (bz : List Nat). Id Nat (Len (Cons ha ta)) (Len bz) → (Π (k : Nat) → Le (S k) (S w') → Id Nat (NthL k (Cons ha ta)) (NthL k bz)) → Id (List Nat) (Take (S w') (Cons ha ta)) (Take (S w') bz)) {
-              Nil => λ (hl : Id Nat (Len (Cons ha ta)) (Len Nil)). λ (hn : Π (k : Nat) → Le (S k) (S w') → Id Nat (NthL k (Cons ha ta)) (NthL k Nil)).
-                botElim (Id (List Nat) (Take (S w') (Cons ha ta)) (Take (S w') Nil)) (Znots (Len ta) (IdSym Nat (Len (Cons ha ta)) (Len Nil) hl)),
-              Cons (hb) (tb) ihb => λ (hl : Id Nat (Len (Cons ha ta)) (Len (Cons hb tb))). λ (hn : Π (k : Nat) → Le (S k) (S w') → Id Nat (NthL k (Cons ha ta)) (NthL k (Cons hb tb))).
-                IdTrans (List Nat) (Cons ha (Take w' ta)) (Cons hb (Take w' ta)) (Cons hb (Take w' tb))
-                  (IdCongr Nat (List Nat) (λ (hh : Nat). Cons hh (Take w' ta)) ha hb (hn Z unit))
-                  (IdCongr (List Nat) (List Nat) (λ (tt : List Nat). Cons hb tt) (Take w' ta) (Take w' tb)
-                    (ih ta tb (SInj (Len ta) (Len tb) hl) (λ (k : Nat). λ (hk : Le (S k) w'). hn (S k) hk)))
-            } hlenA hnthA
-        } hlen hnth
+  λ (W : Nat).
+    elim W return (λ (Wz : Nat). Π (A : List Nat) → Π (B : List Nat) → Id Nat (Len A) (Len B) → (Π (K : Nat) → Le (S K) Wz → Id Nat (NthL K A) (NthL K B)) → Id (List Nat) (Take Wz A) (Take Wz B)) {
+      Z => λ (A : List Nat). λ (B : List Nat). λ (Hlen : Id Nat (Len A) (Len B)). λ (Hnth : Π (K : Nat) → Le (S K) Z → Id Nat (NthL K A) (NthL K B)). Refl,
+      S (W') Ih => λ (A : List Nat). λ (B : List Nat). λ (Hlen : Id Nat (Len A) (Len B)). λ (Hnth : Π (K : Nat) → Le (S K) (S W') → Id Nat (NthL K A) (NthL K B)).
+        elim A return (λ (Az : List Nat). Id Nat (Len Az) (Len B) → (Π (K : Nat) → Le (S K) (S W') → Id Nat (NthL K Az) (NthL K B)) → Id (List Nat) (Take (S W') Az) (Take (S W') B)) {
+          Nil => λ (HlenA : Id Nat (Len Nil) (Len B)). λ (HnthA : Π (K : Nat) → Le (S K) (S W') → Id Nat (NthL K Nil) (NthL K B)).
+            elim B return (λ (Bz : List Nat). Id Nat (Len Nil) (Len Bz) → Id (List Nat) (Take (S W') Nil) (Take (S W') Bz)) {
+              Nil => λ (Hl : Id Nat (Len Nil) (Len Nil)). Refl,
+              Cons (Hb) (Tb) Ihb => λ (Hl : Id Nat (Len Nil) (Len (Cons Hb Tb))).
+                botElim (Id (List Nat) (Take (S W') Nil) (Take (S W') (Cons Hb Tb))) (Znots (Len Tb) Hl) } HlenA,
+          Cons (Ha) (Ta) Iha => λ (HlenA : Id Nat (Len (Cons Ha Ta)) (Len B)). λ (HnthA : Π (K : Nat) → Le (S K) (S W') → Id Nat (NthL K (Cons Ha Ta)) (NthL K B)).
+            elim B return (λ (Bz : List Nat). Id Nat (Len (Cons Ha Ta)) (Len Bz) → (Π (K : Nat) → Le (S K) (S W') → Id Nat (NthL K (Cons Ha Ta)) (NthL K Bz)) → Id (List Nat) (Take (S W') (Cons Ha Ta)) (Take (S W') Bz)) {
+              Nil => λ (Hl : Id Nat (Len (Cons Ha Ta)) (Len Nil)). λ (Hn : Π (K : Nat) → Le (S K) (S W') → Id Nat (NthL K (Cons Ha Ta)) (NthL K Nil)).
+                botElim (Id (List Nat) (Take (S W') (Cons Ha Ta)) (Take (S W') Nil)) (Znots (Len Ta) (IdSym Nat (Len (Cons Ha Ta)) (Len Nil) Hl)),
+              Cons (Hb) (Tb) Ihb => λ (Hl : Id Nat (Len (Cons Ha Ta)) (Len (Cons Hb Tb))). λ (Hn : Π (K : Nat) → Le (S K) (S W') → Id Nat (NthL K (Cons Ha Ta)) (NthL K (Cons Hb Tb))).
+                IdTrans (List Nat) (Cons Ha (Take W' Ta)) (Cons Hb (Take W' Ta)) (Cons Hb (Take W' Tb))
+                  (IdCongr Nat (List Nat) (λ (Hh : Nat). Cons Hh (Take W' Ta)) Ha Hb (Hn Z unit))
+                  (IdCongr (List Nat) (List Nat) (λ (Tt : List Nat). Cons Hb Tt) (Take W' Ta) (Take W' Tb)
+                    (Ih Ta Tb (SInj (Len Ta) (Len Tb) Hl) (λ (K : Nat). λ (Hk : Le (S K) W'). Hn (S K) Hk)))
+            } HlenA HnthA
+        } Hlen Hnth
     } }
 def TakeExtBoundedTy : Term := prog{
-  Π (w : Nat) → Π (a : List Nat) → Π (b : List Nat) → Id Nat (Len a) (Len b) →
-    (Π (k : Nat) → Le (S k) w → Id Nat (NthL k a) (NthL k b)) → Id (List Nat) (Take w a) (Take w b) }
+  Π (W : Nat) → Π (A : List Nat) → Π (B : List Nat) → Id Nat (Len A) (Len B) →
+    (Π (K : Nat) → Le (S K) W → Id Nat (NthL K A) (NthL K B)) → Id (List Nat) (Take W A) (Take W B) }
 
 def LenDropCong : Term := prog{
-  λ (w : Nat).
-    elim w return (λ (wz : Nat). Π (a : List Nat) → Π (b : List Nat) → Id Nat (Len a) (Len b) → Id Nat (Len (Drop wz a)) (Len (Drop wz b))) {
-      Z => λ (a : List Nat). λ (b : List Nat). λ (hlen : Id Nat (Len a) (Len b)). hlen,
-      S (w') ih => λ (a : List Nat). λ (b : List Nat). λ (hlen : Id Nat (Len a) (Len b)).
-        elim a return (λ (az : List Nat). Id Nat (Len az) (Len b) → Id Nat (Len (Drop (S w') az)) (Len (Drop (S w') b))) {
-          Nil => λ (hl : Id Nat (Len Nil) (Len b)).
-            elim b return (λ (bz : List Nat). Id Nat (Len Nil) (Len bz) → Id Nat (Len (Drop (S w') Nil)) (Len (Drop (S w') bz))) {
-              Nil => λ (h : Id Nat (Len Nil) (Len Nil)). Refl,
-              Cons (hb) (tb) ihb => λ (h : Id Nat (Len Nil) (Len (Cons hb tb))).
-                botElim (Id Nat (Len (Drop (S w') Nil)) (Len (Drop (S w') (Cons hb tb)))) (Znots (Len tb) h) } hl,
-          Cons (ha) (ta) iha => λ (hl : Id Nat (Len (Cons ha ta)) (Len b)).
-            elim b return (λ (bz : List Nat). Id Nat (Len (Cons ha ta)) (Len bz) → Id Nat (Len (Drop (S w') (Cons ha ta))) (Len (Drop (S w') bz))) {
-              Nil => λ (h : Id Nat (Len (Cons ha ta)) (Len Nil)).
-                botElim (Id Nat (Len (Drop (S w') (Cons ha ta))) (Len (Drop (S w') Nil))) (Znots (Len ta) (IdSym Nat (Len (Cons ha ta)) (Len Nil) h)),
-              Cons (hb) (tb) ihb => λ (h : Id Nat (Len (Cons ha ta)) (Len (Cons hb tb))).
-                ih ta tb (SInj (Len ta) (Len tb) h) } hl } hlen } }
+  λ (W : Nat).
+    elim W return (λ (Wz : Nat). Π (A : List Nat) → Π (B : List Nat) → Id Nat (Len A) (Len B) → Id Nat (Len (Drop Wz A)) (Len (Drop Wz B))) {
+      Z => λ (A : List Nat). λ (B : List Nat). λ (Hlen : Id Nat (Len A) (Len B)). Hlen,
+      S (W') Ih => λ (A : List Nat). λ (B : List Nat). λ (Hlen : Id Nat (Len A) (Len B)).
+        elim A return (λ (Az : List Nat). Id Nat (Len Az) (Len B) → Id Nat (Len (Drop (S W') Az)) (Len (Drop (S W') B))) {
+          Nil => λ (Hl : Id Nat (Len Nil) (Len B)).
+            elim B return (λ (Bz : List Nat). Id Nat (Len Nil) (Len Bz) → Id Nat (Len (Drop (S W') Nil)) (Len (Drop (S W') Bz))) {
+              Nil => λ (H : Id Nat (Len Nil) (Len Nil)). Refl,
+              Cons (Hb) (Tb) Ihb => λ (H : Id Nat (Len Nil) (Len (Cons Hb Tb))).
+                botElim (Id Nat (Len (Drop (S W') Nil)) (Len (Drop (S W') (Cons Hb Tb)))) (Znots (Len Tb) H) } Hl,
+          Cons (Ha) (Ta) Iha => λ (Hl : Id Nat (Len (Cons Ha Ta)) (Len B)).
+            elim B return (λ (Bz : List Nat). Id Nat (Len (Cons Ha Ta)) (Len Bz) → Id Nat (Len (Drop (S W') (Cons Ha Ta))) (Len (Drop (S W') Bz))) {
+              Nil => λ (H : Id Nat (Len (Cons Ha Ta)) (Len Nil)).
+                botElim (Id Nat (Len (Drop (S W') (Cons Ha Ta))) (Len (Drop (S W') Nil))) (Znots (Len Ta) (IdSym Nat (Len (Cons Ha Ta)) (Len Nil) H)),
+              Cons (Hb) (Tb) Ihb => λ (H : Id Nat (Len (Cons Ha Ta)) (Len (Cons Hb Tb))).
+                Ih Ta Tb (SInj (Len Ta) (Len Tb) H) } Hl } Hlen } }
 def LenDropCongTy : Term := prog{
-  Π (w : Nat) → Π (a : List Nat) → Π (b : List Nat) → Id Nat (Len a) (Len b) →
-    Id Nat (Len (Drop w a)) (Len (Drop w b)) }
+  Π (W : Nat) → Π (A : List Nat) → Π (B : List Nat) → Id Nat (Len A) (Len B) →
+    Id Nat (Len (Drop W A)) (Len (Drop W B)) }
 
 def CountSplit : Term := prog{
-  λ (x : Nat). λ (w : Nat). λ (l : List Nat).
-    IdTrans Nat (Count x l) (Count x (Append (Take w l) (Drop w l))) (Add (Count x (Take w l)) (Count x (Drop w l)))
-      (IdCongr (List Nat) Nat (λ (ll : List Nat). Count x ll) l (Append (Take w l) (Drop w l))
-        (IdSym (List Nat) (Append (Take w l) (Drop w l)) l (TakeDropId w l)))
-      (CountAppend x (Take w l) (Drop w l)) }
+  λ (X : Nat). λ (W : Nat). λ (L : List Nat).
+    IdTrans Nat (Count X L) (Count X (Append (Take W L) (Drop W L))) (Add (Count X (Take W L)) (Count X (Drop W L)))
+      (IdCongr (List Nat) Nat (λ (Ll : List Nat). Count X Ll) L (Append (Take W L) (Drop W L))
+        (IdSym (List Nat) (Append (Take W L) (Drop W L)) L (TakeDropId W L)))
+      (CountAppend X (Take W L) (Drop W L)) }
 def CountSplitTy : Term := prog{
-  Π (x : Nat) → Π (w : Nat) → Π (l : List Nat) →
-    Id Nat (Count x l) (Add (Count x (Take w l)) (Count x (Drop w l))) }
+  Π (X : Nat) → Π (W : Nat) → Π (L : List Nat) →
+    Id Nat (Count X L) (Add (Count X (Take W L)) (Count X (Drop W L))) }
 
 /-! ## Segment-count preservation — the perm-survival vehicle (§22, M22-c step 3)
 
@@ -2050,197 +2050,197 @@ def CountSplitTy : Term := prog{
     supply the list equalities from Step B. -/
 
 def CountRestPreserved : Term := prog{
-  λ (x : Nat). λ (w : Nat). λ (s : List Nat). λ (l : List Nat).
-    λ (hcount : Id Nat (Count x s) (Count x l)).
-    λ (hpre : Id Nat (Count x (Take w s)) (Count x (Take w l))).
-      AddCancelL (Count x (Take w l)) (Count x (Drop w s)) (Count x (Drop w l))
+  λ (X : Nat). λ (W : Nat). λ (S0 : List Nat). λ (L : List Nat).
+    λ (Hcount : Id Nat (Count X S0) (Count X L)).
+    λ (Hpre : Id Nat (Count X (Take W S0)) (Count X (Take W L))).
+      AddCancelL (Count X (Take W L)) (Count X (Drop W S0)) (Count X (Drop W L))
         (IdTrans Nat
-          (Add (Count x (Take w l)) (Count x (Drop w s)))
-          (Count x l)
-          (Add (Count x (Take w l)) (Count x (Drop w l)))
+          (Add (Count X (Take W L)) (Count X (Drop W S0)))
+          (Count X L)
+          (Add (Count X (Take W L)) (Count X (Drop W L)))
           (IdTrans Nat
-            (Add (Count x (Take w l)) (Count x (Drop w s)))
-            (Count x s)
-            (Count x l)
-            (IdSym Nat (Count x s) (Add (Count x (Take w l)) (Count x (Drop w s)))
+            (Add (Count X (Take W L)) (Count X (Drop W S0)))
+            (Count X S0)
+            (Count X L)
+            (IdSym Nat (Count X S0) (Add (Count X (Take W L)) (Count X (Drop W S0)))
               (IdTrans Nat
-                (Count x s)
-                (Add (Count x (Take w s)) (Count x (Drop w s)))
-                (Add (Count x (Take w l)) (Count x (Drop w s)))
-                (CountSplit x w s)
-                (IdCongr Nat Nat (λ (n : Nat). Add n (Count x (Drop w s)))
-                  (Count x (Take w s)) (Count x (Take w l)) hpre)))
-            hcount)
-          (CountSplit x w l)) }
+                (Count X S0)
+                (Add (Count X (Take W S0)) (Count X (Drop W S0)))
+                (Add (Count X (Take W L)) (Count X (Drop W S0)))
+                (CountSplit X W S0)
+                (IdCongr Nat Nat (λ (N : Nat). Add N (Count X (Drop W S0)))
+                  (Count X (Take W S0)) (Count X (Take W L)) Hpre)))
+            Hcount)
+          (CountSplit X W L)) }
 def CountRestPreservedTy : Term := prog{
-  Π (x : Nat) → Π (w : Nat) → Π (s : List Nat) → Π (l : List Nat) →
-    Id Nat (Count x s) (Count x l) →
-    Id Nat (Count x (Take w s)) (Count x (Take w l)) →
-    Id Nat (Count x (Drop w s)) (Count x (Drop w l)) }
+  Π (X : Nat) → Π (W : Nat) → Π (S0 : List Nat) → Π (L : List Nat) →
+    Id Nat (Count X S0) (Count X L) →
+    Id Nat (Count X (Take W S0)) (Count X (Take W L)) →
+    Id Nat (Count X (Drop W S0)) (Count X (Drop W L)) }
 
 def CountSegPreserved : Term := prog{
-  λ (x : Nat). λ (w : Nat). λ (s : List Nat). λ (l : List Nat).
-    λ (hcount : Id Nat (Count x s) (Count x l)).
-    λ (hdrop : Id Nat (Count x (Drop w s)) (Count x (Drop w l))).
-      AddCancelL (Count x (Drop w l)) (Count x (Take w s)) (Count x (Take w l))
+  λ (X : Nat). λ (W : Nat). λ (S0 : List Nat). λ (L : List Nat).
+    λ (Hcount : Id Nat (Count X S0) (Count X L)).
+    λ (Hdrop : Id Nat (Count X (Drop W S0)) (Count X (Drop W L))).
+      AddCancelL (Count X (Drop W L)) (Count X (Take W S0)) (Count X (Take W L))
         (IdTrans Nat
-          (Add (Count x (Drop w l)) (Count x (Take w s)))
-          (Count x l)
-          (Add (Count x (Drop w l)) (Count x (Take w l)))
+          (Add (Count X (Drop W L)) (Count X (Take W S0)))
+          (Count X L)
+          (Add (Count X (Drop W L)) (Count X (Take W L)))
           (IdTrans Nat
-            (Add (Count x (Drop w l)) (Count x (Take w s)))
-            (Count x s)
-            (Count x l)
-            (IdSym Nat (Count x s) (Add (Count x (Drop w l)) (Count x (Take w s)))
+            (Add (Count X (Drop W L)) (Count X (Take W S0)))
+            (Count X S0)
+            (Count X L)
+            (IdSym Nat (Count X S0) (Add (Count X (Drop W L)) (Count X (Take W S0)))
               (IdTrans Nat
-                (Count x s)
-                (Add (Count x (Take w s)) (Count x (Drop w s)))
-                (Add (Count x (Drop w l)) (Count x (Take w s)))
-                (CountSplit x w s)
+                (Count X S0)
+                (Add (Count X (Take W S0)) (Count X (Drop W S0)))
+                (Add (Count X (Drop W L)) (Count X (Take W S0)))
+                (CountSplit X W S0)
                 (IdTrans Nat
-                  (Add (Count x (Take w s)) (Count x (Drop w s)))
-                  (Add (Count x (Take w s)) (Count x (Drop w l)))
-                  (Add (Count x (Drop w l)) (Count x (Take w s)))
-                  (IdCongr Nat Nat (λ (n : Nat). Add (Count x (Take w s)) n)
-                    (Count x (Drop w s)) (Count x (Drop w l)) hdrop)
-                  (AddComm (Count x (Take w s)) (Count x (Drop w l))))))
-            hcount)
+                  (Add (Count X (Take W S0)) (Count X (Drop W S0)))
+                  (Add (Count X (Take W S0)) (Count X (Drop W L)))
+                  (Add (Count X (Drop W L)) (Count X (Take W S0)))
+                  (IdCongr Nat Nat (λ (N : Nat). Add (Count X (Take W S0)) N)
+                    (Count X (Drop W S0)) (Count X (Drop W L)) Hdrop)
+                  (AddComm (Count X (Take W S0)) (Count X (Drop W L))))))
+            Hcount)
           (IdTrans Nat
-            (Count x l)
-            (Add (Count x (Take w l)) (Count x (Drop w l)))
-            (Add (Count x (Drop w l)) (Count x (Take w l)))
-            (CountSplit x w l)
-            (AddComm (Count x (Take w l)) (Count x (Drop w l))))) }
+            (Count X L)
+            (Add (Count X (Take W L)) (Count X (Drop W L)))
+            (Add (Count X (Drop W L)) (Count X (Take W L)))
+            (CountSplit X W L)
+            (AddComm (Count X (Take W L)) (Count X (Drop W L))))) }
 def CountSegPreservedTy : Term := prog{
-  Π (x : Nat) → Π (w : Nat) → Π (s : List Nat) → Π (l : List Nat) →
-    Id Nat (Count x s) (Count x l) →
-    Id Nat (Count x (Drop w s)) (Count x (Drop w l)) →
-    Id Nat (Count x (Take w s)) (Count x (Take w l)) }
+  Π (X : Nat) → Π (W : Nat) → Π (S0 : List Nat) → Π (L : List Nat) →
+    Id Nat (Count X S0) (Count X L) →
+    Id Nat (Count X (Drop W S0)) (Count X (Drop W L)) →
+    Id Nat (Count X (Take W S0)) (Count X (Take W L)) }
 
 def SegGlue : Term := prog{
-  λ (x : Nat). λ (lo : Nat). λ (cnt : Nat). λ (s : List Nat). λ (l : List Nat).
-    λ (hcount : Id Nat (Count x s) (Count x l)).
-    λ (hpre : Id (List Nat) (Take lo s) (Take lo l)).
-    λ (hsuf : Id (List Nat) (Drop cnt (Drop lo s)) (Drop cnt (Drop lo l))).
-      CountSegPreserved x cnt (Drop lo s) (Drop lo l)
-        (CountRestPreserved x lo s l hcount
-          (IdCongr (List Nat) Nat (λ (ll : List Nat). Count x ll) (Take lo s) (Take lo l) hpre))
-        (IdCongr (List Nat) Nat (λ (ll : List Nat). Count x ll) (Drop cnt (Drop lo s)) (Drop cnt (Drop lo l)) hsuf) }
+  λ (X : Nat). λ (Lo : Nat). λ (Cnt : Nat). λ (S0 : List Nat). λ (L : List Nat).
+    λ (Hcount : Id Nat (Count X S0) (Count X L)).
+    λ (Hpre : Id (List Nat) (Take Lo S0) (Take Lo L)).
+    λ (Hsuf : Id (List Nat) (Drop Cnt (Drop Lo S0)) (Drop Cnt (Drop Lo L))).
+      CountSegPreserved X Cnt (Drop Lo S0) (Drop Lo L)
+        (CountRestPreserved X Lo S0 L Hcount
+          (IdCongr (List Nat) Nat (λ (Ll : List Nat). Count X Ll) (Take Lo S0) (Take Lo L) Hpre))
+        (IdCongr (List Nat) Nat (λ (Ll : List Nat). Count X Ll) (Drop Cnt (Drop Lo S0)) (Drop Cnt (Drop Lo L)) Hsuf) }
 def SegGlueTy : Term := prog{
-  Π (x : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (s : List Nat) → Π (l : List Nat) →
-    Id Nat (Count x s) (Count x l) →
-    Id (List Nat) (Take lo s) (Take lo l) →
-    Id (List Nat) (Drop cnt (Drop lo s)) (Drop cnt (Drop lo l)) →
-    Id Nat (Count x (Take cnt (Drop lo s))) (Count x (Take cnt (Drop lo l))) }
+  Π (X : Nat) → Π (Lo : Nat) → Π (Cnt : Nat) → Π (S0 : List Nat) → Π (L : List Nat) →
+    Id Nat (Count X S0) (Count X L) →
+    Id (List Nat) (Take Lo S0) (Take Lo L) →
+    Id (List Nat) (Drop Cnt (Drop Lo S0)) (Drop Cnt (Drop Lo L)) →
+    Id Nat (Count X (Take Cnt (Drop Lo S0))) (Count X (Take Cnt (Drop Lo L))) }
 
 -- Prefix/suffix of the SORT are identical (Step B locality → list equality).
 def TakeLoSort : Term := prog{
-  λ (fuel : Nat). λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-    TakeExtBounded lo (SortRangeL fuel lo cnt l) l
-      (LenSortRangeL fuel lo cnt l)
-      (λ (k : Nat). λ (hk : Le (S k) lo). NthSortRangeLLt fuel k lo cnt l hk) }
+  λ (Fuel : Nat). λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+    TakeExtBounded Lo (SortRangeL Fuel Lo Cnt L) L
+      (LenSortRangeL Fuel Lo Cnt L)
+      (λ (K : Nat). λ (Hk : Le (S K) Lo). NthSortRangeLLt Fuel K Lo Cnt L Hk) }
 def TakeLoSortTy : Term := prog{
-  Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
-    Id (List Nat) (Take lo (SortRangeL fuel lo cnt l)) (Take lo l) }
+  Π (Fuel : Nat) → Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) →
+    Id (List Nat) (Take Lo (SortRangeL Fuel Lo Cnt L)) (Take Lo L) }
 
 def DropSuffixSort : Term := prog{
-  λ (fuel : Nat). λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-    ListExt (Drop cnt (Drop lo (SortRangeL fuel lo cnt l))) (Drop cnt (Drop lo l))
-      (LenDropCong cnt (Drop lo (SortRangeL fuel lo cnt l)) (Drop lo l)
-        (LenDropCong lo (SortRangeL fuel lo cnt l) l (LenSortRangeL fuel lo cnt l)))
-      (λ (k : Nat).
+  λ (Fuel : Nat). λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+    ListExt (Drop Cnt (Drop Lo (SortRangeL Fuel Lo Cnt L))) (Drop Cnt (Drop Lo L))
+      (LenDropCong Cnt (Drop Lo (SortRangeL Fuel Lo Cnt L)) (Drop Lo L)
+        (LenDropCong Lo (SortRangeL Fuel Lo Cnt L) L (LenSortRangeL Fuel Lo Cnt L)))
+      (λ (K : Nat).
         IdTrans Nat
-          (NthL k (Drop cnt (Drop lo (SortRangeL fuel lo cnt l))))
-          (NthL (Add lo (Add cnt k)) (SortRangeL fuel lo cnt l))
-          (NthL k (Drop cnt (Drop lo l)))
+          (NthL K (Drop Cnt (Drop Lo (SortRangeL Fuel Lo Cnt L))))
+          (NthL (Add Lo (Add Cnt K)) (SortRangeL Fuel Lo Cnt L))
+          (NthL K (Drop Cnt (Drop Lo L)))
           (IdTrans Nat
-            (NthL k (Drop cnt (Drop lo (SortRangeL fuel lo cnt l))))
-            (NthL (Add cnt k) (Drop lo (SortRangeL fuel lo cnt l)))
-            (NthL (Add lo (Add cnt k)) (SortRangeL fuel lo cnt l))
-            (NthDrop cnt k (Drop lo (SortRangeL fuel lo cnt l)))
-            (NthDrop lo (Add cnt k) (SortRangeL fuel lo cnt l)))
+            (NthL K (Drop Cnt (Drop Lo (SortRangeL Fuel Lo Cnt L))))
+            (NthL (Add Cnt K) (Drop Lo (SortRangeL Fuel Lo Cnt L)))
+            (NthL (Add Lo (Add Cnt K)) (SortRangeL Fuel Lo Cnt L))
+            (NthDrop Cnt K (Drop Lo (SortRangeL Fuel Lo Cnt L)))
+            (NthDrop Lo (Add Cnt K) (SortRangeL Fuel Lo Cnt L)))
           (IdTrans Nat
-            (NthL (Add lo (Add cnt k)) (SortRangeL fuel lo cnt l))
-            (NthL (Add lo (Add cnt k)) l)
-            (NthL k (Drop cnt (Drop lo l)))
-            (NthSortRangeLGe fuel (Add lo (Add cnt k)) lo cnt l
-              (LeAddMonoL lo cnt (Add cnt k) (LeAdd cnt k)))
+            (NthL (Add Lo (Add Cnt K)) (SortRangeL Fuel Lo Cnt L))
+            (NthL (Add Lo (Add Cnt K)) L)
+            (NthL K (Drop Cnt (Drop Lo L)))
+            (NthSortRangeLGe Fuel (Add Lo (Add Cnt K)) Lo Cnt L
+              (LeAddMonoL Lo Cnt (Add Cnt K) (LeAdd Cnt K)))
             (IdTrans Nat
-              (NthL (Add lo (Add cnt k)) l)
-              (NthL (Add cnt k) (Drop lo l))
-              (NthL k (Drop cnt (Drop lo l)))
-              (IdSym Nat (NthL (Add cnt k) (Drop lo l)) (NthL (Add lo (Add cnt k)) l) (NthDrop lo (Add cnt k) l))
-              (IdSym Nat (NthL k (Drop cnt (Drop lo l))) (NthL (Add cnt k) (Drop lo l)) (NthDrop cnt k (Drop lo l)))))) }
+              (NthL (Add Lo (Add Cnt K)) L)
+              (NthL (Add Cnt K) (Drop Lo L))
+              (NthL K (Drop Cnt (Drop Lo L)))
+              (IdSym Nat (NthL (Add Cnt K) (Drop Lo L)) (NthL (Add Lo (Add Cnt K)) L) (NthDrop Lo (Add Cnt K) L))
+              (IdSym Nat (NthL K (Drop Cnt (Drop Lo L))) (NthL (Add Cnt K) (Drop Lo L)) (NthDrop Cnt K (Drop Lo L)))))) }
 def DropSuffixSortTy : Term := prog{
-  Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
-    Id (List Nat) (Drop cnt (Drop lo (SortRangeL fuel lo cnt l))) (Drop cnt (Drop lo l)) }
+  Π (Fuel : Nat) → Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) →
+    Id (List Nat) (Drop Cnt (Drop Lo (SortRangeL Fuel Lo Cnt L))) (Drop Cnt (Drop Lo L)) }
 
 -- Prefix/suffix of PARTITION are identical (same shape).
 def TakeLoPartition : Term := prog{
-  λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-    TakeExtBounded lo (PartitionRangeL lo cnt l) l
-      (LenPartitionRangeL lo cnt l)
-      (λ (k : Nat). λ (hk : Le (S k) lo). NthPartitionRangeLLt lo k hk cnt l) }
+  λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+    TakeExtBounded Lo (PartitionRangeL Lo Cnt L) L
+      (LenPartitionRangeL Lo Cnt L)
+      (λ (K : Nat). λ (Hk : Le (S K) Lo). NthPartitionRangeLLt Lo K Hk Cnt L) }
 def TakeLoPartitionTy : Term := prog{
-  Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
-    Id (List Nat) (Take lo (PartitionRangeL lo cnt l)) (Take lo l) }
+  Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) →
+    Id (List Nat) (Take Lo (PartitionRangeL Lo Cnt L)) (Take Lo L) }
 
 def DropSuffixPartition : Term := prog{
-  λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-    ListExt (Drop cnt (Drop lo (PartitionRangeL lo cnt l))) (Drop cnt (Drop lo l))
-      (LenDropCong cnt (Drop lo (PartitionRangeL lo cnt l)) (Drop lo l)
-        (LenDropCong lo (PartitionRangeL lo cnt l) l (LenPartitionRangeL lo cnt l)))
-      (λ (k : Nat).
+  λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+    ListExt (Drop Cnt (Drop Lo (PartitionRangeL Lo Cnt L))) (Drop Cnt (Drop Lo L))
+      (LenDropCong Cnt (Drop Lo (PartitionRangeL Lo Cnt L)) (Drop Lo L)
+        (LenDropCong Lo (PartitionRangeL Lo Cnt L) L (LenPartitionRangeL Lo Cnt L)))
+      (λ (K : Nat).
         IdTrans Nat
-          (NthL k (Drop cnt (Drop lo (PartitionRangeL lo cnt l))))
-          (NthL (Add lo (Add cnt k)) (PartitionRangeL lo cnt l))
-          (NthL k (Drop cnt (Drop lo l)))
+          (NthL K (Drop Cnt (Drop Lo (PartitionRangeL Lo Cnt L))))
+          (NthL (Add Lo (Add Cnt K)) (PartitionRangeL Lo Cnt L))
+          (NthL K (Drop Cnt (Drop Lo L)))
           (IdTrans Nat
-            (NthL k (Drop cnt (Drop lo (PartitionRangeL lo cnt l))))
-            (NthL (Add cnt k) (Drop lo (PartitionRangeL lo cnt l)))
-            (NthL (Add lo (Add cnt k)) (PartitionRangeL lo cnt l))
-            (NthDrop cnt k (Drop lo (PartitionRangeL lo cnt l)))
-            (NthDrop lo (Add cnt k) (PartitionRangeL lo cnt l)))
+            (NthL K (Drop Cnt (Drop Lo (PartitionRangeL Lo Cnt L))))
+            (NthL (Add Cnt K) (Drop Lo (PartitionRangeL Lo Cnt L)))
+            (NthL (Add Lo (Add Cnt K)) (PartitionRangeL Lo Cnt L))
+            (NthDrop Cnt K (Drop Lo (PartitionRangeL Lo Cnt L)))
+            (NthDrop Lo (Add Cnt K) (PartitionRangeL Lo Cnt L)))
           (IdTrans Nat
-            (NthL (Add lo (Add cnt k)) (PartitionRangeL lo cnt l))
-            (NthL (Add lo (Add cnt k)) l)
-            (NthL k (Drop cnt (Drop lo l)))
-            (NthPartitionRangeLGe lo (Add lo (Add cnt k)) cnt l
-              (LeAddMonoL lo cnt (Add cnt k) (LeAdd cnt k)))
+            (NthL (Add Lo (Add Cnt K)) (PartitionRangeL Lo Cnt L))
+            (NthL (Add Lo (Add Cnt K)) L)
+            (NthL K (Drop Cnt (Drop Lo L)))
+            (NthPartitionRangeLGe Lo (Add Lo (Add Cnt K)) Cnt L
+              (LeAddMonoL Lo Cnt (Add Cnt K) (LeAdd Cnt K)))
             (IdTrans Nat
-              (NthL (Add lo (Add cnt k)) l)
-              (NthL (Add cnt k) (Drop lo l))
-              (NthL k (Drop cnt (Drop lo l)))
-              (IdSym Nat (NthL (Add cnt k) (Drop lo l)) (NthL (Add lo (Add cnt k)) l) (NthDrop lo (Add cnt k) l))
-              (IdSym Nat (NthL k (Drop cnt (Drop lo l))) (NthL (Add cnt k) (Drop lo l)) (NthDrop cnt k (Drop lo l)))))) }
+              (NthL (Add Lo (Add Cnt K)) L)
+              (NthL (Add Cnt K) (Drop Lo L))
+              (NthL K (Drop Cnt (Drop Lo L)))
+              (IdSym Nat (NthL (Add Cnt K) (Drop Lo L)) (NthL (Add Lo (Add Cnt K)) L) (NthDrop Lo (Add Cnt K) L))
+              (IdSym Nat (NthL K (Drop Cnt (Drop Lo L))) (NthL (Add Cnt K) (Drop Lo L)) (NthDrop Cnt K (Drop Lo L)))))) }
 def DropSuffixPartitionTy : Term := prog{
-  Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
-    Id (List Nat) (Drop cnt (Drop lo (PartitionRangeL lo cnt l))) (Drop cnt (Drop lo l)) }
+  Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) →
+    Id (List Nat) (Drop Cnt (Drop Lo (PartitionRangeL Lo Cnt L))) (Drop Cnt (Drop Lo L)) }
 
 -- THE GOALS: the segment multiset survives the range sort and partition.
 def SegCountSortRangeL : Term := prog{
-  λ (x : Nat). λ (fuel : Nat). λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-    λ (hb : Le (Add lo cnt) (Len l)).
-      SegGlue x lo cnt (SortRangeL fuel lo cnt l) l
-        (CountSortRangeL x fuel lo cnt l hb)
-        (TakeLoSort fuel lo cnt l)
-        (DropSuffixSort fuel lo cnt l) }
+  λ (X : Nat). λ (Fuel : Nat). λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+    λ (Hb : Le (Add Lo Cnt) (Len L)).
+      SegGlue X Lo Cnt (SortRangeL Fuel Lo Cnt L) L
+        (CountSortRangeL X Fuel Lo Cnt L Hb)
+        (TakeLoSort Fuel Lo Cnt L)
+        (DropSuffixSort Fuel Lo Cnt L) }
 def SegCountSortRangeLTy : Term := prog{
-  Π (x : Nat) → Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
-    Le (Add lo cnt) (Len l) →
-    Id Nat (SegCount x lo cnt (SortRangeL fuel lo cnt l)) (SegCount x lo cnt l) }
+  Π (X : Nat) → Π (Fuel : Nat) → Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) →
+    Le (Add Lo Cnt) (Len L) →
+    Id Nat (SegCount X Lo Cnt (SortRangeL Fuel Lo Cnt L)) (SegCount X Lo Cnt L) }
 
 def SegCountPartitionRangeL : Term := prog{
-  λ (x : Nat). λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-    λ (hb : Le (Add lo cnt) (Len l)).
-      SegGlue x lo cnt (PartitionRangeL lo cnt l) l
-        (CountPartitionRangeL lo x cnt l hb)
-        (TakeLoPartition lo cnt l)
-        (DropSuffixPartition lo cnt l) }
+  λ (X : Nat). λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+    λ (Hb : Le (Add Lo Cnt) (Len L)).
+      SegGlue X Lo Cnt (PartitionRangeL Lo Cnt L) L
+        (CountPartitionRangeL Lo X Cnt L Hb)
+        (TakeLoPartition Lo Cnt L)
+        (DropSuffixPartition Lo Cnt L) }
 def SegCountPartitionRangeLTy : Term := prog{
-  Π (x : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
-    Le (Add lo cnt) (Len l) →
-    Id Nat (SegCount x lo cnt (PartitionRangeL lo cnt l)) (SegCount x lo cnt l) }
+  Π (X : Nat) → Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) →
+    Le (Add Lo Cnt) (Len L) →
+    Id Nat (SegCount X Lo Cnt (PartitionRangeL Lo Cnt L)) (SegCount X Lo Cnt L) }
 
 /-! ## The partition invariant — STATEMENTS (§22, M22-c step 2; proofs dispatched)
 
@@ -2259,178 +2259,178 @@ def SegCountPartitionRangeLTy : Term := prog{
     discharged via NthSwapLLt/gt). -/
 -- PosBridgeSs : add lo (S (S m)) = S (add m (S lo))  (both lo+m+2) — the mid upper bound.
 def PosBridgeSs : Term := prog{
-  λ (lo : Nat). λ (m : Nat).
-    IdTrans Nat (Add lo (S (S m))) (S (S (Add lo m))) (S (Add m (S lo)))
-      (IdTrans Nat (Add lo (S (S m))) (S (Add lo (S m))) (S (S (Add lo m)))
-        (AddSucc lo (S m))
-        (IdCongr Nat Nat (λ (z : Nat). S z) (Add lo (S m)) (S (Add lo m)) (AddSucc lo m)))
-      (IdSym Nat (S (Add m (S lo))) (S (S (Add lo m)))
-        (IdTrans Nat (S (Add m (S lo))) (S (S (Add m lo))) (S (S (Add lo m)))
-          (IdCongr Nat Nat (λ (z : Nat). S z) (Add m (S lo)) (S (Add m lo)) (AddSucc m lo))
-          (IdCongr Nat Nat (λ (z : Nat). S z) (S (Add m lo)) (S (Add lo m))
-            (IdCongr Nat Nat (λ (z : Nat). S z) (Add m lo) (Add lo m) (AddComm m lo))))) }
-def PosBridgeSsTy : Term := prog{ Π (lo : Nat) → Π (m : Nat) → Id Nat (Add lo (S (S m))) (S (Add m (S lo))) }
+  λ (Lo : Nat). λ (M : Nat).
+    IdTrans Nat (Add Lo (S (S M))) (S (S (Add Lo M))) (S (Add M (S Lo)))
+      (IdTrans Nat (Add Lo (S (S M))) (S (Add Lo (S M))) (S (S (Add Lo M)))
+        (AddSucc Lo (S M))
+        (IdCongr Nat Nat (λ (Z0 : Nat). S Z0) (Add Lo (S M)) (S (Add Lo M)) (AddSucc Lo M)))
+      (IdSym Nat (S (Add M (S Lo))) (S (S (Add Lo M)))
+        (IdTrans Nat (S (Add M (S Lo))) (S (S (Add M Lo))) (S (S (Add Lo M)))
+          (IdCongr Nat Nat (λ (Z0 : Nat). S Z0) (Add M (S Lo)) (S (Add M Lo)) (AddSucc M Lo))
+          (IdCongr Nat Nat (λ (Z0 : Nat). S Z0) (S (Add M Lo)) (S (Add Lo M))
+            (IdCongr Nat Nat (λ (Z0 : Nat). S Z0) (Add M Lo) (Add Lo M) (AddComm M Lo))))) }
+def PosBridgeSsTy : Term := prog{ Π (Lo : Nat) → Π (M : Nat) → Id Nat (Add Lo (S (S M))) (S (Add M (S Lo))) }
 
 -- BndSl : the scan swap's smaller index < larger index (S(lo+1+i) ≤ lo+1+i+(S g')).
 def BndSl : Term := prog{
-  λ (lo : Nat). λ (i : Nat). λ (g' : Nat).
-    LeRwL (Add lo (S (Add i (S g')))) (Add lo (S (S i))) (S (Add lo (S i)))
-      (AddSucc lo (S i))
-      (LeAddMonoL lo (S (S i)) (S (Add i (S g')))
-        (LeRwR (S i) (S (Add i g')) (Add i (S g'))
-          (IdSym Nat (Add i (S g')) (S (Add i g')) (AddSucc i g'))
-          (LeAdd i g'))) }
-def BndSlTy : Term := prog{ Π (lo : Nat) → Π (i : Nat) → Π (g' : Nat) → Le (S (Add lo (S i))) (Add lo (S (Add i (S g')))) }
+  λ (Lo : Nat). λ (I : Nat). λ (G' : Nat).
+    LeRwL (Add Lo (S (Add I (S G')))) (Add Lo (S (S I))) (S (Add Lo (S I)))
+      (AddSucc Lo (S I))
+      (LeAddMonoL Lo (S (S I)) (S (Add I (S G')))
+        (LeRwR (S I) (S (Add I G')) (Add I (S G'))
+          (IdSym Nat (Add I (S G')) (S (Add I G')) (AddSucc I G'))
+          (LeAdd I G'))) }
+def BndSlTy : Term := prog{ Π (Lo : Nat) → Π (I : Nat) → Π (G' : Nat) → Le (S (Add Lo (S I))) (Add Lo (S (Add I (S G')))) }
 
 -- AllLeRBaseSwap : the pivot-placement swap at the base (i = S i') keeps [lo, lo+S i')
 -- all ≤ pivot. Position lo gets the far ≤-element (NthSwapLLo + hL at i'), the interior
 -- is unchanged (AllLeRCong via NthSwapLMid), assembled by AllLeRExtendLo.
 def AllLeRBaseSwap : Term := prog{
-  λ (pivot : Nat). λ (lo : Nat). λ (i' : Nat). λ (l : List Nat).
-    λ (hL : AllLeR (S i') (S lo) pivot l).
-      AllLeRExtendLo i' lo pivot (SwapL lo (Add lo (S i')) l)
-        (LeRwL pivot (NthL (Add lo (S i')) l) (NthL lo (SwapL lo (Add lo (S i')) l))
-          (IdSym Nat (NthL lo (SwapL lo (Add lo (S i')) l)) (NthL (Add lo (S i')) l)
-            (NthSwapLLo lo (Add lo (S i')) l (LeAddSucc lo i')))
-          (LeRwL pivot (NthL (Add i' (S lo)) l) (NthL (Add lo (S i')) l)
-            (IdCongr Nat Nat (λ (q : Nat). NthL q l) (Add i' (S lo)) (Add lo (S i')) (AddSwapSucc i' lo))
-            (hL i' (LeRefl (S i')))))
-        (AllLeRCong i' (S lo) pivot l (SwapL lo (Add lo (S i')) l)
-          (λ (m : Nat). λ (hm : Le (S m) i').
-            NthSwapLMid lo (Add lo (S i')) (Add m (S lo)) l
-              (LeAddL (S lo) m)
-              (LeRwL (Add lo (S i')) (Add lo (S (S m))) (S (Add m (S lo)))
-                (PosBridgeSs lo m)
-                (LeAddMonoL lo (S (S m)) (S i') hm)))
-          (λ (m : Nat). λ (hm : Le (S m) i'). hL m (LeUpR (S m) i' hm))) }
+  λ (Pivot : Nat). λ (Lo : Nat). λ (I' : Nat). λ (L : List Nat).
+    λ (HL : AllLeR (S I') (S Lo) Pivot L).
+      AllLeRExtendLo I' Lo Pivot (SwapL Lo (Add Lo (S I')) L)
+        (LeRwL Pivot (NthL (Add Lo (S I')) L) (NthL Lo (SwapL Lo (Add Lo (S I')) L))
+          (IdSym Nat (NthL Lo (SwapL Lo (Add Lo (S I')) L)) (NthL (Add Lo (S I')) L)
+            (NthSwapLLo Lo (Add Lo (S I')) L (LeAddSucc Lo I')))
+          (LeRwL Pivot (NthL (Add I' (S Lo)) L) (NthL (Add Lo (S I')) L)
+            (IdCongr Nat Nat (λ (Q : Nat). NthL Q L) (Add I' (S Lo)) (Add Lo (S I')) (AddSwapSucc I' Lo))
+            (HL I' (LeRefl (S I')))))
+        (AllLeRCong I' (S Lo) Pivot L (SwapL Lo (Add Lo (S I')) L)
+          (λ (M : Nat). λ (Hm : Le (S M) I').
+            NthSwapLMid Lo (Add Lo (S I')) (Add M (S Lo)) L
+              (LeAddL (S Lo) M)
+              (LeRwL (Add Lo (S I')) (Add Lo (S (S M))) (S (Add M (S Lo)))
+                (PosBridgeSs Lo M)
+                (LeAddMonoL Lo (S (S M)) (S I') Hm)))
+          (λ (M : Nat). λ (Hm : Le (S M) I'). HL M (LeUpR (S M) I' Hm))) }
 def AllLeRBaseSwapTy : Term := prog{
-  Π (pivot : Nat) → Π (lo : Nat) → Π (i' : Nat) → Π (l : List Nat) →
-    AllLeR (S i') (S lo) pivot l → AllLeR (S i') lo pivot (SwapL lo (Add lo (S i')) l) }
+  Π (Pivot : Nat) → Π (Lo : Nat) → Π (I' : Nat) → Π (L : List Nat) →
+    AllLeR (S I') (S Lo) Pivot L → AllLeR (S I') Lo Pivot (SwapL Lo (Add Lo (S I')) L) }
 
 -- AllLeRStepTZ : True/g=0 step — the scan element (tested ≤ pivot) extends the ≤-region.
 def AllLeRStepTZ : Term := prog{
-  λ (pivot : Nat). λ (lo : Nat). λ (i : Nat). λ (l : List Nat).
-    λ (e : Id Bool (Leb (NthL (Add lo (S (Add i Z))) l) pivot) True). λ (hL : AllLeR i (S lo) pivot l).
-      AllLeRExtendFar i (S lo) pivot l hL
-        (LeRwL pivot (NthL (Add lo (S (Add i Z))) l) (NthL (Add i (S lo)) l)
-          (IdCongr Nat Nat (λ (q : Nat). NthL q l) (Add lo (S (Add i Z))) (Add i (S lo))
-            (IdTrans Nat (Add lo (S (Add i Z))) (Add lo (S i)) (Add i (S lo))
-              (IdCongr Nat Nat (λ (z : Nat). Add lo (S z)) (Add i Z) i (AddZero i))
-              (IdSym Nat (Add i (S lo)) (Add lo (S i)) (AddSwapSucc i lo))))
-          (LebTrueLe (NthL (Add lo (S (Add i Z))) l) pivot e)) }
+  λ (Pivot : Nat). λ (Lo : Nat). λ (I : Nat). λ (L : List Nat).
+    λ (E : Id Bool (Leb (NthL (Add Lo (S (Add I Z))) L) Pivot) True). λ (HL : AllLeR I (S Lo) Pivot L).
+      AllLeRExtendFar I (S Lo) Pivot L HL
+        (LeRwL Pivot (NthL (Add Lo (S (Add I Z))) L) (NthL (Add I (S Lo)) L)
+          (IdCongr Nat Nat (λ (Q : Nat). NthL Q L) (Add Lo (S (Add I Z))) (Add I (S Lo))
+            (IdTrans Nat (Add Lo (S (Add I Z))) (Add Lo (S I)) (Add I (S Lo))
+              (IdCongr Nat Nat (λ (Z0 : Nat). Add Lo (S Z0)) (Add I Z) I (AddZero I))
+              (IdSym Nat (Add I (S Lo)) (Add Lo (S I)) (AddSwapSucc I Lo))))
+          (LebTrueLe (NthL (Add Lo (S (Add I Z))) L) Pivot E)) }
 def AllLeRStepTZTy : Term := prog{
-  Π (pivot : Nat) → Π (lo : Nat) → Π (i : Nat) → Π (l : List Nat) →
-    Id Bool (Leb (NthL (Add lo (S (Add i Z))) l) pivot) True → AllLeR i (S lo) pivot l → AllLeR (S i) (S lo) pivot l }
+  Π (Pivot : Nat) → Π (Lo : Nat) → Π (I : Nat) → Π (L : List Nat) →
+    Id Bool (Leb (NthL (Add Lo (S (Add I Z))) L) Pivot) True → AllLeR I (S Lo) Pivot L → AllLeR (S I) (S Lo) Pivot L }
 
 -- AllLeRStepSwap : True/g=S g' step — the scan swap moves the tested ≤-element to the
 -- new boundary; interior unchanged (NthSwapLLt), new far element = old scan (NthSwapLLo).
 def AllLeRStepSwap : Term := prog{
-  λ (pivot : Nat). λ (lo : Nat). λ (i : Nat). λ (g' : Nat). λ (l : List Nat).
-    λ (e : Id Bool (Leb (NthL (Add lo (S (Add i (S g')))) l) pivot) True). λ (hL : AllLeR i (S lo) pivot l).
-      AllLeRExtendFar i (S lo) pivot (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)
-        (AllLeRCong i (S lo) pivot l (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)
-          (λ (m : Nat). λ (hm : Le (S m) i).
-            NthSwapLLt (Add lo (S i)) (Add lo (S (Add i (S g')))) (Add m (S lo)) l
-              (LeRwL (Add lo (S i)) (Add lo (S (S m))) (S (Add m (S lo)))
-                (PosBridgeSs lo m)
-                (LeAddMonoL lo (S (S m)) (S i) hm)))
-          hL)
-        (LeRwL pivot (NthL (Add lo (S (Add i (S g')))) l) (NthL (Add i (S lo)) (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l))
+  λ (Pivot : Nat). λ (Lo : Nat). λ (I : Nat). λ (G' : Nat). λ (L : List Nat).
+    λ (E : Id Bool (Leb (NthL (Add Lo (S (Add I (S G')))) L) Pivot) True). λ (HL : AllLeR I (S Lo) Pivot L).
+      AllLeRExtendFar I (S Lo) Pivot (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)
+        (AllLeRCong I (S Lo) Pivot L (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)
+          (λ (M : Nat). λ (Hm : Le (S M) I).
+            NthSwapLLt (Add Lo (S I)) (Add Lo (S (Add I (S G')))) (Add M (S Lo)) L
+              (LeRwL (Add Lo (S I)) (Add Lo (S (S M))) (S (Add M (S Lo)))
+                (PosBridgeSs Lo M)
+                (LeAddMonoL Lo (S (S M)) (S I) Hm)))
+          HL)
+        (LeRwL Pivot (NthL (Add Lo (S (Add I (S G')))) L) (NthL (Add I (S Lo)) (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L))
           (IdTrans Nat
-            (NthL (Add lo (S (Add i (S g')))) l)
-            (NthL (Add lo (S i)) (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l))
-            (NthL (Add i (S lo)) (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l))
-            (IdSym Nat (NthL (Add lo (S i)) (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)) (NthL (Add lo (S (Add i (S g')))) l)
-              (NthSwapLLo (Add lo (S i)) (Add lo (S (Add i (S g')))) l (BndSl lo i g')))
-            (IdCongr Nat Nat (λ (q : Nat). NthL q (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)) (Add lo (S i)) (Add i (S lo))
-              (IdSym Nat (Add i (S lo)) (Add lo (S i)) (AddSwapSucc i lo))))
-          (LebTrueLe (NthL (Add lo (S (Add i (S g')))) l) pivot e)) }
+            (NthL (Add Lo (S (Add I (S G')))) L)
+            (NthL (Add Lo (S I)) (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L))
+            (NthL (Add I (S Lo)) (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L))
+            (IdSym Nat (NthL (Add Lo (S I)) (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)) (NthL (Add Lo (S (Add I (S G')))) L)
+              (NthSwapLLo (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L (BndSl Lo I G')))
+            (IdCongr Nat Nat (λ (Q : Nat). NthL Q (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)) (Add Lo (S I)) (Add I (S Lo))
+              (IdSym Nat (Add I (S Lo)) (Add Lo (S I)) (AddSwapSucc I Lo))))
+          (LebTrueLe (NthL (Add Lo (S (Add I (S G')))) L) Pivot E)) }
 def AllLeRStepSwapTy : Term := prog{
-  Π (pivot : Nat) → Π (lo : Nat) → Π (i : Nat) → Π (g' : Nat) → Π (l : List Nat) →
-    Id Bool (Leb (NthL (Add lo (S (Add i (S g')))) l) pivot) True → AllLeR i (S lo) pivot l →
-    AllLeR (S i) (S lo) pivot (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l) }
+  Π (Pivot : Nat) → Π (Lo : Nat) → Π (I : Nat) → Π (G' : Nat) → Π (L : List Nat) →
+    Id Bool (Leb (NthL (Add Lo (S (Add I (S G')))) L) Pivot) True → AllLeR I (S Lo) Pivot L →
+    AllLeR (S I) (S Lo) Pivot (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L) }
 
 -- PartScanRangeLAllLeR : the scanned ≤-region [lo, lo+finalI) is all ≤ pivot. Induction
 -- on k mirroring count_partScanRangeL's bound threading; the AllLeR precondition grows via
 -- the step helpers (leb fact from remember-scrutinee, threaded through the g-elim); the base
 -- converts to offset lo via AllLeRBaseSwap / AllLeREmpty.
 def PartScanRangeLAllLeR : Term := prog{
-  λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
-    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
-        Le (Add lo (S (Add kz (Add i g)))) (Len l) →
-        Id Nat (NthL lo l) pivot →
-        AllLeR i (S lo) pivot l →
-        AllLeR (PartScanIdxRangeL pivot lo kz i g l) lo pivot (PartScanRangeL pivot lo kz i g l)) {
-      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        λ (hle : Le (Add lo (S (Add Z (Add i g)))) (Len l)). λ (hpv : Id Nat (NthL lo l) pivot). λ (hL : AllLeR i (S lo) pivot l).
-        elim i return (λ (iz : Nat).
-            Le (Add lo (S (Add Z (Add iz g)))) (Len l) → Id Nat (NthL lo l) pivot → AllLeR iz (S lo) pivot l →
-            AllLeR iz lo pivot (elim iz return (λ (iy : Nat). List Nat) { Z => l, S (i') iih => SwapL lo (Add lo (S i')) l })) {
-          Z => λ (hle0 : Le (Add lo (S (Add Z (Add Z g)))) (Len l)). λ (hpv0 : Id Nat (NthL lo l) pivot). λ (hL0 : AllLeR Z (S lo) pivot l).
-            AllLeREmpty lo pivot l,
-          S (i') iih => λ (hle0 : Le (Add lo (S (Add Z (Add (S i') g)))) (Len l)). λ (hpv0 : Id Nat (NthL lo l) pivot). λ (hL0 : AllLeR (S i') (S lo) pivot l).
-            AllLeRBaseSwap pivot lo i' l hL0
-        } hle hpv hL,
-      S (k') ih => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        λ (hle : Le (Add lo (S (Add (S k') (Add i g)))) (Len l)). λ (hpv : Id Nat (NthL lo l) pivot). λ (hL : AllLeR i (S lo) pivot l).
-        elim (Leb (NthL (Add lo (S (Add i g))) l) pivot)
-          return (λ (b : Bool). Id Bool (Leb (NthL (Add lo (S (Add i g))) l) pivot) b →
-            AllLeR (elim b return (λ (bw : Bool). Nat) {
-                True => elim g return (λ (gz : Nat). Nat) {
-                  Z => PartScanIdxRangeL pivot lo k' (S i) Z l,
-                  S (g') gih => PartScanIdxRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) },
-                False => PartScanIdxRangeL pivot lo k' i (S g) l }) lo pivot
-              (elim b return (λ (bw : Bool). List Nat) {
-                True => elim g return (λ (gz : Nat). List Nat) {
-                  Z => PartScanRangeL pivot lo k' (S i) Z l,
-                  S (g') gih => PartScanRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) },
-                False => PartScanRangeL pivot lo k' i (S g) l })) {
-          True => λ (e : Id Bool (Leb (NthL (Add lo (S (Add i g))) l) pivot) True).
-            (elim g return (λ (gz : Nat).
-                Id Bool (Leb (NthL (Add lo (S (Add i gz))) l) pivot) True →
-                Le (Add lo (S (Add (S k') (Add i gz)))) (Len l) →
-                AllLeR (elim gz return (λ (gy : Nat). Nat) {
-                    Z => PartScanIdxRangeL pivot lo k' (S i) Z l,
-                    S (g') gih => PartScanIdxRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i gz))) l) }) lo pivot
-                  (elim gz return (λ (gy : Nat). List Nat) {
-                    Z => PartScanRangeL pivot lo k' (S i) Z l,
-                    S (g') gih => PartScanRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i gz))) l) })) {
-              Z => λ (e0 : Id Bool (Leb (NthL (Add lo (S (Add i Z))) l) pivot) True). λ (hleZ : Le (Add lo (S (Add (S k') (Add i Z)))) (Len l)).
-                ih (S i) Z l
-                  (LeRwL (Len l) (Add lo (S (Add (S k') (Add i Z)))) (Add lo (S (Add k' (Add (S i) Z))))
-                    (IdCongr Nat Nat (λ (a : Nat). Add lo (S a)) (Add (S k') (Add i Z)) (Add k' (Add (S i) Z)) (HshiftTrue k' i Z))
-                    hleZ)
-                  hpv
-                  (AllLeRStepTZ pivot lo i l e0 hL),
-              S (g') gih => λ (e0 : Id Bool (Leb (NthL (Add lo (S (Add i (S g')))) l) pivot) True). λ (hleS : Le (Add lo (S (Add (S k') (Add i (S g'))))) (Len l)).
-                ih (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)
-                  (LeRwR (Add lo (S (Add k' (Add (S i) (S g'))))) (Len l)
-                     (Len (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l))
-                     (IdSym Nat (Len (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)) (Len l)
-                       (LenSwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l))
-                     (LeRwL (Len l) (Add lo (S (Add (S k') (Add i (S g'))))) (Add lo (S (Add k' (Add (S i) (S g')))))
-                       (IdCongr Nat Nat (λ (a : Nat). Add lo (S a)) (Add (S k') (Add i (S g'))) (Add k' (Add (S i) (S g'))) (HshiftTrue k' i (S g')))
-                       hleS))
-                  (IdTrans Nat (NthL lo (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)) (NthL lo l) pivot
-                    (NthSwapLLt (Add lo (S i)) (Add lo (S (Add i (S g')))) lo l (LeAddSucc lo i))
-                    hpv)
-                  (AllLeRStepSwap pivot lo i g' l e0 hL)
-            }) e hle,
-          False => λ (efalse : Id Bool (Leb (NthL (Add lo (S (Add i g))) l) pivot) False).
-            ih i (S g) l
-              (LeRwL (Len l) (Add lo (S (Add (S k') (Add i g)))) (Add lo (S (Add k' (Add i (S g)))))
-                (IdCongr Nat Nat (λ (a : Nat). Add lo (S a)) (Add (S k') (Add i g)) (Add k' (Add i (S g))) (HshiftFalse k' i g))
-                hle)
-              hpv
-              hL
+  λ (Pivot : Nat). λ (Lo : Nat). λ (K : Nat).
+    elim K return (λ (Kz : Nat). Π (I : Nat) → Π (G : Nat) → Π (L : List Nat) →
+        Le (Add Lo (S (Add Kz (Add I G)))) (Len L) →
+        Id Nat (NthL Lo L) Pivot →
+        AllLeR I (S Lo) Pivot L →
+        AllLeR (PartScanIdxRangeL Pivot Lo Kz I G L) Lo Pivot (PartScanRangeL Pivot Lo Kz I G L)) {
+      Z => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        λ (Hle : Le (Add Lo (S (Add Z (Add I G)))) (Len L)). λ (Hpv : Id Nat (NthL Lo L) Pivot). λ (HL : AllLeR I (S Lo) Pivot L).
+        elim I return (λ (Iz : Nat).
+            Le (Add Lo (S (Add Z (Add Iz G)))) (Len L) → Id Nat (NthL Lo L) Pivot → AllLeR Iz (S Lo) Pivot L →
+            AllLeR Iz Lo Pivot (elim Iz return (λ (Iy : Nat). List Nat) { Z => L, S (I') Iih => SwapL Lo (Add Lo (S I')) L })) {
+          Z => λ (Hle0 : Le (Add Lo (S (Add Z (Add Z G)))) (Len L)). λ (Hpv0 : Id Nat (NthL Lo L) Pivot). λ (HL0 : AllLeR Z (S Lo) Pivot L).
+            AllLeREmpty Lo Pivot L,
+          S (I') Iih => λ (Hle0 : Le (Add Lo (S (Add Z (Add (S I') G)))) (Len L)). λ (Hpv0 : Id Nat (NthL Lo L) Pivot). λ (HL0 : AllLeR (S I') (S Lo) Pivot L).
+            AllLeRBaseSwap Pivot Lo I' L HL0
+        } Hle Hpv HL,
+      S (K') Ih => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        λ (Hle : Le (Add Lo (S (Add (S K') (Add I G)))) (Len L)). λ (Hpv : Id Nat (NthL Lo L) Pivot). λ (HL : AllLeR I (S Lo) Pivot L).
+        elim (Leb (NthL (Add Lo (S (Add I G))) L) Pivot)
+          return (λ (B : Bool). Id Bool (Leb (NthL (Add Lo (S (Add I G))) L) Pivot) B →
+            AllLeR (elim B return (λ (Bw : Bool). Nat) {
+                True => elim G return (λ (Gz : Nat). Nat) {
+                  Z => PartScanIdxRangeL Pivot Lo K' (S I) Z L,
+                  S (G') Gih => PartScanIdxRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) },
+                False => PartScanIdxRangeL Pivot Lo K' I (S G) L }) Lo Pivot
+              (elim B return (λ (Bw : Bool). List Nat) {
+                True => elim G return (λ (Gz : Nat). List Nat) {
+                  Z => PartScanRangeL Pivot Lo K' (S I) Z L,
+                  S (G') Gih => PartScanRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) },
+                False => PartScanRangeL Pivot Lo K' I (S G) L })) {
+          True => λ (E : Id Bool (Leb (NthL (Add Lo (S (Add I G))) L) Pivot) True).
+            (elim G return (λ (Gz : Nat).
+                Id Bool (Leb (NthL (Add Lo (S (Add I Gz))) L) Pivot) True →
+                Le (Add Lo (S (Add (S K') (Add I Gz)))) (Len L) →
+                AllLeR (elim Gz return (λ (Gy : Nat). Nat) {
+                    Z => PartScanIdxRangeL Pivot Lo K' (S I) Z L,
+                    S (G') Gih => PartScanIdxRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I Gz))) L) }) Lo Pivot
+                  (elim Gz return (λ (Gy : Nat). List Nat) {
+                    Z => PartScanRangeL Pivot Lo K' (S I) Z L,
+                    S (G') Gih => PartScanRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I Gz))) L) })) {
+              Z => λ (E0 : Id Bool (Leb (NthL (Add Lo (S (Add I Z))) L) Pivot) True). λ (HleZ : Le (Add Lo (S (Add (S K') (Add I Z)))) (Len L)).
+                Ih (S I) Z L
+                  (LeRwL (Len L) (Add Lo (S (Add (S K') (Add I Z)))) (Add Lo (S (Add K' (Add (S I) Z))))
+                    (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A)) (Add (S K') (Add I Z)) (Add K' (Add (S I) Z)) (HshiftTrue K' I Z))
+                    HleZ)
+                  Hpv
+                  (AllLeRStepTZ Pivot Lo I L E0 HL),
+              S (G') Gih => λ (E0 : Id Bool (Leb (NthL (Add Lo (S (Add I (S G')))) L) Pivot) True). λ (HleS : Le (Add Lo (S (Add (S K') (Add I (S G'))))) (Len L)).
+                Ih (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)
+                  (LeRwR (Add Lo (S (Add K' (Add (S I) (S G'))))) (Len L)
+                     (Len (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L))
+                     (IdSym Nat (Len (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)) (Len L)
+                       (LenSwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L))
+                     (LeRwL (Len L) (Add Lo (S (Add (S K') (Add I (S G'))))) (Add Lo (S (Add K' (Add (S I) (S G')))))
+                       (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A)) (Add (S K') (Add I (S G'))) (Add K' (Add (S I) (S G'))) (HshiftTrue K' I (S G')))
+                       HleS))
+                  (IdTrans Nat (NthL Lo (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)) (NthL Lo L) Pivot
+                    (NthSwapLLt (Add Lo (S I)) (Add Lo (S (Add I (S G')))) Lo L (LeAddSucc Lo I))
+                    Hpv)
+                  (AllLeRStepSwap Pivot Lo I G' L E0 HL)
+            }) E Hle,
+          False => λ (Efalse : Id Bool (Leb (NthL (Add Lo (S (Add I G))) L) Pivot) False).
+            Ih I (S G) L
+              (LeRwL (Len L) (Add Lo (S (Add (S K') (Add I G)))) (Add Lo (S (Add K' (Add I (S G)))))
+                (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A)) (Add (S K') (Add I G)) (Add K' (Add I (S G))) (HshiftFalse K' I G))
+                Hle)
+              Hpv
+              HL
         } Refl
     } }
 def PartScanRangeLAllLeRTy : Term := prog{
-  Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
-    Le (Add lo (S (Add k (Add i g)))) (Len l) →
-    Id Nat (NthL lo l) pivot →
-    AllLeR i (S lo) pivot l →
-    AllLeR (PartScanIdxRangeL pivot lo k i g l) lo pivot (PartScanRangeL pivot lo k i g l) }
+  Π (Pivot : Nat) → Π (Lo : Nat) → Π (K : Nat) → Π (I : Nat) → Π (G : Nat) → Π (L : List Nat) →
+    Le (Add Lo (S (Add K (Add I G)))) (Len L) →
+    Id Nat (NthL Lo L) Pivot →
+    AllLeR I (S Lo) Pivot L →
+    AllLeR (PartScanIdxRangeL Pivot Lo K I G L) Lo Pivot (PartScanRangeL Pivot Lo K I G L) }
 /-! ## AllGtR (gap-side) region invariant — the mirror of the ≤-region (§22, M22-c step 2)
 
     The gap's OFFSET shifts each step (`Add (S i) lo` → `Add (S (S i)) lo`), unlike the
@@ -2442,231 +2442,231 @@ def PartScanRangeLAllLeRTy : Term := prog{
     (messier) offset arithmetic. -/
 
 def AllGtRExtendFar : Term := prog{
-  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
-    λ (h : AllGtR w lo p l). λ (hnew : Le (S p) (NthL (Add w lo) l)).
-    λ (m : Nat).
-      elim (Leb (S m) w) return (λ (b : Bool). Id Bool (Leb (S m) w) b → Le (S m) (S w) → Le (S p) (NthL (Add m lo) l)) {
-        True => λ (e : Id Bool (Leb (S m) w) True). λ (hm : Le (S m) (S w)). h m (LebTrueLe (S m) w e),
-        False => λ (e : Id Bool (Leb (S m) w) False). λ (hm : Le (S m) (S w)).
-          LeRwR (S p) (NthL (Add w lo) l) (NthL (Add m lo) l)
-            (IdCongr Nat Nat (λ (q : Nat). NthL q l) (Add w lo) (Add m lo)
-              (IdCongr Nat Nat (λ (z : Nat). Add z lo) w m (IdSym Nat m w (LeAntisym m w hm (LebFalseGt (S m) w e)))))
-            hnew
+  λ (W : Nat). λ (Lo : Nat). λ (P : Nat). λ (L : List Nat).
+    λ (H : AllGtR W Lo P L). λ (Hnew : Le (S P) (NthL (Add W Lo) L)).
+    λ (M : Nat).
+      elim (Leb (S M) W) return (λ (B : Bool). Id Bool (Leb (S M) W) B → Le (S M) (S W) → Le (S P) (NthL (Add M Lo) L)) {
+        True => λ (E : Id Bool (Leb (S M) W) True). λ (Hm : Le (S M) (S W)). H M (LebTrueLe (S M) W E),
+        False => λ (E : Id Bool (Leb (S M) W) False). λ (Hm : Le (S M) (S W)).
+          LeRwR (S P) (NthL (Add W Lo) L) (NthL (Add M Lo) L)
+            (IdCongr Nat Nat (λ (Q : Nat). NthL Q L) (Add W Lo) (Add M Lo)
+              (IdCongr Nat Nat (λ (Z0 : Nat). Add Z0 Lo) W M (IdSym Nat M W (LeAntisym M W Hm (LebFalseGt (S M) W E)))))
+            Hnew
       } Refl }
 def AllGtRExtendFarTy : Term := prog{
-  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
-    AllGtR w lo p l → Le (S p) (NthL (Add w lo) l) → AllGtR (S w) lo p l }
+  Π (W : Nat) → Π (Lo : Nat) → Π (P : Nat) → Π (L : List Nat) →
+    AllGtR W Lo P L → Le (S P) (NthL (Add W Lo) L) → AllGtR (S W) Lo P L }
 
 def AllGtRCong : Term := prog{
-  λ (w : Nat). λ (off : Nat). λ (p : Nat). λ (l : List Nat). λ (l' : List Nat).
-    λ (heq : Π (m : Nat) → Le (S m) w → Id Nat (NthL (Add m off) l') (NthL (Add m off) l)).
-    λ (h : AllGtR w off p l).
-    λ (m : Nat). λ (hm : Le (S m) w).
-      LeRwR (S p) (NthL (Add m off) l) (NthL (Add m off) l')
-        (IdSym Nat (NthL (Add m off) l') (NthL (Add m off) l) (heq m hm))
-        (h m hm) }
+  λ (W : Nat). λ (Off : Nat). λ (P : Nat). λ (L : List Nat). λ (L' : List Nat).
+    λ (Heq : Π (M : Nat) → Le (S M) W → Id Nat (NthL (Add M Off) L') (NthL (Add M Off) L)).
+    λ (H : AllGtR W Off P L).
+    λ (M : Nat). λ (Hm : Le (S M) W).
+      LeRwR (S P) (NthL (Add M Off) L) (NthL (Add M Off) L')
+        (IdSym Nat (NthL (Add M Off) L') (NthL (Add M Off) L) (Heq M Hm))
+        (H M Hm) }
 def AllGtRCongTy : Term := prog{
-  Π (w : Nat) → Π (off : Nat) → Π (p : Nat) → Π (l : List Nat) → Π (l' : List Nat) →
-    (Π (m : Nat) → Le (S m) w → Id Nat (NthL (Add m off) l') (NthL (Add m off) l)) →
-    AllGtR w off p l → AllGtR w off p l' }
+  Π (W : Nat) → Π (Off : Nat) → Π (P : Nat) → Π (L : List Nat) → Π (L' : List Nat) →
+    (Π (M : Nat) → Le (S M) W → Id Nat (NthL (Add M Off) L') (NthL (Add M Off) L)) →
+    AllGtR W Off P L → AllGtR W Off P L' }
 
 def OffBridge : Term := prog{
-  λ (lo : Nat). λ (i' : Nat).
-    IdCongr Nat Nat (λ (z : Nat). S z) (S (Add i' lo)) (Add lo (S i'))
-      (IdTrans Nat (S (Add i' lo)) (S (Add lo i')) (Add lo (S i'))
-        (IdCongr Nat Nat (λ (z : Nat). S z) (Add i' lo) (Add lo i') (AddComm i' lo))
-        (IdSym Nat (Add lo (S i')) (S (Add lo i')) (AddSucc lo i'))) }
-def OffBridgeTy : Term := prog{ Π (lo : Nat) → Π (i' : Nat) → Id Nat (Add (S (S i')) lo) (S (Add lo (S i'))) }
+  λ (Lo : Nat). λ (I' : Nat).
+    IdCongr Nat Nat (λ (Z0 : Nat). S Z0) (S (Add I' Lo)) (Add Lo (S I'))
+      (IdTrans Nat (S (Add I' Lo)) (S (Add Lo I')) (Add Lo (S I'))
+        (IdCongr Nat Nat (λ (Z0 : Nat). S Z0) (Add I' Lo) (Add Lo I') (AddComm I' Lo))
+        (IdSym Nat (Add Lo (S I')) (S (Add Lo I')) (AddSucc Lo I'))) }
+def OffBridgeTy : Term := prog{ Π (Lo : Nat) → Π (I' : Nat) → Id Nat (Add (S (S I')) Lo) (S (Add Lo (S I'))) }
 
 def AllGtRBaseSwap : Term := prog{
-  λ (pivot : Nat). λ (lo : Nat). λ (i' : Nat). λ (g : Nat). λ (l : List Nat).
-    λ (hG : AllGtR g (Add (S (S i')) lo) pivot l).
-      AllGtRCong g (Add (S (S i')) lo) pivot l (SwapL lo (Add lo (S i')) l)
-        (λ (m : Nat). λ (hm : Le (S m) g).
-          NthSwapLGt lo (Add lo (S i')) (Add m (Add (S (S i')) lo)) l
-            (LeRwL (Add m (Add (S (S i')) lo)) (Add (S (S i')) lo) (S (Add lo (S i')))
-              (OffBridge lo i')
-              (LeAddL (Add (S (S i')) lo) m)))
-        hG }
+  λ (Pivot : Nat). λ (Lo : Nat). λ (I' : Nat). λ (G : Nat). λ (L : List Nat).
+    λ (HG : AllGtR G (Add (S (S I')) Lo) Pivot L).
+      AllGtRCong G (Add (S (S I')) Lo) Pivot L (SwapL Lo (Add Lo (S I')) L)
+        (λ (M : Nat). λ (Hm : Le (S M) G).
+          NthSwapLGt Lo (Add Lo (S I')) (Add M (Add (S (S I')) Lo)) L
+            (LeRwL (Add M (Add (S (S I')) Lo)) (Add (S (S I')) Lo) (S (Add Lo (S I')))
+              (OffBridge Lo I')
+              (LeAddL (Add (S (S I')) Lo) M)))
+        HG }
 def AllGtRBaseSwapTy : Term := prog{
-  Π (pivot : Nat) → Π (lo : Nat) → Π (i' : Nat) → Π (g : Nat) → Π (l : List Nat) →
-    AllGtR g (Add (S (S i')) lo) pivot l → AllGtR g (Add (S (S i')) lo) pivot (SwapL lo (Add lo (S i')) l) }
+  Π (Pivot : Nat) → Π (Lo : Nat) → Π (I' : Nat) → Π (G : Nat) → Π (L : List Nat) →
+    AllGtR G (Add (S (S I')) Lo) Pivot L → AllGtR G (Add (S (S I')) Lo) Pivot (SwapL Lo (Add Lo (S I')) L) }
 
 def PosBridgeScan : Term := prog{
-  λ (lo : Nat). λ (i : Nat). λ (g : Nat).
-    IdTrans Nat (Add lo (S (Add i g))) (S (Add lo (Add i g))) (Add g (Add (S i) lo))
-      (AddSucc lo (Add i g))
-      (IdTrans Nat (S (Add lo (Add i g))) (S (Add g (Add i lo))) (Add g (Add (S i) lo))
-        (IdCongr Nat Nat (λ (z : Nat). S z) (Add lo (Add i g)) (Add g (Add i lo))
-          (IdTrans Nat (Add lo (Add i g)) (Add (Add lo i) g) (Add g (Add i lo))
-            (IdSym Nat (Add (Add lo i) g) (Add lo (Add i g)) (AddAssoc lo i g))
-            (IdTrans Nat (Add (Add lo i) g) (Add g (Add lo i)) (Add g (Add i lo))
-              (AddComm (Add lo i) g)
-              (IdCongr Nat Nat (λ (z : Nat). Add g z) (Add lo i) (Add i lo) (AddComm lo i)))))
-        (IdSym Nat (Add g (Add (S i) lo)) (S (Add g (Add i lo))) (AddSucc g (Add i lo)))) }
-def PosBridgeScanTy : Term := prog{ Π (lo : Nat) → Π (i : Nat) → Π (g : Nat) → Id Nat (Add lo (S (Add i g))) (Add g (Add (S i) lo)) }
+  λ (Lo : Nat). λ (I : Nat). λ (G : Nat).
+    IdTrans Nat (Add Lo (S (Add I G))) (S (Add Lo (Add I G))) (Add G (Add (S I) Lo))
+      (AddSucc Lo (Add I G))
+      (IdTrans Nat (S (Add Lo (Add I G))) (S (Add G (Add I Lo))) (Add G (Add (S I) Lo))
+        (IdCongr Nat Nat (λ (Z0 : Nat). S Z0) (Add Lo (Add I G)) (Add G (Add I Lo))
+          (IdTrans Nat (Add Lo (Add I G)) (Add (Add Lo I) G) (Add G (Add I Lo))
+            (IdSym Nat (Add (Add Lo I) G) (Add Lo (Add I G)) (AddAssoc Lo I G))
+            (IdTrans Nat (Add (Add Lo I) G) (Add G (Add Lo I)) (Add G (Add I Lo))
+              (AddComm (Add Lo I) G)
+              (IdCongr Nat Nat (λ (Z0 : Nat). Add G Z0) (Add Lo I) (Add I Lo) (AddComm Lo I)))))
+        (IdSym Nat (Add G (Add (S I) Lo)) (S (Add G (Add I Lo))) (AddSucc G (Add I Lo)))) }
+def PosBridgeScanTy : Term := prog{ Π (Lo : Nat) → Π (I : Nat) → Π (G : Nat) → Id Nat (Add Lo (S (Add I G))) (Add G (Add (S I) Lo)) }
 
 def AllGtRStepFalse : Term := prog{
-  λ (pivot : Nat). λ (lo : Nat). λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-    λ (efalse : Id Bool (Leb (NthL (Add lo (S (Add i g))) l) pivot) False). λ (hG : AllGtR g (Add (S i) lo) pivot l).
-      AllGtRExtendFar g (Add (S i) lo) pivot l hG
-        (LeRwR (S pivot) (NthL (Add lo (S (Add i g))) l) (NthL (Add g (Add (S i) lo)) l)
-          (IdCongr Nat Nat (λ (q : Nat). NthL q l) (Add lo (S (Add i g))) (Add g (Add (S i) lo)) (PosBridgeScan lo i g))
-          (LebFalseGt (NthL (Add lo (S (Add i g))) l) pivot efalse)) }
+  λ (Pivot : Nat). λ (Lo : Nat). λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+    λ (Efalse : Id Bool (Leb (NthL (Add Lo (S (Add I G))) L) Pivot) False). λ (HG : AllGtR G (Add (S I) Lo) Pivot L).
+      AllGtRExtendFar G (Add (S I) Lo) Pivot L HG
+        (LeRwR (S Pivot) (NthL (Add Lo (S (Add I G))) L) (NthL (Add G (Add (S I) Lo)) L)
+          (IdCongr Nat Nat (λ (Q : Nat). NthL Q L) (Add Lo (S (Add I G))) (Add G (Add (S I) Lo)) (PosBridgeScan Lo I G))
+          (LebFalseGt (NthL (Add Lo (S (Add I G))) L) Pivot Efalse)) }
 def AllGtRStepFalseTy : Term := prog{
-  Π (pivot : Nat) → Π (lo : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
-    Id Bool (Leb (NthL (Add lo (S (Add i g))) l) pivot) False → AllGtR g (Add (S i) lo) pivot l →
-    AllGtR (S g) (Add (S i) lo) pivot l }
+  Π (Pivot : Nat) → Π (Lo : Nat) → Π (I : Nat) → Π (G : Nat) → Π (L : List Nat) →
+    Id Bool (Leb (NthL (Add Lo (S (Add I G))) L) Pivot) False → AllGtR G (Add (S I) Lo) Pivot L →
+    AllGtR (S G) (Add (S I) Lo) Pivot L }
 
 def BndGapUpper : Term := prog{
-  λ (lo : Nat). λ (i : Nat). λ (g' : Nat). λ (m : Nat). λ (hm : Le (S m) g').
-    LeRwR (S (Add m (Add (S (S i)) lo))) (Add lo (S (S (Add i g')))) (Add lo (S (Add i (S g'))))
-      (IdCongr Nat Nat (λ (z : Nat). Add lo (S z)) (S (Add i g')) (Add i (S g')) (IdSym Nat (Add i (S g')) (S (Add i g')) (AddSucc i g')))
-      (LeRwL (Add lo (S (S (Add i g')))) (Add lo (S (S (S (Add i m))))) (S (Add m (Add (S (S i)) lo)))
-        (IdTrans Nat (Add lo (S (S (S (Add i m))))) (S (Add lo (S (S (Add i m))))) (S (Add m (Add (S (S i)) lo)))
-          (AddSucc lo (S (S (Add i m))))
-          (IdCongr Nat Nat (λ (z : Nat). S z) (Add lo (S (S (Add i m)))) (Add m (Add (S (S i)) lo)) (PosBridgeScan lo (S i) m)))
-        (LeAddMonoL lo (S (S (S (Add i m)))) (S (S (Add i g')))
-          (LeRwL (Add i g') (Add i (S m)) (S (Add i m)) (AddSucc i m) (LeAddMonoL i (S m) g' hm)))) }
+  λ (Lo : Nat). λ (I : Nat). λ (G' : Nat). λ (M : Nat). λ (Hm : Le (S M) G').
+    LeRwR (S (Add M (Add (S (S I)) Lo))) (Add Lo (S (S (Add I G')))) (Add Lo (S (Add I (S G'))))
+      (IdCongr Nat Nat (λ (Z0 : Nat). Add Lo (S Z0)) (S (Add I G')) (Add I (S G')) (IdSym Nat (Add I (S G')) (S (Add I G')) (AddSucc I G')))
+      (LeRwL (Add Lo (S (S (Add I G')))) (Add Lo (S (S (S (Add I M))))) (S (Add M (Add (S (S I)) Lo)))
+        (IdTrans Nat (Add Lo (S (S (S (Add I M))))) (S (Add Lo (S (S (Add I M))))) (S (Add M (Add (S (S I)) Lo)))
+          (AddSucc Lo (S (S (Add I M))))
+          (IdCongr Nat Nat (λ (Z0 : Nat). S Z0) (Add Lo (S (S (Add I M)))) (Add M (Add (S (S I)) Lo)) (PosBridgeScan Lo (S I) M)))
+        (LeAddMonoL Lo (S (S (S (Add I M)))) (S (S (Add I G')))
+          (LeRwL (Add I G') (Add I (S M)) (S (Add I M)) (AddSucc I M) (LeAddMonoL I (S M) G' Hm)))) }
 def BndGapUpperTy : Term := prog{
-  Π (lo : Nat) → Π (i : Nat) → Π (g' : Nat) → Π (m : Nat) → Le (S m) g' →
-    Le (S (Add m (Add (S (S i)) lo))) (Add lo (S (Add i (S g')))) }
+  Π (Lo : Nat) → Π (I : Nat) → Π (G' : Nat) → Π (M : Nat) → Le (S M) G' →
+    Le (S (Add M (Add (S (S I)) Lo))) (Add Lo (S (Add I (S G')))) }
 
 def AllGtRStepSwap : Term := prog{
-  λ (pivot : Nat). λ (lo : Nat). λ (i : Nat). λ (g' : Nat). λ (l : List Nat).
-    λ (hlen : Le (S (Add lo (S (Add i (S g'))))) (Len l)).
-    λ (e : Id Bool (Leb (NthL (Add lo (S (Add i (S g')))) l) pivot) True). λ (hG : AllGtR (S g') (Add (S i) lo) pivot l).
-      AllGtRExtendFar g' (Add (S (S i)) lo) pivot (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)
-        (AllGtRCong g' (Add (S (S i)) lo) pivot l (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)
-          (λ (m : Nat). λ (hm : Le (S m) g').
-            NthSwapLMid (Add lo (S i)) (Add lo (S (Add i (S g')))) (Add m (Add (S (S i)) lo)) l
-              (LeRwL (Add m (Add (S (S i)) lo)) (Add (S (S i)) lo) (S (Add lo (S i)))
-                (OffBridge lo i)
-                (LeAddL (Add (S (S i)) lo) m))
-              (BndGapUpper lo i g' m hm))
-          (λ (m : Nat). λ (hm : Le (S m) g').
-            LeRwR (S pivot) (NthL (Add (S m) (Add (S i) lo)) l) (NthL (Add m (Add (S (S i)) lo)) l)
-              (IdCongr Nat Nat (λ (q : Nat). NthL q l) (Add (S m) (Add (S i) lo)) (Add m (Add (S (S i)) lo))
-                (IdSym Nat (Add m (Add (S (S i)) lo)) (Add (S m) (Add (S i) lo)) (AddSucc m (S (Add i lo)))))
-              (hG (S m) hm)))
-        (LeRwR (S pivot) (NthL (Add lo (S i)) l) (NthL (Add g' (Add (S (S i)) lo)) (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l))
+  λ (Pivot : Nat). λ (Lo : Nat). λ (I : Nat). λ (G' : Nat). λ (L : List Nat).
+    λ (Hlen : Le (S (Add Lo (S (Add I (S G'))))) (Len L)).
+    λ (E : Id Bool (Leb (NthL (Add Lo (S (Add I (S G')))) L) Pivot) True). λ (HG : AllGtR (S G') (Add (S I) Lo) Pivot L).
+      AllGtRExtendFar G' (Add (S (S I)) Lo) Pivot (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)
+        (AllGtRCong G' (Add (S (S I)) Lo) Pivot L (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)
+          (λ (M : Nat). λ (Hm : Le (S M) G').
+            NthSwapLMid (Add Lo (S I)) (Add Lo (S (Add I (S G')))) (Add M (Add (S (S I)) Lo)) L
+              (LeRwL (Add M (Add (S (S I)) Lo)) (Add (S (S I)) Lo) (S (Add Lo (S I)))
+                (OffBridge Lo I)
+                (LeAddL (Add (S (S I)) Lo) M))
+              (BndGapUpper Lo I G' M Hm))
+          (λ (M : Nat). λ (Hm : Le (S M) G').
+            LeRwR (S Pivot) (NthL (Add (S M) (Add (S I) Lo)) L) (NthL (Add M (Add (S (S I)) Lo)) L)
+              (IdCongr Nat Nat (λ (Q : Nat). NthL Q L) (Add (S M) (Add (S I) Lo)) (Add M (Add (S (S I)) Lo))
+                (IdSym Nat (Add M (Add (S (S I)) Lo)) (Add (S M) (Add (S I) Lo)) (AddSucc M (S (Add I Lo)))))
+              (HG (S M) Hm)))
+        (LeRwR (S Pivot) (NthL (Add Lo (S I)) L) (NthL (Add G' (Add (S (S I)) Lo)) (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L))
           (IdTrans Nat
-            (NthL (Add lo (S i)) l)
-            (NthL (Add lo (S (Add i (S g')))) (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l))
-            (NthL (Add g' (Add (S (S i)) lo)) (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l))
-            (IdSym Nat (NthL (Add lo (S (Add i (S g')))) (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)) (NthL (Add lo (S i)) l)
-              (NthSwapLHi (Add lo (S i)) (Add lo (S (Add i (S g')))) l (BndSl lo i g') hlen))
-            (IdCongr Nat Nat (λ (q : Nat). NthL q (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)) (Add lo (S (Add i (S g')))) (Add g' (Add (S (S i)) lo))
-              (IdTrans Nat (Add lo (S (Add i (S g')))) (Add lo (S (S (Add i g')))) (Add g' (Add (S (S i)) lo))
-                (IdCongr Nat Nat (λ (z : Nat). Add lo (S z)) (Add i (S g')) (S (Add i g')) (AddSucc i g'))
-                (PosBridgeScan lo (S i) g'))))
-          (LeRwR (S pivot) (NthL (Add (S i) lo) l) (NthL (Add lo (S i)) l)
-            (IdCongr Nat Nat (λ (q : Nat). NthL q l) (Add (S i) lo) (Add lo (S i)) (AddComm (S i) lo))
-            (AllGtRHead g' (Add (S i) lo) pivot l hG))) }
+            (NthL (Add Lo (S I)) L)
+            (NthL (Add Lo (S (Add I (S G')))) (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L))
+            (NthL (Add G' (Add (S (S I)) Lo)) (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L))
+            (IdSym Nat (NthL (Add Lo (S (Add I (S G')))) (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)) (NthL (Add Lo (S I)) L)
+              (NthSwapLHi (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L (BndSl Lo I G') Hlen))
+            (IdCongr Nat Nat (λ (Q : Nat). NthL Q (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)) (Add Lo (S (Add I (S G')))) (Add G' (Add (S (S I)) Lo))
+              (IdTrans Nat (Add Lo (S (Add I (S G')))) (Add Lo (S (S (Add I G')))) (Add G' (Add (S (S I)) Lo))
+                (IdCongr Nat Nat (λ (Z0 : Nat). Add Lo (S Z0)) (Add I (S G')) (S (Add I G')) (AddSucc I G'))
+                (PosBridgeScan Lo (S I) G'))))
+          (LeRwR (S Pivot) (NthL (Add (S I) Lo) L) (NthL (Add Lo (S I)) L)
+            (IdCongr Nat Nat (λ (Q : Nat). NthL Q L) (Add (S I) Lo) (Add Lo (S I)) (AddComm (S I) Lo))
+            (AllGtRHead G' (Add (S I) Lo) Pivot L HG))) }
 def AllGtRStepSwapTy : Term := prog{
-  Π (pivot : Nat) → Π (lo : Nat) → Π (i : Nat) → Π (g' : Nat) → Π (l : List Nat) →
-    Le (S (Add lo (S (Add i (S g'))))) (Len l) →
-    Id Bool (Leb (NthL (Add lo (S (Add i (S g')))) l) pivot) True → AllGtR (S g') (Add (S i) lo) pivot l →
-    AllGtR (S g') (Add (S (S i)) lo) pivot (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l) }
+  Π (Pivot : Nat) → Π (Lo : Nat) → Π (I : Nat) → Π (G' : Nat) → Π (L : List Nat) →
+    Le (S (Add Lo (S (Add I (S G'))))) (Len L) →
+    Id Bool (Leb (NthL (Add Lo (S (Add I (S G')))) L) Pivot) True → AllGtR (S G') (Add (S I) Lo) Pivot L →
+    AllGtR (S G') (Add (S (S I)) Lo) Pivot (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L) }
 
 -- PartScanRangeLAllGtR : the scanned gap [lo+1+finalI, …) is all > pivot. Mirror of allLeR;
 -- the conclusion OFFSET also depends on leb (motive carries three elim b). NOTE the True arm
 -- threads hG through the g-elim (the precondition is indexed by g, refined to S g' in the swap
 -- branch) — unlike allLeR whose precondition was indexed by i.
 def PartScanRangeLAllGtR : Term := prog{
-  λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
-    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
-        Le (Add lo (S (Add kz (Add i g)))) (Len l) →
-        Id Nat (NthL lo l) pivot →
-        AllGtR g (Add (S i) lo) pivot l →
-        AllGtR (PartScanGapRangeL pivot lo kz i g l) (Add (S (PartScanIdxRangeL pivot lo kz i g l)) lo) pivot (PartScanRangeL pivot lo kz i g l)) {
-      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        λ (hle : Le (Add lo (S (Add Z (Add i g)))) (Len l)). λ (hpv : Id Nat (NthL lo l) pivot). λ (hG : AllGtR g (Add (S i) lo) pivot l).
-        elim i return (λ (iz : Nat).
-            Le (Add lo (S (Add Z (Add iz g)))) (Len l) → Id Nat (NthL lo l) pivot → AllGtR g (Add (S iz) lo) pivot l →
-            AllGtR g (Add (S iz) lo) pivot (elim iz return (λ (iy : Nat). List Nat) { Z => l, S (i') iih => SwapL lo (Add lo (S i')) l })) {
-          Z => λ (hle0 : Le (Add lo (S (Add Z (Add Z g)))) (Len l)). λ (hpv0 : Id Nat (NthL lo l) pivot). λ (hG0 : AllGtR g (Add (S Z) lo) pivot l).
-            hG0,
-          S (i') iih => λ (hle0 : Le (Add lo (S (Add Z (Add (S i') g)))) (Len l)). λ (hpv0 : Id Nat (NthL lo l) pivot). λ (hG0 : AllGtR g (Add (S (S i')) lo) pivot l).
-            AllGtRBaseSwap pivot lo i' g l hG0
-        } hle hpv hG,
-      S (k') ih => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        λ (hle : Le (Add lo (S (Add (S k') (Add i g)))) (Len l)). λ (hpv : Id Nat (NthL lo l) pivot). λ (hG : AllGtR g (Add (S i) lo) pivot l).
-        elim (Leb (NthL (Add lo (S (Add i g))) l) pivot)
-          return (λ (b : Bool). Id Bool (Leb (NthL (Add lo (S (Add i g))) l) pivot) b →
-            AllGtR (elim b return (λ (bw : Bool). Nat) {
-                True => elim g return (λ (gz : Nat). Nat) {
-                  Z => PartScanGapRangeL pivot lo k' (S i) Z l,
-                  S (g') gih => PartScanGapRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) },
-                False => PartScanGapRangeL pivot lo k' i (S g) l })
-              (Add (S (elim b return (λ (bw : Bool). Nat) {
-                True => elim g return (λ (gz : Nat). Nat) {
-                  Z => PartScanIdxRangeL pivot lo k' (S i) Z l,
-                  S (g') gih => PartScanIdxRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) },
-                False => PartScanIdxRangeL pivot lo k' i (S g) l })) lo) pivot
-              (elim b return (λ (bw : Bool). List Nat) {
-                True => elim g return (λ (gz : Nat). List Nat) {
-                  Z => PartScanRangeL pivot lo k' (S i) Z l,
-                  S (g') gih => PartScanRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) },
-                False => PartScanRangeL pivot lo k' i (S g) l })) {
-          True => λ (e : Id Bool (Leb (NthL (Add lo (S (Add i g))) l) pivot) True).
-            (elim g return (λ (gz : Nat).
-                Id Bool (Leb (NthL (Add lo (S (Add i gz))) l) pivot) True →
-                Le (Add lo (S (Add (S k') (Add i gz)))) (Len l) →
-                AllGtR gz (Add (S i) lo) pivot l →
-                AllGtR (elim gz return (λ (gy : Nat). Nat) {
-                    Z => PartScanGapRangeL pivot lo k' (S i) Z l,
-                    S (g') gih => PartScanGapRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i gz))) l) })
-                  (Add (S (elim gz return (λ (gy : Nat). Nat) {
-                    Z => PartScanIdxRangeL pivot lo k' (S i) Z l,
-                    S (g') gih => PartScanIdxRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i gz))) l) })) lo) pivot
-                  (elim gz return (λ (gy : Nat). List Nat) {
-                    Z => PartScanRangeL pivot lo k' (S i) Z l,
-                    S (g') gih => PartScanRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i gz))) l) })) {
-              Z => λ (e0 : Id Bool (Leb (NthL (Add lo (S (Add i Z))) l) pivot) True). λ (hleZ : Le (Add lo (S (Add (S k') (Add i Z)))) (Len l)). λ (hG0 : AllGtR Z (Add (S i) lo) pivot l).
-                ih (S i) Z l
-                  (LeRwL (Len l) (Add lo (S (Add (S k') (Add i Z)))) (Add lo (S (Add k' (Add (S i) Z))))
-                    (IdCongr Nat Nat (λ (a : Nat). Add lo (S a)) (Add (S k') (Add i Z)) (Add k' (Add (S i) Z)) (HshiftTrue k' i Z))
-                    hleZ)
-                  hpv
-                  (AllGtREmpty (Add (S (S i)) lo) pivot l),
-              S (g') gih => λ (e0 : Id Bool (Leb (NthL (Add lo (S (Add i (S g')))) l) pivot) True). λ (hleS : Le (Add lo (S (Add (S k') (Add i (S g'))))) (Len l)). λ (hG0 : AllGtR (S g') (Add (S i) lo) pivot l).
-                ih (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)
-                  (LeRwR (Add lo (S (Add k' (Add (S i) (S g'))))) (Len l)
-                     (Len (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l))
-                     (IdSym Nat (Len (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)) (Len l)
-                       (LenSwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l))
-                     (LeRwL (Len l) (Add lo (S (Add (S k') (Add i (S g'))))) (Add lo (S (Add k' (Add (S i) (S g')))))
-                       (IdCongr Nat Nat (λ (a : Nat). Add lo (S a)) (Add (S k') (Add i (S g'))) (Add k' (Add (S i) (S g'))) (HshiftTrue k' i (S g')))
-                       hleS))
-                  (IdTrans Nat (NthL lo (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)) (NthL lo l) pivot
-                    (NthSwapLLt (Add lo (S i)) (Add lo (S (Add i (S g')))) lo l (LeAddSucc lo i))
-                    hpv)
-                  (AllGtRStepSwap pivot lo i g' l
-                    (LeTrans (S (Add lo (S (Add i (S g'))))) (Add lo (S (S (Add k' (Add i (S g')))))) (Len l)
-                      (LeRwL (Add lo (S (S (Add k' (Add i (S g'))))))
-                        (Add lo (S (S (Add i (S g'))))) (S (Add lo (S (Add i (S g')))))
-                        (AddSucc lo (S (Add i (S g'))))
-                        (LeAddMonoL lo (S (S (Add i (S g')))) (S (S (Add k' (Add i (S g')))))
-                          (LeAddL (Add i (S g')) k')))
-                      hleS)
-                    e0 hG0)
-            }) e hle hG,
-          False => λ (efalse : Id Bool (Leb (NthL (Add lo (S (Add i g))) l) pivot) False).
-            ih i (S g) l
-              (LeRwL (Len l) (Add lo (S (Add (S k') (Add i g)))) (Add lo (S (Add k' (Add i (S g)))))
-                (IdCongr Nat Nat (λ (a : Nat). Add lo (S a)) (Add (S k') (Add i g)) (Add k' (Add i (S g))) (HshiftFalse k' i g))
-                hle)
-              hpv
-              (AllGtRStepFalse pivot lo i g l efalse hG)
+  λ (Pivot : Nat). λ (Lo : Nat). λ (K : Nat).
+    elim K return (λ (Kz : Nat). Π (I : Nat) → Π (G : Nat) → Π (L : List Nat) →
+        Le (Add Lo (S (Add Kz (Add I G)))) (Len L) →
+        Id Nat (NthL Lo L) Pivot →
+        AllGtR G (Add (S I) Lo) Pivot L →
+        AllGtR (PartScanGapRangeL Pivot Lo Kz I G L) (Add (S (PartScanIdxRangeL Pivot Lo Kz I G L)) Lo) Pivot (PartScanRangeL Pivot Lo Kz I G L)) {
+      Z => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        λ (Hle : Le (Add Lo (S (Add Z (Add I G)))) (Len L)). λ (Hpv : Id Nat (NthL Lo L) Pivot). λ (HG : AllGtR G (Add (S I) Lo) Pivot L).
+        elim I return (λ (Iz : Nat).
+            Le (Add Lo (S (Add Z (Add Iz G)))) (Len L) → Id Nat (NthL Lo L) Pivot → AllGtR G (Add (S Iz) Lo) Pivot L →
+            AllGtR G (Add (S Iz) Lo) Pivot (elim Iz return (λ (Iy : Nat). List Nat) { Z => L, S (I') Iih => SwapL Lo (Add Lo (S I')) L })) {
+          Z => λ (Hle0 : Le (Add Lo (S (Add Z (Add Z G)))) (Len L)). λ (Hpv0 : Id Nat (NthL Lo L) Pivot). λ (HG0 : AllGtR G (Add (S Z) Lo) Pivot L).
+            HG0,
+          S (I') Iih => λ (Hle0 : Le (Add Lo (S (Add Z (Add (S I') G)))) (Len L)). λ (Hpv0 : Id Nat (NthL Lo L) Pivot). λ (HG0 : AllGtR G (Add (S (S I')) Lo) Pivot L).
+            AllGtRBaseSwap Pivot Lo I' G L HG0
+        } Hle Hpv HG,
+      S (K') Ih => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        λ (Hle : Le (Add Lo (S (Add (S K') (Add I G)))) (Len L)). λ (Hpv : Id Nat (NthL Lo L) Pivot). λ (HG : AllGtR G (Add (S I) Lo) Pivot L).
+        elim (Leb (NthL (Add Lo (S (Add I G))) L) Pivot)
+          return (λ (B : Bool). Id Bool (Leb (NthL (Add Lo (S (Add I G))) L) Pivot) B →
+            AllGtR (elim B return (λ (Bw : Bool). Nat) {
+                True => elim G return (λ (Gz : Nat). Nat) {
+                  Z => PartScanGapRangeL Pivot Lo K' (S I) Z L,
+                  S (G') Gih => PartScanGapRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) },
+                False => PartScanGapRangeL Pivot Lo K' I (S G) L })
+              (Add (S (elim B return (λ (Bw : Bool). Nat) {
+                True => elim G return (λ (Gz : Nat). Nat) {
+                  Z => PartScanIdxRangeL Pivot Lo K' (S I) Z L,
+                  S (G') Gih => PartScanIdxRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) },
+                False => PartScanIdxRangeL Pivot Lo K' I (S G) L })) Lo) Pivot
+              (elim B return (λ (Bw : Bool). List Nat) {
+                True => elim G return (λ (Gz : Nat). List Nat) {
+                  Z => PartScanRangeL Pivot Lo K' (S I) Z L,
+                  S (G') Gih => PartScanRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) },
+                False => PartScanRangeL Pivot Lo K' I (S G) L })) {
+          True => λ (E : Id Bool (Leb (NthL (Add Lo (S (Add I G))) L) Pivot) True).
+            (elim G return (λ (Gz : Nat).
+                Id Bool (Leb (NthL (Add Lo (S (Add I Gz))) L) Pivot) True →
+                Le (Add Lo (S (Add (S K') (Add I Gz)))) (Len L) →
+                AllGtR Gz (Add (S I) Lo) Pivot L →
+                AllGtR (elim Gz return (λ (Gy : Nat). Nat) {
+                    Z => PartScanGapRangeL Pivot Lo K' (S I) Z L,
+                    S (G') Gih => PartScanGapRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I Gz))) L) })
+                  (Add (S (elim Gz return (λ (Gy : Nat). Nat) {
+                    Z => PartScanIdxRangeL Pivot Lo K' (S I) Z L,
+                    S (G') Gih => PartScanIdxRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I Gz))) L) })) Lo) Pivot
+                  (elim Gz return (λ (Gy : Nat). List Nat) {
+                    Z => PartScanRangeL Pivot Lo K' (S I) Z L,
+                    S (G') Gih => PartScanRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I Gz))) L) })) {
+              Z => λ (E0 : Id Bool (Leb (NthL (Add Lo (S (Add I Z))) L) Pivot) True). λ (HleZ : Le (Add Lo (S (Add (S K') (Add I Z)))) (Len L)). λ (HG0 : AllGtR Z (Add (S I) Lo) Pivot L).
+                Ih (S I) Z L
+                  (LeRwL (Len L) (Add Lo (S (Add (S K') (Add I Z)))) (Add Lo (S (Add K' (Add (S I) Z))))
+                    (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A)) (Add (S K') (Add I Z)) (Add K' (Add (S I) Z)) (HshiftTrue K' I Z))
+                    HleZ)
+                  Hpv
+                  (AllGtREmpty (Add (S (S I)) Lo) Pivot L),
+              S (G') Gih => λ (E0 : Id Bool (Leb (NthL (Add Lo (S (Add I (S G')))) L) Pivot) True). λ (HleS : Le (Add Lo (S (Add (S K') (Add I (S G'))))) (Len L)). λ (HG0 : AllGtR (S G') (Add (S I) Lo) Pivot L).
+                Ih (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)
+                  (LeRwR (Add Lo (S (Add K' (Add (S I) (S G'))))) (Len L)
+                     (Len (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L))
+                     (IdSym Nat (Len (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)) (Len L)
+                       (LenSwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L))
+                     (LeRwL (Len L) (Add Lo (S (Add (S K') (Add I (S G'))))) (Add Lo (S (Add K' (Add (S I) (S G')))))
+                       (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A)) (Add (S K') (Add I (S G'))) (Add K' (Add (S I) (S G'))) (HshiftTrue K' I (S G')))
+                       HleS))
+                  (IdTrans Nat (NthL Lo (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)) (NthL Lo L) Pivot
+                    (NthSwapLLt (Add Lo (S I)) (Add Lo (S (Add I (S G')))) Lo L (LeAddSucc Lo I))
+                    Hpv)
+                  (AllGtRStepSwap Pivot Lo I G' L
+                    (LeTrans (S (Add Lo (S (Add I (S G'))))) (Add Lo (S (S (Add K' (Add I (S G')))))) (Len L)
+                      (LeRwL (Add Lo (S (S (Add K' (Add I (S G'))))))
+                        (Add Lo (S (S (Add I (S G'))))) (S (Add Lo (S (Add I (S G')))))
+                        (AddSucc Lo (S (Add I (S G'))))
+                        (LeAddMonoL Lo (S (S (Add I (S G')))) (S (S (Add K' (Add I (S G')))))
+                          (LeAddL (Add I (S G')) K')))
+                      HleS)
+                    E0 HG0)
+            }) E Hle HG,
+          False => λ (Efalse : Id Bool (Leb (NthL (Add Lo (S (Add I G))) L) Pivot) False).
+            Ih I (S G) L
+              (LeRwL (Len L) (Add Lo (S (Add (S K') (Add I G)))) (Add Lo (S (Add K' (Add I (S G)))))
+                (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A)) (Add (S K') (Add I G)) (Add K' (Add I (S G))) (HshiftFalse K' I G))
+                Hle)
+              Hpv
+              (AllGtRStepFalse Pivot Lo I G L Efalse HG)
         } Refl
     } }
 def PartScanRangeLAllGtRTy : Term := prog{
-  Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
-    Le (Add lo (S (Add k (Add i g)))) (Len l) →
-    Id Nat (NthL lo l) pivot →
-    AllGtR g (Add (S i) lo) pivot l →
-    AllGtR (PartScanGapRangeL pivot lo k i g l) (Add (S (PartScanIdxRangeL pivot lo k i g l)) lo) pivot (PartScanRangeL pivot lo k i g l) }
+  Π (Pivot : Nat) → Π (Lo : Nat) → Π (K : Nat) → Π (I : Nat) → Π (G : Nat) → Π (L : List Nat) →
+    Le (Add Lo (S (Add K (Add I G)))) (Len L) →
+    Id Nat (NthL Lo L) Pivot →
+    AllGtR G (Add (S I) Lo) Pivot L →
+    AllGtR (PartScanGapRangeL Pivot Lo K I G L) (Add (S (PartScanIdxRangeL Pivot Lo K I G L)) Lo) Pivot (PartScanRangeL Pivot Lo K I G L) }
 -- The pivot ends at position `Add finalI lo`. Induction on k mirroring
 -- count_partScanRangeL's bound threading, PLUS threading the pivot-fact
 -- `Id (NthL lo l) pivot` (updated across the step swap via NthSwapLLt — lo is below
@@ -2674,161 +2674,161 @@ def PartScanRangeLAllGtRTy : Term := prog{
 -- i=S i' swaps lo↔lo+i, so NthSwapLHi reads old-lo (=pivot) at the boundary, bridged
 -- from index-first `Add (S i') lo` to offset-first `Add lo (S i')` by AddComm.
 def PartScanRangeLPivot : Term := prog{
-  λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
-    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
-        Le (Add lo (S (Add kz (Add i g)))) (Len l) →
-        Id Nat (NthL lo l) pivot →
-        Id Nat (NthL (Add (PartScanIdxRangeL pivot lo kz i g l) lo) (PartScanRangeL pivot lo kz i g l)) pivot) {
-      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        λ (hle : Le (Add lo (S (Add Z (Add i g)))) (Len l)). λ (hpv : Id Nat (NthL lo l) pivot).
-        elim i return (λ (iz : Nat).
-            Le (Add lo (S (Add Z (Add iz g)))) (Len l) →
-            Id Nat (NthL (Add iz lo) (elim iz return (λ (iy : Nat). List Nat) { Z => l, S (i') iih => SwapL lo (Add lo (S i')) l })) pivot) {
-          Z => λ (hle0 : Le (Add lo (S (Add Z (Add Z g)))) (Len l)). hpv,
-          S (i') iih => λ (hle0 : Le (Add lo (S (Add Z (Add (S i') g)))) (Len l)).
+  λ (Pivot : Nat). λ (Lo : Nat). λ (K : Nat).
+    elim K return (λ (Kz : Nat). Π (I : Nat) → Π (G : Nat) → Π (L : List Nat) →
+        Le (Add Lo (S (Add Kz (Add I G)))) (Len L) →
+        Id Nat (NthL Lo L) Pivot →
+        Id Nat (NthL (Add (PartScanIdxRangeL Pivot Lo Kz I G L) Lo) (PartScanRangeL Pivot Lo Kz I G L)) Pivot) {
+      Z => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        λ (Hle : Le (Add Lo (S (Add Z (Add I G)))) (Len L)). λ (Hpv : Id Nat (NthL Lo L) Pivot).
+        elim I return (λ (Iz : Nat).
+            Le (Add Lo (S (Add Z (Add Iz G)))) (Len L) →
+            Id Nat (NthL (Add Iz Lo) (elim Iz return (λ (Iy : Nat). List Nat) { Z => L, S (I') Iih => SwapL Lo (Add Lo (S I')) L })) Pivot) {
+          Z => λ (Hle0 : Le (Add Lo (S (Add Z (Add Z G)))) (Len L)). Hpv,
+          S (I') Iih => λ (Hle0 : Le (Add Lo (S (Add Z (Add (S I') G)))) (Len L)).
             IdTrans Nat
-              (NthL (Add (S i') lo) (SwapL lo (Add lo (S i')) l))
-              (NthL (Add lo (S i')) (SwapL lo (Add lo (S i')) l))
-              pivot
-              (IdCongr Nat Nat (λ (p : Nat). NthL p (SwapL lo (Add lo (S i')) l)) (Add (S i') lo) (Add lo (S i')) (AddComm (S i') lo))
+              (NthL (Add (S I') Lo) (SwapL Lo (Add Lo (S I')) L))
+              (NthL (Add Lo (S I')) (SwapL Lo (Add Lo (S I')) L))
+              Pivot
+              (IdCongr Nat Nat (λ (P : Nat). NthL P (SwapL Lo (Add Lo (S I')) L)) (Add (S I') Lo) (Add Lo (S I')) (AddComm (S I') Lo))
               (IdTrans Nat
-                (NthL (Add lo (S i')) (SwapL lo (Add lo (S i')) l))
-                (NthL lo l)
-                pivot
-                (NthSwapLHi lo (Add lo (S i')) l (LeAddSucc lo i')
-                  (LeTrans (S (Add lo (S i'))) (Add lo (S (S (Add i' g)))) (Len l)
-                    (LeRwL (Add lo (S (S (Add i' g)))) (Add lo (S (S i'))) (S (Add lo (S i')))
-                      (AddSucc lo (S i'))
-                      (LeAddMonoL lo (S (S i')) (S (S (Add i' g))) (LeAdd i' g)))
-                    hle0))
-                hpv)
-        } hle,
-      S (k') ih => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
-        λ (hle : Le (Add lo (S (Add (S k') (Add i g)))) (Len l)). λ (hpv : Id Nat (NthL lo l) pivot).
-        elim (Leb (NthL (Add lo (S (Add i g))) l) pivot)
-          return (λ (w : Bool). Id Nat
-            (NthL (Add (elim w return (λ (ww : Bool). Nat) {
-                True => elim g return (λ (gz : Nat). Nat) {
-                  Z => PartScanIdxRangeL pivot lo k' (S i) Z l,
-                  S (g') gih => PartScanIdxRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) },
-                False => PartScanIdxRangeL pivot lo k' i (S g) l }) lo)
-              (elim w return (λ (ww : Bool). List Nat) {
-                True => elim g return (λ (gz : Nat). List Nat) {
-                  Z => PartScanRangeL pivot lo k' (S i) Z l,
-                  S (g') gih => PartScanRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i g))) l) },
-                False => PartScanRangeL pivot lo k' i (S g) l }))
-            pivot) {
+                (NthL (Add Lo (S I')) (SwapL Lo (Add Lo (S I')) L))
+                (NthL Lo L)
+                Pivot
+                (NthSwapLHi Lo (Add Lo (S I')) L (LeAddSucc Lo I')
+                  (LeTrans (S (Add Lo (S I'))) (Add Lo (S (S (Add I' G)))) (Len L)
+                    (LeRwL (Add Lo (S (S (Add I' G)))) (Add Lo (S (S I'))) (S (Add Lo (S I')))
+                      (AddSucc Lo (S I'))
+                      (LeAddMonoL Lo (S (S I')) (S (S (Add I' G))) (LeAdd I' G)))
+                    Hle0))
+                Hpv)
+        } Hle,
+      S (K') Ih => λ (I : Nat). λ (G : Nat). λ (L : List Nat).
+        λ (Hle : Le (Add Lo (S (Add (S K') (Add I G)))) (Len L)). λ (Hpv : Id Nat (NthL Lo L) Pivot).
+        elim (Leb (NthL (Add Lo (S (Add I G))) L) Pivot)
+          return (λ (W : Bool). Id Nat
+            (NthL (Add (elim W return (λ (Ww : Bool). Nat) {
+                True => elim G return (λ (Gz : Nat). Nat) {
+                  Z => PartScanIdxRangeL Pivot Lo K' (S I) Z L,
+                  S (G') Gih => PartScanIdxRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) },
+                False => PartScanIdxRangeL Pivot Lo K' I (S G) L }) Lo)
+              (elim W return (λ (Ww : Bool). List Nat) {
+                True => elim G return (λ (Gz : Nat). List Nat) {
+                  Z => PartScanRangeL Pivot Lo K' (S I) Z L,
+                  S (G') Gih => PartScanRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I G))) L) },
+                False => PartScanRangeL Pivot Lo K' I (S G) L }))
+            Pivot) {
           True =>
-            (elim g return (λ (gz : Nat).
-                Le (Add lo (S (Add (S k') (Add i gz)))) (Len l) →
-                Id Nat (NthL (Add (elim gz return (λ (gy : Nat). Nat) {
-                    Z => PartScanIdxRangeL pivot lo k' (S i) Z l,
-                    S (g') gih => PartScanIdxRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i gz))) l) }) lo)
-                  (elim gz return (λ (gy : Nat). List Nat) {
-                    Z => PartScanRangeL pivot lo k' (S i) Z l,
-                    S (g') gih => PartScanRangeL pivot lo k' (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i gz))) l) })) pivot) {
-              Z => λ (hleZ : Le (Add lo (S (Add (S k') (Add i Z)))) (Len l)).
-                ih (S i) Z l
-                  (LeRwL (Len l)
-                    (Add lo (S (Add (S k') (Add i Z))))
-                    (Add lo (S (Add k' (Add (S i) Z))))
-                    (IdCongr Nat Nat (λ (a : Nat). Add lo (S a))
-                      (Add (S k') (Add i Z)) (Add k' (Add (S i) Z)) (HshiftTrue k' i Z))
-                    hleZ)
-                  hpv,
-              S (g') gih => λ (hleS : Le (Add lo (S (Add (S k') (Add i (S g'))))) (Len l)).
-                ih (S i) (S g') (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)
-                  (LeRwR (Add lo (S (Add k' (Add (S i) (S g'))))) (Len l)
-                     (Len (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l))
-                     (IdSym Nat (Len (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)) (Len l)
-                       (LenSwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l))
-                     (LeRwL (Len l)
-                       (Add lo (S (Add (S k') (Add i (S g')))))
-                       (Add lo (S (Add k' (Add (S i) (S g')))))
-                       (IdCongr Nat Nat (λ (a : Nat). Add lo (S a))
-                         (Add (S k') (Add i (S g'))) (Add k' (Add (S i) (S g'))) (HshiftTrue k' i (S g')))
-                       hleS))
-                  (IdTrans Nat (NthL lo (SwapL (Add lo (S i)) (Add lo (S (Add i (S g')))) l)) (NthL lo l) pivot
-                    (NthSwapLLt (Add lo (S i)) (Add lo (S (Add i (S g')))) lo l (LeAddSucc lo i))
-                    hpv)
-            }) hle,
+            (elim G return (λ (Gz : Nat).
+                Le (Add Lo (S (Add (S K') (Add I Gz)))) (Len L) →
+                Id Nat (NthL (Add (elim Gz return (λ (Gy : Nat). Nat) {
+                    Z => PartScanIdxRangeL Pivot Lo K' (S I) Z L,
+                    S (G') Gih => PartScanIdxRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I Gz))) L) }) Lo)
+                  (elim Gz return (λ (Gy : Nat). List Nat) {
+                    Z => PartScanRangeL Pivot Lo K' (S I) Z L,
+                    S (G') Gih => PartScanRangeL Pivot Lo K' (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I Gz))) L) })) Pivot) {
+              Z => λ (HleZ : Le (Add Lo (S (Add (S K') (Add I Z)))) (Len L)).
+                Ih (S I) Z L
+                  (LeRwL (Len L)
+                    (Add Lo (S (Add (S K') (Add I Z))))
+                    (Add Lo (S (Add K' (Add (S I) Z))))
+                    (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A))
+                      (Add (S K') (Add I Z)) (Add K' (Add (S I) Z)) (HshiftTrue K' I Z))
+                    HleZ)
+                  Hpv,
+              S (G') Gih => λ (HleS : Le (Add Lo (S (Add (S K') (Add I (S G'))))) (Len L)).
+                Ih (S I) (S G') (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)
+                  (LeRwR (Add Lo (S (Add K' (Add (S I) (S G'))))) (Len L)
+                     (Len (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L))
+                     (IdSym Nat (Len (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)) (Len L)
+                       (LenSwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L))
+                     (LeRwL (Len L)
+                       (Add Lo (S (Add (S K') (Add I (S G')))))
+                       (Add Lo (S (Add K' (Add (S I) (S G')))))
+                       (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A))
+                         (Add (S K') (Add I (S G'))) (Add K' (Add (S I) (S G'))) (HshiftTrue K' I (S G')))
+                       HleS))
+                  (IdTrans Nat (NthL Lo (SwapL (Add Lo (S I)) (Add Lo (S (Add I (S G')))) L)) (NthL Lo L) Pivot
+                    (NthSwapLLt (Add Lo (S I)) (Add Lo (S (Add I (S G')))) Lo L (LeAddSucc Lo I))
+                    Hpv)
+            }) Hle,
           False =>
-            ih i (S g) l
-              (LeRwL (Len l)
-                (Add lo (S (Add (S k') (Add i g))))
-                (Add lo (S (Add k' (Add i (S g)))))
-                (IdCongr Nat Nat (λ (a : Nat). Add lo (S a))
-                  (Add (S k') (Add i g)) (Add k' (Add i (S g))) (HshiftFalse k' i g))
-                hle)
-              hpv
+            Ih I (S G) L
+              (LeRwL (Len L)
+                (Add Lo (S (Add (S K') (Add I G))))
+                (Add Lo (S (Add K' (Add I (S G)))))
+                (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A))
+                  (Add (S K') (Add I G)) (Add K' (Add I (S G))) (HshiftFalse K' I G))
+                Hle)
+              Hpv
         }
     } }
 def PartScanRangeLPivotTy : Term := prog{
-  Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
-    Le (Add lo (S (Add k (Add i g)))) (Len l) →
-    Id Nat (NthL lo l) pivot →
-    Id Nat (NthL (Add (PartScanIdxRangeL pivot lo k i g l) lo) (PartScanRangeL pivot lo k i g l)) pivot }
+  Π (Pivot : Nat) → Π (Lo : Nat) → Π (K : Nat) → Π (I : Nat) → Π (G : Nat) → Π (L : List Nat) →
+    Le (Add Lo (S (Add K (Add I G)))) (Len L) →
+    Id Nat (NthL Lo L) Pivot →
+    Id Nat (NthL (Add (PartScanIdxRangeL Pivot Lo K I G L) Lo) (PartScanRangeL Pivot Lo K I G L)) Pivot }
 -- PartitionPivot : wrapper of PartScanRangeLPivot at i=g=0 (preconditions vacuous;
 -- pivot-fact is Refl since the pivot is nth lo l; one AddZero nudge on the bound).
 def PartitionPivot : Term := prog{
-  λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-    elim cnt return (λ (cz : Nat).
-        Le (Add lo cz) (Len l) →
-        Id Nat (NthL (Add (elim cz return (λ (cy : Nat). Nat) { Z => Z, S (cnt') rec => PartScanIdxRangeL (NthL lo l) lo cnt' Z Z l }) lo)
-                    (elim cz return (λ (cy : Nat). List Nat) { Z => l, S (cnt') rec => PartScanRangeL (NthL lo l) lo cnt' Z Z l })) (NthL lo l)) {
-      Z => λ (hb : Le (Add lo Z) (Len l)). Refl,
-      S (cnt') rec => λ (hb : Le (Add lo (S cnt')) (Len l)).
-        PartScanRangeLPivot (NthL lo l) lo cnt' Z Z l
-          (LeRwL (Len l) (Add lo (S cnt')) (Add lo (S (Add cnt' Z)))
-            (IdCongr Nat Nat (λ (a : Nat). Add lo (S a)) cnt' (Add cnt' Z)
-              (IdSym Nat (Add cnt' Z) cnt' (AddZero cnt')))
-            hb)
+  λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+    elim Cnt return (λ (Cz : Nat).
+        Le (Add Lo Cz) (Len L) →
+        Id Nat (NthL (Add (elim Cz return (λ (Cy : Nat). Nat) { Z => Z, S (Cnt') Rec => PartScanIdxRangeL (NthL Lo L) Lo Cnt' Z Z L }) Lo)
+                    (elim Cz return (λ (Cy : Nat). List Nat) { Z => L, S (Cnt') Rec => PartScanRangeL (NthL Lo L) Lo Cnt' Z Z L })) (NthL Lo L)) {
+      Z => λ (Hb : Le (Add Lo Z) (Len L)). Refl,
+      S (Cnt') Rec => λ (Hb : Le (Add Lo (S Cnt')) (Len L)).
+        PartScanRangeLPivot (NthL Lo L) Lo Cnt' Z Z L
+          (LeRwL (Len L) (Add Lo (S Cnt')) (Add Lo (S (Add Cnt' Z)))
+            (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A)) Cnt' (Add Cnt' Z)
+              (IdSym Nat (Add Cnt' Z) Cnt' (AddZero Cnt')))
+            Hb)
           Refl } }
 
 -- PartitionAllLeR : wrapper of PartScanRangeLAllLeR at i=g=0 (AllLeR Z precondition vacuous).
 def PartitionAllLeR : Term := prog{
-  λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-    elim cnt return (λ (cz : Nat).
-        Le (Add lo cz) (Len l) →
-        AllLeR (elim cz return (λ (cy : Nat). Nat) { Z => Z, S (cnt') rec => PartScanIdxRangeL (NthL lo l) lo cnt' Z Z l }) lo (NthL lo l)
-               (elim cz return (λ (cy : Nat). List Nat) { Z => l, S (cnt') rec => PartScanRangeL (NthL lo l) lo cnt' Z Z l })) {
-      Z => λ (hb : Le (Add lo Z) (Len l)). AllLeREmpty lo (NthL lo l) l,
-      S (cnt') rec => λ (hb : Le (Add lo (S cnt')) (Len l)).
-        PartScanRangeLAllLeR (NthL lo l) lo cnt' Z Z l
-          (LeRwL (Len l) (Add lo (S cnt')) (Add lo (S (Add cnt' Z)))
-            (IdCongr Nat Nat (λ (a : Nat). Add lo (S a)) cnt' (Add cnt' Z)
-              (IdSym Nat (Add cnt' Z) cnt' (AddZero cnt')))
-            hb)
+  λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+    elim Cnt return (λ (Cz : Nat).
+        Le (Add Lo Cz) (Len L) →
+        AllLeR (elim Cz return (λ (Cy : Nat). Nat) { Z => Z, S (Cnt') Rec => PartScanIdxRangeL (NthL Lo L) Lo Cnt' Z Z L }) Lo (NthL Lo L)
+               (elim Cz return (λ (Cy : Nat). List Nat) { Z => L, S (Cnt') Rec => PartScanRangeL (NthL Lo L) Lo Cnt' Z Z L })) {
+      Z => λ (Hb : Le (Add Lo Z) (Len L)). AllLeREmpty Lo (NthL Lo L) L,
+      S (Cnt') Rec => λ (Hb : Le (Add Lo (S Cnt')) (Len L)).
+        PartScanRangeLAllLeR (NthL Lo L) Lo Cnt' Z Z L
+          (LeRwL (Len L) (Add Lo (S Cnt')) (Add Lo (S (Add Cnt' Z)))
+            (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A)) Cnt' (Add Cnt' Z)
+              (IdSym Nat (Add Cnt' Z) Cnt' (AddZero Cnt')))
+            Hb)
           Refl
-          (AllLeREmpty (S lo) (NthL lo l) l) } }
+          (AllLeREmpty (S Lo) (NthL Lo L) L) } }
 
 def PartitionAllLeRTy : Term := prog{
-  Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Le (Add lo cnt) (Len l) →
-    AllLeR (PartIdxRangeL lo cnt l) lo (NthL lo l) (PartitionRangeL lo cnt l) }
+  Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) → Le (Add Lo Cnt) (Len L) →
+    AllLeR (PartIdxRangeL Lo Cnt L) Lo (NthL Lo L) (PartitionRangeL Lo Cnt L) }
 -- PartitionAllGtR : wrapper of PartScanRangeLAllGtR at i=g=0 (AllGtR Z precondition vacuous).
 def PartitionAllGtR : Term := prog{
-  λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-    elim cnt return (λ (cz : Nat).
-        Le (Add lo cz) (Len l) →
-        AllGtR (elim cz return (λ (cy : Nat). Nat) { Z => Z, S (cnt') rec => PartScanGapRangeL (NthL lo l) lo cnt' Z Z l })
-               (Add (S (elim cz return (λ (cy : Nat). Nat) { Z => Z, S (cnt') rec => PartScanIdxRangeL (NthL lo l) lo cnt' Z Z l })) lo) (NthL lo l)
-               (elim cz return (λ (cy : Nat). List Nat) { Z => l, S (cnt') rec => PartScanRangeL (NthL lo l) lo cnt' Z Z l })) {
-      Z => λ (hb : Le (Add lo Z) (Len l)). AllGtREmpty (Add (S Z) lo) (NthL lo l) l,
-      S (cnt') rec => λ (hb : Le (Add lo (S cnt')) (Len l)).
-        PartScanRangeLAllGtR (NthL lo l) lo cnt' Z Z l
-          (LeRwL (Len l) (Add lo (S cnt')) (Add lo (S (Add cnt' Z)))
-            (IdCongr Nat Nat (λ (a : Nat). Add lo (S a)) cnt' (Add cnt' Z)
-              (IdSym Nat (Add cnt' Z) cnt' (AddZero cnt')))
-            hb)
+  λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+    elim Cnt return (λ (Cz : Nat).
+        Le (Add Lo Cz) (Len L) →
+        AllGtR (elim Cz return (λ (Cy : Nat). Nat) { Z => Z, S (Cnt') Rec => PartScanGapRangeL (NthL Lo L) Lo Cnt' Z Z L })
+               (Add (S (elim Cz return (λ (Cy : Nat). Nat) { Z => Z, S (Cnt') Rec => PartScanIdxRangeL (NthL Lo L) Lo Cnt' Z Z L })) Lo) (NthL Lo L)
+               (elim Cz return (λ (Cy : Nat). List Nat) { Z => L, S (Cnt') Rec => PartScanRangeL (NthL Lo L) Lo Cnt' Z Z L })) {
+      Z => λ (Hb : Le (Add Lo Z) (Len L)). AllGtREmpty (Add (S Z) Lo) (NthL Lo L) L,
+      S (Cnt') Rec => λ (Hb : Le (Add Lo (S Cnt')) (Len L)).
+        PartScanRangeLAllGtR (NthL Lo L) Lo Cnt' Z Z L
+          (LeRwL (Len L) (Add Lo (S Cnt')) (Add Lo (S (Add Cnt' Z)))
+            (IdCongr Nat Nat (λ (A : Nat). Add Lo (S A)) Cnt' (Add Cnt' Z)
+              (IdSym Nat (Add Cnt' Z) Cnt' (AddZero Cnt')))
+            Hb)
           Refl
-          (AllGtREmpty (Add (S Z) lo) (NthL lo l) l) } }
+          (AllGtREmpty (Add (S Z) Lo) (NthL Lo L) L) } }
 
 def PartitionAllGtRTy : Term := prog{
-  Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Le (Add lo cnt) (Len l) →
-    AllGtR (PartGapRangeL lo cnt l) (Add (S (PartIdxRangeL lo cnt l)) lo) (NthL lo l) (PartitionRangeL lo cnt l) }
+  Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) → Le (Add Lo Cnt) (Len L) →
+    AllGtR (PartGapRangeL Lo Cnt L) (Add (S (PartIdxRangeL Lo Cnt L)) Lo) (NthL Lo L) (PartitionRangeL Lo Cnt L) }
 def PartitionPivotTy : Term := prog{
-  Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Le (Add lo cnt) (Len l) →
-    Id Nat (NthL (Add (PartIdxRangeL lo cnt l) lo) (PartitionRangeL lo cnt l)) (NthL lo l) }
+  Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) → Le (Add Lo Cnt) (Len L) →
+    Id Nat (NthL (Add (PartIdxRangeL Lo Cnt L) Lo) (PartitionRangeL Lo Cnt L)) (NthL Lo L) }
 
 -- Truncated subtraction + its reindex identity — the glue's both-right case maps a
 -- whole-range index k>i into the right-segment index `Sub k (S i)`, then transports
@@ -2836,24 +2836,24 @@ def PartitionPivotTy : Term := prog{
 -- `Add (Sub k (S i)) (S i) = k` (AddComm of AddSubCancel). sub recurses on the
 -- minuend so `Sub (S a)(S b) = Sub a b`; AddSubCancel is a clean double induction.
 def Sub : Term := prog{
-  λ (a : Nat).
-    elim a return (λ (az : Nat). Nat → Nat) {
-      Z => λ (b : Nat). Z,
-      S (a') rec => λ (b : Nat). elim b return (λ (bz : Nat). Nat) { Z => S a', S (b') bih => rec b' } } }
-def SubTy : Term := prog{ Π (a : Nat) → Nat → Nat }
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Nat → Nat) {
+      Z => λ (B : Nat). Z,
+      S (A') Rec => λ (B : Nat). elim B return (λ (Bz : Nat). Nat) { Z => S A', S (B') Bih => Rec B' } } }
+def SubTy : Term := prog{ Π (A : Nat) → Nat → Nat }
 def AddSubCancel : Term := prog{
-  λ (a : Nat).
-    elim a return (λ (az : Nat). Π (b : Nat) → Le b az → Id Nat (Add b (Sub az b)) az) {
-      Z => λ (b : Nat).
-        elim b return (λ (bz : Nat). Le bz Z → Id Nat (Add bz (Sub Z bz)) Z) {
-          Z => λ (h : Le Z Z). Refl,
-          S (b') bih => λ (h : Le (S b') Z). botElim (Id Nat (Add (S b') (Sub Z (S b'))) Z) h },
-      S (a') ih => λ (b : Nat).
-        elim b return (λ (bz : Nat). Le bz (S a') → Id Nat (Add bz (Sub (S a') bz)) (S a')) {
-          Z => λ (h : Le Z (S a')). Refl,
-          S (b') bih => λ (h : Le (S b') (S a')).
-            IdCongr Nat Nat (λ (n : Nat). S n) (Add b' (Sub a' b')) a' (ih b' h) } } }
-def AddSubCancelTy : Term := prog{ Π (a : Nat) → Π (b : Nat) → Le b a → Id Nat (Add b (Sub a b)) a }
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Le B Az → Id Nat (Add B (Sub Az B)) Az) {
+      Z => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Le Bz Z → Id Nat (Add Bz (Sub Z Bz)) Z) {
+          Z => λ (H : Le Z Z). Refl,
+          S (B') Bih => λ (H : Le (S B') Z). botElim (Id Nat (Add (S B') (Sub Z (S B'))) Z) H },
+      S (A') Ih => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Le Bz (S A') → Id Nat (Add Bz (Sub (S A') Bz)) (S A')) {
+          Z => λ (H : Le Z (S A')). Refl,
+          S (B') Bih => λ (H : Le (S B') (S A')).
+            IdCongr Nat Nat (λ (N : Nat). S N) (Add B' (Sub A' B')) A' (Ih B' H) } } }
+def AddSubCancelTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Le B A → Id Nat (Add B (Sub A B)) A }
 
 /-! ## The GLUE — assemble a sorted range from sorted halves (§22, M22-c step 4)
 
@@ -2869,165 +2869,165 @@ def AddSubCancelTy : Term := prog{ Π (a : Nat) → Π (b : Nat) → Le b a → 
     the add-order toolkit — the positional-predicate ↔ offset-model tax, paid once
     per bound. All kernel-green. -/
 def LePredL : Term := prog{
-  λ (a : Nat). λ (b : Nat). λ (h : Le (S a) b).
-    LeTrans a (S a) b (LeUpR a a (LeRefl a)) h }
-def LePredLTy : Term := prog{ Π (a : Nat) → Π (b : Nat) → Le (S a) b → Le a b }
+  λ (A : Nat). λ (B : Nat). λ (H : Le (S A) B).
+    LeTrans A (S A) B (LeUpR A A (LeRefl A)) H }
+def LePredLTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Le (S A) B → Le A B }
 def GapPos : Term := prog{
-  λ (i : Nat). λ (g : Nat). λ (h : Le (S i) (Add i g)).
-    LeAddCancelL i (S Z) g
-      (LeRwL (Add i g) (S i) (Add i (S Z))
-        (IdSym Nat (Add i (S Z)) (S i)
-          (IdTrans Nat (Add i (S Z)) (S (Add i Z)) (S i)
-            (AddSucc i Z)
-            (IdCongr Nat Nat (λ (n : Nat). S n) (Add i Z) i (AddZero i))))
-        h) }
-def GapPosTy : Term := prog{ Π (i : Nat) → Π (g : Nat) → Le (S i) (Add i g) → Le (S Z) g }
+  λ (I : Nat). λ (G : Nat). λ (H : Le (S I) (Add I G)).
+    LeAddCancelL I (S Z) G
+      (LeRwL (Add I G) (S I) (Add I (S Z))
+        (IdSym Nat (Add I (S Z)) (S I)
+          (IdTrans Nat (Add I (S Z)) (S (Add I Z)) (S I)
+            (AddSucc I Z)
+            (IdCongr Nat Nat (λ (N : Nat). S N) (Add I Z) I (AddZero I))))
+        H) }
+def GapPosTy : Term := prog{ Π (I : Nat) → Π (G : Nat) → Le (S I) (Add I G) → Le (S Z) G }
 def ReindexPos : Term := prog{
-  λ (i : Nat). λ (k : Nat). λ (lo : Nat). λ (hik : Le (S i) k).
+  λ (I : Nat). λ (K : Nat). λ (Lo : Nat). λ (Hik : Le (S I) K).
     IdTrans Nat
-      (Add (Sub k (S i)) (S (Add i lo)))
-      (Add (Add (Sub k (S i)) (S i)) lo)
-      (Add k lo)
-      (IdSym Nat (Add (Add (Sub k (S i)) (S i)) lo) (Add (Sub k (S i)) (S (Add i lo)))
-        (AddAssoc (Sub k (S i)) (S i) lo))
-      (IdCongr Nat Nat (λ (x : Nat). Add x lo) (Add (Sub k (S i)) (S i)) k
-        (IdTrans Nat (Add (Sub k (S i)) (S i)) (Add (S i) (Sub k (S i))) k
-          (AddComm (Sub k (S i)) (S i))
-          (AddSubCancel k (S i) hik))) }
+      (Add (Sub K (S I)) (S (Add I Lo)))
+      (Add (Add (Sub K (S I)) (S I)) Lo)
+      (Add K Lo)
+      (IdSym Nat (Add (Add (Sub K (S I)) (S I)) Lo) (Add (Sub K (S I)) (S (Add I Lo)))
+        (AddAssoc (Sub K (S I)) (S I) Lo))
+      (IdCongr Nat Nat (λ (X : Nat). Add X Lo) (Add (Sub K (S I)) (S I)) K
+        (IdTrans Nat (Add (Sub K (S I)) (S I)) (Add (S I) (Sub K (S I))) K
+          (AddComm (Sub K (S I)) (S I))
+          (AddSubCancel K (S I) Hik))) }
 def ReindexPosTy : Term := prog{
-  Π (i : Nat) → Π (k : Nat) → Π (lo : Nat) → Le (S i) k →
-    Id Nat (Add (Sub k (S i)) (S (Add i lo))) (Add k lo) }
+  Π (I : Nat) → Π (K : Nat) → Π (Lo : Nat) → Le (S I) K →
+    Id Nat (Add (Sub K (S I)) (S (Add I Lo))) (Add K Lo) }
 def ReindexPosS : Term := prog{
-  λ (i : Nat). λ (k : Nat). λ (lo : Nat). λ (hik : Le (S i) k).
+  λ (I : Nat). λ (K : Nat). λ (Lo : Nat). λ (Hik : Le (S I) K).
     IdTrans Nat
-      (Add (S (Sub k (S i))) (S (Add i lo)))
-      (Add (Add (S (Sub k (S i))) (S i)) lo)
-      (Add (S k) lo)
-      (IdSym Nat (Add (Add (S (Sub k (S i))) (S i)) lo) (Add (S (Sub k (S i))) (S (Add i lo)))
-        (AddAssoc (S (Sub k (S i))) (S i) lo))
-      (IdCongr Nat Nat (λ (x : Nat). Add x lo) (Add (S (Sub k (S i))) (S i)) (S k)
-        (IdCongr Nat Nat (λ (n : Nat). S n) (Add (Sub k (S i)) (S i)) k
-          (IdTrans Nat (Add (Sub k (S i)) (S i)) (Add (S i) (Sub k (S i))) k
-            (AddComm (Sub k (S i)) (S i))
-            (AddSubCancel k (S i) hik)))) }
+      (Add (S (Sub K (S I))) (S (Add I Lo)))
+      (Add (Add (S (Sub K (S I))) (S I)) Lo)
+      (Add (S K) Lo)
+      (IdSym Nat (Add (Add (S (Sub K (S I))) (S I)) Lo) (Add (S (Sub K (S I))) (S (Add I Lo)))
+        (AddAssoc (S (Sub K (S I))) (S I) Lo))
+      (IdCongr Nat Nat (λ (X : Nat). Add X Lo) (Add (S (Sub K (S I))) (S I)) (S K)
+        (IdCongr Nat Nat (λ (N : Nat). S N) (Add (Sub K (S I)) (S I)) K
+          (IdTrans Nat (Add (Sub K (S I)) (S I)) (Add (S I) (Sub K (S I))) K
+            (AddComm (Sub K (S I)) (S I))
+            (AddSubCancel K (S I) Hik)))) }
 def ReindexPosSTy : Term := prog{
-  Π (i : Nat) → Π (k : Nat) → Π (lo : Nat) → Le (S i) k →
-    Id Nat (Add (S (Sub k (S i))) (S (Add i lo))) (Add (S k) lo) }
+  Π (I : Nat) → Π (K : Nat) → Π (Lo : Nat) → Le (S I) K →
+    Id Nat (Add (S (Sub K (S I))) (S (Add I Lo))) (Add (S K) Lo) }
 def ReindexBnd : Term := prog{
-  λ (i : Nat). λ (g : Nat). λ (k : Nat). λ (hik : Le (S i) k). λ (hk : Le (S k) (Add i g)).
-    LeAddCancelL i (S (S (Sub k (S i)))) g
-      (LeRwL (Add i g)
-        (S (S (Add i (Sub k (S i)))))
-        (Add i (S (S (Sub k (S i)))))
-        (IdSym Nat (Add i (S (S (Sub k (S i))))) (S (S (Add i (Sub k (S i)))))
-          (IdTrans Nat (Add i (S (S (Sub k (S i))))) (S (Add i (S (Sub k (S i))))) (S (S (Add i (Sub k (S i)))))
-            (AddSucc i (S (Sub k (S i))))
-            (IdCongr Nat Nat (λ (n : Nat). S n) (Add i (S (Sub k (S i)))) (S (Add i (Sub k (S i))))
-              (AddSucc i (Sub k (S i))))))
-        (LeRwL (Add i g) (S k) (S (S (Add i (Sub k (S i)))))
-          (IdCongr Nat Nat (λ (n : Nat). S n) k (S (Add i (Sub k (S i))))
-            (IdSym Nat (S (Add i (Sub k (S i)))) k (AddSubCancel k (S i) hik)))
-          hk)) }
+  λ (I : Nat). λ (G : Nat). λ (K : Nat). λ (Hik : Le (S I) K). λ (Hk : Le (S K) (Add I G)).
+    LeAddCancelL I (S (S (Sub K (S I)))) G
+      (LeRwL (Add I G)
+        (S (S (Add I (Sub K (S I)))))
+        (Add I (S (S (Sub K (S I)))))
+        (IdSym Nat (Add I (S (S (Sub K (S I))))) (S (S (Add I (Sub K (S I)))))
+          (IdTrans Nat (Add I (S (S (Sub K (S I))))) (S (Add I (S (Sub K (S I))))) (S (S (Add I (Sub K (S I)))))
+            (AddSucc I (S (Sub K (S I))))
+            (IdCongr Nat Nat (λ (N : Nat). S N) (Add I (S (Sub K (S I)))) (S (Add I (Sub K (S I))))
+              (AddSucc I (Sub K (S I))))))
+        (LeRwL (Add I G) (S K) (S (S (Add I (Sub K (S I)))))
+          (IdCongr Nat Nat (λ (N : Nat). S N) K (S (Add I (Sub K (S I))))
+            (IdSym Nat (S (Add I (Sub K (S I)))) K (AddSubCancel K (S I) Hik)))
+          Hk)) }
 def ReindexBndTy : Term := prog{
-  Π (i : Nat) → Π (g : Nat) → Π (k : Nat) → Le (S i) k → Le (S k) (Add i g) →
-    Le (S (S (Sub k (S i)))) g }
+  Π (I : Nat) → Π (G : Nat) → Π (K : Nat) → Le (S I) K → Le (S K) (Add I G) →
+    Le (S (S (Sub K (S I)))) G }
 def GlueLeftPivot : Term := prog{
-  λ (i : Nat). λ (k : Nat). λ (lo : Nat). λ (pivot : Nat). λ (R : List Nat).
-    λ (e1 : Id Bool (Leb (S k) i) True).
-    λ (e2 : Id Bool (Leb (S (S k)) i) False).
-    λ (hpiv : Id Nat pivot (NthL (Add i lo) R)).
-    λ (al : AllLeR i lo pivot R).
-      LeRwR (NthL (Add k lo) R) pivot (NthL (Add (S k) lo) R)
-        (IdTrans Nat pivot (NthL (Add i lo) R) (NthL (Add (S k) lo) R)
-          hpiv
-          (IdCongr Nat Nat (λ (x : Nat). NthL (Add x lo) R) i (S k)
-            (LeAntisym i (S k) (LebFalseGt (S (S k)) i e2) (LebTrueLe (S k) i e1))))
-        (al k (LebTrueLe (S k) i e1)) }
+  λ (I : Nat). λ (K : Nat). λ (Lo : Nat). λ (Pivot : Nat). λ (R : List Nat).
+    λ (E1 : Id Bool (Leb (S K) I) True).
+    λ (E2 : Id Bool (Leb (S (S K)) I) False).
+    λ (Hpiv : Id Nat Pivot (NthL (Add I Lo) R)).
+    λ (Al : AllLeR I Lo Pivot R).
+      LeRwR (NthL (Add K Lo) R) Pivot (NthL (Add (S K) Lo) R)
+        (IdTrans Nat Pivot (NthL (Add I Lo) R) (NthL (Add (S K) Lo) R)
+          Hpiv
+          (IdCongr Nat Nat (λ (X : Nat). NthL (Add X Lo) R) I (S K)
+            (LeAntisym I (S K) (LebFalseGt (S (S K)) I E2) (LebTrueLe (S K) I E1))))
+        (Al K (LebTrueLe (S K) I E1)) }
 def GlueLeftPivotTy : Term := prog{
-  Π (i : Nat) → Π (k : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (R : List Nat) →
-    Id Bool (Leb (S k) i) True → Id Bool (Leb (S (S k)) i) False →
-    Id Nat pivot (NthL (Add i lo) R) → AllLeR i lo pivot R →
-    Le (NthL (Add k lo) R) (NthL (Add (S k) lo) R) }
+  Π (I : Nat) → Π (K : Nat) → Π (Lo : Nat) → Π (Pivot : Nat) → Π (R : List Nat) →
+    Id Bool (Leb (S K) I) True → Id Bool (Leb (S (S K)) I) False →
+    Id Nat Pivot (NthL (Add I Lo) R) → AllLeR I Lo Pivot R →
+    Le (NthL (Add K Lo) R) (NthL (Add (S K) Lo) R) }
 def GluePivotRight : Term := prog{
-  λ (i : Nat). λ (g : Nat). λ (k : Nat). λ (lo : Nat). λ (pivot : Nat). λ (R : List Nat).
-    λ (e1 : Id Bool (Leb (S k) i) False).
-    λ (e2 : Id Bool (Leb (S i) k) False).
-    λ (hk : Le (S (S k)) (S (Add i g))).
-    λ (hpiv : Id Nat pivot (NthL (Add i lo) R)).
-    λ (ag : AllGtR g (S (Add i lo)) pivot R).
-      LeRwL (NthL (Add (S k) lo) R) pivot (NthL (Add k lo) R)
-        (IdSym Nat (NthL (Add k lo) R) pivot
-          (IdTrans Nat (NthL (Add k lo) R) (NthL (Add i lo) R) pivot
-            (IdCongr Nat Nat (λ (x : Nat). NthL (Add x lo) R) k i
-              (LeAntisym k i (LebFalseGt (S i) k e2) (LebFalseGt (S k) i e1)))
-            (IdSym Nat pivot (NthL (Add i lo) R) hpiv)))
-        (LeRwR pivot (NthL (S (Add i lo)) R) (NthL (Add (S k) lo) R)
-          (IdCongr Nat Nat (λ (x : Nat). NthL (S (Add x lo)) R) i k
-            (IdSym Nat k i (LeAntisym k i (LebFalseGt (S i) k e2) (LebFalseGt (S k) i e1))))
-          (LePredL pivot (NthL (S (Add i lo)) R)
-            (ag Z (GapPos i g
-              (LeRwL (Add i g) (S k) (S i)
-                (IdCongr Nat Nat (λ (n : Nat). S n) k i
-                  (LeAntisym k i (LebFalseGt (S i) k e2) (LebFalseGt (S k) i e1)))
-                hk))))) }
+  λ (I : Nat). λ (G : Nat). λ (K : Nat). λ (Lo : Nat). λ (Pivot : Nat). λ (R : List Nat).
+    λ (E1 : Id Bool (Leb (S K) I) False).
+    λ (E2 : Id Bool (Leb (S I) K) False).
+    λ (Hk : Le (S (S K)) (S (Add I G))).
+    λ (Hpiv : Id Nat Pivot (NthL (Add I Lo) R)).
+    λ (Ag : AllGtR G (S (Add I Lo)) Pivot R).
+      LeRwL (NthL (Add (S K) Lo) R) Pivot (NthL (Add K Lo) R)
+        (IdSym Nat (NthL (Add K Lo) R) Pivot
+          (IdTrans Nat (NthL (Add K Lo) R) (NthL (Add I Lo) R) Pivot
+            (IdCongr Nat Nat (λ (X : Nat). NthL (Add X Lo) R) K I
+              (LeAntisym K I (LebFalseGt (S I) K E2) (LebFalseGt (S K) I E1)))
+            (IdSym Nat Pivot (NthL (Add I Lo) R) Hpiv)))
+        (LeRwR Pivot (NthL (S (Add I Lo)) R) (NthL (Add (S K) Lo) R)
+          (IdCongr Nat Nat (λ (X : Nat). NthL (S (Add X Lo)) R) I K
+            (IdSym Nat K I (LeAntisym K I (LebFalseGt (S I) K E2) (LebFalseGt (S K) I E1))))
+          (LePredL Pivot (NthL (S (Add I Lo)) R)
+            (Ag Z (GapPos I G
+              (LeRwL (Add I G) (S K) (S I)
+                (IdCongr Nat Nat (λ (N : Nat). S N) K I
+                  (LeAntisym K I (LebFalseGt (S I) K E2) (LebFalseGt (S K) I E1)))
+                Hk))))) }
 def GluePivotRightTy : Term := prog{
-  Π (i : Nat) → Π (g : Nat) → Π (k : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (R : List Nat) →
-    Id Bool (Leb (S k) i) False → Id Bool (Leb (S i) k) False →
-    Le (S (S k)) (S (Add i g)) → Id Nat pivot (NthL (Add i lo) R) →
-    AllGtR g (S (Add i lo)) pivot R →
-    Le (NthL (Add k lo) R) (NthL (Add (S k) lo) R) }
+  Π (I : Nat) → Π (G : Nat) → Π (K : Nat) → Π (Lo : Nat) → Π (Pivot : Nat) → Π (R : List Nat) →
+    Id Bool (Leb (S K) I) False → Id Bool (Leb (S I) K) False →
+    Le (S (S K)) (S (Add I G)) → Id Nat Pivot (NthL (Add I Lo) R) →
+    AllGtR G (S (Add I Lo)) Pivot R →
+    Le (NthL (Add K Lo) R) (NthL (Add (S K) Lo) R) }
 def GlueBothRight : Term := prog{
-  λ (i : Nat). λ (g : Nat). λ (k : Nat). λ (lo : Nat). λ (pivot : Nat). λ (R : List Nat).
-    λ (e2 : Id Bool (Leb (S i) k) True).
-    λ (hk : Le (S (S k)) (S (Add i g))).
-    λ (sr : SortedR g (S (Add i lo)) R).
-      LeRwL (NthL (Add (S k) lo) R)
-        (NthL (Add (Sub k (S i)) (S (Add i lo))) R)
-        (NthL (Add k lo) R)
-        (IdCongr Nat Nat (λ (p : Nat). NthL p R) (Add (Sub k (S i)) (S (Add i lo))) (Add k lo)
-          (ReindexPos i k lo (LebTrueLe (S i) k e2)))
-        (LeRwR (NthL (Add (Sub k (S i)) (S (Add i lo))) R)
-          (NthL (Add (S (Sub k (S i))) (S (Add i lo))) R)
-          (NthL (Add (S k) lo) R)
-          (IdCongr Nat Nat (λ (p : Nat). NthL p R) (Add (S (Sub k (S i))) (S (Add i lo))) (Add (S k) lo)
-            (ReindexPosS i k lo (LebTrueLe (S i) k e2)))
-          (sr (Sub k (S i)) (ReindexBnd i g k (LebTrueLe (S i) k e2) hk))) }
+  λ (I : Nat). λ (G : Nat). λ (K : Nat). λ (Lo : Nat). λ (Pivot : Nat). λ (R : List Nat).
+    λ (E2 : Id Bool (Leb (S I) K) True).
+    λ (Hk : Le (S (S K)) (S (Add I G))).
+    λ (Sr : SortedR G (S (Add I Lo)) R).
+      LeRwL (NthL (Add (S K) Lo) R)
+        (NthL (Add (Sub K (S I)) (S (Add I Lo))) R)
+        (NthL (Add K Lo) R)
+        (IdCongr Nat Nat (λ (P : Nat). NthL P R) (Add (Sub K (S I)) (S (Add I Lo))) (Add K Lo)
+          (ReindexPos I K Lo (LebTrueLe (S I) K E2)))
+        (LeRwR (NthL (Add (Sub K (S I)) (S (Add I Lo))) R)
+          (NthL (Add (S (Sub K (S I))) (S (Add I Lo))) R)
+          (NthL (Add (S K) Lo) R)
+          (IdCongr Nat Nat (λ (P : Nat). NthL P R) (Add (S (Sub K (S I))) (S (Add I Lo))) (Add (S K) Lo)
+            (ReindexPosS I K Lo (LebTrueLe (S I) K E2)))
+          (Sr (Sub K (S I)) (ReindexBnd I G K (LebTrueLe (S I) K E2) Hk))) }
 def GlueBothRightTy : Term := prog{
-  Π (i : Nat) → Π (g : Nat) → Π (k : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (R : List Nat) →
-    Id Bool (Leb (S i) k) True → Le (S (S k)) (S (Add i g)) →
-    SortedR g (S (Add i lo)) R →
-    Le (NthL (Add k lo) R) (NthL (Add (S k) lo) R) }
+  Π (I : Nat) → Π (G : Nat) → Π (K : Nat) → Π (Lo : Nat) → Π (Pivot : Nat) → Π (R : List Nat) →
+    Id Bool (Leb (S I) K) True → Le (S (S K)) (S (Add I G)) →
+    SortedR G (S (Add I Lo)) R →
+    Le (NthL (Add K Lo) R) (NthL (Add (S K) Lo) R) }
 def Glue : Term := prog{
-  λ (i : Nat). λ (g : Nat). λ (lo : Nat). λ (pivot : Nat). λ (R : List Nat).
-    λ (hpiv : Id Nat pivot (NthL (Add i lo) R)).
-    λ (sl : SortedR i lo R).
-    λ (al : AllLeR i lo pivot R).
-    λ (ag : AllGtR g (S (Add i lo)) pivot R).
-    λ (sr : SortedR g (S (Add i lo)) R).
-    λ (k : Nat). λ (hk : Le (S (S k)) (S (Add i g))).
-      (elim (Leb (S k) i) return (λ (w : Bool).
-          Id Bool (Leb (S k) i) w → Le (NthL (Add k lo) R) (NthL (Add (S k) lo) R)) {
-        True => λ (e1 : Id Bool (Leb (S k) i) True).
-          (elim (Leb (S (S k)) i) return (λ (w2 : Bool).
-              Id Bool (Leb (S (S k)) i) w2 → Le (NthL (Add k lo) R) (NthL (Add (S k) lo) R)) {
-            True => λ (e2 : Id Bool (Leb (S (S k)) i) True). sl k (LebTrueLe (S (S k)) i e2),
-            False => λ (e2 : Id Bool (Leb (S (S k)) i) False). GlueLeftPivot i k lo pivot R e1 e2 hpiv al
+  λ (I : Nat). λ (G : Nat). λ (Lo : Nat). λ (Pivot : Nat). λ (R : List Nat).
+    λ (Hpiv : Id Nat Pivot (NthL (Add I Lo) R)).
+    λ (Sl : SortedR I Lo R).
+    λ (Al : AllLeR I Lo Pivot R).
+    λ (Ag : AllGtR G (S (Add I Lo)) Pivot R).
+    λ (Sr : SortedR G (S (Add I Lo)) R).
+    λ (K : Nat). λ (Hk : Le (S (S K)) (S (Add I G))).
+      (elim (Leb (S K) I) return (λ (W : Bool).
+          Id Bool (Leb (S K) I) W → Le (NthL (Add K Lo) R) (NthL (Add (S K) Lo) R)) {
+        True => λ (E1 : Id Bool (Leb (S K) I) True).
+          (elim (Leb (S (S K)) I) return (λ (W2 : Bool).
+              Id Bool (Leb (S (S K)) I) W2 → Le (NthL (Add K Lo) R) (NthL (Add (S K) Lo) R)) {
+            True => λ (E2 : Id Bool (Leb (S (S K)) I) True). Sl K (LebTrueLe (S (S K)) I E2),
+            False => λ (E2 : Id Bool (Leb (S (S K)) I) False). GlueLeftPivot I K Lo Pivot R E1 E2 Hpiv Al
           }) Refl,
-        False => λ (e1 : Id Bool (Leb (S k) i) False).
-          (elim (Leb (S i) k) return (λ (w2 : Bool).
-              Id Bool (Leb (S i) k) w2 → Le (NthL (Add k lo) R) (NthL (Add (S k) lo) R)) {
-            True => λ (e2 : Id Bool (Leb (S i) k) True). GlueBothRight i g k lo pivot R e2 hk sr,
-            False => λ (e2 : Id Bool (Leb (S i) k) False). GluePivotRight i g k lo pivot R e1 e2 hk hpiv ag
+        False => λ (E1 : Id Bool (Leb (S K) I) False).
+          (elim (Leb (S I) K) return (λ (W2 : Bool).
+              Id Bool (Leb (S I) K) W2 → Le (NthL (Add K Lo) R) (NthL (Add (S K) Lo) R)) {
+            True => λ (E2 : Id Bool (Leb (S I) K) True). GlueBothRight I G K Lo Pivot R E2 Hk Sr,
+            False => λ (E2 : Id Bool (Leb (S I) K) False). GluePivotRight I G K Lo Pivot R E1 E2 Hk Hpiv Ag
           }) Refl
       }) Refl }
 def GlueTy : Term := prog{
-  Π (i : Nat) → Π (g : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (R : List Nat) →
-    Id Nat pivot (NthL (Add i lo) R) →
-    SortedR i lo R →
-    AllLeR i lo pivot R →
-    AllGtR g (S (Add i lo)) pivot R →
-    SortedR g (S (Add i lo)) R →
-    SortedR (S (Add i g)) lo R }
+  Π (I : Nat) → Π (G : Nat) → Π (Lo : Nat) → Π (Pivot : Nat) → Π (R : List Nat) →
+    Id Nat Pivot (NthL (Add I Lo) R) →
+    SortedR I Lo R →
+    AllLeR I Lo Pivot R →
+    AllGtR G (S (Add I Lo)) Pivot R →
+    SortedR G (S (Add I Lo)) R →
+    SortedR (S (Add I G)) Lo R }
 
 /-! ## The KEYSTONE — range bounds survive sorting (§22, M22-c step 3; bridges dispatched)
 
@@ -3045,210 +3045,210 @@ def GlueTy : Term := prog{
 -- Keystone bridge helpers: eqb comparison, the count "miss" step, count-zero-by-extension,
 -- and take-vs-nth/len facts. All mechanical count/segment inductions.
 def EqbGtFalse : Term := prog{
-  λ (h : Nat).
-    elim h return (λ (hz : Nat). Π (x : Nat) → Le (S hz) x → Id Bool (Eqb x hz) False) {
-      Z => λ (x : Nat).
-        elim x return (λ (xz : Nat). Le (S Z) xz → Id Bool (Eqb xz Z) False) {
-          Z => λ (hlt : Le (S Z) Z). botElim (Id Bool (Eqb Z Z) False) hlt,
-          S (x') xih => λ (hlt : Le (S Z) (S x')). Refl },
-      S (h') ih => λ (x : Nat).
-        elim x return (λ (xz : Nat). Le (S (S h')) xz → Id Bool (Eqb xz (S h')) False) {
-          Z => λ (hlt : Le (S (S h')) Z). botElim (Id Bool (Eqb Z (S h')) False) hlt,
-          S (x') xih => λ (hlt : Le (S (S h')) (S x')). ih x' hlt } } }
-def EqbGtFalseTy : Term := prog{ Π (h : Nat) → Π (x : Nat) → Le (S h) x → Id Bool (Eqb x h) False }
+  λ (H : Nat).
+    elim H return (λ (Hz : Nat). Π (X : Nat) → Le (S Hz) X → Id Bool (Eqb X Hz) False) {
+      Z => λ (X : Nat).
+        elim X return (λ (Xz : Nat). Le (S Z) Xz → Id Bool (Eqb Xz Z) False) {
+          Z => λ (Hlt : Le (S Z) Z). botElim (Id Bool (Eqb Z Z) False) Hlt,
+          S (X') Xih => λ (Hlt : Le (S Z) (S X')). Refl },
+      S (H') Ih => λ (X : Nat).
+        elim X return (λ (Xz : Nat). Le (S (S H')) Xz → Id Bool (Eqb Xz (S H')) False) {
+          Z => λ (Hlt : Le (S (S H')) Z). botElim (Id Bool (Eqb Z (S H')) False) Hlt,
+          S (X') Xih => λ (Hlt : Le (S (S H')) (S X')). Ih X' Hlt } } }
+def EqbGtFalseTy : Term := prog{ Π (H : Nat) → Π (X : Nat) → Le (S H) X → Id Bool (Eqb X H) False }
 
 def EqbLtFalse : Term := prog{
-  λ (a : Nat).
-    elim a return (λ (az : Nat). Π (b : Nat) → Le (S az) b → Id Bool (Eqb az b) False) {
-      Z => λ (b : Nat).
-        elim b return (λ (bz : Nat). Le (S Z) bz → Id Bool (Eqb Z bz) False) {
-          Z => λ (hlt : Le (S Z) Z). botElim (Id Bool (Eqb Z Z) False) hlt,
-          S (b') bih => λ (hlt : Le (S Z) (S b')). Refl },
-      S (a') ih => λ (b : Nat).
-        elim b return (λ (bz : Nat). Le (S (S a')) bz → Id Bool (Eqb (S a') bz) False) {
-          Z => λ (hlt : Le (S (S a')) Z). botElim (Id Bool (Eqb (S a') Z) False) hlt,
-          S (b') bih => λ (hlt : Le (S (S a')) (S b')). ih b' hlt } } }
-def EqbLtFalseTy : Term := prog{ Π (a : Nat) → Π (b : Nat) → Le (S a) b → Id Bool (Eqb a b) False }
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Le (S Az) B → Id Bool (Eqb Az B) False) {
+      Z => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Le (S Z) Bz → Id Bool (Eqb Z Bz) False) {
+          Z => λ (Hlt : Le (S Z) Z). botElim (Id Bool (Eqb Z Z) False) Hlt,
+          S (B') Bih => λ (Hlt : Le (S Z) (S B')). Refl },
+      S (A') Ih => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Le (S (S A')) Bz → Id Bool (Eqb (S A') Bz) False) {
+          Z => λ (Hlt : Le (S (S A')) Z). botElim (Id Bool (Eqb (S A') Z) False) Hlt,
+          S (B') Bih => λ (Hlt : Le (S (S A')) (S B')). Ih B' Hlt } } }
+def EqbLtFalseTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Le (S A) B → Id Bool (Eqb A B) False }
 
 def CountConsMiss : Term := prog{
-  λ (m : Nat). λ (h : Nat). λ (t : List Nat). λ (hq : Id Bool (Eqb m h) False).
+  λ (M : Nat). λ (H : Nat). λ (T : List Nat). λ (Hq : Id Bool (Eqb M H) False).
     j Bool False
-      (λ (z : Bool). λ (hh : Id Bool False z).
-        Id Nat (boolRec (λ (w : Bool). Nat) (S (Count m t)) (Count m t) z) (Count m t))
-      Refl (Eqb m h) (IdSym Bool (Eqb m h) False hq) }
+      (λ (Z0 : Bool). λ (Hh : Id Bool False Z0).
+        Id Nat (boolRec (λ (W : Bool). Nat) (S (Count M T)) (Count M T) Z0) (Count M T))
+      Refl (Eqb M H) (IdSym Bool (Eqb M H) False Hq) }
 def CountConsMissTy : Term := prog{
-  Π (m : Nat) → Π (h : Nat) → Π (t : List Nat) → Id Bool (Eqb m h) False →
-    Id Nat (Count m (Cons h t)) (Count m t) }
+  Π (M : Nat) → Π (H : Nat) → Π (T : List Nat) → Id Bool (Eqb M H) False →
+    Id Nat (Count M (Cons H T)) (Count M T) }
 
 def CountZeroExt : Term := prog{
-  λ (x : Nat). λ (s : List Nat).
-    elim s return (λ (sz : List Nat). (Π (j : Nat) → Le (S j) (Len sz) → Id Bool (Eqb x (NthL j sz)) False) → Id Nat (Count x sz) Z) {
-      Nil => λ (heq : Π (j : Nat) → Le (S j) (Len Nil) → Id Bool (Eqb x (NthL j Nil)) False). Refl,
-      Cons (h) (t) ih => λ (heq : Π (j : Nat) → Le (S j) (Len (Cons h t)) → Id Bool (Eqb x (NthL j (Cons h t))) False).
-        IdTrans Nat (Count x (Cons h t)) (Count x t) Z
-          (CountConsMiss x h t (heq Z unit))
-          (ih (λ (j : Nat). λ (hj : Le (S j) (Len t)). heq (S j) hj)) } }
+  λ (X : Nat). λ (S0 : List Nat).
+    elim S0 return (λ (Sz : List Nat). (Π (J : Nat) → Le (S J) (Len Sz) → Id Bool (Eqb X (NthL J Sz)) False) → Id Nat (Count X Sz) Z) {
+      Nil => λ (Heq : Π (J : Nat) → Le (S J) (Len Nil) → Id Bool (Eqb X (NthL J Nil)) False). Refl,
+      Cons (H) (T) Ih => λ (Heq : Π (J : Nat) → Le (S J) (Len (Cons H T)) → Id Bool (Eqb X (NthL J (Cons H T))) False).
+        IdTrans Nat (Count X (Cons H T)) (Count X T) Z
+          (CountConsMiss X H T (Heq Z unit))
+          (Ih (λ (J : Nat). λ (Hj : Le (S J) (Len T)). Heq (S J) Hj)) } }
 def CountZeroExtTy : Term := prog{
-  Π (x : Nat) → Π (s : List Nat) →
-    (Π (j : Nat) → Le (S j) (Len s) → Id Bool (Eqb x (NthL j s)) False) → Id Nat (Count x s) Z }
+  Π (X : Nat) → Π (S0 : List Nat) →
+    (Π (J : Nat) → Le (S J) (Len S0) → Id Bool (Eqb X (NthL J S0)) False) → Id Nat (Count X S0) Z }
 
 def NthTake : Term := prog{
-  λ (w : Nat).
-    elim w return (λ (wz : Nat). Π (j : Nat) → Π (s : List Nat) → Le (S j) wz → Id Nat (NthL j (Take wz s)) (NthL j s)) {
-      Z => λ (j : Nat). λ (s : List Nat). λ (hlt : Le (S j) Z). botElim (Id Nat (NthL j (Take Z s)) (NthL j s)) hlt,
-      S (w') ih => λ (j : Nat). λ (s : List Nat).
-        elim j return (λ (jz : Nat). Le (S jz) (S w') → Id Nat (NthL jz (Take (S w') s)) (NthL jz s)) {
-          Z => λ (hlt : Le (S Z) (S w')).
-            elim s return (λ (sz : List Nat). Id Nat (NthL Z (Take (S w') sz)) (NthL Z sz)) {
-              Nil => Refl, Cons (h) (t) sih => Refl },
-          S (j') jih => λ (hlt : Le (S (S j')) (S w')).
-            elim s return (λ (sz : List Nat). Id Nat (NthL (S j') (Take (S w') sz)) (NthL (S j') sz)) {
+  λ (W : Nat).
+    elim W return (λ (Wz : Nat). Π (J : Nat) → Π (S0 : List Nat) → Le (S J) Wz → Id Nat (NthL J (Take Wz S0)) (NthL J S0)) {
+      Z => λ (J : Nat). λ (S0 : List Nat). λ (Hlt : Le (S J) Z). botElim (Id Nat (NthL J (Take Z S0)) (NthL J S0)) Hlt,
+      S (W') Ih => λ (J : Nat). λ (S0 : List Nat).
+        elim J return (λ (Jz : Nat). Le (S Jz) (S W') → Id Nat (NthL Jz (Take (S W') S0)) (NthL Jz S0)) {
+          Z => λ (Hlt : Le (S Z) (S W')).
+            elim S0 return (λ (Sz : List Nat). Id Nat (NthL Z (Take (S W') Sz)) (NthL Z Sz)) {
+              Nil => Refl, Cons (H) (T) Sih => Refl },
+          S (J') Jih => λ (Hlt : Le (S (S J')) (S W')).
+            elim S0 return (λ (Sz : List Nat). Id Nat (NthL (S J') (Take (S W') Sz)) (NthL (S J') Sz)) {
               Nil => Refl,
-              Cons (h) (t) sih => ih j' t hlt } } } }
+              Cons (H) (T) Sih => Ih J' T Hlt } } } }
 def NthTakeTy : Term := prog{
-  Π (w : Nat) → Π (j : Nat) → Π (s : List Nat) → Le (S j) w → Id Nat (NthL j (Take w s)) (NthL j s) }
+  Π (W : Nat) → Π (J : Nat) → Π (S0 : List Nat) → Le (S J) W → Id Nat (NthL J (Take W S0)) (NthL J S0) }
 
 def LenTakeLe : Term := prog{
-  λ (w : Nat).
-    elim w return (λ (wz : Nat). Π (s : List Nat) → Le (Len (Take wz s)) wz) {
-      Z => λ (s : List Nat). unit,
-      S (w') ih => λ (s : List Nat).
-        elim s return (λ (sz : List Nat). Le (Len (Take (S w') sz)) (S w')) {
+  λ (W : Nat).
+    elim W return (λ (Wz : Nat). Π (S0 : List Nat) → Le (Len (Take Wz S0)) Wz) {
+      Z => λ (S0 : List Nat). unit,
+      S (W') Ih => λ (S0 : List Nat).
+        elim S0 return (λ (Sz : List Nat). Le (Len (Take (S W') Sz)) (S W')) {
           Nil => unit,
-          Cons (h) (t) sih => ih t } } }
-def LenTakeLeTy : Term := prog{ Π (w : Nat) → Π (s : List Nat) → Le (Len (Take w s)) w }
+          Cons (H) (T) Sih => Ih T } } }
+def LenTakeLeTy : Term := prog{ Π (W : Nat) → Π (S0 : List Nat) → Le (Len (Take W S0)) W }
 
 -- #2 AllLeRToNoAbove : every segment element ≤ p, so an x>p occurs 0× (CountZeroExt,
 -- with each element bridged nth j (take w (drop lo l)) → nth (add j lo) l via NthTake/NthDrop).
 def AllLeRToNoAbove : Term := prog{
-  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
-    λ (hAll : AllLeR w lo p l). λ (x : Nat). λ (hpx : Le (S p) x).
-      CountZeroExt x (Take w (Drop lo l))
-        (λ (j : Nat). λ (hj : Le (S j) (Len (Take w (Drop lo l)))).
-          EqbGtFalse (NthL j (Take w (Drop lo l))) x
-            (LeTrans (S (NthL j (Take w (Drop lo l)))) (S p) x
-              (LeRwL p (NthL (Add j lo) l) (NthL j (Take w (Drop lo l)))
-                (IdSym Nat (NthL j (Take w (Drop lo l))) (NthL (Add j lo) l)
-                  (IdTrans Nat (NthL j (Take w (Drop lo l))) (NthL j (Drop lo l)) (NthL (Add j lo) l)
-                    (NthTake w j (Drop lo l) (LeTrans (S j) (Len (Take w (Drop lo l))) w hj (LenTakeLe w (Drop lo l))))
-                    (IdTrans Nat (NthL j (Drop lo l)) (NthL (Add lo j) l) (NthL (Add j lo) l)
-                      (NthDrop lo j l)
-                      (IdCongr Nat Nat (λ (q : Nat). NthL q l) (Add lo j) (Add j lo) (AddComm lo j)))))
-                (hAll j (LeTrans (S j) (Len (Take w (Drop lo l))) w hj (LenTakeLe w (Drop lo l)))))
-              hpx)) }
+  λ (W : Nat). λ (Lo : Nat). λ (P : Nat). λ (L : List Nat).
+    λ (HAll : AllLeR W Lo P L). λ (X : Nat). λ (Hpx : Le (S P) X).
+      CountZeroExt X (Take W (Drop Lo L))
+        (λ (J : Nat). λ (Hj : Le (S J) (Len (Take W (Drop Lo L)))).
+          EqbGtFalse (NthL J (Take W (Drop Lo L))) X
+            (LeTrans (S (NthL J (Take W (Drop Lo L)))) (S P) X
+              (LeRwL P (NthL (Add J Lo) L) (NthL J (Take W (Drop Lo L)))
+                (IdSym Nat (NthL J (Take W (Drop Lo L))) (NthL (Add J Lo) L)
+                  (IdTrans Nat (NthL J (Take W (Drop Lo L))) (NthL J (Drop Lo L)) (NthL (Add J Lo) L)
+                    (NthTake W J (Drop Lo L) (LeTrans (S J) (Len (Take W (Drop Lo L))) W Hj (LenTakeLe W (Drop Lo L))))
+                    (IdTrans Nat (NthL J (Drop Lo L)) (NthL (Add Lo J) L) (NthL (Add J Lo) L)
+                      (NthDrop Lo J L)
+                      (IdCongr Nat Nat (λ (Q : Nat). NthL Q L) (Add Lo J) (Add J Lo) (AddComm Lo J)))))
+                (HAll J (LeTrans (S J) (Len (Take W (Drop Lo L))) W Hj (LenTakeLe W (Drop Lo L)))))
+              Hpx)) }
 
 -- #4 AllGtRToNoBelow : every segment element > p, so an x≤p occurs 0× (mirror of #2).
 def AllGtRToNoBelow : Term := prog{
-  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
-    λ (hAll : AllGtR w lo p l). λ (x : Nat). λ (hxp : Le x p).
-      CountZeroExt x (Take w (Drop lo l))
-        (λ (j : Nat). λ (hj : Le (S j) (Len (Take w (Drop lo l)))).
-          EqbLtFalse x (NthL j (Take w (Drop lo l)))
-            (LeTrans (S x) (S p) (NthL j (Take w (Drop lo l)))
-              hxp
-              (LeRwR (S p) (NthL (Add j lo) l) (NthL j (Take w (Drop lo l)))
-                (IdSym Nat (NthL j (Take w (Drop lo l))) (NthL (Add j lo) l)
-                  (IdTrans Nat (NthL j (Take w (Drop lo l))) (NthL j (Drop lo l)) (NthL (Add j lo) l)
-                    (NthTake w j (Drop lo l) (LeTrans (S j) (Len (Take w (Drop lo l))) w hj (LenTakeLe w (Drop lo l))))
-                    (IdTrans Nat (NthL j (Drop lo l)) (NthL (Add lo j) l) (NthL (Add j lo) l)
-                      (NthDrop lo j l)
-                      (IdCongr Nat Nat (λ (q : Nat). NthL q l) (Add lo j) (Add j lo) (AddComm lo j)))))
-                (hAll j (LeTrans (S j) (Len (Take w (Drop lo l))) w hj (LenTakeLe w (Drop lo l))))))) }
+  λ (W : Nat). λ (Lo : Nat). λ (P : Nat). λ (L : List Nat).
+    λ (HAll : AllGtR W Lo P L). λ (X : Nat). λ (Hxp : Le X P).
+      CountZeroExt X (Take W (Drop Lo L))
+        (λ (J : Nat). λ (Hj : Le (S J) (Len (Take W (Drop Lo L)))).
+          EqbLtFalse X (NthL J (Take W (Drop Lo L)))
+            (LeTrans (S X) (S P) (NthL J (Take W (Drop Lo L)))
+              Hxp
+              (LeRwR (S P) (NthL (Add J Lo) L) (NthL J (Take W (Drop Lo L)))
+                (IdSym Nat (NthL J (Take W (Drop Lo L))) (NthL (Add J Lo) L)
+                  (IdTrans Nat (NthL J (Take W (Drop Lo L))) (NthL J (Drop Lo L)) (NthL (Add J Lo) L)
+                    (NthTake W J (Drop Lo L) (LeTrans (S J) (Len (Take W (Drop Lo L))) W Hj (LenTakeLe W (Drop Lo L))))
+                    (IdTrans Nat (NthL J (Drop Lo L)) (NthL (Add Lo J) L) (NthL (Add J Lo) L)
+                      (NthDrop Lo J L)
+                      (IdCongr Nat Nat (λ (Q : Nat). NthL Q L) (Add Lo J) (Add J Lo) (AddComm Lo J)))))
+                (HAll J (LeTrans (S J) (Len (Take W (Drop Lo L))) W Hj (LenTakeLe W (Drop Lo L))))))) }
 
 -- Membership side (#1/#3/#5): the range-fits bound makes the element genuinely present.
 def EqbRefl : Term := prog{
-  λ (n : Nat). elim n return (λ (nz : Nat). Id Bool (Eqb nz nz) True) {
+  λ (N : Nat). elim N return (λ (Nz : Nat). Id Bool (Eqb Nz Nz) True) {
     Z => Refl,
-    S (n') ih => ih } }
-def EqbReflTy : Term := prog{ Π (n : Nat) → Id Bool (Eqb n n) True }
+    S (N') Ih => Ih } }
+def EqbReflTy : Term := prog{ Π (N : Nat) → Id Bool (Eqb N N) True }
 
 def LenDropBound : Term := prog{
-  λ (lo : Nat).
-    elim lo return (λ (loz : Nat). Π (k : Nat) → Π (l : List Nat) → Le (Add loz k) (Len l) → Le k (Len (Drop loz l))) {
-      Z => λ (k : Nat). λ (l : List Nat). λ (hb : Le (Add Z k) (Len l)). hb,
-      S (lo') ih => λ (k : Nat). λ (l : List Nat).
-        elim l return (λ (lz : List Nat). Le (Add (S lo') k) (Len lz) → Le k (Len (Drop (S lo') lz))) {
-          Nil => λ (hb : Le (Add (S lo') k) (Len Nil)). botElim (Le k (Len (Drop (S lo') Nil))) hb,
-          Cons (h) (t) lih => λ (hb : Le (Add (S lo') k) (Len (Cons h t))). ih k t hb } } }
+  λ (Lo : Nat).
+    elim Lo return (λ (Loz : Nat). Π (K : Nat) → Π (L : List Nat) → Le (Add Loz K) (Len L) → Le K (Len (Drop Loz L))) {
+      Z => λ (K : Nat). λ (L : List Nat). λ (Hb : Le (Add Z K) (Len L)). Hb,
+      S (Lo') Ih => λ (K : Nat). λ (L : List Nat).
+        elim L return (λ (Lz : List Nat). Le (Add (S Lo') K) (Len Lz) → Le K (Len (Drop (S Lo') Lz))) {
+          Nil => λ (Hb : Le (Add (S Lo') K) (Len Nil)). botElim (Le K (Len (Drop (S Lo') Nil))) Hb,
+          Cons (H) (T) Lih => λ (Hb : Le (Add (S Lo') K) (Len (Cons H T))). Ih K T Hb } } }
 def LenDropBoundTy : Term := prog{
-  Π (lo : Nat) → Π (k : Nat) → Π (l : List Nat) → Le (Add lo k) (Len l) → Le k (Len (Drop lo l)) }
+  Π (Lo : Nat) → Π (K : Nat) → Π (L : List Nat) → Le (Add Lo K) (Len L) → Le K (Len (Drop Lo L)) }
 
 def CountTakeNthPos : Term := prog{
-  λ (w : Nat).
-    elim w return (λ (wz : Nat). Π (m : Nat) → Π (s : List Nat) → Le (S m) wz → Le (S m) (Len s) → Le (S Z) (Count (NthL m s) (Take wz s))) {
-      Z => λ (m : Nat). λ (s : List Nat). λ (hw : Le (S m) Z). λ (hs : Le (S m) (Len s)). botElim (Le (S Z) (Count (NthL m s) (Take Z s))) hw,
-      S (w') ih => λ (m : Nat). λ (s : List Nat). λ (hw : Le (S m) (S w')). λ (hs : Le (S m) (Len s)).
-        elim s return (λ (sz : List Nat). Le (S m) (Len sz) → Le (S Z) (Count (NthL m sz) (Take (S w') sz))) {
-          Nil => λ (hs0 : Le (S m) (Len Nil)). botElim (Le (S Z) (Count (NthL m Nil) (Take (S w') Nil))) hs0,
-          Cons (h) (t) sih => λ (hs0 : Le (S m) (Len (Cons h t))).
-            elim m return (λ (mz : Nat). Le (S mz) (S w') → Le (S mz) (Len (Cons h t)) → Le (S Z) (Count (NthL mz (Cons h t)) (Take (S w') (Cons h t)))) {
-              Z => λ (hw1 : Le (S Z) (S w')). λ (hs1 : Le (S Z) (Len (Cons h t))).
-                LeRwR (S Z) (S (Count h (Take w' t))) (Count h (Cons h (Take w' t)))
-                  (IdSym Nat (Count h (Cons h (Take w' t))) (S (Count h (Take w' t)))
-                    (CountConsHit h h (Take w' t) (EqbRefl h)))
+  λ (W : Nat).
+    elim W return (λ (Wz : Nat). Π (M : Nat) → Π (S0 : List Nat) → Le (S M) Wz → Le (S M) (Len S0) → Le (S Z) (Count (NthL M S0) (Take Wz S0))) {
+      Z => λ (M : Nat). λ (S0 : List Nat). λ (Hw : Le (S M) Z). λ (Hs : Le (S M) (Len S0)). botElim (Le (S Z) (Count (NthL M S0) (Take Z S0))) Hw,
+      S (W') Ih => λ (M : Nat). λ (S0 : List Nat). λ (Hw : Le (S M) (S W')). λ (Hs : Le (S M) (Len S0)).
+        elim S0 return (λ (Sz : List Nat). Le (S M) (Len Sz) → Le (S Z) (Count (NthL M Sz) (Take (S W') Sz))) {
+          Nil => λ (Hs0 : Le (S M) (Len Nil)). botElim (Le (S Z) (Count (NthL M Nil) (Take (S W') Nil))) Hs0,
+          Cons (H) (T) Sih => λ (Hs0 : Le (S M) (Len (Cons H T))).
+            elim M return (λ (Mz : Nat). Le (S Mz) (S W') → Le (S Mz) (Len (Cons H T)) → Le (S Z) (Count (NthL Mz (Cons H T)) (Take (S W') (Cons H T)))) {
+              Z => λ (Hw1 : Le (S Z) (S W')). λ (Hs1 : Le (S Z) (Len (Cons H T))).
+                LeRwR (S Z) (S (Count H (Take W' T))) (Count H (Cons H (Take W' T)))
+                  (IdSym Nat (Count H (Cons H (Take W' T))) (S (Count H (Take W' T)))
+                    (CountConsHit H H (Take W' T) (EqbRefl H)))
                   unit,
-              S (m') mih => λ (hw1 : Le (S (S m')) (S w')). λ (hs1 : Le (S (S m')) (Len (Cons h t))).
-                elim (Eqb (NthL m' t) h) return (λ (b : Bool). Le (S Z) (boolRec (λ (bw : Bool). Nat) (S (Count (NthL m' t) (Take w' t))) (Count (NthL m' t) (Take w' t)) b)) {
+              S (M') Mih => λ (Hw1 : Le (S (S M')) (S W')). λ (Hs1 : Le (S (S M')) (Len (Cons H T))).
+                elim (Eqb (NthL M' T) H) return (λ (B : Bool). Le (S Z) (boolRec (λ (Bw : Bool). Nat) (S (Count (NthL M' T) (Take W' T))) (Count (NthL M' T) (Take W' T)) B)) {
                   True => unit,
-                  False => ih m' t hw1 hs1 }
-            } hw hs0 } hs } }
+                  False => Ih M' T Hw1 Hs1 }
+            } Hw Hs0 } Hs } }
 def CountTakeNthPosTy : Term := prog{
-  Π (w : Nat) → Π (m : Nat) → Π (s : List Nat) → Le (S m) w → Le (S m) (Len s) →
-    Le (S Z) (Count (NthL m s) (Take w s)) }
+  Π (W : Nat) → Π (M : Nat) → Π (S0 : List Nat) → Le (S M) W → Le (S M) (Len S0) →
+    Le (S Z) (Count (NthL M S0) (Take W S0)) }
 
 -- #1 NthSegCountPos : element at range position lo+m occurs ≥1× in the segment (needs range-fits).
 def NthSegCountPos : Term := prog{
-  λ (m : Nat). λ (w : Nat). λ (lo : Nat). λ (l : List Nat).
-    λ (hmw : Le (S m) w). λ (hrange : Le (Add lo w) (Len l)).
-      LeRwR (S Z) (Count (NthL m (Drop lo l)) (Take w (Drop lo l))) (Count (NthL (Add m lo) l) (Take w (Drop lo l)))
-        (IdCongr Nat Nat (λ (q : Nat). Count q (Take w (Drop lo l))) (NthL m (Drop lo l)) (NthL (Add m lo) l)
-          (IdTrans Nat (NthL m (Drop lo l)) (NthL (Add lo m) l) (NthL (Add m lo) l)
-            (NthDrop lo m l)
-            (IdCongr Nat Nat (λ (q : Nat). NthL q l) (Add lo m) (Add m lo) (AddComm lo m))))
-        (CountTakeNthPos w m (Drop lo l) hmw
-          (LenDropBound lo (S m) l
-            (LeTrans (Add lo (S m)) (Add lo w) (Len l) (LeAddMonoL lo (S m) w hmw) hrange))) }
+  λ (M : Nat). λ (W : Nat). λ (Lo : Nat). λ (L : List Nat).
+    λ (Hmw : Le (S M) W). λ (Hrange : Le (Add Lo W) (Len L)).
+      LeRwR (S Z) (Count (NthL M (Drop Lo L)) (Take W (Drop Lo L))) (Count (NthL (Add M Lo) L) (Take W (Drop Lo L)))
+        (IdCongr Nat Nat (λ (Q : Nat). Count Q (Take W (Drop Lo L))) (NthL M (Drop Lo L)) (NthL (Add M Lo) L)
+          (IdTrans Nat (NthL M (Drop Lo L)) (NthL (Add Lo M) L) (NthL (Add M Lo) L)
+            (NthDrop Lo M L)
+            (IdCongr Nat Nat (λ (Q : Nat). NthL Q L) (Add Lo M) (Add M Lo) (AddComm Lo M))))
+        (CountTakeNthPos W M (Drop Lo L) Hmw
+          (LenDropBound Lo (S M) L
+            (LeTrans (Add Lo (S M)) (Add Lo W) (Len L) (LeAddMonoL Lo (S M) W Hmw) Hrange))) }
 
 -- #3 NoAboveToAllLeR : no element > p in the segment ⟹ range ≤ p (leb + contradiction via #1).
 def NoAboveToAllLeR : Term := prog{
-  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
-    λ (hrange : Le (Add lo w) (Len l)). λ (hnoAbove : Π (x : Nat) → Le (S p) x → Id Nat (SegCount x lo w l) Z).
-    λ (m : Nat). λ (hm : Le (S m) w).
-      elim (Leb (NthL (Add m lo) l) p) return (λ (b : Bool). Id Bool (Leb (NthL (Add m lo) l) p) b → Le (NthL (Add m lo) l) p) {
-        True => λ (e : Id Bool (Leb (NthL (Add m lo) l) p) True). LebTrueLe (NthL (Add m lo) l) p e,
-        False => λ (e : Id Bool (Leb (NthL (Add m lo) l) p) False).
-          botElim (Le (NthL (Add m lo) l) p)
-            (LeRwR (S Z) (SegCount (NthL (Add m lo) l) lo w l) Z
-              (hnoAbove (NthL (Add m lo) l) (LebFalseGt (NthL (Add m lo) l) p e))
-              (NthSegCountPos m w lo l hm hrange))
+  λ (W : Nat). λ (Lo : Nat). λ (P : Nat). λ (L : List Nat).
+    λ (Hrange : Le (Add Lo W) (Len L)). λ (HnoAbove : Π (X : Nat) → Le (S P) X → Id Nat (SegCount X Lo W L) Z).
+    λ (M : Nat). λ (Hm : Le (S M) W).
+      elim (Leb (NthL (Add M Lo) L) P) return (λ (B : Bool). Id Bool (Leb (NthL (Add M Lo) L) P) B → Le (NthL (Add M Lo) L) P) {
+        True => λ (E : Id Bool (Leb (NthL (Add M Lo) L) P) True). LebTrueLe (NthL (Add M Lo) L) P E,
+        False => λ (E : Id Bool (Leb (NthL (Add M Lo) L) P) False).
+          botElim (Le (NthL (Add M Lo) L) P)
+            (LeRwR (S Z) (SegCount (NthL (Add M Lo) L) Lo W L) Z
+              (HnoAbove (NthL (Add M Lo) L) (LebFalseGt (NthL (Add M Lo) L) P E))
+              (NthSegCountPos M W Lo L Hm Hrange))
       } Refl }
 
 -- #5 NoBelowToAllGtR : mirror of #3.
 def NoBelowToAllGtR : Term := prog{
-  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
-    λ (hrange : Le (Add lo w) (Len l)). λ (hnoBelow : Π (x : Nat) → Le x p → Id Nat (SegCount x lo w l) Z).
-    λ (m : Nat). λ (hm : Le (S m) w).
-      elim (Leb (NthL (Add m lo) l) p) return (λ (b : Bool). Id Bool (Leb (NthL (Add m lo) l) p) b → Le (S p) (NthL (Add m lo) l)) {
-        True => λ (e : Id Bool (Leb (NthL (Add m lo) l) p) True).
-          botElim (Le (S p) (NthL (Add m lo) l))
-            (LeRwR (S Z) (SegCount (NthL (Add m lo) l) lo w l) Z
-              (hnoBelow (NthL (Add m lo) l) (LebTrueLe (NthL (Add m lo) l) p e))
-              (NthSegCountPos m w lo l hm hrange)),
-        False => λ (e : Id Bool (Leb (NthL (Add m lo) l) p) False). LebFalseGt (NthL (Add m lo) l) p e
+  λ (W : Nat). λ (Lo : Nat). λ (P : Nat). λ (L : List Nat).
+    λ (Hrange : Le (Add Lo W) (Len L)). λ (HnoBelow : Π (X : Nat) → Le X P → Id Nat (SegCount X Lo W L) Z).
+    λ (M : Nat). λ (Hm : Le (S M) W).
+      elim (Leb (NthL (Add M Lo) L) P) return (λ (B : Bool). Id Bool (Leb (NthL (Add M Lo) L) P) B → Le (S P) (NthL (Add M Lo) L)) {
+        True => λ (E : Id Bool (Leb (NthL (Add M Lo) L) P) True).
+          botElim (Le (S P) (NthL (Add M Lo) L))
+            (LeRwR (S Z) (SegCount (NthL (Add M Lo) L) Lo W L) Z
+              (HnoBelow (NthL (Add M Lo) L) (LebTrueLe (NthL (Add M Lo) L) P E))
+              (NthSegCountPos M W Lo L Hm Hrange)),
+        False => λ (E : Id Bool (Leb (NthL (Add M Lo) L) P) False). LebFalseGt (NthL (Add M Lo) L) P E
       } Refl }
 
 def AllLeRToNoAboveTy : Term := prog{
-  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
-    AllLeR w lo p l → Π (x : Nat) → Le (S p) x → Id Nat (SegCount x lo w l) Z }
+  Π (W : Nat) → Π (Lo : Nat) → Π (P : Nat) → Π (L : List Nat) →
+    AllLeR W Lo P L → Π (X : Nat) → Le (S P) X → Id Nat (SegCount X Lo W L) Z }
 def NoAboveToAllLeRTy : Term := prog{
-  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) → Le (Add lo w) (Len l) →
-    (Π (x : Nat) → Le (S p) x → Id Nat (SegCount x lo w l) Z) → AllLeR w lo p l }
+  Π (W : Nat) → Π (Lo : Nat) → Π (P : Nat) → Π (L : List Nat) → Le (Add Lo W) (Len L) →
+    (Π (X : Nat) → Le (S P) X → Id Nat (SegCount X Lo W L) Z) → AllLeR W Lo P L }
 def AllGtRToNoBelowTy : Term := prog{
-  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
-    AllGtR w lo p l → Π (x : Nat) → Le x p → Id Nat (SegCount x lo w l) Z }
+  Π (W : Nat) → Π (Lo : Nat) → Π (P : Nat) → Π (L : List Nat) →
+    AllGtR W Lo P L → Π (X : Nat) → Le X P → Id Nat (SegCount X Lo W L) Z }
 def NoBelowToAllGtRTy : Term := prog{
-  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) → Le (Add lo w) (Len l) →
-    (Π (x : Nat) → Le x p → Id Nat (SegCount x lo w l) Z) → AllGtR w lo p l }
+  Π (W : Nat) → Π (Lo : Nat) → Π (P : Nat) → Π (L : List Nat) → Le (Add Lo W) (Len L) →
+    (Π (X : Nat) → Le X P → Id Nat (SegCount X Lo W L) Z) → AllGtR W Lo P L }
 -- #1/#3/#5 carry the range-fits bound `Le (Add lo w) (Len l)`: without it an off-the-end
 -- position reads Z, which need not occur in the segment, so #1 (present ≥1×) and #5
 -- (AllGtR needs nth>p at every m<w, but off-end nth=Z isn't) are FALSE (dllbc-seg's
@@ -3256,40 +3256,40 @@ def NoBelowToAllGtRTy : Term := prog{
 -- bound. The keystone already carries this bound and len is sort-invariant, so the
 -- composition feeds #3/#5 the bound over the sorted list.
 def NthSegCountPosTy : Term := prog{
-  Π (m : Nat) → Π (w : Nat) → Π (lo : Nat) → Π (l : List Nat) →
-    Le (S m) w → Le (Add lo w) (Len l) → Le (S Z) (SegCount (NthL (Add m lo) l) lo w l) }
+  Π (M : Nat) → Π (W : Nat) → Π (Lo : Nat) → Π (L : List Nat) →
+    Le (S M) W → Le (Add Lo W) (Len L) → Le (S Z) (SegCount (NthL (Add M Lo) L) Lo W L) }
 def AllLeRSortRangeTy : Term := prog{
-  Π (fuel : Nat) → Π (lo : Nat) → Π (w : Nat) → Π (p : Nat) → Π (l : List Nat) →
-    Le (Add lo w) (Len l) → AllLeR w lo p l → AllLeR w lo p (SortRangeL fuel lo w l) }
+  Π (Fuel : Nat) → Π (Lo : Nat) → Π (W : Nat) → Π (P : Nat) → Π (L : List Nat) →
+    Le (Add Lo W) (Len L) → AllLeR W Lo P L → AllLeR W Lo P (SortRangeL Fuel Lo W L) }
 def AllGtRSortRangeTy : Term := prog{
-  Π (fuel : Nat) → Π (lo : Nat) → Π (w : Nat) → Π (p : Nat) → Π (l : List Nat) →
-    Le (Add lo w) (Len l) → AllGtR w lo p l → AllGtR w lo p (SortRangeL fuel lo w l) }
+  Π (Fuel : Nat) → Π (Lo : Nat) → Π (W : Nat) → Π (P : Nat) → Π (L : List Nat) →
+    Le (Add Lo W) (Len L) → AllGtR W Lo P L → AllGtR W Lo P (SortRangeL Fuel Lo W L) }
 
 -- KEYSTONE composition (mine): route the positional bound through the perm-invariant
 -- noAbove/noBelow (SegCount preserved by SegCountSortRangeL), feeding the range bound
 -- over the sorted list (len sort-invariant, LeRwR over LenSortRangeL).
 def AllLeRSortRange : Term := prog{
-  λ (fuel : Nat). λ (lo : Nat). λ (w : Nat). λ (p : Nat). λ (l : List Nat).
-    λ (bound : Le (Add lo w) (Len l)). λ (h : AllLeR w lo p l).
-      NoAboveToAllLeR w lo p (SortRangeL fuel lo w l)
-        (LeRwR (Add lo w) (Len l) (Len (SortRangeL fuel lo w l))
-          (IdSym Nat (Len (SortRangeL fuel lo w l)) (Len l) (LenSortRangeL fuel lo w l))
-          bound)
-        (λ (x : Nat). λ (hx : Le (S p) x).
-          IdTrans Nat (SegCount x lo w (SortRangeL fuel lo w l)) (SegCount x lo w l) Z
-            (SegCountSortRangeL x fuel lo w l bound)
-            (AllLeRToNoAbove w lo p l h x hx)) }
+  λ (Fuel : Nat). λ (Lo : Nat). λ (W : Nat). λ (P : Nat). λ (L : List Nat).
+    λ (Bound0 : Le (Add Lo W) (Len L)). λ (H : AllLeR W Lo P L).
+      NoAboveToAllLeR W Lo P (SortRangeL Fuel Lo W L)
+        (LeRwR (Add Lo W) (Len L) (Len (SortRangeL Fuel Lo W L))
+          (IdSym Nat (Len (SortRangeL Fuel Lo W L)) (Len L) (LenSortRangeL Fuel Lo W L))
+          Bound0)
+        (λ (X : Nat). λ (Hx : Le (S P) X).
+          IdTrans Nat (SegCount X Lo W (SortRangeL Fuel Lo W L)) (SegCount X Lo W L) Z
+            (SegCountSortRangeL X Fuel Lo W L Bound0)
+            (AllLeRToNoAbove W Lo P L H X Hx)) }
 def AllGtRSortRange : Term := prog{
-  λ (fuel : Nat). λ (lo : Nat). λ (w : Nat). λ (p : Nat). λ (l : List Nat).
-    λ (bound : Le (Add lo w) (Len l)). λ (h : AllGtR w lo p l).
-      NoBelowToAllGtR w lo p (SortRangeL fuel lo w l)
-        (LeRwR (Add lo w) (Len l) (Len (SortRangeL fuel lo w l))
-          (IdSym Nat (Len (SortRangeL fuel lo w l)) (Len l) (LenSortRangeL fuel lo w l))
-          bound)
-        (λ (x : Nat). λ (hx : Le x p).
-          IdTrans Nat (SegCount x lo w (SortRangeL fuel lo w l)) (SegCount x lo w l) Z
-            (SegCountSortRangeL x fuel lo w l bound)
-            (AllGtRToNoBelow w lo p l h x hx)) }
+  λ (Fuel : Nat). λ (Lo : Nat). λ (W : Nat). λ (P : Nat). λ (L : List Nat).
+    λ (Bound0 : Le (Add Lo W) (Len L)). λ (H : AllGtR W Lo P L).
+      NoBelowToAllGtR W Lo P (SortRangeL Fuel Lo W L)
+        (LeRwR (Add Lo W) (Len L) (Len (SortRangeL Fuel Lo W L))
+          (IdSym Nat (Len (SortRangeL Fuel Lo W L)) (Len L) (LenSortRangeL Fuel Lo W L))
+          Bound0)
+        (λ (X : Nat). λ (Hx : Le X P).
+          IdTrans Nat (SegCount X Lo W (SortRangeL Fuel Lo W L)) (SegCount X Lo W L) Z
+            (SegCountSortRangeL X Fuel Lo W L Bound0)
+            (AllGtRToNoBelow W Lo P L H X Hx)) }
 
 /-! ## SortedSortRangeL — the full sort is sorted (§22, M22-c step 5; proof dispatched)
 
@@ -3305,43 +3305,43 @@ def AllGtRSortRange : Term := prog{
     Assembly over now-proven pieces (glue, keystone, invariant, locality all on main) —
     proof owned by dllbc-seg per skeleton+prove; statement mine. -/
 def SortedSortRangeLTy : Term := prog{
-  Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
-    Le cnt fuel → Le (Add lo cnt) (Len l) →
-    SortedR cnt lo (SortRangeL fuel lo cnt l) }
+  Π (Fuel : Nat) → Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) →
+    Le Cnt Fuel → Le (Add Lo Cnt) (Len L) →
+    SortedR Cnt Lo (SortRangeL Fuel Lo Cnt L) }
 
 -- SortedR transport kit for SortedSortRangeL (spine takeover): move a SortedR across
 -- a fixed region (SortedRCong, le_rw both endpoints), a width rewrite (SortedRWidthCong,
 -- j on the width — for the glue's S(add i g) → cnt), or an offset rewrite (SortedROffCong,
 -- j on the offset — for the AddComm S(add lo i) ↔ S(add i lo) bridge).
 def SortedRCong : Term := prog{
-  λ (w : Nat). λ (lo : Nat). λ (l : List Nat). λ (l' : List Nat).
-    λ (s : SortedR w lo l).
-    λ (agree : Π (q : Nat) → Le (S q) w → Id Nat (NthL (Add q lo) l') (NthL (Add q lo) l)).
-      λ (k : Nat). λ (hk : Le (S (S k)) w).
-        LeRwR (NthL (Add k lo) l') (NthL (Add (S k) lo) l) (NthL (Add (S k) lo) l')
-          (IdSym Nat (NthL (Add (S k) lo) l') (NthL (Add (S k) lo) l) (agree (S k) hk))
-          (LeRwL (NthL (Add (S k) lo) l) (NthL (Add k lo) l) (NthL (Add k lo) l')
-            (IdSym Nat (NthL (Add k lo) l') (NthL (Add k lo) l) (agree k (LePredL (S k) w hk)))
-            (s k hk)) }
+  λ (W : Nat). λ (Lo : Nat). λ (L : List Nat). λ (L' : List Nat).
+    λ (S0 : SortedR W Lo L).
+    λ (Agree : Π (Q : Nat) → Le (S Q) W → Id Nat (NthL (Add Q Lo) L') (NthL (Add Q Lo) L)).
+      λ (K : Nat). λ (Hk : Le (S (S K)) W).
+        LeRwR (NthL (Add K Lo) L') (NthL (Add (S K) Lo) L) (NthL (Add (S K) Lo) L')
+          (IdSym Nat (NthL (Add (S K) Lo) L') (NthL (Add (S K) Lo) L) (Agree (S K) Hk))
+          (LeRwL (NthL (Add (S K) Lo) L) (NthL (Add K Lo) L) (NthL (Add K Lo) L')
+            (IdSym Nat (NthL (Add K Lo) L') (NthL (Add K Lo) L) (Agree K (LePredL (S K) W Hk)))
+            (S0 K Hk)) }
 def SortedRCongTy : Term := prog{
-  Π (w : Nat) → Π (lo : Nat) → Π (l : List Nat) → Π (l' : List Nat) →
-    SortedR w lo l →
-    (Π (q : Nat) → Le (S q) w → Id Nat (NthL (Add q lo) l') (NthL (Add q lo) l)) →
-    SortedR w lo l' }
+  Π (W : Nat) → Π (Lo : Nat) → Π (L : List Nat) → Π (L' : List Nat) →
+    SortedR W Lo L →
+    (Π (Q : Nat) → Le (S Q) W → Id Nat (NthL (Add Q Lo) L') (NthL (Add Q Lo) L)) →
+    SortedR W Lo L' }
 def SortedRWidthCong : Term := prog{
-  λ (w : Nat). λ (w' : Nat). λ (lo : Nat). λ (l : List Nat).
-    λ (e : Id Nat w w'). λ (s : SortedR w lo l).
-      j Nat w (λ (w2 : Nat). λ (h : Id Nat w w2). SortedR w2 lo l) s w' e }
+  λ (W : Nat). λ (W' : Nat). λ (Lo : Nat). λ (L : List Nat).
+    λ (E : Id Nat W W'). λ (S0 : SortedR W Lo L).
+      j Nat W (λ (W2 : Nat). λ (H : Id Nat W W2). SortedR W2 Lo L) S0 W' E }
 def SortedRWidthCongTy : Term := prog{
-  Π (w : Nat) → Π (w' : Nat) → Π (lo : Nat) → Π (l : List Nat) →
-    Id Nat w w' → SortedR w lo l → SortedR w' lo l }
+  Π (W : Nat) → Π (W' : Nat) → Π (Lo : Nat) → Π (L : List Nat) →
+    Id Nat W W' → SortedR W Lo L → SortedR W' Lo L }
 def SortedROffCong : Term := prog{
-  λ (w : Nat). λ (lo : Nat). λ (lo' : Nat). λ (l : List Nat).
-    λ (e : Id Nat lo lo'). λ (s : SortedR w lo l).
-      j Nat lo (λ (lo2 : Nat). λ (h : Id Nat lo lo2). SortedR w lo2 l) s lo' e }
+  λ (W : Nat). λ (Lo : Nat). λ (Lo' : Nat). λ (L : List Nat).
+    λ (E : Id Nat Lo Lo'). λ (S0 : SortedR W Lo L).
+      j Nat Lo (λ (Lo2 : Nat). λ (H : Id Nat Lo Lo2). SortedR W Lo2 L) S0 Lo' E }
 def SortedROffCongTy : Term := prog{
-  Π (w : Nat) → Π (lo : Nat) → Π (lo' : Nat) → Π (l : List Nat) →
-    Id Nat lo lo' → SortedR w lo l → SortedR w lo' l }
+  Π (W : Nat) → Π (Lo : Nat) → Π (Lo' : Nat) → Π (L : List Nat) →
+    Id Nat Lo Lo' → SortedR W Lo L → SortedR W Lo' L }
 
 /-! ## sorted_sortRangeL's 5 glue inputs (spine takeover) — each survives BOTH sub-sorts.
     Setup: L = SortRangeL f' lo i p (left sort), result = SortRangeL f' (S(add lo i)) g L
@@ -3350,162 +3350,162 @@ def SortedROffCongTy : Term := prog{
     carries bounds across the OWN sort; cong across the fixed region. AddComm bridges the
     positional-predicate offset (add i lo) ↔ model offset (add lo i). -/
 def PosLtBound : Term := prog{
-  λ (q : Nat). λ (i : Nat). λ (lo : Nat). λ (hq : Le (S q) i).
-    LeRwL (Add lo i) (Add lo q) (Add q lo) (AddComm lo q)
-      (LeAddMonoL lo q i (LePredL q i hq)) }
+  λ (Q : Nat). λ (I : Nat). λ (Lo : Nat). λ (Hq : Le (S Q) I).
+    LeRwL (Add Lo I) (Add Lo Q) (Add Q Lo) (AddComm Lo Q)
+      (LeAddMonoL Lo Q I (LePredL Q I Hq)) }
 def PosLtBoundTy : Term := prog{
-  Π (q : Nat) → Π (i : Nat) → Π (lo : Nat) → Le (S q) i → Le (S (Add q lo)) (S (Add lo i)) }
+  Π (Q : Nat) → Π (I : Nat) → Π (Lo : Nat) → Le (S Q) I → Le (S (Add Q Lo)) (S (Add Lo I)) }
 def AllGtROffCong : Term := prog{
-  λ (w : Nat). λ (off : Nat). λ (off' : Nat). λ (p : Nat). λ (l : List Nat).
-    λ (e : Id Nat off off'). λ (s : AllGtR w off p l).
-      j Nat off (λ (o2 : Nat). λ (h : Id Nat off o2). AllGtR w o2 p l) s off' e }
+  λ (W : Nat). λ (Off : Nat). λ (Off' : Nat). λ (P : Nat). λ (L : List Nat).
+    λ (E : Id Nat Off Off'). λ (S0 : AllGtR W Off P L).
+      j Nat Off (λ (O2 : Nat). λ (H : Id Nat Off O2). AllGtR W O2 P L) S0 Off' E }
 def AllGtROffCongTy : Term := prog{
-  Π (w : Nat) → Π (off : Nat) → Π (off' : Nat) → Π (p : Nat) → Π (l : List Nat) →
-    Id Nat off off' → AllGtR w off p l → AllGtR w off' p l }
+  Π (W : Nat) → Π (Off : Nat) → Π (Off' : Nat) → Π (P : Nat) → Π (L : List Nat) →
+    Id Nat Off Off' → AllGtR W Off P L → AllGtR W Off' P L }
 def GapGeBound : Term := prog{
-  λ (m : Nat). λ (i : Nat). λ (lo : Nat).
-    LeRwL (Add m (S (Add i lo))) (Add i lo) (Add lo i) (AddComm i lo)
-      (LeTrans (Add i lo) (S (Add i lo)) (Add m (S (Add i lo)))
-        (LeUpR (Add i lo) (Add i lo) (LeRefl (Add i lo)))
-        (LeAddL (S (Add i lo)) m)) }
+  λ (M : Nat). λ (I : Nat). λ (Lo : Nat).
+    LeRwL (Add M (S (Add I Lo))) (Add I Lo) (Add Lo I) (AddComm I Lo)
+      (LeTrans (Add I Lo) (S (Add I Lo)) (Add M (S (Add I Lo)))
+        (LeUpR (Add I Lo) (Add I Lo) (LeRefl (Add I Lo)))
+        (LeAddL (S (Add I Lo)) M)) }
 def GapGeBoundTy : Term := prog{
-  Π (m : Nat) → Π (i : Nat) → Π (lo : Nat) → Le (Add lo i) (Add m (S (Add i lo))) }
+  Π (M : Nat) → Π (I : Nat) → Π (Lo : Nat) → Le (Add Lo I) (Add M (S (Add I Lo))) }
 def SortedInSL : Term := prog{
-  λ (i : Nat). λ (g : Nat). λ (lo : Nat). λ (p : List Nat). λ (f' : Nat).
-    λ (ihL : SortedR i lo (SortRangeL f' lo i p)).
-      SortedRCong i lo (SortRangeL f' lo i p) (SortRangeL f' (S (Add lo i)) g (SortRangeL f' lo i p))
-        ihL
-        (λ (q : Nat). λ (hq : Le (S q) i).
-          NthSortRangeLLt f' (Add q lo) (S (Add lo i)) g (SortRangeL f' lo i p) (PosLtBound q i lo hq)) }
+  λ (I : Nat). λ (G : Nat). λ (Lo : Nat). λ (P : List Nat). λ (F' : Nat).
+    λ (IhL : SortedR I Lo (SortRangeL F' Lo I P)).
+      SortedRCong I Lo (SortRangeL F' Lo I P) (SortRangeL F' (S (Add Lo I)) G (SortRangeL F' Lo I P))
+        IhL
+        (λ (Q : Nat). λ (Hq : Le (S Q) I).
+          NthSortRangeLLt F' (Add Q Lo) (S (Add Lo I)) G (SortRangeL F' Lo I P) (PosLtBound Q I Lo Hq)) }
 def SortedInSLTy : Term := prog{
-  Π (i : Nat) → Π (g : Nat) → Π (lo : Nat) → Π (p : List Nat) → Π (f' : Nat) →
-    SortedR i lo (SortRangeL f' lo i p) →
-    SortedR i lo (SortRangeL f' (S (Add lo i)) g (SortRangeL f' lo i p)) }
+  Π (I : Nat) → Π (G : Nat) → Π (Lo : Nat) → Π (P : List Nat) → Π (F' : Nat) →
+    SortedR I Lo (SortRangeL F' Lo I P) →
+    SortedR I Lo (SortRangeL F' (S (Add Lo I)) G (SortRangeL F' Lo I P)) }
 def SortedInSR : Term := prog{
-  λ (i : Nat). λ (g : Nat). λ (lo : Nat). λ (p : List Nat). λ (f' : Nat).
-    λ (ihR : SortedR g (S (Add lo i)) (SortRangeL f' (S (Add lo i)) g (SortRangeL f' lo i p))).
-      SortedROffCong g (S (Add lo i)) (S (Add i lo)) (SortRangeL f' (S (Add lo i)) g (SortRangeL f' lo i p))
-        (IdCongr Nat Nat (λ (n : Nat). S n) (Add lo i) (Add i lo) (AddComm lo i))
-        ihR }
+  λ (I : Nat). λ (G : Nat). λ (Lo : Nat). λ (P : List Nat). λ (F' : Nat).
+    λ (IhR : SortedR G (S (Add Lo I)) (SortRangeL F' (S (Add Lo I)) G (SortRangeL F' Lo I P))).
+      SortedROffCong G (S (Add Lo I)) (S (Add I Lo)) (SortRangeL F' (S (Add Lo I)) G (SortRangeL F' Lo I P))
+        (IdCongr Nat Nat (λ (N : Nat). S N) (Add Lo I) (Add I Lo) (AddComm Lo I))
+        IhR }
 def SortedInSRTy : Term := prog{
-  Π (i : Nat) → Π (g : Nat) → Π (lo : Nat) → Π (p : List Nat) → Π (f' : Nat) →
-    SortedR g (S (Add lo i)) (SortRangeL f' (S (Add lo i)) g (SortRangeL f' lo i p)) →
-    SortedR g (S (Add i lo)) (SortRangeL f' (S (Add lo i)) g (SortRangeL f' lo i p)) }
+  Π (I : Nat) → Π (G : Nat) → Π (Lo : Nat) → Π (P : List Nat) → Π (F' : Nat) →
+    SortedR G (S (Add Lo I)) (SortRangeL F' (S (Add Lo I)) G (SortRangeL F' Lo I P)) →
+    SortedR G (S (Add I Lo)) (SortRangeL F' (S (Add Lo I)) G (SortRangeL F' Lo I P)) }
 def SortedInHPIV : Term := prog{
-  λ (i : Nat). λ (g : Nat). λ (lo : Nat). λ (pivot : Nat). λ (p : List Nat). λ (f' : Nat).
-    λ (ppiv : Id Nat (NthL (Add i lo) p) pivot).
-      IdSym Nat (NthL (Add i lo) (SortRangeL f' (S (Add lo i)) g (SortRangeL f' lo i p))) pivot
+  λ (I : Nat). λ (G : Nat). λ (Lo : Nat). λ (Pivot : Nat). λ (P : List Nat). λ (F' : Nat).
+    λ (Ppiv : Id Nat (NthL (Add I Lo) P) Pivot).
+      IdSym Nat (NthL (Add I Lo) (SortRangeL F' (S (Add Lo I)) G (SortRangeL F' Lo I P))) Pivot
         (IdTrans Nat
-          (NthL (Add i lo) (SortRangeL f' (S (Add lo i)) g (SortRangeL f' lo i p)))
-          (NthL (Add i lo) (SortRangeL f' lo i p))
-          pivot
-          (NthSortRangeLLt f' (Add i lo) (S (Add lo i)) g (SortRangeL f' lo i p)
-            (LeRwR (Add i lo) (Add i lo) (Add lo i) (AddComm i lo) (LeRefl (Add i lo))))
-          (IdTrans Nat (NthL (Add i lo) (SortRangeL f' lo i p)) (NthL (Add i lo) p) pivot
-            (NthSortRangeLGe f' (Add i lo) lo i p
-              (LeRwL (Add i lo) (Add i lo) (Add lo i) (AddComm i lo) (LeRefl (Add i lo))))
-            ppiv)) }
+          (NthL (Add I Lo) (SortRangeL F' (S (Add Lo I)) G (SortRangeL F' Lo I P)))
+          (NthL (Add I Lo) (SortRangeL F' Lo I P))
+          Pivot
+          (NthSortRangeLLt F' (Add I Lo) (S (Add Lo I)) G (SortRangeL F' Lo I P)
+            (LeRwR (Add I Lo) (Add I Lo) (Add Lo I) (AddComm I Lo) (LeRefl (Add I Lo))))
+          (IdTrans Nat (NthL (Add I Lo) (SortRangeL F' Lo I P)) (NthL (Add I Lo) P) Pivot
+            (NthSortRangeLGe F' (Add I Lo) Lo I P
+              (LeRwL (Add I Lo) (Add I Lo) (Add Lo I) (AddComm I Lo) (LeRefl (Add I Lo))))
+            Ppiv)) }
 def SortedInHPIVTy : Term := prog{
-  Π (i : Nat) → Π (g : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (p : List Nat) → Π (f' : Nat) →
-    Id Nat (NthL (Add i lo) p) pivot →
-    Id Nat pivot (NthL (Add i lo) (SortRangeL f' (S (Add lo i)) g (SortRangeL f' lo i p))) }
+  Π (I : Nat) → Π (G : Nat) → Π (Lo : Nat) → Π (Pivot : Nat) → Π (P : List Nat) → Π (F' : Nat) →
+    Id Nat (NthL (Add I Lo) P) Pivot →
+    Id Nat Pivot (NthL (Add I Lo) (SortRangeL F' (S (Add Lo I)) G (SortRangeL F' Lo I P))) }
 def SortedInAL : Term := prog{
-  λ (i : Nat). λ (g : Nat). λ (lo : Nat). λ (pivot : Nat). λ (p : List Nat). λ (f' : Nat).
-    λ (pAL : AllLeR i lo pivot p). λ (bl : Le (Add lo i) (Len p)).
-      AllLeRCong i lo pivot (SortRangeL f' lo i p) (SortRangeL f' (S (Add lo i)) g (SortRangeL f' lo i p))
-        (λ (q : Nat). λ (hq : Le (S q) i).
-          NthSortRangeLLt f' (Add q lo) (S (Add lo i)) g (SortRangeL f' lo i p) (PosLtBound q i lo hq))
-        (AllLeRSortRange f' lo i pivot p bl pAL) }
+  λ (I : Nat). λ (G : Nat). λ (Lo : Nat). λ (Pivot : Nat). λ (P : List Nat). λ (F' : Nat).
+    λ (PAL : AllLeR I Lo Pivot P). λ (Bl : Le (Add Lo I) (Len P)).
+      AllLeRCong I Lo Pivot (SortRangeL F' Lo I P) (SortRangeL F' (S (Add Lo I)) G (SortRangeL F' Lo I P))
+        (λ (Q : Nat). λ (Hq : Le (S Q) I).
+          NthSortRangeLLt F' (Add Q Lo) (S (Add Lo I)) G (SortRangeL F' Lo I P) (PosLtBound Q I Lo Hq))
+        (AllLeRSortRange F' Lo I Pivot P Bl PAL) }
 def SortedInALTy : Term := prog{
-  Π (i : Nat) → Π (g : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (p : List Nat) → Π (f' : Nat) →
-    AllLeR i lo pivot p → Le (Add lo i) (Len p) →
-    AllLeR i lo pivot (SortRangeL f' (S (Add lo i)) g (SortRangeL f' lo i p)) }
+  Π (I : Nat) → Π (G : Nat) → Π (Lo : Nat) → Π (Pivot : Nat) → Π (P : List Nat) → Π (F' : Nat) →
+    AllLeR I Lo Pivot P → Le (Add Lo I) (Len P) →
+    AllLeR I Lo Pivot (SortRangeL F' (S (Add Lo I)) G (SortRangeL F' Lo I P)) }
 def SortedInAG : Term := prog{
-  λ (i : Nat). λ (g : Nat). λ (lo : Nat). λ (pivot : Nat). λ (p : List Nat). λ (f' : Nat).
-    λ (pAG : AllGtR g (S (Add i lo)) pivot p).
-    λ (br : Le (Add (S (Add lo i)) g) (Len (SortRangeL f' lo i p))).
-      AllGtROffCong g (S (Add lo i)) (S (Add i lo)) pivot (SortRangeL f' (S (Add lo i)) g (SortRangeL f' lo i p))
-        (IdCongr Nat Nat (λ (n : Nat). S n) (Add lo i) (Add i lo) (AddComm lo i))
-        (AllGtRSortRange f' (S (Add lo i)) g pivot (SortRangeL f' lo i p) br
-          (AllGtROffCong g (S (Add i lo)) (S (Add lo i)) pivot (SortRangeL f' lo i p)
-            (IdCongr Nat Nat (λ (n : Nat). S n) (Add i lo) (Add lo i) (AddComm i lo))
-            (AllGtRCong g (S (Add i lo)) pivot p (SortRangeL f' lo i p)
-              (λ (m : Nat). λ (hm : Le (S m) g).
-                NthSortRangeLGe f' (Add m (S (Add i lo))) lo i p (GapGeBound m i lo))
-              pAG))) }
+  λ (I : Nat). λ (G : Nat). λ (Lo : Nat). λ (Pivot : Nat). λ (P : List Nat). λ (F' : Nat).
+    λ (PAG : AllGtR G (S (Add I Lo)) Pivot P).
+    λ (Br : Le (Add (S (Add Lo I)) G) (Len (SortRangeL F' Lo I P))).
+      AllGtROffCong G (S (Add Lo I)) (S (Add I Lo)) Pivot (SortRangeL F' (S (Add Lo I)) G (SortRangeL F' Lo I P))
+        (IdCongr Nat Nat (λ (N : Nat). S N) (Add Lo I) (Add I Lo) (AddComm Lo I))
+        (AllGtRSortRange F' (S (Add Lo I)) G Pivot (SortRangeL F' Lo I P) Br
+          (AllGtROffCong G (S (Add I Lo)) (S (Add Lo I)) Pivot (SortRangeL F' Lo I P)
+            (IdCongr Nat Nat (λ (N : Nat). S N) (Add I Lo) (Add Lo I) (AddComm I Lo))
+            (AllGtRCong G (S (Add I Lo)) Pivot P (SortRangeL F' Lo I P)
+              (λ (M : Nat). λ (Hm : Le (S M) G).
+                NthSortRangeLGe F' (Add M (S (Add I Lo))) Lo I P (GapGeBound M I Lo))
+              PAG))) }
 def SortedInAGTy : Term := prog{
-  Π (i : Nat) → Π (g : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (p : List Nat) → Π (f' : Nat) →
-    AllGtR g (S (Add i lo)) pivot p → Le (Add (S (Add lo i)) g) (Len (SortRangeL f' lo i p)) →
-    AllGtR g (S (Add i lo)) pivot (SortRangeL f' (S (Add lo i)) g (SortRangeL f' lo i p)) }
+  Π (I : Nat) → Π (G : Nat) → Π (Lo : Nat) → Π (Pivot : Nat) → Π (P : List Nat) → Π (F' : Nat) →
+    AllGtR G (S (Add I Lo)) Pivot P → Le (Add (S (Add Lo I)) G) (Len (SortRangeL F' Lo I P)) →
+    AllGtR G (S (Add I Lo)) Pivot (SortRangeL F' (S (Add Lo I)) G (SortRangeL F' Lo I P)) }
 
 -- i+g = cnt-1 for the top partition (PartScanSizeL + AddZero); reused by the size
 -- transport and both fuel-sufficiency derivations in SortedSortRangeL.
 def PartSize : Term := prog{
-  λ (lo : Nat). λ (cnt'' : Nat). λ (l : List Nat).
+  λ (Lo : Nat). λ (Cnt'' : Nat). λ (L : List Nat).
     IdTrans Nat
-      (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l))
-      (S (Add cnt'' Z)) (S cnt'')
-      (PartScanSizeL (NthL lo l) lo (S cnt'') Z Z l)
-      (IdCongr Nat Nat (λ (n : Nat). S n) (Add cnt'' Z) cnt'' (AddZero cnt'')) }
+      (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L))
+      (S (Add Cnt'' Z)) (S Cnt'')
+      (PartScanSizeL (NthL Lo L) Lo (S Cnt'') Z Z L)
+      (IdCongr Nat Nat (λ (N : Nat). S N) (Add Cnt'' Z) Cnt'' (AddZero Cnt'')) }
 def PartSizeTy : Term := prog{
-  Π (lo : Nat) → Π (cnt'' : Nat) → Π (l : List Nat) →
-    Id Nat (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)) (S cnt'') }
+  Π (Lo : Nat) → Π (Cnt'' : Nat) → Π (L : List Nat) →
+    Id Nat (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)) (S Cnt'') }
 
 
 def SortedSortRangeL : Term := prog{
-  λ (fuel : Nat).
-    elim fuel return (λ (fz : Nat). Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
-        Le cnt fz → Le (Add lo cnt) (Len l) → SortedR cnt lo (SortRangeL fz lo cnt l)) {
-      Z => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-        elim cnt return (λ (cz : Nat). Le cz Z → Le (Add lo cz) (Len l) → SortedR cz lo l) {
-          Z => λ (hf : Le Z Z). λ (hb : Le (Add lo Z) (Len l)). SortedRZero lo l,
-          S (c) cih => λ (hf : Le (S c) Z). λ (hb : Le (Add lo (S c)) (Len l)). botElim (SortedR (S c) lo l) hf },
-      S (f') ih => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
-        elim cnt return (λ (cz : Nat). Le cz (S f') → Le (Add lo cz) (Len l) → SortedR cz lo (SortRangeL (S f') lo cz l)) {
-          Z => λ (hf : Le Z (S f')). λ (hb : Le (Add lo Z) (Len l)). SortedRZero lo l,
-          S (cnt') nih => elim cnt' return (λ (cz' : Nat). Le (S cz') (S f') → Le (Add lo (S cz')) (Len l) → SortedR (S cz') lo (SortRangeL (S f') lo (S cz') l)) {
-            Z => λ (hf : Le (S Z) (S f')). λ (hb : Le (Add lo (S Z)) (Len l)). SortedROne lo l,
-            S (cnt'') n2ih => λ (hf : Le (S (S cnt'')) (S f')). λ (hb : Le (Add lo (S (S cnt''))) (Len l)).
+  λ (Fuel : Nat).
+    elim Fuel return (λ (Fz : Nat). Π (Lo : Nat) → Π (Cnt : Nat) → Π (L : List Nat) →
+        Le Cnt Fz → Le (Add Lo Cnt) (Len L) → SortedR Cnt Lo (SortRangeL Fz Lo Cnt L)) {
+      Z => λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+        elim Cnt return (λ (Cz : Nat). Le Cz Z → Le (Add Lo Cz) (Len L) → SortedR Cz Lo L) {
+          Z => λ (Hf : Le Z Z). λ (Hb : Le (Add Lo Z) (Len L)). SortedRZero Lo L,
+          S (C) Cih => λ (Hf : Le (S C) Z). λ (Hb : Le (Add Lo (S C)) (Len L)). botElim (SortedR (S C) Lo L) Hf },
+      S (F') Ih => λ (Lo : Nat). λ (Cnt : Nat). λ (L : List Nat).
+        elim Cnt return (λ (Cz : Nat). Le Cz (S F') → Le (Add Lo Cz) (Len L) → SortedR Cz Lo (SortRangeL (S F') Lo Cz L)) {
+          Z => λ (Hf : Le Z (S F')). λ (Hb : Le (Add Lo Z) (Len L)). SortedRZero Lo L,
+          S (Cnt') Nih => elim Cnt' return (λ (Cz' : Nat). Le (S Cz') (S F') → Le (Add Lo (S Cz')) (Len L) → SortedR (S Cz') Lo (SortRangeL (S F') Lo (S Cz') L)) {
+            Z => λ (Hf : Le (S Z) (S F')). λ (Hb : Le (Add Lo (S Z)) (Len L)). SortedROne Lo L,
+            S (Cnt'') N2ih => λ (Hf : Le (S (S Cnt'')) (S F')). λ (Hb : Le (Add Lo (S (S Cnt''))) (Len L)).
               SortedRWidthCong
-                (S (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)))
-                (S (S cnt'')) lo
-                (SortRangeL f' (S (Add lo (PartIdxRangeL lo (S (S cnt'')) l))) (PartGapRangeL lo (S (S cnt'')) l)
-                  (SortRangeL f' lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l)))
-                (IdCongr Nat Nat (λ (n : Nat). S n)
-                  (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)) (S cnt'')
-                  (PartSize lo cnt'' l))
-                (Glue (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l) lo (NthL lo l)
-                  (SortRangeL f' (S (Add lo (PartIdxRangeL lo (S (S cnt'')) l))) (PartGapRangeL lo (S (S cnt'')) l)
-                    (SortRangeL f' lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l)))
-                  (SortedInHPIV (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l) lo (NthL lo l)
-                    (PartitionRangeL lo (S (S cnt'')) l) f' (PartitionPivot lo (S (S cnt'')) l hb))
-                  (SortedInSL (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l) lo
-                    (PartitionRangeL lo (S (S cnt'')) l) f'
-                    (ih lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l)
-                      (LeTrans (PartIdxRangeL lo (S (S cnt'')) l) (S cnt'') f'
-                        (LeRwR (PartIdxRangeL lo (S (S cnt'')) l)
-                          (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)) (S cnt'')
-                          (PartSize lo cnt'' l)
-                          (LeAdd (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)))
-                        hf)
-                      (SortRangeBL lo cnt'' l hb)))
-                  (SortedInAL (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l) lo (NthL lo l)
-                    (PartitionRangeL lo (S (S cnt'')) l) f'
-                    (PartitionAllLeR lo (S (S cnt'')) l hb) (SortRangeBL lo cnt'' l hb))
-                  (SortedInAG (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l) lo (NthL lo l)
-                    (PartitionRangeL lo (S (S cnt'')) l) f'
-                    (PartitionAllGtR lo (S (S cnt'')) l hb) (SortRangeBR f' lo cnt'' l hb))
-                  (SortedInSR (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l) lo
-                    (PartitionRangeL lo (S (S cnt'')) l) f'
-                    (ih (S (Add lo (PartIdxRangeL lo (S (S cnt'')) l))) (PartGapRangeL lo (S (S cnt'')) l)
-                      (SortRangeL f' lo (PartIdxRangeL lo (S (S cnt'')) l) (PartitionRangeL lo (S (S cnt'')) l))
-                      (LeTrans (PartGapRangeL lo (S (S cnt'')) l) (S cnt'') f'
-                        (LeRwR (PartGapRangeL lo (S (S cnt'')) l)
-                          (Add (PartIdxRangeL lo (S (S cnt'')) l) (PartGapRangeL lo (S (S cnt'')) l)) (S cnt'')
-                          (PartSize lo cnt'' l)
-                          (LeAddL (PartGapRangeL lo (S (S cnt'')) l) (PartIdxRangeL lo (S (S cnt'')) l)))
-                        hf)
-                      (SortRangeBR f' lo cnt'' l hb))))
+                (S (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)))
+                (S (S Cnt'')) Lo
+                (SortRangeL F' (S (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L))) (PartGapRangeL Lo (S (S Cnt'')) L)
+                  (SortRangeL F' Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L)))
+                (IdCongr Nat Nat (λ (N : Nat). S N)
+                  (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)) (S Cnt'')
+                  (PartSize Lo Cnt'' L))
+                (Glue (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L) Lo (NthL Lo L)
+                  (SortRangeL F' (S (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L))) (PartGapRangeL Lo (S (S Cnt'')) L)
+                    (SortRangeL F' Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L)))
+                  (SortedInHPIV (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L) Lo (NthL Lo L)
+                    (PartitionRangeL Lo (S (S Cnt'')) L) F' (PartitionPivot Lo (S (S Cnt'')) L Hb))
+                  (SortedInSL (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L) Lo
+                    (PartitionRangeL Lo (S (S Cnt'')) L) F'
+                    (Ih Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L)
+                      (LeTrans (PartIdxRangeL Lo (S (S Cnt'')) L) (S Cnt'') F'
+                        (LeRwR (PartIdxRangeL Lo (S (S Cnt'')) L)
+                          (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)) (S Cnt'')
+                          (PartSize Lo Cnt'' L)
+                          (LeAdd (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)))
+                        Hf)
+                      (SortRangeBL Lo Cnt'' L Hb)))
+                  (SortedInAL (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L) Lo (NthL Lo L)
+                    (PartitionRangeL Lo (S (S Cnt'')) L) F'
+                    (PartitionAllLeR Lo (S (S Cnt'')) L Hb) (SortRangeBL Lo Cnt'' L Hb))
+                  (SortedInAG (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L) Lo (NthL Lo L)
+                    (PartitionRangeL Lo (S (S Cnt'')) L) F'
+                    (PartitionAllGtR Lo (S (S Cnt'')) L Hb) (SortRangeBR F' Lo Cnt'' L Hb))
+                  (SortedInSR (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L) Lo
+                    (PartitionRangeL Lo (S (S Cnt'')) L) F'
+                    (Ih (S (Add Lo (PartIdxRangeL Lo (S (S Cnt'')) L))) (PartGapRangeL Lo (S (S Cnt'')) L)
+                      (SortRangeL F' Lo (PartIdxRangeL Lo (S (S Cnt'')) L) (PartitionRangeL Lo (S (S Cnt'')) L))
+                      (LeTrans (PartGapRangeL Lo (S (S Cnt'')) L) (S Cnt'') F'
+                        (LeRwR (PartGapRangeL Lo (S (S Cnt'')) L)
+                          (Add (PartIdxRangeL Lo (S (S Cnt'')) L) (PartGapRangeL Lo (S (S Cnt'')) L)) (S Cnt'')
+                          (PartSize Lo Cnt'' L)
+                          (LeAddL (PartGapRangeL Lo (S (S Cnt'')) L) (PartIdxRangeL Lo (S (S Cnt'')) L)))
+                        Hf)
+                      (SortRangeBR F' Lo Cnt'' L Hb))))
           }
         }
     } }
@@ -3527,37 +3527,37 @@ def SortedSortRangeL : Term := prog{
     naturalness-first rule (the north star's) says the program stays natural. -/
 
 def Ub : Term := prog{
-  λ (p : Nat). λ (l : List Nat).
-    elim l return (λ (lz : List Nat). Type) {
+  λ (P : Nat). λ (L : List Nat).
+    elim L return (λ (Lz : List Nat). Type) {
       Nil => Unit,
-      Cons (h) (t) ih => Σ (hh : Le h p) → ih } }
+      Cons (H) (T) Ih => Σ (Hh : Le H P) → Ih } }
 
 def Lb : Term := prog{
-  λ (p : Nat). λ (l : List Nat).
-    elim l return (λ (lz : List Nat). Type) {
+  λ (P : Nat). λ (L : List Nat).
+    elim L return (λ (Lz : List Nat). Type) {
       Nil => Unit,
-      Cons (h) (t) ih => Σ (hh : Le p h) → ih } }
+      Cons (H) (T) Ih => Σ (Hh : Le P H) → Ih } }
 
 def InsertL : Term := prog{
-  λ (k : Nat).
-    elim k return (λ (kz : Nat). Nat → List Nat → List Nat) {
-      Z => λ (x : Nat). λ (l : List Nat). Cons x l,
-      S (k2) ih => λ (x : Nat). λ (l : List Nat).
-        elim l return (λ (lz : List Nat). List Nat) {
-          Nil => Cons x Nil,
-          Cons (h) (t) iht => Cons h (ih x t) } } }
+  λ (K : Nat).
+    elim K return (λ (Kz : Nat). Nat → List Nat → List Nat) {
+      Z => λ (X : Nat). λ (L : List Nat). Cons X L,
+      S (K2) Ih => λ (X : Nat). λ (L : List Nat).
+        elim L return (λ (Lz : List Nat). List Nat) {
+          Nil => Cons X Nil,
+          Cons (H) (T) Iht => Cons H (Ih X T) } } }
 
 /-- Generic J-transport at `List Nat`: `x = y ⟹ P x → P y`. `LeRwR`/`LeRwL` are
     this at `Le`-shaped `P` over `Nat`; a back-less body needs the unrestricted form,
     because every certificate it returns is stated over an exit snapshot it only
     knows PROPOSITIONALLY (the callee's evidence), never definitionally. -/
 def ListRw : Term := prog{
-  λ (P : List Nat → Type). λ (x : List Nat). λ (y : List Nat).
-    λ (h : Id (List Nat) x y). λ (px : P x).
-      j (List Nat) x (λ (y2 : List Nat). λ (hh : Id (List Nat) x y2). P y2) px y h }
+  λ (P : List Nat → Type). λ (X : List Nat). λ (Y : List Nat).
+    λ (H : Id (List Nat) X Y). λ (Px : P X).
+      j (List Nat) X (λ (Y2 : List Nat). λ (Hh : Id (List Nat) X Y2). P Y2) Px Y H }
 def ListRwTy : Term := prog{
-  Π (P : List Nat → Type) → Π (x : List Nat) → Π (y : List Nat) →
-    Id (List Nat) x y → P x → P y }
+  Π (P : List Nat → Type) → Π (X : List Nat) → Π (Y : List Nat) →
+    Id (List Nat) X Y → P X → P Y }
 
 /-! ## M23 — the pivot glue: `Sorted (a ++ p :: b)` from the four partition facts
 
@@ -3575,46 +3575,46 @@ def ListRwTy : Term := prog{
     sugar reads `A` and `λx. B` off the motive's binder type syntactically. -/
 
 def SortedHead : Term := prog{
-  λ (h : Nat). λ (t : List Nat). λ (s : Σ (hb : Bound h t) → Sorted t).
-    elim s return (λ (q : Σ (hb : Bound h t) → Sorted t). Bound h t) {
-      Pair (x) (y) => x } }
+  λ (H : Nat). λ (T : List Nat). λ (S0 : Σ (Hb : Bound H T) → Sorted T).
+    elim S0 return (λ (Q : Σ (Hb : Bound H T) → Sorted T). Bound H T) {
+      Pair (X) (Y) => X } }
 def SortedHeadTy : Term := prog{
-  Π (h : Nat) → Π (t : List Nat) → Sorted (Cons h t) → Bound h t }
+  Π (H : Nat) → Π (T : List Nat) → Sorted (Cons H T) → Bound H T }
 
 def SortedTail : Term := prog{
-  λ (h : Nat). λ (t : List Nat). λ (s : Σ (hb : Bound h t) → Sorted t).
-    elim s return (λ (q : Σ (hb : Bound h t) → Sorted t). Sorted t) {
-      Pair (x) (y) => y } }
+  λ (H : Nat). λ (T : List Nat). λ (S0 : Σ (Hb : Bound H T) → Sorted T).
+    elim S0 return (λ (Q : Σ (Hb : Bound H T) → Sorted T). Sorted T) {
+      Pair (X) (Y) => Y } }
 def SortedTailTy : Term := prog{
-  Π (h : Nat) → Π (t : List Nat) → Sorted (Cons h t) → Sorted t }
+  Π (H : Nat) → Π (T : List Nat) → Sorted (Cons H T) → Sorted T }
 
 def UbHead : Term := prog{
-  λ (p : Nat). λ (h : Nat). λ (t : List Nat). λ (u : Σ (hu : Le h p) → Ub p t).
-    elim u return (λ (q : Σ (hu : Le h p) → Ub p t). Le h p) {
-      Pair (x) (y) => x } }
+  λ (P : Nat). λ (H : Nat). λ (T : List Nat). λ (U : Σ (Hu : Le H P) → Ub P T).
+    elim U return (λ (Q : Σ (Hu : Le H P) → Ub P T). Le H P) {
+      Pair (X) (Y) => X } }
 def UbHeadTy : Term := prog{
-  Π (p : Nat) → Π (h : Nat) → Π (t : List Nat) → Ub p (Cons h t) → Le h p }
+  Π (P : Nat) → Π (H : Nat) → Π (T : List Nat) → Ub P (Cons H T) → Le H P }
 
 def UbTail : Term := prog{
-  λ (p : Nat). λ (h : Nat). λ (t : List Nat). λ (u : Σ (hu : Le h p) → Ub p t).
-    elim u return (λ (q : Σ (hu : Le h p) → Ub p t). Ub p t) {
-      Pair (x) (y) => y } }
+  λ (P : Nat). λ (H : Nat). λ (T : List Nat). λ (U : Σ (Hu : Le H P) → Ub P T).
+    elim U return (λ (Q : Σ (Hu : Le H P) → Ub P T). Ub P T) {
+      Pair (X) (Y) => Y } }
 def UbTailTy : Term := prog{
-  Π (p : Nat) → Π (h : Nat) → Π (t : List Nat) → Ub p (Cons h t) → Ub p t }
+  Π (P : Nat) → Π (H : Nat) → Π (T : List Nat) → Ub P (Cons H T) → Ub P T }
 
 /-- `Lb p l ⟹ Bound p l`: a lower bound on EVERY element is in particular a bound on
     the HEAD, which is all `Sorted (Cons p b)` asks of the pivot. The two predicates
     agree definitionally at `Nil` (both `⊤`) and differ at `Cons` only by how much
     they say, so this is a `listRec` whose `Cons` arm is a first projection. -/
 def LbBound : Term := prog{
-  λ (p : Nat). λ (l : List Nat).
-    elim l return (λ (lz : List Nat). Lb p lz → Bound p lz) {
-      Nil => λ (hn : Unit). hn,
-      Cons (h) (t) ih => λ (hl : Σ (hh : Le p h) → Lb p t).
-        elim hl return (λ (q : Σ (hh : Le p h) → Lb p t). Le p h) {
-          Pair (x) (y) => x } } }
+  λ (P : Nat). λ (L : List Nat).
+    elim L return (λ (Lz : List Nat). Lb P Lz → Bound P Lz) {
+      Nil => λ (Hn : Unit). Hn,
+      Cons (H) (T) Ih => λ (Hl : Σ (Hh : Le P H) → Lb P T).
+        elim Hl return (λ (Q : Σ (Hh : Le P H) → Lb P T). Le P H) {
+          Pair (X) (Y) => X } } }
 def LbBoundTy : Term := prog{
-  Π (p : Nat) → Π (l : List Nat) → Lb p l → Bound p l }
+  Π (P : Nat) → Π (L : List Nat) → Lb P L → Bound P L }
 
 /-- Head-bound transport across the splice: if `h` bounds the head of `t`, and `h ≤
     p`, then `h` bounds the head of `t ++ p :: b`. The `listRec` on `t` IS the case
@@ -3624,14 +3624,14 @@ def LbBoundTy : Term := prog{
     consumed — `Bound` looks exactly one cell deep, so this recursion is a case
     analysis and nothing more. -/
 def BoundAppend : Term := prog{
-  λ (h : Nat). λ (p : Nat). λ (t : List Nat). λ (b : List Nat).
-    elim t return (λ (tz : List Nat).
-        Bound h tz → Le h p → Bound h (Append tz (Cons p b))) {
-      Nil => λ (hb : Unit). λ (hp : Le h p). hp,
-      Cons (h2) (t2) ih => λ (hb : Le h h2). λ (hp : Le h p). hb } }
+  λ (H : Nat). λ (P : Nat). λ (T : List Nat). λ (B : List Nat).
+    elim T return (λ (Tz : List Nat).
+        Bound H Tz → Le H P → Bound H (Append Tz (Cons P B))) {
+      Nil => λ (Hb : Unit). λ (Hp : Le H P). Hp,
+      Cons (H2) (T2) Ih => λ (Hb : Le H H2). λ (Hp : Le H P). Hb } }
 def BoundAppendTy : Term := prog{
-  Π (h : Nat) → Π (p : Nat) → Π (t : List Nat) → Π (b : List Nat) →
-    Bound h t → Le h p → Bound h (Append t (Cons p b)) }
+  Π (H : Nat) → Π (P : Nat) → Π (T : List Nat) → Π (B : List Nat) →
+    Bound H T → Le H P → Bound H (Append T (Cons P B)) }
 
 /-- The pivot glue. `Sorted a → Ub p a → Sorted b → Lb p b → Sorted (a ++ p :: b)`.
 
@@ -3655,18 +3655,18 @@ def BoundAppendTy : Term := prog{
     b))`, so `Sorted` unfolds straight onto the pair — which is why no `ListRw`
     transport appears anywhere in this proof. -/
 def SortedAppendPivot : Term := prog{
-  λ (p : Nat). λ (a : List Nat). λ (b : List Nat).
-    λ (sa : Sorted a). λ (ua : Ub p a). λ (sb : Sorted b). λ (lb : Lb p b).
-      elim a return (λ (az : List Nat).
-          Sorted az → Ub p az → Sorted (Append az (Cons p b))) {
-        Nil => λ (sn : Unit). λ (un : Unit). Pair(LbBound p b lb, sb),
-        Cons (h) (t) ih => λ (sc : Sorted (Cons h t)). λ (uc : Ub p (Cons h t)).
-          Pair(BoundAppend h p t b (SortedHead h t sc) (UbHead p h t uc),
-               ih (SortedTail h t sc) (UbTail p h t uc))
-      } sa ua }
+  λ (P : Nat). λ (A : List Nat). λ (B : List Nat).
+    λ (Sa : Sorted A). λ (Ua : Ub P A). λ (Sb : Sorted B). λ (Lb0 : Lb P B).
+      elim A return (λ (Az : List Nat).
+          Sorted Az → Ub P Az → Sorted (Append Az (Cons P B))) {
+        Nil => λ (Sn : Unit). λ (Un : Unit). Pair(LbBound P B Lb0, Sb),
+        Cons (H) (T) Ih => λ (Sc : Sorted (Cons H T)). λ (Uc : Ub P (Cons H T)).
+          Pair(BoundAppend H P T B (SortedHead H T Sc) (UbHead P H T Uc),
+               Ih (SortedTail H T Sc) (UbTail P H T Uc))
+      } Sa Ua }
 def SortedAppendPivotTy : Term := prog{
-  Π (p : Nat) → Π (a : List Nat) → Π (b : List Nat) →
-    Sorted a → Ub p a → Sorted b → Lb p b → Sorted (Append a (Cons p b)) }
+  Π (P : Nat) → Π (A : List Nat) → Π (B : List Nat) →
+    Sorted A → Ub P A → Sorted B → Lb P B → Sorted (Append A (Cons P B)) }
 
 /-! ## M23 stage (iv) — the two-part vocabulary a relational partition needs
 
@@ -3688,38 +3688,38 @@ def SortedAppendPivotTy : Term := prog{
 /-- Head onto the LEFT part. `Add (S u) w` is definitionally `S (Add u w)` (`Add`
     recurses on its first argument), so the `True` arm is one `IdCongr`. -/
 def CountConsL : Term := prog{
-  λ (n : Nat). λ (x : Nat). λ (a : List Nat). λ (b : List Nat). λ (c : List Nat).
-    λ (h : Id Nat (Add (Count n a) (Count n b)) (Count n c)).
-      elim (Eqb n x) return (λ (bv : Bool).
-        Id Nat (Add (boolRec (λ (w : Bool). Nat) (S (Count n a)) (Count n a) bv) (Count n b))
-               (boolRec (λ (w : Bool). Nat) (S (Count n c)) (Count n c) bv)) {
-        True => IdCongr Nat Nat (λ (r : Nat). S r)
-                  (Add (Count n a) (Count n b)) (Count n c) h,
-        False => h } }
+  λ (N : Nat). λ (X : Nat). λ (A : List Nat). λ (B : List Nat). λ (C : List Nat).
+    λ (H : Id Nat (Add (Count N A) (Count N B)) (Count N C)).
+      elim (Eqb N X) return (λ (Bv : Bool).
+        Id Nat (Add (boolRec (λ (W : Bool). Nat) (S (Count N A)) (Count N A) Bv) (Count N B))
+               (boolRec (λ (W : Bool). Nat) (S (Count N C)) (Count N C) Bv)) {
+        True => IdCongr Nat Nat (λ (R : Nat). S R)
+                  (Add (Count N A) (Count N B)) (Count N C) H,
+        False => H } }
 def CountConsLTy : Term := prog{
-  Π (n : Nat) → Π (x : Nat) → Π (a : List Nat) → Π (b : List Nat) → Π (c : List Nat) →
-    Id Nat (Add (Count n a) (Count n b)) (Count n c) →
-    Id Nat (Add (Count n (Cons x a)) (Count n b)) (Count n (Cons x c)) }
+  Π (N : Nat) → Π (X : Nat) → Π (A : List Nat) → Π (B : List Nat) → Π (C : List Nat) →
+    Id Nat (Add (Count N A) (Count N B)) (Count N C) →
+    Id Nat (Add (Count N (Cons X A)) (Count N B)) (Count N (Cons X C)) }
 
 /-- Head onto the RIGHT part. Here the successor lands under `Add`'s SECOND argument,
     which is where the asymmetry of a first-argument-recursive `Add` shows up: the
     `True` arm needs `AddSucc` before the `IdCongr`. -/
 def CountConsR : Term := prog{
-  λ (n : Nat). λ (x : Nat). λ (a : List Nat). λ (b : List Nat). λ (c : List Nat).
-    λ (h : Id Nat (Add (Count n a) (Count n b)) (Count n c)).
-      elim (Eqb n x) return (λ (bv : Bool).
-        Id Nat (Add (Count n a) (boolRec (λ (w : Bool). Nat) (S (Count n b)) (Count n b) bv))
-               (boolRec (λ (w : Bool). Nat) (S (Count n c)) (Count n c) bv)) {
-        True => IdTrans Nat (Add (Count n a) (S (Count n b)))
-                  (S (Add (Count n a) (Count n b))) (S (Count n c))
-                  (AddSucc (Count n a) (Count n b))
-                  (IdCongr Nat Nat (λ (r : Nat). S r)
-                    (Add (Count n a) (Count n b)) (Count n c) h),
-        False => h } }
+  λ (N : Nat). λ (X : Nat). λ (A : List Nat). λ (B : List Nat). λ (C : List Nat).
+    λ (H : Id Nat (Add (Count N A) (Count N B)) (Count N C)).
+      elim (Eqb N X) return (λ (Bv : Bool).
+        Id Nat (Add (Count N A) (boolRec (λ (W : Bool). Nat) (S (Count N B)) (Count N B) Bv))
+               (boolRec (λ (W : Bool). Nat) (S (Count N C)) (Count N C) Bv)) {
+        True => IdTrans Nat (Add (Count N A) (S (Count N B)))
+                  (S (Add (Count N A) (Count N B))) (S (Count N C))
+                  (AddSucc (Count N A) (Count N B))
+                  (IdCongr Nat Nat (λ (R : Nat). S R)
+                    (Add (Count N A) (Count N B)) (Count N C) H),
+        False => H } }
 def CountConsRTy : Term := prog{
-  Π (n : Nat) → Π (x : Nat) → Π (a : List Nat) → Π (b : List Nat) → Π (c : List Nat) →
-    Id Nat (Add (Count n a) (Count n b)) (Count n c) →
-    Id Nat (Add (Count n a) (Count n (Cons x b))) (Count n (Cons x c)) }
+  Π (N : Nat) → Π (X : Nat) → Π (A : List Nat) → Π (B : List Nat) → Π (C : List Nat) →
+    Id Nat (Add (Count N A) (Count N B)) (Count N C) →
+    Id Nat (Add (Count N A) (Count N (Cons X B))) (Count N (Cons X C)) }
 
 /-! ## M23 stage (vi) — BOUND SURVIVAL, the whole-list keystone
 
@@ -3740,35 +3740,35 @@ def CountConsRTy : Term := prog{
 
 /-- The two `Lb` projections, mirroring `UbHead`/`UbTail`. -/
 def LbHead : Term := prog{
-  λ (p : Nat). λ (h : Nat). λ (t : List Nat). λ (u : Σ (hu : Le p h) → Lb p t).
-    elim u return (λ (q : Σ (hu : Le p h) → Lb p t). Le p h) {
-      Pair (x) (y) => x } }
+  λ (P : Nat). λ (H : Nat). λ (T : List Nat). λ (U : Σ (Hu : Le P H) → Lb P T).
+    elim U return (λ (Q : Σ (Hu : Le P H) → Lb P T). Le P H) {
+      Pair (X) (Y) => X } }
 def LbHeadTy : Term := prog{
-  Π (p : Nat) → Π (h : Nat) → Π (t : List Nat) → Lb p (Cons h t) → Le p h }
+  Π (P : Nat) → Π (H : Nat) → Π (T : List Nat) → Lb P (Cons H T) → Le P H }
 
 def LbTail : Term := prog{
-  λ (p : Nat). λ (h : Nat). λ (t : List Nat). λ (u : Σ (hu : Le p h) → Lb p t).
-    elim u return (λ (q : Σ (hu : Le p h) → Lb p t). Lb p t) {
-      Pair (x) (y) => y } }
+  λ (P : Nat). λ (H : Nat). λ (T : List Nat). λ (U : Σ (Hu : Le P H) → Lb P T).
+    elim U return (λ (Q : Σ (Hu : Le P H) → Lb P T). Lb P T) {
+      Pair (X) (Y) => Y } }
 def LbTailTy : Term := prog{
-  Π (p : Nat) → Π (h : Nat) → Π (t : List Nat) → Lb p (Cons h t) → Lb p t }
+  Π (P : Nat) → Π (H : Nat) → Π (T : List Nat) → Lb P (Cons H T) → Lb P T }
 
 /-- `Ub p l ⟹ nothing above p occurs in l`. At `Cons h t` the head misses every
     `x > p`, because `h ≤ p < x` makes `Eqb x h` False (`EqbGtFalse`), so the count
     steps past the head onto the IH. -/
 def NoAboveOfUb : Term := prog{
-  λ (p : Nat). λ (l : List Nat).
-    elim l return (λ (lz : List Nat).
-        Ub p lz → Π (x : Nat) → Le (S p) x → Id Nat (Count x lz) Z) {
-      Nil => λ (u : Unit). λ (x : Nat). λ (hx : Le (S p) x). Refl,
-      Cons (h) (t) ih => λ (u : Σ (hh : Le h p) → Ub p t). λ (x : Nat). λ (hx : Le (S p) x).
-        IdTrans Nat (Count x (Cons h t)) (Count x t) Z
-          (CountConsMiss x h t
-            (EqbGtFalse h x (LeTrans (S h) (S p) x (UbHead p h t u) hx)))
-          (ih (UbTail p h t u) x hx) } }
+  λ (P : Nat). λ (L : List Nat).
+    elim L return (λ (Lz : List Nat).
+        Ub P Lz → Π (X : Nat) → Le (S P) X → Id Nat (Count X Lz) Z) {
+      Nil => λ (U : Unit). λ (X : Nat). λ (Hx : Le (S P) X). Refl,
+      Cons (H) (T) Ih => λ (U : Σ (Hh : Le H P) → Ub P T). λ (X : Nat). λ (Hx : Le (S P) X).
+        IdTrans Nat (Count X (Cons H T)) (Count X T) Z
+          (CountConsMiss X H T
+            (EqbGtFalse H X (LeTrans (S H) (S P) X (UbHead P H T U) Hx)))
+          (Ih (UbTail P H T U) X Hx) } }
 def NoAboveOfUbTy : Term := prog{
-  Π (p : Nat) → Π (l : List Nat) → Ub p l →
-    Π (x : Nat) → Le (S p) x → Id Nat (Count x l) Z }
+  Π (P : Nat) → Π (L : List Nat) → Ub P L →
+    Π (X : Nat) → Le (S P) X → Id Nat (Count X L) Z }
 
 /-- …and back. The head bound comes from a `Leb h p` split: if it were False then
     `h > p`, so `Count h l = Z` by hypothesis — but `Count h (Cons h t)` is `S (count
@@ -3776,106 +3776,106 @@ def NoAboveOfUbTy : Term := prog{
     argument run the other way: `Count x (Cons h t) = Z` forces `Count x t = Z`,
     trivially when `Eqb x h` misses and by the same contradiction when it hits. -/
 def UbOfNoAbove : Term := prog{
-  λ (p : Nat). λ (l : List Nat).
-    elim l return (λ (lz : List Nat).
-        (Π (x : Nat) → Le (S p) x → Id Nat (Count x lz) Z) → Ub p lz) {
-      Nil => λ (hn : Π (x : Nat) → Le (S p) x → Id Nat (Count x Nil) Z). unit,
-      Cons (h) (t) ih => λ (hn : Π (x : Nat) → Le (S p) x → Id Nat (Count x (Cons h t)) Z).
+  λ (P : Nat). λ (L : List Nat).
+    elim L return (λ (Lz : List Nat).
+        (Π (X : Nat) → Le (S P) X → Id Nat (Count X Lz) Z) → Ub P Lz) {
+      Nil => λ (Hn : Π (X : Nat) → Le (S P) X → Id Nat (Count X Nil) Z). unit,
+      Cons (H) (T) Ih => λ (Hn : Π (X : Nat) → Le (S P) X → Id Nat (Count X (Cons H T)) Z).
         Pair(
-          elim (Leb h p) return (λ (bv : Bool). Id Bool (Leb h p) bv → Le h p) {
-            True => λ (e : Id Bool (Leb h p) True). LebTrueLe h p e,
-            False => λ (e : Id Bool (Leb h p) False).
-              botElim (Le h p)
-                (Znots (Count h t)
-                  (IdTrans Nat Z (Count h (Cons h t)) (S (Count h t))
-                    (IdSym Nat (Count h (Cons h t)) Z (hn h (LebFalseGt h p e)))
-                    (CountConsHit h h t (EqbRefl h))))
+          elim (Leb H P) return (λ (Bv : Bool). Id Bool (Leb H P) Bv → Le H P) {
+            True => λ (E : Id Bool (Leb H P) True). LebTrueLe H P E,
+            False => λ (E : Id Bool (Leb H P) False).
+              botElim (Le H P)
+                (Znots (Count H T)
+                  (IdTrans Nat Z (Count H (Cons H T)) (S (Count H T))
+                    (IdSym Nat (Count H (Cons H T)) Z (Hn H (LebFalseGt H P E)))
+                    (CountConsHit H H T (EqbRefl H))))
           } Refl,
-          ih (λ (x : Nat). λ (hx : Le (S p) x).
-                elim (Eqb x h) return (λ (bv : Bool). Id Bool (Eqb x h) bv → Id Nat (Count x t) Z) {
-                  True => λ (eq : Id Bool (Eqb x h) True).
-                    botElim (Id Nat (Count x t) Z)
-                      (Znots (Count x t)
-                        (IdTrans Nat Z (Count x (Cons h t)) (S (Count x t))
-                          (IdSym Nat (Count x (Cons h t)) Z (hn x hx))
-                          (CountConsHit x h t eq))),
-                  False => λ (eq : Id Bool (Eqb x h) False).
-                    IdTrans Nat (Count x t) (Count x (Cons h t)) Z
-                      (IdSym Nat (Count x (Cons h t)) (Count x t) (CountConsMiss x h t eq))
-                      (hn x hx)
+          Ih (λ (X : Nat). λ (Hx : Le (S P) X).
+                elim (Eqb X H) return (λ (Bv : Bool). Id Bool (Eqb X H) Bv → Id Nat (Count X T) Z) {
+                  True => λ (Eq : Id Bool (Eqb X H) True).
+                    botElim (Id Nat (Count X T) Z)
+                      (Znots (Count X T)
+                        (IdTrans Nat Z (Count X (Cons H T)) (S (Count X T))
+                          (IdSym Nat (Count X (Cons H T)) Z (Hn X Hx))
+                          (CountConsHit X H T Eq))),
+                  False => λ (Eq : Id Bool (Eqb X H) False).
+                    IdTrans Nat (Count X T) (Count X (Cons H T)) Z
+                      (IdSym Nat (Count X (Cons H T)) (Count X T) (CountConsMiss X H T Eq))
+                      (Hn X Hx)
                 } Refl)) } }
 def UbOfNoAboveTy : Term := prog{
-  Π (p : Nat) → Π (l : List Nat) →
-    (Π (x : Nat) → Le (S p) x → Id Nat (Count x l) Z) → Ub p l }
+  Π (P : Nat) → Π (L : List Nat) →
+    (Π (X : Nat) → Le (S P) X → Id Nat (Count X L) Z) → Ub P L }
 
 /-- THE KEYSTONE. An upper bound survives any count-preserving rearrangement — which
     is exactly what a recursive sort hands back about the part it sorted. -/
 def UbPerm : Term := prog{
-  λ (p : Nat). λ (a : List Nat). λ (b : List Nat).
-    λ (hc : Π (n : Nat) → Id Nat (Count n a) (Count n b)). λ (hb : Ub p b).
-      UbOfNoAbove p a (λ (x : Nat). λ (hx : Le (S p) x).
-        IdTrans Nat (Count x a) (Count x b) Z (hc x) (NoAboveOfUb p b hb x hx)) }
+  λ (P : Nat). λ (A : List Nat). λ (B : List Nat).
+    λ (Hc : Π (N : Nat) → Id Nat (Count N A) (Count N B)). λ (Hb : Ub P B).
+      UbOfNoAbove P A (λ (X : Nat). λ (Hx : Le (S P) X).
+        IdTrans Nat (Count X A) (Count X B) Z (Hc X) (NoAboveOfUb P B Hb X Hx)) }
 def UbPermTy : Term := prog{
-  Π (p : Nat) → Π (a : List Nat) → Π (b : List Nat) →
-    (Π (n : Nat) → Id Nat (Count n a) (Count n b)) → Ub p b → Ub p a }
+  Π (P : Nat) → Π (A : List Nat) → Π (B : List Nat) →
+    (Π (N : Nat) → Id Nat (Count N A) (Count N B)) → Ub P B → Ub P A }
 
 /-- The `Lb` mirror: `Lb p l ⟹ nothing strictly below p occurs`. Here the head misses
     every `x < p ≤ h` by `EqbLtFalse`. -/
 def NoBelowOfLb : Term := prog{
-  λ (p : Nat). λ (l : List Nat).
-    elim l return (λ (lz : List Nat).
-        Lb p lz → Π (x : Nat) → Le (S x) p → Id Nat (Count x lz) Z) {
-      Nil => λ (u : Unit). λ (x : Nat). λ (hx : Le (S x) p). Refl,
-      Cons (h) (t) ih => λ (u : Σ (hh : Le p h) → Lb p t). λ (x : Nat). λ (hx : Le (S x) p).
-        IdTrans Nat (Count x (Cons h t)) (Count x t) Z
-          (CountConsMiss x h t
-            (EqbLtFalse x h (LeTrans (S x) p h hx (LbHead p h t u))))
-          (ih (LbTail p h t u) x hx) } }
+  λ (P : Nat). λ (L : List Nat).
+    elim L return (λ (Lz : List Nat).
+        Lb P Lz → Π (X : Nat) → Le (S X) P → Id Nat (Count X Lz) Z) {
+      Nil => λ (U : Unit). λ (X : Nat). λ (Hx : Le (S X) P). Refl,
+      Cons (H) (T) Ih => λ (U : Σ (Hh : Le P H) → Lb P T). λ (X : Nat). λ (Hx : Le (S X) P).
+        IdTrans Nat (Count X (Cons H T)) (Count X T) Z
+          (CountConsMiss X H T
+            (EqbLtFalse X H (LeTrans (S X) P H Hx (LbHead P H T U))))
+          (Ih (LbTail P H T U) X Hx) } }
 def NoBelowOfLbTy : Term := prog{
-  Π (p : Nat) → Π (l : List Nat) → Lb p l →
-    Π (x : Nat) → Le (S x) p → Id Nat (Count x l) Z }
+  Π (P : Nat) → Π (L : List Nat) → Lb P L →
+    Π (X : Nat) → Le (S X) P → Id Nat (Count X L) Z }
 
 def LbOfNoBelow : Term := prog{
-  λ (p : Nat). λ (l : List Nat).
-    elim l return (λ (lz : List Nat).
-        (Π (x : Nat) → Le (S x) p → Id Nat (Count x lz) Z) → Lb p lz) {
-      Nil => λ (hn : Π (x : Nat) → Le (S x) p → Id Nat (Count x Nil) Z). unit,
-      Cons (h) (t) ih => λ (hn : Π (x : Nat) → Le (S x) p → Id Nat (Count x (Cons h t)) Z).
+  λ (P : Nat). λ (L : List Nat).
+    elim L return (λ (Lz : List Nat).
+        (Π (X : Nat) → Le (S X) P → Id Nat (Count X Lz) Z) → Lb P Lz) {
+      Nil => λ (Hn : Π (X : Nat) → Le (S X) P → Id Nat (Count X Nil) Z). unit,
+      Cons (H) (T) Ih => λ (Hn : Π (X : Nat) → Le (S X) P → Id Nat (Count X (Cons H T)) Z).
         Pair(
-          elim (Leb p h) return (λ (bv : Bool). Id Bool (Leb p h) bv → Le p h) {
-            True => λ (e : Id Bool (Leb p h) True). LebTrueLe p h e,
-            False => λ (e : Id Bool (Leb p h) False).
-              botElim (Le p h)
-                (Znots (Count h t)
-                  (IdTrans Nat Z (Count h (Cons h t)) (S (Count h t))
-                    (IdSym Nat (Count h (Cons h t)) Z (hn h (LebFalseGt p h e)))
-                    (CountConsHit h h t (EqbRefl h))))
+          elim (Leb P H) return (λ (Bv : Bool). Id Bool (Leb P H) Bv → Le P H) {
+            True => λ (E : Id Bool (Leb P H) True). LebTrueLe P H E,
+            False => λ (E : Id Bool (Leb P H) False).
+              botElim (Le P H)
+                (Znots (Count H T)
+                  (IdTrans Nat Z (Count H (Cons H T)) (S (Count H T))
+                    (IdSym Nat (Count H (Cons H T)) Z (Hn H (LebFalseGt P H E)))
+                    (CountConsHit H H T (EqbRefl H))))
           } Refl,
-          ih (λ (x : Nat). λ (hx : Le (S x) p).
-                elim (Eqb x h) return (λ (bv : Bool). Id Bool (Eqb x h) bv → Id Nat (Count x t) Z) {
-                  True => λ (eq : Id Bool (Eqb x h) True).
-                    botElim (Id Nat (Count x t) Z)
-                      (Znots (Count x t)
-                        (IdTrans Nat Z (Count x (Cons h t)) (S (Count x t))
-                          (IdSym Nat (Count x (Cons h t)) Z (hn x hx))
-                          (CountConsHit x h t eq))),
-                  False => λ (eq : Id Bool (Eqb x h) False).
-                    IdTrans Nat (Count x t) (Count x (Cons h t)) Z
-                      (IdSym Nat (Count x (Cons h t)) (Count x t) (CountConsMiss x h t eq))
-                      (hn x hx)
+          Ih (λ (X : Nat). λ (Hx : Le (S X) P).
+                elim (Eqb X H) return (λ (Bv : Bool). Id Bool (Eqb X H) Bv → Id Nat (Count X T) Z) {
+                  True => λ (Eq : Id Bool (Eqb X H) True).
+                    botElim (Id Nat (Count X T) Z)
+                      (Znots (Count X T)
+                        (IdTrans Nat Z (Count X (Cons H T)) (S (Count X T))
+                          (IdSym Nat (Count X (Cons H T)) Z (Hn X Hx))
+                          (CountConsHit X H T Eq))),
+                  False => λ (Eq : Id Bool (Eqb X H) False).
+                    IdTrans Nat (Count X T) (Count X (Cons H T)) Z
+                      (IdSym Nat (Count X (Cons H T)) (Count X T) (CountConsMiss X H T Eq))
+                      (Hn X Hx)
                 } Refl)) } }
 def LbOfNoBelowTy : Term := prog{
-  Π (p : Nat) → Π (l : List Nat) →
-    (Π (x : Nat) → Le (S x) p → Id Nat (Count x l) Z) → Lb p l }
+  Π (P : Nat) → Π (L : List Nat) →
+    (Π (X : Nat) → Le (S X) P → Id Nat (Count X L) Z) → Lb P L }
 
 def LbPerm : Term := prog{
-  λ (p : Nat). λ (a : List Nat). λ (b : List Nat).
-    λ (hc : Π (n : Nat) → Id Nat (Count n a) (Count n b)). λ (hb : Lb p b).
-      LbOfNoBelow p a (λ (x : Nat). λ (hx : Le (S x) p).
-        IdTrans Nat (Count x a) (Count x b) Z (hc x) (NoBelowOfLb p b hb x hx)) }
+  λ (P : Nat). λ (A : List Nat). λ (B : List Nat).
+    λ (Hc : Π (N : Nat) → Id Nat (Count N A) (Count N B)). λ (Hb : Lb P B).
+      LbOfNoBelow P A (λ (X : Nat). λ (Hx : Le (S X) P).
+        IdTrans Nat (Count X A) (Count X B) Z (Hc X) (NoBelowOfLb P B Hb X Hx)) }
 def LbPermTy : Term := prog{
-  Π (p : Nat) → Π (a : List Nat) → Π (b : List Nat) →
-    (Π (n : Nat) → Id Nat (Count n a) (Count n b)) → Lb p b → Lb p a }
+  Π (P : Nat) → Π (A : List Nat) → Π (B : List Nat) →
+    (Π (N : Nat) → Id Nat (Count N A) (Count N B)) → Lb P B → Lb P A }
 
 /-! ## M24 — the ARRAY layer (¶6's migration ledger, item 3)
 
@@ -3896,42 +3896,42 @@ def Anil : Term := prog{ Arr() }
 
 /-- `CountA x a` — the multiset counter, `Count`'s transfer. -/
 def CountA : Term := prog{
-  λ (x : Nat). λ (n : Nat). λ (a : Array n Nat).
-    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Nat) Z
-      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Nat).
-        elim (Eqb x h) return (λ (bz : Bool). Nat) { True => S ih, False => ih })
-      n a }
+  λ (X : Nat). λ (N : Nat). λ (A : Array N Nat).
+    arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Nat) Z
+      (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat). λ (Ih : Nat).
+        elim (Eqb X H) return (λ (Bz : Bool). Nat) { True => S Ih, False => Ih })
+      N A }
 
 /-- `BoundA p a` — the head of `a` is ≥ `p`. `Bound`'s transfer. -/
 def BoundA : Term := prog{
-  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
-    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Type) Unit
-      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Type). Le p h) n a }
+  λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
+    arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Type) Unit
+      (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat). λ (Ih : Type). Le P H) N A }
 
 /-- `SortedA a` — the Σ-chain over the spine. `Sorted`'s transfer. -/
 def SortedA : Term := prog{
-  λ (n : Nat). λ (a : Array n Nat).
-    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Type) Unit
-      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Type).
-        Σ (hb : BoundA h k t) → ih) n a }
+  λ (N : Nat). λ (A : Array N Nat).
+    arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Type) Unit
+      (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat). λ (Ih : Type).
+        Σ (Hb : BoundA H K T) → Ih) N A }
 
 /-- `UbA p a` — every element of `a` is ≤ `p`. `Ub`'s transfer. -/
 def UbA : Term := prog{
-  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
-    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Type) Unit
-      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Type).
-        Σ (hh : Le h p) → ih) n a }
+  λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
+    arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Type) Unit
+      (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat). λ (Ih : Type).
+        Σ (Hh : Le H P) → Ih) N A }
 
 /-- `LbA p a` — every element of `a` is ≥ `p`. `Lb`'s transfer. -/
 def LbA : Term := prog{
-  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
-    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Type) Unit
-      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Type).
-        Σ (hh : Le p h) → ih) n a }
+  λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
+    arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Type) Unit
+      (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat). λ (Ih : Type).
+        Σ (Hh : Le P H) → Ih) N A }
 
 /-- `Asingle x` — the one-element array, `[x]`. ¶6's glue is stated over
     `arrCat (Asingle p) r`, which is the array spelling of `Cons p b`. -/
-def Asingle : Term := prog{ λ (x : Nat). acons Z x Arr() }
+def Asingle : Term := prog{ λ (X : Nat). acons Z X Arr() }
 
 /-! ### The glue, and the standing claim it tests
 
@@ -3947,101 +3947,101 @@ def Asingle : Term := prog{ λ (x : Nat). acons Z x Arr() }
     cons view. -/
 
 def SortedHeadA : Term := prog{
-  λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
-    λ (s : Σ (hb : BoundA h k t) → SortedA k t).
-      elim s return (λ (q : Σ (hb : BoundA h k t) → SortedA k t). BoundA h k t) {
-        Pair (x) (y) => x } }
+  λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
+    λ (S0 : Σ (Hb : BoundA H K T) → SortedA K T).
+      elim S0 return (λ (Q : Σ (Hb : BoundA H K T) → SortedA K T). BoundA H K T) {
+        Pair (X) (Y) => X } }
 def SortedHeadATy : Term := prog{
-  Π (k : Nat) → Π (h : Nat) → Π (t : Array k Nat) →
-    SortedA (S k) (acons k h t) → BoundA h k t }
+  Π (K : Nat) → Π (H : Nat) → Π (T : Array K Nat) →
+    SortedA (S K) (acons K H T) → BoundA H K T }
 
 def SortedTailA : Term := prog{
-  λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
-    λ (s : Σ (hb : BoundA h k t) → SortedA k t).
-      elim s return (λ (q : Σ (hb : BoundA h k t) → SortedA k t). SortedA k t) {
-        Pair (x) (y) => y } }
+  λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
+    λ (S0 : Σ (Hb : BoundA H K T) → SortedA K T).
+      elim S0 return (λ (Q : Σ (Hb : BoundA H K T) → SortedA K T). SortedA K T) {
+        Pair (X) (Y) => Y } }
 def SortedTailATy : Term := prog{
-  Π (k : Nat) → Π (h : Nat) → Π (t : Array k Nat) →
-    SortedA (S k) (acons k h t) → SortedA k t }
+  Π (K : Nat) → Π (H : Nat) → Π (T : Array K Nat) →
+    SortedA (S K) (acons K H T) → SortedA K T }
 
 def UbHeadA : Term := prog{
-  λ (p : Nat). λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
-    λ (u : Σ (hu : Le h p) → UbA p k t).
-      elim u return (λ (q : Σ (hu : Le h p) → UbA p k t). Le h p) {
-        Pair (x) (y) => x } }
+  λ (P : Nat). λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
+    λ (U : Σ (Hu : Le H P) → UbA P K T).
+      elim U return (λ (Q : Σ (Hu : Le H P) → UbA P K T). Le H P) {
+        Pair (X) (Y) => X } }
 def UbHeadATy : Term := prog{
-  Π (p : Nat) → Π (k : Nat) → Π (h : Nat) → Π (t : Array k Nat) →
-    UbA p (S k) (acons k h t) → Le h p }
+  Π (P : Nat) → Π (K : Nat) → Π (H : Nat) → Π (T : Array K Nat) →
+    UbA P (S K) (acons K H T) → Le H P }
 
 def UbTailA : Term := prog{
-  λ (p : Nat). λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
-    λ (u : Σ (hu : Le h p) → UbA p k t).
-      elim u return (λ (q : Σ (hu : Le h p) → UbA p k t). UbA p k t) {
-        Pair (x) (y) => y } }
+  λ (P : Nat). λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
+    λ (U : Σ (Hu : Le H P) → UbA P K T).
+      elim U return (λ (Q : Σ (Hu : Le H P) → UbA P K T). UbA P K T) {
+        Pair (X) (Y) => Y } }
 def UbTailATy : Term := prog{
-  Π (p : Nat) → Π (k : Nat) → Π (h : Nat) → Π (t : Array k Nat) →
-    UbA p (S k) (acons k h t) → UbA p k t }
+  Π (P : Nat) → Π (K : Nat) → Π (H : Nat) → Π (T : Array K Nat) →
+    UbA P (S K) (acons K H T) → UbA P K T }
 
 /-- `LbA p a ⟹ BoundA p a`, `LbBound`'s transfer: a lower bound on every element is in
     particular a bound on the head, which is all `SortedA (acons p b)` asks of the pivot. -/
 def LbBoundA : Term := prog{
-  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
-    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). LbA p m b → BoundA p m b)
-      (λ (hn : Unit). hn)
-      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
-        λ (ih : LbA p k t → BoundA p k t).
-          λ (hl : Σ (hh : Le p h) → LbA p k t).
-            elim hl return (λ (q : Σ (hh : Le p h) → LbA p k t). Le p h) {
-              Pair (x) (y) => x })
-      n a }
+  λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
+    arrRec Nat (λ (M : Nat). λ (B : Array M Nat). LbA P M B → BoundA P M B)
+      (λ (Hn : Unit). Hn)
+      (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
+        λ (Ih : LbA P K T → BoundA P K T).
+          λ (Hl : Σ (Hh : Le P H) → LbA P K T).
+            elim Hl return (λ (Q : Σ (Hh : Le P H) → LbA P K T). Le P H) {
+              Pair (X) (Y) => X })
+      N A }
 def LbBoundATy : Term := prog{
-  Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) → LbA p n a → BoundA p n a }
+  Π (P : Nat) → Π (N : Nat) → Π (A : Array N Nat) → LbA P N A → BoundA P N A }
 
 /-- `BoundAppend`'s transfer: the head bound survives the splice. The recursion IS the
     case analysis — at the empty array the new head is the PIVOT, otherwise the head is
     unchanged by the concatenation. No IH is consumed, because `BoundA` looks exactly one
     cell deep. -/
 def BoundArrCat : Term := prog{
-  λ (h : Nat). λ (p : Nat). λ (k : Nat). λ (t : Array k Nat).
-    λ (q : Nat). λ (b : Array q Nat).
-      arrRec Nat (λ (m : Nat). λ (tz : Array m Nat).
-          BoundA h m tz → Le h p →
-            BoundA h (Add m (S q)) (arrCat m (S q) tz (arrCat 1 q (Asingle p) b)))
-        (λ (hb : Unit). λ (hp : Le h p). hp)
-        (λ (k2 : Nat). λ (h2 : Nat). λ (t2 : Array k2 Nat).
-          λ (ih : BoundA h k2 t2 → Le h p →
-              BoundA h (Add k2 (S q)) (arrCat k2 (S q) t2 (arrCat 1 q (Asingle p) b))).
-            λ (hb : Le h h2). λ (hp : Le h p). hb)
-        k t }
+  λ (H : Nat). λ (P : Nat). λ (K : Nat). λ (T : Array K Nat).
+    λ (Q : Nat). λ (B : Array Q Nat).
+      arrRec Nat (λ (M : Nat). λ (Tz : Array M Nat).
+          BoundA H M Tz → Le H P →
+            BoundA H (Add M (S Q)) (arrCat M (S Q) Tz (arrCat 1 Q (Asingle P) B)))
+        (λ (Hb : Unit). λ (Hp : Le H P). Hp)
+        (λ (K2 : Nat). λ (H2 : Nat). λ (T2 : Array K2 Nat).
+          λ (Ih : BoundA H K2 T2 → Le H P →
+              BoundA H (Add K2 (S Q)) (arrCat K2 (S Q) T2 (arrCat 1 Q (Asingle P) B))).
+            λ (Hb : Le H H2). λ (Hp : Le H P). Hb)
+        K T }
 def BoundArrCatTy : Term := prog{
-  Π (h : Nat) → Π (p : Nat) → Π (k : Nat) → Π (t : Array k Nat) →
-    Π (q : Nat) → Π (b : Array q Nat) →
-      BoundA h k t → Le h p →
-        BoundA h (Add k (S q)) (arrCat k (S q) t (arrCat 1 q (Asingle p) b)) }
+  Π (H : Nat) → Π (P : Nat) → Π (K : Nat) → Π (T : Array K Nat) →
+    Π (Q : Nat) → Π (B : Array Q Nat) →
+      BoundA H K T → Le H P →
+        BoundA H (Add K (S Q)) (arrCat K (S Q) T (arrCat 1 Q (Asingle P) B)) }
 
 /-- **The quicksort glue** — `SortedAppendPivot` with the container swapped, and
     nothing else changed. This is ¶6's "textbook quicksort correctness statement, in the
     textbook shape", and the standing check on the whole migration: if this were not the
     near-verbatim restatement, something would be off. -/
 def SortedArrCat : Term := prog{
-  λ (p : Nat). λ (m : Nat). λ (a : Array m Nat). λ (q : Nat). λ (b : Array q Nat).
-    λ (sa : SortedA m a). λ (ua : UbA p m a). λ (sb : SortedA q b). λ (lb : LbA p q b).
-      arrRec Nat (λ (mz : Nat). λ (az : Array mz Nat).
-          SortedA mz az → UbA p mz az →
-            SortedA (Add mz (S q)) (arrCat mz (S q) az (arrCat 1 q (Asingle p) b)))
-        (λ (sn : Unit). λ (un : Unit). Pair(LbBoundA p q b lb, sb))
-        (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
-          λ (ih : SortedA k t → UbA p k t →
-              SortedA (Add k (S q)) (arrCat k (S q) t (arrCat 1 q (Asingle p) b))).
-            λ (sc : Σ (hb : BoundA h k t) → SortedA k t).
-              λ (uc : Σ (hu : Le h p) → UbA p k t).
-                Pair(BoundArrCat h p k t q b (SortedHeadA k h t sc) (UbHeadA p k h t uc),
-                     ih (SortedTailA k h t sc) (UbTailA p k h t uc)))
-        m a sa ua }
+  λ (P : Nat). λ (M : Nat). λ (A : Array M Nat). λ (Q : Nat). λ (B : Array Q Nat).
+    λ (Sa : SortedA M A). λ (Ua : UbA P M A). λ (Sb : SortedA Q B). λ (Lb0 : LbA P Q B).
+      arrRec Nat (λ (Mz : Nat). λ (Az : Array Mz Nat).
+          SortedA Mz Az → UbA P Mz Az →
+            SortedA (Add Mz (S Q)) (arrCat Mz (S Q) Az (arrCat 1 Q (Asingle P) B)))
+        (λ (Sn : Unit). λ (Un : Unit). Pair(LbBoundA P Q B Lb0, Sb))
+        (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
+          λ (Ih : SortedA K T → UbA P K T →
+              SortedA (Add K (S Q)) (arrCat K (S Q) T (arrCat 1 Q (Asingle P) B))).
+            λ (Sc : Σ (Hb : BoundA H K T) → SortedA K T).
+              λ (Uc : Σ (Hu : Le H P) → UbA P K T).
+                Pair(BoundArrCat H P K T Q B (SortedHeadA K H T Sc) (UbHeadA P K H T Uc),
+                     Ih (SortedTailA K H T Sc) (UbTailA P K H T Uc)))
+        M A Sa Ua }
 def SortedArrCatTy : Term := prog{
-  Π (p : Nat) → Π (m : Nat) → Π (a : Array m Nat) → Π (q : Nat) → Π (b : Array q Nat) →
-    SortedA m a → UbA p m a → SortedA q b → LbA p q b →
-      SortedA (Add m (S q)) (arrCat m (S q) a (arrCat 1 q (Asingle p) b)) }
+  Π (P : Nat) → Π (M : Nat) → Π (A : Array M Nat) → Π (Q : Nat) → Π (B : Array Q Nat) →
+    SortedA M A → UbA P M A → SortedA Q B → LbA P Q B →
+      SortedA (Add M (S Q)) (arrCat M (S Q) A (arrCat 1 Q (Asingle P) B)) }
 
 /-- `CountAppend`'s transfer, and ¶6's named survivor: "the one lemma that replaces
     `CountAppend`/`Take`/`Drop` is `CountArrCat : count x (arrCat a b) = add (count x a)
@@ -4049,28 +4049,28 @@ def SortedArrCatTy : Term := prog{
     arm's dependent Bool-elim on `Eqb x h` transfers unchanged, because `CountA` unfolds
     on an `acons` exactly as `Count` unfolds on a `Cons`. -/
 def CountArrCat : Term := prog{
-  λ (x : Nat). λ (m : Nat). λ (a : Array m Nat). λ (q : Nat). λ (b : Array q Nat).
-    arrRec Nat (λ (mz : Nat). λ (az : Array mz Nat).
-        Id Nat (CountA x (Add mz q) (arrCat mz q az b))
-               (Add (CountA x mz az) (CountA x q b)))
+  λ (X : Nat). λ (M : Nat). λ (A : Array M Nat). λ (Q : Nat). λ (B : Array Q Nat).
+    arrRec Nat (λ (Mz : Nat). λ (Az : Array Mz Nat).
+        Id Nat (CountA X (Add Mz Q) (arrCat Mz Q Az B))
+               (Add (CountA X Mz Az) (CountA X Q B)))
       Refl
-      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
-        λ (ih : Id Nat (CountA x (Add k q) (arrCat k q t b))
-                       (Add (CountA x k t) (CountA x q b))).
-          elim (Eqb x h) return (λ (bv : Bool).
-            Id Nat (boolRec (λ (w : Bool). Nat)
-                     (S (CountA x (Add k q) (arrCat k q t b)))
-                     (CountA x (Add k q) (arrCat k q t b)) bv)
-                   (Add (boolRec (λ (w : Bool). Nat)
-                     (S (CountA x k t)) (CountA x k t) bv) (CountA x q b))) {
-            True => IdCongr Nat Nat (λ (n : Nat). S n)
-                      (CountA x (Add k q) (arrCat k q t b))
-                      (Add (CountA x k t) (CountA x q b)) ih,
-            False => ih })
-      m a }
+      (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
+        λ (Ih : Id Nat (CountA X (Add K Q) (arrCat K Q T B))
+                       (Add (CountA X K T) (CountA X Q B))).
+          elim (Eqb X H) return (λ (Bv : Bool).
+            Id Nat (boolRec (λ (W : Bool). Nat)
+                     (S (CountA X (Add K Q) (arrCat K Q T B)))
+                     (CountA X (Add K Q) (arrCat K Q T B)) Bv)
+                   (Add (boolRec (λ (W : Bool). Nat)
+                     (S (CountA X K T)) (CountA X K T) Bv) (CountA X Q B))) {
+            True => IdCongr Nat Nat (λ (N : Nat). S N)
+                      (CountA X (Add K Q) (arrCat K Q T B))
+                      (Add (CountA X K T) (CountA X Q B)) Ih,
+            False => Ih })
+      M A }
 def CountArrCatTy : Term := prog{
-  Π (x : Nat) → Π (m : Nat) → Π (a : Array m Nat) → Π (q : Nat) → Π (b : Array q Nat) →
-    Id Nat (CountA x (Add m q) (arrCat m q a b)) (Add (CountA x m a) (CountA x q b)) }
+  Π (X : Nat) → Π (M : Nat) → Π (A : Array M Nat) → Π (Q : Nat) → Π (B : Array Q Nat) →
+    Id Nat (CountA X (Add M Q) (arrCat M Q A B)) (Add (CountA X M A) (CountA X Q B)) }
 
 /-! ### The permutation layer, transferred
 
@@ -4080,183 +4080,183 @@ def CountArrCatTy : Term := prog{
     That crossing transfers with the container like everything else. -/
 
 def CountAconsHit : Term := prog{
-  λ (m : Nat). λ (a : Nat). λ (k : Nat). λ (l : Array k Nat). λ (hq : Id Bool (Eqb m a) True).
+  λ (M : Nat). λ (A : Nat). λ (K : Nat). λ (L : Array K Nat). λ (Hq : Id Bool (Eqb M A) True).
     j Bool True
-      (λ (z : Bool). λ (h : Id Bool True z).
-        Id Nat (boolRec (λ (w : Bool). Nat) (S (CountA m k l)) (CountA m k l) z)
-               (S (CountA m k l)))
-      Refl (Eqb m a) (IdSym Bool (Eqb m a) True hq) }
+      (λ (Z0 : Bool). λ (H : Id Bool True Z0).
+        Id Nat (boolRec (λ (W : Bool). Nat) (S (CountA M K L)) (CountA M K L) Z0)
+               (S (CountA M K L)))
+      Refl (Eqb M A) (IdSym Bool (Eqb M A) True Hq) }
 def CountAconsHitTy : Term := prog{
-  Π (m : Nat) → Π (a : Nat) → Π (k : Nat) → Π (l : Array k Nat) → Id Bool (Eqb m a) True →
-    Id Nat (CountA m (S k) (acons k a l)) (S (CountA m k l)) }
+  Π (M : Nat) → Π (A : Nat) → Π (K : Nat) → Π (L : Array K Nat) → Id Bool (Eqb M A) True →
+    Id Nat (CountA M (S K) (acons K A L)) (S (CountA M K L)) }
 
 def CountAconsMiss : Term := prog{
-  λ (m : Nat). λ (h : Nat). λ (k : Nat). λ (t : Array k Nat). λ (hq : Id Bool (Eqb m h) False).
+  λ (M : Nat). λ (H : Nat). λ (K : Nat). λ (T : Array K Nat). λ (Hq : Id Bool (Eqb M H) False).
     j Bool False
-      (λ (z : Bool). λ (hh : Id Bool False z).
-        Id Nat (boolRec (λ (w : Bool). Nat) (S (CountA m k t)) (CountA m k t) z)
-               (CountA m k t))
-      Refl (Eqb m h) (IdSym Bool (Eqb m h) False hq) }
+      (λ (Z0 : Bool). λ (Hh : Id Bool False Z0).
+        Id Nat (boolRec (λ (W : Bool). Nat) (S (CountA M K T)) (CountA M K T) Z0)
+               (CountA M K T))
+      Refl (Eqb M H) (IdSym Bool (Eqb M H) False Hq) }
 def CountAconsMissTy : Term := prog{
-  Π (m : Nat) → Π (h : Nat) → Π (k : Nat) → Π (t : Array k Nat) → Id Bool (Eqb m h) False →
-    Id Nat (CountA m (S k) (acons k h t)) (CountA m k t) }
+  Π (M : Nat) → Π (H : Nat) → Π (K : Nat) → Π (T : Array K Nat) → Id Bool (Eqb M H) False →
+    Id Nat (CountA M (S K) (acons K H T)) (CountA M K T) }
 
 def LbHeadA : Term := prog{
-  λ (p : Nat). λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
-    λ (u : Σ (hh : Le p h) → LbA p k t).
-      elim u return (λ (q : Σ (hh : Le p h) → LbA p k t). Le p h) { Pair (x) (y) => x } }
+  λ (P : Nat). λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
+    λ (U : Σ (Hh : Le P H) → LbA P K T).
+      elim U return (λ (Q : Σ (Hh : Le P H) → LbA P K T). Le P H) { Pair (X) (Y) => X } }
 def LbTailA : Term := prog{
-  λ (p : Nat). λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
-    λ (u : Σ (hh : Le p h) → LbA p k t).
-      elim u return (λ (q : Σ (hh : Le p h) → LbA p k t). LbA p k t) { Pair (x) (y) => y } }
+  λ (P : Nat). λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
+    λ (U : Σ (Hh : Le P H) → LbA P K T).
+      elim U return (λ (Q : Σ (Hh : Le P H) → LbA P K T). LbA P K T) { Pair (X) (Y) => Y } }
 
 def NoAboveOfUbA : Term := prog{
-  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
-    arrRec Nat (λ (m : Nat). λ (az : Array m Nat).
-        UbA p m az → Π (x : Nat) → Le (S p) x → Id Nat (CountA x m az) Z)
-      (λ (u : Unit). λ (x : Nat). λ (hx : Le (S p) x). Refl)
-      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
-        λ (ih : UbA p k t → Π (x : Nat) → Le (S p) x → Id Nat (CountA x k t) Z).
-          λ (u : Σ (hh : Le h p) → UbA p k t). λ (x : Nat). λ (hx : Le (S p) x).
-            IdTrans Nat (CountA x (S k) (acons k h t)) (CountA x k t) Z
-              (CountAconsMiss x h k t
-                (EqbGtFalse h x (LeTrans (S h) (S p) x (UbHeadA p k h t u) hx)))
-              (ih (UbTailA p k h t u) x hx))
-      n a }
+  λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
+    arrRec Nat (λ (M : Nat). λ (Az : Array M Nat).
+        UbA P M Az → Π (X : Nat) → Le (S P) X → Id Nat (CountA X M Az) Z)
+      (λ (U : Unit). λ (X : Nat). λ (Hx : Le (S P) X). Refl)
+      (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
+        λ (Ih : UbA P K T → Π (X : Nat) → Le (S P) X → Id Nat (CountA X K T) Z).
+          λ (U : Σ (Hh : Le H P) → UbA P K T). λ (X : Nat). λ (Hx : Le (S P) X).
+            IdTrans Nat (CountA X (S K) (acons K H T)) (CountA X K T) Z
+              (CountAconsMiss X H K T
+                (EqbGtFalse H X (LeTrans (S H) (S P) X (UbHeadA P K H T U) Hx)))
+              (Ih (UbTailA P K H T U) X Hx))
+      N A }
 def NoAboveOfUbATy : Term := prog{
-  Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) → UbA p n a →
-    Π (x : Nat) → Le (S p) x → Id Nat (CountA x n a) Z }
+  Π (P : Nat) → Π (N : Nat) → Π (A : Array N Nat) → UbA P N A →
+    Π (X : Nat) → Le (S P) X → Id Nat (CountA X N A) Z }
 
 def UbOfNoAboveA : Term := prog{
-  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
-    arrRec Nat (λ (m : Nat). λ (az : Array m Nat).
-        (Π (x : Nat) → Le (S p) x → Id Nat (CountA x m az) Z) → UbA p m az)
-      (λ (hn : Π (x : Nat) → Le (S p) x → Id Nat (CountA x Z Arr()) Z). unit)
-      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
-        λ (ih : (Π (x : Nat) → Le (S p) x → Id Nat (CountA x k t) Z) → UbA p k t).
-          λ (hn : Π (x : Nat) → Le (S p) x → Id Nat (CountA x (S k) (acons k h t)) Z).
+  λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
+    arrRec Nat (λ (M : Nat). λ (Az : Array M Nat).
+        (Π (X : Nat) → Le (S P) X → Id Nat (CountA X M Az) Z) → UbA P M Az)
+      (λ (Hn : Π (X : Nat) → Le (S P) X → Id Nat (CountA X Z Arr()) Z). unit)
+      (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
+        λ (Ih : (Π (X : Nat) → Le (S P) X → Id Nat (CountA X K T) Z) → UbA P K T).
+          λ (Hn : Π (X : Nat) → Le (S P) X → Id Nat (CountA X (S K) (acons K H T)) Z).
             Pair(
-              elim (Leb h p) return (λ (bv : Bool). Id Bool (Leb h p) bv → Le h p) {
-                True => λ (e : Id Bool (Leb h p) True). LebTrueLe h p e,
-                False => λ (e : Id Bool (Leb h p) False).
-                  botElim (Le h p)
-                    (Znots (CountA h k t)
-                      (IdTrans Nat Z (CountA h (S k) (acons k h t)) (S (CountA h k t))
-                        (IdSym Nat (CountA h (S k) (acons k h t)) Z (hn h (LebFalseGt h p e)))
-                        (CountAconsHit h h k t (EqbRefl h))))
+              elim (Leb H P) return (λ (Bv : Bool). Id Bool (Leb H P) Bv → Le H P) {
+                True => λ (E : Id Bool (Leb H P) True). LebTrueLe H P E,
+                False => λ (E : Id Bool (Leb H P) False).
+                  botElim (Le H P)
+                    (Znots (CountA H K T)
+                      (IdTrans Nat Z (CountA H (S K) (acons K H T)) (S (CountA H K T))
+                        (IdSym Nat (CountA H (S K) (acons K H T)) Z (Hn H (LebFalseGt H P E)))
+                        (CountAconsHit H H K T (EqbRefl H))))
               } Refl,
-              ih (λ (x : Nat). λ (hx : Le (S p) x).
-                    elim (Eqb x h) return (λ (bv : Bool).
-                        Id Bool (Eqb x h) bv → Id Nat (CountA x k t) Z) {
-                      True => λ (eq : Id Bool (Eqb x h) True).
-                        botElim (Id Nat (CountA x k t) Z)
-                          (Znots (CountA x k t)
-                            (IdTrans Nat Z (CountA x (S k) (acons k h t)) (S (CountA x k t))
-                              (IdSym Nat (CountA x (S k) (acons k h t)) Z (hn x hx))
-                              (CountAconsHit x h k t eq))),
-                      False => λ (eq : Id Bool (Eqb x h) False).
-                        IdTrans Nat (CountA x k t) (CountA x (S k) (acons k h t)) Z
-                          (IdSym Nat (CountA x (S k) (acons k h t)) (CountA x k t)
-                            (CountAconsMiss x h k t eq))
-                          (hn x hx)
+              Ih (λ (X : Nat). λ (Hx : Le (S P) X).
+                    elim (Eqb X H) return (λ (Bv : Bool).
+                        Id Bool (Eqb X H) Bv → Id Nat (CountA X K T) Z) {
+                      True => λ (Eq : Id Bool (Eqb X H) True).
+                        botElim (Id Nat (CountA X K T) Z)
+                          (Znots (CountA X K T)
+                            (IdTrans Nat Z (CountA X (S K) (acons K H T)) (S (CountA X K T))
+                              (IdSym Nat (CountA X (S K) (acons K H T)) Z (Hn X Hx))
+                              (CountAconsHit X H K T Eq))),
+                      False => λ (Eq : Id Bool (Eqb X H) False).
+                        IdTrans Nat (CountA X K T) (CountA X (S K) (acons K H T)) Z
+                          (IdSym Nat (CountA X (S K) (acons K H T)) (CountA X K T)
+                            (CountAconsMiss X H K T Eq))
+                          (Hn X Hx)
                     } Refl)))
-      n a }
+      N A }
 def UbOfNoAboveATy : Term := prog{
-  Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) →
-    (Π (x : Nat) → Le (S p) x → Id Nat (CountA x n a) Z) → UbA p n a }
+  Π (P : Nat) → Π (N : Nat) → Π (A : Array N Nat) →
+    (Π (X : Nat) → Le (S P) X → Id Nat (CountA X N A) Z) → UbA P N A }
 
 /-- THE KEYSTONE, transferred: an upper bound survives any count-preserving
     rearrangement — which is exactly what a recursive sort hands back about the part it
     sorted. -/
 def UbPermA : Term := prog{
-  λ (p : Nat). λ (m : Nat). λ (a : Array m Nat). λ (q : Nat). λ (b : Array q Nat).
-    λ (hc : Π (x : Nat) → Id Nat (CountA x m a) (CountA x q b)). λ (hb : UbA p q b).
-      UbOfNoAboveA p m a (λ (x : Nat). λ (hx : Le (S p) x).
-        IdTrans Nat (CountA x m a) (CountA x q b) Z (hc x)
-          (NoAboveOfUbA p q b hb x hx)) }
+  λ (P : Nat). λ (M : Nat). λ (A : Array M Nat). λ (Q : Nat). λ (B : Array Q Nat).
+    λ (Hc : Π (X : Nat) → Id Nat (CountA X M A) (CountA X Q B)). λ (Hb : UbA P Q B).
+      UbOfNoAboveA P M A (λ (X : Nat). λ (Hx : Le (S P) X).
+        IdTrans Nat (CountA X M A) (CountA X Q B) Z (Hc X)
+          (NoAboveOfUbA P Q B Hb X Hx)) }
 def UbPermATy : Term := prog{
-  Π (p : Nat) → Π (m : Nat) → Π (a : Array m Nat) → Π (q : Nat) → Π (b : Array q Nat) →
-    (Π (x : Nat) → Id Nat (CountA x m a) (CountA x q b)) → UbA p q b → UbA p m a }
+  Π (P : Nat) → Π (M : Nat) → Π (A : Array M Nat) → Π (Q : Nat) → Π (B : Array Q Nat) →
+    (Π (X : Nat) → Id Nat (CountA X M A) (CountA X Q B)) → UbA P Q B → UbA P M A }
 
 def NoBelowOfLbA : Term := prog{
-  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
-    arrRec Nat (λ (m : Nat). λ (az : Array m Nat).
-        LbA p m az → Π (x : Nat) → Le (S x) p → Id Nat (CountA x m az) Z)
-      (λ (u : Unit). λ (x : Nat). λ (hx : Le (S x) p). Refl)
-      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
-        λ (ih : LbA p k t → Π (x : Nat) → Le (S x) p → Id Nat (CountA x k t) Z).
-          λ (u : Σ (hh : Le p h) → LbA p k t). λ (x : Nat). λ (hx : Le (S x) p).
-            IdTrans Nat (CountA x (S k) (acons k h t)) (CountA x k t) Z
-              (CountAconsMiss x h k t
-                (EqbLtFalse x h (LeTrans (S x) p h hx (LbHeadA p k h t u))))
-              (ih (LbTailA p k h t u) x hx))
-      n a }
+  λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
+    arrRec Nat (λ (M : Nat). λ (Az : Array M Nat).
+        LbA P M Az → Π (X : Nat) → Le (S X) P → Id Nat (CountA X M Az) Z)
+      (λ (U : Unit). λ (X : Nat). λ (Hx : Le (S X) P). Refl)
+      (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
+        λ (Ih : LbA P K T → Π (X : Nat) → Le (S X) P → Id Nat (CountA X K T) Z).
+          λ (U : Σ (Hh : Le P H) → LbA P K T). λ (X : Nat). λ (Hx : Le (S X) P).
+            IdTrans Nat (CountA X (S K) (acons K H T)) (CountA X K T) Z
+              (CountAconsMiss X H K T
+                (EqbLtFalse X H (LeTrans (S X) P H Hx (LbHeadA P K H T U))))
+              (Ih (LbTailA P K H T U) X Hx))
+      N A }
 def NoBelowOfLbATy : Term := prog{
-  Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) → LbA p n a →
-    Π (x : Nat) → Le (S x) p → Id Nat (CountA x n a) Z }
+  Π (P : Nat) → Π (N : Nat) → Π (A : Array N Nat) → LbA P N A →
+    Π (X : Nat) → Le (S X) P → Id Nat (CountA X N A) Z }
 
 def LbOfNoBelowA : Term := prog{
-  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
-    arrRec Nat (λ (m : Nat). λ (az : Array m Nat).
-        (Π (x : Nat) → Le (S x) p → Id Nat (CountA x m az) Z) → LbA p m az)
-      (λ (hn : Π (x : Nat) → Le (S x) p → Id Nat (CountA x Z Arr()) Z). unit)
-      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
-        λ (ih : (Π (x : Nat) → Le (S x) p → Id Nat (CountA x k t) Z) → LbA p k t).
-          λ (hn : Π (x : Nat) → Le (S x) p → Id Nat (CountA x (S k) (acons k h t)) Z).
+  λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
+    arrRec Nat (λ (M : Nat). λ (Az : Array M Nat).
+        (Π (X : Nat) → Le (S X) P → Id Nat (CountA X M Az) Z) → LbA P M Az)
+      (λ (Hn : Π (X : Nat) → Le (S X) P → Id Nat (CountA X Z Arr()) Z). unit)
+      (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
+        λ (Ih : (Π (X : Nat) → Le (S X) P → Id Nat (CountA X K T) Z) → LbA P K T).
+          λ (Hn : Π (X : Nat) → Le (S X) P → Id Nat (CountA X (S K) (acons K H T)) Z).
             Pair(
-              elim (Leb p h) return (λ (bv : Bool). Id Bool (Leb p h) bv → Le p h) {
-                True => λ (e : Id Bool (Leb p h) True). LebTrueLe p h e,
-                False => λ (e : Id Bool (Leb p h) False).
-                  botElim (Le p h)
-                    (Znots (CountA h k t)
-                      (IdTrans Nat Z (CountA h (S k) (acons k h t)) (S (CountA h k t))
-                        (IdSym Nat (CountA h (S k) (acons k h t)) Z (hn h (LebFalseGt p h e)))
-                        (CountAconsHit h h k t (EqbRefl h))))
+              elim (Leb P H) return (λ (Bv : Bool). Id Bool (Leb P H) Bv → Le P H) {
+                True => λ (E : Id Bool (Leb P H) True). LebTrueLe P H E,
+                False => λ (E : Id Bool (Leb P H) False).
+                  botElim (Le P H)
+                    (Znots (CountA H K T)
+                      (IdTrans Nat Z (CountA H (S K) (acons K H T)) (S (CountA H K T))
+                        (IdSym Nat (CountA H (S K) (acons K H T)) Z (Hn H (LebFalseGt P H E)))
+                        (CountAconsHit H H K T (EqbRefl H))))
               } Refl,
-              ih (λ (x : Nat). λ (hx : Le (S x) p).
-                    elim (Eqb x h) return (λ (bv : Bool).
-                        Id Bool (Eqb x h) bv → Id Nat (CountA x k t) Z) {
-                      True => λ (eq : Id Bool (Eqb x h) True).
-                        botElim (Id Nat (CountA x k t) Z)
-                          (Znots (CountA x k t)
-                            (IdTrans Nat Z (CountA x (S k) (acons k h t)) (S (CountA x k t))
-                              (IdSym Nat (CountA x (S k) (acons k h t)) Z (hn x hx))
-                              (CountAconsHit x h k t eq))),
-                      False => λ (eq : Id Bool (Eqb x h) False).
-                        IdTrans Nat (CountA x k t) (CountA x (S k) (acons k h t)) Z
-                          (IdSym Nat (CountA x (S k) (acons k h t)) (CountA x k t)
-                            (CountAconsMiss x h k t eq))
-                          (hn x hx)
+              Ih (λ (X : Nat). λ (Hx : Le (S X) P).
+                    elim (Eqb X H) return (λ (Bv : Bool).
+                        Id Bool (Eqb X H) Bv → Id Nat (CountA X K T) Z) {
+                      True => λ (Eq : Id Bool (Eqb X H) True).
+                        botElim (Id Nat (CountA X K T) Z)
+                          (Znots (CountA X K T)
+                            (IdTrans Nat Z (CountA X (S K) (acons K H T)) (S (CountA X K T))
+                              (IdSym Nat (CountA X (S K) (acons K H T)) Z (Hn X Hx))
+                              (CountAconsHit X H K T Eq))),
+                      False => λ (Eq : Id Bool (Eqb X H) False).
+                        IdTrans Nat (CountA X K T) (CountA X (S K) (acons K H T)) Z
+                          (IdSym Nat (CountA X (S K) (acons K H T)) (CountA X K T)
+                            (CountAconsMiss X H K T Eq))
+                          (Hn X Hx)
                     } Refl)))
-      n a }
+      N A }
 def LbOfNoBelowATy : Term := prog{
-  Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) →
-    (Π (x : Nat) → Le (S x) p → Id Nat (CountA x n a) Z) → LbA p n a }
+  Π (P : Nat) → Π (N : Nat) → Π (A : Array N Nat) →
+    (Π (X : Nat) → Le (S X) P → Id Nat (CountA X N A) Z) → LbA P N A }
 
 def LbPermA : Term := prog{
-  λ (p : Nat). λ (m : Nat). λ (a : Array m Nat). λ (q : Nat). λ (b : Array q Nat).
-    λ (hc : Π (x : Nat) → Id Nat (CountA x m a) (CountA x q b)). λ (hb : LbA p q b).
-      LbOfNoBelowA p m a (λ (x : Nat). λ (hx : Le (S x) p).
-        IdTrans Nat (CountA x m a) (CountA x q b) Z (hc x)
-          (NoBelowOfLbA p q b hb x hx)) }
+  λ (P : Nat). λ (M : Nat). λ (A : Array M Nat). λ (Q : Nat). λ (B : Array Q Nat).
+    λ (Hc : Π (X : Nat) → Id Nat (CountA X M A) (CountA X Q B)). λ (Hb : LbA P Q B).
+      LbOfNoBelowA P M A (λ (X : Nat). λ (Hx : Le (S X) P).
+        IdTrans Nat (CountA X M A) (CountA X Q B) Z (Hc X)
+          (NoBelowOfLbA P Q B Hb X Hx)) }
 def LbPermATy : Term := prog{
-  Π (p : Nat) → Π (m : Nat) → Π (a : Array m Nat) → Π (q : Nat) → Π (b : Array q Nat) →
-    (Π (x : Nat) → Id Nat (CountA x m a) (CountA x q b)) → LbA p q b → LbA p m a }
+  Π (P : Nat) → Π (M : Nat) → Π (A : Array M Nat) → Π (Q : Nat) → Π (B : Array Q Nat) →
+    (Π (X : Nat) → Id Nat (CountA X M A) (CountA X Q B)) → LbA P Q B → LbA P M A }
 
 /-- Two-element count commutation over arrays — `Cons2Comm`'s transfer at the fixed
     width the miniature sort needs. Double case split on `Eqb`, all four arms `Refl`;
     the `Eqb m a = False` arm needs no inner split because both sides already agree. -/
 def CountSwap2 : Term := prog{
-  λ (m : Nat). λ (a : Nat). λ (b : Nat).
-    elim (Eqb m a) generalizing (Id Nat (CountA m 2 Arr(b, a)) (CountA m 2 Arr(a, b))) {
-      True => elim (Eqb m b) generalizing
-        (Id Nat (boolRec (λ (w : Bool). Nat) (S (S Z)) (S Z) (Eqb m b))
-                (S (boolRec (λ (w : Bool). Nat) (S Z) Z (Eqb m b)))) {
+  λ (M : Nat). λ (A : Nat). λ (B : Nat).
+    elim (Eqb M A) generalizing (Id Nat (CountA M 2 Arr(B, A)) (CountA M 2 Arr(A, B))) {
+      True => elim (Eqb M B) generalizing
+        (Id Nat (boolRec (λ (W : Bool). Nat) (S (S Z)) (S Z) (Eqb M B))
+                (S (boolRec (λ (W : Bool). Nat) (S Z) Z (Eqb M B)))) {
         True => Refl, False => Refl },
       False => Refl } }
 def CountSwap2Ty : Term := prog{
-  Π (m : Nat) → Π (a : Nat) → Π (b : Nat) →
-    Id Nat (CountA m 2 Arr(b, a)) (CountA m 2 Arr(a, b)) }
+  Π (M : Nat) → Π (A : Nat) → Π (B : Nat) →
+    Id Nat (CountA M 2 Arr(B, A)) (CountA M 2 Arr(A, B)) }
 
 /-! ## The PARTITION layer — the one stratum the array quicksort has to invent
 
@@ -4291,20 +4291,20 @@ def CountSwap2Ty : Term := prog{
     glue from the pivot VALUE the partition returned to the element sitting in the
     carved pivot slot. -/
 def NatRw : Term := prog{
-  λ (P : Nat → Type). λ (x : Nat). λ (y : Nat). λ (h : Id Nat x y). λ (px : P x).
-    j Nat x (λ (y2 : Nat). λ (hh : Id Nat x y2). P y2) px y h }
+  λ (P : Nat → Type). λ (X : Nat). λ (Y : Nat). λ (H : Id Nat X Y). λ (Px : P X).
+    j Nat X (λ (Y2 : Nat). λ (Hh : Id Nat X Y2). P Y2) Px Y H }
 def NatRwTy : Term := prog{
-  Π (P : Nat → Type) → Π (x : Nat) → Π (y : Nat) → Id Nat x y → P x → P y }
+  Π (P : Nat → Type) → Π (X : Nat) → Π (Y : Nat) → Id Nat X Y → P X → P Y }
 
 /-- `Le n Z ⟹ n = Z`. The array quicksort tests emptiness with `Leb 1 n` rather than
     by matching `n`, because matching refines the length to `S m` and T2's rigid-extent
     restriction then blocks the three-way carve at the returned index. So the False
     branch holds `Le n Z` and has to turn it into the equation the nil lemmas want. -/
 def LeZeroEq : Term := prog{
-  λ (n : Nat). elim n return (λ (z : Nat). Le z Z → Id Nat z Z) {
-    Z => λ (h : Le Z Z). Refl,
-    S (n2) ih => λ (h : Bot). botElim (Id Nat (S n2) Z) h } }
-def LeZeroEqTy : Term := prog{ Π (n : Nat) → Le n Z → Id Nat n Z }
+  λ (N : Nat). elim N return (λ (Z0 : Nat). Le Z0 Z → Id Nat Z0 Z) {
+    Z => λ (H : Le Z Z). Refl,
+    S (N2) Ih => λ (H : Bot). botElim (Id Nat (S N2) Z) H } }
+def LeZeroEqTy : Term := prog{ Π (N : Nat) → Le N Z → Id Nat N Z }
 
 /-- `SortedA` of an array whose LENGTH is zero.
 
@@ -4314,59 +4314,59 @@ def LeZeroEqTy : Term := prog{ Π (n : Nat) → Le n Z → Id Nat n Z }
     discharged by the trivial term. The induction is on the ARRAY with the equation
     carried, and the cons case is dead. -/
 def SortedANil : Term := prog{
-  λ (n : Nat). λ (a : Array n Nat).
-    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Id Nat m Z → SortedA m b)
-      (λ (h : Id Nat Z Z). unit)
-      (λ (k : Nat). λ (hh : Nat). λ (t : Array k Nat).
-        λ (ih : Id Nat k Z → SortedA k t).
-          λ (h : Id Nat (S k) Z).
-            botElim (SortedA (S k) (acons k hh t)) (Znots k (IdSym Nat (S k) Z h)))
-      n a }
+  λ (N : Nat). λ (A : Array N Nat).
+    arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Id Nat M Z → SortedA M B)
+      (λ (H : Id Nat Z Z). unit)
+      (λ (K : Nat). λ (Hh : Nat). λ (T : Array K Nat).
+        λ (Ih : Id Nat K Z → SortedA K T).
+          λ (H : Id Nat (S K) Z).
+            botElim (SortedA (S K) (acons K Hh T)) (Znots K (IdSym Nat (S K) Z H)))
+      N A }
 def SortedANilTy : Term := prog{
-  Π (n : Nat) → Π (a : Array n Nat) → Id Nat n Z → SortedA n a }
+  Π (N : Nat) → Π (A : Array N Nat) → Id Nat N Z → SortedA N A }
 
 /-- `SplitAL p k a` — the first `k` elements are ≤ `p`, the rest are ≥ `p`. -/
 def SplitAL : Term := prog{
-  λ (p : Nat). λ (k : Nat). λ (n : Nat). λ (a : Array n Nat).
-    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Π (kz : Nat) → Type)
-      (λ (kz : Nat). Unit)
-      (λ (m : Nat). λ (h : Nat). λ (t : Array m Nat). λ (ih : Π (kz : Nat) → Type).
-        λ (kz : Nat).
-          elim kz return (λ (w : Nat). Type) {
-            Z => Σ (hh : Le p h) → ih Z,
-            S (k2) rec => Σ (hh : Le h p) → ih k2 })
-      n a k }
+  λ (P : Nat). λ (K : Nat). λ (N : Nat). λ (A : Array N Nat).
+    arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Π (Kz : Nat) → Type)
+      (λ (Kz : Nat). Unit)
+      (λ (M : Nat). λ (H : Nat). λ (T : Array M Nat). λ (Ih : Π (Kz : Nat) → Type).
+        λ (Kz : Nat).
+          elim Kz return (λ (W : Nat). Type) {
+            Z => Σ (Hh : Le P H) → Ih Z,
+            S (K2) Rec => Σ (Hh : Le H P) → Ih K2 })
+      N A K }
 
 /-- `PartA pv k a` — the first `k` elements are ≤ `pv`, element `k` IS `pv`, and the
     rest are ≥ `pv`. The pivot's presence at the split point is what the sort needs and
     `SplitAL` does not give: without it the element in the carved pivot slot is merely
     ≥ `p`, and `LbA (that element)` of the right half does not follow. -/
 def PartA : Term := prog{
-  λ (pv : Nat). λ (k : Nat). λ (n : Nat). λ (a : Array n Nat).
-    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Π (kz : Nat) → Type)
-      (λ (kz : Nat). Unit)
-      (λ (m : Nat). λ (h : Nat). λ (t : Array m Nat). λ (ih : Π (kz : Nat) → Type).
-        λ (kz : Nat).
-          elim kz return (λ (w : Nat). Type) {
-            Z => Σ (he : Id Nat h pv) → LbA pv m t,
-            S (k2) rec => Σ (hh : Le h pv) → ih k2 })
-      n a k }
+  λ (Pv : Nat). λ (K : Nat). λ (N : Nat). λ (A : Array N Nat).
+    arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Π (Kz : Nat) → Type)
+      (λ (Kz : Nat). Unit)
+      (λ (M : Nat). λ (H : Nat). λ (T : Array M Nat). λ (Ih : Π (Kz : Nat) → Type).
+        λ (Kz : Nat).
+          elim Kz return (λ (W : Nat). Type) {
+            Z => Σ (He : Id Nat H Pv) → LbA Pv M T,
+            S (K2) Rec => Σ (Hh : Le H Pv) → Ih K2 })
+      N A K }
 
 /-- `SplitAL` of a length-zero array, at any skip count — `SortedANil`'s twin, and
     needed for the same reason. -/
 def SplitANil : Term := prog{
-  λ (p : Nat). λ (kz : Nat). λ (n : Nat). λ (a : Array n Nat). λ (hz : Id Nat n Z).
-    arrRec Nat (λ (m : Nat). λ (b : Array m Nat).
-        Π (k2 : Nat) → Id Nat m Z → SplitAL p k2 m b)
-      (λ (k2 : Nat). λ (h : Id Nat Z Z). unit)
-      (λ (m : Nat). λ (hh : Nat). λ (t : Array m Nat).
-        λ (ih : Π (k2 : Nat) → Id Nat m Z → SplitAL p k2 m t).
-          λ (k2 : Nat). λ (h : Id Nat (S m) Z).
-            botElim (SplitAL p k2 (S m) (acons m hh t)) (Znots m (IdSym Nat (S m) Z h)))
-      n a kz hz }
+  λ (P : Nat). λ (Kz : Nat). λ (N : Nat). λ (A : Array N Nat). λ (Hz : Id Nat N Z).
+    arrRec Nat (λ (M : Nat). λ (B : Array M Nat).
+        Π (K2 : Nat) → Id Nat M Z → SplitAL P K2 M B)
+      (λ (K2 : Nat). λ (H : Id Nat Z Z). unit)
+      (λ (M : Nat). λ (Hh : Nat). λ (T : Array M Nat).
+        λ (Ih : Π (K2 : Nat) → Id Nat M Z → SplitAL P K2 M T).
+          λ (K2 : Nat). λ (H : Id Nat (S M) Z).
+            botElim (SplitAL P K2 (S M) (acons M Hh T)) (Znots M (IdSym Nat (S M) Z H)))
+      N A Kz Hz }
 def SplitANilTy : Term := prog{
-  Π (p : Nat) → Π (kz : Nat) → Π (n : Nat) → Π (a : Array n Nat) →
-    Id Nat n Z → SplitAL p kz n a }
+  Π (P : Nat) → Π (Kz : Nat) → Π (N : Nat) → Π (A : Array N Nat) →
+    Id Nat N Z → SplitAL P Kz N A }
 
 /-! ### Crossing a concatenation
 
@@ -4383,82 +4383,82 @@ def SplitANilTy : Term := prog{
 /-- A zero skip count is a lower bound on the whole array — the crossing from the
     partition layer back into ¶1.3's transferred library. -/
 def SplitA0Lb : Term := prog{
-  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
-    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). SplitAL p Z m b → LbA p m b)
-      (λ (h : Unit). unit)
-      (λ (k : Nat). λ (hh : Nat). λ (t : Array k Nat).
-        λ (ih : SplitAL p Z k t → LbA p k t).
-          λ (s : Σ (h2 : Le p hh) → SplitAL p Z k t).
-            elim s return (λ (qz : Σ (h2 : Le p hh) → SplitAL p Z k t). LbA p (S k) (acons k hh t)) {
-              Pair (u) (v) => Pair(u, ih v) })
-      n a }
+  λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
+    arrRec Nat (λ (M : Nat). λ (B : Array M Nat). SplitAL P Z M B → LbA P M B)
+      (λ (H : Unit). unit)
+      (λ (K : Nat). λ (Hh : Nat). λ (T : Array K Nat).
+        λ (Ih : SplitAL P Z K T → LbA P K T).
+          λ (S0 : Σ (H2 : Le P Hh) → SplitAL P Z K T).
+            elim S0 return (λ (Qz : Σ (H2 : Le P Hh) → SplitAL P Z K T). LbA P (S K) (acons K Hh T)) {
+              Pair (U) (V) => Pair(U, Ih V) })
+      N A }
 def SplitA0LbTy : Term := prog{
-  Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) → SplitAL p Z n a → LbA p n a }
+  Π (P : Nat) → Π (N : Nat) → Π (A : Array N Nat) → SplitAL P Z N A → LbA P N A }
 
 /-- Split a `SplitAL` whose skip count runs ONE PAST the left part: the left part is
     wholly bounded, and what is left is a `SplitAL` at skip 1 over the right part. This
     is the shape the swap branch needs — it reads off both "the left part is all ≤ p"
     and "the element about to be swapped out is ≤ p" in one step. -/
 def SplitACatE1 : Term := prog{
-  λ (p : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
-    arrRec Nat (λ (kz : Nat). λ (lz : Array kz Nat).
-        SplitAL p (S kz) (Add kz mm) (arrCat kz mm lz w) →
-          Σ (hu : UbA p kz lz) → SplitAL p (S Z) mm w)
-      (λ (h : SplitAL p (S Z) mm w). Pair(unit, h))
-      (λ (k2 : Nat). λ (hh : Nat). λ (t : Array k2 Nat).
-        λ (ih : SplitAL p (S k2) (Add k2 mm) (arrCat k2 mm t w) →
-                  Σ (hu : UbA p k2 t) → SplitAL p (S Z) mm w).
-          λ (s : Σ (h2 : Le hh p) → SplitAL p (S k2) (Add k2 mm) (arrCat k2 mm t w)).
-            elim s return (λ (qz : Σ (h2 : Le hh p) →
-                                SplitAL p (S k2) (Add k2 mm) (arrCat k2 mm t w)).
-                Σ (hu : UbA p (S k2) (acons k2 hh t)) → SplitAL p (S Z) mm w) {
-              Pair (u) (v) =>
-                elim (ih v) return (λ (qz2 : Σ (hu : UbA p k2 t) → SplitAL p (S Z) mm w).
-                    Σ (hu : UbA p (S k2) (acons k2 hh t)) → SplitAL p (S Z) mm w) {
-                  Pair (a1) (b1) => Pair(Pair(u, a1), b1) } })
-      k l }
+  λ (P : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
+    arrRec Nat (λ (Kz : Nat). λ (Lz : Array Kz Nat).
+        SplitAL P (S Kz) (Add Kz Mm) (arrCat Kz Mm Lz W) →
+          Σ (Hu : UbA P Kz Lz) → SplitAL P (S Z) Mm W)
+      (λ (H : SplitAL P (S Z) Mm W). Pair(unit, H))
+      (λ (K2 : Nat). λ (Hh : Nat). λ (T : Array K2 Nat).
+        λ (Ih : SplitAL P (S K2) (Add K2 Mm) (arrCat K2 Mm T W) →
+                  Σ (Hu : UbA P K2 T) → SplitAL P (S Z) Mm W).
+          λ (S0 : Σ (H2 : Le Hh P) → SplitAL P (S K2) (Add K2 Mm) (arrCat K2 Mm T W)).
+            elim S0 return (λ (Qz : Σ (H2 : Le Hh P) →
+                                SplitAL P (S K2) (Add K2 Mm) (arrCat K2 Mm T W)).
+                Σ (Hu : UbA P (S K2) (acons K2 Hh T)) → SplitAL P (S Z) Mm W) {
+              Pair (U) (V) =>
+                elim (Ih V) return (λ (Qz2 : Σ (Hu : UbA P K2 T) → SplitAL P (S Z) Mm W).
+                    Σ (Hu : UbA P (S K2) (acons K2 Hh T)) → SplitAL P (S Z) Mm W) {
+                  Pair (A1) (B1) => Pair(Pair(U, A1), B1) } })
+      K L }
 def SplitACatE1Ty : Term := prog{
-  Π (p : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
-    SplitAL p (S k) (Add k mm) (arrCat k mm l w) →
-      Σ (hu : UbA p k l) → SplitAL p (S Z) mm w }
+  Π (P : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
+    SplitAL P (S K) (Add K Mm) (arrCat K Mm L W) →
+      Σ (Hu : UbA P K L) → SplitAL P (S Z) Mm W }
 
 /-- The converse at skip exactly `k`: a bounded left part in front of a `SplitAL` at
     skip zero is a `SplitAL` at skip `k`. -/
 def SplitACatI0 : Term := prog{
-  λ (p : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
-    arrRec Nat (λ (kz : Nat). λ (lz : Array kz Nat).
-        UbA p kz lz → SplitAL p Z mm w → SplitAL p kz (Add kz mm) (arrCat kz mm lz w))
-      (λ (u : Unit). λ (h : SplitAL p Z mm w). h)
-      (λ (k2 : Nat). λ (hh : Nat). λ (t : Array k2 Nat).
-        λ (ih : UbA p k2 t → SplitAL p Z mm w →
-                  SplitAL p k2 (Add k2 mm) (arrCat k2 mm t w)).
-          λ (u : Σ (h2 : Le hh p) → UbA p k2 t). λ (h : SplitAL p Z mm w).
-            elim u return (λ (qz : Σ (h2 : Le hh p) → UbA p k2 t).
-                SplitAL p (S k2) (Add (S k2) mm) (arrCat (S k2) mm (acons k2 hh t) w)) {
-              Pair (a1) (b1) => Pair(a1, ih b1 h) })
-      k l }
+  λ (P : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
+    arrRec Nat (λ (Kz : Nat). λ (Lz : Array Kz Nat).
+        UbA P Kz Lz → SplitAL P Z Mm W → SplitAL P Kz (Add Kz Mm) (arrCat Kz Mm Lz W))
+      (λ (U : Unit). λ (H : SplitAL P Z Mm W). H)
+      (λ (K2 : Nat). λ (Hh : Nat). λ (T : Array K2 Nat).
+        λ (Ih : UbA P K2 T → SplitAL P Z Mm W →
+                  SplitAL P K2 (Add K2 Mm) (arrCat K2 Mm T W)).
+          λ (U : Σ (H2 : Le Hh P) → UbA P K2 T). λ (H : SplitAL P Z Mm W).
+            elim U return (λ (Qz : Σ (H2 : Le Hh P) → UbA P K2 T).
+                SplitAL P (S K2) (Add (S K2) Mm) (arrCat (S K2) Mm (acons K2 Hh T) W)) {
+              Pair (A1) (B1) => Pair(A1, Ih B1 H) })
+      K L }
 def SplitACatI0Ty : Term := prog{
-  Π (p : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
-    UbA p k l → SplitAL p Z mm w → SplitAL p k (Add k mm) (arrCat k mm l w) }
+  Π (P : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
+    UbA P K L → SplitAL P Z Mm W → SplitAL P K (Add K Mm) (arrCat K Mm L W) }
 
 /-- `PartA`'s introduction, the partition's last step: a bounded left part in front of
     a `PartA` at skip zero (which is "the head IS the pivot, the tail is ≥ it"). -/
 def PartACatI0 : Term := prog{
-  λ (pv : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
-    arrRec Nat (λ (kz : Nat). λ (lz : Array kz Nat).
-        UbA pv kz lz → PartA pv Z mm w → PartA pv kz (Add kz mm) (arrCat kz mm lz w))
-      (λ (u : Unit). λ (h : PartA pv Z mm w). h)
-      (λ (k2 : Nat). λ (hh : Nat). λ (t : Array k2 Nat).
-        λ (ih : UbA pv k2 t → PartA pv Z mm w →
-                  PartA pv k2 (Add k2 mm) (arrCat k2 mm t w)).
-          λ (u : Σ (h2 : Le hh pv) → UbA pv k2 t). λ (h : PartA pv Z mm w).
-            elim u return (λ (qz : Σ (h2 : Le hh pv) → UbA pv k2 t).
-                PartA pv (S k2) (Add (S k2) mm) (arrCat (S k2) mm (acons k2 hh t) w)) {
-              Pair (a1) (b1) => Pair(a1, ih b1 h) })
-      k l }
+  λ (Pv : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
+    arrRec Nat (λ (Kz : Nat). λ (Lz : Array Kz Nat).
+        UbA Pv Kz Lz → PartA Pv Z Mm W → PartA Pv Kz (Add Kz Mm) (arrCat Kz Mm Lz W))
+      (λ (U : Unit). λ (H : PartA Pv Z Mm W). H)
+      (λ (K2 : Nat). λ (Hh : Nat). λ (T : Array K2 Nat).
+        λ (Ih : UbA Pv K2 T → PartA Pv Z Mm W →
+                  PartA Pv K2 (Add K2 Mm) (arrCat K2 Mm T W)).
+          λ (U : Σ (H2 : Le Hh Pv) → UbA Pv K2 T). λ (H : PartA Pv Z Mm W).
+            elim U return (λ (Qz : Σ (H2 : Le Hh Pv) → UbA Pv K2 T).
+                PartA Pv (S K2) (Add (S K2) Mm) (arrCat (S K2) Mm (acons K2 Hh T) W)) {
+              Pair (A1) (B1) => Pair(A1, Ih B1 H) })
+      K L }
 def PartACatI0Ty : Term := prog{
-  Π (pv : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
-    UbA pv k l → PartA pv Z mm w → PartA pv k (Add k mm) (arrCat k mm l w) }
+  Π (Pv : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
+    UbA Pv K L → PartA Pv Z Mm W → PartA Pv K (Add K Mm) (arrCat K Mm L W) }
 
 /-- **THE BRIDGE.** `PartA`'s elimination at the sort's own carve: the left segment is
     bounded above by the pivot, and what remains is `PartA` at skip zero over the pivot
@@ -4466,27 +4466,27 @@ def PartACatI0Ty : Term := prog{
     `Id Nat (that element) pv` and `LbA pv (right segment)`. Those three facts are
     `SortedArrCat`'s four hypotheses minus the two the recursive calls supply. -/
 def PartACatE0 : Term := prog{
-  λ (pv : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
-    arrRec Nat (λ (kz : Nat). λ (lz : Array kz Nat).
-        PartA pv kz (Add kz mm) (arrCat kz mm lz w) →
-          Σ (hu : UbA pv kz lz) → PartA pv Z mm w)
-      (λ (h : PartA pv Z mm w). Pair(unit, h))
-      (λ (k2 : Nat). λ (hh : Nat). λ (t : Array k2 Nat).
-        λ (ih : PartA pv k2 (Add k2 mm) (arrCat k2 mm t w) →
-                  Σ (hu : UbA pv k2 t) → PartA pv Z mm w).
-          λ (s : Σ (h2 : Le hh pv) → PartA pv k2 (Add k2 mm) (arrCat k2 mm t w)).
-            elim s return (λ (qz : Σ (h2 : Le hh pv) →
-                                PartA pv k2 (Add k2 mm) (arrCat k2 mm t w)).
-                Σ (hu : UbA pv (S k2) (acons k2 hh t)) → PartA pv Z mm w) {
-              Pair (u) (v) =>
-                elim (ih v) return (λ (qz2 : Σ (hu : UbA pv k2 t) → PartA pv Z mm w).
-                    Σ (hu : UbA pv (S k2) (acons k2 hh t)) → PartA pv Z mm w) {
-                  Pair (a1) (b1) => Pair(Pair(u, a1), b1) } })
-      k l }
+  λ (Pv : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
+    arrRec Nat (λ (Kz : Nat). λ (Lz : Array Kz Nat).
+        PartA Pv Kz (Add Kz Mm) (arrCat Kz Mm Lz W) →
+          Σ (Hu : UbA Pv Kz Lz) → PartA Pv Z Mm W)
+      (λ (H : PartA Pv Z Mm W). Pair(unit, H))
+      (λ (K2 : Nat). λ (Hh : Nat). λ (T : Array K2 Nat).
+        λ (Ih : PartA Pv K2 (Add K2 Mm) (arrCat K2 Mm T W) →
+                  Σ (Hu : UbA Pv K2 T) → PartA Pv Z Mm W).
+          λ (S0 : Σ (H2 : Le Hh Pv) → PartA Pv K2 (Add K2 Mm) (arrCat K2 Mm T W)).
+            elim S0 return (λ (Qz : Σ (H2 : Le Hh Pv) →
+                                PartA Pv K2 (Add K2 Mm) (arrCat K2 Mm T W)).
+                Σ (Hu : UbA Pv (S K2) (acons K2 Hh T)) → PartA Pv Z Mm W) {
+              Pair (U) (V) =>
+                elim (Ih V) return (λ (Qz2 : Σ (Hu : UbA Pv K2 T) → PartA Pv Z Mm W).
+                    Σ (Hu : UbA Pv (S K2) (acons K2 Hh T)) → PartA Pv Z Mm W) {
+                  Pair (A1) (B1) => Pair(Pair(U, A1), B1) } })
+      K L }
 def PartACatE0Ty : Term := prog{
-  Π (pv : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
-    PartA pv k (Add k mm) (arrCat k mm l w) →
-      Σ (hu : UbA pv k l) → PartA pv Z mm w }
+  Π (Pv : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
+    PartA Pv K (Add K Mm) (arrCat K Mm L W) →
+      Σ (Hu : UbA Pv K L) → PartA Pv Z Mm W }
 
 /-! ### The same crossings, one conclusion each
 
@@ -4497,85 +4497,85 @@ def PartACatE0Ty : Term := prog{
     the types is free, and keeps the programs readable. -/
 
 def SplitACatUb : Term := prog{
-  λ (p : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
-    λ (s : SplitAL p (S k) (Add k mm) (arrCat k mm l w)).
-      elim (SplitACatE1 p k mm l w s)
-        return (λ (qz : Σ (hu : UbA p k l) → SplitAL p (S Z) mm w). UbA p k l) {
-          Pair (u) (v) => u } }
+  λ (P : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
+    λ (S0 : SplitAL P (S K) (Add K Mm) (arrCat K Mm L W)).
+      elim (SplitACatE1 P K Mm L W S0)
+        return (λ (Qz : Σ (Hu : UbA P K L) → SplitAL P (S Z) Mm W). UbA P K L) {
+          Pair (U) (V) => U } }
 def SplitACatUbTy : Term := prog{
-  Π (p : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
-    SplitAL p (S k) (Add k mm) (arrCat k mm l w) → UbA p k l }
+  Π (P : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
+    SplitAL P (S K) (Add K Mm) (arrCat K Mm L W) → UbA P K L }
 
 def SplitACatRest : Term := prog{
-  λ (p : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
-    λ (s : SplitAL p (S k) (Add k mm) (arrCat k mm l w)).
-      elim (SplitACatE1 p k mm l w s)
-        return (λ (qz : Σ (hu : UbA p k l) → SplitAL p (S Z) mm w). SplitAL p (S Z) mm w) {
-          Pair (u) (v) => v } }
+  λ (P : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
+    λ (S0 : SplitAL P (S K) (Add K Mm) (arrCat K Mm L W)).
+      elim (SplitACatE1 P K Mm L W S0)
+        return (λ (Qz : Σ (Hu : UbA P K L) → SplitAL P (S Z) Mm W). SplitAL P (S Z) Mm W) {
+          Pair (U) (V) => V } }
 def SplitACatRestTy : Term := prog{
-  Π (p : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
-    SplitAL p (S k) (Add k mm) (arrCat k mm l w) → SplitAL p (S Z) mm w }
+  Π (P : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
+    SplitAL P (S K) (Add K Mm) (arrCat K Mm L W) → SplitAL P (S Z) Mm W }
 
 /-- A skip-1 `SplitAL` over a cons: its head is bounded, and its tail is a skip-0 one.
     Both are definitional unfoldings; naming them keeps the swap branch flat. -/
 def SplitA1Head : Term := prog{
-  λ (p : Nat). λ (r : Nat). λ (g : Array r Nat). λ (yv : Nat).
-    λ (s : Σ (hh : Le yv p) → SplitAL p Z r g).
-      elim s return (λ (qz : Σ (hh : Le yv p) → SplitAL p Z r g). Le yv p) {
-        Pair (u) (v) => u } }
+  λ (P : Nat). λ (R : Nat). λ (G : Array R Nat). λ (Yv : Nat).
+    λ (S0 : Σ (Hh : Le Yv P) → SplitAL P Z R G).
+      elim S0 return (λ (Qz : Σ (Hh : Le Yv P) → SplitAL P Z R G). Le Yv P) {
+        Pair (U) (V) => U } }
 def SplitA1HeadTy : Term := prog{
-  Π (p : Nat) → Π (r : Nat) → Π (g : Array r Nat) → Π (yv : Nat) →
-    SplitAL p (S Z) (S r) (acons r yv g) → Le yv p }
+  Π (P : Nat) → Π (R : Nat) → Π (G : Array R Nat) → Π (Yv : Nat) →
+    SplitAL P (S Z) (S R) (acons R Yv G) → Le Yv P }
 
 def SplitA1Tail : Term := prog{
-  λ (p : Nat). λ (r : Nat). λ (g : Array r Nat). λ (yv : Nat).
-    λ (s : Σ (hh : Le yv p) → SplitAL p Z r g).
-      elim s return (λ (qz : Σ (hh : Le yv p) → SplitAL p Z r g). SplitAL p Z r g) {
-        Pair (u) (v) => v } }
+  λ (P : Nat). λ (R : Nat). λ (G : Array R Nat). λ (Yv : Nat).
+    λ (S0 : Σ (Hh : Le Yv P) → SplitAL P Z R G).
+      elim S0 return (λ (Qz : Σ (Hh : Le Yv P) → SplitAL P Z R G). SplitAL P Z R G) {
+        Pair (U) (V) => V } }
 def SplitA1TailTy : Term := prog{
-  Π (p : Nat) → Π (r : Nat) → Π (g : Array r Nat) → Π (yv : Nat) →
-    SplitAL p (S Z) (S r) (acons r yv g) → SplitAL p Z r g }
+  Π (P : Nat) → Π (R : Nat) → Π (G : Array R Nat) → Π (Yv : Nat) →
+    SplitAL P (S Z) (S R) (acons R Yv G) → SplitAL P Z R G }
 
 def PartACatUb : Term := prog{
-  λ (pv : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
-    λ (s : PartA pv k (Add k mm) (arrCat k mm l w)).
-      elim (PartACatE0 pv k mm l w s)
-        return (λ (qz : Σ (hu : UbA pv k l) → PartA pv Z mm w). UbA pv k l) {
-          Pair (u) (v) => u } }
+  λ (Pv : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
+    λ (S0 : PartA Pv K (Add K Mm) (arrCat K Mm L W)).
+      elim (PartACatE0 Pv K Mm L W S0)
+        return (λ (Qz : Σ (Hu : UbA Pv K L) → PartA Pv Z Mm W). UbA Pv K L) {
+          Pair (U) (V) => U } }
 def PartACatUbTy : Term := prog{
-  Π (pv : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
-    PartA pv k (Add k mm) (arrCat k mm l w) → UbA pv k l }
+  Π (Pv : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
+    PartA Pv K (Add K Mm) (arrCat K Mm L W) → UbA Pv K L }
 
 def PartACatRest : Term := prog{
-  λ (pv : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
-    λ (s : PartA pv k (Add k mm) (arrCat k mm l w)).
-      elim (PartACatE0 pv k mm l w s)
-        return (λ (qz : Σ (hu : UbA pv k l) → PartA pv Z mm w). PartA pv Z mm w) {
-          Pair (u) (v) => v } }
+  λ (Pv : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
+    λ (S0 : PartA Pv K (Add K Mm) (arrCat K Mm L W)).
+      elim (PartACatE0 Pv K Mm L W S0)
+        return (λ (Qz : Σ (Hu : UbA Pv K L) → PartA Pv Z Mm W). PartA Pv Z Mm W) {
+          Pair (U) (V) => V } }
 def PartACatRestTy : Term := prog{
-  Π (pv : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
-    PartA pv k (Add k mm) (arrCat k mm l w) → PartA pv Z mm w }
+  Π (Pv : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
+    PartA Pv K (Add K Mm) (arrCat K Mm L W) → PartA Pv Z Mm W }
 
 /-- The pivot slot, read off a skip-0 `PartA`: the element there IS the pivot, and
     everything after it is bounded below by the pivot. These two are `SortedArrCat`'s
     remaining hypotheses, and the reason `PartA` records the pivot's identity at all. -/
 def PartA0Eq : Term := prog{
-  λ (pv : Nat). λ (jj : Nat). λ (g : Array jj Nat). λ (ev : Nat).
-    λ (s : Σ (he : Id Nat ev pv) → LbA pv jj g).
-      elim s return (λ (qz : Σ (he : Id Nat ev pv) → LbA pv jj g). Id Nat ev pv) {
-        Pair (u) (v) => u } }
+  λ (Pv : Nat). λ (Jj : Nat). λ (G : Array Jj Nat). λ (Ev : Nat).
+    λ (S0 : Σ (He : Id Nat Ev Pv) → LbA Pv Jj G).
+      elim S0 return (λ (Qz : Σ (He : Id Nat Ev Pv) → LbA Pv Jj G). Id Nat Ev Pv) {
+        Pair (U) (V) => U } }
 def PartA0EqTy : Term := prog{
-  Π (pv : Nat) → Π (jj : Nat) → Π (g : Array jj Nat) → Π (ev : Nat) →
-    PartA pv Z (S jj) (acons jj ev g) → Id Nat ev pv }
+  Π (Pv : Nat) → Π (Jj : Nat) → Π (G : Array Jj Nat) → Π (Ev : Nat) →
+    PartA Pv Z (S Jj) (acons Jj Ev G) → Id Nat Ev Pv }
 
 def PartA0Lb : Term := prog{
-  λ (pv : Nat). λ (jj : Nat). λ (g : Array jj Nat). λ (ev : Nat).
-    λ (s : Σ (he : Id Nat ev pv) → LbA pv jj g).
-      elim s return (λ (qz : Σ (he : Id Nat ev pv) → LbA pv jj g). LbA pv jj g) {
-        Pair (u) (v) => v } }
+  λ (Pv : Nat). λ (Jj : Nat). λ (G : Array Jj Nat). λ (Ev : Nat).
+    λ (S0 : Σ (He : Id Nat Ev Pv) → LbA Pv Jj G).
+      elim S0 return (λ (Qz : Σ (He : Id Nat Ev Pv) → LbA Pv Jj G). LbA Pv Jj G) {
+        Pair (U) (V) => V } }
 def PartA0LbTy : Term := prog{
-  Π (pv : Nat) → Π (jj : Nat) → Π (g : Array jj Nat) → Π (ev : Nat) →
-    PartA pv Z (S jj) (acons jj ev g) → LbA pv jj g }
+  Π (Pv : Nat) → Π (Jj : Nat) → Π (G : Array Jj Nat) → Π (Ev : Nat) →
+    PartA Pv Z (S Jj) (acons Jj Ev G) → LbA Pv Jj G }
 
 /-! ### The count layer for a swap across a carve
 
@@ -4588,71 +4588,71 @@ def PartA0LbTy : Term := prog{
 /-- `CountA`'s own step function, named so a congruence can be stated over it: the
     count of a cons is a `bump` of the count of its tail. -/
 def BumpN : Term := prog{
-  λ (b : Bool). λ (c : Nat). elim b return (λ (w : Bool). Nat) { True => S c, False => c } }
+  λ (B : Bool). λ (C : Nat). elim B return (λ (W : Bool). Nat) { True => S C, False => C } }
 
 /-- Congruence for `CountA` under a cons — `CountConsCongr`'s array counterpart. -/
 def CountAconsCongr : Term := prog{
-  λ (q : Nat). λ (h : Nat). λ (k : Nat). λ (t1 : Array k Nat). λ (t2 : Array k Nat).
-    λ (hc : Id Nat (CountA q k t1) (CountA q k t2)).
-      IdCongr Nat Nat (λ (c : Nat). BumpN (Eqb q h) c)
-        (CountA q k t1) (CountA q k t2) hc }
+  λ (Q : Nat). λ (H : Nat). λ (K : Nat). λ (T1 : Array K Nat). λ (T2 : Array K Nat).
+    λ (Hc : Id Nat (CountA Q K T1) (CountA Q K T2)).
+      IdCongr Nat Nat (λ (C : Nat). BumpN (Eqb Q H) C)
+        (CountA Q K T1) (CountA Q K T2) Hc }
 def CountAconsCongrTy : Term := prog{
-  Π (q : Nat) → Π (h : Nat) → Π (k : Nat) → Π (t1 : Array k Nat) → Π (t2 : Array k Nat) →
-    Id Nat (CountA q k t1) (CountA q k t2) →
-      Id Nat (CountA q (S k) (acons k h t1)) (CountA q (S k) (acons k h t2)) }
+  Π (Q : Nat) → Π (H : Nat) → Π (K : Nat) → Π (T1 : Array K Nat) → Π (T2 : Array K Nat) →
+    Id Nat (CountA Q K T1) (CountA Q K T2) →
+      Id Nat (CountA Q (S K) (acons K H T1)) (CountA Q (S K) (acons K H T2)) }
 
 /-- The arithmetic core of the swap, over the two `bump`s alone: which of the two
     exchanged elements is being counted does not matter. Four arms; the two mixed ones
     are `AddSucc` and its symmetry, and the two matching ones are `Refl` — `CountSwap2`
     at width two had all four `Refl` because both counts were concrete. -/
 def BumpComm : Term := prog{
-  λ (b1 : Bool). λ (b2 : Bool). λ (cl : Nat). λ (cg : Nat).
-    elim b1 return (λ (w : Bool).
-        Id Nat (BumpN b2 (Add cl (BumpN w cg))) (BumpN w (Add cl (BumpN b2 cg)))) {
+  λ (B1 : Bool). λ (B2 : Bool). λ (Cl : Nat). λ (Cg : Nat).
+    elim B1 return (λ (W : Bool).
+        Id Nat (BumpN B2 (Add Cl (BumpN W Cg))) (BumpN W (Add Cl (BumpN B2 Cg)))) {
       True =>
-        elim b2 return (λ (w2 : Bool).
-            Id Nat (BumpN w2 (Add cl (S cg))) (S (Add cl (BumpN w2 cg)))) {
+        elim B2 return (λ (W2 : Bool).
+            Id Nat (BumpN W2 (Add Cl (S Cg))) (S (Add Cl (BumpN W2 Cg)))) {
           True => Refl,
-          False => AddSucc cl cg },
+          False => AddSucc Cl Cg },
       False =>
-        elim b2 return (λ (w2 : Bool).
-            Id Nat (BumpN w2 (Add cl cg)) (Add cl (BumpN w2 cg))) {
-          True => IdSym Nat (Add cl (S cg)) (S (Add cl cg)) (AddSucc cl cg),
+        elim B2 return (λ (W2 : Bool).
+            Id Nat (BumpN W2 (Add Cl Cg)) (Add Cl (BumpN W2 Cg))) {
+          True => IdSym Nat (Add Cl (S Cg)) (S (Add Cl Cg)) (AddSucc Cl Cg),
           False => Refl } } }
 def BumpCommTy : Term := prog{
-  Π (b1 : Bool) → Π (b2 : Bool) → Π (cl : Nat) → Π (cg : Nat) →
-    Id Nat (BumpN b2 (Add cl (BumpN b1 cg))) (BumpN b1 (Add cl (BumpN b2 cg))) }
+  Π (B1 : Bool) → Π (B2 : Bool) → Π (Cl : Nat) → Π (Cg : Nat) →
+    Id Nat (BumpN B2 (Add Cl (BumpN B1 Cg))) (BumpN B1 (Add Cl (BumpN B2 Cg))) }
 
 /-- **The swap preserves every count**, stated over exactly the spine the partition
     produces: head, left segment, the swapped cell, right segment. Two `CountArrCat`
     rewrites bracket `BumpComm`. -/
 def CountSwapA : Term := prog{
-  λ (q : Nat). λ (x : Nat). λ (y : Nat). λ (k : Nat). λ (l : Array k Nat).
-  λ (r : Nat). λ (g : Array r Nat).
+  λ (Q : Nat). λ (X : Nat). λ (Y : Nat). λ (K : Nat). λ (L : Array K Nat).
+  λ (R : Nat). λ (G : Array R Nat).
     IdTrans Nat
-      (CountA q (S (Add k (S r))) (acons (Add k (S r)) y (arrCat k (S r) l (acons r x g))))
-      (BumpN (Eqb q y) (Add (CountA q k l) (BumpN (Eqb q x) (CountA q r g))))
-      (CountA q (S (Add k (S r))) (acons (Add k (S r)) x (arrCat k (S r) l (acons r y g))))
-      (IdCongr Nat Nat (λ (c : Nat). BumpN (Eqb q y) c)
-         (CountA q (Add k (S r)) (arrCat k (S r) l (acons r x g)))
-         (Add (CountA q k l) (CountA q (S r) (acons r x g)))
-         (CountArrCat q k l (S r) (acons r x g)))
+      (CountA Q (S (Add K (S R))) (acons (Add K (S R)) Y (arrCat K (S R) L (acons R X G))))
+      (BumpN (Eqb Q Y) (Add (CountA Q K L) (BumpN (Eqb Q X) (CountA Q R G))))
+      (CountA Q (S (Add K (S R))) (acons (Add K (S R)) X (arrCat K (S R) L (acons R Y G))))
+      (IdCongr Nat Nat (λ (C : Nat). BumpN (Eqb Q Y) C)
+         (CountA Q (Add K (S R)) (arrCat K (S R) L (acons R X G)))
+         (Add (CountA Q K L) (CountA Q (S R) (acons R X G)))
+         (CountArrCat Q K L (S R) (acons R X G)))
       (IdTrans Nat
-        (BumpN (Eqb q y) (Add (CountA q k l) (BumpN (Eqb q x) (CountA q r g))))
-        (BumpN (Eqb q x) (Add (CountA q k l) (BumpN (Eqb q y) (CountA q r g))))
-        (CountA q (S (Add k (S r))) (acons (Add k (S r)) x (arrCat k (S r) l (acons r y g))))
-        (BumpComm (Eqb q x) (Eqb q y) (CountA q k l) (CountA q r g))
+        (BumpN (Eqb Q Y) (Add (CountA Q K L) (BumpN (Eqb Q X) (CountA Q R G))))
+        (BumpN (Eqb Q X) (Add (CountA Q K L) (BumpN (Eqb Q Y) (CountA Q R G))))
+        (CountA Q (S (Add K (S R))) (acons (Add K (S R)) X (arrCat K (S R) L (acons R Y G))))
+        (BumpComm (Eqb Q X) (Eqb Q Y) (CountA Q K L) (CountA Q R G))
         (IdSym Nat
-          (CountA q (S (Add k (S r))) (acons (Add k (S r)) x (arrCat k (S r) l (acons r y g))))
-          (BumpN (Eqb q x) (Add (CountA q k l) (BumpN (Eqb q y) (CountA q r g))))
-          (IdCongr Nat Nat (λ (c : Nat). BumpN (Eqb q x) c)
-             (CountA q (Add k (S r)) (arrCat k (S r) l (acons r y g)))
-             (Add (CountA q k l) (CountA q (S r) (acons r y g)))
-             (CountArrCat q k l (S r) (acons r y g))))) }
+          (CountA Q (S (Add K (S R))) (acons (Add K (S R)) X (arrCat K (S R) L (acons R Y G))))
+          (BumpN (Eqb Q X) (Add (CountA Q K L) (BumpN (Eqb Q Y) (CountA Q R G))))
+          (IdCongr Nat Nat (λ (C : Nat). BumpN (Eqb Q X) C)
+             (CountA Q (Add K (S R)) (arrCat K (S R) L (acons R Y G)))
+             (Add (CountA Q K L) (CountA Q (S R) (acons R Y G)))
+             (CountArrCat Q K L (S R) (acons R Y G))))) }
 def CountSwapATy : Term := prog{
-  Π (q : Nat) → Π (x : Nat) → Π (y : Nat) → Π (k : Nat) → Π (l : Array k Nat) →
-  Π (r : Nat) → Π (g : Array r Nat) →
-    Id Nat (CountA q (S (Add k (S r))) (acons (Add k (S r)) y (arrCat k (S r) l (acons r x g))))
-           (CountA q (S (Add k (S r))) (acons (Add k (S r)) x (arrCat k (S r) l (acons r y g)))) }
+  Π (Q : Nat) → Π (X : Nat) → Π (Y : Nat) → Π (K : Nat) → Π (L : Array K Nat) →
+  Π (R : Nat) → Π (G : Array R Nat) →
+    Id Nat (CountA Q (S (Add K (S R))) (acons (Add K (S R)) Y (arrCat K (S R) L (acons R X G))))
+           (CountA Q (S (Add K (S R))) (acons (Add K (S R)) X (arrCat K (S R) L (acons R Y G)))) }
 
 end Dllbc.StdLemmas

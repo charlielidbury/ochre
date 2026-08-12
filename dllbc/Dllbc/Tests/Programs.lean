@@ -51,8 +51,9 @@ same sentence:
 they record their identity differently. A *runtime* binder is a `Var` — an id
 and a name — so its mode is its name's case (`Var.isComptime`); this covers
 telescope parameters, `let`, and match binders, and needs no representation
-change at all. A *pure* binder is de Bruijn and has no name, so its mode rides
-on the domain: `Π (X : τ) → …` is `.pi (.cmpT τ) …`. `Term.cmpT`/`Val.cmpT` is
+change at all. A *pure* binder carries a source name (M30 step 2) but not its
+mode — the two namespaces are separate — so its mode rides
+on the domain: `Π (X : τ) → …` is `.pi (.cmpT τ) …`. `Term.cmpT` is
 the sibling of `borrowT` — three modes at one syntactic place, the two
 non-default ones marked.
 
@@ -94,9 +95,9 @@ namespace Dllbc.Tests.S26Modes
 
 -- `useLe` and its capital twin `useLeC` are the callees of every pair below, one
 -- character apart. Each cohort is written as ONE chain — callee above caller —
--- because a `%`-spliced tail may not declare functions (both chains would number
--- their slots from `progBase` and the inner would shadow the outer), so the
--- callee line is repeated rather than factored.
+-- because a `%`-spliced tail could not itself declare functions until M32 R4
+-- (both chains numbered their slots from `progBase` and collided by id). It can
+-- now; the callee line stays repeated because that is what was written.
 
 -- A1. THE PAIN. The proof is passed, and citing it afterwards is a use-after-move.
 def a1 : Term := prog{
@@ -413,12 +414,12 @@ example : progRejects d3 "cannot be the scrutinee of a runtime match" = true := 
     comptime judgment, and ⇒ still tells them apart. -/
 
 -- E1. The mode is invisible to conversion…
-example : Val.convert 1000 (.pi "X" (.cmpT (.const "Nat")) (.const "Nat"))
+example : Pure.convert 1000 (.pi "X" (.cmpT (.const "Nat")) (.const "Nat"))
                            (.pi "x" (.const "Nat") (.const "Nat")) = true := by native_decide
 -- …and NOT erased by normalization, which is what leaves ⇒ something to read.
 -- (`==` is mode-blind, so this has to be asked structurally.)
-example : (match Val.nfV 1000 (Val.pi "X" (.cmpT (.const "Nat")) (.const "Nat")) with
-           | .pi _ d _ => Val.domComptime d
+example : (match Pure.nf 1000 (Term.pi "X" (.cmpT (.const "Nat")) (.const "Nat")) with
+           | .pi _ d _ => Term.domComptime d
            | _ => false) = true := by native_decide
 
 -- E2. `Add` stays all-lowercase and is cited in a spec regardless — you never
@@ -452,7 +453,12 @@ example : progOk e3hi = true := by native_decide
     the other is not" is exactly the kind of asymmetry a later reader would
     otherwise assume was an oversight. -/
 
-example : ((Val.cmpT (.const "Nat") : Val) == Val.const "Nat") = true := by native_decide
+-- **The mode-blind equality is `Term.convEq` since M32 R1**, where it used to be
+-- `Val.beq`. The asymmetry is the same one and it moved with the domain split:
+-- conversion is what §6's "case is inert under ⇝" is about, so the unwrapping
+-- lives in the equality `convert` is built on, and the structural `==` every
+-- incidental comparison reaches for stays honest.
+example : (Term.convEq (.cmpT (.const "Nat")) (.const "Nat")) = true := by native_decide
 example : ((Term.cmpT (.const "Nat") : Term) == Term.const "Nat") = false := by native_decide
 
 /-! ## §F. Modes at a VALUE callee — the shape phase C's `ih` stands on
@@ -543,9 +549,13 @@ example : progRejects f5 "holds ⊥" = true := by native_decide
     closure holding its arguments — including, in general, borrows". That is a
     decision against a settled one, not a mode question, and it is left filed. -/
 
+-- **FLIPPED at M32 R4**, with the reason recorded above at `Functions.c4`: a
+-- comptime λ's partial application is a VALUE, because §12 decision 4 is a rule
+-- about ⇒-ENTRY and a comptime capture holds no borrow. The refusal reached this
+-- program only because `f(2)` and `f 2` were different nodes. Saturation is
+-- still enforced where entry happens — `g2`/`g3` below, and `Functions.a5`.
 def g1 : Term := prog{ let f = λ (x : Nat). λ (y : Nat). x; let z = f(2); () }
-example : progRejects g1 "partial application" = true := by native_decide
-example : progRejects g1 "binder modes do NOT separate the two cases" = true := by native_decide
+example : progOk g1 = true := by native_decide
 
 -- The legitimate-return case, pinned as the LIMITATION it is: `mk` means to be
 -- "the constant function at 1", and is refused.
@@ -1012,8 +1022,9 @@ example : progOk Tests.S6Call.toNatProg = true := by native_decide
 /-- `swapS01` as a PREFIX: it is the callee of everything below, and the caller is
     a plain statement block, so the S6Call idiom applies — a Lean function taking
     the rest and splicing it with `%`. (A cohort whose caller is itself a `fn`
-    could not do this: two `%`-spliced chains both number their slots from
-    `progBase` and the inner would shadow the outer.) -/
+    could not do this until M32 R4: two `%`-spliced chains both numbered their
+    slots from `progBase` and collided by id. Both the arithmetic and the check
+    are gone.) -/
 def withSwapS01 (rest : Term) : Term := prog{
   fn SwapS01 (v : &mut (s : List Nat ~> Σ (l : List Nat) → Id Nat (Len l) (Len s)),
                     p : Le 2 (Len (*v))) -> Unit {
@@ -1107,7 +1118,8 @@ example : (match tailEnvs swapCaller with
     for the two machines to disagree about.
 
     What is still refused is the LOWERCASE destination, and the tests below say so
-    in pairs: `let g = F` is refused by `backstopFnBinding`, `let G = F` is
+    in pairs: `let g = F` is refused (by `fenceComptime` since M32 R3, which is
+    where the rule it breaks lives), `let G = F` is
     accepted. Same programs rejected as under the previous two rules — the verdict
     has now outlived two complete changes of reason — but the needle is the FIX,
     which is the part a reader can act on. -/
@@ -1120,11 +1132,16 @@ def f1read : Term := prog{
   let F = (λ(v : &mut List Nat) { () } : %fSeal);
   let g = F;
   () }
--- The needle moved with the rule a second time (M31 Stage A): what is refused is
--- no longer the READ but the BINDER. `let G = F` is now accepted — it copies
--- comptime knowledge — and `let g = F` is refused because a runtime binding
--- cannot hold a function.
-example : progRejects f1read "capitalise the binder" = true := by native_decide
+-- **The needle moved a THIRD time** (M32 R3), and this one is a deletion rather
+-- than a rule change. `backstopFnRhs` existed for exactly this program: it fired
+-- BEFORE the right-hand side was evaluated, because evaluating `F` hits
+-- `fenceComptime` first, and its advice ("lower-case it") is wrong when the
+-- value is a function. R3 deletes the backstop's scatter, so `fenceComptime` is
+-- what refuses this now — the honest owner, since the rule the program breaks IS
+-- erasure — and the advice was widened there to cover the case where
+-- lower-casing is not the repair. Same program, same verdict, third message.
+example : progRejects f1read "the binder to capitalise is the destination" = true := by
+  native_decide
 
 -- The migrated twin, which is the whole content of the change: capitalise the
 -- second binder and the program is fine. c1's §G3b divergence cannot arise from
@@ -1150,7 +1167,8 @@ def f2read : Term := prog{
   let F = (λ(x : Nat) { x } : %gSeal);
   let g = F;
   () }
-example : progRejects f2read "capitalise the binder" = true := by native_decide
+example : progRejects f2read "the binder to capitalise is the destination" = true := by
+  native_decide
 
 -- F2b. The ISOLATING CONTROL that survives, and it has to be a different one now:
 -- an ordinary value in a second slot is still an ordinary read. So F1/F2 are about
@@ -1496,7 +1514,7 @@ open Dllbc.Tests.S9Diff (progDiff)
 /-- The walk WITHOUT the end-of-scope demand — for showing that `endScope` is not
     vacuous (it is the difference between a parked loan and a released value). -/
 def rawEnvs (t : Term) : List (Except String Env) :=
-  (explore defaultFuel (pushContinuations t) initSt).map
+  (explore defaultFuel (atBoundary t) initSt).map
     (fun r => r.map (fun p => canonicalize p.2.env))
 
 /-! ## §A. A program is a term
@@ -1724,7 +1742,7 @@ example : progRejects d2borrow "a runtime (lowercase) binding" = true := by nati
 -- downward. (Reached here through a `.callV`-free body, so it is the variable
 -- rule and not the call rule doing the work — c1 covers the call side.)
 def d2free : Term :=
-  .letIn ⟨0, "g"⟩ (.seal (.lamR [(⟨1, "a"⟩, .const "Nat")] (.letIn ⟨2, "z"⟩ (.var ⟨9, "nope"⟩) (.var ⟨1, "a"⟩)))
+  .letIn ⟨0, "g"⟩ (.seal 0 (Term.lamTel [(⟨1, "a"⟩, .const "Nat")] (.letIn ⟨2, "z"⟩ (.var ⟨9, "nope"⟩) (.var ⟨1, "a"⟩)))
     (prog{ Π (a : Nat) → Nat })) .unit
 example : progRejects d2free "not bound anywhere above it" = true := by native_decide
 
@@ -1745,10 +1763,14 @@ example : progRejects d3 "a runtime (lowercase) binding" = true := by native_dec
 -- It used to be refused, on the ground that `let X = e` reads `e` under ⇝ while
 -- the seal is a ⇒-form because minting needs an event — so "sealed" and
 -- "comptime-bound" were mutually exclusive, and `let Cert = (… : …)` as a `Qed`
--- form was told which half to drop. M31 drops neither: `Var.comptimeRhs` makes
--- the seal's arrow a property of the SEAL rather than of the binder, so the event
--- still happens under ⇒ and what the capital binder changes is the binding —
--- erased, ⇝-readable, never ⇒-consumed.
+-- form was told which half to drop. M31 dropped neither, by making the seal's
+-- arrow a property of the SEAL as well as of the binder (`Var.comptimeRhs`) — the
+-- event still happened under ⇒, and what the capital binder changed was the
+-- binding. **M32 R3 removes the carve-out that bought that** (`Var.comptimeRhs`
+-- is gone): the seal is ⇝-evaluable now, because its σ is the one its SITE has at
+-- its inputs rather than a fresh one, so a capital `let` reads it under ⇝ like
+-- everything else and the arrow is the binder's case with nothing left over. Same
+-- program, same verdict, one fewer exception.
 --
 -- This is not a concession made for proofs; it is forced. `fn F …` desugars to
 -- exactly this term — a comptime `let` of a λ ascribed its Π (§2.1) — so a rule
@@ -1802,7 +1824,7 @@ example : (rawEnvs push).any (fun r => match r with
 -- …and the ended one has released it into a σ, which the concrete list then
 -- instantiates (that is why §A's `progDiff push` is green).
 example : (programEnvs push).any (fun r => match r with
-    | .ok env => (env.lookup "l").any (fun v => match v with | .sym _ => true | _ => false)
+    | .ok env => (env.lookup "l").any (fun v => v.symOf?.isSome)
     | .error _ => false) = true := by native_decide
 
 /-! ## §F. The flagship — RETIRED HERE (M28 D3), because the source is fuel-threaded
@@ -1891,7 +1913,7 @@ example : progDiff (Tests.S23Direct.qsRun [3, 1, 2]) = true := by native_decide
     is a σ, and matching on one is what forks the driver's paths. -/
 def hSplit (inZ inS : Term) : Term :=
   .letIn ⟨0, "F"⟩ (prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) })
-    (.letIn ⟨1, "n"⟩ (.callV ⟨0, "F"⟩ [prog{ 3 }])
+    (.letIn ⟨1, "n"⟩ (Term.appSpine (.var ⟨0, "F"⟩) [prog{ 3 }])
       (.matchE ⟨1, "n"⟩ none [Branch.mk "Z" [] inZ, Branch.mk "S" [⟨2, "k"⟩] inS]))
 
 -- H0. The split is real: two paths, not one.
@@ -1902,8 +1924,8 @@ example : (programEnvs (hSplit .unit .unit)).length == 2 := by native_decide
 -- `admitGlobals` reached through the driver.
 def hGlobal (bad : Bool) : Term :=
   hSplit .unit
-    (.letIn ⟨3, "G"⟩ (.lamR [(⟨4, "y"⟩, .const "Nat")] (.callV ⟨0, "F"⟩ [.var ⟨4, "y"⟩]))
-      (.letIn ⟨5, "r"⟩ (.callV ⟨3, "G"⟩ [.var ⟨2, "k"⟩])
+    (.letIn ⟨3, "G"⟩ (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (Term.appSpine (.var ⟨0, "F"⟩) [.var ⟨4, "y"⟩]))
+      (.letIn ⟨5, "r"⟩ (Term.appSpine (.var ⟨3, "G"⟩) [.var ⟨2, "k"⟩])
         (if bad then prog{ True } else .unit)))
 example : progOk (hGlobal false) = true := by native_decide
 -- The negative twin at the SAME position: the branch is entered and its result
@@ -1915,7 +1937,7 @@ example : progRejects (hGlobal true) "does not have return type" = true := by na
 -- is data capture: the same rejection §D2a pins, reached the other way.)
 def hCapture : Term :=
   hSplit .unit
-    (.letIn ⟨3, "g"⟩ (.lamR [(⟨4, "y"⟩, .const "Nat")] (.letIn ⟨6, "z"⟩ (.var ⟨2, "k"⟩) (.var ⟨4, "y"⟩)))
+    (.letIn ⟨3, "g"⟩ (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (.letIn ⟨6, "z"⟩ (.var ⟨2, "k"⟩) (.var ⟨4, "y"⟩)))
       .unit)
 example : progRejects hCapture "a runtime (lowercase) binding" = true := by native_decide
 
@@ -1923,7 +1945,7 @@ example : progRejects hCapture "a runtime (lowercase) binding" = true := by nati
 def hSeal (bad : Bool) : Term :=
   hSplit .unit
     (.letIn ⟨3, "Sf"⟩
-      (.seal (.lamR [(⟨4, "y"⟩, .const "Nat")] (.var ⟨4, "y"⟩))
+      (.seal 0 (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (.var ⟨4, "y"⟩))
         (if bad then prog{ Π (y : Nat) → Bool } else prog{ Π (y : Nat) → Nat }))
       .unit)
 example : progOk (hSeal false) = true := by native_decide
@@ -1939,11 +1961,11 @@ def hLend : Term :=
                   let tail = *v; *v := Cons(e, tail); () } : Π (e : Nat) → Π (v : &mut (s : List Nat ~> List Nat)) → Unit) })
     (.letIn ⟨1, "l"⟩ (prog{ Cons(1, Nil) })
       (.letIn ⟨2, "id"⟩ (prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) })
-        (.letIn ⟨3, "n"⟩ (.callV ⟨2, "id"⟩ [prog{ 3 }])
+        (.letIn ⟨3, "n"⟩ (Term.appSpine (.var ⟨2, "id"⟩) [prog{ 3 }])
           (.matchE ⟨3, "n"⟩ none
             [Branch.mk "Z" [] .unit,
              Branch.mk "S" [⟨4, "k"⟩]
-               (.letIn ⟨5, "r"⟩ (.callV ⟨0, "Push"⟩ [.var ⟨4, "k"⟩, .borrow (.var ⟨1, "l"⟩)])
+               (.letIn ⟨5, "r"⟩ (Term.appSpine (.var ⟨0, "Push"⟩) [.var ⟨4, "k"⟩, .borrow (.var ⟨1, "l"⟩)])
                  .unit)]))))
 example : progOk hLend = true := by native_decide
 example : progDiff hLend = true := by native_decide

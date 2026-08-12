@@ -317,14 +317,22 @@ def withPool (rest : Term) : Term := prog{
     concrete machine ends lazily") arriving for arrays; without the case the harness
     reports a false counterexample on the first array body it is given. -/
 partial def matchVal : Val → Val → List (Nat × Val) → Option (List (Nat × Val))
-  | .sym σ, cv, subst =>
-    match subst.find? (·.1 == σ) with
-    | some (_, v) => if v == cv then some subst else none
-    | none => some ((σ, cv) :: subst)
-  | .ctor "§segs" segs, .ctor "Arr" vs, subst => matchSegs segs vs subst
-  | .ctor n1 a1, .ctor n2 a2, subst => if n1 == n2 then matchList a1 a2 subst else none
-  | .borrowM x p, .borrowM y q, subst => if x == y then matchVal p q subst else none
-  | a, b, subst => if a == b then some subst else none   -- ⊥, loanM, pure: exact (canonicalized)
+  | sv, cv, subst =>
+    match sv.symOf? with
+    | some σ =>
+      match subst.find? (·.1 == σ) with
+      | some (_, v) => if v == cv then some subst else none
+      | none => some ((σ, cv) :: subst)
+    | none =>
+    match sv, Val.asCtor? cv with
+    | .node "§segs" segs, some ("Arr", vs) => matchSegs segs vs subst
+    | sv, _ =>
+      match Val.asCtor? sv, Val.asCtor? cv with
+      | some (n1, a1), some (n2, a2) => if n1 == n2 then matchList a1 a2 subst else none
+      | _, _ =>
+        match sv, cv with
+        | .borrowM x p, .borrowM y q => if x == y then matchVal p q subst else none
+        | a, b => if a == b then some subst else none    -- ⊥, loanM, pure: exact
 where
   matchList : List Val → List Val → List (Nat × Val) → Option (List (Nat × Val))
   | [], [], s => some s
@@ -336,7 +344,7 @@ where
     match Val.asSeg? seg with
     | none => none
     | some (c, body) =>
-      match Val.natOfVal? (Val.nfV 100 c) with
+      match Term.natOf? (Pure.nf 100 c) with
       | none => none                                     -- a symbolic extent cannot align a run
       | some k =>
         match matchVal body (.ctor "Arr" (vs.take k)) s with
@@ -387,14 +395,22 @@ def instanceOf (symEnv concEnv : Env) : Bool := (matchEnv symEnv concEnv []).isS
 
 /-- Pass 1. -/
 partial def collectSyms : Val → Val → List (Nat × Val) → List (Nat × Val)
-  | .sym σ, cv, s => if (s.find? (·.1 == σ)).isSome then s else (σ, cv) :: s
-  -- THE MERGE: a carve on the symbolic side against a run on the concrete one.
-  -- Without this the σ standing for a released segment is never collected, and
-  -- pass 2 compares an uninstantiated `§segs` against a run.
-  | .ctor "§segs" segs, .ctor "Arr" vs, s => goSegs segs vs s
-  | .ctor _ a1, .ctor _ a2, s => go a1 a2 s
-  | .borrowM _ p, .borrowM _ q, s => collectSyms p q s
-  | _, _, s => s
+  | sv, cv, s =>
+    match sv.symOf? with
+    | some σ => if (s.find? (·.1 == σ)).isSome then s else (σ, cv) :: s
+    | none =>
+    -- THE MERGE: a carve on the symbolic side against a run on the concrete one.
+    -- Without this the σ standing for a released segment is never collected, and
+    -- pass 2 compares an uninstantiated `§segs` against a run.
+    match sv, Val.asCtor? cv with
+    | .node "§segs" segs, some ("Arr", vs) => goSegs segs vs s
+    | sv, _ =>
+      match Val.asCtor? sv, Val.asCtor? cv with
+      | some (_, a1), some (_, a2) => go a1 a2 s
+      | _, _ =>
+        match sv, cv with
+        | .borrowM _ p, .borrowM _ q => collectSyms p q s
+        | _, _ => s
 where
   go : List Val → List Val → List (Nat × Val) → List (Nat × Val)
   | v1 :: vs1, v2 :: vs2, s => go vs1 vs2 (collectSyms v1 v2 s)
@@ -404,15 +420,38 @@ where
     match Val.asSeg? seg with
     | none => s
     | some (c, body) =>
-      match Val.natOfVal? (Val.nfV 100 c) with
+      match Term.natOf? (Pure.nf 100 c) with
       | none => s                                        -- symbolic extent: cannot align
       | some k => goSegs rest (vs.drop k) (collectSyms body (.ctor "Arr" (vs.take k)) s)
   | _, _, s => s
 
+/-- Normalize every knowledge leaf of a store value. -/
+partial def nfVal (fuel : Nat) : Val → Val
+  | .know t => .know (Pure.nf fuel t)
+  | .node n args => .ctor n (args.map (nfVal fuel))
+  | .borrowM ℓ p => .borrowM ℓ (nfVal fuel p)
+  | v => v
+
+/-- Substitute a σ by a STORE value. Where the replacement is knowledge this is
+    the kernel's own `Term.substSym` at the leaves; where it is not — a runtime
+    function value standing for a sealed σ, which is what a checking-mode `F ↦ σ`
+    faces concretely — only a whole leaf can be filled, because there is no `Term`
+    to splice a `λr` into. That asymmetry is R1's domain split showing up in the
+    harness, and it is exactly the set of positions the relation ever needs. -/
+partial def substSymV (σ : Nat) (repl : Val) : Val → Val
+  | .know t =>
+    if Term.beq t (Term.sym σ) then repl
+    else match repl.know? with
+      | some rt => .know (Term.substSym σ rt t)
+      | none => .know t
+  | .node n args => .ctor n (args.map (substSymV σ repl))
+  | .borrowM ℓ p => .borrowM ℓ (substSymV σ repl p)
+  | v => v
+
 /-- Pass 2's substitution. Concrete values carry no σ, so one sweep is a
-    fixpoint; `nfV` is what makes the comparison up to computation. -/
+    fixpoint; normalization is what makes the comparison up to computation. -/
 def instantiateSyms (subst : List (Nat × Val)) (v : Val) : Val :=
-  Val.nfV 2000 (subst.foldl (fun acc kv => substSym kv.1 kv.2 acc) v)
+  nfVal 2000 (subst.foldl (fun acc kv => substSymV kv.1 kv.2 acc) v)
 
 /-- **The relation**: the concrete env is a σ-instance of the symbolic one, up to
     the array fold and up to computation. -/
@@ -424,18 +463,24 @@ def instanceOfC (symEnv concEnv : Env) : Bool :=
 /-! ## The two runs and the differential check -/
 
 /-- Executing mode: run a body concretely (calls run callee bodies), returning
-    the caller's own final Ω (frame vars id ≥ 10000 filtered out). -/
+    the caller's own final Ω, declarations dropped.
+
+    **The frame half of this filter is gone** (M32 R4). It read `id < progBase &&
+    id < 10000`: the first conjunct dropped declarations, the second dropped
+    inlined-callee frame slots, which `freshFrame` numbered from 10000. There are
+    no frame ids any more — a call opens a SCOPE and `popScopesTo` takes its slots
+    on the way out, which is what actually kept them from leaking — so the second
+    conjunct had nothing left to exclude. The first is now a tag test. -/
 def runExec (body : Term) : Except String Env :=
   match (readR defaultFuel body).run { initSt with executing := true } with
-  | .ok _ st => .ok (canonicalize (st.env.filter (fun kv =>
-      kv.1.id < FnMacro.progBase && kv.1.id < 10000)))
+  | .ok _ st => .ok (canonicalize (st.env.filter (fun kv => kv.1.id != declSlot)))
   | .error e _ => .error e
 
 /-- Checking mode: the accepted symbolic paths' final environments. -/
 def symEnvs (body : Term) : List (Except String Env) :=
-  (explore defaultFuel (pushContinuations body) initSt).map
+  (explore defaultFuel (atBoundary body) initSt).map
     (fun r => r.map (fun p => canonicalize (p.2.env.filter (fun kv =>
-      kv.1.id < FnMacro.progBase && kv.1.id < 10000))))
+      kv.1.id != declSlot))))
 
 /-- The differential: the concrete final env is an instance of some symbolic
     path's final env. -/

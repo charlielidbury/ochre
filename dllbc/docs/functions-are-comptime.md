@@ -596,6 +596,13 @@ owner, not an open question):**
     checks (`backstopFnRhs`/`backstopFnBinding`/species test). The remaining
     lowercase bindings of pure-function values (partial applications, `let f =
     Add 1`) migrate capital in the same commit.
+    **REFUTED at M32 R3, measured** (see suspensions.md §2.5's correction and the
+    R3 addendum): ⇒ still constructs function values, because a proof of a
+    ∀-statement IS a λ and this calculus returns them in Σ tails — the refusal
+    rejects quicksort's count equation and `sort2`. The migration is blocked by
+    the same fact from the other side: capitalising a proof binding makes it
+    unreadable where it is RETURNED. What R3 delivered is three enforcement sites
+    becoming one; derivability and the migration move to R3b, behind §2.1.
   * **fn body scope**: bodies elaborate seeing sibling and enclosing bindings (the
     decl{}-era params-only context retires). Gated today on `fnElab`'s fresh-binder
     base colliding with program slots; trivial under M32's name-keying.
@@ -608,6 +615,15 @@ owner, not an open question):**
     existential at the instantiated codomain; `readC` remembers the structured
     neutral) is arrow-keyed (§12 decision 5), not node-keyed — the spine rule must
     keep it.
+    **DONE at M32 R2 (the desugar) and R4 (the retirement), and the warning was
+    half right.** The split survived, keyed on the callee's VALUE, and `f(a, b)`
+    and `f a b` are now literally the same `Term`. What the warning did not
+    anticipate is that `callV` was also carrying THREE rules the arrows were not,
+    each of which had to be restated on the value or lost silently: §12 decision
+    4's saturation applied to a comptime λ (which the flagship refutes — it
+    applies its proof-builders partially), ⇝'s refusal to read a CALL
+    (`reflectC` refused the node BY NAME), and §5.2's demand collapse at the
+    callee slot. See suspensions.md's R4 addendum.
 
 ## 6. Sharp edges (the interrogation)
 
@@ -731,7 +747,9 @@ must be the plain slot read it already does for `rfn`, not a detour through the
 normalizer. Also confirm seal transparency (`3251`) composes with the mode flip. Risk:
 LOW.
 
-**E8 — `[k]` hoisting and call-site permutation.** The sealed telescope hoists the
+**E8 — `[k]` hoisting and call-site permutation.** **KEPT, and asserted at M32 R4**
+(`S32Spine` §E, directly against `retarget` with the no-hint case as its control).
+ The sealed telescope hoists the
 decreasing parameter to the front; call sites written in declaration order are permuted
 by `retarget` today. Under comptime resolution the *name* resolves without `retarget` —
 but the permutation must still happen somewhere. Options: put it in the `fn` sugar's

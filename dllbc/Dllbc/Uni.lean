@@ -171,7 +171,7 @@ syntax:10 "λ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- lambda
 -- start — this is the surface returning to it, not a new decision.
 declare_syntax_cat ulamb
 syntax ident ":" uterm : ulamb
-syntax:max "λ" "(" ulamb,* ")" "{" ublk "}" : uterm          -- .lamR
+syntax:max "λ" "(" ulamb,* ")" "{" ublk "}" : uterm          -- an imperative λ
 syntax:10 "Π" "(" ident ":" uterm ")" "→" uterm:10 : uterm   -- Pi
 syntax:10 "Σ" "(" ident ":" uterm ")" "→" uterm:10 : uterm   -- Sigma (arrow form)
 syntax:10 "Σ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- Sigma (dot form)
@@ -258,10 +258,10 @@ partial def mintBinders (rctx : List (String × Nat)) (next : Nat) :
     pure (rctx', next', #[vSyntax] ++ rest)
 
 /-- Kernel constructors → `ctorApp`. **Sourced from the kernel's own basis**
-    (`Val.ctorNames`, adjacent to `ctorSig`) rather than repeated here, because
+    (`Pure.ctorNames`, adjacent to `ctorSig`) rather than repeated here, because
     M26-B gives the list a second job — reserving these names as binder keywords
     — and two lists that must agree is one list too many. -/
-def ctorSet : List String := Dllbc.Val.ctorNames
+def ctorSet : List String := Dllbc.Pure.ctorNames
 /-- Kernel constants (type formers / recursors / eliminators) → `const`. -/
 def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "boolRec", "listRec", "sigmaRec", "botElim", "j", "k",
   -- ¶1.1/¶1.3's array basis: the former, the split view, the cons view, the read.
@@ -343,24 +343,24 @@ def binderDom (nm : String) (τ : TSyntax `term) : MacroM (TSyntax `term) :=
     A `fn` statement's name now goes into `rctx` alongside the ordinary runtime
     locals, because §2.1 makes a function an ordinary comptime BINDING and a
     binding is something a bare name may denote (`let F = Main`). They are told
-    apart by the id: a `fn` slot is numbered from `progBase`, which is the same
-    invariant `FnMacro.fnSlots` reads, so no second context has to be threaded
-    through the elaborator to keep them separate.
+    apart by the id, which since M32 R4 is the TAG `Var.declSlot` rather than a
+    position above `progBase` — same question, no arithmetic to keep in step.
 
     Separate they must stay, because two rows want the LOCALS only:
 
-      * `f(a, b)` must keep falling through to `.call`, whose rewrite into
-        `.callV` is `retarget`'s — and `retarget` also PERMUTES the arguments of a
-        `[k]`-hoisted callee (E8). Resolving the name here instead would produce a
-        `.callV` in declaration order against a telescope that has been reordered,
-        which is silent: it passes a borrow where a `Nat` is expected, and it was
-        found once already, by a migration disagreement list rather than by a test.
+      * `f(a, b)` must keep falling through to `.call`, whose rewrite into the
+        app SPINE is `retarget`'s — and `retarget` also PERMUTES the arguments of
+        a `[k]`-hoisted callee (E8). Resolving the name here instead would build
+        the spine in declaration order against a telescope that has been
+        reordered, which is silent: it passes a borrow where a `Nat` is expected,
+        and it was found once already, by a migration disagreement list rather
+        than by a test.
       * `match x { … }` wants a runtime scrutinee, and a function is not one. -/
 
 /-- An ordinary runtime local — a `fn` slot is not one. -/
 def localId (rctx : List (String × Nat)) (s : String) : Option Nat :=
   match rctx.lookup s with
-  | some id => if id ≥ Dllbc.FnMacro.progBase then none else some id
+  | some id => if id == Dllbc.declSlot then none else some id
   | none => none
 
 /-- A `fn` slot bound above this point, by the name it was declared with.
@@ -368,23 +368,43 @@ def localId (rctx : List (String × Nat)) (s : String) : Option Nat :=
     Every such name is capital, because the `fn` row refuses a lowercase one
     (§2.1).
 
-    **Stage A's safety argument for this lookup has expired, and the replacement
-    is a naming convention rather than a condition here.** Stage A could say the
-    names this answers for are exactly the ones the raw-Lean fallthrough never
-    had a reading for, because every lemma Term was lowercase. Stage C
-    capitalised the lemmas, so the two families now share one namespace and this
-    lookup — consulted BEFORE the fallthrough — shadows a lemma of the same name.
-    Two names collided and both took the **`L` suffix on the lemma** (`swapL`'s
+    **Stage A's safety argument for this lookup expired at Stage C, and M32 R1
+    turns the replacement convention into a CHECK.** Stage A could say the names
+    this answers for are exactly the ones the raw-Lean fallthrough never had a
+    reading for, because every lemma Term was lowercase. Stage C capitalised the
+    lemmas, so the two families now share one namespace and this lookup —
+    consulted BEFORE the fallthrough — shadows a lemma of the same name. Two names
+    collided and both took the **`L` suffix on the lemma** (`swapL`'s
     L-for-list-spec, generalised): `fn Nth` against the cursor lemma, now `NthL`;
-    `fn SplitA` against the split predicate, now `SplitAL`. The invariant to hold
-    going forward is therefore stated in the corpus, not enforced in the code: a
-    library lemma that shares a spelling with a `fn` takes the suffix. It is
-    checkable in one grep — `StdLemmas` definition names against `fn` heads — and
-    M32's name-keyed store is where making it a real condition would belong. -/
+    `fn SplitA` against the split predicate, now `SplitAL`. The invariant was
+    stated in the corpus and enforced nowhere; `lemmaShadowCheck` below enforces
+    it, at the one place both names are in view. -/
 def fnSlotId (rctx : List (String × Nat)) (s : String) : Option Nat :=
   match rctx.lookup s with
-  | some id => if id ≥ Dllbc.FnMacro.progBase then some id else none
+  | some id => if id == Dllbc.declSlot then some id else none
   | none => none
+
+/-- **The L-suffix condition, checked** (M32 R1).
+
+    A `fn` slot wins over the raw-Lean fallthrough, so a `fn` whose name spells a
+    `StdLemmas` lemma makes that lemma unreachable in every block the `fn` is
+    above — silently, since both readings are well-typed. Under M32's name-keyed Ω
+    the same spelling additionally resolves the same STORE entry, so what was a
+    surface-level shadowing is now a store-level one too, and a convention nobody
+    checks is the wrong size of guarantee for it.
+
+    The test is asked of the collision family the convention is about — a
+    `Dllbc.StdLemmas` definition of that exact name — rather than of any Lean
+    global, because "is this identifier bound somewhere in Lean" answers yes for
+    reasons that have nothing to do with the corpus (a `List` combinator, an
+    opened namespace) and would refuse `fn` names that shadow nothing anyone can
+    write here. The fix named in the message is the one the corpus already took
+    twice: the LEMMA takes the suffix, because the function is the user-facing
+    name (Stage C addendum item 2). -/
+def lemmaShadowCheckAt (ref : Syntax) (s : String) : MacroM Unit := do
+  let cands ← Macro.resolveGlobalName (`Dllbc.StdLemmas ++ Name.mkSimple s)
+  if !cands.isEmpty then
+    Macro.throwErrorAt ref s!"fn: '{s}' shadows the library lemma `Dllbc.StdLemmas.{s}`. A `fn` slot is resolved before the raw-Lean fallthrough, so no block below this declaration can name the lemma, and under M32's name-keyed Ω the two spellings resolve one store entry. Give the LEMMA the `L` suffix ({s} → {s}L) — the function is the user-facing name and does not move."
 
 /-- Resolve a bare identifier in a type/back position. Pure binder in scope →
     `pvar` at that very name; earlier telescope param → `var`; constructor →
@@ -536,10 +556,18 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     let parsed ← bs.getElems.toList.mapM fun (p : TSyntax `ulamb) => match p with
       | `(ulamb| $x:ident : $τ:uterm) => pure (x, τ)
       | _ => Macro.throwErrorAt p "λ: malformed binder (expected `x : τ`)"
+    -- **The nullary refusal moved HERE** (M32 R2). `λ(){ … }` used to be refused
+    -- by the kernel, at the point `Term.lamR []` became a value; under one λ
+    -- former there is no such term to refuse — the comma list is a TELESCOPE, and
+    -- an empty telescope elaborates to the body itself. The reason is unchanged
+    -- and so is the sentence: a thunk makes ι ambiguous, and nothing in §7 wants
+    -- one.
+    if parsed.isEmpty then
+      Macro.throwErrorAt stx "λr: a runtime λ must bind at least one argument. `λ(){ … }` is a thunk, and a thunk makes ι ambiguous — an arm applied to no arguments and an arm with nothing owed become the same spine. A recursor arm at a non-functional motive is an ordinary term; write it as one."
     parsed.forM (fun p => checkBinder p.1)
     let (rctx', next', binderSyns) ← elabLamBinders rctx pctx next parsed
     let (b', n) ← elabUBlk rctx' pctx next' b
-    return (← `(Dllbc.Term.lamR [$binderSyns,*] $b'), n)
+    return (← `(Dllbc.Term.lamTel [$binderSyns,*] $b'), n)
   | `(uterm| Π ($x:ident : $τ:uterm) → $b:uterm) => do
     checkBinder x
     let (τ', n1) ← elabUTerm rctx pctx next τ
@@ -549,18 +577,27 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
   -- Σ binders are name-checked but carry NO mode. §6 gives modes to "λ, Π, and
   -- `let` alike" — the binders of *parameters* — and a Σ's binder names a
   -- projection, not a parameter: erasing one component of a pair is QTT
-  -- territory this phase does not enter. A capital Σ binder is therefore legal
-  -- and inert, exactly as a capital binder is inert everywhere under ⇝.
+  -- **A Σ BINDER CARRIES ITS MODE ON ITS DOMAIN, exactly as λ and Π do** (M32
+  -- R3b). It used not to, and the sentence that stood here — "a capital Σ binder
+  -- is legal and inert" — was true and was the whole problem: §2.1 makes a
+  -- binder's case its mode, and a Σ whose case lived only in the NAME lost it at
+  -- the first normalization, because `Pure.readback` names every binder it
+  -- reaches by its LEVEL (`§0`). λ and Π survive that because `binderDom` puts a
+  -- `⇝` on the domain and readback preserves it; a Σ had no domain marker and so
+  -- had nothing to survive with. That is why §2.5's wall could not be taken down
+  -- by renaming alone — the mode was gone before anything could read it.
   | `(uterm| Σ ($x:ident : $τ:uterm) → $b:uterm) => do
     checkBinder x
     let (τ', n1) ← elabUTerm rctx pctx next τ
     let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
-    return (← `(Dllbc.Term.sigmaT $(quote (x.getId.toString)) $τ' $b'), n2)
+    return (← `(Dllbc.Term.sigmaT $(quote (x.getId.toString))
+      $(← binderDom (x.getId.toString) τ') $b'), n2)
   | `(uterm| Σ ($x:ident : $τ:uterm). $b:uterm) => do
     checkBinder x
     let (τ', n1) ← elabUTerm rctx pctx next τ
     let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
-    return (← `(Dllbc.Term.sigmaT $(quote (x.getId.toString)) $τ' $b'), n2)
+    return (← `(Dllbc.Term.sigmaT $(quote (x.getId.toString))
+      $(← binderDom (x.getId.toString) τ') $b'), n2)
   -- The non-dependent arrow's binder is reserved and is NOT pushed onto `pctx`:
   -- nothing can refer to it, which is what "non-dependent" means. (The de Bruijn
   -- version had to push a placeholder, because every binder crossed moved the
@@ -576,7 +613,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     -- ascribed type is a ⇝ position. That asymmetry is the seal itself.
     let (t', n1) ← elabUTerm rctx pctx next t
     let (u', n2) ← elabUTerm rctx pctx n1 u
-    return (← `(Dllbc.Term.seal $t' $u'), n2)
+    return (← `(Dllbc.Term.seal 0 $t' $u'), n2)
   | `(uterm| $c:ident($args,*)) => do                 -- no-space paren: call / ctorApp
     let (args', n) ← elabUList rctx pctx next args.getElems.toList
     let name := c.getId.toString
@@ -600,8 +637,10 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
       -- `localId`, not `rctx.lookup`: a `fn` slot deliberately falls through to
       -- `.call`, because `retarget` is what rewrites those — and permutes a
       -- `[k]`-hoisted callee's arguments on the way (see `localId`'s header).
+      -- The SPINE (M32 R4): `f(a, b)` is sugar for `.app (.app (.var f) a) b`.
       match localId rctx name with
-      | some id => return (← `(Dllbc.Term.callV ⟨$(quote id), $(quote name)⟩ [$args',*]), n)
+      | some id =>
+        return (← `(Dllbc.Term.appSpine (.var ⟨$(quote id), $(quote name)⟩) [$args',*]), n)
       | none => return (← `(Dllbc.Term.call $(quote name) [$args',*]), n)
   | `(uterm| match $x:ident { $arms,* }) => do
     let s := x.getId.toString
@@ -751,7 +790,7 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
   --   * the REST is passed through `bindFn`, i.e. `retarget` — which is how a call
   --     written in the tail finds the binding. That is not an optimisation over
   --     putting the name in `rctx`: `retarget` also PERMUTES a call's arguments to
-  --     match a `[k]`-hoisted callee's telescope, and a `.callV` minted at the
+  --     match a `[k]`-hoisted callee's telescope, and a spine minted at the
   --     surface would skip the permutation. Eight functions in this corpus have a
   --     `[k]` that is not parameter 0, so the difference is real and silent.
   --     `bindFn` adds the one check the surface cannot make for itself — that the
@@ -782,7 +821,8 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     --
     -- Stated here, at the row that writes the binder, because this is where a
     -- reader can be told the fix. The kernel says it again from below
-    -- (`backstopFnBinding`), where it catches what the surface cannot see: a
+    -- (`refuseFnBinding`, M32 R3's rename of `backstopFnBinding` and the one
+    -- site the rule is left at), where it catches what the surface cannot see: a
     -- lowercase binding whose right-hand side merely PRODUCES a function.
     --
     -- The divergence from Rust's snake_case is deliberate and tracks a real
@@ -790,6 +830,10 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- is a comptime value — so the surface says so rather than hiding it.
     if !Dllbc.isUpperInit (name.getId.toString) then
       Macro.throwErrorAt name s!"fn: '{name.getId}' must be capitalised. A function is COMPTIME knowledge (§2.1) — ⇝-read, erased, never ⇒-consumed — and §6 makes capitalisation the mode marker, so a function name is a capital name. Write `fn {(name.getId.toString).capitalize} …`."
+    -- **The L-suffix condition** (M32 R1), asked at the DECLARATION rather than at
+    -- `resolveName`'s slot hit, because a `fn` that is never referenced shadows
+    -- the lemma just as thoroughly and would go unasked there.
+    lemmaShadowCheckAt name (name.getId.toString)
     let parsed ← ps.getElems.toList.mapM fun (p : TSyntax `ulamb) => match p with
       | `(ulamb| $x:ident : $τ:uterm) => pure (x.getId.toString, τ)
       | _ => Macro.throwErrorAt p "fn: malformed parameter (expected `x : τ`)"
@@ -800,8 +844,24 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- — deliberately, since the `FnDef` this produces has to BE the one it builds.
     let fullRctx : List (String × Nat) := names.zip (List.range n)
     let teleSyns ← buildTele [] 0 parsed
-    let (retT, _) ← elabUTerm fullRctx [] 0 ret
-    let (bodyT, _) ← elabUBlk fullRctx [] n body
+    -- **THE BODY SEES THE ENCLOSING SCOPE** (M32 R2, suspensions.md §2.6). The
+    -- `decl{}`-era params-only context retires here: a `fn` body may cite the
+    -- comptime bindings lexically above it — a sibling `fn`'s name, a `let H0 =
+    -- *hd` snapshot, a proof — and the kernel's citation rule (`admitGlobals`) is
+    -- what decides which of them are admissible, as it always was. Its parameters
+    -- come FIRST, so a parameter shadows an enclosing binding of the same name.
+    --
+    -- **What gated this was an id collision, and R1 voided it.** The telescope is
+    -- numbered `0 … n-1` by §5.2's positional convention while the enclosing
+    -- block numbers its bindings from its own counter, so the two spaces overlap
+    -- — and `Term.freeRVars`, which computes the capture, asked by id. It asks by
+    -- NAME now (R2, Syntax.lean), which is the question the store has answered
+    -- since R1, and the overlap stops meaning anything. Verified rather than
+    -- assumed: with id-keying the citation is bound by whichever parameter shares
+    -- its number, drops out of ρ, and the sealed body's fresh Ω has nothing to
+    -- resolve it against.
+    let (retT, _) ← elabUTerm (fullRctx ++ rctx) pctx 0 ret
+    let (bodyT, _) ← elabUBlk (fullRctx ++ rctx) pctx n body
     let decT ← match dec with
       | none => `((none : Option Nat))
       | some d =>
@@ -809,20 +869,20 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
         | some i => `(some $(quote i))
         | none => Macro.throwErrorAt d s!"fn: decreasing argument '{d.getId}' is not a parameter of '{name.getId}'"
     let nm := name.getId.toString
-    -- The slot. `progBase + next` rather than `next` itself, because a function's
-    -- OWN body numbers its parameters from 0 and a binding that collided with one
-    -- of its callees' parameters would be read as that parameter. `next` is
-    -- consumed here so two `fn`s in a block cannot land on one slot; the arithmetic
-    -- is emitted rather than computed, so `progBase` stays the single definition of
-    -- where globals live.
-    let slot ← `((⟨Dllbc.FnMacro.progBase + $(quote next), $(quote nm)⟩ : Dllbc.Var))
+    -- The slot: the TAG `declSlot` (M32 R4). It used to be `progBase + next`,
+    -- distinct per declaration, because a function's OWN body numbers its
+    -- parameters from 0 and an id-keyed lookup would read a colliding binding as
+    -- that parameter. Ω resolves by NAME (M32 R1), so distinctness bought
+    -- nothing and the shared tag says the one thing still asked of it: this
+    -- entry is a declaration. `next` is no longer consumed here.
+    let slot ← `((⟨Dllbc.declSlot, $(quote nm)⟩ : Dllbc.Var))
     -- **The name goes into scope for the rest of the block** (M31 Stage A). A
     -- function is an ordinary comptime binding now (§2.1), so a bare `Main` is a
     -- name-use of one and `let F = Main` is the ⇝ copy of knowledge the model says
     -- it is. `retarget` below still owns the `f(…)` rewrite — `localId` keeps this
     -- entry out of the call row for exactly that reason — so what this adds is the
     -- BARE-name reading `retarget` never had, and nothing it did have is removed.
-    let (rest', n2) ← elabUBlk ((nm, Dllbc.FnMacro.progBase + next) :: rctx) pctx (next + 1) rest
+    let (rest', n2) ← elabUBlk ((nm, Dllbc.declSlot) :: rctx) pctx next rest
     return (← `(Dllbc.Term.letIn $slot
                   (Dllbc.FnMacro.fnElabOrFail
                     (Dllbc.FnDef.mk $(quote nm) [$teleSyns,*] $retT $bodyT $decT))

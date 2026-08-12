@@ -62,11 +62,75 @@ def isReservedName (s : String) : Bool := s.startsWith "§"
     would destroy that. -/
 def readbackName (d : Nat) : String := "§" ++ toString d
 
+/-! ### σ's, as reserved names (M32 R1)
+
+    At rest, knowledge is a canonical `Term` (suspensions.md §2.3), so a symbolic
+    value — which used to be its own value former, `Val.sym σ` — is a `pvar` in
+    the reserved namespace. One atom former instead of two, and the payoff is
+    that ⇜'s refinement becomes literally `Term.substP` at a name and §19's
+    generalization becomes an occurrence rewrite: the two sweeps stop being
+    value-tree machinery and become the substitution the pure fragment already
+    has.
+
+    `§σ<digits>` is disjoint from every binder the kernel mints — `§<digits>`
+    (readback), `§gen`, `§let<digits>`, `§p<digits>`, `§_`, and the hand-written
+    recursor premise binders (`§k §ih §h §t §x §y §n §xs §lo`) — which is what
+    makes `substP`'s "stop at a binder that rebinds the name" guard vacuous for
+    them (suspensions.md §6, first sharp edge). Nothing rebinds a σ, so nothing
+    can shadow one. -/
+
+/-- The reserved pure name a σ is written as. -/
+def symName (σ : Nat) : String := "§σ" ++ toString σ
+
+/-- Recognize one. -/
+def symOfName? (s : String) : Option Nat :=
+  if s.startsWith "§σ" then (s.drop 2).toNat? else none
+
 /-- A runtime variable: a globally-unique `id` plus a display `name`. -/
 structure Var where
   id : Nat
   name : String
 deriving DecidableEq, BEq, Repr, Inhabited
+
+/-- **A pure binder is a `Var` with no slot** (M32 R2). One λ former means one
+    binder type, and a `Var` is the one that carries both things a binder can
+    need: the NAME, which is what every resolution keys on since M32 R1, and the
+    `id`, which only a binder whose argument lands in Ω has any use for.
+
+    So a comptime binder is written `"x"` and read as `⟨noSlot, "x"⟩`. The id is
+    the residue of the runtime half and it leaves with the rest of E2's id
+    machinery at R4; until then this coercion is what keeps the ~150 hand-written
+    pure λs spelled the way they were written.
+
+    **`noSlot` is a real sentinel and not a zero**, because `Term.freeRVars` asks
+    which of a term's binders bind a `.var` occurrence and it asks by id: a pure
+    binder must bind NOTHING there (its argument lands in the comptime
+    environment, not in Ω, and `.var` names an Ω slot), while an imperative λ's
+    binder must bind its own id exactly as `lamR`'s telescope did. Zero would have
+    silently bound every occurrence of runtime slot `#0`. -/
+def noSlot : Nat := 0xFFFF_FFFF_FFFF
+
+/-- **A program-level DECLARATION's slot** (M32 R4) — the `let` a `fn` statement
+    becomes (§8: "a declaration is a `let`, and the binding IS the name").
+
+    A TAG, and that is the whole change from what it replaces. `FnMacro.progBase`
+    was an arithmetic base: declaration `i` bound at `900 + i`, so declarations
+    were distinguishable from locals by being ABOVE a number, from each other by
+    their index, and a body was checked not to mint an id that reached the base.
+    Every one of those three jobs was about ID resolution, and R1 made Ω resolve
+    by NAME — `findSlot?` never reads an id — so what is left is the one question
+    the arithmetic was also answering: *is this Ω entry a declaration?* The two
+    consumers are the harness projections that report "what this code leaves in
+    Ω" without the program's own function bindings in the way.
+
+    A single constant rather than `900 + i` also removes the collision the
+    arithmetic created: two `%`-spliced chains both numbered from `900`, so
+    `withA (withB …)` had `A` and `B` at the SAME id under DIFFERENT names, and
+    `bindFn` refused it. Under name-keying nothing was ever going to confuse
+    them, which is why that check retired here rather than being re-expressed. -/
+def declSlot : Nat := 0xFFFF_FFFF_FFFE
+
+instance : Coe String Var := ⟨fun s => ⟨noSlot, s⟩⟩
 
 /-- Does this identifier start with an uppercase letter? **The mode marker**
     (combining-fns §6): a capitalized binder is COMPTIME, a lowercase one is
@@ -175,77 +239,35 @@ inductive Term where
   /-- `f(a, …)` — a call to a declared function (§5.3), checked against the
       signature alone. Unifying `fn` with λ is deferred (§10). -/
   | call   : String → List Term → Term
-  /-- `.seal t u` — **opacity as syntax** (combining-fns §5). Programmer-invoked
+  /-- `.seal s t u` — **opacity as syntax** (combining-fns §5). Programmer-invoked
       generalization: "forget everything about this value except its type".
 
         * EXECUTING (⇒, concrete): evaluate `t`. Execution is always transparent.
         * CHECKING (⇒, symbolic): verify `t : u` ONCE, at the node — this check
-          *is* the audit — then yield a fresh `σ : u`. Everything downstream sees
-          only the type.
+          *is* the audit — then yield a σ : u. Everything downstream sees only the
+          type.
 
-      **Absent from the comptime fragment by construction, in the two places that
-      carry the risk.** (i) It is its OWN constructor, not an `.app` of a magic
-      `.const` (the route `@exit`/`old` take): ⇝'s application rule can therefore
-      never meet it, and no check inside that rule distinguishes it. (ii) There is
-      no `Val.seal` — every comptime rule (`eval`, `whnfN`, `readback`, `nfV`,
-      `convert`, `hasType`) is a function on `Val`, so *no comptime rule for the
-      seal exists or can be written* without adding a value former. That is what makes §2.1's
-      question unaskable: minting needs an event, ⇝ has none, and ⇝ has no seal to
-      mint at. `reflectC` rejects the node in the one uniform way it already
-      rejects `&mut`, `:=`, `;` and `f(…)` — "not in the comptime fragment" — which
-      is this calculus's standing definition of the pure sub-grammar (§1.3), not a
-      mode flag consulted at runtime. -/
-  | seal   : Term → Term → Term
-  /-- `x(a, …)` — **application of a value callee** (combining-fns §7 cost 2):
-      the callee is resolved from a runtime SLOT, not the declaration table. The
-      slot's contents decide the rule (`readR`):
+      **`s` is the SEAL SITE** (M32 R3, suspensions.md §2.4), and it is what makes
+      the second bullet's "a σ" a definite article rather than an indefinite one.
+      A site is a `Nat` assigned by `Term.numberSeals`, a pass at the program
+      boundary that walks the elaborated term in evaluation order — so it is
+      stable across macro expansion (it runs after every macro) and across
+      α-canonicalization (it reads structure, never names). What the site buys is
+      that the seal has an identity independent of WHEN it is evaluated, which is
+      exactly what ⇝ needs: the old refusal below said minting a fresh σ needs an
+      event and ⇝ has none, and a site-keyed σ needs no event because it is not
+      fresh — it is the σ this site at these inputs always has (`St.sealSites`).
 
-        * a literal λ — bind and run (β), both modes: body known ⟹ unfold;
-        * a `σ : Π` — checking only: abstract application at the Π, minting the
-          result from the instantiated return type (§2.3's runtime column, §12
-          decision 5 — runtime calls do not opt into remembered-spine semantics).
-
-      Application is **saturated** (§12 decision 4): a spine, consumed whole like
-      a telescope, so no partial application ever holds a borrow while awaiting an
-      argument. Under-application is rejected distinctively, not curried. The
-      callee is a `Var` because that is all §7 needs (`ih` is a bound variable) and
-      it keeps the form's shape identical to `.matchE`'s scrutinee. -/
-  | callV  : Var → List Term → Term
-  /-- `λ(x : τ, y : υ, …) { body }` — **the runtime λ** (combining-fns §7 cost 2), the
-      form phase A filed and could not build: a λ whose body is a *body* (writes,
-      calls, borrows, matches) rather than a pure term.
-
-      Its binders are **runtime `Var`s** — id-and-name pairs — and that is forced
-      rather than chosen: a body reaches its binders through Ω, so a binder has to
-      name a SLOT. (Until M30 step 2 the contrast was with de Bruijn; now both
-      fragments' binders have names and the difference is what a name resolves
-      against — an Ω slot here, a comptime environment there.) So the pure λ
-      (`.lam`, domain-annotated, body a `Val`) and this one are the two halves §7
-      cost 5 predicts: same former in the document, two representations in the
-      machine, because one is knowledge and the other is state.
-
-      **Church-style: every binder carries its domain** (M27, the ratified
-      function model), which is what the document's grammar said all along —
-      `λ (x : τ). t`. M26-C built the Curry form on the argument that an
-      annotation would be a second source of truth for the contract, since a
-      runtime λ is checked against an *ascription* (the seal's Π, §5) and §5
-      point 4 makes the ascription the contract. That argument is sound about the
-      CONTRACT and wrong about the CHECK: without domains the seal has to descend
-      the ascription bidirectionally, handing each binder the type the Π supplies,
-      and with them the seal is ONE conversion — synthesize the λ's Π, compare it
-      against what was written. The ascription stays the contract; what changes is
-      that the λ can now be read on its own.
-
-      The `Val` side does NOT follow (`Val.rfn`, `Value.lean`), and the asymmetry
-      is the erasure principle rather than an oversight: `readR` drops the domains
-      when it forms the value, because the executing machine binds and runs and
-      never converts. Types are for the seal, which happens once, at formation.
-
-      **Saturated** (§12 decision 4) and **closed** (§7 cost 2's "arms reference
-      only their own binders and globals"). Closedness is CHECKED where the value
-      is formed, not assumed: an escaping free variable would otherwise be
-      silently captured by the frame shift. -/
-  | lamR   : List (Var × Term) → Term → Term
+      **Absent from the comptime fragment by construction** — this WAS the reading,
+      and R3 replaced it with a rule rather than deleting the reasoning, because
+      the reasoning is what the rule had to answer. (i) It is its OWN constructor,
+      not an `.app` of a magic `.const` (the route `@exit`/`old` take): ⇝'s
+      application rule can therefore never meet it, and no check inside that rule
+      distinguishes it — still true, and still what keeps the seal from arriving
+      anywhere by accident. (ii) There is no `Val.seal`, so a seal never sits at
+      rest as a suspension; ⇝'s rule for it (`readComptimeVal`) is a rule at the
+      NODE, which reduces it to the σ its site names. -/
+  | seal   : Nat → Term → Term → Term
   /-- Terminal form, the value a statement sequence returns when it has no
       final expression. -/
   | unit   : Term
@@ -256,7 +278,40 @@ inductive Term where
   | type   : Term                    -- the universe
   | pi     : String → Term → Term → Term      -- Π (x : dom) → cod
   | sigmaT : String → Term → Term → Term      -- Σ (x : fst-type) → snd-type
-  | lam    : String → Term → Term → Term      -- λ (x : dom). body
+  /-- `λ (x : dom). body` — **the λ, and there is only one** (M32 R2,
+      suspensions.md §2.4).
+
+      Until R2 there were two: this one, whose body is a pure term ⇝ reduces, and
+      `lamR`, whose body is a *body* (writes, calls, borrows, matches) and whose
+      binders name Ω slots. They were "the same former in the document, two
+      representations in the machine". They are one former now, and what the two
+      species carried is redistributed onto things that were already there:
+
+        * the **arity** was `lamR`'s binder LIST; it is nesting now, and
+          `λ(x : τ, y : υ){ … }` is sugar for `λ(x : τ). λ(y : υ). …`
+          (`Term.lamTel` builds it, `Term.peelLams` reads it back);
+        * the **binder's mode** — whether its argument is ⇝-snapshot-read or
+          ⇒-moved — is the domain's `⇝` marker and the binder's case, as it
+          already was for every other binder (§2.1);
+        * the **fragment** — whether evaluating the body means pure reduction or
+          the effectful walk — is `Term.imperative` below, recomputed at every
+          application and at the seal. A property, never a species tag.
+
+      **Church-style: the binder carries its domain** (M27, the ratified function
+      model), which is what the document's grammar said all along. -/
+  | lam    : Var → Term → Term → Term
+  /-- **Application, and there is only one form of it** (M32 R4). `callV` — the
+      n-ary `x(a, …)` the declaration era's telescope left behind — retired here,
+      so `f(a, b)` is surface sugar for the spine `.app (.app f a) b` and the
+      document's grammar (`t t′`) is the machine's.
+
+      What retiring it must NOT lose is the **mint-vs-remember split**, and that
+      split is ARROW-keyed rather than node-keyed (§12 decision 5): ⇒ applied to a
+      spine whose head holds a function MINTS a fresh existential at the
+      instantiated codomain, while ⇝ applied to the same spine REMEMBERS the
+      structured neutral. `callV` used to carry that distinction in the syntax,
+      which made it look node-keyed; with one node the arrows carry it alone,
+      which is what the decision always said. Asserted in `S32Spine` §A/§B. -/
   | app    : Term → Term → Term      -- application
   | const  : String → Term           -- a built-in constant (recursor or type former)
   | idT    : Term → Term → Term → Term  -- Id A a b (§10): the identity type
@@ -304,6 +359,166 @@ def Branch.binders : Branch → List Var | .mk _ b _ => b
 /-- The branch's body. -/
 def Branch.body : Branch → Term | .mk _ _ t => t
 
+/-! ## Application spines (M32 R4) -/
+
+/-- `f a₁ … aₙ` — the spine `callV` used to spell as one node. Left-nested, so
+    `collectAppT`/`appSpineVar?` read it back in the order it was written. -/
+def Term.appSpine (head : Term) : List Term → Term
+  | [] => head
+  | a :: rest => Term.appSpine (.app head a) rest
+
+/-- A spine whose HEAD is a runtime variable, i.e. what `.callV x args` was.
+
+    This is the one structural fact that survived `callV`'s retirement, and it is
+    needed in `Syntax.lean` rather than only in the machine because
+    `Term.imperative` consults it: a `.var` head names an Ω SLOT, so applying one
+    is ⇒-entry, exactly as the `.callV` case said. A `.const`/`.pvar` head is a
+    pure spine and stays comptime — which is why `fn UseTrans (…) { LeTrans a b c
+    p q }` is still classified by its BINDERS (M32 R2's second half) and not by
+    this. -/
+def Term.appSpineVar? : Term → Option (Var × List Term)
+  | .app f a =>
+    match Term.appSpineVar? f with
+    | some (x, as) => some (x, as ++ [a])
+    | none => none
+  | .var x => some (x, [])
+  | _ => none
+
+/-! ## The λ telescope, and the property that replaces the second species (M32 R2) -/
+
+/-- `λ(x : τ, y : υ){ b }` — the comma list, as the nesting it abbreviates. -/
+def Term.lamTel : List (Var × Term) → Term → Term
+  | [], b => b
+  | (x, τ) :: rest, b => .lam x τ (Term.lamTel rest b)
+
+/-- …and reading one back off a λ chain: every leading binder, then what is under
+    them. The inverse of `lamTel`, and what every site that used to match
+    `.lamR xs body` asks for. -/
+def Term.peelLams : Term → List (Var × Term) × Term
+  | .lam x τ b => let (tel, body) := Term.peelLams b; ((x, τ) :: tel, body)
+  | t => ([], t)
+
+/-! **Is this term outside the comptime fragment?** (M32 R2, suspensions.md §2.2.)
+
+    The one irreducible difference between the two λ species was what evaluating
+    the body MEANS — pure reduction, or the effectful walk — and this is that
+    difference stated as a property of the body instead of carried as a tag on the
+    former. It is recomputed wherever it matters (application, the seal, the
+    `let` arrow, rendering), so nothing can go stale and no substitution can lose
+    it.
+
+    The forms it names are exactly the ones `reflectC` refuses BY NAME — writes,
+    borrows, sequencing, matching, calls, the seal — which is this calculus's
+    standing definition of the pure sub-grammar (§1.3). `.var`, `.letIn`, `.deref`
+    and the index steps are absent on purpose: ⇝ has rules for all of them (a
+    snapshot read, β, a payload projection, a segment read), so a body built from
+    those is one both arrows agree about. -/
+mutual
+  def Term.imperative : Term → Bool
+    | .assign _ _ _ | .borrow _ | .seq _ _ | .matchE _ _ _
+    | .call _ _ | .seal _ _ _ => true
+    -- `a[lo ; ..]` reads its count off the extent map, which is state.
+    | .range _ _ none _ _ _ => true
+    | .letIn _ rhs rest => Term.imperative rhs || Term.imperative rest
+    | .lam _ d b | .pi _ d b | .sigmaT _ d b | .borrowT _ d b =>
+      Term.imperative d || Term.imperative b
+    -- **A `.var`-headed spine is what `.callV` was** (M32 R4), and keeping it
+    -- named here is the whole of what retiring the node costs. Without this the
+    -- classification would be read off the ARGUMENTS alone, and a nullary
+    -- `fn F () { g() }` — whose only binder is the Unit-desugar's comptime `U§`,
+    -- and whose body is now `.app (.var g) .unit` — would classify PURE. A
+    -- `.const`/`.pvar` head stays comptime, which is the pure spine `readC`
+    -- remembers.
+    | .app f a =>
+      (Term.appSpineVar? (.app f a)).isSome || Term.imperative f || Term.imperative a
+    | .idT a b c => Term.imperative a || Term.imperative b || Term.imperative c
+    | .ctorApp _ args => Term.imperativeList args
+    | .deref t | .cmpT t => Term.imperative t
+    | .index t i ev =>
+      Term.imperative t || Term.imperative i
+        || (match ev with | some e => Term.imperative e | none => false)
+    | .range t lo (some cnt) rest ev eqc =>
+      Term.imperative t || Term.imperative lo || Term.imperative cnt
+        || (match rest with | some r => Term.imperative r | none => false)
+        || (match ev with | some e => Term.imperative e | none => false)
+        || (match eqc with | some e => Term.imperative e | none => false)
+    | _ => false
+  termination_by t => sizeOf t
+  def Term.imperativeList : List Term → Bool
+    | [] => false
+    | t :: ts => Term.imperative t || Term.imperativeList ts
+  termination_by ts => sizeOf ts
+end
+
+/-- **Does this binder name an Ω SLOT?** — i.e. does its argument arrive by ⇒, at
+    entry, into the store, rather than by ⇝ into the comptime environment?
+
+    This is `noSlot`'s other half and the one fact that separates the two λ
+    fragments at the BINDER. A comptime λ binder is coerced from a name and has
+    no slot; a TELESCOPE binder — a `fn` parameter, a runtime λ's — is minted by
+    the surface or by `teleVars` and has one.
+
+    **R4 was to make this the CASE test, and the corpus says NO** (M32 R4). The
+    plan reads: §2.1's migration makes capitalisation reach every binder, so
+    "binds a slot" becomes "is lowercase" and the id goes with E2's machinery.
+    R3b measured the residue at four binders in the flagship and R4 named them —
+    all four are `Hf`, one `fn`'s proof parameter, capital, `⇝`-domained, and
+    holding an Ω slot.
+
+    **THE RULE IS ABOUT TELESCOPES: a telescope binder binds a slot regardless of
+    case.** Capital marks the READ MODE — the argument arrives by ⇝, erased and
+    non-consuming — and says nothing about the LOCATION, which is where the
+    argument lands. `seedTelescopeV` slots every parameter because every
+    parameter is something the body cites by name, comptime or not. So the case
+    test and this one answer DIFFERENT QUESTIONS, and swapping them would flip a
+    `fn` all of whose parameters are capital from imperative to pure — the exact
+    regression R3b's number was measuring the exposure to.
+
+    What R4 does deliver is that this is no longer E2's machinery: `noSlot` is a
+    TAG, alongside `declSlot`, and nothing in the kernel compares, orders or
+    offsets an id any more. The test survives; the arithmetic it used to sit
+    among does not. -/
+def Var.bindsSlot (x : Var) : Bool := x.id != noSlot
+
+/-- Is this λ an IMPERATIVE one — is applying it ⇒-ENTRY rather than ⇝ reduction?
+
+    Two ways to be, and they are the two halves of what §2.2 calls "the effectful
+    walk": what sits under the binders is a BODY (writes, calls, borrows), or a
+    binder names an Ω slot, so entering means binding one. The second is not
+    redundant — `fn Identity (n : Nat) -> Nat { n }` has a body both arrows can
+    read, and it is still a function whose argument is ⇒-read into a slot and
+    whose contract is checked by §5.4's audit rather than by `hasType`.
+
+    **The second half is LOCATION and not case** (M32 R4, the telescope rule —
+    see `Var.bindsSlot`). A `fn` all of whose parameters are capital is still
+    entered: its arguments still land in Ω, its contract is still the audit's.
+    Reading this half off the binders' CASE instead would classify such a `fn`
+    pure and take its audit away, which is what R3b's `keyDisagree` was
+    measuring the exposure to.
+
+    Asked of the whole node, so `λ(x : τ, y : υ){ … }` is judged by all its
+    binders and by what is under them, rather than by the inner λ it is sugar
+    for. -/
+def Term.lamImperative : Term → Bool
+  | t =>
+    let (tel, body) := Term.peelLams t
+    Term.imperative body || tel.any (fun p => p.1.bindsSlot)
+
+/-- **A suspension, spelled as a term** (M32 R2): the raw body under the bindings
+    it captured, as the `let`-chain the evaluator already knows how to perform.
+
+    This is the whole of cooking's syntax half, and it is a `foldr` rather than a
+    traversal for a reason worth stating: ρ binds KNOWLEDGE, and `eval`'s `letIn`
+    rule binds a runtime slot's reserved pure name and resolves `.var` through it
+    (`Pure.letName`). So "evaluate the body under ρ" is already a rule this
+    calculus has — no `.var`-substitution had to be written, and no second scoping
+    story exists to disagree with the first.
+
+    Innermost-last, so an earlier ρ entry is visible to a later one's knowledge,
+    which is the order Ω records them in. -/
+def Term.underRho (ρ : List (Var × Term)) (node : Term) : Term :=
+  ρ.foldr (fun p acc => .letIn p.1 p.2 acc) node
+
 /-! ## Structural term equality (manual; `deriving` can't cross the nesting) -/
 
 mutual
@@ -321,14 +536,13 @@ mutual
     | .matchE x e as, .matchE y f bs => x == y && e == f && Term.beqBranches as bs
     | .seq a b, .seq c d => Term.beq a c && Term.beq b d
     | .call f as, .call g bs => f == g && Term.beqList as bs
-    | .seal a b, .seal c d => Term.beq a c && Term.beq b d
-    | .callV x as, .callV y bs => x == y && Term.beqList as bs
-    -- The binder DOMAINS are compared by `Term.beq`, not by `==`: the `BEq Term`
-    -- instance is declared below this mutual block, so `==` on a
-    -- `List (Var × Term)` would not resolve to this function even if it resolved
-    -- at all. Recursing explicitly also keeps the mode marker visible, which is
-    -- the property the `.cmpT` note at the foot of this function is about.
-    | .lamR xs a, .lamR ys b => Term.beqBinders xs ys && Term.beq a b
+    -- **The SITE is decoration here** (M32 R3), for the reason R2 gave for a λ's
+    -- binder id: comparison is what readback canonicality and `abstractInto` are
+    -- built on, and two seals that differ only in when the numbering pass reached
+    -- them are the same term to every judgment. The site is what the STORE keys a
+    -- sealed σ by, and that is a question about identity over time rather than
+    -- about equality of syntax.
+    | .seal _ a b, .seal _ c d => Term.beq a c && Term.beq b d
     | .unit, .unit => true
     | .pvar x, .pvar y => x == y
     | .type, .type => true
@@ -341,7 +555,13 @@ mutual
     -- before that comparison ever happens.
     | .pi x a b, .pi y c d => x == y && Term.beq a c && Term.beq b d
     | .sigmaT x a b, .sigmaT y c d => x == y && Term.beq a c && Term.beq b d
-    | .lam x a b, .lam y c d => x == y && Term.beq a c && Term.beq b d
+    -- **By NAME, not by `Var`** (M32 R2). The binder of the one λ former carries
+    -- an id, and comparing it would make two λs written in different frames
+    -- unequal for a reason no judgment means: resolution is by name (M32 R1), so
+    -- the name is the binder's identity and the id is decoration. This is also
+    -- what keeps readback CANONICAL — `readbackName` mints a name, and the id it
+    -- coerces to is the same zero for every level.
+    | .lam x a b, .lam y c d => x.name == y.name && Term.beq a c && Term.beq b d
     | .app a b, .app c d => Term.beq a c && Term.beq b d
     | .const n, .const m => n == m
     | .idT a b c, .idT d e f => Term.beq a d && Term.beq b e && Term.beq c f
@@ -371,12 +591,6 @@ mutual
   def Term.beqBranches : List Branch → List Branch → Bool
     | [], [] => true
     | .mk c bs a :: r, .mk d es b :: s => c == d && bs == es && Term.beq a b && Term.beqBranches r s
-    | _, _ => false
-  termination_by ts us => sizeOf ts + sizeOf us
-  /-- An annotated runtime λ's binders: names by `==`, domains structurally. -/
-  def Term.beqBinders : List (Var × Term) → List (Var × Term) → Bool
-    | [], [] => true
-    | (x, τ) :: as, (y, υ) :: bs => x == y && Term.beq τ υ && Term.beqBinders as bs
     | _, _ => false
   termination_by ts us => sizeOf ts + sizeOf us
 end
@@ -425,7 +639,7 @@ mutual
     | .unit, .unit => true
     | .cmpT a, .cmpT b => Term.alphaEqGo lc rc a b
     | .lam x da ba, .lam y db bb =>
-      Term.alphaEqGo lc rc da db && Term.alphaEqGo (x :: lc) (y :: rc) ba bb
+      Term.alphaEqGo lc rc da db && Term.alphaEqGo (x.name :: lc) (y.name :: rc) ba bb
     | .pi x da ba, .pi y db bb =>
       Term.alphaEqGo lc rc da db && Term.alphaEqGo (x :: lc) (y :: rc) ba bb
     | .sigmaT x da ba, .sigmaT y db bb =>
@@ -485,7 +699,7 @@ mutual
     -- outside the binder, the body inside it — so a body whose binder rebinds `x`
     -- is left alone, which is the whole of the scope discipline.
     | x, s, .lam y dom b =>
-      .lam y (Term.substP x s dom) (if y == x then b else Term.substP x s b)
+      .lam y (Term.substP x s dom) (if y.name == x then b else Term.substP x s b)
     | x, s, .pi y dom cod =>
       .pi y (Term.substP x s dom) (if y == x then cod else Term.substP x s cod)
     | x, s, .sigmaT y dom cod =>
@@ -523,7 +737,8 @@ mutual
   def Term.freePNamesGo (bound : List String) : Term → List String
     | .pvar x => if bound.contains x then [] else [x]
     | .cmpT τ => Term.freePNamesGo bound τ
-    | .lam y dom b | .pi y dom b | .sigmaT y dom b | .borrowT y dom b =>
+    | .lam y dom b => Term.freePNamesGo bound dom ++ Term.freePNamesGo (y.name :: bound) b
+    | .pi y dom b | .sigmaT y dom b | .borrowT y dom b =>
       Term.freePNamesGo bound dom ++ Term.freePNamesGo (y :: bound) b
     | .app f a => Term.freePNamesGo bound f ++ Term.freePNamesGo bound a
     | .idT a b c =>
@@ -549,20 +764,31 @@ end
 
 def Term.freePNames (t : Term) : List String := Term.freePNamesGo [] t
 
-/-! ## Free runtime variables (M26-C)
+/-! ## Free runtime variables (M26-C; keyed by NAME since M32 R2)
 
     §7 cost 2 says a runtime λ is the *boring* kind of function value: "closed —
     arms reference only their own binders and globals". This is what makes that
-    **checked rather than assumed**. A body is entered under a fresh id window
-    (`shiftVars`), so a free variable escaping into a `.lamR` would not dangle —
-    it would be silently rebound to whatever the frame shift lands on, which is
-    environment capture arriving by accident in the one phase that defers it
-    (constraint 5). Rejecting at the point the value is formed is the honest
-    alternative. -/
+    **checked rather than assumed** — and since R2 it is what computes ρ, because
+    the free variables of a λ node ARE its capture (`admitGlobals`).
+
+    **The bound set is NAMES, not ids** (M32 R2). R1 made Ω resolve by name,
+    newest wins, so a name IS a binder's identity and asking "does one of this
+    term's binders bind this occurrence" by id asks a question the store stopped
+    answering. It is not a widening either: within one elaboration the macro
+    mints unique ids, so id-keying and name-keying agree — EXCEPT where they
+    genuinely disagree, and there the name is right, because an occurrence under
+    a rebinding of its name resolves to the inner binder in the store too. What
+    it unblocks is §2.6: a `fn` body may now be elaborated in the enclosing
+    scope, whose bindings are numbered from the block's own counter and therefore
+    collide with the telescope's positional ids `0 … n-1`.
+
+    A λ binder binds here only when it BINDS A SLOT: a comptime binder's argument
+    lands in the comptime environment, and `.var` names an Ω slot, so a pure
+    `λ (N : Nat). …` must not shadow a citation of the runtime slot `N`. -/
 mutual
-  def Term.freeRVars (bound : List Nat) : Term → List Var
-    | .var x => if bound.contains x.id then [] else [x]
-    | .letIn x rhs rest => Term.freeRVars bound rhs ++ Term.freeRVars (x.id :: bound) rest
+  def Term.freeRVars (bound : List String) : Term → List Var
+    | .var x => if bound.contains x.name then [] else [x]
+    | .letIn x rhs rest => Term.freeRVars bound rhs ++ Term.freeRVars (x.name :: bound) rest
     | .assign p e rest => Term.freeRVars bound p ++ Term.freeRVars bound e ++ Term.freeRVars bound rest
     | .ctorApp _ args => Term.freeRVarsList bound args
     | .borrow t | .deref t => Term.freeRVars bound t
@@ -576,44 +802,37 @@ mutual
         ++ (match ev with | some e => Term.freeRVars bound e | none => [])
         ++ (match eqc with | some e => Term.freeRVars bound e | none => [])
     | .matchE scrut eqn brs =>
-      (if bound.contains scrut.id then [] else [scrut])
-        ++ Term.freeRVarsBranches (match eqn with | some h => h.id :: bound | none => bound) brs
+      (if bound.contains scrut.name then [] else [scrut])
+        ++ Term.freeRVarsBranches (match eqn with | some h => h.name :: bound | none => bound) brs
     | .seq a b => Term.freeRVars bound a ++ Term.freeRVars bound b
     | .call _ args => Term.freeRVarsList bound args
-    | .seal t u => Term.freeRVars bound t ++ Term.freeRVars bound u
-    | .callV x args =>
-      (if bound.contains x.id then [] else [x]) ++ Term.freeRVarsList bound args
-    -- The DOMAINS are traversed too (M27), and as a TELESCOPE: a runtime λ's
-    -- binder types are dependent — `ih`'s mentions the predecessor bound to its
-    -- left, `hfuel : Le (len *v) fuel` mentions the borrow bound to its left — so
-    -- each domain is read under the binders before it and nothing else. Treating
-    -- them as closed would let a genuinely free variable into a type and past the
-    -- closedness check the whole traversal exists to feed.
-    | .lamR xs body =>
-      Term.freeRVarsBinders bound xs
-        ++ Term.freeRVars (xs.map (·.1.id) ++ bound) body
+    | .seal _ t u => Term.freeRVars bound t ++ Term.freeRVars bound u
+    -- **The one λ, scoped as the telescope it is** (M32 R2). The domain is read
+    -- OUTSIDE the binder and the body inside it, which is exactly what
+    -- `freeRVarsBinders` did to `lamR`'s list — a binder type is dependent (`ih`'s
+    -- mentions the predecessor bound to its left, `hfuel : Le (len *v) fuel`
+    -- mentions the borrow bound to its left), and nesting says so without a
+    -- second traversal. A comptime binder's `noSlot` id binds nothing here, which
+    -- is the whole of why it is a sentinel.
+    | .lam x d b =>
+      Term.freeRVars bound d
+        ++ Term.freeRVars (if x.bindsSlot then x.name :: bound else bound) b
     | .app a b => Term.freeRVars bound a ++ Term.freeRVars bound b
-    | .pi _ a b | .lam _ a b | .sigmaT _ a b | .borrowT _ a b =>
+    | .pi _ a b | .sigmaT _ a b | .borrowT _ a b =>
       Term.freeRVars bound a ++ Term.freeRVars bound b
     | .idT a b c => Term.freeRVars bound a ++ Term.freeRVars bound b ++ Term.freeRVars bound c
     | .cmpT τ => Term.freeRVars bound τ
     | _ => []
   termination_by t => sizeOf t
-  def Term.freeRVarsList (bound : List Nat) : List Term → List Var
+  def Term.freeRVarsList (bound : List String) : List Term → List Var
     | [] => []
     | t :: ts => Term.freeRVars bound t ++ Term.freeRVarsList bound ts
   termination_by ts => sizeOf ts
-  def Term.freeRVarsBranches (bound : List Nat) : List Branch → List Var
+  def Term.freeRVarsBranches (bound : List String) : List Branch → List Var
     | [] => []
     | (.mk _ bs body) :: rest =>
-      Term.freeRVars (bs.map (·.id) ++ bound) body ++ Term.freeRVarsBranches bound rest
+      Term.freeRVars (bs.map (·.name) ++ bound) body ++ Term.freeRVarsBranches bound rest
   termination_by bs => sizeOf bs
-  /-- A runtime λ's annotated binders, scoped as a telescope: each domain sees the
-      binders to its left. -/
-  def Term.freeRVarsBinders (bound : List Nat) : List (Var × Term) → List Var
-    | [] => []
-    | (x, τ) :: rest => Term.freeRVars bound τ ++ Term.freeRVarsBinders (x.id :: bound) rest
-  termination_by xs => sizeOf xs
 end
 
 /-! Abstract every occurrence of `e` into the pure variable `x` (mutual with the
@@ -631,7 +850,7 @@ mutual
     | .lam y dom b =>
       if Term.beq (.lam y dom b) e then .pvar x
       else .lam y (absOcc e x shadowed dom)
-        (if shadowed.contains y then b else absOcc e x shadowed b)
+        (if shadowed.contains y.name then b else absOcc e x shadowed b)
     | .pi y dom cod =>
       if Term.beq (.pi y dom cod) e then .pvar x
       else .pi y (absOcc e x shadowed dom)
@@ -743,6 +962,405 @@ def trivialOwedT : Term → Bool
   | .sigmaT _ _ (.borrowT _ τ s) => Term.alphaEq s τ
   | _ => true
 
+/-! ## The σ atom and the two sweeps, at `Term` level (M32 R1)
+
+    ⇜'s refinement and §19's generalization used to be `Val`-tree traversals
+    (`substSym`, `abstractInto`). With knowledge at rest being a canonical `Term`
+    they are `Term` traversals, and one of them stops being a traversal at all:
+    **refinement is `substP` at a σ's reserved name.** Only generalization needs
+    its own function, because it is keyed on a COMPOUND (a whole spine) rather
+    than on an atom — which is the same fact that makes it the one non-commuting
+    sweep in the system (suspensions.md §3). -/
+
+/-- A σ as a term. -/
+def Term.sym (σ : Nat) : Term := .pvar (symName σ)
+
+/-- The σ a term IS, if it is a bare one. -/
+def Term.symOf? : Term → Option Nat
+  | .pvar x => symOfName? x
+  | _ => none
+
+/-! Symbolic ids occurring in `t`, in pre-order of first appearance.
+
+    It walks exactly the forms `Term.substP` walks, and that agreement is
+    load-bearing rather than tidy: canonicalization reads the σ order off this
+    traversal and applies it with `renumberSyms`, so a σ visible to one and
+    untouched by the other would be renumbered out of existence. -/
+mutual
+  def Term.symIds : Term → List Nat
+    | .pvar x => match symOfName? x with | some σ => [σ] | none => []
+    | .cmpT τ => Term.symIds τ
+    | .lam _ d b | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => Term.symIds d ++ Term.symIds b
+    | .app f a => Term.symIds f ++ Term.symIds a
+    | .idT a b c => Term.symIds a ++ Term.symIds b ++ Term.symIds c
+    | .ctorApp _ args => Term.symIdsList args
+    | .deref t => Term.symIds t
+    | .index t i ev =>
+      Term.symIds t ++ Term.symIds i ++ (match ev with | some e => Term.symIds e | none => [])
+    | .range t lo cnt rest ev eqc =>
+      Term.symIds t ++ Term.symIds lo
+        ++ (match cnt with | some c => Term.symIds c | none => [])
+        ++ (match rest with | some r => Term.symIds r | none => [])
+        ++ (match ev with | some e => Term.symIds e | none => [])
+        ++ (match eqc with | some e => Term.symIds e | none => [])
+    | _ => []
+  termination_by t => sizeOf t
+  def Term.symIdsList : List Term → List Nat
+    | [] => []
+    | t :: ts => Term.symIds t ++ Term.symIdsList ts
+  termination_by ts => sizeOf ts
+end
+
+/-! Rewrite every σ id by `f` — canonicalization's other half. -/
+mutual
+  def Term.renumberSyms (f : Nat → Nat) : Term → Term
+    | .pvar x => match symOfName? x with | some σ => .pvar (symName (f σ)) | none => .pvar x
+    | .cmpT τ => .cmpT (Term.renumberSyms f τ)
+    | .lam y d b => .lam y (Term.renumberSyms f d) (Term.renumberSyms f b)
+    | .pi y d b => .pi y (Term.renumberSyms f d) (Term.renumberSyms f b)
+    | .sigmaT y d b => .sigmaT y (Term.renumberSyms f d) (Term.renumberSyms f b)
+    | .borrowT y d b => .borrowT y (Term.renumberSyms f d) (Term.renumberSyms f b)
+    | .app g a => .app (Term.renumberSyms f g) (Term.renumberSyms f a)
+    | .idT a b c => .idT (Term.renumberSyms f a) (Term.renumberSyms f b) (Term.renumberSyms f c)
+    | .ctorApp n args => .ctorApp n (Term.renumberSymsList f args)
+    | .deref t => .deref (Term.renumberSyms f t)
+    | .index t i ev => .index (Term.renumberSyms f t) (Term.renumberSyms f i)
+        (match ev with | some e => some (Term.renumberSyms f e) | none => none)
+    | .range t lo cnt rest ev eqc =>
+      .range (Term.renumberSyms f t) (Term.renumberSyms f lo)
+        (match cnt with | some c => some (Term.renumberSyms f c) | none => none)
+        (match rest with | some r => some (Term.renumberSyms f r) | none => none)
+        (match ev with | some e => some (Term.renumberSyms f e) | none => none)
+        (match eqc with | some e => some (Term.renumberSyms f e) | none => none)
+    | t => t
+  termination_by t => sizeOf t
+  def Term.renumberSymsList (f : Nat → Nat) : List Term → List Term
+    | [] => []
+    | t :: ts => Term.renumberSyms f t :: Term.renumberSymsList f ts
+  termination_by ts => sizeOf ts
+end
+
+/-- **Refine `σ := repl` in a term** — ⇜'s substitution half. It is `substP` at
+    the σ's name and nothing else: the rebinding guard `substP` carries is vacuous
+    here (nothing binds a `§σ`-name), so the whole of refinement is the
+    substitution the pure fragment already had. -/
+def Term.substSym (σ : Nat) (repl : Term) (t : Term) : Term :=
+  Term.substP (symName σ) repl t
+
+/-! **Abstract a whole subterm `target` into the σ `σb`, everywhere** — §19's
+    generalization at `Term` level, the inverse of `substSym` and keyed on a
+    compound rather than an atom.
+
+    No shadowing guard, and the reason is the reserved namespace rather than an
+    omission: the targets are stuck spines over σ's, whose free names are all
+    `§σ`-names, and no binder anywhere rebinds one. `absOcc`'s `shadowed` set
+    would therefore be permanently empty.
+
+    The comparison is `Term.beq`, which is MODE-SENSITIVE, where the `Val` sweep
+    this replaces was mode-blind (`Val.beq` unwrapped `cmpT`). That is the house
+    pattern rather than a change of heart: `absOcc` wants to see a marker, and the
+    sites that must not — `piAgree`, `checkArm`, `sealRec`, `trivialOwedT` — strip
+    with `.stripCmp` AT THE SITE and leave the equality honest. Stage V measured
+    the difference unreachable by the corpus (zero divergences over the whole
+    suite). -/
+mutual
+  def Term.abstractInto (target : Term) (σb : Nat) : Term → Term
+    | .ctorApp n args =>
+      if Term.beq (.ctorApp n args) target then Term.sym σb
+      else .ctorApp n (Term.abstractIntoList target σb args)
+    | .app f a =>
+      if Term.beq (.app f a) target then Term.sym σb
+      else .app (Term.abstractInto target σb f) (Term.abstractInto target σb a)
+    | .idT a b c =>
+      if Term.beq (.idT a b c) target then Term.sym σb
+      else .idT (Term.abstractInto target σb a) (Term.abstractInto target σb b)
+        (Term.abstractInto target σb c)
+    | .lam x d b =>
+      if Term.beq (.lam x d b) target then Term.sym σb
+      else .lam x (Term.abstractInto target σb d) (Term.abstractInto target σb b)
+    | .pi x d c =>
+      if Term.beq (.pi x d c) target then Term.sym σb
+      else .pi x (Term.abstractInto target σb d) (Term.abstractInto target σb c)
+    | .sigmaT x d c =>
+      if Term.beq (.sigmaT x d c) target then Term.sym σb
+      else .sigmaT x (Term.abstractInto target σb d) (Term.abstractInto target σb c)
+    | .borrowT x d c =>
+      if Term.beq (.borrowT x d c) target then Term.sym σb
+      else .borrowT x (Term.abstractInto target σb d) (Term.abstractInto target σb c)
+    -- A mode marker is never itself an abstraction target (it is not a term), so
+    -- recurse straight through rather than testing it — `absOcc`'s precedent.
+    | .cmpT τ => .cmpT (Term.abstractInto target σb τ)
+    | .deref u =>
+      if Term.beq (.deref u) target then Term.sym σb
+      else .deref (Term.abstractInto target σb u)
+    | s => if Term.beq s target then Term.sym σb else s
+  termination_by t => sizeOf t
+  def Term.abstractIntoList (target : Term) (σb : Nat) : List Term → List Term
+    | [] => []
+    | t :: ts => Term.abstractInto target σb t :: Term.abstractIntoList target σb ts
+  termination_by ts => sizeOf ts
+end
+
+/-! ## Conversion equality: structural, and MODE-BLIND (M32 R1)
+
+    `convert` is `nf a == nf b`, and `Val.beq` — the equality it used to be built
+    on — unwrapped `cmpT` on either side so that no comptime judgment could
+    observe a binder's mode (§6, "case is inert under ⇝"). `Term.beq` is
+    deliberately mode-SENSITIVE (`absOcc` must see a marker), so conversion needs
+    its own equality rather than inheriting one, and this is it: `Term.beq` plus
+    the three `cmpT` arms.
+
+    The alternative — modes part of type identity — was rejected on the calculus's
+    own evidence and the evidence has not moved: the machine builds recursor
+    premise types with no modes, and `prog{}`'s motive binders are capitalised by
+    convention, so under a mode-sensitive conversion every one of those would have
+    to agree on a mode that ⇝ has no use for. -/
+mutual
+  def Term.convEq : Term → Term → Bool
+    | .cmpT a, .cmpT b => Term.convEq a b
+    | .cmpT a, b => Term.convEq a b
+    | a, .cmpT b => Term.convEq a b
+    | .pvar x, .pvar y => x == y
+    | .type, .type => true
+    | .const n, .const m => n == m
+    | .unit, .unit => true
+    | .var x, .var y => x == y
+    | .ctorApp n as, .ctorApp m bs => n == m && Term.convEqList as bs
+    | .app a b, .app c d => Term.convEq a c && Term.convEq b d
+    | .idT a b c, .idT d e f => Term.convEq a d && Term.convEq b e && Term.convEq c f
+    | .lam x a b, .lam y c d => x == y && Term.convEq a c && Term.convEq b d
+    | .pi x a b, .pi y c d => x == y && Term.convEq a c && Term.convEq b d
+    | .sigmaT x a b, .sigmaT y c d => x == y && Term.convEq a c && Term.convEq b d
+    | .borrowT x a b, .borrowT y c d => x == y && Term.convEq a c && Term.convEq b d
+    | .deref a, .deref b => Term.convEq a b
+    | .borrow a, .borrow b => Term.convEq a b
+    -- Everything else is a runtime statement form, which cannot occur in a normal
+    -- form; `beq` keeps the function total without a second scoping story.
+    | a, b => Term.beq a b
+  termination_by t u => sizeOf t + sizeOf u
+  def Term.convEqList : List Term → List Term → Bool
+    | [], [] => true
+    | a :: as, b :: bs => Term.convEq a b && Term.convEqList as bs
+    | _, _ => false
+  termination_by ts us => sizeOf ts + sizeOf us
+end
+
+/-! ## Rendering (M32 R1)
+
+    Knowledge prints where values used to, so this reproduces `Val.prettyPrec`
+    case for case — including the two renderings that are about the ARRAY layer
+    (`Arr` as `[…]`, `§segs` as `Arr⟨…⟩`) and the σ sigil, which is why a `pvar`
+    asks `symOfName?` before falling back to `#name`. Rejections quote values, and
+    a suite that asserts on distinctive substrings is what holds this to it. -/
+mutual
+  def Term.prettyPrec (prec : Nat) : Term → String
+    | .pvar x => match symOfName? x with | some σ => s!"σ{σ}" | none => s!"#{x}"
+    | .type => "Type"
+    | .const c => c
+    | .unit => "()"
+    | .var x => s!"{x.name}#{x.id}"
+    | .cmpT τ => "⇝" ++ Term.prettyPrec 1 τ
+    | .ctorApp "Arr" vs => "[" ++ Term.prettyCommas vs ++ "]"
+    | .ctorApp "§segs" segs => "Arr⟨" ++ Term.prettyCommas segs ++ "⟩"
+    | .ctorApp "§seg" [c, b] => Term.prettyPrec 1 c ++ " ▷ " ++ Term.prettyPrec 0 b
+    | .ctorApp name [] => name
+    | .ctorApp name args =>
+      let s := name ++ Term.prettyArgs args
+      if prec > 0 then s!"({s})" else s
+    | .pi x d c =>
+      let s := s!"Π({x} : {Term.prettyPrec 1 d}). {Term.prettyPrec 0 c}"
+      if prec > 0 then s!"({s})" else s
+    | .sigmaT x d c =>
+      let s := s!"Σ({x} : {Term.prettyPrec 1 d}). {Term.prettyPrec 0 c}"
+      if prec > 0 then s!"({s})" else s
+    -- **One former, two renderings, and the same property picks them** (M32 R2).
+    -- A comptime λ prints as the term it is. An imperative one prints its BINDERS
+    -- and elides what is under them — a rejection naming a function wants to say
+    -- WHICH function, and the body is a whole program — which is what `lamR`/`rfn`
+    -- printed and is why `slotOf`'s goldens are unchanged.
+    | .lam x d b =>
+      if Term.lamImperative (.lam x d b) then
+        -- No paren guard, exactly as `lamR`/`rfn` had none: the form brackets
+        -- itself, and `slotOf`'s golden spells it unparenthesized in argument
+        -- position.
+        "λr(" ++ String.intercalate ", " ((Term.peelLams (.lam x d b)).1.map (·.1.name)) ++ "){…}"
+      else
+        let s := s!"λ({x.name} : {Term.prettyPrec 1 d}). {Term.prettyPrec 0 b}"
+        if prec > 0 then s!"({s})" else s
+    | .app f a =>
+      let s := Term.prettyPrec 0 f ++ " " ++ Term.prettyPrec 1 a
+      if prec > 0 then s!"({s})" else s
+    | .idT _ a b =>
+      let s := s!"Id {Term.prettyPrec 1 a} {Term.prettyPrec 1 b}"
+      if prec > 0 then s!"({s})" else s
+    | .borrowT x τ S =>
+      let s := s!"&mut ({x} : {Term.prettyPrec 0 τ} ↝ {Term.prettyPrec 0 S})"
+      if prec > 0 then s!"({s})" else s
+    | .deref t => "*" ++ Term.prettyPrec 1 t
+    | .borrow t => "&mut " ++ Term.prettyPrec 1 t
+    | .seal _ t _ => "(" ++ Term.prettyPrec 0 t ++ " : …)"
+    | .call f _ => f ++ "(…)"
+    | .index t i _ => Term.prettyPrec 1 t ++ "[" ++ Term.prettyPrec 0 i ++ "]"
+    | .range t lo _ _ _ _ => Term.prettyPrec 1 t ++ "[" ++ Term.prettyPrec 0 lo ++ " ; …]"
+    | .letIn x _ _ => s!"let {x.name} = …"
+    | .assign _ _ _ => "… := …"
+    | .seq _ _ => "… ; …"
+    | .matchE x _ _ => s!"match {x.name} " ++ "{…}"
+  termination_by t => sizeOf t
+  def Term.prettyArgs : List Term → String
+    | [] => ""
+    | a :: as => " " ++ Term.prettyPrec 1 a ++ Term.prettyArgs as
+  termination_by as => sizeOf as
+  def Term.prettyCommas : List Term → String
+    | [] => ""
+    | [a] => Term.prettyPrec 0 a
+    | a :: as => Term.prettyPrec 0 a ++ ", " ++ Term.prettyCommas as
+  termination_by as => sizeOf as
+end
+
+/-- Doc-trace rendering of a term (top level, no surrounding parens). -/
+def Term.pretty (t : Term) : String := Term.prettyPrec 0 t
+
+/-! ## Numerals and the small constructor vocabulary, at `Term` level
+
+    The twins of `Val.zero`/`succ`/`nat`/`nil`/`cons`, which now build knowledge
+    leaves through the skeleton's smart constructor while these build the
+    knowledge itself. Numerals abbreviate `Nat` (doc §1.1), so they are sugar
+    rather than a form. -/
+
+/-- `Z`, the numeral zero. -/
+def Term.zero : Term := .ctorApp "Z" []
+/-- Successor. -/
+def Term.succ (t : Term) : Term := .ctorApp "S" [t]
+/-- Church-style `Nat` numeral abbreviation. -/
+def Term.nat : Nat → Term
+  | 0 => Term.zero
+  | n + 1 => Term.succ (Term.nat n)
+/-- The empty list. -/
+def Term.nil : Term := .ctorApp "Nil" []
+/-- List cons. -/
+def Term.cons (h t : Term) : Term := .ctorApp "Cons" [h, t]
+
+/-- Read a `Nat` term as a Lean numeral, if it is concrete. -/
+def Term.natOf? : Term → Option Nat
+  | .ctorApp "Z" [] => some 0
+  | .ctorApp "S" [n] => (Term.natOf? n).map (· + 1)
+  | _ => none
+
+/-! ## Seal sites (M32 R3, suspensions.md §2.4)
+
+    A seal's SITE is its identity as a program point, and `numberSeals` is what
+    assigns one. It runs at the program boundary — after every macro, on the
+    finished term — and numbers the seals in the order a left-to-right traversal
+    meets them, which for a `let`-chain is the order they are evaluated in.
+
+    **Why a pass and not a counter in the elaborator.** §6's sharp edge asks for
+    a site identity stable across macro expansion and α-canonicalization. A pass
+    over the elaborated term gets both by construction rather than by argument:
+    it runs after expansion, so nothing a macro does can move a site; and it
+    reads STRUCTURE, never a name, so renaming a binder cannot move one either.
+    A counter threaded through `Uni.elabUTerm` would have neither property —
+    `fnElab` is not in that monad at all, and it is where most seals come from.
+
+    The field the elaborators write is therefore not the site: they write `0` and
+    this pass overwrites it. That is deliberate — a `Term` that has not been
+    through the boundary has no sites, and giving it fake ones would let a
+    hand-written term silently share an identity with a real one. -/
+
+mutual
+  /-- Number the seals in `t`, starting at `n`; returns the next free site. -/
+  def Term.numberSealsGo (n : Nat) : Term → (Nat × Term)
+    | .seal _ t u =>
+      -- The site is taken BEFORE the children are numbered, so a seal's own
+      -- number is smaller than any seal nested inside it — which is the order
+      -- evaluation reaches them (the outer node is entered first) and the order
+      -- a reader of `§σ` ids would expect.
+      let (n1, t') := Term.numberSealsGo (n + 1) t
+      let (n2, u') := Term.numberSealsGo n1 u
+      (n2, .seal n t' u')
+    | .letIn x a b =>
+      let (n1, a') := Term.numberSealsGo n a
+      let (n2, b') := Term.numberSealsGo n1 b
+      (n2, .letIn x a' b')
+    | .assign a b c =>
+      let (n1, a') := Term.numberSealsGo n a
+      let (n2, b') := Term.numberSealsGo n1 b
+      let (n3, c') := Term.numberSealsGo n2 c
+      (n3, .assign a' b' c')
+    | .ctorApp c args =>
+      let (n1, args') := Term.numberSealsList n args
+      (n1, .ctorApp c args')
+    | .call f args =>
+      let (n1, args') := Term.numberSealsList n args
+      (n1, .call f args')
+    | .matchE x eqn brs =>
+      let (n1, brs') := Term.numberSealsBranches n brs
+      (n1, .matchE x eqn brs')
+    | .seq a b =>
+      let (n1, a') := Term.numberSealsGo n a
+      let (n2, b') := Term.numberSealsGo n1 b
+      (n2, .seq a' b')
+    | .app a b =>
+      let (n1, a') := Term.numberSealsGo n a
+      let (n2, b') := Term.numberSealsGo n1 b
+      (n2, .app a' b')
+    | .lam x d b =>
+      let (n1, d') := Term.numberSealsGo n d
+      let (n2, b') := Term.numberSealsGo n1 b
+      (n2, .lam x d' b')
+    | .pi x d c =>
+      let (n1, d') := Term.numberSealsGo n d
+      let (n2, c') := Term.numberSealsGo n1 c
+      (n2, .pi x d' c')
+    | .sigmaT x d c =>
+      let (n1, d') := Term.numberSealsGo n d
+      let (n2, c') := Term.numberSealsGo n1 c
+      (n2, .sigmaT x d' c')
+    | .borrowT x d c =>
+      let (n1, d') := Term.numberSealsGo n d
+      let (n2, c') := Term.numberSealsGo n1 c
+      (n2, .borrowT x d' c')
+    | .idT a b c =>
+      let (n1, a') := Term.numberSealsGo n a
+      let (n2, b') := Term.numberSealsGo n1 b
+      let (n3, c') := Term.numberSealsGo n2 c
+      (n3, .idT a' b' c')
+    | .borrow a => let (n1, a') := Term.numberSealsGo n a; (n1, .borrow a')
+    | .deref a => let (n1, a') := Term.numberSealsGo n a; (n1, .deref a')
+    | .cmpT a => let (n1, a') := Term.numberSealsGo n a; (n1, .cmpT a')
+    | .index a i k =>
+      let (n1, a') := Term.numberSealsGo n a
+      let (n2, i') := Term.numberSealsGo n1 i
+      (n2, .index a' i' k)
+    | .range a lo cnt p q r =>
+      let (n1, a') := Term.numberSealsGo n a
+      let (n2, lo') := Term.numberSealsGo n1 lo
+      let (n3, cnt') := Term.numberSealsOpt n2 cnt
+      (n3, .range a' lo' cnt' p q r)
+    | t => (n, t)
+  def Term.numberSealsList (n : Nat) : List Term → (Nat × List Term)
+    | [] => (n, [])
+    | t :: ts =>
+      let (n1, t') := Term.numberSealsGo n t
+      let (n2, ts') := Term.numberSealsList n1 ts
+      (n2, t' :: ts')
+  def Term.numberSealsOpt (n : Nat) : Option Term → (Nat × Option Term)
+    | none => (n, none)
+    | some t => let (n1, t') := Term.numberSealsGo n t; (n1, some t')
+  def Term.numberSealsBranches (n : Nat) : List Branch → (Nat × List Branch)
+    | [] => (n, [])
+    | .mk c bs body :: rest =>
+      let (n1, body') := Term.numberSealsGo n body
+      let (n2, rest') := Term.numberSealsBranches n1 rest
+      (n2, .mk c bs body' :: rest')
+end
+
+/-- The boundary pass: number every seal in a program, and report how many there
+    were. The count is not a supply the machine has to start above — sites live
+    in their own space and are `St.sealSites`' key, never a σ id — it is there so
+    a test can say "this program has a seal" before asserting about the seal. -/
+def Term.numberSeals (t : Term) : (Nat × Term) := Term.numberSealsGo 0 t
+
 /-! ## Reading a binder's mode off its domain (combining-fns §6)
 
     Three modes at one syntactic place: `&mut τ` runtime-borrow, `⇝τ` comptime,
@@ -760,35 +1378,50 @@ def Term.stripCmp : Term → Term
   | .cmpT τ => τ
   | t => t
 
-/-- **Which arrow evaluates a `let`'s right-hand side** (M31 Stage A).
+/-! ### Building a comptime binder, both halves at once (M32 R3b)
 
-    `let X = e` reads `e` under ⇝ — that is what §6's comptime binding means, and
-    it is why a capital binder is non-consuming. Two right-hand sides are
-    exceptions, and they are the two that are not READINGS at all but ⇒-FORMATION
-    EVENTS, each producing a value ⇝ has no rule to produce:
+    §2.1 makes a binder's NAME its mode and `binderDom`/`markDom` puts the
+    matching `⇝` on its domain — so the two halves of a comptime binder are
+    written together everywhere the SURFACE builds one. The kernel's own library
+    terms (`Std.lenFn`, `Pure.kLeFn`, …) are hand-written `Term`s with no macro
+    between them and the datatype, and R3b's migration is where they acquire the
+    same obligation. These are that obligation as a constructor: there is no way
+    to spell the capital name and forget the marker, which is the failure mode
+    (`piAgree` and the seal's binder/domain check compare them, and a mismatch is
+    a rejection of a program that is fine).
 
-      * `(t : T)` — the seal mints a fresh σ, and `readC` refuses it by name for
-        exactly that reason ("minting a fresh σ needs an event and ⇝ has none").
-      * `λ(x : τ, …){ … }` — a runtime λ's formation is where its closedness is
-        checked (`admitGlobals`) and where its value comes into being, and
-        `readC` refuses it by name too ("its body is a body and its binders are
-        Ω slots").
+    The UNUSED binder is the other half of the convention and needs no marker:
+    `Surface.unusedSnapName` is what the surface mints for a non-dependent
+    arrow's domain and for a motive nothing refers to, and a name in the reserved
+    namespace carries no mode because nothing can cite it. -/
 
-    So the arrow here is a property of the RIGHT-HAND SIDE, not only of the
-    binder: a formation event stays ⇒ whatever the binder's case, and what the
-    capital binder changes is the BINDING — erased, ⇝-readable, never ⇒-consumed
-    — not the event that produced its value. This is what lets `fn F …` desugar,
-    exactly as §2.1 says it does, to a comptime `let` of a λ ascribed its Π: the
-    declaration is still the event it always was, and only its mode moved. And it
-    is what lets `let Double = λ(n : Nat){ … }` be written at all, which §2.1 also
-    requires — the same sentence for the sugar and for the thing it desugars to.
+/-- A λ binding COMPTIME knowledge: capital name, `⇝` domain. -/
+def Term.clam (x : String) (τ b : Term) : Term := .lam (⟨noSlot, x⟩ : Var) (.cmpT τ) b
 
-    Stated as one predicate because two sites read it (`readR`'s `.letIn` and the
-    explore driver's), and a rule that applied at one of them would be a phantom
-    at the other — the lesson the comptime `let` itself already taught. -/
-def Var.comptimeRhs (x : Var) : Term → Bool
-  | .seal _ _ => false
-  | .lamR _ _ => false
-  | _ => x.isComptime
+/-- A Π binding COMPTIME knowledge — the type of a `clam`. -/
+def Term.cpi (x : String) (τ b : Term) : Term := .pi x (.cmpT τ) b
+
+/-! ## The let-arrow invariant (M31 Stage A; exceptionless since M32 R3)
+
+    **A capital `let` ⇝-reads its right-hand side; a lowercase `let` ⇒-reads it.**
+
+    That sentence is the whole rule, and `Var.comptimeRhs` — the predicate that
+    used to carry its exceptions — is gone, because `Var.isComptime` at the two
+    reading sites says it with nothing left over. The two carve-outs it held were
+    both of the same shape: a right-hand side that was not a READING at all but a
+    ⇒-FORMATION EVENT, producing a value ⇝ had no rule to produce. R3 gave ⇝ the
+    rules instead of giving the invariant exceptions —
+
+      * `(t : T)` was ⇒ because the seal mints a fresh σ and minting needs an
+        event. It is ⇝'s now because the σ is no longer fresh: it is the one the
+        seal's SITE has at its inputs (`sealNode`, suspensions.md §2.4).
+      * `λ(x : τ, …){ … }` was ⇒ because a runtime λ's formation is where its
+        closedness is checked and where its value comes into being. It is ⇝'s
+        now because formation IS a ⇝ event and always was — R2 made both
+        fragments one closure, and R3 moved the one arm that built it out of ⇒
+        (`readComptimeVal`), which is what leaves ⇒ unable to construct a
+        function at all (§2.5).
+
+    — so the arrow is a property of the BINDER, and of nothing else. -/
 
 end Dllbc
