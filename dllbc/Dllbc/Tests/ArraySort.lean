@@ -315,10 +315,10 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                       let Hg = SplitA1Tail p r2 (*hi) y Hrest;
                       let Hnew = SplitACatI0 p k3 (S r2) (*lo) (acons r2 x (*hi)) Hub
                                    (Pair(LePredL p x (LebFalseGt x p e), Hg));
-                      let cnt = MkC (arrCat k3 (S r2) (*lo) (acons r2 y (*hi))) Hcnt2
+                      let Cnt = MkC (arrCat k3 (S r2) (*lo) (acons r2 y (*hi))) Hcnt2
                                     (acons m2 y (arrCat k3 (S r2) (*lo) (acons r2 x (*hi))))
                                     (λ (Q : Nat). CountSwapA Q x y k3 (*lo) r2 (*hi));
-                      Pair(S k3, Pair(S r2, Pair(Refl, Pair(Pair(Hy, Hnew), cnt))))
+                      Pair(S k3, Pair(S r2, Pair(Refl, Pair(Pair(Hy, Hnew), Cnt))))
                     }
                   }
                 }
@@ -382,10 +382,10 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                   let Hg = SplitA1Tail x r2 (*hi) y Hrest;
                   let Hnew = PartACatI0 x k3 (S r2) (*lo) (acons r2 x (*hi)) Hub
                                (Pair(Refl, SplitA0Lb x r2 (*hi) Hg));
-                  let cnt = MkC (arrCat k3 (S r2) (*lo) (acons r2 y (*hi))) Hcnt2
+                  let Cnt = MkC (arrCat k3 (S r2) (*lo) (acons r2 y (*hi))) Hcnt2
                                 (acons m2 y (arrCat k3 (S r2) (*lo) (acons r2 x (*hi))))
                                 (λ (Q : Nat). CountSwapA Q x y k3 (*lo) r2 (*hi));
-                  Pair(x, Pair(S k3, Pair(r2, Pair(Refl, Pair(Pair(Hy, Hnew), cnt)))))
+                  Pair(x, Pair(S k3, Pair(r2, Pair(Refl, Pair(Pair(Hy, Hnew), Cnt)))))
                 }
               }
             } } } } }
@@ -437,7 +437,7 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                 let Hrest = PartACatRest pvv k (S jj) (*l) (acons jj e (*r)) Hp;
                 let Heq = PartA0Eq pvv jj (*r) e Hrest;
                 let Hlb = PartA0Lb pvv jj (*r) e Hrest;
-                let top1 = MkTop (arrCat k (S jj) (*l) (acons jj e (*r))) Hcnt;
+                let Top1 = MkTop (arrCat k (S jj) (*l) (acons jj e (*r))) Hcnt;
                 -- The glue, staged: both bounds are about to be invalidated as VALUES by
                 -- the recursive sorts, so their transports are set up now.
                 -- §2.4: the snapshots this builder was taking implicitly, named. The
@@ -509,7 +509,7 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                   let s2 = QuicksortA(f2, jj, hf2, &m *r);
                   match s2 { Pair(Hs2, Hc2) => {
                     Pair(MkS (*l) (*r) Hc1 Hc2 Hs1 Hs2,
-                         top1 (arrCat k (S jj) (*l) (acons jj e (*r))) (MkAD (*l) (*r) Hc1 Hc2))
+                         Top1 (arrCat k (S jj) (*l) (acons jj e (*r))) (MkAD (*l) (*r) Hc1 Hc2))
                   } }
                 } }
               } } } } } }
@@ -634,10 +634,10 @@ def splitANoSwap : Term := prog{
                       let Hg = SplitA1Tail p r2 (*hi) y Hrest;
                       let Hnew = SplitACatI0 p k3 (S r2) (*lo) (acons r2 x (*hi)) Hub
                                    (Pair(LePredL p x (LebFalseGt x p e), Hg));
-                      let cnt = MkC (arrCat k3 (S r2) (*lo) (acons r2 y (*hi))) Hcnt2
+                      let Cnt = MkC (arrCat k3 (S r2) (*lo) (acons r2 y (*hi))) Hcnt2
                                     (acons m2 y (arrCat k3 (S r2) (*lo) (acons r2 x (*hi))))
                                     (λ (Q : Nat). CountSwapA Q x y k3 (*lo) r2 (*hi));
-                      Pair(S k3, Pair(S r2, Pair(Refl, Pair(Pair(Hy, Hnew), cnt))))
+                      Pair(S k3, Pair(S r2, Pair(Refl, Pair(Pair(Hy, Hnew), Cnt))))
                     }
                   }
                 }

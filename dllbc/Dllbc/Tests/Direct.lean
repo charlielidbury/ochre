@@ -362,7 +362,7 @@ def recList : Term := prog{
 example : progOk recList = true := by native_decide
 
 -- Two constructors down is still a strict subterm (the relation is transitive, not
--- just one-step) — which the quicksort recursion needs, since it peels `cnt` twice
+-- just one-step) — which the quicksort recursion needs, since it peels `Cnt` twice
 -- before recursing.
 def recDeep : Term := prog{
   fn RecDeep [n] (n : Nat) -> Id Nat Z Z
@@ -424,7 +424,7 @@ example : progOk recCaller = true := by native_decide
 /-! ## Stage (ii): ownership splitting — `split_off` and `append_back`
 
     The data plan for a back-less quicksort: recursion over WHOLE lists instead of
-    `lo`/`cnt` range indices. `split_off` takes the tail at depth `i` out of a
+    `lo`/`Cnt` range indices. `split_off` takes the tail at depth `i` out of a
     borrowed list and returns it BY VALUE (it cannot come back as a borrow — its
     owner is local); `append_back` walks to the end and replaces the `Nil`. Between
     them the caller owns two independent lists, sorts each, and glues.
@@ -1431,16 +1431,16 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
                 let lo = *v;
                 let Hub2 = Pair(LebTrueLe x p e, Hub);
                 let Hl2b = LeUpR (Len hi) lr Hl2;
-                let cnt = MkL lo hi Hcnt;
+                let Cnt = MkL lo hi Hcnt;
                 *v := Cons(x, lo);
-                Pair(hi, Pair(Hub2, Pair(Hlb, Pair(Hl1, Pair(Hl2b, cnt)))))
+                Pair(hi, Pair(Hub2, Pair(Hlb, Pair(Hl1, Pair(Hl2b, Cnt)))))
               } else {
                 -- x > p: the head belongs to the RETURNED part. `*v` is untouched,
                 -- so `hub` passes straight through.
                 let Hlb2 = Pair(LePredL p x (LebFalseGt x p e), Hlb);
                 let Hl1b = LeUpR (Len *v) lr Hl1;
-                let cnt = MkR (*v) hi Hcnt;
-                Pair(Cons(x, hi), Pair(Hub, Pair(Hlb2, Pair(Hl1b, Pair(Hl2, cnt)))))
+                let Cnt = MkR (*v) hi Hcnt;
+                Pair(Cons(x, hi), Pair(Hub, Pair(Hlb2, Pair(Hl1b, Pair(Hl2, Cnt)))))
               }
             } } } } } }
           } }
@@ -1548,7 +1548,7 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
                 let MkLb = (λ (B2 : List Nat).
                     λ (H2 : Π (N : Nat) → Id Nat (Count N B2) (Count N Hi0)).
                       LbPerm X0 B2 Hi0 H2 Hlb0);
-                let cnt1 = MkCnt (*v) hi Hpc;
+                let Cnt1 = MkCnt (*v) hi Hpc;
                 -- Sort the kept part in place. Its sufficiency is the partition's
                 -- length conjunct composed with this frame's.
                 let Hf1 = LeTrans (Len *v) lr f2 Hl1 Hfuel;
@@ -1561,7 +1561,7 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
                   match s2 { Pair(Hs2, Hc2) => {
                     let hub2 = MkUb (*v) Hc1;
                     let hlb2 = MkLb hi Hc2;
-                    let cnt2 = cnt1 (*v) hi Hc1 Hc2;
+                    let Cnt2 = Cnt1 (*v) hi Hc1 Hc2;
                     -- The last staged builder: the glue's evidence arrives only
                     -- from `AppendBack`, by which time both parts are consumed.
                     -- §2.4: and the POST-sort snapshots, which are DIFFERENT values
@@ -1589,7 +1589,7 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
                     -- collapse the loan it was just lent.
                     let lv = Len *v;
                     let happ = AppendBack(lv, &m *v, w, LeRefl lv);
-                    Pair(Fin (*v) happ, cnt2 (*v) happ)
+                    Pair(Fin (*v) happ, Cnt2 (*v) happ)
                   } }
                 } }
               } } } } } }
@@ -1626,11 +1626,19 @@ example : progRejects (qsUnder (prog{
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (3) The returned part DROPPED from the count: "everything stayed in `*v`".
+--
+-- **The needle MOVED at M33, and the verdict did not** — the same flip M33a
+-- recorded for `quicksortA`'s two spec lies, arriving here for the same reason
+-- one layer down. With `Cnt` capital (§2.5's binding, capitalised now that the
+-- Σ0 tail ⇝-reads it), the count proof is comptime knowledge and the lie is
+-- caught where it is WRITTEN — at this body's own return, by the audit — instead
+-- of one call later, where the caller found the argument ill-typed. Was "does not
+-- have its parameter type".
 example : progRejects (qsUnder (prog{
     Σ (hi : List Nat) → Σ (Hub : Ub %pT (*%vfT)) → Σ (Hlb : Lb %pT hi)
       → Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT)))
       → Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) })
-    qsHonest suffHonest .unit) "does not have its parameter type" = true := by native_decide
+    qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (4) …and the count off by one, which no `Nil`-path argument can reach.
 example : progRejects (qsUnder (prog{
@@ -1717,15 +1725,15 @@ def partitionLoses : Term := prog{
                 let lo = *v;
                 let Hub2 = Pair(LebTrueLe x p e, Hub);
                 let Hl2b = LeUpR (Len hi) lr Hl2;
-                let cnt = MkL lo hi Hcnt;
+                let Cnt = MkL lo hi Hcnt;
                 -- THE LIE, and the only line that differs: the head is dropped.
                 *v := lo;
-                Pair(hi, Pair(Hub2, Pair(Hlb, Pair(Hl1, Pair(Hl2b, cnt)))))
+                Pair(hi, Pair(Hub2, Pair(Hlb, Pair(Hl1, Pair(Hl2b, Cnt)))))
               } else {
                 let Hlb2 = Pair(LePredL p x (LebFalseGt x p e), Hlb);
                 let Hl1b = LeUpR (Len *v) lr Hl1;
-                let cnt = MkR (*v) hi Hcnt;
-                Pair(Cons(x, hi), Pair(Hub, Pair(Hlb2, Pair(Hl1b, Pair(Hl2, cnt)))))
+                let Cnt = MkR (*v) hi Hcnt;
+                Pair(Cons(x, hi), Pair(Hub, Pair(Hlb2, Pair(Hl1b, Pair(Hl2, Cnt)))))
               }
             } } } } } }
           } }
@@ -1770,14 +1778,14 @@ def qsStaleBound : Term := prog{
                 let lo = *v;
                 let Hub2 = Pair(LebTrueLe x p e, Hub);
                 let Hl2b = LeUpR (Len hi) lr Hl2;
-                let cnt = MkL lo hi Hcnt;
+                let Cnt = MkL lo hi Hcnt;
                 *v := Cons(x, lo);
-                Pair(hi, Pair(Hub2, Pair(Hlb, Pair(Hl1, Pair(Hl2b, cnt)))))
+                Pair(hi, Pair(Hub2, Pair(Hlb, Pair(Hl1, Pair(Hl2b, Cnt)))))
               } else {
                 let Hlb2 = Pair(LePredL p x (LebFalseGt x p e), Hlb);
                 let Hl1b = LeUpR (Len *v) lr Hl1;
-                let cnt = MkR (*v) hi Hcnt;
-                Pair(Cons(x, hi), Pair(Hub, Pair(Hlb2, Pair(Hl1b, Pair(Hl2, cnt)))))
+                let Cnt = MkR (*v) hi Hcnt;
+                Pair(Cons(x, hi), Pair(Hub, Pair(Hlb2, Pair(Hl1b, Pair(Hl2, Cnt)))))
               }
             } } } } } }
           } }
@@ -1854,7 +1862,7 @@ def qsStaleBound : Term := prog{
                 let MkLb = (λ (B2 : List Nat).
                     λ (H2 : Π (N : Nat) → Id Nat (Count N B2) (Count N Hi0)).
                       LbPerm X0 B2 Hi0 H2 Hlb0);
-                let cnt1 = MkCnt (*v) hi Hpc;
+                let Cnt1 = MkCnt (*v) hi Hpc;
                 let Hf1 = LeTrans (Len *v) lr f2 Hl1 Hfuel;
                 let s1 = Quicksort(f2, &m *v, Hf1);
                 match s1 { Pair(Hs1, Hc1) => {
@@ -1863,7 +1871,7 @@ def qsStaleBound : Term := prog{
                   match s2 { Pair(Hs2, Hc2) => {
                     let hub2 = MkUb (*v) Hc1;
                     let hlb2 = MkLb hi Hc2;
-                    let cnt2 = cnt1 (*v) hi Hc1 Hc2;
+                    let Cnt2 = Cnt1 (*v) hi Hc1 Hc2;
                     -- §2.4: and the POST-sort snapshots, which are DIFFERENT values
                     -- from `V0`/`Hi0` above — both sorts wrote in place. The rule
                     -- makes that difference visible instead of leaving the reader to
@@ -1888,7 +1896,7 @@ def qsStaleBound : Term := prog{
                     let w = Cons(x, hi);
                     let lv = Len *v;
                     let happ = AppendBack(lv, &m *v, w, LeRefl lv);
-                    Pair(Fin (*v) happ, cnt2 (*v) happ)
+                    Pair(Fin (*v) happ, Cnt2 (*v) happ)
                   } }
                 } }
               } } } } } }
@@ -2434,16 +2442,16 @@ example : (Val.know (pv (sortLT 0 0 [])) == vlist []) = true := by native_decide
 
 /-! ## M21-3 — SortRangeL (the index-bounded quicksort spec, plan of record) -/
 
-def sortRangeLT (fuel lo cnt : Nat) (l : List Nat) : Term :=
-  .app (.app (.app (.app StdLemmas.SortRangeL (tnat fuel)) (tnat lo)) (tnat cnt)) (tlist l)
+def sortRangeLT (fuel lo Cnt : Nat) (l : List Nat) : Term :=
+  .app (.app (.app (.app StdLemmas.SortRangeL (tnat fuel)) (tnat lo)) (tnat Cnt)) (tlist l)
 
--- Full-range (lo=0, cnt=len): SortRangeL 0 (len l) l is a full sort — the top-
+-- Full-range (lo=0, Cnt=len): SortRangeL 0 (len l) l is a full sort — the top-
 -- level shape the imperative quicksort's back carries.
 example : (Val.know (pv (sortRangeLT 2 0 2 [2,1])) == vlist [1,2]) = true := by native_decide
 example : (Val.know (pv (sortRangeLT 1 0 1 [7])) == vlist [7]) = true := by native_decide
 example : (Val.know (pv (sortRangeLT 0 0 0 [])) == vlist []) = true := by native_decide
 example : (Val.know (pv (sortRangeLT 3 0 3 [3,2,1])) == vlist [1,2,3]) = true := by native_decide   -- recursion fires
--- Sub-range (lo>0): sort only [lo, lo+cnt), leaving the rest untouched — the new
+-- Sub-range (lo>0): sort only [lo, lo+Cnt), leaving the rest untouched — the new
 -- capability the recursion rides. [5,3,2,9] sorting [3,2] at offset 1 → [5,2,3,9].
 example : (Val.know (pv (sortRangeLT 2 1 2 [5,3,2,9])) == vlist [5,2,3,9]) = true := by native_decide
 example : (Val.know (pv (sortRangeLT 3 1 3 [9,3,1,2,7])) == vlist [9,1,2,3,7]) = true := by native_decide
@@ -2502,26 +2510,26 @@ example : runPart [2,2,1,3,2] 5 = true := by native_decide      -- duplicates ar
 -- needle). Generating the caller Term and the `PartScanL`-computed needle IS the test here.
 /-! ## M21-3 — partitionRange: the subrange partition wrapper (Σ-pinned relative index)
 
-    partitions the range [lo, lo+cnt) in place and returns the pivot's RELATIVE
-    offset `i` (absolute = add lo i), Σ-pinned to `PartIdxRangeL lo cnt *v`. The
-    precondition is the range-fits inequality `hbnd : Le (Add lo cnt) (Len *v)`;
+    partitions the range [lo, lo+Cnt) in place and returns the pivot's RELATIVE
+    offset `i` (absolute = add lo i), Σ-pinned to `PartIdxRangeL lo Cnt *v`. The
+    precondition is the range-fits inequality `hbnd : Le (Add lo Cnt) (Len *v)`;
     the partScanRange call's entry bound (i = g = 0) is hbnd bridged by AddZero
-    (`Add cnt2 Z = cnt2`), mirroring partition's (M21-1) hlenW-via-AddZero. -/
+    (`Add Cnt2 Z = Cnt2`), mirroring partition's (M21-1) hlenW-via-AddZero. -/
 
 
 /-! ## M21-3 — quicksort: the imperative in-place quicksort (back = SortRangeL)
 
-    THE NORTH STAR. `quicksort(v, fuel, lo, cnt, hbnd)` sorts the `cnt` elements at
-    offset `lo` in place. Fuel-structural (mirrors SortRangeL): out of fuel / cnt ≤
+    THE NORTH STAR. `quicksort(v, fuel, lo, Cnt, hbnd)` sorts the `Cnt` elements at
+    offset `lo` in place. Fuel-structural (mirrors SortRangeL): out of fuel / Cnt ≤
     1 is a no-op; otherwise pick the pivot, compute the pivot's relative index `i`
     and the right-count `g` from the ENTRY list (before mutating), scan-partition
-    the range (partScanRange, whose back IS PartitionRangeL lo cnt *v), then recurse
+    the range (partScanRange, whose back IS PartitionRangeL lo Cnt *v), then recurse
     on [lo, lo+i) and [lo+i+1, …) — sequential reborrows of the one `*v`. Because
     `i`/`g` are the pure `PartIdxRangeL`/`PartGapRangeL` of the entry list, the
     body's suspension tree (partScanRange's back, then the two quicksort backs
     composed) is DEFINITIONALLY sortRangeL's own unfold — conformance is conversion.
 
-    The two range bounds come from PartScanSizeL (i + g + 1 = cnt) and the three
+    The two range bounds come from PartScanSizeL (i + g + 1 = Cnt) and the three
     length-preservation lemmas (the partition and each recursive sort keep len *v,
     so the bounds, stated over the live *v, transport back to len entry = hbnd). -/
 
@@ -2529,11 +2537,11 @@ example : runPart [2,2,1,3,2] 5 = true := by native_decide      -- duplicates ar
 
     Closing the back-specced (simulation) baseline before the direct-proving
     redirect: the lie is rejected, and the SAME checking-mode FnDef run executing on
-    every input class (plus a sub-range) recovers exactly `SortRangeL fuel lo cnt l`
+    every input class (plus a sub-range) recovers exactly `SortRangeL fuel lo Cnt l`
     — so the body's effect is the pure model on concrete data, the conformance the
     §6.2 callee check proves symbolically. -/
 
--- Not vacuous: identity is the right back only on the no-op paths (fuel Z / cnt ≤ 1);
+-- Not vacuous: identity is the right back only on the no-op paths (fuel Z / Cnt ≤ 1);
 -- on the sort path the composed suspension tree is SortRangeL, not *v, so it rejects.
 -- SUBJECT: a deliberately-wrong back-spec (raw Term, identity) — the lie is the subject.
 def quicksortLieBack : Term := dv
@@ -2596,7 +2604,7 @@ example : runSwapTwice [3,2,1] [3,2,1] = true := by native_decide
 -- EXECUTING mode on concrete lists, agreeing with the pure model `SortRangeL`. The
 -- body's three sequential `&mut *v` reborrows (partition + two recursive calls) are
 -- exactly the reborrow-collapse case the fix unblocks. Full-range callers (lo=0,
--- cnt=len) so `hbnd = LeRefl (Len x) : Le (Add 0 cnt) (Len x)`.
+-- Cnt=len) so `hbnd = LeRefl (Len x) : Le (Add 0 Cnt) (Len x)`.
 /-! ## M22-a — exit-snapshot return types + `old *v` (§5.4, direct-proving enabler)
 
     A borrow parameter's bare `*v` in the RETURN TYPE reads the EXIT snapshot (the
@@ -2703,7 +2711,7 @@ example : progOk twoRec = true := by native_decide
     The partition rung. NO back: the return type `Π n. Id Nat (count n *v)(count n
     (old *v))` says partition permutes the range (preserves the multiset). Same
     delegation discipline as swapSE — the mutation is delegated to `partitionRange`
-    (whose back `PartitionRangeL lo cnt *v` is a CLOSED function of the input, so the
+    (whose back `PartitionRangeL lo Cnt *v` is a CLOSED function of the input, so the
     exit reading is provable, not opaque), and the cert is the pure permutation
     lemma `CountPartitionRangeL` at the entry snapshot. Cert staged before the
     consuming call (reads `hbnd` while live — the proof-linearity dodge again). This
@@ -2714,7 +2722,7 @@ example : progOk twoRec = true := by native_decide
     THE NORTH STAR, direct-proving form. NO back: retType `Π n. Id Nat (count n *v)
     (count n (old *v))` says the in-place quicksort PERMUTES its range — a
     propositional postcondition PROVEN in the body (the demoted baseline `quicksort`
-    FnDef instead declares `back = SortRangeL fuel lo cnt *v` and checks conformance
+    FnDef instead declares `back = SortRangeL fuel lo Cnt *v` and checks conformance
     by conversion). Same delegation discipline as the swap and partition rungs: the
     sort is delegated to `quicksort` (back = SortRangeL, a closed function of the
     input, so the exit reading is provable rather than opaque), and the cert is the

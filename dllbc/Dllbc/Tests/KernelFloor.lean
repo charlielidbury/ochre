@@ -1320,47 +1320,52 @@ def fieldFn : Term := prog{
   () }
 example : progRejects fieldFn "cannot be ⇒-moved" = true := by native_decide
 
-/-! ## THE PIN: §2.5's rule, and the corpus fact that blocks it
+/-! ## THE PIN: §2.5's rule — REFUTED TWICE, and LAW at M33
 
-    §2.5 asks that a runtime binding never hold a function, `let f = Add 1`
-    included, and that the backstop then be derivable. It cannot be had yet, and
-    the reason is not effort: **a proof of a ∀-statement is a λ**, the corpus
-    binds those at lowercase names (`let cnt = MkL lo hi hcnt` and its siblings,
-    in quicksort and the array sort), and capitalising them fails at the RETURN —
-    a Σ component is read by ⇒, and the fence refuses a ⇒-read of a capital
-    binding. Nothing in this calculus distinguishes the two shapes: both bind a
-    partial application at a Π type, and there is no Prop/Type split to say one
+    The history, kept because it is the reason to believe the rule rather than a
+    record of failures. §2.5 asked that a runtime binding never hold a function,
+    `let f = Add 1` included. R3 built the refusal and measured the corpus saying
+    no; R3b ran §2.1's binder migration first and measured it saying no again. The
+    diagnosis both times was the same and was correct: **a proof of a ∀-statement
+    is a λ**, the corpus binds those at lowercase names (`let cnt = MkL lo hi
+    hcnt`), and nothing in this calculus distinguishes the two shapes — both bind
+    a partial application at a Π type, and there is no Prop/Type split to say one
     is a proof and the other a computation.
 
-    Pinned as ACCEPTED rather than left silent, so R3b (§2.1's binder migration,
-    which is what has to move first) inherits a test that goes red if someone
-    concludes the rule already holds.
+    **M33 did not find the distinction. It made the distinction unnecessary.**
+    §2.7's Σ0 gives the one position that had no way to say "comptime" a way to say
+    it, and with that every position holding a function in this corpus SAYS SO: a
+    capital `let`, a ⇝ parameter, a Σ0 component or tail, an ascription, a recursor
+    arm. The rule is then not "tell a proof from a computation" — it is "a function
+    value must arrive somewhere that reads by ⇝", and both arrows can check that.
+    Two refusals enforce it: `readR`'s λ arm for a λ that is WRITTEN, and the pure
+    lift for one that is COMPUTED.
 
-    **R3b RAN the migration and re-ran the attempt, and these two are still
-    ACCEPTED — §2.5 is refuted a SECOND time.** With `readR`'s λ arm made to
-    refuse, the flagship reds at `readR (⇒): a λ is a function value and ⇒ may
-    not construct one`, exactly where R3 measured it, and `sort2` goes with it.
-    The migration moved the Σ COMPONENT's mode (below); it did not and could not
-    move the two places a λ still reaches ⇒ — a literal λ written in a
-    constructor argument (`Pair(SplitANil …, λ (Q : Nat). Refl)`), which is not a
-    body's tail and so has no type in hand, and a Σ chain's TAIL, which has no
-    binder to put a mode on. The refusal was reverted; these stay accepted. -/
+    So both programs below FLIP, and they are two of the three tripwires §2.7 named
+    (the third is `sigmaTailProof`, above, whose needle moved when the tail got its
+    message). Each is kept with a one-character accepting twin, so the rejection is
+    discriminating against its own accept and not against nothing. -/
 
--- §2.5's own example, ACCEPTED: `Add 1` is a function and `f` is a runtime
--- binding.
+-- §2.5's own example — **FLIPPED at M33, deliberately, and it is the LAST of the
+-- three tripwires.** It read "ACCEPTED: `Add 1` is a function and `f` is a runtime
+-- binding". `Add 1` is still a function and `f` is still a runtime binding; what
+-- changed is that a runtime binding may no longer hold one. This is the refusal at
+-- the PURE LIFT — the shape `readR`'s λ arm cannot see, because `Add 1` is a spine
+-- until it is evaluated and a `λ (B : Nat). natRec …` after.
 def computePartial : Term := prog{ let f = Add 1; () }
-example : progOk computePartial = true := by native_decide
+example : progRejects computePartial "⇒ produced a function value" = true := by native_decide
 
--- Its twin — a λ-valued runtime binding — **FLIPPED at M33, deliberately, and it
--- is the first of the three tripwires to go.** It read "indistinguishable …
--- Accepted by the same rule, and it is the one that MUST be, because the flagship
--- returns values built this way", and both halves of that have been overtaken: the
--- flagship's values now reach their destinations (a Σ0 tail, a capital `let`), and
--- a λ WRITTEN OUT is distinguishable from `Add 1` after all — not by what it
--- means, but by whether the kernel can see it is a λ before evaluating anything.
--- The destination rule refuses it at `readR`'s λ arm and names every destination
--- there is. `computePartial` above is still accepted, because a partial
--- application is a SPINE and the lift is where that dies (M33 commit 4).
+-- …and the accepting twin, one character away.
+def computePartialCap : Term := prog{ let F = Add 1; () }
+example : progOk computePartialCap = true := by native_decide
+
+-- Its twin — a λ-valued runtime binding — **FLIPPED at M33 too.** It read
+-- "indistinguishable … Accepted by the same rule, and it is the one that MUST be,
+-- because the flagship returns values built this way": the flagship's values reach
+-- their destinations now (a Σ0 tail, a capital `let`), so nothing depends on this
+-- being legal. This is the refusal at `readR`'s λ ARM — the destination rule,
+-- which sees the λ before anything is evaluated and names every destination there
+-- is. `computePartial` above is the same rule one step later.
 def lamValued : Term := prog{ let f = λ (N : Nat). Add N 1; () }
 example : progRejects lamValued "needs a comptime destination" = true := by native_decide
 

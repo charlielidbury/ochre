@@ -3929,8 +3929,25 @@ def mkClosure (fuel : Nat) (node : Term) (ascr : Option Term := none) : M Val :=
     reformulation that separates them from `Add 1` here, because there is nothing
     to separate: both are functions, and only one of them is being BOUND at a
     runtime binder. So the rule lives where the binder is (`readR`'s `.letIn`),
-    and it is still ONE point. -/
-def pureLift (fuel : Nat) (t : Term) : M Val := do pure (.know (← readC fuel t))
+    and it is still ONE point.
+
+    **M33, THE TERMINAL ATTEMPT: the lift's result must be DATA.** `readR`'s λ arm
+    refuses a λ that is WRITTEN (M33's destination rule); this refuses one that is
+    COMPUTED, and the two together are §2.5's rule with nothing outside them. The
+    shape is `Add 1` — a spine, not a λ, until it is evaluated, at which point it
+    is `λ (B : Nat). natRec …`. R3 measured this refusal twice and R3b once, and
+    each time the corpus said no: "what it returns is the PROOF of `Π (n : Nat) →
+    Id Nat …`, and there is no reformulation that separates them from `Add 1`
+    here". That reading was right and is what §2.7 answers — not by separating
+    proofs from computations, which this calculus cannot do, but by giving every
+    position that legitimately holds a function a way to SAY SO. A function
+    arriving here is a function arriving at the move arrow. -/
+def pureLift (fuel : Nat) (t : Term) : M Val := do
+  let v ← readC fuel t
+  match Pure.whnf fuel v with
+  | .lam _ _ _ =>
+    throwErr s!"⇒ produced a function value ({v.pretty}) — a λ is knowledge and needs a comptime destination: a capital `let`, a ⇝ parameter, a Σ0 component or tail, or an ascription. A PARTIAL APPLICATION is a function too (`Add 1` awaits its second argument), which is why this fires on a spine that was not written as a λ. Bind it to a capital name first, pass it at a capital parameter, put it under a `Σ0` tail, or ascribe it."
+  | _ => pure (.know v)
 
 /-! ## Seal sites, and the σ a site has (M32 R3, suspensions.md §2.4)
 
