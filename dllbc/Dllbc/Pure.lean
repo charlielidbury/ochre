@@ -467,8 +467,13 @@ def ctorSig : String → Option CtorSig
   -- type — a value inhabits it exactly when it inhabits `τ`, so every rule that
   -- TYPES a component strips first and only the rules that ROUTE one ask
   -- `domComptime`. This is the house pattern (`Term.stripCmp` at the site).
+  -- **And the CODOMAIN strips too, since M33's Σ0**: a `Σ0 (x : A) → P` marks
+  -- its tail comptime with the same `⇝`, in the one position a Σ has left, so
+  -- the tail is exactly as much "not a type" as the domain was and takes exactly
+  -- the same treatment. `Machine.reattachSigmaMode` is the routing half, on both
+  -- ends now.
   | "Pair"  => some { fieldTypes := fun ty =>
-      match ty with | .sigmaT x a b => some [(x, a.stripCmp), ("_", b)] | _ => none }
+      match ty with | .sigmaT x a b => some [(x, a.stripCmp), ("_", b.stripCmp)] | _ => none }
   -- `Arr` — the array literal (¶1.4). Its field telescope for a CONCRETE `n` is `T`
   -- repeated `n` times; at a symbolic `n` there is no constructor signature, and
   -- correctly so — one cannot write an array literal of unknown length.

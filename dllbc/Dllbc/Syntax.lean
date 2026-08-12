@@ -326,12 +326,20 @@ inductive Term where
       and the pure-binder counterpart of `Var.isComptime`.
 
       `Π (X : τ) → …` elaborates to `.pi (.cmpT τ) …` and `λ (X : τ). …` to
-      `.lam (.cmpT τ) …`. It is legal ONLY as a λ/Π domain — the same standing
-      as `borrowT`, which is likewise a binder-mode marker written in type
-      position and not a type. `&mut τ` says "this binder is a runtime borrow";
-      `⇝τ` says "this binder is comptime"; a bare `τ` says "runtime owned". Three
-      modes, one syntactic place, and the two that are not the default are
-      marked.
+      `.lam (.cmpT τ) …`. It is legal at a λ/Π/Σ DOMAIN and at a Σ CODOMAIN —
+      the same standing as `borrowT`, which is likewise a binder-mode marker
+      written in type position and not a type. `&mut τ` says "this binder is a
+      runtime borrow"; `⇝τ` says "this binder is comptime"; a bare `τ` says
+      "runtime owned". Three modes, one syntactic place, and the two that are not
+      the default are marked.
+
+      **The CODOMAIN position is Σ0** (M33, suspensions.md §2.7), and it is the
+      same marker doing the same job from the other end of the pair. A Σ's binder
+      spells its first component's mode on the domain; its TAIL has no binder, so
+      `Σ0 (x : A) → P` puts the marker on `P`. A position is comptime iff its
+      type carries this marker — which is now one sentence covering a λ's
+      argument, a Π's, a Σ's component and a Σ's tail, where it used to cover
+      three and leave the fourth silently runtime.
 
       **Case is inert under ⇝** (§6), and that is mechanical here rather than
       incidental: `Val.beq` unwraps `cmpT` on either side, so conversion — and

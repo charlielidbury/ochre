@@ -1387,31 +1387,162 @@ def sigmaProofLower : Term := prog{
 example : progRejects sigmaProofLower "cannot be ⇒-moved" = true := by native_decide
 
 open Dllbc.StdLemmas in
-/-- **THE RESIDUAL, pinned as a program**: a Σ chain's LAST component has no
-    binder, so §2.1 gives it no mode and there is nothing for `readResult` to
-    read. The same proof, at the same capital binding, in the tail position
-    instead of a bindered one — REJECTED, and the rejection is the wall itself.
+/-- **WAS THE RESIDUAL, is now the negative control** (M33's Σ0). What stood here
+    said: a Σ chain's LAST component has no binder, so §2.1 gives it no mode and
+    there is nothing for `readResult` to read; the same proof at the same capital
+    binding, in the tail position instead of a bindered one, is REJECTED and the
+    rejection IS the wall. It named what it would take — "a mode for the tail;
+    `⇝τ` already exists and already survives readback, what does not exist is a
+    surface way to write it there" — and that is exactly what `Σ0` now is.
+
+    So the program is unchanged and still REJECTED, and what moved is the NEEDLE.
+    It used to die at `fence: 'H0' … cannot be ⇒-moved`, which names the
+    consequence and advises lower-casing a proof; it dies at the tail now, which
+    names the position and gives the spelling (`tailFence`). Its accepting twin,
+    one character away, is `sigmaTailProof0` in the Σ0 battery below.
 
     This is where quicksort's `cnt` sits. Its ensures is
     `Σ (hi : List Nat) → … → Π n. Id …`, and the trailing `Π n. Id …` is the
-    ∀-proof: five components have binders and the sixth is the tail. So the
-    corpus's own instance of §2.5's blocker survives the migration for a reason
-    that is now structural and small — a spelling, not a rule.
-
-    What it would take: a mode for the tail. `⇝τ` already exists and already
-    survives readback; what does not exist is a surface way to write it there,
-    because `Σ (x : A) → B` gives `A` a binder and `B` none. Either the surface
-    grows a marker for a Σ's tail, or a proof-carrying tail is spelled
-    `Σ (X : A) → Σ (P : B) → Unit` and the corpus's consumers destructure one
-    level deeper. -/
+    ∀-proof: five components have binders and the sixth is the tail. -/
 def sigmaTailProof : Term := prog{
   fn F (n : Nat) -> Σ (H : Le n n) → Le n n { let H0 = LeRefl n; Pair(H0, H0) };
   () }
-example : progRejects sigmaTailProof "cannot be ⇒-moved" = true := by native_decide
+example : progRejects sigmaTailProof "the TAIL of a Σ chain is runtime-moded" = true := by
+  native_decide
 
 end Dllbc.Tests.S32Backstop
 end
 -- └── end of the M32 R3 backstop-demolition battery ───────────────────────────
+
+-- ┌── M33: Σ0, the comptime tail ───────────────────────────────────────────────
+section
+namespace Dllbc.Tests.S33Sigma0
+
+open Dllbc Dllbc.Tests
+
+/-! # Σ0 — the comptime tail (M33, suspensions.md §2.7)
+
+    `Σ0 (x : A) → P` is the pair whose SECOND projection is comptime — DLLBC's
+    subset type, with comptime where Lean's `Subtype`/Coq's `sig` use
+    Prop/irrelevance. It is not a new former: it is `sigmaT` with the existing
+    `Term.cmpT` on the CODOMAIN, the same marker a capital binder puts on a
+    domain, seen from the other end of the pair. Same `Pair`, same `sigmaRec`.
+
+    Three things are pinned here — construction, destruction, erasure — and each
+    against a spelling ONE CHARACTER away, so every accept is discriminating. -/
+
+/-! ## Construction: a proof in the tail
+
+    `S32Backstop.sigmaTailProof` is this program with `Σ` where this one has
+    `Σ0`, and it is REJECTED. The two differ in one character, and that character
+    is the whole feature. -/
+
+open Dllbc.StdLemmas in
+def sigmaTailProof0 : Term := prog{
+  fn F (n : Nat) -> Σ0 (H : Le n n) → Le n n { let H0 = LeRefl n; Pair(H0, H0) };
+  () }
+example : progOk sigmaTailProof0 = true := by native_decide
+
+/-! **A λ literal in a Σ0 tail is LEGAL**, and this is the promise §2.7 makes
+    about the position rather than an accident: the tail is read by ⇝, so a λ
+    there lands in a comptime channel and needs no other destination. The proof
+    of a ∀-statement — the shape that refuted §2.5 twice — is exactly this. -/
+open Dllbc.StdLemmas in
+def tailLam0 : Term := prog{
+  fn F (n : Nat) -> Σ0 (H : Le n n) → (Π (N : Nat) → Le N N)
+    { let H0 = LeRefl n; Pair(H0, λ (N : Nat). LeRefl N) };
+  () }
+example : progOk tailLam0 = true := by native_decide
+
+/-! ## Destruction: the arm binder that receives a Σ0 tail must be CAPITAL
+
+    M33a's arm check, reaching the one binder position it could not answer for.
+    `componentMode` needs no case of its own — it already asks `sctx` per field,
+    and `reattachSigmaMode` now writes the tail's entry the way it has written the
+    first component's since M33a. Four programs: two type spellings (`Σ`/`Σ0`)
+    times two arm spellings, and the diagonal is what is accepted. -/
+
+def s0V : Term := .var ⟨0, "v"⟩
+
+/-- Σ0 producer, CAPITAL tail binder at the consumer: accepted. -/
+def tail0Upper : Term := prog{
+  fn Zap0 (v : &mut List Nat) -> Σ0 (k : Nat) → Id (List Nat) (*%s0V) Nil
+    { *v := Nil; Pair(Z, Refl) };
+  fn Use0 (w : &mut List Nat) -> Unit
+    { let r = Zap0(&m *w); match r { Pair(k2, H2) => () } };
+  () }
+example : progOk tail0Upper = true := by native_decide
+
+/-- …and lowercase at the same consumer: refused, because the tail is comptime. -/
+def tail0Lower : Term := prog{
+  fn Zap0 (v : &mut List Nat) -> Σ0 (k : Nat) → Id (List Nat) (*%s0V) Nil
+    { *v := Nil; Pair(Z, Refl) };
+  fn Use0 (w : &mut List Nat) -> Unit
+    { let r = Zap0(&m *w); match r { Pair(k2, h2) => () } };
+  () }
+example : progRejects tail0Lower "Capitalise the arm binder" = true := by native_decide
+
+/-- The SAME consumer over a plain `Σ`: now lowercase is the legal spelling… -/
+def tailRunLower : Term := prog{
+  fn Zap (v : &mut List Nat) -> Σ (k : Nat) → Id (List Nat) (*%s0V) Nil
+    { *v := Nil; Pair(Z, Refl) };
+  fn Use (w : &mut List Nat) -> Unit
+    { let r = Zap(&m *w); match r { Pair(k2, h2) => () } };
+  () }
+example : progOk tailRunLower = true := by native_decide
+
+/-- …and capital is refused. One character in the CALLEE's return type decides
+    which spelling of the CALLER's arm is legal, in both directions — which is
+    what says the rule reads the type and not the shape. -/
+def tailRunUpper : Term := prog{
+  fn Zap (v : &mut List Nat) -> Σ (k : Nat) → Id (List Nat) (*%s0V) Nil
+    { *v := Nil; Pair(Z, Refl) };
+  fn Use (w : &mut List Nat) -> Unit
+    { let r = Zap(&m *w); match r { Pair(k2, H2) => () } };
+  () }
+example : progRejects tailRunUpper "lower-case the arm binder" = true := by native_decide
+
+/-! ## Erasure: the executing machine is untouched
+
+    A Σ0 component is comptime knowledge — evaluated today, dropped by
+    compilation, exactly as a capital Σ component already is. So the program runs,
+    and the DATA component is what the run leaves behind. -/
+
+open Dllbc.StdLemmas in
+def erase0 : Term := prog{
+  fn F0 (n : Nat) -> Σ0 (k : Nat) → Le n n { let H0 = LeRefl n; Pair(n, H0) };
+  let r = F0(S(S(Z)));
+  match r { Pair(a, H) => { let y = a; () } } }
+example : progOk erase0 = true := by native_decide
+example : (match runProgram erase0 with
+           | .ok env => (env.lookup "y") == some (Val.nat 2)
+           | .error _ => false) = true := by native_decide
+
+/-! ## Elimination: `sigmaRec`, unchanged
+
+    §2.7 promises no new eliminator, and this is that promise as two programs: the
+    SAME `elim` over the same pair, with the motive's binder type written `Σ` in
+    one and `Σ0` in the other. `sigmaRec`'s second parameter is the type FAMILY
+    `λ x. B`, and `⇝` is a mode marker rather than part of `B`, so a Σ0's family
+    is its Σ twin's and the elimination is literally the same term. -/
+
+open Dllbc.StdLemmas in
+def elimSig : Term := prog{
+  let P0 = Pair(Z, LeRefl Z);
+  let K = elim P0 return (λ (p : Σ (k : Nat) → Le Z Z). Nat) { Pair (k) (h) => k };
+  () }
+example : progOk elimSig = true := by native_decide
+
+open Dllbc.StdLemmas in
+def elimSig0 : Term := prog{
+  let P0 = Pair(Z, LeRefl Z);
+  let K = elim P0 return (λ (p : Σ0 (k : Nat) → Le Z Z). Nat) { Pair (k) (H) => k };
+  () }
+example : progOk elimSig0 = true := by native_decide
+
+end Dllbc.Tests.S33Sigma0
+end
+-- └── end of the M33 Σ0 battery ───────────────────────────────────────────────
 
 -- ┌── M32 R4: `callV` retires, and the split it looked like it carried ─────────
 section
@@ -1669,3 +1800,4 @@ example : progOk armRunLower = true := by native_decide
 end Dllbc.Tests.S33Arms
 end
 -- └── end of the M33a arm-binder mode battery ─────────────────────────────────
+

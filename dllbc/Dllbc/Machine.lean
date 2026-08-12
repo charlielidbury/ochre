@@ -2321,6 +2321,32 @@ def fenceComptime (x : Var) (what : String) : M Unit :=
     throwErr s!"fence: '{x.name}' is a COMPTIME binder (capitalized — §6) and {what}. A comptime binder is erased: it is never moved, never scrutinized, never borrowed or written through, and exists only in ⇝-positions (types, proofs, and the capital argument positions of other calls). If it must exist at runtime, lower-case it — unless it holds a FUNCTION, which cannot be lower-cased (§2.1: functions are comptime), in which case the binder to capitalise is the destination's."
   else pure ()
 
+/-- **The fence at a Σ chain's TAIL** (M33's Σ0, suspensions.md §2.7), and it
+    exists because of a UX finding rather than a soundness one.
+
+    M33a's migration report: today's tail is INVISIBLY special. A six-component
+    chain reads uniformly for five components — each says its mode with its
+    binder's case — and then silently reverts to ⇒ at the sixth, because the tail
+    has no binder to say anything with. What the programmer then sees is
+    `fenceComptime`'s sentence, which names the CONSEQUENCE ("'Cnt' … cannot be
+    ⇒-moved", advice: "lower-case it") and not the POSITION, and whose advice is
+    wrong here: lower-casing `Cnt` would be lower-casing a proof to satisfy a
+    marker that should have been on the type.
+
+    So the tail says it itself. Reached only from `readResult`'s Σ rule, at the
+    second component of the INNERMOST Σ — a codomain that is another Σ is not a
+    tail, and a codomain that is `⇝` is a Σ0 and needs no sentence. -/
+def tailFence (fuel : Nat) (cod : Term) (b : Term) : M Unit := do
+  match Pure.whnf fuel cod with
+  | .cmpT _ => pure ()                      -- Σ0: the tail is comptime, nothing to say
+  | .sigmaT _ _ _ => pure ()                -- not the tail: another component follows
+  | _ =>
+    match b with
+    | .var x =>
+      if x.isComptime then
+        throwErr s!"the TAIL of a Σ chain is runtime-moded, and '{x.name}' is a COMPTIME binder (capitalized — §6), so returning it here would ⇒-move erased knowledge. This is the one position in a Σ with no binder: every component before it spells its mode with its binder's case, and the tail can only spell it on the TYPE. Write the innermost former as `Σ0 (x : A) → P` instead of `Σ (x : A) → P` — the `0` marks the SECOND projection comptime (DLLBC's subset type, Lean's Subtype), after which the tail is ⇝-read, erased, and never moved."
+    | _ => pure ()
+
 /-- **⇒'s function values**: an IMPERATIVE closure, or a σ the kernel recorded in
     `fsig` (which is where a sealed imperative function goes; a sealed pure λ has
     a `Val` and lives in `sctx` alone, and binding one at a lowercase name has
@@ -2960,12 +2986,24 @@ def typeFieldSyms (fuel : Nat) : List Var → List (String × Term) → M (List 
     `sctx` through `readCWith` — and this is the symbolic path paying the same
     fact, so that ONE rule reads both.
 
-    Only the first component takes a mode; a Σ chain's TAIL has no binder to
-    carry one (suspensions.md §2.5's surviving spelling), so it is left alone and
-    reads as runtime, which is what ⇒ does with it today. -/
+    **BOTH ends since M33's Σ0.** What stood here said "only the first component
+    takes a mode; a Σ chain's TAIL has no binder to carry one (suspensions.md
+    §2.5's surviving spelling), so it is left alone and reads as runtime, which is
+    what ⇒ does with it today". That was the residual, stated at the line that
+    implemented it. `Σ0 (x : A) → P` gives the tail a marker on the CODOMAIN, and
+    this is where a destructuring match reads it: `componentMode` needs no case of
+    its own, because it already asks `sctx` per field and the tail's entry is now
+    written the same way the first component's is. The M33a hook note predicted
+    the change would be in `componentMode`; it is one step upstream, at the two
+    places that WRITE the mode (here, and `buildResult`, which gets the codomain's
+    `⇝` for free by reading the return type through `readCWith`). -/
 def reattachSigmaMode : Term → List (String × Term) → List (String × Term)
-  | .sigmaT _ dom _, (x, τ) :: rest =>
-    if Term.domComptime dom then (x, .cmpT τ) :: rest else (x, τ) :: rest
+  | .sigmaT _ dom cod, (x, τ) :: rest =>
+    let fst := if Term.domComptime dom then (x, Term.cmpT τ) else (x, τ)
+    let rest' := match cod, rest with
+      | .cmpT _, (y, σ) :: r => (y, Term.cmpT σ) :: r
+      | _, r => r
+    fst :: rest'
   | _, ftys => ftys
 
 /-- Mint the field σ's for a symbolic branch. `Refl` is special (§10): it has
@@ -5276,16 +5314,29 @@ mutual
       components separately rather than all of them by the outermost binder. -/
   def readResult : Nat → Option Term → Term → M Val
     | 0, _, t => readR 0 t
-    | fuel + 1, some ty, .ctorApp "Pair" [a, b] => do
+    | fuel + 1, some ty, t =>
       match Pure.whnf fuel ty with
-      | .sigmaT x dom cod => do
-        let va ←
-          if Term.domComptime dom then pure (Val.know (← readComptimeArg fuel a))
-          else readResult fuel (some dom) a
-        let cod' := Pure.openBinder fuel x cod (subsKnowledge va)
-        let vb ← readResult fuel (some cod') b
-        pure (.ctor "Pair" [va, vb])
-      | _ => readR (fuel + 1) (.ctorApp "Pair" [a, b])
+      -- **A COMPTIME POSITION, whichever end of the pair marked it** (M33's Σ0).
+      -- One sentence covers all four now: a position is comptime iff its type
+      -- carries `⇝`. A capital Σ binder puts it on the domain (R3b) and `Σ0` puts
+      -- it on the codomain, and this arm is what both of them route to — ⇝, so
+      -- non-consuming, so the erasure fence is not in the way and a λ here is
+      -- legal because it lands in a ⇝ channel. R3b's `domComptime` test at the
+      -- first component is gone as a special case: it is this rule, one level
+      -- down.
+      | .cmpT _ => do pure (.know (← readComptimeArg fuel t))
+      | .sigmaT x dom cod =>
+        match t with
+        | .ctorApp "Pair" [a, b] => do
+          let va ← readResult fuel (some dom) a
+          let cod' := Pure.openBinder fuel x cod (subsKnowledge va)
+          -- The tail is a POSITION, and it gets to be told when it is the wrong
+          -- one (see `tailFence`).
+          tailFence fuel cod' b
+          let vb ← readResult fuel (some cod') b
+          pure (.ctor "Pair" [va, vb])
+        | _ => readR (fuel + 1) t
+      | _ => readR (fuel + 1) t
     | fuel + 1, _, t => readR (fuel + 1) t
   termination_by fuel _ t => (fuel, 1, sizeOf t)
   def exploreMatch : Nat → Var → Option Var → List Branch → St → List (Except String (Val × St))
