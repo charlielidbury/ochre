@@ -107,6 +107,21 @@ load-bearing at argument-reading uniformly (M31 §2.2's rule reaching its last
 position). Migration: the stdlib's pure binders capitalise (mechanical; elim motives
 included).
 
+**CORRECTION — a hard bound on this section's reach (M33a follow-up, measured):
+"a proof parameter capitalises" and "a proof parameter is ι-SPLIT" are mutually
+exclusive today.** ι-splitting an equation (`match p { Refl => … }`) is how the
+checker LEARNS from it (refineSym), and the match fence refuses a capital
+scrutinee — so every equation-consuming function must keep a lowercase proof
+parameter (eight corpus sites, structurally unable to capitalise; measured by
+flipping one and reading the fence). The design question this opens — a
+⇝-consuming match/elim on a comptime equation, so learning does not require a
+runtime-moded proof — is FILED, not designed; it is independent of the Σ-tail
+question. Separately: ~59 further lowercase proof params in the list-corpus test
+files are cosmetic (they receive freshly-constructed proof terms, so the fixpoint
+exerts no pressure through them; nine are unused; several are halves of
+negative-control twins whose lowercase spelling is the asserted rejection) —
+deliberately NOT swept, coordinator-ratified, to avoid silently deleting controls.
+
 ### 2.2 The capture model (user's two rules)
 
   1. **Formation**: when ⇝ evaluation reaches a λ, the closure captures ρ — the
