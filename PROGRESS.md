@@ -1,5 +1,61 @@
 # Progress
 
+## 2026-08-12 — dllbc/: **M33a — the match-arm mode check, and R3b's last two residuals**
+
+Four commits on `m33-arm-modes` (based on `m32-r4` @ ab6921ae, rebased onto main
+over the M32 merge and M33 α), corpus green at each. Sabotage control: 21 red on
+the pre-rebase base, and **26 after the rebase — M33 α's own number unchanged**,
+which is the check that the two lanes compose: M33a adds nothing to the sabotage
+surface, and the α-key's α-insensitive matching is inert for this stage.
+
+**The headline is that a diagnosis was wrong, not a rule.** R3b left "the test
+files' spec Σ binders are still lowercase, and the reason is the CONSUMER — a
+match-arm binder's case is unchecked against the Σ's". It was not the consumer.
+`Term.cmpT` is a binder-mode marker Syntax.lean handles everywhere and
+Machine.lean handles nowhere, and three walks there end in a `| t => t`
+fallthrough — so R3b's new `⇝` on a Σ DOMAIN was skipped in silence rather than
+refused. `markExit` is the one that bit: §5.4's exit-snapshot transform never
+reached a comptime component's type, so that component read the ENTRY payload
+while every sibling read the exit. Smallest witness: capitalising `splitOff`'s
+one proof binder makes its `Z` arm — which contains no match at all — return
+`Refl : Id Nil Nil` against a demand for `Id σ0 Nil`.
+
+**The arm check landed anyway, and it is worth having.** Both directions, at all
+four binding sites. `Pair` is the only constructor whose field modes are not a
+fact about the constructor, and its mode is already on the field — a component
+σ's `sctx` type is `⇝τ` exactly when the component is comptime. So the rule is
+one lookup in a context the match already consults, not a second type derivation.
+
+**The refusal enumeration was written down BEFORE the migration and held
+exactly**: 40 arm binders predicted, 40 renamed. The agreement is two-sided
+because the check refuses both ways, so a green corpus after exactly the
+predicted set proves the set rather than merely being consistent with it.
+
+**Residual 3 could not be its own commit.** Capitalising a Σ component forces the
+consumer's `let`s, which force the callee's telescope parameter — one fixpoint,
+no cut leaves the corpus green. `comptimeSlotParams flagship` 4 → 6. Where it
+STOPS is the content: R3's "seven bindings" (`cnt` and friends) stay lowercase
+because each is returned in a Σ chain's TAIL and a tail is ⇒-read. They are not a
+backlog; they are the shadow of one missing surface spelling, which is exactly
+§2.5's open residual.
+
+**The migration deleted code for the first time in this arc.** `let Hs1 = hs1`
+existed only because a match arm bound a comptime component at a lowercase name
+and a runtime binding is not capturable; with the arm binder spelling its mode,
+the proof-builder λ cites it directly and the snapshot goes.
+
+**One gap reported rather than fixed**: `readResult` reads its return type from
+`St.retTyVal`, which only `checkRFnBody` sets, so the EXECUTING machine ⇒-reads
+a body's tail with no Σ modes in hand. The ⇒-move fence is now checking-side
+(`refuseFnBinding`'s own gate and reasoning); no rejection weakens, since every
+"cannot be ⇒-moved" needle is a `progRejects`. The real answer is that an
+executing closure should carry its ascription, and the Σ-tail design will meet
+this again.
+
+New counters, asserted: `capArms flagship` 0 → 10, `lowerArms` 26, `cmpSigmas`
+91. `Traces.lean` byte-unchanged.
+
+
 ## 2026-08-12 — dllbc/: **M33 α — the sweep's key becomes α-insensitive (M32 residual 4)**
 
 Two commits on `m33-alpha-key` (based on `m32-r4`, rebased onto main at merge),

@@ -8,9 +8,10 @@ only syntax, `Val` is the state skeleton over `Sem`, every λ value is one closu
 cooking is persistent exactly at generalization, arrows are exceptionless, every
 binder spells its mode, and there is one application node.
 
-**The residuals, all post-M32, all pinned by tests rather than remembered.** One
-of the four (4, `abstractInto`'s key) has since closed; it is struck through
-rather than deleted, so the enumeration a reader met in M32 stays legible.
+**The residuals, all post-M32, all pinned by tests rather than remembered.**
+Three of the four have since closed — 4 at M33 α, 2 and 3 at M33a — and each is
+struck through rather than deleted, so the enumeration a reader met in M32 stays
+legible. **Only 1 is open**, and §2.7 is where its design question now lives.
 
   1. **§2.5's two spellings** (`S32Backstop.sigmaTailProof`). ⇒ still constructs
      function values at exactly two sites — a λ written literally in a constructor
@@ -19,12 +20,17 @@ rather than deleted, so the enumeration a reader met in M32 stays legible.
      proofs as components over a `Unit` tail), which is why it is not M32's. The
      invariant is one boundary shy of enforceable and the tripwires stay accepted
      and unflipped.
-  2. **Match-arm binder mode checking** (R3b). The test files' spec Σ binders are
-     still lowercase, because the CONSUMER does not check a match-arm binder's
-     case against the Σ's. Four assertions are not green with them capital.
-  3. **The Class-3 call-graph fixpoint** (R3b). Capitalising a proof parameter
-     makes every onward hand-off a ⇝-read, so the migration is a fixpoint over the
-     call graph; it landed in `ArraySort` and `Arrays` only.
+  2. ~~**Match-arm binder mode checking**~~ — **CLOSED at M33a, and R3b's
+     DIAGNOSIS was wrong.** The four assertions were not blocked by the consumer;
+     they were blocked by `markExit` having no `.cmpT` case, so a comptime Σ
+     component's type kept its `*v` unmarked and read the ENTRY payload. The arm
+     check landed anyway (the user ruled it desirable, and it is: it refuses the
+     mis-moded state at the last binder position that was not reading its own
+     spelling), but it is not what unblocked the migration.
+  3. ~~**The Class-3 call-graph fixpoint**~~ — **CLOSED at M33a**, and it could
+     not be a commit of its own: capitalising a Σ component forces the consumer's
+     `let`s, which force the callee's telescope parameter, in one fixpoint that
+     no cut leaves green. `comptimeSlotParams flagship` 4 → 6.
   4. ~~**`abstractInto`'s α-insensitive key**~~ — **CLOSED at M33 α** (branch
      `m33-alpha-key`; addendum at the bottom of this file). The key is
      `Term.alphaEq`, the reproduction is an accepted program with a rejected
@@ -1023,3 +1029,112 @@ assumption-indexed evaluation (rejected with precedent, §3).
 > `S32Cook` both directions and `S32Seal`'s §B determinism with its §C control
 > green throughout. **`Traces.lean` is byte-unchanged**: the executing machine's
 > every trace, environment and comparison is what it was.
+
+> **Implementation addendum (M33a, landed on `m33-arm-modes`).** Four commits,
+> corpus green at each, based on R4 @ ab6921ae and rebased onto main over the
+> M32 merge and M33 α. M33a closes residuals 2 and 3, and the first thing it
+> found is that residual 2 was misdiagnosed.
+>
+> **0. THE HEADLINE IS A REFUTATION OF A DIAGNOSIS, not of a rule.** R3b recorded
+> "the reason is the CONSUMER — a match-arm binder's case is unchecked against
+> the Σ's". It is not. `Term.cmpT` has been a λ/Π domain marker since M31 and
+> Syntax.lean's traversals all have a case for it; Machine.lean's do not, and
+> three of those end in a `| t => t` fallthrough, so R3b's new `⇝` on a Σ DOMAIN
+> was not rejected — it was treated as a leaf and its subterm skipped in silence.
+> `markExit` is the one with teeth: §5.4's exit-snapshot transform never reached a
+> comptime component's type, so that component alone read the ENTRY payload while
+> every sibling read the exit. The smallest witness is one character —
+> capitalising `splitOff`'s single proof binder made the `Z` arm's `Refl` at
+> `Id Nil Nil` face a demand for `Id σ0 Nil`, in a branch containing no match at
+> all. With the three cases added, R3b's four assertions go green with their arm
+> binders untouched and still lowercase. `collapseCDerefs` and `calleeNames` are
+> the same class, found by the same grep, and are NOT exercised by the corpus —
+> said here rather than implied.
+>
+> **1. The arm check landed anyway, and `Pair` is the only constructor that needs
+> a type to decide it.** `Pure.ctorSig` is the fixed basis and it splits: `Cons`'
+> head and tail, `S`'s predecessor, `Arr`'s elements are DATA at every type there
+> is, so "a capital arm binder over data" is refusable from the constructor NAME
+> alone. `Pair`'s first field is a Σ component and takes that Σ binder's mode —
+> and the mode is already ON THE FIELD, because a component σ's `sctx` entry is
+> `⇝τ` exactly when the component is comptime (`buildResult` has been writing it
+> since R3b; `reattachSigmaMode` makes the symbolic path agree, so ONE rule reads
+> both). Both directions are refused, with `.unknown` kept as an honest third
+> answer for a `Pair` field that is not a σ. Eight `Term.stripCmp`s went in at the
+> `sctx` readers that inspect a type structurally — needed anyway, since R3b's
+> writes were one capital array-typed component away from a wrong answer.
+>
+> **2. The prediction was recorded before the work and held exactly.** The check's
+> refusal enumeration — 40 arm binders, listed per site in the β commit message —
+> is the γ rename list, to the name. The agreement is two-sided rather than a
+> count: the check refuses in both directions, so a missing rename reds at
+> "Capitalise the arm binder" and a spurious one at "lower-case the arm binder",
+> and a green corpus after exactly the predicted set proves the set. Numbers, now
+> asserted (`S32Binders`): `capArms flagship` 0 → **10**, `lowerArms` **26**,
+> `cmpSigmas` **91**. The 26 is what a one-way rule would not have earned.
+>
+> **3. RESIDUAL 3 IS NOT A SEPARATE COMMIT, and the corpus is what says so.**
+> Capitalising a Σ component forces the consumer's `let`s (`hub2 → Hub2` and its
+> family), which force the callee's telescope parameter (`hfuel → Hfuel`), in one
+> fixpoint. `comptimeSlotParams flagship` 4 → 6, the arrivals named
+> (`[Hf, Hf, Hf, Hf, Hfuel, Hfuel]`). **Where it STOPS is the interesting part**:
+> `cnt`, `cnt1`, `cnt2`, `top1` — R3's "seven bindings" — stay lowercase, because
+> each is returned in a Σ chain's TAIL and a tail is ⇒-read. The fixpoint closes
+> exactly at the boundary §2.5's residual names, which downgrades those seven from
+> a backlog to the shadow of one missing surface spelling.
+>
+> **4. THE MIGRATION DELETED CODE, which had not happened before in this arc.**
+> `let Hs1 = hs1` (×2) is gone. The name collision that surfaced it is the
+> finding: that §2.4 snapshot existed ONLY because a match arm bound a comptime
+> component at a lowercase name, and a runtime binding is not capturable — so the
+> proof-builder λ could not cite the proof and a capital `let` had to re-read it.
+> With the arm binder spelling its mode, the λ cites it. `Hub0`/`Hlb0` and
+> friends are the same shape and survive only because they do not collide.
+>
+> **5. A REPRESENTATION GAP, stated rather than gated away.** `readResult` — the
+> only rule that reads a Σ component by its binder's mode — takes its return type
+> from `St.retTyVal`, which `checkRFnBody` sets. The EXECUTING machine enters a
+> callee through `applyClosure`, which has no signature in hand (a closure is
+> `(ρ, node)`; the ascription was dropped at the seal), so it ⇒-reads the same
+> tail. With the flagship's components capital, nine executing differentials died
+> on a discipline the checker had already enforced on that very program. M33a
+> makes the ⇒-move fence checking-side — `refuseFnBinding`'s own gate and its own
+> sentence, "refusing there would break running programs to protect a checker" —
+> and no rejection weakens, because every "cannot be ⇒-moved" needle in the corpus
+> is a `progRejects`. But the honest reading is that an executing closure should
+> CARRY its ascription, and the Σ-tail design will meet this again: any answer
+> that gives a tail a mode has to be read by both machines, and only one of them
+> currently has a return type to read it from.
+>
+> **5b. Where §2.7's Σ0 hooks into this, named so it is not re-derived.** §2.7's
+> destruction rule ("the arm binder receiving the Σ0 component MUST be capital")
+> is `checkArmModes`, and the one line to change is `componentMode`'s `Pair`
+> case: it answers for the FIRST field off the component σ's `sctx` type, and
+> returns `.data` for the second — the tail — because a tail has no mode today.
+> Under Σ0 that second answer comes from the `cmpT` on the Σ's CODOMAIN, exactly
+> as the first comes from the domain, and the refusal message already reads
+> correctly for it. Nothing else in the check moves; `lowerArms` (26) is the
+> counter that will register the flip.
+>
+> **6. Enumerated flips: two, both verdict-unchanged.** `quicksortA`'s two spec
+> lies still REJECT and their needle moves from "does not have its parameter type"
+> to "does not have return type" — with `Hs` capital the component is ⇝-read at
+> `readResult`, so the lie is caught where it is written rather than one call
+> later. Direct.lean's twins of the same two did NOT move, because quicksort's
+> caller re-checks the conjunct either way; recorded at the site.
+> **`Traces.lean` is byte-unchanged** and no golden moved anywhere.
+>
+> **7. Controls.** Sabotage (`abstractInto` abstracting nothing): **21** red on
+> the pre-rebase base — the same count and shape as R2's, R3's, R3b's and R4's —
+> including `progOk flagship`, `progOk sort2` and both `S32Cook` canary
+> directions. **Re-run after the rebase over M33 α: 26**, which is M33 α's own
+> number unchanged (its 21 + its 5), and that is the semantic check on the two
+> lanes composing — M33a adds NOTHING to the sabotage surface, because nothing
+> here touches the generalization sweep. The α-key's α-insensitive matching is
+> likewise inert for this stage: no assertion of M33a's assumed name-keyed
+> matching, and the flagship, `sort2` and both cook directions remain in the red
+> set. Every Σ rename went through R3b's scope-aware scanner with the resolution
+> FINGERPRINT verified identical (Direct 4,486 resolutions, Functions 2,181,
+> ArraySort 2,507, Arrays 1,314). The new `⇝`-transparency test was verified
+> DISCRIMINATING by removing the `markExit` case again: exactly one of its three
+> assertions reds, and the lowercase control and the lie both stay green.
