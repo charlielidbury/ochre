@@ -1583,3 +1583,82 @@ example : progRejects (zapUnder zapLie) "does not have return type" = true := by
 end Dllbc.Tests.S33Cmp
 end
 -- └── end of the M33a ⇝-transparency battery ──────────────────────────────────
+
+-- ┌── the M33a arm-binder mode battery ─────────────────────────────────────────
+section
+namespace Dllbc.Tests.S33Arms
+open Dllbc
+
+/-! # §2.1's convention reaches the MATCH ARM (M33a)
+
+    A match arm's binders are binders, and they were the last position whose
+    spelling nothing read. Both directions are checked, because they are two
+    different mistakes — a capital binder over data claims erasure of something
+    the match moves; a lowercase binder over a comptime component is the
+    runtime-binding-holds-knowledge state the `let` already refuses
+    (`refuseFnBinding`, `fenceComptime`), reached by a rule that was not looking.
+
+    Each direction is one program in two spellings one character apart, so each
+    reject is discriminating against its own accept rather than against nothing. -/
+
+/-! ## Direction 1 — a CAPITAL arm binder over a runtime DATA component
+
+    `Cons`' head and tail are data at every type there is, which is why this
+    direction needs no type in hand at all: the fixed constructor basis decides
+    it, and `Pair` is the only member it does not decide. -/
+
+def armDataLower : Term := prog{
+  let l = Cons(Z, Nil);
+  match l { Nil => (), Cons(h, t) => () } }
+
+def armDataUpper : Term := prog{
+  let l = Cons(Z, Nil);
+  match l { Nil => (), Cons(H, t) => () } }
+
+example : progOk armDataLower = true := by native_decide
+example : progRejects armDataUpper "lower-case the arm binder" = true := by native_decide
+
+/-! ## Direction 2 — a LOWERCASE arm binder over a COMPTIME component
+
+    The producer is `S33Cmp.zapCmp`'s shape: a Σ whose component binder is
+    capital, so `readResult` ⇝-reads that component and the CALLER's
+    `buildResult` mints its σ at a `⇝` type. That `sctx` entry is the whole of
+    the mode source — no type is re-derived at the match. -/
+
+def armV : Term := .var ⟨0, "v"⟩
+
+def armCmpUpper : Term := prog{
+  fn Zap (v : &mut List Nat) -> Σ (H : Id (List Nat) (*%armV) Nil) → Unit
+    { *v := Nil; Pair(Refl, unit) };
+  fn Use (w : &mut List Nat) -> Unit
+    { let r = Zap(&m *w); match r { Pair(H2, u) => () } };
+  () }
+
+def armCmpLower : Term := prog{
+  fn Zap (v : &mut List Nat) -> Σ (H : Id (List Nat) (*%armV) Nil) → Unit
+    { *v := Nil; Pair(Refl, unit) };
+  fn Use (w : &mut List Nat) -> Unit
+    { let r = Zap(&m *w); match r { Pair(h2, u) => () } };
+  () }
+
+example : progOk armCmpUpper = true := by native_decide
+example : progRejects armCmpLower "Capitalise the arm binder" = true := by native_decide
+
+/-! ## …and the SAME consumer over a runtime component is unchanged
+
+    The control that says direction 2 keys on the producing Σ binder's case and
+    not on the component sitting in a `Pair`: one character in the CALLEE's
+    return type flips which spelling of the CALLER's arm is legal. -/
+
+def armRunLower : Term := prog{
+  fn Zap (v : &mut List Nat) -> Σ (h : Id (List Nat) (*%armV) Nil) → Unit
+    { *v := Nil; Pair(Refl, unit) };
+  fn Use (w : &mut List Nat) -> Unit
+    { let r = Zap(&m *w); match r { Pair(h2, u) => () } };
+  () }
+
+example : progOk armRunLower = true := by native_decide
+
+end Dllbc.Tests.S33Arms
+end
+-- └── end of the M33a arm-binder mode battery ─────────────────────────────────

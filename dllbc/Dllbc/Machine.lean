@@ -525,7 +525,7 @@ def indexKindT (fuel : Nat) (sctx : List (Nat × Term)) : Term → Bool
   | .pvar x =>
     match symOfName? x with
     | some σ => match sctx.lookup σ with
-      | some τ => indexKindTy (Pure.whnf fuel τ)
+      | some τ => indexKindTy (Pure.whnf fuel τ).stripCmp
       | none => false
     | none => true
   | .type => true
@@ -809,7 +809,7 @@ def arrExtent (fuel : Nat) (v : Val) : M Term := do
     | some σ =>
       match (← get).sctx.lookup σ with
       | some τ =>
-        match Pure.asArrayTy? (Pure.whnf fuel τ) with
+        match Pure.asArrayTy? (Pure.whnf fuel τ).stripCmp with
         | some (n, _) => pure (Pure.nf fuel n)
         | none => throwErr s!"array: σ{σ} is not of array type (its sctx type is {τ.pretty})"
       | none => throwErr s!"array: σ{σ} has no type in sctx — cannot read its extent"
@@ -1661,7 +1661,7 @@ mutual
             match (← get).sctx.lookup σ with
             | none => throwErr s!"hasType: σ{σ} (applied) has no type in sctx"
             | some hty =>
-              match ← synthSpine fuel hty args with
+              match ← synthSpine fuel hty.stripCmp args with
               | some resTy => pure (Pure.convert fuel ty resTy)
               | none => pure false
           | none => throwErr s!"hasType: cannot type neutral {v.pretty}"
@@ -1925,7 +1925,7 @@ def carveBody (fuel : Nat) (body : Val) (loN cntN restN : Nat) (lo' cnt rest : T
     match (← get).sctx.lookup σ with
     | none => throwErr s!"carve: σ{σ} has no type in sctx"
     | some τ =>
-      match Pure.asArrayTy? (Pure.whnf fuel τ) with
+      match Pure.asArrayTy? (Pure.whnf fuel τ).stripCmp with
       | none => throwErr s!"carve: σ{σ} is not of array type ({τ.pretty})"
       | some (_, t) => do
         let mk : Term → M Term := fun c => do
@@ -1965,7 +1965,7 @@ def elementize (fuel : Nat) (body : Val) : M Val := do
     match (← get).sctx.lookup σ with
     | none => throwErr s!"a[i]: σ{σ} has no type in sctx"
     | some τ =>
-      match Pure.asArrayTy? (Pure.whnf fuel τ) with
+      match Pure.asArrayTy? (Pure.whnf fuel τ).stripCmp with
       | none => throwErr s!"a[i]: σ{σ} is not of array type ({τ.pretty})"
       | some (_, t) => do
         let e ← freshSym
@@ -2561,6 +2561,74 @@ def armSeamed? : Term → Bool
   | .seq (.const "@armScope") _ => true
   | _ => false
 
+/-! ## §2.1's convention reaches the MATCH ARM (M33a)
+
+    Every binder spells its mode. A match arm's binders are binders, and until
+    here they were the last position where the spelling was unread: a `Pair`
+    destructure could bind a comptime component — an erased proof — at a
+    lowercase name, which is the runtime-binding-holds-knowledge state the `let`
+    refuses (`refuseFnBinding`, `fenceComptime`), reached by a rule that was not
+    looking.
+
+    The check is BOTH directions, because they are two different mistakes:
+
+      * a CAPITAL arm binder over a runtime data component claims erasure of
+        something that moves — the component is `⇒`-read into the binder, and a
+        capital binding is one the fence then refuses to move again;
+      * a LOWERCASE arm binder over a comptime component is the mis-moded state
+        above.
+
+    **Where the mode comes from, and why this is not a second type derivation.**
+    `Pure.ctorSig` is the fixed constructor basis, and it splits: `Pair` is the
+    only constructor whose field modes are not a fact about the constructor
+    itself. `Cons`' head and tail, `S`'s predecessor, `Arr`'s elements are DATA
+    at every type there is, so a capital binder over one is refusable with no
+    type in hand at all. `Pair`'s first field is a Σ's component and takes that
+    Σ binder's mode — which the match already holds, on the field: a component
+    σ's `sctx` entry is `⇝τ` exactly when the component is comptime
+    (`buildResult` on the concrete path, `reattachSigmaMode` on the symbolic
+    one). One lookup in a context the match consults anyway.
+
+    `.unknown` is the honest third answer rather than a rounded-up one: a `Pair`
+    field that is not a σ — a component built and destructured inside one body,
+    a concrete constructor tree — has no mode recorded anywhere, and refusing on
+    a guess would be a false rejection. Nothing is checked there, and the
+    close-out says so. -/
+inductive CompMode where
+  | data
+  | comptime
+  | unknown
+  deriving BEq
+
+/-- The mode of the component a match is about to bind. See the note above. -/
+def componentMode (ctor : String) (field : Val) : M CompMode := do
+  if ctor != "Pair" then
+    pure (if (Pure.ctorSig ctor).isSome then .data else .unknown)
+  else
+    match field.symOf? with
+    | none => pure .unknown
+    | some σ =>
+      match (← get).sctx.lookup σ with
+      | none => pure .unknown
+      | some τ => pure (if Term.domComptime τ then .comptime else .data)
+
+/-- **The arm-binder mode check** (M33a, suspensions.md §2.1). Runs at every
+    match that binds arm binders to components, in both modes, on both the
+    concrete and the symbolic path. -/
+def checkArmModes (ctor : String) : List Var → List Val → M Unit
+  | [], _ => pure ()
+  | _, [] => pure ()
+  | x :: xs, v :: vs => do
+    match ← componentMode ctor v with
+    | .data =>
+      if x.isComptime then
+        throwErr s!"match: arm binder '{x.name}' is capitalized (comptime, §6) but the component of '{ctor}' it binds is runtime DATA. A comptime binder is erased and never moved, and this one receives a value that the match moves into it — lower-case the arm binder."
+    | .comptime =>
+      if !x.isComptime then
+        throwErr s!"match: arm binder '{x.name}' is lowercase (runtime, §6) but the component of '{ctor}' it binds is COMPTIME — the producing Σ binds it capital, so the value is erased knowledge and there is nothing for a runtime binding to hold. Capitalise the arm binder."
+    | .unknown => pure ()
+    checkArmModes ctor xs vs
+
 /-- Bind constructor fields to fresh binder entries (owned mode: the fields
     move in as owned values). Errors on arity mismatch. -/
 def bindFields : List Var → List Val → M Unit
@@ -2598,6 +2666,7 @@ def ownedSelect (scrut : Var) (eqn : Option Var) (branches : List Branch) (name 
   match findBranch branches name with
   | none => throwErr s!"match: no branch for constructor '{name}' (scrutinee {scrut.name}#{scrut.id})"
   | some br => do
+    checkArmModes name br.binders fields       -- M33a: §2.1 reaches the arm
     openScope (armSeamed? br.body)             -- M31 Stage 0: the arm is a scope
     setSlot scrut .bot                         -- ⇒-consume
     bindFields br.binders fields
@@ -2615,6 +2684,7 @@ def borrowSelect (scrut : Var) (eqn : Option Var) (branches : List Branch) (ℓ 
   | some br => do
     if br.binders.length != fields.length then
       throwErr "match: constructor arity mismatch (borrow mode)"
+    checkArmModes name br.binders fields       -- M33a: §2.1 reaches the arm
     openScope (armSeamed? br.body)             -- M31 Stage 0: the arm is a scope
     let ℓs ← fields.mapM (fun _ => freshLoan)
     setSlot scrut (.borrowM ℓ (.ctor name (ℓs.map Val.loanM)))   -- suspend the parent
@@ -2800,6 +2870,24 @@ def typeFieldSyms (fuel : Nat) : List Var → List (String × Term) → M (List 
     pure (σ :: rest)
   | _, _ => throwErr "match: constructor arity mismatch (σ-typing)"
 
+/-- **Re-attach the Σ component mode that `ctorSig` deliberately strips** (M33a).
+
+    `Pure.ctorSig "Pair"` hands back `(x, a.stripCmp)` because its callers TYPE
+    the field, and `⇝τ` is not a type. `typeFieldSyms` is the caller that does
+    something else with it as well: it writes the field's type into `sctx`, and
+    that entry is where a match reads the component's MODE from (`componentMode`
+    below). The concrete path gets this for free — `buildResult` mints its
+    components straight off the return type, so a comptime one's `⇝` rides into
+    `sctx` through `readCWith` — and this is the symbolic path paying the same
+    fact, so that ONE rule reads both.
+
+    Only the first component takes a mode; a Σ chain's TAIL has no binder to
+    carry one (suspensions.md §2.5's surviving spelling), so it is left alone and
+    reads as runtime, which is what ⇒ does with it today. -/
+def reattachSigmaMode : Term → List (String × Term) → List (String × Term)
+  | .sigmaT _ dom _, (x, τ) :: rest =>
+    if Term.domComptime dom then (x, .cmpT τ) :: rest else (x, τ) :: rest
+  | _, ftys => ftys
 
 /-- Mint the field σ's for a symbolic branch. `Refl` is special (§10): it has
     no fields, and it unifies the `Id` endpoints (`reflUnify`) rather than
@@ -2811,16 +2899,17 @@ def mintFieldSyms (fuel : Nat) (scrutσ : Nat) (br : Branch) : M (List Nat) := d
   match (← get).sctx.lookup scrutσ with
   | none => br.binders.mapM (fun _ => freshSym)     -- untyped scrutinee (M3)
   | some τ =>
+    let τw := (Pure.whnf fuel τ).stripCmp
     if br.ctor == "Refl" then
-      match Pure.whnf fuel τ with
+      match τw with
       | .idT _ a b => do reflUnify fuel a b; pure []            -- unify endpoints, no fields
       | _ => throwErr "match: Refl branch on a non-Id scrutinee"
     else match Pure.ctorSig br.ctor with
     | none => throwErr s!"match: unknown constructor '{br.ctor}'"
     | some sig =>
-      match sig.fieldTypes (Pure.whnf fuel τ) with
+      match sig.fieldTypes τw with
       | none => throwErr s!"match: constructor '{br.ctor}' does not belong to the scrutinee's type"
-      | some ftys => typeFieldSyms fuel br.binders ftys
+      | some ftys => typeFieldSyms fuel br.binders (reattachSigmaMode τw ftys)
 
 /-- **The branch equation for a stuck split** (M23) — M18's second layer, on the
     imperative side. At an ordinary split, ⇜ rewrites every OCCURRENCE of the
@@ -2840,7 +2929,7 @@ def mintStuckEqn (scrutσ : Nat) (spine : Term) (ctor : String) (σs : List Nat)
   | none => pure σe                                      -- untyped scrutinee: untyped equation
   | some τ =>
     modify (fun s => { s with
-      sctx := (σe, .idT τ spine (.ctorApp ctor (σs.map Term.sym))) :: s.sctx })
+      sctx := (σe, .idT τ.stripCmp spine (.ctorApp ctor (σs.map Term.sym))) :: s.sctx })
     pure σe
 
 /-- Symbolic **owned** branch entry (§3.2): mint (σ-typed) fresh σ's for the
@@ -2857,10 +2946,12 @@ def symOwnedSetup (fuel : Nat) (scrut : Var) (scrutσ : Nat) (stuck : Option Ter
     | some _, none => pure (some (.ctor "Refl" []))
     | some _, some spine => do
       pure (some (.know (Term.sym (← mintStuckEqn scrutσ spine br.ctor σs))))
+  let fvs := σs.map (fun σ => Val.know (Term.sym σ))
+  checkArmModes br.ctor br.binders fvs                   -- M33a: §2.1 reaches the arm
   openScope (armSeamed? br.body)                         -- M31 Stage 0: the arm is a scope
   writeC (.var scrut) (.know (.ctorApp br.ctor (σs.map Term.sym)))   -- ⇜ everywhere
   setSlot scrut .bot                                     -- owned consume
-  bindFields br.binders (σs.map (fun σ => Val.know (Term.sym σ)))
+  bindFields br.binders fvs
   match eqn, eqv with | some h, some v => bindSlot h v | _, _ => pure ()
   pure br.body
 
@@ -2873,6 +2964,7 @@ def symOwnedSetup (fuel : Nat) (scrut : Var) (scrutσ : Nat) (stuck : Option Ter
 def symBorrowSetup (fuel : Nat) (scrut : Var) (ℓ : Nat) (scrutσ : Nat)
     (eqn : Option Var) (br : Branch) : M Term := do
   let σs ← mintFieldSyms fuel scrutσ br
+  checkArmModes br.ctor br.binders (σs.map (fun σ => Val.know (Term.sym σ)))  -- M33a
   openScope (armSeamed? br.body)                                 -- M31 Stage 0: the arm is a scope
   writeC (.deref (.var scrut)) (.know (.ctorApp br.ctor (σs.map Term.sym)))  -- ⇜ at payload
   let ℓs ← br.binders.mapM (fun _ => freshLoan)
@@ -2896,7 +2988,7 @@ def checkExhaustive (fuel : Nat) (scrutσ : Nat) (branches : List Branch) : M Un
   match (← get).sctx.lookup scrutσ with
   | none => pure ()                                   -- untyped scrutinee: skip
   | some τ =>
-    match Pure.typeCtors (Pure.whnf fuel τ) with
+    match Pure.typeCtors (Pure.whnf fuel τ).stripCmp with
     | none => pure ()                                 -- unknown type: nothing to check against
     | some ctors =>
       let covered := branches.map (·.ctor)
@@ -3477,7 +3569,7 @@ def valBinderModes : Nat → Val → Nat → M (List Bool)
           match head.symOf? with
           | some σ =>
             match (← get).sctx.lookup σ with
-            | some σty => pure (binderModes fuel σty (n + 1))
+            | some σty => pure (binderModes fuel σty.stripCmp (n + 1))
             | none => pure (List.replicate (n + 1) false)
           | none => pure (binderModes fuel t (n + 1))
         | _ => pure (List.replicate (n + 1) false)
@@ -4441,7 +4533,7 @@ mutual
             match (← get).sctx.lookup σ with
             | none => throwErr s!"call: callee {x.name} is σ{σ}, which has no type in sctx"
             | some σty => do
-              let resTy ← instantiatePi fuel σty argVals
+              let resTy ← instantiatePi fuel σty.stripCmp argVals
               match Pure.whnf fuel resTy with
               | .pi _ d _ => throwErr s!"call: partial application — σ{σ} still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4)"
               | resTy => do
