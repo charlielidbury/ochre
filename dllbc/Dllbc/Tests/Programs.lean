@@ -2060,9 +2060,26 @@ def demandMatch : Term := prog{
 -- The checker accepts: to it `r`'s tail is an ordinary `σ : List Nat` and the
 -- split is the ordinary symbolic one.
 example : progOk demandMatch = true := by native_decide
--- The run does not: `match: no branch for constructor '§rec'`. **Flips at commit
--- 3.**
-example : progRuns demandMatch = false := by native_decide
+-- **FLIPPED AT COMMIT 3.** It used to be `false` — the run died at "match: no
+-- branch for constructor '§rec'", because the tail held an unreduced recursor
+-- spine. `Build(1)` now evaluates to `Cons Z (Cons (S Z) Nil)` and the match on
+-- the tail is an ordinary match on an ordinary list.
+example : progRuns demandMatch = true := by native_decide
+
+-- …and the recursion really did run all the way to the end, which is the
+-- ruling's own sentence and what says the two lines above are not the match
+-- being skipped. `Build(3)` is four `Cons` cells deep, the last of them the base
+-- arm's `Cons(1, Nil)`.
+def buildsToEnd : Term := prog{
+  fn Build [n] (n : Nat) -> List Nat {
+    match n { Z => Cons(1, Nil), S(k) => Cons(0, Build(k)) }
+  };
+  let r = Build(3);
+  () }
+example : (match runProgram buildsToEnd with
+   | .ok e => (e.lookup "r").map Val.pretty
+   | .error _ => none)
+  = some "Cons Z (Cons Z (Cons Z (Cons (S Z) Nil)))" := by native_decide
 
 /-! ## §B. Demand it as KNOWLEDGE — and this is the clean differential violation
 
@@ -2081,16 +2098,18 @@ def demandLen : Term := prog{
   () }
 
 example : progOk demandLen = true := by native_decide
--- **Flips at commit 3.** The pair IS the assertion: neither line alone says
--- anything, and together they say the machines do not agree.
-example : progRuns demandLen = false := by native_decide
+-- **FLIPPED AT COMMIT 3, AND THIS IS THE HEADLINE.** It used to be `false`. The
+-- pair was the assertion — neither line alone said anything, and together they
+-- said the machines did not agree about a program with no rule to appeal to.
+-- Now they agree, and the pair says THAT.
+example : progRuns demandLen = true := by native_decide
 
 /-! ## §C. Never demand it — and overwrite it through a borrow
 
-    Today this is laziness paying off: the tail is never forced, so writing over it
-    costs nothing and the program is fine. Under eagerness it becomes an ordinary
-    overwrite of an ordinary list, and the verdict does not move — which is the
-    point of pinning it now, so that commit 3 can show it did not. -/
+    Before commit 3 this was laziness paying off: the tail was never forced, so
+    writing over it cost nothing. **Its MEANING changed and its verdict did not**,
+    which is what it was pinned for: the tail is a finished list now and this is an
+    ordinary overwrite of one. -/
 
 def overwriteTail : Term := prog{
   fn Build [n] (n : Nat) -> List Nat {

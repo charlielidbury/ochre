@@ -4609,22 +4609,52 @@ mutual
       let (headName, sargs) := (Val.asRecSpine? f).getD ("", [])
       let all := sargs ++ args
       match (Term.const headName : Term), all with
-      | .const "natRec", motive :: z :: s :: n :: rest =>
+      -- **`ih` IS EAGER AT A DATA MOTIVE** (M33b; user ruling, suspensions.md §5).
+      -- *"Passing a Nat to natRec causes the Nat to get recursed over all the way
+      -- to the end … I don't see why we would want anything unevaluated leaving
+      -- the natRec; this is not a lazy language."* A recursor spine at a CONCRETE
+      -- scrutinee is a redex, never a value, and the one place a
+      -- concrete-scrutinee spine used to survive as one is here: the `ih` handed
+      -- to a step arm. Running it BEFORE entering the arm is call-by-value, and it
+      -- is what stops `Cons(0, ih)` from putting a `§rec` — a state form with no
+      -- `Term` — inside a constructor the program declared `List Nat`.
+      --
+      -- **The discriminator is the base arm's unit binder**, which is the right
+      -- question asked in the shortest way: an arm binds `U§` iff the motive owes
+      -- it nothing, i.e. iff the recursion at the predecessor runs to a FINISHED
+      -- value with nothing left to apply. When it does not — a Π motive, whose
+      -- arms take the residual telescope (`SetAt`'s `v`, `i`, `x`) — the recursion
+      -- cannot run without arguments nobody has yet, and the spine at the
+      -- predecessor stays what §7's convergence argument says a recursive
+      -- occurrence is: the applicable self-view. That is not laziness surviving in
+      -- a corner. **A function value IS finished**, which is the same sentence the
+      -- ruling makes about data.
+      --
+      -- Eagerness costs fuel proportional to the recursion's DEPTH where the lazy
+      -- form deferred it, and costs it even when the arm never cites `ih`. That is
+      -- what eager means; it is not a defect to optimize away here.
+      | .const "natRec", motive :: z :: s :: n :: rest => do
         match Val.asCtor? (whnfV fuel n) with
         | some ("Z", []) => applyRest fuel z rest
-        | some ("S", [m]) =>
-          applyRest fuel s (m :: Val.recSpine "natRec" [motive, z, s, m] :: rest)
+        | some ("S", [m]) => do
+          let sp := Val.recSpine "natRec" [motive, z, s, m]
+          let ihv ← if z.armTakesUnit then applyR fuel sp [] else pure sp
+          applyRest fuel s (m :: ihv :: rest)
         | _ => stuckRec fuel "natRec" [motive, z, s, whnfV fuel n] rest
       | .const "boolRec", motive :: t :: e :: b :: rest =>
         match Val.asCtor? (whnfV fuel b) with
         | some ("True", []) => applyRest fuel t rest
         | some ("False", []) => applyRest fuel e rest
         | _ => stuckRec fuel "boolRec" [motive, t, e, whnfV fuel b] rest
-      | .const "listRec", a :: motive :: pn :: pc :: l :: rest =>
+      -- The same eager `ih`, at the same discriminator (the `Nil` arm's unit
+      -- binder) — see the `natRec` case above for why.
+      | .const "listRec", a :: motive :: pn :: pc :: l :: rest => do
         match Val.asCtor? (whnfV fuel l) with
         | some ("Nil", []) => applyRest fuel pn rest
-        | some ("Cons", [h, tl]) =>
-          applyRest fuel pc (h :: tl :: Val.recSpine "listRec" [a, motive, pn, pc, tl] :: rest)
+        | some ("Cons", [h, tl]) => do
+          let sp := Val.recSpine "listRec" [a, motive, pn, pc, tl]
+          let ihv ← if pn.armTakesUnit then applyR fuel sp [] else pure sp
+          applyRest fuel pc (h :: tl :: ihv :: rest)
         | _ => stuckRec fuel "listRec" [a, motive, pn, pc, whnfV fuel l] rest
       -- Not a recursor redex. A pure λ (or a λ-headed spine) is β; applied to
       -- nothing — the under-applied `natRec P z s` a seal ascribes, or a recursor
@@ -4676,7 +4706,11 @@ mutual
   /-- A recursor that did not ι. With nothing owed it is a VALUE — the abstract
       self-view `ih` at a symbolic predecessor, which is precisely what §7's
       convergence argument says a recursive occurrence must be. With arguments
-      owed it is arms-as-bodies checking at a symbolic scrutinee. -/
+      owed it is arms-as-bodies checking at a symbolic scrutinee.
+
+      **A SYMBOLIC scrutinee is why this survives M33b's eager rule.** ι cannot
+      fire without a constructor, so there is nothing to run to the end; this is
+      checking's `ih`, and it is correct. -/
   def stuckRec : Nat → String → List Val → List Val → M Val
     | _, head, spine, [] => pure (Val.recSpine head spine)
     | _, head, spine, _ =>
