@@ -1411,6 +1411,10 @@ assumption-indexed evaluation (rejected with precedent, §3).
 > (Arrays.lean:1445) and both `S32Cook` directions (KernelFloor 918/922, 977/981)
 > confirmed present each time; green with it restored. M33b adds nothing to the
 > sabotage surface. `S32Cook` both directions, `S32Seal` §B/§C and M33a's
-> arm-check discriminator green throughout. **`Traces.lean` is byte-unchanged and
-> no golden moved anywhere** — the expected shape (a spine render becoming a
-> finished list) never materialized, for (7)'s reason.
+> arm-check discriminator green throughout. **`Traces.lean` is byte-unchanged**:
+> the executing machine's every trace, environment and comparison is what it was,
+> and the shape this milestone expected to move there — a spine render becoming a
+> finished list — never materialized, for (7)'s reason. Two goldens DID move, both
+> outside `Traces` and both named in (8): `slotOf b1 "f"` takes `Ih`, and
+> `runExec m1` goes from a zeroed list to an error. Said this way rather than as
+> "no golden moved", which would be false.
