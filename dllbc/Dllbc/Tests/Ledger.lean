@@ -271,8 +271,17 @@ def deepMotT : Term := prog{ λ (n : Nat). Id Nat Z Z }
 /-- `recDeep`, hand-written as a sealed recursor. The step arm keeps the corpus's
     own inner `match a` — so the two-constructors-down SHAPE is still there — and
     reaches `ih` from inside it, which is exactly the move the macro refuses to
-    make on the author's behalf. -/
-def deepBaseArm : Term := Term.lamTel [] (.ctorApp "Refl" [])
+    make on the author's behalf.
+
+    **The base arm binds the unit binder** (M33b). It was written `Term.lamTel []
+    ⟨body⟩` — an empty telescope, which the one-λ fold turns into the body itself —
+    and that is now refused: an arm that is not a λ is not a suspension, so it runs
+    when the SPINE is formed rather than when ι selects it. The binder the fold ate
+    is named here, exactly as `fnElab` names it for a `fn`; `deepBaseArmBare` below
+    keeps the old spelling as the rejected twin. -/
+def deepBaseArm : Term :=
+  Term.lamTel [(unitBinder, .cmpT (.const "Unit"))] (.ctorApp "Refl" [])
+def deepBaseArmBare : Term := Term.lamTel [] (.ctorApp "Refl" [])
 def deepStepArm : Term :=
   -- `ih`'s domain is the motive at the predecessor, and `deepMotT` is CONSTANT —
   -- which is the whole content of the correction this section records: `ih : P a`
@@ -286,6 +295,14 @@ def deepRec : Term :=
 def recDeepProg : Term := .letIn ⟨900, "F"⟩ (.seal 0 deepRec deepSealT) .unit
 
 example : progOk recDeepProg = true := by native_decide
+
+/-- …and the same program with the base arm left BARE is refused, naming the
+    wrap. The two differ in one binder, which is what makes the accept above about
+    the arm's shape rather than about the program. -/
+def recDeepBare : Term :=
+  .letIn ⟨900, "F"⟩ (.seal 0
+    (.app (.app (.app (.const "natRec") deepMotT) deepBaseArmBare) deepStepArm) deepSealT) .unit
+example : progRejects recDeepBare "is a bare term, not a λ" = true := by native_decide
 
 /-- **The seal really audits it**, so the acceptance above is not the node waving
     a term through: ascribe the same recursor at a Π that claims `Id Nat Z (S Z)`

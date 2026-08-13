@@ -512,6 +512,57 @@ def Term.lamImperative : Term → Bool
     let (tel, body) := Term.peelLams t
     Term.imperative body || tel.any (fun p => p.1.bindsSlot)
 
+/-! ## The unit binder — what a λ with nothing to bind binds
+
+    **One λ former means a λ has a binder**, so `Term.lamTel [] body` IS `body`
+    and a suspension with nothing to suspend on cannot be spelled. Two places in
+    the language need one anyway, and they need the same one:
+
+      * a **nullary `fn`** (M32 R2, suspensions.md §1) — without it `fn F () -> T
+        { … }` and the ascription `(e : T)` are the same term and the seal cannot
+        tell a function from an ascribed expression;
+      * a **recursor arm with an empty residual telescope** (M33b) — `fn Build
+        [n] (n : Nat) -> List Nat` gives its `Z` arm no binders, and a bare term
+        in arm position is not a suspension at all: `readRecArgs` ⇒-READS it when
+        the spine is formed, so its body runs before ι has selected anything and
+        every ι thereafter shares the one value it produced. The wrapper is what
+        makes an arm a body that waits, which is the property every OTHER arm has
+        for free.
+
+    It is **comptime and unwritable**: capitalized, so its `⇝Unit` domain and
+    `piPeel`'s mode check agree and the argument is ⇝-read (nothing is consumed by
+    applying a λ that binds nothing); and spelled with a `§`, which no Lean `ident`
+    can contain, so no program can bind, shadow or cite it.
+
+    That unwritability is what answers the ambiguity `S26Rec` §A4 records — "`λ(){
+    e }` is a thunk, and at ι there is no way to tell *the arm applied to no
+    arguments* from *the arm with nothing owed*". There is now: the arm SAYS which
+    it is, in a binder only the elaboration can write. -/
+
+/-- The unit binder's name. Reserved: `§` is not an `ident` character. -/
+def unitBinderName : String := "U§"
+
+/-- The unit binder. Its id is `0` — the positional convention a one-parameter
+    telescope has, and harmless for an arm because an arm that takes this binder
+    is by construction one whose residual telescope is EMPTY, so there is no
+    sibling parameter for `0` to collide with. It BINDS A SLOT, which is what
+    routes such an arm through ⇒-entry (a fresh frame per ι) rather than through
+    β. -/
+def unitBinder : Var := ⟨0, unitBinderName⟩
+
+/-- Is this the unit binder? Asked of an arm's leading binder by ι (does it owe a
+    `()`?) and by the two contract derivations (does its Π gain a `Unit`?). -/
+def Var.isUnitBinder (x : Var) : Bool := x.name == unitBinderName
+
+/-- Does this peeled telescope lead with the unit binder? -/
+def Term.telTakesUnit (tel : List (Var × Term)) : Bool :=
+  match tel with | (x, _) :: _ => x.isUnitBinder | _ => false
+
+/-- The contract a unit-binding λ takes: its own return type behind one `⇝Unit`
+    Π. The binder name is a `§`-name because `piPeel` substitutes the λ's own
+    binder for it and nothing ever reads this one. -/
+def Term.unitPi (ret : Term) : Term := .pi "§u" (.cmpT (.const "Unit")) ret
+
 /-- **A suspension, spelled as a term** (M32 R2): the raw body under the bindings
     it captured, as the `let`-chain the evaluator already knows how to perform.
 

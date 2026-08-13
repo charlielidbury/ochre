@@ -3592,6 +3592,18 @@ def runtimeRecSpine? (t : Term) : Option (String × List Term) :=
     would be the checker's rule enforced twice, in execution. -/
 def preDom (x : Var) (dom : Term) : Term := if x.isComptime then .cmpT dom else dom
 
+/-- **Does ι owe this arm a `()`?** (M33b.) An arm the motive owes nothing binds
+    the unwritable `U§ : ⇝Unit` (`Syntax.unitBinder`) so that it is a suspension
+    rather than a bare term, and ι is what forces it. Reading the answer off the
+    arm's own leading binder is what resolves `S26Rec` §A4's ambiguity — "the arm
+    applied to no arguments" and "the arm with nothing owed" are now different
+    terms, and only the elaboration can write the first. -/
+def Val.armTakesUnit : Val → Bool
+  -- (`nd` rather than `node`, which is a `Val` constructor and would be read as
+  -- one inside this namespace.)
+  | .closure _ nd _ => Term.telTakesUnit (Term.peelLams nd).1
+  | _ => false
+
 /-- The Π each argument of a sealed recursor spine is checked against, aligned
     with the spine's arguments (`none` at the motive and the type parameter, which
     are not arms). `u` is the ascription; `arms` are the argument VALUES, consulted
@@ -3607,6 +3619,12 @@ def recArmPis (c : String) (u : Term) (arms : List Val) : List (Option Term) :=
     -- speaks of the λ's binders (`sealRec` substituted them in).
     let wrap : List (Var × Term) → Term → Term := fun pre ret =>
       pre.foldr (fun p acc => .pi "§pre" (preDom p.1 p.2) acc) ret
+    -- **A base arm's contract grows the unit binder when the arm took one**
+    -- (M33b) — `checkArm`'s rule, on the executing side, read off the same place:
+    -- the arm's own leading binder. Without it `applyClosure`'s `calleeRetTy`
+    -- peels the ascription at a name the Π does not have.
+    let baseTy : Nat → Term → Option Term := fun i ty =>
+      some (if Term.telTakesUnit ((arms.get? i).map leading |>.getD []) then Term.unitPi ty else ty)
     match c with
     | "natRec" =>
       -- args: P z s
@@ -3616,7 +3634,7 @@ def recArmPis (c : String) (u : Term) (arms : List Val) : List (Option Term) :=
           some (wrap [(k.1, scrutDom), (ih.1, atCtor (.var k.1))]
                  (atCtor (.ctorApp "S" [.var k.1])))
         | _ => none
-      [none, some (atCtor (.ctorApp "Z" [])), step]
+      [none, baseTy 1 (atCtor (.ctorApp "Z" [])), step]
     | "listRec" =>
       -- args: A P pn pc
       let elemTy : Term := match scrutDom with
@@ -3628,9 +3646,9 @@ def recArmPis (c : String) (u : Term) (arms : List Val) : List (Option Term) :=
           some (wrap [(h.1, elemTy), (tl.1, scrutDom), (ih.1, atCtor (.var tl.1))]
                  (atCtor (.ctorApp "Cons" [.var h.1, .var tl.1])))
         | _ => none
-      [none, none, some (atCtor (.ctorApp "Nil" [])), cons]
+      [none, none, baseTy 2 (atCtor (.ctorApp "Nil" [])), cons]
     | "boolRec" =>
-      [none, some (atCtor (.ctorApp "True" [])), some (atCtor (.ctorApp "False" []))]
+      [none, baseTy 1 (atCtor (.ctorApp "True" [])), baseTy 2 (atCtor (.ctorApp "False" []))]
     | _ => []
   | _ => []
 
@@ -4624,14 +4642,36 @@ mutual
           if args.isEmpty then pure v
           else throwErr s!"call: too many arguments — {v.pretty} is not a function (expected a λ, a runtime λ, or a recursor spine)"
   termination_by fuel _ _ => (fuel, 2, 0)
-  /-- ι's continuation: the selected arm, applied to whatever the caller still
-      owed. **With nothing owed the arm IS the value** — `natRec P z s Z` at a
-      motive that computes a function type is that function, not a call of it —
-      and keeping that distinct from `applyR arm []` is what lets a zero-argument
-      value-callee call (`f()`) still be the partial application it is. -/
+  /-- ι's continuation: the selected arm, applied to the `()` it owes and to
+      whatever the caller still owed.
+
+      **The `()` is the M33b half.** An arm the motive owes nothing binds the
+      unwritable `U§ : ⇝Unit` so that it is a suspension at all, and this is where
+      it is forced: ι selects the arm and hands it its unit, the body runs, and
+      what leaves the recursor is a value rather than a λ that has not been
+      entered. One site rather than five, because a STEP arm never binds it (it
+      leads with the predecessor and `ih`), so asking every arm costs nothing and
+      spares the two recursors' five ι rules a conditional each.
+
+      **With nothing owed the arm IS the value** — `natRec P z s Z` at a motive
+      that computes a function TYPE is that function, not a call of it — and
+      keeping that distinct from `applyR arm []` is what lets a zero-argument
+      value-callee call (`f()`) still be the partial application it is.
+
+      Since M33b that case no longer covers a NO-BINDER arm: such an arm is owed
+      its unit, so `rest` is never empty for one. What is left of it is the
+      Π-motive shape above, and the corpus does not reach that either — measured
+      by making this line throw, which leaves the whole corpus green. It is kept
+      rather than deleted because it is the value side of the same coin the eager
+      rule turns over: a function value IS finished, so an arm that is one leaves
+      the recursor as it stands. Deleting it would make that shape a partial
+      application error instead, which is a different claim about a live
+      semantics and not a tidy-up. -/
   def applyRest : Nat → Val → List Val → M Val
-    | fuel, arm, [] => pure (whnfV fuel arm)
-    | fuel, arm, rest => applyR fuel arm rest
+    | fuel, arm, rest =>
+      match (if arm.armTakesUnit then Val.ctor "unit" [] :: rest else rest) with
+      | [] => pure (whnfV fuel arm)
+      | rest' => applyR fuel arm rest'
   termination_by fuel _ _ => (fuel, 3, 0)
   /-- A recursor that did not ι. With nothing owed it is a VALUE — the abstract
       self-view `ih` at a symbolic predecessor, which is precisely what §7's
@@ -5080,7 +5120,30 @@ mutual
       | some (b, _) =>
         throwErr s!"seal: recursor arm binder '{b.1.name}' is annotated with a domain the recursor's premise does not give it. The leading binders of an arm are the predecessor and `ih` — the sealed self-view AT THE PREDECESSOR (§7) — and their types are derived from the motive, not chosen: an `ih` annotated at the arm's own level would be the recursion available where §8's guard used to forbid it."
       | none =>
-        match piAgree (binders.drop pre.length) ty with
+        -- **THE UNIT BINDER IS PART OF THE CONTRACT** (M33b). An arm the motive
+        -- owes nothing binds `U§ : ⇝Unit` so that it is a suspension at all
+        -- (`Syntax.unitBinder`), and the contract the seal checks it against has
+        -- to grow the same binder or `piAgree` would be asked to peel a Π off a
+        -- `List Nat`. Derived here rather than transcribed, from the arm's own
+        -- spelling — the binder is unwritable, so its presence is the elaboration
+        -- saying "nothing was owed" and nothing else can say it. `recArmPis` does
+        -- the same thing on the executing side, and the two agree because they
+        -- both call `Term.unitPi`.
+        -- **EVERY ARM IS A λ** (M33b), and a bare term in arm position is refused
+        -- rather than silently wrapped. It is not a shorthand for the λ: an arm
+        -- that is not a suspension is ⇒-READ when the spine is FORMED, so its body
+        -- runs before ι has selected anything and every ι thereafter shares the one
+        -- value it produced. Wrapping it here would also have to be done again on
+        -- the executing side, and a form that two machines wrap independently is
+        -- the asymmetry M33a and Σ0 spent two stages closing — so the wrap is the
+        -- ELABORATION's, and one spelling reaches both machines.
+        -- Measured cost of refusing over the corpus: one hand-written term
+        -- (`Ledger.deepBaseArm`), already written as `Term.lamTel []`.
+        if binders.isEmpty then
+          throwErr s!"seal: this recursor arm is a bare term, not a λ. Every arm is a λ, because an arm is a BODY and a body that is not suspended runs when the spine is formed rather than when ι selects it. An arm the motive owes nothing binds the unit binder — write it `Term.lamTel [(unitBinder, .cmpT (.const \"Unit\"))] ⟨body⟩`, which is what `fn`'s elaboration writes for you."
+        let owed := binders.drop pre.length
+        let ty := if Term.telTakesUnit owed then Term.unitPi ty else ty
+        match piAgree owed ty with
         | .error e => throwErr e
         | .ok (tel, ret) => checkRFnBody fuel (pre ++ tel) ret body
   termination_by fuel _ _ _ _ => (fuel, 10, 0)

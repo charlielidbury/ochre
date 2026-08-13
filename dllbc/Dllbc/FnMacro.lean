@@ -353,13 +353,24 @@ def hoist (k : Nat) (tel : List (Var × Term)) : Except String (List (Var × Ter
     `λ (U : Unit)`" — and this is it, arriving here rather than at R4 because the
     fold is what forces it.
 
-    The binder is **comptime and unwritable**: capitalized, so `piPeel`'s mode
-    check agrees with the `⇝Unit` domain `markDom` gives it and the argument is
-    ⇝-read (a nullary function consumes nothing, which is the property being
-    preserved); and spelled with a `§`, which no Lean `ident` can contain, so no
-    program can bind or shadow it. `retarget` supplies the `()` at every call
-    site, so the desugar is invisible to the surface in both directions. -/
-def nullaryVar : Var := ⟨0, "U§"⟩
+    **The binder itself moved to `Syntax.lean` at M33b** (`unitBinder`), because a
+    recursor arm with an empty residual telescope needs the same one and the
+    kernel has to recognize it: ι asks whether an arm owes a `()`, and both
+    contract derivations ask whether its Π gains a `Unit`. `retarget` supplies the
+    `()` at every no-argument call site, so the desugar stays invisible to the
+    surface in both directions. -/
+abbrev nullaryVar : Var := unitBinder
+
+/-- **An arm's telescope, with the unit binder supplied when it would be empty**
+    (M33b, suspensions.md §5's ruling).
+
+    A base arm whose motive is DATA and whose residual telescope is empty binds
+    nothing, and `Term.lamTel [] body` is `body` — so without this the arm is a
+    bare term, `readRecArgs` ⇒-reads it when the SPINE is formed rather than when
+    ι selects it, and its value is computed once and shared by every application.
+    Every other arm is a λ; this is what makes that "every" true. -/
+def armTelOrUnit (tel : List (Var × Term)) : List (Var × Term) :=
+  if tel.isEmpty then [(unitBinder, markDom unitBinder (.const "Unit"))] else tel
 
 /-- `fn` as a macro: a `FnDef` becomes the term §7 says it is — `.seal ⟨recursor⟩
     ⟨Π⟩` when it recurses, `.seal ⟨runtime λ⟩ ⟨Π⟩` when it does not.
@@ -493,7 +504,7 @@ def fnElab (d : FnDef) : Except String Term := do
     -- difference in the spine.
     match elemTy? with
     | none =>
-      let zTel ← armTel restIds (Term.substP (paramName kv) (.ctorApp "Z" []) R)
+      let zTel := armTelOrUnit (← armTel restIds (Term.substP (paramName kv) (.ctorApp "Z" []) R))
       let sTel ← armTel restIds (Term.substP (paramName kv) (.ctorApp "S" [.var dec]) R)
       .ok (.seal 0
         (.app (.app (.app (.const "natRec") motive)
@@ -502,7 +513,7 @@ def fnElab (d : FnDef) : Except String Term := do
         piT)
     | some a =>
       let hd : Var := stepBs.head!
-      let zTel ← armTel restIds (Term.substP (paramName kv) (.ctorApp "Nil" []) R)
+      let zTel := armTelOrUnit (← armTel restIds (Term.substP (paramName kv) (.ctorApp "Nil" []) R))
       let sTel ← armTel restIds
         (Term.substP (paramName kv) (.ctorApp "Cons" [.var hd, .var dec]) R)
       .ok (.seal 0

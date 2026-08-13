@@ -769,6 +769,12 @@ example : progOk a3ok = true := by native_decide
 -- tidiness: `λ(){ e }` is a thunk, and at ι there is no way to tell "the arm
 -- applied to no arguments" from "the arm with nothing owed" — `applyRest` has to
 -- answer one way. Nothing in §7 wants a thunk.
+-- **THE AMBIGUITY IS ANSWERED AT M33b, and the answer is not "pick one".** An arm
+-- the motive owes nothing binds `U§ : ⇝Unit` (`Syntax.unitBinder`), which is
+-- UNWRITABLE — so the two readings are now different TERMS and ι reads which one
+-- it has off the arm's leading binder. §7 still wants no thunk; what it turned
+-- out to want is the opposite of one, since an arm that is not suspended runs
+-- when the spine is FORMED. The surface refusal below is unchanged.
 -- **The refusal moved to the surface** (M32 R2) and the reason is the fold: with
 -- one λ former the comma list is a TELESCOPE, so `λ(){ … }` has no binders and
 -- elaborates to its body — there is no term left for the kernel to refuse. The
