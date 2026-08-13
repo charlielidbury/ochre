@@ -3507,21 +3507,96 @@ def binderModes : Nat → Term → Nat → List Bool
     of a recursor whose arms are BODIES**. The layouts below are the only
     kernel knowledge that rule needs — everything else is the arms' own. -/
 
-/-- For a recursor constant: how many arguments precede the scrutinee, the index
-    of the **motive**, and the index of the **base arm**.
+/-- **A recursor's own type, as a moded Π** (M33c), and the only kernel knowledge
+    §7's rule needs.
 
-    The base arm is where a spine's binder MODES are read from — its binders are
-    exactly the trailing, motive-supplied ones (`z : P Z` and `s : Π k → P k →
-    P (S k)` end in the same telescope), and the arms are the only place a
-    runtime recursor has names at all.
+    What stood here was a numeric triple per recursor — how many arguments
+    precede the scrutinee, where the motive sits, where the base arm sits. Three
+    POSITIONS, tabulated, with the modes nowhere: ⇒ decided how to read each
+    argument by comparing an index against that table, while every other binder
+    in this language has spelled its mode on its own domain since M31 Stage A.
 
-    The motive index is here because of the rule below it: **⇒ does not evaluate
-    the motive.** -/
-def recLayout : String → Option (Nat × Nat × Nat)
-  | "natRec"  => some (3, 0, 1)   -- P z s ⟨n⟩          ; motive `P`, base arm `z`
-  | "listRec" => some (4, 1, 2)   -- A P pn pc ⟨l⟩      ; motive `P`, base arm `pn`
-  | "boolRec" => some (3, 0, 1)   -- P t f ⟨b⟩          ; motive `P`, base arm `t`
+    A recursor's type says all four things and is writable here, so the table IS
+    the type and the triple is READ off it (`recPreScrut`, `recMotiveIdx`,
+    `recBaseArmIdx`, `recArgDoms`).
+
+    **Every binder spells its mode on both halves**, exactly as `Term.clam`/
+    `Term.cpi` make a hand-written comptime binder do (M32 R3b): the motive is
+    comptime because a type is knowledge; the arms are comptime because §2.5 is
+    law that a function value arrives only where ⇝ reads it, and an arm is a
+    function value; the scrutinee is the one runtime binder, being the thing ι
+    splits on. **`Ih` is comptime with the arms**, and that is where M33b's
+    conditional rename goes — see `fnElab`.
+
+    The motive is a bound binder rather than a free name, so this is a closed
+    term and the schema can be read without instantiating anything. -/
+def recSig : String → Option Term
+  | "natRec" => some <|
+      .pi "P" (.cmpT (.pi "§n" (.const "Nat") .type))
+        (.pi "Z§" (.cmpT (.app (.pvar "P") (.ctorApp "Z" [])))
+          (.pi "S§" (.cmpT (.pi "k" (.const "Nat")
+                             (.pi "Ih" (.cmpT (.app (.pvar "P") (.pvar "k")))
+                               (.app (.pvar "P") (.ctorApp "S" [.pvar "k"])))))
+            (.pi "n" (.const "Nat") (.app (.pvar "P") (.pvar "n")))))
+  | "listRec" => some <|
+      .pi "A" (.cmpT .type)
+        (.pi "P" (.cmpT (.pi "§n" (.app (.const "List") (.pvar "A")) .type))
+          (.pi "Nil§" (.cmpT (.app (.pvar "P") (.ctorApp "Nil" [])))
+            (.pi "Cons§" (.cmpT (.pi "hd" (.pvar "A")
+                                  (.pi "tl" (.app (.const "List") (.pvar "A"))
+                                    (.pi "Ih" (.cmpT (.app (.pvar "P") (.pvar "tl")))
+                                      (.app (.pvar "P")
+                                        (.ctorApp "Cons" [.pvar "hd", .pvar "tl"]))))))
+              (.pi "l" (.app (.const "List") (.pvar "A")) (.app (.pvar "P") (.pvar "l"))))))
+  | "boolRec" => some <|
+      .pi "P" (.cmpT (.pi "§n" (.const "Bool") .type))
+        (.pi "True§" (.cmpT (.app (.pvar "P") (.ctorApp "True" [])))
+          (.pi "False§" (.cmpT (.app (.pvar "P") (.ctorApp "False" [])))
+            (.pi "b" (.const "Bool") (.app (.pvar "P") (.pvar "b")))))
   | _ => none
+
+/-- Is this a recursor this kernel knows? One question, one table. -/
+def isRecursor (c : String) : Bool := (recSig c).isSome
+
+/-- The signature's binder telescope, in spine order: `(name, domain)` per
+    argument, the scrutinee last. Peeled syntactically — the schema is literal
+    Π-structure with no redex in it, so nothing normalizes on the way and the
+    domains arrive wearing exactly the modes they were written with. -/
+def recTele (c : String) : List (String × Term) :=
+  let rec go : Nat → Term → List (String × Term)
+    | 0, _ => []
+    | fuel + 1, .pi x dom cod => (x, dom) :: go fuel cod
+    | _, _ => []
+  match recSig c with | some u => go 16 u | none => []
+
+/-- Each argument position's domain, aligned with the spine's arguments. This is
+    what `readRecArgs` reads a mode off, exactly as `binderModes` does for a λ. -/
+def recArgDoms (c : String) : List Term := (recTele c).map (·.2)
+
+/-- **Is this argument the MOTIVE?** — asked of its DOMAIN rather than of its
+    index, which is the whole of what M33c buys here: a motive is the argument
+    whose type is a type FAMILY over the scrutinee, and that is what a motive IS.
+    `listRec`'s `A` is a type and not a family, which is exactly what separates
+    the two comptime positions that are not arms. -/
+def recMotiveDom (dom : Term) : Bool :=
+  let rec lands : Nat → Term → Bool
+    | 0, _ => false
+    | _ + 1, .type => true
+    | fuel + 1, .pi _ _ cod => lands fuel cod
+    | _, _ => false
+  match dom.stripCmp with | .pi _ _ cod => lands 16 cod | _ => false
+
+/-- The motive's position in the spine, found by `recMotiveDom`. -/
+def recMotiveIdx (c : String) : Option Nat :=
+  (recArgDoms c).findIdx? recMotiveDom
+
+/-- How many arguments precede the scrutinee: every binder but the last, because
+    the scrutinee is the last thing a recursor takes. -/
+def recPreScrut (c : String) : Nat := (recTele c).length - 1
+
+/-- The base arm's position: the one after the motive. The arms follow their
+    motive in constructor order, so this needs no table either. -/
+def recBaseArmIdx (c : String) : Option Nat := (recMotiveIdx c).map (· + 1)
 
 /-- What ⇒ puts in a runtime recursor spine's **motive** slot.
 
@@ -3535,10 +3610,25 @@ def recLayout : String → Option (Nat × Nat × Nat)
     from the signature", i.e. from the seal's ascription, which the checker holds
     as a TERM.
 
-    So the slot is kept — one grammar, one arity, `recLayout` unchanged between
-    fragments — and filled with this marker, which no rule reads. The motive a
-    program writes is checked where it can be: at the seal, against the one
-    derived from the ascribed Π. -/
+    So the slot is kept — one grammar, one arity, one `recSig` between fragments
+    — and filled with this marker, which no rule reads. The motive a program
+    writes is checked where it can be: at the seal, against the one derived from
+    the ascribed Π.
+
+    **M33c MEASURED this rather than inheriting it, and it is the milestone's one
+    WALL.** Routing the motive through the ordinary comptime reader — which is
+    what a `⇝` position gets, and which for a λ is `mkClosure` — reds **34**
+    assertions (Boundaries 2, Direct 32, the build halting there so the count is
+    a floor). The mechanism is not the reading but the FORMATION check: §2.2 has
+    `mkClosure` ⇝-evaluate a pure λ's body as a check, `reflectC` descends λ
+    bodies and Π domains, and it refuses `.borrowT` by name — *"borrow type
+    `&mut (τ ↝ S)` is only valid at a telescope position"*, which is the error
+    the probe produced verbatim. **"Never read" is not "⇝-read", and this
+    calculus has no third marker to say the difference with.** So the motive
+    keeps its erasure and what changed is the REASON: it is no longer a position
+    compared against a table but a property of the signature's own domain
+    (`recMotiveDom` — the argument whose type is a family over the scrutinee),
+    read at the same place every other position's mode is read. -/
 def erasedMotive : Term := .const "@motive"
 
 /-- Collect a `Term` application spine into head and arguments (the mirror of
@@ -3555,7 +3645,7 @@ def collectAppT : Term → Term × List Term
 def runtimeRecSpine? (t : Term) : Option (String × List Term) :=
   match collectAppT t with
   | (.const c, args) =>
-    if (recLayout c).isSome && args.any (fun a => match a with
+    if isRecursor c && args.any (fun a => match a with
         | .lam _ _ _ => Term.lamImperative a | _ => false)
     then some (c, args) else none
   | _ => none
@@ -3719,7 +3809,7 @@ def calleeIsRuntime (st : St) (v : Val) : Bool :=
   match v with
   | v =>
     match valSpineHead v with
-    | some c => (recLayout c).isSome
+    | some c => isRecursor c
     | none =>
       match v.symOf? with
       | some σ => (st.fsig.lookup σ).isSome || (st.sctx.lookup σ).isSome
@@ -3756,12 +3846,13 @@ def valBinderModes : Nat → Val → Nat → M (List Bool)
     | v =>
       match Val.asRecSpine? v with
       | some (c, args) =>
-        match recLayout c with
+        match recBaseArmIdx c with
         | none =>
           match v with
           | .know t => pure (binderModes fuel t (n + 1))
           | _ => pure (List.replicate (n + 1) false)
-        | some (k, _, b) =>
+        | some b =>
+          let k := recPreScrut c
           if args.length == k then
             pure (false :: (← valBinderModes fuel (args.getD b .bot) n))
           else if args.length == k + 1 then
@@ -4289,7 +4380,7 @@ mutual
       | .app _ _ => do
         match runtimeRecSpine? t with
         | some (c, args) => do
-          let vs ← readRecArgs fuel (match recLayout c with | some (_, m, _) => m | none => 0) 0 args
+          let vs ← readRecArgs fuel ((recMotiveIdx c).getD 0) 0 args
           applyR fuel (Val.recSpine c vs) []
         | none => do
           -- **JUXTAPOSITION APPLICATION** (M27 β). The document's grammar has one
@@ -5205,7 +5296,7 @@ mutual
     | fuel, key, c, args, u => do
       match u with
       | .pi sn scrutDom R => do
-        let mi := match recLayout c with | some (_, m, _) => m | none => 0
+        let mi := (recMotiveIdx c).getD 0
         let derived : Term := .lam sn scrutDom R
         match args.get? mi with
         | none => throwErr s!"seal: {c} spine has no motive argument"
