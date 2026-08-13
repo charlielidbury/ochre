@@ -1576,3 +1576,23 @@ assumption-indexed evaluation (rejected with precedent, §3).
 >
 > So the capital half of the pair is a program that became writable, verified
 > rather than argued from the three `fn` programs' shape.
+>
+> **11. COST: none, A/B on `phasec` against the base tree, two runs each.** The
+> thing M33c adds to every recursor's road is a signature LOOKUP where there was a
+> numeric triple — `recArgDoms` per spine read, `recPreScrut`/`recBaseArmIdx` in
+> `valBinderModes` — so it was measured rather than reasoned about, on the
+> compiled harness at the counts M33 α item 3 established, against the M33b
+> worktree's own `phasec` at a43047b9:
+>
+>     CHECKING   list flagship    162, 163 ms  vs base 164, 164 ms  (mean of x50)
+>                array flagship   378, 380 ms  vs base 382, 384 ms  (mean of x50)
+>     EXECUTION  runQsA 9 elts   2037, 2034 ms vs base 2052, 2063 ms (mean of x3)
+>                runQsA 7 elts    448,  455 ms vs base 454,  458 ms  (mean of x3)
+>
+> Run-to-run variance within a binary is ~0.5%; the gap is ~1% and falls the same
+> way in all eight comparisons. **Reported as "no cost" rather than as a win**: a
+> consistent 1% between two separately compiled binaries is as easily layout as
+> mechanism, and the only mechanism this change offers is small (a `listRec` type
+> parameter is read by `readComptimeArg` now instead of the pure lift, which skips
+> a `whnf` per spine). M33 α's addendum is the precedent for not reading a small
+> delta as a finding.
