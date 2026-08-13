@@ -3673,65 +3673,86 @@ def runtimeRecSpine? (t : Term) : Option (String × List Term) :=
     would be the checker's rule enforced twice, in execution. -/
 def preDom (x : Var) (dom : Term) : Term := if x.isComptime then .cmpT dom else dom
 
+/-- An arm value's own leading binders — the one place ι and the contract
+    derivation read an arm's binder names, cases and unit binder off.
+    (`nd` rather than `node`, which is a `Val` constructor and would be read as
+    one inside this namespace.) -/
+def Val.armTel : Val → List (Var × Term)
+  | .closure _ nd _ => (Term.peelLams nd).1
+  | _ => []
+
 /-- **Does ι owe this arm a `()`?** (M33b.) An arm the motive owes nothing binds
     the unwritable `U§ : ⇝Unit` (`Syntax.unitBinder`) so that it is a suspension
     rather than a bare term, and ι is what forces it. Reading the answer off the
     arm's own leading binder is what resolves `S26Rec` §A4's ambiguity — "the arm
     applied to no arguments" and "the arm with nothing owed" are now different
     terms, and only the elaboration can write the first. -/
-def Val.armTakesUnit : Val → Bool
-  -- (`nd` rather than `node`, which is a `Val` constructor and would be read as
-  -- one inside this namespace.)
-  | .closure _ nd _ => Term.telTakesUnit (Term.peelLams nd).1
-  | _ => false
+def Val.armTakesUnit (v : Val) : Bool := Term.telTakesUnit v.armTel
 
-/-- The Π each argument of a sealed recursor spine is checked against, aligned
-    with the spine's arguments (`none` at the motive and the type parameter, which
-    are not arms). `u` is the ascription; `arms` are the argument VALUES, consulted
-    only for the arms' own binder names and cases. -/
-def recArmPis (c : String) (u : Term) (arms : List Val) : List (Option Term) :=
+/-- **A recursor arm's contract — the ONE derivation** (M33c), aligned with the
+    spine's arguments: `none` where the position is not an arm, otherwise the
+    **premise binders** the recursor gives that arm (§7 — the predecessor, and
+    `ih` at the predecessor) paired with the type the REST of the arm must have.
+
+    Both machines used to derive this, separately: `sealRec` computed `Term.substP
+    sn ⟨ctor⟩ R` per arm and handed the pieces to `checkArm`, `recArmPis`
+    computed the same and wrapped it into a Π, and M33b had to add the unit binder
+    to each of them BY HAND. There is one derivation now with two projections —
+    the seal checks the pair, the executing machine wraps it — and the only thing
+    they still do differently is the checking.
+
+    `armTels` is the arms' own leading binder telescopes, positionally: the seal
+    reads them off the λ, the executing machine off the closure. They supply the
+    binder NAMES and CASES (the types are this function's) and they are what
+    decides the unit binder — derived from the arm's own spelling rather than
+    transcribed, because that binder is unwritable and so its presence is the
+    elaboration saying "nothing was owed" (M33b). -/
+def recArmContracts (c : String) (u : Term) (armTels : List (List (Var × Term)))
+    : List (Option (List (Var × Term) × Term)) :=
   match u with
   | .pi sn scrutDom R =>
-    let leading : Val → List (Var × Term) := fun v =>
-      match v with | .closure _ node _ => (Term.peelLams node).1 | _ => []
     let atCtor : Term → Term := fun ct => Term.substP sn ct R
-    -- The arm's leading binders, wrapped back into Πs. Names are unwritable and
-    -- unused: `piPeel` substitutes each for the λ's own binder, and `R` already
-    -- speaks of the λ's binders (`sealRec` substituted them in).
-    let wrap : List (Var × Term) → Term → Term := fun pre ret =>
-      pre.foldr (fun p acc => .pi "§pre" (preDom p.1 p.2) acc) ret
-    -- **A base arm's contract grows the unit binder when the arm took one**
-    -- (M33b) — `checkArm`'s rule, on the executing side, read off the same place:
-    -- the arm's own leading binder. Without it `applyClosure`'s `calleeRetTy`
-    -- peels the ascription at a name the Π does not have.
-    let baseTy : Nat → Term → Option Term := fun i ty =>
-      some (if Term.telTakesUnit ((arms.get? i).map leading |>.getD []) then Term.unitPi ty else ty)
+    let tel : Nat → List (Var × Term) := fun i => (armTels.get? i).getD []
+    let entry : Nat → List (Var × Term) → Term → Option (List (Var × Term) × Term) :=
+      fun i pre ty =>
+        some (pre, if Term.telTakesUnit (tel i) then Term.unitPi ty else ty)
     match c with
     | "natRec" =>
       -- args: P z s
-      let step : Option Term :=
-        match (arms.get? 2).map leading with
-        | some (k :: ih :: _) =>
-          some (wrap [(k.1, scrutDom), (ih.1, atCtor (.var k.1))]
-                 (atCtor (.ctorApp "S" [.var k.1])))
-        | _ => none
-      [none, baseTy 1 (atCtor (.ctorApp "Z" [])), step]
+      [ none
+      , entry 1 [] (atCtor (.ctorApp "Z" []))
+      , match tel 2 with
+        | k :: ih :: _ =>
+          entry 2 [(k.1, scrutDom), (ih.1, atCtor (.var k.1))]
+                  (atCtor (.ctorApp "S" [.var k.1]))
+        | _ => none ]
     | "listRec" =>
       -- args: A P pn pc
       let elemTy : Term := match scrutDom with
         | .app (.const "List") a => a
         | _ => .const "Nat"
-      let cons : Option Term :=
-        match (arms.get? 3).map leading with
-        | some (h :: tl :: ih :: _) =>
-          some (wrap [(h.1, elemTy), (tl.1, scrutDom), (ih.1, atCtor (.var tl.1))]
-                 (atCtor (.ctorApp "Cons" [.var h.1, .var tl.1])))
-        | _ => none
-      [none, none, baseTy 2 (atCtor (.ctorApp "Nil" [])), cons]
+      [ none, none
+      , entry 2 [] (atCtor (.ctorApp "Nil" []))
+      , match tel 3 with
+        | h :: tl :: ih :: _ =>
+          entry 3 [(h.1, elemTy), (tl.1, scrutDom), (ih.1, atCtor (.var tl.1))]
+                  (atCtor (.ctorApp "Cons" [.var h.1, .var tl.1]))
+        | _ => none ]
     | "boolRec" =>
-      [none, baseTy 1 (atCtor (.ctorApp "True" [])), baseTy 2 (atCtor (.ctorApp "False" []))]
+      [ none
+      , entry 1 [] (atCtor (.ctorApp "True" []))
+      , entry 2 [] (atCtor (.ctorApp "False" [])) ]
     | _ => []
   | _ => []
+
+/-- The executing machine's projection of `recArmContracts`: the premise binders
+    wrapped back into Πs, so a sealed arm closure carries the contract §7 derives
+    for it. The Π binder names are unwritable and unused — `piPeel` substitutes
+    each for the λ's own binder, and the types already speak of the λ's binders
+    (the contract was derived at them). -/
+def recArmPis (c : String) (u : Term) (arms : List Val) : List (Option Term) :=
+  (recArmContracts c u (arms.map Val.armTel)).map (Option.map (fun p =>
+    p.1.foldr (fun q acc => .pi "§pre" (preDom q.1 q.2) acc) p.2))
 
 /-- Give a sealed recursor spine's arm closures the contracts `recArmPis` derives.
     Anything that is not an un-ascribed closure is left exactly as it was — a
@@ -5257,15 +5278,14 @@ mutual
       | some (b, _) =>
         throwErr s!"seal: recursor arm binder '{b.1.name}' is annotated with a domain the recursor's premise does not give it. The leading binders of an arm are the predecessor and `ih` — the sealed self-view AT THE PREDECESSOR (§7) — and their types are derived from the motive, not chosen: an `ih` annotated at the arm's own level would be the recursion available where §8's guard used to forbid it."
       | none =>
-        -- **THE UNIT BINDER IS PART OF THE CONTRACT** (M33b). An arm the motive
-        -- owes nothing binds `U§ : ⇝Unit` so that it is a suspension at all
-        -- (`Syntax.unitBinder`), and the contract the seal checks it against has
-        -- to grow the same binder or `piAgree` would be asked to peel a Π off a
-        -- `List Nat`. Derived here rather than transcribed, from the arm's own
-        -- spelling — the binder is unwritable, so its presence is the elaboration
-        -- saying "nothing was owed" and nothing else can say it. `recArmPis` does
-        -- the same thing on the executing side, and the two agree because they
-        -- both call `Term.unitPi`.
+        -- **THE UNIT BINDER IS PART OF THE CONTRACT** (M33b), and since M33c it
+        -- arrives in `ty` rather than being added here: an arm the motive owes
+        -- nothing binds `U§ : ⇝Unit` so that it is a suspension at all
+        -- (`Syntax.unitBinder`), and the contract has to grow the same binder or
+        -- `piAgree` would be asked to peel a Π off a `List Nat`. M33b did that in
+        -- TWO places, once per machine; `recArmContracts` does it in one, off the
+        -- arm's own spelling — the binder is unwritable, so its presence is the
+        -- elaboration saying "nothing was owed" and nothing else can say it.
         -- **EVERY ARM IS A λ** (M33b), and a bare term in arm position is refused
         -- rather than silently wrapped. It is not a shorthand for the λ: an arm
         -- that is not a suspension is ⇒-READ when the spine is FORMED, so its body
@@ -5279,7 +5299,6 @@ mutual
         if binders.isEmpty then
           throwErr s!"seal: this recursor arm is a bare term, not a λ. Every arm is a λ, because an arm is a BODY and a body that is not suspended runs when the spine is formed rather than when ι selects it. An arm the motive owes nothing binds the unit binder — write it `Term.lamTel [(unitBinder, .cmpT (.const \"Unit\"))] ⟨body⟩`, which is what `fn`'s elaboration writes for you."
         let owed := binders.drop pre.length
-        let ty := if Term.telTakesUnit owed then Term.unitPi ty else ty
         match piAgree owed ty with
         | .error e => throwErr e
         | .ok (tel, ret) => checkRFnBody fuel (pre ++ tel) ret body
@@ -5323,37 +5342,37 @@ mutual
           if !(Term.alphaEq written derived) then
             throwErr s!"seal: the recursor's motive is not the one its ascription derives. §7 derives the motive from the signature — the sealed Π with the scrutinee peeled off — so a `{c}` sealed at `Π (n : τ) → R` must be written with the motive `λ (n : τ). R` and this one is not."
           else
+            -- **THE CONTRACTS ARE THE SHARED DERIVATION'S** (M33c): the premise
+            -- binders and the type the rest of each arm must have, computed once
+            -- by `recArmContracts` and wrapped into a Π by `recArmPis` for the
+            -- executing machine. What is left here is the arms' SHAPE — which
+            -- position is which arm, and what to say when one is not a λ of the
+            -- right arity — plus the checking itself.
+            let contracts := recArmContracts c u (args.map (fun a => (Term.peelLams a).1))
+            let armAt : Nat → Option (List (Var × Term) × Term) :=
+              fun i => (contracts.get? i).getD none
             match c, args with
             | "natRec", [_, z, s] => do
-              match Term.peelLams z, Term.peelLams s with
-              | (zn, zbody), (k :: ihv :: rest, sbody) => do
-                checkArm fuel zbody [] zn (Term.substP sn (.ctorApp "Z" []) R)
-                checkArm fuel sbody [(k.1, scrutDom), (ihv.1, Term.substP sn (.var k.1) R)]
-                  (k :: ihv :: rest)
-                  (Term.substP sn (.ctorApp "S" [.var k.1]) R)
+              match Term.peelLams z, Term.peelLams s, armAt 1, armAt 2 with
+              | (zn, zbody), (sbs, sbody), some (zpre, zty), some (spre, sty) => do
+                checkArm fuel zbody zpre zn zty
+                checkArm fuel sbody spre sbs sty
                 sealMint fuel key (piBinderNames u) u
-              | _, _ => throwErr "seal: natRec's arms must be runtime λs, and the step arm must bind at least the predecessor and `ih` (§7's `λ f'. λ ih. λ v Hfuel. …`)"
+              | _, _, _, _ => throwErr "seal: natRec's arms must be runtime λs, and the step arm must bind at least the predecessor and `ih` (§7's `λ f'. λ ih. λ v Hfuel. …`)"
             | "listRec", [_, _, pn, pc] => do
-              match Term.peelLams pn, Term.peelLams pc with
-              | (nn, nbody), (h :: tl :: ihv :: rest, cbody) => do
-                checkArm fuel nbody [] nn (Term.substP sn (.ctorApp "Nil" []) R)
-                -- `h`'s type is the element type, read off the scrutinee's own
-                -- `List A`; anything else and the arm is not this recursor's.
-                let elemTy : Term := match scrutDom with
-                  | .app (.const "List") a => a
-                  | _ => .const "Nat"
-                checkArm fuel cbody
-                  [(h.1, elemTy), (tl.1, scrutDom), (ihv.1, Term.substP sn (.var tl.1) R)]
-                  (h :: tl :: ihv :: rest)
-                  (Term.substP sn (.ctorApp "Cons" [.var h.1, .var tl.1]) R)
+              match Term.peelLams pn, Term.peelLams pc, armAt 2, armAt 3 with
+              | (nn, nbody), (cbs, cbody), some (npre, nty), some (cpre, cty) => do
+                checkArm fuel nbody npre nn nty
+                checkArm fuel cbody cpre cbs cty
                 sealMint fuel key (piBinderNames u) u
-              | _, _ => throwErr "seal: listRec's arms must be runtime λs, and the Cons arm must bind at least the head, the tail and `ih`"
+              | _, _, _, _ => throwErr "seal: listRec's arms must be runtime λs, and the Cons arm must bind at least the head, the tail and `ih`"
             | "boolRec", [_, tArm, fArm] => do
-              match Term.peelLams tArm, Term.peelLams fArm with
-              | (tn, tbody), (fn, fbody) => do
-                checkArm fuel tbody [] tn (Term.substP sn (.ctorApp "True" []) R)
-                checkArm fuel fbody [] fn (Term.substP sn (.ctorApp "False" []) R)
+              match Term.peelLams tArm, Term.peelLams fArm, armAt 1, armAt 2 with
+              | (tn, tbody), (fn, fbody), some (tpre, tty), some (fpre, fty) => do
+                checkArm fuel tbody tpre tn tty
+                checkArm fuel fbody fpre fn fty
                 sealMint fuel key (piBinderNames u) u
+              | _, _, _, _ => throwErr "seal: boolRec's arms must be runtime λs"
             | _, _ => throwErr s!"seal: `{c}` is not a recursor this phase checks as a sealed function, or its spine is not the bare `{c} P ⟨arms⟩` (the scrutinee is the SEALED Π's own binder, so it must not be applied)"
       | _ => throwErr "seal: a recursor sealed as a function must be ascribed a Π — its first binder is the scrutinee the recursion is on (§7's derived motive)"
   termination_by fuel _ _ _ _ => (fuel, 11, 0)
