@@ -1547,3 +1547,32 @@ assumption-indexed evaluation (rejected with precedent, §3).
 > a recursor applied to nothing beyond its scrutinee is a VALUE of it. That is
 > this line. It stopped being a corner the corpus happens not to reach and became
 > the signature's codomain read literally.
+>
+> **8. Controls.** `abstractInto` sabotage (its nine `alphaEq` tests forced
+> false): **26** red — Direct 18, KernelFloor 7, Arrays 1 — the same count AND
+> the same shape as M33b's, M33 Σ0's and M33a's re-measurement, with `progOk
+> flagship` (Direct.lean:1605), `progOk sort2` (Arrays.lean:1445) and BOTH
+> `S32Cook` directions (KernelFloor 918/922 and 977/981) confirmed present in the
+> per-assertion list; green with it restored. **M33c adds nothing to the sabotage
+> surface**, which is the semantic check that none of this touches the
+> generalization sweep. `S32Cook` both directions, `S32Seal` §B/§C and M33a's
+> arm-check discriminator green throughout.
+>
+> **9. Enumerated flips, the whole list — and it is TWO ADDITIONS.** Against the
+> base, four files changed: `Machine.lean`, `FnMacro.lean`, `docs/suspensions.md`,
+> and `Tests/Ledger.lean` at **37 insertions, 0 deletions**. Every other file in
+> the corpus is untouched — `Traces.lean` included — so no existing verdict,
+> needle, golden or trace moved anywhere, and the additions are `recDeepCapProg`
+> (accepted) and `recDeepCapLie` (rejected). The three programs this milestone is
+> ABOUT — `recGood`, `recList`, `recCaller` — were already `progOk = true` and
+> still are; what moved is HOW they check, which is why item 5's probe is the
+> evidence and the green build is not.
+>
+> **10. THE PAIR'S "BEFORE" IS A READING, not an inference.** `recDeepCapProg`
+> was run against the BASE kernel (a43047b9), non-destructively, through the M33b
+> worktree's own build: **REJECTED**, at
+>
+>     fence: 'Ih' is a COMPTIME binder (capitalized — §6) and cannot be ⇒-moved
+>
+> So the capital half of the pair is a program that became writable, verified
+> rather than argued from the three `fn` programs' shape.
