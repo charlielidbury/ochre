@@ -88,17 +88,15 @@ the slice case; §19 move semantics for borrow-carrying data; escape rules for b
 in returned data. Acceptance test: `split_at_mut` as an ordinary library function
 returning a pair of borrows.
 
-**Addition (2026-08-13, from the runtime-erasure design discussion): shared
-references `&τ` join this constellation as its expressiveness payoff.** The user's
-option B: `&τ` with non-destructive reads would give functions CHOSEN or CREATED at
-runtime — stored in data, picked by a runtime `if`, and capturable by other λs
-(deliberately opening nbe.md §3's Fn/FnMut/FnOnce door; aliasing is what makes
-multi-use of an uncopyable value sound — note plain calling-twice already works,
-since calls locate rather than consume). Costs pulled in: the sharing discipline
-(many-shared-xor-one-mut), shared loans in the ledger, freezing so snapshots stay
-valid — exactly the machinery this refounding rebuilds, which is why B sequences on
-top of the shape/contract split rather than before it. The erasure need that raised
-it is answered separately by the lowering pass (option A, board task #35).
+**Shared references `&τ`: CUT from the roadmap (2026-08-13 user ruling).** "Let's
+not do shared refs at all for now — I think we can write a paper with just the
+`&mut`, then come back and add shared references if we have good enough motivating
+examples." Recorded so no agent picks it up: the sketched design (non-destructive
+reads; functions chosen/created at runtime; λ capture of runtime things via
+aliasing — nbe.md §3's door) stays here as context only, and returns to the roadmap
+only on the user's say-so with motivating examples in hand. The runtime-erasure
+lowering pass (option A) is likewise PARKED on board task #35 (type-theory
+iteration speed takes priority; the pass is a third artifact to keep in sync).
 
 ## pss/ (branch pss-2) — Problem D2: what to try next, what not to
 
