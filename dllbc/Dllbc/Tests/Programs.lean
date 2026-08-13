@@ -2130,6 +2130,59 @@ example : (match runProgram overwriteTail with
    | .ok e => (e.lookup "r").map Val.pretty
    | .error _ => none) = some "Cons Z Nil" := by native_decide
 
+/-! ## §D. Per-call freshness — two results, one of them mutated
+
+    A recursion is a function, so two calls of it are two values and writing
+    through one must not be visible in the other. That property is now
+    STRUCTURAL: the base arm is a λ, so its body is evaluated when ι selects it
+    rather than when the spine is formed, and each call's cells are that call's.
+
+    Honest about what this is and is not. The property held before M33b too, but
+    it was carried by copy-on-read (R1's `§rec` finding: a recursor spine is
+    index-kind, "found by executing-mode `m1` zeroing half a list"), and the base
+    arm's one value was built once at spine formation and copied thereafter. Both
+    mechanisms are live; what the pair below pins is the PROPERTY, so that a later
+    change to either mechanism has to say so here. -/
+
+/-- Mutate the cell the BASE ARM built. -/
+def twoBuildsBase : Term := prog{
+  fn Build [n] (n : Nat) -> List Nat {
+    match n { Z => Cons(1, Nil), S(k) => Cons(0, Build(k)) }
+  };
+  let r1 = Build(0);
+  let r2 = Build(0);
+  let b = &m r1;
+  match b { Nil => (), Cons(hd, tl) => { *hd := 9; () } };
+  () }
+
+example : progOk twoBuildsBase = true := by native_decide
+example : progRuns twoBuildsBase = true := by native_decide
+example : (match runProgram twoBuildsBase with
+   | .ok e => ((e.lookup "r1").map Val.pretty, (e.lookup "r2").map Val.pretty)
+   | .error _ => (none, none))
+  = (some "Cons (S (S (S (S (S (S (S (S (S Z))))))))) Nil", some "Cons (S Z) Nil")
+  := by native_decide
+
+/-- Mutate a cell the RECURSION built — the tail of `Build(1)`, which before M33b
+    was the unreduced spine. **`r2`'s rendering is the new part**: it is a
+    finished list where it would have read `Cons Z (natRec @motive …)`. -/
+def twoBuildsTail : Term := prog{
+  fn Build [n] (n : Nat) -> List Nat {
+    match n { Z => Cons(1, Nil), S(k) => Cons(0, Build(k)) }
+  };
+  let r1 = Build(1);
+  let r2 = Build(1);
+  let b = &m r1;
+  match b { Nil => (), Cons(hd, tl) => { *tl := Nil; () } };
+  () }
+
+example : progOk twoBuildsTail = true := by native_decide
+example : progRuns twoBuildsTail = true := by native_decide
+example : (match runProgram twoBuildsTail with
+   | .ok e => ((e.lookup "r1").map Val.pretty, (e.lookup "r2").map Val.pretty)
+   | .error _ => (none, none))
+  = (some "Cons Z Nil", some "Cons Z (Cons (S Z) Nil)") := by native_decide
+
 end Dllbc.Tests.S33Eager
 end
 -- └── end of M33b's demand battery ─────────────────────────────────────────────────
