@@ -4380,7 +4380,7 @@ mutual
       | .app _ _ => do
         match runtimeRecSpine? t with
         | some (c, args) => do
-          let vs ← readRecArgs fuel ((recMotiveIdx c).getD 0) 0 args
+          let vs ← readRecArgs fuel (recArgDoms c) args
           applyR fuel (Val.recSpine c vs) []
         | none => do
           -- **JUXTAPOSITION APPLICATION** (M27 β). The document's grammar has one
@@ -4585,26 +4585,45 @@ mutual
         | _ => readR fuel a
       pure (v :: (← readArgsModed fuel (ms.drop 1) as))
   termination_by fuel _ as => (fuel, 1, as.length)
-  /-- A runtime recursor spine's arguments: everything ⇒-read, except the motive,
-      which is not read at all (`erasedMotive` — a borrow-moded Π has no ⇝
-      reading, and ι has no use for one). -/
-  def readRecArgs : Nat → Nat → Nat → List Term → M (List Val)
-    | _, _, _, [] => pure []
-    | fuel, mi, i, a :: as => do
-      -- **A RECURSOR ARM IS A DESTINATION** (M33's destination rule), and it is
-      -- the fifth one — the list in `readR`'s λ arm names the four a programmer
-      -- writes, and this is the one the `fn [k]` elaboration writes for them. An
-      -- arm is a BODY, the seal ascribes the whole spine, and `sealRec`/`checkArm`
-      -- check each arm against the Π §7 derives for it (which `ascribeRecArms`
-      -- also hands the executing machine, since M33's prerequisite). So the arm
-      -- is formed here rather than ⇒-read: it has a contract, and having one is
-      -- exactly what the destination rule asks for.
-      let v ← if i == mi then pure (Val.know erasedMotive)
-              else match a with
-                   | .lam _ _ _ => mkClosure fuel a
-                   | _ => readR fuel a
-      pure (v :: (← readRecArgs fuel mi (i + 1) as))
-  termination_by fuel _ _ as => (fuel, 1, as.length)
+  /-- **A runtime recursor spine's arguments, read by its SIGNATURE's modes**
+      (M33c). `doms` is `recArgDoms c`, aligned with the arguments, and each
+      position is read exactly the way the domain sitting over it says — which is
+      what `readArgsModed` does at a call and `binderModes` reads for a λ. Three
+      answers, and only the first is a recursor's own:
+
+        * **a type FAMILY position — the motive — is not read at all.** The rule
+          is `recMotiveDom`, asked of the domain; the value is `erasedMotive`;
+          and the reason it cannot be the ⇝ reading below is the WALL measured at
+          `erasedMotive` (a motive's body is a borrow-moded Π and `reflectC`
+          refuses `borrowT`). This is the one position where "never read" and
+          "⇝-read" come apart, and the language has no marker for the difference.
+        * **a ⇝ position holding a λ is FORMED**, which is what ⇝ reading a λ
+          MEANS (`readComptimeVal`'s own λ case is `mkClosure`) — and with that,
+          **the fifth destination is gone**. Σ0's item 4 found that stating the
+          destination rule at `readR`'s λ arm alone refused every runtime
+          recursor's arms, and answered it by making this function form its arms
+          as a special case ("an arm has a contract, and having one is what the
+          destination rule asks for"). It is not a special case any more: the arm
+          position SAYS it is comptime, a comptime destination is where a λ is
+          allowed to arrive, and the same sentence covers a capital `let`, a ⇝
+          parameter, a Σ0 tail and an arm. A comptime position holding anything
+          else — `listRec`'s element type — is the ordinary ⇝ argument read.
+        * **a runtime position is ⇒-read**: the scrutinee, the thing ι splits on.
+
+      A short `doms` defaults to runtime, which is what the over-application
+      rejections downstream expect to see. -/
+  def readRecArgs : Nat → List Term → List Term → M (List Val)
+    | _, _, [] => pure []
+    | fuel, doms, a :: as => do
+      let dom := doms.headD .unit
+      let v ← if recMotiveDom dom then pure (Val.know erasedMotive)
+              else if Term.domComptime dom then
+                match a with
+                | .lam _ _ _ => mkClosure fuel a
+                | _ => pure (Val.know (← readComptimeArg fuel a))
+              else readR fuel a
+      pure (v :: (← readRecArgs fuel (doms.drop 1) as))
+  termination_by fuel _ as => (fuel, 1, as.length)
   /-- β for a literal λ callee: check each argument against its binder's domain,
       substitute, repeat. Domain-checking is CHECKING-mode only — executing mode
       runs already-accepted programs and `bindActuals` sets that precedent — so
