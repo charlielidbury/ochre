@@ -1396,6 +1396,17 @@ assumption-indexed evaluation (rejected with precedent, §3).
 > non-regressive and the battery is what says it works, and `defaultFuel` did not
 > move because the eager path is not on any pre-existing program's road.
 >
+> **7b. COST: none measurable, A/B on `phasec` against the base tree.** The one
+> thing M33b adds to every recursor's road is `Val.armTakesUnit` — a `peelLams`
+> over the arm's telescope, ≤4 binders here — so it was measured rather than
+> reasoned about, on the compiled harness at 50 iterations (the count M33 α's
+> item 3 established, after its own first reading turned out to be clock
+> quantization). CHECKING: list flagship 163 → 164 ms mean, array flagship 382 →
+> 382 ms. EXECUTION (`runQsA`, which §5 of that harness calls the suite's actual
+> hotspot): 2060.7 → 2056.7 ms mean at 9 elements, 461.7 → 453.3 ms at 7. Every
+> figure is inside the run-to-run noise the same addendum measured at under 1%,
+> and the two directions disagree in sign, which is what noise looks like.
+>
 > **8. Enumerated flips, the whole list.** Commit 2: one addition
 > (`recDeepBare`, rejected); no existing verdict moved. Commit 3: the two commit-1
 > pins (`demandMatch`, `demandLen`) flip `progRuns` false → true. Commit 5: `m1`'s
