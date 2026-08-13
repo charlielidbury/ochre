@@ -46,6 +46,32 @@ Partial correctness first (signature-only recursion — no termination
 story); totality later via fuel or §8 measures. Known caveat: type-in-type
 means "verified modulo Girard" until the universe hierarchy returns.
 
+## dllbc/ — recursor MODED signatures (2026-08-13, opened by M33b)
+
+`recLayout`/`erasedMotive` are the shape of a recursor whose type says nothing
+about modes. Three facts that M33b measured say the same thing:
+
+  * **A data-motive recursion cannot return comptime knowledge.** `fn RecGood [n]
+    (n : Nat) -> Id Nat Z Z` returns its `ih` directly, and capitalising that
+    binder — which §2.1 says a binder holding a proof should be — reds it at
+    `fence: 'Ih' … cannot be ⇒-moved`, because the return type carries no `⇝` for
+    `readResult` to route on. M33b's `Ih` rename is CONDITIONAL for exactly this
+    reason, and the condition is the missing mode wearing a disguise.
+  * **The motive is ERASED in the executing machine** (`erasedMotive`, "a
+    borrow-moded Π has no ⇝ reading") and DERIVED in the checking one. That is
+    two answers to one question, held apart by a marker no rule reads.
+  * **An arm's contract is re-derived twice** — `checkArm` and `recArmPis` — from
+    the ascription, differing only in that one checks it. M33b added the unit
+    binder to both, by hand, in two places.
+
+The shape of the fix: a recursor's spine carries binder modes the way λ and Π
+have since M31 Stage A (`Term.cmpT` on domains), the motive stops being a special
+slot, and the arm contract is derived once. What it buys immediately: the `Ih`
+rename becomes unconditional, and a recursion may return a proof.
+
+Sequenced after M33b, and deliberately NOT folded into it: it changes what a
+recursor's TYPE means and deserves its own enumerated differential.
+
 ## dllbc/ — borrow types re-founded: shape/contract split, loan-attached debts (2026-08-10, from the M31 design review)
 
 Successor to the "protocol pairs" observation (pair-of-borrows inexpressible;

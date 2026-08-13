@@ -91,9 +91,14 @@ not against this list — every stage found the enumeration incomplete):
     the seal could no longer tell a nullary `fn` from an ascription.
   * **`Var.comptimeRhs`'s carve-outs** — DEAD (R3). The invariant is one sentence
     with no footnote.
-  * **Stage A's backstop scatter** — REDUCED, not deleted (R3, R3b). Three
-    enforcement sites became one (`refuseFnBinding` at the `let`); it cannot
-    become derivable while §2.5's two spellings survive.
+  * **Stage A's backstop scatter** — **DELETED (M33b)**, after two milestones of
+    being REDUCED. R3/R3b took three enforcement sites to one (`refuseFnBinding`
+    at the `let`) and recorded that it could not become derivable while §2.5's two
+    spellings survived; Σ0 closed those and MEASURED that it still did not, at one
+    assertion — `let g = ih`, a function COPIED rather than constructed. M33b
+    spells that binder `Ih`, which makes the copy a ⇒-move of a capital binding,
+    and the rule is gone with `isFnValue`. What enforces §2.1 is three refusals,
+    one per way a function can arrive: WRITTEN, COMPUTED, COPIED.
   * **the pure lift's λ case** — SURVIVES, and this entry is REFUTED rather than
     unfinished (R3, twice). A proof of a ∀-statement IS a λ; refusing function
     results at the lift rejects quicksort's count equation. See §2.5.
@@ -521,6 +526,23 @@ empty-by-construction (they hold §8's globals) but INERT, which is a different
 claim with its own differential; and `Var.bindsSlot` does NOT become the case
 test, because the telescope rule says the two answer different questions — see
 the addendum.
+
+**M33b — eager recursion: RUN** (branch `m33-eager`, based on main @ d8004156;
+six commits, corpus green at each). Not a stage of M32 either — it is a user
+RULING about evaluation order, and the reason it lands in this document is that
+the fix is §0's own sentence applied one position further: *closures are the only
+suspensions*, so an arm that suspends nothing is not a λ, and an arm that is not
+a λ is evaluated at the wrong time. **DLLBC is an eager language: nothing
+unevaluated leaves a recursion.** The bug it closes is a measured differential
+violation — `let r = Build(1); let L = Len r` was ACCEPTED by `checkProgram` and
+could not be RUN — and the enforcement is three changes that are one change:
+every arm is a λ (an arm the motive owes nothing binds the unwritable `U§ :
+⇝Unit`), ι applies such an arm to `unit`, and the `ih` at a DATA motive is the
+recursion at the predecessor already run. At a Π motive it stays the applicable
+self-view, because a function value IS finished. **`refuseFnBinding` — Stage A's
+last surviving backstop, which §2.5 predicted would become derivable and Σ0
+measured as not — is DELETED**, and the thing that made it derivable is `Ih`:
+addendum at the bottom of this file.
 
 **M33 α — residual 4's close-out, not a stage** (branch `m33-alpha-key`, based on
 R4 @ ab6921ae and rebased onto main at merge; two commits, corpus green at each).
@@ -1289,3 +1311,106 @@ assumption-indexed evaluation (rejected with precedent, §3).
 > return type", verdict unchanged) for the same reason M33a recorded for
 > `quicksortA`'s two lies — with `Cnt` capital the lie is caught where it is
 > written rather than one call later. No other verdict in the corpus moved.
+
+> **Implementation addendum (M33b, landed on `m33-eager`).** Six commits, corpus
+> green at each, based on main @ d8004156 (the full merged M31–M33 arc). This is
+> a user RULING run, not a stage of the M32 plan, and it belongs in this document
+> because the fix is §0's own sentence applied one position further.
+>
+> **0. THE RULING, and the sentence that turned out to be doing the work.**
+> *"Passing a Nat to natRec causes the Nat to get recursed over all the way to the
+> end — this means it will definitely call the zero case, passing it unit and
+> evaluating the contents. I don't see why we would want anything unevaluated
+> leaving the natRec; this is not a lazy language."* The interesting part is
+> **"passing it unit"**: the ruling names the mechanism, and the mechanism is
+> forced by §0. Closures are the only suspensions, so an arm the motive owes
+> nothing — `Term.lamTel [] body` IS `body` — could not be a suspension at all,
+> and `readRecArgs` ⇒-READ it when the SPINE was formed. The bug and its fix are
+> the same fact: an arm that is not a λ runs at the wrong event.
+>
+> **1. THE BUG WAS A CLEAN DIFFERENTIAL VIOLATION, and it had been there since
+> the macro existed.** `fn Build [n] (n : Nat) -> List Nat { match n { Z =>
+> Cons(1, Nil), S(k) => Cons(0, Build(k)) } }` left `Cons Z ⟨natRec … Z⟩` — R1's
+> `§rec`, a state form with no `Term`, inside a constructor the program declared
+> `List Nat`. `let r = Build(1); let L = Len r` was ACCEPTED by `checkProgram` (to
+> the checker `r` is a σ) and REFUSED by `runProgram` ("readC: … is state, not
+> knowledge"). **The corpus had never noticed because no program in it consumes a
+> data-motive recursion's result** — every recursive `fn` here writes through a
+> borrow and returns `Unit`. Pinned BROKEN at commit 1, flipped at commit 3.
+>
+> **2. THE UNIT BINDER IS ONE BINDER, SHARED.** `FnMacro.nullaryVar` moved to
+> `Syntax.unitBinder`, because the kernel has to recognize it now: ι asks whether
+> an arm owes a `()` and both contract derivations (`checkArm`, `recArmPis`) ask
+> whether its Π gains a `Unit`, through one `Term.unitPi`. Its unwritability
+> answers an ambiguity `S26Rec` §A4 had recorded as unanswerable — "at ι there is
+> no way to tell *the arm applied to no arguments* from *the arm with nothing
+> owed*". There is now: they are different TERMS, and only the elaboration can
+> write the first.
+>
+> **3. THE SURFACE DECISION WENT TO REFUSAL, and the reason is two-machine rather
+> than aesthetic.** A bare-term arm is REFUSED, not silently wrapped. Cost
+> measured by installing the refusal: **one** hand-written term
+> (`Ledger.deepBaseArm`), which its author had already written as `Term.lamTel []`
+> — so the migration is naming the binder the fold ate, and the old spelling is
+> kept as the rejected twin. A silent wrap would have to happen TWICE, once per
+> machine, and a form that two machines wrap independently is exactly the
+> asymmetry M33a item 5 and Σ0 item 1 spent two stages closing.
+>
+> **4. THE EAGER/LAZY LINE IS THE UNIT BINDER, and it is not a heuristic.** `ih`
+> is eager iff the base arm binds `U§`, which by (2) means the motive owes the arm
+> nothing, which means the recursion at the predecessor runs to a FINISHED value.
+> At a Π motive it cannot — the arms take the residual telescope, and nobody has
+> those arguments yet — so the spine at the predecessor stays what §7's
+> convergence argument says a recursive occurrence is. **That is not laziness
+> surviving in a corner: a function value IS finished**, which is the same
+> sentence the ruling makes about data. `stuckRec` at a symbolic scrutinee is
+> untouched for the same reason from the other side.
+>
+> **5. `Ih` IS CONDITIONAL, and the three programs that forced that are worth
+> naming.** §2.1 says capital binds comptime knowledge, so the question is what
+> the binder HOLDS, and the answer splits exactly where (4) does: a Π motive gives
+> `Ih` a function (§2.5 law), a data motive with an empty residual telescope gives
+> `ih` the recursive RESULT — ordinary runtime data since commit 3. Renaming
+> unconditionally reds `recGood`, `recList` and `recCaller`, all at `fence: 'Ih' …
+> cannot be ⇒-moved`, all for one reason: their self-call `RecGood(m)` drops its
+> only argument and IS the bare `.var ih` the arm returns. Legalising that return
+> needs the recursor's SIGNATURE to carry modes — filed as its own milestone, and
+> deliberately not smuggled in here. `comptimeSlotParams flagship` **6 → 9**.
+>
+> **6. `refuseFnBinding` IS DELETED, and §2.5's residual is closed.** Σ0 item 6
+> measured the rule as NOT derivable — neutralising it red exactly one assertion,
+> `m1`'s `let g = ih`, a function COPIED rather than constructed — and named the
+> repair in the same breath. With `Ih` capital the copy is a ⇒-move of a capital
+> binding, `fenceComptime` refuses it a layer earlier, and re-measuring leaves the
+> whole corpus green with the rule neutralised. **Stage A's backstop scatter is
+> not reduced but GONE.** What enforces §2.1 is three refusals, each at the event
+> it is about: WRITTEN (`readR`'s λ arm), COMPUTED (the pure lift), COPIED
+> (`fenceComptime`). §1's entry "Stage A's backstop scatter — REDUCED, not
+> deleted" should now read DELETED.
+>
+> **7. AN ABSENT FAILURE IS NOT A PASS, and here it is the main finding.** The
+> corpus is green at every commit with only the enumerated flips — but the eager
+> path was measured directly, by making it throw: **5** assertions red, ALL in
+> M33b's own battery. No pre-existing corpus program has a data motive with an
+> empty residual telescope. So the corpus's greenness says this is
+> non-regressive and the battery is what says it works, and `defaultFuel` did not
+> move because the eager path is not on any pre-existing program's road.
+>
+> **8. Enumerated flips, the whole list.** Commit 2: one addition
+> (`recDeepBare`, rejected); no existing verdict moved. Commit 3: the two commit-1
+> pins (`demandMatch`, `demandLen`) flip `progRuns` false → true. Commit 5: `m1`'s
+> needle moves from "capitalise the binder" to "cannot be ⇒-moved" (verdict
+> unchanged, FOURTH reason), `runExec m1` flips from zeroing the list to erroring
+> — **the machines agree about `m1` now**, which retires the divergence M27's
+> third containment existed to manage — `slotOf b1 "f"`'s golden takes `Ih`, and
+> `comptimeSlotParams flagship` 6 → 9. Nothing else.
+>
+> **9. Controls.** `abstractInto` sabotage at commits 2, 3 and 5: **26** red every
+> time — Direct 18, KernelFloor 7, Arrays 1 — the same count AND shape as M33 Σ0's
+> and M33a's, with `progOk flagship` (Direct.lean:1605), `progOk sort2`
+> (Arrays.lean:1445) and both `S32Cook` directions (KernelFloor 918/922, 977/981)
+> confirmed present each time; green with it restored. M33b adds nothing to the
+> sabotage surface. `S32Cook` both directions, `S32Seal` §B/§C and M33a's
+> arm-check discriminator green throughout. **`Traces.lean` is byte-unchanged and
+> no golden moved anywhere** — the expected shape (a spine render becoming a
+> finished list) never materialized, for (7)'s reason.

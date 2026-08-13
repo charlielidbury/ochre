@@ -3719,3 +3719,46 @@ and is exactly where quicksort's `cnt` sits. Pinned as `sigmaTailProof`.
 **R4 inherits a measured number**: `keyDisagree` = 4 on the flagship, all one
 shape (a capital telescope parameter binds an Ω slot), so the case test is not a
 drop-in for `Var.bindsSlot`.
+
+## M33b — eager recursion (branch `m33-eager`)
+
+**DLLBC is an eager language** (user ruling): nothing unevaluated leaves a
+recursion. Six commits, corpus green at each, sabotage control at 26 red
+(flagship, `sort2`, both cook-canary directions) at commits 2, 3 and 5.
+
+**It closes a clean differential violation, and the corpus had never seen it.** A
+data-motive recursive `fn` — `fn Build [n] (n : Nat) -> List Nat { match n { Z =>
+Cons(1, Nil), S(k) => Cons(0, Build(k)) } }` — left `Cons Z ⟨natRec … Z⟩`, a
+state form with no `Term` sitting in a slot the program declared `List Nat`. So
+`let r = Build(1); let L = Len r` was ACCEPTED by `checkProgram` and could not be
+RUN. No corpus program consumes a data-motive recursion's result — every
+recursive `fn` here writes through a borrow and returns `Unit` — which is why
+nobody had noticed. Pinned broken at commit 1; flipped at commit 3.
+
+**The mechanism is §0's own sentence one position further.** Closures are the
+only suspensions, so an arm the motive owes nothing (`Term.lamTel [] body` IS
+`body`) was not a suspension at all and `readRecArgs` ⇒-READ it when the SPINE
+was formed — the body ran before ι had selected anything, and every ι thereafter
+shared the one value. Every arm is a λ now; an arm with nothing to bind binds the
+unwritable `U§ : ⇝Unit`, ι applies it to `unit`, and the `ih` at a data motive is
+the recursion at the predecessor already run.
+
+**The eager/lazy line is the unit binder, and it is not a heuristic.** An arm
+binds `U§` iff the motive owes it nothing iff the recursion at the predecessor
+runs to a finished value. At a Π motive it cannot, and the spine stays the
+applicable self-view — because a function value IS finished, which is the same
+sentence the ruling makes about data.
+
+**`refuseFnBinding` is DELETED**, Stage A's last backstop, two milestones after
+§2.5 predicted it. Σ0 measured it as not derivable at exactly one assertion
+(`let g = ih`, a function COPIED rather than constructed) and named the repair;
+`Ih` is that repair, so the copy is a ⇒-move of a capital binding and
+`fenceComptime` refuses it a layer earlier. The rename is CONDITIONAL — capital
+when the self-view holds a function, lowercase when it holds the recursive result
+— which three programs (`recGood`, `recList`, `recCaller`) measured rather than
+argued. `comptimeSlotParams flagship` 6 → 9.
+
+**The honest caveat, stated because an absent failure is not a pass**: with the
+eager path made to throw, 5 assertions red and ALL of them are M33b's own
+battery. The corpus's greenness says this is non-regressive; the battery is what
+says it works. `defaultFuel` did not move, for the same reason.

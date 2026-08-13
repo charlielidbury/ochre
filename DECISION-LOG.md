@@ -2463,3 +2463,76 @@ capital binding whose value is index-kind (a proof, a λ, a Nat) would also
 unblock §2.5 and is a genuine weakening of erasure: it makes `let n = N` legal
 for a comptime `Nat`, which is precisely the "no Prop/Type split" hole R3
 recorded. The mode is put where the type can carry it instead.
+
+## M33b — DLLBC is an EAGER language: nothing unevaluated leaves a recursion
+
+**Ruling** (user, 2026-08-13, verbatim): *"Passing a Nat to natRec causes the Nat
+to get recursed over all the way to the end — this means it will definitely call
+the zero case, passing it unit and evaluating the contents. I don't see why we
+would want anything unevaluated leaving the natRec; this is not a lazy
+language."*
+
+**What it fixes, measured rather than anticipated.** A data-motive recursive `fn`
+left an unreduced recursor spine inside its result — `Build(1) ↦ Cons Z ⟨natRec …
+Z⟩`, where `§rec` is R1's state form with no `Term`. Three consequences, all
+measured: a runtime match on the tail got STUCK; a borrow could overwrite the
+never-demanded tail; and — the one that makes this a soundness-adjacent bug
+rather than a wart — **`let r = Build(1); let L = Len r` was ACCEPTED by
+`checkProgram` and could not be RUN**. Two machines, one program, no rule to
+appeal to. The corpus had never seen it because no program in it consumes a
+data-motive recursion's result: every recursive `fn` in this corpus writes
+through a borrow and returns `Unit`.
+
+**Decision.** ι fires eagerly: a recursor spine at a CONCRETE scrutinee is a
+redex, never a value. Every arm is a λ; an arm the motive owes nothing binds the
+unwritable `U§ : ⇝Unit` and ι applies it to `unit`; the `ih` handed to a step arm
+at a DATA motive is the recursion at the predecessor already run.
+
+**Why the unit binder rather than a flag.** §0 says closures are the only
+suspensions, and `Term.lamTel [] body` IS `body` — so an arm with nothing to bind
+could not be a suspension, and `readRecArgs` ⇒-READ it when the SPINE was formed.
+Its body therefore ran before ι had selected anything, and every ι afterwards
+shared the one value. The wrapper is not decoration: it is what makes an arm a
+body that waits, which is the property every other arm has for free. Its
+unwritability also answers an ambiguity `S26Rec` §A4 had recorded as
+unanswerable — "at ι there is no way to tell *the arm applied to no arguments*
+from *the arm with nothing owed*" — because they are different terms now.
+
+**Where eagerness STOPS, and why that is not a compromise.** At a Π motive the
+arms take the residual telescope, so the recursion cannot run without arguments
+nobody has yet, and the spine at the predecessor stays the applicable self-view.
+**A function value IS finished** — the same sentence the ruling makes about data.
+The discriminator is the base arm's unit binder, which by construction means "the
+motive owes this arm nothing", so the test asks exactly the right question.
+
+**Bare-term arms are REFUSED, not silently wrapped.** Cost measured: one
+hand-written term in the whole corpus, already written as `Term.lamTel []`. A
+silent wrap would have to happen once per machine, and a form two machines wrap
+independently is the asymmetry M33a and Σ0 spent two stages closing; making the
+wrap the elaboration's job means one spelling reaches both machines.
+
+**Consequence, and it is the one §2.5 had been waiting for.** `refuseFnBinding` —
+Stage A's last surviving backstop — is DELETED. Σ0 had measured it as not
+derivable at exactly one assertion (`let g = ih`: a function COPIED out of a
+runtime slot, which no rule about ⇒ CONSTRUCTING one can reach) and named the
+repair: `ih` holds a function and should be `Ih`. With that rename the copy is a
+⇒-move of a capital binding and `fenceComptime` refuses it a layer earlier;
+re-measured, the corpus is green with the rule neutralised.
+
+**The rename is CONDITIONAL, decided by the corpus.** `Ih` is capital when the
+self-view holds a FUNCTION (Π motive) and stays `ih` when it holds the recursive
+RESULT (data motive, empty residual telescope), because §2.1's rule is about what
+a binder holds. Renaming unconditionally reds `recGood`/`recList`/`recCaller` at
+`fence: 'Ih' … cannot be ⇒-moved` — their self-call drops its only argument and
+IS the bare `.var ih` the arm returns.
+
+**Rejected alternative.** Making that return legal by marking the recursor's
+signature — giving `natRec`'s motive and arms modes so a comptime result can be
+⇝-returned — would remove the condition and is the right eventual answer. It is
+filed as its own milestone rather than smuggled in here, because it changes what
+a recursor's TYPE means and deserves its own enumerated differential.
+
+**Honest limit, recorded rather than implied.** The eager path is corpus-INERT:
+with it made to throw, 5 assertions red and all are M33b's own battery. So the
+corpus's greenness says the change is non-regressive, and the battery is what
+says it works. `defaultFuel` did not move for the same reason.
