@@ -272,4 +272,109 @@ example : [borrowProg, derefProg, assignProg].all (fun t => !borrowFree t) = tru
 example : Dllbc.Tests.S9Diff.callers.countP borrowFree = 0 := by native_decide
 example : Dllbc.Tests.S9Diff.callers.length = 4 := by native_decide
 
+/-! ## §8. The wall map's experiments
+
+    Part 2 of the probe is a report — `docs/compiling-borrows.md` — and the three
+    candidate targets are argued there. What is HERE is the part of that argument
+    that can be run: for each option, the smallest program that exhibits its
+    characteristic cost, hand-translated and checked against what the DLLBC
+    executing machine actually does. Hand-translated is the point: the compiler
+    above refuses all three fragments, so these are what a compiler WOULD have to
+    emit, written out so the cost is visible rather than estimated. -/
+
+section WallMap
+
+/-! ### (a) State-threading with backward functions — the Aeneas shape
+
+    `S9Diff.chooseCaller` is the one the whole option turns on, because `Choose`
+    RETURNS a borrow and the caller writes through it. Aeneas's answer is two
+    functions per borrow-returning function: a forward one computing the value,
+    and a **backward** one that takes the final state of the returned borrow and
+    says what each captured owner becomes.
+
+    Note what the caller has to do that the DLLBC program does not: it must know
+    that `*r := 7` is the LAST write through `r`, and insert the `_back` call at
+    that point. The end of a loan is implicit in the source and explicit in the
+    target — which is precisely the information the checker's loan machinery
+    computes, so a compiler has it. It is not free, but it is not guesswork. -/
+
+def choose_fwd (c : Bool) (x y : Nat) : Nat := if c then x else y
+
+/-- The backward function: given what the returned borrow ended up holding, what
+    do the two owners hold? One of them is the write; the other is untouched. -/
+def choose_back (c : Bool) (x y ret : Nat) : Nat × Nat :=
+  if c then (ret, y) else (x, ret)
+
+/-- `let a = 0; let b = 0; let r = Choose(True, &m a, &m b); *r := 7; …` -/
+def chooseCallerThreaded : Nat × Nat :=
+  let a := 0
+  let b := 0
+  let _r0 := choose_fwd true a b               -- what the borrow holds on entry
+  let r := 7                                  -- `*r := 7` — a whole-payload write,
+                                              --   so the forward value is dead here
+  choose_back true a b r                      -- the loan ends HERE, and the
+                                              --   compiler has to know that it does
+
+/-- It agrees with the machine: DLLBC leaves `za ↦ 7`, `zb ↦ 0`. -/
+example : chooseCallerThreaded = (7, 0) := by native_decide
+example : (match runProgram Dllbc.Tests.S9Diff.chooseCaller with
+           | .ok env => (env.lookup "za" == some (Val.nat 7))
+                          && (env.lookup "zb" == some (Val.nat 0))
+           | .error _ => false) = true := by native_decide
+
+/-! ### (b) A threaded `Array` with index windows — what the CARVE becomes
+
+    ¶3.4's `halves` gives out two live, independent, contract-free mutable
+    borrows of one array. There is no Lean value that is "the left half of `arr`,
+    mutably" — so the two segments become two INDEX WINDOWS over one threaded
+    array, and the two borrows become two sequential calls that each take the
+    whole thing.
+
+    The translation is total and it runs (below). What it loses is stated
+    precisely: the disjointness DLLBC discharges once, with a `Le` term at the
+    carve, becomes an arithmetic side condition at every access — and nothing in
+    the type of `sortSeg` records that its two call sites do not overlap. Get the
+    bounds wrong and this is a wrong answer, not a type error. -/
+
+/-- Sort `a[lo, hi)` in place. The segment is a pair of indices, not a value. -/
+def sortSeg (arr : Array Nat) (lo hi : Nat) : Array Nat := Id.run do
+  let mut a := arr
+  for _ in [lo:hi] do
+    for j in [lo:hi] do
+      if j + 1 < hi then
+        if a[j]! > a[j+1]! then a := a.swapIfInBounds j (j+1)
+  return a
+
+/-- The carve, as it survives: two windows, threaded through one array, in
+    sequence. `#[5,3,1,9,7,2]` carved at 3 sorts to `#[1,3,5,2,7,9]`. -/
+def carveThreaded : Array Nat := sortSeg (sortSeg #[5,3,1,9,7,2] 0 3) 3 6
+
+example : carveThreaded = #[1, 3, 5, 2, 7, 9] := by native_decide
+
+/-- …and the cost, made concrete: the SAME function, given overlapping windows,
+    is accepted by every type in sight and silently destroys the first result.
+    DLLBC refuses the corresponding pair of carves at premise (1) — the request
+    straddles a segment boundary, so no leaf contains it. -/
+example : sortSeg (sortSeg #[5,3,1,9,7,2] 0 3) 2 6 = #[1, 3, 2, 5, 7, 9] := by
+  native_decide
+
+/-! ### (c) `ST` reference cells — the option where the borrow is FIRST-CLASS
+
+    The reason to take this one seriously: `Choose` returning one of two mutable
+    references is not a translation at all in `ST`, it is the same program. A
+    `ST.Ref` IS a mutable borrow, it can be returned, stored and chosen between,
+    and no backward function is needed because the write goes to the cell rather
+    than to a threaded copy. -/
+
+def chooseST : Nat × Nat := runST fun σ => do
+  let a : ST.Ref σ Nat ← ST.mkRef 0
+  let b : ST.Ref σ Nat ← ST.mkRef 0
+  let r := if true then a else b            -- `Choose` — a returned borrow
+  r.set 7                                   -- `*r := 7`
+  return (← a.get, ← b.get)
+
+example : chooseST = (7, 0) := by native_decide
+
+end WallMap
+
 end Dllbc.Tests.M35Compile

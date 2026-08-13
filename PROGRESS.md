@@ -1,5 +1,111 @@
 # Progress
 
+## 2026-08-13 — dllbc/: **M35 PROBE — the borrow-free fragment compiles to real Lean functions; the borrow wall mapped**
+
+Branch `m35-compile-probe` (base main @ 315f4a1b). A probe in the Stage V
+tradition: the deliverable is findings plus working prototype code, and the
+branch is not for merging. Three new files, no existing file touched, and
+`Dllbc.lean` does not import any of them — `lake build Dllbc` verified green and
+unaffected at the head of the branch.
+
+**VERDICTS. Erasure: VIABLE. Borrow-free codegen: VIABLE (genuine `def`s, not a
+denotation function). Recommended borrow target: Lean `Array`, threaded, with
+segments compiled to index windows.**
+
+**Part 1 — it compiles, and it runs.** `fn Double (n : Nat) -> Nat { … }` becomes
+a Lean `def Double : Nat → Nat`; `Double(3)` becomes `Double 3`. The route is
+`Dllbc.Term` → a target IR → Lean source text → Lean's own parser →
+`elabCommand`, driven by a new `compile_dllbc NS from e` command, so the emitted
+definitions land in the environment and can be applied and `#eval`'d like any
+other. Source text rather than hand-built `Expr`s deliberately: the generated
+program is a thing you can read (`#dllbc_source`), and a rendering bug is a parse
+error naming a column rather than an `Expr` that elaborates to something subtly
+wrong. Recursors become three small structural-recursion combinators rather than
+`Nat.rec`/`List.rec`, because Lean's code generator refuses recursors and a `def`
+built from them would typecheck and never run.
+
+**The differential, at 45 programs plus the library.** `S8Diff`'s `(n : Nat) →
+Nat` telescope is 32/32 generated and 15/15 accepted borrow-free; against the
+three-element argument pool that is 45 programs, all 45 compile, and for each one
+the `Val` the executing machine left in slot `r` equals the `Nat` the compiled
+Lean function computed (one `native_decide` over the zip). The whole of
+`Std.lean` compiles too — `Len`, `Count`, `Add`, `Take`, `Drop`, `Eqb`, `Leb` in
+one program, eight slots, four target types, all agreeing, with the values
+independently pinned so an agreement-because-both-sides-are-stuck would show.
+
+**COVERAGE, and it is 19%.** The split is total rather than partial, because a
+telescope containing `&mut` puts a `borrowT` in every program built from it
+whatever the body does: `(v : &mut List Nat) → Unit` is 0/91, `(b : &mut Nat, c :
+Bool) → Unit` is 0/13, `(n : Nat) → Nat` is 32/32. So 45 of the differential's
+238 concrete runs are in the fragment, and `S9Diff`'s four whole-program callers
+are 0/4. That is what the corpus is FOR — DLLBC's suite is about borrows — not a
+limit of the compiler.
+
+**FINDING 1 — erasure is TYPE-directed, not MODE-directed, and the dispatch's
+expectation was wrong.** The expectation was that capitalisation makes deletion
+mechanical: capital is comptime, comptime is erased. `Std.addFn` refutes it in one
+line — both binders capital (asserted via `isComptime`), and it is the addition
+every program computes with. Capitalisation says how an argument is READ
+(⇝-snapshot vs ⇒-move); it says nothing about whether the argument is needed to
+produce the answer. What the mode discipline buys is the OTHER half: a capital
+binding is only cited from ⇝ positions, so deleting one cannot leave a hole in Ω.
+It makes deletion SAFE. It does not make it DECIDABLE. The type does that, and
+`compileTy` is where the whole of erasure lives as a result.
+
+**FINDING 2 — erasure is not stable under conversion, and the instability is
+TRUTH-SENSITIVE.** This is about the calculus, not the compiler. Type-in-type, no
+Prop, no irrelevance marker; ⊤ IS `Unit` and ⊥ IS `Bot`. So `Le 1 2` erases as
+written and its normal form `Unit` does not; `Sorted [1,2]` erases as written and
+its normal form `Unit × (Unit × Unit)` is data with structure; and `Le 2 1`
+normalizes to `Bot`, which erases. **A false proposition erases and a true one
+does not.** All four asserted. The compiler dodges it by never normalizing a type
+(β at the head only, never `Pure.nf`), which is a correct dodge and not a fix,
+because the checker does convert and two convertible types ought to erase alike.
+The recommendation is to fix this — an irrelevance marker or a Prop universe —
+BEFORE scaling codegen: it is cheap to state, invasive to land, and every program
+compiled meanwhile carries proofs as runtime data whenever a spec is closed.
+
+**Part 2 — the wall map** is `dllbc/docs/compiling-borrows.md`, written for the
+design decision and not for another agent. Each of the three candidates has a
+runnable experiment in the probe's §8 — the smallest program exhibiting its
+characteristic cost, hand-translated and checked against the machine.
+
+  * **(a) state-threading / backward functions (Aeneas).** Translates cleanly;
+    `chooseCaller` becomes `choose_fwd`/`choose_back` and agrees. But the carve
+    becomes split-and-append of values, which is the O(n) cost
+    `design-arrays-slices.md` §8.3 cites as "the strongest single argument for the
+    whole approach over the M23 stopgap". It discards the in-place performance the
+    north star exists to demonstrate.
+  * **(b) Lean `Array`, threaded (FBIP).** The carve becomes index windows on one
+    array; two live borrows become two sequential calls. Runs genuinely in place.
+    Loses disjointness AS A TYPE — the experiment asserts that the same `sortSeg`
+    given overlapping windows is accepted by every type in sight and silently
+    destroys the first result — and brings frame conditions back into every spec.
+  * **(c) ST/IO ref cells.** The pointer half is not a translation at all: a
+    returned borrow is a returned ref, and `Choose` is literally the same program.
+    Then it walls on arrays (no `ST.Ref` to a slice) and, decisively, forces
+    verification back through a pure model — which is the routing SUGGESTIONS'
+    2026-07-28 redirect already ruled out.
+
+**THE PICK: (b), with (a) kept as a proof device rather than as the target**, and
+the bill named: the target has no type in which to receive the disjointness the
+carve establishes, so a compiler should not drop it but EMIT it — a carved segment
+compiles to `(arr, lo, cnt)` plus a generated Lean lemma that the windows are
+pairwise disjoint and in bounds, proved from the `Le` terms the carve already
+consumed. The checker has the evidence; the compiler re-exports it. That is the
+design work a real M35 is about.
+
+**A bug the probe found in itself, kept because it is the same lesson.**
+`compileTy` first erased any Π whose codomain mentioned its binder, on the theory
+that a dependent data function has no target type. `fn Idx (n : Nat, H : Le n n)
+-> Nat` erased whole — the codomain mentions `n`, but only inside the proof
+argument erasure was about to delete. The check is unnecessary (`CTy` has no
+variables, so a type that really depends on a value is a former with no case and
+erases on its own) and it is gone.
+
+Files: `dllbc/Dllbc/Compile.lean` (370 code lines), `dllbc/Dllbc/CompileCmd.lean`
+(54), `dllbc/Dllbc/Tests/CompileProbe.lean`, `dllbc/docs/compiling-borrows.md`.
+
 ## 2026-08-12 — dllbc/: **M33 Σ0 — the comptime tail, and the terminal no-⇒-λ attempt LANDS**
 
 Five commits on `m33-sigma0` (based on main @ 478cadb8), corpus green at each.
