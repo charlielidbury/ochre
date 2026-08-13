@@ -71,4 +71,40 @@ elab "compile_dllbc " ns:ident " from " t:term : command =>
 elab "#dllbc_source " ns:ident " from " t:term : command =>
   compileWorker true ns.getId.toString t
 
+/-! ## The bulk form — a LIST of programs, one `def` each
+
+    The differential's generated corpus is 45 programs, and a differential that
+    covers three of them by hand is not a measurement. This compiles a whole
+    `List Term` — one monolithic `def` per program, plus an `all` collecting them
+    — so the assertion can be a single `native_decide` over the zip of the source
+    programs with their compiled values. -/
+
+unsafe def compileEachUnsafe (ns : String) (t : Syntax) : CommandElabM Unit := do
+  let progs ← liftTermElabM
+    (Term.evalTerm (List Dllbc.Term) (mkApp (mkConst ``List [levelZero]) (mkConst ``Dllbc.Term)) t)
+  let mut srcs : List String := []
+  let mut names : List String := []
+  let mut ty : String := "Unit"
+  for (p, i) in progs.zip (List.range progs.length) do
+    match compileProgram p with
+    | .error e => throwError "program #{i} failed to compile: {e}"
+    | .ok cp =>
+      match cp.mono.render with
+      | .error e => throwError "program #{i} failed to render: {e}"
+      | .ok body =>
+        ty := cp.mainTy.render
+        names := names ++ [s!"f{i}"]
+        srcs := srcs ++ [s!"def f{i} : {ty} :=\n  {body}"]
+  let allDef := s!"def all : (List {ty}) := [{String.intercalate ", " names}]"
+  for c in ["namespace " ++ ns] ++ srcs ++ [allDef, "end " ++ ns] do
+    elabGenerated c
+
+@[implemented_by compileEachUnsafe]
+opaque compileEach (ns : String) (t : Syntax) : CommandElabM Unit
+
+/-- `compile_dllbc_each NS from es` — compile every program in the `List Term`
+    `es`, as `NS.f0 … NS.fn`, and collect them in `NS.all`. -/
+elab "compile_dllbc_each " ns:ident " from " t:term : command =>
+  compileEach ns.getId.toString t
+
 end Dllbc.Compile

@@ -62,7 +62,7 @@ inductive CTy where
   | prod   : CTy → CTy → CTy
   | arrow  : CTy → CTy → CTy
   | erased : CTy
-deriving BEq, Repr, Inhabited
+deriving BEq, DecidableEq, Repr, Inhabited
 
 /-- Render a `CTy` as Lean source. `erased` has no rendering — every site that
     could produce one is required to have dropped it first. -/
@@ -78,33 +78,23 @@ partial def CTy.render : CTy → String
 /-- Is this the compile-time-only layer? -/
 def CTy.isErased : CTy → Bool | .erased => true | _ => false
 
-/-! ## Does a pure binder occur in a term?
+/-! ## `compileTy` — the translation, and therefore the erasure
 
-    Needed at exactly two places — a Π's codomain and a Σ's tail — to decide
-    whether the arrow is dependent. A dependent arrow between DATA is a wall
-    (there is no `Vec` at the target); a dependent arrow whose codomain is a SPEC
-    is not, because the whole codomain erases and the dependency goes with it. -/
-partial def occursP (x : String) : Term → Bool
-  | .pvar y => x == y
-  | .letIn _ r b => occursP x r || occursP x b
-  | .assign p r b => occursP x p || occursP x r || occursP x b
-  | .ctorApp _ args => args.any (occursP x)
-  | .borrow t | .deref t | .cmpT t => occursP x t
-  | .index t i ev => occursP x t || occursP x i || (ev.map (occursP x)).getD false
-  | .range t lo c r ev eq =>
-    occursP x t || occursP x lo || ([c, r, ev, eq].any (fun o => (o.map (occursP x)).getD false))
-  | .matchE _ _ brs => brs.any (fun b => occursP x b.body)
-  | .seq a b => occursP x a || occursP x b
-  | .call _ args => args.any (occursP x)
-  | .seal _ t u => occursP x t || occursP x u
-  | .lam _ d b => occursP x d || occursP x b
-  | .pi y d b | .sigmaT y d b | .borrowT y d b =>
-    occursP x d || (if x == y then false else occursP x b)
-  | .app f a => occursP x f || occursP x a
-  | .idT a b c => occursP x a || occursP x b || occursP x c
-  | .var _ | .type | .const _ | .unit => false
+    ### There is no dependency check here, and that took a bug to learn
 
-/-! ## `compileTy` — the translation, and therefore the erasure -/
+    The first version tested `occursP x cod` and erased a Π whose codomain
+    mentions its binder, on the reasoning that a dependent function between DATA
+    has no target type (there is no `Vec`). It erased the wrong thing
+    immediately: `fn Idx (n : Nat, H : Le n n) -> Nat` has a codomain
+    `Π (H : Le n n) → Nat` that MENTIONS `n`, so the whole function erased and its
+    call site rendered an erased value. The dependency was real and lived
+    entirely inside the proof argument, which erasure was about to delete.
+
+    The check is not needed, because `CTy` has no variables: a type that really
+    depends on a data value is a former this translation does not have a case for
+    (`Array n T` is the only one in the calculus), so it lands in `erased` on its
+    own. Dropping the test cannot turn a dependent type into an arrow — it can
+    only stop erasure from firing on dependencies that were about to vanish. -/
 
 /-- Translate a DLLBC type to the target. Total: everything that is not data is
     `erased`, which is the honest answer for `Type`, `Id`, `Le a b`, `Sorted l`,
@@ -126,16 +116,16 @@ partial def compileTy : Term → CTy
   | .app (.const "List") t =>
     match compileTy t with | .erased => .erased | e => .list e
   | .cmpT t => compileTy t
-  | .pi x d b =>
+  | .pi _ d b =>
     match compileTy d, compileTy b with
     | _, .erased => .erased
     | .erased, cb => cb
-    | cd, cb => if occursP x b then .erased else .arrow cd cb
-  | .sigmaT x d b =>
+    | cd, cb => .arrow cd cb
+  | .sigmaT _ d b =>
     match compileTy d, compileTy b with
     | .erased, cb => cb
     | cd, .erased => cd
-    | cd, cb => if occursP x b then .erased else .prod cd cb
+    | cd, cb => .prod cd cb
   | _ => .erased
 
 /-! ## The target runtime: what DLLBC's recursors become
@@ -209,7 +199,13 @@ def sanitize (s : String) : String :=
     if c.isAlphanum || c == '_' || c == '\'' then c else '_'))
   let s := if s.isEmpty then "x_" else s
   let s := if (s.get 0).isDigit then "x" ++ s else s
-  if leanKeywords.contains s then s ++ "'" else s
+  -- `§_` is the reserved name for a binder nothing refers to (§2.1). Rendering it
+  -- as Lean's own `_` rather than as `__` is not cosmetic: two of them can nest
+  -- (`eqbFn`'s inner arms have exactly that shape), and `__` would SHADOW where
+  -- `_` cannot be referred to at all — so a body that did cite one becomes an
+  -- "unknown identifier" at the target instead of a silent capture.
+  if s.all (· == '_') then "_"
+  else if leanKeywords.contains s then s ++ "'" else s
 
 /-! ## The renderer — `CExpr` to Lean source text
 
@@ -265,6 +261,12 @@ def fieldTys (c : String) (ty : Term) : Option (List (String × Term)) :=
   match Pure.ctorSig c with
   | some sig => sig.fieldTypes (Pure.whnf 1000 ty)
   | none => none
+
+/-- The kernel constants that are TYPE FORMERS rather than eliminators. Naming
+    a type is naming a value of type `Type`, which erases — so these are the
+    constants a program may legally mention in term position. -/
+def typeFormers : List String :=
+  ["Nat", "Bool", "Unit", "Bot", "List", "Array", "Id", "Type"]
 
 /-- The Lean pattern head, and the DLLBC ctor's target constructor. -/
 def targetCtor : String → Option String
@@ -379,7 +381,9 @@ partial def synthCore (Γ : Ctx) (t : Term) : Except String (CExpr × Term) := d
   | .ctorApp c args => synthCtor Γ c args
   | .matchE x eqn brs => synthMatch Γ x eqn brs
   | .app _ _ => synthSpine Γ t
-  | .const c => .error s!"bare constant '{c}' in term position (a recursor needs its arguments)"
+  | .const c =>
+    if typeFormers.contains c then .ok (.erased, .type)
+    else .error s!"bare constant '{c}' in term position (a recursor needs its arguments)"
   | .call f _ => .error s!"unresolved call to '{f}' — the surface never bound this name"
   | .borrow _ => .error "BORROW (&m) — outside the borrow-free fragment"
   | .deref _ => .error "DEREF (*) — outside the borrow-free fragment"
@@ -478,7 +482,12 @@ partial def synthSpine (Γ : Ctx) (t : Term) : Except String (CExpr × Term) := 
   | .const "listRec", [A, P, pn, pc, l] => compileListRec Γ A P pn pc l
   | .const "boolRec", [P, tb, fb, b] => compileBoolRec Γ P tb fb b
   | .const "j", _ => .ok (.erased, .type)         -- the Id eliminator: proofs only
-  | .const c, _ => .error s!"constant '{c}' applied to {args.length} arguments — no compilation rule"
+  | .const c, _ =>
+    -- A type former applied to its parameters is a TYPE, and a type in term
+    -- position has type `Type`, which erases. `List Nat` reaches here whenever a
+    -- program names it as a value (`let T = List Nat`).
+    if typeFormers.contains c then .ok (.erased, .type)
+    else .error s!"constant '{c}' applied to {args.length} arguments — no compilation rule"
   | _, _ => do
     let (he, hτ) ← synth Γ h
     args.foldlM (fun (acc : CExpr × Term) (a : Term) => do
@@ -601,6 +610,14 @@ def CProgram.renderCommands (p : CProgram) (ns : String) : Except String (List S
 /-- The program as one readable blob — what the probe prints. -/
 def CProgram.renderSource (p : CProgram) (ns : String) : Except String String := do
   .ok (String.intercalate "\n\n" (← p.renderCommands ns))
+
+/-- **The program as ONE expression** — the hoisted defs folded back into nested
+    `let`s. Needed for the bulk differential, where 45 generated programs have to
+    become 45 definitions with predictable names rather than 45 namespaces; a
+    `def` per program is what a list of them can be assembled from. Folding right
+    keeps program order, so a later binding still sees the earlier ones. -/
+def CProgram.mono (p : CProgram) : CExpr :=
+  p.defs.foldr (fun d acc => .letE d.name d.body acc) p.main
 
 /-! ## The borrow-free predicate — what this compiler's domain IS
 
