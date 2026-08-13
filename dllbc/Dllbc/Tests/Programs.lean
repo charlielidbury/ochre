@@ -1985,3 +1985,132 @@ example : (rawEnvs hLend).any (fun r => match r with
 end Dllbc.Tests.S26Prog
 end
 -- └── end of what was `S26Prog.lean` ───────────────────────────────────────────────
+
+-- ┌── M33b: the demand battery ──────────────────────────────────────────────────────
+section
+/-!
+# §33 (M33b) — what a recursion LEAVES BEHIND
+
+**DLLBC is an eager language** (user ruling, 2026-08-13): *"Passing a Nat to
+natRec causes the Nat to get recursed over all the way to the end — this means it
+will definitely call the zero case, passing it unit and evaluating the contents. I
+don't see why we would want anything unevaluated leaving the natRec; this is not a
+lazy language."*
+
+It does not do that yet, and these programs are the measurement of the gap. Each
+one asserts the behaviour of the tree as it is at this commit, which for two of the
+three is behaviour nobody wants; **they flip DELIBERATELY at M33b commit 3**, which
+says so in its message and edits the assertions in place rather than deleting them.
+
+The subject is one function and its result is what everything turns on:
+
+    fn Build [n] (n : Nat) -> List Nat {
+      match n { Z => Cons(1, Nil), S(k) => Cons(0, Build(k)) }
+    }
+
+Its motive is DATA (a `List Nat`, not a function type) and its residual telescope
+is EMPTY (the scrutinee is its only parameter). `fnElab` therefore gives the `Z`
+arm no binders at all — a bare term where every other arm is a λ — and ι, having
+nothing to apply it to, hands the arm back as the value. So `Build(1)` evaluates
+to `Cons Z ⟨natRec … Z⟩`: a constructor with an unreduced recursor spine in its
+tail, which is a STATE form (R1's `§rec`, the value with no `Term`) sitting where
+the program wrote a list.
+
+Nothing in the corpus had noticed, because no corpus program consumes a
+data-motive recursion's result — every recursive `fn` here writes through a borrow
+and returns `Unit`. These three do consume it, one per way there is to. -/
+
+open Dllbc
+open Dllbc.StdLemmas (Len)
+
+namespace Dllbc.Tests.S33Eager
+
+/-- The subject. Spelled once and spliced, so the three programs below differ in
+    exactly what they do with the result. -/
+def build : Term := prog{
+  fn Build [n] (n : Nat) -> List Nat {
+    match n { Z => Cons(1, Nil), S(k) => Cons(0, Build(k)) }
+  };
+  () }
+
+/-! ## §A. Demand it with a runtime match — the executing machine gets STUCK
+
+    The tail's match lives in its own `fn` for a reason that is not about this
+    milestone: `pushContinuations` re-wraps an arm's body into `.seq body k`
+    without re-normalizing, so a statement match NESTED in another match's arm
+    lands back in expression position and the checker refuses it there ("only a
+    statement-position match may split"). That is a pre-existing limit of the
+    normalizer, it has nothing to do with eagerness, and spelling the inner match
+    as a callee keeps this test about the thing it is about. -/
+
+def demandMatch : Term := prog{
+  fn Build [n] (n : Nat) -> List Nat {
+    match n { Z => Cons(1, Nil), S(k) => Cons(0, Build(k)) }
+  };
+  fn Split (l : List Nat) -> Unit {
+    match l { Nil => (), Cons(h, t) => () }
+  };
+  let r = Build(1);
+  match r {
+    Nil => (),
+    Cons(hd, tl) => { Split(tl); () }
+  };
+  () }
+
+-- The checker accepts: to it `r`'s tail is an ordinary `σ : List Nat` and the
+-- split is the ordinary symbolic one.
+example : progOk demandMatch = true := by native_decide
+-- The run does not: `match: no branch for constructor '§rec'`. **Flips at commit
+-- 3.**
+example : progRuns demandMatch = false := by native_decide
+
+/-! ## §B. Demand it as KNOWLEDGE — and this is the clean differential violation
+
+    `let L = Len r` is a capital `let`, so its right-hand side is ⇝-read, and a ⇝
+    read of a `§rec` spine is refused by name ("is state, not knowledge"). The two
+    machines disagree about the SAME program with no rule to appeal to: one accepts
+    it, the other cannot run it. That is the shape a differential exists to catch,
+    and it is why this milestone is a kernel change and not a macro tidy-up. -/
+
+def demandLen : Term := prog{
+  fn Build [n] (n : Nat) -> List Nat {
+    match n { Z => Cons(1, Nil), S(k) => Cons(0, Build(k)) }
+  };
+  let r = Build(1);
+  let L = Len r;
+  () }
+
+example : progOk demandLen = true := by native_decide
+-- **Flips at commit 3.** The pair IS the assertion: neither line alone says
+-- anything, and together they say the machines do not agree.
+example : progRuns demandLen = false := by native_decide
+
+/-! ## §C. Never demand it — and overwrite it through a borrow
+
+    Today this is laziness paying off: the tail is never forced, so writing over it
+    costs nothing and the program is fine. Under eagerness it becomes an ordinary
+    overwrite of an ordinary list, and the verdict does not move — which is the
+    point of pinning it now, so that commit 3 can show it did not. -/
+
+def overwriteTail : Term := prog{
+  fn Build [n] (n : Nat) -> List Nat {
+    match n { Z => Cons(1, Nil), S(k) => Cons(0, Build(k)) }
+  };
+  let r = Build(1);
+  let b = &m r;
+  match b {
+    Nil => (),
+    Cons(hd, tl) => { *tl := Nil; () }
+  };
+  () }
+
+example : progOk overwriteTail = true := by native_decide
+example : progRuns overwriteTail = true := by native_decide
+-- …and the write really landed, which is what says the run above is not vacuous.
+example : (match runProgram overwriteTail with
+   | .ok e => (e.lookup "r").map Val.pretty
+   | .error _ => none) = some "Cons Z Nil" := by native_decide
+
+end Dllbc.Tests.S33Eager
+end
+-- └── end of M33b's demand battery ─────────────────────────────────────────────────
