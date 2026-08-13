@@ -1303,11 +1303,12 @@ open Dllbc
 /-! # What is left of the mode backstop (suspensions.md §2.5, M32 R3)
 
     Stage A enforced "a function may not land in a runtime binding" at THREE
-    sites. R3 leaves ONE — `refuseFnBinding`, at the `let`, whose survivor
-    assertion is `S27Lam.m1` (`let g = ih`, still refused with the fix in the
-    message) and `S31A.f1read`/`f2read` for the message that moved. This battery
-    is the evidence for the site that went and the pin on the rule that could
-    not land. -/
+    sites. R3 left ONE — `refuseFnBinding`, at the `let` — and **M33b deletes
+    that one too**, measured: with the recursor's self-view spelled `Ih`, its
+    survivor assertion (`S26Rec.m1`'s `let g = ih`) is a ⇒-move of a capital
+    binding and `fenceComptime` refuses it a layer earlier, so the corpus is
+    green with the rule neutralised. This battery is now the evidence for all
+    three sites that went. -/
 
 -- **`bindFields`' site went because it is UNREACHABLE**, not because it is
 -- redundant, and this is the argument as a program: to put a function in a
@@ -1751,7 +1752,7 @@ open Dllbc
     different mistakes — a capital binder over data claims erasure of something
     the match moves; a lowercase binder over a comptime component is the
     runtime-binding-holds-knowledge state the `let` already refuses
-    (`refuseFnBinding`, `fenceComptime`), reached by a rule that was not looking.
+    (`fenceComptime`), reached by a rule that was not looking.
 
     Each direction is one program in two spellings one character apart, so each
     reject is discriminating against its own accept rather than against nothing. -/

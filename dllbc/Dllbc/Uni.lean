@@ -849,9 +849,9 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     --
     -- Stated here, at the row that writes the binder, because this is where a
     -- reader can be told the fix. The kernel says it again from below
-    -- (`refuseFnBinding`, M32 R3's rename of `backstopFnBinding` and the one
-    -- site the rule is left at), where it catches what the surface cannot see: a
-    -- lowercase binding whose right-hand side merely PRODUCES a function.
+    -- (`fenceComptime`, since M33b deleted the last mode backstop as derivable),
+    -- where it catches what the surface cannot see: a lowercase binding that
+    -- receives a function from somewhere the surface cannot read.
     --
     -- The divergence from Rust's snake_case is deliberate and tracks a real
     -- semantic difference — a Rust function is a runtime item, a DLLBC function

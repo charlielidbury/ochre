@@ -683,7 +683,17 @@ example : keyDisagree Pure.kLeFn = 0 := by native_decide
 -- `let Hf1 = LeTrans … Hl1 Hfuel` must be a capital binding, and a capital
 -- argument at a lowercase parameter is a ⇒-move of a capital binding. The
 -- telescope rule is unchanged; its population grew.
-example : comptimeSlotParams Dllbc.Tests.S23Direct.flagship = 6 := by native_decide
+--
+-- **M33b: 6 → 9, and the three arrivals are all `Ih`** — one per recursive `fn`
+-- in the flagship (`Partition`, `AppendBack`, `Quicksort`), the list being
+-- `[Hf, Ih, Hf, Hf, Ih, Hf, Hfuel, Ih, Hfuel]`. The recursor's self-view holds a
+-- FUNCTION at each of them (their motives are Πs — the residual telescope carries
+-- the borrows), and §2.5 is law: no runtime binding may hold one. It flipped
+-- because `fnElab` MINTS that binder, so §2.1's migration — a sweep over what
+-- programs write — could never have reached it. The telescope rule is still
+-- unchanged; its population grew again, and for the third time by a capital
+-- binder whose argument lands in Ω.
+example : comptimeSlotParams Dllbc.Tests.S23Direct.flagship = 9 := by native_decide
 
 /-! …and **the count the rule protects**. A case test at `Term.lamImperative`
     would take every all-capital-parameter `fn` out of this number and with it

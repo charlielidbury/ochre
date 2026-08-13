@@ -449,7 +449,33 @@ def fnElab (d : FnDef) : Except String Term := do
         if elemTy?.isSome then [⟨base, "hd"⟩, ⟨base + 2, kv.name ++ "'"⟩]
         else [⟨base, kv.name ++ "'"⟩]
     let dec : Var := stepBs.getLast!
-    let ih : Var := ⟨base + 1, "ih"⟩
+    -- `ih`'s domain is the motive at the PREDECESSOR — a term nothing in the
+    -- source wrote. Computed here rather than below because its SHAPE decides the
+    -- binder's own spelling.
+    let ihTy : Term := Term.substP (paramName kv) (.var dec) R
+    -- **`Ih` IS CAPITAL WHEN IT HOLDS A FUNCTION, and lowercase when it holds
+    -- data** (M33b, suspensions.md §2.1/§2.5). §2.1's rule reaches every binder
+    -- and this one was out of its migration's reach — the corpus's `ih`s were
+    -- renamed by a sweep over what programs WRITE, and this one is minted. But
+    -- the rule is "capital binds comptime knowledge", not "capital is spelled on
+    -- recursor arms", so it has to be asked of what the binder actually holds.
+    --
+    -- The answer is the arm's own type, and it splits exactly where eagerness
+    -- does. A Π motive — the residual telescope is non-empty, `SetAt`'s `v`, `i`,
+    -- `x`, quicksort's borrows — gives `Ih` a FUNCTION, which §2.5 makes law:
+    -- no runtime binding may hold one. A data motive with an empty residual
+    -- telescope gives `ih` the recursive RESULT, which under commit 3 is a
+    -- finished value of the return type (`RecGood`'s `Id Nat Z Z`, `Build`'s
+    -- `List Nat`) — ordinary runtime data, moved and returned like any.
+    --
+    -- MEASURED, not chosen: renaming unconditionally reds exactly the three
+    -- programs whose residual telescope is empty (`recGood`, `recList`,
+    -- `recCaller`), each at `fence: 'Ih' … cannot be ⇒-moved`, because their
+    -- self-call `RecGood(m)` drops its only argument and IS the bare `.var ih`
+    -- that the arm returns. Making that return legal would need the recursor's
+    -- signature to carry modes, which is filed as its own milestone.
+    let ih : Var :=
+      ⟨base + 1, match ihTy with | .pi _ _ _ => "Ih" | _ => "ih"⟩
     -- THE ARMS: the WHOLE body twice, with `match k` resolved to one branch each.
     let zBody := resolveScrut kv baseCtor [] d.body
     let sResolved := resolveScrut kv stepCtor stepBs d.body
@@ -497,7 +523,8 @@ def fnElab (d : FnDef) : Except String Term := do
     let armTel (names : List Var) (ty : Term) : Except String (List (Var × Term)) := do
       let (tel, _) ← piPeel names ty
       .ok (tel.map (fun p => (p.1, markDom p.1 p.2)))
-    let ihTy : Term := Term.substP (paramName kv) (.var dec) R
+    -- (`ihTy` is derived above `ih`, since its shape is what decides that
+    -- binder's case.)
     -- The recursor, UNAPPLIED: the scrutinee is the sealed Π's own first binder,
     -- so the recursor is exactly a function of it (§7's derived motive read the
     -- other way round). `listRec` takes its element type first, which is the only

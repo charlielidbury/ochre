@@ -2183,6 +2183,37 @@ example : (match runProgram twoBuildsTail with
    | .error _ => (none, none))
   = (some "Cons Z Nil", some "Cons Z (Cons (S Z) Nil)") := by native_decide
 
+/-! ## §E. `Ih` is CAPITAL when it holds a function, and citing it twice is free
+
+    §2.1's rule reaches every binder, and `fnElab` MINTS this one — so the
+    migration that renamed what programs write could never have reached it. It is
+    capital exactly when it holds a FUNCTION (a Π motive: the residual telescope
+    carries the borrows), which §2.5 makes law, and lowercase when it holds the
+    recursive RESULT (a data motive with an empty residual telescope, where under
+    §A–§D the result is a finished value moved and returned like any other).
+
+    The pair below is the property that capitalisation has to preserve: a capital
+    binder is ⇝-read, which is NON-CONSUMING, so an arm may cite `Ih` twice.
+    Quicksort needs exactly this — it recurses twice from one arm — and is green
+    in `Direct`; this is the same claim in four lines, where a reader can see it.
+    `Bump(2, …)` increments three times, which is the count only a doubling
+    recursion reaches. -/
+
+def citesIhTwice : Term := prog{
+  fn Bump [n] (n : Nat, v : &mut Nat) -> Unit {
+    match n { Z => (), S(k) => { Bump(k, &m *v); Bump(k, &m *v); *v := S(*v); () } }
+  };
+  let acc = 0;
+  let b = &m acc;
+  Bump(2, b);
+  let r = acc;
+  () }
+
+example : progOk citesIhTwice = true := by native_decide
+example : (match runProgram citesIhTwice with
+   | .ok e => (e.lookup "r").map Val.pretty
+   | .error _ => none) = some "S (S (S Z))" := by native_decide
+
 end Dllbc.Tests.S33Eager
 end
 -- └── end of M33b's demand battery ─────────────────────────────────────────────────

@@ -2347,54 +2347,34 @@ def tailFence (fuel : Nat) (cod : Term) (b : Term) : M Unit := do
         throwErr s!"the TAIL of a Σ chain is runtime-moded, and '{x.name}' is a COMPTIME binder (capitalized — §6), so returning it here would ⇒-move erased knowledge. This is the one position in a Σ with no binder: every component before it spells its mode with its binder's case, and the tail can only spell it on the TYPE. Write the innermost former as `Σ0 (x : A) → P` instead of `Σ (x : A) → P` — the `0` marks the SECOND projection comptime (DLLBC's subset type, Lean's Subtype), after which the tail is ⇝-read, erased, and never moved."
     | _ => pure ()
 
-/-- **⇒'s function values**: an IMPERATIVE closure, or a σ the kernel recorded in
-    `fsig` (which is where a sealed imperative function goes; a sealed pure λ has
-    a `Val` and lives in `sctx` alone, and binding one at a lowercase name has
-    always been legal).
+-- **`isFnValue` IS DELETED TOO** (M33b), with its one caller. Its docstring
+-- carried R3's seven-binding measurement and the blocker it recorded — "what has
+-- to move first is a Σ component's binder mode … after which a returned proof can
+-- be capital and this exclusion can go". That moved at R3b, the exclusion went at
+-- M33 Σ0's terminal attempt, and the rule the predicate served goes here. The
+-- measurement itself survives where it belongs, in suspensions.md §2.5 and the
+-- R3/R3b addenda.
 
-    **A COMPTIME closure is excluded, and M32 R3 tried to stop excluding it.**
-    Stage A wrote the exclusion with a reason — "it is what every staged
-    proof-builder in the corpus binds" — and deferred `let f = Add 1` as "a
-    second corpus migration". R3 ran that migration and it does not exist yet.
-    The measurement, since it is the kind of thing a reader will otherwise
-    re-derive:
 
-      * Including comptime closures refuses **seven** corpus bindings — `cnt`,
-        `cnt1`, `cnt2`, `top1`, `f`, `c`, `g` — of which the first four are
-        `let cnt = MkL lo hi hcnt` and its siblings in quicksort and the array
-        sort: PARTIAL APPLICATIONS of staged proof-builders, whose value is a
-        proof of a ∀-statement and therefore a λ.
-      * Capitalising them, which is what the rule asks, then FAILS at the
-        RETURN: the proof is handed back as a Σ component —
-        `Pair(hi, Pair(hub2, …, Pair(hl2b, cnt)))` — and `fenceComptime`
-        refuses a ⇒-read of a capital binding ("'Cnt' is a COMPTIME binder …
-        cannot be ⇒-moved"). Measured on the flagship.
-
-    So the two rules contradict each other on ∀-proofs, and nothing distinguishes
-    `let cnt = MkL lo hi hcnt` from `let f = Add 1`: both bind a partial
-    application whose type is a Π, and this calculus has no Prop/Type split to
-    separate a proof from a computation. What has to move first is a Σ
-    component's binder mode — §2.1's migration, staged as R3b — after which a
-    returned proof can be capital and this exclusion can go. Recorded as the
-    blocker rather than as a preference. -/
-def isFnValue (st : St) : Val → Bool
-  | .closure _ t _ => Term.lamImperative t
-  | v => match v.symOf? with
-    | some σ => (st.fsig.lookup σ).isSome
-    | none => false
-
-/-- **A runtime binding may not hold a function** (§2.1), at the ONE place R3
-    leaves the rule.
-
-    **Checking-side**, inherited verbatim from the rule it replaces and for the
-    same reason: the executing machine holds a real function value and computes
-    with it correctly, so refusing there would break running programs to protect
-    a checker. -/
-def refuseFnBinding (x : Var) (v : Val) : M Unit := do
-  let st ← get
-  if !st.executing && !x.isComptime && isFnValue st v then
-    throwErr s!"'{x.name}' is a runtime binding and its right-hand side produced a function ({v.pretty}) — functions are comptime; capitalise the binder. A function is comptime knowledge (§2.1): it is ⇝-read, erased, and never ⇒-consumed, so the binding that holds one must be capital. Write `{x.name.capitalize}` instead. (A partial application is a function too: `Add 1` awaits its second argument.)"
-  else pure ()
+-- **`refuseFnBinding` IS DELETED** (M33b), and with it the last of Stage A's
+-- three backstops. §2.5 promised it would become derivable once ⇒ could not
+-- construct a function; M33 Σ0 made that law and MEASURED that it did not —
+-- neutralising the rule red exactly one assertion, `Functions.m1`'s `let g = ih`,
+-- where a function is not constructed but COPIED out of one runtime slot into
+-- another. Σ0 named the deeper repair in the same breath: "`ih` is a binder
+-- holding a function and should be `Ih`".
+--
+-- That is done. `fnElab` mints `Ih` wherever the self-view holds a function, the
+-- corpus's hand-written arms follow, and `let g = Ih` is now a ⇒-MOVE of a
+-- capital binding — which `fenceComptime` refuses one layer earlier, in a message
+-- that ends with this very fix. Re-measured with the rename in place: the whole
+-- corpus is green with the rule neutralised, so the site is empty and the rule
+-- goes.
+--
+-- What survives is the pair of refusals that IS the law: `readR`'s λ arm (a
+-- function WRITTEN) and the pure lift's λ case (a function COMPUTED), plus
+-- `fenceComptime` for a function COPIED. Three ways to arrive, three refusals,
+-- none of them a backstop.
 
 /-! ## The mode backstop's SCATTER is gone (M32 R3, suspensions.md §2.5)
 
@@ -2416,10 +2396,21 @@ def refuseFnBinding (x : Var) (v : Val) : M Unit := do
         it is redundant. Putting a function in a constructor field requires
         ⇒-reading one, and the only bindings that hold one are capital, which
         `fenceComptime` refuses. Asserted rather than argued (`S32Backstop`).
-      * **`backstopFnBinding` — renamed `refuseFnBinding` — SURVIVES**, at the
-        `let`, because §2.5's premise is false: see `pureLift`, where the
-        refutation is recorded with the measurement. ⇒ still constructs function
-        values, since a proof of a ∀-statement is a λ. -/
+      * **`backstopFnBinding` — renamed `refuseFnBinding` — SURVIVED R3 and R4
+        and M33 Σ0, and is DELETED at M33b.** It outlived §2.5's prediction by
+        two milestones, and each time for a reason worth having: R3 because ⇒
+        still constructed function values (a proof of a ∀-statement is a λ); Σ0
+        because law about CONSTRUCTING one says nothing about COPYING one, which
+        is what `let g = ih` does. M33b removes the site rather than the rule:
+        the arm binder that held a function is `Ih` now, so the copy is a ⇒-move
+        of a capital binding and `fenceComptime` refuses it a layer earlier.
+        Measured, with the rename in place: the corpus is green with the rule
+        neutralised.
+
+    **So the scatter is not reduced but GONE**, and what enforces §2.1 is three
+    refusals that each name a way a function can arrive — WRITTEN (`readR`'s λ
+    arm), COMPUTED (the pure lift's λ case), COPIED (`fenceComptime`). None of
+    them is a backstop; each is the rule at the event it is about. -/
 
 /-- Weak-head a store value: knowledge reduces, state is already a head. -/
 def whnfV (fuel : Nat) (v : Val) : Val :=
@@ -2596,8 +2587,8 @@ def armSeamed? : Term → Bool
     here they were the last position where the spelling was unread: a `Pair`
     destructure could bind a comptime component — an erased proof — at a
     lowercase name, which is the runtime-binding-holds-knowledge state the `let`
-    refuses (`refuseFnBinding`, `fenceComptime`), reached by a rule that was not
-    looking.
+    refuses (`fenceComptime`; `refuseFnBinding` beside it until M33b deleted it),
+    reached by a rule that was not looking.
 
     The check is BOTH directions, because they are two different mistakes:
 
@@ -4431,15 +4422,17 @@ mutual
       that "the duplication is two lines" and that a rule living only in `readR`
       would be dead for every real body. That reasoning was right and the
       duplication was the wrong answer to it: a third driver would have made it
-      three copies of `refuseFnBinding`.
+      three copies of the mode backstop that used to sit here.
 
-      This one: ⇝ for a capital binder, ⇒ for a lowercase one, and **the ONE
-      enforcement point** (M32 R3, suspensions.md §2.5) between them — a
-      runtime-moded binding may not receive a function. -/
+      This one: **⇝ for a capital binder, ⇒ for a lowercase one, and nothing
+      else** (M33b). The backstop between them — "a runtime-moded binding may not
+      receive a function" — is gone, because the three ways a function can arrive
+      each have their own refusal now and none of them is here. R3's invariant is
+      the whole rule with no rider: *a capital `let` ⇝-reads its right-hand side;
+      a lowercase `let` ⇒-reads it.* -/
   def letStep : Nat → Var → Term → M Unit
     | fuel, x, rhs => do
       let v ← if x.isComptime then readComptimeVal fuel rhs else readR fuel rhs
-      refuseFnBinding x v
       bindSlot x v
   termination_by fuel _ _ => (fuel, 16, 0)
   /-- The `assign` step: RHS by ⇒ first (§2.5 ordering), target by ⇐. -/
