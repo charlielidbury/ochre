@@ -4844,7 +4844,17 @@ mutual
       rule turns over: a function value IS finished, so an arm that is one leaves
       the recursor as it stands. Deleting it would make that shape a partial
       application error instead, which is a different claim about a live
-      semantics and not a tidy-up. -/
+      semantics and not a tidy-up.
+
+      **M33c REVISITED IT UNDER THE SIGNATURE, and the verdict is KEEP — now for
+      a reason the type states rather than for a measurement it survives.**
+      `recSig` ends `… → Π (n : τ) → P n`: the recursor's result at the scrutinee
+      IS the motive there. So when the motive computes a function type, the
+      recursor's own codomain is a function type, and a recursor applied to
+      nothing beyond its scrutinee is a VALUE of it — which is precisely this
+      line. It stopped being a corner the corpus happens not to reach and became
+      the signature's codomain read literally; the measurement (green with it
+      throwing) is now a statement about this corpus rather than about the rule. -/
   def applyRest : Nat → Val → List Val → M Val
     | fuel, arm, rest =>
       match (if arm.armTakesUnit then Val.ctor "unit" [] :: rest else rest) with

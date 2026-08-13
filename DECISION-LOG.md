@@ -3,6 +3,64 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-08-13: M33c — a recursor's spine carries binder modes, and the motive WALLS
+
+**Decided: `recLayout`'s numeric triple is replaced by `recSig`, each recursor's
+own moded Π, from which the positions AND the modes are read; the arm contract is
+derived once; `Ih` becomes unconditional; and the motive keeps its erasure with
+its reason restated.** The measurements are suspensions.md's M33c addendum. This
+entry records the decisions and the alternatives.
+
+**Why a type rather than a wider table.** The cheap version of this milestone was
+to keep the triple and add a fourth field of per-position modes. A type subsumes
+all four and is answerable in a way a table is not: `natRec`'s type SAYS the
+motive is a family over the scrutinee, so `recMotiveDom` reads that rather than
+trusting an index, and the base arm is "the position after the motive" rather
+than a number that has to agree with one. It is also what let the fifth
+destination dissolve in the same move: once the arm position has a mode, forming
+an arm stops being a rule about recursors and becomes the ⇝ reading of a λ.
+
+**The motive: WALL, and the alternatives weighed.** "Never read" and "⇝-read" are
+different, and this language has no marker for the difference. Routing the motive
+through the ordinary comptime reader means `mkClosure`, whose FORMATION check
+⇝-evaluates the body (§2.2), and `reflectC` refuses the `borrowT` that a runtime
+motive's Π is made of — 34 assertions red, with the error verbatim in the
+addendum. Rejected: a **third marker** ("erased", beside `⇝`), which is a new
+grammatical form for one position and is what this milestone exists to remove;
+**fsig-only σs** ("callable but not conversion-typeable"), which is the right
+shape and is in fact what the motive already IS — a signature position met at the
+seal and never read — but which gives no way to say so in the type; and **Σ0's
+move** (the mode on the type where no binder exists), which does not apply
+because the motive HAS a binder. The problem is not where to put a mode; it is
+that no mode means "unreadable". So the motive stays special and its reason is
+upgraded from a POSITION TABLE to a STATED RULE on its own domain. A partial
+dissolution, scoped honestly, is the right outcome here.
+
+**`Ih` unconditional: the condition was the arm's missing RESULT mode.** M33b
+asked "what does this binder hold?" and answered from `ihTy`'s shape. The right
+question is the motive's, and it has one answer: `Ih` holds the motive at the
+predecessor, the arm produces the motive at its own constructor, so the same
+type wears the same mode. The motive is comptime either way — a FUNCTION by §2.5
+when it still owes the arm a telescope, the recursion's own finished KNOWLEDGE
+when it owes nothing — and what actually differed between M33b's two cases is the
+ARM's result mode. Rejected alternative: weakening `fenceComptime` so that a
+⇒-read of a capital binder yielding knowledge is allowed. That would have made
+the three programs pass for the wrong reason — it is a change to erasure, not to
+recursors — and it would have applied everywhere rather than at the one position
+whose type says the value is comptime.
+
+**Consequence, and the acceptance test: a recursion may return a proof.** Pinned
+as `Ledger.recDeepCapProg` beside the unchanged `recDeepProg`: the same recursor
+with `ih` spelled `Ih` (and the `⇝` that goes with a capital binder), both
+accepted, each with a lying-ascription twin that is refused.
+
+**Kept deliberately: `applyRest`'s Π-motive value case.** M33b kept it on a
+measurement — green with it throwing — and said deleting it would turn a live
+shape into a partial-application error. Under the signature it is no longer a
+corner: `recSig` ends `… → Π (n : τ) → P n`, so when the motive computes a
+function type the recursor's own codomain is one and a recursor applied to
+nothing beyond its scrutinee is a value of it. Same verdict, a better reason.
+
 ## 2026-08-12: M33 Σ0 — a mode for the tail, and no-⇒-λ becomes law
 
 **Decided: a Σ chain's tail gets its mode from a marker on the Σ's CODOMAIN,

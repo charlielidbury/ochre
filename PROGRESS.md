@@ -1,5 +1,42 @@
 # Progress
 
+## 2026-08-13 — dllbc/: **M33c — the recursors get a TYPE, and `Ih` loses its condition**
+
+Six commits on `m33c-rec-sigs` (based on main @ a43047b9), corpus green at each.
+M33b's own filed follow-on, and like it a milestone rather than a stage: a
+recursor's spine carries binder modes the way λ and Π have since M31 Stage A.
+
+**Two special cases dissolve and one WALLS, and the wall is the part worth
+reading.** `recLayout`'s numeric triple — how many arguments precede the
+scrutinee, where the motive sits, where the base arm sits — is gone: `recSig`
+gives each recursor its own moded Π and all three are read off it, together with
+the modes that had no table at all. Σ0's fifth destination is gone: an arm
+position SAYS it is comptime, and ⇝-reading a λ is forming it, so the sentence
+that covers a capital `let`, a ⇝ parameter and a Σ0 tail covers an arm with no
+extra clause. `erasedMotive` STAYS, because **"never read" is not "⇝-read" and
+this language has no marker for the difference** — measured at 34 red assertions,
+the mechanism being `mkClosure`'s formation check meeting the borrow-moded Π a
+runtime motive is made of. What changed for the motive is its REASON: a property
+of the signature's own domain (*the argument whose type is a family over the
+scrutinee*) where it was an index compared against a table.
+
+**`Ih` is unconditional, and the condition was the arm's missing result mode.**
+M33b minted it capital iff `ihTy` was a Π and measured that dropping the
+condition red `recGood`, `recList` and `recCaller` at `fence: 'Ih' … cannot be
+⇒-moved`; re-measured here, the same three and nothing else. The two cases were
+never two: `Ih` holds the motive at the predecessor and the arm produces the
+motive at its own constructor, so the same mode — a FUNCTION by §2.5 when the
+motive still owes the arm a telescope, the recursion's own finished KNOWLEDGE
+when it owes nothing. What differed is the ARM's result mode, now said once in
+`recArmContracts` for both machines. **A recursion may therefore return a
+proof**, pinned as a pair whose two halves differ in one binder's case.
+
+**Also here:** the arm contract is derived ONCE (`sealRec`/`checkArm` check the
+pair, `recArmPis`/`ascribeRecArms` wrap it — M33b's hand-duplicated unit binder
+is gone), and `applyRest`'s Π-motive case is KEPT for a reason the type states
+rather than a measurement it survives (`recSig` ends `… → Π (n : τ) → P n`, so a
+recursor at a function-typed motive IS a function value).
+
 ## 2026-08-12 — dllbc/: **M33 Σ0 — the comptime tail, and the terminal no-⇒-λ attempt LANDS**
 
 Five commits on `m33-sigma0` (based on main @ 478cadb8), corpus green at each.

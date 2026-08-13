@@ -544,6 +544,17 @@ last surviving backstop, which §2.5 predicted would become derivable and Σ0
 measured as not — is DELETED**, and the thing that made it derivable is `Ih`:
 addendum at the bottom of this file.
 
+**M33c — recursor moded signatures: RUN** (branch `m33c-rec-sigs`, based on main
+@ a43047b9). M33b's own follow-on, and like it a milestone rather than a stage of
+the M32 plan: a recursor's spine carries binder modes the way λ and Π have since
+M31 Stage A, so that the three things the machine knew about a recursor by
+POSITION become things it reads off a TYPE. Two of the three special cases
+dissolve — `recLayout`'s numeric triple and Σ0's fifth destination — and the
+third, `erasedMotive`, is a WALL with its reason upgraded from a position table
+to a rule stated on the signature's own domain. What it buys is M33b's filed
+repair: **`Ih` is unconditional and a recursion may return a proof.** Addendum at
+the bottom of this file.
+
 **M33 α — residual 4's close-out, not a stage** (branch `m33-alpha-key`, based on
 R4 @ ab6921ae and rebased onto main at merge; two commits, corpus green at each).
 **"M33 α" to distinguish it from §2.7's Σ0 design, which the doc also calls
@@ -1429,3 +1440,110 @@ assumption-indexed evaluation (rejected with precedent, §3).
 > outside `Traces` and both named in (8): `slotOf b1 "f"` takes `Ih`, and
 > `runExec m1` goes from a zeroed list to an error. Said this way rather than as
 > "no golden moved", which would be false.
+
+> **Implementation addendum (M33c, landed on `m33c-rec-sigs`).** Six commits,
+> corpus green at each, based on main @ a43047b9 (the fully merged M31–M33 arc).
+> M33c is M33b's filed follow-on: the recursor's spine gets binder modes the way
+> λ and Π have had them since M31 Stage A, so that what the machine knew about a
+> recursor by POSITION becomes what it reads off a TYPE.
+>
+> **0. THE HEADLINE IS TWO DISSOLUTIONS AND ONE WALL, and the wall is the part
+> worth having read.** `recLayout`'s numeric triple is GONE and Σ0's
+> fifth-destination arm rule is GONE — both read off `recSig`, the recursor's own
+> moded Π. `erasedMotive` STAYS, and the reason is the sharp edge the dispatch
+> named: **"never read" is not "⇝-read", and this language has no marker for the
+> difference.**
+>
+> **1. The signature, and why a type rather than a wider table.** The alternative
+> was to keep the triple and add a fourth field of modes. A type subsumes all
+> four and is answerable in a way a table is not:
+>
+>     natRec : Π (P  : ⇝(Π (§n : Nat) → Type))
+>            → Π (Z§ : ⇝(P Z))
+>            → Π (S§ : ⇝(Π (k : Nat) → Π (Ih : ⇝(P k)) → P (S k)))
+>            → Π (n  : Nat) → P n
+>
+> The motive is a BOUND binder, so the schema is closed and can be read without
+> instantiating anything. Every binder spells its mode on both halves, exactly as
+> `Term.clam`/`Term.cpi` make a hand-written comptime binder do (R3b): the motive
+> because a type is knowledge, the arms because §2.5 is law that a function value
+> arrives only where ⇝ reads it, the scrutinee runtime because it is what ι splits
+> on. Read off it: `recPreScrut` (every binder but the last), `recMotiveIdx` (via
+> `recMotiveDom` — **the argument whose type is a family over the scrutinee**,
+> which is what a motive IS rather than where it sits; `listRec`'s `A` is a type
+> and not a family, and that is what separates the two comptime non-arms),
+> `recBaseArmIdx` (the position after the motive), `recArgDoms` (the modes).
+> Measured against the table it replaces: `natRec (3, 0, 1)`, `listRec (4, 1, 2)`,
+> `boolRec (3, 0, 1)`, to the number.
+>
+> **2. THE WALL, measured, with the mechanism named.** Routing the motive through
+> the ordinary comptime reader reds **34** assertions — Boundaries 2, Direct 32,
+> the build halting at Direct so that is a FLOOR and not a total. The mechanism is
+> not the reading but the FORMATION check: §2.2 has `mkClosure` ⇝-evaluate a pure
+> λ's body as a check, `reflectC` descends λ bodies and Π domains, and it refuses
+> `borrowT` by name. The probe's own words:
+>
+>     readC (⇝): borrow type `&mut (τ ↝ S)` is only valid at a telescope position
+>
+> The three precedents were weighed and none reaches it. A **third marker**
+> ("erased", beside `⇝`) is a new grammatical form for one position, which is what
+> this milestone exists to remove. **fsig-only σs** ("callable but not
+> conversion-typeable") is the right SHAPE and is what the motive already is — a
+> signature position that is MET (the seal checks the written motive against the
+> derived one) and never READ — but it gives no way to say so in the type. **Σ0's
+> move** (the mode on the type where no binder exists) is inapplicable: the motive
+> HAS a binder; the problem is not where to put a mode but that no mode means
+> "unreadable". So the motive stays special and its reason is upgraded from a
+> POSITION TABLE to a STATED RULE on its own domain, read where every other
+> position's mode is read. A partial dissolution, scoped honestly.
+>
+> **3. THE FIFTH DESTINATION WAS NEVER A DESTINATION RULE — it was a position
+> rule.** Σ0 item 4 found that stating "a λ needs a comptime destination" at
+> `readR`'s λ arm alone refused every runtime recursor's arms (46 red), and
+> answered it by making `readRecArgs` FORM its arms as a special case. The arm
+> position says `⇝` now, and ⇝-reading a λ IS forming it — `readComptimeVal`'s own
+> λ case is `mkClosure`, the same call the special case was making by hand. One
+> sentence covers a capital `let`, a ⇝ parameter, a Σ0 component or tail and an
+> arm. A λ that is COMPUTED into an arm became legal for the same reason a WRITTEN
+> one is, where the pure lift used to refuse it; the programmer-facing list in the
+> error message is still the four a programmer can write.
+>
+> **4. THE ARM CONTRACT IS ONE DERIVATION WITH TWO PROJECTIONS.**
+> `recArmContracts` returns, per spine position, the premise binders the recursor
+> gives the arm paired with the type the rest of it must have. `sealRec`/`checkArm`
+> CHECK the pair; `recArmPis`/`ascribeRecArms` WRAP it. M33b had added the unit
+> binder to each of them by hand — that is the duplication SUGGESTIONS names, and
+> it is gone. What stayed in `sealRec` is the arms' SHAPE, because those are its
+> messages and the corpus asserts three of them.
+>
+> **5. `Ih` IS UNCONDITIONAL, AND THE CONDITION WAS THE ARM'S MISSING RESULT
+> MODE.** M33b minted `Ih` capital iff `ihTy` was a Π and measured that dropping
+> the condition red `recGood`, `recList` and `recCaller` at `fence: 'Ih' … cannot
+> be ⇒-moved`. Re-measured on this base before anything was touched: the same
+> three, Direct 292/362/422, and nothing else (the build halts at `Direct`, so
+> `Ledger`'s `progOk S23Direct.recGood` would have been a fourth). The two cases
+> were never two. `Ih` holds the motive at the PREDECESSOR and the arm PRODUCES
+> the motive at its own constructor — the same type, so the same mode — and the
+> motive is comptime whichever thing it delivers: a FUNCTION by §2.5 when it still
+> owes the arm a telescope, the recursion's own finished KNOWLEDGE when it owes
+> nothing. What differed between the cases is the ARM's result mode, said once in
+> `recArmContracts`. One question — *does the motive owe this arm anything?*,
+> which is also M33b's eager/lazy line and its unit binder — now answers four
+> things.
+>
+> **6. A RECURSION MAY RETURN A PROOF**, which is (5) from the programmer's end:
+> an arm may return `Ih` bare, because the arm's result position is comptime
+> exactly when the recursion delivers a finished value there. Pinned as
+> `Ledger.recDeepCapProg` with `recDeepProg` — the same recursor with the binder
+> spelled `ih` — unchanged beside it, and a lying-ascription twin for each, so the
+> accept is the arms inhabiting the type rather than the marker waving them
+> through.
+>
+> **7. `applyRest`'s Π-motive case: KEEP, and now for a reason the type states.**
+> M33b kept it on a measurement (green with it throwing) and said deleting it
+> would turn a live shape into a partial-application error. `recSig` ends `… → Π
+> (n : τ) → P n`: the recursor's result at the scrutinee IS the motive there, so
+> when the motive computes a function type the recursor's own codomain is one, and
+> a recursor applied to nothing beyond its scrutinee is a VALUE of it. That is
+> this line. It stopped being a corner the corpus happens not to reach and became
+> the signature's codomain read literally.

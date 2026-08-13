@@ -46,7 +46,23 @@ Partial correctness first (signature-only recursion — no termination
 story); totality later via fuel or §8 measures. Known caveat: type-in-type
 means "verified modulo Girard" until the universe hierarchy returns.
 
-## dllbc/ — recursor MODED signatures (2026-08-13, opened by M33b)
+## dllbc/ — ~~recursor MODED signatures~~ (2026-08-13, opened by M33b) — **RUN at M33c**
+
+**DONE, with one item WALLED and the wall recorded** (branch `m33c-rec-sigs`;
+suspensions.md's M33c addendum has the measurements). `recSig` gives each
+recursor its own moded Π and `recLayout`'s triple is read off it; the arm
+contract is derived once; the `Ih` rename is unconditional and a recursion may
+return a proof. **`erasedMotive` survives**: the motive is never READ AT ALL,
+which is not the same as ⇝-read, and there is no marker for the difference —
+routing it through the ordinary reader reds 34 assertions because `mkClosure`'s
+formation check meets the borrow-moded Π a runtime motive is made of. Its reason
+is upgraded from a position table to a rule stated on its own domain. **What is
+still open, and it is the third bullet's real content**: a motive is a type the
+comptime fragment cannot read, so the executing machine's answer and the checking
+machine's stay two answers to one question. Closing that is borrow refounding
+(below), not a recursor item.
+
+The original entry, kept for its measurements:
 
 `recLayout`/`erasedMotive` are the shape of a recursor whose type says nothing
 about modes. Three facts that M33b measured say the same thing:

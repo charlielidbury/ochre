@@ -313,6 +313,43 @@ def recDeepLie : Term :=
     (prog{ λ (n : Nat). Id Nat Z (S Z) })) deepBaseArm) deepStepArm) deepSealLie) .unit
 example : progOk recDeepLie = false := by native_decide
 
+/-! ### A RECURSION MAY RETURN A PROOF (M33c), and the pair that says so
+
+    `deepStepArm` above binds `ih` LOWERCASE at `Id Nat Z Z` and returns it from
+    the `S` branch. That is legal and always was: a lowercase binder holds runtime
+    data, and returning it is an ordinary move.
+
+    Spelling the same binder `Ih` was NOT legal until M33c. §2.1 says a binder
+    holding a proof should be capital, and a capital binder carries `⇝` on its
+    domain (the other half of a comptime binder — M32 R3b's `clam`/`cpi` rule), so
+    returning it was a ⇒-move of a capital binding and `fenceComptime` refused it.
+    That is exactly the wall M33b measured on `recGood`/`recList`/`recCaller` and
+    filed as this milestone. The recursor's signature now says the arm's own
+    RESULT is comptime when the motive owes the arm nothing, so `readResult`
+    ⇝-reads the returned `Ih` and no move happens.
+
+    The two programs differ in one binder's case and the `⇝` that goes with it,
+    and BOTH check — which is what makes this a pair rather than a demonstration:
+    the capital spelling became available, and the lowercase one did not become
+    unavailable. -/
+def deepStepArmCap : Term :=
+  Term.lamTel [(⟨0, "a"⟩, .const "Nat"), (⟨1, "Ih"⟩, .cmpT prog{ Id Nat Z Z })]
+    (.matchE ⟨0, "a"⟩ none
+      [ .mk "Z" [] (.ctorApp "Refl" [])
+      , .mk "S" [⟨2, "b"⟩] (.var ⟨1, "Ih"⟩) ])
+def recDeepCap : Term :=
+  .app (.app (.app (.const "natRec") deepMotT) deepBaseArm) deepStepArmCap
+def recDeepCapProg : Term := .letIn ⟨900, "F"⟩ (.seal 0 recDeepCap deepSealT) .unit
+example : progOk recDeepCapProg = true := by native_decide
+
+/-- …and the capital arm is audited exactly as the lowercase one is: at the lying
+    ascription it is REFUSED. So the accept above is the arms inhabiting the type,
+    not the mode marker waving them through. -/
+def recDeepCapLie : Term :=
+  .letIn ⟨900, "F"⟩ (.seal 0 (.app (.app (.app (.const "natRec")
+    (prog{ λ (n : Nat). Id Nat Z (S Z) })) deepBaseArm) deepStepArmCap) deepSealLie) .unit
+example : progOk recDeepCapLie = false := by native_decide
+
 /-- …and the MACRO still declines the declaration, which is the whole content of
     the correction: the form exists, `fnElab` does not reach it. -/
 example : progRejects S23Direct.recDeep "not the predecessor" = true := by native_decide
