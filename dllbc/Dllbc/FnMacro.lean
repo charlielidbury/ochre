@@ -453,29 +453,28 @@ def fnElab (d : FnDef) : Except String Term := do
     -- source wrote. Computed here rather than below because its SHAPE decides the
     -- binder's own spelling.
     let ihTy : Term := Term.substP (paramName kv) (.var dec) R
-    -- **`Ih` IS CAPITAL WHEN IT HOLDS A FUNCTION, and lowercase when it holds
-    -- data** (M33b, suspensions.md §2.1/§2.5). §2.1's rule reaches every binder
-    -- and this one was out of its migration's reach — the corpus's `ih`s were
-    -- renamed by a sweep over what programs WRITE, and this one is minted. But
-    -- the rule is "capital binds comptime knowledge", not "capital is spelled on
-    -- recursor arms", so it has to be asked of what the binder actually holds.
+    -- **`Ih` IS CAPITAL, FULL STOP** (M33c). It was conditional for one
+    -- milestone, and the condition was the missing mode wearing a disguise.
     --
-    -- The answer is the arm's own type, and it splits exactly where eagerness
-    -- does. A Π motive — the residual telescope is non-empty, `SetAt`'s `v`, `i`,
-    -- `x`, quicksort's borrows — gives `Ih` a FUNCTION, which §2.5 makes law:
-    -- no runtime binding may hold one. A data motive with an empty residual
-    -- telescope gives `ih` the recursive RESULT, which under commit 3 is a
-    -- finished value of the return type (`RecGood`'s `Id Nat Z Z`, `Build`'s
-    -- `List Nat`) — ordinary runtime data, moved and returned like any.
-    --
-    -- MEASURED, not chosen: renaming unconditionally reds exactly the three
-    -- programs whose residual telescope is empty (`recGood`, `recList`,
-    -- `recCaller`), each at `fence: 'Ih' … cannot be ⇒-moved`, because their
+    -- M33b asked "what does this binder HOLD?" and answered it from `ihTy`'s
+    -- SHAPE: a Π meant a function, which §2.5 makes law no runtime binding may
+    -- hold, so `Ih`; anything else meant the recursion's finished RESULT, taken
+    -- for ordinary runtime data, so `ih`. It measured the cost of getting rid of
+    -- the condition — renaming unconditionally red exactly `recGood`, `recList`
+    -- and `recCaller`, each at `fence: 'Ih' … cannot be ⇒-moved`, because their
     -- self-call `RecGood(m)` drops its only argument and IS the bare `.var ih`
-    -- that the arm returns. Making that return legal would need the recursor's
-    -- signature to carry modes, which is filed as its own milestone.
-    let ih : Var :=
-      ⟨base + 1, match ihTy with | .pi _ _ _ => "Ih" | _ => "ih"⟩
+    -- the arm returns — and filed the repair as this milestone: "making that
+    -- return legal would need the recursor's SIGNATURE to carry modes".
+    --
+    -- It does now (`Machine.recSig`), and the shape test is not needed because
+    -- the two answers were never two: `Ih` holds the motive at the predecessor,
+    -- and the motive is comptime whichever thing it delivers — a FUNCTION, by
+    -- §2.5, when it still owes the arm a telescope; the recursion's own finished
+    -- KNOWLEDGE when it owes nothing. What differed between the cases is not the
+    -- binder's mode but the ARM's result mode, and `recArmContracts` is where
+    -- that is now said, once, for both machines. The three programs check with a
+    -- capital binder, and a recursion may return a proof.
+    let ih : Var := ⟨base + 1, "Ih"⟩
     -- THE ARMS: the WHOLE body twice, with `match k` resolved to one branch each.
     let zBody := resolveScrut kv baseCtor [] d.body
     let sResolved := resolveScrut kv stepCtor stepBs d.body

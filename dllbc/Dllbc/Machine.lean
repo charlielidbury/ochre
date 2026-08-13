@@ -3713,9 +3713,33 @@ def recArmContracts (c : String) (u : Term) (armTels : List (List (Var × Term))
   | .pi sn scrutDom R =>
     let atCtor : Term → Term := fun ct => Term.substP sn ct R
     let tel : Nat → List (Var × Term) := fun i => (armTels.get? i).getD []
+    -- **THE RECURSION'S RESULT WEARS THE MOTIVE'S MODE** (M33c), and it is one
+    -- mode read at both ends rather than two decisions that have to be kept in
+    -- step. `Ih` holds the motive at the PREDECESSOR and the arm PRODUCES the
+    -- motive at its own constructor: the same type, so the same mode.
+    --
+    -- When the motive owes the arm nothing, that value is the recursion's own
+    -- finished result, `Ih` is the binder holding it, §2.1 makes that binder
+    -- comptime — and so the arm's result is comptime with it. That is what lets
+    -- an arm RETURN `Ih` (`readResult`'s `⇝` arm reads it, non-consuming) where
+    -- before the fence saw a ⇒-move of a capital binding and refused it. It is
+    -- also the whole of "a recursion may return a proof".
+    --
+    -- When the motive DOES owe the arm a residual telescope, `Ih` holds a
+    -- FUNCTION: §2.5's law puts the ⇝ on the Π, not on what the Π returns, and
+    -- the arm's result after that telescope is the declaration's own return type,
+    -- unmarked as it has always been. Quicksort is that shape and does not move.
+    --
+    -- One question — *does the motive owe this arm anything?* — which is also
+    -- M33b's eager/lazy line and its unit binder, asked once and answering three
+    -- things. `Ih`'s own case is the fourth: `fnElab` no longer has to guess it
+    -- from `ihTy`'s SHAPE, because the signature says it.
     let entry : Nat → List (Var × Term) → Term → Option (List (Var × Term) × Term) :=
       fun i pre ty =>
-        some (pre, if Term.telTakesUnit (tel i) then Term.unitPi ty else ty)
+        let owes := (tel i).drop pre.length
+        let takesUnit := Term.telTakesUnit owes
+        let ty := if (if takesUnit then owes.drop 1 else owes).isEmpty then .cmpT ty else ty
+        some (pre, if takesUnit then Term.unitPi ty else ty)
     match c with
     | "natRec" =>
       -- args: P z s
