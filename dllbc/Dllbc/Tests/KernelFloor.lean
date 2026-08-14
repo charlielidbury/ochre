@@ -1832,9 +1832,9 @@ open Dllbc Dllbc.Tests
     it does not import. The surface can say the same thing, and this is the two
     spellings side by side.
 
-    **They are not the same term, and the two ways they differ are this
-    milestone's whole subject.** Pinned here as they are TODAY, so that the
-    commits which remove each difference are measurements rather than claims:
+    **They were not the same term, and the two ways they differed are this
+    milestone's whole subject.** Pinned at commit 0 as they were then, so that
+    the commits removing each difference are measurements rather than claims:
 
       * ~~the surface's recursor ARM binders are unmarked where the kernel's
         `clam` marks them~~ — **CLOSED at commit 1**: `elabUElim` puts every arm
@@ -1846,20 +1846,25 @@ open Dllbc Dllbc.Tests
         become one is for the KERNEL term to be the surface term, which is
         commit 3.
 
-    Conversion is mode-blind (`Term.convEq`) and both are `natRec` over the same
-    arms, so the third line is TRUE today: the two spellings already denote the
-    same function. What is not true is that they are the same TERM, and
-    `Term.alphaEq` — the key `abstractInto` generalizes with — is mode-sensitive
-    by design. -/
+    Conversion is mode-blind (`Term.convEq`) and both were `natRec` over the same
+    arms, so the third line was TRUE from the start: the two spellings always
+    denoted the same function. What was not true is that they were the same TERM,
+    and `Term.alphaEq` — the key `abstractInto` generalizes with — is
+    mode-sensitive by design, so the difference was one the generalization sweep
+    could see and the type-checker could not. -/
 
 def surfAdd : Term :=
   prog{ λ (A : Nat). λ (B : Nat). elim A return (λ (N : Nat). Nat) { Z => B, S (A') R => S(R) } }
 
--- PINNED BROKEN, both of them, and flipped deliberately by later commits.
-example : Term.alphaEq surfAdd Pure.kAddFn = false := by native_decide
-example : (Pure.nf 1000 surfAdd == Pure.nf 1000 Pure.kAddFn) = false := by native_decide
-
--- …and TRUE today, which is what says the difference is spelling and not meaning.
+-- **ALL THREE TRUE at commit 3.** Pinned `false`/`false`/`true` at commit 0;
+-- commit 1 closed the arm-binder drift and commit 3 the motive one, by making
+-- `Pure.kAddFn` itself a `prog{ }`. The first line is still doing work rather
+-- than comparing a term with itself: `surfAdd` names its motive binder `N` where
+-- the kernel names it `Am`, so what it says is that two INDEPENDENT surface
+-- spellings of `Add` are one term up to α — and `Term.alphaEq` is mode-sensitive,
+-- so it is also saying every marker agrees.
+example : Term.alphaEq surfAdd Pure.kAddFn = true := by native_decide
+example : (Pure.nf 1000 surfAdd == Pure.nf 1000 Pure.kAddFn) = true := by native_decide
 example : Term.convEq (Pure.nf 1000 surfAdd) (Pure.nf 1000 Pure.kAddFn) = true := by native_decide
 
 -- The behaviour, so that a later respell that agrees structurally and computes

@@ -86,25 +86,35 @@ namespace Pure
     does not import, and two syntactically different `add`s would never convert —
     so the single source of truth for both moves here, and `Std` aliases these. -/
 
-def kNatTy : Term := .const "Nat"
-def kUnitTy : Term := .const "Unit"
-def kBotTy : Term := .const "Bot"
-def kNatRecS (P z s n : Term) : Term := .app (.app (.app (.app (.const "natRec") P) z) s) n
+/-! **Both are written in the SURFACE** (M33 macro-top commit 3). They were
+    hand-built `Term`s until the macro layer moved below this module; now the
+    thing the kernel checks and the thing a programmer writes are the same
+    artifact, which is what the layering was for. The deletion was gated on a
+    per-definition equivalence against the hand form (conversion on both normal
+    forms, plus the computed behaviour) — recorded at the commit, since the hand
+    form is gone and the assertion has nothing left to face.
+
+    The assembly shorthands went with them: `kNatTy`, `kUnitTy`, `kBotTy` and
+    `kNatRecS` existed only to make these two readable, and `Nat`, `Unit`, `Bot`
+    and `elim` say it better. What survives is the SPLICE-form composition below
+    — `kAdd`, `kLe` — which is a different job: they apply a library function to
+    terms the machine already holds. -/
 
 /-- `add a b` by recursion on `a` (`add Z b = b`, `add (S a') b = S (add a' b)`). -/
 def kAddFn : Term :=
-  Term.clam "A" kNatTy (Term.clam "B" kNatTy (kNatRecS (.lam "§_" kNatTy kNatTy) (.pvar "B")
-    (Term.clam "A'" kNatTy (Term.clam "R" kNatTy (.ctorApp "S" [.pvar "R"]))) (.pvar "A")))
+  prog{ λ (A : Nat). λ (B : Nat). elim A return (λ (Am : Nat). Nat) { Z => B, S (A') R => S(R) } }
 def kAdd (a b : Term) : Term := .app (.app kAddFn a) b
 
 /-- `Le : Nat → Nat → Type` as a computing predicate (`Z ≤ _ ↦ ⊤`, `S ≤ Z ↦ ⊥`,
     `S ≤ S ↦ recurse`). Premise (2)'s obligation type is built from this. -/
-def kLeFn : Term :=
-  Term.clam "A" kNatTy (kNatRecS (.lam "§_" kNatTy (.pi "§_" kNatTy .type)) (.lam "§_" kNatTy kUnitTy)
-    (Term.clam "A'" kNatTy (Term.clam "F" (.pi "§_" kNatTy .type) (Term.clam "B" kNatTy
-      (kNatRecS (.lam "§_" kNatTy .type) kBotTy
-        (Term.clam "B'" kNatTy (.lam "§_" .type (.app (.pvar "F") (.pvar "B'")))) (.pvar "B")))))
-    (.pvar "A"))
+def kLeFn : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Am : Nat). Nat → Type) {
+      Z => λ (B : Nat). Unit,
+      S (A') F => λ (B : Nat).
+        elim B return (λ (Bm : Nat). Type) {
+          Z => Bot,
+          S (B') Rec => F B' } } }
 def kLe (a b : Term) : Term := .app (.app kLeFn a) b
 
 /-- `Array n T` — the ¶1.1 former, in the FIXED BASIS rather than §7's declaration
