@@ -552,6 +552,34 @@ partial def slotBinders : Term → Nat
   | .borrow t | .deref t | .cmpT t => slotBinders t
   | _ => 0
 
+/-- **`lowerComptime`'s twin, and the half nobody had counted** (M33 macro-top).
+    R3b's doctrine is that a comptime binder is TWO halves written together — the
+    capital name and the `⇝` on its domain — and `Term.clam`/`Term.cpi` exist so
+    that a hand-written term cannot spell one without the other. `lowerComptime`
+    counts the binders that got the domain half and not the name half; this
+    counts the ones that got the NAME half and not the domain half.
+
+    It is not symmetric in the tree, and that asymmetry is this milestone's
+    subject: the hand-written kernel library is 0 because `clam` writes both
+    halves, and every SURFACE `elim` arm binder is here because `elabUElim`
+    builds its arm binders with a bare `Term.lam` and never calls `binderDom`.
+    Same scope restriction as `lowerComptime` (`!bindsSlot`), so a runtime
+    telescope binder — whose mode is its `Var`'s name, not its domain — is out of
+    scope for both. -/
+partial def unmarkedCaps : Term → Nat
+  | .lam x d b =>
+    (if !x.bindsSlot && isUpperInit x.name && !d.domComptime then 1 else 0)
+      + unmarkedCaps d + unmarkedCaps b
+  | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => unmarkedCaps d + unmarkedCaps b
+  | .app f a | .seq f a | .seal _ f a => unmarkedCaps f + unmarkedCaps a
+  | .letIn _ r t => unmarkedCaps r + unmarkedCaps t
+  | .assign p e r => unmarkedCaps p + unmarkedCaps e + unmarkedCaps r
+  | .idT a b c => unmarkedCaps a + unmarkedCaps b + unmarkedCaps c
+  | .ctorApp _ as | .call _ as => (as.map unmarkedCaps).foldl (· + ·) 0
+  | .matchE _ _ bs => (bs.map (fun br => unmarkedCaps br.body)).foldl (· + ·) 0
+  | .borrow t | .deref t | .cmpT t => unmarkedCaps t
+  | _ => 0
+
 /-- **The direction that must be ZERO: a runtime binder with nowhere to put its
     argument.** Lowercase says the argument arrives by ⇒ — moved or loan-seeded
     into the store — so a lowercase binder that binds no Ω slot is a binder whose
@@ -615,6 +643,25 @@ example : slotBinders Dllbc.Tests.S23Direct.flagship = 22 := by native_decide
 -- `Le` predicate the carve rule's premises are stated against.
 example : lowerComptime Std.lenFnT = 0 := by native_decide
 example : lowerComptime Pure.kLeFn = 0 := by native_decide
+
+/-! **…and the other half of the same rule, PINNED BROKEN** (M33 macro-top
+    commit 0). The numbers below are the measurement this milestone starts from
+    and they are not a passing test — they say that a capital binder spells its
+    mode when a HUMAN writes the `Term` and does not when the SURFACE writes it.
+
+    `elabUElim` builds a recursor arm's binders with a bare `Term.lam` and never
+    reaches `binderDom`, so `elim n return … { Z => …, S (A') R => … }` produces
+    `λ A'. λ R. …` with plain domains where `Term.clam "A'"`/`"R"` would have
+    written `⇝Nat`. Every one of the flagship's 317 is that; every one of the
+    hand-written library's 0 is `clam` doing its job.
+
+    They flip at commit 1, which is what makes these lines a measurement rather
+    than a description. -/
+example : unmarkedCaps Dllbc.Tests.S23Direct.flagship = 317 := by native_decide
+example : unmarkedCaps Dllbc.Tests.S24Arrays.sort2 = 20 := by native_decide
+example : unmarkedCaps Std.lenFnT = 0 := by native_decide
+example : unmarkedCaps Pure.kLeFn = 0 := by native_decide
+example : unmarkedCaps Pure.kAddFn = 0 := by native_decide
 
 /-! **THE MIGRATION IS COMPLETE ON THE FLAGSHIP: 10,777 → 0.**
 

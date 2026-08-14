@@ -1819,3 +1819,51 @@ end Dllbc.Tests.S33Arms
 end
 -- └── end of the M33a arm-binder mode battery ─────────────────────────────────
 
+
+-- ┌── M33 macro-top: the twin probe ─────────────────────────────────────────────
+section
+namespace Dllbc.Tests.S33Macro
+open Dllbc Dllbc.Tests
+
+/-! # The same function, written twice — the surface and the kernel
+
+    The kernel's `Add` is a hand-written `Term` (`Pure.kAddFn`), because the CARVE
+    rule's premises are stated against it and a kernel rule cannot cite a library
+    it does not import. The surface can say the same thing, and this is the two
+    spellings side by side.
+
+    **They are not the same term, and the two ways they differ are this
+    milestone's whole subject.** Pinned here as they are TODAY, so that the
+    commits which remove each difference are measurements rather than claims:
+
+      * the surface's recursor ARM binders are unmarked where the kernel's `clam`
+        marks them — `λ A' : Nat` against `λ A' : ⇝Nat` — because `elabUElim`
+        builds arm binders with a bare `Term.lam` and never calls `binderDom`;
+      * the kernel's MOTIVE binder is the reserved unmarked `§_` where a surface
+        motive has to name its binder, and a named capital binder is marked —
+        `λ §_ : Nat. Nat` against `λ N : ⇝Nat. Nat`.
+
+    Conversion is mode-blind (`Term.convEq`) and both are `natRec` over the same
+    arms, so the third line is TRUE today: the two spellings already denote the
+    same function. What is not true is that they are the same TERM, and
+    `Term.alphaEq` — the key `abstractInto` generalizes with — is mode-sensitive
+    by design. -/
+
+def surfAdd : Term :=
+  prog{ λ (A : Nat). λ (B : Nat). elim A return (λ (N : Nat). Nat) { Z => B, S (A') R => S(R) } }
+
+-- PINNED BROKEN, both of them, and flipped deliberately by later commits.
+example : Term.alphaEq surfAdd Pure.kAddFn = false := by native_decide
+example : (Pure.nf 1000 surfAdd == Pure.nf 1000 Pure.kAddFn) = false := by native_decide
+
+-- …and TRUE today, which is what says the difference is spelling and not meaning.
+example : Term.convEq (Pure.nf 1000 surfAdd) (Pure.nf 1000 Pure.kAddFn) = true := by native_decide
+
+-- The behaviour, so that a later respell that agrees structurally and computes
+-- something else cannot pass on the two lines above.
+example : (Pure.nf 200 (.app (.app surfAdd (Term.nat 2)) (Term.nat 3)) == Term.nat 5) = true := by
+  native_decide
+
+end Dllbc.Tests.S33Macro
+end
+-- └── end of the M33 macro-top twin probe ──────────────────────────────────────
