@@ -545,7 +545,7 @@ measured as not — is DELETED**, and the thing that made it derivable is `Ih`:
 addendum at the bottom of this file.
 
 **M33 macro-top — the surface goes UNDER the kernel: RUN** (branch
-`m33-macro-top`, based on main @ a43047b9; six commits, corpus green at each).
+`m33-macro-top`, based on main @ a43047b9; seven commits, corpus green at each).
 Not a stage of M32 and not a rule change — a LAYERING change, and the reason it
 belongs in this document is that it retires the last place where §2.1's "both
 halves of a comptime binder are written together" was maintained by hand.
@@ -1449,14 +1449,17 @@ assumption-indexed evaluation (rejected with precedent, §3).
 > `runExec m1` goes from a zeroed list to an error. Said this way rather than as
 > "no golden moved", which would be false.
 
-> **Implementation addendum (M33 macro-top, landed on `m33-macro-top`).** Six
+> **Implementation addendum (M33 macro-top, landed on `m33-macro-top`).** Seven
 > commits, corpus green at each, based on main @ a43047b9 (the full merged
 > M31–M33 arc plus M33b). This is not a rule change and not a stage — it is the
 > layering, and it belongs here because it retires the last hand-maintained half
 > of §2.1.
 >
 > **0. THE HEADLINE IS A DELETION AT ZERO CALL SITES.** `Term.clam` and
-> `Term.cpi` are gone. R3b built them so that a hand-written comptime binder
+> `Term.cpi` are gone — and so, at commit 7, are `Std`'s `zero`/`suc`/`consV`/
+> `nilV`, which turned out not to be assembly shorthands at all but a SECOND COPY
+> of `Term.zero`/`succ`/`nil`/`cons` from `Syntax.lean`, with `Std.ofNat`
+> duplicating `Term.nat`'s recursion beside them. R3b built them so that a hand-written comptime binder
 > could not spell its capital name and forget its `⇝` domain — the right device
 > for a world in which the kernel's own library was hand-built `Term`s. There is
 > no such world any more: `Pure.kAddFn`, `Pure.kLeFn` and all nine of `Std`'s

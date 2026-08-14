@@ -45,16 +45,22 @@ open Dllbc.Pure
 
 /-! ## Lifting Lean data into terms
 
-    Not term ASSEMBLY — these two turn a Lean value into the term denoting it,
-    which is a job the surface has no spelling for (a `prog{ }` is a fixed term;
-    these are functions of a runtime `Nat`/`List`). -/
+    The one job the surface has no spelling for: a `prog{ }` is a FIXED term, and
+    these are functions of a runtime `Nat`/`List`. So the recursion is Lean's and
+    each step is a `prog{ }`.
 
-def zero : Term := prog{ Z }
-def suc (v : Term) : Term := prog{ S(%v) }
-def ofNat : Nat → Term | 0 => zero | n + 1 => suc (ofNat n)
-def consV (h t : Term) : Term := prog{ Cons(%h, %t) }
-def nilV : Term := prog{ Nil }
-def ofList : List Term → Term | [] => nilV | h :: t => consV h (ofList t)
+    **Their leaves are gone** (M33 macro-top commit 7). `zero`, `suc`, `consV` and
+    `nilV` were not merely assembly shorthands — they were a SECOND COPY of
+    `Term.zero`/`succ`/`nil`/`cons`, which have lived in `Syntax.lean` all along,
+    and `ofNat` was a second copy of `Term.nat`'s recursion. One numeral builder
+    is better than two; `ofNat` delegates to the one that already existed, exactly
+    as `Pure.ofNat` has since M32 R1, and `ofList` writes its step in the
+    surface. -/
+
+def ofNat (n : Nat) : Term := Term.nat n
+def ofList : List Term → Term
+  | [] => prog{ Nil }
+  | h :: t => prog{ Cons(%h, %(ofList t)) }
 
 /-! ## `Le : Nat → Nat → Type`  (Z ≤ _ ↦ ⊤ ; S ≤ Z ↦ ⊥ ; S ≤ S ↦ recurse)
 

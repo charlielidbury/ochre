@@ -2,7 +2,7 @@
 
 ## 2026-08-14 — dllbc/: **M33 macro-top — the surface goes UNDER the kernel**
 
-Six commits on `m33-macro-top` (based on main @ a43047b9), corpus green at each.
+Seven commits on `m33-macro-top` (based on main @ a43047b9), corpus green at each.
 Sabotage control **26** red on the base and at every re-measurement — Direct 18,
 KernelFloor 7, Arrays 1, with `progOk flagship`, `progOk sort2` and both
 `S32Cook` directions present each time. `Traces.lean` byte-unchanged, and so are
