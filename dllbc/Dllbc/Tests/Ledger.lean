@@ -554,7 +554,7 @@ partial def slotBinders : Term → Nat
 
 /-- **`lowerComptime`'s twin, and the half nobody had counted** (M33 macro-top).
     R3b's doctrine is that a comptime binder is TWO halves written together — the
-    capital name and the `⇝` on its domain — and `Term.clam`/`Term.cpi` exist so
+    capital name and the `⇝` on its domain — and R3b's `Term.clam`/`Term.cpi` existed so
     that a hand-written term cannot spell one without the other. `lowerComptime`
     counts the binders that got the domain half and not the name half; this
     counts the ones that got the NAME half and not the domain half.
@@ -690,7 +690,8 @@ example : unmarkedCaps Pure.kAddFn = 0 := by native_decide
       * **β, `Std`/`Pure`'s hand-written terms: 9,545 → 0**, with 33 of that from
         the test files' own spec binders. These are raw `Term`s with no macro
         between them and the datatype, so capitalising a binder means writing its
-        `⇝` too (`Term.clam`/`Term.cpi` exist so the two cannot be written apart).
+        `⇝` too (`Term.clam`/`Term.cpi`, retired at M33 macro-top when `Pure` and
+        `Std` moved to `prog{ }` and their last call site went with them).
         That IS a mode flip — `Len`, `Count`, `Le`, `Add` and `Sorted` now
         declare their arguments comptime, so a ⇒-application of one snapshot-reads
         where it used to consume — and the corpus measured the flip at ZERO

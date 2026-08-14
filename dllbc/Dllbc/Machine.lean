@@ -1588,7 +1588,7 @@ mutual
           let bOk ← hasTypeT fuel b (.const "Bool")
           finish (Pure.nf fuel (.app p b)) rest (tOk && fOk && bOk)
         | .const "listRec", a :: p :: pn :: pc :: l :: rest =>  -- listRec A P pn pc l : P l
-          let listA : Term := .app (.const "List") a
+          let listA : Term := prog{ List %a }
           let pnOk ← hasTypeT fuel pn (Pure.nf fuel (.app p (.ctorApp "Nil" [])))
           let pcTy : Term :=
             .pi "§h" a

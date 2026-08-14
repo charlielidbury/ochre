@@ -1461,28 +1461,26 @@ def Term.stripCmp : Term → Term
   | .cmpT τ => τ
   | t => t
 
-/-! ### Building a comptime binder, both halves at once (M32 R3b)
+/-! ### `Term.clam`/`Term.cpi` — RETIRED at M33 macro-top, having run out of work
 
     §2.1 makes a binder's NAME its mode and `binderDom`/`markDom` puts the
-    matching `⇝` on its domain — so the two halves of a comptime binder are
-    written together everywhere the SURFACE builds one. The kernel's own library
-    terms (`Std.lenFn`, `Pure.kLeFn`, …) are hand-written `Term`s with no macro
-    between them and the datatype, and R3b's migration is where they acquire the
-    same obligation. These are that obligation as a constructor: there is no way
-    to spell the capital name and forget the marker, which is the failure mode
-    (`piAgree` and the seal's binder/domain check compare them, and a mismatch is
-    a rejection of a program that is fine).
+    matching `⇝` on its domain, so the two halves of a comptime binder must be
+    written together. R3b built `clam`/`cpi` to make that unforgettable in the one
+    place there was no elaborator to enforce it: the kernel's own library terms
+    (`Std.lenFn`, `Pure.kLeFn`, …) were hand-written `Term`s with no macro between
+    them and the datatype.
+
+    **There are none left.** With the surface below the kernel, `Pure` and `Std`
+    are written in `prog{ }` and every comptime binder in them goes through
+    `binderDom` like every other binder in the language. The constructors' call
+    count went to zero and they are gone with it — measured, not assumed. If a
+    hand-written comptime binder ever comes back, this paragraph is the reason to
+    reconsider whether it should.
 
     The UNUSED binder is the other half of the convention and needs no marker:
-    `Surface.unusedSnapName` is what the surface mints for a non-dependent
-    arrow's domain and for a motive nothing refers to, and a name in the reserved
-    namespace carries no mode because nothing can cite it. -/
-
-/-- A λ binding COMPTIME knowledge: capital name, `⇝` domain. -/
-def Term.clam (x : String) (τ b : Term) : Term := .lam (⟨noSlot, x⟩ : Var) (.cmpT τ) b
-
-/-- A Π binding COMPTIME knowledge — the type of a `clam`. -/
-def Term.cpi (x : String) (τ b : Term) : Term := .pi x (.cmpT τ) b
+    `Surface.unusedSnapName` is what the surface mints for a non-dependent arrow's
+    domain, for a non-dependent pair's, and for a motive nothing refers to, and a
+    name in the reserved namespace carries no mode because nothing can cite it. -/
 
 /-! ## Peeling a Π into a telescope (M26-C; moved here at M33 macro-top)
 

@@ -49,11 +49,11 @@ open Dllbc.Pure
     which is a job the surface has no spelling for (a `prog{ }` is a fixed term;
     these are functions of a runtime `Nat`/`List`). -/
 
-def zero : Term := .ctorApp "Z" []
-def suc (v : Term) : Term := .ctorApp "S" [v]
+def zero : Term := prog{ Z }
+def suc (v : Term) : Term := prog{ S(%v) }
 def ofNat : Nat → Term | 0 => zero | n + 1 => suc (ofNat n)
-def consV (h t : Term) : Term := .ctorApp "Cons" [h, t]
-def nilV : Term := .ctorApp "Nil" []
+def consV (h t : Term) : Term := prog{ Cons(%h, %t) }
+def nilV : Term := prog{ Nil }
 def ofList : List Term → Term | [] => nilV | h :: t => consV h (ofList t)
 
 /-! ## `Le : Nat → Nat → Type`  (Z ≤ _ ↦ ⊤ ; S ≤ Z ↦ ⊥ ; S ≤ S ↦ recurse)
@@ -66,8 +66,8 @@ def ofList : List Term → Term | [] => nilV | h :: t => consV h (ofList t)
 
 def LeFn : Term := kLeFn
 def LeFnT : Dllbc.Term := LeFn
-def Le (a b : Term) : Term := .app (.app LeFn a) b
-def LeT (a b : Dllbc.Term) : Dllbc.Term := .app (.app LeFnT a) b
+def Le (a b : Term) : Term := prog{ %LeFn %a %b }
+def LeT (a b : Dllbc.Term) : Dllbc.Term := prog{ %LeFnT %a %b }
 
 /-! ## `eqb, leb : Nat → Nat → Bool` — runtime-usable decision procedures -/
 
@@ -76,14 +76,14 @@ def eqbFn : Term := prog{
     Z => λ (B : Nat). elim B return (λ (Bm : Nat). Bool) { Z => True, S (B') Rec => False },
     S (A') RecA => λ (B : Nat). elim B return (λ (Bm : Nat). Bool) { Z => False, S (B') Rec => RecA B' } } }
 def eqbFnT : Dllbc.Term := eqbFn
-def eqb (a b : Term) : Term := .app (.app eqbFn a) b
+def eqb (a b : Term) : Term := prog{ %eqbFn %a %b }
 
 def lebFn : Term := prog{
   λ (A : Nat). elim A return (λ (Am : Nat). Nat → Bool) {
     Z => λ (B : Nat). True,
     S (A') RecA => λ (B : Nat). elim B return (λ (Bm : Nat). Bool) { Z => False, S (B') Rec => RecA B' } } }
 def lebFnT : Dllbc.Term := lebFn
-def leb (a b : Term) : Term := .app (.app lebFn a) b
+def leb (a b : Term) : Term := prog{ %lebFn %a %b }
 
 /-! ## `len` — the segment vocabulary's length (§14) -/
 
@@ -92,8 +92,8 @@ def lenFn : Term := prog{
     Nil => Z,
     Cons (H) (T) Rec => S(Rec) } }
 def lenFnT : Dllbc.Term := lenFn
-def len (l : Term) : Term := .app lenFn l
-def lenT (l : Dllbc.Term) : Dllbc.Term := .app lenFnT l
+def len (l : Term) : Term := prog{ %lenFn %l }
+def lenT (l : Dllbc.Term) : Dllbc.Term := prog{ %lenFnT %l }
 
 /-! ## `count : Nat → List Nat → Nat` — the multiset counter (`listRec` + `boolRec`)
 
@@ -107,8 +107,8 @@ def countFn : Term := prog{
     Nil => Z,
     Cons (H) (T) Rec => elim (Eqb N H) return (λ (Bm : Bool). Nat) { True => S(Rec), False => Rec } } }
 def countFnT : Dllbc.Term := countFn
-def count (n l : Term) : Term := .app (.app countFn n) l
-def countT (n l : Dllbc.Term) : Dllbc.Term := .app (.app countFnT n) l
+def count (n l : Term) : Term := prog{ %countFn %n %l }
+def countT (n l : Dllbc.Term) : Dllbc.Term := prog{ %countFnT %n %l }
 
 /-! ## `Bound : Nat → List Nat → Type` and `Sorted : List Nat → Type` -/
 
@@ -118,8 +118,8 @@ def BoundFn : Term := prog{
     Nil => Unit,
     Cons (H') (T) Rec => Le H H' } }
 def BoundFnT : Dllbc.Term := BoundFn
-def Bound (h l : Term) : Term := .app (.app BoundFn h) l
-def BoundT (h l : Dllbc.Term) : Dllbc.Term := .app (.app BoundFnT h) l
+def Bound (h l : Term) : Term := prog{ %BoundFn %h %l }
+def BoundT (h l : Dllbc.Term) : Dllbc.Term := prog{ %BoundFnT %h %l }
 
 -- `Sorted l` : Nil ↦ ⊤ ; Cons h t ↦ Bound h t × Sorted t. The `×` is the
 -- non-dependent Σ (M33 macro-top): the second component does not mention the
@@ -130,8 +130,8 @@ def SortedFn : Term := prog{
     Nil => Unit,
     Cons (H) (T) Rec => Bound H T × Rec } }
 def SortedFnT : Dllbc.Term := SortedFn
-def Sorted (l : Term) : Term := .app SortedFn l
-def SortedT (l : Dllbc.Term) : Dllbc.Term := .app SortedFnT l
+def Sorted (l : Term) : Term := prog{ %SortedFn %l }
+def SortedT (l : Dllbc.Term) : Dllbc.Term := prog{ %SortedFnT %l }
 
 /-! ## `take`, `drop` — the prefix and suffix a segment-scoped spec talks about
 
@@ -145,8 +145,8 @@ def takeFn : Term := prog{
       Nil => Nil,
       Cons (H) (T) R => Cons(H, RecN T) } } }
 def takeFnT : Dllbc.Term := takeFn
-def take (n l : Term) : Term := .app (.app takeFn n) l
-def takeT (n l : Dllbc.Term) : Dllbc.Term := .app (.app takeFnT n) l
+def take (n l : Term) : Term := prog{ %takeFn %n %l }
+def takeT (n l : Dllbc.Term) : Dllbc.Term := prog{ %takeFnT %n %l }
 
 def dropFn : Term := prog{
   λ (N : Nat). elim N return (λ (Nm : Nat). List Nat → List Nat) {
@@ -155,16 +155,16 @@ def dropFn : Term := prog{
       Nil => Nil,
       Cons (H) (T) R => RecN T } } }
 def dropFnT : Dllbc.Term := dropFn
-def drop (n l : Term) : Term := .app (.app dropFn n) l
-def dropT (n l : Dllbc.Term) : Dllbc.Term := .app (.app dropFnT n) l
+def drop (n l : Term) : Term := prog{ %dropFn %n %l }
+def dropT (n l : Dllbc.Term) : Dllbc.Term := prog{ %dropFnT %n %l }
 
 /-- `add a b` by recursion on `a`. Aliased from the kernel for the same reason as
     `Le`: premise (3) of CARVE decomposes an extent with `add`, so the kernel
     needs it. -/
 def addFn : Term := kAddFn
 def addFnT : Dllbc.Term := addFn
-def add (a b : Term) : Term := .app (.app addFn a) b
-def addT (a b : Dllbc.Term) : Dllbc.Term := .app (.app addFnT a) b
+def add (a b : Term) : Term := prog{ %addFn %a %b }
+def addT (a b : Dllbc.Term) : Dllbc.Term := prog{ %addFnT %a %b }
 
 /-- `append a b` by recursion on `a` (`Nil ↦ b`, `Cons h t ↦ Cons h (append t b)`). -/
 def appendFn : Term := prog{
@@ -172,8 +172,8 @@ def appendFn : Term := prog{
     Nil => B,
     Cons (H) (T) R => Cons(H, R) } }
 def appendFnT : Dllbc.Term := appendFn
-def append (a b : Term) : Term := .app (.app appendFn a) b
-def appendT (a b : Dllbc.Term) : Dllbc.Term := .app (.app appendFnT a) b
+def append (a b : Term) : Term := prog{ %appendFn %a %b }
+def appendT (a b : Dllbc.Term) : Dllbc.Term := prog{ %appendFnT %a %b }
 
 /-! ## First lemma: `le_refl : Π n. Le n n`, by `natRec`
 

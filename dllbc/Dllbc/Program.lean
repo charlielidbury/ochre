@@ -65,7 +65,7 @@ partial def endScope (fuel : Nat) : M Unit := do
 
 /-- **Check a program** (§8): one symbolic ⇒-walk, auditing each path's result at
     `retType`. No table: scope is the call table (§8). -/
-def checkProgram (t : Term) (retType : Term := .const "Unit") : Except String Unit :=
+def checkProgram (t : Term) (retType : Term := prog{ Unit }) : Except String Unit :=
   auditPaths retType
     ((explore defaultFuel (atBoundary t) initSt).map
       (fun r => r.bind (fun p =>
@@ -101,7 +101,7 @@ def programEnvs (t : Term) : List (Except String Env) :=
 /-! ## Test helpers -/
 
 /-- The program checks. -/
-def progOk (t : Term) (retType : Term := .const "Unit") : Bool :=
+def progOk (t : Term) (retType : Term := prog{ Unit }) : Bool :=
   match checkProgram t retType with | .ok _ => true | .error _ => false
 
 /-- The program is rejected, with `needle` in the message.
@@ -110,7 +110,7 @@ def progOk (t : Term) (retType : Term := .const "Unit") : Bool :=
     `hasType` returns `false` for "does not have this type" and the audit turns
     that into an error, so a helper that collapsed error and false would let a
     *stuckness* pass for a *typing* rejection. -/
-def progRejects (t : Term) (needle : String) (retType : Term := .const "Unit") : Bool :=
+def progRejects (t : Term) (needle : String) (retType : Term := prog{ Unit }) : Bool :=
   match checkProgram t retType with
   | .ok _ => false
   | .error e => strContains e needle

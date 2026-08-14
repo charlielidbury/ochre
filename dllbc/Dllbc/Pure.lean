@@ -103,7 +103,7 @@ namespace Pure
 /-- `add a b` by recursion on `a` (`add Z b = b`, `add (S a') b = S (add a' b)`). -/
 def kAddFn : Term :=
   prog{ λ (A : Nat). λ (B : Nat). elim A return (λ (Am : Nat). Nat) { Z => B, S (A') R => S(R) } }
-def kAdd (a b : Term) : Term := .app (.app kAddFn a) b
+def kAdd (a b : Term) : Term := prog{ %kAddFn %a %b }
 
 /-- `Le : Nat → Nat → Type` as a computing predicate (`Z ≤ _ ↦ ⊤`, `S ≤ Z ↦ ⊥`,
     `S ≤ S ↦ recurse`). Premise (2)'s obligation type is built from this. -/
@@ -115,11 +115,11 @@ def kLeFn : Term := prog{
         elim B return (λ (Bm : Nat). Type) {
           Z => Bot,
           S (B') Rec => F B' } } }
-def kLe (a b : Term) : Term := .app (.app kLeFn a) b
+def kLe (a b : Term) : Term := prog{ %kLeFn %a %b }
 
 /-- `Array n T` — the ¶1.1 former, in the FIXED BASIS rather than §7's declaration
     scheme (the values are flat runs, which no CIC-scheme inductive has). -/
-def arrayTy (n T : Term) : Term := .app (.app (.const "Array") n) T
+def arrayTy (n T : Term) : Term := prog{ Array %n %T }
 
 /-- Recognize `Array n T`, returning `(n, T)`. -/
 def asArrayTy? : Term → Option (Term × Term)
@@ -130,8 +130,7 @@ def asArrayTy? : Term → Option (Term × Term)
 def ofNat (n : Nat) : Term := Term.nat n
 
 /-- `arrCat` applied to its four arguments. -/
-def arrCatS (m k a b : Term) : Term :=
-  .app (.app (.app (.app (.const "arrCat") m) k) a) b
+def arrCatS (m k a b : Term) : Term := prog{ arrCat %m %k %a %b }
 
 /-! An array's **owned run**: `Arr [v₁ … v_c]`, the flat literal, which is both the
     value form and the knowledge form. Element `i` is child `i` — a *subterm*,
@@ -467,7 +466,7 @@ def ctorSig : String → Option CtorSig
       match ty with | .app (.const "List") _ => some [] | _ => none }
   | "Cons"  => some { fieldTypes := fun ty =>
       match ty with
-      | .app (.const "List") t => some [("_", t), ("_", .app (.const "List") t)]
+      | .app (.const "List") t => some [("_", t), ("_", prog{ List %t })]
       | _ => none }
   -- The one DEPENDENT entry in the table: `Pair`'s second field type is the Σ's
   -- codomain, a body under the Σ's own binder — so that binder is the name

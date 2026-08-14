@@ -1057,7 +1057,7 @@ example : progRejects alphaReproLie "does not have its parameter type" = true :=
     DECIDE — `Term.alphaEq` already returned the right answer at R2 — which is why
     the residual was a change to the sweep's KEY rather than to its traversal. -/
 def lenSpDeeper : Term :=
-  match Pure.nf 1000 (Term.cpi "X" (.const "Nat") (Std.lenT (Term.sym 5))) with
+  match Pure.nf 1000 prog{ Π (X : Nat) → Len %(Term.sym 5) } with
   | .pi _ _ c => c
   | t => t
 example : Term.beq lenSp lenSpDeeper = false := by native_decide
