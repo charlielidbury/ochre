@@ -1,122 +1,187 @@
 # Programming in DLLBC
 
-This is a working programmer's introduction to DLLBC. It is linear: read it top to bottom,
-and nothing is used before it is introduced. Each chapter introduces one thing, says
-precisely what it is, and shows it in real code — every example in this document is either
-verbatim from the test suite or a fragment of something that is. It is not a specification
-and contains no theory; the design document (`dllbc-arrows.md`) exists for that.
+This is a working programmer's introduction to DLLBC. It is linear: read it top to
+bottom, and nothing is used before it is introduced. Each chapter introduces one thing,
+says precisely what it is, and shows it in real code — every example is either verbatim
+from the test suite or a fragment of something that is, and the notation in this book IS
+the implementation's surface syntax. It is not a specification and contains no theory;
+the design documents (`suspensions.md`, `functions-are-comptime.md`, `dllbc-arrows.md`)
+exist for that.
 
-**What you need to already know.** DLLBC assumes fluency in two things it does not teach.
-From **Rust**: ownership and moves, `&mut` borrows, pattern `match`, and the general
-experience of a borrow checker rejecting your program (look up: the Rust book, chapters 4
-and 6). From **Lean (or any dependent type theory)**: propositions as types, `Π` and `Σ`
-types, inductive datatypes and their recursors, and proof terms as first-class values
-(look up: "Theorem Proving in Lean 4", chapters 2, 4, 7). If both of those lists read as
-familiar, you have everything this document requires.
+**What you need to already know.** DLLBC assumes fluency in two things it does not
+teach. From **Rust**: ownership and moves, `&mut` borrows, pattern `match`, and the
+general experience of a borrow checker rejecting your program (look up: the Rust book,
+chapters 4 and 6). From **Lean (or any dependent type theory)**: propositions as types,
+`Π` and `Σ` types, inductive datatypes and their recursors, and proof terms as
+first-class values (look up: "Theorem Proving in Lean 4", chapters 2, 4, 7). If both of
+those lists read as familiar, you have everything this document requires.
 
-**What DLLBC is.** One language in which programs, types, and proofs are the same kind of
-thing. You write an imperative function that mutates through borrows, Rust-style; its
+**What DLLBC is.** One language in which programs, types, and proofs are the same kind
+of thing. You write an imperative function that mutates through borrows, Rust-style; its
 return type is a proposition about what it did; the body constructs the proof as an
 ordinary value and returns it. There is no separate annotation language, no verification
-condition generator, and no model of your program in some other system — the checker reads
-the function you wrote.
+condition generator, and no model of your program in some other system — the checker
+reads the function you wrote.
 
 ---
 
-## 1. Declarations
+## 1. The core: λ, Π, and the mode law
 
-A DLLBC program is a set of function declarations. A declaration gives a name, a
-parameter list, a return type, and a body:
-
-```
--- Sets the `i`th element of `v` to `x`. The caller must supply proof
--- that `i` is a valid index; that proof is `hi`.
-fn set_at [i] (v : &mut List Nat, i : Nat, x : Nat, hi : Le (S i) (len *v)) -> …
-   { … }
-```
-
-Read the parameter list left to right; each parameter's type may mention the parameters
-before it — `hi`'s type mentions `i` and `v`. That one rule is pervasive; most of the
-language's power routes through it. (Error messages and the design documents call the
-parameter list a *telescope* — same thing. And ignore the `[i]` for now; it is
-chapter 9's.)
+Strip away every convenience and DLLBC is a small λ-calculus plus one law about names.
 
 The basis is small and fixed. Types: `Unit`, `Bool`, `Nat`, `List T`, `Array n T`, `Π`,
-`Σ`, and the equality type `Id A a b`. Values are built from constructors: `unit`, `True`
-/ `False`, `Z` / `S(n)` (numerals like `3` are sugar), `Nil` / `Cons(h, t)`,
+`Σ`, and the equality type `Id A a b`. Values are built from constructors: `unit`,
+`True` / `False`, `Z` / `S(n)` (numerals like `3` are sugar), `Nil` / `Cons(h, t)`,
 `Pair(a, b)` for `Σ`, and `Refl` for `Id`. There are no user-defined datatypes yet; in
 practice the basis plus `Nat`-indexed arrays covers a lot.
+
+**One function type, one function term.** `Π` is the function type and `λ` is the
+function term, and there is nothing else. `Π (x : A) → R` is a function from `A` to
+`R`, where `R` may mention `x`; each binder scopes over everything to its right. A
+multi-argument function is exactly this nesting, and a comma list is notation for it —
+`(v : &mut List Nat, i : Nat)` is `Π (v : &mut List Nat) → Π (i : Nat) → …`. Every λ
+binder carries its type, written at the binder; the checker reads the type you wrote
+and never guesses one.
+
+**THE MODE LAW.** Everything in the language is either *comptime knowledge* — types,
+proofs, snapshots, functions: erased before runtime, read without being consumed,
+usable in types — or *runtime state* — data and borrows: present when the program runs,
+moved or lent when used. And the law is:
+
+> **Every binder spells its mode by its case, and every position that is not a binder
+> spells it on its type.**
+
+A **capital** binder binds comptime knowledge. A **lowercase** binder binds runtime
+state. This is one rule with no exceptions, and it reaches every binder there is — a
+`let`, a function parameter, a λ or Π binder, a match arm's binder. The style
+convention layered on it: PascalCase for the capital names (`Hfuel`, `V0`, `SplitOff`),
+snake_case for the runtime ones (`fuel`, `tl`, `hi`).
+
+Two immediate consequences you will use constantly:
+
+  * **`let X = e` is a comptime binding**: `e` is evaluated as knowledge, `X` is
+    erased, never consumed, and citable as often as you like. **`let x = e` is a
+    runtime binding**: `e` is evaluated as state, and using `x` moves or lends it.
+    One sentence covers both machines: *a capital `let` reads its right-hand side as
+    knowledge; a lowercase `let` reads it as state.*
+  * A capital argument position (a capital parameter of a function you call) reads its
+    argument as knowledge — nothing is consumed. A lowercase position moves or lends.
+
+**Application is juxtaposition, and the comma form is the same term.** `Double i`,
+`Add i (S j)`, `LeTrans a b c h1 h2` — and `F(a, b)` is sugar for exactly `F a b`; the
+two spellings elaborate to the identical syntax tree, so use whichever reads better.
+Parenthesise compound arguments: `SplitOff (&m *tl) i2 hi` or `SplitOff(&m *tl, i2, hi)`.
+
+**Ascription states a type.** `(t : T)` checks `t` against `T` on the spot. `(3 : Nat)`
+is the trivial case; the load-bearing one is ascribing a λ its Π — that pairing is what
+the next chapter's `fn` unfolds to — and ascribing a proof its proposition, which is
+this language's `Qed`.
+
+## 2. Functions
+
+A DLLBC program is a sequence of definitions and a thing to run:
+
+```
+fn Quicksort [fuel] (fuel : Nat, v : &mut List Nat, Hfuel : …) -> … { … };
+fn Main() -> Nat { … };
+…the thing to run…
+```
+
+**`fn` is notation, not a construct.** A definition is a capital `let` of a λ ascribed
+its Π:
+
+```
+let Quicksort = (λ (fuel : Nat, v : &mut List Nat, Hfuel : …) { …body… }
+                  : Π (fuel : Nat) → Π (v : &mut List Nat) → …);
+```
+
+That single fact explains everything about how functions behave:
+
+  * **Function names are capital, because a function is comptime knowledge.** The
+    checker knows it; the compiled program keeps only its code. `fn quicksort` is
+    refused with the fix in the message.
+  * **`let F = Main` is legal** — copying knowledge costs nothing — and so is passing
+    a function to another function at a capital parameter: `Twice(Inc, 3)`.
+  * **Definitions sit in order.** Each may call the ones above it and cannot mention
+    the ones below; a `let` cannot see later `let`s, so there are no forward
+    references and nothing to declare in advance.
+  * **Calling never consumes.** The call reads the function binding as knowledge —
+    that is what capital means — so a function can be called any number of times.
 
 Bodies are sequences of statements ending in an expression:
 
 ```
-let x = e;        -- bind
+let x = e;        -- runtime bind        let X = e;   -- comptime bind
 p := e;           -- assign through a place
-f(a, b);          -- call, result discarded
+F(a, b);          -- call, result discarded
 result            -- the final expression is the return value
 ```
 
-**There are two kinds of functions, and the call syntax tells them apart.**
+**What differs between functions is what their binders are.** A function whose binders
+are all knowledge or plain data — `Len`, `Add`, `Count`, `Take`, `Leb`, the whole
+standard vocabulary — is mathematical: no borrows, no mutation, usable *everywhere*,
+including inside types. A function that binds a `&mut` is imperative: it may borrow,
+mutate, and call others, and it can be *called* but never used in a type — a borrow is
+not something a type can compute with. That is a fact about its signature, not a second
+species of function.
 
-*Runtime functions* are the `fn` declarations above — `set_at` is one. They are
-imperative: allowed to borrow, mutate, and call other runtime functions. A call is a
-statement (or a `let`), written with parentheses and no space before them:
+**The λ law.** A λ is knowledge, so it must land somewhere that receives knowledge:
 
-```
-let v = Cons(3, Cons(1, Nil));
-set_at(&mut v, 1, 9, h);        -- h is the bounds proof — chapter 4's business
-let rest = split_off(&mut v, 1, h2);
-```
+> a λ literal needs a comptime destination — a capital `let`, a capital parameter, a
+> `Σ0` component or tail (chapter 7), or an ascription. (A fifth, the recursor arm, is
+> written for you by `fn`.)
 
-Runtime functions can be called only inside bodies, never in types.
+Constructing a λ anywhere runtime state is expected is refused, with that list in the
+message. This is checkable law, not convention: the kernel cannot build a function
+value out of runtime evaluation at all.
 
-*Pure functions* are mathematical. The standard vocabulary — `add`, `len`, `count`,
-`take`, `leb`, … — is made of them, and you can write your own: a pure function is just
-a λ-term, and `let` binds one like any other value:
-
-```
-let double = λ (n : Nat). add n n;
-…
-```
-
-They apply by juxtaposition, Lean-style — `double i`, `add i (S j)`,
-`le_trans a b c h1 h2` — no parentheses around the argument list. Their restrictions: no
-borrows, no mutation, no calls to runtime functions, and recursion only by structural
-induction (via `elim` — chapter 5, which is also where nontrivial definitions like the
-one above get their real shape). In exchange they are usable *everywhere* — inside
-bodies, and crucially inside **types**, which are made of them.
-
-The pure layer is also the erasable one. A pure value that exists only to satisfy the
-checker — a type, or (from chapter 4 on) a proof — carries nothing a running program
-needs, and is gone by the time runtime happens. A pure result you bind and use *as data*
-(`let y = append a b` and then storing `y`) is ordinary computation and of course
-remains. Today's interpreter evaluates pure terms instead of erasing them, which costs
-time and changes nothing observable; compiled output would drop them.
-
-## 2. Ownership
-
-Rust's rules, with one boundary drawn differently. Using a value **moves** it; a moved
-variable is dead and the checker rejects later uses. But *small* things copy instead of
-moving: numbers, booleans, and — importantly — **proofs**. Data (lists, arrays, pairs of
-data) always moves. So you can pass an index or a `Le` proof twice without thinking, but
-passing a list consumes it.
-
-One consequence you will meet in chapter 11: passing a proof to a call moves it *if the
-call's parameter binds it dependently* — treat proofs you will need twice like data and
-capture what you need from them first.
-
-## 3. Borrows and mutation
-
-`&mut e` borrows a place; `*b` reads or writes through the borrow; borrows end
-automatically when something demands the borrowed value back. All Rust-familiar:
+**What a λ can see.** A λ body may reference its own binders and the capital bindings
+in scope — nothing more, nothing less. Citing a lowercase name inside a λ body is
+refused; when you want a runtime value inside a λ, *name the snapshot first*:
 
 ```
-let b = &mut v;
+let H0 = *hd;                       -- the payload, as knowledge, now
+… λ (A : List Nat). Cons H0 A …     -- the λ captures H0
+```
+
+That two-line shape is the language's one mechanism for baking state into a function,
+and chapter 7 shows it earning its keep in a real proof.
+
+## 3. Ownership
+
+Rust's rules, with one boundary drawn differently. Using a runtime value **moves** it;
+a moved variable is dead and the checker rejects later uses. But *small* things copy
+instead of moving: numbers, booleans, and — importantly — **proofs**. Data (lists,
+arrays, pairs of data) always moves. So you can pass an index or a `Le` proof twice
+without thinking, but passing a list consumes it.
+
+Capital bindings go one step further than copying: they are *never touched at all* — a
+citation of `Hfuel` reads knowledge and leaves nothing behind to consume, which is why
+quicksort can hand its sufficiency proof to both recursive calls and still cite it
+afterwards:
+
+```
+fn Quicksort [fuel] (fuel : Nat, v : &mut List Nat, Hfuel : %suff) -> …
+```
+
+The working guidance: a proof you will use once can live at a lowercase name (the suite
+does this constantly — `let h = AppendBack(…)`, used once in the next line); a proof
+you will thread, reuse, or keep past a mutation belongs at a capital one.
+
+## 4. Borrows and mutation
+
+`&m e` mints a mutable borrow of a place; `*b` reads or writes through it; borrows end
+automatically when something demands the borrowed value back. The *type* of a borrow is
+spelled `&mut List Nat` — the operation and the type are different spellings, so a type
+never reads as an action.
+
+```
+let b = &m v;
 *b := Cons(1, Nil);      -- write through
-let n = len *b;          -- read through
+let n = Len *b;          -- read through
 ```
 
-Reborrowing a component works the way you expect: `&mut *tl` reborrows the payload.
+Reborrowing a component works the way you expect: `&m *tl` reborrows the payload.
 Matching *through* a borrow gives you borrows of the fields:
 
 ```
@@ -138,168 +203,228 @@ The obligation is simply that the borrow holds a value of the right type again b
 time the function returns; between the take and the refill it may hold anything or
 nothing.
 
-## 4. Types that compute
-
-Types are expressions in the same language, so a type can mention values — including the
-current payload of a borrow, written `*v`:
+**A borrow can owe back something other than what it was lent.** `&mut List Nat` means
+"give back a `List Nat`". The general form names the payload it received and states
+what is owed:
 
 ```
--- Sets the `i`th element of `v` to `x`; `hi` proves `i` is in bounds.
-fn set_at [i] (v : &mut List Nat, i : Nat, x : Nat, hi : Le (S i) (len *v)) -> …
+fn ToNat (v : &mut (Bool ~> Nat)) -> Unit { *v := 0; () }
+```
+
+`v` arrives holding a `Bool` and must hold a `Nat` at return — a strong update across a
+call boundary, checked at the return. The owed type may mention the snapshot it binds
+(`&mut (s : List Nat ~> Σ (l : List Nat) → Id Nat (Len l) (Len s))`), which is how a
+borrow carries a contract of its own, separate from the function's return type.
+
+## 5. Types that compute
+
+Types are expressions in the same language, so a type can mention values — including
+the current payload of a borrow, written `*v`:
+
+```
+fn SetAt [i] (v : &mut List Nat, i : Nat, x : Nat, hi : Le (S i) (Len *v)) -> …
 ```
 
 `Le a b` is the ≤ proposition on `Nat`, and it *computes*: `Le 1 (S j)` unfolds, by
 running its definition, to a trivially-true type, while `Le (S i) Z` unfolds to `Bot`,
-the empty type. `len`, `count`, `take`, `drop`, `append`, `add`, `leb`, `eqb`, `Sorted`
-are all in the same standard vocabulary — ordinary computable functions, usable in types
-and in code alike.
+the empty type. `Len`, `Count`, `Take`, `Drop`, `Append`, `Add`, `Leb`, `Eqb`, `Sorted`
+are all in the same standard vocabulary — ordinary computable functions, usable in
+types and in code alike, and capital because functions are knowledge.
 
-A parameter like `hi` is a **precondition**: callers must supply a proof value, and there
-is no proof of a false `Le`, so `set_at` simply cannot be called out of bounds. Inside
-the body, `hi` is an ordinary value you can pass along. Dead branches discharge with the
-empty type's eliminator: if some hypothesis has computed to `Bot`, the branch returns
-`botElim T h` at any type `T` — "this cannot happen, and here is why".
+A parameter like `hi` is a **precondition**: callers must supply a proof value, and
+there is no proof of a false `Le`, so `SetAt` simply cannot be called out of bounds.
+Dead branches discharge with the empty type's eliminator: if some hypothesis has
+computed to `Bot`, the branch returns `botElim T h` at any type `T` — "this cannot
+happen, and here is why".
 
 Equality is `Id A a b`, and its proof is `Refl` — accepted whenever the checker can
 *compute* the two sides to the same value. Much more follows from that than you might
 expect, because so much of the vocabulary computes.
 
-## 5. Writing proofs
+## 6. Writing proofs
 
 Proofs are pure values — λ-terms in the borrow-free fragment. You have `λ`, `Π`, `Σ`,
-application, and one workhorse: `elim`, structural recursion with an explicit motive.
-The standard library's `le_refl` is, in full, the complete idiom:
+`×` (the non-dependent pair, which is how conjunction is written — `Sorted`'s `Cons`
+case is `Bound H T × Sorted T`), application, and one workhorse: `elim`, structural
+recursion with an explicit motive.
+The standard library's `LeRefl` is, verbatim, the complete idiom:
 
 ```
--- The library's `le_refl`: proves `n ≤ n`, for any `n`.
-λ (n : Nat). elim n return (λ (m : Nat). Le m m) {
+-- Proves `N ≤ N`, for any `N`.
+λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
   Z => unit,
-  S (k) ih => ih }
+  S (K) Ih => Ih }
 ```
 
-Read: by induction on `n`, prove `Le n n`; at `Z` the goal computes to a trivial type
-(`unit` inhabits it); at `S k` the induction hypothesis `ih` is exactly the goal. The
-motive after `return` is written by you, always — nothing is inferred. Nested `elim`s
-express nested induction (see `le_trans` in `StdLemmas.lean` for the canonical
-three-level example).
+Read: by induction on `N`, prove `Le N N`; at `Z` the goal computes to a trivial type
+(`unit` inhabits it); at `S K` the induction hypothesis `Ih` is exactly the goal. Every
+binder is capital because everything in sight is knowledge. The motive after `return`
+is written by you, always — nothing is inferred. Nested `elim`s express nested
+induction (see `LeTrans` in `StdLemmas.lean` for the canonical three-level example).
 
-The equation toolkit is `Refl`, `id_sym`, `id_trans`, and `id_congr` (map a function
+The equation toolkit is `Refl`, `IdSym`, `IdTrans`, and `IdCongr` (map a function
 across an equation). Most proofs about this vocabulary are chains of those four plus
 library lemmas, with computation silently closing the gaps.
 
 **The standard library is `Dllbc/StdLemmas.lean`.** Before proving anything about `Le`,
-`count`, `append`, `Sorted`, or their `Array` counterparts, look there — the lemma you
+`Count`, `Append`, `Sorted`, or their `Array` counterparts, look there — the lemma you
 want likely exists, and every lemma's statement is written right next to its proof.
 Library lemmas are cited in bodies by name, applied like any function.
 
-## 6. Postconditions
+One honest caveat, the single place where a proof's case follows its *use*: a proof you
+plan to **match on** (destructing an equation's `Refl` so the checker learns from it)
+must live at a lowercase name — matching is a runtime observation, and you cannot
+observe the erased. Proofs you *cite* (pass to lemmas, thread through calls) follow the
+ordinary guidance of chapter 3.
 
-A return type may describe the function's *effect*. For a `&mut` parameter `v`, the
-return type reads `*v` as the payload **at exit**, and `old *v` as the payload **at
-entry**. This is the heart of the language. A complete verified function, from the suite:
+## 7. Postconditions
+
+A return type may describe the function's *effect*. For a `&mut` parameter `v`, `*v` in
+the return type means the payload **as the function returns it**; `old *v` is the one
+exception — the payload as it was when the borrow was received. This is the heart of
+the language.
+
+**In a body there is no `old`.** A body can only speak about the state it is in. When a
+proof must span a mutation, name the value first, with a comptime `let`:
 
 ```
--- Appends `w` to the end of the list behind `v`, in place.
-fn append_back [v] (v : &mut List Nat, w : List Nat)
-    -> Id (List Nat) (*v) (append (old *v) w)
+let V0 = *v;            -- the payload as it is now — erased, never consumed
+… mutate through v …
+… a proof about V0 …    -- still means what it meant
+```
+
+A comptime binding never goes stale — mutation mints new values rather than rewriting
+old ones — and the one ordering rule is the only trap: **take the snapshot before
+taking a reborrow of the same place.**
+
+A complete verified function, from the suite:
+
+```
+fn AppendBack [fuel] (fuel : Nat, v : &mut List Nat, w : List Nat, Hf : Le (Len *v) fuel)
+    -> Id (List Nat) (*v) (Append (old *v) w)
     { match v {
         Nil => { *v := w; Refl },
-        Cons(hd, tl) => {
-          let y = append (*tl) w;
-          let h = append_back(&mut *tl, w);
-          id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
+        Cons(hd, tl) => match fuel {
+          Z => botElim Unit Hf,
+          S(f2) => {
+            let y = Append (*tl) w;
+            let h = AppendBack(f2, &m *tl, w, Hf);
+            let H0 = *hd;
+            IdCongr (List Nat) (List Nat) (λ (A : List Nat). Cons H0 A) (*tl) y h
+          }
         }
     } }
 ```
 
 The type says: on exit, `*v` equals the entry value with `w` appended. The `Nil` branch
-writes `w` and proves it by `Refl` — after the write, both sides *compute* to `w`. The
-`Cons` branch recurses on the tail and lifts the tail's evidence through `Cons` with
-`id_congr`. Nothing else: no invariant annotations, no ghost state. The body computes the
-new state and constructs the proof about it, interleaved.
+writes and proves it by `Refl` — after the write, both sides compute to `w`. The `Cons`
+branch recurses on the tail and lifts the tail's evidence through `Cons` — and note the
+chapter-2 idiom doing real work: `H0` names the head's payload so the congruence λ can
+capture it. Nothing else: no invariant annotations, no ghost state.
 
-To return a value *and* evidence, use `Σ` — the caller receives a pair and destructures
-it with an ordinary `match`:
-
-```
--- Removes everything after the first `i` elements of `v` and returns it;
--- `v` keeps the prefix. The caller must supply proof that `v` has at
--- least `i` elements; that proof is `hi`.
-fn split_off [i] (v : &mut List Nat, i : Nat, hi : Le i (len *v))
-    -> Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (take i (old *v)))
-         → Id (List Nat) ret (drop i (old *v))
-```
+To return a value *and* evidence, use `Σ` — the caller destructures with a `match`, and
+**a match arm's binder must spell the component's mode**: capital over a proof
+component, lowercase over data, refused one character off in either direction.
 
 ```
-let res = split_off(&mut *v, i, hi);
-match res { Pair(tail, ev) => match ev { Pair(h1, h2) => … } }
+let p = SplitOff(&m *tl, i2, hi);
+match p { Pair(rr, q) => match q { Pair(H1, h2) => … } }
 ```
 
-After that call the caller *knows*, via `h1` and `h2`, exactly what `*v` and `tail` are
-in terms of the entry value — and that knowledge is a value it can use, return, or feed
-to a lemma. A callee's return type is the caller's **only** knowledge of what the call
-did; anything you will need downstream must be in it. When designing a signature, work
-backward from what the caller has to prove.
-
-## 7. Branching on tests
-
-Branching on a comparison must *teach the branch something*, or the proof cannot use the
-test. Name the branch equation:
+**`Σ0` — the subset type.** A Σ chain's components spell their modes on their binders,
+but the final position — the tail — has no binder, so it spells its mode on the
+*former*: `Σ0 (x : A) → P` is the pair whose second projection is comptime — DLLBC's
+subset type (Lean's `Subtype`, Coq's `sig`), with comptime as the erasure. Quicksort's
+own ensures, from the suite:
 
 ```
-if e : leb x p {
-  -- e : Id Bool (leb x p) True
-  … leb_true_le x p e …        -- : Le x p
+Σ0 (Hs : Sorted (*v)) → Π (N : Nat) → Id Nat (Count N (*v)) (Count N (old *v))
+```
+
+— a sortedness proof paired with a permutation proof, all of it erased knowledge riding
+on a runtime result. This is where trailing proofs live; an ordinary `Σ` tail is
+runtime-moded, and putting a proof there is refused with a message that names `Σ0` as
+the fix.
+
+The pair family is complete in three spellings, each saying exactly what it can:
+`Σ (x : A) → B` — dependent, the binder spells its component's mode; `Σ0 (x : A) → P`
+— the tail comptime, spelled on the former, since a tail has no binder; `A × B` — no
+dependency at all, so no binder and nothing to spell (the library's own `Sorted`
+writes its conjunction this way).
+
+**A callee's return type is the caller's only knowledge of what the call did.** A
+function is written once, checked once against its signature, and from then on every
+caller sees the signature and nothing else. **What you keep is what you ascribe** — a
+fact not written into the return type is gone. It is why signatures are worth designing
+(work backward from what the caller has to prove) and why callers stay cheap to check
+no matter how large the callee is.
+
+## 8. Branching on tests
+
+Branching on a comparison must *teach the branch something*, or the proof cannot use
+the test. Name the branch equation:
+
+```
+if e : Leb x p {
+  -- e : Id Bool (Leb x p) True
+  … LebTrueLe x p e …        -- : Le x p
 } else {
-  -- e : Id Bool (leb x p) False
-  … leb_false_gt x p e …       -- : Le (S p) x
+  -- e : Id Bool (Leb x p) False
+  … LebFalseGt x p e …       -- : Le (S p) x
 }
 ```
 
-Without the `e :`, the branch knows nothing it can cite — a bare `Refl` for that equation
-is *rejected* inside the branch, correctly, because `leb x p` on unknown values does not
-compute. `leb_true_le` and `leb_false_gt` convert the equation into the order facts
-proofs actually want. The same binder works on `match` (`match e : x { … }`). Omit it
-when the branch needs nothing; it costs nothing either way.
+Without the `e :`, the branch knows nothing it can cite — a bare `Refl` for that
+equation is *rejected* inside the branch, correctly, because `Leb x p` on unknown
+values does not compute. `LebTrueLe` and `LebFalseGt` convert the equation into the
+order facts proofs actually want. The same binder works on `match`
+(`match e : x { … }`). Omit it when the branch needs nothing.
 
-## 8. Recursion
+## 9. Recursion
 
-Recursion must visibly decrease. The `[i]` after the function name declares *which
-argument* decreases; at every recursive call, the value passed there must be a strict
-structural piece of what the parameter held — typically because you matched it first:
+Recursion is structural, and the `[i]` after the function name says **which argument
+you are recursing on**. Match it, and the recursive call is available in each branch at
+the piece the match bound — for a `Nat` the predecessor, for a list the tail.
+
+At the recursive call site you may **use your own return type** as the description of
+what the recursive call did — that is what makes `AppendBack`'s `Cons` branch work.
+There is nothing to justify separately: the recursive call *is* the induction
+hypothesis for the piece you matched.
+
+**What `[i]` unfolds to.** Chapter 2 said a definition is a `let` of a λ — and a `let`
+is not in scope in its own right-hand side, so a recursive `fn` cannot be that. It is
+the other thing your prerequisites already contain: the datatype's **recursor**. The
+motive is your ascribed Π with the scrutinee's binder peeled off; the arms are your
+whole body with the `match` on the scrutinee resolved per constructor; and every
+self-call becomes the induction-hypothesis binder `Ih` — knowledge, like every function
+value. A self-call at anything but the matched piece, or in the base branch, is refused
+rather than repaired.
+
+**Recursion is eager.** Running a recursion on an actual number runs it to the end —
+the zero case included — and what comes out is always a finished value. Unfinished
+recursion exists only inside the checker, where an unknown symbolic number makes it
+stand for "the recursive result", which is exactly what proofs need.
+
+Recurse on a **counter**, not on a borrow: a `&mut` parameter's payload shrinks as you
+walk it, but a borrow is not something you can do induction over. For everything that
+is not structural — quicksort recurses on *both* halves, `AppendBack` walks a borrow —
+thread **fuel**: a `Nat` that ticks down once per level, with a *sufficiency*
+hypothesis making the fuel-exhausted case impossible:
 
 ```
--- As in chapter 6: `v` keeps its first `i` elements, the rest returns by value.
-fn split_off [i] (v : …, i : Nat, hi : …) -> …
-  { match i {
-      Z => …,
-      S(i2) => … split_off(&mut *tl, i2, …) …    -- i2 < S(i2): accepted
-  } }
-```
-
-A `&mut` parameter can be the decreasing one (`append_back [v]` recurses on `&mut *tl`,
-the payload's tail). At the recursive call site you may **use your own return type** as
-the description of what the recursive call did — that is what makes the `Cons` branch of
-`append_back` work, and it is sound precisely because of the declared decrease.
-
-For algorithms whose recursion is not structural (quicksort recurses on *both* halves),
-thread **fuel**: a `Nat` that ticks down once per level, with a *sufficiency* hypothesis
-making the fuel-exhausted-early case impossible:
-
-```
--- Sorts `a` in place. `fuel` bounds the recursion depth; the caller must
--- supply proof that it is sufficient, in `hfuel`.
-fn quicksortA [fuel] (fuel : Nat, n : Nat, hfuel : Le n fuel, a : &mut (Array n Nat)) -> …
+fn Quicksort [fuel] (fuel : Nat, v : &mut List Nat, Hfuel : %suff) -> %qret
   { … match fuel {
-        Z => botElim … ,                  -- unreachable: hfuel makes Le 1 Z, i.e. Bot
-        S(f2) => … quicksortA(f2, k, …, &mut *l) …
+        Z => botElim … ,                  -- unreachable: Hfuel makes it Bot
+        S(f2) => … Quicksort(f2, &m *lo, …) …
   } … }
 ```
 
-Callers at the top level pass `fuel = n` and `le_refl n`. This is ordinary total
-correctness; the fuel is bookkeeping, not a caveat.
+`Hfuel` is capital for chapter 3's reason: both recursive calls receive it and the
+proof afterwards still cites it. Callers at the top level pass `fuel = Len *v` and a
+reflexivity proof. This is ordinary total correctness; the fuel is bookkeeping, not a
+caveat.
 
-## 9. Arrays
+## 10. Arrays
 
 `Array n T` is a fixed-length flat array; `n` is part of the type. Element access takes
 the bound as evidence, and writes go through element borrows:
@@ -313,106 +438,88 @@ The distinctive operation is the **carve**: borrowing a *range* of an array, whi
 splits it into independently borrowable segments.
 
 ```
-let hd = &mut (*t)[Z ; 1 ; m2];    -- [start ; length ; length-of-the-rest]
-let tl = &mut (*t)[S Z ; m2];      -- the rest, starting after it
+let hd = &m (*t)[Z ; 1 ; m2];      -- [start ; length ; length-of-the-rest]
+let tl = &m (*t)[S Z ; m2];        -- the rest, starting after it
 ```
 
-Both borrows are live at once — two disjoint `&mut` views of one array, the thing Rust's
-`split_at_mut` needs `unsafe` for — and the disjointness is carried by the arithmetic in
-the brackets. When the extents don't line up definitionally, supply the evidence: a `Le`
-license for containment, and, when the array's length is a variable, the equation that
-justifies the decomposition — which is usually something a callee just returned to you:
+Both borrows are live at once — two disjoint `&mut` views of one array, the thing
+Rust's `split_at_mut` needs `unsafe` for — and the disjointness is carried by the
+arithmetic in the brackets. When the extents don't line up definitionally, supply the
+evidence: a `Le` license for containment, and, when the array's length is a variable,
+the equation that justifies the decomposition — usually something a callee just
+returned to you. A trailing-open form `a[lo ; ..]` means "to the end of the segment".
 
-```
-let lo  = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2) | hdec];
-let mid = &mut (*tl)[k3 ; 1 ; r2];
-let hi  = &mut (*tl)[S k3 ; r2];
-```
+Two rules of thumb make array programs go through. **Access at your own zero**: you
+cannot hold evidence about two unrelated variable indices into one array, so structure
+the program as carves whose segments you then index at `0`. **Carve at flex lengths**:
+matching an array's length pins it, and a pinned length blocks carving at a variable
+offset — so *select* in one function and *carve at a returned index* in its caller.
+This is why the array quicksort is three functions (scan, partition, sort) and not one.
 
-(`hdec : Id Nat m2 (add k3 (S r2))` — the length decomposes as the three extents.) A
-trailing-open form `a[lo ; ..]` means "to the end of the segment".
+## 11. Bigger proofs: two idioms
 
-Two rules of thumb make array programs go through, and both come from how the checker
-sees lengths. **Access at your own zero**: you cannot hold evidence about two unrelated
-variable indices into one array, so structure the program as carves whose segments you
-then index at `0` — peel a head, work on the tail, swap only with a segment boundary.
-**Carve at flex lengths**: matching an array's length (`match n { S(m2) => … }`) pins it,
-and a pinned length blocks carving at a variable offset. So *select* (match, peel, scan)
-in one function and *carve at a returned index* in its caller — the call boundary resets
-the length to flexible. This is why the array quicksort is three functions (scan,
-partition, sort) and not one.
-
-## 10. Bigger proofs: two idioms
-
-**A body can only speak about the current state.** `old *v` exists in *types*; the body
-cannot write it, and once a call or a write replaces a value, nothing in the body can
-name what it was. So when a proof must span a mutation, **stage it**: build a λ that
-captures the about-to-be-lost value while it is live, and apply the λ afterward.
-
-```
--- before the recursive call: *tl still denotes the entry tail
-let mkC = (λ (t2 : Array m2 Nat).
-           λ (hc : Π (q : Nat) → Id Nat (countA q m2 t2) (countA q m2 (*tl))). …);
-let res = splitA(f2, m2, hfuel, p, &mut *tl);     -- *tl is now the sorted tail
-… mkC (*tl) hcnt2 …                               -- but mkC remembers the entry
-```
-
-Every large verified function in the suite carries one to four of these builders; they do
-no mathematical work, only naming. (The same dodge covers proofs consumed by calls:
-capture what you need from a proof *before* the call that moves it.)
+**Name what you are about to lose.** A body speaks about the state it is in, so a proof
+spanning a mutation needs the earlier value to still have a name — chapter 7's `V0`
+pattern, and its λ-capture variant from chapter 2 (`let H0 = *hd; … λ A. Cons H0 A`).
+Take the snapshot before the reborrow; beyond that there is nothing to arrange — a
+capital binding is erased, never consumed, and cannot go stale.
 
 **Shape the ensures as a decomposition.** Return the equation that describes how the
-result decomposes (`Id Nat n (add k (S jj))` from a partition), because the caller's next
-act is a carve at exactly that decomposition, and a decomposition-shaped ensures
+result decomposes (`Id Nat n (Add k (S jj))` from a partition), because the caller's
+next act is a carve at exactly that decomposition, and a decomposition-shaped ensures
 transports onto the carved pieces for free. If gluing your callee's evidence onto your
 own state starts requiring transport lemmas, the signature is shaped wrong — restate it
 the way the caller will consume it.
 
-For a worked example of everything at once, read `quicksortA` in
-`Dllbc/Tests/S25ArrSort.lean` — sixty lines that use every chapter of this document, with
-comments explaining each move. It is the program this language was built to make
-writable; when you can read it, you are done here.
+For a worked example of everything at once, read `QuicksortA` in
+`Dllbc/Tests/ArraySort.lean` — the program this language was built to make writable;
+when you can read it, you are done here.
 
-## 11. Running your code
+## 12. Running your code
 
-Everything in this book so far has been clean DLLBC notation; here is how it is actually
-*implemented*. DLLBC is embedded in Lean: the notation elaborates through Lean macros. A
-function declaration is a Lean definition wrapping its body in `decl{ … }`; a standalone
-pure function or lemma (everything in the standard library) is a Lean definition of type
-`Term` wrapping a `pure{ … }` block. Checking is a Lean test:
+DLLBC is embedded in Lean, and the whole surface is **one macro**: `prog{ … }`
+elaborates the notation of this book — all of it, exactly as written — into the
+calculus's one syntax tree. A program is definitions plus the thing to run, and
+checking it is a Lean test:
 
 ```lean
-def splitA : Decl := decl{ fn splitA [fuel] (…) -> … { … } }
+def entrypoint : Term := prog{
+  fn SplitA [fuel] (…) -> … { … };
+  fn PartitionA [fuel] (…) -> … { … };
+  fn QuicksortA [fuel] (…) -> … { … };
+  …the thing to run…
+}
 
-example : checkFnOk splitA = true := by native_decide
-example : checkFnOk partitionA [partitionA, splitA] = true := by native_decide
+example : progOk entrypoint = true := by native_decide
 ```
 
-The optional list is the *table* of declarations the function may call (include the
-function itself if it recurses through the table). `checkFnOk` runs the checker; the
-`example` makes your build fail if the program stops checking. Build with
-`lake build Dllbc.Tests.<YourFile>` — module builds run the checker natively and take
-seconds; a verified quicksort checks in milliseconds.
+There is no table of declarations and no registration step: the `fn` statements
+desugar to the `let`-chain of chapter 2, in order, and the checker walks the resulting
+single term against nothing at all. Pure terms — lemmas, types, standalone λs — are the
+same macro with no `fn` in it; the entire standard library is written that way.
 
-Checked programs also **run**. The executing machine runs the same declarations on
-concrete inputs:
+`progRejects t "needle"` is the assertion for a program you expect to be *refused*, and
+it checks the message says why — use it, because a test that only knows a program
+failed will happily keep passing when it starts failing for a different reason.
+`native_decide` makes your build fail if the program stops checking; module builds run
+the checker natively and take seconds, and a verified quicksort checks in milliseconds.
 
-```lean
-def runQsA (l : List Nat) : Option (List Nat) :=
-  match Dllbc.Tests.S9Diff.runExec arrTbl (qsCallerA l) with
-  | .ok env => (env.lookup "y").bind arrOfV
-  | .error _ => none
+Checked programs also **run**: `runProgram` evaluates the same term concretely,
+`progRuns` asserts completion, `progRunsTo` pins the final environment. Checking and
+execution are two modes of one machine, and the suite continuously tests that they
+agree — what the checker accepts, the machine runs, and the postconditions you proved
+are true of what it computes. That agreement is the point of the whole language; you
+get to rely on it. (Today's interpreter evaluates comptime terms instead of erasing
+them, which costs time and changes nothing observable; compiled output drops them.)
 
--- runQsA [3,1,4,1,5,9,2] = some [1,1,2,3,4,5,9]
-```
+One Lean-side convenience appears throughout the suite: `%e` inside `prog{ … }` splices
+a Lean expression of type `Term` — a shared signature, a lemma, a program fragment —
+into the notation. It is how the suite reuses one return type across a definition and
+its callers without writing it twice.
 
-(`qsCallerA` is a small caller term binding an array and invoking the sort; copy the
-pattern from `S25ArrSort.lean`.) Checking and execution are two modes of one machine, and
-the suite continuously tests that they agree — what the checker accepts, the machine
-runs, and the postconditions you proved are true of what it computes. That agreement is
-the point of the whole language; you get to rely on it.
-
-**Where to go next**: the test suites are the extended examples — `S23Direct.lean` for
-List programs (every function in chapters 6–8 lives there), `S24Arrays.lean` for the
-carve, `S25ArrSort.lean` for the full array quicksort; and `StdLemmas.lean` for every
-lemma cited anywhere. All of them are written to be read.
+**Where to go next**: the test suites are the extended examples — `Tests/Direct.lean`
+for List programs (every function in chapters 7–9 lives there), `Tests/Arrays.lean` for
+the carve, `Tests/ArraySort.lean` for the full array quicksort, `Tests/Functions.lean`
+for chapter 2's ground truth, `Tests/KernelFloor.lean` for the mode law's one-character
+test pairs; and `StdLemmas.lean` for every lemma cited anywhere. All of them are
+written to be read.
