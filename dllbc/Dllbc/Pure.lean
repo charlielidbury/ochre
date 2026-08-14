@@ -1,4 +1,4 @@
-import Dllbc.Value
+import Dllbc.ProgMacro
 
 /-!
 # The pure fragment: one syntax, one semantic domain (§4, M32 R1)
@@ -486,13 +486,14 @@ def ctorSig : String → Option CtorSig
       match ty with | .idT _ a b => if convert 1000 a b then some [] else none | _ => none }
   | _ => none
 
-/-- The names `ctorSig` answers for — **the fixed constructor basis, enumerated**.
-    A surface binder may not take one of these names, which is what keeps
-    capitalisation unambiguous as the binder-mode marker. Must track `ctorSig`;
-    the two sit adjacent so that adding a constructor without reserving its name
-    is a visible omission rather than a silent one. -/
-def ctorNames : List String :=
-  ["unit", "True", "False", "Z", "S", "Nil", "Cons", "Pair", "Arr", "Refl"]
+-- The names `ctorSig` answers for are `Val.ctorNames` (`Value.lean`). They sat
+-- adjacent to the table above until M33 macro-top, when the surface moved BELOW
+-- the kernel and could no longer reach into this module for them — a surface
+-- binder may not take one of these names, which is what keeps capitalisation
+-- unambiguous as the binder-mode marker, and two lists that must agree is one
+-- list too many. What adjacency was buying is bought instead by
+-- `S33Macro`'s agreement assertion, which checks the table and the list against
+-- each other in both directions.
 
 /-- The full constructor set of a whnf'd type (§9 exhaustiveness). `none` for a
     type whose constructors aren't known. `Bot` has an EMPTY set — an empty match

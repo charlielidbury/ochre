@@ -2468,18 +2468,21 @@ def writeR : Nat → Term → Val → M Unit
     -- would make an erased thing observable, and `placeToPos` may carve.
     fencePlace place "cannot be written through (⇐)"
     let pos ← placeToPos (fuel + 1) place
-    let old ← getAtPos (fuel + 1) pos
-    match old with
+    -- `displaced` rather than `old`: `old` is a SURFACE keyword (`old *v`, §5.4's
+    -- entry snapshot), and since M33 macro-top the surface sits below the kernel,
+    -- so its tokens are reserved here too.
+    let displaced ← getAtPos (fuel + 1) pos
+    match displaced with
     | .bot => do setAtPos (fuel + 1) pos newval; mergeRoot pos.root    -- fill
     | _ =>
       -- §5.2: every demand collapses first. A `borrowM` in the displaced value is
       -- NOT one of these — `firstLoanMarker` is `none` on it — so the
       -- send-the-payload-home half of `drop` is reached exactly as before.
-      match firstLoanMarker old with
+      match firstLoanMarker displaced with
       | some ℓ => do endLoan fuel ℓ; writeR fuel place newval
       | none => do
         setAtPos (fuel + 1) pos .bot                 -- vacate first (no stale copy in Ω scans)
-        drop (fuel + 1) old                          -- drop the displaced value
+        drop (fuel + 1) displaced                    -- drop the displaced value
         setAtPos (fuel + 1) pos newval               -- fill
         mergeRoot pos.root                           -- rejoin is merge (¶3.3)
 
@@ -2714,38 +2717,14 @@ def borrowSelect (scrut : Var) (eqn : Option Var) (branches : List Branch) (ℓ 
 
 /-! ## Peeling a borrow-moded Π into a telescope (M26-C)
 
-    §5's audit relocation needs the sealed type as a **telescope plus a return
-    type**, because that is the shape `seedTelescope` seeds and `auditAction`
-    audits. Deriving one from a Π is ordinary binder-peeling — except that it has
-    to happen on `Term`s, since a borrow-moded Π has no `Val` (see `St.fsig`).
-    `Term.substP` is what that costs — and since M30 step 2 that is a name-keyed
-    substitution with no lifting, because every substituend here is a runtime
-    variable and a term with no free PURE names cannot be captured. -/
-
-/-- Peel one Π binder per name, instantiating the rest at that name. Returns the
-    telescope and the residual return type.
-
-    **The mode agreement check lives here**, and it is the one place §6 could be
-    stated twice and disagree: a runtime λ's binders carry their mode in their
-    NAMES, the ascribed Π carries its in its DOMAINS (`⇝τ`), and a lowercase
-    binder under a capital-bindered Π would let the body observe at runtime what
-    the caller was promised is erased. Phase B settled that "the ascription is the
-    contract" for CALLERS (F3); this is the callee-side half of the same
-    sentence, and it is a rejection rather than a coercion because the two claims
-    are about different people. -/
-def piPeel : List Var → Term → Except String (List (Var × Term) × Term)
-  | [], u => .ok ([], u)
-  | x :: xs, u =>
-    match u with
-    | .pi y dom cod =>
-      if Term.domComptime dom != x.isComptime then
-        .error s!"seal: binder '{x.name}' is {if x.isComptime then "capitalized (comptime, §6)" else "lowercase (runtime, §6)"} but the ascribed type binds it as {if Term.domComptime dom then "comptime (⇝τ)" else "runtime"}. A binder's mode is a claim about whether the body may observe its argument at runtime, and the ascription is what callers are promised — the two cannot differ."
-      else
-        match piPeel xs (Term.substP y (.var x) cod) with
-        | .ok (rest, ret) => .ok ((x, dom.stripCmp) :: rest, ret)
-        | .error e => .error e
-    | _ =>
-      .error s!"seal: the runtime λ binds '{x.name}' but the ascribed type has no Π binder left for it. Runtime application is saturated (§12 decision 4), so a λ and its ascription must have the same arity — either the λ binds too much or the ascription promises too little."
+    **`piPeel` moved DOWN to `Syntax.lean` at M33 macro-top**, where its
+    docstring now lives. It is a function of `Term` and nothing else, and it was
+    the single real edge from the macro layer up into the kernel: `fnElab` peels
+    the sealed Π with it, so `FnMacro` had to import `Machine` in order to reach
+    one address. With it below, the surface sits under the kernel and the
+    dependency runs the way the layering says it should. Nothing about the rule
+    changed — the mode agreement check is still the one place §6 could be stated
+    twice and disagree, and it is still stated once. -/
 
 /-- **The seal's one conversion** (M27 α.1b): an annotated runtime λ's binders
     against the ascribed Π.
@@ -5240,9 +5219,11 @@ mutual
               | _, _ => throwErr "seal: listRec's arms must be runtime λs, and the Cons arm must bind at least the head, the tail and `ih`"
             | "boolRec", [_, tArm, fArm] => do
               match Term.peelLams tArm, Term.peelLams fArm with
-              | (tn, tbody), (fn, fbody) => do
+              -- `fbs`, not `fn`: `fn` is a SURFACE keyword and the surface is
+              -- below the kernel since M33 macro-top.
+              | (tn, tbody), (fbs, fbody) => do
                 checkArm fuel tbody [] tn (Term.substP sn (.ctorApp "True" []) R)
-                checkArm fuel fbody [] fn (Term.substP sn (.ctorApp "False" []) R)
+                checkArm fuel fbody [] fbs (Term.substP sn (.ctorApp "False" []) R)
                 sealMint fuel key (piBinderNames u) u
             | _, _ => throwErr s!"seal: `{c}` is not a recursor this phase checks as a sealed function, or its spine is not the bare `{c} P ⟨arms⟩` (the scrutinee is the SEALED Π's own binder, so it must not be applied)"
       | _ => throwErr "seal: a recursor sealed as a function must be ascribed a Π — its first binder is the scrutinee the recursion is on (§7's derived motive)"

@@ -1484,6 +1484,48 @@ def Term.clam (x : String) (τ b : Term) : Term := .lam (⟨noSlot, x⟩ : Var) 
 /-- A Π binding COMPTIME knowledge — the type of a `clam`. -/
 def Term.cpi (x : String) (τ b : Term) : Term := .pi x (.cmpT τ) b
 
+/-! ## Peeling a Π into a telescope (M26-C; moved here at M33 macro-top)
+
+    §5's audit relocation needs a sealed type as a **telescope plus a return
+    type**, because that is the shape `seedTelescopeV` seeds and `auditAction`
+    audits. Deriving one from a Π is ordinary binder-peeling — except that it has
+    to happen on `Term`s, since a borrow-moded Π has no `Val` (see `St.fsig`).
+    `Term.substP` is what that costs, and since M30 step 2 that is a name-keyed
+    substitution with no lifting, because every substituend here is a runtime
+    variable and a term with no free PURE names cannot be captured.
+
+    **It lives in `Syntax.lean` because it is a function of `Term` and nothing
+    else** — `domComptime`, `substP`, `stripCmp` and a `Var`'s case are its whole
+    vocabulary. It sat in `Machine.lean` for eleven milestones, and the only cost
+    of that was structural: `FnMacro` needed it, so the SURFACE had to import the
+    kernel, and the one real edge from the macro layer up into the machine was
+    this function's address. -/
+
+/-- Peel one Π binder per name, instantiating the rest at that name. Returns the
+    telescope and the residual return type.
+
+    **The mode agreement check lives here**, and it is the one place §6 could be
+    stated twice and disagree: a runtime λ's binders carry their mode in their
+    NAMES, the ascribed Π carries its in its DOMAINS (`⇝τ`), and a lowercase
+    binder under a capital-bindered Π would let the body observe at runtime what
+    the caller was promised is erased. Phase B settled that "the ascription is the
+    contract" for CALLERS (F3); this is the callee-side half of the same
+    sentence, and it is a rejection rather than a coercion because the two claims
+    are about different people. -/
+def piPeel : List Var → Term → Except String (List (Var × Term) × Term)
+  | [], u => .ok ([], u)
+  | x :: xs, u =>
+    match u with
+    | .pi y dom cod =>
+      if Term.domComptime dom != x.isComptime then
+        .error s!"seal: binder '{x.name}' is {if x.isComptime then "capitalized (comptime, §6)" else "lowercase (runtime, §6)"} but the ascribed type binds it as {if Term.domComptime dom then "comptime (⇝τ)" else "runtime"}. A binder's mode is a claim about whether the body may observe its argument at runtime, and the ascription is what callers are promised — the two cannot differ."
+      else
+        match piPeel xs (Term.substP y (.var x) cod) with
+        | .ok (rest, ret) => .ok ((x, dom.stripCmp) :: rest, ret)
+        | .error e => .error e
+    | _ =>
+      .error s!"seal: the runtime λ binds '{x.name}' but the ascribed type has no Π binder left for it. Runtime application is saturated (§12 decision 4), so a λ and its ascription must have the same arity — either the λ binds too much or the ascription promises too little."
+
 /-! ## The let-arrow invariant (M31 Stage A; exceptionless since M32 R3)
 
     **A capital `let` ⇝-reads its right-hand side; a lowercase `let` ⇒-reads it.**

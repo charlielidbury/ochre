@@ -125,6 +125,23 @@ namespace Val
     what is supposed to turn a carve into knowledge. `§seg` follows its parent so
     that segment navigation has one shape to match. -/
 
+/-- **The fixed constructor basis, enumerated** (moved here at M33 macro-top).
+
+    This is the list `Pure.ctorSig` answers for, and it has a second job that is
+    the reason it lives this far down: the SURFACE reserves these names as binder
+    keywords, because §6 makes capitalisation the binder-mode marker and that is
+    unambiguous only if `Cons` and `Refl` cannot also be binders. With the macro
+    layer below the kernel, the surface can no longer reach into `Pure` for it,
+    and two lists that must agree is one list too many.
+
+    It used to sit ADJACENT to `ctorSig`, so that adding a constructor without
+    reserving its name was a visible omission. That adjacency is replaced by
+    something better than a convention: `S33Macro`'s agreement assertion checks
+    the two against each other in both directions, so the omission is now a red
+    build rather than something a reader has to notice. -/
+def ctorNames : List String :=
+  ["unit", "True", "False", "Z", "S", "Nil", "Cons", "Pair", "Arr", "Refl"]
+
 /-- Is this one of the reserved names a node may never collapse under?
 
     `§segs`/`§seg` are the array layer's carve (state, even when every body in it

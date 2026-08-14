@@ -1,4 +1,4 @@
-import Dllbc.Machine
+import Dllbc.Value
 
 /-!
 # `fn` is a macro (M26-D)

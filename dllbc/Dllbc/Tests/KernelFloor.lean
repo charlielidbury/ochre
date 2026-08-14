@@ -1867,6 +1867,35 @@ example : Term.convEq (Pure.nf 1000 surfAdd) (Pure.nf 1000 Pure.kAddFn) = true :
 example : (Pure.nf 200 (.app (.app surfAdd (Term.nat 2)) (Term.nat 3)) == Term.nat 5) = true := by
   native_decide
 
+/-! ## The constructor basis, checked instead of kept adjacent
+
+    `Val.ctorNames` is the list the SURFACE reserves as binder keywords, and
+    `Pure.ctorSig` is the kernel's field-type table. They must agree, and until
+    M33 macro-top the only thing making that true was that they sat next to each
+    other in one file with a comment saying so. With the macro layer below the
+    kernel the list had to move down to `Value.lean`, so the adjacency is gone —
+    and what replaces it is stronger than what it replaced, because a convention
+    a reader has to notice becomes a build that goes red.
+
+    Both directions. Every reserved name has a signature; and every constructor
+    the exhaustiveness table can NAME, at each type former there is, is reserved.
+    The second is what catches a constructor added to `ctorSig` and `typeCtors`
+    and forgotten at the surface — which is the omission the adjacency comment
+    was worried about, and the direction it could not have caught either. -/
+
+def basisTypes : List Term :=
+  [prog{ Nat }, prog{ Bool }, prog{ Unit }, prog{ Bot }, prog{ List Nat },
+   prog{ Σ (X : Nat) → Nat }, prog{ Id Nat unit unit }, prog{ Array 2 Nat }]
+
+example : Val.ctorNames.all (fun n => (Pure.ctorSig n).isSome) = true := by native_decide
+example : basisTypes.all (fun ty => ((Pure.typeCtors ty).getD []).all
+    (fun c => Val.ctorNames.contains c)) = true := by native_decide
+
+-- …and the control the two lines above need: a name outside the basis has no
+-- signature, so the first is a claim about THIS list rather than about `ctorSig`
+-- answering for everything.
+example : (Pure.ctorSig "Cons2").isNone = true := by native_decide
+
 end Dllbc.Tests.S33Macro
 end
 -- └── end of the M33 macro-top twin probe ──────────────────────────────────────

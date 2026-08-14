@@ -1,5 +1,4 @@
 import Lean
-import Dllbc.Machine
 import Dllbc.FnMacro
 
 /-!
@@ -265,10 +264,11 @@ partial def mintBinders (rctx : List (String × Nat)) (next : Nat) :
     pure (rctx', next', #[vSyntax] ++ rest)
 
 /-- Kernel constructors → `ctorApp`. **Sourced from the kernel's own basis**
-    (`Pure.ctorNames`, adjacent to `ctorSig`) rather than repeated here, because
+    (`Val.ctorNames`, which `Pure.ctorSig` must track) rather than repeated here,
+    because
     M26-B gives the list a second job — reserving these names as binder keywords
     — and two lists that must agree is one list too many. -/
-def ctorSet : List String := Dllbc.Pure.ctorNames
+def ctorSet : List String := Dllbc.Val.ctorNames
 /-- Kernel constants (type formers / recursors / eliminators) → `const`. -/
 def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "boolRec", "listRec", "sigmaRec", "botElim", "j", "k",
   -- ¶1.1/¶1.3's array basis: the former, the split view, the cons view, the read.
