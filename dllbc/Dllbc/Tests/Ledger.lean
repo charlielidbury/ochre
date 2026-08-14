@@ -644,21 +644,31 @@ example : slotBinders Dllbc.Tests.S23Direct.flagship = 22 := by native_decide
 example : lowerComptime Std.lenFnT = 0 := by native_decide
 example : lowerComptime Pure.kLeFn = 0 := by native_decide
 
-/-! **…and the other half of the same rule, PINNED BROKEN** (M33 macro-top
-    commit 0). The numbers below are the measurement this milestone starts from
-    and they are not a passing test — they say that a capital binder spells its
-    mode when a HUMAN writes the `Term` and does not when the SURFACE writes it.
+/-! **…and the other half of the same rule** (M33 macro-top). Pinned BROKEN at
+    commit 0 — flagship **317**, `sort2` **20**, the hand-written kernel library
+    0 — which said that a capital binder spelled its mode when a HUMAN wrote the
+    `Term` and did not when the SURFACE wrote it.
 
-    `elabUElim` builds a recursor arm's binders with a bare `Term.lam` and never
-    reaches `binderDom`, so `elim n return … { Z => …, S (A') R => … }` produces
-    `λ A'. λ R. …` with plain domains where `Term.clam "A'"`/`"R"` would have
-    written `⇝Nat`. Every one of the flagship's 317 is that; every one of the
-    hand-written library's 0 is `clam` doing its job.
+    `elabUElim` built a recursor arm's binders with a bare `Term.lam` and never
+    reached `binderDom`, so `elim n return … { Z => …, S (A') R => … }` produced
+    `λ A'. λ R. …` with plain domains where `Term.clam "A'"`/`"R"` writes `⇝Nat`.
+    Every one of the flagship's 317 was that; every one of the hand-written
+    library's 0 was `clam` doing its job.
 
-    They flip at commit 1, which is what makes these lines a measurement rather
-    than a description. -/
-example : unmarkedCaps Dllbc.Tests.S23Direct.flagship = 317 := by native_decide
-example : unmarkedCaps Dllbc.Tests.S24Arrays.sort2 = 20 := by native_decide
+    **FLIPPED at commit 1** — 317 → 0 and 20 → 0 — by putting every `elabUElim`
+    arm binder through `binderDom`, which is what every other binder in that file
+    already went through. The last nine to go were not arm binders at all but the
+    Σ elimination's type FAMILY (`λ Hu. B`, `sigmaRec`'s second parameter), where
+    the surface wrote a `Σ (Hu : A) → B` with a marked domain and then handed the
+    eliminator a family that disagreed with it about `Hu`.
+
+    The whole corpus is green at both values with **zero verdict changes**, which
+    is what says the marker was inert to every judgment that runs — conversion is
+    mode-blind by construction (`Term.convEq`). What it is NOT inert to is
+    `Term.alphaEq`, the key `abstractInto` generalizes with, and that is why the
+    asymmetry was worth removing rather than documenting. -/
+example : unmarkedCaps Dllbc.Tests.S23Direct.flagship = 0 := by native_decide
+example : unmarkedCaps Dllbc.Tests.S24Arrays.sort2 = 0 := by native_decide
 example : unmarkedCaps Std.lenFnT = 0 := by native_decide
 example : unmarkedCaps Pure.kLeFn = 0 := by native_decide
 example : unmarkedCaps Pure.kAddFn = 0 := by native_decide

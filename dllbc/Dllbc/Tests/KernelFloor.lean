@@ -1836,12 +1836,15 @@ open Dllbc Dllbc.Tests
     milestone's whole subject.** Pinned here as they are TODAY, so that the
     commits which remove each difference are measurements rather than claims:
 
-      * the surface's recursor ARM binders are unmarked where the kernel's `clam`
-        marks them — `λ A' : Nat` against `λ A' : ⇝Nat` — because `elabUElim`
-        builds arm binders with a bare `Term.lam` and never calls `binderDom`;
+      * ~~the surface's recursor ARM binders are unmarked where the kernel's
+        `clam` marks them~~ — **CLOSED at commit 1**: `elabUElim` puts every arm
+        binder through `binderDom` now, so `λ A' : ⇝Nat` on both sides;
       * the kernel's MOTIVE binder is the reserved unmarked `§_` where a surface
         motive has to name its binder, and a named capital binder is marked —
-        `λ §_ : Nat. Nat` against `λ N : ⇝Nat. Nat`.
+        `λ §_ : Nat. Nat` against `λ N : ⇝Nat. Nat`. This one cannot be closed
+        from the surface, because `§_` is unwritable: the only way the two terms
+        become one is for the KERNEL term to be the surface term, which is
+        commit 3.
 
     Conversion is mode-blind (`Term.convEq`) and both are `natRec` over the same
     arms, so the third line is TRUE today: the two spellings already denote the

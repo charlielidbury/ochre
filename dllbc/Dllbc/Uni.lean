@@ -965,6 +965,15 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     `S` step is `λ (k : Nat). λ (ih : P k). …`, and `P k` is built by re-elaborating
     the motive BODY and renaming the motive's own binder to the arm's.
 
+    **Every one of those domains goes through `binderDom`** (M33 macro-top), for
+    the same reason every other binder in this file does: §2.1's rule is that a
+    binder's mode lives on its DOMAIN, and an arm binder is a binder. It did not,
+    for eleven milestones, and the cost was invisible because conversion is
+    mode-blind — but `Term.alphaEq` is not, and it is the key `abstractInto`
+    generalizes with. It was also the reason the same function written twice, once
+    here and once as a hand-written `Term`, was two terms: `Term.clam "A'"` writes
+    both halves of a comptime binder and a bare `Term.lam` here wrote one.
+
     That renaming is what the de Bruijn version got by ARITHMETIC (M30 step 2): it
     elaborated the body in a context contrived to put the motive's binder at the
     index the arm's binder would occupy — hence `pOf`'s `leading` argument, whose
@@ -1003,9 +1012,11 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
     let ihName := (sih.getD (mkIdent `ih)).getId.toString
     let ihDom ← pOf kName
     let body := (← elabUBlk rctx (ihName :: kName :: pctx) n2 sbody).1
+    let kDom ← binderDom kName (← `(Dllbc.Term.const "Nat"))
+    let ihDomM ← binderDom ihName ihDom
     return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "natRec") $motiveT) $z)
-        (Dllbc.Term.lam $(quote kName) (Dllbc.Term.const "Nat")
-          (Dllbc.Term.lam $(quote ihName) $ihDom $body))) $scrutT), n2)
+        (Dllbc.Term.lam $(quote kName) $kDom
+          (Dllbc.Term.lam $(quote ihName) $ihDomM $body))) $scrutT), n2)
   else if names.contains "True" || names.contains "False" then
     let (_, _, tb) ← getArm "True"; let t := (← elabUBlk rctx pctx n2 tb).1
     let (_, _, fb) ← getArm "False"; let f := (← elabUBlk rctx pctx n2 fb).1
@@ -1018,10 +1029,13 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
     let ihName := (cih.getD (mkIdent `ih)).getId.toString
     let ihDom ← pOf tName
     let body := (← elabUBlk rctx (ihName :: tName :: hName :: pctx) n2 cbody).1
+    let hDom ← binderDom hName (← `(Dllbc.Term.const "Nat"))
+    let tDom ← binderDom tName (← `(Dllbc.Term.app (Dllbc.Term.const "List") (Dllbc.Term.const "Nat")))
+    let ihDomM ← binderDom ihName ihDom
     return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "listRec") (Dllbc.Term.const "Nat")) $motiveT) $n)
-        (Dllbc.Term.lam $(quote hName) (Dllbc.Term.const "Nat")
-          (Dllbc.Term.lam $(quote tName) (Dllbc.Term.app (Dllbc.Term.const "List") (Dllbc.Term.const "Nat"))
-            (Dllbc.Term.lam $(quote ihName) $ihDom $body)))) $scrutT), n2)
+        (Dllbc.Term.lam $(quote hName) $hDom
+          (Dllbc.Term.lam $(quote tName) $tDom
+            (Dllbc.Term.lam $(quote ihName) $ihDomM $body)))) $scrutT), n2)
   else if names.contains "Pair" then
     -- Σ elimination (§9). `sigmaRec` takes Σ's two parameters — the domain `A` and
     -- the FAMILY `λ x. B` — so the motive's binder type must be written as the Σ
@@ -1050,11 +1064,17 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
     -- `B` reaches the Σ's own binder, and the arm names that field itself — so the
     -- arm's second domain is `B` with the Σ binder renamed, the same move `pOf`
     -- makes for a recursor's `ih`.
+    let xDom ← binderDom xName aT
+    let yDom ← binderDom yName (← `(Dllbc.Term.substP $(quote bName) (Dllbc.Term.pvar $(quote xName)) $bT))
+    -- The type FAMILY `λ x. B` is the Σ read back as a function, so its binder is
+    -- the Σ's own binder and takes the Σ's own domain — marker included. Written
+    -- unmarked, it was the one place a `Σ (Hu : A) → B` and the family
+    -- `sigmaRec` takes for it disagreed about `Hu`'s mode.
+    let famDom ← binderDom bName aT
     return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "sigmaRec") $aT)
-        (Dllbc.Term.lam $(quote bName) $aT $bT)) $motiveT)
-        (Dllbc.Term.lam $(quote xName) $aT
-          (Dllbc.Term.lam $(quote yName)
-            (Dllbc.Term.substP $(quote bName) (Dllbc.Term.pvar $(quote xName)) $bT) $body))) $scrutT), n2)
+        (Dllbc.Term.lam $(quote bName) $famDom $bT)) $motiveT)
+        (Dllbc.Term.lam $(quote xName) $xDom
+          (Dllbc.Term.lam $(quote yName) $yDom $body))) $scrutT), n2)
   else
     Macro.throwError "elim: arms do not match a known recursor (Nat/Bool/List/Σ)"
 
