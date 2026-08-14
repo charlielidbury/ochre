@@ -182,6 +182,17 @@ syntax:10 "Σ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- Sigma (dot form
 syntax:10 "Σ0" "(" ident ":" uterm ")" "→" uterm:10 : uterm  -- Sigma0 (arrow form)
 syntax:10 "Σ0" "(" ident ":" uterm ")" "." uterm:10 : uterm  -- Sigma0 (dot form)
 syntax:10 uterm:11 "→" uterm:10 : uterm                      -- non-dependent arrow
+-- **The non-dependent PAIR** (M33 macro-top), which is to `Σ` what `→` is to `Π`
+-- and which the grammar simply did not have. Every Σ row above demands a binder,
+-- so a pair whose second component does not depend on its first had to invent a
+-- name — and inventing one is not neutral: a NAMED binder has a case, a case is a
+-- mode, and a mode on a Σ domain routes the component's read (§2.7). There was no
+-- spelling for "this component's mode is nobody's business", which is exactly
+-- what the kernel's own `Sorted` says by writing `§_` — the reserved binder the
+-- surface already mints for `→`, carrying no mode because nothing can cite it.
+-- Found by respelling `Std.SortedFn`, whose `Bound h t × Sorted t` is the
+-- corpus's one non-dependent Σ.
+syntax:20 uterm:21 "×" uterm:20 : uterm                      -- non-dependent Σ
 -- M26-A's seal (combining-fns §5), written as ASCRIPTION (M28 ξ). Still a
 -- parenthesized NODE, not a juxtaposition spine, so it can never be mistaken for
 -- (or produced by) an application: the grammar keeps the seal apart at the surface
@@ -634,6 +645,14 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     let (a', n1) ← elabUTerm rctx pctx next a
     let (b', n2) ← elabUTerm rctx pctx n1 b
     return (← `(Dllbc.Term.pi $(quote unusedSnapName) $a' $b'), n2)
+  -- …and the same for the pair. The binder is the arrow's — reserved, unpushed,
+  -- and UNMARKED, which is the point rather than an omission: `⇝` on a Σ domain
+  -- is a claim about how that component is read, and a component nothing can
+  -- name makes no such claim.
+  | `(uterm| $a:uterm × $b:uterm) => do
+    let (a', n1) ← elabUTerm rctx pctx next a
+    let (b', n2) ← elabUTerm rctx pctx n1 b
+    return (← `(Dllbc.Term.sigmaT $(quote unusedSnapName) $a' $b'), n2)
   | `(uterm| &mut ( $x:ident : $τ:uterm )) =>
     Macro.throwErrorAt x s!"&mut ({x.getId} : τ) is not a borrow type — the snapshot-binder spelling is `&mut ({x.getId} : τ ~> S)`, where `S` is what the borrow OWES back and `{x.getId}` is its entry snapshot, bound as pure var 0 in `S`. Without the `~> S` this would read as `&mut` applied to the ascription `({x.getId} : τ)`, which is a borrow of a SEAL — never meaningful, since a seal is not a place. If you meant a plain borrow of the type, write `&mut τ`."
   | `(uterm| ($t:uterm : $u:uterm)) => do
