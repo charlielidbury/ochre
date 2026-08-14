@@ -1,5 +1,67 @@
 # Progress
 
+## 2026-08-14 — dllbc/: **M33 macro-top — the surface goes UNDER the kernel**
+
+Six commits on `m33-macro-top` (based on main @ a43047b9), corpus green at each.
+Sabotage control **26** red on the base and at every re-measurement — Direct 18,
+KernelFloor 7, Arrays 1, with `progOk flagship`, `progOk sort2` and both
+`S32Cook` directions present each time. `Traces.lean` byte-unchanged, and so are
+seven of the other nine test modules: the only test files this milestone touches
+are `KernelFloor` and `Ledger`, and everything in them is its own battery. **No
+pre-existing assertion in the corpus moved.**
+
+**The dependency DAG is inverted, and the whole of what held it the other way up
+was one function's address.** `fnElab` peels a sealed Π with `piPeel`, `piPeel`
+lived in `Machine.lean`, so `FnMacro` imported the kernel and the entire macro
+layer sat above it. `piPeel` is a function of `Term` and nothing else. Moved down
+to `Syntax.lean`, the DAG becomes `Syntax → Value → FnMacro → Uni → ProgMacro →
+Pure → {Std, Machine} → Boundary → …`, and `prog{ }` is in scope everywhere a
+term is written.
+
+**The kernel and the library are now written in the language.** `Pure.kAddFn`,
+`Pure.kLeFn` and all nine of `Std`'s hand-built chains are `prog{ }` definitions.
+Each deletion was gated on a per-definition equivalence against the hand form,
+run before the hand copy was removed: all thirteen agree by conversion on both
+normal forms and on computed behaviour, and **two of the eleven library
+definitions come out `alphaEq`-IDENTICAL** — `le_refl` and its type, which are
+exactly the two whose hand form named every binder it bound. The other eleven
+differ in one position, the recursor motive's `§_`, which is unwritable at the
+surface by design.
+
+**`Term.clam` and `Term.cpi` are DELETED at zero call sites.** R3b built them so
+a hand-written comptime binder could not spell its capital name and forget its
+`⇝`; there are no hand-written comptime binders left, so the guarantee comes from
+`binderDom` in the elaborator instead of from a constructor. Call count measured
+across the tree before removal, not assumed.
+
+**§2.1's marker was half-written by the surface and nobody had counted the other
+half.** `lowerComptime` (capital-missing) has been 0 since R3b; its twin
+`unmarkedCaps` (domain-marker-missing) was **317** on the flagship and 20 on
+`sort2`, against 0 for the hand-written library — because `elabUElim` built
+recursor arm binders with a bare `Term.lam` and never called `binderDom`. Both
+go to 0, with zero verdict changes, and that has a reason rather than being luck:
+`Term.convEq` is mode-blind by construction. What it is NOT inert to is
+`Term.alphaEq`, the key `abstractInto` generalizes with — **so this was a
+difference the generalization sweep could see and the type-checker could not.**
+
+**Two things the measurements found that the plan did not predict.** The
+layering's cost is TOKENS: `syntax` tokens are global, so the surface's keywords
+become reserved identifiers inside the kernel, and two `Machine.lean` locals
+(`old`, `fn`) had to be renamed. And the surface had no non-dependent Σ, found by
+respelling `Sorted` — `Bound h t × Sorted t` has no binder, and inventing one is
+not neutral, because a named Σ binder carries a mode that routes its component's
+read. `×` joins the grammar as what `→` already was to `Π`.
+
+**The splicing rule** (user ruling): composition helpers are `prog{ %kAddFn %a
+%b }`, not raw constructors. `Std.lean`, `StdLemmas.lean`, `Boundary.lean` and
+`Program.lean` now contain zero raw `Term` constructors. What survives elsewhere
+is in three honest categories — `Syntax`/`Value` are below the macro and
+literally cannot use it, `FnMacro`/`Uni`/`ProgMacro` ARE the elaborator, and
+`Pure`/`Machine` are the algorithm — plus three sites where splicing would be
+genuinely wrong, reported rather than absorbed (matchers cannot be macros; a
+constructor over a computed LIST has no spelling; the kernel's internal markers
+are unwritable on purpose).
+
 ## 2026-08-12 — dllbc/: **M33 Σ0 — the comptime tail, and the terminal no-⇒-λ attempt LANDS**
 
 Five commits on `m33-sigma0` (based on main @ 478cadb8), corpus green at each.

@@ -544,6 +544,25 @@ last surviving backstop, which §2.5 predicted would become derivable and Σ0
 measured as not — is DELETED**, and the thing that made it derivable is `Ih`:
 addendum at the bottom of this file.
 
+**M33 macro-top — the surface goes UNDER the kernel: RUN** (branch
+`m33-macro-top`, based on main @ a43047b9; six commits, corpus green at each).
+Not a stage of M32 and not a rule change — a LAYERING change, and the reason it
+belongs in this document is that it retires the last place where §2.1's "both
+halves of a comptime binder are written together" was maintained by hand.
+`Term.clam`/`Term.cpi` existed because the kernel's own library terms were
+hand-built `Term`s with no elaborator between them and the datatype; they are
+DELETED, at zero call sites, because there are no hand-built library terms left.
+`Pure.kAddFn`, `Pure.kLeFn` and all nine of `Std`'s chains are `prog{ }`.
+
+What made it possible is one function's address: `fnElab` peels a sealed Π with
+`piPeel`, `piPeel` lived in `Machine.lean`, and that single edge is why the macro
+layer sat above the kernel. Moved down to `Syntax.lean`, the DAG inverts —
+`Syntax → Value → FnMacro → Uni → ProgMacro → Pure → {Std, Machine}` — and
+`prog{ }` is in scope everywhere a term is written. **The measured cost of the
+inversion is that the SURFACE'S KEYWORDS become reserved identifiers inside the
+kernel**; two locals in `Machine.lean` (`old`, `fn`) had to be renamed. Addendum
+at the bottom of this file.
+
 **M33 α — residual 4's close-out, not a stage** (branch `m33-alpha-key`, based on
 R4 @ ab6921ae and rebased onto main at merge; two commits, corpus green at each).
 **"M33 α" to distinguish it from §2.7's Σ0 design, which the doc also calls
@@ -1429,3 +1448,160 @@ assumption-indexed evaluation (rejected with precedent, §3).
 > outside `Traces` and both named in (8): `slotOf b1 "f"` takes `Ih`, and
 > `runExec m1` goes from a zeroed list to an error. Said this way rather than as
 > "no golden moved", which would be false.
+
+> **Implementation addendum (M33 macro-top, landed on `m33-macro-top`).** Six
+> commits, corpus green at each, based on main @ a43047b9 (the full merged
+> M31–M33 arc plus M33b). This is not a rule change and not a stage — it is the
+> layering, and it belongs here because it retires the last hand-maintained half
+> of §2.1.
+>
+> **0. THE HEADLINE IS A DELETION AT ZERO CALL SITES.** `Term.clam` and
+> `Term.cpi` are gone. R3b built them so that a hand-written comptime binder
+> could not spell its capital name and forget its `⇝` domain — the right device
+> for a world in which the kernel's own library was hand-built `Term`s. There is
+> no such world any more: `Pure.kAddFn`, `Pure.kLeFn` and all nine of `Std`'s
+> chains are `prog{ }`, so every comptime binder in the kernel and the library
+> goes through `binderDom` like every other binder in the language. The
+> constructors' call count was MEASURED at zero across the tree before they were
+> removed, and the four places that cite them in prose are corrected rather than
+> left saying something false.
+>
+> **1. The whole layering was ONE function's address.** `fnElab` peels a sealed Π
+> with `piPeel`; `piPeel` lived in `Machine.lean`; so `FnMacro` imported the
+> kernel and everything downstream of the macro was downstream of the kernel.
+> `piPeel` is a function of `Term` and nothing else (`domComptime`, `substP`,
+> `stripCmp`, a `Var`'s case). Moved to `Syntax.lean`, the DAG becomes
+> **`Syntax → Value → FnMacro → Uni → ProgMacro → Pure → {Std, Machine} →
+> Boundary → …`**, with nothing importing upward. Cross-checked before the flip
+> against all 217 of `Machine.lean`'s definitions: `Uni`'s references to `readR`,
+> `reflectC`, `seedTelescope` and `sealRec`, and `FnMacro`'s to `callDeclC`,
+> `readRecArgs` and `sealRec`, are every one of them prose or an error string.
+>
+> **2. THE COST IS TOKENS, and it is the finding worth carrying.** `syntax`
+> tokens go into a global table, so putting the surface below the kernel makes
+> the SURFACE'S KEYWORDS reserved identifiers inside the kernel. Two locals in
+> `Machine.lean` stopped parsing: `old` (§5.4's `old *v`) and `fn` (the
+> declaration statement), renamed to `displaced` and `fbs`. Small — two
+> identifiers in 5,600 lines — and bounded: the new reservations are `fn`, `old`,
+> `elim`, `generalizing`, `Id`, `Σ`, `Σ0`, `Π`, `λ`, `&m`, `&mut`, `~>`, `%`,
+> `prog`, everything else on the list having already been a Lean keyword. Every
+> kernel file downstream of `Pure` now lives under that rule; the test corpus
+> always did.
+>
+> **3. §2.1's marker was HALF-WRITTEN by the surface, and nobody had counted the
+> other half.** `lowerComptime` has counted comptime binders spelled lowercase
+> since R2 and is 0 everywhere. Its twin — capital NAME, unmarked DOMAIN, same
+> `!bindsSlot` scope — is `unmarkedCaps`, and on the flagship it was **317**
+> (`sort2` 20, the hand-written library 0): `elabUElim` built recursor arm binders
+> with a bare `Term.lam` and never called `binderDom`. Fixed at commit 1, 317 → 0
+> and 20 → 0, whole corpus green with **zero verdict changes** — which has a
+> reason rather than being luck, since `Term.convEq` is mode-blind by construction
+> and no conversion, `hasType` or `piAgree` could ever have seen the difference.
+> What it is NOT inert to is `Term.alphaEq`, which is deliberately mode-SENSITIVE
+> and is the key `abstractInto` generalizes with since M33 α. **So this was a
+> difference the generalization sweep could see and the type-checker could not.**
+>
+> **4. The last nine were not arm binders at all.** After the arms, nine
+> capital-unmarked binders survived on the flagship, spelled `Hu`, `Hh`, `Hb`:
+> the Σ elimination's type FAMILY, `sigmaRec`'s second parameter `λ x. B`, which
+> `elabUElim` reconstructs from the motive's binder type. The surface elaborated
+> `Σ (Hu : A) → B` with `binderDom` on the domain and then handed the eliminator
+> a family that said the opposite about the same binder. The family is the Σ read
+> back as a function, so it takes the Σ's domain, marker included.
+>
+> **5. THE TWIN PROBE, and what each of its three lines was measuring.** The
+> surface spelling of `Add` against `Pure.kAddFn`, pinned at commit 0 and flipped
+> deliberately:
+>
+>     Term.alphaEq (raw)            FALSE → TRUE (commit 3)
+>     Pure.nf-then-==               FALSE → TRUE (commit 3)
+>     Term.convEq on the two nf's   TRUE  → TRUE (never moved)
+>
+> The third line was true from the start, which is what said the difference was
+> spelling and not meaning. Two drifts produced the other two, and they close
+> from opposite sides: the ARM binders were the surface's fault and commit 1 fixed
+> them; the MOTIVE binder was the kernel's (`λ §_ : Nat`, reserved and unmarked,
+> where a surface motive must NAME its binder and a named capital binder is
+> marked) and **no change to the elaborator could have fixed it**, because `§_` is
+> unwritable. The only way the two become one term is for the kernel term to BE
+> the surface term. The assertion still does work rather than comparing a term
+> with itself: the probe names its motive binder `N` where the kernel names it
+> `Am`, so what it says is that two independent surface spellings are one term up
+> to α, with every mode marker agreeing.
+>
+> **6. THE RESPELL GATE, per definition, and two of eleven come out IDENTICAL.**
+> Every hand form was held beside its replacement and measured before deletion.
+> All thirteen (two kernel, eleven library) are `convEq` on both normal forms and
+> agree on computed behaviour. `alphaEq` splits, and the split is the control:
+> `le_refl` and `le_refl_ty` are **α-IDENTICAL**, and they are exactly the two
+> whose hand form named every binder it bound; the other eleven differ in exactly
+> one position, the motive's `§_`. So the measurement says the respell reproduces
+> the hand term wherever the hand term was expressible, rather than merely
+> producing something that computes the same.
+>
+> **7. A GRAMMAR GAP, found by `Sorted` and closed rather than worked around.**
+> `Sorted (Cons h t)` is `Bound h t × Sorted t` — a pair whose second component
+> does not mention its first — and the surface could not write it. Every `Σ` row
+> demands a binder, and inventing one is not neutral: a named binder has a case,
+> a case is a mode, and a mode on a Σ domain ROUTES that component's read (§2.7),
+> so `Σ (Hb : …) → Rec` would have made the component comptime and changed how a
+> `Pair` inhabiting `Sorted` is read. `×` joins the grammar as the non-dependent
+> Σ, exactly what `→` already was to `Π`: the same reserved `§_` binder, not
+> pushed onto `pctx`, and UNMARKED — which is the point rather than an omission,
+> since `⇝` on a Σ domain is a claim about how a component is read and a component
+> nothing can name makes no such claim.
+>
+> **8. THE SPLICING RULE** (user ruling): composition helpers use
+> `prog{ %kAddFn %a %b }`, not raw constructors. Verified to compose before
+> anything was rewritten — spliced head in an application spine, a 4-ary const
+> head, splices in constructor arguments, a type former over spliced arguments,
+> all `Term.beq`-identical to the hand-built spine. Applied to `Pure`'s four,
+> `Std`'s twenty-two, `Machine`'s one, `Program`'s three defaults and
+> `KernelFloor`'s last `cpi`. **`Std.lean` and `StdLemmas.lean` now contain zero
+> raw `Term` constructors**, as do `Boundary.lean` and `Program.lean`.
+>
+> **9. Where raw constructors survive, and the honest reason for each.** Counted
+> as constructor occurrences in code: Syntax 389, Machine 523, Pure 174, FnMacro
+> 202, Uni 114, Value 15, ProgMacro 8; Std, StdLemmas, Boundary, Program 0. Three
+> categories, none of them term assembly. (i) **`Syntax` and `Value` are below the
+> macro**, so raw construction there is not a choice the rule could reach — the
+> layering makes the rule self-enforcing at the bottom, which is better than a
+> convention. (ii) **`FnMacro`/`Uni`/`ProgMacro` ARE the elaborator**; building
+> `Term`s is what they do. (iii) **`Pure` and `Machine` are the ALGORITHM**:
+> `eval`/`whnfN`/`readback` build `Sem`, which `prog{ }` cannot produce at all,
+> and `hasType`'s recursor rules build premise types binding the reserved
+> `§n`/`§x`/`§xs`/`§ih`, which the surface refuses to write by design.
+>
+> **10. Three sites where a splice would be genuinely WRONG, reported rather than
+> absorbed.** The brief expected none. (i) **Matchers cannot be macros** —
+> `asArrayTy?`, `arrRun?`, `collectSpineT`, `Term.natOf?` and the
+> `ctorSig`/`typeCtors` tables pattern-match on `.app`/`.ctorApp`, and a `prog{ }`
+> cannot appear left of `=>`; `rebuildSpineT` is left raw with its matcher
+> deliberately, since splitting the pair would cost a reader more than uniformity
+> buys. (ii) **A constructor applied to a computed LIST has no spelling** —
+> `.ctorApp "Arr" (xs ++ ys)` is variadic in a Lean `List Term` and `%` splices
+> one term; `Arr` is the only variadic constructor and the array-segment layer is
+> its only builder, so this is filed as a real gap rather than worked around.
+> (iii) **The kernel's internal markers are unwritable on purpose** — `@exit` and
+> `old` have no surface spelling, and giving them one would make a marker
+> grammatically writable, the objection that killed the union-tree horizon (R1).
+>
+> **11. The adjacency convention that the move destroyed, replaced by a test.**
+> `ctorNames` had to go down to `Value.lean` (as `Val.ctorNames`, the name
+> `Syntax.lean`'s own comment had been using), because the surface reserves those
+> names as binder keywords and can no longer reach into `Pure` for them. Its
+> docstring said the two lists agree because they "sit adjacent so that adding a
+> constructor without reserving its name is a visible omission". `S33Macro` now
+> asserts the agreement in BOTH directions with the control the first needs —
+> strictly stronger, since the second direction (a constructor in `typeCtors` that
+> the surface does not reserve) was never something adjacency could catch.
+>
+> **12. Controls.** `abstractInto` sabotage: **26** red on the base and at every
+> re-measurement — Direct 18, KernelFloor 7, Arrays 1 — with `progOk flagship`
+> (Direct.lean:1605), `progOk sort2` (Arrays.lean:1445) and both `S32Cook`
+> directions (KernelFloor 918/922, 977/981) present each time; green with the key
+> restored. The count the brief said not to assume is measured and is 26. All ten
+> test modules built at every green measurement. **`Traces.lean` is
+> byte-unchanged**, and so are seven of the other nine test modules: the only test
+> files this milestone touches are `KernelFloor` and `Ledger`, and everything in
+> them is its own battery. **No pre-existing assertion in the corpus moved.**

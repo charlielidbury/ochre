@@ -3,6 +3,74 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-08-14: M33 macro-top — the surface layer goes BELOW the kernel
+
+**Decided: the `prog{ }` macro layer sits under `Pure` and `Machine` in the
+dependency DAG, every term anyone writes is written in surface syntax, Lean-level
+composition helpers use splices, and raw `Term` constructors survive only where
+the layering makes them unavoidable.** The measurements are suspensions.md's M33
+macro-top addendum; this entry records the decisions and the alternatives.
+
+**The problem.** `Pure.kAddFn`, `Pure.kLeFn` and nine chains in `Std.lean` were
+hand-built `Term` ASTs. Not for a semantic reason — because `FnMacro` imported
+`Machine` (for `piPeel`), so the macro layer was above the kernel and the kernel
+could not use it. The consequence was two vocabularies for one language: R3b had
+to invent `Term.clam`/`Term.cpi` so that a hand-written comptime binder could not
+forget its `⇝`, and even so the same function written twice — once in `prog{ }`
+and once by hand — was two different terms.
+
+**The layering.** `piPeel` moves to `Syntax.lean`; `FnMacro` imports `Value`;
+`Pure` imports `ProgMacro`. Nothing else moved and nothing imports upward. The
+alternative — keep `piPeel` in `Machine` and give `FnMacro` its own copy — was
+rejected on the rule `piPeel`'s own docstring states: it is "the one place §6
+could be stated twice and disagree", and duplicating it is exactly stating it
+twice.
+
+**The cost, accepted with the reason.** `syntax` tokens are global, so the
+surface's keywords (`fn`, `old`, `elim`, `generalizing`, `Id`, …) become reserved
+identifiers inside every kernel file downstream of `Pure`. Two locals in
+`Machine.lean` had to be renamed. Accepted because it is bounded, checkable and
+loud — a collision is a parse error, not a silent capture — and because the test
+corpus has always lived under the same rule.
+
+**The splicing rule (user ruling), and its boundary.** A Lean-level helper that
+composes an application of a named function is written `prog{ %kAddFn %a %b }`.
+The boundary is not "no raw constructors anywhere", because three things cannot
+be written that way and one of them is a design commitment: a MATCHER cannot be a
+macro; a constructor applied to a computed `List Term` (`Arr`) has no splice
+spelling; and the kernel's internal markers (`@exit`, the reserved `§`-binders in
+recursor premise types) are unwritable at the surface ON PURPOSE, since making a
+marker grammatically writable is the objection that killed the union-tree horizon
+at R1. The rule is therefore stated as: **surface syntax for every term anyone
+writes; splices where the algorithm composes; raw constructors only where the
+module is below the macro (`Syntax`, `Value`), IS the macro (`FnMacro`, `Uni`,
+`ProgMacro`), or is the algorithm rather than term assembly (`Pure`, `Machine`).**
+
+**`×`, the non-dependent Σ, added rather than worked around.** `Sorted` is the
+corpus's one non-dependent pair type and the surface could not write it. The
+alternative was to invent a binder name — rejected, because a named Σ binder has
+a case, a case is a mode, and a mode on a Σ domain routes that component's read
+(§2.7): spelling `Σ (Hb : Bound H T) → Rec` would have made the component
+comptime and changed how a `Pair` inhabiting `Sorted` is read. That is a
+behaviour change, and this is a representation lane. `×` mints the same reserved
+`§_` binder `→` already mints, carrying no mode because nothing can cite it.
+
+**`Term.clam`/`Term.cpi` deleted rather than kept as dead code.** Their call
+count is zero and their job is finished: the invariant they enforced by
+construction is now enforced by `binderDom`, for every binder, because there are
+no hand-written ones left. Keeping them would have kept a docstring that says
+the kernel's library terms are hand-written, which is no longer true. The
+prose citing them is corrected to past tense; the paragraph in `Syntax.lean`
+where they stood records why they existed and what to reconsider if a
+hand-written comptime binder ever returns.
+
+**The adjacency convention replaced by a test.** `ctorNames` moved to
+`Value.lean` because the surface needs it and can no longer reach into `Pure`.
+Its docstring had said the list and `ctorSig` agree because they sit adjacent.
+`S33Macro` asserts the agreement in both directions instead — strictly stronger,
+since the direction that matters most (a constructor in `typeCtors` the surface
+does not reserve) was never something adjacency could catch.
+
 ## 2026-08-12: M33 Σ0 — a mode for the tail, and no-⇒-λ becomes law
 
 **Decided: a Σ chain's tail gets its mode from a marker on the Σ's CODOMAIN,
