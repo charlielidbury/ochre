@@ -5034,4 +5034,38 @@ def FindRem : Term := prog{
     elim (Eqb Q Key) return (λ (Bz : Bool). Σ (b : Bool). OptP b Nat) {
       True => None, False => FindHM Q Hm } }
 
+/-! ## `New` — filling a fresh slot array, and what it trivially satisfies
+
+    `MkFillFn` is `hm-probe-opt`'s `MkSlotsFn`, generalised to the `Bucket` payload —
+    an `acons` spine, working equally as a comptime builder and (below) inside a `fn`.
+    Its three companion lemmas are each an induction MATCHING `MkFillFn`'s own
+    recursion: at every step the goal and the induction hypothesis turn out to be
+    DEFINITIONALLY the same statement (`Nil` is vacuously well-hashed at any index,
+    contributes `Z` to `TotalLenA`, and misses every `FindL` query), so each step's
+    proof is the induction hypothesis ITSELF — no transport, no congruence lemma. -/
+
+def MkFillFn : Term := prog{
+  λ (N : Nat). elim N return (λ (Nm : Nat). Array Nm Bucket) {
+    Z => Arr(), S (M) Rec => acons M Nil Rec } }
+
+def MkFillAllHashed : Term := prog{
+  λ (Cap : Nat). λ (N : Nat).
+    elim N return (λ (Nz : Nat). Π (I : Nat) → AllHashedA Cap Nz (MkFillFn Nz) I) {
+      Z => λ (I : Nat). unit,
+      S (N') Ih => λ (I : Nat). Pair(unit, Ih (S I))
+    } }
+
+def MkFillTotalLen : Term := prog{
+  λ (N : Nat).
+    elim N return (λ (Nz : Nat). Id Nat Z (TotalLenA Nz (MkFillFn Nz))) {
+      Z => Refl, S (N') Ih => Ih
+    } }
+
+def MkFillFind : Term := prog{
+  λ (N : Nat).
+    elim N return (λ (Nz : Nat). Π (Q : Nat) → Id (Opt Nat) (FindArrA Q Nz (MkFillFn Nz)) None) {
+      Z => λ (Q : Nat). Refl,
+      S (N') Ih => λ (Q : Nat). Ih Q
+    } }
+
 end Dllbc.StdLemmas

@@ -30,7 +30,8 @@ open Dllbc.StdLemmas (LeRefl LeTrans LeAdd LeAddL LeAddSucc LeRwL LeRwR AddSucc 
   ModLtN ModLtNTy ModDec ModDecTy
   OptP Opt Some None OptElim Entry Bucket LenE FindL
   AllKeysEq AllHashedA TotalLenA TotalLenACat OptElimAssoc FindArrA FindArrACat
-  HMInv HashMapT FindHM SizeHM FindIns FindRem)
+  HMInv HashMapT FindHM SizeHM FindIns FindRem
+  MkFillFn MkFillAllHashed MkFillTotalLen MkFillFind)
 
 namespace Dllbc.Tests.HmFlagship
 
@@ -153,5 +154,29 @@ example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindRem 2 2 %hmExample) None } =
   native_decide
 example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindRem 9 2 %hmExample) None } = true := by
   native_decide
+
+/-! ## §1 — the program chain
+
+    `hmChain` is `ArraySort`'s `arrUnder`: one function taking the tail to splice, so
+    every `fn` below is in scope for every one after it and the whole thing is ONE
+    program with no table. Ops are added here one milestone at a time; `New` first,
+    since it needs the least new machinery. -/
+
+def NewRet : Term := prog{
+  Σ0 (result : HashMapT).
+    (Π (Q : Nat) → Id (Opt Nat) (FindHM Q result) None) × Id Nat (SizeHM result) Z }
+
+def hmChain (rest : Term) : Term := prog{
+  fn New (cap : Nat, Hcap : Le (S Z) cap) -> %NewRet {
+    Pair(
+      Pair(cap, Pair(Div (Mul cap 4) 5, Pair(Z,
+        Pair(MkFillFn cap,
+          Pair(Hcap, Pair(MkFillAllHashed cap cap Z, Pair(MkFillTotalLen cap, Refl))))))),
+      Pair(λ (Q : Nat). MkFillFind cap Q, Refl))
+  };
+  %rest }
+
+def hmChainClosed : Term := hmChain prog{ () }
+example : progOk hmChainClosed = true := by native_decide
 
 end Dllbc.Tests.HmFlagship
