@@ -326,6 +326,18 @@ def InsRecurseLenTy : Term := prog{
     `InsRecurseLen` normally. -/
 
 def hmChain (rest : Term) : Term := prog{
+  -- `SlotOf` mints the slot index and residue ACROSS this call boundary (M4's
+  -- finding: an inline `Pair(Mod h n, ModDec …)` fails the carve's occurs check,
+  -- since `n = Add i (S r)` would mention `n` through `i = Mod h n`). It ALSO
+  -- returns `Id Nat (Mod h n) i` explicitly, because the caller needs that fact
+  -- for `InsertInList`'s own `HKeyMod` parameter and opacity (correctly) throws
+  -- away the syntactic identity `i = Mod h n` once the call returns — the equation
+  -- has to travel as data, not be re-derived from `i`'s (now opaque) definition.
+  fn SlotOf (h : Nat, n : Nat, Hne : Le (S Z) n)
+      -> Σ (i : Nat). Σ (HeqMod : Id Nat (Mod h n) i). Σ (r : Nat). Id Nat n (Add i (S r)) {
+    Pair(Mod h n, Pair(Refl, ModDec (Mod h n) n (ModLtN h n Hne)))
+  };
+
   fn New (cap : Nat, Hcap : Le (S Z) cap) -> %NewRet {
     Pair(
       Pair(cap, Pair(Div (Mul cap 4) 5, Pair(Z,
