@@ -30,6 +30,10 @@ open Dllbc.StdLemmas (LeRefl LeTrans LeAdd LeAddL LeAddSucc LeRwL LeRwR AddSucc 
   HMInvCapPos HMInvCapPosTy HMInvHashed HMInvHashedTy HMInvCount HMInvCountTy HMInvLoad HMInvLoadTy
   AllHashedACatSplit AllHashedACatSplitTy
   OptElimDistrib OptElimDistribAtTy LenLeTotal LenLeTotalTy
+  OptRw OptRwTy EqbFalseOfModNe EqbFalseOfModNeTy
+  FindLNoneOfHashMismatch FindLNoneOfHashMismatchTy
+  FindArrANoneRight FindArrANoneRightTy FindArrANoneLeft FindArrANoneLeftTy
+  LeUpR
   NatRw
   NextR NextC NextQ ModC Mod DivC Div Mul StepInv StepInvTy ModCLt ModCLtTy
   ModLtN ModLtNTy ModDec ModDecTy
@@ -505,5 +509,11 @@ example : chkL HMInvLoad HMInvLoadTy = true := by native_decide
 example : chkL AllHashedACatSplit AllHashedACatSplitTy = true := by native_decide
 example : chkL OptElimDistrib OptElimDistribAtTy = true := by native_decide
 example : chkL LenLeTotal LenLeTotalTy = true := by native_decide
+example : chkL OptRw OptRwTy = true := by native_decide
+
+example : chkL EqbFalseOfModNe EqbFalseOfModNeTy = true := by native_decide
+example : chkL FindLNoneOfHashMismatch FindLNoneOfHashMismatchTy = true := by native_decide
+example : chkL FindArrANoneRight FindArrANoneRightTy = true := by native_decide
+example : chkL FindArrANoneLeft FindArrANoneLeftTy = true := by native_decide
 
 end Dllbc.Tests.HmFlagship

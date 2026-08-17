@@ -5406,4 +5406,161 @@ def LenLeTotalTy : Term := prog{
   Π (I0 : Nat) → Π (Lo : Array I0 Bucket) → Π (R : Nat) → Π (Bk : Bucket) → Π (Hi : Array R Bucket) →
     Le (LenE Bk) (TotalLenA (Add I0 (S R)) (arrCat I0 (S R) Lo (acons R Bk Hi))) }
 
+/-! ## Well-hashedness implies no cross-bucket duplicates
+
+    The array-level `Insert`'s FindHM equation needs more than `InsertInList`'s own
+    bucket-local `Hp` — that equation is stated relative to `FindArrA`'s "first hit
+    wins" fold over the WHOLE map, and `lo`/`hi` (the untouched carve pieces) are
+    checked FIRST/AFTER the touched cell in that fold. To show `key`'s new entry is
+    genuinely found (and every OTHER `Q` is unaffected), the proof needs: `key`
+    cannot ALSO occur in `lo` or `hi`, because a well-hashed map only ever stores a
+    key in the ONE slot its hash names. `OptRw` is `NatRw`/`BoolRw`'s shape at
+    `Opt Nat`, needed to transport a `FindL`/`FindArrA` fact through `OptElim`'s
+    stuck first argument. -/
+
+def OptRw : Term := prog{
+  λ (P : (Σ (b : Bool). OptP b Nat) → Type). λ (X : Σ (b : Bool). OptP b Nat).
+  λ (Y : Σ (b : Bool). OptP b Nat). λ (H : Id (Opt Nat) X Y). λ (Px : P X).
+    j (Opt Nat) X (λ (Y' : Σ (b : Bool). OptP b Nat). λ (Hy : Id (Opt Nat) X Y'). P Y') Px Y H }
+def OptRwTy : Term := prog{
+  Π (P : (Σ (b : Bool). OptP b Nat) → Type) → Π (X : Opt Nat) → Π (Y : Opt Nat) →
+    Id (Opt Nat) X Y → P X → P Y }
+
+/-- Two keys whose HASHES differ are themselves different — the contrapositive of
+    `Eqb`'s soundness (`EqbTrueEq`) composed with `Mod _ Cap`'s congruence: if
+    `Eqb Q K2` were `True` then `Q = K2` (`EqbTrueEq`), so `Mod Q Cap = Mod K2 Cap`
+    (`IdCongr`), contradicting the hypothesis via `EqbRefl` transported across that
+    equality (`NatRw`) and `FalseNotTrue`. Bool has only the two cases, so ruling out
+    `True` leaves `False`, closed by the `Refl`-through-a-Π-motive trick again. -/
+def EqbFalseOfModNe : Term := prog{
+  λ (Cap : Nat). λ (Q : Nat). λ (K2 : Nat).
+  λ (Hmod : Id Bool (Eqb (Mod Q Cap) (Mod K2 Cap)) False).
+    elim (Eqb Q K2) return (λ (Bz : Bool). Π (H1 : Id Bool (Eqb Q K2) Bz) → Id Bool Bz False) {
+      True => λ (H1 : Id Bool (Eqb Q K2) True).
+        botElim (Id Bool True False)
+          (FalseNotTrue
+            (IdSym Bool True False
+              (IdTrans Bool True (Eqb (Mod Q Cap) (Mod K2 Cap)) False
+                (NatRw (λ (X : Nat). Id Bool True (Eqb X (Mod K2 Cap)))
+                  (Mod K2 Cap) (Mod Q Cap)
+                  (IdSym Nat (Mod Q Cap) (Mod K2 Cap)
+                    (IdCongr Nat Nat (λ (X : Nat). Mod X Cap) Q K2 (EqbTrueEq Q K2 H1)))
+                  (IdSym Bool (Eqb (Mod K2 Cap) (Mod K2 Cap)) True (EqbRefl (Mod K2 Cap))))
+                Hmod))),
+      False => λ (H1 : Id Bool (Eqb Q K2) False). Refl
+    } Refl }
+def EqbFalseOfModNeTy : Term := prog{
+  Π (Cap : Nat) → Π (Q : Nat) → Π (K2 : Nat) →
+    Id Bool (Eqb (Mod Q Cap) (Mod K2 Cap)) False → Id Bool (Eqb Q K2) False }
+
+/-- If `Q`'s hash misses a bucket's own (uniform, via `AllKeysEq`) hash, `Q` cannot be
+    found in it: induction on the bucket, rewriting `AllKeysEq`'s per-entry equation
+    into `Hmod` (`NatRw`) to invoke `EqbFalseOfModNe`, then `BoolRw`-style transport
+    (`FindL`'s own `Eqb Q K2`-headed `elim` collapses to its `False` arm) to land on
+    the tail's IH. `I` (the bucket's shared target slot) does not change across the
+    recursion, unlike `AllHashedA`'s per-position `I0`. -/
+def FindLNoneOfHashMismatch : Term := prog{
+  λ (Cap : Nat). λ (I : Nat). λ (Q : Nat). λ (B : Bucket).
+    listRec Entry (λ (Bm : Bucket). AllKeysEq Cap I Bm → Id Bool (Eqb (Mod Q Cap) I) False →
+        Id (Opt Nat) (FindL Q Bm) None)
+      (λ (Hk : Unit). λ (Hmod : Id Bool (Eqb (Mod Q Cap) I) False). Refl)
+      (λ (E : Entry). λ (T : Bucket).
+       λ (Ih : AllKeysEq Cap I T → Id Bool (Eqb (Mod Q Cap) I) False → Id (Opt Nat) (FindL Q T) None).
+        elim E return (λ (Em : Σ (k : Nat). Nat).
+            AllKeysEq Cap I Cons(Em, T) →
+              Id Bool (Eqb (Mod Q Cap) I) False → Id (Opt Nat) (FindL Q Cons(Em, T)) None) {
+          Pair (K2) (V2) =>
+            λ (Hk : Σ (Heq : Id Nat (Mod K2 Cap) I). AllKeysEq Cap I T).
+            λ (Hmod : Id Bool (Eqb (Mod Q Cap) I) False).
+              elim Hk return (λ (Q2 : Σ (Heq : Id Nat (Mod K2 Cap) I). AllKeysEq Cap I T).
+                  Id (Opt Nat) (FindL Q Cons(Pair(K2, V2), T)) None) {
+                Pair (Heq) (HkT) =>
+                  BoolRw (λ (Bz : Bool). Id (Opt Nat)
+                      (boolRec (λ (W : Bool). Σ (b : Bool). OptP b Nat) (Some V2) (FindL Q T) Bz) None)
+                    False (Eqb Q K2)
+                    (IdSym Bool (Eqb Q K2) False
+                      (EqbFalseOfModNe Cap Q K2
+                        (NatRw (λ (X : Nat). Id Bool (Eqb (Mod Q Cap) X) False) I (Mod K2 Cap)
+                          (IdSym Nat (Mod K2 Cap) I Heq) Hmod)))
+                    (Ih HkT Hmod)
+              }
+        })
+      B }
+def FindLNoneOfHashMismatchTy : Term := prog{
+  Π (Cap : Nat) → Π (I : Nat) → Π (Q : Nat) → Π (B : Bucket) →
+    AllKeysEq Cap I B → Id Bool (Eqb (Mod Q Cap) I) False → Id (Opt Nat) (FindL Q B) None }
+
+/-- `Q`'s hash sits AT OR PAST a well-hashed sub-array's own range `[I0, I0+K)`:
+    `Q` is found nowhere in it. Induction on the array, `I0` generalised
+    (`AllHashedACat`'s idiom): the head bucket misses by `FindLNoneOfHashMismatch`
+    (needs `Mod Q Cap ≠ I0`, from `Le (S I0) (Mod Q Cap)` via `LeAdd`'s OWN type
+    read at `S I0`/`S (Add I0 K2)` — `Le (S a) (S b)` and `Le a b` are the SAME type
+    by `Le`'s own definition, so `LeAdd I0 K2` needs no transport there — bridged to
+    `Mod Q Cap` via `AddSucc` + `Ht`); the tail misses by the IH, whose own bound
+    `Add (S I0) K2` is `S (Add I0 K2)` by `Add`'s iota rule on its `S`-headed first
+    argument (no lemma needed for THAT half). `OptRw` folds both into `FindArrA`'s
+    own `OptElim`-headed step equation. -/
+def FindArrANoneRight : Term := prog{
+  λ (Cap : Nat). λ (Q : Nat). λ (K : Nat). λ (A : Array K Bucket).
+    arrRec Bucket (λ (Kz : Nat). λ (Az : Array Kz Bucket). Π (I0 : Nat) →
+        AllHashedA Cap Kz Az I0 → Id Nat (Mod Q Cap) (Add I0 Kz) → Id (Opt Nat) (FindArrA Q Kz Az) None)
+      (λ (I0 : Nat). λ (Hh : Unit). λ (Ht : Id Nat (Mod Q Cap) (Add I0 Z)). Refl)
+      (λ (K2 : Nat). λ (H : Bucket). λ (T : Array K2 Bucket).
+       λ (Ih : Π (I0 : Nat) → AllHashedA Cap K2 T I0 → Id Nat (Mod Q Cap) (Add I0 K2) →
+                 Id (Opt Nat) (FindArrA Q K2 T) None).
+       λ (I0 : Nat).
+       λ (Hh : Σ (Hk : AllKeysEq Cap I0 H). AllHashedA Cap K2 T (S I0)).
+       λ (Ht : Id Nat (Mod Q Cap) (Add I0 (S K2))).
+         elim Hh return (λ (Q2 : Σ (Hk : AllKeysEq Cap I0 H). AllHashedA Cap K2 T (S I0)).
+             Id (Opt Nat) (OptElim (FindL Q H) (Opt Nat) (FindArrA Q K2 T) Some) None) {
+           Pair (HkVal) (HtVal) =>
+             (λ (Ht2 : Id Nat (Mod Q Cap) (S (Add I0 K2))).
+               OptRw (λ (X : Σ (b : Bool). OptP b Nat).
+                   Id (Opt Nat) (OptElim X (Opt Nat) (FindArrA Q K2 T) Some) None)
+                 None (FindL Q H)
+                 (IdSym (Opt Nat) (FindL Q H) None
+                   (FindLNoneOfHashMismatch Cap I0 Q H HkVal
+                     (EqbGtFalse I0 (Mod Q Cap)
+                       (LeRwR (S I0) (S (Add I0 K2)) (Mod Q Cap)
+                         (IdSym Nat (Mod Q Cap) (S (Add I0 K2)) Ht2)
+                         (LeAdd I0 K2)))))
+                 (Ih (S I0) HtVal Ht2))
+             (IdTrans Nat (Mod Q Cap) (Add I0 (S K2)) (S (Add I0 K2)) Ht (AddSucc I0 K2))
+         })
+      K A }
+def FindArrANoneRightTy : Term := prog{
+  Π (Cap : Nat) → Π (Q : Nat) → Π (K : Nat) → Π (A : Array K Bucket) → Π (I0 : Nat) →
+    AllHashedA Cap K A I0 → Id Nat (Mod Q Cap) (Add I0 K) → Id (Opt Nat) (FindArrA Q K A) None }
+
+/-- The mirror of `FindArrANoneRight`: `Q`'s hash sits STRICTLY BEFORE a well-hashed
+    sub-array's own range. Simpler — `I0` only grows across the recursion, so the
+    "still before" bound transports by `LeUpR` alone, no `Add`/`AddSucc` bridging
+    needed (the head bucket's own miss is `EqbLtFalse` applied to the SAME bound
+    handed straight in). -/
+def FindArrANoneLeft : Term := prog{
+  λ (Cap : Nat). λ (Q : Nat). λ (K : Nat). λ (A : Array K Bucket).
+    arrRec Bucket (λ (Kz : Nat). λ (Az : Array Kz Bucket). Π (I0 : Nat) →
+        AllHashedA Cap Kz Az I0 → Le (S (Mod Q Cap)) I0 → Id (Opt Nat) (FindArrA Q Kz Az) None)
+      (λ (I0 : Nat). λ (Hh : Unit). λ (Hlt : Le (S (Mod Q Cap)) I0). Refl)
+      (λ (K2 : Nat). λ (H : Bucket). λ (T : Array K2 Bucket).
+       λ (Ih : Π (I0 : Nat) → AllHashedA Cap K2 T I0 → Le (S (Mod Q Cap)) I0 →
+                 Id (Opt Nat) (FindArrA Q K2 T) None).
+       λ (I0 : Nat).
+       λ (Hh : Σ (Hk : AllKeysEq Cap I0 H). AllHashedA Cap K2 T (S I0)).
+       λ (Hlt : Le (S (Mod Q Cap)) I0).
+         elim Hh return (λ (Q2 : Σ (Hk : AllKeysEq Cap I0 H). AllHashedA Cap K2 T (S I0)).
+             Id (Opt Nat) (OptElim (FindL Q H) (Opt Nat) (FindArrA Q K2 T) Some) None) {
+           Pair (HkVal) (HtVal) =>
+             OptRw (λ (X : Σ (b : Bool). OptP b Nat).
+                 Id (Opt Nat) (OptElim X (Opt Nat) (FindArrA Q K2 T) Some) None)
+               None (FindL Q H)
+               (IdSym (Opt Nat) (FindL Q H) None
+                 (FindLNoneOfHashMismatch Cap I0 Q H HkVal (EqbLtFalse (Mod Q Cap) I0 Hlt)))
+               (Ih (S I0) HtVal (LeUpR (S (Mod Q Cap)) I0 Hlt))
+         })
+      K A }
+def FindArrANoneLeftTy : Term := prog{
+  Π (Cap : Nat) → Π (Q : Nat) → Π (K : Nat) → Π (A : Array K Bucket) → Π (I0 : Nat) →
+    AllHashedA Cap K A I0 → Le (S (Mod Q Cap)) I0 → Id (Opt Nat) (FindArrA Q K A) None }
+
 end Dllbc.StdLemmas
