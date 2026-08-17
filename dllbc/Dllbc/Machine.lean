@@ -3267,6 +3267,97 @@ partial def reachesLoan (ℓ target : Nat) : M Bool := do
       (grps.filter (fun g => g.captured.any (·.1 == ℓ))).anyM (fun g =>
         g.issued.anyM (fun iss => reachesLoan iss.1 target))
 
+/-! ## The residue of an exempted parameter (M34)
+
+    An argument borrow consumed into the result is exempt from the payload audit,
+    and correctly so ABOUT THE SUB-PLACE THE RESULT POINTS AT: that place is under
+    a live borrow, so there is no payload here to judge, and what the caller will
+    recover is not what sits there now. The exemption was granted to the WHOLE
+    parameter, which is more than the argument buys — every OTHER leaf of the
+    parameter is a place the callee is done with and the caller will recover
+    verbatim, so it is auditable and must be audited.
+
+    Three pieces below: name the parked markers, collapse the ones that are not in
+    flight, and hunt the residue for holes. -/
+
+mutual
+  /-- Loan markers PARKED in a value — the places this value has lent out. A
+      `borrowM` is not descended into: a borrow sitting here is somebody else's
+      holding, and its payload is audited when that borrow ends. -/
+  def parkedLoanMarkers : Val → List Nat
+    | .loanM ℓ => [ℓ]
+    | .borrowM _ _ => []
+    | .node _ args => parkedLoanMarkersList args
+    | _ => []
+  termination_by v => sizeOf v
+  def parkedLoanMarkersList : List Val → List Nat
+    | [] => []
+    | v :: vs => parkedLoanMarkers v ++ parkedLoanMarkersList vs
+  termination_by vs => sizeOf vs
+end
+
+/-- Is loan `ℓ` in flight toward the result — i.e. does it reach one of the
+    result's issued loans? Those are the places the audit must leave alone. -/
+def inFlight (resultLoans : List Nat) (ℓ : Nat) : M Bool :=
+  resultLoans.anyM (fun rl => reachesLoan ℓ rl)
+
+/-- `collapseArg`, restricted to the residue: End-Mut every parked loan in the
+    argument borrow's payload whose borrow is NOT in flight toward the result.
+    Located by loan rather than by slot, because an exempted parameter's slot may
+    have been moved from. Ending a loan early is sound (§ pop-with-drop: "the
+    demand machinery already ends loans lazily, so eager ending moves the same
+    events earlier and adds none"). -/
+def firstNotInFlight (resultLoans : List Nat) : List Nat → M (Option Nat)
+  | [] => pure none
+  | ℓ :: rest => do
+    if ← inFlight resultLoans ℓ then firstNotInFlight resultLoans rest else pure (some ℓ)
+
+def collapseResidue : Nat → List Nat → Nat → M Unit
+  | 0, _, _ => throwErr "audit: out of fuel (residue collapse)"
+  | fuel + 1, resultLoans, ℓarg => do
+    match (← getEnv).findSome? (fun kv => findBorrowPayload ℓarg kv.2) with
+    | none => pure ()
+    | some payload => do
+      match ← firstNotInFlight resultLoans (parkedLoanMarkers payload) with
+      | some ℓ => do endLoan fuel ℓ; collapseResidue fuel resultLoans ℓarg
+      | none => pure ()
+
+mutual
+  /-- Hunt a collapsed residue for holes. `⊥` anywhere the callee still owns is a
+      take-without-refill the caller will inherit; a parked marker survives only if
+      its borrow is in flight (`collapseResidue` ended the rest).
+
+      This is deliberately a HOLE check and not `hasType payload owed`: the residue
+      still carries the in-flight markers, and `hasType` has no rule for a `loanₘ`
+      (a `§segs` leaf must be `segOwned`). Judging the parameter's owed type here
+      would also be judging the returned sub-place, whose payload is about to change
+      under the caller's hand — the very claim M27's containment refuses. -/
+  partial def residueHoles (resultLoans : List Nat) : Val → M (Option String)
+    | .bot => pure (some "⊥")
+    | .loanM ℓ => do
+      if ← inFlight resultLoans ℓ then pure none
+      else pure (some s!"an uncollapsed loan (ℓ{ℓ})")
+    | .node _ args => residueHolesList resultLoans args
+    | _ => pure none
+  partial def residueHolesList (resultLoans : List Nat) : List Val → M (Option String)
+    | [] => pure none
+    | v :: vs => do
+      match ← residueHoles resultLoans v with
+      | some m => pure (some m)
+      | none => residueHolesList resultLoans vs
+end
+
+/-- The narrowed exemption, applied. -/
+def residueAudit (fuel : Nat) (resultLoans : List Nat) (ob : Obligation) : M Unit := do
+  collapseResidue fuel resultLoans ob.loan
+  match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
+  | none => pure ()          -- the parameter's own borrow left in the result: nothing residual
+  | some payload =>
+    match ← residueHoles resultLoans payload with
+    | none => pure ()
+    | some what =>
+      throwErr s!"audit: '{ob.arg.name}' left {what} in a leaf it does NOT return. §6.1 exempts the sub-place a returned borrow points at — not the whole parameter: every other leaf is a place the caller recovers verbatim, and this one has no value in it. (residue: {payload.pretty})"
+
 /-- Audit one argument-borrow obligation (§6.1's narrowed rule). `resultLoan`
     is the returned borrow's loan (for a borrow-returning body). Exempt iff the
     borrow was consumed into the result (directly, or as the captured owner of a
@@ -3293,7 +3384,22 @@ def auditObligation (fuel : Nat) (resultLoans : List Nat) (ob : Obligation) : M 
          || (← resultLoans.anyM (fun rl => reachesLoan ob.loan rl))) then
     throwErr s!"boundary: '{ob.arg.name}' is consumed into the result, and §6.1 exempts such a borrow from the payload audit — so its non-trivial owed type ({ob.owed.pretty}) would be checked by nobody, while the caller's group end mints the release AT it. A parameter passed onward into the result owes back the type it was lent; state a richer claim on a parameter the body keeps, where the audit runs."
   else if resultLoans.contains ob.loan then pure ()                       -- consumed into a result borrow
-  else if (← resultLoans.anyM (fun rl => reachesLoan ob.loan rl)) then pure ()  -- captured owner of a field reborrow
+  else if (← resultLoans.anyM (fun rl => reachesLoan ob.loan rl)) then
+    -- **THE EXEMPTION, NARROWED TO THE RETURNED SUB-PLACE** (M34).
+    --
+    -- §6.1 exempts a parameter whose borrow left in the result, and the reason is
+    -- sound but LOCAL: the sub-place the result points at has no payload here to
+    -- audit, because the borrow that owns it is still live. That says nothing
+    -- about the parameter's OTHER leaves. `hm-probe-getmut`'s second finding is
+    -- the gap: a three-way carve returns the middle cell and leaves a ⊥ in the
+    -- left one, and the whole-parameter exemption never looks. Downstream, §6.2's
+    -- opacity re-mints the owner at the declared type — so the CHECKER repairs the
+    -- hole while the machine hands back an array with a ⊥ in a leaf.
+    --
+    -- So: collapse the parameter's residue (every parked loan whose borrow is NOT
+    -- in flight toward the result) and audit what comes back. What cannot be
+    -- audited is exactly the in-flight markers, and they stay.
+    residueAudit fuel resultLoans ob
   else if (← get).groups.any (fun g => g.captured.any (·.1 == ob.loan)) then pure ()  -- into another call
   else
     -- Still at its own slot? collapse its field loans first, in place.

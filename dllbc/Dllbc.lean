@@ -17,4 +17,5 @@ import Dllbc.Tests.Direct
 import Dllbc.Tests.ArraySort
 import Dllbc.Tests.Functions
 import Dllbc.Tests.Programs
+import Dllbc.Tests.AuditExemption
 import Dllbc.Tests.Ledger
