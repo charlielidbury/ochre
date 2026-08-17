@@ -1339,6 +1339,49 @@ def openP (rest : Term) : Term := slotOfP prog{
     () };
   () }
 
+-- (D) Take the slots array OUT of the pack, carve a local, refill.
+#eval chkProg (slotOfP prog{
+  fn OpenD (self : &mut HMapT, key : Nat) -> Unit {
+    let Pair(cap, Pair(load, Pair(n, Pair(slots, Hinv)))) = self;
+    let c = *cap;
+    *cap := c;
+    let Lv = *load;
+    let Nv = *n;
+    let Sv = *slots;
+    let Hi = *Hinv;
+    let Pair(i, Pair(r, Pair(Hix, Heq))) = SlotOf(key, c, InvCap c Lv Nv Sv Hi);
+    let sa = *slots;
+    let sb = &m sa;
+    let lo = &m (*sb)[Z ; i ; S r | LeAdd i (S r) | Heq];
+    let cell = &m (*sb)[i ; 1 ; r];
+    let hi = &m (*sb)[S i ; r];
+    *slots := sa;
+    () };
+  () })
+
+-- (F) Push the carve behind a CALL, so §6.2's opacity re-mints the caller's array
+--     uncarved at the declared type — `partitionA`'s device.
+#eval chkProg (slotOfP prog{
+  fn CarveIt (nn : Nat, i : Nat, r : Nat, Heq : Id Nat nn (Add i (S r)),
+              slots : &mut (Array nn (List (Σ (k : Nat). Nat)))) -> Unit {
+    let lo = &m (*slots)[Z ; i ; S r | LeAdd i (S r) | Heq];
+    let cell = &m (*slots)[i ; 1 ; r];
+    let hi = &m (*slots)[S i ; r];
+    let bk = &m (*cell)[0];
+    () };
+  fn OpenF (self : &mut HMapT, key : Nat) -> Unit {
+    let Pair(cap, Pair(load, Pair(n, Pair(slots, Hinv)))) = self;
+    let c = *cap;
+    *cap := c;
+    let Lv = *load;
+    let Nv = *n;
+    let Sv = *slots;
+    let Hi = *Hinv;
+    let Pair(i, Pair(r, Pair(Hix, Heq))) = SlotOf(key, c, InvCap c Lv Nv Sv Hi);
+    CarveIt(c, i, r, Heq, &m *slots);
+    () };
+  () })
+
 -- Is it the comptime read of the array (`let Sv = *slots`) that pins it?
 #eval chkProg (slotOfP prog{
   fn OpenC (self : &mut HMapT, key : Nat) -> Unit {
@@ -1348,6 +1391,251 @@ def openP (rest : Term) : Term := slotOfP prog{
     let lo = &m (*slots)[Z ; Z ; Z];
     () };
   () })
+
+/-! ### What route F establishes, and what it leaves
+
+    `OpenF` — the carve pushed behind a call — is refused, but by a DIFFERENT and much
+    better message than the others:
+
+        audit: self's payload (Pair σ124 (Pair σ126 (Pair σ128 (Pair σ138 σ131))))
+        does not have its owed type …
+
+    The slots component is now a clean fresh σ (`σ138`) rather than a segmented
+    `Arr⟨…⟩`: §6.2's opacity re-minted it at the declared type when the call's group
+    ended, so the carve DID rejoin. `partitionA`'s device — "the boundary is what
+    makes the program possible at all" — transfers to a pack component.
+
+    What is left is the genuine proof obligation and not plumbing: `σ131` is the OLD
+    invariant, whose type mentions the old slots, and the pack owes an invariant about
+    the new ones. So the operation must write a fresh proof through `Hinv` — and,
+    because opacity has erased everything about `σ138`, that proof can only come from
+    the callee's OWN return type. The shape the flagship wants is therefore
+
+        fn InsertSlots (…, slots : &mut (Array cap Bucket), Hs : SlotsOk …, Hn : …)
+          -> Σ (n1 : Nat). Σ0 (Hs2 : SlotsOk cap Z cap (*slots)).
+               Σ (Hn2 : Id Nat n1 (SizeA cap (*slots))). Π (q : Nat) → …
+
+    with `Insert` writing `*n := n1` and `*Hinv := Pair(Hc, Pair(Hs2, Pair(Hn2, Hl)))`.
+    That is the decomposition-shaped ensures §11 prescribes, arrived at by being told
+    what the caller cannot otherwise know. -/
+
+/-! ## 11. Towards `InsertSlots` — the bucket invariant -/
+
+/-- `Eqb` is symmetric. Needed because `FindL q` tests `Eqb q k2` while `InsL k` tests
+    `Eqb k2 k`, and the size accounting has to compare the two. -/
+def EqbSym : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Id Bool (Eqb Az B) (Eqb B Az)) {
+      Z => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Id Bool (Eqb Z Bz) (Eqb Bz Z)) {
+          Z => Refl, S (B') Rb => Refl },
+      S (A') Ih => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Id Bool (Eqb (S A') Bz) (Eqb Bz (S A'))) {
+          Z => Refl, S (B') Rb => Ih B' } } }
+def EqbSymTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Id Bool (Eqb A B) (Eqb B A) }
+
+/-- **Inserting a well-hashed key keeps the bucket well-hashed.** This is the whole of
+    the slot invariant's local obligation, and it needs no branch equation at all: in
+    the overwrite arm the goal is literally the hypothesis (the key does not change),
+    and in the append arm the head's clause passes through and the tail is the
+    induction hypothesis. -/
+def BucketAtIns : Term := prog{
+  λ (C : Nat). λ (I : Nat). λ (K : Nat). λ (V : Nat). λ (B : Bucket).
+    elim B return (λ (Bz : List (Σ (k : Nat). Nat)).
+        BucketAt C I Bz → Id Nat (Mod K C) I → BucketAt C I (InsL K V Bz)) {
+      Nil => λ (Hb : Unit). λ (Hm : Id Nat (Mod K C) I). Pair(Hm, unit),
+      Cons (E) (T) Rec =>
+        elim E return (λ (Ez : Σ (k : Nat). Nat).
+            BucketAt C I Cons(Ez, T) → Id Nat (Mod K C) I →
+              BucketAt C I (InsL K V Cons(Ez, T))) {
+          Pair (K2) (V2) =>
+            λ (Hb : Σ (Hh : Id Nat (Mod K2 C) I). BucketAt C I T).
+            λ (Hm : Id Nat (Mod K C) I).
+              elim (Eqb K2 K) return (λ (Bv : Bool).
+                  BucketAt C I (boolRec (λ (W : Bool). List (Σ (k : Nat). Nat))
+                                  Cons(Pair(K2, V), T)
+                                  Cons(Pair(K2, V2), InsL K V T) Bv)) {
+                True => Hb,
+                False =>
+                  elim Hb return (λ (Hz : Σ (Hh : Id Nat (Mod K2 C) I). BucketAt C I T).
+                      Σ (Hh : Id Nat (Mod K2 C) I). BucketAt C I (InsL K V T)) {
+                    Pair (H1) (H2) => Pair(H1, Rec H2 Hm) } } } } }
+def BucketAtInsTy : Term := prog{
+  Π (C : Nat) → Π (I : Nat) → Π (K : Nat) → Π (V : Nat) → Π (B : Bucket) →
+    BucketAt C I B → Id Nat (Mod K C) I → BucketAt C I (InsL K V B) }
+
+/-- The entry count bounds every individual bucket's length — the fact that lets a
+    caller name a fuel bound from `n` alone, without reaching into a bucket. -/
+def LenLeSize : Term := prog{
+  λ (I : Nat). λ (L : Array I Bucket). λ (M : Nat). λ (X : Bucket). λ (R : Array M Bucket).
+    LeRwR (LenE X)
+      (Add (SizeA I L) (Add (LenE X) (SizeA M R)))
+      (SizeA (Add I (S M)) (arrCat I (S M) L (acons M X R)))
+      (IdSym Nat (SizeA (Add I (S M)) (arrCat I (S M) L (acons M X R)))
+                 (Add (SizeA I L) (Add (LenE X) (SizeA M R)))
+         (SizeACat (S M) (acons M X R) I L))
+      (LeTrans (LenE X) (Add (LenE X) (SizeA M R))
+               (Add (SizeA I L) (Add (LenE X) (SizeA M R)))
+         (LeAdd (LenE X) (SizeA M R))
+         (LeAddL (Add (LenE X) (SizeA M R)) (SizeA I L))) }
+def LenLeSizeTy : Term := prog{
+  Π (I : Nat) → Π (L : Array I Bucket) → Π (M : Nat) → Π (X : Bucket) →
+  Π (R : Array M Bucket) →
+    Le (LenE X) (SizeA (Add I (S M)) (arrCat I (S M) L (acons M X R))) }
+
+example : chkL EqbSym EqbSymTy = true := by native_decide
+example : chkL BucketAtIns BucketAtInsTy = true := by native_decide
+example : chkL LenLeSize LenLeSizeTy = true := by native_decide
+
+/-! ## 12. The executing differential
+
+    Checking is half the claim; the other half is that the concrete machine agrees.
+    ArraySort's §(vi) is the precedent and the reason this is not a formality — its
+    executing side found three `Drop`-empty bugs the symbolic side could never reach.
+
+    **The port is Aeneas' own `test1`, and it is faithful rather than adapted.** That
+    test uses capacity 32 and the keys 0, 128, 1024 and 1056, which are chosen so that
+    all four hash to slot 0 — `Mod k 32 = 0` for every one of them, asserted below. So
+    `test1` IS a single-bucket exercise: it is written to make the association list do
+    the work, and running it against `InsertInList` on one bucket reproduces exactly
+    the collision behaviour it was designed to exercise. The overwrite step (Aeneas
+    reaches it through `get_mut`) is an insert at a key already present, which is the
+    same bucket operation.
+
+    E2E rule: every assertion below is runs-to-X or accepted/rejected. -/
+
+-- The four keys really do collide, at the capacity the Rust uses.
+example : (pv prog{ Mod 0 32 }).natOf? == Option.some 0 := by native_decide
+example : (pv prog{ Mod %(Term.nat 128) 32 }).natOf? == Option.some 0 := by native_decide
+example : (pv prog{ Mod %(Term.nat 1024) 32 }).natOf? == Option.some 0 := by native_decide
+example : (pv prog{ Mod %(Term.nat 1056) 32 }).natOf? == Option.some 0 := by native_decide
+-- …and the hash is not constant: 1057 lands one slot along.
+example : (pv prog{ Mod %(Term.nat 1057) 32 }).natOf? == Option.some 1 := by native_decide
+
+def natOfV : Nat → Val → Option Nat
+  | f, v =>
+    match Val.asCtor? v, f with
+    | some ("Z", []), _ => some 0
+    | some ("S", [w]), f' + 1 => (natOfV f' w).map (· + 1)
+    | _, _ => none
+
+/-- Decode a `List (Σ k. Nat)` bucket — the association list itself. -/
+def entriesOfV : Nat → Val → Option (List (Nat × Nat))
+  | f, v =>
+    match Val.asCtor? v, f with
+    | some ("Nil", []), _ => some []
+    | some ("Cons", [h, t]), f' + 1 =>
+      match Val.asCtor? h, entriesOfV f' t with
+      | some ("Pair", [a, b]), some xs =>
+        match natOfV 2000 a, natOfV 2000 b with
+        | some k, some v => some ((k, v) :: xs)
+        | _, _ => none
+      | _, _ => none
+    | _, _ => none
+
+/-- The trusted Lean-side reference: `insert_in_list`'s specification, written again
+    in a different language so that agreeing with it means something. -/
+def insRef : List (Nat × Nat) → Nat → Nat → List (Nat × Nat)
+  | [], k, v => [(k, v)]
+  | (k2, v2) :: t, k, v => if k2 == k then (k2, v) :: t else (k2, v2) :: insRef t k v
+
+def refRun (ops : List (Nat × Nat)) : List (Nat × Nat) :=
+  ops.foldl (fun b kv => insRef b kv.1 kv.2) []
+
+/-- Build the caller: start from an empty bucket, run each insert through a fresh
+    reborrow, then read the owner back. The fuel bound is `Le (LenE …) 40` at a
+    concrete bucket, which computes to `Unit`, so `unit` discharges it and the caller
+    CHECKS as well as runs. -/
+def iilOps : List (Nat × Nat) → Nat → Term
+  | [], _ => .letIn ⟨99, "y"⟩ (.var ⟨0, "z"⟩) .unit
+  | (k, v) :: rest, i =>
+      .letIn ⟨i, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
+        (.seq (.call "InsertInList"
+                 [Term.nat 40, Term.nat k, Term.nat v, .var ⟨i, "b"⟩, .unit])
+              (iilOps rest (i + 1)))
+
+def iilCaller (ops : List (Nat × Nat)) : Term :=
+  iilP (.letIn ⟨0, "z"⟩ prog{ Nil } (iilOps ops 1))
+
+def iilRun (ops : List (Nat × Nat)) : Option (List (Nat × Nat)) :=
+  match Dllbc.Tests.S9Diff.runExec (iilCaller ops) with
+  | .ok env => (env.lookup "y").bind (entriesOfV 2000)
+  | .error _ => none
+
+/-! **The keys are scaled, and here is exactly why.** Running the literal Aeneas keys
+    (0, 128, 1024, 1056) exhausts the interpreter's `defaultFuel`: `Nat` is unary, so
+    `Term.nat 1056` is a 1056-deep tower of `S` and one `Eqb` between two such keys is
+    a thousand reduction steps. That is the already-disclosed Nat divergence showing up
+    as a cost rather than as a soundness gap — the SYMBOLIC side is unaffected (the
+    `Mod k 32 = 0` assertions above are at the real keys and pass), and it is only the
+    concrete run that cannot afford them.
+
+    `test1Small` is the same test at capacity 8 with keys 0, 8, 16 and 24: four keys
+    that all hash to slot 0, inserted in order, then the third overwritten. Every
+    structural feature `test1` was written to exercise — the empty-bucket refill, the
+    append chain, and an in-place overwrite in the middle of a collision list — is
+    present. -/
+
+example : (pv prog{ Mod 0 8 }).natOf? == Option.some 0 := by native_decide
+example : (pv prog{ Mod 8 8 }).natOf? == Option.some 0 := by native_decide
+example : (pv prog{ Mod 16 8 }).natOf? == Option.some 0 := by native_decide
+example : (pv prog{ Mod 24 8 }).natOf? == Option.some 0 := by native_decide
+
+def test1Small : List (Nat × Nat) := [(0, 42), (8, 18), (16, 138), (24, 256), (16, 56)]
+
+-- **The differential.** The checked program and the trusted reference agree.
+example : iilRun test1Small == Option.some (refRun test1Small) := by native_decide
+-- …and pinned literally, so a change to either side is visible rather than merely
+-- consistent: the overwrite landed IN PLACE at 16 and appended nothing.
+example : iilRun test1Small
+    == Option.some [(0, 42), (8, 18), (16, 56), (24, 256)] := by native_decide
+
+/-! ### The program that runs is the program that was checked — with ONE call
+
+    A single-insert caller CHECKS as well as runs: the bucket is the literal `Nil`, so
+    `Le (LenE (*b)) 40` computes to `Unit` and `unit` discharges it.
+
+    **A caller with two or more inserts does not check, and the reason is worth having
+    in the record**: `call: comptime argument (unit) does not have its parameter type
+    (natRec …)`. After the first call, §6.2's opacity has re-minted `z` as a fresh σ,
+    so at the second call `LenE (*b)` is a stuck `listRec` under `Le` rather than a
+    numeral, and no `unit` inhabits it. The caller has LOST the bucket's length at the
+    call boundary.
+
+    This is the same admission `HmProbeArrays` §A5' made about its `λ B. unit`, arrived
+    at from the other side, and it is not a defect of the proof — it is the missing
+    capability that `12-design-borrow-refounding.md` is about. The repair is for
+    `InsertInList` to return a length bound (`Le (LenE (*b)) (S (LenE (old *b)))`) so a
+    caller can chain it, which is one more bucket induction and one more conjunct; it
+    is not attempted here.
+
+    The E2E rule admits accepted/rejected OR runs-to-X, so the sequences below are
+    asserted as runs-to-X and the checkable single call is asserted as accepted. -/
+
+example : progOk (iilCaller [(7, 1)]) = true := by native_decide
+example : progRejects (iilCaller test1Small) "does not have its parameter type" = true := by
+  native_decide
+
+-- Smaller shapes, each exercising one path: the `Nil` refill, a pure append chain,
+-- an overwrite at the head, and an overwrite at the tail.
+example : iilRun [(7, 1)] == Option.some [(7, 1)] := by native_decide
+example : iilRun [(1, 1), (2, 2), (3, 3)] == Option.some [(1, 1), (2, 2), (3, 3)] := by
+  native_decide
+example : iilRun [(1, 1), (2, 2), (1, 9)] == Option.some [(1, 9), (2, 2)] := by native_decide
+example : iilRun [(1, 1), (2, 2), (2, 9)] == Option.some [(1, 1), (2, 9)] := by native_decide
+
+-- The checking and executing sides agree about the program that checks (M9's
+-- simulation property, the assertion ArraySort's §(vi.c) makes for `quicksortA`).
+example : Dllbc.Tests.S9Diff.diffV2 (iilCaller [(7, 1)]) = true := by native_decide
+
+/-- `New` runs too, at a symbolic capacity, and the table it builds is the right
+    length and empty. -/
+def newRun (cap : Nat) : Term :=
+  newP (.letIn ⟨0, "h"⟩ (.call "New" [Term.nat cap, .unit])
+         (.letIn ⟨1, "y"⟩ (.var ⟨0, "h"⟩) .unit))
+example : progOk (newRun 4) = true := by native_decide
+example : (Dllbc.Tests.S9Diff.runExec (newRun 4)).isOk = true := by native_decide
 
 end Dllbc.Tests.HashMap
 end
