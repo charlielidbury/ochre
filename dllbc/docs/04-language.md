@@ -512,6 +512,8 @@ are true of what it computes. That agreement is the point of the whole language;
 get to rely on it. (Today's interpreter evaluates comptime terms instead of erasing
 them, which costs time and changes nothing observable; compiled output drops them.)
 
+**One performance rule for recursive comptime functions: use the recursive result ONCE.** The pure normalizer substitutes without sharing, so a definition whose step mentions its recursive result twice — the textbook `mod`, say, whose step tests `S (Mod a' b) = b` and then also returns `S (Mod a' b)` — re-derives the whole recursion beneath each occurrence and is silently EXPONENTIAL in the recursion depth. It presents as a build that never finishes, not as an error (measured 2026-08-17: divisor-32 `mod` doubling per unit of dividend, ~86 s at dividend 20, days at 32). The fix is always the same shape: carry the would-be-duplicated value as an accumulator argument and ask the question of the argument, so the recursive call occurs exactly once — the `Mod` in `Std` is written this way and is linear.
+
 One Lean-side convenience appears throughout the suite: `%e` inside `prog{ … }` splices
 a Lean expression of type `Term` — a shared signature, a lemma, a program fragment —
 into the notation. It is how the suite reuses one return type across a definition and
