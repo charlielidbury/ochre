@@ -1066,5 +1066,241 @@ def SFCatGlueTy : Term := prog{
 
 example : chkL SFCatGlue SFCatGlueTy = true := by native_decide
 
+/-! ## (xii) The bucket walk's evidence, as standalone pure lemmas
+
+    `insert_in_list`'s three branches each owe five conjuncts; every non-Refl
+    one is proven here over Π-bound state, so the walk's body only APPLIES them
+    at its snapshots. `OptN`/`BktT` abbreviate the two types (splices — never
+    used at an elim motive, where the sugar reads syntax). -/
+
+def OptN : Term := prog{ Σ (bb : Bool). OptP bb Nat }
+def BktT : Term := prog{ List (Σ (k : Nat). Nat) }
+
+/-- The bucket-level model update: `Some v` at `key`, the old bucket answer
+    elsewhere. -/
+def BFindIns : Term := prog{
+  λ (Q : Nat). λ (Key : Nat). λ (V : Nat). λ (L : BktT).
+    elim (Eqb Q Key) return (λ (Bm : Bool). OptN) {
+      True => SomeN V,
+      False => FindL Q L } }
+
+/-- The bucket-level length update: unchanged on a hit, bumped on a miss. -/
+def BLenIns : Term := prog{
+  λ (Key : Nat). λ (L : BktT).
+    elim (HitL Key L) return (λ (Bm : Bool). Nat) {
+      True => LenE L,
+      False => S(LenE L) } }
+
+/-- Pull `S` out of a stuck Bool-elim. -/
+def BoolPushS : Term := prog{
+  λ (X : Nat). λ (Y : Nat). λ (B : Bool).
+    boolRec (λ (Bm : Bool).
+        Id Nat (boolRec (λ (W2 : Bool). Nat) (S X) (S Y) Bm)
+               (S (boolRec (λ (W2 : Bool). Nat) X Y Bm)))
+      Refl Refl B }
+def BoolPushSTy : Term := prog{
+  Π (X : Nat) → Π (Y : Nat) → Π (B : Bool) →
+    Id Nat (boolRec (λ (W2 : Bool). Nat) (S X) (S Y) B)
+           (S (boolRec (λ (W2 : Bool). Nat) X Y B)) }
+example : chkL BoolPushS BoolPushSTy = true := by native_decide
+
+/-- HIT branch, presence: the head key equals `key`, so the bucket answers. -/
+def HitEvHit : Term := prog{
+  λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT).
+  λ (E : Id Bool (Eqb K0 Key) True).
+    NatRw (λ (W : Nat). Id Bool True (HitL Key (Cons(Pair(W, V0), T0)))) Key K0
+      (IdSym Nat K0 Key (EqbTrueEq K0 Key E))
+      (IdSym Bool (HitL Key (Cons(Pair(Key, V0), T0))) True
+        (IdCongr OptN Bool IsSomeB
+          (FindL Key (Cons(Pair(Key, V0), T0))) (SomeN V0)
+          (BoolRwT OptN (SomeN V0) (FindL Key T0) (Eqb Key Key) (EqbRefl Key)))) }
+def HitEvHitTy : Term := prog{
+  Π (K0 : Nat) → Π (V0 : Nat) → Π (Key : Nat) → Π (T0 : BktT) →
+    Id Bool (Eqb K0 Key) True →
+    Id Bool True (HitL Key (Cons(Pair(K0, V0), T0))) }
+example : chkL HitEvHit HitEvHitTy = true := by native_decide
+
+/-- HIT branch, the pointwise Find equation: overwrite in place. -/
+def PtEvHit : Term := prog{
+  λ (K0 : Nat). λ (V0 : Nat). λ (V1 : Nat). λ (Key : Nat). λ (T0 : BktT).
+  λ (E : Id Bool (Eqb K0 Key) True).
+    NatRw (λ (W : Nat).
+        Π (Q : Nat) → Id OptN
+          (FindL Q (Cons(Pair(W, V1), T0)))
+          (BFindIns Q Key V1 (Cons(Pair(W, V0), T0))))
+      Key K0
+      (IdSym Nat K0 Key (EqbTrueEq K0 Key E))
+      (λ (Q : Nat).
+        IfDec (Eqb Q Key)
+          (Id OptN (FindL Q (Cons(Pair(Key, V1), T0)))
+                   (BFindIns Q Key V1 (Cons(Pair(Key, V0), T0))))
+          (λ (E2 : Id Bool (Eqb Q Key) True).
+            IdTrans OptN (FindL Q (Cons(Pair(Key, V1), T0))) (SomeN V1)
+              (BFindIns Q Key V1 (Cons(Pair(Key, V0), T0)))
+              (BoolRwT OptN (SomeN V1) (FindL Q T0) (Eqb Q Key) E2)
+              (IdSym OptN (BFindIns Q Key V1 (Cons(Pair(Key, V0), T0))) (SomeN V1)
+                (BoolRwT OptN (SomeN V1)
+                  (FindL Q (Cons(Pair(Key, V0), T0))) (Eqb Q Key) E2)))
+          (λ (E2 : Id Bool (Eqb Q Key) False).
+            IdTrans OptN (FindL Q (Cons(Pair(Key, V1), T0))) (FindL Q T0)
+              (BFindIns Q Key V1 (Cons(Pair(Key, V0), T0)))
+              (BoolRwF OptN (SomeN V1) (FindL Q T0) (Eqb Q Key) E2)
+              (IdSym OptN (BFindIns Q Key V1 (Cons(Pair(Key, V0), T0))) (FindL Q T0)
+                (IdTrans OptN (BFindIns Q Key V1 (Cons(Pair(Key, V0), T0)))
+                  (FindL Q (Cons(Pair(Key, V0), T0))) (FindL Q T0)
+                  (BoolRwF OptN (SomeN V1)
+                    (FindL Q (Cons(Pair(Key, V0), T0))) (Eqb Q Key) E2)
+                  (BoolRwF OptN (SomeN V0) (FindL Q T0) (Eqb Q Key) E2))))) }
+def PtEvHitTy : Term := prog{
+  Π (K0 : Nat) → Π (V0 : Nat) → Π (V1 : Nat) → Π (Key : Nat) → Π (T0 : BktT) →
+    Id Bool (Eqb K0 Key) True →
+    Π (Q : Nat) → Id OptN
+      (FindL Q (Cons(Pair(K0, V1), T0)))
+      (BFindIns Q Key V1 (Cons(Pair(K0, V0), T0))) }
+example : chkL PtEvHit PtEvHitTy = true := by native_decide
+
+/-- HIT branch, the length equation: present key, length unchanged. -/
+def LnEvHit : Term := prog{
+  λ (K0 : Nat). λ (V0 : Nat). λ (V1 : Nat). λ (Key : Nat). λ (T0 : BktT).
+  λ (E : Id Bool (Eqb K0 Key) True).
+    NatRw (λ (W : Nat). Id Nat (LenE (Cons(Pair(W, V1), T0)))
+                               (BLenIns Key (Cons(Pair(W, V0), T0)))) Key K0
+      (IdSym Nat K0 Key (EqbTrueEq K0 Key E))
+      (IdSym Nat (BLenIns Key (Cons(Pair(Key, V0), T0)))
+        (LenE (Cons(Pair(Key, V0), T0)))
+        (BoolRwT Nat (LenE (Cons(Pair(Key, V0), T0)))
+          (S (LenE (Cons(Pair(Key, V0), T0))))
+          (HitL Key (Cons(Pair(Key, V0), T0)))
+          (IdCongr OptN Bool IsSomeB
+            (FindL Key (Cons(Pair(Key, V0), T0))) (SomeN V0)
+            (BoolRwT OptN (SomeN V0) (FindL Key T0) (Eqb Key Key) (EqbRefl Key))))) }
+def LnEvHitTy : Term := prog{
+  Π (K0 : Nat) → Π (V0 : Nat) → Π (V1 : Nat) → Π (Key : Nat) → Π (T0 : BktT) →
+    Id Bool (Eqb K0 Key) True →
+    Id Nat (LenE (Cons(Pair(K0, V1), T0))) (BLenIns Key (Cons(Pair(K0, V0), T0))) }
+example : chkL LnEvHit LnEvHitTy = true := by native_decide
+
+/-- MISS branch, presence: the head is not `key`, so presence delegates to the
+    tail — on both the old and the new bucket. -/
+def HitEvMiss : Term := prog{
+  λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT). λ (H2 : Bool).
+  λ (E : Id Bool (Eqb K0 Key) False).
+  λ (Hh : Id Bool H2 (HitL Key T0)).
+    IdTrans Bool H2 (HitL Key T0) (HitL Key (Cons(Pair(K0, V0), T0)))
+      Hh
+      (IdSym Bool (HitL Key (Cons(Pair(K0, V0), T0))) (HitL Key T0)
+        (IdCongr OptN Bool IsSomeB
+          (FindL Key (Cons(Pair(K0, V0), T0))) (FindL Key T0)
+          (BoolRwF OptN (SomeN V0) (FindL Key T0) (Eqb Key K0)
+            (IdTrans Bool (Eqb Key K0) (Eqb K0 Key) False (EqbSym Key K0) E)))) }
+def HitEvMissTy : Term := prog{
+  Π (K0 : Nat) → Π (V0 : Nat) → Π (Key : Nat) → Π (T0 : BktT) → Π (H2 : Bool) →
+    Id Bool (Eqb K0 Key) False →
+    Id Bool H2 (HitL Key T0) →
+    Id Bool H2 (HitL Key (Cons(Pair(K0, V0), T0))) }
+example : chkL HitEvMiss HitEvMissTy = true := by native_decide
+
+/-- MISS branch, the pointwise Find equation lifted through the untouched head. -/
+def PtEvMiss : Term := prog{
+  λ (K0 : Nat). λ (V0 : Nat). λ (V1 : Nat). λ (Key : Nat).
+  λ (T0 : BktT). λ (T1 : BktT).
+  λ (E : Id Bool (Eqb K0 Key) False).
+  λ (Hp : Π (Q : Nat) → Id OptN (FindL Q T1) (BFindIns Q Key V1 T0)).
+    λ (Q : Nat).
+      IfDec (Eqb Q Key)
+        (Id OptN (FindL Q (Cons(Pair(K0, V0), T1)))
+                 (BFindIns Q Key V1 (Cons(Pair(K0, V0), T0))))
+        (λ (E2 : Id Bool (Eqb Q Key) True).
+          IdTrans OptN (FindL Q (Cons(Pair(K0, V0), T1))) (FindL Q T1)
+            (BFindIns Q Key V1 (Cons(Pair(K0, V0), T0)))
+            (BoolRwF OptN (SomeN V0) (FindL Q T1) (Eqb Q K0)
+              (IdTrans Bool (Eqb Q K0) (Eqb Key K0) False
+                (IdCongr Nat Bool (λ (W : Nat). Eqb W K0) Q Key (EqbTrueEq Q Key E2))
+                (IdTrans Bool (Eqb Key K0) (Eqb K0 Key) False (EqbSym Key K0) E)))
+            (IdTrans OptN (FindL Q T1) (SomeN V1)
+              (BFindIns Q Key V1 (Cons(Pair(K0, V0), T0)))
+              (IdTrans OptN (FindL Q T1) (BFindIns Q Key V1 T0) (SomeN V1)
+                (Hp Q)
+                (BoolRwT OptN (SomeN V1) (FindL Q T0) (Eqb Q Key) E2))
+              (IdSym OptN (BFindIns Q Key V1 (Cons(Pair(K0, V0), T0))) (SomeN V1)
+                (BoolRwT OptN (SomeN V1)
+                  (FindL Q (Cons(Pair(K0, V0), T0))) (Eqb Q Key) E2))))
+        (λ (E2 : Id Bool (Eqb Q Key) False).
+          IdTrans OptN (FindL Q (Cons(Pair(K0, V0), T1)))
+            (FindL Q (Cons(Pair(K0, V0), T0)))
+            (BFindIns Q Key V1 (Cons(Pair(K0, V0), T0)))
+            (IdCongr OptN OptN
+              (λ (W : OptN). boolRec (λ (W2 : Bool). OptN) (SomeN V0) W (Eqb Q K0))
+              (FindL Q T1) (FindL Q T0)
+              (IdTrans OptN (FindL Q T1) (BFindIns Q Key V1 T0) (FindL Q T0)
+                (Hp Q)
+                (BoolRwF OptN (SomeN V1) (FindL Q T0) (Eqb Q Key) E2)))
+            (IdSym OptN (BFindIns Q Key V1 (Cons(Pair(K0, V0), T0)))
+              (FindL Q (Cons(Pair(K0, V0), T0)))
+              (BoolRwF OptN (SomeN V1)
+                (FindL Q (Cons(Pair(K0, V0), T0))) (Eqb Q Key) E2))) }
+def PtEvMissTy : Term := prog{
+  Π (K0 : Nat) → Π (V0 : Nat) → Π (V1 : Nat) → Π (Key : Nat) →
+  Π (T0 : BktT) → Π (T1 : BktT) →
+    Id Bool (Eqb K0 Key) False →
+    (Π (Q : Nat) → Id OptN (FindL Q T1) (BFindIns Q Key V1 T0)) →
+    Π (Q : Nat) → Id OptN
+      (FindL Q (Cons(Pair(K0, V0), T1)))
+      (BFindIns Q Key V1 (Cons(Pair(K0, V0), T0))) }
+example : chkL PtEvMiss PtEvMissTy = true := by native_decide
+
+/-- MISS branch, the length equation lifted through the head. -/
+def LnEvMiss : Term := prog{
+  λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT). λ (T1 : BktT).
+  λ (E : Id Bool (Eqb K0 Key) False).
+  λ (Hl : Id Nat (LenE T1) (BLenIns Key T0)).
+    IdTrans Nat (S (LenE T1)) (S (BLenIns Key T0))
+      (BLenIns Key (Cons(Pair(K0, V0), T0)))
+      (IdCongr Nat Nat (λ (W : Nat). S W) (LenE T1) (BLenIns Key T0) Hl)
+      (IdSym Nat (BLenIns Key (Cons(Pair(K0, V0), T0))) (S (BLenIns Key T0))
+        (IdTrans Nat (BLenIns Key (Cons(Pair(K0, V0), T0)))
+          (boolRec (λ (W2 : Bool). Nat)
+            (LenE (Cons(Pair(K0, V0), T0)))
+            (S (LenE (Cons(Pair(K0, V0), T0))))
+            (HitL Key T0))
+          (S (BLenIns Key T0))
+          (IdCongr Bool Nat
+            (λ (W : Bool). boolRec (λ (W2 : Bool). Nat)
+              (LenE (Cons(Pair(K0, V0), T0)))
+              (S (LenE (Cons(Pair(K0, V0), T0)))) W)
+            (HitL Key (Cons(Pair(K0, V0), T0))) (HitL Key T0)
+            (IdCongr OptN Bool IsSomeB
+              (FindL Key (Cons(Pair(K0, V0), T0))) (FindL Key T0)
+              (BoolRwF OptN (SomeN V0) (FindL Key T0) (Eqb Key K0)
+                (IdTrans Bool (Eqb Key K0) (Eqb K0 Key) False (EqbSym Key K0) E))))
+          (BoolPushS (LenE T0) (S (LenE T0)) (HitL Key T0)))) }
+def LnEvMissTy : Term := prog{
+  Π (K0 : Nat) → Π (V0 : Nat) → Π (Key : Nat) → Π (T0 : BktT) → Π (T1 : BktT) →
+    Id Bool (Eqb K0 Key) False →
+    Id Nat (LenE T1) (BLenIns Key T0) →
+    Id Nat (LenE (Cons(Pair(K0, V0), T1))) (BLenIns Key (Cons(Pair(K0, V0), T0))) }
+example : chkL LnEvMiss LnEvMissTy = true := by native_decide
+
+/-- MISS branch, the Nodup head clause: `K0` absent from the tail stays absent
+    after inserting a DIFFERENT key into it. -/
+def NdEvMiss : Term := prog{
+  λ (K0 : Nat). λ (V1 : Nat). λ (Key : Nat). λ (T0 : BktT). λ (T1 : BktT).
+  λ (E : Id Bool (Eqb K0 Key) False).
+  λ (Hp : Π (Q : Nat) → Id OptN (FindL Q T1) (BFindIns Q Key V1 T0)).
+  λ (Hn : Id Bool (HitL K0 T0) False).
+    IdTrans Bool (HitL K0 T1) (HitL K0 T0) False
+      (IdCongr OptN Bool IsSomeB (FindL K0 T1) (FindL K0 T0)
+        (IdTrans OptN (FindL K0 T1) (BFindIns K0 Key V1 T0) (FindL K0 T0)
+          (Hp K0)
+          (BoolRwF OptN (SomeN V1) (FindL K0 T0) (Eqb K0 Key) E)))
+      Hn }
+def NdEvMissTy : Term := prog{
+  Π (K0 : Nat) → Π (V1 : Nat) → Π (Key : Nat) → Π (T0 : BktT) → Π (T1 : BktT) →
+    Id Bool (Eqb K0 Key) False →
+    (Π (Q : Nat) → Id OptN (FindL Q T1) (BFindIns Q Key V1 T0)) →
+    Id Bool (HitL K0 T0) False →
+    Id Bool (HitL K0 T1) False }
+example : chkL NdEvMiss NdEvMissTy = true := by native_decide
+
 end Dllbc.Tests.HashMap
 end
