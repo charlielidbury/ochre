@@ -29,3 +29,4 @@ import Dllbc.Tests.BorrowRefoundGoals
 import Dllbc.Tests.SetHmProbe
 import Dllbc.Tests.ArrCatIota
 import Dllbc.Tests.HashMap
+import Dllbc.Tests.HashMapDiff

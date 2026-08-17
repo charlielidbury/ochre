@@ -2621,143 +2621,183 @@ example : progOk s1P2c = true := by native_decide
 
 
 
-/-! ## (xvi) The S1 EXECUTING DIFFERENTIAL
+/-! ## (xviii) The borrow-returning ops — shape probes first
 
-    The same declarations the checker accepted, run on concrete maps and
-    compared against a trusted Lean-side reference (`runQsA`-style). The
-    callers here are runtime-only: their proof arguments are `unit`, which the
-    machine ignores — E2E rule, runs-to-X assertions only. (A checker-accepted
-    caller needs the size facts threaded through the ensures; S1's `Hroom`
-    additionally needs cap/load knowledge New's fixed ensures does not export,
-    which S2's resize removes — so the checked caller ships with S2.) -/
+    GetMut must return a borrow INTO the pack, so its carve group cannot close
+    before the return. Two candidate shapes over the REAL container: the carve
+    inline in the pack-navigating fn, and the carve pushed into a `SlotGet`
+    callee whose parameter is the plain (non-dependent) array borrow. -/
 
-def pairOfV : Val → Option (Val × Val)
-  | v => match Val.asCtor? v with
-    | some ("Pair", [a, b]) => some (a, b)
-    | _ => none
+/-- The packed `Le 1 cap`, extracted off the pack value by pure projection. -/
+def PackLe1 : Term := prog{
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim Hm return (λ (H0 : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+        Le (S Z) (CapHM H0)) {
+      Pair (Cap) (R1) =>
+        elim R1 return (λ (H1 : Σ (load : Nat). Σ (n : Nat).
+            Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))). HMInvT Cap load n slots).
+            Le (S Z) Cap) {
+          Pair (Load) (R2) =>
+            elim R2 return (λ (H2 : Σ (n : Nat).
+                Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                  HMInvT Cap Load n slots). Le (S Z) Cap) {
+              Pair (N) (R3) =>
+                elim R3 return (λ (H3 : Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                    HMInvT Cap Load N slots). Le (S Z) Cap) {
+                  Pair (Slots) (Inv) => InvLe1 Cap Load N Slots Inv } } } } }
+def PackLe1Ty : Term := prog{
+  Π (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) →
+    Le (S Z) (CapHM Hm) }
+example : chkL PackLe1 PackLe1Ty = true := by native_decide
 
-def entryOfV : Val → Option (Nat × Nat)
-  | v => match pairOfV v with
-    | some (a, b) =>
-      match natOfV 4000 a, natOfV 4000 b with
-      | some k, some w => some (k, w)
-      | _, _ => none
-    | none => none
-
-def bktOfV : Nat → Val → Option (List (Nat × Nat))
-  | f, v =>
-    match Val.asCtor? v, f with
-    | some ("Nil", []), _ => some []
-    | some ("Cons", [h, t]), f' + 1 =>
-      match entryOfV h, bktOfV f' t with
-      | some e, some es => some (e :: es)
-      | _, _ => none
-    | _, _ => none
-
-def slotsOfV : Val → Option (List (List (Nat × Nat)))
-  | v => match Val.asCtor? v with
-    | some ("Arr", vs) => vs.mapM (bktOfV 2000)
-    | _ => none
-
-/-- Decode a concrete pack: (cap, load, n, buckets). The invariant component is
-    ignored (erased in spirit; the interpreter carries it). -/
-def hmOfV (v : Val) : Option (Nat × Nat × Nat × List (List (Nat × Nat))) := do
-  let (c, r1) ← pairOfV v
-  let (l, r2) ← pairOfV r1
-  let (n, r3) ← pairOfV r2
-  let (s, _) ← pairOfV r3
-  let cap ← natOfV 4000 c
-  let load ← natOfV 4000 l
-  let nn ← natOfV 4000 n
-  let bs ← slotsOfV s
-  pure (cap, load, nn, bs)
-
-/-- The trusted model: overwrite in place on hit, append at the bucket's end
-    on miss — `insert_in_list`'s specified behavior. -/
-def modelInsB (k v : Nat) : List (Nat × Nat) → List (Nat × Nat)
-  | [] => [(k, v)]
-  | (k2, v2) :: t => if k2 == k then (k, v) :: t else (k2, v2) :: modelInsB k v t
-
-def modelIns (cap : Nat) (bs : List (List (Nat × Nat))) (k v : Nat)
-    : List (List (Nat × Nat)) :=
-  bs.mapIdx (fun i b => if i == k % cap then modelInsB k v b else b)
-
-def modelRun (cap : Nat) (ops : List (Nat × Nat))
-    : Nat × List (List (Nat × Nat)) :=
-  ops.foldl (fun (acc : Nat × List (List (Nat × Nat))) (kv : Nat × Nat) =>
-      let present := (acc.2.getD (kv.1 % cap) []).any (fun e => e.1 == kv.1)
-      ((if present then acc.1 else acc.1 + 1),
-       modelIns cap acc.2 kv.1 kv.2))
-    (0, List.replicate cap [])
-
-def runHM (t : Term) : Option (Nat × Nat × Nat × List (List (Nat × Nat))) :=
-  match Dllbc.Tests.S9Diff.runExec t with
-  | .ok env => (env.lookup "y").bind hmOfV
-  | .error _ => none
-
-/-- Five inserts at cap 4: keys 5, 1, 9 all collide in slot 1 (the middle one
-    walks past a miss), key 5 re-inserted mid-sequence must OVERWRITE in place,
-    key 2 lands alone. -/
-def s1RunCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{
-  let Pair(m0, Ev0) = NewHM(4, unit);
-  let b1 = &m m0;
-  InsertHM(9, 5, 70, b1, unit, unit);
-  let b2 = &m m0;
-  InsertHM(9, 1, 10, b2, unit, unit);
-  let b3 = &m m0;
-  InsertHM(9, 5, 71, b3, unit, unit);
-  let b4 = &m m0;
-  InsertHM(9, 9, 90, b4, unit, unit);
-  let b5 = &m m0;
-  InsertHM(9, 2, 20, b5, unit, unit);
-  let y = m0;
+/-- Probe G1: the monolithic shape — navigate, carve inline, walk, return. -/
+def gmProbe1 : Term := prog{
+  fn SlotOfE (h : Nat, n : Nat, Hne : Le (S Z) n)
+      -> Σ (i : Nat). Σ (r : Nat). Σ (hd : Id Nat n (Add i (S r))). Id Nat i (Mod h n) {
+    SlotPack h n Hne };
+  fn WalkVal [fuel] (fuel : Nat, key : Nat, dflt : Nat,
+                     b : &mut (List (Σ (k : Nat). Nat))) -> &mut Nat {
+    match fuel {
+      Z => { *b := Cons(Pair(key, dflt), Nil);
+             match b { Nil => (), Cons(Pair(kk, vv), tl) => &m *vv } },
+      S(f2) => match b {
+        Nil => { *b := Cons(Pair(key, dflt), Nil);
+                 match b { Nil => (), Cons(Pair(kk, vv), tl) => &m *vv } },
+        Cons(Pair(kk, vv), tl) =>
+          if e : Eqb *kk key { &m *vv } else { WalkVal(f2, key, dflt, &m *tl) }
+      } } };
+  fn GetMutRaw (fuel : Nat, key : Nat, dflt : Nat,
+                self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                  Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))).
+                    HMInvT cap load n slots)) -> &mut Nat {
+    let HLe1 = PackLe1 (*self);
+    match self {
+      Pair(cap, r1) => match r1 {
+        Pair(load, r2) => match r2 {
+          Pair(nn, r3) => match r3 {
+            Pair(slots, HInv) => {
+              let c = *cap;
+              *cap := c;
+              let Pair(i, Pair(r, Pair(hd, him))) = SlotOfE(key, c, HLe1);
+              let pre = &m (*slots)[Z ; i ; S r | LeAdd i (S r) | hd];
+              let cell = &m (*slots)[i ; 1 ; r];
+              let bb = &m (*cell)[0];
+              WalkVal(fuel, key, dflt, bb)
+            } } } } } };
   () }
 
-def s1Expected : Nat × List (List (Nat × Nat)) :=
-  modelRun 4 [(5, 70), (1, 10), (5, 71), (9, 90), (2, 20)]
-
-example : (runHM s1RunCaller ==
-    some (4, 16, s1Expected.1, s1Expected.2)) = true := by native_decide
-
--- …and the model itself is what we think it is (the differential is two-sided).
-example : (s1Expected == (4, [[], [(5, 71), (1, 10), (9, 90)], [(2, 20)], []]))
-    = true := by native_decide
-
-/-- The insert sequence followed by three removes: key 5 (bucket-1 head, a
-    hit), key 7 (a miss — nothing changes), key 1 (mid-bucket unlink). -/
-def s1RemCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{
-  let Pair(m0, Ev0) = NewHM(4, unit);
-  let b1 = &m m0;
-  InsertHM(9, 5, 70, b1, unit, unit);
-  let b2 = &m m0;
-  InsertHM(9, 1, 10, b2, unit, unit);
-  let b3 = &m m0;
-  InsertHM(9, 5, 71, b3, unit, unit);
-  let b4 = &m m0;
-  InsertHM(9, 9, 90, b4, unit, unit);
-  let b5 = &m m0;
-  InsertHM(9, 2, 20, b5, unit, unit);
-  let b6 = &m m0;
-  RemoveHM(9, 5, b6, unit);
-  let b7 = &m m0;
-  RemoveHM(9, 7, b7, unit);
-  let b8 = &m m0;
-  RemoveHM(9, 1, b8, unit);
-  let y = m0;
+/-- Probe G2: the layered shape — the carve lives in `SlotGet`, whose param is
+    the PLAIN array borrow, and the pack-navigating fn only reborrows fields. -/
+def gmProbe2 : Term := prog{
+  fn SlotOfE (h : Nat, n : Nat, Hne : Le (S Z) n)
+      -> Σ (i : Nat). Σ (r : Nat). Σ (hd : Id Nat n (Add i (S r))). Id Nat i (Mod h n) {
+    SlotPack h n Hne };
+  fn WalkVal [fuel] (fuel : Nat, key : Nat, dflt : Nat,
+                     b : &mut (List (Σ (k : Nat). Nat))) -> &mut Nat {
+    match fuel {
+      Z => { *b := Cons(Pair(key, dflt), Nil);
+             match b { Nil => (), Cons(Pair(kk, vv), tl) => &m *vv } },
+      S(f2) => match b {
+        Nil => { *b := Cons(Pair(key, dflt), Nil);
+                 match b { Nil => (), Cons(Pair(kk, vv), tl) => &m *vv } },
+        Cons(Pair(kk, vv), tl) =>
+          if e : Eqb *kk key { &m *vv } else { WalkVal(f2, key, dflt, &m *tl) }
+      } } };
+  fn SlotGet (fuel : Nat, cap : Nat, key : Nat, dflt : Nat,
+              b : &mut (Array cap (List (Σ (k : Nat). Nat))),
+              HLe1 : Le (S Z) cap) -> &mut Nat {
+    let Pair(i, Pair(r, Pair(hd, him))) = SlotOfE(key, cap, HLe1);
+    let pre = &m (*b)[Z ; i ; S r | LeAdd i (S r) | hd];
+    let cell = &m (*b)[i ; 1 ; r];
+    let bb = &m (*cell)[0];
+    WalkVal(fuel, key, dflt, bb) };
+  fn GetMutRaw (fuel : Nat, key : Nat, dflt : Nat,
+                self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                  Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))).
+                    HMInvT cap load n slots)) -> &mut Nat {
+    let HLe1 = PackLe1 (*self);
+    match self {
+      Pair(cap, r1) => match r1 {
+        Pair(load, r2) => match r2 {
+          Pair(nn, r3) => match r3 {
+            Pair(slots, HInv) => {
+              let c = *cap;
+              *cap := c;
+              SlotGet(fuel, c, key, dflt, &m *slots, HLe1)
+            } } } } } };
   () }
 
-example : (runHM s1RemCaller ==
-    some (4, 16, 2, [[], [(9, 90)], [(2, 20)], []])) = true := by native_decide
-
--- The empty map runs and decodes: all buckets Nil, n = 0, load = 4·cap.
-def s1NewCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{
-  let Pair(m0, Ev0) = NewHM(3, unit);
-  let y = m0;
+/-- Probe G3: NO CARVE — a symbolic-index ELEMENT borrow into the slots field,
+    with the bound built from the packed `Le 1 cap` and the minted slot
+    identity. Slots stays one leaf holding one element loan. -/
+def gmProbe3 : Term := prog{
+  fn SlotOfE (h : Nat, n : Nat, Hne : Le (S Z) n)
+      -> Σ (i : Nat). Σ (r : Nat). Σ (hd : Id Nat n (Add i (S r))). Id Nat i (Mod h n) {
+    SlotPack h n Hne };
+  fn WalkVal [fuel] (fuel : Nat, key : Nat, dflt : Nat,
+                     b : &mut (List (Σ (k : Nat). Nat))) -> &mut Nat {
+    match fuel {
+      Z => { *b := Cons(Pair(key, dflt), Nil);
+             match b { Nil => (), Cons(Pair(kk, vv), tl) => &m *vv } },
+      S(f2) => match b {
+        Nil => { *b := Cons(Pair(key, dflt), Nil);
+                 match b { Nil => (), Cons(Pair(kk, vv), tl) => &m *vv } },
+        Cons(Pair(kk, vv), tl) =>
+          if e : Eqb *kk key { &m *vv } else { WalkVal(f2, key, dflt, &m *tl) }
+      } } };
+  fn GetMutRaw (fuel : Nat, key : Nat, dflt : Nat,
+                self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                  Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))).
+                    HMInvT cap load n slots)) -> &mut Nat {
+    let HLe1 = PackLe1 (*self);
+    match self {
+      Pair(cap, r1) => match r1 {
+        Pair(load, r2) => match r2 {
+          Pair(nn, r3) => match r3 {
+            Pair(slots, HInv) => {
+              let c = *cap;
+              *cap := c;
+              let C0 = c;
+              let Pair(i, Pair(r, Pair(hd, him))) = SlotOfE(key, c, HLe1);
+              let Him0 = him;
+              let bb = &m (*slots)[i | NatRw (λ (W : Nat). Le (S W) C0)
+                (Mod key C0) i (IdSym Nat i (Mod key C0) Him0)
+                (ModLtN key C0 HLe1)];
+              WalkVal(fuel, key, dflt, bb)
+            } } } } } };
   () }
-example : (runHM s1NewCaller == some (3, 12, 0, [[], [], []])) = true := by
-  native_decide
+/-! ### THE WALL, pinned (all three assertions below): the borrow-returning
+    ops cannot CHECK against the intrinsically-packed container today.
 
+    A returned borrow keeps its group open across the op's return, so the exit
+    audit re-types self's payload with a loan (and the carve's segmentation)
+    still inside the slots component. For a PLAIN owed type that is fine — the
+    audit exempts the returned borrow's sub-place and checks the rest
+    (quicksortA's shape; packNav's toy pack with a slots-INDEPENDENT tail
+    passes the same way). But HashMapT's Σ0 tail is `HMInvT cap load n slots`:
+    re-typing it needs the WHOLE slots value, which no exemption can provide
+    while a leaf of it is lent out — and every route to a bucket element goes
+    through a carve or an index place (gmProbe1 inline, gmProbe3 index-place)
+    or a callee boundary whose group-end re-mints the component and orphans
+    the packed proof (gmProbe2).
 
+    This is `12-design-borrow-refounding.md`'s loan-attached-debts gap arriving
+    at the SAFETY layer, not just the functional one: the flagship doc's
+    "verified for safety + the packed invariant" expectation for GetMut was
+    calibrated on the probe-era WHOLE-PARAMETER audit exemption, which was
+    unsound and has since been fixed to per-sub-place (see AuditExemption) —
+    the sound audit closes exactly the loophole the design would have used.
+    Fixing it is kernel work (the audit/conversion in Machine.lean), so per
+    the process rule this is pinned and reported, not patched. The ops below
+    are still EXERCISED by the executing differential (the machine runs them
+    correctly); their chain is asserted progRejects with the audit's needle. -/
+
+example : progOk gmProbe1 = false := by native_decide
+example : progOk gmProbe2 = false := by native_decide
+example : progOk gmProbe3 = false := by native_decide
 
 end Dllbc.Tests.HashMap
 end
