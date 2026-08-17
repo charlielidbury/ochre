@@ -1962,7 +1962,8 @@ def bndSeal : Option Term :=
     with §6's marker, since `Hn` is capitalized. Written out because it is what a
     TRANSCRIPTION would have produced, and E2/F3b are the controls that say the
     elaboration produces something else. -/
-def bndDeclHn : Term := .cmpT (Std.LeT (Std.lenT (.deref (.var ⟨1, "v"⟩))) (.var ⟨0, "n"⟩))
+def bndDeclHn : Term :=
+  .cmpT prog{ %(Std.LeFnT) (%(Std.lenFnT) %(Term.deref (.var ⟨1, "v"⟩))) %(Term.var ⟨0, "n"⟩) }
 
 /-- The two arms of the emitted `natRec`, as annotated binder lists. -/
 def bndArms : Option (List (Var × Term) × List (Var × Term)) :=
@@ -1977,7 +1978,8 @@ example : (match bndArms with
            | none => false) = true := by native_decide
 
 /-- `Le (Len *v) b`, at the positional `v` the residual telescope keeps. -/
-def leLen (b : Term) : Term := Std.LeT (Std.lenT (.deref (.var ⟨1, "v"⟩))) b
+def leLen (b : Term) : Term :=
+  prog{ %(Std.LeFnT) (%(Std.lenFnT) %(Term.deref (.var ⟨1, "v"⟩))) %b }
 
 -- E1. The bound binder, at each constructor. `Hn` is capitalized, so its domain
 -- carries §6's marker — the annotation is the domain as written, marker and all.

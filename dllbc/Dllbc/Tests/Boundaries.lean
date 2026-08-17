@@ -701,11 +701,11 @@ def vlist : List Nat → Val | [] => .ctor "Nil" [] | h :: t => .ctor "Cons" [vn
 
 /-! ## The segment vocabulary computes (`Len`/`Take`/`Drop`) -/
 
-example : (Pure.nf 1000 (Dllbc.Std.len (Dllbc.Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]))
+example : (Pure.nf 1000 (prog{ %(Std.lenFnT) %(Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]) })
     == Std.ofNat 3) = true := by native_decide
-example : (Pure.nf 1000 (Dllbc.Std.take (Std.ofNat 2) (Dllbc.Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]))
+example : (Pure.nf 1000 (prog{ %(Std.takeFnT) %(Std.ofNat 2) %(Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]) })
     == Dllbc.Std.ofList [Std.ofNat 1, Std.ofNat 2]) = true := by native_decide
-example : (Pure.nf 1000 (Dllbc.Std.drop (Std.ofNat 2) (Dllbc.Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]))
+example : (Pure.nf 1000 (prog{ %(Std.dropFnT) %(Std.ofNat 2) %(Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]) })
     == Dllbc.Std.ofList [Std.ofNat 3]) = true := by native_decide
 
 /-! ## The cursor family, as a PREFIX

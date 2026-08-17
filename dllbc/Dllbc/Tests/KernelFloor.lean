@@ -965,9 +965,9 @@ example : (match cookForGen 1000 sp.symIds impClosure with
     the opposite one. That is deliberately more informative than deleting it —
     the line that used to say "the sweep finds nothing here" now says "the sweep
     finds it", and the two are the same measurement. -/
-def lenBody : Term := Std.lenT (.var vSlot)
+def lenBody : Term := prog{ %(Std.lenFnT) %(Term.var vSlot) }
 def lenLatent : Val := .closure [(vSlot, .know (Term.sym 5))] (.lam "§x" (.const "Nat") lenBody) none
-def lenSp : Term := Pure.nf 1000 (Std.lenT (Term.sym 5))
+def lenSp : Term := Pure.nf 1000 (prog{ %(Std.lenFnT) %(Term.sym 5) })
 -- The spine BINDS: it unfolds to a `listRec` over λ arms, so its normal form
 -- carries binders and their names are levels.
 example : strContains lenSp.pretty "λ(§0" = true := by native_decide
