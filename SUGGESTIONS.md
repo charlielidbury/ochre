@@ -114,6 +114,22 @@ the slice case; §19 move semantics for borrow-carrying data; escape rules for b
 in returned data. Acceptance test: `split_at_mut` as an ordinary library function
 returning a pair of borrows.
 
+**DESIGN LANDED (2026-08-17, branch `borrow-refound-design`, awaiting user review).**
+`dllbc/docs/design-borrow-refounding.md` is the full design — the debt table, the
+three assertion sites, the shape half as a `hasType` case, a 30-site kernel
+touch-point survey, 16 enumerated DECISIONS, and a seven-stage plan (12.5–14.5
+sessions). `dllbc/Dllbc/Tests/BorrowRefoundGoals.lean` is the finish line as
+programs that build today. Two findings worth the roadmap's attention: the debt's
+value claim may mention the **exit snapshots of the loans issued alongside it**,
+which is what makes the get_mut round-trip law statable and is the sound,
+DECLARED reincarnation of the wire M28 τ retired as un-inferrable; and an
+**identity-pinned issued borrow is a read-only borrow**, which may obviate `&τ`
+for its non-mutation motivation (not for its aliasing one). The design also
+closes a live soundness gap the `hm-probe-getmut` lane found concurrently — the
+exit audit exempts a whole parameter when any borrow derived from it is returned,
+so a hole in a sibling leaf is accepted today. **No implementation until the user
+has reviewed the doc.**
+
 **Shared references `&τ`: CUT from the roadmap (2026-08-13 user ruling).** "Let's
 not do shared refs at all for now — I think we can write a paper with just the
 `&mut`, then come back and add shared references if we have good enough motivating

@@ -648,9 +648,23 @@ fn SplitAtMut (v : &mut (s : List Nat ~> List Nat = Append (*(fst res)) (*(snd r
   -> Σ (a : &mut (List Nat)) → &mut (List Nat)
 ```
 
-What it needs, in the order the staging delivers it: the pin over **two** issued exits (stage 5); `Σ`-of-borrows at a *parameter* position, so the returned pair can be passed onward (stages 2 + 6); and the general walk replacing the M24 slice special case (stage 6). The caller-side law is that after taking both halves, writing through them, and ending the group, the owner holds the append of what was written.
+**Measured, not assumed: the SHAPE already checks today.** Posed on an array — where the calculus has a real split, the M24 carve, and where a cons-list's prefix and suffix are not two places — a function returning a pair of borrows carved out of one array is accepted as written:
 
-Today: unwritable. The pin has no syntax, and the M27 containment refuses the non-trivial owed type on a parameter consumed into the result — twice over, since `v` reaches *both* results.
+```
+fn SplitAtMut (a : &mut (Array 3 Nat)) -> Σ (x : &mut (Array 1 Nat)) → &mut (Array 2 Nat) {
+  let l = &m (*a)[Z ; 1];
+  let r = &m (*a)[1 ; 2];
+  Pair(l, r) }
+```
+
+and so is a caller that takes both halves, writes `Arr(9)` and `Arr(8,7)` through them, and reads the array back. The multi-issued group (`Nth2`, §6.1) and the carve compose with no adjustment. So "unwritable" was too strong, and the honest statement is narrower and worse: **what is missing is not the ability to write `split_at_mut`; it is the ability for its caller to learn anything from it, and the ability to pass its result on.** The caller above recovers one fresh σ at `Array 3 Nat`, related to neither write, while the executing machine produces `Arr(9,8,7)`.
+
+Two witnesses, both measured, both honest named rejections rather than silent gaps:
+
+1. the M27 containment, on `v` reaching *both* results — `"boundary: 'v' is consumed into the result, and §6.1 exempts such a borrow from the payload audit — so its non-trivial owed type … would be checked by nobody"`;
+2. `Σ (x : &mut _) → &mut _` at a **parameter** position — `"readC (⇝): borrow type &mut (τ ↝ S) is only valid at a telescope position"`. A `split_at_mut` whose result cannot be handed to the next function is not an ordinary library function, and this is the shape half in one line.
+
+What it needs, in the order the staging delivers it: the shape half so the pair is passable (stage 2); the pin over **two** issued exits (stage 5); and the general walk replacing the M24 slice special case (stage 6).
 
 ### (b) The get_mut round-trip law
 
@@ -674,7 +688,14 @@ let y = x;          -- the group ends here
 
 This is "whatever the user writes through a get_mut borrow is still there next time they get", and it is the precision the planned hashmap flagship is missing. Today the checker gives `y` a fresh σ and the executing machine gives it the right list — the pair `Boundaries.lean:373-395` already pins, from the other side.
 
-The callee-side obligation is §2.3's hole-filling, and the `S(k)` branch is the one that exercises the recursive resolution through the group's own pin. That branch is the viability probe named in §10.
+The callee-side obligation is §2.3's hole-filling, and the `S(k)` branch is the one that exercises the recursive resolution through the group's own pin. That branch is the viability probe named in §10, and it has been **hand-checked against the corpus's real `StdLemmas.Set`**, which recurses on the index first:
+
+```
+Set Z     v (Cons h t) ⇝ Cons v t              -- the Z branch's pin, definitionally
+Set (S k) v (Cons h t) ⇝ Cons h (Set k v t)    -- the S(k) branch's, definitionally
+```
+
+Both legs converge without a lemma, which is the answer §10's probe is looking for. It should still be run against the machine rather than on paper before stage 1 commits.
 
 ### (c) The read-only borrow law
 
