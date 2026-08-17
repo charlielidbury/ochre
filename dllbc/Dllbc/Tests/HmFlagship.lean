@@ -169,6 +169,140 @@ def NewRet : Term := prog{
   Σ0 (result : HashMapT).
     (Π (Q : Nat) → Id (Opt Nat) (FindHM Q result) None) × Id Nat (SizeHM result) Z }
 
+/-! ## §1.6 — `InsertInList`'s four supporting lemmas
+
+    Bare `λ`/`elim` (StdLemmas' own style), NOT `fn`+`if` — a hard-won finding, not a
+    style preference. `if`/`match`'s named equation is real (confirmed: a borrow-free
+    `fn` using `if` gets a genuinely citable hypothesis, unlike a bare `elim` arm) —
+    but the CHECKER'S "audit" step, which comptime-evaluates an `fn`'s return value to
+    verify it, cannot reduce THROUGH an `if`/`match` construct at all ("match not
+    implemented in the comptime fragment this milestone"), and that failure surfaces
+    the moment the returned value is built from `j`-based rewriting (`NatRw`,
+    `BoolRecTrue`/`False`, …) keyed to the `if`'s own equation — REGARDLESS of whether
+    that rewriting sits directly in the `if`'s branch or is factored into a separately
+    named pure function the branch merely calls. Four independent constructions were
+    tried and four independent ways failed the SAME audit; only dropping `if`
+    entirely closed it.
+
+    The needed replacement — a genuinely citable "we are in this arm" equation from a
+    BARE `elim`, with no `if` anywhere — turns out to already be in this file:
+    `OptElimAssoc`/`BoolRecTrue`/`BoolRecFalse`'s own trick. Thread the equation
+    through the motive as a `Π`, and supply `Refl : Id A X X` (always valid, even at
+    a symbolic `X`) as the elim's OWN tail argument; within each arm the motive has
+    already specialised that `Π`'s domain to the concrete constructor, so the arm's
+    own bound variable IS the citable equation. `InsRecurseEq`'s True arm needs this
+    twice over (nested `elim`, each with its own `Refl`-fed `Π`-motive) to derive `Q =
+    Key` from `Eqb Q Key = True` and use it against `Hne`. -/
+
+def InsFoundEq : Term := prog{
+  λ (Kk0 : Nat). λ (Key : Nat). λ (V : Nat). λ (Vv0 : Nat). λ (Tl0 : Bucket).
+  λ (HeqKey : Id Nat Kk0 Key). λ (Q : Nat).
+    NatRw (λ (X : Nat). Id (Opt Nat) (FindL Q Cons(Pair(X, V), Tl0)) (FindInsL Q Key V Cons(Pair(X, Vv0), Tl0)))
+      Key Kk0 (IdSym Nat Kk0 Key HeqKey)
+      (elim (Eqb Q Key) return (λ (Bz : Bool).
+          Id (Opt Nat) (boolRec (λ (W : Bool). Σ (b : Bool). OptP b Nat) (Some V) (FindL Q Tl0) Bz)
+                       (boolRec (λ (W : Bool). Σ (b : Bool). OptP b Nat) (Some V)
+                          (boolRec (λ (W : Bool). Σ (b : Bool). OptP b Nat) (Some Vv0) (FindL Q Tl0) Bz) Bz)) {
+        True => Refl,
+        False => Refl
+      }) }
+def InsFoundEqTy : Term := prog{
+  Π (Kk0 : Nat) → Π (Key : Nat) → Π (V : Nat) → Π (Vv0 : Nat) → Π (Tl0 : Bucket) →
+    Π (HeqKey : Id Nat Kk0 Key) → Π (Q : Nat) →
+      Id (Opt Nat) (FindL Q Cons(Pair(Kk0, V), Tl0)) (FindInsL Q Key V Cons(Pair(Kk0, Vv0), Tl0)) }
+
+def InsFoundLen : Term := prog{
+  λ (Kk0 : Nat). λ (Key : Nat). λ (V : Nat). λ (Vv0 : Nat). λ (Tl0 : Bucket).
+  λ (HeqKey : Id Nat Kk0 Key).
+    NatRw (λ (X : Nat). Id Nat (LenE Cons(Pair(X, V), Tl0))
+             (CondBump (FindL Key Cons(Pair(X, Vv0), Tl0)) (LenE Cons(Pair(X, Vv0), Tl0))))
+      Key Kk0 (IdSym Nat Kk0 Key HeqKey)
+      (IdCongr (Opt Nat) Nat (λ (O : Opt Nat). CondBump O (LenE Cons(Pair(Key, Vv0), Tl0)))
+        (Some Vv0) (FindL Key Cons(Pair(Key, Vv0), Tl0))
+        (IdSym (Opt Nat) (FindL Key Cons(Pair(Key, Vv0), Tl0)) (Some Vv0)
+          (BoolRecTrue (Some Vv0) (FindL Key Tl0) (Eqb Key Key) (EqbRefl Key)))) }
+def InsFoundLenTy : Term := prog{
+  Π (Kk0 : Nat) → Π (Key : Nat) → Π (V : Nat) → Π (Vv0 : Nat) → Π (Tl0 : Bucket) →
+    Π (HeqKey : Id Nat Kk0 Key) →
+      Id Nat (LenE Cons(Pair(Kk0, V), Tl0))
+        (CondBump (FindL Key Cons(Pair(Kk0, Vv0), Tl0)) (LenE Cons(Pair(Kk0, Vv0), Tl0))) }
+
+def InsRecurseEq : Term := prog{
+  λ (Kk0 : Nat). λ (Vv0 : Nat). λ (Key : Nat). λ (V : Nat). λ (Old : Bucket). λ (New : Bucket).
+  λ (Hne : Id Bool (Eqb Kk0 Key) False).
+  λ (Hp : Π (Q : Nat) → Id (Opt Nat) (FindL Q New) (FindInsL Q Key V Old)).
+  λ (Q : Nat).
+    elim (Eqb Q Key) return (λ (Bz1 : Bool). Π (H1 : Id Bool (Eqb Q Key) Bz1) →
+        Id (Opt Nat) (FindL Q Cons(Pair(Kk0, Vv0), New)) (FindInsL Q Key V Cons(Pair(Kk0, Vv0), Old))) {
+      True => λ (H1 : Id Bool (Eqb Q Key) True).
+        (λ (HQKey : Id Nat Q Key).
+        (λ (HKeyKk0False : Id Bool (Eqb Key Kk0) False).
+        (λ (HQKk0False : Id Bool (Eqb Q Kk0) False).
+        IdTrans (Opt Nat) (FindL Q Cons(Pair(Kk0, Vv0), New)) (Some V) (FindInsL Q Key V Cons(Pair(Kk0, Vv0), Old))
+          (IdTrans (Opt Nat) (FindL Q Cons(Pair(Kk0, Vv0), New)) (FindL Q New) (Some V)
+            (BoolRecFalse (Some Vv0) (FindL Q New) (Eqb Q Kk0) HQKk0False)
+            (IdTrans (Opt Nat) (FindL Q New) (FindInsL Q Key V Old) (Some V)
+              (Hp Q) (BoolRecTrue (Some V) (FindL Q Old) (Eqb Q Key) H1)))
+          (IdSym (Opt Nat) (FindInsL Q Key V Cons(Pair(Kk0, Vv0), Old)) (Some V)
+            (BoolRecTrue (Some V) (FindL Q Cons(Pair(Kk0, Vv0), Old)) (Eqb Q Key) H1)))
+        (NatRw (λ (X : Nat). Id Bool (Eqb X Kk0) False) Key Q (IdSym Nat Q Key HQKey) HKeyKk0False))
+        (IdTrans Bool (Eqb Key Kk0) (Eqb Kk0 Key) False (EqbSymm Key Kk0) Hne))
+        (EqbTrueEq Q Key H1),
+      False => λ (H1 : Id Bool (Eqb Q Key) False).
+        elim (Eqb Q Kk0) return (λ (Bz2 : Bool). Π (H2 : Id Bool (Eqb Q Kk0) Bz2) →
+            Id (Opt Nat) (FindL Q Cons(Pair(Kk0, Vv0), New)) (FindInsL Q Key V Cons(Pair(Kk0, Vv0), Old))) {
+          True => λ (H2 : Id Bool (Eqb Q Kk0) True).
+            IdTrans (Opt Nat) (FindL Q Cons(Pair(Kk0, Vv0), New)) (Some Vv0) (FindInsL Q Key V Cons(Pair(Kk0, Vv0), Old))
+              (BoolRecTrue (Some Vv0) (FindL Q New) (Eqb Q Kk0) H2)
+              (IdSym (Opt Nat) (FindInsL Q Key V Cons(Pair(Kk0, Vv0), Old)) (Some Vv0)
+                (IdTrans (Opt Nat) (FindInsL Q Key V Cons(Pair(Kk0, Vv0), Old)) (FindL Q Cons(Pair(Kk0, Vv0), Old)) (Some Vv0)
+                  (BoolRecFalse (Some V) (FindL Q Cons(Pair(Kk0, Vv0), Old)) (Eqb Q Key) H1)
+                  (BoolRecTrue (Some Vv0) (FindL Q Old) (Eqb Q Kk0) H2))),
+          False => λ (H2 : Id Bool (Eqb Q Kk0) False).
+            IdTrans (Opt Nat) (FindL Q Cons(Pair(Kk0, Vv0), New)) (FindL Q Old) (FindInsL Q Key V Cons(Pair(Kk0, Vv0), Old))
+              (IdTrans (Opt Nat) (FindL Q Cons(Pair(Kk0, Vv0), New)) (FindL Q New) (FindL Q Old)
+                (BoolRecFalse (Some Vv0) (FindL Q New) (Eqb Q Kk0) H2)
+                (IdTrans (Opt Nat) (FindL Q New) (FindInsL Q Key V Old) (FindL Q Old)
+                  (Hp Q) (BoolRecFalse (Some V) (FindL Q Old) (Eqb Q Key) H1)))
+              (IdSym (Opt Nat) (FindInsL Q Key V Cons(Pair(Kk0, Vv0), Old)) (FindL Q Old)
+                (IdTrans (Opt Nat) (FindInsL Q Key V Cons(Pair(Kk0, Vv0), Old)) (FindL Q Cons(Pair(Kk0, Vv0), Old)) (FindL Q Old)
+                  (BoolRecFalse (Some V) (FindL Q Cons(Pair(Kk0, Vv0), Old)) (Eqb Q Key) H1)
+                  (BoolRecFalse (Some Vv0) (FindL Q Old) (Eqb Q Kk0) H2)))
+        } Refl
+    } Refl }
+def InsRecurseEqTy : Term := prog{
+  Π (Kk0 : Nat) → Π (Vv0 : Nat) → Π (Key : Nat) → Π (V : Nat) → Π (Old : Bucket) → Π (New : Bucket) →
+  Π (Hne : Id Bool (Eqb Kk0 Key) False) →
+  Π (Hp : Π (Q : Nat) → Id (Opt Nat) (FindL Q New) (FindInsL Q Key V Old)) →
+  Π (Q : Nat) →
+    Id (Opt Nat) (FindL Q Cons(Pair(Kk0, Vv0), New)) (FindInsL Q Key V Cons(Pair(Kk0, Vv0), Old)) }
+
+def InsRecurseLen : Term := prog{
+  λ (Kk0 : Nat). λ (Vv0 : Nat). λ (Key : Nat). λ (Old : Bucket). λ (New : Bucket).
+  λ (Hne : Id Bool (Eqb Kk0 Key) False).
+  λ (Hlen2 : Id Nat (LenE New) (CondBump (FindL Key Old) (LenE Old))).
+    (λ (HKeyKk0False : Id Bool (Eqb Key Kk0) False).
+    IdTrans Nat (LenE Cons(Pair(Kk0, Vv0), New)) (S (LenE New))
+      (CondBump (FindL Key Cons(Pair(Kk0, Vv0), Old)) (LenE Cons(Pair(Kk0, Vv0), Old)))
+      Refl
+      (IdTrans Nat (S (LenE New)) (S (CondBump (FindL Key Old) (LenE Old)))
+        (CondBump (FindL Key Cons(Pair(Kk0, Vv0), Old)) (LenE Cons(Pair(Kk0, Vv0), Old)))
+        (IdCongr Nat Nat (λ (N : Nat). S N) (LenE New) (CondBump (FindL Key Old) (LenE Old)) Hlen2)
+        (IdTrans Nat (S (CondBump (FindL Key Old) (LenE Old))) (CondBump (FindL Key Old) (S (LenE Old)))
+          (CondBump (FindL Key Cons(Pair(Kk0, Vv0), Old)) (LenE Cons(Pair(Kk0, Vv0), Old)))
+          (CondBumpSucc (FindL Key Old) (LenE Old))
+          (IdCongr (Opt Nat) Nat (λ (O : Opt Nat). CondBump O (S (LenE Old)))
+            (FindL Key Old) (FindL Key Cons(Pair(Kk0, Vv0), Old))
+            (IdSym (Opt Nat) (FindL Key Cons(Pair(Kk0, Vv0), Old)) (FindL Key Old)
+              (BoolRecFalse (Some Vv0) (FindL Key Old) (Eqb Key Kk0) HKeyKk0False))))))
+    (IdTrans Bool (Eqb Key Kk0) (Eqb Kk0 Key) False (EqbSymm Key Kk0) Hne) }
+def InsRecurseLenTy : Term := prog{
+  Π (Kk0 : Nat) → Π (Vv0 : Nat) → Π (Key : Nat) → Π (Old : Bucket) → Π (New : Bucket) →
+  Π (Hne : Id Bool (Eqb Kk0 Key) False) →
+  Π (Hlen2 : Id Nat (LenE New) (CondBump (FindL Key Old) (LenE Old))) →
+    Id Nat (LenE Cons(Pair(Kk0, Vv0), New))
+      (CondBump (FindL Key Cons(Pair(Kk0, Vv0), Old)) (LenE Cons(Pair(Kk0, Vv0), Old))) }
+
 def hmChain (rest : Term) : Term := prog{
   fn New (cap : Nat, Hcap : Le (S Z) cap) -> %NewRet {
     Pair(
@@ -196,5 +330,15 @@ example : (pv prog{ CondBump (Some 1) 5 }).natOf? == some 5 := by native_decide
 example : chkL BoolRw BoolRwTy = true := by native_decide
 example : chkL BoolRecTrue BoolRecTrueTy = true := by native_decide
 example : chkL BoolRecFalse BoolRecFalseTy = true := by native_decide
+
+/-! ## §1.7 — `InsertInList`'s four supporting lemmas, verified against their types
+
+    Each is `if`-free (bare `elim`, the `OptElimAssoc` trick for the two that need a
+    genuinely citable branch equation) — see the note above `InsFoundEq` for why. -/
+
+example : chkL InsFoundEq InsFoundEqTy = true := by native_decide
+example : chkL InsFoundLen InsFoundLenTy = true := by native_decide
+example : chkL InsRecurseEq InsRecurseEqTy = true := by native_decide
+example : chkL InsRecurseLen InsRecurseLenTy = true := by native_decide
 
 end Dllbc.Tests.HmFlagship
