@@ -1369,8 +1369,8 @@ def subsKnowledge : Val → Term
     existential `σ` with no issued loan (the §5.3 wire).
 
     **Σ is DEPENDENT here** (M23): the tail's type may mention the components
-    already built — that is the whole point of a pinned result (`Σ (r : List Nat)
-    → Id (List Nat) r (drop i (old *v))`, split_off's ensures), and with declared
+    already built — that is the whole point of a pinned result (`Σ (r : List Nat).
+    Id (List Nat) r (drop i (old *v))`, split_off's ensures), and with declared
     backs removed it is a caller's only route to knowing anything about a returned
     value. `subs` carries the built components for the enclosing Σ binders as
     `(binder name, value)`, innermost first; a leaf opens each of them in its type
@@ -2344,7 +2344,7 @@ def tailFence (fuel : Nat) (cod : Term) (b : Term) : M Unit := do
     match b with
     | .var x =>
       if x.isComptime then
-        throwErr s!"the TAIL of a Σ chain is runtime-moded, and '{x.name}' is a COMPTIME binder (capitalized — §6), so returning it here would ⇒-move erased knowledge. This is the one position in a Σ with no binder: every component before it spells its mode with its binder's case, and the tail can only spell it on the TYPE. Write the innermost former as `Σ0 (x : A) → P` instead of `Σ (x : A) → P` — the `0` marks the SECOND projection comptime (DLLBC's subset type, Lean's Subtype), after which the tail is ⇝-read, erased, and never moved."
+        throwErr s!"the TAIL of a Σ chain is runtime-moded, and '{x.name}' is a COMPTIME binder (capitalized — §6), so returning it here would ⇒-move erased knowledge. This is the one position in a Σ with no binder: every component before it spells its mode with its binder's case, and the tail can only spell it on the TYPE. Write the innermost former as `Σ0 (x : A). P` instead of `Σ (x : A). P` — the `0` marks the SECOND projection comptime (DLLBC's subset type, Lean's Subtype), after which the tail is ⇝-read, erased, and never moved."
     | _ => pure ()
 
 -- **`isFnValue` IS DELETED TOO** (M33b), with its one caller. Its docstring
@@ -2960,7 +2960,7 @@ def typeFieldSyms (fuel : Nat) : List Var → List (String × Term) → M (List 
     takes a mode; a Σ chain's TAIL has no binder to carry one (suspensions.md
     §2.5's surviving spelling), so it is left alone and reads as runtime, which is
     what ⇒ does with it today". That was the residual, stated at the line that
-    implemented it. `Σ0 (x : A) → P` gives the tail a marker on the CODOMAIN, and
+    implemented it. `Σ0 (x : A). P` gives the tail a marker on the CODOMAIN, and
     this is where a destructuring match reads it: `componentMode` needs no case of
     its own, because it already asks `sctx` per field and the tail's entry is now
     written the same way the first component's is. The M33a hook note predicted
@@ -5591,7 +5591,7 @@ mutual
 
       The second component is read against `B[a]`, the Σ's tail instantiated at
       what the first component turned out to be, which is what makes the chain
-      `Σ (hi : List Nat) → Σ (Hub : …) → … → Π n. Id …` decide each of its
+      `Σ (hi : List Nat). Σ (Hub : …). … → Π n. Id …` decide each of its
       components separately rather than all of them by the outermost binder. -/
   def readResult : Nat → Option Term → Term → M Val
     | 0, _, t => readR 0 t

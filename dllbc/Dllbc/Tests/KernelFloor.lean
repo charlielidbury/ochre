@@ -613,7 +613,7 @@ example : progOk (prog{
 -- Storing a proof: a J-application (which ⇝-reduces to `Refl`) is ⇒-lifted into a
 -- `Pair`'s dependent second field and audited against `Id Nat a a`.
 example : progOk (prog{
-  fn StoreProof (a : Nat) -> Σ (x : Nat) → Id Nat x x
+  fn StoreProof (a : Nat) -> Σ (x : Nat). Id Nat x x
     { Pair(a, j Nat a (λ (X : Nat). λ (Q : Id Nat a X). Id Nat a X) Refl a Refl) };
   () }) = true := by native_decide
 
@@ -774,6 +774,57 @@ example : progRejects badRefl "does not have return type" = true := by native_de
     `hasType` — sym-application and eliminator over-application — not de Bruijn
     slips, because there are no indices to slip). Names + explicit motives
     collapsed the wall; no unifier, no motive inference, no case trees. -/
+
+/-! ## Σ binds with a DOT, and the arrow is a transitional alias
+
+    A Π *is* a function and keeps its arrow; a Σ builds a PAIR, and an arrow on a
+    pair former reads like a function it is not. The dot is the surface's own
+    convention — λ has bound with one since the grammar was written — so these
+    pin the spelling rather than introduce a style.
+
+    Equality, not convertibility, is the right assertion here: the claim is that
+    the two spellings produce the SAME `Term`, which is what makes the arrow rows
+    deletable without re-checking a single proof. `rfl` decides it because both
+    sides are closed `Term` literals built by the macro at elaboration time. -/
+
+-- The dot form is accepted, and elaborates to the pair former it names. Σ0's `0`
+-- is the `.cmpT` on the CODOMAIN and nothing else — same `sigmaT`, same binder.
+example : prog{ Σ (x : Nat). Nat } = Term.sigmaT "x" (.const "Nat") (.const "Nat") := by rfl
+example : prog{ Σ0 (h : Nat). Nat }
+    = Term.sigmaT "h" (.const "Nat") (.cmpT (.const "Nat")) := by rfl
+
+-- The arrow form still parses (TRANSITIONAL — branches written against the old
+-- spelling are in flight) and elaborates to exactly the dot form's term. When the
+-- arrow rows are deleted from `Uni.lean`, every `→` in this section goes with
+-- them and the dot rows above and below are what remains.
+example : prog{ Σ (x : Nat) → Nat } = prog{ Σ (x : Nat). Nat } := by rfl
+example : prog{ Σ0 (h : Nat) → Nat } = prog{ Σ0 (h : Nat). Nat } := by rfl
+
+-- A Σ TOWER round-trips. Both formers associate to the right, so the tower is the
+-- same term whether every binder is written with a dot, with an arrow, or with a
+-- mix — and the mixed row is the one that matters during the transition, since a
+-- half-migrated file still means what it meant.
+example : prog{ Σ (n : Nat). Σ (r : Nat). Id Nat n r }
+    = prog{ Σ (n : Nat) → Σ (r : Nat) → Id Nat n r } := by rfl
+example : prog{ Σ (n : Nat). Σ (r : Nat). Id Nat n r }
+    = prog{ Σ (n : Nat). Σ (r : Nat) → Id Nat n r } := by rfl
+example : prog{ Σ (n : Nat). Σ (r : Nat). Id Nat n r }
+    = prog{ Σ (n : Nat) → Σ (r : Nat). Id Nat n r } := by rfl
+example : prog{ Σ0 (Hs : Nat). Σ (r : Nat). Id Nat r r }
+    = prog{ Σ0 (Hs : Nat) → Σ (r : Nat) → Id Nat r r } := by rfl
+
+-- A Σ whose codomain is a Π keeps the Π's arrow: the two formers are told apart
+-- by their punctuation, which is the whole point. Written as a tower of both, the
+-- dots are the pairs and the arrow is the function.
+example : prog{ Σ (n : Nat). Π (Q : Nat) → Id Nat n Q }
+    = prog{ Σ (n : Nat) → Π (Q : Nat) → Id Nat n Q } := by rfl
+
+-- The printer spells the dot (`Term.prettyPrec`'s `.sigmaT` case), which is the
+-- round-trip the surface owes a user reading a rejection message: a Σ that goes
+-- in as a dot comes back out as one, and never as an arrow.
+example : Term.pretty (Term.sigmaT "n" (.const "Nat") (.const "Bool")) = "Σ(n : Nat). Bool" := by
+  native_decide
+example : Term.pretty prog{ Σ (n : Nat) → Nat } = "Σ(n : Nat). Nat" := by native_decide
 
 end Dllbc.Tests.S15Elab
 end
@@ -1390,7 +1441,7 @@ example : progOk lamValuedCap = true := by native_decide
 open Dllbc.StdLemmas in
 /-- A proof returned as a Σ component at a **capital** binder: ⇝-read, accepted. -/
 def sigmaProofCapital : Term := prog{
-  fn F (n : Nat) -> Σ (H : Le n n) → Nat { let H0 = LeRefl n; Pair(H0, n) };
+  fn F (n : Nat) -> Σ (H : Le n n). Nat { let H0 = LeRefl n; Pair(H0, n) };
   () }
 example : progOk sigmaProofCapital = true := by native_decide
 
@@ -1400,7 +1451,7 @@ open Dllbc.StdLemmas in
     standing where §2.1 says it should. Without this control the acceptance above
     would also pass for a rule that simply stopped fencing. -/
 def sigmaProofLower : Term := prog{
-  fn F (n : Nat) -> Σ (h : Le n n) → Nat { let H0 = LeRefl n; Pair(H0, n) };
+  fn F (n : Nat) -> Σ (h : Le n n). Nat { let H0 = LeRefl n; Pair(H0, n) };
   () }
 example : progRejects sigmaProofLower "cannot be ⇒-moved" = true := by native_decide
 
@@ -1420,10 +1471,10 @@ open Dllbc.StdLemmas in
     one character away, is `sigmaTailProof0` in the Σ0 battery below.
 
     This is where quicksort's `cnt` sits. Its ensures is
-    `Σ (hi : List Nat) → … → Π n. Id …`, and the trailing `Π n. Id …` is the
+    `Σ (hi : List Nat). … → Π n. Id …`, and the trailing `Π n. Id …` is the
     ∀-proof: five components have binders and the sixth is the tail. -/
 def sigmaTailProof : Term := prog{
-  fn F (n : Nat) -> Σ (H : Le n n) → Le n n { let H0 = LeRefl n; Pair(H0, H0) };
+  fn F (n : Nat) -> Σ (H : Le n n). Le n n { let H0 = LeRefl n; Pair(H0, H0) };
   () }
 example : progRejects sigmaTailProof "the TAIL of a Σ chain is runtime-moded" = true := by
   native_decide
@@ -1440,7 +1491,7 @@ open Dllbc Dllbc.Tests
 
 /-! # Σ0 — the comptime tail (M33, suspensions.md §2.7)
 
-    `Σ0 (x : A) → P` is the pair whose SECOND projection is comptime — DLLBC's
+    `Σ0 (x : A). P` is the pair whose SECOND projection is comptime — DLLBC's
     subset type, with comptime where Lean's `Subtype`/Coq's `sig` use
     Prop/irrelevance. It is not a new former: it is `sigmaT` with the existing
     `Term.cmpT` on the CODOMAIN, the same marker a capital binder puts on a
@@ -1457,7 +1508,7 @@ open Dllbc Dllbc.Tests
 
 open Dllbc.StdLemmas in
 def sigmaTailProof0 : Term := prog{
-  fn F (n : Nat) -> Σ0 (H : Le n n) → Le n n { let H0 = LeRefl n; Pair(H0, H0) };
+  fn F (n : Nat) -> Σ0 (H : Le n n). Le n n { let H0 = LeRefl n; Pair(H0, H0) };
   () }
 example : progOk sigmaTailProof0 = true := by native_decide
 
@@ -1467,7 +1518,7 @@ example : progOk sigmaTailProof0 = true := by native_decide
     of a ∀-statement — the shape that refuted §2.5 twice — is exactly this. -/
 open Dllbc.StdLemmas in
 def tailLam0 : Term := prog{
-  fn F (n : Nat) -> Σ0 (H : Le n n) → (Π (N : Nat) → Le N N)
+  fn F (n : Nat) -> Σ0 (H : Le n n). (Π (N : Nat) → Le N N)
     { let H0 = LeRefl n; Pair(H0, λ (N : Nat). LeRefl N) };
   () }
 example : progOk tailLam0 = true := by native_decide
@@ -1484,7 +1535,7 @@ def s0V : Term := .var ⟨0, "v"⟩
 
 /-- Σ0 producer, CAPITAL tail binder at the consumer: accepted. -/
 def tail0Upper : Term := prog{
-  fn Zap0 (v : &mut List Nat) -> Σ0 (k : Nat) → Id (List Nat) (*%s0V) Nil
+  fn Zap0 (v : &mut List Nat) -> Σ0 (k : Nat). Id (List Nat) (*%s0V) Nil
     { *v := Nil; Pair(Z, Refl) };
   fn Use0 (w : &mut List Nat) -> Unit
     { let r = Zap0(&m *w); match r { Pair(k2, H2) => () } };
@@ -1493,7 +1544,7 @@ example : progOk tail0Upper = true := by native_decide
 
 /-- …and lowercase at the same consumer: refused, because the tail is comptime. -/
 def tail0Lower : Term := prog{
-  fn Zap0 (v : &mut List Nat) -> Σ0 (k : Nat) → Id (List Nat) (*%s0V) Nil
+  fn Zap0 (v : &mut List Nat) -> Σ0 (k : Nat). Id (List Nat) (*%s0V) Nil
     { *v := Nil; Pair(Z, Refl) };
   fn Use0 (w : &mut List Nat) -> Unit
     { let r = Zap0(&m *w); match r { Pair(k2, h2) => () } };
@@ -1502,7 +1553,7 @@ example : progRejects tail0Lower "Capitalise the arm binder" = true := by native
 
 /-- The SAME consumer over a plain `Σ`: now lowercase is the legal spelling… -/
 def tailRunLower : Term := prog{
-  fn Zap (v : &mut List Nat) -> Σ (k : Nat) → Id (List Nat) (*%s0V) Nil
+  fn Zap (v : &mut List Nat) -> Σ (k : Nat). Id (List Nat) (*%s0V) Nil
     { *v := Nil; Pair(Z, Refl) };
   fn Use (w : &mut List Nat) -> Unit
     { let r = Zap(&m *w); match r { Pair(k2, h2) => () } };
@@ -1513,7 +1564,7 @@ example : progOk tailRunLower = true := by native_decide
     which spelling of the CALLER's arm is legal, in both directions — which is
     what says the rule reads the type and not the shape. -/
 def tailRunUpper : Term := prog{
-  fn Zap (v : &mut List Nat) -> Σ (k : Nat) → Id (List Nat) (*%s0V) Nil
+  fn Zap (v : &mut List Nat) -> Σ (k : Nat). Id (List Nat) (*%s0V) Nil
     { *v := Nil; Pair(Z, Refl) };
   fn Use (w : &mut List Nat) -> Unit
     { let r = Zap(&m *w); match r { Pair(k2, H2) => () } };
@@ -1528,7 +1579,7 @@ example : progRejects tailRunUpper "lower-case the arm binder" = true := by nati
 
 open Dllbc.StdLemmas in
 def erase0 : Term := prog{
-  fn F0 (n : Nat) -> Σ0 (k : Nat) → Le n n { let H0 = LeRefl n; Pair(n, H0) };
+  fn F0 (n : Nat) -> Σ0 (k : Nat). Le n n { let H0 = LeRefl n; Pair(n, H0) };
   let r = F0(S(S(Z)));
   match r { Pair(a, H) => { let y = a; () } } }
 example : progOk erase0 = true := by native_decide
@@ -1547,14 +1598,14 @@ example : (match runProgram erase0 with
 open Dllbc.StdLemmas in
 def elimSig : Term := prog{
   let P0 = Pair(Z, LeRefl Z);
-  let K = elim P0 return (λ (p : Σ (k : Nat) → Le Z Z). Nat) { Pair (k) (h) => k };
+  let K = elim P0 return (λ (p : Σ (k : Nat). Le Z Z). Nat) { Pair (k) (h) => k };
   () }
 example : progOk elimSig = true := by native_decide
 
 open Dllbc.StdLemmas in
 def elimSig0 : Term := prog{
   let P0 = Pair(Z, LeRefl Z);
-  let K = elim P0 return (λ (p : Σ0 (k : Nat) → Le Z Z). Nat) { Pair (k) (H) => k };
+  let K = elim P0 return (λ (p : Σ0 (k : Nat). Le Z Z). Nat) { Pair (k) (H) => k };
   () }
 example : progOk elimSig0 = true := by native_decide
 
@@ -1725,12 +1776,12 @@ def zapV : Term := .var ⟨0, "v"⟩
 
 -- The COMPTIME component: its `Id` mentions `*v`, so it is exactly the type
 -- `markExit` has to reach through the `⇝` to stamp.
-def zapCmp : Term := prog{ Σ (H : Id (List Nat) (*%zapV) Nil) → Unit }
+def zapCmp : Term := prog{ Σ (H : Id (List Nat) (*%zapV) Nil). Unit }
 -- …and its one-character twin, which was green before M33a and is the control
 -- that says the `⇝` is the whole difference.
-def zapRun : Term := prog{ Σ (h : Id (List Nat) (*%zapV) Nil) → Unit }
+def zapRun : Term := prog{ Σ (h : Id (List Nat) (*%zapV) Nil). Unit }
 -- …and the lie, so neither accept is vacuous: the exit is `Nil`, not `[Z]`.
-def zapLie : Term := prog{ Σ (H : Id (List Nat) (*%zapV) (Cons Z Nil)) → Unit }
+def zapLie : Term := prog{ Σ (H : Id (List Nat) (*%zapV) (Cons Z Nil)). Unit }
 
 example : progOk (zapUnder zapCmp) = true := by native_decide
 example : progOk (zapUnder zapRun) = true := by native_decide
@@ -1784,14 +1835,14 @@ example : progRejects armDataUpper "lower-case the arm binder" = true := by nati
 def armV : Term := .var ⟨0, "v"⟩
 
 def armCmpUpper : Term := prog{
-  fn Zap (v : &mut List Nat) -> Σ (H : Id (List Nat) (*%armV) Nil) → Unit
+  fn Zap (v : &mut List Nat) -> Σ (H : Id (List Nat) (*%armV) Nil). Unit
     { *v := Nil; Pair(Refl, unit) };
   fn Use (w : &mut List Nat) -> Unit
     { let r = Zap(&m *w); match r { Pair(H2, u) => () } };
   () }
 
 def armCmpLower : Term := prog{
-  fn Zap (v : &mut List Nat) -> Σ (H : Id (List Nat) (*%armV) Nil) → Unit
+  fn Zap (v : &mut List Nat) -> Σ (H : Id (List Nat) (*%armV) Nil). Unit
     { *v := Nil; Pair(Refl, unit) };
   fn Use (w : &mut List Nat) -> Unit
     { let r = Zap(&m *w); match r { Pair(h2, u) => () } };
@@ -1807,7 +1858,7 @@ example : progRejects armCmpLower "Capitalise the arm binder" = true := by nativ
     return type flips which spelling of the CALLER's arm is legal. -/
 
 def armRunLower : Term := prog{
-  fn Zap (v : &mut List Nat) -> Σ (h : Id (List Nat) (*%armV) Nil) → Unit
+  fn Zap (v : &mut List Nat) -> Σ (h : Id (List Nat) (*%armV) Nil). Unit
     { *v := Nil; Pair(Refl, unit) };
   fn Use (w : &mut List Nat) -> Unit
     { let r = Zap(&m *w); match r { Pair(h2, u) => () } };
@@ -1890,7 +1941,7 @@ example : (Pure.nf 200 (.app (.app surfAdd (Term.nat 2)) (Term.nat 3)) == Term.n
 
 def basisTypes : List Term :=
   [prog{ Nat }, prog{ Bool }, prog{ Unit }, prog{ Bot }, prog{ List Nat },
-   prog{ Σ (X : Nat) → Nat }, prog{ Id Nat unit unit }, prog{ Array 2 Nat }]
+   prog{ Σ (X : Nat). Nat }, prog{ Id Nat unit unit }, prog{ Array 2 Nat }]
 
 example : Val.ctorNames.all (fun n => (Pure.ctorSig n).isSome) = true := by native_decide
 example : basisTypes.all (fun ty => ((Pure.typeCtors ty).getD []).all

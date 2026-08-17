@@ -858,7 +858,7 @@ namespace Dllbc.Tests.S27Mixed
 
 def a1lie : Term := prog{
   fn HeadLie (v : &mut List Nat, hi : Le (S Z) (Len *v))
-        -> Σ (x : &mut Nat) → Id Nat Z (S Z)
+        -> Σ (x : &mut Nat). Id Nat Z (S Z)
         { match v {
             Nil => botElim Unit hi,
             Cons(hd, tl) => Pair(&m *hd, Refl)
@@ -878,7 +878,7 @@ example : progRejects a1lie "may not also carry VALUE components" = true := by n
     containment declines to make. -/
 def a5honest : Term := prog{
   fn HeadTrue (v : &mut List Nat, hi : Le (S Z) (Len *v))
-        -> Σ (x : &mut Nat) → Id Nat Z Z
+        -> Σ (x : &mut Nat). Id Nat Z Z
         { match v { Nil => botElim Unit hi, Cons(hd, tl) => Pair(&m *hd, Refl) } };
   () }
 
@@ -894,7 +894,7 @@ example : progRejects a5honest "may not also carry VALUE components" = true := b
 -- path runs, and always did.
 def a2lie : Term := prog{
   fn ValLie (v : &mut List Nat, hi : Le (S Z) (Len *v))
-        -> Σ (x : Nat) → Id Nat Z (S Z)
+        -> Σ (x : Nat). Id Nat Z (S Z)
         { Pair(Z, Refl) };
   () }
 example : progRejects a2lie "does not have return type" = true := by native_decide
@@ -919,7 +919,7 @@ example : progOk bare = true := by native_decide
 
 def twoBorrows : Term := prog{
   fn Two (v : &mut List Nat, hi : Le (S Z) (Len *v))
-        -> Σ (x : &mut Nat) → &mut List Nat
+        -> Σ (x : &mut Nat). &mut List Nat
         { match v {
             Nil => botElim Unit hi,
             Cons(hd, tl) => Pair(&m *hd, &m *tl)
@@ -938,7 +938,7 @@ example : progOk twoBorrows = true := by native_decide
     M27 the seal is the ONLY audit site, so a containment that fixed only the
     declaration path would have fixed only the half being deleted. -/
 
-def mixedSeal : Term := prog{ Π (v : &mut List Nat) → Σ (x : &mut Nat) → Id Nat Z (S Z) }
+def mixedSeal : Term := prog{ Π (v : &mut List Nat) → Σ (x : &mut Nat). Id Nat Z (S Z) }
 
 def sealProg : Term := prog{
   let F = (λ(v : &mut List Nat) { match v { Nil => (), Cons(hd, tl) => Pair(&m *hd, Refl) } } : %mixedSeal);
@@ -1026,7 +1026,7 @@ example : progOk Tests.S6Call.toNatProg = true := by native_decide
     slots from `progBase` and collided by id. Both the arithmetic and the check
     are gone.) -/
 def withSwapS01 (rest : Term) : Term := prog{
-  fn SwapS01 (v : &mut (s : List Nat ~> Σ (l : List Nat) → Id Nat (Len l) (Len s)),
+  fn SwapS01 (v : &mut (s : List Nat ~> Σ (l : List Nat). Id Nat (Len l) (Len s)),
                     p : Le 2 (Len (*v))) -> Unit {
     let proof = StdLemmas.LenSwapL 0 1 (*v);
     match v {
@@ -1652,13 +1652,13 @@ def c2under (sig : Term) : Term := prog{
   let r = F(3);
   r }
 /-- The retType the program is demanded at: the equation the caller wants. -/
-def c2demand : Term := prog{ Σ (m : Nat) → Id Nat m 3 }
+def c2demand : Term := prog{ Σ (m : Nat). Id Nat m 3 }
 
 /-- A — the signature CARRIES the equation. -/
-def c2keeps : Term := c2under (prog{ Π (n : Nat) → Σ (m : Nat) → Id Nat m n })
+def c2keeps : Term := c2under (prog{ Π (n : Nat) → Σ (m : Nat). Id Nat m n })
 /-- B — the same body, sealed at a type that FORGETS it (true, and useless). It
     checks: the lie is not in the callee, it is in what the callee promises. -/
-def c2forgets : Term := c2under (prog{ Π (n : Nat) → Σ (m : Nat) → Id Nat m m })
+def c2forgets : Term := c2under (prog{ Π (n : Nat) → Σ (m : Nat). Id Nat m m })
 
 example : progOk c2keeps c2demand = true := by native_decide
 example : progRejects c2forgets "does not have return type" c2demand = true := by native_decide
@@ -1666,13 +1666,13 @@ example : progRejects c2forgets "does not have return type" c2demand = true := b
 -- at the weaker demand its callee's signature does support. So the rejection
 -- above is about what was kept across the seal, and not about the program being
 -- broken.
-example : progOk c2forgets (prog{ Σ (m : Nat) → Id Nat m m }) = true := by native_decide
+example : progOk c2forgets (prog{ Σ (m : Nat). Id Nat m m }) = true := by native_decide
 -- The keeping prefix does NOT also satisfy the weaker demand, which is worth a
 -- line because it is the honest reading of "what you keep is what you write":
 -- there is no subsumption here, only conversion — a σ has the type it was minted
 -- at, and `Id Nat m 3` and `Id Nat m m` are different types even though the first
 -- is the more informative claim about this particular callee.
-example : progOk c2keeps (prog{ Σ (m : Nat) → Id Nat m m }) = false := by native_decide
+example : progOk c2keeps (prog{ Σ (m : Nat). Id Nat m m }) = false := by native_decide
 
 /-! ## §D. Globals: the one kernel rule this phase needed
 

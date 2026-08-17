@@ -163,20 +163,20 @@ def aQ : Term := .var ⟨3, "a"⟩
 def fuelQ : Term := .var ⟨0, "fuel"⟩
 
 def sHonest : Term := prog{
-  Σ (k : Nat) → Σ (r : Nat)
-    → Σ (Hlen : Id Nat %mS (Add k r))
-    → Σ0 (Hsp : SplitAL %pS k %mS (*%tS))
-    → Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (CountA Q %mS (old *%tS)) }
+  Σ (k : Nat). Σ (r : Nat).
+    Σ (Hlen : Id Nat %mS (Add k r)).
+    Σ0 (Hsp : SplitAL %pS k %mS (*%tS)).
+    Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (CountA Q %mS (old *%tS)) }
 
 def pHonest : Term := prog{
-  Σ (pvv : Nat) → Σ (k : Nat) → Σ (jj : Nat)
-    → Σ (Hlen : Id Nat %nP (Add k (S jj)))
-    → Σ0 (Hp : PartA pvv k %nP (*%aP))
-    → Π (Q : Nat) → Id Nat (CountA Q %nP (*%aP)) (CountA Q %nP (old *%aP)) }
+  Σ (pvv : Nat). Σ (k : Nat). Σ (jj : Nat).
+    Σ (Hlen : Id Nat %nP (Add k (S jj))).
+    Σ0 (Hp : PartA pvv k %nP (*%aP)).
+    Π (Q : Nat) → Id Nat (CountA Q %nP (*%aP)) (CountA Q %nP (old *%aP)) }
 
 def qHonest : Term := prog{
-  Σ0 (Hs : SortedA %nQ (*%aQ))
-    → Π (Q : Nat) → Id Nat (CountA Q %nQ (*%aQ)) (CountA Q %nQ (old *%aQ)) }
+  Σ0 (Hs : SortedA %nQ (*%aQ)).
+    Π (Q : Nat) → Id Nat (CountA Q %nQ (*%aQ)) (CountA Q %nQ (old *%aQ)) }
 
 def qSuffHonest : Term := prog{ Le %nQ %fuelQ }
 
@@ -200,7 +200,7 @@ def qSuffHonest : Term := prog{ Le %nQ %fuelQ }
 /-! ## (iv) `quicksortA` — the headline
 
         fn quicksortA [fuel] (fuel : Nat, n : Nat, hfuel : Le n fuel, a : &mut (Array n Nat))
-          -> Σ (hs : SortedA n (*a)) → Π x. Id Nat (CountA x n (*a)) (CountA x n (old *a))
+          -> Σ (hs : SortedA n (*a)). Π x. Id Nat (CountA x n (*a)) (CountA x n (old *a))
 
     M23's quicksort signature, re-posed on arrays: sorted AND a permutation, over the
     exit snapshot, IN PLACE, with zero declared backs in the call tree. `partitionA`,
@@ -541,26 +541,26 @@ example : progOk arrChain = true := by native_decide
 
 -- `splitA`, conjunct 1: the length accounting says the two parts overlap by one.
 example : progOk (arrUnder (prog{
-    Σ (k : Nat) → Σ (r : Nat)
-      → Σ (Hlen : Id Nat %mS (Add k (S r)))
-      → Σ0 (Hsp : SplitAL %pS k %mS (*%tS))
-      → Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (CountA Q %mS (old *%tS)) })
+    Σ (k : Nat). Σ (r : Nat).
+      Σ (Hlen : Id Nat %mS (Add k (S r))).
+      Σ0 (Hsp : SplitAL %pS k %mS (*%tS)).
+      Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (CountA Q %mS (old *%tS)) })
     pHonest qHonest qSuffHonest .unit) = false := by native_decide
 
 -- `splitA`, conjunct 2: the ordering claimed of the ENTRY array rather than the exit.
 example : progOk (arrUnder (prog{
-    Σ (k : Nat) → Σ (r : Nat)
-      → Σ (Hlen : Id Nat %mS (Add k r))
-      → Σ0 (Hsp : SplitAL %pS k %mS (old *%tS))
-      → Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (CountA Q %mS (old *%tS)) })
+    Σ (k : Nat). Σ (r : Nat).
+      Σ (Hlen : Id Nat %mS (Add k r)).
+      Σ0 (Hsp : SplitAL %pS k %mS (old *%tS)).
+      Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (CountA Q %mS (old *%tS)) })
     pHonest qHonest qSuffHonest .unit) = false := by native_decide
 
 -- `splitA`, conjunct 3: the counts off by one, which no path can reach.
 example : progOk (arrUnder (prog{
-    Σ (k : Nat) → Σ (r : Nat)
-      → Σ (Hlen : Id Nat %mS (Add k r))
-      → Σ0 (Hsp : SplitAL %pS k %mS (*%tS))
-      → Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (S (CountA Q %mS (old *%tS))) })
+    Σ (k : Nat). Σ (r : Nat).
+      Σ (Hlen : Id Nat %mS (Add k r)).
+      Σ0 (Hsp : SplitAL %pS k %mS (*%tS)).
+      Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (S (CountA Q %mS (old *%tS))) })
     pHonest qHonest qSuffHonest .unit) = false := by native_decide
 
 /-- **The BODY twin, and the one that matters most**: the swap is DELETED — the branch
@@ -650,18 +650,18 @@ example : progOk splitANoSwap = false := by native_decide
 
 -- `partitionA`, conjunct 1: the length accounting forgets the pivot cell.
 example : progRejects (arrUnder sHonest (prog{
-    Σ (pvv : Nat) → Σ (k : Nat) → Σ (jj : Nat)
-      → Σ (Hlen : Id Nat %nP (Add k jj))
-      → Σ0 (Hp : PartA pvv k %nP (*%aP))
-      → Π (Q : Nat) → Id Nat (CountA Q %nP (*%aP)) (CountA Q %nP (old *%aP)) })
+    Σ (pvv : Nat). Σ (k : Nat). Σ (jj : Nat).
+      Σ (Hlen : Id Nat %nP (Add k jj)).
+      Σ0 (Hp : PartA pvv k %nP (*%aP)).
+      Π (Q : Nat) → Id Nat (CountA Q %nP (*%aP)) (CountA Q %nP (old *%aP)) })
     qHonest qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 -- `partitionA`, conjunct 2: the partition claimed of the ENTRY array.
 example : progRejects (arrUnder sHonest (prog{
-    Σ (pvv : Nat) → Σ (k : Nat) → Σ (jj : Nat)
-      → Σ (Hlen : Id Nat %nP (Add k (S jj)))
-      → Σ0 (Hp : PartA pvv k %nP (old *%aP))
-      → Π (Q : Nat) → Id Nat (CountA Q %nP (*%aP)) (CountA Q %nP (old *%aP)) })
+    Σ (pvv : Nat). Σ (k : Nat). Σ (jj : Nat).
+      Σ (Hlen : Id Nat %nP (Add k (S jj))).
+      Σ0 (Hp : PartA pvv k %nP (old *%aP)).
+      Π (Q : Nat) → Id Nat (CountA Q %nP (*%aP)) (CountA Q %nP (old *%aP)) })
     qHonest qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 -- `quicksortA`, conjunct 1: sortedness lied onto the ENTRY. True at the empty array,
@@ -674,15 +674,15 @@ example : progRejects (arrUnder sHonest (prog{
 -- parameter type"; the two Direct.lean twins of these did not move, because
 -- quicksort's own caller re-checks the conjunct either way.
 example : progRejects (arrUnder sHonest pHonest (prog{
-    Σ0 (Hs : SortedA %nQ (old *%aQ))
-      → Π (Q : Nat) → Id Nat (CountA Q %nQ (*%aQ)) (CountA Q %nQ (old *%aQ)) })
+    Σ0 (Hs : SortedA %nQ (old *%aQ)).
+      Π (Q : Nat) → Id Nat (CountA Q %nQ (*%aQ)) (CountA Q %nQ (old *%aQ)) })
     qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 -- `quicksortA`, conjunct 2: the permutation lied by DIRECTION. Again `Refl` at the
 -- empty array, and again the body's evidence points the other way once anything moves.
 example : progRejects (arrUnder sHonest pHonest (prog{
-    Σ0 (Hs : SortedA %nQ (*%aQ))
-      → Π (Q : Nat) → Id Nat (CountA Q %nQ (old *%aQ)) (CountA Q %nQ (*%aQ)) })
+    Σ0 (Hs : SortedA %nQ (*%aQ)).
+      Π (Q : Nat) → Id Nat (CountA Q %nQ (old *%aQ)) (CountA Q %nQ (*%aQ)) })
     qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 /-! ### Honest typing rejections, probed through `checkFn` -/

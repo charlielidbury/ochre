@@ -1006,26 +1006,26 @@ example : progRejects pivotCarve "containment obligation" = true := by native_de
     it. The tests below are the settlement, not a feature demo. -/
 
 def sigSlice : Term := prog{
-  fn SigSlice (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () };
+  fn SigSlice (s : Σ (c : Nat). &mut (Array c Nat)) -> Unit { () };
   () }
 example : progOk sigSlice = true := by native_decide
 
 -- The callee can DESTRUCTURE it: an owned match hands back the length and the borrow,
 -- and inside the body the length is an ordinary nameable term.
 def useSlice : Term := prog{
-  fn UseSlice (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit {
+  fn UseSlice (s : Σ (c : Nat). &mut (Array c Nat)) -> Unit {
     match s { Pair(c, sl) => () } };
   () }
 example : progOk useSlice = true := by native_decide
 
 def sliceTouch : Term := prog{
-  fn SliceTouch (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () };
+  fn SliceTouch (s : Σ (c : Nat). &mut (Array c Nat)) -> Unit { () };
   () }
 example : progOk sliceTouch = true := by native_decide
 
 -- A caller passing a slice whose length it can NAME: green, end to end.
 def sigCallerOk : Term := prog{
-  fn SliceTouch (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () };
+  fn SliceTouch (s : Σ (c : Nat). &mut (Array c Nat)) -> Unit { () };
   fn SigCallerOk (n : Nat, i : Nat, H1 : Le i n, a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; i | H1];
     let r = &m (*a)[i ; ..];
@@ -1042,7 +1042,7 @@ example : progOk sigCallerOk = true := by native_decide
     term to write, because the residue's length is the σ premise (3) minted. -/
 
 def sigCallerWrong : Term := prog{
-  fn SliceTouch (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () };
+  fn SliceTouch (s : Σ (c : Nat). &mut (Array c Nat)) -> Unit { () };
   fn SigCallerWrong (n : Nat, i : Nat, H1 : Le i n, a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; i | H1];
     let r = &m (*a)[i ; ..];
@@ -1057,7 +1057,7 @@ example : progRejects sigCallerWrong "does not have its parameter type"
 -- telescope entry can mention it. Nesting the proof inside too is where it goes, and
 -- that is a second level the machinery does not have.
 def recSlice : Term := prog{
-  fn RecSlice [fuel] (fuel : Nat, s : Σ (c : Nat) → Σ (H : Le c fuel) → &mut (Array c Nat)) -> Unit {
+  fn RecSlice [fuel] (fuel : Nat, s : Σ (c : Nat). Σ (H : Le c fuel). &mut (Array c Nat)) -> Unit {
     () };
   () }
 example : progRejects recSlice "only valid at a telescope position" = true := by native_decide
@@ -1347,7 +1347,7 @@ example : chkL LbPermA LbPermATy = true := by native_decide
     equations, the transferred library, `old *v`, and the §5.4 exit-snapshot audit. The
     postcondition is M23's quicksort signature at width two —
 
-        Σ (hs : SortedA 2 (*a)) → (Π x. Id Nat (CountA x 2 (*a)) (CountA x 2 (old *a)))
+        Σ (hs : SortedA 2 (*a)). (Π x. Id Nat (CountA x 2 (*a)) (CountA x 2 (old *a)))
 
     — sortedness AND count-preservation over the exit snapshot, with **zero declared
     backs**. It is not the full quicksort (¶6's partition is a new program, ledger G4),
@@ -1423,7 +1423,7 @@ example : progOk readSame = true := by native_decide
     names `*a` (exit) and `old *a` (entry). -/
 def sort2 : Term := prog{
   fn Sort2 (a : &mut (Array 2 Nat))
-      -> Σ0 (Hs : SortedA 2 (*a)) → (Π (X : Nat) → Id Nat (CountA X 2 (*a)) (CountA X 2 (old *a))) {
+      -> Σ0 (Hs : SortedA 2 (*a)). (Π (X : Nat) → Id Nat (CountA X 2 (*a)) (CountA X 2 (old *a))) {
     let x = (*a)[0];
     let y = (*a)[1];
     if h : Leb x y {
@@ -1464,7 +1464,7 @@ example : progOk sort2LieSorted = false := by native_decide
 -- bearing: `Refl` in its place is rejected.
 def sort2LieCount : Term := prog{
   fn Sort2LieCount (a : &mut (Array 2 Nat))
-      -> Σ0 (Hs : SortedA 2 (*a)) → (Π (X : Nat) → Id Nat (CountA X 2 (*a)) (CountA X 2 (old *a))) {
+      -> Σ0 (Hs : SortedA 2 (*a)). (Π (X : Nat) → Id Nat (CountA X 2 (*a)) (CountA X 2 (old *a))) {
     let x = (*a)[0];
     let y = (*a)[1];
     if h : Leb x y {
