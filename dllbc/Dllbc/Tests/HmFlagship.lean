@@ -26,7 +26,7 @@ open Dllbc
 open Dllbc.StdLemmas (LeRefl LeTrans LeAdd LeAddL LeAddSucc LeRwL LeRwR AddSucc AddZero
   IdTrans IdCongr IdSym Znots LebTrueLe LebFalseGt LePredL EqbRefl EqbGtFalse EqbLtFalse
   AllKeysEqHead AllKeysEqHeadTy AllKeysEqTail AllKeysEqTailTy
-  Sig0PairFst Sig0PairFstTy Sig0PairSnd Sig0PairSndTy
+  Sig0PairFst Sig0PairFstTy Sig0PairSnd Sig0PairSndTy AllHashedACat AllHashedACatTy
   NatRw
   NextR NextC NextQ ModC Mod DivC Div Mul StepInv StepInvTy ModCLt ModCLtTy
   ModLtN ModLtNTy ModDec ModDecTy
@@ -482,5 +482,6 @@ example : chkL InsFoundEq InsFoundEqTy = true := by native_decide
 example : chkL InsFoundLen InsFoundLenTy = true := by native_decide
 example : chkL InsRecurseEq InsRecurseEqTy = true := by native_decide
 example : chkL InsRecurseLen InsRecurseLenTy = true := by native_decide
+example : chkL AllHashedACat AllHashedACatTy = true := by native_decide
 
 end Dllbc.Tests.HmFlagship

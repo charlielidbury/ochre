@@ -5219,4 +5219,36 @@ def Sig0PairSnd : Term := prog{
 def Sig0PairSndTy : Term := prog{
   Π (A : Type) → Π (B : Type) → (Σ0 (x : A). B) → B }
 
+/-- `AllHashedA` crosses `arrCat` — `SplitACatI0`'s shape (induction on the LEFT
+    array, peeling its own `AllHashedA` hypothesis via the SAME `arrRec`), simpler
+    since there is no pivot/`UbA` side-condition, just the absolute index shifting by
+    one per cons step. `I0` is generalised INSIDE the `arrRec` motive (the M22
+    bounded-Pi idiom `AllHashedA` itself uses for its own index) because the
+    recursive step needs it instantiated at `S I0`, not the caller's original `I0`. -/
+def AllHashedACat : Term := prog{
+  λ (Cap : Nat). λ (K : Nat). λ (L : Array K Bucket). λ (M : Nat). λ (W : Array M Bucket).
+    arrRec Bucket (λ (Kz : Nat). λ (Lz : Array Kz Bucket). Π (I0 : Nat) →
+        AllHashedA Cap Kz Lz I0 → AllHashedA Cap M W (Add I0 Kz) →
+          AllHashedA Cap (Add Kz M) (arrCat Kz M Lz W) I0)
+      (λ (I0 : Nat). λ (Hl : Unit). λ (Hw : AllHashedA Cap M W (Add I0 Z)).
+        NatRw (λ (X : Nat). AllHashedA Cap M W X) (Add I0 Z) I0 (AddZero I0) Hw)
+      (λ (K2 : Nat). λ (Hh : Bucket). λ (T : Array K2 Bucket).
+        λ (Ih : Π (I0 : Nat) → AllHashedA Cap K2 T I0 → AllHashedA Cap M W (Add I0 K2) →
+                  AllHashedA Cap (Add K2 M) (arrCat K2 M T W) I0).
+        λ (I0 : Nat).
+        λ (Hl : Σ (Hk : AllKeysEq Cap I0 Hh). AllHashedA Cap K2 T (S I0)).
+        λ (Hw : AllHashedA Cap M W (Add I0 (S K2))).
+          elim Hl return (λ (Q : Σ (Hk : AllKeysEq Cap I0 Hh). AllHashedA Cap K2 T (S I0)).
+              Σ (Hk2 : AllKeysEq Cap I0 Hh). AllHashedA Cap (Add K2 M) (arrCat K2 M T W) (S I0)) {
+            Pair (HkVal) (HtVal) =>
+              Pair(HkVal, Ih (S I0) HtVal (NatRw (λ (X : Nat). AllHashedA Cap M W X)
+                (Add I0 (S K2)) (Add (S I0) K2) (AddSucc I0 K2) Hw))
+          })
+      K L }
+def AllHashedACatTy : Term := prog{
+  Π (Cap : Nat) → Π (K : Nat) → Π (L : Array K Bucket) → Π (M : Nat) → Π (W : Array M Bucket) →
+  Π (I0 : Nat) →
+    AllHashedA Cap K L I0 → AllHashedA Cap M W (Add I0 K) →
+      AllHashedA Cap (Add K M) (arrCat K M L W) I0 }
+
 end Dllbc.StdLemmas
