@@ -372,4 +372,170 @@ def LookupHitTy : Term := prog{
   Π (V : Nat) → Π (T : List (Σ (k : Nat) → Nat)) →
     Id (Σ (b : Bool) → OptP b Nat) (LookupFn 3 Cons(Pair(3, V), T)) Pair(True, V) }
 
+/-! ### Bisecting `LookupFn`'s failure to check at its own Π type
+
+    It COMPUTES right (`Lookup 3 [(1,10),(3,30)] ⇝ Pair True 30`) and every spec
+    equation about it closes, but `chkL LookupFn LookupTy` is `false`. Which
+    ingredient? -/
+
+-- (i) The Σ eliminator alone — first projection of an entry.
+#eval chkLMsg prog{
+    λ (E : Σ (k : Nat) → Nat). elim E return (λ (Em : Σ (k : Nat) → Nat). Nat) {
+      Pair (K2) (V2) => K2 } }
+  prog{ Π (E : Σ (k : Nat) → Nat) → Nat }
+
+-- (ii) The listRec alone, at the Opt return type, with a trivial Cons arm.
+#eval chkLMsg prog{
+    λ (K : Nat). λ (B : List (Σ (k : Nat) → Nat)).
+      elim B return (λ (Bm : List (Σ (k : Nat) → Nat)). Σ (b : Bool) → OptP b Nat) {
+        Nil => Pair(False, unit),
+        Cons (E) (T) Rec => Rec } }
+  LookupTy
+
+-- (iii) The listRec at a NON-Opt return type, with the Σ elim inside.
+#eval chkLMsg prog{
+    λ (K : Nat). λ (B : List (Σ (k : Nat) → Nat)).
+      elim B return (λ (Bm : List (Σ (k : Nat) → Nat)). Nat) {
+        Nil => Z,
+        Cons (E) (T) Rec =>
+          elim E return (λ (Em : Σ (k : Nat) → Nat). Nat) { Pair (K2) (V2) => K2 } } }
+  prog{ Π (K : Nat) → Π (B : List (Σ (k : Nat) → Nat)) → Nat }
+
+-- (iv) The Bool elim at the Opt return type, standalone.
+#eval chkLMsg prog{
+    λ (K : Nat). λ (V : Nat).
+      elim (Eqb K V) return (λ (Bm2 : Bool). Σ (b : Bool) → OptP b Nat) {
+        True => Pair(True, V),
+        False => Pair(False, unit) } }
+  prog{ Π (K : Nat) → Π (V : Nat) → (Σ (b : Bool) → OptP b Nat) }
+
+-- (v) The Σ elim RETURNING an Opt.
+#eval chkLMsg prog{
+    λ (E : Σ (k : Nat) → Nat).
+      elim E return (λ (Em : Σ (k : Nat) → Nat). Σ (b : Bool) → OptP b Nat) {
+        Pair (K2) (V2) => Pair(True, V2) } }
+  prog{ Π (E : Σ (k : Nat) → Nat) → (Σ (b : Bool) → OptP b Nat) }
+
+-- (vi) …the same, but returning a plain `Nat`-typed pair rather than an Opt, to
+--      separate "Σ elim at a computed motive" from "Σ elim at all".
+#eval chkLMsg prog{
+    λ (E : Σ (k : Nat) → Nat).
+      elim E return (λ (Em : Σ (k : Nat) → Nat). Σ (a : Nat) → Nat) {
+        Pair (K2) (V2) => Pair(K2, V2) } }
+  prog{ Π (E : Σ (k : Nat) → Nat) → (Σ (a : Nat) → Nat) }
+
+/-! ### …and it is the LIST, not the Option: `listRec` over `List (Σ …)`
+
+    (ii) and (iii) share only `elim B` at `B : List (Σ (k : Nat) → Nat)`. Which
+    part of that element type is the obstacle? -/
+
+-- (vii) The same Opt-returning listRec over `List Nat` — the control.
+#eval chkLMsg prog{
+    λ (K : Nat). λ (B : List Nat).
+      elim B return (λ (Bm : List Nat). Σ (b : Bool) → OptP b Nat) {
+        Nil => Pair(False, unit),
+        Cons (H) (T) Rec => Rec } }
+  prog{ Π (K : Nat) → Π (B : List Nat) → (Σ (b : Bool) → OptP b Nat) }
+
+-- (viii) The minimal failure: a trivial `Nat`-valued listRec over `List (Σ …)`.
+#eval chkLMsg prog{
+    λ (B : List (Σ (k : Nat) → Nat)).
+      elim B return (λ (Bm : List (Σ (k : Nat) → Nat)). Nat) {
+        Nil => Z,
+        Cons (E) (T) Rec => Rec } }
+  prog{ Π (B : List (Σ (k : Nat) → Nat)) → Nat }
+
+-- (ix) …with a CAPITAL (comptime) Σ binder in the element type.
+#eval chkLMsg prog{
+    λ (B : List (Σ (K : Nat) → Nat)).
+      elim B return (λ (Bm : List (Σ (K : Nat) → Nat)). Nat) {
+        Nil => Z,
+        Cons (E) (T) Rec => Rec } }
+  prog{ Π (B : List (Σ (K : Nat) → Nat)) → Nat }
+
+-- (x) …with the NON-dependent pair `Nat × Nat`, which mints the reserved `§_`
+--     binder and therefore carries no mode.
+#eval chkLMsg prog{
+    λ (B : List (Nat × Nat)).
+      elim B return (λ (Bm : List (Nat × Nat)). Nat) {
+        Nil => Z,
+        Cons (E) (T) Rec => Rec } }
+  prog{ Π (B : List (Nat × Nat)) → Nat }
+
+-- (xi) …and over `List (List Nat)`, to see whether ANY compound element breaks it.
+#eval chkLMsg prog{
+    λ (B : List (List Nat)).
+      elim B return (λ (Bm : List (List Nat)). Nat) {
+        Nil => Z,
+        Cons (E) (T) Rec => Rec } }
+  prog{ Π (B : List (List Nat)) → Nat }
+
+-- (xii) A `List (Σ …)` used WITHOUT recursion — does the type itself work?
+#eval chkLMsg prog{ Cons(Pair(1, 2), Nil) } prog{ List (Σ (k : Nat) → Nat) }
+#eval chkLMsg prog{ λ (B : List (Σ (k : Nat) → Nat)). B }
+              prog{ Π (B : List (Σ (k : Nat) → Nat)) → List (Σ (k : Nat) → Nat) }
+
+/-! ### The cause: the `elim` SUGAR is monomorphic at `List Nat`, the kernel is not
+
+    `Uni.elabUElim`'s Nil/Cons branch writes the element type as a literal:
+
+        let hDom ← binderDom hName (← `(Dllbc.Term.const "Nat"))
+        let tDom ← binderDom tName (← `(Dllbc.Term.app (Dllbc.Term.const "List") (Dllbc.Term.const "Nat")))
+        … (Dllbc.Term.const "listRec") (Dllbc.Term.const "Nat") …
+
+    while `Machine`'s `listRec` typing rule takes `A` as an argument and builds
+    `List A` from it, so the kernel is fully general. The `Pair` branch two cases
+    below already reads its `A`/`B` out of the motive's binder type
+    (`Σ (y : A) → B`); the Nil/Cons branch does not read its `A` out of `List A`.
+
+    Confirmed below by writing the `listRec` spine by hand with the right element
+    type — the same terms then check. -/
+
+-- (xiii) `List (Σ …)`, hand-built spine: the (viii) failure, now `true`.
+#eval chkLMsg prog{
+    λ (B : List (Σ (k : Nat) → Nat)).
+      listRec (Σ (k : Nat) → Nat)
+        (λ (Bm : List (Σ (k : Nat) → Nat)). Nat)
+        Z
+        (λ (H : Σ (k : Nat) → Nat). λ (T : List (Σ (k : Nat) → Nat)). λ (Ih : Nat). Ih)
+        B }
+  prog{ Π (B : List (Σ (k : Nat) → Nat)) → Nat }
+
+-- (xiv) `List (List Nat)`, hand-built spine: the (xi) failure, now `true`.
+#eval chkLMsg prog{
+    λ (B : List (List Nat)).
+      listRec (List Nat)
+        (λ (Bm : List (List Nat)). Nat)
+        Z
+        (λ (H : List Nat). λ (T : List (List Nat)). λ (Ih : Nat). Ih)
+        B }
+  prog{ Π (B : List (List Nat)) → Nat }
+
+-- (xv) …and the WHOLE bucket lookup, with only its outer recursion hand-written.
+def LookupFn2 : Term := prog{
+  λ (K : Nat). λ (B : List (Σ (k : Nat) → Nat)).
+    listRec (Σ (k : Nat) → Nat)
+      (λ (Bm : List (Σ (k : Nat) → Nat)). Σ (b : Bool) → OptP b Nat)
+      Pair(False, unit)
+      (λ (E : Σ (k : Nat) → Nat). λ (T : List (Σ (k : Nat) → Nat)).
+        λ (Rec : Σ (b : Bool) → OptP b Nat).
+          elim E return (λ (Em : Σ (k : Nat) → Nat). Σ (b : Bool) → OptP b Nat) {
+            Pair (K2) (V2) =>
+              elim (Eqb K K2) return (λ (Bm2 : Bool). Σ (b : Bool) → OptP b Nat) {
+                True => Pair(True, V2),
+                False => Rec } })
+      B }
+
+#eval chkLMsg LookupFn2 LookupTy
+#eval (pv prog{ LookupFn2 3 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil)) }).pretty
+#eval (pv prog{ LookupFn2 9 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil)) }).pretty
+#eval chkLMsg prog{ Refl } prog{ Id (Σ (b : Bool) → OptP b Nat)
+  (LookupFn2 3 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil))) Pair(True, 30) }
+#eval chkLMsg prog{ Refl } prog{ Id (Σ (b : Bool) → OptP b Nat)
+  (LookupFn2 9 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil))) Pair(False, unit) }
+
+-- The `Lookup K Nil = None` lemma against the hand-built version.
+#eval chkLMsg prog{ λ (K : Nat). Refl } prog{
+  Π (K : Nat) → Id (Σ (b : Bool) → OptP b Nat) (LookupFn2 K Nil) Pair(False, unit) }
+
 end Dllbc.Tests.HmProbeOpt
