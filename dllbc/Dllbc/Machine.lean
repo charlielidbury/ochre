@@ -843,7 +843,7 @@ structure Leaf where
 def rangeEnd (fuel : Nat) (lo cnt : Term) : Term :=
   match Term.natOf? (Pure.nf fuel cnt) with
   | some k => (List.range k).foldl (fun acc _ => Term.succ acc) lo
-  | none => Pure.kAdd lo cnt
+  | none => prog{ %(Pure.kAddFn) %lo %cnt }
 
 def extentMapGo (fuel : Nat) (b : Term) : List Val → M (List Leaf)
   | [] => pure []
@@ -865,7 +865,7 @@ def extentMapGo (fuel : Nat) (b : Term) : List Val → M (List Leaf)
 def sumExtents : List Leaf → Term
   | [] => Term.zero
   | [l] => l.count
-  | l :: rest => Pure.kAdd l.count (sumExtents rest)
+  | l :: rest => prog{ %(Pure.kAddFn) %(l.count) %(sumExtents rest) }
 
 /-- The extent map of an array node. An UNCARVED array is a single leaf spanning it. -/
 def extentMap (fuel : Nat) (v : Val) : M (List Leaf) :=
@@ -1479,7 +1479,7 @@ mutual
           else leaves.allM (fun l => do
             if !Val.segOwned l.body then
               throwErr s!"hasType: array segment at [{l.base.pretty} ; {l.count.pretty}) holds {l.body.pretty} — a suspended array has no value of its type (§5.2)"
-            else hasType fuel l.body (Pure.arrayTy l.count t))
+            else hasType fuel l.body prog{ Array %(l.count) %t })
       -- A recursor spine over RUNTIME arms is a neutral the checker cannot type:
       -- its arms are BODIES, so there is nothing to synthesize from. Same
       -- rejection the `.app` case gives a neutral it does not recognise, and
@@ -1619,10 +1619,10 @@ mutual
           match Pure.asArrayTy? (Pure.whnf fuel ty) with
           | none => pure false
           | some (n, t) =>
-            if !(Pure.convert fuel n (Pure.kAdd m k)) then pure false
+            if !(Pure.convert fuel n prog{ %(Pure.kAddFn) %m %k }) then pure false
             else do
-              let aOk ← hasTypeT fuel a (Pure.arrayTy m t)
-              let bOk ← hasTypeT fuel b (Pure.arrayTy k t)
+              let aOk ← hasTypeT fuel a prog{ Array %m %t }
+              let bOk ← hasTypeT fuel b prog{ Array %k %t }
               pure (aOk && bOk)
         | .const "acons", [n, x, xs] =>
           match Pure.asArrayTy? (Pure.whnf fuel ty) with
@@ -1631,11 +1631,11 @@ mutual
             if !(Pure.convert fuel n' (.ctorApp "S" [n])) then pure false
             else do
               let xOk ← hasTypeT fuel x t
-              let xsOk ← hasTypeT fuel xs (Pure.arrayTy n t)
+              let xsOk ← hasTypeT fuel xs prog{ Array %n %t }
               pure (xOk && xsOk)
         | .const "aget", tt :: n :: i :: a :: rest =>       -- aget T n i a : T
           let iOk ← hasTypeT fuel i (.const "Nat")
-          let aOk ← hasTypeT fuel a (Pure.arrayTy n tt)
+          let aOk ← hasTypeT fuel a prog{ Array %n %tt }
           finish tt rest (iOk && aOk)
         | .const "arrRec", tt :: p :: pn :: pc :: n :: a :: rest =>   -- arrRec T P pn pc n a : P n a
           -- The cons view's recursor, so the pure library over arrays is written
@@ -1645,14 +1645,14 @@ mutual
           let pcTy : Term :=
             .pi "§n" (.const "Nat")
               (.pi "§x" tt
-                (.pi "§xs" (Pure.arrayTy (.pvar "§n") tt)
+                (.pi "§xs" prog{ Array %(Term.pvar "§n") %tt }
                   (.pi "§ih" (.app (.app p (.pvar "§n")) (.pvar "§xs"))
                     (.app (.app p (.ctorApp "S" [.pvar "§n"]))
                       (.app (.app (.app (.const "acons") (.pvar "§n")) (.pvar "§x"))
                         (.pvar "§xs"))))))
           let pcOk ← hasTypeT fuel pc pcTy
           let nOk ← hasTypeT fuel n (.const "Nat")
-          let aOk ← hasTypeT fuel a (Pure.arrayTy n tt)
+          let aOk ← hasTypeT fuel a prog{ Array %n %tt }
           finish (Pure.nf fuel (.app (.app p n) a)) rest (pnOk && pcOk && nOk && aOk)
         | hd, args =>
           -- A bound function variable applied (`ih b c hab hbc`): synthesize by
@@ -1893,11 +1893,11 @@ def carveObligation (fuel : Nat) (b m lo cnt : Term) : Term :=
   -- the `Le cnt m` a program can supply — stating the obligation absolutely would
   -- demand evidence about the leaf's absolute end that nothing can produce. Premise
   -- (3)'s own logic says the offsets are leaf-relative; premise (2) should be too.
-  if Pure.convert fuel lo b then Pure.kLe cnt m                       -- base-aligned: lo' = Z
-  else if Pure.convert fuel b Term.zero then Pure.kLe (rangeEnd fuel lo cnt) m  -- leaf at the node base
+  if Pure.convert fuel lo b then prog{ %(Pure.kLeFn) %cnt %m }                       -- base-aligned: lo' = Z
+  else if Pure.convert fuel b Term.zero then prog{ %(Pure.kLeFn) %(rangeEnd fuel lo cnt) %m }  -- leaf at the node base
   else
-    let low := Pure.kLe b lo
-    let high := Pure.kLe (rangeEnd fuel lo cnt) (Pure.kAdd b m)
+    let low := prog{ %(Pure.kLeFn) %b %lo }
+    let high := prog{ %(Pure.kLeFn) %(rangeEnd fuel lo cnt) (%(Pure.kAddFn) %b %m) }
     .sigmaT "§lo" low high
 
 /-- Is the cited evidence good for this leaf? With no evidence cited we try the
@@ -1933,7 +1933,7 @@ def carveBody (fuel : Nat) (body : Val) (loN cntN restN : Nat) (lo' cnt rest : T
       | some (_, t) => do
         let mk : Term → M Term := fun c => do
           let s ← freshSym
-          modify (fun st => { st with sctx := (s, Pure.arrayTy c t) :: st.sctx })
+          modify (fun st => { st with sctx := (s, prog{ Array %c %t }) :: st.sctx })
           pure (Term.sym s)
         let b₁ ← mk lo'; let b₂ ← mk cnt; let b₃ ← mk rest
         -- The spine is built over the NONEMPTY pieces only. A zero-extent σ would be
@@ -1943,9 +1943,9 @@ def carveBody (fuel : Nat) (body : Val) (loN cntN restN : Nat) (lo' cnt rest : T
         -- concrete case; the symbolic test is `convert c Z`, below.
         let isZ : Term → Bool := fun c => Pure.convert fuel c Term.zero
         let spine :=
-          if isZ lo' then (if isZ rest then b₂ else Pure.arrCatS cnt rest b₂ b₃)
-          else if isZ rest then Pure.arrCatS lo' cnt b₁ b₂
-          else Pure.arrCatS lo' (Pure.kAdd cnt rest) b₁ (Pure.arrCatS cnt rest b₂ b₃)
+          if isZ lo' then (if isZ rest then b₂ else prog{ arrCat %cnt %rest %b₂ %b₃ })
+          else if isZ rest then prog{ arrCat %lo' %cnt %b₁ %b₂ }
+          else prog{ arrCat %lo' (%(Pure.kAddFn) %cnt %rest) %b₁ (arrCat %cnt %rest %b₂ %b₃) }
         refineSym σ (.know spine)
         pure (.know b₁, .know b₂, .know b₃)
   | _, _ =>
@@ -2028,7 +2028,7 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Term) (given : Option Ter
         | sg :: rest =>
           if Pure.convert fuel bse lo then acc ++ [Val.segNode Term.zero (.ctor "Arr" [])] ++ (sg :: rest)
           else match Val.asSeg? sg with
-            | some (c, _) => place (acc ++ [sg]) (Pure.kAdd bse c) rest
+            | some (c, _) => place (acc ++ [sg]) prog{ %(Pure.kAddFn) %bse %c } rest
             | none => acc ++ (sg :: rest)
       setAtPos fuel pos (.node "§segs" (place [] Term.zero segs))
   else pure ()
@@ -2056,7 +2056,7 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Term) (given : Option Ter
     let leaves ← extentMap fuel (← getAtPos fuel pos)
     let aligned := leaves.filter (fun l => Pure.convert fuel l.base lo)
     let pick :=
-      (aligned.find? (fun l => Pure.convert fuel l.count (Pure.kAdd cnt rest)))
+      (aligned.find? (fun l => Pure.convert fuel l.count prog{ %(Pure.kAddFn) %cnt %rest }))
         <|> (aligned.find? (fun l => !(Pure.convert fuel l.count Term.zero)))
         <|> aligned.head?
     match pick with
@@ -2075,12 +2075,12 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Term) (given : Option Ter
       -- provenance, an unrecorded unification against a universal is not. So the
       -- program cites the equation and premise (3) solves ALONG it — the same refl-match
       -- solution transition, now licensed.
-      if Pure.convert fuel l.count (Pure.kAdd cnt rest) then pure ()
+      if Pure.convert fuel l.count prog{ %(Pure.kAddFn) %cnt %rest } then pure ()
       else
-        let owed := Term.idT (.const "Nat") l.count (Pure.kAdd cnt rest)
+        let owed := Term.idT (.const "Nat") l.count prog{ %(Pure.kAddFn) %cnt %rest }
         match eqc with
         | some q =>
-          if ← hasTypeT fuel q owed then reflUnify fuel l.count (Pure.kAdd cnt rest)
+          if ← hasTypeT fuel q owed then reflUnify fuel l.count prog{ %(Pure.kAddFn) %cnt %rest }
           else throwErr s!"carve: the cited decomposition does not have type {owed.pretty} (¶3.2 premise 3: the citation is the license, and its TYPE is what licenses)"
         | none =>
           throwErr s!"carve: the supplied residue asserts {owed.pretty}, which does not hold by conversion, and premise (3) may not impose it by refining a telescope parameter's σ — that would constrain this function's callers without recording it in its signature (M17). Cite the equation as a[lo ; cnt ; rest | h | heq]"
@@ -2164,7 +2164,7 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Term) (given : Option Ter
           else do
             let d ← freshSym
             modify (fun st => { st with sctx := (d, .const "Nat") :: st.sctx })
-            reflUnify fuel lo (Pure.kAdd l.base (Term.sym d))
+            reflUnify fuel lo prog{ %(Pure.kAddFn) %(l.base) %(Term.sym d) }
             pure (Term.sym d)
         -- Then the residue. Concrete extents COMPUTE (¶3.3's trace: "n = 3 concrete,
         -- both sides compute — nothing refined"), and the arithmetic is meta-level on
@@ -2195,7 +2195,7 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Term) (given : Option Ter
             -- here on. RIGID — a compound neutral like `add p q` — is stuck, and the
             -- remedy is the one the north star already uses: take the length as a
             -- parameter. A real restriction on which signatures are carvable (¶8.4).
-            (do reflUnify fuel l.count (Pure.kAdd lo' (Pure.kAdd cnt (Term.sym r)))) <|>
+            (do reflUnify fuel l.count prog{ %(Pure.kAddFn) %lo' (%(Pure.kAddFn) %cnt %(Term.sym r)) }) <|>
               throwErr s!"carve: premise (3) is stuck — the leaf's extent ({l.count.pretty}) is a compound neutral, not a flexible σ, so `m ≡ add lo' (add cnt rest)` has no solution by refinement. Take the length as a telescope PARAMETER rather than an expression (¶3.2, ¶8.4's rigid-length restriction)"
             pure (Term.sym r)
         -- The bodies. Positional on a run (which needs concrete extents — one cannot

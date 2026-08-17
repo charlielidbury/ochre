@@ -109,12 +109,12 @@ example : (pv prog{ arrCat 2 1 (arrCat 1 1 Arr(3) Arr(1)) Arr(2) } ==
 
 -- The stuck case: two σ's have no name for their concatenation, but they do have a
 -- term for it (¶1.1), which is all merge and the ⇝ fold need.
-def catSyms : Term := Pure.arrCatS (Term.nat 2) (Term.nat 1) (.sym 0) (.sym 1)
+def catSyms : Term := prog{ arrCat %(Term.nat 2) %(Term.nat 1) %(Term.sym 0) %(Term.sym 1) }
 example : (Pure.nf 100 catSyms == catSyms) = true := by native_decide
 
 -- `arrCat m k a b : Array (Add m k) T` — the empty-run absorption is what makes a
 -- DEGENERATE carve's rejoin conversion definitional instead of lemma-mediated.
-example : (Pure.nf 200 (Pure.arrCatS (Term.nat 0) (Term.nat 2) (.ctorApp "Arr" []) (.sym 0)) ==
+example : (Pure.nf 200 prog{ arrCat %(Term.nat 0) %(Term.nat 2) %(Term.ctorApp "Arr" []) %(Term.sym 0) } ==
            Term.sym 0) = true := by native_decide
 
 /-! ## (i.c) `aget` — the ⇝ column at an index place -/
@@ -194,7 +194,7 @@ example : (Val.mergeArrays (segsOf [(1, .ctor "Arr" [Val.nat 3]), (2, .loanM 0)]
 
 -- The ⇝ bridge (¶1.3): the fold of a collapsed segment list is its `arrCat` spine.
 example : (Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.sym 0), Val.segNode (Term.nat 2) (.sym 1)]
-           == some (Pure.arrCatS (Term.nat 1) (Term.nat 2) (.sym 0) (.sym 1))) = true := by native_decide
+           == some prog{ arrCat %(Term.nat 1) %(Term.nat 2) %(Term.sym 0) %(Term.sym 1) }) = true := by native_decide
 
 -- "A suspended array has no snapshot; only a collapsed one does" — §5.2's
 -- proper-payload premise, arriving at an array node. Both markers are rejected.
@@ -207,10 +207,10 @@ example : (Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.bot),
 -- knowledge form of a rejoined array IS the uncarved one, definitionally.
 example : (Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.ctor "Arr" [Val.nat 3]),
                              Val.segNode (Term.nat 2) (.ctor "Arr" [Val.nat 7, Val.nat 2])]
-           == some (Pure.arrCatS (Term.nat 1) (Term.nat 2) (.ctorApp "Arr" [Term.nat 3])
-                     (.ctorApp "Arr" [Term.nat 7, Term.nat 2]))) = true := by native_decide
-example : (Pure.nf 200 (Pure.arrCatS (Term.nat 1) (Term.nat 2) (.ctorApp "Arr" [Term.nat 3])
-             (.ctorApp "Arr" [Term.nat 7, Term.nat 2]))
+           == some prog{ arrCat %(Term.nat 1) %(Term.nat 2) %(Term.ctorApp "Arr" [Term.nat 3])
+                          %(Term.ctorApp "Arr" [Term.nat 7, Term.nat 2]) }) = true := by native_decide
+example : (Pure.nf 200 prog{ arrCat %(Term.nat 1) %(Term.nat 2) %(Term.ctorApp "Arr" [Term.nat 3])
+                            %(Term.ctorApp "Arr" [Term.nat 7, Term.nat 2]) }
            == .ctorApp "Arr" [Term.nat 3, Term.nat 7, Term.nat 2]) = true := by native_decide
 
 /-! ## (i.f) Extents read off the value
@@ -226,7 +226,7 @@ example : (Val.arrExtentPure? (.ctor "Arr" [Val.nat 3, Val.nat 1, Val.nat 2])
 example : (Pure.nf 100 ((Val.arrExtentPure? (segsOf [(1, .sym 0), (2, .sym 1)])).getD Term.zero)
            == Term.nat 3) = true := by native_decide
 example : (Pure.nf 100 ((Val.arrExtentPure? (Val.know
-             (Pure.arrCatS (Term.nat 1) (Term.nat 2) (.sym 0) (.sym 1)))).getD Term.zero)
+             prog{ arrCat %(Term.nat 1) %(Term.nat 2) %(Term.sym 0) %(Term.sym 1) })).getD Term.zero)
            == Term.nat 3) = true := by native_decide
 example : (Val.arrExtentPure? (.sym 0)).isNone = true := by native_decide
 
@@ -275,9 +275,9 @@ example : (Val.renumber id (· + 10) carvedWithLoan == segsOf [(1, .sym 10), (2,
 
 example : (Pure.kAddFn == Dllbc.Std.addFn) = true := by native_decide
 example : (Pure.kLeFn == Dllbc.Std.LeFn) = true := by native_decide
-example : (Pure.nf 200 (Pure.kAdd (Term.nat 2) (Term.nat 3)) == Term.nat 5) = true := by native_decide
-example : (Pure.nf 200 (Pure.kLe (Term.nat 2) (Term.nat 3)) == .const "Unit") = true := by native_decide
-example : (Pure.nf 200 (Pure.kLe (Term.nat 3) (Term.nat 2)) == .const "Bot") = true := by native_decide
+example : (Pure.nf 200 prog{ %(Pure.kAddFn) %(Term.nat 2) %(Term.nat 3) } == Term.nat 5) = true := by native_decide
+example : (Pure.nf 200 prog{ %(Pure.kLeFn) %(Term.nat 2) %(Term.nat 3) } == .const "Unit") = true := by native_decide
+example : (Pure.nf 200 prog{ %(Pure.kLeFn) %(Term.nat 3) %(Term.nat 2) } == .const "Bot") = true := by native_decide
 
 /-! ## (ii) CARVE, at concrete indices
 
@@ -1069,9 +1069,9 @@ example : progRejects recSlice "only valid at a telescope position" = true := by
     obligation `Le 1 σ_rest` reduces to `Le Z j`, which is ⊤ and needs no evidence at
     all. Stuck while the residue is a bare σ; free the moment it has a shape. -/
 
-example : (Pure.nf 300 (Pure.kLe (Term.nat 1) (.ctorApp "S" [.sym 0])) == .const "Unit")
+example : (Pure.nf 300 prog{ %(Pure.kLeFn) %(Term.nat 1) %(Term.ctorApp "S" [.sym 0]) } == .const "Unit")
     = true := by native_decide
-example : (Pure.nf 300 (Pure.kLe (Term.nat 1) (.sym 0)) == .const "Unit")
+example : (Pure.nf 300 prog{ %(Pure.kLeFn) %(Term.nat 1) %(Term.sym 0) } == .const "Unit")
     = false := by native_decide
 
 /-! ## (vii) ROUTE (a) — the program supplies the residue, and ¶6's carve unblocks
