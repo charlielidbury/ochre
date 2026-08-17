@@ -1342,10 +1342,30 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
     let ihName := (cih.getD (mkIdent `ih)).getId.toString
     let ihDom ← pOf tName
     let body := (← elabUBlk rctx (ihName :: tName :: hName :: pctx) n2 cbody).1
-    let hDom ← binderDom hName (← `(Dllbc.Term.const "Nat"))
-    let tDom ← binderDom tName (← `(Dllbc.Term.app (Dllbc.Term.const "List") (Dllbc.Term.const "Nat")))
+    -- **The ELEMENT TYPE is read out of the motive's binder type**, exactly as the
+    -- `Pair` branch below reads `A`/`B` out of `Σ (y : A). B`. It used to be the
+    -- literal `Nat` in all three places this needs it — `listRec`'s `A` argument
+    -- and the Cons arm's head and tail domains — which made the surface's list
+    -- elim monomorphic at `List Nat` while `Machine`'s `listRec` rule (which
+    -- takes `A` and builds `List A` from it) was general all along. An `elim` over
+    -- a `List (Σ (k : Nat). Nat)` — a hashmap's bucket — checked only when the
+    -- spine was written out by hand. (Ported from `hm-probe-opt` commit 6b5a724e;
+    -- value-preserving for every existing call site, since a `List Nat` motive
+    -- elaborates `Nat` to the same `Term.const "Nat"` the literal wrote.)
+    let mTyBare := match mTy with | `(uterm| ($e:uterm)) => e | _ => mTy
+    let (elemHd, elemArgs) := collectAppU mTyBare
+    let elemSyn : Option (TSyntax `uterm) :=
+      if elemArgs.size != 1 then none
+      else match elemHd with
+        | `(uterm| $x:ident) => if x.getId.toString == "List" then some elemArgs[0]! else none
+        | _ => none
+    let elemT ← match elemSyn with
+      | some a => pure (← elabUTerm rctx pctx n2 a).1
+      | none => `(Dllbc.Term.const "Nat")
+    let hDom ← binderDom hName elemT
+    let tDom ← binderDom tName (← `(Dllbc.Term.app (Dllbc.Term.const "List") $elemT))
     let ihDomM ← binderDom ihName ihDom
-    return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "listRec") (Dllbc.Term.const "Nat")) $motiveT) $n)
+    return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "listRec") $elemT) $motiveT) $n)
         (Dllbc.Term.lam $(quote hName) $hDom
           (Dllbc.Term.lam $(quote tName) $tDom
             (Dllbc.Term.lam $(quote ihName) $ihDomM $body)))) $scrutT), n2)
