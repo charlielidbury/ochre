@@ -5251,4 +5251,73 @@ def AllHashedACatTy : Term := prog{
     AllHashedA Cap K L I0 → AllHashedA Cap M W (Add I0 K) →
       AllHashedA Cap (Add K M) (arrCat K M L W) I0 }
 
+/-! ## `HMInv`'s four projectors
+
+    `HMInv` is a non-dependent `×`-chain (`Le 1 cap × AllHashedA … × Id … × Id …`); the
+    array-level `Insert` needs to pull ONE clause out of a `HashMap`'s packed (hence
+    comptime, hence un-`match`able) invariant witness at a time. Each is one or two
+    `elim`s peeling the chain from the front. -/
+
+def HMInvCapPos : Term := prog{
+  λ (Cap : Nat). λ (Load : Nat). λ (N : Nat). λ (Slots : Array Cap Bucket).
+  λ (H : Le (S Z) Cap × AllHashedA Cap Cap Slots Z × Id Nat N (TotalLenA Cap Slots) ×
+         Id Nat Load (Div (Mul Cap 4) 5)).
+    elim H return (λ (Q : Σ (J : Le (S Z) Cap). AllHashedA Cap Cap Slots Z ×
+        Id Nat N (TotalLenA Cap Slots) × Id Nat Load (Div (Mul Cap 4) 5)). Le (S Z) Cap) {
+      Pair (X) (Y) => X } }
+def HMInvCapPosTy : Term := prog{
+  Π (Cap : Nat) → Π (Load : Nat) → Π (N : Nat) → Π (Slots : Array Cap Bucket) →
+    HMInv Cap Load N Slots → Le (S Z) Cap }
+
+def HMInvHashed : Term := prog{
+  λ (Cap : Nat). λ (Load : Nat). λ (N : Nat). λ (Slots : Array Cap Bucket).
+  λ (H : Le (S Z) Cap × AllHashedA Cap Cap Slots Z × Id Nat N (TotalLenA Cap Slots) ×
+         Id Nat Load (Div (Mul Cap 4) 5)).
+    elim H return (λ (Q : Σ (J : Le (S Z) Cap). AllHashedA Cap Cap Slots Z ×
+        Id Nat N (TotalLenA Cap Slots) × Id Nat Load (Div (Mul Cap 4) 5)).
+        AllHashedA Cap Cap Slots Z) {
+      Pair (X) (Y) =>
+        elim Y return (λ (Q2 : Σ (J2 : AllHashedA Cap Cap Slots Z). Id Nat N (TotalLenA Cap Slots) ×
+            Id Nat Load (Div (Mul Cap 4) 5)). AllHashedA Cap Cap Slots Z) {
+          Pair (X2) (Y2) => X2 } } }
+def HMInvHashedTy : Term := prog{
+  Π (Cap : Nat) → Π (Load : Nat) → Π (N : Nat) → Π (Slots : Array Cap Bucket) →
+    HMInv Cap Load N Slots → AllHashedA Cap Cap Slots Z }
+
+def HMInvCount : Term := prog{
+  λ (Cap : Nat). λ (Load : Nat). λ (N : Nat). λ (Slots : Array Cap Bucket).
+  λ (H : Le (S Z) Cap × AllHashedA Cap Cap Slots Z × Id Nat N (TotalLenA Cap Slots) ×
+         Id Nat Load (Div (Mul Cap 4) 5)).
+    elim H return (λ (Q : Σ (J : Le (S Z) Cap). AllHashedA Cap Cap Slots Z ×
+        Id Nat N (TotalLenA Cap Slots) × Id Nat Load (Div (Mul Cap 4) 5)).
+        Id Nat N (TotalLenA Cap Slots)) {
+      Pair (X) (Y) =>
+        elim Y return (λ (Q2 : Σ (J2 : AllHashedA Cap Cap Slots Z). Id Nat N (TotalLenA Cap Slots) ×
+            Id Nat Load (Div (Mul Cap 4) 5)). Id Nat N (TotalLenA Cap Slots)) {
+          Pair (X2) (Y2) =>
+            elim Y2 return (λ (Q3 : Σ (J3 : Id Nat N (TotalLenA Cap Slots)).
+                Id Nat Load (Div (Mul Cap 4) 5)). Id Nat N (TotalLenA Cap Slots)) {
+              Pair (X3) (Y3) => X3 } } } }
+def HMInvCountTy : Term := prog{
+  Π (Cap : Nat) → Π (Load : Nat) → Π (N : Nat) → Π (Slots : Array Cap Bucket) →
+    HMInv Cap Load N Slots → Id Nat N (TotalLenA Cap Slots) }
+
+def HMInvLoad : Term := prog{
+  λ (Cap : Nat). λ (Load : Nat). λ (N : Nat). λ (Slots : Array Cap Bucket).
+  λ (H : Le (S Z) Cap × AllHashedA Cap Cap Slots Z × Id Nat N (TotalLenA Cap Slots) ×
+         Id Nat Load (Div (Mul Cap 4) 5)).
+    elim H return (λ (Q : Σ (J : Le (S Z) Cap). AllHashedA Cap Cap Slots Z ×
+        Id Nat N (TotalLenA Cap Slots) × Id Nat Load (Div (Mul Cap 4) 5)).
+        Id Nat Load (Div (Mul Cap 4) 5)) {
+      Pair (X) (Y) =>
+        elim Y return (λ (Q2 : Σ (J2 : AllHashedA Cap Cap Slots Z). Id Nat N (TotalLenA Cap Slots) ×
+            Id Nat Load (Div (Mul Cap 4) 5)). Id Nat Load (Div (Mul Cap 4) 5)) {
+          Pair (X2) (Y2) =>
+            elim Y2 return (λ (Q3 : Σ (J3 : Id Nat N (TotalLenA Cap Slots)).
+                Id Nat Load (Div (Mul Cap 4) 5)). Id Nat Load (Div (Mul Cap 4) 5)) {
+              Pair (X3) (Y3) => Y3 } } } }
+def HMInvLoadTy : Term := prog{
+  Π (Cap : Nat) → Π (Load : Nat) → Π (N : Nat) → Π (Slots : Array Cap Bucket) →
+    HMInv Cap Load N Slots → Id Nat Load (Div (Mul Cap 4) 5) }
+
 end Dllbc.StdLemmas
