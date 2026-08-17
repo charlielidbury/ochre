@@ -538,4 +538,43 @@ def LookupFn2 : Term := prog{
 #eval chkLMsg prog{ λ (K : Nat). Refl } prog{
   Π (K : Nat) → Id (Σ (b : Bool) → OptP b Nat) (LookupFn2 K Nil) Pair(False, unit) }
 
+/-! ## Ergonomics: can the encoding be given a `Some`/`None` vocabulary?
+
+    The Σ(Bool) Option is livable only if a spec can be WRITTEN in it. `Pair(True,
+    v)` and `Pair(False, unit)` at every site would be noise; comptime
+    constructors are not. -/
+
+/-- `Opt : Type → Type`, so a signature says `OptFn Nat` rather than spelling the Σ. -/
+def OptFn : Term := prog{ λ (T : Type). Σ (b : Bool) → OptP b T }
+#eval (pv prog{ OptFn Nat }).pretty
+
+/-- `Some : Π (V : Nat) → Opt Nat`. -/
+def SomeFn : Term := prog{ λ (V : Nat). Pair(True, V) }
+def SomeTy : Term := prog{ Π (V : Nat) → (Σ (b : Bool) → OptP b Nat) }
+#eval chkLMsg SomeFn SomeTy
+/-- `None : Opt Nat`. -/
+def NoneV : Term := prog{ Pair(False, unit) }
+#eval chkLMsg NoneV prog{ Σ (b : Bool) → OptP b Nat }
+
+-- The spec equations, re-stated in that vocabulary — this is what a hashmap's
+-- `find k = Some v` would actually read like.
+#eval chkLMsg prog{ Refl } prog{ Id (OptFn Nat)
+  (LookupFn2 3 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil))) (SomeFn 30) }
+#eval chkLMsg prog{ Refl } prog{ Id (OptFn Nat)
+  (LookupFn2 9 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil))) NoneV }
+#eval chkLMsg prog{ Refl } prog{ Id (OptFn Nat)
+  (LookupFn2 3 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil))) (SomeFn 10) }
+
+-- …and a `fn` may write its return type and its results in it too.
+#eval chkProg prog{
+  fn PredOpt2 (n : Nat) -> (OptFn Nat) {
+    match n { Z => NoneV, S(m) => SomeFn m } };
+  () }
+
+-- The Option at a COMPOUND payload — a hashmap is generic in `V`, and `OptP`
+-- takes the payload type as a parameter, so this is free.
+#eval chkLMsg prog{ Pair(True, Cons(1, Nil)) } prog{ OptFn (List Nat) }
+#eval chkLMsg prog{ Pair(False, unit) } prog{ OptFn (List Nat) }
+#eval chkLMsg prog{ Pair(True, 5) } prog{ OptFn (List Nat) }
+
 end Dllbc.Tests.HmProbeOpt
