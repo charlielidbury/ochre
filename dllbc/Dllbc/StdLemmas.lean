@@ -5068,4 +5068,77 @@ def MkFillFind : Term := prog{
       S (N') Ih => λ (Q : Nat). Ih Q
     } }
 
+/-! ## `insert_in_list` — the bucket-level walk, and the arithmetic it needs
+
+    `EqbTrueEq`/`EqbSymm` are decidable-equality soundness and symmetry, by the
+    `Znots`-style discrimination and a plain double induction respectively; neither
+    exists yet (`EqbRefl` — reflexivity — already does). `FindInsL`/`CondBump` are the
+    bucket-level model update and the "bump the count iff absent" ledger the size
+    conjunct is stated against; `CondBumpSucc` is the one fact gluing a bucket's own
+    accounting to its caller's (`S` commutes with `CondBump` in its SECOND argument,
+    regardless of the first) — `OptElimAssoc`'s trick again: both cases close once the
+    `Opt`'s tag alone is fixed. -/
+
+def FalseNotTrue : Term := prog{
+  λ (H : Id Bool False True).
+    j Bool False (λ (Y : Bool). λ (Hy : Id Bool False Y).
+        elim Y return (λ (Yy : Bool). Type) { True => Bot, False => Unit })
+      unit True H }
+def FalseNotTrueTy : Term := prog{ Id Bool False True → Bot }
+
+def EqbTrueEq : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Id Bool (Eqb Az B) True → Id Nat Az B) {
+      Z => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Id Bool (Eqb Z Bz) True → Id Nat Z Bz) {
+          Z => λ (H : Id Bool True True). Refl,
+          S (B') Rb => λ (H : Id Bool False True). botElim (Id Nat Z (S B')) (FalseNotTrue H)
+        },
+      S (A') Ih => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Id Bool (Eqb (S A') Bz) True → Id Nat (S A') Bz) {
+          Z => λ (H : Id Bool False True). botElim (Id Nat (S A') Z) (FalseNotTrue H),
+          S (B') Rb => λ (H : Id Bool (Eqb A' B') True).
+            IdCongr Nat Nat (λ (X : Nat). S X) A' B' (Ih B' H)
+        }
+    } }
+def EqbTrueEqTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Id Bool (Eqb A B) True → Id Nat A B }
+
+def EqbSymm : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Id Bool (Eqb Az B) (Eqb B Az)) {
+      Z => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Id Bool (Eqb Z Bz) (Eqb Bz Z)) { Z => Refl, S (B') Rb => Refl },
+      S (A') Ih => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Id Bool (Eqb (S A') Bz) (Eqb Bz (S A'))) {
+          Z => Refl, S (B') Rb => Ih B'
+        }
+    } }
+def EqbSymmTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Id Bool (Eqb A B) (Eqb B A) }
+
+/-- `FindInsL q key v b` — the bucket-level model update: `Some v` at `key`, the old
+    answer everywhere else. `InsertInList`'s own pointwise return equation is checked
+    against this. -/
+def FindInsL : Term := prog{
+  λ (Q : Nat). λ (Key : Nat). λ (V : Nat). λ (B : Bucket).
+    elim (Eqb Q Key) return (λ (Bz : Bool). Σ (b : Bool). OptP b Nat) {
+      True => Some V, False => FindL Q B } }
+
+/-- `CondBump o n` — `n` bumped iff `o` (the OLD lookup) was `None`. -/
+def CondBump : Term := prog{
+  λ (O : Opt Nat). λ (N : Nat). OptElim O Nat (S N) (λ (V : Nat). N) }
+
+def CondBumpSucc : Term := prog{
+  λ (O : Opt Nat). λ (N : Nat).
+    elim O return (λ (Oz : Σ (b : Bool). OptP b Nat).
+        Id Nat (S (CondBump Oz N)) (CondBump Oz (S N))) {
+      Pair (B1) (P1) =>
+        elim B1 return (λ (Bz : Bool). Π (Pz : OptP Bz Nat) →
+            Id Nat (S (CondBump Pair(Bz, Pz) N)) (CondBump Pair(Bz, Pz) (S N))) {
+          True => λ (V : Nat). Refl,
+          False => λ (U : Unit). Refl
+        } P1
+    } }
+def CondBumpSuccTy : Term := prog{
+  Π (O : Opt Nat) → Π (N : Nat) → Id Nat (S (CondBump O N)) (CondBump O (S N)) }
+
 end Dllbc.StdLemmas

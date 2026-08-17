@@ -31,7 +31,9 @@ open Dllbc.StdLemmas (LeRefl LeTrans LeAdd LeAddL LeAddSucc LeRwL LeRwR AddSucc 
   OptP Opt Some None OptElim Entry Bucket LenE FindL
   AllKeysEq AllHashedA TotalLenA TotalLenACat OptElimAssoc FindArrA FindArrACat
   HMInv HashMapT FindHM SizeHM FindIns FindRem
-  MkFillFn MkFillAllHashed MkFillTotalLen MkFillFind)
+  MkFillFn MkFillAllHashed MkFillTotalLen MkFillFind
+  FalseNotTrue FalseNotTrueTy EqbTrueEq EqbTrueEqTy EqbSymm EqbSymmTy
+  FindInsL CondBump CondBumpSucc CondBumpSuccTy)
 
 namespace Dllbc.Tests.HmFlagship
 
@@ -178,5 +180,17 @@ def hmChain (rest : Term) : Term := prog{
 
 def hmChainClosed : Term := hmChain prog{ () }
 example : progOk hmChainClosed = true := by native_decide
+
+/-! ## §1.5 — `insert_in_list`'s arithmetic toolkit, smoke-tested -/
+
+example : chkL EqbTrueEq EqbTrueEqTy = true := by native_decide
+example : chkL EqbSymm EqbSymmTy = true := by native_decide
+example : chkL CondBumpSucc CondBumpSuccTy = true := by native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindInsL 3 3 70 %bucketLit) (Some 70) } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindInsL 9 3 70 %bucketLit) (FindL 9 %bucketLit) }
+    = true := by native_decide
+example : (pv prog{ CondBump None 5 }).natOf? == some 6 := by native_decide
+example : (pv prog{ CondBump (Some 1) 5 }).natOf? == some 5 := by native_decide
 
 end Dllbc.Tests.HmFlagship
