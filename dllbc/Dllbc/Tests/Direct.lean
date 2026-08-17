@@ -219,8 +219,8 @@ def usePin : Term := prog{
   fn PinOne () -> Σ (r : Nat). Id Nat r (S Z) { Pair(S Z, Refl) };
   fn UseIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () };
   fn UsePin () -> Unit
-        { let p = PinOne();
-          match p { Pair(a, h) => { UseIt(a, h); () } } };
+        { let Pair(a, h) = PinOne();
+          UseIt(a, h); () };
   () }
 example : progOk usePin = true := by native_decide
 
@@ -236,8 +236,8 @@ def usePinLie : Term := prog{
   fn PinOne () -> Σ (r : Nat). Id Nat r (S Z) { Pair(S Z, Refl) };
   fn UseItLie (n : Nat, h : Id Nat n (S (S Z))) -> Unit { () };
   fn UsePinLie () -> Unit
-        { let p = PinOne();
-          match p { Pair(a, h) => { UseItLie(a, h); () } } };
+        { let Pair(a, h) = PinOne();
+          UseItLie(a, h); () };
   () }
 example : progRejects usePinLie "does not have its parameter type" = true := by native_decide
 
@@ -485,20 +485,19 @@ def soUnder (ret tail : Term) : Term := prog{
                 -- `Le (S i2) (S (Len σ_tl))` already IS `Le i2 (Len σ_tl)`. The M14
                 -- bounds-cursor property, still holding.
                 let y1 = Take i2 (*tl);
-                let p = SplitOff(&m *tl, i2, hi);
-                match p { Pair(rr, q) => match q { Pair(H1, h2) => {
-                  -- The prefix conjunct needs a congruence under `Cons (*hd)`, and
-                  -- reading `*tl` here — AFTER handing `&mut *tl` to the call — is
-                  -- the only way to name the callee's exit. That read is what
-                  -- forced the ⇝-side demand-end (Machine.lean, `collapseCDerefs`):
-                  -- before it, the projection returned the parked `loanₘ` itself and
-                  -- a state marker rode silently into this proof term.
-                  -- The suffix conjunct needs nothing: `Drop (S i2) (Cons h t)` IS
-                  -- `Drop i2 t`, so the callee's `h2` is already the goal.
-                  let H0 = *hd;
-                  let c1 = IdCongr (List Nat) (List Nat) (λ (A : List Nat). Cons H0 A)
-                             (*tl) y1 H1;
-                  Pair(rr, Pair(c1, h2)) } } }
+                let Pair(rr, Pair(H1, h2)) = SplitOff(&m *tl, i2, hi);
+                -- The prefix conjunct needs a congruence under `Cons (*hd)`, and
+                -- reading `*tl` here — AFTER handing `&mut *tl` to the call — is
+                -- the only way to name the callee's exit. That read is what
+                -- forced the ⇝-side demand-end (Machine.lean, `collapseCDerefs`):
+                -- before it, the projection returned the parked `loanₘ` itself and
+                -- a state marker rode silently into this proof term.
+                -- The suffix conjunct needs nothing: `Drop (S i2) (Cons h t)` IS
+                -- `Drop i2 t`, so the callee's `h2` is already the goal.
+                let H0 = *hd;
+                let c1 = IdCongr (List Nat) (List Nat) (λ (A : List Nat). Cons H0 A)
+                           (*tl) y1 H1;
+                Pair(rr, Pair(c1, h2))
               }
             }
         } };
@@ -546,11 +545,10 @@ def splitOffLieHead : Term := prog{
               Nil => botElim Unit hi,
               Cons(hd, tl) => {
                 let y1 = Take i2 (*tl);
-                let p = SplitOff(&m *tl, i2, hi);
-                match p { Pair(rr, q) => match q { Pair(H1, h2) => {
-                  let c1 = IdCongr (List Nat) (List Nat) (λ (A : List Nat). A)
-                             (*tl) y1 H1;
-                  Pair(rr, Pair(c1, h2)) } } }
+                let Pair(rr, Pair(H1, h2)) = SplitOff(&m *tl, i2, hi);
+                let c1 = IdCongr (List Nat) (List Nat) (λ (A : List Nat). A)
+                           (*tl) y1 H1;
+                Pair(rr, Pair(c1, h2))
               }
             }
         } };
@@ -861,8 +859,7 @@ example : progOk needLe = true := by native_decide
 def branchKnowledge : Term := prog{
   fn NeedLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
   fn BranchKnowledge (a : Nat, b : Nat) -> Unit
-        { let c = Leb a b;
-          match c {
+        { match Leb a b {
             True => { NeedLe(a, b, LebTrueLe a b Refl); () },
             False => ()
           } };
@@ -1375,8 +1372,7 @@ def suffHonest : Term := prog{ Le (Len *%vfT) %fuelT }
 
 def qsUnder (pret qret suff tail : Term) : Term := prog{
   fn Partition [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (Len *v) fuel) -> %pret
-      { let l = *v;
-        match l {
+      { match *v {
           -- `Ub p Nil` and `Lb p Nil` are both `Unit`, and the Count goal is
           -- `Add Z Z = Z` — the empty Partition proves itself.
           Nil => { *v := Nil;
@@ -1417,32 +1413,29 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
             *v := rest;
             -- The bound goes with the call, UNCHANGED: `Le (Len (Cons x rest)) (S f2)`
             -- already IS `Le (Len rest) f2`.
-            let r = Partition(f2, &m *v, p, Hf);
-            match r { Pair(hi, q1) => match q1 { Pair(Hub, q2) => match q2 { Pair(Hlb, q3) =>
-            match q3 { Pair(Hl1, q4) => match q4 { Pair(Hl2, Hcnt) => {
-              -- THE BRANCH EQUATION, in its first real use. `e` is the only reason
-              -- either arm can build its bound: the split abstracted `Leb σ_x σ_p`
-              -- away, so `LebTrueLe x p Refl` is rejected here (see the wall test)
-              -- and `LebTrueLe x p e` is not.
-              if e : Leb x p {
-                -- x ≤ p: the head belongs to the KEPT part. Derive both proofs
-                -- BEFORE the write, which consumes `lo` and `x` (§5.3's ordering
-                -- corollary, in its body-local form).
-                let lo = *v;
-                let Hub2 = Pair(LebTrueLe x p e, Hub);
-                let Hl2b = LeUpR (Len hi) lr Hl2;
-                let Cnt = MkL lo hi Hcnt;
-                *v := Cons(x, lo);
-                Pair(hi, Pair(Hub2, Pair(Hlb, Pair(Hl1, Pair(Hl2b, Cnt)))))
-              } else {
-                -- x > p: the head belongs to the RETURNED part. `*v` is untouched,
-                -- so `hub` passes straight through.
-                let Hlb2 = Pair(LePredL p x (LebFalseGt x p e), Hlb);
-                let Hl1b = LeUpR (Len *v) lr Hl1;
-                let Cnt = MkR (*v) hi Hcnt;
-                Pair(Cons(x, hi), Pair(Hub, Pair(Hlb2, Pair(Hl1b, Pair(Hl2, Cnt)))))
-              }
-            } } } } } }
+            let Pair(hi, Pair(Hub, Pair(Hlb, Pair(Hl1, Pair(Hl2, Hcnt))))) = Partition(f2, &m *v, p, Hf);
+            -- THE BRANCH EQUATION, in its first real use. `e` is the only reason
+            -- either arm can build its bound: the split abstracted `Leb σ_x σ_p`
+            -- away, so `LebTrueLe x p Refl` is rejected here (see the wall test)
+            -- and `LebTrueLe x p e` is not.
+            if e : Leb x p {
+              -- x ≤ p: the head belongs to the KEPT part. Derive both proofs
+              -- BEFORE the write, which consumes `lo` and `x` (§5.3's ordering
+              -- corollary, in its body-local form).
+              let lo = *v;
+              let Hub2 = Pair(LebTrueLe x p e, Hub);
+              let Hl2b = LeUpR (Len hi) lr Hl2;
+              let Cnt = MkL lo hi Hcnt;
+              *v := Cons(x, lo);
+              Pair(hi, Pair(Hub2, Pair(Hlb, Pair(Hl1, Pair(Hl2b, Cnt)))))
+            } else {
+              -- x > p: the head belongs to the RETURNED part. `*v` is untouched,
+              -- so `hub` passes straight through.
+              let Hlb2 = Pair(LePredL p x (LebFalseGt x p e), Hlb);
+              let Hl1b = LeUpR (Len *v) lr Hl1;
+              let Cnt = MkR (*v) hi Hcnt;
+              Pair(Cons(x, hi), Pair(Hub, Pair(Hlb2, Pair(Hl1b, Pair(Hl2, Cnt)))))
+            }
           } }
         } };
   -- `AppendBack(v, w)`: walk to the end of `*v`, put `w` there. The exit reading is
@@ -1474,8 +1467,7 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
           }
       } };
   fn Quicksort [fuel] (fuel : Nat, v : &mut List Nat, Hfuel : %suff) -> %qret
-      { let l = *v;
-        match l {
+      { match *v {
           Nil => { *v := Nil; Pair(unit, λ (N : Nat). Refl) },
           Cons(x, rest) => match fuel {
             -- Out of fuel with a non-empty list: `hfuel : Le (S (Len rest)) Z` IS
@@ -1527,72 +1519,65 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
               -- the call, and the bound is `hfuel` UNCHANGED — after `*v := rest`
               -- the callee wants `Le (Len rest) f2`, which is what it already is.
               -- It SURVIVES the call because `Partition`'s `Hf` is capital.
-              let pr = Partition(f2, &m *v, x, Hfuel);
-              match pr { Pair(hi, q1) => match q1 { Pair(Hub, q2) => match q2 { Pair(Hlb, q3) =>
-              match q3 { Pair(Hl1, q4) => match q4 { Pair(Hl2, Hpc) => {
-                -- Both bounds are about to be invalidated as VALUES (the sorts
-                -- replace both lists), so their transports are staged now, while the
-                -- pre-sort lists are still nameable.
-                -- §2.4: the PRE-sort snapshots, named. `V0` and `Hi0` are the two
-                -- parts as they are HERE, before either sort replaces them, and that
-                -- is exactly what these builders were freezing implicitly. The
-                -- comment above already said "while the pre-sort lists are still
-                -- nameable"; the rule turns that sentence into two bindings.
-                let V0 = *v;
-                let Hi0 = hi;
-                let Hub0 = Hub;
-                let Hlb0 = Hlb;
-                let MkUb = (λ (A2 : List Nat).
-                    λ (H1 : Π (N : Nat) → Id Nat (Count N A2) (Count N V0)).
-                      UbPerm X0 A2 V0 H1 Hub0);
-                let MkLb = (λ (B2 : List Nat).
-                    λ (H2 : Π (N : Nat) → Id Nat (Count N B2) (Count N Hi0)).
-                      LbPerm X0 B2 Hi0 H2 Hlb0);
-                let Cnt1 = MkCnt (*v) hi Hpc;
-                -- Sort the kept part in place. Its sufficiency is the partition's
-                -- length conjunct composed with this frame's.
-                let Hf1 = LeTrans (Len *v) lr f2 Hl1 Hfuel;
-                let s1 = Quicksort(f2, &m *v, Hf1);
-                match s1 { Pair(Hs1, Hc1) => {
-                  -- …and the returned part, through a borrow of the local that
-                  -- holds it. Nothing about it is in `*v`; it is an ordinary value.
-                  let Hf2 = LeTrans (Len hi) lr f2 Hl2 Hfuel;
-                  let s2 = Quicksort(f2, &m hi, Hf2);
-                  match s2 { Pair(Hs2, Hc2) => {
-                    let hub2 = MkUb (*v) Hc1;
-                    let hlb2 = MkLb hi Hc2;
-                    let Cnt2 = Cnt1 (*v) hi Hc1 Hc2;
-                    -- The last staged builder: the glue's evidence arrives only
-                    -- from `AppendBack`, by which time both parts are consumed.
-                    -- §2.4: and the POST-sort snapshots, which are DIFFERENT values
-                    -- from `V0`/`Hi0` above — both sorts wrote in place. The rule
-                    -- makes that difference visible instead of leaving the reader to
-                    -- date each capture by where it sits.
-                    -- M33a: the two SORTEDNESS snapshots that stood here
-                    -- (`let Hs1 = hs1`) are gone. They existed only because a
-                    -- match arm bound a comptime component at a lowercase name,
-                    -- and a runtime binding is not capturable — so `Fin` could
-                    -- not cite the proof and a capital `let` had to re-read it.
-                    -- With the arm binder spelling its mode, `Fin` cites it.
-                    let V1 = *v;
-                    let Hi1 = hi;
-                    let Hub2 = hub2;
-                    let Hlb2 = hlb2;
-                    let Fin = (λ (E : List Nat).
-                        λ (Hap : Id (List Nat) E (Append V1 (Cons X0 Hi1))).
-                          ListRw (λ (Z0 : List Nat). Sorted Z0) (Append V1 (Cons X0 Hi1)) E
-                            (IdSym (List Nat) E (Append V1 (Cons X0 Hi1)) Hap)
-                            (SortedAppendPivot X0 V1 Hi1 Hs1 Hub2 Hs2 Hlb2));
-                    let w = Cons(x, hi);
-                    -- The fuel that is exactly enough, staged BEFORE the borrow is
-                    -- taken: a comptime argument mentioning `*v` would demand-
-                    -- collapse the loan it was just lent.
-                    let lv = Len *v;
-                    let happ = AppendBack(lv, &m *v, w, LeRefl lv);
-                    Pair(Fin (*v) happ, Cnt2 (*v) happ)
-                  } }
-                } }
-              } } } } } }
+              let Pair(hi, Pair(Hub, Pair(Hlb, Pair(Hl1, Pair(Hl2, Hpc))))) = Partition(f2, &m *v, x, Hfuel);
+              -- Both bounds are about to be invalidated as VALUES (the sorts
+              -- replace both lists), so their transports are staged now, while the
+              -- pre-sort lists are still nameable.
+              -- §2.4: the PRE-sort snapshots, named. `V0` and `Hi0` are the two
+              -- parts as they are HERE, before either sort replaces them, and that
+              -- is exactly what these builders were freezing implicitly. The
+              -- comment above already said "while the pre-sort lists are still
+              -- nameable"; the rule turns that sentence into two bindings.
+              let V0 = *v;
+              let Hi0 = hi;
+              let Hub0 = Hub;
+              let Hlb0 = Hlb;
+              let MkUb = (λ (A2 : List Nat).
+                  λ (H1 : Π (N : Nat) → Id Nat (Count N A2) (Count N V0)).
+                    UbPerm X0 A2 V0 H1 Hub0);
+              let MkLb = (λ (B2 : List Nat).
+                  λ (H2 : Π (N : Nat) → Id Nat (Count N B2) (Count N Hi0)).
+                    LbPerm X0 B2 Hi0 H2 Hlb0);
+              let Cnt1 = MkCnt (*v) hi Hpc;
+              -- Sort the kept part in place. Its sufficiency is the partition's
+              -- length conjunct composed with this frame's.
+              let Hf1 = LeTrans (Len *v) lr f2 Hl1 Hfuel;
+              let Pair(Hs1, Hc1) = Quicksort(f2, &m *v, Hf1);
+              -- …and the returned part, through a borrow of the local that
+              -- holds it. Nothing about it is in `*v`; it is an ordinary value.
+              let Hf2 = LeTrans (Len hi) lr f2 Hl2 Hfuel;
+              let Pair(Hs2, Hc2) = Quicksort(f2, &m hi, Hf2);
+              let hub2 = MkUb (*v) Hc1;
+              let hlb2 = MkLb hi Hc2;
+              let Cnt2 = Cnt1 (*v) hi Hc1 Hc2;
+              -- The last staged builder: the glue's evidence arrives only
+              -- from `AppendBack`, by which time both parts are consumed.
+              -- §2.4: and the POST-sort snapshots, which are DIFFERENT values
+              -- from `V0`/`Hi0` above — both sorts wrote in place. The rule
+              -- makes that difference visible instead of leaving the reader to
+              -- date each capture by where it sits.
+              -- M33a: the two SORTEDNESS snapshots that stood here
+              -- (`let Hs1 = hs1`) are gone. They existed only because a
+              -- match arm bound a comptime component at a lowercase name,
+              -- and a runtime binding is not capturable — so `Fin` could
+              -- not cite the proof and a capital `let` had to re-read it.
+              -- With the arm binder spelling its mode, `Fin` cites it.
+              let V1 = *v;
+              let Hi1 = hi;
+              let Hub2 = hub2;
+              let Hlb2 = hlb2;
+              let Fin = (λ (E : List Nat).
+                  λ (Hap : Id (List Nat) E (Append V1 (Cons X0 Hi1))).
+                    ListRw (λ (Z0 : List Nat). Sorted Z0) (Append V1 (Cons X0 Hi1)) E
+                      (IdSym (List Nat) E (Append V1 (Cons X0 Hi1)) Hap)
+                      (SortedAppendPivot X0 V1 Hi1 Hs1 Hub2 Hs2 Hlb2));
+              let w = Cons(x, hi);
+              -- The fuel that is exactly enough, staged BEFORE the borrow is
+              -- taken: a comptime argument mentioning `*v` would demand-
+              -- collapse the loan it was just lent.
+              let lv = Len *v;
+              let happ = AppendBack(lv, &m *v, w, LeRefl lv);
+              Pair(Fin (*v) happ, Cnt2 (*v) happ)
             }
           }
         } };
@@ -1695,8 +1680,7 @@ example : progRejects (qsUnder partHonest qsHonest (prog{ Unit }) .unit)
     of a list with one element missing. -/
 def partitionLoses : Term := prog{
   fn Partition [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (Len *v) fuel) -> %partHonest
-      { let l = *v;
-        match l {
+      { match *v {
           Nil => { *v := Nil;
                    Pair(Nil, Pair(unit, Pair(unit, Pair(unit, Pair(unit, λ (N : Nat). Refl))))) },
           Cons(x, rest) => match fuel {
@@ -1718,24 +1702,21 @@ def partitionLoses : Term := prog{
                           λ (N : Nat). CountConsR N X0 A B Rest0 (H N));
             let lr = Len rest;
             *v := rest;
-            let r = Partition(f2, &m *v, p, Hf);
-            match r { Pair(hi, q1) => match q1 { Pair(Hub, q2) => match q2 { Pair(Hlb, q3) =>
-            match q3 { Pair(Hl1, q4) => match q4 { Pair(Hl2, Hcnt) => {
-              if e : Leb x p {
-                let lo = *v;
-                let Hub2 = Pair(LebTrueLe x p e, Hub);
-                let Hl2b = LeUpR (Len hi) lr Hl2;
-                let Cnt = MkL lo hi Hcnt;
-                -- THE LIE, and the only line that differs: the head is dropped.
-                *v := lo;
-                Pair(hi, Pair(Hub2, Pair(Hlb, Pair(Hl1, Pair(Hl2b, Cnt)))))
-              } else {
-                let Hlb2 = Pair(LePredL p x (LebFalseGt x p e), Hlb);
-                let Hl1b = LeUpR (Len *v) lr Hl1;
-                let Cnt = MkR (*v) hi Hcnt;
-                Pair(Cons(x, hi), Pair(Hub, Pair(Hlb2, Pair(Hl1b, Pair(Hl2, Cnt)))))
-              }
-            } } } } } }
+            let Pair(hi, Pair(Hub, Pair(Hlb, Pair(Hl1, Pair(Hl2, Hcnt))))) = Partition(f2, &m *v, p, Hf);
+            if e : Leb x p {
+              let lo = *v;
+              let Hub2 = Pair(LebTrueLe x p e, Hub);
+              let Hl2b = LeUpR (Len hi) lr Hl2;
+              let Cnt = MkL lo hi Hcnt;
+              -- THE LIE, and the only line that differs: the head is dropped.
+              *v := lo;
+              Pair(hi, Pair(Hub2, Pair(Hlb, Pair(Hl1, Pair(Hl2b, Cnt)))))
+            } else {
+              let Hlb2 = Pair(LePredL p x (LebFalseGt x p e), Hlb);
+              let Hl1b = LeUpR (Len *v) lr Hl1;
+              let Cnt = MkR (*v) hi Hcnt;
+              Pair(Cons(x, hi), Pair(Hub, Pair(Hlb2, Pair(Hl1b, Pair(Hl2, Cnt)))))
+            }
           } }
         } };
   () }
@@ -1748,8 +1729,7 @@ example : progRejects partitionLoses "does not have return type" = true := by na
     rejection isolates is exactly bound survival. -/
 def qsStaleBound : Term := prog{
   fn Partition [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (Len *v) fuel) -> %partHonest
-      { let l = *v;
-        match l {
+      { match *v {
           Nil => { *v := Nil;
                    Pair(Nil, Pair(unit, Pair(unit, Pair(unit, Pair(unit, λ (N : Nat). Refl))))) },
           Cons(x, rest) => match fuel {
@@ -1771,23 +1751,20 @@ def qsStaleBound : Term := prog{
                           λ (N : Nat). CountConsR N X0 A B Rest0 (H N));
             let lr = Len rest;
             *v := rest;
-            let r = Partition(f2, &m *v, p, Hf);
-            match r { Pair(hi, q1) => match q1 { Pair(Hub, q2) => match q2 { Pair(Hlb, q3) =>
-            match q3 { Pair(Hl1, q4) => match q4 { Pair(Hl2, Hcnt) => {
-              if e : Leb x p {
-                let lo = *v;
-                let Hub2 = Pair(LebTrueLe x p e, Hub);
-                let Hl2b = LeUpR (Len hi) lr Hl2;
-                let Cnt = MkL lo hi Hcnt;
-                *v := Cons(x, lo);
-                Pair(hi, Pair(Hub2, Pair(Hlb, Pair(Hl1, Pair(Hl2b, Cnt)))))
-              } else {
-                let Hlb2 = Pair(LePredL p x (LebFalseGt x p e), Hlb);
-                let Hl1b = LeUpR (Len *v) lr Hl1;
-                let Cnt = MkR (*v) hi Hcnt;
-                Pair(Cons(x, hi), Pair(Hub, Pair(Hlb2, Pair(Hl1b, Pair(Hl2, Cnt)))))
-              }
-            } } } } } }
+            let Pair(hi, Pair(Hub, Pair(Hlb, Pair(Hl1, Pair(Hl2, Hcnt))))) = Partition(f2, &m *v, p, Hf);
+            if e : Leb x p {
+              let lo = *v;
+              let Hub2 = Pair(LebTrueLe x p e, Hub);
+              let Hl2b = LeUpR (Len hi) lr Hl2;
+              let Cnt = MkL lo hi Hcnt;
+              *v := Cons(x, lo);
+              Pair(hi, Pair(Hub2, Pair(Hlb, Pair(Hl1, Pair(Hl2b, Cnt)))))
+            } else {
+              let Hlb2 = Pair(LePredL p x (LebFalseGt x p e), Hlb);
+              let Hl1b = LeUpR (Len *v) lr Hl1;
+              let Cnt = MkR (*v) hi Hcnt;
+              Pair(Cons(x, hi), Pair(Hub, Pair(Hlb2, Pair(Hl1b, Pair(Hl2, Cnt)))))
+            }
           } }
         } };
   fn AppendBack [fuel] (fuel : Nat, v : &mut List Nat, w : List Nat, Hf : Le (Len *v) fuel)
@@ -1805,8 +1782,7 @@ def qsStaleBound : Term := prog{
           }
       } };
   fn Quicksort [fuel] (fuel : Nat, v : &mut List Nat, Hfuel : %suffHonest) -> %qsHonest
-      { let l = *v;
-        match l {
+      { match *v {
           Nil => { *v := Nil; Pair(unit, λ (N : Nat). Refl) },
           Cons(x, rest) => match fuel {
             Z => botElim Unit Hfuel,
@@ -1844,62 +1820,55 @@ def qsStaleBound : Term := prog{
                                  (CountConsCongr N X0 B2 B (H2 N))))
                            (CountConsR N X0 A B Rest0 (Hp N))));
               *v := rest;
-              let pr = Partition(f2, &m *v, x, Hfuel);
-              match pr { Pair(hi, q1) => match q1 { Pair(Hub, q2) => match q2 { Pair(Hlb, q3) =>
-              match q3 { Pair(Hl1, q4) => match q4 { Pair(Hl2, Hpc) => {
-                -- §2.4: the PRE-sort snapshots, named. `V0` and `Hi0` are the two
-                -- parts as they are HERE, before either sort replaces them, and that
-                -- is exactly what these builders were freezing implicitly. The
-                -- comment above already said "while the pre-sort lists are still
-                -- nameable"; the rule turns that sentence into two bindings.
-                let V0 = *v;
-                let Hi0 = hi;
-                let Hub0 = Hub;
-                let Hlb0 = Hlb;
-                let MkUb = (λ (A2 : List Nat).
-                    λ (H1 : Π (N : Nat) → Id Nat (Count N A2) (Count N V0)).
-                      UbPerm X0 A2 V0 H1 Hub0);
-                let MkLb = (λ (B2 : List Nat).
-                    λ (H2 : Π (N : Nat) → Id Nat (Count N B2) (Count N Hi0)).
-                      LbPerm X0 B2 Hi0 H2 Hlb0);
-                let Cnt1 = MkCnt (*v) hi Hpc;
-                let Hf1 = LeTrans (Len *v) lr f2 Hl1 Hfuel;
-                let s1 = Quicksort(f2, &m *v, Hf1);
-                match s1 { Pair(Hs1, Hc1) => {
-                  let Hf2 = LeTrans (Len hi) lr f2 Hl2 Hfuel;
-                  let s2 = Quicksort(f2, &m hi, Hf2);
-                  match s2 { Pair(Hs2, Hc2) => {
-                    let hub2 = MkUb (*v) Hc1;
-                    let hlb2 = MkLb hi Hc2;
-                    let Cnt2 = Cnt1 (*v) hi Hc1 Hc2;
-                    -- §2.4: and the POST-sort snapshots, which are DIFFERENT values
-                    -- from `V0`/`Hi0` above — both sorts wrote in place. The rule
-                    -- makes that difference visible instead of leaving the reader to
-                    -- date each capture by where it sits.
-                    -- M33a: the two SORTEDNESS snapshots that stood here
-                    -- (`let Hs1 = hs1`) are gone. They existed only because a
-                    -- match arm bound a comptime component at a lowercase name,
-                    -- and a runtime binding is not capturable — so `Fin` could
-                    -- not cite the proof and a capital `let` had to re-read it.
-                    -- With the arm binder spelling its mode, `Fin` cites it.
-                    let V1 = *v;
-                    let Hi1 = hi;
-                    let Fin = (λ (E : List Nat).
-                        λ (Hap : Id (List Nat) E (Append V1 (Cons X0 Hi1))).
-                          ListRw (λ (Z0 : List Nat). Sorted Z0) (Append V1 (Cons X0 Hi1)) E
-                            (IdSym (List Nat) E (Append V1 (Cons X0 Hi1)) Hap)
-                            -- THE LIE, and the only line that differs: the PRE-sort
-                            -- bounds (`Hub0`/`Hlb0`), not their transports across the
-                            -- sorts (`Hub2`/`Hlb2`). §2.4 sharpens the lie rather than
-                            -- hiding it: the two snapshots now have different names.
-                            (SortedAppendPivot X0 V1 Hi1 Hs1 Hub0 Hs2 Hlb0));
-                    let w = Cons(x, hi);
-                    let lv = Len *v;
-                    let happ = AppendBack(lv, &m *v, w, LeRefl lv);
-                    Pair(Fin (*v) happ, Cnt2 (*v) happ)
-                  } }
-                } }
-              } } } } } }
+              let Pair(hi, Pair(Hub, Pair(Hlb, Pair(Hl1, Pair(Hl2, Hpc))))) = Partition(f2, &m *v, x, Hfuel);
+              -- §2.4: the PRE-sort snapshots, named. `V0` and `Hi0` are the two
+              -- parts as they are HERE, before either sort replaces them, and that
+              -- is exactly what these builders were freezing implicitly. The
+              -- comment above already said "while the pre-sort lists are still
+              -- nameable"; the rule turns that sentence into two bindings.
+              let V0 = *v;
+              let Hi0 = hi;
+              let Hub0 = Hub;
+              let Hlb0 = Hlb;
+              let MkUb = (λ (A2 : List Nat).
+                  λ (H1 : Π (N : Nat) → Id Nat (Count N A2) (Count N V0)).
+                    UbPerm X0 A2 V0 H1 Hub0);
+              let MkLb = (λ (B2 : List Nat).
+                  λ (H2 : Π (N : Nat) → Id Nat (Count N B2) (Count N Hi0)).
+                    LbPerm X0 B2 Hi0 H2 Hlb0);
+              let Cnt1 = MkCnt (*v) hi Hpc;
+              let Hf1 = LeTrans (Len *v) lr f2 Hl1 Hfuel;
+              let Pair(Hs1, Hc1) = Quicksort(f2, &m *v, Hf1);
+              let Hf2 = LeTrans (Len hi) lr f2 Hl2 Hfuel;
+              let Pair(Hs2, Hc2) = Quicksort(f2, &m hi, Hf2);
+              let hub2 = MkUb (*v) Hc1;
+              let hlb2 = MkLb hi Hc2;
+              let Cnt2 = Cnt1 (*v) hi Hc1 Hc2;
+              -- §2.4: and the POST-sort snapshots, which are DIFFERENT values
+              -- from `V0`/`Hi0` above — both sorts wrote in place. The rule
+              -- makes that difference visible instead of leaving the reader to
+              -- date each capture by where it sits.
+              -- M33a: the two SORTEDNESS snapshots that stood here
+              -- (`let Hs1 = hs1`) are gone. They existed only because a
+              -- match arm bound a comptime component at a lowercase name,
+              -- and a runtime binding is not capturable — so `Fin` could
+              -- not cite the proof and a capital `let` had to re-read it.
+              -- With the arm binder spelling its mode, `Fin` cites it.
+              let V1 = *v;
+              let Hi1 = hi;
+              let Fin = (λ (E : List Nat).
+                  λ (Hap : Id (List Nat) E (Append V1 (Cons X0 Hi1))).
+                    ListRw (λ (Z0 : List Nat). Sorted Z0) (Append V1 (Cons X0 Hi1)) E
+                      (IdSym (List Nat) E (Append V1 (Cons X0 Hi1)) Hap)
+                      -- THE LIE, and the only line that differs: the PRE-sort
+                      -- bounds (`Hub0`/`Hlb0`), not their transports across the
+                      -- sorts (`Hub2`/`Hlb2`). §2.4 sharpens the lie rather than
+                      -- hiding it: the two snapshots now have different names.
+                      (SortedAppendPivot X0 V1 Hi1 Hs1 Hub0 Hs2 Hlb0));
+              let w = Cons(x, hi);
+              let lv = Len *v;
+              let happ = AppendBack(lv, &m *v, w, LeRefl lv);
+              Pair(Fin (*v) happ, Cnt2 (*v) happ)
             }
           }
         } };
@@ -2124,12 +2093,11 @@ def withCursors (cret eret tail : Term) : Term := prog{
         } };
   fn SwapS (v : &mut List Nat, i : Nat, j : Nat,
                   pij : Le (S i) j, p2 : Le (S j) (Len *v)) -> Unit
-        { let pr = Nth2(v, i, j, pij, p2);
-          match pr { Pair(ei, ej) => {
-            let t = *ei;
-            *ei := *ej;
-            *ej := t;
-            () } } };
+        { let Pair(ei, ej) = Nth2(v, i, j, pij, p2);
+          let t = *ei;
+          *ei := *ej;
+          *ej := t;
+          () };
   -- s=0, m=1, i=2, j=3, pij=4, p2=5.
   fn CertSwapCount (s : List Nat, m : Nat, i : Nat, j : Nat,
         pij : Le (S i) j, p2 : Le (S j) (Len s)) -> %cret
@@ -2164,8 +2132,7 @@ def withCursors (cret eret tail : Term) : Term := prog{
         { SwapS(&m *v, i, j, pij, p2); Refl };
   -- v=0, pivot=1.
   fn LebProbe (v : &mut List Nat, pivot : Nat) -> Unit
-        { let c = Leb (NthL Z (*v)) pivot;
-          match c { True => (), False => () } };
+        { match Leb (NthL Z (*v)) pivot { True => (), False => () } };
   %tail }
 
 /-- The honest chain: nine functions, one program, no table. -/
@@ -2228,12 +2195,11 @@ def withScan (tail : Term) : Term := prog{
         } };
   fn SwapS (v : &mut List Nat, i : Nat, j : Nat,
                   pij : Le (S i) j, p2 : Le (S j) (Len *v)) -> Unit
-        { let pr = Nth2(v, i, j, pij, p2);
-          match pr { Pair(ei, ej) => {
-            let t = *ei;
-            *ei := *ej;
-            *ej := t;
-            () } } };
+        { let Pair(ei, ej) = Nth2(v, i, j, pij, p2);
+          let t = *ei;
+          *ei := *ej;
+          *ej := t;
+          () };
   -- v=0, k=1, i=2, g=3, pivot=4.
   fn PartScanE [k] (v : &mut List Nat, k : Nat, i : Nat, g : Nat, pivot : Nat) -> Unit
         { match k {
@@ -2242,8 +2208,7 @@ def withScan (tail : Term) : Term := prog{
               S(i2) => { SwapS(v, Z, S(i2), (), ()); () }
             },
             S(k2) => {
-              let c = Leb (NthL (S (Add i g)) (*v)) pivot;
-              match c {
+              match Leb (NthL (S (Add i g)) (*v)) pivot {
                 True => match g {
                   Z => PartScanE(v, k2, S(i), Z, pivot),
                   -- `i` and `g2` are read MULTIPLE times here (boundary + scan position
@@ -2371,8 +2336,7 @@ def stuckProbe : Term := prog{
   fn StuckProbe (n : Nat) -> Id Nat
         (boolRec (λ (B : Bool). Nat) (S Z) Z (Leb n (S (S Z))))
         (boolRec (λ (B : Bool). Nat) (Add Z (S Z)) (Add Z Z) (Leb n (S (S Z))))
-        { let c = Leb n (S (S Z));
-          match c { True => Refl, False => Refl } };
+        { match Leb n (S (S Z)) { True => Refl, False => Refl } };
   () }
 example : progOk stuckProbe = true := by native_decide
 
@@ -2384,8 +2348,7 @@ def stuckProbeLieRet : Term := .idT natT
   (boolRecNat (tS zt) zt (lebSp (V 0 "n"))) (boolRecNat (tS (tS zt)) zt (lebSp (V 0 "n")))
 def stuckProbeLie : Term := prog{
   fn StuckProbeLie (n : Nat) -> %stuckProbeLieRet
-        { let c = Leb n (S (S Z));
-          match c { True => Refl, False => Refl } };
+        { match Leb n (S (S Z)) { True => Refl, False => Refl } };
   () }
 example : progRejects stuckProbeLie "does not have return type" = true := by native_decide
 
