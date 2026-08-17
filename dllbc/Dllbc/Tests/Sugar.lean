@@ -57,6 +57,15 @@ def borrowMatchHand : Term :=
 
 example : borrowMatch = borrowMatchHand := by rfl
 
+-- **Parenthesized, it is still the plain path.** Two characters is not a licence
+-- to change a program's ownership, so `elabScrut` strips grouping before asking
+-- whether it has an identifier — otherwise `match (b) { … }` would move what
+-- `match b { … }` reborrows.
+example : prog{
+    let v = Pair(0, 1);
+    let b = &m v;
+    match (b) { Pair(l, r) => { *l := 1; () } } } = borrowMatchHand := by rfl
+
 -- The same for the branch-equation form (M23), whose scrutinee became a `uterm`
 -- with the plain one's. Its equation binder still lands at the id it always did,
 -- because the plain-variable path does not touch the counter.

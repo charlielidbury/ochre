@@ -851,10 +851,18 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     An identifier that is not a local still ERRORS, rather than falling through to
     the fresh-slot path. The names that reach here are `fn` slots, constructors and
     pure binders, and none of them is a runtime place; the sugar is for the forms
-    the grammar could not spell at all, and an identifier was always spellable. -/
+    the grammar could not spell at all, and an identifier was always spellable.
+
+    **Parentheses are stripped before the question is asked**, as they are
+    everywhere else in this elaborator (`elabUTerm`'s grouping row). Left in, they
+    would be the sharpest edge the sugar has: `match (v) { … }` on a borrow would
+    miss the ident row, take the fresh-slot path, and MOVE what `match v { … }`
+    reborrows — the same program, differing by two characters, differing in
+    ownership. -/
 partial def elabScrut (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
     (e : TSyntax `uterm) : MacroM (TSyntax `term × Option (TSyntax `term) × Nat) := do
   match e with
+  | `(uterm| ($inner:uterm)) => elabScrut rctx pctx next inner
   | `(uterm| $x:ident) =>
     let s := x.getId.toString
     match localId rctx s with
