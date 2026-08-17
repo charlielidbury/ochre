@@ -28,3 +28,4 @@ import Dllbc.Tests.Universe
 import Dllbc.Tests.BorrowRefoundGoals
 import Dllbc.Tests.SetHmProbe
 import Dllbc.Tests.ArrCatIota
+import Dllbc.Tests.HashMap

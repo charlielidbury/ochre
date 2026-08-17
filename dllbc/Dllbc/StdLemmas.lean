@@ -4655,4 +4655,299 @@ def CountSwapATy : Term := prog{
     Id Nat (CountA Q (S (Add K (S R))) (acons (Add K (S R)) Y (arrCat K (S R) L (acons R X G))))
            (CountA Q (S (Add K (S R))) (acons (Add K (S R)) X (arrCat K (S R) L (acons R Y G)))) }
 
+/-! ## The hashmap flagship's slot arithmetic — ported from branch `hm-probe-mod`
+    (commits ad9f0822/a6a549c5), Σ arrows converted to the dot spelling.
+
+    `Mod`/`Div` are written in the ACCUMULATOR form, and that shape is mandatory:
+    the textbook `mod` — whose step tests `S (Mod a' b) = b` and then also returns
+    `S (Mod a' b)` — mentions its recursive result twice, and the pure normalizer
+    substitutes without sharing, so it is silently EXPONENTIAL in the dividend
+    (measured on the probe: 87 s at `Mod 20 32`, days at 32). The state here is
+    `(R, C)`: `R` the residue so far, `C` how many increments remain before the
+    wrap, `R + C = B` the invariant; each step asks its question of `C` — an
+    ARGUMENT — so `Rec` occurs exactly once and the whole thing is linear. -/
+
+def NextR : Term := prog{
+  λ (R : Nat). λ (C : Nat).
+    elim C return (λ (Cz : Nat). Nat) { Z => Z, S (C2) Rc => S(R) } }
+def NextC : Term := prog{
+  λ (B : Nat). λ (C : Nat).
+    elim C return (λ (Cz : Nat). Nat) { Z => B, S (C2) Rc => C2 } }
+def NextQ : Term := prog{
+  λ (Q : Nat). λ (C : Nat).
+    elim C return (λ (Cz : Nat). Nat) { Z => S(Q), S (C2) Rc => Q } }
+
+def ModC : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Π (R : Nat) → Π (C : Nat) → Nat) {
+      Z => λ (B : Nat). λ (R : Nat). λ (C : Nat). R,
+      S (A2) Rec => λ (B : Nat). λ (R : Nat). λ (C : Nat).
+        Rec B (NextR R C) (NextC B C) } }
+
+/-- `Mod a b`, with `Mod a Z = Z` (nothing downstream divides by zero; every lemma
+    is stated over `Le 1 n`). -/
+def Mod : Term := prog{
+  λ (A : Nat). λ (B : Nat).
+    elim B return (λ (Bz : Nat). Nat) { Z => Z, S (B2) Rb => ModC A B2 Z B2 } }
+
+def DivC : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat).
+        Π (B : Nat) → Π (R : Nat) → Π (C : Nat) → Π (Q : Nat) → Nat) {
+      Z => λ (B : Nat). λ (R : Nat). λ (C : Nat). λ (Q : Nat). Q,
+      S (A2) Rec => λ (B : Nat). λ (R : Nat). λ (C : Nat). λ (Q : Nat).
+        Rec B (NextR R C) (NextC B C) (NextQ Q C) } }
+
+def Div : Term := prog{
+  λ (A : Nat). λ (B : Nat).
+    elim B return (λ (Bz : Nat). Nat) { Z => Z, S (B2) Rb => DivC A B2 Z B2 Z } }
+
+/-- One increment preserves `R + C ≤ B`: the `Z` arm is the wrap's reset to
+    `(Z, B)` and the `S` arm is one `AddSucc` transport. -/
+def StepInv : Term := prog{
+  λ (B : Nat). λ (R : Nat). λ (C : Nat).
+    elim C return (λ (Cz : Nat). Le (Add R Cz) B → Le (Add (NextR R Cz) (NextC B Cz)) B) {
+      Z => λ (H : Le (Add R Z) B). LeRefl B,
+      S (C2) Rc => λ (H : Le (Add R (S C2)) B).
+        LeRwL B (Add R (S C2)) (S (Add R C2)) (AddSucc R C2) H } }
+def StepInvTy : Term := prog{
+  Π (B : Nat) → Π (R : Nat) → Π (C : Nat) →
+    Le (Add R C) B → Le (Add (NextR R C) (NextC B C)) B }
+
+def ModCLt : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat).
+        Π (B : Nat) → Π (R : Nat) → Π (C : Nat) →
+          Le (Add R C) B → Le (S (ModC Az B R C)) (S B)) {
+      Z => λ (B : Nat). λ (R : Nat). λ (C : Nat). λ (H : Le (Add R C) B).
+             LeTrans R (Add R C) B (LeAdd R C) H,
+      S (A2) Ih => λ (B : Nat). λ (R : Nat). λ (C : Nat). λ (H : Le (Add R C) B).
+             Ih B (NextR R C) (NextC B C) (StepInv B R C H) } }
+def ModCLtTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Π (R : Nat) → Π (C : Nat) →
+    Le (Add R C) B → Le (S (ModC A B R C)) (S B) }
+
+/-- The slot index is below the capacity — in the form a PROGRAM can use: the
+    capacity is an opaque `n` carrying `Le 1 n`, not the pattern `S c`, because
+    the carve's premise (3) refines a σ and `S c` is rigid. -/
+def ModLtN : Term := prog{
+  λ (A : Nat). λ (N : Nat).
+    elim N return (λ (Nz : Nat). Le (S Z) Nz → Le (S (Mod A Nz)) Nz) {
+      Z => λ (H : Le (S Z) Z). botElim (Le (S (Mod A Z)) Z) H,
+      S (B2) Rb => λ (H : Le (S Z) (S B2)). ModCLt A B2 Z B2 (LeRefl B2) } }
+def ModLtNTy : Term := prog{
+  Π (A : Nat) → Π (N : Nat) → Le (S Z) N → Le (S (Mod A N)) N }
+
+/-- Minting the carve's decomposition: `i < n` becomes the residue and the
+    equation premise (3) wants CITED. The Σ must cross a CALL boundary to be
+    usable (comptime projections mention `n` and fail the occurs check). -/
+def ModDec : Term := prog{
+  λ (I : Nat).
+    elim I return (λ (Iz : Nat).
+        Π (N : Nat) → Le (S Iz) N → Σ (R : Nat). Id Nat N (Add Iz (S R))) {
+      Z => λ (N : Nat).
+        elim N return (λ (Nz : Nat). Le (S Z) Nz → Σ (R : Nat). Id Nat Nz (Add Z (S R))) {
+          Z => λ (H : Le (S Z) Z). botElim (Σ (R : Nat). Id Nat Z (Add Z (S R))) H,
+          S (N2) Ihn => λ (H : Le (S Z) (S N2)). Pair(N2, Refl) },
+      S (I2) Ih => λ (N : Nat).
+        elim N return (λ (Nz : Nat).
+            Le (S (S I2)) Nz → Σ (R : Nat). Id Nat Nz (Add (S I2) (S R))) {
+          Z => λ (H : Le (S (S I2)) Z). botElim (Σ (R : Nat). Id Nat Z (Add (S I2) (S R))) H,
+          S (N2) Ihn => λ (H : Le (S (S I2)) (S N2)).
+            elim (Ih N2 H) return (λ (Q : Σ (R : Nat). Id Nat N2 (Add I2 (S R))).
+                Σ (R : Nat). Id Nat (S N2) (Add (S I2) (S R))) {
+              Pair (X) (Y) =>
+                Pair(X, IdCongr Nat Nat (λ (Nn : Nat). S Nn) N2 (Add I2 (S X)) Y) } } } }
+def ModDecTy : Term := prog{
+  Π (I : Nat) → Π (N : Nat) → Le (S I) N → Σ (R : Nat). Id Nat N (Add I (S R)) }
+
+/-! ## Multiplication, and the load-ledger arithmetic
+
+    The hashmap's 4/5 load factor is carried Div-free: `n ≤ ⌊4·cap/5⌋` is, for
+    integers, exactly `5·n ≤ 4·cap`, and "n exceeds the threshold" is exactly
+    `5·n > 4·cap` — so the packed ledger stores `Mul 4 cap` and compares against
+    `Mul 5 n`, and no floor-division lemma library is needed. `LedgerGrow` is the
+    one fact resize owes: a map at the threshold that takes one more entry fits
+    under the DOUBLED capacity's threshold. -/
+
+def Mul : Term := prog{
+  λ (A : Nat). λ (B : Nat). elim A return (λ (Az : Nat). Nat) {
+    Z => Z, S (A2) Rec => Add B Rec } }
+
+def AddSwapL : Term := prog{
+  λ (A : Nat). λ (B : Nat). λ (C : Nat).
+    elim A return (λ (Az : Nat). Id Nat (Add Az (Add B C)) (Add B (Add Az C))) {
+      Z => Refl,
+      S (A2) Ih =>
+        IdTrans Nat (S (Add A2 (Add B C))) (S (Add B (Add A2 C))) (Add B (S (Add A2 C)))
+          (IdCongr Nat Nat (λ (X : Nat). S X) (Add A2 (Add B C)) (Add B (Add A2 C)) Ih)
+          (IdSym Nat (Add B (S (Add A2 C))) (S (Add B (Add A2 C))) (AddSucc B (Add A2 C))) } }
+def AddSwapLTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) →
+    Id Nat (Add A (Add B C)) (Add B (Add A C)) }
+
+def AddInterchange : Term := prog{
+  λ (A : Nat). λ (B : Nat). λ (C : Nat). λ (D : Nat).
+    IdTrans Nat (Add (Add A B) (Add C D)) (Add A (Add B (Add C D))) (Add (Add A C) (Add B D))
+      (AddAssoc A B (Add C D))
+      (IdTrans Nat (Add A (Add B (Add C D))) (Add A (Add C (Add B D))) (Add (Add A C) (Add B D))
+        (IdCongr Nat Nat (λ (X : Nat). Add A X) (Add B (Add C D)) (Add C (Add B D))
+          (AddSwapL B C D))
+        (IdSym Nat (Add (Add A C) (Add B D)) (Add A (Add C (Add B D)))
+          (AddAssoc A C (Add B D)))) }
+def AddInterchangeTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → Π (D : Nat) →
+    Id Nat (Add (Add A B) (Add C D)) (Add (Add A C) (Add B D)) }
+
+def MulSucc : Term := prog{
+  λ (A : Nat). λ (B : Nat).
+    elim A return (λ (Az : Nat). Id Nat (Mul Az (S B)) (Add Az (Mul Az B))) {
+      Z => Refl,
+      S (A2) Ih =>
+        IdCongr Nat Nat (λ (X : Nat). S X)
+          (Add B (Mul A2 (S B))) (Add A2 (Add B (Mul A2 B)))
+          (IdTrans Nat (Add B (Mul A2 (S B))) (Add B (Add A2 (Mul A2 B)))
+            (Add A2 (Add B (Mul A2 B)))
+            (IdCongr Nat Nat (λ (X : Nat). Add B X) (Mul A2 (S B)) (Add A2 (Mul A2 B)) Ih)
+            (AddSwapL B A2 (Mul A2 B))) } }
+def MulSuccTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Id Nat (Mul A (S B)) (Add A (Mul A B)) }
+
+def MulAddR : Term := prog{
+  λ (A : Nat). λ (B : Nat). λ (C : Nat).
+    elim A return (λ (Az : Nat).
+        Id Nat (Mul Az (Add B C)) (Add (Mul Az B) (Mul Az C))) {
+      Z => Refl,
+      S (A2) Ih =>
+        IdTrans Nat (Add (Add B C) (Mul A2 (Add B C)))
+          (Add (Add B C) (Add (Mul A2 B) (Mul A2 C)))
+          (Add (Add B (Mul A2 B)) (Add C (Mul A2 C)))
+          (IdCongr Nat Nat (λ (X : Nat). Add (Add B C) X)
+            (Mul A2 (Add B C)) (Add (Mul A2 B) (Mul A2 C)) Ih)
+          (AddInterchange B C (Mul A2 B) (Mul A2 C)) } }
+def MulAddRTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) →
+    Id Nat (Mul A (Add B C)) (Add (Mul A B) (Mul A C)) }
+
+def MulTwoDouble : Term := prog{
+  λ (A : Nat). λ (C : Nat).
+    IdTrans Nat (Mul A (Mul 2 C)) (Mul A (Add C C)) (Add (Mul A C) (Mul A C))
+      (IdCongr Nat Nat (λ (X : Nat). Mul A (Add C X)) (Add C Z) C (AddZero C))
+      (MulAddR A C C) }
+def MulTwoDoubleTy : Term := prog{
+  Π (A : Nat) → Π (C : Nat) → Id Nat (Mul A (Mul 2 C)) (Add (Mul A C) (Mul A C)) }
+
+def LeAddMonoR : Term := prog{
+  λ (A : Nat). λ (B : Nat). λ (K : Nat). λ (H : Le A B).
+    LeRwR (Add A K) (Add K B) (Add B K) (AddComm K B)
+      (LeRwL (Add K B) (Add K A) (Add A K) (AddComm K A) (LeAddMonoL K A B H)) }
+def LeAddMonoRTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Π (K : Nat) → Le A B → Le (Add A K) (Add B K) }
+
+def LeAddMono : Term := prog{
+  λ (A : Nat). λ (B : Nat). λ (C : Nat). λ (D : Nat). λ (H1 : Le A B). λ (H2 : Le C D).
+    LeTrans (Add A C) (Add B C) (Add B D) (LeAddMonoR A B C H1) (LeAddMonoL B C D H2) }
+def LeAddMonoTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → Π (D : Nat) →
+    Le A B → Le C D → Le (Add A C) (Add B D) }
+
+def LeMulR : Term := prog{
+  λ (A : Nat). λ (B : Nat). λ (C : Nat). λ (H : Le B C).
+    elim A return (λ (Az : Nat). Le (Mul Az B) (Mul Az C)) {
+      Z => unit,
+      S (A2) Ih => LeAddMono B C (Mul A2 B) (Mul A2 C) H Ih } }
+def LeMulRTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → Le B C → Le (Mul A B) (Mul A C) }
+
+def Le5M4 : Term := prog{
+  λ (C : Nat). λ (H : Le 2 C).
+    LeTrans 5 (Mul 4 2) (Mul 4 C) unit (LeMulR 4 2 C H) }
+def Le5M4Ty : Term := prog{ Π (C : Nat) → Le 2 C → Le 5 (Mul 4 C) }
+
+/-- Integrality at the one capacity the ≤-chain misses: `5n ≤ 4` forces `n = 0`. -/
+def FiveN4Zero : Term := prog{
+  λ (N : Nat). elim N return (λ (Nz : Nat). Le (Mul 5 Nz) 4 → Id Nat Nz Z) {
+    Z => λ (H : Le (Mul 5 Z) 4). Refl,
+    S (N2) Ih => λ (H : Le (Mul 5 (S N2)) 4).
+      botElim (Id Nat (S N2) Z)
+        (LeRwL 4 (Mul 5 (S N2)) (Add 5 (Mul 5 N2)) (MulSucc 5 N2) H) } }
+def FiveN4ZeroTy : Term := prog{ Π (N : Nat) → Le (Mul 5 N) 4 → Id Nat N Z }
+
+/-- The converse reflection to `LebTrueLe`: an established order closes the test. -/
+def LeLebTrue : Term := prog{
+  λ (A : Nat). elim A return (λ (Az : Nat). Π (B : Nat) → Le Az B → Id Bool (Leb Az B) True) {
+    Z => λ (B : Nat). λ (H : Le Z B). Refl,
+    S (A2) Ih => λ (B : Nat).
+      elim B return (λ (Bz : Nat). Le (S A2) Bz → Id Bool (Leb (S A2) Bz) True) {
+        Z => λ (H : Le (S A2) Z). botElim (Id Bool (Leb (S A2) Z) True) H,
+        S (B2) Ihb => λ (H : Le (S A2) (S B2)). Ih B2 H } } }
+def LeLebTrueTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Le A B → Id Bool (Leb A B) True }
+
+/-- `Eqb`'s soundness at symbolic arguments — the lemma every hashmap key test
+    converts through. -/
+def EqbTrueEq : Term := prog{
+  λ (A : Nat). elim A return (λ (Az : Nat).
+      Π (B : Nat) → Id Bool (Eqb Az B) True → Id Nat Az B) {
+    Z => λ (B : Nat). elim B return (λ (Bz : Nat). Id Bool (Eqb Z Bz) True → Id Nat Z Bz) {
+      Z => λ (H : Id Bool (Eqb Z Z) True). Refl,
+      S (B2) Ihb => λ (H : Id Bool (Eqb Z (S B2)) True).
+        botElim (Id Nat Z (S B2)) (BoolFT H) },
+    S (A2) Ih => λ (B : Nat).
+      elim B return (λ (Bz : Nat). Id Bool (Eqb (S A2) Bz) True → Id Nat (S A2) Bz) {
+        Z => λ (H : Id Bool (Eqb (S A2) Z) True). botElim (Id Nat (S A2) Z) (BoolFT H),
+        S (B2) Ihb => λ (H : Id Bool (Eqb (S A2) (S B2)) True).
+          IdCongr Nat Nat (λ (X : Nat). S X) A2 B2 (Ih B2 H) } } }
+def EqbTrueEqTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Id Bool (Eqb A B) True → Id Nat A B }
+
+def EqbSym : Term := prog{
+  λ (A : Nat). elim A return (λ (Az : Nat). Π (B : Nat) → Id Bool (Eqb Az B) (Eqb B Az)) {
+    Z => λ (B : Nat). elim B return (λ (Bz : Nat). Id Bool (Eqb Z Bz) (Eqb Bz Z)) {
+      Z => Refl, S (B2) Ihb => Refl },
+    S (A2) Ih => λ (B : Nat).
+      elim B return (λ (Bz : Nat). Id Bool (Eqb (S A2) Bz) (Eqb Bz (S A2))) {
+        Z => Refl, S (B2) Ihb => Ih B2 } } }
+def EqbSymTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Id Bool (Eqb A B) (Eqb B A) }
+
+/-- The pure fragment's `if e : …`: case on a stuck Bool, each branch receiving
+    the equation it teaches. The workhorse of every pointwise-Find proof. -/
+def IfDec : Term := prog{
+  λ (B : Bool). λ (T : Type).
+    λ (F : Id Bool B True → T). λ (G : Id Bool B False → T).
+      boolRec (λ (Bm : Bool). (Id Bool Bm True → T) → ((Id Bool Bm False → T) → T))
+        (λ (F2 : Id Bool True True → T). λ (G2 : Id Bool True False → T). F2 Refl)
+        (λ (F2 : Id Bool False True → T). λ (G2 : Id Bool False False → T). G2 Refl)
+        B F G }
+def IfDecTy : Term := prog{
+  Π (B : Bool) → Π (T : Type) →
+    (Id Bool B True → T) → (Id Bool B False → T) → T }
+
+/-- THE RESIZE LEDGER FACT: at the threshold, one more entry fits under the
+    doubled capacity. The `Leb 2 C` split exists because the ≤-chain
+    `4c + 5 ≤ 8c` needs `c ≥ 2`, and `c = 1` closes by integrality instead
+    (`5n ≤ 4` forces `n = 0`, and `5 ≤ 8` computes). -/
+def LedgerGrow : Term := prog{
+  λ (C : Nat). λ (N : Nat). λ (H1 : Le (S Z) C). λ (Hle : Le (Mul 5 N) (Mul 4 C)).
+    IfDec (Leb 2 C) (Le (Mul 5 (S N)) (Mul 4 (Mul 2 C)))
+      (λ (E : Id Bool (Leb 2 C) True).
+        LeRwL (Mul 4 (Mul 2 C)) (Add 5 (Mul 5 N)) (Mul 5 (S N))
+          (IdSym Nat (Mul 5 (S N)) (Add 5 (Mul 5 N)) (MulSucc 5 N))
+          (LeRwR (Add 5 (Mul 5 N)) (Add (Mul 4 C) (Mul 4 C)) (Mul 4 (Mul 2 C))
+            (IdSym Nat (Mul 4 (Mul 2 C)) (Add (Mul 4 C) (Mul 4 C)) (MulTwoDouble 4 C))
+            (LeAddMono 5 (Mul 4 C) (Mul 5 N) (Mul 4 C)
+              (Le5M4 C (LebTrueLe 2 C E)) Hle)))
+      (λ (E : Id Bool (Leb 2 C) False).
+        NatRw (λ (Cz : Nat). Le (Mul 5 N) (Mul 4 Cz) → Le (Mul 5 (S N)) (Mul 4 (Mul 2 Cz)))
+          (S Z) C
+          (IdSym Nat C (S Z) (LeAntisym C (S Z) (LebFalseGt 2 C E) H1))
+          (λ (Hle1 : Le (Mul 5 N) (Mul 4 (S Z))).
+            NatRw (λ (Nz : Nat). Le (Mul 5 (S Nz)) (Mul 4 (Mul 2 (S Z)))) Z N
+              (IdSym Nat N Z (FiveN4Zero N Hle1)) unit)
+          Hle) }
+def LedgerGrowTy : Term := prog{
+  Π (C : Nat) → Π (N : Nat) → Le (S Z) C → Le (Mul 5 N) (Mul 4 C) →
+    Le (Mul 5 (S N)) (Mul 4 (Mul 2 C)) }
+
 end Dllbc.StdLemmas
