@@ -111,6 +111,30 @@ Fuel: normalization remains fuel-bounded (type-in-type still admits non-terminat
 Girard does not care how we evaluate). The fuel moves from the substitution loop to
 the eval loop. Nothing improves or worsens here.
 
+**Evaluation order at a recursor (added 2026-08-17).** The three ingredients above
+fix what a value is but not *when* one is built, and the recursors are the one place
+where that is observable in the cost. A recursor's ι-rule hands its step function the
+recursive result; the rule is now that when the arm NAMES that result, the recursive
+call is evaluated and forced to a value first — constructors all the way down,
+closures left closed (a body runs per application; forcing under a binder would be
+strong reduction, not eager evaluation), neutrals left stuck. Without it the
+recursive call is bound as an unreduced spine, and since reduction here is a pure
+function with no write-back, every second occurrence re-derives the whole
+sub-recursion: the textbook `mod` was exponential in its dividend (~86 s at dividend
+20, divisor 32) and presented as a build that never finished.
+
+The gate — *when the arm names it* — is load-bearing and must not be "simplified" to
+unconditional forcing later, which is why it is recorded here rather than only in the
+code. In this calculus the only way to case-split a `Nat` is to recurse on it with an
+arm that ignores `Rec`, so charging every case split for a recursive call is not a
+constant-factor tax: it costs `binomial(b, a)`. Measured on `Std.eqb` alone, `Eqb a
+32` with unconditional forcing runs 3 / 30 / 223 / 1396 / 7110 / 29712 ms for a =
+1…6 and does not finish at a = 7, against ~0 ms throughout with the gate; the ratios
+track `(33-a)/a`, which is Pascal exactly. An arm that never names the result cannot
+observe whether it was computed, so declining to compute it is the CBV semantics with
+the recursor's spurious argument removed — not laziness retained as a hedge. See §9
+item 10 for what a genuinely uniform CBV evaluator would need instead.
+
 ## 3. The capture machinery
 
 ### 3.1 What is recorded
@@ -457,11 +481,27 @@ has no index arithmetic.
    differential ride as additional gates.
 9. (Deferred with §7) the drop-stuckness claim over the differential generator's
    grammar.
+10. **Uniform call-by-value: what it would take.** Making evaluation eager
+    *everywhere* — every binding a value, ι folded into `eval`, `whnfN` shrunk to
+    value-head inspection — is the shape the language's imperative spirit wants, and
+    it is blocked by the calculus rather than by the evaluator. Uniform CBV must
+    force a recursor's recursive argument unconditionally, and §2 records what that
+    costs: `binomial(b, a)` on `Std.eqb`, measured, because a `Nat` case split can
+    only be spelled as a recursion here. The wall is a COMPLEXITY wall, not a
+    correctness one — normal forms are strategy-invariant in a confluent terminating
+    calculus, so no verdict changes; the suite simply would not finish. What uniform
+    CBV needs is the missing former: a non-recursive case analysis (`natCase` /
+    `listCase`, a `casesOn` beside each `Rec`) so that a split which makes no
+    recursive call is not charged for one, plus the `Std` corpus migrated onto it.
+    With that, unconditional forcing is correct AND linear, and the arm-usage gate
+    can be deleted. Until then the gate computes exactly that distinction by
+    analysis instead of by declaration, which is why it is one rule about recursive
+    calls rather than a special case in three ι-rules.
 
 With 1–8 resolved, this document is second-draft-complete on design: what remains
-open is one deferred item (9, tied to §7's deferred pop-with-drop) and the two
+open is one deferred item (9, tied to §7's deferred pop-with-drop), the two
 implementation-time inventories (5, 6), which produce findings rather than await
-decisions. The remaining decision is scheduling.
+decisions, and one live design question (10). The remaining decision is scheduling.
 
 ## 10. Relation to open designs and sequencing
 
