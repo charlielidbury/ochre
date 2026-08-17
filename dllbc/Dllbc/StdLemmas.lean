@@ -5320,4 +5320,46 @@ def HMInvLoadTy : Term := prog{
   Π (Cap : Nat) → Π (Load : Nat) → Π (N : Nat) → Π (Slots : Array Cap Bucket) →
     HMInv Cap Load N Slots → Id Nat Load (Div (Mul Cap 4) 5) }
 
+/-- The converse of `AllHashedACat` — `SplitACatE1`'s shape (induction on the LEFT
+    array, peeling the WHOLE-ARRAY hypothesis at each cons step): given the WHOLE
+    carved-and-rebuilt array is well-hashed, recover well-hashedness of the untouched
+    prefix and suffix separately. The array-level `Insert` needs this to justify that
+    `lo`/`hi` (never written) still satisfy `AllHashedA` after the carve, before it
+    replaces the cell in between and re-`AllHashedACat`s the three pieces back
+    together. -/
+def AllHashedACatSplit : Term := prog{
+  λ (Cap : Nat). λ (K : Nat). λ (L : Array K Bucket). λ (M : Nat). λ (W : Array M Bucket).
+    arrRec Bucket (λ (Kz : Nat). λ (Lz : Array Kz Bucket). Π (I0 : Nat) →
+        AllHashedA Cap (Add Kz M) (arrCat Kz M Lz W) I0 →
+          Σ (Hl : AllHashedA Cap Kz Lz I0). AllHashedA Cap M W (Add I0 Kz))
+      (λ (I0 : Nat). λ (H : AllHashedA Cap M W I0).
+        Pair(unit, NatRw (λ (X : Nat). AllHashedA Cap M W X) I0 (Add I0 Z)
+          (IdSym Nat (Add I0 Z) I0 (AddZero I0)) H))
+      (λ (K2 : Nat). λ (Hh : Bucket). λ (T : Array K2 Bucket).
+        λ (Ih : Π (I0 : Nat) → AllHashedA Cap (Add K2 M) (arrCat K2 M T W) I0 →
+                  Σ (Hl : AllHashedA Cap K2 T I0). AllHashedA Cap M W (Add I0 K2)).
+        λ (I0 : Nat).
+        λ (Hyp : Σ (Hk : AllKeysEq Cap I0 Hh). AllHashedA Cap (Add K2 M) (arrCat K2 M T W) (S I0)).
+          elim Hyp return (λ (Q : Σ (Hk : AllKeysEq Cap I0 Hh).
+              AllHashedA Cap (Add K2 M) (arrCat K2 M T W) (S I0)).
+              Σ (Hl : Σ (Hk2 : AllKeysEq Cap I0 Hh). AllHashedA Cap K2 T (S I0)).
+                AllHashedA Cap M W (Add I0 (S K2))) {
+            Pair (HkVal) (HRest) =>
+              elim (Ih (S I0) HRest) return (λ (Q2 : Σ (Hl2 : AllHashedA Cap K2 T (S I0)).
+                  AllHashedA Cap M W (Add (S I0) K2)).
+                  Σ (Hl : Σ (Hk2 : AllKeysEq Cap I0 Hh). AllHashedA Cap K2 T (S I0)).
+                    AllHashedA Cap M W (Add I0 (S K2))) {
+                Pair (Hl2Val) (HW2) =>
+                  Pair(Pair(HkVal, Hl2Val),
+                    NatRw (λ (X : Nat). AllHashedA Cap M W X) (Add (S I0) K2) (Add I0 (S K2))
+                      (IdSym Nat (Add I0 (S K2)) (Add (S I0) K2) (AddSucc I0 K2)) HW2)
+              }
+          })
+      K L }
+def AllHashedACatSplitTy : Term := prog{
+  Π (Cap : Nat) → Π (K : Nat) → Π (L : Array K Bucket) → Π (M : Nat) → Π (W : Array M Bucket) →
+  Π (I0 : Nat) →
+    AllHashedA Cap (Add K M) (arrCat K M L W) I0 →
+      Σ (Hl : AllHashedA Cap K L I0). AllHashedA Cap M W (Add I0 K) }
+
 end Dllbc.StdLemmas
