@@ -19,3 +19,4 @@ import Dllbc.Tests.Functions
 import Dllbc.Tests.Programs
 import Dllbc.Tests.Ledger
 import Dllbc.Tests.HmProbeMod
+import Dllbc.Tests.HmProbeModCarve
