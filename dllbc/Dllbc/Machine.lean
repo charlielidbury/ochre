@@ -3288,7 +3288,7 @@ def firstNotInFlight (resultLoans : List Nat) : List Nat → M (Option Nat)
     With NO result loans this ends every parked loan, which is what the audit always
     did, under two names this replaces. Locating by LOAN rather than by slot is
     what the second of them existed for: a Σ-packaged
-    borrow (`Σ (n : Nat) → &mut …`, §5's second opacity) sits inside a `Pair` in its
+    borrow (`Σ (n : Nat). &mut …`, §5's second opacity) sits inside a `Pair` in its
     slot, so a slot-shaped match falls through and the suspended field loans ride
     into `hasType`, which has no rule for a `loanₘ`. An exempted parameter's slot
     may equally have been moved from. One lookup covers both.
