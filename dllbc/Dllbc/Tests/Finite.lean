@@ -36,10 +36,11 @@ constructor applications. So:
   * `MAX` is a **symbolic parameter** everywhere a program or a lemma is stated.
     Nothing below ever needs its value; the guard reasoning is `Le`/`Add`/`Mul`
     algebra, which is exactly the shape it has in a real overflow proof.
-  * **Executing** tests instantiate `MAX` at small concrete values (16, 255).
-    Every proof obligation then reduces to `unit`, because `Le` computes to
-    `Unit` on closed arguments — the callers below pass `()` for their bound
-    evidence exactly as `ArraySort`'s concrete callers pass `()` for `Le n n`.
+  * **Executing** tests instantiate `MAX` at small concrete values (15 mostly,
+    140 and 255 where the ceiling is being measured). Every proof obligation
+    then reduces to `unit`, because `Le` computes to `Unit` on closed arguments
+    — the callers below pass `()` for their bound evidence exactly as
+    `ArraySort`'s concrete callers pass `()` for `Le n n`.
 
 The gap between the two is *representation*, not *reasoning*: a binary numeral
 kernel would let the same programs and the same lemmas run at `MAX = 2^64 - 1`.
@@ -461,7 +462,7 @@ example : progRejects addUWrongOp "does not have return type" = true := by nativ
 example : progRejects satSubUWrongOp "does not have return type" = true := by native_decide
 example : progRejects subUNoUnderflowEv "does not have return type" = true := by native_decide
 
-/-! ### (v) Callers at a concrete `MAX`, checking AND executing
+/-! ## (v) Callers at a concrete `MAX`, checking AND executing
 
     Everything above is symbolic in `MAX`. These instantiate it — 15, and 255
     for a byte — and that is where the unary trade-off shows itself and where it
@@ -1008,7 +1009,7 @@ example : progRejects (resizeCall 15 1 0 4 5 0) botNeedle = true := by native_de
         roughly two proof lines per operation, of which a bit over half is
         content. The Rust it replaces is five lines.
 
-      * THE SUPPORTING LIBRARY. Thirteen new lemmas, all one induction each, all
+      * THE SUPPORTING LIBRARY. Fourteen new lemmas, all one induction each, all
         checked first try: `EqbTrueId`, `SubLe`, `MulMonoR`, `DivLe`,
         `DivModId`, `DivMulLe`, `DivMulLeNz`, `MulZeroR`, `AddSwapL`,
         `MulSuccR`, `MulComm`, `MulDistR`, `MulAssoc`, `MulSwapR`. None of it is
