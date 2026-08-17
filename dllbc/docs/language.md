@@ -326,10 +326,17 @@ To return a value *and* evidence, use `Σ` — the caller destructures with a `m
 **a match arm's binder must spell the component's mode**: capital over a proof
 component, lowercase over data, refused one character off in either direction.
 
+**A `match` scrutinee is an expression.** `match SplitOff(&m *tl, i2, hi) { … }` matches the call's result where it stands; there is no need to name an intermediate you will not mention again. The one thing to know is what happens when the scrutinee is a plain variable, which is *nothing*: that case is untouched, and it has to be, because matching a variable holding a **borrow** reborrows — the arm binders come back as borrows of the fields — while an expression is a value that gets bound to a local first. So `match v { … }` on a `&mut` still means what §4 says it means, and `match f(…) { … }` is the new spelling.
+
+**Destructuring is a `let`.** A pattern on the left of a `let` is the one-branch match written as a statement: the *rest of the block* becomes the arm, so what used to nest reads top to bottom.
+
 ```
-let p = SplitOff(&m *tl, i2, hi);
-match p { Pair(rr, q) => match q { Pair(H1, h2) => … } }
+let Pair(rr, q) = SplitOff(&m *tl, i2, hi);
+let Pair(H1, h2) = q;
+…                                            -- still at the same indentation
 ```
+
+Both spellings produce the same program — this is shorthand, not a second mechanism — and the same binder rules apply, mode-spelling included. Nothing here asks whether the constructor you wrote is the type's only one: `let Cons(h, t) = l;` is accepted by the grammar and then refused by the ordinary exhaustiveness check, with `non-exhaustive — no branch for constructor 'Nil' of the scrutinee's type`. A destructuring `let` on a borrow reborrows exactly as the match it stands for does, so `let Pair(l, xs) = v;` on a `v : &mut Σ (l : Nat). …` hands you borrows of both fields and you write through them.
 
 **`Σ0` — the subset type.** A Σ chain's components spell their modes on their binders,
 but the final position — the tail — has no binder, so it spells its mode on the
