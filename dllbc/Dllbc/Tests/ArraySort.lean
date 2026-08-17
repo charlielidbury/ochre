@@ -275,54 +275,51 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                                    (CountA Q (S M2) (acons M2 X0 T2))
                                    (CountA Q (S M2) (acons M2 X0 Tl0))
                         (Hsw Q) (CountAconsCongr Q X0 M2 T2 Tl0 (Hc Q)));
-              let res = SplitA(f2, m2, hfuel, p, &m *tl);
-              match res { Pair(k2, z1) => match z1 { Pair(r2, z2) => match z2 { Pair(Hlen2, z3) =>
-              match z3 { Pair(Hsp2, Hcnt2) => {
-                if e : Leb x p {
-                  -- x ≤ p: the head is already in the left part; the boundary moves up.
-                  Pair(S k2, Pair(r2,
-                    Pair(IdCongr Nat Nat (λ (Z0 : Nat). S Z0) m2 (Add k2 r2) Hlen2,
-                    Pair(Pair(LebTrueLe x p e, Hsp2),
-                         MkC (*tl) Hcnt2 (acons m2 x (*tl)) (λ (Q : Nat). Refl)))))
-                } else {
-                  match k2 {
-                    -- x > p with nothing to its left: the whole array is ≥ p already.
-                    Z => Pair(Z, Pair(S r2,
-                           Pair(IdCongr Nat Nat (λ (Z0 : Nat). S Z0) m2 (Add Z r2) Hlen2,
-                           Pair(Pair(LePredL p x (LebFalseGt x p e), Hsp2),
-                                MkC (*tl) Hcnt2 (acons m2 x (*tl)) (λ (Q : Nat). Refl))))),
-                    -- x > p with a non-empty left part: THE SWAP. Three carves put the
-                    -- left part, the boundary cell and the right part in three segments,
-                    -- and the exchange is two writes at index 0 of two of them.
-                    S(k3) => {
-                      -- The decomposition is DECLARED: premise (3) may not refine
-                      -- `m2` by unification, so the equation the recursive call
-                      -- returned is cited and solved along. `AddSucc` is the whole
-                      -- distance between what the callee proved and what the carve
-                      -- asks for.
-                      let Hdec = IdTrans Nat m2 (S (Add k3 r2)) (Add k3 (S r2)) Hlen2
-                                   (IdSym Nat (Add k3 (S r2)) (S (Add k3 r2))
-                                      (AddSucc k3 r2));
-                      let lo = &m (*tl)[Z ; k3 ; S r2 | LeAdd k3 (S r2) | Hdec];
-                      let mid = &m (*tl)[k3 ; 1 ; r2];
-                      let hi = &m (*tl)[S k3 ; r2];
-                      let y = (*mid)[0];
-                      (*mid)[0] := x;
-                      (*hd)[0] := y;
-                      let Hrest = SplitACatRest p k3 (S r2) (*lo) (acons r2 y (*hi)) Hsp2;
-                      let Hy = SplitA1Head p r2 (*hi) y Hrest;
-                      let Hub = SplitACatUb p k3 (S r2) (*lo) (acons r2 y (*hi)) Hsp2;
-                      let Hg = SplitA1Tail p r2 (*hi) y Hrest;
-                      let Hnew = SplitACatI0 p k3 (S r2) (*lo) (acons r2 x (*hi)) Hub
-                                   (Pair(LePredL p x (LebFalseGt x p e), Hg));
-                      let Cnt = MkC (arrCat k3 (S r2) (*lo) (acons r2 y (*hi))) Hcnt2
-                                    (acons m2 y (arrCat k3 (S r2) (*lo) (acons r2 x (*hi))))
-                                    (λ (Q : Nat). CountSwapA Q x y k3 (*lo) r2 (*hi));
-                      Pair(S k3, Pair(S r2, Pair(Refl, Pair(Pair(Hy, Hnew), Cnt))))
-                    }
+              let Pair(k2, Pair(r2, Pair(Hlen2, Pair(Hsp2, Hcnt2)))) = SplitA(f2, m2, hfuel, p, &m *tl);
+              if e : Leb x p {
+                -- x ≤ p: the head is already in the left part; the boundary moves up.
+                Pair(S k2, Pair(r2,
+                  Pair(IdCongr Nat Nat (λ (Z0 : Nat). S Z0) m2 (Add k2 r2) Hlen2,
+                  Pair(Pair(LebTrueLe x p e, Hsp2),
+                       MkC (*tl) Hcnt2 (acons m2 x (*tl)) (λ (Q : Nat). Refl)))))
+              } else {
+                match k2 {
+                  -- x > p with nothing to its left: the whole array is ≥ p already.
+                  Z => Pair(Z, Pair(S r2,
+                         Pair(IdCongr Nat Nat (λ (Z0 : Nat). S Z0) m2 (Add Z r2) Hlen2,
+                         Pair(Pair(LePredL p x (LebFalseGt x p e), Hsp2),
+                              MkC (*tl) Hcnt2 (acons m2 x (*tl)) (λ (Q : Nat). Refl))))),
+                  -- x > p with a non-empty left part: THE SWAP. Three carves put the
+                  -- left part, the boundary cell and the right part in three segments,
+                  -- and the exchange is two writes at index 0 of two of them.
+                  S(k3) => {
+                    -- The decomposition is DECLARED: premise (3) may not refine
+                    -- `m2` by unification, so the equation the recursive call
+                    -- returned is cited and solved along. `AddSucc` is the whole
+                    -- distance between what the callee proved and what the carve
+                    -- asks for.
+                    let Hdec = IdTrans Nat m2 (S (Add k3 r2)) (Add k3 (S r2)) Hlen2
+                                 (IdSym Nat (Add k3 (S r2)) (S (Add k3 r2))
+                                    (AddSucc k3 r2));
+                    let lo = &m (*tl)[Z ; k3 ; S r2 | LeAdd k3 (S r2) | Hdec];
+                    let mid = &m (*tl)[k3 ; 1 ; r2];
+                    let hi = &m (*tl)[S k3 ; r2];
+                    let y = (*mid)[0];
+                    (*mid)[0] := x;
+                    (*hd)[0] := y;
+                    let Hrest = SplitACatRest p k3 (S r2) (*lo) (acons r2 y (*hi)) Hsp2;
+                    let Hy = SplitA1Head p r2 (*hi) y Hrest;
+                    let Hub = SplitACatUb p k3 (S r2) (*lo) (acons r2 y (*hi)) Hsp2;
+                    let Hg = SplitA1Tail p r2 (*hi) y Hrest;
+                    let Hnew = SplitACatI0 p k3 (S r2) (*lo) (acons r2 x (*hi)) Hub
+                                 (Pair(LePredL p x (LebFalseGt x p e), Hg));
+                    let Cnt = MkC (arrCat k3 (S r2) (*lo) (acons r2 y (*hi))) Hcnt2
+                                  (acons m2 y (arrCat k3 (S r2) (*lo) (acons r2 x (*hi))))
+                                  (λ (Q : Nat). CountSwapA Q x y k3 (*lo) r2 (*hi));
+                    Pair(S k3, Pair(S r2, Pair(Refl, Pair(Pair(Hy, Hnew), Cnt))))
                   }
                 }
-              } } } } }
+              }
             }
           }
         } };
@@ -352,43 +349,40 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                                  (CountA Q (S M2) (acons M2 X0 T2))
                                  (CountA Q (S M2) (acons M2 X0 Tl0))
                       (Hsw Q) (CountAconsCongr Q X0 M2 T2 Tl0 (Hc Q)));
-            let res = SplitA(fuel, m2, LePredL m2 fuel hfuel, x, &m *tl);
-            match res { Pair(k2, z1) => match z1 { Pair(r2, z2) => match z2 { Pair(Hlen2, z3) =>
-            match z3 { Pair(Hsp2, Hcnt2) => {
-              match k2 {
-                -- Nothing is ≤ the pivot, so the pivot is already in its final place at
-                -- index 0. `PartA`'s identity conjunct is `Refl` and its lower bound is
-                -- the split's own invariant, crossed by `SplitA0Lb`.
-                Z => Pair(x, Pair(Z, Pair(m2,
-                       Pair(Refl,
-                       Pair(Pair(Refl, SplitA0Lb x m2 (*tl) Hsp2),
-                            MkC (*tl) Hcnt2 (acons m2 x (*tl)) (λ (Q : Nat). Refl)))))),
-                -- The pivot must cross the left part: swap it with that part's LAST
-                -- element. The displaced element is ≤ the pivot, so it may sit at the
-                -- front; the pivot lands at index `S k3`, which is the boundary.
-                S(k3) => {
-                  let Hdec = IdTrans Nat m2 (S (Add k3 r2)) (Add k3 (S r2)) Hlen2
-                               (IdSym Nat (Add k3 (S r2)) (S (Add k3 r2))
-                                  (AddSucc k3 r2));
-                  let lo = &m (*tl)[Z ; k3 ; S r2 | LeAdd k3 (S r2) | Hdec];
-                  let mid = &m (*tl)[k3 ; 1 ; r2];
-                  let hi = &m (*tl)[S k3 ; r2];
-                  let y = (*mid)[0];
-                  (*mid)[0] := x;
-                  (*hd)[0] := y;
-                  let Hrest = SplitACatRest x k3 (S r2) (*lo) (acons r2 y (*hi)) Hsp2;
-                  let Hy = SplitA1Head x r2 (*hi) y Hrest;
-                  let Hub = SplitACatUb x k3 (S r2) (*lo) (acons r2 y (*hi)) Hsp2;
-                  let Hg = SplitA1Tail x r2 (*hi) y Hrest;
-                  let Hnew = PartACatI0 x k3 (S r2) (*lo) (acons r2 x (*hi)) Hub
-                               (Pair(Refl, SplitA0Lb x r2 (*hi) Hg));
-                  let Cnt = MkC (arrCat k3 (S r2) (*lo) (acons r2 y (*hi))) Hcnt2
-                                (acons m2 y (arrCat k3 (S r2) (*lo) (acons r2 x (*hi))))
-                                (λ (Q : Nat). CountSwapA Q x y k3 (*lo) r2 (*hi));
-                  Pair(x, Pair(S k3, Pair(r2, Pair(Refl, Pair(Pair(Hy, Hnew), Cnt)))))
-                }
+            let Pair(k2, Pair(r2, Pair(Hlen2, Pair(Hsp2, Hcnt2)))) = SplitA(fuel, m2, LePredL m2 fuel hfuel, x, &m *tl);
+            match k2 {
+              -- Nothing is ≤ the pivot, so the pivot is already in its final place at
+              -- index 0. `PartA`'s identity conjunct is `Refl` and its lower bound is
+              -- the split's own invariant, crossed by `SplitA0Lb`.
+              Z => Pair(x, Pair(Z, Pair(m2,
+                     Pair(Refl,
+                     Pair(Pair(Refl, SplitA0Lb x m2 (*tl) Hsp2),
+                          MkC (*tl) Hcnt2 (acons m2 x (*tl)) (λ (Q : Nat). Refl)))))),
+              -- The pivot must cross the left part: swap it with that part's LAST
+              -- element. The displaced element is ≤ the pivot, so it may sit at the
+              -- front; the pivot lands at index `S k3`, which is the boundary.
+              S(k3) => {
+                let Hdec = IdTrans Nat m2 (S (Add k3 r2)) (Add k3 (S r2)) Hlen2
+                             (IdSym Nat (Add k3 (S r2)) (S (Add k3 r2))
+                                (AddSucc k3 r2));
+                let lo = &m (*tl)[Z ; k3 ; S r2 | LeAdd k3 (S r2) | Hdec];
+                let mid = &m (*tl)[k3 ; 1 ; r2];
+                let hi = &m (*tl)[S k3 ; r2];
+                let y = (*mid)[0];
+                (*mid)[0] := x;
+                (*hd)[0] := y;
+                let Hrest = SplitACatRest x k3 (S r2) (*lo) (acons r2 y (*hi)) Hsp2;
+                let Hy = SplitA1Head x r2 (*hi) y Hrest;
+                let Hub = SplitACatUb x k3 (S r2) (*lo) (acons r2 y (*hi)) Hsp2;
+                let Hg = SplitA1Tail x r2 (*hi) y Hrest;
+                let Hnew = PartACatI0 x k3 (S r2) (*lo) (acons r2 x (*hi)) Hub
+                             (Pair(Refl, SplitA0Lb x r2 (*hi) Hg));
+                let Cnt = MkC (arrCat k3 (S r2) (*lo) (acons r2 y (*hi))) Hcnt2
+                              (acons m2 y (arrCat k3 (S r2) (*lo) (acons r2 x (*hi))))
+                              (λ (Q : Nat). CountSwapA Q x y k3 (*lo) r2 (*hi));
+                Pair(x, Pair(S k3, Pair(r2, Pair(Refl, Pair(Pair(Hy, Hnew), Cnt)))))
               }
-            } } } } }
+            }
           }
         } };
   fn QuicksortA [fuel] (fuel : Nat, n : Nat, hfuel : %qsuff, a : &mut (Array n Nat))
@@ -423,96 +417,89 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
               let F2 = f2;
               let MkHf = (λ (Kv : Nat). λ (H : Le (S Kv) N0).
                             LeTrans (S Kv) N0 (S F2) H Hfuel0);
-              let pr = PartitionA(S(f2), n, hfuel, LebTrueLe 1 n he, &m *a);
-              match pr { Pair(pvv, w1) => match w1 { Pair(k, w2) => match w2 { Pair(jj, w3) =>
-              match w3 { Pair(Hlen, w4) => match w4 { Pair(Hp, Hcnt) => {
-                -- ¶6's three-way carve, at the index the partition just returned. The
-                -- first obligation is `LeAdd`; the second is `Le 1 (S jj)`, which route
-                -- (a) reduces to ⊤; the third is degenerate.
-                let l = &m (*a)[Z ; k ; S jj | LeAdd k (S jj) | Hlen];
-                let pcell = &m (*a)[k ; 1 ; jj];
-                let e = (*pcell)[0];
-                let r = &m (*a)[S k ; jj];
-                let Hub = PartACatUb pvv k (S jj) (*l) (acons jj e (*r)) Hp;
-                let Hrest = PartACatRest pvv k (S jj) (*l) (acons jj e (*r)) Hp;
-                let Heq = PartA0Eq pvv jj (*r) e Hrest;
-                let Hlb = PartA0Lb pvv jj (*r) e Hrest;
-                let Top1 = MkTop (arrCat k (S jj) (*l) (acons jj e (*r))) Hcnt;
-                -- The glue, staged: both bounds are about to be invalidated as VALUES by
-                -- the recursive sorts, so their transports are set up now.
-                -- §2.4: the snapshots this builder was taking implicitly, named. The
-                -- comment above already dates them ("staged while … still denotes"); the
-                -- citation rule turns the date into a binding.
-                let L0 = *l;
-                let R0 = *r;
-                let Pvv0 = pvv;
-                let E0 = e;
-                let Heq0 = Heq;
-                let Hub0 = Hub;
-                let Hlb0 = Hlb;
-                let K0 = k;
-                let Jj0 = jj;
-                let MkS = (λ (L2 : Array K0 Nat). λ (R2 : Array Jj0 Nat).
-                    λ (H1 : Π (Q : Nat) → Id Nat (CountA Q K0 L2) (CountA Q K0 L0)).
-                    λ (H2 : Π (Q : Nat) → Id Nat (CountA Q Jj0 R2) (CountA Q Jj0 R0)).
-                    λ (Hs1 : SortedA K0 L2). λ (Hs2 : SortedA Jj0 R2).
-                      NatRw (λ (Z0 : Nat). SortedA (Add K0 (S Jj0))
-                                  (arrCat K0 (S Jj0) L2 (arrCat 1 Jj0 (Asingle Z0) R2)))
-                        Pvv0 E0 (IdSym Nat E0 Pvv0 Heq0)
-                        (SortedArrCat Pvv0 K0 L2 Jj0 R2 Hs1
-                           (UbPermA Pvv0 K0 L2 K0 L0 H1 Hub0) Hs2
-                           (LbPermA Pvv0 Jj0 R2 Jj0 R0 H2 Hlb0)));
-                -- §2.4: the snapshots this builder was taking implicitly, named. The
-                -- comment above already dates them ("staged while … still denotes"); the
-                -- citation rule turns the date into a binding.
-                let L0 = *l;
-                let R0 = *r;
-                let E0 = e;
-                let K0 = k;
-                let Jj0 = jj;
-                let MkAD = (λ (L2 : Array K0 Nat). λ (R2 : Array Jj0 Nat).
-                    λ (H1 : Π (Q : Nat) → Id Nat (CountA Q K0 L2) (CountA Q K0 L0)).
-                    λ (H2 : Π (Q : Nat) → Id Nat (CountA Q Jj0 R2) (CountA Q Jj0 R0)).
-                      λ (Q : Nat).
-                        IdTrans Nat
+              let Pair(pvv, Pair(k, Pair(jj, Pair(Hlen, Pair(Hp, Hcnt))))) = PartitionA(S(f2), n, hfuel, LebTrueLe 1 n he, &m *a);
+              -- ¶6's three-way carve, at the index the partition just returned. The
+              -- first obligation is `LeAdd`; the second is `Le 1 (S jj)`, which route
+              -- (a) reduces to ⊤; the third is degenerate.
+              let l = &m (*a)[Z ; k ; S jj | LeAdd k (S jj) | Hlen];
+              let pcell = &m (*a)[k ; 1 ; jj];
+              let e = (*pcell)[0];
+              let r = &m (*a)[S k ; jj];
+              let Hub = PartACatUb pvv k (S jj) (*l) (acons jj e (*r)) Hp;
+              let Hrest = PartACatRest pvv k (S jj) (*l) (acons jj e (*r)) Hp;
+              let Heq = PartA0Eq pvv jj (*r) e Hrest;
+              let Hlb = PartA0Lb pvv jj (*r) e Hrest;
+              let Top1 = MkTop (arrCat k (S jj) (*l) (acons jj e (*r))) Hcnt;
+              -- The glue, staged: both bounds are about to be invalidated as VALUES by
+              -- the recursive sorts, so their transports are set up now.
+              -- §2.4: the snapshots this builder was taking implicitly, named. The
+              -- comment above already dates them ("staged while … still denotes"); the
+              -- citation rule turns the date into a binding.
+              let L0 = *l;
+              let R0 = *r;
+              let Pvv0 = pvv;
+              let E0 = e;
+              let Heq0 = Heq;
+              let Hub0 = Hub;
+              let Hlb0 = Hlb;
+              let K0 = k;
+              let Jj0 = jj;
+              let MkS = (λ (L2 : Array K0 Nat). λ (R2 : Array Jj0 Nat).
+                  λ (H1 : Π (Q : Nat) → Id Nat (CountA Q K0 L2) (CountA Q K0 L0)).
+                  λ (H2 : Π (Q : Nat) → Id Nat (CountA Q Jj0 R2) (CountA Q Jj0 R0)).
+                  λ (Hs1 : SortedA K0 L2). λ (Hs2 : SortedA Jj0 R2).
+                    NatRw (λ (Z0 : Nat). SortedA (Add K0 (S Jj0))
+                                (arrCat K0 (S Jj0) L2 (arrCat 1 Jj0 (Asingle Z0) R2)))
+                      Pvv0 E0 (IdSym Nat E0 Pvv0 Heq0)
+                      (SortedArrCat Pvv0 K0 L2 Jj0 R2 Hs1
+                         (UbPermA Pvv0 K0 L2 K0 L0 H1 Hub0) Hs2
+                         (LbPermA Pvv0 Jj0 R2 Jj0 R0 H2 Hlb0)));
+              -- §2.4: the snapshots this builder was taking implicitly, named. The
+              -- comment above already dates them ("staged while … still denotes"); the
+              -- citation rule turns the date into a binding.
+              let L0 = *l;
+              let R0 = *r;
+              let E0 = e;
+              let K0 = k;
+              let Jj0 = jj;
+              let MkAD = (λ (L2 : Array K0 Nat). λ (R2 : Array Jj0 Nat).
+                  λ (H1 : Π (Q : Nat) → Id Nat (CountA Q K0 L2) (CountA Q K0 L0)).
+                  λ (H2 : Π (Q : Nat) → Id Nat (CountA Q Jj0 R2) (CountA Q Jj0 R0)).
+                    λ (Q : Nat).
+                      IdTrans Nat
+                        (CountA Q (Add K0 (S Jj0)) (arrCat K0 (S Jj0) L2 (acons Jj0 E0 R2)))
+                        (Add (CountA Q K0 L0) (CountA Q (S Jj0) (acons Jj0 E0 R0)))
+                        (CountA Q (Add K0 (S Jj0)) (arrCat K0 (S Jj0) L0 (acons Jj0 E0 R0)))
+                        (IdTrans Nat
                           (CountA Q (Add K0 (S Jj0)) (arrCat K0 (S Jj0) L2 (acons Jj0 E0 R2)))
+                          (Add (CountA Q K0 L2) (CountA Q (S Jj0) (acons Jj0 E0 R2)))
                           (Add (CountA Q K0 L0) (CountA Q (S Jj0) (acons Jj0 E0 R0)))
-                          (CountA Q (Add K0 (S Jj0)) (arrCat K0 (S Jj0) L0 (acons Jj0 E0 R0)))
+                          (CountArrCat Q K0 L2 (S Jj0) (acons Jj0 E0 R2))
                           (IdTrans Nat
-                            (CountA Q (Add K0 (S Jj0)) (arrCat K0 (S Jj0) L2 (acons Jj0 E0 R2)))
                             (Add (CountA Q K0 L2) (CountA Q (S Jj0) (acons Jj0 E0 R2)))
+                            (Add (CountA Q K0 L0) (CountA Q (S Jj0) (acons Jj0 E0 R2)))
                             (Add (CountA Q K0 L0) (CountA Q (S Jj0) (acons Jj0 E0 R0)))
-                            (CountArrCat Q K0 L2 (S Jj0) (acons Jj0 E0 R2))
-                            (IdTrans Nat
-                              (Add (CountA Q K0 L2) (CountA Q (S Jj0) (acons Jj0 E0 R2)))
-                              (Add (CountA Q K0 L0) (CountA Q (S Jj0) (acons Jj0 E0 R2)))
-                              (Add (CountA Q K0 L0) (CountA Q (S Jj0) (acons Jj0 E0 R0)))
-                              (IdCongr Nat Nat
-                                (λ (C : Nat). Add C (CountA Q (S Jj0) (acons Jj0 E0 R2)))
-                                (CountA Q K0 L2) (CountA Q K0 L0) (H1 Q))
-                              (IdCongr Nat Nat
-                                (λ (C : Nat). Add (CountA Q K0 L0) C)
-                                (CountA Q (S Jj0) (acons Jj0 E0 R2))
-                                (CountA Q (S Jj0) (acons Jj0 E0 R0))
-                                (CountAconsCongr Q E0 Jj0 R2 R0 (H2 Q)))))
-                          (IdSym Nat
-                            (CountA Q (Add K0 (S Jj0)) (arrCat K0 (S Jj0) L0 (acons Jj0 E0 R0)))
-                            (Add (CountA Q K0 L0) (CountA Q (S Jj0) (acons Jj0 E0 R0)))
-                            (CountArrCat Q K0 L0 (S Jj0) (acons Jj0 E0 R0))));
-                -- Sufficiency: the pivot sits strictly inside, so both halves are
-                -- strictly shorter. `LeAddSucc` and `LeAddL` are the two sides of
-                -- that, and each composes with this frame's own bound.
-                let hf1 = MkHf k (LeAddSucc k jj);
-                let s1 = QuicksortA(f2, k, hf1, &m *l);
-                match s1 { Pair(Hs1, Hc1) => {
-                  let hf2 = MkHf jj (LeAddL (S jj) k);
-                  let s2 = QuicksortA(f2, jj, hf2, &m *r);
-                  match s2 { Pair(Hs2, Hc2) => {
-                    Pair(MkS (*l) (*r) Hc1 Hc2 Hs1 Hs2,
-                         Top1 (arrCat k (S jj) (*l) (acons jj e (*r))) (MkAD (*l) (*r) Hc1 Hc2))
-                  } }
-                } }
-              } } } } } }
+                            (IdCongr Nat Nat
+                              (λ (C : Nat). Add C (CountA Q (S Jj0) (acons Jj0 E0 R2)))
+                              (CountA Q K0 L2) (CountA Q K0 L0) (H1 Q))
+                            (IdCongr Nat Nat
+                              (λ (C : Nat). Add (CountA Q K0 L0) C)
+                              (CountA Q (S Jj0) (acons Jj0 E0 R2))
+                              (CountA Q (S Jj0) (acons Jj0 E0 R0))
+                              (CountAconsCongr Q E0 Jj0 R2 R0 (H2 Q)))))
+                        (IdSym Nat
+                          (CountA Q (Add K0 (S Jj0)) (arrCat K0 (S Jj0) L0 (acons Jj0 E0 R0)))
+                          (Add (CountA Q K0 L0) (CountA Q (S Jj0) (acons Jj0 E0 R0)))
+                          (CountArrCat Q K0 L0 (S Jj0) (acons Jj0 E0 R0))));
+              -- Sufficiency: the pivot sits strictly inside, so both halves are
+              -- strictly shorter. `LeAddSucc` and `LeAddL` are the two sides of
+              -- that, and each composes with this frame's own bound.
+              let hf1 = MkHf k (LeAddSucc k jj);
+              let Pair(Hs1, Hc1) = QuicksortA(f2, k, hf1, &m *l);
+              let hf2 = MkHf jj (LeAddL (S jj) k);
+              let Pair(Hs2, Hc2) = QuicksortA(f2, jj, hf2, &m *r);
+              Pair(MkS (*l) (*r) Hc1 Hc2 Hs1 Hs2,
+                   Top1 (arrCat k (S jj) (*l) (acons jj e (*r))) (MkAD (*l) (*r) Hc1 Hc2))
             }
           }
         } else {
@@ -601,47 +588,44 @@ def splitANoSwap : Term := prog{
                                    (CountA Q (S M2) (acons M2 X0 T2))
                                    (CountA Q (S M2) (acons M2 X0 Tl0))
                         (Hsw Q) (CountAconsCongr Q X0 M2 T2 Tl0 (Hc Q)));
-              let res = splitANoSwap(f2, m2, hfuel, p, &m *tl);
-              match res { Pair(k2, z1) => match z1 { Pair(r2, z2) => match z2 { Pair(Hlen2, z3) =>
-              match z3 { Pair(Hsp2, Hcnt2) => {
-                if e : Leb x p {
-                  Pair(S k2, Pair(r2,
-                    Pair(IdCongr Nat Nat (λ (Z0 : Nat). S Z0) m2 (Add k2 r2) Hlen2,
-                    Pair(Pair(LebTrueLe x p e, Hsp2),
-                         MkC (*tl) Hcnt2 (acons m2 x (*tl)) (λ (Q : Nat). Refl)))))
-                } else {
-                  match k2 {
-                    Z => Pair(Z, Pair(S r2,
-                           Pair(IdCongr Nat Nat (λ (Z0 : Nat). S Z0) m2 (Add Z r2) Hlen2,
-                           Pair(Pair(LePredL p x (LebFalseGt x p e), Hsp2),
-                                MkC (*tl) Hcnt2 (acons m2 x (*tl)) (λ (Q : Nat). Refl))))),
-                    S(k3) => {
-                      -- The decomposition is DECLARED: premise (3) may not refine
-                      -- `m2` by unification, so the equation the recursive call
-                      -- returned is cited and solved along. `AddSucc` is the whole
-                      -- distance between what the callee proved and what the carve
-                      -- asks for.
-                      let Hdec = IdTrans Nat m2 (S (Add k3 r2)) (Add k3 (S r2)) Hlen2
-                                   (IdSym Nat (Add k3 (S r2)) (S (Add k3 r2))
-                                      (AddSucc k3 r2));
-                      let lo = &m (*tl)[Z ; k3 ; S r2 | LeAdd k3 (S r2) | Hdec];
-                      let mid = &m (*tl)[k3 ; 1 ; r2];
-                      let hi = &m (*tl)[S k3 ; r2];
-                      let y = (*mid)[0];
-                      let Hrest = SplitACatRest p k3 (S r2) (*lo) (acons r2 y (*hi)) Hsp2;
-                      let Hy = SplitA1Head p r2 (*hi) y Hrest;
-                      let Hub = SplitACatUb p k3 (S r2) (*lo) (acons r2 y (*hi)) Hsp2;
-                      let Hg = SplitA1Tail p r2 (*hi) y Hrest;
-                      let Hnew = SplitACatI0 p k3 (S r2) (*lo) (acons r2 x (*hi)) Hub
-                                   (Pair(LePredL p x (LebFalseGt x p e), Hg));
-                      let Cnt = MkC (arrCat k3 (S r2) (*lo) (acons r2 y (*hi))) Hcnt2
-                                    (acons m2 y (arrCat k3 (S r2) (*lo) (acons r2 x (*hi))))
-                                    (λ (Q : Nat). CountSwapA Q x y k3 (*lo) r2 (*hi));
-                      Pair(S k3, Pair(S r2, Pair(Refl, Pair(Pair(Hy, Hnew), Cnt))))
-                    }
+              let Pair(k2, Pair(r2, Pair(Hlen2, Pair(Hsp2, Hcnt2)))) = splitANoSwap(f2, m2, hfuel, p, &m *tl);
+              if e : Leb x p {
+                Pair(S k2, Pair(r2,
+                  Pair(IdCongr Nat Nat (λ (Z0 : Nat). S Z0) m2 (Add k2 r2) Hlen2,
+                  Pair(Pair(LebTrueLe x p e, Hsp2),
+                       MkC (*tl) Hcnt2 (acons m2 x (*tl)) (λ (Q : Nat). Refl)))))
+              } else {
+                match k2 {
+                  Z => Pair(Z, Pair(S r2,
+                         Pair(IdCongr Nat Nat (λ (Z0 : Nat). S Z0) m2 (Add Z r2) Hlen2,
+                         Pair(Pair(LePredL p x (LebFalseGt x p e), Hsp2),
+                              MkC (*tl) Hcnt2 (acons m2 x (*tl)) (λ (Q : Nat). Refl))))),
+                  S(k3) => {
+                    -- The decomposition is DECLARED: premise (3) may not refine
+                    -- `m2` by unification, so the equation the recursive call
+                    -- returned is cited and solved along. `AddSucc` is the whole
+                    -- distance between what the callee proved and what the carve
+                    -- asks for.
+                    let Hdec = IdTrans Nat m2 (S (Add k3 r2)) (Add k3 (S r2)) Hlen2
+                                 (IdSym Nat (Add k3 (S r2)) (S (Add k3 r2))
+                                    (AddSucc k3 r2));
+                    let lo = &m (*tl)[Z ; k3 ; S r2 | LeAdd k3 (S r2) | Hdec];
+                    let mid = &m (*tl)[k3 ; 1 ; r2];
+                    let hi = &m (*tl)[S k3 ; r2];
+                    let y = (*mid)[0];
+                    let Hrest = SplitACatRest p k3 (S r2) (*lo) (acons r2 y (*hi)) Hsp2;
+                    let Hy = SplitA1Head p r2 (*hi) y Hrest;
+                    let Hub = SplitACatUb p k3 (S r2) (*lo) (acons r2 y (*hi)) Hsp2;
+                    let Hg = SplitA1Tail p r2 (*hi) y Hrest;
+                    let Hnew = SplitACatI0 p k3 (S r2) (*lo) (acons r2 x (*hi)) Hub
+                                 (Pair(LePredL p x (LebFalseGt x p e), Hg));
+                    let Cnt = MkC (arrCat k3 (S r2) (*lo) (acons r2 y (*hi))) Hcnt2
+                                  (acons m2 y (arrCat k3 (S r2) (*lo) (acons r2 x (*hi))))
+                                  (λ (Q : Nat). CountSwapA Q x y k3 (*lo) r2 (*hi));
+                    Pair(S k3, Pair(S r2, Pair(Refl, Pair(Pair(Hy, Hnew), Cnt))))
                   }
                 }
-              } } } } }
+              }
             }
           }
         } };
