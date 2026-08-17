@@ -252,6 +252,72 @@ mutual
   termination_by vs => sizeOf vs
 end
 
+/-! ## Does the arm CALL itself? (the eager recursor's one question)
+
+    A recursor hands its step function the recursive result whether the step wants
+    it or not, and that is the one place where a recursor differs from the way a
+    strict language writes the same program. There, `mod` names its recursive call
+    in the branch that needs it, and `eqb`'s inner case-split on the second
+    argument makes NO call — it just picks a branch. Written with `natRec` the two
+    look identical, because the only way to case-split a `Nat` here IS to recurse
+    on it with an arm that ignores `Rec`.
+
+    So before forcing, ask the arm whether it mentions its recursive binder. If it
+    does, the call is real and eager evaluation runs it; if it does not, there is
+    no call to run, and forcing one would be inventing work the program never
+    asked for. That is not laziness kept as a hedge — an arm that never names the
+    result cannot tell whether it was computed, so this is the CBV semantics with
+    the recursor's spurious argument removed. -/
+
+mutual
+  /-- Conservative "this term may mention the pure name `x`". Mirrors
+      `Term.freePNames`' scope discipline (a binder that rebinds `x` shadows it),
+      and answers `true` for the runtime statement forms — those are not comptime
+      recursion arms, and forcing costs time where a wrong `false` would cost the
+      duplication this whole mechanism exists to remove. -/
+  def mentionsP (x : String) : Term → Bool
+    | .pvar y => y == x
+    | .cmpT τ => mentionsP x τ
+    | .lam y dom b => mentionsP x dom || (y.name != x && mentionsP x b)
+    | .pi y dom b | .sigmaT y dom b | .borrowT y dom b =>
+      mentionsP x dom || (y != x && mentionsP x b)
+    | .app f a => mentionsP x f || mentionsP x a
+    | .idT a b c => mentionsP x a || mentionsP x b || mentionsP x c
+    | .ctorApp _ args => mentionsPList x args
+    | .deref t | .borrow t => mentionsP x t
+    | .var _ | .type | .unit | .const _ => false
+    | _ => true                                 -- statement forms: assume it does
+  termination_by t => sizeOf t
+  def mentionsPList (x : String) : List Term → Bool
+    | [] => false
+    | t :: ts => mentionsP x t || mentionsPList x ts
+  termination_by ts => sizeOf ts
+end
+
+/-- The recursive binder of a step function and the arm it scopes, when the step
+    is literally the nested λs the recursor's scheme says it is. `extra` counts
+    the binders AFTER the first: `natRec`'s step is `λ n. λ rec. arm` (1),
+    `listRec`'s is `λ h. λ t. λ rec. arm` (2), `arrRec`'s takes four (3).
+
+    `eval` turns a written λ into `.lam name dom (.closure ρ body)`, so the first
+    binder is a `Sem` node and the rest are still `Term` nodes inside the
+    suspension — which is why this peels across the two representations. -/
+def stepArm? : Nat → Term → Option (String × Term)
+  | 0, _ => none
+  | 1, .lam v _ arm => some (v.name, arm)
+  | k + 1, .lam _ _ b => stepArm? k b
+  | _, _ => none
+
+/-- **Does this step's arm use its recursive result?** `true` when the shape is
+    not the expected nest of λs, so an unrecognised step is forced rather than
+    silently left lazy. -/
+def armUsesRec (extra : Nat) : Sem → Bool
+  | .lam _ _ (.closure _ b) =>
+    match stepArm? extra b with
+    | some (rec, arm) => mentionsP rec arm
+    | none => true
+  | _ => true
+
 mutual
   /-- Evaluate the term `t` against the comptime environment `ρ`. Strong
       everywhere except under a binder, where the body is suspended.
@@ -298,6 +364,33 @@ mutual
     | fuel, x, .closure ρ b, arg => eval fuel ((x, arg) :: ρ) b
     | _, _, b, _ => b                           -- a binder body is always a closure
   termination_by fuel _ _ _ => (fuel, 2, 0)
+  /-- **Force to a call-by-value value.** Weak-head reduce, and if the head turns
+      out to be a constructor, force its arguments too — recursively, so a numeral
+      comes back as a whole `S`-spine of `Z` and a list as a whole `Cons`-spine of
+      `Nil`.
+
+      It stops at exactly two places, and both are the definition of CBV rather
+      than a compromise with it: a **λ/closure** is returned closed (a function's
+      body runs once per application — forcing under the binder would be strong
+      reduction, not eager evaluation), and a **neutral** is returned stuck (there
+      is nothing to force). `pi`/`sigmaT` are the same story as `lam`.
+
+      Why deep and not weak-head: the caller is the recursor, and the thing it is
+      about to hand its step function is the recursive result. Under a pure
+      reducer with no write-back, whatever is left unreduced inside that value is
+      re-reduced at every USE — so a weak-head force merely moves the duplicated
+      work one constructor down instead of removing it. -/
+  def deepForce : Nat → Sem → Sem
+    | 0, v => v
+    | fuel + 1, v =>
+      match whnfN (fuel + 1) v with
+      | .ctor n args => .ctor n (deepForceList fuel args)
+      | w => w
+  termination_by fuel _ => (fuel, 4, 0)
+  def deepForceList : Nat → List Sem → List Sem
+    | _, [] => []
+    | fuel, v :: vs => deepForce fuel v :: deepForceList fuel vs
+  termination_by fuel vs => (fuel, 5, vs.length)
   /-- Weak-head reduction: β and ι, head redex only. -/
   def whnfN : Nat → Sem → Sem
     | 0, v => v
@@ -311,7 +404,9 @@ mutual
         match whnfN fuel n with
         | .ctor "Z" [] => whnfN fuel (rebuildSpine z rest)
         | .ctor "S" [m] =>
-          let recCall := .app (.app (.app (.app (.const "natRec") motive) z) s) m
+          -- CBV: if the arm makes the call, its result is a VALUE before entry.
+          let recSpine := .app (.app (.app (.app (.const "natRec") motive) z) s) m
+          let recCall := if armUsesRec 1 s then deepForce fuel recSpine else recSpine
           whnfN fuel (rebuildSpine (.app (.app s m) recCall) rest)
         | n' => rebuildSpine (.const "natRec") (motive :: z :: s :: n' :: rest)
       | .const "boolRec", motive :: t :: f :: b :: rest =>
@@ -323,7 +418,8 @@ mutual
         match whnfN fuel l with
         | .ctor "Nil" [] => whnfN fuel (rebuildSpine pn rest)
         | .ctor "Cons" [h, t] =>
-          let recCall := .app (.app (.app (.app (.app (.const "listRec") a) motive) pn) pc) t
+          let recSpine := .app (.app (.app (.app (.app (.const "listRec") a) motive) pn) pc) t
+          let recCall := if armUsesRec 2 pc then deepForce fuel recSpine else recSpine
           whnfN fuel (rebuildSpine (.app (.app (.app pc h) t) recCall) rest)
         | l' => rebuildSpine (.const "listRec") (a :: motive :: pn :: pc :: l' :: rest)
       | .const "sigmaRec", a :: b :: motive :: f :: p :: rest =>
@@ -370,10 +466,12 @@ mutual
         | .ctor "Arr" (x :: vs) =>
           let tl : Sem := .ctor "Arr" vs
           let k : Sem := semOfNat vs.length
-          let recCall := rebuildSpine (.const "arrRec") [tt, motive, pn, pc, k, tl]
+          let recSpine := rebuildSpine (.const "arrRec") [tt, motive, pn, pc, k, tl]
+          let recCall := if armUsesRec 3 pc then deepForce fuel recSpine else recSpine
           whnfN fuel (rebuildSpine (rebuildSpine pc [k, x, tl, recCall]) rest)
         | .app (.app (.app (.const "acons") m') x) xs =>
-          let recCall := rebuildSpine (.const "arrRec") [tt, motive, pn, pc, m', xs]
+          let recSpine := rebuildSpine (.const "arrRec") [tt, motive, pn, pc, m', xs]
+          let recCall := if armUsesRec 3 pc then deepForce fuel recSpine else recSpine
           whnfN fuel (rebuildSpine (rebuildSpine pc [m', x, xs, recCall]) rest)
         | a' => rebuildSpine (.const "arrRec") (tt :: motive :: pn :: pc :: n :: a' :: rest)
       | _, _ => rebuildSpine head args
