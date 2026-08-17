@@ -5362,4 +5362,23 @@ def AllHashedACatSplitTy : Term := prog{
     AllHashedA Cap (Add K M) (arrCat K M L W) I0 →
       Σ (Hl : AllHashedA Cap K L I0). AllHashedA Cap M W (Add I0 K) }
 
+/-- `OptElim` distributes over an `Eqb`-headed `boolRec` — the fact the array-level
+    Insert needs to move `FindInsL`'s own `Eqb Q key` dispatch OUT from under
+    `FindArrA`'s "first hit wins" fold, matching it against `FindIns`'s OWN `Eqb Q key`
+    dispatch at the whole-map level. `OptElimAssoc`'s trick again: both cases close by
+    Refl once `Bz` alone is fixed, never touching `V`/`X`/`Y`. -/
+def OptElimDistrib : Term := prog{
+  λ (V : Nat). λ (X : Opt Nat). λ (Y : Opt Nat). λ (Bz : Bool).
+    elim Bz return (λ (Bz2 : Bool). Id (Opt Nat)
+        (OptElim (boolRec (λ (W : Bool). Σ (b : Bool). OptP b Nat) (Some V) X Bz2) (Opt Nat) Y Some)
+        (boolRec (λ (W : Bool). Σ (b : Bool). OptP b Nat) (Some V) (OptElim X (Opt Nat) Y Some) Bz2)) {
+      True => Refl,
+      False => Refl
+    } }
+def OptElimDistribAtTy : Term := prog{
+  Π (V : Nat) → Π (X : Opt Nat) → Π (Y : Opt Nat) → Π (Bz : Bool) →
+    Id (Opt Nat)
+      (OptElim (boolRec (λ (W : Bool). Σ (b : Bool). OptP b Nat) (Some V) X Bz) (Opt Nat) Y Some)
+      (boolRec (λ (W : Bool). Σ (b : Bool). OptP b Nat) (Some V) (OptElim X (Opt Nat) Y Some) Bz) }
+
 end Dllbc.StdLemmas
