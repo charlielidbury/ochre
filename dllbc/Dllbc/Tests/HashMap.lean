@@ -1695,6 +1695,215 @@ def SlotsOkJoin0Ty : Term := prog{
 example : chkL SlotsOkSplit0 SlotsOkSplit0Ty = true := by native_decide
 example : chkL SlotsOkJoin0 SlotsOkJoin0Ty = true := by native_decide
 
+/-! ### One conclusion each
+
+    ArraySort's rule (§(iv), "one conclusion each, so the programs need no inline
+    `elim`") applies here for a sharper reason than tidiness: §6's one caveat is that a
+    proof you MATCH on must live at a lowercase name, because matching is a runtime
+    observation — and these components are comptime. Splitting the conclusion three
+    ways means the body cites three lemmas instead of destructuring anything. -/
+
+def SlotsOkPL : Term := prog{
+  λ (C : Nat). λ (M : Nat). λ (X : Bucket). λ (R : Array M Bucket).
+  λ (K : Nat). λ (L : Array K Bucket).
+  λ (H : SlotsOk C Z (Add K (S M)) (arrCat K (S M) L (acons M X R))).
+    elim (SlotsOkSplit0 C M X R K L H) return (λ (Q :
+        Σ (Hl : SlotsOk C Z K L). Σ (Hm : BucketAt C K X). SlotsOk C (S K) M R).
+        SlotsOk C Z K L) {
+      Pair (Hl) (Ht) => Hl } }
+def SlotsOkPLTy : Term := prog{
+  Π (C : Nat) → Π (M : Nat) → Π (X : Bucket) → Π (R : Array M Bucket) →
+  Π (K : Nat) → Π (L : Array K Bucket) →
+    SlotsOk C Z (Add K (S M)) (arrCat K (S M) L (acons M X R)) → SlotsOk C Z K L }
+
+def SlotsOkPM : Term := prog{
+  λ (C : Nat). λ (M : Nat). λ (X : Bucket). λ (R : Array M Bucket).
+  λ (K : Nat). λ (L : Array K Bucket).
+  λ (H : SlotsOk C Z (Add K (S M)) (arrCat K (S M) L (acons M X R))).
+    elim (SlotsOkSplit0 C M X R K L H) return (λ (Q :
+        Σ (Hl : SlotsOk C Z K L). Σ (Hm : BucketAt C K X). SlotsOk C (S K) M R).
+        BucketAt C K X) {
+      Pair (Hl) (Ht) =>
+        elim Ht return (λ (Q2 : Σ (Hm : BucketAt C K X). SlotsOk C (S K) M R).
+            BucketAt C K X) { Pair (Hm) (Hr) => Hm } } }
+def SlotsOkPMTy : Term := prog{
+  Π (C : Nat) → Π (M : Nat) → Π (X : Bucket) → Π (R : Array M Bucket) →
+  Π (K : Nat) → Π (L : Array K Bucket) →
+    SlotsOk C Z (Add K (S M)) (arrCat K (S M) L (acons M X R)) → BucketAt C K X }
+
+def SlotsOkPR : Term := prog{
+  λ (C : Nat). λ (M : Nat). λ (X : Bucket). λ (R : Array M Bucket).
+  λ (K : Nat). λ (L : Array K Bucket).
+  λ (H : SlotsOk C Z (Add K (S M)) (arrCat K (S M) L (acons M X R))).
+    elim (SlotsOkSplit0 C M X R K L H) return (λ (Q :
+        Σ (Hl : SlotsOk C Z K L). Σ (Hm : BucketAt C K X). SlotsOk C (S K) M R).
+        SlotsOk C (S K) M R) {
+      Pair (Hl) (Ht) =>
+        elim Ht return (λ (Q2 : Σ (Hm : BucketAt C K X). SlotsOk C (S K) M R).
+            SlotsOk C (S K) M R) { Pair (Hm) (Hr) => Hr } } }
+def SlotsOkPRTy : Term := prog{
+  Π (C : Nat) → Π (M : Nat) → Π (X : Bucket) → Π (R : Array M Bucket) →
+  Π (K : Nat) → Π (L : Array K Bucket) →
+    SlotsOk C Z (Add K (S M)) (arrCat K (S M) L (acons M X R)) → SlotsOk C (S K) M R }
+
+/-- The rewriter at `Bucket`, so the exit evidence built about `InsL key val X0` can be
+    moved onto `*bk`, which is what the bucket walk's own equation says it is. -/
+def BucketRw : Term := prog{
+  λ (P : List (Σ (k : Nat). Nat) → Type).
+  λ (X : Bucket). λ (Y : Bucket).
+  λ (H : Id (List (Σ (k : Nat). Nat)) X Y). λ (Px : P X).
+    j (List (Σ (k : Nat). Nat)) X
+      (λ (Y2 : List (Σ (k : Nat). Nat)).
+       λ (Hh : Id (List (Σ (k : Nat). Nat)) X Y2). P Y2) Px Y H }
+def BucketRwTy : Term := prog{
+  Π (P : List (Σ (k : Nat). Nat) → Type) → Π (X : Bucket) → Π (Y : Bucket) →
+    Id (List (Σ (k : Nat). Nat)) X Y → P X → P Y }
+
+example : chkL SlotsOkPL SlotsOkPLTy = true := by native_decide
+example : chkL SlotsOkPM SlotsOkPMTy = true := by native_decide
+example : chkL SlotsOkPR SlotsOkPRTy = true := by native_decide
+example : chkL BucketRw BucketRwTy = true := by native_decide
+
+/-! ## 11b. `InsertSlots` — the array-level insert, invariant-preserving
+
+    Carve at the hashed slot, hand the bucket to the verified walk, and return the two
+    facts a caller needs to rebuild the pack: the table is still well-hashed, and its
+    entry count is the old one bumped exactly when the key was absent.
+
+    The evidence is built about `InsL key val X0` — the bucket the MODEL says is there
+    — and moved onto `*bk` at the very end by `BucketRw` along the walk's own equation.
+    That ordering is what keeps the proof readable: everything inside the transport is
+    about pure values, and the single `IdSym h` is the only place the imperative result
+    enters. -/
+
+/-! ### The telescope's positional vocabulary, so the twins can share the body
+
+    fuel=0, cap=1, i=2, r=3, Heq=4, key=5, val=6, Hix=7, slots=8, Hs=9, Hfb=10. -/
+
+def isCap : Term := .var ⟨1, "cap"⟩
+def isI : Term := .var ⟨2, "i"⟩
+def isKey : Term := .var ⟨5, "key"⟩
+def isSlots : Term := .var ⟨8, "slots"⟩
+
+/-- The honest ensures: the table is still well-hashed, and its entry count is the old
+    one bumped exactly when the key was absent. -/
+def isHonest : Term := prog{
+  Σ0 (Hs2 : SlotsOk %isCap Z %isCap (*%isSlots)).
+    Id Nat (SizeA %isCap (*%isSlots))
+      (boolRec (λ (W : Bool). Nat)
+         (S (SizeA %isCap (old *%isSlots))) (SizeA %isCap (old *%isSlots))
+         (IsNoneO Nat (FindL %isKey (AgetB %isCap (old *%isSlots) %isI)))) }
+
+/-- The honest hash precondition: `i` really is the key's slot. -/
+def isHix : Term := prog{ Id Nat (Mod %isKey %isCap) %isI }
+
+def insertSlotsU (sret hix rest : Term) : Term := iilP prog{
+  fn InsertSlots (fuel : Nat, cap : Nat, i : Nat, r : Nat,
+                  Heq : Id Nat cap (Add i (S r)), key : Nat, val : Nat,
+                  Hix : %hix,
+                  slots : &mut (Array cap (List (Σ (k : Nat). Nat))),
+                  Hs : SlotsOk cap Z cap (*slots),
+                  Hfb : Le (SizeA cap (*slots)) fuel)
+      -> %sret {
+    let lo = &m (*slots)[Z ; i ; S r | LeAdd i (S r) | Heq];
+    let cell = &m (*slots)[i ; 1 ; r];
+    let hi = &m (*slots)[S i ; r];
+    let bk = &m (*cell)[0];
+    let L0 = *lo;
+    let R0 = *hi;
+    let X0 = *bk;
+    let Cap = cap;
+    let I0 = i;
+    let Rr = r;
+    let Key = key;
+    let Val = val;
+    let Hl = SlotsOkPL Cap Rr X0 R0 I0 L0 Hs;
+    let Hm = SlotsOkPM Cap Rr X0 R0 I0 L0 Hs;
+    let Hr2 = SlotsOkPR Cap Rr X0 R0 I0 L0 Hs;
+    -- The bucket's fuel bound comes from the table's, through the counting clause:
+    -- one bucket is no longer than the whole table.
+    let hf = LeTrans (LenE X0) (SizeA Cap (arrCat I0 (S Rr) L0 (acons Rr X0 R0))) fuel
+               (LenLeSize I0 L0 Rr X0 R0) Hfb;
+    let h = InsertInList(fuel, key, val, &m *bk, hf);
+    BucketRw
+      (λ (B : List (Σ (k : Nat). Nat)).
+         Σ0 (Hs2 : SlotsOk Cap Z Cap (arrCat I0 (S Rr) L0 (acons Rr B R0))).
+           Id Nat (SizeA Cap (arrCat I0 (S Rr) L0 (acons Rr B R0)))
+             (boolRec (λ (W : Bool). Nat)
+                (S (SizeA Cap (arrCat I0 (S Rr) L0 (acons Rr X0 R0))))
+                (SizeA Cap (arrCat I0 (S Rr) L0 (acons Rr X0 R0)))
+                (IsNoneO Nat (FindL Key
+                   (AgetB Cap (arrCat I0 (S Rr) L0 (acons Rr X0 R0)) I0)))))
+      (InsL Key Val X0) (*bk)
+      (IdSym (List (Σ (k : Nat). Nat)) (*bk) (InsL Key Val X0) h)
+      Pair(SlotsOkJoin0 Cap Rr (InsL Key Val X0) R0 I0 L0 Hl
+             (BucketAtIns Cap I0 Key Val X0 Hm Hix) Hr2,
+           BoolRw
+             (λ (Bw : Bool).
+                Id Nat (SizeA Cap (arrCat I0 (S Rr) L0 (acons Rr (InsL Key Val X0) R0)))
+                       (boolRec (λ (W : Bool). Nat)
+                          (S (SizeA Cap (arrCat I0 (S Rr) L0 (acons Rr X0 R0))))
+                          (SizeA Cap (arrCat I0 (S Rr) L0 (acons Rr X0 R0))) Bw))
+             (IsNoneO Nat (FindL Key X0))
+             (IsNoneO Nat (FindL Key (AgetB Cap (arrCat I0 (S Rr) L0 (acons Rr X0 R0)) I0)))
+             (IdSym Bool
+                (IsNoneO Nat (FindL Key
+                   (AgetB Cap (arrCat I0 (S Rr) L0 (acons Rr X0 R0)) I0)))
+                (IsNoneO Nat (FindL Key X0))
+                (IdCongr (List (Σ (k : Nat). Nat)) Bool
+                   (λ (B2 : List (Σ (k : Nat). Nat)). IsNoneO Nat (FindL Key B2))
+                   (AgetB Cap (arrCat I0 (S Rr) L0 (acons Rr X0 R0)) I0) X0
+                   (AgetBMid Rr X0 R0 I0 L0)))
+             (SizeAIns I0 L0 Rr X0 R0 Key Val)) };
+  %rest }
+
+def insertSlotsP (rest : Term) : Term := insertSlotsU isHonest isHix rest
+
+/-- **The array-level insert checks.** It carves at the hashed slot, hands the bucket to
+    the verified walk, and returns both of the packed invariant's mutable clauses about
+    the table it leaves behind. -/
+example : progOk (insertSlotsP prog{ () }) = true := by native_decide
+
+/-! ### `InsertSlots`' twins -/
+
+-- The size accounting inverted: bumped when the key was PRESENT.
+example : progOk (insertSlotsU (prog{
+  Σ0 (Hs2 : SlotsOk %isCap Z %isCap (*%isSlots)).
+    Id Nat (SizeA %isCap (*%isSlots))
+      (boolRec (λ (W : Bool). Nat)
+         (SizeA %isCap (old *%isSlots)) (S (SizeA %isCap (old *%isSlots)))
+         (IsNoneO Nat (FindL %isKey (AgetB %isCap (old *%isSlots) %isI)))) })
+  isHix .unit) = false := by native_decide
+
+-- The size accounting off by one: always bumped.
+example : progOk (insertSlotsU (prog{
+  Σ0 (Hs2 : SlotsOk %isCap Z %isCap (*%isSlots)).
+    Id Nat (SizeA %isCap (*%isSlots)) (S (SizeA %isCap (old *%isSlots))) })
+  isHix .unit) = false := by native_decide
+
+-- …and never bumped.
+example : progOk (insertSlotsU (prog{
+  Σ0 (Hs2 : SlotsOk %isCap Z %isCap (*%isSlots)).
+    Id Nat (SizeA %isCap (*%isSlots)) (SizeA %isCap (old *%isSlots)) })
+  isHix .unit) = false := by native_decide
+
+-- The size claimed at the WRONG slot's bucket — slot `S i` instead of `i`.
+example : progOk (insertSlotsU (prog{
+  Σ0 (Hs2 : SlotsOk %isCap Z %isCap (*%isSlots)).
+    Id Nat (SizeA %isCap (*%isSlots))
+      (boolRec (λ (W : Bool). Nat)
+         (S (SizeA %isCap (old *%isSlots))) (SizeA %isCap (old *%isSlots))
+         (IsNoneO Nat (FindL %isKey (AgetB %isCap (old *%isSlots) (S %isI))))) })
+  isHix .unit) = false := by native_decide
+
+/-- **The hash is load-bearing for the INVARIANT, not merely for lookup.** Weaken the
+    precondition that `i` is the key's slot to `Unit` — keeping the parameter, so the
+    body still elaborates and the rejection is about typing — and the well-hashedness
+    clause can no longer be rebuilt: `BucketAtIns` has nothing to say the new entry
+    belongs where it was put. This is the doc's "insert into the unhashed slot" twin,
+    reached through the precondition rather than through the body. -/
+example : progOk (insertSlotsU isHonest prog{ Unit } .unit) = false := by native_decide
+
 
 /-! ## 12. The executing differential
 
