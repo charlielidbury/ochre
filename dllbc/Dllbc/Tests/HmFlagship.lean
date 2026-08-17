@@ -27,7 +27,8 @@ open Dllbc.StdLemmas (LeRefl LeTrans LeAdd LeAddL LeAddSucc LeRwL LeRwR AddSucc 
   IdTrans IdCongr IdSym Znots LebTrueLe LebFalseGt LePredL EqbRefl EqbGtFalse EqbLtFalse
   NatRw
   NextR NextC NextQ ModC Mod DivC Div Mul StepInv StepInvTy ModCLt ModCLtTy
-  ModLtN ModLtNTy ModDec ModDecTy)
+  ModLtN ModLtNTy ModDec ModDecTy
+  OptP Opt Some None OptElim Entry Bucket LenE FindL)
 
 namespace Dllbc.Tests.HmFlagship
 
@@ -56,5 +57,32 @@ example : chkL StepInv StepInvTy = true := by native_decide
 example : chkL ModCLt ModCLtTy = true := by native_decide
 example : chkL ModLtN ModLtNTy = true := by native_decide
 example : chkL ModDec ModDecTy = true := by native_decide
+
+/-! ## §0.5 — the Option/Entry/Bucket vocabulary, smoke-tested -/
+
+example : chkL prog{ Some 5 } prog{ Opt Nat } = true := by native_decide
+example : chkL None prog{ Opt Nat } = true := by native_decide
+example : chkL prog{ Cons(Pair(3, 30), Cons(Pair(1, 10), Nil)) } Bucket = true := by
+  native_decide
+
+def bucketLit : Term := prog{ Cons(Pair(1, 10), Cons(Pair(3, 30), Nil)) }
+
+example : (pv prog{ LenE %bucketLit }).natOf? == some 2 := by native_decide
+example : (pv prog{ FindL 3 %bucketLit }).natOf? = none := by native_decide -- an Opt, not a Nat
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindL 3 %bucketLit) (Some 30) } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindL 9 %bucketLit) None } = true := by
+  native_decide
+-- The wrong value is refused, so the two checks above are not vacuous.
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindL 3 %bucketLit) (Some 10) } = false := by
+  native_decide
+
+-- `OptElim`, both branches, at both a Lean-level check and a program use.
+example : chkL prog{ OptElim (Some 5) Nat Z (λ (V : Nat). V) } prog{ Nat } = true := by
+  native_decide
+example : (pv prog{ OptElim (Some 5) Nat Z (λ (V : Nat). V) }).natOf? == some 5 := by
+  native_decide
+example : (pv prog{ OptElim None Nat 9 (λ (V : Nat). V) }).natOf? == some 9 := by
+  native_decide
 
 end Dllbc.Tests.HmFlagship

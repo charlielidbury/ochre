@@ -4775,4 +4775,65 @@ def ModDec : Term := prog{
 def ModDecTy : Term := prog{
   Π (I : Nat) → Π (N : Nat) → Le (S I) N → Σ (R : Nat). Id Nat N (Add I (S R)) }
 
+/-! ## The hashmap flagship (`docs/13-hashmap-flagship.md`) — vocabulary
+
+    **Option** — the `Σ (Bool)` encoding, ported from `hm-probe-opt` (verbatim, modulo
+    the Σ-dot migration and specialising the payload to `Nat`, since values are `Nat`
+    in v1). `OptP` is a `boolRec` into `Type`; `Opt T` pairs a runtime tag with an
+    erased-or-not payload of that type (the tag is lowercase, so the match on it is a
+    genuine runtime branch). `OptElim` is the eliminator every `Opt`-typed PURE
+    function below is built from — a return-type-generic fold, Lean's `Option.elim`,
+    needed because a pure function may not use the imperative `match`. -/
+
+def OptP : Term := prog{
+  λ (B : Bool). λ (T : Type). elim B return (λ (Bm : Bool). Type) {
+    True => T, False => Unit } }
+
+def Opt : Term := prog{ λ (T : Type). Σ (b : Bool). OptP b T }
+
+/-- `Some : Nat → Opt Nat`. -/
+def Some : Term := prog{ λ (V : Nat). Pair(True, V) }
+/-- `None : Opt Nat`. -/
+def None : Term := prog{ Pair(False, unit) }
+
+def OptElim : Term := prog{
+  λ (O : Σ (b : Bool). OptP b Nat). λ (R : Type). λ (Dn : R). λ (Ds : Nat → R).
+    elim O return (λ (Oz : Σ (b : Bool). OptP b Nat). R) {
+      Pair (B) (P) => elim B return (λ (Bz : Bool). OptP Bz Nat → R) {
+        True => λ (V : Nat). Ds V,
+        False => λ (U : Unit). Dn
+      } P
+    } }
+
+/-! ## Entries and buckets — `List (Σ k. Nat)`, the Aeneas hashmap's own shape
+
+    `LenE`/`FindL` are hand-built `listRec` spines rather than the `elim` sugar,
+    because `Uni.elabUElim`'s Nil/Cons branch hard-codes the element type as `Nat`
+    (`hm-probe-opt` §"the cause") — the kernel's `listRec` is fully generic in the
+    element type; only the surface sugar is monomorphic. -/
+
+def Entry : Term := prog{ Σ (k : Nat). Nat }
+def Bucket : Term := prog{ List Entry }
+
+/-- `LenE b` — the bucket's entry count. `Std.lenFn`'s transfer at this payload. -/
+def LenE : Term := prog{
+  λ (L : Bucket).
+    listRec Entry (λ (Lm : Bucket). Nat) Z
+      (λ (H : Entry). λ (T : Bucket). λ (Ih : Nat). S(Ih))
+      L }
+
+/-- `FindL q b` — the first entry in `b` whose key is `q`, `None` if there is none.
+    Head-to-tail scan, matching `insert_in_list`'s own walk order (and therefore
+    `SetL`'s, §next section): the FIRST occurrence wins, which is also the only one
+    that can exist once `SetL`'s own no-duplicate-key invariant is established. -/
+def FindL : Term := prog{
+  λ (Q : Nat). λ (B : Bucket).
+    listRec Entry (λ (Bm : Bucket). Σ (b : Bool). OptP b Nat) None
+      (λ (E : Entry). λ (T : Bucket). λ (Rec : Σ (b : Bool). OptP b Nat).
+        elim E return (λ (Em : Σ (k : Nat). Nat). Σ (b : Bool). OptP b Nat) {
+          Pair (K2) (V2) =>
+            elim (Eqb Q K2) return (λ (Bz : Bool). Σ (b : Bool). OptP b Nat) {
+              True => Some V2, False => Rec } })
+      B }
+
 end Dllbc.StdLemmas
