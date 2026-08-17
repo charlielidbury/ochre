@@ -3277,8 +3277,11 @@ partial def reachesLoan (ℓ target : Nat) : M Bool := do
     parameter is a place the callee is done with and the caller will recover
     verbatim, so it is auditable and must be audited.
 
-    Three pieces below: name the parked markers, collapse the ones that are not in
-    flight, and hunt the residue for holes. -/
+    Two questions, and the residue must answer both: is anything MISSING from a
+    leaf the callee is finished with (`residueHoles`), and is what is there still
+    the TYPE it was lent (`spliceInFlight` + `hasType`). The second is not implied
+    by the first — a wrong-typed write leaves no hole — and the ordinary audit asks
+    it of every non-exempt parameter, so the exempt one is not entitled to less. -/
 
 mutual
   /-- Loan markers PARKED in a value — the places this value has lent out. A
@@ -3301,17 +3304,19 @@ end
 def inFlight (resultLoans : List Nat) (ℓ : Nat) : M Bool :=
   resultLoans.anyM (fun rl => reachesLoan ℓ rl)
 
+/-- The first parked loan that is NOT in flight — the next piece of residue to
+    pull home. -/
+def firstNotInFlight (resultLoans : List Nat) : List Nat → M (Option Nat)
+  | [] => pure none
+  | ℓ :: rest => do
+    if ← inFlight resultLoans ℓ then firstNotInFlight resultLoans rest else pure (some ℓ)
+
 /-- `collapseArg`, restricted to the residue: End-Mut every parked loan in the
     argument borrow's payload whose borrow is NOT in flight toward the result.
     Located by loan rather than by slot, because an exempted parameter's slot may
     have been moved from. Ending a loan early is sound (§ pop-with-drop: "the
     demand machinery already ends loans lazily, so eager ending moves the same
     events earlier and adds none"). -/
-def firstNotInFlight (resultLoans : List Nat) : List Nat → M (Option Nat)
-  | [] => pure none
-  | ℓ :: rest => do
-    if ← inFlight resultLoans ℓ then firstNotInFlight resultLoans rest else pure (some ℓ)
-
 def collapseResidue : Nat → List Nat → Nat → M Unit
   | 0, _, _ => throwErr "audit: out of fuel (residue collapse)"
   | fuel + 1, resultLoans, ℓarg => do
@@ -3327,11 +3332,10 @@ mutual
       take-without-refill the caller will inherit; a parked marker survives only if
       its borrow is in flight (`collapseResidue` ended the rest).
 
-      This is deliberately a HOLE check and not `hasType payload owed`: the residue
-      still carries the in-flight markers, and `hasType` has no rule for a `loanₘ`
-      (a `§segs` leaf must be `segOwned`). Judging the parameter's owed type here
-      would also be judging the returned sub-place, whose payload is about to change
-      under the caller's hand — the very claim M27's containment refuses. -/
+      It stops AT an in-flight marker rather than descending through it: what is
+      inside the returned place is not this audit's business, and `retHole`'s ⊥ in
+      the returned cell belongs to the issued-borrow check, which has already run.
+      The type question about the residue is asked separately, below. -/
   partial def residueHoles (resultLoans : List Nat) : Val → M (Option String)
     | .bot => pure (some "⊥")
     | .loanM ℓ => do
@@ -3365,10 +3369,13 @@ mutual
       before this point for anything richer. It would NOT be fine for a relational
       claim, which is exactly why the containment stays.
 
-      `none` when a marker cannot be spliced (its borrow is not locatable in Ω —
-      an argument captured by a call whose group is still open). Then the type
-      check is skipped rather than guessed: step 1's hole check still ran. -/
-  partial def spliceInFlight (issued : List (Nat × Val)) : Val → M (Option Val)
+      Every marker has an answer, and there is no silent skip: the issued list, Ω,
+      and the group table between them cover the corpus (instrumented as a hard
+      error and replayed over the whole suite and the `hm-probe-getmut` corpus —
+      neither arm fires). A marker with no answer REJECTS, distinctively: the audit
+      cannot see that place, so it cannot certify it, and failing closed is what
+      says so. -/
+  partial def spliceInFlight (issued : List (Nat × Val)) : Val → M Val
     | .loanM ℓ => do
       -- The ISSUED borrow itself is not in Ω — it left in the result value — so
       -- `findBorrowPayload` cannot reach it and the splice would stall here. Its
@@ -3376,10 +3383,15 @@ mutual
       -- issued-borrow check that has already run, so it is both available and
       -- already typed against its own owed type.
       match issued.lookup ℓ with
-      | some p => pure (some p)
+      | some p => pure p
       | none => do
-        if !(← inFlight (issued.map (·.1)) ℓ) then pure none  -- collapseResidue missed it
-        else match (← getEnv).findSome? (fun kv => findBorrowPayload ℓ kv.2) with
+        -- No in-flight test here, deliberately. `residueHoles` has already
+        -- rejected any marker in the residue PROPER that is not in flight; the
+        -- markers this arm sees are the ones found by descending INTO an in-flight
+        -- place, where a live sibling borrow is ordinary (`orInsertA` peels its
+        -- bucket in borrow mode and returns `&m *hd` while `tl`'s field loan sits
+        -- beside it, unreturned and perfectly legitimate).
+        match (← getEnv).findSome? (fun kv => findBorrowPayload ℓ kv.2) with
           | some p => spliceInFlight issued p
           | none =>
             -- Not in Ω: the borrow was CAPTURED by a call whose group is still
@@ -3389,25 +3401,18 @@ mutual
             -- release will put here — so the stand-in is the rule's own answer,
             -- not an assumption.
             match ((← get).groups.findSome? (fun g => g.captured.lookup ℓ)) with
-            | none => pure none                              -- genuinely unreachable: skip the type check
+            | none =>
+              throwErr s!"audit: the residue of a returned-borrow parameter holds a loan (ℓ{ℓ}) whose borrow is in neither Ω nor an open group, so the leaves the callee does not return cannot be typed. §6.1 exempts the returned sub-place, not the parameter — a place the audit cannot see is a place it cannot certify."
             | some owed => do
               let σ ← freshSym
               modify (fun st => { st with sctx := (σ, owed) :: st.sctx })
-              pure (some (.know (Term.sym σ)))
+              pure (.know (Term.sym σ))
     | .node n args => do
-      match ← spliceInFlightList issued args with
-      | none => pure none
-      | some args' => pure (some (Val.ctor n args'))
-    | v => pure (some v)
-  partial def spliceInFlightList (issued : List (Nat × Val)) : List Val → M (Option (List Val))
-    | [] => pure (some [])
-    | v :: vs => do
-      match ← spliceInFlight issued v with
-      | none => pure none
-      | some v' => do
-        match ← spliceInFlightList issued vs with
-        | none => pure none
-        | some vs' => pure (some (v' :: vs'))
+      pure (Val.ctor n (← spliceInFlightList issued args))
+    | v => pure v
+  partial def spliceInFlightList (issued : List (Nat × Val)) : List Val → M (List Val)
+    | [] => pure []
+    | v :: vs => do pure ((← spliceInFlight issued v) :: (← spliceInFlightList issued vs))
 end
 
 /-- The narrowed exemption, applied: hole check, then type check. -/
@@ -3429,10 +3434,8 @@ def residueAudit (fuel : Nat) (issued : List (Nat × Val)) (ob : Obligation) : M
       -- difference between this landing silently and it renumbering the corpus.
       let saved ← get
       let verdict ← (do
-        match ← spliceInFlight issued payload with
-        | none => pure none                               -- unsplicable: hole check only
-        | some spliced =>
-          if ← hasType fuel spliced ob.owed then pure none else pure (some spliced.pretty))
+        let spliced ← spliceInFlight issued payload
+        if ← hasType fuel spliced ob.owed then pure none else pure (some spliced.pretty))
       set saved
       match verdict with
       | none => pure ()
