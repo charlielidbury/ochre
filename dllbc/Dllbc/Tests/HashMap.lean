@@ -1186,5 +1186,168 @@ example : progOk (prog{
     match b { Nil => { *b := Nil; Refl }, Cons(hd, tl) => botElim Unit Hf } };
   () }) = false := by native_decide
 
+/-! ## 10. Opening a `HMap` — the shape, and the four rejections that fixed it
+
+    A hashmap operation has to get from `self : &mut HMap` to a `&mut Bucket` at the
+    hashed slot. Destructuring the pack through the borrow works and hands back
+    borrows of all five components (§7's "borrow mode goes all the way down"), but
+    four things about the route were measured rather than guessed, and each was a
+    rejection with a message that named its own fix:
+
+      * **Reading the capacity MOVES it.** `let c = *cap` leaves a hole:
+        `audit: argument borrow self (ℓ0) holds a hole (⊥) at return, in a leaf it
+        still owns — take without refill`. A `Nat` behind a `&mut` is still a payload
+        take, so the read is followed by `*cap := c` and the value survives the refill.
+      * **The invariant reads as knowledge.** `let Hi = *Hinv` is accepted with no
+        refill, because the `Σ0` tail is comptime and a comptime read consumes nothing.
+      * **The slot must be minted across a CALL** (the `hm-probe-mod` finding), and
+        inside that call the slot must be a LOWERCASE `let`: a capital binder cannot
+        be ⇒-moved into the returned pair (`fence: 'S0' is a COMPTIME binder … and
+        cannot be ⇒-moved`). A runtime `let` is still value-transparent, so
+        `Refl : Id Nat s0 (Mod key n)` closes and the caller keeps the connection back
+        to `Mod key n` in the `Σ0`.
+      * **A bare lemma spine cannot be match-scrutinized.** `let Pair(rr, hq) =
+        ModDec …` is refused with `match: non-exhaustive — no branch for constructor
+        'True'` — the checker cannot synthesize a type for an unascribed λ-spine and
+        the match sees garbage. Ascribing it (`(ModDec … : Σ (r : Nat). …)`) fixes it,
+        and the message is worth knowing because it names a constructor from a type
+        that is nowhere in the program.
+
+    `ModDec`'s residue moved from a capital `Σ (R : Nat)` to a lowercase `Σ (r : Nat)`
+    in `StdLemmas` for the third of those reasons: a carve extent is runtime data, and
+    the comptime binder fenced it out of the returned pair. -/
+
+/-! ### Projecting the packed invariant
+
+    `HMInv` is a Σ chain, so reading a clause out of it is a `sigmaRec`. The motive's
+    binder type has to be written as the chain ITSELF rather than as `HMInv C L N Sl`,
+    because the `Pair` branch of the elim sugar reads `A` and `B` syntactically out of
+    `Σ (x : A). B` and a spliced application is opaque to it — the same syntactic-read
+    trap the bucket motives hit. -/
+
+def InvCap : Term := prog{
+  λ (C : Nat). λ (L : Nat). λ (N : Nat). λ (Sl : Array C Bucket).
+  λ (Hi : HMInv C L N Sl).
+    elim Hi return (λ (Q : Σ (Hc : Le (S Z) C).
+        Σ (Hs : SlotsOk C Z C Sl).
+        Σ (Hn : Id Nat N (SizeA C Sl)).
+          Id Nat L (Div (Mul C 4) 5)). Le (S Z) C) {
+      Pair (Hc) (Rest) => Hc } }
+def InvCapTy : Term := prog{
+  Π (C : Nat) → Π (L : Nat) → Π (N : Nat) → Π (Sl : Array C Bucket) →
+    HMInv C L N Sl → Le (S Z) C }
+
+def InvSlots : Term := prog{
+  λ (C : Nat). λ (L : Nat). λ (N : Nat). λ (Sl : Array C Bucket).
+  λ (Hi : HMInv C L N Sl).
+    elim Hi return (λ (Q : Σ (Hc : Le (S Z) C).
+        Σ (Hs : SlotsOk C Z C Sl).
+        Σ (Hn : Id Nat N (SizeA C Sl)).
+          Id Nat L (Div (Mul C 4) 5)). SlotsOk C Z C Sl) {
+      Pair (Hc) (Rest) =>
+        elim Rest return (λ (Q2 : Σ (Hs : SlotsOk C Z C Sl).
+            Σ (Hn : Id Nat N (SizeA C Sl)).
+              Id Nat L (Div (Mul C 4) 5)). SlotsOk C Z C Sl) {
+          Pair (Hs) (Rest2) => Hs } } }
+def InvSlotsTy : Term := prog{
+  Π (C : Nat) → Π (L : Nat) → Π (N : Nat) → Π (Sl : Array C Bucket) →
+    HMInv C L N Sl → SlotsOk C Z C Sl }
+
+def InvN : Term := prog{
+  λ (C : Nat). λ (L : Nat). λ (N : Nat). λ (Sl : Array C Bucket).
+  λ (Hi : HMInv C L N Sl).
+    elim Hi return (λ (Q : Σ (Hc : Le (S Z) C).
+        Σ (Hs : SlotsOk C Z C Sl).
+        Σ (Hn : Id Nat N (SizeA C Sl)).
+          Id Nat L (Div (Mul C 4) 5)). Id Nat N (SizeA C Sl)) {
+      Pair (Hc) (Rest) =>
+        elim Rest return (λ (Q2 : Σ (Hs : SlotsOk C Z C Sl).
+            Σ (Hn : Id Nat N (SizeA C Sl)).
+              Id Nat L (Div (Mul C 4) 5)). Id Nat N (SizeA C Sl)) {
+          Pair (Hs) (Rest2) =>
+            elim Rest2 return (λ (Q3 : Σ (Hn : Id Nat N (SizeA C Sl)).
+                Id Nat L (Div (Mul C 4) 5)). Id Nat N (SizeA C Sl)) {
+              Pair (Hn) (Rest3) => Hn } } } }
+def InvNTy : Term := prog{
+  Π (C : Nat) → Π (L : Nat) → Π (N : Nat) → Π (Sl : Array C Bucket) →
+    HMInv C L N Sl → Id Nat N (SizeA C Sl) }
+
+example : chkL InvCap InvCapTy = true := by native_decide
+example : chkL InvSlots InvSlotsTy = true := by native_decide
+example : chkL InvN InvNTy = true := by native_decide
+
+def slotOfP (rest : Term) : Term := prog{
+  fn SlotOf (key : Nat, n : Nat, Hc : Le (S Z) n)
+      -> (Σ (i : Nat). Σ (r : Nat). Σ0 (Hi : Id Nat i (Mod key n)).
+            Id Nat n (Add i (S r))) {
+    let s0 = Mod key n;
+    let Pair(rr, hq) = (ModDec s0 n (ModLtN key n Hc)
+                          : Σ (r : Nat). Id Nat n (Add s0 (S r)));
+    Pair(s0, Pair(rr, Pair(Refl, hq))) };
+  %rest }
+
+example : progOk (slotOfP prog{ () }) = true := by native_decide
+
+/-- **The opening, entire**: destructure the pack, refill the capacity, read the
+    packed invariant as knowledge, project `Le 1 cap` out of it, mint the slot across
+    the call, and carve the slots array three ways at the returned index. -/
+def openP (rest : Term) : Term := slotOfP prog{
+  fn OpenAt (self : &mut HMapT, key : Nat) -> Unit {
+    let Pair(cap, Pair(load, Pair(n, Pair(slots, Hinv)))) = self;
+    let c = *cap;
+    *cap := c;
+    let Lv = *load;
+    let Nv = *n;
+    let Sv = *slots;
+    let Hi = *Hinv;
+    let Pair(i, Pair(r, Pair(Hix, Heq))) = SlotOf(key, c, InvCap c Lv Nv Sv Hi);
+    let lo = &m (*slots)[Z ; i ; S r | LeAdd i (S r) | Heq];
+    let cell = &m (*slots)[i ; 1 ; r];
+    let hi = &m (*slots)[S i ; r];
+    let bk = &m (*cell)[0];
+    () };
+  %rest }
+
+#eval chkProg (openP prog{ () })
+
+-- Which borrow blocks the merge? Carve only, no element borrow:
+#eval chkProg (slotOfP prog{
+  fn OpenA (self : &mut HMapT, key : Nat) -> Unit {
+    let Pair(cap, Pair(load, Pair(n, Pair(slots, Hinv)))) = self;
+    let c = *cap;
+    *cap := c;
+    let Lv = *load;
+    let Nv = *n;
+    let Sv = *slots;
+    let Hi = *Hinv;
+    let Pair(i, Pair(r, Pair(Hix, Heq))) = SlotOf(key, c, InvCap c Lv Nv Sv Hi);
+    let lo = &m (*slots)[Z ; i ; S r | LeAdd i (S r) | Heq];
+    let cell = &m (*slots)[i ; 1 ; r];
+    let hi = &m (*slots)[S i ; r];
+    () };
+  () })
+
+-- The control: the same carve on a slots array that is a PARAMETER rather than a
+-- component of a destructured pack.
+#eval chkProg prog{
+  fn OpenB (nn : Nat, i : Nat, r : Nat, Heq : Id Nat nn (Add i (S r)),
+            slots : &mut (Array nn (List (Σ (k : Nat). Nat)))) -> Unit {
+    let lo = &m (*slots)[Z ; i ; S r | LeAdd i (S r) | Heq];
+    let cell = &m (*slots)[i ; 1 ; r];
+    let hi = &m (*slots)[S i ; r];
+    let bk = &m (*cell)[0];
+    () };
+  () }
+
+-- Is it the comptime read of the array (`let Sv = *slots`) that pins it?
+#eval chkProg (slotOfP prog{
+  fn OpenC (self : &mut HMapT, key : Nat) -> Unit {
+    let Pair(cap, Pair(load, Pair(n, Pair(slots, Hinv)))) = self;
+    let c = *cap;
+    *cap := c;
+    let lo = &m (*slots)[Z ; Z ; Z];
+    () };
+  () })
+
 end Dllbc.Tests.HashMap
 end

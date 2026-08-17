@@ -4720,21 +4720,21 @@ def ModLtNTy : Term := prog{
 def ModDec : Term := prog{
   λ (I : Nat).
     elim I return (λ (Iz : Nat).
-        Π (N : Nat) → Le (S Iz) N → Σ (R : Nat). Id Nat N (Add Iz (S R))) {
+        Π (N : Nat) → Le (S Iz) N → Σ (r : Nat). Id Nat N (Add Iz (S r))) {
       Z => λ (N : Nat).
-        elim N return (λ (Nz : Nat). Le (S Z) Nz → Σ (R : Nat). Id Nat Nz (Add Z (S R))) {
-          Z => λ (H : Le (S Z) Z). botElim (Σ (R : Nat). Id Nat Z (Add Z (S R))) H,
+        elim N return (λ (Nz : Nat). Le (S Z) Nz → Σ (r : Nat). Id Nat Nz (Add Z (S r))) {
+          Z => λ (H : Le (S Z) Z). botElim (Σ (r : Nat). Id Nat Z (Add Z (S r))) H,
           S (N') Ihn => λ (H : Le (S Z) (S N')). Pair(N', Refl) },
       S (I') Ih => λ (N : Nat).
         elim N return (λ (Nz : Nat).
-            Le (S (S I')) Nz → Σ (R : Nat). Id Nat Nz (Add (S I') (S R))) {
-          Z => λ (H : Le (S (S I')) Z). botElim (Σ (R : Nat). Id Nat Z (Add (S I') (S R))) H,
+            Le (S (S I')) Nz → Σ (r : Nat). Id Nat Nz (Add (S I') (S r))) {
+          Z => λ (H : Le (S (S I')) Z). botElim (Σ (r : Nat). Id Nat Z (Add (S I') (S r))) H,
           S (N') Ihn => λ (H : Le (S (S I')) (S N')).
-            elim (Ih N' H) return (λ (Q : Σ (R : Nat). Id Nat N' (Add I' (S R))).
-                Σ (R : Nat). Id Nat (S N') (Add (S I') (S R))) {
+            elim (Ih N' H) return (λ (Q : Σ (r : Nat). Id Nat N' (Add I' (S r))).
+                Σ (r : Nat). Id Nat (S N') (Add (S I') (S r))) {
               Pair (X) (Y) =>
                 Pair(X, IdCongr Nat Nat (λ (Nn : Nat). S Nn) N' (Add I' (S X)) Y) } } } }
 def ModDecTy : Term := prog{
-  Π (I : Nat) → Π (N : Nat) → Le (S I) N → Σ (R : Nat). Id Nat N (Add I (S R)) }
+  Π (I : Nat) → Π (N : Nat) → Le (S I) N → Σ (r : Nat). Id Nat N (Add I (S r)) }
 
 end Dllbc.StdLemmas
