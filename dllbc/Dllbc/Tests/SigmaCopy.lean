@@ -342,23 +342,22 @@ def grow (tail : Term) : Term := uAddC prog{
                      (Add (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth)) MAX
                      (LeAdd (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth))
                      HBig;
-          let r1 = AddUC(MAX, capacity, growth, HA);
-          match r1 { Pair(nc, Enc) => {
-            -- **`cv`/`gv` ELIMINATED.** `capacity` and `growth` were both MOVED by
-            -- the call above, and both are named here — this is the line the lane
-            -- has to stage two bindings for.
-            let HB = LeRwL MAX
-                       (Add (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth))
-                       (Add (Val MAX nc) (Val MAX growth))
-                       (IdCongr Nat Nat (λ (X : Nat). Add X (Val MAX growth))
-                         (Add (Val MAX capacity) (Val MAX growth)) (Val MAX nc)
-                         (IdSym Nat (Val MAX nc)
-                           (Add (Val MAX capacity) (Val MAX growth)) Enc))
-                       HBig;
-            let r2 = AddUC(MAX, nc, growth, HB);
-            -- **`ncv`/`Hncb` ELIMINATED.** The result is the pack itself, after
-            -- the call that consumed it — not a re-mint from staged halves.
-            match r2 { Pair(nd, End) => Pair(nc, nd) } } }
+          let Pair(nc, Enc) = AddUC(MAX, capacity, growth, HA);
+          -- **`cv`/`gv` ELIMINATED.** `capacity` and `growth` were both MOVED by
+          -- the call above, and both are named here — this is the line the lane
+          -- has to stage two bindings for.
+          let HB = LeRwL MAX
+                     (Add (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth))
+                     (Add (Val MAX nc) (Val MAX growth))
+                     (IdCongr Nat Nat (λ (X : Nat). Add X (Val MAX growth))
+                       (Add (Val MAX capacity) (Val MAX growth)) (Val MAX nc)
+                       (IdSym Nat (Val MAX nc)
+                         (Add (Val MAX capacity) (Val MAX growth)) Enc))
+                     HBig;
+          -- **`ncv`/`Hncb` ELIMINATED.** The result is the pack itself, after the
+          -- call that consumed it — not a re-mint from staged halves.
+          let Pair(nd, End) = AddUC(MAX, nc, growth, HB);
+          Pair(nc, nd)
         } else {
           Pair(capacity, mload)
         } };
@@ -376,9 +375,10 @@ def growCall (m cap g ml : Nat) : Term := grow prog{
   let cP = Pair(%(Term.nat cap), unit);
   let gP = Pair(%(Term.nat g), unit);
   let mP = Pair(%(Term.nat ml), unit);
-  let r = Grow(%(Term.nat m), cP, gP, mP);
-  match r { Pair(a, b) => { let out = Val %(Term.nat m) a;
-                            let out2 = Val %(Term.nat m) b; () } } }
+  let Pair(a, b) = Grow(%(Term.nat m), cP, gP, mP);
+  let out = Val %(Term.nat m) a;
+  let out2 = Val %(Term.nat m) b;
+  () }
 
 def growOut (t : Term) (a b : Nat) : Bool :=
   match runProgram t with
