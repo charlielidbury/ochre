@@ -1604,530 +1604,6 @@ def SlotPackTy : Term := prog{
     Σ (i : Nat). Σ (r : Nat). Σ (hd : Id Nat N (Add i (S r))). Id Nat i (Mod H N) }
 example : chkL SlotPack SlotPackTy = true := by native_decide
 
-/-! ## (xv) THE S1 CHAIN — fixed-capacity map, full specs
-
-    ArraySort's `arrUnder` shape: one Lean function building the declaration
-    chain, the spec return types spliced so the lying twins share the bodies
-    verbatim. `New`'s and `Insert`'s telescopes for the spliced types:
-    NewHM: cap=0, HLe1=1.  InsertHM: fuel=0, key=1, val=2, self=3, Hfuel=4,
-    Hroom=5. -/
-
-def keyIv : Term := .var ⟨1, "key"⟩
-def valIv : Term := .var ⟨2, "val"⟩
-def selfIv : Term := .var ⟨3, "self"⟩
-
-/-- A slot's invariant pair, by application (the constructor-argument fence). -/
-def MkSlotInv : Term := prog{
-  λ (Cap : Nat). λ (I : Nat). λ (B : BktT).
-  λ (H1 : AllKeysMod Cap I B). λ (H2 : NodupB B).
-    Pair(H1, H2) }
-def MkSlotInvTy : Term := prog{
-  Π (Cap : Nat) → Π (I : Nat) → Π (B : BktT) →
-    AllKeysMod Cap I B → NodupB B → SlotInv Cap I B }
-example : chkL MkSlotInv MkSlotInvTy = true := by native_decide
-
-/-- The trivial pointwise equation for a singleton bucket built from `Nil` —
-    named so the Nil arm's component is an application, not a λ literal. -/
-def PtEvNil : Term := prog{
-  λ (Key : Nat). λ (V : Nat). λ (Q : Nat). Refl }
-def PtEvNilTy : Term := prog{
-  Π (Key : Nat) → Π (V : Nat) → Π (Q : Nat) →
-    Id OptN (FindL Q (Cons(Pair(Key, V), Nil))) (BFindIns Q Key V Nil) }
-example : chkL PtEvNil PtEvNilTy = true := by native_decide
-
-def hmS1Under (nret iret tail : Term) : Term := prog{
-  fn InsertInList [fuel] (fuel : Nat, cap : Nat, islot : Nat, key : Nat, val : Nat,
-                          b : &mut (List (Σ (k : Nat). Nat)),
-                          Hf : Le (LenE (*b)) fuel,
-                          Hkm : Id Nat (Mod key cap) islot,
-                          Hak : AllKeysMod cap islot (*b),
-                          Hnd : NodupB (*b))
-      -> Σ (hit : Bool).
-         Σ (Hh : Id Bool hit (HitL key (old *b))).
-         Σ (Hpt : Π (Q : Nat) → Id OptN (FindL Q (*b)) (BFindIns Q key val (old *b))).
-         Σ (Hln : Id Nat (LenE (*b)) (BLenIns key (old *b))).
-         Σ0 (Hk2 : AllKeysMod cap islot (*b)). NodupB (*b)
-      { match b {
-          Nil => {
-            *b := Cons(Pair(key, val), Nil);
-            Pair(False, Pair(Refl, Pair(PtEvNil key val, Pair(Refl,
-              Pair(Pair(Hkm, unit), Pair(Refl, unit))))))
-          },
-          Cons(Pair(kk, vv), tl) => match fuel {
-            Z => botElim Unit Hf,
-            S(f2) => {
-              let K0 = *kk;
-              let V0 = *vv;
-              let T0 = *tl;
-              if e : Eqb *kk key {
-                *vv := val;
-                Pair(True,
-                  Pair(HitEvHit K0 V0 key T0 e,
-                  Pair(PtEvHit K0 V0 val key T0 e,
-                  Pair(LnEvHit K0 V0 val key T0 e,
-                  Pair(Hak, Hnd)))))
-              } else {
-                let Pair(hit2, Pair(Hh2, Pair(Hpt2, Pair(Hln2, Pair(Hak3, Hnd3))))) =
-                  InsertInList(f2, cap, islot, key, val, &m *tl, Hf, Hkm,
-                    SndT (Id Nat (Mod K0 cap) islot) (AllKeysMod cap islot T0) Hak,
-                    SndT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd);
-                Pair(hit2,
-                  Pair(HitEvMiss K0 V0 key T0 hit2 e Hh2,
-                  Pair(UpdEvMiss K0 V0 (SomeN val) key T0 (*tl) e Hpt2,
-                  Pair(LnEvMiss K0 V0 key T0 (*tl) e Hln2,
-                  Pair(Pair(FstT (Id Nat (Mod K0 cap) islot)
-                              (AllKeysMod cap islot T0) Hak, Hak3),
-                       Pair(UpdNdMiss K0 (SomeN val) key T0 (*tl) e Hpt2
-                              (FstT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd),
-                            Hnd3))))))
-              } }
-          } } };
-  fn SlotOfE (h : Nat, n : Nat, Hne : Le (S Z) n)
-      -> Σ (i : Nat). Σ (r : Nat). Σ (hd : Id Nat n (Add i (S r))). Id Nat i (Mod h n) {
-    SlotPack h n Hne };
-  fn NewHM (cap : Nat, HLe1 : Le (S Z) cap) -> %nret {
-    let Cap0 = cap;
-    Pair(Pair(cap, Pair(Mul 4 cap, Pair(Z, Pair(MkSlots cap,
-        MkInv cap (Mul 4 cap) Z (MkSlots cap) HLe1 Refl unit
-          (IdSym Nat (TotalE cap (MkSlots cap)) Z (TotalMkSlots cap))
-          (SFMkSlots cap cap Z))))),
-      Pair(λ (Q : Nat).
-             IdCongr (List (Σ (k : Nat). Nat)) (Σ (bb : Bool). OptP bb Nat)
-               (λ (W : List (Σ (k : Nat). Nat)). FindL Q W)
-               (AgetB Cap0 (MkSlots Cap0) (Mod Q Cap0)) Nil
-               (AgetBMkSlots Cap0 (Mod Q Cap0)),
-           Refl))
-  };
-  fn SlotUpd (fuel : Nat, cap : Nat, key : Nat, val : Nat,
-              b : &mut (Array cap (List (Σ (k : Nat). Nat))),
-              HLe1 : Le (S Z) cap,
-              Hfl : Le (S (TotalE cap (*b))) fuel,
-              Hsf : SlotsFrom cap cap (*b) Z)
-      -> Σ (hit : Bool).
-         Σ (Hh : Id Bool hit (IsSomeB (FindL key (AgetB cap (old *b) (Mod key cap))))).
-         Σ (Hpt : Π (Q : Nat) → Id OptN (FindL Q (AgetB cap (*b) (Mod Q cap)))
-              (BFindIns Q key val (AgetB cap (old *b) (Mod Q cap)))).
-         Σ0 (Htot : Id Nat (TotalE cap (*b))
-              (boolRec (λ (W2 : Bool). Nat) (TotalE cap (old *b))
-                (S (TotalE cap (old *b))) hit)).
-         SlotsFrom cap cap (*b) Z
-      {
-        let Cap0 = cap;
-        let Key0 = key;
-        let Pair(i, Pair(r, Pair(hd, him))) = SlotOfE(key, cap, HLe1);
-        let I0 = i;
-        let R0 = r;
-        let Him0 = him;
-        let pre = &m (*b)[Z ; i ; S r | LeAdd i (S r) | hd];
-        let cell = &m (*b)[i ; 1 ; r];
-        let hic = &m (*b)[S i ; r];
-        let bb = &m (*cell)[0];
-        let L0 = *pre;
-        let B0 = *bb;
-        let H0 = *hic;
-        let HsfL = SFCatLo cap r B0 H0 i L0 Z Hsf;
-        let HsfM = NatRw (λ (W : Nat). SlotInv Cap0 W B0) (Add I0 Z) I0 (AddZero I0)
-                     (SFCatMid cap r B0 H0 i L0 Z Hsf);
-        let HsfH = SFCatHi cap r B0 H0 i L0 Z Hsf;
-        let Hak0 = FstT (AllKeysMod cap i B0) (NodupB B0) HsfM;
-        let Hnd0 = SndT (AllKeysMod cap i B0) (NodupB B0) HsfM;
-        let Htot0 = TotalArrCat (S r) (acons r B0 H0) i L0;
-        let HlenB = LeRwR (LenE B0)
-                      (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
-                      (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
-                      (IdSym Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
-                        (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0))) Htot0)
-                      (LeTrans (LenE B0) (Add (LenE B0) (TotalE r H0))
-                        (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
-                        (LeAdd (LenE B0) (TotalE r H0))
-                        (LeAddL (Add (LenE B0) (TotalE r H0)) (TotalE i L0)));
-        let HfB = LeTrans (LenE B0)
-                    (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))) fuel
-                    HlenB
-                    (LePredL (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))) fuel Hfl);
-        let Pair(hit2, Pair(Hh2, Pair(Hpt2, Pair(Hln2, Pair(Hak3, Hnd3))))) =
-          InsertInList(fuel, cap, i, key, val, &m *bb, HfB,
-            IdSym Nat i (Mod key cap) him, Hak0, Hnd0);
-        let B1 = *bb;
-        let Hit0 = hit2;
-        let Htot1 = TotalArrCat (S r) (acons r B1 H0) i L0;
-        let Hpt = UpdPointwise i r key (SomeN val) L0 B0 B1 H0 him Hpt2;
-        let HsIz = NatRw (λ (W : Nat). SlotInv Cap0 W B1) I0 (Add I0 Z)
-                     (IdSym Nat (Add I0 Z) I0 (AddZero I0))
-                     (MkSlotInv cap i B1 Hak3 Hnd3);
-        let H5x = SFCatGlue cap r B1 H0 i L0 Z HsfL HsIz HsfH;
-        let HhB = IdTrans Bool Hit0 (HitL Key0 B0)
-                    (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
-                      (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
-                    Hh2
-                    (IdSym Bool
-                      (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
-                        (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
-                      (HitL Key0 B0)
-                      (NatRw (λ (W : Nat). Id Bool
-                          (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
-                            (arrCat I0 (S R0) L0 (acons R0 B0 H0)) W)))
-                          (HitL Key0 B0))
-                        I0 (Mod Key0 Cap0) Him0
-                        (IdCongr (List (Σ (k : Nat). Nat)) Bool
-                          (λ (W : List (Σ (k : Nat). Nat)). IsSomeB (FindL Key0 W))
-                          (AgetB (Add I0 (S R0))
-                            (arrCat I0 (S R0) L0 (acons R0 B0 H0)) I0) B0
-                          (AgetBCatMid R0 B0 H0 I0 L0))));
-        match e2 : hit2 {
-          True => {
-            let HitB0 = IdTrans Bool (HitL Key0 B0) Hit0 True
-                          (IdSym Bool Hit0 (HitL Key0 B0) Hh2) e2;
-            let HlenEq = IdTrans Nat (LenE B1) (BLenIns Key0 B0) (LenE B0)
-                           Hln2
-                           (BoolRwT Nat (LenE B0) (S (LenE B0)) (HitL Key0 B0) HitB0);
-            let HtotEq = IdTrans Nat (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
-                           (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
-                           (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
-                           (IdTrans Nat
-                             (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
-                             (Add (TotalE i L0) (Add (LenE B1) (TotalE r H0)))
-                             (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
-                             Htot1
-                             (IdCongr Nat Nat
-                               (λ (W : Nat). Add (TotalE I0 L0) (Add W (TotalE R0 H0)))
-                               (LenE B1) (LenE B0) HlenEq))
-                           (IdSym Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
-                             (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0))) Htot0);
-            Pair(True,
-              Pair(IdTrans Bool True Hit0
-                     (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
-                       (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
-                     (IdSym Bool Hit0 True e2) HhB,
-              Pair(Hpt, Pair(HtotEq, H5x))))
-          },
-          False => {
-            let HitB0F = IdTrans Bool (HitL Key0 B0) Hit0 False
-                           (IdSym Bool Hit0 (HitL Key0 B0) Hh2) e2;
-            let HlenEqF = IdTrans Nat (LenE B1) (BLenIns Key0 B0) (S (LenE B0))
-                            Hln2
-                            (BoolRwF Nat (LenE B0) (S (LenE B0)) (HitL Key0 B0) HitB0F);
-            let HtotEqF = IdTrans Nat (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
-                            (Add (TotalE i L0) (S (Add (LenE B0) (TotalE r H0))))
-                            (S (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))))
-                            (IdTrans Nat
-                              (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
-                              (Add (TotalE i L0) (Add (LenE B1) (TotalE r H0)))
-                              (Add (TotalE i L0) (S (Add (LenE B0) (TotalE r H0))))
-                              Htot1
-                              (IdCongr Nat Nat
-                                (λ (W : Nat). Add (TotalE I0 L0) (Add W (TotalE R0 H0)))
-                                (LenE B1) (S (LenE B0)) HlenEqF))
-                            (IdTrans Nat
-                              (Add (TotalE i L0) (S (Add (LenE B0) (TotalE r H0))))
-                              (S (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0))))
-                              (S (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))))
-                              (AddSucc (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
-                              (IdCongr Nat Nat (λ (W : Nat). S W)
-                                (Add (TotalE I0 L0) (Add (LenE B0) (TotalE R0 H0)))
-                                (TotalE Cap0 (arrCat I0 (S R0) L0 (acons R0 B0 H0)))
-                                (IdSym Nat
-                                  (TotalE Cap0 (arrCat I0 (S R0) L0 (acons R0 B0 H0)))
-                                  (Add (TotalE I0 L0) (Add (LenE B0) (TotalE R0 H0)))
-                                  Htot0)));
-            Pair(False,
-              Pair(IdTrans Bool False Hit0
-                     (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
-                       (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
-                     (IdSym Bool Hit0 False e2) HhB,
-              Pair(Hpt, Pair(HtotEqF, H5x))))
-          }
-        }
-      };
-  fn InsertHM (fuel : Nat, key : Nat, val : Nat,
-               self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
-                 Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots),
-               Hfuel : Le (S (SizeHM (*self))) fuel,
-               Hroom : Le (Mul 5 (S (SizeHM (*self)))) (LoadHM (*self)))
-      -> %iret
-      {
-        let Pair(cap, Pair(load, Pair(nn, Pair(slots, HInv)))) = *self;
-        let Cap0 = cap;
-        let Key0 = key;
-        let N0 = nn;
-        let HLe1 = InvLe1 cap load nn slots HInv;
-        let HLoad = InvLoad cap load nn slots HInv;
-        let HLed = InvLedger cap load nn slots HInv;
-        let HCnt = InvCount cap load nn slots HInv;
-        let HSf = InvSlots cap load nn slots HInv;
-        let SL0 = slots;
-        let sb = &m slots;
-        let Pair(hit2, Pair(Hh2, Pair(Hpt2, Pair(Htot2, Hsf2)))) =
-          SlotUpd(fuel, cap, key, val, &m *sb, HLe1,
-            LeRwL fuel (S nn) (S (TotalE Cap0 SL0))
-              (IdCongr Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
-              Hfuel,
-            HSf);
-        let SL1 = *sb;
-        let Hit0 = hit2;
-        match e2 : hit2 {
-          True => {
-            let H4x = IdTrans Nat nn (TotalE Cap0 SL0) (TotalE Cap0 SL1)
-                        HCnt
-                        (IdSym Nat (TotalE Cap0 SL1) (TotalE Cap0 SL0)
-                          (IdTrans Nat (TotalE Cap0 SL1)
-                            (boolRec (λ (W2 : Bool). Nat) (TotalE Cap0 SL0)
-                              (S (TotalE Cap0 SL0)) Hit0)
-                            (TotalE Cap0 SL0)
-                            Htot2
-                            (BoolRwT Nat (TotalE Cap0 SL0) (S (TotalE Cap0 SL0))
-                              Hit0 e2)));
-            *self := Pair(cap, Pair(load, Pair(nn, Pair(slots,
-              MkInv cap load nn SL1 HLe1 HLoad HLed H4x Hsf2))));
-            Pair(Hpt2,
-              IdSym Nat
-                (boolRec (λ (W2 : Bool). Nat) nn (S nn)
-                  (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
-                nn
-                (BoolRwT Nat nn (S nn)
-                  (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                  (IdTrans Bool
-                    (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                    Hit0 True
-                    (IdSym Bool Hit0
-                      (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))) Hh2)
-                    e2)))
-          },
-          False => {
-            let H4y = IdTrans Nat (S nn) (S (TotalE Cap0 SL0)) (TotalE Cap0 SL1)
-                        (IdCongr Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
-                        (IdSym Nat (TotalE Cap0 SL1) (S (TotalE Cap0 SL0))
-                          (IdTrans Nat (TotalE Cap0 SL1)
-                            (boolRec (λ (W2 : Bool). Nat) (TotalE Cap0 SL0)
-                              (S (TotalE Cap0 SL0)) Hit0)
-                            (S (TotalE Cap0 SL0))
-                            Htot2
-                            (BoolRwF Nat (TotalE Cap0 SL0) (S (TotalE Cap0 SL0))
-                              Hit0 e2)));
-            *self := Pair(cap, Pair(load, Pair(S(nn), Pair(slots,
-              MkInv cap load (S nn) SL1 HLe1 HLoad Hroom H4y Hsf2))));
-            Pair(Hpt2,
-              IdSym Nat
-                (boolRec (λ (W2 : Bool). Nat) nn (S nn)
-                  (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
-                (S nn)
-                (BoolRwF Nat nn (S nn)
-                  (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                  (IdTrans Bool
-                    (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                    Hit0 False
-                    (IdSym Bool Hit0
-                      (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))) Hh2)
-                    e2)))
-          }
-        }
-      };
-  %tail }
-
-/-- `New`'s honest ensures: finds nothing, size zero. -/
-def newRetHonest : Term := prog{
-  Σ (hm : HashMapT). Σ0 (Hfind : Π (Q : Nat) → Id OptN (FindHM Q hm) NoneN).
-  Id Nat (SizeHM hm) Z }
-
-/-- `Insert`'s honest ensures — the two fixed conjuncts: the pointwise Find
-    equation (subsuming Aeneas' found + frame in one total claim) and the size
-    accounting via the `SizeIns` spec function. -/
-def insRetHonest : Term := prog{
-  Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (*%selfIv))
-       (FindIns Q %keyIv %valIv (old *%selfIv))).
-  Id Nat (SizeHM (*%selfIv)) (SizeIns %keyIv (old *%selfIv)) }
-
-/-- THE S1 HEADLINE: the fixed-capacity chain checks as ONE program, against
-    no table — walk, slot pack, New, Insert, full specs. -/
-def s1Chain : Term := hmS1Under newRetHonest insRetHonest prog{ () }
-example : progOk s1Chain = true := by native_decide
-
-
--- BISECTION P1: identity round-trip of the REAL container through &mut —
--- destructure, project the clauses, repack via MkInv, refill.
-def s1P1 : Term := prog{
-  fn Touch (self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
-      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots)) -> Unit {
-    let Pair(cap, Pair(load, Pair(nn, Pair(slots, HInv)))) = *self;
-    let HLe1 = InvLe1 cap load nn slots HInv;
-    let HLoad = InvLoad cap load nn slots HInv;
-    let HLed = InvLedger cap load nn slots HInv;
-    let HCnt = InvCount cap load nn slots HInv;
-    let HSf = InvSlots cap load nn slots HInv;
-    let SL0 = slots;
-    *self := Pair(cap, Pair(load, Pair(nn, Pair(slots,
-      MkInv cap load nn SL0 HLe1 HLoad HLed HCnt HSf))));
-    () };
-  () }
-example : progOk s1P1 = true := by native_decide
-
--- BISECTION P2a: carve, then refill with the UNTOUCHED entry clauses (typed at
--- the entry slots sigma) — isolates the audit-side segment-fold conversion.
-def s1P2a : Term := prog{
-  fn SlotOfE (h : Nat, n : Nat, Hne : Le (S Z) n)
-      -> Σ (i : Nat). Σ (r : Nat). Σ (hd : Id Nat n (Add i (S r))). Id Nat i (Mod h n) {
-    SlotPack h n Hne };
-  fn Touch (key : Nat, self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
-      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots)) -> Unit {
-    let Pair(cap, Pair(load, Pair(nn, Pair(slots, HInv)))) = *self;
-    let HLe1 = InvLe1 cap load nn slots HInv;
-    let HLoad = InvLoad cap load nn slots HInv;
-    let HLed = InvLedger cap load nn slots HInv;
-    let HCnt = InvCount cap load nn slots HInv;
-    let HSf = InvSlots cap load nn slots HInv;
-    let SL0 = slots;
-    let Pair(i, Pair(r, Pair(hd, him))) = SlotOfE(key, cap, HLe1);
-    let sb = &m slots;
-    let pre = &m (*sb)[Z ; i ; S r | LeAdd i (S r) | hd];
-    let cell = &m (*sb)[i ; 1 ; r];
-    let hic = &m (*sb)[S i ; r];
-    let bb = &m (*cell)[0];
-    *self := Pair(cap, Pair(load, Pair(nn, Pair(slots,
-      MkInv cap load nn SL0 HLe1 HLoad HLed HCnt HSf))));
-    () };
-  () }
--- PINNED LIMIT (the finding that shaped the op layer): the exit audit cannot
--- re-type a DEPENDENT pack whose array component is still SEGMENTED — the
--- entry clauses are typed at the whole-array sigma, the demanded tail
--- instantiates the raw segment-list value, and the two do not convert at the
--- audit even though the sigma/composition equation holds (s1P2c below). So
--- every op routes its carve through a CALLEE (SlotUpd) and packs the fresh
--- opaque sigma the group end mints — the function boundary is load-bearing,
--- exactly as ArraySort found for the flex-length carve.
-example : progOk s1P2a = false := by native_decide
-
--- P2c/P2d: is the entry sigma definitionally the composition of the segment
--- sigmas, from a carve of a LOCAL owned array? Asked with an ascribed Refl.
-def s1P2c : Term := prog{
-  fn Touch (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
-            a : Array n (List (Σ (k : Nat). Nat))) -> Unit {
-    let SL0 = a;
-    let sb = &m a;
-    let pre = &m (*sb)[Z ; i ; S r | LeAdd i (S r) | hd];
-    let cell = &m (*sb)[i ; 1 ; r];
-    let hic = &m (*sb)[S i ; r];
-    let bb = &m (*cell)[0];
-    let L0 = *pre;
-    let B0 = *bb;
-    let H0 = *hic;
-    let Heq = (Refl : Id (Array n (List (Σ (k : Nat). Nat))) SL0
-                (arrCat i (S r) L0 (acons r B0 H0)));
-    () };
-  () }
-example : progOk s1P2c = true := by native_decide
-
-
-
-/-! ## (xvi) The S1 EXECUTING DIFFERENTIAL
-
-    The same declarations the checker accepted, run on concrete maps and
-    compared against a trusted Lean-side reference (`runQsA`-style). The
-    callers here are runtime-only: their proof arguments are `unit`, which the
-    machine ignores — E2E rule, runs-to-X assertions only. (A checker-accepted
-    caller needs the size facts threaded through the ensures; S1's `Hroom`
-    additionally needs cap/load knowledge New's fixed ensures does not export,
-    which S2's resize removes — so the checked caller ships with S2.) -/
-
-def pairOfV : Val → Option (Val × Val)
-  | v => match Val.asCtor? v with
-    | some ("Pair", [a, b]) => some (a, b)
-    | _ => none
-
-def entryOfV : Val → Option (Nat × Nat)
-  | v => match pairOfV v with
-    | some (a, b) =>
-      match natOfV 4000 a, natOfV 4000 b with
-      | some k, some w => some (k, w)
-      | _, _ => none
-    | none => none
-
-def bktOfV : Nat → Val → Option (List (Nat × Nat))
-  | f, v =>
-    match Val.asCtor? v, f with
-    | some ("Nil", []), _ => some []
-    | some ("Cons", [h, t]), f' + 1 =>
-      match entryOfV h, bktOfV f' t with
-      | some e, some es => some (e :: es)
-      | _, _ => none
-    | _, _ => none
-
-def slotsOfV : Val → Option (List (List (Nat × Nat)))
-  | v => match Val.asCtor? v with
-    | some ("Arr", vs) => vs.mapM (bktOfV 2000)
-    | _ => none
-
-/-- Decode a concrete pack: (cap, load, n, buckets). The invariant component is
-    ignored (erased in spirit; the interpreter carries it). -/
-def hmOfV (v : Val) : Option (Nat × Nat × Nat × List (List (Nat × Nat))) := do
-  let (c, r1) ← pairOfV v
-  let (l, r2) ← pairOfV r1
-  let (n, r3) ← pairOfV r2
-  let (s, _) ← pairOfV r3
-  let cap ← natOfV 4000 c
-  let load ← natOfV 4000 l
-  let nn ← natOfV 4000 n
-  let bs ← slotsOfV s
-  pure (cap, load, nn, bs)
-
-/-- The trusted model: overwrite in place on hit, append at the bucket's end
-    on miss — `insert_in_list`'s specified behavior. -/
-def modelInsB (k v : Nat) : List (Nat × Nat) → List (Nat × Nat)
-  | [] => [(k, v)]
-  | (k2, v2) :: t => if k2 == k then (k, v) :: t else (k2, v2) :: modelInsB k v t
-
-def modelIns (cap : Nat) (bs : List (List (Nat × Nat))) (k v : Nat)
-    : List (List (Nat × Nat)) :=
-  bs.mapIdx (fun i b => if i == k % cap then modelInsB k v b else b)
-
-def modelRun (cap : Nat) (ops : List (Nat × Nat))
-    : Nat × List (List (Nat × Nat)) :=
-  ops.foldl (fun (acc : Nat × List (List (Nat × Nat))) (kv : Nat × Nat) =>
-      let present := (acc.2.getD (kv.1 % cap) []).any (fun e => e.1 == kv.1)
-      ((if present then acc.1 else acc.1 + 1),
-       modelIns cap acc.2 kv.1 kv.2))
-    (0, List.replicate cap [])
-
-def runHM (t : Term) : Option (Nat × Nat × Nat × List (List (Nat × Nat))) :=
-  match Dllbc.Tests.S9Diff.runExec t with
-  | .ok env => (env.lookup "y").bind hmOfV
-  | .error _ => none
-
-/-- Five inserts at cap 4: keys 5, 1, 9 all collide in slot 1 (the middle one
-    walks past a miss), key 5 re-inserted mid-sequence must OVERWRITE in place,
-    key 2 lands alone. -/
-def s1RunCaller : Term := hmS1Under newRetHonest insRetHonest prog{
-  let Pair(m0, Ev0) = NewHM(4, unit);
-  let b1 = &m m0;
-  InsertHM(9, 5, 70, b1, unit, unit);
-  let b2 = &m m0;
-  InsertHM(9, 1, 10, b2, unit, unit);
-  let b3 = &m m0;
-  InsertHM(9, 5, 71, b3, unit, unit);
-  let b4 = &m m0;
-  InsertHM(9, 9, 90, b4, unit, unit);
-  let b5 = &m m0;
-  InsertHM(9, 2, 20, b5, unit, unit);
-  let y = m0;
-  () }
-
-def s1Expected : Nat × List (List (Nat × Nat)) :=
-  modelRun 4 [(5, 70), (1, 10), (5, 71), (9, 90), (2, 20)]
-
-example : (runHM s1RunCaller ==
-    some (4, 16, s1Expected.1, s1Expected.2)) = true := by native_decide
-
--- …and the model itself is what we think it is (the differential is two-sided).
-example : (s1Expected == (4, [[], [(5, 71), (1, 10), (9, 90)], [(2, 20)], []]))
-    = true := by native_decide
-
--- The empty map runs and decodes: all buckets Nil, n = 0, load = 4·cap.
-def s1NewCaller : Term := hmS1Under newRetHonest insRetHonest prog{
-  let Pair(m0, Ev0) = NewHM(3, unit);
-  let y = m0;
-  () }
-example : (runHM s1NewCaller == some (3, 12, 0, [[], [], []])) = true := by
-  native_decide
-
 /-! ## (xvii) Remove's walk evidence
 
     The remove walk is a take-and-rebuild over the OWNED bucket (M23's list
@@ -2368,6 +1844,920 @@ def RemLnMissTy : Term := prog{
     Id Nat (LenE T1) (BLenRem Key T0) →
     Id Nat (LenE (Cons(Pair(K0, V0), T1))) (BLenRem Key (Cons(Pair(K0, V0), T0))) }
 example : chkL RemLnMiss RemLnMissTy = true := by native_decide
+
+/-- Removing from the empty bucket: both sides are `None`, but the model's
+    elim is stuck on `Eqb Q Key` — `BoolSame` collapses it. -/
+def RemPtNil : Term := prog{
+  λ (Key : Nat). λ (Q : Nat). BoolSame OptN NoneN (Eqb Q Key) }
+def RemPtNilTy : Term := prog{
+  Π (Key : Nat) → Π (Q : Nat) →
+    Id OptN (FindL Q Nil) (BFindRem Q Key Nil) }
+example : chkL RemPtNil RemPtNilTy = true := by native_decide
+
+/-- Remove's total accounting over the carve composition: on a hit the new
+    total is one less (`S ∘ Pred` cancels through `HitLenPos`), on a miss it
+    is unchanged. Stated with the hit-flag pre-collapsed to `HitL Key B0`. -/
+def RemTotEv : Term := prog{
+  λ (I : Nat). λ (R : Nat). λ (Key : Nat).
+  λ (L : Array I BktT). λ (B0 : BktT). λ (B1 : BktT). λ (H : Array R BktT).
+  λ (Hl : Id Nat (LenE B1) (BLenRem Key B0)).
+    IfDec (HitL Key B0)
+      (Id Nat
+        (boolRec (λ (W2 : Bool). Nat)
+          (S (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H))))
+          (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H)))
+          (HitL Key B0))
+        (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H))))
+      (λ (Eh : Id Bool (HitL Key B0) True).
+        IdTrans Nat
+          (boolRec (λ (W2 : Bool). Nat)
+            (S (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H))))
+            (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H)))
+            (HitL Key B0))
+          (S (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H))))
+          (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H)))
+          (BoolRwT Nat
+            (S (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H))))
+            (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H)))
+            (HitL Key B0) Eh)
+          (IdTrans Nat
+            (S (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H))))
+            (S (Add (TotalE I L) (Add (LenE B1) (TotalE R H))))
+            (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H)))
+            (IdCongr Nat Nat (λ (W : Nat). S W)
+              (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H)))
+              (Add (TotalE I L) (Add (LenE B1) (TotalE R H)))
+              (TotalArrCat (S R) (acons R B1 H) I L))
+            (IdTrans Nat
+              (S (Add (TotalE I L) (Add (LenE B1) (TotalE R H))))
+              (S (Add (TotalE I L) (Add (Pred (LenE B0)) (TotalE R H))))
+              (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H)))
+              (IdCongr Nat Nat
+                (λ (W : Nat). S (Add (TotalE I L) (Add W (TotalE R H))))
+                (LenE B1) (Pred (LenE B0))
+                (IdTrans Nat (LenE B1) (BLenRem Key B0) (Pred (LenE B0))
+                  Hl
+                  (BoolRwT Nat (Pred (LenE B0)) (LenE B0) (HitL Key B0) Eh)))
+              (IdTrans Nat
+                (S (Add (TotalE I L) (Add (Pred (LenE B0)) (TotalE R H))))
+                (Add (TotalE I L) (Add (S (Pred (LenE B0))) (TotalE R H)))
+                (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H)))
+                (IdSym Nat
+                  (Add (TotalE I L) (Add (S (Pred (LenE B0))) (TotalE R H)))
+                  (S (Add (TotalE I L) (Add (Pred (LenE B0)) (TotalE R H))))
+                  (AddSucc (TotalE I L) (Add (Pred (LenE B0)) (TotalE R H))))
+                (IdTrans Nat
+                  (Add (TotalE I L) (Add (S (Pred (LenE B0))) (TotalE R H)))
+                  (Add (TotalE I L) (Add (LenE B0) (TotalE R H)))
+                  (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H)))
+                  (IdCongr Nat Nat
+                    (λ (W : Nat). Add (TotalE I L) (Add W (TotalE R H)))
+                    (S (Pred (LenE B0))) (LenE B0)
+                    (SPredPos (LenE B0) (HitLenPos Key B0 Eh)))
+                  (IdSym Nat
+                    (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H)))
+                    (Add (TotalE I L) (Add (LenE B0) (TotalE R H)))
+                    (TotalArrCat (S R) (acons R B0 H) I L)))))))
+      (λ (Ef : Id Bool (HitL Key B0) False).
+        IdTrans Nat
+          (boolRec (λ (W2 : Bool). Nat)
+            (S (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H))))
+            (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H)))
+            (HitL Key B0))
+          (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H)))
+          (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H)))
+          (BoolRwF Nat
+            (S (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H))))
+            (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H)))
+            (HitL Key B0) Ef)
+          (IdTrans Nat
+            (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H)))
+            (Add (TotalE I L) (Add (LenE B1) (TotalE R H)))
+            (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H)))
+            (TotalArrCat (S R) (acons R B1 H) I L)
+            (IdTrans Nat
+              (Add (TotalE I L) (Add (LenE B1) (TotalE R H)))
+              (Add (TotalE I L) (Add (LenE B0) (TotalE R H)))
+              (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H)))
+              (IdCongr Nat Nat
+                (λ (W : Nat). Add (TotalE I L) (Add W (TotalE R H)))
+                (LenE B1) (LenE B0)
+                (IdTrans Nat (LenE B1) (BLenRem Key B0) (LenE B0)
+                  Hl
+                  (BoolRwF Nat (Pred (LenE B0)) (LenE B0) (HitL Key B0) Ef)))
+              (IdSym Nat
+                (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H)))
+                (Add (TotalE I L) (Add (LenE B0) (TotalE R H)))
+                (TotalArrCat (S R) (acons R B0 H) I L))))) }
+def RemTotEvTy : Term := prog{
+  Π (I : Nat) → Π (R : Nat) → Π (Key : Nat) →
+  Π (L : Array I BktT) → Π (B0 : BktT) → Π (B1 : BktT) → Π (H : Array R BktT) →
+    Id Nat (LenE B1) (BLenRem Key B0) →
+    Id Nat
+      (boolRec (λ (W2 : Bool). Nat)
+        (S (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H))))
+        (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H)))
+        (HitL Key B0))
+      (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H))) }
+example : chkL RemTotEv RemTotEvTy = true := by native_decide
+
+/-! ## (xv) THE S1 CHAIN — fixed-capacity map, full specs
+
+    ArraySort's `arrUnder` shape: one Lean function building the declaration
+    chain, the spec return types spliced so the lying twins share the bodies
+    verbatim. `New`'s and `Insert`'s telescopes for the spliced types:
+    NewHM: cap=0, HLe1=1.  InsertHM: fuel=0, key=1, val=2, self=3, Hfuel=4,
+    Hroom=5. -/
+
+def keyIv : Term := .var ⟨1, "key"⟩
+def valIv : Term := .var ⟨2, "val"⟩
+def selfIv : Term := .var ⟨3, "self"⟩
+
+/-- A slot's invariant pair, by application (the constructor-argument fence). -/
+def MkSlotInv : Term := prog{
+  λ (Cap : Nat). λ (I : Nat). λ (B : BktT).
+  λ (H1 : AllKeysMod Cap I B). λ (H2 : NodupB B).
+    Pair(H1, H2) }
+def MkSlotInvTy : Term := prog{
+  Π (Cap : Nat) → Π (I : Nat) → Π (B : BktT) →
+    AllKeysMod Cap I B → NodupB B → SlotInv Cap I B }
+example : chkL MkSlotInv MkSlotInvTy = true := by native_decide
+
+/-- The trivial pointwise equation for a singleton bucket built from `Nil` —
+    named so the Nil arm's component is an application, not a λ literal. -/
+def PtEvNil : Term := prog{
+  λ (Key : Nat). λ (V : Nat). λ (Q : Nat). Refl }
+def PtEvNilTy : Term := prog{
+  Π (Key : Nat) → Π (V : Nat) → Π (Q : Nat) →
+    Id OptN (FindL Q (Cons(Pair(Key, V), Nil))) (BFindIns Q Key V Nil) }
+example : chkL PtEvNil PtEvNilTy = true := by native_decide
+
+def hmS1Under (nret iret rret tail : Term) : Term := prog{
+  fn InsertInList [fuel] (fuel : Nat, cap : Nat, islot : Nat, key : Nat, val : Nat,
+                          b : &mut (List (Σ (k : Nat). Nat)),
+                          Hf : Le (LenE (*b)) fuel,
+                          Hkm : Id Nat (Mod key cap) islot,
+                          Hak : AllKeysMod cap islot (*b),
+                          Hnd : NodupB (*b))
+      -> Σ (hit : Bool).
+         Σ (Hh : Id Bool hit (HitL key (old *b))).
+         Σ (Hpt : Π (Q : Nat) → Id OptN (FindL Q (*b)) (BFindIns Q key val (old *b))).
+         Σ (Hln : Id Nat (LenE (*b)) (BLenIns key (old *b))).
+         Σ0 (Hk2 : AllKeysMod cap islot (*b)). NodupB (*b)
+      { match b {
+          Nil => {
+            *b := Cons(Pair(key, val), Nil);
+            Pair(False, Pair(Refl, Pair(PtEvNil key val, Pair(Refl,
+              Pair(Pair(Hkm, unit), Pair(Refl, unit))))))
+          },
+          Cons(Pair(kk, vv), tl) => match fuel {
+            Z => botElim Unit Hf,
+            S(f2) => {
+              let K0 = *kk;
+              let V0 = *vv;
+              let T0 = *tl;
+              if e : Eqb *kk key {
+                *vv := val;
+                Pair(True,
+                  Pair(HitEvHit K0 V0 key T0 e,
+                  Pair(PtEvHit K0 V0 val key T0 e,
+                  Pair(LnEvHit K0 V0 val key T0 e,
+                  Pair(Hak, Hnd)))))
+              } else {
+                let Pair(hit2, Pair(Hh2, Pair(Hpt2, Pair(Hln2, Pair(Hak3, Hnd3))))) =
+                  InsertInList(f2, cap, islot, key, val, &m *tl, Hf, Hkm,
+                    SndT (Id Nat (Mod K0 cap) islot) (AllKeysMod cap islot T0) Hak,
+                    SndT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd);
+                Pair(hit2,
+                  Pair(HitEvMiss K0 V0 key T0 hit2 e Hh2,
+                  Pair(UpdEvMiss K0 V0 (SomeN val) key T0 (*tl) e Hpt2,
+                  Pair(LnEvMiss K0 V0 key T0 (*tl) e Hln2,
+                  Pair(Pair(FstT (Id Nat (Mod K0 cap) islot)
+                              (AllKeysMod cap islot T0) Hak, Hak3),
+                       Pair(UpdNdMiss K0 (SomeN val) key T0 (*tl) e Hpt2
+                              (FstT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd),
+                            Hnd3))))))
+              } }
+          } } };
+  fn RemoveL [fuel] (fuel : Nat, cap : Nat, islot : Nat, key : Nat,
+                     l : List (Σ (k : Nat). Nat),
+                     Hf : Le (LenE l) fuel,
+                     Hak : AllKeysMod cap islot l,
+                     Hnd : NodupB l)
+      -> Σ (ret : Σ (bb : Bool). OptP bb Nat).
+         Σ (l2 : List (Σ (k : Nat). Nat)).
+         Σ (Hr : Id OptN ret (FindL key l)).
+         Σ (Hpt : Π (Q : Nat) → Id OptN (FindL Q l2) (BFindRem Q key l)).
+         Σ (Hln : Id Nat (LenE l2) (BLenRem key l)).
+         Σ0 (Hk2 : AllKeysMod cap islot l2). NodupB l2
+      { match l {
+          Nil =>
+            Pair(NoneN, Pair(Nil, Pair(Refl, Pair(RemPtNil key, Pair(Refl,
+              Pair(Hak, Hnd)))))),
+          Cons(Pair(kk, vv), tl2) => match fuel {
+            Z => botElim Unit Hf,
+            S(f2) => {
+              let K0 = kk;
+              let V0 = vv;
+              let T0 = tl2;
+              if e : Eqb kk key {
+                Pair(Pair(True, vv), Pair(tl2,
+                  Pair(RemHrHit K0 V0 key T0 e,
+                  Pair(RemPtHit K0 V0 key T0 e
+                         (FstT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd),
+                  Pair(RemLnHit K0 V0 key T0 e,
+                  Pair(SndT (Id Nat (Mod K0 cap) islot) (AllKeysMod cap islot T0) Hak,
+                       SndT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd))))))
+              } else {
+                let Pair(rr2, Pair(l3, Pair(Hr2, Pair(Hpt2, Pair(Hln2, Pair(Hak4, Hnd4)))))) =
+                  RemoveL(f2, cap, islot, key, tl2, Hf,
+                    SndT (Id Nat (Mod K0 cap) islot) (AllKeysMod cap islot T0) Hak,
+                    SndT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd);
+                let Ret0 = rr2;
+                let L3 = l3;
+                Pair(rr2, Pair(Cons(Pair(kk, vv), l3),
+                  Pair(RemHrMiss K0 V0 key T0 Ret0 e Hr2,
+                  Pair(UpdEvMiss K0 V0 NoneN key T0 L3 e Hpt2,
+                  Pair(RemLnMiss K0 V0 key T0 L3 e Hln2,
+                  Pair(Pair(FstT (Id Nat (Mod K0 cap) islot)
+                              (AllKeysMod cap islot T0) Hak, Hak4),
+                       Pair(UpdNdMiss K0 NoneN key T0 L3 e Hpt2
+                              (FstT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd),
+                            Hnd4)))))))
+              } }
+          } } };
+  fn SlotOfE (h : Nat, n : Nat, Hne : Le (S Z) n)
+      -> Σ (i : Nat). Σ (r : Nat). Σ (hd : Id Nat n (Add i (S r))). Id Nat i (Mod h n) {
+    SlotPack h n Hne };
+  fn NewHM (cap : Nat, HLe1 : Le (S Z) cap) -> %nret {
+    let Cap0 = cap;
+    Pair(Pair(cap, Pair(Mul 4 cap, Pair(Z, Pair(MkSlots cap,
+        MkInv cap (Mul 4 cap) Z (MkSlots cap) HLe1 Refl unit
+          (IdSym Nat (TotalE cap (MkSlots cap)) Z (TotalMkSlots cap))
+          (SFMkSlots cap cap Z))))),
+      Pair(λ (Q : Nat).
+             IdCongr (List (Σ (k : Nat). Nat)) (Σ (bb : Bool). OptP bb Nat)
+               (λ (W : List (Σ (k : Nat). Nat)). FindL Q W)
+               (AgetB Cap0 (MkSlots Cap0) (Mod Q Cap0)) Nil
+               (AgetBMkSlots Cap0 (Mod Q Cap0)),
+           Refl))
+  };
+  fn SlotUpd (fuel : Nat, cap : Nat, key : Nat, val : Nat,
+              b : &mut (Array cap (List (Σ (k : Nat). Nat))),
+              HLe1 : Le (S Z) cap,
+              Hfl : Le (S (TotalE cap (*b))) fuel,
+              Hsf : SlotsFrom cap cap (*b) Z)
+      -> Σ (hit : Bool).
+         Σ (Hh : Id Bool hit (IsSomeB (FindL key (AgetB cap (old *b) (Mod key cap))))).
+         Σ (Hpt : Π (Q : Nat) → Id OptN (FindL Q (AgetB cap (*b) (Mod Q cap)))
+              (BFindIns Q key val (AgetB cap (old *b) (Mod Q cap)))).
+         Σ0 (Htot : Id Nat (TotalE cap (*b))
+              (boolRec (λ (W2 : Bool). Nat) (TotalE cap (old *b))
+                (S (TotalE cap (old *b))) hit)).
+         SlotsFrom cap cap (*b) Z
+      {
+        let Cap0 = cap;
+        let Key0 = key;
+        let Pair(i, Pair(r, Pair(hd, him))) = SlotOfE(key, cap, HLe1);
+        let I0 = i;
+        let R0 = r;
+        let Him0 = him;
+        let pre = &m (*b)[Z ; i ; S r | LeAdd i (S r) | hd];
+        let cell = &m (*b)[i ; 1 ; r];
+        let hic = &m (*b)[S i ; r];
+        let bb = &m (*cell)[0];
+        let L0 = *pre;
+        let B0 = *bb;
+        let H0 = *hic;
+        let HsfL = SFCatLo cap r B0 H0 i L0 Z Hsf;
+        let HsfM = NatRw (λ (W : Nat). SlotInv Cap0 W B0) (Add I0 Z) I0 (AddZero I0)
+                     (SFCatMid cap r B0 H0 i L0 Z Hsf);
+        let HsfH = SFCatHi cap r B0 H0 i L0 Z Hsf;
+        let Hak0 = FstT (AllKeysMod cap i B0) (NodupB B0) HsfM;
+        let Hnd0 = SndT (AllKeysMod cap i B0) (NodupB B0) HsfM;
+        let Htot0 = TotalArrCat (S r) (acons r B0 H0) i L0;
+        let HlenB = LeRwR (LenE B0)
+                      (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
+                      (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
+                      (IdSym Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
+                        (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0))) Htot0)
+                      (LeTrans (LenE B0) (Add (LenE B0) (TotalE r H0))
+                        (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
+                        (LeAdd (LenE B0) (TotalE r H0))
+                        (LeAddL (Add (LenE B0) (TotalE r H0)) (TotalE i L0)));
+        let HfB = LeTrans (LenE B0)
+                    (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))) fuel
+                    HlenB
+                    (LePredL (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))) fuel Hfl);
+        let Pair(hit2, Pair(Hh2, Pair(Hpt2, Pair(Hln2, Pair(Hak3, Hnd3))))) =
+          InsertInList(fuel, cap, i, key, val, &m *bb, HfB,
+            IdSym Nat i (Mod key cap) him, Hak0, Hnd0);
+        let B1 = *bb;
+        let Hit0 = hit2;
+        let Htot1 = TotalArrCat (S r) (acons r B1 H0) i L0;
+        let Hpt = UpdPointwise i r key (SomeN val) L0 B0 B1 H0 him Hpt2;
+        let HsIz = NatRw (λ (W : Nat). SlotInv Cap0 W B1) I0 (Add I0 Z)
+                     (IdSym Nat (Add I0 Z) I0 (AddZero I0))
+                     (MkSlotInv cap i B1 Hak3 Hnd3);
+        let H5x = SFCatGlue cap r B1 H0 i L0 Z HsfL HsIz HsfH;
+        let HhB = IdTrans Bool Hit0 (HitL Key0 B0)
+                    (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
+                      (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
+                    Hh2
+                    (IdSym Bool
+                      (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
+                        (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
+                      (HitL Key0 B0)
+                      (NatRw (λ (W : Nat). Id Bool
+                          (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
+                            (arrCat I0 (S R0) L0 (acons R0 B0 H0)) W)))
+                          (HitL Key0 B0))
+                        I0 (Mod Key0 Cap0) Him0
+                        (IdCongr (List (Σ (k : Nat). Nat)) Bool
+                          (λ (W : List (Σ (k : Nat). Nat)). IsSomeB (FindL Key0 W))
+                          (AgetB (Add I0 (S R0))
+                            (arrCat I0 (S R0) L0 (acons R0 B0 H0)) I0) B0
+                          (AgetBCatMid R0 B0 H0 I0 L0))));
+        match e2 : hit2 {
+          True => {
+            let HitB0 = IdTrans Bool (HitL Key0 B0) Hit0 True
+                          (IdSym Bool Hit0 (HitL Key0 B0) Hh2) e2;
+            let HlenEq = IdTrans Nat (LenE B1) (BLenIns Key0 B0) (LenE B0)
+                           Hln2
+                           (BoolRwT Nat (LenE B0) (S (LenE B0)) (HitL Key0 B0) HitB0);
+            let HtotEq = IdTrans Nat (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
+                           (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
+                           (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
+                           (IdTrans Nat
+                             (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
+                             (Add (TotalE i L0) (Add (LenE B1) (TotalE r H0)))
+                             (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
+                             Htot1
+                             (IdCongr Nat Nat
+                               (λ (W : Nat). Add (TotalE I0 L0) (Add W (TotalE R0 H0)))
+                               (LenE B1) (LenE B0) HlenEq))
+                           (IdSym Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
+                             (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0))) Htot0);
+            Pair(True,
+              Pair(IdTrans Bool True Hit0
+                     (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
+                       (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
+                     (IdSym Bool Hit0 True e2) HhB,
+              Pair(Hpt, Pair(HtotEq, H5x))))
+          },
+          False => {
+            let HitB0F = IdTrans Bool (HitL Key0 B0) Hit0 False
+                           (IdSym Bool Hit0 (HitL Key0 B0) Hh2) e2;
+            let HlenEqF = IdTrans Nat (LenE B1) (BLenIns Key0 B0) (S (LenE B0))
+                            Hln2
+                            (BoolRwF Nat (LenE B0) (S (LenE B0)) (HitL Key0 B0) HitB0F);
+            let HtotEqF = IdTrans Nat (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
+                            (Add (TotalE i L0) (S (Add (LenE B0) (TotalE r H0))))
+                            (S (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))))
+                            (IdTrans Nat
+                              (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
+                              (Add (TotalE i L0) (Add (LenE B1) (TotalE r H0)))
+                              (Add (TotalE i L0) (S (Add (LenE B0) (TotalE r H0))))
+                              Htot1
+                              (IdCongr Nat Nat
+                                (λ (W : Nat). Add (TotalE I0 L0) (Add W (TotalE R0 H0)))
+                                (LenE B1) (S (LenE B0)) HlenEqF))
+                            (IdTrans Nat
+                              (Add (TotalE i L0) (S (Add (LenE B0) (TotalE r H0))))
+                              (S (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0))))
+                              (S (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))))
+                              (AddSucc (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
+                              (IdCongr Nat Nat (λ (W : Nat). S W)
+                                (Add (TotalE I0 L0) (Add (LenE B0) (TotalE R0 H0)))
+                                (TotalE Cap0 (arrCat I0 (S R0) L0 (acons R0 B0 H0)))
+                                (IdSym Nat
+                                  (TotalE Cap0 (arrCat I0 (S R0) L0 (acons R0 B0 H0)))
+                                  (Add (TotalE I0 L0) (Add (LenE B0) (TotalE R0 H0)))
+                                  Htot0)));
+            Pair(False,
+              Pair(IdTrans Bool False Hit0
+                     (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
+                       (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
+                     (IdSym Bool Hit0 False e2) HhB,
+              Pair(Hpt, Pair(HtotEqF, H5x))))
+          }
+        }
+      };
+  fn SlotRem (fuel : Nat, cap : Nat, key : Nat,
+              b : &mut (Array cap (List (Σ (k : Nat). Nat))),
+              HLe1 : Le (S Z) cap,
+              Hfl : Le (S (TotalE cap (*b))) fuel,
+              Hsf : SlotsFrom cap cap (*b) Z)
+      -> Σ (ret : Σ (bb : Bool). OptP bb Nat).
+         Σ (Hr : Id OptN ret (FindL key (AgetB cap (old *b) (Mod key cap)))).
+         Σ (Hpt : Π (Q : Nat) → Id OptN (FindL Q (AgetB cap (*b) (Mod Q cap)))
+              (BFindRem Q key (AgetB cap (old *b) (Mod Q cap)))).
+         Σ0 (Htot : Id Nat
+              (boolRec (λ (W2 : Bool). Nat) (S (TotalE cap (*b))) (TotalE cap (*b))
+                (IsSomeB ret))
+              (TotalE cap (old *b))).
+         SlotsFrom cap cap (*b) Z
+      {
+        let Cap0 = cap;
+        let Key0 = key;
+        let Pair(i, Pair(r, Pair(hd, him))) = SlotOfE(key, cap, HLe1);
+        let I0 = i;
+        let R0 = r;
+        let Him0 = him;
+        let pre = &m (*b)[Z ; i ; S r | LeAdd i (S r) | hd];
+        let cell = &m (*b)[i ; 1 ; r];
+        let hic = &m (*b)[S i ; r];
+        let bb = &m (*cell)[0];
+        let L0 = *pre;
+        let B0 = *bb;
+        let H0 = *hic;
+        let HsfL = SFCatLo cap r B0 H0 i L0 Z Hsf;
+        let HsfM = NatRw (λ (W : Nat). SlotInv Cap0 W B0) (Add I0 Z) I0 (AddZero I0)
+                     (SFCatMid cap r B0 H0 i L0 Z Hsf);
+        let HsfH = SFCatHi cap r B0 H0 i L0 Z Hsf;
+        let Hak0 = FstT (AllKeysMod cap i B0) (NodupB B0) HsfM;
+        let Hnd0 = SndT (AllKeysMod cap i B0) (NodupB B0) HsfM;
+        let Htot0 = TotalArrCat (S r) (acons r B0 H0) i L0;
+        let HlenB = LeRwR (LenE B0)
+                      (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
+                      (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
+                      (IdSym Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
+                        (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0))) Htot0)
+                      (LeTrans (LenE B0) (Add (LenE B0) (TotalE r H0))
+                        (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
+                        (LeAdd (LenE B0) (TotalE r H0))
+                        (LeAddL (Add (LenE B0) (TotalE r H0)) (TotalE i L0)));
+        let HfB = LeTrans (LenE B0)
+                    (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))) fuel
+                    HlenB
+                    (LePredL (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))) fuel Hfl);
+        let bcur = *bb;
+        let Pair(rr2, Pair(l3, Pair(Hr2, Pair(Hpt2, Pair(Hln2, Pair(Hak4, Hnd4)))))) =
+          RemoveL(fuel, cap, i, key, bcur, HfB, Hak0, Hnd0);
+        *bb := l3;
+        let B1 = *bb;
+        let Ret0 = rr2;
+        let Hpt = UpdPointwise i r key NoneN L0 B0 B1 H0 him Hpt2;
+        let HsIz = NatRw (λ (W : Nat). SlotInv Cap0 W B1) I0 (Add I0 Z)
+                     (IdSym Nat (Add I0 Z) I0 (AddZero I0))
+                     (MkSlotInv cap i B1 Hak4 Hnd4);
+        let H5x = SFCatGlue cap r B1 H0 i L0 Z HsfL HsIz HsfH;
+        let HrMap = IdTrans OptN Ret0 (FindL Key0 B0)
+                      (FindL Key0 (AgetB (Add I0 (S R0))
+                        (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0)))
+                      Hr2
+                      (IdSym OptN
+                        (FindL Key0 (AgetB (Add I0 (S R0))
+                          (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0)))
+                        (FindL Key0 B0)
+                        (NatRw (λ (W : Nat). Id OptN
+                            (FindL Key0 (AgetB (Add I0 (S R0))
+                              (arrCat I0 (S R0) L0 (acons R0 B0 H0)) W))
+                            (FindL Key0 B0))
+                          I0 (Mod Key0 Cap0) Him0
+                          (IdCongr (List (Σ (k : Nat). Nat)) OptN
+                            (λ (W : List (Σ (k : Nat). Nat)). FindL Key0 W)
+                            (AgetB (Add I0 (S R0))
+                              (arrCat I0 (S R0) L0 (acons R0 B0 H0)) I0) B0
+                            (AgetBCatMid R0 B0 H0 I0 L0))));
+        let Htot = IdTrans Nat
+                     (boolRec (λ (W2 : Bool). Nat)
+                       (S (TotalE (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B1 H0))))
+                       (TotalE (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B1 H0)))
+                       (IsSomeB Ret0))
+                     (boolRec (λ (W2 : Bool). Nat)
+                       (S (TotalE (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B1 H0))))
+                       (TotalE (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B1 H0)))
+                       (HitL Key0 B0))
+                     (TotalE (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0)))
+                     (IdCongr Bool Nat
+                       (λ (W : Bool). boolRec (λ (W2 : Bool). Nat)
+                         (S (TotalE (Add I0 (S R0))
+                           (arrCat I0 (S R0) L0 (acons R0 B1 H0))))
+                         (TotalE (Add I0 (S R0))
+                           (arrCat I0 (S R0) L0 (acons R0 B1 H0))) W)
+                       (IsSomeB Ret0) (HitL Key0 B0)
+                       (IdCongr OptN Bool IsSomeB Ret0 (FindL Key0 B0) Hr2))
+                     (RemTotEv I0 R0 Key0 L0 B0 B1 H0 Hln2);
+        Pair(rr2, Pair(HrMap, Pair(Hpt, Pair(Htot, H5x))))
+      };
+  fn InsertHM (fuel : Nat, key : Nat, val : Nat,
+               self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                 Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots),
+               Hfuel : Le (S (SizeHM (*self))) fuel,
+               Hroom : Le (Mul 5 (S (SizeHM (*self)))) (LoadHM (*self)))
+      -> %iret
+      {
+        let Pair(cap, Pair(load, Pair(nn, Pair(slots, HInv)))) = *self;
+        let Cap0 = cap;
+        let Key0 = key;
+        let N0 = nn;
+        let HLe1 = InvLe1 cap load nn slots HInv;
+        let HLoad = InvLoad cap load nn slots HInv;
+        let HLed = InvLedger cap load nn slots HInv;
+        let HCnt = InvCount cap load nn slots HInv;
+        let HSf = InvSlots cap load nn slots HInv;
+        let SL0 = slots;
+        let sb = &m slots;
+        let Pair(hit2, Pair(Hh2, Pair(Hpt2, Pair(Htot2, Hsf2)))) =
+          SlotUpd(fuel, cap, key, val, &m *sb, HLe1,
+            LeRwL fuel (S nn) (S (TotalE Cap0 SL0))
+              (IdCongr Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
+              Hfuel,
+            HSf);
+        let SL1 = *sb;
+        let Hit0 = hit2;
+        match e2 : hit2 {
+          True => {
+            let H4x = IdTrans Nat nn (TotalE Cap0 SL0) (TotalE Cap0 SL1)
+                        HCnt
+                        (IdSym Nat (TotalE Cap0 SL1) (TotalE Cap0 SL0)
+                          (IdTrans Nat (TotalE Cap0 SL1)
+                            (boolRec (λ (W2 : Bool). Nat) (TotalE Cap0 SL0)
+                              (S (TotalE Cap0 SL0)) Hit0)
+                            (TotalE Cap0 SL0)
+                            Htot2
+                            (BoolRwT Nat (TotalE Cap0 SL0) (S (TotalE Cap0 SL0))
+                              Hit0 e2)));
+            *self := Pair(cap, Pair(load, Pair(nn, Pair(slots,
+              MkInv cap load nn SL1 HLe1 HLoad HLed H4x Hsf2))));
+            Pair(Hpt2,
+              IdSym Nat
+                (boolRec (λ (W2 : Bool). Nat) nn (S nn)
+                  (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
+                nn
+                (BoolRwT Nat nn (S nn)
+                  (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
+                  (IdTrans Bool
+                    (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
+                    Hit0 True
+                    (IdSym Bool Hit0
+                      (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))) Hh2)
+                    e2)))
+          },
+          False => {
+            let H4y = IdTrans Nat (S nn) (S (TotalE Cap0 SL0)) (TotalE Cap0 SL1)
+                        (IdCongr Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
+                        (IdSym Nat (TotalE Cap0 SL1) (S (TotalE Cap0 SL0))
+                          (IdTrans Nat (TotalE Cap0 SL1)
+                            (boolRec (λ (W2 : Bool). Nat) (TotalE Cap0 SL0)
+                              (S (TotalE Cap0 SL0)) Hit0)
+                            (S (TotalE Cap0 SL0))
+                            Htot2
+                            (BoolRwF Nat (TotalE Cap0 SL0) (S (TotalE Cap0 SL0))
+                              Hit0 e2)));
+            *self := Pair(cap, Pair(load, Pair(S(nn), Pair(slots,
+              MkInv cap load (S nn) SL1 HLe1 HLoad Hroom H4y Hsf2))));
+            Pair(Hpt2,
+              IdSym Nat
+                (boolRec (λ (W2 : Bool). Nat) nn (S nn)
+                  (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
+                (S nn)
+                (BoolRwF Nat nn (S nn)
+                  (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
+                  (IdTrans Bool
+                    (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
+                    Hit0 False
+                    (IdSym Bool Hit0
+                      (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))) Hh2)
+                    e2)))
+          }
+        }
+      };
+  fn RemoveHM (fuel : Nat, key : Nat,
+               self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                 Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots),
+               Hfuel : Le (S (SizeHM (*self))) fuel)
+      -> %rret
+      {
+        let Pair(cap, Pair(load, Pair(nn, Pair(slots, HInv)))) = *self;
+        let Cap0 = cap;
+        let Key0 = key;
+        let N0 = nn;
+        let HLe1 = InvLe1 cap load nn slots HInv;
+        let HLoad = InvLoad cap load nn slots HInv;
+        let HLed = InvLedger cap load nn slots HInv;
+        let HCnt = InvCount cap load nn slots HInv;
+        let HSf = InvSlots cap load nn slots HInv;
+        let SL0 = slots;
+        let sb = &m slots;
+        let Pair(rr, Pair(Hr2, Pair(Hpt2, Pair(Htot2, Hsf2)))) =
+          SlotRem(fuel, cap, key, &m *sb, HLe1,
+            LeRwL fuel (S nn) (S (TotalE Cap0 SL0))
+              (IdCongr Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
+              Hfuel,
+            HSf);
+        let SL1 = *sb;
+        let Ret0 = rr;
+        match rr {
+          Pair(tg, pv) => match e3 : tg {
+            True => match nn {
+              Z => botElim Unit
+                     (Znots (TotalE Cap0 SL1)
+                       (IdSym Nat (S (TotalE Cap0 SL1)) Z
+                         (IdTrans Nat (S (TotalE Cap0 SL1)) (TotalE Cap0 SL0) Z
+                           Htot2 (IdSym Nat Z (TotalE Cap0 SL0) HCnt)))),
+              S(m2) => {
+                let H4r = SInj m2 (TotalE Cap0 SL1)
+                            (IdTrans Nat (S m2) (TotalE Cap0 SL0) (S (TotalE Cap0 SL1))
+                              HCnt (IdSym Nat (S (TotalE Cap0 SL1)) (TotalE Cap0 SL0) Htot2));
+                *self := Pair(cap, Pair(load, Pair(m2, Pair(slots,
+                  MkInv cap load m2 SL1 HLe1 HLoad
+                    (LeTrans (Mul 5 m2) (Mul 5 (S m2)) load
+                      (LeMulR 5 m2 (S m2) (LeUpR m2 m2 (LeRefl m2)))
+                      HLed)
+                    H4r Hsf2))));
+                Pair(Pair(True, pv),
+                  Pair(Hr2,
+                  Pair(Hpt2,
+                    IdSym Nat
+                      (boolRec (λ (W2 : Bool). Nat) (Pred N0) N0
+                        (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
+                      (Pred N0)
+                      (BoolRwT Nat (Pred N0) N0
+                        (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
+                        (IdTrans Bool
+                          (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
+                          (IsSomeB Ret0) True
+                          (IdSym Bool (IsSomeB Ret0)
+                            (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
+                            (IdCongr OptN Bool IsSomeB Ret0
+                              (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))) Hr2))
+                          e3)))))
+              }
+            },
+            False => {
+              let H4n = IdTrans Nat nn (TotalE Cap0 SL0) (TotalE Cap0 SL1)
+                          HCnt
+                          (IdSym Nat (TotalE Cap0 SL1) (TotalE Cap0 SL0) Htot2);
+              *self := Pair(cap, Pair(load, Pair(nn, Pair(slots,
+                MkInv cap load nn SL1 HLe1 HLoad HLed H4n Hsf2))));
+              Pair(Pair(False, pv),
+                Pair(Hr2,
+                Pair(Hpt2,
+                  IdSym Nat
+                    (boolRec (λ (W2 : Bool). Nat) (Pred N0) N0
+                      (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
+                    N0
+                    (BoolRwF Nat (Pred N0) N0
+                      (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
+                      (IdTrans Bool
+                        (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
+                        (IsSomeB Ret0) False
+                        (IdSym Bool (IsSomeB Ret0)
+                          (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
+                          (IdCongr OptN Bool IsSomeB Ret0
+                            (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))) Hr2))
+                        e3)))))
+            }
+          }
+        }
+      };
+  %tail }
+
+/-- `New`'s honest ensures: finds nothing, size zero. -/
+def newRetHonest : Term := prog{
+  Σ (hm : HashMapT). Σ0 (Hfind : Π (Q : Nat) → Id OptN (FindHM Q hm) NoneN).
+  Id Nat (SizeHM hm) Z }
+
+/-- `Insert`'s honest ensures — the two fixed conjuncts: the pointwise Find
+    equation (subsuming Aeneas' found + frame in one total claim) and the size
+    accounting via the `SizeIns` spec function. -/
+def insRetHonest : Term := prog{
+  Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (*%selfIv))
+       (FindIns Q %keyIv %valIv (old *%selfIv))).
+  Id Nat (SizeHM (*%selfIv)) (SizeIns %keyIv (old *%selfIv)) }
+
+/-- `Remove`'s honest ensures — the three fixed conjuncts: the removed value
+    is the old answer at `key`, the pointwise `FindRem` equation, and the
+    `SizeRem` size accounting. Telescope: fuel=0, key=1, self=2, Hfuel=3. -/
+def keyRv : Term := .var ⟨1, "key"⟩
+def selfRv : Term := .var ⟨2, "self"⟩
+def remRetHonest : Term := prog{
+  Σ (r : Σ (bb : Bool). OptP bb Nat).
+  Σ (Hr : Id OptN r (FindHM %keyRv (old *%selfRv))).
+  Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (*%selfRv))
+       (FindRem Q %keyRv (old *%selfRv))).
+  Id Nat (SizeHM (*%selfRv)) (SizeRem %keyRv (old *%selfRv)) }
+
+/-- THE S1 HEADLINE: the fixed-capacity chain checks as ONE program, against
+    no table — walk, slot pack, New, Insert, full specs. -/
+def s1Chain : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{ () }
+example : progOk s1Chain = true := by native_decide
+
+
+-- BISECTION P1: identity round-trip of the REAL container through &mut —
+-- destructure, project the clauses, repack via MkInv, refill.
+def s1P1 : Term := prog{
+  fn Touch (self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots)) -> Unit {
+    let Pair(cap, Pair(load, Pair(nn, Pair(slots, HInv)))) = *self;
+    let HLe1 = InvLe1 cap load nn slots HInv;
+    let HLoad = InvLoad cap load nn slots HInv;
+    let HLed = InvLedger cap load nn slots HInv;
+    let HCnt = InvCount cap load nn slots HInv;
+    let HSf = InvSlots cap load nn slots HInv;
+    let SL0 = slots;
+    *self := Pair(cap, Pair(load, Pair(nn, Pair(slots,
+      MkInv cap load nn SL0 HLe1 HLoad HLed HCnt HSf))));
+    () };
+  () }
+example : progOk s1P1 = true := by native_decide
+
+-- BISECTION P2a: carve, then refill with the UNTOUCHED entry clauses (typed at
+-- the entry slots sigma) — isolates the audit-side segment-fold conversion.
+def s1P2a : Term := prog{
+  fn SlotOfE (h : Nat, n : Nat, Hne : Le (S Z) n)
+      -> Σ (i : Nat). Σ (r : Nat). Σ (hd : Id Nat n (Add i (S r))). Id Nat i (Mod h n) {
+    SlotPack h n Hne };
+  fn Touch (key : Nat, self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots)) -> Unit {
+    let Pair(cap, Pair(load, Pair(nn, Pair(slots, HInv)))) = *self;
+    let HLe1 = InvLe1 cap load nn slots HInv;
+    let HLoad = InvLoad cap load nn slots HInv;
+    let HLed = InvLedger cap load nn slots HInv;
+    let HCnt = InvCount cap load nn slots HInv;
+    let HSf = InvSlots cap load nn slots HInv;
+    let SL0 = slots;
+    let Pair(i, Pair(r, Pair(hd, him))) = SlotOfE(key, cap, HLe1);
+    let sb = &m slots;
+    let pre = &m (*sb)[Z ; i ; S r | LeAdd i (S r) | hd];
+    let cell = &m (*sb)[i ; 1 ; r];
+    let hic = &m (*sb)[S i ; r];
+    let bb = &m (*cell)[0];
+    *self := Pair(cap, Pair(load, Pair(nn, Pair(slots,
+      MkInv cap load nn SL0 HLe1 HLoad HLed HCnt HSf))));
+    () };
+  () }
+-- PINNED LIMIT (the finding that shaped the op layer): the exit audit cannot
+-- re-type a DEPENDENT pack whose array component is still SEGMENTED — the
+-- entry clauses are typed at the whole-array sigma, the demanded tail
+-- instantiates the raw segment-list value, and the two do not convert at the
+-- audit even though the sigma/composition equation holds (s1P2c below). So
+-- every op routes its carve through a CALLEE (SlotUpd) and packs the fresh
+-- opaque sigma the group end mints — the function boundary is load-bearing,
+-- exactly as ArraySort found for the flex-length carve.
+example : progOk s1P2a = false := by native_decide
+
+-- P2c/P2d: is the entry sigma definitionally the composition of the segment
+-- sigmas, from a carve of a LOCAL owned array? Asked with an ascribed Refl.
+def s1P2c : Term := prog{
+  fn Touch (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
+            a : Array n (List (Σ (k : Nat). Nat))) -> Unit {
+    let SL0 = a;
+    let sb = &m a;
+    let pre = &m (*sb)[Z ; i ; S r | LeAdd i (S r) | hd];
+    let cell = &m (*sb)[i ; 1 ; r];
+    let hic = &m (*sb)[S i ; r];
+    let bb = &m (*cell)[0];
+    let L0 = *pre;
+    let B0 = *bb;
+    let H0 = *hic;
+    let Heq = (Refl : Id (Array n (List (Σ (k : Nat). Nat))) SL0
+                (arrCat i (S r) L0 (acons r B0 H0)));
+    () };
+  () }
+example : progOk s1P2c = true := by native_decide
+
+
+
+/-! ## (xvi) The S1 EXECUTING DIFFERENTIAL
+
+    The same declarations the checker accepted, run on concrete maps and
+    compared against a trusted Lean-side reference (`runQsA`-style). The
+    callers here are runtime-only: their proof arguments are `unit`, which the
+    machine ignores — E2E rule, runs-to-X assertions only. (A checker-accepted
+    caller needs the size facts threaded through the ensures; S1's `Hroom`
+    additionally needs cap/load knowledge New's fixed ensures does not export,
+    which S2's resize removes — so the checked caller ships with S2.) -/
+
+def pairOfV : Val → Option (Val × Val)
+  | v => match Val.asCtor? v with
+    | some ("Pair", [a, b]) => some (a, b)
+    | _ => none
+
+def entryOfV : Val → Option (Nat × Nat)
+  | v => match pairOfV v with
+    | some (a, b) =>
+      match natOfV 4000 a, natOfV 4000 b with
+      | some k, some w => some (k, w)
+      | _, _ => none
+    | none => none
+
+def bktOfV : Nat → Val → Option (List (Nat × Nat))
+  | f, v =>
+    match Val.asCtor? v, f with
+    | some ("Nil", []), _ => some []
+    | some ("Cons", [h, t]), f' + 1 =>
+      match entryOfV h, bktOfV f' t with
+      | some e, some es => some (e :: es)
+      | _, _ => none
+    | _, _ => none
+
+def slotsOfV : Val → Option (List (List (Nat × Nat)))
+  | v => match Val.asCtor? v with
+    | some ("Arr", vs) => vs.mapM (bktOfV 2000)
+    | _ => none
+
+/-- Decode a concrete pack: (cap, load, n, buckets). The invariant component is
+    ignored (erased in spirit; the interpreter carries it). -/
+def hmOfV (v : Val) : Option (Nat × Nat × Nat × List (List (Nat × Nat))) := do
+  let (c, r1) ← pairOfV v
+  let (l, r2) ← pairOfV r1
+  let (n, r3) ← pairOfV r2
+  let (s, _) ← pairOfV r3
+  let cap ← natOfV 4000 c
+  let load ← natOfV 4000 l
+  let nn ← natOfV 4000 n
+  let bs ← slotsOfV s
+  pure (cap, load, nn, bs)
+
+/-- The trusted model: overwrite in place on hit, append at the bucket's end
+    on miss — `insert_in_list`'s specified behavior. -/
+def modelInsB (k v : Nat) : List (Nat × Nat) → List (Nat × Nat)
+  | [] => [(k, v)]
+  | (k2, v2) :: t => if k2 == k then (k, v) :: t else (k2, v2) :: modelInsB k v t
+
+def modelIns (cap : Nat) (bs : List (List (Nat × Nat))) (k v : Nat)
+    : List (List (Nat × Nat)) :=
+  bs.mapIdx (fun i b => if i == k % cap then modelInsB k v b else b)
+
+def modelRun (cap : Nat) (ops : List (Nat × Nat))
+    : Nat × List (List (Nat × Nat)) :=
+  ops.foldl (fun (acc : Nat × List (List (Nat × Nat))) (kv : Nat × Nat) =>
+      let present := (acc.2.getD (kv.1 % cap) []).any (fun e => e.1 == kv.1)
+      ((if present then acc.1 else acc.1 + 1),
+       modelIns cap acc.2 kv.1 kv.2))
+    (0, List.replicate cap [])
+
+def runHM (t : Term) : Option (Nat × Nat × Nat × List (List (Nat × Nat))) :=
+  match Dllbc.Tests.S9Diff.runExec t with
+  | .ok env => (env.lookup "y").bind hmOfV
+  | .error _ => none
+
+/-- Five inserts at cap 4: keys 5, 1, 9 all collide in slot 1 (the middle one
+    walks past a miss), key 5 re-inserted mid-sequence must OVERWRITE in place,
+    key 2 lands alone. -/
+def s1RunCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{
+  let Pair(m0, Ev0) = NewHM(4, unit);
+  let b1 = &m m0;
+  InsertHM(9, 5, 70, b1, unit, unit);
+  let b2 = &m m0;
+  InsertHM(9, 1, 10, b2, unit, unit);
+  let b3 = &m m0;
+  InsertHM(9, 5, 71, b3, unit, unit);
+  let b4 = &m m0;
+  InsertHM(9, 9, 90, b4, unit, unit);
+  let b5 = &m m0;
+  InsertHM(9, 2, 20, b5, unit, unit);
+  let y = m0;
+  () }
+
+def s1Expected : Nat × List (List (Nat × Nat)) :=
+  modelRun 4 [(5, 70), (1, 10), (5, 71), (9, 90), (2, 20)]
+
+example : (runHM s1RunCaller ==
+    some (4, 16, s1Expected.1, s1Expected.2)) = true := by native_decide
+
+-- …and the model itself is what we think it is (the differential is two-sided).
+example : (s1Expected == (4, [[], [(5, 71), (1, 10), (9, 90)], [(2, 20)], []]))
+    = true := by native_decide
+
+/-- The insert sequence followed by three removes: key 5 (bucket-1 head, a
+    hit), key 7 (a miss — nothing changes), key 1 (mid-bucket unlink). -/
+def s1RemCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{
+  let Pair(m0, Ev0) = NewHM(4, unit);
+  let b1 = &m m0;
+  InsertHM(9, 5, 70, b1, unit, unit);
+  let b2 = &m m0;
+  InsertHM(9, 1, 10, b2, unit, unit);
+  let b3 = &m m0;
+  InsertHM(9, 5, 71, b3, unit, unit);
+  let b4 = &m m0;
+  InsertHM(9, 9, 90, b4, unit, unit);
+  let b5 = &m m0;
+  InsertHM(9, 2, 20, b5, unit, unit);
+  let b6 = &m m0;
+  RemoveHM(9, 5, b6, unit);
+  let b7 = &m m0;
+  RemoveHM(9, 7, b7, unit);
+  let b8 = &m m0;
+  RemoveHM(9, 1, b8, unit);
+  let y = m0;
+  () }
+
+example : (runHM s1RemCaller ==
+    some (4, 16, 2, [[], [(9, 90)], [(2, 20)], []])) = true := by native_decide
+
+-- The empty map runs and decodes: all buckets Nil, n = 0, load = 4·cap.
+def s1NewCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{
+  let Pair(m0, Ev0) = NewHM(3, unit);
+  let y = m0;
+  () }
+example : (runHM s1NewCaller == some (3, 12, 0, [[], [], []])) = true := by
+  native_decide
+
+
 
 end Dllbc.Tests.HashMap
 end
