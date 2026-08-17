@@ -21,3 +21,4 @@ import Dllbc.Tests.AuditExemption
 import Dllbc.Tests.SigmaCopy
 import Dllbc.Tests.Ledger
 import Dllbc.Tests.Sugar
+import Dllbc.Tests.HashMap

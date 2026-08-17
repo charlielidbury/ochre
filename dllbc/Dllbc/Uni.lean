@@ -394,7 +394,15 @@ def aliasMap : List (String × Name) :=
   [("Le", `Dllbc.Std.LeFnT), ("Len", `Dllbc.Std.lenFnT), ("Add", `Dllbc.Std.addFnT),
    ("Leb", `Dllbc.Std.lebFnT), ("Count", `Dllbc.Std.countFnT), ("Eqb", `Dllbc.Std.eqbFnT),
    ("Take", `Dllbc.Std.takeFnT), ("Drop", `Dllbc.Std.dropFnT),
-   ("Sorted", `Dllbc.Std.SortedFnT), ("Bound", `Dllbc.Std.BoundFnT)]
+   ("Sorted", `Dllbc.Std.SortedFnT), ("Bound", `Dllbc.Std.BoundFnT),
+   -- The slot arithmetic (the hashmap flagship's `Mod key cap`). `NextR`/`NextC`/
+   -- `NextQ`/`ModC`/`DivC` are named as well as `Mod`/`Div` because the lemmas about
+   -- them are stated over the accumulator STATE — `ModCLt` is the general fact and
+   -- `ModLtN` its specialisation — so the state's vocabulary has to be writable.
+   ("Mul", `Dllbc.Std.mulFnT), ("Mod", `Dllbc.Std.modFnT), ("Div", `Dllbc.Std.divFnT),
+   ("ModC", `Dllbc.Std.modCFnT), ("DivC", `Dllbc.Std.divCFnT),
+   ("NextR", `Dllbc.Std.nextRFnT), ("NextC", `Dllbc.Std.nextCFnT),
+   ("NextQ", `Dllbc.Std.nextQFnT)]
 
 /-! ## Binder names, and what capitalisation may mean (combining-fns §6)
 
@@ -1321,10 +1329,35 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
     let ihName := (cih.getD (mkIdent `ih)).getId.toString
     let ihDom ← pOf tName
     let body := (← elabUBlk rctx (ihName :: tName :: hName :: pctx) n2 cbody).1
-    let hDom ← binderDom hName (← `(Dllbc.Term.const "Nat"))
-    let tDom ← binderDom tName (← `(Dllbc.Term.app (Dllbc.Term.const "List") (Dllbc.Term.const "Nat")))
+    -- **The ELEMENT TYPE is read out of the motive's binder type**, exactly as the
+    -- `Pair` branch below reads `A`/`B` out of `Σ (y : A). B`. It used to be the
+    -- literal `Nat` in all three places this needs it — `listRec`'s `A` argument and
+    -- the Cons arm's head and tail domains — which made the SURFACE's list elim
+    -- monomorphic at `List Nat` while `Machine`'s `listRec` rule (which takes `A` and
+    -- builds `List A` from it) was general all along. An `elim` over a
+    -- `List (Σ (k : Nat). Nat)` — a hashmap bucket — checked only when the recursor
+    -- spine was written out by hand, which is a five-line tax on every bucket
+    -- function and every induction over one.
+    --
+    -- Value-preserving at every pre-existing call site: a `λ (Lm : List Nat). …`
+    -- motive elaborates `Nat` through `resolveName`, which answers exactly the
+    -- `Term.const "Nat"` the literal wrote. A motive whose binder type is not
+    -- syntactically `List A` keeps the old `Nat` default rather than erroring, so
+    -- nothing that parsed before stops parsing.
+    let mTyBare := match mTy with | `(uterm| ($e:uterm)) => e | _ => mTy
+    let (elemHd, elemArgs) := collectAppU mTyBare
+    let elemSyn : Option (TSyntax `uterm) :=
+      if elemArgs.size != 1 then none
+      else match elemHd with
+        | `(uterm| $x:ident) => if x.getId.toString == "List" then some elemArgs[0]! else none
+        | _ => none
+    let elemT ← match elemSyn with
+      | some a => pure (← elabUTerm rctx pctx n2 a).1
+      | none => `(Dllbc.Term.const "Nat")
+    let hDom ← binderDom hName elemT
+    let tDom ← binderDom tName (← `(Dllbc.Term.app (Dllbc.Term.const "List") $elemT))
     let ihDomM ← binderDom ihName ihDom
-    return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "listRec") (Dllbc.Term.const "Nat")) $motiveT) $n)
+    return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "listRec") $elemT) $motiveT) $n)
         (Dllbc.Term.lam $(quote hName) $hDom
           (Dllbc.Term.lam $(quote tName) $tDom
             (Dllbc.Term.lam $(quote ihName) $ihDomM $body)))) $scrutT), n2)

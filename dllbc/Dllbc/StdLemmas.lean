@@ -4655,4 +4655,86 @@ def CountSwapATy : Term := prog{
     Id Nat (CountA Q (S (Add K (S R))) (acons (Add K (S R)) Y (arrCat K (S R) L (acons R X G))))
            (CountA Q (S (Add K (S R))) (acons (Add K (S R)) X (arrCat K (S R) L (acons R Y G)))) }
 
+/-! ## The slot arithmetic's two lemmas (the hashmap flagship)
+
+    `Std`'s `Mod` is written in accumulator form for the performance reason recorded
+    there, and these are the two facts a program indexing an array by `Mod key cap`
+    needs: the slot is IN RANGE, and the range decomposes at it.
+
+    Both are stated over the accumulator STATE first and specialised afterwards,
+    which is what keeps them short: `ModCLt`'s step is the induction hypothesis at
+    the stepped state and touches no arithmetic at all, because `StepInv` has already
+    discharged the one transport the state's invariant needs. -/
+
+/-- One increment preserves `R + C ≤ B`. The `Z` arm is the wrap (`(Z, B)`, so
+    `LeRefl`); the `S` arm is one `AddSucc` rewrite, which is the only place `Add`'s
+    recursion on its FIRST argument costs anything here. -/
+def StepInv : Term := prog{
+  λ (B : Nat). λ (R : Nat). λ (C : Nat).
+    elim C return (λ (Cz : Nat). Le (Add R Cz) B → Le (Add (NextR R Cz) (NextC B Cz)) B) {
+      Z => λ (H : Le (Add R Z) B). LeRefl B,
+      S (C') Rc => λ (H : Le (Add R (S C')) B).
+        LeRwL B (Add R (S C')) (S (Add R C')) (AddSucc R C') H } }
+def StepInvTy : Term := prog{
+  Π (B : Nat) → Π (R : Nat) → Π (C : Nat) →
+    Le (Add R C) B → Le (Add (NextR R C) (NextC B C)) B }
+
+/-- The residue of any number of increments of an invariant state is at most `B`.
+    The base reaches `Le R B` from `R + C ≤ B` through `LeAdd` and one `LeTrans`. -/
+def ModCLt : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat).
+        Π (B : Nat) → Π (R : Nat) → Π (C : Nat) →
+          Le (Add R C) B → Le (S (ModC Az B R C)) (S B)) {
+      Z => λ (B : Nat). λ (R : Nat). λ (C : Nat). λ (H : Le (Add R C) B).
+             LeTrans R (Add R C) B (LeAdd R C) H,
+      S (A') Ih => λ (B : Nat). λ (R : Nat). λ (C : Nat). λ (H : Le (Add R C) B).
+             Ih B (NextR R C) (NextC B C) (StepInv B R C H) } }
+def ModCLtTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Π (R : Nat) → Π (C : Nat) →
+    Le (Add R C) B → Le (S (ModC A B R C)) (S B) }
+
+/-- **The slot is in range.** Stated over an OPAQUE capacity carrying `Le 1 n`, not
+    over an `S c` pattern, and that is forced rather than stylistic: a `fn` whose
+    capacity is the pattern `S c` has a rigid extent, and the CARVE's premise (3)
+    may not refine a rigid one, so the three-way carve at the slot would be stuck.
+    The capacity is therefore an opaque `n` everywhere downstream, and this lemma
+    does the `Z`-is-impossible case once so no program has to. -/
+def ModLtN : Term := prog{
+  λ (A : Nat). λ (N : Nat).
+    elim N return (λ (Nz : Nat). Le (S Z) Nz → Le (S (Mod A Nz)) Nz) {
+      Z => λ (H : Le (S Z) Z). botElim (Le (S (Mod A Z)) Z) H,
+      S (B') Rb => λ (H : Le (S Z) (S B')). ModCLt A B' Z B' (LeRefl B') } }
+def ModLtNTy : Term := prog{
+  Π (A : Nat) → Π (N : Nat) → Le (S Z) N → Le (S (Mod A N)) N }
+
+/-- **The range decomposes at the slot.** `Le (S i) n` becomes the residue `r` and
+    the equation `n = i + S r` that the carve's premise (3) wants CITED — the same
+    Σ-across-a-call shape `partitionA` uses for `splitA`'s returned index, and for
+    the same reason: a comptime projection out of this pair still MENTIONS `n`, so
+    premise (3) would try to solve `n = f(n)` and the occurs check refuses it.
+
+    Induction on `i`, casing `n` at each level; both `n = Z` arms are `Bot`, the
+    `i = Z` step reads off `r := n'`, and the successor step rebuilds the pair
+    through one `IdCongr S`. -/
+def ModDec : Term := prog{
+  λ (I : Nat).
+    elim I return (λ (Iz : Nat).
+        Π (N : Nat) → Le (S Iz) N → Σ (R : Nat). Id Nat N (Add Iz (S R))) {
+      Z => λ (N : Nat).
+        elim N return (λ (Nz : Nat). Le (S Z) Nz → Σ (R : Nat). Id Nat Nz (Add Z (S R))) {
+          Z => λ (H : Le (S Z) Z). botElim (Σ (R : Nat). Id Nat Z (Add Z (S R))) H,
+          S (N') Ihn => λ (H : Le (S Z) (S N')). Pair(N', Refl) },
+      S (I') Ih => λ (N : Nat).
+        elim N return (λ (Nz : Nat).
+            Le (S (S I')) Nz → Σ (R : Nat). Id Nat Nz (Add (S I') (S R))) {
+          Z => λ (H : Le (S (S I')) Z). botElim (Σ (R : Nat). Id Nat Z (Add (S I') (S R))) H,
+          S (N') Ihn => λ (H : Le (S (S I')) (S N')).
+            elim (Ih N' H) return (λ (Q : Σ (R : Nat). Id Nat N' (Add I' (S R))).
+                Σ (R : Nat). Id Nat (S N') (Add (S I') (S R))) {
+              Pair (X) (Y) =>
+                Pair(X, IdCongr Nat Nat (λ (Nn : Nat). S Nn) N' (Add I' (S X)) Y) } } } }
+def ModDecTy : Term := prog{
+  Π (I : Nat) → Π (N : Nat) → Le (S I) N → Σ (R : Nat). Id Nat N (Add I (S R)) }
+
 end Dllbc.StdLemmas

@@ -161,6 +161,93 @@ def appendFn : Term := prog{
     Cons (H) (T) R => Cons(H, R) } }
 def appendFnT : Dllbc.Term := appendFn
 
+/-! ## `mul`, `mod`, `div` — the slot arithmetic (the hashmap flagship's `Mod key cap`)
+
+    Ported from the `hm-probe-mod` branch, whose two findings are what the shapes
+    below are FOR, and which are worth restating here because a later editor's first
+    instinct will be to "simplify" them back.
+
+    **`mod` and `div` must mention their recursive result exactly ONCE.** The
+    textbook step — `let r = Mod a' b; if S r = b then Z else S r` — tests the
+    recursive result and then also returns it, and the pure normalizer substitutes
+    WITHOUT SHARING, so each second occurrence re-derives the whole recursion beneath
+    it: the cost doubles per unit of dividend. Measured on that branch: `Mod 20 32`
+    took 87 s and `Mod 32 32` would have taken days, and three different spellings of
+    that same shape measured identically, which is what says the cost belongs to the
+    normalizer rather than to the spelling. It presents as a build that never
+    finishes, not as an error. `language.md`'s closing performance rule is this
+    paragraph's general form.
+
+    The fix is the accumulator: carry the would-be-duplicated value as an ARGUMENT
+    and ask the question of the argument. The state is `(R, C)` — `R` is the residue
+    so far, `C` is how many more increments fit before wrapping — with `R + C = B`
+    the invariant. `NextR`/`NextC`/`NextQ` are the three non-recursive answers to
+    "what does this component do at one increment", each an `elim` on `C`, so
+    `ModC`'s step mentions `Rec` once and the whole thing is linear: `Mod 1056 32` in
+    73 ms.
+
+    At `B = Z` the wrapper answers `Z` rather than the dividend (Lean's `%` answers
+    the dividend). Nothing divides by zero — every lemma downstream is stated over a
+    `Le (S Z) n` hypothesis or an `S b` pattern — so the choice is arbitrary and this
+    one keeps the `Z` arm from mentioning `A`. -/
+
+/-- `mul a b` by recursion on `a`. `Rec` occurs once, as everything in this block must. -/
+def mulFn : Term := prog{
+  λ (A : Nat). λ (B : Nat). elim A return (λ (Am : Nat). Nat) {
+    Z => Z,
+    S (A') Rec => Add B Rec } }
+def mulFnT : Dllbc.Term := mulFn
+
+/-- One increment's effect on the residue: it grows, except at the wrap, where it resets. -/
+def nextRFn : Term := prog{
+  λ (R : Nat). λ (C : Nat).
+    elim C return (λ (Cz : Nat). Nat) { Z => Z, S (C') Rc => S(R) } }
+def nextRFnT : Dllbc.Term := nextRFn
+
+/-- One increment's effect on the room left: it shrinks, except at the wrap, where it
+    refills to `B`. -/
+def nextCFn : Term := prog{
+  λ (B : Nat). λ (C : Nat).
+    elim C return (λ (Cz : Nat). Nat) { Z => B, S (C') Rc => C' } }
+def nextCFnT : Dllbc.Term := nextCFn
+
+/-- One increment's effect on the quotient: it ticks exactly when the residue wraps. -/
+def nextQFn : Term := prog{
+  λ (Q : Nat). λ (C : Nat).
+    elim C return (λ (Cz : Nat). Nat) { Z => S(Q), S (C') Rc => Q } }
+def nextQFnT : Dllbc.Term := nextQFn
+
+/-- `ModC a b r c` — `a` increments of the `(r, c)` state, answering the residue. -/
+def modCFn : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Π (R : Nat) → Π (C : Nat) → Nat) {
+      Z => λ (B : Nat). λ (R : Nat). λ (C : Nat). R,
+      S (A') Rec => λ (B : Nat). λ (R : Nat). λ (C : Nat).
+        Rec B (NextR R C) (NextC B C) } }
+def modCFnT : Dllbc.Term := modCFn
+
+/-- `Mod a b` — start the state at `(Z, b-1)` and run `a` increments. -/
+def modFn : Term := prog{
+  λ (A : Nat). λ (B : Nat).
+    elim B return (λ (Bz : Nat). Nat) { Z => Z, S (B') Rb => ModC A B' Z B' } }
+def modFnT : Dllbc.Term := modFn
+
+/-- `DivC` rides the same state with a quotient that ticks exactly when `C` wraps. -/
+def divCFn : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat).
+        Π (B : Nat) → Π (R : Nat) → Π (C : Nat) → Π (Q : Nat) → Nat) {
+      Z => λ (B : Nat). λ (R : Nat). λ (C : Nat). λ (Q : Nat). Q,
+      S (A') Rec => λ (B : Nat). λ (R : Nat). λ (C : Nat). λ (Q : Nat).
+        Rec B (NextR R C) (NextC B C) (NextQ Q C) } }
+def divCFnT : Dllbc.Term := divCFn
+
+/-- `Div a b`, by the same walk as `Mod` with the quotient carried alongside. -/
+def divFn : Term := prog{
+  λ (A : Nat). λ (B : Nat).
+    elim B return (λ (Bz : Nat). Nat) { Z => Z, S (B') Rb => DivC A B' Z B' Z } }
+def divFnT : Dllbc.Term := divFn
+
 /-! ## First lemma: `le_refl : Π n. Le n n`, by `natRec`
 
     The base is `⋆ : Le Z Z = ⊤`; the step returns the IH unchanged, because
