@@ -1019,6 +1019,16 @@ def useSlice : Term := prog{
   () }
 example : progOk useSlice = true := by native_decide
 
+-- **The pre-migration spelling, kept as a golden** (M34). `let Pair(c, sl) = s;`
+-- is not a new program, it is this one — same ids, same names, same `Term`, which
+-- is what `rfl` says here. This is the migration's safety argument checked on
+-- corpus code rather than on a model of it; `Tests.Sugar` proves the rule, and
+-- this is one site standing for the 77 arms that took it.
+example : useSlice = prog{
+  fn UseSlice (s : Σ (c : Nat). &mut (Array c Nat)) -> Unit {
+    match s { Pair(c, sl) => () } };
+  () } := by rfl
+
 def sliceTouch : Term := prog{
   fn SliceTouch (s : Σ (c : Nat). &mut (Array c Nat)) -> Unit { () };
   () }

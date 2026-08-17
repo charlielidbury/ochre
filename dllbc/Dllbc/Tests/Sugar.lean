@@ -369,6 +369,52 @@ example : progRunsTo deep3
     [("p", .bot), ("a", Val.nat 1), ("§p2", .bot), ("b", Val.nat 2), ("§p4", .bot),
      ("c", Val.nat 3), ("d", Val.nat 4), ("out", Val.nat 4)] = true := by native_decide
 
+/-! ### The corpus's own shape, five deep, in all three spellings
+
+    `SplitA`, `PartitionA`, `Partition` and `Ih` all return a five-component Σ
+    nest, and every call site of them was the pyramid below. The migration took it
+    in two steps and this is both of them, checked:
+
+      * `pyramid5` → `chain5` is sugar (ii) and changes NOTHING — same ids, same
+        names, `rfl`. Every one of the corpus's 57 flattened arms is this step.
+      * `chain5` → `nest5` is sugar (iii) and drops the three intermediates. The
+        ids are still the same, slot for slot, and `z1`/`z2`/`z3` are now
+        `§p2`/`§p4`/`§p6` — the two Ωs below are the whole of that difference. -/
+
+def pyramid5 : Term := prog{
+  let p = Pair(1, Pair(2, Pair(3, Pair(4, 5))));
+  match p { Pair(a, z1) => match z1 { Pair(b, z2) => match z2 { Pair(c, z3) =>
+  match z3 { Pair(d, e) => {
+    let out = e;
+    () } } } } } }
+
+def chain5 : Term := prog{
+  let p = Pair(1, Pair(2, Pair(3, Pair(4, 5))));
+  let Pair(a, z1) = p;
+  let Pair(b, z2) = z1;
+  let Pair(c, z3) = z2;
+  let Pair(d, e) = z3;
+  let out = e;
+  () }
+
+def nest5 : Term := prog{
+  let p = Pair(1, Pair(2, Pair(3, Pair(4, 5))));
+  let Pair(a, Pair(b, Pair(c, Pair(d, e)))) = p;
+  let out = e;
+  () }
+
+example : pyramid5 = chain5 := by rfl
+example : progOk nest5 = true := by native_decide
+
+example : progRunsTo chain5
+    [("p", .bot), ("a", Val.nat 1), ("z1", .bot), ("b", Val.nat 2), ("z2", .bot),
+     ("c", Val.nat 3), ("z3", .bot), ("d", Val.nat 4), ("e", Val.nat 5),
+     ("out", Val.nat 5)] = true := by native_decide
+example : progRunsTo nest5
+    [("p", .bot), ("a", Val.nat 1), ("§p2", .bot), ("b", Val.nat 2), ("§p4", .bot),
+     ("c", Val.nat 3), ("§p6", .bot), ("d", Val.nat 4), ("e", Val.nat 5),
+     ("out", Val.nat 5)] = true := by native_decide
+
 /-! ### Borrow mode goes all the way down
 
     This is the case the whole design is answerable to. `match v { … }` on a `&mut`
