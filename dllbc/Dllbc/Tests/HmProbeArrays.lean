@@ -327,5 +327,138 @@ def bucketCallee : Term := prog{
   () }
 example : progOk bucketCallee = true := by native_decide
 
+/-! ## A4 — does it EXECUTE?
+
+    Acceptance is half the claim; the other half is that the concrete machine agrees.
+    ArraySort §(vi) is the precedent, and its finding is the reason this section is not
+    a formality: the executing side found three `Drop-empty` bugs the symbolic side
+    could never reach, because a residue σ is never known to be zero symbolically and
+    is routinely zero concretely. A bucket push is exactly that kind of program —
+    every carve it performs has a residue that is zero in some slot. -/
+
+def natOfV : Nat → Val → Option Nat
+  | f, v =>
+    match Val.asCtor? v, f with
+    | some ("Z", []), _ => some 0
+    | some ("S", [w]), f' + 1 => (natOfV f' w).map (· + 1)
+    | _, _ => none
+
+/-- Decode a `List Nat` bucket. -/
+def bucketOfV : Nat → Val → Option (List Nat)
+  | f, v =>
+    match Val.asCtor? v, f with
+    | some ("Nil", []), _ => some []
+    | some ("Cons", [h, t]), f' + 1 =>
+      match natOfV 2000 h, bucketOfV f' t with
+      | some x, some xs => some (x :: xs)
+      | _, _ => none
+    | _, _ => none
+
+/-- Decode a `List (Σ k. Nat)` bucket — the association list itself. -/
+def entriesOfV : Nat → Val → Option (List (Nat × Nat))
+  | f, v =>
+    match Val.asCtor? v, f with
+    | some ("Nil", []), _ => some []
+    | some ("Cons", [h, t]), f' + 1 =>
+      match Val.asCtor? h, entriesOfV f' t with
+      | some ("Pair", [a, b]), some xs =>
+        match natOfV 2000 a, natOfV 2000 b with
+        | some k, some v => some ((k, v) :: xs)
+        | _, _ => none
+      | _, _ => none
+    | _, _ => none
+
+/-- Decode the slot array, elementwise, through whichever bucket decoder applies. -/
+def slotsOfV {β : Type} (dec : Val → Option β) : Val → Option (List β)
+  | v => match Val.asCtor? v with
+    | some ("Arr", vs) => vs.mapM dec
+    | _ => none
+
+/-- The `List Nat`-payload chain, with its caller spliced in as the tail (ArraySort's
+    M28 D3 shape: the program that runs is the program that was checked). -/
+def hmChainNat (rest : Term) : Term := prog{
+  fn BucketPushA (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)), e : Nat,
+                  slots : &mut (Array n (List Nat))) -> Unit {
+    let lo = &m (*slots)[Z ; i ; S j | LeAdd i (S j) | Heq];
+    let cell = &m (*slots)[i ; 1 ; j];
+    let bb = &m (*cell)[0];
+    let tl = *bb;
+    *bb := Cons(e, tl);
+    () };
+  %rest }
+example : progOk (hmChainNat prog{ () }) = true := by native_decide
+
+/-- Push `e` into slot `i` of a two-slot array whose buckets start empty, then read
+    the owner back. `Refl : Id Nat 2 (Add i (S j))` computes at each concrete `(i, j)`. -/
+def pushCaller (i j e : Nat) : Term :=
+  hmChainNat (prog{
+    let z = Arr(Nil, Nil);
+    let b = &m z;
+    BucketPushA(2, %(Term.nat i), %(Term.nat j), Refl, %(Term.nat e), b);
+    let y = z;
+    () })
+
+def runPush (i j e : Nat) : Option (List (List Nat)) :=
+  match Dllbc.Tests.S9Diff.runExec (pushCaller i j e) with
+  | .ok env => (env.lookup "y").bind (slotsOfV (bucketOfV 2000))
+  | .error _ => none
+
+-- Both slots reachable, and the push lands in the RIGHT one — slot 0 has residue 1,
+-- slot 1 has residue 0, which is the zero-residue path ArraySort's §(vi) warns about.
+example : runPush 0 1 7 == some [[7], []] := by native_decide
+example : runPush 1 0 7 == some [[], [7]] := by native_decide
+
+-- The caller type-checks as well as runs, at both indices.
+example : progOk (pushCaller 0 1 7) = true := by native_decide
+example : progOk (pushCaller 1 0 7) = true := by native_decide
+
+-- Two pushes into the same slot: the second sees the first, so the bucket really is
+-- being updated in place rather than rebuilt from the entry value.
+def pushTwice : Term := hmChainNat prog{
+  let z = Arr(Nil, Nil);
+  let b = &m z;
+  BucketPushA(2, 1, 0, Refl, 7, b);
+  let b2 = &m z;
+  BucketPushA(2, 1, 0, Refl, 8, b2);
+  let y = z;
+  () }
+example : progOk pushTwice = true := by native_decide
+example : (match Dllbc.Tests.S9Diff.runExec pushTwice with
+           | .ok env => (env.lookup "y").bind (slotsOfV (bucketOfV 2000))
+           | .error _ => none) == some [[], [8, 7]] := by native_decide
+
+/-- The same at the hashmap's own payload: buckets of key/value pairs. -/
+def hmChainEntry (rest : Term) : Term := prog{
+  fn InsertAt (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)), k : Nat, v : Nat,
+               slots : &mut (Array n (List (Σ (k : Nat) → Nat)))) -> Unit {
+    let lo = &m (*slots)[Z ; i ; S j | LeAdd i (S j) | Heq];
+    let cell = &m (*slots)[i ; 1 ; j];
+    let bb = &m (*cell)[0];
+    let tl = *bb;
+    *bb := Cons(Pair(k, v), tl);
+    () };
+  %rest }
+example : progOk (hmChainEntry prog{ () }) = true := by native_decide
+
+def insertCaller : Term := hmChainEntry prog{
+  let z = Arr(Nil, Nil, Nil);
+  let b = &m z;
+  InsertAt(3, 1, 1, Refl, 5, 7, b);
+  let b2 = &m z;
+  InsertAt(3, 1, 1, Refl, 6, 8, b2);
+  let b3 = &m z;
+  InsertAt(3, 2, 0, Refl, 9, 1, b3);
+  let y = z;
+  () }
+example : progOk insertCaller = true := by native_decide
+example : (match Dllbc.Tests.S9Diff.runExec insertCaller with
+           | .ok env => (env.lookup "y").bind (slotsOfV (entriesOfV 2000))
+           | .error _ => none)
+    == some [[], [(6, 8), (5, 7)], [(9, 1)]] := by native_decide
+
+-- M9's simulation property over the same program: the checking and executing sides
+-- agree about it, which is the assertion ArraySort's §(vi.c) makes for quicksortA.
+example : Dllbc.Tests.S9Diff.diffV2 insertCaller = true := by native_decide
+
 end Dllbc.Tests.HmProbeArrays
 end
