@@ -51,7 +51,7 @@ namespace Dllbc.Tests.Finite
 open Dllbc
 open Dllbc.StdLemmas (LeRefl LeTrans LeUpR LeAdd LeAddL LeAddMonoL LebTrueLe
   LebFalseGt IdTrans IdCongr IdSym AddZero AddSucc AddComm LePredL
-  Sub AddSubCancel BoolFT BoolTF LeRwR LeRwL)
+  Sub AddSubCancel BoolFT BoolTF LeRwR LeRwL AddAssoc)
 
 /-- Type-check a closed term against a closed type in the pure seed (as §23/§24). -/
 def chkL (tm ty : Term) : Bool :=
@@ -616,4 +616,358 @@ def badLiteral : Term := uOps prog{
 -- about the addition is reached.
 example : progRejects badLiteral "does not have its parameter type" = true := by native_decide
 
-end Dllbc.Tests.Finite
+/-! ## (vi) Multiplication algebra — the price of the real guard
+
+    The composite below is the Aeneas `try_resize` guard, and its second
+    obligation is about `(capacity * 2) * dividend` while the guard gives a fact
+    about `capacity * dividend`. Rust's evaluation order and the guard's
+    derivation order disagree, so the two have to be reconciled — which means
+    commutativity and associativity of `Mul`, which means distributivity, none
+    of which the library had. Six lemmas, all standard, all one induction each. -/
+
+def MulZeroR : Term := prog{
+  λ (A : Nat). elim A return (λ (Az : Nat). Id Nat (Mul Az Z) Z) {
+    Z => Refl,
+    S (A') Ih => Ih } }
+def MulZeroRTy : Term := prog{ Π (A : Nat) → Id Nat (Mul A Z) Z }
+example : chkL MulZeroR MulZeroRTy = true := by native_decide
+
+/-- `a + (b + c) = b + (a + c)` — the shuffle `MulSuccR`'s step needs, out of
+    the existing `AddAssoc`/`AddComm`. -/
+def AddSwapL : Term := prog{
+  λ (A : Nat). λ (B : Nat). λ (C : Nat).
+    IdTrans Nat (Add A (Add B C)) (Add (Add A B) C) (Add B (Add A C))
+      (IdSym Nat (Add (Add A B) C) (Add A (Add B C)) (AddAssoc A B C))
+      (IdTrans Nat (Add (Add A B) C) (Add (Add B A) C) (Add B (Add A C))
+        (IdCongr Nat Nat (λ (X : Nat). Add X C) (Add A B) (Add B A) (AddComm A B))
+        (AddAssoc B A C)) }
+def AddSwapLTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → Id Nat (Add A (Add B C)) (Add B (Add A C)) }
+example : chkL AddSwapL AddSwapLTy = true := by native_decide
+
+def MulSuccR : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Id Nat (Mul Az (S B)) (Add Az (Mul Az B))) {
+      Z => λ (B : Nat). Refl,
+      S (A') Ih => λ (B : Nat).
+        IdCongr Nat Nat (λ (N : Nat). S N)
+          (Add B (Mul A' (S B))) (Add A' (Add B (Mul A' B)))
+          (IdTrans Nat (Add B (Mul A' (S B))) (Add B (Add A' (Mul A' B)))
+             (Add A' (Add B (Mul A' B)))
+            (IdCongr Nat Nat (λ (X : Nat). Add B X)
+              (Mul A' (S B)) (Add A' (Mul A' B)) (Ih B))
+            (AddSwapL B A' (Mul A' B))) } }
+def MulSuccRTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Id Nat (Mul A (S B)) (Add A (Mul A B)) }
+example : chkL MulSuccR MulSuccRTy = true := by native_decide
+
+def MulComm : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Id Nat (Mul Az B) (Mul B Az)) {
+      Z => λ (B : Nat). IdSym Nat (Mul B Z) Z (MulZeroR B),
+      S (A') Ih => λ (B : Nat).
+        IdTrans Nat (Add B (Mul A' B)) (Add B (Mul B A')) (Mul B (S A'))
+          (IdCongr Nat Nat (λ (X : Nat). Add B X) (Mul A' B) (Mul B A') (Ih B))
+          (IdSym Nat (Mul B (S A')) (Add B (Mul B A')) (MulSuccR B A')) } }
+def MulCommTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Id Nat (Mul A B) (Mul B A) }
+example : chkL MulComm MulCommTy = true := by native_decide
+
+def MulDistR : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Π (C : Nat) →
+        Id Nat (Mul (Add Az B) C) (Add (Mul Az C) (Mul B C))) {
+      Z => λ (B : Nat). λ (C : Nat). Refl,
+      S (A') Ih => λ (B : Nat). λ (C : Nat).
+        IdTrans Nat (Add C (Mul (Add A' B) C)) (Add C (Add (Mul A' C) (Mul B C)))
+            (Add (Add C (Mul A' C)) (Mul B C))
+          (IdCongr Nat Nat (λ (X : Nat). Add C X)
+            (Mul (Add A' B) C) (Add (Mul A' C) (Mul B C)) (Ih B C))
+          (IdSym Nat (Add (Add C (Mul A' C)) (Mul B C))
+            (Add C (Add (Mul A' C) (Mul B C))) (AddAssoc C (Mul A' C) (Mul B C))) } }
+def MulDistRTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) →
+    Id Nat (Mul (Add A B) C) (Add (Mul A C) (Mul B C)) }
+example : chkL MulDistR MulDistRTy = true := by native_decide
+
+def MulAssoc : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Π (C : Nat) →
+        Id Nat (Mul (Mul Az B) C) (Mul Az (Mul B C))) {
+      Z => λ (B : Nat). λ (C : Nat). Refl,
+      S (A') Ih => λ (B : Nat). λ (C : Nat).
+        IdTrans Nat (Mul (Add B (Mul A' B)) C) (Add (Mul B C) (Mul (Mul A' B) C))
+            (Add (Mul B C) (Mul A' (Mul B C)))
+          (MulDistR B (Mul A' B) C)
+          (IdCongr Nat Nat (λ (X : Nat). Add (Mul B C) X)
+            (Mul (Mul A' B) C) (Mul A' (Mul B C)) (Ih B C)) } }
+def MulAssocTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → Id Nat (Mul (Mul A B) C) (Mul A (Mul B C)) }
+example : chkL MulAssoc MulAssocTy = true := by native_decide
+
+/-- `(a*b)*c = (a*c)*b` — the exact reconciliation the guard needs, and the only
+    consumer of the four lemmas above. -/
+def MulSwapR : Term := prog{
+  λ (A : Nat). λ (B : Nat). λ (C : Nat).
+    IdTrans Nat (Mul (Mul A B) C) (Mul A (Mul B C)) (Mul (Mul A C) B)
+      (MulAssoc A B C)
+      (IdTrans Nat (Mul A (Mul B C)) (Mul A (Mul C B)) (Mul (Mul A C) B)
+        (IdCongr Nat Nat (λ (X : Nat). Mul A X) (Mul B C) (Mul C B) (MulComm B C))
+        (IdSym Nat (Mul (Mul A C) B) (Mul A (Mul C B)) (MulAssoc A C B))) }
+def MulSwapRTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → Id Nat (Mul (Mul A B) C) (Mul (Mul A C) B) }
+example : chkL MulSwapR MulSwapRTy = true := by native_decide
+
+/-- `DivMulLe` with the divisor's nonzero-ness as a HYPOTHESIS rather than as an
+    `S` pattern. The guard's dividend is a runtime value carrying a `Le 1 d`
+    proof, not a constructor the program may split, so this is the form that is
+    actually applicable at a call site. Three lines: case the divisor, kill the
+    zero case with the hypothesis. -/
+def DivMulLeNz : Term := prog{
+  λ (D : Nat).
+    elim D return (λ (Dz : Nat). Π (A : Nat) → Le (S Z) Dz → Le (Mul (Div A Dz) Dz) A) {
+      Z => λ (A : Nat). λ (H : Le (S Z) Z). botElim (Le (Mul (Div A Z) Z) A) H,
+      S (D') Ih => λ (A : Nat). λ (H : Le (S Z) (S D')). DivMulLe D' A } }
+def DivMulLeNzTy : Term := prog{
+  Π (D : Nat) → Π (A : Nat) → Le (S Z) D → Le (Mul (Div A D) D) A }
+example : chkL DivMulLeNz DivMulLeNzTy = true := by native_decide
+
+
+/-! ## (vii) Ownership — what a `U MAX` costs to USE
+
+    Four probes, run before the composite was written, because the answers
+    determine what the composite can look like.
+
+      * a bare `Nat` local may be passed to two calls — Nats COPY;
+      * a `U MAX` local may not — the pack is an ordinary owned pair, so a call
+        that takes it by value MOVES it, and the second use finds ⊥;
+      * `Val MAX p` does NOT consume `p` — a pure projection is a ⇝-read;
+      * `Pair(v, H)` where `H` is a comptime BINDER cannot be built mid-body:
+        the mode fence refuses to ⇒-move a comptime binder into a runtime pair.
+        (Building it in RETURN position is fine — that is what every op does —
+        and building it from a literal `unit` is fine, which is what the
+        concrete callers do.)
+
+    Together: **a machine integer wants to be `Copy` and a Σ pack is affine.**
+    That is the sharpest thing this lane found, and it is a kernel-shaped
+    problem — see the recommendation at the foot of the file. The composite
+    below is written around it: every pack reaches exactly one consuming call,
+    values are staged as bare `Nat`s before the call that consumes their pack,
+    and the result is re-minted from the staged parts. -/
+
+def natTwice : Term := prog{
+  fn Id2 (n : Nat) -> Nat { n };
+  fn Chain (m : Nat) -> Nat { let a = Id2(m); let b = Id2(m); b };
+  () }
+example : progOk natTwice = true := by native_decide
+
+def packTwice : Term := prog{
+  fn Snk (p : (Σ0 (n : Nat) → Le n 15)) -> Nat { Val 15 p };
+  fn Chain (p : (Σ0 (n : Nat) → Le n 15)) -> Nat { let a = Snk(p); let b = Snk(p); b };
+  () }
+example : progRejects packTwice "use-after-move" = true := by native_decide
+
+def projThenMove : Term := prog{
+  fn Snk (p : (Σ0 (n : Nat) → Le n 15)) -> Nat { Val 15 p };
+  fn Chain (p : (Σ0 (n : Nat) → Le n 15)) -> Nat { let v = Val 15 p; let b = Snk(p); v };
+  () }
+example : progOk projThenMove = true := by native_decide
+
+def mintMidBody : Term := prog{
+  fn Snk (p : (Σ0 (n : Nat) → Le n 15)) -> Nat { Val 15 p };
+  fn Chain (H : Le 3 15) -> Nat { let b = Snk(Pair(3, H)); b };
+  () }
+example : progRejects mintMidBody "COMPTIME binder" = true := by native_decide
+
+/-! ## (viii) THE COMPOSITE — Aeneas' `try_resize` guard
+
+    THE CERTIFIED OPS. A call is OPAQUE (§6.2): the caller's whole knowledge of
+    the callee's exit is what the return type says, and `-> U MAX` says only
+    "some number in range". So `MulU`'s result cannot appear in the NEXT
+    operation's precondition — `Le (Mul (Val MAX nc) d) MAX` is unprovable when
+    all you know about `nc` is that it is a `U MAX`.
+
+    That is not a defect of the ops in (iv); it is the price of composing them.
+    The fix is one more component in the return type: a certificate saying what
+    the value IS. `Refl` proves it (the ι-rule fires on the pack the body just
+    built), so it costs one token at the callee and unlocks the whole chain at
+    the caller. -/
+def uOpsC (tail : Term) : Term := prog{
+  fn MulUC (MAX : Nat, a : (Σ0 (n : Nat) → Le n MAX), b : (Σ0 (n : Nat) → Le n MAX),
+            H : Le (Mul (Val MAX a) (Val MAX b)) MAX)
+      -> (Σ0 (r : (Σ0 (n : Nat) → Le n MAX))
+            → Id Nat (Val MAX r) (Mul (Val MAX a) (Val MAX b)))
+      { Pair(Pair(Mul (Val MAX a) (Val MAX b), H), Refl) };
+  fn DivUC (MAX : Nat, a : (Σ0 (n : Nat) → Le n MAX), b : (Σ0 (n : Nat) → Le n MAX),
+            Hnz : Le (S Z) (Val MAX b))
+      -> (Σ0 (r : (Σ0 (n : Nat) → Le n MAX))
+            → Id Nat (Val MAX r) (Div (Val MAX a) (Val MAX b)))
+      { Pair(Pair(Div (Val MAX a) (Val MAX b),
+                  LeTrans (Div (Val MAX a) (Val MAX b)) (Val MAX a) MAX
+                    (DivLe (Val MAX a) (Val MAX b)) (Bnd MAX a)),
+             Refl) };
+  %tail }
+
+example : progOk (uOpsC prog{ () }) = true := by native_decide
+
+/-- **`try_resize`**, the Aeneas hashmap's growth guard, in DLLBC.
+
+    Rust (`aeneas/tests/src/hashmap.rs`):
+
+        let n1  = usize::MAX / 2;
+        let (divid, divis) = self.max_load_factor;
+        let n2  = n1 / divid;
+        if capacity <= n2 {
+            let ncapacity = capacity * 2;
+            self.max_load = ncapacity * divid / divis;
+        }
+
+    The guard divides because the thing it is guarding — `capacity * 2 * divid`
+    — is exactly what must not be computed if it would overflow. Aeneas proves
+    the two multiplications in range from the branch condition; so does this,
+    and the proof is the four `let`s below.
+
+    GENERALIZED IN ONE PLACE: the growth factor is a parameter (`growth`, with
+    `Hgr : 1 ≤ growth`) rather than the literal 2, because `DivMulLeNz` wants
+    the divisor nonzero and not specifically two, and `n1 = MAX / growth` then
+    reads as what it is. Instantiate `growth := 2` and this is the Rust.
+
+    THE DERIVATION, and it is entirely from the branch condition:
+
+      (A) `capacity * growth ≤ MAX`
+            capacity ≤ n2 ≤ n1                    [branch; DivLe]
+            capacity * growth ≤ n1 * growth ≤ MAX [MulMonoR; DivMulLeNz]
+      (B) `(capacity * growth) * divid ≤ MAX`
+            capacity * divid ≤ n2 * divid ≤ n1    [MulMonoR on the branch;
+                                                   DivMulLeNz at divid]
+            (capacity * divid) * growth ≤ n1 * growth ≤ MAX
+            and `(c*g)*d = (c*d)*g`                [MulSwapR]
+
+    (B) is where the Rust program and the guard disagree about ORDER — the
+    program computes `ncapacity * divid` and the guard bounds `capacity *
+    divid` — and `MulSwapR` (hence `MulComm`, `MulAssoc`, `MulDistR`) exists
+    for that single reconciliation.
+
+    THE OWNERSHIP STAGING, which is the ergonomic cost: `nc` is returned AND fed
+    to the second multiplication, and a pack cannot be used twice. So its two
+    halves are staged as a copyable `Nat` and a comptime bound before the call
+    that consumes it, and the returned pack is re-minted from them. Rust needs
+    none of this because `usize` is `Copy`. -/
+def tryResize (tail : Term) : Term := uOpsC prog{
+  fn TryResize (MAX : Nat,
+                capacity : (Σ0 (n : Nat) → Le n MAX),
+                growth : (Σ0 (n : Nat) → Le n MAX), Hgr : Le (S Z) (Val MAX growth),
+                divid : (Σ0 (n : Nat) → Le n MAX), Hd : Le (S Z) (Val MAX divid),
+                divis : (Σ0 (n : Nat) → Le n MAX), Hs : Le (S Z) (Val MAX divis),
+                mload : (Σ0 (n : Nat) → Le n MAX))
+      -> (Σ (nc : (Σ0 (n : Nat) → Le n MAX)) → (Σ0 (n : Nat) → Le n MAX))
+      { if hg : Leb (Val MAX capacity)
+                    (Div (Div MAX (Val MAX growth)) (Val MAX divid)) {
+          let Hgc = LebTrueLe (Val MAX capacity)
+                      (Div (Div MAX (Val MAX growth)) (Val MAX divid)) hg;
+          let Hc1 = LeTrans (Val MAX capacity)
+                      (Div (Div MAX (Val MAX growth)) (Val MAX divid))
+                      (Div MAX (Val MAX growth))
+                      Hgc (DivLe (Div MAX (Val MAX growth)) (Val MAX divid));
+          let HA = LeTrans (Mul (Val MAX capacity) (Val MAX growth))
+                      (Mul (Div MAX (Val MAX growth)) (Val MAX growth)) MAX
+                      (MulMonoR (Val MAX growth) (Val MAX capacity)
+                        (Div MAX (Val MAX growth)) Hc1)
+                      (DivMulLeNz (Val MAX growth) MAX Hgr);
+          let Hcd = LeTrans (Mul (Val MAX capacity) (Val MAX divid))
+                      (Mul (Div (Div MAX (Val MAX growth)) (Val MAX divid)) (Val MAX divid))
+                      (Div MAX (Val MAX growth))
+                      (MulMonoR (Val MAX divid) (Val MAX capacity)
+                        (Div (Div MAX (Val MAX growth)) (Val MAX divid)) Hgc)
+                      (DivMulLeNz (Val MAX divid) (Div MAX (Val MAX growth)) Hd);
+          let HB0 = LeTrans (Mul (Mul (Val MAX capacity) (Val MAX divid)) (Val MAX growth))
+                      (Mul (Div MAX (Val MAX growth)) (Val MAX growth)) MAX
+                      (MulMonoR (Val MAX growth)
+                        (Mul (Val MAX capacity) (Val MAX divid))
+                        (Div MAX (Val MAX growth)) Hcd)
+                      (DivMulLeNz (Val MAX growth) MAX Hgr);
+          let HB = LeRwL MAX
+                      (Mul (Mul (Val MAX capacity) (Val MAX divid)) (Val MAX growth))
+                      (Mul (Mul (Val MAX capacity) (Val MAX growth)) (Val MAX divid))
+                      (IdSym Nat
+                        (Mul (Mul (Val MAX capacity) (Val MAX growth)) (Val MAX divid))
+                        (Mul (Mul (Val MAX capacity) (Val MAX divid)) (Val MAX growth))
+                        (MulSwapR (Val MAX capacity) (Val MAX growth) (Val MAX divid)))
+                      HB0;
+          let cv = Val MAX capacity;
+          let gv = Val MAX growth;
+          let r1 = MulUC(MAX, capacity, growth, HA);
+          match r1 { Pair(nc, Enc) => {
+            let ncv = Val MAX nc;
+            let Hncb = Bnd MAX nc;
+            let HB2 = LeRwL MAX
+                        (Mul (Mul cv gv) (Val MAX divid))
+                        (Mul (Val MAX nc) (Val MAX divid))
+                        (IdCongr Nat Nat (λ (X : Nat). Mul X (Val MAX divid))
+                          (Mul cv gv) (Val MAX nc)
+                          (IdSym Nat (Val MAX nc) (Mul cv gv) Enc))
+                        HB;
+            let r2 = MulUC(MAX, nc, divid, HB2);
+            match r2 { Pair(nd, End) => {
+              let r3 = DivUC(MAX, nd, divis, Hs);
+              match r3 { Pair(ml, Eml) => Pair(Pair(ncv, Hncb), ml) } } }
+          } }
+        } else {
+          Pair(capacity, mload)
+        } };
+  %tail }
+
+example : progOk (tryResize prog{ () }) = true := by native_decide
+
+/-! ### The guard is what makes it check
+
+    Delete the `if` and the same body is REJECTED: with no branch condition
+    there is nothing to derive `HA` from, and `capacity * growth ≤ MAX` is
+    simply not a consequence of `capacity ≤ MAX` and `growth ≤ MAX`. This is the
+    test that says the guard is load-bearing rather than decorative — the same
+    thing Aeneas' proof obligation says about the Rust. -/
+def tryResizeNoGuard : Term := uOpsC prog{
+  fn TryResizeBad (MAX : Nat,
+                   capacity : (Σ0 (n : Nat) → Le n MAX),
+                   growth : (Σ0 (n : Nat) → Le n MAX))
+      -> (Σ0 (n : Nat) → Le n MAX)
+      { let r1 = MulUC(MAX, capacity, growth, unit);
+        match r1 { Pair(nc, Enc) => nc } };
+  () }
+example : progRejects tryResizeNoGuard "does not have its parameter type" = true := by
+  native_decide
+
+/-! ### It RUNS — `try_resize` on real numbers
+
+    `MAX = 15`, growth 2, load factor 4/5. Then `n1 = 15/2 = 7` and
+    `n2 = 7/4 = 1`, so a capacity of 1 resizes (to 2, with max_load
+    `2*4/5 = 1`) and a capacity of 2 does not. Both branches, executing. -/
+
+def resizeCall (m cap g dd ds ml : Nat) : Term := tryResize prog{
+  let cP = Pair(%(tn cap), unit);
+  let gP = Pair(%(tn g), unit);
+  let dP = Pair(%(tn dd), unit);
+  let sP = Pair(%(tn ds), unit);
+  let mP = Pair(%(tn ml), unit);
+  let r = TryResize(%(tn m), cP, gP, unit, dP, unit, sP, unit, mP);
+  match r { Pair(nc, ld) => { let out = Val %(tn m) nc; let out2 = Val %(tn m) ld; () } } }
+
+def runOut2 (t : Term) : Option (Nat × Nat) :=
+  match runProgram t with
+  | .ok env =>
+    match (env.lookup "out").bind (natOfV 4000), (env.lookup "out2").bind (natOfV 4000) with
+    | some a, some b => some (a, b)
+    | _, _ => none
+  | .error _ => none
+
+-- capacity 1 ≤ n2 = 1: RESIZE. New capacity 2, new max_load `2*4/5 = 1`.
+example : progOk (resizeCall 15 1 2 4 5 0) = true := by native_decide
+example : runOut2 (resizeCall 15 1 2 4 5 0) == some (2, 1) := by native_decide
+-- capacity 2 > n2 = 1: no resize. Capacity and max_load both unchanged.
+example : progOk (resizeCall 15 2 2 4 5 9) = true := by native_decide
+example : runOut2 (resizeCall 15 2 2 4 5 9) == some (2, 9) := by native_decide
+
+#eval whyProg (resizeCall 63 7 2 4 5 0)
+#eval runOut2 (resizeCall 63 7 2 4 5 0)
+#eval runOut2 (resizeCall 63 8 2 4 5 3)
+#eval whyProg (resizeCall 15 1 2 0 5 0)
+#eval whyProg (resizeCall 15 1 0 4 5 0)
