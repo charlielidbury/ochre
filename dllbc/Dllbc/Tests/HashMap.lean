@@ -1091,6 +1091,16 @@ def BLenIns : Term := prog{
       True => LenE L,
       False => S(LenE L) } }
 
+/-- The GENERIC bucket-level model update: answer `X` at `Key`, the old bucket
+    elsewhere. `BFindIns Q K V` converts with `BFindUpd Q K (SomeN V)` and
+    Remove's model with `BFindUpd Q K NoneN`, so the pointwise family below
+    serves both ops. -/
+def BFindUpd : Term := prog{
+  λ (Q : Nat). λ (Key : Nat). λ (X : OptN). λ (L : BktT).
+    elim (Eqb Q Key) return (λ (Bm : Bool). OptN) {
+      True => X,
+      False => FindL Q L } }
+
 /-- Pull `S` out of a stuck Bool-elim. -/
 def BoolPushS : Term := prog{
   λ (X : Nat). λ (Y : Nat). λ (B : Bool).
@@ -1201,53 +1211,53 @@ def HitEvMissTy : Term := prog{
 example : chkL HitEvMiss HitEvMissTy = true := by native_decide
 
 /-- MISS branch, the pointwise Find equation lifted through the untouched head. -/
-def PtEvMiss : Term := prog{
-  λ (K0 : Nat). λ (V0 : Nat). λ (V1 : Nat). λ (Key : Nat).
+def UpdEvMiss : Term := prog{
+  λ (K0 : Nat). λ (V0 : Nat). λ (X : OptN). λ (Key : Nat).
   λ (T0 : BktT). λ (T1 : BktT).
   λ (E : Id Bool (Eqb K0 Key) False).
-  λ (Hp : Π (Q : Nat) → Id OptN (FindL Q T1) (BFindIns Q Key V1 T0)).
+  λ (Hp : Π (Q : Nat) → Id OptN (FindL Q T1) (BFindUpd Q Key X T0)).
     λ (Q : Nat).
       IfDec (Eqb Q Key)
         (Id OptN (FindL Q (Cons(Pair(K0, V0), T1)))
-                 (BFindIns Q Key V1 (Cons(Pair(K0, V0), T0))))
+                 (BFindUpd Q Key X (Cons(Pair(K0, V0), T0))))
         (λ (E2 : Id Bool (Eqb Q Key) True).
           IdTrans OptN (FindL Q (Cons(Pair(K0, V0), T1))) (FindL Q T1)
-            (BFindIns Q Key V1 (Cons(Pair(K0, V0), T0)))
+            (BFindUpd Q Key X (Cons(Pair(K0, V0), T0)))
             (BoolRwF OptN (SomeN V0) (FindL Q T1) (Eqb Q K0)
               (IdTrans Bool (Eqb Q K0) (Eqb Key K0) False
                 (IdCongr Nat Bool (λ (W : Nat). Eqb W K0) Q Key (EqbTrueEq Q Key E2))
                 (IdTrans Bool (Eqb Key K0) (Eqb K0 Key) False (EqbSym Key K0) E)))
-            (IdTrans OptN (FindL Q T1) (SomeN V1)
-              (BFindIns Q Key V1 (Cons(Pair(K0, V0), T0)))
-              (IdTrans OptN (FindL Q T1) (BFindIns Q Key V1 T0) (SomeN V1)
+            (IdTrans OptN (FindL Q T1) X
+              (BFindUpd Q Key X (Cons(Pair(K0, V0), T0)))
+              (IdTrans OptN (FindL Q T1) (BFindUpd Q Key X T0) X
                 (Hp Q)
-                (BoolRwT OptN (SomeN V1) (FindL Q T0) (Eqb Q Key) E2))
-              (IdSym OptN (BFindIns Q Key V1 (Cons(Pair(K0, V0), T0))) (SomeN V1)
-                (BoolRwT OptN (SomeN V1)
+                (BoolRwT OptN X (FindL Q T0) (Eqb Q Key) E2))
+              (IdSym OptN (BFindUpd Q Key X (Cons(Pair(K0, V0), T0))) X
+                (BoolRwT OptN X
                   (FindL Q (Cons(Pair(K0, V0), T0))) (Eqb Q Key) E2))))
         (λ (E2 : Id Bool (Eqb Q Key) False).
           IdTrans OptN (FindL Q (Cons(Pair(K0, V0), T1)))
             (FindL Q (Cons(Pair(K0, V0), T0)))
-            (BFindIns Q Key V1 (Cons(Pair(K0, V0), T0)))
+            (BFindUpd Q Key X (Cons(Pair(K0, V0), T0)))
             (IdCongr OptN OptN
               (λ (W : OptN). boolRec (λ (W2 : Bool). OptN) (SomeN V0) W (Eqb Q K0))
               (FindL Q T1) (FindL Q T0)
-              (IdTrans OptN (FindL Q T1) (BFindIns Q Key V1 T0) (FindL Q T0)
+              (IdTrans OptN (FindL Q T1) (BFindUpd Q Key X T0) (FindL Q T0)
                 (Hp Q)
-                (BoolRwF OptN (SomeN V1) (FindL Q T0) (Eqb Q Key) E2)))
-            (IdSym OptN (BFindIns Q Key V1 (Cons(Pair(K0, V0), T0)))
+                (BoolRwF OptN X (FindL Q T0) (Eqb Q Key) E2)))
+            (IdSym OptN (BFindUpd Q Key X (Cons(Pair(K0, V0), T0)))
               (FindL Q (Cons(Pair(K0, V0), T0)))
-              (BoolRwF OptN (SomeN V1)
+              (BoolRwF OptN X
                 (FindL Q (Cons(Pair(K0, V0), T0))) (Eqb Q Key) E2))) }
-def PtEvMissTy : Term := prog{
-  Π (K0 : Nat) → Π (V0 : Nat) → Π (V1 : Nat) → Π (Key : Nat) →
+def UpdEvMissTy : Term := prog{
+  Π (K0 : Nat) → Π (V0 : Nat) → Π (X : OptN) → Π (Key : Nat) →
   Π (T0 : BktT) → Π (T1 : BktT) →
     Id Bool (Eqb K0 Key) False →
-    (Π (Q : Nat) → Id OptN (FindL Q T1) (BFindIns Q Key V1 T0)) →
+    (Π (Q : Nat) → Id OptN (FindL Q T1) (BFindUpd Q Key X T0)) →
     Π (Q : Nat) → Id OptN
       (FindL Q (Cons(Pair(K0, V0), T1)))
-      (BFindIns Q Key V1 (Cons(Pair(K0, V0), T0))) }
-example : chkL PtEvMiss PtEvMissTy = true := by native_decide
+      (BFindUpd Q Key X (Cons(Pair(K0, V0), T0))) }
+example : chkL UpdEvMiss UpdEvMissTy = true := by native_decide
 
 /-- MISS branch, the length equation lifted through the head. -/
 def LnEvMiss : Term := prog{
@@ -1283,24 +1293,24 @@ example : chkL LnEvMiss LnEvMissTy = true := by native_decide
 
 /-- MISS branch, the Nodup head clause: `K0` absent from the tail stays absent
     after inserting a DIFFERENT key into it. -/
-def NdEvMiss : Term := prog{
-  λ (K0 : Nat). λ (V1 : Nat). λ (Key : Nat). λ (T0 : BktT). λ (T1 : BktT).
+def UpdNdMiss : Term := prog{
+  λ (K0 : Nat). λ (X : OptN). λ (Key : Nat). λ (T0 : BktT). λ (T1 : BktT).
   λ (E : Id Bool (Eqb K0 Key) False).
-  λ (Hp : Π (Q : Nat) → Id OptN (FindL Q T1) (BFindIns Q Key V1 T0)).
+  λ (Hp : Π (Q : Nat) → Id OptN (FindL Q T1) (BFindUpd Q Key X T0)).
   λ (Hn : Id Bool (HitL K0 T0) False).
     IdTrans Bool (HitL K0 T1) (HitL K0 T0) False
       (IdCongr OptN Bool IsSomeB (FindL K0 T1) (FindL K0 T0)
-        (IdTrans OptN (FindL K0 T1) (BFindIns K0 Key V1 T0) (FindL K0 T0)
+        (IdTrans OptN (FindL K0 T1) (BFindUpd K0 Key X T0) (FindL K0 T0)
           (Hp K0)
-          (BoolRwF OptN (SomeN V1) (FindL K0 T0) (Eqb K0 Key) E)))
+          (BoolRwF OptN X (FindL K0 T0) (Eqb K0 Key) E)))
       Hn }
-def NdEvMissTy : Term := prog{
-  Π (K0 : Nat) → Π (V1 : Nat) → Π (Key : Nat) → Π (T0 : BktT) → Π (T1 : BktT) →
+def UpdNdMissTy : Term := prog{
+  Π (K0 : Nat) → Π (X : OptN) → Π (Key : Nat) → Π (T0 : BktT) → Π (T1 : BktT) →
     Id Bool (Eqb K0 Key) False →
-    (Π (Q : Nat) → Id OptN (FindL Q T1) (BFindIns Q Key V1 T0)) →
+    (Π (Q : Nat) → Id OptN (FindL Q T1) (BFindUpd Q Key X T0)) →
     Id Bool (HitL K0 T0) False →
     Id Bool (HitL K0 T1) False }
-example : chkL NdEvMiss NdEvMissTy = true := by native_decide
+example : chkL UpdNdMiss UpdNdMissTy = true := by native_decide
 
 /-! ## (xiii) The map-level pointwise lift, and the pack builder -/
 
@@ -1334,51 +1344,51 @@ example : chkL MkInv MkInvTy = true := by native_decide
 
 /-- Same-slot case of the pointwise lift: `q` hashes to the written slot, so
     both sides collapse to the bucket-level equation through `AgetBCatMid`. -/
-def InsPtSame : Term := prog{
-  λ (I : Nat). λ (R : Nat). λ (Key : Nat). λ (V : Nat).
+def UpdPtSame : Term := prog{
+  λ (I : Nat). λ (R : Nat). λ (Key : Nat). λ (X : OptN).
   λ (L : Array I BktT). λ (B0 : BktT). λ (B1 : BktT). λ (H : Array R BktT).
-  λ (Hb : Π (Q : Nat) → Id OptN (FindL Q B1) (BFindIns Q Key V B0)).
+  λ (Hb : Π (Q : Nat) → Id OptN (FindL Q B1) (BFindUpd Q Key X B0)).
   λ (Q : Nat).
   λ (Ej : Id Bool (Eqb (Mod Q (Add I (S R))) I) True).
     NatRw (λ (W : Nat).
         Id OptN
           (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H)) W))
-          (BFindIns Q Key V (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H)) W)))
+          (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H)) W)))
       I (Mod Q (Add I (S R)))
       (IdSym Nat (Mod Q (Add I (S R))) I (EqbTrueEq (Mod Q (Add I (S R))) I Ej))
       (IdTrans OptN
         (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H)) I))
         (FindL Q B1)
-        (BFindIns Q Key V (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H)) I))
+        (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H)) I))
         (IdCongr BktT OptN (λ (W : BktT). FindL Q W)
           (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H)) I) B1
           (AgetBCatMid R B1 H I L))
-        (IdTrans OptN (FindL Q B1) (BFindIns Q Key V B0)
-          (BFindIns Q Key V (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H)) I))
+        (IdTrans OptN (FindL Q B1) (BFindUpd Q Key X B0)
+          (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H)) I))
           (Hb Q)
           (IdSym OptN
-            (BFindIns Q Key V (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H)) I))
-            (BFindIns Q Key V B0)
-            (IdCongr BktT OptN (λ (W : BktT). BFindIns Q Key V W)
+            (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H)) I))
+            (BFindUpd Q Key X B0)
+            (IdCongr BktT OptN (λ (W : BktT). BFindUpd Q Key X W)
               (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H)) I) B0
               (AgetBCatMid R B0 H I L))))) }
-def InsPtSameTy : Term := prog{
-  Π (I : Nat) → Π (R : Nat) → Π (Key : Nat) → Π (V : Nat) →
+def UpdPtSameTy : Term := prog{
+  Π (I : Nat) → Π (R : Nat) → Π (Key : Nat) → Π (X : OptN) →
   Π (L : Array I BktT) → Π (B0 : BktT) → Π (B1 : BktT) → Π (H : Array R BktT) →
-    (Π (Q : Nat) → Id OptN (FindL Q B1) (BFindIns Q Key V B0)) →
+    (Π (Q : Nat) → Id OptN (FindL Q B1) (BFindUpd Q Key X B0)) →
     Π (Q : Nat) → Id Bool (Eqb (Mod Q (Add I (S R))) I) True →
     Id OptN
       (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
         (Mod Q (Add I (S R)))))
-      (BFindIns Q Key V (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
+      (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
         (Mod Q (Add I (S R))))) }
-example : chkL InsPtSame InsPtSameTy = true := by native_decide
+example : chkL UpdPtSame UpdPtSameTy = true := by native_decide
 
 /-- Different-slot case: `q`'s bucket is untouched. `Eqb Q Key = True` is dead
     (equal keys share a slot); otherwise the slot is strictly left of the cell
     (`AgetBCatLo`) or strictly right (`ModDec` mints the offset, `AgetBCatHi`). -/
-def InsPtDiff : Term := prog{
-  λ (I : Nat). λ (R : Nat). λ (Key : Nat). λ (V : Nat).
+def UpdPtDiff : Term := prog{
+  λ (I : Nat). λ (R : Nat). λ (Key : Nat). λ (X : OptN).
   λ (L : Array I BktT). λ (B0 : BktT). λ (B1 : BktT). λ (H : Array R BktT).
   λ (Him : Id Nat I (Mod Key (Add I (S R)))).
   λ (Q : Nat).
@@ -1387,14 +1397,14 @@ def InsPtDiff : Term := prog{
       (Id OptN
         (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
           (Mod Q (Add I (S R)))))
-        (BFindIns Q Key V (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
+        (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
           (Mod Q (Add I (S R))))))
       (λ (E2 : Id Bool (Eqb Q Key) True).
         botElim
           (Id OptN
             (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
               (Mod Q (Add I (S R)))))
-            (BFindIns Q Key V (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
+            (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
               (Mod Q (Add I (S R))))))
           (BoolTF (IdTrans Bool True (Eqb (Mod Q (Add I (S R))) I) False
             (IdSym Bool (Eqb (Mod Q (Add I (S R))) I) True
@@ -1411,14 +1421,14 @@ def InsPtDiff : Term := prog{
           (Id OptN
             (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
               (Mod Q (Add I (S R)))))
-            (BFindIns Q Key V (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
+            (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
               (Mod Q (Add I (S R))))))
           (λ (El : Id Bool (Leb (Mod Q (Add I (S R))) I) True).
             IdTrans OptN
               (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
                 (Mod Q (Add I (S R)))))
               (FindL Q (AgetB I L (Mod Q (Add I (S R)))))
-              (BFindIns Q Key V (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
+              (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
                 (Mod Q (Add I (S R)))))
               (IdCongr BktT OptN (λ (W : BktT). FindL Q W)
                 (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
@@ -1428,16 +1438,16 @@ def InsPtDiff : Term := prog{
                   (LeNeLt (Mod Q (Add I (S R))) I
                     (LebTrueLe (Mod Q (Add I (S R))) I El) Ej)))
               (IdSym OptN
-                (BFindIns Q Key V (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
+                (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
                   (Mod Q (Add I (S R)))))
                 (FindL Q (AgetB I L (Mod Q (Add I (S R)))))
                 (IdTrans OptN
-                  (BFindIns Q Key V (AgetB (Add I (S R))
+                  (BFindUpd Q Key X (AgetB (Add I (S R))
                     (arrCat I (S R) L (acons R B0 H)) (Mod Q (Add I (S R)))))
                   (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
                     (Mod Q (Add I (S R)))))
                   (FindL Q (AgetB I L (Mod Q (Add I (S R)))))
-                  (BoolRwF OptN (SomeN V)
+                  (BoolRwF OptN X
                     (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
                       (Mod Q (Add I (S R)))))
                     (Eqb Q Key) E2)
@@ -1455,13 +1465,13 @@ def InsPtDiff : Term := prog{
                 Id OptN
                   (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
                     (Mod Q (Add I (S R)))))
-                  (BFindIns Q Key V (AgetB (Add I (S R))
+                  (BFindUpd Q Key X (AgetB (Add I (S R))
                     (arrCat I (S R) L (acons R B0 H)) (Mod Q (Add I (S R)))))) {
               Pair (D) (Hd) =>
                 NatRw (λ (W : Nat).
                     Id OptN
                       (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H)) W))
-                      (BFindIns Q Key V (AgetB (Add I (S R))
+                      (BFindUpd Q Key X (AgetB (Add I (S R))
                         (arrCat I (S R) L (acons R B0 H)) W)))
                   (Add I (S D)) (Mod Q (Add I (S R)))
                   (IdSym Nat (Mod Q (Add I (S R))) (Add I (S D)) Hd)
@@ -1469,7 +1479,7 @@ def InsPtDiff : Term := prog{
                     (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
                       (Add I (S D))))
                     (FindL Q (AgetB R H D))
-                    (BFindIns Q Key V (AgetB (Add I (S R))
+                    (BFindUpd Q Key X (AgetB (Add I (S R))
                       (arrCat I (S R) L (acons R B0 H)) (Add I (S D))))
                     (IdCongr BktT OptN (λ (W : BktT). FindL Q W)
                       (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
@@ -1477,16 +1487,16 @@ def InsPtDiff : Term := prog{
                       (AgetB R H D)
                       (AgetBCatHi R B1 H D I L))
                     (IdSym OptN
-                      (BFindIns Q Key V (AgetB (Add I (S R))
+                      (BFindUpd Q Key X (AgetB (Add I (S R))
                         (arrCat I (S R) L (acons R B0 H)) (Add I (S D))))
                       (FindL Q (AgetB R H D))
                       (IdTrans OptN
-                        (BFindIns Q Key V (AgetB (Add I (S R))
+                        (BFindUpd Q Key X (AgetB (Add I (S R))
                           (arrCat I (S R) L (acons R B0 H)) (Add I (S D))))
                         (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
                           (Add I (S D))))
                         (FindL Q (AgetB R H D))
-                        (BoolRwF OptN (SomeN V)
+                        (BoolRwF OptN X
                           (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
                             (Add I (S D))))
                           (Eqb Q Key) E2)
@@ -1495,46 +1505,46 @@ def InsPtDiff : Term := prog{
                             (Add I (S D)))
                           (AgetB R H D)
                           (AgetBCatHi R B0 H D I L))))) })) }
-def InsPtDiffTy : Term := prog{
-  Π (I : Nat) → Π (R : Nat) → Π (Key : Nat) → Π (V : Nat) →
+def UpdPtDiffTy : Term := prog{
+  Π (I : Nat) → Π (R : Nat) → Π (Key : Nat) → Π (X : OptN) →
   Π (L : Array I BktT) → Π (B0 : BktT) → Π (B1 : BktT) → Π (H : Array R BktT) →
     Id Nat I (Mod Key (Add I (S R))) →
     Π (Q : Nat) → Id Bool (Eqb (Mod Q (Add I (S R))) I) False →
     Id OptN
       (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
         (Mod Q (Add I (S R)))))
-      (BFindIns Q Key V (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
+      (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
         (Mod Q (Add I (S R))))) }
-example : chkL InsPtDiff InsPtDiffTy = true := by native_decide
+example : chkL UpdPtDiff UpdPtDiffTy = true := by native_decide
 
 /-- THE POINTWISE LIFT: the walk's bucket equation becomes Insert's whole-map
     equation, by deciding `q`'s slot against the written slot. -/
-def InsPointwise : Term := prog{
-  λ (I : Nat). λ (R : Nat). λ (Key : Nat). λ (V : Nat).
+def UpdPointwise : Term := prog{
+  λ (I : Nat). λ (R : Nat). λ (Key : Nat). λ (X : OptN).
   λ (L : Array I BktT). λ (B0 : BktT). λ (B1 : BktT). λ (H : Array R BktT).
   λ (Him : Id Nat I (Mod Key (Add I (S R)))).
-  λ (Hb : Π (Q : Nat) → Id OptN (FindL Q B1) (BFindIns Q Key V B0)).
+  λ (Hb : Π (Q : Nat) → Id OptN (FindL Q B1) (BFindUpd Q Key X B0)).
     λ (Q : Nat).
       IfDec (Eqb (Mod Q (Add I (S R))) I)
         (Id OptN
           (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
             (Mod Q (Add I (S R)))))
-          (BFindIns Q Key V (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
+          (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
             (Mod Q (Add I (S R))))))
-        (InsPtSame I R Key V L B0 B1 H Hb Q)
-        (InsPtDiff I R Key V L B0 B1 H Him Q) }
-def InsPointwiseTy : Term := prog{
-  Π (I : Nat) → Π (R : Nat) → Π (Key : Nat) → Π (V : Nat) →
+        (UpdPtSame I R Key X L B0 B1 H Hb Q)
+        (UpdPtDiff I R Key X L B0 B1 H Him Q) }
+def UpdPointwiseTy : Term := prog{
+  Π (I : Nat) → Π (R : Nat) → Π (Key : Nat) → Π (X : OptN) →
   Π (L : Array I BktT) → Π (B0 : BktT) → Π (B1 : BktT) → Π (H : Array R BktT) →
     Id Nat I (Mod Key (Add I (S R))) →
-    (Π (Q : Nat) → Id OptN (FindL Q B1) (BFindIns Q Key V B0)) →
+    (Π (Q : Nat) → Id OptN (FindL Q B1) (BFindUpd Q Key X B0)) →
     Π (Q : Nat) →
       Id OptN
         (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
           (Mod Q (Add I (S R)))))
-        (BFindIns Q Key V (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
+        (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
           (Mod Q (Add I (S R))))) }
-example : chkL InsPointwise InsPointwiseTy = true := by native_decide
+example : chkL UpdPointwise UpdPointwiseTy = true := by native_decide
 
 /-! ## (xiv) `New`'s builder and its three lemmas, and the slot pack -/
 
@@ -1663,11 +1673,11 @@ def hmS1Under (nret iret tail : Term) : Term := prog{
                     SndT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd);
                 Pair(hit2,
                   Pair(HitEvMiss K0 V0 key T0 hit2 e Hh2,
-                  Pair(PtEvMiss K0 V0 val key T0 (*tl) e Hpt2,
+                  Pair(UpdEvMiss K0 V0 (SomeN val) key T0 (*tl) e Hpt2,
                   Pair(LnEvMiss K0 V0 key T0 (*tl) e Hln2,
                   Pair(Pair(FstT (Id Nat (Mod K0 cap) islot)
                               (AllKeysMod cap islot T0) Hak, Hak3),
-                       Pair(NdEvMiss K0 val key T0 (*tl) e Hpt2
+                       Pair(UpdNdMiss K0 (SomeN val) key T0 (*tl) e Hpt2
                               (FstT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd),
                             Hnd3))))))
               } }
@@ -1741,7 +1751,7 @@ def hmS1Under (nret iret tail : Term) : Term := prog{
         let B1 = *bb;
         let Hit0 = hit2;
         let Htot1 = TotalArrCat (S r) (acons r B1 H0) i L0;
-        let Hpt = InsPointwise i r key val L0 B0 B1 H0 him Hpt2;
+        let Hpt = UpdPointwise i r key (SomeN val) L0 B0 B1 H0 him Hpt2;
         let HsIz = NatRw (λ (W : Nat). SlotInv Cap0 W B1) I0 (Add I0 Z)
                      (IdSym Nat (Add I0 Z) I0 (AddZero I0))
                      (MkSlotInv cap i B1 Hak3 Hnd3);
@@ -2117,6 +2127,247 @@ def s1NewCaller : Term := hmS1Under newRetHonest insRetHonest prog{
   () }
 example : (runHM s1NewCaller == some (3, 12, 0, [[], [], []])) = true := by
   native_decide
+
+/-! ## (xvii) Remove's walk evidence
+
+    The remove walk is a take-and-rebuild over the OWNED bucket (M23's list
+    quicksort shape): unlink the hit cell and MOVE its value out — values stay
+    move-only. Its models: -/
+
+def BFindRem : Term := prog{
+  λ (Q : Nat). λ (Key : Nat). λ (L : BktT).
+    elim (Eqb Q Key) return (λ (Bm : Bool). OptN) {
+      True => NoneN,
+      False => FindL Q L } }
+
+def BLenRem : Term := prog{
+  λ (Key : Nat). λ (L : BktT).
+    elim (HitL Key L) return (λ (Bm : Bool). Nat) {
+      True => Pred (LenE L),
+      False => LenE L } }
+
+/-- A stuck Bool-elim whose branches agree collapses. -/
+def BoolSame : Term := prog{
+  λ (T : Type). λ (X : T). λ (B : Bool).
+    boolRec (λ (Bm : Bool). Id T X (boolRec (λ (W2 : Bool). T) X X Bm))
+      Refl Refl B }
+def BoolSameTy : Term := prog{
+  Π (T : Type) → Π (X : T) → Π (B : Bool) →
+    Id T X (boolRec (λ (W2 : Bool). T) X X B) }
+example : chkL BoolSame BoolSameTy = true := by native_decide
+
+/-- An absent key's lookup IS `None` — the Σ(Bool) Option has no Unit-η, so
+    this is an induction, not a projection. -/
+def NotHitFindNone : Term := prog{
+  λ (Q : Nat). λ (L : BktT).
+    elim L return (λ (Lm : List (Σ (k : Nat). Nat)).
+        Id Bool (HitL Q Lm) False → Id OptN (FindL Q Lm) NoneN) {
+      Nil => λ (Hn : Id Bool (HitL Q Nil) False). Refl,
+      Cons (E) (T) Ih =>
+        elim E return (λ (Em : Σ (k : Nat). Nat).
+            Id Bool (HitL Q (Cons(Em, T))) False → Id OptN (FindL Q (Cons(Em, T))) NoneN) {
+          Pair (K2) (V2) => λ (Hn : Id Bool (HitL Q (Cons(Pair(K2, V2), T))) False).
+            IfDec (Eqb Q K2)
+              (Id OptN (FindL Q (Cons(Pair(K2, V2), T))) NoneN)
+              (λ (E2 : Id Bool (Eqb Q K2) True).
+                botElim (Id OptN (FindL Q (Cons(Pair(K2, V2), T))) NoneN)
+                  (BoolTF (IdTrans Bool True (HitL Q (Cons(Pair(K2, V2), T))) False
+                    (IdSym Bool (HitL Q (Cons(Pair(K2, V2), T))) True
+                      (IdTrans Bool (HitL Q (Cons(Pair(K2, V2), T)))
+                        (IsSomeB (SomeN V2)) True
+                        (IdCongr OptN Bool IsSomeB
+                          (FindL Q (Cons(Pair(K2, V2), T))) (SomeN V2)
+                          (BoolRwT OptN (SomeN V2) (FindL Q T) (Eqb Q K2) E2))
+                        Refl))
+                    Hn)))
+              (λ (E2 : Id Bool (Eqb Q K2) False).
+                IdTrans OptN (FindL Q (Cons(Pair(K2, V2), T))) (FindL Q T) NoneN
+                  (BoolRwF OptN (SomeN V2) (FindL Q T) (Eqb Q K2) E2)
+                  (Ih (IdTrans Bool (HitL Q T) (HitL Q (Cons(Pair(K2, V2), T))) False
+                    (IdSym Bool (HitL Q (Cons(Pair(K2, V2), T))) (HitL Q T)
+                      (IdCongr OptN Bool IsSomeB
+                        (FindL Q (Cons(Pair(K2, V2), T))) (FindL Q T)
+                        (BoolRwF OptN (SomeN V2) (FindL Q T) (Eqb Q K2) E2)))
+                    Hn))) } } }
+def NotHitFindNoneTy : Term := prog{
+  Π (Q : Nat) → Π (L : BktT) →
+    Id Bool (HitL Q L) False → Id OptN (FindL Q L) NoneN }
+example : chkL NotHitFindNone NotHitFindNoneTy = true := by native_decide
+
+def SPredPos : Term := prog{
+  λ (N : Nat). elim N return (λ (Nz : Nat). Le (S Z) Nz → Id Nat (S (Pred Nz)) Nz) {
+    Z => λ (H : Le (S Z) Z). botElim (Id Nat (S (Pred Z)) Z) H,
+    S (M) Ih => λ (H : Le (S Z) (S M)). Refl } }
+def SPredPosTy : Term := prog{
+  Π (N : Nat) → Le (S Z) N → Id Nat (S (Pred N)) N }
+example : chkL SPredPos SPredPosTy = true := by native_decide
+
+/-- A bucket that answers is nonempty. -/
+def HitLenPos : Term := prog{
+  λ (Q : Nat). λ (L : BktT).
+    elim L return (λ (Lm : List (Σ (k : Nat). Nat)).
+        Id Bool (HitL Q Lm) True → Le (S Z) (LenE Lm)) {
+      Nil => λ (Hh : Id Bool (HitL Q Nil) True).
+        botElim (Le (S Z) (LenE Nil)) (BoolFT Hh),
+      Cons (E) (T) Ih => λ (Hh : Id Bool (HitL Q (Cons(E, T))) True). unit } }
+def HitLenPosTy : Term := prog{
+  Π (Q : Nat) → Π (L : BktT) → Id Bool (HitL Q L) True → Le (S Z) (LenE L) }
+example : chkL HitLenPos HitLenPosTy = true := by native_decide
+
+/-- REMOVE HIT: the unlinked value was the bucket's answer. -/
+def RemHrHit : Term := prog{
+  λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT).
+  λ (E : Id Bool (Eqb K0 Key) True).
+    NatRw (λ (W : Nat). Id OptN (SomeN V0) (FindL Key (Cons(Pair(W, V0), T0))))
+      Key K0 (IdSym Nat K0 Key (EqbTrueEq K0 Key E))
+      (IdSym OptN (FindL Key (Cons(Pair(Key, V0), T0))) (SomeN V0)
+        (BoolRwT OptN (SomeN V0) (FindL Key T0) (Eqb Key Key) (EqbRefl Key))) }
+def RemHrHitTy : Term := prog{
+  Π (K0 : Nat) → Π (V0 : Nat) → Π (Key : Nat) → Π (T0 : BktT) →
+    Id Bool (Eqb K0 Key) True →
+    Id OptN (SomeN V0) (FindL Key (Cons(Pair(K0, V0), T0))) }
+example : chkL RemHrHit RemHrHitTy = true := by native_decide
+
+/-- REMOVE HIT, pointwise: the tail IS the removed bucket, and at `Q = Key`
+    the tail answers `None` because Nodup says the unlinked cell was the only
+    one. -/
+def RemPtHit : Term := prog{
+  λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT).
+  λ (E : Id Bool (Eqb K0 Key) True).
+  λ (Hn : Id Bool (HitL K0 T0) False).
+    NatRw (λ (W : Nat). Π (Q : Nat) →
+        Id OptN (FindL Q T0) (BFindRem Q Key (Cons(Pair(W, V0), T0))))
+      Key K0 (IdSym Nat K0 Key (EqbTrueEq K0 Key E))
+      (λ (Q : Nat).
+        IfDec (Eqb Q Key)
+          (Id OptN (FindL Q T0) (BFindRem Q Key (Cons(Pair(Key, V0), T0))))
+          (λ (E2 : Id Bool (Eqb Q Key) True).
+            NatRw (λ (W : Nat).
+                Id OptN (FindL W T0) (BFindRem W Key (Cons(Pair(Key, V0), T0))))
+              Key Q (IdSym Nat Q Key (EqbTrueEq Q Key E2))
+              (IdTrans OptN (FindL Key T0) NoneN
+                (BFindRem Key Key (Cons(Pair(Key, V0), T0)))
+                (NotHitFindNone Key T0
+                  (NatRw (λ (W : Nat). Id Bool (HitL W T0) False) K0 Key
+                    (EqbTrueEq K0 Key E) Hn))
+                (IdSym OptN (BFindRem Key Key (Cons(Pair(Key, V0), T0))) NoneN
+                  (BoolRwT OptN NoneN (FindL Key (Cons(Pair(Key, V0), T0)))
+                    (Eqb Key Key) (EqbRefl Key)))))
+          (λ (E2 : Id Bool (Eqb Q Key) False).
+            IdTrans OptN (FindL Q T0) (FindL Q (Cons(Pair(Key, V0), T0)))
+              (BFindRem Q Key (Cons(Pair(Key, V0), T0)))
+              (IdSym OptN (FindL Q (Cons(Pair(Key, V0), T0))) (FindL Q T0)
+                (BoolRwF OptN (SomeN V0) (FindL Q T0) (Eqb Q Key) E2))
+              (IdSym OptN (BFindRem Q Key (Cons(Pair(Key, V0), T0)))
+                (FindL Q (Cons(Pair(Key, V0), T0)))
+                (BoolRwF OptN NoneN (FindL Q (Cons(Pair(Key, V0), T0)))
+                  (Eqb Q Key) E2)))) }
+def RemPtHitTy : Term := prog{
+  Π (K0 : Nat) → Π (V0 : Nat) → Π (Key : Nat) → Π (T0 : BktT) →
+    Id Bool (Eqb K0 Key) True →
+    Id Bool (HitL K0 T0) False →
+    Π (Q : Nat) → Id OptN (FindL Q T0) (BFindRem Q Key (Cons(Pair(K0, V0), T0))) }
+example : chkL RemPtHit RemPtHitTy = true := by native_decide
+
+def RemLnHit : Term := prog{
+  λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT).
+  λ (E : Id Bool (Eqb K0 Key) True).
+    NatRw (λ (W : Nat). Id Nat (LenE T0) (BLenRem Key (Cons(Pair(W, V0), T0))))
+      Key K0 (IdSym Nat K0 Key (EqbTrueEq K0 Key E))
+      (IdSym Nat (BLenRem Key (Cons(Pair(Key, V0), T0))) (LenE T0)
+        (BoolRwT Nat (Pred (LenE (Cons(Pair(Key, V0), T0))))
+          (LenE (Cons(Pair(Key, V0), T0)))
+          (HitL Key (Cons(Pair(Key, V0), T0)))
+          (IdCongr OptN Bool IsSomeB
+            (FindL Key (Cons(Pair(Key, V0), T0))) (SomeN V0)
+            (BoolRwT OptN (SomeN V0) (FindL Key T0) (Eqb Key Key) (EqbRefl Key))))) }
+def RemLnHitTy : Term := prog{
+  Π (K0 : Nat) → Π (V0 : Nat) → Π (Key : Nat) → Π (T0 : BktT) →
+    Id Bool (Eqb K0 Key) True →
+    Id Nat (LenE T0) (BLenRem Key (Cons(Pair(K0, V0), T0))) }
+example : chkL RemLnHit RemLnHitTy = true := by native_decide
+
+/-- REMOVE MISS: the returned option delegates past the untouched head. -/
+def RemHrMiss : Term := prog{
+  λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT). λ (Ret : OptN).
+  λ (E : Id Bool (Eqb K0 Key) False).
+  λ (Hr : Id OptN Ret (FindL Key T0)).
+    IdTrans OptN Ret (FindL Key T0) (FindL Key (Cons(Pair(K0, V0), T0)))
+      Hr
+      (IdSym OptN (FindL Key (Cons(Pair(K0, V0), T0))) (FindL Key T0)
+        (BoolRwF OptN (SomeN V0) (FindL Key T0) (Eqb Key K0)
+          (IdTrans Bool (Eqb Key K0) (Eqb K0 Key) False (EqbSym Key K0) E))) }
+def RemHrMissTy : Term := prog{
+  Π (K0 : Nat) → Π (V0 : Nat) → Π (Key : Nat) → Π (T0 : BktT) → Π (Ret : OptN) →
+    Id Bool (Eqb K0 Key) False →
+    Id OptN Ret (FindL Key T0) →
+    Id OptN Ret (FindL Key (Cons(Pair(K0, V0), T0))) }
+example : chkL RemHrMiss RemHrMissTy = true := by native_decide
+
+/-- REMOVE MISS, length: `BLenRem` lifts through the head; the hit side needs
+    the tail nonempty (`HitLenPos`) so `S ∘ Pred` cancels. -/
+def RemLnMiss : Term := prog{
+  λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT). λ (T1 : BktT).
+  λ (E : Id Bool (Eqb K0 Key) False).
+  λ (Hl : Id Nat (LenE T1) (BLenRem Key T0)).
+    IdTrans Nat (LenE (Cons(Pair(K0, V0), T1))) (S (BLenRem Key T0))
+      (BLenRem Key (Cons(Pair(K0, V0), T0)))
+      (IdCongr Nat Nat (λ (W : Nat). S W) (LenE T1) (BLenRem Key T0) Hl)
+      (IdSym Nat (BLenRem Key (Cons(Pair(K0, V0), T0))) (S (BLenRem Key T0))
+        (IdTrans Nat (BLenRem Key (Cons(Pair(K0, V0), T0)))
+          (boolRec (λ (W2 : Bool). Nat)
+            (Pred (LenE (Cons(Pair(K0, V0), T0))))
+            (LenE (Cons(Pair(K0, V0), T0)))
+            (HitL Key T0))
+          (S (BLenRem Key T0))
+          (IdCongr Bool Nat
+            (λ (W : Bool). boolRec (λ (W2 : Bool). Nat)
+              (Pred (LenE (Cons(Pair(K0, V0), T0))))
+              (LenE (Cons(Pair(K0, V0), T0))) W)
+            (HitL Key (Cons(Pair(K0, V0), T0))) (HitL Key T0)
+            (IdCongr OptN Bool IsSomeB
+              (FindL Key (Cons(Pair(K0, V0), T0))) (FindL Key T0)
+              (BoolRwF OptN (SomeN V0) (FindL Key T0) (Eqb Key K0)
+                (IdTrans Bool (Eqb Key K0) (Eqb K0 Key) False (EqbSym Key K0) E))))
+          (IfDec (HitL Key T0)
+            (Id Nat
+              (boolRec (λ (W2 : Bool). Nat)
+                (Pred (LenE (Cons(Pair(K0, V0), T0))))
+                (LenE (Cons(Pair(K0, V0), T0)))
+                (HitL Key T0))
+              (S (BLenRem Key T0)))
+            (λ (Eh : Id Bool (HitL Key T0) True).
+              IdTrans Nat
+                (boolRec (λ (W2 : Bool). Nat)
+                  (Pred (LenE (Cons(Pair(K0, V0), T0))))
+                  (LenE (Cons(Pair(K0, V0), T0)))
+                  (HitL Key T0))
+                (LenE T0) (S (BLenRem Key T0))
+                (BoolRwT Nat (LenE T0) (S (LenE T0)) (HitL Key T0) Eh)
+                (IdSym Nat (S (BLenRem Key T0)) (LenE T0)
+                  (IdTrans Nat (S (BLenRem Key T0)) (S (Pred (LenE T0))) (LenE T0)
+                    (IdCongr Nat Nat (λ (W : Nat). S W)
+                      (BLenRem Key T0) (Pred (LenE T0))
+                      (BoolRwT Nat (Pred (LenE T0)) (LenE T0) (HitL Key T0) Eh))
+                    (SPredPos (LenE T0) (HitLenPos Key T0 Eh)))))
+            (λ (Ef : Id Bool (HitL Key T0) False).
+              IdTrans Nat
+                (boolRec (λ (W2 : Bool). Nat)
+                  (Pred (LenE (Cons(Pair(K0, V0), T0))))
+                  (LenE (Cons(Pair(K0, V0), T0)))
+                  (HitL Key T0))
+                (S (LenE T0)) (S (BLenRem Key T0))
+                (BoolRwF Nat (LenE T0) (S (LenE T0)) (HitL Key T0) Ef)
+                (IdSym Nat (S (BLenRem Key T0)) (S (LenE T0))
+                  (IdCongr Nat Nat (λ (W : Nat). S W)
+                    (BLenRem Key T0) (LenE T0)
+                    (BoolRwF Nat (Pred (LenE T0)) (LenE T0) (HitL Key T0) Ef))))))) }
+def RemLnMissTy : Term := prog{
+  Π (K0 : Nat) → Π (V0 : Nat) → Π (Key : Nat) → Π (T0 : BktT) → Π (T1 : BktT) →
+    Id Bool (Eqb K0 Key) False →
+    Id Nat (LenE T1) (BLenRem Key T0) →
+    Id Nat (LenE (Cons(Pair(K0, V0), T1))) (BLenRem Key (Cons(Pair(K0, V0), T0))) }
+example : chkL RemLnMiss RemLnMissTy = true := by native_decide
 
 end Dllbc.Tests.HashMap
 end
