@@ -1961,6 +1961,1112 @@ def RemTotEvTy : Term := prog{
       (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H))) }
 example : chkL RemTotEv RemTotEvTy = true := by native_decide
 
+/-! ## (xxi) S2 — resize. The move fold's pure evidence, bucket level first. -/
+
+/-- A key found in a well-hashed bucket hashes to that bucket's slot. -/
+def HitKeyMod : Term := prog{
+  λ (Cap : Nat). λ (I : Nat). λ (K2 : Nat). λ (L : BktT).
+    elim L return (λ (Lm : List (Σ (k : Nat). Nat)).
+        AllKeysMod Cap I Lm → Id Bool (HitL K2 Lm) True → Id Nat (Mod K2 Cap) I) {
+      Nil => λ (Ha : AllKeysMod Cap I Nil). λ (Hh : Id Bool (HitL K2 Nil) True).
+        botElim (Id Nat (Mod K2 Cap) I) (BoolFT Hh),
+      Cons (E) (T) Ih =>
+        elim E return (λ (Em : Σ (k : Nat). Nat).
+            AllKeysMod Cap I (Cons(Em, T)) → Id Bool (HitL K2 (Cons(Em, T))) True →
+            Id Nat (Mod K2 Cap) I) {
+          Pair (K3) (V3) =>
+            λ (Ha : AllKeysMod Cap I (Cons(Pair(K3, V3), T))).
+            λ (Hh : Id Bool (HitL K2 (Cons(Pair(K3, V3), T))) True).
+              IfDec (Eqb K2 K3) (Id Nat (Mod K2 Cap) I)
+                (λ (E2 : Id Bool (Eqb K2 K3) True).
+                  NatRw (λ (W : Nat). Id Nat (Mod W Cap) I) K3 K2
+                    (IdSym Nat K2 K3 (EqbTrueEq K2 K3 E2))
+                    (FstT (Id Nat (Mod K3 Cap) I) (AllKeysMod Cap I T) Ha))
+                (λ (E2 : Id Bool (Eqb K2 K3) False).
+                  Ih (SndT (Id Nat (Mod K3 Cap) I) (AllKeysMod Cap I T) Ha)
+                    (IdTrans Bool (HitL K2 T) (HitL K2 (Cons(Pair(K3, V3), T))) True
+                      (IdSym Bool (HitL K2 (Cons(Pair(K3, V3), T))) (HitL K2 T)
+                        (IdCongr OptN Bool IsSomeB
+                          (FindL K2 (Cons(Pair(K3, V3), T))) (FindL K2 T)
+                          (BoolRwF OptN (SomeN V3) (FindL K2 T) (Eqb K2 K3) E2)))
+                      Hh)) } } }
+def HitKeyModTy : Term := prog{
+  Π (Cap : Nat) → Π (I : Nat) → Π (K2 : Nat) → Π (L : BktT) →
+    AllKeysMod Cap I L → Id Bool (HitL K2 L) True → Id Nat (Mod K2 Cap) I }
+example : chkL HitKeyMod HitKeyModTy = true := by native_decide
+
+/-- The contrapositive: a key hashing elsewhere is absent. -/
+def NotHitOfMod : Term := prog{
+  λ (Cap : Nat). λ (I : Nat). λ (K2 : Nat). λ (L : BktT).
+  λ (Ha : AllKeysMod Cap I L). λ (Ne : Id Bool (Eqb (Mod K2 Cap) I) False).
+    IfDec (HitL K2 L) (Id Bool (HitL K2 L) False)
+      (λ (Eh : Id Bool (HitL K2 L) True).
+        botElim (Id Bool (HitL K2 L) False)
+          (BoolTF (IdTrans Bool True (Eqb (Mod K2 Cap) I) False
+            (IdSym Bool (Eqb (Mod K2 Cap) I) True
+              (IdTrans Bool (Eqb (Mod K2 Cap) I) (Eqb I I) True
+                (IdCongr Nat Bool (λ (W : Nat). Eqb W I) (Mod K2 Cap) I
+                  (HitKeyMod Cap I K2 L Ha Eh))
+                (EqbRefl I)))
+            Ne)))
+      (λ (Ef : Id Bool (HitL K2 L) False). Ef) }
+def NotHitOfModTy : Term := prog{
+  Π (Cap : Nat) → Π (I : Nat) → Π (K2 : Nat) → Π (L : BktT) →
+    AllKeysMod Cap I L → Id Bool (Eqb (Mod K2 Cap) I) False →
+    Id Bool (HitL K2 L) False }
+example : chkL NotHitOfMod NotHitOfModTy = true := by native_decide
+
+def Le1Mul2 : Term := prog{
+  λ (C : Nat). λ (H : Le (S Z) C).
+    LeTrans (S Z) C (Mul 2 C) H (LeAdd C (Add C Z)) }
+def Le1Mul2Ty : Term := prog{ Π (C : Nat) → Le (S Z) C → Le (S Z) (Mul 2 C) }
+example : chkL Le1Mul2 Le1Mul2Ty = true := by native_decide
+
+/-- An array whose in-range buckets are all `Nil` holds nothing. -/
+def TotalNilAll : Term := prog{
+  λ (M : Nat). λ (A : Array M (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
+        (Π (J2 : Nat) → Le (S J2) Mz →
+          Id (List (Σ (k : Nat). Nat)) (AgetB Mz Az J2) Nil) →
+        Id Nat (TotalE Mz Az) Z)
+      (λ (Hn : Π (J2 : Nat) → Le (S J2) Z →
+          Id (List (Σ (k : Nat). Nat)) (AgetB Z Arr() J2) Nil). Refl)
+      (λ (K : Nat). λ (H2 : List (Σ (k : Nat). Nat)).
+        λ (T : Array K (List (Σ (k : Nat). Nat))).
+        λ (Ih : (Π (J2 : Nat) → Le (S J2) K →
+            Id (List (Σ (k : Nat). Nat)) (AgetB K T J2) Nil) →
+          Id Nat (TotalE K T) Z).
+        λ (Hn : Π (J2 : Nat) → Le (S J2) (S K) →
+            Id (List (Σ (k : Nat). Nat)) (AgetB (S K) (acons K H2 T) J2) Nil).
+          IdTrans Nat (Add (LenE H2) (TotalE K T)) (Add (LenE H2) Z) Z
+            (IdCongr Nat Nat (λ (W : Nat). Add (LenE H2) W) (TotalE K T) Z
+              (Ih (λ (J2 : Nat). λ (Hb : Le (S J2) K). Hn (S J2) Hb)))
+            (IdTrans Nat (Add (LenE H2) Z) (LenE H2) Z
+              (AddZero (LenE H2))
+              (IdCongr (List (Σ (k : Nat). Nat)) Nat
+                (λ (W : List (Σ (k : Nat). Nat)). LenE W)
+                H2 Nil (Hn Z unit))))
+      M A }
+def TotalNilAllTy : Term := prog{
+  Π (M : Nat) → Π (A : Array M (List (Σ (k : Nat). Nat))) →
+    (Π (J2 : Nat) → Le (S J2) M →
+      Id (List (Σ (k : Nat). Nat)) (AgetB M A J2) Nil) →
+    Id Nat (TotalE M A) Z }
+example : chkL TotalNilAll TotalNilAllTy = true := by native_decide
+
+/-- One bucket-move step, pointwise: the head is inserted (fresh), the tail is
+    moved by the recursive call; together they answer like the whole bucket. -/
+def MoveStepPt : Term := prog{
+  λ (K : Nat). λ (V : Nat). λ (TL : BktT).
+  λ (D0 : Nat → OptN). λ (D1 : Nat → OptN). λ (D2 : Nat → OptN).
+  λ (Hnd : Id Bool (HitL K TL) False).
+  λ (H1 : Π (Q : Nat) → Id OptN (D1 Q)
+       (boolRec (λ (W2 : Bool). OptN) (SomeN V) (D0 Q) (Eqb Q K))).
+  λ (H2 : Π (Q : Nat) → Id OptN (D2 Q)
+       (boolRec (λ (W2 : Bool). OptN) (FindL Q TL) (D1 Q) (HitL Q TL))).
+    λ (Q : Nat).
+      IfDec (Eqb Q K)
+        (Id OptN (D2 Q)
+          (boolRec (λ (W2 : Bool). OptN)
+            (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
+            (HitL Q (Cons(Pair(K, V), TL)))))
+        (λ (E2 : Id Bool (Eqb Q K) True).
+          IdTrans OptN (D2 Q) (SomeN V)
+            (boolRec (λ (W2 : Bool). OptN)
+              (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
+              (HitL Q (Cons(Pair(K, V), TL))))
+            (IdTrans OptN (D2 Q) (D1 Q) (SomeN V)
+              (IdTrans OptN (D2 Q)
+                (boolRec (λ (W2 : Bool). OptN) (FindL Q TL) (D1 Q) (HitL Q TL))
+                (D1 Q)
+                (H2 Q)
+                (BoolRwF OptN (FindL Q TL) (D1 Q) (HitL Q TL)
+                  (NatRw (λ (W : Nat). Id Bool (HitL W TL) False) K Q
+                    (IdSym Nat Q K (EqbTrueEq Q K E2)) Hnd)))
+              (IdTrans OptN (D1 Q)
+                (boolRec (λ (W2 : Bool). OptN) (SomeN V) (D0 Q) (Eqb Q K))
+                (SomeN V)
+                (H1 Q)
+                (BoolRwT OptN (SomeN V) (D0 Q) (Eqb Q K) E2)))
+            (IdSym OptN
+              (boolRec (λ (W2 : Bool). OptN)
+                (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
+                (HitL Q (Cons(Pair(K, V), TL))))
+              (SomeN V)
+              (IdTrans OptN
+                (boolRec (λ (W2 : Bool). OptN)
+                  (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
+                  (HitL Q (Cons(Pair(K, V), TL))))
+                (FindL Q (Cons(Pair(K, V), TL)))
+                (SomeN V)
+                (BoolRwT OptN (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
+                  (HitL Q (Cons(Pair(K, V), TL)))
+                  (IdSym Bool True (HitL Q (Cons(Pair(K, V), TL)))
+                    (HitEvHit K V Q TL
+                      (IdTrans Bool (Eqb K Q) (Eqb Q K) True (EqbSym K Q) E2))))
+                (NatRw (λ (W : Nat).
+                    Id OptN (FindL W (Cons(Pair(K, V), TL))) (SomeN V))
+                  K Q (IdSym Nat Q K (EqbTrueEq Q K E2))
+                  (BoolRwT OptN (SomeN V) (FindL K TL) (Eqb K K) (EqbRefl K))))))
+        (λ (E2 : Id Bool (Eqb Q K) False).
+          IfDec (HitL Q TL)
+            (Id OptN (D2 Q)
+              (boolRec (λ (W2 : Bool). OptN)
+                (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
+                (HitL Q (Cons(Pair(K, V), TL)))))
+            (λ (Eh : Id Bool (HitL Q TL) True).
+              IdTrans OptN (D2 Q) (FindL Q TL)
+                (boolRec (λ (W2 : Bool). OptN)
+                  (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
+                  (HitL Q (Cons(Pair(K, V), TL))))
+                (IdTrans OptN (D2 Q)
+                  (boolRec (λ (W2 : Bool). OptN) (FindL Q TL) (D1 Q) (HitL Q TL))
+                  (FindL Q TL)
+                  (H2 Q)
+                  (BoolRwT OptN (FindL Q TL) (D1 Q) (HitL Q TL) Eh))
+                (IdSym OptN
+                  (boolRec (λ (W2 : Bool). OptN)
+                    (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
+                    (HitL Q (Cons(Pair(K, V), TL))))
+                  (FindL Q TL)
+                  (IdTrans OptN
+                    (boolRec (λ (W2 : Bool). OptN)
+                      (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
+                      (HitL Q (Cons(Pair(K, V), TL))))
+                    (boolRec (λ (W2 : Bool). OptN)
+                      (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
+                      (HitL Q TL))
+                    (FindL Q TL)
+                    (IdCongr Bool OptN
+                      (λ (W : Bool). boolRec (λ (W2 : Bool). OptN)
+                        (FindL Q (Cons(Pair(K, V), TL))) (D0 Q) W)
+                      (HitL Q (Cons(Pair(K, V), TL))) (HitL Q TL)
+                      (IdCongr OptN Bool IsSomeB
+                        (FindL Q (Cons(Pair(K, V), TL))) (FindL Q TL)
+                        (BoolRwF OptN (SomeN V) (FindL Q TL) (Eqb Q K) E2)))
+                    (IdTrans OptN
+                      (boolRec (λ (W2 : Bool). OptN)
+                        (FindL Q (Cons(Pair(K, V), TL))) (D0 Q) (HitL Q TL))
+                      (FindL Q (Cons(Pair(K, V), TL)))
+                      (FindL Q TL)
+                      (BoolRwT OptN (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
+                        (HitL Q TL) Eh)
+                      (BoolRwF OptN (SomeN V) (FindL Q TL) (Eqb Q K) E2)))))
+            (λ (Ef : Id Bool (HitL Q TL) False).
+              IdTrans OptN (D2 Q) (D0 Q)
+                (boolRec (λ (W2 : Bool). OptN)
+                  (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
+                  (HitL Q (Cons(Pair(K, V), TL))))
+                (IdTrans OptN (D2 Q) (D1 Q) (D0 Q)
+                  (IdTrans OptN (D2 Q)
+                    (boolRec (λ (W2 : Bool). OptN) (FindL Q TL) (D1 Q) (HitL Q TL))
+                    (D1 Q)
+                    (H2 Q)
+                    (BoolRwF OptN (FindL Q TL) (D1 Q) (HitL Q TL) Ef))
+                  (IdTrans OptN (D1 Q)
+                    (boolRec (λ (W2 : Bool). OptN) (SomeN V) (D0 Q) (Eqb Q K))
+                    (D0 Q)
+                    (H1 Q)
+                    (BoolRwF OptN (SomeN V) (D0 Q) (Eqb Q K) E2)))
+                (IdSym OptN
+                  (boolRec (λ (W2 : Bool). OptN)
+                    (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
+                    (HitL Q (Cons(Pair(K, V), TL))))
+                  (D0 Q)
+                  (IdTrans OptN
+                    (boolRec (λ (W2 : Bool). OptN)
+                      (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
+                      (HitL Q (Cons(Pair(K, V), TL))))
+                    (boolRec (λ (W2 : Bool). OptN)
+                      (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
+                      (HitL Q TL))
+                    (D0 Q)
+                    (IdCongr Bool OptN
+                      (λ (W : Bool). boolRec (λ (W2 : Bool). OptN)
+                        (FindL Q (Cons(Pair(K, V), TL))) (D0 Q) W)
+                      (HitL Q (Cons(Pair(K, V), TL))) (HitL Q TL)
+                      (IdCongr OptN Bool IsSomeB
+                        (FindL Q (Cons(Pair(K, V), TL))) (FindL Q TL)
+                        (BoolRwF OptN (SomeN V) (FindL Q TL) (Eqb Q K) E2)))
+                    (BoolRwF OptN (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
+                      (HitL Q TL) Ef))))) }
+def MoveStepPtTy : Term := prog{
+  Π (K : Nat) → Π (V : Nat) → Π (TL : BktT) →
+  Π (D0 : Nat → OptN) → Π (D1 : Nat → OptN) → Π (D2 : Nat → OptN) →
+    Id Bool (HitL K TL) False →
+    (Π (Q : Nat) → Id OptN (D1 Q)
+      (boolRec (λ (W2 : Bool). OptN) (SomeN V) (D0 Q) (Eqb Q K))) →
+    (Π (Q : Nat) → Id OptN (D2 Q)
+      (boolRec (λ (W2 : Bool). OptN) (FindL Q TL) (D1 Q) (HitL Q TL))) →
+    Π (Q : Nat) → Id OptN (D2 Q)
+      (boolRec (λ (W2 : Bool). OptN)
+        (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
+        (HitL Q (Cons(Pair(K, V), TL)))) }
+example : chkL MoveStepPt MoveStepPtTy = true := by native_decide
+
+/-- Off-bucket frame between the entry and bucket-nilled compositions: any
+    slot other than `J` reads the same bucket in both. -/
+def NeBucketEq : Term := prog{
+  λ (J : Nat). λ (R : Nat).
+  λ (LS : Array J BktT). λ (BJ : BktT). λ (HS : Array R BktT).
+  λ (W : Nat).
+  λ (Ne : Id Bool (Eqb W J) False).
+    IfDec (Leb W J)
+      (Id (List (Σ (k : Nat). Nat))
+        (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) W)
+        (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) W))
+      (λ (El : Id Bool (Leb W J) True).
+        IdTrans (List (Σ (k : Nat). Nat))
+          (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) W)
+          (AgetB J LS W)
+          (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) W)
+          (AgetBCatLo R Nil HS J LS W (LeNeLt W J (LebTrueLe W J El) Ne))
+          (IdSym (List (Σ (k : Nat). Nat))
+            (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) W)
+            (AgetB J LS W)
+            (AgetBCatLo R BJ HS J LS W (LeNeLt W J (LebTrueLe W J El) Ne))))
+      (λ (El : Id Bool (Leb W J) False).
+        elim (ModDec J W (LebFalseGt W J El)) return
+          (λ (Wd : Σ (R2 : Nat). Id Nat W (Add J (S R2))).
+            Id (List (Σ (k : Nat). Nat))
+              (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) W)
+              (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) W)) {
+          Pair (Dd) (Hd) =>
+            NatRw (λ (W2 : Nat).
+                Id (List (Σ (k : Nat). Nat))
+                  (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) W2)
+                  (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) W2))
+              (Add J (S Dd)) W
+              (IdSym Nat W (Add J (S Dd)) Hd)
+              (IdTrans (List (Σ (k : Nat). Nat))
+                (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) (Add J (S Dd)))
+                (AgetB R HS Dd)
+                (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) (Add J (S Dd)))
+                (AgetBCatHi R Nil HS Dd J LS)
+                (IdSym (List (Σ (k : Nat). Nat))
+                  (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) (Add J (S Dd)))
+                  (AgetB R HS Dd)
+                  (AgetBCatHi R BJ HS Dd J LS))) }) }
+def NeBucketEqTy : Term := prog{
+  Π (J : Nat) → Π (R : Nat) →
+  Π (LS : Array J BktT) → Π (BJ : BktT) → Π (HS : Array R BktT) →
+  Π (W : Nat) →
+    Id Bool (Eqb W J) False →
+    Id (List (Σ (k : Nat). Nat))
+      (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) W)
+      (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) W) }
+example : chkL NeBucketEq NeBucketEqTy = true := by native_decide
+
+/-- The resize composition: the moved table answers like the model whenever the
+    model answers, and like the (all-`None`) fresh table otherwise — where the
+    model's misses collapse to the literal `None` through the caller-supplied
+    η-escape (`NotHitFindNone` at the old map's stuck bucket). -/
+def ResizeGlue : Term := prog{
+  λ (M : Nat → OptN). λ (DM : Nat → OptN). λ (DF : Nat → OptN). λ (DN : Nat → OptN).
+  λ (HN : Π (Q : Nat) → Id OptN (DN Q) NoneN).
+  λ (HM : Π (Q : Nat) → Id OptN (DM Q) (M Q)).
+  λ (HF : Π (Q : Nat) → Id OptN (DF Q)
+      (boolRec (λ (W2 : Bool). OptN) (DM Q) (DN Q) (IsSomeB (DM Q)))).
+  λ (He : Π (Q : Nat) → Id Bool (IsSomeB (M Q)) False → Id OptN (M Q) NoneN).
+    λ (Q : Nat).
+      IfDec (IsSomeB (M Q)) (Id OptN (DF Q) (M Q))
+        (λ (E2 : Id Bool (IsSomeB (M Q)) True).
+          IdTrans OptN (DF Q)
+            (boolRec (λ (W2 : Bool). OptN) (M Q) (DN Q) (IsSomeB (M Q)))
+            (M Q)
+            (IdTrans OptN (DF Q)
+              (boolRec (λ (W2 : Bool). OptN) (DM Q) (DN Q) (IsSomeB (DM Q)))
+              (boolRec (λ (W2 : Bool). OptN) (M Q) (DN Q) (IsSomeB (M Q)))
+              (HF Q)
+              (IdCongr OptN OptN
+                (λ (X : OptN). boolRec (λ (W2 : Bool). OptN) X (DN Q) (IsSomeB X))
+                (DM Q) (M Q) (HM Q)))
+            (BoolRwT OptN (M Q) (DN Q) (IsSomeB (M Q)) E2))
+        (λ (E2 : Id Bool (IsSomeB (M Q)) False).
+          IdTrans OptN (DF Q) (DN Q) (M Q)
+            (IdTrans OptN (DF Q)
+              (boolRec (λ (W2 : Bool). OptN) (M Q) (DN Q) (IsSomeB (M Q)))
+              (DN Q)
+              (IdTrans OptN (DF Q)
+                (boolRec (λ (W2 : Bool). OptN) (DM Q) (DN Q) (IsSomeB (DM Q)))
+                (boolRec (λ (W2 : Bool). OptN) (M Q) (DN Q) (IsSomeB (M Q)))
+                (HF Q)
+                (IdCongr OptN OptN
+                  (λ (X : OptN). boolRec (λ (W2 : Bool). OptN) X (DN Q) (IsSomeB X))
+                  (DM Q) (M Q) (HM Q)))
+              (BoolRwF OptN (M Q) (DN Q) (IsSomeB (M Q)) E2))
+            (IdTrans OptN (DN Q) NoneN (M Q)
+              (HN Q)
+              (IdSym OptN (M Q) NoneN (He Q E2)))) }
+def ResizeGlueTy : Term := prog{
+  Π (M : Nat → OptN) → Π (DM : Nat → OptN) → Π (DF : Nat → OptN) → Π (DN : Nat → OptN) →
+    (Π (Q : Nat) → Id OptN (DN Q) NoneN) →
+    (Π (Q : Nat) → Id OptN (DM Q) (M Q)) →
+    (Π (Q : Nat) → Id OptN (DF Q)
+      (boolRec (λ (W2 : Bool). OptN) (DM Q) (DN Q) (IsSomeB (DM Q)))) →
+    (Π (Q : Nat) → Id Bool (IsSomeB (M Q)) False → Id OptN (M Q) NoneN) →
+    Π (Q : Nat) → Id OptN (DF Q) (M Q) }
+example : chkL ResizeGlue ResizeGlueTy = true := by native_decide
+
+/-- Disjointness survives one bucket move: a key the NILLED source still
+    answers is off the moved bucket, so the after-move table still lacks it. -/
+def MoveDisjStep : Term := prog{
+  λ (J : Nat). λ (R : Nat).
+  λ (LS : Array J BktT). λ (BJ : BktT). λ (HS : Array R BktT).
+  λ (D0 : Nat → OptN). λ (D1 : Nat → OptN).
+  λ (HakJ : AllKeysMod (Add J (S R)) J BJ).
+  λ (HptB : Π (Q : Nat) → Id OptN (D1 Q)
+       (boolRec (λ (W2 : Bool). OptN) (FindL Q BJ) (D0 Q) (HitL Q BJ))).
+  λ (Hdisj : Π (K2 : Nat) →
+       Id Bool (IsSomeB (FindL K2 (AgetB (Add J (S R))
+         (arrCat J (S R) LS (acons R BJ HS)) (Mod K2 (Add J (S R)))))) True →
+       Id OptN (D0 K2) NoneN).
+    λ (K2 : Nat).
+    λ (Hs : Id Bool (IsSomeB (FindL K2 (AgetB (Add J (S R))
+        (arrCat J (S R) LS (acons R Nil HS)) (Mod K2 (Add J (S R)))))) True).
+      IfDec (Eqb (Mod K2 (Add J (S R))) J)
+        (Id OptN (D1 K2) NoneN)
+        (λ (E2 : Id Bool (Eqb (Mod K2 (Add J (S R))) J) True).
+          botElim (Id OptN (D1 K2) NoneN)
+            (BoolFT (IdTrans Bool False
+              (IsSomeB (FindL K2 (AgetB (Add J (S R))
+                (arrCat J (S R) LS (acons R Nil HS)) (Mod K2 (Add J (S R))))))
+              True
+              (IdSym Bool
+                (IsSomeB (FindL K2 (AgetB (Add J (S R))
+                  (arrCat J (S R) LS (acons R Nil HS)) (Mod K2 (Add J (S R))))))
+                False
+                (IdCongr (List (Σ (k : Nat). Nat)) Bool
+                  (λ (Wb : List (Σ (k : Nat). Nat)). IsSomeB (FindL K2 Wb))
+                  (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS))
+                    (Mod K2 (Add J (S R))))
+                  Nil
+                  (NatRw (λ (W : Nat).
+                      Id (List (Σ (k : Nat). Nat))
+                        (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) W)
+                        Nil)
+                    J (Mod K2 (Add J (S R)))
+                    (IdSym Nat (Mod K2 (Add J (S R))) J
+                      (EqbTrueEq (Mod K2 (Add J (S R))) J E2))
+                    (AgetBCatMid R Nil HS J LS))))
+              Hs)))
+        (λ (E2 : Id Bool (Eqb (Mod K2 (Add J (S R))) J) False).
+          IdTrans OptN (D1 K2) (D0 K2) NoneN
+            (IdTrans OptN (D1 K2)
+              (boolRec (λ (W2 : Bool). OptN) (FindL K2 BJ) (D0 K2) (HitL K2 BJ))
+              (D0 K2)
+              (HptB K2)
+              (BoolRwF OptN (FindL K2 BJ) (D0 K2) (HitL K2 BJ)
+                (NotHitOfMod (Add J (S R)) J K2 BJ HakJ E2)))
+            (Hdisj K2
+              (IdTrans Bool
+                (IsSomeB (FindL K2 (AgetB (Add J (S R))
+                  (arrCat J (S R) LS (acons R BJ HS)) (Mod K2 (Add J (S R))))))
+                (IsSomeB (FindL K2 (AgetB (Add J (S R))
+                  (arrCat J (S R) LS (acons R Nil HS)) (Mod K2 (Add J (S R))))))
+                True
+                (IdCongr (List (Σ (k : Nat). Nat)) Bool
+                  (λ (Wb : List (Σ (k : Nat). Nat)). IsSomeB (FindL K2 Wb))
+                  (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS))
+                    (Mod K2 (Add J (S R))))
+                  (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS))
+                    (Mod K2 (Add J (S R))))
+                  (IdSym (List (Σ (k : Nat). Nat))
+                    (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS))
+                      (Mod K2 (Add J (S R))))
+                    (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS))
+                      (Mod K2 (Add J (S R))))
+                    (NeBucketEq J R LS BJ HS (Mod K2 (Add J (S R))) E2)))
+                Hs))) }
+def MoveDisjStepTy : Term := prog{
+  Π (J : Nat) → Π (R : Nat) →
+  Π (LS : Array J BktT) → Π (BJ : BktT) → Π (HS : Array R BktT) →
+  Π (D0 : Nat → OptN) → Π (D1 : Nat → OptN) →
+    AllKeysMod (Add J (S R)) J BJ →
+    (Π (Q : Nat) → Id OptN (D1 Q)
+      (boolRec (λ (W2 : Bool). OptN) (FindL Q BJ) (D0 Q) (HitL Q BJ))) →
+    (Π (K2 : Nat) →
+      Id Bool (IsSomeB (FindL K2 (AgetB (Add J (S R))
+        (arrCat J (S R) LS (acons R BJ HS)) (Mod K2 (Add J (S R)))))) True →
+      Id OptN (D0 K2) NoneN) →
+    Π (K2 : Nat) →
+      Id Bool (IsSomeB (FindL K2 (AgetB (Add J (S R))
+        (arrCat J (S R) LS (acons R Nil HS)) (Mod K2 (Add J (S R)))))) True →
+      Id OptN (D1 K2) NoneN }
+example : chkL MoveDisjStep MoveDisjStepTy = true := by native_decide
+
+/-- The already-moved prefix stays `Nil` after one more bucket is nilled. -/
+def MoveNilStep : Term := prog{
+  λ (J : Nat). λ (R : Nat).
+  λ (LS : Array J BktT). λ (BJ : BktT). λ (HS : Array R BktT).
+  λ (HsrcLo : Π (J2 : Nat) → Id Bool (Leb (S J2) J) True →
+       Id (List (Σ (k : Nat). Nat))
+         (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) J2) Nil).
+    λ (J2 : Nat). λ (Hb : Id Bool (Leb (S J2) (S J)) True).
+      IfDec (Eqb J2 J)
+        (Id (List (Σ (k : Nat). Nat))
+          (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) J2) Nil)
+        (λ (E2 : Id Bool (Eqb J2 J) True).
+          NatRw (λ (W : Nat).
+              Id (List (Σ (k : Nat). Nat))
+                (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) W) Nil)
+            J J2 (IdSym Nat J2 J (EqbTrueEq J2 J E2))
+            (AgetBCatMid R Nil HS J LS))
+        (λ (E2 : Id Bool (Eqb J2 J) False).
+          IdTrans (List (Σ (k : Nat). Nat))
+            (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) J2)
+            (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) J2)
+            Nil
+            (NeBucketEq J R LS BJ HS J2 E2)
+            (HsrcLo J2
+              (LeLebTrue (S J2) J
+                (LeNeLt J2 J (LebTrueLe J2 J Hb) E2)))) }
+def MoveNilStepTy : Term := prog{
+  Π (J : Nat) → Π (R : Nat) →
+  Π (LS : Array J BktT) → Π (BJ : BktT) → Π (HS : Array R BktT) →
+    (Π (J2 : Nat) → Id Bool (Leb (S J2) J) True →
+      Id (List (Σ (k : Nat). Nat))
+        (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) J2) Nil) →
+    Π (J2 : Nat) → Id Bool (Leb (S J2) (S J)) True →
+      Id (List (Σ (k : Nat). Nat))
+        (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) J2) Nil }
+example : chkL MoveNilStep MoveNilStepTy = true := by native_decide
+
+/-- Frame case of the per-level composition: `q`'s slot is off the moved
+    bucket, both array states show the same bucket there, and the dst chain
+    collapses `D1` to `D0`. -/
+def MoveSlotsFrame : Term := prog{
+  λ (AE : BktT). λ (AN : BktT). λ (W : BktT).
+  λ (D0 : Nat → OptN). λ (D1 : Nat → OptN). λ (D2 : Nat → OptN).
+  λ (Q : Nat).
+  λ (HE : Id BktT AE W). λ (HN : Id BktT AN W).
+  λ (H10 : Id OptN (D1 Q) (D0 Q)).
+  λ (HR : Id OptN (D2 Q)
+      (boolRec (λ (W2 : Bool). OptN) (FindL Q AN) (D1 Q) (IsSomeB (FindL Q AN)))).
+    IdTrans OptN (D2 Q)
+      (boolRec (λ (W2 : Bool). OptN) (FindL Q W) (D0 Q) (IsSomeB (FindL Q W)))
+      (boolRec (λ (W2 : Bool). OptN) (FindL Q AE) (D0 Q) (IsSomeB (FindL Q AE)))
+      (IdTrans OptN (D2 Q)
+        (boolRec (λ (W2 : Bool). OptN) (FindL Q W) (D1 Q) (IsSomeB (FindL Q W)))
+        (boolRec (λ (W2 : Bool). OptN) (FindL Q W) (D0 Q) (IsSomeB (FindL Q W)))
+        (IdTrans OptN (D2 Q)
+          (boolRec (λ (W2 : Bool). OptN) (FindL Q AN) (D1 Q) (IsSomeB (FindL Q AN)))
+          (boolRec (λ (W2 : Bool). OptN) (FindL Q W) (D1 Q) (IsSomeB (FindL Q W)))
+          HR
+          (IdCongr BktT OptN
+            (λ (Wb : BktT). boolRec (λ (W2 : Bool). OptN)
+              (FindL Q Wb) (D1 Q) (IsSomeB (FindL Q Wb)))
+            AN W HN))
+        (IdCongr OptN OptN
+          (λ (Wo : OptN). boolRec (λ (W2 : Bool). OptN)
+            (FindL Q W) Wo (IsSomeB (FindL Q W)))
+          (D1 Q) (D0 Q) H10))
+      (IdCongr BktT OptN
+        (λ (Wb : BktT). boolRec (λ (W2 : Bool). OptN)
+          (FindL Q Wb) (D0 Q) (IsSomeB (FindL Q Wb)))
+        W AE (IdSym BktT AE W HE)) }
+def MoveSlotsFrameTy : Term := prog{
+  Π (AE : BktT) → Π (AN : BktT) → Π (W : BktT) →
+  Π (D0 : Nat → OptN) → Π (D1 : Nat → OptN) → Π (D2 : Nat → OptN) →
+  Π (Q : Nat) →
+    Id BktT AE W → Id BktT AN W →
+    Id OptN (D1 Q) (D0 Q) →
+    Id OptN (D2 Q)
+      (boolRec (λ (W2 : Bool). OptN) (FindL Q AN) (D1 Q) (IsSomeB (FindL Q AN))) →
+    Id OptN (D2 Q)
+      (boolRec (λ (W2 : Bool). OptN) (FindL Q AE) (D0 Q) (IsSomeB (FindL Q AE))) }
+example : chkL MoveSlotsFrame MoveSlotsFrameTy = true := by native_decide
+
+/-- The per-level pointwise composition: moving bucket `J` composes with the
+    recursive move of the (bucket-nilled) rest into the whole-level claim. -/
+def MoveSlotsPt : Term := prog{
+  λ (J : Nat). λ (R : Nat).
+  λ (LS : Array J BktT). λ (BJ : BktT). λ (HS : Array R BktT).
+  λ (D0 : Nat → OptN). λ (D1 : Nat → OptN). λ (D2 : Nat → OptN).
+  λ (HakJ : AllKeysMod (Add J (S R)) J BJ).
+  λ (HptB : Π (Q : Nat) → Id OptN (D1 Q)
+       (boolRec (λ (W2 : Bool). OptN) (FindL Q BJ) (D0 Q) (HitL Q BJ))).
+  λ (HptR : Π (Q : Nat) → Id OptN (D2 Q)
+       (boolRec (λ (W2 : Bool). OptN)
+         (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS))
+           (Mod Q (Add J (S R)))))
+         (D1 Q)
+         (IsSomeB (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS))
+           (Mod Q (Add J (S R)))))))).
+    λ (Q : Nat).
+      IfDec (Eqb (Mod Q (Add J (S R))) J)
+        (Id OptN (D2 Q)
+          (boolRec (λ (W2 : Bool). OptN)
+            (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS))
+              (Mod Q (Add J (S R)))))
+            (D0 Q)
+            (IsSomeB (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS))
+              (Mod Q (Add J (S R))))))))
+        (λ (Ej : Id Bool (Eqb (Mod Q (Add J (S R))) J) True).
+          NatRw (λ (W : Nat).
+              Id OptN (D2 Q)
+                (boolRec (λ (W2 : Bool). OptN)
+                  (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) W))
+                  (D0 Q)
+                  (IsSomeB (FindL Q
+                    (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) W)))))
+            J (Mod Q (Add J (S R)))
+            (IdSym Nat (Mod Q (Add J (S R))) J
+              (EqbTrueEq (Mod Q (Add J (S R))) J Ej))
+            (IdTrans OptN (D2 Q)
+              (boolRec (λ (W2 : Bool). OptN) (FindL Q BJ) (D0 Q) (HitL Q BJ))
+              (boolRec (λ (W2 : Bool). OptN)
+                (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) J))
+                (D0 Q)
+                (IsSomeB (FindL Q
+                  (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) J))))
+              (IdTrans OptN (D2 Q) (D1 Q)
+                (boolRec (λ (W2 : Bool). OptN) (FindL Q BJ) (D0 Q) (HitL Q BJ))
+                (IdTrans OptN (D2 Q)
+                  (boolRec (λ (W2 : Bool). OptN)
+                    (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS))
+                      (Mod Q (Add J (S R)))))
+                    (D1 Q)
+                    (IsSomeB (FindL Q
+                      (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS))
+                        (Mod Q (Add J (S R)))))))
+                  (D1 Q)
+                  (HptR Q)
+                  (IdCongr BktT OptN
+                    (λ (Wb : BktT). boolRec (λ (W2 : Bool). OptN)
+                      (FindL Q Wb) (D1 Q) (IsSomeB (FindL Q Wb)))
+                    (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS))
+                      (Mod Q (Add J (S R))))
+                    Nil
+                    (NatRw (λ (W : Nat).
+                        Id (List (Σ (k : Nat). Nat))
+                          (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) W)
+                          Nil)
+                      J (Mod Q (Add J (S R)))
+                      (IdSym Nat (Mod Q (Add J (S R))) J
+                        (EqbTrueEq (Mod Q (Add J (S R))) J Ej))
+                      (AgetBCatMid R Nil HS J LS))))
+                (HptB Q))
+              (IdSym OptN
+                (boolRec (λ (W2 : Bool). OptN)
+                  (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) J))
+                  (D0 Q)
+                  (IsSomeB (FindL Q
+                    (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) J))))
+                (boolRec (λ (W2 : Bool). OptN) (FindL Q BJ) (D0 Q) (HitL Q BJ))
+                (IdCongr BktT OptN
+                  (λ (Wb : BktT). boolRec (λ (W2 : Bool). OptN)
+                    (FindL Q Wb) (D0 Q) (IsSomeB (FindL Q Wb)))
+                  (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) J)
+                  BJ
+                  (AgetBCatMid R BJ HS J LS)))))
+        (λ (Ej : Id Bool (Eqb (Mod Q (Add J (S R))) J) False).
+          IfDec (Leb (Mod Q (Add J (S R))) J)
+            (Id OptN (D2 Q)
+              (boolRec (λ (W2 : Bool). OptN)
+                (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS))
+                  (Mod Q (Add J (S R)))))
+                (D0 Q)
+                (IsSomeB (FindL Q
+                  (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS))
+                    (Mod Q (Add J (S R))))))))
+            (λ (El : Id Bool (Leb (Mod Q (Add J (S R))) J) True).
+              MoveSlotsFrame
+                (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS))
+                  (Mod Q (Add J (S R))))
+                (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS))
+                  (Mod Q (Add J (S R))))
+                (AgetB J LS (Mod Q (Add J (S R))))
+                D0 D1 D2 Q
+                (AgetBCatLo R BJ HS J LS (Mod Q (Add J (S R)))
+                  (LeNeLt (Mod Q (Add J (S R))) J
+                    (LebTrueLe (Mod Q (Add J (S R))) J El) Ej))
+                (AgetBCatLo R Nil HS J LS (Mod Q (Add J (S R)))
+                  (LeNeLt (Mod Q (Add J (S R))) J
+                    (LebTrueLe (Mod Q (Add J (S R))) J El) Ej))
+                (IdTrans OptN (D1 Q)
+                  (boolRec (λ (W2 : Bool). OptN) (FindL Q BJ) (D0 Q) (HitL Q BJ))
+                  (D0 Q)
+                  (HptB Q)
+                  (BoolRwF OptN (FindL Q BJ) (D0 Q) (HitL Q BJ)
+                    (NotHitOfMod (Add J (S R)) J Q BJ HakJ Ej)))
+                (HptR Q))
+            (λ (El : Id Bool (Leb (Mod Q (Add J (S R))) J) False).
+              elim (ModDec J (Mod Q (Add J (S R)))
+                  (LebFalseGt (Mod Q (Add J (S R))) J El)) return
+                (λ (Wd : Σ (R2 : Nat). Id Nat (Mod Q (Add J (S R))) (Add J (S R2))).
+                  Id OptN (D2 Q)
+                    (boolRec (λ (W2 : Bool). OptN)
+                      (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS))
+                        (Mod Q (Add J (S R)))))
+                      (D0 Q)
+                      (IsSomeB (FindL Q
+                        (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS))
+                          (Mod Q (Add J (S R)))))))) {
+                Pair (Dd) (Hd) =>
+                  MoveSlotsFrame
+                    (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS))
+                      (Mod Q (Add J (S R))))
+                    (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS))
+                      (Mod Q (Add J (S R))))
+                    (AgetB R HS Dd)
+                    D0 D1 D2 Q
+                    (NatRw (λ (W : Nat).
+                        Id (List (Σ (k : Nat). Nat))
+                          (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) W)
+                          (AgetB R HS Dd))
+                      (Add J (S Dd)) (Mod Q (Add J (S R)))
+                      (IdSym Nat (Mod Q (Add J (S R))) (Add J (S Dd)) Hd)
+                      (AgetBCatHi R BJ HS Dd J LS))
+                    (NatRw (λ (W : Nat).
+                        Id (List (Σ (k : Nat). Nat))
+                          (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) W)
+                          (AgetB R HS Dd))
+                      (Add J (S Dd)) (Mod Q (Add J (S R)))
+                      (IdSym Nat (Mod Q (Add J (S R))) (Add J (S Dd)) Hd)
+                      (AgetBCatHi R Nil HS Dd J LS))
+                    (IdTrans OptN (D1 Q)
+                      (boolRec (λ (W2 : Bool). OptN) (FindL Q BJ) (D0 Q) (HitL Q BJ))
+                      (D0 Q)
+                      (HptB Q)
+                      (BoolRwF OptN (FindL Q BJ) (D0 Q) (HitL Q BJ)
+                        (NotHitOfMod (Add J (S R)) J Q BJ HakJ Ej)))
+                    (HptR Q) })) }
+def MoveSlotsPtTy : Term := prog{
+  Π (J : Nat) → Π (R : Nat) →
+  Π (LS : Array J BktT) → Π (BJ : BktT) → Π (HS : Array R BktT) →
+  Π (D0 : Nat → OptN) → Π (D1 : Nat → OptN) → Π (D2 : Nat → OptN) →
+    AllKeysMod (Add J (S R)) J BJ →
+    (Π (Q : Nat) → Id OptN (D1 Q)
+      (boolRec (λ (W2 : Bool). OptN) (FindL Q BJ) (D0 Q) (HitL Q BJ))) →
+    (Π (Q : Nat) → Id OptN (D2 Q)
+      (boolRec (λ (W2 : Bool). OptN)
+        (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS))
+          (Mod Q (Add J (S R)))))
+        (D1 Q)
+        (IsSomeB (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS))
+          (Mod Q (Add J (S R)))))))) →
+    Π (Q : Nat) → Id OptN (D2 Q)
+      (boolRec (λ (W2 : Bool). OptN)
+        (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS))
+          (Mod Q (Add J (S R)))))
+        (D0 Q)
+        (IsSomeB (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS))
+          (Mod Q (Add J (S R))))))) }
+example : chkL MoveSlotsPt MoveSlotsPtTy = true := by native_decide
+
+/-- The moved head stays fresh for the tail's move: derived OUTSIDE the walk,
+    because a λ inside a recursive fn may not cite that fn's own Π-typed
+    parameter (measured: lamFeedG/J below the chain; snapshots do not help). -/
+def MoveFreshStep : Term := prog{
+  λ (C2v : Nat). λ (K : Nat). λ (V : Nat). λ (TL : BktT).
+  λ (D0A : Array C2v BktT). λ (D1A : Array C2v BktT).
+  λ (Hnd0 : Id Bool (HitL K TL) False).
+  λ (Hpt : Π (Q : Nat) → Id OptN (FindL Q (AgetB C2v D1A (Mod Q C2v)))
+      (boolRec (λ (W2 : Bool). OptN) (SomeN V)
+        (FindL Q (AgetB C2v D0A (Mod Q C2v))) (Eqb Q K))).
+  λ (Hfr0 : Π (K2 : Nat) → Π (Hk2 : Id Bool (HitL K2 (Cons(Pair(K, V), TL))) True) →
+      Id OptN (FindL K2 (AgetB C2v D0A (Mod K2 C2v))) NoneN).
+    (λ (K2 : Nat). λ (Hk : Id Bool (HitL K2 TL) True).
+                  IfDec (Eqb K2 K)
+                    (Id OptN (FindL K2 (AgetB C2v D1A (Mod K2 C2v))) NoneN)
+                    (λ (E2 : Id Bool (Eqb K2 K) True).
+                      botElim (Id OptN (FindL K2 (AgetB C2v D1A (Mod K2 C2v))) NoneN)
+                        (BoolTF (IdTrans Bool True (HitL K TL) False
+                          (IdSym Bool (HitL K TL) True
+                            (NatRw (λ (W : Nat). Id Bool (HitL W TL) True) K2 K
+                              (EqbTrueEq K2 K E2) Hk))
+                          (Hnd0))))
+                    (λ (E2 : Id Bool (Eqb K2 K) False).
+                      IdTrans OptN (FindL K2 (AgetB C2v D1A (Mod K2 C2v)))
+                        (FindL K2 (AgetB C2v D0A (Mod K2 C2v))) NoneN
+                        (IdTrans OptN (FindL K2 (AgetB C2v D1A (Mod K2 C2v)))
+                          (boolRec (λ (W2 : Bool). OptN) (SomeN V)
+                            (FindL K2 (AgetB C2v D0A (Mod K2 C2v))) (Eqb K2 K))
+                          (FindL K2 (AgetB C2v D0A (Mod K2 C2v)))
+                          (Hpt K2)
+                          (BoolRwF OptN (SomeN V)
+                            (FindL K2 (AgetB C2v D0A (Mod K2 C2v))) (Eqb K2 K) E2))
+                        (Hfr0 K2 (IdSym Bool True (HitL K2 (Cons(Pair(K, V), TL)))
+                          (HitEvMiss K V K2 TL True
+                            (IdTrans Bool (Eqb K K2) (Eqb K2 K) False
+                              (EqbSym K K2) E2)
+                            (IdSym Bool (HitL K2 TL) True Hk)))))) }
+def MoveFreshStepTy : Term := prog{
+  Π (C2v : Nat) → Π (K : Nat) → Π (V : Nat) → Π (TL : BktT) →
+  Π (D0A : Array C2v BktT) → Π (D1A : Array C2v BktT) →
+    Id Bool (HitL K TL) False →
+    (Π (Q : Nat) → Id OptN (FindL Q (AgetB C2v D1A (Mod Q C2v)))
+      (boolRec (λ (W2 : Bool). OptN) (SomeN V)
+        (FindL Q (AgetB C2v D0A (Mod Q C2v))) (Eqb Q K))) →
+    (Π (K2 : Nat) → Π (Hk2 : Id Bool (HitL K2 (Cons(Pair(K, V), TL))) True) →
+      Id OptN (FindL K2 (AgetB C2v D0A (Mod K2 C2v))) NoneN) →
+    Π (K2 : Nat) → Π (Hk2 : Id Bool (HitL K2 TL) True) →
+      Id OptN (FindL K2 (AgetB C2v D1A (Mod K2 C2v))) NoneN }
+example : chkL MoveFreshStep MoveFreshStepTy = true := by native_decide
+
+/-- The moved bucket's keys are fresh in dst: the level's disjointness at the
+    entry composition, specialized through the slot identity — outside the walk
+    for the same recursive-λ reason. -/
+def MoveSlotsFresh : Term := prog{
+  λ (Jv : Nat). λ (Rv : Nat). λ (C2v : Nat).
+  λ (LSv : Array Jv BktT). λ (BJv : BktT). λ (HSv : Array Rv BktT).
+  λ (DDv : Array C2v BktT).
+  λ (HakJv : AllKeysMod (Add Jv (S Rv)) Jv BJv).
+  λ (Hdisj0 : Π (K2 : Nat) → Π (Hs2 : Id Bool (IsSomeB (FindL K2
+      (AgetB (Add Jv (S Rv)) (arrCat Jv (S Rv) LSv (acons Rv BJv HSv))
+        (Mod K2 (Add Jv (S Rv)))))) True) →
+      Id OptN (FindL K2 (AgetB C2v DDv (Mod K2 C2v))) NoneN).
+    (λ (K2 : Nat). λ (Hk : Id Bool (HitL K2 BJv) True).
+                Hdisj0 K2
+                  (IdTrans Bool
+                    (IsSomeB (FindL K2 (AgetB (Add Jv (S Rv))
+                      (arrCat Jv (S Rv) LSv (acons Rv BJv HSv)) (Mod K2 (Add Jv (S Rv))))))
+                    (IsSomeB (FindL K2 BJv)) True
+                    (IdCongr (List (Σ (k : Nat). Nat)) Bool
+                      (λ (Wb : List (Σ (k : Nat). Nat)). IsSomeB (FindL K2 Wb))
+                      (AgetB (Add Jv (S Rv)) (arrCat Jv (S Rv) LSv (acons Rv BJv HSv)) (Mod K2 (Add Jv (S Rv))))
+                      BJv
+                      (NatRw (λ (W : Nat).
+                          Id (List (Σ (k : Nat). Nat))
+                            (AgetB (Add Jv (S Rv)) (arrCat Jv (S Rv) LSv (acons Rv BJv HSv)) W)
+                            BJv)
+                        Jv (Mod K2 (Add Jv (S Rv)))
+                        (IdSym Nat (Mod K2 (Add Jv (S Rv))) Jv (HitKeyMod (Add Jv (S Rv)) Jv K2 BJv HakJv Hk))
+                        (AgetBCatMid Rv BJv HSv Jv LSv)))
+                    Hk)) }
+def MoveSlotsFreshTy : Term := prog{
+  Π (Jv : Nat) → Π (Rv : Nat) → Π (C2v : Nat) →
+  Π (LSv : Array Jv BktT) → Π (BJv : BktT) → Π (HSv : Array Rv BktT) →
+  Π (DDv : Array C2v BktT) →
+    AllKeysMod (Add Jv (S Rv)) Jv BJv →
+    (Π (K2 : Nat) → Π (Hs2 : Id Bool (IsSomeB (FindL K2
+      (AgetB (Add Jv (S Rv)) (arrCat Jv (S Rv) LSv (acons Rv BJv HSv))
+        (Mod K2 (Add Jv (S Rv)))))) True) →
+      Id OptN (FindL K2 (AgetB C2v DDv (Mod K2 C2v))) NoneN) →
+    Π (K2 : Nat) → Π (Hk2 : Id Bool (HitL K2 BJv) True) →
+      Id OptN (FindL K2 (AgetB C2v DDv (Mod K2 C2v))) NoneN }
+example : chkL MoveSlotsFresh MoveSlotsFreshTy = true := by native_decide
+
+/-- MoveSlots' base case, pointwise: every slot is below `j = capF`, so the
+    drained source answers `None` everywhere and the fold's claim collapses to
+    the untouched dst. Outside the walk (the recursive-λ restriction). -/
+def MoveBasePt : Term := prog{
+  λ (CFv : Nat). λ (Jv : Nat). λ (C2v : Nat).
+  λ (Sv : Array CFv BktT). λ (Dv : Array C2v BktT).
+  λ (HLe1Fv : Le (S Z) CFv). λ (Hjz : Id Nat CFv Jv).
+  λ (Hlo : Π (J2 : Nat) → Π (Hb2 : Id Bool (Leb (S J2) Jv) True) →
+      Id (List (Σ (k : Nat). Nat)) (AgetB CFv Sv J2) Nil).
+    λ (Q : Nat).
+      IdSym OptN
+        (boolRec (λ (W2 : Bool). OptN)
+          (FindL Q (AgetB CFv Sv (Mod Q CFv)))
+          (FindL Q (AgetB C2v Dv (Mod Q C2v)))
+          (IsSomeB (FindL Q (AgetB CFv Sv (Mod Q CFv)))))
+        (FindL Q (AgetB C2v Dv (Mod Q C2v)))
+        (IdCongr (List (Σ (k : Nat). Nat)) OptN
+          (λ (Wb : List (Σ (k : Nat). Nat)).
+            boolRec (λ (W2 : Bool). OptN)
+              (FindL Q Wb)
+              (FindL Q (AgetB C2v Dv (Mod Q C2v)))
+              (IsSomeB (FindL Q Wb)))
+          (AgetB CFv Sv (Mod Q CFv)) Nil
+          (Hlo (Mod Q CFv)
+            (LeLebTrue (S (Mod Q CFv)) Jv
+              (NatRw (λ (W : Nat). Le (S (Mod Q CFv)) W) CFv Jv Hjz
+                (ModLtN Q CFv HLe1Fv))))) }
+def MoveBasePtTy : Term := prog{
+  Π (CFv : Nat) → Π (Jv : Nat) → Π (C2v : Nat) →
+  Π (Sv : Array CFv BktT) → Π (Dv : Array C2v BktT) →
+    Le (S Z) CFv → Id Nat CFv Jv →
+    (Π (J2 : Nat) → Π (Hb2 : Id Bool (Leb (S J2) Jv) True) →
+      Id (List (Σ (k : Nat). Nat)) (AgetB CFv Sv J2) Nil) →
+    Π (Q : Nat) →
+      Id OptN (FindL Q (AgetB C2v Dv (Mod Q C2v)))
+        (boolRec (λ (W2 : Bool). OptN)
+          (FindL Q (AgetB CFv Sv (Mod Q CFv)))
+          (FindL Q (AgetB C2v Dv (Mod Q C2v)))
+          (IsSomeB (FindL Q (AgetB CFv Sv (Mod Q CFv))))) }
+example : chkL MoveBasePt MoveBasePtTy = true := by native_decide
+
+/-- MoveSlots' base case, drainedness at every in-range index. -/
+def MoveBaseNil : Term := prog{
+  λ (CFv : Nat). λ (Jv : Nat). λ (Sv : Array CFv BktT).
+  λ (Hjz : Id Nat CFv Jv).
+  λ (Hlo : Π (J2 : Nat) → Π (Hb2 : Id Bool (Leb (S J2) Jv) True) →
+      Id (List (Σ (k : Nat). Nat)) (AgetB CFv Sv J2) Nil).
+    λ (J2 : Nat). λ (Hb : Le (S J2) CFv).
+      Hlo J2 (LeLebTrue (S J2) Jv
+        (NatRw (λ (W : Nat). Le (S J2) W) CFv Jv Hjz Hb)) }
+def MoveBaseNilTy : Term := prog{
+  Π (CFv : Nat) → Π (Jv : Nat) → Π (Sv : Array CFv BktT) →
+    Id Nat CFv Jv →
+    (Π (J2 : Nat) → Π (Hb2 : Id Bool (Leb (S J2) Jv) True) →
+      Id (List (Σ (k : Nat). Nat)) (AgetB CFv Sv J2) Nil) →
+    Π (J2 : Nat) → Π (Hb : Le (S J2) CFv) →
+      Id (List (Σ (k : Nat). Nat)) (AgetB CFv Sv J2) Nil }
+example : chkL MoveBaseNil MoveBaseNilTy = true := by native_decide
+
+/-- Rewrite the bucket everywhere in a one-bucket move claim. -/
+def AgetBktCongr : Term := prog{
+  λ (B1 : BktT). λ (A1 : BktT).
+  λ (D0 : Nat → OptN). λ (D1 : Nat → OptN).
+  λ (Hb : Id (List (Σ (k : Nat). Nat)) B1 A1).
+  λ (Hpt : Π (Q : Nat) → Id OptN (D1 Q)
+      (boolRec (λ (W2 : Bool). OptN) (FindL Q B1) (D0 Q) (HitL Q B1))).
+    λ (Q : Nat).
+      IdTrans OptN (D1 Q)
+        (boolRec (λ (W2 : Bool). OptN) (FindL Q B1) (D0 Q) (HitL Q B1))
+        (boolRec (λ (W2 : Bool). OptN) (FindL Q A1) (D0 Q) (HitL Q A1))
+        (Hpt Q)
+        (IdCongr (List (Σ (k : Nat). Nat)) OptN
+          (λ (Wb : List (Σ (k : Nat). Nat)). boolRec (λ (W2 : Bool). OptN)
+            (FindL Q Wb) (D0 Q) (IsSomeB (FindL Q Wb)))
+          B1 A1 Hb) }
+def AgetBktCongrTy : Term := prog{
+  Π (B1 : BktT) → Π (A1 : BktT) →
+  Π (D0 : Nat → OptN) → Π (D1 : Nat → OptN) →
+    Id (List (Σ (k : Nat). Nat)) B1 A1 →
+    (Π (Q : Nat) → Id OptN (D1 Q)
+      (boolRec (λ (W2 : Bool). OptN) (FindL Q B1) (D0 Q) (HitL Q B1))) →
+    Π (Q : Nat) → Id OptN (D1 Q)
+      (boolRec (λ (W2 : Bool). OptN) (FindL Q A1) (D0 Q) (HitL Q A1)) }
+example : chkL AgetBktCongr AgetBktCongrTy = true := by native_decide
+
+/-- A slot's invariant, read off the fold at an arbitrary in-range index — the
+    carve-free extraction (`MoveOne`'s caller has no composition in scope). -/
+def SFAgetInv : Term := prog{
+  λ (Cap : Nat). λ (M : Nat). λ (A : Array M (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
+        Π (I0 : Nat) → Π (Hs : SlotsFrom Cap Mz Az I0) →
+        Π (J : Nat) → Π (Hb : Le (S J) Mz) →
+          SlotInv Cap (Add J I0) (AgetB Mz Az J))
+      (λ (I0 : Nat). λ (Hs : Unit). λ (J : Nat). λ (Hb : Le (S J) Z).
+        botElim (SlotInv Cap (Add J I0) (AgetB Z Arr() J)) Hb)
+      (λ (K : Nat). λ (H2 : List (Σ (k : Nat). Nat)).
+        λ (T : Array K (List (Σ (k : Nat). Nat))).
+        λ (Ih : Π (I0 : Nat) → Π (Hs : SlotsFrom Cap K T I0) →
+            Π (J : Nat) → Π (Hb : Le (S J) K) →
+              SlotInv Cap (Add J I0) (AgetB K T J)).
+          λ (I0 : Nat).
+          λ (Hs : Σ (Hx : SlotInv Cap I0 H2). SlotsFrom Cap K T (S I0)).
+          λ (J : Nat).
+            elim J return (λ (Jz : Nat). Π (Hb : Le (S Jz) (S K)) →
+                SlotInv Cap (Add Jz I0) (AgetB (S K) (acons K H2 T) Jz)) {
+              Z => λ (Hb : Le (S Z) (S K)).
+                FstT (SlotInv Cap I0 H2) (SlotsFrom Cap K T (S I0)) Hs,
+              S (J2) Ihj => λ (Hb : Le (S (S J2)) (S K)).
+                NatRw (λ (W : Nat). SlotInv Cap W (AgetB K T J2))
+                  (Add J2 (S I0)) (S (Add J2 I0))
+                  (AddSucc J2 I0)
+                  (Ih (S I0)
+                    (SndT (SlotInv Cap I0 H2) (SlotsFrom Cap K T (S I0)) Hs)
+                    J2 Hb) })
+      M A }
+def SFAgetInvTy : Term := prog{
+  Π (Cap : Nat) → Π (M : Nat) → Π (A : Array M (List (Σ (k : Nat). Nat))) →
+  Π (I0 : Nat) → Π (Hs : SlotsFrom Cap M A I0) →
+  Π (J : Nat) → Π (Hb : Le (S J) M) →
+    SlotInv Cap (Add J I0) (AgetB M A J) }
+example : chkL SFAgetInv SFAgetInvTy = true := by native_decide
+
+/-- The per-level pointwise composition, carve-free: the level's dst-change
+    (bucket J moved) and the recursive claim over the drained-at-J source
+    compose into the whole-level claim, using only the three opaque-array
+    facts `MoveOne` exports. -/
+def MoveLevelPt : Term := prog{
+  λ (CF : Nat). λ (Jv : Nat).
+  λ (S0 : Array CF (List (Σ (k : Nat). Nat))).
+  λ (SM : Array CF (List (Σ (k : Nat). Nat))).
+  λ (D0 : Nat → OptN). λ (D1 : Nat → OptN). λ (D2 : Nat → OptN).
+  λ (HakJ : AllKeysMod CF Jv (AgetB CF S0 Jv)).
+  λ (Hnil : Id (List (Σ (k : Nat). Nat)) (AgetB CF SM Jv) Nil).
+  λ (Hfrm : Π (J2 : Nat) → Π (Hne : Id Bool (Eqb J2 Jv) False) →
+      Id (List (Σ (k : Nat). Nat)) (AgetB CF SM J2) (AgetB CF S0 J2)).
+  λ (HptB : Π (Q : Nat) → Id OptN (D1 Q)
+      (boolRec (λ (W2 : Bool). OptN) (FindL Q (AgetB CF S0 Jv)) (D0 Q)
+        (HitL Q (AgetB CF S0 Jv)))).
+  λ (HptR : Π (Q : Nat) → Id OptN (D2 Q)
+      (boolRec (λ (W2 : Bool). OptN) (FindL Q (AgetB CF SM (Mod Q CF))) (D1 Q)
+        (IsSomeB (FindL Q (AgetB CF SM (Mod Q CF)))))).
+    λ (Q : Nat).
+      IfDec (Eqb (Mod Q CF) Jv)
+        (Id OptN (D2 Q)
+          (boolRec (λ (W2 : Bool). OptN) (FindL Q (AgetB CF S0 (Mod Q CF))) (D0 Q)
+            (IsSomeB (FindL Q (AgetB CF S0 (Mod Q CF))))))
+        (λ (Ej : Id Bool (Eqb (Mod Q CF) Jv) True).
+          NatRw (λ (W : Nat).
+              Id OptN (D2 Q)
+                (boolRec (λ (W2 : Bool). OptN) (FindL Q (AgetB CF S0 W)) (D0 Q)
+                  (IsSomeB (FindL Q (AgetB CF S0 W)))))
+            Jv (Mod Q CF)
+            (IdSym Nat (Mod Q CF) Jv (EqbTrueEq (Mod Q CF) Jv Ej))
+            (IdTrans OptN (D2 Q) (D1 Q)
+              (boolRec (λ (W2 : Bool). OptN) (FindL Q (AgetB CF S0 Jv)) (D0 Q)
+                (IsSomeB (FindL Q (AgetB CF S0 Jv))))
+              (IdTrans OptN (D2 Q)
+                (boolRec (λ (W2 : Bool). OptN)
+                  (FindL Q (AgetB CF SM (Mod Q CF))) (D1 Q)
+                  (IsSomeB (FindL Q (AgetB CF SM (Mod Q CF)))))
+                (D1 Q)
+                (HptR Q)
+                (IdCongr (List (Σ (k : Nat). Nat)) OptN
+                  (λ (Wb : List (Σ (k : Nat). Nat)).
+                    boolRec (λ (W2 : Bool). OptN) (FindL Q Wb) (D1 Q)
+                      (IsSomeB (FindL Q Wb)))
+                  (AgetB CF SM (Mod Q CF)) Nil
+                  (NatRw (λ (W : Nat).
+                      Id (List (Σ (k : Nat). Nat)) (AgetB CF SM W) Nil)
+                    Jv (Mod Q CF)
+                    (IdSym Nat (Mod Q CF) Jv (EqbTrueEq (Mod Q CF) Jv Ej))
+                    Hnil)))
+              (HptB Q)))
+        (λ (Ej : Id Bool (Eqb (Mod Q CF) Jv) False).
+          MoveSlotsFrame
+            (AgetB CF S0 (Mod Q CF))
+            (AgetB CF SM (Mod Q CF))
+            (AgetB CF S0 (Mod Q CF))
+            D0 D1 D2 Q
+            Refl
+            (Hfrm (Mod Q CF) Ej)
+            (IdTrans OptN (D1 Q)
+              (boolRec (λ (W2 : Bool). OptN) (FindL Q (AgetB CF S0 Jv)) (D0 Q)
+                (HitL Q (AgetB CF S0 Jv)))
+              (D0 Q)
+              (HptB Q)
+              (BoolRwF OptN (FindL Q (AgetB CF S0 Jv)) (D0 Q)
+                (HitL Q (AgetB CF S0 Jv))
+                (NotHitOfMod CF Jv Q (AgetB CF S0 Jv) HakJ Ej)))
+            (HptR Q)) }
+def MoveLevelPtTy : Term := prog{
+  Π (CF : Nat) → Π (Jv : Nat) →
+  Π (S0 : Array CF (List (Σ (k : Nat). Nat))) →
+  Π (SM : Array CF (List (Σ (k : Nat). Nat))) →
+  Π (D0 : Nat → OptN) → Π (D1 : Nat → OptN) → Π (D2 : Nat → OptN) →
+    AllKeysMod CF Jv (AgetB CF S0 Jv) →
+    Id (List (Σ (k : Nat). Nat)) (AgetB CF SM Jv) Nil →
+    (Π (J2 : Nat) → Π (Hne : Id Bool (Eqb J2 Jv) False) →
+      Id (List (Σ (k : Nat). Nat)) (AgetB CF SM J2) (AgetB CF S0 J2)) →
+    (Π (Q : Nat) → Id OptN (D1 Q)
+      (boolRec (λ (W2 : Bool). OptN) (FindL Q (AgetB CF S0 Jv)) (D0 Q)
+        (HitL Q (AgetB CF S0 Jv)))) →
+    (Π (Q : Nat) → Id OptN (D2 Q)
+      (boolRec (λ (W2 : Bool). OptN) (FindL Q (AgetB CF SM (Mod Q CF))) (D1 Q)
+        (IsSomeB (FindL Q (AgetB CF SM (Mod Q CF)))))) →
+    Π (Q : Nat) → Id OptN (D2 Q)
+      (boolRec (λ (W2 : Bool). OptN) (FindL Q (AgetB CF S0 (Mod Q CF))) (D0 Q)
+        (IsSomeB (FindL Q (AgetB CF S0 (Mod Q CF))))) }
+example : chkL MoveLevelPt MoveLevelPtTy = true := by native_decide
+
+/-- Disjointness composes past one level, carve-free. -/
+def MoveLevelDisj : Term := prog{
+  λ (CF : Nat). λ (Jv : Nat).
+  λ (S0 : Array CF (List (Σ (k : Nat). Nat))).
+  λ (SM : Array CF (List (Σ (k : Nat). Nat))).
+  λ (D0 : Nat → OptN). λ (D1 : Nat → OptN).
+  λ (HakJ : AllKeysMod CF Jv (AgetB CF S0 Jv)).
+  λ (Hnil : Id (List (Σ (k : Nat). Nat)) (AgetB CF SM Jv) Nil).
+  λ (Hfrm : Π (J2 : Nat) → Π (Hne : Id Bool (Eqb J2 Jv) False) →
+      Id (List (Σ (k : Nat). Nat)) (AgetB CF SM J2) (AgetB CF S0 J2)).
+  λ (HptB : Π (Q : Nat) → Id OptN (D1 Q)
+      (boolRec (λ (W2 : Bool). OptN) (FindL Q (AgetB CF S0 Jv)) (D0 Q)
+        (HitL Q (AgetB CF S0 Jv)))).
+  λ (Hdisj0 : Π (K2 : Nat) → Π (Hs2 : Id Bool (IsSomeB (FindL K2
+      (AgetB CF S0 (Mod K2 CF)))) True) → Id OptN (D0 K2) NoneN).
+    λ (K2 : Nat).
+    λ (Hs : Id Bool (IsSomeB (FindL K2 (AgetB CF SM (Mod K2 CF)))) True).
+      IfDec (Eqb (Mod K2 CF) Jv)
+        (Id OptN (D1 K2) NoneN)
+        (λ (Ej : Id Bool (Eqb (Mod K2 CF) Jv) True).
+          botElim (Id OptN (D1 K2) NoneN)
+            (BoolFT (IdTrans Bool False
+              (IsSomeB (FindL K2 (AgetB CF SM (Mod K2 CF)))) True
+              (IdSym Bool (IsSomeB (FindL K2 (AgetB CF SM (Mod K2 CF)))) False
+                (IdCongr (List (Σ (k : Nat). Nat)) Bool
+                  (λ (Wb : List (Σ (k : Nat). Nat)). IsSomeB (FindL K2 Wb))
+                  (AgetB CF SM (Mod K2 CF)) Nil
+                  (NatRw (λ (W : Nat).
+                      Id (List (Σ (k : Nat). Nat)) (AgetB CF SM W) Nil)
+                    Jv (Mod K2 CF)
+                    (IdSym Nat (Mod K2 CF) Jv (EqbTrueEq (Mod K2 CF) Jv Ej))
+                    Hnil)))
+              Hs)))
+        (λ (Ej : Id Bool (Eqb (Mod K2 CF) Jv) False).
+          IdTrans OptN (D1 K2) (D0 K2) NoneN
+            (IdTrans OptN (D1 K2)
+              (boolRec (λ (W2 : Bool). OptN) (FindL K2 (AgetB CF S0 Jv)) (D0 K2)
+                (HitL K2 (AgetB CF S0 Jv)))
+              (D0 K2)
+              (HptB K2)
+              (BoolRwF OptN (FindL K2 (AgetB CF S0 Jv)) (D0 K2)
+                (HitL K2 (AgetB CF S0 Jv))
+                (NotHitOfMod CF Jv K2 (AgetB CF S0 Jv) HakJ Ej)))
+            (Hdisj0 K2
+              (IdTrans Bool (IsSomeB (FindL K2 (AgetB CF S0 (Mod K2 CF))))
+                (IsSomeB (FindL K2 (AgetB CF SM (Mod K2 CF)))) True
+                (IdCongr (List (Σ (k : Nat). Nat)) Bool
+                  (λ (Wb : List (Σ (k : Nat). Nat)). IsSomeB (FindL K2 Wb))
+                  (AgetB CF S0 (Mod K2 CF)) (AgetB CF SM (Mod K2 CF))
+                  (IdSym (List (Σ (k : Nat). Nat))
+                    (AgetB CF SM (Mod K2 CF)) (AgetB CF S0 (Mod K2 CF))
+                    (Hfrm (Mod K2 CF) Ej)))
+                Hs))) }
+def MoveLevelDisjTy : Term := prog{
+  Π (CF : Nat) → Π (Jv : Nat) →
+  Π (S0 : Array CF (List (Σ (k : Nat). Nat))) →
+  Π (SM : Array CF (List (Σ (k : Nat). Nat))) →
+  Π (D0 : Nat → OptN) → Π (D1 : Nat → OptN) →
+    AllKeysMod CF Jv (AgetB CF S0 Jv) →
+    Id (List (Σ (k : Nat). Nat)) (AgetB CF SM Jv) Nil →
+    (Π (J2 : Nat) → Π (Hne : Id Bool (Eqb J2 Jv) False) →
+      Id (List (Σ (k : Nat). Nat)) (AgetB CF SM J2) (AgetB CF S0 J2)) →
+    (Π (Q : Nat) → Id OptN (D1 Q)
+      (boolRec (λ (W2 : Bool). OptN) (FindL Q (AgetB CF S0 Jv)) (D0 Q)
+        (HitL Q (AgetB CF S0 Jv)))) →
+    (Π (K2 : Nat) → Π (Hs2 : Id Bool (IsSomeB (FindL K2
+      (AgetB CF S0 (Mod K2 CF)))) True) → Id OptN (D0 K2) NoneN) →
+    Π (K2 : Nat) →
+      Π (Hs : Id Bool (IsSomeB (FindL K2 (AgetB CF SM (Mod K2 CF)))) True) →
+      Id OptN (D1 K2) NoneN }
+example : chkL MoveLevelDisj MoveLevelDisjTy = true := by native_decide
+
+/-- The already-drained prefix grows by one, carve-free. -/
+def MoveLevelNil : Term := prog{
+  λ (CF : Nat). λ (Jv : Nat).
+  λ (S0 : Array CF (List (Σ (k : Nat). Nat))).
+  λ (SM : Array CF (List (Σ (k : Nat). Nat))).
+  λ (Hnil : Id (List (Σ (k : Nat). Nat)) (AgetB CF SM Jv) Nil).
+  λ (Hfrm : Π (J2 : Nat) → Π (Hne : Id Bool (Eqb J2 Jv) False) →
+      Id (List (Σ (k : Nat). Nat)) (AgetB CF SM J2) (AgetB CF S0 J2)).
+  λ (Hlo : Π (J2 : Nat) → Π (Hb2 : Id Bool (Leb (S J2) Jv) True) →
+      Id (List (Σ (k : Nat). Nat)) (AgetB CF S0 J2) Nil).
+    λ (J2 : Nat). λ (Hb : Id Bool (Leb (S J2) (S Jv)) True).
+      IfDec (Eqb J2 Jv)
+        (Id (List (Σ (k : Nat). Nat)) (AgetB CF SM J2) Nil)
+        (λ (E2 : Id Bool (Eqb J2 Jv) True).
+          NatRw (λ (W : Nat). Id (List (Σ (k : Nat). Nat)) (AgetB CF SM W) Nil)
+            Jv J2 (IdSym Nat J2 Jv (EqbTrueEq J2 Jv E2)) Hnil)
+        (λ (E2 : Id Bool (Eqb J2 Jv) False).
+          IdTrans (List (Σ (k : Nat). Nat))
+            (AgetB CF SM J2) (AgetB CF S0 J2) Nil
+            (Hfrm J2 E2)
+            (Hlo J2 (LeLebTrue (S J2) Jv
+              (LeNeLt J2 Jv (LebTrueLe J2 Jv Hb) E2)))) }
+def MoveLevelNilTy : Term := prog{
+  Π (CF : Nat) → Π (Jv : Nat) →
+  Π (S0 : Array CF (List (Σ (k : Nat). Nat))) →
+  Π (SM : Array CF (List (Σ (k : Nat). Nat))) →
+    Id (List (Σ (k : Nat). Nat)) (AgetB CF SM Jv) Nil →
+    (Π (J2 : Nat) → Π (Hne : Id Bool (Eqb J2 Jv) False) →
+      Id (List (Σ (k : Nat). Nat)) (AgetB CF SM J2) (AgetB CF S0 J2)) →
+    (Π (J2 : Nat) → Π (Hb2 : Id Bool (Leb (S J2) Jv) True) →
+      Id (List (Σ (k : Nat). Nat)) (AgetB CF S0 J2) Nil) →
+    Π (J2 : Nat) → Π (Hb : Id Bool (Leb (S J2) (S Jv)) True) →
+      Id (List (Σ (k : Nat). Nat)) (AgetB CF SM J2) Nil }
+example : chkL MoveLevelNil MoveLevelNilTy = true := by native_decide
+
 /-! ## (xv) THE S1 CHAIN — fixed-capacity map, full specs
 
     ArraySort's `arrUnder` shape: one Lean function building the declaration
@@ -2341,11 +3447,355 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
                      (RemTotEv I0 R0 Key0 L0 B0 B1 H0 Hln2);
         Pair(rr2, Pair(HrMap, Pair(Hpt, Pair(Htot, H5x))))
       };
+  fn MoveBkt [fuel] (fuel : Nat, tfuel : Nat, cap2 : Nat,
+                     l : List (Σ (k : Nat). Nat),
+                     dst : &mut (Array cap2 (List (Σ (k : Nat). Nat))),
+                     HLe1 : Le (S Z) cap2,
+                     Hdep : Le (LenE l) fuel,
+                     Htf : Le (S (Add (LenE l) (TotalE cap2 (*dst)))) tfuel,
+                     Hsf : SlotsFrom cap2 cap2 (*dst) Z,
+                     Hnd : NodupB l,
+                     Hfr : Π (K2 : Nat) → Π (Hk2 : Id Bool (HitL K2 l) True) →
+                           Id OptN (FindL K2 (AgetB cap2 (*dst) (Mod K2 cap2))) NoneN)
+      -> Σ (Hpt : Π (Q : Nat) → Id OptN (FindL Q (AgetB cap2 (*dst) (Mod Q cap2)))
+            (boolRec (λ (W2 : Bool). OptN) (FindL Q l)
+              (FindL Q (AgetB cap2 (old *dst) (Mod Q cap2))) (HitL Q l))).
+         Σ0 (Htot : Id Nat (TotalE cap2 (*dst))
+            (Add (LenE l) (TotalE cap2 (old *dst)))).
+         SlotsFrom cap2 cap2 (*dst) Z
+      { match l {
+          Nil => Pair(λ (Q : Nat). Refl, Pair(Refl, Hsf)),
+          Cons(Pair(kk, vv), tl2) => match fuel {
+            Z => botElim Unit Hdep,
+            S(f2) => {
+              let K0 = kk;
+              let V0 = vv;
+              let T0 = tl2;
+              let C2 = cap2;
+              let D0s = *dst;
+              let HfrK = Hfr K0 (IdSym Bool True (HitL K0 (Cons(Pair(K0, V0), T0)))
+                           (HitEvHit K0 V0 K0 T0 (EqbRefl K0)));
+              let Pair(hit2, Pair(Hh2, Pair(Hpt2, Pair(Htot2, Hsf2)))) =
+                SlotUpd(tfuel, cap2, kk, vv, &m *dst, HLe1,
+                  LeTrans (S (TotalE cap2 D0s))
+                    (S (Add (LenE (Cons(Pair(K0, V0), T0))) (TotalE cap2 D0s))) tfuel
+                    (LeAddL (TotalE cap2 D0s) (LenE (Cons(Pair(K0, V0), T0)))) Htf,
+                  Hsf);
+              let Hh0 = IdTrans Bool hit2
+                          (IsSomeB (FindL K0 (AgetB C2 D0s (Mod K0 C2)))) False
+                          Hh2
+                          (IdTrans Bool (IsSomeB (FindL K0 (AgetB C2 D0s (Mod K0 C2))))
+                            (IsSomeB NoneN) False
+                            (IdCongr OptN Bool IsSomeB
+                              (FindL K0 (AgetB C2 D0s (Mod K0 C2))) NoneN HfrK)
+                            Refl);
+              let D1s = *dst;
+              let Htot1 = IdTrans Nat (TotalE C2 D1s)
+                            (boolRec (λ (W2 : Bool). Nat) (TotalE C2 D0s)
+                              (S (TotalE C2 D0s)) hit2)
+                            (S (TotalE C2 D0s))
+                            Htot2
+                            (BoolRwF Nat (TotalE C2 D0s) (S (TotalE C2 D0s)) hit2 Hh0);
+              let Pair(HptR, Pair(HtotR, HsfR)) =
+                MoveBkt(f2, tfuel, cap2, tl2, &m *dst, HLe1, Hdep,
+                  LeRwL tfuel
+                    (S (S (Add (LenE T0) (TotalE C2 D0s))))
+                    (S (Add (LenE T0) (TotalE C2 D1s)))
+                    (IdSym Nat (S (Add (LenE T0) (TotalE C2 D1s)))
+                      (S (S (Add (LenE T0) (TotalE C2 D0s))))
+                      (IdCongr Nat Nat (λ (W : Nat). S W)
+                        (Add (LenE T0) (TotalE C2 D1s))
+                        (S (Add (LenE T0) (TotalE C2 D0s)))
+                        (IdTrans Nat (Add (LenE T0) (TotalE C2 D1s))
+                          (Add (LenE T0) (S (TotalE C2 D0s)))
+                          (S (Add (LenE T0) (TotalE C2 D0s)))
+                          (IdCongr Nat Nat (λ (W : Nat). Add (LenE T0) W)
+                            (TotalE C2 D1s) (S (TotalE C2 D0s)) Htot1)
+                          (AddSucc (LenE T0) (TotalE C2 D0s)))))
+                    Htf,
+                  Hsf2,
+                  SndT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd,
+                  MoveFreshStep C2 K0 V0 T0 D0s D1s
+                    (FstT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd) Hpt2 Hfr);
+              let D2s = *dst;
+              Pair(MoveStepPt K0 V0 T0
+                     (λ (Qz : Nat). FindL Qz (AgetB C2 D0s (Mod Qz C2)))
+                     (λ (Qz : Nat). FindL Qz (AgetB C2 D1s (Mod Qz C2)))
+                     (λ (Qz : Nat). FindL Qz (AgetB C2 D2s (Mod Qz C2)))
+                     (FstT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd)
+                     Hpt2 HptR,
+                Pair(IdTrans Nat (TotalE C2 D2s)
+                       (Add (LenE T0) (TotalE C2 D1s))
+                       (Add (LenE (Cons(Pair(K0, V0), T0))) (TotalE C2 D0s))
+                       HtotR
+                       (IdTrans Nat (Add (LenE T0) (TotalE C2 D1s))
+                         (Add (LenE T0) (S (TotalE C2 D0s)))
+                         (Add (LenE (Cons(Pair(K0, V0), T0))) (TotalE C2 D0s))
+                         (IdCongr Nat Nat (λ (W : Nat). Add (LenE T0) W)
+                           (TotalE C2 D1s) (S (TotalE C2 D0s)) Htot1)
+                         (AddSucc (LenE T0) (TotalE C2 D0s))),
+                     HsfR))
+            } }
+        } };
+  fn MoveOne (tfuel : Nat, capF : Nat, cap2 : Nat, j : Nat, m2 : Nat,
+              src : &mut (Array capF (List (Σ (k : Nat). Nat))),
+              dst : &mut (Array cap2 (List (Σ (k : Nat). Nat))),
+              HLe1 : Le (S Z) cap2,
+              Hj : Id Nat capF (Add j (S m2)),
+              Htf : Le (S (Add (TotalE capF (*src)) (TotalE cap2 (*dst)))) tfuel,
+              HsfS : SlotsFrom capF capF (*src) Z,
+              HsfD : SlotsFrom cap2 cap2 (*dst) Z,
+              Hdisj : Π (K2 : Nat) → Π (Hs2 : Id Bool (IsSomeB (FindL K2
+                  (AgetB capF (*src) (Mod K2 capF)))) True) →
+                  Id OptN (FindL K2 (AgetB cap2 (*dst) (Mod K2 cap2))) NoneN)
+      -> Σ (Hpt : Π (Q : Nat) → Id OptN (FindL Q (AgetB cap2 (*dst) (Mod Q cap2)))
+            (boolRec (λ (W2 : Bool). OptN)
+              (FindL Q (AgetB capF (old *src) j))
+              (FindL Q (AgetB cap2 (old *dst) (Mod Q cap2)))
+              (HitL Q (AgetB capF (old *src) j)))).
+         Σ (Hnil : Id (List (Σ (k : Nat). Nat)) (AgetB capF (*src) j) Nil).
+         Σ (Hfrm : Π (J2 : Nat) → Π (Hne : Id Bool (Eqb J2 j) False) →
+            Id (List (Σ (k : Nat). Nat)) (AgetB capF (*src) J2)
+              (AgetB capF (old *src) J2)).
+         Σ (Htot : Id Nat (Add (TotalE capF (*src)) (TotalE cap2 (*dst)))
+            (Add (TotalE capF (old *src)) (TotalE cap2 (old *dst)))).
+         Σ0 (HsfS2 : SlotsFrom capF capF (*src) Z).
+         SlotsFrom cap2 cap2 (*dst) Z
+      {
+        let CF = capF;
+        let C2 = cap2;
+        let J0 = j;
+        let M2 = m2;
+        let pre = &m (*src)[Z ; j ; S m2 | LeAdd j (S m2) | Hj];
+        let cell = &m (*src)[j ; 1 ; m2];
+        let hic = &m (*src)[S j ; m2];
+        let bbs = &m (*cell)[0];
+        let LS0 = *pre;
+        let BJ0 = *bbs;
+        let HS0 = *hic;
+        let HsfLs = SFCatLo capF m2 BJ0 HS0 j LS0 Z HsfS;
+        let HsfMs = NatRw (λ (W : Nat). SlotInv CF W BJ0) (Add J0 Z) J0 (AddZero J0)
+                      (SFCatMid capF m2 BJ0 HS0 j LS0 Z HsfS);
+        let HsfHs = SFCatHi capF m2 BJ0 HS0 j LS0 Z HsfS;
+        let HakJ = FstT (AllKeysMod capF j BJ0) (NodupB BJ0) HsfMs;
+        let HndJ = SndT (AllKeysMod capF j BJ0) (NodupB BJ0) HsfMs;
+        let Htot0s = TotalArrCat (S m2) (acons m2 BJ0 HS0) j LS0;
+        let D0d = *dst;
+        let HlenBj = LeRwR (LenE BJ0)
+                       (Add (TotalE j LS0) (Add (LenE BJ0) (TotalE m2 HS0)))
+                       (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
+                       (IdSym Nat
+                         (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
+                         (Add (TotalE j LS0) (Add (LenE BJ0) (TotalE m2 HS0)))
+                         Htot0s)
+                       (LeTrans (LenE BJ0) (Add (LenE BJ0) (TotalE m2 HS0))
+                         (Add (TotalE j LS0) (Add (LenE BJ0) (TotalE m2 HS0)))
+                         (LeAdd (LenE BJ0) (TotalE m2 HS0))
+                         (LeAddL (Add (LenE BJ0) (TotalE m2 HS0)) (TotalE j LS0)));
+        let bl = *bbs;
+        *bbs := Nil;
+        let Pair(HptB, Pair(HtotB, HsfD1)) =
+          MoveBkt(tfuel, tfuel, cap2, bl, &m *dst, HLe1,
+            LeTrans (LenE BJ0)
+              (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0))) tfuel
+              HlenBj
+              (LePredL (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0))) tfuel
+                (LeTrans (S (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0))))
+                  (S (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
+                    (TotalE cap2 D0d))) tfuel
+                  (LeAdd (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
+                    (TotalE cap2 D0d))
+                  Htf)),
+            LeTrans (S (Add (LenE BJ0) (TotalE cap2 D0d)))
+              (S (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
+                (TotalE cap2 D0d))) tfuel
+              (LeAddMonoR (LenE BJ0)
+                (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
+                (TotalE cap2 D0d) HlenBj)
+              Htf,
+            HsfD, HndJ,
+            MoveSlotsFresh j m2 cap2 LS0 BJ0 HS0 D0d HakJ Hdisj);
+        let D1d = *dst;
+        let HsfS1 = SFCatGlue capF m2 Nil HS0 j LS0 Z HsfLs
+                      (NatRw (λ (W : Nat). SlotInv CF W Nil) J0 (Add J0 Z)
+                        (IdSym Nat (Add J0 Z) J0 (AddZero J0))
+                        (MkSlotInv capF j Nil unit unit))
+                      HsfHs;
+        let HsumStep = IdTrans Nat
+            (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 Nil HS0)))
+              (TotalE cap2 D1d))
+            (Add (Add (TotalE j LS0) (TotalE m2 HS0))
+              (Add (LenE BJ0) (TotalE cap2 D0d)))
+            (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
+              (TotalE cap2 D0d))
+            (IdTrans Nat
+              (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 Nil HS0)))
+                (TotalE cap2 D1d))
+              (Add (Add (TotalE j LS0) (TotalE m2 HS0)) (TotalE cap2 D1d))
+              (Add (Add (TotalE j LS0) (TotalE m2 HS0))
+                (Add (LenE BJ0) (TotalE cap2 D0d)))
+              (IdCongr Nat Nat
+                (λ (W : Nat). Add W (TotalE C2 D1d))
+                (TotalE capF (arrCat j (S m2) LS0 (acons m2 Nil HS0)))
+                (Add (TotalE j LS0) (TotalE m2 HS0))
+                (TotalArrCat (S m2) (acons m2 Nil HS0) j LS0))
+              (IdCongr Nat Nat
+                (λ (W : Nat). Add (Add (TotalE J0 LS0) (TotalE M2 HS0)) W)
+                (TotalE cap2 D1d)
+                (Add (LenE BJ0) (TotalE cap2 D0d))
+                HtotB))
+            (IdTrans Nat
+              (Add (Add (TotalE j LS0) (TotalE m2 HS0))
+                (Add (LenE BJ0) (TotalE cap2 D0d)))
+              (Add (Add (TotalE j LS0) (LenE BJ0))
+                (Add (TotalE m2 HS0) (TotalE cap2 D0d)))
+              (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
+                (TotalE cap2 D0d))
+              (AddInterchange (TotalE j LS0) (TotalE m2 HS0) (LenE BJ0)
+                (TotalE cap2 D0d))
+              (IdTrans Nat
+                (Add (Add (TotalE j LS0) (LenE BJ0))
+                  (Add (TotalE m2 HS0) (TotalE cap2 D0d)))
+                (Add (Add (Add (TotalE j LS0) (LenE BJ0)) (TotalE m2 HS0))
+                  (TotalE cap2 D0d))
+                (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
+                  (TotalE cap2 D0d))
+                (IdSym Nat
+                  (Add (Add (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0))
+                    (TotalE C2 D0d))
+                  (Add (Add (TotalE J0 LS0) (LenE BJ0))
+                    (Add (TotalE M2 HS0) (TotalE C2 D0d)))
+                  (AddAssoc (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0)
+                    (TotalE C2 D0d)))
+                (IdTrans Nat
+                  (Add (Add (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0))
+                    (TotalE C2 D0d))
+                  (Add (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
+                    (TotalE C2 D0d))
+                  (Add (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)))
+                    (TotalE C2 D0d))
+                  (IdCongr Nat Nat (λ (W : Nat). Add W (TotalE C2 D0d))
+                    (Add (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0))
+                    (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
+                    (AddAssoc (TotalE J0 LS0) (LenE BJ0) (TotalE M2 HS0)))
+                  (IdCongr Nat Nat (λ (W : Nat). Add W (TotalE C2 D0d))
+                    (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
+                    (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)))
+                    (IdSym Nat
+                      (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)))
+                      (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
+                      Htot0s)))));
+        Pair(AgetBktCongr BJ0
+               (AgetB (Add J0 (S M2)) (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)) J0)
+               (λ (Qz : Nat). FindL Qz (AgetB C2 D0d (Mod Qz C2)))
+               (λ (Qz : Nat). FindL Qz (AgetB C2 D1d (Mod Qz C2)))
+               (IdSym (List (Σ (k : Nat). Nat))
+                 (AgetB (Add J0 (S M2)) (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)) J0)
+                 BJ0
+                 (AgetBCatMid M2 BJ0 HS0 J0 LS0))
+               HptB,
+          Pair(AgetBCatMid M2 Nil HS0 J0 LS0,
+            Pair(NeBucketEq J0 M2 LS0 BJ0 HS0,
+              Pair(HsumStep,
+                Pair(HsfS1, HsfD1)))))
+      };
+  fn MoveSlots [m] (m : Nat, j : Nat, tfuel : Nat, capF : Nat, cap2 : Nat,
+                    Hj : Id Nat capF (Add j m),
+                    src : &mut (Array capF (List (Σ (k : Nat). Nat))),
+                    dst : &mut (Array cap2 (List (Σ (k : Nat). Nat))),
+                    HLe1 : Le (S Z) cap2,
+                    HLe1F : Le (S Z) capF,
+                    Htf : Le (S (Add (TotalE capF (*src)) (TotalE cap2 (*dst)))) tfuel,
+                    HsfS : SlotsFrom capF capF (*src) Z,
+                    HsfD : SlotsFrom cap2 cap2 (*dst) Z,
+                    Hdisj : Π (K2 : Nat) →
+                      Π (Hs2 : Id Bool (IsSomeB (FindL K2 (AgetB capF (*src)
+                        (Mod K2 capF)))) True) →
+                      Id OptN (FindL K2 (AgetB cap2 (*dst) (Mod K2 cap2))) NoneN,
+                    HsrcLo : Π (J2 : Nat) → Π (Hb2 : Id Bool (Leb (S J2) j) True) →
+                      Id (List (Σ (k : Nat). Nat)) (AgetB capF (*src) J2) Nil)
+      -> Σ (Hpt : Π (Q : Nat) → Id OptN (FindL Q (AgetB cap2 (*dst) (Mod Q cap2)))
+            (boolRec (λ (W2 : Bool). OptN)
+              (FindL Q (AgetB capF (old *src) (Mod Q capF)))
+              (FindL Q (AgetB cap2 (old *dst) (Mod Q cap2)))
+              (IsSomeB (FindL Q (AgetB capF (old *src) (Mod Q capF)))))).
+         Σ (HsrcF : Π (J2 : Nat) → Π (Hb2 : Le (S J2) capF) →
+            Id (List (Σ (k : Nat). Nat)) (AgetB capF (*src) J2) Nil).
+         Σ0 (Htot : Id Nat (Add (TotalE capF (*src)) (TotalE cap2 (*dst)))
+            (Add (TotalE capF (old *src)) (TotalE cap2 (old *dst)))).
+         SlotsFrom cap2 cap2 (*dst) Z
+      { match m {
+          Z => {
+            let CF = capF;
+            let J0 = j;
+            let C2 = cap2;
+            let Dd = *dst;
+            let Sd = *src;
+            let Hjz = IdTrans Nat CF (Add J0 Z) J0 Hj (AddZero J0);
+            Pair(MoveBasePt CF J0 C2 Sd Dd HLe1F Hjz HsrcLo,
+              Pair(MoveBaseNil CF J0 Sd Hjz HsrcLo,
+                Pair(Refl, HsfD)))
+          },
+          S(m2) => {
+            let CF = capF;
+            let C2 = cap2;
+            let J0 = j;
+            let M2 = m2;
+            let S0d = *src;
+            let D0d = *dst;
+            let HinvJ = NatRw (λ (W : Nat). SlotInv CF W (AgetB CF S0d J0))
+                          (Add J0 Z) J0 (AddZero J0)
+                          (SFAgetInv capF capF S0d Z HsfS j
+                            (LeRwR (S j) (Add j (S m2)) capF
+                              (IdSym Nat capF (Add j (S m2)) Hj)
+                              (LeAddSucc j m2)));
+            let HakJ = FstT (AllKeysMod CF J0 (AgetB CF S0d J0))
+                         (NodupB (AgetB CF S0d J0)) HinvJ;
+            let Pair(HptO, Pair(HnilO, Pair(HfrmO, Pair(HtotO, Pair(HsfSO, HsfDO))))) =
+              MoveOne(tfuel, capF, cap2, j, m2, &m *src, &m *dst,
+                HLe1, Hj, Htf, HsfS, HsfD, Hdisj);
+            let SMd = *src;
+            let D1d = *dst;
+            let HdisjR = MoveLevelDisj CF J0 S0d SMd
+                (λ (Qz : Nat). FindL Qz (AgetB C2 D0d (Mod Qz C2)))
+                (λ (Qz : Nat). FindL Qz (AgetB C2 D1d (Mod Qz C2)))
+                HakJ HnilO HfrmO HptO Hdisj;
+            let HnilR = MoveLevelNil CF J0 S0d SMd HnilO HfrmO HsrcLo;
+            let Pair(HptR, Pair(HsrcFR, Pair(HtotR, HsfD2))) =
+              MoveSlots(m2, S j, tfuel, capF, cap2,
+                IdTrans Nat capF (Add j (S m2)) (S (Add j m2)) Hj (AddSucc j m2),
+                &m *src, &m *dst, HLe1, HLe1F,
+                LeRwL tfuel
+                  (S (Add (TotalE CF S0d) (TotalE C2 D0d)))
+                  (S (Add (TotalE CF SMd) (TotalE C2 D1d)))
+                  (IdSym Nat
+                    (S (Add (TotalE CF SMd) (TotalE C2 D1d)))
+                    (S (Add (TotalE CF S0d) (TotalE C2 D0d)))
+                    (IdCongr Nat Nat (λ (W : Nat). S W)
+                      (Add (TotalE CF SMd) (TotalE C2 D1d))
+                      (Add (TotalE CF S0d) (TotalE C2 D0d))
+                      HtotO))
+                  Htf,
+                HsfSO, HsfDO, HdisjR, HnilR);
+            let D2d = *dst;
+            Pair(MoveLevelPt CF J0 S0d SMd
+                   (λ (Qz : Nat). FindL Qz (AgetB C2 D0d (Mod Qz C2)))
+                   (λ (Qz : Nat). FindL Qz (AgetB C2 D1d (Mod Qz C2)))
+                   (λ (Qz : Nat). FindL Qz (AgetB C2 D2d (Mod Qz C2)))
+                   HakJ HnilO HfrmO HptO HptR,
+              Pair(HsrcFR,
+                Pair(IdTrans Nat
+                       (Add (TotalE CF (*src)) (TotalE C2 D2d))
+                       (Add (TotalE CF SMd) (TotalE C2 D1d))
+                       (Add (TotalE CF S0d) (TotalE C2 D0d))
+                       HtotR HtotO,
+                     HsfD2)))
+          }
+        } };
   fn InsertHM (fuel : Nat, key : Nat, val : Nat,
                self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
                  Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots),
-               Hfuel : Le (S (SizeHM (*self))) fuel,
-               Hroom : Le (Mul 5 (S (SizeHM (*self)))) (LoadHM (*self)))
+               Hfuel : Le (S (S (SizeHM (*self)))) fuel)
       -> %iret
       {
         let Pair(cap, Pair(load, Pair(nn, Pair(slots, HInv)))) = *self;
@@ -2363,7 +3813,7 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
           SlotUpd(fuel, cap, key, val, &m *sb, HLe1,
             LeRwL fuel (S nn) (S (TotalE Cap0 SL0))
               (IdCongr Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
-              Hfuel,
+              (LePredL (S nn) fuel Hfuel),
             HSf);
         let SL1 = *sb;
         let Hit0 = hit2;
@@ -2406,21 +3856,188 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
                             Htot2
                             (BoolRwF Nat (TotalE Cap0 SL0) (S (TotalE Cap0 SL0))
                               Hit0 e2)));
-            *self := Pair(cap, Pair(load, Pair(S(nn), Pair(slots,
-              MkInv cap load (S nn) SL1 HLe1 HLoad Hroom H4y Hsf2))));
-            Pair(Hpt2,
-              IdSym Nat
-                (boolRec (λ (W2 : Bool). Nat) nn (S nn)
-                  (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
-                (S nn)
-                (BoolRwF Nat nn (S nn)
-                  (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                  (IdTrans Bool
+            if e4 : Leb (Mul 5 (S nn)) load {
+              *self := Pair(cap, Pair(load, Pair(S(nn), Pair(slots,
+                MkInv cap load (S nn) SL1 HLe1 HLoad
+                  (LebTrueLe (Mul 5 (S nn)) load e4) H4y Hsf2))));
+              Pair(Hpt2,
+                IdSym Nat
+                  (boolRec (λ (W2 : Bool). Nat) nn (S nn)
+                    (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
+                  (S nn)
+                  (BoolRwF Nat nn (S nn)
                     (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                    Hit0 False
-                    (IdSym Bool Hit0
-                      (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))) Hh2)
-                    e2)))
+                    (IdTrans Bool
+                      (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
+                      Hit0 False
+                      (IdSym Bool Hit0
+                        (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))) Hh2)
+                      e2)))
+            } else {
+              let Val0 = val;
+              let nslots = MkSlots (Mul 2 cap);
+              let C2b = Mul 2 cap;
+              let DN0 = nslots;
+              let db = &m nslots;
+              let HdisjB = (λ (K2 : Nat).
+                    λ (Hs : Id Bool (IsSomeB (FindL K2
+                        (AgetB Cap0 SL1 (Mod K2 Cap0)))) True).
+                      IdCongr (List (Σ (k : Nat). Nat)) OptN
+                        (λ (Wb : List (Σ (k : Nat). Nat)). FindL K2 Wb)
+                        (AgetB C2b DN0 (Mod K2 C2b)) Nil
+                        (AgetBMkSlots C2b (Mod K2 C2b))
+);
+              let HnilB = (λ (J2 : Nat). λ (Hb : Id Bool (Leb (S J2) Z) True).
+                      botElim (Id (List (Σ (k : Nat). Nat))
+                        (AgetB Cap0 SL1 J2) Nil) (BoolFT Hb)
+);
+              let Pair(HptM, Pair(HsrcFM, Pair(HtotM, HsfM))) =
+                MoveSlots(cap, Z, fuel, cap, Mul 2 cap, Refl, &m *sb, &m *db,
+                  Le1Mul2 cap HLe1, HLe1,
+                  LeRwL fuel (S (S nn))
+                    (S (Add (TotalE Cap0 SL1) (TotalE C2b DN0)))
+                    (IdSym Nat (S (Add (TotalE Cap0 SL1) (TotalE C2b DN0)))
+                      (S (S nn))
+                      (IdCongr Nat Nat (λ (W : Nat). S W)
+                        (Add (TotalE Cap0 SL1) (TotalE C2b DN0)) (S nn)
+                        (IdTrans Nat (Add (TotalE Cap0 SL1) (TotalE C2b DN0))
+                          (Add (TotalE Cap0 SL1) Z) (S nn)
+                          (IdCongr Nat Nat
+                            (λ (W : Nat). Add (TotalE Cap0 SL1) W)
+                            (TotalE C2b DN0) Z (TotalMkSlots C2b))
+                          (IdTrans Nat (Add (TotalE Cap0 SL1) Z)
+                            (TotalE Cap0 SL1) (S nn)
+                            (AddZero (TotalE Cap0 SL1))
+                            (IdSym Nat (S nn) (TotalE Cap0 SL1) H4y)))))
+                    Hfuel,
+                  Hsf2,
+                  SFMkSlots (Mul 2 cap) (Mul 2 cap) Z, HdisjB, HnilB);
+              let SL1b = *sb;
+              let SL2 = *db;
+              *self := Pair(Mul 2 cap, Pair(Mul 4 (Mul 2 cap), Pair(S(nn), Pair(nslots,
+                MkInv (Mul 2 cap) (Mul 4 (Mul 2 cap)) (S nn) SL2
+                  (Le1Mul2 cap HLe1)
+                  Refl
+                  (LedgerGrow cap nn HLe1
+                    (LeRwR (Mul 5 nn) load (Mul 4 cap) HLoad HLed))
+                  (IdTrans Nat (S nn) (TotalE Cap0 SL1) (TotalE C2b SL2)
+                    H4y
+                    (IdSym Nat (TotalE C2b SL2) (TotalE Cap0 SL1)
+                      (IdTrans Nat (TotalE C2b SL2)
+                        (Add (TotalE Cap0 SL1b) (TotalE C2b SL2))
+                        (TotalE Cap0 SL1)
+                        (IdSym Nat
+                          (Add (TotalE Cap0 SL1b) (TotalE C2b SL2))
+                          (TotalE C2b SL2)
+                          (IdCongr Nat Nat (λ (W : Nat). Add W (TotalE C2b SL2))
+                            (TotalE Cap0 SL1b) Z
+                            (TotalNilAll Cap0 SL1b HsrcFM)))
+                        (IdTrans Nat
+                          (Add (TotalE Cap0 SL1b) (TotalE C2b SL2))
+                          (Add (TotalE Cap0 SL1) (TotalE C2b DN0))
+                          (TotalE Cap0 SL1)
+                          HtotM
+                          (IdTrans Nat
+                            (Add (TotalE Cap0 SL1) (TotalE C2b DN0))
+                            (Add (TotalE Cap0 SL1) Z)
+                            (TotalE Cap0 SL1)
+                            (IdCongr Nat Nat
+                              (λ (W : Nat). Add (TotalE Cap0 SL1) W)
+                              (TotalE C2b DN0) Z (TotalMkSlots C2b))
+                            (AddZero (TotalE Cap0 SL1)))))))
+                  HsfM))));
+              Pair(ResizeGlue
+                     (λ (Qz : Nat). boolRec (λ (W2 : Bool). OptN) (SomeN Val0)
+                       (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0))) (Eqb Qz Key0))
+                     (λ (Qz : Nat). FindL Qz (AgetB Cap0 SL1 (Mod Qz Cap0)))
+                     (λ (Qz : Nat). FindL Qz (AgetB C2b SL2 (Mod Qz C2b)))
+                     (λ (Qz : Nat). FindL Qz (AgetB C2b DN0 (Mod Qz C2b)))
+                     (λ (Qz : Nat).
+                       IdCongr (List (Σ (k : Nat). Nat)) OptN
+                         (λ (Wb : List (Σ (k : Nat). Nat)). FindL Qz Wb)
+                         (AgetB C2b DN0 (Mod Qz C2b)) Nil
+                         (AgetBMkSlots C2b (Mod Qz C2b)))
+                     Hpt2 HptM
+                     (λ (Qz : Nat).
+                       λ (Ee : Id Bool (IsSomeB (boolRec (λ (W2 : Bool). OptN)
+                           (SomeN Val0)
+                           (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
+                           (Eqb Qz Key0))) False).
+                         IfDec (Eqb Qz Key0)
+                           (Id OptN (boolRec (λ (W2 : Bool). OptN) (SomeN Val0)
+                             (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
+                             (Eqb Qz Key0)) NoneN)
+                           (λ (E5 : Id Bool (Eqb Qz Key0) True).
+                             botElim (Id OptN (boolRec (λ (W2 : Bool). OptN)
+                                 (SomeN Val0)
+                                 (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
+                                 (Eqb Qz Key0)) NoneN)
+                               (BoolTF (IdTrans Bool True
+                                 (IsSomeB (boolRec (λ (W2 : Bool). OptN)
+                                   (SomeN Val0)
+                                   (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
+                                   (Eqb Qz Key0)))
+                                 False
+                                 (IdSym Bool
+                                   (IsSomeB (boolRec (λ (W2 : Bool). OptN)
+                                     (SomeN Val0)
+                                     (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
+                                     (Eqb Qz Key0)))
+                                   True
+                                   (IdCongr OptN Bool IsSomeB
+                                     (boolRec (λ (W2 : Bool). OptN) (SomeN Val0)
+                                       (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
+                                       (Eqb Qz Key0))
+                                     (SomeN Val0)
+                                     (BoolRwT OptN (SomeN Val0)
+                                       (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
+                                       (Eqb Qz Key0) E5)))
+                                 Ee)))
+                           (λ (E5 : Id Bool (Eqb Qz Key0) False).
+                             IdTrans OptN
+                               (boolRec (λ (W2 : Bool). OptN) (SomeN Val0)
+                                 (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
+                                 (Eqb Qz Key0))
+                               (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
+                               NoneN
+                               (BoolRwF OptN (SomeN Val0)
+                                 (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
+                                 (Eqb Qz Key0) E5)
+                               (NotHitFindNone Qz (AgetB Cap0 SL0 (Mod Qz Cap0))
+                                 (IdTrans Bool
+                                   (IsSomeB (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0))))
+                                   (IsSomeB (boolRec (λ (W2 : Bool). OptN)
+                                     (SomeN Val0)
+                                     (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
+                                     (Eqb Qz Key0)))
+                                   False
+                                   (IdCongr OptN Bool IsSomeB
+                                     (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
+                                     (boolRec (λ (W2 : Bool). OptN) (SomeN Val0)
+                                       (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
+                                       (Eqb Qz Key0))
+                                     (IdSym OptN
+                                       (boolRec (λ (W2 : Bool). OptN) (SomeN Val0)
+                                         (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
+                                         (Eqb Qz Key0))
+                                       (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
+                                       (BoolRwF OptN (SomeN Val0)
+                                         (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
+                                         (Eqb Qz Key0) E5)))
+                                   Ee)))),
+                IdSym Nat
+                  (boolRec (λ (W2 : Bool). Nat) nn (S nn)
+                    (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
+                  (S nn)
+                  (BoolRwF Nat nn (S nn)
+                    (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
+                    (IdTrans Bool
+                      (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
+                      Hit0 False
+                      (IdSym Bool Hit0
+                        (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))) Hh2)
+                      e2)))
+            }
           }
         }
       };
@@ -2540,10 +4157,103 @@ def remRetHonest : Term := prog{
        (FindRem Q %keyRv (old *%selfRv))).
   Id Nat (SizeHM (*%selfRv)) (SizeRem %keyRv (old *%selfRv)) }
 
-/-- THE S1 HEADLINE: the fixed-capacity chain checks as ONE program, against
-    no table — walk, slot pack, New, Insert, full specs. -/
+
+
+
+
+
+
+
+
+/-! ### PINNED (found the hard way, S2): inside a RECURSIVE fn, a λ may not
+    cite the fn's own Π-typed parameter — not even through a snapshot
+    (lamFeedG/J red) — while citing snapshots of data works (H) and passing
+    the parameter itself onward works (I). Every fold-evidence builder in the
+    move layer is therefore a TOP-LEVEL pure lemma applied to the parameter,
+    never a local λ over it. -/
+def lamFeedG : Term := prog{
+  fn Eat [fuel] (fuel : Nat, n : Nat,
+                 Hp : Π (K2 : Nat) → Π (Hk2 : Le K2 n) → Le K2 (S n)) -> Unit {
+    match fuel {
+      Z => (),
+      S(f2) => {
+        let N0 = n;
+        let Hgive = (λ (K2 : Nat). λ (Hk : Le K2 N0). Hp K2 Hk);
+        Eat(f2, n, Hgive);
+        ()
+      } } };
+  () }
+example : progOk lamFeedG = false := by native_decide
+
+
+def lamFeedH : Term := prog{
+  fn Eat [fuel] (fuel : Nat, n : Nat,
+                 Hp : Π (K2 : Nat) → Π (Hk2 : Le K2 n) → Le K2 (S n)) -> Unit {
+    match fuel {
+      Z => (),
+      S(f2) => {
+        let N0 = n;
+        let Hgive = (λ (K2 : Nat). λ (Hk : Le K2 N0). LeUpR K2 N0 Hk);
+        Eat(f2, n, Hgive);
+        ()
+      } } };
+  () }
+example : progOk lamFeedH = true := by native_decide
+
+def lamFeedI : Term := prog{
+  fn Eat [fuel] (fuel : Nat, n : Nat,
+                 Hp : Π (K2 : Nat) → Π (Hk2 : Le K2 n) → Le K2 (S n)) -> Unit {
+    match fuel {
+      Z => (),
+      S(f2) => {
+        let N0 = n;
+        let Hother = Hp Z;
+        Eat(f2, n, Hp);
+        ()
+      } } };
+  () }
+example : progOk lamFeedI = true := by native_decide
+
+
+def lamFeedJ : Term := prog{
+  fn Eat [fuel] (fuel : Nat, n : Nat,
+                 Hp : Π (K2 : Nat) → Π (Hk2 : Le K2 n) → Le K2 (S n)) -> Unit {
+    match fuel {
+      Z => (),
+      S(f2) => {
+        let N0 = n;
+        let Hp0 = Hp;
+        let Hgive = (λ (K2 : Nat). λ (Hk : Le K2 N0). Hp0 K2 Hk);
+        Eat(f2, n, Hgive);
+        ()
+      } } };
+  () }
+example : progOk lamFeedJ = false := by native_decide
+
+
+
+/-- THE HEADLINE: the whole chain — walk, slot pack, New, the move layer,
+    Insert WITH RESIZE, Remove — checks as ONE program, against no table. -/
 def s1Chain : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{ () }
 example : progOk s1Chain = true := by native_decide
+
+/-- THE CHECKED CALLER: the fixed ensures are exactly sufficient for a caller
+    to discharge Insert's preconditions BY PROOF — New's size conjunct
+    transports the fuel bound, and with resize in place there is no headroom
+    obligation left. (S1's Hroom made this impossible without invariant
+    projections; the resize is what closes the spec.) -/
+def s2CheckedCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{
+  let Pair(m0, ev0) = NewHM(2, unit);
+  let M0 = m0;
+  let Pair(HfindN, HsizeN) = ev0;
+  let b1 = &m m0;
+  let Pair(Hpt1, Hsz1) = InsertHM(9, 5, 70, b1,
+    NatRw (λ (W : Nat). Le (S (S W)) 9) Z (SizeHM M0)
+      (IdSym Nat (SizeHM M0) Z HsizeN) unit);
+  let y = m0;
+  () }
+example : progOk s2CheckedCaller = true := by native_decide
+
 
 
 -- BISECTION P1: identity round-trip of the REAL container through &mut —

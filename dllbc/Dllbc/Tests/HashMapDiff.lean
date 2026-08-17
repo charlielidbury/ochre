@@ -113,25 +113,29 @@ def runHM (t : Term) : Option (Nat × Nat × Nat × List (List (Nat × Nat))) :=
 def s1RunCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{
   let Pair(m0, Ev0) = NewHM(4, unit);
   let b1 = &m m0;
-  InsertHM(9, 5, 70, b1, unit, unit);
+  InsertHM(9, 5, 70, b1, unit);
   let b2 = &m m0;
-  InsertHM(9, 1, 10, b2, unit, unit);
+  InsertHM(9, 1, 10, b2, unit);
   let b3 = &m m0;
-  InsertHM(9, 5, 71, b3, unit, unit);
+  InsertHM(9, 5, 71, b3, unit);
   let b4 = &m m0;
-  InsertHM(9, 9, 90, b4, unit, unit);
+  InsertHM(9, 9, 90, b4, unit);
   let b5 = &m m0;
-  InsertHM(9, 2, 20, b5, unit, unit);
+  InsertHM(9, 2, 20, b5, unit);
   let y = m0;
   () }
 
 def s1Expected : Nat × List (List (Nat × Nat)) :=
   modelRun 4 [(5, 70), (1, 10), (5, 71), (9, 90), (2, 20)]
 
+-- The fifth distinct-key insert trips the ledger (5·4 > 16), so the map
+-- RESIZES to cap 8 and rehashes: 5 leaves the 1/9 collision chain, order of
+-- the survivors preserved by the move fold.
 example : (runHM s1RunCaller ==
-    some (4, 16, s1Expected.1, s1Expected.2)) = true := by native_decide
+    some (8, 32, 4, [[], [(1, 10), (9, 90)], [(2, 20)], [], [], [(5, 71)], [], []]))
+    = true := by native_decide
 
--- …and the model itself is what we think it is (the differential is two-sided).
+-- …and the pre-resize model still pins the cap-4 semantics (two-sided).
 example : (s1Expected == (4, [[], [(5, 71), (1, 10), (9, 90)], [(2, 20)], []]))
     = true := by native_decide
 
@@ -140,15 +144,15 @@ example : (s1Expected == (4, [[], [(5, 71), (1, 10), (9, 90)], [(2, 20)], []]))
 def s1RemCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{
   let Pair(m0, Ev0) = NewHM(4, unit);
   let b1 = &m m0;
-  InsertHM(9, 5, 70, b1, unit, unit);
+  InsertHM(9, 5, 70, b1, unit);
   let b2 = &m m0;
-  InsertHM(9, 1, 10, b2, unit, unit);
+  InsertHM(9, 1, 10, b2, unit);
   let b3 = &m m0;
-  InsertHM(9, 5, 71, b3, unit, unit);
+  InsertHM(9, 5, 71, b3, unit);
   let b4 = &m m0;
-  InsertHM(9, 9, 90, b4, unit, unit);
+  InsertHM(9, 9, 90, b4, unit);
   let b5 = &m m0;
-  InsertHM(9, 2, 20, b5, unit, unit);
+  InsertHM(9, 2, 20, b5, unit);
   let b6 = &m m0;
   RemoveHM(9, 5, b6, unit);
   let b7 = &m m0;
@@ -159,7 +163,27 @@ def s1RemCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{
   () }
 
 example : (runHM s1RemCaller ==
-    some (4, 16, 2, [[], [(9, 90)], [(2, 20)], []])) = true := by native_decide
+    some (8, 32, 2, [[], [(9, 90)], [(2, 20)], [], [], [], [], []]))
+    = true := by native_decide
+
+/-- From capacity 1 (threshold 0), four inserts force THREE doubling resizes:
+    1 → 2 → 4 → 8, every entry re-slotted by the move fold each time. -/
+def s1GrowCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{
+  let Pair(m0, Ev0) = NewHM(1, unit);
+  let b1 = &m m0;
+  InsertHM(9, 1, 10, b1, unit);
+  let b2 = &m m0;
+  InsertHM(9, 2, 20, b2, unit);
+  let b3 = &m m0;
+  InsertHM(9, 3, 30, b3, unit);
+  let b4 = &m m0;
+  InsertHM(9, 4, 40, b4, unit);
+  let y = m0;
+  () }
+
+example : (runHM s1GrowCaller ==
+    some (8, 32, 4, [[], [(1, 10)], [(2, 20)], [(3, 30)], [(4, 40)], [], [], []]))
+    = true := by native_decide
 
 -- The empty map runs and decodes: all buckets Nil, n = 0, load = 4·cap.
 def s1NewCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{
@@ -253,12 +277,11 @@ def hmGmUnder (tail2 : Term) : Term :=
                        self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
                          Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))).
                            HMInvT cap load n slots),
-                       Hfuel : Le (S (SizeHM (*self))) fuel,
-                       Hroom : Le (Mul 5 (S (SizeHM (*self)))) (LoadHM (*self))) -> &mut Nat {
+                       Hfuel : Le (S (S (SizeHM (*self)))) fuel) -> &mut Nat {
     if ContainsHM(fuel, key, &m *self) {
       GetMutRaw(fuel, key, dflt, &m *self)
     } else {
-      InsertHM(fuel, key, dflt, &m *self, Hfuel, Hroom);
+      InsertHM(fuel, key, dflt, &m *self, Hfuel);
       GetMutRaw(fuel, key, dflt, &m *self)
     } };
   %tail2 }
@@ -273,13 +296,13 @@ example : progRejects (hmGmUnder prog{ () }) "does not have its owed type"
 def gmTest1 : Term := hmGmUnder prog{
   let Pair(m0, Ev0) = NewHM(32, unit);
   let b1 = &m m0;
-  InsertHM(64, 0, 42, b1, unit, unit);
+  InsertHM(64, 0, 42, b1, unit);
   let b2 = &m m0;
-  InsertHM(64, %(Term.nat 128), 18, b2, unit, unit);
+  InsertHM(64, %(Term.nat 128), 18, b2, unit);
   let b3 = &m m0;
-  InsertHM(64, %(Term.nat 1024), %(Term.nat 138), b3, unit, unit);
+  InsertHM(64, %(Term.nat 1024), %(Term.nat 138), b3, unit);
   let b4 = &m m0;
-  InsertHM(64, %(Term.nat 1056), %(Term.nat 256), b4, unit, unit);
+  InsertHM(64, %(Term.nat 1056), %(Term.nat 256), b4, unit);
   let b5 = &m m0;
   let e1 = GetMutHM(64, %(Term.nat 1024), b5, unit);
   *e1 := 56;
@@ -299,12 +322,12 @@ example : (runHM gmTest1 ==
 def gmTest2 : Term := hmGmUnder prog{
   let Pair(m0, Ev0) = NewHM(4, unit);
   let b1 = &m m0;
-  InsertHM(9, 1, 10, b1, unit, unit);
+  InsertHM(9, 1, 10, b1, unit);
   let b2 = &m m0;
-  let e1 = GetMutOrInsertHM(9, 5, 7, b2, unit, unit);
+  let e1 = GetMutOrInsertHM(9, 5, 7, b2, unit);
   *e1 := 9;
   let b3 = &m m0;
-  let e2 = GetMutOrInsertHM(9, 5, 7, b3, unit, unit);
+  let e2 = GetMutOrInsertHM(9, 5, 7, b3, unit);
   *e2 := 11;
   let y = m0;
   () }
