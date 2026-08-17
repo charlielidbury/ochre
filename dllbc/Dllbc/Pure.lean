@@ -326,6 +326,15 @@ mutual
           let recCall := .app (.app (.app (.app (.app (.const "listRec") a) motive) pn) pc) t
           whnfN fuel (rebuildSpine (.app (.app (.app pc h) t) recCall) rest)
         | l' => rebuildSpine (.const "listRec") (a :: motive :: pn :: pc :: l' :: rest)
+      -- `Option` is `List`'s parameter and `Bool`'s shape: the spine carries the
+      -- element type like `listRec`'s, and the `Some` arm takes the payload and
+      -- NOTHING else — no `ih`, because `Some`'s field is at the parameter type
+      -- rather than at `Option A`, so there is no recursive occurrence to hand it.
+      | .const "optRec", a :: motive :: pn :: ps :: o :: rest =>
+        match whnfN fuel o with
+        | .ctor "None" [] => whnfN fuel (rebuildSpine pn rest)
+        | .ctor "Some" [x] => whnfN fuel (rebuildSpine (.app ps x) rest)
+        | o' => rebuildSpine (.const "optRec") (a :: motive :: pn :: ps :: o' :: rest)
       | .const "sigmaRec", a :: b :: motive :: f :: p :: rest =>
         match whnfN fuel p with
         | .ctor "Pair" [x, y] => whnfN fuel (rebuildSpine (.app (.app f x) y) rest)
@@ -462,8 +471,8 @@ def openBinder (fuel : Nat) (x : String) (body arg : Term) : Term :=
 structure CtorSig where
   fieldTypes : Term → Option (List (String × Term))
 
-/-- The fixed constructor basis: Unit, Bool, Nat, List (element parameter),
-    and Σ's `Pair` (dependent second field). -/
+/-- The fixed constructor basis: Unit, Bool, Nat, List and Option (each with an
+    element parameter), and Σ's `Pair` (dependent second field). -/
 def ctorSig : String → Option CtorSig
   | "unit"  => some { fieldTypes := fun ty => match ty with | .const "Unit" => some [] | _ => none }
   | "True"  => some { fieldTypes := fun ty => match ty with | .const "Bool" => some [] | _ => none }
@@ -477,6 +486,15 @@ def ctorSig : String → Option CtorSig
       match ty with
       | .app (.const "List") t => some [("_", t), ("_", prog{ List %t })]
       | _ => none }
+  -- `Option`'s two, mirroring `Nil`/`Cons`'s parameter read: the element type is
+  -- recovered from the expected type's argument, so neither constructor carries
+  -- one. `Some`'s single field is at that parameter — `Option` is parametric like
+  -- `List` and non-recursive like `Bool`, and this is the line where those two
+  -- facts meet.
+  | "None"  => some { fieldTypes := fun ty =>
+      match ty with | .app (.const "Option") _ => some [] | _ => none }
+  | "Some"  => some { fieldTypes := fun ty =>
+      match ty with | .app (.const "Option") t => some [("_", t)] | _ => none }
   -- The one DEPENDENT entry in the table: `Pair`'s second field type is the Σ's
   -- codomain, a body under the Σ's own binder — so that binder is the name
   -- `checkFields` opens it at.
@@ -522,6 +540,7 @@ def typeCtors : Term → Option (List String)
   | .const "Unit" => some ["unit"]
   | .const "Bot"  => some []
   | .app (.const "List") _ => some ["Nil", "Cons"]
+  | .app (.const "Option") _ => some ["None", "Some"]
   | .sigmaT _ _ _ => some ["Pair"]
   | .idT _ _ _    => some ["Refl"]                 -- §10: Id's only constructor
   -- `Array n T` has the single constructor `Arr` at a concrete `n`, and NO known

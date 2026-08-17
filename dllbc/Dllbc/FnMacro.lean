@@ -415,7 +415,7 @@ def fnElab (d : FnDef) : Except String Term := do
       | .app (.const "List") a => some a
       | _ => none
     if !(Term.beq kτ (.const "Nat")) && elemTy?.isNone then
-      .error s!"fn: '{d.name}' recurses on '{kv.name}', whose type is neither `Nat` nor `List A`. Those are the two eliminators this macro emits; the kernel's `sealRec` also checks `boolRec`, which no recursion decreases on."
+      .error s!"fn: '{d.name}' recurses on '{kv.name}', whose type is neither `Nat` nor `List A`. Those are the two eliminators this macro emits; the kernel's `sealRec` also checks `boolRec` and `optRec`, on neither of which a recursion decreases — `Option` is parametric like `List` but NOT recursive, so `Some`'s field is at the parameter type and there is no predecessor to recurse on."
     let hoisted ← hoist k tel
     let rest := hoisted.drop 1
     -- THE MOTIVE, derived from the signature: the sealed Π with the scrutinee

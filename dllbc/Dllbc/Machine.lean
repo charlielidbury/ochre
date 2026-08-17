@@ -1598,6 +1598,14 @@ mutual
           let pcOk ← hasTypeT fuel pc pcTy
           let lOk ← hasTypeT fuel l listA
           finish (Pure.nf fuel (.app p l)) rest (pnOk && pcOk && lOk)
+        | .const "optRec", a :: p :: pn :: ps :: o :: rest =>   -- optRec A P pn ps o : P o
+          let optA : Term := prog{ Option %a }
+          let pnOk ← hasTypeT fuel pn (Pure.nf fuel (.app p (.ctorApp "None" [])))
+          let psTy : Term :=
+            .pi "§x" a (.app p (.ctorApp "Some" [.pvar "§x"]))
+          let psOk ← hasTypeT fuel ps psTy
+          let oOk ← hasTypeT fuel o optA
+          finish (Pure.nf fuel (.app p o)) rest (pnOk && psOk && oOk)
         | .const "sigmaRec", a :: b :: p :: f :: s :: rest =>  -- sigmaRec A B P f s : P s
           -- Σ's parameters are a type `A` and a FAMILY `B : A → Type`, so unlike
           -- List's uniform parameter both premises cross binders and `B`/`P` are
@@ -3500,6 +3508,7 @@ def recLayout : String → Option (Nat × Nat × Nat)
   | "natRec"  => some (3, 0, 1)   -- P z s ⟨n⟩          ; motive `P`, base arm `z`
   | "listRec" => some (4, 1, 2)   -- A P pn pc ⟨l⟩      ; motive `P`, base arm `pn`
   | "boolRec" => some (3, 0, 1)   -- P t f ⟨b⟩          ; motive `P`, base arm `t`
+  | "optRec"  => some (4, 1, 2)   -- A P pn ps ⟨o⟩      ; motive `P`, base arm `pn`
   | _ => none
 
 /-- What ⇒ puts in a runtime recursor spine's **motive** slot.
@@ -3617,6 +3626,18 @@ def recArmPis (c : String) (u : Term) (arms : List Val) : List (Option Term) :=
                  (atCtor (.ctorApp "Cons" [.var h.1, .var tl.1])))
         | _ => none
       [none, none, baseTy 2 (atCtor (.ctorApp "Nil" [])), cons]
+    | "optRec" =>
+      -- args: A P pn ps. `listRec`'s shape with the tail and the `ih` gone —
+      -- `Some`'s arm leads with the payload alone.
+      let elemTy : Term := match scrutDom with
+        | .app (.const "Option") a => a
+        | _ => .const "Nat"
+      let someArm : Option Term :=
+        match (arms.get? 3).map leading with
+        | some (x :: _) =>
+          some (wrap [(x.1, elemTy)] (atCtor (.ctorApp "Some" [.var x.1])))
+        | _ => none
+      [none, none, baseTy 2 (atCtor (.ctorApp "None" [])), someArm]
     | "boolRec" =>
       [none, baseTy 1 (atCtor (.ctorApp "True" [])), baseTy 2 (atCtor (.ctorApp "False" []))]
     | _ => []
@@ -3997,8 +4018,15 @@ def sealSym (key : SealKey) : M Nat := do
     and the seal's audit brought `sealFn`/`checkRFnBody`/`callDeclC` with it — and
     the default budget is not enough for the well-founded-recursion proof over
     twelve measures. This is elaboration cost, not checker cost: no program pays
-    it. -/
-set_option maxHeartbeats 1000000 in
+    it.
+
+    **And `optRec` raised it again** (hm-option): adding one type to the fixed
+    basis adds an ι case to `applyR` and an arm-check case to `sealRec`, both in
+    this block, and 1e6 was not enough for the proof over the grown match. Same
+    ledger entry as M26-C's — the budget tracks how many constructors the kernel
+    knows, which is the honest cost of a fixed basis with no declaration
+    machinery. -/
+set_option maxHeartbeats 2000000 in
 mutual
   def readR : Nat → Term → M Val
     | 0, _ => throwErr "readR: out of fuel"
@@ -4628,6 +4656,14 @@ mutual
           let ihv ← if pn.armTakesUnit then applyR fuel sp [] else pure sp
           applyRest fuel pc (h :: tl :: ihv :: rest)
         | _ => stuckRec fuel "listRec" [a, motive, pn, pc, whnfV fuel l] rest
+      -- No `ih` to force here, so the eagerness question the two cases above
+      -- answer does not arise: `Some`'s arm gets the payload and the caller's
+      -- residual arguments, and that is the whole rule.
+      | .const "optRec", a :: motive :: pn :: ps :: o :: rest => do
+        match Val.asCtor? (whnfV fuel o) with
+        | some ("None", []) => applyRest fuel pn rest
+        | some ("Some", [x]) => applyRest fuel ps (x :: rest)
+        | _ => stuckRec fuel "optRec" [a, motive, pn, ps, whnfV fuel o] rest
       -- Not a recursor redex. A pure λ (or a λ-headed spine) is β; applied to
       -- nothing — the under-applied `natRec P z s` a seal ascribes, or a recursor
       -- stuck on a σ — it is a VALUE; applied to something it cannot consume, it
@@ -5217,6 +5253,19 @@ mutual
                   (Term.substP sn (.ctorApp "Cons" [.var h.1, .var tl.1]) R)
                 sealMint fuel key (piBinderNames u) u
               | _, _ => throwErr "seal: listRec's arms must be runtime λs, and the Cons arm must bind at least the head, the tail and `ih`"
+            | "optRec", [_, _, pn, ps] => do
+              match Term.peelLams pn, Term.peelLams ps with
+              | (nn, nbody), (x :: rest, sbody) => do
+                checkArm fuel nbody [] nn (Term.substP sn (.ctorApp "None" []) R)
+                -- `x`'s type is the payload type, read off the scrutinee's own
+                -- `Option A` exactly as `listRec` reads its head's.
+                let elemTy : Term := match scrutDom with
+                  | .app (.const "Option") a => a
+                  | _ => .const "Nat"
+                checkArm fuel sbody [(x.1, elemTy)] (x :: rest)
+                  (Term.substP sn (.ctorApp "Some" [.var x.1]) R)
+                sealMint fuel key (piBinderNames u) u
+              | _, _ => throwErr "seal: optRec's arms must be runtime λs, and the Some arm must bind at least the payload"
             | "boolRec", [_, tArm, fArm] => do
               match Term.peelLams tArm, Term.peelLams fArm with
               -- `fbs`, not `fn`: `fn` is a SURFACE keyword and the surface is

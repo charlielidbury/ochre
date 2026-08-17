@@ -140,7 +140,8 @@ namespace Val
     the two against each other in both directions, so the omission is now a red
     build rather than something a reader has to notice. -/
 def ctorNames : List String :=
-  ["unit", "True", "False", "Z", "S", "Nil", "Cons", "Pair", "Arr", "Refl"]
+  ["unit", "True", "False", "Z", "S", "Nil", "Cons", "None", "Some", "Pair",
+   "Arr", "Refl"]
 
 /-- Is this one of the reserved names a node may never collapse under?
 

@@ -1890,6 +1890,7 @@ example : (Pure.nf 200 (.app (.app surfAdd (Term.nat 2)) (Term.nat 3)) == Term.n
 
 def basisTypes : List Term :=
   [prog{ Nat }, prog{ Bool }, prog{ Unit }, prog{ Bot }, prog{ List Nat },
+   prog{ Option Nat },
    prog{ Σ (X : Nat) → Nat }, prog{ Id Nat unit unit }, prog{ Array 2 Nat }]
 
 example : Val.ctorNames.all (fun n => (Pure.ctorSig n).isSome) = true := by native_decide

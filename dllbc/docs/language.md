@@ -29,11 +29,12 @@ reads the function you wrote.
 
 Strip away every convenience and DLLBC is a small λ-calculus plus one law about names.
 
-The basis is small and fixed. Types: `Unit`, `Bool`, `Nat`, `List T`, `Array n T`, `Π`,
-`Σ`, and the equality type `Id A a b`. Values are built from constructors: `unit`,
-`True` / `False`, `Z` / `S(n)` (numerals like `3` are sugar), `Nil` / `Cons(h, t)`,
-`Pair(a, b)` for `Σ`, and `Refl` for `Id`. There are no user-defined datatypes yet; in
-practice the basis plus `Nat`-indexed arrays covers a lot.
+The basis is small and fixed. Types: `Unit`, `Bool`, `Nat`, `List T`, `Option T`,
+`Array n T`, `Π`, `Σ`, and the equality type `Id A a b`. Values are built from
+constructors: `unit`, `True` / `False`, `Z` / `S(n)` (numerals like `3` are sugar),
+`Nil` / `Cons(h, t)`, `None` / `Some(x)`, `Pair(a, b)` for `Σ`, and `Refl` for `Id`.
+There are no user-defined datatypes yet; in practice the basis plus `Nat`-indexed arrays
+covers a lot.
 
 **One function type, one function term.** `Π` is the function type and `λ` is the
 function term, and there is nothing else. `Π (x : A) → R` is a function from `A` to

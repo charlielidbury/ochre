@@ -281,7 +281,7 @@ partial def mintBinders (rctx : List (String × Nat)) (next : Nat) :
     — and two lists that must agree is one list too many. -/
 def ctorSet : List String := Dllbc.Val.ctorNames
 /-- Kernel constants (type formers / recursors / eliminators) → `const`. -/
-def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "boolRec", "listRec", "sigmaRec", "botElim", "j", "k",
+def constSet : List String := ["Nat", "Bool", "List", "Option", "Bot", "Unit", "natRec", "boolRec", "listRec", "optRec", "sigmaRec", "botElim", "j", "k",
   -- ¶1.1/¶1.3's array basis: the former, the split view, the cons view, the read.
   "Array", "arrCat", "acons", "arrRec", "aget"]
 /-- Friendly aliases for the reified library functions whose surface name differs
@@ -1055,6 +1055,20 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
         (Dllbc.Term.lam $(quote hName) $hDom
           (Dllbc.Term.lam $(quote tName) $tDom
             (Dllbc.Term.lam $(quote ihName) $ihDomM $body)))) $scrutT), n2)
+  else if names.contains "None" || names.contains "Some" then
+    -- `List`'s branch with the tail and the `ih` dropped: `Option` is parametric
+    -- like `List` (so the spine leads with the element type) and non-recursive
+    -- like `Bool` (so the `Some` arm binds the payload and nothing else). The
+    -- element type is `Nat` for the same reason the `Cons` arm's head is — the
+    -- surface has no place to write one, and every pure program over `Option` in
+    -- this corpus is over `Option Nat`.
+    let (_, _, nb) ← getArm "None"; let n := (← elabUBlk rctx pctx n2 nb).1
+    let (sb, _, sbody) ← getArm "Some"
+    let xName := (sb.get! 0).getId.toString
+    let body := (← elabUBlk rctx (xName :: pctx) n2 sbody).1
+    let xDom ← binderDom xName (← `(Dllbc.Term.const "Nat"))
+    return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "optRec") (Dllbc.Term.const "Nat")) $motiveT) $n)
+        (Dllbc.Term.lam $(quote xName) $xDom $body)) $scrutT), n2)
   else if names.contains "Pair" then
     -- Σ elimination (§9). `sigmaRec` takes Σ's two parameters — the domain `A` and
     -- the FAMILY `λ x. B` — so the motive's binder type must be written as the Σ
@@ -1095,7 +1109,7 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
         (Dllbc.Term.lam $(quote xName) $xDom
           (Dllbc.Term.lam $(quote yName) $yDom $body))) $scrutT), n2)
   else
-    Macro.throwError "elim: arms do not match a known recursor (Nat/Bool/List/Σ)"
+    Macro.throwError "elim: arms do not match a known recursor (Nat/Bool/List/Option/Σ)"
 
 /-- `elim scrut generalizing goal { arms }` (§18): the motive is
     `λ x. abstractOccurrences scrut goal` — the natural goal with the computed
