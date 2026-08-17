@@ -303,6 +303,25 @@ def InsRecurseLenTy : Term := prog{
     Id Nat (LenE Cons(Pair(Kk0, Vv0), New))
       (CondBump (FindL Key Cons(Pair(Kk0, Vv0), Old)) (LenE Cons(Pair(Kk0, Vv0), Old))) }
 
+/-! ## §1.6.1 — a checker finding: `InsFoundEq`/`InsFoundLen` must be INLINED, not called
+
+    `InsertInList`'s Found branch needs `HeqKey : Id Nat Kk0 key`, built from the `if`'s
+    own `e : Id Bool (Eqb Kk0 key) True` via `EqbTrueEq`, then fed to `NatRw`. Measured:
+    that construction, when it CROSSES A FUNCTION-CALL BOUNDARY (i.e. `HeqKey` is
+    computed and then handed to a SEPARATELY-DEFINED `InsFoundEq`), fails the checker's
+    audit at the `Opt Nat`/`Bucket` types — but the IDENTICAL construction, written
+    INLINE in the `if`'s own branch (no call boundary), is accepted. Isolated by binary
+    search across a dozen minimal probes: neither `if` alone, nor `NatRw` alone, nor
+    complex types alone reproduce it — only `EqbTrueEq(if-derived e)` flowing into a
+    CALLEE's own `NatRw` at the `Opt Nat` type does. `InsRecurseEq`/`InsRecurseLen` do
+    NOT need this treatment: their own `Hne` parameter is the `if`'s `e` PASSED
+    THROUGH UNCHANGED (`Id Bool (Eqb Kk0 key) False`, no `EqbTrueEq`/`NatRw` bridge at
+    the call site), and a plain pass-through argument crosses the boundary fine —
+    confirmed by a dedicated probe. So `InsertInList` below inlines `InsFoundEq`'s and
+    `InsFoundLen`'s BODIES (their standalone forms above remain as the checked
+    specification of what the inlined code must equal) and calls `InsRecurseEq`/
+    `InsRecurseLen` normally. -/
+
 def hmChain (rest : Term) : Term := prog{
   fn New (cap : Nat, Hcap : Le (S Z) cap) -> %NewRet {
     Pair(
@@ -311,10 +330,113 @@ def hmChain (rest : Term) : Term := prog{
           Pair(Hcap, Pair(MkFillAllHashed cap cap Z, Pair(MkFillTotalLen cap, Refl))))))),
       Pair(λ (Q : Nat). MkFillFind cap Q, Refl))
   };
+
+  fn InsertInList [fuel] (fuel : Nat, key : Nat, val : Nat, b : &mut Bucket,
+                          Hf : Le (LenE (*b)) fuel)
+      -> Σ0 (Hp : Π (Q : Nat) → Id (Opt Nat) (FindL Q (*b)) (FindInsL Q key val (old *b))).
+           Id Nat (LenE (*b)) (CondBump (FindL key (old *b)) (LenE (old *b))) {
+    match b {
+      Nil => {
+        *b := Cons(Pair(key, val), Nil);
+        Pair(λ (Q : Nat). Refl, Refl)
+      },
+      Cons(hd, tl) => match fuel {
+        Z => botElim Unit Hf,
+        S(f2) => match hd {
+          Pair(kk, vv) => {
+            let Kk0 = *kk;
+            if e : Eqb Kk0 key {
+              let Vv0 = *vv;
+              let Tl0 = *tl;
+              *vv := val;
+              Pair(
+                λ (Q : Nat).
+                  NatRw (λ (X : Nat). Id (Opt Nat) (FindL Q Cons(Pair(X, val), Tl0))
+                           (FindInsL Q key val Cons(Pair(X, Vv0), Tl0)))
+                    key Kk0 (IdSym Nat Kk0 key (EqbTrueEq Kk0 key e))
+                    (elim (Eqb Q key) return (λ (Bz : Bool). Id (Opt Nat)
+                        (boolRec (λ (W : Bool). Σ (b : Bool). OptP b Nat) (Some val) (FindL Q Tl0) Bz)
+                        (boolRec (λ (W : Bool). Σ (b : Bool). OptP b Nat) (Some val)
+                           (boolRec (λ (W : Bool). Σ (b : Bool). OptP b Nat) (Some Vv0) (FindL Q Tl0) Bz) Bz)) {
+                      True => Refl,
+                      False => Refl
+                    }),
+                NatRw (λ (X : Nat). Id Nat (LenE Cons(Pair(X, val), Tl0))
+                         (CondBump (FindL key Cons(Pair(X, Vv0), Tl0)) (LenE Cons(Pair(X, Vv0), Tl0))))
+                  key Kk0 (IdSym Nat Kk0 key (EqbTrueEq Kk0 key e))
+                  (IdCongr (Opt Nat) Nat (λ (O : Opt Nat). CondBump O (LenE Cons(Pair(key, Vv0), Tl0)))
+                    (Some Vv0) (FindL key Cons(Pair(key, Vv0), Tl0))
+                    (IdSym (Opt Nat) (FindL key Cons(Pair(key, Vv0), Tl0)) (Some Vv0)
+                      (BoolRecTrue (Some Vv0) (FindL key Tl0) (Eqb key key) (EqbRefl key)))))
+            } else {
+              let Tl0 = *tl;
+              let Pair(Hp2, Hlen2) = InsertInList(f2, key, val, &m *tl, Hf);
+              Pair(λ (Q : Nat). %InsRecurseEq Kk0 (*vv) key val Tl0 (*tl) e Hp2 Q,
+                   %InsRecurseLen Kk0 (*vv) key Tl0 (*tl) e Hlen2)
+            }
+          }
+        }
+      }
+    }
+  };
   %rest }
 
 def hmChainClosed : Term := hmChain prog{ () }
 example : progOk hmChainClosed = true := by native_decide
+
+/-! ## §1.8 — `InsertInList`, executing
+
+    `Aeneas`'s own `insert_in_list` behaviour, on a concrete bucket: overwrite an
+    existing key's value in place, or append a fresh entry at the end (`Nil` refill). -/
+
+def natOfV2 : Nat → Val → Option Nat
+  | f, v =>
+    match Val.asCtor? v, f with
+    | some ("Z", []), _ => some 0
+    | some ("S", [w]), f' + 1 => (natOfV2 f' w).map (· + 1)
+    | _, _ => none
+
+def entriesOfV2 : Nat → Val → Option (List (Nat × Nat))
+  | f, v =>
+    match Val.asCtor? v, f with
+    | some ("Nil", []), _ => some []
+    | some ("Cons", [h, t]), f' + 1 =>
+      match Val.asCtor? h, entriesOfV2 f' t with
+      | some ("Pair", [a, b]), some xs =>
+        match natOfV2 2000 a, natOfV2 2000 b with
+        | some k, some v => some ((k, v) :: xs)
+        | _, _ => none
+      | _, _ => none
+    | _, _ => none
+
+def entryTermsOf : List (Nat × Nat) → Term
+  | [] => prog{ Nil }
+  | (k, v) :: t => prog{ Cons(Pair(%(Term.nat k), %(Term.nat v)), %(entryTermsOf t)) }
+
+def insertInListCaller (entries : List (Nat × Nat)) (key val fuel : Nat) : Term :=
+  hmChain prog{
+    let z = %(entryTermsOf entries);
+    let b = &m z;
+    InsertInList(%(Term.nat fuel), %(Term.nat key), %(Term.nat val), b, unit);
+    let y = z;
+    () }
+
+def runInsertInList (entries : List (Nat × Nat)) (key val fuel : Nat) : Option (List (Nat × Nat)) :=
+  match Dllbc.Tests.S9Diff.runExec (insertInListCaller entries key val fuel) with
+  | .ok env => (env.lookup "y").bind (entriesOfV2 2000)
+  | .error _ => none
+
+-- Overwrite an existing key (found at the head).
+example : runInsertInList [(1, 10), (3, 30)] 1 99 2 == some [(1, 99), (3, 30)] := by
+  native_decide
+-- Overwrite an existing key found DEEPER in the walk (exercises the recurse branch).
+example : runInsertInList [(1, 10), (3, 30)] 3 99 2 == some [(1, 10), (3, 99)] := by
+  native_decide
+-- A fresh key appends at the end (the Nil refill, reached via the recurse branch).
+example : runInsertInList [(1, 10), (3, 30)] 5 50 2 == some [(1, 10), (3, 30), (5, 50)] := by
+  native_decide
+-- An empty bucket.
+example : runInsertInList [] 5 50 0 == some [(5, 50)] := by native_decide
 
 /-! ## §1.5 — `insert_in_list`'s arithmetic toolkit, smoke-tested -/
 
