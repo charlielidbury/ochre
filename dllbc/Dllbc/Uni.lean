@@ -187,20 +187,21 @@ syntax:10 "Π" "(" ident ":" uterm ")" "→" uterm:10 : uterm   -- Pi
 -- with one is the grammar being consistent with itself rather than acquiring a
 -- second style.
 --
--- The arrow rows below are a TRANSITIONAL ALIAS, kept only because branches
--- written against the old spelling are still in flight; they elaborate to exactly
--- the same term as their dot twins. Delete the four `"→"` Σ/Σ0 rows — and the four
--- elaborator cases and two motive-extraction cases that match them — once those
--- branches have landed. Nothing in tree spells a Σ with an arrow any more.
-syntax:10 "Σ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- Sigma (dot form)
-syntax:10 "Σ" "(" ident ":" uterm ")" "→" uterm:10 : uterm   -- Sigma (arrow form, transitional)
+-- **The dot is the ONLY Σ spelling.** `Σ (x : A) → B` was the spelling until the
+-- corpus was migrated wholesale (286 sites; see the `Σ` migration commits on
+-- `sigma-dot-syntax`), and it briefly survived as a parsing alias so that branches
+-- written against it could still land. That alias is GONE: an arrow after a Σ
+-- binder is now a parse error, which is the point — an alias nobody is required to
+-- use is an alias that gets used, and two spellings for one former is the thing
+-- this change exists to remove. A branch carrying the old spelling is fixed by one
+-- run of `dllbc/scripts/sigmadot.py` over its new files.
+syntax:10 "Σ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- Sigma
 -- **Σ0 — the COMPTIME TAIL** (M33, suspensions.md §2.7). Same pair, same
 -- constructor, same eliminator: the only difference from `Σ` is that the
 -- CODOMAIN is marked `⇝`, which makes the second projection comptime. DLLBC's
 -- subset type, with the standard precedent (Lean's `{x : A // P}`, Coq's `sig`,
 -- NuPRL/PVS set types) and comptime where those use Prop/irrelevance.
-syntax:10 "Σ0" "(" ident ":" uterm ")" "." uterm:10 : uterm  -- Sigma0 (dot form)
-syntax:10 "Σ0" "(" ident ":" uterm ")" "→" uterm:10 : uterm  -- Sigma0 (arrow form, transitional)
+syntax:10 "Σ0" "(" ident ":" uterm ")" "." uterm:10 : uterm  -- Sigma0
 syntax:10 uterm:11 "→" uterm:10 : uterm                      -- non-dependent arrow
 -- **The non-dependent PAIR** (M33 macro-top), which is to `Σ` what `→` is to `Π`
 -- and which the grammar simply did not have. Every Σ row above demands a binder,
@@ -820,13 +821,6 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
     return (← `(Dllbc.Term.sigmaT $(quote (x.getId.toString))
       $(← binderDom (x.getId.toString) τ') $b'), n2)
-  -- Transitional arrow alias — same term, deleted with its grammar row.
-  | `(uterm| Σ ($x:ident : $τ:uterm) → $b:uterm) => do
-    checkBinder x
-    let (τ', n1) ← elabUTerm rctx pctx next τ
-    let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
-    return (← `(Dllbc.Term.sigmaT $(quote (x.getId.toString))
-      $(← binderDom (x.getId.toString) τ') $b'), n2)
   -- **Σ0 — THE COMPTIME TAIL** (M33, suspensions.md §2.7), and it is NOT a new
   -- former. A Σ's binder has always spelled its own component's mode; the TAIL
   -- has no binder, so until here it had no way to say anything and was silently
@@ -837,13 +831,6 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
   -- `Pair`, same `sigmaRec` — the marker lives on the type and the read routes
   -- off it.
   | `(uterm| Σ0 ($x:ident : $τ:uterm). $b:uterm) => do
-    checkBinder x
-    let (τ', n1) ← elabUTerm rctx pctx next τ
-    let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
-    return (← `(Dllbc.Term.sigmaT $(quote (x.getId.toString))
-      $(← binderDom (x.getId.toString) τ') (Dllbc.Term.cmpT $b')), n2)
-  -- Transitional arrow alias — same term, deleted with its grammar row.
-  | `(uterm| Σ0 ($x:ident : $τ:uterm) → $b:uterm) => do
     checkBinder x
     let (τ', n1) ← elabUTerm rctx pctx next τ
     let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
@@ -1355,9 +1342,6 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
       -- mode marker rather than part of `B` — so a Σ0's family is the family its
       -- Σ twin has, and the row below is the whole of Σ0's elimination.
       | `(uterm| Σ0 ($y:ident : $A:uterm). $B:uterm) => pure (A, y.getId.toString, B)
-      -- Transitional arrow aliases — same family, deleted with their grammar rows.
-      | `(uterm| Σ ($y:ident : $A:uterm) → $B:uterm) => pure (A, y.getId.toString, B)
-      | `(uterm| Σ0 ($y:ident : $A:uterm) → $B:uterm) => pure (A, y.getId.toString, B)
       | _ => Macro.throwError "elim: a Pair motive's binder type must be written as `Σ (x : A). B` (or `Σ0 (x : A). B`)"
     let aT := (← elabUTerm rctx pctx n2 aSyn).1
     -- `B` under its own binder — correct for the family `λ x. B` as written, and

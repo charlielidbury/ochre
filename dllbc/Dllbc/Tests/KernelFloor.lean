@@ -775,56 +775,89 @@ example : progRejects badRefl "does not have return type" = true := by native_de
     slips, because there are no indices to slip). Names + explicit motives
     collapsed the wall; no unifier, no motive inference, no case trees. -/
 
-/-! ## Σ binds with a DOT, and the arrow is a transitional alias
+/-! ## Σ binds with a DOT, and the dot is the only spelling
 
     A Π *is* a function and keeps its arrow; a Σ builds a PAIR, and an arrow on a
     pair former reads like a function it is not. The dot is the surface's own
     convention — λ has bound with one since the grammar was written — so these
     pin the spelling rather than introduce a style.
 
-    Equality, not convertibility, is the right assertion here: the claim is that
-    the two spellings produce the SAME `Term`, which is what makes the arrow rows
-    deletable without re-checking a single proof. `rfl` decides it because both
-    sides are closed `Term` literals built by the macro at elaboration time. -/
+    These pin SHAPES, not convertibility: what a spelling elaborates to is the
+    whole claim, and `rfl` decides it because both sides are closed `Term`
+    literals built by the macro at elaboration time.
 
--- The dot form is accepted, and elaborates to the pair former it names. Σ0's `0`
--- is the `.cmpT` on the CODOMAIN and nothing else — same `sigmaT`, same binder.
+    **What is deliberately NOT tested here, and cannot be.** `Σ (x : A) → B` was
+    the spelling before the migration, and it survived briefly as a parsing alias
+    so in-flight branches could land. The alias is now DELETED — an arrow after a
+    Σ binder is a parse error. Five goldens asserting `dot = arrow` (at Σ, at Σ0,
+    and across a tower written all-arrow and two ways MIXED) went with it, and
+    nothing replaces them: a parse failure is a Lean elaboration error at macro
+    time, so it cannot be asserted from inside the file that would fail to
+    compile. The absence is the assertion.
+
+    **Consequence for branches written before this**, re-measured against
+    `origin/main` at the time this landed rather than carried over. Five unmerged
+    branches add a file that spells Σ with an arrow, and those files will fail to
+    PARSE at merge — not fail a check, which is a friendlier failure than it
+    sounds, since a parse error names its line and its token:
+
+      hm-probe-opt/…/Tests/HmProbeOpt.lean           107
+      hm-finite-ints/…/Tests/Finite.lean              64
+      hm-probe-arrays/…/Tests/HmProbeArrays.lean      30
+      hm-probe-getmut/…/Tests/HmProbeGetmut.lean       8
+      borrow-refound-design/…/BorrowRefoundGoals.lean   6
+
+    215 sites, and the fix for each is one run of `dllbc/scripts/sigmadot.py`
+    over the new file. Do not hand-edit and do not reach for the obvious regex: a
+    Σ domain's own parentheses defeat a non-nesting pattern, which is how the
+    original migration nearly missed a third of its sites.
+
+    These counts MOVE, and that is the point of re-measuring rather than trusting
+    the list: `hm-finite-ints` grew from 38 to 64 between the removal being
+    written and it landing, and `audit-exemption-fix` merged in the interval —
+    arrow-free, so it landed needing nothing. Count the old spelling again after
+    every rebase; a rebase can also carry OLD prose back across a migration, which
+    is how one resurrected arrow reached `Machine.lean` and had to be re-fixed.
+
+    `hm-option-kernel`'s `Tests/OptionT.lean` needs no scanner run — it is already
+    arrow-free — but that branch modifies six files this lane or the migration
+    rewrote (`Uni.lean`, `Machine.lean`, `Pure.lean`, `Value.lean`,
+    `FnMacro.lean`, and this file), and `hm-probe-opt` modifies `Uni.lean`, whose
+    Σ grammar rows are exactly what got deleted. Those merges want reading rather
+    than accepting: an auto-merge taking their side would resurrect the alias
+    rows, or arrow-form Σs that then fail to parse. -/
+
+-- The dot form elaborates to the pair former it names. Σ0's `0` is the `.cmpT` on
+-- the CODOMAIN and nothing else — same `sigmaT`, same binder.
 example : prog{ Σ (x : Nat). Nat } = Term.sigmaT "x" (.const "Nat") (.const "Nat") := by rfl
 example : prog{ Σ0 (h : Nat). Nat }
     = Term.sigmaT "h" (.const "Nat") (.cmpT (.const "Nat")) := by rfl
 
--- The arrow form still parses (TRANSITIONAL — branches written against the old
--- spelling are in flight) and elaborates to exactly the dot form's term. When the
--- arrow rows are deleted from `Uni.lean`, every `→` in this section goes with
--- them and the dot rows above and below are what remains.
-example : prog{ Σ (x : Nat) → Nat } = prog{ Σ (x : Nat). Nat } := by rfl
-example : prog{ Σ0 (h : Nat) → Nat } = prog{ Σ0 (h : Nat). Nat } := by rfl
-
--- A Σ TOWER round-trips. Both formers associate to the right, so the tower is the
--- same term whether every binder is written with a dot, with an arrow, or with a
--- mix — and the mixed row is the one that matters during the transition, since a
--- half-migrated file still means what it meant.
+-- A Σ TOWER associates to the right, so a chain of dots nests rather than
+-- flattening. (`Id A a b` is its own grammar row and builds `Term.idT`, not an
+-- application spine over a `.const "Id"` — worth spelling out once, since the
+-- surface gives no hint of it.)
 example : prog{ Σ (n : Nat). Σ (r : Nat). Id Nat n r }
-    = prog{ Σ (n : Nat) → Σ (r : Nat) → Id Nat n r } := by rfl
-example : prog{ Σ (n : Nat). Σ (r : Nat). Id Nat n r }
-    = prog{ Σ (n : Nat). Σ (r : Nat) → Id Nat n r } := by rfl
-example : prog{ Σ (n : Nat). Σ (r : Nat). Id Nat n r }
-    = prog{ Σ (n : Nat) → Σ (r : Nat). Id Nat n r } := by rfl
-example : prog{ Σ0 (Hs : Nat). Σ (r : Nat). Id Nat r r }
-    = prog{ Σ0 (Hs : Nat) → Σ (r : Nat) → Id Nat r r } := by rfl
+    = Term.sigmaT "n" (.const "Nat")
+        (Term.sigmaT "r" (.const "Nat")
+          (Term.idT (.const "Nat") (.pvar "n") (.pvar "r"))) := by rfl
 
 -- A Σ whose codomain is a Π keeps the Π's arrow: the two formers are told apart
--- by their punctuation, which is the whole point. Written as a tower of both, the
--- dots are the pairs and the arrow is the function.
+-- by their punctuation, which is the whole point. The dot is the pair and the
+-- arrow is the function, in one type. (The Π's binder is CAPITAL, so §2.1 puts a
+-- `.cmpT` on its domain — the elaborated Π is not the one you would write by
+-- hand, and the golden says so rather than hiding it behind a round-trip.)
 example : prog{ Σ (n : Nat). Π (Q : Nat) → Id Nat n Q }
-    = prog{ Σ (n : Nat) → Π (Q : Nat) → Id Nat n Q } := by rfl
+    = Term.sigmaT "n" (.const "Nat")
+        (Term.pi "Q" (.cmpT (.const "Nat"))
+          (Term.idT (.const "Nat") (.pvar "n") (.pvar "Q"))) := by rfl
 
 -- The printer spells the dot (`Term.prettyPrec`'s `.sigmaT` case), which is the
--- round-trip the surface owes a user reading a rejection message: a Σ that goes
--- in as a dot comes back out as one, and never as an arrow.
+-- round-trip the surface owes a user reading a rejection message: a Σ goes in as
+-- a dot and comes back out as one, and there is no longer any other way in.
 example : Term.pretty (Term.sigmaT "n" (.const "Nat") (.const "Bool")) = "Σ(n : Nat). Bool" := by
   native_decide
-example : Term.pretty prog{ Σ (n : Nat) → Nat } = "Σ(n : Nat). Nat" := by native_decide
+example : Term.pretty prog{ Σ (n : Nat). Nat } = "Σ(n : Nat). Nat" := by native_decide
 
 end Dllbc.Tests.S15Elab
 end
