@@ -518,34 +518,67 @@ mutual
     | fuel + 1, .sigmaT _ dom cod => indexKindComp fuel dom && indexKindComp fuel cod
     | _, _ => false
   termination_by fuel _ => (fuel, 0)
-  /-- One component POSITION of a Σ: erased (`⇝`-marked, either end — a capital
-      binder marks the domain, `Σ0` marks the tail) or index-kind in its own
-      right. `whnf` first, for the same reason the σ case below does it: a
-      redex-headed component type that reduces to `Nat` should copy. -/
+  /-- One component POSITION of a Σ: erased (`erasureBound` below) or index-kind
+      in its own right. `whnf` first, for the same reason the σ case below does
+      it: a redex-headed component type that reduces to `Nat` should copy. -/
   def indexKindComp : Nat → Term → Bool
-    | fuel, τ => Term.domComptime τ || indexKindTy fuel (Pure.whnf fuel τ)
+    | fuel, τ => erasureBound fuel τ || indexKindTy fuel (Pure.whnf fuel τ)
+  termination_by fuel _ => (fuel, 2)
+  /-- **Is this Σ position ERASED — marked comptime AND erasure-bound?** The
+      marker is what a capital Σ binder puts on the domain and `Σ0` puts on the
+      tail, and it is most of the answer: a comptime position costs nothing at
+      runtime, so duplicating it duplicates nothing.
+
+      **The second conjunct is a DIFFERENTIAL requirement, not a semantic one**,
+      and it exists because the marker alone is not a fact both machines can read.
+      The checking machine holds a pack as a σ and asks this question of its TYPE;
+      the executing machine holds `Pair(3, Cons(1, Nil))` and asks `indexKindT`'s
+      Pair rule of the VALUE, where a concrete component carries no mode anywhere.
+      Marker-alone therefore ACCEPTS a program the run gets stuck on — measured,
+      not feared: `Σ0 (n : Nat). List Nat` passed to a callee that uses it twice
+      checked and then died at `readR: p#0 holds ⊥`.
+
+      So a marked position is exempt only when it is erasure-bound in the sense
+      §2.1 already uses: index-kind, or a type whose constructor set the machine
+      does not know — a stuck proposition spine like `Le n MAX`, whose concrete
+      inhabitants are `unit`/`Refl` and therefore index-kind on the value side
+      too. `List Nat` has a known constructor set and is not index-kind, so a
+      marked `List` component is NOT exempt and the pack moves in both machines.
+
+      RESIDUAL, stated because it is narrow rather than absent: a marked component
+      whose type is STUCK but computes to an aggregate at concrete indices
+      (`VecF (List Nat) n`) is exempt here and data at the value side. That is the
+      same discrimination `Direct.lean`'s pain diary already ruled undecidable
+      without making `Le` a primitive former — "a σ typed by a stuck `VecF Nat n`
+      is exactly stuck-recursor-to-`Type` yet copying it copies DATA" — so it is a
+      known gap of a known shape, filed with that arc, not a new class. -/
+  def erasureBound : Nat → Term → Bool
+    | fuel, τ =>
+      Term.domComptime τ &&
+        (let τ' := Pure.whnf fuel τ.stripCmp
+         indexKindTy fuel τ' || (Pure.typeCtors τ').isNone)
   termination_by fuel _ => (fuel, 1)
 end
 
-/-- Is this `Pair` component ERASED — a σ whose `sctx` entry carries `⇝`? This is
-    `componentMode`'s question (§2.1, M33a) asked from the copy side, and asked
-    the same way: a component σ's `sctx` entry is `⇝τ` exactly when the producing
-    Σ marked that position comptime (`buildResult` on the concrete path,
-    `reattachSigmaMode` on the symbolic one).
+/-- Is this `Pair` component ERASED — a σ whose `sctx` entry is marked and
+    erasure-bound? This is `componentMode`'s question (§2.1, M33a) asked from the
+    copy side, and asked the same way: a component σ's `sctx` entry is `⇝τ`
+    exactly when the producing Σ marked that position comptime (`buildResult` on
+    the concrete path, `reattachSigmaMode` on the symbolic one). `erasureBound` is
+    then the same second conjunct the type side applies, so the two levels answer
+    one question rather than two that happen to agree.
 
     `false` for a component that is not a σ is the honest answer rather than a
     rounded-up one — a concrete constructor tree has no mode recorded anywhere —
     and it is safe HERE in a way it would not be at `componentMode`, because the
-    caller falls through to classifying the component by shape. What it costs is
-    precision at one shape: a concrete comptime component holding a data tree
-    reads as data, so the pack moves where the type-level rule would copy it. In
-    this corpus that shape is unreachable — a concrete proof of a decidable
-    proposition IS `unit`/`Refl` — and `S34SigmaCopy.packListTail` pins it. -/
-def packCompErased (sctx : List (Nat × Term)) : Term → Bool
+    caller falls through to classifying the component by shape, and `erasureBound`
+    has already restricted the type side to positions whose concrete inhabitants
+    that shape test accepts. -/
+def packCompErased (fuel : Nat) (sctx : List (Nat × Term)) : Term → Bool
   | .pvar x =>
     match symOfName? x with
     | some σ => match sctx.lookup σ with
-      | some τ => Term.domComptime τ
+      | some τ => erasureBound fuel τ
       | none => false
     | none => false
   | _ => false
@@ -593,8 +626,8 @@ def indexKindT (fuel : Nat) (sctx : List (Nat × Term)) : Term → Bool
   -- `Σ (c : Nat) → &mut (Array c T)` is a `node` and takes `indexKindV`'s
   -- data answer below.
   | .ctorApp "Pair" [a, b] =>
-    (packCompErased sctx a || indexKindT fuel sctx a)
-      && (packCompErased sctx b || indexKindT fuel sctx b)
+    (packCompErased fuel sctx a || indexKindT fuel sctx a)
+      && (packCompErased fuel sctx b || indexKindT fuel sctx b)
   | .ctorApp _ _ => false                                   -- data → move
   -- A σ, which is a reserved pure NAME since M32 R1. Whnf its type before
   -- classifying: a redex-headed type that reduces to Nat should copy, not be

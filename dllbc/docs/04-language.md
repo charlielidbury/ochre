@@ -152,8 +152,18 @@ and chapter 7 shows it earning its keep in a real proof.
 Rust's rules, with one boundary drawn differently. Using a runtime value **moves** it;
 a moved variable is dead and the checker rejects later uses. But *small* things copy
 instead of moving: numbers, booleans, and — importantly — **proofs**. Data (lists,
-arrays, pairs of data) always moves. So you can pass an index or a `Le` proof twice
-without thinking, but passing a list consumes it.
+arrays, anything with a list or an array inside it) always moves. So you can pass an
+index or a `Le` proof twice without thinking, but passing a list consumes it.
+
+**A pair copies when its parts do.** `Σ (x : A). B` is Copy exactly when each of its
+two positions is either Copy in its own right or *erased* — and a position is erased
+when the pair's type marks it comptime, which a capital binder does to the first
+component and `Σ0` does to the tail. So `Σ0 (n : Nat). Le n MAX`, the way you write a
+bounded machine integer, is Copy: a number and a proof you never pay for. `Σ (a :
+Nat). List Nat` is not, and neither is a slice `Σ (c : Nat). &mut (Array c T)` — a
+borrow is neither small nor erased, and copying one would hand out two owners of the
+same memory. This is Rust's `#[derive(Copy)]` reached by reading the type rather than
+by declaring a trait.
 
 Capital bindings go one step further than copying: they are *never touched at all* — a
 citation of `Hfuel` reads knowledge and leaves nothing behind to consume, which is why

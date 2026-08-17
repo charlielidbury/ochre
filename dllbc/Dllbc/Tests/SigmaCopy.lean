@@ -179,4 +179,217 @@ def tailMarkedWrongEndTwice : Term := prog{
 example : progRejects tailMarkedWrongEndTwice "p#0 holds ⊥ (use-after-move" = true := by
   native_decide
 
+/-! ## (iii) The differential — the two machines classify the same pack
+
+    A copy rule is exactly the kind of rule the two machines can disagree about,
+    because they meet the pack in two representations: the CHECKING machine holds
+    a parameter as a σ and asks `indexKindTy` of its TYPE, while the EXECUTING
+    machine holds a concrete `Pair(3, unit)` and asks `indexKindT`'s Pair rule of
+    the VALUE. The repo's copy-on-read history says this seam is where a wrong
+    copy rule shows up, so the programs below are checked AND run, and both
+    representations are exercised in each: the top-level `let` builds a concrete
+    pack and consumes it twice, and the callee it hands it to consumes its
+    parameter twice again. -/
+
+/-- Two consuming calls on a CONCRETE pack at the top level, and two more on the
+    same pack as a callee's parameter — so the σ rule and the value rule are both
+    load-bearing in one program. `3 + 3 = 6` twice over. -/
+def packConcreteTwice : Term := prog{
+  fn Snk (p : (Σ0 (n : Nat). Le n 15)) -> Nat { Val 15 p };
+  fn Chain (p : (Σ0 (n : Nat). Le n 15)) -> Nat { let a = Snk(p); let b = Snk(p); Add a b };
+  let q = Pair(3, unit);
+  let out = Chain(q);
+  let out2 = Chain(q);
+  () }
+example : progOk packConcreteTwice = true := by native_decide
+example : (match runProgram packConcreteTwice with
+           | .ok env => (env.lookup "out") == some (Val.nat 6)
+                        && (env.lookup "out2") == some (Val.nat 6)
+           | .error _ => false) = true := by native_decide
+
+/-- The same shape at a bare pair of `Nat`s, so the closed deferral is asserted
+    executing as well as checking. -/
+def pairNatConcreteTwice : Term := prog{
+  fn Fst (p : (Σ (a : Nat). Nat)) -> Nat { elim p return (λ (Q : Σ (a : Nat). Nat). Nat) {
+    Pair (x) (y) => x } };
+  let q = Pair(4, 7);
+  let out = Fst(q);
+  let out2 = Fst(q);
+  () }
+example : progOk pairNatConcreteTwice = true := by native_decide
+example : (match runProgram pairNatConcreteTwice with
+           | .ok env => (env.lookup "out") == some (Val.nat 4)
+                        && (env.lookup "out2") == some (Val.nat 4)
+           | .error _ => false) = true := by native_decide
+
+/-- …and the negative control, executing: a pack with a `List` in it is refused
+    on the SECOND consuming call, at a concrete value rather than at a σ. The two
+    machines agree about the move as well as about the copy. -/
+def pairListConcreteTwice : Term := prog{
+  fn Snk (p : (Σ (a : Nat). List Nat)) -> Unit { () };
+  let q = Pair(4, Cons(1, Nil));
+  let out = Snk(q);
+  let out2 = Snk(q);
+  () }
+example : progRejects pairListConcreteTwice "q#0 holds ⊥ (use-after-move" = true := by
+  native_decide
+
+/-! ### The differential's one real finding: a marked component of AGGREGATE type
+
+    Written with the marker alone doing the exempting, the rule ACCEPTED the
+    program below and the run then died at `readR: p#0 holds ⊥`. The break is
+    structural rather than incidental: the checker holds the callee's parameter as
+    a σ and asks of its TYPE, where the `Σ0` marker is visible; the executing
+    machine holds `Pair(3, Cons(1, Nil))` and asks of the VALUE, where a concrete
+    component carries no mode anywhere. Marker-alone is therefore not a fact both
+    machines can read.
+
+    `erasureBound` is the closure: a marked position is exempt only when it is
+    erasure-bound as §2.1 already means it — index-kind, or a type whose
+    constructor set the machine does not know (a stuck proposition spine like
+    `Le n MAX`, whose concrete inhabitants are `unit`/`Refl` and so index-kind on
+    the value side too). `List Nat` has a known constructor set and is not
+    index-kind, so it is not exempt and BOTH machines move the pack. -/
+
+/-- Used TWICE: refused, and refused for the same reason in both machines. -/
+def packListTail : Term := prog{
+  fn Snk (p : (Σ0 (n : Nat). List Nat)) -> Unit { () };
+  fn Chain (p : (Σ0 (n : Nat). List Nat)) -> Unit { let a = Snk(p); let b = Snk(p); () };
+  let q = Pair(3, Cons(1, Nil));
+  let o = Chain(q);
+  () }
+example : progRejects packListTail "p#0 holds ⊥ (use-after-move" = true := by native_decide
+
+/-- Used ONCE: accepted and runs, so the rejection above is about the second use
+    and not about the type being unusable. -/
+def packListTailOnce : Term := prog{
+  fn Snk (p : (Σ0 (n : Nat). List Nat)) -> Nat { 7 };
+  let q = Pair(3, Cons(1, Nil));
+  let out = Snk(q);
+  () }
+example : progOk packListTailOnce = true := by native_decide
+example : (match runProgram packListTailOnce with
+           | .ok env => (env.lookup "out") == some (Val.nat 7)
+           | .error _ => false) = true := by native_decide
+
+/-! ## (iv) The composite — `try_resize` without the staging
+
+    The finite-ints lane's port of the Aeneas hashmap's growth guard carries this
+    note, and it is the ergonomic claim M34 is answering:
+
+        THE OWNERSHIP STAGING, which is the ergonomic cost: `nc` is returned AND
+        fed to the second multiplication, and a pack cannot be used twice. So its
+        two halves are staged as a copyable `Nat` and a comptime bound before the
+        call that consumes it, and the returned pack is re-minted from them. Rust
+        needs none of this because `usize` is `Copy`.
+
+    Four bindings pay that tax in the lane's body — `let cv = Val MAX capacity`,
+    `let gv = Val MAX growth`, `let ncv = Val MAX nc`, `let Hncb = Bnd MAX nc` —
+    and the version below has NONE of them. The guard's shape is ported whole:
+    an `if` whose condition is what licenses the arithmetic, a certified op whose
+    return type says what its result IS (so the next operation's precondition can
+    cite it), and a result that pairs the new capacity with the recomputed load.
+
+    The arithmetic is `Add` where the lane's is `Mul`/`Div`, because `Mul`, `Div`
+    and their lemmas live in the lane and not in `StdLemmas` — porting them would
+    duplicate that lane's library on this branch for no gain, and the STAGING is
+    what this file is about. Every ownership event of the original survives the
+    substitution: two consuming calls on pack parameters, a proof built after the
+    call that consumed the values it cites, and a returned pack the body used
+    again after handing it away.
+
+    **The four eliminated bindings, by name and site.**
+
+      * `cv`/`gv` — the lane stages `Val MAX capacity` and `Val MAX growth` before
+        the first op because that op MOVES both. Here `HB` cites them afterwards,
+        directly.
+      * `ncv`/`Hncb` — the lane stages the new capacity's value and its bound
+        before the second op, then re-mints `Pair(ncv, Hncb)` for the result.
+        Here the result is `Pair(nc, nd)`: the pack itself, used again after the
+        call that consumed it. -/
+
+/-- The certified addition: `H` is the caller's obligation that the sum is in
+    range, and the `Id` in the tail is what lets the NEXT operation's precondition
+    mention this result (a call is opaque, so `-> U MAX` alone would say only
+    "some number in range"). `Refl` proves it — the ι-rule fires on the pack the
+    body just built. -/
+def uAddC (tail : Term) : Term := prog{
+  fn AddUC (MAX : Nat, a : (Σ0 (n : Nat). Le n MAX), b : (Σ0 (n : Nat). Le n MAX),
+            H : Le (Add (Val MAX a) (Val MAX b)) MAX)
+      -> (Σ0 (r : (Σ0 (n : Nat). Le n MAX))
+            . Id Nat (Val MAX r) (Add (Val MAX a) (Val MAX b)))
+      { Pair(Pair(Add (Val MAX a) (Val MAX b), H), Refl) };
+  %tail }
+
+example : progOk (uAddC prog{ () }) = true := by native_decide
+
+/-- **THE COMPOSITE, staging-free.** `capacity` and `growth` are both consumed by
+    the first call and both cited after it; `nc` is consumed by the second call
+    and returned after it. On the lane this body needs four capture-before-consume
+    bindings and here it needs none — which is the whole of the feature, written
+    as a program that checks. -/
+def grow (tail : Term) : Term := uAddC prog{
+  fn Grow (MAX : Nat,
+           capacity : (Σ0 (n : Nat). Le n MAX),
+           growth : (Σ0 (n : Nat). Le n MAX),
+           mload : (Σ0 (n : Nat). Le n MAX))
+      -> (Σ (c2 : (Σ0 (n : Nat). Le n MAX)). (Σ0 (n : Nat). Le n MAX))
+      { if hg : Leb (Add (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth)) MAX {
+          let HBig = LebTrueLe
+                       (Add (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth))
+                       MAX hg;
+          let HA = LeTrans (Add (Val MAX capacity) (Val MAX growth))
+                     (Add (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth)) MAX
+                     (LeAdd (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth))
+                     HBig;
+          let r1 = AddUC(MAX, capacity, growth, HA);
+          match r1 { Pair(nc, Enc) => {
+            -- **`cv`/`gv` ELIMINATED.** `capacity` and `growth` were both MOVED by
+            -- the call above, and both are named here — this is the line the lane
+            -- has to stage two bindings for.
+            let HB = LeRwL MAX
+                       (Add (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth))
+                       (Add (Val MAX nc) (Val MAX growth))
+                       (IdCongr Nat Nat (λ (X : Nat). Add X (Val MAX growth))
+                         (Add (Val MAX capacity) (Val MAX growth)) (Val MAX nc)
+                         (IdSym Nat (Val MAX nc)
+                           (Add (Val MAX capacity) (Val MAX growth)) Enc))
+                       HBig;
+            let r2 = AddUC(MAX, nc, growth, HB);
+            -- **`ncv`/`Hncb` ELIMINATED.** The result is the pack itself, after
+            -- the call that consumed it — not a re-mint from staged halves.
+            match r2 { Pair(nd, End) => Pair(nc, nd) } } }
+        } else {
+          Pair(capacity, mload)
+        } };
+  %tail }
+
+example : progOk (grow prog{ () }) = true := by native_decide
+
+/-! ### It RUNS, on both branches
+
+    `MAX = 15`, growth 2. At capacity 3 the guard `3 + 2 + 2 ≤ 15` holds, so the
+    new capacity is 5 and the recomputed load is 7. At capacity 13 it does not
+    (`13 + 2 + 2 = 17`), so capacity and load come back untouched. -/
+
+def growCall (m cap g ml : Nat) : Term := grow prog{
+  let cP = Pair(%(Term.nat cap), unit);
+  let gP = Pair(%(Term.nat g), unit);
+  let mP = Pair(%(Term.nat ml), unit);
+  let r = Grow(%(Term.nat m), cP, gP, mP);
+  match r { Pair(a, b) => { let out = Val %(Term.nat m) a;
+                            let out2 = Val %(Term.nat m) b; () } } }
+
+def growOut (t : Term) (a b : Nat) : Bool :=
+  match runProgram t with
+  | .ok env => (env.lookup "out") == some (Val.nat a) && (env.lookup "out2") == some (Val.nat b)
+  | .error _ => false
+
+-- The guard holds: capacity 3 grows to 5, load recomputes to 7.
+example : progOk (growCall 15 3 2 0) = true := by native_decide
+example : growOut (growCall 15 3 2 0) 5 7 = true := by native_decide
+-- The guard fails: capacity 13 and load 9 come back unchanged.
+example : progOk (growCall 15 13 2 9) = true := by native_decide
+example : growOut (growCall 15 13 2 9) 13 9 = true := by native_decide
+
 end Dllbc.Tests.SigmaCopy
