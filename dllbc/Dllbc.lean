@@ -19,3 +19,4 @@ import Dllbc.Tests.Functions
 import Dllbc.Tests.Programs
 import Dllbc.Tests.AuditExemption
 import Dllbc.Tests.Ledger
+import Dllbc.Tests.Sugar

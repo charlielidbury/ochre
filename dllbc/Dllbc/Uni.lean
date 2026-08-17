@@ -222,8 +222,23 @@ syntax:max "(" uterm ":" uterm ")" : uterm                   -- .seal t u — `(
 -- meant. Measured before deciding: without this row it parses, silently, and fails
 -- downstream as an unrelated unbound-identifier error.
 syntax:70 "&mut" "(" ident ":" uterm ")" : uterm             -- always an error
-syntax:max "match" ident "{" uarm,* "}" : uterm              -- runtime match (§3)
-syntax:max "match" ident ":" ident "{" uarm,* "}" : uterm    -- …with a branch equation (M23)
+-- **THE SCRUTINEE IS A TERM** (M34 sugar (i)). It used to be an `ident`, and the
+-- elaborator then refused every ident that was not a bound runtime local — so
+-- `match SplitA(f, m, h, p, &m *tl) { … }` was unwritable and every call whose
+-- result is matched had to be spelled `let res = … ; match res { … }` by hand.
+-- That hand-spelling is exactly what this row now performs, so the row adds a
+-- shorthand and no semantics.
+--
+-- **A PLAIN VARIABLE STILL TAKES THE OLD PATH, byte for byte.** `elabScrut`
+-- below matches a bare ident FIRST and emits the same `.matchE` header it always
+-- did, with no `let` around it — which matters because a match on a BORROW
+-- variable is the reborrow-mode match (`vecPush`, `zeroAll`), where the arm
+-- binders are loans into the scrutinee's payload rather than copies of it.
+-- Binding such a scrutinee to a fresh slot first would move it, and the money
+-- test would stop being about the forgotten length update. The sugar fires only
+-- where the old grammar rejected the scrutinee outright.
+syntax:max "match" uterm "{" uarm,* "}" : uterm              -- runtime match (§3)
+syntax:max "match" ident ":" uterm "{" uarm,* "}" : uterm    -- …with a branch equation (M23)
 syntax:max "if" uterm "{" ublk "}" "else" "{" ublk "}" : uterm  -- §12 sugar over a Bool match
 syntax:max "if" ident ":" uterm "{" ublk "}" "else" "{" ublk "}" : uterm  -- …with a branch equation
 
@@ -248,6 +263,24 @@ syntax ident "(" ident,* ")" "=>" uarmBody : uarm            -- applied pattern 
 -- second thing to keep in step.
 syntax "fn" ident ("[" ident "]")? "(" ulamb,* ")" "->" uterm "{" ublk "}" ";" ublk : ublk
 syntax "let" ident "=" uterm ";" ublk : ublk                 -- runtime let (→ letIn)
+-- **THE SINGLETON-CONSTRUCTOR `let`** (M34 sugar (ii)). `let C(a, b) = e ; rest`
+-- is `match e { C(a, b) => rest }` — the REST OF THE BLOCK moves inside the arm,
+-- which is the whole of the transformation and the whole of the readability win:
+-- a five-deep `match res { Pair(k2, z1) => match z1 { Pair(r2, z2) => … }}}}`
+-- pyramid is a flat chain of `let Pair(…) = …;` lines that never indents.
+--
+-- **The macro asks nothing about the type, deliberately.** A pattern whose
+-- constructor is not the scrutinee type's only one desugars anyway, to a
+-- one-branch match, and §9's exhaustiveness check refuses it from the kernel
+-- with the error it already has ("non-exhaustive — no branch for constructor
+-- 'Nil'"). So `let Cons(h, t) = l ;` is rejected, and rejected for the reason
+-- that is actually true of it, by the rule that was already there — no
+-- constructor table at the surface, no second definition of which types have one
+-- constructor, and nothing to keep in step when the basis grows.
+--
+-- `noWs` before `(`, matching the call/ctorApp row: `C(a, b)` is one token-run
+-- everywhere in this grammar.
+syntax "let" ident noWs "(" ident,* ")" "=" uterm ";" ublk : ublk
 syntax uterm ":=" uterm ";" ublk : ublk                      -- assignment
 syntax uterm ";" ublk : ublk                                 -- expression statement (seq)
 syntax uterm : ublk                                          -- final expression
@@ -259,6 +292,27 @@ open Lean
     entry snapshot, and the non-dependent arrow's domain. Reserved, so it is not
     merely unused but unwritable. -/
 def unusedSnapName : String := "§_"
+
+/-- The slot a MATCHED EXPRESSION is bound to (M34 sugar (i)). `match e { … }`
+    where `e` is not a plain local is `let §m = e ; match §m { … }`, and this is
+    that binder's name.
+
+    **Reserved, and that is what makes the sugar hygienic.** `checkBinder` refuses
+    every `§`-prefixed name in source, so no program can write a binding this one
+    could shadow or be shadowed by — which is the guarantee the reserved namespace
+    exists to give (`isReservedName`, Syntax.lean). The `if` sugar's `"__if"` is the
+    older spelling of the same idea and does NOT have that property: a program may
+    write `let __if = …`, and since M32 R1 resolves Ω by name, it would be
+    resolving the same slot. Fixing that is not this lane's, but the new sugar
+    should not add a second instance of it.
+
+    One name for every site is enough, for the reason nested `if`s already
+    demonstrate: Ω is name-keyed with newest-wins (`findSlot?`), so an inner `§m`
+    shadows an outer one exactly where an inner `let x` shadows an outer `x`, and
+    the outer is dead by then — its only reader is the `.matchE` header that has
+    already been entered. The ids are distinct regardless, since they come from the
+    one counter every binder in this file mints from. -/
+def scrutName : String := "§m"
 
 -- (`shadowedName` and `idxOf?` were deleted in M30 step 2. The first existed so
 -- that a `let` shadowing a pure binder could occupy that binder's `pctx` slot —
@@ -473,6 +527,16 @@ suite was checked byte-for-byte against this elaborator before it was deleted
 (M28 α–δ).
 Pure binders (λ/Π/Σ/→) push their NAME onto `pctx` and never touch `next`; a
 runtime var referenced from inside a pure spine stays `.var`. -/
+
+/-- Put a matched expression's `let` back around the match, or nothing at all when
+    the scrutinee was already a place (M34). The two match rows and the
+    `let C(…) = …` row all end this way, and each of them owes the SAME identity
+    on the plain-variable path — so the wrapping is written once. -/
+def wrapScrut (scrut : TSyntax `term) (pre? : Option (TSyntax `term))
+    (body : TSyntax `term) : MacroM (TSyntax `term) :=
+  match pre? with
+  | none => pure body
+  | some e => `(Dllbc.Term.letIn $scrut $e $body)
 
 partial def collectAppU : TSyntax `uterm → TSyntax `uterm × Array (TSyntax `uterm)
   | `(uterm| $f:uterm $a:uterm) => let (h, as) := collectAppU f; (h, as.push a)
@@ -704,25 +768,24 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
       | some id =>
         return (← `(Dllbc.Term.appSpine (.var ⟨$(quote id), $(quote name)⟩) [$args',*]), n)
       | none => return (← `(Dllbc.Term.call $(quote name) [$args',*]), n)
-  | `(uterm| match $x:ident { $arms,* }) => do
-    let s := x.getId.toString
-    match localId rctx s with
-    | none => Macro.throwErrorAt x s!"decl: match scrutinee '{s}' is not a bound runtime variable"
-    | some id =>
-      let (arms', n) ← elabUArms rctx pctx next arms.getElems.toList
-      return (← `(Dllbc.Term.matchE ⟨$(quote id), $(quote s)⟩ none [$arms',*]), n)
+  | `(uterm| match $e:uterm { $arms,* }) => do
+    let (scrut, pre?, n1) ← elabScrut rctx pctx next e
+    let (arms', n) ← elabUArms rctx pctx n1 arms.getElems.toList
+    return (← wrapScrut scrut pre? (← `(Dllbc.Term.matchE $scrut none [$arms',*])), n)
   -- M23: `match h : x { … }` — the branch-equation form. One binder for the whole
   -- match (its TYPE is what varies per arm), as in Lean's `match h : x with`.
-  | `(uterm| match $h:ident : $x:ident { $arms,* }) => do
+  --
+  -- The scrutinee goes through the same `elabScrut` as the plain form, so the
+  -- equation form composes with sugar (i) for free and — on the plain-variable
+  -- path — the equation binder still lands at id `next`, since `elabScrut` does
+  -- not touch the counter there.
+  | `(uterm| match $h:ident : $e:uterm { $arms,* }) => do
     checkBinder h
-    let s := x.getId.toString
-    match localId rctx s with
-    | none => Macro.throwErrorAt x s!"decl: match scrutinee '{s}' is not a bound runtime variable"
-    | some id =>
-      let hName := h.getId.toString
-      let (arms', n) ← elabUArms ((hName, next) :: rctx) pctx (next + 1) arms.getElems.toList
-      return (← `(Dllbc.Term.matchE ⟨$(quote id), $(quote s)⟩
-        (some ⟨$(quote next), $(quote hName)⟩) [$arms',*]), n)
+    let (scrut, pre?, n1) ← elabScrut rctx pctx next e
+    let hName := h.getId.toString
+    let (arms', n) ← elabUArms ((hName, n1) :: rctx) pctx (n1 + 1) arms.getElems.toList
+    let m ← `(Dllbc.Term.matchE $scrut (some ⟨$(quote n1), $(quote hName)⟩) [$arms',*])
+    return (← wrapScrut scrut pre? m, n)
   | `(uterm| if $c:uterm { $t:ublk } else { $f:ublk }) => do  -- §12 sugar → Bool match
     let (c', n1) ← elabUTerm rctx pctx next c
     let scrutId := n1
@@ -772,6 +835,36 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
       return (out, n)
   | `(uterm| $x:ident) => return (← resolveName rctx pctx x, next)
   | _ => Macro.throwErrorAt stx "decl: unexpected term syntax"
+
+/-- **The scrutinee half of every match row** (M34 sugar (i)). Returns the `Var`
+    the match reads, the right-hand side to `let`-bind it to (`none` when there is
+    nothing to bind), and the counter.
+
+    A bare identifier naming a bound runtime local takes the FIRST branch, which
+    is the pre-sugar path unchanged: the same `Var`, no `let`, and the counter
+    untouched. That identity is not a nicety. A match on a borrow variable is the
+    reborrow-mode match — the arm binders become loans INTO the scrutinee's
+    payload, which is how `vecPush` writes both fields of a `Σ` through one `&mut`
+    and how `zeroAll` walks a list — and binding the scrutinee to a fresh slot
+    first would MOVE it, quietly turning those into matches on a copy.
+
+    An identifier that is not a local still ERRORS, rather than falling through to
+    the fresh-slot path. The names that reach here are `fn` slots, constructors and
+    pure binders, and none of them is a runtime place; the sugar is for the forms
+    the grammar could not spell at all, and an identifier was always spellable. -/
+partial def elabScrut (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
+    (e : TSyntax `uterm) : MacroM (TSyntax `term × Option (TSyntax `term) × Nat) := do
+  match e with
+  | `(uterm| $x:ident) =>
+    let s := x.getId.toString
+    match localId rctx s with
+    | some id => return (← `((⟨$(quote id), $(quote s)⟩ : Dllbc.Var)), none, next)
+    | none => Macro.throwErrorAt x s!"decl: match scrutinee '{s}' is not a bound runtime variable"
+  | _ => do
+    -- The fresh binder is minted at the POST-RHS counter and the block continues
+    -- at `+1` — the `let` row's own discipline, because this is a `let`.
+    let (e', n1) ← elabUTerm rctx pctx next e
+    return (← `((⟨$(quote n1), $(quote scrutName)⟩ : Dllbc.Var)), some e', n1 + 1)
 
 partial def elabUList (rctx : List (String × Nat)) (pctx : List String) (next : Nat) :
     List (TSyntax `uterm) → MacroM (Array (TSyntax `term) × Nat)
@@ -981,6 +1074,30 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     let pctx' := pctx.filter (fun s => s != name)
     let (rest', n2) ← elabUBlk ((name, n1) :: rctx) pctx' (n1 + 1) rest
     return (← `(Dllbc.Term.letIn ⟨$(quote n1), $(quote name)⟩ $e' $rest'), n2)
+  -- **`let C(a, b) = e ; rest` = `match e { C(a, b) => rest }`** (M34 sugar (ii)).
+  --
+  -- The elaboration is the `uarm` path with the arm body supplied by the ENCLOSING
+  -- block rather than by a brace of its own: `elabScrut`, then `mintBinders` at the
+  -- counter the arms would have started from, then the REST of the block under
+  -- those binders. Getting that order right is what makes the two spellings the
+  -- same `Term` and not merely convertible ones — the binder ids are minted from
+  -- the same counter at the same point, so a `let Pair(k2, z1) = res ;
+  -- let Pair(r2, z2) = z1 ; …` chain is literally the pyramid it replaces.
+  --
+  -- `pctx` is passed through UNFILTERED, which is what `elabUArm` does with a
+  -- match's pattern binders and is therefore what this row must do: a pattern
+  -- binder does not shadow a pure binder of its name here, because it does not
+  -- there. (`let x = e` DOES filter, and the asymmetry between the two is
+  -- pre-existing — see the `let` row above. Whichever way it is settled, it should
+  -- be settled for both at once, since these desugar to each other's forms.)
+  | `(ublk| let $c:ident($bs,*) = $e:uterm ; $rest:ublk) => do
+    let (scrut, pre?, n1) ← elabScrut rctx pctx next e
+    bs.getElems.forM checkBinder
+    let (rctx', n2, binderVars) ← mintBinders rctx n1 bs.getElems.toList
+    let (rest', n3) ← elabUBlk rctx' pctx n2 rest
+    let m ← `(Dllbc.Term.matchE $scrut none
+                [Dllbc.Branch.mk $(quote c.getId.toString) [$binderVars,*] $rest'])
+    return (← wrapScrut scrut pre? m, n3)
   | `(ublk| $p:uterm := $e:uterm ; $rest:ublk) => do
     let (p', n1) ← elabUTerm rctx pctx next p
     let (e', n2) ← elabUTerm rctx pctx n1 e
