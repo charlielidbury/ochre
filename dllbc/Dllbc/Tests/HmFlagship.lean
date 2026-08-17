@@ -25,6 +25,8 @@ commit and current `main` is caught here rather than three ops downstream.
 open Dllbc
 open Dllbc.StdLemmas (LeRefl LeTrans LeAdd LeAddL LeAddSucc LeRwL LeRwR AddSucc AddZero
   IdTrans IdCongr IdSym Znots LebTrueLe LebFalseGt LePredL EqbRefl EqbGtFalse EqbLtFalse
+  AllKeysEqHead AllKeysEqHeadTy AllKeysEqTail AllKeysEqTailTy
+  Sig0PairFst Sig0PairFstTy Sig0PairSnd Sig0PairSndTy
   NatRw
   NextR NextC NextQ ModC Mod DivC Div Mul StepInv StepInvTy ModCLt ModCLtTy
   ModLtN ModLtNTy ModDec ModDecTy
@@ -331,14 +333,16 @@ def hmChain (rest : Term) : Term := prog{
       Pair(λ (Q : Nat). MkFillFind cap Q, Refl))
   };
 
-  fn InsertInList [fuel] (fuel : Nat, key : Nat, val : Nat, b : &mut Bucket,
-                          Hf : Le (LenE (*b)) fuel)
+  fn InsertInList [fuel] (fuel : Nat, key : Nat, val : Nat, Cap : Nat, I : Nat,
+                          HKeyMod : Id Nat (Mod key Cap) I, b : &mut Bucket,
+                          Hf : Le (LenE (*b)) fuel, HallKeys : AllKeysEq Cap I (*b))
       -> Σ0 (Hp : Π (Q : Nat) → Id (Opt Nat) (FindL Q (*b)) (FindInsL Q key val (old *b))).
-           Id Nat (LenE (*b)) (CondBump (FindL key (old *b)) (LenE (old *b))) {
+           Σ0 (Hlen : Id Nat (LenE (*b)) (CondBump (FindL key (old *b)) (LenE (old *b)))).
+             AllKeysEq Cap I (*b) {
     match b {
       Nil => {
         *b := Cons(Pair(key, val), Nil);
-        Pair(λ (Q : Nat). Refl, Refl)
+        Pair(λ (Q : Nat). Refl, Pair(Refl, Pair(HKeyMod, unit)))
       },
       Cons(hd, tl) => match fuel {
         Z => botElim Unit Hf,
@@ -361,18 +365,27 @@ def hmChain (rest : Term) : Term := prog{
                       True => Refl,
                       False => Refl
                     }),
-                NatRw (λ (X : Nat). Id Nat (LenE Cons(Pair(X, val), Tl0))
-                         (CondBump (FindL key Cons(Pair(X, Vv0), Tl0)) (LenE Cons(Pair(X, Vv0), Tl0))))
-                  key Kk0 (IdSym Nat Kk0 key (EqbTrueEq Kk0 key e))
-                  (IdCongr (Opt Nat) Nat (λ (O : Opt Nat). CondBump O (LenE Cons(Pair(key, Vv0), Tl0)))
-                    (Some Vv0) (FindL key Cons(Pair(key, Vv0), Tl0))
-                    (IdSym (Opt Nat) (FindL key Cons(Pair(key, Vv0), Tl0)) (Some Vv0)
-                      (BoolRecTrue (Some Vv0) (FindL key Tl0) (Eqb key key) (EqbRefl key)))))
+                Pair(
+                  NatRw (λ (X : Nat). Id Nat (LenE Cons(Pair(X, val), Tl0))
+                           (CondBump (FindL key Cons(Pair(X, Vv0), Tl0)) (LenE Cons(Pair(X, Vv0), Tl0))))
+                    key Kk0 (IdSym Nat Kk0 key (EqbTrueEq Kk0 key e))
+                    (IdCongr (Opt Nat) Nat (λ (O : Opt Nat). CondBump O (LenE Cons(Pair(key, Vv0), Tl0)))
+                      (Some Vv0) (FindL key Cons(Pair(key, Vv0), Tl0))
+                      (IdSym (Opt Nat) (FindL key Cons(Pair(key, Vv0), Tl0)) (Some Vv0)
+                        (BoolRecTrue (Some Vv0) (FindL key Tl0) (Eqb key key) (EqbRefl key)))),
+                  HallKeys))
             } else {
               let Tl0 = *tl;
-              let Pair(Hp2, Hlen2) = InsertInList(f2, key, val, &m *tl, Hf);
+              let HeadKeys = %AllKeysEqHead Cap I Kk0 Tl0 HallKeys;
+              let TailKeys = %AllKeysEqTail Cap I Kk0 Tl0 HallKeys;
+              let Pair(Hp2, Rest2) = InsertInList(f2, key, val, Cap, I, HKeyMod, &m *tl, Hf, TailKeys);
+              let Hlen2 = %Sig0PairFst
+                (Id Nat (LenE (*tl)) (CondBump (FindL key Tl0) (LenE Tl0))) (AllKeysEq Cap I (*tl)) Rest2;
+              let HTailKeys2 = %Sig0PairSnd
+                (Id Nat (LenE (*tl)) (CondBump (FindL key Tl0) (LenE Tl0))) (AllKeysEq Cap I (*tl)) Rest2;
               Pair(λ (Q : Nat). %InsRecurseEq Kk0 (*vv) key val Tl0 (*tl) e Hp2 Q,
-                   %InsRecurseLen Kk0 (*vv) key Tl0 (*tl) e Hlen2)
+                   Pair(%InsRecurseLen Kk0 (*vv) key Tl0 (*tl) e Hlen2,
+                        Pair(HeadKeys, HTailKeys2)))
             }
           }
         }
@@ -413,11 +426,18 @@ def entryTermsOf : List (Nat × Nat) → Term
   | [] => prog{ Nil }
   | (k, v) :: t => prog{ Cons(Pair(%(Term.nat k), %(Term.nat v)), %(entryTermsOf t)) }
 
+/-- `AllKeysEq 1 0 b`'s witness for a bucket of `n` entries: `Mod _ 1 = 0` always, so
+    every entry contributes a trivial `Refl`. -/
+def allKeysEqWitness1 : Nat → Term
+  | 0 => prog{ unit }
+  | n + 1 => prog{ Pair(Refl, %(allKeysEqWitness1 n)) }
+
 def insertInListCaller (entries : List (Nat × Nat)) (key val fuel : Nat) : Term :=
   hmChain prog{
     let z = %(entryTermsOf entries);
     let b = &m z;
-    InsertInList(%(Term.nat fuel), %(Term.nat key), %(Term.nat val), b, unit);
+    InsertInList(%(Term.nat fuel), %(Term.nat key), %(Term.nat val), 1, 0, Refl, b, unit,
+      %(allKeysEqWitness1 entries.length));
     let y = z;
     () }
 

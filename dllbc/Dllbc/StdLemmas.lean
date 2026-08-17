@@ -5172,4 +5172,51 @@ def BoolRecFalseTy : Term := prog{
   Π (T : Opt Nat) → Π (F : Opt Nat) → Π (X : Bool) → Id Bool X False →
     Id (Opt Nat) (boolRec (λ (W : Bool). Σ (b : Bool). OptP b Nat) T F X) F }
 
+/-! ## `AllKeysEq` head/tail — `SortedHeadA`/`SortedTailA`'s shape
+
+    A COMPTIME (capital) value cannot be the scrutinee of an imperative destructuring
+    `let`/`match` (§6: erased, never scrutinised at runtime) — `InsertInList`'s own
+    proof needs to split its `HallKeys : AllKeysEq Cap I (*b)` parameter into "this
+    entry's own hash fact" and "the tail's own witness" WHILE ALSO performing real
+    mutations in the same branch, which a pure `elim`'s arm cannot do either. These
+    two projectors sidestep both: ordinary function calls, callable from anywhere. -/
+
+def AllKeysEqHead : Term := prog{
+  λ (Cap : Nat). λ (I : Nat). λ (K : Nat). λ (T : Bucket).
+    λ (S0 : Σ (Heq : Id Nat (Mod K Cap) I). AllKeysEq Cap I T).
+      elim S0 return (λ (Q : Σ (Heq : Id Nat (Mod K Cap) I). AllKeysEq Cap I T).
+          Id Nat (Mod K Cap) I) {
+        Pair (X) (Y) => X } }
+def AllKeysEqHeadTy : Term := prog{
+  Π (Cap : Nat) → Π (I : Nat) → Π (K : Nat) → Π (T : Bucket) →
+    (Σ (Heq : Id Nat (Mod K Cap) I). AllKeysEq Cap I T) → Id Nat (Mod K Cap) I }
+
+def AllKeysEqTail : Term := prog{
+  λ (Cap : Nat). λ (I : Nat). λ (K : Nat). λ (T : Bucket).
+    λ (S0 : Σ (Heq : Id Nat (Mod K Cap) I). AllKeysEq Cap I T).
+      elim S0 return (λ (Q : Σ (Heq : Id Nat (Mod K Cap) I). AllKeysEq Cap I T).
+          AllKeysEq Cap I T) {
+        Pair (X) (Y) => Y } }
+def AllKeysEqTailTy : Term := prog{
+  Π (Cap : Nat) → Π (I : Nat) → Π (K : Nat) → Π (T : Bucket) →
+    (Σ (Heq : Id Nat (Mod K Cap) I). AllKeysEq Cap I T) → AllKeysEq Cap I T }
+
+/-- Generic `Σ0` projectors — needed once a `let Pair(_, Pair(_, _)) = call;` pattern
+    goes two levels deep through nested `Σ0`s: the surface's nested-pattern desugaring
+    mis-cases its own auto-generated intermediate binder there (measured — the SAME
+    failure survives swapping `×` for a second `Σ0`, so it is about the NESTING depth,
+    not the connective), and a comptime-bound name cannot itself be re-matched (§6).
+    An ordinary function call sidesteps both. -/
+def Sig0PairFst : Term := prog{
+  λ (A : Type). λ (B : Type). λ (S0 : Σ0 (x : A). B).
+    elim S0 return (λ (Q : Σ0 (x : A). B). A) { Pair (X) (Y) => X } }
+def Sig0PairFstTy : Term := prog{
+  Π (A : Type) → Π (B : Type) → (Σ0 (x : A). B) → A }
+
+def Sig0PairSnd : Term := prog{
+  λ (A : Type). λ (B : Type). λ (S0 : Σ0 (x : A). B).
+    elim S0 return (λ (Q : Σ0 (x : A). B). B) { Pair (X) (Y) => Y } }
+def Sig0PairSndTy : Term := prog{
+  Π (A : Type) → Π (B : Type) → (Σ0 (x : A). B) → B }
+
 end Dllbc.StdLemmas
