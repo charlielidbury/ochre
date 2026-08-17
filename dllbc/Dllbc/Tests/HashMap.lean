@@ -1776,6 +1776,46 @@ example : chkL BucketRw BucketRwTy = true := by native_decide
     about pure values, and the single `IdSym h` is the only place the imperative result
     enters. -/
 
+/-! ### Two lemmas for the frame case of the pointwise equation
+
+    A query whose slot differs from the inserted key's cannot BE the inserted key —
+    equal keys hash equally. `SlotNe` is that, and `IfDead` is how a proof uses it:
+    a test that cannot fire makes its then-branch dead, so the `boolRec` collapses to
+    its else-branch with no case analysis left. -/
+
+def SlotNe : Term := prog{
+  λ (Q : Nat). λ (Key : Nat). λ (Cap : Nat). λ (I : Nat).
+  λ (Hix : Id Nat (Mod Key Cap) I).
+  λ (He : Id Bool (Eqb (Mod Q Cap) I) False).
+  λ (Hq : Id Bool (Eqb Q Key) True).
+    TnotF (IdTrans Bool True (Eqb (Mod Q Cap) I) False
+      (IdSym Bool (Eqb (Mod Q Cap) I) True
+        (IdTrans Bool (Eqb (Mod Q Cap) I) (Eqb I I) True
+          (IdCongr Nat Bool (λ (Zz : Nat). Eqb Zz I) (Mod Q Cap) I
+             (IdTrans Nat (Mod Q Cap) (Mod Key Cap) I
+                (IdCongr Nat Nat (λ (Zz : Nat). Mod Zz Cap) Q Key (EqbTrueEq Q Key Hq))
+                Hix))
+          (EqbRefl I)))
+      He) }
+def SlotNeTy : Term := prog{
+  Π (Q : Nat) → Π (Key : Nat) → Π (Cap : Nat) → Π (I : Nat) →
+    Id Nat (Mod Key Cap) I → Id Bool (Eqb (Mod Q Cap) I) False →
+      Id Bool (Eqb Q Key) True → Bot }
+
+def IfDead : Term := prog{
+  λ (Bv : Bool). λ (Xa : Opt Nat). λ (Ya : Opt Nat). λ (Hno : Id Bool Bv True → Bot).
+    elim Bv return (λ (Bz : Bool). (Id Bool Bz True → Bot) →
+        Id (Opt Nat) Ya (boolRec (λ (W : Bool). Opt Nat) Xa Ya Bz)) {
+      True => λ (Hn : Id Bool True True → Bot). botElim (Id (Opt Nat) Ya Xa) (Hn Refl),
+      False => λ (Hn : Id Bool False True → Bot). Refl } Hno }
+def IfDeadTy : Term := prog{
+  Π (Bv : Bool) → Π (Xa : Opt Nat) → Π (Ya : Opt Nat) →
+    (Id Bool Bv True → Bot) →
+      Id (Opt Nat) Ya (boolRec (λ (W : Bool). Opt Nat) Xa Ya Bv) }
+
+example : chkL SlotNe SlotNeTy = true := by native_decide
+example : chkL IfDead IfDeadTy = true := by native_decide
+
 /-! ### The telescope's positional vocabulary, so the twins can share the body
 
     fuel=0, cap=1, i=2, r=3, Heq=4, key=5, val=6, Hix=7, slots=8, Hs=9, Hfb=10. -/
@@ -1783,16 +1823,32 @@ example : chkL BucketRw BucketRwTy = true := by native_decide
 def isCap : Term := .var ⟨1, "cap"⟩
 def isI : Term := .var ⟨2, "i"⟩
 def isKey : Term := .var ⟨5, "key"⟩
+def isVal : Term := .var ⟨6, "val"⟩
 def isSlots : Term := .var ⟨8, "slots"⟩
 
 /-- The honest ensures: the table is still well-hashed, and its entry count is the old
     one bumped exactly when the key was absent. -/
-def isHonest : Term := prog{
-  Σ0 (Hs2 : SlotsOk %isCap Z %isCap (*%isSlots)).
-    Id Nat (SizeA %isCap (*%isSlots))
-      (boolRec (λ (W : Bool). Nat)
-         (S (SizeA %isCap (old *%isSlots))) (SizeA %isCap (old *%isSlots))
-         (IsNoneO Nat (FindL %isKey (AgetB %isCap (old *%isSlots) %isI)))) }
+def isSize : Term := prog{
+  Id Nat (SizeA %isCap (*%isSlots))
+    (boolRec (λ (W : Bool). Nat)
+       (S (SizeA %isCap (old *%isSlots))) (SizeA %isCap (old *%isSlots))
+       (IsNoneO Nat (FindL %isKey (AgetB %isCap (old *%isSlots) %isI)))) }
+
+/-- The pointwise find equation, at the slots level: for EVERY query, the exit view is
+    the model update of the entry view. One total claim, subsuming Aeneas' separate
+    "found" and "frame" conjuncts. -/
+def isFind : Term := prog{
+  Π (q : Nat) → Id (Opt Nat)
+    (FindL q (AgetB %isCap (*%isSlots) (Mod q %isCap)))
+    (boolRec (λ (W : Bool). Opt Nat) (Some Nat %isVal)
+       (FindL q (AgetB %isCap (old *%isSlots) (Mod q %isCap))) (Eqb q %isKey)) }
+
+/-- The three-conjunct ensures, with the size and find clauses as parameters so a twin
+    can change exactly one. -/
+def isRet (size find : Term) : Term := prog{
+  Σ0 (Hs2 : SlotsOk %isCap Z %isCap (*%isSlots)). Σ0 (Hsz : %size). %find }
+
+def isHonest : Term := isRet isSize isFind
 
 /-- The honest hash precondition: `i` really is the key's slot. -/
 def isHix : Term := prog{ Id Nat (Mod %isKey %isCap) %isI }
@@ -1812,6 +1868,7 @@ def insertSlotsU (sret hix rest : Term) : Term := iilP prog{
     let L0 = *lo;
     let R0 = *hi;
     let X0 = *bk;
+    let A0 = arrCat i (S r) (*lo) (acons r (*bk) (*hi));
     let Cap = cap;
     let I0 = i;
     let Rr = r;
@@ -1828,17 +1885,19 @@ def insertSlotsU (sret hix rest : Term) : Term := iilP prog{
     BucketRw
       (λ (B : List (Σ (k : Nat). Nat)).
          Σ0 (Hs2 : SlotsOk Cap Z Cap (arrCat I0 (S Rr) L0 (acons Rr B R0))).
-           Id Nat (SizeA Cap (arrCat I0 (S Rr) L0 (acons Rr B R0)))
+         Σ0 (Hsz : Id Nat (SizeA Cap (arrCat I0 (S Rr) L0 (acons Rr B R0)))
              (boolRec (λ (W : Bool). Nat)
-                (S (SizeA Cap (arrCat I0 (S Rr) L0 (acons Rr X0 R0))))
-                (SizeA Cap (arrCat I0 (S Rr) L0 (acons Rr X0 R0)))
-                (IsNoneO Nat (FindL Key
-                   (AgetB Cap (arrCat I0 (S Rr) L0 (acons Rr X0 R0)) I0)))))
+                (S (SizeA Cap A0)) (SizeA Cap A0)
+                (IsNoneO Nat (FindL Key (AgetB Cap A0 I0))))).
+           Π (q : Nat) → Id (Opt Nat)
+             (FindL q (AgetB Cap (arrCat I0 (S Rr) L0 (acons Rr B R0)) (Mod q Cap)))
+             (boolRec (λ (W : Bool). Opt Nat) (Some Nat Val)
+                (FindL q (AgetB Cap A0 (Mod q Cap))) (Eqb q Key)))
       (InsL Key Val X0) (*bk)
       (IdSym (List (Σ (k : Nat). Nat)) (*bk) (InsL Key Val X0) h)
       Pair(SlotsOkJoin0 Cap Rr (InsL Key Val X0) R0 I0 L0 Hl
              (BucketAtIns Cap I0 Key Val X0 Hm Hix) Hr2,
-           BoolRw
+      Pair(BoolRw
              (λ (Bw : Bool).
                 Id Nat (SizeA Cap (arrCat I0 (S Rr) L0 (acons Rr (InsL Key Val X0) R0)))
                        (boolRec (λ (W : Bool). Nat)
@@ -1854,7 +1913,65 @@ def insertSlotsU (sret hix rest : Term) : Term := iilP prog{
                    (λ (B2 : List (Σ (k : Nat). Nat)). IsNoneO Nat (FindL Key B2))
                    (AgetB Cap (arrCat I0 (S Rr) L0 (acons Rr X0 R0)) I0) X0
                    (AgetBMid Rr X0 R0 I0 L0)))
-             (SizeAIns I0 L0 Rr X0 R0 Key Val)) };
+             (SizeAIns I0 L0 Rr X0 R0 Key Val),
+           -- The pointwise equation, one query at a time. The split is on whether the
+           -- query's slot IS the one written; `SlotNe` is what rules out `q = key` in
+           -- the branch where it is not.
+           λ (q : Nat).
+             (elim (Eqb (Mod q Cap) I0) return (λ (Bv : Bool).
+                 Id Bool (Eqb (Mod q Cap) I0) Bv →
+                 Id (Opt Nat)
+                   (FindL q (AgetB Cap
+                      (arrCat I0 (S Rr) L0 (acons Rr (InsL Key Val X0) R0)) (Mod q Cap)))
+                   (boolRec (λ (W : Bool). Opt Nat) (Some Nat Val)
+                      (FindL q (AgetB Cap A0 (Mod q Cap))) (Eqb q Key))) {
+               -- The written slot: read both buckets back and apply the bucket lemma.
+               True => λ (e : Id Bool (Eqb (Mod q Cap) I0) True).
+                 NatRw
+                   (λ (Z0 : Nat). Id (Opt Nat)
+                      (FindL q (AgetB Cap
+                         (arrCat I0 (S Rr) L0 (acons Rr (InsL Key Val X0) R0)) Z0))
+                      (boolRec (λ (W : Bool). Opt Nat) (Some Nat Val)
+                         (FindL q (AgetB Cap A0 Z0)) (Eqb q Key)))
+                   I0 (Mod q Cap)
+                   (IdSym Nat (Mod q Cap) I0 (EqbTrueEq (Mod q Cap) I0 e))
+                   (BucketRw
+                      (λ (B1 : List (Σ (k : Nat). Nat)). Id (Opt Nat) (FindL q B1)
+                         (boolRec (λ (W : Bool). Opt Nat) (Some Nat Val)
+                            (FindL q (AgetB Cap A0 I0)) (Eqb q Key)))
+                      (InsL Key Val X0)
+                      (AgetB Cap (arrCat I0 (S Rr) L0 (acons Rr (InsL Key Val X0) R0)) I0)
+                      (IdSym (List (Σ (k : Nat). Nat))
+                         (AgetB Cap
+                            (arrCat I0 (S Rr) L0 (acons Rr (InsL Key Val X0) R0)) I0)
+                         (InsL Key Val X0)
+                         (AgetBMid Rr (InsL Key Val X0) R0 I0 L0))
+                      (BucketRw
+                         (λ (B2 : List (Σ (k : Nat). Nat)). Id (Opt Nat)
+                            (FindL q (InsL Key Val X0))
+                            (boolRec (λ (W : Bool). Opt Nat) (Some Nat Val)
+                               (FindL q B2) (Eqb q Key)))
+                         X0 (AgetB Cap A0 I0)
+                         (IdSym (List (Σ (k : Nat). Nat)) (AgetB Cap A0 I0) X0
+                            (AgetBMid Rr X0 R0 I0 L0))
+                         (FindLIns q Key Val X0))),
+               -- Any other slot: untouched, and the query cannot be the inserted key.
+               False => λ (e : Id Bool (Eqb (Mod q Cap) I0) False).
+                 IdTrans (Opt Nat)
+                   (FindL q (AgetB Cap
+                      (arrCat I0 (S Rr) L0 (acons Rr (InsL Key Val X0) R0)) (Mod q Cap)))
+                   (FindL q (AgetB Cap A0 (Mod q Cap)))
+                   (boolRec (λ (W : Bool). Opt Nat) (Some Nat Val)
+                      (FindL q (AgetB Cap A0 (Mod q Cap))) (Eqb q Key))
+                   (IdCongr (List (Σ (k : Nat). Nat)) (Opt Nat)
+                      (λ (B3 : List (Σ (k : Nat). Nat)). FindL q B3)
+                      (AgetB Cap
+                         (arrCat I0 (S Rr) L0 (acons Rr (InsL Key Val X0) R0)) (Mod q Cap))
+                      (AgetB Cap A0 (Mod q Cap))
+                      (AgetBNe Rr (InsL Key Val X0) X0 R0 I0 L0 (Mod q Cap) e))
+                   (IfDead (Eqb q Key) (Some Nat Val)
+                      (FindL q (AgetB Cap A0 (Mod q Cap)))
+                      (SlotNe q Key Cap I0 Hix e)) }) Refl)) };
   %rest }
 
 def insertSlotsP (rest : Term) : Term := insertSlotsU isHonest isHix rest
@@ -1864,44 +1981,76 @@ def insertSlotsP (rest : Term) : Term := insertSlotsU isHonest isHix rest
     the table it leaves behind. -/
 example : progOk (insertSlotsP prog{ () }) = true := by native_decide
 
-/-! ### `InsertSlots`' twins -/
+/-! ### `InsertSlots`' twins — one per conjunct, and one on the precondition -/
 
--- The size accounting inverted: bumped when the key was PRESENT.
-example : progOk (insertSlotsU (prog{
-  Σ0 (Hs2 : SlotsOk %isCap Z %isCap (*%isSlots)).
-    Id Nat (SizeA %isCap (*%isSlots))
-      (boolRec (λ (W : Bool). Nat)
-         (SizeA %isCap (old *%isSlots)) (S (SizeA %isCap (old *%isSlots)))
-         (IsNoneO Nat (FindL %isKey (AgetB %isCap (old *%isSlots) %isI)))) })
+-- SIZE, inverted: bumped when the key was PRESENT.
+example : progOk (insertSlotsU (isRet (prog{
+  Id Nat (SizeA %isCap (*%isSlots))
+    (boolRec (λ (W : Bool). Nat)
+       (SizeA %isCap (old *%isSlots)) (S (SizeA %isCap (old *%isSlots)))
+       (IsNoneO Nat (FindL %isKey (AgetB %isCap (old *%isSlots) %isI)))) }) isFind)
   isHix .unit) = false := by native_decide
 
--- The size accounting off by one: always bumped.
-example : progOk (insertSlotsU (prog{
-  Σ0 (Hs2 : SlotsOk %isCap Z %isCap (*%isSlots)).
-    Id Nat (SizeA %isCap (*%isSlots)) (S (SizeA %isCap (old *%isSlots))) })
+-- SIZE, off by one: always bumped.
+example : progOk (insertSlotsU (isRet
+  (prog{ Id Nat (SizeA %isCap (*%isSlots)) (S (SizeA %isCap (old *%isSlots))) }) isFind)
   isHix .unit) = false := by native_decide
 
--- …and never bumped.
-example : progOk (insertSlotsU (prog{
-  Σ0 (Hs2 : SlotsOk %isCap Z %isCap (*%isSlots)).
-    Id Nat (SizeA %isCap (*%isSlots)) (SizeA %isCap (old *%isSlots)) })
+-- SIZE: never bumped.
+example : progOk (insertSlotsU (isRet
+  (prog{ Id Nat (SizeA %isCap (*%isSlots)) (SizeA %isCap (old *%isSlots)) }) isFind)
   isHix .unit) = false := by native_decide
 
--- The size claimed at the WRONG slot's bucket — slot `S i` instead of `i`.
-example : progOk (insertSlotsU (prog{
-  Σ0 (Hs2 : SlotsOk %isCap Z %isCap (*%isSlots)).
-    Id Nat (SizeA %isCap (*%isSlots))
-      (boolRec (λ (W : Bool). Nat)
-         (S (SizeA %isCap (old *%isSlots))) (SizeA %isCap (old *%isSlots))
-         (IsNoneO Nat (FindL %isKey (AgetB %isCap (old *%isSlots) (S %isI))))) })
+-- SIZE, decided by the WRONG slot's bucket — `S i` instead of `i`.
+example : progOk (insertSlotsU (isRet (prog{
+  Id Nat (SizeA %isCap (*%isSlots))
+    (boolRec (λ (W : Bool). Nat)
+       (S (SizeA %isCap (old *%isSlots))) (SizeA %isCap (old *%isSlots))
+       (IsNoneO Nat (FindL %isKey (AgetB %isCap (old *%isSlots) (S %isI))))) }) isFind)
+  isHix .unit) = false := by native_decide
+
+-- FIND, lied onto `old *slots`: the exit view claimed to be the ENTRY view.
+example : progOk (insertSlotsU (isRet isSize (prog{
+  Π (q : Nat) → Id (Opt Nat)
+    (FindL q (AgetB %isCap (old *%isSlots) (Mod q %isCap)))
+    (boolRec (λ (W : Bool). Opt Nat) (Some Nat %isVal)
+       (FindL q (AgetB %isCap (old *%isSlots) (Mod q %isCap))) (Eqb q %isKey)) }))
+  isHix .unit) = false := by native_decide
+
+-- FIND, frame direction flipped: the else-branch reads the NEW table, so the claim is
+-- that nothing outside the written slot changed — stated the wrong way round.
+example : progOk (insertSlotsU (isRet isSize (prog{
+  Π (q : Nat) → Id (Opt Nat)
+    (FindL q (AgetB %isCap (old *%isSlots) (Mod q %isCap)))
+    (boolRec (λ (W : Bool). Opt Nat) (Some Nat %isVal)
+       (FindL q (AgetB %isCap (*%isSlots) (Mod q %isCap))) (Eqb q %isKey)) }))
+  isHix .unit) = false := by native_decide
+
+-- FIND, the wrong payload: the key comes back instead of the value.
+example : progOk (insertSlotsU (isRet isSize (prog{
+  Π (q : Nat) → Id (Opt Nat)
+    (FindL q (AgetB %isCap (*%isSlots) (Mod q %isCap)))
+    (boolRec (λ (W : Bool). Opt Nat) (Some Nat %isKey)
+       (FindL q (AgetB %isCap (old *%isSlots) (Mod q %isCap))) (Eqb q %isKey)) }))
+  isHix .unit) = false := by native_decide
+
+-- FIND, the test on the wrong key: the model updates at the QUERY rather than at the
+-- inserted key, which is true only where they coincide.
+example : progOk (insertSlotsU (isRet isSize (prog{
+  Π (q : Nat) → Id (Opt Nat)
+    (FindL q (AgetB %isCap (*%isSlots) (Mod q %isCap)))
+    (boolRec (λ (W : Bool). Opt Nat) (Some Nat %isVal)
+       (FindL q (AgetB %isCap (old *%isSlots) (Mod q %isCap))) (Eqb q q)) }))
   isHix .unit) = false := by native_decide
 
 /-- **The hash is load-bearing for the INVARIANT, not merely for lookup.** Weaken the
     precondition that `i` is the key's slot to `Unit` — keeping the parameter, so the
-    body still elaborates and the rejection is about typing — and the well-hashedness
-    clause can no longer be rebuilt: `BucketAtIns` has nothing to say the new entry
-    belongs where it was put. This is the doc's "insert into the unhashed slot" twin,
-    reached through the precondition rather than through the body. -/
+    body still elaborates and the rejection is about typing — and neither the
+    well-hashedness clause nor the frame case of the pointwise equation can be
+    rebuilt: `BucketAtIns` has nothing to say the new entry belongs where it was put,
+    and `SlotNe` has nothing to rule out `q = key` at a different slot. This is the
+    doc's "insert into the unhashed slot" twin, reached through the precondition
+    rather than through the body. -/
 example : progOk (insertSlotsU isHonest prog{ Unit } .unit) = false := by native_decide
 
 
