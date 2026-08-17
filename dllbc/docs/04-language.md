@@ -338,6 +338,16 @@ let Pair(H1, h2) = q;
 
 Both spellings produce the same program — this is shorthand, not a second mechanism — and the same binder rules apply, mode-spelling included. Nothing here asks whether the constructor you wrote is the type's only one: `let Cons(h, t) = l;` is accepted by the grammar and then refused by the ordinary exhaustiveness check, with `non-exhaustive — no branch for constructor 'Nil' of the scrutinee's type`. A destructuring `let` on a borrow reborrows exactly as the match it stands for does, so `let Pair(l, xs) = v;` on a `v : &mut Σ (l : Nat). …` hands you borrows of both fields and you write through them.
 
+**A pattern argument may itself be a pattern.** `Cons(Pair(k, v), tl) => …` reads a field of a field, in match arms and in the destructuring `let` alike, and a nullary constructor may be written bare: `Cons(Z, tl) => …`.
+
+```
+let Pair(rr, Pair(H1, h2)) = SplitOff(&m *tl, i2, hi);
+```
+
+A nested pattern is the fresh binder and the inner match it stands for, and that is worth knowing rather than taking on faith, because two consequences follow from it. **Exhaustiveness is checked at every level.** `Cons(Z, tl) => …` is an inner match on a `Nat` with only the `Z` branch, so it is refused — `no branch for constructor 'S'` — and it is not made exhaustive by any other arm. DLLBC matches are one arm per constructor of the *scrutinee's* type; there is no cross-arm grouping and no pattern matrix, so a discrimination deeper than the head is a decision you make explicitly and the checker holds you to. **And borrow mode goes all the way down**: every level of the pattern is a match on the level above, so `let Pair(n, Pair(l, xs)) = v;` on a `&mut` hands you borrows of all three fields and every write lands.
+
+The branch-equation form does *not* take nested patterns. `match h : x { … }` binds one `h` whose type is the equation between the scrutinee and that arm's constructor, and there is no such equation at a nested position — write the inner match yourself, with its own `match h2 : …` where you want one.
+
 **`Σ0` — the subset type.** A Σ chain's components spell their modes on their binders,
 but the final position — the tail — has no binder, so it spells its mode on the
 *former*: `Σ0 (x : A). P` is the pair whose second projection is comptime — DLLBC's

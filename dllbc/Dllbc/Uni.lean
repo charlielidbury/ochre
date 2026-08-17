@@ -98,6 +98,13 @@ declare_syntax_cat uterm
 declare_syntax_cat ublk
 declare_syntax_cat uarm
 declare_syntax_cat uarmBody
+-- **A PATTERN ARGUMENT** (M34 sugar (iii)) — a binder, or a constructor applied to
+-- more of them. This category exists only for ARGUMENT position, and that is not
+-- an oversight: at the head of an arm a bare identifier names a CONSTRUCTOR
+-- (`Nil => …`), and in argument position the same identifier is a BINDER
+-- (`Cons(h, t) => …`). One category cannot mean both, so `uarm` keeps its own two
+-- rows for the head and uses `upat` for what sits inside the parens.
+declare_syntax_cat upat
 
 syntax:max ident : uterm
 syntax:max num : uterm
@@ -252,7 +259,19 @@ syntax:max "elim" uterm:max "generalizing" uterm:max "{" uelimArm,* "}" : uterm
 syntax "{" ublk "}" : uarmBody                               -- braced block arm body
 syntax uterm : uarmBody                                      -- bare expression arm body
 syntax ident "=>" uarmBody : uarm                            -- nullary pattern
-syntax ident "(" ident,* ")" "=>" uarmBody : uarm            -- applied pattern C(x, y)
+-- **THE ARGUMENTS ARE PATTERNS** (M34 sugar (iii)). They used to be `ident,*`, so
+-- reading a field of a field cost an explicit inner match and a name for the
+-- intermediate; `Cons(Pair(k, v), tl) => …` is now written where it is meant.
+-- The rewrite is 1:1 with that hand-spelling and nothing cleverer — see
+-- `mintPatArgs`/`wrapPats`. DLLBC match stays ONE ARM PER HEAD CONSTRUCTOR:
+-- there is no cross-arm grouping and no pattern matrix, so `Cons(Z, tl)` is not
+-- a partial arm that some other arm completes — it is a one-branch inner match
+-- on the head's payload, and §9 refuses it as non-exhaustive.
+syntax ident "(" upat,* ")" "=>" uarmBody : uarm             -- applied pattern C(x, D(y))
+-- `noWs` before `(`, matching the call/ctorApp row and the `let` row below:
+-- `C(a, b)` is one token-run everywhere in this grammar.
+syntax:max ident : upat                                      -- a binder
+syntax:max ident noWs "(" upat,* ")" : upat                  -- a nested constructor
 
 -- **`fn` is a STATEMENT** (M28 θ). §8 says a declaration is a `let`, and §7 says
 -- what its right-hand side is — a seal over a recursor or a runtime λ. Put those
@@ -280,7 +299,7 @@ syntax "let" ident "=" uterm ";" ublk : ublk                 -- runtime let (→
 --
 -- `noWs` before `(`, matching the call/ctorApp row: `C(a, b)` is one token-run
 -- everywhere in this grammar.
-syntax "let" ident noWs "(" ident,* ")" "=" uterm ";" ublk : ublk
+syntax "let" ident noWs "(" upat,* ")" "=" uterm ";" ublk : ublk
 syntax uterm ":=" uterm ";" ublk : ublk                      -- assignment
 syntax uterm ";" ublk : ublk                                 -- expression statement (seq)
 syntax uterm : ublk                                          -- final expression
@@ -314,6 +333,22 @@ def unusedSnapName : String := "§_"
     one counter every binder in this file mints from. -/
 def scrutName : String := "§m"
 
+/-- The slot a NESTED PATTERN's payload is bound to (M34 sugar (iii)).
+    `Cons(Pair(k, v), tl) => …` is `Cons(§pN, tl) => match §pN { Pair(k, v) => … }`,
+    and this is that binder's name. Reserved for `scrutName`'s reason: no program
+    can write a `§`-prefixed binder, so nothing a program writes can collide.
+
+    **The id is in the NAME, and that is a correctness requirement rather than a
+    debugging convenience.** `§m` gets away with one name for every site because
+    an outer `§m` is dead the moment the match it heads is entered. Sibling nested
+    patterns are not: `C(A(x), B(y))` binds two of these AT ONCE, in one branch,
+    and the match on the first runs while the second is live. Ω is name-keyed with
+    newest-wins (`findSlot?` never reads an id), so two live slots sharing a name
+    would send the first match's header to the SECOND payload — a silent wrong
+    answer, not an error. Suffixing with the id the binder is minted at makes the
+    names as distinct as the ids, which the one global counter already guarantees. -/
+def patName (id : Nat) : String := "§p" ++ toString id
+
 -- (`shadowedName` and `idxOf?` were deleted in M30 step 2. The first existed so
 -- that a `let` shadowing a pure binder could occupy that binder's `pctx` slot —
 -- every de Bruijn INDEX below it had to keep its level — while being unwritable as
@@ -326,20 +361,6 @@ def scrutName : String := "§m"
 partial def buildNat : Nat → MacroM (TSyntax `term)
   | 0 => `(Dllbc.Term.ctorApp "Z" [])
   | k + 1 => do let inner ← buildNat k; `(Dllbc.Term.ctorApp "S" [$inner])
-
-/-- Mint fresh runtime ids for a list of pattern binders, extending `rctx` and
-    returning the extended context, the next free id, and the binder `Var`
-    syntaxes (in order). Binder ids are ABSOLUTE and globally unique — minted
-    from one counter threaded through every elaborator — which is why they stay
-    distinct across the arms of a single match. -/
-partial def mintBinders (rctx : List (String × Nat)) (next : Nat) :
-    List Ident → MacroM (List (String × Nat) × Nat × Array (TSyntax `term))
-  | [] => pure (rctx, next, #[])
-  | b :: bs => do
-    let name := b.getId.toString
-    let vSyntax ← `((⟨$(quote next), $(quote name)⟩ : Dllbc.Var))
-    let (rctx', next', rest) ← mintBinders ((name, next) :: rctx) (next + 1) bs
-    pure (rctx', next', #[vSyntax] ++ rest)
 
 /-- Kernel constructors → `ctorApp`. **Sourced from the kernel's own basis**
     (`Val.ctorNames`, which `Pure.ctorSig` must track) rather than repeated here,
@@ -422,6 +443,118 @@ def checkBinder (x : Ident) : MacroM Unit := do
     their `Var`'s name. -/
 def binderDom (nm : String) (τ : TSyntax `term) : MacroM (TSyntax `term) :=
   if Dllbc.isUpperInit nm then `(Dllbc.Term.cmpT $τ) else pure τ
+
+/-! ## Pattern arguments (M34 sugar (iii))
+
+    `Cons(Pair(k, v), tl) => body` is **exactly** what the hand-written
+    `Cons(§p, tl) => match §p { Pair(k, v) => body }` elaborates to — same ids,
+    same names, same `Term` — and the two functions below are that rewrite and
+    nothing cleverer. There is no cross-arm reasoning anywhere in them: each arm
+    compiles on its own, DLLBC's match stays one arm per head constructor, and
+    deeper discrimination stays an explicit inner match that §9 checks for
+    exhaustiveness like any other. `Cons(Z, tl)` is therefore REJECTED (no branch
+    for `S`), by the rule that was already there.
+
+    The rewrite is in two passes because the id order demands it. Every argument
+    of the head — binder or nested — occupies one slot, and all of them are minted
+    BEFORE anything inside them, because that is what a match arm does: the arm's
+    binders come from the counter first, and the body follows. Pass one
+    (`mintPatArgs`) mints that row and hands back the nested arguments it deferred;
+    pass two (`wrapPats`) turns each deferred one into a match around the body,
+    recursively, which is where its own arguments are minted.
+
+    **Depth first, which is source order.** `C(A(x, B(y)), D(z))` nests
+    `§p₀ → A(x, §p₂) → §p₂ → B(y) → §p₁ → D(z) → body`: applying the one-step
+    rewrite to the head produces `A`'s match then `D`'s, and rewriting `A`'s arm
+    then pushes `B`'s inside `A`'s — ahead of `D`'s, because `D`'s match is part of
+    `A`'s arm body by then. `pend' ++ rest` in `wrapPats` is that sentence. -/
+
+/-- A nested pattern argument that has been given a slot and is waiting for its
+    match: the slot's `Var` syntax, the constructor, and the arguments to match. -/
+abbrev PendingPat := TSyntax `term × Ident × List (TSyntax `upat)
+
+/-- Is this argument a nested PATTERN rather than a BINDER? Either it is a
+    constructor applied to arguments, or it is a NULLARY constructor spelled bare
+    — `Cons(Z, tl)`, `Pair(True, x)`.
+
+    **The bare form takes no new rule and cannot change an existing program**, for
+    a reason worth stating because it is the whole justification: the names it
+    claims are exactly `ctorSet`, and `checkBinder` ALREADY refuses every one of
+    them in this position ("a constructor … cannot be a binder", §6's
+    capitalisation rule). So each name this row now reads as a pattern is a name
+    that was a hard macro error a line ago; nothing that parsed before parses
+    differently now. `ctorSet` is the kernel's own basis (`Val.ctorNames`) and not
+    a second list — the surface still has no table of its own to keep in step.
+
+    `constSet` names (`Nat`, `List`, `natRec`, …) are NOT constructors and stay
+    refused, with `checkBinder`'s message. -/
+def upatParts (p : TSyntax `upat) : MacroM (Ident × Option (List (TSyntax `upat))) := do
+  match p with
+  | `(upat| $c:ident($args,*)) => pure (c, some args.getElems.toList)
+  | `(upat| $x:ident) =>
+    pure (x, if ctorSet.contains x.getId.toString then some [] else none)
+  | _ => Macro.throwErrorAt p "decl: unexpected pattern argument"
+
+/-- Mint fresh runtime ids for one row of pattern arguments, extending `rctx` and
+    returning the extended context, the next free id, the argument `Var` syntaxes
+    (in order) and the nested arguments deferred to `wrapPats`. Binder ids are
+    ABSOLUTE and globally unique — minted from one counter threaded through every
+    elaborator — which is why they stay distinct across the arms of a single match.
+
+    A nested argument takes a slot like any other and puts NOTHING into `rctx`:
+    its name is reserved, so no source can refer to it, and the only reader it
+    will ever have is the `.matchE` header `wrapPats` builds from the `Var`
+    returned here. -/
+partial def mintPatArgs (rctx : List (String × Nat)) (next : Nat) :
+    List (TSyntax `upat) →
+    MacroM (List (String × Nat) × Nat × Array (TSyntax `term) × List PendingPat)
+  | [] => pure (rctx, next, #[], [])
+  | p :: ps => do
+    -- The identifier comes back from `upatParts` and is not read off `p` directly:
+    -- `upat`'s binder row WRAPS its ident in a node of its own, so `⟨p.raw⟩` is a
+    -- `upat` wearing an `Ident`'s type and `getId` answers the anonymous name for
+    -- it — a binder called "" that nothing can refer to, which is a silent
+    -- unbound-variable error at every use site rather than a type error here.
+    match ← upatParts p with
+    | (x, none) => do
+      checkBinder x
+      let name := x.getId.toString
+      let v ← `((⟨$(quote next), $(quote name)⟩ : Dllbc.Var))
+      let (rctx', n, vs, pend) ← mintPatArgs ((name, next) :: rctx) (next + 1) ps
+      pure (rctx', n, #[v] ++ vs, pend)
+    | (c, some args) => do
+      let v ← `((⟨$(quote next), $(quote (patName next))⟩ : Dllbc.Var))
+      let (rctx', n, vs, pend) ← mintPatArgs rctx (next + 1) ps
+      pure (rctx', n, #[v] ++ vs, (v, c, args) :: pend)
+
+/-- Wrap `body` in the deferred nested matches, outermost first. `body` is a
+    continuation rather than a syntax tree because the two rows that call this
+    disagree about what a body IS — an arm's is a `uarmBody`, the `let` pattern's
+    is the REST OF THE BLOCK — and they agree about everything else. -/
+partial def wrapPats (rctx : List (String × Nat)) (next : Nat) (pend : List PendingPat)
+    (body : List (String × Nat) → Nat → MacroM (TSyntax `term × Nat)) :
+    MacroM (TSyntax `term × Nat) := do
+  match pend with
+  | [] => body rctx next
+  | (v, c, args) :: rest => do
+    let (rctx', n1, vars, pend') ← mintPatArgs rctx next args
+    let (inner, n2) ← wrapPats rctx' n1 (pend' ++ rest) body
+    return (← `(Dllbc.Term.matchE $v none
+      [Dllbc.Branch.mk $(quote c.getId.toString) [$vars,*] $inner]), n2)
+
+/-- The branch-equation form takes NO nested patterns in v1, and says so here.
+
+    `match h : x { … }` binds one `h` for the whole match and its TYPE is what
+    varies per arm — the equation between the scrutinee and this arm's
+    constructor. A nested pattern is a second match, at a position where nobody
+    has said what that equation would be: the payload's own equation, the outer
+    one refined, or a conjunction. Refusing is cheap and reversible; answering it
+    silently and wrongly is neither. The inner match is still writable by hand,
+    with its own `match h2 : …` if an equation is wanted there. -/
+def refuseNestedPat (p : TSyntax `upat) : MacroM Unit := do
+  if (← upatParts p).2.isSome then
+    Macro.throwErrorAt p "decl: the branch-equation form `match h : e { … }` does not take nested patterns. `h`'s type is the equation between the scrutinee and THIS arm's constructor, and no equation is defined at a nested position — write the inner match explicitly (with its own `match h2 : …` if it needs one)."
+  else pure ()
 
 /-! ## Locals and `fn` slots in one context (M31 Stage A)
 
@@ -781,6 +914,13 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
   -- not touch the counter there.
   | `(uterm| match $h:ident : $e:uterm { $arms,* }) => do
     checkBinder h
+    -- Nested patterns are refused HERE and nowhere else (M34 sugar (iii)): the
+    -- equation binder has no meaning at a nested position, so the form that binds
+    -- one does not take them. See `refuseNestedPat`.
+    for arm in arms.getElems do
+      match arm with
+      | `(uarm| $_:ident ($args,*) => $_:uarmBody) => args.getElems.forM refuseNestedPat
+      | _ => pure ()
     let (scrut, pre?, n1) ← elabScrut rctx pctx next e
     let hName := h.getId.toString
     let (arms', n) ← elabUArms ((hName, n1) :: rctx) pctx (n1 + 1) arms.getElems.toList
@@ -927,11 +1067,14 @@ partial def elabUArm (rctx : List (String × Nat)) (pctx : List String) (next : 
   | `(uarm| $c:ident => $body:uarmBody) => do
     let (body', n) ← elabUArmBody rctx pctx next body
     return (← `(Dllbc.Branch.mk $(quote c.getId.toString) [] $body'), n)
-  | `(uarm| $c:ident ($binders,*) => $body:uarmBody) => do
-    binders.getElems.forM checkBinder
-    let (rctx', next', binderVars) ← mintBinders rctx next binders.getElems.toList
-    let (body', n) ← elabUArmBody rctx' pctx next' body
-    return (← `(Dllbc.Branch.mk $(quote c.getId.toString) [$binderVars,*] $body'), n)
+  | `(uarm| $c:ident ($args,*) => $body:uarmBody) => do
+    -- The head's arguments are minted first, ALL of them, and the nested ones
+    -- then wrap the body from the counter the body would have started at — which
+    -- is what makes this arm the same `Term` as its hand-written twin and not
+    -- merely a convertible one (`Tests.Sugar`'s goldens).
+    let (rctx', n1, argVars, pend) ← mintPatArgs rctx next args.getElems.toList
+    let (body', n) ← wrapPats rctx' n1 pend (fun r k => elabUArmBody r pctx k body)
+    return (← `(Dllbc.Branch.mk $(quote c.getId.toString) [$argVars,*] $body'), n)
   | _ => Macro.throwErrorAt arm "decl: unexpected match arm"
 
 partial def elabUArmBody (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
@@ -1098,13 +1241,16 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
   -- there. (`let x = e` DOES filter, and the asymmetry between the two is
   -- pre-existing — see the `let` row above. Whichever way it is settled, it should
   -- be settled for both at once, since these desugar to each other's forms.)
-  | `(ublk| let $c:ident($bs,*) = $e:uterm ; $rest:ublk) => do
+  | `(ublk| let $c:ident($args,*) = $e:uterm ; $rest:ublk) => do
     let (scrut, pre?, n1) ← elabScrut rctx pctx next e
-    bs.getElems.forM checkBinder
-    let (rctx', n2, binderVars) ← mintBinders rctx n1 bs.getElems.toList
-    let (rest', n3) ← elabUBlk rctx' pctx n2 rest
+    let (rctx', n2, argVars, pend) ← mintPatArgs rctx n1 args.getElems.toList
+    -- Nested arguments (M34 sugar (iii)) wrap the rest of the block in their
+    -- matches, which is the same rewrite `elabUArm` performs — and has to be, since
+    -- this row IS an arm whose body is the enclosing block. `let Pair(a, Pair(b, c))
+    -- = p ;` and the two-line chain that spells it out are one `Term`.
+    let (rest', n3) ← wrapPats rctx' n2 pend (fun r k => elabUBlk r pctx k rest)
     let m ← `(Dllbc.Term.matchE $scrut none
-                [Dllbc.Branch.mk $(quote c.getId.toString) [$binderVars,*] $rest'])
+                [Dllbc.Branch.mk $(quote c.getId.toString) [$argVars,*] $rest'])
     return (← wrapScrut scrut pre? m, n3)
   | `(ublk| $p:uterm := $e:uterm ; $rest:ublk) => do
     let (p', n1) ← elabUTerm rctx pctx next p
