@@ -858,5 +858,185 @@ example : chkL SlotsOkSplit SlotsOkSplitTy = true := by native_decide
 example : chkL SlotsOkJoin SlotsOkJoinTy = true := by native_decide
 example : chkL SizeACat SizeACatTy = true := by native_decide
 
+/-! ## 8. The bucket layer's find equation
+
+    `FindL q (InsL k v b) = if q = k then Some v else FindL q b`, universally in the
+    bucket. This is the mathematical core of the whole flagship: `insert_in_list` is
+    the only place an entry is ever created or overwritten, and every operation's
+    pointwise conjunct bottoms out here.
+
+    It needs three pieces of Boolean bookkeeping, stated separately because each is
+    about `boolRec` and nothing about hashmaps. -/
+
+def BoolRw : Term := prog{
+  λ (P : Bool → Type). λ (X : Bool). λ (Y : Bool). λ (H : Id Bool X Y). λ (Px : P X).
+    j Bool X (λ (Y2 : Bool). λ (Hh : Id Bool X Y2). P Y2) Px Y H }
+def BoolRwTy : Term := prog{
+  Π (P : Bool → Type) → Π (X : Bool) → Π (Y : Bool) → Id Bool X Y → P X → P Y }
+
+/-- A second test of the SAME scrutinee in the else-branch is dead. -/
+def OptIf2 : Term := prog{
+  λ (Bv : Bool). λ (Xa : Opt Nat). λ (Ya : Opt Nat). λ (Za : Opt Nat).
+    elim Bv return (λ (Bz : Bool).
+        Id (Opt Nat)
+           (boolRec (λ (W : Bool). Opt Nat) Xa
+              (boolRec (λ (W : Bool). Opt Nat) Ya Za Bz) Bz)
+           (boolRec (λ (W : Bool). Opt Nat) Xa Za Bz)) {
+      True => Refl,
+      False => Refl } }
+def OptIf2Ty : Term := prog{
+  Π (Bv : Bool) → Π (Xa : Opt Nat) → Π (Ya : Opt Nat) → Π (Za : Opt Nat) →
+    Id (Opt Nat)
+       (boolRec (λ (W : Bool). Opt Nat) Xa
+          (boolRec (λ (W : Bool). Opt Nat) Ya Za Bv) Bv)
+       (boolRec (λ (W : Bool). Opt Nat) Xa Za Bv) }
+
+/-- Two nested tests COMMUTE when they cannot both fire. The impossible corner is the
+    only content; the other three are `Refl`. -/
+def IfComm : Term := prog{
+  λ (B1 : Bool). λ (B2 : Bool). λ (Xa : Opt Nat). λ (Ya : Opt Nat). λ (Za : Opt Nat).
+  λ (Hno : Id Bool B1 True → Id Bool B2 True → Bot).
+    elim B1 return (λ (Z1 : Bool).
+        (Id Bool Z1 True → Id Bool B2 True → Bot) →
+        Id (Opt Nat)
+          (boolRec (λ (W : Bool). Opt Nat) Xa
+             (boolRec (λ (W : Bool). Opt Nat) Ya Za B2) Z1)
+          (boolRec (λ (W : Bool). Opt Nat) Ya
+             (boolRec (λ (W : Bool). Opt Nat) Xa Za Z1) B2)) {
+      True => λ (Hn : Id Bool True True → Id Bool B2 True → Bot).
+        elim B2 return (λ (Z2 : Bool).
+            (Id Bool True True → Id Bool Z2 True → Bot) →
+            Id (Opt Nat)
+              (boolRec (λ (W : Bool). Opt Nat) Xa
+                 (boolRec (λ (W : Bool). Opt Nat) Ya Za Z2) True)
+              (boolRec (λ (W : Bool). Opt Nat) Ya
+                 (boolRec (λ (W : Bool). Opt Nat) Xa Za True) Z2)) {
+          True => λ (Hn2 : Id Bool True True → Id Bool True True → Bot).
+                    botElim (Id (Opt Nat) Xa Ya) (Hn2 Refl Refl),
+          False => λ (Hn2 : Id Bool True True → Id Bool False True → Bot). Refl } Hn,
+      False => λ (Hn : Id Bool False True → Id Bool B2 True → Bot).
+        elim B2 return (λ (Z2 : Bool).
+            Id (Opt Nat)
+              (boolRec (λ (W : Bool). Opt Nat) Xa
+                 (boolRec (λ (W : Bool). Opt Nat) Ya Za Z2) False)
+              (boolRec (λ (W : Bool). Opt Nat) Ya
+                 (boolRec (λ (W : Bool). Opt Nat) Xa Za False) Z2)) {
+          True => Refl,
+          False => Refl } } Hno }
+def IfCommTy : Term := prog{
+  Π (B1 : Bool) → Π (B2 : Bool) → Π (Xa : Opt Nat) → Π (Ya : Opt Nat) →
+  Π (Za : Opt Nat) → (Id Bool B1 True → Id Bool B2 True → Bot) →
+    Id (Opt Nat)
+      (boolRec (λ (W : Bool). Opt Nat) Xa
+         (boolRec (λ (W : Bool). Opt Nat) Ya Za B2) B1)
+      (boolRec (λ (W : Bool). Opt Nat) Ya
+         (boolRec (λ (W : Bool). Opt Nat) Xa Za B1) B2) }
+
+example : chkL BoolRw BoolRwTy = true := by native_decide
+example : chkL OptIf2 OptIf2Ty = true := by native_decide
+example : chkL IfComm IfCommTy = true := by native_decide
+
+/-- The bucket-level model update, as a function, so the equation below can be stated
+    against a name rather than an inlined `boolRec`. -/
+def FindInsL : Term := prog{
+  λ (Q : Nat). λ (K : Nat). λ (V : Nat). λ (B : Bucket).
+    elim (Eqb Q K) return (λ (Bz : Bool). Opt Nat) {
+      True => Some Nat V,
+      False => FindL Q B } }
+
+/-- Two keys that both match `q` are equal, so `Eqb k2 k = False` rules the pair out.
+    Extracted from `FindLIns`' inductive step, where it is the impossible corner. -/
+def NoBoth : Term := prog{
+  λ (Q : Nat). λ (K2 : Nat). λ (K : Nat). λ (He : Id Bool (Eqb K2 K) False).
+  λ (H1 : Id Bool (Eqb Q K2) True). λ (H2 : Id Bool (Eqb Q K) True).
+    TnotF (IdTrans Bool True (Eqb K2 K) False
+      (IdSym Bool (Eqb K2 K) True
+        (IdTrans Bool (Eqb K2 K) (Eqb K2 K2) True
+          (IdSym Bool (Eqb K2 K2) (Eqb K2 K)
+            (IdCongr Nat Bool (λ (Zz : Nat). Eqb K2 Zz) K2 K
+              (IdTrans Nat K2 Q K
+                (IdSym Nat Q K2 (EqbTrueEq Q K2 H1)) (EqbTrueEq Q K H2))))
+          (EqbRefl K2)))
+      He) }
+def NoBothTy : Term := prog{
+  Π (Q : Nat) → Π (K2 : Nat) → Π (K : Nat) → Id Bool (Eqb K2 K) False →
+    Id Bool (Eqb Q K2) True → Id Bool (Eqb Q K) True → Bot }
+
+example : chkL NoBoth NoBothTy = true := by native_decide
+
+/-- **`FindL q (InsL k v b) = if q = k then Some v else FindL q b`.**
+
+    The induction is on the bucket, and the step splits on `Eqb k2 k` — the SAME test
+    `InsL` itself makes, which is why the split is written with the abstract-the-goal
+    idiom: the motive replaces `Eqb K2 K` by the bound `Bv` everywhere it occurs in
+    the goal AND carries the branch equation, so the arm sees both a reduced left-hand
+    side and a hypothesis about why it reduced. Applied to `Refl` at the end.
+
+    The overwrite arm rewrites `k` to `k2` (from `EqbTrueEq`) and then the outer test
+    subsumes the inner one — `OptIf2`. The append arm rewrites by the induction
+    hypothesis and then commutes the two tests — `IfComm`, whose impossible corner is
+    `NoBoth`: two keys that both match `q` are equal, and `Eqb k2 k = False` says they
+    are not. -/
+def FindLIns : Term := prog{
+  λ (Q : Nat). λ (K : Nat). λ (V : Nat). λ (B : Bucket).
+    -- The motive's binder type is spelled `List (Σ (k : Nat). Nat)` and NOT the
+    -- spliced `Bucket`, and that is load-bearing: the elim sugar reads its element
+    -- type SYNTACTICALLY out of a `List A`, so a motive written as a bare name it
+    -- cannot see through falls back to the old `Nat` default and builds a `listRec`
+    -- at the wrong element type. It fails as a bare `false` with no message.
+    elim B return (λ (Bz : List (Σ (k : Nat). Nat)).
+        Id (Opt Nat) (FindL Q (InsL K V Bz)) (FindInsL Q K V Bz)) {
+      Nil => Refl,
+      Cons (E) (T) Rec =>
+        elim E return (λ (Ez : Σ (k : Nat). Nat).
+            Id (Opt Nat) (FindL Q (InsL K V Cons(Ez, T))) (FindInsL Q K V Cons(Ez, T))) {
+          Pair (K2) (V2) =>
+            elim (Eqb K2 K) return (λ (Bv : Bool).
+                Id Bool (Eqb K2 K) Bv →
+                Id (Opt Nat)
+                  (FindL Q (boolRec (λ (W : Bool). Bucket)
+                              Cons(Pair(K2, V), T)
+                              Cons(Pair(K2, V2), InsL K V T) Bv))
+                  (FindInsL Q K V Cons(Pair(K2, V2), T))) {
+              -- The key was there: the entry's value is replaced, and the outer test
+              -- (`q = k`, now `q = k2`) makes the inner one dead.
+              True => λ (He : Id Bool (Eqb K2 K) True).
+                BoolRw
+                  (λ (Bw : Bool). Id (Opt Nat)
+                     (boolRec (λ (W : Bool). Opt Nat) (Some Nat V) (FindL Q T) (Eqb Q K2))
+                     (boolRec (λ (W : Bool). Opt Nat) (Some Nat V)
+                        (boolRec (λ (W : Bool). Opt Nat) (Some Nat V2)
+                           (FindL Q T) (Eqb Q K2)) Bw))
+                  (Eqb Q K2) (Eqb Q K)
+                  (IdCongr Nat Bool (λ (Zz : Nat). Eqb Q Zz) K2 K (EqbTrueEq K2 K He))
+                  (IdSym (Opt Nat)
+                     (boolRec (λ (W : Bool). Opt Nat) (Some Nat V)
+                        (boolRec (λ (W : Bool). Opt Nat) (Some Nat V2)
+                           (FindL Q T) (Eqb Q K2)) (Eqb Q K2))
+                     (boolRec (λ (W : Bool). Opt Nat) (Some Nat V) (FindL Q T) (Eqb Q K2))
+                     (OptIf2 (Eqb Q K2) (Some Nat V) (Some Nat V2) (FindL Q T))),
+              -- The key was elsewhere: recurse, then commute the two tests.
+              False => λ (He : Id Bool (Eqb K2 K) False).
+                IdTrans (Opt Nat)
+                  (boolRec (λ (W : Bool). Opt Nat) (Some Nat V2)
+                     (FindL Q (InsL K V T)) (Eqb Q K2))
+                  (boolRec (λ (W : Bool). Opt Nat) (Some Nat V2)
+                     (boolRec (λ (W : Bool). Opt Nat) (Some Nat V)
+                        (FindL Q T) (Eqb Q K)) (Eqb Q K2))
+                  (boolRec (λ (W : Bool). Opt Nat) (Some Nat V)
+                     (boolRec (λ (W : Bool). Opt Nat) (Some Nat V2)
+                        (FindL Q T) (Eqb Q K2)) (Eqb Q K))
+                  (IdCongr (Opt Nat) (Opt Nat)
+                     (λ (Zz : Opt Nat).
+                        boolRec (λ (W : Bool). Opt Nat) (Some Nat V2) Zz (Eqb Q K2))
+                     (FindL Q (InsL K V T)) (FindInsL Q K V T) Rec)
+                  (IfComm (Eqb Q K2) (Eqb Q K) (Some Nat V2) (Some Nat V) (FindL Q T)
+                     (NoBoth Q K2 K He)) } Refl } } }
+def FindLInsTy : Term := prog{
+  Π (Q : Nat) → Π (K : Nat) → Π (V : Nat) → Π (B : Bucket) →
+    Id (Opt Nat) (FindL Q (InsL K V B)) (FindInsL Q K V B) }
+
+example : chkL FindLIns FindLInsTy = true := by native_decide
+
 end Dllbc.Tests.HashMap
 end

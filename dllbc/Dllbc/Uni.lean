@@ -1344,6 +1344,15 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
     -- `Term.const "Nat"` the literal wrote. A motive whose binder type is not
     -- syntactically `List A` keeps the old `Nat` default rather than erroring, so
     -- nothing that parsed before stops parsing.
+    --
+    -- **The read is SYNTACTIC, and that is a trap worth knowing about.** A motive
+    -- written `λ (Bz : Bucket). …`, where `Bucket` is a Lean-level `Term` splice for
+    -- `List (Σ (k : Nat). Nat)`, is a bare identifier here — this cannot see through
+    -- it, falls back to `Nat`, and builds a `listRec` at the wrong element type. The
+    -- result is a term that elaborates fine and then fails to check as a bare `false`
+    -- with no message. Spell the element type out in the motive. (Resolving the name
+    -- instead is not available: `resolveName` answers a Lean identifier, and its
+    -- VALUE is not known until Lean elaborates it, which is after this runs.)
     let mTyBare := match mTy with | `(uterm| ($e:uterm)) => e | _ => mTy
     let (elemHd, elemArgs) := collectAppU mTyBare
     let elemSyn : Option (TSyntax `uterm) :=
