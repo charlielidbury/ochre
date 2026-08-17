@@ -485,16 +485,69 @@ mutual
   termination_by vs => sizeOf vs
 end
 
-/-! Is a **type** index-kind (§2.1) — `Nat`/`Bool`/`Unit`, or a pure-former type
-    (an `Id` proof type, a `Type`, a function type)? A σ of such a type reads by
-    copy. `List`/`Σ`/user types are data. -/
-def indexKindTy : Term → Bool
-  | .const "Nat" => true
-  | .const "Bool" => true
-  | .const "Unit" => true
-  | .idT _ _ _ => true
-  | .type => true
-  | .pi _ _ _ => true
+/-! Is a **type** index-kind (§2.1) — `Nat`/`Bool`/`Unit`, a pure-former type
+    (an `Id` proof type, a `Type`, a function type), or a **Σ pack all of whose
+    components are themselves copyable-or-erased**? A σ of such a type reads by
+    copy. `List`/`Array`/user types are data.
+
+    **THE Σ CASE IS NEW (M34 sigma-copy)** and it is the one place this file's
+    doctrine moved. What it says: `Σ (x : A) → B` copies iff each of its two
+    positions copies, where a position carrying the `⇝` marker is EXEMPT because
+    it is erased — a comptime component costs nothing at runtime, so duplicating
+    it duplicates nothing. `Σ0 (n : Nat) → Le n MAX` — a machine integer written
+    as a refinement pack — is therefore Copy: the value half is a `Nat` and the
+    proof half is marked. `Σ (c : Nat) → &mut (Array c T)` is NOT: a borrow is
+    neither copyable nor erased, and duplicating exclusive access is unsound.
+
+    The dependent tail is decided with the binder **opaque**: `cod` still mentions
+    `x`, nothing is substituted for it, and a tail whose kind cannot be settled
+    without knowing the binder's value falls through to `false`. That is the same
+    conservative default a σ with no `sctx` entry gets, and it is why
+    `Σ (n : Nat) → VecF Nat n` moves.
+
+    Fuel is what makes this terminate and what bounds the `whnf` at each
+    component; a Σ nested deeper than the fuel answers MOVE, conservatively. -/
+mutual
+  def indexKindTy : Nat → Term → Bool
+    | _, .const "Nat" => true
+    | _, .const "Bool" => true
+    | _, .const "Unit" => true
+    | _, .idT _ _ _ => true
+    | _, .type => true
+    | _, .pi _ _ _ => true
+    | fuel + 1, .sigmaT _ dom cod => indexKindComp fuel dom && indexKindComp fuel cod
+    | _, _ => false
+  termination_by fuel _ => (fuel, 0)
+  /-- One component POSITION of a Σ: erased (`⇝`-marked, either end — a capital
+      binder marks the domain, `Σ0` marks the tail) or index-kind in its own
+      right. `whnf` first, for the same reason the σ case below does it: a
+      redex-headed component type that reduces to `Nat` should copy. -/
+  def indexKindComp : Nat → Term → Bool
+    | fuel, τ => Term.domComptime τ || indexKindTy fuel (Pure.whnf fuel τ)
+  termination_by fuel _ => (fuel, 1)
+end
+
+/-- Is this `Pair` component ERASED — a σ whose `sctx` entry carries `⇝`? This is
+    `componentMode`'s question (§2.1, M33a) asked from the copy side, and asked
+    the same way: a component σ's `sctx` entry is `⇝τ` exactly when the producing
+    Σ marked that position comptime (`buildResult` on the concrete path,
+    `reattachSigmaMode` on the symbolic one).
+
+    `false` for a component that is not a σ is the honest answer rather than a
+    rounded-up one — a concrete constructor tree has no mode recorded anywhere —
+    and it is safe HERE in a way it would not be at `componentMode`, because the
+    caller falls through to classifying the component by shape. What it costs is
+    precision at one shape: a concrete comptime component holding a data tree
+    reads as data, so the pack moves where the type-level rule would copy it. In
+    this corpus that shape is unreachable — a concrete proof of a decidable
+    proposition IS `unit`/`Refl` — and `S34SigmaCopy.packListTail` pins it. -/
+def packCompErased (sctx : List (Nat × Term)) : Term → Bool
+  | .pvar x =>
+    match symOfName? x with
+    | some σ => match sctx.lookup σ with
+      | some τ => Term.domComptime τ
+      | none => false
+    | none => false
   | _ => false
 
 /-! Is a piece of KNOWLEDGE index-kind, so §2.1's copy-on-read applies? A concrete
@@ -504,10 +557,26 @@ def indexKindTy : Term → Bool
     silent aggregate duplication is the cost-opacity Rust's move discipline
     prevents, so the calculus keeps Rust's line (§2.1). Copy-or-move is decided by
     value shape — the σ-context's type for symbolic values — not a declared trait.
-    A σ with NO sctx entry moves (the conservative default). DEFERRED (until
-    measured pain, per team-lead): tuple-of-copyables (a `Pair Nat Nat` as Copy,
-    Rust-style) — a data ctor all of whose fields are index-kind stays a MOVE for
-    now. -/
+    A σ with NO sctx entry moves (the conservative default).
+
+    **THE DEFERRAL IS PARTLY OVER** (M34 sigma-copy). What stood here said:
+    "DEFERRED (until measured pain, per team-lead): tuple-of-copyables (a `Pair
+    Nat Nat` as Copy, Rust-style) — a data ctor all of whose fields are
+    index-kind stays a MOVE for now." The pain was measured — a machine integer
+    written as a refinement pack (`Σ0 (n : Nat) → Le n MAX`) is morally a scalar
+    and cost a capture-before-consume staging at every reuse — so the amended
+    doctrine is:
+
+      **DATA PROPER STILL MOVES; a Σ PACK copies iff every component is
+      copyable-or-erased.**
+
+    Rust's line is unchanged where Rust draws it: a `Cons`-tree moves, a user
+    constructor moves, and a pack with a `List` in it moves, because silent
+    aggregate duplication is the cost-opacity the move discipline prevents. What
+    moved is the one shape where Rust ALSO copies and DLLBC did not — `#[derive
+    (Copy)]` on a struct of scalars — with erased positions counted as free
+    because they are erased. `Pair` is the only constructor this reaches, since
+    `Pair` is the only one a Σ builds; every other ctor is data by name. -/
 def indexKindT (fuel : Nat) (sctx : List (Nat × Term)) : Term → Bool
   | .ctorApp "Z" [] => true
   | .ctorApp "S" [n] => indexKindT fuel sctx n
@@ -515,6 +584,17 @@ def indexKindT (fuel : Nat) (sctx : List (Nat × Term)) : Term → Bool
   | .ctorApp "False" [] => true
   | .ctorApp "unit" [] => true
   | .ctorApp "Refl" _ => true                               -- a proof
+  -- A Σ pack, at the value level. Each component is exempt if the producing Σ
+  -- marked it comptime (`packCompErased`, which reads the same `sctx` entry
+  -- `componentMode` reads), and otherwise must be index-kind itself. Nesting is
+  -- free: the recursive call handles `Pair(n, Pair(h, unit))` without a case.
+  -- A pack that HOLDS STATE never arrives here — `Val.ctor` only collapses a
+  -- node to a knowledge leaf when every child is knowledge, so the slice pack
+  -- `Σ (c : Nat) → &mut (Array c T)` is a `node` and takes `indexKindV`'s
+  -- data answer below.
+  | .ctorApp "Pair" [a, b] =>
+    (packCompErased sctx a || indexKindT fuel sctx a)
+      && (packCompErased sctx b || indexKindT fuel sctx b)
   | .ctorApp _ _ => false                                   -- data → move
   -- A σ, which is a reserved pure NAME since M32 R1. Whnf its type before
   -- classifying: a redex-headed type that reduces to Nat should copy, not be
@@ -525,7 +605,7 @@ def indexKindT (fuel : Nat) (sctx : List (Nat × Term)) : Term → Bool
   | .pvar x =>
     match symOfName? x with
     | some σ => match sctx.lookup σ with
-      | some τ => indexKindTy (Pure.whnf fuel τ).stripCmp
+      | some τ => indexKindTy fuel (Pure.whnf fuel τ).stripCmp
       | none => false
     | none => true
   | .type => true
@@ -551,7 +631,15 @@ def indexKindV (fuel : Nat) (sctx : List (Nat × Term)) : Val → Bool
   -- spine and took the pure-former answer; the skeleton is where it lives now,
   -- and the answer travels with it rather than with the former it used to be.
   | .node "§rec" _ => true
-  | .node _ _ => false                                      -- data → move
+  -- **AND THIS IS THE Σ-COPY NEGATIVE CONTROL** (M34 sigma-copy). A `node` is
+  -- what a constructor tree becomes when something inside it holds STATE — a
+  -- borrow, a loan marker, a hole — because `Val.ctor` collapses to a `know`
+  -- leaf only when every child is knowledge. So the M24 slice pack
+  -- `Σ (c : Nat) → &mut (Array c T)` reaches HERE and not the `Pair` rule above:
+  -- its borrow component is neither copyable nor erased, and duplicating
+  -- exclusive access would hand out two owners of the same payload. The rule
+  -- costs nothing to state because the representation already states it.
+  | .node _ _ => false                                      -- data/state → move
   -- A runtime function value is closed and marker-free, so the ownership
   -- machinery is doubly vacuous on it exactly as it is on a λ; §7 cost 2's "never
   -- partially applied, closed" is what earns this. A CONSERVATIVE DEFAULT, and
