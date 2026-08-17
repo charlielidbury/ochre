@@ -69,29 +69,29 @@ def chk (tm ty : Term) : Bool :=
 
 /-! ## (i.a) Non-dependent Σ: the conjunction projections
 
-    The shape every back-less caller needs: a callee returns `Σ (H : P) → Q` — a
+    The shape every back-less caller needs: a callee returns `Σ (H : P). Q` — a
     conjunction certificate — and the caller projects out the conjunct it wants.
     `B` ignores its binder here, so the motive is constant and both projections are
     ordinary. This is the M22 quicksort postcondition's own shape
-    (`Σ (Sortedpart : SortedR …) → (Π n. Id …)`), which until now could only be
+    (`Σ (Sortedpart : SortedR …). (Π n. Id …)`), which until now could only be
     assembled, never taken apart. -/
 
 def and_left : Term := prog{
   λ (A : Nat). λ (B : Nat). λ (C : Nat).
-    λ (P : Σ (H : Le A B) → Le B C).
-      elim P return (λ (Q : Σ (H : Le A B) → Le B C). Le A B) {
+    λ (P : Σ (H : Le A B). Le B C).
+      elim P return (λ (Q : Σ (H : Le A B). Le B C). Le A B) {
         Pair (X) (Y) => X } }
 def and_left_ty : Term := prog{
-  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → (Σ (H : Le A B) → Le B C) → Le A B }
+  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → (Σ (H : Le A B). Le B C) → Le A B }
 example : chk and_left and_left_ty = true := by native_decide
 
 def and_right : Term := prog{
   λ (A : Nat). λ (B : Nat). λ (C : Nat).
-    λ (P : Σ (H : Le A B) → Le B C).
-      elim P return (λ (Q : Σ (H : Le A B) → Le B C). Le B C) {
+    λ (P : Σ (H : Le A B). Le B C).
+      elim P return (λ (Q : Σ (H : Le A B). Le B C). Le B C) {
         Pair (X) (Y) => Y } }
 def and_right_ty : Term := prog{
-  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → (Σ (H : Le A B) → Le B C) → Le B C }
+  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → (Σ (H : Le A B). Le B C) → Le B C }
 example : chk and_right and_right_ty = true := by native_decide
 
 -- The projections COMPOSE with an ordinary lemma: destructure the conjunction and
@@ -100,11 +100,11 @@ example : chk and_right and_right_ty = true := by native_decide
 -- M23 rather than a nicety.
 def and_trans : Term := prog{
   λ (A : Nat). λ (B : Nat). λ (C : Nat).
-    λ (P : Σ (H : Le A B) → Le B C).
-      elim P return (λ (Q : Σ (H : Le A B) → Le B C). Le A C) {
+    λ (P : Σ (H : Le A B). Le B C).
+      elim P return (λ (Q : Σ (H : Le A B). Le B C). Le A C) {
         Pair (X) (Y) => LeTrans A B C X Y } }
 def and_trans_ty : Term := prog{
-  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → (Σ (H : Le A B) → Le B C) → Le A C }
+  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → (Σ (H : Le A B). Le B C) → Le A C }
 example : chk and_trans and_trans_ty = true := by native_decide
 
 /-! ## (i.b) Dependent Σ: the second projection needs a dependent motive
@@ -115,17 +115,17 @@ example : chk and_trans and_trans_ty = true := by native_decide
     elimination proper, not a pair of independent projections. -/
 
 def sfst : Term := prog{
-  λ (P : Σ (n : Nat) → Le (S Z) n).
-    elim P return (λ (Q : Σ (n : Nat) → Le (S Z) n). Nat) {
+  λ (P : Σ (n : Nat). Le (S Z) n).
+    elim P return (λ (Q : Σ (n : Nat). Le (S Z) n). Nat) {
       Pair (X) (Y) => X } }
-def sfst_ty : Term := prog{ (Σ (n : Nat) → Le (S Z) n) → Nat }
+def sfst_ty : Term := prog{ (Σ (n : Nat). Le (S Z) n) → Nat }
 example : chk sfst sfst_ty = true := by native_decide
 
 def ssnd : Term := prog{
-  λ (P : Σ (n : Nat) → Le (S Z) n).
-    elim P return (λ (Q : Σ (n : Nat) → Le (S Z) n). Le (S Z) (sfst Q)) {
+  λ (P : Σ (n : Nat). Le (S Z) n).
+    elim P return (λ (Q : Σ (n : Nat). Le (S Z) n). Le (S Z) (sfst Q)) {
       Pair (X) (Y) => Y } }
-def ssnd_ty : Term := prog{ Π (P : Σ (n : Nat) → Le (S Z) n) → Le (S Z) (sfst P) }
+def ssnd_ty : Term := prog{ Π (P : Σ (n : Nat). Le (S Z) n) → Le (S Z) (sfst P) }
 example : chk ssnd ssnd_ty = true := by native_decide
 
 /-! ## (i.c) The ι-rule computes -/
@@ -156,15 +156,15 @@ example : (pv (prog{ λ (N : Nat). λ (H : Le (S Z) N). sfst (Pair N H) }) ==
 -- arm must inhabit `P (Pair x y)`, which is `Le a b` — `y : Le b c` does not.
 def and_left_lie : Term := prog{
   λ (A : Nat). λ (B : Nat). λ (C : Nat).
-    λ (P : Σ (H : Le A B) → Le B C).
-      elim P return (λ (Q : Σ (H : Le A B) → Le B C). Le A B) {
+    λ (P : Σ (H : Le A B). Le B C).
+      elim P return (λ (Q : Σ (H : Le A B). Le B C). Le A B) {
         Pair (X) (Y) => Y } }
 example : chk and_left_lie and_left_ty = false := by native_decide
 
 -- (2) Wrong RESULT type: `sfst` returns `Nat`, and the claim is that it returns a
 -- proof. `finish` converts the motive-at-target against the ascribed type; this is
 -- the branch that catches it.
-def sfst_lie_ty : Term := prog{ (Σ (n : Nat) → Le (S Z) n) → Le Z Z }
+def sfst_lie_ty : Term := prog{ (Σ (n : Nat). Le (S Z) n) → Le Z Z }
 example : chk sfst sfst_lie_ty = false := by native_decide
 
 -- (3) Wrong DEPENDENT motive: the second projection claimed one bigger than the
@@ -172,14 +172,14 @@ example : chk sfst sfst_lie_ty = false := by native_decide
 -- off by one, and nothing bridges it. This is the branch that would silently pass
 -- if the motive were inferred from the arm rather than read off what is written.
 def ssnd_lie : Term := prog{
-  λ (P : Σ (n : Nat) → Le (S Z) n).
-    elim P return (λ (Q : Σ (n : Nat) → Le (S Z) n). Le (S Z) (S (sfst Q))) {
+  λ (P : Σ (n : Nat). Le (S Z) n).
+    elim P return (λ (Q : Σ (n : Nat). Le (S Z) n). Le (S Z) (S (sfst Q))) {
       Pair (X) (Y) => Y } }
-def ssnd_lie_ty : Term := prog{ Π (P : Σ (n : Nat) → Le (S Z) n) → Le (S Z) (S (sfst P)) }
+def ssnd_lie_ty : Term := prog{ Π (P : Σ (n : Nat). Le (S Z) n) → Le (S Z) (S (sfst P)) }
 example : chk ssnd_lie ssnd_lie_ty = false := by native_decide
 
 -- (4) Wrong TARGET: `sigmaRec` applied to something that is not of the Σ type it
--- declares. Here the target is a bare `Nat`, so the `s : Σ (x : A) → B x` premise
+-- declares. Here the target is a bare `Nat`, so the `s : Σ (x : A). B x` premise
 -- fails even though the arm is fine.
 def sfst_bad_target : Term := prog{ sfst (S Z) }
 def sfst_bad_target_ty : Term := prog{ Nat }
@@ -189,7 +189,7 @@ example : chk sfst_bad_target sfst_bad_target_ty = false := by native_decide
 
     Building certificates is half of it; the other half is that a *caller* can
     receive one. A back-less callee's returned evidence is pinned to its own
-    result — `Σ (r : List Nat) → Id (List Nat) r (Drop i (old *v))` is split_off's
+    result — `Σ (r : List Nat). Id (List Nat) r (Drop i (old *v))` is split_off's
     ensures — and until M23 the call rule built a Σ result's tail INDEPENDENTLY of
     its head (`buildResult`'s own comment said so: "a dependent product over the
     first is not supported; no test needs it"). The tail's σ therefore carried a
@@ -204,7 +204,7 @@ example : chk sfst_bad_target sfst_bad_target_ty = false := by native_decide
 -- A back-less callee returning a PINNED value, and a consumer whose second
 -- parameter's type mentions its first argument.
 def pinOne : Term := prog{
-  fn PinOne () -> Σ (r : Nat) → Id Nat r (S Z) { Pair(S Z, Refl) };
+  fn PinOne () -> Σ (r : Nat). Id Nat r (S Z) { Pair(S Z, Refl) };
   () }
 def useIt : Term := prog{
   fn UseIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () };
@@ -216,7 +216,7 @@ example : progOk useIt = true := by native_decide
 -- type is `Id σa (S Z)` for the very σa bound to `a`. This is the caller-side
 -- shape every back-less callee in the rest of M23 depends on.
 def usePin : Term := prog{
-  fn PinOne () -> Σ (r : Nat) → Id Nat r (S Z) { Pair(S Z, Refl) };
+  fn PinOne () -> Σ (r : Nat). Id Nat r (S Z) { Pair(S Z, Refl) };
   fn UseIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () };
   fn UsePin () -> Unit
         { let p = PinOne();
@@ -233,7 +233,7 @@ def useItLie : Term := prog{
 -- the verdict `S26Migrate.p23` was computing for it.
 example : progOk useItLie = true := by native_decide
 def usePinLie : Term := prog{
-  fn PinOne () -> Σ (r : Nat) → Id Nat r (S Z) { Pair(S Z, Refl) };
+  fn PinOne () -> Σ (r : Nat). Id Nat r (S Z) { Pair(S Z, Refl) };
   fn UseItLie (n : Nat, h : Id Nat n (S (S Z))) -> Unit { () };
   fn UsePinLie () -> Unit
         { let p = PinOne();
@@ -509,7 +509,7 @@ def soUnder (ret tail : Term) : Term := prog{
     reader compares is `Take i (old *v)` against `Take (S i) (old *v)`, one
     argument apart, and not two hand-built Σ-chains. -/
 def soRet (pre suf : Term) : Term := prog{
-  Σ (ret : List Nat) → Σ (H1 : Id (List Nat) %dvT %pre) → Id (List Nat) ret %suf }
+  Σ (ret : List Nat). Σ (H1 : Id (List Nat) %dvT %pre). Id (List Nat) ret %suf }
 
 def soHonest : Term := soRet (prog{ Take %iT %oldvT }) (prog{ Drop %iT %oldvT })
 def splitOff : Term := soUnder soHonest .unit
@@ -1096,8 +1096,8 @@ example : chk ub_pick ub_pick_ty = true := by native_decide
 -- comparison is by `pv`, which prints the marker, so this is the assertion that
 -- the library's own components declare themselves comptime.
 example : (pv (prog{ Ub (S (S Z)) (Cons (S Z) (Cons (S (S Z)) Nil)) }) ==
-           pv (prog{ Σ (H : Le (S Z) (S (S Z))) → Σ (H2 : Le (S (S Z)) (S (S Z))) → Unit })) = true := by native_decide
-example : (pv (prog{ Lb Z (Cons (S Z) Nil) }) == pv (prog{ Σ (H : Le Z (S Z)) → Unit })) = true := by native_decide
+           pv (prog{ Σ (H : Le (S Z) (S (S Z))). Σ (H2 : Le (S (S Z)) (S (S Z))). Unit })) = true := by native_decide
+example : (pv (prog{ Lb Z (Cons (S Z) Nil) }) == pv (prog{ Σ (H : Le Z (S Z)). Unit })) = true := by native_decide
 
 /-! ### The unshifted-motive question, settled: LATENT AND UNREACHABLE
 
@@ -1194,8 +1194,8 @@ example : chk sap_app sap_app_ty = true := by native_decide
 /-! Honesty controls. Each flips ONE hypothesis and watches the check fail — the
     two orientation flips (`Ub`/`Lb` swapped for their duals) and one arm lie. -/
 
--- (1) `Ub p a` weakened to `Lb p a`: `UbHead` now receives `Σ (Le p h) → Lb p t`
--- where it wants `Σ (Le h p) → Ub p t`. Without a's elements being BELOW the pivot
+-- (1) `Ub p a` weakened to `Lb p a`: `UbHead` now receives `Σ (Le p h). Lb p t`
+-- where it wants `Σ (Le h p). Ub p t`. Without a's elements being BELOW the pivot
 -- the splice is not sorted, and the check says so.
 def sap_lie_ub_ty : Term := prog{
   Π (P : Nat) → Π (A : List Nat) → Π (B : List Nat) →
@@ -1265,8 +1265,8 @@ example : chk Dllbc.StdLemmas.LbPerm Dllbc.StdLemmas.LbPermTy = true := by nativ
 
     The ensures is four conjuncts, all in observation vocabulary:
 
-        Σ (hi : List Nat)
-      → Σ (Hub : Ub p (*v))                       -- the kept part is ≤ p
+        Σ (hi : List Nat).
+      Σ (Hub : Ub p (*v))                       -- the kept part is ≤ p
       → Σ (Hlb : Lb p hi)                         -- the returned part is ≥ p
       → Π n. Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
 
@@ -1284,7 +1284,7 @@ example : chk Dllbc.StdLemmas.LbPerm Dllbc.StdLemmas.LbPermTy = true := by nativ
     ## Stage (vi) — quicksort
 
         fn quicksort [fuel] (fuel : Nat, v : &mut List Nat, Hfuel : Le (len *v) fuel)
-          -> Σ (Hs : Sorted (*v)) → Π n. Id Nat (count n (*v)) (count n (old *v))
+          -> Σ (Hs : Sorted (*v)). Π n. Id Nat (count n (*v)) (count n (old *v))
 
     Sorted AND a permutation, over the exit snapshot, and not one `back` in the call
     tree: `partition`, `append_back` and the recursive calls are each described only
@@ -1354,12 +1354,12 @@ def fuelT : Term := .var ⟨0, "fuel"⟩
     a return type cannot name from outside its header are spliced. -/
 
 def partHonest : Term := prog{
-  Σ (hi : List Nat) → Σ (Hub : Ub %pT (*%vfT)) → Σ (Hlb : Lb %pT hi)
-    → Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT)))
-    → Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (Count N (old *%vfT)) }
+  Σ (hi : List Nat). Σ (Hub : Ub %pT (*%vfT)). Σ (Hlb : Lb %pT hi).
+    Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))). Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT))).
+    Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (Count N (old *%vfT)) }
 
 def qsHonest : Term := prog{
-  Σ0 (Hs : Sorted (*%vfT)) → Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) }
+  Σ0 (Hs : Sorted (*%vfT)). Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) }
 
 /-- The sufficiency hypothesis's type — a telescope entry, so it is a parameter of
     the chain too. Its twin is the one that weakens it to `Unit`. -/
@@ -1613,16 +1613,16 @@ example : progOk flagship = true := by native_decide
 -- (1) UPPER BOUND on the wrong snapshot: `Ub p (old *v)` — true of the entry, and
 -- the entry is not what the caller gets back.
 example : progRejects (qsUnder (prog{
-    Σ (hi : List Nat) → Σ (Hub : Ub %pT (old *%vfT)) → Σ (Hlb : Lb %pT hi)
-      → Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT)))
-      → Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (Count N (old *%vfT)) })
+    Σ (hi : List Nat). Σ (Hub : Ub %pT (old *%vfT)). Σ (Hlb : Lb %pT hi).
+      Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))). Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT))).
+      Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (Count N (old *%vfT)) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (2) LOWER BOUND on the kept part instead of the returned one.
 example : progRejects (qsUnder (prog{
-    Σ (hi : List Nat) → Σ (Hub : Ub %pT (*%vfT)) → Σ (Hlb : Lb %pT (*%vfT))
-      → Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT)))
-      → Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (Count N (old *%vfT)) })
+    Σ (hi : List Nat). Σ (Hub : Ub %pT (*%vfT)). Σ (Hlb : Lb %pT (*%vfT)).
+      Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))). Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT))).
+      Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (Count N (old *%vfT)) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (3) The returned part DROPPED from the count: "everything stayed in `*v`".
@@ -1635,16 +1635,16 @@ example : progRejects (qsUnder (prog{
 -- of one call later, where the caller found the argument ill-typed. Was "does not
 -- have its parameter type".
 example : progRejects (qsUnder (prog{
-    Σ (hi : List Nat) → Σ (Hub : Ub %pT (*%vfT)) → Σ (Hlb : Lb %pT hi)
-      → Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT)))
-      → Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) })
+    Σ (hi : List Nat). Σ (Hub : Ub %pT (*%vfT)). Σ (Hlb : Lb %pT hi).
+      Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))). Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT))).
+      Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (4) …and the count off by one, which no `Nil`-path argument can reach.
 example : progRejects (qsUnder (prog{
-    Σ (hi : List Nat) → Σ (Hub : Ub %pT (*%vfT)) → Σ (Hlb : Lb %pT hi)
-      → Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT)))
-      → Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (S (Count N (old *%vfT))) })
+    Σ (hi : List Nat). Σ (Hub : Ub %pT (*%vfT)). Σ (Hlb : Lb %pT hi).
+      Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))). Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT))).
+      Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (S (Count N (old *%vfT))) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 /-! ### Not vacuous: `quicksort`'s two spec lies, and the sufficiency hypothesis
@@ -1658,13 +1658,13 @@ example : progRejects (qsUnder (prog{
 -- `Nil` (so the base path still passes) and false for any unsorted input, and the
 -- body's evidence is about the exit.
 example : progRejects (qsUnder partHonest (prog{
-    Σ0 (Hs : Sorted (old *%vfT)) → Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) })
+    Σ0 (Hs : Sorted (old *%vfT)). Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) })
     suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (2) PERMUTATION lied by DIRECTION: the two endpoints swapped. Again `Refl` at
 -- `Nil`, and again the body's evidence points the other way once anything moves.
 example : progRejects (qsUnder partHonest (prog{
-    Σ0 (Hs : Sorted (*%vfT)) → Π (N : Nat) → Id Nat (Count N (old *%vfT)) (Count N (*%vfT)) })
+    Σ0 (Hs : Sorted (*%vfT)). Π (N : Nat) → Id Nat (Count N (old *%vfT)) (Count N (*%vfT)) })
     suffHonest .unit) "does not have its parameter type" = true := by native_decide
 
 -- (3) The SUFFICIENCY HYPOTHESIS is load-bearing, not decoration. Keep the
@@ -2108,7 +2108,7 @@ def withCursors (cret eret tail : Term) : Term := prog{
             }
         } };
   fn Nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
-                 pij : Le (S i) j, p2 : Le (S j) (Len *v)) -> Σ (x : &mut Nat) → &mut Nat
+                 pij : Le (S i) j, p2 : Le (S j) (Len *v)) -> Σ (x : &mut Nat). &mut Nat
         { match v {
             Nil => botElim Unit p2,
             Cons(hd, tl) => match i {
@@ -2212,7 +2212,7 @@ def withScan (tail : Term) : Term := prog{
             }
         } };
   fn Nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
-                 pij : Le (S i) j, p2 : Le (S j) (Len *v)) -> Σ (x : &mut Nat) → &mut Nat
+                 pij : Le (S i) j, p2 : Le (S j) (Len *v)) -> Σ (x : &mut Nat). &mut Nat
         { match v {
             Nil => botElim Unit p2,
             Cons(hd, tl) => match i {

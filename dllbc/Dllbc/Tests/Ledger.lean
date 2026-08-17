@@ -471,12 +471,12 @@ example : progOk S19Partition.twoRec = true := by native_decide
     |---|---|---|
     | `partScan`, `partScanRange` | an in-place swap scan CONFORMS to `PartScanL` | the conformance claim IS the retired architecture; the PROGRAM is carried by `S23Direct.partition` (relational `Ub`/`Lb`/count) and `S25ArrSort.partitionA` |
     | `partition`, `partitionQ`, `partitionRange` | conforms to `PartitionL`; returned index = `PartIdxL` | `S23Direct.partition`; `S25ArrSort.partitionA`, which returns an index under its own ensures |
-    | `quicksort`, `quicksortLie` | conforms to `SortRangeL` | `S23Direct.quicksort` — `Σ (Sorted (*v)) → Π n. Count`-preservation, zero declared backs. Strictly stronger, and 21 ms against 21.8 s |
+    | `quicksort`, `quicksortLie` | conforms to `SortRangeL` | `S23Direct.quicksort` — `Σ (Sorted (*v)). Π n. Count`-preservation, zero declared backs. Strictly stronger, and 21 ms against 21.8 s |
     | `exitAccept` | `Id (*v) (SwapL i j (old *v))` | `S23Direct.swapAt` — literally the same statement, asserted in §C2 |
     | `lenPreserve` | `Id (Len *v) (Len (old *v))` across a swap | derivable from `swapAt`'s equation by `LenSwapL` + `IdCongr`; the equation implies the length fact |
     | `shareCaller` | caller-side σ-sharing: a callee's fact about its own exit forwarded as the caller's | the same mechanism at scale in `S23Direct.quicksort`, which forwards `partition`'s count equation into its own postcondition |
     | `swapSE`, `partitionRangeE`, `quicksortE` | count preservation for swap / partition / sort | the count conjunct of `S23Direct.partition` and `S23Direct.quicksort` |
-    | `quicksortSorted` | `Σ (SortedR cnt lo (*v)) → Π n. Count`-preservation | `S23Direct.quicksort` — whole-list structural `Sorted` in place of positional `SortedR cnt lo`, same count conjunct |
+    | `quicksortSorted` | `Σ (SortedR cnt lo (*v)). Π n. Count`-preservation | `S23Direct.quicksort` — whole-list structural `Sorted` in place of positional `SortedR cnt lo`, same count conjunct |
     | `qsSpc` | a caller recovers the exact sorted list in CHECKING mode | **no carrier — deleted by design.** §5 point 4: what you keep across a boundary is what you ascribe, and an opaque call ascribes nothing about the payload. The BEHAVIOUR is carried by S23Direct's executing differential against Lean's `mergeSort` and by the list-vs-array cross-differential |
     | `nth2Lie`, `partScanLie`, `partitionLie` | a LYING backward spec is caught at the callee check | tests of the deleted mechanism; retire with it |
 
@@ -659,7 +659,7 @@ example : lowerComptime Pure.kLeFn = 0 := by native_decide
     arm binder through `binderDom`, which is what every other binder in that file
     already went through. The last nine to go were not arm binders at all but the
     Σ elimination's type FAMILY (`λ Hu. B`, `sigmaRec`'s second parameter), where
-    the surface wrote a `Σ (Hu : A) → B` with a marked domain and then handed the
+    the surface wrote a `Σ (Hu : A). B` with a marked domain and then handed the
     eliminator a family that disagreed with it about `Hu`.
 
     The whole corpus is green at both values with **zero verdict changes**, which

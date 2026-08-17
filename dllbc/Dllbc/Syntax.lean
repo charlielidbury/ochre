@@ -277,7 +277,7 @@ inductive Term where
   | pvar   : String → Term           -- pure variable occurrence, by name
   | type   : Term                    -- the universe
   | pi     : String → Term → Term → Term      -- Π (x : dom) → cod
-  | sigmaT : String → Term → Term → Term      -- Σ (x : fst-type) → snd-type
+  | sigmaT : String → Term → Term → Term      -- Σ (x : fst-type). snd-type
   /-- `λ (x : dom). body` — **the λ, and there is only one** (M32 R2,
       suspensions.md §2.4).
 
@@ -336,7 +336,7 @@ inductive Term where
       **The CODOMAIN position is Σ0** (M33, suspensions.md §2.7), and it is the
       same marker doing the same job from the other end of the pair. A Σ's binder
       spells its first component's mode on the domain; its TAIL has no binder, so
-      `Σ0 (x : A) → P` puts the marker on `P`. A position is comptime iff its
+      `Σ0 (x : A). P` puts the marker on `P`. A position is comptime iff its
       type carries this marker — which is now one sentence covering a λ's
       argument, a Π's, a Σ's component and a Σ's tail, where it used to cover
       three and leave the fourth silently runtime.
@@ -1010,7 +1010,7 @@ def retMixesBorrow (t : Term) : Bool :=
     payload type WEAKENED over the entry-snapshot binder, and under names the
     weakening is the identity — which is the whole of what M30 step 2 did to this
     function. `&mut (s : Bool ~> Nat)` and
-    `&mut (s : List Nat ~> Σ (l : List Nat) → Id Nat (len l) (len s))` are the two
+    `&mut (s : List Nat ~> Σ (l : List Nat). Id Nat (len l) (len s))` are the two
     non-trivial owed types in the corpus, and both are load-bearing claims the
     audit checks.
 

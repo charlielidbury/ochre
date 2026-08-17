@@ -485,7 +485,7 @@ def ctorSig : String → Option CtorSig
   -- type — a value inhabits it exactly when it inhabits `τ`, so every rule that
   -- TYPES a component strips first and only the rules that ROUTE one ask
   -- `domComptime`. This is the house pattern (`Term.stripCmp` at the site).
-  -- **And the CODOMAIN strips too, since M33's Σ0**: a `Σ0 (x : A) → P` marks
+  -- **And the CODOMAIN strips too, since M33's Σ0**: a `Σ0 (x : A). P` marks
   -- its tail comptime with the same `⇝`, in the one position a Σ has left, so
   -- the tail is exactly as much "not a type" as the domain was and takes exactly
   -- the same treatment. `Machine.reattachSigmaMode` is the routing half, on both

@@ -3530,13 +3530,13 @@ def Ub : Term := prog{
   λ (P : Nat). λ (L : List Nat).
     elim L return (λ (Lz : List Nat). Type) {
       Nil => Unit,
-      Cons (H) (T) Ih => Σ (Hh : Le H P) → Ih } }
+      Cons (H) (T) Ih => Σ (Hh : Le H P). Ih } }
 
 def Lb : Term := prog{
   λ (P : Nat). λ (L : List Nat).
     elim L return (λ (Lz : List Nat). Type) {
       Nil => Unit,
-      Cons (H) (T) Ih => Σ (Hh : Le P H) → Ih } }
+      Cons (H) (T) Ih => Σ (Hh : Le P H). Ih } }
 
 def InsertL : Term := prog{
   λ (K : Nat).
@@ -3575,29 +3575,29 @@ def ListRwTy : Term := prog{
     sugar reads `A` and `λx. B` off the motive's binder type syntactically. -/
 
 def SortedHead : Term := prog{
-  λ (H : Nat). λ (T : List Nat). λ (S0 : Σ (Hb : Bound H T) → Sorted T).
-    elim S0 return (λ (Q : Σ (Hb : Bound H T) → Sorted T). Bound H T) {
+  λ (H : Nat). λ (T : List Nat). λ (S0 : Σ (Hb : Bound H T). Sorted T).
+    elim S0 return (λ (Q : Σ (Hb : Bound H T). Sorted T). Bound H T) {
       Pair (X) (Y) => X } }
 def SortedHeadTy : Term := prog{
   Π (H : Nat) → Π (T : List Nat) → Sorted (Cons H T) → Bound H T }
 
 def SortedTail : Term := prog{
-  λ (H : Nat). λ (T : List Nat). λ (S0 : Σ (Hb : Bound H T) → Sorted T).
-    elim S0 return (λ (Q : Σ (Hb : Bound H T) → Sorted T). Sorted T) {
+  λ (H : Nat). λ (T : List Nat). λ (S0 : Σ (Hb : Bound H T). Sorted T).
+    elim S0 return (λ (Q : Σ (Hb : Bound H T). Sorted T). Sorted T) {
       Pair (X) (Y) => Y } }
 def SortedTailTy : Term := prog{
   Π (H : Nat) → Π (T : List Nat) → Sorted (Cons H T) → Sorted T }
 
 def UbHead : Term := prog{
-  λ (P : Nat). λ (H : Nat). λ (T : List Nat). λ (U : Σ (Hu : Le H P) → Ub P T).
-    elim U return (λ (Q : Σ (Hu : Le H P) → Ub P T). Le H P) {
+  λ (P : Nat). λ (H : Nat). λ (T : List Nat). λ (U : Σ (Hu : Le H P). Ub P T).
+    elim U return (λ (Q : Σ (Hu : Le H P). Ub P T). Le H P) {
       Pair (X) (Y) => X } }
 def UbHeadTy : Term := prog{
   Π (P : Nat) → Π (H : Nat) → Π (T : List Nat) → Ub P (Cons H T) → Le H P }
 
 def UbTail : Term := prog{
-  λ (P : Nat). λ (H : Nat). λ (T : List Nat). λ (U : Σ (Hu : Le H P) → Ub P T).
-    elim U return (λ (Q : Σ (Hu : Le H P) → Ub P T). Ub P T) {
+  λ (P : Nat). λ (H : Nat). λ (T : List Nat). λ (U : Σ (Hu : Le H P). Ub P T).
+    elim U return (λ (Q : Σ (Hu : Le H P). Ub P T). Ub P T) {
       Pair (X) (Y) => Y } }
 def UbTailTy : Term := prog{
   Π (P : Nat) → Π (H : Nat) → Π (T : List Nat) → Ub P (Cons H T) → Ub P T }
@@ -3610,8 +3610,8 @@ def LbBound : Term := prog{
   λ (P : Nat). λ (L : List Nat).
     elim L return (λ (Lz : List Nat). Lb P Lz → Bound P Lz) {
       Nil => λ (Hn : Unit). Hn,
-      Cons (H) (T) Ih => λ (Hl : Σ (Hh : Le P H) → Lb P T).
-        elim Hl return (λ (Q : Σ (Hh : Le P H) → Lb P T). Le P H) {
+      Cons (H) (T) Ih => λ (Hl : Σ (Hh : Le P H). Lb P T).
+        elim Hl return (λ (Q : Σ (Hh : Le P H). Lb P T). Le P H) {
           Pair (X) (Y) => X } } }
 def LbBoundTy : Term := prog{
   Π (P : Nat) → Π (L : List Nat) → Lb P L → Bound P L }
@@ -3740,15 +3740,15 @@ def CountConsRTy : Term := prog{
 
 /-- The two `Lb` projections, mirroring `UbHead`/`UbTail`. -/
 def LbHead : Term := prog{
-  λ (P : Nat). λ (H : Nat). λ (T : List Nat). λ (U : Σ (Hu : Le P H) → Lb P T).
-    elim U return (λ (Q : Σ (Hu : Le P H) → Lb P T). Le P H) {
+  λ (P : Nat). λ (H : Nat). λ (T : List Nat). λ (U : Σ (Hu : Le P H). Lb P T).
+    elim U return (λ (Q : Σ (Hu : Le P H). Lb P T). Le P H) {
       Pair (X) (Y) => X } }
 def LbHeadTy : Term := prog{
   Π (P : Nat) → Π (H : Nat) → Π (T : List Nat) → Lb P (Cons H T) → Le P H }
 
 def LbTail : Term := prog{
-  λ (P : Nat). λ (H : Nat). λ (T : List Nat). λ (U : Σ (Hu : Le P H) → Lb P T).
-    elim U return (λ (Q : Σ (Hu : Le P H) → Lb P T). Lb P T) {
+  λ (P : Nat). λ (H : Nat). λ (T : List Nat). λ (U : Σ (Hu : Le P H). Lb P T).
+    elim U return (λ (Q : Σ (Hu : Le P H). Lb P T). Lb P T) {
       Pair (X) (Y) => Y } }
 def LbTailTy : Term := prog{
   Π (P : Nat) → Π (H : Nat) → Π (T : List Nat) → Lb P (Cons H T) → Lb P T }
@@ -3761,7 +3761,7 @@ def NoAboveOfUb : Term := prog{
     elim L return (λ (Lz : List Nat).
         Ub P Lz → Π (X : Nat) → Le (S P) X → Id Nat (Count X Lz) Z) {
       Nil => λ (U : Unit). λ (X : Nat). λ (Hx : Le (S P) X). Refl,
-      Cons (H) (T) Ih => λ (U : Σ (Hh : Le H P) → Ub P T). λ (X : Nat). λ (Hx : Le (S P) X).
+      Cons (H) (T) Ih => λ (U : Σ (Hh : Le H P). Ub P T). λ (X : Nat). λ (Hx : Le (S P) X).
         IdTrans Nat (Count X (Cons H T)) (Count X T) Z
           (CountConsMiss X H T
             (EqbGtFalse H X (LeTrans (S H) (S P) X (UbHead P H T U) Hx)))
@@ -3826,7 +3826,7 @@ def NoBelowOfLb : Term := prog{
     elim L return (λ (Lz : List Nat).
         Lb P Lz → Π (X : Nat) → Le (S X) P → Id Nat (Count X Lz) Z) {
       Nil => λ (U : Unit). λ (X : Nat). λ (Hx : Le (S X) P). Refl,
-      Cons (H) (T) Ih => λ (U : Σ (Hh : Le P H) → Lb P T). λ (X : Nat). λ (Hx : Le (S X) P).
+      Cons (H) (T) Ih => λ (U : Σ (Hh : Le P H). Lb P T). λ (X : Nat). λ (Hx : Le (S X) P).
         IdTrans Nat (Count X (Cons H T)) (Count X T) Z
           (CountConsMiss X H T
             (EqbLtFalse X H (LeTrans (S X) P H Hx (LbHead P H T U))))
@@ -3913,21 +3913,21 @@ def SortedA : Term := prog{
   λ (N : Nat). λ (A : Array N Nat).
     arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Type) Unit
       (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat). λ (Ih : Type).
-        Σ (Hb : BoundA H K T) → Ih) N A }
+        Σ (Hb : BoundA H K T). Ih) N A }
 
 /-- `UbA p a` — every element of `a` is ≤ `p`. `Ub`'s transfer. -/
 def UbA : Term := prog{
   λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
     arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Type) Unit
       (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat). λ (Ih : Type).
-        Σ (Hh : Le H P) → Ih) N A }
+        Σ (Hh : Le H P). Ih) N A }
 
 /-- `LbA p a` — every element of `a` is ≥ `p`. `Lb`'s transfer. -/
 def LbA : Term := prog{
   λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
     arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Type) Unit
       (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat). λ (Ih : Type).
-        Σ (Hh : Le P H) → Ih) N A }
+        Σ (Hh : Le P H). Ih) N A }
 
 /-- `Asingle x` — the one-element array, `[x]`. ¶6's glue is stated over
     `arrCat (Asingle p) r`, which is the array spelling of `Cons p b`. -/
@@ -3948,8 +3948,8 @@ def Asingle : Term := prog{ λ (X : Nat). acons Z X Arr() }
 
 def SortedHeadA : Term := prog{
   λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
-    λ (S0 : Σ (Hb : BoundA H K T) → SortedA K T).
-      elim S0 return (λ (Q : Σ (Hb : BoundA H K T) → SortedA K T). BoundA H K T) {
+    λ (S0 : Σ (Hb : BoundA H K T). SortedA K T).
+      elim S0 return (λ (Q : Σ (Hb : BoundA H K T). SortedA K T). BoundA H K T) {
         Pair (X) (Y) => X } }
 def SortedHeadATy : Term := prog{
   Π (K : Nat) → Π (H : Nat) → Π (T : Array K Nat) →
@@ -3957,8 +3957,8 @@ def SortedHeadATy : Term := prog{
 
 def SortedTailA : Term := prog{
   λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
-    λ (S0 : Σ (Hb : BoundA H K T) → SortedA K T).
-      elim S0 return (λ (Q : Σ (Hb : BoundA H K T) → SortedA K T). SortedA K T) {
+    λ (S0 : Σ (Hb : BoundA H K T). SortedA K T).
+      elim S0 return (λ (Q : Σ (Hb : BoundA H K T). SortedA K T). SortedA K T) {
         Pair (X) (Y) => Y } }
 def SortedTailATy : Term := prog{
   Π (K : Nat) → Π (H : Nat) → Π (T : Array K Nat) →
@@ -3966,8 +3966,8 @@ def SortedTailATy : Term := prog{
 
 def UbHeadA : Term := prog{
   λ (P : Nat). λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
-    λ (U : Σ (Hu : Le H P) → UbA P K T).
-      elim U return (λ (Q : Σ (Hu : Le H P) → UbA P K T). Le H P) {
+    λ (U : Σ (Hu : Le H P). UbA P K T).
+      elim U return (λ (Q : Σ (Hu : Le H P). UbA P K T). Le H P) {
         Pair (X) (Y) => X } }
 def UbHeadATy : Term := prog{
   Π (P : Nat) → Π (K : Nat) → Π (H : Nat) → Π (T : Array K Nat) →
@@ -3975,8 +3975,8 @@ def UbHeadATy : Term := prog{
 
 def UbTailA : Term := prog{
   λ (P : Nat). λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
-    λ (U : Σ (Hu : Le H P) → UbA P K T).
-      elim U return (λ (Q : Σ (Hu : Le H P) → UbA P K T). UbA P K T) {
+    λ (U : Σ (Hu : Le H P). UbA P K T).
+      elim U return (λ (Q : Σ (Hu : Le H P). UbA P K T). UbA P K T) {
         Pair (X) (Y) => Y } }
 def UbTailATy : Term := prog{
   Π (P : Nat) → Π (K : Nat) → Π (H : Nat) → Π (T : Array K Nat) →
@@ -3990,8 +3990,8 @@ def LbBoundA : Term := prog{
       (λ (Hn : Unit). Hn)
       (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
         λ (Ih : LbA P K T → BoundA P K T).
-          λ (Hl : Σ (Hh : Le P H) → LbA P K T).
-            elim Hl return (λ (Q : Σ (Hh : Le P H) → LbA P K T). Le P H) {
+          λ (Hl : Σ (Hh : Le P H). LbA P K T).
+            elim Hl return (λ (Q : Σ (Hh : Le P H). LbA P K T). Le P H) {
               Pair (X) (Y) => X })
       N A }
 def LbBoundATy : Term := prog{
@@ -4033,8 +4033,8 @@ def SortedArrCat : Term := prog{
         (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
           λ (Ih : SortedA K T → UbA P K T →
               SortedA (Add K (S Q)) (arrCat K (S Q) T (arrCat 1 Q (Asingle P) B))).
-            λ (Sc : Σ (Hb : BoundA H K T) → SortedA K T).
-              λ (Uc : Σ (Hu : Le H P) → UbA P K T).
+            λ (Sc : Σ (Hb : BoundA H K T). SortedA K T).
+              λ (Uc : Σ (Hu : Le H P). UbA P K T).
                 Pair(BoundArrCat H P K T Q B (SortedHeadA K H T Sc) (UbHeadA P K H T Uc),
                      Ih (SortedTailA K H T Sc) (UbTailA P K H T Uc)))
         M A Sa Ua }
@@ -4103,12 +4103,12 @@ def CountAconsMissTy : Term := prog{
 
 def LbHeadA : Term := prog{
   λ (P : Nat). λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
-    λ (U : Σ (Hh : Le P H) → LbA P K T).
-      elim U return (λ (Q : Σ (Hh : Le P H) → LbA P K T). Le P H) { Pair (X) (Y) => X } }
+    λ (U : Σ (Hh : Le P H). LbA P K T).
+      elim U return (λ (Q : Σ (Hh : Le P H). LbA P K T). Le P H) { Pair (X) (Y) => X } }
 def LbTailA : Term := prog{
   λ (P : Nat). λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
-    λ (U : Σ (Hh : Le P H) → LbA P K T).
-      elim U return (λ (Q : Σ (Hh : Le P H) → LbA P K T). LbA P K T) { Pair (X) (Y) => Y } }
+    λ (U : Σ (Hh : Le P H). LbA P K T).
+      elim U return (λ (Q : Σ (Hh : Le P H). LbA P K T). LbA P K T) { Pair (X) (Y) => Y } }
 
 def NoAboveOfUbA : Term := prog{
   λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
@@ -4117,7 +4117,7 @@ def NoAboveOfUbA : Term := prog{
       (λ (U : Unit). λ (X : Nat). λ (Hx : Le (S P) X). Refl)
       (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
         λ (Ih : UbA P K T → Π (X : Nat) → Le (S P) X → Id Nat (CountA X K T) Z).
-          λ (U : Σ (Hh : Le H P) → UbA P K T). λ (X : Nat). λ (Hx : Le (S P) X).
+          λ (U : Σ (Hh : Le H P). UbA P K T). λ (X : Nat). λ (Hx : Le (S P) X).
             IdTrans Nat (CountA X (S K) (acons K H T)) (CountA X K T) Z
               (CountAconsMiss X H K T
                 (EqbGtFalse H X (LeTrans (S H) (S P) X (UbHeadA P K H T U) Hx)))
@@ -4185,7 +4185,7 @@ def NoBelowOfLbA : Term := prog{
       (λ (U : Unit). λ (X : Nat). λ (Hx : Le (S X) P). Refl)
       (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
         λ (Ih : LbA P K T → Π (X : Nat) → Le (S X) P → Id Nat (CountA X K T) Z).
-          λ (U : Σ (Hh : Le P H) → LbA P K T). λ (X : Nat). λ (Hx : Le (S X) P).
+          λ (U : Σ (Hh : Le P H). LbA P K T). λ (X : Nat). λ (Hx : Le (S X) P).
             IdTrans Nat (CountA X (S K) (acons K H T)) (CountA X K T) Z
               (CountAconsMiss X H K T
                 (EqbLtFalse X H (LeTrans (S X) P H Hx (LbHeadA P K H T U))))
@@ -4333,8 +4333,8 @@ def SplitAL : Term := prog{
       (λ (M : Nat). λ (H : Nat). λ (T : Array M Nat). λ (Ih : Π (Kz : Nat) → Type).
         λ (Kz : Nat).
           elim Kz return (λ (W : Nat). Type) {
-            Z => Σ (Hh : Le P H) → Ih Z,
-            S (K2) Rec => Σ (Hh : Le H P) → Ih K2 })
+            Z => Σ (Hh : Le P H). Ih Z,
+            S (K2) Rec => Σ (Hh : Le H P). Ih K2 })
       N A K }
 
 /-- `PartA pv k a` — the first `k` elements are ≤ `pv`, element `k` IS `pv`, and the
@@ -4348,8 +4348,8 @@ def PartA : Term := prog{
       (λ (M : Nat). λ (H : Nat). λ (T : Array M Nat). λ (Ih : Π (Kz : Nat) → Type).
         λ (Kz : Nat).
           elim Kz return (λ (W : Nat). Type) {
-            Z => Σ (He : Id Nat H Pv) → LbA Pv M T,
-            S (K2) Rec => Σ (Hh : Le H Pv) → Ih K2 })
+            Z => Σ (He : Id Nat H Pv). LbA Pv M T,
+            S (K2) Rec => Σ (Hh : Le H Pv). Ih K2 })
       N A K }
 
 /-- `SplitAL` of a length-zero array, at any skip count — `SortedANil`'s twin, and
@@ -4388,8 +4388,8 @@ def SplitA0Lb : Term := prog{
       (λ (H : Unit). unit)
       (λ (K : Nat). λ (Hh : Nat). λ (T : Array K Nat).
         λ (Ih : SplitAL P Z K T → LbA P K T).
-          λ (S0 : Σ (H2 : Le P Hh) → SplitAL P Z K T).
-            elim S0 return (λ (Qz : Σ (H2 : Le P Hh) → SplitAL P Z K T). LbA P (S K) (acons K Hh T)) {
+          λ (S0 : Σ (H2 : Le P Hh). SplitAL P Z K T).
+            elim S0 return (λ (Qz : Σ (H2 : Le P Hh). SplitAL P Z K T). LbA P (S K) (acons K Hh T)) {
               Pair (U) (V) => Pair(U, Ih V) })
       N A }
 def SplitA0LbTy : Term := prog{
@@ -4403,24 +4403,24 @@ def SplitACatE1 : Term := prog{
   λ (P : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
     arrRec Nat (λ (Kz : Nat). λ (Lz : Array Kz Nat).
         SplitAL P (S Kz) (Add Kz Mm) (arrCat Kz Mm Lz W) →
-          Σ (Hu : UbA P Kz Lz) → SplitAL P (S Z) Mm W)
+          Σ (Hu : UbA P Kz Lz). SplitAL P (S Z) Mm W)
       (λ (H : SplitAL P (S Z) Mm W). Pair(unit, H))
       (λ (K2 : Nat). λ (Hh : Nat). λ (T : Array K2 Nat).
         λ (Ih : SplitAL P (S K2) (Add K2 Mm) (arrCat K2 Mm T W) →
-                  Σ (Hu : UbA P K2 T) → SplitAL P (S Z) Mm W).
-          λ (S0 : Σ (H2 : Le Hh P) → SplitAL P (S K2) (Add K2 Mm) (arrCat K2 Mm T W)).
-            elim S0 return (λ (Qz : Σ (H2 : Le Hh P) →
+                  Σ (Hu : UbA P K2 T). SplitAL P (S Z) Mm W).
+          λ (S0 : Σ (H2 : Le Hh P). SplitAL P (S K2) (Add K2 Mm) (arrCat K2 Mm T W)).
+            elim S0 return (λ (Qz : Σ (H2 : Le Hh P).
                                 SplitAL P (S K2) (Add K2 Mm) (arrCat K2 Mm T W)).
-                Σ (Hu : UbA P (S K2) (acons K2 Hh T)) → SplitAL P (S Z) Mm W) {
+                Σ (Hu : UbA P (S K2) (acons K2 Hh T)). SplitAL P (S Z) Mm W) {
               Pair (U) (V) =>
-                elim (Ih V) return (λ (Qz2 : Σ (Hu : UbA P K2 T) → SplitAL P (S Z) Mm W).
-                    Σ (Hu : UbA P (S K2) (acons K2 Hh T)) → SplitAL P (S Z) Mm W) {
+                elim (Ih V) return (λ (Qz2 : Σ (Hu : UbA P K2 T). SplitAL P (S Z) Mm W).
+                    Σ (Hu : UbA P (S K2) (acons K2 Hh T)). SplitAL P (S Z) Mm W) {
                   Pair (A1) (B1) => Pair(Pair(U, A1), B1) } })
       K L }
 def SplitACatE1Ty : Term := prog{
   Π (P : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
     SplitAL P (S K) (Add K Mm) (arrCat K Mm L W) →
-      Σ (Hu : UbA P K L) → SplitAL P (S Z) Mm W }
+      Σ (Hu : UbA P K L). SplitAL P (S Z) Mm W }
 
 /-- The converse at skip exactly `k`: a bounded left part in front of a `SplitAL` at
     skip zero is a `SplitAL` at skip `k`. -/
@@ -4432,8 +4432,8 @@ def SplitACatI0 : Term := prog{
       (λ (K2 : Nat). λ (Hh : Nat). λ (T : Array K2 Nat).
         λ (Ih : UbA P K2 T → SplitAL P Z Mm W →
                   SplitAL P K2 (Add K2 Mm) (arrCat K2 Mm T W)).
-          λ (U : Σ (H2 : Le Hh P) → UbA P K2 T). λ (H : SplitAL P Z Mm W).
-            elim U return (λ (Qz : Σ (H2 : Le Hh P) → UbA P K2 T).
+          λ (U : Σ (H2 : Le Hh P). UbA P K2 T). λ (H : SplitAL P Z Mm W).
+            elim U return (λ (Qz : Σ (H2 : Le Hh P). UbA P K2 T).
                 SplitAL P (S K2) (Add (S K2) Mm) (arrCat (S K2) Mm (acons K2 Hh T) W)) {
               Pair (A1) (B1) => Pair(A1, Ih B1 H) })
       K L }
@@ -4451,8 +4451,8 @@ def PartACatI0 : Term := prog{
       (λ (K2 : Nat). λ (Hh : Nat). λ (T : Array K2 Nat).
         λ (Ih : UbA Pv K2 T → PartA Pv Z Mm W →
                   PartA Pv K2 (Add K2 Mm) (arrCat K2 Mm T W)).
-          λ (U : Σ (H2 : Le Hh Pv) → UbA Pv K2 T). λ (H : PartA Pv Z Mm W).
-            elim U return (λ (Qz : Σ (H2 : Le Hh Pv) → UbA Pv K2 T).
+          λ (U : Σ (H2 : Le Hh Pv). UbA Pv K2 T). λ (H : PartA Pv Z Mm W).
+            elim U return (λ (Qz : Σ (H2 : Le Hh Pv). UbA Pv K2 T).
                 PartA Pv (S K2) (Add (S K2) Mm) (arrCat (S K2) Mm (acons K2 Hh T) W)) {
               Pair (A1) (B1) => Pair(A1, Ih B1 H) })
       K L }
@@ -4469,24 +4469,24 @@ def PartACatE0 : Term := prog{
   λ (Pv : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
     arrRec Nat (λ (Kz : Nat). λ (Lz : Array Kz Nat).
         PartA Pv Kz (Add Kz Mm) (arrCat Kz Mm Lz W) →
-          Σ (Hu : UbA Pv Kz Lz) → PartA Pv Z Mm W)
+          Σ (Hu : UbA Pv Kz Lz). PartA Pv Z Mm W)
       (λ (H : PartA Pv Z Mm W). Pair(unit, H))
       (λ (K2 : Nat). λ (Hh : Nat). λ (T : Array K2 Nat).
         λ (Ih : PartA Pv K2 (Add K2 Mm) (arrCat K2 Mm T W) →
-                  Σ (Hu : UbA Pv K2 T) → PartA Pv Z Mm W).
-          λ (S0 : Σ (H2 : Le Hh Pv) → PartA Pv K2 (Add K2 Mm) (arrCat K2 Mm T W)).
-            elim S0 return (λ (Qz : Σ (H2 : Le Hh Pv) →
+                  Σ (Hu : UbA Pv K2 T). PartA Pv Z Mm W).
+          λ (S0 : Σ (H2 : Le Hh Pv). PartA Pv K2 (Add K2 Mm) (arrCat K2 Mm T W)).
+            elim S0 return (λ (Qz : Σ (H2 : Le Hh Pv).
                                 PartA Pv K2 (Add K2 Mm) (arrCat K2 Mm T W)).
-                Σ (Hu : UbA Pv (S K2) (acons K2 Hh T)) → PartA Pv Z Mm W) {
+                Σ (Hu : UbA Pv (S K2) (acons K2 Hh T)). PartA Pv Z Mm W) {
               Pair (U) (V) =>
-                elim (Ih V) return (λ (Qz2 : Σ (Hu : UbA Pv K2 T) → PartA Pv Z Mm W).
-                    Σ (Hu : UbA Pv (S K2) (acons K2 Hh T)) → PartA Pv Z Mm W) {
+                elim (Ih V) return (λ (Qz2 : Σ (Hu : UbA Pv K2 T). PartA Pv Z Mm W).
+                    Σ (Hu : UbA Pv (S K2) (acons K2 Hh T)). PartA Pv Z Mm W) {
                   Pair (A1) (B1) => Pair(Pair(U, A1), B1) } })
       K L }
 def PartACatE0Ty : Term := prog{
   Π (Pv : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
     PartA Pv K (Add K Mm) (arrCat K Mm L W) →
-      Σ (Hu : UbA Pv K L) → PartA Pv Z Mm W }
+      Σ (Hu : UbA Pv K L). PartA Pv Z Mm W }
 
 /-! ### The same crossings, one conclusion each
 
@@ -4500,7 +4500,7 @@ def SplitACatUb : Term := prog{
   λ (P : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
     λ (S0 : SplitAL P (S K) (Add K Mm) (arrCat K Mm L W)).
       elim (SplitACatE1 P K Mm L W S0)
-        return (λ (Qz : Σ (Hu : UbA P K L) → SplitAL P (S Z) Mm W). UbA P K L) {
+        return (λ (Qz : Σ (Hu : UbA P K L). SplitAL P (S Z) Mm W). UbA P K L) {
           Pair (U) (V) => U } }
 def SplitACatUbTy : Term := prog{
   Π (P : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
@@ -4510,7 +4510,7 @@ def SplitACatRest : Term := prog{
   λ (P : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
     λ (S0 : SplitAL P (S K) (Add K Mm) (arrCat K Mm L W)).
       elim (SplitACatE1 P K Mm L W S0)
-        return (λ (Qz : Σ (Hu : UbA P K L) → SplitAL P (S Z) Mm W). SplitAL P (S Z) Mm W) {
+        return (λ (Qz : Σ (Hu : UbA P K L). SplitAL P (S Z) Mm W). SplitAL P (S Z) Mm W) {
           Pair (U) (V) => V } }
 def SplitACatRestTy : Term := prog{
   Π (P : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
@@ -4520,8 +4520,8 @@ def SplitACatRestTy : Term := prog{
     Both are definitional unfoldings; naming them keeps the swap branch flat. -/
 def SplitA1Head : Term := prog{
   λ (P : Nat). λ (R : Nat). λ (G : Array R Nat). λ (Yv : Nat).
-    λ (S0 : Σ (Hh : Le Yv P) → SplitAL P Z R G).
-      elim S0 return (λ (Qz : Σ (Hh : Le Yv P) → SplitAL P Z R G). Le Yv P) {
+    λ (S0 : Σ (Hh : Le Yv P). SplitAL P Z R G).
+      elim S0 return (λ (Qz : Σ (Hh : Le Yv P). SplitAL P Z R G). Le Yv P) {
         Pair (U) (V) => U } }
 def SplitA1HeadTy : Term := prog{
   Π (P : Nat) → Π (R : Nat) → Π (G : Array R Nat) → Π (Yv : Nat) →
@@ -4529,8 +4529,8 @@ def SplitA1HeadTy : Term := prog{
 
 def SplitA1Tail : Term := prog{
   λ (P : Nat). λ (R : Nat). λ (G : Array R Nat). λ (Yv : Nat).
-    λ (S0 : Σ (Hh : Le Yv P) → SplitAL P Z R G).
-      elim S0 return (λ (Qz : Σ (Hh : Le Yv P) → SplitAL P Z R G). SplitAL P Z R G) {
+    λ (S0 : Σ (Hh : Le Yv P). SplitAL P Z R G).
+      elim S0 return (λ (Qz : Σ (Hh : Le Yv P). SplitAL P Z R G). SplitAL P Z R G) {
         Pair (U) (V) => V } }
 def SplitA1TailTy : Term := prog{
   Π (P : Nat) → Π (R : Nat) → Π (G : Array R Nat) → Π (Yv : Nat) →
@@ -4540,7 +4540,7 @@ def PartACatUb : Term := prog{
   λ (Pv : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
     λ (S0 : PartA Pv K (Add K Mm) (arrCat K Mm L W)).
       elim (PartACatE0 Pv K Mm L W S0)
-        return (λ (Qz : Σ (Hu : UbA Pv K L) → PartA Pv Z Mm W). UbA Pv K L) {
+        return (λ (Qz : Σ (Hu : UbA Pv K L). PartA Pv Z Mm W). UbA Pv K L) {
           Pair (U) (V) => U } }
 def PartACatUbTy : Term := prog{
   Π (Pv : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
@@ -4550,7 +4550,7 @@ def PartACatRest : Term := prog{
   λ (Pv : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
     λ (S0 : PartA Pv K (Add K Mm) (arrCat K Mm L W)).
       elim (PartACatE0 Pv K Mm L W S0)
-        return (λ (Qz : Σ (Hu : UbA Pv K L) → PartA Pv Z Mm W). PartA Pv Z Mm W) {
+        return (λ (Qz : Σ (Hu : UbA Pv K L). PartA Pv Z Mm W). PartA Pv Z Mm W) {
           Pair (U) (V) => V } }
 def PartACatRestTy : Term := prog{
   Π (Pv : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
@@ -4561,8 +4561,8 @@ def PartACatRestTy : Term := prog{
     remaining hypotheses, and the reason `PartA` records the pivot's identity at all. -/
 def PartA0Eq : Term := prog{
   λ (Pv : Nat). λ (Jj : Nat). λ (G : Array Jj Nat). λ (Ev : Nat).
-    λ (S0 : Σ (He : Id Nat Ev Pv) → LbA Pv Jj G).
-      elim S0 return (λ (Qz : Σ (He : Id Nat Ev Pv) → LbA Pv Jj G). Id Nat Ev Pv) {
+    λ (S0 : Σ (He : Id Nat Ev Pv). LbA Pv Jj G).
+      elim S0 return (λ (Qz : Σ (He : Id Nat Ev Pv). LbA Pv Jj G). Id Nat Ev Pv) {
         Pair (U) (V) => U } }
 def PartA0EqTy : Term := prog{
   Π (Pv : Nat) → Π (Jj : Nat) → Π (G : Array Jj Nat) → Π (Ev : Nat) →
@@ -4570,8 +4570,8 @@ def PartA0EqTy : Term := prog{
 
 def PartA0Lb : Term := prog{
   λ (Pv : Nat). λ (Jj : Nat). λ (G : Array Jj Nat). λ (Ev : Nat).
-    λ (S0 : Σ (He : Id Nat Ev Pv) → LbA Pv Jj G).
-      elim S0 return (λ (Qz : Σ (He : Id Nat Ev Pv) → LbA Pv Jj G). LbA Pv Jj G) {
+    λ (S0 : Σ (He : Id Nat Ev Pv). LbA Pv Jj G).
+      elim S0 return (λ (Qz : Σ (He : Id Nat Ev Pv). LbA Pv Jj G). LbA Pv Jj G) {
         Pair (U) (V) => V } }
 def PartA0LbTy : Term := prog{
   Π (Pv : Nat) → Π (Jj : Nat) → Π (G : Array Jj Nat) → Π (Ev : Nat) →
