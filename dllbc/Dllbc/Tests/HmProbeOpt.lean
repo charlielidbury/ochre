@@ -214,4 +214,162 @@ def MkSlotsTy : Term := prog{ Π (N : Nat) → Array N (List Nat) }
 def MkSlotsAtN : Term := prog{ λ (N : Nat). MkSlotsFn N }
 #eval chkLMsg MkSlotsAtN MkSlotsTy
 
+/-! ### O2 as a `fn` program — the return type names its own parameter
+
+    `elabUTerm (fullRctx ++ rctx)` elaborates a `fn`'s return type with the
+    telescope in scope, so `-> Array n (List Nat)` is written directly rather than
+    through ArraySort's `%mS`-style splice (which exists for twin-sharing, not
+    because the name is unreachable). -/
+
+-- (e) The comptime builder, called from a runtime body at a SYMBOLIC length.
+#eval chkProg prog{
+  fn NewSlots (n : Nat) -> Array n (List Nat) { MkSlotsFn n };
+  () }
+
+-- (f) …and the same thing written as a recursive `fn` instead.
+#eval chkProg prog{
+  fn NewSlots [n] (n : Nat) -> Array n (List Nat) {
+    match n { Z => Arr(), S(m) => acons m Nil NewSlots(m) } };
+  () }
+
+-- (g) Does the result RUN at a concrete length? (`progOk` is the checking half;
+--     this is the ⇒ half — the array has to exist at runtime.)
+#eval chkProg prog{
+  fn NewSlots (n : Nat) -> Array n (List Nat) { MkSlotsFn n };
+  let a = NewSlots(3);
+  () }
+
+/-! ## O3 — type parameters -/
+
+-- (a) A `fn` generic in its payload type. `T` is capital, so it is a COMPTIME
+--     binder (§6) — which is exactly what a type parameter should be.
+#eval chkProg prog{
+  fn Poly (T : Type, x : T) -> T { x };
+  () }
+
+-- (b) …and used: instantiate it at `Nat`.
+#eval chkProg prog{
+  fn Poly (T : Type, x : T) -> T { x };
+  let y = Poly(Nat, 5);
+  () }
+
+-- (c) The PURE route — a `Π (A : Type) → …` telescope, which is how `IdCongr`
+--     already takes its two type arguments.
+def polyIdFn : Term := prog{ λ (A : Type). λ (X : A). X }
+def polyIdTy : Term := prog{ Π (A : Type) → Π (X : A) → A }
+#eval chkLMsg polyIdFn polyIdTy
+
+-- (d) A generic array fill: `Π T. Π x. Π n. Array n T` — `MkSlots` with the
+--     payload type abstracted.
+def MkFillFn : Term := prog{
+  λ (T : Type). λ (X : T). λ (N : Nat). elim N return (λ (Nm : Nat). Array Nm T) {
+    Z => Arr(),
+    S (M) Rec => acons M X Rec } }
+def MkFillTy : Term := prog{ Π (T : Type) → Π (X : T) → Π (N : Nat) → Array N T }
+#eval chkLMsg MkFillFn MkFillTy
+#eval (pv prog{ MkFillFn (List Nat) Nil 3 }).pretty
+
+-- (e) A Σ packing a TYPE — an existential over types.
+def sigTy : Term := prog{ Σ (T : Type) → T }
+#eval chkLMsg prog{ Pair(Nat, 5) } sigTy
+#eval chkLMsg prog{ Pair(Bool, 5) } sigTy
+
+/-! ## O4 — the composite the hashmap actually wants
+
+    Slots of key/value bucket lists: `Array n (List (Σ (k : Nat) → Nat))`. -/
+
+def entryT : Term := prog{ Σ (k : Nat) → Nat }
+def bucketT : Term := prog{ List (Σ (k : Nat) → Nat) }
+
+def MkBucketsFn : Term := prog{
+  λ (N : Nat). elim N return (λ (Nm : Nat). Array Nm (List (Σ (k : Nat) → Nat))) {
+    Z => Arr(),
+    S (M) Rec => acons M Nil Rec } }
+def MkBucketsTy : Term := prog{ Π (N : Nat) → Array N (List (Σ (k : Nat) → Nat)) }
+#eval chkLMsg MkBucketsFn MkBucketsTy
+#eval (pv prog{ MkBucketsFn 2 }).pretty
+#eval chkLMsg prog{ Cons(Pair(3, 7), Nil) } bucketT
+
+-- …and via the generic fill, which is the spelling a `new_with_capacity` wants.
+#eval chkLMsg prog{ MkFillFn (List (Σ (k : Nat) → Nat)) Nil 4 }
+              prog{ Array 4 (List (Σ (k : Nat) → Nat)) }
+
+-- The hashmap's own new: a `fn` returning the slot array at a symbolic capacity.
+#eval chkProg prog{
+  fn NewWithCapacity (n : Nat) -> Array n (List (Σ (k : Nat) → Nat)) {
+    MkFillFn (List (Σ (k : Nat) → Nat)) Nil n };
+  () }
+
+/-! ### O3, the root cause: is a TYPE ever a checkable VALUE? -/
+
+#eval chkLMsg prog{ Nat } prog{ Type }
+#eval chkLMsg prog{ Unit } prog{ Type }
+#eval chkLMsg prog{ List Nat } prog{ Type }
+
+-- …but a pure APPLICATION at a type argument is fine, because the spine reduces
+-- before anything is checked: no `Nat : Type` judgment is ever needed.
+#eval chkLMsg prog{ polyIdFn Nat 5 } prog{ Nat }
+#eval chkLMsg prog{ MkFillFn (List Nat) Nil 2 } prog{ Array 2 (List Nat) }
+
+-- And the same from inside a runtime body — a pure application spine, not a call.
+#eval chkProg prog{
+  fn UsePoly (x : Nat) -> Nat { polyIdFn Nat x };
+  () }
+
+/-! ## The livability question: a `find k = Some v` spec over the `Σ(Bool)` Option
+
+    A bucket lookup written in the pure fragment, returning an `Opt Nat`, and the
+    spec equations one would want to state about it. -/
+
+def LookupFn : Term := prog{
+  λ (K : Nat). λ (B : List (Σ (k : Nat) → Nat)).
+    elim B return (λ (Bm : List (Σ (k : Nat) → Nat)). Σ (b : Bool) → OptP b Nat) {
+      Nil => Pair(False, unit),
+      Cons (E) (T) Rec =>
+        elim E return (λ (Em : Σ (k : Nat) → Nat). Σ (b : Bool) → OptP b Nat) {
+          Pair (K2) (V2) =>
+            elim (Eqb K K2) return (λ (Bm2 : Bool). Σ (b : Bool) → OptP b Nat) {
+              True => Pair(True, V2),
+              False => Rec } } } }
+def LookupTy : Term := prog{
+  Π (K : Nat) → Π (B : List (Σ (k : Nat) → Nat)) → (Σ (b : Bool) → OptP b Nat) }
+
+#eval chkLMsg LookupFn LookupTy
+#eval (pv prog{ LookupFn 3 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil)) }).pretty
+#eval (pv prog{ LookupFn 9 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil)) }).pretty
+
+-- `find k = Some v`, as a spec equation, closed by `Refl`.
+#eval chkLMsg prog{ Refl } prog{ Id (Σ (b : Bool) → OptP b Nat)
+  (LookupFn 3 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil))) Pair(True, 30) }
+-- `find k = None`.
+#eval chkLMsg prog{ Refl } prog{ Id (Σ (b : Bool) → OptP b Nat)
+  (LookupFn 9 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil))) Pair(False, unit) }
+-- …and the wrong value is refused.
+#eval chkLMsg prog{ Refl } prog{ Id (Σ (b : Bool) → OptP b Nat)
+  (LookupFn 3 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil))) Pair(True, 10) }
+
+/-! ### A GENERAL lemma about `Lookup`, by induction — the real test -/
+
+-- `Lookup K Nil = None`, universally in `K`. (Refl at a stuck `K`: the `Nil` arm
+-- fires regardless.)
+def LookupNil : Term := prog{ λ (K : Nat). Refl }
+def LookupNilTy : Term := prog{
+  Π (K : Nat) → Id (Σ (b : Bool) → OptP b Nat) (LookupFn K Nil) Pair(False, unit) }
+#eval chkLMsg LookupNil LookupNilTy
+
+-- `Lookup K (Cons (K, V) T) = Some V` — the head hit, universally in K, V, T.
+-- Needs `Eqb K K ⇝ True`, which is `eqb`'s reflexivity: NOT definitional at a
+-- stuck `K`, so this one should need a lemma and is the honest measure of noise.
+def LookupHit : Term := prog{
+  λ (K : Nat). λ (V : Nat). λ (T : List (Σ (k : Nat) → Nat)). Refl }
+def LookupHitTy : Term := prog{
+  Π (K : Nat) → Π (V : Nat) → Π (T : List (Σ (k : Nat) → Nat)) →
+    Id (Σ (b : Bool) → OptP b Nat) (LookupFn K Cons(Pair(K, V), T)) Pair(True, V) }
+#eval chkLMsg LookupHit LookupHitTy
+
+-- …at a CONCRETE key it closes, which localises the obstacle to `Eqb K K`.
+#eval chkLMsg prog{ λ (V : Nat). λ (T : List (Σ (k : Nat) → Nat)). Refl } prog{
+  Π (V : Nat) → Π (T : List (Σ (k : Nat) → Nat)) →
+    Id (Σ (b : Bool) → OptP b Nat) (LookupFn 3 Cons(Pair(3, V), T)) Pair(True, V) }
+
 end Dllbc.Tests.HmProbeOpt
