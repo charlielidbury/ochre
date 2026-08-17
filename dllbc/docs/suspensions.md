@@ -309,7 +309,7 @@ which are one rule seen at the two ways a function can arrive.
 
 **The problem it closes**: a Σ chain's TAIL has no binder, hence no mode marker —
 §2.5's second escape hatch, and where quicksort's `cnt` proof sits. **The design**:
-`Σ0 (x : A) → P` is the pair whose second projection is comptime — DLLBC's subset
+`Σ0 (x : A). P` is the pair whose second projection is comptime — DLLBC's subset
 type, with the standard precedent (Lean's `Subtype {x : A // P}`, Coq's `sig`,
 NuPRL/PVS set types), and with comptime as the erasure axis where those systems use
 Prop/irrelevance.
@@ -915,9 +915,9 @@ assumption-indexed evaluation (rejected with precedent, §3).
 >   * **a λ written literally in a constructor argument** — `Pair(SplitANil …,
 >     λ (Q : Nat). Refl)` is not a body's tail, so no type is in hand;
 >   * **a Σ chain's TAIL, which has no binder** and therefore no mode. This is
->     exactly where quicksort's `cnt` sits (`Σ (hi : List Nat) → … → Π n. Id …`).
+>     exactly where quicksort's `cnt` sits (`Σ (hi : List Nat). … → Π n. Id …`).
 >     Pinned as `sigmaTailProof`, with the fix named: a surface marker for a Σ's
->     tail, or spelling a proof-carrying tail `Σ (X : A) → Σ (P : B) → Unit`.
+>     tail, or spelling a proof-carrying tail `Σ (X : A). Σ (P : B). Unit`.
 >
 > **§2.5 should now read**: ⇒ still constructs function values, at two sites, and
 > closing them is a SURFACE question (how a component with no binder says it is
@@ -1261,7 +1261,7 @@ assumption-indexed evaluation (rejected with precedent, §3).
 > deleted with its reason.
 >
 > **2. Σ0 IS ONE ARM, and it deleted a special case rather than adding one.**
-> `Σ0 (x : A) → P` elaborates to `.sigmaT x dom (.cmpT P)` — no `Term` former, no
+> `Σ0 (x : A). P` elaborates to `.sigmaT x dom (.cmpT P)` — no `Term` former, no
 > `Val` form, no constructor, no eliminator. `readResult`'s first component used to
 > be routed by an explicit `Term.domComptime dom` test and its tail by nothing;
 > both are now one arm at the top of `readResult`: **a position is comptime iff its
@@ -1508,7 +1508,7 @@ assumption-indexed evaluation (rejected with precedent, §3).
 > capital-unmarked binders survived on the flagship, spelled `Hu`, `Hh`, `Hb`:
 > the Σ elimination's type FAMILY, `sigmaRec`'s second parameter `λ x. B`, which
 > `elabUElim` reconstructs from the motive's binder type. The surface elaborated
-> `Σ (Hu : A) → B` with `binderDom` on the domain and then handed the eliminator
+> `Σ (Hu : A). B` with `binderDom` on the domain and then handed the eliminator
 > a family that said the opposite about the same binder. The family is the Σ read
 > back as a function, so it takes the Σ's domain, marker included.
 >
@@ -1547,7 +1547,7 @@ assumption-indexed evaluation (rejected with precedent, §3).
 > does not mention its first — and the surface could not write it. Every `Σ` row
 > demands a binder, and inventing one is not neutral: a named binder has a case,
 > a case is a mode, and a mode on a Σ domain ROUTES that component's read (§2.7),
-> so `Σ (Hb : …) → Rec` would have made the component comptime and changed how a
+> so `Σ (Hb : …). Rec` would have made the component comptime and changed how a
 > `Pair` inhabiting `Sorted` is read. `×` joins the grammar as the non-dependent
 > Σ, exactly what `→` already was to `Π`: the same reserved `§_` binder, not
 > pushed onto `pctx`, and UNMARKED — which is the point rather than an omission,
