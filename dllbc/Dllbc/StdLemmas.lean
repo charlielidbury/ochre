@@ -5141,4 +5141,35 @@ def CondBumpSucc : Term := prog{
 def CondBumpSuccTy : Term := prog{
   Π (O : Opt Nat) → Π (N : Nat) → Id Nat (S (CondBump O N)) (CondBump O (S N)) }
 
+/-! ## `BoolRw` and the `boolRec`-collapse pair
+
+    `BoolRw` is `NatRw` at `Bool` (the `j`-based rewrite, same shape, different type
+    index) — needed because `InsertInList`'s own proof (next) has to REWRITE a STUCK
+    `Eqb`-headed `boolRec` using a hypothesis about that Bool, not just case-split on
+    it fresh. `BoolRecTrue`/`BoolRecFalse` specialise it to the ONE shape every such
+    rewrite in this file needs: collapsing `boolRec (Opt-motive) T F X` once `X`'s
+    value is known. -/
+
+def BoolRw : Term := prog{
+  λ (P : Bool → Type). λ (X : Bool). λ (Y : Bool). λ (H : Id Bool X Y). λ (Px : P X).
+    j Bool X (λ (Y' : Bool). λ (Hy : Id Bool X Y'). P Y') Px Y H }
+def BoolRwTy : Term := prog{
+  Π (P : Bool → Type) → Π (X : Bool) → Π (Y : Bool) → Id Bool X Y → P X → P Y }
+
+def BoolRecTrue : Term := prog{
+  λ (T : Opt Nat). λ (F : Opt Nat). λ (X : Bool). λ (H : Id Bool X True).
+    BoolRw (λ (Bz : Bool). Id (Opt Nat) (boolRec (λ (W : Bool). Σ (b : Bool). OptP b Nat) T F Bz) T)
+      True X (IdSym Bool X True H) Refl }
+def BoolRecTrueTy : Term := prog{
+  Π (T : Opt Nat) → Π (F : Opt Nat) → Π (X : Bool) → Id Bool X True →
+    Id (Opt Nat) (boolRec (λ (W : Bool). Σ (b : Bool). OptP b Nat) T F X) T }
+
+def BoolRecFalse : Term := prog{
+  λ (T : Opt Nat). λ (F : Opt Nat). λ (X : Bool). λ (H : Id Bool X False).
+    BoolRw (λ (Bz : Bool). Id (Opt Nat) (boolRec (λ (W : Bool). Σ (b : Bool). OptP b Nat) T F Bz) F)
+      False X (IdSym Bool X False H) Refl }
+def BoolRecFalseTy : Term := prog{
+  Π (T : Opt Nat) → Π (F : Opt Nat) → Π (X : Bool) → Id Bool X False →
+    Id (Opt Nat) (boolRec (λ (W : Bool). Σ (b : Bool). OptP b Nat) T F X) F }
+
 end Dllbc.StdLemmas

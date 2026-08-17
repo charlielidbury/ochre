@@ -33,7 +33,8 @@ open Dllbc.StdLemmas (LeRefl LeTrans LeAdd LeAddL LeAddSucc LeRwL LeRwR AddSucc 
   HMInv HashMapT FindHM SizeHM FindIns FindRem
   MkFillFn MkFillAllHashed MkFillTotalLen MkFillFind
   FalseNotTrue FalseNotTrueTy EqbTrueEq EqbTrueEqTy EqbSymm EqbSymmTy
-  FindInsL CondBump CondBumpSucc CondBumpSuccTy)
+  FindInsL CondBump CondBumpSucc CondBumpSuccTy
+  BoolRw BoolRwTy BoolRecTrue BoolRecTrueTy BoolRecFalse BoolRecFalseTy)
 
 namespace Dllbc.Tests.HmFlagship
 
@@ -192,5 +193,8 @@ example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindInsL 9 3 70 %bucketLit) (Fin
     = true := by native_decide
 example : (pv prog{ CondBump None 5 }).natOf? == some 6 := by native_decide
 example : (pv prog{ CondBump (Some 1) 5 }).natOf? == some 5 := by native_decide
+example : chkL BoolRw BoolRwTy = true := by native_decide
+example : chkL BoolRecTrue BoolRecTrueTy = true := by native_decide
+example : chkL BoolRecFalse BoolRecFalseTy = true := by native_decide
 
 end Dllbc.Tests.HmFlagship
