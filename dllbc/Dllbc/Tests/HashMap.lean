@@ -743,5 +743,328 @@ example : chkL InvLedger InvLedgerTy = true := by native_decide
 example : chkL InvCount InvCountTy = true := by native_decide
 example : chkL InvSlots InvSlotsTy = true := by native_decide
 
+/-! ## (xi) The crossing lemmas — `SplitACat*`'s shape for this container
+
+    Everything an op proves is stated over the carve composition
+    `arrCat M (S R) L (acons R B H)` (lo ++ [cell] ++ hi), which the checker
+    converts with the carved place's payload. Each lemma is one `arrRec`
+    induction on the LEFT part. -/
+
+def AgetBCatMid : Term := prog{
+  λ (R : Nat). λ (B : List (Σ (k : Nat). Nat)).
+  λ (H : Array R (List (Σ (k : Nat). Nat))).
+  λ (M : Nat). λ (L : Array M (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
+        Id (List (Σ (k : Nat). Nat))
+          (AgetB (Add Mz (S R)) (arrCat Mz (S R) Az (acons R B H)) Mz) B)
+      Refl
+      (λ (K : Nat). λ (H2 : List (Σ (k : Nat). Nat)).
+        λ (T : Array K (List (Σ (k : Nat). Nat))).
+        λ (Ih : Id (List (Σ (k : Nat). Nat))
+            (AgetB (Add K (S R)) (arrCat K (S R) T (acons R B H)) K) B).
+          Ih)
+      M L }
+def AgetBCatMidTy : Term := prog{
+  Π (R : Nat) → Π (B : List (Σ (k : Nat). Nat)) →
+  Π (H : Array R (List (Σ (k : Nat). Nat))) →
+  Π (M : Nat) → Π (L : Array M (List (Σ (k : Nat). Nat))) →
+    Id (List (Σ (k : Nat). Nat))
+      (AgetB (Add M (S R)) (arrCat M (S R) L (acons R B H)) M) B }
+
+def AgetBCatLo : Term := prog{
+  λ (R : Nat). λ (B : List (Σ (k : Nat). Nat)).
+  λ (H : Array R (List (Σ (k : Nat). Nat))).
+  λ (M : Nat). λ (L : Array M (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
+        Π (J : Nat) → Le (S J) Mz →
+          Id (List (Σ (k : Nat). Nat))
+            (AgetB (Add Mz (S R)) (arrCat Mz (S R) Az (acons R B H)) J)
+            (AgetB Mz Az J))
+      (λ (J : Nat). λ (Hj : Le (S J) Z).
+        botElim (Id (List (Σ (k : Nat). Nat))
+          (AgetB (Add Z (S R)) (arrCat Z (S R) Arr() (acons R B H)) J)
+          (AgetB Z Arr() J)) Hj)
+      (λ (K : Nat). λ (H2 : List (Σ (k : Nat). Nat)).
+        λ (T : Array K (List (Σ (k : Nat). Nat))).
+        λ (Ih : Π (J : Nat) → Le (S J) K →
+            Id (List (Σ (k : Nat). Nat))
+              (AgetB (Add K (S R)) (arrCat K (S R) T (acons R B H)) J)
+              (AgetB K T J)).
+          λ (J : Nat).
+            elim J return (λ (Jz : Nat). Le (S Jz) (S K) →
+                Id (List (Σ (k : Nat). Nat))
+                  (AgetB (Add (S K) (S R))
+                    (arrCat (S K) (S R) (acons K H2 T) (acons R B H)) Jz)
+                  (AgetB (S K) (acons K H2 T) Jz)) {
+              Z => λ (Hj : Le (S Z) (S K)). Refl,
+              S (J2) Ihj => λ (Hj : Le (S (S J2)) (S K)). Ih J2 Hj })
+      M L }
+def AgetBCatLoTy : Term := prog{
+  Π (R : Nat) → Π (B : List (Σ (k : Nat). Nat)) →
+  Π (H : Array R (List (Σ (k : Nat). Nat))) →
+  Π (M : Nat) → Π (L : Array M (List (Σ (k : Nat). Nat))) →
+  Π (J : Nat) → Le (S J) M →
+    Id (List (Σ (k : Nat). Nat))
+      (AgetB (Add M (S R)) (arrCat M (S R) L (acons R B H)) J)
+      (AgetB M L J) }
+
+def AgetBCatHi : Term := prog{
+  λ (R : Nat). λ (B : List (Σ (k : Nat). Nat)).
+  λ (H : Array R (List (Σ (k : Nat). Nat))).
+  λ (D : Nat). λ (M : Nat). λ (L : Array M (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
+        Id (List (Σ (k : Nat). Nat))
+          (AgetB (Add Mz (S R)) (arrCat Mz (S R) Az (acons R B H)) (Add Mz (S D)))
+          (AgetB R H D))
+      Refl
+      (λ (K : Nat). λ (H2 : List (Σ (k : Nat). Nat)).
+        λ (T : Array K (List (Σ (k : Nat). Nat))).
+        λ (Ih : Id (List (Σ (k : Nat). Nat))
+            (AgetB (Add K (S R)) (arrCat K (S R) T (acons R B H)) (Add K (S D)))
+            (AgetB R H D)).
+          Ih)
+      M L }
+def AgetBCatHiTy : Term := prog{
+  Π (R : Nat) → Π (B : List (Σ (k : Nat). Nat)) →
+  Π (H : Array R (List (Σ (k : Nat). Nat))) →
+  Π (D : Nat) → Π (M : Nat) → Π (L : Array M (List (Σ (k : Nat). Nat))) →
+    Id (List (Σ (k : Nat). Nat))
+      (AgetB (Add M (S R)) (arrCat M (S R) L (acons R B H)) (Add M (S D)))
+      (AgetB R H D) }
+
+example : chkL AgetBCatMid AgetBCatMidTy = true := by native_decide
+example : chkL AgetBCatLo AgetBCatLoTy = true := by native_decide
+example : chkL AgetBCatHi AgetBCatHiTy = true := by native_decide
+
+/-- `CountArrCat`'s shape for the entry counter. -/
+def TotalArrCat : Term := prog{
+  λ (Q : Nat). λ (X : Array Q (List (Σ (k : Nat). Nat))).
+  λ (M : Nat). λ (L : Array M (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
+        Id Nat (TotalE (Add Mz Q) (arrCat Mz Q Az X))
+               (Add (TotalE Mz Az) (TotalE Q X)))
+      Refl
+      (λ (K : Nat). λ (H2 : List (Σ (k : Nat). Nat)).
+        λ (T : Array K (List (Σ (k : Nat). Nat))).
+        λ (Ih : Id Nat (TotalE (Add K Q) (arrCat K Q T X))
+                       (Add (TotalE K T) (TotalE Q X))).
+          IdTrans Nat
+            (Add (LenE H2) (TotalE (Add K Q) (arrCat K Q T X)))
+            (Add (LenE H2) (Add (TotalE K T) (TotalE Q X)))
+            (Add (Add (LenE H2) (TotalE K T)) (TotalE Q X))
+            (IdCongr Nat Nat (λ (X2 : Nat). Add (LenE H2) X2)
+              (TotalE (Add K Q) (arrCat K Q T X))
+              (Add (TotalE K T) (TotalE Q X)) Ih)
+            (IdSym Nat (Add (Add (LenE H2) (TotalE K T)) (TotalE Q X))
+              (Add (LenE H2) (Add (TotalE K T) (TotalE Q X)))
+              (AddAssoc (LenE H2) (TotalE K T) (TotalE Q X))))
+      M L }
+def TotalArrCatTy : Term := prog{
+  Π (Q : Nat) → Π (X : Array Q (List (Σ (k : Nat). Nat))) →
+  Π (M : Nat) → Π (L : Array M (List (Σ (k : Nat). Nat))) →
+    Id Nat (TotalE (Add M Q) (arrCat M Q L X))
+           (Add (TotalE M L) (TotalE Q X)) }
+
+/-- Collapse a stuck Bool-elim whose scrutinee has an equation — the transport
+    every pointwise-Find branch performs. -/
+def BoolRwT : Term := prog{
+  λ (T : Type). λ (X : T). λ (Y : T). λ (B : Bool). λ (E : Id Bool B True).
+    IdCongr Bool T (λ (W : Bool). boolRec (λ (W2 : Bool). T) X Y W) B True E }
+def BoolRwTTy : Term := prog{
+  Π (T : Type) → Π (X : T) → Π (Y : T) → Π (B : Bool) → Id Bool B True →
+    Id T (boolRec (λ (W2 : Bool). T) X Y B) X }
+
+def BoolRwF : Term := prog{
+  λ (T : Type). λ (X : T). λ (Y : T). λ (B : Bool). λ (E : Id Bool B False).
+    IdCongr Bool T (λ (W : Bool). boolRec (λ (W2 : Bool). T) X Y W) B False E }
+def BoolRwFTy : Term := prog{
+  Π (T : Type) → Π (X : T) → Π (Y : T) → Π (B : Bool) → Id Bool B False →
+    Id T (boolRec (λ (W2 : Bool). T) X Y B) Y }
+
+/-- `a ≤ b` and `a ≠ b` make `a` STRICTLY below `b` — the frame case's
+    trichotomy converter. -/
+def LeNeLt : Term := prog{
+  λ (A : Nat). elim A return (λ (Az : Nat).
+      Π (B : Nat) → Le Az B → Id Bool (Eqb Az B) False → Le (S Az) B) {
+    Z => λ (B : Nat).
+      elim B return (λ (Bz : Nat). Le Z Bz → Id Bool (Eqb Z Bz) False → Le (S Z) Bz) {
+        Z => λ (H : Le Z Z). λ (E : Id Bool (Eqb Z Z) False).
+          botElim (Le (S Z) Z) (BoolTF E),
+        S (B2) Ihb => λ (H : Le Z (S B2)). λ (E : Id Bool (Eqb Z (S B2)) False). unit },
+    S (A2) Ih => λ (B : Nat).
+      elim B return (λ (Bz : Nat). Le (S A2) Bz → Id Bool (Eqb (S A2) Bz) False →
+          Le (S (S A2)) Bz) {
+        Z => λ (H : Le (S A2) Z). λ (E : Id Bool (Eqb (S A2) Z) False).
+          botElim (Le (S (S A2)) Z) H,
+        S (B2) Ihb => λ (H : Le (S A2) (S B2)). λ (E : Id Bool (Eqb (S A2) (S B2)) False).
+          Ih B2 H E } } }
+def LeNeLtTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Le A B → Id Bool (Eqb A B) False → Le (S A) B }
+
+example : chkL TotalArrCat TotalArrCatTy = true := by native_decide
+example : chkL BoolRwT BoolRwTTy = true := by native_decide
+example : chkL BoolRwF BoolRwFTy = true := by native_decide
+example : chkL LeNeLt LeNeLtTy = true := by native_decide
+
+/-! ### `SlotsFrom` across the carve: three extractors and the reglue. The fold's
+    starting index is generalized through every induction (no per-depth
+    ladders); the step arms pay one `AddSucc` transport each. -/
+
+def SFCatLo : Term := prog{
+  λ (Cap : Nat). λ (R : Nat). λ (B : List (Σ (k : Nat). Nat)).
+  λ (H : Array R (List (Σ (k : Nat). Nat))).
+  λ (M : Nat). λ (L : Array M (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
+        Π (I : Nat) →
+          SlotsFrom Cap (Add Mz (S R)) (arrCat Mz (S R) Az (acons R B H)) I →
+          SlotsFrom Cap Mz Az I)
+      (λ (I : Nat). λ (Hs : SlotsFrom Cap (S R) (acons R B H) I). unit)
+      (λ (K : Nat). λ (H2 : List (Σ (k : Nat). Nat)).
+        λ (T : Array K (List (Σ (k : Nat). Nat))).
+        λ (Ih : Π (I : Nat) →
+            SlotsFrom Cap (Add K (S R)) (arrCat K (S R) T (acons R B H)) I →
+            SlotsFrom Cap K T I).
+          λ (I : Nat).
+          λ (Hs : Σ (Hx : SlotInv Cap I H2).
+              SlotsFrom Cap (Add K (S R)) (arrCat K (S R) T (acons R B H)) (S I)).
+            Pair(FstT (SlotInv Cap I H2)
+                   (SlotsFrom Cap (Add K (S R)) (arrCat K (S R) T (acons R B H)) (S I)) Hs,
+                 Ih (S I)
+                   (SndT (SlotInv Cap I H2)
+                     (SlotsFrom Cap (Add K (S R)) (arrCat K (S R) T (acons R B H)) (S I)) Hs)))
+      M L }
+def SFCatLoTy : Term := prog{
+  Π (Cap : Nat) → Π (R : Nat) → Π (B : List (Σ (k : Nat). Nat)) →
+  Π (H : Array R (List (Σ (k : Nat). Nat))) →
+  Π (M : Nat) → Π (L : Array M (List (Σ (k : Nat). Nat))) →
+  Π (I : Nat) →
+    SlotsFrom Cap (Add M (S R)) (arrCat M (S R) L (acons R B H)) I →
+    SlotsFrom Cap M L I }
+
+def SFCatMid : Term := prog{
+  λ (Cap : Nat). λ (R : Nat). λ (B : List (Σ (k : Nat). Nat)).
+  λ (H : Array R (List (Σ (k : Nat). Nat))).
+  λ (M : Nat). λ (L : Array M (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
+        Π (I : Nat) →
+          SlotsFrom Cap (Add Mz (S R)) (arrCat Mz (S R) Az (acons R B H)) I →
+          SlotInv Cap (Add Mz I) B)
+      (λ (I : Nat).
+        λ (Hs : Σ (Hx : SlotInv Cap I B). SlotsFrom Cap R H (S I)).
+          FstT (SlotInv Cap I B) (SlotsFrom Cap R H (S I)) Hs)
+      (λ (K : Nat). λ (H2 : List (Σ (k : Nat). Nat)).
+        λ (T : Array K (List (Σ (k : Nat). Nat))).
+        λ (Ih : Π (I : Nat) →
+            SlotsFrom Cap (Add K (S R)) (arrCat K (S R) T (acons R B H)) I →
+            SlotInv Cap (Add K I) B).
+          λ (I : Nat).
+          λ (Hs : Σ (Hx : SlotInv Cap I H2).
+              SlotsFrom Cap (Add K (S R)) (arrCat K (S R) T (acons R B H)) (S I)).
+            NatRw (λ (W : Nat). SlotInv Cap W B) (Add K (S I)) (S (Add K I))
+              (AddSucc K I)
+              (Ih (S I)
+                (SndT (SlotInv Cap I H2)
+                  (SlotsFrom Cap (Add K (S R)) (arrCat K (S R) T (acons R B H)) (S I)) Hs)))
+      M L }
+def SFCatMidTy : Term := prog{
+  Π (Cap : Nat) → Π (R : Nat) → Π (B : List (Σ (k : Nat). Nat)) →
+  Π (H : Array R (List (Σ (k : Nat). Nat))) →
+  Π (M : Nat) → Π (L : Array M (List (Σ (k : Nat). Nat))) →
+  Π (I : Nat) →
+    SlotsFrom Cap (Add M (S R)) (arrCat M (S R) L (acons R B H)) I →
+    SlotInv Cap (Add M I) B }
+
+def SFCatHi : Term := prog{
+  λ (Cap : Nat). λ (R : Nat). λ (B : List (Σ (k : Nat). Nat)).
+  λ (H : Array R (List (Σ (k : Nat). Nat))).
+  λ (M : Nat). λ (L : Array M (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
+        Π (I : Nat) →
+          SlotsFrom Cap (Add Mz (S R)) (arrCat Mz (S R) Az (acons R B H)) I →
+          SlotsFrom Cap R H (S (Add Mz I)))
+      (λ (I : Nat).
+        λ (Hs : Σ (Hx : SlotInv Cap I B). SlotsFrom Cap R H (S I)).
+          SndT (SlotInv Cap I B) (SlotsFrom Cap R H (S I)) Hs)
+      (λ (K : Nat). λ (H2 : List (Σ (k : Nat). Nat)).
+        λ (T : Array K (List (Σ (k : Nat). Nat))).
+        λ (Ih : Π (I : Nat) →
+            SlotsFrom Cap (Add K (S R)) (arrCat K (S R) T (acons R B H)) I →
+            SlotsFrom Cap R H (S (Add K I))).
+          λ (I : Nat).
+          λ (Hs : Σ (Hx : SlotInv Cap I H2).
+              SlotsFrom Cap (Add K (S R)) (arrCat K (S R) T (acons R B H)) (S I)).
+            NatRw (λ (W : Nat). SlotsFrom Cap R H (S W)) (Add K (S I)) (S (Add K I))
+              (AddSucc K I)
+              (Ih (S I)
+                (SndT (SlotInv Cap I H2)
+                  (SlotsFrom Cap (Add K (S R)) (arrCat K (S R) T (acons R B H)) (S I)) Hs)))
+      M L }
+def SFCatHiTy : Term := prog{
+  Π (Cap : Nat) → Π (R : Nat) → Π (B : List (Σ (k : Nat). Nat)) →
+  Π (H : Array R (List (Σ (k : Nat). Nat))) →
+  Π (M : Nat) → Π (L : Array M (List (Σ (k : Nat). Nat))) →
+  Π (I : Nat) →
+    SlotsFrom Cap (Add M (S R)) (arrCat M (S R) L (acons R B H)) I →
+    SlotsFrom Cap R H (S (Add M I)) }
+
+example : chkL SFCatLo SFCatLoTy = true := by native_decide
+example : chkL SFCatMid SFCatMidTy = true := by native_decide
+example : chkL SFCatHi SFCatHiTy = true := by native_decide
+
+/-- The reglue: lo's invariants, the NEW cell's `SlotInv` at the boundary
+    index, hi's invariants — back to the whole composition. Every op's
+    invariant-preservation exit goes through this. -/
+def SFCatGlue : Term := prog{
+  λ (Cap : Nat). λ (R : Nat). λ (B : List (Σ (k : Nat). Nat)).
+  λ (H : Array R (List (Σ (k : Nat). Nat))).
+  λ (M : Nat). λ (L : Array M (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
+        Π (I : Nat) →
+          SlotsFrom Cap Mz Az I →
+          SlotInv Cap (Add Mz I) B →
+          SlotsFrom Cap R H (S (Add Mz I)) →
+          SlotsFrom Cap (Add Mz (S R)) (arrCat Mz (S R) Az (acons R B H)) I)
+      (λ (I : Nat). λ (Hl : Unit). λ (Hm : SlotInv Cap I B).
+        λ (Hh : SlotsFrom Cap R H (S I)).
+          Pair(Hm, Hh))
+      (λ (K : Nat). λ (H2 : List (Σ (k : Nat). Nat)).
+        λ (T : Array K (List (Σ (k : Nat). Nat))).
+        λ (Ih : Π (I : Nat) →
+            SlotsFrom Cap K T I →
+            SlotInv Cap (Add K I) B →
+            SlotsFrom Cap R H (S (Add K I)) →
+            SlotsFrom Cap (Add K (S R)) (arrCat K (S R) T (acons R B H)) I).
+          λ (I : Nat).
+          λ (Hl : Σ (Hx : SlotInv Cap I H2). SlotsFrom Cap K T (S I)).
+          λ (Hm : SlotInv Cap (S (Add K I)) B).
+          λ (Hh : SlotsFrom Cap R H (S (S (Add K I)))).
+            Pair(FstT (SlotInv Cap I H2) (SlotsFrom Cap K T (S I)) Hl,
+                 Ih (S I)
+                   (SndT (SlotInv Cap I H2) (SlotsFrom Cap K T (S I)) Hl)
+                   (NatRw (λ (W : Nat). SlotInv Cap W B) (S (Add K I)) (Add K (S I))
+                     (IdSym Nat (Add K (S I)) (S (Add K I)) (AddSucc K I)) Hm)
+                   (NatRw (λ (W : Nat). SlotsFrom Cap R H (S W)) (S (Add K I)) (Add K (S I))
+                     (IdSym Nat (Add K (S I)) (S (Add K I)) (AddSucc K I)) Hh)))
+      M L }
+def SFCatGlueTy : Term := prog{
+  Π (Cap : Nat) → Π (R : Nat) → Π (B : List (Σ (k : Nat). Nat)) →
+  Π (H : Array R (List (Σ (k : Nat). Nat))) →
+  Π (M : Nat) → Π (L : Array M (List (Σ (k : Nat). Nat))) →
+  Π (I : Nat) →
+    SlotsFrom Cap M L I →
+    SlotInv Cap (Add M I) B →
+    SlotsFrom Cap R H (S (Add M I)) →
+    SlotsFrom Cap (Add M (S R)) (arrCat M (S R) L (acons R B H)) I }
+
+example : chkL SFCatGlue SFCatGlueTy = true := by native_decide
+
 end Dllbc.Tests.HashMap
 end
