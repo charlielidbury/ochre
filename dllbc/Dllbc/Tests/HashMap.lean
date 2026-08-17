@@ -592,5 +592,271 @@ example : progOk (prog{
               Refl)) };
   () }) = false := by native_decide
 
+/-! ## 7. Crossing a carve
+
+    This is the invariant library proper, and it is `SortedArrCat`/`SplitACat*`'s
+    shape throughout: every lemma is an induction on the LEFT array and nothing else.
+
+    The shape they are all stated at is the one the PROGRAM produces. A hashmap
+    operation carves its slots three ways at the hashed index —
+
+        let lo   = &m (*slots)[Z ; s ; S j | LeAdd s (S j) | Hdec];
+        let cell = &m (*slots)[s ; 1 ; j];
+        let hi   = &m (*slots)[S s ; j];
+
+    — so the array it then reasons about is `arrCat K (S M) L (acons M X R)` with
+    total length `Add K (S M)`, and stating anything more general would be less usable
+    (R7's lesson: `S k` and `Add k 1` do not convert at a symbolic `k`, and the program
+    has the former).
+
+    `Bucket` is the Lean-level `Term` for `List (Σ (k : Nat). Nat)`, spliced by name. -/
+
+/-! ### Boolean discrimination, and `Eqb` reflected into `Id`
+
+    `Znots`' shape at `Bool`: transport `unit` along the equation into a `boolRec`
+    motive that answers `Unit` on one side and `Bot` on the other. -/
+
+def TnotF : Term := prog{
+  λ (H : Id Bool True False).
+    j Bool True (λ (Y : Bool). λ (Hy : Id Bool True Y).
+        elim Y return (λ (Yy : Bool). Type) { True => Unit, False => Bot })
+      unit False H }
+def TnotFTy : Term := prog{ Id Bool True False → Bot }
+
+def FnotT : Term := prog{
+  λ (H : Id Bool False True).
+    j Bool False (λ (Y : Bool). λ (Hy : Id Bool False Y).
+        elim Y return (λ (Yy : Bool). Type) { True => Bot, False => Unit })
+      unit True H }
+def FnotTTy : Term := prog{ Id Bool False True → Bot }
+
+/-- `Eqb`'s completeness — the direction `Std` does not have. `EqbRefl` is the other
+    one. This is what turns "the query and the inserted key test equal" into an
+    equation the rest of a proof can rewrite along, and it is why the frame case of
+    every operation below can rule out `q = key` from a slot mismatch alone. -/
+def EqbTrueEq : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Id Bool (Eqb Az B) True → Id Nat Az B) {
+      Z => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Id Bool (Eqb Z Bz) True → Id Nat Z Bz) {
+          Z => λ (H : Id Bool True True). Refl,
+          S (B') Rb => λ (H : Id Bool False True). botElim (Id Nat Z (S B')) (FnotT H) },
+      S (A') Ih => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Id Bool (Eqb (S A') Bz) True → Id Nat (S A') Bz) {
+          Z => λ (H : Id Bool False True). botElim (Id Nat (S A') Z) (FnotT H),
+          S (B') Rb => λ (H : Id Bool (Eqb A' B') True).
+            IdCongr Nat Nat (λ (Nn : Nat). S Nn) A' B' (Ih B' H) } } }
+def EqbTrueEqTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Id Bool (Eqb A B) True → Id Nat A B }
+
+example : chkL TnotF TnotFTy = true := by native_decide
+example : chkL FnotT FnotTTy = true := by native_decide
+example : chkL EqbTrueEq EqbTrueEqTy = true := by native_decide
+
+/-! ### Reading the carved slot back
+
+    `AgetBMid` is the hit case and `AgetBNe` the frame, and between them they are the
+    whole of what an operation's pointwise find equation needs from the array layer.
+
+    `AgetBMid`'s step is LITERALLY the induction hypothesis, which is the payoff for
+    writing `AgetB` as a fold: `arrCat` on an `acons`-headed left argument rebuilds as
+    an `acons`, `AgetB` of an `acons` at `S i` steps to `AgetB` of the tail at `i`, and
+    the two reductions meet with nothing left to say. -/
+
+def AgetBMid : Term := prog{
+  λ (M : Nat). λ (X : Bucket). λ (R : Array M Bucket). λ (K : Nat). λ (L : Array K Bucket).
+    arrRec Bucket
+      (λ (Kz : Nat). λ (Lz : Array Kz Bucket).
+        Id Bucket (AgetB (Add Kz (S M)) (arrCat Kz (S M) Lz (acons M X R)) Kz) X)
+      Refl
+      (λ (K2 : Nat). λ (Hh : Bucket). λ (Tl : Array K2 Bucket).
+       λ (Ih : Id Bucket (AgetB (Add K2 (S M)) (arrCat K2 (S M) Tl (acons M X R)) K2) X).
+         Ih)
+      K L }
+def AgetBMidTy : Term := prog{
+  Π (M : Nat) → Π (X : Bucket) → Π (R : Array M Bucket) →
+  Π (K : Nat) → Π (L : Array K Bucket) →
+    Id Bucket (AgetB (Add K (S M)) (arrCat K (S M) L (acons M X R)) K) X }
+
+/-- **The frame.** Replacing the bucket at index `K` changes no other index. The
+    hypothesis is the Boolean `Eqb T K = False` rather than a `Le`, because that is
+    the form the PROOF SITE has: an operation's pointwise conjunct is a λ over the
+    query, and the only way to split on "is the query's slot the one we wrote" inside
+    a pure term is a `boolRec` carrying its own branch equation. -/
+def AgetBNe : Term := prog{
+  λ (M : Nat). λ (X : Bucket). λ (Y : Bucket). λ (R : Array M Bucket).
+  λ (K : Nat). λ (L : Array K Bucket).
+    arrRec Bucket
+      (λ (Kz : Nat). λ (Lz : Array Kz Bucket).
+        Π (T : Nat) → Id Bool (Eqb T Kz) False →
+          Id Bucket (AgetB (Add Kz (S M)) (arrCat Kz (S M) Lz (acons M X R)) T)
+                    (AgetB (Add Kz (S M)) (arrCat Kz (S M) Lz (acons M Y R)) T))
+      (λ (T : Nat).
+        elim T return (λ (Tz : Nat). Id Bool (Eqb Tz Z) False →
+            Id Bucket (AgetB (S M) (acons M X R) Tz) (AgetB (S M) (acons M Y R) Tz)) {
+          Z => λ (H : Id Bool True False).
+                 botElim (Id Bucket (AgetB (S M) (acons M X R) Z)
+                                    (AgetB (S M) (acons M Y R) Z)) (TnotF H),
+          -- `Eqb (S t') Z` REDUCES to `False`; writing the hypothesis as the stuck
+          -- `Eqb T' Z` is a different type and the arm silently fails to convert.
+          S (T') Rt => λ (H : Id Bool False False). Refl })
+      (λ (K2 : Nat). λ (Hh : Bucket). λ (Tl : Array K2 Bucket).
+       λ (Ih : Π (T : Nat) → Id Bool (Eqb T K2) False →
+            Id Bucket (AgetB (Add K2 (S M)) (arrCat K2 (S M) Tl (acons M X R)) T)
+                      (AgetB (Add K2 (S M)) (arrCat K2 (S M) Tl (acons M Y R)) T)).
+        λ (T : Nat).
+          elim T return (λ (Tz : Nat). Id Bool (Eqb Tz (S K2)) False →
+              Id Bucket
+                (AgetB (S (Add K2 (S M)))
+                   (acons (Add K2 (S M)) Hh (arrCat K2 (S M) Tl (acons M X R))) Tz)
+                (AgetB (S (Add K2 (S M)))
+                   (acons (Add K2 (S M)) Hh (arrCat K2 (S M) Tl (acons M Y R))) Tz)) {
+            Z => λ (H : Id Bool False False). Refl,
+            S (T') Rt => λ (H : Id Bool (Eqb T' K2) False). Ih T' H })
+      K L }
+def AgetBNeTy : Term := prog{
+  Π (M : Nat) → Π (X : Bucket) → Π (Y : Bucket) → Π (R : Array M Bucket) →
+  Π (K : Nat) → Π (L : Array K Bucket) → Π (T : Nat) → Id Bool (Eqb T K) False →
+    Id Bucket (AgetB (Add K (S M)) (arrCat K (S M) L (acons M X R)) T)
+              (AgetB (Add K (S M)) (arrCat K (S M) L (acons M Y R)) T) }
+
+example : chkL AgetBMid AgetBMidTy = true := by native_decide
+example : chkL AgetBNe AgetBNeTy = true := by native_decide
+
+/-! ### The invariant crossing the carve, both ways
+
+    `SlotsOkSplit` takes the whole table's well-hashedness apart into the left part,
+    the carved bucket, and the right part; `SlotsOkJoin` puts it back with a NEW
+    bucket in the middle. An operation calls the first before it writes and the second
+    to build its exit pack, and between them they are the entire invariant-preservation
+    argument for a bucket-local update.
+
+    **The one piece of arithmetic in the whole library** lives in these two, and it is
+    worth naming because it is not obvious from the statement. `SlotsOk` threads the
+    slot index DOWN the spine, so the induction hypothesis for a left part of length
+    `K2` starting at `S I0` reports the middle bucket's index as `Add K2 (S I0)`, while
+    the goal at length `S K2` starting at `I0` wants `Add (S K2) I0`, which computes to
+    `S (Add K2 I0)`. Those two are `AddSucc` apart and nothing more, so each step
+    carries exactly one `NatRw` over the motive
+    `λ Z0. Σ (Hm : BucketAt C Z0 X). SlotsOk C (S Z0) M R` — the middle and the right
+    part transported together, since they are the two things whose index moved. -/
+
+def SlotsOkSplit : Term := prog{
+  λ (C : Nat). λ (M : Nat). λ (X : Bucket). λ (R : Array M Bucket).
+  λ (K : Nat). λ (L : Array K Bucket).
+    arrRec Bucket
+      (λ (Kz : Nat). λ (Lz : Array Kz Bucket).
+        Π (I0 : Nat) →
+          SlotsOk C I0 (Add Kz (S M)) (arrCat Kz (S M) Lz (acons M X R)) →
+            Σ (Hl : SlotsOk C I0 Kz Lz).
+            Σ (Hm : BucketAt C (Add Kz I0) X). SlotsOk C (S (Add Kz I0)) M R)
+      (λ (I0 : Nat).
+        λ (H : Σ (Hm : BucketAt C I0 X). SlotsOk C (S I0) M R). Pair(unit, H))
+      (λ (K2 : Nat). λ (Hh : Bucket). λ (Tl : Array K2 Bucket).
+       λ (Ih : Π (I0 : Nat) →
+            SlotsOk C I0 (Add K2 (S M)) (arrCat K2 (S M) Tl (acons M X R)) →
+              Σ (Hl : SlotsOk C I0 K2 Tl).
+              Σ (Hm : BucketAt C (Add K2 I0) X). SlotsOk C (S (Add K2 I0)) M R).
+        λ (I0 : Nat).
+        λ (H : Σ (Hb : BucketAt C I0 Hh).
+                 SlotsOk C (S I0) (Add K2 (S M)) (arrCat K2 (S M) Tl (acons M X R))).
+          elim H return (λ (Hz : Σ (Hb : BucketAt C I0 Hh).
+                 SlotsOk C (S I0) (Add K2 (S M)) (arrCat K2 (S M) Tl (acons M X R))).
+              Σ (Hl : Σ (Hb : BucketAt C I0 Hh). SlotsOk C (S I0) K2 Tl).
+              Σ (Hm : BucketAt C (S (Add K2 I0)) X).
+                SlotsOk C (S (S (Add K2 I0))) M R) {
+            Pair (Hb) (Hrest) =>
+              elim (Ih (S I0) Hrest) return (λ (Qz :
+                  Σ (Hl : SlotsOk C (S I0) K2 Tl).
+                  Σ (Hm : BucketAt C (Add K2 (S I0)) X).
+                    SlotsOk C (S (Add K2 (S I0))) M R).
+                  Σ (Hl : Σ (Hb2 : BucketAt C I0 Hh). SlotsOk C (S I0) K2 Tl).
+                  Σ (Hm : BucketAt C (S (Add K2 I0)) X).
+                    SlotsOk C (S (S (Add K2 I0))) M R) {
+                Pair (Hl) (Htail) =>
+                  Pair(Pair(Hb, Hl),
+                       NatRw (λ (Z0 : Nat).
+                                Σ (Hm : BucketAt C Z0 X). SlotsOk C (S Z0) M R)
+                             (Add K2 (S I0)) (S (Add K2 I0))
+                             (AddSucc K2 I0) Htail) } })
+      K L }
+def SlotsOkSplitTy : Term := prog{
+  Π (C : Nat) → Π (M : Nat) → Π (X : Bucket) → Π (R : Array M Bucket) →
+  Π (K : Nat) → Π (L : Array K Bucket) → Π (I0 : Nat) →
+    SlotsOk C I0 (Add K (S M)) (arrCat K (S M) L (acons M X R)) →
+      Σ (Hl : SlotsOk C I0 K L).
+      Σ (Hm : BucketAt C (Add K I0) X). SlotsOk C (S (Add K I0)) M R }
+
+def SlotsOkJoin : Term := prog{
+  λ (C : Nat). λ (M : Nat). λ (X : Bucket). λ (R : Array M Bucket).
+  λ (K : Nat). λ (L : Array K Bucket).
+    arrRec Bucket
+      (λ (Kz : Nat). λ (Lz : Array Kz Bucket).
+        Π (I0 : Nat) → SlotsOk C I0 Kz Lz →
+          BucketAt C (Add Kz I0) X → SlotsOk C (S (Add Kz I0)) M R →
+            SlotsOk C I0 (Add Kz (S M)) (arrCat Kz (S M) Lz (acons M X R)))
+      (λ (I0 : Nat). λ (Hl : Unit). λ (Hm : BucketAt C I0 X).
+       λ (Hr : SlotsOk C (S I0) M R). Pair(Hm, Hr))
+      (λ (K2 : Nat). λ (Hh : Bucket). λ (Tl : Array K2 Bucket).
+       λ (Ih : Π (I0 : Nat) → SlotsOk C I0 K2 Tl →
+            BucketAt C (Add K2 I0) X → SlotsOk C (S (Add K2 I0)) M R →
+              SlotsOk C I0 (Add K2 (S M)) (arrCat K2 (S M) Tl (acons M X R))).
+        λ (I0 : Nat).
+        λ (Hl : Σ (Hb : BucketAt C I0 Hh). SlotsOk C (S I0) K2 Tl).
+        λ (Hm : BucketAt C (S (Add K2 I0)) X).
+        λ (Hr : SlotsOk C (S (S (Add K2 I0))) M R).
+          elim Hl return (λ (Hlz : Σ (Hb : BucketAt C I0 Hh). SlotsOk C (S I0) K2 Tl).
+              Σ (Hb2 : BucketAt C I0 Hh).
+                SlotsOk C (S I0) (Add K2 (S M)) (arrCat K2 (S M) Tl (acons M X R))) {
+            Pair (Hb) (Hl2) =>
+              elim (NatRw (λ (Z0 : Nat).
+                             Σ (Hm2 : BucketAt C Z0 X). SlotsOk C (S Z0) M R)
+                          (S (Add K2 I0)) (Add K2 (S I0))
+                          (IdSym Nat (Add K2 (S I0)) (S (Add K2 I0)) (AddSucc K2 I0))
+                          Pair(Hm, Hr))
+                return (λ (Qz : Σ (Hm2 : BucketAt C (Add K2 (S I0)) X).
+                                  SlotsOk C (S (Add K2 (S I0))) M R).
+                    Σ (Hb2 : BucketAt C I0 Hh).
+                      SlotsOk C (S I0) (Add K2 (S M))
+                        (arrCat K2 (S M) Tl (acons M X R))) {
+                Pair (Hm2) (Hr2) => Pair(Hb, Ih (S I0) Hl2 Hm2 Hr2) } })
+      K L }
+def SlotsOkJoinTy : Term := prog{
+  Π (C : Nat) → Π (M : Nat) → Π (X : Bucket) → Π (R : Array M Bucket) →
+  Π (K : Nat) → Π (L : Array K Bucket) → Π (I0 : Nat) → SlotsOk C I0 K L →
+    BucketAt C (Add K I0) X → SlotsOk C (S (Add K I0)) M R →
+      SlotsOk C I0 (Add K (S M)) (arrCat K (S M) L (acons M X R)) }
+
+/-- The entry count splits across a concatenation. `CountArrCat`'s transfer, and the
+    same induction; the step is one `IdCongr` under `Add (LenE Hh) …` plus the one
+    `AddAssoc` that reassociates the head's contribution. -/
+def SizeACat : Term := prog{
+  λ (M : Nat). λ (R : Array M Bucket). λ (K : Nat). λ (L : Array K Bucket).
+    arrRec Bucket
+      (λ (Kz : Nat). λ (Lz : Array Kz Bucket).
+        Id Nat (SizeA (Add Kz M) (arrCat Kz M Lz R)) (Add (SizeA Kz Lz) (SizeA M R)))
+      Refl
+      (λ (K2 : Nat). λ (Hh : Bucket). λ (Tl : Array K2 Bucket).
+       λ (Ih : Id Nat (SizeA (Add K2 M) (arrCat K2 M Tl R))
+                      (Add (SizeA K2 Tl) (SizeA M R))).
+         IdTrans Nat
+           (Add (LenE Hh) (SizeA (Add K2 M) (arrCat K2 M Tl R)))
+           (Add (LenE Hh) (Add (SizeA K2 Tl) (SizeA M R)))
+           (Add (Add (LenE Hh) (SizeA K2 Tl)) (SizeA M R))
+           (IdCongr Nat Nat (λ (Cz : Nat). Add (LenE Hh) Cz)
+              (SizeA (Add K2 M) (arrCat K2 M Tl R))
+              (Add (SizeA K2 Tl) (SizeA M R)) Ih)
+           (IdSym Nat (Add (Add (LenE Hh) (SizeA K2 Tl)) (SizeA M R))
+                      (Add (LenE Hh) (Add (SizeA K2 Tl) (SizeA M R)))
+              (AddAssoc (LenE Hh) (SizeA K2 Tl) (SizeA M R))))
+      K L }
+def SizeACatTy : Term := prog{
+  Π (M : Nat) → Π (R : Array M Bucket) → Π (K : Nat) → Π (L : Array K Bucket) →
+    Id Nat (SizeA (Add K M) (arrCat K M L R)) (Add (SizeA K L) (SizeA M R)) }
+
+example : chkL SlotsOkSplit SlotsOkSplitTy = true := by native_decide
+example : chkL SlotsOkJoin SlotsOkJoinTy = true := by native_decide
+example : chkL SizeACat SizeACatTy = true := by native_decide
+
 end Dllbc.Tests.HashMap
 end
