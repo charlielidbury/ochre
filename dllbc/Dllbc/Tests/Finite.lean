@@ -966,8 +966,107 @@ example : runOut2 (resizeCall 15 1 2 4 5 0) == some (2, 1) := by native_decide
 example : progOk (resizeCall 15 2 2 4 5 9) = true := by native_decide
 example : runOut2 (resizeCall 15 2 2 4 5 9) == some (2, 9) := by native_decide
 
-#eval whyProg (resizeCall 63 7 2 4 5 0)
-#eval runOut2 (resizeCall 63 7 2 4 5 0)
-#eval runOut2 (resizeCall 63 8 2 4 5 3)
-#eval whyProg (resizeCall 15 1 2 0 5 0)
-#eval whyProg (resizeCall 15 1 0 4 5 0)
+/-! #### THE QUADRATIC WALL, and where it is
+
+    `MAX = 15` above is not a stylistic choice. `Div` recurses on the dividend
+    and calls `Mod`, which recurses on the dividend again, so a unary division
+    is `O(n²)` machine steps and `try_resize` does two of them nested. The same
+    program at `MAX = 63` did not finish in ten minutes and had to be taken back
+    out of this file — the `MAX = 140` ceiling measured in (v) is for a program
+    whose only arithmetic is one `Le`; a program that DIVIDES hits its own wall
+    far earlier.
+
+    This is the sharpest form of the unary bill and it lands entirely on
+    EXECUTION. The symbolic checking above — `TryResize`'s declaration, over an
+    opaque `MAX`, with all seven proof terms — is instant, because nothing in it
+    ever computes a numeral. -/
+
+-- Rejected callers: the load factor's dividend and the growth factor must both
+-- be nonzero, and at a concrete MAX those obligations are `Bot`.
+example : progRejects (resizeCall 15 1 2 0 5 0) botNeedle = true := by native_decide
+example : progRejects (resizeCall 15 1 0 4 5 0) botNeedle = true := by native_decide
+
+/-! ## (ix) Where this leaves things
+
+    WHAT WORKS, WITHOUT A LINE OF KERNEL CHANGE. `U MAX := Σ0 (n : Nat) → Le n MAX`
+    is a working bounded integer. It cannot be built out of range; its operations
+    demand exactly the obligations a machine imposes; those obligations are
+    discharged at the CALL rather than propagated as a failure case; and a real
+    overflow guard — Aeneas' `try_resize` — ports across with its evidence
+    derived from the branch condition rather than assumed. Every line of it is a
+    library over formers the kernel already had (`Σ0`, `sigmaRec`, evidence
+    parameters, `Le`).
+
+    WHAT IT COSTS, measured rather than guessed.
+
+      * THE COMPOSITE'S PROOF BUDGET. `TryResize` performs THREE arithmetic
+        operations and spends SEVEN proof terms and FOUR staging bindings on
+        them. Of the seven: four are mathematical content (the two `Le` chains
+        (A) and (B)), one is the mechanical branch reflection (`LebTrueLe`), and
+        two are pure transport — one to reconcile `(c*g)*d` with `(c*d)*g`, one
+        to move the callee's value certificate into the next precondition. So
+        roughly two proof lines per operation, of which a bit over half is
+        content. The Rust it replaces is five lines.
+
+      * THE SUPPORTING LIBRARY. Thirteen new lemmas, all one induction each, all
+        checked first try: `EqbTrueId`, `SubLe`, `MulMonoR`, `DivLe`,
+        `DivModId`, `DivMulLe`, `DivMulLeNz`, `MulZeroR`, `AddSwapL`,
+        `MulSuccR`, `MulComm`, `MulDistR`, `MulAssoc`, `MulSwapR`. None of it is
+        specific to bounded integers — it is the `Nat` algebra the library was
+        missing, and it stays useful after.
+
+      * THE UNARY BILL. `O(MAX)` checking steps for a program whose arithmetic
+        is one `Le`; `defaultFuel = 1000` caps those near `MAX = 140`, and that
+        cap is the harness constant (the same programs check at `MAX = 255` on
+        20000 steps). A program that DIVIDES is quadratic and hits its own wall
+        far earlier: `try_resize` executes instantly at `MAX = 15` and did not
+        finish in THIRTY MINUTES at `MAX = 63`. The whole bill falls on
+        execution and on concrete tests. Symbolic checking of the composite —
+        seven proof terms over an opaque `MAX` — is instant, because nothing in
+        it ever computes a numeral; the entire file elaborates in 4.5 seconds.
+
+    DOES ANYTHING HERE WANT KERNEL SUPPORT? Three answers, in the order they
+    matter.
+
+    1. **`Copy` for scalars — yes, and it is the only one that really bites.**
+       A `Nat` local may be passed to two calls; a `U MAX` local may not, because
+       the pack is an ordinary owned pair and a call takes it by value. A machine
+       integer is `Copy` in every language that has one, and `try_resize` is the
+       proof that real code needs it: `ncapacity` is both returned and multiplied
+       again, so its two halves have to be staged as a bare `Nat` and a comptime
+       bound before the consuming call and the pack re-minted afterwards. That is
+       four of this file's eleven composite bindings, and it scales with the
+       number of reuses. The fix is not library-shaped: either a duplicability
+       judgment (a pair of `Copy` components is `Copy`) or a kernel refinement
+       former whose values are scalars carrying a proof rather than pairs.
+
+    2. **Binary numerals — yes for RUNNING, no for reasoning.** Nothing symbolic
+       in `MAX` pays the unary bill, which is every program and every lemma
+       above; the proofs would be character-for-character the same at
+       `MAX = 2^64 - 1`. What is unavailable is the executing differential at a
+       realistic width, and a hashmap whose capacity doubling can actually be
+       run. If the goal is "the obligations exist and are discharged", unary is
+       already enough. If the goal is "run it at `usize`", it is not.
+
+    3. **Wraparound, and the rest — no.** Nothing in this exercise wanted
+       wrapping semantics: the verified subset Aeneas targets is the
+       panic-free one, which is what an evidence parameter models. Wrapping is a
+       different type and would be another library pack (over
+       `Mod (op a b) (S MAX)`) with no evidence parameters at all. Truncated
+       subtraction already supports both the saturating and the checked reading,
+       and signed integers would be a new datatype but still a library one.
+
+    One MACRO-level irritant, worth a line: `elim` reads a Σ's domain and family
+    off the motive's binder type syntactically, so a motive can never say
+    `U MAX` — every projection respells `Σ0 (n : Nat) → Le n MAX`. Cosmetic, and
+    it roughly doubles the width of the vocabulary in (i).
+
+    IS THE LIBRARY ROUTE SUFFICIENT FOR A HASHMAP OVER BOUNDED KEYS? Expressively,
+    yes, and this file is the evidence: the capacity arithmetic is the hard part
+    of that hashmap and it checks. Keys are cheaper still — they are compared,
+    not added, so a `U MAX` key needs `Eqb (Val a) (Val b)` and no evidence at
+    all. The obstacle to writing it is ergonomic and it is item 1: a container
+    of bounded integers reads its elements constantly, and every read of a pack
+    that a call will consume costs a staging pair. -/
+
+end Dllbc.Tests.Finite
