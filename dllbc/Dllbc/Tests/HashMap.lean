@@ -287,12 +287,43 @@ def HmRec : Term := prog{
     functional claim is one pointwise equation between the exit view and the model
     update of the entry view. -/
 
+/-! ### Selecting a slot: `AgetB`, and why the kernel's `aget` cannot be the spec
+
+    The obvious spelling of "the bucket at index `i`" is the kernel's `aget`, and it
+    is the wrong one — not for taste but because it does not COMPUTE where a proof
+    needs it to. `Pure.whnfN`'s `aget` rule fires only when the index is a concrete
+    numeral AND the array is a literal `Arr`; there is no rule taking
+    `aget (S m) (S i) (acons m x t)` to `aget m i t`. So `aget` at a symbolic index
+    into an `acons`/`arrCat` spine — which is exactly what a carve leaves behind — is
+    inert, and every lemma one would want about it is not merely unproven but
+    unstatable-as-provable: there is no eliminator for a stuck `aget`.
+
+    `AgetB` is the same function written as an `arrRec` fold with the index threaded
+    down the spine, `SlotsOk`'s device again. `arrRec` DOES fire on an `acons` head, so
+    `AgetB (S m) (acons m x t) (S i)` reduces to `AgetB m t i` definitionally, and the
+    lemmas below are ordinary inductions. Out of range it answers `Nil`, which makes it
+    total and saves every caller a bound. -/
+
+def AgetB : Term := prog{
+  λ (N : Nat). λ (A : Array N (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (M : Nat). λ (Bz : Array M (List (Σ (k : Nat). Nat))).
+        Π (Iz : Nat) → List (Σ (k : Nat). Nat))
+      (λ (Iz : Nat). Nil)
+      (λ (M : Nat). λ (H : List (Σ (k : Nat). Nat)).
+       λ (T : Array M (List (Σ (k : Nat). Nat))).
+       λ (Ih : Π (Iz : Nat) → List (Σ (k : Nat). Nat)). λ (Iz : Nat).
+        elim Iz return (λ (Izz : Nat). List (Σ (k : Nat). Nat)) {
+          Z => H,
+          S (I') Rec => Ih I' })
+      N A }
+
 def FindHM : Term := prog{
   λ (Q : Nat). λ (Hm : HMapT).
     HmRec (Opt Nat)
       (λ (C : Nat). λ (L : Nat). λ (N : Nat).
        λ (Sl : Array C (List (Σ (k : Nat). Nat))). λ (Hi : HMInv C L N Sl).
-         FindL Q (aget (List (Σ (k : Nat). Nat)) C (Mod Q C) Sl)) Hm }
+         FindL Q (AgetB C Sl (Mod Q C))) Hm }
 
 def SizeHM : Term := prog{
   λ (Hm : HMapT).
@@ -408,6 +439,158 @@ example : chkL prog{ Refl } prog{ Id Nat (SizeIns 4 %map2) 2 } = true := by nati
 example : chkL prog{ Refl } prog{ Id Nat (SizeIns 6 %map2) 3 } = true := by native_decide
 example : chkL prog{ Refl } prog{ Id Nat (SizeRem 4 %map2) 1 } = true := by native_decide
 example : chkL prog{ Refl } prog{ Id Nat (SizeRem 6 %map2) 2 } = true := by native_decide
+
+/-! ## 5. The empty table, and the three lemmas `New` needs
+
+    `MkB n` builds `n` empty buckets at a SYMBOLIC length, which an `Arr` literal
+    cannot do — `ctorSig "Arr"` has a field telescope only at a concrete length. The
+    `acons` recursion can, and it converts against the rigid `Array (S m) T` at each
+    step.
+
+    Each of the three lemmas is the same two-line induction, and each is the exact
+    obligation one component of `New`'s exit pack owes. -/
+
+def MkB : Term := prog{
+  λ (N : Nat). elim N return (λ (Nm : Nat). Array Nm (List (Σ (k : Nat). Nat))) {
+    Z => Arr(),
+    S (M) Rec => acons M Nil Rec } }
+def MkBTy : Term := prog{ Π (N : Nat) → Array N (List (Σ (k : Nat). Nat)) }
+
+/-- Every slot of a fresh table is empty — at EVERY index, including out of range,
+    which is what `AgetB`'s totality buys. This is `New`'s functional conjunct. -/
+def MkBAget : Term := prog{
+  λ (N : Nat).
+    elim N return (λ (Nz : Nat).
+        Π (I : Nat) → Id (List (Σ (k : Nat). Nat)) (AgetB Nz (MkB Nz) I) Nil) {
+      Z => λ (I : Nat). Refl,
+      S (M) Ih => λ (I : Nat).
+        elim I return (λ (Iz : Nat).
+            Id (List (Σ (k : Nat). Nat)) (AgetB (S M) (MkB (S M)) Iz) Nil) {
+          Z => Refl,
+          S (I') Rec => Ih I' } } }
+def MkBAgetTy : Term := prog{
+  Π (N : Nat) → Π (I : Nat) → Id (List (Σ (k : Nat). Nat)) (AgetB N (MkB N) I) Nil }
+
+/-- A fresh table is well-hashed vacuously, from any starting index. -/
+def MkBSlotsOk : Term := prog{
+  λ (C : Nat). λ (N : Nat).
+    elim N return (λ (Nz : Nat). Π (I0 : Nat) → SlotsOk C I0 Nz (MkB Nz)) {
+      Z => λ (I0 : Nat). unit,
+      S (M) Ih => λ (I0 : Nat). Pair(unit, Ih (S I0)) } }
+def MkBSlotsOkTy : Term := prog{
+  Π (C : Nat) → Π (N : Nat) → Π (I0 : Nat) → SlotsOk C I0 N (MkB N) }
+
+/-- A fresh table holds no entries. The step is EXACTLY the induction hypothesis:
+    `SizeA` of an `acons` is `Add (LenE Nil) …`, and `Add Z x` computes to `x`. -/
+def MkBSize : Term := prog{
+  λ (N : Nat).
+    elim N return (λ (Nz : Nat). Id Nat (SizeA Nz (MkB Nz)) Z) {
+      Z => Refl,
+      S (M) Ih => Ih } }
+def MkBSizeTy : Term := prog{ Π (N : Nat) → Id Nat (SizeA N (MkB N)) Z }
+
+example : chkL MkB MkBTy = true := by native_decide
+example : chkL MkBAget MkBAgetTy = true := by native_decide
+example : chkL MkBSlotsOk MkBSlotsOkTy = true := by native_decide
+example : chkL MkBSize MkBSizeTy = true := by native_decide
+
+-- `AgetB` agrees with the kernel's `aget` where the kernel's computes at all.
+example : chkL prog{ Refl }
+  prog{ Id (List (Σ (k : Nat). Nat)) (AgetB 2 %sl2 1) Cons(Pair(3, 30), Nil) } = true := by
+  native_decide
+example : chkL prog{ Refl }
+  prog{ Id (List (Σ (k : Nat). Nat)) (AgetB 2 %sl2 7) Nil } = true := by native_decide
+
+/-! ## 6. `New` — the first complete operation
+
+    The return type carries both of the problem statement's conjuncts and the pack
+    carries the invariant, so the whole of `New`'s correctness is one term.
+
+    Note what is NOT in the signature: any claim that the invariant holds. It cannot
+    be stated, because a `HMap` that did not satisfy it would not be a `HMap`. -/
+
+def newRet : Term := prog{
+  Σ0 (hm : HMapT).
+    Σ (Hf : Π (Q : Nat) → Id (Opt Nat) (FindHM Q hm) (None Nat)).
+      Id Nat (SizeHM hm) Z }
+
+def newP (rest : Term) : Term := prog{
+  fn New (cap : Nat, Hc : Le (S Z) cap) -> %newRet {
+    Pair(Pair(cap, Pair(Div (Mul cap 4) 5, Pair(Z,
+           Pair(MkB cap,
+                Pair(Hc,
+                Pair(MkBSlotsOk cap cap Z,
+                Pair(IdSym Nat (SizeA cap (MkB cap)) Z (MkBSize cap),
+                     Refl))))))),
+         Pair(λ (Q : Nat).
+                IdCongr (List (Σ (k : Nat). Nat)) (Opt Nat)
+                  (λ (B : List (Σ (k : Nat). Nat)). FindL Q B)
+                  (AgetB cap (MkB cap) (Mod Q cap)) Nil
+                  (MkBAget cap (Mod Q cap)),
+              Refl)) };
+  %rest }
+
+example : progOk (newP prog{ () }) = true := by native_decide
+
+-- It RUNS, and the machine really builds the array at a symbolic capacity.
+example : progOk (newP prog{ let h = New(4, unit); () }) = true := by native_decide
+
+/-! ### `New`'s twins — one per conjunct
+
+    The empty map's `find` is `None` at every key and its size is zero, so a lie about
+    either is refused. Note the SECOND twin is the interesting one: `Some Nat Z` is a
+    perfectly well-typed `Opt Nat`, so what is refused is the mathematics and not the
+    encoding. -/
+
+example : progOk (newP prog{ () }) = true := by native_decide
+
+-- Conjunct 1 lied: the fresh map claims to hold `Z` at every key.
+example : progOk (prog{
+  fn New (cap : Nat, Hc : Le (S Z) cap) -> (Σ0 (hm : HMapT).
+      Σ (Hf : Π (Q : Nat) → Id (Opt Nat) (FindHM Q hm) (Some Nat Z)).
+        Id Nat (SizeHM hm) Z) {
+    Pair(Pair(cap, Pair(Div (Mul cap 4) 5, Pair(Z,
+           Pair(MkB cap,
+                Pair(Hc, Pair(MkBSlotsOk cap cap Z,
+                Pair(IdSym Nat (SizeA cap (MkB cap)) Z (MkBSize cap), Refl))))))),
+         Pair(λ (Q : Nat).
+                IdCongr (List (Σ (k : Nat). Nat)) (Opt Nat)
+                  (λ (B : List (Σ (k : Nat). Nat)). FindL Q B)
+                  (AgetB cap (MkB cap) (Mod Q cap)) Nil (MkBAget cap (Mod Q cap)),
+              Refl)) };
+  () }) = false := by native_decide
+
+-- Conjunct 2 lied: the fresh map claims size one.
+example : progOk (prog{
+  fn New (cap : Nat, Hc : Le (S Z) cap) -> (Σ0 (hm : HMapT).
+      Σ (Hf : Π (Q : Nat) → Id (Opt Nat) (FindHM Q hm) (None Nat)).
+        Id Nat (SizeHM hm) (S Z)) {
+    Pair(Pair(cap, Pair(Div (Mul cap 4) 5, Pair(Z,
+           Pair(MkB cap,
+                Pair(Hc, Pair(MkBSlotsOk cap cap Z,
+                Pair(IdSym Nat (SizeA cap (MkB cap)) Z (MkBSize cap), Refl))))))),
+         Pair(λ (Q : Nat).
+                IdCongr (List (Σ (k : Nat). Nat)) (Opt Nat)
+                  (λ (B : List (Σ (k : Nat). Nat)). FindL Q B)
+                  (AgetB cap (MkB cap) (Mod Q cap)) Nil (MkBAget cap (Mod Q cap)),
+              Refl)) };
+  () }) = false := by native_decide
+
+-- The PACK twin: the load ledger is off by one, so the invariant's fourth clause has
+-- no inhabitant and the pack cannot be built at all. This is the packing earning its
+-- keep — a broken map is refused at construction, not at some later use.
+example : progOk (prog{
+  fn New (cap : Nat, Hc : Le (S Z) cap) -> %newRet {
+    Pair(Pair(cap, Pair(S(Div (Mul cap 4) 5), Pair(Z,
+           Pair(MkB cap,
+                Pair(Hc, Pair(MkBSlotsOk cap cap Z,
+                Pair(IdSym Nat (SizeA cap (MkB cap)) Z (MkBSize cap), Refl))))))),
+         Pair(λ (Q : Nat).
+                IdCongr (List (Σ (k : Nat). Nat)) (Opt Nat)
+                  (λ (B : List (Σ (k : Nat). Nat)). FindL Q B)
+                  (AgetB cap (MkB cap) (Mod Q cap)) Nil (MkBAget cap (Mod Q cap)),
+              Refl)) };
+  () }) = false := by native_decide
 
 end Dllbc.Tests.HashMap
 end
