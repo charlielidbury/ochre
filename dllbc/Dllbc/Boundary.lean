@@ -20,7 +20,7 @@ namespace Dllbc
 -- `Obligation` now lives in `Machine.lean` (so it can be an `St` field that a
 -- §10 Refl refinement reaches — see its docstring there).
 
--- `seedTelescope`, `collapseArg`, `reachesLoan`, `auditObligation`,
+-- `seedTelescope`, `collapseResidue`, `reachesLoan`, `auditObligation`,
 -- `resolveTree`, `collectResultBorrows` and `auditAction` moved to
 -- `Machine.lean` (M26-C): the seal rule runs the audit AT THE NODE, from
 -- inside `readR`, so the audit has to precede it. Same names, same

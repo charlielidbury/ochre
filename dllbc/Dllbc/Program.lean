@@ -46,8 +46,8 @@ namespace Dllbc
     ordinary program, and the differential would report a counterexample that is
     only a difference in *when*.
 
-    Ending the scope is what a `FnDef`'s audit did for its arguments
-    (`collapseArg`) and what `popScope` does for a frame or a match arm; at the
+    Ending the scope is what a `FnDef`'s audit does for its arguments
+    (`collapseResidue`) and what `popScope` does for a frame or a match arm; at the
     top level there is no caller to hand anything back to, so every parked loan is
     simply demanded. It can legitimately FAIL — a group whose release is not
     justified is rejected here rather than passed over — which is why it belongs

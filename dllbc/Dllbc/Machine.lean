@@ -3212,38 +3212,6 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
 def seedTelescope (fuel : Nat) (i : Nat) (tel : List (String × Term)) : M (List Obligation) :=
   seedTelescopeV fuel ((tel.enum.map (fun p => (Var.mk (p.1 + i) p.2.1, p.2.2))))
 
-/-- Collapse an argument borrow's payload at the boundary: End-Mut every loan
-    marker in the payload whose borrow is an Ω entry (this is how §3.3's field
-    loans collapse at a real boundary — there being no owner to demand it).
-    Errors distinctively if a marker's borrow is missing (via `endMut`). -/
-def collapseArg : Nat → Var → M Unit
-  | 0, _ => throwErr "audit: out of fuel (collapse)"
-  | fuel + 1, arg => do
-    match ← lookupSlot arg with
-    | .borrowM _ payload =>
-      match firstLoanMarker payload with
-      | some ℓ => do endLoan fuel ℓ; collapseArg fuel arg   -- normal or group (§6.1) loan
-      | none => pure ()
-    | _ => pure ()
-
-/-- The same End-Mut loop as `collapseArg`, but locating the borrow **by loan**
-    anywhere in Ω rather than expecting it to BE the slot's value.
-
-    A Σ-packaged borrow (`Σ (n : Nat) → &mut …`, §5's second opacity) sits inside
-    a `Pair` in its slot, so `collapseArg`'s slot-shaped match falls through and
-    the suspended field loans ride into `hasType`, which has no rule for a
-    `loanₘ`. M24's G2 probe never reached this: an array payload is not matched
-    into fields, so no field loan was ever suspended under a package. -/
-def collapseLoanIn : Nat → Nat → M Unit
-  | 0, _ => throwErr "audit: out of fuel (collapse)"
-  | fuel + 1, ℓ => do
-    match (← getEnv).findSome? (fun kv => findBorrowPayload ℓ kv.2) with
-    | some payload =>
-      match firstLoanMarker payload with
-      | some ℓ' => do endLoan fuel ℓ'; collapseLoanIn fuel ℓ
-      | none => pure ()
-    | none => pure ()
-
 /-- Does borrow `ℓ` transitively reborrow into `target`? An `advance`-style body
     returns a reborrow of a FIELD of an argument borrow (`&mut *hd` after
     matching `v`); that argument is then the CAPTURED OWNER of the issued result
@@ -3311,12 +3279,23 @@ def firstNotInFlight (resultLoans : List Nat) : List Nat → M (Option Nat)
   | ℓ :: rest => do
     if ← inFlight resultLoans ℓ then firstNotInFlight resultLoans rest else pure (some ℓ)
 
-/-- `collapseArg`, restricted to the residue: End-Mut every parked loan in the
-    argument borrow's payload whose borrow is NOT in flight toward the result.
-    Located by loan rather than by slot, because an exempted parameter's slot may
-    have been moved from. Ending a loan early is sound (§ pop-with-drop: "the
-    demand machinery already ends loans lazily, so eager ending moves the same
-    events earlier and adds none"). -/
+/-- **Collapse an argument borrow's payload at the boundary**: End-Mut every parked
+    loan whose borrow is NOT in flight toward the result, pulling those sub-payloads
+    home. This is how §3.3's field loans collapse at a real boundary, there being no
+    owner to demand them; `endLoan` errors distinctively if a marker's borrow is
+    missing.
+
+    With NO result loans this ends every parked loan, which is what the audit always
+    did, under two names this replaces. Locating by LOAN rather than by slot is
+    what the second of them existed for: a Σ-packaged
+    borrow (`Σ (n : Nat) → &mut …`, §5's second opacity) sits inside a `Pair` in its
+    slot, so a slot-shaped match falls through and the suspended field loans ride
+    into `hasType`, which has no rule for a `loanₘ`. An exempted parameter's slot
+    may equally have been moved from. One lookup covers both.
+
+    Ending a loan early is sound (§ pop-with-drop: "the demand machinery already
+    ends loans lazily, so eager ending moves the same events earlier and adds
+    none"). -/
 def collapseResidue : Nat → List Nat → Nat → M Unit
   | 0, _, _ => throwErr "audit: out of fuel (residue collapse)"
   | fuel + 1, resultLoans, ℓarg => do
@@ -3465,7 +3444,7 @@ def auditObligation (fuel : Nat) (issued : List (Nat × Val)) (ob : Obligation) 
   else do
     -- (1) COLLAPSE the residue: End-Mut every parked loan whose borrow is not in
     -- flight toward the result, pulling those sub-payloads home. With no result
-    -- loans this ends every parked loan, which is what `collapseArg` did.
+    -- loans this ends every parked loan, which is the value-returning case.
     collapseResidue fuel resultLoans ob.loan
     match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
     | none =>
