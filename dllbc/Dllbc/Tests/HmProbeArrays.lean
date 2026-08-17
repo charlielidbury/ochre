@@ -36,10 +36,6 @@ def chkL (tm ty : Term) : Bool :=
 
 def pv (t : Term) : Term := Pure.nf 4000 t
 
-/-- The checker's message for a rejected program — probe scaffolding. -/
-def hmMsg (t : Term) : String :=
-  match checkProgram t prog{ Unit } with | .ok _ => "OK" | .error e => e
-
 /-! ## A1 — array literals of structured payload
 
     `ctorSig "Arr"` builds its field telescope as `T` repeated `n` times, generic in
@@ -142,8 +138,8 @@ def readListNoRefill : Term := prog{
     let b = (*cell)[0];
     () };
   () }
-example : progOk readListNoRefill = false := by native_decide
-#eval hmMsg readListNoRefill
+example : progRejects readListNoRefill
+  "a suspended array has no value of its type" = true := by native_decide
 
 -- (b) A plain write of a structured literal into a slot.
 def writeList : Term := prog{
@@ -181,8 +177,7 @@ def bucketPush : Term := prog{
     (*cell)[0] := Cons(Pair(k, v), b);
     () };
   () }
-example : progOk bucketPush = false := by native_decide
-#eval hmMsg bucketPush
+example : progRejects bucketPush "is not owned (it carries a hole)" = true := by native_decide
 
 -- The same at the simpler `List Nat` payload, so a failure above could be localized.
 def bucketPushNat : Term := prog{
@@ -194,8 +189,8 @@ def bucketPushNat : Term := prog{
     (*cell)[0] := Cons(e, b);
     () };
   () }
-example : progOk bucketPushNat = false := by native_decide
-#eval hmMsg bucketPushNat
+example : progRejects bucketPushNat "is not owned (it carries a hole)" = true := by
+  native_decide
 
 /-! ### A3 diagnosis — the move is by design, and the REFILL is what is missing
 
@@ -459,6 +454,217 @@ example : (match Dllbc.Tests.S9Diff.runExec insertCaller with
 -- M9's simulation property over the same program: the checking and executing sides
 -- agree about it, which is the assertion ArraySort's §(vi.c) makes for quicksortA.
 example : Dllbc.Tests.S9Diff.diffV2 insertCaller = true := by native_decide
+
+/-! ## A5 — the fuel-threaded walk over a bucket of PAIRS
+
+    `Boundaries.zeroAll` records why this must carry fuel: `[v]` payload-decrease has
+    no recursor form, §9's borrow-mode eliminator is filed rather than built, and §12
+    decision 8 blessed fuel-threading instead. `S26Fuel.zeroAllF` is the paid twin at
+    `&mut List Nat`. The question here is whether the same shape survives the element
+    becoming a pair, since the body must now reborrow THROUGH the pair to reach the
+    value field.
+
+    `Std.lenFn` is monomorphic at `List Nat`, so the fuel bound needs its own length
+    at this payload — one `elim`, spliced into the signature. -/
+
+def lenEFn : Term := prog{
+  λ (L : List (Σ (k : Nat) → Nat)). elim L return (λ (Lm : List (Σ (k : Nat) → Nat)). Nat) {
+    Nil => Z,
+    Cons (H) (T) Rec => S(Rec) } }
+
+/-- (a) `zeroAllF` with the element a pair: reach the VALUE field of each entry through
+    a two-step match (`Cons(hd, tl)` then `hd` as `Pair(kk, vv)`) and zero it. -/
+def clearVals : Term := prog{
+  fn ClearVals [fuel] (fuel : Nat, v : &mut (List (Σ (k : Nat) → Nat)),
+                       Hf : Le (%lenEFn (*v)) fuel) -> Unit {
+    match v {
+      Nil => (),
+      Cons(hd, tl) => match fuel {
+        Z => botElim Unit Hf,
+        S(f2) => match hd { Pair(kk, vv) => { *vv := 0; ClearVals(f2, tl, Hf); () } }
+      } } };
+  () }
+example : progOk clearVals = true := by native_decide
+
+/-! (b) The NESTED pattern is NOT AVAILABLE, and the refusal is at the PARSER, not at
+    the checker. Writing the two matches as one —
+
+        Cons(Pair(kk, vv), tl) => match fuel { … }
+
+    — does not compile the Lean file at all:
+
+        error: Dllbc/Tests/HmProbeArrays.lean:501:15: unexpected token '('; expected ')'
+
+    A pattern's arguments are binder names, so a constructor in argument position has
+    nowhere to go. It cannot be written as an assertion here for the same reason: a
+    parse error is not a term this file could name. The two-step match above is
+    therefore FORCED, not a style choice — which is a cost the hashmap pays at every
+    site that touches an entry, but a bounded and mechanical one. -/
+
+/-- (c) **`insert_in_list` — the Aeneas case study's own leaf.** Walk the bucket; if a
+    key matches, overwrite its value in place; otherwise recurse, and cons a fresh
+    entry at the end. It needs everything at once: the two-step reborrow, a COPY read
+    of the key field out of a `&mut Nat`, a decidable test on it, an in-place write to
+    the sibling field, and a refill at `Nil`. -/
+def insertInList : Term := prog{
+  fn InsertInList [fuel] (fuel : Nat, k : Nat, v : Nat,
+                          b : &mut (List (Σ (k : Nat) → Nat)),
+                          Hf : Le (%lenEFn (*b)) fuel) -> Unit {
+    match b {
+      Nil => { *b := Cons(Pair(k, v), Nil); () },
+      Cons(hd, tl) => match fuel {
+        Z => botElim Unit Hf,
+        S(f2) => match hd {
+          Pair(kk, vv) => {
+            if e : Eqb *kk k { *vv := v; () }
+            else { InsertInList(f2, k, v, tl, Hf); () } } }
+      } } };
+  () }
+example : progOk insertInList = true := by native_decide
+
+/-! ## A5' — THE COMPOSITE: the bucket walk called through an array element borrow
+
+    A1–A5 each answer a piece. This is the piece they are for: `hm_insert` = carve the
+    slot, borrow the element, hand that borrow to the fuel-threaded list walk. If it
+    composes, the flagship is a matter of writing invariants rather than of finding a
+    program shape.
+
+    THE ONE THING THAT DOES NOT COMPOSE CLEANLY is the fuel bound. `InsertInList` owes
+    `Le (len *b) fuel`, and `*b` is the bucket — which the caller cannot name, because
+    it does not exist until the carve inside the body has happened. The bound must
+    therefore be stated over ALL buckets and instantiated at the one the carve
+    produced, which is what `HfAll` is below. That is a real design constraint on the
+    flagship and not a probe artifact: the honest version is an array-level invariant
+    (`every bucket is shorter than fuel`) that the carve must be shown to preserve. -/
+
+def hmFullChain (rest : Term) : Term := prog{
+  fn InsertInList [fuel] (fuel : Nat, k : Nat, v : Nat,
+                          b : &mut (List (Σ (k : Nat) → Nat)),
+                          Hf : Le (%lenEFn (*b)) fuel) -> Unit {
+    match b {
+      Nil => { *b := Cons(Pair(k, v), Nil); () },
+      Cons(hd, tl) => match fuel {
+        Z => botElim Unit Hf,
+        S(f2) => match hd {
+          Pair(kk, vv) => {
+            if e : Eqb *kk k { *vv := v; () }
+            else { InsertInList(f2, k, v, tl, Hf); () } } }
+      } } };
+  fn HmInsert (fuel : Nat, n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
+               k : Nat, v : Nat,
+               slots : &mut (Array n (List (Σ (k : Nat) → Nat))),
+               HfAll : Π (B : List (Σ (k : Nat) → Nat)) → Le (%lenEFn B) fuel) -> Unit {
+    let lo = &m (*slots)[Z ; i ; S j | LeAdd i (S j) | Heq];
+    let cell = &m (*slots)[i ; 1 ; j];
+    let bb = &m (*cell)[0];
+    -- STAGED, and the staging is forced: `InsertInList(…, bb, HfAll (*bb))` consumes
+    -- `bb` as the fourth argument and then reads it for the fifth, which fails with
+    -- "readC (⇝): bb#11 holds ⊥ (use-after-move or uninitialized in a comptime read)".
+    -- Capitalised, so this is a comptime snapshot — ArraySort's `let A0 = *a` idiom,
+    -- arriving here for the same capture-before-consume reason.
+    let Hb = HfAll (*bb);
+    InsertInList(fuel, k, v, bb, Hb);
+    () };
+  %rest }
+example : progOk (hmFullChain prog{ () }) = true := by native_decide
+
+/-- …and it RUNS. At a concrete slot array the caller can discharge `HfAll` itself,
+    because every bucket it built is shorter than the fuel it passes — but only as a
+    λ that ignores its argument, which is the same admission the paragraph above makes.
+    What the run establishes is that the machine really performs the composite: carve,
+    element borrow, cross a call boundary, walk, and write back into the slot. -/
+def hmInsertCaller : Term := hmFullChain prog{
+  let z = Arr(Nil, Nil, Nil);
+  let b1 = &m z;
+  HmInsert(4, 3, 1, 1, Refl, 5, 7, b1, λ (B : List (Σ (k : Nat) → Nat)). unit);
+  let b2 = &m z;
+  HmInsert(4, 3, 1, 1, Refl, 6, 8, b2, λ (B : List (Σ (k : Nat) → Nat)). unit);
+  let b3 = &m z;
+  HmInsert(4, 3, 1, 1, Refl, 5, 9, b3, λ (B : List (Σ (k : Nat) → Nat)). unit);
+  let b4 = &m z;
+  HmInsert(4, 3, 2, 0, Refl, 1, 2, b4, λ (B : List (Σ (k : Nat) → Nat)). unit);
+  let y = z;
+  () }
+
+def hmRun : Option (List (List (Nat × Nat))) :=
+  match Dllbc.Tests.S9Diff.runExec hmInsertCaller with
+  | .ok env => (env.lookup "y").bind (slotsOfV (entriesOfV 2000))
+  | .error _ => none
+
+-- Insert (5,7) then (6,8) into slot 1, then RE-insert key 5 with value 9 — which must
+-- OVERWRITE in place rather than prepend, since `insert_in_list` found the key. Then
+-- one entry into slot 2. That is the whole hashmap insert, end to end.
+example : hmRun == some [[], [(5, 9), (6, 8)], [(1, 2)]] := by native_decide
+
+-- Read that answer slot by slot, because it is the whole claim. Slot 0 was never
+-- touched and stayed `Nil`. Slot 1 took (5,7), then (6,8) APPENDED at the tail (the
+-- `Nil` refill at the end of the walk), then (5,9) OVERWROTE the head's value field in
+-- place — the key was found, so no entry was added. Slot 2 took its one entry. That is
+-- `insert_in_list`'s specified behaviour, and the array around it is the same array.
+
+-- The caller checks as well as runs, and the two sides agree about it.
+-- THE CALLER RUNS BUT DOES NOT CHECK, and the rejection is the right one. Execution
+-- does not verify proofs, so `λ B. unit` gets through the machine; the checker sees
+-- that `Le (len B) 4` at a SYMBOLIC `B` is a stuck `listRec` under `Le`, not `Unit`,
+-- and refuses the argument. The Π-quantified bound is unprovable — a bucket may be
+-- longer than the fuel — so this is the probe admitting its own shortcut, at the
+-- boundary where the flagship will have to do the real thing instead.
+example : progRejects hmInsertCaller
+  "comptime argument" = true := by native_decide
+
+/-! ## A6 — can the missing invariant even be STATED?
+
+    A5' leaves one gap, and it is the flagship's whole remaining design: the fuel bound
+    `Le (len *b) fuel` is about a bucket that does not exist until the carve has run, so
+    it has to descend from an ARRAY-level invariant instead. `SortedA` is the precedent
+    — an `arrRec` fold into `Type` over the cons view — and the question is whether
+    `arrRec` is as generic in its element type as `Arr` turned out to be in A1.
+
+    It is: `arrRec` takes the element type as its first argument, and nothing about the
+    fold cares that the element is a list. -/
+
+/-- `AllShortA f n a` — every bucket of `a` has at most `f` entries. `SortedA`'s shape
+    with the element type changed and `BoundA` replaced by the length bound. -/
+def AllShortA : Term := prog{
+  λ (F : Nat). λ (N : Nat). λ (A : Array N (List (Σ (k : Nat) → Nat))).
+    arrRec (List (Σ (k : Nat) → Nat))
+      (λ (M : Nat). λ (B : Array M (List (Σ (k : Nat) → Nat))). Type) Unit
+      (λ (K : Nat). λ (H : List (Σ (k : Nat) → Nat)).
+       λ (T : Array K (List (Σ (k : Nat) → Nat))). λ (Ih : Type).
+        Σ (Hh : Le (%lenEFn H) F) → Ih) N A }
+
+-- It COMPUTES on a concrete slot array: three buckets of sizes 0, 1, 2 are all ≤ 2, and
+-- the inhabitant is the nested unit pair the fold builds.
+example : chkL prog{ Pair(unit, Pair(unit, Pair(unit, unit))) }
+               prog{ %AllShortA 2 3 Arr(Nil, Cons(Pair(5, 7), Nil),
+                                        Cons(Pair(1, 2), Cons(Pair(3, 4), Nil))) }
+    = true := by native_decide
+
+-- …and it is not vacuous: the same array does not satisfy the bound at 1, because the
+-- third bucket has two entries.
+example : chkL prog{ Pair(unit, Pair(unit, Pair(unit, unit))) }
+               prog{ %AllShortA 1 3 Arr(Nil, Cons(Pair(5, 7), Nil),
+                                        Cons(Pair(1, 2), Cons(Pair(3, 4), Nil))) }
+    = false := by native_decide
+
+-- It is STUCK at an opaque payload, exactly as `SortedA Z` is (there is no η at length
+-- zero), which is what makes it a real predicate rather than a computation.
+example : (Pure.nf 2000 prog{ %AllShortA 2 Z Arr() } == .const "Unit") = true := by
+  native_decide
+
+-- And it can be carried in a signature over a symbolic array — the form the flagship's
+-- `HmInsert` would take.
+def hmInsertInv : Term := prog{
+  fn HmInsertInv (fuel : Nat, n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
+                  k : Nat, v : Nat,
+                  slots : &mut (Array n (List (Σ (k : Nat) → Nat))),
+                  Hinv : %AllShortA fuel n (*slots)) -> Unit {
+    let lo = &m (*slots)[Z ; i ; S j | LeAdd i (S j) | Heq];
+    let cell = &m (*slots)[i ; 1 ; j];
+    let bb = &m (*cell)[0];
+    () };
+  () }
+example : progOk hmInsertInv = true := by native_decide
 
 end Dllbc.Tests.HmProbeArrays
 end
