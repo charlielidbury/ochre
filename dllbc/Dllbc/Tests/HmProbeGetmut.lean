@@ -23,11 +23,34 @@ Step 3 is the new ground. §6.1's loan groups give DLLBC return-borrows
 but every borrow ever returned in this corpus points at a place the callee
 reached by PEELING (`&m *hd`), never at a place the callee CARVED.
 
-Sections G1–G4 below; G1 is the green baseline, G2–G4 are the new questions.
+## What the probe found
+
+**Step 3 works, and it was never the problem.** A returned borrow may point into
+a carve, at either granularity, at a concrete or a symbolic index, through as many
+layers as you care to stack — carve, then list reborrow, then a recursive callee's
+own group. `getMutOrCaller` at the bottom is all three at once, checking green and
+executing correctly. Four negative controls keep the acceptances honest.
+
+**What does not work is stating a PRECONDITION about what the callee will find
+inside its own carve.** A partial bucket walk needs `Le (S i) (Len bucket)`, and
+`bucket` is a place the callee reaches rather than a parameter. Written with the
+surface index place the parameter type is refused before the body is read; written
+with the `aget` former it reflects, and then the proof will not convert at the
+call site, because an element borrow's payload is a fresh σ with no equation tying
+it to `aget i` of the array. Both are stated below with minimal repros.
+
+**The way through is to make the walk TOTAL**, which is what Rust's own
+`entry(k).or_insert(v)` does — no precondition, so nothing has to transport.
+
+A second, unrelated finding fell out: the exit audit exempts a whole parameter
+when a borrow derived from it is returned, rather than exempting only the returned
+sub-place, so a callee may leave a hole in a sibling leaf and be accepted.
+
+Sections G1–G5 below; G1 is the green baseline, G2–G5 are the new questions.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (LeRefl LeAdd LeAddL LeTrans)
+open Dllbc.StdLemmas (LeRefl LeAdd LeAddL LeTrans SortedA)
 
 namespace Dllbc.Tests.HmProbeGetmut
 
@@ -37,8 +60,30 @@ def vnat : Nat → Val | 0 => .ctor "Z" [] | n + 1 => .ctor "S" [vnat n]
 def vlist : List Nat → Val | [] => .ctor "Nil" [] | h :: t => .ctor "Cons" [vnat h, vlist t]
 def varr (l : List Nat) : Val := .ctor "Arr" (l.map vnat)
 
+def varrL (ls : List (List Nat)) : Val := .ctor "Arr" (ls.map vlist)
+
 def tnatT : Nat → Term | 0 => .ctorApp "Z" [] | k + 1 => .ctorApp "S" [tnatT k]
 def tarrT (l : List Nat) : Term := .ctorApp "Arr" (l.map tnatT)
+
+def natOfV : Nat → Val → Option Nat
+  | f, v =>
+    match Val.asCtor? v, f with
+    | some ("Z", []), _ => some 0
+    | some ("S", [w]), f' + 1 => (natOfV f' w).map (· + 1)
+    | _, _ => none
+
+/-- Succeeds only on a FOLDED run of plain naturals — so a leftover segmentation or
+    a ⊥ in a slot makes it `none`, which is how the hole below is asserted. -/
+def arrOfV : Val → Option (List Nat)
+  | v => match Val.asCtor? v with
+    | some ("Arr", vs) => vs.mapM (natOfV 2000)
+    | _ => none
+
+/-- What the executing machine left in `y`. -/
+def runY (t : Term) : Option Val :=
+  match Dllbc.Tests.S9Diff.runExec t with
+  | .ok env => env.lookup "y"
+  | .error _ => none
 
 /-- The verbatim checker message, for the failure reports. -/
 def why (t : Term) (retType : Term := prog{ Unit }) : String :=
@@ -104,14 +149,14 @@ example : (match Dllbc.Tests.S9Diff.runExec g1Caller with
 def g2ElemC : Term := prog{
   fn ElemC (a : &mut (Array 3 Nat)) -> &mut Nat { &m (*a)[1] };
   () }
-#eval why g2ElemC
+example : progOk g2ElemC = true := by native_decide
 
 /-! ### G2.b — CONCRETE index, width-1 SEGMENT handle: `&mut (Array 1 Nat)` -/
 
 def g2SegC : Term := prog{
   fn SegC (a : &mut (Array 3 Nat)) -> &mut (Array 1 Nat) { &m (*a)[1 ; 1] };
   () }
-#eval why g2SegC
+example : progOk g2SegC = true := by native_decide
 
 /-! ### G2.c — the carve-then-return, concrete: carve a THREE-WAY split and
       return the middle cell, which is the shape `get_mut` actually needs (the
@@ -124,7 +169,7 @@ def g2CarveRetC : Term := prog{
     let r = &m (*a)[2 ; ..];
     c };
   () }
-#eval why g2CarveRetC
+example : progOk g2CarveRetC = true := by native_decide
 
 /-! ### G2.d — the same, but returning an ELEMENT borrow taken inside the carve -/
 
@@ -136,7 +181,7 @@ def g2CarveElemC : Term := prog{
     let e = &m (*c)[0];
     e };
   () }
-#eval why g2CarveElemC
+example : progOk g2CarveElemC = true := by native_decide
 
 /-! ### G2.e — SYMBOLIC index, `quicksortA`'s cited three-way carve form -/
 
@@ -148,7 +193,7 @@ def g2CarveRetS : Term := prog{
     let r = &m (*a)[S k ; ..];
     c };
   () }
-#eval why g2CarveRetS
+example : progOk g2CarveRetS = true := by native_decide
 
 def g2CarveElemS : Term := prog{
   fn CarveElemS (n : Nat, k : Nat, jj : Nat, Heq : Id Nat n (Add k (S jj)),
@@ -159,7 +204,7 @@ def g2CarveElemS : Term := prog{
     let e = &m (*c)[0];
     e };
   () }
-#eval why g2CarveElemS
+example : progOk g2CarveElemS = true := by native_decide
 
 /-! ### G2.f — NEGATIVE CONTROLS, so the six acceptances above are not vacuous
 
@@ -175,7 +220,9 @@ def g2BadTyElem : Term := prog{
     let e = &m (*c)[0];
     e };
   () }
-#eval why g2BadTyElem
+example : progRejects g2BadTyElem
+  "returned borrow's payload (σ8) does not have its owed type (Bool)" = true := by
+  native_decide
 
 -- Wrong WIDTH on the segment handle: a width-1 carve returned as `Array 2 Nat`.
 def g2BadWidth : Term := prog{
@@ -185,7 +232,8 @@ def g2BadWidth : Term := prog{
     let r = &m (*a)[2 ; ..];
     c };
   () }
-#eval why g2BadWidth
+example : progRejects g2BadWidth
+  "does not have its owed type (Array (S (S Z)) Nat)" = true := by native_decide
 
 -- A HOLE left in a SIBLING leaf the callee does not return: the RANGE read
 -- `(*l)[0 ; 1]` takes the run out (§2.2's take-and-refill) and never refills it,
@@ -203,7 +251,8 @@ def g2SiblingHole : Term := prog{
     let e = &m (*c)[0];
     e };
   () }
-#eval why g2SiblingHole
+-- ACCEPTED — see "the sibling hole, chased to the caller" below. This is FINDING 2.
+example : progOk g2SiblingHole = true := by native_decide
 
 def g2SiblingCopy : Term := prog{
   fn SiblingCopy (a : &mut (Array 3 Nat)) -> &mut Nat {
@@ -214,7 +263,7 @@ def g2SiblingCopy : Term := prog{
     let e = &m (*c)[0];
     e };
   () }
-#eval why g2SiblingCopy
+example : progOk g2SiblingCopy = true := by native_decide
 
 -- A hole in the RETURNED cell itself: `*e` taken, then `e` returned.
 def g2RetHole : Term := prog{
@@ -224,7 +273,7 @@ def g2RetHole : Term := prog{
     let t = *e;
     e };
   () }
-#eval why g2RetHole
+example : progRejects g2RetHole "cannot type value ⊥" = true := by native_decide
 
 /-! ## G3 — CALLER SIDE: write through the returned borrow, end the group
 
@@ -248,12 +297,15 @@ def g3Caller : Term := withGetSlot prog{
   let y = z;
   () }
 
-#eval why g3Caller
-#eval tailEnvs g3Caller
-#eval whyExec g3Caller
-#eval (match Dllbc.Tests.S9Diff.runExec g3Caller with
-       | .ok env => toString (env.lookup "y")
-       | .error e => "ERR " ++ e.take 300)
+example : progOk g3Caller = true := by native_decide
+
+-- CHECKING: the owner is re-minted as a fresh σ — the write is forgotten, exactly
+-- as in `throughCaller`, and the carve underneath changes none of it.
+example : tailEnv g3Caller
+  [("z", .bot), ("b", .bot), ("e", .bot), ("y", .sym 0)] = true := by native_decide
+
+-- EXECUTING: the write really landed, in the carved slot.
+example : runY g3Caller == some (varr [3, 7, 2]) := by native_decide
 
 /-! ## G4 — THE COMPOSITE `get_mut` SHAPE
 
@@ -272,13 +324,13 @@ def g4Lit : Term := prog{
   let s = Arr(Cons(1, Nil), Cons(2, Nil), Nil);
   let y = s;
   () }
-#eval why g4Lit
-#eval whyExec g4Lit
+example : progOk g4Lit = true := by native_decide
+example : runY g4Lit == some (varrL [[1], [2], []]) := by native_decide
 
 def g4LitTy : Term := prog{
   fn TakeSlots (s : &mut (Array 3 (List Nat))) -> Unit { () };
   () }
-#eval why g4LitTy
+example : progOk g4LitTy = true := by native_decide
 
 /-! ### G4.b — carve a cell out of an array of lists -/
 
@@ -289,7 +341,7 @@ def g4Carve : Term := prog{
     let r = &m (*s)[2 ; ..];
     () };
   () }
-#eval why g4Carve
+example : progOk g4Carve = true := by native_decide
 
 /-! ### G4.c — the list reborrow INSIDE the carved cell (no call, no return) -/
 
@@ -299,7 +351,7 @@ def g4Reborrow : Term := prog{
     let bk = &m (*c)[0];
     () };
   () }
-#eval why g4Reborrow
+example : progOk g4Reborrow = true := by native_decide
 
 /-! ### G4.d — WRITE through the two-layer borrow, locally (still no return) -/
 
@@ -311,7 +363,7 @@ def g4LocalWrite : Term := prog{
     *bk := Cons(9, t);
     () };
   () }
-#eval why g4LocalWrite
+example : progOk g4LocalWrite = true := by native_decide
 
 /-! ### G4.e — RETURN the two-layer borrow: carve, then element-of-array reborrow.
 
@@ -324,7 +376,7 @@ def g4Ret2 : Term := prog{
     let bk = &m (*c)[0];
     bk };
   () }
-#eval why g4Ret2
+example : progOk g4Ret2 = true := by native_decide
 
 /-! ### G4.f — three layers: carve, element-of-array reborrow, then the LIST walk.
 
@@ -340,7 +392,9 @@ def g4Ret3Place : Term := withNth prog{
     let bk = &m (*c)[0];
     Nth(bk, i, p) };
   () }
-#eval why g4Ret3Place
+-- REJECTED, and NOT for any reason this section is about — see the bisection below.
+example : progRejects g4Ret3Place "the place was never carved there" = true := by
+  native_decide
 
 /-! ### G4.g — CALLER for the three-layer return, both sides asserted -/
 
@@ -356,12 +410,12 @@ def g4Caller : Term := withNth prog{
   *e := 8;
   let y = z;
   () }
-#eval why g4Caller
-#eval tailEnvs g4Caller
-#eval whyExec g4Caller
-#eval (match Dllbc.Tests.S9Diff.runExec g4Caller with
-       | .ok env => toString (env.lookup "y")
-       | .error e => "ERR " ++ e.take 300)
+example : progRejects g4Caller "the place was never carved there" = true := by
+  native_decide
+
+-- …while the MACHINE runs the whole thing and gets the right answer. The rejection
+-- is about a spelling in a TYPE, not about anything the program does.
+example : runY g4Caller == some (varrL [[1], [2, 8], []]) := by native_decide
 
 /-! ## The sibling-hole acceptance, chased to the caller
 
@@ -386,12 +440,18 @@ def holeCaller2 : Term := prog{
   *e := 7;
   let y = z;
   () }
-#eval why holeCaller2
-#eval tailEnvs holeCaller2
-#eval whyExec holeCaller2
-#eval (match Dllbc.Tests.S9Diff.runExec holeCaller2 with
-       | .ok env => toString (env.lookup "y")
-       | .error e => "ERR " ++ e.take 300)
+-- The caller CHECKS…
+example : progOk holeCaller2 = true := by native_decide
+-- …and the owner comes back a well-typed fresh σ : Array 3 Nat.
+example : tailEnv holeCaller2
+  [("z", .bot), ("b", .bot), ("e", .bot), ("y", .sym 0)] = true := by native_decide
+
+-- …but the machine hands back an array that is NOT a run of three naturals: leaf 0
+-- still holds the hole the callee left, and the segmentation never rejoined.
+-- (`arrOfV` succeeds only on a folded `Arr` of plain naturals.)
+example : ((runY holeCaller2).bind arrOfV).isNone = true := by native_decide
+-- It does RUN, so this is a divergence and not a stuck machine.
+example : (runY holeCaller2).isSome = true := by native_decide
 
 /-! ### Bisecting the sibling hole: is the RETURN what buys the exemption? -/
 
@@ -403,7 +463,7 @@ def holeNoRet : Term := prog{
     let t = (*l)[0 ; 1];
     () };
   () }
-#eval why holeNoRet
+example : progRejects holeNoRet "holds ⊥" = true := by native_decide
 
 -- Two parameters: the hole is left in `a2`, the returned borrow comes out of `a1`.
 -- If THIS is rejected, the exemption is per-parameter (and the finding is that it
@@ -415,7 +475,7 @@ def holeOtherParam : Term := prog{
     let e = &m (*a1)[1];
     e };
   () }
-#eval why holeOtherParam
+example : progRejects holeOtherParam "holds ⊥" = true := by native_decide
 
 -- …and the control: same two parameters, no hole anywhere.
 def holeOtherOk : Term := prog{
@@ -424,7 +484,7 @@ def holeOtherOk : Term := prog{
     let e = &m (*a1)[1];
     e };
   () }
-#eval why holeOtherOk
+example : progOk holeOtherOk = true := by native_decide
 
 /-! ### Bisecting G4.f: is it the RETURN, the CARVE, or the PLACE-TYPED BOUND? -/
 
@@ -433,7 +493,11 @@ def f1PlaceOnly : Term := prog{
   fn P1 (s : &mut (Array 3 (List Nat)), i : Nat, p : Le (S i) (Len ((*s)[1]))) -> Unit
     { () };
   () }
-#eval why f1PlaceOnly
+-- THE HEADLINE OF THE BISECTION: no carve, no return, no body at all — and the
+-- parameter type alone is refused.
+example : progRejects f1PlaceOnly
+  "array: no segment at [S Z ; S Z] in σ0 (the place was never carved there)"
+  = true := by native_decide
 
 -- (2) The place-typed parameter PLUS the carve at the same index. No return.
 def f2PlaceCarve : Term := prog{
@@ -441,7 +505,8 @@ def f2PlaceCarve : Term := prog{
     let c = &m (*s)[1 ; 1];
     () };
   () }
-#eval why f2PlaceCarve
+example : progRejects f2PlaceCarve "the place was never carved there" = true := by
+  native_decide
 
 -- (3) The carve at a DIFFERENT index from the one the type mentions.
 def f3PlaceCarveElsewhere : Term := prog{
@@ -449,7 +514,10 @@ def f3PlaceCarveElsewhere : Term := prog{
     let c = &m (*s)[1 ; 1];
     () };
   () }
-#eval why f3PlaceCarveElsewhere
+-- The index in the TYPE is the one that fails, not the one in the body: this
+-- rejection names `[Z ; S Z]`, the type's index, while the body carves at 1.
+example : progRejects f3PlaceCarveElsewhere
+  "array: no segment at [Z ; S Z] in σ0" = true := by native_decide
 
 -- (4) The place-typed parameter plus an ELEMENT borrow instead of a segment carve.
 def f4PlaceElem : Term := prog{
@@ -457,7 +525,8 @@ def f4PlaceElem : Term := prog{
     let bk = &m (*s)[1];
     () };
   () }
-#eval why f4PlaceElem
+example : progRejects f4PlaceElem "the place was never carved there" = true := by
+  native_decide
 
 -- (5) …and the same, RETURNING the element borrow — the three-layer shape with the
 -- carve replaced by a direct element borrow (`a[i]` is not `a[i ; 1]`, ¶2.1).
@@ -466,7 +535,8 @@ def f5PlaceElemRet : Term := withNth prog{
     let bk = &m (*s)[1];
     Nth(bk, i, p) };
   () }
-#eval why f5PlaceElemRet
+example : progRejects f5PlaceElemRet "the place was never carved there" = true := by
+  native_decide
 
 /-! ### The `aget` route — the surface `[i]` is a STATE operation, `aget` is the
       comptime former, and `Arrays` §(i.c) says it is "a legal neutral either way,
@@ -478,7 +548,7 @@ def f6AgetOnly : Term := prog{
          p : Le (S i) (Len (aget (List Nat) 3 1 (*s)))) -> Unit
     { () };
   () }
-#eval why f6AgetOnly
+example : progOk f6AgetOnly = true := by native_decide
 
 -- (7) …plus the carve.
 def f7AgetCarve : Term := prog{
@@ -488,7 +558,7 @@ def f7AgetCarve : Term := prog{
     let bk = &m (*c)[0];
     () };
   () }
-#eval why f7AgetCarve
+example : progOk f7AgetCarve = true := by native_decide
 
 -- (8) THE FULL SHAPE: carve, list reborrow, walk, return — with the `aget` bound.
 def f8AgetGetMut : Term := withNth prog{
@@ -498,7 +568,9 @@ def f8AgetGetMut : Term := withNth prog{
     let bk = &m (*c)[0];
     Nth(bk, i, p) };
   () }
-#eval why f8AgetGetMut
+-- The type reflects and the body checks; the CALL SITE is where it stops.
+example : progRejects f8AgetGetMut
+  "call: argument (σ17) does not have its parameter type" = true := by native_decide
 
 -- (9) …and the same with the direct element borrow in place of the carve.
 def f9AgetElem : Term := withNth prog{
@@ -507,7 +579,10 @@ def f9AgetElem : Term := withNth prog{
     let bk = &m (*s)[1];
     Nth(bk, i, p) };
   () }
-#eval why f9AgetElem
+-- …and with no carve in the function at all, the same failure — so the carve is
+-- not what loses the bound.
+example : progRejects f9AgetElem
+  "call: argument (σ17) does not have its parameter type" = true := by native_decide
 
 /-! ### What exactly is lost: does an element borrow's payload KNOW it is `aget i`?
 
@@ -522,7 +597,11 @@ def agetTransport : Term := prog{
     let h = (Refl : Id (List Nat) (aget (List Nat) 3 1 (old *s)) (*bk));
     () };
   () }
-#eval why agetTransport
+-- THE ANSWER: an element borrow's payload is a fresh σ, with no equation tying it
+-- to `aget i` of the array it came out of.
+example : progRejects agetTransport
+  "does not have its ascribed type (Id (aget (List Nat) (S (S (S Z))) (S Z) σ0) σ5)"
+  = true := by native_decide
 
 -- …and through the carve as well.
 def agetTransportCarve : Term := prog{
@@ -532,7 +611,11 @@ def agetTransportCarve : Term := prog{
     let h = (Refl : Id (List Nat) (aget (List Nat) 3 1 (old *s)) (*bk));
     () };
   () }
-#eval why agetTransportCarve
+-- The SAME σ names and the same message with the carve present, which is how we
+-- know the carve is not implicated.
+example : progRejects agetTransportCarve
+  "does not have its ascribed type (Id (aget (List Nat) (S (S (S Z))) (S Z) σ0) σ5)"
+  = true := by native_decide
 
 /-! ## The TOTAL route — `or_insert`, which needs no bounds proof at all
 
@@ -554,7 +637,7 @@ def orInsertL : Term := prog{
       Cons(hd, tl) => &m *hd
     } };
   () }
-#eval why orInsertL
+example : progOk orInsertL = true := by native_decide
 
 -- (b) …the same, composed under the carve: THE `get_mut` SHAPE, total.
 def orInsertA : Term := prog{
@@ -567,6 +650,215 @@ def orInsertA : Term := prog{
       Cons(hd, tl) => &m *hd
     } };
   () }
-#eval why orInsertA
+-- **THE PROBE'S ANSWER.** A returned borrow that crossed a CARVE and a list
+-- reborrow and a match peel, with no precondition to transport.
+example : progOk orInsertA = true := by native_decide
+
+/-! ### (c) The caller, both sides — the G3 pair, now over the composite shape -/
+
+def orInsertCaller : Term := prog{
+  fn OrInsertA (s : &mut (Array 3 (List Nat))) -> &mut Nat {
+    let c = &m (*s)[1 ; 1];
+    let bk = &m (*c)[0];
+    match bk {
+      Nil => { *bk := Cons(0, Nil);
+               match bk { Nil => (), Cons(hd, tl) => &m *hd } },
+      Cons(hd, tl) => &m *hd
+    } };
+  let z = Arr(Cons(1, Nil), Cons(2, Cons(3, Nil)), Nil);
+  let b = &m z;
+  let e = OrInsertA(b);
+  *e := 8;
+  let y = z;
+  () }
+example : progOk orInsertCaller = true := by native_decide
+example : tailEnv orInsertCaller
+  [("z", .bot), ("b", .bot), ("e", .bot), ("y", .sym 0)] = true := by native_decide
+-- The write landed at the head of the bucket in slot 1, and nowhere else.
+example : runY orInsertCaller == some (varrL [[1], [8, 3], []]) := by native_decide
+
+-- …and the branch that INSERTS: slot 1 empty, so the callee writes the cell and
+-- returns a borrow into what it just wrote.
+def orInsertCallerNil : Term := prog{
+  fn OrInsertA (s : &mut (Array 3 (List Nat))) -> &mut Nat {
+    let c = &m (*s)[1 ; 1];
+    let bk = &m (*c)[0];
+    match bk {
+      Nil => { *bk := Cons(0, Nil);
+               match bk { Nil => (), Cons(hd, tl) => &m *hd } },
+      Cons(hd, tl) => &m *hd
+    } };
+  let z = Arr(Cons(1, Nil), Nil, Nil);
+  let b = &m z;
+  let e = OrInsertA(b);
+  *e := 8;
+  let y = z;
+  () }
+example : progOk orInsertCallerNil = true := by native_decide
+example : runY orInsertCallerNil == some (varrL [[1], [8], []]) := by native_decide
+
+/-! ### (d) A SYMBOLIC slot index — which is what a hash actually gives you.
+
+    `quicksortA`'s cited three-way carve, with the bucket work on the middle cell. -/
+
+def orInsertS : Term := prog{
+  fn OrInsertS (n : Nat, k : Nat, jj : Nat, Heq : Id Nat n (Add k (S jj)),
+                s : &mut (Array n (List Nat))) -> &mut Nat {
+    let l = &m (*s)[Z ; k ; S jj | LeAdd k (S jj) | Heq];
+    let c = &m (*s)[k ; 1 ; jj];
+    let r = &m (*s)[S k ; ..];
+    let bk = &m (*c)[0];
+    match bk {
+      Nil => { *bk := Cons(0, Nil);
+               match bk { Nil => (), Cons(hd, tl) => &m *hd } },
+      Cons(hd, tl) => &m *hd
+    } };
+  () }
+example : progOk orInsertS = true := by native_decide
+
+def orInsertSCaller : Term := prog{
+  fn OrInsertS (n : Nat, k : Nat, jj : Nat, Heq : Id Nat n (Add k (S jj)),
+                s : &mut (Array n (List Nat))) -> &mut Nat {
+    let l = &m (*s)[Z ; k ; S jj | LeAdd k (S jj) | Heq];
+    let c = &m (*s)[k ; 1 ; jj];
+    let r = &m (*s)[S k ; ..];
+    let bk = &m (*c)[0];
+    match bk {
+      Nil => { *bk := Cons(0, Nil);
+               match bk { Nil => (), Cons(hd, tl) => &m *hd } },
+      Cons(hd, tl) => &m *hd
+    } };
+  let z = Arr(Cons(1, Nil), Cons(2, Cons(3, Nil)), Nil);
+  let b = &m z;
+  let e = OrInsertS(3, 1, 1, Refl, b);
+  *e := 8;
+  let y = z;
+  () }
+example : progOk orInsertSCaller = true := by native_decide
+example : runY orInsertSCaller == some (varrL [[1], [8, 3], []]) := by native_decide
+
+/-! ### (e) The RECURSIVE bucket walk — fuel-threaded, total, and it returns a
+      borrow it got back FROM ITS OWN RECURSIVE CALL. -/
+
+def withWalk (rest : Term) : Term := prog{
+  fn Walk [f] (f : Nat, v : &mut List Nat) -> &mut Nat {
+    match f {
+      Z => { *v := Cons(0, Nil);
+             match v { Nil => (), Cons(hd, tl) => &m *hd } },
+      S(f2) => match v {
+        Nil => { *v := Cons(0, Nil);
+                 match v { Nil => (), Cons(hd, tl) => &m *hd } },
+        Cons(hd, tl) => Walk(f2, &m *tl)
+      }
+    } };
+  %rest }
+example : progOk (withWalk prog{ () }) = true := by native_decide
+
+/-! ### (f) THE WHOLE THING — the recursive walk composed under the symbolic carve.
+
+    The returned borrow now crosses all three: a CARVE, a list reborrow, and an
+    inner call's loan group (`Walk`'s result is a borrow `GetMutOr` never took
+    itself). This is `get_mut`'s borrow structure, entire. -/
+
+def withGetMutOr (rest : Term) : Term := withWalk prog{
+  fn GetMutOr (n : Nat, k : Nat, jj : Nat, Heq : Id Nat n (Add k (S jj)), f : Nat,
+               s : &mut (Array n (List Nat))) -> &mut Nat {
+    let l = &m (*s)[Z ; k ; S jj | LeAdd k (S jj) | Heq];
+    let c = &m (*s)[k ; 1 ; jj];
+    let r = &m (*s)[S k ; ..];
+    let bk = &m (*c)[0];
+    Walk(f, bk) };
+  %rest }
+example : progOk (withGetMutOr prog{ () }) = true := by native_decide
+
+def getMutOrCaller : Term := withGetMutOr prog{
+  let z = Arr(Cons(1, Nil), Cons(2, Cons(3, Nil)), Nil);
+  let b = &m z;
+  let e = GetMutOr(3, 1, 1, Refl, 1, b);
+  *e := 8;
+  let y = z;
+  () }
+example : progOk getMutOrCaller = true := by native_decide
+example : tailEnv getMutOrCaller
+  [("z", .bot), ("b", .bot), ("e", .bot), ("y", .sym 0)] = true := by native_decide
+-- Fuel 1, so `Walk` descends one cell: the write lands at bucket 1's SECOND
+-- element, and the rest of the map is untouched.
+example : runY getMutOrCaller == some (varrL [[1], [2, 8], []]) := by native_decide
+
+/-! ## G5 — what a caller still knows, when the type packs its own invariant
+
+    The opacity is stated as a loss, and for FUNCTIONAL facts it is total: after
+    the group ends the owner is a fresh σ, so `*e := 8` is unprovable at the caller
+    and so is any frame fact about the slots nobody touched. §6.1's reason is that
+    `through` and `advance` share a signature and differ in exactly the claim a
+    precise release would make, so inferring one from a signature would be unsound.
+
+    But the fresh σ is minted **at the owed type**, and that is the whole of what
+    survives — so it is worth being precise about how much that is. If the map's
+    type PACKS its invariant, inhabiting the type IS the invariant, and the caller
+    gets it back for free at every boundary, with no declared-back mechanism and no
+    debt attached to the loan. Probed rather than asserted: below, a value whose
+    type carries a `Σ0`-packed sortedness proof is lent to a callee, recovered
+    after the group ends, and then passed to a function that DEMANDS the packed
+    type. If the recovered σ were merely "an array", the second call would fail. -/
+
+def g5Packed : Term := prog{
+  fn Bump (m : &mut (Σ (k : Nat) → Σ0 (H : Le k 3) → Unit)) -> Unit { () };
+  fn Needs (m : Σ (k : Nat) → Σ0 (H : Le k 3) → Unit) -> Unit { () };
+  let z = Pair(2, Pair((), ()));
+  let b = &m z;
+  Bump(b);
+  let y = z;
+  Needs(y);
+  () }
+-- The packed invariant crosses the boundary: `y` is a fresh σ, and it is a fresh σ
+-- AT THE PACKED TYPE, so `Needs` accepts it.
+example : progOk g5Packed = true := by native_decide
+
+/-- The control that makes it mean something: the SAME recovered σ handed to a
+    function demanding a STRONGER packed invariant. If the recovery carried no
+    dependent content — if it were merely "a pair" — this would pass too. -/
+def g5PackedBad : Term := prog{
+  fn Bump (m : &mut (Σ (k : Nat) → Σ0 (H : Le k 3) → Unit)) -> Unit { () };
+  fn NeedsOther (m : Σ (k : Nat) → Σ0 (H : Le k 1) → Unit) -> Unit { () };
+  let z = Pair(2, Pair((), ()));
+  let b = &m z;
+  Bump(b);
+  let y = z;
+  NeedsOther(y);
+  () }
+example : progRejects g5PackedBad
+  "call: argument (σ5) does not have its parameter type" = true := by native_decide
+
+/-! ### G5, stated
+
+    A caller that calls `get_mut`, writes through the borrow, and lets the group
+    end keeps exactly one thing: **the map is still a map**. If the map's type
+    packs its invariant — a `Σ` of the slots array with a `Σ0` well-hashedness
+    proof — then the fresh σ the group mints is minted at that type, and
+    inhabiting the type IS the invariant, so well-formedness survives the boundary
+    with no mechanism at all. The two probes above are that claim and its control:
+    the recovered σ satisfies the invariant its type declares, and does not satisfy
+    a stronger one. Nothing about this depends on `get_mut` in particular; it is
+    what §6.1's "release a fresh existential AT THE DECLARED TYPE" buys, and it is
+    why a packed representation is worth the packing.
+
+    Everything else is gone, and the loss is not partial. The caller cannot prove
+    the value it just wrote is in the map — `*e := 8` then `find(k) = 8` is exactly
+    the inference §6.2 forbids. Nor can it prove the FRAME: that the buckets it did
+    not touch are unchanged, that the map's size is what it was, that a key it
+    inserted three calls ago is still there. All of those are relations between the
+    fresh σ and the old one, and the whole content of opacity is the refusal to
+    state such a relation from a signature — §6.1's `through`/`advance` pair being
+    the proof that inferring one would be unsound.
+
+    So the split is clean, and it is the same split Aeneas's hashmap case study
+    draws: SAFETY and INVARIANT PRESERVATION are reachable today, because both are
+    properties of the post-state alone and a packed type states properties of the
+    post-state alone. FUNCTIONAL CORRECTNESS is not, because it is a relation, and
+    a relation needs the debt to travel with the loan rather than with the
+    signature — SUGGESTIONS.md's "borrow types re-founded: shape/contract split,
+    loan-attached debts", whose acceptance test (`split_at_mut` as an ordinary
+    library function) is the same missing capability seen from a different angle. -/
 
 end Dllbc.Tests.HmProbeGetmut
