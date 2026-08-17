@@ -1272,6 +1272,26 @@ def InvNTy : Term := prog{
   Π (C : Nat) → Π (L : Nat) → Π (N : Nat) → Π (Sl : Array C Bucket) →
     HMInv C L N Sl → Id Nat N (SizeA C Sl) }
 
+def InvLoad : Term := prog{
+  λ (C : Nat). λ (L : Nat). λ (N : Nat). λ (Sl : Array C Bucket).
+  λ (Hi : HMInv C L N Sl).
+    elim Hi return (λ (Q : Σ (Hc : Le (S Z) C).
+        Σ (Hs : SlotsOk C Z C Sl).
+        Σ (Hn : Id Nat N (SizeA C Sl)).
+          Id Nat L (Div (Mul C 4) 5)). Id Nat L (Div (Mul C 4) 5)) {
+      Pair (Hc) (Rest) =>
+        elim Rest return (λ (Q2 : Σ (Hs : SlotsOk C Z C Sl).
+            Σ (Hn : Id Nat N (SizeA C Sl)).
+              Id Nat L (Div (Mul C 4) 5)). Id Nat L (Div (Mul C 4) 5)) {
+          Pair (Hs) (Rest2) =>
+            elim Rest2 return (λ (Q3 : Σ (Hn : Id Nat N (SizeA C Sl)).
+                Id Nat L (Div (Mul C 4) 5)). Id Nat L (Div (Mul C 4) 5)) {
+              Pair (Hn) (Rest3) => Rest3 } } } }
+def InvLoadTy : Term := prog{
+  Π (C : Nat) → Π (L : Nat) → Π (N : Nat) → Π (Sl : Array C Bucket) →
+    HMInv C L N Sl → Id Nat L (Div (Mul C 4) 5) }
+
+example : chkL InvLoad InvLoadTy = true := by native_decide
 example : chkL InvCap InvCapTy = true := by native_decide
 example : chkL InvSlots InvSlotsTy = true := by native_decide
 example : chkL InvN InvNTy = true := by native_decide
@@ -2053,6 +2073,344 @@ example : progOk (insertSlotsU (isRet isSize (prog{
     rather than through the body. -/
 example : progOk (insertSlotsU isHonest prog{ Unit } .unit) = false := by native_decide
 
+
+/-! ## 11c. PROBE — can a fresh invariant be WRITTEN through the pack? -/
+
+-- (a) Write back the invariant unchanged. If this is refused, the wrapper route dies.
+#eval chkProg (slotOfP prog{
+  fn P9 (self : &mut HMapT) -> Unit {
+    let Pair(cap, Pair(load, Pair(n, Pair(slots, Hinv)))) = self;
+    let c = *cap;
+    *cap := c;
+    let Lv = *load;
+    let Nv = *n;
+    let Sv = *slots;
+    let Hi = *Hinv;
+    *Hinv := Hi;
+    () };
+  () })
+
+-- (b) …and REBUILT from its projected clauses rather than copied.
+#eval chkProg (slotOfP prog{
+  fn P10 (self : &mut HMapT) -> Unit {
+    let Pair(cap, Pair(load, Pair(n, Pair(slots, Hinv)))) = self;
+    let c = *cap;
+    *cap := c;
+    let Lv = *load;
+    let Nv = *n;
+    let Sv = *slots;
+    let Hi = *Hinv;
+    *Hinv := Pair(InvCap c Lv Nv Sv Hi,
+              Pair(InvSlots c Lv Nv Sv Hi,
+              Pair(InvN c Lv Nv Sv Hi, Refl)));
+    () };
+  () })
+
+-- (c) Can the count be written too, from a value the body computed?
+#eval chkProg (slotOfP prog{
+  fn P11 (self : &mut HMapT) -> Unit {
+    let Pair(cap, Pair(load, Pair(n, Pair(slots, Hinv)))) = self;
+    let c = *cap;
+    *cap := c;
+    let nv = *n;
+    *n := nv;
+    () };
+  () })
+
+-- (d) The whole pack out and back, destructured as an OWNED value.
+#eval chkProg (slotOfP prog{
+  fn P12 (self : &mut HMapT) -> Unit {
+    let hm = *self;
+    let Pair(c, Pair(l, Pair(nn, Pair(sa, Hi)))) = hm;
+    *self := Pair(c, Pair(l, Pair(nn, Pair(sa, Hi))));
+    () };
+  () })
+
+-- (d') …with the invariant REBUILT from lemma applications rather than moved as a
+--      bare comptime binder, which is how `New` builds its pack.
+#eval chkProg (slotOfP prog{
+  fn P12b (self : &mut HMapT) -> Unit {
+    let hm = *self;
+    let Pair(c, Pair(l, Pair(nn, Pair(sa, Hi)))) = hm;
+    let Sv = sa;
+    let Cv = c;
+    let Lv = l;
+    let Nv = nn;
+    *self := Pair(c, Pair(l, Pair(nn, Pair(sa,
+               Pair(InvCap Cv Lv Nv Sv Hi,
+               Pair(InvSlots Cv Lv Nv Sv Hi,
+               Pair(InvN Cv Lv Nv Sv Hi, InvLoad Cv Lv Nv Sv Hi)))))));
+    () };
+  () })
+
+-- (d'') …and the same through the DESTRUCTURED-borrow route, where the comptime
+--       component is written by rebuilding rather than by assignment.
+#eval chkProg (slotOfP prog{
+  fn P12c (self : &mut HMapT) -> Unit {
+    let Pair(cap, Pair(load, Pair(n, Pair(slots, Hinv)))) = self;
+    let c = *cap;
+    *cap := c;
+    let Lv = *load;
+    let Nv = *n;
+    let Sv = *slots;
+    let Hi = *Hinv;
+    *Hinv := Pair(InvCap c Lv Nv Sv Hi,
+             Pair(InvSlots c Lv Nv Sv Hi,
+             Pair(InvN c Lv Nv Sv Hi, Refl)));
+    () };
+  () })
+
+-- (f) The by-value shape: consume a pack and return a fresh one, which is what `New`
+--     already does and therefore the shape known to be writable.
+#eval chkProg (slotOfP prog{
+  fn P14 (hm : HMapT) -> HMapT {
+    let Pair(c, Pair(l, Pair(nn, Pair(sa, Hi)))) = hm;
+    let Sv = sa;
+    let Cv = c;
+    let Lv = l;
+    let Nv = nn;
+    Pair(c, Pair(l, Pair(nn, Pair(sa,
+      Pair(InvCap Cv Lv Nv Sv Hi,
+      Pair(InvSlots Cv Lv Nv Sv Hi,
+      Pair(InvN Cv Lv Nv Sv Hi, InvLoad Cv Lv Nv Sv Hi))))))) };
+  () })
+
+/-! ## 11d. `Insert` — the operation on the packed map
+
+    The wrapper, and the two things about it that were measured rather than designed.
+
+    **A comptime component cannot be written through.** `*Hinv := …` is refused —
+    `fence: 'Hinv' is a COMPTIME binder (capitalized — §6) and cannot be written
+    through (⇐)` — so the packed invariant cannot be UPDATED in place through a
+    destructured borrow, because updating it means writing a new proof and a comptime
+    component is erased. The way round is to take the WHOLE pack out and put a whole
+    new one back: `let hm = *self; … ; *self := Pair(…)`. That is accepted, with one
+    proviso found the hard way — a comptime BINDER still cannot be moved into the new
+    pack (`fence: 'Hi' … cannot be ⇒-moved`), so the invariant is rebuilt from lemma
+    APPLICATIONS (`InvCap`/`InvSlots`/`InvN`/`InvLoad` of the old one) rather than
+    copied. That is exactly what `New` does, arrived at from the other direction.
+
+    **The entry count is recomputed rather than maintained.** `SizeA`'s parameters are
+    comptime, so `let n1 = SizeA c sa` reads the array as KNOWLEDGE and consumes
+    nothing, and the pack's counting clause is then `Refl`. Aeneas maintains the count
+    incrementally and returns a bool from `insert_in_list` saying whether a binding was
+    added; recomputing is O(n) where theirs is O(1). That is a performance divergence
+    and not a correctness one — the caller-facing size conjunct below is proved to the
+    same statement either way — and it is on the ledger. -/
+
+/-! ### Projecting `InsertSlots`' result
+
+    A nested `Σ0` chain cannot be destructured in a body at all, and the two rejections
+    say why in order: a nested pattern mints a LOWERCASE intermediate binder for the
+    first `Σ0`'s tail ("arm binder '§p27' is lowercase … but the component it binds is
+    COMPTIME"), and naming that binder capital instead moves the failure to the match
+    itself ("'Rest1' is a COMPTIME binder … and cannot be the scrutinee of a runtime
+    match"). §6's one caveat — a proof you MATCH on must live at a lowercase name —
+    bites here with no lowercase name available.
+
+    ArraySort's single-level `Σ0 (Hs : …). Π …` destructures fine, because its tail is
+    used whole and never matched. A three-conjunct ensures needs projections instead,
+    and these are `InvCap`'s shape with the chain written out. -/
+
+def IsP1 : Term := prog{
+  λ (Cap : Nat). λ (Sn : Array Cap Bucket). λ (Sv : Array Cap Bucket).
+  λ (Key : Nat). λ (Val : Nat). λ (I : Nat).
+  λ (Q : Σ0 (Hs2 : SlotsOk Cap Z Cap Sn).
+         Σ0 (Hsz : Id Nat (SizeA Cap Sn)
+              (boolRec (λ (W : Bool). Nat) (S (SizeA Cap Sv)) (SizeA Cap Sv)
+                 (IsNoneO Nat (FindL Key (AgetB Cap Sv I))))).
+           Π (q : Nat) → Id (Opt Nat) (FindL q (AgetB Cap Sn (Mod q Cap)))
+                (boolRec (λ (W : Bool). Opt Nat) (Some Nat Val)
+                   (FindL q (AgetB Cap Sv (Mod q Cap))) (Eqb q Key))).
+    elim Q return (λ (Qz : Σ0 (Hs2 : SlotsOk Cap Z Cap Sn).
+         Σ0 (Hsz : Id Nat (SizeA Cap Sn)
+              (boolRec (λ (W : Bool). Nat) (S (SizeA Cap Sv)) (SizeA Cap Sv)
+                 (IsNoneO Nat (FindL Key (AgetB Cap Sv I))))).
+           Π (q : Nat) → Id (Opt Nat) (FindL q (AgetB Cap Sn (Mod q Cap)))
+                (boolRec (λ (W : Bool). Opt Nat) (Some Nat Val)
+                   (FindL q (AgetB Cap Sv (Mod q Cap))) (Eqb q Key))).
+        SlotsOk Cap Z Cap Sn) { Pair (A) (B) => A } }
+
+def IsP2 : Term := prog{
+  λ (Cap : Nat). λ (Sn : Array Cap Bucket). λ (Sv : Array Cap Bucket).
+  λ (Key : Nat). λ (Val : Nat). λ (I : Nat).
+  λ (Q : Σ0 (Hs2 : SlotsOk Cap Z Cap Sn).
+         Σ0 (Hsz : Id Nat (SizeA Cap Sn)
+              (boolRec (λ (W : Bool). Nat) (S (SizeA Cap Sv)) (SizeA Cap Sv)
+                 (IsNoneO Nat (FindL Key (AgetB Cap Sv I))))).
+           Π (q : Nat) → Id (Opt Nat) (FindL q (AgetB Cap Sn (Mod q Cap)))
+                (boolRec (λ (W : Bool). Opt Nat) (Some Nat Val)
+                   (FindL q (AgetB Cap Sv (Mod q Cap))) (Eqb q Key))).
+    elim Q return (λ (Qz : Σ0 (Hs2 : SlotsOk Cap Z Cap Sn).
+         Σ0 (Hsz : Id Nat (SizeA Cap Sn)
+              (boolRec (λ (W : Bool). Nat) (S (SizeA Cap Sv)) (SizeA Cap Sv)
+                 (IsNoneO Nat (FindL Key (AgetB Cap Sv I))))).
+           Π (q : Nat) → Id (Opt Nat) (FindL q (AgetB Cap Sn (Mod q Cap)))
+                (boolRec (λ (W : Bool). Opt Nat) (Some Nat Val)
+                   (FindL q (AgetB Cap Sv (Mod q Cap))) (Eqb q Key))).
+        Id Nat (SizeA Cap Sn)
+          (boolRec (λ (W : Bool). Nat) (S (SizeA Cap Sv)) (SizeA Cap Sv)
+             (IsNoneO Nat (FindL Key (AgetB Cap Sv I))))) {
+      Pair (A) (B) =>
+        elim B return (λ (Bz : Σ0 (Hsz : Id Nat (SizeA Cap Sn)
+              (boolRec (λ (W : Bool). Nat) (S (SizeA Cap Sv)) (SizeA Cap Sv)
+                 (IsNoneO Nat (FindL Key (AgetB Cap Sv I))))).
+           Π (q : Nat) → Id (Opt Nat) (FindL q (AgetB Cap Sn (Mod q Cap)))
+                (boolRec (λ (W : Bool). Opt Nat) (Some Nat Val)
+                   (FindL q (AgetB Cap Sv (Mod q Cap))) (Eqb q Key))).
+            Id Nat (SizeA Cap Sn)
+              (boolRec (λ (W : Bool). Nat) (S (SizeA Cap Sv)) (SizeA Cap Sv)
+                 (IsNoneO Nat (FindL Key (AgetB Cap Sv I))))) {
+          Pair (C) (D) => C } } }
+
+def IsP3 : Term := prog{
+  λ (Cap : Nat). λ (Sn : Array Cap Bucket). λ (Sv : Array Cap Bucket).
+  λ (Key : Nat). λ (Val : Nat). λ (I : Nat).
+  λ (Q : Σ0 (Hs2 : SlotsOk Cap Z Cap Sn).
+         Σ0 (Hsz : Id Nat (SizeA Cap Sn)
+              (boolRec (λ (W : Bool). Nat) (S (SizeA Cap Sv)) (SizeA Cap Sv)
+                 (IsNoneO Nat (FindL Key (AgetB Cap Sv I))))).
+           Π (q : Nat) → Id (Opt Nat) (FindL q (AgetB Cap Sn (Mod q Cap)))
+                (boolRec (λ (W : Bool). Opt Nat) (Some Nat Val)
+                   (FindL q (AgetB Cap Sv (Mod q Cap))) (Eqb q Key))).
+    elim Q return (λ (Qz : Σ0 (Hs2 : SlotsOk Cap Z Cap Sn).
+         Σ0 (Hsz : Id Nat (SizeA Cap Sn)
+              (boolRec (λ (W : Bool). Nat) (S (SizeA Cap Sv)) (SizeA Cap Sv)
+                 (IsNoneO Nat (FindL Key (AgetB Cap Sv I))))).
+           Π (q : Nat) → Id (Opt Nat) (FindL q (AgetB Cap Sn (Mod q Cap)))
+                (boolRec (λ (W : Bool). Opt Nat) (Some Nat Val)
+                   (FindL q (AgetB Cap Sv (Mod q Cap))) (Eqb q Key))).
+        Π (q : Nat) → Id (Opt Nat) (FindL q (AgetB Cap Sn (Mod q Cap)))
+             (boolRec (λ (W : Bool). Opt Nat) (Some Nat Val)
+                (FindL q (AgetB Cap Sv (Mod q Cap))) (Eqb q Key))) {
+      Pair (A) (B) =>
+        elim B return (λ (Bz : Σ0 (Hsz : Id Nat (SizeA Cap Sn)
+              (boolRec (λ (W : Bool). Nat) (S (SizeA Cap Sv)) (SizeA Cap Sv)
+                 (IsNoneO Nat (FindL Key (AgetB Cap Sv I))))).
+           Π (q : Nat) → Id (Opt Nat) (FindL q (AgetB Cap Sn (Mod q Cap)))
+                (boolRec (λ (W : Bool). Opt Nat) (Some Nat Val)
+                   (FindL q (AgetB Cap Sv (Mod q Cap))) (Eqb q Key))).
+            Π (q : Nat) → Id (Opt Nat) (FindL q (AgetB Cap Sn (Mod q Cap)))
+                 (boolRec (λ (W : Bool). Opt Nat) (Some Nat Val)
+                    (FindL q (AgetB Cap Sv (Mod q Cap))) (Eqb q Key))) {
+          Pair (C) (D) => D } } }
+
+def insKey : Term := .var ⟨1, "key"⟩
+def insVal : Term := .var ⟨2, "val"⟩
+def insSelf : Term := .var ⟨3, "self"⟩
+
+def insFind : Term := prog{
+  Π (q : Nat) → Id (Opt Nat) (FindHM q (*%insSelf))
+                             (FindIns q %insKey %insVal (old *%insSelf)) }
+def insSize : Term := prog{
+  Id Nat (SizeHM (*%insSelf)) (SizeIns %insKey (old *%insSelf)) }
+
+def insRet (find size : Term) : Term := prog{ Σ0 (Hf2 : %find). %size }
+def insHonest : Term := insRet insFind insSize
+
+def insertU (sret rest : Term) : Term := insertSlotsP (slotOfP prog{
+  fn Insert (fuel : Nat, key : Nat, val : Nat, self : &mut HMapT,
+             Hf : Le (SizeHM (*self)) fuel) -> %sret {
+    let hm = *self;
+    let Pair(c, Pair(l, Pair(nn, Pair(sa, Hi)))) = hm;
+    let Cv = c;
+    let Lv = l;
+    let Nv = nn;
+    let Sv = sa;
+    let Pair(i, Pair(r, Pair(Hix, Heq))) = SlotOf(key, c, InvCap Cv Lv Nv Sv Hi);
+    -- Split rather than nested: the first `Σ0`'s TAIL is comptime, and a nested
+    -- pattern mints a lowercase intermediate binder for it, which the mode law
+    -- refuses ("arm binder '§p27' is lowercase … but the component it binds is
+    -- COMPTIME").
+    let q1 =
+      InsertSlots(fuel, c, i, r, Heq, key, val,
+                  IdSym Nat i (Mod key Cv) Hix,
+                  &m sa, InvSlots Cv Lv Nv Sv Hi,
+                  LeRwL fuel Nv (SizeA Cv Sv) (InvN Cv Lv Nv Sv Hi) Hf);
+    let n1 = SizeA c sa;
+    let Sn = sa;
+    let Iv = i;
+    let Key0 = key;
+    let Val0 = val;
+    *self := Pair(c, Pair(l, Pair(n1, Pair(sa,
+               Pair(InvCap Cv Lv Nv Sv Hi,
+               Pair(IsP1 Cv Sn Sv Key0 Val0 Iv q1,
+               Pair(Refl, InvLoad Cv Lv Nv Sv Hi)))))));
+    Pair(IsP3 Cv Sn Sv Key0 Val0 Iv q1,
+         IdTrans Nat
+           (SizeA Cv Sn)
+           (boolRec (λ (W : Bool). Nat) (S Nv) Nv
+              (IsNoneO Nat (FindL Key0 (AgetB Cv Sv Iv))))
+           (boolRec (λ (W : Bool). Nat) (S Nv) Nv
+              (IsNoneO Nat (FindL Key0 (AgetB Cv Sv (Mod Key0 Cv)))))
+           (IdTrans Nat
+              (SizeA Cv Sn)
+              (boolRec (λ (W : Bool). Nat)
+                 (S (SizeA Cv Sv)) (SizeA Cv Sv)
+                 (IsNoneO Nat (FindL Key0 (AgetB Cv Sv Iv))))
+              (boolRec (λ (W : Bool). Nat) (S Nv) Nv
+                 (IsNoneO Nat (FindL Key0 (AgetB Cv Sv Iv))))
+              (IsP2 Cv Sn Sv Key0 Val0 Iv q1)
+              (IdCongr Nat Nat
+                 (λ (Zz : Nat). boolRec (λ (W : Bool). Nat) (S Zz) Zz
+                                  (IsNoneO Nat (FindL Key0 (AgetB Cv Sv Iv))))
+                 (SizeA Cv Sv) Nv
+                 (IdSym Nat Nv (SizeA Cv Sv) (InvN Cv Lv Nv Sv Hi))))
+           (IdCongr Nat Nat
+              (λ (Zz : Nat). boolRec (λ (W : Bool). Nat) (S Nv) Nv
+                               (IsNoneO Nat (FindL Key0 (AgetB Cv Sv Zz))))
+              Iv (Mod Key0 Cv) Hix)) };
+  %rest })
+
+/-- **`Insert` on the packed map, with both of the problem statement's conjuncts.**
+    The pointwise find equation is `InsertSlots`' own, verbatim: `FindHM q (*self)`
+    unfolds through `HmRec` on the literal pack to `FindL q (AgetB c sa (Mod q c))`,
+    which is exactly what the callee returned. The size conjunct is three rewrites:
+    the recomputed count, the old count from the packed invariant, and the slot index
+    back to `Mod key cap`. -/
+example : progOk (insertU insHonest prog{ () }) = true := by native_decide
+
+/-- The end-to-end caller — `New` then `Insert` — is REFUSED, and by the SAME wall the
+    two-insert bucket caller hits in §12: `Le (SizeHM (*self)) fuel` at a map the
+    caller received from a call is a stuck `natRec` under `Le`, and no `unit` inhabits
+    it. `New` does return `Id Nat (SizeHM result) Z`, which would discharge it — but
+    reading that component out of `New`'s `Σ0` in a BODY is the projection problem
+    again, and the pure projection needed is one more lemma of the `IsP1` family.
+    Pinned rather than fixed, so that closing it goes red here. -/
+example : progRejects (newP (insertU insHonest prog{
+  let Pair(h, Hnew) = New(4, unit);
+  let hb = &m h;
+  Insert(8, 5, 50, hb, unit);
+  let y = h;
+  () })) "does not have its parameter type" = true := by native_decide
+
+/-! ### `Insert`'s twins -/
+
+-- FIND lied onto the entry pack: the exit view claimed to be the entry view.
+example : progOk (insertU (insRet (prog{
+  Π (q : Nat) → Id (Opt Nat) (FindHM q (old *%insSelf))
+                             (FindIns q %insKey %insVal (old *%insSelf)) }) insSize)
+  .unit) = false := by native_decide
+
+-- FIND with the model update dropped: the map claimed unchanged.
+example : progOk (insertU (insRet (prog{
+  Π (q : Nat) → Id (Opt Nat) (FindHM q (*%insSelf)) (FindHM q (old *%insSelf)) }) insSize)
+  .unit) = false := by native_decide
+
+-- SIZE never bumped.
+example : progOk (insertU (insRet insFind
+  (prog{ Id Nat (SizeHM (*%insSelf)) (SizeHM (old *%insSelf)) })) .unit) = false := by
+  native_decide
+
+-- SIZE always bumped.
+example : progOk (insertU (insRet insFind
+  (prog{ Id Nat (SizeHM (*%insSelf)) (S (SizeHM (old *%insSelf))) })) .unit) = false := by
+  native_decide
+
+-- SIZE decided by the wrong key.
+example : progOk (insertU (insRet insFind
+  (prog{ Id Nat (SizeHM (*%insSelf)) (SizeIns (S %insKey) (old *%insSelf)) })) .unit)
+    = false := by native_decide
 
 /-! ## 12. The executing differential
 
