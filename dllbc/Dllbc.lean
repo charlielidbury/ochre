@@ -18,6 +18,7 @@ import Dllbc.Tests.ArraySort
 import Dllbc.Tests.Functions
 import Dllbc.Tests.Programs
 import Dllbc.Tests.AuditExemption
+import Dllbc.Tests.AuditFold
 import Dllbc.Tests.SigmaCopy
 import Dllbc.Tests.EagerRec
 import Dllbc.Tests.Ledger

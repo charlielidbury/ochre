@@ -1462,12 +1462,13 @@ end
 def borrowParamIds (telescope : List (String × Term)) : List Nat :=
   telescope.enum.filterMap (fun (i, p) => match p.2 with | .borrowT _ _ _ => some i | _ => none)
 
-/-- What a built result component contributes to the dependent tail's context:
-    its knowledge. A borrow node surrenders its payload; anything else is already
-    a leaf. -/
-def subsKnowledge : Val → Term
+/-- What a value contributes to a dependent tail's context: its knowledge. A
+    borrow node surrenders its payload; anything else is already a leaf.
+
+    Stated on the FOLDED value (`subsKnowledge` below) — see there. -/
+def subsKnowledgeRaw : Val → Term
   | .know t => t
-  | .borrowM _ p => subsKnowledge p
+  | .borrowM _ p => subsKnowledgeRaw p
   -- **A closure COOKS here** (M32 R2), and this is the seam R1 named and
   -- predicted the third case of: a closure `(ρ, body)` is a value and not a
   -- `Term`, so the only way to hand one to a type — a dependent field, a Π
@@ -1476,12 +1477,38 @@ def subsKnowledge : Val → Term
   -- receives is the body under its capture, which the `Pure.nf` every one of
   -- these call sites already applies then normalizes.
   | .closure ρ node _ => Term.underRho (Val.rhoTerms ρ) node
-  -- A component that is neither: a node holding state, which no return type in
-  -- this calculus can produce (`retMixesBorrow`). It contributes a name that
-  -- converts with nothing, so a type that reached for it would be rejected
-  -- rather than silently typed against a marker.
+  -- A component that is neither: a node holding state — a hole, a live loan, or a
+  -- carve the fold could not close. It contributes a name that converts with
+  -- nothing, so a type that reached for it is rejected rather than silently typed
+  -- against a marker.
   | _ => .const "@stateComponent"
   termination_by v => sizeOf v
+
+/-- What a value contributes to a dependent tail's context: its knowledge. A
+    borrow node surrenders its payload, a closure cooks, anything else is already
+    a leaf.
+
+    **A REJOINED CARVE contributes its `arrCat` spine**, and that is the whole of
+    `docs/14-packed-borrows.md`'s Gap A. A `§segs` node is STATE and stays state in
+    the store — `Val.ctor` refuses to collapse one (M32 R1) so that the borrow
+    machinery can see a carve — but a type asking what a component IS is asking a
+    knowledge question, and ¶1.3's ⇝ bridge is the one route from a carve to
+    knowledge. So the fold happens HERE, on the way into a type, and nothing is
+    written back: the carve in Ω is untouched and the live borrows stay live.
+
+    Without it, a `&mut (Σ0 (a : Array n T). P a)` whose array was carved three
+    ways and every borrow returned could not be re-typed at its exit audit — the
+    dependent tail was demanded at `P @stateComponent` while the entry clause
+    inhabited `P σ_entry`, even though the two arrays are definitionally equal (the
+    carve's own `refineSym` made them so). `Tests.AuditFold` is that program.
+
+    `arrFoldDeep` is TOTAL and folds only what it can: a segment list with a hole,
+    a live loan or an unfoldable body stays the state form it is and still lands on
+    `@stateComponent`. So this widens what can be typed by exactly the rejoined
+    case and leaves the suspended one refused, which is the scope the doc's Gap A
+    draws. `readC` already folds at its own comptime reading, so the two sites
+    agree rather than this being a new licence. -/
+def subsKnowledge (v : Val) : Term := subsKnowledgeRaw (Val.arrFoldDeep v)
 
 /-- Build a call's fresh result value from the (instantiated) return type, and
     collect the loans it ISSUES (§6.1). Each `&mut (τ ↝ S)` position mints a
