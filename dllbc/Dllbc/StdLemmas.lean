@@ -5381,4 +5381,29 @@ def OptElimDistribAtTy : Term := prog{
       (OptElim (boolRec (λ (W : Bool). Σ (b : Bool). OptP b Nat) (Some V) X Bz) (Opt Nat) Y Some)
       (boolRec (λ (W : Bool). Σ (b : Bool). OptP b Nat) (Some V) (OptElim X (Opt Nat) Y Some) Bz) }
 
+/-- The array-level Insert's fuel argument: the bucket `SlotOf` carves out contributes
+    at most the WHOLE map's entry count, so `Le (SizeHM (*self)) fuel` (Insert's own
+    externally-supplied fuel bound) is enough to satisfy `InsertInList`'s
+    `Le (LenE (*bucket)) fuel` premise. `LenE Bk ≤ TotalLenA(S R)(acons R Bk Hi)`
+    directly via `LeAdd` (`TotalLenA`'s Cons-arm fires on the acons-headed array by
+    ordinary iota reduction, R/Bk/Hi symbolic or not — no NatRw needed, unlike
+    `AllHashedACat`'s base case where the SYMBOLIC value sat where a CONSTRUCTOR was
+    expected); `≤ Add(TotalLenA I0 Lo)(...)` via `LeAddL`; then `LeRwR`+`IdSym`+
+    `TotalLenACat` folds that sum back into the one whole-array `TotalLenA` call. -/
+def LenLeTotal : Term := prog{
+  λ (I0 : Nat). λ (Lo : Array I0 Bucket). λ (R : Nat). λ (Bk : Bucket). λ (Hi : Array R Bucket).
+    LeRwR (LenE Bk)
+      (Add (TotalLenA I0 Lo) (TotalLenA (S R) (acons R Bk Hi)))
+      (TotalLenA (Add I0 (S R)) (arrCat I0 (S R) Lo (acons R Bk Hi)))
+      (IdSym Nat (TotalLenA (Add I0 (S R)) (arrCat I0 (S R) Lo (acons R Bk Hi)))
+                 (Add (TotalLenA I0 Lo) (TotalLenA (S R) (acons R Bk Hi)))
+                 (TotalLenACat I0 Lo (S R) (acons R Bk Hi)))
+      (LeTrans (LenE Bk) (TotalLenA (S R) (acons R Bk Hi))
+        (Add (TotalLenA I0 Lo) (TotalLenA (S R) (acons R Bk Hi)))
+        (LeAdd (LenE Bk) (TotalLenA R Hi))
+        (LeAddL (TotalLenA (S R) (acons R Bk Hi)) (TotalLenA I0 Lo))) }
+def LenLeTotalTy : Term := prog{
+  Π (I0 : Nat) → Π (Lo : Array I0 Bucket) → Π (R : Nat) → Π (Bk : Bucket) → Π (Hi : Array R Bucket) →
+    Le (LenE Bk) (TotalLenA (Add I0 (S R)) (arrCat I0 (S R) Lo (acons R Bk Hi))) }
+
 end Dllbc.StdLemmas
