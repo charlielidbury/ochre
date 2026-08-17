@@ -18,3 +18,4 @@ import Dllbc.Tests.ArraySort
 import Dllbc.Tests.Functions
 import Dllbc.Tests.Programs
 import Dllbc.Tests.Ledger
+import Dllbc.Tests.HmProbeMod
