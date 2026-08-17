@@ -15,6 +15,7 @@ import Dllbc.Tests.Boundaries
 import Dllbc.Tests.Arrays
 import Dllbc.Tests.Direct
 import Dllbc.Tests.ArraySort
+import Dllbc.Tests.Finite
 import Dllbc.Tests.Functions
 import Dllbc.Tests.Programs
 import Dllbc.Tests.Ledger
