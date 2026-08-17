@@ -491,19 +491,20 @@ end
     copy. `List`/`Array`/user types are data.
 
     **THE Σ CASE IS NEW (M34 sigma-copy)** and it is the one place this file's
-    doctrine moved. What it says: `Σ (x : A) → B` copies iff each of its two
-    positions copies, where a position carrying the `⇝` marker is EXEMPT because
-    it is erased — a comptime component costs nothing at runtime, so duplicating
-    it duplicates nothing. `Σ0 (n : Nat) → Le n MAX` — a machine integer written
-    as a refinement pack — is therefore Copy: the value half is a `Nat` and the
-    proof half is marked. `Σ (c : Nat) → &mut (Array c T)` is NOT: a borrow is
-    neither copyable nor erased, and duplicating exclusive access is unsound.
+    doctrine moved. What it says: `Σ (x : A). B` copies iff each of its two
+    positions copies, where an ERASED position — comptime-marked and erasure-bound,
+    `erasureBound` below — is exempt, because a position that costs nothing at
+    runtime duplicates nothing when the pack is copied. `Σ0 (n : Nat). Le n MAX` —
+    a machine integer written as a refinement pack — is therefore Copy: the value
+    half is a `Nat` and the proof half is erased. `Σ (c : Nat). &mut (Array c T)`
+    is NOT: a borrow is neither copyable nor erased, and duplicating exclusive
+    access is unsound.
 
     The dependent tail is decided with the binder **opaque**: `cod` still mentions
     `x`, nothing is substituted for it, and a tail whose kind cannot be settled
     without knowing the binder's value falls through to `false`. That is the same
     conservative default a σ with no `sctx` entry gets, and it is why
-    `Σ (n : Nat) → VecF Nat n` moves.
+    `Σ (n : Nat). VecF Nat n` moves.
 
     Fuel is what makes this terminate and what bounds the `whnf` at each
     component; a Σ nested deeper than the fuel answers MOVE, conservatively. -/
@@ -596,7 +597,7 @@ def packCompErased (fuel : Nat) (sctx : List (Nat × Term)) : Term → Bool
     "DEFERRED (until measured pain, per team-lead): tuple-of-copyables (a `Pair
     Nat Nat` as Copy, Rust-style) — a data ctor all of whose fields are
     index-kind stays a MOVE for now." The pain was measured — a machine integer
-    written as a refinement pack (`Σ0 (n : Nat) → Le n MAX`) is morally a scalar
+    written as a refinement pack (`Σ0 (n : Nat). Le n MAX`) is morally a scalar
     and cost a capture-before-consume staging at every reuse — so the amended
     doctrine is:
 
@@ -623,7 +624,7 @@ def indexKindT (fuel : Nat) (sctx : List (Nat × Term)) : Term → Bool
   -- free: the recursive call handles `Pair(n, Pair(h, unit))` without a case.
   -- A pack that HOLDS STATE never arrives here — `Val.ctor` only collapses a
   -- node to a knowledge leaf when every child is knowledge, so the slice pack
-  -- `Σ (c : Nat) → &mut (Array c T)` is a `node` and takes `indexKindV`'s
+  -- `Σ (c : Nat). &mut (Array c T)` is a `node` and takes `indexKindV`'s
   -- data answer below.
   | .ctorApp "Pair" [a, b] =>
     (packCompErased fuel sctx a || indexKindT fuel sctx a)
@@ -668,7 +669,7 @@ def indexKindV (fuel : Nat) (sctx : List (Nat × Term)) : Val → Bool
   -- what a constructor tree becomes when something inside it holds STATE — a
   -- borrow, a loan marker, a hole — because `Val.ctor` collapses to a `know`
   -- leaf only when every child is knowledge. So the M24 slice pack
-  -- `Σ (c : Nat) → &mut (Array c T)` reaches HERE and not the `Pair` rule above:
+  -- `Σ (c : Nat). &mut (Array c T)` reaches HERE and not the `Pair` rule above:
   -- its borrow component is neither copyable nor erased, and duplicating
   -- exclusive access would hand out two owners of the same payload. The rule
   -- costs nothing to state because the representation already states it.

@@ -155,15 +155,7 @@ instead of moving: numbers, booleans, and — importantly — **proofs**. Data (
 arrays, anything with a list or an array inside it) always moves. So you can pass an
 index or a `Le` proof twice without thinking, but passing a list consumes it.
 
-**A pair copies when its parts do.** `Σ (x : A). B` is Copy exactly when each of its
-two positions is either Copy in its own right or *erased* — and a position is erased
-when the pair's type marks it comptime, which a capital binder does to the first
-component and `Σ0` does to the tail. So `Σ0 (n : Nat). Le n MAX`, the way you write a
-bounded machine integer, is Copy: a number and a proof you never pay for. `Σ (a :
-Nat). List Nat` is not, and neither is a slice `Σ (c : Nat). &mut (Array c T)` — a
-borrow is neither small nor erased, and copying one would hand out two owners of the
-same memory. This is Rust's `#[derive(Copy)]` reached by reading the type rather than
-by declaring a trait.
+**A pair copies when its parts do.** `Σ (x : A). B` is Copy exactly when each of its two positions is either Copy in its own right or *erased*, and a position is erased when the pair's type marks it comptime — a capital binder marks the first component, `Σ0` marks the tail — and what the marked position holds is a proof rather than data. So `Σ0 (n : Nat). Le n MAX`, the way you write a bounded machine integer, is Copy: a number beside a bound you never pay for, and you can pass it to two calls the way Rust passes a `usize`. `Σ (a : Nat). List Nat` is not, and neither is a slice `Σ (c : Nat). &mut (Array c T)` — a borrow is neither small nor erased, and copying one would hand out two owners of the same memory. Marking a `List` comptime does not buy you a copy either: the marker says the component is erased, and a list is still a list at run time. This is Rust's `#[derive(Copy)]`, reached by reading the type rather than by declaring a trait.
 
 Capital bindings go one step further than copying: they are *never touched at all* — a
 citation of `Hfuel` reads knowledge and leaves nothing behind to consume, which is why

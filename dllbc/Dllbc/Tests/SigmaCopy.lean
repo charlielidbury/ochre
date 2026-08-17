@@ -21,9 +21,13 @@ finite-ints library is built on) is a runtime number and an erased proof, which 
 morally a scalar and was costing a capture-before-consume staging at every reuse.
 
 **The amended rule, in one sentence: a Σ pack copies iff every component is
-copyable or erased.** Erased means the producing Σ marked that position comptime —
-a capital binder marks the domain, `Σ0` marks the tail — and a marked position is
-free because it is erased, so duplicating it duplicates nothing at runtime.
+copyable or erased.** Erased means two things, and the second was learned here
+rather than designed: the producing Σ marked that position comptime — a capital
+binder marks the domain, `Σ0` marks the tail — AND the position is *erasure-bound*,
+which is index-kind or a type whose constructor set the machine does not know. The
+marker alone is the honest semantics and is not a fact both machines can read;
+§(iii)'s differential caught that as a program the checker accepted and the run got
+stuck on.
 
 Four things are pinned below, in order:
 
@@ -42,7 +46,7 @@ Four things are pinned below, in order:
 namespace Dllbc.Tests.SigmaCopy
 
 open Dllbc
-open Dllbc.StdLemmas (LeRefl LeTrans LeAdd LebTrueLe IdCongr IdSym LeRwL)
+open Dllbc.StdLemmas (LeTrans LeAdd LebTrueLe IdCongr IdSym LeRwL)
 
 /-! ## (i) The micro-battery — one binding, two consuming calls
 
@@ -95,28 +99,22 @@ example : progRejects sliceTwice "s#0 holds ⊥ (use-after-move" = true := by na
 
     `U MAX := Σ0 (n : Nat). Le n MAX` is the finite-ints lane's bounded machine
     integer: a runtime `Nat` and a comptime proof that it is in range. Under the
-    amended rule it is Copy — the value half is index-kind, the proof half is
-    marked by the `0` — which is the sentence "a `usize` is `Copy`" arriving in
-    DLLBC by way of the marker rather than by way of a trait. -/
+    amended rule it is Copy — the value half is index-kind, and the proof half is
+    marked by the `0` and erasure-bound, because `Le n MAX` under an opaque `n` is
+    a stuck spine whose constructor set the machine does not know. That is the
+    sentence "a `usize` is `Copy`" arriving in DLLBC by way of the type rather than
+    by way of a trait.
 
-/-- `U : Nat → Type`, ported from the finite-ints lane. -/
-def U : Term := prog{ λ (MAX : Nat). Σ0 (n : Nat). Le n MAX }
+    `Val`, the first projection, is ported from the lane and is all the library
+    this file needs. The lane's `U` and `Bnd` are not here: `U MAX` cannot be
+    written at an `elim` motive (the sugar reads the Σ's domain and family off the
+    binder's type syntactically, so the pack is respelled at every elimination),
+    and `Bnd` exists in the lane to STAGE a pack's bound before the call that
+    consumes it — which is the binding this feature removes. -/
 
-/-- The underlying `Nat`. The motive cannot be written `U MAX` — the `elim` sugar
-    reads the Σ's domain and family off the binder's type syntactically — so the
-    pack is respelled at every elimination, as it is in the lane. -/
 def Val : Term := prog{
   λ (MAX : Nat). λ (A : Σ0 (n : Nat). Le n MAX).
     elim A return (λ (Q : Σ0 (n : Nat). Le n MAX). Nat) { Pair (x) (h) => x } }
-def ValTy : Term := prog{ Π (MAX : Nat) → (Σ0 (n : Nat). Le n MAX) → Nat }
-
-/-- The bound, recovered from a pack — the dependent second projection. -/
-def Bnd : Term := prog{
-  λ (MAX : Nat). λ (A : Σ0 (n : Nat). Le n MAX).
-    elim A return (λ (Q : Σ0 (n : Nat). Le n MAX). Le (Val MAX Q) MAX) {
-      Pair (x) (h) => h } }
-def BndTy : Term := prog{
-  Π (MAX : Nat) → Π (A : Σ0 (n : Nat). Le n MAX) → Le (Val MAX A) MAX }
 
 /-- **THE NEEDLE MOVED, and this is the headline.** Ported VERBATIM from the
     finite-ints lane's `packTwice`, where the assertion reads
@@ -145,12 +143,13 @@ example : progOk nestedPackTwice = true := by native_decide
 
 /-! ### The two spellings that still MOVE, and why each is right
 
-    Both are one character from a pack that copies, and the rule reads the MARKER
-    rather than the type's inhabitants — which is what makes these decidable at
-    all, since `Le n MAX` under an opaque `n` is a stuck recursor spine with no
-    head to recognize (the ruling recorded in `Direct.lean`'s pain diary: a naive
+    Both are one character from a pack that copies, and both move because the rule
+    asks for the MARKER and never tries to work out from a type alone whether a
+    component is a proof. That second thing is what makes these decidable at all:
+    `Le n MAX` under an opaque `n` is a stuck recursor spine with no head to
+    recognize, and `Direct.lean`'s pain diary already ruled on it — a naive
     "stuck-recursor-to-`Type` ⇒ copy" is DEAD, because a σ typed by a stuck
-    `VecF Nat n` is that same shape and copying it copies a vector). -/
+    `VecF Nat n` is that same shape and copying it copies a vector. -/
 
 /-- **An UNMARKED proposition component moves.** `Σ (n : Nat). Le n 15` — the same
     pack as `U 15` with the `0` deleted — is a `Nat` and a RUNTIME proof, and a
@@ -284,8 +283,9 @@ example : (match runProgram packListTailOnce with
         needs none of this because `usize` is `Copy`.
 
     Four bindings pay that tax in the lane's body — `let cv = Val MAX capacity`,
-    `let gv = Val MAX growth`, `let ncv = Val MAX nc`, `let Hncb = Bnd MAX nc` —
-    and the version below has NONE of them. The guard's shape is ported whole:
+    `let gv = Val MAX growth`, `let ncv = Val MAX nc`, `let Hncb = Bnd MAX nc`
+    (the lane's `Bnd` is the pack's second projection) — and the version below has
+    NONE of them. The guard's shape is ported whole:
     an `if` whose condition is what licenses the arithmetic, a certified op whose
     return type says what its result IS (so the next operation's precondition can
     cite it), and a result that pairs the new capacity with the recomputed load.
