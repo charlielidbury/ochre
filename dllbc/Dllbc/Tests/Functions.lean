@@ -1341,11 +1341,10 @@ def splitSealed : Term := prog{
            Nil => botElim Unit hi,
            Cons(hd, tl) => {
              let y1 = Take i2 (*tl);
-             let p = Ih(&m *tl, hi);
-             match p { Pair(rr, q) => match q { Pair(H1, h2) => {
-               let c1 = IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
-                          (*tl) y1 H1;
-               Pair(rr, Pair(c1, h2)) } } } } } }) : %splitTy);
+             let Pair(rr, Pair(H1, h2)) = Ih(&m *tl, hi);
+             let c1 = IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
+                        (*tl) y1 H1;
+             Pair(rr, Pair(c1, h2)) } } }) : %splitTy);
   () }
 
 -- THE CONVERGENCE. ~~The declared function and the sealed recursor both check.~~
@@ -1389,11 +1388,10 @@ def splitSpecLie : Term := prog{
            Nil => botElim Unit hi,
            Cons(hd, tl) => {
              let y1 = Take i2 (*tl);
-             let p = Ih(&m *tl, hi);
-             match p { Pair(rr, q) => match q { Pair(H1, h2) => {
-               let c1 = IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
-                          (*tl) y1 H1;
-               Pair(rr, Pair(c1, h2)) } } } } } }) : %splitTyLie);
+             let Pair(rr, Pair(H1, h2)) = Ih(&m *tl, hi);
+             let c1 = IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
+                        (*tl) y1 H1;
+             Pair(rr, Pair(c1, h2)) } } }) : %splitTyLie);
   () }
 -- Caught on the BASE arm (`Pair σ (Pair Refl Refl)` against `Id Nil σ`), exactly
 -- where `S23Direct` says its spec lies are caught.
@@ -1415,11 +1413,10 @@ def splitBodyLie : Term := prog{
            Nil => botElim Unit hi,
            Cons(hd, tl) => {
              let y1 = Take i2 (*tl);
-             let p = Ih(&m *tl, hi);
-             match p { Pair(rr, q) => match q { Pair(H1, h2) => {
-               let c1 = IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
-                          (*tl) y1 H1;
-               Pair(rr, Pair(H1, h2)) } } } } } }) : %splitTy);
+             let Pair(rr, Pair(H1, h2)) = Ih(&m *tl, hi);
+             let c1 = IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
+                        (*tl) y1 H1;
+             Pair(rr, Pair(H1, h2)) } } }) : %splitTy);
   () }
 -- Caught on the STEP arm — the one `ih` lives in, and the one the spec lies leave
 -- untested. Same division of labour as the declared function's four twins, which
@@ -1584,11 +1581,10 @@ def j1 : Term := prog{
            Nil => botElim Unit hi,
            Cons(hd, tl) => {
              let y1 = Take i2 (*tl);
-             let p = Ih(&m *tl, hi);
-             match p { Pair(rr, q) => match q { Pair(H1, h2) => {
-               let c1 = IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
-                          (*tl) y1 H1;
-               Pair(rr, Pair(c1, h2)) } } } } } }) : %splitTy);
+             let Pair(rr, Pair(H1, h2)) = Ih(&m *tl, hi);
+             let c1 = IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
+                        (*tl) y1 H1;
+             Pair(rr, Pair(c1, h2)) } } }) : %splitTy);
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &m x;
   let r = F(1, b, ());

@@ -1538,7 +1538,7 @@ def tail0Upper : Term := prog{
   fn Zap0 (v : &mut List Nat) -> Σ0 (k : Nat). Id (List Nat) (*%s0V) Nil
     { *v := Nil; Pair(Z, Refl) };
   fn Use0 (w : &mut List Nat) -> Unit
-    { let r = Zap0(&m *w); match r { Pair(k2, H2) => () } };
+    { let Pair(k2, H2) = Zap0(&m *w); () };
   () }
 example : progOk tail0Upper = true := by native_decide
 
@@ -1547,7 +1547,7 @@ def tail0Lower : Term := prog{
   fn Zap0 (v : &mut List Nat) -> Σ0 (k : Nat). Id (List Nat) (*%s0V) Nil
     { *v := Nil; Pair(Z, Refl) };
   fn Use0 (w : &mut List Nat) -> Unit
-    { let r = Zap0(&m *w); match r { Pair(k2, h2) => () } };
+    { let Pair(k2, h2) = Zap0(&m *w); () };
   () }
 example : progRejects tail0Lower "Capitalise the arm binder" = true := by native_decide
 
@@ -1556,7 +1556,7 @@ def tailRunLower : Term := prog{
   fn Zap (v : &mut List Nat) -> Σ (k : Nat). Id (List Nat) (*%s0V) Nil
     { *v := Nil; Pair(Z, Refl) };
   fn Use (w : &mut List Nat) -> Unit
-    { let r = Zap(&m *w); match r { Pair(k2, h2) => () } };
+    { let Pair(k2, h2) = Zap(&m *w); () };
   () }
 example : progOk tailRunLower = true := by native_decide
 
@@ -1567,7 +1567,7 @@ def tailRunUpper : Term := prog{
   fn Zap (v : &mut List Nat) -> Σ (k : Nat). Id (List Nat) (*%s0V) Nil
     { *v := Nil; Pair(Z, Refl) };
   fn Use (w : &mut List Nat) -> Unit
-    { let r = Zap(&m *w); match r { Pair(k2, H2) => () } };
+    { let Pair(k2, H2) = Zap(&m *w); () };
   () }
 example : progRejects tailRunUpper "lower-case the arm binder" = true := by native_decide
 
@@ -1580,8 +1580,8 @@ example : progRejects tailRunUpper "lower-case the arm binder" = true := by nati
 open Dllbc.StdLemmas in
 def erase0 : Term := prog{
   fn F0 (n : Nat) -> Σ0 (k : Nat). Le n n { let H0 = LeRefl n; Pair(n, H0) };
-  let r = F0(S(S(Z)));
-  match r { Pair(a, H) => { let y = a; () } } }
+  let Pair(a, H) = F0(S(S(Z)));
+  let y = a; () }
 example : progOk erase0 = true := by native_decide
 example : (match runProgram erase0 with
            | .ok env => (env.lookup "y") == some (Val.nat 2)
@@ -1815,12 +1815,10 @@ open Dllbc
     it, and `Pair` is the only member it does not decide. -/
 
 def armDataLower : Term := prog{
-  let l = Cons(Z, Nil);
-  match l { Nil => (), Cons(h, t) => () } }
+  match Cons(Z, Nil) { Nil => (), Cons(h, t) => () } }
 
 def armDataUpper : Term := prog{
-  let l = Cons(Z, Nil);
-  match l { Nil => (), Cons(H, t) => () } }
+  match Cons(Z, Nil) { Nil => (), Cons(H, t) => () } }
 
 example : progOk armDataLower = true := by native_decide
 example : progRejects armDataUpper "lower-case the arm binder" = true := by native_decide
@@ -1838,14 +1836,14 @@ def armCmpUpper : Term := prog{
   fn Zap (v : &mut List Nat) -> Σ (H : Id (List Nat) (*%armV) Nil). Unit
     { *v := Nil; Pair(Refl, unit) };
   fn Use (w : &mut List Nat) -> Unit
-    { let r = Zap(&m *w); match r { Pair(H2, u) => () } };
+    { let Pair(H2, u) = Zap(&m *w); () };
   () }
 
 def armCmpLower : Term := prog{
   fn Zap (v : &mut List Nat) -> Σ (H : Id (List Nat) (*%armV) Nil). Unit
     { *v := Nil; Pair(Refl, unit) };
   fn Use (w : &mut List Nat) -> Unit
-    { let r = Zap(&m *w); match r { Pair(h2, u) => () } };
+    { let Pair(h2, u) = Zap(&m *w); () };
   () }
 
 example : progOk armCmpUpper = true := by native_decide
@@ -1861,7 +1859,7 @@ def armRunLower : Term := prog{
   fn Zap (v : &mut List Nat) -> Σ (h : Id (List Nat) (*%armV) Nil). Unit
     { *v := Nil; Pair(Refl, unit) };
   fn Use (w : &mut List Nat) -> Unit
-    { let r = Zap(&m *w); match r { Pair(h2, u) => () } };
+    { let Pair(h2, u) = Zap(&m *w); () };
   () }
 
 example : progOk armRunLower = true := by native_decide

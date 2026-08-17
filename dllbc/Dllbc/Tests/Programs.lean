@@ -1059,10 +1059,8 @@ def swapCaller : Term := withSwapS01 prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &m x;
   SwapS01(b, ());
-  let sig = x;
-  match sig {
-    Pair(l, pf) => { let m = l; () }
-  } }
+  let Pair(l, pf) = x;
+  let m = l; () }
 
 example : progOk swapCaller = true := by native_decide
 -- The proof survives to the final env (pf ↦ a σ : Id (len l) (len [1,2,3])).

@@ -747,12 +747,11 @@ def withCursors (rest : Term) : Term := prog{
     } };
   fn Swap (v : &mut List Nat, i : Nat, j : Nat,
                  pij : Le (S i) j, p2 : Le (S j) (Len *v)) -> Unit {
-    let pr = Nth2(v, i, j, pij, p2);
-    match pr { Pair(ei, ej) => {
-      let t = *ei;
-      *ei := *ej;
-      *ej := t;
-      () } } };
+    let Pair(ei, ej) = Nth2(v, i, j, pij, p2);
+    let t = *ei;
+    *ei := *ej;
+    *ej := t;
+    () };
   %rest }
 
 /-- All three check, as the one program they are. `nth2`'s call to `NthL` and
@@ -801,16 +800,16 @@ example : progRejects oobBody "does not have its parameter type" = true := by
 def cascade : Term := withCursors prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let bb = &m x;
-  let pp = Nth2(bb, 0, 2, (), ());
-  match pp { Pair(ei, ej) => { *ei := 9; *ej := 8; let y = x; () } } }
+  let Pair(ei, ej) = Nth2(bb, 0, 2, (), ());
+  *ei := 9; *ej := 8; let y = x; () }
 example : progOk cascade = true := by native_decide
 
 -- Take a cursor's payload (hole) then demand the owner: the group cannot end.
 def rejectProbe : Term := withCursors prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let bb = &m x;
-  let pp = Nth2(bb, 0, 2, (), ());
-  match pp { Pair(ei, ej) => { let taken = *ei; let y = x; () } } }
+  let Pair(ei, ej) = Nth2(bb, 0, 2, (), ());
+  let taken = *ei; let y = x; () }
 example : progRejects rejectProbe "nothing surrendered" = true := by native_decide
 
 /-! ## Differential coverage — bounds-proof pool, concrete proofs by computation -/

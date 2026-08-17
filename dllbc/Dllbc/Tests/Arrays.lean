@@ -1014,7 +1014,8 @@ example : progOk sigSlice = true := by native_decide
 -- and inside the body the length is an ordinary nameable term.
 def useSlice : Term := prog{
   fn UseSlice (s : Σ (c : Nat). &mut (Array c Nat)) -> Unit {
-    match s { Pair(c, sl) => () } };
+    let Pair(c, sl) = s;
+    () };
   () }
 example : progOk useSlice = true := by native_decide
 
