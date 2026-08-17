@@ -1038,5 +1038,153 @@ def FindLInsTy : Term := prog{
 
 example : chkL FindLIns FindLInsTy = true := by native_decide
 
+/-! ## 9. `InsertInList` — the imperative bucket walk
+
+    The Aeneas case study's own leaf, and the ONLY place in the flagship where an
+    entry is created or overwritten. Its whole specification is that it implements
+    `InsL`: `Id Bucket (*b) (InsL k v (old *b))`. Everything above it then reasons
+    purely, against `FindLIns`.
+
+    Three things about the body are forced rather than chosen.
+
+    **The snapshots come first.** `K0`/`V0`/`T0` name the entry's key, value and tail
+    as they are on entry, because the return type's far endpoint is `old *b` and a
+    body cannot write that; `Kq`/`Vq` snapshot the function's own runtime `k`/`v`
+    because the transport λ below mentions them and a λ body may cite only capital
+    bindings (§2's λ law).
+
+    **The branch equation is named** (`if e : Eqb *kk k`), and it is then run
+    BACKWARDS through `BoolRw`: the goal's right-hand side is a `boolRec` on
+    `Eqb K0 Kq` that does not compute at a symbolic key, so each branch proves the
+    statement at its own literal tag and transports along `e` to reach the goal.
+
+    **The fuel bound needs no arithmetic.** `Le (LenE (*b)) fuel` at a `Cons` with
+    `fuel = S f2` IS `Le (LenE (*tl)) f2` by computation — `LenE` of a `Cons` steps to
+    `S (LenE tl)` and `Le (S a) (S b)` steps to `Le a b` — so `Hf` is passed to the
+    recursive call unchanged. -/
+
+def iilRet : Term := prog{
+  Id (List (Σ (k : Nat). Nat)) (*%(Term.var ⟨3, "b"⟩))
+     (InsL %(Term.var ⟨1, "k"⟩) %(Term.var ⟨2, "v"⟩) (old *%(Term.var ⟨3, "b"⟩))) }
+
+def iilP (rest : Term) : Term := prog{
+  fn InsertInList [fuel] (fuel : Nat, k : Nat, v : Nat,
+                          b : &mut (List (Σ (k : Nat). Nat)),
+                          Hf : Le (LenE (*b)) fuel) -> %iilRet {
+    match b {
+      Nil => { *b := Cons(Pair(k, v), Nil); Refl },
+      Cons(hd, tl) => match fuel {
+        Z => botElim Unit Hf,
+        S(f2) => match hd {
+          Pair(kk, vv) => {
+            let K0 = *kk;
+            let V0 = *vv;
+            let T0 = *tl;
+            let Kq = k;
+            let Vq = v;
+            if e : Eqb *kk k {
+              *vv := v;
+              BoolRw
+                (λ (Bw : Bool). Id (List (Σ (k : Nat). Nat)) Cons(Pair(K0, Vq), T0)
+                   (boolRec (λ (W : Bool). List (Σ (k : Nat). Nat))
+                      Cons(Pair(K0, Vq), T0)
+                      Cons(Pair(K0, V0), InsL Kq Vq T0) Bw))
+                True (Eqb K0 Kq)
+                (IdSym Bool (Eqb K0 Kq) True e) Refl
+            } else {
+              let h = InsertInList(f2, k, v, &m *tl, Hf);
+              -- Two legs: lift the recursive call's equation through the head cell,
+              -- then transport the `Eqb` test off its `False` branch onto the goal.
+              IdTrans (List (Σ (k : Nat). Nat))
+                Cons(Pair(K0, V0), *tl)
+                Cons(Pair(K0, V0), InsL Kq Vq T0)
+                (boolRec (λ (W : Bool). List (Σ (k : Nat). Nat))
+                   Cons(Pair(K0, Vq), T0)
+                   Cons(Pair(K0, V0), InsL Kq Vq T0) (Eqb K0 Kq))
+                (IdCongr (List (Σ (k : Nat). Nat)) (List (Σ (k : Nat). Nat))
+                   (λ (Z0 : List (Σ (k : Nat). Nat)). Cons(Pair(K0, V0), Z0))
+                   (*tl) (InsL Kq Vq T0) h)
+                (BoolRw
+                   (λ (Bw : Bool). Id (List (Σ (k : Nat). Nat))
+                      Cons(Pair(K0, V0), InsL Kq Vq T0)
+                      (boolRec (λ (W : Bool). List (Σ (k : Nat). Nat))
+                         Cons(Pair(K0, Vq), T0)
+                         Cons(Pair(K0, V0), InsL Kq Vq T0) Bw))
+                   False (Eqb K0 Kq)
+                   (IdSym Bool (Eqb K0 Kq) False e) Refl)
+            } } } } } };
+  %rest }
+
+/-- **The imperative bucket walk implements the model.** This is the flagship's one
+    genuinely effectful leaf, and it is fully verified. -/
+example : progOk (iilP prog{ () }) = true := by native_decide
+
+/-! ### `InsertInList`'s twins -/
+
+-- The spec lied onto the ENTRY payload: `*b` claimed to be what it USED to be.
+example : progOk (prog{
+  fn InsertInList [fuel] (fuel : Nat, k : Nat, v : Nat,
+                          b : &mut (List (Σ (k : Nat). Nat)),
+                          Hf : Le (LenE (*b)) fuel)
+      -> (Id (List (Σ (k : Nat). Nat)) (old *b)
+             (InsL k v (old *b))) { botElim Unit Hf };
+  () }) = false := by native_decide
+
+-- The BODY twin: the overwrite branch does not write. It still returns the same
+-- claim, and only the found-key path is wrong.
+example : progOk (prog{
+  fn InsertInList [fuel] (fuel : Nat, k : Nat, v : Nat,
+                          b : &mut (List (Σ (k : Nat). Nat)),
+                          Hf : Le (LenE (*b)) fuel) -> %iilRet {
+    match b {
+      Nil => { *b := Cons(Pair(k, v), Nil); Refl },
+      Cons(hd, tl) => match fuel {
+        Z => botElim Unit Hf,
+        S(f2) => match hd {
+          Pair(kk, vv) => {
+            let K0 = *kk;
+            let V0 = *vv;
+            let T0 = *tl;
+            let Kq = k;
+            let Vq = v;
+            if e : Eqb *kk k {
+              BoolRw
+                (λ (Bw : Bool). Id (List (Σ (k : Nat). Nat)) Cons(Pair(K0, Vq), T0)
+                   (boolRec (λ (W : Bool). List (Σ (k : Nat). Nat))
+                      Cons(Pair(K0, Vq), T0)
+                      Cons(Pair(K0, V0), InsL Kq Vq T0) Bw))
+                True (Eqb K0 Kq)
+                (IdSym Bool (Eqb K0 Kq) True e) Refl
+            } else {
+              let h = InsertInList(f2, k, v, &m *tl, Hf);
+              IdTrans (List (Σ (k : Nat). Nat))
+                Cons(Pair(K0, V0), *tl)
+                Cons(Pair(K0, V0), InsL Kq Vq T0)
+                (boolRec (λ (W : Bool). List (Σ (k : Nat). Nat))
+                   Cons(Pair(K0, Vq), T0)
+                   Cons(Pair(K0, V0), InsL Kq Vq T0) (Eqb K0 Kq))
+                (IdCongr (List (Σ (k : Nat). Nat)) (List (Σ (k : Nat). Nat))
+                   (λ (Z0 : List (Σ (k : Nat). Nat)). Cons(Pair(K0, V0), Z0))
+                   (*tl) (InsL Kq Vq T0) h)
+                (BoolRw
+                   (λ (Bw : Bool). Id (List (Σ (k : Nat). Nat))
+                      Cons(Pair(K0, V0), InsL Kq Vq T0)
+                      (boolRec (λ (W : Bool). List (Σ (k : Nat). Nat))
+                         Cons(Pair(K0, Vq), T0)
+                         Cons(Pair(K0, V0), InsL Kq Vq T0) Bw))
+                   False (Eqb K0 Kq)
+                   (IdSym Bool (Eqb K0 Kq) False e) Refl)
+            } } } } } };
+  () }) = false := by native_decide
+
+-- The `Nil` branch's write is load-bearing too: refill with `Nil` and the append
+-- case is wrong while every other path still goes through.
+example : progOk (prog{
+  fn InsertInList [fuel] (fuel : Nat, k : Nat, v : Nat,
+                          b : &mut (List (Σ (k : Nat). Nat)),
+                          Hf : Le (LenE (*b)) fuel) -> %iilRet {
+    match b { Nil => { *b := Nil; Refl }, Cons(hd, tl) => botElim Unit Hf } };
+  () }) = false := by native_decide
+
 end Dllbc.Tests.HashMap
 end
