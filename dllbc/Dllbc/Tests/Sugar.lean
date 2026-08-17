@@ -2,6 +2,7 @@ import Dllbc.Program
 import Dllbc.ProgMacro
 import Dllbc.Std
 import Dllbc.StdLemmas
+import Dllbc.Tests.Boundaries
 
 /-!
 # Surface sugar — matched EXPRESSIONS, and the singleton-constructor `let`
@@ -153,5 +154,127 @@ def escapedScrut : Term := prog{
 example : progRunsTo escapedScrut
     [("«§m»", Val.nat 7), ("§m", .bot), ("a", Val.nat 1), ("b", Val.nat 2),
      ("out", Val.nat 7)] = true := by native_decide
+
+/-! ## (ii) `let C(a, b) = E ;` — the pyramid, flattened
+
+    The claim is EQUALITY with the nested match it replaces, not convertibility.
+    The binder ids are minted from the same counter at the same point — the rest
+    of the block is elaborated exactly where the arm body would have been — so a
+    `let Pair(…) = … ;` chain is literally the pyramid, and a migration of the
+    corpus cannot change a single checked term. -/
+
+def flatLet : Term := prog{
+  let p = Pair(1, 2);
+  let Pair(a, b) = p;
+  () }
+
+def pyramidLet : Term := prog{
+  let p = Pair(1, 2);
+  match p { Pair(a, b) => () } }
+
+example : flatLet = pyramidLet := by rfl
+
+-- Three deep, which is where the difference starts to be worth something: the
+-- flat spelling never indents and never accumulates a closing `}}}}`.
+def flat3 : Term := prog{
+  let p = Pair(1, Pair(2, Pair(3, 4)));
+  let Pair(a, z1) = p;
+  let Pair(b, z2) = z1;
+  let Pair(c, d) = z2;
+  let out = d;
+  () }
+
+def pyramid3 : Term := prog{
+  let p = Pair(1, Pair(2, Pair(3, 4)));
+  match p { Pair(a, z1) => match z1 { Pair(b, z2) => match z2 { Pair(c, d) => {
+    let out = d;
+    () } } } } }
+
+example : flat3 = pyramid3 := by rfl
+example : progOk flat3 = true := by native_decide
+example : progRuns flat3 = true := by native_decide
+
+-- Composing with (i): the scrutinee may be a call, and then the two sugars are
+-- one line where the surface used to need three.
+def letCall : Term := prog{
+  fn Mk (x : Nat) -> Σ (a : Nat). Nat { Pair(x, x) };
+  let Pair(a, b) = Mk(2);
+  let out = b;
+  () }
+
+example : progOk letCall = true := by native_decide
+
+example : progRunsTo flat3
+    [("p", .bot), ("a", Val.nat 1), ("z1", .bot), ("b", Val.nat 2), ("z2", .bot),
+     ("c", Val.nat 3), ("d", Val.nat 4), ("out", Val.nat 4)] = true := by native_decide
+-- The pyramid twin runs to the same thing, and does so for the strongest reason
+-- available: it is the same term (`flat3 = pyramid3` above).
+example : runProgram flat3 = runProgram pyramid3 := by rfl
+
+example : tailEnv letCall
+    [("§m", .bot), ("a", Val.sym 0), ("b", Val.sym 1), ("out", Val.sym 1)] = true := by
+  native_decide
+
+/-! ## (ii) at the flagship: `vecPush` respelled
+
+    §4.2's dependent flagship is a borrow-mode match over a Σ, and it is the test
+    the sugar had to be built around: the arm binders `l` and `xs` are LOANS into
+    the payload behind `v`, so a desugaring that bound the scrutinee to a fresh
+    slot would move the pair and the two writes would land somewhere nobody can
+    see. The respelling is asserted EQUAL to `vecPush` itself — same term, so the
+    money test below is testing the same program it always was. -/
+
+def vecPushLet : Term := prog{
+  fn Push (e : Nat, v : &mut (Σ (l : Nat). %Tests.S5Bound.vecFT Nat l)) -> Unit {
+    let Pair(l, xs) = v;
+    *xs := Pair(e, *xs);
+    *l := S(*l);
+    () };
+  () }
+
+example : vecPushLet = Tests.S5Bound.vecPush := by rfl
+example : progOk vecPushLet = true := by native_decide
+
+-- THE MONEY TEST, in the new spelling: forget `*l := S(*l)` and the second field
+-- is checked against the stuck `VecF Nat σₗ`, which the concrete `Pair` cannot
+-- inhabit. Rejected, as it is in `Boundaries`.
+example : progRejects (prog{
+    fn Push (e : Nat, v : &mut (Σ (l : Nat). %Tests.S5Bound.vecFT Nat l)) -> Unit {
+      let Pair(l, xs) = v;
+      *xs := Pair(e, *xs);
+      () };
+    () })
+  "owed type" = true := by native_decide
+
+/-! ## The macro knows nothing about types, and §9 is what refuses the rest
+
+    `let Cons(h, t) = l ;` desugars unconditionally to a one-branch match, and the
+    exhaustiveness check the kernel has had since §9 refuses it — by name, and for
+    the reason that is actually true of it. That is the whole argument for not
+    asking the question at the surface: no constructor table in the macro layer,
+    no second definition of which types have one constructor, and nothing to keep
+    in step when the basis grows. -/
+
+def headByLet : Term := prog{
+  fn Head (l : List Nat) -> Nat { let Cons(h, t) = l; h };
+  () }
+
+-- The message in full, so that what a user of the sugar actually reads is pinned
+-- and not merely assumed:
+--
+--   match: non-exhaustive — no branch for constructor 'Nil' of the scrutinee's type
+--
+-- It names the constructor that is missing, which is the actionable half. It also
+-- says "match" for something written as a `let`, which is the one place the
+-- desugaring shows through; the alternative is a surface-level constructor table,
+-- and this is the cheaper leak.
+example : progRejects headByLet
+  "match: non-exhaustive — no branch for constructor 'Nil'" = true := by native_decide
+
+-- The one-constructor case is accepted by the same route, with no special case
+-- anywhere: `Pair` is Σ's only constructor, so the one-branch match IS exhaustive.
+example : progOk (prog{
+    fn Snd (p : Σ (a : Nat). Nat) -> Nat { let Pair(x, y) = p; y };
+    () }) = true := by native_decide
 
 end Dllbc.Tests.Sugar
