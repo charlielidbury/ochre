@@ -1328,10 +1328,11 @@ def openP (rest : Term) : Term := slotOfP prog{
     () };
   %rest }
 
-#eval chkProg (openP prog{ () })
+example : progRejects (openP prog{ () })
+  "does not have its owed type" = true := by native_decide
 
--- Which borrow blocks the merge? Carve only, no element borrow:
-#eval chkProg (slotOfP prog{
+-- Which borrow blocks the merge? Carve only, no element borrow — same rejection.
+example : progRejects (slotOfP prog{
   fn OpenA (self : &mut HMapT, key : Nat) -> Unit {
     let Pair(cap, Pair(load, Pair(n, Pair(slots, Hinv)))) = self;
     let c = *cap;
@@ -1345,11 +1346,12 @@ def openP (rest : Term) : Term := slotOfP prog{
     let cell = &m (*slots)[i ; 1 ; r];
     let hi = &m (*slots)[S i ; r];
     () };
-  () })
+  () }) "does not have its owed type" = true := by native_decide
 
 -- The control: the same carve on a slots array that is a PARAMETER rather than a
--- component of a destructured pack.
-#eval chkProg prog{
+-- component of a destructured pack. ACCEPTED — so the variable is the reborrow, not
+-- the carve and not the element borrow.
+example : progOk prog{
   fn OpenB (nn : Nat, i : Nat, r : Nat, Heq : Id Nat nn (Add i (S r)),
             slots : &mut (Array nn (List (Σ (k : Nat). Nat)))) -> Unit {
     let lo = &m (*slots)[Z ; i ; S r | LeAdd i (S r) | Heq];
@@ -1357,10 +1359,10 @@ def openP (rest : Term) : Term := slotOfP prog{
     let hi = &m (*slots)[S i ; r];
     let bk = &m (*cell)[0];
     () };
-  () }
+  () } = true := by native_decide
 
 -- (D) Take the slots array OUT of the pack, carve a local, refill.
-#eval chkProg (slotOfP prog{
+example : progRejects (slotOfP prog{
   fn OpenD (self : &mut HMapT, key : Nat) -> Unit {
     let Pair(cap, Pair(load, Pair(n, Pair(slots, Hinv)))) = self;
     let c = *cap;
@@ -1377,11 +1379,11 @@ def openP (rest : Term) : Term := slotOfP prog{
     let hi = &m (*sb)[S i ; r];
     *slots := sa;
     () };
-  () })
+  () }) "does not have its owed type" = true := by native_decide
 
 -- (F) Push the carve behind a CALL, so §6.2's opacity re-mints the caller's array
 --     uncarved at the declared type — `partitionA`'s device.
-#eval chkProg (slotOfP prog{
+example : progRejects (slotOfP prog{
   fn CarveIt (nn : Nat, i : Nat, r : Nat, Heq : Id Nat nn (Add i (S r)),
               slots : &mut (Array nn (List (Σ (k : Nat). Nat)))) -> Unit {
     let lo = &m (*slots)[Z ; i ; S r | LeAdd i (S r) | Heq];
@@ -1400,17 +1402,7 @@ def openP (rest : Term) : Term := slotOfP prog{
     let Pair(i, Pair(r, Pair(Hix, Heq))) = SlotOf(key, c, InvCap c Lv Nv Sv Hi);
     CarveIt(c, i, r, Heq, &m *slots);
     () };
-  () })
-
--- Is it the comptime read of the array (`let Sv = *slots`) that pins it?
-#eval chkProg (slotOfP prog{
-  fn OpenC (self : &mut HMapT, key : Nat) -> Unit {
-    let Pair(cap, Pair(load, Pair(n, Pair(slots, Hinv)))) = self;
-    let c = *cap;
-    *cap := c;
-    let lo = &m (*slots)[Z ; Z ; Z];
-    () };
-  () })
+  () }) "does not have its owed type" = true := by native_decide
 
 /-! ### What route F establishes, and what it leaves
 
@@ -2077,7 +2069,7 @@ example : progOk (insertSlotsU isHonest prog{ Unit } .unit) = false := by native
 /-! ## 11c. PROBE — can a fresh invariant be WRITTEN through the pack? -/
 
 -- (a) Write back the invariant unchanged. If this is refused, the wrapper route dies.
-#eval chkProg (slotOfP prog{
+example : progRejects (slotOfP prog{
   fn P9 (self : &mut HMapT) -> Unit {
     let Pair(cap, Pair(load, Pair(n, Pair(slots, Hinv)))) = self;
     let c = *cap;
@@ -2088,10 +2080,10 @@ example : progOk (insertSlotsU isHonest prog{ Unit } .unit) = false := by native
     let Hi = *Hinv;
     *Hinv := Hi;
     () };
-  () })
+  () }) "cannot be ⇒-moved" = true := by native_decide
 
 -- (b) …and REBUILT from its projected clauses rather than copied.
-#eval chkProg (slotOfP prog{
+example : progRejects (slotOfP prog{
   fn P10 (self : &mut HMapT) -> Unit {
     let Pair(cap, Pair(load, Pair(n, Pair(slots, Hinv)))) = self;
     let c = *cap;
@@ -2104,10 +2096,10 @@ example : progOk (insertSlotsU isHonest prog{ Unit } .unit) = false := by native
               Pair(InvSlots c Lv Nv Sv Hi,
               Pair(InvN c Lv Nv Sv Hi, Refl)));
     () };
-  () })
+  () }) "cannot be written through" = true := by native_decide
 
 -- (c) Can the count be written too, from a value the body computed?
-#eval chkProg (slotOfP prog{
+example : progOk (slotOfP prog{
   fn P11 (self : &mut HMapT) -> Unit {
     let Pair(cap, Pair(load, Pair(n, Pair(slots, Hinv)))) = self;
     let c = *cap;
@@ -2115,20 +2107,20 @@ example : progOk (insertSlotsU isHonest prog{ Unit } .unit) = false := by native
     let nv = *n;
     *n := nv;
     () };
-  () })
+  () }) = true := by native_decide
 
 -- (d) The whole pack out and back, destructured as an OWNED value.
-#eval chkProg (slotOfP prog{
+example : progRejects (slotOfP prog{
   fn P12 (self : &mut HMapT) -> Unit {
     let hm = *self;
     let Pair(c, Pair(l, Pair(nn, Pair(sa, Hi)))) = hm;
     *self := Pair(c, Pair(l, Pair(nn, Pair(sa, Hi))));
     () };
-  () })
+  () }) "cannot be ⇒-moved" = true := by native_decide
 
 -- (d') …with the invariant REBUILT from lemma applications rather than moved as a
 --      bare comptime binder, which is how `New` builds its pack.
-#eval chkProg (slotOfP prog{
+example : progOk (slotOfP prog{
   fn P12b (self : &mut HMapT) -> Unit {
     let hm = *self;
     let Pair(c, Pair(l, Pair(nn, Pair(sa, Hi)))) = hm;
@@ -2141,11 +2133,11 @@ example : progOk (insertSlotsU isHonest prog{ Unit } .unit) = false := by native
                Pair(InvSlots Cv Lv Nv Sv Hi,
                Pair(InvN Cv Lv Nv Sv Hi, InvLoad Cv Lv Nv Sv Hi)))))));
     () };
-  () })
+  () }) = true := by native_decide
 
 -- (d'') …and the same through the DESTRUCTURED-borrow route, where the comptime
 --       component is written by rebuilding rather than by assignment.
-#eval chkProg (slotOfP prog{
+example : progRejects (slotOfP prog{
   fn P12c (self : &mut HMapT) -> Unit {
     let Pair(cap, Pair(load, Pair(n, Pair(slots, Hinv)))) = self;
     let c = *cap;
@@ -2158,11 +2150,11 @@ example : progOk (insertSlotsU isHonest prog{ Unit } .unit) = false := by native
              Pair(InvSlots c Lv Nv Sv Hi,
              Pair(InvN c Lv Nv Sv Hi, Refl)));
     () };
-  () })
+  () }) "cannot be written through" = true := by native_decide
 
 -- (f) The by-value shape: consume a pack and return a fresh one, which is what `New`
 --     already does and therefore the shape known to be writable.
-#eval chkProg (slotOfP prog{
+example : progOk (slotOfP prog{
   fn P14 (hm : HMapT) -> HMapT {
     let Pair(c, Pair(l, Pair(nn, Pair(sa, Hi)))) = hm;
     let Sv = sa;
@@ -2173,7 +2165,7 @@ example : progOk (insertSlotsU isHonest prog{ Unit } .unit) = false := by native
       Pair(InvCap Cv Lv Nv Sv Hi,
       Pair(InvSlots Cv Lv Nv Sv Hi,
       Pair(InvN Cv Lv Nv Sv Hi, InvLoad Cv Lv Nv Sv Hi))))))) };
-  () })
+  () }) = true := by native_decide
 
 /-! ## 11d. `Insert` — the operation on the packed map
 

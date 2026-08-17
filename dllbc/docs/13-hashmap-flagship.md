@@ -55,145 +55,152 @@ Worktree off `origin/main`; FF-CAS endgame (rebase-and-ff is yours; see the merg
 
 # The writeup (lane `hm-flagship-opus`)
 
-**Stage reached: S1, partial.** The pure layer, the invariant library and the bucket
-operation are complete and verified; `New` is complete with both its conjuncts; the
-array-level `Insert` is not, and the exact obstruction is recorded below. S2 (resize)
-and the twin/differential battery for the array-level ops are not attempted.
+**Stage reached: S1 for `New` and `Insert`, both complete with every conjunct the
+problem statement fixes.** `Remove`, `GetMut` and `GetMutOrInsert` are not written; S2
+(resize) is not attempted. Everything below is asserted in
+`Dllbc/Tests/HashMap.lean` — 2,557 lines, **140 `example` assertions, all green**,
+module build **12.8 s** from cold; the whole tree is unchanged and builds as before.
 
 ## What checks
 
-`Dllbc/Tests/HashMap.lean`, 1,642 lines, **96 `example` assertions, all green**, module
-build **4.4 s** from cold (the whole tree, 78 modules, is 4 m 42 s and unchanged by
-this branch).
-
   * **The container.** `HMap = Σ (cap). Σ (load). Σ (n). Σ0 (slots). HMInv cap load n
-    slots`, with `HMInv`'s four fixed clauses. Asserted inhabited at a concrete map,
-    and each clause separately shown load-bearing by a pack that fails only it —
-    including `HMInv Z 0 0 Arr()`, which is how no map is ever divided by zero.
-  * **The spec vocabulary.** `FindHM`/`SizeHM`/`FindIns`/`FindRem`/`SizeIns`/`SizeRem`,
-    with the `Σ (b : Bool). OptP b T` Option and a `Some`/`None`/`Opt` surface. All of
-    it computes, pinned by `Refl` with wrong-value negatives alongside.
-  * **`New`**, with BOTH conjuncts (`∀q. FindHM q result = None` and `SizeHM result =
-    Z`), checking and running at a symbolic capacity; three twins refused.
-  * **`InsertInList`**, the imperative bucket walk, verified against the model:
+    slots` with the four fixed clauses. Asserted inhabited at a concrete map, and each
+    clause separately shown load-bearing by a pack that fails only it — including
+    `HMInv Z 0 0 Arr()`, which is how no map is ever divided by zero.
+  * **`New`** — `∀q. FindHM q result = None` and `SizeHM result = Z`, checking and
+    running at a symbolic capacity. Three twins refused.
+  * **`InsertInList`** — the imperative bucket walk, verified against the model:
     `Id Bucket (*b) (InsL k v (old *b))`. Three twins refused, including the body twin
     where the overwrite branch does not write.
-  * **The invariant library**, 22 lemmas: the slot arithmetic (`ModLtN`, `ModDec`,
-    ported to `Std`/`StdLemmas`), the carve-crossing family (`AgetBMid`, `AgetBNe`,
-    `SlotsOkSplit`, `SlotsOkJoin`, `SizeACat`, `LenLeSize`), the bucket layer
-    (`FindLIns` — the mathematical core — plus `BucketAtIns`), and the Boolean
-    bookkeeping (`TnotF`, `FnotT`, `EqbTrueEq`, `EqbSym`, `BoolRw`, `OptIf2`, `IfComm`,
-    `NoBoth`).
-  * **The executing differential**: Aeneas' `test1` at capacity 8, against a trusted
-    Lean-side reference, plus four path-specific sequences and the `diffV2` simulation
+  * **`InsertSlots`** — the array-level insert. Carves at the hashed slot, hands the
+    bucket to the walk, and returns well-hashedness, the entry count bumped exactly
+    when the key was absent, and **the pointwise find equation**. Nine twins refused.
+  * **`Insert`** — the operation on the packed map:
+
+        Σ0 (Hf2 : Π q → Id (Opt Nat) (FindHM q (*self))
+                                     (FindIns q key val (old *self))).
+          Id Nat (SizeHM (*self)) (SizeIns key (old *self))
+
+    Both of the problem statement's conjuncts, with the invariant maintained by
+    construction — there is no "and the invariant still holds" conjunct anywhere in
+    this file, because a map that failed it would not typecheck as a map. Five twins
+    refused.
+  * **38 lemmas**: the slot arithmetic (`ModLtN`, `ModDec`, ported to `Std`/
+    `StdLemmas`), the carve-crossing family (`AgetBMid`, `AgetBNe`, `SlotsOkSplit`/
+    `Join` and their `Z` corollaries, `SizeACat`, `SizeAIns`, `LenLeSize`), the bucket
+    layer (`FindLIns`, `BucketAtIns`, `LenInsL`), the pack projections
+    (`InvCap`/`InvSlots`/`InvN`/`InvLoad`, `IsP1`/`IsP2`/`IsP3`), and the Boolean
+    bookkeeping (`TnotF`, `FnotT`, `EqbTrueEq`, `EqbSym`, `BoolRw`, `OptIf2`,
+    `IfComm`, `IfDead`, `NoBoth`, `SlotNe`, `SPushIf`, `AddIfBump`).
+  * **The executing differential**: Aeneas' `test1` at capacity 8 against a trusted
+    Lean-side reference, four path-specific sequences, and `diffV2`'s simulation
     property.
 
-## What does not, and exactly where it walls
+## What does not, and exactly where
 
-**`Insert` over `&mut HMap` does not close.** The route is settled and every piece of it
-is measured; what is missing is proof-term assembly, not a mechanism.
-
-The container opens: destructuring the pack through the borrow hands back borrows of
-all five components, the capacity reads with a refill, the invariant reads as knowledge
-with none, and the slot is minted across a call (`SlotOf`, green). The carve then has to
-go **behind a call boundary** — carving through the reborrowed component leaves the
-array segmented and the pack's exit audit sees `Arr⟨σ ▷ σ, …⟩` where `Array cap Bucket`
-is owed. With the carve in a callee, §6.2's opacity re-mints the array uncarved at the
-declared type and the audit's complaint changes to the real one: the pack still holds
-the OLD `HMInv`, whose type mentions the old slots.
-
-So the operation must write a fresh invariant through `Hinv`, and — because opacity has
-erased everything about the re-minted array — that proof can only come from the callee's
-own return type:
-
-```
-fn InsertSlots (…, slots : &mut (Array cap Bucket), Hs : SlotsOk …, Hn : …)
-  -> Σ (n1 : Nat). Σ0 (Hs2 : SlotsOk cap Z cap (*slots)).
-       Σ (Hn2 : Id Nat n1 (SizeA cap (*slots))). Π (q : Nat) → …
-```
-
-Every lemma that body needs is proved and green (`SlotsOkSplit`/`Join` + `BucketAtIns`
-for the slot clause, `SizeACat` + `LenLeSize` for the counting clause, `AgetBMid`/
-`AgetBNe` + `FindLIns` for the pointwise equation). Two are missing: a bucket-length
-accounting lemma (`LenE (InsL k v b)` against `FindL k b`) and the arithmetic chaining
-it into `SizeA`. The residual is the assembly.
-
-**A second wall, independent of the first, and more interesting.** A caller that
-inserts TWICE does not check:
+**One wall, hit twice, and it is a known missing capability rather than a defect of
+these proofs.** A caller that calls twice does not check:
 
 ```
 call: comptime argument (unit) does not have its parameter type (natRec …)
 ```
 
-After the first call, opacity has re-minted the bucket's owner as a fresh σ, so at the
-second call `Le (LenE (*b)) fuel` is a stuck `listRec` under `Le` and no `unit` inhabits
-it. **The caller has lost the bucket's length at the call boundary.** This is
+After the first call, §6.2's opacity has re-minted the callee's payload as a fresh σ,
+so at the second call the fuel bound — `Le (LenE (*b)) fuel` for the bucket walk,
+`Le (SizeHM (*self)) fuel` for `Insert` — is a stuck recursor under `Le` and no `unit`
+inhabits it. **The caller has lost the length at the call boundary.** This is
 `HmProbeArrays` §A5's `λ B. unit` admission reached from the other side, and it is
-precisely the capability `12-design-borrow-refounding.md` exists for. The local repair
-is for `InsertInList` to return a length bound so a caller can chain it; the general one
-is loan-attached debts.
+what `12-design-borrow-refounding.md` exists for. Both instances are asserted with
+`progRejects` so that closing the capability goes red here. The local repairs are
+small and named in the file (return a length bound from the walk; project `New`'s size
+conjunct out of its `Σ0`); neither is attempted.
+
+`Remove` and the two borrow-returning ops are not written. `Remove` should be cheap —
+`RemL` and `FindRem` are defined and the crossing lemmas are shape-identical — and
+`hm-probe-getmut` already established the borrow structure for the other two, whose
+signatures carry no functional conjuncts anyway. Resize is untouched.
 
 ## Comparison ledger
 
 | | Aeneas ICFP'22 | this lane |
 |---|---|---|
-| Implementation | 201 LoC Rust | 319 lines of DLLBC `fn` bodies (incl. twins, which transcribe bodies) |
-| Spec / model | `hash_map_t_v`, `find_s` (in `Properties.fst`) | 306 lines |
-| Proofs | 3,247 lines hand-written F* + Z3 | 539 lines of DLLBC lemma terms |
-| Harness | — | 109 lines (Lean-side decoders and the reference map) |
-| Effort | 4 person-days | one agent session (7 commits, ~5 h wall-clock) |
-| Ops verified | insert (with resize), get, get_mut, remove | `New` (full), `insert_in_list` (full); `Insert`/`Remove`/`GetMut` not closed |
-| Check time | Z3, not reported | 4.4 s for the module |
+| Implementation + proof-in-body | 201 LoC Rust | 676 lines of DLLBC `fn` bodies |
+| Spec / model | `hash_map_t_v`, `find_s` in `Properties.fst` | 343 lines |
+| Lemmas | 3,247 lines hand-written F* + Z3 | 898 lines, 38 lemmas |
+| Harness | — | 109 lines (decoders, reference map) |
+| Effort | 4 person-days | one agent session, 12 commits |
+| Ops verified | insert (with resize), get, get_mut, remove | `New`, `insert_in_list`, `Insert` — all with full specs |
+| Check time | Z3, not reported | 12.8 s for the module |
 
-The proof-line ratio is not a like-for-like win, because the operations that would carry
-the most proof are the ones this lane did not close. What the numbers do support is that
-the layers below the array operation — model, invariant, bucket algebra — cost hundreds
-of lines rather than thousands.
+The honest reading: DLLBC's proof layer is ~900 lines where theirs is ~3,200, but it
+covers fewer operations, so the ratio is suggestive rather than decisive. What the
+split does show is where the cost lives. The **program bodies are the expensive part**
+(676 lines against their 201), because the proof is IN the body — `InsertSlots` is one
+function whose body is a proof term — whereas Aeneas' Rust stays 201 lines and the
+proof moves to a separate 3,247-line artifact. Total effort is comparable per
+operation; the difference is that nothing here is written twice, and there is no
+model of the program in another system to keep in sync.
 
 ## Divergence ledger
 
 Beyond the three the vendored README anticipated:
 
   1. **`Nat` is unbounded** (theirs is `usize`): their overflow obligations and `Fail`
-     cases vanish. This lane found the cost side of that trade — `Nat` is UNARY, so
-     `Term.nat 1056` is a 1056-deep tower and running Aeneas' literal test keys
-     exhausts the interpreter's fuel. The symbolic side is unaffected (`Mod 1056 32 = 0`
-     is asserted at the real keys); only the concrete differential is scaled, to
-     capacity 8 with keys 0/8/16/24, which preserves every structural feature `test1`
-     was written to exercise.
-  2. **Intrinsic vs extrinsic invariant**: their `hash_map_t_inv` is a
-     requires/ensures on every operation; here it is packed in the type, so no
-     signature in this file states it and no operation proves it separately. Per
-     `HmProbeGetmut`'s G5 it also survives opaque group ends, because a fresh σ is
-     minted AT THE DECLARED TYPE.
-  3. **Borrow-returning ops carry no functional conjuncts** (`retMixesBorrow`), deferred
-     to the loan-attached-debts milestone. Not reached here — `GetMut` and
-     `GetMutOrInsert` are not written, though `hm-probe-getmut` established their borrow
-     structure.
+     cases vanish. The cost side, found here: `Nat` is UNARY, so `Term.nat 1056` is a
+     1056-deep tower and running Aeneas' literal test keys exhausts the interpreter's
+     fuel. The symbolic side is unaffected (`Mod 1056 32 = 0` is asserted at the real
+     keys); only the concrete differential is scaled, to capacity 8 with keys
+     0/8/16/24, which preserves every structural feature `test1` exercises.
+  2. **Intrinsic vs extrinsic invariant**: their `hash_map_t_inv` is a requires/ensures
+     on every operation; here it is packed in the type, so no signature states it and
+     no operation proves it separately.
+  3. **Borrow-returning ops carry no functional conjuncts** — not reached, since
+     `GetMut` and `GetMutOrInsert` are not written.
 
-And two this lane adds:
+And three this lane adds:
 
-  4. **The find equation does not need the slot invariant.** `EqbTrueEq` rules out
-     `q = key` from a slot mismatch alone, so `SlotsOk` is required only to rebuild the
-     PACK, never to prove the pointwise claim. Aeneas' proof uses the invariant on both
-     sides.
-  5. **`Insert` is not total in the same sense.** Theirs cannot fail because it checks
-     the load factor and resizes; here totality is not yet reached at all, since the
-     array-level operation does not close.
+  4. **The find equation does not need the slot invariant.** `EqbTrueEq` and `SlotNe`
+     rule out `q = key` from a slot mismatch alone, so `SlotsOk` is needed only to
+     rebuild the PACK, never to prove the pointwise claim. Aeneas' proof uses the
+     invariant on both sides.
+  5. **The entry count is recomputed, not maintained.** `SizeA`'s parameters are
+     comptime, so `let n1 = SizeA c sa` reads the array as knowledge and consumes
+     nothing, and the pack's counting clause is `Refl`. Aeneas maintains the count
+     incrementally and returns a bool from `insert_in_list`. O(n) against their O(1) —
+     a performance divergence, not a correctness one, since the caller-facing size
+     conjunct is proved to the same statement either way.
+  6. **`Insert` is not yet total in their sense**, because resize is not implemented;
+     a table here can be filled past its load threshold.
 
-## Two findings worth keeping regardless of the flagship
+## Findings worth keeping regardless of the flagship
 
   * **The kernel's `aget` cannot be a spec's slot selector.** `Pure.whnfN`'s rule fires
     only at a concrete index into a literal `Arr`; there is no rule taking
     `aget (S m) (S i) (acons m x t)` to `aget m i t`. A carve leaves exactly an
-    `acons`/`arrCat` spine at a symbolic index, so `aget` there is inert and every lemma
-    about it is unprovable — a stuck `aget` has no eliminator. Written as an `arrRec`
-    fold with the index threaded (`AgetB` here), the same function reduces definitionally
-    and the lemmas are ordinary inductions. A spec written with `aget` type-checks
-    happily and then walls at the first lemma.
+    `acons`/`arrCat` spine at a symbolic index, so `aget` there is inert and every
+    lemma about it is unprovable — a stuck `aget` has no eliminator. Written as an
+    `arrRec` fold with the index threaded (`AgetB` here), the same function reduces
+    definitionally and the lemmas are ordinary inductions. A spec written with `aget`
+    type-checks happily and then walls at the first lemma.
   * **The surface's list `elim` was monomorphic at `List Nat`** while the kernel's
-    `listRec` rule was general all along. Fixed here in `Uni.elabUElim` (21 lines,
+    `listRec` rule was general all along. Fixed in `Uni.elabUElim` (21 lines,
     value-preserving, whole tree rebuilds green). The read is SYNTACTIC, so a motive
     written `λ (Bz : Bucket). …` over a `Term` splice silently falls back to `Nat` and
-    fails as a bare `false` with no message — documented at both the patch site and the
-    use sites.
+    fails as a bare `false` with no message — documented at the patch site and the use
+    sites.
+  * **A packed invariant cannot be updated through a `&mut` to its container.**
+    `*Hinv := …` is refused (`fence: … cannot be written through (⇐)`): updating a
+    proof means writing it, and a comptime component is erased. The whole pack must be
+    taken out and a whole new one put back, with the invariant rebuilt from lemma
+    APPLICATIONS rather than copied (a comptime BINDER cannot be moved into the new
+    pack either). This is the single most surprising constraint the lane hit, and it
+    shapes every operation on a packed container.
+  * **A nested `Σ0` chain cannot be destructured in a body.** A nested pattern mints a
+    lowercase intermediate for the first tail; naming it capital moves the failure to
+    the match itself, since a comptime binder cannot be scrutinized. A three-conjunct
+    ensures therefore needs pure projections, where ArraySort's single-level
+    `Σ0 (Hs : …). Π …` destructures fine because its tail is used whole.
+  * **A bare lemma spine cannot be match-scrutinized.** `let Pair(r, h) = ModDec …` is
+    refused with `match: non-exhaustive — no branch for constructor 'True'` — the
+    checker cannot synthesize a type for an unascribed λ-spine, so the match reports a
+    constructor from a type nowhere in the program. Ascribe the spine.
