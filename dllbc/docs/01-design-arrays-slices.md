@@ -618,12 +618,12 @@ What a primitive slice would buy is nothing the above does not, and what it woul
 
 ```rust
 fn split_at_mut (a : &mut Array n T, k : Nat, h : Le k n)
-    -> Σ (l : &mut (Array k T)) → &mut (Array (sub n k) T)
+    -> Σ (l : &mut (Array k T)). &mut (Array (sub n k) T)
   = Pair( &mut (*a)[Z ; k | h] ,
           &mut (*a)[k ; rest] )
 ```
 
-with the return type more honestly written after the carve has run, as `Σ (l : &mut (Array k T)) → &mut (Array rest T)` where `rest` is the residue the carve introduced — the `sub` in the signature above is the caller-facing spelling and, per ¶2.1, is sugar the callee never sees.
+with the return type more honestly written after the carve has run, as `Σ (l : &mut (Array k T)). &mut (Array rest T)` where `rest` is the residue the carve introduced — the `sub` in the signature above is the caller-facing spelling and, per ¶2.1, is sugar the callee never sees.
 
 **Checking story**, step by step, and every step is a rule already stated:
 
@@ -664,14 +664,14 @@ The exercise that makes this concrete. Today's north star, with the pieces that 
 ```rust
 fn quicksortSorted (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat,
                     hfuel : Le cnt fuel, hbnd : Le (add lo cnt) (len *v))
-  -> Σ (sortedpart : SortedR cnt lo (*v)) → (Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v)))
+  -> Σ (sortedpart : SortedR cnt lo (*v)). (Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v)))
 ```
 
 and after migration:
 
 ```rust
 fn quicksort (v : &mut Array n Nat, fuel : Nat, hfuel : Le n fuel)
-  -> Σ (_ : Sorted (*v)) → (Π (x : Nat) → Id Nat (count x (*v)) (count x (old *v)))
+  -> Σ (_ : Sorted (*v)). (Π (x : Nat) → Id Nat (count x (*v)) (count x (old *v)))
 { match fuel {
     Z => …,                              // n ≤ 0 by hfuel: the array is empty, Sorted ⋆
     S(f2) => {

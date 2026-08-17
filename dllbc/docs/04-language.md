@@ -213,7 +213,7 @@ fn ToNat (v : &mut (Bool ~> Nat)) -> Unit { *v := 0; () }
 
 `v` arrives holding a `Bool` and must hold a `Nat` at return — a strong update across a
 call boundary, checked at the return. The owed type may mention the snapshot it binds
-(`&mut (s : List Nat ~> Σ (l : List Nat) → Id Nat (Len l) (Len s))`), which is how a
+(`&mut (s : List Nat ~> Σ (l : List Nat). Id Nat (Len l) (Len s))`), which is how a
 borrow carries a contract of its own, separate from the function's return type.
 
 ## 5. Types that compute
@@ -333,12 +333,12 @@ match p { Pair(rr, q) => match q { Pair(H1, h2) => … } }
 
 **`Σ0` — the subset type.** A Σ chain's components spell their modes on their binders,
 but the final position — the tail — has no binder, so it spells its mode on the
-*former*: `Σ0 (x : A) → P` is the pair whose second projection is comptime — DLLBC's
+*former*: `Σ0 (x : A). P` is the pair whose second projection is comptime — DLLBC's
 subset type (Lean's `Subtype`, Coq's `sig`), with comptime as the erasure. Quicksort's
 own ensures, from the suite:
 
 ```
-Σ0 (Hs : Sorted (*v)) → Π (N : Nat) → Id Nat (Count N (*v)) (Count N (old *v))
+Σ0 (Hs : Sorted (*v)). Π (N : Nat) → Id Nat (Count N (*v)) (Count N (old *v))
 ```
 
 — a sortedness proof paired with a permutation proof, all of it erased knowledge riding
@@ -347,10 +347,12 @@ runtime-moded, and putting a proof there is refused with a message that names `�
 the fix.
 
 The pair family is complete in three spellings, each saying exactly what it can:
-`Σ (x : A) → B` — dependent, the binder spells its component's mode; `Σ0 (x : A) → P`
+`Σ (x : A). B` — dependent, the binder spells its component's mode; `Σ0 (x : A). P`
 — the tail comptime, spelled on the former, since a tail has no binder; `A × B` — no
 dependency at all, so no binder and nothing to spell (the library's own `Sorted`
 writes its conjunction this way).
+
+**A Σ binds with a dot, and a Π with an arrow.** The punctuation tells you which former you are reading before the head letter does, and it is not an arbitrary split: a Π *is* a function, so `Π (x : A) → B` uses the arrow for the thing itself, while a Σ builds a *pair* and would only be borrowing the function arrow to mean something else. The dot is the surface's own convention rather than a new one — `λ (x : A). t` has bound with a dot from the start, and a Σ binder is the same kind of binder doing the same job. The two other arrows in a signature are unrelated to both: `~>` separates a borrow's snapshot from what it owes back, and `->` gives a `fn` its return type.
 
 **A callee's return type is the caller's only knowledge of what the call did.** A
 function is written once, checked once against its signature, and from then on every

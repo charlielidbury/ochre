@@ -54,8 +54,8 @@ M23's relational partition (S23Direct) has this signature — no model function 
 
 ```
 fn partition [v] (v : &mut List Nat, p : Nat)
-  -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
-       → Π n. Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
+  -> Σ (hi : List Nat). Σ (hub : Ub p (*v)). Σ (hlb : Lb p hi).
+       Π n. Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
 ```
 
 At a call site — `quicksort`'s body, say — the caller holds `v ↦ borrowₘ ℓ σ_entry` and executes `let r = partition(&mut *v, p)`. What the checker does is the **opposite** of §2.1: it does *not* form a remembered application `partition σ_entry p`. It **mints a fresh σ'** for the borrow's payload — `*v` is now σ', an opaque list with no computational relationship to σ_entry — and attaches to it exactly the knowledge the return type declares: `Ub p σ'`, `Lb p hi`, and the count equation relating σ' and `hi` to the *entry* snapshot (`old *v` resolves to σ_entry). Everything `quicksort` subsequently proves about its own exit, it proves **from those facts alone**: it cannot compute `count n σ'` (σ' is opaque), it can only cite the returned `Π n. Id …` and chain it with its recursive calls' equations. *This is the behaviour to point at for runtime*: the call **forgets the application and compensates with a contract**.
@@ -82,7 +82,7 @@ The right way to say *why* the comptime side gets its rule — and the soundness
 
 ## 3. The unifying principle: application-by-type
 
-The two right-hand cells are one principle at two type richnesses: **applying an abstract function yields exactly what its Π-type promises and nothing more.** For a pure `Π (x : Nat) → Nat`, the promise is only "a Nat depending on x" — the structured neutral is that promise verbatim. For a borrow-moded `Π (v : &mut List Nat) → Σ (Sorted (*v)) → …`, the promise is richer — an exit payload for the borrow, evidence about it — and the call rule's minting-plus-ensures is *that* promise verbatim. Today's "call rule" is not a separate concept from application; it is abstract application at a moded Π.
+The two right-hand cells are one principle at two type richnesses: **applying an abstract function yields exactly what its Π-type promises and nothing more.** For a pure `Π (x : Nat) → Nat`, the promise is only "a Nat depending on x" — the structured neutral is that promise verbatim. For a borrow-moded `Π (v : &mut List Nat) → Σ (Sorted (*v)). …`, the promise is richer — an exit payload for the borrow, evidence about it — and the call rule's minting-plus-ensures is *that* promise verbatim. Today's "call rule" is not a separate concept from application; it is abstract application at a moded Π.
 
 What makes this legitimate — and this is special to DLLBC, not a general fact about imperative languages — is the value semantics. In a heap language, "call as application" is unsound: two calls with equal arguments needn't agree because the world changed between them. Here the world *is* the arguments: borrows carry their payloads, so a call is semantically a pure function of (arguments + entry payloads) to (result + exit payloads) — which is exactly the reading the ensures convention is built on: `old *v` names the entry payload as an input, the exit-snapshot `*v` names the exit payload as an output. Runtime calls are *applicative*, and the σ-model extends to them soundly **because of §0's value semantics**. This is the deep reason the unification is principled rather than notational.
 
@@ -170,8 +170,8 @@ The earlier observation that guarded `fn`-recursion is "sugar for recursors" is 
 ```
 natRec
   (λ f. Π (v : &mut List Nat) → Π (Hfuel : Le (len *v) f) →      -- motive: the sealed Π
-          Σ (Sorted (*v)) → Π n. Id (count n (*v))               --   with the scrutinee
-                                    (count n (old *v)))          --   argument peeled off
+          Σ (Sorted (*v)). Π n. Id (count n (*v))                --   with the scrutinee
+                                   (count n (old *v)))           --   argument peeled off
   (λ v Hfuel. ⟨base: Le (len *v) Z ⟹ empty; le_zero_eq⟩)
   (λ f'. λ ih. λ v Hfuel.
      ⟨partition; split_off;
