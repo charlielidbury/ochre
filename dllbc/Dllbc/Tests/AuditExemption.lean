@@ -24,11 +24,81 @@ The bisection that pins the granularity is in §4: the same hole with a `Unit`
 return is caught, the same hole in a SECOND parameter while the borrow returns out
 of the first is caught, and the no-hole two-parameter control passes.
 
-M34 narrows the exemption to the returned SUB-PLACE (`residueAudit` in
-`Machine.lean`). Two halves, and each has its own section here: §5 the hole check
-(is anything missing from a leaf the callee is finished with) and §6 the type check
-(is what is there still what it was lent). §7 pins the one ordering decision the
-narrowing forced.
+M34 narrows the exemption to the returned SUB-PLACE, and the exemption stops being
+a branch: `auditObligation` is ONE rule — collapse what the callee is finished
+with, reject a hole in what it still owns, then type the whole thing with the
+in-flight places filled in. A value-returning body has nothing in flight, so the
+collapse is total, the hole hunt sees everything, and the fill is the identity;
+the old value-returning rule is that degenerate case rather than a second path.
+
+Sections here: §5 the hole half beyond the array repro, §6 the type half, §7 the
+one ordering decision the fill forced.
+
+## Measured findings for the re-founding's stage 5 (hole-filling)
+
+The design doc's §3.3.1 proposes closing this gap by hole-filling — mint an
+exit-snapshot σ per issued loan, substitute for the issued markers in the
+parameter's payload, check the payload whole with `hasType`, and the exemption
+disappears as a category. That is what landed here, and building it turned up four
+things the sketch does not say. They are recorded here rather than in the design
+lane because the lane is closed; each is a measurement, not an opinion.
+
+**(1) Fill with the issued borrow's ACTUAL payload, not a minted σ, wherever one
+is available.** The minted version was built first and worked, and cost two things
+that only show up at corpus scale. It RENUMBERED the corpus — `f8AgetGetMut` and
+`f9AgetElem` moved from σ17 to σ18 for a check with nothing to do with them,
+because minting inside an audit moves the σ supply and the corpus names σs by
+number in `progRejects` needles and in every `tailEnv`. And it STOLE DIAGNOSES:
+filling at the issued borrow's *owed* type makes a wrong return type surface as a
+complaint about the parameter, so `g2BadTyElem` and `g2BadWidth` lost their own
+sentences. `collectResultBorrows` already collects the real payload for the
+issued-borrow check, so threading that list into the fill costs nothing and avoids
+both.
+
+Filling with the real payload does not remove the ORDERING obligation, it only
+narrows it: whatever is spliced in, a defect in the returned place lands inside the
+parameter, so the issued-borrow checks must run first. §7 states it, and `retHole`
+in §4 is the control — with the order swapped back it is the one and only assertion
+in the suite that moves.
+
+**(2) If you must mint, SANDBOX it.** The fill is a query; it has no business
+moving the σ supply the rest of the check is named against. Save the state, fill,
+`hasType`, restore. The COLLAPSE stays outside the sandbox — ending those loans is
+a real event, and one the old rule performed too. Without this, (1)'s renumbering
+happens even in the cases where minting is unavoidable (see (4)).
+
+**(3) The fill must recursively descend THROUGH in-flight markers, and must not
+guard against non-in-flight markers once it is inside one.** The issued marker is
+usually not at the top of the parameter's payload — it sits nested under
+intermediate live borrows (the carve `c`, the bucket `bk`) that are themselves in
+flight — so a flat substitution never reaches it. And inside a returned place, a
+live UNRETURNED sibling borrow is legitimate: `orInsertA` peels its bucket in
+borrow mode and returns `&m *hd` while `tl`'s field loan sits beside it. A guard
+rejecting "not in flight" there breaks the whole `orInsert` family. The residue
+proper is still protected, by the hole hunt, which stops at an in-flight marker and
+rejects an uncollapsed one before the fill is ever reached.
+
+**(4) Issued loans do not cover every hole.** When the returned borrow came out of
+an inner call's group (`getMutOr` lending its bucket borrow to `Walk` and returning
+what `Walk` issued), the marker left in the residue is a loan CAPTURED by an open
+group — not an issued loan, and its borrow is not in Ω either. The group table's
+recorded owed type is the only source, and a fresh σ at it is what `endGroup`'s
+opaque release will put there anyway. Instrumented as a hard error and replayed
+over the full suite and the `hm-probe-getmut` corpus: the issued list, Ω and the
+group table between them are total, and no marker went unresolved.
+
+**The type half is load-bearing, not belt-and-braces.** The write rule does not
+type-check: `*e0 := True` into a `Nat` cell is only ever caught at the exit audit
+(§6's `siblingBadWriteUnit` is the control that shows it). So "nothing is missing"
+is not enough — a wrong-typed write leaves no hole, and without the fill it passes.
+
+**The fill is honest only at TRIVIAL owed types.** M27's containment throws before
+the fill for anything richer, and that is what licenses it: `ob.owed` past that
+point is always the type the parameter was lent, so typing the filled payload
+against it is a claim about the exit state alone. At a relational owed type the
+same move would be checking a freshly minted σ against the type it was minted at,
+which proves nothing — that case needs the pin machinery, and the containment
+should stay until it exists.
 -/
 
 open Dllbc
@@ -105,12 +175,16 @@ def holeCaller : Term := prog{
     caller below checked green while the machine returned an array with a ⊥ in a
     leaf. The needle names the leaf the callee does NOT return. -/
 example : progRejects siblingHole
-  "left ⊥ in a leaf it does NOT return" = true := by native_decide
+  "holds a hole (⊥) at return, in a leaf it still owns" = true := by native_decide
+-- …and the message explains the RULE, not just the symptom.
+example : progRejects siblingHole
+  "not the whole parameter: every other leaf is a place the caller recovers verbatim"
+  = true := by native_decide
 
 /-- The caller goes with it: with the callee refused, the divergence has no
     program to live in. -/
 example : progRejects holeCaller
-  "left ⊥ in a leaf it does NOT return" = true := by native_decide
+  "holds a hole (⊥) at return, in a leaf it still owns" = true := by native_decide
 
 /-! ## §2 — the machine's side of the divergence, which does not move
 
@@ -173,7 +247,7 @@ def holeNoRet : Term := prog{
     let t = (*l)[0 ; 1];
     () };
   () }
-example : progRejects holeNoRet "holds ⊥" = true := by native_decide
+example : progRejects holeNoRet "holds a hole (⊥) at return" = true := by native_decide
 
 /-- Two parameters: the hole is in `a2`, the returned borrow comes out of `a1`.
     CAUGHT — so the exemption is granted per PARAMETER. -/
@@ -184,7 +258,7 @@ def holeOtherParam : Term := prog{
     let e = &m (*a1)[1];
     e };
   () }
-example : progRejects holeOtherParam "holds ⊥" = true := by native_decide
+example : progRejects holeOtherParam "holds a hole (⊥) at return" = true := by native_decide
 
 /-- …and the control: the same two parameters, no hole anywhere. -/
 def holeOtherOk : Term := prog{
@@ -224,7 +298,7 @@ def nestedHole : Term := prog{
     bk };
   () }
 example : progRejects nestedHole
-  "left ⊥ in a leaf it does NOT return" = true := by native_decide
+  "holds a hole (⊥) at return, in a leaf it still owns" = true := by native_decide
 
 def nestedRefill : Term := prog{
   fn NestedRefill (s : &mut (Array 3 (List Nat))) -> &mut (List Nat) {
@@ -249,7 +323,7 @@ def fieldHole : Term := prog{
     } };
   () }
 example : progRejects fieldHole
-  "left ⊥ in a leaf it does NOT return" = true := by native_decide
+  "holds a hole (⊥) at return, in a leaf it still owns" = true := by native_decide
 
 def fieldRefill : Term := prog{
   fn FieldRefill (v : &mut List Nat) -> &mut (List Nat) {
@@ -276,11 +350,12 @@ example : progOk carveLeftOpen = true := by native_decide
 /-! ## §6 — THE TYPE HALF
 
     "Nothing is missing" is not "everything is what it was lent". A write of the
-    wrong type into a residue leaf leaves no hole, and the hole check passes it.
-    The ordinary (non-exempt) audit catches such a write — the write rule itself
-    does not type-check, so the audit is the only thing that does — and the
-    narrowed exemption now catches it too, by splicing the in-flight places back in
-    and asking `hasType` the same question the ordinary path asks. -/
+    wrong type into a leaf leaves no hole, so the hole hunt passes it. The write
+    rule itself does not type-check — the exit audit is the only thing that ever
+    judges a write into a borrowed place — which is what makes this half
+    load-bearing rather than belt-and-braces. Filling the in-flight places is what
+    lets the SAME `hasType` question be asked of a parameter that has a borrow out
+    in the result. -/
 
 /-- `True` written into a `Nat` cell of a sibling segment. -/
 def siblingBadWrite : Term := prog{
@@ -294,11 +369,12 @@ def siblingBadWrite : Term := prog{
     e };
   () }
 example : progRejects siblingBadWrite
-  "residue (Arr⟨(S Z) ▷ [True], (S Z) ▷ [σ9], (S Z) ▷ σ7⟩) does not have its owed type (Array (S (S (S Z))) Nat)"
+  "a's payload (Arr⟨(S Z) ▷ [True], (S Z) ▷ [σ9], (S Z) ▷ σ7⟩) does not have its owed type (Array (S (S (S Z))) Nat)"
   = true := by native_decide
 
-/-- The CONTROL that says the ordinary path already caught this: the same write,
-    nothing returned, so no exemption applies. -/
+/-- The CONTROL that says the audit is the only thing checking writes at all: the
+    same write, nothing returned, so nothing is in flight and the fill is the
+    identity — and the rejection is the same rejection, from the same rule. -/
 def siblingBadWriteUnit : Term := prog{
   fn SiblingBadWriteU (a : &mut (Array 3 Nat)) -> Unit {
     let l = &m (*a)[Z ; 1];
@@ -351,7 +427,7 @@ def callGroupHole : Term := withWalk prog{
     Walk(f, bk) };
   () }
 example : progRejects callGroupHole
-  "left ⊥ in a leaf it does NOT return" = true := by native_decide
+  "holds a hole (⊥) at return, in a leaf it still owns" = true := by native_decide
 
 def callGroupBadWrite : Term := withWalk prog{
   fn GetMutCB (s : &mut (Array 3 (List Nat)), f : Nat) -> &mut Nat {
@@ -364,20 +440,26 @@ def callGroupBadWrite : Term := withWalk prog{
     Walk(f, bk) };
   () }
 example : progRejects callGroupBadWrite
-  "residue (Arr⟨(S Z) ▷ [True], (S Z) ▷ [σ24], (S Z) ▷ σ19⟩) does not have its owed type"
+  "s's payload (Arr⟨(S Z) ▷ [True], (S Z) ▷ [σ24], (S Z) ▷ σ19⟩) does not have its owed type"
   = true := by native_decide
 
-/-! ## §7 — THE ORDERING the narrowing forced
+/-! ## §7 — THE ORDERING the fill forced
 
-    The residue's type check stands a value in for the returned sub-place, at that
-    borrow's own owed type. If the RETURN TYPE is wrong for the place the borrow
-    points into, the residue check would fail — truthfully, but blaming the
-    parameter for a mistake in the return type. So `auditAction` now checks the
-    issued borrows FIRST and the obligations second, and these two negative
-    controls (from the probe corpus) are what pin it: each keeps its own sentence.
+    The fill splices the ISSUED BORROWS' OWN PAYLOADS into the parameter, so a
+    defect in what the result points at lands inside the parameter and surfaces as
+    a complaint about the parameter. `auditAction` therefore checks the issued
+    borrows FIRST and the obligations second.
 
-    Nothing depends on the old order — the residue collapse ends only loans that do
-    not reach a result loan, so it cannot disturb an issued borrow's payload. -/
+    The control that pins it is `retHole` in §4 — a body that empties the cell it
+    returns, which must be told its RESULT holds ⊥ rather than its argument. It was
+    measured: with the order swapped back, `retHole` is the one and only assertion
+    in the whole suite that moves.
+
+    These two are the ordinary return-type negative controls that live either side
+    of the decision — the return type is wrong for the place the borrow points
+    into, and each keeps the issued check's own sentence. Nothing depended on the
+    old order: the residue collapse ends only loans that do not reach a result
+    loan, so it cannot disturb an issued borrow's payload. -/
 
 def badTyElem : Term := prog{
   fn BadTyElem (a : &mut (Array 3 Nat)) -> &mut Bool {

@@ -3337,7 +3337,7 @@ mutual
       the returned cell belongs to the issued-borrow check, which has already run.
       The type question about the residue is asked separately, below. -/
   partial def residueHoles (resultLoans : List Nat) : Val → M (Option String)
-    | .bot => pure (some "⊥")
+    | .bot => pure (some "a hole (⊥)")
     | .loanM ℓ => do
       if ← inFlight resultLoans ℓ then pure none
       else pure (some s!"an uncollapsed loan (ℓ{ℓ})")
@@ -3415,95 +3415,92 @@ mutual
     | v :: vs => do pure ((← spliceInFlight issued v) :: (← spliceInFlightList issued vs))
 end
 
-/-- The narrowed exemption, applied: hole check, then type check. -/
-def residueAudit (fuel : Nat) (issued : List (Nat × Val)) (ob : Obligation) : M Unit := do
-  let resultLoans := issued.map (·.1)
-  collapseResidue fuel resultLoans ob.loan
-  match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
-  | none => pure ()          -- the parameter's own borrow left in the result: nothing residual
-  | some payload => do
-    match ← residueHoles resultLoans payload with
-    | some what =>
-      throwErr s!"audit: '{ob.arg.name}' left {what} in a leaf it does NOT return. §6.1 exempts the sub-place a returned borrow points at — not the whole parameter: every other leaf is a place the caller recovers verbatim, and this one has no value in it. (residue: {payload.pretty})"
-    | none => do
-      -- The type check is a QUERY, and it is run SANDBOXED: the splice mints a σ
-      -- wherever it stands in for an in-flight place, and a query has no business
-      -- moving the σ supply that the rest of the check is named against. Restoring
-      -- the state on the way out keeps the fix invisible to every message and
-      -- every `tailEnv` that spells a σ by number — measured, and it is the
-      -- difference between this landing silently and it renumbering the corpus.
-      let saved ← get
-      let verdict ← (do
-        let spliced ← spliceInFlight issued payload
-        if ← hasType fuel spliced ob.owed then pure none else pure (some spliced.pretty))
-      set saved
-      match verdict with
-      | none => pure ()
-      | some spliced =>
-        throwErr s!"audit: '{ob.arg.name}'s residue ({spliced}) does not have its owed type ({ob.owed.pretty}). §6.1 exempts the sub-place a returned borrow points at, not the whole parameter — the leaves the callee is finished with are recovered verbatim and must still be what they were lent."
+/-- **Audit one argument-borrow obligation** — §6.1's rule, at the granularity of
+    the PLACE (M34). `issued` is the result's borrows with their payloads; empty
+    for a value-returning body.
 
-/-- Audit one argument-borrow obligation (§6.1's narrowed rule). `resultLoan`
-    is the returned borrow's loan (for a borrow-returning body). Exempt iff the
-    borrow was consumed into the result (directly, or as the captured owner of a
-    field reborrow that became the result) OR into another call (its loan is
-    captured by some group). Otherwise it must be **locatable** — as a live
-    `borrowM ℓ` anywhere in Ω's values, not just at its own slot (it may have
-    been moved into a local value) — and its (collapsed) payload is typed
-    against the owed type. Neither locatable nor continued rejects distinctively. -/
+    There used to be two rules here, and the second was a `pure ()`. §6.1 exempts
+    an argument borrow whose derived borrow was consumed into the result, and the
+    argument for that is sound but LOCAL: it is about the sub-place the result
+    points at, which is under a live borrow, so there is no payload to judge and
+    what the caller eventually recovers is not what sits there now. It says
+    nothing about the parameter's other leaves — those are places the callee is
+    finished with and the caller recovers verbatim. `hm-probe-getmut`'s second
+    finding is what the whole-parameter reading cost: a three-way carve returns
+    the middle cell, leaves a ⊥ in the left one, and is ACCEPTED, while §6.2's
+    opacity re-mints the owner at the declared type downstream — so the checker
+    repaired the hole and the machine handed back an array with a ⊥ in a leaf.
+
+    So there is one rule, and the exemption is not a branch of it but a fact about
+    which loans it can reach: **collapse what the callee is finished with, reject a
+    hole in what it still owns, then type the whole thing with the in-flight places
+    filled in.** A value-returning body has nothing in flight, so the collapse is
+    total, the hole hunt sees everything, and the fill is the identity — which is
+    exactly the old value-returning rule, recovered as the degenerate case rather
+    than written out again. -/
 def auditObligation (fuel : Nat) (issued : List (Nat × Val)) (ob : Obligation) : M Unit := do
   let resultLoans := issued.map (·.1)
-  -- M27 SOUNDNESS CONTAINMENT (b1's second closed `Bot`). The two exemptions
-  -- below are §6.1's "consumed into the result is exempt — being issued is its
-  -- exemption", and they are correct about the PAYLOAD: a borrow that left in the
-  -- result has no payload here to audit. But the exemption skips the OWED TYPE
-  -- with it, and the caller's group end then MINTS the release at that type — so
-  -- a non-trivial owed type on a consumed parameter is a claim the callee is
-  -- exempted from and the caller receives as fact. Neither end checks it.
+  -- M27 SOUNDNESS CONTAINMENT (b1's second closed `Bot`). §6.1's exemption is
+  -- correct about the PAYLOAD of a consumed borrow, but it used to skip the OWED
+  -- TYPE with it, and the caller's group end then MINTS the release at that type —
+  -- so a non-trivial owed type on a consumed parameter was a claim the callee was
+  -- exempted from and the caller received as fact. Neither end checked it.
   --
   -- Refused rather than repaired, for the same reason as the mixed-return
   -- containment: checking a freshly minted σ against the type it was minted at
   -- proves nothing, so the honest move is to make the unjudged position
   -- unwritable. A cursor that hands its borrow onward owes back what it was lent.
-  if !ob.trivialOwed
-     && (resultLoans.contains ob.loan
-         || (← resultLoans.anyM (fun rl => reachesLoan ob.loan rl))) then
+  --
+  -- It is also what makes the fill below honest: `ob.owed` past this point is
+  -- always the type the parameter was LENT, so typing the filled payload against
+  -- it is a claim about the exit state alone, never a relation.
+  if !ob.trivialOwed && (← inFlight resultLoans ob.loan) then
     throwErr s!"boundary: '{ob.arg.name}' is consumed into the result, and §6.1 exempts such a borrow from the payload audit — so its non-trivial owed type ({ob.owed.pretty}) would be checked by nobody, while the caller's group end mints the release AT it. A parameter passed onward into the result owes back the type it was lent; state a richer claim on a parameter the body keeps, where the audit runs."
-  else if resultLoans.contains ob.loan then pure ()                       -- consumed into a result borrow
-  else if (← resultLoans.anyM (fun rl => reachesLoan ob.loan rl)) then
-    -- **THE EXEMPTION, NARROWED TO THE RETURNED SUB-PLACE** (M34).
-    --
-    -- §6.1 exempts a parameter whose borrow left in the result, and the reason is
-    -- sound but LOCAL: the sub-place the result points at has no payload here to
-    -- audit, because the borrow that owns it is still live. That says nothing
-    -- about the parameter's OTHER leaves. `hm-probe-getmut`'s second finding is
-    -- the gap: a three-way carve returns the middle cell and leaves a ⊥ in the
-    -- left one, and the whole-parameter exemption never looks. Downstream, §6.2's
-    -- opacity re-mints the owner at the declared type — so the CHECKER repairs the
-    -- hole while the machine hands back an array with a ⊥ in a leaf.
-    --
-    -- So: collapse the parameter's residue (every parked loan whose borrow is NOT
-    -- in flight toward the result) and audit what comes back. What cannot be
-    -- audited is exactly the in-flight markers, and they stay.
-    residueAudit fuel issued ob
-  else if (← get).groups.any (fun g => g.captured.any (·.1 == ob.loan)) then pure ()  -- into another call
-  else
-    -- Still at its own slot? collapse its field loans first, in place.
-    match ← lookupSlot ob.arg with
-    | .borrowM _ _ => collapseArg fuel ob.arg
-    -- Σ-packaged: the borrow was never AT this slot (it is inside a `Pair`, and
-    -- an immediate match has since moved it to a binder of its own), so locate
-    -- it by loan instead.
-    | _ => collapseLoanIn fuel ob.loan
-    -- Locate the borrow anywhere in Ω and audit its payload.
+  -- Continued into ANOTHER CALL whose group is still open, and not toward the
+  -- result: a genuinely different exemption from the one above, and the only one
+  -- left. The payload is not recoverable here at all — the group holds it — so
+  -- there is nothing to collapse, hunt or fill.
+  else if !(← inFlight resultLoans ob.loan)
+          && (← get).groups.any (fun g => g.captured.any (·.1 == ob.loan)) then pure ()
+  else do
+    -- (1) COLLAPSE the residue: End-Mut every parked loan whose borrow is not in
+    -- flight toward the result, pulling those sub-payloads home. With no result
+    -- loans this ends every parked loan, which is what `collapseArg` did.
+    collapseResidue fuel resultLoans ob.loan
     match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
     | none =>
-      throwErr s!"audit: argument borrow {ob.arg.name} (ℓ{ob.loan}) is neither locatable in Ω nor continued into a call — it was lost"
-    | some .bot =>
-      throwErr s!"audit: argument borrow {ob.arg.name} (ℓ{ob.loan}) holds a hole (⊥) at return — take without refill"
-    | some payload =>
-      if ← hasType fuel payload ob.owed then pure ()
-      else throwErr s!"audit: {ob.arg.name}'s payload ({payload.pretty}) does not have its owed type ({ob.owed.pretty})"
-
+      -- Not in Ω. Fine iff the borrow itself left in the result (there is then no
+      -- residue at all, and the issued-borrow check types what it points at);
+      -- otherwise it is the old "lost" rejection.
+      if ← inFlight resultLoans ob.loan then pure ()
+      else throwErr s!"audit: argument borrow {ob.arg.name} (ℓ{ob.loan}) is neither locatable in Ω nor continued into a call — it was lost"
+    | some payload => do
+      -- (2) HUNT what the callee still owns for holes. Stops AT an in-flight
+      -- marker: inside the returned place is the issued-borrow check's business.
+      match ← residueHoles resultLoans payload with
+      | some what =>
+        let exempt := if resultLoans.isEmpty then "" else
+          " §6.1 exempts the sub-place a returned borrow points at, not the whole parameter: every other leaf is a place the caller recovers verbatim, and this one has no value in it."
+        throwErr s!"audit: argument borrow {ob.arg.name} (ℓ{ob.loan}) holds {what} at return, in a leaf it still owns — take without refill.{exempt} (payload: {payload.pretty})"
+      | none => do
+        -- (3) TYPE it, with the in-flight places filled in. A QUERY, so it runs
+        -- SANDBOXED: the fill mints a σ wherever the group table is its only
+        -- source, and a query has no business moving the σ supply that the rest of
+        -- the check is named against. Restoring the state on the way out is the
+        -- difference between this landing silently and it renumbering the corpus.
+        -- The collapse above stays outside the sandbox — ending those loans is a
+        -- real event, and it is one the old rule performed too.
+        let saved ← get
+        let verdict ← (do
+          let filled ← spliceInFlight issued payload
+          if ← hasType fuel filled ob.owed then pure none else pure (some filled.pretty))
+        set saved
+        match verdict with
+        | none => pure ()
+        | some filled =>
+          let exempt := if resultLoans.isEmpty then "" else
+            " §6.1 exempts the sub-place a returned borrow points at, not the whole parameter — the leaves the callee is finished with are recovered verbatim and must still be what they were lent."
+          throwErr s!"audit: {ob.arg.name}'s payload ({filled}) does not have its owed type ({ob.owed.pretty}).{exempt}"
 
 /-- Walk a return type against the result value, collecting each borrow position
     as `(issued loan, payload, owed type)`. `none` = value-returning (no borrow);
@@ -3547,15 +3544,15 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
   match ← collectResultBorrows fuel retType resultVal with
   | some checks => do
     -- The ISSUED borrows first, then the obligations — M34's order, and the
-    -- reason is a diagnosis one. The narrowed exemption types a parameter's
-    -- residue with a fresh σ standing in for the returned sub-place, minted at
-    -- that borrow's OWED type. If the owed type is wrong for the place the borrow
-    -- points into (`-> &mut Bool` on a cell of an `Array 3 Nat`), the residue
-    -- check would fail — truthfully, but blaming the parameter for a mistake in
-    -- the RETURN TYPE. Checking the issued payloads first means the residue is
-    -- only ever asked once the return side is known consistent.
+    -- reason is a diagnosis one. `auditObligation` fills the in-flight places in a
+    -- parameter's payload with the ISSUED BORROWS' OWN PAYLOADS, so a defect in
+    -- what the result points at gets spliced into the parameter and surfaces as a
+    -- complaint about the parameter. `retHole` is the control: a body that empties
+    -- the cell it returns should be told its RESULT holds ⊥, not that its argument
+    -- does. Running the issued checks first means the obligations are only ever
+    -- asked once the result side is known good.
     --
-    -- Nothing depends on the old order: the residue collapse ends only loans that
+    -- Nothing depended on the old order: the residue collapse ends only loans that
     -- do NOT reach a result loan, so it cannot disturb an issued borrow's payload.
     checks.forM (fun c =>
       let (_, payload, owed) := c
