@@ -4655,4 +4655,124 @@ def CountSwapATy : Term := prog{
     Id Nat (CountA Q (S (Add K (S R))) (acons (Add K (S R)) Y (arrCat K (S R) L (acons R X G))))
            (CountA Q (S (Add K (S R))) (acons (Add K (S R)) X (arrCat K (S R) L (acons R Y G)))) }
 
+/-! ## `Mod`, `Div`, `Mul` — the hashmap's slot arithmetic (ported from `hm-probe-mod`,
+    2026-08-17, verbatim — commit a6a549c5)
+
+    `Mod`/`Div` ride one accumulator state `(R, C)`: `R` is the residue so far, `C` is
+    how many increments remain before wrapping, and `R + C = B` is the invariant. Each
+    step asks its question of `C` — an ARGUMENT — never of the recursive result, which
+    is the shape the probe found mandatory: the textbook `mod` mentions its recursive
+    result TWICE (once in the guard, once in the return) and was measured exponential
+    under the no-sharing normalizer of that date. `NextR`/`NextC`/`NextQ` are the three
+    non-recursive answers to "what happens to this component at one increment". At
+    `B = Z` the wrapper returns `Z` (Lean's `%` would return the dividend); nothing
+    downstream divides by zero, and every lemma is stated over `Le (S Z) n`. -/
+
+def NextR : Term := prog{
+  λ (R : Nat). λ (C : Nat).
+    elim C return (λ (Cz : Nat). Nat) { Z => Z, S (C') Rc => S(R) } }
+
+def NextC : Term := prog{
+  λ (B : Nat). λ (C : Nat).
+    elim C return (λ (Cz : Nat). Nat) { Z => B, S (C') Rc => C' } }
+
+def NextQ : Term := prog{
+  λ (Q : Nat). λ (C : Nat).
+    elim C return (λ (Cz : Nat). Nat) { Z => S(Q), S (C') Rc => Q } }
+
+def ModC : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Π (R : Nat) → Π (C : Nat) → Nat) {
+      Z => λ (B : Nat). λ (R : Nat). λ (C : Nat). R,
+      S (A') Rec => λ (B : Nat). λ (R : Nat). λ (C : Nat).
+        Rec B (NextR R C) (NextC B C) } }
+
+def Mod : Term := prog{
+  λ (A : Nat). λ (B : Nat).
+    elim B return (λ (Bz : Nat). Nat) { Z => Z, S (B') Rb => ModC A B' Z B' } }
+
+/-- `Div` rides the same state with a quotient that ticks exactly when `C` wraps. -/
+def DivC : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat).
+        Π (B : Nat) → Π (R : Nat) → Π (C : Nat) → Π (Q : Nat) → Nat) {
+      Z => λ (B : Nat). λ (R : Nat). λ (C : Nat). λ (Q : Nat). Q,
+      S (A') Rec => λ (B : Nat). λ (R : Nat). λ (C : Nat). λ (Q : Nat).
+        Rec B (NextR R C) (NextC B C) (NextQ Q C) } }
+
+def Div : Term := prog{
+  λ (A : Nat). λ (B : Nat).
+    elim B return (λ (Bz : Nat). Nat) { Z => Z, S (B') Rb => DivC A B' Z B' Z } }
+
+/-- `Mul a b` by recursion on `b`, mentioning its recursive result exactly once
+    (`Add A Rec`) — the same single-occurrence discipline `ModC`'s accumulator uses. -/
+def Mul : Term := prog{
+  λ (A : Nat). λ (B : Nat). elim B return (λ (Bm : Nat). Nat) {
+    Z => Z, S (B') Rec => Add A Rec } }
+
+/-! ### M2 — the slot index is below the capacity -/
+
+def StepInv : Term := prog{
+  λ (B : Nat). λ (R : Nat). λ (C : Nat).
+    elim C return (λ (Cz : Nat). Le (Add R Cz) B → Le (Add (NextR R Cz) (NextC B Cz)) B) {
+      Z => λ (H : Le (Add R Z) B). LeRefl B,
+      S (C') Rc => λ (H : Le (Add R (S C')) B).
+        LeRwL B (Add R (S C')) (S (Add R C')) (AddSucc R C') H } }
+def StepInvTy : Term := prog{
+  Π (B : Nat) → Π (R : Nat) → Π (C : Nat) →
+    Le (Add R C) B → Le (Add (NextR R C) (NextC B C)) B }
+
+def ModCLt : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat).
+        Π (B : Nat) → Π (R : Nat) → Π (C : Nat) →
+          Le (Add R C) B → Le (S (ModC Az B R C)) (S B)) {
+      Z => λ (B : Nat). λ (R : Nat). λ (C : Nat). λ (H : Le (Add R C) B).
+             LeTrans R (Add R C) B (LeAdd R C) H,
+      S (A') Ih => λ (B : Nat). λ (R : Nat). λ (C : Nat). λ (H : Le (Add R C) B).
+             Ih B (NextR R C) (NextC B C) (StepInv B R C H) } }
+def ModCLtTy : Term := prog{
+  Π (A : Nat) → Π (B : Nat) → Π (R : Nat) → Π (C : Nat) →
+    Le (Add R C) B → Le (S (ModC A B R C)) (S B) }
+
+/-- The form a PROGRAM can use: the capacity is an opaque `n` carrying `Le (S Z) n`,
+    never the pattern `S c` — a `fn`'s premise (3) may not refine `S c`, since it is a
+    constructor applied to a σ, which is rigid. -/
+def ModLtN : Term := prog{
+  λ (A : Nat). λ (N : Nat).
+    elim N return (λ (Nz : Nat). Le (S Z) Nz → Le (S (Mod A Nz)) Nz) {
+      Z => λ (H : Le (S Z) Z). botElim (Le (S (Mod A Z)) Z) H,
+      S (B') Rb => λ (H : Le (S Z) (S B')). ModCLt A B' Z B' (LeRefl B') } }
+def ModLtNTy : Term := prog{
+  Π (A : Nat) → Π (N : Nat) → Le (S Z) N → Le (S (Mod A N)) N }
+
+/-! ### M3 — minting the carve's decomposition
+
+    `Le (S i) n → Σ r. Id Nat n (Add i (S r))`: "i is strictly below n" becomes the
+    residue `r` and the equation premise (3) wants CITED. The Σ's own projections
+    check but are the WRONG route for a program: `ModFst I N Dec` mentions `N`, so
+    citing the projected equation makes premise (3) try to solve `n = f(n)` and the
+    occurs check refuses it — the Σ has to cross a CALL instead (`SlotOf` below),
+    the same shape `partitionA` already uses for `splitA`'s returned `k`/`r`. -/
+
+def ModDec : Term := prog{
+  λ (I : Nat).
+    elim I return (λ (Iz : Nat).
+        Π (N : Nat) → Le (S Iz) N → Σ (R : Nat). Id Nat N (Add Iz (S R))) {
+      Z => λ (N : Nat).
+        elim N return (λ (Nz : Nat). Le (S Z) Nz → Σ (R : Nat). Id Nat Nz (Add Z (S R))) {
+          Z => λ (H : Le (S Z) Z). botElim (Σ (R : Nat). Id Nat Z (Add Z (S R))) H,
+          S (N') Ihn => λ (H : Le (S Z) (S N')). Pair(N', Refl) },
+      S (I') Ih => λ (N : Nat).
+        elim N return (λ (Nz : Nat).
+            Le (S (S I')) Nz → Σ (R : Nat). Id Nat Nz (Add (S I') (S R))) {
+          Z => λ (H : Le (S (S I')) Z). botElim (Σ (R : Nat). Id Nat Z (Add (S I') (S R))) H,
+          S (N') Ihn => λ (H : Le (S (S I')) (S N')).
+            elim (Ih N' H) return (λ (Q : Σ (R : Nat). Id Nat N' (Add I' (S R))).
+                Σ (R : Nat). Id Nat (S N') (Add (S I') (S R))) {
+              Pair (X) (Y) =>
+                Pair(X, IdCongr Nat Nat (λ (Nn : Nat). S Nn) N' (Add I' (S X)) Y) } } } }
+def ModDecTy : Term := prog{
+  Π (I : Nat) → Π (N : Nat) → Le (S I) N → Σ (R : Nat). Id Nat N (Add I (S R)) }
+
 end Dllbc.StdLemmas
