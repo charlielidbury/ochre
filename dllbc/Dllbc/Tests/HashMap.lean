@@ -1488,6 +1488,214 @@ example : chkL EqbSym EqbSymTy = true := by native_decide
 example : chkL BucketAtIns BucketAtInsTy = true := by native_decide
 example : chkL LenLeSize LenLeSizeTy = true := by native_decide
 
+/-! ### The bucket's size accounting
+
+    How long a bucket is after an insert: one longer exactly when the key was absent.
+    This is the last piece the counting clause needs, and it is the one place where
+    `FindL`'s test order (`Eqb q k2`) and `InsL`'s (`Eqb k2 k`) have to be reconciled —
+    hence `EqbSym`, applied once through `BoolRw` to bring the two scrutinees together
+    before the split. -/
+
+def LenInsM : Term := prog{
+  λ (K : Nat). λ (B : Bucket).
+    boolRec (λ (W : Bool). Nat) (S (LenE B)) (LenE B) (IsNoneO Nat (FindL K B)) }
+
+/-- `S` pushes through a test. Both arms `Refl`; it exists so the step below can move
+    a successor from outside a `boolRec` to inside it. -/
+def SPushIf : Term := prog{
+  λ (Bv : Bool). λ (A : Nat). λ (B : Nat).
+    elim Bv return (λ (Bz : Bool).
+        Id Nat (S (boolRec (λ (W : Bool). Nat) A B Bz))
+               (boolRec (λ (W : Bool). Nat) (S A) (S B) Bz)) {
+      True => Refl, False => Refl } }
+def SPushIfTy : Term := prog{
+  Π (Bv : Bool) → Π (A : Nat) → Π (B : Nat) →
+    Id Nat (S (boolRec (λ (W : Bool). Nat) A B Bv))
+           (boolRec (λ (W : Bool). Nat) (S A) (S B) Bv) }
+
+def LenInsL : Term := prog{
+  λ (K : Nat). λ (V : Nat). λ (B : Bucket).
+    elim B return (λ (Bz : List (Σ (k : Nat). Nat)).
+        Id Nat (LenE (InsL K V Bz)) (LenInsM K Bz)) {
+      Nil => Refl,
+      Cons (E) (T) Rec =>
+        elim E return (λ (Ez : Σ (k : Nat). Nat).
+            Id Nat (LenE (InsL K V Cons(Ez, T))) (LenInsM K Cons(Ez, T))) {
+          Pair (K2) (V2) =>
+            IdTrans Nat
+              (LenE (InsL K V Cons(Pair(K2, V2), T)))
+              (boolRec (λ (W : Bool). Nat) (S (S (LenE T))) (S (LenE T))
+                 (IsNoneO Nat (boolRec (λ (W : Bool). Opt Nat)
+                                 (Some Nat V2) (FindL K T) (Eqb K2 K))))
+              (LenInsM K Cons(Pair(K2, V2), T))
+              -- Split on `InsL`'s own test, with BOTH sides abstracted over it.
+              (elim (Eqb K2 K) return (λ (Bv : Bool). Id Nat
+                   (LenE (boolRec (λ (W : Bool). List (Σ (k : Nat). Nat))
+                            Cons(Pair(K2, V), T)
+                            Cons(Pair(K2, V2), InsL K V T) Bv))
+                   (boolRec (λ (W : Bool). Nat) (S (S (LenE T))) (S (LenE T))
+                      (IsNoneO Nat (boolRec (λ (W : Bool). Opt Nat)
+                                      (Some Nat V2) (FindL K T) Bv)))) {
+                 True => Refl,
+                 False =>
+                   IdTrans Nat
+                     (S (LenE (InsL K V T)))
+                     (S (boolRec (λ (W : Bool). Nat) (S (LenE T)) (LenE T)
+                           (IsNoneO Nat (FindL K T))))
+                     (boolRec (λ (W : Bool). Nat) (S (S (LenE T))) (S (LenE T))
+                        (IsNoneO Nat (FindL K T)))
+                     (IdCongr Nat Nat (λ (Zz : Nat). S Zz)
+                        (LenE (InsL K V T)) (LenInsM K T) Rec)
+                     (SPushIf (IsNoneO Nat (FindL K T)) (S (LenE T)) (LenE T)) })
+              -- …then bring `FindL`'s test order into line with `InsL`'s.
+              (BoolRw
+                 (λ (Bw : Bool). Id Nat
+                    (boolRec (λ (W : Bool). Nat) (S (S (LenE T))) (S (LenE T))
+                       (IsNoneO Nat (boolRec (λ (W : Bool). Opt Nat)
+                                       (Some Nat V2) (FindL K T) (Eqb K2 K))))
+                    (boolRec (λ (W : Bool). Nat) (S (S (LenE T))) (S (LenE T))
+                       (IsNoneO Nat (boolRec (λ (W : Bool). Opt Nat)
+                                       (Some Nat V2) (FindL K T) Bw))))
+                 (Eqb K2 K) (Eqb K K2) (EqbSym K2 K) Refl) } } }
+def LenInsLTy : Term := prog{
+  Π (K : Nat) → Π (V : Nat) → Π (B : Bucket) →
+    Id Nat (LenE (InsL K V B)) (LenInsM K B) }
+
+example : chkL SPushIf SPushIfTy = true := by native_decide
+example : chkL LenInsL LenInsLTy = true := by native_decide
+
+-- It computes: inserting a fresh key lengthens the bucket, overwriting does not.
+example : chkL prog{ Refl } prog{ Id Nat (LenE (InsL 5 50 %b0)) 3 } = true := by native_decide
+example : chkL prog{ Refl } prog{ Id Nat (LenE (InsL 3 99 %b0)) 2 } = true := by native_decide
+
+/-! ### …and the same accounting at the table
+
+    `SizeAIns` lifts `LenInsL` through the carve: the table's entry count after
+    inserting into the slot at `I` is the old count bumped exactly when the key was
+    absent. This is `HMInv`'s counting clause, and with it the array-level insert's
+    invariant obligations are all discharged by lemmas that are green here. -/
+
+/-- The bump commutes with the surrounding sums. The `True` arm is one `AddSucc`; the
+    `False` arm is `Refl`. -/
+def AddIfBump : Term := prog{
+  λ (Bv : Bool). λ (SL : Nat). λ (A : Nat). λ (SR : Nat).
+    elim Bv return (λ (Bz : Bool).
+        Id Nat (Add SL (Add (boolRec (λ (W : Bool). Nat) (S A) A Bz) SR))
+               (boolRec (λ (W : Bool). Nat) (S (Add SL (Add A SR)))
+                                            (Add SL (Add A SR)) Bz)) {
+      True => AddSucc SL (Add A SR),
+      False => Refl } }
+def AddIfBumpTy : Term := prog{
+  Π (Bv : Bool) → Π (SL : Nat) → Π (A : Nat) → Π (SR : Nat) →
+    Id Nat (Add SL (Add (boolRec (λ (W : Bool). Nat) (S A) A Bv) SR))
+           (boolRec (λ (W : Bool). Nat) (S (Add SL (Add A SR)))
+                                        (Add SL (Add A SR)) Bv) }
+
+def SizeAIns : Term := prog{
+  λ (I : Nat). λ (L : Array I Bucket). λ (M : Nat). λ (X : Bucket).
+  λ (R : Array M Bucket). λ (K : Nat). λ (V : Nat).
+    IdTrans Nat
+      (SizeA (Add I (S M)) (arrCat I (S M) L (acons M (InsL K V X) R)))
+      (Add (SizeA I L) (Add (LenE (InsL K V X)) (SizeA M R)))
+      (boolRec (λ (W : Bool). Nat)
+         (S (SizeA (Add I (S M)) (arrCat I (S M) L (acons M X R))))
+         (SizeA (Add I (S M)) (arrCat I (S M) L (acons M X R)))
+         (IsNoneO Nat (FindL K X)))
+      -- (1) split the NEW table at the carve
+      (SizeACat (S M) (acons M (InsL K V X) R) I L)
+      (IdTrans Nat
+         (Add (SizeA I L) (Add (LenE (InsL K V X)) (SizeA M R)))
+         (Add (SizeA I L) (Add (LenInsM K X) (SizeA M R)))
+         (boolRec (λ (W : Bool). Nat)
+            (S (SizeA (Add I (S M)) (arrCat I (S M) L (acons M X R))))
+            (SizeA (Add I (S M)) (arrCat I (S M) L (acons M X R)))
+            (IsNoneO Nat (FindL K X)))
+         -- (2) rewrite the touched bucket's length by `LenInsL`
+         (IdCongr Nat Nat
+            (λ (Zz : Nat). Add (SizeA I L) (Add Zz (SizeA M R)))
+            (LenE (InsL K V X)) (LenInsM K X) (LenInsL K V X))
+         (IdTrans Nat
+            (Add (SizeA I L) (Add (LenInsM K X) (SizeA M R)))
+            (boolRec (λ (W : Bool). Nat)
+               (S (Add (SizeA I L) (Add (LenE X) (SizeA M R))))
+               (Add (SizeA I L) (Add (LenE X) (SizeA M R)))
+               (IsNoneO Nat (FindL K X)))
+            (boolRec (λ (W : Bool). Nat)
+               (S (SizeA (Add I (S M)) (arrCat I (S M) L (acons M X R))))
+               (SizeA (Add I (S M)) (arrCat I (S M) L (acons M X R)))
+               (IsNoneO Nat (FindL K X)))
+            -- (3) pull the bump out through the surrounding sums
+            (AddIfBump (IsNoneO Nat (FindL K X)) (SizeA I L) (LenE X) (SizeA M R))
+            -- (4) put the OLD table back together, under both arms at once
+            (IdCongr Nat Nat
+               (λ (Zz : Nat). boolRec (λ (W : Bool). Nat) (S Zz) Zz
+                                (IsNoneO Nat (FindL K X)))
+               (Add (SizeA I L) (Add (LenE X) (SizeA M R)))
+               (SizeA (Add I (S M)) (arrCat I (S M) L (acons M X R)))
+               (IdSym Nat
+                  (SizeA (Add I (S M)) (arrCat I (S M) L (acons M X R)))
+                  (Add (SizeA I L) (Add (LenE X) (SizeA M R)))
+                  (SizeACat (S M) (acons M X R) I L))))) }
+def SizeAInsTy : Term := prog{
+  Π (I : Nat) → Π (L : Array I Bucket) → Π (M : Nat) → Π (X : Bucket) →
+  Π (R : Array M Bucket) → Π (K : Nat) → Π (V : Nat) →
+    Id Nat (SizeA (Add I (S M)) (arrCat I (S M) L (acons M (InsL K V X) R)))
+           (boolRec (λ (W : Bool). Nat)
+              (S (SizeA (Add I (S M)) (arrCat I (S M) L (acons M X R))))
+              (SizeA (Add I (S M)) (arrCat I (S M) L (acons M X R)))
+              (IsNoneO Nat (FindL K X))) }
+
+example : chkL AddIfBump AddIfBumpTy = true := by native_decide
+example : chkL SizeAIns SizeAInsTy = true := by native_decide
+
+/-! ### The corollaries a program actually calls
+
+    A table is numbered from `Z`, so every use of `SlotsOkSplit`/`SlotsOkJoin` is at
+    `I0 = Z` — where the middle bucket's index comes out as `Add K Z`, which does NOT
+    reduce to `K` because `Add` recurses on its first argument. One `AddZero` transport
+    each, done once here rather than at every call site.
+
+    (Stating the lemmas with `Add I0 K` instead would make this use site free and cost
+    a transport in both the base and the step; the split as it stands puts the whole
+    cost in one place.) -/
+
+def SlotsOkSplit0 : Term := prog{
+  λ (C : Nat). λ (M : Nat). λ (X : Bucket). λ (R : Array M Bucket).
+  λ (K : Nat). λ (L : Array K Bucket).
+  λ (H : SlotsOk C Z (Add K (S M)) (arrCat K (S M) L (acons M X R))).
+    elim (SlotsOkSplit C M X R K L Z H) return (λ (Q :
+        Σ (Hl : SlotsOk C Z K L).
+        Σ (Hm : BucketAt C (Add K Z) X). SlotsOk C (S (Add K Z)) M R).
+        Σ (Hl : SlotsOk C Z K L).
+        Σ (Hm : BucketAt C K X). SlotsOk C (S K) M R) {
+      Pair (Hl) (Ht) =>
+        Pair(Hl, NatRw (λ (Z0 : Nat). Σ (Hm : BucketAt C Z0 X). SlotsOk C (S Z0) M R)
+                       (Add K Z) K (AddZero K) Ht) } }
+def SlotsOkSplit0Ty : Term := prog{
+  Π (C : Nat) → Π (M : Nat) → Π (X : Bucket) → Π (R : Array M Bucket) →
+  Π (K : Nat) → Π (L : Array K Bucket) →
+    SlotsOk C Z (Add K (S M)) (arrCat K (S M) L (acons M X R)) →
+      Σ (Hl : SlotsOk C Z K L). Σ (Hm : BucketAt C K X). SlotsOk C (S K) M R }
+
+def SlotsOkJoin0 : Term := prog{
+  λ (C : Nat). λ (M : Nat). λ (X : Bucket). λ (R : Array M Bucket).
+  λ (K : Nat). λ (L : Array K Bucket).
+  λ (Hl : SlotsOk C Z K L). λ (Hm : BucketAt C K X). λ (Hr : SlotsOk C (S K) M R).
+    elim (NatRw (λ (Z0 : Nat). Σ (Hm2 : BucketAt C Z0 X). SlotsOk C (S Z0) M R)
+                K (Add K Z) (IdSym Nat (Add K Z) K (AddZero K)) Pair(Hm, Hr))
+      return (λ (Q : Σ (Hm2 : BucketAt C (Add K Z) X). SlotsOk C (S (Add K Z)) M R).
+          SlotsOk C Z (Add K (S M)) (arrCat K (S M) L (acons M X R))) {
+        Pair (Hm2) (Hr2) => SlotsOkJoin C M X R K L Z Hl Hm2 Hr2 } }
+def SlotsOkJoin0Ty : Term := prog{
+  Π (C : Nat) → Π (M : Nat) → Π (X : Bucket) → Π (R : Array M Bucket) →
+  Π (K : Nat) → Π (L : Array K Bucket) →
+    SlotsOk C Z K L → BucketAt C K X → SlotsOk C (S K) M R →
+      SlotsOk C Z (Add K (S M)) (arrCat K (S M) L (acons M X R)) }
+
+example : chkL SlotsOkSplit0 SlotsOkSplit0Ty = true := by native_decide
+example : chkL SlotsOkJoin0 SlotsOkJoin0Ty = true := by native_decide
+
+
 /-! ## 12. The executing differential
 
     Checking is half the claim; the other half is that the concrete machine agrees.
