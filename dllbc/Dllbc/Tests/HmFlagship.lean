@@ -28,7 +28,8 @@ open Dllbc.StdLemmas (LeRefl LeTrans LeAdd LeAddL LeAddSucc LeRwL LeRwR AddSucc 
   NatRw
   NextR NextC NextQ ModC Mod DivC Div Mul StepInv StepInvTy ModCLt ModCLtTy
   ModLtN ModLtNTy ModDec ModDecTy
-  OptP Opt Some None OptElim Entry Bucket LenE FindL)
+  OptP Opt Some None OptElim Entry Bucket LenE FindL
+  AllKeysEq AllHashedA TotalLenA TotalLenACat OptElimAssoc FindArrA FindArrACat)
 
 namespace Dllbc.Tests.HmFlagship
 
@@ -83,6 +84,46 @@ example : chkL prog{ OptElim (Some 5) Nat Z (λ (V : Nat). V) } prog{ Nat } = tr
 example : (pv prog{ OptElim (Some 5) Nat Z (λ (V : Nat). V) }).natOf? == some 5 := by
   native_decide
 example : (pv prog{ OptElim None Nat 9 (λ (V : Nat). V) }).natOf? == some 9 := by
+  native_decide
+
+/-! ## §0.6 — well-hashedness, entry counting, and the whole-map fold, smoke-tested -/
+
+def okSlots : Term := prog{ Arr(Nil, Cons(Pair(5, 7), Nil), Cons(Pair(1, 2), Cons(Pair(3, 4), Nil))) }
+-- 3 slots, cap 3: slot 0 empty, slot 1 = [(5,7)] (5 mod 3 = 2 — WRONG on purpose below);
+-- rebuilt so every entry really does hash to its own slot: 1 mod 3 = 1, 4 mod 3 = 1, 3 mod 3 = 0.
+def okSlots2 : Term := prog{ Arr(Cons(Pair(3, 90), Nil), Cons(Pair(1, 20), Cons(Pair(4, 40), Nil)), Nil) }
+
+-- `AllHashedA`'s witness is the nested Sigma-chain `arrRec`/`AllKeysEq` actually build:
+-- one `Pair(Refl, …)` per entry, one `Pair(…, …)` per slot, `unit` at every Nil.
+-- `cap = 2`: slot 0 = `[(2,90)]` (`2 mod 2 = 0`, matches its own slot), slot 1 = `[]`.
+def hashOkSlots : Term := prog{ Arr(Cons(Pair(2, 90), Nil), Nil) }
+example : chkL prog{ Pair(Pair(Refl, unit), Pair(unit, unit)) }
+               prog{ AllHashedA 2 2 %hashOkSlots Z } = true := by native_decide
+-- Not vacuous: `okSlots` puts a key-5 entry in slot 1, and `5 mod 3 = 2 ≠ 1` — no witness
+-- of the RIGHT SHAPE exists, so even the correctly-shaped witness above is refused here.
+example : chkL prog{ Pair(Pair(Refl, unit), Pair(unit, unit)) }
+               prog{ AllHashedA 3 3 %okSlots Z } = false := by native_decide
+
+example : (pv prog{ TotalLenA 3 %okSlots2 }).natOf? == some 3 := by native_decide
+example : chkL OptElimAssoc prog{
+    Π (O1 : Opt Nat) → Π (O2 : Opt Nat) → Π (D : Opt Nat) →
+      Id (Opt Nat) (OptElim O1 (Opt Nat) (OptElim O2 (Opt Nat) D Some) Some)
+                   (OptElim (OptElim O1 (Opt Nat) O2 Some) (Opt Nat) D Some) } = true := by
+  native_decide
+example : chkL TotalLenACat prog{
+    Π (M : Nat) → Π (A : Array M Bucket) → Π (Kk : Nat) → Π (B : Array Kk Bucket) →
+      Id Nat (TotalLenA (Add M Kk) (arrCat M Kk A B)) (Add (TotalLenA M A) (TotalLenA Kk B)) }
+    = true := by native_decide
+example : chkL FindArrACat prog{
+    Π (Q : Nat) → Π (M : Nat) → Π (A : Array M Bucket) → Π (Kk : Nat) → Π (B : Array Kk Bucket) →
+      Id (Opt Nat) (FindArrA Q (Add M Kk) (arrCat M Kk A B))
+                   (OptElim (FindArrA Q M A) (Opt Nat) (FindArrA Q Kk B) Some) } = true := by
+  native_decide
+
+-- `FindArrA` really does scan every slot and find the entry.
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindArrA 4 3 %okSlots2) (Some 40) } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindArrA 9 3 %okSlots2) None } = true := by
   native_decide
 
 end Dllbc.Tests.HmFlagship

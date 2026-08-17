@@ -4836,4 +4836,121 @@ def FindL : Term := prog{
               True => Some V2, False => Rec } })
       B }
 
+/-! ## The slot array — well-hashedness, entry counting, and the whole-map lookup
+
+    `AllHashedA`/`TotalLenA` are `SortedA`'s shape (`hm-probe-arrays`'s `AllShortA`,
+    generalised from a length bound to a per-slot hash equation): an `arrRec` fold into
+    `Type`/`Nat` over the cons view, with the running absolute slot index threaded as an
+    explicit `Nat` argument — `SplitAL`'s "M22 bounded-Π" idiom, since the predicate
+    needs a POSITION and `arrRec`'s own peeling only ever hands back a REMAINING-LENGTH
+    co-index. -/
+
+/-- `AllKeysEq cap i b` — every entry in bucket `b` hashes to slot `i`. -/
+def AllKeysEq : Term := prog{
+  λ (Cap : Nat). λ (I : Nat). λ (B : Bucket).
+    listRec Entry (λ (Bm : Bucket). Type) Unit
+      (λ (E : Entry). λ (T : Bucket). λ (Ih : Type).
+        elim E return (λ (Em : Σ (k : Nat). Nat). Type) {
+          Pair (K2) (V2) => Σ (Heq : Id Nat (Mod K2 Cap) I). Ih
+        })
+      B }
+
+/-- `AllHashedA cap n a i0` — every bucket of the `n`-slot sub-array `a` is well-hashed,
+    reading `a`'s own zeroth slot as ABSOLUTE index `i0` of the full `cap`-array. Used
+    at `i0 = Z, n = cap` for the packed invariant, and at an arbitrary `i0` for the
+    carve-crossing lemmas below (the `SplitACatI0`/`SplitACatE1` shape). -/
+def AllHashedA : Term := prog{
+  λ (Cap : Nat). λ (N : Nat). λ (A : Array N Bucket). λ (I0 : Nat).
+    arrRec Bucket (λ (M : Nat). λ (Bz : Array M Bucket). Π (I : Nat) → Type)
+      (λ (I : Nat). Unit)
+      (λ (K : Nat). λ (H : Bucket). λ (T : Array K Bucket). λ (Ih : Π (I : Nat) → Type).
+        λ (I : Nat). Σ (Hh : AllKeysEq Cap I H). Ih (S I))
+      N A I0 }
+
+/-- `TotalLenA n a` — the entry count across every bucket of `a`. `CountA`'s shape,
+    with `Eqb`-branching replaced by an unconditional `Add`. -/
+def TotalLenA : Term := prog{
+  λ (N : Nat). λ (A : Array N Bucket).
+    arrRec Bucket (λ (M : Nat). λ (Bz : Array M Bucket). Nat) Z
+      (λ (K : Nat). λ (H : Bucket). λ (T : Array K Bucket). λ (Ih : Nat). Add (LenE H) Ih)
+      N A }
+
+/-- `TotalLenA` distributes over `arrCat` — `CountArrCat`'s shape, simpler since there
+    is no `Eqb` branch to carry across the induction (every bucket contributes
+    unconditionally, so the step is one `AddAssoc` rather than a `boolRec` congruence). -/
+def TotalLenACat : Term := prog{
+  λ (M : Nat). λ (A : Array M Bucket). λ (Kk : Nat). λ (B : Array Kk Bucket).
+    arrRec Bucket (λ (Mz : Nat). λ (Az : Array Mz Bucket).
+        Id Nat (TotalLenA (Add Mz Kk) (arrCat Mz Kk Az B)) (Add (TotalLenA Mz Az) (TotalLenA Kk B)))
+      Refl
+      (λ (K2 : Nat). λ (H : Bucket). λ (T : Array K2 Bucket).
+        λ (Ih : Id Nat (TotalLenA (Add K2 Kk) (arrCat K2 Kk T B))
+                       (Add (TotalLenA K2 T) (TotalLenA Kk B))).
+          IdTrans Nat
+            (Add (LenE H) (TotalLenA (Add K2 Kk) (arrCat K2 Kk T B)))
+            (Add (LenE H) (Add (TotalLenA K2 T) (TotalLenA Kk B)))
+            (Add (Add (LenE H) (TotalLenA K2 T)) (TotalLenA Kk B))
+            (IdCongr Nat Nat (λ (X : Nat). Add (LenE H) X)
+              (TotalLenA (Add K2 Kk) (arrCat K2 Kk T B))
+              (Add (TotalLenA K2 T) (TotalLenA Kk B)) Ih)
+            (IdSym Nat (Add (Add (LenE H) (TotalLenA K2 T)) (TotalLenA Kk B))
+              (Add (LenE H) (Add (TotalLenA K2 T) (TotalLenA Kk B)))
+              (AddAssoc (LenE H) (TotalLenA K2 T) (TotalLenA Kk B))))
+      M A }
+
+/-- Associativity of the "first hit wins" combine, at the ONE instantiation the
+    whole-map fold needs (`F = Some`). Both leaves close by `Refl` once `O1`'s tag is
+    concrete — `CountArrCat`'s `boolRec`-phantom trick, one level deeper: fixing the
+    Bool tag alone is enough to compute both sides to the SAME term, regardless of what
+    `O2`/`D` are, so neither is ever cased on. -/
+def OptElimAssoc : Term := prog{
+  λ (O1 : Opt Nat). λ (O2 : Opt Nat). λ (D : Opt Nat).
+    elim O1 return (λ (Oz : Σ (b : Bool). OptP b Nat).
+        Id (Opt Nat) (OptElim Oz (Opt Nat) (OptElim O2 (Opt Nat) D Some) Some)
+                     (OptElim (OptElim Oz (Opt Nat) O2 Some) (Opt Nat) D Some)) {
+      Pair (B1) (P1) =>
+        elim B1 return (λ (Bz : Bool). Π (Pz : OptP Bz Nat) →
+            Id (Opt Nat) (OptElim Pair(Bz, Pz) (Opt Nat) (OptElim O2 (Opt Nat) D Some) Some)
+                         (OptElim (OptElim Pair(Bz, Pz) (Opt Nat) O2 Some) (Opt Nat) D Some)) {
+          True => λ (V : Nat). Refl,
+          False => λ (U : Unit). Refl
+        } P1
+    } }
+
+/-- `FindArrA q n a` — scan every bucket of `a` head-to-tail, first hit wins. Provably
+    the same answer as looking only in slot `Mod q cap` GIVEN well-hashedness (every
+    other bucket misses by construction), but stated as a fold because a fold is what
+    crosses `arrCat` for free (`CountArrCat`'s pattern) — `aget` at a SYMBOLIC index
+    does not reduce at all (`Pure.lean`'s `aget` rule requires a CONCRETE index), so an
+    `aget`-based spelling would need a carve-crossing lemma family this fold sidesteps
+    entirely. -/
+def FindArrA : Term := prog{
+  λ (Q : Nat). λ (N : Nat). λ (A : Array N Bucket).
+    arrRec Bucket (λ (M : Nat). λ (Bz : Array M Bucket). Σ (b : Bool). OptP b Nat) None
+      (λ (K : Nat). λ (H : Bucket). λ (T : Array K Bucket). λ (Ih : Σ (b : Bool). OptP b Nat).
+        OptElim (FindL Q H) (Opt Nat) Ih Some)
+      N A }
+
+/-- `FindArrA` crosses `arrCat`: `CountArrCat`'s shape exactly, with the `Eqb`-keyed
+    congruence swapped for `OptElimAssoc`. -/
+def FindArrACat : Term := prog{
+  λ (Q : Nat). λ (M : Nat). λ (A : Array M Bucket). λ (Kk : Nat). λ (B : Array Kk Bucket).
+    arrRec Bucket (λ (Mz : Nat). λ (Az : Array Mz Bucket).
+        Id (Opt Nat) (FindArrA Q (Add Mz Kk) (arrCat Mz Kk Az B))
+                     (OptElim (FindArrA Q Mz Az) (Opt Nat) (FindArrA Q Kk B) Some))
+      Refl
+      (λ (K2 : Nat). λ (H : Bucket). λ (T : Array K2 Bucket).
+        λ (Ih : Id (Opt Nat) (FindArrA Q (Add K2 Kk) (arrCat K2 Kk T B))
+                             (OptElim (FindArrA Q K2 T) (Opt Nat) (FindArrA Q Kk B) Some)).
+          IdTrans (Opt Nat)
+            (OptElim (FindL Q H) (Opt Nat) (FindArrA Q (Add K2 Kk) (arrCat K2 Kk T B)) Some)
+            (OptElim (FindL Q H) (Opt Nat) (OptElim (FindArrA Q K2 T) (Opt Nat) (FindArrA Q Kk B) Some) Some)
+            (OptElim (OptElim (FindL Q H) (Opt Nat) (FindArrA Q K2 T) Some) (Opt Nat) (FindArrA Q Kk B) Some)
+            (IdCongr (Opt Nat) (Opt Nat) (λ (X : Σ (b : Bool). OptP b Nat).
+                OptElim (FindL Q H) (Opt Nat) X Some)
+              (FindArrA Q (Add K2 Kk) (arrCat K2 Kk T B))
+              (OptElim (FindArrA Q K2 T) (Opt Nat) (FindArrA Q Kk B) Some) Ih)
+            (OptElimAssoc (FindL Q H) (FindArrA Q K2 T) (FindArrA Q Kk B)))
+      M A }
+
 end Dllbc.StdLemmas
