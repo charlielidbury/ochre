@@ -4953,4 +4953,85 @@ def FindArrACat : Term := prog{
             (OptElimAssoc (FindL Q H) (FindArrA Q K2 T) (FindArrA Q Kk B)))
       M A }
 
+/-! ## The packed `HashMap` and its spec functions
+
+    `docs/13-hashmap-flagship.md`'s fixed container: `cap`/`load`/`n` are runtime
+    `Nat`s (Copy, so a lowercase binder is the honest one — they are small the way a
+    `usize` field is), `slots` is the real array, and `HMInv` rides along erased —
+    `Σ0` marks the TAIL of the last pair comptime, so a `HashMap` value cannot exist
+    broken. The four clauses: `Le 1 cap`; every slot's bucket is well-hashed
+    (`AllHashedA`); `n` is the total entry count (`TotalLenA`), which is how a caller
+    bounds any ONE bucket's length without reaching into buckets (any addend is ≤ the
+    sum, `LeAdd`/`LeAddL`); `load` is the 4/5 threshold ledger for `cap`. -/
+
+def HMInv : Term := prog{
+  λ (Cap : Nat). λ (Load : Nat). λ (N : Nat). λ (Slots : Array Cap Bucket).
+    Le (S Z) Cap × AllHashedA Cap Cap Slots Z × Id Nat N (TotalLenA Cap Slots) ×
+      Id Nat Load (Div (Mul Cap 4) 5) }
+
+def HashMapT : Term := prog{
+  Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat). Σ0 (slots : Array cap Bucket).
+    HMInv cap load n slots }
+
+/-- `FindHM q hm` — the pointwise spec of "what does the map say `q` maps to".
+    Formulated as the WHOLE-MAP fold `FindArrA`, not an `aget`-at-`Mod q cap` direct
+    index: see `FindArrA`'s own note — an `aget`-based spelling would need a carve
+    crossing lemma family this fold sidesteps, and the two are provably the same
+    answer given `HMInv`'s well-hashedness (at most one bucket can ever match). -/
+def FindHM : Term := prog{
+  λ (Q : Nat). λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap Bucket). HMInv cap load n slots).
+    elim Hm return (λ (H0 : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap Bucket). HMInv cap load n slots). Σ (b : Bool). OptP b Nat) {
+      Pair (Cap) (Rest1) =>
+        elim Rest1 return (λ (R1 : Σ (load : Nat). Σ (n : Nat). Σ0 (slots : Array Cap Bucket).
+            HMInv Cap load n slots). Σ (b : Bool). OptP b Nat) {
+          Pair (Load) (Rest2) =>
+            elim Rest2 return (λ (R2 : Σ (n : Nat). Σ0 (slots : Array Cap Bucket).
+                HMInv Cap Load n slots). Σ (b : Bool). OptP b Nat) {
+              Pair (N0) (Rest3) =>
+                elim Rest3 return (λ (R3 : Σ0 (slots : Array Cap Bucket). HMInv Cap Load N0 slots).
+                    Σ (b : Bool). OptP b Nat) {
+                  Pair (Slots) (Hinv) => FindArrA Q Cap Slots
+                }
+            }
+        }
+    } }
+
+/-- `SizeHM hm` — the entry count. The invariant makes this a plain projection: `n`
+    already IS the total count (`HMInv`'s counting clause), so there is nothing to
+    compute — the packed representation's whole point, arriving at the first spec
+    function that gets to cash it in. -/
+def SizeHM : Term := prog{
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat). Σ0 (slots : Array cap Bucket).
+      HMInv cap load n slots).
+    elim Hm return (λ (H0 : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap Bucket). HMInv cap load n slots). Nat) {
+      Pair (Cap) (Rest1) =>
+        elim Rest1 return (λ (R1 : Σ (load : Nat). Σ (n : Nat). Σ0 (slots : Array Cap Bucket).
+            HMInv Cap load n slots). Nat) {
+          Pair (Load) (Rest2) =>
+            elim Rest2 return (λ (R2 : Σ (n : Nat). Σ0 (slots : Array Cap Bucket).
+                HMInv Cap Load n slots). Nat) {
+              Pair (N0) (Rest3) => N0
+            }
+        }
+    } }
+
+/-- `FindIns q key v hm` — the model update Insert's find-equation is checked against:
+    `Some v` at `key`, the old answer everywhere else. -/
+def FindIns : Term := prog{
+  λ (Q : Nat). λ (Key : Nat). λ (V : Nat). λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap Bucket). HMInv cap load n slots).
+    elim (Eqb Q Key) return (λ (Bz : Bool). Σ (b : Bool). OptP b Nat) {
+      True => Some V, False => FindHM Q Hm } }
+
+/-- `FindRem q key hm` — Remove's model update: `None` at `key`, the old answer
+    everywhere else. -/
+def FindRem : Term := prog{
+  λ (Q : Nat). λ (Key : Nat). λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap Bucket). HMInv cap load n slots).
+    elim (Eqb Q Key) return (λ (Bz : Bool). Σ (b : Bool). OptP b Nat) {
+      True => None, False => FindHM Q Hm } }
+
 end Dllbc.StdLemmas

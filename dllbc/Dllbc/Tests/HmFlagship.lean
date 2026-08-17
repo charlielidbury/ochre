@@ -29,7 +29,8 @@ open Dllbc.StdLemmas (LeRefl LeTrans LeAdd LeAddL LeAddSucc LeRwL LeRwR AddSucc 
   NextR NextC NextQ ModC Mod DivC Div Mul StepInv StepInvTy ModCLt ModCLtTy
   ModLtN ModLtNTy ModDec ModDecTy
   OptP Opt Some None OptElim Entry Bucket LenE FindL
-  AllKeysEq AllHashedA TotalLenA TotalLenACat OptElimAssoc FindArrA FindArrACat)
+  AllKeysEq AllHashedA TotalLenA TotalLenACat OptElimAssoc FindArrA FindArrACat
+  HMInv HashMapT FindHM SizeHM FindIns FindRem)
 
 namespace Dllbc.Tests.HmFlagship
 
@@ -124,6 +125,33 @@ example : chkL FindArrACat prog{
 example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindArrA 4 3 %okSlots2) (Some 40) } = true := by
   native_decide
 example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindArrA 9 3 %okSlots2) None } = true := by
+  native_decide
+
+/-! ## §0.7 — a hand-packed `HashMap`, smoke-tested against `HashMapT`/`FindHM`/`SizeHM`
+
+    `cap = 2`, one entry (key 2, value 90) in slot 0, slot 1 empty — `hashOkSlots`
+    from §0.6, whose `AllHashedA` witness is already worked out there. `load` and the
+    entry-count clause are checked by `Refl`, so `Div (Mul 2 4) 5` and `TotalLenA 2
+    hashOkSlots` both have to compute to the literals below for the pack to check —
+    the ONE place this section is not just replaying §0.6's witness. -/
+
+def hmInvWitness : Term :=
+  prog{ Pair(unit, Pair(Pair(Pair(Refl, unit), Pair(unit, unit)), Pair(Refl, Refl))) }
+def hmExample : Term := prog{ Pair(2, Pair(1, Pair(1, Pair(%hashOkSlots, %hmInvWitness)))) }
+
+example : chkL hmExample HashMapT = true := by native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindHM 2 %hmExample) (Some 90) } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindHM 9 %hmExample) None } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id Nat (SizeHM %hmExample) 1 } = true := by native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindIns 5 5 70 %hmExample) (Some 70) } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindIns 2 5 70 %hmExample) (Some 90) } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindRem 2 2 %hmExample) None } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindRem 9 2 %hmExample) None } = true := by
   native_decide
 
 end Dllbc.Tests.HmFlagship
