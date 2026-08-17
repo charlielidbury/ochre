@@ -56,3 +56,40 @@ Three implementations of this spec exist as parked branches, from the 2026-08-17
 ## Process
 
 Worktree off `origin/main`; FF-CAS endgame (rebase-and-ff is yours; see the merge-protocol notes in team memory — pinned-lease pushes, re-count migrations after every rebase). Incremental writes ≤120 lines, build per chunk, push every commit. Staging: S1 fixed-capacity map without resize (full specs); S2 resize + full Insert; S3 twins + differential + writeup. No kernel changes — if you believe you need one, stop and report instead. Spec conjuncts above are fixed; everything else is yours to shape, with deviations named in commit messages.
+
+---
+
+## The comparison (filled in at completion — branch `hm-flagship-fable`, 2026-08-17)
+
+**What stands.** `New`, `Insert` (with doubling resize), and `Remove` check with every conjunct this document fixes, as ONE `progOk` over the whole declaration chain, against no table (`Tests/HashMap.lean`, `s1Chain`). A checked CALLER (`s2CheckedCaller`) discharges Insert's preconditions by proof from New's own ensures — and that this needed S2 is itself a finding: S1's headroom precondition made the op uncallable without invariant-projection lemmas; the resize is what closes the spec. Twelve lying twins are all refused: eight spec twins (New's find/size, Insert's find-onto-old / frame-flipped / size-off-by-one, Remove's returned-value / pointwise-onto-old / size-flipped) and four body twins (unhashed slot, skipped duplicate-key overwrite, skipped n-bump, skipped resize — the last caught by the packed load ledger exactly as predicted). The executing differential is green end to end: Aeneas' own test1 (cap 32, keys 0/128/1024/1056 colliding in slot 0, overwrite through the get_mut path, remove, re-check), the doc's ≥2-resize sequence (cap 1 → 8 under four inserts, three doubling resizes, every entry re-slotted), the collision/overwrite/remove suites at cap 4, and both or_insert arms — each decoded pack compared field-by-field (cap, load, n, every bucket in order) against a trusted Lean-side model.
+
+**What is pinned red.** `GetMut`/`GetMutOrInsert` EXECUTE correctly (they carry the differential above) but cannot CHECK against the intrinsically-packed container today, and the doc's "verified for safety + the packed invariant" expectation for them was miscalibrated: it dated from the probe era's whole-parameter audit exemption, which was unsound and has since been fixed to per-sub-place. A returned borrow keeps its group open across the op's return; re-typing `HMInvT cap load n slots` at the exit audit needs the WHOLE slots value, which no sub-place exemption can supply while a leaf of it is lent out. Three minimized probes pin the wall (`gmProbe1/2/3`: inline carve, callee boundary, index place); this is `12-design-borrow-refounding.md`'s loan-attached-debts gap arriving at the safety layer, and it is kernel work (audit/conversion), reported rather than patched.
+
+**LoC split** (`Tests/HashMap.lean`, 6,086 lines total; counts include comments and the per-item `native_decide` assertions):
+
+| layer | lines | notes |
+|---|---|---|
+| program + staging (the chain builder) | 1,034 | eleven `fn`s; ~157 comptime-`let` staging lines; the runnable skeleton (matches, carves, writes, calls) is roughly 150 lines — comparable to Aeneas' 201-LoC Rust source |
+| spec functions + packed invariant | 424 | Opt vocabulary, FindL/AgetB/TotalE, HMInv, HashMapT, model updates, projections |
+| pure lemmas | 2,324 (+295 in `StdLemmas`) | ~60 lemmas: slot arithmetic (ported from `hm-probe-mod`), the Div-free ledger incl. `LedgerGrow`, the `SplitACat*`-mirror crossing family, the walk/move evidence, the pointwise lifts, `ResizeGlue` |
+| twins | 1,571 | mostly the two transcribed insert prefixes (M28 D1: body twins cannot splice) |
+| pinned findings/probes | 323 | pack shapes, the audit wall, the recursive-λ rule |
+| executing layer (`Tests/HashMapDiff.lean`) | 340 | decoders, model, callers |
+
+**Wall-clock.** The verified chain (all of `Tests/HashMap.lean`: the chain check, 119 `chkL` lemma checks, 32 program-level assertions) builds in ~20 s. The executing differential is minutes-scale, dominated by the interpreter evaluating the comptime layer at cap 32 (the known ~30× tax; `runProgramF` had to raise the machine's default 1000-step budget to 2M). Aeneas' comparison point: 201 LoC of Rust, 3,247 lines of hand-written F* proof, 4 person-days. This artifact was built in one agent session; its lemma layer is ~2,600 lines against their 3,247, with the found/frame conjuncts unified into one pointwise equation per op.
+
+**Divergence ledger** (extends the vendored README's):
+- `Nat` vs `usize` — their overflow obligations and Fail cases do not exist here; Insert is total (recorded in the README, confirmed).
+- Intrinsic packing vs extrinsic invariant — every op's invariant-preservation proof is returning a well-typed pack, and it survives opaque group ends (measured: `packRefines` — destructuring `*self` refines the entry σ, so `old *self` claims compute).
+- Borrow-returning ops carry no functional conjuncts (as this doc fixed) — and, beyond the doc: no checkable safety contract against the packed container either (the pinned wall above); executing-only.
+- The 4/5 ledger is carried Div-free: `load = 4·cap` with occupancy `5·n ≤ load` — for integers exactly `n ≤ ⌊4·cap/5⌋`, and the resize trigger `5·(n+1) > load` is exactly `n+1 > ⌊4·cap/5⌋`. No floor-division lemma library.
+- A FIFTH invariant clause: per-bucket key distinctness (`NodupB`). Absent from this doc's four-clause list but present in Aeneas' own `slot_t_inv`, and forced by the fixed specs: Remove's pointwise equation is false at a bucket with a shadowed duplicate, and Insert's equation THROUGH resize is false when rehashing reorders same-key entries.
+- Resize is checked only on the entry-count bump path (an overwrite cannot newly trip a threshold that held before); Aeneas tests unconditionally — same observable behavior.
+- Insert's fuel precondition is `S (S (SizeHM (*self))) ≤ fuel` (one extra tick for the move fold); Remove's is `S (SizeHM (*self)) ≤ fuel`.
+
+**Structural findings the next flagship should inherit.**
+1. **The function boundary is load-bearing, twice over.** The exit audit cannot re-type a dependent pack whose array component is still segmented (`s1P2a`, with the σ/composition equation itself PROVED definitional by `s1P2c` — the gap is in the audit's conversion, not the equation). So every mutating op routes its carve through a callee (`SlotUpd`/`SlotRem`) and packs the fresh σ the group end mints. And a recursive fn cannot re-carve its own still-carved argument, so the resize fold's level is its own fn (`MoveOne`) exporting four carve-free facts about opaque arrays — which made the fold's composition lemmas SIMPLER than the composition-spelled ones they replaced.
+2. **λ interiors cite snapshots, nothing else.** Inside a recursive fn a λ may not cite the fn's own Π-typed parameter — not even through a snapshot (`lamFeedG/J`, pinned) — so every fold-evidence builder is a top-level pure lemma applied to the parameter. Corollary of §2.4's citation rule, now with teeth.
+3. **`aget` is not the spec's getter.** The kernel's `aget` reduces only on literal `Arr`s; nothing about it at a carve composition is provable. The spec layer needs its own `arrRec`-fold getter (`AgetB`), for which every crossing lemma is an ordinary induction.
+4. **The Σ(Bool) Option's missing η is dodgeable.** `elim (IsSomeB x) {x, None} = x` is unprovable at an opaque `x` — but every `x` the specs produce is a bucket lookup, and `NotHitFindNone` (an induction over the SYMBOLIC bucket) collapses the miss to the literal `None`. `ResizeGlue` rides on it.
+5. **The generic model update pays twice.** `BFindUpd q k X l` with `X` an arbitrary option makes Insert (`X = Some v`) and Remove (`X = None`) share the entire pointwise family, including both miss-lemmas, verbatim.
