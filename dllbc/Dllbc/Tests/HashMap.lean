@@ -189,5 +189,225 @@ example : chkL prog{ Refl }
   prog{ Id (List (Σ (k : Nat). Nat)) (RemL 1 %b0) Cons(Pair(3, 30), Nil) } = true := by
   native_decide
 
+/-! ## 3. The invariant library
+
+    Three array-level predicates, all `arrRec` folds in `SortedA`'s shape with the
+    element type changed from `Nat` to a bucket. `arrRec` takes its element type as an
+    argument, so nothing about the fold cares that an element is a list.
+
+    `SlotsOk` is the one with a wrinkle. "Every entry in slot `i` hashes to `i`" needs
+    the slot's INDEX, and an `arrRec` fold knows only the remaining length. So the
+    motive returns `Π (Iz : Nat) → Type` and the index is threaded down the spine —
+    `SplitAL`'s own device for its skip count, reused for exactly the reason it was
+    invented. -/
+
+/-- `BucketAt c i b` — every entry in `b` has `Mod key c = i`. -/
+def BucketAt : Term := prog{
+  λ (C : Nat). λ (I : Nat). λ (B : List (Σ (k : Nat). Nat)).
+    elim B return (λ (Bm : List (Σ (k : Nat). Nat)). Type) {
+      Nil => Unit,
+      Cons (E) (T) Rec =>
+        elim E return (λ (Em : Σ (k : Nat). Nat). Type) {
+          Pair (K2) (V2) => Σ (Hh : Id Nat (Mod K2 C) I). Rec } } }
+
+/-- `SlotsOk c i0 n a` — the slots of `a`, numbered from `i0`, are each well-hashed. -/
+def SlotsOk : Term := prog{
+  λ (C : Nat). λ (I0 : Nat). λ (N : Nat). λ (A : Array N (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (M : Nat). λ (Bz : Array M (List (Σ (k : Nat). Nat))). Π (Iz : Nat) → Type)
+      (λ (Iz : Nat). Unit)
+      (λ (M : Nat). λ (H : List (Σ (k : Nat). Nat)).
+       λ (T : Array M (List (Σ (k : Nat). Nat))). λ (Ih : Π (Iz : Nat) → Type).
+        λ (Iz : Nat). Σ (Hh : BucketAt C Iz H). Ih (S Iz))
+      N A I0 }
+
+/-- `SizeA n a` — the total number of entries across every bucket. This is the clause
+    that lets a CALLER name a fuel bound without reaching into a bucket: `n` is the
+    entry count, so `n` bounds every individual bucket's length. -/
+def SizeA : Term := prog{
+  λ (N : Nat). λ (A : Array N (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (M : Nat). λ (Bz : Array M (List (Σ (k : Nat). Nat))). Nat) Z
+      (λ (M : Nat). λ (H : List (Σ (k : Nat). Nat)).
+       λ (T : Array M (List (Σ (k : Nat). Nat))). λ (Ih : Nat). Add (LenE H) Ih)
+      N A }
+
+/-! ### The invariant, and the container that packs it
+
+    `HMInv`'s four clauses are the problem statement's, in order: the capacity is
+    positive, every slot is well-hashed, `n` is the entry count, and `load` is the 4/5
+    threshold ledger for `cap`.
+
+    The container puts the slots array and the invariant in a `Σ0`, so the PROOF is
+    the erased half and the array is the runtime half. A `HMap` value therefore cannot
+    exist broken: every operation's invariant-preservation obligation is discharged by
+    returning a well-typed pack, and there is no separate "the invariant still holds"
+    conjunct anywhere in this file. -/
+
+def HMInv : Term := prog{
+  λ (C : Nat). λ (L : Nat). λ (N : Nat). λ (Sl : Array C (List (Σ (k : Nat). Nat))).
+    Σ (Hc : Le (S Z) C).
+    Σ (Hs : SlotsOk C Z C Sl).
+    Σ (Hn : Id Nat N (SizeA C Sl)).
+      Id Nat L (Div (Mul C 4) 5) }
+
+/-- The container. Named `HMapT` rather than `HashMap` because this namespace is
+    already called `HashMap` and Lean would resolve the bare name to it. -/
+def HMapT : Term := prog{
+  Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+    Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInv cap load n slots }
+
+/-- The pack's eliminator, written once so nothing else has to spell the four nested
+    motives. `T` is a comptime type parameter — a `Π (T : Type)` telescope, which is
+    how `IdCongr` already takes its type arguments. -/
+def HmRec : Term := prog{
+  λ (T : Type).
+  λ (F : Π (C : Nat) → Π (L : Nat) → Π (N : Nat) →
+         Π (Sl : Array C (List (Σ (k : Nat). Nat))) → HMInv C L N Sl → T).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+            Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInv cap load n slots).
+    elim Hm return (λ (Hz : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInv cap load n slots). T) {
+      Pair (C) (R1) =>
+        elim R1 return (λ (R1z : Σ (load : Nat). Σ (n : Nat).
+            Σ0 (slots : Array C (List (Σ (k : Nat). Nat))). HMInv C load n slots). T) {
+          Pair (L) (R2) =>
+            elim R2 return (λ (R2z : Σ (n : Nat).
+                Σ0 (slots : Array C (List (Σ (k : Nat). Nat))). HMInv C L n slots). T) {
+              Pair (N) (R3) =>
+                elim R3 return (λ (R3z : Σ0 (slots : Array C (List (Σ (k : Nat). Nat))).
+                    HMInv C L N slots). T) {
+                  Pair (Sl) (Hi) => F C L N Sl Hi } } } } }
+
+/-! ## 4. The spec functions
+
+    `FindHM` is the map's mathematical VIEW: look the key up in the bucket its hash
+    selects. `FindIns`/`FindRem` are the model UPDATES the operations are specified
+    against — pure functions of the entry state, so that an operation's whole
+    functional claim is one pointwise equation between the exit view and the model
+    update of the entry view. -/
+
+def FindHM : Term := prog{
+  λ (Q : Nat). λ (Hm : HMapT).
+    HmRec (Opt Nat)
+      (λ (C : Nat). λ (L : Nat). λ (N : Nat).
+       λ (Sl : Array C (List (Σ (k : Nat). Nat))). λ (Hi : HMInv C L N Sl).
+         FindL Q (aget (List (Σ (k : Nat). Nat)) C (Mod Q C) Sl)) Hm }
+
+def SizeHM : Term := prog{
+  λ (Hm : HMapT).
+    HmRec Nat
+      (λ (C : Nat). λ (L : Nat). λ (N : Nat).
+       λ (Sl : Array C (List (Σ (k : Nat). Nat))). λ (Hi : HMInv C L N Sl). N) Hm }
+
+/-- `Some`-ness as a Boolean, so the size accounting can be a spec FUNCTION rather
+    than a conditional Π (the problem statement's requirement). -/
+def IsNoneO : Term := prog{
+  λ (T : Type). λ (O : Σ (b : Bool). OptP b T).
+    elim O return (λ (Oz : Σ (b : Bool). OptP b T). Bool) {
+      Pair (Bb) (Pp) =>
+        elim Bb return (λ (Bz : Bool). Bool) { True => False, False => True } } }
+
+def PredN : Term := prog{
+  λ (N : Nat). elim N return (λ (Nz : Nat). Nat) { Z => Z, S (M) Rec => M } }
+
+/-- The model update for insert: `Some v` at the inserted key, the old answer
+    everywhere else. This one equation subsumes Aeneas' separate "found" and "frame"
+    conjuncts, because it is TOTAL in the query. -/
+def FindIns : Term := prog{
+  λ (Q : Nat). λ (K : Nat). λ (V : Nat). λ (Hm : HMapT).
+    elim (Eqb Q K) return (λ (Bz : Bool). Opt Nat) {
+      True => Some Nat V,
+      False => FindHM Q Hm } }
+
+def FindRem : Term := prog{
+  λ (Q : Nat). λ (K : Nat). λ (Hm : HMapT).
+    elim (Eqb Q K) return (λ (Bz : Bool). Opt Nat) {
+      True => None Nat,
+      False => FindHM Q Hm } }
+
+/-- The size after an insert: bumped exactly when the key was absent. -/
+def SizeIns : Term := prog{
+  λ (K : Nat). λ (Hm : HMapT).
+    elim (IsNoneO Nat (FindHM K Hm)) return (λ (Bz : Bool). Nat) {
+      True => S(SizeHM Hm),
+      False => SizeHM Hm } }
+
+/-- The size after a remove: decremented exactly when the key was present. -/
+def SizeRem : Term := prog{
+  λ (K : Nat). λ (Hm : HMapT).
+    elim (IsNoneO Nat (FindHM K Hm)) return (λ (Bz : Bool). Nat) {
+      True => SizeHM Hm,
+      False => PredN (SizeHM Hm) } }
+
+/-! ### The vocabulary is inhabited, computes, and is not vacuous
+
+    A two-slot map holding `4 ↦ 40` in slot 0 and `3 ↦ 30` in slot 1. Its load ledger
+    is `Div (Mul 2 4) 5 = 1`, its entry count is 2, and each of the four invariant
+    clauses is discharged by a value written out here — which is worth doing once at a
+    concrete map, because it is the shape every operation's exit pack has. -/
+
+def sl2 : Term := prog{ Arr(Cons(Pair(4, 40), Nil), Cons(Pair(3, 30), Nil)) }
+
+/-- `SlotsOk`'s inhabitant is one `Refl` per entry, nested down the spine. -/
+def sok2 : Term := prog{ Pair(Pair(Refl, unit), Pair(Pair(Refl, unit), unit)) }
+def inv2 : Term := prog{ Pair(unit, Pair(%sok2, Pair(Refl, Refl))) }
+def map2 : Term := prog{ Pair(2, Pair(1, Pair(2, Pair(%sl2, %inv2)))) }
+
+example : chkL sl2 prog{ Array 2 (List (Σ (k : Nat). Nat)) } = true := by native_decide
+example : chkL sok2 prog{ SlotsOk 2 Z 2 %sl2 } = true := by native_decide
+example : chkL inv2 prog{ HMInv 2 1 2 %sl2 } = true := by native_decide
+
+/-- **The packed container is inhabited by that pack**, which is the whole claim of
+    the representation: a `HMap` value carries its own well-formedness. -/
+example : chkL map2 HMapT = true := by native_decide
+
+-- …and it is NOT vacuous. Each clause is separately load-bearing: put key 3 (odd) in
+-- slot 0 and `SlotsOk` has no inhabitant; miscount the entries and `Hn` has none;
+-- get the load ledger wrong and the tail has none.
+example : chkL sok2 prog{ SlotsOk 2 Z 2 Arr(Cons(Pair(3, 30), Nil), Nil) } = false := by
+  native_decide
+example : chkL prog{ Pair(unit, Pair(%sok2, Pair(Refl, Refl))) } prog{ HMInv 2 1 3 %sl2 }
+    = false := by native_decide
+example : chkL prog{ Pair(unit, Pair(%sok2, Pair(Refl, Refl))) } prog{ HMInv 2 2 2 %sl2 }
+    = false := by native_decide
+-- A capacity of zero is refused by the first clause, so no `HMap` is ever divided by 0.
+example : chkL prog{ Pair(unit, Pair(unit, Pair(Refl, Refl))) } prog{ HMInv Z 0 0 Arr() }
+    = false := by native_decide
+
+/-! ### The view, the size, and the model updates all compute on it -/
+
+example : (pv prog{ SizeA 2 %sl2 }).natOf? == Option.some 2 := by native_decide
+example : (pv prog{ Mul 2 4 }).natOf? == Option.some 8 := by native_decide
+example : (pv prog{ Div (Mul 2 4) 5 }).natOf? == Option.some 1 := by native_decide
+-- The load threshold for the flagship's own test capacity, 32 ↦ 25.
+example : (pv prog{ Div (Mul 32 4) 5 }).natOf? == Option.some 25 := by native_decide
+
+-- The lookup goes through the hash: key 4 is in slot 0, key 3 in slot 1, and a key
+-- that hashes to an occupied slot but is not there answers `None`.
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindHM 4 %map2) (Some Nat 40) } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindHM 3 %map2) (Some Nat 30) } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindHM 6 %map2) (None Nat) } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindHM 4 %map2) (Some Nat 30) } = false := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id Nat (SizeHM %map2) 2 } = true := by native_decide
+
+-- The model updates: `FindIns` answers the new value AT the key and defers elsewhere,
+-- and the size accounting bumps only for an absent key.
+example : chkL prog{ Refl }
+  prog{ Id (Opt Nat) (FindIns 4 4 99 %map2) (Some Nat 99) } = true := by native_decide
+example : chkL prog{ Refl }
+  prog{ Id (Opt Nat) (FindIns 3 4 99 %map2) (Some Nat 30) } = true := by native_decide
+example : chkL prog{ Refl }
+  prog{ Id (Opt Nat) (FindRem 4 4 %map2) (None Nat) } = true := by native_decide
+-- Key 4 is present, so an insert at it does NOT bump the size; key 6 is absent, so it does.
+example : chkL prog{ Refl } prog{ Id Nat (SizeIns 4 %map2) 2 } = true := by native_decide
+example : chkL prog{ Refl } prog{ Id Nat (SizeIns 6 %map2) 3 } = true := by native_decide
+example : chkL prog{ Refl } prog{ Id Nat (SizeRem 4 %map2) 1 } = true := by native_decide
+example : chkL prog{ Refl } prog{ Id Nat (SizeRem 6 %map2) 2 } = true := by native_decide
+
 end Dllbc.Tests.HashMap
 end
