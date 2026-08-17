@@ -50,7 +50,8 @@ namespace Dllbc.Tests.Finite
 
 open Dllbc
 open Dllbc.StdLemmas (LeRefl LeTrans LeUpR LeAdd LeAddL LeAddMonoL LebTrueLe
-  LebFalseGt IdTrans IdCongr IdSym AddZero AddSucc AddComm LePredL)
+  LebFalseGt IdTrans IdCongr IdSym AddZero AddSucc AddComm LePredL
+  Sub AddSubCancel BoolFT BoolTF LeRwR LeRwL)
 
 /-- Type-check a closed term against a closed type in the pure seed (as §23/§24). -/
 def chkL (tm ty : Term) : Bool :=
@@ -144,5 +145,188 @@ def Bnd : Term := prog{
 def BndTy : Term := prog{
   Π (MAX : Nat) → Π (A : Σ0 (n : Nat) → Le n MAX) → Le (Val MAX A) MAX }
 example : chkL Bnd BndTy = true := by native_decide
+
+/-! ## (ii) The arithmetic the operations are about
+
+    `Add` and `Sub` are already in the library (`Std.addFn`, `StdLemmas.Sub` with
+    its `AddSubCancel`); `Mul`, `Div` and `Mod` are not, so they are here.
+
+    `Div`/`Mod` are the **count-up** pair rather than repeated subtraction: both
+    recurse structurally on the dividend with the divisor free, incrementing the
+    remainder and rolling it over when it reaches the divisor. Structural
+    recursion means no fuel parameter and no well-foundedness story, which is
+    what makes `DivModId` below a single clean induction. Division by zero
+    returns zero (`Eqb (S r) Z` is never `True`, so the remainder just counts up
+    and the quotient never increments) — Lean's own convention, and the reason
+    `DivU`'s nonzero evidence is about the HARDWARE rather than about totality. -/
+
+def Mul : Term := prog{
+  λ (A : Nat). λ (B : Nat).
+    elim A return (λ (Az : Nat). Nat) { Z => Z, S (A') Rec => Add B Rec } }
+def MulTy : Term := prog{ Π (A : Nat) → Nat → Nat }
+
+def Mod : Term := prog{
+  λ (A : Nat). λ (B : Nat).
+    elim A return (λ (Az : Nat). Nat) {
+      Z => Z,
+      S (A') Rec => elim (Eqb (S Rec) B) return (λ (Bz : Bool). Nat) {
+        True => Z, False => S Rec } } }
+def ModTy : Term := prog{ Π (A : Nat) → Nat → Nat }
+
+def Div : Term := prog{
+  λ (A : Nat). λ (B : Nat).
+    elim A return (λ (Az : Nat). Nat) {
+      Z => Z,
+      S (A') Rec => elim (Eqb (S (Mod A' B)) B) return (λ (Bz : Bool). Nat) {
+        True => S Rec, False => Rec } } }
+def DivTy : Term := prog{ Π (A : Nat) → Nat → Nat }
+
+-- They compute, which is what makes the concrete tests at the foot possible.
+example : (pv prog{ Mul 3 4 } == pv prog{ 12 }) = true := by native_decide
+example : (pv prog{ Div 7 2 } == pv prog{ 3 }) = true := by native_decide
+example : (pv prog{ Mod 7 2 } == pv prog{ 1 }) = true := by native_decide
+example : (pv prog{ Div 12 4 } == pv prog{ 3 }) = true := by native_decide
+example : (pv prog{ Mod 12 4 } == pv prog{ 0 }) = true := by native_decide
+-- Division by zero is zero, and the remainder is the whole dividend.
+example : (pv prog{ Div 5 0 } == pv prog{ 0 }) = true := by native_decide
+example : (pv prog{ Mod 5 0 } == pv prog{ 5 }) = true := by native_decide
+
+/-! ## (iii) The bound lemmas — what the operations' RESULTS satisfy
+
+    Each op below has to hand back a `U MAX`, which means producing a proof of
+    `Le <result> MAX`. Where that proof comes from is the whole design:
+
+      * `AddU`/`MulU` — from the caller. There is no bound to derive; a sum can
+        exceed `MAX` and the caller is the only one who knows it does not.
+      * `SubU`/`SatSubU`/`DivU` — DERIVED here, from the argument's own bound.
+        Truncated subtraction and division only shrink, so `SubLe`/`DivLe` plus
+        `LeTrans` discharge the obligation and the caller pays nothing.
+
+    That split is the interesting content: it says exactly which of Rust's
+    arithmetic operations can overflow, and it says it as a proof rather than as
+    a table someone wrote down. -/
+
+/-- `Eqb`'s true-reflection. The library has the two FALSE directions
+    (`EqbGtFalse`, `EqbLtFalse`) and `EqbRefl`, but not this one — `DivModId`'s
+    rollover case needs to turn the branch condition back into an equation. -/
+def EqbTrueId : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Id Bool (Eqb Az B) True → Id Nat Az B) {
+      Z => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Id Bool (Eqb Z Bz) True → Id Nat Z Bz) {
+          Z => λ (H : Id Bool (Eqb Z Z) True). Refl,
+          S (B') Ihb => λ (H : Id Bool (Eqb Z (S B')) True).
+            botElim (Id Nat Z (S B')) (BoolFT H) },
+      S (A') Ih => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Id Bool (Eqb (S A') Bz) True → Id Nat (S A') Bz) {
+          Z => λ (H : Id Bool (Eqb (S A') Z) True).
+            botElim (Id Nat (S A') Z) (BoolFT H),
+          S (B') Ihb => λ (H : Id Bool (Eqb (S A') (S B')) True).
+            IdCongr Nat Nat (λ (N : Nat). S N) A' B' (Ih B' H) } } }
+def EqbTrueIdTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Id Bool (Eqb A B) True → Id Nat A B }
+example : chkL EqbTrueId EqbTrueIdTy = true := by native_decide
+
+/-- Truncated subtraction only shrinks: `a - b ≤ a`. This is `SubU`'s whole
+    bound argument — the result of a subtraction is in range because the
+    MINUEND was. -/
+def SubLe : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Le (Sub Az B) Az) {
+      Z => λ (B : Nat). unit,
+      S (A') Ih => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Le (Sub (S A') Bz) (S A')) {
+          Z => LeRefl (S A'),
+          S (B') Ihb => LeUpR (Sub A' B') A' (Ih B') } } }
+def SubLeTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Le (Sub A B) A }
+example : chkL SubLe SubLeTy = true := by native_decide
+
+/-- Right-multiplication is monotone: `a ≤ b ⟹ a*c ≤ b*c`. The `S`/`S` step is
+    one `LeAddMonoL`, because `Mul` recurses on the LEFT factor and both sides
+    peel the same `Add c _`. -/
+def MulMonoR : Term := prog{
+  λ (C : Nat). λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Le Az B → Le (Mul Az C) (Mul B C)) {
+      Z => λ (B : Nat). λ (H : Le Z B). unit,
+      S (A') Ih => λ (B : Nat).
+        elim B return (λ (Bz : Nat). Le (S A') Bz → Le (Mul (S A') C) (Mul Bz C)) {
+          Z => λ (H : Le (S A') Z). botElim (Le (Mul (S A') C) (Mul Z C)) H,
+          S (B') Ihb => λ (H : Le (S A') (S B')).
+            LeAddMonoL C (Mul A' C) (Mul B' C) (Ih B' H) } } }
+def MulMonoRTy : Term := prog{
+  Π (C : Nat) → Π (A : Nat) → Π (B : Nat) → Le A B → Le (Mul A C) (Mul B C) }
+example : chkL MulMonoR MulMonoRTy = true := by native_decide
+
+/-- Division only shrinks: `a / b ≤ a`, at EVERY divisor including zero. The
+    induction cases the same boolean `Div`'s successor arm cases on; the motive
+    abstracts the scrutinee so both branches see the quotient they actually
+    produce. This is `DivU`'s bound argument. -/
+def DivLe : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Le (Div Az B) Az) {
+      Z => λ (B : Nat). unit,
+      S (A') Ih => λ (B : Nat).
+        elim (Eqb (S (Mod A' B)) B) return (λ (Bz : Bool).
+            Le (elim Bz return (λ (Cz : Bool). Nat) {
+                  True => S (Div A' B), False => Div A' B }) (S A')) {
+          True => Ih B,
+          False => LeUpR (Div A' B) A' (Ih B) } } }
+def DivLeTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Le (Div A B) A }
+example : chkL DivLe DivLeTy = true := by native_decide
+
+/-- **The division equation**: `a % (b+1) + (a / (b+1)) * (b+1) = a`.
+
+    One induction on the dividend. The successor step cases the SAME boolean
+    that `Mod` and `Div` both case on — the rollover test — and the motive
+    abstracts it out of both, so the two branches see the pair the definitions
+    actually produce. `Refl`-terminated (`… } Refl`) to keep the branch equation
+    (the REMEMBER-SCRUTINEE idiom the glue uses): the rollover branch needs
+    `Eqb (S r) (S b) = True` back as `r = b`, which is what `EqbTrueId` is for.
+
+    Everything the overflow guard knows about division comes from this one
+    lemma. -/
+def DivModId : Term := prog{
+  λ (B : Nat). λ (A : Nat).
+    elim A return (λ (Az : Nat).
+        Id Nat (Add (Mod Az (S B)) (Mul (Div Az (S B)) (S B))) Az) {
+      Z => Refl,
+      S (A') Ih =>
+        elim (Eqb (S (Mod A' (S B))) (S B)) return (λ (Bz : Bool).
+            Id Bool (Eqb (S (Mod A' (S B))) (S B)) Bz →
+            Id Nat (Add (elim Bz return (λ (Cz : Bool). Nat) {
+                            True => Z, False => S (Mod A' (S B)) })
+                        (Mul (elim Bz return (λ (Cz : Bool). Nat) {
+                            True => S (Div A' (S B)), False => Div A' (S B) }) (S B)))
+                   (S A')) {
+          True => λ (E : Id Bool (Eqb (S (Mod A' (S B))) (S B)) True).
+            IdCongr Nat Nat (λ (N : Nat). S N)
+              (Add B (Mul (Div A' (S B)) (S B))) A'
+              (IdTrans Nat
+                (Add B (Mul (Div A' (S B)) (S B)))
+                (Add (Mod A' (S B)) (Mul (Div A' (S B)) (S B)))
+                A'
+                (IdCongr Nat Nat (λ (Z0 : Nat). Add Z0 (Mul (Div A' (S B)) (S B)))
+                   B (Mod A' (S B))
+                   (IdSym Nat (Mod A' (S B)) B (EqbTrueId (Mod A' (S B)) B E)))
+                Ih),
+          False => λ (E : Id Bool (Eqb (S (Mod A' (S B))) (S B)) False).
+            IdCongr Nat Nat (λ (N : Nat). S N)
+              (Add (Mod A' (S B)) (Mul (Div A' (S B)) (S B))) A' Ih
+        } Refl } }
+def DivModIdTy : Term := prog{
+  Π (B : Nat) → Π (A : Nat) → Id Nat (Add (Mod A (S B)) (Mul (Div A (S B)) (S B))) A }
+example : chkL DivModId DivModIdTy = true := by native_decide
+
+/-- `(a / (b+1)) * (b+1) ≤ a` — the fact an overflow guard is FOR. Checking
+    `x ≤ MAX / k` before computing `x * k` is sound precisely because this holds;
+    it is `LeAddL` on the division equation, transported. -/
+def DivMulLe : Term := prog{
+  λ (B : Nat). λ (A : Nat).
+    LeRwR (Mul (Div A (S B)) (S B))
+      (Add (Mod A (S B)) (Mul (Div A (S B)) (S B))) A
+      (DivModId B A)
+      (LeAddL (Mul (Div A (S B)) (S B)) (Mod A (S B))) }
+def DivMulLeTy : Term := prog{
+  Π (B : Nat) → Π (A : Nat) → Le (Mul (Div A (S B)) (S B)) A }
+example : chkL DivMulLe DivMulLeTy = true := by native_decide
 
 end Dllbc.Tests.Finite
