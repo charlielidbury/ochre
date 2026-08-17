@@ -319,5 +319,429 @@ def packNav : Term := prog{
   () }
 example : progOk packNav = true := by native_decide
 
+/-! ## (vi) The Σ(Bool) Option vocabulary (`hm-probe-opt`) and the bucket specs -/
+
+def OptP : Term := prog{
+  λ (B : Bool). λ (T : Type). elim B return (λ (Bm : Bool). Type) {
+    True => T,
+    False => Unit } }
+
+/-- `Opt T` — the option type at payload `T`. The kernel has no Option (that
+    decision is closed; `hm-option-kernel` is the parked road-not-taken). -/
+def Opt : Term := prog{ λ (T : Type). Σ (b : Bool). OptP b T }
+
+/-- `Some`/`None` at `Nat`, v1's value type. -/
+def SomeN : Term := prog{ λ (V : Nat). Pair(True, V) }
+def NoneN : Term := prog{ Pair(False, unit) }
+
+example : chkL prog{ SomeN 5 } prog{ Opt Nat } = true := by native_decide
+example : chkL NoneN prog{ Opt Nat } = true := by native_decide
+example : chkL prog{ Pair(True, unit) } prog{ Opt Nat } = false := by native_decide
+
+/-- Bucket lookup: first match wins, `None` past the end. The `Opt`-typed
+    listRec over entries — the recursion the ported elim sugar exists for. -/
+def FindL : Term := prog{
+  λ (Q : Nat). λ (L : List (Σ (k : Nat). Nat)).
+    elim L return (λ (Lm : List (Σ (k : Nat). Nat)). Opt Nat) {
+      Nil => NoneN,
+      Cons (E) (T) Rec =>
+        elim E return (λ (Em : Σ (k : Nat). Nat). Opt Nat) {
+          Pair (K2) (V2) =>
+            elim (Eqb Q K2) return (λ (Bm : Bool). Opt Nat) {
+              True => SomeN V2,
+              False => Rec } } } }
+
+def IsSomeB : Term := prog{
+  λ (O : Σ (b : Bool). OptP b Nat).
+    elim O return (λ (Om : Σ (b : Bool). OptP b Nat). Bool) {
+      Pair (Bb) (P2) => Bb } }
+
+/-- `HitL q l` — is `q` present? Defined THROUGH `FindL` so the two can never
+    disagree. -/
+def HitL : Term := prog{
+  λ (Q : Nat). λ (L : List (Σ (k : Nat). Nat)). IsSomeB (FindL Q L) }
+
+/-- Bucket length (`Std.lenFn` is monomorphic at `List Nat`). -/
+def LenE : Term := prog{
+  λ (L : List (Σ (k : Nat). Nat)).
+    elim L return (λ (Lm : List (Σ (k : Nat). Nat)). Nat) {
+      Nil => Z,
+      Cons (E) (T) Rec => S(Rec) } }
+
+-- They compute.
+example : chkL prog{ Refl } prog{ Id (Opt Nat)
+  (FindL 3 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil))) (SomeN 30) } = true := by native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat)
+  (FindL 9 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil))) NoneN } = true := by native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat)
+  (FindL 3 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil))) (SomeN 10) } = false := by native_decide
+example : chkL prog{ Refl } prog{ Id Bool
+  (HitL 3 Cons(Pair(3, 30), Nil)) True } = true := by native_decide
+example : chkL prog{ Refl } prog{ Id Nat
+  (LenE Cons(Pair(1, 10), Cons(Pair(3, 30), Nil))) 2 } = true := by native_decide
+
+/-! ## (vii) The slots-level spec functions
+
+    `AgetB` is OUR getter, not the kernel's `aget`: `aget` reduces only on a
+    literal `Arr` (no `acons`/`arrCat` step), so nothing about it at a carve
+    composition is provable. `AgetB` is an `arrRec` fold, computes on the cons
+    view, and every crossing lemma about it is an ordinary induction. -/
+
+def AgetB : Term := prog{
+  λ (M : Nat). λ (A : Array M (List (Σ (k : Nat). Nat))). λ (I : Nat).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
+        Nat → List (Σ (k : Nat). Nat))
+      (λ (I2 : Nat). Nil)
+      (λ (K : Nat). λ (H : List (Σ (k : Nat). Nat)).
+        λ (T : Array K (List (Σ (k : Nat). Nat))).
+        λ (Ih : Nat → List (Σ (k : Nat). Nat)). λ (I2 : Nat).
+          elim I2 return (λ (Iz : Nat). List (Σ (k : Nat). Nat)) {
+            Z => H, S (I3) R3 => Ih I3 })
+      M A I }
+
+/-- Total entry count across the buckets — the pack's `n` clause. -/
+def TotalE : Term := prog{
+  λ (M : Nat). λ (A : Array M (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))). Nat)
+      Z
+      (λ (K : Nat). λ (H : List (Σ (k : Nat). Nat)).
+        λ (T : Array K (List (Σ (k : Nat). Nat))). λ (Ih : Nat).
+          Add (LenE H) Ih)
+      M A }
+
+example : chkL prog{ Refl } prog{ Id (List (Σ (k : Nat). Nat))
+  (AgetB 3 Arr(Nil, Cons(Pair(5, 7), Nil), Nil) 1) Cons(Pair(5, 7), Nil) } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id (List (Σ (k : Nat). Nat))
+  (AgetB 3 Arr(Nil, Cons(Pair(5, 7), Nil), Nil) 0) Nil } = true := by native_decide
+example : chkL prog{ Refl } prog{ Id Nat
+  (TotalE 3 Arr(Nil, Cons(Pair(5, 7), Nil), Cons(Pair(1, 2), Cons(Pair(3, 4), Nil)))) 3 }
+  = true := by native_decide
+
+/-! ## (viii) The packed invariant
+
+    `HMInv`'s clauses (13-hashmap-flagship.md, content fixed): `Le 1 cap`; every
+    entry in slot `i` has `Mod key cap = i`; `n` equals the total entry count;
+    `load` is the 4/5 threshold ledger for `cap` — carried Div-free as
+    `load = 4·cap` with occupancy `5·n ≤ load` (see the StdLemmas ledger note).
+
+    PLUS one clause the listed four do not name but the fixed op specs force:
+    keys within a bucket are pairwise DISTINCT (`NodupB`). Aeneas' own invariant
+    has it (`slot_t_inv`'s pairwise-distinct conjunct), and both Remove's and
+    resize's pointwise Find equations are FALSE without it: removing the first
+    of two same-key entries surfaces the shadowed one, and rehashing reorders
+    same-key entries, so `FindRem`/Insert-through-resize would each need it
+    anyway. Recorded as a deviation-by-necessity, mirroring the reference. -/
+
+def AllKeysMod : Term := prog{
+  λ (Cap : Nat). λ (I : Nat). λ (L : List (Σ (k : Nat). Nat)).
+    elim L return (λ (Lm : List (Σ (k : Nat). Nat)). Type) {
+      Nil => Unit,
+      Cons (E) (T) Rec =>
+        (elim E return (λ (Em : Σ (k : Nat). Nat). Type) {
+          Pair (K2) (V2) => Id Nat (Mod K2 Cap) I }) × Rec } }
+
+def NodupB : Term := prog{
+  λ (L : List (Σ (k : Nat). Nat)).
+    elim L return (λ (Lm : List (Σ (k : Nat). Nat)). Type) {
+      Nil => Unit,
+      Cons (E) (T) Rec =>
+        (elim E return (λ (Em : Σ (k : Nat). Nat). Type) {
+          Pair (K2) (V2) => Id Bool (HitL K2 T) False }) × Rec } }
+
+/-- One slot's obligations: hashed here, and duplicate-free. -/
+def SlotInv : Term := prog{
+  λ (Cap : Nat). λ (I : Nat). λ (L : List (Σ (k : Nat). Nat)).
+    AllKeysMod Cap I L × NodupB L }
+
+/-- `SlotInv` folded over the array from starting index `I0` — the index rides
+    as a fold argument so the crossing lemmas can generalize it. -/
+def SlotsFrom : Term := prog{
+  λ (Cap : Nat). λ (M : Nat). λ (A : Array M (List (Σ (k : Nat). Nat))). λ (I0 : Nat).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))). Nat → Type)
+      (λ (I2 : Nat). Unit)
+      (λ (K : Nat). λ (H : List (Σ (k : Nat). Nat)).
+        λ (T : Array K (List (Σ (k : Nat). Nat))).
+        λ (Ih : Nat → Type). λ (I2 : Nat).
+          SlotInv Cap I2 H × Ih (S I2))
+      M A I0 }
+
+def HMInvT : Term := prog{
+  λ (Cap : Nat). λ (Load : Nat). λ (N : Nat).
+    λ (Slots : Array Cap (List (Σ (k : Nat). Nat))).
+      Le (S Z) Cap ×
+      (Id Nat Load (Mul 4 Cap) ×
+      (Le (Mul 5 N) Load ×
+      (Id Nat N (TotalE Cap Slots) ×
+      SlotsFrom Cap Cap Slots Z))) }
+
+/-- THE CONTAINER. The invariant is packed in the type: a `HashMap` value
+    cannot exist broken, every op's invariant-preservation proof is returning a
+    well-typed pack, and it survives opaque group ends. -/
+def HashMapT : Term := prog{
+  Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+    Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots }
+
+/-! A concrete inhabitant, as the invariant's own compute test: cap 2, load 8,
+    one entry (key 3 in slot 1 — `Mod 3 2 = 1`). -/
+
+def hmEx : Term := prog{
+  Pair(2, Pair(8, Pair(1, Pair(Arr(Nil, Cons(Pair(3, 30), Nil)),
+    Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
+      Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
+        unit)))))))))) }
+
+example : chkL hmEx HashMapT = true := by native_decide
+
+-- …and the invariant is not vacuous: the same pack with the entry in the WRONG
+-- slot (key 3 in slot 0) is refused — the `Mod` clause has no `Refl`.
+example : chkL prog{
+  Pair(2, Pair(8, Pair(1, Pair(Arr(Cons(Pair(3, 30), Nil), Nil),
+    Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
+      Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)), Pair(Pair(unit, unit),
+        unit)))))))))) } HashMapT = false := by native_decide
+
+-- …a lying count (n = 2 with one entry) is refused.
+example : chkL prog{
+  Pair(2, Pair(8, Pair(2, Pair(Arr(Nil, Cons(Pair(3, 30), Nil)),
+    Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
+      Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
+        unit)))))))))) } HashMapT = false := by native_decide
+
+-- …and a bucket with a DUPLICATE key is refused by the Nodup clause.
+example : chkL prog{
+  Pair(2, Pair(8, Pair(2, Pair(Arr(Nil, Cons(Pair(3, 30), Cons(Pair(3, 31), Nil))),
+    Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
+      Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, Pair(Refl, unit)),
+        Pair(Refl, Pair(Refl, unit))), unit)))))))))) } HashMapT = false := by native_decide
+
+-- The ledger clause is live: cap 1 has threshold 0 (5·1 ≤ 4 fails), so a
+-- one-entry map at capacity 1 cannot be packed…
+example : chkL prog{
+  Pair(1, Pair(4, Pair(1, Pair(Arr(Cons(Pair(0, 9), Nil)),
+    Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
+      Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)), unit))))))))) }
+  HashMapT = false := by native_decide
+
+-- …while the empty map at capacity 1 can.
+example : chkL prog{
+  Pair(1, Pair(4, Pair(Z, Pair(Arr(Nil),
+    Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
+      Pair(Pair(unit, unit), unit))))))))) } HashMapT = true := by native_decide
+
+/-! ## (ix) The map-level spec functions — pure, over the pack
+
+    Each is a nested Σ-elim down the container; the motive spells the suffix
+    telescope at each level (the elim sugar reads `A`/`B` off the motive's
+    binder type syntactically — `SortedHead`'s precedent). -/
+
+def CapHM : Term := prog{
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim Hm return (λ (H0 : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots). Nat) {
+      Pair (Cap) (R1) => Cap } }
+
+def SizeHM : Term := prog{
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim Hm return (λ (H0 : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots). Nat) {
+      Pair (Cap) (R1) =>
+        elim R1 return (λ (H1 : Σ (load : Nat). Σ (n : Nat).
+            Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))). HMInvT Cap load n slots). Nat) {
+          Pair (Load) (R2) =>
+            elim R2 return (λ (H2 : Σ (n : Nat).
+                Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                  HMInvT Cap Load n slots). Nat) {
+              Pair (N) (R3) => N } } } }
+
+/-- `FindHM q hm` — the spec lookup: `q`'s bucket is slot `Mod q cap`. -/
+def FindHM : Term := prog{
+  λ (Q : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim Hm return (λ (H0 : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+        Opt Nat) {
+      Pair (Cap) (R1) =>
+        elim R1 return (λ (H1 : Σ (load : Nat). Σ (n : Nat).
+            Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))). HMInvT Cap load n slots).
+            Opt Nat) {
+          Pair (Load) (R2) =>
+            elim R2 return (λ (H2 : Σ (n : Nat).
+                Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                  HMInvT Cap Load n slots). Opt Nat) {
+              Pair (N) (R3) =>
+                elim R3 return (λ (H3 : Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                    HMInvT Cap Load N slots). Opt Nat) {
+                  Pair (Slots) (Inv) => FindL Q (AgetB Cap Slots (Mod Q Cap)) } } } } }
+
+def HitHM : Term := prog{
+  λ (Q : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    IsSomeB (FindHM Q Hm) }
+
+/-! The model updates (fixed content): `FindIns` is `Some v` at `key`, the old
+    answer elsewhere; `FindRem` is `None` at `key`; the size updates state the
+    "bumped/decremented iff" via a spec function, not a conditional Π. -/
+
+def FindIns : Term := prog{
+  λ (Q : Nat). λ (Key : Nat). λ (V : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim (Eqb Q Key) return (λ (Bm : Bool). Opt Nat) {
+      True => SomeN V,
+      False => FindHM Q Hm } }
+
+def FindRem : Term := prog{
+  λ (Q : Nat). λ (Key : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim (Eqb Q Key) return (λ (Bm : Bool). Opt Nat) {
+      True => NoneN,
+      False => FindHM Q Hm } }
+
+def SizeIns : Term := prog{
+  λ (Key : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim (HitHM Key Hm) return (λ (Bm : Bool). Nat) {
+      True => SizeHM Hm,
+      False => S(SizeHM Hm) } }
+
+def SizeRem : Term := prog{
+  λ (Key : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim (HitHM Key Hm) return (λ (Bm : Bool). Nat) {
+      True => Pred (SizeHM Hm),
+      False => SizeHM Hm } }
+
+-- They compute on the concrete inhabitant: key 3 is present with 30, key 5
+-- shares its bucket and misses, key 4 hits the empty bucket.
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindHM 3 %hmEx) (SomeN 30) } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindHM 5 %hmEx) NoneN } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindHM 4 %hmEx) NoneN } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id Nat (SizeHM %hmEx) 1 } = true := by native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindIns 3 5 9 %hmEx) (SomeN 30) } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindIns 5 5 9 %hmEx) (SomeN 9) } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id (Opt Nat) (FindRem 3 3 %hmEx) NoneN } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id Nat (SizeIns 5 %hmEx) 2 } = true := by native_decide
+example : chkL prog{ Refl } prog{ Id Nat (SizeIns 3 %hmEx) 1 } = true := by native_decide
+example : chkL prog{ Refl } prog{ Id Nat (SizeRem 3 %hmEx) Z } = true := by native_decide
+example : chkL prog{ Refl } prog{ Id Nat (SizeRem 5 %hmEx) 1 } = true := by native_decide
+
+/-! ## (x) Projecting the invariant's clauses
+
+    Generic product projections first (`A × B` converts with the spelled
+    `Σ (Hx : A). B` — `SortedHead`'s precedent), then the five named clause
+    projections every op body opens with. -/
+
+def FstT : Term := prog{
+  λ (A : Type). λ (B : Type). λ (P : Σ (Hx : A). B).
+    elim P return (λ (Q : Σ (Hx : A). B). A) { Pair (X) (Y) => X } }
+def FstTTy : Term := prog{ Π (A : Type) → Π (B : Type) → (Σ (Hx : A). B) → A }
+
+def SndT : Term := prog{
+  λ (A : Type). λ (B : Type). λ (P : Σ (Hx : A). B).
+    elim P return (λ (Q : Σ (Hx : A). B). B) { Pair (X) (Y) => Y } }
+def SndTTy : Term := prog{ Π (A : Type) → Π (B : Type) → (Σ (Hx : A). B) → B }
+
+example : chkL FstT FstTTy = true := by native_decide
+example : chkL SndT SndTTy = true := by native_decide
+
+def InvLe1 : Term := prog{
+  λ (Cap : Nat). λ (Load : Nat). λ (N : Nat).
+  λ (Slots : Array Cap (List (Σ (k : Nat). Nat))).
+  λ (Hi : HMInvT Cap Load N Slots).
+    FstT (Le (S Z) Cap)
+      (Id Nat Load (Mul 4 Cap) × (Le (Mul 5 N) Load ×
+        (Id Nat N (TotalE Cap Slots) × SlotsFrom Cap Cap Slots Z))) Hi }
+def InvLe1Ty : Term := prog{
+  Π (Cap : Nat) → Π (Load : Nat) → Π (N : Nat) →
+  Π (Slots : Array Cap (List (Σ (k : Nat). Nat))) →
+    HMInvT Cap Load N Slots → Le (S Z) Cap }
+
+def InvLoad : Term := prog{
+  λ (Cap : Nat). λ (Load : Nat). λ (N : Nat).
+  λ (Slots : Array Cap (List (Σ (k : Nat). Nat))).
+  λ (Hi : HMInvT Cap Load N Slots).
+    FstT (Id Nat Load (Mul 4 Cap))
+      (Le (Mul 5 N) Load × (Id Nat N (TotalE Cap Slots) × SlotsFrom Cap Cap Slots Z))
+      (SndT (Le (S Z) Cap)
+        (Id Nat Load (Mul 4 Cap) × (Le (Mul 5 N) Load ×
+          (Id Nat N (TotalE Cap Slots) × SlotsFrom Cap Cap Slots Z))) Hi) }
+def InvLoadTy : Term := prog{
+  Π (Cap : Nat) → Π (Load : Nat) → Π (N : Nat) →
+  Π (Slots : Array Cap (List (Σ (k : Nat). Nat))) →
+    HMInvT Cap Load N Slots → Id Nat Load (Mul 4 Cap) }
+
+def InvLedger : Term := prog{
+  λ (Cap : Nat). λ (Load : Nat). λ (N : Nat).
+  λ (Slots : Array Cap (List (Σ (k : Nat). Nat))).
+  λ (Hi : HMInvT Cap Load N Slots).
+    FstT (Le (Mul 5 N) Load)
+      (Id Nat N (TotalE Cap Slots) × SlotsFrom Cap Cap Slots Z)
+      (SndT (Id Nat Load (Mul 4 Cap))
+        (Le (Mul 5 N) Load × (Id Nat N (TotalE Cap Slots) × SlotsFrom Cap Cap Slots Z))
+        (SndT (Le (S Z) Cap)
+          (Id Nat Load (Mul 4 Cap) × (Le (Mul 5 N) Load ×
+            (Id Nat N (TotalE Cap Slots) × SlotsFrom Cap Cap Slots Z))) Hi)) }
+def InvLedgerTy : Term := prog{
+  Π (Cap : Nat) → Π (Load : Nat) → Π (N : Nat) →
+  Π (Slots : Array Cap (List (Σ (k : Nat). Nat))) →
+    HMInvT Cap Load N Slots → Le (Mul 5 N) Load }
+
+def InvCount : Term := prog{
+  λ (Cap : Nat). λ (Load : Nat). λ (N : Nat).
+  λ (Slots : Array Cap (List (Σ (k : Nat). Nat))).
+  λ (Hi : HMInvT Cap Load N Slots).
+    FstT (Id Nat N (TotalE Cap Slots)) (SlotsFrom Cap Cap Slots Z)
+      (SndT (Le (Mul 5 N) Load)
+        (Id Nat N (TotalE Cap Slots) × SlotsFrom Cap Cap Slots Z)
+        (SndT (Id Nat Load (Mul 4 Cap))
+          (Le (Mul 5 N) Load × (Id Nat N (TotalE Cap Slots) × SlotsFrom Cap Cap Slots Z))
+          (SndT (Le (S Z) Cap)
+            (Id Nat Load (Mul 4 Cap) × (Le (Mul 5 N) Load ×
+              (Id Nat N (TotalE Cap Slots) × SlotsFrom Cap Cap Slots Z))) Hi))) }
+def InvCountTy : Term := prog{
+  Π (Cap : Nat) → Π (Load : Nat) → Π (N : Nat) →
+  Π (Slots : Array Cap (List (Σ (k : Nat). Nat))) →
+    HMInvT Cap Load N Slots → Id Nat N (TotalE Cap Slots) }
+
+def InvSlots : Term := prog{
+  λ (Cap : Nat). λ (Load : Nat). λ (N : Nat).
+  λ (Slots : Array Cap (List (Σ (k : Nat). Nat))).
+  λ (Hi : HMInvT Cap Load N Slots).
+    SndT (Id Nat N (TotalE Cap Slots)) (SlotsFrom Cap Cap Slots Z)
+      (SndT (Le (Mul 5 N) Load)
+        (Id Nat N (TotalE Cap Slots) × SlotsFrom Cap Cap Slots Z)
+        (SndT (Id Nat Load (Mul 4 Cap))
+          (Le (Mul 5 N) Load × (Id Nat N (TotalE Cap Slots) × SlotsFrom Cap Cap Slots Z))
+          (SndT (Le (S Z) Cap)
+            (Id Nat Load (Mul 4 Cap) × (Le (Mul 5 N) Load ×
+              (Id Nat N (TotalE Cap Slots) × SlotsFrom Cap Cap Slots Z))) Hi))) }
+def InvSlotsTy : Term := prog{
+  Π (Cap : Nat) → Π (Load : Nat) → Π (N : Nat) →
+  Π (Slots : Array Cap (List (Σ (k : Nat). Nat))) →
+    HMInvT Cap Load N Slots → SlotsFrom Cap Cap Slots Z }
+
+example : chkL InvLe1 InvLe1Ty = true := by native_decide
+example : chkL InvLoad InvLoadTy = true := by native_decide
+example : chkL InvLedger InvLedgerTy = true := by native_decide
+example : chkL InvCount InvCountTy = true := by native_decide
+example : chkL InvSlots InvSlotsTy = true := by native_decide
+
 end Dllbc.Tests.HashMap
 end
