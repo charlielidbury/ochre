@@ -36,11 +36,17 @@ constructor applications. So:
   * `MAX` is a **symbolic parameter** everywhere a program or a lemma is stated.
     Nothing below ever needs its value; the guard reasoning is `Le`/`Add`/`Mul`
     algebra, which is exactly the shape it has in a real overflow proof.
-  * **Executing** tests instantiate `MAX` at small concrete values (15 mostly,
-    140 and 255 where the ceiling is being measured). Every proof obligation
-    then reduces to `unit`, because `Le` computes to `Unit` on closed arguments
-    — the callers below pass `()` for their bound evidence exactly as
-    `ArraySort`'s concrete callers pass `()` for `Le n n`.
+  * **Executing** tests instantiate `MAX` at small concrete values (15 mostly;
+    63 and 127 for the composite, 140 and 255 where the ceiling is being
+    measured). Every proof obligation then reduces to `unit`, because `Le`
+    computes to `Unit` on closed arguments — the callers below pass `()` for
+    their bound evidence exactly as `ArraySort`'s concrete callers pass `()` for
+    `Le n n`.
+
+One warning is worth reading before the code: **this normalizer has no
+sharing**, so a recursive comptime definition that mentions its recursive result
+twice is exponential and presents as a build that never finishes. §ii records
+what that cost this file and the shape that avoids it.
 
 The gap between the two is *representation*, not *reasoning*: a binary numeral
 kernel would let the same programs and the same lemmas run at `MAX = 2^64 - 1`.
@@ -152,34 +158,79 @@ example : chkL Bnd BndTy = true := by native_decide
     `Add` and `Sub` are already in the library (`Std.addFn`, `StdLemmas.Sub` with
     its `AddSubCancel`); `Mul`, `Div` and `Mod` are not, so they are here.
 
-    `Div`/`Mod` are the **count-up** pair rather than repeated subtraction: both
-    recurse structurally on the dividend with the divisor free, incrementing the
-    remainder and rolling it over when it reaches the divisor. Structural
-    recursion means no fuel parameter and no well-foundedness story, which is
-    what makes `DivModId` below a single clean induction. Division by zero
-    returns zero (`Eqb (S r) Z` is never `True`, so the remainder just counts up
-    and the quotient never increments) — Lean's own convention, and the reason
-    `DivU`'s nonzero evidence is about the HARDWARE rather than about totality. -/
+    **`Div`/`Mod` CARRY THEIR STATE, and the textbook spelling of them is a trap.**
+    The obvious definition is the count-up pair —
+
+        Mod (S a') b  =  let r = Mod a' b ; if S r == b then Z else S r
+
+    — and it is EXPONENTIAL in this normalizer, which has no sharing: `r` occurs
+    twice (once in the test, once in the branch) and the whole recursion is
+    re-derived under each occurrence. That is not a guess; the first version of
+    this file was written that way and measured, at divisor 5:
+
+        dividend   4    6    8   10   12   14   16    18
+        Mod       3ms  3ms 11ms 21ms 85ms 338ms 673ms 2716ms
+
+    — a doubling per unit of dividend. It presents as a build that never
+    finishes rather than as an error, and it is why `try_resize` below ran
+    instantly at `MAX = 15` and not at all at `MAX = 63`.
+
+    The shape that works carries the would-be-duplicated value as an ARGUMENT
+    and asks the question of the argument, so `Rec` occurs exactly once. The
+    state is `(R, C)`: `R` is the residue so far, `C` is how many more
+    increments fit before it wraps, and `Add R C = B` is the invariant. `NextR`,
+    `NextC` and `NextQ` are the three non-recursive answers to "what does this
+    component do at one increment". Credit where due: this shape and the
+    measurement that motivates it are the `hm-probe-mod` lane's (`ModC` in
+    `Dllbc/Tests/HmProbeMod.lean`, and the rule now written down in
+    `docs/04-language.md`). If either version reaches `Std`, the other should be
+    deleted rather than kept as a second copy.
+
+    Division by zero is zero and so is the remainder — `Mod A Z = Z`, where
+    Lean's `%` returns the dividend. Nothing here depends on the choice: every
+    lemma below is stated at an `S b` divisor or under a `Le (S Z) d`
+    hypothesis, which is why `DivU`'s nonzero evidence is about the HARDWARE
+    rather than about totality. -/
 
 def Mul : Term := prog{
   λ (A : Nat). λ (B : Nat).
     elim A return (λ (Az : Nat). Nat) { Z => Z, S (A') Rec => Add B Rec } }
 def MulTy : Term := prog{ Π (A : Nat) → Nat → Nat }
 
+def NextR : Term := prog{
+  λ (R : Nat). λ (C : Nat).
+    elim C return (λ (Cz : Nat). Nat) { Z => Z, S (C') Rc => S(R) } }
+def NextC : Term := prog{
+  λ (B : Nat). λ (C : Nat).
+    elim C return (λ (Cz : Nat). Nat) { Z => B, S (C') Rc => C' } }
+def NextQ : Term := prog{
+  λ (Q : Nat). λ (C : Nat).
+    elim C return (λ (Cz : Nat). Nat) { Z => S(Q), S (C') Rc => Q } }
+
+/-- The residue after `A` increments from state `(R, C)`. One `Rec`, one
+    occurrence — which is the whole point. -/
+def ModC : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (B : Nat) → Π (R : Nat) → Π (C : Nat) → Nat) {
+      Z => λ (B : Nat). λ (R : Nat). λ (C : Nat). R,
+      S (A') Rec => λ (B : Nat). λ (R : Nat). λ (C : Nat).
+        Rec B (NextR R C) (NextC B C) } }
 def Mod : Term := prog{
   λ (A : Nat). λ (B : Nat).
-    elim A return (λ (Az : Nat). Nat) {
-      Z => Z,
-      S (A') Rec => elim (Eqb (S Rec) B) return (λ (Bz : Bool). Nat) {
-        True => Z, False => S Rec } } }
+    elim B return (λ (Bz : Nat). Nat) { Z => Z, S (B') Rb => ModC A B' Z B' } }
 def ModTy : Term := prog{ Π (A : Nat) → Nat → Nat }
 
+/-- The quotient rides the same state, ticking exactly when `C` wraps. -/
+def DivC : Term := prog{
+  λ (A : Nat).
+    elim A return (λ (Az : Nat).
+        Π (B : Nat) → Π (R : Nat) → Π (C : Nat) → Π (Q : Nat) → Nat) {
+      Z => λ (B : Nat). λ (R : Nat). λ (C : Nat). λ (Q : Nat). Q,
+      S (A') Rec => λ (B : Nat). λ (R : Nat). λ (C : Nat). λ (Q : Nat).
+        Rec B (NextR R C) (NextC B C) (NextQ Q C) } }
 def Div : Term := prog{
   λ (A : Nat). λ (B : Nat).
-    elim A return (λ (Az : Nat). Nat) {
-      Z => Z,
-      S (A') Rec => elim (Eqb (S (Mod A' B)) B) return (λ (Bz : Bool). Nat) {
-        True => S Rec, False => Rec } } }
+    elim B return (λ (Bz : Nat). Nat) { Z => Z, S (B') Rb => DivC A B' Z B' Z } }
 def DivTy : Term := prog{ Π (A : Nat) → Nat → Nat }
 
 -- They compute, which is what makes the concrete tests at the foot possible.
@@ -188,9 +239,11 @@ example : (pv prog{ Div 7 2 } == pv prog{ 3 }) = true := by native_decide
 example : (pv prog{ Mod 7 2 } == pv prog{ 1 }) = true := by native_decide
 example : (pv prog{ Div 12 4 } == pv prog{ 3 }) = true := by native_decide
 example : (pv prog{ Mod 12 4 } == pv prog{ 0 }) = true := by native_decide
--- Division by zero is zero, and the remainder is the whole dividend.
+example : (pv prog{ Div 63 5 } == pv prog{ 12 }) = true := by native_decide
+example : (pv prog{ Mod 63 5 } == pv prog{ 3 }) = true := by native_decide
+-- Division by zero is zero, and so is the remainder.
 example : (pv prog{ Div 5 0 } == pv prog{ 0 }) = true := by native_decide
-example : (pv prog{ Mod 5 0 } == pv prog{ 5 }) = true := by native_decide
+example : (pv prog{ Mod 5 0 } == pv prog{ 0 }) = true := by native_decide
 
 /-! ## (iii) The bound lemmas — what the operations' RESULTS satisfy
 
@@ -207,25 +260,134 @@ example : (pv prog{ Mod 5 0 } == pv prog{ 5 }) = true := by native_decide
     arithmetic operations can overflow, and it says it as a proof rather than as
     a table someone wrote down. -/
 
-/-- `Eqb`'s true-reflection. The library has the two FALSE directions
-    (`EqbGtFalse`, `EqbLtFalse`) and `EqbRefl`, but not this one — `DivModId`'s
-    rollover case needs to turn the branch condition back into an equation. -/
-def EqbTrueId : Term := prog{
-  λ (A : Nat).
-    elim A return (λ (Az : Nat). Π (B : Nat) → Id Bool (Eqb Az B) True → Id Nat Az B) {
-      Z => λ (B : Nat).
-        elim B return (λ (Bz : Nat). Id Bool (Eqb Z Bz) True → Id Nat Z Bz) {
-          Z => λ (H : Id Bool (Eqb Z Z) True). Refl,
-          S (B') Ihb => λ (H : Id Bool (Eqb Z (S B')) True).
-            botElim (Id Nat Z (S B')) (BoolFT H) },
-      S (A') Ih => λ (B : Nat).
-        elim B return (λ (Bz : Nat). Id Bool (Eqb (S A') Bz) True → Id Nat (S A') Bz) {
-          Z => λ (H : Id Bool (Eqb (S A') Z) True).
-            botElim (Id Nat (S A') Z) (BoolFT H),
-          S (B') Ihb => λ (H : Id Bool (Eqb (S A') (S B')) True).
-            IdCongr Nat Nat (λ (N : Nat). S N) A' B' (Ih B' H) } } }
-def EqbTrueIdTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Id Bool (Eqb A B) True → Id Nat A B }
-example : chkL EqbTrueId EqbTrueIdTy = true := by native_decide
+/-! ### The division equation, over the STATE
+
+    The accumulator shape moves the work into the invariant. `Add R C = B` says
+    the state is consistent; `NextInv` says one increment preserves it, and
+    `NextStep` says what one increment does to `R + Q*(B+1)` — it adds one, in
+    both the wrap and the no-wrap case, for different reasons. Those two are the
+    whole content, and `DivModC` is the induction that iterates them. -/
+
+/-- One increment preserves `Add R C = B`. The wrap case does not even need the
+    hypothesis (`Add Z B = B` outright); the ordinary case is one `AddSucc`. -/
+def NextInv : Term := prog{
+  λ (B : Nat). λ (R : Nat). λ (C : Nat).
+    elim C return (λ (Cz : Nat).
+        Id Nat (Add R Cz) B → Id Nat (Add (NextR R Cz) (NextC B Cz)) B) {
+      Z => λ (H : Id Nat (Add R Z) B). Refl,
+      S (C') Rc => λ (H : Id Nat (Add R (S C')) B).
+        IdTrans Nat (S (Add R C')) (Add R (S C')) B
+          (IdSym Nat (Add R (S C')) (S (Add R C')) (AddSucc R C')) H } }
+def NextInvTy : Term := prog{
+  Π (B : Nat) → Π (R : Nat) → Π (C : Nat) → Id Nat (Add R C) B →
+    Id Nat (Add (NextR R C) (NextC B C)) B }
+example : chkL NextInv NextInvTy = true := by native_decide
+
+/-- One increment adds one to `R + Q*(B+1)`. No-wrap: `R` becomes `S R` and the
+    quotient is untouched, so it is `Refl`. Wrap: `R` drops to `Z` and the
+    quotient gains one, which contributes a whole `S B` — and the two balance
+    only because the invariant says `R` WAS `B`. That is the one place the
+    invariant does real work. -/
+def NextStep : Term := prog{
+  λ (B : Nat). λ (R : Nat). λ (C : Nat). λ (Q : Nat).
+    elim C return (λ (Cz : Nat).
+        Id Nat (Add R Cz) B →
+        Id Nat (Add (NextR R Cz) (Mul (NextQ Q Cz) (S B)))
+               (S (Add R (Mul Q (S B))))) {
+      Z => λ (H : Id Nat (Add R Z) B).
+        IdCongr Nat Nat (λ (Z0 : Nat). S (Add Z0 (Mul Q (S B)))) B R
+          (IdSym Nat R B
+            (IdTrans Nat R (Add R Z) B
+              (IdSym Nat (Add R Z) R (AddZero R)) H)),
+      S (C') Rc => λ (H : Id Nat (Add R (S C')) B). Refl } }
+def NextStepTy : Term := prog{
+  Π (B : Nat) → Π (R : Nat) → Π (C : Nat) → Π (Q : Nat) → Id Nat (Add R C) B →
+    Id Nat (Add (NextR R C) (Mul (NextQ Q C) (S B))) (S (Add R (Mul Q (S B)))) }
+example : chkL NextStep NextStepTy = true := by native_decide
+
+/-- **The division equation over the state**: running `A` increments from a
+    consistent `(R, C, Q)` leaves `residue + quotient*(B+1)` exactly `A` more
+    than it started. One induction on `A`, generalized over the whole state —
+    `R`, `C` and `Q` all change at every step, so none of them can be fixed. -/
+def DivModC : Term := prog{
+  λ (B : Nat). λ (A : Nat).
+    elim A return (λ (Az : Nat). Π (R : Nat) → Π (C : Nat) → Π (Q : Nat) →
+        Id Nat (Add R C) B →
+        Id Nat (Add (ModC Az B R C) (Mul (DivC Az B R C Q) (S B)))
+               (Add Az (Add R (Mul Q (S B))))) {
+      Z => λ (R : Nat). λ (C : Nat). λ (Q : Nat). λ (Hi : Id Nat (Add R C) B). Refl,
+      S (A') Ih => λ (R : Nat). λ (C : Nat). λ (Q : Nat). λ (Hi : Id Nat (Add R C) B).
+        IdTrans Nat
+          (Add (ModC A' B (NextR R C) (NextC B C))
+               (Mul (DivC A' B (NextR R C) (NextC B C) (NextQ Q C)) (S B)))
+          (Add A' (Add (NextR R C) (Mul (NextQ Q C) (S B))))
+          (S (Add A' (Add R (Mul Q (S B)))))
+          (Ih (NextR R C) (NextC B C) (NextQ Q C) (NextInv B R C Hi))
+          (IdTrans Nat
+            (Add A' (Add (NextR R C) (Mul (NextQ Q C) (S B))))
+            (Add A' (S (Add R (Mul Q (S B)))))
+            (S (Add A' (Add R (Mul Q (S B)))))
+            (IdCongr Nat Nat (λ (Z0 : Nat). Add A' Z0)
+              (Add (NextR R C) (Mul (NextQ Q C) (S B)))
+              (S (Add R (Mul Q (S B))))
+              (NextStep B R C Q Hi))
+            (AddSucc A' (Add R (Mul Q (S B))))) } }
+def DivModCTy : Term := prog{
+  Π (B : Nat) → Π (A : Nat) → Π (R : Nat) → Π (C : Nat) → Π (Q : Nat) →
+    Id Nat (Add R C) B →
+    Id Nat (Add (ModC A B R C) (Mul (DivC A B R C Q) (S B)))
+           (Add A (Add R (Mul Q (S B)))) }
+example : chkL DivModC DivModCTy = true := by native_decide
+
+/-- **The division equation**: `a % (b+1) + (a / (b+1)) * (b+1) = a`. The state
+    version at its start point `(Z, B, Z)`, whose invariant is `Refl`, plus one
+    `AddZero` to clear the `+ 0` the general statement carries.
+
+    Everything the overflow guard knows about division comes from this. -/
+def DivModId : Term := prog{
+  λ (B : Nat). λ (A : Nat).
+    IdTrans Nat (Add (Mod A (S B)) (Mul (Div A (S B)) (S B))) (Add A Z) A
+      (DivModC B A Z B Z Refl) (AddZero A) }
+def DivModIdTy : Term := prog{
+  Π (B : Nat) → Π (A : Nat) → Id Nat (Add (Mod A (S B)) (Mul (Div A (S B)) (S B))) A }
+example : chkL DivModId DivModIdTy = true := by native_decide
+
+/-- `(a / (b+1)) * (b+1) ≤ a` — the fact an overflow guard is FOR. Checking
+    `x ≤ MAX / k` before computing `x * k` is sound precisely because this holds;
+    it is `LeAddL` on the division equation, transported. -/
+def DivMulLe : Term := prog{
+  λ (B : Nat). λ (A : Nat).
+    LeRwR (Mul (Div A (S B)) (S B))
+      (Add (Mod A (S B)) (Mul (Div A (S B)) (S B))) A
+      (DivModId B A)
+      (LeAddL (Mul (Div A (S B)) (S B)) (Mod A (S B))) }
+def DivMulLeTy : Term := prog{
+  Π (B : Nat) → Π (A : Nat) → Le (Mul (Div A (S B)) (S B)) A }
+example : chkL DivMulLe DivMulLeTy = true := by native_decide
+
+/-- `q ≤ q * (b+1)` — multiplying by a positive factor does not shrink. -/
+def MulLeSelf : Term := prog{
+  λ (B : Nat). λ (Q : Nat).
+    elim Q return (λ (Qz : Nat). Le Qz (Mul Qz (S B))) {
+      Z => unit,
+      S (Q') Ih => LeTrans Q' (Mul Q' (S B)) (Add B (Mul Q' (S B)))
+                     Ih (LeAddL (Mul Q' (S B)) B) } }
+def MulLeSelfTy : Term := prog{ Π (B : Nat) → Π (Q : Nat) → Le Q (Mul Q (S B)) }
+example : chkL MulLeSelf MulLeSelfTy = true := by native_decide
+
+/-- Division only shrinks: `a / b ≤ a`, at EVERY divisor including zero — this
+    is `DivU`'s bound argument. Under the accumulator definitions it is no
+    longer its own induction: case the divisor, and at `S b` the quotient is
+    below `quotient * (b+1)` which is below `a`. -/
+def DivLe : Term := prog{
+  λ (A : Nat). λ (B : Nat).
+    elim B return (λ (Bz : Nat). Le (Div A Bz) A) {
+      Z => unit,
+      S (B') Rb => LeTrans (Div A (S B')) (Mul (Div A (S B')) (S B')) A
+                     (MulLeSelf B' (Div A (S B')))
+                     (DivMulLe B' A) } }
+def DivLeTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Le (Div A B) A }
+example : chkL DivLe DivLeTy = true := by native_decide
 
 /-- Truncated subtraction only shrinks: `a - b ≤ a`. This is `SubU`'s whole
     bound argument — the result of a subtraction is in range because the
@@ -256,79 +418,6 @@ def MulMonoR : Term := prog{
 def MulMonoRTy : Term := prog{
   Π (C : Nat) → Π (A : Nat) → Π (B : Nat) → Le A B → Le (Mul A C) (Mul B C) }
 example : chkL MulMonoR MulMonoRTy = true := by native_decide
-
-/-- Division only shrinks: `a / b ≤ a`, at EVERY divisor including zero. The
-    induction cases the same boolean `Div`'s successor arm cases on; the motive
-    abstracts the scrutinee so both branches see the quotient they actually
-    produce. This is `DivU`'s bound argument. -/
-def DivLe : Term := prog{
-  λ (A : Nat).
-    elim A return (λ (Az : Nat). Π (B : Nat) → Le (Div Az B) Az) {
-      Z => λ (B : Nat). unit,
-      S (A') Ih => λ (B : Nat).
-        elim (Eqb (S (Mod A' B)) B) return (λ (Bz : Bool).
-            Le (elim Bz return (λ (Cz : Bool). Nat) {
-                  True => S (Div A' B), False => Div A' B }) (S A')) {
-          True => Ih B,
-          False => LeUpR (Div A' B) A' (Ih B) } } }
-def DivLeTy : Term := prog{ Π (A : Nat) → Π (B : Nat) → Le (Div A B) A }
-example : chkL DivLe DivLeTy = true := by native_decide
-
-/-- **The division equation**: `a % (b+1) + (a / (b+1)) * (b+1) = a`.
-
-    One induction on the dividend. The successor step cases the SAME boolean
-    that `Mod` and `Div` both case on — the rollover test — and the motive
-    abstracts it out of both, so the two branches see the pair the definitions
-    actually produce. `Refl`-terminated (`… } Refl`) to keep the branch equation
-    (the REMEMBER-SCRUTINEE idiom the glue uses): the rollover branch needs
-    `Eqb (S r) (S b) = True` back as `r = b`, which is what `EqbTrueId` is for.
-
-    Everything the overflow guard knows about division comes from this one
-    lemma. -/
-def DivModId : Term := prog{
-  λ (B : Nat). λ (A : Nat).
-    elim A return (λ (Az : Nat).
-        Id Nat (Add (Mod Az (S B)) (Mul (Div Az (S B)) (S B))) Az) {
-      Z => Refl,
-      S (A') Ih =>
-        elim (Eqb (S (Mod A' (S B))) (S B)) return (λ (Bz : Bool).
-            Id Bool (Eqb (S (Mod A' (S B))) (S B)) Bz →
-            Id Nat (Add (elim Bz return (λ (Cz : Bool). Nat) {
-                            True => Z, False => S (Mod A' (S B)) })
-                        (Mul (elim Bz return (λ (Cz : Bool). Nat) {
-                            True => S (Div A' (S B)), False => Div A' (S B) }) (S B)))
-                   (S A')) {
-          True => λ (E : Id Bool (Eqb (S (Mod A' (S B))) (S B)) True).
-            IdCongr Nat Nat (λ (N : Nat). S N)
-              (Add B (Mul (Div A' (S B)) (S B))) A'
-              (IdTrans Nat
-                (Add B (Mul (Div A' (S B)) (S B)))
-                (Add (Mod A' (S B)) (Mul (Div A' (S B)) (S B)))
-                A'
-                (IdCongr Nat Nat (λ (Z0 : Nat). Add Z0 (Mul (Div A' (S B)) (S B)))
-                   B (Mod A' (S B))
-                   (IdSym Nat (Mod A' (S B)) B (EqbTrueId (Mod A' (S B)) B E)))
-                Ih),
-          False => λ (E : Id Bool (Eqb (S (Mod A' (S B))) (S B)) False).
-            IdCongr Nat Nat (λ (N : Nat). S N)
-              (Add (Mod A' (S B)) (Mul (Div A' (S B)) (S B))) A' Ih
-        } Refl } }
-def DivModIdTy : Term := prog{
-  Π (B : Nat) → Π (A : Nat) → Id Nat (Add (Mod A (S B)) (Mul (Div A (S B)) (S B))) A }
-example : chkL DivModId DivModIdTy = true := by native_decide
-
-/-- `(a / (b+1)) * (b+1) ≤ a` — the fact an overflow guard is FOR. Checking
-    `x ≤ MAX / k` before computing `x * k` is sound precisely because this holds;
-    it is `LeAddL` on the division equation, transported. -/
-def DivMulLe : Term := prog{
-  λ (B : Nat). λ (A : Nat).
-    LeRwR (Mul (Div A (S B)) (S B))
-      (Add (Mod A (S B)) (Mul (Div A (S B)) (S B))) A
-      (DivModId B A)
-      (LeAddL (Mul (Div A (S B)) (S B)) (Mod A (S B))) }
-def DivMulLeTy : Term := prog{
-  Π (B : Nat) → Π (A : Nat) → Le (Mul (Div A (S B)) (S B)) A }
-example : chkL DivMulLe DivMulLeTy = true := by native_decide
 
 /-! ## (iv) The operations -/
 
@@ -967,20 +1056,33 @@ example : runOut2 (resizeCall 15 1 2 4 5 0) == some (2, 1) := by native_decide
 example : progOk (resizeCall 15 2 2 4 5 9) = true := by native_decide
 example : runOut2 (resizeCall 15 2 2 4 5 9) == some (2, 9) := by native_decide
 
-/-! #### THE QUADRATIC WALL, and where it is
+/-! #### THE COST OF DIVIDING, after the rewrite
 
-    `MAX = 15` above is not a stylistic choice. `Div` recurses on the dividend
-    and calls `Mod`, which recurses on the dividend again, so a unary division
-    is `O(n²)` machine steps and `try_resize` does two of them nested. The same
-    program at `MAX = 63` did not finish in ten minutes and had to be taken back
-    out of this file — the `MAX = 140` ceiling measured in (v) is for a program
-    whose only arithmetic is one `Le`; a program that DIVIDES hits its own wall
-    far earlier.
+    An earlier version of this file wrote `Div`/`Mod` in the textbook shape and
+    recorded a "quadratic wall" here: `try_resize` ran instantly at `MAX = 15`
+    and did not finish in THIRTY MINUTES at `MAX = 63`. That diagnosis was
+    wrong. The definitions were EXPONENTIAL (§ii), and with the state-carrying
+    ones the same program runs at every size that was out of reach:
 
-    This is the sharpest form of the unary bill and it lands entirely on
-    EXECUTION. The symbolic checking above — `TryResize`'s declaration, over an
-    opaque `MAX`, with all seven proof terms — is instant, because nothing in it
-    ever computes a numeral. -/
+        MAX          15     31      63      127
+        execute    0.8 s  2.0 s   6.7 s   24.9 s
+
+    (measured through `lake env lean`, which interprets rather than calling the
+    precompiled library — in-module it is several times faster, and this whole
+    file including both assertions below elaborates in 6.2 s. The RATIO is the
+    finding either way.) That is roughly `MAX^1.9` — the quadratic the old note
+    claimed and did not have. `MAX = 63` resizes capacity 7 to 14 with max_load 11, and
+    `MAX = 127` resizes 15 to 30 with max_load 24; both are asserted below.
+
+    The moral is not about division. It is that a performance claim about a
+    normalizer with no sharing has to be MEASURED — the exponential and the
+    quadratic present identically (a build that does not finish), and the shape
+    of the definition is the only thing that tells them apart. -/
+
+-- MAX = 63: n1 = 31, n2 = 7, so capacity 7 resizes to 14 with max_load 11.
+example : runOut2 (resizeCall 63 7 2 4 5 0) == some (14, 11) := by native_decide
+-- MAX = 127: n1 = 63, n2 = 15, so capacity 15 resizes to 30 with max_load 24.
+example : runOut2 (resizeCall 127 15 2 4 5 0) == some (30, 24) := by native_decide
 
 -- Rejected callers: the load factor's dividend and the growth factor must both
 -- be nonzero, and at a concrete MAX those obligations are `Bot`.
@@ -1009,22 +1111,29 @@ example : progRejects (resizeCall 15 1 0 4 5 0) botNeedle = true := by native_de
         roughly two proof lines per operation, of which a bit over half is
         content. The Rust it replaces is five lines.
 
-      * THE SUPPORTING LIBRARY. Fourteen new lemmas, all one induction each, all
-        checked first try: `EqbTrueId`, `SubLe`, `MulMonoR`, `DivLe`,
-        `DivModId`, `DivMulLe`, `DivMulLeNz`, `MulZeroR`, `AddSwapL`,
-        `MulSuccR`, `MulComm`, `MulDistR`, `MulAssoc`, `MulSwapR`. None of it is
-        specific to bounded integers — it is the `Nat` algebra the library was
-        missing, and it stays useful after.
+      * THE SUPPORTING LIBRARY. Seventeen new lemmas: `NextInv`, `NextStep`,
+        `DivModC`, `DivModId`, `DivMulLe`, `DivMulLeNz`, `MulLeSelf`, `DivLe`,
+        `SubLe`, `MulMonoR`, `MulZeroR`, `AddSwapL`, `MulSuccR`, `MulComm`,
+        `MulDistR`, `MulAssoc`, `MulSwapR`. None of it is specific to bounded
+        integers — it is the `Nat` algebra the library was missing, and it stays
+        useful after.
 
       * THE UNARY BILL. `O(MAX)` checking steps for a program whose arithmetic
         is one `Le`; `defaultFuel = 1000` caps those near `MAX = 140`, and that
         cap is the harness constant (the same programs check at `MAX = 255` on
-        20000 steps). A program that DIVIDES is quadratic and hits its own wall
-        far earlier: `try_resize` executes instantly at `MAX = 15` and did not
-        finish in THIRTY MINUTES at `MAX = 63`. The whole bill falls on
-        execution and on concrete tests. Symbolic checking of the composite —
-        seven proof terms over an opaque `MAX` — is instant, because nothing in
-        it ever computes a numeral; the entire file elaborates in 4.5 seconds.
+        20000 steps). A program that DIVIDES is quadratic on top of that, so
+        `try_resize` executes at `MAX = 127` and would not at `MAX = 1024`. The
+        whole bill falls on execution and on concrete tests: symbolic checking
+        of the composite — seven proof terms over an opaque `MAX` — never
+        computes a numeral, and the entire file elaborates in 6.2 seconds.
+
+      * AND ONE COST THAT IS NOT THE REPRESENTATION'S. The first version of
+        `Div`/`Mod` here was EXPONENTIAL, because this normalizer has no sharing
+        and the textbook spelling mentions the recursive result twice (§ii). It
+        cost half a day and produced a confidently wrong "quadratic" note in
+        this very file before it was measured. The rule — use the recursive
+        result ONCE, carry the duplicate as an argument — is not specific to
+        arithmetic and is now in `docs/04-language.md`.
 
     DOES ANYTHING HERE WANT KERNEL SUPPORT? Three answers, in the order they
     matter.
@@ -1040,6 +1149,13 @@ example : progRejects (resizeCall 15 1 0 4 5 0) botNeedle = true := by native_de
        number of reuses. The fix is not library-shaped: either a duplicability
        judgment (a pair of `Copy` components is `Copy`) or a kernel refinement
        former whose values are scalars carrying a proof rather than pairs.
+
+    1b. **Sharing in the normalizer — an honourable mention.** Not needed for
+       correctness and not what this lane was asked about, but it is the
+       difference between `Mod 18` taking 2.7 seconds and `Mod 1024` taking 60
+       milliseconds, and the failure mode is a build that never finishes rather
+       than an error. Every author has to know the rule; a normalizer that
+       shared would mean none of them did.
 
     2. **Binary numerals — yes for RUNNING, no for reasoning.** Nothing symbolic
        in `MAX` pays the unary bill, which is every program and every lemma
