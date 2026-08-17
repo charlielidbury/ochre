@@ -329,4 +329,291 @@ def DivMulLeTy : Term := prog{
   Π (B : Nat) → Π (A : Nat) → Le (Mul (Div A (S B)) (S B)) A }
 example : chkL DivMulLe DivMulLeTy = true := by native_decide
 
+/-! ## (iv) The operations -/
+
+/-- Why a program was rejected — the message, for the negative twins below. -/
+def whyProg (t : Term) : String :=
+  match checkProgram t (prog{ Unit }) with | .ok _ => "OK" | .error e => e
+
+/-- **The bounded arithmetic**, as five declarations over a symbolic `MAX`.
+
+    Read the telescopes: every operation whose result CAN leave the range takes
+    the bound as an evidence parameter, and every operation whose result cannot
+    derives it. That split is the file's main claim, and it is a proof rather
+    than a table:
+
+      * `AddU`, `MulU` — `H` is supplied by the CALLER. Nothing about `a ≤ MAX`
+        and `b ≤ MAX` implies `a+b ≤ MAX`, so there is no way to derive it here
+        and no way to write the call without discharging it.
+      * `SubU`, `SatSubU`, `DivU` — derived, from `SubLe`/`DivLe` and the
+        argument's own bound (`Bnd MAX a`). The caller pays nothing, because
+        subtracting and dividing cannot leave the range.
+
+    This is Aeneas' checked arithmetic with the obligation moved to the other
+    side of the call: their `usize_add` returns `result` and the `Fail` case
+    propagates until someone discharges it downstream; here it is discharged
+    UPSTREAM, at the call, and there is no failure case in the type at all.
+
+    THE UNDERFLOW STORY (`SubU` vs `SatSubU`) — DLLBC's `Sub` is TRUNCATED, so
+    `a - b` is in range whatever `b` is and the *bound* obligation is free
+    either way. The two differ in what they promise:
+
+      * `SatSubU` takes no evidence and promises only the bound. That is Rust's
+        `saturating_sub`, and it is the honest reading of truncation.
+      * `SubU` takes `Le (Val b) (Val a)` and promises EXACTNESS —
+        `b + (a - b) = a` — as a second, comptime component of its result. The
+        evidence is load-bearing there: `AddSubCancel` is exactly the lemma with
+        that hypothesis, and without it the equation is false. That is Rust's
+        checked `-`, and it is why the evidence parameter is not decoration.
+
+    `DivU`'s `Hnz` is the third kind: the library `Div` is TOTAL (`a / 0 = 0`),
+    so the evidence buys nothing about the bound and nothing about the value. It
+    is there because a real `div` FAULTS, and the point of the exercise is to
+    carry the obligations a machine actually imposes. -/
+def uOps (tail : Term) : Term := prog{
+  fn AddU (MAX : Nat, a : (Σ0 (n : Nat) → Le n MAX), b : (Σ0 (n : Nat) → Le n MAX),
+           H : Le (Add (Val MAX a) (Val MAX b)) MAX)
+      -> (Σ0 (n : Nat) → Le n MAX)
+      { Pair(Add (Val MAX a) (Val MAX b), H) };
+  fn MulU (MAX : Nat, a : (Σ0 (n : Nat) → Le n MAX), b : (Σ0 (n : Nat) → Le n MAX),
+           H : Le (Mul (Val MAX a) (Val MAX b)) MAX)
+      -> (Σ0 (n : Nat) → Le n MAX)
+      { Pair(Mul (Val MAX a) (Val MAX b), H) };
+  fn SatSubU (MAX : Nat, a : (Σ0 (n : Nat) → Le n MAX), b : (Σ0 (n : Nat) → Le n MAX))
+      -> (Σ0 (n : Nat) → Le n MAX)
+      { Pair(Sub (Val MAX a) (Val MAX b),
+             LeTrans (Sub (Val MAX a) (Val MAX b)) (Val MAX a) MAX
+               (SubLe (Val MAX a) (Val MAX b)) (Bnd MAX a)) };
+  fn SubU (MAX : Nat, a : (Σ0 (n : Nat) → Le n MAX), b : (Σ0 (n : Nat) → Le n MAX),
+           H : Le (Val MAX b) (Val MAX a))
+      -> (Σ0 (r : (Σ0 (n : Nat) → Le n MAX))
+            → Id Nat (Add (Val MAX b) (Val MAX r)) (Val MAX a))
+      { Pair(Pair(Sub (Val MAX a) (Val MAX b),
+                  LeTrans (Sub (Val MAX a) (Val MAX b)) (Val MAX a) MAX
+                    (SubLe (Val MAX a) (Val MAX b)) (Bnd MAX a)),
+             AddSubCancel (Val MAX a) (Val MAX b) H) };
+  fn DivU (MAX : Nat, a : (Σ0 (n : Nat) → Le n MAX), b : (Σ0 (n : Nat) → Le n MAX),
+           Hnz : Le (S Z) (Val MAX b))
+      -> (Σ0 (n : Nat) → Le n MAX)
+      { Pair(Div (Val MAX a) (Val MAX b),
+             LeTrans (Div (Val MAX a) (Val MAX b)) (Val MAX a) MAX
+               (DivLe (Val MAX a) (Val MAX b)) (Bnd MAX a)) };
+  %tail }
+
+example : progOk (uOps prog{ () }) = true := by native_decide
+
+/-! ### Negative twins at the DECLARATION
+
+    One per way the pack can be built dishonestly. These are the interesting
+    half: the positive tests say the style is writable, these say it is not
+    evadable. -/
+
+-- (1) NO EVIDENCE. Drop `H` from the telescope and there is nothing to put in
+-- the pack's proof slot; `unit` does not inhabit `Le (Add σₐ σᵦ) σₘ`.
+def addUNoEvidence : Term := prog{
+  fn AddUBad (MAX : Nat, a : (Σ0 (n : Nat) → Le n MAX), b : (Σ0 (n : Nat) → Le n MAX))
+      -> (Σ0 (n : Nat) → Le n MAX)
+      { Pair(Add (Val MAX a) (Val MAX b), unit) };
+  () }
+
+-- (2) **THE MONEY TEST** — the evidence is for the wrong ARITHMETIC. The
+-- telescope demands `Le (a+b) MAX`; the body multiplies. Both halves are
+-- individually fine and the pack is REJECTED, because the pair's second field
+-- is checked at `Le (a*b) MAX` and `H` does not have that type. The proof is
+-- tied to the operation actually performed, so an op cannot be quietly swapped
+-- under a signature that still reads plausibly.
+def addUWrongOp : Term := prog{
+  fn AddUBad (MAX : Nat, a : (Σ0 (n : Nat) → Le n MAX), b : (Σ0 (n : Nat) → Le n MAX),
+              H : Le (Add (Val MAX a) (Val MAX b)) MAX)
+      -> (Σ0 (n : Nat) → Le n MAX)
+      { Pair(Mul (Val MAX a) (Val MAX b), H) };
+  () }
+
+-- (3) The derived bound does not stretch. `SubLe` bounds a DIFFERENCE by the
+-- minuend; offered as the bound of a SUM it is simply the wrong lemma.
+def satSubUWrongOp : Term := prog{
+  fn SatSubUBad (MAX : Nat, a : (Σ0 (n : Nat) → Le n MAX), b : (Σ0 (n : Nat) → Le n MAX))
+      -> (Σ0 (n : Nat) → Le n MAX)
+      { Pair(Add (Val MAX a) (Val MAX b),
+             LeTrans (Sub (Val MAX a) (Val MAX b)) (Val MAX a) MAX
+               (SubLe (Val MAX a) (Val MAX b)) (Bnd MAX a)) };
+  () }
+
+-- (4) The underflow evidence IS load-bearing. Same body as `SubU`, same
+-- exactness postcondition, `H` deleted from the telescope: `b + (a - b) = a`
+-- is not definitional (and not true) without it, so `Refl` cannot close it and
+-- `AddSubCancel` cannot be applied.
+def subUNoUnderflowEv : Term := prog{
+  fn SubUBad (MAX : Nat, a : (Σ0 (n : Nat) → Le n MAX), b : (Σ0 (n : Nat) → Le n MAX))
+      -> (Σ0 (r : (Σ0 (n : Nat) → Le n MAX))
+            → Id Nat (Add (Val MAX b) (Val MAX r)) (Val MAX a))
+      { Pair(Pair(Sub (Val MAX a) (Val MAX b),
+                  LeTrans (Sub (Val MAX a) (Val MAX b)) (Val MAX a) MAX
+                    (SubLe (Val MAX a) (Val MAX b)) (Bnd MAX a)),
+             Refl) };
+  () }
+
+-- All four fail the same way and it is the right way: the returned PACK is
+-- audited against the declared `U MAX`, and its second field does not inhabit
+-- the type the first field forces on it.
+example : progRejects addUNoEvidence "does not have return type" = true := by native_decide
+example : progRejects addUWrongOp "does not have return type" = true := by native_decide
+example : progRejects satSubUWrongOp "does not have return type" = true := by native_decide
+example : progRejects subUNoUnderflowEv "does not have return type" = true := by native_decide
+
+/-! ### (v) Callers at a concrete `MAX`, checking AND executing
+
+    Everything above is symbolic in `MAX`. These instantiate it — 15, and 255
+    for a byte — and that is where the unary trade-off shows itself and where it
+    stops mattering: at a closed `MAX` every `Le` obligation whnf's to `Unit`,
+    so the evidence a caller writes is `unit`, exactly as `ArraySort`'s concrete
+    callers pass `()` for `Le n n`. The proofs did not go away; they were
+    discharged by computation. -/
+
+def tn (n : Nat) : Term := Term.nat n
+
+def natOfV : Nat → Dllbc.Val → Option Nat
+  | f, v =>
+    match v.asCtor?, f with
+    | some ("Z", []), _ => some 0
+    | some ("S", [w]), f' + 1 => (natOfV f' w).map (· + 1)
+    | _, _ => none
+
+/-- Run the program and read the `Nat` its `out` binding holds. -/
+def runOut (t : Term) : Option Nat :=
+  match runProgram t with
+  | .ok env => (env.lookup "out").bind (natOfV 4000)
+  | .error _ => none
+
+def addCall (m a b : Nat) : Term := uOps prog{
+  let x = Pair(%(tn a), unit);
+  let y = Pair(%(tn b), unit);
+  let r = AddU(%(tn m), x, y, unit);
+  let out = Val %(tn m) r;
+  () }
+
+def mulCall (m a b : Nat) : Term := uOps prog{
+  let x = Pair(%(tn a), unit);
+  let y = Pair(%(tn b), unit);
+  let r = MulU(%(tn m), x, y, unit);
+  let out = Val %(tn m) r;
+  () }
+
+def divCall (m a b : Nat) : Term := uOps prog{
+  let x = Pair(%(tn a), unit);
+  let y = Pair(%(tn b), unit);
+  let r = DivU(%(tn m), x, y, unit);
+  let out = Val %(tn m) r;
+  () }
+
+def satSubCall (m a b : Nat) : Term := uOps prog{
+  let x = Pair(%(tn a), unit);
+  let y = Pair(%(tn b), unit);
+  let r = SatSubU(%(tn m), x, y);
+  let out = Val %(tn m) r;
+  () }
+
+-- `SubU` hands back a PAIR — the bounded difference and the exactness
+-- certificate — so its caller destructures before reading the value.
+def subCall (m a b : Nat) : Term := uOps prog{
+  let x = Pair(%(tn a), unit);
+  let y = Pair(%(tn b), unit);
+  let r = SubU(%(tn m), x, y, unit);
+  match r { Pair(q, He) => { let out = Val %(tn m) q; () } } }
+
+/-! #### Accepted, and they RUN to the right numbers -/
+
+-- 7 + 8 = 15 fits exactly in `U 15` — the inclusive boundary, checked and run.
+example : progOk (addCall 15 7 8) = true := by native_decide
+example : runOut (addCall 15 7 8) == some 15 := by native_decide
+/-- `progOk` with the step budget as a parameter — `checkProgram` hardcodes
+    `defaultFuel = 1000`, and the unary representation spends that budget in
+    proportion to `MAX`. This is the same walk with the constant exposed. -/
+def progOkFuel (f : Nat) (t : Term) : Bool :=
+  match auditPaths (prog{ Unit })
+      ((explore f (atBoundary t) initSt).map
+        (fun r => r.bind (fun p =>
+          match (endScope f).run p.2 with
+          | .ok _ st => .ok (p.1, st)
+          | .error e _ => .error e))) with
+  | .ok _ => true | .error _ => false
+
+/-! #### THE UNARY BILL, measured
+
+    A concrete `MAX` costs the checking machine `O(MAX)` steps, because `Le a b`
+    is `b` nested `natRec` unfoldings. `checkProgram` runs at `defaultFuel =
+    1000`, so a whole program's checking shares one budget of 1000 and the
+    concrete `MAX` a test may use is capped around **140** — `addCall 140 70 70`
+    checks, `addCall 150 75 75` does not.
+
+    That cap is the HARNESS CONSTANT and not the design: the same programs check
+    at `MAX = 255` when the walk is given 20000 steps. So the unary bill is a
+    linear slowdown with a configurable ceiling, not a wall — and it is a bill on
+    EXECUTION and on concrete tests only. Nothing symbolic in `MAX` pays it,
+    which is every program and every lemma in this file. -/
+
+example : progOk (addCall 140 70 70) = true := by native_decide
+example : progOk (addCall 150 75 75) = false := by native_decide
+example : progOkFuel 20000 (addCall 255 200 55) = true := by native_decide
+example : progOkFuel 20000 (mulCall 255 16 15) = true := by native_decide
+-- 3 * 5 = 15.
+example : progOk (mulCall 15 3 5) = true := by native_decide
+example : runOut (mulCall 15 3 5) == some 15 := by native_decide
+-- 13 / 4 = 3, with the divisor nonzero.
+example : progOk (divCall 15 13 4) = true := by native_decide
+example : runOut (divCall 15 13 4) == some 3 := by native_decide
+-- Checked subtraction, and the exactness certificate travels with it.
+example : progOk (subCall 15 12 5) = true := by native_decide
+example : runOut (subCall 15 12 5) == some 7 := by native_decide
+-- Saturating subtraction takes no evidence and clamps at zero.
+example : progOk (satSubCall 15 5 12) = true := by native_decide
+example : runOut (satSubCall 15 5 12) == some 0 := by native_decide
+
+/-! #### Rejected — the obligation is literally `Bot`
+
+    Each of these is a call the type checker refuses because the evidence
+    argument's parameter type has computed to `Bot`. The message says so:
+
+        call: comptime argument (unit) does not have its parameter type (Bot)
+
+    That is the whole exercise in one line. `10 + 10` in a `U 15` is not a
+    runtime panic, not a `Fail` case to be propagated, and not a lint — it is a
+    call that does not type-check, at the call. -/
+
+def botNeedle : String := "does not have its parameter type (Bot)"
+
+-- 10 + 10 = 20 > 15. OVERFLOW, refused.
+example : progRejects (addCall 15 10 10) botNeedle = true := by native_decide
+-- …and one past the boundary, which is where an off-by-one guard would hide.
+example : progRejects (addCall 15 8 8) botNeedle = true := by native_decide
+-- 200 + 100 in a byte.
+
+-- 4 * 5 = 20 > 15. Multiplication overflow, refused.
+example : progRejects (mulCall 15 4 5) botNeedle = true := by native_decide
+-- 16 * 16 in a byte.
+
+-- DIVISION BY ZERO, refused — `Hnz : Le 1 0` is `Bot`.
+example : progRejects (divCall 15 13 0) botNeedle = true := by native_decide
+-- UNDERFLOW, refused — `5 - 12` has no exact answer, and `Le 12 5` is `Bot`.
+example : progRejects (subCall 15 5 12) botNeedle = true := by native_decide
+-- Off by one at the underflow boundary: `5 - 6`.
+example : progRejects (subCall 15 5 6) botNeedle = true := by native_decide
+-- …while `5 - 5` is fine, so the boundary is where it should be.
+example : progOk (subCall 15 5 5) = true := by native_decide
+example : runOut (subCall 15 5 5) == some 0 := by native_decide
+
+-- The pack itself refuses an out-of-range LITERAL, before any operation: a
+-- caller cannot smuggle 20 into a `U 15` to begin with.
+def badLiteral : Term := uOps prog{
+  let x = Pair(20, unit);
+  let y = Pair(1, unit);
+  let r = AddU(15, x, y, unit);
+  let out = Val 15 r;
+  () }
+-- The needle is different here, and the difference is the point: the whole
+-- ARGUMENT is refused, not one comptime field of it. `Pair(20, unit)` never
+-- becomes a `U 15` in the first place, so the call fails before any obligation
+-- about the addition is reached.
+example : progRejects badLiteral "does not have its parameter type" = true := by native_decide
+
 end Dllbc.Tests.Finite
