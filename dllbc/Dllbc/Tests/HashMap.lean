@@ -2008,5 +2008,115 @@ example : progOk s1P2c = true := by native_decide
 
 
 
+/-! ## (xvi) The S1 EXECUTING DIFFERENTIAL
+
+    The same declarations the checker accepted, run on concrete maps and
+    compared against a trusted Lean-side reference (`runQsA`-style). The
+    callers here are runtime-only: their proof arguments are `unit`, which the
+    machine ignores — E2E rule, runs-to-X assertions only. (A checker-accepted
+    caller needs the size facts threaded through the ensures; S1's `Hroom`
+    additionally needs cap/load knowledge New's fixed ensures does not export,
+    which S2's resize removes — so the checked caller ships with S2.) -/
+
+def pairOfV : Val → Option (Val × Val)
+  | v => match Val.asCtor? v with
+    | some ("Pair", [a, b]) => some (a, b)
+    | _ => none
+
+def entryOfV : Val → Option (Nat × Nat)
+  | v => match pairOfV v with
+    | some (a, b) =>
+      match natOfV 4000 a, natOfV 4000 b with
+      | some k, some w => some (k, w)
+      | _, _ => none
+    | none => none
+
+def bktOfV : Nat → Val → Option (List (Nat × Nat))
+  | f, v =>
+    match Val.asCtor? v, f with
+    | some ("Nil", []), _ => some []
+    | some ("Cons", [h, t]), f' + 1 =>
+      match entryOfV h, bktOfV f' t with
+      | some e, some es => some (e :: es)
+      | _, _ => none
+    | _, _ => none
+
+def slotsOfV : Val → Option (List (List (Nat × Nat)))
+  | v => match Val.asCtor? v with
+    | some ("Arr", vs) => vs.mapM (bktOfV 2000)
+    | _ => none
+
+/-- Decode a concrete pack: (cap, load, n, buckets). The invariant component is
+    ignored (erased in spirit; the interpreter carries it). -/
+def hmOfV (v : Val) : Option (Nat × Nat × Nat × List (List (Nat × Nat))) := do
+  let (c, r1) ← pairOfV v
+  let (l, r2) ← pairOfV r1
+  let (n, r3) ← pairOfV r2
+  let (s, _) ← pairOfV r3
+  let cap ← natOfV 4000 c
+  let load ← natOfV 4000 l
+  let nn ← natOfV 4000 n
+  let bs ← slotsOfV s
+  pure (cap, load, nn, bs)
+
+/-- The trusted model: overwrite in place on hit, append at the bucket's end
+    on miss — `insert_in_list`'s specified behavior. -/
+def modelInsB (k v : Nat) : List (Nat × Nat) → List (Nat × Nat)
+  | [] => [(k, v)]
+  | (k2, v2) :: t => if k2 == k then (k, v) :: t else (k2, v2) :: modelInsB k v t
+
+def modelIns (cap : Nat) (bs : List (List (Nat × Nat))) (k v : Nat)
+    : List (List (Nat × Nat)) :=
+  bs.mapIdx (fun i b => if i == k % cap then modelInsB k v b else b)
+
+def modelRun (cap : Nat) (ops : List (Nat × Nat))
+    : Nat × List (List (Nat × Nat)) :=
+  ops.foldl (fun (acc : Nat × List (List (Nat × Nat))) (kv : Nat × Nat) =>
+      let present := (acc.2.getD (kv.1 % cap) []).any (fun e => e.1 == kv.1)
+      ((if present then acc.1 else acc.1 + 1),
+       modelIns cap acc.2 kv.1 kv.2))
+    (0, List.replicate cap [])
+
+def runHM (t : Term) : Option (Nat × Nat × Nat × List (List (Nat × Nat))) :=
+  match Dllbc.Tests.S9Diff.runExec t with
+  | .ok env => (env.lookup "y").bind hmOfV
+  | .error _ => none
+
+/-- Five inserts at cap 4: keys 5, 1, 9 all collide in slot 1 (the middle one
+    walks past a miss), key 5 re-inserted mid-sequence must OVERWRITE in place,
+    key 2 lands alone. -/
+def s1RunCaller : Term := hmS1Under newRetHonest insRetHonest prog{
+  let Pair(m0, Ev0) = NewHM(4, unit);
+  let b1 = &m m0;
+  InsertHM(9, 5, 70, b1, unit, unit);
+  let b2 = &m m0;
+  InsertHM(9, 1, 10, b2, unit, unit);
+  let b3 = &m m0;
+  InsertHM(9, 5, 71, b3, unit, unit);
+  let b4 = &m m0;
+  InsertHM(9, 9, 90, b4, unit, unit);
+  let b5 = &m m0;
+  InsertHM(9, 2, 20, b5, unit, unit);
+  let y = m0;
+  () }
+
+def s1Expected : Nat × List (List (Nat × Nat)) :=
+  modelRun 4 [(5, 70), (1, 10), (5, 71), (9, 90), (2, 20)]
+
+example : (runHM s1RunCaller ==
+    some (4, 16, s1Expected.1, s1Expected.2)) = true := by native_decide
+
+-- …and the model itself is what we think it is (the differential is two-sided).
+example : (s1Expected == (4, [[], [(5, 71), (1, 10), (9, 90)], [(2, 20)], []]))
+    = true := by native_decide
+
+-- The empty map runs and decodes: all buckets Nil, n = 0, load = 4·cap.
+def s1NewCaller : Term := hmS1Under newRetHonest insRetHonest prog{
+  let Pair(m0, Ev0) = NewHM(3, unit);
+  let y = m0;
+  () }
+example : (runHM s1NewCaller == some (3, 12, 0, [[], [], []])) = true := by
+  native_decide
+
 end Dllbc.Tests.HashMap
 end
