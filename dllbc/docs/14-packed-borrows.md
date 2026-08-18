@@ -2,6 +2,27 @@
 
 **The problem.** A container with its invariant packed in the type (`HashMap := Σ (cap). … Σ0 (slots : Array cap Bucket). HMInv …`) cannot have a `GetMut`: an op that returns a `&mut` into the pack leaves a live loan inside `slots` at its own exit, and the exit audit must then re-type the pack — including the Σ0 invariant — around that loan. Today it cannot, so `GetMut`/`GetMutOrInsert` execute correctly but are unwritable in checked code. Pinned on branch `hm-flagship-fable` as `gmProbe1/2/3` (inline carve / callee boundary / index place, all red) with `packNav` as the control (the identical shape over a slots-independent tail passes). This became visible when the audit's per-parameter exemption was fixed to per-place (main `6c46db1c`) — the old behavior was unsound, so this is a genuine capability gap, not a regression.
 
+**The problem in one trace** (this is `Tests/OpaqueFill.lean`'s `gmValMid`, pinned red on main — a toy `HashMap`: a count, an array of key/value entries, and a packed proof `AllK7` that every key is 7):
+
+```
+fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a)) -> &mut Nat {
+  match self { Pair(nn, r1) =>      -- Ω: nn ↦ borrowₘ into the count, r1 ↦ borrowₘ into the tail pair
+  match r1   { Pair(a, H)  => {     -- Ω: a ↦ borrowₘ into the entries array; H ↦ the packed proof (comptime)
+    let e = &m (*a)[1];             -- Ω: a's payload is now CARVED — Arr⟨1 ▷ σ6, 1 ▷ [Pair σ10 σ12], 1 ▷ σ8⟩ —
+                                    --    and e ↦ borrowₘ into the middle segment's entry
+    match e { Pair(kk, vv) =>
+      &m *vv } } } } }              -- the VALUE-cell borrow is RETURNED: its loan stays live inside the pack
+```
+
+At the function's exit the audit must re-type `self`'s payload against the declared pack type, with that loan still inside it, and refuses — verbatim:
+
+```
+audit: self's payload (Pair σ2 (Pair Arr⟨(S Z) ▷ σ6, (S Z) ▷ [Pair σ10 σ12], (S Z) ▷ σ8⟩ σ5))
+  does not have its owed type (Σ(§0 : Nat). Σ(§1 : Array 3 (Σ(§1 : Nat). Nat)). ⇝(arrRec …))
+```
+
+`σ5` is the stored `AllK7` proof; the owed type demands it inhabit `AllK7 3 ⟨that carved array⟩`, and the checker has no way to know the fold ignores the one cell the returned borrow can still write. The same body with `&m *vv` replaced by `()` is green (`midSplit3`), so the live escaping loan is exactly what the audit objects to. (Status after the campaign this document mandated: the carve-at-index-0 version of this now checks, and this mid-carve shape is the pinned §7.5 residual — see `15-packed-borrows-review.md`.)
+
 Written 2026-08-18 as the mandate for an overnight campaign (user directive: fix it on a branch; sub-agents do the major work; a review guide if something lands). **Design priorities, fixed by the user: keep the theory simple, keep the user experience good.**
 
 ## The three moments
