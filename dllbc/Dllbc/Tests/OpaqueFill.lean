@@ -497,17 +497,25 @@ example : chkL prog{ λ (K2 : Nat). hm2Inv } prog{
 example : chkL prog{ λ (B : List (Σ (k : Nat). Nat)). hmExInv } prog{
   Π (B : List (Σ (k : Nat). Nat)) → HMInvT 2 8 1 Arr(Nil, B) } = false := by native_decide
 
-/-! ## §7 THE REMAINING WALL — pinned red, and NOT this rule's to move
+/-! ## §7 THE REMAINING WALL — two of them, and the first one has since fallen
 
     `GetMut` over an intrinsically packed container is still unwritable. These are
     the acceptance probes for whoever takes that on; every verdict below is
     identical with and without opaque fill, which is the measurement that says so.
 
+    **§7.1 and §7.2 were the OTHER lane's**, and they are green now. This section
+    was written pinned red and handed on; branch `audit-fold-segments` (Gap A of
+    `docs/14-packed-borrows.md`) took it, and its diagnosis is §7.2's own sentence
+    read one level down — see the ledger there. §7.3's soundness controls and
+    §7.4's second wall are untouched by it, which is what says the two lanes were
+    about different things.
+
     ### §7.1 The bisection — the wall is not about escaping borrows
 
     One pack, `AllK7` folded over its array, five bodies all returning `Unit`, so
-    nothing escapes and the fill is the identity throughout. `bisB` is already red
-    with no borrow escaping, no write, and no σ anywhere near a value leaf. -/
+    nothing escapes and the fill is the identity throughout. `bisB` was already red
+    with no borrow escaping, no write, and no σ anywhere near a value leaf — so
+    whatever it was, it was not this rule's. -/
 
 def bisA : Term := prog{
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a))
@@ -531,22 +539,37 @@ def bisC : Term := prog{
   () }
 
 example : progOk bisA = true := by native_decide
-example : progOk bisC = false := by native_decide
 
-/-- The needle is the finding: the array comes back as `Arr⟨1 ▷ [σ9], 1 ▷ σ8⟩` —
-    the carved element beside an OPAQUE SLICE, and `arrRec` cannot step past σ8.
-    Nothing here escapes, so no fill of any kind is involved. -/
-example : progRejects bisB
-  "audit: self's payload (Pair σ2 (Pair Arr⟨(S Z) ▷ [σ9], (S Z) ▷ σ8⟩ σ5)) does not have its owed type"
-  = true := by native_decide
+/-- **LEDGERED FLIP** (branch `audit-fold-segments`, Gap A): red → GREEN. The
+    rejection this used to carry named its own cause — "the array comes back as
+    `Arr⟨1 ▷ [σ9], 1 ▷ σ8⟩`" — and the reading of it was one level off. The
+    obstacle was not `arrRec` failing to step past σ8; it was that a `§segs` node
+    never reached `arrRec` at all. `subsKnowledge`, which says what a component
+    contributes to a dependent tail, had no reading for a carve and returned
+    `@stateComponent`, so the tail was demanded at a name that converts with
+    nothing. Folding the rejoined carve through ¶1.3's ⇝ bridge gives back the
+    `arrCat` spine the carve's own `refineSym` already made the entry σ equal to,
+    and the tail types with no stepping required. -/
+example : progOk bisB = true := by native_decide
+example : progOk bisC = true := by native_decide
 
-/-! ### §7.2 …it is about the opaque REMAINDER
+/-! ### §7.2 …it is about the opaque REMAINDER — and that was the whole of it
 
     Remove the remainder and the same carve re-types. `bisF` carves an extent-1
     array (the carve consumes it whole); `bisI` carves BOTH elements of an
     extent-2 array (multi-segment, nothing opaque left). Both GREEN — so the carve
     does not lose the packed proof's identity, and the segmented form is not the
-    problem either. `bisJ` puts a two-element remainder back and it is red again. -/
+    problem either. `bisJ` puts a two-element remainder back and it was red again.
+
+    **The bisection was right and its two green cases say why**, which is worth
+    keeping now that all five are green. `bisF` carves an extent-1 array, so
+    `segsNode` unwraps the single segment to its body; `bisI` carves both elements,
+    so `mergeSegList` concatenates two adjacent one-element RUNS. Neither leaves a
+    `§segs` node behind — and a surviving `§segs` node was exactly the case
+    `subsKnowledge` could not read. So "the wall is the opaque remainder" was
+    precisely "the wall is a carve that does not normalize itself away", and Gap A's
+    fold is the general form of what `segsNode` and `mergeSegList` were doing for
+    the two easy shapes. -/
 
 def bisF : Term := prog{
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). AllK7 1 a))
@@ -574,7 +597,9 @@ def bisJ : Term := prog{
 
 example : progOk bisF = true := by native_decide
 example : progOk bisI = true := by native_decide
-example : progOk bisJ = false := by native_decide
+/-- **LEDGERED FLIP** (branch `audit-fold-segments`, Gap A): red → GREEN, and the
+    same flip as `bisB`/`bisC` — a two-element remainder is a surviving `§segs`. -/
+example : progOk bisJ = true := by native_decide
 
 /-! ### §7.3 The audit really is re-typing — two whole-array controls
 
