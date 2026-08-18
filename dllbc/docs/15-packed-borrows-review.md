@@ -26,6 +26,12 @@ The two kernel fixes were independent in their diffs and **not independent in th
 
 Both questions now have three live customers (the flagship's GetMut, the two-call fuel wall from the opus run, and these probes), and both point at `12-design-borrow-refounding.md` — which also still awaits your D-list review, with its stage 5 measured in advance by the audit-fix lane's findings.
 
+## Method notes the campaign paid for (the probe lane's own words, kept because they generalize)
+
+- The costliest failure mode was not missing data: it was **carrying a hypothesis past the point where one's own measurement had refuted it** — `midSplit3` sat in the lane's report proving the spine matched, and it took another agent's hint to make its author re-read it. The exclusion probes (`midCarveEscN`, `frontCarveEscN`) now pin the corrected mechanism in-tree so the refuted reading cannot be re-proposed.
+- The `gmKey2` composition hole existed **only in the intersection of two lanes** — one suite had no escaping borrows, the other no partially-carved packs that typed — so neither lane could have found it alone. A cross-lane ledger run before merging two kernel changes is cheap and finds this class without anyone needing to think of it.
+- Sha-ancestry after a rebase is not a merge test: `merge-base --is-ancestor <old-tip> main` answers NO for work that IS in main under a new sha. Verify by file contents (the assertion is byte-identical in main), not by ancestry.
+
 ## Not merged, awaiting you
 
 The three flagship branches (`hm-flagship-opus` @ 9c288065, `-sonnet` @ 2dcfa82f, `-fable` @ 97be424a — fable's final executing build confirmed green, every box closed); the `12-` design doc (uncommitted in `dllbc/docs/`, with the overnight addendum); the fifth-invariant-clause spec amendment to `13-` (NodupB, forced by the fixed specs, matches Aeneas' `slot_t_inv` — recommend ratifying); and the natCase/listCase design item from the eager-evaluation lane (`09-nbe.md` §9 item 10). Timeline, verification transcripts, and per-lane reports are in this session's log; every branch named above is pushed.
