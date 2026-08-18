@@ -120,6 +120,9 @@ measurement rather than by an argument.
     element. `arrRec` reduces from the head, so the σ is erased iff every element
     before the lent one is concrete. `midSplit3` is the A/B that pins it:
     `gmValMid` with the escape removed and nothing else changed, and it is green.
+    The competing reading — that the three-segment shape yields a spine the entry
+    σ's refinement does not match — was tested and excluded; `midCarveEscN` builds
+    that exact spine and types, because the fill's σ lands outside the array.
 
 The claim this section used to end on — "no conversion crosses either gap" — was
 wrong, and Gap A is the counterexample. What can be said instead is narrower and
@@ -903,6 +906,54 @@ example : progOk midUnit3 = true := by native_decide
 example : progOk lastUnit3 = true := by native_decide
 example : progOk lastUnit2 = true := by native_decide
 example : progOk midSplit3 = true := by native_decide
+
+/-! **THE COMPETING HYPOTHESIS, TESTED AND EXCLUDED.** Gap A's author read this
+    residual as its own question one position over: the wall was always carves
+    that do not SELF-NORMALIZE (`segsNode` unwraps a single segment, `mergeSegList`
+    concatenates adjacent RUNS, which is why `bisF` and `bisI` never left a `§segs`
+    behind), so the middle-known/outer-opaque shape might defeat adjacent-run
+    merging and yield a spine association the entry σ's refinement does not match.
+
+    It does not, and two independent measurements say so.
+
+    `midSplit3` above already settles it on its own: typing that pack REQUIRES the
+    Σ0 tail `AllK7 3 <spine>` to be inhabited by the entry proof, so a spine the
+    entry refinement did not match could not have produced a green verdict. The
+    three-segment shape matches.
+
+    `midCarveEscN` says it again without relying on that inference: carve at index
+    1, producing exactly the ⟨1 ▷ σ6, 1 ▷ [..], 1 ▷ σ8⟩ shape, and let the ESCAPING
+    borrow go onto the pack's `n` field instead of into the array. The spine is
+    present and the array is filled with its actual payload; only `n` receives the
+    fill's fresh σ, and the tail does not mention `n`. GREEN. The spine is not what
+    fails — the fill's σ landing somewhere the invariant's normal form never
+    reaches is.
+
+    So "self-normalizing" is the right account of §7.1–7.2 and not of this: these
+    four probes and `midSplit3` all leave a `§segs` behind and are all green. The
+    discriminator here is whether the invariant REDUCES past the abstracted
+    position, which is a question about the fold's motive rather than the value's
+    shape. -/
+
+def midCarveEscN : Term := prog{
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a))
+      -> &mut Nat {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
+      let e = &m (*a)[1];
+      match e { Pair(kk, vv) => &m *nn } } } } };
+  () }
+
+/-- The index-0 twin, controlling for the escape TARGET rather than the carve. -/
+def frontCarveEscN : Term := prog{
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a))
+      -> &mut Nat {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
+      let e = &m (*a)[0];
+      match e { Pair(kk, vv) => &m *nn } } } } };
+  () }
+
+example : progOk midCarveEscN = true := by native_decide
+example : progOk frontCarveEscN = true := by native_decide
 
 end Dllbc.Tests.OpaqueFill
 
