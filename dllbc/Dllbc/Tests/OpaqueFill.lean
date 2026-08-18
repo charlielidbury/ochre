@@ -29,19 +29,40 @@ system had already accepted:
 
 **The counterfactual, measured — the FLIP LEDGER.** Revert `spliceInFlight`'s
 issued arm to `| some (p, _) => pure p`, leaving everything else in place, and
-rebuild this module. Exactly FIVE of its 39 assertions go red, and they are these:
+rebuild this module. NINE of its 50 assertions go red, and they do not all mean
+the same thing, so they are split:
 
-    §2  progRejects escKey
-    §2  progRejects escExtent
-    §2  progRejects escPinned
-    §2  progRejects escRuntimeDep
-    §3  progRejects escKeyExploit
+    SEVEN the rule BUYS — accepted without it, and each one unsound:
+    §2    progRejects escKey
+    §2    progRejects escExtent
+    §2    progRejects escPinned
+    §2    progRejects escRuntimeDep
+    §2.1  progRejects escValV
+    §3    progRejects escKeyExploit
+    §7.5  progOk gmKey2 = false
 
-Nothing else moves. `escVal` still checks, §4's split still splits, `g5Caller`
-still runs, and every one of §6 and §7 is untouched — so the rule buys these five
-and is not silently carrying anything else. Nothing else in the CORPUS moves
-either: a full `lake build` across both rules differs by one σ number in one
-needle (`AuditExemption`'s `siblingBadWrite`, ledgered at its site).
+    TWO the rule COSTS — accepted without it, and safely so:
+    §7.5  progRejects gmValMid
+    §7.5  progOk gmValLast = false
+
+Nothing else moves. `escVal`, `gmVal2` and `gmVal3` still check, §4's split still
+splits, `g5Caller` still runs, and §6 and §7.1–7.4 are untouched.
+
+**This ledger was FIVE before Gap A merged, and the three it gained say something
+worth reading.** `gmKey2` is a new soundness buy: Gap A made partially-carved
+packs re-typable, which is what the flagship needed — and it thereby made an
+escaping KEY borrow into one of them TYPE. Landing that fold without this fill
+would have opened a fresh instance of exactly the hole §2 closes. The two lanes
+were independent in their diffs and not independent in their consequences.
+
+`gmValMid` and `gmValLast` are the cost, stated honestly: both are escaping VALUE
+borrows that a write could not break, and this rule refuses them anyway. That is
+§7.5, and it is the whole of what §7.5 costs — two assertions, both value borrows
+at a carve index ≥ 1.
+
+Nothing else in the CORPUS moves either: a full `lake build` across both rules
+differs by one σ number in one needle (`AuditExemption`'s `siblingBadWrite`,
+ledgered at its site).
 
 Note which parts of §3 do NOT flip: the `runBinding` assertion and the `chkL`
 one. That is the point of stating the witness in three parts — what the machine
@@ -70,28 +91,43 @@ before this change. The actual-payload fill was never the problem — escaping w
 the whole of the gap. `g5Caller` is the caller-side control: an accepted callee,
 a write through the borrow it returned, the group end, and the pack still good.
 
-## What this does NOT fix — §7, pinned red
+## What this does NOT fix — §7, and there turned out to be three of them
 
-`GetMut` over an intrinsically packed container still cannot be written, and this
-rule was never going to be what unblocked it. §7's bisection is the evidence and
-it is kept here as the acceptance suite for whoever takes that on:
+`GetMut` over an intrinsically packed container was blocked by three separate
+things, and this section was written when only one of them was visible. It has
+been wrong twice about what the wall was, so the history is kept: each reading was
+the honest one from where it was standing, and each was corrected by a
+measurement rather than by an argument.
 
-  * `bisB` — carve ONE element out of a packed container's array, with nothing
-    escaping, nothing written, and no σ anywhere near a value leaf — is already
-    red, while `bisF` and `bisI` (no opaque remainder left by the carve) are
-    green. A partial carve leaves an opaque SLICE and an invariant that folds over
-    the whole array cannot step past one. `HMInv` folds all `cap` slots, so every
-    bucket borrow leaves `cap-1` of them opaque.
-  * `layer1Val` — the same carve moved behind a callee boundary, with the inner
-    group CLOSED and nothing escaping — is red because `endGroup`'s opaque release
+  * **§7.1–7.2, FALLEN.** `bisB` — carve one element out of a packed container's
+    array with nothing escaping and nothing written — was red, and this file first
+    read that as "an invariant folding over the whole array cannot step past an
+    opaque slice". Branch `audit-fold-segments` (Gap A) showed the reading was one
+    level off: a `§segs` node never reached the fold at all, because
+    `subsKnowledge` had no case for a carve and returned `@stateComponent`. It is
+    green now, and so are `bisC` and `bisJ`. See their ledgered flips.
+  * **§7.4, STANDS.** `layer1Val` — the same carve behind a callee boundary, inner
+    group CLOSED, nothing escaping — is red because `endGroup`'s opaque release
     hands the array component back as a bare fresh σ at the COMPONENT's type,
-    carrying no relation to what the packed proof names. That is the
-    granularity mistake this fix exists to avoid, in the one place where the
-    kernel has no better answer.
+    carrying no relation to what the packed proof names. That is the granularity
+    mistake this rule exists to avoid, in the one place where the kernel has no
+    better answer than to make it.
+  * **§7.5, STANDS, and it is THIS RULE'S OWN.** With Gap A landed, the `GetMut`
+    shape checks — for a carve at index 0 (`gmVal2`, `gmVal3` green, `gmKey2`
+    red), and nowhere else (`gmValMid`, `gmValLast` red). The fill deliberately
+    makes the two sides of the audit's conversion differ at the lent leaf, and
+    that difference is invisible only while the invariant REDUCES past the lent
+    element. `arrRec` reduces from the head, so the σ is erased iff every element
+    before the lent one is concrete. `midSplit3` is the A/B that pins it:
+    `gmValMid` with the escape removed and nothing else changed, and it is green.
 
-Neither moves under this rule, and neither is reachable by any refinement of it:
-the exit audit is conversion, and no conversion crosses either gap.
+The claim this section used to end on — "no conversion crosses either gap" — was
+wrong, and Gap A is the counterexample. What can be said instead is narrower and
+survives the evidence: §7.5's refusal is CORRECT rather than incomplete tooling. A
+stuck fold is the checker saying it does not know the invariant ignores that cell,
+and it does not; accepting would be a theorem about `arrRec`, not a conversion.
 -/
+
 
 section
 
@@ -199,6 +235,48 @@ def escVal : Term := prog{
   () }
 
 example : progOk escVal = true := by native_decide
+
+/-! ### §2.1 …and it is not about which field it is
+
+    `escVal`/`escKey` on their own are consistent with a rule that had simply
+    learned "keys matter, values do not". `AllV7` is `AllK7` reading the OTHER
+    component — every VALUE is 7 — and over it the two verdicts swap. The rule
+    reads the invariant, not the field. -/
+
+def AllV7 : Term := prog{
+  λ (M : Nat). λ (A : Array M (Σ (k : Nat). Nat)).
+    arrRec (Σ (k : Nat). Nat)
+      (λ (Mz : Nat). λ (Az : Array Mz (Σ (k : Nat). Nat)). Type)
+      Unit
+      (λ (K : Nat). λ (H : Σ (k : Nat). Nat). λ (T : Array K (Σ (k : Nat). Nat)).
+        λ (Ih : Type).
+          (elim H return (λ (Hm : Σ (k : Nat). Nat). Type) {
+            Pair (K2) (V2) => Id Nat V2 7 }) × Ih)
+      M A }
+
+/-- Escaping VALUE borrow, invariant reads VALUES — REFUSED. -/
+def escValV : Term := prog{
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllV7 2 a))
+      -> &mut Nat {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
+      let e = &m (*a)[0];
+      match e { Pair(kk, vv) => &m *vv } } } } };
+  () }
+
+/-- Escaping KEY borrow, invariant reads VALUES — ACCEPTED. -/
+def escKeyV : Term := prog{
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllV7 2 a))
+      -> &mut Nat {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
+      let e = &m (*a)[0];
+      match e { Pair(kk, vv) => &m *kk } } } } };
+  () }
+
+example : progRejects escValV
+  "audit: self's payload (Pair σ2 (Pair Arr⟨(S Z) ▷ [Pair σ10 σ12], (S Z) ▷ σ8⟩ σ5)) does not have its owed type"
+  = true := by native_decide
+example : progOk escKeyV = true := by native_decide
+
 
 /-! ## §3 The end-to-end witness
 
@@ -684,6 +762,147 @@ example : progOk layer1 = false := by native_decide
 example : progRejects layer1Val
   "audit: self's payload (Pair σ8 (Pair σ12 σ11)) does not have its owed type"
   = true := by native_decide
+
+
+/-! ### §7.5 The THIRD wall, and it is this rule's own: the fill's σ must be
+    REDUCED AWAY, and reduction starts at the head
+
+    With Gap A landed, a partially-carved packed array re-types, so the `GetMut`
+    shape can finally be asked. It works — for a carve at index 0:
+
+        gmVal2   extent 2, carve index 0, escaping VALUE borrow    GREEN
+        gmVal3   extent 3, carve index 0, escaping VALUE borrow    GREEN
+        gmKey2   the same at the KEY                               red
+
+    and stops working for a carve anywhere else (`gmValMid`, `gmValLast`).
+
+    **The cause is not the carve.** That was the obvious reading and it is wrong:
+    `midUnit3`, `lastUnit3` and `lastUnit2` carve at index 1 and 2 and are GREEN,
+    and `midSplit3` — `gmValMid` with the escape removed and NOTHING else changed,
+    same extent, same carve, same field split — is GREEN too. The A/B is exact, so
+    the only difference between the green program and the red one is the σ this
+    rule's fill put in the value position.
+
+    **The mechanism.** The fill deliberately makes the two sides of the audit's
+    conversion differ at the lent leaf: the payload carries a fresh σ where the
+    packed proof's type carries the entry σ. That difference is invisible exactly
+    when the invariant REDUCES past the lent element, because `AllK7`'s cons step
+    projects the key and drops the value, so the leaf's position vanishes from the
+    normal form. `arrRec` reduces from the head. So the fill's σ is erased iff
+    every element BEFORE the lent one is concrete — which is what "index 0" means
+    and what a carve further in destroys, since the prefix is then an opaque slice
+    and the fold cannot take a step at all. The stuck spine keeps the σ, the two
+    sides differ, and the audit refuses.
+
+    **The refusal is CORRECT, and that is why this is pinned rather than fixed.**
+    A stuck fold is the checker saying it does not know the invariant ignores that
+    cell. It does not; nothing has told it. Accepting would mean asserting that a
+    fold whose motive it cannot evaluate is insensitive to a position it never
+    reached — a theorem about `arrRec`, not a conversion. Gap A's fix worked
+    because the equation it needed (`refineSym` had already made the entry σ equal
+    to the `arrCat` spine) was definitional and merely unreachable. There is no
+    corresponding equation here. So this is a DESIGN question for the GetMut lane,
+    not a contained fix, and the shape of the answer is a fold that can begin at a
+    symbolic prefix — `SlotsFrom` already threads its start index as a fold
+    argument for exactly this reason.
+
+    It matters for the flagship because a hashmap's slot index is symbolic: the
+    real `GetMut` is `gmValMid`-shaped, never `gmVal2`-shaped. -/
+
+def gmVal2 : Term := prog{
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a))
+      -> &mut Nat {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
+      let e = &m (*a)[0];
+      match e { Pair(kk, vv) => &m *vv } } } } };
+  () }
+
+def gmVal3 : Term := prog{
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a))
+      -> &mut Nat {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
+      let e = &m (*a)[0];
+      match e { Pair(kk, vv) => &m *vv } } } } };
+  () }
+
+def gmKey2 : Term := prog{
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a))
+      -> &mut Nat {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
+      let e = &m (*a)[0];
+      match e { Pair(kk, vv) => &m *kk } } } } };
+  () }
+
+/-- **THE GetMut SHAPE, WORKING** — a partially-carved packed array with an
+    escaping value borrow out of the carved element. Red before Gap A. -/
+example : progOk gmVal2 = true := by native_decide
+example : progOk gmVal3 = true := by native_decide
+example : progOk gmKey2 = false := by native_decide
+
+/-- Carve at index 1 and index 2: the escaping borrow's σ is no longer reduced
+    away, and these are the pinned probes of the gap. `gmValMid`'s payload prints
+    `Arr⟨1 ▷ σ6, 1 ▷ [Pair σ10 σ12], 1 ▷ σ8⟩` — `σ6` is the opaque prefix that
+    stops the fold and `σ12` is the fill the fold therefore never erases. -/
+def gmValMid : Term := prog{
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a))
+      -> &mut Nat {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
+      let e = &m (*a)[1];
+      match e { Pair(kk, vv) => &m *vv } } } } };
+  () }
+
+def gmValLast : Term := prog{
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a))
+      -> &mut Nat {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
+      let e = &m (*a)[2];
+      match e { Pair(kk, vv) => &m *vv } } } } };
+  () }
+
+example : progRejects gmValMid
+  "audit: self's payload (Pair σ2 (Pair Arr⟨(S Z) ▷ σ6, (S Z) ▷ [Pair σ10 σ12], (S Z) ▷ σ8⟩ σ5)) does not have its owed type"
+  = true := by native_decide
+example : progOk gmValLast = false := by native_decide
+
+/-! **THE A/B THAT PINS IT.** Four carves at index ≥ 1 with no escaping borrow,
+    all GREEN — so neither the carve position nor the opaque prefix is what the
+    audit objects to. `midSplit3` is `gmValMid` verbatim with `&m *vv` replaced by
+    `()`; it produces the same three-segment payload with the same field split, and
+    it passes. -/
+
+def midUnit3 : Term := prog{
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a))
+      -> Unit {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
+      let e = &m (*a)[1]; () } } } };
+  () }
+
+def lastUnit3 : Term := prog{
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a))
+      -> Unit {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
+      let e = &m (*a)[2]; () } } } };
+  () }
+
+def lastUnit2 : Term := prog{
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a))
+      -> Unit {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
+      let e = &m (*a)[1]; () } } } };
+  () }
+
+def midSplit3 : Term := prog{
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a))
+      -> Unit {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
+      let e = &m (*a)[1];
+      match e { Pair(kk, vv) => () } } } } };
+  () }
+
+example : progOk midUnit3 = true := by native_decide
+example : progOk lastUnit3 = true := by native_decide
+example : progOk lastUnit2 = true := by native_decide
+example : progOk midSplit3 = true := by native_decide
 
 end Dllbc.Tests.OpaqueFill
 
