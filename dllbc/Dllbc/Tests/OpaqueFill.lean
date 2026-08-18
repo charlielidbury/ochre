@@ -41,9 +41,10 @@ the same thing, so they are split:
     §3    progRejects escKeyExploit
     §7.5  progOk gmKey2 = false
 
-    TWO the rule COSTS — accepted without it, and safely so:
+    THREE the rule COSTS — accepted without it, and safely so:
     §7.5  progRejects gmValMid
     §7.5  progOk gmValLast = false
+    §7.5  progRejects gmValMin   (the minimal shape, pinned for 14-'s trace)
 
 Nothing else moves. `escVal`, `gmVal2` and `gmVal3` still check, §4's split still
 splits, `g5Caller` still runs, and §6 and §7.1–7.4 are untouched.
@@ -56,8 +57,9 @@ would have opened a fresh instance of exactly the hole §2 closes. The two lanes
 were independent in their diffs and not independent in their consequences.
 
 `gmValMid` and `gmValLast` are the cost, stated honestly: both are escaping VALUE
-borrows that a write could not break, and this rule refuses them anyway. That is
-§7.5, and it is the whole of what §7.5 costs — two assertions, both value borrows
+borrows that a write could not break, and this rule refuses them anyway (with
+`gmValMin` as the same shape at its minimum). That is
+§7.5, and it is the whole of what §7.5 costs — three assertions, all value borrows
 at a carve index ≥ 1.
 
 Nothing else in the CORPUS moves either: a full `lake build` across both rules
@@ -866,6 +868,32 @@ example : progRejects gmValMid
   "audit: self's payload (Pair σ2 (Pair Arr⟨(S Z) ▷ σ6, (S Z) ▷ [Pair σ10 σ12], (S Z) ▷ σ8⟩ σ5)) does not have its owed type"
   = true := by native_decide
 example : progOk gmValLast = false := by native_decide
+
+/-- **The MINIMAL red shape** (pinned for `14-packed-borrows.md`'s problem
+    statement): the count component and the third element are both inessential.
+    A bare `Σ0` pack over a TWO-element array, carved at index 1 — one leading
+    opaque slice is enough to keep the invariant's fold from reaching the filled
+    leaf. Same mechanism as `gmValMid`, two components smaller. -/
+def gmValMin : Term := prog{
+  fn G (self : &mut (Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a)) -> &mut Nat {
+    match self { Pair(a, H) => {
+      let e = &m (*a)[1];
+      match e { Pair(kk, vv) => &m *vv } } } };
+  () }
+
+/-- …and its A/B: the identical body with the escape removed. Green — the
+    escaping loan is the whole objection, at this size too. -/
+def gmValMinCtl : Term := prog{
+  fn G (self : &mut (Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a)) -> Unit {
+    match self { Pair(a, H) => {
+      let e = &m (*a)[1];
+      match e { Pair(kk, vv) => () } } } };
+  () }
+
+example : progRejects gmValMin
+  "audit: self's payload (Pair Arr⟨(S Z) ▷ σ4, (S Z) ▷ [Pair σ8 σ10]⟩ σ3) does not have its owed type"
+  = true := by native_decide
+example : progOk gmValMinCtl = true := by native_decide
 
 /-! **THE A/B THAT PINS IT.** Four carves at index ≥ 1 with no escaping borrow,
     all GREEN — so neither the carve position nor the opaque prefix is what the
