@@ -27,13 +27,27 @@ system had already accepted:
     escPinned      onto a cell a Σ0 tail PINS to a literal
     escRuntimeDep  onto a cell a LATER RUNTIME BINDER'S TYPE needs
 
-**The counterfactual, measured.** Revert `spliceInFlight`'s issued arm to
-`| some p => pure p` and exactly these four go green again — `(escKey, escExtent,
-escPinned, escRuntimeDep)` reads `(true, true, true, true)` before and
-`(false, false, false, false)` after, and `escKeyExploit` reads `true` before and
-`false` after. Nothing else in this file moves, and nothing else in the corpus
-moves either: a full `lake build` across both rules differs by one σ number in one
+**The counterfactual, measured — the FLIP LEDGER.** Revert `spliceInFlight`'s
+issued arm to `| some (p, _) => pure p`, leaving everything else in place, and
+rebuild this module. Exactly FIVE of its 39 assertions go red, and they are these:
+
+    §2  progRejects escKey
+    §2  progRejects escExtent
+    §2  progRejects escPinned
+    §2  progRejects escRuntimeDep
+    §3  progRejects escKeyExploit
+
+Nothing else moves. `escVal` still checks, §4's split still splits, `g5Caller`
+still runs, and every one of §6 and §7 is untouched — so the rule buys these five
+and is not silently carrying anything else. Nothing else in the CORPUS moves
+either: a full `lake build` across both rules differs by one σ number in one
 needle (`AuditExemption`'s `siblingBadWrite`, ledgered at its site).
+
+Note which parts of §3 do NOT flip: the `runBinding` assertion and the `chkL`
+one. That is the point of stating the witness in three parts — what the machine
+does and what inhabits a type are facts about the program, not about the audit
+rule, and they are what make the fifth flip a soundness result rather than a
+change of taste.
 
 `escKeyExploit` is the end of that road and the acceptance form for the whole
 fix — three parts, because two of them are about the MACHINE and only the third
