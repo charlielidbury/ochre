@@ -586,9 +586,9 @@ The §6.2 spec/`back` machinery needs no change and, notably, needs *less use*: 
 
 ### 3.8 The extent is not negotiable
 
-One new well-formedness rule on the borrow type, and it is the source of the length lemmas' evaporation. §5.1's obligation is type-*changing* — `&mut (s : τ ↝ S)` permits `S ≠ τ`, and `Vec T n ↝ Vec T (S n)` is its flagship. For a borrow whose loan sits at an array **segment**, that freedom is bounded:
+One new well-formedness rule on the borrow type, and it is the source of the length lemmas' evaporation. §5.1's obligation is type-*changing* — `&mut (s : τ ↝ τ')` permits `τ' ≠ τ`, and `Vec T n ↝ Vec T (S n)` is its flagship (the `S` there is `Nat`'s successor, which is exactly why the owed type is no longer lettered `S`). For a borrow whose loan sits at an array **segment**, that freedom is bounded:
 
-> If `ℓ` is a range loan at a segment of extent `c`, its obligation type `S` must be an `Array c T′` — the *same* `c`. The element type and any refinement may change; the extent may not.
+> If `ℓ` is a range loan at a segment of extent `c`, its obligation type `τ'` must be an `Array c T′` — the *same* `c`. The element type and any refinement may change; the extent may not.
 
 The reason is arithmetic rather than moral: the parent array's own type index is `add`-composed from its segments' extents, and it is not the borrow's to alter. A `Vec`-style length change is expressed the way §5.1 already recommends for it — by moving the length *inside* the value (`Σ (n : Nat). Array n T`), where it is data, not by letting a segment's obligation renegotiate its neighbour's offsets.
 
@@ -600,7 +600,7 @@ The dividend is immediate and large: a function `fn f (s : &mut Array c Nat)` **
 
 A slice is a borrow of a range place. That is the whole definition, and the three things one might expect to be primitive all fall out:
 
-**The fat pointer.** `&mut (s : Array cnt T ↝ S)` carries `cnt` as a comptime index in the type. Under erasure (§1.3's aspiration) the index is deleted from the *type* and survives as the length word of the runtime representation — the borrow erases to a base pointer, the index erases to a length, and the pair is exactly Rust's `&mut [T]`. The "fat" half of the fat pointer is not extra machinery; it is the index that was already there.
+**The fat pointer.** `&mut (s : Array cnt T ↝ τ')` carries `cnt` as a comptime index in the type. Under erasure (§1.3's aspiration) the index is deleted from the *type* and survives as the length word of the runtime representation — the borrow erases to a base pointer, the index erases to a length, and the pair is exactly Rust's `&mut [T]`. The "fat" half of the fat pointer is not extra machinery; it is the index that was already there.
 
 **Sub-slicing.** `&mut (*s)[lo ; cnt]` — a carve inside the slice's own payload. Slices nest without a rule.
 

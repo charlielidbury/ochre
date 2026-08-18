@@ -88,25 +88,34 @@ keeping every boundary-crossing borrow visible to the obligation walk — is obs
 the ℓ-keyed machinery (obligations by ℓ, audit-by-search, Stage 0's drop sweep) already
 finds borrows wherever they hide, value-directed.
 
-**2. The contract half is loan-attached, not boundary-attached.** `~> S` means "when
-the loan ends, the payload is asserted to be S" — a store event with three trigger
+**2. The contract half is loan-attached, not boundary-attached.** `~> τ'` means "when
+the loan ends, the payload is asserted to be τ′" — a store event with three trigger
 sites (demand, scope pop, function exit), of which today's system installs at one mint
 site (telescope seeding) and asserts at one end site (the exit audit) purely by
 inheritance: `~>` descends from Aeneas's backward functions, a genuinely
 boundary-shaped concept in its parent, arriving here wearing function clothes. The
-general form: debt registered on ℓ at mint (`let b = (&m v : &mut (s : τ ~> S))`,
+general form: debt registered on ℓ at mint (`let b = (&m v : &mut (s : τ ~> τ'))`,
 snapshot pinned at mint exactly as the seed pins entry), asserted at ℓ's end wherever
 that is. Signatures become one mint site among many. Stage 0's escaping-borrow finding
 (retention as a heuristic) gets its principled answer: a scope pop is an assertion
 site.
 
 **Typing consequence:** borrow types become store-relative judgments — `Ω ⊢ v : &mut
-(s : τ ~> S)` = shape conjunct (pure) + debt-registered-on-ℓ conjunct (store) — the
+(s : τ ~> τ')` = shape conjunct (pure) + debt-registered-on-ℓ conjunct (store) — the
 `Ω ⊢ v : τ` shape the user asked precedent for during the M30 design discussions;
 precedent is separation logic's points-to, lifetimes-in-types, LLBC's store-indexed
 judgments. The knowledge/state split relocates rather than dies: pure types are
 Ω-independent and converted; borrow types are Ω-relative and met. E4's enumeration
 shrinks to the contract form.
+
+**A notation note this milestone may want to revisit.** The owed type is spelled `τ'`
+today (2026-08-18) rather than the historical `S`, on Π's precedent: `Π (x : τ) → τ'`
+has the same binder asymmetry and the same caller/callee role asymmetry and letters
+them same-family, because today's owed type is grammatically an ordinary `Term` one
+binder deeper — `S` advertised a syntactic category that does not exist. If this
+milestone's re-founding makes the debt half a genuinely distinct JUDGMENT rather than
+a type in a second position, that is the point at which a distinguished letter would
+be earned rather than assumed. It is not being reserved in advance.
 
 **Scope:** its own milestone, after M32 (it wants the suspension representation's
 uniform value story). Design obligations: value-directed seeding/audit generalizing

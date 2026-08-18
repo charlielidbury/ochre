@@ -228,7 +228,7 @@ The seal check, in arrows — `Ω ⊢ (λx:τ. M) : (Πx:τ. N)` under ⇒:
 
 ```
 seed:    Ω₀ = x ↦ borrowₘ ℓ σ₀          σ₀ : τ̂ minted into Γσ
-         O += (x, ℓ, Ŝ[s := σ₀])        -- obligation: owed type, ~> binder PINNED
+         O += (x, ℓ, τ̂′[s := σ₀])       -- obligation: owed type, ~> binder PINNED
                                         -- at the entry snapshot by substitution
 pin:     Ω₀ ⊢ markExit(N) ⇝ N̂          -- return type evaluated ONCE, at entry:
                                         --   old *v → (old stripped) → resolves NOW → σ₀
@@ -264,7 +264,7 @@ environments; stored contracts carry their own, comparisons happen on values:
 SEED-PURE     ρ ⊢ τ ⇓ T      σ fresh,  Γσ += σ:T        continue under ρ[x ↦ σ]
 
 SEED-BORROW   ρ ⊢ τ ⇓ T      σ, ℓ fresh
-              O += (x, ℓ, clo(ρ[s ↦ σ], S))     ← ~> pinned by CAPTURE, no substitution
+              O += (x, ℓ, clo(ρ[s ↦ σ], τ'))    ← ~> pinned by CAPTURE, no substitution
               Ω[x ↦ borrowₘ ℓ σ]
 
 PIN           R := clo(ρ_entry, λ exit₁ … exitₙ. T′)    -- T′ = T with each bare *vᵢ ↦ exitᵢ;

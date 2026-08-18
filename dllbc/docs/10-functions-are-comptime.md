@@ -383,7 +383,7 @@ windows, E7's executing-mode env — we find out before spending on representati
 >   * passing a BORROW-FREE function as an argument — **fine, and this is new**:
 >     §7's "pass it as an argument" promise is closed for that case;
 >   * passing a function whose signature has a `&mut` binder — **refused**, by
->     `processArgs`' `readCWith` of the parameter type: "borrow type `&mut (τ ↝ S)`
+>     `processArgs`' `readCWith` of the parameter type: "borrow type `&mut (τ ↝ τ')`
 >     is only valid at a telescope position".
 >
 > So E4's predicted `piAgree`-style agreement path does not exist, and nothing

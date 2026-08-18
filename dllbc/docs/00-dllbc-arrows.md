@@ -27,7 +27,7 @@ Metatheory remains deliberately deferred throughout.
 
 Five sentences of context, so that §1's vocabulary stands on its own; every notion here receives a full treatment in its planned section.
 
-DLLBC programs execute against an **environment Ω** mapping variables to **values**, which are trees — constructors applied to values, plus a few ownership-tracking forms. There is no heap and no addresses: a mutable reference is modeled by moving ownership of a subtree to the reference (`borrowₘ ℓ v`) and leaving a marker (`loanₘ ℓ`) where it was; ⊥ marks a vacant slot. Types may mention program values, but only as **snapshots** — the (possibly symbolic, σ) value a variable held at a fixed moment — never as locations, so mutation can never make a type stale. The type checker *is* a symbolic interpreter running the same rules as the evaluator over symbolic values; **unrestricted** types (those whose values contain no borrows or loans) are the fragment where the ownership machinery is vacuous, and it is on this fragment that types, indices, and proofs live. Contracts appear only at abstraction **boundaries** — function signatures, written as telescopes whose borrow entries carry an obligation type `&mut (s : τ ↝ S)` — while inside a function body, borrowing is contract-free and the interpreter simply watches.
+DLLBC programs execute against an **environment Ω** mapping variables to **values**, which are trees — constructors applied to values, plus a few ownership-tracking forms. There is no heap and no addresses: a mutable reference is modeled by moving ownership of a subtree to the reference (`borrowₘ ℓ v`) and leaving a marker (`loanₘ ℓ`) where it was; ⊥ marks a vacant slot. Types may mention program values, but only as **snapshots** — the (possibly symbolic, σ) value a variable held at a fixed moment — never as locations, so mutation can never make a type stale. The type checker *is* a symbolic interpreter running the same rules as the evaluator over symbolic values; **unrestricted** types (those whose values contain no borrows or loans) are the fragment where the ownership machinery is vacuous, and it is on this fragment that types, indices, and proofs live. Contracts appear only at abstraction **boundaries** — function signatures, written as telescopes whose borrow entries carry an obligation type `&mut (s : τ ↝ τ')` — while inside a function body, borrowing is contract-free and the interpreter simply watches.
 
 ---
 
@@ -54,7 +54,7 @@ t, τ, S ::=
     t := t′ ; t′′                  assignment
     t ; t′                         sequencing (sugar for let _ = t ; t′)
     &mut t                         mutable borrow
-    &mut (s : τ ↝ S)               borrow type; s (the snapshot) bound in S
+    &mut (s : τ ↝ τ′)              borrow type; s (the snapshot) bound in τ′
     *t                             dereference
 ```
 
@@ -110,7 +110,7 @@ Which arrows are defined on which constructs is the language's skeleton:
 | `let x = t ; t′` | ✓ | ✗ | ✓ | ✗ | sequencing in both fragments |
 | `t := t′ ; t′′` | ✓ | ✗ | ✗ | ✗ | ⇒: RHS by ⇒, target by ⇐; excluded from the comptime fragment — pure code sequences with `let`, never `:=` |
 | `&mut t` | ✓ | ✗ | ✗ | ✗ | mints a loan; `&mut *x` is reborrow |
-| `&mut (s : τ ↝ S)` | ✗ | ✗ | ✓ | ✗ | the borrow *type* is comptime even though borrow *values* are excluded from the fragment |
+| `&mut (s : τ ↝ τ')` | ✗ | ✗ | ✓ | ✗ | the borrow *type* is comptime even though borrow *values* are excluded from the fragment |
 | `*t` | ✓ | ✓ | ✓ | ✓ | the peel, arrow-generic: under ⇒ reads through destructively (take); under ⇐ locates through non-destructively (write-through); under ⇝ projects the payload snapshot; under ⇜ refines it |
 
 Two regularities to notice, since they organize everything that follows. **Down the columns**: the ⇝ column is the ⇒ column minus the borrowing rows, minus assignment, and minus consumption — the comptime fragment made visible. **Across the rows**: several constructs mean different things under different arrows (`*t` reads destructively, locates non-destructively, or projects a snapshot; `match` destructures or reborrows by mode; `x` is a move, a target, a snapshot, or a refinement site) — one grammar, with the arrows carrying all the behavioral variation. The remainder of this document is the unpacking of this table, one region at a time.
@@ -435,15 +435,15 @@ Inside a body, borrowing is contract-free: the checker watches every step. Contr
 
 ### 5.1 The ↝ type
 
-> &mut (s : τ ↝ S)
+> &mut (s : τ ↝ τ')
 
-"Exclusive access to a value of type τ; across this boundary, a value of type S is owed." The binder `s` names the payload *at entry*, for use in `S` — which is checked at *exit*, when the entry payload is otherwise long gone. The obligation is type-changing: `S` need not be τ.
+"Exclusive access to a value of type τ; across this boundary, a value of type τ′ is owed." The binder `s` names the payload *at entry*, for use in `τ'` — which is checked at *exit*, when the entry payload is otherwise long gone. The obligation is type-changing: `τ'` need not be τ. The lettering is Π's, deliberately: `Π (x : τ) → τ'` has the same binder asymmetry (only the right-hand side may cite the binder) and the same role asymmetry (left = what the caller supplies, right = what the callee promises), and letters them same-family anyway, because neither asymmetry is a *syntactic* one. Nor is this one — the owed type is an ordinary type, one binder deeper.
 
 ```rust
 fn push (n : Nat, e : T, v : &mut (Vec T n ↝ Vec T (S n))) = { … }
 ```
 
-Pushing changes the type: the caller knows, from the signature alone, that the vector behind `v` is one longer at exit. We write `&mut (τ ↝ S)` when `S` ignores `s`, and `&mut τ` when moreover `S = τ`. A structuring observation, courtesy of the mechanization: the Σ-paired presentation of §4.2 sidesteps ↝ entirely — `&mut Σ (l : Nat). Vec T l` owes back exactly the type it received, the length change riding *inside* the invariant type rather than across it. ↝ earns its keep when the changing index lives *outside* the borrow, in the telescope, as here. Both forms are legitimate; the Σ form buys an invariant obligation at the price of carrying the index in the data. Where LLBC's toolchain synthesizes a *backward function* to describe what flows back through a borrow, here that description is the obligation: ↝ is the backward function's type, moved into the signature.
+Pushing changes the type: the caller knows, from the signature alone, that the vector behind `v` is one longer at exit. (The `S` in `Vec T (S n)` is `Nat`'s successor and has nothing to do with the borrow — that ambient collision is the second reason the owed type is not lettered `S`.) We write `&mut (τ ↝ τ')` when `τ'` ignores `s`, and `&mut τ` when moreover `τ' = τ`. A structuring observation, courtesy of the mechanization: the Σ-paired presentation of §4.2 sidesteps ↝ entirely — `&mut Σ (l : Nat). Vec T l` owes back exactly the type it received, the length change riding *inside* the invariant type rather than across it. ↝ earns its keep when the changing index lives *outside* the borrow, in the telescope, as here. Both forms are legitimate; the Σ form buys an invariant obligation at the price of carrying the index in the data. Where LLBC's toolchain synthesizes a *backward function* to describe what flows back through a borrow, here that description is the obligation: ↝ is the backward function's type, moved into the signature.
 
 ### 5.2 Telescopes, and *b in types
 

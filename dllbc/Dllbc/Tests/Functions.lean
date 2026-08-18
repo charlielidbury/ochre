@@ -2450,15 +2450,15 @@ example : progOk (withA (prog{ let r = A(1); () })) = true := by native_decide
     a declaration — a λ with its signature ascribed — is now the grammar rather
     than a comment beside it.
 
-    The neighbour is `&mut`. `&mut (s : τ ~> S)` is the borrow type with a snapshot
-    binder; drop the `~> S` and the ascription row would take it, making
+    The neighbour is `&mut`. `&mut (s : τ ~> τ')` is the borrow type with a snapshot
+    binder; drop the `~> τ'` and the ascription row would take it, making
     `&mut (v : List Nat)` a borrow of a SEAL. Measured before deciding: it parsed,
     silently, and failed downstream as an unrelated unbound-identifier error. It is
     refused at elaboration instead, which is not assertable as a test (it fails the
     build by design) and so is recorded here with its message:
 
         &mut (v : τ) is not a borrow type — the snapshot-binder spelling is
-        `&mut (v : τ ~> S)`, where `S` is what the borrow OWES back … If you meant
+        `&mut (v : τ ~> τ')`, where `τ'` is what the borrow OWES back … If you meant
         a plain borrow of the type, write `&mut τ`.
 -/
 
