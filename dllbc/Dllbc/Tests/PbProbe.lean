@@ -19,6 +19,65 @@ audit's `hasType filled ob.owed` is
     chkL (λ (V : τ). <pack with V at the lent leaf>) (Π (V : τ). <pack type>)
 
 which is what §V1 measures, on the real `HMInvT`.
+
+## The measurements, in one table
+
+`proto` is a THROWAWAY kernel prototype of opaque-fill — `spliceInFlight`'s
+`issued.lookup ℓ` arm minting a fresh σ at the issued borrow's owed type instead
+of returning its payload, with the owed type threaded from `auditAction`'s
+`checks` (three lines: two signatures and one `.map` deleted). It was measured
+and REVERTED; `git diff` on this branch touches no kernel file. Numbers below are
+reproducible by reapplying it.
+
+    probe            main   proto   what it holds fixed
+    ─────────────────────────────────────────────────────────────────────────
+    toyCtl           true   true    escaping borrow, array-INDEPENDENT tail
+    toyDep           false  false   …the same body, tail folded over the array
+    bisA nav         true   true    dependent tail, no borrow at all
+    bisB carve       FALSE  false   …one element carved, NOTHING escapes
+    bisC split       false  false   …+ split into key/value field borrows
+    bisD write val   false  false   …+ write a value
+    bisE write key   false  false   …+ write a key
+    bisF extent 1    TRUE   true    carve consumes the whole array
+    bisG whole-arr   true   true    whole-array borrow, collapses home
+    bisH bad write   false  false   whole array overwritten, keys ≠ 7
+    bisI both carved TRUE   true    multi-segment, NO opaque remainder
+    bisJ extent 3    false  false   one carved, two-element opaque remainder
+    bisK good write  false  false   whole array overwritten, keys = 7
+    escVal           true   TRUE    escaping VALUE borrow, extent 1
+    escKey           TRUE   FALSE   escaping KEY borrow, extent 1
+    escKeyExploit    TRUE   FALSE   …and the caller writes 99 through it
+    escExtent        TRUE   FALSE   escaping borrow into an array EXTENT
+    escPinned        TRUE   FALSE   …into a cell a Σ0 tail pins to 7
+    escRuntimeDep    TRUE   FALSE   …into a cell a later binder's TYPE needs
+    layer1           false  false   carve behind a callee boundary, extent 1
+    layer2           false  false   …extent 2
+    layer1Ctl        true   true    …array-INDEPENDENT tail
+    layer1Val        false  false   …inner fn returns a VALUE, group closes
+    g5Caller         true   true    caller writes through an accepted callee
+
+Full `lake build` of the dllbc package under `proto`: zero errors. The only
+assertion anywhere in the corpus that moved is `AuditExemption`'s
+`siblingBadWrite` needle, and it moved by ONE σ number (σ9 → σ10) with the same
+rejection from the same rule — stage-5 finding (1)'s renumbering cost, now
+bounded to a single needle because the fill is already sandboxed.
+`badTyElem`/`badWidth` keep their own sentences: M34's issued-checks-first
+ordering is what protects them, and it is already in place.
+
+## What the table says
+
+1. `bisB` red with `bisA` green, and `bisF`/`bisI` green with `bisB`/`bisJ` red,
+   put the wall somewhere the thesis does not reach: a partial carve leaves an
+   OPAQUE SLICE of the array, and an invariant that folds over the whole array
+   cannot step past it. No fill of the lent LEAF changes that — `bisB` has no
+   escaping borrow and no fill at all. The carve does NOT lose the packed
+   proof's identity (that was the other hypothesis, and `bisF` kills it).
+2. `escKey`/`escExtent`/`escPinned`/`escRuntimeDep` are green on main and red
+   under `proto`. Opaque-fill's soundness claim is REAL and it catches every
+   dependence route tried, including the two that are not Σ0 tails.
+3. `layer1Val` red — with the inner group CLOSED and nothing escaping — puts
+   gmProbe2's "orphans the packed proof" at `endGroup`'s opaque release, not at
+   the audit. Opaque-fill does not touch it and `proto` does not move it.
 -/
 
 section
@@ -558,6 +617,93 @@ def escRuntimeDep : Term := prog{
 #eval (match checkProgram escExtent prog{ Unit } with | .ok _ => "OK" | .error e => e)
 #eval (match checkProgram escPinned prog{ Unit } with | .ok _ => "OK" | .error e => e)
 #eval (match checkProgram escRuntimeDep prog{ Unit } with | .ok _ => "OK" | .error e => e)
+
+/-! ## V3 continued — `gmProbe2`'s LAYERED shape, and the group-end claim
+
+    The fable branch's note on probe 2 reads "a callee boundary whose group-end
+    re-mints the component and orphans the packed proof". The shape is the carve
+    moved out into its own fn taking the PLAIN array borrow, with the
+    pack-navigating fn only reborrowing fields. Run at BOTH extents: at extent 1
+    the inline version (`escVal`) is green, so anything that goes red at extent 1
+    is the boundary's own doing and nothing to do with the opaque remainder. -/
+
+/-- Layered, extent 1 — the inline version of this (`escVal`) is green. -/
+def layer1 : Term := prog{
+  fn Get (a : &mut (Array 1 (Σ (k : Nat). Nat))) -> &mut Nat {
+    let e = &m (*a)[0];
+    match e { Pair(kk, vv) => &m *vv } };
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). AllK7 1 a))
+      -> &mut Nat {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => Get(&m *a) } } };
+  () }
+
+/-- Layered, extent 2. -/
+def layer2 : Term := prog{
+  fn Get (a : &mut (Array 2 (Σ (k : Nat). Nat))) -> &mut Nat {
+    let e = &m (*a)[0];
+    match e { Pair(kk, vv) => &m *vv } };
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a))
+      -> &mut Nat {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => Get(&m *a) } } };
+  () }
+
+/-- The layered shape's own control: the same boundary over an
+    array-INDEPENDENT tail. Green here isolates the tail as the variable. -/
+def layer1Ctl : Term := prog{
+  fn Get (a : &mut (Array 1 (Σ (k : Nat). Nat))) -> &mut Nat {
+    let e = &m (*a)[0];
+    match e { Pair(kk, vv) => &m *vv } };
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). Le (S Z) n))
+      -> &mut Nat {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => Get(&m *a) } } };
+  () }
+
+/-- The layered shape's SECOND control: the inner fn returns a VALUE, so its
+    group closes before `G` exits and no loan is captured-by-an-open-group at the
+    audit. Green here says the boundary is not the problem — the OPEN GROUP is. -/
+def layer1Val : Term := prog{
+  fn Get (a : &mut (Array 1 (Σ (k : Nat). Nat))) -> Unit {
+    let e = &m (*a)[0];
+    match e { Pair(kk, vv) => () } };
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). AllK7 1 a))
+      -> Unit {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => Get(&m *a) } } };
+  () }
+
+#eval (progOk layer1, progOk layer2, progOk layer1Ctl, progOk layer1Val)
+#eval (match checkProgram layer1 prog{ Unit } with | .ok _ => "OK" | .error e => e)
+#eval (match checkProgram layer1Ctl prog{ Unit } with | .ok _ => "OK" | .error e => e)
+#eval (match checkProgram layer1Val prog{ Unit } with | .ok _ => "OK" | .error e => e)
+
+/-! ## V5 — the CALLER's group end, with a callee that was accepted
+
+    `escVal` is accepted today (and would still be accepted under opaque-fill:
+    `AllK7` never reads a value). So the caller side can be walked NOW, without
+    any kernel change: call it, write through the returned borrow, end the group,
+    and use the pack again. `g5Read` is the measurement — does the owner come back
+    at the packed type, and does the invariant survive the caller's write? -/
+
+def g5Caller : Term := prog{
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). AllK7 1 a))
+      -> &mut Nat {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
+      let e = &m (*a)[0];
+      match e { Pair(kk, vv) => &m *vv } } } } };
+  fn Use (self : &mut (Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). AllK7 1 a))
+      -> Unit {
+    let r = G(self);
+    *r := 42;
+    () };
+  let p = Pair(Z, Pair(Arr(Pair(7, 5)), Pair(Refl, unit)));
+  let q = &m p;
+  Use(q);
+  () }
+
+#eval progOk g5Caller
+#eval (match checkProgram g5Caller prog{ Unit } with | .ok _ => "OK" | .error e => e)
+#eval (match runProgram g5Caller with
+       | .ok env => env.map (fun (kv : String × Val) => (kv.1, kv.2.pretty))
+       | .error e => [("ERR", e)])
 
 end Dllbc.Tests.PbProbe
 

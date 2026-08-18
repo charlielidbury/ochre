@@ -22,3 +22,4 @@ import Dllbc.Tests.SigmaCopy
 import Dllbc.Tests.EagerRec
 import Dllbc.Tests.Ledger
 import Dllbc.Tests.Sugar
+import Dllbc.Tests.PbProbe
