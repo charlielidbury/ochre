@@ -42,8 +42,8 @@ extended with two things the boundary needs:
 `&mut τ` (the borrow TYPE — the OPERATION is `&m e`, M29 β) is
 `borrowT τ (weaken τ)` (the corpus's plain-borrow encoding; for the
 closed telescope types in the corpus `weaken τ` computes to `τ`, so the produced
-value is identical). `&mut (τ ~> S)` gives an S that ignores the snapshot;
-`&mut (s : τ ~> S)` binds `s` as pure var 0 in `S` — the `borrowT`/`seedTelescope`
+value is identical). `&mut (τ ~> τ')` gives a `τ'` that ignores the snapshot;
+`&mut (s : τ ~> τ')` binds `s` as pure var 0 in `τ'` — the `borrowT`/`seedTelescope`
 convention in Syntax.lean.
 
 ## Resolution discipline (och's law)
@@ -158,8 +158,8 @@ syntax:max uterm:max noWs "[" uterm ";" uterm ";" uterm "|" uterm "|" uterm "]" 
 -- the type. The attachment to Rust's spelling for the OP was aesthetic.
 syntax:70 "&m" uterm:65 : uterm                              -- &m e : the borrow OPERATION
 syntax:70 "&mut" uterm:65 : uterm                            -- &mut τ : the borrow TYPE
-syntax:70 "&mut" "(" uterm "~>" uterm ")" : uterm            -- borrow type &mut (τ ↝ S)
-syntax:70 "&mut" "(" ident ":" uterm "~>" uterm ")" : uterm  -- borrow type &mut (s : τ ↝ S)
+syntax:70 "&mut" "(" uterm "~>" uterm ")" : uterm            -- borrow type &mut (τ ↝ τ')
+syntax:70 "&mut" "(" ident ":" uterm "~>" uterm ")" : uterm  -- borrow type &mut (s : τ ↝ τ')
 syntax:65 uterm:65 uterm:66 : uterm                          -- application (juxtaposition)
 syntax:10 "λ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- lambda
 -- M26-C's runtime λ (combining-fns §7 cost 2). Written `λ(x : τ, y : υ) { … }` —
@@ -223,8 +223,8 @@ syntax:20 uterm:21 "×" uterm:20 : uterm                      -- non-dependent �
 -- and this row is that sentence as grammar rather than as a comment beside a
 -- two-argument former named after the implementation.
 syntax:max "(" uterm ":" uterm ")" : uterm                   -- .seal t u — `(t : T)`
--- The one confusable neighbour, refused ON PURPOSE. `&mut (s : τ ~> S)` is the
--- borrow type with a snapshot binder; drop the `~> S` and the ascription row above
+-- The one confusable neighbour, refused ON PURPOSE. `&mut (s : τ ~> τ')` is the
+-- borrow type with a snapshot binder; drop the `~> τ'` and the ascription row above
 -- would take it, making `&mut (v : List Nat)` a BORROW OF A SEAL — which is never
 -- meaningful (a seal is not a place) and is certainly not what someone writing that
 -- meant. Measured before deciding: without this row it parses, silently, and fails
@@ -748,7 +748,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
   -- weakening: `shiftPure 1 0` used to sit on both of these lines and is the
   -- identity under names (M30 step 2). `trivialOwedT` reads the second shape and
   -- was simplified with them.
-  | `(uterm| &mut ( $τ:uterm ~> $s:uterm )) => do                -- borrow type, S ignores s
+  | `(uterm| &mut ( $τ:uterm ~> $s:uterm )) => do                -- borrow type, owed type ignores s
     let (τ', n1) ← elabUTerm rctx pctx next τ
     let (s', n2) ← elabUTerm rctx pctx n1 s
     return (← `(Dllbc.Term.borrowT $(quote unusedSnapName) $τ' $s'), n2)
@@ -853,7 +853,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     let (b', n2) ← elabUTerm rctx pctx n1 b
     return (← `(Dllbc.Term.sigmaT $(quote unusedSnapName) $a' $b'), n2)
   | `(uterm| &mut ( $x:ident : $τ:uterm )) =>
-    Macro.throwErrorAt x s!"&mut ({x.getId} : τ) is not a borrow type — the snapshot-binder spelling is `&mut ({x.getId} : τ ~> S)`, where `S` is what the borrow OWES back and `{x.getId}` is its entry snapshot, bound as pure var 0 in `S`. Without the `~> S` this would read as `&mut` applied to the ascription `({x.getId} : τ)`, which is a borrow of a SEAL — never meaningful, since a seal is not a place. If you meant a plain borrow of the type, write `&mut τ`."
+    Macro.throwErrorAt x s!"&mut ({x.getId} : τ) is not a borrow type — the snapshot-binder spelling is `&mut ({x.getId} : τ ~> τ')`, where `τ'` is what the borrow OWES back and `{x.getId}` is its entry snapshot, bound as pure var 0 in `τ'`. Without the `~> τ'` this would read as `&mut` applied to the ascription `({x.getId} : τ)`, which is a borrow of a SEAL — never meaningful, since a seal is not a place. If you meant a plain borrow of the type, write `&mut τ`."
   | `(uterm| ($t:uterm : $u:uterm)) => do
     -- The body is a ⇒ position (term mode) whatever surrounds the node; the
     -- ascribed type is a ⇝ position. That asymmetry is the seal itself.

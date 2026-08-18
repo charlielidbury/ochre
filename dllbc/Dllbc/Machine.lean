@@ -46,7 +46,7 @@ namespace Dllbc
 
 
 /-- What an argument borrow owes at the boundary: its slot variable, its loan
-    id, and the owed type (§5.1's `S`, instantiated at the entry snapshot).
+    id, and the owed type (§5.1's `τ'`, instantiated at the entry snapshot).
     Lives in `St` (not just returned by `seedTelescope`) so that a §10 Refl
     refinement — which substitutes a σ everywhere — reaches the owed types too:
     a through-borrow `p : &mut (Id A a b)` matched against `Refl` refines the
@@ -1369,7 +1369,7 @@ mutual
     | .borrow _ => throwErr "readC (⇝): `&mut` is not in the comptime fragment"
     | .seq _ _ => throwErr "readC (⇝): statement sequencing is not a comptime read"
     | .matchE _ _ _ => throwErr "readC (⇝): match not implemented in the comptime fragment this milestone"
-    | .borrowT _ _ _ => throwErr "readC (⇝): borrow type `&mut (τ ↝ S)` is only valid at a telescope position"
+    | .borrowT _ _ _ => throwErr "readC (⇝): borrow type `&mut (τ ↝ τ')` is only valid at a telescope position"
     -- **The callee is NAMED** (M31 Stage A), and it is load-bearing rather than
     -- cosmetic: `fn`'s statement lowering turns a refusal into an unbound `.call`
     -- whose NAME carries the diagnosis, and this arm is what reports it.
@@ -1521,9 +1521,9 @@ def subsKnowledge : Val → Term
   | v => subsKnowledgeRaw (Val.arrFoldDeep v)
 
 /-- Build a call's fresh result value from the (instantiated) return type, and
-    collect the loans it ISSUES (§6.1). Each `&mut (τ ↝ S)` position mints a
+    collect the loans it ISSUES (§6.1). Each `&mut (τ ↝ τ')` position mints a
     fresh issued reborrow `borrowₘ ℓ σ` with `σ : τ` in `sctx` and owed type
-    `S[s := σ]`; a `Pair`/`Σ` of results issues one loan PER borrow component
+    `τ'[s := σ]`; a `Pair`/`Σ` of results issues one loan PER borrow component
     (the multi-issued group — `nth2`); a non-borrow leaf is a plain fresh
     existential `σ` with no issued loan (the §5.3 wire).
 
@@ -2897,7 +2897,7 @@ def borrowSelect (scrut : Var) (eqn : Option Var) (branches : List Branch) (ℓ 
     **Syntactic, on the same reasoning `sealRec` gives for the motive**: "the
     motive contains borrow types, which have no `Val` and therefore no conversion
     to be compared up to". A binder domain is where the borrow types actually LIVE
-    (`&mut (s : τ ↝ S)` is a telescope-position form and nothing else), so a
+    (`&mut (s : τ ↝ τ')` is a telescope-position form and nothing else), so a
     conversion up to computation is not merely unimplemented here — for the
     domains that matter it is unaskable. One rule, applied everywhere, rather than
     conversion where a `Val` happens to exist and syntax where it does not.
@@ -3279,8 +3279,8 @@ end
 
 /-- Seed the telescope into Ω and `sctx`, returning the borrow obligations.
     Argument `i` gets runtime var id `i`. A pure (unrestricted) type τ →
-    `x ↦ sym σ`, `sctx[σ : τ]`. A borrow type `&mut (s : τ ↝ S)` → fresh ℓ and
-    σ, `x ↦ borrowM ℓ (sym σ)`, `sctx[σ : τ]`, and an obligation carrying `S`
+    `x ↦ sym σ`, `sctx[σ : τ]`. A borrow type `&mut (s : τ ↝ τ')` → fresh ℓ and
+    σ, `x ↦ borrowM ℓ (sym σ)`, `sctx[σ : τ]`, and an obligation carrying `τ'`
     instantiated at `s := σ`. Crucially there is NO owner entry for an argument
     borrow's loan — the caller holds it; nothing in the body can collapse the
     borrow by owner-demand, only the audit can.
@@ -3314,7 +3314,7 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
       -- record σ as this borrow's entry snapshot (§5.4 `old *v`).
       modify (fun s => { s with sctx := (σ, τVal) :: s.sctx, entrySyms := (x.id, σ) :: s.entrySyms })
       let SVal ← readC fuel S
-      let owed := Pure.nf fuel (Pure.openBinder fuel sn SVal (Term.sym σ))   -- S[s := σ]
+      let owed := Pure.nf fuel (Pure.openBinder fuel sn SVal (Term.sym σ))   -- τ'[s := σ]
       pure (⟨x, ℓ, owed, trivialOwedT tyTerm⟩ :: (← seedTelescopeV fuel rest))
     -- ¶4's RUNTIME-LENGTH SLICE, `Σ (c : Nat). &mut (Array c T)`, as a parameter.
     -- §5's second opacity ("borrows stored under a type constructor") reaching a
@@ -4793,7 +4793,7 @@ mutual
           | none =>
             if indexKindV fuel (← get).sctx p then do mergeRoot pos.root; pure p  -- §2.1 copy-on-read
             else do setAtPos fuel pos .bot; mergeRoot pos.root; pure p
-      | .borrowT _ _ _ => throwErr "readR (⇒): borrow type `&mut (τ ↝ S)` is a telescope-position form, not a movable value"
+      | .borrowT _ _ _ => throwErr "readR (⇒): borrow type `&mut (τ ↝ τ')` is a telescope-position form, not a movable value"
       -- `⇝τ` outside a λ/Π domain is a mode marker that escaped its binder. Same
       -- standing as `borrowT` on the line above, and the same rejection.
       | .cmpT _ => throwErr "readR (⇒): `⇝τ` is a binder-mode marker (§6), legal only as a λ/Π domain — not a term and not a movable value"
@@ -5147,7 +5147,7 @@ mutual
   termination_by fuel _ _ _ _ _ => (fuel, 4, 0)
   /-- Consume a call's arguments left-to-right, checking each against its
       telescope entry, and RETURN the captured loans (§6.1): each argument
-      borrow's loan ℓ with its owed type `S[s := v]`. A pure argument must
+      borrow's loan ℓ with its owed type `τ'[s := v]`. A pure argument must
       `hasType` its parameter type; a borrow argument must be a `borrowM ℓ v`
       whose payload `v` has the parameter type τ, and is consumed. -/
   def processArgs : Nat → Nat → Omega → List (String × Term) → List Term → M (List (Nat × Term) × Omega)

@@ -315,8 +315,8 @@ inductive Term where
   | app    : Term → Term → Term      -- application
   | const  : String → Term           -- a built-in constant (recursor or type former)
   | idT    : Term → Term → Term → Term  -- Id A a b (§10): the identity type
-  /-- The borrow type `&mut (s : τ ↝ S)` (§5.1): exclusive access to a `τ`,
-      owing an `S` at the boundary. `S` is under one pure binder named `s`, the
+  /-- The borrow type `&mut (s : τ ↝ τ')` (§5.1): exclusive access to a `τ`,
+      owing a `τ'` at the boundary. `τ'` is under one pure binder named `s`, the
       entry snapshot. Plain `&mut τ` is `borrowT ⟨a reserved name⟩ τ τ` — under
       names the weakening the de Bruijn spelling needed is the identity. Only
       valid at a telescope position — interpreted by the seeding that

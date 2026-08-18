@@ -89,7 +89,7 @@ namespace FnMacro
     parameters as `.var ⟨i, name⟩`, the §5.2 convention — into nested Πs, whose
     binders are pure. That is abstraction of a VARIABLE, which is a different and
     simpler operation than §18's `abstractOccurrences` (an arbitrary subterm), and
-    it has to descend the forms a TYPE is made of: `*v` and `&mut (s : τ ↝ S)` and
+    it has to descend the forms a TYPE is made of: `*v` and `&mut (s : τ ↝ τ')` and
     the array steps, none of which `absOcc` looks inside because a §18 motive never
     contains them.
 
