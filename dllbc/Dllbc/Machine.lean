@@ -1507,8 +1507,18 @@ def subsKnowledgeRaw : Val → Term
     `@stateComponent`. So this widens what can be typed by exactly the rejoined
     case and leaves the suspended one refused, which is the scope the doc's Gap A
     draws. `readC` already folds at its own comptime reading, so the two sites
-    agree rather than this being a new licence. -/
-def subsKnowledge (v : Val) : Term := subsKnowledgeRaw (Val.arrFoldDeep v)
+    agree rather than this being a new licence.
+
+    The `.know` arm is a FAST PATH, and it is equal by construction rather than by
+    argument: `arrFoldDeep` bottoms out at `| v => v` on a knowledge leaf, so
+    folding one is the identity. It earns its line because `checkFields` calls this
+    once per dependent field and almost every field is a leaf. Measured, `Measure.lean`
+    §4 at x50 — main 166 ms / 385 ms, fold without this arm 171 ms / 398 ms (+3%),
+    fold with it 166 ms / 385 ms. The traversal is free where there is nothing to
+    traverse, and this is what makes it so. -/
+def subsKnowledge : Val → Term
+  | .know t => t
+  | v => subsKnowledgeRaw (Val.arrFoldDeep v)
 
 /-- Build a call's fresh result value from the (instantiated) return type, and
     collect the loans it ISSUES (§6.1). Each `&mut (τ ↝ S)` position mints a
@@ -3774,6 +3784,12 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
     -- that a type reaching for a carved array wants its `arrCat` spine, and the exit
     -- audit's OTHER re-typing — the dependent tail in `checkFields` — wanted the
     -- same thing and had no way to say so.
+    --
+    -- That the two ARE one rule is measured rather than asserted: take the fold back
+    -- out of `subsKnowledge` while this line no longer spells it out, and
+    -- `ArraySort`'s 519, 885 and 888 go red — `quicksortA`'s exit snapshot is a
+    -- `§segs` again and its `SortedA`/`CountA` postconditions get stuck on it.
+    -- Either site alone covers those three; neither alone covers the packed tail.
     let exits := (← get).exitSyms
     let retTy ← obs.foldlM (fun acc ob =>
       match exits.lookup ob.arg.id with
