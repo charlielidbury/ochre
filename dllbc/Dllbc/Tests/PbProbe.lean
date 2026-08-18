@@ -44,6 +44,8 @@ reproducible by reapplying it.
     bisI both carved TRUE   true    multi-segment, NO opaque remainder
     bisJ extent 3    false  false   one carved, two-element opaque remainder
     bisK good write  false  false   whole array overwritten, keys = 7
+    wrVal1           true   =       NON-escaping value write, extent 1
+    wrKey1           false  =       NON-escaping KEY write, extent 1 — CAUGHT
     escVal           true   TRUE    escaping VALUE borrow, extent 1
     escKey           TRUE   FALSE   escaping KEY borrow, extent 1
     escKeyExploit    TRUE   FALSE   …and the caller writes 99 through it
@@ -55,6 +57,14 @@ reproducible by reapplying it.
     layer1Ctl        true   true    …array-INDEPENDENT tail
     layer1Val        false  false   …inner fn returns a VALUE, group closes
     g5Caller         true   true    caller writes through an accepted callee
+
+`=` means the prototype cannot move that probe: a `Unit`-returning body reaches
+`auditAction`'s `none` branch, which passes `issued = []`, so the arm the
+prototype changes is unreachable and the fill is the identity under both rules.
+`wrVal1`/`wrKey1` are the pair that fixes the fill-mode SPLIT: a non-escaping
+value write is accepted and a non-escaping KEY write is refused, today, by the
+actual-payload fill. Non-escaping places are already right; escaping is the whole
+of the gap, exactly as the doc frames it.
 
 Full `lake build` of the dllbc package under `proto`: zero errors. The only
 assertion anywhere in the corpus that moved is `AuditExemption`'s
@@ -518,6 +528,33 @@ def escKey : Term := prog{
       let e = &m (*a)[0];
       match e { Pair(kk, vv) => &m *kk } } } } };
   () }
+
+/-! `bisD`/`bisE` are red at extent 2 for the opaque-remainder reason, so they
+    cannot say whether a NON-escaping bad write is caught. At extent 1 they can:
+    the fill is the identity there, the actual written value is what gets typed,
+    and the audit should accept the value write and refuse the key write. That is
+    the boundary opaque-fill has to respect — non-escaping places already work. -/
+
+/-- Non-escaping VALUE write, extent 1. -/
+def wrVal1 : Term := prog{
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). AllK7 1 a))
+      -> Unit {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
+      let e = &m (*a)[0];
+      match e { Pair(kk, vv) => { *vv := 99; () } } } } } };
+  () }
+
+/-- Non-escaping KEY write, extent 1. -/
+def wrKey1 : Term := prog{
+  fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). AllK7 1 a))
+      -> Unit {
+    match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
+      let e = &m (*a)[0];
+      match e { Pair(kk, vv) => { *kk := 99; () } } } } } };
+  () }
+
+#eval (progOk wrVal1, progOk wrKey1)
+#eval (match checkProgram wrKey1 prog{ Unit } with | .ok _ => "OK" | .error e => e)
 
 #eval (progOk escVal, progOk escKey)
 
