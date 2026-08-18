@@ -3462,13 +3462,46 @@ mutual
       the payload its borrow currently holds, WITHOUT ending anything. Nothing is
       written to Ω; the live borrows stay live.
 
-      What the splice is honest about: it types the returned sub-place's CURRENT
-      contents too, and those change under the caller's hand. That is fine at a
-      TRIVIAL owed type — "still an `Array 3 Nat`" is a property of the exit state
-      alone, and the caller's later writes are typed at the borrow's own owed type
-      — and `ob.trivialOwed` is guaranteed here by M27's containment, which throws
-      before this point for anything richer. It would NOT be fine for a relational
-      claim, which is exactly why the containment stays.
+      **An ESCAPING place is filled OPAQUELY, an in-flight one with its payload.**
+      That is the one distinction here, and it is where the honesty comes from. A
+      place under a borrow the callee KEEPS holds a value nobody else can reach, so
+      its current contents are the exit state and typing them is a claim about the
+      exit state. A place under a borrow the callee ISSUED into the result is the
+      opposite: the caller writes there next, and its current contents are the one
+      thing the audit may not rely on. Filling it with a fresh σ at the borrow's
+      own owed type asks the only question that survives the caller — does the
+      parameter have its owed type for EVERY value that could land in the lent
+      cell — and a fresh σ is the checker's native universal quantifier.
+
+      Without it the two fills were the same fill, and the exit audit could not
+      tell a `&mut` handed out onto a hashmap's VALUE cell from one handed out onto
+      its KEY. Four programs measure that: a borrow escaping onto a cell a packed
+      invariant hashes (`escKey`), onto an array's EXTENT (`escExtent`), onto a
+      cell a Σ0 tail pins (`escPinned`), and onto a cell a later runtime binder's
+      TYPE needs (`escRuntimeDep`). All four checked GREEN before this, and
+      `escKeyExploit` is the end of that road — the checker accepted it, the
+      machine ran it to a pack whose `Refl` proves `Id Nat 99 7`, and `chkL` of
+      that value against its own declared type is `false`. `Tests.OpaqueFill` is
+      the suite.
+
+      **Mint at the ISSUED BORROW's owed type, never at the component's.** The
+      granularity is the whole rule. An escaping `&mut Nat` owes back `Nat`, so the
+      σ lands on the LEAF and the structure around it stays concrete — which is
+      what lets a packed invariant still compute over the rest. A σ at the
+      component's type is a different and much worse thing: the fold has nothing to
+      step on and the packed proof is orphaned. That is not a hypothetical. The
+      kernel already does it twice, at the two places where nothing better is
+      available — the captured-by-an-open-group arm below, and `endGroup`'s opaque
+      release — and `layer1`/`layer1Val` are the two programs that go red because
+      of it, with the array component printing as a bare fresh σ. Reading
+      `issued`'s owed type rather than `ob.owed` is what keeps this arm on the
+      right side of that line.
+
+      What the splice is honest about: at a TRIVIAL owed type the in-flight fill is
+      a property of the exit state alone — "still an `Array 3 Nat`" — and
+      `ob.trivialOwed` is guaranteed here by M27's containment, which throws before
+      this point for anything richer. It would NOT be fine for a relational claim,
+      which is exactly why the containment stays.
 
       Every marker has an answer, and there is no silent skip: the issued list, Ω,
       and the group table between them cover the corpus (instrumented as a hard
@@ -3476,15 +3509,19 @@ mutual
       neither arm fires). A marker with no answer REJECTS, distinctively: the audit
       cannot see that place, so it cannot certify it, and failing closed is what
       says so. -/
-  partial def spliceInFlight (issued : List (Nat × Val)) : Val → M Val
+  partial def spliceInFlight (issued : List (Nat × Val × Term)) : Val → M Val
     | .loanM ℓ => do
-      -- The ISSUED borrow itself is not in Ω — it left in the result value — so
-      -- `findBorrowPayload` cannot reach it and the splice would stall here. Its
-      -- payload is in hand anyway: `collectResultBorrows` collected it for the
-      -- issued-borrow check that has already run, so it is both available and
-      -- already typed against its own owed type.
+      -- ISSUED into the result: OPAQUE FILL. A fresh σ at the type this borrow
+      -- owes back — the LEAF's type, not the parameter's — so the check that
+      -- follows reads "for every value the caller could write here". Minting is
+      -- safe from here because the whole fill runs sandboxed (see the call site):
+      -- a query has no business moving the σ supply the rest of the check is named
+      -- against, and stage 5's finding (2) is why that sandbox exists.
       match issued.lookup ℓ with
-      | some p => pure p
+      | some (_, owed) => do
+        let σ ← freshSym
+        modify (fun st => { st with sctx := (σ, owed) :: st.sctx })
+        pure (.know (Term.sym σ))
       | none => do
         -- No in-flight test here, deliberately. `residueHoles` has already
         -- rejected any marker in the residue PROPER that is not in flight; the
@@ -3501,6 +3538,15 @@ mutual
             -- a fresh σ at that owed type is precisely what `endGroup`'s opaque
             -- release will put here — so the stand-in is the rule's own answer,
             -- not an assumption.
+            --
+            -- This is the COMPONENT-level mint the docstring warns about, and it
+            -- is here because nothing better exists: the payload went into the
+            -- group and the group is the only record of it. The cost is real and
+            -- pinned — `layer1` in `Tests.OpaqueFill` is a carve moved behind a
+            -- callee boundary, and its pack cannot be re-typed because this σ
+            -- carries no relation to what the packed proof names. Do not read this
+            -- arm as licence to mint at a component's type where a leaf's type is
+            -- available; the arm above is where that distinction is made.
             match ((← get).groups.findSome? (fun g => g.captured.lookup ℓ)) with
             | none =>
               throwErr s!"audit: the residue of a returned-borrow parameter holds a loan (ℓ{ℓ}) whose borrow is in neither Ω nor an open group, so the leaves the callee does not return cannot be typed. §6.1 exempts the returned sub-place, not the parameter — a place the audit cannot see is a place it cannot certify."
@@ -3511,14 +3557,20 @@ mutual
     | .node n args => do
       pure (Val.ctor n (← spliceInFlightList issued args))
     | v => pure v
-  partial def spliceInFlightList (issued : List (Nat × Val)) : List Val → M (List Val)
+  partial def spliceInFlightList (issued : List (Nat × Val × Term)) : List Val → M (List Val)
     | [] => pure []
     | v :: vs => do pure ((← spliceInFlight issued v) :: (← spliceInFlightList issued vs))
 end
 
 /-- **Audit one argument-borrow obligation** — §6.1's rule, at the granularity of
-    the PLACE (M34). `issued` is the result's borrows with their payloads; empty
-    for a value-returning body.
+    the PLACE (M34). `issued` is the result's borrows with their payloads AND
+    their owed types; empty for a value-returning body.
+
+    The owed types are carried because the fill needs them: an escaping place is
+    filled with a fresh σ at the borrow's own owed type, and `ob.owed` — the
+    PARAMETER's — is the wrong type to mint at (`spliceInFlight`). They cost
+    nothing to carry: `collectResultBorrows` already collects the triple for the
+    issued-borrow check, and this used to project it back down on the way in.
 
     There used to be two rules here, and the second was a `pure ()`. §6.1 exempts
     an argument borrow whose derived borrow was consumed into the result, and the
@@ -3539,7 +3591,7 @@ end
     total, the hole hunt sees everything, and the fill is the identity — which is
     exactly the old value-returning rule, recovered as the degenerate case rather
     than written out again. -/
-def auditObligation (fuel : Nat) (issued : List (Nat × Val)) (ob : Obligation) : M Unit := do
+def auditObligation (fuel : Nat) (issued : List (Nat × Val × Term)) (ob : Obligation) : M Unit := do
   let resultLoans := issued.map (·.1)
   -- M27 SOUNDNESS CONTAINMENT (b1's second closed `Bot`). §6.1's exemption is
   -- correct about the PAYLOAD of a consumed borrow, but it used to skip the OWED
@@ -3584,13 +3636,16 @@ def auditObligation (fuel : Nat) (issued : List (Nat × Val)) (ob : Obligation) 
           " §6.1 exempts the sub-place a returned borrow points at, not the whole parameter: every other leaf is a place the caller recovers verbatim, and this one has no value in it."
         throwErr s!"audit: argument borrow {ob.arg.name} (ℓ{ob.loan}) holds {what} at return, in a leaf it still owns — take without refill.{exempt} (payload: {payload.pretty})"
       | none => do
-        -- (3) TYPE it, with the in-flight places filled in. A QUERY, so it runs
-        -- SANDBOXED: the fill mints a σ wherever the group table is its only
-        -- source, and a query has no business moving the σ supply that the rest of
-        -- the check is named against. Restoring the state on the way out is the
-        -- difference between this landing silently and it renumbering the corpus.
-        -- The collapse above stays outside the sandbox — ending those loans is a
-        -- real event, and it is one the old rule performed too.
+        -- (3) TYPE it, with the in-flight places filled in — the ESCAPING ones
+        -- opaquely, the rest with their payloads. A QUERY, so it runs SANDBOXED:
+        -- the fill mints a σ for every escaping place and wherever the group table
+        -- is its only source, and a query has no business moving the σ supply that
+        -- the rest of the check is named against. Restoring the state on the way
+        -- out is the difference between this landing silently and it renumbering
+        -- the corpus — and with opaque fill the sandbox stopped being a nicety,
+        -- since every borrow-returning body now mints here. The collapse above
+        -- stays outside it — ending those loans is a real event, and it is one the
+        -- old rule performed too.
         let saved ← get
         let verdict ← (do
           let filled ← spliceInFlight issued payload
@@ -3645,13 +3700,17 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
   match ← collectResultBorrows fuel retType resultVal with
   | some checks => do
     -- The ISSUED borrows first, then the obligations — M34's order, and the
-    -- reason is a diagnosis one. `auditObligation` fills the in-flight places in a
-    -- parameter's payload with the ISSUED BORROWS' OWN PAYLOADS, so a defect in
-    -- what the result points at gets spliced into the parameter and surfaces as a
-    -- complaint about the parameter. `retHole` is the control: a body that empties
-    -- the cell it returns should be told its RESULT holds ⊥, not that its argument
-    -- does. Running the issued checks first means the obligations are only ever
-    -- asked once the result side is known good.
+    -- reason is a diagnosis one. `auditObligation` fills each escaping place in a
+    -- parameter's payload at the ISSUED BORROW'S OWN OWED TYPE, so a defect in
+    -- what the result points at would otherwise surface as a complaint about the
+    -- parameter. `retHole` is the control: a body that empties the cell it returns
+    -- should be told its RESULT holds ⊥, not that its argument does; `badTyElem`
+    -- and `badWidth` are the two that keep their own sentences because of it.
+    -- Running the issued checks first means the obligations are only ever asked
+    -- once the result side is known good, and that ordering is what made opaque
+    -- fill affordable — stage 5's finding (1) recorded these diagnoses being
+    -- STOLEN by an owed-type fill, and it was measuring one written before M34 put
+    -- this order in place.
     --
     -- Nothing depended on the old order: the residue collapse ends only loans that
     -- do NOT reach a result loan, so it cannot disturb an issued borrow's payload.
@@ -3659,7 +3718,9 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
       let (_, payload, owed) := c
       do if ← hasType fuel payload owed then pure ()
          else throwErr s!"audit: returned borrow's payload ({payload.pretty}) does not have its owed type ({owed.pretty})")
-    obs.forM (auditObligation fuel (checks.map (fun c => (c.1, c.2.1))))
+    -- The triple goes through WHOLE. It used to be projected down to (loan,
+    -- payload) here, and the owed type it dropped is the one the fill mints at.
+    obs.forM (auditObligation fuel checks)
   | none => do
     obs.forM (auditObligation fuel [])
     -- The return type was pinned at entry (§5.3 dependent types over consumed

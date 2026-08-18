@@ -368,8 +368,16 @@ def siblingBadWrite : Term := prog{
     let e = &m (*c)[0];
     e };
   () }
+-- LEDGER (opaque fill): `σ9 → σ10`, and it is the ONLY assertion in the corpus
+-- that the rule moved. The middle segment is the RETURNED cell, so it is filled
+-- opaquely now — a fresh σ minted inside the audit's sandbox rather than the
+-- payload σ9 that was already there — and a mint moves the number by one. The
+-- verdict, the rule that produced it and every other segment are unchanged; the
+-- claim this test makes (a wrong-typed write into a SIBLING is caught, and only
+-- the audit catches it) is about `[True]` in the first segment and is untouched.
+-- The sandbox is why this is one number and not a corpus-wide renumbering.
 example : progRejects siblingBadWrite
-  "a's payload (Arr⟨(S Z) ▷ [True], (S Z) ▷ [σ9], (S Z) ▷ σ7⟩) does not have its owed type (Array (S (S (S Z))) Nat)"
+  "a's payload (Arr⟨(S Z) ▷ [True], (S Z) ▷ [σ10], (S Z) ▷ σ7⟩) does not have its owed type (Array (S (S (S Z))) Nat)"
   = true := by native_decide
 
 /-- The CONTROL that says the audit is the only thing checking writes at all: the
