@@ -3768,13 +3768,19 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
     -- concatenates adjacent RUNS, so a concrete-extent carve rejoins to a plain run
     -- and needs no fold; a SYMBOLIC segment cannot merge (only runs do), and that is
     -- the case every in-place array program is made of.
+    --
+    -- The fold used to be spelled out at this one site. It is `subsKnowledge`'s own
+    -- now (Gap A), which is where it always belonged: this site had already found
+    -- that a type reaching for a carved array wants its `arrCat` spine, and the exit
+    -- audit's OTHER re-typing — the dependent tail in `checkFields` — wanted the
+    -- same thing and had no way to say so.
     let exits := (← get).exitSyms
     let retTy ← obs.foldlM (fun acc ob =>
       match exits.lookup ob.arg.id with
       | none => pure acc
       | some σ => do
         match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
-        | some payload => pure (Pure.nf fuel (Term.substSym σ (subsKnowledge (Val.arrFoldDeep payload)) acc))
+        | some payload => pure (Pure.nf fuel (Term.substSym σ (subsKnowledge payload) acc))
         | none => pure acc) retTy0
     if ← hasType fuel resultVal retTy then pure ()
     else throwErr s!"audit: result ({resultVal.pretty}) does not have return type ({retTy.pretty})"

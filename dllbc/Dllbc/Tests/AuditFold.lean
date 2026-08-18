@@ -23,10 +23,10 @@ had no reading for it: it fell to `@stateComponent`, "a name that converts with
 nothing". So the tail was demanded at `P @stateComponent` while the entry proof
 inhabits `P σ_entry`, and the audit rejected a pack that had never changed.
 
-The equation itself was never in doubt — §(iii)'s control asserts, with an
-ascribed `Refl`, that the entry array IS definitionally the `arrCat` of its
-segments. What was missing was the audit taking the ⇝ bridge (`Val.arrFoldDeep`)
-to get there.
+The equation itself was never in doubt — §(ii)'s control asserts, with an ascribed
+`Refl`, that the entry array IS definitionally the `arrCat` of its segments (the
+carve's own `refineSym` makes it so). What was missing was the audit taking the ⇝
+bridge (`Val.arrFoldDeep`) to get there.
 -/
 
 open Dllbc
