@@ -1,3 +1,4 @@
+import Dllbc.ElabCheck
 import Dllbc.Program
 import Dllbc.Boundary
 import Dllbc.ProgMacro
@@ -236,7 +237,15 @@ def qSuffHonest : Term := prog{ Le %nQ %fuelQ }
     shared at all (M28 D1's rule: a difference inside a body, at a subterm naming a
     binder the `fn` lowering mints an id for, has no splice that can reach it). -/
 
-def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
+-- **`check` here is the splice auto-deferral's demonstration on the real thing.**
+-- This is the twin template: one body, five spliced return types, instantiated
+-- below both at types it satisfies and at types it does not. Asking for the check
+-- is answered "deferred, the assembled value is not closed" — silently, with a
+-- `trace.Dllbc.check` line and no marker to write — because a template HAS no
+-- closed value and is checked at its instantiations by construction. Written here
+-- rather than left bare so that the deferral is exercised by the suite rather than
+-- only by the demo file (docs/05 §2a).
+def arrUnder (sret pret qret qsuff tail : Term) : Term := prog check{
   fn SplitA [fuel] (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
       -> %sret
       { match m {
