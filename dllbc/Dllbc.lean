@@ -33,3 +33,4 @@ import Dllbc.Tests.HashMap
 import Dllbc.Tests.HashMapDiff
 import Dllbc.Tests.HashMapPin
 import Dllbc.Tests.ElabSpans
+import Dllbc.Tests.FragmentAgreement
