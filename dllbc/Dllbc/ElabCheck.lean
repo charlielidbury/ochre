@@ -95,9 +95,14 @@ opaque evalKeysValue (e : Expr) : TermElabM (List Dllbc.Term)
     program was declined rather than checked. -/
 initialize registerTraceClass `Dllbc.check
 
-/-- Run a walker action to an `Expr`, keeping its span table. -/
-def elabWith (act : UM (TSyntax `term)) : TermElabM (Expr × SpanAcc) := do
-  let (stx, spans) ← liftMacroM (StateT.run act {})
+/-- Run a walker action to an `Expr`, collecting spans only if asked.
+
+    `collect := false` is the normal path and is what makes the passing case free
+    (see `SpanAcc.collect`): the walker's span-filing calls become a boolean test
+    and the emitted `Term` is byte-identical. The failing path re-runs the same
+    action with `collect := true` to build the table it now needs. -/
+def elabWith (collect : Bool) (act : UM (TSyntax `term)) : TermElabM (Expr × SpanAcc) := do
+  let (stx, spans) ← liftMacroM (StateT.run act { collect })
   let e ← elabTerm stx (some (mkConst ``Dllbc.Term))
   synthesizeSyntheticMVarsNoPostponing
   return (← instantiateMVars e, spans)
@@ -214,7 +219,7 @@ def isProgramValue (v : Dllbc.Term) : Bool :=
     a template is checked at its instantiations by construction. -/
 def elabChecked (ref : Syntax) (ret : Option (TSyntax `uterm))
     (act : UM (TSyntax `term)) : TermElabM Expr := do
-  let (e, spans) ← elabWith act
+  let (e, _) ← elabWith false act
   -- The RETURN TYPE is assembled before the closedness test, and is part of what
   -- that test is asked about. `prog check -> %ret { … }` — the twin-template
   -- shape, where the body is shared and only the type varies per instantiation —
@@ -222,7 +227,7 @@ def elabChecked (ref : Syntax) (ret : Option (TSyntax `uterm))
   -- would send an open `Expr` to `evalExpr` and take the kernel's
   -- "declaration has free variables" instead of deferring. Found the hard way.
   let retE ← ret.mapM fun r => do
-    let (re, _) ← elabWith (do let (t, _) ← elabUTerm [] [] 0 r; pure t)
+    let (re, _) ← elabWith false (do let (t, _) ← elabUTerm [] [] 0 r; pure t)
     pure re
   let isOpen (x : Expr) : Bool := x.hasMVar || x.hasFVar
   if isOpen e || (retE.map isOpen).getD false then
@@ -249,7 +254,15 @@ def elabChecked (ref : Syntax) (ret : Option (TSyntax `uterm))
     reify {t1 - t0}ms, check {t2 - t1}ms"
   match res with
   | .ok _ => return e
-  | .error diag => throwDiag ref (ret.map (·.raw)) spans diag
+  | .error diag =>
+    -- THE SECOND WALK, and the only place one happens. The first ran without
+    -- collecting spans, because a block that checks never reads them. This block
+    -- did not check, so the table is now wanted: re-run the same walker action
+    -- with collection on and map the breadcrumb through it. Re-walking a program
+    -- that has already been rejected is free at human scale, and it is what buys
+    -- "a block that passes pays nothing for its spans".
+    let (_, spans) ← elabWith true act
+    throwDiag ref (ret.map (·.raw)) spans diag
 
 end ProgElab
 

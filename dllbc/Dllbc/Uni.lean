@@ -509,6 +509,29 @@ failed and a span is needed. -/
 
 /-- Key-term syntax paired with the source syntax it was written at. -/
 structure SpanAcc where
+  /-- **Is anyone going to read this table?** (M35, the collection flag.)
+
+      A block that CHECKS never looks at its spans — they exist to locate a
+      rejection — so collecting them on the passing path is pure overhead, and it
+      was measurable: threading the table through every `prog{ }` in the corpus
+      cost +6.9% on a from-scratch suite build. v1 of this design promised "a
+      declaration that passes pays nothing for its spans"; this flag is what makes
+      that true rather than aspirational.
+
+      **This is NOT the mode flag M29 γ deleted, and the distinction is the whole
+      justification.** That flag had SEMANTIC readers — `let` and `&mut` branched
+      on it, so the same source elaborated to different `Term`s depending on its
+      value, which is exactly why it had to go. This one gates whether DIAGNOSTIC
+      METADATA is collected. No rule reads it, no emitted `Term` depends on it,
+      and the walker produces byte-identical output either way; it is the same
+      class of thing as a trace level. Anyone tempted to relitigate M29 γ against
+      it should check that property first — it is asserted by the corpus, since
+      every `prog{ }` in the suite elaborates with collection OFF.
+
+      The elaborator therefore walks twice on the rare failing path (once without
+      spans, once with) rather than once-with-spans always. A second walk of a
+      program that has already been rejected is free at human scale. -/
+  collect : Bool := false
   /-- Statement keys, as raw `Syntax` (a `TSyntax` in an accumulator field trips
       the kernel through the `partial` mutual block below). -/
   stmts : Array (Syntax × Syntax) := #[]
@@ -521,11 +544,11 @@ abbrev UM := StateT SpanAcc MacroM
 
 /-- File a statement key at its source span. -/
 def noteStmtSpan (key : TSyntax `term) (ref : Syntax) : UM Unit :=
-  modify fun a => { a with stmts := a.stmts.push (key.raw, ref) }
+  modify fun a => if a.collect then { a with stmts := a.stmts.push (key.raw, ref) } else a
 
 /-- File a call argument's key at its source span. -/
 def noteArgSpan (key : TSyntax `term) (ref : Syntax) : UM Unit :=
-  modify fun a => { a with args := a.args.push (key.raw, ref) }
+  modify fun a => if a.collect then { a with args := a.args.push (key.raw, ref) } else a
 
 /-! The key builders live OUT here, not in the walker, because a quotation in
     argument position inside the walker's `partial mutual` block makes the kernel
