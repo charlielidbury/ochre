@@ -404,6 +404,198 @@ def SetHMSizeTy : Term := prog{
     Id Nat (SizeHM (SetHM Q V Hm)) (SizeHM Hm) }
 example : chkL SetHMSize SetHMSizeTy = true := by native_decide
 
+/-! ## (xxix) The map level — `SetHMAt`, and the pinned `GetMutHM`
+
+    The occurs check closes the literal-spine route: a carve citing
+    `ModSplit key cap` would refine `σcap := Add (Mod key σcap) …` — cyclic —
+    so the slot index and residue enter as PARAMETERS with their equations as
+    evidence (`hm-probe-mod`'s forced shape, re-derived at the pin), and the
+    pin cites them: `SetHMAt i rr p (*res) s`, `gmDecSymPin`'s exact shape.
+    The KEY leaves the pin entirely — slot `i` and cell `p` are the
+    pin-computable data; `key` stays in the D9 return conjunct and the
+    equations (`Him`/`Hhit`/`Hpos`) tying the data to it. The caller mints
+    `i`/`rr` as `Mod`/`CoMod` and discharges `Hd` with `ModSplit` — which is
+    what (xxvii) was for. -/
+
+def BumpHeadP : Term := prog{
+  λ (P : Nat). λ (V : Nat). λ (R : Nat). λ (A : Array (S R) (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
+        Array Mz (List (Σ (k : Nat). Nat)))
+      Arr()
+      (λ (M : Nat). λ (X : List (Σ (k : Nat). Nat)).
+        λ (XS : Array M (List (Σ (k : Nat). Nat))).
+        λ (Ih : Array M (List (Σ (k : Nat). Nat))).
+          acons M (BSetP P V X) XS)
+      (S R) A }
+
+def SetHMAt : Term := prog{
+  λ (I : Nat). λ (R : Nat). λ (P : Nat). λ (V : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim Hm return (λ (H0 : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+        Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+          Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+      Pair (Cap) (R1) =>
+        elim R1 return (λ (H1 : Σ (load : Nat). Σ (n : Nat).
+            Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))). HMInvT Cap load n slots).
+            Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+              Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+          Pair (Load) (R2) =>
+            elim R2 return (λ (H2 : Σ (n : Nat).
+                Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                  HMInvT Cap Load n slots).
+                Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                  Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+              Pair (N) (R3) =>
+                elim R3 return (λ (H3 : Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                    HMInvT Cap Load N slots).
+                    Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+                  Pair (Slots) (Inv) =>
+                    Pair(Cap, Pair(Load, Pair(N, Pair(
+                      arrCat I (S R) (atake I (S R) Slots)
+                        (BumpHeadP P V R (adrop I (S R) Slots)),
+                      Inv)))) } } } } }
+
+/-- The position of `q` in its hashed bucket, over the pack. -/
+def PosHM : Term := prog{
+  λ (Q : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim Hm return (λ (H0 : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots). Nat) {
+      Pair (Cap) (R1) =>
+        elim R1 return (λ (H1 : Σ (load : Nat). Σ (n : Nat).
+            Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))). HMInvT Cap load n slots). Nat) {
+          Pair (Load) (R2) =>
+            elim R2 return (λ (H2 : Σ (n : Nat).
+                Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                  HMInvT Cap Load n slots). Nat) {
+              Pair (N) (R3) =>
+                elim R3 return (λ (H3 : Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                    HMInvT Cap Load N slots). Nat) {
+                  Pair (Slots) (Inv) => FindPosL Q (AgetB Cap Slots (Mod Q Cap)) } } } } }
+
+example : chkL prog{ Refl } prog{ Id Nat (PosHM 3 hmEx) Z } = true := by native_decide
+
+/-- The crossing fact at the carve, index moved to the hash by the equation:
+    `AgetB` of the composition at `Mod q cap` IS the carved bucket. -/
+def AgetAtMod : Term := prog{
+  λ (I : Nat). λ (R : Nat). λ (M : Nat).
+  λ (L : Array I (List (Σ (k : Nat). Nat))). λ (B : List (Σ (k : Nat). Nat)).
+  λ (H : Array R (List (Σ (k : Nat). Nat))).
+  λ (Him : Id Nat I M).
+    NatRw (λ (W : Nat). Id (List (Σ (k : Nat). Nat))
+        (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) W) B)
+      I M Him
+      (AgetBCatMid R B H I L) }
+def AgetAtModTy : Term := prog{
+  Π (I : Nat) → Π (R : Nat) → Π (M : Nat) →
+  Π (L : Array I (List (Σ (k : Nat). Nat))) → Π (B : List (Σ (k : Nat). Nat)) →
+  Π (H : Array R (List (Σ (k : Nat). Nat))) →
+    Id Nat I M →
+    Id (List (Σ (k : Nat). Nat))
+      (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M) B }
+example : chkL AgetAtMod AgetAtModTy = true := by native_decide
+
+/-! ### The op — 13-'s GetMut, in the pin-computable spelling -/
+
+def hmPinUnder (tail : Term) : Term := prog{
+  fn BktGetAt [p] (p : Nat, key : Nat,
+      b : &mut (t : List (Σ (k : Nat). Nat) ~> BSetP p (*res) t),
+      Hhit : Id Bool (HitL key (*b)) True,
+      Hpos : Id Nat p (FindPosL key (*b)))
+      -> Σ (r : &mut Nat). Id OptN (SomeN (*r)) (FindL key (old *b)) {
+    match b {
+      Nil => botElim Unit (BoolFT Hhit),
+      Cons(Pair(kk, vv), tl) => {
+        let K0 = *kk;
+        let V0 = *vv;
+        let T0 = *tl;
+        match p {
+          Z => Pair(&m *vv, FindEvHit key K0 V0 T0 (PosZHit key K0 V0 T0 Hpos)),
+          S(p2) => {
+            let Ep = PosSStep key K0 V0 T0 p2 Hpos;
+            let Emiss = FstT (Id Bool (Eqb key K0) False) (Id Nat p2 (FindPosL key T0)) Ep;
+            let Epos2 = SndT (Id Bool (Eqb key K0) False) (Id Nat p2 (FindPosL key T0)) Ep;
+            let Pair(r2, h2) = BktGetAt(p2, key, &m *tl,
+              HitTailEv key K0 V0 T0 Emiss Hhit, Epos2);
+            let W0 = *r2;
+            Pair(r2, IdTrans OptN (SomeN W0) (FindL key T0)
+              (FindL key Cons(Pair(K0, V0), T0)) h2
+              (FindTailEv key K0 V0 T0 Emiss))
+          } } } } };
+  fn GetMutHM (i : Nat, rr : Nat, p : Nat, key : Nat,
+      self : &mut (s : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+          Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots
+        ~> SetHMAt i rr p (*res) s),
+      Hd : Id Nat (CapHM (*self)) (Add i (S rr)),
+      Him : Id Nat i (Mod key (CapHM (*self))),
+      Hhit : Id Bool (HitHM key (*self)) True,
+      Hpos : Id Nat p (PosHM key (*self)))
+      -> Σ (r : &mut Nat). Id OptN (SomeN (*r)) (FindHM key (old *self)) {
+    match self { Pair(capb, r1) => match r1 { Pair(loadb, r2x) => match r2x { Pair(nb, r3) => match r3 { Pair(sb, Invb) => {
+      let I0 = i;
+      let R0 = rr;
+      let Key0 = key;
+      let C0 = *capb;
+      let pre = &m (*sb)[Z ; i ; S rr | LeAdd i (S rr) | Hd];
+      let cell = &m (*sb)[i ; 1 ; rr];
+      let hic = &m (*sb)[S i ; rr];
+      let bb = &m (*cell)[0];
+      let L0 = *pre;
+      let B0 = *bb;
+      let H0 = *hic;
+      let EB = AgetAtMod I0 R0 (Mod Key0 C0) L0 B0 H0 Him;
+      let HhitB = IdTrans Bool (HitL Key0 B0)
+                    (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
+                      (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0)))) True
+                    (IdSym Bool
+                      (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
+                        (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0))))
+                      (HitL Key0 B0)
+                      (IdCongr (List (Σ (k : Nat). Nat)) Bool
+                        (λ (W : List (Σ (k : Nat). Nat)). IsSomeB (FindL Key0 W))
+                        (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
+                          (Mod Key0 C0)) B0 EB))
+                    Hhit;
+      let HposB = IdTrans Nat p
+                    (FindPosL Key0 (AgetB (Add I0 (S R0))
+                      (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0)))
+                    (FindPosL Key0 B0)
+                    Hpos
+                    (IdCongr (List (Σ (k : Nat). Nat)) Nat
+                      (λ (W : List (Σ (k : Nat). Nat)). FindPosL Key0 W)
+                      (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
+                        (Mod Key0 C0)) B0 EB);
+      let Pair(rb, hb) = BktGetAt(p, key, &m *bb, HhitB, HposB);
+      let W0 = *rb;
+      Pair(rb, IdTrans OptN (SomeN W0) (FindL Key0 B0)
+        (FindL Key0 (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
+          (Mod Key0 C0)))
+        hb
+        (IdSym OptN
+          (FindL Key0 (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
+            (Mod Key0 C0)))
+          (FindL Key0 B0)
+          (IdCongr (List (Σ (k : Nat). Nat)) OptN
+            (λ (W : List (Σ (k : Nat). Nat)). FindL Key0 W)
+            (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0))
+            B0 EB)))
+    } } } } } };
+  %tail }
+
+/-- **13-'s GetMut CHECKS**: the map-level pin discharges through the carve
+    (`atake`/`adrop` ι at the parameter split), the bucket callee's projected
+    pin lands in the composition's cell, and the D9 conjunct is rebuilt from
+    the callee's evidence by the `AgetAtMod` transport. -/
+def errOf (t : Term) : String :=
+  match checkProgram t prog{ Unit } with | .ok _ => "OK" | .error e => e
+
+example : progOk (hmPinUnder prog{ () }) = true := by native_decide
+
 end Dllbc.Tests.HashMap
 
 end
