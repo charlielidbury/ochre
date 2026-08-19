@@ -828,6 +828,383 @@ def hmChainWrongSlot : Term := hmPinUnder prog{
 
 example : progOk hmChainWrongSlot = false := by native_decide
 
+/-! ## (xxxii) `GetMutOrInsert` — the or_insert vocabulary
+
+    Position-driven like GetMut, with two extra moving parts. (1) `FindPosL`
+    of an ABSENT key is the bucket length — exactly the append site — so ONE
+    update (`BPutP`: set at `p`, or append `(key, v)` past the end) covers hit
+    and fresh alike, and the walk needs no hit/miss branching. (2) The count
+    moves: the pin cannot compute `hit ? n : S n` (the hit is not
+    pin-computable data at the outer level), so the NEW COUNT `n2` is a
+    parameter, the BODY writes it into the pack (`*nb := n2`), and honesty is
+    a premise (`Hn2` ties `n2` to the hit; `Hroom` keeps the ledger). -/
+
+def BPutP : Term := prog{
+  λ (P : Nat). λ (Key : Nat). λ (V : Nat).
+    elim P return (λ (Pz : Nat). Π (L : List (Σ (k : Nat). Nat)) → List (Σ (k : Nat). Nat)) {
+      Z => λ (L : List (Σ (k : Nat). Nat)).
+        elim L return (λ (Lm : List (Σ (k : Nat). Nat)). List (Σ (k : Nat). Nat)) {
+          Nil => Cons(Pair(Key, V), Nil),
+          Cons (E) (T) Rec =>
+            Cons(elim E return (λ (Em : Σ (k : Nat). Nat). Σ (k : Nat). Nat) {
+              Pair (K2) (V2) => Pair(K2, V) }, T) },
+      S (P2) Rec => λ (L : List (Σ (k : Nat). Nat)).
+        elim L return (λ (Lm : List (Σ (k : Nat). Nat)). List (Σ (k : Nat). Nat)) {
+          Nil => Cons(Pair(Key, V), Nil),
+          Cons (E) (T) Rec2 => Cons(E, Rec T) } } }
+
+example : chkL prog{ Refl } prog{ Id (List (Σ (k : Nat). Nat))
+  (BPutP 1 5 77 Cons(Pair(1, 10), Nil))
+  Cons(Pair(1, 10), Cons(Pair(5, 77), Nil)) } = true := by native_decide
+example : chkL prog{ Refl } prog{ Id (List (Σ (k : Nat). Nat))
+  (BPutP 0 5 77 Cons(Pair(1, 10), Nil))
+  Cons(Pair(1, 77), Nil) } = true := by native_decide
+
+/-- What the returned borrow holds at entry: the old value if the key was
+    there, the default if not. -/
+def OrDefL : Term := prog{
+  λ (Q : Nat). λ (D : Nat). λ (L : List (Σ (k : Nat). Nat)).
+    elim (HitL Q L) return (λ (Bm : Bool). Nat) {
+      True => FindVL Q L,
+      False => D } }
+
+def OrDefHM : Term := prog{
+  λ (Q : Nat). λ (D : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim (HitHM Q Hm) return (λ (Bm : Bool). Nat) {
+      True => FindValHM Q Hm,
+      False => D } }
+
+example : chkL prog{ Refl } prog{ Id Nat (OrDefHM 3 77 hmEx) 30 } = true := by native_decide
+example : chkL prog{ Refl } prog{ Id Nat (OrDefHM 5 77 hmEx) 77 } = true := by native_decide
+
+/-- A hit at the head makes the whole bucket's `OrDefL` its head value. -/
+def OrDHitEv : Term := prog{
+  λ (Q : Nat). λ (D : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
+  λ (E : Id Bool (Eqb Q K0) True).
+    IdSym Nat (OrDefL Q D Cons(Pair(K0, V0), T)) V0
+      (IdTrans Nat (OrDefL Q D Cons(Pair(K0, V0), T))
+        (FindVL Q Cons(Pair(K0, V0), T)) V0
+        (IdCongr Bool Nat
+          (λ (W : Bool). elim (IsSomeB (elim W return (λ (B2 : Bool). Σ (bb : Bool). OptP bb Nat) {
+              True => SomeN V0, False => FindL Q T }))
+            return (λ (B3 : Bool). Nat) {
+              True => FindVL Q Cons(Pair(K0, V0), T), False => D })
+          (Eqb Q K0) True E)
+        (IdSym Nat V0 (FindVL Q Cons(Pair(K0, V0), T)) (FindVEvHit Q K0 V0 T E))) }
+def OrDHitEvTy : Term := prog{
+  Π (Q : Nat) → Π (D : Nat) → Π (K0 : Nat) → Π (V0 : Nat) →
+  Π (T : List (Σ (k : Nat). Nat)) →
+    Id Bool (Eqb Q K0) True →
+    Id Nat V0 (OrDefL Q D Cons(Pair(K0, V0), T)) }
+example : chkL OrDHitEv OrDHitEvTy = true := by native_decide
+
+/-- A miss at the head passes `OrDefL` through to the tail. -/
+def OrDMissEv : Term := prog{
+  λ (Q : Nat). λ (D : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
+  λ (E : Id Bool (Eqb Q K0) False).
+    IdSym Nat (OrDefL Q D Cons(Pair(K0, V0), T)) (OrDefL Q D T)
+      (IdTrans Nat (OrDefL Q D Cons(Pair(K0, V0), T))
+        (elim (HitL Q T) return (λ (B3 : Bool). Nat) {
+          True => FindVL Q Cons(Pair(K0, V0), T), False => D })
+        (OrDefL Q D T)
+        (IdCongr Bool Nat
+          (λ (W : Bool). elim (IsSomeB (elim W return (λ (B2 : Bool). Σ (bb : Bool). OptP bb Nat) {
+              True => SomeN V0, False => FindL Q T }))
+            return (λ (B3 : Bool). Nat) {
+              True => FindVL Q Cons(Pair(K0, V0), T), False => D })
+          (Eqb Q K0) False E)
+        (IdCongr Nat Nat
+          (λ (W : Nat). elim (HitL Q T) return (λ (B3 : Bool). Nat) {
+            True => W, False => D })
+          (FindVL Q Cons(Pair(K0, V0), T)) (FindVL Q T)
+          (IdSym Nat (FindVL Q T) (FindVL Q Cons(Pair(K0, V0), T))
+            (FindVTailEv Q K0 V0 T E)))) }
+def OrDMissEvTy : Term := prog{
+  Π (Q : Nat) → Π (D : Nat) → Π (K0 : Nat) → Π (V0 : Nat) →
+  Π (T : List (Σ (k : Nat). Nat)) →
+    Id Bool (Eqb Q K0) False →
+    Id Nat (OrDefL Q D T) (OrDefL Q D Cons(Pair(K0, V0), T)) }
+example : chkL OrDMissEv OrDMissEvTy = true := by native_decide
+
+def BumpPutP : Term := prog{
+  λ (P : Nat). λ (Key : Nat). λ (V : Nat). λ (R : Nat).
+  λ (A : Array (S R) (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
+        Array Mz (List (Σ (k : Nat). Nat)))
+      Arr()
+      (λ (M : Nat). λ (X : List (Σ (k : Nat). Nat)).
+        λ (XS : Array M (List (Σ (k : Nat). Nat))).
+        λ (Ih : Array M (List (Σ (k : Nat). Nat))).
+          acons M (BPutP P Key V X) XS)
+      (S R) A }
+
+/-- The or_insert release: slot `i`'s bucket put-or-appended at `(p, key)`,
+    and the count REPLACED by the parameter `n2` — the body stores it, the
+    signature's `Hn2` premise keeps it honest. -/
+def SetOrInsAt : Term := prog{
+  λ (I : Nat). λ (R : Nat). λ (P : Nat). λ (N2 : Nat). λ (Key : Nat). λ (V : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim Hm return (λ (H0 : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+        Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+          Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+      Pair (Cap) (R1) =>
+        elim R1 return (λ (H1 : Σ (load : Nat). Σ (n : Nat).
+            Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))). HMInvT Cap load n slots).
+            Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+              Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+          Pair (Load) (R2) =>
+            elim R2 return (λ (H2 : Σ (n : Nat).
+                Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                  HMInvT Cap Load n slots).
+                Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                  Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+              Pair (N) (R3) =>
+                elim R3 return (λ (H3 : Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                    HMInvT Cap Load N slots).
+                    Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+                  Pair (Slots) (Inv) =>
+                    Pair(Cap, Pair(Load, Pair(N2, Pair(
+                      arrCat I (S R) (atake I (S R) Slots)
+                        (BumpPutP P Key V R (adrop I (S R) Slots)),
+                      Inv)))) } } } } }
+
+/-- The map-to-bucket `OrDefL` glue at the carve — packaged so the op's body
+    applies one lemma instead of inlining the two-place congruence. -/
+def OrDAgetEv : Term := prog{
+  λ (Q : Nat). λ (D : Nat). λ (I : Nat). λ (R : Nat). λ (M : Nat).
+  λ (L : Array I (List (Σ (k : Nat). Nat))). λ (B : List (Σ (k : Nat). Nat)).
+  λ (H : Array R (List (Σ (k : Nat). Nat))).
+  λ (Him : Id Nat I M).
+    IdSym Nat
+      (elim (IsSomeB (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M)))
+        return (λ (B3 : Bool). Nat) {
+          True => FindVL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M),
+          False => D })
+      (OrDefL Q D B)
+      (IdTrans Nat
+        (elim (IsSomeB (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M)))
+          return (λ (B3 : Bool). Nat) {
+            True => FindVL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M),
+            False => D })
+        (elim (IsSomeB (FindL Q B)) return (λ (B3 : Bool). Nat) {
+          True => FindVL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M),
+          False => D })
+        (OrDefL Q D B)
+        (IdCongr (List (Σ (k : Nat). Nat)) Nat
+          (λ (W : List (Σ (k : Nat). Nat)).
+            elim (IsSomeB (FindL Q W)) return (λ (B3 : Bool). Nat) {
+              True => FindVL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M),
+              False => D })
+          (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M) B
+          (AgetAtMod I R M L B H Him))
+        (IdCongr Nat Nat
+          (λ (W : Nat). elim (IsSomeB (FindL Q B)) return (λ (B3 : Bool). Nat) {
+            True => W, False => D })
+          (FindVL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M))
+          (FindVL Q B)
+          (IdCongr (List (Σ (k : Nat). Nat)) Nat
+            (λ (W : List (Σ (k : Nat). Nat)). FindVL Q W)
+            (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M) B
+            (AgetAtMod I R M L B H Him)))) }
+def OrDAgetEvTy : Term := prog{
+  Π (Q : Nat) → Π (D : Nat) → Π (I : Nat) → Π (R : Nat) → Π (M : Nat) →
+  Π (L : Array I (List (Σ (k : Nat). Nat))) → Π (B : List (Σ (k : Nat). Nat)) →
+  Π (H : Array R (List (Σ (k : Nat). Nat))) →
+    Id Nat I M →
+    Id Nat (OrDefL Q D B)
+      (elim (IsSomeB (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M)))
+        return (λ (B3 : Bool). Nat) {
+          True => FindVL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M),
+          False => D }) }
+example : chkL OrDAgetEv OrDAgetEvTy = true := by native_decide
+
+/-! ### The or_insert ops -/
+
+def hmOrUnder (tail : Term) : Term := prog{
+  fn BktPutAt [p] (p : Nat, key : Nat, d : Nat,
+      b : &mut (t : List (Σ (k : Nat). Nat) ~> BPutP p key (*res) t),
+      Hpos : Id Nat p (FindPosL key (*b)))
+      -> Σ (r : &mut Nat). Id Nat (*r) (OrDefL key d (old *b)) {
+    match b {
+      Nil => match p {
+        Z => {
+          *b := Cons(Pair(key, d), Nil);
+          match b { Cons(hd, tl) => match hd { Pair(kk, vv) =>
+            Pair(&m *vv, Refl) } }
+        },
+        S(p2) => botElim Unit (Znots p2 (IdSym Nat (S p2) Z Hpos))
+      },
+      Cons(Pair(kk, vv), tl) => {
+        let K0 = *kk;
+        let V0 = *vv;
+        let T0 = *tl;
+        match p {
+          Z => Pair(&m *vv, OrDHitEv key d K0 V0 T0 (PosZHit key K0 V0 T0 Hpos)),
+          S(p2) => {
+            let Ep = PosSStep key K0 V0 T0 p2 Hpos;
+            let Emiss = FstT (Id Bool (Eqb key K0) False) (Id Nat p2 (FindPosL key T0)) Ep;
+            let Epos2 = SndT (Id Bool (Eqb key K0) False) (Id Nat p2 (FindPosL key T0)) Ep;
+            let Pair(r2, h2) = BktPutAt(p2, key, d, &m *tl, Epos2);
+            let W0 = *r2;
+            Pair(r2, IdTrans Nat W0 (OrDefL key d T0)
+              (OrDefL key d Cons(Pair(K0, V0), T0)) h2
+              (OrDMissEv key d K0 V0 T0 Emiss))
+          } } } } };
+  fn GetMutOrInsertHM (i : Nat, rr : Nat, p : Nat, n2 : Nat, key : Nat, d : Nat,
+      self : &mut (s : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+          Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots
+        ~> SetOrInsAt i rr p n2 key (*res) s),
+      Hd : Id Nat (CapHM (*self)) (Add i (S rr)),
+      Him : Id Nat i (Mod key (CapHM (*self))),
+      Hpos : Id Nat p (PosHM key (*self)),
+      Hn2 : Id Nat n2 (elim (HitHM key (*self)) return (λ (Bm : Bool). Nat) {
+        True => SizeHM (*self), False => S (SizeHM (*self)) }),
+      Hroom : Le (Mul 5 n2) (LoadHM (*self)))
+      -> Σ (r : &mut Nat). Id Nat (*r) (OrDefHM key d (old *self)) {
+    match self { Pair(capb, r1) => match r1 { Pair(loadb, r2x) => match r2x { Pair(nb, r3) => match r3 { Pair(sb, Invb) => {
+      let I0 = i;
+      let R0 = rr;
+      let Key0 = key;
+      let D0 = d;
+      let C0 = *capb;
+      let pre = &m (*sb)[Z ; i ; S rr | LeAdd i (S rr) | Hd];
+      let cell = &m (*sb)[i ; 1 ; rr];
+      let hic = &m (*sb)[S i ; rr];
+      let bb = &m (*cell)[0];
+      let L0 = *pre;
+      let B0 = *bb;
+      let H0 = *hic;
+      let HposB = IdTrans Nat p
+                    (FindPosL Key0 (AgetB (Add I0 (S R0))
+                      (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0)))
+                    (FindPosL Key0 B0)
+                    Hpos
+                    (IdCongr (List (Σ (k : Nat). Nat)) Nat
+                      (λ (W : List (Σ (k : Nat). Nat)). FindPosL Key0 W)
+                      (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
+                        (Mod Key0 C0)) B0
+                      (AgetAtMod I0 R0 (Mod Key0 C0) L0 B0 H0 Him));
+      *nb := n2;
+      let Pair(rb, hb) = BktPutAt(p, key, d, &m *bb, HposB);
+      let W0 = *rb;
+      Pair(rb, IdTrans Nat W0 (OrDefL Key0 D0 B0)
+        (elim (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
+            (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0))))
+          return (λ (B3 : Bool). Nat) {
+            True => FindVL Key0 (AgetB (Add I0 (S R0))
+              (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0)),
+            False => D0 })
+        hb
+        (OrDAgetEv Key0 D0 I0 R0 (Mod Key0 C0) L0 B0 H0 Him))
+    } } } } } };
+  %tail }
+
+example : progOk (hmOrUnder prog{ () }) = true := by native_decide
+
+/-! ### The or_insert round-trip — and the append path's honest seam
+
+    Fresh key 5 into slot 1 (colliding with key 1) at cap 4 (cap 2's ledger
+    has no room for a second entry — `Hroom` is a real premise), write 88
+    through the returned cursor, then GET the key back and `Refl`-match: the
+    checker derives `T ≡ 88` and the exact final map, count bumped once.
+
+    THE SEAM, pinned honestly below (`orInsReuse`): the APPEND grows the
+    bucket, so the packed invariant's INHABITANT gains conjuncts — the entry
+    proof tree no longer typechecks at the released slots, and a second op on
+    the raw release is refused at the call's `hasType` ("does not have its
+    parameter type"). Value writes (GetMut) have no such seam — the proof tree
+    is shape-invariant under them. So the caller RE-ESTABLISHES the invariant
+    at the repack (at concrete data the new proofs are literal `Refl`/`unit`),
+    and the named follow-up is the invariant TRANSFORMER — `SetOrInsAt`
+    carrying a proof-rebuilding component (S2's `MkInv`/`SFCatGlue` machinery
+    as a spec function) instead of `Inv`-passthrough. -/
+
+def vPackOr : Val :=
+  vP (vN 4) (vP (vN 16) (vP (vN 2) (vP
+    (.ctor "Arr" [vNil,
+      .ctor "Cons" [vP (vN 1) (vN 10), .ctor "Cons" [vP (vN 5) (vN 88), vNil]],
+      vNil, vNil])
+    (vP vU (vP vR (vP vU (vP vR
+      (vP (vP vU vU)
+        (vP (vP (vP vR (vP vR vU)) (vP vR (vP vR vU)))
+          (vP (vP vU vU) (vP (vP vU vU) vU)))))))))))
+
+/-- The stale entry invariant, still visible as knowledge after the repack. -/
+def vInvStale : Val :=
+  vP vU (vP vR (vP vU (vP vR
+    (vP (vP vU vU) (vP (vP (vP vR vU) (vP vR vU))
+      (vP (vP vU vU) (vP (vP vU vU) vU)))))))
+
+def orInsChain : Term := hmPinUnder (hmOrUnder prog{
+  let m = Pair(4, Pair(16, Pair(1, Pair(Arr(Nil, Cons(Pair(1, 10), Nil), Nil, Nil),
+    Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
+      Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
+        Pair(Pair(unit, unit), Pair(Pair(unit, unit), unit))))))))))));
+  let b = &m m;
+  let pr = GetMutOrInsertHM(1, 2, 1, 2, 5, 77, b, Refl, Refl, Refl, Refl, unit);
+  match pr { Pair(r, h) => {
+    match h { Refl => {
+      *r := 88;
+      let Pair(cc, rest1) = m;
+      let Pair(ll, rest2) = rest1;
+      let Pair(nn, rest3) = rest2;
+      let Pair(ss, IV) = rest3;
+      let m2 = Pair(cc, Pair(ll, Pair(nn, Pair(ss,
+        Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
+          Pair(Pair(unit, unit),
+            Pair(Pair(Pair(Refl, Pair(Refl, unit)), Pair(Refl, Pair(Refl, unit))),
+              Pair(Pair(unit, unit), Pair(Pair(unit, unit), unit))))))))))));
+      let b2 = &m m2;
+      let pr2 = GetMutHM(1, 2, 1, 5, b2, Refl, Refl, Refl, Refl);
+      match pr2 { Pair(r2, h2) => {
+        let Pair(hv, ho) = h2;
+        match hv { Refl => {
+          let T = *r2;
+          let y = m2;
+          () } } } } } } } } })
+
+example : progOk orInsChain = true := by native_decide
+
+/-- The or_insert law in the checker's environment: `T ≡ 88`, `y` the exact
+    two-entry map — and the stale entry invariant (`IV`) sitting in plain view
+    as the seam the repack crossed. -/
+example : tailEnv orInsChain
+  [("m", .bot), ("b", .bot), ("pr", .bot), ("r", .bot), ("h", .bot),
+   ("cc", vN 4), ("rest1", .bot), ("ll", vN 16), ("rest2", .bot),
+   ("nn", vN 2), ("rest3", .bot), ("ss", .bot), ("IV", vInvStale),
+   ("m2", .bot), ("b2", .bot), ("pr2", .bot), ("r2", .bot), ("h2", .bot),
+   ("hv", .bot), ("ho", .sym 0),
+   ("T", vN 88), ("y", vPackOr)] = true := by native_decide
+
+example : (runV orInsChain "T" == some (vN 88)) = true := by native_decide
+example : (runV orInsChain "y" == some vPackOr) = true := by native_decide
+
+/-- THE PINNED SEAM: the same chain re-calling on the RAW release (no repack).
+    The append made the entry invariant inhabitant stale, and the second call
+    refuses the payload. -/
+def orInsReuse : Term := hmOrUnder prog{
+  let m = Pair(4, Pair(16, Pair(1, Pair(Arr(Nil, Cons(Pair(1, 10), Nil), Nil, Nil),
+    Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
+      Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
+        Pair(Pair(unit, unit), Pair(Pair(unit, unit), unit))))))))))));
+  let b = &m m;
+  let pr = GetMutOrInsertHM(1, 2, 1, 2, 5, 77, b, Refl, Refl, Refl, Refl, unit);
+  match pr { Pair(r, h) => {
+    *r := 88;
+    let b2 = &m m;
+    let pr2 = GetMutOrInsertHM(1, 2, 1, 2, 5, 77, b2, Refl, Refl, Refl, Refl, unit);
+    match pr2 { Pair(r2, h2) => {
+      () } } } } }
+
+example : progRejects orInsReuse "does not have its parameter type" = true := by
+  native_decide
+
 end Dllbc.Tests.HashMap
 
 end
