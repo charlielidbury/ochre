@@ -62,6 +62,26 @@ pins:
 Run it explicitly: `lake build Dllbc.Tests.FragmentAgreement`. It imports the
 whole corpus, so it needs no other setup and it is always runnable.
 
+**COVERAGE IS A HAND-WRITTEN LIST, AND IT IS NOW STALE — read this before
+trusting "every block".** `corpus` below is 1096 entries naming defs one at a
+time. There is no generator (`dllbc/scripts/` has none), so the list does not
+grow when the corpus does, and the rebase onto main's hashmap flagship added
+about 340 blocks it does not name: the whole `Dllbc.Tests.HashMap` namespace,
+plus `HashMapDiff` and `HashMapPin`. The 42 namespaces it does cover are
+everything that existed when it was written.
+
+So the honest statement of what passing means is **"the two readings agree on
+the 1096 blocks enumerated below"**, not "on every block in the corpus". The gap
+is not known to hide anything — nothing about the hashmap lane makes it more
+likely to contain a boundary disagreement — but the assertion is weaker than its
+first sentence sounds, and a guard whose scope silently lags the thing it guards
+is exactly the failure this file was written to prevent, one level up.
+
+Extending it is a scope decision rather than a mechanical one: it adds ~340
+reflector runs to a check that already costs 32 s, and the entries have to be
+enumerated by hand or by a generator that does not yet exist. Filed for review
+rather than taken unilaterally.
+
 It sits outside the default build because it costs **+65 s from scratch**
 (314 s → 379 s, +21%) — the reflector over all 1096 blocks. The thing it watches,
 `readC`'s refusal list, changes only when someone deliberately edits the fragment

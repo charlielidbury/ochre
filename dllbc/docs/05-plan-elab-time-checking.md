@@ -431,10 +431,19 @@ change to the fragment boundary merges.
 
 *What it asserts.* That `Term.needsRuntime` — the structural classifier the
 surface uses to decide which checker a block gets — and `readC`'s refusal list —
-the kernel's own ⇝ judgment — give the same verdict on every `prog{ … }` block in
-the corpus, in the one direction where they must (no over-fire), and that every
+the kernel's own ⇝ judgment — give the same verdict on the `prog{ … }` blocks it
+enumerates, in the one direction where they must (no over-fire), and that every
 disagreement is a *state* refusal rather than a *grammar* one. Two readings of one
 boundary drift unless something asserts they agree; this is that something.
+
+*Its scope is a hand-written list, and the list is stale.* `corpus` names 1096
+defs one at a time and there is no generator, so it does not grow when the corpus
+does. The rebase onto main's hashmap flagship added roughly 340 blocks it does not
+name — the whole `Dllbc.Tests.HashMap` namespace, plus `HashMapDiff` and
+`HashMapPin`. Passing therefore means "the two readings agree on those 1096", not
+"on every block". **Open review item:** extend the list (≈340 more reflector runs
+on top of the current 32 s) or write the generator that keeps it honest. Not taken
+unilaterally because it changes what the merge check costs.
 
 *Why it is not in the default build.* It costs **+65 s on a from-scratch suite**
 (314 s → 379 s, +21%) because it runs the reflector over all 1096 blocks. The
