@@ -1481,6 +1481,58 @@ mutual
   termination_by ts => sizeOf ts
 end
 
+-- **`@res k` — a pin's name for the k-th issued borrow's exit payload**
+-- (12-design §2.5/D3(a)). The surface's `*res` lowers to `@res 0`; the marker is
+-- a neutral const spine, so it rides through nf/convert/readC untouched (probed
+-- in `Tests.PinProbe`) and is substituted only here, by the two discharge sites:
+-- the audit opens a pin at FRESH exit σ's, the group end at the ACTUAL
+-- surrendered payloads. Same substitution, two instantiations — §2.3's "one
+-- rule" requirement, made literal.
+partial def substResIdx (exits : List Term) : Term → Term
+  | .app (.const "@res") idx =>
+    match Term.natOf? idx with
+    | some k => (exits.get? k).getD (.app (.const "@res") idx)
+    | none => .app (.const "@res") idx
+  | .deref t => .deref (substResIdx exits t)
+  | .app f a => .app (substResIdx exits f) (substResIdx exits a)
+  | .ctorApp n args => .ctorApp n (args.map (substResIdx exits))
+  | .pi x d c => .pi x (substResIdx exits d) (substResIdx exits c)
+  | .sigmaT x d c => .sigmaT x (substResIdx exits d) (substResIdx exits c)
+  | .lam x d b => .lam x (substResIdx exits d) (substResIdx exits b)
+  | .idT a b c => .idT (substResIdx exits a) (substResIdx exits b) (substResIdx exits c)
+  | .borrowT n τ S => .borrowT n (substResIdx exits τ) (substResIdx exits S)
+  | .cmpT τ => .cmpT (substResIdx exits τ)
+  | .index t i ev => .index (substResIdx exits t) (substResIdx exits i) (ev.map (substResIdx exits))
+  | .range t lo cnt rest ev eq =>
+    .range (substResIdx exits t) (substResIdx exits lo) (cnt.map (substResIdx exits))
+      (rest.map (substResIdx exits)) (ev.map (substResIdx exits)) (eq.map (substResIdx exits))
+  | t => t
+
+/-- **D1's one-slot kind classification**: is this `~>` RHS (already opened at
+    its entry snapshot) a TYPE — today's owed-type claim — or a value, i.e. a
+    PIN? Measured before written (`Tests.PinProbe`): `hasTypeT rhs Type` is the
+    wrong classifier on this kernel — it has universe arms for Π/Σ/Id/Type and
+    none for a bare type constant or a neutral type application, so it would
+    have silently read `&mut (s : Bool ~> Nat)` as a pin. This recognizer
+    instead asks what the whnf's HEAD is; the corpus's full `~>`-RHS inventory
+    (enumerated at stage 0) is covered by exactly these heads, and D1's own
+    argument says the collision case cannot arise — a runtime borrow's payload
+    is runtime data, and nothing of type `Type` is one. -/
+def isOwedTypeT (fuel : Nat) (t : Term) : M Bool := do
+  match Pure.whnf fuel t with
+  | .type | .pi _ _ _ | .sigmaT _ _ _ | .idT _ _ _ | .cmpT _ | .borrowT _ _ _ => pure true
+  | .const c => pure (c == "Nat" || c == "Bool" || c == "Unit" || c == "Bot")
+  | t' =>
+    match Pure.collectSpineT t' with
+    | (.const "List", [_]) | (.const "Array", [_, _]) => pure true
+    | _ =>
+      match t'.symOf? with
+      | some σ =>
+        match (← get).sctx.lookup σ with
+        | some sty => pure (Pure.convert fuel sty .type)
+        | none => pure false
+      | none => pure false
+
 /-- The telescope's borrow-parameter var ids (param `i` gets var id `i`). -/
 def borrowParamIds (telescope : List (String × Term)) : List Nat :=
   telescope.enum.filterMap (fun (i, p) => match p.2 with | .borrowT _ _ _ => some i | _ => none)
@@ -1563,7 +1615,7 @@ def subsKnowledge : Val → Term
     σ's sctx type, so the pin was unusable at the call site — `useIt(a, h)` failed
     with `argument (σ1) does not have its parameter type (Id σ0 (S Z))`.) -/
 def buildResult (fuel : Nat) (inst : Omega) (subs : List (String × Term)) :
-    Term → M (Val × List (Nat × Term))
+    Term → M (Val × List (Nat × Term × Option Term))
   | .borrowT s τ S => do
     let τVal := (subs.foldl (fun t p => Pure.openBinder fuel p.1 t p.2) (← readCWith fuel inst τ))
     let σ ← freshSym
@@ -1572,9 +1624,16 @@ def buildResult (fuel : Nat) (inst : Omega) (subs : List (String × Term)) :
     -- opening one no longer disturbs the others.
     let sVal ← readCWith fuel inst S
     let sVal := Pure.openBinder fuel s sVal (Term.sym σ)
-    let owedR := Pure.nf fuel (subs.foldl (fun t p => Pure.openBinder fuel p.1 t p.2) sVal)
+    let opened := Pure.nf fuel (subs.foldl (fun t p => Pure.openBinder fuel p.1 t p.2) sVal)
     modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
-    pure (.borrowM ℓr (.know (Term.sym σ)), [(ℓr, owedR)])
+    -- D1 on an ISSUED borrow: a pin here is the RESULT's own contract — the
+    -- identity pin is the read-only law (§5), asserted by `endIssued` when the
+    -- caller's group ends. Opened at the issued payload's σ, which is this
+    -- borrow's entry snapshot from the caller's side.
+    if ← isOwedTypeT fuel opened then
+      pure (.borrowM ℓr (.know (Term.sym σ)), [(ℓr, opened, none)])
+    else
+      pure (.borrowM ℓr (.know (Term.sym σ)), [(ℓr, τVal, some opened)])
   | .sigmaT x a b => do
     let (vA, issA) ← buildResult fuel inst subs a
     -- **What a later component SEES of an earlier one is its knowledge** (M32
@@ -2042,8 +2101,10 @@ end
     (§6.1): a captured owner cannot recover while an issued borrow lives. -/
 
 /-- End one issued borrow: locate it in Ω, audit its (collapsed) payload against
-    its owed type, kill it, and return the surrendered payload. -/
-def endIssued (fuel : Nat) (ℓ : Nat) (owed : Term) : M Val := do
+    its owed type — and against its PIN if it carries one (§5: the read-only
+    law's enforcement site; an identity-pinned result whose caller wrote through
+    it fails here) — kill it, and return the surrendered payload. -/
+def endIssued (fuel : Nat) (ℓ : Nat) (owed : Term) (pin : Option Term := none) : M Val := do
   match (← getEnv).findSome? (fun kv => findBorrowPayload ℓ kv.2) with
   | none => throwErr s!"group end: issued borrow ℓ{ℓ} is not locatable in Ω (cannot end the group)"
   | some payload => do
@@ -2051,6 +2112,11 @@ def endIssued (fuel : Nat) (ℓ : Nat) (owed : Term) : M Val := do
     | .bot => throwErr s!"group end: issued borrow ℓ{ℓ} holds a hole (⊥) — nothing surrendered"
     | _ =>
       if ← hasType fuel payload owed then do
+        match pin with
+        | some p =>
+          if Pure.convert fuel (subsKnowledge payload) p then pure ()
+          else throwErr s!"group end: issued borrow ℓ{ℓ}'s surrendered payload ({payload.pretty}) violates the borrow's pin ({p.pretty}) — its contract says what comes back through it is {p.pretty}, and writing anything else through a pinned borrow is refused here"
+        | none => pure ()
         setEnv ((← getEnv).map (fun kv => (kv.1, replaceBorrowWithBot ℓ kv.2)))   -- kill
         pure payload
       else
@@ -2069,21 +2135,28 @@ def groupDebt (ℓ : Nat) (site : DebtSite) : M Debt := do
 
 /-- End a whole loan group (§6.1): issued borrows first, then captured atomically. -/
 def endGroup (fuel : Nat) (grp : Group) : M Unit := do
-  -- 1. end every issued borrow, collecting surrendered payloads (in order)
+  -- 1. end every issued borrow, collecting surrendered payloads (in order) —
+  -- asserting each one's own pin (§5, the read-only law) as it ends.
   let surrendered ← grp.issued.mapM (fun ℓ => do
-    endIssued fuel ℓ (← groupDebt ℓ (.issue grp.id)).owed)
+    let d ← groupDebt ℓ (.issue grp.id)
+    endIssued fuel ℓ d.owed d.pin)
   -- 2. remove the group from the table (by its ρ id)
   modify (fun s => { s with groups := s.groups.filter (fun g => g.id != grp.id) })
   -- 3. release captured loans atomically
   -- §6.2's SPEC end used to sit first here, and M28 σ's identity wire after it.
   -- Both are gone — the backward-spec mechanism with M27, the identity wire with
-  -- its test — so every release is the opaque one and there is no case left to
-  -- take. What decides a release now is only whether the captured loan's debt
-  -- carries a pin (§5.4's exit-snapshot σ′, stored as `some (sym σ′)`).
+  -- its test. What decides a release now is the captured loan's debt: a PIN is
+  -- the release, with `@res k` substituted by the k-th issued borrow's ACTUAL
+  -- surrendered payload — the same substitution the audit ran at fresh exit σ's,
+  -- instantiated at the values the caller really wrote (§2.3's one rule, second
+  -- instantiation; D2(a)'s one-slot simplification: the release is `.know (nf e)`
+  -- directly, no σ′ intermediary). §5.4's exit-snapshot pin `sym σ′` is the
+  -- degenerate res-free case and releases byte-identically to the old rule.
+  let exitsIdx := surrendered.map subsKnowledge
   grp.captured.forM (fun ℓc => do
     let d ← groupDebt ℓc (.call grp.id)
     match d.pin with
-    | some p => releaseCaptured ℓc (.know p)            -- §5.4: pinned release (σ' already in sctx)
+    | some p => releaseCaptured ℓc (.know (Pure.nf fuel (substResIdx exitsIdx p)))
     | none => do                                        -- opaque: fresh existential each
       let σ ← freshSym
       modify (fun s => { s with sctx := (σ, d.owed) :: s.sctx })
@@ -3484,9 +3557,17 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Debt)
       -- record σ as this borrow's entry snapshot (§5.4 `old *v`).
       modify (fun s => { s with sctx := (σ, τVal) :: s.sctx, entrySyms := (x.id, σ) :: s.entrySyms })
       let SVal ← readC fuel S
-      let owed := Pure.nf fuel (Pure.openBinder fuel sn SVal (Term.sym σ))   -- τ'[s := σ]
-      pure ({ loan := ℓ, owed := owed, trivial := trivialOwedT tyTerm, site := .param x }
-              :: (← seedTelescopeV fuel rest))
+      let opened := Pure.nf fuel (Pure.openBinder fuel sn SVal (Term.sym σ))   -- RHS[s := σ]
+      -- D1's one-slot classification: a TYPE is the owed-type claim (today's
+      -- meaning, unchanged); anything else is a PIN, opened at the entry σ
+      -- exactly as an owed type is (D15: the binder IS the entry snapshot,
+      -- pinned at mint), whose owed type is the payload type it releases at.
+      if ← isOwedTypeT fuel opened then
+        pure ({ loan := ℓ, owed := opened, trivial := trivialOwedT tyTerm, site := .param x }
+                :: (← seedTelescopeV fuel rest))
+      else
+        pure ({ loan := ℓ, owed := τVal, pin := some opened, trivial := false, site := .param x }
+                :: (← seedTelescopeV fuel rest))
     -- ¶4's RUNTIME-LENGTH SLICE, `Σ (c : Nat). &mut (Array c T)`, as a parameter.
     -- §5's second opacity ("borrows stored under a type constructor") reaching a
     -- telescope entry for the first time. The slot holds a genuine pair — a length
@@ -3506,9 +3587,13 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Debt)
       -- the two are opened by name — where under de Bruijn the second opening had
       -- to know that the first had dropped it from index 1 to index 0.
       let SVal ← readC fuel S
-      let owed := Pure.nf fuel (Pure.openBinder fuel cn (Pure.openBinder fuel sn SVal (Term.sym σ)) (Term.sym σc))
-      pure ({ loan := ℓ, owed := owed, trivial := trivialOwedT tyTerm, site := .param x }
-              :: (← seedTelescopeV fuel rest))
+      let opened := Pure.nf fuel (Pure.openBinder fuel cn (Pure.openBinder fuel sn SVal (Term.sym σ)) (Term.sym σc))
+      if ← isOwedTypeT fuel opened then
+        pure ({ loan := ℓ, owed := opened, trivial := trivialOwedT tyTerm, site := .param x }
+                :: (← seedTelescopeV fuel rest))
+      else
+        pure ({ loan := ℓ, owed := τVal, pin := some opened, trivial := false, site := .param x }
+                :: (← seedTelescopeV fuel rest))
     -- **`ih` — a parameter whose type is a borrow-moded Π** (M26-C, §7 cost 1).
     -- It has no `Val` (`readC` refuses `borrowT`), so it cannot be a σ in `sctx`;
     -- it is a σ whose signature lives in `fsig`, which is what makes calling it
@@ -3718,7 +3803,7 @@ mutual
       neither arm fires). A marker with no answer REJECTS, distinctively: the audit
       cannot see that place, so it cannot certify it, and failing closed is what
       says so. -/
-  partial def spliceInFlight (issued : List (Nat × Val × Term)) : Val → M Val
+  partial def spliceInFlight (issued : List (Nat × Val × Term × Option Term)) : Val → M Val
     | .loanM ℓ => do
       -- ISSUED into the result: OPAQUE FILL. A fresh σ at the type this borrow
       -- owes back — the LEAF's type, not the parameter's — so the check that
@@ -3727,7 +3812,7 @@ mutual
       -- a query has no business moving the σ supply the rest of the check is named
       -- against, and stage 5's finding (2) is why that sandbox exists.
       match issued.lookup ℓ with
-      | some (_, owed) => do
+      | some (_, owed, _) => do
         let σ ← freshSym
         modify (fun st => { st with sctx := (σ, owed) :: st.sctx })
         pure (.know (Term.sym σ))
@@ -3768,10 +3853,129 @@ mutual
     | .node n args => do
       pure (Val.ctor n (← spliceInFlightList issued args))
     | v => pure v
-  partial def spliceInFlightList (issued : List (Nat × Val × Term)) : List Val → M (List Val)
+  partial def spliceInFlightList (issued : List (Nat × Val × Term × Option Term)) : List Val → M (List Val)
     | [] => pure []
     | v :: vs => do pure ((← spliceInFlight issued v) :: (← spliceInFlightList issued vs))
 end
+
+/-! ## The pin discharge (12-design §2.3/§3.3, stage 5)
+
+    A pin is checked SYMBOLICALLY at the callee's audit: the returned borrow has
+    not been written through yet — the caller will do that — so the claim has to
+    hold for every value that could come back. One exit term per issued loan,
+    minted ONCE and shared between the fill and the pin's `@res` substitution:
+    that sharing is the borrow-identity discipline the published systems all
+    need (rust-verifiers doc, design input 1) — the same σ names "what lands in
+    the lent cell" on both sides of the conversion, and two independent mints
+    would make every pin unprovable.
+
+    At a real caller's group end the SAME substitution runs with the exits
+    instantiated to the actually-surrendered payloads (`endGroup`). One rule,
+    two instantiations — the uniformity test §2.3 sets. -/
+
+mutual
+  /-- The exit term of loan `ℓ` under the given exit assignment: the issued
+      exits themselves; a loan still held in Ω contributes its hole-filled
+      payload; a loan captured by an open inner group contributes that group's
+      own pinned release PROJECTED (§2.3's recursive case — its `@res` names
+      the INNER call's issued exits, resolved through the same assignment), or
+      a fresh σ at its owed type when the inner call is unpinned — the opaque
+      sub-group as an unresolvable hole, §2.2's composition-climbs refusal
+      arriving as a failed conversion rather than a special case. -/
+  partial def exitOfLoan (fuel : Nat) (exits : List (Nat × Term)) (ℓ : Nat) : M Term := do
+    match exits.lookup ℓ with
+    | some e => pure e
+    | none =>
+      match (← getEnv).findSome? (fun kv => findBorrowPayload ℓ kv.2) with
+      | some p => pinFill fuel exits p
+      | none =>
+        match (← get).groups.find? (fun g => g.captured.contains ℓ) with
+        | some g => do
+          let d ← groupDebt ℓ (.call g.id)
+          match d.pin with
+          | some p => do
+            let innerExits ← g.issued.mapM (exitOfLoan fuel exits)
+            pure (Pure.nf fuel (substResIdx innerExits p))
+          | none => do
+            let σ ← freshSym
+            modify (fun st => { st with sctx := (σ, d.owed) :: st.sctx })
+            pure (Term.sym σ)
+        | none =>
+          throwErr s!"audit: pin discharge — loan ℓ{ℓ} is in neither the result, Ω, nor an open group, so its exit cannot be named"
+
+  /-- The pin fill: the parameter's payload as a TERM, with every lent place
+      standing at its exit. The `Term`-producing twin of `spliceInFlight`, and
+      it must be one — the pin check is a CONVERSION, not a typing. -/
+  partial def pinFill (fuel : Nat) (exits : List (Nat × Term)) : Val → M Term
+    | .loanM ℓ => exitOfLoan fuel exits ℓ
+    | v@(.node n args) => do
+      -- A skeleton node (a carve, `§segs`) is not a constructor a Term can
+      -- spell; `subsKnowledge` folds what folds and marks the rest
+      -- `@stateComponent`, which converts with nothing — a loud failure, not a
+      -- fabricated term. Arrays under pins are the split_at_mut stage's work.
+      if n.startsWith "§" then pure (subsKnowledge v)
+      else pure (Term.ctorApp n (← pinFillList fuel exits args))
+    | .bot => throwErr "audit: pin discharge reached a hole (⊥) the hole hunt should have refused"
+    | v => pure (subsKnowledge v)
+
+  partial def pinFillList (fuel : Nat) (exits : List (Nat × Term)) : List Val → M (List Term)
+    | [] => pure []
+    | v :: vs => do pure ((← pinFill fuel exits v) :: (← pinFillList fuel exits vs))
+end
+
+/-- **Discharge a PINNED parameter obligation** (12-design §2.3/§3.3 step 2's
+    second branch — the repeal of the M27 containment, for pins). The exit
+    assignment is built once — an issued borrow's exit is a FRESH σ at its owed
+    type, unless the issued borrow carries its own pin, which CONSTRAINS the
+    exit to it (how §5's read-only container law computes) — then the
+    parameter's payload is filled at that assignment and CONVERTED against the
+    pin opened at the same assignment. Conversion, not typing: the pin is a
+    value claim, and its owed type rides inside it (D1's one-slot rule).
+
+    The residue collapse stays OUTSIDE the sandbox (a real event, as on the
+    unpinned path); the hole hunt runs first with the same rejection; the fill
+    and its mints are sandboxed (stage-5 finding (2)). -/
+def auditPinnedObligation (fuel : Nat) (issued : List (Nat × Val × Term × Option Term))
+    (ob : Debt) (argName : String) (pin : Term) : M Unit := do
+  let resultLoans := issued.map (·.1)
+  collapseResidue fuel resultLoans ob.loan
+  let payload? := (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2)
+  match payload? with
+  | some payload =>
+    (match ← residueHoles resultLoans payload with
+     | some what =>
+       throwErr s!"audit: argument borrow {argName} (ℓ{ob.loan}) holds {what} at return, in a leaf it still owns — take without refill. (payload: {payload.pretty})"
+     | none => pure ())
+  | none =>
+    -- Fine iff the borrow itself left in the result (its exit IS the filled
+    -- payload below) or continued into an open group (the projection reaches
+    -- it); anything else is the ordinary "lost" rejection.
+    if (← inFlight resultLoans ob.loan)
+       || (← get).groups.any (fun g => g.captured.contains ob.loan) then pure ()
+    else throwErr s!"audit: argument borrow {argName} (ℓ{ob.loan}) is neither locatable in Ω nor continued into a call — it was lost"
+  let saved ← get
+  let verdict ← (do
+    -- One exit per issued loan, minted ONCE — shared by the fill and the pin's
+    -- `@res` substitution (the borrow-identity discipline).
+    let exits ← issued.mapM (fun (ℓk, _, owedk, ipin) => do
+      match ipin with
+      | some p => pure (ℓk, p)
+      | none => do
+        let σ ← freshSym
+        modify (fun st => { st with sctx := (σ, owedk) :: st.sctx })
+        pure (ℓk, Term.sym σ))
+    let filled ← match payload? with
+      | some payload => pinFill fuel exits payload
+      | none => exitOfLoan fuel exits ob.loan
+    let opened := Pure.nf fuel (substResIdx (exits.map (·.2)) pin)
+    let filledN := Pure.nf fuel filled
+    if Term.convEq filledN opened then pure none
+    else pure (some (filledN, opened)))
+  set saved
+  match verdict with
+  | none => pure ()
+  | some (f, o) =>
+    throwErr s!"audit: {argName}'s pin is not met — the exit payload, hole-filled at the issued borrows' exits ({f.pretty}), does not convert with the declared pin ({o.pretty}). A pin is proved by the body's own flow: an opaque sub-call holding the loan, or a write the pin does not describe, is why this fails."
 
 /-- **Audit one argument-borrow obligation** — §6.1's rule, at the granularity of
     the PLACE (M34). `issued` is the result's borrows with their payloads AND
@@ -3802,11 +4006,15 @@ end
     total, the hole hunt sees everything, and the fill is the identity — which is
     exactly the old value-returning rule, recovered as the degenerate case rather
     than written out again. -/
-def auditObligation (fuel : Nat) (issued : List (Nat × Val × Term)) (ob : Debt) : M Unit := do
+def auditObligation (fuel : Nat) (issued : List (Nat × Val × Term × Option Term)) (ob : Debt) : M Unit := do
   let resultLoans := issued.map (·.1)
   -- The parameter this debt was seeded on (`site = .param`); the audit walks
   -- only those, so the fallback is unreachable and honest about being so.
   let argName := match ob.site with | .param x => x.name | _ => "?"
+  -- A PINNED parameter takes the discharge (§2.3) — the containment below is
+  -- repealed for exactly this case, because there is now something to check:
+  -- the claim is proved symbolically, not exempted.
+  --
   -- M27 SOUNDNESS CONTAINMENT (b1's second closed `Bot`). §6.1's exemption is
   -- correct about the PAYLOAD of a consumed borrow, but it used to skip the OWED
   -- TYPE with it, and the caller's group end then MINTS the release at that type —
@@ -3821,7 +4029,9 @@ def auditObligation (fuel : Nat) (issued : List (Nat × Val × Term)) (ob : Debt
   -- It is also what makes the fill below honest: `ob.owed` past this point is
   -- always the type the parameter was LENT, so typing the filled payload against
   -- it is a claim about the exit state alone, never a relation.
-  if !ob.trivial && (← inFlight resultLoans ob.loan) then
+  if let some pin := ob.pin then
+    auditPinnedObligation fuel issued ob argName pin
+  else if !ob.trivial && (← inFlight resultLoans ob.loan) then
     throwErr s!"boundary: '{argName}' is consumed into the result, and §6.1 exempts such a borrow from the payload audit — so its non-trivial owed type ({ob.owed.pretty}) would be checked by nobody, while the caller's group end mints the release AT it. A parameter passed onward into the result owes back the type it was lent; state a richer claim on a parameter the body keeps, where the audit runs."
   -- Continued into ANOTHER CALL whose group is still open, and not toward the
   -- result: a genuinely different exemption from the one above, and the only one
@@ -3873,12 +4083,18 @@ def auditObligation (fuel : Nat) (issued : List (Nat × Val × Term)) (ob : Debt
           throwErr s!"audit: {argName}'s payload ({filled}) does not have its owed type ({ob.owed.pretty}).{exempt}"
 
 /-- Walk a return type against the result value, collecting each borrow position
-    as `(issued loan, payload, owed type)`. `none` = value-returning (no borrow);
-    a `Σ`/`Pair` of borrows gives the multi-issued list (`nth2`, §6.1). -/
-def collectResultBorrows (fuel : Nat) : Term → Val → M (Option (List (Nat × Val × Term)))
-  | .borrowT sn _ S, .borrowM ℓ payload => do
-    let owed := Pure.nf fuel (Pure.openBinder fuel sn (← readC fuel S) (subsKnowledge payload))
-    pure (some [(ℓ, payload, owed)])
+    as `(issued loan, payload, owed type, pin?)`. `none` = value-returning (no
+    borrow); a `Σ`/`Pair` of borrows gives the multi-issued list (`nth2`, §6.1).
+    A pin RHS (D1) is opened at the payload's own knowledge — the callee side of
+    §5's read-only law, where the identity pin is met by construction — and the
+    owed type is then the payload type as written. -/
+def collectResultBorrows (fuel : Nat) : Term → Val → M (Option (List (Nat × Val × Term × Option Term)))
+  | .borrowT sn τ S, .borrowM ℓ payload => do
+    let opened := Pure.nf fuel (Pure.openBinder fuel sn (← readC fuel S) (subsKnowledge payload))
+    if ← isOwedTypeT fuel opened then
+      pure (some [(ℓ, payload, opened, none)])
+    else
+      pure (some [(ℓ, payload, ← readC fuel τ, some opened)])
   | .borrowT _ _ _, other =>
     throwErr s!"audit: borrow-returning body did not return a borrow (got {other.pretty})"
   | .sigmaT _ a b, pr => do
@@ -3933,8 +4149,17 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
     -- Nothing depended on the old order: the residue collapse ends only loans that
     -- do NOT reach a result loan, so it cannot disturb an issued borrow's payload.
     checks.forM (fun c =>
-      let (_, payload, owed) := c
-      do if ← hasType fuel payload owed then pure ()
+      let (_, payload, owed, ipin) := c
+      do if ← hasType fuel payload owed then
+           -- The issued borrow's own PIN (§5): opened at the payload's
+           -- knowledge, so the identity pin is met by construction here — the
+           -- callee side of the read-only law; the caller's endIssued is where
+           -- a violating write is caught.
+           match ipin with
+           | some p =>
+             if Pure.convert fuel (subsKnowledge payload) p then pure ()
+             else throwErr s!"audit: returned borrow's payload ({payload.pretty}) does not meet the result's own pin ({p.pretty})"
+           | none => pure ()
          else throwErr s!"audit: returned borrow's payload ({payload.pretty}) does not have its owed type ({owed.pretty})")
     -- The triple goes through WHOLE. It used to be projected down to (loan,
     -- payload) here, and the owed type it dropped is the one the fill mints at.
@@ -5333,7 +5558,8 @@ mutual
       borrow's loan ℓ with its owed type `τ'[s := v]`. A pure argument must
       `hasType` its parameter type; a borrow argument must be a `borrowM ℓ v`
       whose payload `v` has the parameter type τ, and is consumed. -/
-  def processArgs : Nat → Nat → Omega → List (String × Term) → List Term → M (List (Nat × Term) × Omega)
+  def processArgs : Nat → Nat → Omega → List (String × Term) → List Term →
+      M (List (Nat × Term × Option Term) × Omega)
     | _, _, inst, [], [] => pure ([], inst)
     | fuel, i, inst, (name, tyTerm) :: tRest, arg :: aRest => do
       -- Parameter `i`'s runtime var (the §5.2 convention: a later type mentions
@@ -5371,12 +5597,19 @@ mutual
           let τVal ← readCWith fuel inst τ
           if ← hasType fuel payload τVal then do
             let SVal ← readCWith fuel inst S
-            let owed := Pure.nf fuel (Pure.openBinder fuel sn SVal (subsKnowledge payload))
+            let opened := Pure.nf fuel (Pure.openBinder fuel sn SVal (subsKnowledge payload))
+            -- D1's one-slot classification at the CALL: the RHS instantiated at
+            -- the actual payload — a TYPE is the owed type; anything else is
+            -- the callee's PIN, which the group end will release (with the
+            -- issued exits substituted) instead of a fresh existential.
+            let (owed, upin) ← do
+              if ← isOwedTypeT fuel opened then pure (opened, none)
+              else pure (τVal, some opened)
             -- A borrow parameter is bound to the actual borrow itself, so a later
             -- type mentioning `*b` (§5.2's comptime-deref at the call site)
             -- reflects the peel to the payload snapshot just passed.
             let (rest, inst') ← processArgs fuel (i + 1) ((declVar, .borrowM ℓ payload) :: inst) tRest aRest
-            pure ((ℓ, owed) :: rest, inst')
+            pure ((ℓ, owed, upin) :: rest, inst')
           else
             throwErr s!"call: borrow argument's payload ({payload.pretty}) does not have its parameter type ({τVal.pretty})"
         | v => throwErr s!"call: expected a borrow argument (&mut …), got {v.pretty}"
@@ -5394,11 +5627,14 @@ mutual
             let τVal := Pure.openBinder fuel cn (← readCWith fuel inst τ) (subsKnowledge cv)
             if ← hasType fuel payload τVal then do
               let SVal ← readCWith fuel inst S
-              let owed := Pure.nf fuel (Pure.openBinder fuel cn
+              let opened := Pure.nf fuel (Pure.openBinder fuel cn
                 (Pure.openBinder fuel sn SVal (subsKnowledge payload)) (subsKnowledge cv))
+              let (owed, upin) ← do
+                if ← isOwedTypeT fuel opened then pure (opened, none)
+                else pure (τVal, some opened)
               let pairV : Val := .ctor "Pair" [cv, .borrowM ℓ payload]
               let (rest, inst') ← processArgs fuel (i + 1) ((declVar, pairV) :: inst) tRest aRest
-              pure ((ℓ, owed) :: rest, inst')
+              pure ((ℓ, owed, upin) :: rest, inst')
             else
               throwErr s!"call: slice payload ({payload.pretty}) does not have its parameter type ({τVal.pretty})"
           | _ => throwErr s!"call: expected a Σ-typed slice (a Pair of a length and a borrow), got {pr.pretty}"
@@ -5925,7 +6161,7 @@ mutual
           -- when there are no borrow args (a no-op) and dead under a `back` (which
           -- releases via the spec instead of the pinned σ').
           let borrowIds := borrowParamIds telescope
-          let sigmas ← (captured.map (·.2)).mapM (fun owed => do
+          let sigmas ← (captured.map (·.2.1)).mapM (fun owed => do
             let σ ← freshSym
             modify (fun s => { s with sctx := (σ, owed) :: s.sctx })
             pure σ)
@@ -5939,16 +6175,37 @@ mutual
           -- §6.2's declared backward spec used to be reflected here, so the group
           -- could compute each captured release from the surrendered values instead
           -- of minting an existential. M27 retired the mechanism — the ensures IS
-          -- the contract (§5 point 4) — so every group end is now the opaque one.
+          -- the contract (§5 point 4) — and the PIN is its checked successor: a
+          -- release the SIGNATURE declares (per loan, optional) and both ends
+          -- check, where `back` was a second declaration nobody checked.
           --
+          -- **D6/D5: a caller may never strengthen at a call.** The debt a call
+          -- registers comes from the CALLEE's parameter type; if the loan already
+          -- carries a debt (its own signature's, on a pass-through), the new debt
+          -- must ENTAIL it — two pins must convert, and a pinned loan may not be
+          -- handed to a callee that promises no pin, because an opaque release
+          -- (a fresh existential) can never pay a pinned debt (§2.2: to pin a
+          -- loan, every group that transitively holds it must pin it).
+          captured.forM (fun (ℓ, _, upin) => do
+            ((← get).debts.filter (·.loan == ℓ)).forM (fun dOld => do
+              match dOld.pin with
+              | some pOld =>
+                match upin with
+                | some pNew =>
+                  if Pure.convert fuel pOld pNew then pure ()
+                  else throwErr s!"call: loan ℓ{ℓ} already owes the pin ({pOld.pretty}) and this callee pins its parameter to ({pNew.pretty}), which does not convert with it — at most one pin may be effective on a loan (D5), and a call may neither strengthen nor silently weaken one (D6)"
+                | none => throwErr s!"call: loan ℓ{ℓ} owes the pin ({pOld.pretty}) but this callee's parameter states none — an opaque callee releases a fresh existential, which cannot pay a pinned debt. To pin a loan, every group that holds it must pin it (12-design §2.2)."
+              | none => pure ()))
           -- The group is the ORDERING; the contracts are debts (12-design §2.1):
-          -- one per captured loan at its owed type, pinned to §5.4's exit σ′
-          -- (`some (sym σ′)` — the release the exitRelease table used to name),
-          -- and one per issued loan at its owed type.
-          let callDebts := (captured.zip sigmas).map (fun ((ℓ, owed), σ') =>
-            { loan := ℓ, owed := owed, pin := some (Term.sym σ'), site := .call ρ : Debt })
-          let issueDebts := issued.map (fun (ℓ, owed) =>
-            { loan := ℓ, owed := owed, site := .issue ρ : Debt })
+          -- one per captured loan, pinned to the CALLEE's declared pin when the
+          -- signature writes one, else to §5.4's exit σ′ (`some (sym σ′)` — the
+          -- release the exitRelease table used to name); one per issued loan,
+          -- carrying the result's own pin when the signature writes one (§5).
+          let callDebts := (captured.zip sigmas).map (fun ((ℓ, owed, upin), σ') =>
+            { loan := ℓ, owed := owed, pin := upin.orElse (fun _ => some (Term.sym σ')),
+              site := .call ρ : Debt })
+          let issueDebts := issued.map (fun (ℓ, owed, ipin) =>
+            { loan := ℓ, owed := owed, pin := ipin, site := .issue ρ : Debt })
           let grp : Group := { id := ρ, captured := captured.map (·.1), issued := issued.map (·.1) }
           modify (fun s => { s with groups := grp :: s.groups,
                                     debts := s.debts ++ callDebts ++ issueDebts })

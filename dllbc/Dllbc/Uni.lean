@@ -424,7 +424,12 @@ def aliasMap : List (String × Name) :=
     offer one; that is exactly the sort of gap that is closed cheaply now and found
     expensively later. -/
 def reservedBinder (s : String) : Bool :=
-  Dllbc.isReservedName s || (Dllbc.isUpperInit s && (ctorSet.contains s || constSet.contains s))
+  -- `res` joins the reserved namespace (12-design D3(a)): inside a borrow's
+  -- `~>` RHS it denotes the function's result, so a program binder of that name
+  -- would shadow a contract's vocabulary. Grepped before reserving: no in-tree
+  -- program binds it.
+  Dllbc.isReservedName s || s == "res"
+    || (Dllbc.isUpperInit s && (ctorSet.contains s || constSet.contains s))
 
 /-- Reject a reserved name in binder position. Called at every binder the
     unified grammar has: λ, Π, Σ, `let`, match arms and their equation binder,
@@ -693,6 +698,20 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     let (e', n) ← elabUTerm rctx pctx next e
     return (← `(Dllbc.Term.app (Dllbc.Term.const "old") (Dllbc.Term.deref $e')), n)
   | `(uterm| * $e:uterm) => do
+    -- **`*res` — the exit payload of the issued borrow** (12-design D1/D3(a)).
+    -- `res` is a RESERVED name (reservedBinder refuses it as a binder, and the
+    -- corpus was grepped clean before reserving), denoting the function's whole
+    -- result inside a borrow's `~>` RHS. It lowers to the inert marker spine
+    -- `@res k` (k = the issued-borrow index; the whole-result form is 0), which
+    -- rides through readC/nf as a neutral and is substituted at the two
+    -- discharge sites: the audit's pin check (fresh exit σ's) and the group
+    -- end's pinned release (the actual surrendered payloads). The multi-issued
+    -- navigation forms `*(fst res)` / `*(snd res)` are D3(a)'s follow-on and
+    -- arrive with the split_at_mut stage, not here.
+    match e with
+    | `(uterm| res) =>
+      return (← `(Dllbc.Term.app (Dllbc.Term.const "@res") (Dllbc.Term.ctorApp "Z" [])), next)
+    | _ =>
     let (e', n) ← elabUTerm rctx pctx next e
     return (← `(Dllbc.Term.deref $e'), n)
   | `(uterm| $a:uterm[$i:uterm]) => do
