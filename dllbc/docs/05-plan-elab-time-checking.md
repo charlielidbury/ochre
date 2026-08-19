@@ -221,6 +221,43 @@ So the honest headline is **213 of 310** — about two thirds of the programs th
 
 This is a migration progress bar and not a limit. The number rises as programs move off helper-assembled forms, and the conversion itself is mechanical and reviewable one file at a time — which is why this port **converts nothing**: it adds the form, demonstrates it, and leaves the corpus at 1701 unchanged `prog{ }` sites for a separate, reviewable pass.
 
+> **AMENDED — the table above counts the wrong thing, and the count that matters
+> is 275.** With `prog{ }` auto-checking (§6, amended again), the question stopped
+> being "how many could carry `check`" and became "how many must carry
+> `defer_check`". Every fence in the shipped tree was placed by MEASUREMENT on the
+> live elaborator — build, read what was actually rejected, fence exactly those,
+> repeat to fixpoint — never by predicting from a class. The result, 275 across 18
+> files:
+>
+> | class | count |
+> |---|---|
+> | `progRejects` only — the rejection IS the assertion | 176 |
+> | fed to a Lean-level assembler; no direct assertion | 45 |
+> | `progOk` only — honest, but not checkable where written | 39 |
+> | asserted both ways (the twin-template pattern) | 13 |
+> | not inside a `def` | 2 |
+>
+> **The 84 in the middle two rows are a class this section did not have: program
+> FRAGMENTS.** `Tests/Diff.lean` is the specimen — `def withPool (rest : Term) :
+> Term := prog{ fn Through …; %rest }`, applied as `withPool (prog{ … Push(7, b) … })`.
+> The inner brace is closed, contains no `fn`, and is a perfectly good program that
+> is only HALF of one: its callees arrive from the wrapper at the Lean level. 52 of
+> the observed rejections are literally `call: unknown function 'Push'`.
+>
+> The general statement, which is a limit of the feature rather than a defect of
+> the corpus: **auto-checking can only check a block that is a WHOLE program.**
+> Where programs are assembled above the brace, the check belongs at the assembly
+> site — the same boundary §2a drew for splices, reached from the other side.
+>
+> **Ten twins need no fence at all**, and they are not the audit-only cases one
+> would guess. See `Tests/AmbiguousMiddle.lean`: `readC` ACCEPTS them (they are
+> pure by the kernel's own judgment), `needsRuntime` agrees, and `checkProgram`
+> REJECTS them. All three are correct, because ⇝ and ⇒ are different arrows. The
+> surface takes the ⇝ reading and asks nothing; the suite's `progRejects` supplies
+> the ⇒ reading explicitly. **No classifier could have decided these** — it would
+> mean deciding which arrow the author meant, and M29 γ is explicit that this is
+> not a property of the term.
+
 ## 3. Invariants and non-goals
 
 - **Checker semantics byte-identical.** The breadcrumb is written and read only for diagnostics; every accept/reject decision is unchanged. The differential harness must not notice any of this.
@@ -338,6 +375,51 @@ This is a migration progress bar and not a limit. The number rises as programs m
 > Default 2 (headline kernel artifacts kept) stands, and is now structural rather
 > than a choice: elaboration-time checking is ephemeral, the `native_decide`
 > artifacts are durable, and with checking opt-in the two never contend.
+
+> **AMENDED AGAIN — default 1 is RESTORED, and the amendment above is the one
+> that was wrong. `prog{ }` checks.** The opt-in design shipped and was then
+> superseded, so this doc has now argued both sides; what follows is why the
+> second argument beats the first, since a reader is owed that rather than just
+> the verdict.
+>
+> The opt-in argument's premise was that the brace cannot say "check me" because
+> most of its 1701 sites are types and proofs. True — but it does not follow that
+> the AUTHOR must say it. **The content already says it.** `Term.needsRuntime`
+> reads `readC`'s refusal list structurally, and that list *is* this calculus's
+> definition of the pure sub-grammar (§1.3). So the brace does not have to carry
+> the information and neither does the author: the block is classified, and the
+> checker it gets follows from what is in it. This is the **information rule**:
+>
+> | content | ascription | check |
+> |---|---|---|
+> | classifies as a program | none | the ⇒-walk |
+> | classifies as a program | `-> τ` | the walk AND the audit at `τ` |
+> | pure | `-> τ` | `hasTypeT` against `τ` |
+> | pure | none | nothing — no specification exists anywhere |
+>
+> The last row is the one that dissolves the opt-in argument entirely: a `Π` in
+> `StdLemmas` is not ⇒-walked, not because it declined to write `check`, but
+> because it is pure and states no type, so **there is no question to ask**. That
+> is information absence, not policy.
+>
+> **What it costs, measured, and this is the honest part.** The annotation does
+> not disappear, it INVERTS: `prog defer_check { … }` is now written at **275
+> sites across 18 files**. §2b predicted 107. The gap is a class §2b did not have
+> — *program fragments*, blocks that are closed and syntactically programs but
+> whose callee prefix is supplied by a Lean-level assembler (`withPool (prog{ … })`),
+> so checking them where they are written asks about a program that has not been
+> assembled yet. 84 of the 275 are that class.
+>
+> **So the trade is 275 fences against 1701 unannotated sites**, and it is worth
+> taking for a reason the count does not show: under opt-in, a program that was
+> never converted is silently unchecked, and nothing anywhere says so. Under
+> auto-checking, the unchecked set is *enumerated in the source* — every one of
+> the 275 is visible, greppable, and has to be justified when it is added. The
+> failure mode moves from invisible to explicit, which is the same trade §2b's
+> own "migration progress bar" was reaching for and could not get.
+>
+> **`defer_check` is therefore back**, and it is the only annotation the design
+> asks anyone to write. `prog check` is retired and not replaced: one surface.
 
 ## 7. Review checklist — what a merge must run
 

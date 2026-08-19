@@ -234,7 +234,7 @@ def packBump : Term := prog{
 example : progOk packBump = true := by native_decide
 
 -- …and the lying refill is REFUSED: `Hw : Le n w` does not inhabit `Le (S n) w`.
-def packBumpLie : Term := prog{
+def packBumpLie : Term := prog defer_check {
   fn BumpLie (self : &mut (Σ (n : Nat). Σ0 (w : Nat). Le n w)) -> Unit {
     let Pair(n, Pair(w, Hw)) = *self;
     *self := Pair(S(n), Pair(w, KeepLe n w Hw));
@@ -4174,7 +4174,7 @@ def remRetHonest : Term := prog{
     the parameter itself onward works (I). Every fold-evidence builder in the
     move layer is therefore a TOP-LEVEL pure lemma applied to the parameter,
     never a local λ over it. -/
-def lamFeedG : Term := prog{
+def lamFeedG : Term := prog defer_check {
   fn Eat [fuel] (fuel : Nat, n : Nat,
                  Hp : Π (K2 : Nat) → Π (Hk2 : Le K2 n) → Le K2 (S n)) -> Unit {
     match fuel {
@@ -4218,7 +4218,7 @@ def lamFeedI : Term := prog{
 example : progOk lamFeedI = true := by native_decide
 
 
-def lamFeedJ : Term := prog{
+def lamFeedJ : Term := prog defer_check {
   fn Eat [fuel] (fuel : Nat, n : Nat,
                  Hp : Π (K2 : Nat) → Π (Hk2 : Le K2 n) → Le K2 (S n)) -> Unit {
     match fuel {
@@ -4245,7 +4245,7 @@ example : progOk s1Chain = true := by native_decide
     transports the fuel bound, and with resize in place there is no headroom
     obligation left. (S1's Hroom made this impossible without invariant
     projections; the resize is what closes the spec.) -/
-def s2CheckedCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{
+def s2CheckedCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog defer_check {
   let Pair(m0, ev0) = NewHM(2, unit);
   let M0 = m0;
   let Pair(HfindN, HsizeN) = ev0;
@@ -4370,7 +4370,7 @@ def PackLe1Ty : Term := prog{
 example : chkL PackLe1 PackLe1Ty = true := by native_decide
 
 /-- Probe G1: the monolithic shape — navigate, carve inline, walk, return. -/
-def gmProbe1 : Term := prog{
+def gmProbe1 : Term := prog defer_check {
   fn SlotOfE (h : Nat, n : Nat, Hne : Le (S Z) n)
       -> Σ (i : Nat). Σ (r : Nat). Σ (hd : Id Nat n (Add i (S r))). Id Nat i (Mod h n) {
     SlotPack h n Hne };
@@ -4402,7 +4402,7 @@ def gmProbe1 : Term := prog{
 
 /-- Probe G2: the layered shape — the carve lives in `SlotGet`, whose param is
     the PLAIN array borrow, and the pack-navigating fn only reborrows fields. -/
-def gmProbe2 : Term := prog{
+def gmProbe2 : Term := prog defer_check {
   fn SlotOfE (h : Nat, n : Nat, Hne : Le (S Z) n)
       -> Σ (i : Nat). Σ (r : Nat). Σ (hd : Id Nat n (Add i (S r))). Id Nat i (Mod h n) {
     SlotPack h n Hne };
@@ -4440,7 +4440,7 @@ def gmProbe2 : Term := prog{
 /-- Probe G3: NO CARVE — a symbolic-index ELEMENT borrow into the slots field,
     with the bound built from the packed `Le 1 cap` and the minted slot
     identity. Slots stays one leaf holding one element loan. -/
-def gmProbe3 : Term := prog{
+def gmProbe3 : Term := prog defer_check {
   fn SlotOfE (h : Nat, n : Nat, Hne : Le (S Z) n)
       -> Σ (i : Nat). Σ (r : Nat). Σ (hd : Id Nat n (Add i (S r))). Id Nat i (Mod h n) {
     SlotPack h n Hne };
@@ -4583,7 +4583,7 @@ example : progOk (hmS1Under newRetHonest insRetHonest (prog{
 /-- BODY TWIN: insert into the UNHASHED slot — the slot pack computed off the
     wrong key. Caught where it is written: the returned identity cannot say
     `i = Mod h n`. -/
-def twinUnhashedSlot : Term := prog{
+def twinUnhashedSlot : Term := prog defer_check {
   fn SlotOfE (h : Nat, n : Nat, Hne : Le (S Z) n)
       -> Σ (i : Nat). Σ (r : Nat). Σ (hd : Id Nat n (Add i (S r))). Id Nat i (Mod h n) {
     SlotPack (S h) n Hne };
@@ -4593,7 +4593,7 @@ example : progOk twinUnhashedSlot = false := by native_decide
 /-- BODY TWIN: skip the duplicate-key OVERWRITE — the hit branch reads
     everything and writes nothing, claiming the same conjuncts. Caught at the
     walk's own return: the exit bucket still holds the old value. -/
-def twinNoOverwrite : Term := prog{
+def twinNoOverwrite : Term := prog defer_check {
   fn InsertInList [fuel] (fuel : Nat, cap : Nat, islot : Nat, key : Nat, val : Nat,
                           b : &mut (List (Σ (k : Nat). Nat)),
                           Hf : Le (LenE (*b)) fuel,

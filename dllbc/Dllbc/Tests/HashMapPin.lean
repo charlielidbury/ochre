@@ -122,7 +122,7 @@ example : chkL FindTailEv FindTailEvTy = true := by native_decide
     with the recursive call's projected pin at the shared exit σ). Pin-only
     (plain `&mut Nat` return) so a failure names the pin, not D9. -/
 
-def bktGetPinOnly : Term := prog{
+def bktGetPinOnly : Term := prog defer_check {
   fn BktGetP [fuel] (fuel : Nat, key : Nat,
       b : &mut (t : List (Σ (k : Nat). Nat) ~> BSetK key (*res) t),
       Hin : Id Bool (HitL key (*b)) True,
@@ -720,7 +720,7 @@ def vPackY : Val :=
     (vP vU (vP vR (vP vU (vP vR
       (vP (vP vU vU) (vP (vP (vP vR vU) (vP vR vU)) vU)))))))))
 
-def hmChainCaller : Term := hmPinUnder prog{
+def hmChainCaller : Term := hmPinUnder prog defer_check {
   let m = Pair(2, Pair(8, Pair(1, Pair(Arr(Nil, Cons(Pair(3, 30), Nil)),
     Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
       Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
@@ -772,7 +772,7 @@ example : (runV hmChainCaller "y" == some vPackY) = true := by native_decide
 /-- The KEY twin at the bucket walk: identical body, the `Z` leg escapes the
     KEY borrow. The fill puts the exit in the key slot, the pin keeps it in
     the value slot. Pin-only (no D9), so the refusal names the pin. -/
-def bktGetAtKey : Term := prog{
+def bktGetAtKey : Term := prog defer_check {
   fn BktGetK [p] (p : Nat, key : Nat,
       b : &mut (t : List (Σ (k : Nat). Nat) ~> BSetP p (*res) t),
       Hhit : Id Bool (HitL key (*b)) True,
@@ -800,7 +800,7 @@ example : progRejects bktGetAtKey "pin is not met" = true := by native_decide
 /-- The WRONG-POSITION caller: everything as the green chain, but the first
     call claims position 1 where the key sits at 0 — the `Hpos` `Refl` has no
     type to check at, and the caller is refused before any op runs. -/
-def hmChainWrongPos : Term := hmPinUnder prog{
+def hmChainWrongPos : Term := hmPinUnder prog defer_check {
   let m = Pair(2, Pair(8, Pair(1, Pair(Arr(Nil, Cons(Pair(3, 30), Nil)),
     Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
       Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
@@ -815,7 +815,7 @@ example : progOk hmChainWrongPos = false := by native_decide
 
 /-- The WRONG-SLOT caller: slot 0 claimed for key 3 at cap 2 — `Him`'s `Refl`
     is refused. -/
-def hmChainWrongSlot : Term := hmPinUnder prog{
+def hmChainWrongSlot : Term := hmPinUnder prog defer_check {
   let m = Pair(2, Pair(8, Pair(1, Pair(Arr(Nil, Cons(Pair(3, 30), Nil)),
     Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
       Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
@@ -1141,7 +1141,7 @@ def vInvStale : Val :=
     (vP (vP vU vU) (vP (vP (vP vR vU) (vP vR vU))
       (vP (vP vU vU) (vP (vP vU vU) vU)))))))
 
-def orInsChain : Term := hmPinUnder (hmOrUnder prog{
+def orInsChain : Term := hmPinUnder (hmOrUnder prog defer_check {
   let m = Pair(4, Pair(16, Pair(1, Pair(Arr(Nil, Cons(Pair(1, 10), Nil), Nil, Nil),
     Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
       Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
@@ -1188,7 +1188,7 @@ example : (runV orInsChain "y" == some vPackOr) = true := by native_decide
 /-- THE PINNED SEAM: the same chain re-calling on the RAW release (no repack).
     The append made the entry invariant inhabitant stale, and the second call
     refuses the payload. -/
-def orInsReuse : Term := hmOrUnder prog{
+def orInsReuse : Term := hmOrUnder prog defer_check {
   let m = Pair(4, Pair(16, Pair(1, Pair(Arr(Nil, Cons(Pair(1, 10), Nil), Nil, Nil),
     Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
       Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),

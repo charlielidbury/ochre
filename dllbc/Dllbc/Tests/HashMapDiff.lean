@@ -110,7 +110,7 @@ def runHM (t : Term) : Option (Nat × Nat × Nat × List (List (Nat × Nat))) :=
 /-- Five inserts at cap 4: keys 5, 1, 9 all collide in slot 1 (the middle one
     walks past a miss), key 5 re-inserted mid-sequence must OVERWRITE in place,
     key 2 lands alone. -/
-def s1RunCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{
+def s1RunCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog defer_check {
   let Pair(m0, Ev0) = NewHM(4, unit);
   let b1 = &m m0;
   InsertHM(9, 5, 70, b1, unit);
@@ -141,7 +141,7 @@ example : (s1Expected == (4, [[], [(5, 71), (1, 10), (9, 90)], [(2, 20)], []]))
 
 /-- The insert sequence followed by three removes: key 5 (bucket-1 head, a
     hit), key 7 (a miss — nothing changes), key 1 (mid-bucket unlink). -/
-def s1RemCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{
+def s1RemCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog defer_check {
   let Pair(m0, Ev0) = NewHM(4, unit);
   let b1 = &m m0;
   InsertHM(9, 5, 70, b1, unit);
@@ -168,7 +168,7 @@ example : (runHM s1RemCaller ==
 
 /-- From capacity 1 (threshold 0), four inserts force THREE doubling resizes:
     1 → 2 → 4 → 8, every entry re-slotted by the move fold each time. -/
-def s1GrowCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{
+def s1GrowCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog defer_check {
   let Pair(m0, Ev0) = NewHM(1, unit);
   let b1 = &m m0;
   InsertHM(9, 1, 10, b1, unit);
@@ -186,7 +186,7 @@ example : (runHM s1GrowCaller ==
     = true := by native_decide
 
 -- The empty map runs and decodes: all buckets Nil, n = 0, load = 4·cap.
-def s1NewCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog{
+def s1NewCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog defer_check {
   let Pair(m0, Ev0) = NewHM(3, unit);
   let y = m0;
   () }
@@ -293,7 +293,7 @@ example : progRejects (hmGmUnder prog{ () }) "does not have its owed type"
 /-- AENEAS' test1 (icfp22/hashmap.rs), the differential the doc fixes: cap 32,
     keys 0/128/1024/1056 all collide in slot 0 by construction; overwrite via
     the get_mut path; remove; re-check the survivors. -/
-def gmTest1 : Term := hmGmUnder prog{
+def gmTest1 : Term := hmGmUnder prog defer_check {
   let Pair(m0, Ev0) = NewHM(32, unit);
   let b1 = &m m0;
   InsertHM(64, 0, 42, b1, unit);
@@ -319,7 +319,7 @@ example : (runHM gmTest1 ==
 /-- The or_insert path, both arms: key 5 absent (inserts default 7 through the
     verified InsertHM, so n is accounted), then written through the returned
     borrow; key 5 again (present — no insert), written again. -/
-def gmTest2 : Term := hmGmUnder prog{
+def gmTest2 : Term := hmGmUnder prog defer_check {
   let Pair(m0, Ev0) = NewHM(4, unit);
   let b1 = &m m0;
   InsertHM(9, 1, 10, b1, unit);
