@@ -232,7 +232,7 @@ def useItLie : Term := prog{
 -- A callee, written into each chain that calls it; the standalone form keeps
 -- the verdict `S26Migrate.p23` was computing for it.
 example : progOk useItLie = true := by native_decide
-def usePinLie : Term := prog{
+def usePinLie : Term := prog defer_check {
   fn PinOne () -> Σ (r : Nat). Id Nat r (S Z) { Pair(S Z, Refl) };
   fn UseItLie (n : Nat, h : Id Nat n (S (S Z))) -> Unit { () };
   fn UsePinLie () -> Unit
@@ -251,7 +251,7 @@ def plainOne : Term := prog{
 -- A callee, written into each chain that calls it; the standalone form keeps
 -- the verdict `S26Migrate.p23` was computing for it.
 example : progOk plainOne = true := by native_decide
-def useUnpinned : Term := prog{
+def useUnpinned : Term := prog defer_check {
   fn PlainOne () -> Nat { S Z };
   fn UseIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () };
   fn UseUnpinned () -> Unit { let a = PlainOne(); UseIt(a, Refl); () };
@@ -293,7 +293,7 @@ example : progOk recGood = true := by native_decide
 
 -- BRANCH 1 — no `[k]` at all. THE headline control: this exact FnDef was accepted
 -- before the guard, and it proves `Z = S Z`.
-def recBad : Term := prog{
+def recBad : Term := prog defer_check {
   fn RecBad () -> Id Nat Z (S Z) { RecBad() };
   () }
 -- MIGRATES, AND IS STILL REFUSED — with a different sentence, which is the whole
@@ -305,7 +305,7 @@ example : progRejects recBad "unknown function" = true := by native_decide
 
 -- BRANCH 2 — `[k]` declared, but the self-call passes the SAME fuel. Equal is not
 -- strictly smaller; this is the shape the strictness in `strictSubterm` exists for.
-def recSame : Term := prog{ fn RecSame [n] (n : Nat) -> Id Nat Z (S Z) { RecSame(n) }; () }
+def recSame : Term := prog defer_check { fn RecSame [n] (n : Nat) -> Id Nat Z (S Z) { RecSame(n) }; () }
 -- REFUSED AT THE ELABORATION, which is where this branch's content now lives:
 -- §7 makes `ih` the sealed self-view AT THE PREDECESSOR, so a self-call at any
 -- other argument has nothing to become, and `fnElab` says so rather than emitting
@@ -318,7 +318,7 @@ example : progRejects recSame "not the predecessor" = true := by native_decide
 -- (Without this control the previous two would pass on a guard that merely
 -- required *something* to decrease — which is unsound, since alternating branches
 -- can each decrease a different coordinate forever.)
-def recWrongIdx : Term := prog{
+def recWrongIdx : Term := prog defer_check {
   fn RecWrongIdx [n] (n : Nat, m : Nat) -> Id Nat Z Z
         { match m { Z => Refl, S(m2) => RecWrongIdx(n, m2) } };
   () }
@@ -334,7 +334,7 @@ example : progOk recRightIdx = true := by native_decide
 
 -- BRANCH 4 — an INCREASE reads as "not a subterm", not as a decrease: `S(m2)`
 -- against a snapshot of `S m2` is equality one level up, and equality never passes.
-def recGrow : Term := prog{
+def recGrow : Term := prog defer_check {
   fn RecGrow [n] (n : Nat) -> Id Nat Z Z
         { match n { Z => Refl, S(m2) => RecGrow(S(m2)) } };
   () }
@@ -344,7 +344,7 @@ example : progRejects recGrow "not the predecessor" = true := by native_decide
 -- let each admit the other's postcondition with nothing decreasing anywhere: the
 -- same hole through two doors. Rejected outright (§8's measures are where a general
 -- story would live).
-def recMutA : Term := prog{
+def recMutA : Term := prog defer_check {
   fn RecMutA () -> Id Nat Z (S Z) { RecMutB() };
   fn RecMutB () -> Id Nat Z (S Z) { RecMutA() };
   () }
@@ -364,7 +364,7 @@ example : progOk recList = true := by native_decide
 -- Two constructors down is still a strict subterm (the relation is transitive, not
 -- just one-step) — which the quicksort recursion needs, since it peels `Cnt` twice
 -- before recursing.
-def recDeep : Term := prog{
+def recDeep : Term := prog defer_check {
   fn RecDeep [n] (n : Nat) -> Id Nat Z Z
         { match n { Z => Refl, S(a) => match a { Z => Refl, S(b) => RecDeep(b) } } };
   () }
@@ -397,7 +397,7 @@ example : progRejects recDeep "not the predecessor" = true := by native_decide
     below, `append_back` and `partition` — and all three are fuel-threaded in
     stage (vi)'s chain, where the price is one parameter and one dead branch. -/
 
-def borrowDecrease : Term := prog{
+def borrowDecrease : Term := prog defer_check {
   fn ZeroAll [v] (v : &mut List Nat) -> Unit
         { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ZeroAll(tl); () } } };
   () }
@@ -537,7 +537,7 @@ example : progRejects splitOffLieSwap "does not have return type" = true := by n
 -- mints an id for — and a `%` splice is a Lean `Term` written outside the macro,
 -- which has no way to say "the `hd` this match will bind". The χ/ψ rules are about
 -- when sharing is worth its cost; this is the case where it is not available.
-def splitOffLieHead : Term := prog{
+def splitOffLieHead : Term := prog defer_check {
   fn SplitOff [i] (v : &mut List Nat, i : Nat, hi : Le i (Len *v)) -> %soHonest
         { match i {
             Z => { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) },
@@ -856,7 +856,7 @@ def needLe : Term := prog{
 -- A callee, written into each chain that calls it; the standalone form keeps
 -- the verdict `S26Migrate.p23` was computing for it.
 example : progOk needLe = true := by native_decide
-def branchKnowledge : Term := prog{
+def branchKnowledge : Term := prog defer_check {
   fn NeedLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
   fn BranchKnowledge (a : Nat, b : Nat) -> Unit
         { match Leb a b {
@@ -941,7 +941,7 @@ example : progOk branchKnowledgeIf = true := by
 
 -- (1) The equation is the branch's OWN constructor, not the other one: citing
 -- `LebFalseGt` on the True branch's `e : Id Bool (Leb a b) True` is rejected.
-def branchEqSwapped : Term := prog{
+def branchEqSwapped : Term := prog defer_check {
   fn NeedLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
   fn NeedGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () };
   fn BranchEqSwapped (a : Nat, b : Nat) -> Unit
@@ -962,7 +962,7 @@ def needLeSwap : Term := prog{
 -- A callee, written into each chain that calls it; the standalone form keeps
 -- the verdict `S26Migrate.p23` was computing for it.
 example : progOk needLeSwap = true := by native_decide
-def branchEqWrongSpine : Term := prog{
+def branchEqWrongSpine : Term := prog defer_check {
   fn NeedLeSwap (a : Nat, b : Nat, h : Le b a) -> Unit { () };
   fn BranchEqWrongSpine (a : Nat, b : Nat) -> Unit
         { let c = Leb a b;
@@ -982,7 +982,7 @@ def wantEqLie : Term := prog{
 -- A callee, written into each chain that calls it; the standalone form keeps
 -- the verdict `S26Migrate.p23` was computing for it.
 example : progOk wantEqLie = true := by native_decide
-def branchEqPlainSym : Term := prog{
+def branchEqPlainSym : Term := prog defer_check {
   fn WantEqLie (n : Nat, h : Id Nat (S n) n) -> Unit { () };
   fn BranchEqPlainSym (n : Nat) -> Unit
         { match e : n { Z => (), S(m) => { WantEqLie(m, e); () } } };
@@ -1678,7 +1678,7 @@ example : progRejects (qsUnder partHonest qsHonest (prog{ Unit }) .unit)
     kept part — one write changed, `*v := lo` for `*v := Cons(x, lo)`. Wrong only on
     the recursive `True` path and only in the count conjunct; the bounds still hold
     of a list with one element missing. -/
-def partitionLoses : Term := prog{
+def partitionLoses : Term := prog defer_check {
   fn Partition [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (Len *v) fuel) -> %partHonest
       { match *v {
           Nil => { *v := Nil;
@@ -1727,7 +1727,7 @@ example : progRejects partitionLoses "does not have return type" = true := by na
     transports of them — `SortedAppendPivot x (*v) hi Hs1 Hub Hs2 Hlb` for
     `… Hub2 … Hlb2`. Everything else is the chain's `quicksort` verbatim, so what the
     rejection isolates is exactly bound survival. -/
-def qsStaleBound : Term := prog{
+def qsStaleBound : Term := prog defer_check {
   fn Partition [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (Len *v) fuel) -> %partHonest
       { match *v {
           Nil => { *v := Nil;
@@ -2346,7 +2346,7 @@ example : progOk stuckProbe = true := by native_decide
 -- SUBJECT: a deliberately-non-converging return type (raw Term) — the lie is the subject.
 def stuckProbeLieRet : Term := .idT natT
   (boolRecNat (tS zt) zt (lebSp (V 0 "n"))) (boolRecNat (tS (tS zt)) zt (lebSp (V 0 "n")))
-def stuckProbeLie : Term := prog{
+def stuckProbeLie : Term := prog defer_check {
   fn StuckProbeLie (n : Nat) -> %stuckProbeLieRet
         { match Leb n (S (S Z)) { True => Refl, False => Refl } };
   () }
@@ -2356,7 +2356,7 @@ example : progRejects stuckProbeLie "does not have return type" = true := by nat
 -- generalized σb is genuinely Bool-typed, so exhaustiveness demands True AND False.
 -- SUBJECT: a deliberately non-exhaustive body (raw Term, one-armed match) — the defect is the subject.
 def stuckProbeNonExhBody : Term := .letIn ⟨1, "c"⟩ (lebSp (V 0 "n")) (.matchE ⟨1, "c"⟩ none [.mk "True" [] Refl])
-def stuckProbeNonExh : Term := prog{
+def stuckProbeNonExh : Term := prog defer_check {
   fn StuckProbeNonExh (n : Nat) -> Id Nat
         (boolRec (λ (B : Bool). Nat) (S Z) Z (Leb n (S (S Z))))
         (boolRec (λ (B : Bool). Nat) (Add Z (S Z)) (Add Z Z) (Leb n (S (S Z))))

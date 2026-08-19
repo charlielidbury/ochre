@@ -520,7 +520,7 @@ def progDiff (t : Term) : Bool :=
 /-! ## Callers (each demands ALL its owners, so both runs fully collapse) -/
 
 /-- The choose caller from §6.1, demanding BOTH owners. -/
-def chooseCaller : Term := withPool (prog{
+def chooseCaller : Term := withPool (prog defer_check {
   let a = 0; let b = 0; let pa = &m a; let pb = &m b;
   let r = Choose(True, pa, pb);
   *r := 7;
@@ -528,14 +528,14 @@ def chooseCaller : Term := withPool (prog{
   () })
 
 /-- A push caller. -/
-def pushCaller : Term := withPool (prog{
+def pushCaller : Term := withPool (prog defer_check {
   let x = Cons(1, Nil); let b = &m x; Push(7, b); let y = x; () })
 
 /-! ## The property, over the caller set -/
 
 def callers : List Term :=
-  [ withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = Through(b); *r := Cons(9, Nil); let y = x; () }),
-    withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = Advance(b); *r := Cons(9, Nil); let y = x; () }),
+  [ withPool (prog defer_check { let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = Through(b); *r := Cons(9, Nil); let y = x; () }),
+    withPool (prog defer_check { let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = Advance(b); *r := Cons(9, Nil); let y = x; () }),
     chooseCaller,
     pushCaller ]
 
@@ -549,7 +549,7 @@ example : accepted.all (fun b => diffV2 b) = true := by native_decide
 /-! ## The advance caller, which the validation below is about -/
 
 def advCallerBody : Term :=
-  withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = Advance(b); *r := Cons(9, Nil); let y = x; () })
+  withPool (prog defer_check { let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = Advance(b); *r := Cons(9, Nil); let y = x; () })
 
 -- The real behaviour: the opaque σ matches the concrete value. GREEN.
 example : diffV2 advCallerBody = true := by native_decide

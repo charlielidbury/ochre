@@ -146,7 +146,7 @@ def why (t : Term) (retType : Term := prog{ Unit }) : String :=
     index-kind, so §2.1's copy-on-read leaves the array intact — no hole, and that
     variant is accepted correctly (§3 below). -/
 
-def siblingHole : Term := prog{
+def siblingHole : Term := prog defer_check {
   fn SiblingHole (a : &mut (Array 3 Nat)) -> &mut Nat {
     let l = &m (*a)[Z ; 1];
     let c = &m (*a)[1 ; 1];
@@ -156,7 +156,7 @@ def siblingHole : Term := prog{
     e };
   () }
 
-def holeCaller : Term := prog{
+def holeCaller : Term := prog defer_check {
   fn SiblingHole (a : &mut (Array 3 Nat)) -> &mut Nat {
     let l = &m (*a)[Z ; 1];
     let c = &m (*a)[1 ; 1];
@@ -241,7 +241,7 @@ example : runY getSlotCaller == some (varr [3, 7, 2]) := by native_decide
     Each of these keeps the hole and varies exactly one thing. -/
 
 /-- The same hole, nothing returned. CAUGHT — so the return is what buys it. -/
-def holeNoRet : Term := prog{
+def holeNoRet : Term := prog defer_check {
   fn HoleNoRet (a : &mut (Array 3 Nat)) -> Unit {
     let l = &m (*a)[Z ; 1];
     let t = (*l)[0 ; 1];
@@ -251,7 +251,7 @@ example : progRejects holeNoRet "holds a hole (⊥) at return" = true := by nati
 
 /-- Two parameters: the hole is in `a2`, the returned borrow comes out of `a1`.
     CAUGHT — so the exemption is granted per PARAMETER. -/
-def holeOtherParam : Term := prog{
+def holeOtherParam : Term := prog defer_check {
   fn HoleOther (a1 : &mut (Array 3 Nat), a2 : &mut (Array 3 Nat)) -> &mut Nat {
     let l = &m (*a2)[Z ; 1];
     let t = (*l)[0 ; 1];
@@ -271,7 +271,7 @@ example : progOk holeOtherOk = true := by native_decide
 
 /-- A hole in the RETURNED cell itself: caught by the issued-borrow payload check,
     which is a different check from the obligation audit. -/
-def retHole : Term := prog{
+def retHole : Term := prog defer_check {
   fn RetHole (a : &mut (Array 3 Nat)) -> &mut Nat {
     let c = &m (*a)[1 ; 1];
     let e = &m (*c)[0];
@@ -287,7 +287,7 @@ example : progRejects retHole "cannot type value ⊥" = true := by native_decide
     paired with the refill control that must stay accepted. -/
 
 /-- Nested: the hole is inside a LIST held in a carved cell, two layers down. -/
-def nestedHole : Term := prog{
+def nestedHole : Term := prog defer_check {
   fn NestedHole (s : &mut (Array 3 (List Nat))) -> &mut (List Nat) {
     let l = &m (*s)[Z ; 1];
     let c = &m (*s)[1 ; 1];
@@ -315,7 +315,7 @@ example : progOk nestedRefill = true := by native_decide
 
 /-- No array anywhere: `hd` and `tl` are sibling FIELDS under the same parameter,
     `tl` goes out in the result, and `*hd` is moved out and never put back. -/
-def fieldHole : Term := prog{
+def fieldHole : Term := prog defer_check {
   fn FieldHole (v : &mut List Nat) -> &mut (List Nat) {
     match v {
       Nil => v,
@@ -358,7 +358,7 @@ example : progOk carveLeftOpen = true := by native_decide
     in the result. -/
 
 /-- `True` written into a `Nat` cell of a sibling segment. -/
-def siblingBadWrite : Term := prog{
+def siblingBadWrite : Term := prog defer_check {
   fn SiblingBadWrite (a : &mut (Array 3 Nat)) -> &mut Nat {
     let l = &m (*a)[Z ; 1];
     let c = &m (*a)[1 ; 1];
@@ -383,7 +383,7 @@ example : progRejects siblingBadWrite
 /-- The CONTROL that says the audit is the only thing checking writes at all: the
     same write, nothing returned, so nothing is in flight and the fill is the
     identity — and the rejection is the same rejection, from the same rule. -/
-def siblingBadWriteUnit : Term := prog{
+def siblingBadWriteUnit : Term := prog defer_check {
   fn SiblingBadWriteU (a : &mut (Array 3 Nat)) -> Unit {
     let l = &m (*a)[Z ; 1];
     let e0 = &m (*l)[0];
@@ -414,7 +414,7 @@ def withWalk (rest : Term) : Term := prog{
     } };
   %rest }
 
-def callGroupOk : Term := withWalk prog{
+def callGroupOk : Term := withWalk prog defer_check {
   fn GetMutC (s : &mut (Array 3 (List Nat)), f : Nat) -> &mut Nat {
     let l = &m (*s)[Z ; 1];
     let c = &m (*s)[1 ; 1];
@@ -424,7 +424,7 @@ def callGroupOk : Term := withWalk prog{
   () }
 example : progOk callGroupOk = true := by native_decide
 
-def callGroupHole : Term := withWalk prog{
+def callGroupHole : Term := withWalk prog defer_check {
   fn GetMutCH (s : &mut (Array 3 (List Nat)), f : Nat) -> &mut Nat {
     let l = &m (*s)[Z ; 1];
     let c = &m (*s)[1 ; 1];
@@ -437,7 +437,7 @@ def callGroupHole : Term := withWalk prog{
 example : progRejects callGroupHole
   "holds a hole (⊥) at return, in a leaf it still owns" = true := by native_decide
 
-def callGroupBadWrite : Term := withWalk prog{
+def callGroupBadWrite : Term := withWalk prog defer_check {
   fn GetMutCB (s : &mut (Array 3 (List Nat)), f : Nat) -> &mut Nat {
     let l = &m (*s)[Z ; 1];
     let c = &m (*s)[1 ; 1];
@@ -469,7 +469,7 @@ example : progRejects callGroupBadWrite
     old order: the residue collapse ends only loans that do not reach a result
     loan, so it cannot disturb an issued borrow's payload. -/
 
-def badTyElem : Term := prog{
+def badTyElem : Term := prog defer_check {
   fn BadTyElem (a : &mut (Array 3 Nat)) -> &mut Bool {
     let l = &m (*a)[Z ; 1];
     let c = &m (*a)[1 ; 1];
@@ -481,7 +481,7 @@ example : progRejects badTyElem
   "returned borrow's payload (σ8) does not have its owed type (Bool)" = true := by
   native_decide
 
-def badWidth : Term := prog{
+def badWidth : Term := prog defer_check {
   fn BadWidth (a : &mut (Array 3 Nat)) -> &mut (Array 2 Nat) {
     let l = &m (*a)[Z ; 1];
     let c = &m (*a)[1 ; 1];

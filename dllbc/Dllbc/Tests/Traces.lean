@@ -169,7 +169,7 @@ example : expectEnv prog{
 } [("x", nat 3), ("y", nat 3), ("z", nat 3)] = true := by native_decide
 
 -- Fill through a non-place term: ⇐ is only defined on places.
-example : expectErr prog{
+example : expectErr prog defer_check {
   Pair(1) := 7;
   ()
 } "not a place" = true := by native_decide
@@ -178,7 +178,7 @@ example : expectErr prog{
 -- ⇒-consumes c, so borrowₘ ℓ1 3 is in flight; drop must vacate b, which
 -- requires ending ℓ1, whose borrow is exactly that in-flight value — no entry,
 -- no rule, rejected.
-example : expectErr prog{
+example : expectErr prog defer_check {
   let x = 3;
   let b = &m x;
   let c = &m *b;
@@ -333,7 +333,7 @@ example : expectEnv prog{
 
 -- Match on a moved variable: `p = Nil` is DATA (a List), so `let q = p` MOVES it
 -- (§2.1 keeps Rust's line for aggregates), and the later match finds the slot ⊥.
-example : expectErr prog{
+example : expectErr prog defer_check {
   let p = Nil;
   let q = p;
   match p { Nil => () }
@@ -341,14 +341,14 @@ example : expectErr prog{
 
 -- No branch matches the head constructor (no exhaustiveness checking — there
 -- are no inductive declarations yet — so an unmatched head is a runtime stuck).
-example : expectErr prog{
+example : expectErr prog defer_check {
   let p = Nil;
   match p { Cons(h, t) => () }
 } "no branch" = true := by native_decide
 
 -- Matching through a hole: `*b` is taken first, leaving the borrow payload ⊥,
 -- and no rule reads through ⊥.
-example : expectErr prog{
+example : expectErr prog defer_check {
   let x = Cons(3, Nil);
   let b = &m x;
   let tail = *b;
@@ -422,7 +422,7 @@ def withAny (rest : Term) : Term := prog{
 -- is_zero's shape: n ↦ (σ : Nat); a two-branch owned match splits into two
 -- paths. Z branch: ⇜ σ := Z, then n consumed to ⊥. S branch: ⇜ σ := S σ′,
 -- then n ↦ ⊥ and the field binder m ↦ (σ′ : Nat).
-def isZero : Term := withAny prog{
+def isZero : Term := withAny prog defer_check {
   let n = AnyNat();
   match n { Z => (), S(m) => () }
 }
@@ -437,7 +437,7 @@ example : tailPaths isZero
 -- fields, `*hd := 0` strong-updates the head, and demanding the owner collapses
 -- the chain to `Cons 0 σ₂` (the doc's trace verbatim). The Nil branch refines
 -- the payload to Nil. Two paths.
-def zeroHead : Term := withAny prog{
+def zeroHead : Term := withAny prog defer_check {
   let x = AnyList();
   let b = &m x;
   match b {
@@ -459,7 +459,7 @@ example : tailPaths zeroHead
 
 -- `*b := Nil` in the Cons branch drops the reborrowed fields (their loans are Ω
 -- entries) and installs Nil; both paths leave the owner holding Nil.
-def variantChange : Term := withAny prog{
+def variantChange : Term := withAny prog defer_check {
   let x = AnyList();
   let b = &m x;
   match b { Cons(hd, tl) => { *b := Nil; () }, Nil => () };
@@ -479,7 +479,7 @@ example : tailPaths variantChange
 -- Match `b` through, then match the field binder `tl` through — the refinements
 -- compose. Three paths (outer Cons × {inner Cons, inner Nil}, plus outer Nil):
 --   Cons σ₀ (Cons 0 σ₁),  Cons σ₀ Nil,  Nil.
-def twoLevel : Term := withAny prog{
+def twoLevel : Term := withAny prog defer_check {
   let x = AnyList();
   let b = &m x;
   match b {
@@ -507,7 +507,7 @@ example : expectMErr [(⟨0,"x"⟩, cons (nat 3) nil)]
 
 -- A symbolic match in expression position (a constructor argument) cannot split
 -- and is rejected clearly by the pre-pass / readR.
-def exprPosition : Term := withAny prog{
+def exprPosition : Term := withAny prog defer_check {
   let z = AnyList();
   let y = Cons(match z { Nil => Nil, Cons(a, r) => Nil }, Nil);
   ()

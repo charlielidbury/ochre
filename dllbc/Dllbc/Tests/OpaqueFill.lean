@@ -184,7 +184,7 @@ example : chkL prog{ Pair(Refl, Pair(Refl, unit)) }
     type depends on. All four were GREEN before opaque fill. -/
 
 /-- Onto a cell the packed invariant HASHES. -/
-def escKey : Term := prog{
+def escKey : Term := prog defer_check {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). AllK7 1 a))
       -> &mut Nat {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
@@ -197,7 +197,7 @@ example : progRejects escKey
   = true := by native_decide
 
 /-- Onto an ARRAY'S EXTENT. -/
-def escExtent : Term := prog{
+def escExtent : Term := prog defer_check {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array n Nat). Le (S Z) n)) -> &mut Nat {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => &m *nn } } };
   () }
@@ -207,7 +207,7 @@ example : progRejects escExtent
   = true := by native_decide
 
 /-- Onto a cell a Σ0 tail PINS to a literal. -/
-def escPinned : Term := prog{
+def escPinned : Term := prog defer_check {
   fn G (self : &mut (Σ (x : Nat). Σ0 (d : Unit). Id Nat x 7)) -> &mut Nat {
     match self { Pair(xx, r1) => match r1 { Pair(dd, H) => &m *xx } } };
   () }
@@ -219,7 +219,7 @@ example : progRejects escPinned
 /-- Onto a cell a LATER RUNTIME BINDER'S TYPE needs — the dependence is not in a
     Σ0 tail at all, which is the route the doc's rule had to be checked against
     rather than assumed to cover. -/
-def escRuntimeDep : Term := prog{
+def escRuntimeDep : Term := prog defer_check {
   fn G (self : &mut (Σ (n : Nat). Σ (a : Array n Nat). Nat)) -> &mut Nat {
     match self { Pair(nn, r1) => match r1 { Pair(a, w) => &m *nn } } };
   () }
@@ -260,7 +260,7 @@ def AllV7 : Term := prog{
       M A }
 
 /-- Escaping VALUE borrow, invariant reads VALUES — REFUSED. -/
-def escValV : Term := prog{
+def escValV : Term := prog defer_check {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllV7 2 a))
       -> &mut Nat {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
@@ -289,7 +289,7 @@ example : progOk escKeyV = true := by native_decide
     caller: take the borrow, write a 1 into the cell the invariant says is a 7,
     and let the group end. THREE parts, and only the last is about the checker. -/
 
-def escKeyExploit : Term := prog{
+def escKeyExploit : Term := prog defer_check {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). AllK7 1 a))
       -> &mut Nat {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
@@ -345,7 +345,7 @@ def wrVal1 : Term := prog{
       match e { Pair(kk, vv) => { *vv := 99; () } } } } } };
   () }
 
-def wrKey1 : Term := prog{
+def wrKey1 : Term := prog defer_check {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). AllK7 1 a))
       -> Unit {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
@@ -699,14 +699,14 @@ def bisG : Term := prog{
       let b = &m *a; () } } } };
   () }
 
-def bisH : Term := prog{
+def bisH : Term := prog defer_check {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a))
       -> Unit {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
       let b = &m *a; *b := Arr(Pair(1, 1), Pair(2, 2)); () } } } };
   () }
 
-def bisK : Term := prog{
+def bisK : Term := prog defer_check {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a))
       -> Unit {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
@@ -731,7 +731,7 @@ example : progOk bisK = false := by native_decide
     `layer1Ctl` is the control: the identical boundary over an array-INDEPENDENT
     tail is green, so the boundary is not what fails. -/
 
-def layer1 : Term := prog{
+def layer1 : Term := prog defer_check {
   fn Get (a : &mut (Array 1 (Σ (k : Nat). Nat))) -> &mut Nat {
     let e = &m (*a)[0];
     match e { Pair(kk, vv) => &m *vv } };
@@ -740,7 +740,7 @@ def layer1 : Term := prog{
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => Get(&m *a) } } };
   () }
 
-def layer1Val : Term := prog{
+def layer1Val : Term := prog defer_check {
   fn Get (a : &mut (Array 1 (Σ (k : Nat). Nat))) -> Unit {
     let e = &m (*a)[0];
     match e { Pair(kk, vv) => () } };
@@ -830,7 +830,7 @@ def gmVal3 : Term := prog{
       match e { Pair(kk, vv) => &m *vv } } } } };
   () }
 
-def gmKey2 : Term := prog{
+def gmKey2 : Term := prog defer_check {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a))
       -> &mut Nat {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
@@ -848,7 +848,7 @@ example : progOk gmKey2 = false := by native_decide
     away, and these are the pinned probes of the gap. `gmValMid`'s payload prints
     `Arr⟨1 ▷ σ6, 1 ▷ [Pair σ10 σ12], 1 ▷ σ8⟩` — `σ6` is the opaque prefix that
     stops the fold and `σ12` is the fill the fold therefore never erases. -/
-def gmValMid : Term := prog{
+def gmValMid : Term := prog defer_check {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a))
       -> &mut Nat {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
@@ -856,7 +856,7 @@ def gmValMid : Term := prog{
       match e { Pair(kk, vv) => &m *vv } } } } };
   () }
 
-def gmValLast : Term := prog{
+def gmValLast : Term := prog defer_check {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a))
       -> &mut Nat {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
@@ -874,7 +874,7 @@ example : progOk gmValLast = false := by native_decide
     A bare `Σ0` pack over a TWO-element array, carved at index 1 — one leading
     opaque slice is enough to keep the invariant's fold from reaching the filled
     leaf. Same mechanism as `gmValMid`, two components smaller. -/
-def gmValMin : Term := prog{
+def gmValMin : Term := prog defer_check {
   fn G (self : &mut (Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a)) -> &mut Nat {
     match self { Pair(a, H) => {
       let e = &m (*a)[1];
@@ -1082,7 +1082,7 @@ example : progOk gmPin3at2 = true := by native_decide
 /-- The NEGATIVE control: the same pin with the KEY escaping. The fill puts the
     shared exit in the key slot, the pin puts it in the value slot, and the two
     sides are PRINTED differing in exactly those positions. -/
-def gmPinKey2at1 : Term := prog{
+def gmPinKey2at1 : Term := prog defer_check {
   fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a ~> (%PVSet2T) 1 (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
       let e0 = &m (*a)[0];
@@ -1097,7 +1097,7 @@ example : progRejects gmPinKey2at1 "pin is not met" = true := by native_decide
     opened. The printed sides are the finding — fill
     `arrCat 1 1 σ4 [Pair σ8 σ10]` against the update stuck at the σ4 prefix.
     Opening the prefix (one match) is what the walk does anyway. -/
-def gmPin2at1blind : Term := prog{
+def gmPin2at1blind : Term := prog defer_check {
   fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a ~> (%PVSet2T) 1 (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
       let e = &m (*a)[1];

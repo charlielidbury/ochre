@@ -33,6 +33,8 @@ import Dllbc.Tests.HashMap
 import Dllbc.Tests.HashMapDiff
 import Dllbc.Tests.HashMapPin
 import Dllbc.Tests.ElabSpans
+import Dllbc.Tests.Fence
+import Dllbc.Tests.AmbiguousMiddle
 
 /-! `Dllbc.Tests.FragmentAgreement` is DELIBERATELY ABSENT from this list, and is
     a REQUIRED merge check rather than a build one — `lake build

@@ -100,7 +100,7 @@ namespace Dllbc.Tests.S26Modes
 -- now; the callee line stays repeated because that is what was written.
 
 -- A1. THE PAIN. The proof is passed, and citing it afterwards is a use-after-move.
-def a1 : Term := prog{
+def a1 : Term := prog defer_check {
   fn UseLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
   fn Caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
   { UseLe(n, m, hnm); hnm };
@@ -142,7 +142,7 @@ example : progOk a4 = true := by native_decide
     that says the modes are doing work rather than decorating. -/
 
 def a5lo : Term := prog{ fn A5lo (fuel : Nat) -> Unit { match fuel { Z => (), S(f2) => () } }; () }
-def a5hi : Term := prog{ fn A5hi (Fuel : Nat) -> Unit { match Fuel { Z => (), S(f2) => () } }; () }
+def a5hi : Term := prog defer_check { fn A5hi (Fuel : Nat) -> Unit { match Fuel { Z => (), S(f2) => () } }; () }
 example : progOk a5lo = true := by native_decide
 example : progRejects a5hi "cannot be the scrutinee of a runtime match" = true := by native_decide
 
@@ -150,7 +150,7 @@ example : progRejects a5hi "cannot be the scrutinee of a runtime match" = true :
 -- existential with no ⇝ reading, so it cannot be spliced into a capital position
 -- directly — it must be `let`-bound first. An honest rejection rather than a
 -- silent fall-back to ⇒, and the `let`-bound form immediately above works.
-def a6bad : Term := prog{
+def a6bad : Term := prog defer_check {
   fn UseLeC (a : Nat, b : Nat, H : Le a b) -> Unit { () };
   fn GiveLe (a : Nat) -> Le a a { %LeRefl a };
   fn Caller (n : Nat) -> Unit { UseLeC(n, n, GiveLe(n)); () };
@@ -175,7 +175,7 @@ example : progOk a6ok = true := by native_decide
     the program being ill-formed some other way. -/
 
 -- B1. The ⇒-move.
-def b1hi : Term := prog{ fn B1 (N : Nat) -> Unit { let y = N; () }; () }
+def b1hi : Term := prog defer_check { fn B1 (N : Nat) -> Unit { let y = N; () }; () }
 def b1lo : Term := prog{ fn B1 (n : Nat) -> Unit { let y = n; () }; () }
 example : progRejects b1hi "cannot be ⇒-moved" = true := by native_decide
 example : progOk b1lo = true := by native_decide
@@ -183,13 +183,13 @@ example : progOk b1lo = true := by native_decide
 -- B2. The runtime match — §A5 above, which is where it earns its keep.
 
 -- B3. The borrow.
-def b3hi : Term := prog{ fn B3 (N : List Nat) -> Unit { let b = &m N; () }; () }
+def b3hi : Term := prog defer_check { fn B3 (N : List Nat) -> Unit { let b = &m N; () }; () }
 def b3lo : Term := prog{ fn B3 (n : List Nat) -> Unit { let b = &m n; () }; () }
 example : progRejects b3hi "cannot be borrowed" = true := by native_decide
 example : progOk b3lo = true := by native_decide
 
 -- B4. The write-through (⇐).
-def b4hi : Term := prog{ fn B4 (N : Nat) -> Unit { N := 3; () }; () }
+def b4hi : Term := prog defer_check { fn B4 (N : Nat) -> Unit { N := 3; () }; () }
 def b4lo : Term := prog{ fn B4 (n : Nat) -> Unit { n := 3; () }; () }
 example : progRejects b4hi "cannot be written through" = true := by native_decide
 example : progOk b4lo = true := by native_decide
@@ -203,7 +203,7 @@ def b5body : Term := .letIn ⟨1, "e"⟩ (.index (.var ⟨0, "N"⟩) (.ctorApp "
 -- statement: the statement's body is a block and `%t` is a block's final
 -- expression, so the escape hatch `decl{ … = %t }` provided is the ordinary
 -- splice here.
-def b5hi : Term := prog{ fn B5 (N : Nat) -> Unit { %b5body }; () }
+def b5hi : Term := prog defer_check { fn B5 (N : Nat) -> Unit { %b5body }; () }
 example : progRejects b5hi "cannot be indexed or sliced" = true := by native_decide
 
 -- B6. A capital binder handed to a LOWERCASE parameter. Same rejection as B1
@@ -211,7 +211,7 @@ example : progRejects b5hi "cannot be indexed or sliced" = true := by native_dec
 -- argument with ⇒, so the fence fires there. This is the direction that makes
 -- the fence coherent: a comptime binder cannot launder itself into runtime by
 -- being passed to something that wants a runtime value.
-def b6 : Term := prog{
+def b6 : Term := prog defer_check {
   fn UseLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
   fn Caller (n : Nat, m : Nat, Hnm : Le n m) -> Unit
   { UseLe(n, m, Hnm); () };
@@ -292,10 +292,10 @@ example : progRuns b7run = true := by native_decide
     signature is wrong); the call site is caught by `processArgs`, which matters
     for a table entry that was never itself checked. -/
 
-def b8 : Term := prog{ fn B8 (V : &mut List Nat) -> Unit { () }; () }
+def b8 : Term := prog defer_check { fn B8 (V : &mut List Nat) -> Unit { () }; () }
 example : progRejects b8 "telescope: parameter 'V' is capitalized" = true := by native_decide
 
-def b9 : Term := prog{
+def b9 : Term := prog defer_check {
   fn B8 (V : &mut List Nat) -> Unit { () };
   fn Caller () -> Unit { let x = Cons(1, Nil); B8(&m x); () };
   () }
@@ -351,7 +351,7 @@ example : Surface.reservedBinder "Hfuel" = false := by native_decide
 def c1 : Term := prog{
   fn C1 (v : &mut List Nat) -> Id (List Nat) (*v) (old *v) { let L = *v; Refl };
   () }
-def c1bad : Term := prog{
+def c1bad : Term := prog defer_check {
   fn C1bad (v : &mut List Nat) -> Id (List Nat) (*v) (old *v) { let l = *v; Refl };
   () }
 example : progOk c1 = true := by native_decide
@@ -362,13 +362,13 @@ example : progRejects c1bad "holds a hole (⊥) at return" = true := by native_d
 
 -- C2. The fence applies to a capital `let` exactly as to a capital parameter —
 -- so the snapshot above is a SPECIFICATION binding, not a free copy of the data.
-def c2 : Term := prog{ fn C2 (v : &mut List Nat) -> Unit { let L = *v; let y = L; () }; () }
+def c2 : Term := prog defer_check { fn C2 (v : &mut List Nat) -> Unit { let L = *v; let y = L; () }; () }
 example : progRejects c2 "cannot be ⇒-moved" = true := by native_decide
 
 -- C3. The right-hand side must have a ⇝ reading. A call's result is a fresh
 -- existential and has none, so a capital `let` cannot bind one — honest, and
 -- pointing at the lowercase `let` that can.
-def c3bad : Term := prog{
+def c3bad : Term := prog defer_check {
   fn GiveLe (a : Nat) -> Le a a { %LeRefl a };
   fn Caller (n : Nat) -> Unit { let P = GiveLe(n); () };
   () }
@@ -404,7 +404,7 @@ example : progOk d2 = true := by native_decide
 
 -- Fenced: the body tries to branch on it. Same type, same kind, same position as
 -- §A5's `fuel` — only the case differs, and only the case can decide this.
-def d3 : Term := prog{ fn D3 (N : Nat) -> Unit { match N { Z => (), S(k) => () } }; () }
+def d3 : Term := prog defer_check { fn D3 (N : Nat) -> Unit { match N { Z => (), S(k) => () } }; () }
 example : progRejects d3 "cannot be the scrutinee of a runtime match" = true := by native_decide
 
 /-! ## §E. Case is inert under ⇝ — pinned from both sides
@@ -490,7 +490,7 @@ def f1 : Term := prog{
 example : progOk f1 = true := by native_decide
 
 -- F2. The lowercase twin of the same seal: the call MOVES the proof.
-def f2 : Term := prog{
+def f2 : Term := prog defer_check {
   fn Caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
   { let N0 = n; let M0 = m;                 -- §2.4: the domains cite them
     let G = (λ (h : Le N0 M0). Z : Π (h : Le N0 M0) → Nat);
@@ -522,7 +522,7 @@ def f4 : Term := prog{
 example : progOk f4 = true := by native_decide
 
 -- F5. …and its lowercase twin moves, which is what says F4 is about the mode.
-def f5 : Term := prog{
+def f5 : Term := prog defer_check {
   fn Caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
   { let N0 = n; let M0 = m;                 -- §2.4: the domains cite them
     let G = λ (h : Le N0 M0). Z; let r = G(hnm); let s = G(hnm); hnm };
@@ -559,14 +559,14 @@ example : progOk g1 = true := by native_decide
 
 -- The legitimate-return case, pinned as the LIMITATION it is: `mk` means to be
 -- "the constant function at 1", and is refused.
-def g2 : Term := prog{
+def g2 : Term := prog defer_check {
   let Mk = (λ (x : Nat). λ (y : Nat). x : Π (x : Nat) → Π (y : Nat) → Nat);
   let k1 = Mk(1); () }
 example : progRejects g2 "partial application" = true := by native_decide
 
 -- Modes ARE expressible on such a Π — the elaboration is fine, the marker is
 -- there — and change nothing, which is the point.
-def g3 : Term := prog{
+def g3 : Term := prog defer_check {
   let Mk = (λ (X : Nat). λ (y : Nat). X : Π (X : Nat) → Π (y : Nat) → Nat);
   let k1 = Mk(1); () }
 example : progRejects g3 "partial application" = true := by native_decide
@@ -637,7 +637,7 @@ example : progOk qsish = true := by native_decide
 -- whose proof parameter is lowercase: the call would move an erased binder, and
 -- the fence says so. Which is the right division of labour — a caller cannot
 -- know whether a callee needs its proof at runtime, so the callee declares it.
-def qsishLo : Term := prog{
+def qsishLo : Term := prog defer_check {
   fn StepLo (v : &mut List Nat, b : Nat, h : Le (Len *v) b) -> Unit { () };
   fn UseLeC (a : Nat, b : Nat, H : Le a b) -> Unit { () };
   fn QsishLo [fuel] (fuel : Nat, v : &mut List Nat, Hfuel : Le (Len *v) fuel) -> Unit
@@ -653,7 +653,7 @@ example : progRejects qsishLo "cannot be ⇒-moved" = true := by native_decide
 
 -- H3. …and `Hfuel`'s neighbour cannot be scrutinized, which is the other half of
 -- §6's sentence: an erased index is erased, not merely copyable.
-def qsishBad : Term := prog{
+def qsishBad : Term := prog defer_check {
   fn QsishBad (v : &mut List Nat, N : Nat, HN : Id Nat (Len *v) N) -> Unit
     { match N { Z => (), S(k) => () } };
   () }
@@ -683,12 +683,12 @@ example : progOk qsish2 = true := by native_decide
     about the same parameter type. Modes resolve R16 (consumption); they do not
     touch R12 (staleness), and nothing in §6 claims otherwise. -/
 
-def h5hi : Term := prog{
+def h5hi : Term := prog defer_check {
   fn Step (v : &mut List Nat, b : Nat, H : Le (Len *v) b) -> Unit { () };
   fn H5hi (v : &mut List Nat, f : Nat, Hf : Le (Len *v) f) -> Unit
   { Step(&m *v, f, Hf); Step(&m *v, f, Hf); () };
   () }
-def h5lo : Term := prog{
+def h5lo : Term := prog defer_check {
   fn Step (v : &mut List Nat, b : Nat, H : Le (Len *v) b) -> Unit { () };
   fn H5lo (v : &mut List Nat, f : Nat, hf : Le (Len *v) f) -> Unit
   { Step(&m *v, f, hf); Step(&m *v, f, hf); () };
@@ -709,7 +709,7 @@ example : progRejects h5lo "does not have its parameter type" = true := by nativ
     return it. Capitalizing the caller's own binder is a claim about the CALLER's
     erasure, and a returned value is not erased. -/
 
-def h6hi : Term := prog{
+def h6hi : Term := prog defer_check {
   fn Step (v : &mut List Nat, b : Nat, H : Le (Len *v) b) -> Unit { () };
   fn H6hi (v : &mut List Nat, f : Nat, Hf : Le (Len *v) f) -> Le (Len (old *v)) f
   { Step(&m *v, f, Hf); Hf };
@@ -759,7 +759,7 @@ example : progOk h6lo = true := by native_decide
 def i1 : Term := prog{
   fn TakeLC (L : List Nat) -> Unit { () };
   let a = Cons(1, Nil); TakeLC(a); let b = a; () }
-def i1lo : Term := prog{
+def i1lo : Term := prog defer_check {
   fn TakeL (l : List Nat) -> Unit { () };
   let a = Cons(1, Nil); TakeL(a); let b = a; () }
 example : progOk i1 = true := by native_decide
@@ -863,7 +863,7 @@ namespace Dllbc.Tests.S27Mixed
     (`Id Nat Z (S Z)`) discharged by a `Refl` that cannot inhabit it. It CHECKED
     before this commit. -/
 
-def a1lie : Term := prog{
+def a1lie : Term := prog defer_check {
   fn HeadLie (v : &mut List Nat, hi : Le (S Z) (Len *v))
         -> Σ (x : &mut Nat). Id Nat Z (S Z)
         { match v {
@@ -904,7 +904,7 @@ example : progOk a5honest = true := by native_decide
 
 -- A2: the SAME false claim with no borrow in the return type. The pin-and-check
 -- path runs, and always did.
-def a2lie : Term := prog{
+def a2lie : Term := prog defer_check {
   fn ValLie (v : &mut List Nat, hi : Le (S Z) (Len *v))
         -> Σ (x : Nat). Id Nat Z (S Z)
         { Pair(Z, Refl) };
@@ -912,7 +912,7 @@ def a2lie : Term := prog{
 example : progRejects a2lie "does not have return type" = true := by native_decide
 
 -- A5a: the direct route to the same absurdity, refused as it always was.
-def a5direct : Term := prog{
+def a5direct : Term := prog defer_check {
   fn Direct () -> Bot { Znots Z Refl };
   () }
 example : progRejects a5direct "does not have return type" = true := by native_decide
@@ -950,9 +950,9 @@ example : progOk twoBorrows = true := by native_decide
     M27 the seal is the ONLY audit site, so a containment that fixed only the
     declaration path would have fixed only the half being deleted. -/
 
-def mixedSeal : Term := prog{ Π (v : &mut List Nat) → Σ (x : &mut Nat). Id Nat Z (S Z) }
+def mixedSeal : Term := prog defer_check { Π (v : &mut List Nat) → Σ (x : &mut Nat). Id Nat Z (S Z) }
 
-def sealProg : Term := prog{
+def sealProg : Term := prog defer_check {
   let F = (λ(v : &mut List Nat) { match v { Nil => (), Cons(hd, tl) => Pair(&m *hd, Refl) } } : %mixedSeal);
   () }
 
@@ -967,7 +967,7 @@ example : progRejects sealProg "only valid at a telescope position" = true := by
 
 -- Not vacuous: an all-borrow ascription in the same position is accepted, so the
 -- refusal is about the MIXTURE and not about sealing a cursor at all.
-def borrowSeal : Term := prog{ Π (v : &mut List Nat) → &mut List Nat }
+def borrowSeal : Term := prog defer_check { Π (v : &mut List Nat) → &mut List Nat }
 def sealOk : Term := prog{ let F = (λ(v : &mut List Nat) { v } : %borrowSeal); () }
 example : progOk sealOk = true := by native_decide
 
@@ -990,7 +990,7 @@ example : progOk sealOk = true := by native_decide
     position unwritable is the honest move. A parameter passed onward into the
     result owes back the type it was lent. -/
 
-def e1lie : Term := prog{
+def e1lie : Term := prog defer_check {
   fn ThroughLie (v : &mut (s : List Nat ~> Id Nat Z (S Z))) -> &mut List Nat
         { v };
   () }
@@ -1074,7 +1074,7 @@ example : progOk swapS01 = true := by native_decide
 -- Caller: borrow, call swapS01, demand the owner (recovering the Σ), open it to
 -- l + the carried proof `pf : Id (Len l) (Len [1,2,3])`. The evidence survives the
 -- opaque group-end — pf is in scope downstream though l itself is opaque.
-def swapCaller : Term := withSwapS01 prog{
+def swapCaller : Term := withSwapS01 prog defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &m x;
   SwapS01(b, ());
@@ -1141,11 +1141,11 @@ example : (match tailEnvs swapCaller with
     has now outlived two complete changes of reason — but the needle is the FIX,
     which is the part a reader can act on. -/
 
-def fSeal : Term := prog{ Π (v : &mut List Nat) → Unit }
+def fSeal : Term := prog defer_check { Π (v : &mut List Nat) → Unit }
 
 -- F1. A sealed borrow-taking function, NO recursor anywhere, bound to a second
 -- slot. This is the shape c1's §G3b has both machines accepting with different Ωs.
-def f1read : Term := prog{
+def f1read : Term := prog defer_check {
   let F = (λ(v : &mut List Nat) { () } : %fSeal);
   let g = F;
   () }
@@ -1180,7 +1180,7 @@ example : progOk f1readCap = true := by native_decide
 -- is the same one F1 gets, which is the point — there is no longer a class here to
 -- be isolated from.
 def gSeal : Term := prog{ Π (x : Nat) → Nat }
-def f2read : Term := prog{
+def f2read : Term := prog defer_check {
   let F = (λ(x : Nat) { x } : %gSeal);
   let g = F;
   () }
@@ -1399,7 +1399,7 @@ example : progOk zeroAllF = true := by native_decide
 -- it used to be `fnElab` on a record update, wrapped in a hand-built `letIn`).
 -- `FnStmt` §E is the same function WITH the hint, refused at decision 8; the two
 -- sit either side of the distinction this paragraph is about.
-def noHintStmt : Term := prog{
+def noHintStmt : Term := prog defer_check {
   fn ZeroAll (v : &mut List Nat) -> Unit {
     match v { Nil => (), Cons(hd, tl) => { *hd := 0; ZeroAll(tl); () } } };
   () }
@@ -1562,7 +1562,7 @@ example : progOk a2 (.const "Nat") = true := by native_decide
 example : progDiff a2 = true := by native_decide
 -- The claim that it was really the seal that made `f` callable: the same program
 -- with `f` bound to a NON-function is refused, and the refusal names the capture.
-def a2cap : Term := prog{
+def a2cap : Term := prog defer_check {
   let f = 3;
   let G = (λ(y : Nat){ let z = f; y } : Π (y : Nat) → Nat);
   () }
@@ -1594,7 +1594,7 @@ example : progDiff push = true := by native_decide
 -- B1. A sealed function that does not inhabit its ascription is refused AT ITS
 -- OWN `let`, with nothing downstream of it — the binding is the demand site,
 -- which is what "the audit is the checking of the seal" means (§5).
-def b1 : Term := prog{ let F = (λ(x : Nat){ x } : Π (x : Nat) → Bool); () }
+def b1 : Term := prog defer_check { let F = (λ(x : Nat){ x } : Π (x : Nat) → Bool); () }
 example : progRejects b1 "does not have return type (Bool)" = true := by native_decide
 
 /-- ### B2. The vacuous twin, kept beside it
@@ -1613,7 +1613,7 @@ example : progRejects b2live "does not have return type (Nat)" (.const "Nat") = 
 -- B3. **Program order**, pinned the only way it can be: two lies, and the one
 -- that is reported is the FIRST. (Both messages have the same shape, so the
 -- needles are the types, which differ.)
-def b3 : Term := prog{
+def b3 : Term := prog defer_check {
   let F = (λ(x : Nat){ x } : Π (x : Nat) → Bool);
   let G = (λ(x : Nat){ True } : Π (x : Nat) → Unit);
   () }
@@ -1635,7 +1635,7 @@ example : progRejects b3 "does not have return type (Unit)" = false := by native
     why §8 can say mutual recursion "becomes unwritable" rather than "stays
     rejected". Note WHERE it is caught: at `g`'s own seal, because the audit is at
     the binding, so the diagnosis does not wait for a call. -/
-def c1 : Term := prog{
+def c1 : Term := prog defer_check {
   let G = (λ(y : Nat){ H(y) } : Π (y : Nat) → Nat);
   let H = (λ (x : Nat). x : Π (x : Nat) → Nat);
   () }
@@ -1733,7 +1733,7 @@ example : progDiff d1 = true := by native_decide
 -- D2a. DATA. (M26-C's a3bad, now with the message that says which of the two
 -- things went wrong — it names a binding in scope, and that binding is not a
 -- function.)
-def d2data : Term := prog{
+def d2data : Term := prog defer_check {
   let n = 3;
   let G = (λ(a : Nat){ let z = n; a } : Π (a : Nat) → Nat);
   () }
@@ -1747,7 +1747,7 @@ example : progOk d2dataOk (.const "Nat") = true := by native_decide
 
 -- D2b. A BORROW — the case constraint 5 is really about, since a captured borrow
 -- is a suspended loan with no scope to end it in.
-def d2borrow : Term := prog{
+def d2borrow : Term := prog defer_check {
   let l = Cons(1, Nil);
   let b = &m l;
   let G = (λ(a : Nat){ *b := Nil; a } : Π (a : Nat) → Nat);
@@ -1767,7 +1767,7 @@ example : progRejects d2free "not bound anywhere above it" = true := by native_d
 -- an oversight: §5's `Qed` binding is a value, and a body that wants it should
 -- take it as a capital parameter (which is exactly what §6 built). Recorded as a
 -- limitation with its route beside it, not as a defect.
-def d3 : Term := prog{
+def d3 : Term := prog defer_check {
   let cert = (LeRefl 3 : Le 3 3);
   let G = (λ(a : Nat){ let z = cert; a } : Π (a : Nat) → Nat);
   () }
@@ -1819,7 +1819,7 @@ example : progOk d3cite = true := by native_decide
 -- And the ⇒ half is still shut, which is why "citable" is not "usable anywhere":
 -- `let z = C` inside the body MOVES a comptime binder, and the fence takes it
 -- before §2.4 is consulted. Capture is open; consumption is not (§8 non-goals).
-def d3move : Term := prog{
+def d3move : Term := prog defer_check {
   let C = (LeRefl 3 : Le 3 3);
   let G = (λ(a : Nat){ let z = C; a } : Π (a : Nat) → Nat);
   () }

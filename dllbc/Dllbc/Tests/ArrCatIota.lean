@@ -365,7 +365,7 @@ def gmDecSymPinRefl : Term := prog{
     saying that the decomposition spelling did not weaken anything at a concrete
     index either. -/
 
-def gmDecSymPinKey : Term := prog{
+def gmDecSymPinKey : Term := prog defer_check {
   fn G (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
         self : &mut (s : Σ0 (a : Array n (Σ (k : Nat). Nat)). AllK7 n a
                        ~> (%PVSetDecT) n i r (*res) s)) -> &mut Nat {
@@ -396,7 +396,7 @@ def gmDecConc2at1open : Term := prog{
 
 /-- The wrong SLOT: the pin says the update happens at `i`, the carve reaches
     `i` but the pin is instantiated at index `Z`. -/
-def gmDecSymPinWrongSlot : Term := prog{
+def gmDecSymPinWrongSlot : Term := prog defer_check {
   fn G (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
         self : &mut (s : Σ0 (a : Array n (Σ (k : Nat). Nat)). AllK7 n a
                        ~> (%PVSetDecT) n Z (Add i r) (*res) s)) -> &mut Nat {

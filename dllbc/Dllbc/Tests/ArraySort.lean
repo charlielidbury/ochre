@@ -237,7 +237,7 @@ def qSuffHonest : Term := prog{ Le %nQ %fuelQ }
     shared at all (M28 D1's rule: a difference inside a body, at a subterm naming a
     binder the `fn` lowering mints an id for, has no splice that can reach it). -/
 
--- **`check` here is the splice auto-deferral's demonstration on the real thing.**
+-- **This block is the splice auto-deferral's demonstration on the real thing.**
 -- This is the twin template: one body, five spliced return types, instantiated
 -- below both at types it satisfies and at types it does not. Asking for the check
 -- is answered "deferred, the assembled value is not closed" — silently, with a
@@ -245,7 +245,7 @@ def qSuffHonest : Term := prog{ Le %nQ %fuelQ }
 -- closed value and is checked at its instantiations by construction. Written here
 -- rather than left bare so that the deferral is exercised by the suite rather than
 -- only by the demo file (docs/05 §2a).
-def arrUnder (sret pret qret qsuff tail : Term) : Term := prog check{
+def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
   fn SplitA [fuel] (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
       -> %sret
       { match m {
@@ -569,7 +569,7 @@ example : progOk (arrUnder (prog{
     rather than a choice: what varies is inside the body, at a statement naming
     binders the `fn` lowering mints ids for. It carries only `splitA`, since nothing
     else is needed to refuse it. -/
-def splitANoSwap : Term := prog{
+def splitANoSwap : Term := prog defer_check {
   fn SplitA [fuel] (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
       -> %sHonest
       { match m {
@@ -683,7 +683,7 @@ example : progRejects (arrUnder sHonest pHonest (prog{
 -- The three-way carve's ONE cited obligation is load-bearing: drop `LeAdd` and the
 -- carve has nothing to select a leaf with. (The pivot carve needs no evidence at all —
 -- route (a) reduces `Le 1 (S jj)` to ⊤ — so this is the only citation in the body.)
-def carveNoEv : Term := prog{
+def carveNoEv : Term := prog defer_check {
   fn CarveNoEv (n : Nat, k : Nat, jj : Nat, Heq : Id Nat n (Add k (S jj)),
                 a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; k ; S jj];
@@ -994,7 +994,7 @@ example : progOk c6CarveAfterCall = true := by native_decide
     every access at index 0 of a segment the program carved — is forced rather than
     chosen. ¶6's "a segment with its own zero" is a constraint, not a convenience. -/
 
-def twoCursor : Term := prog{
+def twoCursor : Term := prog defer_check {
   fn TwoCursor (n : Nat, i : Nat, j : Nat, Pij : Le (S i) j, Pjn : Le (S j) n,
                 a : &mut (Array n Nat)) -> Unit {
     let x = (*a)[i | LeTrans (S i) j n Pij (LePredL j n Pjn)];
@@ -1005,7 +1005,7 @@ example : progRejects twoCursor "no leaf" = true := by native_decide
 
 -- Route (a) cannot rescue it either: the second request does not START a segment, so
 -- there is no leaf for the supplied residue to decompose.
-def twoCursorRes : Term := prog{
+def twoCursorRes : Term := prog defer_check {
   fn TwoCursorRes (n : Nat, i : Nat, j : Nat, r1 : Nat, r2 : Nat,
                    a : &mut (Array n Nat)) -> Unit {
     let x = &m (*a)[i ; 1 ; r1 | LeAdd i (S r1)];
@@ -1031,7 +1031,7 @@ example : progOk (withCitedCarve prog{ () }) = true := by native_decide
 
 /-- (1) A caller whose numbers are CONSISTENT: `n = 3, i = 1, j = 1`, and `Refl`
     inhabits `Id Nat 3 (Add 1 (S 1))` because both sides compute to 3. -/
-def citedCallerOk : Term := withCitedCarve prog{
+def citedCallerOk : Term := withCitedCarve prog defer_check {
   let z = Arr(1, 2, 3); let b = &m z; CitedCarve(3, 1, 1, Refl, b); let y = z; () }
 example : progOk citedCallerOk = true := by native_decide
 
@@ -1044,7 +1044,7 @@ example : runsAtAll citedCallerOk = true := by native_decide
     checked before the ruling and then got stuck executing; now `Refl` cannot inhabit
     `Id Nat 2 (Add 5 (S 5))` and the CALLER is rejected, at its own boundary, with the
     constraint recorded in the signature it violated. -/
-def citedCallerBad : Term := withCitedCarve prog{
+def citedCallerBad : Term := withCitedCarve prog defer_check {
   let z = Arr(1, 2); let b = &m z; CitedCarve(2, 5, 5, Refl, b); let y = z; () }
 example : progOk citedCallerBad = false := by native_decide
 

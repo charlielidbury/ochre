@@ -416,7 +416,7 @@ example : expectEnv
 -- leaf: it straddles the boundary. So the rejection needs no owned-versus-loaned test
 -- at all — two segments cannot overlap, so a range crossing a segment boundary has no
 -- leaf, full stop. No arithmetic was performed and no proof could have helped.
-example : expectErr prog{ let a = Arr(3, 1, 2, 7, 5);
+example : expectErr prog defer_check { let a = Arr(3, 1, 2, 7, 5);
                            let p = &m a[0 ; 3];
                            let q = &m a[2 ; 3];
                            () }
@@ -424,7 +424,7 @@ example : expectErr prog{ let a = Arr(3, 1, 2, 7, 5);
 
 -- OUT OF RANGE — premise (2) has no inhabitant and none can be supplied, because
 -- `Le (Add lo cnt) n` computes to ⊥.
-example : expectErr prog{ let a = Arr(3, 1, 2); let m = &m a[1 ; 3]; () }
+example : expectErr prog defer_check { let a = Arr(3, 1, 2); let m = &m a[1 ; 3]; () }
   "containment obligation" = true := by native_decide
 example : expectErr prog{ let a = Arr(3, 1, 2); let x = a[3]; () }
   "containment obligation" = true := by native_decide
@@ -467,7 +467,7 @@ example : expectEnv prog{ let a = Arr(3, 1, 2, 7, 5);
 
 -- …and the killed borrow is stuck at its next use, which is where the rejection
 -- actually lands.
-example : expectErr prog{ let a = Arr(3, 1, 2, 7, 5);
+example : expectErr prog defer_check { let a = Arr(3, 1, 2, 7, 5);
                            let p = &m a[0 ; 3];
                            let q = &m a[1];
                            (*p)[0] := 4;
@@ -539,7 +539,7 @@ example : progOk halvesBoth = true := by native_decide
 -- second demand-ends the first, so the later use of `l` peels a vacant slot —
 -- which is the invariant biting, and what says the acceptance above is about the
 -- ranges being disjoint and not about carving twice being allowed.
-def halvesSame : Term := prog{
+def halvesSame : Term := prog defer_check {
   fn HalvesSame (n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; k | H];
     let r = &m (*a)[Z ; k | H];
@@ -584,7 +584,7 @@ example : progRejects halvesSame "cannot peel a vacant slot" = true := by
 
 -- Premise (2), UNPROVED BOUND — "the *interesting* rejection: the program is not
 -- wrong, it is unjustified". Same body, evidence not cited.
-def noEvidence : Term := prog{
+def noEvidence : Term := prog defer_check {
   fn NoEvidence (n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; k]; () };
   () }
@@ -593,7 +593,7 @@ example : progRejects noEvidence "containment obligation" = true := by native_de
 -- Premise (2), WRONG EVIDENCE. `h : Le n k` is a perfectly good term of a perfectly
 -- good type; it is just not the obligation. The evidence's TYPE is the selector, so a
 -- term of the wrong type selects no leaf.
-def wrongEvidence : Term := prog{
+def wrongEvidence : Term := prog defer_check {
   fn WrongEvidence (n : Nat, k : Nat, H : Le n k, a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; k | H]; () };
   () }
@@ -603,7 +603,7 @@ example : progRejects wrongEvidence "containment obligation" = true := by native
 -- compound neutral rather than a flexible σ, so `m ≡ Add lo' (Add cnt rest)` has no
 -- solution by refinement. Rejected with the remedy in the message, which is the one
 -- the north star already uses: take the length as a parameter.
-def rigidLength : Term := prog{
+def rigidLength : Term := prog defer_check {
   fn RigidLength (p : Nat, q : Nat, k : Nat, H : Le k (Add p q),
                   a : &mut (Array (Add p q) Nat)) -> Unit {
     let l = &m (*a)[Z ; k | H]; () };
@@ -645,7 +645,7 @@ example : progOk walk = true := by native_decide
     asserts. The sweep itself is still exercised by every carve in this file that
     checks; what is gone is this particular witness to it. -/
 
-def walkArr : Term := prog{
+def walkArr : Term := prog defer_check {
   fn WalkArr [a] (fuel : Nat, n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
     match fuel {
       Z => (),
@@ -909,7 +909,7 @@ def rng1Cited : Term := prog{
 example : progOk rng1Cited = true := by native_decide
 
 -- Not vacuous: the bound is the one thing being checked, and a weaker one fails.
-def idxWeakBound : Term := prog{
+def idxWeakBound : Term := prog defer_check {
   fn IdxWeakBound (n : Nat, i : Nat, H : Le i n, a : &mut (Array n Nat)) -> Unit {
     let e = &m (*a)[i | H]; () };
   () }
@@ -977,7 +977,7 @@ example : progOk splitTwo = true := by native_decide
     built: it changes the surface of the design's one new rule, which is the team
     lead's call, not this milestone's. -/
 
-def pivotCarve : Term := prog{
+def pivotCarve : Term := prog defer_check {
   fn PivotCarve (n : Nat, i : Nat, H1 : Le i n, a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; i | H1];
     let p = &m (*a)[i];
@@ -1052,7 +1052,7 @@ example : progOk sigCallerOk = true := by native_decide
     residue through with a length that happens to be nameable. And there is no right
     term to write, because the residue's length is the σ premise (3) minted. -/
 
-def sigCallerWrong : Term := prog{
+def sigCallerWrong : Term := prog defer_check {
   fn SliceTouch (s : Σ (c : Nat). &mut (Array c Nat)) -> Unit { () };
   fn SigCallerWrong (n : Nat, i : Nat, H1 : Le i n, a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; i | H1];
@@ -1067,7 +1067,7 @@ example : progRejects sigCallerWrong "does not have its parameter type"
 -- fuel bound ABOUT the slice's length, and that length lives inside the Σ where no
 -- telescope entry can mention it. Nesting the proof inside too is where it goes, and
 -- that is a second level the machinery does not have.
-def recSlice : Term := prog{
+def recSlice : Term := prog defer_check {
   fn RecSlice [fuel] (fuel : Nat, s : Σ (c : Nat). Σ (H : Le c fuel). &mut (Array c Nat)) -> Unit {
     () };
   () }
@@ -1158,7 +1158,7 @@ example : progOk threeWayAll = true := by native_decide
 -- reason it beats merely naming the residue: `Le 1 rest` was unwritable, and after
 -- `rest := S j` the obligation is ⊤. Dropping `LeAdd` from the FIRST carve, whose
 -- obligation does not compute away, is still rejected.
-def threeWayNoFirstEv : Term := prog{
+def threeWayNoFirstEv : Term := prog defer_check {
   fn ThreeWayNoFirstEv (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
                         a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; i ; S j | LeRefl i | Heq];
@@ -1174,7 +1174,7 @@ example : progRejects threeWayNoFirstEv "containment obligation" = true := by na
     program must CITE the equation, exactly as M17 requires of every other cross-boundary
     constraint. Before the ruling this checked, and a caller instantiating `n = 2` with
     `i = j = 5` checked with it and then got STUCK when executed. -/
-def threeWayUncited : Term := prog{
+def threeWayUncited : Term := prog defer_check {
   fn ThreeWayUncited (n : Nat, i : Nat, j : Nat, a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; i ; S j | LeAdd i (S j)];
     () };
@@ -1184,7 +1184,7 @@ example : progRejects threeWayUncited "may not impose it by refining" = true := 
 
 -- …and the citation's TYPE is what licenses: a well-typed equation about the wrong
 -- decomposition selects nothing.
-def threeWayWrongEq : Term := prog{
+def threeWayWrongEq : Term := prog defer_check {
   fn ThreeWayWrongEq (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S (S j))),
                       a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | Heq];
@@ -1196,7 +1196,7 @@ example : progRejects threeWayWrongEq "cited decomposition does not have type" =
 -- A LYING residue is rejected: the supplied extent must actually decompose the leaf,
 -- and premise (3) is the thing that checks it. Here `j` is claimed where `S j` is
 -- needed, so the solution transition has no solution.
-def threeWayLyingResidue : Term := prog{
+def threeWayLyingResidue : Term := prog defer_check {
   fn ThreeWayLyingResidue (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i j),
                            a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; i ; j | LeAdd i j | Heq];
@@ -1376,7 +1376,7 @@ example : progOk setSorted = true := by native_decide
 
 -- …and the same body with the writes the wrong way round is rejected: `SortedA` unfolds
 -- to `Σ Bot. …`, so the predicate is not vacuous.
-def setSortedLie : Term := prog{
+def setSortedLie : Term := prog defer_check {
   fn SetSortedLie (a : &mut (Array 2 Nat)) -> SortedA 2 (*a) {
     (*a)[0] := 2;
     (*a)[1] := 1;
@@ -1459,7 +1459,7 @@ example : progOk sort2 = true := by native_decide
 
 -- Forget the swap and still claim sortedness. The False branch's goal is `Le x y`,
 -- which is exactly what the branch equation says is FALSE.
-def sort2LieSorted : Term := prog{
+def sort2LieSorted : Term := prog defer_check {
   fn Sort2LieSorted (a : &mut (Array 2 Nat)) -> SortedA 2 (*a) {
     let x = (*a)[0];
     let y = (*a)[1];
@@ -1473,7 +1473,7 @@ example : progOk sort2LieSorted = false := by native_decide
 
 -- Do the swap, then claim the counts did not move. `CountSwap2` is genuinely load-
 -- bearing: `Refl` in its place is rejected.
-def sort2LieCount : Term := prog{
+def sort2LieCount : Term := prog defer_check {
   fn Sort2LieCount (a : &mut (Array 2 Nat))
       -> Σ0 (Hs : SortedA 2 (*a)). (Π (X : Nat) → Id Nat (CountA X 2 (*a)) (CountA X 2 (old *a))) {
     let x = (*a)[0];

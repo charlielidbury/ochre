@@ -71,7 +71,7 @@ example : progOk pairNatTwice = true := by native_decide
     it. One component is data proper, so the aggregate is, and duplicating it
     would be the silent copy §2.1 exists to prevent. The negative control for the
     probe above: the two programs differ in one type. -/
-def pairListTwice : Term := prog{
+def pairListTwice : Term := prog defer_check {
   fn Snk (p : (Σ (a : Nat). List Nat)) -> Unit { () };
   fn Chain (p : (Σ (a : Nat). List Nat)) -> Unit { let x = Snk(p); let y = Snk(p); () };
   () }
@@ -88,7 +88,7 @@ example : progRejects pairListTwice "p#0 holds ⊥ (use-after-move" = true := by
     collapses a node to a knowledge leaf only when EVERY child is knowledge, so
     this value never reaches the `Pair` rule at all — it takes `indexKindV`'s
     `node` answer, which is and was MOVE. -/
-def sliceTwice : Term := prog{
+def sliceTwice : Term := prog defer_check {
   fn SliceTouch (s : Σ (c : Nat). &mut (Array c Nat)) -> Unit { () };
   fn Twice (s : Σ (c : Nat). &mut (Array c Nat)) -> Unit {
     let x = SliceTouch(s); let y = SliceTouch(s); () };
@@ -157,7 +157,7 @@ example : progOk nestedPackTwice = true := by native_decide
     long-standing "proofs move because `indexKindTy` does not recognize stuck
     proposition spines" reaching the Σ rule unchanged: M34 adds a way to say
     "erased", it does not add a way to guess it. -/
-def unmarkedPropTwice : Term := prog{
+def unmarkedPropTwice : Term := prog defer_check {
   fn Snk (p : (Σ (n : Nat). Le n 15)) -> Unit { () };
   fn Chain (p : (Σ (n : Nat). Le n 15)) -> Unit { let a = Snk(p); let b = Snk(p); () };
   () }
@@ -170,7 +170,7 @@ example : progRejects unmarkedPropTwice "p#0 holds ⊥ (use-after-move" = true :
     proof sits at a lowercase binder — a runtime component of stuck type. Capitalise
     that binder and the pack copies (`nestedPackTwice` above is that program).
     Pinned because the two read alike and the mode is the whole difference. -/
-def tailMarkedWrongEndTwice : Term := prog{
+def tailMarkedWrongEndTwice : Term := prog defer_check {
   fn Snk (p : (Σ (n : Nat). Σ0 (h : Le n 15). Unit)) -> Unit { () };
   fn Chain (p : (Σ (n : Nat). Σ0 (h : Le n 15). Unit)) -> Unit {
     let a = Snk(p); let b = Snk(p); () };
@@ -224,7 +224,7 @@ example : (match runProgram pairNatConcreteTwice with
 /-- …and the negative control, executing: a pack with a `List` in it is refused
     on the SECOND consuming call, at a concrete value rather than at a σ. The two
     machines agree about the move as well as about the copy. -/
-def pairListConcreteTwice : Term := prog{
+def pairListConcreteTwice : Term := prog defer_check {
   fn Snk (p : (Σ (a : Nat). List Nat)) -> Unit { () };
   let q = Pair(4, Cons(1, Nil));
   let out = Snk(q);
@@ -251,7 +251,7 @@ example : progRejects pairListConcreteTwice "q#0 holds ⊥ (use-after-move" = tr
     index-kind, so it is not exempt and BOTH machines move the pack. -/
 
 /-- Used TWICE: refused, and refused for the same reason in both machines. -/
-def packListTail : Term := prog{
+def packListTail : Term := prog defer_check {
   fn Snk (p : (Σ0 (n : Nat). List Nat)) -> Unit { () };
   fn Chain (p : (Σ0 (n : Nat). List Nat)) -> Unit { let a = Snk(p); let b = Snk(p); () };
   let q = Pair(3, Cons(1, Nil));

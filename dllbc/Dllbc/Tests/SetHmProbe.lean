@@ -114,7 +114,7 @@ def symCarveUnit : Term := prog{
       match e { Pair(kk, vv) => () } } } };
   () }
 
-def symCarveEsc : Term := prog{
+def symCarveEsc : Term := prog defer_check {
   fn G (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
         self : &mut (Σ0 (a : Array n (Σ (k : Nat). Nat)). AllK7 n a)) -> &mut Nat {
     match self { Pair(a, H) => {
@@ -175,7 +175,7 @@ def gmConc2at1open : Term := prog{
         match e { Pair(kk, vv) => &m *vv } } } } } };
   () }
 
-def gmConc2at1blind : Term := prog{
+def gmConc2at1blind : Term := prog defer_check {
   fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a
                        ~> (%PVSetNT) 2 1 (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
@@ -185,7 +185,7 @@ def gmConc2at1blind : Term := prog{
 
 /-! ### §3.2 …and the flagship's own shape: SYMBOLIC extent, SYMBOLIC index -/
 
-def gmSymPinFold : Term := prog{
+def gmSymPinFold : Term := prog defer_check {
   fn G (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
         self : &mut (s : Σ0 (a : Array n (Σ (k : Nat). Nat)). AllK7 n a
                        ~> (%PVSetNT) n i (*res) s)) -> &mut Nat {
@@ -235,7 +235,7 @@ def gmSymAt1 : Term := prog{
 
 /-- The same step WITHOUT opening element 0 — the blind version of `gmSymAt1`,
     isolating the open from the extent. -/
-def gmSymAt1blind : Term := prog{
+def gmSymAt1blind : Term := prog defer_check {
   fn G (m : Nat, r : Nat, hd : Id Nat m (Add (S Z) (S r)),
         self : &mut (s : Σ0 (a : Array m (Σ (k : Nat). Nat)). AllK7 m a
                        ~> (%PVSetNT) m (S Z) (*res) s)) -> &mut Nat {
@@ -271,7 +271,7 @@ def decompExtent : Term := prog{
       match e { Pair(kk, vv) => () } } } };
   () }
 
-def gmSymPinDecomp : Term := prog{
+def gmSymPinDecomp : Term := prog defer_check {
   fn G (i : Nat, r : Nat, lo : Array i (Σ (k : Nat). Nat), k0 : Nat,
         hi : Array r (Σ (k : Nat). Nat),
         self : &mut (s : Σ0 (a : Array (Add i (S r)) (Σ (k : Nat). Nat)). AllK7 (Add i (S r)) a
@@ -295,7 +295,7 @@ def gmSymPinDecomp : Term := prog{
     the key slot and the pin puts it in the value slot, so a discharge that
     accepted this would accept an escaping borrow onto a hashed cell. -/
 
-def gmSymAt1Key : Term := prog{
+def gmSymAt1Key : Term := prog defer_check {
   fn G (m : Nat, r : Nat, hd : Id Nat m (Add (S Z) (S r)),
         self : &mut (s : Σ0 (a : Array m (Σ (k : Nat). Nat)). AllK7 m a
                        ~> (%PVSetNT) m (S Z) (*res) s)) -> &mut Nat {
@@ -372,7 +372,7 @@ def packWalk : Term := prog{
 /-- The NEGATIVE control: the same walk returning the KEY borrow. Everything else
     identical, so a green verdict here would mean the pin accepted an escaping
     borrow onto a cell the packed invariant reads. -/
-def packWalkKey : Term := prog{
+def packWalkKey : Term := prog defer_check {
   fn WalkAKey [i] (i : Nat, r : Nat,
       arr : &mut (t : Array (Add i (S r)) (Σ (k : Nat). Nat)
                     ~> (%AVSetT) i (*res) (Add i (S r)) t)) -> &mut Nat {

@@ -116,7 +116,7 @@ example : progOk carveRejoinEq = true := by native_decide
 
 /-- A genuinely un-rejoined hole: the middle segment is moved out and not
     refilled. Red before the fix and after it, at the hole hunt. -/
-def packCarveHole : Term := prog{
+def packCarveHole : Term := prog defer_check {
   fn Touch (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
             self : &mut (Σ0 (a : Array n Nat). SortedA n a)) -> Unit {
     let Pair(arr, HS) = *self;
@@ -137,7 +137,7 @@ example : progRejects packCarveHole
     array that was there before. This is the assertion that the fold did not make
     the audit vacuous: the only thing it added is the ability to SAY what the
     array is, and saying it is what exposes the change. -/
-def packCarveWrite : Term := prog{
+def packCarveWrite : Term := prog defer_check {
   fn Touch (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
             self : &mut (Σ0 (a : Array n Nat). SortedA n a)) -> Unit {
     let Pair(arr, HS) = *self;

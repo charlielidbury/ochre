@@ -113,7 +113,7 @@ def withNth (rest : Term) : Term := prog{
 example : progOk (withNth prog{ () }) = true := by native_decide
 
 /-- The round trip: get position 1, write 9 through it, end the group, read the list. -/
-def getMutRoundTrip : Term := withNth prog{
+def getMutRoundTrip : Term := withNth prog defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &m x;
   let r = Nth(b, 1, ());
@@ -156,7 +156,7 @@ example : runY getMutRoundTrip == some (vlist [1, 9, 3]) := by native_decide
     `Nth`'s own body reaches position 1 through a recursive call. It is the same
     program as above; it is called out separately because if the pin composes for
     `i = 0` and not for `i = 1`, the mechanism is the shallow one and not the law. -/
-def getMutRoundTripHead : Term := withNth prog{
+def getMutRoundTripHead : Term := withNth prog defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &m x;
   let r = Nth(b, 0, ());
@@ -202,7 +202,7 @@ example : runY getMutRoundTripHead == some (vlist [7, 2, 3]) := by native_decide
     reads non-destructively too, and does the same job here at the cost of splitting
     the run into two paths — either would serve; the comptime deref keeps one path so
     the environment below is a single statement. -/
-def readOnlyCaller : Term := withNth prog{
+def readOnlyCaller : Term := withNth prog defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &m x;
   let r = Nth(b, 1, ());
@@ -242,7 +242,7 @@ example : runY readOnlyCaller == some (vlist [1, 2, 3]) := by native_decide
     Today this program is ACCEPTED — it is `getMutRoundTrip` under a different name,
     and `Nth` carries no pin to violate. The milestone must flip it, and only for the
     pinned cursor: the unpinned `Nth` above must go on accepting it. -/
-def readOnlyViolated : Term := withNth prog{
+def readOnlyViolated : Term := withNth prog defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &m x;
   let r = Nth(b, 1, ());
@@ -291,7 +291,7 @@ def withSplit (rest : Term) : Term := prog{
     caller to learn anything from it. -/
 example : progOk (withSplit prog{ () }) = true := by native_decide
 
-def splitCaller : Term := withSplit prog{
+def splitCaller : Term := withSplit prog defer_check {
   let z = Arr(3, 1, 2);
   let b = &m z;
   let pr = SplitAtMut(b);
@@ -334,7 +334,7 @@ example : runY splitCaller == some (varr [9, 8, 7]) := by native_decide
 
     Stated on the list cursor rather than the array one because the array's own
     non-trivial owed types are longer than the point. -/
-def containmentWitness : Term := prog{
+def containmentWitness : Term := prog defer_check {
   fn ThroughRich (v : &mut (s : List Nat ~> Σ (l : List Nat). Id Nat (Len l) (Len s)))
       -> &mut List Nat { v };
   () }
@@ -354,7 +354,7 @@ example : progRejects containmentWitness "is consumed into the result" = true :=
 
     This is the shape half, and it is what "an ordinary library function" means: a
     `split_at_mut` whose result cannot be handed to the next function is not one. -/
-def pairParamWitness : Term := prog{
+def pairParamWitness : Term := prog defer_check {
   fn UsePair (pr : Σ (x : &mut (Array 1 Nat)). &mut (Array 2 Nat)) -> Unit { () };
   () }
 
@@ -440,7 +440,7 @@ example : progOk (withNthPin prog{ () }) = true := by native_decide
     the CHECKER knows `y ≡ [1, 9, 3]`. The release is the pin with the
     surrendered payload substituted for `*res`, not an existential. Compare
     `getMutRoundTrip` above: same program, unpinned cursor, `y ↦ σ`. -/
-def getMutRoundTripPin : Term := withNthPin prog{
+def getMutRoundTripPin : Term := withNthPin prog defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &m x;
   let r = NthPin(1, b, ());
@@ -459,7 +459,7 @@ example : runY getMutRoundTripPin == some (vlist [1, 9, 3]) := by native_decide
 
 /-- The head position — the `Z` leg of the same law, exercised through the
     recursion's base arm. -/
-def getMutRoundTripHeadPin : Term := withNthPin prog{
+def getMutRoundTripHeadPin : Term := withNthPin prog defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &m x;
   let r = NthPin(0, b, ());
@@ -499,7 +499,7 @@ example : progOk (withGetRO prog{ () }) = true := by native_decide
     TARGET note above says it must: the identity pin says what comes back
     equals what went out, not what the element IS (that is D9's lifted
     `retMixesBorrow`, a separate capability). -/
-def readOnlyCallerPin : Term := withGetRO prog{
+def readOnlyCallerPin : Term := withGetRO prog defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &m x;
   let r = GetRO(1, b, ());
@@ -517,7 +517,7 @@ example : runY readOnlyCallerPin == some (vlist [1, 2, 3]) := by native_decide
     identity-pinned borrow is REJECTED at the group's end — the pin is a
     contract, not a comment. The same write against the unpinned `Nth`
     (`readOnlyViolated` above) stays accepted, exactly as it must. -/
-def readOnlyViolatedPin : Term := withGetRO prog{
+def readOnlyViolatedPin : Term := withGetRO prog defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &m x;
   let r = GetRO(1, b, ());
@@ -560,7 +560,7 @@ def withNthPinRO (rest : Term) : Term := prog{
 
 example : progOk (withNthPinRO prog{ () }) = true := by native_decide
 
-def readOnlyDerivedCaller : Term := withNthPinRO prog{
+def readOnlyDerivedCaller : Term := withNthPinRO prog defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &m x;
   let r = NthPinRO(1, b, ());
@@ -574,7 +574,7 @@ example : tailEnv readOnlyDerivedCaller
    ("y", .ctor "Cons" [vnat 1, .ctor "Cons" [.sym 0, .ctor "Cons" [vnat 3, .ctor "Nil" []]]])]
   = true := by native_decide
 
-def readOnlyDerivedViolated : Term := withNthPinRO prog{
+def readOnlyDerivedViolated : Term := withNthPinRO prog defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &m x;
   let r = NthPinRO(1, b, ());
@@ -640,7 +640,7 @@ example : progOk (withNthPinEv prog{ () }) = true := by native_decide
     concrete element and the release computes `Set 1 2 [1,2,3] ⇝ [1,2,3]`. The
     caller derives that the container is unchanged, exactly as 12-design §5
     wanted, with the derivation visible: pin + evidence + one Refl-match. -/
-def readOnlyDerivedClosed : Term := withNthPinEv prog{
+def readOnlyDerivedClosed : Term := withNthPinEv prog defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &m x;
   let pr = NthPinEv(1, b, ());
@@ -663,7 +663,7 @@ example : runY readOnlyDerivedClosed == some (vlist [1, 2, 3]) := by native_deci
     the checker DERIVES that what was written through the first borrow is what
     the second borrow holds. This is the fact the whole milestone is named for,
     end to end in checking mode. -/
-def twoGetMutChain : Term := withNthPinEv prog{
+def twoGetMutChain : Term := withNthPinEv prog defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &m x;
   let pr = NthPinEv(1, b, ());
@@ -687,7 +687,7 @@ example : runY twoGetMutChain == some (vlist [1, 9, 3]) := by native_decide
 /-- The NEGATIVE control: evidence about the WRONG position — the body returns
     the head while the type claims position 1. Refused at the audit's new
     value-component check, with both sides printed. -/
-def badEv : Term := prog{
+def badEv : Term := prog defer_check {
   fn BadEv (i : Nat, v : &mut List Nat, p : Le (S i) (Len *v))
       -> Σ (r : &mut Nat). Id Nat (*r) (NthL 1 (old *v)) {
     match v {
@@ -707,7 +707,7 @@ example : progRejects badEv "mixed return type — value component" = true := by
     spelling (`Term.resSugar`, a display-only pre-pass in `Term.pretty`; the
     fst/snd forms engage when a term cites index ≥ 1). No existing needle
     anywhere contains `@res` — grepped — so the rewording moves nothing. -/
-def resLeakPin : Term := prog{
+def resLeakPin : Term := prog defer_check {
   fn KeepPin (v : &mut (s : List Nat ~> *res)) -> Unit { () };
   () }
 

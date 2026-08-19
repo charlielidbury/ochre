@@ -382,7 +382,7 @@ example : progOk learnDemand = true := by native_decide
 -- THE TWIN, and it is what makes the certificate a demand rather than a
 -- decoration: the same `let m = n` and the same seal with the match REMOVED. `m`
 -- is unrefined, so `Refl` has nothing to inhabit.
-def learnDemandNo : Term := prog{
+def learnDemandNo : Term := prog defer_check {
   fn LearnDemandNo (n : Nat, p : Id Nat n 2) -> Unit {
     let m = n; let c = (Refl : Id Nat m 2); () };
   () }
@@ -411,7 +411,7 @@ example : progOk learnBorrowDemand = true := by native_decide
 -- Rigid-rigid: `p : Id Nat Z (S Z)`. Neither endpoint is a σ, so there is no
 -- solution by refinement — STUCK, naming `j`/`k` as the elimination route. The
 -- kernel does NOT auto-discharge the conflict; that is the library's job (below).
-def rigidStuck : Term := prog{
+def rigidStuck : Term := prog defer_check {
   fn RigidStuck (p : Id Nat 0 1) -> Nat { match p { Refl => 0 } };
   () }
 
@@ -420,7 +420,7 @@ example : progRejects rigidStuck "j/k" = true := by native_decide
 
 -- Occurs check: `p : Id Nat n (S n)`. Refining `n := S n` would be cyclic —
 -- rejected before it can loop.
-def occursFn : Term := prog{
+def occursFn : Term := prog defer_check {
   fn Occ (n : Nat, p : Id Nat n (S n)) -> Unit { match p { Refl => () } };
   () }
 
@@ -429,17 +429,17 @@ example : progRejects occursFn "occurs check" = true := by native_decide
 /-! ## Exhaustiveness and scope (Id's constructor set is `{Refl}`) -/
 
 -- An empty match on `p : Id Nat n 2` is non-exhaustive: `Refl` is uncovered.
-example : progRejects (prog{
+example : progRejects (prog defer_check {
   fn F (n : Nat, p : Id Nat n 2) -> Unit { match p { } }; () }) "non-exhaustive" = true := by native_decide
 
 -- A stray non-`Refl` constructor is likewise not enough to be exhaustive.
-example : progRejects (prog{
+example : progRejects (prog defer_check {
   fn F (n : Nat, p : Id Nat n 2) -> Unit { match p { Z => () } }; () }) "non-exhaustive" = true := by native_decide
 
 -- Scope guard: `Id` over a *borrow* type is rejected — reflecting the borrow-type
 -- index throws (borrow types live only at telescope positions), no special
 -- machinery needed. (Id over ordinary indexed types is unrestricted.)
-example : progRejects (prog{
+example : progRejects (prog defer_check {
   fn F (q : Id (&mut Nat) 0 0) -> Unit { () }; () }) "borrow type" = true := by native_decide
 
 /-! ## The fording library — no confusion, injectivity, K, all as checked terms
@@ -632,7 +632,7 @@ example : progOk (prog{
 -- Not vacuous: the discharge is what closes the branch, and without it the arm
 -- has nothing of the return type to give. The same function with the `False` arm
 -- returning the PROOF rather than eliminating it is rejected.
-example : progRejects (prog{
+example : progRejects (prog defer_check {
   fn DischargeLie (n : Nat, p : Id Nat Z (S n), b : Bool) -> Nat {
     match b {
       True => Z,
@@ -752,7 +752,7 @@ def badReflClosed : Term := prog{
 -- side by side, which is more explicit rather than less. The body is the pure term
 -- above, spliced and applied — the mis-motive is what is under test, so it stays
 -- exactly as written.
-def badRefl : Term := prog{
+def badRefl : Term := prog defer_check {
   fn BadRefl (n : Nat) -> Le n n { %badReflClosed n };
   () }
 example : progRejects badRefl "does not have return type" = true := by native_decide
@@ -1121,7 +1121,7 @@ example : progOk alphaRepro = true := by native_decide
 -- spine is `False` is still rejected. Without this, "α-insensitive" could have
 -- been read as "matches more things than it should", and an accept that a
 -- rubber-stamping sweep would also produce says nothing about the key.
-def alphaReproLie : Term := prog{
+def alphaReproLie : Term := prog defer_check {
   fn NeedFalse (B : Bool, h : Id Bool B False) -> Unit { () };
   fn AlphaReproLie (L : List Nat) -> Unit
         { let F = λ (X : Nat). Leb (Len L) (S (S Z));
@@ -1188,7 +1188,7 @@ example : progOk lamCitesEnclosing = true := by native_decide
 -- binding is not capturable, because a λ is formed now and used later and a
 -- runtime citation would be an implicit snapshot taken in that gap (§2.4). The
 -- surface can see `h0` now; the kernel is what says no.
-def lamCitesRuntime : Term := prog{
+def lamCitesRuntime : Term := prog defer_check {
   let h0 = 3;
   let G = λ(a : Nat) { let Snap = h0; a };
   () }
@@ -1399,7 +1399,7 @@ open Dllbc
 -- constructor field you must ⇒-read one, and the bindings that hold one are
 -- capital, which the erasure fence refuses. The field never receives a function,
 -- so the check there had nothing left to catch.
-def fieldFn : Term := prog{
+def fieldFn : Term := prog defer_check {
   fn Inc (n : Nat) -> Nat { S n };
   let p = Pair(Inc, 1);
   () }
@@ -1483,7 +1483,7 @@ open Dllbc.StdLemmas in
     the fence refuses the capital binding — which is the wall R3 measured, still
     standing where §2.1 says it should. Without this control the acceptance above
     would also pass for a rule that simply stopped fencing. -/
-def sigmaProofLower : Term := prog{
+def sigmaProofLower : Term := prog defer_check {
   fn F (n : Nat) -> Σ (h : Le n n). Nat { let H0 = LeRefl n; Pair(H0, n) };
   () }
 example : progRejects sigmaProofLower "cannot be ⇒-moved" = true := by native_decide
@@ -1506,7 +1506,7 @@ open Dllbc.StdLemmas in
     This is where quicksort's `cnt` sits. Its ensures is
     `Σ (hi : List Nat). … → Π n. Id …`, and the trailing `Π n. Id …` is the
     ∀-proof: five components have binders and the sixth is the tail. -/
-def sigmaTailProof : Term := prog{
+def sigmaTailProof : Term := prog defer_check {
   fn F (n : Nat) -> Σ (H : Le n n). Le n n { let H0 = LeRefl n; Pair(H0, H0) };
   () }
 example : progRejects sigmaTailProof "the TAIL of a Σ chain is runtime-moded" = true := by
@@ -1576,7 +1576,7 @@ def tail0Upper : Term := prog{
 example : progOk tail0Upper = true := by native_decide
 
 /-- …and lowercase at the same consumer: refused, because the tail is comptime. -/
-def tail0Lower : Term := prog{
+def tail0Lower : Term := prog defer_check {
   fn Zap0 (v : &mut List Nat) -> Σ0 (k : Nat). Id (List Nat) (*%s0V) Nil
     { *v := Nil; Pair(Z, Refl) };
   fn Use0 (w : &mut List Nat) -> Unit
@@ -1596,7 +1596,7 @@ example : progOk tailRunLower = true := by native_decide
 /-- …and capital is refused. One character in the CALLEE's return type decides
     which spelling of the CALLER's arm is legal, in both directions — which is
     what says the rule reads the type and not the shape. -/
-def tailRunUpper : Term := prog{
+def tailRunUpper : Term := prog defer_check {
   fn Zap (v : &mut List Nat) -> Σ (k : Nat). Id (List Nat) (*%s0V) Nil
     { *v := Nil; Pair(Z, Refl) };
   fn Use (w : &mut List Nat) -> Unit
@@ -1711,7 +1711,7 @@ example : progOk rememberNeutral = true := by native_decide
 -- REFUSED: a SEALED function's call, ⇝-read at a capital `let`. Entering is an
 -- event; this is the refusal that retired with `.callV` and came back on the
 -- value.
-def enterRefused : Term := prog{
+def enterRefused : Term := prog defer_check {
   fn GiveLe (a : Nat) -> Le a a { %LeRefl a };
   fn Caller (n : Nat) -> Unit { let P = GiveLe(n); () };
   () }
@@ -1850,7 +1850,7 @@ open Dllbc
 def armDataLower : Term := prog{
   match Cons(Z, Nil) { Nil => (), Cons(h, t) => () } }
 
-def armDataUpper : Term := prog{
+def armDataUpper : Term := prog defer_check {
   match Cons(Z, Nil) { Nil => (), Cons(H, t) => () } }
 
 example : progOk armDataLower = true := by native_decide
@@ -1872,7 +1872,7 @@ def armCmpUpper : Term := prog{
     { let Pair(H2, u) = Zap(&m *w); () };
   () }
 
-def armCmpLower : Term := prog{
+def armCmpLower : Term := prog defer_check {
   fn Zap (v : &mut List Nat) -> Σ (H : Id (List Nat) (*%armV) Nil). Unit
     { *v := Nil; Pair(Refl, unit) };
   fn Use (w : &mut List Nat) -> Unit

@@ -153,7 +153,7 @@ example :
 /-- Neither is reachable through `readC` either — the marker is refused before
     the judgment is ever asked — so the arm above is a second lock on a door that
     is already shut, deliberately. -/
-example : chkL prog{ &mut Nat } U = false := by native_decide
+example : chkL prog defer_check { &mut Nat } U = false := by native_decide
 
 /-! ## §3 The payoff — the hm probe's O3 battery, green
 
@@ -190,7 +190,7 @@ example : runBinding polyCall "y" = some "S (S (S (S (S Z))))" := by native_deci
 /-- The call still discriminates on the payload: instantiating at `Nat` and
     passing a `Bool` is rejected, so the type parameter is doing work rather than
     being waved through. -/
-def polyBad : Term := prog{
+def polyBad : Term := prog defer_check {
   fn Poly (T : Type, x : T) -> T { x };
   let y = Poly(Nat, True);
   () }

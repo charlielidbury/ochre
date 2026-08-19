@@ -79,13 +79,13 @@ example : progOk pushList = true := by native_decide
 
 -- Take without refill: the borrow holds a hole (⊥) at return — a function
 -- cannot return one (§5.4).
-example : progRejects (prog{
+example : progRejects (prog defer_check {
     fn Push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; () };
     () })
   "take without refill" = true := by native_decide
 
 -- Pushing a `True` onto a `List Nat`: the rebuilt payload fails its owed type.
-example : progRejects (prog{
+example : progRejects (prog defer_check {
     fn Push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; *v := Cons(True, tail); () };
     () })
   "owed type" = true := by native_decide
@@ -109,7 +109,7 @@ example : progOk vecPush = true := by native_decide
 -- `VecF Nat σₗ` and the concrete `Pair` cannot inhabit it. REJECTED. This is
 -- dependent correctness catching the forgotten length update — the ownership
 -- machinery makes the mutation safe, the dependent types make it correct.
-example : progRejects (prog{
+example : progRejects (prog defer_check {
     fn Push (e : Nat, v : &mut (Σ (l : Nat). vecFT Nat l)) -> Unit {
       match v { Pair(l, xs) => { *xs := Pair(e, *xs); () } } };
     () })
@@ -130,20 +130,20 @@ example : progOk (prog{
 -- the scrutinee's type (§3.2's seam). The `Z`/`S` branches make the match
 -- exhaustive over Nat, so it is the σ-typing check (not exhaustiveness, §9)
 -- that catches the stray `Cons` branch.
-example : progRejects (prog{
+example : progRejects (prog defer_check {
     fn F (b : &mut Nat) -> Unit { match b { Z => (), S(m) => (), Cons(h, t) => () } };
     () })
   "does not belong" = true := by native_decide
 
 -- Exhaustiveness (§9): a symbolic match must cover the scrutinee type's full
 -- constructor set. is_zero missing its `S` branch is rejected.
-example : progRejects (prog{
+example : progRejects (prog defer_check {
     fn IsZero (n : Nat) -> Bool { match n { Z => True } };
     () })
   "non-exhaustive" = true := by native_decide
 
 -- A borrow-mode match on `&mut List Nat` missing its `Nil` branch is rejected.
-example : progRejects (prog{
+example : progRejects (prog defer_check {
     fn F (v : &mut List Nat) -> Unit { match v { Cons(hd, tl) => { *hd := 0; () } } };
     () })
   "non-exhaustive" = true := by native_decide
@@ -200,7 +200,7 @@ def withPush (rest : Term) : Term := prog{
 -- `push(7, b)` consumes b and annotates its loan owed `List Nat`; the later
 -- `let y = x` ends the owed loan by minting a fresh σ. y is that σ, typed a
 -- list — not the concrete `Cons 7 (Cons 1 Nil)`. "The spec is the type."
-example : tailEnv (withPush (prog{
+example : tailEnv (withPush (prog defer_check {
     let x = Cons(1, Nil); let b = &m x; Push(7, b); let y = x; () }))
   [("x", .bot), ("b", .bot), ("y", .sym 0)] = true := by native_decide
 
@@ -224,7 +224,7 @@ example : tailEnv (withPush (prog{
 -- than a name in a computed list: a needle no other error produces, the decision's
 -- own words, and the fact that the sentinel fires at the BINDING rather than at a
 -- call, so a refused function nothing calls still fails.
-def zeroAll : Term := prog{
+def zeroAll : Term := prog defer_check {
   fn ZeroAll [v] (v : &mut List Nat) -> Unit {
     match v {
       Nil => (),
@@ -275,19 +275,19 @@ example : progOk (prog{
 /-! ## Rejections -/
 
 -- Argument type mismatch: push a `True` where a `Nat` is owed.
-example : progRejects (withPush (prog{
+example : progRejects (withPush (prog defer_check {
     let x = Cons(1, Nil); let b = &m x; Push(True, b); () }))
   "parameter type" = true := by native_decide
 
 -- A non-borrow where a borrow argument is expected.
-example : progRejects (withPush (prog{ let x = Cons(1, Nil); Push(7, x); () }))
+example : progRejects (withPush (prog defer_check { let x = Cons(1, Nil); Push(7, x); () }))
   "expected a borrow argument" = true := by native_decide
 
 -- Calling an unknown function.
-example : progRejects (prog{ nope(); () }) "unknown function" = true := by native_decide
+example : progRejects (prog defer_check { nope(); () }) "unknown function" = true := by native_decide
 
 -- Using the consumed borrow variable after the call (it is ⊥).
-example : progRejects (withPush (prog{
+example : progRejects (withPush (prog defer_check {
     let x = Cons(1, Nil); let b = &m x; Push(7, b); let z = b; () }))
   "use-after-move" = true := by native_decide
 
@@ -477,7 +477,7 @@ example : progOk (prog{
 -- REJECT, and the exact twin of the read-driven "nothing surrendered" below:
 -- `*b` was taken, so the issued borrow holds a hole and cannot surrender. The
 -- demand is a WRITE here and a read there; the refusal is the same one.
-example : progRejects (prog{
+example : progRejects (prog defer_check {
   fn Lend (v : &mut List Nat) -> &mut List Nat { &m *v };
   let a = Cons(1, Nil);
   let b = Lend(&m a);
@@ -490,7 +490,7 @@ example : progRejects (prog{
 
 -- The group cannot end because an issued borrow cannot surrender: `*r` was
 -- taken, leaving its payload a hole (⊥), and then a captured owner is demanded.
-example : progRejects (prog{
+example : progRejects (prog defer_check {
   fn Choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat
     { match c { True => x, False => y } };
   let a = 0; let b = 0; let pa = &m a; let pb = &m b;
@@ -502,7 +502,7 @@ example : progRejects (prog{
 
 -- A borrow-returning body whose returned payload fails its owed type:
 -- `bad (b : &mut Nat) → &mut Bool = b` returns a Nat borrow as a Bool borrow.
-example : progRejects (prog{ fn Bad (b : &mut Nat) -> &mut Bool { b }; () })
+example : progRejects (prog defer_check { fn Bad (b : &mut Nat) -> &mut Bool { b }; () })
   "owed type" = true := by native_decide
 
 /-! ## The constrained branch, retired with its rule (M28 τ)
@@ -611,7 +611,7 @@ example : progOk callNeeds1 = true := by native_decide
 
 -- `needs(3, ())`: instantiation gives `Le 3 2` = ⊥, which `()` cannot inhabit —
 -- REJECTED. Without instantiation the parameter type would never resolve to ⊥.
-def callNeeds3 : Term := prog{
+def callNeeds3 : Term := prog defer_check {
   fn Needs (a : Nat, p : Le a 2) -> Unit { () };
   fn CallNeeds3 () -> Unit { Needs(3, ()) };
   () }
@@ -640,7 +640,7 @@ example : progOk observeGood = true := by native_decide
 
 -- Passing a borrow of `[2,1]`: `Sorted [2,1]` contains ⊥ at the first bound, so
 -- the same proof fails — REJECTED. The dependent parameter caught the unsortedness.
-def observeBad : Term := prog{
+def observeBad : Term := prog defer_check {
   fn Observe (b : &mut List Nat, p : Sorted (*b)) -> Unit { () };
   fn ObserveBad () -> Unit {
     let x = Cons(2, Cons(1, Nil));
@@ -816,7 +816,7 @@ example : progOk cursors = true := by native_decide
 /-! ## Callers — concrete proofs are `()`, OOB is a call-site rejection -/
 
 -- `swap(bb, 0, 2, (), ())`: `Le 1 2` and `Le 3 3` both whnf to ⊤, inhabited by `()`.
-def swapBody : Term := withCursors prog{
+def swapBody : Term := withCursors prog defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let bb = &m x;
   Swap(bb, 0, 2, (), ());
@@ -836,7 +836,7 @@ example :
 
 -- OUT OF BOUNDS is rejected at the CALL SITE: `swap(bb, 0, 4, (), ())` needs
 -- `p2 : Le (S 4) (Len [1,2,3]) = Le 5 3 = ⊥`, and `()` cannot inhabit ⊥.
-def oobBody : Term := withCursors prog{
+def oobBody : Term := withCursors prog defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let bb = &m x;
   Swap(bb, 0, 4, (), ());
@@ -849,7 +849,7 @@ example : progRejects oobBody "does not have its parameter type" = true := by
 
 -- Both cursors live, then the owner is demanded: `endGroup` ends both issued
 -- borrows in list order, then releases `v`.
-def cascade : Term := withCursors prog{
+def cascade : Term := withCursors prog defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let bb = &m x;
   let Pair(ei, ej) = Nth2(bb, 0, 2, (), ());
@@ -857,7 +857,7 @@ def cascade : Term := withCursors prog{
 example : progOk cascade = true := by native_decide
 
 -- Take a cursor's payload (hole) then demand the owner: the group cannot end.
-def rejectProbe : Term := withCursors prog{
+def rejectProbe : Term := withCursors prog defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let bb = &m x;
   let Pair(ei, ej) = Nth2(bb, 0, 2, (), ());

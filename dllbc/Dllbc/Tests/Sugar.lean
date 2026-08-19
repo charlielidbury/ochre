@@ -258,7 +258,7 @@ example : progOk vecPushLet = true := by native_decide
 -- THE MONEY TEST, in the new spelling: forget `*l := S(*l)` and the second field
 -- is checked against the stuck `VecF Nat σₗ`, which the concrete `Pair` cannot
 -- inhabit. Rejected, as it is in `Boundaries`.
-example : progRejects (prog{
+example : progRejects (prog defer_check {
     fn Push (e : Nat, v : &mut (Σ (l : Nat). %Tests.S5Bound.vecFT Nat l)) -> Unit {
       let Pair(l, xs) = v;
       *xs := Pair(e, *xs);
@@ -275,7 +275,7 @@ example : progRejects (prog{
     no second definition of which types have one constructor, and nothing to keep
     in step when the basis grows. -/
 
-def headByLet : Term := prog{
+def headByLet : Term := prog defer_check {
   fn Head (l : List Nat) -> Nat { let Cons(h, t) = l; h };
   () }
 
@@ -485,7 +485,7 @@ def vecPushNested : Term := prog{
 
 example : progOk vecPushNested = true := by native_decide
 
-example : progRejects (prog{
+example : progRejects (prog defer_check {
     fn Push (e : Nat, v : &mut (Σ (n : Nat). Σ (l : Nat). %Tests.S5Bound.vecFT Nat l))
         -> Unit {
       let Pair(n, Pair(l, xs)) = v;
@@ -505,7 +505,7 @@ example : progRejects (prog{
     cross-arm grouping to appeal to: no sibling arm can complete it, because DLLBC
     matches are one arm per head constructor and this is not the head. -/
 
-def nestedNonExh : Term := prog{
+def nestedNonExh : Term := prog defer_check {
   fn F (l : List Nat) -> Unit { match l { Nil => (), Cons(Z, tl) => () } };
   () }
 
