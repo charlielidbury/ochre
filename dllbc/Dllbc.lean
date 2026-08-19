@@ -24,3 +24,4 @@ import Dllbc.Tests.EagerRec
 import Dllbc.Tests.Ledger
 import Dllbc.Tests.Sugar
 import Dllbc.Tests.OpaqueFill
+import Dllbc.Tests.Universe

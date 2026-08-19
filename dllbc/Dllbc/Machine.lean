@@ -1702,7 +1702,43 @@ mutual
           match sig.fieldTypes (Pure.whnf fuel ty) with
           | none => pure false                       -- constructor does not inhabit this type
           | some ftys => checkFields fuel (args.map Val.know) ftys
+      -- **`Type : Type`, a DELIBERATE inconsistency** (M35, the universe rule).
+      -- In a full theory this is Girard's paradox and the logic is unsound as a
+      -- logic. It is accepted here because the repo's standing policy is
+      -- consistency-DEFERRED-for-soundness (`docs/what-is-ochre.md`; the Ochre
+      -- logic goal): the property under construction is that a checked program
+      -- does what its types say at RUN time, and a universe hierarchy buys
+      -- nothing for that while costing every type former a level argument. The
+      -- arm predates M35 — what M35 adds is that the formation rules below now
+      -- DEPEND on it (`Σ (T : Type). T` is a type only if `Type` is one), so
+      -- what used to be a harmless leaf is now load-bearing and is flagged
+      -- accordingly rather than left to be discovered.
       | .type => pure (Pure.convert fuel ty .type)     -- Type : Type (type-in-type)
+      -- **The base type constants** (M35). `Nat`, `Bool`, `Unit`, `Bot` are the
+      -- ground types of the fixed basis, and the predicate is DERIVED from
+      -- `Pure.typeCtors` rather than written as a second list: a constant is a
+      -- ground type exactly when the exhaustiveness table knows its constructor
+      -- set (`Bot`'s is empty, which is why `.isSome` and not `≠ []`).
+      --
+      -- Every other `.const` — the eliminators (`natRec`, `j`, …), `@exit`,
+      -- `old` — is not a type and falls to the deferral below, unapplied.
+      | .const c =>
+        if (Pure.typeCtors (.const c)).isSome then pure (Pure.convert fuel ty .type)
+        else throwErr s!"hasType: cannot type value {v.pretty} (λ/neutral typing deferred to M5)"
+      -- **The two binder-mode markers are REFUSED at `Type`, by an arm and not by
+      -- a fall-through** (M35). `⇝τ` and `&mut (s : τ ↝ τ′)` are written in type
+      -- position but are not types — they say how a BINDER takes its argument
+      -- (comptime snapshot; runtime borrow), which is the house doctrine stated
+      -- at both of their definitions in `Syntax.lean`. Two things depend on the
+      -- refusal being explicit: a `Π` whose domain is `&mut …` is a function
+      -- SIGNATURE, which `hasType` already refuses to admit a value at, and
+      -- `docs/12-design-borrow-refounding.md`'s proof-fragment exclusion is
+      -- exactly "no `borrowT` inhabits the universe". A fall-through would give
+      -- the same verdict today and lose the reason tomorrow.
+      | .cmpT _ =>
+        throwErr s!"hasType: {v.pretty} is a binder MODE, not a type — ⇝ marks a comptime binder (§6) and does not inhabit Type"
+      | .borrowT _ _ _ =>
+        throwErr s!"hasType: {v.pretty} is a binder MODE, not a type — &mut marks a runtime borrow binder (§5.1) and does not inhabit Type"
       | .pi _ _ _ => pure (Pure.convert fuel ty .type)
       | .sigmaT _ _ _ => pure (Pure.convert fuel ty .type)
       | .idT _ _ _ => pure (Pure.convert fuel ty .type)   -- Id A a b : Type
@@ -1722,6 +1758,26 @@ mutual
           | some resTy => pure (Pure.convert fuel ty resTy && premises)
           | none => pure false
         match head, args with
+        -- **The two parameterised type formers** (M35), read before the
+        -- eliminators because a spine headed by `List`/`Array` is a TYPE and not
+        -- an elimination. Both are checked, not synthesized: the expected type
+        -- must already be `Type`, and only then are the parameters visited — so
+        -- asking `List Nat : Nat` is a clean `false` and never a recursion into
+        -- an argument nobody wanted typed.
+        --
+        -- Arity is exact. `List` alone is `Type → Type` and `Array n` is
+        -- `Type → Type`; neither inhabits `Type`, and a partially applied one
+        -- therefore falls past these arms to the neutral reading below, which
+        -- says so.
+        | .const "List", [a] =>
+          if !(Pure.convert fuel ty .type) then pure false
+          else hasTypeT fuel a .type
+        | .const "Array", [n, t] =>
+          if !(Pure.convert fuel ty .type) then pure false
+          else do
+            let nOk ← hasTypeT fuel n (.const "Nat")
+            let tOk ← hasTypeT fuel t .type
+            pure (nOk && tOk)
         | .const "botElim", t :: x :: rest =>            -- botElim T x : T   (x : ⊥)
           let xOk ← hasTypeT fuel x (.const "Bot")
           finish t rest xOk
