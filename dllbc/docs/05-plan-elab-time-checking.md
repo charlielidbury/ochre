@@ -530,7 +530,8 @@ two meanings. This is the strongest form the property can take, and it fell out
 of a placement chosen for dependency-DAG reasons rather than being designed for.
 
 The honest residue: the transitive-import argument was ALSO empirically false, so
-six of the 24 test modules import `ElabCheck` directly because they never
+six of the 28 test modules import `ElabCheck` directly because they never
 imported `StdLemmas` at all — **`Diff`, `Boundaries`, `Traces`, `Ledger`**, and
 after the rebase **`HashMapDiff`, `HashMapPin`**. Each is self-sufficient rather
-than inheriting from a neighbour, because inheriting is the fragility.
+than inheriting from a neighbour, because inheriting is the fragility. (Five more
+import it directly *and* have `StdLemmas`; that is belt-and-braces, not residue.)
