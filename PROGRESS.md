@@ -3940,3 +3940,67 @@ argued. `comptimeSlotParams flagship` 6 → 9.
 eager path made to throw, 5 assertions red and ALL of them are M33b's own
 battery. The corpus's greenness says this is non-regressive; the battery is what
 says it works. `defaultFuel` did not move, for the same reason.
+
+---
+
+## `prog{ }` checks by default — the elab-time-checking port lands (docs/05)
+
+**The surface is one brace and it checks.** `prog check { … }` is retired. A
+`prog{ … }` block is classified by its CONTENT (`Term.needsRuntime`, a structural
+read of `readC`'s refusal list) and gets the checker that content determines: the
+⇒-walk for a program, walk+audit for `prog -> τ { … }`, `hasTypeT` for an ascribed
+pure term, and nothing at all for a bare pure term — because a bare pure term
+states no specification and there is no question to ask. `ty{ }` is the
+non-checking brace for everything below the checker in the import graph (57 code
+sites: types like `ty{ Array %m %t }`).
+
+**THE COST, from scratch and uncontended, both green:**
+
+| | wall | targets |
+|---|---|---|
+| `origin/main` @ 4235bf51 | **1344 s** | 105 |
+| this branch | **1424 s** | 117 |
+
+**+80 s, +6.0%** — and the interesting part is that it is NOT the checking. Per
+declaration the check is negligible: traced over `Tests/Direct.lean` (the
+direct-proving quicksort flagship, 92 blocks), the whole elaboration-time cost is
+**227 ms of a 71 s module compile — 0.32%**, of which the ⇒-walk over all 22
+program blocks is **0 ms**. The measurable per-block cost is `reify` (173 ms
+total), not the walk. The +80 s is the `StateT SpanAcc` transformer threading
+through the walker on every one of ~2000 blocks, which elab2 measured directly
+and which the collection boolean gates but does not remove: the boolean gates the
+work, and the work was never the cost.
+
+**The annotation inverted rather than disappeared: 297 `prog defer_check { }`
+sites across 21 files**, against a plan that predicted 107. Every one was placed
+by measurement on the live elaborator — build, read the rejection, fence, repeat
+to fixpoint — never by predicting from a class. The gap is a class the plan did
+not have: **program fragments**, closed blocks whose callee prefix is supplied by
+a Lean-level assembler (`withPool (prog{ … })`, and main's own `hmS1Under`,
+`hmGmUnder`, `hmPinUnder`). 84 of the 297 are that. The limit it states: **auto-
+checking can only check a block that is a WHOLE program**; where programs are
+assembled above the brace, the check belongs at the assembly site.
+
+**Two findings worth keeping.**
+
+*The ambiguous middle is real and undecidable by the calculus.* Ten twins are
+asserted `progRejects` and elaborate green with no fence. For them `readC`
+ACCEPTS (they are pure by the kernel's own ⇝ judgment), `needsRuntime` agrees, and
+`checkProgram` REJECTS — all three correct, because ⇝ and ⇒ are different arrows.
+No classifier could decide these; it would mean deciding which arrow the author
+meant, which M29 γ says is not a property of the term. Pinned with controls in
+`Tests/AmbiguousMiddle.lean`.
+
+*Forgetting the import is a parse error, not a silent skip.* Because the SYNTAX
+moved and not merely the elaborator, `prog{` is declared in `ElabCheck` and
+nowhere else. A module that cannot see it says `unknown identifier 'prog'`. The
+forgot-the-import-silently-unchecked failure mode is unrepresentable rather than
+mitigated. (The design note claiming the opposite is corrected in place; six test
+modules turned out never to import `StdLemmas` at all.)
+
+**The drift guard moved out of the default build** to a REQUIRED merge check —
+`lake build Dllbc.Tests.FragmentAgreement`, 32 s, green — because what it watches
+changes once a milestone, not once an edit (docs/05 §7). **Open review item:** its
+corpus is a hand-written list of 1096 defs with no generator, so it does not cover
+main's ~340 new hashmap blocks. Passing means "the two readings agree on those
+1096", which is weaker than the file's own first sentence claimed.
