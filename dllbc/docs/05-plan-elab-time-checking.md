@@ -237,6 +237,27 @@ This is a migration progress bar and not a limit. The number rises as programs m
 > | asserted both ways (the twin-template pattern) | 13 |
 > | not inside a `def` | 2 |
 >
+> **Reconciling the three numbers, because they count different things and the
+> final one is only trustworthy if the gaps are named.**
+>
+> * **107** — predicted, from a walk-only harness over the 114 non-spliced
+>   `fn`-containing `progRejects` defs. That population is clause-(i) failures
+>   only, so it could not see the fragment class at all.
+> * **97** — the FIRST red build's error count, and it is not a fence count. Lake
+>   stops a module's dependents when it fails, so 97 is "errors visible in one
+>   pass", not "blocks needing a fence". Nine passes were needed to reach
+>   fixpoint; the early passes hid the later modules entirely (`Functions.lean`'s
+>   63 and `Programs.lean`'s 44 were both invisible in pass 1).
+> * **275 → 297** — the truth, pre- and post-rebase. Every one is an observed
+>   live-elaborator rejection, and the procedure terminates when a build passes,
+>   so nothing is fenced speculatively and nothing needing a fence is missed.
+>
+> The 25 "ambiguous sites" the plan wanted measured separately did not need a
+> separate pass: measuring on the live path IS what generated the list, which is
+> strictly stronger than measuring with `checkProgramDiag t none` and then
+> deciding. Of the dual-asserted twins, 13 fenced; of the walk-passing ones, 10
+> needed nothing (see the ambiguous-middle note below).
+>
 > **The 84 in the middle two rows are a class this section did not have: program
 > FRAGMENTS.** `Tests/Diff.lean` is the specimen — `def withPool (rest : Term) :
 > Term := prog{ fn Through …; %rest }`, applied as `withPool (prog{ … Push(7, b) … })`.
@@ -397,6 +418,28 @@ This is a migration progress bar and not a limit. The number rises as programs m
 > | pure | `-> τ` | `hasTypeT` against `τ` |
 > | pure | none | nothing — no specification exists anywhere |
 >
+> **A block is elaboration-checked when THREE things hold, not one.** The table is
+> clause (i); the port found the other two, and stating all three together is what
+> makes the shipped behaviour predictable rather than a list of exceptions:
+>
+> > (i) it **carries its own specification** — a `fn`, or an ascription. Otherwise
+> > there is nothing to ask (the table's last row).
+> >
+> > (ii) it is **value-closed** — no free variable, no unsolved metavariable. The
+> > splice class (§2a). Not comptime-known to the elaborator, so not askable.
+> >
+> > (iii) its **context is registry-resolvable** — every callee it names is bound
+> > inside the block. The fragment class (§2b, amended). A closed block whose
+> > callee prefix arrives from a Lean-level assembler is the CALL-TABLE analog of
+> > a splice: context not registry-known is to (iii) what value not
+> > comptime-known is to (ii), and both mean the same thing — the elaborator has
+> > not been given enough to answer.
+>
+> Clauses (ii) and (iii) are the same idea at two levels, which is why the fragment
+> class completes the rule instead of puncturing it. §2b's count of 297 fences
+> against a predicted 107 is explained entirely by the prediction having counted
+> only clause-(i) failures.
+>
 > The last row is the one that dissolves the opt-in argument entirely: a `Π` in
 > `StdLemmas` is not ⇒-walked, not because it declined to write `check`, but
 > because it is pure and states no type, so **there is no question to ask**. That
@@ -460,3 +503,34 @@ full strength and moves only *when* it is paid for.
 means it can rot silently. That is the trade being made, and the mitigation is
 this checklist entry plus the note in `Dllbc.lean` where the import would
 otherwise be — both of which point at the target by name.
+
+*Two numbers, two questions — measurement doctrine, stated here because the pair
+looks like a contradiction and is not.* The battery costs **+65 s from scratch**
+and **+32 s incrementally**, and both are honest. The incremental figure is the
+battery's own compute. The from-scratch figure is that compute plus the
+serialization penalty of being a **DAG leaf**: it imports the whole corpus, so it
+runs last with nothing left to overlap it, and its wall time lands end-to-end
+rather than inside the parallel region. "What does the default build stop paying"
+is answered by the from-scratch delta; "what does the merge check cost" is
+answered by the incremental one. Quoting either for the other question is wrong.
+
+## 8. The import rule for a new module
+
+`prog{ }` is declared in `ElabCheck.lean` and nowhere else, so **a module that
+writes a program must reach `Dllbc.ElabCheck` — directly, or via
+`Dllbc.StdLemmas`, which imports it.**
+
+Forgetting is not dangerous, and it is worth knowing why: because the SYNTAX
+moved rather than only the elaborator, a module that cannot see `ElabCheck` has no
+`prog{` token at all and fails with `unknown identifier 'prog'`. There is no
+low-level brace left to fall back to, so the
+forgot-the-import-silently-unchecked failure mode is **unrepresentable** rather
+than merely caught — two braces that are two tokens, instead of one token with
+two meanings. This is the strongest form the property can take, and it fell out
+of a placement chosen for dependency-DAG reasons rather than being designed for.
+
+The honest residue: the transitive-import argument was ALSO empirically false, so
+six of the 24 test modules import `ElabCheck` directly because they never
+imported `StdLemmas` at all — **`Diff`, `Boundaries`, `Traces`, `Ledger`**, and
+after the rebase **`HashMapDiff`, `HashMapPin`**. Each is self-sufficient rather
+than inheriting from a neighbour, because inheriting is the fragility.
