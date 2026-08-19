@@ -247,6 +247,26 @@ structure St where
       Enumerated here rather than trusted, because a second Ω-splicing site would
       break the mechanism silently. -/
   scopeMarks : List (Nat × Bool) := []
+  -- THE DIAGNOSTIC BREADCRUMB. Three fields that no rule reads. They exist so a
+  -- rejection can be reported at the *source* the offending statement was written
+  -- at: the surface holds a table from these keys to spans, and maps whatever the
+  -- error was raised under. They are NOT σ-bearing state — no value is observed
+  -- across a refinement through them — so `refineSym`/`generalizeStuck` leave them
+  -- alone and §3.2's swept-state principle does not apply.
+  --
+  -- The key is the statement's own TERM rather than a path index because
+  -- `pushContinuations` DUPLICATES each continuation into every match arm: a
+  -- statement's position in the walked term is not its position in the source, and
+  -- differs per arm, while its term is the same term in every copy.
+  /-- The statement currently being executed, in `stmtKeyOf` normal form. -/
+  stmtKey : Option Term := none
+  /-- The call argument currently being checked (`processArgs`), if any. Restored
+      to the enclosing call's argument when an inner argument list completes. -/
+  argKey : Option Term := none
+  /-- The arms entered on this path, INNERMOST first: `(scrutinee, constructor)`.
+      One statement is checked once per path, so which path failed is half the
+      diagnosis. -/
+  trail : List (String × String) := []
 deriving Inhabited
 
 /-- The machine monad: errors are `String`s, state is `St`. -/
@@ -255,6 +275,52 @@ abbrev M := EStateM String St
 /-- Raise a machine error. Errors are rich and stably-shaped (operation +
     variable/loan + reason); tests assert on distinctive substrings. -/
 def throwErr {α : Type} (msg : String) : M α := fun s => EStateM.Result.error msg s
+
+/-! ## The diagnostic breadcrumb
+
+    Everything here is written and read for diagnostics only. Removing all of it
+    would not change a single accept/reject. -/
+
+/-- A rejection together with the breadcrumb it was raised under. `checkProgram`
+    still returns a bare `String`; this is what the surface asks for when it needs
+    to know *where* to put the squiggle. -/
+structure Diag where
+  msg : String
+  stmtKey : Option Term := none
+  argKey : Option Term := none
+  trail : List (String × String) := []
+  /-- Raised by the audit at return, so it is about the program's RESULT, whatever
+      statement happened to run last. -/
+  atReturn : Bool := false
+
+/-- Pair a machine error with the state it was raised in. -/
+def Diag.of (msg : String) (s : St) : Diag :=
+  { msg := msg, stmtKey := s.stmtKey, argKey := s.argKey, trail := s.trail }
+
+/-- The key a statement is filed under: the statement stripped of its
+    continuation, since `pushContinuations` rewrites continuations but never the
+    statement itself. A `let` reduces to its binder — runtime ids are globally
+    unique, so that alone identifies the statement and costs nothing to carry. -/
+def stmtKeyOf : Term → Term
+  | .letIn x _ _ => .letIn x .unit .unit
+  | .assign p rhs _ => .assign p rhs .unit
+  | .seq e _ => e
+  | .matchE s eqn _ => .matchE s eqn []
+  | t => t
+
+/-- Enter a statement. Clears the argument key: a failure after a call returned
+    belongs to the statement, not to that call's last argument. -/
+def noteStmt (t : Term) : M Unit :=
+  modify fun s => { s with stmtKey := some (stmtKeyOf t), argKey := none }
+
+/-- Enter a call argument (`processArgs`). -/
+def noteArg (t : Term) : M Unit := modify fun s => { s with argKey := some t }
+
+/-- Enter a match arm. Prepends — an executing-mode run enters an arm per
+    recursive step, and appending would make the cost of a diagnostic nobody is
+    reading quadratic in the length of the run. -/
+def noteArm (scrut : Var) (ctor : String) : M Unit :=
+  modify fun s => { s with trail := (scrut.name, ctor) :: s.trail }
 
 /-! ## State helpers -/
 
@@ -3181,6 +3247,7 @@ def ownedSelect (scrut : Var) (eqn : Option Var) (branches : List Branch) (name 
   match findBranch branches name with
   | none => throwErr s!"match: no branch for constructor '{name}' (scrutinee {scrut.name}#{scrut.id})"
   | some br => do
+    noteArm scrut br.ctor
     checkArmModes name br.binders fields       -- M33a: §2.1 reaches the arm
     openScope (armSeamed? br.body)             -- M31 Stage 0: the arm is a scope
     setSlot scrut .bot                         -- ⇒-consume
@@ -3197,6 +3264,7 @@ def borrowSelect (scrut : Var) (eqn : Option Var) (branches : List Branch) (ℓ 
   match findBranch branches name with
   | none => throwErr s!"match: no branch for constructor '{name}' (scrutinee {scrut.name}#{scrut.id})"
   | some br => do
+    noteArm scrut br.ctor
     if br.binders.length != fields.length then
       throwErr "match: constructor arity mismatch (borrow mode)"
     checkArmModes name br.binders fields       -- M33a: §2.1 reaches the arm
@@ -3519,6 +3587,7 @@ def mintStuckEqn (scrutσ : Nat) (spine : Term) (ctor : String) (σs : List Nat)
     hypothesis, or to `Refl` when refinement has already equated the endpoints. -/
 def symOwnedSetup (fuel : Nat) (scrut : Var) (scrutσ : Nat) (stuck : Option Term)
     (eqn : Option Var) (br : Branch) : M Term := do
+  noteArm scrut br.ctor
   let σs ← mintFieldSyms fuel scrutσ br
   let eqv : Option Val ← match eqn, stuck with
     | none, _ => pure none
@@ -3542,6 +3611,7 @@ def symOwnedSetup (fuel : Nat) (scrut : Var) (scrutσ : Nat) (stuck : Option Ter
     rewritten to markers (§3.2 "everywhere"; M5 depends on this). -/
 def symBorrowSetup (fuel : Nat) (scrut : Var) (ℓ : Nat) (scrutσ : Nat)
     (eqn : Option Var) (br : Branch) : M Term := do
+  noteArm scrut br.ctor
   let σs ← mintFieldSyms fuel scrutσ br
   checkArmModes br.ctor br.binders (σs.map (fun σ => Val.know (Term.sym σ)))  -- M33a
   openScope (armSeamed? br.body)                                 -- M31 Stage 0: the arm is a scope
@@ -5374,18 +5444,24 @@ mutual
       a lowercase `let` ⇒-reads it.* -/
   def letStep : Nat → Var → Term → M Unit
     | fuel, x, rhs => do
+      -- The breadcrumb is filed HERE rather than in each driver, for the reason
+      -- the rule itself is: three drivers take this same step. A `let` files
+      -- under its binder alone — runtime ids are globally unique, so that
+      -- identifies the statement outright and carries none of the RHS's bulk.
+      noteStmt (.letIn x .unit .unit)
       let v ← if x.isComptime then readComptimeVal fuel rhs else readR fuel rhs
       bindSlot x v
   termination_by fuel _ _ => (fuel, 16, 0)
   /-- The `assign` step: RHS by ⇒ first (§2.5 ordering), target by ⇐. -/
   def assignStep : Nat → Term → Term → M Unit
     | fuel, place, rhs => do
+      noteStmt (.assign place rhs .unit)
       let v ← readR fuel rhs
       writeR fuel place v
   termination_by fuel _ _ => (fuel, 16, 0)
   /-- The `seq` step: evaluate for effect, discard. -/
   def seqStep : Nat → Term → M Unit
-    | fuel, e => do let _ ← readR fuel e; pure ()
+    | fuel, e => do noteStmt (.seq e .unit); let _ ← readR fuel e; pure ()
   termination_by fuel _ => (fuel, 16, 0)
   /-- **⇒ with the tail's type in hand** (M33 Σ0's prerequisite, suspensions.md
       §2.7) — `readR` for every step of a body's statement spine, and `readResult`
@@ -5708,6 +5784,11 @@ mutual
       M (List (Nat × Term × Option Term) × Omega)
     | _, _, inst, [], [] => pure ([], inst)
     | fuel, i, inst, (name, tyTerm) :: tRest, arg :: aRest => do
+      -- File the diagnostic under THIS argument. Every rejection below already
+      -- names the *instantiated* parameter type — the checker reads it at the
+      -- actuals already consumed — so the squiggle lands on the offending
+      -- argument and the message states what was expected there.
+      noteArg arg
       -- Parameter `i`'s runtime var (the §5.2 convention: a later type mentions
       -- it as `.var ⟨i, name⟩`). `inst` binds parameters `0 … i-1` to the
       -- actuals already checked, so this type is read at those actuals.
@@ -5928,7 +6009,11 @@ mutual
         let entries := (← get).entrySyms
         modify (fun s => { s with retTyBorrow := some (resolveOldEntry entries ret) })
       let st0 ← get
-      let advanced ← auditAllPaths fuel ret (explore fuel (pushContinuations body) st0) st0
+      -- `exploreD` carries the breadcrumb; the seal audit does not consume it (a
+      -- rejection inside a sealed body is reported at the seal's own statement),
+      -- so it is dropped here rather than threaded through `auditAllPaths`.
+      let advanced ← auditAllPaths fuel ret
+        ((exploreD fuel (pushContinuations body) st0).map (Except.mapError Diag.msg)) st0
       -- `sealSites` crosses back out with the supplies, and for the same reason
       -- (M32 R3): it is a fact about which σ ids are spoken for, so restoring the
       -- caller's copy would let a later mint hand out a σ this audit already
@@ -6299,7 +6384,13 @@ mutual
           -- CHECKING (§5.3/§6.1): signature only, mint one loan group. The
           -- instantiation `inst` (decl var → actual, §5.3) instantiates the
           -- return and owed types at the actuals this call was given.
+          -- An argument may itself be a call, whose own `processArgs` moves the
+          -- breadcrumb inwards. Put back the enclosing call's argument on the way
+          -- out, so a failure after the nested call points at the argument it
+          -- belongs to. Success path only: a rejection inside keeps its own key.
+          let outerArg := (← get).argKey
           let (captured, inst) ← processArgs fuel 0 [] telescope args
+          modify (fun st => { st with argKey := outerArg })
           -- **§8's [k] GUARD IS GONE** (M27-δ), and it left with the path that
           -- fed it. The guard was a side condition on signature-only checking: a
           -- self-call is admitted at the function's own declared return type, so
@@ -6385,8 +6476,8 @@ mutual
   -- scrutinee, stays single-path on a concrete one. Fuel bounds spine depth.
   -- The lexicographic `(fuel, tag, len)` measure admits the same-fuel handoffs
   -- (match → per-branch loop → branch body). -/
-  def explore : Nat → Term → St → List (Except String (Val × St))
-    | 0, _, _ => [.error "explore: out of fuel"]
+  def exploreD : Nat → Term → St → List (Except Diag (Val × St))
+    | 0, _, _ => [.error { msg := "explore: out of fuel" }]
     | fuel + 1, t, st =>
       match t with
       | .matchE scrut eqn branches => exploreMatch fuel scrut eqn branches st
@@ -6398,19 +6489,19 @@ mutual
       -- the reason the third driver made unignorable.
       | .letIn x rhs rest =>
         match (letStep fuel x rhs).run st with
-        | .error e _ => [.error e]
-        | .ok _ st' => explore fuel rest st'
+        | .error e sErr => [.error (Diag.of e sErr)]
+        | .ok _ st' => exploreD fuel rest st'
       | .seq e rest =>
         match (seqStep fuel e).run st with
-        | .error e _ => [.error e]
-        | .ok _ st' => explore fuel rest st'
+        | .error e sErr => [.error (Diag.of e sErr)]
+        | .ok _ st' => exploreD fuel rest st'
       | .assign p rhs rest =>
         match (assignStep fuel p rhs).run st with
-        | .error e _ => [.error e]
-        | .ok _ st' => explore fuel rest st'
+        | .error e sErr => [.error (Diag.of e sErr)]
+        | .ok _ st' => exploreD fuel rest st'
       | other =>                                     -- final expression
-        match (readResult fuel st.retTyVal other).run st with
-        | .error e _ => [.error e]
+        match (do noteStmt other; readResult fuel st.retTyVal other).run st with
+        | .error e sErr => [.error (Diag.of e sErr)]
         | .ok v st' => [.ok (v, st')]
   termination_by fuel _ _ => (fuel, 0, 0)
   /-- **The tail of a body is read AGAINST its return type** (M32 R3b,
@@ -6469,7 +6560,7 @@ mutual
       | _ => readR (fuel + 1) t
     | fuel + 1, _, t => readR (fuel + 1) t
   termination_by fuel _ t => (fuel, 1, sizeOf t)
-  def exploreMatch : Nat → Var → Option Var → List Branch → St → List (Except String (Val × St))
+  def exploreMatch : Nat → Var → Option Var → List Branch → St → List (Except Diag (Val × St))
     | fuel, scrut, eqn, branches, st =>
       -- §6's fence at the OTHER match site. `readR`'s `.matchE` case only ever
       -- sees an expression-position match; a statement-position one — the only
@@ -6477,28 +6568,29 @@ mutual
       -- real body writes — arrives here instead. Fencing one and not the other
       -- would have left the headline rejection (`match Fuel`) unreachable, which
       -- is how this was found: the test failed, not the reasoning.
-      match (fenceComptime scrut "cannot be the scrutinee of a runtime match").run st with
-      | .error e _ => [.error e]
+      match (do noteStmt (.matchE scrut eqn branches)
+                fenceComptime scrut "cannot be the scrutinee of a runtime match").run st with
+      | .error e sErr => [.error (Diag.of e sErr)]
       | .ok _ st =>
       match (reorgScrut fuel scrut).run st with
-      | .error e _ => [.error e]
+      | .error e sErr => [.error (Diag.of e sErr)]
       | .ok disp st' =>
         match disp with
         | .ownedCtor name fields =>
           match (ownedSelect scrut eqn branches name fields).run st' with
-          | .error e _ => [.error e]
-          | .ok body st'' => explore fuel body st''
+          | .error e sErr => [.error (Diag.of e sErr)]
+          | .ok body st'' => exploreD fuel body st''
         | .borrowCtor ℓ name fields =>
           match (borrowSelect scrut eqn branches ℓ name fields).run st' with
-          | .error e _ => [.error e]
-          | .ok body st'' => explore fuel body st''
+          | .error e sErr => [.error (Diag.of e sErr)]
+          | .ok body st'' => exploreD fuel body st''
         | .ownedSym σ stuck =>
           match (checkExhaustive fuel σ branches).run st' with
-          | .error e _ => [.error e]
+          | .error e sErr => [.error (Diag.of e sErr)]
           | .ok _ st'' => exploreSymBranches fuel scrut false 0 σ stuck eqn branches st''
         | .borrowSym ℓ σ =>
           match (checkExhaustive fuel σ branches).run st' with
-          | .error e _ => [.error e]
+          | .error e sErr => [.error (Diag.of e sErr)]
           | .ok _ st'' => exploreSymBranches fuel scrut true ℓ σ none eqn branches st''
   termination_by fuel _ _ _ _ => (fuel, 2, 0)
   /-- One symbolic path per branch, in declaration order. `borrow` selects the
@@ -6506,16 +6598,22 @@ mutual
       symbolic id (used to type the field σ's); `stuck` is the pre-abstraction
       spine, when the σ came from one; `eqn` the declared equation binder. -/
   def exploreSymBranches : Nat → Var → Bool → Nat → Nat → Option Term → Option Var →
-      List Branch → St → List (Except String (Val × St))
+      List Branch → St → List (Except Diag (Val × St))
     | _, _, _, _, _, _, _, [], _ => []
     | fuel, scrut, borrow, ℓ, σ, stuck, eqn, br :: rest, st =>
       (match ((if borrow then symBorrowSetup fuel scrut ℓ σ eqn br
                else symOwnedSetup fuel scrut σ stuck eqn br)).run st with
-       | .error e _ => [.error e]
-       | .ok body st' => explore fuel body st')
+       | .error e sErr => [.error (Diag.of e sErr)]
+       | .ok body st' => exploreD fuel body st')
       ++ exploreSymBranches fuel scrut borrow ℓ σ stuck eqn rest st
   termination_by fuel _ _ _ _ _ _ branches _ => (fuel, 1, branches.length)
 end
+
+/-- The path explorer as everything outside the diagnostics path sees it: the
+    breadcrumb dropped, errors plain `String`s. `exploreD` is the same function
+    with the breadcrumb kept. -/
+def explore (fuel : Nat) (t : Term) (st : St) : List (Except String (Val × St)) :=
+  (exploreD fuel t st).map (Except.mapError Diag.msg)
 
 /-! ## Running programs -/
 

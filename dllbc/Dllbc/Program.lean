@@ -65,13 +65,26 @@ partial def endScope (fuel : Nat) : M Unit := do
 
 /-- **Check a program** (§8): one symbolic ⇒-walk, auditing each path's result at
     `retType`. No table: scope is the call table (§8). -/
-def checkProgram (t : Term) (retType : Term := prog{ Unit }) : Except String Unit :=
-  auditPaths retType
-    ((explore defaultFuel (atBoundary t) initSt).map
+def checkProgramDiag (t : Term) (retType? : Option Term := some prog{ Unit }) :
+    Except Diag Unit :=
+  let paths :=
+    (exploreD defaultFuel (atBoundary t) initSt).map
       (fun r => r.bind (fun p =>
         match (endScope defaultFuel).run p.2 with
         | .ok _ st => .ok (p.1, st)
-        | .error e _ => .error e)))
+        | .error e s => .error (Diag.of e s)))
+  match retType? with
+  | some retType => auditPathsD retType paths
+  -- WALK ONLY. The surface uses this when the program does not say what it
+  -- returns: every rejection the ⇒-walk itself raises is still caught and still
+  -- localized, and only the audit — the one check that needs a return type — is
+  -- left to whoever states one.
+  | none => paths.foldl (fun acc r => acc.bind (fun _ => r.map (fun _ => ()))) (.ok ())
+
+/-- **Check a program** (§8): one symbolic ⇒-walk, auditing each path's result at
+    `retType`. No table: scope is the call table (§8). -/
+def checkProgram (t : Term) (retType : Term := prog{ Unit }) : Except String Unit :=
+  Except.mapError Diag.msg (checkProgramDiag t (some retType))
 
 /-- **Run a program** (§8): ⇒-evaluate it, concretely (executing mode — a call
     runs the callee's actual body), and return the final canonicalized Ω.
