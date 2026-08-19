@@ -1987,6 +1987,30 @@ mutual
               let xOk ← hasTypeT fuel x t
               let xsOk ← hasTypeT fuel xs prog{ Array %n %t }
               pure (xOk && xsOk)
+        -- `atake i k a : Array i T` and `adrop i k a : Array k T`, for
+        -- `a : Array (add i k) T`. CHECKED like their `arrCat`, and for the same
+        -- reason — the element type comes from the expected type, so neither
+        -- carries a `T`. The extent the caller wants is the one the projection
+        -- names, so it is read off `ty` and the argument's type is BUILT from
+        -- both extents rather than decomposed out of it.
+        | .const "atake", [i, k, a] =>
+          match Pure.asArrayTy? (Pure.whnf fuel ty) with
+          | none => pure false
+          | some (n, t) =>
+            if !(Pure.convert fuel n i) then pure false
+            else do
+              let kOk ← hasTypeT fuel k (.const "Nat")
+              let aOk ← hasTypeT fuel a prog{ Array %(prog{ %(Pure.kAddFn) %i %k }) %t }
+              pure (kOk && aOk)
+        | .const "adrop", [i, k, a] =>
+          match Pure.asArrayTy? (Pure.whnf fuel ty) with
+          | none => pure false
+          | some (n, t) =>
+            if !(Pure.convert fuel n k) then pure false
+            else do
+              let iOk ← hasTypeT fuel i (.const "Nat")
+              let aOk ← hasTypeT fuel a prog{ Array %(prog{ %(Pure.kAddFn) %i %k }) %t }
+              pure (iOk && aOk)
         | .const "aget", tt :: n :: i :: a :: rest =>       -- aget T n i a : T
           let iOk ← hasTypeT fuel i (.const "Nat")
           let aOk ← hasTypeT fuel a prog{ Array %n %tt }

@@ -371,8 +371,10 @@ partial def buildNat : Nat → MacroM (TSyntax `term)
 def ctorSet : List String := Dllbc.Val.ctorNames
 /-- Kernel constants (type formers / recursors / eliminators) → `const`. -/
 def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "boolRec", "listRec", "sigmaRec", "botElim", "j", "k",
-  -- ¶1.1/¶1.3's array basis: the former, the split view, the cons view, the read.
-  "Array", "arrCat", "acons", "arrRec", "aget"]
+  -- ¶1.1/¶1.3's array basis: the former, the split view, the cons view, the read,
+  -- and the split view's two PROJECTIONS (`atake`/`adrop`), which are what lets a
+  -- signature name the pieces a carve mints.
+  "Array", "arrCat", "acons", "arrRec", "aget", "atake", "adrop"]
 /-- Friendly aliases for the reified library functions whose surface name differs
     from their `…FnT` Term-constant (`Le` ↦ `LeFnT`, etc.). Everything else falls
     through to the raw-Lean-identifier resolution, so lemma Terms (`SwapL`, `Set`,

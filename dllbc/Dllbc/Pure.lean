@@ -449,6 +449,25 @@ mutual
             (.app (.app (.app (.const "acons") (sAdd tlLen k)) x)
               (.app (.app (.app (.app (.const "arrCat") tlLen) k) (.ctor "Arr" xs)) b')) rest)
         | a', b' => rebuildSpine (.const "arrCat") (m :: k :: a' :: b' :: rest)
+      -- **The two projections of a composition** (¶1.3). `atake i k` and
+      -- `adrop i k` are the left and right inverses of `arrCat i k`, and they
+      -- exist because a SIGNATURE cannot name what a carve mints: the pieces a
+      -- `&m a[Z ; i ; k]` splits off are fresh σ's, so a pin that wants to say
+      -- "the array with slot `i` rewritten" has no syntax for the prefix and the
+      -- suffix — unless it can PROJECT them out of the entry. With these two it
+      -- can, and the update is written decomposition-first instead of as a
+      -- `natRec` on the index, which is the shape that cannot step when the
+      -- index is symbolic (`SetHmProbe` §3.2).
+      | .const "atake", i :: k :: a :: rest =>
+        let a' := whnfN fuel a
+        match splitAt? fuel i k a' with
+        | some (lo, _) => whnfN fuel (rebuildSpine lo rest)
+        | none => rebuildSpine (.const "atake") (i :: k :: a' :: rest)
+      | .const "adrop", i :: k :: a :: rest =>
+        let a' := whnfN fuel a
+        match splitAt? fuel i k a' with
+        | some (_, hi) => whnfN fuel (rebuildSpine hi rest)
+        | none => rebuildSpine (.const "adrop") (i :: k :: a' :: rest)
       | .const "aget", tt :: n :: i :: a :: rest =>
         match semNatOf? (whnfN fuel i), whnfN fuel a with
         | some j, .ctor "Arr" vs =>
@@ -476,6 +495,33 @@ mutual
         | a' => rebuildSpine (.const "arrRec") (tt :: motive :: pn :: pc :: n :: a' :: rest)
       | _, _ => rebuildSpine head args
   termination_by fuel _ => (fuel, 0, 0)
+  /-- **Is `a` the composition `arrCat i k _ _`, and what are its halves?**
+      `none` — hence a stuck projection — whenever the answer is not visibly yes.
+
+      Two shapes answer. A `arrCat` spine answers when BOTH extents convert with
+      the ones asked for: `atake 1 2 (arrCat 2 1 lo hi)` is not `lo`, so matching
+      the total extent would be unsound and the split point is what has to agree.
+      An owned run answers by `List.take`/`List.drop` at a concrete `i`, with the
+      same discipline — `i + k` must be the run's length, or the caller asked
+      about a split this array does not have.
+
+      The extent test is conversion (readback, then `convEq`) and not `==` on the
+      semantic values: an extent that arrived through `arrCat`'s own ι — which
+      builds `add m' k` as it steps — is the same number as the one a signature
+      wrote and need not be the same tree. -/
+  def splitAt? : Nat → Sem → Sem → Sem → Option (Sem × Sem)
+    | fuel, i, k, .app (.app (.app (.app (.const "arrCat") m) k') lo) hi =>
+      if Term.convEq (readback fuel 0 i) (readback fuel 0 m)
+         && Term.convEq (readback fuel 0 k) (readback fuel 0 k')
+      then some (lo, hi) else none
+    | fuel, i, k, .ctor "Arr" vs =>
+      match semNatOf? (whnfN fuel i), semNatOf? (whnfN fuel k) with
+      | some j, some c =>
+        if j + c == vs.length then some (.ctor "Arr" (vs.take j), .ctor "Arr" (vs.drop j))
+        else none
+      | _, _ => none
+    | _, _, _, _ => none
+  termination_by fuel _ _ _ => (fuel, 6, 0)
   /-- Read a semantic value back to canonical syntax, renaming every binder it
       opens to its LEVEL — which is what makes the output canonical rather than
       merely first-order. -/
