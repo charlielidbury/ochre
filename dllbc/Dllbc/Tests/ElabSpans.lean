@@ -86,6 +86,34 @@ audit: result (S Z) does not have return type (Bool)
   let x = S(Z);
   x } : Term)
 
+/-! ## (4a) INSIDE a `fn` body — the argument
+
+    A function body is checked inside a seal, on its own machine state, and the
+    audit throws into the ENCLOSING one. Carrying the breadcrumb back out is what
+    makes this land on the argument rather than on the declaration — and this is
+    where it matters most, because a `fn` body is where the corpus lives. -/
+
+/--
+error: dllbc: the program is rejected:
+call: argument (S (S (S Z))) does not have its parameter type (Bool)
+-/
+#guard_msgs in
+#check (prog check{
+  fn F (b : Bool) -> Unit { () };
+  fn G (x : Nat) -> Unit { F(3); () };
+  () } : Term)
+
+/-! ## (4b) INSIDE a `fn` body — the statement -/
+
+/--
+error: dllbc: the program is rejected:
+readR: a#1 holds ⊥ (use-after-move or uninitialized). If a CALL moved it and that callee only needs it in types or proofs, capitalizing the callee's parameter makes the argument a ⇝-read, which consumes nothing (§6).
+-/
+#guard_msgs in
+#check (prog check{
+  fn H (x : Nat) -> Unit { let a = Cons(1, Nil); let b = a; let c = a; () };
+  () } : Term)
+
 /-! ## (5) A program that CHECKS elaborates to exactly the term it always did
 
     The check is a side effect of elaboration and changes nothing about the value.

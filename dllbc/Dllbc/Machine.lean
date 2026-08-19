@@ -4825,6 +4825,42 @@ def auditAllPaths : Nat → Term → List (Except String (Val × St)) → St →
                    nextSym := max acc.nextSym st'.nextSym
                    nextGroup := max acc.nextGroup st'.nextGroup }
 
+/-- **`auditAllPaths` that carries the breadcrumb OUT of the sealed body.**
+
+    A function body is checked inside a seal, on its own `St`, and the audit
+    throws a plain `String` into the ENCLOSING state — whose breadcrumb points at
+    the `fn` statement, not at the statement inside the body that failed. So every
+    rejection from inside any `fn` used to report at the declaration at best, which
+    is where most real code lives and therefore where the localization is worth
+    the most.
+
+    This writes the failing path's breadcrumb into the enclosing state on the way
+    out, at both throw sites: the ⇒-walk's own rejection (which arrives as a
+    `Diag`) and the audit's (which has the path's `St` in hand and so knows the
+    same thing). Nothing else changes — the message and the accept/reject are the
+    same, and a body that checks pays nothing.
+
+    The breadcrumb crossing a seal boundary is sound precisely because it is NOT
+    σ-bearing: it is a key into a source table, no value is observed through it,
+    and the frame isolation this function exists to enforce is about Ω,
+    obligations and groups, none of which it touches. -/
+def auditAllPathsD : Nat → Term → List (Except Diag (Val × St)) → St → M St
+  | _, _, [], acc => pure acc
+  | _, _, .error d :: _, _ => do
+    modify fun s => { s with stmtKey := d.stmtKey, argKey := d.argKey, trail := d.trail }
+    throwErr d.msg
+  | fuel, ret, .ok (v, st) :: rest, acc =>
+    match (auditAction fuel ret v).run st with
+    | .error e sErr => do
+      modify fun s =>
+        { s with stmtKey := sErr.stmtKey, argKey := sErr.argKey, trail := sErr.trail }
+      throwErr e
+    | .ok _ st' =>
+      auditAllPathsD fuel ret rest
+        { acc with nextLoan := max acc.nextLoan st'.nextLoan
+                   nextSym := max acc.nextSym st'.nextSym
+                   nextGroup := max acc.nextGroup st'.nextGroup }
+
 /-! ## §8's globals: what a function body may name besides its own binders
 
     §7 cost 2 admits "closed" function values — "arms reference only their own
@@ -6009,11 +6045,13 @@ mutual
         let entries := (← get).entrySyms
         modify (fun s => { s with retTyBorrow := some (resolveOldEntry entries ret) })
       let st0 ← get
-      -- `exploreD` carries the breadcrumb; the seal audit does not consume it (a
-      -- rejection inside a sealed body is reported at the seal's own statement),
-      -- so it is dropped here rather than threaded through `auditAllPaths`.
-      let advanced ← auditAllPaths fuel ret
-        ((exploreD fuel (pushContinuations body) st0).map (Except.mapError Diag.msg)) st0
+      -- `auditAllPathsD`, not `auditAllPaths`: the breadcrumb crosses back out of
+      -- the sealed body, so a rejection inside a `fn` reports at the statement
+      -- inside the `fn` rather than at the declaration. The reference dropped it
+      -- here; that left every error in a function body unlocalized, which is where
+      -- most of the corpus is.
+      let advanced ← auditAllPathsD fuel ret
+        (exploreD fuel (pushContinuations body) st0) st0
       -- `sealSites` crosses back out with the supplies, and for the same reason
       -- (M32 R3): it is a fact about which σ ids are spoken for, so restoring the
       -- caller's copy would let a later mint hand out a σ this audit already

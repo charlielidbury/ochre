@@ -545,6 +545,13 @@ def spanOfStmt (t : TSyntax `term) (ref : Syntax) : UM Unit :=
 def spanOfLet (id : Nat) (name : String) (ref : Syntax) : UM Unit := do
   noteStmtSpan (← `(Dllbc.Term.letIn ⟨$(quote id), $(quote name)⟩ Dllbc.Term.unit Dllbc.Term.unit)) ref
 
+/-- File a `fn` statement. It is a `let` like any other, but every `fn` shares the
+    `declSlot` TAG as its id (M32 R4), so the NAME is what distinguishes one from
+    another here — which is exactly what `Ω` resolves by. -/
+def spanOfFn (name : String) (ref : Syntax) : UM Unit := do
+  noteStmtSpan (← `(Dllbc.Term.letIn ⟨Dllbc.declSlot, $(quote name)⟩ Dllbc.Term.unit
+                      Dllbc.Term.unit)) ref
+
 /-- File an assignment under its place and right-hand side. -/
 def spanOfAssign (place rhs : TSyntax `term) (ref : Syntax) : UM Unit := do
   noteStmtSpan (← `(Dllbc.Term.assign $place $rhs Dllbc.Term.unit)) ref
@@ -1283,6 +1290,11 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- it is. `retarget` below still owns the `f(…)` rewrite — `localId` keeps this
     -- entry out of the call row for exactly that reason — so what this adds is the
     -- BARE-name reading `retarget` never had, and nothing it did have is removed.
+    -- The `fn` statement's own span, at its name and signature. It is the
+    -- fallback for a rejection raised inside the body whose own statement the
+    -- audit could not carry out (see `auditAllPathsD`): the error lands on the
+    -- declaration rather than on the whole program.
+    spanOfFn nm (mkNullNode #[name, ret])
     let (rest', n2) ← elabUBlk ((nm, Dllbc.declSlot) :: rctx) pctx next rest
     return (← `(Dllbc.Term.letIn $slot
                   (Dllbc.FnMacro.fnElabOrFail
