@@ -47,6 +47,12 @@ Spec functions you will define (pure, over the pack): `FindHM q hm : Opt Nat` �
 3. **Executing differential:** port Aeneas' `test1` (keys 0, 128, 1024, 1056 at cap 32 — all collide in slot 0 by construction; overwrite via the get_mut path; remove; re-check) plus a small-cap sequence that actually triggers ≥2 resizes, checked against a trusted Lean-side reference map, `runQsA`-style. E2E rule applies: accepted/rejected or runs-to-X only.
 4. **The writeup:** a short comparison section at the bottom of this file (fill it in): LoC split (program / spec / lemmas / staging), check wall-clock, and the divergence ledger vs the vendored README's (Nat-vs-usize; intrinsic-packed vs extrinsic invariant; borrow-returning ops without functional specs).
 
+## Prior attempts (for coordinators and reviewers — NOT for implementers)
+
+Three implementations of this spec exist as parked branches, from the 2026-08-17 three-model comparison (identical prompts, base `1e5fad94`): **`hm-flagship-fable` @ `97be424a`** — S3 reached (New / Insert-with-resize / Remove, every fixed conjunct in one chain, 12/12 twins, the literal cap-32 `test1` differential; the benchmark artifact); **`hm-flagship-opus` @ `9c288065`** — S1-partial (New + Insert, 20/20 twins, scaled differential); **`hm-flagship-sonnet` @ `2dcfa82f`** — S1-core (everything below Insert, plus a no-cross-bucket-duplicates lemma family its `FindHM` deviation forced). Their worktrees are gone; the branches are pushed.
+
+**If you are an agent implementing this spec: do NOT read these branches.** Independent attempts are the point — reading a prior implementation anchors yours and voids the comparison. They are listed for coordinators, reviewers, and post-hoc analysis. (The probe branches under "Known-good ground" above remain fair game: those are capability probes, not implementations of this spec.)
+
 ## Process
 
 Worktree off `origin/main`; FF-CAS endgame (rebase-and-ff is yours; see the merge-protocol notes in team memory — pinned-lease pushes, re-count migrations after every rebase). Incremental writes ≤120 lines, build per chunk, push every commit. Staging: S1 fixed-capacity map without resize (full specs); S2 resize + full Insert; S3 twins + differential + writeup. No kernel changes — if you believe you need one, stop and report instead. Spec conjuncts above are fixed; everything else is yours to shape, with deviations named in commit messages.
