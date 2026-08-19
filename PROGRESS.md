@@ -1,5 +1,85 @@
 # Progress
 
+## 2026-08-19 — dllbc/: **THE PIN (12-design stages 1+5) — loan-attached debts, and the checker keeps what a caller writes through a cursor**
+
+Branch `pin-implementation` (worktree off main @ 0d5fdfc8, the ratified design).
+**NOT merged — this is the milestone the user reviews.** Five commits, corpus
+green at each; full from-scratch `lake build` green at the tip.
+
+**The headline: `getMutRoundTripPin`.** `fn NthPin [i] (i : Nat, v : &mut (s :
+List Nat ~> Set i (*res) s), p : Le (S i) (Len *v)) -> &mut Nat` — a bounds-proof
+cursor whose PARAMETER declares what its loan releases: the entry list with
+position `i` replaced by whatever comes back through the returned borrow. A
+caller writes 9 through the cursor, ends the group, and the CHECKER knows
+`y ≡ [1,9,3]` — the fact M27's fold deleted with declared backs, recovered as a
+per-loan, optional, signature-resident claim that both ends check. The executing
+machine computes the same list, so the divergence pair `Boundaries` has pinned
+since M28 CLOSES for pinned signatures and stays open (deliberately) for
+unpinned ones.
+
+**Stage 0 first, per the doc's own gate:** the `S(k)` discharge conversion
+`Set (S k) r (Cons h t) ≡ Cons h (Set k r t)` measured DEFINITIONAL on
+`StdLemmas.Set` with all four atoms neutral (`Tests/PinProbe.lean`) — no
+bridging equations needed. Two findings the probe forced: `hasTypeT · Type` is
+the WRONG D1 classifier on this kernel (no arm for bare type constants /
+neutral type applications — it would have silently pinned `&mut (s : Bool ~>
+Nat)`), so classification is a dedicated whnf head-recognizer; and the `@res`
+marker rides nf/convert/readC inert, so a pin stores exactly where owed types
+already live.
+
+**Stage 1 (mergeable checkpoint on its own):** `St.debts` keyed by loan replaces
+`St.obligations` + `Group`'s owed types + `Group.exitRelease`; `Group` narrows
+to ordering-only; `refineSym`/`generalizeStuck` sweep ONE σ-bearing table where
+there were three. ZERO golden movement, measured by a full suite replay — the
+stage's definition of done.
+
+**Stage 5:** one-slot D1 (`~>` RHS kind-classified; type = owed claim unchanged,
+else pin opened at the entry σ — D15, no `old`); `*res` lowers to the `@res k`
+marker; ONE exit term per issued loan shared between the payload fill and the
+pin's `@res` substitution (the borrow-identity discipline the published
+verifiers all confront); an issued borrow's own pin CONSTRAINS its exit, which
+is how the read-only container law computes; an open sub-group's pin PROJECTS
+recursively (the probe's leg, run by the audit); an unpinned sub-group yields a
+fresh σ and the conversion fails — §2.2's composition-climbs as an ordinary
+failure, not a special case. Release: `.know (nf pin[@res := surrendered])` —
+D2(a)'s one-slot simplification, with §5.4's `sym σ′` the degenerate res-free
+case, byte-identical. `endIssued` asserts issued pins: the read-only REJECTION.
+D6 at calls: a pinned loan may not be handed to a callee promising less.
+
+**Family (c) both ways, measured:** direct identity pins (`~> s`, `~> t`) give
+the caller `y ≡ [1,2,3]` outright with the write-through REJECTED ("violates
+the borrow's pin"); the derived form (`~> Set i (*res) s` + identity result)
+CHECKS as a declaration and gives its caller the RELATIONAL `y ≡ [1, T, 3]`
+with the σ shared between `T` and `y` — strictly more than opacity, strictly
+less than the direct form; the residual is `T = NthL i s` (WHERE the cursor
+points), which is D9's lifted `retMixesBorrow`, not a pin. The probe's
+`Set i (NthL i s) s ⇝ s` measurement (definitional concrete / stuck symbolic)
+is that boundary, exactly as the doc's §12(c) note flagged.
+
+**The counterfactual, enumerated:** disable the discharge dispatch and EXACTLY
+the 17 checking-side pin assertions go red (13 in `BorrowRefoundGoals`, 2 in
+`Boundaries`, 2 in `Diff`) — every progOk/tailEnv/needle of the new battery and
+NOTHING else; the executing-side runY/runProgram/instanceOf assertions stay
+green, measuring that the machine never depended on the discharge; the whole
+pre-existing corpus is untouched in the same build.
+
+**What did not move, which is the other half of the acceptance:** `chooseCaller`
+(distinct fresh σs, z=7 unprovable), `ArraySort`'s carve reset, the whole
+OpaqueFill/AuditExemption battery, and every unpinned TODAY assertion in the
+goals file — opacity remains the default; a signature that writes no pin
+changes nothing.
+
+**Residuals for stages 2/3/4/6** (untouched, per the lane's scope): the shape
+half (`pairParamWitness`), the local mint / `.seal` borrow branch and D5's full
+stacking-at-one-end, the M27 containment's repeal for unpinned non-trivial owed
+TYPES (`containmentWitness` still rejects; D12(b) full is (a)-family work), the
+D6 entailment's non-trivial-owed rung (pre-existing seam, left as found),
+`split_at_mut`'s two-exit pin with `*(fst res)`/`*(snd res)` navigation, and
+pins over carved ARRAYS (pinFill folds a `§segs` to `@stateComponent`, failing
+loudly). One noted interaction: a pinned param on a function whose return type
+also cites `*v` releases the pin while the evidence names §5.4's σ′ — two names
+for one value that do not convert; no corpus program combines them.
+
 ## 2026-08-14 — dllbc/: **M33 macro-top — the surface goes UNDER the kernel**
 
 Seven commits on `m33-macro-top` (based on main @ a43047b9), corpus green at each.
