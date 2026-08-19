@@ -116,6 +116,30 @@ Statement granularity is the 90% win: "this `let`, this call, this match arm" �
 > the terminal expression in `exploreD` and the statement-position match in
 > `exploreMatch`. Filing at the shared steps rather than per driver is what keeps
 > §4's discipline holdable: a fourth driver gets the breadcrumb for free.
+>
+> **THE BREADCRUMB MUST CROSS THE SEAL, and the reference was wrong about this.**
+> A function body is checked inside a seal, on its own `St`, and the audit throws
+> a plain `String` into the enclosing state — whose breadcrumb points at the `fn`
+> statement. The reference implementation dropped the `Diag` at that site on
+> purpose, reasoning that "a rejection inside a sealed body is reported at the
+> seal's own statement". For this corpus that is the wrong call, and it is not a
+> small one: **a `fn` body is where essentially all real DLLBC code lives**, so
+> dropping the breadcrumb there means the feature localizes toy programs and
+> nothing else. `auditAllPathsD` carries it out, at both throw sites.
+>
+> This is sound for exactly the reason pillar B gives for the breadcrumb in
+> general: it is **not σ-bearing**. It is a key into a source table, no value is
+> observed through it, and the frame isolation the seal audit exists to enforce is
+> about Ω, obligations and groups — none of which it touches. Crossing a seal with
+> a σ would be a real violation; crossing one with a source key is not.
+>
+> **How it was found is the point.** The bug did not appear in the demo file,
+> which is written in top-level programs. It appeared the first time the feature
+> was pointed at the corpus — a real closed program from `Tests/Programs.lean`
+> with one argument broken — and it appeared as this section's own
+> fail-loudly-never-guess rule firing: "no span for the failing statement — this
+> is a span-table gap, please report it". A mechanism that had guessed a nearby
+> position instead would have hidden it.
 
 ### C. The error surface
 
