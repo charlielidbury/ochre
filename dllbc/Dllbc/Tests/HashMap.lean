@@ -4299,15 +4299,18 @@ def s1P2a : Term := prog{
       MkInv cap load nn SL0 HLe1 HLoad HLed HCnt HSf))));
     () };
   () }
--- PINNED LIMIT (the finding that shaped the op layer): the exit audit cannot
--- re-type a DEPENDENT pack whose array component is still SEGMENTED — the
--- entry clauses are typed at the whole-array sigma, the demanded tail
--- instantiates the raw segment-list value, and the two do not convert at the
--- audit even though the sigma/composition equation holds (s1P2c below). So
--- every op routes its carve through a CALLEE (SlotUpd) and packs the fresh
--- opaque sigma the group end mints — the function boundary is load-bearing,
--- exactly as ArraySort found for the flex-length carve.
-example : progOk s1P2a = false := by native_decide
+-- LEDGERED FLIP (rebase onto 87818899, Gap A): this was the PINNED LIMIT that
+-- shaped the op layer — the exit audit could not re-type a DEPENDENT pack whose
+-- array component was still segmented, even though the sigma/composition
+-- equation IS definitional (s1P2c below proved that; the gap was the audit's
+-- conversion). Main's audit-fold commit (9dfc964b: "the exit audit folds a
+-- rejoined carve before re-typing a dependent pack") closes exactly that gap,
+-- and this probe now CHECKS: the carve is rejoined at the exit, the fold
+-- rebuilds the whole-array value, and the pack re-types against it. The op
+-- layer's callee routing (SlotUpd/SlotRem/MoveOne) remains VALID and stays as
+-- built — this flip records that the boundary is no longer FORCED, not that it
+-- was wrong.
+example : progOk s1P2a = true := by native_decide
 
 -- P2c/P2d: is the entry sigma definitionally the composition of the segment
 -- sigmas, from a carve of a LOCAL owned array? Asked with an ascribed Refl.

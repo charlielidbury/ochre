@@ -1,0 +1,277 @@
+import Dllbc.Tests.HashMap
+
+/-!
+# The hashmap flagship's PINNED ops — S4: GetMut with a functional contract
+
+The 2026-08-17 run pinned GetMut/GetMutOrInsert as executing-only: a returned
+borrow kept its group open and the audit could not re-type the packed invariant
+with a loan inside slots. Main has since landed the borrow re-founding
+(12-design, M35): `&mut (s : τ ~> E)` one-slot contracts, `*res` naming the
+issued borrow's exit payload, discharge by hole-filling, D9 value components,
+and `atake`/`adrop` — which `ArrCatIota` measured into "the blind carve at a
+symbolic index CHECKS". This module is the hashmap instance: `SetHM` (the
+pack→pack model update, decomposition-first), the pinned bucket walk, and
+`GetMutHM`/`GetMutOrInsertHM` per 13-'s un-deferred spec, closing with the
+two-call round-trip chain (`twoGetMutChain` at hashmap scale).
+
+**The one spelling rule everything here hangs on:** every new spec function
+compares keys as `Eqb QUERY entrykey` — `FindL`'s own argument order — so that
+the walk's branch equations (`if e : Eqb key *kk`) name the very spine the
+pin's normalization gets stuck on. The S1 walks bound the FLIPPED orientation
+(`Eqb *kk key`) and repaired it with lemmas; a pin has no lemma slot, so the
+orientation is load-bearing here.
+-/
+
+section
+
+open Dllbc
+open Dllbc.StdLemmas (LeRefl LeAdd LeAddL LeTrans LePredL
+  AddSucc AddZero IdTrans IdCongr IdSym NatRw BoolFT BoolTF
+  LeRwL LeRwR EqbRefl EqbTrueEq EqbSym
+  Mod ModLtN Sub AddSubCancel Mul)
+
+namespace Dllbc.Tests.HashMap
+
+/-! ## (xxiv) The bucket-level update, in the pin's orientation
+
+    `BSetK q v l` — the entry at key `q` gets value `v`, keys and structure
+    untouched, no-op when `q` is absent. Mirrors `FindL` clause for clause so
+    the two can never disagree about which entry is "the" hit. -/
+
+def BSetK : Term := prog{
+  λ (Q : Nat). λ (V : Nat). λ (L : List (Σ (k : Nat). Nat)).
+    elim L return (λ (Lm : List (Σ (k : Nat). Nat)). List (Σ (k : Nat). Nat)) {
+      Nil => Nil,
+      Cons (E) (T) Rec =>
+        elim E return (λ (Em : Σ (k : Nat). Nat). List (Σ (k : Nat). Nat)) {
+          Pair (K2) (V2) =>
+            elim (Eqb Q K2) return (λ (Bm : Bool). List (Σ (k : Nat). Nat)) {
+              True => Cons(Pair(K2, V), T),
+              False => Cons(Pair(K2, V2), Rec) } } } }
+
+example : chkL prog{ Refl } prog{ Id (List (Σ (k : Nat). Nat))
+  (BSetK 3 99 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil)))
+  Cons(Pair(1, 10), Cons(Pair(3, 99), Nil)) } = true := by native_decide
+example : chkL prog{ Refl } prog{ Id (List (Σ (k : Nat). Nat))
+  (BSetK 7 99 Cons(Pair(1, 10), Nil)) Cons(Pair(1, 10), Nil) } = true := by native_decide
+example : chkL prog{ Refl } prog{ Id (List (Σ (k : Nat). Nat))
+  (BSetK 3 99 Cons(Pair(3, 30), Cons(Pair(3, 31), Nil)))
+  Cons(Pair(3, 99), Cons(Pair(3, 31), Nil)) } = true := by native_decide
+
+/-- Presence survives a non-hit head: from `Eqb q k0 ≡ False` and presence in
+    the whole bucket, presence in the tail — the walk's recursion premise. -/
+def HitTailEv : Term := prog{
+  λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
+  λ (E : Id Bool (Eqb Q K0) False).
+  λ (H : Id Bool (HitL Q Cons(Pair(K0, V0), T)) True).
+    IdTrans Bool (HitL Q T) (HitL Q Cons(Pair(K0, V0), T)) True
+      (IdSym Bool (HitL Q Cons(Pair(K0, V0), T)) (HitL Q T)
+        (IdCongr Bool Bool
+          (λ (W : Bool). IsSomeB (elim W return (λ (Bm : Bool). Σ (bb : Bool). OptP bb Nat) {
+            True => SomeN V0, False => FindL Q T }))
+          (Eqb Q K0) False E))
+      H }
+def HitTailEvTy : Term := prog{
+  Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
+    Id Bool (Eqb Q K0) False → Id Bool (HitL Q Cons(Pair(K0, V0), T)) True →
+    Id Bool (HitL Q T) True }
+example : chkL HitTailEv HitTailEvTy = true := by native_decide
+
+/-! ## (xxv) THE GATE — does the key-driven walk discharge its pin?
+
+    The unmeasured mechanism this whole module rests on: the walk branches on
+    `Eqb key *kk` — a STUCK Bool — and the pin `BSetK key (*res) t`, normalized
+    at the audit, is stuck at exactly that `elim (Eqb key σkk)`. The audit is
+    branch-swept; the question is whether the branch's equation feeds its
+    conversion. `NthPin` (BorrowRefoundGoals) never asks it — its recursion is
+    on a Nat index and each branch refines a CONSTRUCTOR. The hit leg needs the
+    True arm taken, the miss leg the False arm (whose result must then converge
+    with the recursive call's projected pin at the shared exit σ). Pin-only
+    (plain `&mut Nat` return) so a failure names the pin, not D9. -/
+
+def bktGetPinOnly : Term := prog{
+  fn BktGetP [fuel] (fuel : Nat, key : Nat,
+      b : &mut (t : List (Σ (k : Nat). Nat) ~> BSetK key (*res) t),
+      Hin : Id Bool (HitL key (*b)) True,
+      Hf : Le (LenE (*b)) fuel) -> &mut Nat {
+    match b {
+      Nil => botElim Unit (BoolFT Hin),
+      Cons(Pair(kk, vv), tl) => match fuel {
+        Z => botElim Unit Hf,
+        S(f2) => {
+          let K0 = *kk;
+          let V0 = *vv;
+          let T0 = *tl;
+          if e : Eqb key *kk {
+            &m *vv
+          } else {
+            BktGetP(f2, key, &m *tl, HitTailEv key K0 V0 T0 e Hin, Hf)
+          } } } } };
+  () }
+
+example : progOk bktGetPinOnly = true := by native_decide
+
+/-! ## (xxvi) The D9 evidence lemmas — where the cursor points -/
+
+/-- The hit leg's return conjunct: at `Eqb q k0 ≡ True`, the head's value IS
+    the bucket's answer at `q`. Stated in the D9 orientation (`Some (*r)` on
+    the left) so the constructed proof's type is verbatim the declared one. -/
+def FindEvHit : Term := prog{
+  λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
+  λ (E : Id Bool (Eqb Q K0) True).
+    IdSym OptN (FindL Q Cons(Pair(K0, V0), T)) (SomeN V0)
+      (IdCongr Bool OptN
+        (λ (W : Bool). elim W return (λ (Bm : Bool). Σ (bb : Bool). OptP bb Nat) {
+          True => SomeN V0, False => FindL Q T })
+        (Eqb Q K0) True E) }
+def FindEvHitTy : Term := prog{
+  Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
+    Id Bool (Eqb Q K0) True →
+    Id OptN (SomeN V0) (FindL Q Cons(Pair(K0, V0), T)) }
+example : chkL FindEvHit FindEvHitTy = true := by native_decide
+
+/-- The miss leg's transport: a non-hit head is skipped by the lookup, so tail
+    evidence lifts to the whole bucket. -/
+def FindTailEv : Term := prog{
+  λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
+  λ (E : Id Bool (Eqb Q K0) False).
+    IdSym OptN (FindL Q Cons(Pair(K0, V0), T)) (FindL Q T)
+      (IdCongr Bool OptN
+        (λ (W : Bool). elim W return (λ (Bm : Bool). Σ (bb : Bool). OptP bb Nat) {
+          True => SomeN V0, False => FindL Q T })
+        (Eqb Q K0) False E) }
+def FindTailEvTy : Term := prog{
+  Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
+    Id Bool (Eqb Q K0) False →
+    Id OptN (FindL Q T) (FindL Q Cons(Pair(K0, V0), T)) }
+example : chkL FindTailEv FindTailEvTy = true := by native_decide
+
+/-! ## (xxvii) The slot split, spelled so the pin can cite it
+
+    The carve at slot `Mod key cap` must present its split point as terms the
+    pin's own normalization produces — `SlotOfE`'s MINTED σ's cannot convert
+    with `SetHM`'s internal `Mod`/`CoMod` spines, so the pinned op carves at
+    the literal applications and cites `ModSplit` instead of a minted `hd`. -/
+
+/-- The residue: everything after `key`'s slot. `cap = Mod key cap + S (CoMod
+    key cap)` whenever `1 ≤ cap` — that is `ModSplit`. -/
+def CoMod : Term := prog{ λ (Q : Nat). λ (C : Nat). Sub C (S (Mod Q C)) }
+
+def ModSplit : Term := prog{
+  λ (Q : Nat). λ (C : Nat). λ (H : Le (S Z) C).
+    IdSym Nat (Add (Mod Q C) (S (CoMod Q C))) C
+      (IdTrans Nat (Add (Mod Q C) (S (CoMod Q C))) (S (Add (Mod Q C) (CoMod Q C))) C
+        (AddSucc (Mod Q C) (CoMod Q C))
+        (AddSubCancel C (S (Mod Q C)) (ModLtN Q C H))) }
+def ModSplitTy : Term := prog{
+  Π (Q : Nat) → Π (C : Nat) → Le (S Z) C →
+    Id Nat C (Add (Mod Q C) (S (CoMod Q C))) }
+example : chkL ModSplit ModSplitTy = true := by native_decide
+
+-- It computes: cap 5, key 7 → slot 2, residue 2; cap 32, key 1056 → slot 0.
+example : chkL prog{ Refl } prog{ Id Nat 5 (Add (Mod 7 5) (S (CoMod 7 5))) } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id Nat (CoMod 7 5) 2 } = true := by native_decide
+
+/-! ## (xxviii) `SetHM` — the pack→pack model update, decomposition-first
+
+    The pin's whole job is to CONVERT with the hole-filled exit, so `SetHM`
+    names the carve's pieces with `atake`/`adrop` at the very split terms the
+    pinned body carves at (`Mod q cap`, `CoMod q cap`) — `AVSetDecT`'s shape
+    (ArrCatIota §3.1) lifted to the pack, with the element work done by
+    `BSetK` on the `acons`-headed suffix. The invariant value rides through
+    untouched, exactly as the toy's `PVSetDecT` carries `H`: a value write
+    keeps every clause's inhabitant. -/
+
+def BumpHead : Term := prog{
+  λ (Q : Nat). λ (V : Nat). λ (R : Nat). λ (A : Array (S R) (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
+        Array Mz (List (Σ (k : Nat). Nat)))
+      Arr()
+      (λ (M : Nat). λ (X : List (Σ (k : Nat). Nat)).
+        λ (XS : Array M (List (Σ (k : Nat). Nat))).
+        λ (Ih : Array M (List (Σ (k : Nat). Nat))).
+          acons M (BSetK Q V X) XS)
+      (S R) A }
+
+def SetHM : Term := prog{
+  λ (Q : Nat). λ (V : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim Hm return (λ (H0 : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+        Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+          Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+      Pair (Cap) (R1) =>
+        elim R1 return (λ (H1 : Σ (load : Nat). Σ (n : Nat).
+            Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))). HMInvT Cap load n slots).
+            Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+              Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+          Pair (Load) (R2) =>
+            elim R2 return (λ (H2 : Σ (n : Nat).
+                Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                  HMInvT Cap Load n slots).
+                Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                  Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+              Pair (N) (R3) =>
+                elim R3 return (λ (H3 : Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                    HMInvT Cap Load N slots).
+                    Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+                  Pair (Slots) (Inv) =>
+                    Pair(Cap, Pair(Load, Pair(N, Pair(
+                      arrCat (Mod Q Cap) (S (CoMod Q Cap))
+                        (atake (Mod Q Cap) (S (CoMod Q Cap)) Slots)
+                        (BumpHead Q V (CoMod Q Cap)
+                          (adrop (Mod Q Cap) (S (CoMod Q Cap)) Slots)),
+                      Inv)))) } } } } }
+
+-- It computes through the spec lookup: the hit key's answer moves, the frame
+-- (a DIFFERENT key hashing to the same slot, and the size) does not.
+example : chkL prog{ Refl } prog{ Id OptN (FindHM 3 (SetHM 3 99 hmEx)) (SomeN 99) }
+  = true := by native_decide
+example : chkL prog{ Refl } prog{ Id OptN (FindHM 5 (SetHM 3 99 hmEx)) NoneN }
+  = true := by native_decide
+example : chkL prog{ Refl } prog{ Id OptN (FindHM 7 (SetHM 7 99 hmEx)) NoneN }
+  = true := by native_decide
+example : chkL prog{ Refl } prog{ Id Nat (SizeHM (SetHM 3 99 hmEx)) 1 } = true := by
+  native_decide
+example : chkL prog{ Refl } prog{ Id Nat (CapHM (SetHM 3 99 hmEx)) 2 } = true := by
+  native_decide
+
+/-- `SetHM` preserves the size — the second call's fuel bound. Nested Σ-elims
+    to the leaf, where both sides compute to the same `N` and `Refl` closes. -/
+def SetHMSize : Term := prog{
+  λ (Q : Nat). λ (V : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim Hm return (λ (H0 : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+        Id Nat (SizeHM (SetHM Q V H0)) (SizeHM H0)) {
+      Pair (Cap) (R1) =>
+        elim R1 return (λ (H1 : Σ (load : Nat). Σ (n : Nat).
+            Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))). HMInvT Cap load n slots).
+            Id Nat (SizeHM (SetHM Q V Pair(Cap, H1))) (SizeHM Pair(Cap, H1))) {
+          Pair (Load) (R2) =>
+            elim R2 return (λ (H2 : Σ (n : Nat).
+                Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                  HMInvT Cap Load n slots).
+                Id Nat (SizeHM (SetHM Q V Pair(Cap, Pair(Load, H2))))
+                  (SizeHM Pair(Cap, Pair(Load, H2)))) {
+              Pair (N) (R3) =>
+                elim R3 return (λ (H3 : Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                    HMInvT Cap Load N slots).
+                    Id Nat (SizeHM (SetHM Q V Pair(Cap, Pair(Load, Pair(N, H3)))))
+                      (SizeHM Pair(Cap, Pair(Load, Pair(N, H3))))) {
+                  Pair (Slots) (Inv) => Refl } } } } }
+def SetHMSizeTy : Term := prog{
+  Π (Q : Nat) → Π (V : Nat) →
+  Π (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) →
+    Id Nat (SizeHM (SetHM Q V Hm)) (SizeHM Hm) }
+example : chkL SetHMSize SetHMSizeTy = true := by native_decide
+
+end Dllbc.Tests.HashMap
+
+end
