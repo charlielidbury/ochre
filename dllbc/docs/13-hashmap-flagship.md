@@ -15,7 +15,7 @@ HashMap := Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
            Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInv cap load n slots
 ```
 
-The invariant is **packed in the type** — a `HashMap` value cannot exist broken, so every op's invariant-preservation proof is just returning a well-typed pack, and it survives even opaque group ends. `HMInv`'s clauses (formulation yours, content fixed): `Le 1 cap`; every entry in slot `i` has `Mod key cap = i`; `n` equals the total entry count across buckets; `load` is the 4/5 threshold ledger for `cap`. Note `n` bounds every bucket's length through the counting clause — that is how callers name fuel bounds (`Le (…n…cap…) fuel`) without reaching into buckets.
+The invariant is **packed in the type** — a `HashMap` value cannot exist broken, so every op's invariant-preservation proof is just returning a well-typed pack, and it survives even opaque group ends. `HMInv`'s clauses (formulation yours, content fixed): `Le 1 cap`; every entry in slot `i` has `Mod key cap = i`; `n` equals the total entry count across buckets; `load` is the 4/5 threshold ledger for `cap`; and **each bucket's keys are duplicate-free** (ratified 2026-08-19, after the fable run proved it FORCED: Remove's pointwise equation fails at a shadowed duplicate and resize-reordering breaks Insert's — Aeneas' own `slot_t_inv` carries the same clause). Note `n` bounds every bucket's length through the counting clause — that is how callers name fuel bounds (`Le (…n…cap…) fuel`) without reaching into buckets.
 
 **Ops** — `New`, `Insert` (with resize), `Remove`, `GetMut` (present-key, evidence-carrying), `GetMutOrInsert`. `Len` is a projection. No `clear` needed.
 
