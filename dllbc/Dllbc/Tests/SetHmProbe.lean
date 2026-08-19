@@ -53,6 +53,14 @@ lo`, `ADrop` likewise) and `SetHM` could be written decomposition-first and woul
 converge with the fill on the refined spine, with no walk. That is a contained,
 purely computational addition — but it is a kernel change, so it is named here and
 not attempted.
+
+**That change has since landed** (`Dllbc/Tests/ArrCatIota.lean`), as `atake`/
+`adrop`, and it does what this paragraph predicted: the blind carve at a symbolic
+index in an opaque-extent array discharges its map-level pin, so `GetMut` is O(1)
+again and the walk below is a fallback nobody has to take. Every verdict in §7
+still reads exactly as it does, because every program here is spelled with the
+FOLD-spelled `PVSetNT` or with parameters standing in for the carve's pieces — the
+two spellings this file measured. What changed is that there is now a third.
 -/
 
 section
