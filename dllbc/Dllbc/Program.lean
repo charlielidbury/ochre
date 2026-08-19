@@ -86,6 +86,40 @@ def checkProgramDiag (t : Term) (retType? : Option Term := some prog{ Unit }) :
 def checkProgram (t : Term) (retType : Term := prog{ Unit }) : Except String Unit :=
   Except.mapError Diag.msg (checkProgramDiag t (some retType))
 
+/-- The depth the pure judgment runs at. Lemmas nest, and 2000 is what
+    `Tests/KernelFloor.lean`'s `chk` has always used for exactly this judgment;
+    named here rather than written as a literal so the two cannot drift apart. -/
+def pureFuel : Nat := 2000
+
+/-- **Check a PURE term against its stated type** (the other half of the
+    information rule, `ElabCheck`).
+
+    A block with no `fn` in it carries no specification of its own, so there is
+    nothing to check it against — unless someone states one. `prog -> τ { … }`
+    states one, and for a pure term the check that type asks for is not the
+    ⇒-walk but `hasTypeT`: reflect the term, reflect the type, and ask.
+
+    This is `Tests/KernelFloor.lean`'s `chk` promoted out of the test file, with
+    one difference that is the entire reason it is worth promoting: it returns a
+    `Diag` rather than a `Bool`, so the surface can put a diagnostic on it.
+
+    **The breadcrumb is empty, and honestly so.** `hasTypeT` answers `false` for
+    "does not have this type" without saying where inside the term the mismatch
+    was, so there is no statement to point at and the surface reports at the
+    ascription. Spans inside the pure fragment are the plan's S3; until they
+    exist this is a definition-header error, which is still local — the failure
+    lands on the lemma being defined rather than on a `chk` probe somewhere else
+    entirely.
+
+    Fuel is `pureFuel`, not `defaultFuel`. -/
+def checkPureDiag (t : Term) (ty : Term) : Except Diag Unit :=
+  match (do let v ← readC pureFuel t; let τ ← readC pureFuel ty; hasTypeT pureFuel v τ).run
+      (seedPure [] []) with
+  | .ok true _ => .ok ()
+  | .ok false _ =>
+    .error { msg := s!"the term does not have its stated type ({ty.pretty})" }
+  | .error e _ => .error { msg := e }
+
 /-- **Run a program** (§8): ⇒-evaluate it, concretely (executing mode — a call
     runs the callee's actual body), and return the final canonicalized Ω.
 

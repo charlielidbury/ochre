@@ -157,13 +157,61 @@ def throwDiag {α : Type} (ref : Syntax) (retRef : Option Syntax) (spans : SpanA
     let note := if dup then m!"\n(this statement is written more than once in the program; \
       the position shown is its first occurrence)" else m!""
     throwErrorAt r (head ++ note)
-  | none => throwErrorAt ref (head ++ m!"\n(no span for the failing statement — reported at the \
-      program; this is a span-table gap, please report it)")
+  | none =>
+    -- NO BREADCRUMB AT ALL versus A BREADCRUMB THAT DID NOT MATCH. Only the
+    -- second is a defect. The pure check (`checkPureDiag`) raises no breadcrumb
+    -- by construction — `hasTypeT` answers `false` without locating anything, so
+    -- there is no statement to have a span for — and telling the author to report
+    -- a span-table gap for it would be sending them after a bug that is not
+    -- there. That case reports at the ascription, which is the thing the check
+    -- was actually about.
+    if diag.stmtKey.isNone && diag.argKey.isNone then
+      throwErrorAt (retRef.getD ref) head
+    else
+      throwErrorAt ref (head ++ m!"\n(no span for the failing statement — reported at the \
+        program; this is a span-table gap, please report it)")
 
-/-- Elaborate a program and check it, with the audit included exactly when a
-    return type was written. A program whose assembled value is not closed — a
-    spliced template — is declined silently: there is nothing to evaluate, and
-    such a template is checked at its instantiations by construction. -/
+/-- **Is this term a program?** — asked of the VALUE, and answered by the calculus
+    rather than by the surface.
+
+    The first cut of this asked whether the block contained a `fn`, on the
+    reasoning that a `fn` carries its own `-> retType` and so supplies the
+    specification. That is true of the SPEC but false as a test of PROGRAM-hood,
+    and the demo caught it immediately: `let x = Cons(1,Nil); let y = x; let z = x`
+    is a use-after-move with no `fn` anywhere, and a syntactic test files it as a
+    pure term and checks nothing.
+
+    The right test already exists and is the calculus's own. `reflectC`'s refusal
+    list — `.seal`, `.borrow`, `.assign`, `.seq`, `.matchE`, `.call`, an
+    imperative λ — **IS this calculus's definition of the pure sub-grammar**
+    (§1.3, quoted in `ProgMacro`'s header). So: a term ⇝ refuses is a program, and
+    a term it accepts is pure. No second definition of the fragment boundary, and
+    no way for the surface's opinion to drift from the kernel's.
+
+    A `fn` still lands on the program side, because it emits a `let` of a `.seal`
+    and `.seal` heads the refusal list. -/
+def isProgramValue (v : Dllbc.Term) : Bool :=
+  match (readC pureFuel v).run (seedPure [] []) with
+  | .ok _ _ => false
+  | .error _ _ => true
+
+/-- Elaborate a block and check it with **the checker its content determines**.
+
+    | content | ascription | check |
+    |---|---|---|
+    | has `fn` | none | the ⇒-walk (`checkProgramDiag … none`) |
+    | has `fn` | `-> τ` | the walk AND the audit at `τ` |
+    | no `fn` | `-> τ` | `hasTypeT` against `τ` (`checkPureDiag`) |
+    | no `fn` | none | nothing — there is no specification anywhere |
+
+    The last row is information absence, not a deferral policy: a bare pure block
+    states no type, and a λ is checkable but not synthesizable, so there is
+    nothing any checker could be asked. The suite pairs a term with its type at
+    the probe site precisely because the definition does not carry it.
+
+    A block whose assembled value is not closed — a spliced template — is
+    declined silently whatever its content: there is nothing to evaluate, and such
+    a template is checked at its instantiations by construction. -/
 def elabChecked (ref : Syntax) (ret : Option (TSyntax `uterm))
     (act : UM (TSyntax `term)) : TermElabM Expr := do
   let (e, spans) ← elabWith act
@@ -186,9 +234,19 @@ def elabChecked (ref : Syntax) (ret : Option (TSyntax `uterm))
   let t0 ← IO.monoMsNow
   let v ← evalTermValue e
   let t1 ← IO.monoMsNow
-  let res := checkProgramDiag v retVal
+  let isProgram := isProgramValue v
+  let res :=
+    if isProgram then checkProgramDiag v retVal
+    else match retVal with
+      -- A pure term with no stated type has no specification anywhere, so there
+      -- is nothing to ask. Not a deferral: information absence. A λ is checkable
+      -- but not synthesizable, which is why the suite pairs term and type at the
+      -- probe site — the definition does not carry it.
+      | none => .ok ()
+      | some τ => checkPureDiag v τ
   let t2 ← IO.monoMsNow
-  trace[Dllbc.check] "program: reify {t1 - t0}ms, check {t2 - t1}ms"
+  trace[Dllbc.check] "{if isProgram then "program" else "pure term"}: \
+    reify {t1 - t0}ms, check {t2 - t1}ms"
   match res with
   | .ok _ => return e
   | .error diag => throwDiag ref (ret.map (·.raw)) spans diag

@@ -281,7 +281,13 @@ syntax:max ident noWs "(" upat,* ")" : upat                  -- a nested constru
 -- The binder telescope reuses `ulamb`, the runtime λ's binder category, because it
 -- is the same thing — a list of `x : τ` — and a second category for it would be a
 -- second thing to keep in step.
-syntax "fn" ident ("[" ident "]")? "(" ulamb,* ")" "->" uterm "{" ublk "}" ";" ublk : ublk
+-- **Named**, because the surface has to be able to ASK whether a block contains
+-- one (`ElabCheck`, the information rule): a `fn` carries its own `-> retType`,
+-- so a block containing one carries its own specification and can be checked
+-- without any annotation. That question is asked by syntax kind rather than by
+-- scanning for the atom `fn`, which would also match a binder spelled `fn`.
+syntax (name := ublkFn)
+  "fn" ident ("[" ident "]")? "(" ulamb,* ")" "->" uterm "{" ublk "}" ";" ublk : ublk
 syntax "let" ident "=" uterm ";" ublk : ublk                 -- runtime let (→ letIn)
 -- **THE SINGLETON-CONSTRUCTOR `let`** (M34 sugar (ii)). `let C(a, b) = e ; rest`
 -- is `match e { C(a, b) => rest }` — the REST OF THE BLOCK moves inside the arm,
