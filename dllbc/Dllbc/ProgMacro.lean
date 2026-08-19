@@ -84,11 +84,24 @@ namespace Dllbc
 
     `%e` splices a Lean-level `Term` expression `e` directly (an escape hatch), and
     the recursor sugar `elim … return …` / `elim … generalizing …` (§15b, §18) is
-    part of the grammar. -/
+    part of the grammar.
+
+    ## This brace does not check, and `prog check { … }` does (`ElabCheck.lean`)
+
+    The walker now accumulates a span table on the side — key term ↦ the source
+    syntax it was written at — which is what lets a rejection be reported at the
+    statement that caused it. This macro DISCARDS it, because it is not the form
+    that checks: with `pure{ }` merged into this brace (M29 γ), most of what is
+    written here is a type or a proof term, and `checkProgram` has no business
+    ⇒-walking a `Π`. The word `check` is what asks for the walk, and the
+    elaborator that performs it lives in `ElabCheck.lean` — above `Program.lean`,
+    because it calls `checkProgramDiag` and this file is below it. -/
 
 syntax "prog{" ublk "}" : term
 
 macro_rules
-  | `(prog{ $b:ublk }) => do let (t, _) ← Dllbc.Surface.elabUBlk [] [] 0 b; pure t
+  | `(prog{ $b:ublk }) => do
+    let ((t, _), _) ← StateT.run (Dllbc.Surface.elabUBlk [] [] 0 b) {}
+    pure t
 
 end Dllbc

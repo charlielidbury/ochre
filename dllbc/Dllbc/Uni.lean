@@ -481,6 +481,78 @@ def binderDom (nm : String) (τ : TSyntax `term) : MacroM (TSyntax `term) :=
     match: the slot's `Var` syntax, the constructor, and the arguments to match. -/
 abbrev PendingPat := TSyntax `term × Ident × List (TSyntax `upat)
 
+/-! ## The span side channel
+
+The walker holds each statement's and each argument's `TSyntax` — that is where
+`Macro.throwErrorAt` already gets its spans — so while it builds the term it also
+accumulates, on the side, a **key term ↦ source syntax** table. `Term` and `Val`
+are untouched by a single byte; the positions ride alongside the value, not
+inside it.
+
+The key is the term itself, in `stmtKeyOf` normal form, rather than a path.
+`atBoundary`'s `pushContinuations` duplicates each continuation into every match
+arm before the checker walks the program, so a statement's *position* in the
+walked term is not its position in the source and differs per arm — while its
+*term* is the same term in every copy. Matching on the term is invariant under
+that normalization for free, and needs no second implementation of the fork
+logic.
+
+Assembling this costs nothing at check time: the entries are unelaborated syntax,
+and the surface only elaborates and evaluates them when a check has actually
+failed and a span is needed. -/
+
+/-- Key-term syntax paired with the source syntax it was written at. -/
+structure SpanAcc where
+  /-- Statement keys, as raw `Syntax` (a `TSyntax` in an accumulator field trips
+      the kernel through the `partial` mutual block below). -/
+  stmts : Array (Syntax × Syntax) := #[]
+  /-- Call-argument keys: the argument's own term, filed under its own span. -/
+  args : Array (Syntax × Syntax) := #[]
+deriving Inhabited
+
+/-- The surface walker's monad: `MacroM` plus the span side channel. -/
+abbrev UM := StateT SpanAcc MacroM
+
+/-- File a statement key at its source span. -/
+def noteStmtSpan (key : TSyntax `term) (ref : Syntax) : UM Unit :=
+  modify fun a => { a with stmts := a.stmts.push (key.raw, ref) }
+
+/-- File a call argument's key at its source span. -/
+def noteArgSpan (key : TSyntax `term) (ref : Syntax) : UM Unit :=
+  modify fun a => { a with args := a.args.push (key.raw, ref) }
+
+/-! The key builders live OUT here, not in the walker, because a quotation in
+    argument position inside the walker's `partial mutual` block makes the kernel
+    reject the whole block with "unknown free variable `_kernel_fresh.N`" — a Lean
+    4.16 elaboration bug, not a design constraint. Keeping them out is better
+    structure anyway: the walker states *what* it is filing, and the key normal
+    forms are defined in one place.
+
+    **`stmtKeyOf` is applied at LOOKUP, not here**, and that is forced by the
+    import order rather than chosen: `stmtKeyOf` lives in `Machine.lean`, which is
+    BELOW this file, so a quotation naming it here is an identifier that cannot be
+    resolved where the key is finally elaborated — it survives as
+    `Dllbc.stmtKeyOf✝` and fails with "unknown identifier". The consumer
+    (`ElabCheck.spanFor`) normalizes instead, which costs nothing: `stmtKeyOf` is
+    idempotent, so the two builders below that already emit a normal form are
+    unaffected by being normalized again. -/
+
+/-- File a statement under its own term, raw. -/
+def spanOfStmt (t : TSyntax `term) (ref : Syntax) : UM Unit :=
+  noteStmtSpan t ref
+
+/-- File a `let` statement under its binder alone (runtime ids are unique). -/
+def spanOfLet (id : Nat) (name : String) (ref : Syntax) : UM Unit := do
+  noteStmtSpan (← `(Dllbc.Term.letIn ⟨$(quote id), $(quote name)⟩ Dllbc.Term.unit Dllbc.Term.unit)) ref
+
+/-- File an assignment under its place and right-hand side. -/
+def spanOfAssign (place rhs : TSyntax `term) (ref : Syntax) : UM Unit := do
+  noteStmtSpan (← `(Dllbc.Term.assign $place $rhs Dllbc.Term.unit)) ref
+
+/-- File each of a call's arguments under its own span. -/
+def spanOfArgs (keys : Array (TSyntax `term)) (refs : Array Syntax) : UM Unit :=
+  (keys.zip refs).forM fun kr => noteArgSpan kr.1 kr.2
+
 /-- Is this argument a nested PATTERN rather than a BINDER? Either it is a
     constructor applied to arguments, or it is a NULLARY constructor spelled bare
     — `Cons(Z, tl)`, `Pair(True, x)`.
@@ -540,8 +612,8 @@ partial def mintPatArgs (rctx : List (String × Nat)) (next : Nat) :
     disagree about what a body IS — an arm's is a `uarmBody`, the `let` pattern's
     is the REST OF THE BLOCK — and they agree about everything else. -/
 partial def wrapPats (rctx : List (String × Nat)) (next : Nat) (pend : List PendingPat)
-    (body : List (String × Nat) → Nat → MacroM (TSyntax `term × Nat)) :
-    MacroM (TSyntax `term × Nat) := do
+    (body : List (String × Nat) → Nat → UM (TSyntax `term × Nat)) :
+    UM (TSyntax `term × Nat) := do
   match pend with
   | [] => body rctx next
   | (v, c, args) :: rest => do
@@ -686,7 +758,7 @@ partial def collectAppU : TSyntax `uterm → TSyntax `uterm × Array (TSyntax `u
 mutual
 
 partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
-    (stx : TSyntax `uterm) : MacroM (TSyntax `term × Nat) := do
+    (stx : TSyntax `uterm) : UM (TSyntax `term × Nat) := do
   match stx with
   | `(uterm| ()) => return (← `(Dllbc.Term.unit), next)
   | `(uterm| ($e:uterm)) => elabUTerm rctx pctx next e
@@ -814,7 +886,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     -- one.
     if parsed.isEmpty then
       Macro.throwErrorAt stx "λr: a runtime λ must bind at least one argument. `λ(){ … }` is a thunk, and a thunk makes ι ambiguous — an arm applied to no arguments and an arm with nothing owed become the same spine. A recursor arm at a non-functional motive is an ordinary term; write it as one."
-    parsed.forM (fun p => checkBinder p.1)
+    parsed.forM (fun p => liftM (checkBinder p.1))
     let (rctx', next', binderSyns) ← elabLamBinders rctx pctx next parsed
     let (b', n) ← elabUBlk rctx' pctx next' b
     return (← `(Dllbc.Term.lamTel [$binderSyns,*] $b'), n)
@@ -905,6 +977,12 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
       -- `.call`, because `retarget` is what rewrites those — and permutes a
       -- `[k]`-hoisted callee's arguments on the way (see `localId`'s header).
       -- The SPINE (M32 R4): `f(a, b)` is sugar for `.app (.app (.var f) a) b`.
+      -- Argument granularity: `processArgs` checks actuals positionally against
+      -- the telescope, threading the instantiation, so when argument `k` fails it
+      -- holds `k` AND the expected type instantiated at the earlier actuals.
+      -- Filing each argument's term at its own span is the whole cost of turning
+      -- that into a squiggle on the offending argument alone.
+      spanOfArgs args' (args.getElems.map (·.raw))
       match localId rctx name with
       | some id =>
         return (← `(Dllbc.Term.appSpine (.var ⟨$(quote id), $(quote name)⟩) [$args',*]), n)
@@ -927,7 +1005,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     -- one does not take them. See `refuseNestedPat`.
     for arm in arms.getElems do
       match arm with
-      | `(uarm| $_:ident ($args,*) => $_:uarmBody) => args.getElems.forM refuseNestedPat
+      | `(uarm| $_:ident ($args,*) => $_:uarmBody) => args.getElems.forM (fun p => liftM (refuseNestedPat p))
       | _ => pure ()
     let (scrut, pre?, n1) ← elabScrut rctx pctx next e
     let hName := h.getId.toString
@@ -1008,7 +1086,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     reborrows — the same program, differing by two characters, differing in
     ownership. -/
 partial def elabScrut (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
-    (e : TSyntax `uterm) : MacroM (TSyntax `term × Option (TSyntax `term) × Nat) := do
+    (e : TSyntax `uterm) : UM (TSyntax `term × Option (TSyntax `term) × Nat) := do
   match e with
   | `(uterm| ($inner:uterm)) => elabScrut rctx pctx next inner
   | `(uterm| $x:ident) =>
@@ -1023,7 +1101,7 @@ partial def elabScrut (rctx : List (String × Nat)) (pctx : List String) (next :
     return (← `((⟨$(quote n1), $(quote scrutName)⟩ : Dllbc.Var)), some e', n1 + 1)
 
 partial def elabUList (rctx : List (String × Nat)) (pctx : List String) (next : Nat) :
-    List (TSyntax `uterm) → MacroM (Array (TSyntax `term) × Nat)
+    List (TSyntax `uterm) → UM (Array (TSyntax `term) × Nat)
   | [] => pure (#[], next)
   | a :: as => do
     let (a', n1) ← elabUTerm rctx pctx next a
@@ -1039,7 +1117,7 @@ partial def elabUList (rctx : List (String × Nat)) (pctx : List String) (next :
     comptime marker on a capitalized binder's domain, which is what makes the
     annotation agree with the ascription `piPeel` checks it against. -/
 partial def elabLamBinders (rctx : List (String × Nat)) (pctx : List String) (next : Nat) :
-    List (Ident × TSyntax `uterm) → MacroM (List (String × Nat) × Nat × Array (TSyntax `term))
+    List (Ident × TSyntax `uterm) → UM (List (String × Nat) × Nat × Array (TSyntax `term))
   | [] => pure (rctx, next, #[])
   | (x, τ) :: rest => do
     let name := x.getId.toString
@@ -1059,7 +1137,7 @@ partial def elabLamBinders (rctx : List (String × Nat)) (pctx : List String) (n
     Types elaborate in type mode (⇝). -/
 partial def buildTele (params : List (String × Nat)) (rctx : List (String × Nat))
     (pctx : List String) (i : Nat) :
-    List (String × TSyntax `uterm) → MacroM (Array (TSyntax `term))
+    List (String × TSyntax `uterm) → UM (Array (TSyntax `term))
   | [] => pure #[]
   | (nm, τ) :: rest => do
     let (τT, _) ← elabUTerm (params ++ rctx) pctx 0 τ
@@ -1068,7 +1146,7 @@ partial def buildTele (params : List (String × Nat)) (rctx : List (String × Na
     pure (#[entry] ++ rest')
 
 partial def elabUArms (rctx : List (String × Nat)) (pctx : List String) (next : Nat) :
-    List (TSyntax `uarm) → MacroM (Array (TSyntax `term) × Nat)
+    List (TSyntax `uarm) → UM (Array (TSyntax `term) × Nat)
   | [] => pure (#[], next)
   | a :: as => do
     let (a', n1) ← elabUArm rctx pctx next a
@@ -1076,7 +1154,7 @@ partial def elabUArms (rctx : List (String × Nat)) (pctx : List String) (next :
     pure (#[a'] ++ rest, n2)
 
 partial def elabUArm (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
-    (arm : TSyntax `uarm) : MacroM (TSyntax `term × Nat) := do
+    (arm : TSyntax `uarm) : UM (TSyntax `term × Nat) := do
   match arm with
   | `(uarm| $c:ident => $body:uarmBody) => do
     let (body', n) ← elabUArmBody rctx pctx next body
@@ -1092,14 +1170,17 @@ partial def elabUArm (rctx : List (String × Nat)) (pctx : List String) (next : 
   | _ => Macro.throwErrorAt arm "decl: unexpected match arm"
 
 partial def elabUArmBody (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
-    (body : TSyntax `uarmBody) : MacroM (TSyntax `term × Nat) := do
+    (body : TSyntax `uarmBody) : UM (TSyntax `term × Nat) := do
   match body with
   | `(uarmBody| { $b:ublk }) => elabUBlk rctx pctx next b
-  | `(uarmBody| $e:uterm) => elabUTerm rctx pctx next e
+  | `(uarmBody| $e:uterm) => do          -- a bare arm body IS the arm's final statement
+    let (e', n) ← elabUTerm rctx pctx next e
+    spanOfStmt e' e
+    return (e', n)
   | _ => Macro.throwErrorAt body "decl: unexpected arm body"
 
 partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
-    (stx : TSyntax `ublk) : MacroM (TSyntax `term × Nat) := do
+    (stx : TSyntax `ublk) : UM (TSyntax `term × Nat) := do
   match stx with
   -- **`fn` — the declaration statement** (M28 θ). This is `FnMacro.progOf` unrolled
   -- one binding at a time, and reusing its two moving parts rather than
@@ -1237,6 +1318,10 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- there is nothing below it to keep.) ⇒ bodies had the same hole and are fixed
     -- with it.
     let pctx' := pctx.filter (fun s => s != name)
+    -- File this statement at `x = e`. The key is the BINDER alone: runtime ids
+    -- are globally unique, so it identifies the statement outright and carries
+    -- none of the right-hand side's bulk.
+    spanOfLet n1 name (mkNullNode #[x, e])
     let (rest', n2) ← elabUBlk ((name, n1) :: rctx) pctx' (n1 + 1) rest
     return (← `(Dllbc.Term.letIn ⟨$(quote n1), $(quote name)⟩ $e' $rest'), n2)
   -- **`let C(a, b) = e ; rest` = `match e { C(a, b) => rest }`** (M34 sugar (ii)).
@@ -1269,13 +1354,22 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
   | `(ublk| $p:uterm := $e:uterm ; $rest:ublk) => do
     let (p', n1) ← elabUTerm rctx pctx next p
     let (e', n2) ← elabUTerm rctx pctx n1 e
+    spanOfAssign p' e' (mkNullNode #[p, e])
     let (rest', n3) ← elabUBlk rctx pctx n2 rest
     return (← `(Dllbc.Term.assign $p' $e' $rest'), n3)
   | `(ublk| $e:uterm ; $rest:ublk) => do
     let (e', n1) ← elabUTerm rctx pctx next e
+    spanOfStmt e' e
     let (rest', n2) ← elabUBlk rctx pctx n1 rest
     return (← `(Dllbc.Term.seq $e' $rest'), n2)
-  | `(ublk| $e:uterm) => elabUTerm rctx pctx next e
+  | `(ublk| $e:uterm) => do
+    let (e', n) ← elabUTerm rctx pctx next e
+    -- The block's final expression. `stmtKeyOf` is applied in the emitted
+    -- expression rather than mirrored by hand: a final `match` files under the
+    -- same `matchE s eqn []` the walker computes, without this walker knowing
+    -- that rule.
+    spanOfStmt e' e
+    return (e', n)
   | _ => Macro.throwErrorAt stx "decl: unexpected block syntax"
 
 /-- `elim scrut return motive { arms }` → the matching recursor (§15b). Pure — the
@@ -1299,21 +1393,21 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     entries existed only to be counted. Under names the arm's binder is named and
     the substitution says so. -/
 partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
-    (scrut motive : TSyntax `uterm) (arms : Array (TSyntax `uelimArm)) : MacroM (TSyntax `term × Nat) := do
+    (scrut motive : TSyntax `uterm) (arms : Array (TSyntax `uelimArm)) : UM (TSyntax `term × Nat) := do
   let (scrutT, n1) ← elabUTerm rctx pctx next scrut
   let (motiveT, n2) ← elabUTerm rctx pctx n1 motive
   let motiveBare := match motive with | `(uterm| ($e:uterm)) => e | _ => motive
   let (mName, mTy, mBody) ← match motiveBare with
     | `(uterm| λ ($x:ident : $τ:uterm). $b:uterm) => pure (x.getId.toString, τ, b)
     | _ => Macro.throwError "elim: motive must be a λ `(x : τ). …`"
-  let armFor (c : String) : MacroM (Option (Array Ident × Option Ident × TSyntax `ublk)) := do
+  let armFor (c : String) : UM (Option (Array Ident × Option Ident × TSyntax `ublk)) := do
     for arm in arms do
       match arm with
       | `(uelimArm| $ctor:ident $[($bs:ident)]* $[$ih:ident]? => $body:ublk) =>
         if ctor.getId.toString == c then return some (bs, ih, body)
       | _ => pure ()
     return none
-  let getArm (c : String) : MacroM (Array Ident × Option Ident × TSyntax `ublk) := do
+  let getArm (c : String) : UM (Array Ident × Option Ident × TSyntax `ublk) := do
     match ← armFor c with
     | some r => pure r
     | none => Macro.throwError s!"elim: missing arm for constructor '{c}'"
@@ -1321,7 +1415,7 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
     | `(uelimArm| $ctor:ident $[($_:ident)]* $[$_:ident]? => $_:ublk) => some ctor.getId.toString
     | _ => none)
   -- `P ⟨target⟩`: the motive body with the motive's binder renamed to the arm's.
-  let pOf (target : String) : MacroM (TSyntax `term) := do
+  let pOf (target : String) : UM (TSyntax `term) := do
     let b := (← elabUTerm rctx (mName :: pctx) n2 mBody).1
     `(Dllbc.Term.substP $(quote mName) (Dllbc.Term.pvar $(quote target)) $b)
   if names.contains "Z" || names.contains "S" then
@@ -1420,10 +1514,10 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
     subterm abstracted at all its occurrences, mechanically. Bool motives only (the
     count algebra's case-on-`eqb`); Nat/List use the `return` form. -/
 partial def elabUGenElim (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
-    (scrut goal : TSyntax `uterm) (arms : Array (TSyntax `uelimArm)) : MacroM (TSyntax `term × Nat) := do
+    (scrut goal : TSyntax `uterm) (arms : Array (TSyntax `uelimArm)) : UM (TSyntax `term × Nat) := do
   let (scrutT, n1) ← elabUTerm rctx pctx next scrut
   let (goalT, n2) ← elabUTerm rctx pctx n1 goal
-  let armBody (c : String) : MacroM (TSyntax `term) := do
+  let armBody (c : String) : UM (TSyntax `term) := do
     for arm in arms do
       match arm with
       | `(uelimArm| $ctor:ident $[($_:ident)]* $[$_:ident]? => $body:ublk) =>
