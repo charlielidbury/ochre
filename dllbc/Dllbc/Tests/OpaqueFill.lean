@@ -963,6 +963,10 @@ example : progOk midSplit3 = true := by native_decide
     position, which is a question about the fold's motive rather than the value's
     shape. -/
 
+-- (§7.6, the pin over these same shapes, is at the end of the file — after the
+-- §7.5 evidence it routes around.)
+
+
 def midCarveEscN : Term := prog{
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a))
       -> &mut Nat {
@@ -982,6 +986,125 @@ def frontCarveEscN : Term := prog{
 
 example : progOk midCarveEscN = true := by native_decide
 example : progOk frontCarveEscN = true := by native_decide
+
+/-! ### §7.6 THE PIN ROUTES AROUND §7.5 (M35, residual (a)) — a DECLARED update
+    over a carved pack, discharged by conversion
+
+    §7.5's refusal is about what a TYPE-claim can promise: re-typing the filled
+    payload against the pack's Σ0 means asking the invariant's fold to reduce
+    past the fill's σ, and a fold that cannot is the checker honestly not
+    knowing. A PIN changes the question: the release is a declared VALUE —
+    "the pack with the array's cell-`i` value replaced by what comes back
+    through the borrow I issued" — and the discharge is a CONVERSION between
+    the hole-filled exit payload and that declaration, with the invariant
+    nowhere in it. `pinFill` folds the carve into its `arrCat` spine with the
+    lent cell standing at the SHARED exit σ and every other place at its actual
+    payload, so both sides normalize by the same ι's.
+
+    `AVSet`/`PVSet2`/`PVSet3` are the toy's update (index-first, cons-view,
+    keeping the key — defined here, like `AllK7`, as the container's own
+    theory). The measured boundary, pinned by `gmPin2at1blind`: the index-first
+    update computes past a prefix exactly when the BODY'S OWN FLOW exposed it
+    (a match on the cell makes its segment a run, and `arrCat`'s ι steps on a
+    run head). A blind carve at index ≥ 1 leaves a σ-bodied prefix no
+    conversion can step past — the same boundary §7.5 pinned for the fill, now
+    with both sides PRINTED. That is the walk-shaped GetMut's own story: the
+    real hashmap GetMut reaches its slot by walking, and a walk opens exactly
+    the prefix the discharge needs. The pin-less `gmValMin`/`gmValMid` above
+    stay red with their needles — the fill's conservatism is unchanged; the pin
+    ROUTES AROUND it, per signature. -/
+
+def AVSetT : Term := prog{
+  λ (I : Nat). λ (V : Nat).
+    elim I return (λ (Z0 : Nat). Π (N : Nat) → Π (A : Array N (Σ (k : Nat). Nat)) → Array N (Σ (k : Nat). Nat)) {
+      Z => λ (N : Nat). λ (A : Array N (Σ (k : Nat). Nat)).
+        arrRec (Σ (k : Nat). Nat)
+          (λ (M : Nat). λ (Az : Array M (Σ (k : Nat). Nat)). Array M (Σ (k : Nat). Nat))
+          %(Term.ctorApp "Arr" [])
+          (λ (M : Nat). λ (X : Σ (k : Nat). Nat). λ (XS : Array M (Σ (k : Nat). Nat)).
+            λ (Ih : Array M (Σ (k : Nat). Nat)).
+              acons M (elim X return (λ (Xz : Σ (k : Nat). Nat). Σ (k : Nat). Nat) {
+                Pair (Kx) (Vx) => Pair Kx V }) XS)
+          N A,
+      S (I2) Rec => λ (N : Nat). λ (A : Array N (Σ (k : Nat). Nat)).
+        arrRec (Σ (k : Nat). Nat)
+          (λ (M : Nat). λ (Az : Array M (Σ (k : Nat). Nat)). Array M (Σ (k : Nat). Nat))
+          %(Term.ctorApp "Arr" [])
+          (λ (M : Nat). λ (X : Σ (k : Nat). Nat). λ (XS : Array M (Σ (k : Nat). Nat)).
+            λ (Ih : Array M (Σ (k : Nat). Nat)).
+              acons M X (Rec M XS))
+          N A } }
+
+def PVSet2T : Term := prog{
+  λ (I : Nat). λ (V : Nat). λ (P : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a).
+    elim P return (λ (Pz : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a).
+                     Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a) {
+      Pair (A) (H) => Pair ((%AVSetT) I V 2 A) H } }
+
+def PVSet3T : Term := prog{
+  λ (I : Nat). λ (V : Nat). λ (P : Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a).
+    elim P return (λ (Pz : Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a).
+                     Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a) {
+      Pair (A) (H) => Pair ((%AVSetT) I V 3 A) H } }
+
+def gmPin2at0 : Term := prog{
+  fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a ~> (%PVSet2T) 0 (*res) s)) -> &mut Nat {
+    match self { Pair(a, H) => {
+      let e = &m (*a)[0];
+      match e { Pair(kk, vv) => &m *vv } } } };
+  () }
+
+def gmPin2at1 : Term := prog{
+  fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a ~> (%PVSet2T) 1 (*res) s)) -> &mut Nat {
+    match self { Pair(a, H) => {
+      let e0 = &m (*a)[0];
+      match e0 { Pair(k0, v0) => {
+        let e = &m (*a)[1];
+        match e { Pair(kk, vv) => &m *vv } } } } } };
+  () }
+
+def gmPin3at2 : Term := prog{
+  fn G (self : &mut (s : Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a ~> (%PVSet3T) 2 (*res) s)) -> &mut Nat {
+    match self { Pair(a, H) => {
+      let e0 = &m (*a)[0];
+      match e0 { Pair(k0, v0) => {
+        let e1 = &m (*a)[1];
+        match e1 { Pair(k1, v1) => {
+          let e = &m (*a)[2];
+          match e { Pair(kk, vv) => &m *vv } } } } } } } };
+  () }
+
+/-- The GetMut shape, pinned, at every carve index — where §7.5 stops at 0. -/
+example : progOk gmPin2at0 = true := by native_decide
+example : progOk gmPin2at1 = true := by native_decide
+example : progOk gmPin3at2 = true := by native_decide
+
+/-- The NEGATIVE control: the same pin with the KEY escaping. The fill puts the
+    shared exit in the key slot, the pin puts it in the value slot, and the two
+    sides are PRINTED differing in exactly those positions. -/
+def gmPinKey2at1 : Term := prog{
+  fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a ~> (%PVSet2T) 1 (*res) s)) -> &mut Nat {
+    match self { Pair(a, H) => {
+      let e0 = &m (*a)[0];
+      match e0 { Pair(k0, v0) => {
+        let e = &m (*a)[1];
+        match e { Pair(kk, vv) => &m *kk } } } } } };
+  () }
+
+example : progRejects gmPinKey2at1 "pin is not met" = true := by native_decide
+
+/-- The measured BOUNDARY: `gmValMin`'s body verbatim, pin added, prefix NOT
+    opened. The printed sides are the finding — fill
+    `arrCat 1 1 σ4 [Pair σ8 σ10]` against the update stuck at the σ4 prefix.
+    Opening the prefix (one match) is what the walk does anyway. -/
+def gmPin2at1blind : Term := prog{
+  fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a ~> (%PVSet2T) 1 (*res) s)) -> &mut Nat {
+    match self { Pair(a, H) => {
+      let e = &m (*a)[1];
+      match e { Pair(kk, vv) => &m *vv } } } };
+  () }
+
+example : progRejects gmPin2at1blind "pin is not met" = true := by native_decide
 
 end Dllbc.Tests.OpaqueFill
 

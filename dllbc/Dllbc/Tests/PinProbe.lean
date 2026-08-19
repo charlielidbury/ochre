@@ -194,4 +194,196 @@ def withGetROP (rest : Term) : Term := prog{
   let y = x;
   () }))
 
+/-! ## Residual (a) smoke: pins over CARVED ARRAYS — the toy pack GetMut -/
+
+/-- OpaqueFill's `AllK7`, copied: every KEY is 7, values unread. -/
+def AllK7 : Term := prog{
+  λ (M : Nat). λ (A : Array M (Σ (k : Nat). Nat)).
+    arrRec (Σ (k : Nat). Nat)
+      (λ (Mz : Nat). λ (Az : Array Mz (Σ (k : Nat). Nat)). Type)
+      Unit
+      (λ (K : Nat). λ (H : Σ (k : Nat). Nat). λ (T : Array K (Σ (k : Nat). Nat)).
+        λ (Ih : Type).
+          (elim H return (λ (Hm : Σ (k : Nat). Nat). Type) {
+            Pair (K2) (V2) => Id Nat K2 7 }) × Ih)
+      M A }
+
+/-- The toy's array update: replace cell `I`'s VALUE component, keeping its key —
+    index-first (list-style), destructuring the array by the cons view. -/
+def AVSetT : Term := prog{
+  λ (I : Nat). λ (V : Nat).
+    elim I return (λ (Z0 : Nat). Π (N : Nat) → Π (A : Array N (Σ (k : Nat). Nat)) → Array N (Σ (k : Nat). Nat)) {
+      Z => λ (N : Nat). λ (A : Array N (Σ (k : Nat). Nat)).
+        arrRec (Σ (k : Nat). Nat)
+          (λ (M : Nat). λ (Az : Array M (Σ (k : Nat). Nat)). Array M (Σ (k : Nat). Nat))
+          %(Term.ctorApp "Arr" [])
+          (λ (M : Nat). λ (X : Σ (k : Nat). Nat). λ (XS : Array M (Σ (k : Nat). Nat)).
+            λ (Ih : Array M (Σ (k : Nat). Nat)).
+              acons M (elim X return (λ (Xz : Σ (k : Nat). Nat). Σ (k : Nat). Nat) {
+                Pair (Kx) (Vx) => Pair Kx V }) XS)
+          N A,
+      S (I2) Rec => λ (N : Nat). λ (A : Array N (Σ (k : Nat). Nat)).
+        arrRec (Σ (k : Nat). Nat)
+          (λ (M : Nat). λ (Az : Array M (Σ (k : Nat). Nat)). Array M (Σ (k : Nat). Nat))
+          %(Term.ctorApp "Arr" [])
+          (λ (M : Nat). λ (X : Σ (k : Nat). Nat). λ (XS : Array M (Σ (k : Nat). Nat)).
+            λ (Ih : Array M (Σ (k : Nat). Nat)).
+              acons M X (Rec M XS))
+          N A } }
+
+/-- The pack-level update at extent 2: value-cell `I` of the pack's array. -/
+def PVSet2T : Term := prog{
+  λ (I : Nat). λ (V : Nat). λ (P : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). %AllK7 2 a).
+    elim P return (λ (Pz : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). %AllK7 2 a).
+                     Σ0 (a : Array 2 (Σ (k : Nat). Nat)). %AllK7 2 a) {
+      Pair (A) (H) => Pair ((%AVSetT) I V 2 A) H } }
+
+def PVSet3T : Term := prog{
+  λ (I : Nat). λ (V : Nat). λ (P : Σ0 (a : Array 3 (Σ (k : Nat). Nat)). %AllK7 3 a).
+    elim P return (λ (Pz : Σ0 (a : Array 3 (Σ (k : Nat). Nat)). %AllK7 3 a).
+                     Σ0 (a : Array 3 (Σ (k : Nat). Nat)). %AllK7 3 a) {
+      Pair (A) (H) => Pair ((%AVSetT) I V 3 A) H } }
+
+/-- Index 0 (the `gmVal2` carve), pinned. -/
+def gmPin2at0 : Term := prog{
+  fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). %AllK7 2 a ~> (%PVSet2T) 0 (*res) s)) -> &mut Nat {
+    match self { Pair(a, H) => {
+      let e = &m (*a)[0];
+      match e { Pair(kk, vv) => &m *vv } } } };
+  () }
+
+/-- Index 1 (the `gmValMin` carve), pinned — the body OPENS cell 0 first, which
+    is what exposes the prefix the index-first update computes past. -/
+def gmPin2at1 : Term := prog{
+  fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). %AllK7 2 a ~> (%PVSet2T) 1 (*res) s)) -> &mut Nat {
+    match self { Pair(a, H) => {
+      let e0 = &m (*a)[0];
+      match e0 { Pair(k0, v0) => {
+        let e = &m (*a)[1];
+        match e { Pair(kk, vv) => &m *vv } } } } } };
+  () }
+
+/-- Index 2 (the `gmValMid`/`gmValLast` carve), extent 3, cells 0 and 1 opened. -/
+def gmPin3at2 : Term := prog{
+  fn G (self : &mut (s : Σ0 (a : Array 3 (Σ (k : Nat). Nat)). %AllK7 3 a ~> (%PVSet3T) 2 (*res) s)) -> &mut Nat {
+    match self { Pair(a, H) => {
+      let e0 = &m (*a)[0];
+      match e0 { Pair(k0, v0) => {
+        let e1 = &m (*a)[1];
+        match e1 { Pair(k1, v1) => {
+          let e = &m (*a)[2];
+          match e { Pair(kk, vv) => &m *vv } } } } } } } };
+  () }
+
+/-- The NEGATIVE control: same pin, but the KEY escapes. The fill puts the exit
+    in the key position and the pin puts it in the value position; no convert. -/
+def gmPinKey2at1 : Term := prog{
+  fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). %AllK7 2 a ~> (%PVSet2T) 1 (*res) s)) -> &mut Nat {
+    match self { Pair(a, H) => {
+      let e0 = &m (*a)[0];
+      match e0 { Pair(k0, v0) => {
+        let e = &m (*a)[1];
+        match e { Pair(kk, vv) => &m *kk } } } } } };
+  () }
+
+/-- …and the UNOPENED-prefix probe: gmValMin's exact body with only the pin
+    added. Whether this closes is the measured boundary of the mechanism. -/
+def gmPin2at1blind : Term := prog{
+  fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). %AllK7 2 a ~> (%PVSet2T) 1 (*res) s)) -> &mut Nat {
+    match self { Pair(a, H) => {
+      let e = &m (*a)[1];
+      match e { Pair(kk, vv) => &m *vv } } } };
+  () }
+
+#eval IO.println (why gmPin2at0)
+#eval IO.println (why gmPin2at1)
+#eval IO.println (why gmPin3at2)
+#eval IO.println (why gmPinKey2at1)
+#eval IO.println (why gmPin2at1blind)
+
+/-! ## Residual (b) smoke: D9 — the cursor says WHERE it points -/
+
+/-- Evidence alone (no pin): `Σ (r : &mut Nat). Id Nat (*r) (NthL i (old *v))`. -/
+def withNthEv (rest : Term) : Term := prog{
+  fn NthEv [i] (i : Nat, v : &mut List Nat, p : Le (S i) (Len *v))
+      -> Σ (r : &mut Nat). Id Nat (*r) (NthL i (old *v)) {
+    match v {
+      Nil => botElim Unit p,
+      Cons(hd, tl) => match i {
+        Z => Pair(&m *hd, Refl),
+        S(k) => NthEv(k, &m *tl, p)
+      }
+    } };
+  %rest }
+
+#eval IO.println (why (withNthEv prog{ () }))
+
+/-- Pin AND evidence: the derived read-only's missing half. -/
+def withNthPinEv (rest : Term) : Term := prog{
+  fn NthPinEv [i] (i : Nat, v : &mut (s : List Nat ~> Set i (*res) s), p : Le (S i) (Len *v))
+      -> Σ (r : &mut Nat). Id Nat (*r) (NthL i (old *v)) {
+    match v {
+      Nil => botElim Unit p,
+      Cons(hd, tl) => match i {
+        Z => Pair(&m *hd, Refl),
+        S(k) => NthPinEv(k, &m *tl, p)
+      }
+    } };
+  %rest }
+
+#eval IO.println (why (withNthPinEv prog{ () }))
+
+-- The derived read-only, COMPLETED: match the evidence, and the release computes
+-- to the entry list exactly.
+#eval IO.println (tails (withNthPinEv prog{
+  let x = Cons(1, Cons(2, Cons(3, Nil)));
+  let b = &m x;
+  let pr = NthPinEv(1, b, ());
+  match pr { Pair(r, h) => {
+    match h { Refl => {
+      let T = *r;
+      let y = x;
+      () } } } } }))
+
+-- THE TWO-CALL ROUND-TRIP CHAIN: call, write, call again — the caller DERIVES
+-- what the second borrow holds.
+#eval IO.println (tails (withNthPinEv prog{
+  let x = Cons(1, Cons(2, Cons(3, Nil)));
+  let b = &m x;
+  let pr = NthPinEv(1, b, ());
+  match pr { Pair(r, h) => {
+    *r := 9;
+    let b2 = &m x;
+    let pr2 = NthPinEv(1, b2, ());
+    match pr2 { Pair(r2, h2) => {
+      match h2 { Refl => {
+        let T = *r2;
+        let y = x;
+        () } } } } } } }))
+
+-- Negative: a body returning evidence about the WRONG position.
+#eval IO.println (why (prog{
+  fn BadEv (i : Nat, v : &mut List Nat, p : Le (S i) (Len *v)) -> Σ (r : &mut Nat). Id Nat (*r) (NthL 1 (old *v)) {
+    match v {
+      Nil => botElim Unit p,
+      Cons(hd, tl) => Pair(&m *hd, Refl)
+    } };
+  () }))
+
+-- S27Mixed movement probes (D9)
+#eval IO.println (why (prog{
+  fn HeadLie (v : &mut List Nat, hi : Le (S Z) (Len *v))
+        -> Σ (x : &mut Nat). Id Nat Z (S Z)
+        { match v { Nil => botElim Unit hi, Cons(hd, tl) => Pair(&m *hd, Refl) } };
+  () }))
+#eval IO.println (why (prog{
+  fn HeadTrue (v : &mut List Nat, hi : Le (S Z) (Len *v))
+        -> Σ (x : &mut Nat). Id Nat Z Z
+        { match v { Nil => botElim Unit hi, Cons(hd, tl) => Pair(&m *hd, Refl) } };
+  () }))
+#eval IO.println (why (prog{
+  let F = (λ(v : &mut List Nat) { match v { Nil => (), Cons(hd, tl) => Pair(&m *hd, Refl) } }
+           : %(prog{ Π (v : &mut List Nat) → Σ (x : &mut Nat). Id Nat Z (S Z) }));
+  () }))
+
 end Dllbc.Tests.PinProbe

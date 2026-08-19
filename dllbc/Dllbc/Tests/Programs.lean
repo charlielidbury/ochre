@@ -837,6 +837,13 @@ borrows' owed types; a value claim belongs on a value-returning function, where
 path (`checkFn`) and the SEAL path (`checkRFnBody`) carry the same gate, so a
 sealed λ had the same hole. Fixing only `checkFn` would have left it in the path
 the endgame keeps.
+
+**M35 (D9) repeals the containment**: the audit judges a mixed return's value
+components now — opened at the actual borrow components, against the return type
+pinned at entry and branch-swept — so §A's lie is refused by the CHECK and its
+honest twin is accepted. The flips are ledgered at their sites below; §E's
+parameter-side containment is untouched (a pin is its judged successor, and an
+unpinned non-trivial owed type on a consumed parameter is still refused).
 -/
 
 open Dllbc
@@ -865,24 +872,29 @@ def a1lie : Term := prog{
         } };
   () }
 
-example : progRejects a1lie "may not also carry VALUE components" = true := by native_decide
+-- **MOVED by D9 (M35)**: the refusal-by-POSITION became a refusal-by-JUDGMENT.
+-- The audit now judges value components of a mixed return (opened at the actual
+-- borrow components, against the entry-pinned type), so the lie is caught by
+-- the check itself — `Refl` cannot inhabit `Id Z (S Z)` — rather than the
+-- position being unwritable. The containment's own docstring said where a fix
+-- would have to look; this is that fix looking.
+example : progRejects a1lie "mixed return type — value component" = true := by native_decide
 
-/-- b1's A5c, and **the control that makes the containment honest**: an HONEST
-    claim in the same position is refused too.
-
-    That is deliberate, not collateral. The position never judged anything, so
-    acceptance there carried no information — a true claim was accepted for exactly
-    the reason a false one was. Refusing both is what turns a silent lie into an
-    explicit refusal; accepting the true one would mean the checker had started
-    judging value components in a borrow-carrying position, which is the fix the
-    containment declines to make. -/
+/-- b1's A5c — and **the flip that says the position is JUDGED now** (D9, M35).
+    Under the containment this was refused alongside the lie, deliberately:
+    "accepting the true one would mean the checker had started judging value
+    components in a borrow-carrying position, which is the fix the containment
+    declines to make." M35 makes exactly that fix — the audit opens the tail at
+    the actual borrow component and checks the value component against it — so
+    the honest claim is ACCEPTED and the lie above is refused, each by the same
+    look. -/
 def a5honest : Term := prog{
   fn HeadTrue (v : &mut List Nat, hi : Le (S Z) (Len *v))
         -> Σ (x : &mut Nat). Id Nat Z Z
         { match v { Nil => botElim Unit hi, Cons(hd, tl) => Pair(&m *hd, Refl) } };
   () }
 
-example : progRejects a5honest "may not also carry VALUE components" = true := by native_decide
+example : progOk a5honest = true := by native_decide
 
 /-! ## §B. The two controls that isolate `hasBorrowT` as the whole cause
 
@@ -944,7 +956,14 @@ def sealProg : Term := prog{
   let F = (λ(v : &mut List Nat) { match v { Nil => (), Cons(hd, tl) => Pair(&m *hd, Refl) } } : %mixedSeal);
   () }
 
-example : progRejects sealProg "may not also carry VALUE components" = true := by native_decide
+-- **MOVED by D9 (M35)**: the seal-path gate is lifted with the declaration
+-- path's (there is only one audit site, so it was one gate). The program is
+-- STILL refused — its `Nil` branch returns `()` against the mixed Σ, which
+-- routes it to the value-return path, and `readC` of a borrow-carrying type
+-- refuses by name (the shape half, stage 2's concern). The false claim in the
+-- `Cons` branch would be caught by the mixed value-component check if the
+-- program got that far; the earlier refusal wins the race.
+example : progRejects sealProg "only valid at a telescope position" = true := by native_decide
 
 -- Not vacuous: an all-borrow ascription in the same position is accepted, so the
 -- refusal is about the MIXTURE and not about sealing a cursor at all.

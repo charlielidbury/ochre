@@ -584,4 +584,118 @@ def readOnlyDerivedViolated : Term := withNthPinRO prog{
 
 example : progRejects readOnlyDerivedViolated "violates the borrow's pin" = true := by native_decide
 
+/-! ## D9 LANDS (M35, residual (b)) — the cursor says WHERE it points, and
+    way 2's residual CLOSES
+
+    `retMixesBorrow` is lifted: a borrow-returning signature may carry VALUE
+    components, judged per component at the callee's audit with the ACTUAL
+    first component (no ∀ — the callee knows this one) against the return type
+    pinned at entry and branch-swept (`St.retTyBorrow`; a type rebuilt at audit
+    time holds a stale entry σ — measured, not guessed). So the shape M27's
+    containment made unwritable exists:
+
+        Σ (r : &mut Nat). Id Nat (*r) (NthL i (old *v))
+
+    `*r` collapses to the binder and opens at the PAYLOAD — the knowledge of a
+    borrow component IS its payload — on both ends: the callee's check and the
+    caller's minted evidence. -/
+
+/-- Evidence alone: `NthEv` proves per branch that the borrow it returns points
+    at position `i` — `Refl` at the `Z` leg (`NthL Z (Cons h t) ⇝ h`), the
+    recursive call's own evidence at `S(k)` (`NthL (S k) (Cons h t) ⇝ NthL k t`,
+    index-first, so the chain composes definitionally). -/
+def withNthEv (rest : Term) : Term := prog{
+  fn NthEv [i] (i : Nat, v : &mut List Nat, p : Le (S i) (Len *v))
+      -> Σ (r : &mut Nat). Id Nat (*r) (NthL i (old *v)) {
+    match v {
+      Nil => botElim Unit p,
+      Cons(hd, tl) => match i {
+        Z => Pair(&m *hd, Refl),
+        S(k) => NthEv(k, &m *tl, p)
+      }
+    } };
+  %rest }
+
+example : progOk (withNthEv prog{ () }) = true := by native_decide
+
+/-- Pin AND evidence — the full get_mut signature: the parameter says what the
+    container becomes, the result says where the cursor points. -/
+def withNthPinEv (rest : Term) : Term := prog{
+  fn NthPinEv [i] (i : Nat, v : &mut (s : List Nat ~> Set i (*res) s), p : Le (S i) (Len *v))
+      -> Σ (r : &mut Nat). Id Nat (*r) (NthL i (old *v)) {
+    match v {
+      Nil => botElim Unit p,
+      Cons(hd, tl) => match i {
+        Z => Pair(&m *hd, Refl),
+        S(k) => NthPinEv(k, &m *tl, p)
+      }
+    } };
+  %rest }
+
+example : progOk (withNthPinEv prog{ () }) = true := by native_decide
+
+/-- WAY 2, COMPLETED. `readOnlyDerivedCaller` above stops at `y ≡ [1, T, 3]`
+    because nothing said what `T` is; the evidence says it. Match the returned
+    `Refl` and the exit σ REFINES to `NthL 1 entry ⇝ 2` — so `T` is the
+    concrete element and the release computes `Set 1 2 [1,2,3] ⇝ [1,2,3]`. The
+    caller derives that the container is unchanged, exactly as 12-design §5
+    wanted, with the derivation visible: pin + evidence + one Refl-match. -/
+def readOnlyDerivedClosed : Term := withNthPinEv prog{
+  let x = Cons(1, Cons(2, Cons(3, Nil)));
+  let b = &m x;
+  let pr = NthPinEv(1, b, ());
+  match pr { Pair(r, h) => {
+    match h { Refl => {
+      let T = *r;
+      let y = x;
+      () } } } } }
+
+example : progOk readOnlyDerivedClosed = true := by native_decide
+example : tailEnv readOnlyDerivedClosed
+  [("x", .bot), ("b", .bot), ("pr", .bot), ("r", .bot), ("h", .bot),
+   ("T", vnat 2), ("y", vlist [1, 2, 3])] = true := by native_decide
+example : runY readOnlyDerivedClosed == some (vlist [1, 2, 3]) := by native_decide
+
+/-- THE TWO-CALL ROUND-TRIP CHAIN — the full two-get_mut law on the list arena.
+    Call, write 9 through the cursor, call again at the same index: the second
+    call's evidence tells the caller the second borrow holds NthL 1 of the
+    RELEASED list — which the first call's pin made `[1,9,3]` — so `T ≡ 9`:
+    the checker DERIVES that what was written through the first borrow is what
+    the second borrow holds. This is the fact the whole milestone is named for,
+    end to end in checking mode. -/
+def twoGetMutChain : Term := withNthPinEv prog{
+  let x = Cons(1, Cons(2, Cons(3, Nil)));
+  let b = &m x;
+  let pr = NthPinEv(1, b, ());
+  match pr { Pair(r, h) => {
+    *r := 9;
+    let b2 = &m x;
+    let pr2 = NthPinEv(1, b2, ());
+    match pr2 { Pair(r2, h2) => {
+      match h2 { Refl => {
+        let T = *r2;
+        let y = x;
+        () } } } } } } }
+
+example : progOk twoGetMutChain = true := by native_decide
+example : tailEnv twoGetMutChain
+  [("x", .bot), ("b", .bot), ("pr", .bot), ("r", .bot), ("h", .sym 0),
+   ("b2", .bot), ("pr2", .bot), ("r2", .bot), ("h2", .bot),
+   ("T", vnat 9), ("y", vlist [1, 9, 3])] = true := by native_decide
+example : runY twoGetMutChain == some (vlist [1, 9, 3]) := by native_decide
+
+/-- The NEGATIVE control: evidence about the WRONG position — the body returns
+    the head while the type claims position 1. Refused at the audit's new
+    value-component check, with both sides printed. -/
+def badEv : Term := prog{
+  fn BadEv (i : Nat, v : &mut List Nat, p : Le (S i) (Len *v))
+      -> Σ (r : &mut Nat). Id Nat (*r) (NthL 1 (old *v)) {
+    match v {
+      Nil => botElim Unit p,
+      Cons(hd, tl) => Pair(&m *hd, Refl)
+    } };
+  () }
+
+example : progRejects badEv "mixed return type — value component" = true := by native_decide
+
 end Dllbc.Tests.BorrowRefoundGoals

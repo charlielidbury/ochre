@@ -193,6 +193,15 @@ structure St where
       `none` for a borrow-returning body, whose owed type is read at return
       against the surrendered payload. -/
   retTyVal : Option Term := none
+  /-- D9 (M35): a BORROW-CARRYING return type, pinned at entry like `retTyVal`
+      but RAW (readC refuses `borrowT`), with `old *v` resolved to the entry σ
+      at seed — so the per-path refinement sweep reaches a mixed return's VALUE
+      components exactly as it reaches the value-return path's pinned type. A
+      type rebuilt at audit time would hold a STALE entry σ: refinement is a
+      destructive rewrite of occurrences, and a freshly minted `sym σ` after
+      the sweep names what the σ was, not what the branch learned. Consumed
+      only by the audit's `collectResultBorrows` walk. -/
+  retTyBorrow : Option Term := none
   /-- §5.4 exit-snapshot: per borrow parameter `v` (by var id), a fresh σ that
       the transformed return type pins a bare `*v` to. It lives ONLY here and in
       the pinned `retTyVal` — never in `sctx`/`obligations` — until the audit
@@ -1157,6 +1166,7 @@ def refineSym (σ : Nat) (v : Val) : M Unit := do
       owed := Term.substSym σ repl d.owed,
       pin := d.pin.map (Term.substSym σ repl) }),
     retTyVal := s.retTyVal.map (Term.substSym σ repl),
+    retTyBorrow := s.retTyBorrow.map (Term.substSym σ repl),
     -- The decreasing parameter's snapshot refines with everything else — this is
     -- how `match fuel { S(f2) => … }` makes the guard's comparison possible.
     })
@@ -1197,6 +1207,7 @@ def generalizeStuck (fuel : Nat) (spine : Term) : M (Nat × Term) := do
       owed := Term.abstractInto sp σb d.owed,
       pin := d.pin.map (Term.abstractInto sp σb) }),
     retTyVal := s.retTyVal.map (Term.abstractInto sp σb),
+    retTyBorrow := s.retTyBorrow.map (Term.abstractInto sp σb),
     })
   pure (σb, sp)
 
@@ -1508,6 +1519,54 @@ partial def substResIdx (exits : List Term) : Term → Term
       (rest.map (substResIdx exits)) (ev.map (substResIdx exits)) (eq.map (substResIdx exits))
   | t => t
 
+/-- `old *v ↦ sym σ_entry` (D9, M35): resolve the entry-snapshot form at SEED
+    time, where the entry σ is what `old` means and the refinement sweep is
+    still ahead of it. Used to pin a borrow-carrying return type raw
+    (`St.retTyBorrow`) — the reflectC route the value-return path takes cannot
+    run on a `borrowT`-carrying term. -/
+partial def resolveOldEntry (entries : List (Nat × Nat)) : Term → Term
+  | .app (.const "old") (.deref (.var v)) =>
+    (match entries.lookup v.id with
+     | some σ => Term.sym σ
+     | none => .app (.const "old") (.deref (.var v)))
+  | .deref t => .deref (resolveOldEntry entries t)
+  | .app f a => .app (resolveOldEntry entries f) (resolveOldEntry entries a)
+  | .ctorApp n args => .ctorApp n (args.map (resolveOldEntry entries))
+  | .pi x d c => .pi x (resolveOldEntry entries d) (resolveOldEntry entries c)
+  | .sigmaT x d c => .sigmaT x (resolveOldEntry entries d) (resolveOldEntry entries c)
+  | .lam x d b => .lam x (resolveOldEntry entries d) (resolveOldEntry entries b)
+  | .idT a b c => .idT (resolveOldEntry entries a) (resolveOldEntry entries b) (resolveOldEntry entries c)
+  | .borrowT n τ S => .borrowT n (resolveOldEntry entries τ) (resolveOldEntry entries S)
+  | .cmpT τ => .cmpT (resolveOldEntry entries τ)
+  | .index t i ev => .index (resolveOldEntry entries t) (resolveOldEntry entries i) (ev.map (resolveOldEntry entries))
+  | .range t lo cnt rest ev eq =>
+    .range (resolveOldEntry entries t) (resolveOldEntry entries lo) (cnt.map (resolveOldEntry entries))
+      (rest.map (resolveOldEntry entries)) (ev.map (resolveOldEntry entries)) (eq.map (resolveOldEntry entries))
+  | t => t
+
+/-- `*x ↦ x`, for a named Σ binder `x` standing for a BORROW component (D9,
+    M35). What a later component sees of an earlier one is its KNOWLEDGE, and
+    the knowledge of a borrow is its payload — so by the time the tail is
+    opened, the deref is already taken, and leaving it would wrap the payload
+    term in a `.deref` nothing reads. Only the exact `.deref (.pvar x)` shape
+    collapses; a shadowing binder of the same name stops the walk. -/
+partial def collapseDerefOf (x : String) : Term → Term
+  | .deref (.pvar y) => if y == x then .pvar y else .deref (.pvar y)
+  | .deref t => .deref (collapseDerefOf x t)
+  | .app f a => .app (collapseDerefOf x f) (collapseDerefOf x a)
+  | .ctorApp n args => .ctorApp n (args.map (collapseDerefOf x))
+  | .pi y d c => .pi y (collapseDerefOf x d) (if y == x then c else collapseDerefOf x c)
+  | .sigmaT y d c => .sigmaT y (collapseDerefOf x d) (if y == x then c else collapseDerefOf x c)
+  | .lam y d b => .lam y (collapseDerefOf x d) (if y.name == x then b else collapseDerefOf x b)
+  | .idT a b c => .idT (collapseDerefOf x a) (collapseDerefOf x b) (collapseDerefOf x c)
+  | .borrowT n τ S => .borrowT n (collapseDerefOf x τ) (if n == x then S else collapseDerefOf x S)
+  | .cmpT τ => .cmpT (collapseDerefOf x τ)
+  | .index t i ev => .index (collapseDerefOf x t) (collapseDerefOf x i) (ev.map (collapseDerefOf x))
+  | .range t lo cnt rest ev eq =>
+    .range (collapseDerefOf x t) (collapseDerefOf x lo) (cnt.map (collapseDerefOf x))
+      (rest.map (collapseDerefOf x)) (ev.map (collapseDerefOf x)) (eq.map (collapseDerefOf x))
+  | t => t
+
 /-- **D1's one-slot kind classification**: is this `~>` RHS (already opened at
     its entry snapshot) a TYPE — today's owed-type claim — or a value, i.e. a
     PIN? Measured before written (`Tests.PinProbe`): `hasTypeT rhs Type` is the
@@ -1614,7 +1673,7 @@ def subsKnowledge : Val → Term
     (Before M23 the tail was built independently, leaving a dangling `pvar` in the
     σ's sctx type, so the pin was unusable at the call site — `useIt(a, h)` failed
     with `argument (σ1) does not have its parameter type (Id σ0 (S Z))`.) -/
-def buildResult (fuel : Nat) (inst : Omega) (subs : List (String × Term)) :
+partial def buildResult (fuel : Nat) (inst : Omega) (subs : List (String × Term)) :
     Term → M (Val × List (Nat × Term × Option Term))
   | .borrowT s τ S => do
     let τVal := (subs.foldl (fun t p => Pure.openBinder fuel p.1 t p.2) (← readCWith fuel inst τ))
@@ -1641,17 +1700,20 @@ def buildResult (fuel : Nat) (inst : Omega) (subs : List (String × Term)) :
     -- `borrowₘ ℓ σ` node the caller receives. The old code pushed the node, i.e.
     -- put a loan marker in a type; under the split it cannot, and the payload is
     -- the only reading of "what this component is" a type could have meant.
-    -- Unreachable in this corpus — `retMixesBorrow` refuses a return type that
-    -- mixes borrow and value components, so a dependent tail over a borrow
-    -- component has no way to be written — and recorded rather than assumed.
-    let (vB, issB) ← buildResult fuel inst ((x, subsKnowledge vA) :: subs) b
+    -- Reachable since M35 (D9): `retMixesBorrow` is lifted, so a dependent tail
+    -- over a borrow component is writable — `Σ (r : &mut Nat). Id Nat (*r) …`.
+    -- The deref of the binder collapses first: the knowledge of a borrow IS its
+    -- payload, so `*r` opens to the payload σ, which is what the caller's
+    -- minted evidence should be ABOUT.
+    let (vB, issB) ← buildResult fuel inst ((x, subsKnowledge vA) :: subs) (collapseDerefOf x b)
     pure (.ctor "Pair" [vA, vB], issA ++ issB)
   | rt => do
     let retTy := (subs.foldl (fun t p => Pure.openBinder fuel p.1 t p.2) (← readCWith fuel inst rt))
     let σ ← freshSym
     modify (fun s => { s with sctx := (σ, retTy) :: s.sctx })
     pure (.know (Term.sym σ), [])
-  termination_by t => sizeOf t
+  -- (partial since M35: the Σ arm recurses on the deref-collapsed tail, which
+  -- is not a structural subterm once a dependent tail over a borrow is legal.)
 
 /-! ## §8's snapshot-subterm guard — what makes a self-call admissible
 
@@ -3908,15 +3970,41 @@ mutual
       it must be one — the pin check is a CONVERSION, not a typing. -/
   partial def pinFill (fuel : Nat) (exits : List (Nat × Term)) : Val → M Term
     | .loanM ℓ => exitOfLoan fuel exits ℓ
+    | .node "§segs" segs => pinFillSegs fuel exits segs
     | v@(.node n args) => do
-      -- A skeleton node (a carve, `§segs`) is not a constructor a Term can
-      -- spell; `subsKnowledge` folds what folds and marks the rest
+      -- A remaining skeleton node (`§rec`, a stray `§seg`) is not a constructor
+      -- a Term can spell; `subsKnowledge` folds what folds and marks the rest
       -- `@stateComponent`, which converts with nothing — a loud failure, not a
-      -- fabricated term. Arrays under pins are the split_at_mut stage's work.
+      -- fabricated term.
       if n.startsWith "§" then pure (subsKnowledge v)
       else pure (Term.ctorApp n (← pinFillList fuel exits args))
     | .bot => throwErr "audit: pin discharge reached a hole (⊥) the hole hunt should have refused"
     | v => pure (subsKnowledge v)
+
+  /-- **A CARVE, filled** — `arrFoldSegs?`'s spine, with each segment body run
+      through the fill instead of being required to be knowledge already. This is
+      what lets a pin be discharged over a carved array: the lent cell inside the
+      carve stands at its exit (the shared `@res` σ, or an issued pin's value)
+      and every other segment at its actual payload, and the resulting `arrCat`
+      spine normalizes exactly as the entry σ's own carve-refinement did — so
+      when the body's flow has exposed the prefix (a run-headed left), `arrCat`'s
+      ι fires on both sides of the conversion and an index-first update computes
+      past it, precisely as the list discharge computes past a `Cons`. -/
+  partial def pinFillSegs (fuel : Nat) (exits : List (Nat × Term)) : List Val → M Term
+    | [] => pure (.ctorApp "Arr" [])
+    | [s] =>
+      (match Val.asSeg? s with
+       | some (_, b) => pinFill fuel exits b
+       | none => throwErr "audit: pin discharge — a segment list holds a non-segment")
+    | s :: rest => do
+      match Val.asSeg? s with
+      | some (c, b) => do
+        let bt ← pinFill fuel exits b
+        let btl ← pinFillSegs fuel exits rest
+        match Val.segsExtent? rest with
+        | some ct => pure prog{ arrCat %c %ct %bt %btl }
+        | none => throwErr "audit: pin discharge — a carve's tail extent does not sum"
+      | none => throwErr "audit: pin discharge — a segment list holds a non-segment"
 
   partial def pinFillList (fuel : Nat) (exits : List (Nat × Term)) : List Val → M (List Term)
     | [] => pure []
@@ -4088,7 +4176,7 @@ def auditObligation (fuel : Nat) (issued : List (Nat × Val × Term × Option Te
     A pin RHS (D1) is opened at the payload's own knowledge — the callee side of
     §5's read-only law, where the identity pin is met by construction — and the
     owed type is then the payload type as written. -/
-def collectResultBorrows (fuel : Nat) : Term → Val → M (Option (List (Nat × Val × Term × Option Term)))
+partial def collectResultBorrows (fuel : Nat) : Term → Val → M (Option (List (Nat × Val × Term × Option Term)))
   | .borrowT sn τ S, .borrowM ℓ payload => do
     let opened := Pure.nf fuel (Pure.openBinder fuel sn (← readC fuel S) (subsKnowledge payload))
     if ← isOwedTypeT fuel opened then
@@ -4097,17 +4185,42 @@ def collectResultBorrows (fuel : Nat) : Term → Val → M (Option (List (Nat ×
       pure (some [(ℓ, payload, ← readC fuel τ, some opened)])
   | .borrowT _ _ _, other =>
     throwErr s!"audit: borrow-returning body did not return a borrow (got {other.pretty})"
-  | .sigmaT _ a b, pr => do
+  | .sigmaT x a b, pr => do
     match Val.asCtor? pr with
     | some ("Pair", [va, vb]) => do
       let ra ← collectResultBorrows fuel a va
-      let rb ← collectResultBorrows fuel b vb
+      -- The tail is DEPENDENT (D9, M35): it may cite the first component — for
+      -- a borrow component, `*r` collapses to the binder and opens at the
+      -- PAYLOAD, which is the component's knowledge.
+      let b' := Pure.openBinder fuel x (collapseDerefOf x b) (subsKnowledge va)
+      let rb ← collectResultBorrows fuel b' vb
       match ra, rb with
       | none, none => pure none                      -- a genuine value pair, not borrows
-      | _, _ => pure (some (ra.getD [] ++ rb.getD []))
+      | _, _ => do
+        -- A MIXED return type — borrow and value components — is audited per
+        -- component (D9's repeal of `retMixesBorrow`): the borrows join the
+        -- issued checks, and a VALUE component is judged here, at its opened
+        -- type, against the actual component. No ∀ and no exit σ: the callee
+        -- KNOWS its own first component, and the fact stated is about the
+        -- payload as issued — which is exactly what lets a cursor say WHERE it
+        -- points (`Id Nat (*r) (NthL i (old *v))`).
+        (match ra with
+         | none => do
+           let aTy ← readC fuel a
+           if ← hasType fuel va aTy then pure ()
+           else throwErr s!"audit: mixed return type — value component ({va.pretty}) does not have its declared type ({aTy.pretty})"
+         | some _ => pure ())
+        (match rb with
+         | none => do
+           let bTy ← readC fuel b'
+           if ← hasType fuel vb bTy then pure ()
+           else throwErr s!"audit: mixed return type — value component ({vb.pretty}) does not have its declared type ({bTy.pretty})"
+         | some _ => pure ())
+        pure (some (ra.getD [] ++ rb.getD []))
     | _ => pure none
   | _, _ => pure none                                -- value-returning
-  termination_by t _ => sizeOf t
+  -- (partial since M35: the Σ arm recurses on the OPENED tail, which is not a
+  -- structural subterm once a dependent tail is legal.)
 
 /-- The audit for one path. A **value-returning** body (§5.4): every argument
     borrow meets its obligation and the result has the (entry-pinned) return
@@ -4131,7 +4244,12 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
     if ← hasTypeT fuel x (.const "Bot") then pure ()
     else throwErr s!"audit: botElim result on a non-⊥ argument ({x.pretty})"
   | _ =>
-  match ← collectResultBorrows fuel retType resultVal with
+  -- D9 (M35): the walk runs on the PINNED borrow-return type when one exists —
+  -- entry-resolved and branch-swept — so a mixed return's value components are
+  -- judged at what the branch learned, not at a stale entry σ. Value-returning
+  -- bodies have no `retTyBorrow` and walk the AST as before (both are
+  -- borrow-free, so the walk's answer is `none` either way).
+  match ← collectResultBorrows fuel ((← get).retTyBorrow.getD retType) resultVal with
   | some checks => do
     -- The ISSUED borrows first, then the obligations — M34's order, and the
     -- reason is a diagnosis one. `auditObligation` fills each escaping place in a
@@ -5744,21 +5862,28 @@ mutual
       -- fresh one, and the sealed body's own scopes are its own (M31 Stage 0).
       modify (fun s => { s with env := gl, debts := [], groups := [],
                                 exitSyms := [], entrySyms := [], retTyVal := none,
-                                scopeMarks := [] })
+                                retTyBorrow := none, scopeMarks := [] })
       let obs ← seedTelescopeV fuel tel
       -- §5.4 exit snapshots: one σ per borrow parameter, recorded ONLY here until
       -- the audit defines it as that borrow's collapsed final payload.
       let borrowIds := borrowVarIds tel
       let exits ← borrowIds.mapM (fun i => do pure (i, ← freshSym))
       modify (fun s => { s with exitSyms := exits, debts := obs })
-      -- M27 SOUNDNESS CONTAINMENT, the seal's half of it. The gate below is the
-      -- hole `retMixesBorrow` documents, and a seal has the same one: skipping the
-      -- value check for the WHOLE type leaves a non-borrow component unjudged.
-      if retMixesBorrow ret then
-        throwErr s!"seal: a borrow-carrying return type may not also carry VALUE components. A borrow-returning function is audited structurally — each issued borrow against its owed type — and the value check is skipped for the whole type, so a non-borrow component here would be judged by nothing and the caller would still receive it as a proof. A cursor's sayable contract is its issued borrows' owed types; state value claims on a value-returning function, where they are checked."
+      -- The M27 `retMixesBorrow` containment stood HERE until M35 (D9). Its
+      -- reason — "a non-borrow component of a borrow-carrying return type is
+      -- judged by nothing" — is answered now: `collectResultBorrows` opens a
+      -- mixed Σ's tail at the earlier components' knowledge and judges each
+      -- VALUE component against its opened type, at the ACTUAL first component
+      -- (no ∀ — the callee knows this one). So a cursor can say WHERE it
+      -- points: `Σ (r : &mut Nat). Id Nat (*r) (NthL i (old *v))`.
       if !hasBorrowT ret then do
         let rv ← readC fuel (markExit borrowIds ret)
         modify (fun s => { s with retTyVal := some rv })
+      else do
+        -- D9's carrier: the mixed/borrow return type, pinned raw with `old *v`
+        -- resolved at entry so the branch sweeps reach its value components.
+        let entries := (← get).entrySyms
+        modify (fun s => { s with retTyBorrow := some (resolveOldEntry entries ret) })
       let st0 ← get
       let advanced ← auditAllPaths fuel ret (explore fuel (pushContinuations body) st0) st0
       -- `sealSites` crosses back out with the supplies, and for the same reason
