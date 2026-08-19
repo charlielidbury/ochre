@@ -1205,6 +1205,94 @@ def orInsReuse : Term := hmOrUnder prog{
 example : progRejects orInsReuse "does not have its parameter type" = true := by
   native_decide
 
+/-! ## (xxxiii) THE BRIDGE — the pin's spelling equals the doc's
+
+    The pin carries `BSetP p (*res)` (position-driven, pin-computable); the
+    doc's `SetHM` carries `BSetK key` (key-driven, the caller-facing law).
+    Wherever the position evidence holds they are THE SAME UPDATE — proved by
+    one induction, so a caller may rewrite its pinned release into the doc's
+    vocabulary. (The map-level equality follows pointwise at the carve
+    composition through `AgetAtMod`, the same way every crossing fact here
+    does; the bucket level is where the content lives.) -/
+
+def BSetPKEq : Term := prog{
+  λ (Q : Nat). λ (V : Nat).
+  λ (L : List (Σ (k : Nat). Nat)).
+    elim L return (λ (Lm : List (Σ (k : Nat). Nat)).
+        Π (P : Nat) → Id Nat P (FindPosL Q Lm) →
+          Id (List (Σ (k : Nat). Nat)) (BSetP P V Lm) (BSetK Q V Lm)) {
+      Nil => λ (P : Nat). λ (Hp : Id Nat P (FindPosL Q Nil)).
+        NatRw (λ (W : Nat). Id (List (Σ (k : Nat). Nat)) (BSetP W V Nil) Nil)
+          Z P (IdSym Nat P Z Hp) Refl,
+      Cons (E) (T) Rec =>
+        elim E return (λ (Em : Σ (k : Nat). Nat).
+            Π (P : Nat) → Id Nat P (FindPosL Q Cons(Em, T)) →
+              Id (List (Σ (k : Nat). Nat)) (BSetP P V Cons(Em, T)) (BSetK Q V Cons(Em, T))) {
+          Pair (K2) (V2) => λ (P : Nat). λ (Hp : Id Nat P (FindPosL Q Cons(Pair(K2, V2), T))).
+            IfDec (Eqb Q K2)
+              (Id (List (Σ (k : Nat). Nat))
+                (BSetP P V Cons(Pair(K2, V2), T)) (BSetK Q V Cons(Pair(K2, V2), T)))
+              (λ (Et : Id Bool (Eqb Q K2) True).
+                IdTrans (List (Σ (k : Nat). Nat))
+                  (BSetP P V Cons(Pair(K2, V2), T))
+                  Cons(Pair(K2, V), T)
+                  (BSetK Q V Cons(Pair(K2, V2), T))
+                  (NatRw (λ (W : Nat). Id (List (Σ (k : Nat). Nat))
+                      (BSetP W V Cons(Pair(K2, V2), T)) Cons(Pair(K2, V), T))
+                    Z P
+                    (IdSym Nat P Z
+                      (IdTrans Nat P (FindPosL Q Cons(Pair(K2, V2), T)) Z Hp
+                        (IdCongr Bool Nat
+                          (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
+                            True => Z, False => S (FindPosL Q T) })
+                          (Eqb Q K2) True Et)))
+                    Refl)
+                  (IdSym (List (Σ (k : Nat). Nat))
+                    (BSetK Q V Cons(Pair(K2, V2), T)) Cons(Pair(K2, V), T)
+                    (IdCongr Bool (List (Σ (k : Nat). Nat))
+                      (λ (W : Bool). elim W return (λ (Bm : Bool). List (Σ (k : Nat). Nat)) {
+                        True => Cons(Pair(K2, V), T),
+                        False => Cons(Pair(K2, V2), BSetK Q V T) })
+                      (Eqb Q K2) True Et)))
+              (λ (Ef : Id Bool (Eqb Q K2) False).
+                IdTrans (List (Σ (k : Nat). Nat))
+                  (BSetP P V Cons(Pair(K2, V2), T))
+                  Cons(Pair(K2, V2), BSetK Q V T)
+                  (BSetK Q V Cons(Pair(K2, V2), T))
+                  (IdTrans (List (Σ (k : Nat). Nat))
+                    (BSetP P V Cons(Pair(K2, V2), T))
+                    Cons(Pair(K2, V2), BSetP (FindPosL Q T) V T)
+                    Cons(Pair(K2, V2), BSetK Q V T)
+                    (NatRw (λ (W : Nat). Id (List (Σ (k : Nat). Nat))
+                        (BSetP W V Cons(Pair(K2, V2), T))
+                        Cons(Pair(K2, V2), BSetP (FindPosL Q T) V T))
+                      (S (FindPosL Q T)) P
+                      (IdSym Nat P (S (FindPosL Q T))
+                        (IdTrans Nat P (FindPosL Q Cons(Pair(K2, V2), T))
+                          (S (FindPosL Q T)) Hp
+                          (IdCongr Bool Nat
+                            (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
+                              True => Z, False => S (FindPosL Q T) })
+                            (Eqb Q K2) False Ef)))
+                      Refl)
+                    (IdCongr (List (Σ (k : Nat). Nat)) (List (Σ (k : Nat). Nat))
+                      (λ (W : List (Σ (k : Nat). Nat)). Cons(Pair(K2, V2), W))
+                      (BSetP (FindPosL Q T) V T) (BSetK Q V T)
+                      (Rec (FindPosL Q T) Refl)))
+                  (IdSym (List (Σ (k : Nat). Nat))
+                    (BSetK Q V Cons(Pair(K2, V2), T))
+                    Cons(Pair(K2, V2), BSetK Q V T)
+                    (IdCongr Bool (List (Σ (k : Nat). Nat))
+                      (λ (W : Bool). elim W return (λ (Bm : Bool). List (Σ (k : Nat). Nat)) {
+                        True => Cons(Pair(K2, V), T),
+                        False => Cons(Pair(K2, V2), BSetK Q V T) })
+                      (Eqb Q K2) False Ef))) } } }
+def BSetPKEqTy : Term := prog{
+  Π (Q : Nat) → Π (V : Nat) → Π (L : List (Σ (k : Nat). Nat)) → Π (P : Nat) →
+    Id Nat P (FindPosL Q L) →
+    Id (List (Σ (k : Nat). Nat)) (BSetP P V L) (BSetK Q V L) }
+example : chkL BSetPKEq BSetPKEqTy = true := by native_decide
+
 end Dllbc.Tests.HashMap
 
 end
