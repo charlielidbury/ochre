@@ -500,6 +500,77 @@ def AgetAtModTy : Term := prog{
       (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M) B }
 example : chkL AgetAtMod AgetAtModTy = true := by native_decide
 
+/-! ### The value-level lookup — the Refl-matchable conjunct
+
+    13-'s return conjunct `Id (Opt Nat) (Some (*r)) (FindHM key (old *self))`
+    wraps the payload in a RIGID constructor, and a `Refl`-match cannot refine
+    a σ under a rigid head ("both endpoints are rigid — no solution by
+    refinement"). The LIST law knew this: `NthPinEv`'s conjunct is the BARE
+    payload (`Id Nat (*r) (NthL i (old *v))`). So the op returns BOTH: the
+    Nat-level primary (`FindValHM`, the caller's `Refl`-match handle) and the
+    doc's Opt-shaped conjunct beside it. -/
+
+def FindVL : Term := prog{
+  λ (Q : Nat). λ (L : List (Σ (k : Nat). Nat)).
+    elim L return (λ (Lm : List (Σ (k : Nat). Nat)). Nat) {
+      Nil => Z,
+      Cons (E) (T) Rec =>
+        elim E return (λ (Em : Σ (k : Nat). Nat). Nat) {
+          Pair (K2) (V2) =>
+            elim (Eqb Q K2) return (λ (Bm : Bool). Nat) {
+              True => V2,
+              False => Rec } } } }
+
+def FindValHM : Term := prog{
+  λ (Q : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim Hm return (λ (H0 : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots). Nat) {
+      Pair (Cap) (R1) =>
+        elim R1 return (λ (H1 : Σ (load : Nat). Σ (n : Nat).
+            Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))). HMInvT Cap load n slots). Nat) {
+          Pair (Load) (R2) =>
+            elim R2 return (λ (H2 : Σ (n : Nat).
+                Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                  HMInvT Cap Load n slots). Nat) {
+              Pair (N) (R3) =>
+                elim R3 return (λ (H3 : Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                    HMInvT Cap Load N slots). Nat) {
+                  Pair (Slots) (Inv) => FindVL Q (AgetB Cap Slots (Mod Q Cap)) } } } } }
+
+example : chkL prog{ Refl } prog{ Id Nat (FindValHM 3 hmEx) 30 } = true := by native_decide
+
+/-- The hit leg's Nat-level conjunct. -/
+def FindVEvHit : Term := prog{
+  λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
+  λ (E : Id Bool (Eqb Q K0) True).
+    IdSym Nat (FindVL Q Cons(Pair(K0, V0), T)) V0
+      (IdCongr Bool Nat
+        (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
+          True => V0, False => FindVL Q T })
+        (Eqb Q K0) True E) }
+def FindVEvHitTy : Term := prog{
+  Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
+    Id Bool (Eqb Q K0) True →
+    Id Nat V0 (FindVL Q Cons(Pair(K0, V0), T)) }
+example : chkL FindVEvHit FindVEvHitTy = true := by native_decide
+
+/-- The miss leg's Nat-level transport. -/
+def FindVTailEv : Term := prog{
+  λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
+  λ (E : Id Bool (Eqb Q K0) False).
+    IdSym Nat (FindVL Q Cons(Pair(K0, V0), T)) (FindVL Q T)
+      (IdCongr Bool Nat
+        (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
+          True => V0, False => FindVL Q T })
+        (Eqb Q K0) False E) }
+def FindVTailEvTy : Term := prog{
+  Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
+    Id Bool (Eqb Q K0) False →
+    Id Nat (FindVL Q T) (FindVL Q Cons(Pair(K0, V0), T)) }
+example : chkL FindVTailEv FindVTailEvTy = true := by native_decide
+
 /-! ### The op — 13-'s GetMut, in the pin-computable spelling -/
 
 def hmPinUnder (tail : Term) : Term := prog{
@@ -507,7 +578,8 @@ def hmPinUnder (tail : Term) : Term := prog{
       b : &mut (t : List (Σ (k : Nat). Nat) ~> BSetP p (*res) t),
       Hhit : Id Bool (HitL key (*b)) True,
       Hpos : Id Nat p (FindPosL key (*b)))
-      -> Σ (r : &mut Nat). Id OptN (SomeN (*r)) (FindL key (old *b)) {
+      -> Σ (r : &mut Nat). (Id Nat (*r) (FindVL key (old *b)))
+           × (Id OptN (SomeN (*r)) (FindL key (old *b))) {
     match b {
       Nil => botElim Unit (BoolFT Hhit),
       Cons(Pair(kk, vv), tl) => {
@@ -515,7 +587,11 @@ def hmPinUnder (tail : Term) : Term := prog{
         let V0 = *vv;
         let T0 = *tl;
         match p {
-          Z => Pair(&m *vv, FindEvHit key K0 V0 T0 (PosZHit key K0 V0 T0 Hpos)),
+          Z => {
+            let Ehit = PosZHit key K0 V0 T0 Hpos;
+            Pair(&m *vv, Pair(FindVEvHit key K0 V0 T0 Ehit,
+              FindEvHit key K0 V0 T0 Ehit))
+          },
           S(p2) => {
             let Ep = PosSStep key K0 V0 T0 p2 Hpos;
             let Emiss = FstT (Id Bool (Eqb key K0) False) (Id Nat p2 (FindPosL key T0)) Ep;
@@ -523,9 +599,14 @@ def hmPinUnder (tail : Term) : Term := prog{
             let Pair(r2, h2) = BktGetAt(p2, key, &m *tl,
               HitTailEv key K0 V0 T0 Emiss Hhit, Epos2);
             let W0 = *r2;
-            Pair(r2, IdTrans OptN (SomeN W0) (FindL key T0)
-              (FindL key Cons(Pair(K0, V0), T0)) h2
-              (FindTailEv key K0 V0 T0 Emiss))
+            let Hv2 = FstT (Id Nat W0 (FindVL key T0)) (Id OptN (SomeN W0) (FindL key T0)) h2;
+            let Ho2 = SndT (Id Nat W0 (FindVL key T0)) (Id OptN (SomeN W0) (FindL key T0)) h2;
+            Pair(r2, Pair(
+              IdTrans Nat W0 (FindVL key T0) (FindVL key Cons(Pair(K0, V0), T0)) Hv2
+                (FindVTailEv key K0 V0 T0 Emiss),
+              IdTrans OptN (SomeN W0) (FindL key T0)
+                (FindL key Cons(Pair(K0, V0), T0)) Ho2
+                (FindTailEv key K0 V0 T0 Emiss)))
           } } } } };
   fn GetMutHM (i : Nat, rr : Nat, p : Nat, key : Nat,
       self : &mut (s : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
@@ -535,7 +616,8 @@ def hmPinUnder (tail : Term) : Term := prog{
       Him : Id Nat i (Mod key (CapHM (*self))),
       Hhit : Id Bool (HitHM key (*self)) True,
       Hpos : Id Nat p (PosHM key (*self)))
-      -> Σ (r : &mut Nat). Id OptN (SomeN (*r)) (FindHM key (old *self)) {
+      -> Σ (r : &mut Nat). (Id Nat (*r) (FindValHM key (old *self)))
+           × (Id OptN (SomeN (*r)) (FindHM key (old *self))) {
     match self { Pair(capb, r1) => match r1 { Pair(loadb, r2x) => match r2x { Pair(nb, r3) => match r3 { Pair(sb, Invb) => {
       let I0 = i;
       let R0 = rr;
@@ -572,18 +654,33 @@ def hmPinUnder (tail : Term) : Term := prog{
                         (Mod Key0 C0)) B0 EB);
       let Pair(rb, hb) = BktGetAt(p, key, &m *bb, HhitB, HposB);
       let W0 = *rb;
-      Pair(rb, IdTrans OptN (SomeN W0) (FindL Key0 B0)
-        (FindL Key0 (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
-          (Mod Key0 C0)))
-        hb
-        (IdSym OptN
+      let HvB = FstT (Id Nat W0 (FindVL Key0 B0)) (Id OptN (SomeN W0) (FindL Key0 B0)) hb;
+      let HoB = SndT (Id Nat W0 (FindVL Key0 B0)) (Id OptN (SomeN W0) (FindL Key0 B0)) hb;
+      Pair(rb, Pair(
+        IdTrans Nat W0 (FindVL Key0 B0)
+          (FindVL Key0 (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
+            (Mod Key0 C0)))
+          HvB
+          (IdSym Nat
+            (FindVL Key0 (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
+              (Mod Key0 C0)))
+            (FindVL Key0 B0)
+            (IdCongr (List (Σ (k : Nat). Nat)) Nat
+              (λ (W : List (Σ (k : Nat). Nat)). FindVL Key0 W)
+              (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0))
+              B0 EB)),
+        IdTrans OptN (SomeN W0) (FindL Key0 B0)
           (FindL Key0 (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
             (Mod Key0 C0)))
-          (FindL Key0 B0)
-          (IdCongr (List (Σ (k : Nat). Nat)) OptN
-            (λ (W : List (Σ (k : Nat). Nat)). FindL Key0 W)
-            (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0))
-            B0 EB)))
+          HoB
+          (IdSym OptN
+            (FindL Key0 (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
+              (Mod Key0 C0)))
+            (FindL Key0 B0)
+            (IdCongr (List (Σ (k : Nat). Nat)) OptN
+              (λ (W : List (Σ (k : Nat). Nat)). FindL Key0 W)
+              (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0))
+              B0 EB))))
     } } } } } };
   %tail }
 
@@ -595,6 +692,141 @@ def errOf (t : Term) : String :=
   match checkProgram t prog{ Unit } with | .ok _ => "OK" | .error e => e
 
 example : progOk (hmPinUnder prog{ () }) = true := by native_decide
+
+/-! ## (xxx) THE E2E CHAIN — `twoGetMutChain` at hashmap scale
+
+    Get the cursor, write 42 through it, get again at the same key: the second
+    call's evidence plus one `Refl`-match and the CHECKER derives `T ≡ 42` and
+    the exact final map — the fact the borrow-refounding milestone is named
+    for, on the packed container. The premises at a concrete pack are all
+    `Refl` (`Mod`/`CoMod`/`PosHM` compute), and — the part worth staring at —
+    they are `Refl` again at the SECOND call, whose argument is the first
+    call's PINNED RELEASE: `SetHMAt 1 0 0 42 m₀` computes because the pin made
+    the release a value, not an existential. That is precisely what the S1 run
+    could not have: an unpinned release is a fresh σ, and no premise about its
+    capacity or its buckets survives the call. -/
+
+def vN : Nat → Val | 0 => .ctor "Z" [] | n + 1 => .ctor "S" [vN n]
+def vP (a b : Val) : Val := .ctor "Pair" [a, b]
+def vU : Val := .ctor "unit" []
+def vR : Val := .ctor "Refl" []
+def vNil : Val := .ctor "Nil" []
+
+/-- The expected final pack: cap 2, load 8, n 1, slot 1 = `[(3, 42)]`, and the
+    entry pack's own invariant inhabitant riding through unchanged. -/
+def vPackY : Val :=
+  vP (vN 2) (vP (vN 8) (vP (vN 1) (vP
+    (.ctor "Arr" [vNil, .ctor "Cons" [vP (vN 3) (vN 42), vNil]])
+    (vP vU (vP vR (vP vU (vP vR
+      (vP (vP vU vU) (vP (vP (vP vR vU) (vP vR vU)) vU)))))))))
+
+def hmChainCaller : Term := hmPinUnder prog{
+  let m = Pair(2, Pair(8, Pair(1, Pair(Arr(Nil, Cons(Pair(3, 30), Nil)),
+    Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
+      Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
+        unit))))))))));
+  let b = &m m;
+  let pr = GetMutHM(1, 0, 0, 3, b, Refl, Refl, Refl, Refl);
+  match pr { Pair(r, h) => {
+    *r := 42;
+    let b2 = &m m;
+    let pr2 = GetMutHM(1, 0, 0, 3, b2, Refl, Refl, Refl, Refl);
+    match pr2 { Pair(r2, h2) => {
+      let Pair(hv, ho) = h2;
+      match hv { Refl => {
+        let T = *r2;
+        let y = m;
+        () } } } } } } }
+
+example : progOk hmChainCaller = true := by native_decide
+
+/-- THE LAW, in the checker's own environment: `T ≡ 42` (derived, not run) and
+    `y` is the exact updated pack. -/
+example : tailEnv hmChainCaller
+  [("m", .bot), ("b", .bot), ("pr", .bot), ("r", .bot),
+   ("h", .ctor "Pair" [.sym 0, .sym 1]),
+   ("b2", .bot), ("pr2", .bot), ("r2", .bot), ("h2", .bot),
+   ("hv", .bot), ("ho", .sym 2),
+   ("T", vN 42), ("y", vPackY)] = true := by native_decide
+
+-- …and the lying expectation is refused: the same env with `T ↦ 43`.
+example : tailEnv hmChainCaller
+  [("m", .bot), ("b", .bot), ("pr", .bot), ("r", .bot),
+   ("h", .ctor "Pair" [.sym 0, .sym 1]),
+   ("b2", .bot), ("pr2", .bot), ("r2", .bot), ("h2", .bot),
+   ("hv", .bot), ("ho", .sym 2),
+   ("T", vN 43), ("y", vPackY)] = false := by native_decide
+
+-- The executing machine computes the same final map — the checker/machine
+-- divergence the original run pinned for get_mut CLOSES for the pinned op.
+def runV (t : Term) (name : String) : Option Val :=
+  match runProgram t with
+  | .ok env => env.lookup name
+  | .error _ => none
+
+example : (runV hmChainCaller "T" == some (vN 42)) = true := by native_decide
+example : (runV hmChainCaller "y" == some vPackY) = true := by native_decide
+
+/-! ## (xxxi) The counterfactual twins for the new greens -/
+
+/-- The KEY twin at the bucket walk: identical body, the `Z` leg escapes the
+    KEY borrow. The fill puts the exit in the key slot, the pin keeps it in
+    the value slot. Pin-only (no D9), so the refusal names the pin. -/
+def bktGetAtKey : Term := prog{
+  fn BktGetK [p] (p : Nat, key : Nat,
+      b : &mut (t : List (Σ (k : Nat). Nat) ~> BSetP p (*res) t),
+      Hhit : Id Bool (HitL key (*b)) True,
+      Hpos : Id Nat p (FindPosL key (*b))) -> &mut Nat {
+    match b {
+      Nil => botElim Unit (BoolFT Hhit),
+      Cons(Pair(kk, vv), tl) => {
+        let K0 = *kk;
+        let V0 = *vv;
+        let T0 = *tl;
+        match p {
+          Z => &m *kk,
+          S(p2) => {
+            let Ep = PosSStep key K0 V0 T0 p2 Hpos;
+            BktGetK(p2, key, &m *tl,
+              HitTailEv key K0 V0 T0
+                (FstT (Id Bool (Eqb key K0) False) (Id Nat p2 (FindPosL key T0)) Ep)
+                Hhit,
+              SndT (Id Bool (Eqb key K0) False) (Id Nat p2 (FindPosL key T0)) Ep)
+          } } } } };
+  () }
+
+example : progRejects bktGetAtKey "pin is not met" = true := by native_decide
+
+/-- The WRONG-POSITION caller: everything as the green chain, but the first
+    call claims position 1 where the key sits at 0 — the `Hpos` `Refl` has no
+    type to check at, and the caller is refused before any op runs. -/
+def hmChainWrongPos : Term := hmPinUnder prog{
+  let m = Pair(2, Pair(8, Pair(1, Pair(Arr(Nil, Cons(Pair(3, 30), Nil)),
+    Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
+      Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
+        unit))))))))));
+  let b = &m m;
+  let pr = GetMutHM(1, 0, 1, 3, b, Refl, Refl, Refl, Refl);
+  match pr { Pair(r, h) => {
+    *r := 42;
+    () } } }
+
+example : progOk hmChainWrongPos = false := by native_decide
+
+/-- The WRONG-SLOT caller: slot 0 claimed for key 3 at cap 2 — `Him`'s `Refl`
+    is refused. -/
+def hmChainWrongSlot : Term := hmPinUnder prog{
+  let m = Pair(2, Pair(8, Pair(1, Pair(Arr(Nil, Cons(Pair(3, 30), Nil)),
+    Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
+      Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
+        unit))))))))));
+  let b = &m m;
+  let pr = GetMutHM(0, 1, 0, 3, b, Refl, Refl, Refl, Refl);
+  match pr { Pair(r, h) => {
+    *r := 42;
+    () } } }
+
+example : progOk hmChainWrongSlot = false := by native_decide
 
 end Dllbc.Tests.HashMap
 
