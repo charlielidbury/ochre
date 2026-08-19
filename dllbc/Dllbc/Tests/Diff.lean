@@ -592,6 +592,38 @@ example : (match runExec advCallerBody with
            | .ok ce => instanceOf honestSym ce && instanceOfC honestSym ce
            | .error _ => false) = true := by native_decide
 
+/-! ### The PINNED twin (M35): the opaque σ is no longer the only possibility
+
+    `honestSym` above is what an UNPINNED signature yields, and it stays the
+    default. A signature that DECLARES the wire (`~> *res`, 12-design stage 5)
+    releases the surrendered payload itself, checked at both ends — so the
+    checking-mode environment now holds the CONCRETE written value, and the
+    simulation relation accepts it as an instance of the concrete run exactly
+    as it accepts the σ. The wire M28 τ refused to INFER is sound to DECLARE,
+    and `constrainedLie` above keeps recording why the inference was the wrong
+    route: `through` and `advance` no longer share a signature once one of them
+    writes its pin. -/
+
+def throughPinCallerBody : Term := prog{
+  fn ThroughP (b : &mut (s : List Nat ~> *res)) -> &mut List Nat { b };
+  let x = Cons(1, Nil); let b = &m x;
+  let r = ThroughP(b);
+  *r := Cons(9, Nil);
+  let y = x;
+  () }
+
+-- The checker's own environment IS the written value now…
+def pinnedKnown : Env := [("x", .bot), ("b", .bot), ("r", .bot), ("y", cons (nat 9) nil)]
+example : tailEnv throughPinCallerBody pinnedKnown = true := by native_decide
+
+-- …it is an instance of the concrete run under both relations…
+example : (match runExec throughPinCallerBody with
+           | .ok ce => instanceOf pinnedKnown ce && instanceOfC pinnedKnown ce
+           | .error _ => false) = true := by native_decide
+
+-- …and the whole-program simulation holds for the pinned caller.
+example : diffV2 throughPinCallerBody = true := by native_decide
+
 /-! ### The merged relation, on this same set (M26-C)
 
     Three assertions, because a merged relation has to be shown to have kept both

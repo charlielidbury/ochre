@@ -361,6 +361,11 @@ example : tailEnv chooseCaller
 -- a fresh existential: the caller below recovers a FRESH σ : List Nat, NOT the
 -- written `Cons 9 Nil`. Precision is deliberately lost; §6.2's transparent/spec
 -- group ends are the recovery route.
+--
+-- Still true of UNPINNED signatures — and a PIN makes the signatures differ
+-- (M35): `throughPin` below writes the wire INTO the signature (`~> *res`) and
+-- the callee's audit checks it. Declared, not inferred, which is the exact
+-- distinction this note's UNSOUND is about.
 def through : Term := prog{ fn Through (b : &mut List Nat) -> &mut List Nat { b }; () }
 
 example : progOk through = true := by native_decide
@@ -391,6 +396,45 @@ example : tailEnv throughCaller
 def vlist9 : Val := .ctor "Cons" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "S"
   [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "Z" []]]]]]]]]], .ctor "Nil" []]
 example : (match runProgram throughCaller with
+  | .ok env => env.lookup "y" == some vlist9
+  | .error _ => false) = true := by native_decide
+
+/-! ## The PINNED twin (M35, 12-design stage 5): the wire, DECLARED and checked
+
+    `through` above shares its signature with an `advance`, so INFERRING the
+    identity wire was unsound (M28 τ) and the opaque release is the rule. The
+    pin changes what is WRITTEN, not what is inferred: `ThroughP` declares
+    `~> *res` — "my captured loan's release IS whatever comes back through the
+    borrow I return" — and the two signatures now differ. The callee's audit
+    checks the claim symbolically (fill the returned place with a fresh exit σ,
+    convert against the opened pin); the caller's group end RELEASES it with the
+    surrendered payload substituted. The unpinned pair above stays exactly as it
+    is: opacity remains the default, and that pair is its permanent statement. -/
+
+def throughPin : Term := prog{
+  fn ThroughP (b : &mut (s : List Nat ~> *res)) -> &mut List Nat { b }; () }
+
+example : progOk throughPin = true := by native_decide
+
+def throughPinCaller : Term := prog{
+  fn ThroughP (b : &mut (s : List Nat ~> *res)) -> &mut List Nat { b };
+  let x = Cons(1, Nil); let b = &m x;
+  let r = ThroughP(b);
+  *r := Cons(9, Nil);
+  let y = x;
+  () }
+
+-- y is the WRITTEN value in CHECKING mode — where `throughCaller` above gets a
+-- fresh σ. This is the precision M27 deleted with `back = λ r. r` (`throughOk`,
+-- Ledger §C2), recovered by DECLARATION at the one place M27 left no
+-- alternative: a borrow-returning function has no value component to hang an
+-- ensures on.
+example : tailEnv throughPinCaller
+  [("x", .bot), ("b", .bot), ("r", .bot), ("y", vlist9)] = true := by native_decide
+
+-- …and the executing counterpart: the machines now AGREE on the value, so the
+-- gap the unpinned pair above keeps open is CLOSED for the pinned one.
+example : (match runProgram throughPinCaller with
   | .ok env => env.lookup "y" == some vlist9
   | .error _ => false) = true := by native_decide
 
@@ -472,7 +516,14 @@ example : progRejects (prog{ fn Bad (b : &mut Nat) -> &mut Bool { b }; () })
     what it would claim, which is this file's own §6.1 headline — and the flag that
     forced it on existed only to validate the differential. That validation is now
     stated at the comparator (`S9Diff`), so the kernel no longer carries a case for
-    a rule it does not have. -/
+    a rule it does not have.
+
+    M35: the kernel carries the rule now — DECLARED. A `~>`-pin on the captured
+    loan is the identity wire written in the signature and checked at both ends
+    (`throughPin` above; 12-design §2.2). What remains deleted, and stays
+    deleted, is the INFERENCE of it: an unpinned signature still releases the
+    opaque existential, which is why this history note survives the rule's
+    return. -/
 
 end Dllbc.Tests.S7Group
 end

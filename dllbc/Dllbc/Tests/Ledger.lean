@@ -355,7 +355,10 @@ example : progRejects S23Direct.recDeep "not the predecessor" = true := by nativ
         Deleting `back` deletes the precision, BY DESIGN — §5 point 4 is that what
         you keep is what you ascribe, and `Π (b : &mut List Nat) → &mut List Nat`
         ascribes nothing about the payload. `throughOpaque`'s behaviour becomes the
-        only behaviour.
+        only behaviour. (M35 reopens the ascription route: a `~>`-PIN in the
+        signature recovers exactly `throughOk`'s precision, declared and checked
+        at both ends — `S7Group.throughPin`. §5 point 4 stands: what you keep is
+        STILL what you ascribe; the pin widens what is ascribable.)
       * `nthS`/`nth2S`/`swapSN` are the **composition claim**: backward specs
         compose along a call chain, so a caller of `swapS` recovers the exact
         swapped list.
@@ -486,6 +489,14 @@ example : progOk S19Partition.twoRec = true := by native_decide
     body is rejected, its exit being a fresh σ minted by `nth2`'s group. **M23
     already performed that rewrite, and its output is already in the corpus and
     already green.**
+
+    M35 UPDATE to that measurement's premise: `nth2`'s group no longer HAS to
+    mint a fresh σ — a `~>`-pin on the cursor's parameter makes its exit the
+    declared value (12-design stage 5; `BorrowRefoundGoals.getMutRoundTripPin`
+    is `Set`-through-a-cursor with the caller KNOWING the result). So the
+    cursor-bodied port that was unwritable is now statable per signature. The
+    justification above stays as the history of why the stratum retired when it
+    did; whether to re-derive any of it on pins is a fresh question, not a debt.
 
     **AND THE SOUNDNESS REASON, which arrived after the decision and confirms it.**
     b1's probe found that the `~>`-hatch cursor contract — the form a "successful"

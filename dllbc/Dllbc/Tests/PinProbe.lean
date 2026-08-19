@@ -120,4 +120,78 @@ example : chkT prog{ List Nat } prog{ Type } = false := by native_decide
 example : chkT prog{ Set (S Z) 9 (Cons 1 (Cons 2 Nil)) } prog{ Type } = false := by native_decide
 example : chkT prog{ Cons 1 Nil } prog{ Type } = false := by native_decide
 
+/-! ## Stage-5 smoke: the mechanism end to end (kept as the probe's record) -/
+
+def why (t : Term) : String :=
+  match checkProgram t prog{ Unit } with
+  | .ok _ => "ACCEPTED"
+  | .error e => e
+
+def tails (t : Term) : String :=
+  match tailEnvs t with
+  | [.ok env] => String.intercalate ", " (env.map (fun kv => s!"{kv.1} ↦ {kv.2.pretty}"))
+  | [.error e] => s!"ERR {e}"
+  | rs => s!"{rs.length} paths"
+
+def throughPinP : Term := prog{
+  fn ThroughP (b : &mut (s : List Nat ~> *res)) -> &mut List Nat { b }; () }
+
+def throughPinCallerP : Term := prog{
+  fn ThroughP (b : &mut (s : List Nat ~> *res)) -> &mut List Nat { b };
+  let x = Cons(1, Nil); let b = &m x;
+  let r = ThroughP(b);
+  *r := Cons(9, Nil);
+  let y = x;
+  () }
+
+#eval IO.println (why throughPinP)
+#eval IO.println (tails throughPinCallerP)
+
+def withNthPinP (rest : Term) : Term := prog{
+  fn NthPin [i] (i : Nat, v : &mut (s : List Nat ~> Set i (*res) s), p : Le (S i) (Len *v)) -> &mut Nat {
+    match v {
+      Nil => botElim Unit p,
+      Cons(hd, tl) => match i {
+        Z => &m *hd,
+        S(k) => NthPin(k, &m *tl, p)
+      }
+    } };
+  %rest }
+
+#eval IO.println (why (withNthPinP prog{ () }))
+#eval IO.println (tails (withNthPinP prog{
+  let x = Cons(1, Cons(2, Cons(3, Nil)));
+  let b = &m x;
+  let r = NthPin(1, b, ());
+  *r := 9;
+  let y = x;
+  () }))
+
+def withGetROP (rest : Term) : Term := prog{
+  fn GetRO [i] (i : Nat, v : &mut (s : List Nat ~> s), p : Le (S i) (Len *v)) -> &mut (t : Nat ~> t) {
+    match v {
+      Nil => botElim Unit p,
+      Cons(hd, tl) => match i {
+        Z => &m *hd,
+        S(k) => GetRO(k, &m *tl, p)
+      }
+    } };
+  %rest }
+
+#eval IO.println (why (withGetROP prog{ () }))
+#eval IO.println (tails (withGetROP prog{
+  let x = Cons(1, Cons(2, Cons(3, Nil)));
+  let b = &m x;
+  let r = GetRO(1, b, ());
+  let T = *r;
+  let y = x;
+  () }))
+#eval IO.println (why (withGetROP prog{
+  let x = Cons(1, Cons(2, Cons(3, Nil)));
+  let b = &m x;
+  let r = GetRO(1, b, ());
+  *r := 9;
+  let y = x;
+  () }))
+
 end Dllbc.Tests.PinProbe

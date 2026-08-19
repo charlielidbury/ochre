@@ -38,12 +38,19 @@ The surface used in the `TARGET` signatures below (`~> S = e`, and `*res` for an
 issued borrow's exit snapshot) **does not parse today** — decisions D1 and D3 of the
 design doc — so those signatures appear in comments only. Nothing here should be
 read as a commitment to that spelling.
+
+**STAGE 5 LANDED (M35).** Families (b) and (c) are LIVE, at the end of the file,
+under D1's ratified ONE-SLOT spelling (`~> Set i (*res) s`, no `= e` connective) —
+on PINNED TWINS, because a pin is per-signature: every TODAY assertion above
+STAYS, as the permanent control that opacity remains the default for signatures
+that write no pin. Family (a) (`split_at_mut`) remains a target — it needs the
+shape half (stage 2) and the general walk (stage 6).
 -/
 
 open Dllbc
--- (`NthL`, `Set`, `arrCat` and `Len` appear only inside the TARGET signatures below,
--- which are comments — so nothing here opens `StdLemmas`, and Lean's own `Set` is not
--- shadowed. `StdLemmas.Set` is the list update the get_mut pin is written against.)
+-- `StdLemmas.Set` is the list update the get_mut pin is written against; the
+-- SELECTIVE open keeps Lean's own `Set` unshadowed for everything else.
+open Dllbc.StdLemmas (Set NthL)
 
 namespace Dllbc.Tests.BorrowRefoundGoals
 
@@ -137,6 +144,11 @@ example : runY getMutRoundTrip == some (vlist [1, 9, 3]) := by native_decide
 
     example : tailEnv getMutRoundTrip
       [("x", .bot), ("b", .bot), ("r", .bot), ("y", vlist [1, 9, 3])] = true := by native_decide
+
+    STAGE 5 LANDED (M35): this assertion is LIVE below, on `getMutRoundTripPin` —
+    the pin is per-signature, so the flip happens on the PINNED twin and the
+    unpinned tailEnv above STAYS, as the permanent statement that opacity is the
+    default. See "THE PIN LANDS" at the end of the file.
 -/
 
 /-- The same law one call deeper: the value written through a cursor obtained from a
@@ -219,6 +231,9 @@ example : runY readOnlyCaller == some (vlist [1, 2, 3]) := by native_decide
     went out; it does not say what that value IS, and nothing here should. Knowing
     the element would need the container's own `NthL i s` in the result's type, which
     is design-doc D9's lifted `retMixesBorrow` and a separate capability.
+
+    STAGE 5 LANDED (M35): live below on `readOnlyCallerPin` (way 1, direct
+    identity pins) — and `T` indeed stays a σ there, exactly as this note says.
 -/
 
 /-- The negative half, and the more important one: a caller that WRITES through a
@@ -239,6 +254,8 @@ example : progOk readOnlyViolated = true := by native_decide
 
 -- TARGET (against a `Peek` carrying the identity pin, not against `Nth`):
 --   example : progRejects readOnlyViolatedPinned "pin" = true := by native_decide
+-- STAGE 5 LANDED (M35): live below as `readOnlyViolatedPin` (and the derived
+-- form's `readOnlyDerivedViolated`); this unpinned acceptance stays, as it must.
 
 /-! ## (a) `split_at_mut` AS AN ORDINARY LIBRARY FUNCTION
 
@@ -380,5 +397,191 @@ example : progRejects pairParamWitness "only valid at a telescope position" = tr
     returned. The hole-filling audit checks the payload whole and refuses it. See the
     design doc §3.3.1 — that is a live soundness gap this milestone closes, not a
     precision feature. -/
+
+/-! # THE PIN LANDS (stage 5) — families (b) and (c), on the PINNED twins
+
+    12-design D1's ratified ONE-SLOT form: the RHS of `~>` is a single term,
+    kind-classified — a type is the owed-type claim (every signature above,
+    unchanged), anything else is a PIN, the value the release IS, in which
+    `*res` names the issued borrow's exit payload. The TARGET comments above
+    were drafted in the two-slot `~> τ' = e` spelling; what landed is the
+    one-slot ruling, so `List Nat = Set i (*res) s` is written `Set i (*res) s`
+    and the owed type is the pin's own.
+
+    A pin citing `i` needs `i` IN SCOPE, so `i` precedes `v` in the pinned
+    telescopes (a parameter's type may cite only earlier parameters — the §5.2
+    convention the draft signatures elided). The UNPINNED `Nth` and its callers
+    above stay exactly as they are: they are the permanent controls that
+    opacity remains the default. -/
+
+/-! ## (b) the get_mut round-trip law, live -/
+
+/-- `Nth` with the round-trip pin: when `v`'s loan ends, its payload IS the
+    entry list with position `i` replaced by whatever came back through the
+    returned borrow. -/
+def withNthPin (rest : Term) : Term := prog{
+  fn NthPin [i] (i : Nat, v : &mut (s : List Nat ~> Set i (*res) s), p : Le (S i) (Len *v)) -> &mut Nat {
+    match v {
+      Nil => botElim Unit p,
+      Cons(hd, tl) => match i {
+        Z => &m *hd,
+        S(k) => NthPin(k, &m *tl, p)
+      }
+    } };
+  %rest }
+
+/-- The callee-side discharge goes through on BOTH branches — `Z` directly,
+    `S(k)` through the recursive call's own pin PROJECTED at the shared exit σ:
+    the stage-0 probe's conversion (`Set (S k) r (Cons h t) ≡ Cons h (Set k r t)`,
+    all atoms neutral), now run by the audit itself. -/
+example : progOk (withNthPin prog{ () }) = true := by native_decide
+
+/-- THE TARGET, live: get position 1, write 9 through it, end the group — and
+    the CHECKER knows `y ≡ [1, 9, 3]`. The release is the pin with the
+    surrendered payload substituted for `*res`, not an existential. Compare
+    `getMutRoundTrip` above: same program, unpinned cursor, `y ↦ σ`. -/
+def getMutRoundTripPin : Term := withNthPin prog{
+  let x = Cons(1, Cons(2, Cons(3, Nil)));
+  let b = &m x;
+  let r = NthPin(1, b, ());
+  *r := 9;
+  let y = x;
+  () }
+
+example : progOk getMutRoundTripPin = true := by native_decide
+example : tailEnv getMutRoundTripPin
+  [("x", .bot), ("b", .bot), ("r", .bot), ("y", vlist [1, 9, 3])] = true := by native_decide
+
+-- …and the executing machine computes the same list, so the divergence pair the
+-- unpinned caller pins above (checker forgets / machine remembers) CLOSES for
+-- the pinned cursor.
+example : runY getMutRoundTripPin == some (vlist [1, 9, 3]) := by native_decide
+
+/-- The head position — the `Z` leg of the same law, exercised through the
+    recursion's base arm. -/
+def getMutRoundTripHeadPin : Term := withNthPin prog{
+  let x = Cons(1, Cons(2, Cons(3, Nil)));
+  let b = &m x;
+  let r = NthPin(0, b, ());
+  *r := 7;
+  let y = x;
+  () }
+
+example : progOk getMutRoundTripHeadPin = true := by native_decide
+example : tailEnv getMutRoundTripHeadPin
+  [("x", .bot), ("b", .bot), ("r", .bot), ("y", vlist [7, 2, 3])] = true := by native_decide
+example : runY getMutRoundTripHeadPin == some (vlist [7, 2, 3]) := by native_decide
+
+/-! ## (c) the read-only borrow law, live — WAY 1: direct identity pins
+
+    The container pins to `s` (identity), the result to `t` (identity). The
+    callee proves the container pin BECAUSE the issued pin CONSTRAINS the exit:
+    an identity-pinned result's exit IS its current payload, so the fill puts
+    the entry element back in its place and the filled list converts with its
+    entry self. No lemma, no `NthL` — §5's law as two identity pins. -/
+
+def withGetRO (rest : Term) : Term := prog{
+  fn GetRO [i] (i : Nat, v : &mut (s : List Nat ~> s), p : Le (S i) (Len *v)) -> &mut (t : Nat ~> t) {
+    match v {
+      Nil => botElim Unit p,
+      Cons(hd, tl) => match i {
+        Z => &m *hd,
+        S(k) => GetRO(k, &m *tl, p)
+      }
+    } };
+  %rest }
+
+example : progOk (withGetRO prog{ () }) = true := by native_decide
+
+/-- Reads through `r` (the non-consuming comptime deref), writes nothing — and
+    the checker knows `x` is UNCHANGED: `y ≡ [1,2,3]`, where `readOnlyCaller`
+    above gets a fresh σ. `T` stays an existential either way, exactly as the
+    TARGET note above says it must: the identity pin says what comes back
+    equals what went out, not what the element IS (that is D9's lifted
+    `retMixesBorrow`, a separate capability). -/
+def readOnlyCallerPin : Term := withGetRO prog{
+  let x = Cons(1, Cons(2, Cons(3, Nil)));
+  let b = &m x;
+  let r = GetRO(1, b, ());
+  let T = *r;
+  let y = x;
+  () }
+
+example : progOk readOnlyCallerPin = true := by native_decide
+example : tailEnv readOnlyCallerPin
+  [("x", .bot), ("b", .bot), ("r", .bot), ("T", .sym 0), ("y", vlist [1, 2, 3])]
+  = true := by native_decide
+example : runY readOnlyCallerPin == some (vlist [1, 2, 3]) := by native_decide
+
+/-- The negative half, and the more important one: a WRITE through the
+    identity-pinned borrow is REJECTED at the group's end — the pin is a
+    contract, not a comment. The same write against the unpinned `Nth`
+    (`readOnlyViolated` above) stays accepted, exactly as it must. -/
+def readOnlyViolatedPin : Term := withGetRO prog{
+  let x = Cons(1, Cons(2, Cons(3, Nil)));
+  let b = &m x;
+  let r = GetRO(1, b, ());
+  *r := 9;
+  let y = x;
+  () }
+
+example : progRejects readOnlyViolatedPin "violates the borrow's pin" = true := by native_decide
+
+/-! ## (c) WAY 2 — the derivation note, MEASURED
+
+    §12(c)'s note reads: `GetRO` is DERIVABLE from `NthPin` — pin the container
+    to `Set i (*res) s` and the result to identity — iff `Set i (NthL i s) s ⇝ s`
+    is definitional. Stage 0 measured the reduction: definitional at CONCRETE
+    `i`/`s`, stuck at symbolic ones (`Tests.PinProbe`). What that means
+    operationally, measured here:
+
+    * the derived form's DECLARATION checks — the container discharge never
+      needs the lemma, because the fill computes `Set i (exit) s` directly;
+    * its CALLER learns the RELATIONAL fact `y ≡ [1, T, 3]` — the entry with
+      position `i` replaced by the very element it read out, the σ SHARED
+      between `T` and `y` — which is strictly more than opacity and strictly
+      less than way 1's `y ≡ [1,2,3]`. Closing the residual gap needs `T = NthL i s`,
+      i.e. WHERE the cursor points — D9's lifted `retMixesBorrow`, not a pin.
+
+    So the doc's "the caller derives that the container is unchanged" holds of
+    way 1 outright, and of way 2 only up to the element fact the calculus
+    cannot yet state. The read-only REJECTION is identical either way. -/
+
+def withNthPinRO (rest : Term) : Term := prog{
+  fn NthPinRO [i] (i : Nat, v : &mut (s : List Nat ~> Set i (*res) s), p : Le (S i) (Len *v)) -> &mut (t : Nat ~> t) {
+    match v {
+      Nil => botElim Unit p,
+      Cons(hd, tl) => match i {
+        Z => &m *hd,
+        S(k) => NthPinRO(k, &m *tl, p)
+      }
+    } };
+  %rest }
+
+example : progOk (withNthPinRO prog{ () }) = true := by native_decide
+
+def readOnlyDerivedCaller : Term := withNthPinRO prog{
+  let x = Cons(1, Cons(2, Cons(3, Nil)));
+  let b = &m x;
+  let r = NthPinRO(1, b, ());
+  let T = *r;
+  let y = x;
+  () }
+
+example : progOk readOnlyDerivedCaller = true := by native_decide
+example : tailEnv readOnlyDerivedCaller
+  [("x", .bot), ("b", .bot), ("r", .bot), ("T", .sym 0),
+   ("y", .ctor "Cons" [vnat 1, .ctor "Cons" [.sym 0, .ctor "Cons" [vnat 3, .ctor "Nil" []]]])]
+  = true := by native_decide
+
+def readOnlyDerivedViolated : Term := withNthPinRO prog{
+  let x = Cons(1, Cons(2, Cons(3, Nil)));
+  let b = &m x;
+  let r = NthPinRO(1, b, ());
+  *r := 9;
+  let y = x;
+  () }
+
+example : progRejects readOnlyDerivedViolated "violates the borrow's pin" = true := by native_decide
 
 end Dllbc.Tests.BorrowRefoundGoals
