@@ -1604,6 +1604,33 @@ partial def calleeNames : Term → List String
   | .cmpT τ => calleeNames τ                             -- M33a: ⇝ is transparent here
   | _ => []
 
+/-- **The premise every formation arm of `hasTypeT` shares** (M35, the universe
+    rule): the expected type IS the universe, and the candidate carries no
+    borrow.
+
+    Stated once, used at each arm, for two reasons that pull the same way.
+
+    The FIRST is the ordering it forces: the expected type is settled before any
+    parameter is visited, so `List Nat : Nat` is a clean `false` and never a
+    recursion into an argument nobody asked about.
+
+    The SECOND is `docs/12-design-borrow-refounding.md` §4.2's proof-fragment
+    exclusion — "a `borrowT` may not occur inside an `Id`, inside a `Σ` a proof
+    inhabits, or anywhere `Pure.nf` output is consumed as a proof term" — written
+    for the first time as a rule of the universe rather than as a gate at a call
+    site. The doc assigns `hasBorrowT` exactly this job; this is the assignment.
+
+    Why the exclusion cannot be left to the recursion: `hasTypeT` REFUSES a bare
+    `⇝τ` or `&mut (s : τ ↝ τ′)` with an error, because asking whether a binder
+    mode is a type is a category error and deserves a sentence. But a former
+    that merely CONTAINS one — `Π (v : &mut τ) → …`, `Π (x : Nat) → &mut Nat`,
+    `List (&mut T)` — is a well-formed thing (a function signature; a runtime-only
+    list) that simply does not inhabit `Type`. It owes a verdict, not an error.
+    Without this premise the recursion would walk into the marker arm and throw
+    one. -/
+def atUniverse (fuel : Nat) (ty v : Term) : Bool :=
+  Pure.convert fuel ty .type && !hasBorrowT v
+
 /-! Value typing (§4), the future audit's engine. `sym σ` is typed by `sctx`
     and conversion; a constructor value by the signature table, checking each
     field against its (dependently instantiated) type; a type former inhabits
@@ -1713,7 +1740,7 @@ mutual
       -- DEPEND on it (`Σ (T : Type). T` is a type only if `Type` is one), so
       -- what used to be a harmless leaf is now load-bearing and is flagged
       -- accordingly rather than left to be discovered.
-      | .type => pure (Pure.convert fuel ty .type)     -- Type : Type (type-in-type)
+      | .type => pure (atUniverse fuel ty v)           -- Type : Type (type-in-type)
       -- **The base type constants** (M35). `Nat`, `Bool`, `Unit`, `Bot` are the
       -- ground types of the fixed basis, and the predicate is DERIVED from
       -- `Pure.typeCtors` rather than written as a second list: a constant is a
@@ -1723,7 +1750,7 @@ mutual
       -- Every other `.const` — the eliminators (`natRec`, `j`, …), `@exit`,
       -- `old` — is not a type and falls to the deferral below, unapplied.
       | .const c =>
-        if (Pure.typeCtors (.const c)).isSome then pure (Pure.convert fuel ty .type)
+        if (Pure.typeCtors (.const c)).isSome then pure (atUniverse fuel ty v)
         else throwErr s!"hasType: cannot type value {v.pretty} (λ/neutral typing deferred to M5)"
       -- **The two binder-mode markers are REFUSED at `Type`, by an arm and not by
       -- a fall-through** (M35). `⇝τ` and `&mut (s : τ ↝ τ′)` are written in type
@@ -1735,13 +1762,62 @@ mutual
       -- `docs/12-design-borrow-refounding.md`'s proof-fragment exclusion is
       -- exactly "no `borrowT` inhabits the universe". A fall-through would give
       -- the same verdict today and lose the reason tomorrow.
+      --
+      -- These two arms answer the DIRECT question — "is this marker a type?" —
+      -- which is a category error and gets a sentence. A former that merely
+      -- CONTAINS a marker is a different question and gets a verdict; that is
+      -- `atUniverse`'s second conjunct, above the mutual block.
       | .cmpT _ =>
         throwErr s!"hasType: {v.pretty} is a binder MODE, not a type — ⇝ marks a comptime binder (§6) and does not inhabit Type"
       | .borrowT _ _ _ =>
         throwErr s!"hasType: {v.pretty} is a binder MODE, not a type — &mut marks a runtime borrow binder (§5.1) and does not inhabit Type"
-      | .pi _ _ _ => pure (Pure.convert fuel ty .type)
-      | .sigmaT _ _ _ => pure (Pure.convert fuel ty .type)
-      | .idT _ _ _ => pure (Pure.convert fuel ty .type)   -- Id A a b : Type
+      -- **The binder formers, checked RECURSIVELY** (M35). These three arms
+      -- existed before — as three unconditional `pure (convert ty .type)`, i.e.
+      -- "any `Π` whatsoever is a type" — and that was sound only because nothing
+      -- could reach them: with no rule for `Nat : Type` there was no `Type`-typed
+      -- position for a former to sit in. The arms above create those positions,
+      -- so the formers now have to earn the universe rather than assert it.
+      --
+      -- The binder is opened at a FRESH σ carrying the domain, exactly as the λ
+      -- arm below opens a body — a checking-time hypothesis, which is what lets
+      -- `Π (T : Type) → Π (X : T) → A` type its own second domain (`T` is a σ
+      -- whose sctx type is `Type`) and `Π (n : Nat) → Array n (List Nat)` type
+      -- its codomain's length index.
+      --
+      -- The domain STRIPS its mode marker before it is typed: `⇝τ` is a legal
+      -- binder mode, so a Π carrying one is an ordinary type, and it is the
+      -- underlying `τ` that has to be one.
+      | .pi x d c =>
+        if !(atUniverse fuel ty v) then pure false
+        else do
+          let dom := d.stripCmp
+          if !(← hasTypeT fuel dom .type) then pure false
+          else do
+            let σ ← freshSym
+            modify (fun st => { st with sctx := (σ, dom) :: st.sctx })
+            hasTypeT fuel (Pure.openBinder fuel x c (Term.sym σ)) .type
+      -- Σ's TAIL carries a mode marker of its own — `Σ0 (x : A). P` is the
+      -- comptime-second-component spelling (M33, suspensions.md §2.7) — so the
+      -- codomain strips too, where a Π's never does.
+      | .sigmaT x d c =>
+        if !(atUniverse fuel ty v) then pure false
+        else do
+          let dom := d.stripCmp
+          if !(← hasTypeT fuel dom .type) then pure false
+          else do
+            let σ ← freshSym
+            modify (fun st => { st with sctx := (σ, dom) :: st.sctx })
+            hasTypeT fuel (Pure.openBinder fuel x c.stripCmp (Term.sym σ)) .type
+      -- `Id A a b : Type` iff `A : Type` and both endpoints inhabit `A`. The
+      -- endpoint premises are what make the identity type's own formation say
+      -- what `Refl`'s `ctorSig` entry already assumes when it converts them.
+      | .idT a l r =>
+        if !(atUniverse fuel ty v) then pure false
+        else if !(← hasTypeT fuel a .type) then pure false
+        else do
+          let lOk ← hasTypeT fuel l a
+          let rOk ← hasTypeT fuel r a
+          pure (lOk && rOk)
       | .app _ _ =>
         -- A neutral spine. We synthesize a type only for the eliminator
         -- constants (§10 elaboration of `match` to eliminators): their result
@@ -1760,20 +1836,20 @@ mutual
         match head, args with
         -- **The two parameterised type formers** (M35), read before the
         -- eliminators because a spine headed by `List`/`Array` is a TYPE and not
-        -- an elimination. Both are checked, not synthesized: the expected type
-        -- must already be `Type`, and only then are the parameters visited — so
-        -- asking `List Nat : Nat` is a clean `false` and never a recursion into
-        -- an argument nobody wanted typed.
+        -- an elimination. Both are checked, not synthesized, against the shared
+        -- `atUniverse` premise — which is what settles `List Nat : Nat` as a
+        -- `false` before any parameter is visited, and what keeps
+        -- `List (&mut T)` (a runtime-only value, 12- §4.2) out of the universe.
         --
         -- Arity is exact. `List` alone is `Type → Type` and `Array n` is
         -- `Type → Type`; neither inhabits `Type`, and a partially applied one
         -- therefore falls past these arms to the neutral reading below, which
         -- says so.
         | .const "List", [a] =>
-          if !(Pure.convert fuel ty .type) then pure false
+          if !(atUniverse fuel ty v) then pure false
           else hasTypeT fuel a .type
         | .const "Array", [n, t] =>
-          if !(Pure.convert fuel ty .type) then pure false
+          if !(atUniverse fuel ty v) then pure false
           else do
             let nOk ← hasTypeT fuel n (.const "Nat")
             let tOk ← hasTypeT fuel t .type

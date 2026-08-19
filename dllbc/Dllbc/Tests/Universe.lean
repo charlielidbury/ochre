@@ -234,4 +234,124 @@ def polyArr : Term := prog{
   () }
 example : progOk polyArr = true := by native_decide
 
+/-! ## §4 The binder formers EARN the universe
+
+    `Π`, `Σ` and `Id` had arms before M35, and each was an unconditional "yes":
+    any `Π` whatsoever was a type. That was sound only because nothing could
+    reach them — with no rule for `Nat : Type` there was no `Type`-typed position
+    for a former to sit in. §1's arms create those positions, so the formers are
+    checked recursively now, and these are the cases that answer differently
+    because of it. -/
+
+/-- A codomain that is not a type. -/
+example : chkL prog{ Π (x : Nat) → 5 } U = false := by native_decide
+example : chkL prog{ Σ (x : Nat). 5 } U = false := by native_decide
+
+/-- A domain that is not a type. -/
+example : chkL prog{ Π (x : 5) → Nat } U = false := by native_decide
+
+/-- `Id` demands its endpoints inhabit its carrier — the premise `Refl`'s
+    `ctorSig` entry already assumes when it converts them. -/
+example : chkL prog{ Id Nat True True } U = false := by native_decide
+
+/-- …and the positives the recursion has to keep. The binder is opened at a fresh
+    σ carrying the domain, which is what lets a later domain MENTION an earlier
+    binder (`Π (X : T)`, where `T` is the type parameter) and a codomain mention
+    the length index. -/
+example : chkL prog{ Π (T : Type) → Π (X : T) → T } U = true := by native_decide
+example : chkL prog{ Π (n : Nat) → Array n (List Nat) } U = true := by native_decide
+example : chkL prog{ Σ (c : Nat). Array c Nat } U = true := by native_decide
+
+/-- **A borrow-moded binder is a `false`, not §2's error.** `Π (v : &mut τ) → …`
+    is a well-formed thing — a function SIGNATURE, which is where `fsig` keeps
+    one — that does not inhabit `Type`. Asking directly whether `&mut τ` is a
+    type is the category error §2 answers. Two questions, two answers, and the
+    telescope-position one must not be routed into the other by recursion.
+
+    The check is `atUniverse`'s second conjunct — `hasBorrowT` doing the job
+    `docs/12-design-borrow-refounding.md` §4.2 assigns it: "borrow types are
+    excluded from the proof fragment — a `borrowT` may not occur inside an `Id`,
+    inside a `Σ` a proof inhabits, or anywhere `Pure.nf` output is consumed as a
+    proof term". -/
+example :
+  chkRawMsg (.pi "v" (.borrowT "s" (.const "Nat") (.const "Nat")) (.const "Nat")) .type
+    = "ok false" := by native_decide
+
+/-- The CODOMAIN is in the exclusion too, and it has to be: `Π (x : Nat) → &mut
+    Nat` is a signature as much as the previous one is (a `fn` returning a
+    borrow), and if only the domain were tested the recursion would reach the
+    codomain, hit §2's arm, and throw where it owes a verdict. `atUniverse` tests
+    the whole former, which is why this is one check and not five. -/
+example :
+  chkRawMsg (.pi "x" (.const "Nat") (.borrowT "s" (.const "Nat") (.const "Nat"))) .type
+    = "ok false" := by native_decide
+
+/-- Same premise, same answer, at a `List` — `List (&mut T)` is a runtime value
+    only, which is 12- §4.2's own example of what the exclusion is for. -/
+example :
+  chkRawMsg (.app (.const "List") (.borrowT "s" (.const "Nat") (.const "Nat"))) .type
+    = "ok false" := by native_decide
+example :
+  chkRawMsg (.sigmaT "c" (.const "Nat") (.borrowT "s" (.const "Nat") (.const "Nat"))) .type
+    = "ok false" := by native_decide
+
+/-- The COMPTIME marker is the opposite case, and the asymmetry is the point: `⇝`
+    is a legal binder mode on a domain, so a `Π` carrying one is an ordinary
+    type — the arm strips before it checks. A `Σ` strips its TAIL too, since
+    `Σ0 (x : A). P` is the comptime-second-component spelling (M33). -/
+example : chkRawMsg (.pi "x" (.cmpT (.const "Nat")) (.const "Nat")) .type = "ok true" := by
+  native_decide
+example :
+  chkRawMsg (.sigmaT "x" (.const "Nat") (.cmpT (.const "Nat"))) .type = "ok true" := by
+  native_decide
+
+/-! ## §5 Neutral types
+
+    A type need not be closed. Both neutral readings were already in the
+    judgment and neither needed a new arm — what they needed was for the
+    formations above to exist, so that a σ or a stuck spine could be REACHED in
+    a `Type`-typed position. Pinned here because "the universe rule" is not the
+    rule until the open cases are covered too. -/
+
+/-- Against a seeded `sctx`: `σ0 : Type` is what a telescope's comptime type
+    parameter leaves behind, and the `symOf?` case at the top of the judgment
+    types it by lookup and conversion. -/
+def chkS (sctx : List (Nat × Term)) (tm ty : Term) : String :=
+  match (hasTypeT 8000 tm ty).run (seedPure [] sctx) with
+  | .ok r _ => s!"ok {r}"
+  | .error e _ => s!"error {e}"
+
+example : chkS [(0, .type)] (Term.sym 0) .type = "ok true" := by native_decide
+example : chkS [(0, .const "Nat")] (Term.sym 0) .type = "ok false" := by native_decide
+
+/-- …and a formation OVER a type parameter, which is `List T` inside a generic
+    function's own signature. -/
+example : chkS [(0, .type)] prog{ List %(Term.sym 0) } .type = "ok true" := by native_decide
+example : chkS [(0, .type)] prog{ Array 3 %(Term.sym 0) } .type = "ok true" := by
+  native_decide
+example : chkS [(0, .type)] prog{ Π (x : %(Term.sym 0)) → %(Term.sym 0) } .type = "ok true" := by
+  native_decide
+
+/-- A σ-headed SPINE whose signature lands in `Type` — a type-level function
+    passed as a parameter, typed by the ordinary Π-instantiation the `.app` case
+    already does. -/
+example :
+  chkS [(0, prog{ Π (x : Nat) → Type })] prog{ %(Term.sym 0) 3 } .type = "ok true" := by
+  native_decide
+
+/-- A STUCK SPINE that lands in `Type`: `OptP`, the hm probe's `Σ (Bool)` Option,
+    is a type-valued comptime fn — a `boolRec` whose motive is `λ _. Type`. At a
+    symbolic tag it does not reduce, and the spine case synthesizes `Type` from
+    the motive, which is what makes a type-level `match` a type. -/
+def OptP : Term := prog{
+  λ (B : Bool). λ (T : Type). elim B return (λ (Bm : Bool). Type) {
+    True => T,
+    False => Unit } }
+example : chkS [(0, .const "Bool")] prog{ %OptP %(Term.sym 0) Nat } .type = "ok true" := by
+  native_decide
+
+/-- …and the same spine under a binder, which is the type the probe's Option
+    encoding actually is. -/
+example : chkL prog{ Σ (b : Bool). %OptP b Nat } U = true := by native_decide
+
 end Dllbc.Tests.Universe
