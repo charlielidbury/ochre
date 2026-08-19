@@ -338,3 +338,34 @@ This is a migration progress bar and not a limit. The number rises as programs m
 > Default 2 (headline kernel artifacts kept) stands, and is now structural rather
 > than a choice: elaboration-time checking is ephemeral, the `native_decide`
 > artifacts are durable, and with checking opt-in the two never contend.
+
+## 7. Review checklist — what a merge must run
+
+The default build is not the whole gate. One target is deliberately outside it and
+must be run by hand (or by CI) before this branch merges, and before any later
+change to the fragment boundary merges.
+
+**REQUIRED: `lake build Dllbc.Tests.FragmentAgreement`.**
+
+*What it asserts.* That `Term.needsRuntime` — the structural classifier the
+surface uses to decide which checker a block gets — and `readC`'s refusal list —
+the kernel's own ⇝ judgment — give the same verdict on every `prog{ … }` block in
+the corpus, in the one direction where they must (no over-fire), and that every
+disagreement is a *state* refusal rather than a *grammar* one. Two readings of one
+boundary drift unless something asserts they agree; this is that something.
+
+*Why it is not in the default build.* It costs **+65 s on a from-scratch suite**
+(314 s → 379 s, +21%) because it runs the reflector over all 1096 blocks. The
+thing it watches — `readC`'s refusal list — changes when someone deliberately
+edits the fragment boundary, which is a **once-a-milestone event, not a
+once-an-edit one**. A guard against a deliberate, rare, reviewed change belongs at
+the point where changes are reviewed. Charging every incremental build 21% to
+watch for it puts the cost on the wrong side of the frequency, and the cheaper
+alternatives considered (sampling the corpus, dropping the guard for a comment)
+both weaken the assertion rather than relocating it. Relocation keeps the guard at
+full strength and moves only *when* it is paid for.
+
+*The failure it must not be allowed to have.* Being outside the default target
+means it can rot silently. That is the trade being made, and the mitigation is
+this checklist entry plus the note in `Dllbc.lean` where the import would
+otherwise be — both of which point at the target by name.

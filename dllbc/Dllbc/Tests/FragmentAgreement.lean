@@ -56,6 +56,20 @@ pins:
      message must be one of the state kind. A grammar refusal that
      `needsRuntime` missed would be a genuine under-fire — a program silently
      unchecked — and fails this test.
+
+## THIS MODULE IS NOT IN `Dllbc.lean`, AND IS A REQUIRED MERGE CHECK
+
+Run it explicitly: `lake build Dllbc.Tests.FragmentAgreement`. It imports the
+whole corpus, so it needs no other setup and it is always runnable.
+
+It sits outside the default build because it costs **+65 s from scratch**
+(314 s → 379 s, +21%) — the reflector over all 1096 blocks. The thing it watches,
+`readC`'s refusal list, changes only when someone deliberately edits the fragment
+boundary: a once-a-milestone event. A guard against a rare reviewed change belongs
+at the point of review, not on every incremental build. Sampling the corpus or
+replacing it with a comment were the alternatives and both weaken the assertion;
+relocating it keeps the guard at full strength and moves only *when* it is paid
+for. docs/05 §7 is the checklist entry that enforces this.
 -/
 
 open Dllbc
