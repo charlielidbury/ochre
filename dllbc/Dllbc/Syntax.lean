@@ -1235,6 +1235,62 @@ end
     (`Arr` as `[…]`, `§segs` as `Arr⟨…⟩`) and the σ sigil, which is why a `pvar`
     asks `symOfName?` before falling back to `#name`. Rejections quote values, and
     a suite that asserts on distinctive substrings is what holds this to it. -/
+
+/-- The literal index under an `@res` marker (a `Z`/`S` chain). Local to the
+    renderer's pre-pass; `Term.natOf?` lives below the printer and cannot be
+    reached from here. -/
+private def resIdxOf? : Term → Option Nat
+  | .ctorApp "Z" [] => some 0
+  | .ctorApp "S" [t] => (resIdxOf? t).map (· + 1)
+  | _ => none
+
+/-- **`@res k` prints the way the programmer writes it** (M35 addendum). The
+    kernel form of `*res` is the marker spine `@res k`, and a diagnostic that
+    leaks it (a pin the discharge could not substitute — a value-returning pinned
+    parameter, a D6 entailment mismatch quoting the raw pins) should speak the
+    surface's language: `*res` when the term cites only the whole-result form,
+    `*(fst res)`/`*(snd res)` when it cites a pair's components. The arity proxy
+    is the term itself — a citation of index ≥ 1 is what says a pair is meant —
+    since a printer has no signature in hand. Display-only: the rewrite emits a
+    `.const` carrying the surface spelling, and it runs inside `Term.pretty`, so
+    no stored term is touched. -/
+partial def Term.resIndices : Term → List Nat
+  | .app (.const "@res") idx => (resIdxOf? idx).toList
+  | .app f a => Term.resIndices f ++ Term.resIndices a
+  | .deref t => Term.resIndices t
+  | .ctorApp _ args => args.flatMap Term.resIndices
+  | .pi _ d c | .sigmaT _ d c | .borrowT _ d c => Term.resIndices d ++ Term.resIndices c
+  | .lam _ d b => Term.resIndices d ++ Term.resIndices b
+  | .idT a b c => Term.resIndices a ++ Term.resIndices b ++ Term.resIndices c
+  | .cmpT τ => Term.resIndices τ
+  | _ => []
+
+partial def Term.resSugarGo (paired : Bool) : Term → Term
+  | .app (.const "@res") idx =>
+    (match resIdxOf? idx with
+     | some k =>
+       if !paired then .const "*res"
+       else if k == 0 then .const "*(fst res)"
+       else if k == 1 then .const "*(snd res)"
+       else .const s!"*(res {k})"
+     | none => .app (.const "@res") idx)
+  | .app f a => .app (Term.resSugarGo paired f) (Term.resSugarGo paired a)
+  | .deref t => .deref (Term.resSugarGo paired t)
+  | .ctorApp n args => .ctorApp n (args.map (Term.resSugarGo paired))
+  | .pi x d c => .pi x (Term.resSugarGo paired d) (Term.resSugarGo paired c)
+  | .sigmaT x d c => .sigmaT x (Term.resSugarGo paired d) (Term.resSugarGo paired c)
+  | .borrowT n d c => .borrowT n (Term.resSugarGo paired d) (Term.resSugarGo paired c)
+  | .lam x d b => .lam x (Term.resSugarGo paired d) (Term.resSugarGo paired b)
+  | .idT a b c => .idT (Term.resSugarGo paired a) (Term.resSugarGo paired b) (Term.resSugarGo paired c)
+  | .cmpT τ => .cmpT (Term.resSugarGo paired τ)
+  | t => t
+
+/-- The renderer's pre-pass: identity for any `@res`-free term. -/
+def Term.resSugar (t : Term) : Term :=
+  match Term.resIndices t with
+  | [] => t
+  | ks => Term.resSugarGo (ks.any (· ≥ 1)) t
+
 mutual
   def Term.prettyPrec (prec : Nat) : Term → String
     | .pvar x => match symOfName? x with | some σ => s!"σ{σ}" | none => s!"#{x}"
@@ -1302,7 +1358,7 @@ mutual
 end
 
 /-- Doc-trace rendering of a term (top level, no surrounding parens). -/
-def Term.pretty (t : Term) : String := Term.prettyPrec 0 t
+def Term.pretty (t : Term) : String := Term.prettyPrec 0 (Term.resSugar t)
 
 /-! ## Numerals and the small constructor vocabulary, at `Term` level
 

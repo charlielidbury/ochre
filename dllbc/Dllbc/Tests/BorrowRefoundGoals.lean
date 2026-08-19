@@ -698,4 +698,20 @@ def badEv : Term := prog{
 
 example : progRejects badEv "mixed return type — value component" = true := by native_decide
 
+/-- **Diagnostics speak the surface** (M35 addendum): the kernel form of `*res`
+    is the marker spine `@res k`, and a message quoting a pin the discharge
+    could not substitute must print it the way the programmer wrote it. The
+    leak shape: a VALUE-returning function whose parameter pins to `*res` — no
+    borrow is issued, so nothing can ever pay the pin, the substitution has no
+    exits, and the failure quotes the pin raw. The needle asserts the sugared
+    spelling (`Term.resSugar`, a display-only pre-pass in `Term.pretty`; the
+    fst/snd forms engage when a term cites index ≥ 1). No existing needle
+    anywhere contains `@res` — grepped — so the rewording moves nothing. -/
+def resLeakPin : Term := prog{
+  fn KeepPin (v : &mut (s : List Nat ~> *res)) -> Unit { () };
+  () }
+
+example : progRejects resLeakPin "does not convert with the declared pin (*res)" = true := by
+  native_decide
+
 end Dllbc.Tests.BorrowRefoundGoals
