@@ -67,7 +67,62 @@ A future instantiation-site check could therefore still localize an error to the
 template statement that caused it. Not built here; filed as the natural next
 step. -/
 
-syntax "prog" &"check" ("->" uterm)? "{" ublk "}" : term
+/-! ## The surface, and why `prog{ }` lives HERE rather than beside `ty{ }`
+
+**`prog{ }` checks by default** (M35, the information rule). There is no `check`
+word to write: a block whose content is a program gets the ⇒-walk, a block with a
+`-> τ` gets the checker that type asks for, and a bare pure term gets nothing
+because there is nothing to ask. The annotation moves onto the blocks that must
+NOT be checked, which is the smaller set — measured, 107 against 209.
+
+**The dependency shape is forced and is the right one anyway.** The checker
+(`checkProgramDiag`) lives in `Program.lean`, so an elaborator that calls it
+cannot be declared below `Program` — and `prog{ }` was, because `Machine`, `Pure`,
+`Std` and `Program` itself write blocks in it. Those sites are now `ty{ }`
+(`ProgMacro`, unchanged and non-checking), which reads better than `prog{ }` ever
+did for what they are: bare type expressions like `ty{ Array %m %t }`, `ty{ Unit }`.
+Nothing below this file writes a program.
+
+Counted after the move rather than before it: **57 code sites** — `Machine` 31,
+`Std` 13, `Pure` 7, `Program` 4, `ProgMacro` 2 — plus 22 prose mentions in
+`Uni`, `Syntax`, `FnMacro` and the headers of the above. The port's planning
+figure was 26, and it was an undercount: it counted DEFINITIONS that contain a
+block rather than blocks, which diverges most in `Machine`, where a single
+`hasTypeT` line can nest two (`ty{ Array %(ty{ … }) %t }`).
+
+`StdLemmas` imports this file, so the checking `prog{ }` reaches most of the
+corpus transitively (its own 450 blocks are pure and check nothing).
+
+**FORGETTING THE IMPORT IS A PARSE ERROR, NOT A SILENT SKIP — and the reason is
+that the SYNTAX moved, not just the elaborator.** An earlier draft of this
+paragraph claimed the opposite: that a module missing the import "would get the
+LOW-level brace silently", the forgot-the-import-silently-unchecked failure mode,
+and that routing through `StdLemmas` was what made forgetting it impossible. That
+is wrong, and the build said so. `prog{` is declared HERE and nowhere else —
+`ProgMacro` declares `ty{` — so a module that cannot see this file has no `prog{`
+token at all and reports `unknown identifier 'prog'`. There is no low-level brace
+left for it to fall back to.
+
+This is the stronger guarantee and it is worth having deliberately: the failure
+mode the transitive-import argument was constructed to avoid cannot occur,
+because the two braces are different tokens rather than the same token with two
+meanings. **The transitive-import argument was also empirically false**: four of
+the 22 test modules (`Diff`, `Boundaries`, `Traces`, `Ledger`) never imported
+`StdLemmas` at all. They now import this file directly, and each is self-
+sufficient rather than inheriting from a neighbour — because inheriting is the
+fragility, not the fix.
+
+**INVARIANT, and it must survive any future move of this syntax.** Declaring
+`prog` as a leading atom makes it a RESERVED TOKEN: `prog` can no longer be an
+identifier anywhere downstream of this file. The corpus has no such identifier
+today (checked), and the `defer_check`/`->` forms below are written so the
+reservation is not widened — `defer_check` is `&"defer_check"`, a non-reserved
+keyword, so it stays usable as an identifier. If a future placement threatens
+this, stop and report rather than widening it. -/
+
+syntax "prog{" ublk "}" : term
+syntax "prog" &"defer_check" "{" ublk "}" : term
+syntax "prog" "->" uterm "{" ublk "}" : term
 
 namespace ProgElab
 open Lean Elab Term Meta Dllbc.Surface
@@ -106,6 +161,12 @@ def elabWith (collect : Bool) (act : UM (TSyntax `term)) : TermElabM (Expr × Sp
   let e ← elabTerm stx (some (mkConst ``Dllbc.Term))
   synthesizeSyntheticMVarsNoPostponing
   return (← instantiateMVars e, spans)
+
+/-- Elaborate a block and check NOTHING — the fence. Same value as `prog{ }`
+    produces, without the check that would reject it. -/
+def elabUnchecked (act : UM (TSyntax `term)) : TermElabM Expr := do
+  let (e, _) ← elabWith false act
+  return e
 
 /-- Reify accumulated key syntaxes into key **values**, to match a breadcrumb. -/
 def keyValues (keys : Array Syntax) : TermElabM (List Dllbc.Term) := do
@@ -284,7 +345,15 @@ end ProgElab
 
 open Surface ProgElab in
 elab_rules : term
-  | `(prog check $[-> $ret]? { $b:ublk }) =>
-    elabChecked b ret (do let (t, _) ← elabUBlk [] [] 0 b; pure t)
+  | `(prog{ $b:ublk }) =>
+    elabChecked b none (do let (t, _) ← elabUBlk [] [] 0 b; pure t)
+  | `(prog -> $ret { $b:ublk }) =>
+    elabChecked b (some ret) (do let (t, _) ← elabUBlk [] [] 0 b; pure t)
+  -- THE FENCE, and it is the only annotation the information rule asks anyone to
+  -- write. Its population is programs that exist BECAUSE they fail: a
+  -- `progRejects` twin's rejection IS the assertion, so failing to elaborate
+  -- would delete the test rather than strengthen it. Measured at 107 sites.
+  | `(prog defer_check { $b:ublk }) =>
+    elabUnchecked (do let (t, _) ← elabUBlk [] [] 0 b; pure t)
 
 end Dllbc

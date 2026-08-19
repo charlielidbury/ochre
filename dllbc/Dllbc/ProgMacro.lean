@@ -4,7 +4,7 @@ open Lean
 
 namespace Dllbc
 
-/-! ## `prog{ … }` — THE surface (§8)
+/-! ## `ty{ … }` — THE surface (§8)
 
     A program is a term, so its surface is the term surface: `ublk`, elaborated in
     the empty context. There is no declaration form to write and nothing for this
@@ -14,7 +14,7 @@ namespace Dllbc
 
     ## **THERE IS ONE MACRO** (M29 γ)
 
-    There were two, `prog{ }` and `pure{ }`, and they were the same call to the
+    There were two, `ty{ }` and `pure{ }`, and they were the same call to the
     same elaborator differing by one boolean — "is this position consumed by ⇒ or
     ⇝". That flag had two readers, `let` and `&mut`, and M29 α and β removed both:
     `let` emits one `.letIn` that the kernel reads under both arrows, and the
@@ -22,19 +22,19 @@ namespace Dllbc
     readers the flag deleted, and with the flag gone the two macros were the same
     function of the same argument.
 
-    **`prog{ }` is the survivor, and the choice cost churn to buy meaning.**
-    Measured before deciding: 675 `pure{ }` sites against 447 `prog{ }`, so keeping
+    **`ty{ }` is the survivor, and the choice cost churn to buy meaning.**
+    Measured before deciding: 675 `pure{ }` sites against 447 `ty{ }`, so keeping
     `pure{ }` would have been the smaller rename by a wide margin. It is the wrong
     name for what the block now is. A `pure{ }` may contain a `fn`, an assignment,
     a borrow and a runtime match — nothing excludes them any more — so the name
     would be a claim about the contents that the grammar no longer makes, which is
-    the one kind of comment this project treats as a defect. `prog{ }` is §8's own
+    the one kind of comment this project treats as a defect. `ty{ }` is §8's own
     sentence, "**a program is an arbitrary term**", and an arbitrary term is
     exactly what this brace delimits. A proof term is one of those.
 
     ## What the name no longer promises, and where the promise lives instead
 
-    Reading `prog{ … }` tells you nothing about which fragment the term is in,
+    Reading `ty{ … }` tells you nothing about which fragment the term is in,
     and that is correct rather than a loss: a term's fragment is not a property of
     where it was WRITTEN, it is a property of which arrow CONSUMES it. The same
     term can be both — `len *v` is a legal body and a legal type — and under two
@@ -97,10 +97,10 @@ namespace Dllbc
     elaborator that performs it lives in `ElabCheck.lean` — above `Program.lean`,
     because it calls `checkProgramDiag` and this file is below it. -/
 
-syntax "prog{" ublk "}" : term
+syntax "ty{" ublk "}" : term
 
 macro_rules
-  | `(prog{ $b:ublk }) => do
+  | `(ty{ $b:ublk }) => do
     let ((t, _), _) ← StateT.run (Dllbc.Surface.elabUBlk [] [] 0 b) {}
     pure t
 

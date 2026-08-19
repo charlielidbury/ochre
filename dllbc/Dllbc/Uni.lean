@@ -4,12 +4,12 @@ import Dllbc.FnMacro
 /-!
 # `uterm` / `ublk` — THE term grammar
 
-One grammar, and there is one way in: `prog{ }` (ProgMacro.lean) is `ublk`,
+One grammar, and there is one way in: `ty{ }` (ProgMacro.lean) is `ublk`,
 elaborated in the empty context. `fn` is a STATEMENT of `ublk` (M28 θ), so a
 declaration is written where a `let` is written and there is no separate
 declaration surface to learn.
 
-**THERE IS EXACTLY ONE MACRO** (M29 γ). There were two — `prog{ }` and `pure{ }`,
+**THERE IS EXACTLY ONE MACRO** (M29 γ). There were two — `ty{ }` and `pure{ }`,
 the same call to this elaborator differing by one boolean, "is this position
 consumed by ⇒ or ⇝". The flag had two readers, `let` and `&mut`, and M29 α and β
 removed both; with no readers it deleted, and the two macros became the same
@@ -250,7 +250,7 @@ syntax:max "match" ident ":" uterm "{" uarm,* "}" : uterm    -- …with a branch
 syntax:max "if" uterm "{" ublk "}" "else" "{" ublk "}" : uterm  -- §12 sugar over a Bool match
 syntax:max "if" ident ":" uterm "{" ublk "}" "else" "{" ublk "}" : uterm  -- …with a branch equation
 
--- Pure eliminator sugar (§15b) — for `prog{}` / comptime positions. Arm bodies are
+-- Pure eliminator sugar (§15b) — for `ty{}` / comptime positions. Arm bodies are
 -- `ublk` so a `let x = e ; …` proof-let sequence (StdLemmas) works uniformly.
 declare_syntax_cat uelimArm
 syntax ident ("(" ident ")")* (ident)? "=>" ublk : uelimArm
@@ -513,7 +513,7 @@ structure SpanAcc where
 
       A block that CHECKS never looks at its spans — they exist to locate a
       rejection — so collecting them on the passing path is pure overhead, and it
-      was measurable: threading the table through every `prog{ }` in the corpus
+      was measurable: threading the table through every `ty{ }` in the corpus
       cost +6.9% on a from-scratch suite build. v1 of this design promised "a
       declaration that passes pays nothing for its spans"; this flag is what makes
       that true rather than aspirational.
@@ -526,7 +526,7 @@ structure SpanAcc where
       and the walker produces byte-identical output either way; it is the same
       class of thing as a trace level. Anyone tempted to relitigate M29 γ against
       it should check that property first — it is asserted by the corpus, since
-      every `prog{ }` in the suite elaborates with collection OFF.
+      every `ty{ }` in the suite elaborates with collection OFF.
 
       The elaborator therefore walks twice on the rare failing path (once without
       spans, once with) rather than once-with-spans always. A second walk of a

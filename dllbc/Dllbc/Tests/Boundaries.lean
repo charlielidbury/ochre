@@ -1,3 +1,4 @@
+import Dllbc.ElabCheck
 import Dllbc.Program
 import Dllbc.ProgMacro
 import Dllbc.Boundary

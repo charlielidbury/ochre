@@ -4,7 +4,7 @@ import Dllbc.StdLemmas
 /-!
 # The squiggle lands on the offending *syntax*
 
-`prog check { … }` checks as it elaborates, so a rejection is a Lean diagnostic at
+`prog{ … }` checks as it elaborates, so a rejection is a Lean diagnostic at
 the syntax that caused it rather than a string inside a `native_decide` three
 declarations away. One case per granularity the span table provides.
 
@@ -33,7 +33,7 @@ error: dllbc: the program is rejected:
 call: argument (S (S (S Z))) does not have its parameter type (Bool)
 -/
 #guard_msgs in
-#check (prog check{
+#check (prog{
   fn F (b : Bool) -> Unit { () };
   let r = F(3);
   () } : Term)
@@ -47,7 +47,7 @@ error: dllbc: the program is rejected:
 readR: x#0 holds ⊥ (use-after-move or uninitialized). If a CALL moved it and that callee only needs it in types or proofs, capitalizing the callee's parameter makes the argument a ⇝-read, which consumes nothing (§6).
 -/
 #guard_msgs in
-#check (prog check{
+#check (prog{
   fn F (l : List Nat) -> Unit { () };
   let x = Cons(1, Nil);
   let y = x;
@@ -65,7 +65,7 @@ error: dllbc: the program is rejected, on the path where n ⇒ S:
 readR(*): borrow payload is already a hole (⊥) — nothing to take
 -/
 #guard_msgs in
-#check (prog check{
+#check (prog{
   let n = S(Z);
   let l = Cons(1, Nil);
   let v = &m l;
@@ -84,7 +84,7 @@ error: dllbc: the program is rejected:
 audit: result (S Z) does not have return type (Bool)
 -/
 #guard_msgs in
-#check (prog check -> Bool {
+#check (prog -> Bool {
   fn F (n : Nat) -> Unit { () };
   let x = S(Z);
   x } : Term)
@@ -101,7 +101,7 @@ error: dllbc: the program is rejected:
 call: argument (S (S (S Z))) does not have its parameter type (Bool)
 -/
 #guard_msgs in
-#check (prog check{
+#check (prog{
   fn F (b : Bool) -> Unit { () };
   fn G (x : Nat) -> Unit { F(3); () };
   () } : Term)
@@ -113,18 +113,25 @@ error: dllbc: the program is rejected:
 readR: a#1 holds ⊥ (use-after-move or uninitialized). If a CALL moved it and that callee only needs it in types or proofs, capitalizing the callee's parameter makes the argument a ⇝-read, which consumes nothing (§6).
 -/
 #guard_msgs in
-#check (prog check{
+#check (prog{
   fn H (x : Nat) -> Unit { let a = Cons(1, Nil); let b = a; let c = a; () };
   () } : Term)
 
 /-! ## (5) A program that CHECKS elaborates to exactly the term it always did
 
     The check is a side effect of elaboration and changes nothing about the value.
-    `prog check { … }` and `prog{ … }` on the same source are the same `Term`. -/
+    `prog{ … }` (which checks) and `ty{ … }` (which does not) on the same source
+    are the same `Term`.
+
+    This comparison is what keeps the claim falsifiable. Before the surface move
+    the two braces were `prog check{ }` and `prog{ }`; both spellings now route to
+    the checking elaborator, so writing it that way would compare a term with
+    itself and assert nothing. `ty{ }` is the brace that survives BELOW the
+    checker, and it is the honest right-hand side. -/
 
 example :
-    ((prog check{ fn F (b : Bool) -> Unit { () }; let r = F(True); () })
-     == (prog{ fn F (b : Bool) -> Unit { () }; let r = F(True); () })) = true := by
+    ((prog{ fn F (b : Bool) -> Unit { () }; let r = F(True); () })
+     == (ty{ fn F (b : Bool) -> Unit { () }; let r = F(True); () })) = true := by
   native_decide
 
 /-! ## (6) SPLICE AUTO-DEFERRAL
@@ -135,7 +142,7 @@ example :
     instantiated below at a type it satisfies and at one it does not, and it is
     those INSTANTIATIONS that carry the assertions. -/
 
-def under (ret : Term) : Term := prog check -> %ret {
+def under (ret : Term) : Term := prog -> %ret {
   let x = S(Z);
   x }
 
@@ -159,7 +166,7 @@ example :
     `LeReflTy` definition into the ascription. -/
 
 example :
-    ((prog check -> Π (N : Nat) → Le N N {
+    ((prog -> Π (N : Nat) → Le N N {
         λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
           Z => unit,
           S (K) Ih => Ih } })
@@ -176,7 +183,7 @@ error: dllbc: the program is rejected:
 the term does not have its stated type (Π(N : ⇝Nat). Id #N #N)
 -/
 #guard_msgs in
-#check (prog check -> Π (N : Nat) → Id Nat N N {
+#check (prog -> Π (N : Nat) → Id Nat N N {
   λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
     Z => unit,
     S (K) Ih => Ih } } : Term)
@@ -186,10 +193,10 @@ the term does not have its stated type (Π(N : ⇝Nat). Id #N #N)
 
     No `fn`, no ascription: there is no specification anywhere, and a λ is
     checkable but not synthesizable. Nothing is deferred here — there is simply
-    no question to ask. It elaborates to exactly what `prog{ }` gives. -/
+    no question to ask. It elaborates to exactly what `ty{ }` gives. -/
 
 example :
-    ((prog check{ λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
+    ((prog{ λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
                     Z => unit, S (K) Ih => Ih } })
      == StdLemmas.LeRefl) = true := by native_decide
 

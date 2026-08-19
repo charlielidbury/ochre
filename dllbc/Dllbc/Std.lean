@@ -45,9 +45,9 @@ open Dllbc.Pure
 
 /-! ## Lifting Lean data into terms
 
-    The one job the surface has no spelling for: a `prog{ }` is a FIXED term, and
+    The one job the surface has no spelling for: a `ty{ }` is a FIXED term, and
     these are functions of a runtime `Nat`/`List`. So the recursion is Lean's and
-    each step is a `prog{ }`.
+    each step is a `ty{ }`.
 
     **Their leaves are gone** (M33 macro-top commit 7). `zero`, `suc`, `consV` and
     `nilV` were not merely assembly shorthands — they were a SECOND COPY of
@@ -59,8 +59,8 @@ open Dllbc.Pure
 
 def ofNat (n : Nat) : Term := Term.nat n
 def ofList : List Term → Term
-  | [] => prog{ Nil }
-  | h :: t => prog{ Cons(%h, %(ofList t)) }
+  | [] => ty{ Nil }
+  | h :: t => ty{ Cons(%h, %(ofList t)) }
 
 /-! ## `Le : Nat → Nat → Type`  (Z ≤ _ ↦ ⊤ ; S ≤ Z ↦ ⊥ ; S ≤ S ↦ recurse)
 
@@ -75,13 +75,13 @@ def LeFnT : Dllbc.Term := LeFn
 
 /-! ## `eqb, leb : Nat → Nat → Bool` — runtime-usable decision procedures -/
 
-def eqbFn : Term := prog{
+def eqbFn : Term := ty{
   λ (A : Nat). elim A return (λ (Am : Nat). Nat → Bool) {
     Z => λ (B : Nat). elim B return (λ (Bm : Nat). Bool) { Z => True, S (B') Rec => False },
     S (A') RecA => λ (B : Nat). elim B return (λ (Bm : Nat). Bool) { Z => False, S (B') Rec => RecA B' } } }
 def eqbFnT : Dllbc.Term := eqbFn
 
-def lebFn : Term := prog{
+def lebFn : Term := ty{
   λ (A : Nat). elim A return (λ (Am : Nat). Nat → Bool) {
     Z => λ (B : Nat). True,
     S (A') RecA => λ (B : Nat). elim B return (λ (Bm : Nat). Bool) { Z => False, S (B') Rec => RecA B' } } }
@@ -89,7 +89,7 @@ def lebFnT : Dllbc.Term := lebFn
 
 /-! ## `len` — the segment vocabulary's length (§14) -/
 
-def lenFn : Term := prog{
+def lenFn : Term := ty{
   λ (L : List Nat). elim L return (λ (Lm : List Nat). Nat) {
     Nil => Z,
     Cons (H) (T) Rec => S(Rec) } }
@@ -102,7 +102,7 @@ def lenFnT : Dllbc.Term := lenFn
     about. That was `pvar 4` and had to be counted; under names it says which
     variable it means, and `λ (N : Nat)` binding it is visible one line up. -/
 
-def countFn : Term := prog{
+def countFn : Term := ty{
   λ (N : Nat). λ (L : List Nat). elim L return (λ (Lm : List Nat). Nat) {
     Nil => Z,
     Cons (H) (T) Rec => elim (Eqb N H) return (λ (Bm : Bool). Nat) { True => S(Rec), False => Rec } } }
@@ -111,7 +111,7 @@ def countFnT : Dllbc.Term := countFn
 /-! ## `Bound : Nat → List Nat → Type` and `Sorted : List Nat → Type` -/
 
 -- `Bound h l` : the head of `l` is ≥ `h` (Nil ↦ ⊤, Cons h' _ ↦ Le h h').
-def BoundFn : Term := prog{
+def BoundFn : Term := ty{
   λ (H : Nat). λ (L : List Nat). elim L return (λ (Lm : List Nat). Type) {
     Nil => Unit,
     Cons (H') (T) Rec => Le H H' } }
@@ -121,7 +121,7 @@ def BoundFnT : Dllbc.Term := BoundFn
 -- non-dependent Σ (M33 macro-top): the second component does not mention the
 -- first, so the pair has no binder and therefore no component MODE — which is
 -- what the hand form's reserved `§_` said and what a named binder could not.
-def SortedFn : Term := prog{
+def SortedFn : Term := ty{
   λ (L : List Nat). elim L return (λ (Lm : List Nat). Type) {
     Nil => Unit,
     Cons (H) (T) Rec => Bound H T × Rec } }
@@ -132,7 +132,7 @@ def SortedFnT : Dllbc.Term := SortedFn
     By `natRec` on the count, giving a `List Nat → List Nat` (a `listRec` inside
     the successor arm): the double-recursion shape. -/
 
-def takeFn : Term := prog{
+def takeFn : Term := ty{
   λ (N : Nat). elim N return (λ (Nm : Nat). List Nat → List Nat) {
     Z => λ (L : List Nat). Nil,
     S (N') RecN => λ (L : List Nat). elim L return (λ (Lm : List Nat). List Nat) {
@@ -140,7 +140,7 @@ def takeFn : Term := prog{
       Cons (H) (T) R => Cons(H, RecN T) } } }
 def takeFnT : Dllbc.Term := takeFn
 
-def dropFn : Term := prog{
+def dropFn : Term := ty{
   λ (N : Nat). elim N return (λ (Nm : Nat). List Nat → List Nat) {
     Z => λ (L : List Nat). L,
     S (N') RecN => λ (L : List Nat). elim L return (λ (Lm : List Nat). List Nat) {
@@ -155,7 +155,7 @@ def addFn : Term := kAddFn
 def addFnT : Dllbc.Term := addFn
 
 /-- `append a b` by recursion on `a` (`Nil ↦ b`, `Cons h t ↦ Cons h (append t b)`). -/
-def appendFn : Term := prog{
+def appendFn : Term := ty{
   λ (A : List Nat). λ (B : List Nat). elim A return (λ (Lm : List Nat). List Nat) {
     Nil => B,
     Cons (H) (T) R => Cons(H, R) } }
@@ -172,12 +172,12 @@ def appendFnT : Dllbc.Term := appendFn
     to it, mode markers included. The other nine differ in exactly the position
     the hand form could write and the surface cannot. -/
 
-def le_refl : Term := prog{
+def le_refl : Term := ty{
   λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
     Z => unit,
     S (M) Rec => Rec } }
 def le_reflT : Dllbc.Term := le_refl
-def le_refl_ty : Term := prog{ Π (N : Nat) → Le N N }
+def le_refl_ty : Term := ty{ Π (N : Nat) → Le N N }
 
 /-! ## Normalizing a term, for the generalize-elim macro
 

@@ -657,7 +657,7 @@ def fnElabOrFail (d : FnDef) : Term :=
 
     It used to carry an id-collision check in front of `retarget`: each `fn`
     chain numbered its slots from `progBase`, so two chains composed through a
-    `%` splice — `withA (withB (prog{ … }))`, the obvious way to share a prefix —
+    `%` splice — `withA (withB (ty{ … }))`, the obvious way to share a prefix —
     both started at `900`, and the inner chain's FIRST declaration landed on the
     outer chain's first. `bindFn` refused that.
 

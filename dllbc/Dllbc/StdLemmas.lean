@@ -1,3 +1,4 @@
+import Dllbc.ElabCheck
 import Dllbc.Std
 import Dllbc.ProgMacro
 

@@ -1195,7 +1195,7 @@ end
 
     The alternative — modes part of type identity — was rejected on the calculus's
     own evidence and the evidence has not moved: the machine builds recursor
-    premise types with no modes, and `prog{}`'s motive binders are capitalised by
+    premise types with no modes, and `ty{}`'s motive binders are capitalised by
     convention, so under a mode-sensitive conversion every one of those would have
     to agree on a mode that ⇝ has no use for. -/
 mutual
@@ -1527,7 +1527,7 @@ def Term.stripCmp : Term → Term
     them and the datatype.
 
     **There are none left.** With the surface below the kernel, `Pure` and `Std`
-    are written in `prog{ }` and every comptime binder in them goes through
+    are written in `ty{ }` and every comptime binder in them goes through
     `binderDom` like every other binder in the language. The constructors' call
     count went to zero and they are gone with it — measured, not assumed. If a
     hand-written comptime binder ever comes back, this paragraph is the reason to

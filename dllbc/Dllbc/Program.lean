@@ -65,7 +65,7 @@ partial def endScope (fuel : Nat) : M Unit := do
 
 /-- **Check a program** (§8): one symbolic ⇒-walk, auditing each path's result at
     `retType`. No table: scope is the call table (§8). -/
-def checkProgramDiag (t : Term) (retType? : Option Term := some prog{ Unit }) :
+def checkProgramDiag (t : Term) (retType? : Option Term := some ty{ Unit }) :
     Except Diag Unit :=
   let paths :=
     (exploreD defaultFuel (atBoundary t) initSt).map
@@ -83,7 +83,7 @@ def checkProgramDiag (t : Term) (retType? : Option Term := some prog{ Unit }) :
 
 /-- **Check a program** (§8): one symbolic ⇒-walk, auditing each path's result at
     `retType`. No table: scope is the call table (§8). -/
-def checkProgram (t : Term) (retType : Term := prog{ Unit }) : Except String Unit :=
+def checkProgram (t : Term) (retType : Term := ty{ Unit }) : Except String Unit :=
   Except.mapError Diag.msg (checkProgramDiag t (some retType))
 
 /-- **Is this term outside the comptime fragment?** — i.e. is it a PROGRAM.
@@ -106,7 +106,7 @@ def checkProgram (t : Term) (retType : Term := prog{ Unit }) : Except String Uni
     **This is a second READING of the boundary, not a second definition of it**,
     and that distinction is only worth anything if it is enforced: the
     `Tests.ElabSpans` agreement battery asserts this function and `reflectC` give
-    the same verdict on every `prog{ }` block in the corpus, so a change to one
+    the same verdict on every `ty{ }` block in the corpus, so a change to one
     that is not made to the other fails the build instead of silently
     misclassifying. Both error directions are bad — a false "pure" means a
     program is silently unchecked, a false "program" means a proof term gets
@@ -193,7 +193,7 @@ def programEnvs (t : Term) : List (Except String Env) :=
 /-! ## Test helpers -/
 
 /-- The program checks. -/
-def progOk (t : Term) (retType : Term := prog{ Unit }) : Bool :=
+def progOk (t : Term) (retType : Term := ty{ Unit }) : Bool :=
   match checkProgram t retType with | .ok _ => true | .error _ => false
 
 /-- The program is rejected, with `needle` in the message.
@@ -202,7 +202,7 @@ def progOk (t : Term) (retType : Term := prog{ Unit }) : Bool :=
     `hasType` returns `false` for "does not have this type" and the audit turns
     that into an error, so a helper that collapsed error and false would let a
     *stuckness* pass for a *typing* rejection. -/
-def progRejects (t : Term) (needle : String) (retType : Term := prog{ Unit }) : Bool :=
+def progRejects (t : Term) (needle : String) (retType : Term := ty{ Unit }) : Bool :=
   match checkProgram t retType with
   | .ok _ => false
   | .error e => strContains e needle

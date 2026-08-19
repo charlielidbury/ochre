@@ -101,27 +101,27 @@ namespace Pure
     **And so did the SPLICE-form wrappers** (commit 9). `kAdd`, `kLe`, `arrayTy`
     and `arrCatS` looked like a different job — they apply a function to terms the
     machine already holds, rather than spelling out a definition — but the body of
-    each was a single `prog{ }`, so what they really were is a Lean-level name for
+    each was a single `ty{ }`, so what they really were is a Lean-level name for
     "write an application". The machine can write one itself: every site now says
-    `prog{ %kAddFn %a %b }` or `prog{ Array %n %T }` where it used to call the
+    `ty{ %kAddFn %a %b }` or `ty{ Array %n %T }` where it used to call the
     wrapper, and the `Term` that comes out is the same one, because it is the same
     quotation. What is left in this file is the two DEFINITIONS below and nothing
     that merely uses them.
 
     One rule holds at these sites and is worth stating, because it is invisible
     until it breaks: below `Std` you must splice the kernel constants, NOT write
-    the friendly surface names. `prog{ Add a b }` resolves `Add` through
+    the friendly surface names. `ty{ Add a b }` resolves `Add` through
     `Surface.aliasMap` to `Dllbc.Std.addFnT`, which this module is beneath in the
     import graph. `Array` and `arrCat` are fine unspliced — they are `constSet`
     entries, kernel basis, not library. -/
 
 /-- `add a b` by recursion on `a` (`add Z b = b`, `add (S a') b = S (add a' b)`). -/
 def kAddFn : Term :=
-  prog{ λ (A : Nat). λ (B : Nat). elim A return (λ (Am : Nat). Nat) { Z => B, S (A') R => S(R) } }
+  ty{ λ (A : Nat). λ (B : Nat). elim A return (λ (Am : Nat). Nat) { Z => B, S (A') R => S(R) } }
 
 /-- `Le : Nat → Nat → Type` as a computing predicate (`Z ≤ _ ↦ ⊤`, `S ≤ Z ↦ ⊥`,
     `S ≤ S ↦ recurse`). Premise (2)'s obligation type is built from this. -/
-def kLeFn : Term := prog{
+def kLeFn : Term := ty{
   λ (A : Nat).
     elim A return (λ (Am : Nat). Nat → Type) {
       Z => λ (B : Nat). Unit,
@@ -131,7 +131,7 @@ def kLeFn : Term := prog{
           S (B') Rec => F B' } } }
 
 /-- Recognize `Array n T`, returning `(n, T)`. The former itself is written
-    `prog{ Array %n %T }` at its construction sites — it is a ¶1.1 FIXED BASIS
+    `ty{ Array %n %T }` at its construction sites — it is a ¶1.1 FIXED BASIS
     constant (the values are flat runs, which no CIC-scheme inductive has), so the
     surface spells it with no alias in the way. -/
 def asArrayTy? : Term → Option (Term × Term)
@@ -619,7 +619,7 @@ def ctorSig : String → Option CtorSig
       match ty with | .app (.const "List") _ => some [] | _ => none }
   | "Cons"  => some { fieldTypes := fun ty =>
       match ty with
-      | .app (.const "List") t => some [("_", t), ("_", prog{ List %t })]
+      | .app (.const "List") t => some [("_", t), ("_", ty{ List %t })]
       | _ => none }
   -- The one DEPENDENT entry in the table: `Pair`'s second field type is the Σ's
   -- codomain, a body under the Σ's own binder — so that binder is the name
@@ -727,7 +727,7 @@ partial def segsExtent? : List Val → Option Term
   | s :: rest => do
     let (c, _) ← asSeg? s
     let tot ← segsExtent? rest
-    some prog{ %(Pure.kAddFn) %c %tot }
+    some ty{ %(Pure.kAddFn) %c %tot }
 
 /-- The extent of an array-shaped value read off the value itself, where that is
     possible: a run knows its length, a segment list sums its extents, an `arrCat`
@@ -737,7 +737,7 @@ partial def arrExtentPure? : Val → Option Term
   | .node "§segs" segs => segsExtent? segs
   | .node "Arr" vs => some (Term.nat vs.length)
   | .know (.ctorApp "Arr" ts) => some (Term.nat ts.length)
-  | .know (.app (.app (.app (.app (.const "arrCat") m) k) _) _) => some prog{ %(Pure.kAddFn) %m %k }
+  | .know (.app (.app (.app (.app (.const "arrCat") m) k) _) _) => some ty{ %(Pure.kAddFn) %m %k }
   | _ => none
 
 /-! **Merge** (¶1.1), the normalization that makes the carve history invisible: two
@@ -754,7 +754,7 @@ partial def mergeSegList : List Val → List Val
       match b₁, b₂ with
       | .know (.ctorApp "Arr" xs), .know (.ctorApp "Arr" ys) =>
         if segOwned b₁ && segOwned b₂ then
-          mergeSegList (segNode prog{ %(Pure.kAddFn) %c₁ %c₂ } (.know (.ctorApp "Arr" (xs ++ ys))) :: rest)
+          mergeSegList (segNode ty{ %(Pure.kAddFn) %c₁ %c₂ } (.know (.ctorApp "Arr" (xs ++ ys))) :: rest)
         else s₁ :: mergeSegList (s₂ :: rest)
       | _, _ => s₁ :: mergeSegList (s₂ :: rest)
     | _, _ => s₁ :: mergeSegList (s₂ :: rest)
@@ -789,7 +789,7 @@ partial def arrFoldSegs? : List Val → Option Term
       let bt ← know? b
       let btl ← arrFoldSegs? rest
       let ct ← segsExtent? rest
-      some prog{ arrCat %c %ct %bt %btl }
+      some ty{ arrCat %c %ct %bt %btl }
 
 /-- Fold every *foldable* segment list in `v`, leaving a suspended one in place.
     Total by design: an unfoldable node stays the state form it is and is rejected
