@@ -5,6 +5,14 @@ import Dllbc.Tests.Functions
 /-!
 # The ambiguous middle, and why the author's word is load-bearing
 
+**THIS FILE IS LOAD-BEARING FOR A CLAIM docs/05 MAKES, not an illustration of
+one.** §2b and §6 assert that the surface cannot be blamed for picking an arrow
+where a term is legal under both, and that no classifier could have replaced the
+author's word. That assertion is only worth something if the class it describes is
+non-empty and the three verdicts really do diverge — which is a fact about this
+corpus, checkable, and checked here. If these witnesses ever stop diverging, the
+doc's argument has lost its subject and should be re-read rather than trusted.
+
 A term written bare has no consumer, and this calculus's central claim about
 fragments is that **the consumer decides**: "a term's fragment is not a property
 of where it was WRITTEN, it is a property of which arrow CONSUMES it"

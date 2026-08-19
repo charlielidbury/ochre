@@ -281,19 +281,48 @@ def isProgramValue (v : Dllbc.Term) : Bool := Dllbc.Term.needsRuntime v
 
     | content | ascription | check |
     |---|---|---|
-    | has `fn` | none | the ⇒-walk (`checkProgramDiag … none`) |
-    | has `fn` | `-> τ` | the walk AND the audit at `τ` |
-    | no `fn` | `-> τ` | `hasTypeT` against `τ` (`checkPureDiag`) |
-    | no `fn` | none | nothing — there is no specification anywhere |
+    | classifies as a program | none | the ⇒-walk (`checkProgramDiag … none`) |
+    | classifies as a program | `-> τ` | the walk AND the audit at `τ` |
+    | pure | `-> τ` | `hasTypeT` against `τ` (`checkPureDiag`) |
+    | pure | none | nothing — there is no specification anywhere |
+
+    **"Classifies as a program" means `isProgramValue`, NOT "contains a `fn`".**
+    The rows said `fn`-presence until this was corrected, and that is exactly the
+    test the port refuted: `let x = Cons(1,Nil); let y = x; let z = x` is a
+    use-after-move with no `fn` anywhere, and a syntactic reading files it as pure
+    and checks nothing. A docstring naming a test the code does not perform is the
+    one kind of comment this project treats as a defect, so it is named after the
+    function above.
 
     The last row is information absence, not a deferral policy: a bare pure block
     states no type, and a λ is checkable but not synthesizable, so there is
     nothing any checker could be asked. The suite pairs a term with its type at
     the probe site precisely because the definition does not carry it.
 
-    A block whose assembled value is not closed — a spliced template — is
-    declined silently whatever its content: there is nothing to evaluate, and such
-    a template is checked at its instantiations by construction. -/
+    ## A block is checked when THREE things hold, and the table is only the first
+
+    Stating all three together is what makes this a rule rather than a rule with
+    exceptions bolted on:
+
+    1. **It carries its own specification** — a program, or an ascription. The
+       table above. Otherwise nothing can be asked.
+    2. **Its value is closed** — no free variable, no unsolved metavariable. The
+       spliced-template class: not comptime-known to the elaborator, so not
+       askable. Tested on the `Expr`, body AND return type.
+    3. **Its context is registry-resolvable** — every callee it names is bound
+       inside the block. The FRAGMENT class: a closed block whose callee prefix
+       arrives from a Lean-level assembler (`withPool (prog{ … })`, and the
+       hashmap flagship's `hmS1Under`/`hmGmUnder`/`hmPinUnder`) is only half a
+       program, and ⇒-walking it asks about a call table that has not been
+       assembled yet.
+
+    **(2) and (3) are the same idea at two levels**, which is why (3) completes
+    this rule instead of puncturing it: context not registry-known is to (3) what
+    value not comptime-known is to (2), and both say the elaborator has not been
+    given enough to answer. Only (2) is detected here and declined silently; (3)
+    is not detectable from the value alone — a fragment is indistinguishable from
+    a program with a genuinely unknown callee — so it is the manual fence's
+    population, 84 of the 297 sites. See docs/05 §2b and §6. -/
 def elabChecked (ref : Syntax) (ret : Option (TSyntax `uterm))
     (act : UM (TSyntax `term)) : TermElabM Expr := do
   let (e, _) ← elabWith false act
