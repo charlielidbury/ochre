@@ -27,7 +27,7 @@ section
 open Dllbc
 open Dllbc.StdLemmas (LeRefl LeAdd LeAddL LeTrans LePredL
   AddSucc AddZero IdTrans IdCongr IdSym NatRw BoolFT BoolTF
-  LeRwL LeRwR EqbRefl EqbTrueEq EqbSym
+  LeRwL LeRwR EqbRefl EqbTrueEq EqbSym IfDec Znots SInj
   Mod ModLtN Sub AddSubCancel Mul)
 
 namespace Dllbc.Tests.HashMap
@@ -77,42 +77,6 @@ def HitTailEvTy : Term := prog{
     Id Bool (HitL Q T) True }
 example : chkL HitTailEv HitTailEvTy = true := by native_decide
 
-/-! ## (xxv) THE GATE — does the key-driven walk discharge its pin?
-
-    The unmeasured mechanism this whole module rests on: the walk branches on
-    `Eqb key *kk` — a STUCK Bool — and the pin `BSetK key (*res) t`, normalized
-    at the audit, is stuck at exactly that `elim (Eqb key σkk)`. The audit is
-    branch-swept; the question is whether the branch's equation feeds its
-    conversion. `NthPin` (BorrowRefoundGoals) never asks it — its recursion is
-    on a Nat index and each branch refines a CONSTRUCTOR. The hit leg needs the
-    True arm taken, the miss leg the False arm (whose result must then converge
-    with the recursive call's projected pin at the shared exit σ). Pin-only
-    (plain `&mut Nat` return) so a failure names the pin, not D9. -/
-
-def bktGetPinOnly : Term := prog{
-  fn BktGetP [fuel] (fuel : Nat, key : Nat,
-      b : &mut (t : List (Σ (k : Nat). Nat) ~> BSetK key (*res) t),
-      Hin : Id Bool (HitL key (*b)) True,
-      Hf : Le (LenE (*b)) fuel) -> &mut Nat {
-    match b {
-      Nil => botElim Unit (BoolFT Hin),
-      Cons(Pair(kk, vv), tl) => match fuel {
-        Z => botElim Unit Hf,
-        S(f2) => {
-          let K0 = *kk;
-          let V0 = *vv;
-          let T0 = *tl;
-          if e : Eqb key *kk {
-            &m *vv
-          } else {
-            BktGetP(f2, key, &m *tl, HitTailEv key K0 V0 T0 e Hin, Hf)
-          } } } } };
-  () }
-
-example : progOk bktGetPinOnly = true := by native_decide
-
-/-! ## (xxvi) The D9 evidence lemmas — where the cursor points -/
-
 /-- The hit leg's return conjunct: at `Eqb q k0 ≡ True`, the head's value IS
     the bucket's answer at `q`. Stated in the D9 orientation (`Some (*r)` on
     the left) so the constructed proof's type is verbatim the declared one. -/
@@ -145,6 +109,174 @@ def FindTailEvTy : Term := prog{
     Id Bool (Eqb Q K0) False →
     Id OptN (FindL Q T) (FindL Q Cons(Pair(K0, V0), T)) }
 example : chkL FindTailEv FindTailEvTy = true := by native_decide
+
+/-! ## (xxv) THE GATE — does the key-driven walk discharge its pin?
+
+    The unmeasured mechanism this whole module rests on: the walk branches on
+    `Eqb key *kk` — a STUCK Bool — and the pin `BSetK key (*res) t`, normalized
+    at the audit, is stuck at exactly that `elim (Eqb key σkk)`. The audit is
+    branch-swept; the question is whether the branch's equation feeds its
+    conversion. `NthPin` (BorrowRefoundGoals) never asks it — its recursion is
+    on a Nat index and each branch refines a CONSTRUCTOR. The hit leg needs the
+    True arm taken, the miss leg the False arm (whose result must then converge
+    with the recursive call's projected pin at the shared exit σ). Pin-only
+    (plain `&mut Nat` return) so a failure names the pin, not D9. -/
+
+def bktGetPinOnly : Term := prog{
+  fn BktGetP [fuel] (fuel : Nat, key : Nat,
+      b : &mut (t : List (Σ (k : Nat). Nat) ~> BSetK key (*res) t),
+      Hin : Id Bool (HitL key (*b)) True,
+      Hf : Le (LenE (*b)) fuel) -> &mut Nat {
+    match b {
+      Nil => botElim Unit (BoolFT Hin),
+      Cons(Pair(kk, vv), tl) => match fuel {
+        Z => botElim Unit Hf,
+        S(f2) => {
+          let K0 = *kk;
+          let V0 = *vv;
+          let T0 = *tl;
+          if e : Eqb key *kk {
+            &m *vv
+          } else {
+            BktGetP(f2, key, &m *tl, HitTailEv key K0 V0 T0 e Hin, Hf)
+          } } } } };
+  () }
+
+/-- **THE GATE'S VERDICT — red, and the print is the session's headline
+    finding.** The fill is the hit leg's `Cons (Pair σ18 σ22) σ17`; the pin
+    normalized to a `boolRec` STUCK on `Eqb σ11 σ18` whose True arm is
+    LITERALLY that fill — one ι-step away, gated on the branch equation the
+    body's `if e :` bound. The audit's conversion does not consult branch
+    equations, and `Eqb` is a fold, stuck even at syntactically equal neutral
+    arguments (`EqbRefl` is a LEMMA, and a pin has no lemma slot). So no
+    KEY-comparing update can ever discharge a pin over symbolic keys — not by
+    accident but on principle: **a pin's data must be pin-computable.** The
+    key→position conversion cannot happen inside the pin, so it happens in the
+    signature: the walk below recurses on a POSITION (constructor refinement,
+    `NthPin`'s measured mechanism) and the position joins the parameters.
+    Kernel-scope alternatives, named not attempted: branch-equation-aware
+    audit conversion, or a neutral-reflexivity ι for `Eqb`. -/
+example : progRejects bktGetPinOnly
+  "does not convert with the declared pin (boolRec" = true := by native_decide
+
+/-! ### The position vocabulary: where `key` sits, and the update that needs
+    no comparison -/
+
+/-- `FindPosL q l` — the hit's position; `LenE l` when absent (every miss adds
+    one `S`), which is exactly the or_insert write site. -/
+def FindPosL : Term := prog{
+  λ (Q : Nat). λ (L : List (Σ (k : Nat). Nat)).
+    elim L return (λ (Lm : List (Σ (k : Nat). Nat)). Nat) {
+      Nil => Z,
+      Cons (E) (T) Rec =>
+        elim E return (λ (Em : Σ (k : Nat). Nat). Nat) {
+          Pair (K2) (V2) =>
+            elim (Eqb Q K2) return (λ (Bm : Bool). Nat) {
+              True => Z,
+              False => S(Rec) } } } }
+
+example : chkL prog{ Refl } prog{ Id Nat
+  (FindPosL 3 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil))) 1 } = true := by native_decide
+example : chkL prog{ Refl } prog{ Id Nat
+  (FindPosL 9 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil))) 2 } = true := by native_decide
+
+/-- `BSetP p v l` — value at position `p` becomes `v`, key and structure kept,
+    no-op past the end. Index-first, so a constructor-refined `p` steps it with
+    NO key comparison anywhere — this is what makes it pin-dischargeable where
+    `BSetK` is not. -/
+def BSetP : Term := prog{
+  λ (P : Nat). λ (V : Nat).
+    elim P return (λ (Pz : Nat). Π (L : List (Σ (k : Nat). Nat)) → List (Σ (k : Nat). Nat)) {
+      Z => λ (L : List (Σ (k : Nat). Nat)).
+        elim L return (λ (Lm : List (Σ (k : Nat). Nat)). List (Σ (k : Nat). Nat)) {
+          Nil => Nil,
+          Cons (E) (T) Rec =>
+            Cons(elim E return (λ (Em : Σ (k : Nat). Nat). Σ (k : Nat). Nat) {
+              Pair (K2) (V2) => Pair(K2, V) }, T) },
+      S (P2) Rec => λ (L : List (Σ (k : Nat). Nat)).
+        elim L return (λ (Lm : List (Σ (k : Nat). Nat)). List (Σ (k : Nat). Nat)) {
+          Nil => Nil,
+          Cons (E) (T) Rec2 => Cons(E, Rec T) } } }
+
+example : chkL prog{ Refl } prog{ Id (List (Σ (k : Nat). Nat))
+  (BSetP 1 99 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil)))
+  Cons(Pair(1, 10), Cons(Pair(3, 99), Nil)) } = true := by native_decide
+
+/-- Position `Z` on a hit bucket means the HEAD is the hit. -/
+def PosZHit : Term := prog{
+  λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
+  λ (Hp : Id Nat Z (FindPosL Q Cons(Pair(K0, V0), T))).
+    IfDec (Eqb Q K0) (Id Bool (Eqb Q K0) True)
+      (λ (Et : Id Bool (Eqb Q K0) True). Et)
+      (λ (Ef : Id Bool (Eqb Q K0) False).
+        botElim (Id Bool (Eqb Q K0) True)
+          (Znots (FindPosL Q T)
+            (IdTrans Nat Z (FindPosL Q Cons(Pair(K0, V0), T)) (S (FindPosL Q T)) Hp
+              (IdCongr Bool Nat (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
+                True => Z, False => S (FindPosL Q T) }) (Eqb Q K0) False Ef)))) }
+def PosZHitTy : Term := prog{
+  Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
+    Id Nat Z (FindPosL Q Cons(Pair(K0, V0), T)) → Id Bool (Eqb Q K0) True }
+example : chkL PosZHit PosZHitTy = true := by native_decide
+
+/-- Position `S p2` on a bucket means the head MISSED and `p2` locates the key
+    in the tail — the walk's recursion evidence, in one package. -/
+def PosSStep : Term := prog{
+  λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)). λ (P2 : Nat).
+  λ (Hp : Id Nat (S P2) (FindPosL Q Cons(Pair(K0, V0), T))).
+    IfDec (Eqb Q K0) ((Id Bool (Eqb Q K0) False) × (Id Nat P2 (FindPosL Q T)))
+      (λ (Et : Id Bool (Eqb Q K0) True).
+        botElim ((Id Bool (Eqb Q K0) False) × (Id Nat P2 (FindPosL Q T)))
+          (Znots P2 (IdSym Nat (S P2) Z
+            (IdTrans Nat (S P2) (FindPosL Q Cons(Pair(K0, V0), T)) Z Hp
+              (IdCongr Bool Nat (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
+                True => Z, False => S (FindPosL Q T) }) (Eqb Q K0) True Et)))))
+      (λ (Ef : Id Bool (Eqb Q K0) False).
+        Pair(Ef, SInj P2 (FindPosL Q T)
+          (IdTrans Nat (S P2) (FindPosL Q Cons(Pair(K0, V0), T)) (S (FindPosL Q T)) Hp
+            (IdCongr Bool Nat (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
+              True => Z, False => S (FindPosL Q T) }) (Eqb Q K0) False Ef)))) }
+def PosSStepTy : Term := prog{
+  Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
+  Π (P2 : Nat) → Id Nat (S P2) (FindPosL Q Cons(Pair(K0, V0), T)) →
+    (Id Bool (Eqb Q K0) False) × (Id Nat P2 (FindPosL Q T)) }
+example : chkL PosSStep PosSStepTy = true := by native_decide
+
+/-! ### THE WALK, position-driven — and it discharges
+
+    `NthPin`'s mechanism at the bucket: recurse on `p`, so every `natRec` the
+    pin owes steps in a branch where `p` is a CONSTRUCTOR. The key never needs
+    comparing at pin level; the D9 evidence reconstructs the `FindL` claim
+    from the position facts, value-level, where lemmas are allowed. -/
+
+def bktGetAtDecl : Term := prog{
+  fn BktGetAt [p] (p : Nat, key : Nat,
+      b : &mut (t : List (Σ (k : Nat). Nat) ~> BSetP p (*res) t),
+      Hhit : Id Bool (HitL key (*b)) True,
+      Hpos : Id Nat p (FindPosL key (*b)))
+      -> Σ (r : &mut Nat). Id OptN (SomeN (*r)) (FindL key (old *b)) {
+    match b {
+      Nil => botElim Unit (BoolFT Hhit),
+      Cons(Pair(kk, vv), tl) => {
+        let K0 = *kk;
+        let V0 = *vv;
+        let T0 = *tl;
+        match p {
+          Z => Pair(&m *vv, FindEvHit key K0 V0 T0 (PosZHit key K0 V0 T0 Hpos)),
+          S(p2) => {
+            let Ep = PosSStep key K0 V0 T0 p2 Hpos;
+            let Emiss = FstT (Id Bool (Eqb key K0) False) (Id Nat p2 (FindPosL key T0)) Ep;
+            let Epos2 = SndT (Id Bool (Eqb key K0) False) (Id Nat p2 (FindPosL key T0)) Ep;
+            let Pair(r2, h2) = BktGetAt(p2, key, &m *tl,
+              HitTailEv key K0 V0 T0 Emiss Hhit, Epos2);
+            let W0 = *r2;
+            Pair(r2, IdTrans OptN (SomeN W0) (FindL key T0)
+              (FindL key Cons(Pair(K0, V0), T0)) h2
+              (FindTailEv key K0 V0 T0 Emiss))
+          } } } } };
+  () }
+
+example : progOk bktGetAtDecl = true := by native_decide
 
 /-! ## (xxvii) The slot split, spelled so the pin can cite it
 
