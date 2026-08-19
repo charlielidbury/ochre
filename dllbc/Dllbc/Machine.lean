@@ -1567,30 +1567,10 @@ partial def collapseDerefOf (x : String) : Term → Term
       (rest.map (collapseDerefOf x)) (ev.map (collapseDerefOf x)) (eq.map (collapseDerefOf x))
   | t => t
 
-/-- **D1's one-slot kind classification**: is this `~>` RHS (already opened at
-    its entry snapshot) a TYPE — today's owed-type claim — or a value, i.e. a
-    PIN? Measured before written (`Tests.PinProbe`): `hasTypeT rhs Type` is the
-    wrong classifier on this kernel — it has universe arms for Π/Σ/Id/Type and
-    none for a bare type constant or a neutral type application, so it would
-    have silently read `&mut (s : Bool ~> Nat)` as a pin. This recognizer
-    instead asks what the whnf's HEAD is; the corpus's full `~>`-RHS inventory
-    (enumerated at stage 0) is covered by exactly these heads, and D1's own
-    argument says the collision case cannot arise — a runtime borrow's payload
-    is runtime data, and nothing of type `Type` is one. -/
-def isOwedTypeT (fuel : Nat) (t : Term) : M Bool := do
-  match Pure.whnf fuel t with
-  | .type | .pi _ _ _ | .sigmaT _ _ _ | .idT _ _ _ | .cmpT _ | .borrowT _ _ _ => pure true
-  | .const c => pure (c == "Nat" || c == "Bool" || c == "Unit" || c == "Bot")
-  | t' =>
-    match Pure.collectSpineT t' with
-    | (.const "List", [_]) | (.const "Array", [_, _]) => pure true
-    | _ =>
-      match t'.symOf? with
-      | some σ =>
-        match (← get).sctx.lookup σ with
-        | some sty => pure (Pure.convert fuel sty .type)
-        | none => pure false
-      | none => pure false
+-- (`isOwedTypeT` — D1's one-slot kind classification — lives BELOW the value-
+-- typing mutual now: since the universe rule it IS the semantic judgment
+-- `hasTypeT · Type`, sandboxed, and `buildResult` moved with it as its one
+-- pre-mutual caller.)
 
 /-- The telescope's borrow-parameter var ids (param `i` gets var id `i`). -/
 def borrowParamIds (telescope : List (String × Term)) : List Nat :=
@@ -1653,67 +1633,6 @@ def subsKnowledgeRaw : Val → Term
 def subsKnowledge : Val → Term
   | .know t => t
   | v => subsKnowledgeRaw (Val.arrFoldDeep v)
-
-/-- Build a call's fresh result value from the (instantiated) return type, and
-    collect the loans it ISSUES (§6.1). Each `&mut (τ ↝ τ')` position mints a
-    fresh issued reborrow `borrowₘ ℓ σ` with `σ : τ` in `sctx` and owed type
-    `τ'[s := σ]`; a `Pair`/`Σ` of results issues one loan PER borrow component
-    (the multi-issued group — `nth2`); a non-borrow leaf is a plain fresh
-    existential `σ` with no issued loan (the §5.3 wire).
-
-    **Σ is DEPENDENT here** (M23): the tail's type may mention the components
-    already built — that is the whole point of a pinned result (`Σ (r : List Nat).
-    Id (List Nat) r (drop i (old *v))`, split_off's ensures), and with declared
-    backs removed it is a caller's only route to knowing anything about a returned
-    value. `subs` carries the built components for the enclosing Σ binders as
-    `(binder name, value)`, innermost first; a leaf opens each of them in its type
-    before minting the σ. Order stopped mattering at M30 step 2 — under de Bruijn
-    the fold had to run from the head because `substPure 0` shifted the outer
-    binders down as it went, and under names each entry is found by its own name.
-    (Before M23 the tail was built independently, leaving a dangling `pvar` in the
-    σ's sctx type, so the pin was unusable at the call site — `useIt(a, h)` failed
-    with `argument (σ1) does not have its parameter type (Id σ0 (S Z))`.) -/
-partial def buildResult (fuel : Nat) (inst : Omega) (subs : List (String × Term)) :
-    Term → M (Val × List (Nat × Term × Option Term))
-  | .borrowT s τ S => do
-    let τVal := (subs.foldl (fun t p => Pure.openBinder fuel p.1 t p.2) (← readCWith fuel inst τ))
-    let σ ← freshSym
-    let ℓr ← freshLoan
-    -- `S` binds the snapshot at `s`; the enclosing Σ binders are named too, so
-    -- opening one no longer disturbs the others.
-    let sVal ← readCWith fuel inst S
-    let sVal := Pure.openBinder fuel s sVal (Term.sym σ)
-    let opened := Pure.nf fuel (subs.foldl (fun t p => Pure.openBinder fuel p.1 t p.2) sVal)
-    modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
-    -- D1 on an ISSUED borrow: a pin here is the RESULT's own contract — the
-    -- identity pin is the read-only law (§5), asserted by `endIssued` when the
-    -- caller's group ends. Opened at the issued payload's σ, which is this
-    -- borrow's entry snapshot from the caller's side.
-    if ← isOwedTypeT fuel opened then
-      pure (.borrowM ℓr (.know (Term.sym σ)), [(ℓr, opened, none)])
-    else
-      pure (.borrowM ℓr (.know (Term.sym σ)), [(ℓr, τVal, some opened)])
-  | .sigmaT x a b => do
-    let (vA, issA) ← buildResult fuel inst subs a
-    -- **What a later component SEES of an earlier one is its knowledge** (M32
-    -- R1), which for a borrow component is the payload σ rather than the
-    -- `borrowₘ ℓ σ` node the caller receives. The old code pushed the node, i.e.
-    -- put a loan marker in a type; under the split it cannot, and the payload is
-    -- the only reading of "what this component is" a type could have meant.
-    -- Reachable since M35 (D9): `retMixesBorrow` is lifted, so a dependent tail
-    -- over a borrow component is writable — `Σ (r : &mut Nat). Id Nat (*r) …`.
-    -- The deref of the binder collapses first: the knowledge of a borrow IS its
-    -- payload, so `*r` opens to the payload σ, which is what the caller's
-    -- minted evidence should be ABOUT.
-    let (vB, issB) ← buildResult fuel inst ((x, subsKnowledge vA) :: subs) (collapseDerefOf x b)
-    pure (.ctor "Pair" [vA, vB], issA ++ issB)
-  | rt => do
-    let retTy := (subs.foldl (fun t p => Pure.openBinder fuel p.1 t p.2) (← readCWith fuel inst rt))
-    let σ ← freshSym
-    modify (fun s => { s with sctx := (σ, retTy) :: s.sctx })
-    pure (.know (Term.sym σ), [])
-  -- (partial since M35: the Σ arm recurses on the deref-collapsed tail, which
-  -- is not a structural subterm once a dependent tail over a borrow is legal.)
 
 /-! ## §8's snapshot-subterm guard — what makes a self-call admissible
 
@@ -2152,6 +2071,91 @@ mutual
     | _, _, _ => pure false                          -- arity mismatch
   termination_by fuel _ tys => (fuel, 1, tys.length)
 end
+
+/-- **D1's one-slot kind classification**: is this `~>` RHS (already opened at
+    its entry snapshot) a TYPE — today's owed-type claim — or a value, i.e. a
+    PIN? Since the universe rule this IS the semantic judgment, sandboxed:
+    `hasTypeT rhs Type` with the state discarded (the judgment mints hypothesis
+    σs, and a classification is a query) and a REFUSAL read as "not a type" —
+    a pin's shapes (a ctor value, a `Set`-spine citing `@res`, a payload σ) are
+    falsified or refused by the same arms that admit every owed type, so the
+    two verdicts partition the slot.
+
+    History: before the universe rule this was a hand-rolled head-recognizer,
+    because `hasTypeT · Type` threw on `Nat`/`List Nat` (the stage-0 probe's
+    finding). The swap's ledger is the suite replaying green — the recognizer's
+    corpus-inventory argument, now checked by the judgment instead of asserted
+    by a head list. One deliberate reading change: a `borrowT`/`⇝`-headed RHS
+    (a binder MODE in the slot; nothing writes one) classified as a type under
+    the recognizer and classifies as a PIN here, failing loudly downstream —
+    which is the more honest verdict for a slot that means neither. -/
+def isOwedTypeT (fuel : Nat) (t : Term) : M Bool := do
+  let st ← get
+  match (hasTypeT fuel t .type).run st with
+  | .ok b _ => pure b
+  | .error _ _ => pure false
+
+/-- Build a call's fresh result value from the (instantiated) return type, and
+    collect the loans it ISSUES (§6.1). Each `&mut (τ ↝ τ')` position mints a
+    fresh issued reborrow `borrowₘ ℓ σ` with `σ : τ` in `sctx` and owed type
+    `τ'[s := σ]`; a `Pair`/`Σ` of results issues one loan PER borrow component
+    (the multi-issued group — `nth2`); a non-borrow leaf is a plain fresh
+    existential `σ` with no issued loan (the §5.3 wire).
+
+    **Σ is DEPENDENT here** (M23): the tail's type may mention the components
+    already built — that is the whole point of a pinned result (`Σ (r : List Nat).
+    Id (List Nat) r (drop i (old *v))`, split_off's ensures), and with declared
+    backs removed it is a caller's only route to knowing anything about a returned
+    value. `subs` carries the built components for the enclosing Σ binders as
+    `(binder name, value)`, innermost first; a leaf opens each of them in its type
+    before minting the σ. Order stopped mattering at M30 step 2 — under de Bruijn
+    the fold had to run from the head because `substPure 0` shifted the outer
+    binders down as it went, and under names each entry is found by its own name.
+    (Before M23 the tail was built independently, leaving a dangling `pvar` in the
+    σ's sctx type, so the pin was unusable at the call site — `useIt(a, h)` failed
+    with `argument (σ1) does not have its parameter type (Id σ0 (S Z))`.) -/
+partial def buildResult (fuel : Nat) (inst : Omega) (subs : List (String × Term)) :
+    Term → M (Val × List (Nat × Term × Option Term))
+  | .borrowT s τ S => do
+    let τVal := (subs.foldl (fun t p => Pure.openBinder fuel p.1 t p.2) (← readCWith fuel inst τ))
+    let σ ← freshSym
+    let ℓr ← freshLoan
+    -- `S` binds the snapshot at `s`; the enclosing Σ binders are named too, so
+    -- opening one no longer disturbs the others.
+    let sVal ← readCWith fuel inst S
+    let sVal := Pure.openBinder fuel s sVal (Term.sym σ)
+    let opened := Pure.nf fuel (subs.foldl (fun t p => Pure.openBinder fuel p.1 t p.2) sVal)
+    modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
+    -- D1 on an ISSUED borrow: a pin here is the RESULT's own contract — the
+    -- identity pin is the read-only law (§5), asserted by `endIssued` when the
+    -- caller's group ends. Opened at the issued payload's σ, which is this
+    -- borrow's entry snapshot from the caller's side.
+    if ← isOwedTypeT fuel opened then
+      pure (.borrowM ℓr (.know (Term.sym σ)), [(ℓr, opened, none)])
+    else
+      pure (.borrowM ℓr (.know (Term.sym σ)), [(ℓr, τVal, some opened)])
+  | .sigmaT x a b => do
+    let (vA, issA) ← buildResult fuel inst subs a
+    -- **What a later component SEES of an earlier one is its knowledge** (M32
+    -- R1), which for a borrow component is the payload σ rather than the
+    -- `borrowₘ ℓ σ` node the caller receives. The old code pushed the node, i.e.
+    -- put a loan marker in a type; under the split it cannot, and the payload is
+    -- the only reading of "what this component is" a type could have meant.
+    -- Reachable since M35 (D9): `retMixesBorrow` is lifted, so a dependent tail
+    -- over a borrow component is writable — `Σ (r : &mut Nat). Id Nat (*r) …`.
+    -- The deref of the binder collapses first: the knowledge of a borrow IS its
+    -- payload, so `*r` opens to the payload σ, which is what the caller's
+    -- minted evidence should be ABOUT.
+    let (vB, issB) ← buildResult fuel inst ((x, subsKnowledge vA) :: subs) (collapseDerefOf x b)
+    pure (.ctor "Pair" [vA, vB], issA ++ issB)
+  | rt => do
+    let retTy := (subs.foldl (fun t p => Pure.openBinder fuel p.1 t p.2) (← readCWith fuel inst rt))
+    let σ ← freshSym
+    modify (fun s => { s with sctx := (σ, retTy) :: s.sctx })
+    pure (.know (Term.sym σ), [])
+  -- (partial since M35: the Σ arm recurses on the deref-collapsed tail, which
+  -- is not a structural subterm once a dependent tail over a borrow is legal.)
+
 
 /-! ## Loan groups (§6.1): the ending cascade
 
