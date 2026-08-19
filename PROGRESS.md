@@ -80,6 +80,42 @@ loudly). One noted interaction: a pinned param on a function whose return type
 also cites `*v` releases the pin while the evidence names §5.4's σ′ — two names
 for one value that do not convert; no corpus program combines them.
 
+**FOLLOW-UP, same day (user process ruling: a residual with an identified
+solution shape gets implemented, not parked) — two of those residuals closed on
+the same branch (tip 67c81e3b):**
+
+*Pins over carved arrays* (`pinFillSegs`; OpaqueFill §7.6): the fill folds a
+carve into its `arrCat` spine with the lent cell at the SHARED exit and every
+other segment at its actual payload, so both sides of the discharge normalize
+by the same ι's. The toy-pack GetMut (`AVSet`/`PVSetN` over the §7.5 `AllK7`
+container) CHECKS at carve indices 0, 1 and 2 — where §7.5's type-claim fill
+stops at 0 — with the key-escape twin refused (the printed sides differ in
+exactly the swapped positions) and the pin-less originals keeping their red
+needles. The measured boundary, pinned as `gmPin2at1blind` with both sides
+printed: an update pin computes past a prefix exactly when the body's own flow
+OPENED it (one match per cell — which is what the flagship's walk-shaped GetMut
+does anyway); a blind carve at an opaque-prefix index has no computing update,
+there being no aset primitive and no arrCat ι off a bare-σ left. Counterfactual:
+disable the fold → exactly 3 reds, the three gmPin greens.
+
+*D9, `retMixesBorrow` LIFTED*: a borrow-returning signature carries value
+components now, judged per component at the callee's audit — opened at the
+ACTUAL borrow components (no ∀; `*r` collapses to the binder, whose knowledge
+is the payload) against the return type pinned at entry and branch-swept
+(`St.retTyBorrow`; a type rebuilt at audit time holds a STALE entry σ —
+measured, the first cut failed exactly so). `NthEv`'s
+`Σ (r : &mut Nat). Id Nat (*r) (NthL i (old *v))` checks with the recursive
+chain composing definitionally (NthL recurses index-first). The derived
+read-only CLOSES (pin + evidence + one Refl-match: T ≡ 2, y ≡ [1,2,3]), and
+`twoGetMutChain` lands the full two-get_mut law: call, write 9, call again —
+the checker DERIVES the second borrow holds 9. Three ledgered flips in
+S27Mixed, each the containment's own tests-that-move: `a1lie` refused by
+JUDGMENT now (`Id Z (S Z)` printed), `a5honest` ACCEPTED (its old comment
+predicted this flip verbatim), `sealProg` refused by the shape-half's readC
+race. §E's parameter-side containment untouched. Counterfactual: restore the
+gate → exactly 10 reds, disjoint from (a)'s 3; the executing-side assertions
+hold under both.
+
 ## 2026-08-14 — dllbc/: **M33 macro-top — the surface goes UNDER the kernel**
 
 Seven commits on `m33-macro-top` (based on main @ a43047b9), corpus green at each.
