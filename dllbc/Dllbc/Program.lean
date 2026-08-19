@@ -86,6 +86,51 @@ def checkProgramDiag (t : Term) (retType? : Option Term := some prog{ Unit }) :
 def checkProgram (t : Term) (retType : Term := prog{ Unit }) : Except String Unit :=
   Except.mapError Diag.msg (checkProgramDiag t (some retType))
 
+/-- **Is this term outside the comptime fragment?** — i.e. is it a PROGRAM.
+
+    `reflectC` answers this authoritatively, by trying: its refusal list IS this
+    calculus's definition of the pure sub-grammar (§1.3). But running it to find
+    out is not affordable at elaboration time, and that is measured rather than
+    feared: classifying `StdLemmas`' 446 blocks by reflection takes **16.8
+    seconds** and classifies exactly ZERO of them as programs. A program fails
+    reflection fast, because it hits a refused node early; it is the PURE terms
+    that reflect all the way through and pay, so the whole cost lands on the
+    blocks the answer is "no" for.
+
+    So this reads the same refusal list STRUCTURALLY — one scan, no reflection,
+    no state. Each row below corresponds to one `throwErr` in `readC`, and the
+    two conditional ones reuse `readC`'s own predicates (`lamImperative`, and the
+    countless `a[lo ; ..]` whose count is read off the extent map) rather than
+    restating them.
+
+    **This is a second READING of the boundary, not a second definition of it**,
+    and that distinction is only worth anything if it is enforced: the
+    `Tests.ElabSpans` agreement battery asserts this function and `reflectC` give
+    the same verdict on every `prog{ }` block in the corpus, so a change to one
+    that is not made to the other fails the build instead of silently
+    misclassifying. Both error directions are bad — a false "pure" means a
+    program is silently unchecked, a false "program" means a proof term gets
+    ⇒-walked and spuriously rejected — which is why the agreement is asserted and
+    not argued. -/
+partial def Term.needsRuntime : Term → Bool
+  | .assign _ _ _ | .borrow _ | .seq _ _ | .seal _ _ _ | .borrowT _ _ _ => true
+  | .matchE _ _ _ | .call _ _ => true
+  | .range _ _ none _ _ _ => true                       -- `a[lo ; ..]`: count is state
+  | t@(.lam _ d b) => Term.lamImperative t || d.needsRuntime || b.needsRuntime
+  | .letIn _ r b => r.needsRuntime || b.needsRuntime
+  | .ctorApp _ as => as.any (·.needsRuntime)
+  | .deref t => t.needsRuntime
+  | .index t i e => t.needsRuntime || i.needsRuntime || (e.map (·.needsRuntime)).getD false
+  | .range t lo (some c) a b c2 =>
+    t.needsRuntime || lo.needsRuntime || c.needsRuntime
+      || (a.map (·.needsRuntime)).getD false || (b.map (·.needsRuntime)).getD false
+      || (c2.map (·.needsRuntime)).getD false
+  | .pi _ d c | .sigmaT _ d c => d.needsRuntime || c.needsRuntime
+  | .app f a => f.needsRuntime || a.needsRuntime
+  | .idT a b c => a.needsRuntime || b.needsRuntime || c.needsRuntime
+  | .cmpT t => t.needsRuntime
+  | .var _ | .unit | .pvar _ | .type | .const _ => false
+
 /-- The depth the pure judgment runs at. Lemmas nest, and 2000 is what
     `Tests/KernelFloor.lean`'s `chk` has always used for exactly this judgment;
     named here rather than written as a literal so the two cannot drift apart. -/

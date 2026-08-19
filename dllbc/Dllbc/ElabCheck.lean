@@ -194,11 +194,27 @@ def throwDiag {α : Type} (ref : Syntax) (retRef : Option Syntax) (spans : SpanA
     no way for the surface's opinion to drift from the kernel's.
 
     A `fn` still lands on the program side, because it emits a `let` of a `.seal`
-    and `.seal` heads the refusal list. -/
-def isProgramValue (v : Dllbc.Term) : Bool :=
-  match (readC pureFuel v).run (seedPure [] []) with
-  | .ok _ _ => false
-  | .error _ _ => true
+    and `.seal` heads the refusal list.
+
+    **It reads that list STRUCTURALLY (`Term.needsRuntime`) rather than by running
+    `reflectC`, and the reason is correctness before cost.** Running the reflector
+    in an empty Ω was the first implementation, and measured against the corpus it
+    disagreed on 15 of 1096 blocks — every one of them a pure SPEC term that
+    `readC` refuses only because nothing is bound to reflect it against:
+    `Id (List Nat) (*%evT) (*%evT)` (a deref of a borrow parameter),
+    `%(Std.lenFnT) %(Term.var vSlot)` (an application at a free runtime slot), the
+    Σ-typed `…Honest`/`…Lie` specs of `ArraySort` and `S19Partition`. None is a
+    program. Had the reflector stayed the classifier, all 15 would have been
+    ⇒-walked and spuriously rejected — the "false program" direction, which breaks
+    the build rather than merely missing a check.
+
+    The lesson generalises: `readC`'s refusals are of two kinds, and only one of
+    them is about the FRAGMENT. "This form has no comptime reading" is a statement
+    about the grammar; "this variable is not bound here" is a statement about the
+    state. Classification wants the first and must not read the second, so it asks
+    the syntax, not the reflector. (It is also 2.6× faster — 6.5 s against 16.8 s
+    over the corpus — but that is the lesser reason.) -/
+def isProgramValue (v : Dllbc.Term) : Bool := Dllbc.Term.needsRuntime v
 
 /-- Elaborate a block and check it with **the checker its content determines**.
 
