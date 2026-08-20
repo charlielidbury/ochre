@@ -23,6 +23,20 @@ F* artifact, from the Aeneas repo, commit `d8f92140abd7e65b6f1c5dd7e511c0c0aa69e
 
 - `hashmap.rs` — `tests/src/hashmap.rs` fetched 2026-08-17 from the Aeneas repo's `main` (which pointed at `daa85d7e89400fa978be83fedbc7e475a83f0889`). Differences from the paper era: written with `while`/`loop` (extracted with `-loops-to-rec`), and a `saturated` flag replacing the paper-era behavior when the capacity-doubling overflow guard fails. Useful as the current upstream shape; the icfp22/ version is the apples-to-apples target.
 
+## splice/ and rust-check/ — the allocation-optimal resize
+
+Added 2026-08-20. `splice/hashmap.rs` is `current/hashmap.rs` with one function
+body replaced: `move_elements_from_list` relinks each bucket node into the new
+table, reusing the box the node already owns, instead of re-inserting the entry
+and allocating a fresh box for it. That makes a resize's only allocation the new
+slots vector, matching what the DLLBC flagship does. `rust-check/` is a cargo
+package that compiles both files (by `#[path]`, not by copying) and measures
+them side by side under a counting global allocator: upstream allocates one node
+per entry moved, the splice allocates none, and both pass the same behavioural
+tests against a `std::collections::HashMap` oracle. `../SPLICE-NOTES.md` has the
+numbers and the reasoning; `current/` and `icfp22/` remain untouched vendored
+artifacts.
+
 ## Comparison ledger (from the paper, for the flagship writeup)
 
 - Implementation: 201 LoC (their count, no blanks/comments).

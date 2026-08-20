@@ -1,0 +1,24 @@
+### Test scaffold for the vendored Aeneas hashmap case study.
+###
+### It compiles BOTH `../current/hashmap.rs` (upstream, unmodified) and
+### `../splice/hashmap.rs` (the allocation-free resize) into one crate via
+### `#[path]` module declarations, so the two are measured side by side in a
+### single test run against the very files the pipeline experiment translates.
+### Neither vendored file is copied — a drift between the file that is measured
+### and the file that is read is impossible.
+###
+### This is a standalone package on purpose: there is no cargo workspace at the
+### repo root, and it must not become part of one, because Charon translates
+### `hashmap.rs` as its own crate root.
+
+[package]
+name = "aeneas-hashmap-check"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "aeneas_hashmap_check"
+path = "src/lib.rs"
+
+[dependencies]
