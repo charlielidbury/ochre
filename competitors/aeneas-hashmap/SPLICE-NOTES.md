@@ -205,6 +205,23 @@ Six tests, each run against both files, all green in debug and release:
 Divergences are reported with the step index and the op that caused them rather
 than as a diff of two long vectors.
 
+## No leaks, no double drops (`tests/no_leak.rs`)
+
+Relinking nodes by hand is exactly the kind of change that leaks a box or drops
+one twice, and neither shows up in a functional-equivalence test. Six more tests,
+three per implementation:
+
+- **Allocator balance.** Over a create-fill-remove-refill-drop lifecycle
+  crossing several resizes, allocations must equal frees. A leaked box shows as
+  an excess allocation (a double free would abort the process outright). Both
+  balance exactly.
+- **Value drops.** With a value type that counts its own constructions and
+  destructions and asserts on a negative live count, every value put in comes
+  back out exactly once: filling loses none, overwriting a key drops exactly one
+  old value, `remove` hands the value over rather than dropping it, and dropping
+  the map takes the live count to zero.
+- **`clear`** on a grown table drops all 300 values it discards.
+
 ## Aeneas pipeline
 
 See "Pipeline experiment" below.
