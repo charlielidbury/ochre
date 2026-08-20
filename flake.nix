@@ -75,6 +75,10 @@
             ghc
             # Typesetting
             typst pandoc tinymist
+            # Search: lean-lsp's lean_local_search shells out to rg; the shell
+            # `rg` is Claude Code's bundled shim (a function), invisible to the
+            # MCP server process, so a real binary must be on PATH.
+            ripgrep
           ];
         };
       });
