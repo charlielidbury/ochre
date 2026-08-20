@@ -162,3 +162,45 @@ otherwise.
 * `#guard_msgs` on those outputs, which is the first time this family of features
   can be asserted by `lake build`;
 * an `==` pinning that a program with `show`s is the same `Term` as one without.
+
+---
+
+## 8. AS BUILT
+
+> **SHIPPED.** Everything above held. Three additions from contact with the
+> machine, none of them corrections to the design.
+
+**The `#guard_msgs` claim is real, and it is the biggest thing this surface
+buys.** `Tests/ShowSpans` asserts its own output in `lake build` — four cases,
+including the evolution trace verbatim. Neither `docs/16` nor `docs/17` can do
+that, and the difference is not effort but the sink: the same answer delivered as
+a diagnostic instead of a tooltip is a testable answer.
+
+**The erasure pin passes:** a program with `show`s `==` the same program without,
+by `native_decide`.
+
+**A σ can print BARE, and that is immutability being obeyed rather than a gap.**
+`show v` on the first statement of a `fn` body renders `borrowₘ ℓ0 σ0`, not
+`borrowₘ ℓ0 (σ0 : List Nat)`. A delta carries the σ-context as it stood AT that
+change, and a borrow parameter's binding is filed by `bindSlot` during
+`seedTelescopeV` before the σ's type is registered — so at that instant the
+checker genuinely did not know it. One statement later the annotation appears.
+Printing the type there would report a fact from the future, which §1 of
+`docs/17` forbids. Reordering the seed so the type lands first would fix the
+cosmetics by changing the checker, and is not taken. Pinned as case (S3) with the
+reason beside it, so nobody "fixes" it later.
+
+**Cost, measured not asserted.** `Tests/ShowSpans` with its six `show`s against
+the same file with them commented out: 853 ms vs 862 ms, best of two each — the
+`show` build faster than the bare one, i.e. noise. The ~4 ms replay figure from
+`docs/17` §9 is the array flagship's, and replay scales with the delta stream, so
+a `show` in a small program costs far less than that. The honest statement is:
+per-site, proportional to the program's delta count, and invisible at demo scale.
+(Load average was ~3.3 on 20 cores during this measurement rather than the ~1.5
+of earlier rounds; the delta is inside noise either way, but the figure is not
+comparable to the from-scratch numbers in `docs/16`.)
+
+**One thing `show` inherited for free**, worth naming because it is the argument
+for one renderer: the mid-move `⊥`. Nobody designed a demo case for "the payload
+is out of the borrow right now"; it appears in the evolution trace because the
+point renderer already told that truth, and `show` is the same call.

@@ -419,7 +419,8 @@ def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote)
     let keys ← if pts.isEmpty then pure [] else
       keyValues (spans.occs.filterMap (fun o => o.stmt))
     let mut ki := 0
-    for o in spans.occs do
+    for oi in [0 : spans.occs.size] do
+      let o := spans.occs[oi]!
       -- Nothing is computed here — `hasPoint` only asks whether this occurrence
       -- HAS a point answer, and the answer itself is built inside the thunk.
       let hasPoint := o.stmt.isSome && !pts.isEmpty && !(pointFactFor pts o keys ki).isEmpty
@@ -432,6 +433,24 @@ def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote)
                           pointBody (pointFactFor pts o keys ki')).getD "")
         else none
       if o.stmt.isSome && !pts.isEmpty then ki := ki + 1
+      -- **`show x` — the SAME answer, eagerly, as a diagnostic** (docs/18). Not a
+      -- second renderer and not a second query: the string below is the one the
+      -- tooltip would have produced at this occurrence, forced now instead of
+      -- when someone points at it. If these could disagree a reader would have to
+      -- know which to believe, so they are one call.
+      if spans.showOccs.contains oi then
+        let shown := match point?, o.static? with
+          | some txt, some stat => stat ++ " — here " ++ txt ()
+          | some txt, none => txt ()
+          | none, some stat => stat
+          | none, none =>
+            match idx[(o.id, o.name)]? with
+            | some (e, differs) =>
+              letTooltip o.name e ++ (if differs then " *(differs per path)*" else "")
+            -- Nothing known: say so rather than printing an empty box. A `show`
+            -- is an author's explicit request, so silence would read as a bug.
+            | none => s!"**{o.name}** — no value here (not checked, or not live)"
+        logInfoAt o.ref shown
       match point?, o.static? with
       -- A parameter with a point-fact: its TYPE and its CONTENTS HERE, which are
       -- different questions and both worth answering.

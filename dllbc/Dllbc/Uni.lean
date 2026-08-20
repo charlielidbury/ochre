@@ -310,6 +310,15 @@ syntax "let" ident noWs "(" upat,* ")" "=" uterm ";" ublk : ublk
 syntax uterm ":=" uterm ";" ublk : ublk                      -- assignment
 syntax uterm ";" ublk : ublk                                 -- expression statement (seq)
 syntax uterm : ublk                                          -- final expression
+-- **`show x` — a value made visible where you put it** (docs/18). ERASED: this
+-- row emits `rest` and nothing else, so the kernel never learns the word and a
+-- program with `show`s is the same `Term` as one without. What it leaves behind
+-- is an info diagnostic carrying exactly what hovering `x` here would say.
+--
+-- `show` is already a Lean keyword, so declaring it as a leading atom reserves
+-- no token that was not reserved — the question `ElabCheck`'s invariant note says
+-- to ask before adding one.
+syntax "show" ident ";" ublk : ublk                          -- show (erased)
 
 namespace Surface
 open Lean
@@ -586,6 +595,13 @@ structure SpanAcc where
       shadowing fall through to the checker's table instead of reporting a stale
       answer confidently. -/
   ptypes : List (String × Nat × String) := []
+  /-- Occurrence indices that a `show` filed — the sites whose answer is printed
+      EAGERLY as a diagnostic rather than waiting to be hovered (docs/18). -/
+  showOccs : Array Nat := #[]
+  /-- Occurrences awaiting a statement key — a `show`'s, filed before the
+      statement it anchors to has been walked (docs/18 §3). `tagOccsFrom` drains
+      these along with its own range. -/
+  pendingOccs : Array Nat := #[]
   /-- Lexically scoped: `fn` name ↦ its signature's source text. This is what the
       plan called "the registry" — there is no registry (docs/05 §1.A: it was
       never built, because scope IS the call table), and scope answers the same
@@ -632,8 +648,15 @@ def occMark : UM Nat := return (← get).occs.size
 def tagOccsFrom (lo : Nat) (key : TSyntax `term) : UM Unit :=
   modify fun a =>
     if !a.hover then a else
-      { a with occs := a.occs.mapIdx (fun i o =>
-          if i ≥ lo && o.stmt.isNone then { o with stmt := some key.raw } else o) }
+      -- PENDING occurrences are tagged too, and then cleared. A `show`'s
+      -- occurrence is filed before this statement exists, and this statement is
+      -- the one it wants: `replayTo` gives the state ENTERING a statement, which
+      -- is the state at a `show` written just above it (docs/18 §3).
+      { a with
+        occs := a.occs.mapIdx (fun i o =>
+          if (i ≥ lo || a.pendingOccs.contains i) && o.stmt.isNone then
+            { o with stmt := some key.raw } else o)
+        pendingOccs := #[] }
 
 /-- Render a binder's tooltip. One place, so a binder and its occurrences cannot
     drift into two spellings. -/
@@ -1615,6 +1638,23 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     tagOccsFrom occLo (← `(Dllbc.Term.assign $p' $e' Dllbc.Term.unit))
     let (rest', n3) ← elabUBlk rctx pctx n2 rest
     return (← `(Dllbc.Term.assign $p' $e' $rest'), n3)
+  -- **`show x ; rest` — ERASED** (docs/18). Emits `rest` and nothing else: no
+  -- node, no read, no move, no borrow, no Ω. The identifier is resolved exactly
+  -- as any other occurrence is (so an unknown name gets the ordinary
+  -- unbound-identifier error, with no second message to keep in step), its
+  -- occurrence is filed, and it is left PENDING for the next statement to key —
+  -- because the state entering that statement is the state here.
+  | `(ublk| show $x:ident ; $rest:ublk) => do
+    let mark ← occMark
+    noteIdent rctx pctx x
+    modify fun a =>
+      if a.hover && a.occs.size > mark then
+        { a with pendingOccs := a.pendingOccs.push mark, showOccs := a.showOccs.push mark }
+      else a
+    -- `resolveName` for its ERROR only: an unbound name must fail here as it
+    -- would anywhere else. The resolved term is discarded — that is the erasure.
+    let _ ← resolveName rctx pctx x
+    elabUBlk rctx pctx next rest
   | `(ublk| $e:uterm ; $rest:ublk) => do
     let occLo ← occMark
     let (e', n1) ← elabUTerm rctx pctx next e
@@ -1623,12 +1663,18 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     let (rest', n2) ← elabUBlk rctx pctx n1 rest
     return (← `(Dllbc.Term.seq $e' $rest'), n2)
   | `(ublk| $e:uterm) => do
+    let occLo ← occMark
     let (e', n) ← elabUTerm rctx pctx next e
     -- The block's final expression. `stmtKeyOf` is applied in the emitted
     -- expression rather than mirrored by hand: a final `match` files under the
     -- same `matchE s eqn []` the walker computes, without this walker knowing
     -- that rule.
     spanOfStmt e' e
+    -- This row did NOT tag occurrences until docs/18 §3, so anything named in a
+    -- block's final expression fell back to binder granularity. A pre-existing
+    -- hole in docs/17's surface, fixed here because a trailing `show` anchors to
+    -- this statement and there is always one.
+    tagOccsFrom occLo e'
     return (e', n)
   | _ => Macro.throwErrorAt stx "decl: unexpected block syntax"
 
