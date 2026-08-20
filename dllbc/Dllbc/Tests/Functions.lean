@@ -1249,7 +1249,7 @@ example : progOk f1 = true := by native_decide
 -- rather than through a declaration. (Asserted as "a σ" rather than as a σ id: the
 -- id is a counter, and pinning it would make this test fail for reasons that have
 -- nothing to do with what it is about.)
-example : (slotOf f1 "y").map (fun s => s.take 1) = some "σ" := by native_decide
+example : (slotOf f1 "y").map (fun s => (s.take 1).toString) = some "σ" := by native_decide
 
 -- …and the SAME program executes, with the recursion really running: both
 -- machines, one differential.
@@ -1981,9 +1981,9 @@ def leLen (b : Term) : Term :=
 -- carries §6's marker — the annotation is the domain as written, marker and all.
 example : (match bndArms with
            | some (z, s) =>
-             let dec := (s.get! 0).1
-             Term.beq (z.get! 1).2 (.cmpT (leLen (.ctorApp "Z" [])))
-               && Term.beq (s.get! 3).2 (.cmpT (leLen (.ctorApp "S" [.var dec])))
+             let dec := (s[0]!).1
+             Term.beq (z[1]!).2 (.cmpT (leLen (.ctorApp "Z" [])))
+               && Term.beq (s[3]!).2 (.cmpT (leLen (.ctorApp "S" [.var dec])))
            | none => false) = true := by native_decide
 
 -- E2. …and neither is the DECLARATION's own domain, which is what a transcription
@@ -1991,7 +1991,7 @@ example : (match bndArms with
 -- telescope, so those come for free" would have failed.
 example : (match bndArms with
            | some (z, s) =>
-             !(Term.beq (z.get! 1).2 bndDeclHn) && !(Term.beq (s.get! 3).2 bndDeclHn)
+             !(Term.beq (z[1]!).2 bndDeclHn) && !(Term.beq (s[3]!).2 bndDeclHn)
            | none => false) = true := by native_decide
 
 -- E3. `ih` is the motive at the predecessor: peel it at the residual telescope's
@@ -2001,15 +2001,15 @@ example : (match bndArms with
 -- one that would compile and pass while being silently wrong.
 example : (match bndArms with
            | some (_, s) =>
-             let dec := (s.get! 0).1
-             match piPeel [⟨1, "v"⟩, ⟨2, "Hn"⟩] (s.get! 1).2 with
-             | .ok (tel, _) => tel.length == 2 && Term.beq (tel.get! 1).2 (leLen (.var dec))
+             let dec := (s[0]!).1
+             match piPeel [⟨1, "v"⟩, ⟨2, "Hn"⟩] (s[1]!).2 with
+             | .ok (tel, _) => tel.length == 2 && Term.beq (tel[1]!).2 (leLen (.var dec))
              | .error _ => false
            | none => false) = true := by native_decide
 
 -- E4. The predecessor binder itself is the scrutinee's own domain.
 example : (match bndArms with
-           | some (_, s) => Term.beq (s.get! 0).2 (.const "Nat")
+           | some (_, s) => Term.beq (s[0]!).2 (.const "Nat")
            | none => false) = true := by native_decide
 
 /-! ## §F. THE ONE CONVERSION (M27 α.1b)
@@ -2045,7 +2045,7 @@ def stepArmWith (i : Nat) (τ : Term) : Option Term :=
   | some (.seal _ (.app (.app (.app (.const "natRec") mot) zArm) sArm) piT) =>
     let (s, sb) := Term.peelLams sArm
     some (.seal 0 (.app (.app (.app (.const "natRec") mot) zArm)
-                  (Term.lamTel (s.set i ((s.get! i).1, τ)) sb)) piT)
+                  (Term.lamTel (s.set i ((s[i]!).1, τ)) sb)) piT)
   | _ => none
 
 /-- The motive's body, read off the ascription the statement emitted, WITH the
@@ -2057,7 +2057,7 @@ def bndR : Option (String × Term) :=
   | _ => none
 
 /-- The step arm's predecessor binder. -/
-def bndDec : Option Var := bndArms.map (fun p => (p.2.get! 0).1)
+def bndDec : Option Var := bndArms.map (fun p => (p.2[0]!).1)
 
 -- F0. THE BASELINE. Unperturbed, the elaborated declaration checks — so every
 -- rejection below is the perturbation and not the program.
@@ -2069,7 +2069,7 @@ example : progOk bndProgram = true := by native_decide
 -- independent route to the same fact.
 example : (match bndR, bndArms, bndDec with
            | some (n, R), some (_, s), some dec =>
-             Term.beq (s.get! 1).2 (Term.substP n (.var dec) R)
+             Term.beq (s[1]!).2 (Term.substP n (.var dec) R)
            | _, _, _ => false) = true := by native_decide
 
 -- F1. **`ih` AT THE ARM'S OWN LEVEL** — `R` at `S dec` where the premise gives
@@ -2128,7 +2128,7 @@ example : (match stepArmWith 2
 -- disagreement, and not about the perturbation machinery having touched the term.
 example : (match bndArms with
            | some (_, s) =>
-             match stepArmWith 3 (s.get! 3).2 with
+             match stepArmWith 3 (s[3]!).2 with
              | some t => progOk (bndProg t)
              | none => false
            | none => false) = true := by native_decide
@@ -2195,7 +2195,7 @@ example : progOk juxSeal = true := by native_decide
 -- after a real call the caller's `y` is an EXISTENTIAL, where an uncalled program
 -- still holds the concrete list.
 example : ((programEnvs juxSeal).filterMap (fun r => match r with
-             | .ok e => (e.lookup "y").map (fun v => v.pretty.take 1)
+             | .ok e => (e.lookup "y").map (fun v => (v.pretty.take 1).toString)
              | .error _ => none)) = ["σ"] := by native_decide
 -- …and both machines still correspond on it, which is the ordinary obligation.
 example : Tests.S9Diff.progDiff juxSeal = true := by native_decide
@@ -2233,7 +2233,7 @@ example : progOk juxRec = true := by native_decide
 -- The same discriminator: `ih tl` and `f 3 b` really call, so the checking-mode
 -- `y` is the seal's existential rather than the list the program wrote.
 example : ((programEnvs juxRec).filterMap (fun r => match r with
-             | .ok e => (e.lookup "y").map (fun v => v.pretty.take 1)
+             | .ok e => (e.lookup "y").map (fun v => (v.pretty.take 1).toString)
              | .error _ => none)) = ["σ"] := by native_decide
 example : Tests.S9Diff.progDiff juxRec = true := by native_decide
 -- It really recursed: the executing machine zeroes both elements.

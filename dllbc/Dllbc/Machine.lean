@@ -336,7 +336,7 @@ def calleeMustEnter (st : St) (v : Val) : Bool :=
 
 /-- Its position, for the in-place update `setSlot` must make. -/
 def slotIdx? (ω : Omega) (x : Var) : Option Nat :=
-  (ω.enum.filter (fun p => p.2.1.name == x.name)).getLast?.map (·.1)
+  (ω.zipIdx.filter (fun p => p.1.1.name == x.name)).getLast?.map (·.2)
 
 /-- Look up a slot by name, newest wins. Errors if the name is not an entry. -/
 def lookupSlot (x : Var) : M Val := do
@@ -377,7 +377,7 @@ def takeScopeMark : M (Option (Nat × Bool)) := do
 def setSlot (x : Var) (v : Val) : M Unit := do
   let ω ← getEnv
   match slotIdx? ω x with
-  | some j => setEnv (ω.enum.map (fun p => if p.1 == j then (p.2.1, v) else p.2))
+  | some j => setEnv (ω.zipIdx.map (fun p => if p.2 == j then (p.1.1, v) else p.1))
   | none => throwErr s!"setSlot: {x.name}#{x.id} is not an entry of Ω"
 
 /-! ## Value-tree search and rewrite
@@ -1039,7 +1039,7 @@ def findSeg (fuel : Nat) (lo cnt : Term) (v : Val) : M (Nat × Leaf) := do
   let leaves ← extentMap fuel v
   match leaves.findIdx? (fun l => Pure.convert fuel l.base lo && Pure.convert fuel l.count cnt) with
   | some i =>
-    match leaves.get? i with
+    match leaves[i]? with
     | some l => pure (i, l)
     | none => throwErr "array: internal — segment index out of range"
   | none =>
@@ -1087,7 +1087,7 @@ def setStep (fuel : Nat) : Step → Val → Val → M Val
     let (i, _) ← findSeg fuel lo cnt v
     match v with
     | .node "§segs" segs =>
-      pure (Val.segsNode (segs.enum.map (fun (j, s) =>
+      pure (Val.segsNode (segs.zipIdx.map (fun (s, j) =>
         if j == i then (match Val.asSeg? s with
                         | some (c, _) => Val.segNode c inner
                         | none => s)
@@ -1097,7 +1097,7 @@ def setStep (fuel : Nat) : Step → Val → Val → M Val
     let (j, _) ← findSeg fuel i (Term.nat 1) v
     match v with
     | .node "§segs" segs =>
-      pure (Val.segsNode (segs.enum.map (fun (k, s) =>
+      pure (Val.segsNode (segs.zipIdx.map (fun (s, k) =>
         if k == j then (match Val.asSeg? s with
                         | some (c, _) => Val.segNode c (.ctor "Arr" [inner])
                         | none => s)
@@ -1502,7 +1502,7 @@ end
 partial def substResIdx (exits : List Term) : Term → Term
   | .app (.const "@res") idx =>
     match Term.natOf? idx with
-    | some k => (exits.get? k).getD (.app (.const "@res") idx)
+    | some k => (exits[k]?).getD (.app (.const "@res") idx)
     | none => .app (.const "@res") idx
   | .deref t => .deref (substResIdx exits t)
   | .app f a => .app (substResIdx exits f) (substResIdx exits a)
@@ -1574,7 +1574,7 @@ partial def collapseDerefOf (x : String) : Term → Term
 
 /-- The telescope's borrow-parameter var ids (param `i` gets var id `i`). -/
 def borrowParamIds (telescope : List (String × Term)) : List Nat :=
-  telescope.enum.filterMap (fun (i, p) => match p.2 with | .borrowT _ _ _ => some i | _ => none)
+  telescope.zipIdx.filterMap (fun (p, i) => match p.2 with | .borrowT _ _ _ => some i | _ => none)
 
 /-- What a value contributes to a dependent tail's context: its knowledge. A
     borrow node surrenders its payload; anything else is already a leaf.
@@ -3716,7 +3716,7 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Debt)
 /-- The `FnDef` view: parameter `i` gets runtime var id `i` — the §5.2 convention a
     declaration's own types are written against. -/
 def seedTelescope (fuel : Nat) (i : Nat) (tel : List (String × Term)) : M (List Debt) :=
-  seedTelescopeV fuel ((tel.enum.map (fun p => (Var.mk (p.1 + i) p.2.1, p.2.2))))
+  seedTelescopeV fuel ((tel.zipIdx.map (fun p => (Var.mk (p.2 + i) p.1.1, p.1.2))))
 
 /-- Does borrow `ℓ` transitively reborrow into `target`? An `advance`-style body
     returns a reborrow of a FIELD of an argument borrow (`&mut *hd` after
@@ -4557,12 +4557,12 @@ def recArmPis (c : String) (u : Term) (arms : List Val) : List (Option Term) :=
     -- the arm's own leading binder. Without it `applyClosure`'s `calleeRetTy`
     -- peels the ascription at a name the Π does not have.
     let baseTy : Nat → Term → Option Term := fun i ty =>
-      some (if Term.telTakesUnit ((arms.get? i).map leading |>.getD []) then Term.unitPi ty else ty)
+      some (if Term.telTakesUnit ((arms[i]?).map leading |>.getD []) then Term.unitPi ty else ty)
     match c with
     | "natRec" =>
       -- args: P z s
       let step : Option Term :=
-        match (arms.get? 2).map leading with
+        match (arms[2]?).map leading with
         | some (k :: ih :: _) =>
           some (wrap [(k.1, scrutDom), (ih.1, atCtor (.var k.1))]
                  (atCtor (.ctorApp "S" [.var k.1])))
@@ -4574,7 +4574,7 @@ def recArmPis (c : String) (u : Term) (arms : List Val) : List (Option Term) :=
         | .app (.const "List") a => a
         | _ => .const "Nat"
       let cons : Option Term :=
-        match (arms.get? 3).map leading with
+        match (arms[3]?).map leading with
         | some (h :: tl :: ih :: _) =>
           some (wrap [(h.1, elemTy), (tl.1, scrutDom), (ih.1, atCtor (.var tl.1))]
                  (atCtor (.ctorApp "Cons" [.var h.1, .var tl.1])))
@@ -6182,7 +6182,7 @@ mutual
       | .pi sn scrutDom R => do
         let mi := match recLayout c with | some (_, m, _) => m | none => 0
         let derived : Term := .lam sn scrutDom R
-        match args.get? mi with
+        match args[mi]? with
         | none => throwErr s!"seal: {c} spine has no motive argument"
         | some written =>
           if !(Term.alphaEq written derived) then
@@ -6280,7 +6280,7 @@ mutual
         -- The caller-visible signature keeps the λ's own binder NAMES (so a
         -- rejection at a call site names what the programmer wrote) at POSITIONAL
         -- ids (so `processArgs` reads it like any telescope).
-        sealMint fuel key (binders.enum.map (fun p => Var.mk p.1 p.2.1.name)) u
+        sealMint fuel key (binders.zipIdx.map (fun p => Var.mk p.2 p.1.1.name)) u
   termination_by fuel _ _ _ _ => (fuel, 7, 0)
   /-- **The checking-mode call rule** (§5.3/§6.1), factored out of `.call` (M26-C)
       because a SEALED function is called by exactly the same rule: a σ whose

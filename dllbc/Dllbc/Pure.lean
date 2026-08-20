@@ -471,7 +471,7 @@ mutual
       | .const "aget", tt :: n :: i :: a :: rest =>
         match semNatOf? (whnfN fuel i), whnfN fuel a with
         | some j, .ctor "Arr" vs =>
-          match vs.get? j with
+          match vs[j]? with
           | some w => whnfN fuel (rebuildSpine w rest)
           | none => rebuildSpine (.const "aget") (tt :: n :: i :: .ctor "Arr" vs :: rest)
         | _, a' => rebuildSpine (.const "aget") (tt :: n :: i :: a' :: rest)

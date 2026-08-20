@@ -757,7 +757,7 @@ def swapCallerTail (l : List Nat) (i j : Nat) : Term :=
 def runSwapAt (l : List Nat) (i j : Nat) : Bool :=
   match Dllbc.Tests.S9Diff.runExec (setSwapUnder setHonest swapHonest (swapCallerTail l i j)) with
   | .ok env =>
-    match l.get? i, l.get? j with
+    match l[i]?, l[j]? with
     | some a, some b => env.lookup "y" == some (vlistV ((l.set i b).set j a))
     | _, _ => false
   | .error _ => false

@@ -137,7 +137,7 @@ instance : Coe String Var := ⟨fun s => ⟨noSlot, s⟩⟩
     RUNTIME. Lives here rather than in the macro layer because the kernel reads
     it — see `Var.isComptime`. -/
 def isUpperInit (s : String) : Bool :=
-  match s.data with
+  match s.toList with
   | c :: _ => c.isUpper
   | [] => false
 

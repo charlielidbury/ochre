@@ -268,7 +268,7 @@ def succBinder (k : Var) (t : Term) : Option Var := (branchBinders k "S" t).bind
     and a reader is not. -/
 partial def selfScrutArgs (name : String) (k : Nat) : Term → List Term
   | .call f args =>
-    (if f == name then (args.get? k).toList else []) ++ args.flatMap (selfScrutArgs name k)
+    (if f == name then (args[k]?).toList else []) ++ args.flatMap (selfScrutArgs name k)
   | .letIn _ rhs rest => selfScrutArgs name k rhs ++ selfScrutArgs name k rest
   | .assign p e rest =>
     selfScrutArgs name k p ++ selfScrutArgs name k e ++ selfScrutArgs name k rest
@@ -323,7 +323,7 @@ partial def selfToIh (name : String) (k : Nat) (ih : Var) : Term → Term
 /-- The telescope as `Var`s, at the §5.2 positional convention its own types are
     written against. -/
 def teleVars (tel : List (String × Term)) : List (Var × Term) :=
-  tel.enum.map (fun p => (Var.mk p.1 p.2.1, p.2.2))
+  tel.zipIdx.map (fun p => (Var.mk p.2 p.1.1, p.1.2))
 
 /-- Move the `[k]`-th entry to the front.
 
@@ -333,7 +333,7 @@ def teleVars (tel : List (String × Term)) : List (Var × Term) :=
     free; it is checked rather than assumed because a future `[k]` on a dependent
     parameter would otherwise be silently reordered into nonsense. -/
 def hoist (k : Nat) (tel : List (Var × Term)) : Except String (List (Var × Term)) :=
-  match tel.get? k with
+  match tel[k]? with
   | none => .error s!"fn: [{k}] is out of range for a {tel.length}-parameter telescope"
   | some (kv, kτ) =>
     let earlier := (tel.take k).map (·.1)
@@ -396,7 +396,7 @@ def fnElab (d : FnDef) : Except String Term := do
     .ok (.seal 0 (Term.lamTel (tel.map (fun p => (p.1, markDom p.1 p.2))) d.body)
                (telePi tel d.retType))
   | some k => do
-    let (kv, kτ) ← match tel.get? k with
+    let (kv, kτ) ← match tel[k]? with
       | some e => pure e
       | none => .error s!"fn: [{k}] is out of range for a {tel.length}-parameter telescope"
     -- §12 decision 8: TRUE payload decrease has no recursor form, and fuel is
@@ -587,7 +587,7 @@ partial def retarget (binds : List (String × Var × Option Nat)) : Term → Ter
     let args' := args.map (retarget binds)
     match binds.lookup f with
     | some (v, some k) =>
-      match args'.get? k with
+      match args'[k]? with
       | some a => Term.appSpine (.var v) (a :: args'.eraseIdx k)
       | none => Term.appSpine (.var v) args'    -- arity mismatch: the kernel reports it
     -- **A no-argument call supplies the nullary desugar's `()`** (M32 R2). A

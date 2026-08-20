@@ -1327,7 +1327,7 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
   if names.contains "Z" || names.contains "S" then
     let (_, _, zb) ← getArm "Z"; let z := (← elabUBlk rctx pctx n2 zb).1
     let (sb, sih, sbody) ← getArm "S"
-    let kName := (sb.get! 0).getId.toString
+    let kName := (sb[0]!).getId.toString
     let ihName := (sih.getD (mkIdent `ih)).getId.toString
     let ihDom ← pOf kName
     let body := (← elabUBlk rctx (ihName :: kName :: pctx) n2 sbody).1
@@ -1343,8 +1343,8 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
   else if names.contains "Nil" || names.contains "Cons" then
     let (_, _, nb) ← getArm "Nil"; let n := (← elabUBlk rctx pctx n2 nb).1
     let (cb, cih, cbody) ← getArm "Cons"
-    let hName := (cb.get! 0).getId.toString
-    let tName := (cb.get! 1).getId.toString
+    let hName := (cb[0]!).getId.toString
+    let tName := (cb[1]!).getId.toString
     let ihName := (cih.getD (mkIdent `ih)).getId.toString
     let ihDom ← pOf tName
     let body := (← elabUBlk rctx (ihName :: tName :: hName :: pctx) n2 cbody).1
@@ -1395,8 +1395,8 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
     -- renamed below for the arm's second binder domain, whatever the arm calls it.
     let bT := (← elabUTerm rctx (bName :: pctx) n2 bSyn).1
     let (pb, _, pbody) ← getArm "Pair"
-    let xName := (pb.get! 0).getId.toString
-    let yName := (pb.get! 1).getId.toString
+    let xName := (pb[0]!).getId.toString
+    let yName := (pb[1]!).getId.toString
     let body := (← elabUBlk rctx (yName :: xName :: pctx) n2 pbody).1
     -- `B` reaches the Σ's own binder, and the arm names that field itself — so the
     -- arm's second domain is `B` with the Σ binder renamed, the same move `pOf`
