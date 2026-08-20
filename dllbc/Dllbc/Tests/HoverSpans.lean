@@ -33,11 +33,11 @@ set_option trace.Dllbc.check false
     ## (2) An OCCURRENCE of that parameter, in the body
     ## (8) The CALLEE NAME, at its declaration and at the call
 
-    `hoverProbe` positions:
-      (1)  L47 C9   `b`  ⇒  **b : `Bool`**
-      (2)  L47 C37  `b`  ⇒  **b : `Bool`**
-      (8a) L47 C6   `F`  ⇒  **F : `(b : Bool) -> Unit`**
-      (8b) L48 C10  `F`  ⇒  **F : `(b : Bool) -> Unit`**
+    Verified through `textDocument/hover`:
+      (1)  L44 C9   `b`  ⇒  **b : `Bool`**
+      (2)  L44 C37  `b`  ⇒  **b : `Bool`**
+      (8a) L44 C6   `F`  ⇒  **F : `(b : Bool) -> Unit`**
+      (8b) L45 C11  `F`  ⇒  **F : `(b : Bool) -> Unit`**
 -/
 
 example : Term := prog{
@@ -53,9 +53,9 @@ example : Term := prog{
     rather than a type because it has one — see `letTooltip`. The `x : τ` form
     appears in case (6), where the value is symbolic.
 
-      (3) L64 C7   `x`  ⇒  **x ≡ `S Z`** — comptime-known value
-      (4) L65 C11  `x`  ⇒  **x ≡ `S Z`** — comptime-known value
-      (5) L67 C11  `x`  ⇒  **x ≡ `S Z`** — comptime-known value
+      (3) L62 C7   `x`  ⇒  **x ≡ `S Z`** — comptime-known value
+      (4) L63 C11  `x`  ⇒  **x ≡ `S Z`** — comptime-known value
+      (5) L65 C11  `x`  ⇒  **x ≡ `S Z`** — comptime-known value
 -/
 
 example : Term := prog{
@@ -70,9 +70,9 @@ example : Term := prog{
     Inside a `fn` body a parameter is a σ, so a `let` that reads one binds a σ
     too, and `sctx` has its type. This is the shape the plan is named for.
 
-      (6a) L82 C24  `n`  ⇒  **n : `Nat`**            (S1, the parameter)
-      (6b) L82 C33  `m`  ⇒  **m : `Nat`**            (S2, from the checker)
-      (6c) L82 C41  `m`  ⇒  **m : `Nat`**            (S2, an occurrence)
+      (6a) L79 C9   `n`  ⇒  **n : `Nat`**            (S1, the parameter)
+      (6b) L79 C32  `m`  ⇒  **m : `Nat`**            (S2, from the checker)
+      (6c) L79 C47  `m`  ⇒  **m : `Nat`**            (S2, an occurrence)
 -/
 
 example : Term := prog{
@@ -85,9 +85,9 @@ example : Term := prog{
     and S1's table is keyed by id as well as name, so the occurrence below the
     `let` does NOT report the parameter's annotation.
 
-      (7a) L98 C9   `v`  ⇒  **v : `Bool`**            (the PARAMETER)
-      (7b) L98 C33  `v`  ⇒  **v ≡ `S Z`** …           (the `let`, not the param)
-      (7c) L98 C44  `v`  ⇒  **v ≡ `S Z`** …           (an occurrence of the `let`)
+      (7a) L94 C9   `v`  ⇒  **v : `Bool`**            (the PARAMETER)
+      (7b) L94 C33  `v`  ⇒  **v ≡ `S Z`** …           (the `let`, not the param)
+      (7c) L94 C51  `v`  ⇒  **v ≡ `S Z`** …           (an occurrence of the `let`)
 -/
 
 example : Term := prog{
@@ -101,9 +101,9 @@ example : Term := prog{
     the design's own line — checking is where types come from — stated as a test
     rather than as a paragraph.
 
-      (9a) L115 C9   `b`  ⇒  **b : `Bool`**   (S1 alive)
-      (9b) L115 C37  `b`  ⇒  **b : `Bool`**   (S1 alive at an occurrence)
-      (9c) L115 C33  `c`  ⇒  no DLLBC tooltip (S2 absent — nothing checked)
+      (9a) L110 C9   `b`  ⇒  **b : `Bool`**   (S1 alive)
+      (9b) L110 C37  `b`  ⇒  **b : `Bool`**   (S1 alive at an occurrence)
+      (9c) L110 C33  `c`  ⇒  no DLLBC tooltip (S2 absent — nothing checked)
 -/
 
 example : Term := prog defer_check {
@@ -115,12 +115,30 @@ example : Term := prog defer_check {
     `&mut List Nat` is rendered from the source text, so the tooltip is the type
     as written rather than the `borrowT τ (weaken τ)` it elaborates to.
 
-      (10a) L131 C9   `v`  ⇒  **v : `&mut List Nat`**
-      (10b) L131 C41  `v`  ⇒  **v : `&mut List Nat`**
+      (10a) L124 C9   `v`  ⇒  **v : `&mut List Nat`**
+      (10b) L124 C42  `a`  ⇒  **a : `List Nat`**        (S2, a deref's payload)
+      (10c) L124 C47  `v`  ⇒  **v : `&mut List Nat`**
 -/
 
 example : Term := prog{
   fn K (v : &mut List Nat) -> Unit { let a = *v; *v := a; () };
+  () }
+
+/-! ## (11) PATH-SENSITIVITY — one binder, two binding-time answers
+
+    `pushContinuations` duplicates a match's continuation into every arm, so a
+    `let` written after a fork is checked once per path — one binder, one id,
+    and legitimately more than one type. v1 shows the FIRST path's and says that
+    the others disagreed; it does not merge them and does not list them.
+
+      (11a) L139 C9   `b`  ⇒  **b ≡ `True`** … *(differs per path)*
+      (11b) L140 C13  `b`  ⇒  **b ≡ `True`** … *(differs per path)* -/
+
+example : Term := prog{
+  fn P (n : Nat) -> Unit {
+    let b = match n { Z => True, S(k) => False };
+    let c = b;
+    () };
   () }
 
 end Dllbc.Tests.HoverSpans
