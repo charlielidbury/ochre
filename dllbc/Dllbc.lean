@@ -34,6 +34,7 @@ import Dllbc.Tests.HashMapDiff
 import Dllbc.Tests.HashMapPin
 import Dllbc.Tests.ElabSpans
 import Dllbc.Tests.HoverSpans
+import Dllbc.Tests.PointSpans
 import Dllbc.Tests.Fence
 import Dllbc.Tests.AmbiguousMiddle
 

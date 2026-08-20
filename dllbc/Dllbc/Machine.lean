@@ -137,6 +137,17 @@ structure PointDelta where
   stmtKey : Option Term
   trail : List (String × String)
   change : PointChange
+  /-- The σ-context as it stood at this change.
+
+      **A pointer copy, and it is here for RENDERING rather than for soundness.**
+      docs/17 §3 argues that the 26 monotone `sctx` conses cannot falsify an
+      earlier fact, which is why they need no instrumentation — true, and about
+      soundness. But a σ's TYPE is what the `x : τ` form prints, so the replay
+      still has to know the σ-context AT the point, and using the final one would
+      print a type refined after the point the reader asked about. Carrying it per
+      delta is O(1) (the list is immutable), and it keeps immutability honest at
+      the rendering end as well as the soundness end. -/
+  sctx : List (Nat × Term)
 deriving Inhabited
 
 /-- What the checker knew about one `let` binder at its binding (docs/16 S2).
@@ -445,7 +456,8 @@ def notePoint (c : PointChange) : M Unit :=
   modify fun s =>
     if !s.pointHover then s else
       { s with ledgers.points :=
-          { stmtKey := s.stmtKey, trail := s.trail, change := c } :: s.ledgers.points }
+          { stmtKey := s.stmtKey, trail := s.trail, change := c, sctx := s.sctx }
+            :: s.ledgers.points }
 
 /-- Record what a `let` bound, for `x : τ` tooltips (docs/16). Called from
     `letStep` — the one shared binding site — so all three drivers file, and a

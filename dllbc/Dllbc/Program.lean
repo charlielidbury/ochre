@@ -91,6 +91,66 @@ def checkProgramDiag (t : Term) (retType? : Option Term := some ty{ Unit }) :
     Except Diag Unit :=
   programVerdict retType? (programPaths initSt t)
 
+/-! ## Replaying the deltas — what was true at a point (docs/17)
+
+    The recording side keeps changes, not snapshots, because a `refineSym` sweeps
+    all of Ω and storing a fact per binder per point would be quadratic (§2). The
+    reading side pays for that here: a binder's fact at a point is recovered by
+    applying the deltas that precede it.
+
+    **This is the deferred half of the cost**, and it is paid per HOVER rather
+    than per check — a hover asks about one point, so the replay stops there. -/
+
+/-- What a replay has reconstructed at some point: the live bindings, and the
+    σ-context as it stood there. -/
+structure PointState where
+  env : List (Var × Val) := []
+  sctx : List (Nat × Term) := []
+deriving Inhabited
+
+/-- Apply one delta. `refine` is the expensive one and the reason `substSym`
+    exists: learning σ rewrites every binding that mentions it, which is exactly
+    what the checker itself did at that moment. -/
+def PointState.step (s : PointState) (d : PointDelta) : PointState :=
+  match d.change with
+  | .bound x v => { s with env := s.env.filter (fun kv => kv.1 != x) ++ [(x, v)], sctx := d.sctx }
+  | .set x v => { s with env := s.env.map (fun kv => if kv.1 == x then (x, v) else kv), sctx := d.sctx }
+  | .refine σ repl =>
+    { env := s.env.map (fun kv => (kv.1, substSym σ repl kv.2)), sctx := d.sctx }
+
+/-- The state as it stood ENTERING the statement keyed `key` on the first path
+    that reaches it — i.e. with every delta filed under an earlier statement
+    applied, and none of this statement's own.
+
+    **"Entering" is the right instant and not an off-by-one.** An occurrence in
+    `let d = *b` is read while the checker is inside that statement but before
+    the statement's own binding lands, so the state it sees is the state on
+    entry. Answering with the state after would show a reader the result of the
+    line they are looking at.
+
+    `none` when no delta is filed under the key at all — the honest answer, and
+    the one that keeps decline-don't-guess: an unrecognised point declines rather
+    than falling back to some nearby state. -/
+def replayTo (deltas : List PointDelta) (key : Term) : Option PointState :=
+  let key := stmtKeyOf key
+  if !(deltas.any fun d => match d.stmtKey with | some k => stmtKeyOf k == key | none => false)
+  then none
+  else
+    some <| Id.run do
+      let mut st : PointState := {}
+      for d in deltas do
+        match d.stmtKey with
+        | some k => if stmtKeyOf k == key then return st else st := st.step d
+        | none => st := st.step d
+      return st
+
+/-- What a binder held at a point, with the σ-context to render it against. -/
+def factAt (deltas : List PointDelta) (key : Term) (x : Var) :
+    Option (Val × List (Nat × Term)) :=
+  match replayTo deltas key with
+  | none => none
+  | some st => (st.env.find? (fun kv => kv.1 == x)).map (fun kv => (kv.2, st.sctx))
+
 /-- **The same walk, with the `let` type table carried out of it** (docs/16).
 
     Same seed but for `hover`, same paths, same verdict — so a program accepted

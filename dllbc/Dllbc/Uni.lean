@@ -507,6 +507,29 @@ Assembling this costs nothing at check time: the entries are unelaborated syntax
 and the surface only elaborates and evaluates them when a check has actually
 failed and a span is needed. -/
 
+/-- One occurrence of a runtime binding, as the walker sees it.
+
+    `stmt` is the statement it occurs in, filled in by `tagOccsFrom` once that
+    statement's key is known. `none` means the occurrence sits somewhere the
+    walker files no statement for — a telescope type, say — and the point join
+    declines rather than guessing a nearby one. -/
+structure OccNote where
+  ref : Syntax
+  id : Nat
+  name : String
+  stmt : Option Syntax := none
+  /-- The S1 answer for this span, when there is one — a parameter's annotation.
+
+      **Carried rather than pushed separately, because the two are not rivals.**
+      docs/16 let S1 WIN for a parameter: its annotation is exact and S2 had only
+      a binding-time fact to offer against it. Under point hovers that precedence
+      hides the case the design exists for — a borrow parameter whose payload a
+      match arm has narrowed still reports `v : &mut List Nat`, which is true and
+      says nothing about what is in it here. The type and the contents are
+      different questions, so the tooltip answers both. -/
+  static? : Option String := none
+deriving Inhabited
+
 /-- Key-term syntax paired with the source syntax it was written at. -/
 structure SpanAcc where
   /-- **Is anyone going to read this table?** (M35, the collection flag.)
@@ -550,8 +573,9 @@ structure SpanAcc where
       work in `prog defer_check { }` too. -/
   hovers : Array (Syntax × String) := #[]
   /-- Spans whose tooltip only the CHECKER knows: an occurrence of a runtime
-      binding, to be joined against `St.letTypes` by id AND name. -/
-  occs : Array (Syntax × Nat × String) := #[]
+      binding, joined against the checker's tables by id AND name — and, for
+      point hovers (docs/17), by the STATEMENT it occurs in. -/
+  occs : Array OccNote := #[]
   /-- Lexically scoped, innermost first: `(name, runtime id, annotation text)` for
       every parameter binder in scope.
 
@@ -587,9 +611,29 @@ def srcText (stx : Syntax) : String :=
 def noteHover (ref : Syntax) (text : String) : UM Unit :=
   modify fun a => if a.hover then { a with hovers := a.hovers.push (ref, text) } else a
 
-/-- File an occurrence of a runtime binding, for the checker-side join. -/
+/-- File an occurrence of a runtime binding, for the checker-side join. The
+    statement is filled in afterwards by `tagOccsFrom`, because a statement's key
+    is not known until it has been walked (a `let`'s binder id is the counter
+    AFTER its right-hand side). -/
 def noteOcc (ref : Syntax) (id : Nat) (name : String) : UM Unit :=
-  modify fun a => if a.hover then { a with occs := a.occs.push (ref, id, name) } else a
+  modify fun a =>
+    if a.hover then { a with occs := a.occs.push { ref, id, name } } else a
+
+/-- Where the occurrence array stands before a statement is walked. -/
+def occMark : UM Nat := return (← get).occs.size
+
+/-- Tag every occurrence filed since `lo` with the statement they occur in.
+
+    **Filed first and tagged after, because the key is not knowable first.** A
+    `let`'s key is its binder, and the binder id is the counter AFTER the
+    right-hand side has been walked — so the occurrences inside that right-hand
+    side exist before the key that describes where they are. The walker knows the
+    statement's extent, which is all this needs. -/
+def tagOccsFrom (lo : Nat) (key : TSyntax `term) : UM Unit :=
+  modify fun a =>
+    if !a.hover then a else
+      { a with occs := a.occs.mapIdx (fun i o =>
+          if i ≥ lo && o.stmt.isNone then { o with stmt := some key.raw } else o) }
 
 /-- Render a binder's tooltip. One place, so a binder and its occurrences cannot
     drift into two spellings. -/
@@ -859,7 +903,12 @@ def noteIdent (rctx : List (String × Nat)) (pctx : List String) (x : Ident) : U
     -- A parameter answers from its own annotation (S1) — but only when the
     -- occurrence resolves to THAT binder; see `SpanAcc.ptypes`.
     match a.ptypes.find? (fun p => p.1 == s && p.2.1 == id) with
-    | some p => noteHover x.raw (hoverText s p.2.2)
+    | some p =>
+      -- BOTH: the annotation (always true) and the point-fact (what is in it
+      -- here). See `OccNote.static?`.
+      let note : OccNote :=
+        { ref := x.raw, id := id, name := s, static? := some (hoverText s p.2.2) }
+      modify fun acc => if acc.hover then { acc with occs := acc.occs.push note } else acc
     | none => noteOcc x.raw id s
   | none =>
     match fnSlotId rctx s with
@@ -1487,6 +1536,7 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
                   (Dllbc.FnMacro.bindFn $slot $decT $rest')), n2)
   | `(ublk| let $x:ident = $e:uterm ; $rest:ublk) => do
     checkBinder x
+    let occLo ← occMark
     let (e', n1) ← elabUTerm rctx pctx next e
     -- **`let X = e` is a comptime binding** (§6) and needs no macro support: the
     -- mode of a runtime binder IS its `Var`'s name, so the kernel reads it off
@@ -1523,6 +1573,11 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- the checker (docs/16 S2), so it joins against `St.letTypes` exactly as the
     -- uses below it do, under the same id.
     noteOcc x.raw n1 name
+    -- Every occurrence in this statement — the right-hand side's and the binder's
+    -- — is filed under this statement's key, which is the POINT a hover on any of
+    -- them asks about (docs/17).
+    tagOccsFrom occLo (← `(Dllbc.Term.letIn ⟨$(quote n1), $(quote name)⟩
+                             Dllbc.Term.unit Dllbc.Term.unit))
     let (rest', n2) ← elabUBlk ((name, n1) :: rctx) pctx' (n1 + 1) rest
     return (← `(Dllbc.Term.letIn ⟨$(quote n1), $(quote name)⟩ $e' $rest'), n2)
   -- **`let C(a, b) = e ; rest` = `match e { C(a, b) => rest }`** (M34 sugar (ii)).
@@ -1553,14 +1608,18 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
                 [Dllbc.Branch.mk $(quote c.getId.toString) [$argVars,*] $rest'])
     return (← wrapScrut scrut pre? m, n3)
   | `(ublk| $p:uterm := $e:uterm ; $rest:ublk) => do
+    let occLo ← occMark
     let (p', n1) ← elabUTerm rctx pctx next p
     let (e', n2) ← elabUTerm rctx pctx n1 e
     spanOfAssign p' e' (mkNullNode #[p, e])
+    tagOccsFrom occLo (← `(Dllbc.Term.assign $p' $e' Dllbc.Term.unit))
     let (rest', n3) ← elabUBlk rctx pctx n2 rest
     return (← `(Dllbc.Term.assign $p' $e' $rest'), n3)
   | `(ublk| $e:uterm ; $rest:ublk) => do
+    let occLo ← occMark
     let (e', n1) ← elabUTerm rctx pctx next e
     spanOfStmt e' e
+    tagOccsFrom occLo e'
     let (rest', n2) ← elabUBlk rctx pctx n1 rest
     return (← `(Dllbc.Term.seq $e' $rest'), n2)
   | `(ublk| $e:uterm) => do

@@ -228,6 +228,26 @@ def symsMentioned (s : String) : List Nat :=
         let n := ds.foldl (fun a d => a * 10 + (d.toNat - '0'.toNat)) 0
         if acc.contains n then acc else acc ++ [n]) []
 
+/-- Give each σ in a value its type, inline, using the kernel's own refinement
+    substitution — `substSym` with a `.const` carrying the annotated text, printed
+    by the REAL `Val.pretty`. No parallel renderer and no new traversal.
+
+    A σ with no `sctx` entry is left bare rather than annotated with a guess. -/
+def annotateSyms (sctx : List (Nat × Dllbc.Term)) (v : Dllbc.Val) : Dllbc.Val :=
+  (symsMentioned (Dllbc.Val.pretty v)).foldl (fun acc σ =>
+    match sctx.lookup σ with
+    | some τ => Dllbc.substSym σ (.const s!"(σ{σ} : {Dllbc.Term.pretty τ})") acc
+    | none => acc) v
+
+/-- The σ's type, when the value IS a σ — the same question `noteLetType` asks at
+    a binding, asked again at a point. -/
+def symTypeOf (v : Dllbc.Val) (sctx : List (Nat × Dllbc.Term)) : Option Dllbc.Term :=
+  match v with
+  | .know (.pvar p) => match Dllbc.symOfName? p with
+    | some σ => sctx.lookup σ
+    | none => none
+  | _ => none
+
 /-- What the checker knew about a binder, as markdown. THREE forms, because the
     checker distinguishes three situations and flattening them would lie.
 
@@ -258,14 +278,8 @@ def letTooltip (name : String) (n : Dllbc.LetNote) : String :=
   | none =>
     match symsMentioned (Dllbc.Val.pretty n.val) with
     | [] => s!"**{name} ≡ `{Dllbc.Val.pretty n.val}`** — comptime-known value"
-    | syms =>
-      -- A σ with no `sctx` entry is left bare rather than annotated with a
-      -- guess; the value is still σ-bearing, so the caption still says shape.
-      let annotated := syms.foldl (fun acc σ =>
-        match n.sctx.lookup σ with
-        | some τ => Dllbc.substSym σ (.const s!"(σ{σ} : {Dllbc.Term.pretty τ})") acc
-        | none => acc) n.val
-      s!"**{name} ≡ `{Dllbc.Val.pretty annotated}`** — binding-time shape"
+    | _ =>
+      s!"**{name} ≡ `{Dllbc.Val.pretty (annotateSyms n.sctx n.val)}`** — binding-time shape"
 
 /-- First entry per binder, flagged when a later one disagrees.
 
@@ -300,20 +314,70 @@ def pushHover (ref : Syntax) (text : String) : TermElabM Unit := do
     mkDocString? := some fun _ => pure text
   }
 
+/-- Render what a binder held AT A POINT (docs/17), reusing docs/16's three
+    forms so a tooltip does not change shape when it changes granularity. -/
+def pointTooltip (name : String) (v : Dllbc.Val) (sctx : List (Nat × Dllbc.Term)) : String :=
+  letTooltip name { binder := ⟨0, name⟩, ty? := symTypeOf v sctx, val := v, sctx := sctx }
+
+/-- The point-fact for one occurrence, if its statement was walked and its binder
+    was live there. `none` declines — see `replayTo`. -/
+def pointFactFor (pts : List Dllbc.PointDelta) (o : Dllbc.Surface.OccNote)
+    (keys : List Dllbc.Term) (i : Nat) : Option (Dllbc.Val × List (Nat × Dllbc.Term)) :=
+  match keys[i]? with
+  | none => none
+  | some key => Dllbc.factAt pts key ⟨o.id, o.name⟩
+
+/-- The point half of a tooltip, WITHOUT re-naming the variable — for appending
+    to a static answer that has already named it. A type and its contents are
+    different questions, so the reader gets `v : τ` and then what is in it here. -/
+def pointSuffix (v : Dllbc.Val) (sctx : List (Nat × Dllbc.Term)) : String :=
+  match symTypeOf v sctx with
+  | some τ => s!" — here a `{Dllbc.Term.pretty τ}`"
+  | none => s!" — here `{Dllbc.Val.pretty (annotateSyms sctx v)}`"
+
+/-- Reify accumulated key syntaxes into key **values**, to match a breadcrumb. -/
+def keyValues (keys : Array Syntax) : TermElabM (List Dllbc.Term) := do
+  let elems : Array (TSyntax `term) := keys.map fun k => ⟨k⟩
+  let e ← elabTerm (← `(([$elems,*] : List Dllbc.Term)))
+    (some (mkApp (mkConst ``List [levelZero]) (mkConst ``Dllbc.Term)))
+  synthesizeSyntheticMVarsNoPostponing
+  evalKeysValue (← instantiateMVars e)
+
 /-- Push every tooltip this block earned: the walker's own, then the checker's
     joined onto the occurrences that need them. An occurrence with no entry is
     passed over in silence — unlike a missing SPAN, which is a defect worth
     reporting, a missing type is the ordinary case for a block that was never
     checked (`defer_check`, or a splice) and for a binder no path reached. -/
-def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote) : TermElabM Unit := do
+def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote)
+    (pts : List Dllbc.PointDelta) : TermElabM Unit := do
   for (ref, text) in spans.hovers do
     pushHover ref text
-  unless tbl.isEmpty || spans.occs.isEmpty do
+  unless spans.occs.isEmpty do
     let idx := letIndex tbl
-    for (ref, id, name) in spans.occs do
-      if let some (e, differs) := idx[(id, name)]? then
-        pushHover ref (letTooltip name e ++
-          if differs then " *(differs per path)*" else "")
+    -- POINT FACTS FIRST, binder facts as the fallback. The point answer is
+    -- strictly more specific — it is about where the reader is — so it wins
+    -- wherever it exists, and where it does not (no deltas, an untagged
+    -- occurrence, a binder not live at that point) the binder answer still
+    -- serves. Neither guesses: both decline rather than approximating.
+    let keys ← if pts.isEmpty then pure [] else
+      keyValues (spans.occs.filterMap (fun o => o.stmt))
+    let mut ki := 0
+    for o in spans.occs do
+      let point? := if o.stmt.isNone || pts.isEmpty then none
+                    else
+                      let r := pointFactFor pts o keys ki
+                      r
+      if o.stmt.isSome && !pts.isEmpty then ki := ki + 1
+      match point?, o.static? with
+      -- A parameter with a point-fact: its TYPE and its CONTENTS HERE, which are
+      -- different questions and both worth answering.
+      | some (v, sctx), some stat => pushHover o.ref (stat ++ pointSuffix v sctx)
+      | some (v, sctx), none => pushHover o.ref (pointTooltip o.name v sctx)
+      | none, some stat => pushHover o.ref stat
+      | none, none =>
+        if let some (e, differs) := idx[(o.id, o.name)]? then
+          pushHover o.ref (letTooltip o.name e ++
+            if differs then " *(differs per path)*" else "")
 
 /-- Elaborate a block and check NOTHING — the fence. Same value as `prog{ }`
     produces, without the check that would reject it.
@@ -325,16 +389,9 @@ def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote) : TermElabM Unit := 
 def elabUnchecked (act : UM (TSyntax `term)) : TermElabM Expr := do
   let hover ← hoverEnabled
   let (e, spans) ← elabWith false hover act
-  if hover then pushHovers spans []
+  if hover then pushHovers spans [] []
   return e
 
-/-- Reify accumulated key syntaxes into key **values**, to match a breadcrumb. -/
-def keyValues (keys : Array Syntax) : TermElabM (List Dllbc.Term) := do
-  let elems : Array (TSyntax `term) := keys.map fun k => ⟨k⟩
-  let e ← elabTerm (← `(([$elems,*] : List Dllbc.Term)))
-    (some (mkApp (mkConst ``List [levelZero]) (mkConst ``Dllbc.Term)))
-  synthesizeSyntheticMVarsNoPostponing
-  evalKeysValue (← instantiateMVars e)
 
 /-- The span a breadcrumb key was written at. `none` when the key is not in the
     table (report it, never guess); ambiguity — the same statement written twice
@@ -435,7 +492,7 @@ def elabChecked (ref : Syntax) (act : UM (TSyntax `term)) : TermElabM Expr := do
       instantiated."
     -- S1 only, for the reason `elabUnchecked` gives: the annotations are in the
     -- source, and nothing walked.
-    if hover then pushHovers spans []
+    if hover then pushHovers spans [] []
     return e
   let t0 ← IO.monoMsNow
   let v ← evalTermValue e
@@ -462,7 +519,7 @@ def elabChecked (ref : Syntax) (act : UM (TSyntax `term)) : TermElabM Expr := do
     -- this feature differs from the error spans beside it (docs/16): a squiggle
     -- costs nothing until something fails, a tooltip costs on every block that
     -- checks. Which is why the option above exists and why the cost is measured.
-    if hover then pushHovers spans tbl
+    if hover then pushHovers spans tbl pts
     -- docs/17 §9's instrument: the delta count is how a measurement run confirms
     -- the option reached the checker instead of measuring nothing.
     unless pts.isEmpty do trace[Dllbc.check] "point deltas: {pts.length}"
