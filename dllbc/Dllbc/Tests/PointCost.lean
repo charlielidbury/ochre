@@ -40,9 +40,30 @@ def timeIt (label : String) (f : Unit → Nat) : IO Unit := do
   let r ← IO.lazyPure (fun _ => f ())
   let t1 ← IO.monoMsNow
   IO.println s!"{label}: {t1-t0}ms  (sum {r})"
+/-- The REPLAY half: what one hover costs. `factsAt` replays the deltas up to a
+    point and reads a binder out — the work docs/17 §2 moved from recording to
+    reading. Asked at every statement key in the stream, which is the worst case a
+    reader can produce by hovering everything. -/
+def replayAll (paths : List (List PointDelta)) : Nat := Id.run do
+  let keys := (paths.flatten.filterMap (fun d => d.stmtKey))
+  let mut n := 0
+  for k in keys do
+    for p in paths do
+      for d in p do
+        match d.change with
+        | .bound x _ | .set x _ => n := n + (factsAt paths k x).length
+        | .refine _ _ => pure ()
+  return n
+
 #eval show IO Unit from do
   let a := Tests.S25ArrSort.arrChain
   let l := Tests.S23Direct.flagship
+  match checkProgramHover a none true with
+  | .ok (_, pts) =>
+    let keys := (pts.flatten.filterMap (fun d => d.stmtKey))
+    IO.println s!"arrChain: {pts.length} path(s), {pts.flatten.length} deltas, {keys.length} keyed"
+    timeIt "arrChain replay: every binder at every key" (fun _ => replayAll pts)
+  | .error _ => IO.println "arrChain: rejected"
   timeIt "arrChain x50 point=false" (fun _ => runN 50 false a)
   timeIt "arrChain x50 point=true " (fun _ => runN 50 true  a)
   timeIt "list     x50 point=false" (fun _ => runN 50 false l)

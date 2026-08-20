@@ -269,6 +269,29 @@ deltas up to it. That is the join's cost, it is paid per hover rather than per
 check, and it lands in the final measurement table as its own line — otherwise
 the lane's cost claim covers one end of the design and calls it the whole.
 
+> **THE REPLAY ROW, FILLED — and it forced a design change.** Measured on the
+> array flagship (433 deltas, 433 keyed statements): 89 212 replays in 359 977 ms,
+> i.e. **≈4.0 ms per replay**.
+>
+> Four milliseconds is nothing for a hover and a great deal for a hundred of
+> them. The first implementation built every tooltip EAGERLY at elaboration, so a
+> block with a hundred occurrences would have paid ~400 ms to compute text nobody
+> asked for — the recording end free and the reading end quietly charged to the
+> build.
+>
+> **`mkDocString?` is a thunk, and this is what it is for.** Its own
+> documentation says "computed only when it is used"; the text is now built
+> inside the closure, so a hover costs one replay and a non-hover costs nothing.
+> Re-measured after the change, elaboration with point recording ON versus OFF:
+> `Tests/Direct` 5355 ms against 5384, `Tests/ArraySort` 13481 against 13467 —
+> noise in both directions, as with the recording end.
+>
+> So the completed claim is: **recording is free, reading is ~4 ms and lazy.**
+> The docs/16 mechanism note said the laziness was "better than hoped"; it turns
+> out to be load-bearing rather than a bonus, and a design that computed tooltips
+> eagerly would have been the wrong one all along without anyone noticing at
+> binder granularity, where a fact was a table lookup.
+
 Gated behind an option (`dllbc.pointHover`) exactly as `dllbc.hover` is, for the
 same reason: this is the part collected on the SUCCESS path, so "what does it
 cost" must stay answerable rather than being settled once.

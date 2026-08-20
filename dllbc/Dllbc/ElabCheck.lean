@@ -302,7 +302,7 @@ def letIndex (tbl : List Dllbc.LetNote) :
 
 /-- Attach `text` as the hover content at `ref`. Positionless syntax is skipped:
     a leaf the server cannot locate is one nobody can hover. -/
-def pushHover (ref : Syntax) (text : String) : TermElabM Unit := do
+def pushHover (ref : Syntax) (text : Unit → String) : TermElabM Unit := do
   if ref.getPos?.isNone then return
   pushInfoLeaf <| .ofDelabTermInfo {
     elaborator := .anonymous
@@ -311,7 +311,14 @@ def pushHover (ref : Syntax) (text : String) : TermElabM Unit := do
     expectedType? := none
     expr := mkConst ``Unit.unit
     isBinder := false
-    mkDocString? := some fun _ => pure text
+    -- **A THUNK, AND THAT IS THE WHOLE COST STORY FOR POINT HOVERS.**
+    -- `mkDocString?` is documented as "computed only when it is used", so the
+    -- text is built when someone hovers and never otherwise. That matters here in
+    -- a way it did not for docs/16: a binder fact was a table lookup, but a POINT
+    -- fact is a replay of the delta stream, measured at ~4 ms. Eagerly, a block
+    -- with a hundred occurrences would pay four hundred milliseconds to compute
+    -- tooltips nobody asked for; lazily it pays for the one that is read.
+    mkDocString? := some fun _ => pure (text ())
   }
 
 /-- Render what a binder held AT A POINT (docs/17), reusing docs/16's three
@@ -394,7 +401,7 @@ def keyValues (keys : Array Syntax) : TermElabM (List Dllbc.Term) := do
 def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote)
     (pts : List (List Dllbc.PointDelta)) : TermElabM Unit := do
   for (ref, text) in spans.hovers do
-    pushHover ref text
+    pushHover ref (fun _ => text)
   unless spans.occs.isEmpty do
     let idx := letIndex tbl
     -- POINT FACTS FIRST, binder facts as the fallback. The point answer is
@@ -406,21 +413,27 @@ def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote)
       keyValues (spans.occs.filterMap (fun o => o.stmt))
     let mut ki := 0
     for o in spans.occs do
-      let point? := if o.stmt.isNone || pts.isEmpty then none
-                    else renderPaths (fun v sc =>
+      -- Nothing is computed here — `hasPoint` only asks whether this occurrence
+      -- HAS a point answer, and the answer itself is built inside the thunk.
+      let hasPoint := o.stmt.isSome && !pts.isEmpty && !(pointFactFor pts o keys ki).isEmpty
+      let ki' := ki
+      let point? : Option (Unit → String) :=
+        if hasPoint then
+          some (fun _ => (renderPaths (fun v sc =>
                             if o.static?.isSome then pointBody v sc
                             else pointTooltip o.name v sc)
-                          pointBody (pointFactFor pts o keys ki)
+                          pointBody (pointFactFor pts o keys ki')).getD "")
+        else none
       if o.stmt.isSome && !pts.isEmpty then ki := ki + 1
       match point?, o.static? with
       -- A parameter with a point-fact: its TYPE and its CONTENTS HERE, which are
       -- different questions and both worth answering.
-      | some txt, some stat => pushHover o.ref (stat ++ " — here " ++ txt)
+      | some txt, some stat => pushHover o.ref (fun _ => stat ++ " — here " ++ txt ())
       | some txt, none => pushHover o.ref txt
-      | none, some stat => pushHover o.ref stat
+      | none, some stat => pushHover o.ref (fun _ => stat)
       | none, none =>
         if let some (e, differs) := idx[(o.id, o.name)]? then
-          pushHover o.ref (letTooltip o.name e ++
+          pushHover o.ref (fun _ => letTooltip o.name e ++
             if differs then " *(differs per path)*" else "")
 
 /-- Elaborate a block and check NOTHING — the fence. Same value as `prog{ }`
