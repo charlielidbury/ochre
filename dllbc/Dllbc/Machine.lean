@@ -5898,7 +5898,7 @@ mutual
       let telNames := tel.map (·.1.name)
       let gl ← admitGlobals "seal" tel.length
         (Term.freeRVars telNames body
-          ++ (tel.map (fun p => Term.freeRVars telNames p.2)).join
+          ++ (tel.map (fun p => Term.freeRVars telNames p.2)).flatten
           ++ Term.freeRVars telNames ret)
       -- `scopeMarks` joins the wipe for the same reason as Ω: a watermark is an
       -- index INTO Ω, so an enclosing scope's mark means nothing against the
