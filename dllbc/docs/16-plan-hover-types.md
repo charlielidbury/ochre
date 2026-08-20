@@ -482,3 +482,17 @@ place with what implementation taught, in the house style.
 > unaskable. Case (12) is the same tension in miniature and shows the current
 > answer is binding-time: after `*b := …`, `b` still renders its pre-write
 > payload while `d` renders the post-write value. Both right; both on one line.
+>
+> > **ANSWERED — the cursor's point**, by the user, and the successor plan is
+> > `docs/17`. This paragraph existed to stop anyone building before the question
+> > was settled; leaving it as written would now do the opposite and send a reader
+> > hunting for an answer that exists. Kept rather than deleted because the
+> > question is the right one to have asked and the reasoning above still explains
+> > why it had to be asked first.
+> >
+> > **Case (12) therefore inverts**: what this file pins as correct behaviour —
+> > `b` rendering its pre-write payload below the write — is the specimen
+> > `docs/17` must make wrong, and is that lane's acceptance test. Nothing here
+> > becomes false; the granularity the answer is stated at changes. Binding-time
+> > honesty at binder granularity was right for one fact per binder, and it is the
+> > same principle `docs/17` §1 carries to one fact per point.
