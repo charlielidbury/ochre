@@ -1244,7 +1244,14 @@ partial def elabScrut (rctx : List (String × Nat)) (pctx : List String) (next :
     (e : TSyntax `uterm) : UM (TSyntax `term × Option (TSyntax `term) × Nat) := do
   match e with
   | `(uterm| ($inner:uterm)) => elabScrut rctx pctx next inner
-  | `(uterm| $x:ident) =>
+  | `(uterm| $x:ident) => do
+    -- **THE SCRUTINEE IS AN OCCURRENCE LIKE ANY OTHER** (docs/16). This row is why
+    -- it needed saying: the plain-variable path answers here and never reaches
+    -- `elabUTerm`'s ident row, so without this call a parameter would hover
+    -- everywhere EXCEPT in `match n { … }` — and match scrutinees are everywhere.
+    -- Found by probing rather than by reading: `n` reported `Nat` at its binder
+    -- and nothing one line below it.
+    noteIdent rctx pctx x
     let s := x.getId.toString
     match localId rctx s with
     | some id => return (← `((⟨$(quote id), $(quote s)⟩ : Dllbc.Var)), none, next)

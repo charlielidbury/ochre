@@ -333,14 +333,23 @@ hover, so these cases are machine-checkable only through the server (the MCP too
 any LSP client), not by `lake build`. The demo file's comments are the pinned record;
 re-verification is one tool call per case.
 
-> **CONFIRMED, and the loop earned its keep twice.** `Tests/HoverSpans.lean` ships
-> with eleven cases and **21 pinned positions**, every one verified through
-> `textDocument/hover`; the responses recorded in it are the tool's, not
-> predictions. All eight cases the plan names are there, plus three the plan does
+> **CONFIRMED, and the loop earned its keep three times.** `Tests/HoverSpans.lean`
+> ships with fourteen cases and **33 pinned positions**, every one verified
+> through `textDocument/hover`; the responses recorded in it are the tool's, not
+> predictions. All eight cases the plan names are there, plus six the plan does
 > not: the borrow shape `v : &mut List Nat` (the spec's own headline), a `let a =
-> *v` beside it that the checker types `List Nat`, and a path-sensitivity case
-> that actually produces the `(differs per path)` suffix rather than merely
-> providing for it.
+> *v` beside it that the checker types `List Nat`, a path-sensitivity case that
+> actually produces the `(differs per path)` suffix rather than merely providing
+> for it, a let-bound borrow, a reborrow, and the match trio.
+>
+> **Case (12) is the sharpest statement of the S2 semantics in the file**, and it
+> was not designed — it fell out of being asked to show what a borrow renders as.
+> A borrow hovers as `borrowₘ ℓ0 (Cons (S Z) Nil)`, both parts. Then `*b := …`
+> changes the payload, and on the NEXT line two tooltips disagree about the same
+> memory: `b` still renders the pre-write payload, `d` (bound from `*b`) renders
+> the post-write value. Both are right, because the table records at `letStep` and
+> never updates. The plan says "binding-time type" in prose; this is that sentence
+> made visible without the eye leaving the line.
 >
 > The file is in the default target, so a case that stops **elaborating** fails
 > the build even though its tooltip cannot. That is the honest half of the
@@ -389,7 +398,7 @@ place with what implementation taught, in the house style.
 > | The seal crossing (`auditAllPathsD`'s `base` parameter, `checkRFnBody`'s carry-out) | `Machine.lean` |
 > | `programPaths`/`programVerdict`/`checkProgramHover` | `Program.lean` |
 > | `dllbc.hover`, `letTooltip`, `letIndex`, `pushHover`, `pushHovers` | `ElabCheck.lean` |
-> | 11 cases, 21 pinned positions | `Tests/HoverSpans.lean` |
+> | 14 cases, 33 pinned positions | `Tests/HoverSpans.lean` |
 >
 > **What is deliberately not built.** Match pattern binders get no S2 tooltip:
 > they are bound by the match rather than by `letStep`, so the one shared binding
@@ -398,3 +407,40 @@ place with what implementation taught, in the house style.
 > checked, so unlike a missing SPAN it is not reported as a defect. Extending to
 > them means filing at the arm-entry sites, which is the same shape as the
 > breadcrumb's four arm entries and is a small, separate change.
+>
+> **The scrutinee, by contrast, WAS a defect and is fixed.** `elabScrut` handles
+> the plain-variable path itself and never reaches `elabUTerm`'s ident row, so a
+> parameter hovered everywhere except in `match n { … }` — an inconsistency a
+> reader meets immediately, since match scrutinees are everywhere. One
+> `noteIdent` call at that row. Found by probing, not by reading: `n` answered
+> `Nat` at its binder and nothing one line below. Pinned as case (14b).
+>
+> **FILED, with its boundary — showing a REFINED value is a design step, not an
+> extension.** The obvious next ask is that a binder's tooltip reflect what a
+> branch *learned* about it. Two halves, and they are not the same size:
+>
+> * *Binding-time entries for pattern binders* are the small half: record at the
+>   four arm-entry doors (`ownedSelect`, `borrowSelect`, `symOwnedSetup`,
+>   `symBorrowSetup`) exactly as `letStep` records, reusing the breadcrumb's own
+>   shape. This is the "small, separate change" above.
+> * *Refined* values are the large half, and the reason is structural rather than
+>   effortful. **`refineSym` is a destructive rewrite over occurrences**, so once
+>   refinements are in scope "the type of `x`" stops being one fact per binder and
+>   becomes one fact per *program point*. That is a different data structure — a
+>   table keyed by breadcrumb × binder rather than by binder — and it changes what
+>   the join at the surface has to do, since an occurrence would then select the
+>   entry for *its* point rather than the binder's single entry.
+>
+> The evidence that the small half does not get you the large one is in the demo
+> file, case (14e): `let q = m` inside `S(m) => …` goes through `letStep` and so
+> answers, with `Nat` — m's own `sctx` type, correct and unnarrowed. The narrowing
+> lives in the relation between `n` and `S m`, not in m's type, so no amount of
+> recording *at binders* surfaces it.
+>
+> There is also a semantic question to answer before building, not after: with a
+> per-point table, **which** point does hovering a binder show — its binding, or
+> the reader's cursor position? Both are defensible and they disagree, and the
+> current design sidesteps it only because one fact per binder makes the question
+> unaskable. Case (12) is the same tension in miniature and shows the current
+> answer is binding-time: after `*b := …`, `b` still renders its pre-write
+> payload while `d` renders the post-write value. Both right; both on one line.

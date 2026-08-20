@@ -141,4 +141,82 @@ example : Term := prog{
     () };
   () }
 
+/-! ## (12) A LET-BOUND BORROW — the tooltip is a BINDING-TIME SNAPSHOT
+
+    A borrow renders as both of its parts, `borrowₘ ℓ<loan> <payload>`, straight
+    out of `Val.prettyPrec`'s `borrowM` case.
+
+    **The two tooltips on L169 disagree about the same memory, and both are
+    right.** `*b := Cons(2, Nil)` on L168 changes what the borrow points at. `b`
+    hovered AFTER that write still renders the payload it had when `b` was BOUND,
+    because `letStep` files once and never updates; `d`, bound from `*b` on the
+    very next statement, renders what Ω holds now. So a borrow's tooltip is its
+    binding-time snapshot, not its present payload — which is the S2 semantics
+    stated in the plan, made visible without the eye leaving the line.
+
+      (12a) L166 C7   `b`  ⇒  **b ≡ `borrowₘ ℓ0 (Cons (S Z) Nil)`** — comptime-known value
+      (12b) L167 C7   `a`  ⇒  **a ≡ `Cons (S Z) Nil`** — comptime-known value
+      (12c) L168 C4   `b`  ⇒  **b ≡ `borrowₘ ℓ0 (Cons (S Z) Nil)`** — comptime-known value
+      (12d) L169 C12  `b`  ⇒  **b ≡ `borrowₘ ℓ0 (Cons (S Z) Nil)`** — the PRE-write payload
+      (12e) L169 C7   `d`  ⇒  **d ≡ `Cons (S (S Z)) Nil`** — the POST-write value
+-/
+
+example : Term := prog{
+  let x = Cons(1, Nil);
+  let b = &m x;
+  let a = *b;
+  *b := Cons(2, Nil);
+  let d = *b;
+  () }
+
+/-! ## (13) A REBORROW — distinct loan ids, and no loan graph
+
+    `t` gets its own loan (ℓ1 against `b`'s ℓ0). The nesting is NOT shown as a
+    borrow-of-borrow: what a `letStep` records is the payload, so a reborrow's
+    tooltip names its own loan and the value beneath it, not the chain between.
+
+      (13a) L184 C7  `b`  ⇒  **b ≡ `borrowₘ ℓ0 (Cons (S Z) Nil)`** — comptime-known value
+      (13b) L185 C7  `t`  ⇒  **t ≡ `borrowₘ ℓ1 (Cons (S Z) Nil)`** — comptime-known value
+-/
+
+example : Term := prog{
+  let x = Cons(1, Nil);
+  let b = &m x;
+  let t = &m *b;
+  let a = *t;
+  *t := a;
+  () }
+
+/-! ## (14) MATCH — the scrutinee answers; a pattern binder does not
+
+    The SCRUTINEE is an occurrence like any other and hovers by S1. It did not
+    until the `noteIdent` call in `elabScrut` was added: the plain-variable path
+    answers there and never reaches the ident row, so a parameter used to hover
+    everywhere except in `match n { … }`. This case is that fix's pin.
+
+    A PATTERN BINDER hovers as nothing, binder and occurrence alike, and that is
+    the filed limit: binders are bound by the match rather than by `letStep`, so
+    the one shared binding site never sees them (docs/16, §"What is deliberately
+    not built").
+
+    **No refinement is visible, and `q` is the case that shows why.** `let q = m`
+    goes through `letStep`, so it answers — with `Nat`, m's own `sctx` type,
+    correct and unnarrowed. The narrowing lives in the relation between `n` and
+    `S m`, not in m's type, so copying the binder cannot reveal it.
+
+      (14a) L215 C9   `n`  ⇒  **n : `Nat`**   (the parameter, S1)
+      (14b) L216 C11  `n`  ⇒  **n : `Nat`**   (the SCRUTINEE — the fix)
+      (14c) L218 C9   `m`  ⇒  no DLLBC tooltip (pattern binder — filed limit)
+      (14d) L218 C25  `m`  ⇒  no DLLBC tooltip (its occurrence — same cause)
+      (14e) L218 C21  `q`  ⇒  **q : `Nat`**   (a `let`, so S2 answers; unnarrowed)
+-/
+
+example : Term := prog{
+  fn M (n : Nat) -> Unit {
+    match n {
+      Z => (),
+      S(m) => { let q = m; () }
+    } };
+  () }
+
 end Dllbc.Tests.HoverSpans
