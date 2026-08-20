@@ -143,7 +143,7 @@ example : strContains (readCOn (.app (.const "S") (.seal 0 (.ctorApp "Z" []) (.c
     coherent even for a seal passed directly as a call argument" — so the claim is
     tested rather than inferred from the rule's placement in `readR`. -/
 
-def natIdT : Term := prog{ Π (x : Nat) → Nat }
+def natIdT : Term := prog defer_check { Π (x : Nat) → Nat }
 
 -- as a call argument, where the mint happens inside `processArgs`
 def a6a : Term := prog{
@@ -218,11 +218,11 @@ def n4 : Term := .ctorApp "S" [n3]
 /-- The battery: λ's at Π's (the case §4 is about), data at its type, proofs at
     their statements, and a wrong-type mate for each shape. -/
 def battery : List (Term × Term) :=
-  [ (prog{ λ (x : Nat). x },            prog{ Π (x : Nat) → Nat })
-  , (prog{ λ (x : Nat). x },            prog{ Π (x : Nat) → Bool })          -- ✗
-  , (prog{ λ (x : Nat). S x },          prog{ Π (x : Nat) → Nat })
-  , (prog{ λ (x : Nat). λ (y : Nat). x }, prog{ Π (x : Nat) → Π (y : Nat) → Nat })
-  , (prog{ λ (x : Nat). λ (y : Nat). x }, prog{ Π (x : Nat) → Nat })         -- ✗
+  [ (prog defer_check { λ (x : Nat). x },            prog defer_check { Π (x : Nat) → Nat })
+  , (prog defer_check { λ (x : Nat). x },            prog defer_check { Π (x : Nat) → Bool })          -- ✗
+  , (prog defer_check { λ (x : Nat). S x },          prog defer_check { Π (x : Nat) → Nat })
+  , (prog defer_check { λ (x : Nat). λ (y : Nat). x }, prog defer_check { Π (x : Nat) → Π (y : Nat) → Nat })
+  , (prog defer_check { λ (x : Nat). λ (y : Nat). x }, prog defer_check { Π (x : Nat) → Nat })         -- ✗
   , (n3, natT)
   , (n3, .const "Bool")                                                       -- ✗
   , (.ctorApp "Nil" [], listNatT)
@@ -270,7 +270,7 @@ def vlam : Val := .closure [] (.lam "x" (.const "Nat") (.ctorApp "S" [.pvar "x"]
 
 -- C1. **Body known ⟹ unfold.** A literal λ callee β-reduces, so the caller knows
 -- the result exactly: `y ↦ 3`, not an existential.
-def c1 : Term := prog{ let F = λ (x : Nat). S x; let y = F(2); () }
+def c1 : Term := prog defer_check { let F = λ (x : Nat). S x; let y = F(2); () }
 example : progOk c1 = true := by native_decide
 example : tailEnv c1 [("F", vlam), ("y", Val.nat 3)] = true := by native_decide
 
@@ -303,7 +303,7 @@ example : tailEnv c3 [("F", .sym 0), ("y", .sym 1), ("z", .sym 2)] = true := by 
 -- Saturation is still enforced on both branches that ENTER, and those are the
 -- two assertions below and at A5: an abstract `σ : Π` (c5) and an imperative λ
 -- (a5). This one is now the positive statement of what a comptime λ does.
-def c4 : Term := prog{ let F = λ (x : Nat). λ (y : Nat). x; let z = F(2); () }
+def c4 : Term := prog defer_check { let F = λ (x : Nat). λ (y : Nat). x; let z = F(2); () }
 example : progOk c4 = true := by native_decide
 -- …and the same refusal on the abstract side, which is the branch that matters
 -- for phase C (a σ : Π under-applied is a closure holding its arguments).
@@ -313,19 +313,19 @@ def c5 : Term := prog defer_check {
 example : progRejects c5 "partial application" = true := by native_decide
 
 -- Over-application.
-def c6 : Term := prog{ let F = λ (x : Nat). x; let z = F(2, 3); () }
+def c6 : Term := prog defer_check { let F = λ (x : Nat). x; let z = F(2, 3); () }
 example : progRejects c6 "too many arguments" = true := by native_decide
 
 -- A mistyped argument, on both branches.
-def c7 : Term := prog{ let F = λ (x : Nat). x; let z = F(Nil); () }
+def c7 : Term := prog defer_check { let F = λ (x : Nat). x; let z = F(Nil); () }
 example : progRejects c7 "does not have its parameter type" = true := by native_decide
 def c8 : Term := prog defer_check { let F = (λ (x : Nat). x : Π (x : Nat) → Nat); let z = F(Nil); () }
 example : progRejects c8 "does not have its parameter type" = true := by native_decide
 
 -- A callee that is not a function at all, and one that was moved away.
-def c9 : Term := prog{ let f = 3; let z = f(2); () }
+def c9 : Term := prog defer_check { let f = 3; let z = f(2); () }
 example : progRejects c9 "is not a function value" = true := by native_decide
-def c10 : Term := prog{ let f = Cons(1, Nil); let g = f; let z = f(2); () }
+def c10 : Term := prog defer_check { let f = Cons(1, Nil); let g = f; let z = f(2); () }
 example : progRejects c10 "holds ⊥" = true := by native_decide
 
 -- The demand-collapse premise (§5.2, "every demand collapses first") fires at the
@@ -406,8 +406,8 @@ example : progRejects c13s "does not have its parameter type" = true := by nativ
     for the re-minted borrow payloads, and this test says the coarse version is
     already usable. -/
 
-def sigLemTy : Term := prog{ Π (x : Nat) → Σ (H : Le x x). Le x x }
-def sigLem : Term := prog{ λ (x : Nat). Pair (LeRefl x) (LeRefl x) }
+def sigLemTy : Term := prog defer_check { Π (x : Nat) → Σ (H : Le x x). Le x x }
+def sigLem : Term := prog defer_check { λ (x : Nat). Pair (LeRefl x) (LeRefl x) }
 
 def c14 : Term := prog{
   let f = (%sigLem : %sigLemTy);
@@ -416,7 +416,7 @@ def c14 : Term := prog{
 -- The program's RESULT is the projection, so its return type is what the audit
 -- checks it at — stated as `progOk`'s second argument, where the old form stated
 -- it as the wrapper declaration's `-> Le 2 2`.
-example : progOk c14 (prog{ Le 2 2 }) = true := by native_decide
+example : progOk c14 (prog defer_check { Le 2 2 }) = true := by native_decide
 
 -- The negative control has to be demanded to be a control: a `let`-bound proof is
 -- never typed until something asks for its type (readC computes, it does not
@@ -426,7 +426,7 @@ def c14bad : Term := prog{
   let f = (%sigLem : %sigLemTy);
   let p = f(2);
   elim p return (λ (W : Σ (H : Le 2 2). Le 2 2). Le 3 2) { Pair (a) (b) => a } }
-example : progRejects c14bad "does not have return type" (prog{ Le 3 2 }) = true := by native_decide
+example : progRejects c14bad "does not have return type" (prog defer_check { Le 3 2 }) = true := by native_decide
 
 /-! ## §D. The executing machine, and a NEW simulation-relation case
 
@@ -534,7 +534,7 @@ example : shapes.all diffC = true := by native_decide
     against a concrete run that genuinely disagrees: same symbolic side, a
     concrete side that adds 2 where the checker's σ-instance adds 1. -/
 
-def d3mutant : Term := prog{ let a = 3; let b = Add a 2; () }
+def d3mutant : Term := prog defer_check { let a = 3; let b = Add a 2; () }
 
 example :
   (match symEnvs d1, runExec d3mutant with
@@ -749,9 +749,9 @@ example : progOk a3cap = true := by native_decide
 -- the formation check is "identical for both λ species", asserted rather than
 -- described. A PURE λ citing a runtime binding gets the same refusal, with the
 -- same needle, as the runtime λ above; and the capital twin is accepted.
-def a3pureBad : Term := prog{ let n = 3; let P = λ (u : Unit). n; () }
+def a3pureBad : Term := prog defer_check { let n = 3; let P = λ (u : Unit). n; () }
 example : progRejects a3pureBad "a runtime (lowercase) binding" = true := by native_decide
-def a3pureCap : Term := prog{ let N = 3; let P = λ (u : Unit). N; () }
+def a3pureCap : Term := prog defer_check { let N = 3; let P = λ (u : Unit). N; () }
 example : progOk a3pureCap = true := by native_decide
 
 -- A3type. …and the EXEMPTION, which is the other half of the rule and the half
@@ -1025,7 +1025,7 @@ example :
     motive is not a function type has ordinary terms for arms, and the PURE
     recursor already computes those. -/
 
-def lenMot : Term := prog{ λ (L : List Nat). Nat }
+def lenMot : Term := prog defer_check { λ (L : List Nat). Nat }
 def d1 : Term := prog defer_check { fn Caller () -> Nat {
   let l = Cons(7, Cons(8, Nil));
   let f = listRec Nat %lenMot Z (λ(h : Nat, t : List Nat, ih : Nat) { S(ih) });
@@ -1110,7 +1110,7 @@ example : progRejects e3b "holds a hole (⊥) at return" = true := by native_dec
 -- comptime. §6 could be stated twice here and disagree, so it is checked — and
 -- this is the callee-side half of phase B's "the ascription is the contract"
 -- (F3 settled the caller side).
-def cmpSeal : Term := prog{ Π (N : Nat) → Nat }
+def cmpSeal : Term := prog defer_check { Π (N : Nat) → Nat }
 def e3c : Term := prog defer_check {
   let F = (λ(n : Nat) { S(n) } : %cmpSeal); () }
 example : progRejects e3c "the ascribed type binds it as comptime" = true := by native_decide
@@ -1489,8 +1489,8 @@ example : progOk h1vacuous = true := by native_decide
     `Π (u : Unit) → Id Nat Z (S Z)` assumed, the same returned — and is ACCEPTED,
     which is the assumption discharged honestly rather than a hole. -/
 
-def badMot : Term := prog{ λ (n : Nat). Π (u : Unit) → Id Nat Z (S Z) }
-def badTy : Term := prog{ Π (n : Nat) → Π (u : Unit) → Id Nat Z (S Z) }
+def badMot : Term := prog defer_check { λ (n : Nat). Π (u : Unit) → Id Nat Z (S Z) }
+def badTy : Term := prog defer_check { Π (n : Nat) → Π (u : Unit) → Id Nat Z (S Z) }
 
 def h2 : Term := prog defer_check {
   let F = (natRec %badMot
@@ -1649,7 +1649,7 @@ example : progRejects k2 "does not have return type" = true := by native_decide
 -- reading for such a return type, which is a pre-existing limitation of the
 -- declaration form and one §8 dissolves rather than fixes (a program is a term, so
 -- there is no return type to read, only a `let`).
-def natFn : Term := prog{ Π (n : Nat) → Nat }
+def natFn : Term := prog defer_check { Π (n : Nat) → Nat }
 def k3 : Term := prog{ fn K3 (n : Nat) -> %natFn {
   match n {
     Z => (λ(m : Nat) { Z } : %natFn),
@@ -1959,7 +1959,7 @@ def bndSeal : Option Term :=
     TRANSCRIPTION would have produced, and E2/F3b are the controls that say the
     elaboration produces something else. -/
 def bndDeclHn : Term :=
-  .cmpT prog{ %(Std.LeFnT) (%(Std.lenFnT) %(Term.deref (.var ⟨1, "v"⟩))) %(Term.var ⟨0, "n"⟩) }
+  .cmpT prog defer_check { %(Std.LeFnT) (%(Std.lenFnT) %(Term.deref (.var ⟨1, "v"⟩))) %(Term.var ⟨0, "n"⟩) }
 
 /-- The two arms of the emitted `natRec`, as annotated binder lists. -/
 def bndArms : Option (List (Var × Term) × List (Var × Term)) :=
@@ -2291,7 +2291,7 @@ example : progOk juxSaturated (.const "Nat") = true := by native_decide
 
 -- G7. A RESERVED head stays a constructor, which is what keeps `S n` and a call
 -- distinguishable without a token: the basis is closed, so the test is exact.
-example : (match (prog{ let x = S 3; () } : Term) with
+example : (match (prog defer_check { let x = S 3; () } : Term) with
            | .letIn _ (.ctorApp "S" [_]) _ => true
            | _ => false) = true := by native_decide
 

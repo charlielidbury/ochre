@@ -54,7 +54,7 @@ example : expectEnv prog{
 
 -- §2.1 copy-on-read: reading a marker-free value copies it, the owner stays.
 -- let x = 3; let y = x  ⟹  x ↦ 3 (copied), y ↦ 3
-example : expectEnv prog{
+example : expectEnv prog defer_check {
   let x = 3;
   let y = x;
   ()
@@ -161,7 +161,7 @@ example : expectEnv prog{
 -- §2.1 copy-on-read makes a marker-free value re-readable: the second read of x
 -- copies again — no use-after-move. (Use-after-move rejections now live on
 -- marker-carrying values — a moved borrow, a taken payload.)
-example : expectEnv prog{
+example : expectEnv prog defer_check {
   let x = 3;
   let y = x;
   let z = x;

@@ -266,8 +266,8 @@ example : progOk S23Direct.recGood = true := by native_decide
     step" — arriving a second time, from the other end of the language, before §9
     is built. Filed as a macro capability rather than as an expressiveness wall. -/
 
-def deepSealT : Term := prog{ Π (n : Nat) → Id Nat Z Z }
-def deepMotT : Term := prog{ λ (n : Nat). Id Nat Z Z }
+def deepSealT : Term := prog defer_check { Π (n : Nat) → Id Nat Z Z }
+def deepMotT : Term := prog defer_check { λ (n : Nat). Id Nat Z Z }
 
 /-- `recDeep`, hand-written as a sealed recursor. The step arm keeps the corpus's
     own inner `match a` — so the two-constructors-down SHAPE is still there — and
@@ -287,7 +287,7 @@ def deepStepArm : Term :=
   -- `ih`'s domain is the motive at the predecessor, and `deepMotT` is CONSTANT —
   -- which is the whole content of the correction this section records: `ih : P a`
   -- already IS `P b` for every `b` when `P` ignores its index.
-  Term.lamTel [(⟨0, "a"⟩, .const "Nat"), (⟨1, "ih"⟩, prog{ Id Nat Z Z })]
+  Term.lamTel [(⟨0, "a"⟩, .const "Nat"), (⟨1, "ih"⟩, prog defer_check { Id Nat Z Z })]
     (.matchE ⟨0, "a"⟩ none
       [ .mk "Z" [] (.ctorApp "Refl" [])
       , .mk "S" [⟨2, "b"⟩] (.var ⟨1, "ih"⟩) ])
@@ -308,10 +308,10 @@ example : progRejects recDeepBare "is a bare term, not a λ" = true := by native
 /-- **The seal really audits it**, so the acceptance above is not the node waving
     a term through: ascribe the same recursor at a Π that claims `Id Nat Z (S Z)`
     and the arms cannot inhabit it. -/
-def deepSealLie : Term := prog{ Π (n : Nat) → Id Nat Z (S Z) }
+def deepSealLie : Term := prog defer_check { Π (n : Nat) → Id Nat Z (S Z) }
 def recDeepLie : Term :=
   .letIn ⟨900, "F"⟩ (.seal 0 (.app (.app (.app (.const "natRec")
-    (prog{ λ (n : Nat). Id Nat Z (S Z) })) deepBaseArm) deepStepArm) deepSealLie) .unit
+    (prog defer_check { λ (n : Nat). Id Nat Z (S Z) })) deepBaseArm) deepStepArm) deepSealLie) .unit
 example : progOk recDeepLie = false := by native_decide
 
 /-- …and the MACRO still declines the declaration, which is the whole content of

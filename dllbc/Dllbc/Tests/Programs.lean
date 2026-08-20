@@ -554,7 +554,7 @@ example : progRejects f5 "holds ⊥" = true := by native_decide
 -- about ⇒-ENTRY and a comptime capture holds no borrow. The refusal reached this
 -- program only because `f(2)` and `f 2` were different nodes. Saturation is
 -- still enforced where entry happens — `g2`/`g3` below, and `Functions.a5`.
-def g1 : Term := prog{ let F = λ (x : Nat). λ (y : Nat). x; let z = F(2); () }
+def g1 : Term := prog defer_check { let F = λ (x : Nat). λ (y : Nat). x; let z = F(2); () }
 example : progOk g1 = true := by native_decide
 
 -- The legitimate-return case, pinned as the LIMITATION it is: `mk` means to be
@@ -778,7 +778,7 @@ def i2 : Term := prog{
 example : progOk i2 = true := by native_decide
 
 -- I3. Through a VALUE callee, transparent and sealed.
-def i3 : Term := prog{
+def i3 : Term := prog defer_check {
   let a = Cons(1, Nil); let G = λ (L : List Nat). Z; let r = G(a); let b = a; () }
 def i3s : Term := prog{
   let a = Cons(1, Nil); let G = (λ (L : List Nat). Z : Π (L : List Nat) → Nat);
@@ -1068,7 +1068,7 @@ def withSwapS01 (rest : Term) : Term := prog{
   %rest }
 
 /-- The declaration alone, checked at its seal. -/
-def swapS01 : Term := withSwapS01 prog{ () }
+def swapS01 : Term := withSwapS01 prog defer_check { () }
 example : progOk swapS01 = true := by native_decide
 
 -- Caller: borrow, call swapS01, demand the owner (recovering the Σ), open it to
@@ -1179,7 +1179,7 @@ example : progOk f1readCap = true := by native_decide
 -- functions are names, and this reads one into a second slot. The refusal it gets
 -- is the same one F1 gets, which is the point — there is no longer a class here to
 -- be isolated from.
-def gSeal : Term := prog{ Π (x : Nat) → Nat }
+def gSeal : Term := prog defer_check { Π (x : Nat) → Nat }
 def f2read : Term := prog defer_check {
   let F = (λ(x : Nat) { x } : %gSeal);
   let g = F;
@@ -1190,7 +1190,7 @@ example : progRejects f2read "the binder to capitalise is the destination" = tru
 -- F2b. The ISOLATING CONTROL that survives, and it has to be a different one now:
 -- an ordinary value in a second slot is still an ordinary read. So F1/F2 are about
 -- functions and not about second bindings.
-def f2data : Term := prog{
+def f2data : Term := prog defer_check {
   let f = 3;
   let g = f;
   () }
@@ -1542,7 +1542,7 @@ def rawEnvs (t : Term) : List (Except String Env) :=
 
 -- A1. Transparent lets and a tail. The tail is checked in the ACCUMULATED Ω,
 -- which is what makes `retType` a real demand site rather than decoration.
-def a1 : Term := prog{ let x = 3; let y = S(x); y }
+def a1 : Term := prog defer_check { let x = 3; let y = S(x); y }
 example : progOk a1 (.const "Nat") = true := by native_decide
 example : progRejects a1 "does not have return type" (.const "Bool") = true := by native_decide
 -- `x` survives its own use: a `Nat` is index-kind, so §2.1's copy-on-read leaves
@@ -1669,13 +1669,13 @@ def c2under (sig : Term) : Term := prog{
   let r = F(3);
   r }
 /-- The retType the program is demanded at: the equation the caller wants. -/
-def c2demand : Term := prog{ Σ (m : Nat). Id Nat m 3 }
+def c2demand : Term := prog defer_check { Σ (m : Nat). Id Nat m 3 }
 
 /-- A — the signature CARRIES the equation. -/
-def c2keeps : Term := c2under (prog{ Π (n : Nat) → Σ (m : Nat). Id Nat m n })
+def c2keeps : Term := c2under (prog defer_check { Π (n : Nat) → Σ (m : Nat). Id Nat m n })
 /-- B — the same body, sealed at a type that FORGETS it (true, and useless). It
     checks: the lie is not in the callee, it is in what the callee promises. -/
-def c2forgets : Term := c2under (prog{ Π (n : Nat) → Σ (m : Nat). Id Nat m m })
+def c2forgets : Term := c2under (prog defer_check { Π (n : Nat) → Σ (m : Nat). Id Nat m m })
 
 example : progOk c2keeps c2demand = true := by native_decide
 example : progRejects c2forgets "does not have return type" c2demand = true := by native_decide
@@ -1683,13 +1683,13 @@ example : progRejects c2forgets "does not have return type" c2demand = true := b
 -- at the weaker demand its callee's signature does support. So the rejection
 -- above is about what was kept across the seal, and not about the program being
 -- broken.
-example : progOk c2forgets (prog{ Σ (m : Nat). Id Nat m m }) = true := by native_decide
+example : progOk c2forgets (prog defer_check { Σ (m : Nat). Id Nat m m }) = true := by native_decide
 -- The keeping prefix does NOT also satisfy the weaker demand, which is worth a
 -- line because it is the honest reading of "what you keep is what you write":
 -- there is no subsumption here, only conversion — a σ has the type it was minted
 -- at, and `Id Nat m 3` and `Id Nat m m` are different types even though the first
 -- is the more informative claim about this particular callee.
-example : progOk c2keeps (prog{ Σ (m : Nat). Id Nat m m }) = false := by native_decide
+example : progOk c2keeps (prog defer_check { Σ (m : Nat). Id Nat m m }) = false := by native_decide
 
 /-! ## §D. Globals: the one kernel rule this phase needed
 
@@ -1760,7 +1760,7 @@ example : progRejects d2borrow "a runtime (lowercase) binding" = true := by nati
 -- rule and not the call rule doing the work — c1 covers the call side.)
 def d2free : Term :=
   .letIn ⟨0, "g"⟩ (.seal 0 (Term.lamTel [(⟨1, "a"⟩, .const "Nat")] (.letIn ⟨2, "z"⟩ (.var ⟨9, "nope"⟩) (.var ⟨1, "a"⟩)))
-    (prog{ Π (a : Nat) → Nat })) .unit
+    (prog defer_check { Π (a : Nat) → Nat })) .unit
 example : progRejects d2free "not bound anywhere above it" = true := by native_decide
 
 -- D3. A sealed PROOF is not a global either, and that is deliberate rather than
@@ -1930,7 +1930,7 @@ example : progDiff (Tests.S23Direct.qsRun [3, 1, 2]) = true := by native_decide
     is a σ, and matching on one is what forks the driver's paths. -/
 def hSplit (inZ inS : Term) : Term :=
   .letIn ⟨0, "F"⟩ (prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) })
-    (.letIn ⟨1, "n"⟩ (Term.appSpine (.var ⟨0, "F"⟩) [prog{ 3 }])
+    (.letIn ⟨1, "n"⟩ (Term.appSpine (.var ⟨0, "F"⟩) [prog defer_check { 3 }])
       (.matchE ⟨1, "n"⟩ none [Branch.mk "Z" [] inZ, Branch.mk "S" [⟨2, "k"⟩] inS]))
 
 -- H0. The split is real: two paths, not one.
@@ -1943,7 +1943,7 @@ def hGlobal (bad : Bool) : Term :=
   hSplit .unit
     (.letIn ⟨3, "G"⟩ (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (Term.appSpine (.var ⟨0, "F"⟩) [.var ⟨4, "y"⟩]))
       (.letIn ⟨5, "r"⟩ (Term.appSpine (.var ⟨3, "G"⟩) [.var ⟨2, "k"⟩])
-        (if bad then prog{ True } else .unit)))
+        (if bad then prog defer_check { True } else .unit)))
 example : progOk (hGlobal false) = true := by native_decide
 -- The negative twin at the SAME position: the branch is entered and its result
 -- audited, so the accept above is not the branch being skipped.
@@ -1963,7 +1963,7 @@ def hSeal (bad : Bool) : Term :=
   hSplit .unit
     (.letIn ⟨3, "Sf"⟩
       (.seal 0 (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (.var ⟨4, "y"⟩))
-        (if bad then prog{ Π (y : Nat) → Bool } else prog{ Π (y : Nat) → Nat }))
+        (if bad then prog defer_check { Π (y : Nat) → Bool } else prog defer_check { Π (y : Nat) → Nat }))
       .unit)
 example : progOk (hSeal false) = true := by native_decide
 example : progRejects (hSeal true) "does not have return type (Bool)" = true := by native_decide
@@ -1976,9 +1976,9 @@ def hLend : Term :=
   .letIn ⟨0, "Push"⟩
     (prog{ (λ(e : Nat, v : &mut (s : List Nat ~> List Nat)){
                   let tail = *v; *v := Cons(e, tail); () } : Π (e : Nat) → Π (v : &mut (s : List Nat ~> List Nat)) → Unit) })
-    (.letIn ⟨1, "l"⟩ (prog{ Cons(1, Nil) })
+    (.letIn ⟨1, "l"⟩ (prog defer_check { Cons(1, Nil) })
       (.letIn ⟨2, "id"⟩ (prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) })
-        (.letIn ⟨3, "n"⟩ (Term.appSpine (.var ⟨2, "id"⟩) [prog{ 3 }])
+        (.letIn ⟨3, "n"⟩ (Term.appSpine (.var ⟨2, "id"⟩) [prog defer_check { 3 }])
           (.matchE ⟨3, "n"⟩ none
             [Branch.mk "Z" [] .unit,
              Branch.mk "S" [⟨4, "k"⟩]

@@ -72,18 +72,18 @@ example : chkL SplitANil SplitANilTy = true := by native_decide
 
 -- The predicates COMPUTE on a run, at every skip count.
 -- `SplitAL 3 2 [1,2,7]`: first two ≤ 3, last ≥ 3.
-example : chkL prog{ Pair(unit, Pair(unit, Pair(unit, unit))) }
-               prog{ SplitAL 3 2 3 Arr(1, 2, 7) } = true := by native_decide
+example : chkL prog defer_check { Pair(unit, Pair(unit, Pair(unit, unit))) }
+               prog defer_check { SplitAL 3 2 3 Arr(1, 2, 7) } = true := by native_decide
 -- …and it is NOT vacuous: the same array does not split at 1 (element 1 is `2 ≥ 3`? no).
-example : chkL prog{ Pair(unit, Pair(unit, Pair(unit, unit))) }
-               prog{ SplitAL 3 1 3 Arr(1, 2, 7) } = false := by native_decide
+example : chkL prog defer_check { Pair(unit, Pair(unit, Pair(unit, unit))) }
+               prog defer_check { SplitAL 3 1 3 Arr(1, 2, 7) } = false := by native_decide
 
 -- `PartA 3 2 [1,2,3,7]`: first two ≤ 3, element 2 IS 3, the rest ≥ 3.
-example : chkL prog{ Pair(unit, Pair(unit, Pair(Refl, Pair(unit, unit)))) }
-               prog{ PartA 3 2 4 Arr(1, 2, 3, 7) } = true := by native_decide
+example : chkL prog defer_check { Pair(unit, Pair(unit, Pair(Refl, Pair(unit, unit)))) }
+               prog defer_check { PartA 3 2 4 Arr(1, 2, 3, 7) } = true := by native_decide
 -- The pivot-identity conjunct is load-bearing: element 2 is 4, not 3.
-example : chkL prog{ Pair(unit, Pair(unit, Pair(Refl, Pair(unit, unit)))) }
-               prog{ PartA 3 2 4 Arr(1, 2, 4, 7) } = false := by native_decide
+example : chkL prog defer_check { Pair(unit, Pair(unit, Pair(Refl, Pair(unit, unit)))) }
+               prog defer_check { PartA 3 2 4 Arr(1, 2, 4, 7) } = false := by native_decide
 
 /-! ### Crossing a concatenation — each an induction on the left array alone -/
 
@@ -112,7 +112,7 @@ example : chkL CountSwapA CountSwapATy = true := by native_decide
 
 -- There IS no η at length zero, which is why the nil lemmas exist at all: `SortedA Z`
 -- of an opaque payload is a stuck `arrRec`, not `Unit`.
-example : (Pure.nf 2000 prog{ SortedA Z Arr() } == .const "Unit")
+example : (Pure.nf 2000 prog defer_check { SortedA Z Arr() } == .const "Unit")
     = true := by native_decide
 
 /-! ## (ii) `splitA` — the scan
@@ -163,23 +163,23 @@ def nQ : Term := .var ⟨1, "n"⟩
 def aQ : Term := .var ⟨3, "a"⟩
 def fuelQ : Term := .var ⟨0, "fuel"⟩
 
-def sHonest : Term := prog{
+def sHonest : Term := prog defer_check {
   Σ (k : Nat). Σ (r : Nat).
     Σ (Hlen : Id Nat %mS (Add k r)).
     Σ0 (Hsp : SplitAL %pS k %mS (*%tS)).
     Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (CountA Q %mS (old *%tS)) }
 
-def pHonest : Term := prog{
+def pHonest : Term := prog defer_check {
   Σ (pvv : Nat). Σ (k : Nat). Σ (jj : Nat).
     Σ (Hlen : Id Nat %nP (Add k (S jj))).
     Σ0 (Hp : PartA pvv k %nP (*%aP)).
     Π (Q : Nat) → Id Nat (CountA Q %nP (*%aP)) (CountA Q %nP (old *%aP)) }
 
-def qHonest : Term := prog{
+def qHonest : Term := prog defer_check {
   Σ0 (Hs : SortedA %nQ (*%aQ)).
     Π (Q : Nat) → Id Nat (CountA Q %nQ (*%aQ)) (CountA Q %nQ (old *%aQ)) }
 
-def qSuffHonest : Term := prog{ Le %nQ %fuelQ }
+def qSuffHonest : Term := prog defer_check { Le %nQ %fuelQ }
 
 /-! ## (iii) `partitionA` — the leaf ¶6's ledger counts as surviving, and G4 says is new
 
@@ -536,7 +536,7 @@ example : progOk arrChain = true := by native_decide
     M23's discipline, applied to three declarations. -/
 
 -- `splitA`, conjunct 1: the length accounting says the two parts overlap by one.
-example : progOk (arrUnder (prog{
+example : progOk (arrUnder (prog defer_check {
     Σ (k : Nat). Σ (r : Nat).
       Σ (Hlen : Id Nat %mS (Add k (S r))).
       Σ0 (Hsp : SplitAL %pS k %mS (*%tS)).
@@ -544,7 +544,7 @@ example : progOk (arrUnder (prog{
     pHonest qHonest qSuffHonest .unit) = false := by native_decide
 
 -- `splitA`, conjunct 2: the ordering claimed of the ENTRY array rather than the exit.
-example : progOk (arrUnder (prog{
+example : progOk (arrUnder (prog defer_check {
     Σ (k : Nat). Σ (r : Nat).
       Σ (Hlen : Id Nat %mS (Add k r)).
       Σ0 (Hsp : SplitAL %pS k %mS (old *%tS)).
@@ -552,7 +552,7 @@ example : progOk (arrUnder (prog{
     pHonest qHonest qSuffHonest .unit) = false := by native_decide
 
 -- `splitA`, conjunct 3: the counts off by one, which no path can reach.
-example : progOk (arrUnder (prog{
+example : progOk (arrUnder (prog defer_check {
     Σ (k : Nat). Σ (r : Nat).
       Σ (Hlen : Id Nat %mS (Add k r)).
       Σ0 (Hsp : SplitAL %pS k %mS (*%tS)).
@@ -642,7 +642,7 @@ def splitANoSwap : Term := prog defer_check {
 example : progOk splitANoSwap = false := by native_decide
 
 -- `partitionA`, conjunct 1: the length accounting forgets the pivot cell.
-example : progRejects (arrUnder sHonest (prog{
+example : progRejects (arrUnder sHonest (prog defer_check {
     Σ (pvv : Nat). Σ (k : Nat). Σ (jj : Nat).
       Σ (Hlen : Id Nat %nP (Add k jj)).
       Σ0 (Hp : PartA pvv k %nP (*%aP)).
@@ -650,7 +650,7 @@ example : progRejects (arrUnder sHonest (prog{
     qHonest qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 -- `partitionA`, conjunct 2: the partition claimed of the ENTRY array.
-example : progRejects (arrUnder sHonest (prog{
+example : progRejects (arrUnder sHonest (prog defer_check {
     Σ (pvv : Nat). Σ (k : Nat). Σ (jj : Nat).
       Σ (Hlen : Id Nat %nP (Add k (S jj))).
       Σ0 (Hp : PartA pvv k %nP (old *%aP)).
@@ -666,14 +666,14 @@ example : progRejects (arrUnder sHonest (prog{
 -- later, where the caller found the argument ill-typed. Was "does not have its
 -- parameter type"; the two Direct.lean twins of these did not move, because
 -- quicksort's own caller re-checks the conjunct either way.
-example : progRejects (arrUnder sHonest pHonest (prog{
+example : progRejects (arrUnder sHonest pHonest (prog defer_check {
     Σ0 (Hs : SortedA %nQ (old *%aQ)).
       Π (Q : Nat) → Id Nat (CountA Q %nQ (*%aQ)) (CountA Q %nQ (old *%aQ)) })
     qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 -- `quicksortA`, conjunct 2: the permutation lied by DIRECTION. Again `Refl` at the
 -- empty array, and again the body's evidence points the other way once anything moves.
-example : progRejects (arrUnder sHonest pHonest (prog{
+example : progRejects (arrUnder sHonest pHonest (prog defer_check {
     Σ0 (Hs : SortedA %nQ (*%aQ)).
       Π (Q : Nat) → Id Nat (CountA Q %nQ (old *%aQ)) (CountA Q %nQ (*%aQ)) })
     qSuffHonest .unit) "does not have return type" = true := by native_decide
@@ -708,7 +708,7 @@ example : progOk carveWithEv = true := by native_decide
 -- The sufficiency hypothesis is load-bearing, not decoration: keep the parameter (so
 -- the body still elaborates and the rejection is about TYPING) and weaken it to `Unit`.
 -- The out-of-fuel path then has no ⊥ to eliminate and stops being dead.
-example : progRejects (arrUnder sHonest pHonest qHonest (prog{ Unit }) .unit)
+example : progRejects (arrUnder sHonest pHonest qHonest (prog defer_check { Unit }) .unit)
   "botElim" = true := by native_decide
 
 
@@ -1027,7 +1027,7 @@ def withCitedCarve (rest : Term) : Term := prog{
     let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | Heq];
     () };
   %rest }
-example : progOk (withCitedCarve prog{ () }) = true := by native_decide
+example : progOk (withCitedCarve prog defer_check { () }) = true := by native_decide
 
 /-- (1) A caller whose numbers are CONSISTENT: `n = 3, i = 1, j = 1`, and `Refl`
     inhabits `Id Nat 3 (Add 1 (S 1))` because both sides compute to 3. -/

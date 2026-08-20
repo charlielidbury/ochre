@@ -288,7 +288,7 @@ def hmGmUnder (tail2 : Term) : Term :=
   %tail2 }
 
 -- The extended chain's check status, pinned with the audit's needle.
-example : progRejects (hmGmUnder prog{ () }) "does not have its owed type"
+example : progRejects (hmGmUnder prog defer_check { () }) "does not have its owed type"
     = true := by native_decide
 
 /-- AENEAS' test1 (icfp22/hashmap.rs), the differential the doc fixes: cap 32,

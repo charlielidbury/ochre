@@ -39,7 +39,7 @@ namespace Dllbc.Tests.HashMap
     untouched, no-op when `q` is absent. Mirrors `FindL` clause for clause so
     the two can never disagree about which entry is "the" hit. -/
 
-def BSetK : Term := prog{
+def BSetK : Term := prog defer_check {
   λ (Q : Nat). λ (V : Nat). λ (L : List (Σ (k : Nat). Nat)).
     elim L return (λ (Lm : List (Σ (k : Nat). Nat)). List (Σ (k : Nat). Nat)) {
       Nil => Nil,
@@ -50,18 +50,18 @@ def BSetK : Term := prog{
               True => Cons(Pair(K2, V), T),
               False => Cons(Pair(K2, V2), Rec) } } } }
 
-example : chkL prog{ Refl } prog{ Id (List (Σ (k : Nat). Nat))
+example : chkL prog defer_check { Refl } prog defer_check { Id (List (Σ (k : Nat). Nat))
   (BSetK 3 99 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil)))
   Cons(Pair(1, 10), Cons(Pair(3, 99), Nil)) } = true := by native_decide
-example : chkL prog{ Refl } prog{ Id (List (Σ (k : Nat). Nat))
+example : chkL prog defer_check { Refl } prog defer_check { Id (List (Σ (k : Nat). Nat))
   (BSetK 7 99 Cons(Pair(1, 10), Nil)) Cons(Pair(1, 10), Nil) } = true := by native_decide
-example : chkL prog{ Refl } prog{ Id (List (Σ (k : Nat). Nat))
+example : chkL prog defer_check { Refl } prog defer_check { Id (List (Σ (k : Nat). Nat))
   (BSetK 3 99 Cons(Pair(3, 30), Cons(Pair(3, 31), Nil)))
   Cons(Pair(3, 99), Cons(Pair(3, 31), Nil)) } = true := by native_decide
 
 /-- Presence survives a non-hit head: from `Eqb q k0 ≡ False` and presence in
     the whole bucket, presence in the tail — the walk's recursion premise. -/
-def HitTailEv : Term := prog{
+def HitTailEv : Term := prog defer_check {
   λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
   λ (E : Id Bool (Eqb Q K0) False).
   λ (H : Id Bool (HitL Q Cons(Pair(K0, V0), T)) True).
@@ -72,7 +72,7 @@ def HitTailEv : Term := prog{
             True => SomeN V0, False => FindL Q T }))
           (Eqb Q K0) False E))
       H }
-def HitTailEvTy : Term := prog{
+def HitTailEvTy : Term := prog defer_check {
   Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
     Id Bool (Eqb Q K0) False → Id Bool (HitL Q Cons(Pair(K0, V0), T)) True →
     Id Bool (HitL Q T) True }
@@ -81,7 +81,7 @@ example : chkL HitTailEv HitTailEvTy = true := by native_decide
 /-- The hit leg's return conjunct: at `Eqb q k0 ≡ True`, the head's value IS
     the bucket's answer at `q`. Stated in the D9 orientation (`Some (*r)` on
     the left) so the constructed proof's type is verbatim the declared one. -/
-def FindEvHit : Term := prog{
+def FindEvHit : Term := prog defer_check {
   λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
   λ (E : Id Bool (Eqb Q K0) True).
     IdSym OptN (FindL Q Cons(Pair(K0, V0), T)) (SomeN V0)
@@ -89,7 +89,7 @@ def FindEvHit : Term := prog{
         (λ (W : Bool). elim W return (λ (Bm : Bool). Σ (bb : Bool). OptP bb Nat) {
           True => SomeN V0, False => FindL Q T })
         (Eqb Q K0) True E) }
-def FindEvHitTy : Term := prog{
+def FindEvHitTy : Term := prog defer_check {
   Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
     Id Bool (Eqb Q K0) True →
     Id OptN (SomeN V0) (FindL Q Cons(Pair(K0, V0), T)) }
@@ -97,7 +97,7 @@ example : chkL FindEvHit FindEvHitTy = true := by native_decide
 
 /-- The miss leg's transport: a non-hit head is skipped by the lookup, so tail
     evidence lifts to the whole bucket. -/
-def FindTailEv : Term := prog{
+def FindTailEv : Term := prog defer_check {
   λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
   λ (E : Id Bool (Eqb Q K0) False).
     IdSym OptN (FindL Q Cons(Pair(K0, V0), T)) (FindL Q T)
@@ -105,7 +105,7 @@ def FindTailEv : Term := prog{
         (λ (W : Bool). elim W return (λ (Bm : Bool). Σ (bb : Bool). OptP bb Nat) {
           True => SomeN V0, False => FindL Q T })
         (Eqb Q K0) False E) }
-def FindTailEvTy : Term := prog{
+def FindTailEvTy : Term := prog defer_check {
   Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
     Id Bool (Eqb Q K0) False →
     Id OptN (FindL Q T) (FindL Q Cons(Pair(K0, V0), T)) }
@@ -165,7 +165,7 @@ example : progRejects bktGetPinOnly
 
 /-- `FindPosL q l` — the hit's position; `LenE l` when absent (every miss adds
     one `S`), which is exactly the or_insert write site. -/
-def FindPosL : Term := prog{
+def FindPosL : Term := prog defer_check {
   λ (Q : Nat). λ (L : List (Σ (k : Nat). Nat)).
     elim L return (λ (Lm : List (Σ (k : Nat). Nat)). Nat) {
       Nil => Z,
@@ -176,16 +176,16 @@ def FindPosL : Term := prog{
               True => Z,
               False => S(Rec) } } } }
 
-example : chkL prog{ Refl } prog{ Id Nat
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat
   (FindPosL 3 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil))) 1 } = true := by native_decide
-example : chkL prog{ Refl } prog{ Id Nat
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat
   (FindPosL 9 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil))) 2 } = true := by native_decide
 
 /-- `BSetP p v l` — value at position `p` becomes `v`, key and structure kept,
     no-op past the end. Index-first, so a constructor-refined `p` steps it with
     NO key comparison anywhere — this is what makes it pin-dischargeable where
     `BSetK` is not. -/
-def BSetP : Term := prog{
+def BSetP : Term := prog defer_check {
   λ (P : Nat). λ (V : Nat).
     elim P return (λ (Pz : Nat). Π (L : List (Σ (k : Nat). Nat)) → List (Σ (k : Nat). Nat)) {
       Z => λ (L : List (Σ (k : Nat). Nat)).
@@ -199,12 +199,12 @@ def BSetP : Term := prog{
           Nil => Nil,
           Cons (E) (T) Rec2 => Cons(E, Rec T) } } }
 
-example : chkL prog{ Refl } prog{ Id (List (Σ (k : Nat). Nat))
+example : chkL prog defer_check { Refl } prog defer_check { Id (List (Σ (k : Nat). Nat))
   (BSetP 1 99 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil)))
   Cons(Pair(1, 10), Cons(Pair(3, 99), Nil)) } = true := by native_decide
 
 /-- Position `Z` on a hit bucket means the HEAD is the hit. -/
-def PosZHit : Term := prog{
+def PosZHit : Term := prog defer_check {
   λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
   λ (Hp : Id Nat Z (FindPosL Q Cons(Pair(K0, V0), T))).
     IfDec (Eqb Q K0) (Id Bool (Eqb Q K0) True)
@@ -215,14 +215,14 @@ def PosZHit : Term := prog{
             (IdTrans Nat Z (FindPosL Q Cons(Pair(K0, V0), T)) (S (FindPosL Q T)) Hp
               (IdCongr Bool Nat (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
                 True => Z, False => S (FindPosL Q T) }) (Eqb Q K0) False Ef)))) }
-def PosZHitTy : Term := prog{
+def PosZHitTy : Term := prog defer_check {
   Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
     Id Nat Z (FindPosL Q Cons(Pair(K0, V0), T)) → Id Bool (Eqb Q K0) True }
 example : chkL PosZHit PosZHitTy = true := by native_decide
 
 /-- Position `S p2` on a bucket means the head MISSED and `p2` locates the key
     in the tail — the walk's recursion evidence, in one package. -/
-def PosSStep : Term := prog{
+def PosSStep : Term := prog defer_check {
   λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)). λ (P2 : Nat).
   λ (Hp : Id Nat (S P2) (FindPosL Q Cons(Pair(K0, V0), T))).
     IfDec (Eqb Q K0) ((Id Bool (Eqb Q K0) False) × (Id Nat P2 (FindPosL Q T)))
@@ -237,7 +237,7 @@ def PosSStep : Term := prog{
           (IdTrans Nat (S P2) (FindPosL Q Cons(Pair(K0, V0), T)) (S (FindPosL Q T)) Hp
             (IdCongr Bool Nat (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
               True => Z, False => S (FindPosL Q T) }) (Eqb Q K0) False Ef)))) }
-def PosSStepTy : Term := prog{
+def PosSStepTy : Term := prog defer_check {
   Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
   Π (P2 : Nat) → Id Nat (S P2) (FindPosL Q Cons(Pair(K0, V0), T)) →
     (Id Bool (Eqb Q K0) False) × (Id Nat P2 (FindPosL Q T)) }
@@ -288,23 +288,23 @@ example : progOk bktGetAtDecl = true := by native_decide
 
 /-- The residue: everything after `key`'s slot. `cap = Mod key cap + S (CoMod
     key cap)` whenever `1 ≤ cap` — that is `ModSplit`. -/
-def CoMod : Term := prog{ λ (Q : Nat). λ (C : Nat). Sub C (S (Mod Q C)) }
+def CoMod : Term := prog defer_check { λ (Q : Nat). λ (C : Nat). Sub C (S (Mod Q C)) }
 
-def ModSplit : Term := prog{
+def ModSplit : Term := prog defer_check {
   λ (Q : Nat). λ (C : Nat). λ (H : Le (S Z) C).
     IdSym Nat (Add (Mod Q C) (S (CoMod Q C))) C
       (IdTrans Nat (Add (Mod Q C) (S (CoMod Q C))) (S (Add (Mod Q C) (CoMod Q C))) C
         (AddSucc (Mod Q C) (CoMod Q C))
         (AddSubCancel C (S (Mod Q C)) (ModLtN Q C H))) }
-def ModSplitTy : Term := prog{
+def ModSplitTy : Term := prog defer_check {
   Π (Q : Nat) → Π (C : Nat) → Le (S Z) C →
     Id Nat C (Add (Mod Q C) (S (CoMod Q C))) }
 example : chkL ModSplit ModSplitTy = true := by native_decide
 
 -- It computes: cap 5, key 7 → slot 2, residue 2; cap 32, key 1056 → slot 0.
-example : chkL prog{ Refl } prog{ Id Nat 5 (Add (Mod 7 5) (S (CoMod 7 5))) } = true := by
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat 5 (Add (Mod 7 5) (S (CoMod 7 5))) } = true := by
   native_decide
-example : chkL prog{ Refl } prog{ Id Nat (CoMod 7 5) 2 } = true := by native_decide
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat (CoMod 7 5) 2 } = true := by native_decide
 
 /-! ## (xxviii) `SetHM` — the pack→pack model update, decomposition-first
 
@@ -316,7 +316,7 @@ example : chkL prog{ Refl } prog{ Id Nat (CoMod 7 5) 2 } = true := by native_dec
     untouched, exactly as the toy's `PVSetDecT` carries `H`: a value write
     keeps every clause's inhabitant. -/
 
-def BumpHead : Term := prog{
+def BumpHead : Term := prog defer_check {
   λ (Q : Nat). λ (V : Nat). λ (R : Nat). λ (A : Array (S R) (List (Σ (k : Nat). Nat))).
     arrRec (List (Σ (k : Nat). Nat))
       (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
@@ -328,7 +328,7 @@ def BumpHead : Term := prog{
           acons M (BSetK Q V X) XS)
       (S R) A }
 
-def SetHM : Term := prog{
+def SetHM : Term := prog defer_check {
   λ (Q : Nat). λ (V : Nat).
   λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
       Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
@@ -362,20 +362,20 @@ def SetHM : Term := prog{
 
 -- It computes through the spec lookup: the hit key's answer moves, the frame
 -- (a DIFFERENT key hashing to the same slot, and the size) does not.
-example : chkL prog{ Refl } prog{ Id OptN (FindHM 3 (SetHM 3 99 hmEx)) (SomeN 99) }
+example : chkL prog defer_check { Refl } prog defer_check { Id OptN (FindHM 3 (SetHM 3 99 hmEx)) (SomeN 99) }
   = true := by native_decide
-example : chkL prog{ Refl } prog{ Id OptN (FindHM 5 (SetHM 3 99 hmEx)) NoneN }
+example : chkL prog defer_check { Refl } prog defer_check { Id OptN (FindHM 5 (SetHM 3 99 hmEx)) NoneN }
   = true := by native_decide
-example : chkL prog{ Refl } prog{ Id OptN (FindHM 7 (SetHM 7 99 hmEx)) NoneN }
+example : chkL prog defer_check { Refl } prog defer_check { Id OptN (FindHM 7 (SetHM 7 99 hmEx)) NoneN }
   = true := by native_decide
-example : chkL prog{ Refl } prog{ Id Nat (SizeHM (SetHM 3 99 hmEx)) 1 } = true := by
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat (SizeHM (SetHM 3 99 hmEx)) 1 } = true := by
   native_decide
-example : chkL prog{ Refl } prog{ Id Nat (CapHM (SetHM 3 99 hmEx)) 2 } = true := by
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat (CapHM (SetHM 3 99 hmEx)) 2 } = true := by
   native_decide
 
 /-- `SetHM` preserves the size — the second call's fuel bound. Nested Σ-elims
     to the leaf, where both sides compute to the same `N` and `Refl` closes. -/
-def SetHMSize : Term := prog{
+def SetHMSize : Term := prog defer_check {
   λ (Q : Nat). λ (V : Nat).
   λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
       Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
@@ -398,7 +398,7 @@ def SetHMSize : Term := prog{
                     Id Nat (SizeHM (SetHM Q V Pair(Cap, Pair(Load, Pair(N, H3)))))
                       (SizeHM Pair(Cap, Pair(Load, Pair(N, H3))))) {
                   Pair (Slots) (Inv) => Refl } } } } }
-def SetHMSizeTy : Term := prog{
+def SetHMSizeTy : Term := prog defer_check {
   Π (Q : Nat) → Π (V : Nat) →
   Π (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
       Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) →
@@ -418,7 +418,7 @@ example : chkL SetHMSize SetHMSizeTy = true := by native_decide
     `i`/`rr` as `Mod`/`CoMod` and discharges `Hd` with `ModSplit` — which is
     what (xxvii) was for. -/
 
-def BumpHeadP : Term := prog{
+def BumpHeadP : Term := prog defer_check {
   λ (P : Nat). λ (V : Nat). λ (R : Nat). λ (A : Array (S R) (List (Σ (k : Nat). Nat))).
     arrRec (List (Σ (k : Nat). Nat))
       (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
@@ -430,7 +430,7 @@ def BumpHeadP : Term := prog{
           acons M (BSetP P V X) XS)
       (S R) A }
 
-def SetHMAt : Term := prog{
+def SetHMAt : Term := prog defer_check {
   λ (I : Nat). λ (R : Nat). λ (P : Nat). λ (V : Nat).
   λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
       Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
@@ -461,7 +461,7 @@ def SetHMAt : Term := prog{
                       Inv)))) } } } } }
 
 /-- The position of `q` in its hashed bucket, over the pack. -/
-def PosHM : Term := prog{
+def PosHM : Term := prog defer_check {
   λ (Q : Nat).
   λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
       Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
@@ -479,11 +479,11 @@ def PosHM : Term := prog{
                     HMInvT Cap Load N slots). Nat) {
                   Pair (Slots) (Inv) => FindPosL Q (AgetB Cap Slots (Mod Q Cap)) } } } } }
 
-example : chkL prog{ Refl } prog{ Id Nat (PosHM 3 hmEx) Z } = true := by native_decide
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat (PosHM 3 hmEx) Z } = true := by native_decide
 
 /-- The crossing fact at the carve, index moved to the hash by the equation:
     `AgetB` of the composition at `Mod q cap` IS the carved bucket. -/
-def AgetAtMod : Term := prog{
+def AgetAtMod : Term := prog defer_check {
   λ (I : Nat). λ (R : Nat). λ (M : Nat).
   λ (L : Array I (List (Σ (k : Nat). Nat))). λ (B : List (Σ (k : Nat). Nat)).
   λ (H : Array R (List (Σ (k : Nat). Nat))).
@@ -492,7 +492,7 @@ def AgetAtMod : Term := prog{
         (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) W) B)
       I M Him
       (AgetBCatMid R B H I L) }
-def AgetAtModTy : Term := prog{
+def AgetAtModTy : Term := prog defer_check {
   Π (I : Nat) → Π (R : Nat) → Π (M : Nat) →
   Π (L : Array I (List (Σ (k : Nat). Nat))) → Π (B : List (Σ (k : Nat). Nat)) →
   Π (H : Array R (List (Σ (k : Nat). Nat))) →
@@ -511,7 +511,7 @@ example : chkL AgetAtMod AgetAtModTy = true := by native_decide
     Nat-level primary (`FindValHM`, the caller's `Refl`-match handle) and the
     doc's Opt-shaped conjunct beside it. -/
 
-def FindVL : Term := prog{
+def FindVL : Term := prog defer_check {
   λ (Q : Nat). λ (L : List (Σ (k : Nat). Nat)).
     elim L return (λ (Lm : List (Σ (k : Nat). Nat)). Nat) {
       Nil => Z,
@@ -522,7 +522,7 @@ def FindVL : Term := prog{
               True => V2,
               False => Rec } } } }
 
-def FindValHM : Term := prog{
+def FindValHM : Term := prog defer_check {
   λ (Q : Nat).
   λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
       Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
@@ -540,10 +540,10 @@ def FindValHM : Term := prog{
                     HMInvT Cap Load N slots). Nat) {
                   Pair (Slots) (Inv) => FindVL Q (AgetB Cap Slots (Mod Q Cap)) } } } } }
 
-example : chkL prog{ Refl } prog{ Id Nat (FindValHM 3 hmEx) 30 } = true := by native_decide
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat (FindValHM 3 hmEx) 30 } = true := by native_decide
 
 /-- The hit leg's Nat-level conjunct. -/
-def FindVEvHit : Term := prog{
+def FindVEvHit : Term := prog defer_check {
   λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
   λ (E : Id Bool (Eqb Q K0) True).
     IdSym Nat (FindVL Q Cons(Pair(K0, V0), T)) V0
@@ -551,14 +551,14 @@ def FindVEvHit : Term := prog{
         (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
           True => V0, False => FindVL Q T })
         (Eqb Q K0) True E) }
-def FindVEvHitTy : Term := prog{
+def FindVEvHitTy : Term := prog defer_check {
   Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
     Id Bool (Eqb Q K0) True →
     Id Nat V0 (FindVL Q Cons(Pair(K0, V0), T)) }
 example : chkL FindVEvHit FindVEvHitTy = true := by native_decide
 
 /-- The miss leg's Nat-level transport. -/
-def FindVTailEv : Term := prog{
+def FindVTailEv : Term := prog defer_check {
   λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
   λ (E : Id Bool (Eqb Q K0) False).
     IdSym Nat (FindVL Q Cons(Pair(K0, V0), T)) (FindVL Q T)
@@ -566,7 +566,7 @@ def FindVTailEv : Term := prog{
         (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
           True => V0, False => FindVL Q T })
         (Eqb Q K0) False E) }
-def FindVTailEvTy : Term := prog{
+def FindVTailEvTy : Term := prog defer_check {
   Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
     Id Bool (Eqb Q K0) False →
     Id Nat (FindVL Q T) (FindVL Q Cons(Pair(K0, V0), T)) }
@@ -690,9 +690,9 @@ def hmPinUnder (tail : Term) : Term := prog{
     pin lands in the composition's cell, and the D9 conjunct is rebuilt from
     the callee's evidence by the `AgetAtMod` transport. -/
 def errOf (t : Term) : String :=
-  match checkProgram t prog{ Unit } with | .ok _ => "OK" | .error e => e
+  match checkProgram t prog defer_check { Unit } with | .ok _ => "OK" | .error e => e
 
-example : progOk (hmPinUnder prog{ () }) = true := by native_decide
+example : progOk (hmPinUnder prog defer_check { () }) = true := by native_decide
 
 /-! ## (xxx) THE E2E CHAIN — `twoGetMutChain` at hashmap scale
 
@@ -840,7 +840,7 @@ example : progOk hmChainWrongSlot = false := by native_decide
     parameter, the BODY writes it into the pack (`*nb := n2`), and honesty is
     a premise (`Hn2` ties `n2` to the hit; `Hroom` keeps the ledger). -/
 
-def BPutP : Term := prog{
+def BPutP : Term := prog defer_check {
   λ (P : Nat). λ (Key : Nat). λ (V : Nat).
     elim P return (λ (Pz : Nat). Π (L : List (Σ (k : Nat). Nat)) → List (Σ (k : Nat). Nat)) {
       Z => λ (L : List (Σ (k : Nat). Nat)).
@@ -854,22 +854,22 @@ def BPutP : Term := prog{
           Nil => Cons(Pair(Key, V), Nil),
           Cons (E) (T) Rec2 => Cons(E, Rec T) } } }
 
-example : chkL prog{ Refl } prog{ Id (List (Σ (k : Nat). Nat))
+example : chkL prog defer_check { Refl } prog defer_check { Id (List (Σ (k : Nat). Nat))
   (BPutP 1 5 77 Cons(Pair(1, 10), Nil))
   Cons(Pair(1, 10), Cons(Pair(5, 77), Nil)) } = true := by native_decide
-example : chkL prog{ Refl } prog{ Id (List (Σ (k : Nat). Nat))
+example : chkL prog defer_check { Refl } prog defer_check { Id (List (Σ (k : Nat). Nat))
   (BPutP 0 5 77 Cons(Pair(1, 10), Nil))
   Cons(Pair(1, 77), Nil) } = true := by native_decide
 
 /-- What the returned borrow holds at entry: the old value if the key was
     there, the default if not. -/
-def OrDefL : Term := prog{
+def OrDefL : Term := prog defer_check {
   λ (Q : Nat). λ (D : Nat). λ (L : List (Σ (k : Nat). Nat)).
     elim (HitL Q L) return (λ (Bm : Bool). Nat) {
       True => FindVL Q L,
       False => D } }
 
-def OrDefHM : Term := prog{
+def OrDefHM : Term := prog defer_check {
   λ (Q : Nat). λ (D : Nat).
   λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
       Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
@@ -877,11 +877,11 @@ def OrDefHM : Term := prog{
       True => FindValHM Q Hm,
       False => D } }
 
-example : chkL prog{ Refl } prog{ Id Nat (OrDefHM 3 77 hmEx) 30 } = true := by native_decide
-example : chkL prog{ Refl } prog{ Id Nat (OrDefHM 5 77 hmEx) 77 } = true := by native_decide
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat (OrDefHM 3 77 hmEx) 30 } = true := by native_decide
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat (OrDefHM 5 77 hmEx) 77 } = true := by native_decide
 
 /-- A hit at the head makes the whole bucket's `OrDefL` its head value. -/
-def OrDHitEv : Term := prog{
+def OrDHitEv : Term := prog defer_check {
   λ (Q : Nat). λ (D : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
   λ (E : Id Bool (Eqb Q K0) True).
     IdSym Nat (OrDefL Q D Cons(Pair(K0, V0), T)) V0
@@ -894,7 +894,7 @@ def OrDHitEv : Term := prog{
               True => FindVL Q Cons(Pair(K0, V0), T), False => D })
           (Eqb Q K0) True E)
         (IdSym Nat V0 (FindVL Q Cons(Pair(K0, V0), T)) (FindVEvHit Q K0 V0 T E))) }
-def OrDHitEvTy : Term := prog{
+def OrDHitEvTy : Term := prog defer_check {
   Π (Q : Nat) → Π (D : Nat) → Π (K0 : Nat) → Π (V0 : Nat) →
   Π (T : List (Σ (k : Nat). Nat)) →
     Id Bool (Eqb Q K0) True →
@@ -902,7 +902,7 @@ def OrDHitEvTy : Term := prog{
 example : chkL OrDHitEv OrDHitEvTy = true := by native_decide
 
 /-- A miss at the head passes `OrDefL` through to the tail. -/
-def OrDMissEv : Term := prog{
+def OrDMissEv : Term := prog defer_check {
   λ (Q : Nat). λ (D : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
   λ (E : Id Bool (Eqb Q K0) False).
     IdSym Nat (OrDefL Q D Cons(Pair(K0, V0), T)) (OrDefL Q D T)
@@ -922,14 +922,14 @@ def OrDMissEv : Term := prog{
           (FindVL Q Cons(Pair(K0, V0), T)) (FindVL Q T)
           (IdSym Nat (FindVL Q T) (FindVL Q Cons(Pair(K0, V0), T))
             (FindVTailEv Q K0 V0 T E)))) }
-def OrDMissEvTy : Term := prog{
+def OrDMissEvTy : Term := prog defer_check {
   Π (Q : Nat) → Π (D : Nat) → Π (K0 : Nat) → Π (V0 : Nat) →
   Π (T : List (Σ (k : Nat). Nat)) →
     Id Bool (Eqb Q K0) False →
     Id Nat (OrDefL Q D T) (OrDefL Q D Cons(Pair(K0, V0), T)) }
 example : chkL OrDMissEv OrDMissEvTy = true := by native_decide
 
-def BumpPutP : Term := prog{
+def BumpPutP : Term := prog defer_check {
   λ (P : Nat). λ (Key : Nat). λ (V : Nat). λ (R : Nat).
   λ (A : Array (S R) (List (Σ (k : Nat). Nat))).
     arrRec (List (Σ (k : Nat). Nat))
@@ -945,7 +945,7 @@ def BumpPutP : Term := prog{
 /-- The or_insert release: slot `i`'s bucket put-or-appended at `(p, key)`,
     and the count REPLACED by the parameter `n2` — the body stores it, the
     signature's `Hn2` premise keeps it honest. -/
-def SetOrInsAt : Term := prog{
+def SetOrInsAt : Term := prog defer_check {
   λ (I : Nat). λ (R : Nat). λ (P : Nat). λ (N2 : Nat). λ (Key : Nat). λ (V : Nat).
   λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
       Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
@@ -977,7 +977,7 @@ def SetOrInsAt : Term := prog{
 
 /-- The map-to-bucket `OrDefL` glue at the carve — packaged so the op's body
     applies one lemma instead of inlining the two-place congruence. -/
-def OrDAgetEv : Term := prog{
+def OrDAgetEv : Term := prog defer_check {
   λ (Q : Nat). λ (D : Nat). λ (I : Nat). λ (R : Nat). λ (M : Nat).
   λ (L : Array I (List (Σ (k : Nat). Nat))). λ (B : List (Σ (k : Nat). Nat)).
   λ (H : Array R (List (Σ (k : Nat). Nat))).
@@ -1013,7 +1013,7 @@ def OrDAgetEv : Term := prog{
             (λ (W : List (Σ (k : Nat). Nat)). FindVL Q W)
             (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M) B
             (AgetAtMod I R M L B H Him)))) }
-def OrDAgetEvTy : Term := prog{
+def OrDAgetEvTy : Term := prog defer_check {
   Π (Q : Nat) → Π (D : Nat) → Π (I : Nat) → Π (R : Nat) → Π (M : Nat) →
   Π (L : Array I (List (Σ (k : Nat). Nat))) → Π (B : List (Σ (k : Nat). Nat)) →
   Π (H : Array R (List (Σ (k : Nat). Nat))) →
@@ -1106,7 +1106,7 @@ def hmOrUnder (tail : Term) : Term := prog{
     } } } } } };
   %tail }
 
-example : progOk (hmOrUnder prog{ () }) = true := by native_decide
+example : progOk (hmOrUnder prog defer_check { () }) = true := by native_decide
 
 /-! ### The or_insert round-trip — and the append path's honest seam
 
@@ -1216,7 +1216,7 @@ example : progRejects orInsReuse "does not have its parameter type" = true := by
     composition through `AgetAtMod`, the same way every crossing fact here
     does; the bucket level is where the content lives.) -/
 
-def BSetPKEq : Term := prog{
+def BSetPKEq : Term := prog defer_check {
   λ (Q : Nat). λ (V : Nat).
   λ (L : List (Σ (k : Nat). Nat)).
     elim L return (λ (Lm : List (Σ (k : Nat). Nat)).
@@ -1288,7 +1288,7 @@ def BSetPKEq : Term := prog{
                         True => Cons(Pair(K2, V), T),
                         False => Cons(Pair(K2, V2), BSetK Q V T) })
                       (Eqb Q K2) False Ef))) } } }
-def BSetPKEqTy : Term := prog{
+def BSetPKEqTy : Term := prog defer_check {
   Π (Q : Nat) → Π (V : Nat) → Π (L : List (Σ (k : Nat). Nat)) → Π (P : Nat) →
     Id Nat P (FindPosL Q L) →
     Id (List (Σ (k : Nat). Nat)) (BSetP P V L) (BSetK Q V L) }

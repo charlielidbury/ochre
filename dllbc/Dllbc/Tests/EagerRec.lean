@@ -58,7 +58,7 @@ open Dllbc
 /-- `mod a b`, the shape a textbook writes and the old normalizer could not run:
     the recursive result is the scrutinee of the `Eqb` test AND the value the
     `False` branch returns. -/
-def ModTFn : Term := prog{
+def ModTFn : Term := prog defer_check {
   λ (A : Nat). λ (B : Nat).
     elim A return (λ (Am : Nat). Nat) {
       Z => Z,
@@ -96,12 +96,12 @@ example : (modOf 1057 32).natOf? == some 1 := by native_decide
 
 /-- The arm ignores `Rec` outright — a case split wearing a recursion's clothes.
     No call is made, so this is `Z` at any depth and costs nothing. -/
-def DiscardFn : Term := prog{
+def DiscardFn : Term := prog defer_check {
   λ (A : Nat). elim A return (λ (Am : Nat). Nat) { Z => Z, S (A') Rec => Z } }
 def DiscardFnT : Dllbc.Term := DiscardFn
 
 /-- The arm ignores `Rec` and answers with the PREDECESSOR instead. -/
-def PredFn : Term := prog{
+def PredFn : Term := prog defer_check {
   λ (A : Nat). elim A return (λ (Am : Nat). Nat) { Z => Z, S (A') Rec => A' } }
 def PredFnT : Dllbc.Term := PredFn
 
@@ -110,7 +110,7 @@ def PredFnT : Dllbc.Term := PredFn
     which is `False` at every level, so the answer is `Z` however deep it went.
     This is the cost/answer split stated as a term: full depth is paid, and the
     result is what lazy reduction gave. -/
-def ZeroOutFn : Term := prog{
+def ZeroOutFn : Term := prog defer_check {
   λ (A : Nat). elim A return (λ (Am : Nat). Nat) {
     Z => Z,
     S (A') Rec => elim (Eqb (S(Z)) Z) return (λ (Bm : Bool). Nat) {
@@ -134,10 +134,10 @@ example : (app1 ZeroOutFnT 64).natOf? == some 0 := by native_decide
     neutral — `deepForce` has to leave that stuck rather than treat it as an
     error or as a value. All three still answer `Z`. -/
 
-def openTwo : Term := prog{ S(S(%(Term.pvar "x"))) }
+def openTwo : Term := prog defer_check { S(S(%(Term.pvar "x"))) }
 
-example : (pv prog{ %DiscardFnT %openTwo }).natOf? == some 0 := by native_decide
-example : (pv prog{ %ZeroOutFnT %openTwo }).natOf? == some 0 := by native_decide
+example : (pv prog defer_check { %DiscardFnT %openTwo }).natOf? == some 0 := by native_decide
+example : (pv prog defer_check { %ZeroOutFnT %openTwo }).natOf? == some 0 := by native_decide
 
 /-! ### The two spellings agree
 
@@ -146,17 +146,17 @@ example : (pv prog{ %ZeroOutFnT %openTwo }).natOf? == some 0 := by native_decide
     ARGUMENT. It is no longer the only viable spelling, and the point of keeping
     it here is that it must still give `ModT`'s answers. -/
 
-def NextRFn : Term := prog{
+def NextRFn : Term := prog defer_check {
   λ (R : Nat). λ (C : Nat).
     elim C return (λ (Cz : Nat). Nat) { Z => Z, S (C') Rc => S(R) } }
 def NextRFnT : Dllbc.Term := NextRFn
 
-def NextCFn : Term := prog{
+def NextCFn : Term := prog defer_check {
   λ (B : Nat). λ (C : Nat).
     elim C return (λ (Cz : Nat). Nat) { Z => B, S (C') Rc => C' } }
 def NextCFnT : Dllbc.Term := NextCFn
 
-def ModCFn : Term := prog{
+def ModCFn : Term := prog defer_check {
   λ (A : Nat).
     elim A return (λ (Az : Nat). Π (B : Nat) → Π (R : Nat) → Π (C : Nat) → Nat) {
       Z => λ (B : Nat). λ (R : Nat). λ (C : Nat). R,

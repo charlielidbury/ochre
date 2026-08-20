@@ -112,7 +112,7 @@ example : progRejects sliceTwice "s#0 holds ⊥ (use-after-move" = true := by na
     and `Bnd` exists in the lane to STAGE a pack's bound before the call that
     consumes it — which is the binding this feature removes. -/
 
-def Val : Term := prog{
+def Val : Term := prog defer_check {
   λ (MAX : Nat). λ (A : Σ0 (n : Nat). Le n MAX).
     elim A return (λ (Q : Σ0 (n : Nat). Le n MAX). Nat) { Pair (x) (h) => x } }
 
@@ -321,7 +321,7 @@ def uAddC (tail : Term) : Term := prog{
       { Pair(Pair(Add (Val MAX a) (Val MAX b), H), Refl) };
   %tail }
 
-example : progOk (uAddC prog{ () }) = true := by native_decide
+example : progOk (uAddC prog defer_check { () }) = true := by native_decide
 
 /-- **THE COMPOSITE, staging-free.** `capacity` and `growth` are both consumed by
     the first call and both cited after it; `nc` is consumed by the second call
@@ -363,7 +363,7 @@ def grow (tail : Term) : Term := uAddC prog{
         } };
   %tail }
 
-example : progOk (grow prog{ () }) = true := by native_decide
+example : progOk (grow prog defer_check { () }) = true := by native_decide
 
 /-! ### It RUNS, on both branches
 

@@ -753,11 +753,11 @@ def vlist : List Nat → Val | [] => .ctor "Nil" [] | h :: t => .ctor "Cons" [vn
 
 /-! ## The segment vocabulary computes (`Len`/`Take`/`Drop`) -/
 
-example : (Pure.nf 1000 (prog{ %(Std.lenFnT) %(Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]) })
+example : (Pure.nf 1000 (prog defer_check { %(Std.lenFnT) %(Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]) })
     == Std.ofNat 3) = true := by native_decide
-example : (Pure.nf 1000 (prog{ %(Std.takeFnT) %(Std.ofNat 2) %(Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]) })
+example : (Pure.nf 1000 (prog defer_check { %(Std.takeFnT) %(Std.ofNat 2) %(Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]) })
     == Dllbc.Std.ofList [Std.ofNat 1, Std.ofNat 2]) = true := by native_decide
-example : (Pure.nf 1000 (prog{ %(Std.dropFnT) %(Std.ofNat 2) %(Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]) })
+example : (Pure.nf 1000 (prog defer_check { %(Std.dropFnT) %(Std.ofNat 2) %(Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]) })
     == Dllbc.Std.ofList [Std.ofNat 3]) = true := by native_decide
 
 /-! ## The cursor family, as a PREFIX
@@ -810,7 +810,7 @@ def withCursors (rest : Term) : Term := prog{
     `swap`'s to `nth2` are retargeted into the chain, which for `NthL`/`nth2` also
     exercises the `[i]` HOIST: the decreasing parameter is second, so a caller
     writing declaration order is permuted into the sealed telescope. -/
-def cursors : Term := withCursors prog{ () }
+def cursors : Term := withCursors prog defer_check { () }
 example : progOk cursors = true := by native_decide
 
 /-! ## Callers — concrete proofs are `()`, OOB is a call-site rejection -/

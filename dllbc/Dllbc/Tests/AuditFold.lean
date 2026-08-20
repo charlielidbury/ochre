@@ -47,7 +47,7 @@ namespace Dllbc.Tests.AuditFold
     refuses to ⇒-move. This is `MkInv` in miniature: the flagship rebuilds its
     invariant from projections typed at the ENTRY array, and this rebuilds it from
     the entry clause itself, which is the same claim with none of the arithmetic. -/
-def SortedAId : Term := prog{
+def SortedAId : Term := prog defer_check {
   λ (N : Nat). λ (A : Array N Nat). λ (H : SortedA N A). H }
 
 /-- **THE ACCEPTANCE TEST** (was `s1P2a` on `hm-flagship-fable`, over the real
@@ -170,7 +170,7 @@ def segsSuspended : Val :=
   .node "§segs" [Val.segNode (Term.nat 1) (Val.sym 0), Val.segNode (Term.nat 2) (.loanM 0)]
 
 example : Term.beq (subsKnowledge segsRejoined)
-  prog{ arrCat %(Term.nat 1) %(Term.nat 2) %(Term.sym 0) %(Term.sym 1) } = true := by native_decide
+  prog defer_check { arrCat %(Term.nat 1) %(Term.nat 2) %(Term.sym 0) %(Term.sym 1) } = true := by native_decide
 
 example : Term.beq (subsKnowledge segsSuspended) (.const "@stateComponent") = true := by
   native_decide

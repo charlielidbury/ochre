@@ -73,7 +73,7 @@ open Dllbc.StdLemmas (LeAdd LeRefl IdCongr IdSym AddZero)
 
 /-- The error message, verbatim, for the both-sides prints. -/
 def errOf (t : Term) : String :=
-  match checkProgram t prog{ Unit } with | .ok _ => "OK" | .error e => e
+  match checkProgram t prog defer_check { Unit } with | .ok _ => "OK" | .error e => e
 
 /-! ## §1 The container — `OpaqueFill`'s `AllK7`, at a SYMBOLIC extent
 
@@ -82,7 +82,7 @@ def errOf (t : Term) : String :=
     question sharp: an escaping VALUE borrow cannot break it and an escaping KEY
     borrow can. Reused verbatim from §7.5/§7.6 so the two measurements compose. -/
 
-def AllK7 : Term := prog{
+def AllK7 : Term := prog defer_check {
   λ (M : Nat). λ (A : Array M (Σ (k : Nat). Nat)).
     arrRec (Σ (k : Nat). Nat)
       (λ (Mz : Nat). λ (Az : Array Mz (Σ (k : Nat). Nat)). Type)
@@ -131,7 +131,7 @@ def symCarveEsc : Term := prog defer_check {
     SYMBOLIC extent (§7.6 only ever needed extents 2 and 3). This is the spelling
     a `SetHM` written the obvious way would have. -/
 
-def AVSetT : Term := prog{
+def AVSetT : Term := prog defer_check {
   λ (I : Nat). λ (V : Nat).
     elim I return (λ (Z0 : Nat). Π (N : Nat) → Π (A : Array N (Σ (k : Nat). Nat)) → Array N (Σ (k : Nat). Nat)) {
       Z => λ (N : Nat). λ (A : Array N (Σ (k : Nat). Nat)).
@@ -152,7 +152,7 @@ def AVSetT : Term := prog{
               acons M X (Rec M XS))
           N A } }
 
-def PVSetNT : Term := prog{
+def PVSetNT : Term := prog defer_check {
   λ (N : Nat). λ (I : Nat). λ (V : Nat).
     λ (P : Σ0 (a : Array N (Σ (k : Nat). Nat)). AllK7 N a).
       elim P return (λ (Pz : Σ0 (a : Array N (Σ (k : Nat). Nat)). AllK7 N a).

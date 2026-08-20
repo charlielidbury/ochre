@@ -68,7 +68,7 @@ def chkRawMsg (tm ty : Term) : String :=
   | .ok r _ => s!"ok {r}"
   | .error e _ => s!"error {e}"
 
-def U : Term := prog{ Type }
+def U : Term := prog defer_check { Type }
 
 /-- What the executing machine leaves in ONE binding (as `OpaqueFill`'s
     `runBinding`). The whole final Ω is not the assertion here: it also holds the
@@ -84,10 +84,10 @@ def runBinding (t : Term) (name : String) : Option String :=
     Each type former, at `Type`. The four ground constants first — these are the
     ones `Poly(Nat, 5)` died on. -/
 
-example : chkL prog{ Nat } U = true := by native_decide
-example : chkL prog{ Bool } U = true := by native_decide
-example : chkL prog{ Unit } U = true := by native_decide
-example : chkL prog{ Bot } U = true := by native_decide
+example : chkL prog defer_check { Nat } U = true := by native_decide
+example : chkL prog defer_check { Bool } U = true := by native_decide
+example : chkL prog defer_check { Unit } U = true := by native_decide
+example : chkL prog defer_check { Bot } U = true := by native_decide
 
 /-- `Type : Type` — the flagged arm, asserted so the decision has a test and not
     just a comment. See the module header. -/
@@ -95,32 +95,32 @@ example : chkL U U = true := by native_decide
 
 /-- The two parameterised formers, including nested, which is what makes the
     recursion in the arm visible rather than incidental. -/
-example : chkL prog{ List Nat } U = true := by native_decide
-example : chkL prog{ List (List Nat) } U = true := by native_decide
-example : chkL prog{ Array 3 Nat } U = true := by native_decide
-example : chkL prog{ Array 3 (List Nat) } U = true := by native_decide
+example : chkL prog defer_check { List Nat } U = true := by native_decide
+example : chkL prog defer_check { List (List Nat) } U = true := by native_decide
+example : chkL prog defer_check { Array 3 Nat } U = true := by native_decide
+example : chkL prog defer_check { Array 3 (List Nat) } U = true := by native_decide
 
 /-- The binder formers, which had arms already and keep them. -/
-example : chkL prog{ Π (x : Nat) → Nat } U = true := by native_decide
-example : chkL prog{ Σ (x : Nat). Nat } U = true := by native_decide
-example : chkL prog{ Id Nat 1 1 } U = true := by native_decide
+example : chkL prog defer_check { Π (x : Nat) → Nat } U = true := by native_decide
+example : chkL prog defer_check { Σ (x : Nat). Nat } U = true := by native_decide
+example : chkL prog defer_check { Id Nat 1 1 } U = true := by native_decide
 
 /-! ### …and the same formers at a type that is NOT `Type`
 
     A `false`, not an error: the expected type is checked before any parameter is
     visited, so asking `List Nat : Nat` never recurses into `Nat`. -/
 
-example : chkL prog{ Nat } prog{ Nat } = false := by native_decide
-example : chkL prog{ Bot } prog{ Nat } = false := by native_decide
-example : chkL prog{ List Nat } prog{ Nat } = false := by native_decide
-example : chkL prog{ Array 3 Nat } prog{ Nat } = false := by native_decide
+example : chkL prog defer_check { Nat } prog defer_check { Nat } = false := by native_decide
+example : chkL prog defer_check { Bot } prog defer_check { Nat } = false := by native_decide
+example : chkL prog defer_check { List Nat } prog defer_check { Nat } = false := by native_decide
+example : chkL prog defer_check { Array 3 Nat } prog defer_check { Nat } = false := by native_decide
 
 /-- Arity is exact. `List` alone is `Type → Type` and does not inhabit `Type`;
     it falls past the formation arm to the deferral, which is the honest answer —
     a partially applied former is a neutral this judgment has no rule for, not a
     type that fails to be one. -/
-example : chkL prog{ List } U = false := by native_decide
-example : chkL prog{ Array 3 } U = false := by native_decide
+example : chkL prog defer_check { List } U = false := by native_decide
+example : chkL prog defer_check { Array 3 } U = false := by native_decide
 
 /-! ## §2 The two binder-mode markers, refused
 
@@ -163,12 +163,12 @@ example : chkL prog defer_check { &mut Nat } U = false := by native_decide
     The first component is checked at `Type` — the judgment that did not exist —
     and the second at whatever the first turned out to be, which is what makes
     the pack dependent rather than a pair of unrelated things. -/
-def sigTy : Term := prog{ Σ (T : Type). T }
-example : chkL prog{ Pair(Nat, 5) } sigTy = true := by native_decide
-example : chkL prog{ Pair(List Nat, Cons(1, Nil)) } sigTy = true := by native_decide
+def sigTy : Term := prog defer_check { Σ (T : Type). T }
+example : chkL prog defer_check { Pair(Nat, 5) } sigTy = true := by native_decide
+example : chkL prog defer_check { Pair(List Nat, Cons(1, Nil)) } sigTy = true := by native_decide
 
 /-- …and it DISCRIMINATES: the payload must inhabit the type that was packed. -/
-example : chkL prog{ Pair(Bool, 5) } sigTy = false := by native_decide
+example : chkL prog defer_check { Pair(Bool, 5) } sigTy = false := by native_decide
 
 /-- (b) A generic `fn`, DECLARED — which already worked, kept as the control that
     isolates the call as the thing that changed. -/
@@ -221,11 +221,11 @@ example : runBinding polyList "l" = some "Cons (S (S (S (S (S Z))))) Nil" := by 
     type is `Array n T` at a SYMBOLIC length and a comptime element type. Both
     of the `Array` arm's premises are live here — `n : Nat` against a telescope
     σ, and `T : Type` against the comptime parameter. -/
-def MkFillFn : Term := prog{
+def MkFillFn : Term := prog defer_check {
   λ (T : Type). λ (X : T). λ (N : Nat). elim N return (λ (Nm : Nat). Array Nm T) {
     Z => Arr(),
     S (M) Rec => acons M X Rec } }
-def MkFillTy : Term := prog{ Π (T : Type) → Π (X : T) → Π (N : Nat) → Array N T }
+def MkFillTy : Term := prog defer_check { Π (T : Type) → Π (X : T) → Π (N : Nat) → Array N T }
 example : chkL MkFillFn MkFillTy = true := by native_decide
 example : chkL MkFillTy U = true := by native_decide
 
@@ -244,23 +244,23 @@ example : progOk polyArr = true := by native_decide
     because of it. -/
 
 /-- A codomain that is not a type. -/
-example : chkL prog{ Π (x : Nat) → 5 } U = false := by native_decide
-example : chkL prog{ Σ (x : Nat). 5 } U = false := by native_decide
+example : chkL prog defer_check { Π (x : Nat) → 5 } U = false := by native_decide
+example : chkL prog defer_check { Σ (x : Nat). 5 } U = false := by native_decide
 
 /-- A domain that is not a type. -/
-example : chkL prog{ Π (x : 5) → Nat } U = false := by native_decide
+example : chkL prog defer_check { Π (x : 5) → Nat } U = false := by native_decide
 
 /-- `Id` demands its endpoints inhabit its carrier — the premise `Refl`'s
     `ctorSig` entry already assumes when it converts them. -/
-example : chkL prog{ Id Nat True True } U = false := by native_decide
+example : chkL prog defer_check { Id Nat True True } U = false := by native_decide
 
 /-- …and the positives the recursion has to keep. The binder is opened at a fresh
     σ carrying the domain, which is what lets a later domain MENTION an earlier
     binder (`Π (X : T)`, where `T` is the type parameter) and a codomain mention
     the length index. -/
-example : chkL prog{ Π (T : Type) → Π (X : T) → T } U = true := by native_decide
-example : chkL prog{ Π (n : Nat) → Array n (List Nat) } U = true := by native_decide
-example : chkL prog{ Σ (c : Nat). Array c Nat } U = true := by native_decide
+example : chkL prog defer_check { Π (T : Type) → Π (X : T) → T } U = true := by native_decide
+example : chkL prog defer_check { Π (n : Nat) → Array n (List Nat) } U = true := by native_decide
+example : chkL prog defer_check { Σ (c : Nat). Array c Nat } U = true := by native_decide
 
 /-- **A borrow-moded binder is a `false`, not §2's error.** `Π (v : &mut τ) → …`
     is a well-formed thing — a function SIGNATURE, which is where `fsig` keeps
@@ -326,32 +326,32 @@ example : chkS [(0, .const "Nat")] (Term.sym 0) .type = "ok false" := by native_
 
 /-- …and a formation OVER a type parameter, which is `List T` inside a generic
     function's own signature. -/
-example : chkS [(0, .type)] prog{ List %(Term.sym 0) } .type = "ok true" := by native_decide
-example : chkS [(0, .type)] prog{ Array 3 %(Term.sym 0) } .type = "ok true" := by
+example : chkS [(0, .type)] prog defer_check { List %(Term.sym 0) } .type = "ok true" := by native_decide
+example : chkS [(0, .type)] prog defer_check { Array 3 %(Term.sym 0) } .type = "ok true" := by
   native_decide
-example : chkS [(0, .type)] prog{ Π (x : %(Term.sym 0)) → %(Term.sym 0) } .type = "ok true" := by
+example : chkS [(0, .type)] prog defer_check { Π (x : %(Term.sym 0)) → %(Term.sym 0) } .type = "ok true" := by
   native_decide
 
 /-- A σ-headed SPINE whose signature lands in `Type` — a type-level function
     passed as a parameter, typed by the ordinary Π-instantiation the `.app` case
     already does. -/
 example :
-  chkS [(0, prog{ Π (x : Nat) → Type })] prog{ %(Term.sym 0) 3 } .type = "ok true" := by
+  chkS [(0, prog defer_check { Π (x : Nat) → Type })] prog defer_check { %(Term.sym 0) 3 } .type = "ok true" := by
   native_decide
 
 /-- A STUCK SPINE that lands in `Type`: `OptP`, the hm probe's `Σ (Bool)` Option,
     is a type-valued comptime fn — a `boolRec` whose motive is `λ _. Type`. At a
     symbolic tag it does not reduce, and the spine case synthesizes `Type` from
     the motive, which is what makes a type-level `match` a type. -/
-def OptP : Term := prog{
+def OptP : Term := prog defer_check {
   λ (B : Bool). λ (T : Type). elim B return (λ (Bm : Bool). Type) {
     True => T,
     False => Unit } }
-example : chkS [(0, .const "Bool")] prog{ %OptP %(Term.sym 0) Nat } .type = "ok true" := by
+example : chkS [(0, .const "Bool")] prog defer_check { %OptP %(Term.sym 0) Nat } .type = "ok true" := by
   native_decide
 
 /-- …and the same spine under a binder, which is the type the probe's Option
     encoding actually is. -/
-example : chkL prog{ Σ (b : Bool). %OptP b Nat } U = true := by native_decide
+example : chkL prog defer_check { Σ (b : Bool). %OptP b Nat } U = true := by native_decide
 
 end Dllbc.Tests.Universe

@@ -110,7 +110,7 @@ def withNth (rest : Term) : Term := prog{
     } };
   %rest }
 
-example : progOk (withNth prog{ () }) = true := by native_decide
+example : progOk (withNth prog defer_check { () }) = true := by native_decide
 
 /-- The round trip: get position 1, write 9 through it, end the group, read the list. -/
 def getMutRoundTrip : Term := withNth prog defer_check {
@@ -289,7 +289,7 @@ def withSplit (rest : Term) : Term := prog{
     group (`Nth2`, §6.1) and the carve (M24) compose without adjustment. What is
     missing is not the ability to write `split_at_mut`; it is the ability for its
     caller to learn anything from it. -/
-example : progOk (withSplit prog{ () }) = true := by native_decide
+example : progOk (withSplit prog defer_check { () }) = true := by native_decide
 
 def splitCaller : Term := withSplit prog defer_check {
   let z = Arr(3, 1, 2);
@@ -434,7 +434,7 @@ def withNthPin (rest : Term) : Term := prog{
     `S(k)` through the recursive call's own pin PROJECTED at the shared exit σ:
     the stage-0 probe's conversion (`Set (S k) r (Cons h t) ≡ Cons h (Set k r t)`,
     all atoms neutral), now run by the audit itself. -/
-example : progOk (withNthPin prog{ () }) = true := by native_decide
+example : progOk (withNthPin prog defer_check { () }) = true := by native_decide
 
 /-- THE TARGET, live: get position 1, write 9 through it, end the group — and
     the CHECKER knows `y ≡ [1, 9, 3]`. The release is the pin with the
@@ -491,7 +491,7 @@ def withGetRO (rest : Term) : Term := prog{
     } };
   %rest }
 
-example : progOk (withGetRO prog{ () }) = true := by native_decide
+example : progOk (withGetRO prog defer_check { () }) = true := by native_decide
 
 /-- Reads through `r` (the non-consuming comptime deref), writes nothing — and
     the checker knows `x` is UNCHANGED: `y ≡ [1,2,3]`, where `readOnlyCaller`
@@ -558,7 +558,7 @@ def withNthPinRO (rest : Term) : Term := prog{
     } };
   %rest }
 
-example : progOk (withNthPinRO prog{ () }) = true := by native_decide
+example : progOk (withNthPinRO prog defer_check { () }) = true := by native_decide
 
 def readOnlyDerivedCaller : Term := withNthPinRO prog defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
@@ -616,7 +616,7 @@ def withNthEv (rest : Term) : Term := prog{
     } };
   %rest }
 
-example : progOk (withNthEv prog{ () }) = true := by native_decide
+example : progOk (withNthEv prog defer_check { () }) = true := by native_decide
 
 /-- Pin AND evidence — the full get_mut signature: the parameter says what the
     container becomes, the result says where the cursor points. -/
@@ -632,7 +632,7 @@ def withNthPinEv (rest : Term) : Term := prog{
     } };
   %rest }
 
-example : progOk (withNthPinEv prog{ () }) = true := by native_decide
+example : progOk (withNthPinEv prog defer_check { () }) = true := by native_decide
 
 /-- WAY 2, COMPLETED. `readOnlyDerivedCaller` above stops at `y ≡ [1, T, 3]`
     because nothing said what `T` is; the evidence says it. Match the returned

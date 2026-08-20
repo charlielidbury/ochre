@@ -140,7 +140,7 @@ def vRun (body arg : Term) : Term := prog{
   let x = %arg; let p = &m x; F(p); () }
 
 /-- Concrete payloads for v: the small list pool, as the terms a caller writes. -/
-def vArgs : List Term := [prog{ Nil }, prog{ Cons(1, Nil) }, prog{ Cons(1, Cons(2, Nil)) }]
+def vArgs : List Term := [prog defer_check { Nil }, prog defer_check { Cons(1, Nil) }, prog defer_check { Cons(1, Cons(2, Nil)) }]
 
 /-! ## The property, for the list-borrow telescope
 
@@ -184,7 +184,7 @@ def nCheck (body : Term) : Term := prog{ fn F (n : Nat) -> Nat { %body }; () }
 def nRun (body arg : Term) : Term := prog{
   fn F (n : Nat) -> Nat { %body };
   let r = F(%arg); () }
-def nArgs : List Term := [prog{ 0 }, prog{ 1 }, prog{ 2 }]
+def nArgs : List Term := [prog defer_check { 0 }, prog defer_check { 1 }, prog defer_check { 2 }]
 
 def nAccepted : List Term := nBodies.filter (fun b => progOk (nCheck b))
 
@@ -213,8 +213,8 @@ def bcRun (body a0 a1 : Term) : Term := prog{
   fn F (b : &mut Nat, c : Bool) -> Unit { %body };
   let x = %a0; let p = &m x; F(p, %a1); () }
 def bcArgs : List (Term × Term) :=
-  [ (prog{ 0 }, prog{ True }), (prog{ 0 }, prog{ False }),
-    (prog{ 1 }, prog{ True }), (prog{ 1 }, prog{ False }) ]
+  [ (prog defer_check { 0 }, prog defer_check { True }), (prog defer_check { 0 }, prog defer_check { False }),
+    (prog defer_check { 1 }, prog defer_check { True }), (prog defer_check { 1 }, prog defer_check { False }) ]
 
 def bcAccepted : List Term := bcBodies.filter (fun b => progOk (bcCheck b))
 

@@ -131,7 +131,7 @@ def runY (t : Term) : Option Val :=
   | .error _ => none
 
 /-- The verbatim checker message, for the failure reports. -/
-def why (t : Term) (retType : Term := prog{ Unit }) : String :=
+def why (t : Term) (retType : Term := prog defer_check { Unit }) : String :=
   match checkProgram t retType with
   | .ok _ => "ACCEPTED"
   | .error e => e
