@@ -2,6 +2,20 @@ import Dllbc.Program
 
 open Lean
 
+/-- **`x : τ` tooltips for DLLBC variables** (docs/10). On by default: the whole
+    point is that hovering a variable in a `prog{ }` block answers, the way
+    hovering a Lean variable does, without anyone opting in.
+
+    It is an option rather than a constant because hover metadata is the one part
+    of the diagnostic machinery collected on the SUCCESS path — a block that
+    checks pays for it — so there has to be a way to turn it off and measure what
+    it cost. Registered at the root rather than inside `Dllbc` so the name a user
+    writes is the name it has. -/
+register_option dllbc.hover : Bool := {
+  defValue := true
+  descr := "collect DLLBC hover types (`x : τ` tooltips) while elaborating `prog{ }` blocks"
+}
+
 namespace Dllbc
 
 /-! # `prog check { … }` — the check happens AS IT ELABORATES (docs/05)
@@ -155,16 +169,99 @@ initialize registerTraceClass `Dllbc.check
     (see `SpanAcc.collect`): the walker's span-filing calls become a boolean test
     and the emitted `Term` is byte-identical. The failing path re-runs the same
     action with `collect := true` to build the table it now needs. -/
-def elabWith (collect : Bool) (act : UM (TSyntax `term)) : TermElabM (Expr × SpanAcc) := do
-  let (stx, spans) ← liftMacroM (StateT.run act { collect })
+def elabWith (collect : Bool) (hover : Bool) (act : UM (TSyntax `term)) :
+    TermElabM (Expr × SpanAcc) := do
+  let (stx, spans) ← liftMacroM (StateT.run act { collect, hover })
   let e ← elabTerm stx (some (mkConst ``Dllbc.Term))
   synthesizeSyntheticMVarsNoPostponing
   return (← instantiateMVars e, spans)
 
+/-! ## Hover tooltips (docs/10)
+
+Two sources of truth meet here. The walker already resolved every identifier, so
+what a PARAMETER's occurrence means is settled at elaboration time and arrives
+rendered (`SpanAcc.hovers`). What a `let` binder means is settled only by the
+⇒-walk, so those occurrences arrive as `(span, id, name)` and are joined against
+the table `letStep` filed (`SpanAcc.occs` × `St.letTypes`).
+
+Both end up as the same thing: an `Info.ofDelabTermInfo` leaf whose
+`mkDocString?` overrides the hover text at that span. The override is total — no
+Lean-level type line renders above it — which is what makes a DLLBC type the
+whole answer rather than a footnote to a `Dllbc.Term`. -/
+
+/-- Is this option on? -/
+def hoverEnabled : TermElabM Bool := return dllbc.hover.get (← getOptions)
+
+/-- What the checker knew about a binder, as markdown.
+
+    **The two cases are genuinely different questions and are spelled
+    differently.** A symbolic value has a type, in `sctx`, and reads `x : τ`. A
+    concrete one has no type recorded anywhere — this is a bidirectional checker
+    with `hasType` and no synthesis function, so there is nothing to look up and
+    nothing honest to invent — and reads `x ≡ v`, which is not a weaker answer but
+    a stronger one: the checker knows the value. Printing a guessed type instead
+    would replace a fact with an inference. -/
+def letTooltip (name : String) (τ? : Option Dllbc.Term) (v : Dllbc.Val) : String :=
+  match τ? with
+  | some τ => s!"**{name} : `{Dllbc.Term.pretty τ}`**"
+  | none => s!"**{name} ≡ `{Dllbc.Val.pretty v}`** — comptime-known value"
+
+/-- First entry per binder, flagged when a later one disagrees.
+
+    v1 is FIRST-PATH, per docs/10: a σ's type refines per branch, and a statement
+    is checked once per path, so one binder legitimately has several binding-time
+    types. Nothing is merged and no per-path list is shown; a disagreement is
+    reported as one. The raw entries are compared rather than their renderings, so
+    the flag costs no pretty-printing. -/
+def letIndex (tbl : List (Dllbc.Var × Option Dllbc.Term × Dllbc.Val)) :
+    Std.HashMap (Nat × String) ((Option Dllbc.Term × Dllbc.Val) × Bool) :=
+  tbl.foldl (fun m e =>
+    let k := (e.1.id, e.1.name)
+    match m[k]? with
+    | none => m.insert k (e.2, false)
+    | some (e0, differs) => if differs || e0 == e.2 then m else m.insert k (e0, true)) {}
+
+/-- Attach `text` as the hover content at `ref`. Positionless syntax is skipped:
+    a leaf the server cannot locate is one nobody can hover. -/
+def pushHover (ref : Syntax) (text : String) : TermElabM Unit := do
+  if ref.getPos?.isNone then return
+  pushInfoLeaf <| .ofDelabTermInfo {
+    elaborator := .anonymous
+    stx := ref
+    lctx := (← getLCtx)
+    expectedType? := none
+    expr := mkConst ``Unit.unit
+    isBinder := false
+    mkDocString? := some fun _ => pure text
+  }
+
+/-- Push every tooltip this block earned: the walker's own, then the checker's
+    joined onto the occurrences that need them. An occurrence with no entry is
+    passed over in silence — unlike a missing SPAN, which is a defect worth
+    reporting, a missing type is the ordinary case for a block that was never
+    checked (`defer_check`, or a splice) and for a binder no path reached. -/
+def pushHovers (spans : SpanAcc)
+    (tbl : List (Dllbc.Var × Option Dllbc.Term × Dllbc.Val)) : TermElabM Unit := do
+  for (ref, text) in spans.hovers do
+    pushHover ref text
+  unless tbl.isEmpty || spans.occs.isEmpty do
+    let idx := letIndex tbl
+    for (ref, id, name) in spans.occs do
+      if let some (e, differs) := idx[(id, name)]? then
+        pushHover ref (letTooltip name e.1 e.2 ++
+          if differs then " *(differs per path)*" else "")
+
 /-- Elaborate a block and check NOTHING — the fence. Same value as `prog{ }`
-    produces, without the check that would reject it. -/
+    produces, without the check that would reject it.
+
+    S1 hovers still fire here, and that is the design rather than a leak: a
+    parameter's type is its ANNOTATION, which is written in the source whether
+    anything checked it or not. S2 hovers do not, and cannot — no walk ran, so no
+    Ω existed to read a `let`'s type out of. -/
 def elabUnchecked (act : UM (TSyntax `term)) : TermElabM Expr := do
-  let (e, _) ← elabWith false act
+  let hover ← hoverEnabled
+  let (e, spans) ← elabWith false hover act
+  if hover then pushHovers spans []
   return e
 
 /-- Reify accumulated key syntaxes into key **values**, to match a breadcrumb. -/
@@ -265,12 +362,16 @@ def throwDiag {α : Type} (ref : Syntax) (retRef : Option Syntax) (spans : SpanA
     defect, and proximity is no protection — both versions sat two lines above the
     function they misdescribed. -/
 def elabChecked (ref : Syntax) (act : UM (TSyntax `term)) : TermElabM Expr := do
-  let (e, _) ← elabWith false act
+  let hover ← hoverEnabled
+  let (e, spans) ← elabWith false hover act
   let isOpen (x : Expr) : Bool := x.hasMVar || x.hasFVar
   if isOpen e then
     trace[Dllbc.check] "DEFERRED — the assembled value is not closed (a splice of \
       a local, or an unsolved metavariable). It is checked where it is \
       instantiated."
+    -- S1 only, for the reason `elabUnchecked` gives: the annotations are in the
+    -- source, and nothing walked.
+    if hover then pushHovers spans []
     return e
   let t0 ← IO.monoMsNow
   let v ← evalTermValue e
@@ -282,11 +383,20 @@ def elabChecked (ref : Syntax) (act : UM (TSyntax `term)) : TermElabM Expr := do
   -- A term that wants a stated type says so with a SEAL, `(e : τ)`, whose
   -- symbolic-⇒ rule verifies it at the node; there is no `-> τ` side-channel and
   -- no separate pure path.
-  let res := checkProgramDiag v none
+  -- Same walk either way (`checkProgramHover` is `checkProgramDiag`'s paths and
+  -- verdict with the seed's `hover` flag flipped), so the accept/reject decision
+  -- does not depend on whether anyone is collecting tooltips.
+  let res := if hover then checkProgramHover v none else (checkProgramDiag v none).map (fun _ => [])
   let t2 ← IO.monoMsNow
   trace[Dllbc.check] "checked: reify {t1 - t0}ms, check {t2 - t1}ms"
   match res with
-  | .ok _ => return e
+  | .ok tbl =>
+    -- THE HOVER PUSH IS ON THE SUCCESS PATH, and that is the one structural way
+    -- this feature differs from the error spans beside it (docs/10): a squiggle
+    -- costs nothing until something fails, a tooltip costs on every block that
+    -- checks. Which is why the option above exists and why the cost is measured.
+    if hover then pushHovers spans tbl
+    return e
   | .error diag =>
     -- THE SECOND WALK, and the only place one happens. The first ran without
     -- collecting spans, because a block that checks never reads them. This block
@@ -294,7 +404,7 @@ def elabChecked (ref : Syntax) (act : UM (TSyntax `term)) : TermElabM Expr := do
     -- with collection on and map the breadcrumb through it. Re-walking a program
     -- that has already been rejected is free at human scale, and it is what buys
     -- "a block that passes pays nothing for its spans".
-    let (_, spans) ← elabWith true act
+    let (_, spans) ← elabWith true false act
     throwDiag ref none spans diag
 
 end ProgElab

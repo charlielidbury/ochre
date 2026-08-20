@@ -63,16 +63,20 @@ partial def endScope (fuel : Nat) : M Unit := do
   | some ℓ => do endLoan fuel ℓ; endScope fuel
   | none => pure ()
 
-/-- **Check a program** (§8): one symbolic ⇒-walk, auditing each path's result at
-    `retType`. No table: scope is the call table (§8). -/
-def checkProgramDiag (t : Term) (retType? : Option Term := some ty{ Unit }) :
-    Except Diag Unit :=
-  let paths :=
-    (exploreD defaultFuel (atBoundary t) initSt).map
-      (fun r => r.bind (fun p =>
-        match (endScope defaultFuel).run p.2 with
-        | .ok _ st => .ok (p.1, st)
-        | .error e s => .error (Diag.of e s)))
+/-- The symbolic ⇒-walk's paths, each with its scope ended. Split out of
+    `checkProgramDiag` so that the hover variant below is the SAME walk rather
+    than a second one written to agree with it: the two differ in the seed state
+    and in what they do with the paths afterwards, and in nothing else. -/
+def programPaths (st0 : St) (t : Term) : List (Except Diag (Val × St)) :=
+  (exploreD defaultFuel (atBoundary t) st0).map
+    (fun r => r.bind (fun p =>
+      match (endScope defaultFuel).run p.2 with
+      | .ok _ st => .ok (p.1, st)
+      | .error e s => .error (Diag.of e s)))
+
+/-- The verdict on a walk's paths. THE accept/reject decision, in one place. -/
+def programVerdict (retType? : Option Term)
+    (paths : List (Except Diag (Val × St))) : Except Diag Unit :=
   match retType? with
   | some retType => auditPathsD retType paths
   -- WALK ONLY. The surface uses this when the program does not say what it
@@ -80,6 +84,32 @@ def checkProgramDiag (t : Term) (retType? : Option Term := some ty{ Unit }) :
   -- localized, and only the audit — the one check that needs a return type — is
   -- left to whoever states one.
   | none => paths.foldl (fun acc r => acc.bind (fun _ => r.map (fun _ => ()))) (.ok ())
+
+/-- **Check a program** (§8): one symbolic ⇒-walk, auditing each path's result at
+    `retType`. No table: scope is the call table (§8). -/
+def checkProgramDiag (t : Term) (retType? : Option Term := some ty{ Unit }) :
+    Except Diag Unit :=
+  programVerdict retType? (programPaths initSt t)
+
+/-- **The same walk, with the `let` type table carried out of it** (docs/10).
+
+    Same seed but for `hover`, same paths, same verdict — so a program accepted
+    here is accepted by `checkProgramDiag` and rejected here is rejected there,
+    by construction rather than by a test. What it adds is the binding-time types
+    the surface turns into `x : τ` tooltips.
+
+    Paths are concatenated in walk order and each path's own entries are put back
+    into program order, so a key's FIRST entry is the first path's — which is the
+    v1 rule, and the reason the surface can say "(differs per path)" without
+    merging anything. -/
+def checkProgramHover (t : Term) (retType? : Option Term := none) :
+    Except Diag (List (Var × Option Term × Val)) :=
+  let paths := programPaths { initSt with hover := true } t
+  (programVerdict retType? paths).map fun _ =>
+    paths.foldr (fun r acc =>
+      match r with
+      | .ok (_, st) => st.letTypes.reverse ++ acc
+      | .error _ => acc) []
 
 /-- **Check a program** (§8): one symbolic ⇒-walk, auditing each path's result at
     `retType`. No table: scope is the call table (§8). -/

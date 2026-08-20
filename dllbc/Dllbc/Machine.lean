@@ -267,6 +267,24 @@ structure St where
       One statement is checked once per path, so which path failed is half the
       diagnosis. -/
   trail : List (String × String) := []
+  -- THE HOVER TYPE TABLE (docs/10). Same class of thing as the breadcrumb above,
+  -- and it sits here for the same reason: no rule reads it, no accept/reject
+  -- depends on it, and it is not σ-bearing, so the sweeps leave it alone.
+  --
+  -- It differs from the breadcrumb in ONE way, and the difference is why it needs
+  -- a flag of its own: a breadcrumb is read only when a check FAILS, and this is
+  -- read only when one SUCCEEDS. A rejected program pays for its spans once; an
+  -- accepted one would pay for its types on every path of every check in the
+  -- corpus — including the differential's executing runs, which want none of it.
+  /-- Collect `letTypes`? Off for every existing caller (`initSt`), on only for the
+      elaborator's hover pass. A `let` costs one boolean test when it is off. -/
+  hover : Bool := false
+  /-- What the checker knew about each `let` binder AT ITS BINDING, newest first:
+      the binder, the σ's `sctx` type when the bound value is symbolic, and the
+      value itself. Nothing is rendered here — `Term.pretty` on the binding path
+      would be a real cost for a string almost nobody reads — so both components
+      are stored as they already exist in hand and the surface renders on demand. -/
+  letTypes : List (Var × Option Term × Val) := []
 deriving Inhabited
 
 /-- The machine monad: errors are `String`s, state is `St`. -/
@@ -321,6 +339,26 @@ def noteArg (t : Term) : M Unit := modify fun s => { s with argKey := some t }
     reading quadratic in the length of the run. -/
 def noteArm (scrut : Var) (ctor : String) : M Unit :=
   modify fun s => { s with trail := (scrut.name, ctor) :: s.trail }
+
+/-- Record what a `let` bound, for `x : τ` tooltips (docs/10). Called from
+    `letStep` — the one shared binding site — so all three drivers file, and a
+    fourth would inherit it exactly as it inherits the breadcrumb.
+
+    **A σ is where a TYPE lives.** A symbolic value is a reserved pure name whose
+    type `sctx` holds, so that lookup is the whole of the type case. A concrete
+    value has no type recorded anywhere and none is invented: the value is stored
+    and the surface says what it is, which is the honest answer rather than a
+    synthesized one this bidirectional checker has no function to produce. -/
+def noteLetType (x : Var) (v : Val) : M Unit :=
+  modify fun s =>
+    if !s.hover then s else
+      let τ? : Option Term :=
+        match v with
+        | .know (.pvar p) => match symOfName? p with
+          | some σ => s.sctx.lookup σ
+          | none => none
+        | _ => none
+      { s with letTypes := (x, τ?, v) :: s.letTypes }
 
 /-! ## State helpers -/
 
@@ -4852,22 +4890,38 @@ def auditAllPaths : Nat → Term → List (Except String (Val × St)) → St →
     σ-bearing: it is a key into a source table, no value is observed through it,
     and the frame isolation this function exists to enforce is about Ω,
     obligations and groups, none of which it touches. -/
-def auditAllPathsD : Nat → Term → List (Except Diag (Val × St)) → St → M St
-  | _, _, [], acc => pure acc
-  | _, _, .error d :: _, _ => do
+def auditAllPathsD : Nat → Term → List (Except Diag (Val × St)) → Nat → St → M St
+  | _, _, [], _, acc => pure acc
+  | _, _, .error d :: _, _, _ => do
     modify fun s => { s with stmtKey := d.stmtKey, argKey := d.argKey, trail := d.trail }
     throwErr d.msg
-  | fuel, ret, .ok (v, st) :: rest, acc =>
+  | fuel, ret, .ok (v, st) :: rest, base, acc =>
     match (auditAction fuel ret v).run st with
     | .error e sErr => do
       modify fun s =>
         { s with stmtKey := sErr.stmtKey, argKey := sErr.argKey, trail := sErr.trail }
       throwErr e
     | .ok _ st' =>
-      auditAllPathsD fuel ret rest
+      auditAllPathsD fuel ret rest base
         { acc with nextLoan := max acc.nextLoan st'.nextLoan
                    nextSym := max acc.nextSym st'.nextSym
-                   nextGroup := max acc.nextGroup st'.nextGroup }
+                   nextGroup := max acc.nextGroup st'.nextGroup
+                   -- THE HOVER TABLE CROSSES THE SEAL, for the same reason and by
+                   -- the same argument as the breadcrumb above (docs/10, docs/05
+                   -- pillar B): a `fn` body is where the corpus lives, so a table
+                   -- that stopped at the seal would give `x : τ` tooltips to toy
+                   -- programs and nothing else. It is a binder ↦ description map,
+                   -- not σ-bearing state; the frame isolation this function
+                   -- enforces is about Ω, obligations and groups, and it touches
+                   -- none of them.
+                   --
+                   -- `base` is the entry length, so each path contributes only its
+                   -- OWN entries and the enclosing ones are not copied per path.
+                   -- Prepending keeps the earliest path's entries last in the
+                   -- newest-first list, which is what makes the surface's
+                   -- first-path rule come out right after its reverse.
+                   letTypes := st'.letTypes.take (st'.letTypes.length - base)
+                               ++ acc.letTypes }
 
 /-! ## §8's globals: what a function body may name besides its own binders
 
@@ -5520,6 +5574,11 @@ mutual
       -- identifies the statement outright and carries none of the RHS's bulk.
       noteStmt (.letIn x .unit .unit)
       let v ← if x.isComptime then readComptimeVal fuel rhs else readR fuel rhs
+      -- The hover type table, filed at the same one site and for the same reason
+      -- (docs/10). AFTER the read, because the read is what produces the value the
+      -- binder's type is read off, and BEFORE `bindSlot`, which is arbitrary —
+      -- neither observes the other.
+      noteLetType x v
       bindSlot x v
   termination_by fuel _ _ => (fuel, 16, 0)
   /-- The `assign` step: RHS by ⇒ first (§2.5 ordering), target by ⇐. -/
@@ -6094,7 +6153,7 @@ mutual
       -- here; that left every error in a function body unlocalized, which is where
       -- most of the corpus is.
       let advanced ← auditAllPathsD fuel ret
-        (exploreD fuel (pushContinuations body) st0) st0
+        (exploreD fuel (pushContinuations body) st0) st0.letTypes.length st0
       -- `sealSites` crosses back out with the supplies, and for the same reason
       -- (M32 R3): it is a fact about which σ ids are spoken for, so restoring the
       -- caller's copy would let a later mint hand out a σ this audit already
@@ -6102,7 +6161,9 @@ mutual
       -- body deterministic across two audits of that body.
       set { saved with nextLoan := advanced.nextLoan, nextSym := advanced.nextSym
                        nextGroup := advanced.nextGroup
-                       sealSites := advanced.sealSites }
+                       sealSites := advanced.sealSites
+                       -- The body's `x : τ` entries, carried out (docs/10).
+                       letTypes := advanced.letTypes }
   termination_by fuel _ _ _ => (fuel, 6, 0)
   /-- **The seal, at either arrow** (M32 R3, suspensions.md §2.4). One rule, two
       callers: `readR`'s `.seal` arm and the `let` arrow's ⇝ reader

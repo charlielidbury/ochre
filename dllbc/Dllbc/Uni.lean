@@ -537,10 +537,80 @@ structure SpanAcc where
   stmts : Array (Syntax × Syntax) := #[]
   /-- Call-argument keys: the argument's own term, filed under its own span. -/
   args : Array (Syntax × Syntax) := #[]
+  -- HOVER METADATA (docs/10). A SECOND collection flag rather than a second
+  -- reader of `collect`, because the two are read on opposite paths: spans locate
+  -- a REJECTION, hovers describe an ACCEPTED program. Sharing one flag would
+  -- either collect spans on every passing elaboration (the +6.9% `collect` exists
+  -- to avoid) or collect hovers only on failing ones, which is nobody's feature.
+  /-- Is anyone going to read the hover tables? -/
+  hover : Bool := false
+  /-- Spans whose tooltip the WALKER already knows, rendered: a parameter binder
+      or occurrence (its annotation is right there in the source) and a callee
+      name (its signature is the `fn` above it). No checker involvement, so these
+      work in `prog defer_check { }` too. -/
+  hovers : Array (Syntax × String) := #[]
+  /-- Spans whose tooltip only the CHECKER knows: an occurrence of a runtime
+      binding, to be joined against `St.letTypes` by id AND name. -/
+  occs : Array (Syntax × Nat × String) := #[]
+  /-- Lexically scoped, innermost first: `(name, runtime id, annotation text)` for
+      every parameter binder in scope.
+
+      **The id is in the key and is not decoration.** A body may shadow a
+      parameter (`let v = …` under `(v : &mut List Nat)`), and a name-only lookup
+      would then show the parameter's annotation on an occurrence of the `let`.
+      Requiring the occurrence to resolve to the parameter's own id is what makes
+      shadowing fall through to the checker's table instead of reporting a stale
+      answer confidently. -/
+  ptypes : List (String × Nat × String) := []
+  /-- Lexically scoped: `fn` name ↦ its signature's source text. This is what the
+      plan called "the registry" — there is no registry (docs/05 §1.A: it was
+      never built, because scope IS the call table), and scope answers the same
+      question here for the same reason. -/
+  fsigs : List (String × String) := []
 deriving Inhabited
 
 /-- The surface walker's monad: `MacroM` plus the span side channel. -/
 abbrev UM := StateT SpanAcc MacroM
+
+/-! ## Hover metadata: filing, scoping, and reading source text -/
+
+/-- The source text a piece of syntax was written as. `reprint` is exact — it
+    gives back what the author typed, not a pretty-printing of what it elaborated
+    to — which is the whole of S1: a parameter's type needs no computation
+    because it is already written down. -/
+def srcText (stx : Syntax) : String :=
+  match stx.reprint with
+  | some s => s.trimAscii.toString
+  | none => "?"
+
+/-- File a tooltip the walker computed itself. -/
+def noteHover (ref : Syntax) (text : String) : UM Unit :=
+  modify fun a => if a.hover then { a with hovers := a.hovers.push (ref, text) } else a
+
+/-- File an occurrence of a runtime binding, for the checker-side join. -/
+def noteOcc (ref : Syntax) (id : Nat) (name : String) : UM Unit :=
+  modify fun a => if a.hover then { a with occs := a.occs.push (ref, id, name) } else a
+
+/-- Render a binder's tooltip. One place, so a binder and its occurrences cannot
+    drift into two spellings. -/
+def hoverText (name : String) (ty : String) : String := s!"**{name} : `{ty}`**"
+
+/-- Run `act` with extra parameter types and callee signatures in scope, and put
+    the scope back afterwards.
+
+    Save-and-restore on the accumulator rather than a new argument threaded
+    through the walker: `ptypes`/`fsigs` are lexically scoped, the walker is a
+    30-call mutual block, and the port's standing rule is to ride existing walker
+    state rather than add a layer. The restore is skipped on the throwing path,
+    which costs nothing — a block that failed to elaborate has no tooltips. -/
+def withHoverScope {α : Type} (ps : List (String × Nat × String))
+    (fs : List (String × String)) (act : UM α) : UM α := do
+  let a ← get
+  if !a.hover then act else do
+    modify fun a => { a with ptypes := ps ++ a.ptypes, fsigs := fs ++ a.fsigs }
+    let r ← act
+    modify fun a' => { a' with ptypes := a.ptypes, fsigs := a.fsigs }
+    pure r
 
 /-- File a statement key at its source span. -/
 def noteStmtSpan (key : TSyntax `term) (ref : Syntax) : UM Unit :=
@@ -765,6 +835,40 @@ def resolveName (rctx : List (String × Nat)) (pctx : List String) (x : Ident) :
           | some id => `(Dllbc.Term.var ⟨$(quote id), $(quote s)⟩)
           | none => pure ⟨x.raw⟩
 
+/-- File a hover for one identifier OCCURRENCE (docs/10).
+
+    **This mirrors `resolveName`'s precedence and must keep mirroring it.** A name
+    that resolves to a pure binder is not a runtime variable, and `resolveName`
+    decides that by consulting `pctx` FIRST; a tooltip that skipped the same test
+    would describe a `let` the occurrence does not refer to. The two are separate
+    functions because one is `MacroM` and produces a term while this is `UM` and
+    produces metadata, so the shared discipline is stated rather than factored:
+    **pure binder, then runtime slot, then `fn` slot, then nothing.**
+
+    Nothing is the right answer for the rest. A constructor, a kernel constant and
+    a Lean-level lemma all hover as themselves in the ordinary Lean way once they
+    reach the emitted term, and inventing a DLLBC tooltip for them would replace
+    real information with a guess. -/
+def noteIdent (rctx : List (String × Nat)) (pctx : List String) (x : Ident) : UM Unit := do
+  let a ← get
+  if !a.hover then return
+  let s := x.getId.toString
+  if pctx.contains s then return
+  match localId rctx s with
+  | some id =>
+    -- A parameter answers from its own annotation (S1) — but only when the
+    -- occurrence resolves to THAT binder; see `SpanAcc.ptypes`.
+    match a.ptypes.find? (fun p => p.1 == s && p.2.1 == id) with
+    | some p => noteHover x.raw (hoverText s p.2.2)
+    | none => noteOcc x.raw id s
+  | none =>
+    match fnSlotId rctx s with
+    | some id =>
+      match a.fsigs.lookup s with
+      | some sig => noteHover x.raw (hoverText s sig)
+      | none => noteOcc x.raw id s
+    | none => pure ()
+
 /-! ## Unified `uterm` / `ublk` elaborators (§ points 1–3)
 
 Runtime binders (let, match patterns) mint fresh absolute ids threaded through
@@ -923,8 +1027,14 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     if parsed.isEmpty then
       Macro.throwErrorAt stx "λr: a runtime λ must bind at least one argument. `λ(){ … }` is a thunk, and a thunk makes ι ambiguous — an arm applied to no arguments and an arm with nothing owed become the same spine. A recursor arm at a non-functional motive is an ordinary term; write it as one."
     parsed.forM (fun p => liftM (checkBinder p.1))
+    -- `elabLamBinders` pushes each binder's annotation into scope as it mints it
+    -- (a binder's type may mention the ones to its left, so the pushes have to be
+    -- incremental); this is the matching pop, which is what keeps the scope
+    -- lexical.
+    let saved := (← get).ptypes
     let (rctx', next', binderSyns) ← elabLamBinders rctx pctx next parsed
     let (b', n) ← elabUBlk rctx' pctx next' b
+    modify fun a => if a.hover then { a with ptypes := saved } else a
     return (← `(Dllbc.Term.lamTel [$binderSyns,*] $b'), n)
   | `(uterm| Π ($x:ident : $τ:uterm) → $b:uterm) => do
     checkBinder x
@@ -1019,6 +1129,10 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
       -- Filing each argument's term at its own span is the whole cost of turning
       -- that into a squiggle on the offending argument alone.
       spanOfArgs args' (args.getElems.map (·.raw))
+      -- The CALLEE NAME. `noteIdent` sends a `fn` slot to its signature and a
+      -- value-callee slot to the checker's table, which is the same split the two
+      -- lines below make for the emitted term.
+      noteIdent rctx pctx c
       match localId rctx name with
       | some id =>
         return (← `(Dllbc.Term.appSpine (.var ⟨$(quote id), $(quote name)⟩) [$args',*]), n)
@@ -1087,6 +1201,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
       -- at `readR`'s `.app` case, where `runtimeRecSpine?` already makes the same
       -- kind of choice. See `appSpineVar?` in `Machine.lean`.
       else
+        noteIdent rctx pctx h
         let hterm ← resolveName rctx pctx h
         let out ← argTerms.foldlM (fun acc a => `(Dllbc.Term.app $acc $a)) hterm
         return (out, n)
@@ -1095,7 +1210,11 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
       let (argTerms, n) ← elabUList rctx pctx n0 args.toList
       let out ← argTerms.foldlM (fun acc a => `(Dllbc.Term.app $acc $a)) hterm
       return (out, n)
-  | `(uterm| $x:ident) => return (← resolveName rctx pctx x, next)
+  | `(uterm| $x:ident) => do
+    -- EVERY occurrence, not just the binder: the walker resolves each ident to
+    -- its variable already, so filing the pair costs one lookup (docs/10 S1).
+    noteIdent rctx pctx x
+    return (← resolveName rctx pctx x, next)
   | _ => Macro.throwErrorAt stx "decl: unexpected term syntax"
 
 /-- **The scrutinee half of every match row** (M34 sugar (i)). Returns the `Var`
@@ -1160,6 +1279,12 @@ partial def elabLamBinders (rctx : List (String × Nat)) (pctx : List String) (n
     let (τT, n1) ← elabUTerm rctx pctx (next + 1) τ
     let τD ← binderDom name τT
     let entry ← `(((⟨$(quote next), $(quote name)⟩ : Dllbc.Var), $τD))
+    -- A runtime λ's binders are annotated exactly as a `fn`'s are, so they are
+    -- the same S1 case (docs/10). Their ids come from the counter rather than
+    -- from a position, which is why the entry carries `next` rather than an index.
+    noteHover x.raw (hoverText name (srcText τ.raw))
+    modify fun a =>
+      if a.hover then { a with ptypes := (name, next, srcText τ.raw) :: a.ptypes } else a
     let (rctx', n2, more) ← elabLamBinders ((name, next) :: rctx) pctx n1 rest
     pure (rctx', n2, #[entry] ++ more)
 
@@ -1271,16 +1396,29 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- `resolveName`'s slot hit, because a `fn` that is never referenced shadows
     -- the lemma just as thoroughly and would go unasked there.
     lemmaShadowCheckAt name (name.getId.toString)
-    let parsed ← ps.getElems.toList.mapM fun (p : TSyntax `ulamb) => match p with
-      | `(ulamb| $x:ident : $τ:uterm) => pure (x.getId.toString, τ)
+    -- The binder's IDENT is kept, not just its name: it is the span a parameter's
+    -- tooltip is filed at (docs/10 S1).
+    let parsedI ← ps.getElems.toList.mapM fun (p : TSyntax `ulamb) => match p with
+      | `(ulamb| $x:ident : $τ:uterm) => pure (x, τ)
       | _ => Macro.throwErrorAt p "fn: malformed parameter (expected `x : τ`)"
+    let parsed := parsedI.map fun (x, τ) => (x.getId.toString, τ)
     let names := parsed.map (·.1)
     let n := names.length
     -- The telescope's own §5.2 positional context, and the body's: parameter `i`
     -- at runtime id `i`, fresh binders from `n`. Identical to what `decl{ }` builds
     -- — deliberately, since the `FnDef` this produces has to BE the one it builds.
     let fullRctx : List (String × Nat) := names.zip (List.range n)
-    let teleSyns ← buildTele [] rctx pctx 0 parsed
+    -- **S1 — a parameter's type is ALREADY WRITTEN DOWN** (docs/10). The tooltip
+    -- is the annotation's own source text: exact, no computation, and no checker
+    -- involvement, which is why parameter hovers work in `prog defer_check { }`
+    -- too. Keyed by the §5.2 positional id, so that a body-local `let` shadowing a
+    -- parameter falls through to the checker's table instead of being answered
+    -- confidently from the wrong binder.
+    let pTypes : List (String × Nat × String) :=
+      (parsedI.zip (List.range n)).map fun ((x, τ), i) =>
+        (x.getId.toString, i, srcText τ.raw)
+    parsedI.forM fun (x, τ) => noteHover x.raw (hoverText x.getId.toString (srcText τ.raw))
+    let teleSyns ← withHoverScope pTypes [] (buildTele [] rctx pctx 0 parsed)
     -- **THE BODY SEES THE ENCLOSING SCOPE** (M32 R2, suspensions.md §2.6). The
     -- `decl{}`-era params-only context retires here: a `fn` body may cite the
     -- comptime bindings lexically above it — a sibling `fn`'s name, a `let H0 =
@@ -1297,8 +1435,8 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- assumed: with id-keying the citation is bound by whichever parameter shares
     -- its number, drops out of ρ, and the sealed body's fresh Ω has nothing to
     -- resolve it against.
-    let (retT, _) ← elabUTerm (fullRctx ++ rctx) pctx 0 ret
-    let (bodyT, _) ← elabUBlk (fullRctx ++ rctx) pctx n body
+    let (retT, _) ← withHoverScope pTypes [] (elabUTerm (fullRctx ++ rctx) pctx 0 ret)
+    let (bodyT, _) ← withHoverScope pTypes [] (elabUBlk (fullRctx ++ rctx) pctx n body)
     let decT ← match dec with
       | none => `((none : Option Nat))
       | some d =>
@@ -1324,7 +1462,18 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- audit could not carry out (see `auditAllPathsD`): the error lands on the
     -- declaration rather than on the whole program.
     spanOfFn nm (mkNullNode #[name, ret])
-    let (rest', n2) ← elabUBlk ((nm, Dllbc.declSlot) :: rctx) pctx next rest
+    -- **A CALLEE'S SIGNATURE, from scope** (docs/10 S1's cheap extension). The
+    -- plan says "from the registry"; there is no registry — docs/05 §1.A deleted
+    -- it before it was written, because a callee is a binding lexically above the
+    -- call and so scope IS the call table. Scope answers this question too, and
+    -- the entry is visible for exactly `rest`: not inside the body (a `fn` is not
+    -- in scope in its own right-hand side, §8) and not after the block.
+    let sigText := "(" ++ ", ".intercalate
+        (parsedI.map fun (x, τ) => s!"{x.getId} : {srcText τ.raw}")
+      ++ ") -> " ++ srcText ret.raw
+    noteHover name.raw (hoverText nm sigText)
+    let (rest', n2) ← withHoverScope [] [(nm, sigText)]
+      (elabUBlk ((nm, Dllbc.declSlot) :: rctx) pctx next rest)
     return (← `(Dllbc.Term.letIn $slot
                   (Dllbc.FnMacro.fnElabOrFail
                     (Dllbc.FnDef.mk $(quote nm) [$teleSyns,*] $retT $bodyT $decT))
@@ -1363,6 +1512,10 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- are globally unique, so it identifies the statement outright and carries
     -- none of the right-hand side's bulk.
     spanOfLet n1 name (mkNullNode #[x, e])
+    -- The `let` BINDER's own span, filed like an occurrence: its type comes from
+    -- the checker (docs/10 S2), so it joins against `St.letTypes` exactly as the
+    -- uses below it do, under the same id.
+    noteOcc x.raw n1 name
     let (rest', n2) ← elabUBlk ((name, n1) :: rctx) pctx' (n1 + 1) rest
     return (← `(Dllbc.Term.letIn ⟨$(quote n1), $(quote name)⟩ $e' $rest'), n2)
   -- **`let C(a, b) = e ; rest` = `match e { C(a, b) => rest }`** (M34 sugar (ii)).
