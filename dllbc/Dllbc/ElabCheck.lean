@@ -205,7 +205,7 @@ def trailText (trail : List (String × String)) : String :=
 def throwDiag {α : Type} (ref : Syntax) (retRef : Option Syntax) (spans : SpanAcc)
     (diag : Diag) : TermElabM α := do
   let path := if diag.trail.isEmpty then m!"" else m!", on the path where {trailText diag.trail}"
-  let head := m!"dllbc: the program is rejected{path}:\n{diag.msg}"
+  let head := m!"dllbc{path}:\n{diag.msg}"
   if diag.atReturn then
     if let some r := retRef then throwErrorAt r head
   let find (norm : Dllbc.Term → Dllbc.Term) (entries : Array (Syntax × Syntax))

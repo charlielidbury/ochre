@@ -29,7 +29,7 @@ set_option trace.Dllbc.check false
     type the argument was checked against. -/
 
 /--
-error: dllbc: the program is rejected:
+error: dllbc:
 call: argument (S (S (S Z))) does not have its parameter type (Bool)
 -/
 #guard_msgs in
@@ -43,7 +43,7 @@ call: argument (S (S (S Z))) does not have its parameter type (Bool)
     The move is three statements in; the read that follows it is the error. -/
 
 /--
-error: dllbc: the program is rejected:
+error: dllbc:
 readR: x#0 holds ⊥ (use-after-move or uninitialized). If a CALL moved it and that callee only needs it in types or proofs, capitalizing the callee's parameter makes the argument a ⇝-read, which consumes nothing (§6).
 -/
 #guard_msgs in
@@ -61,7 +61,7 @@ readR: x#0 holds ⊥ (use-after-move or uninitialized). If a CALL moved it and t
     failed is half the diagnosis. -/
 
 /--
-error: dllbc: the program is rejected, on the path where n ⇒ S:
+error: dllbc, on the path where n ⇒ S:
 readR(*): borrow payload is already a hole (⊥) — nothing to take
 -/
 #guard_msgs in
@@ -80,7 +80,7 @@ readR(*): borrow payload is already a hole (⊥) — nothing to take
     that was asked for rather than whichever statement happened to run last. -/
 
 /--
-error: dllbc: the program is rejected:
+error: dllbc:
 audit: result (S Z) does not have return type (Bool)
 -/
 #guard_msgs in
@@ -97,7 +97,7 @@ audit: result (S Z) does not have return type (Bool)
     where it matters most, because a `fn` body is where the corpus lives. -/
 
 /--
-error: dllbc: the program is rejected:
+error: dllbc:
 call: argument (S (S (S Z))) does not have its parameter type (Bool)
 -/
 #guard_msgs in
@@ -109,7 +109,7 @@ call: argument (S (S (S Z))) does not have its parameter type (Bool)
 /-! ## (4b) INSIDE a `fn` body — the statement -/
 
 /--
-error: dllbc: the program is rejected:
+error: dllbc:
 readR: a#1 holds ⊥ (use-after-move or uninitialized). If a CALL moved it and that callee only needs it in types or proofs, capitalizing the callee's parameter makes the argument a ⇝-read, which consumes nothing (§6).
 -/
 #guard_msgs in
@@ -179,7 +179,7 @@ example :
     is the lemma's own line. -/
 
 /--
-error: dllbc: the program is rejected:
+error: dllbc:
 the term does not have its stated type (Π(N : ⇝Nat). Id #N #N)
 -/
 #guard_msgs in
