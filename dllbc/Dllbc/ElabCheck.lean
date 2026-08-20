@@ -122,7 +122,6 @@ this, stop and report rather than widening it. -/
 
 syntax "prog{" ublk "}" : term
 syntax "prog" &"defer_check" "{" ublk "}" : term
-syntax "prog" "->" uterm "{" ublk "}" : term
 
 namespace ProgElab
 open Lean Elab Term Meta Dllbc.Surface
@@ -237,46 +236,6 @@ def throwDiag {α : Type} (ref : Syntax) (retRef : Option Syntax) (spans : SpanA
       throwErrorAt ref (head ++ m!"\n(no span for the failing statement — reported at the \
         program; this is a span-table gap, please report it)")
 
-/-- **Is this term a program?** — asked of the VALUE, and answered by the calculus
-    rather than by the surface.
-
-    The first cut of this asked whether the block contained a `fn`, on the
-    reasoning that a `fn` carries its own `-> retType` and so supplies the
-    specification. That is true of the SPEC but false as a test of PROGRAM-hood,
-    and the demo caught it immediately: `let x = Cons(1,Nil); let y = x; let z = x`
-    is a use-after-move with no `fn` anywhere, and a syntactic test files it as a
-    pure term and checks nothing.
-
-    The right test already exists and is the calculus's own. `reflectC`'s refusal
-    list — `.seal`, `.borrow`, `.assign`, `.seq`, `.matchE`, `.call`, an
-    imperative λ — **IS this calculus's definition of the pure sub-grammar**
-    (§1.3, quoted in `ProgMacro`'s header). So: a term ⇝ refuses is a program, and
-    a term it accepts is pure. No second definition of the fragment boundary, and
-    no way for the surface's opinion to drift from the kernel's.
-
-    A `fn` still lands on the program side, because it emits a `let` of a `.seal`
-    and `.seal` heads the refusal list.
-
-    **It reads that list STRUCTURALLY (`Term.needsRuntime`) rather than by running
-    `reflectC`, and the reason is correctness before cost.** Running the reflector
-    in an empty Ω was the first implementation, and measured against the corpus it
-    disagreed on 15 of 1096 blocks — every one of them a pure SPEC term that
-    `readC` refuses only because nothing is bound to reflect it against:
-    `Id (List Nat) (*%evT) (*%evT)` (a deref of a borrow parameter),
-    `%(Std.lenFnT) %(Term.var vSlot)` (an application at a free runtime slot), the
-    Σ-typed `…Honest`/`…Lie` specs of `ArraySort` and `S19Partition`. None is a
-    program. Had the reflector stayed the classifier, all 15 would have been
-    ⇒-walked and spuriously rejected — the "false program" direction, which breaks
-    the build rather than merely missing a check.
-
-    The lesson generalises: `readC`'s refusals are of two kinds, and only one of
-    them is about the FRAGMENT. "This form has no comptime reading" is a statement
-    about the grammar; "this variable is not bound here" is a statement about the
-    state. Classification wants the first and must not read the second, so it asks
-    the syntax, not the reflector. (It is also 2.6× faster — 6.5 s against 16.8 s
-    over the corpus — but that is the lesser reason.) -/
-def isProgramValue (v : Dllbc.Term) : Bool := Dllbc.Term.needsRuntime v
-
 /-- Elaborate a block and check it with **the checker its content determines**.
 
     | content | ascription | check |
@@ -323,41 +282,27 @@ def isProgramValue (v : Dllbc.Term) : Bool := Dllbc.Term.needsRuntime v
     is not detectable from the value alone — a fragment is indistinguishable from
     a program with a genuinely unknown callee — so it is the manual fence's
     population, 84 of the 297 sites. See docs/05 §2b and §6. -/
-def elabChecked (ref : Syntax) (ret : Option (TSyntax `uterm))
-    (act : UM (TSyntax `term)) : TermElabM Expr := do
+def elabChecked (ref : Syntax) (act : UM (TSyntax `term)) : TermElabM Expr := do
   let (e, _) ← elabWith false act
-  -- The RETURN TYPE is assembled before the closedness test, and is part of what
-  -- that test is asked about. `prog check -> %ret { … }` — the twin-template
-  -- shape, where the body is shared and only the type varies per instantiation —
-  -- has a perfectly closed BODY and an open type, so testing the body alone
-  -- would send an open `Expr` to `evalExpr` and take the kernel's
-  -- "declaration has free variables" instead of deferring. Found the hard way.
-  let retE ← ret.mapM fun r => do
-    let (re, _) ← elabWith false (do let (t, _) ← elabUTerm [] [] 0 r; pure t)
-    pure re
   let isOpen (x : Expr) : Bool := x.hasMVar || x.hasFVar
-  if isOpen e || (retE.map isOpen).getD false then
-    trace[Dllbc.check] "program: DEFERRED — the assembled value is not closed (a \
-      splice of a local, or an unsolved metavariable). It is checked where it is \
+  if isOpen e then
+    trace[Dllbc.check] "DEFERRED — the assembled value is not closed (a splice of \
+      a local, or an unsolved metavariable). It is checked where it is \
       instantiated."
     return e
-  let retVal ← retE.mapM evalTermValue
   let t0 ← IO.monoMsNow
   let v ← evalTermValue e
   let t1 ← IO.monoMsNow
-  let isProgram := isProgramValue v
-  let res :=
-    if isProgram then checkProgramDiag v retVal
-    else match retVal with
-      -- A pure term with no stated type has no specification anywhere, so there
-      -- is nothing to ask. Not a deferral: information absence. A λ is checkable
-      -- but not synthesizable, which is why the suite pairs term and type at the
-      -- probe site — the definition does not carry it.
-      | none => .ok ()
-      | some τ => checkPureDiag v τ
+  -- ONE CHECKER, NO ROUTING. The classifier is gone: every block gets the
+  -- top-level ⇒-walk, and the intra-term staging is done by the author's own
+  -- per-binder capitalization, which `letStep` already reads (⇝ for a capital
+  -- binder, ⇒ for a lowercase one — Machine.lean, shared by all three drivers).
+  -- A term that wants a stated type says so with a SEAL, `(e : τ)`, whose
+  -- symbolic-⇒ rule verifies it at the node; there is no `-> τ` side-channel and
+  -- no separate pure path.
+  let res := checkProgramDiag v none
   let t2 ← IO.monoMsNow
-  trace[Dllbc.check] "{if isProgram then "program" else "pure term"}: \
-    reify {t1 - t0}ms, check {t2 - t1}ms"
+  trace[Dllbc.check] "checked: reify {t1 - t0}ms, check {t2 - t1}ms"
   match res with
   | .ok _ => return e
   | .error diag =>
@@ -368,16 +313,14 @@ def elabChecked (ref : Syntax) (ret : Option (TSyntax `uterm))
     -- that has already been rejected is free at human scale, and it is what buys
     -- "a block that passes pays nothing for its spans".
     let (_, spans) ← elabWith true act
-    throwDiag ref (ret.map (·.raw)) spans diag
+    throwDiag ref none spans diag
 
 end ProgElab
 
 open Surface ProgElab in
 elab_rules : term
   | `(prog{ $b:ublk }) =>
-    elabChecked b none (do let (t, _) ← elabUBlk [] [] 0 b; pure t)
-  | `(prog -> $ret { $b:ublk }) =>
-    elabChecked b (some ret) (do let (t, _) ← elabUBlk [] [] 0 b; pure t)
+    elabChecked b (do let (t, _) ← elabUBlk [] [] 0 b; pure t)
   -- THE FENCE, and it is the only annotation the information rule asks anyone to
   -- write. Its population is programs that exist BECAUSE they fail: a
   -- `progRejects` twin's rejection IS the assertion, so failing to elaborate

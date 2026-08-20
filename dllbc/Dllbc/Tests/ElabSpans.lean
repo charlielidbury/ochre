@@ -81,13 +81,13 @@ readR(*): borrow payload is already a hole (⊥) — nothing to take
 
 /--
 error: dllbc:
-audit: result (S Z) does not have return type (Bool)
+seal: the sealed term (S Z) does not have its ascribed type (Bool)
 -/
 #guard_msgs in
-#check (prog -> Bool {
+#check (prog{
   fn F (n : Nat) -> Unit { () };
   let x = S(Z);
-  x } : Term)
+  (x : Bool) } : Term)
 
 /-! ## (4a) INSIDE a `fn` body — the argument
 
@@ -142,62 +142,99 @@ example :
     instantiated below at a type it satisfies and at one it does not, and it is
     those INSTANTIATIONS that carry the assertions. -/
 
-def under (ret : Term) : Term := prog -> %ret {
+def under (ret : Term) : Term := prog{
   let x = S(Z);
-  x }
+  (x : %ret) }
 
 -- The `-> τ` is elaboration metadata and not part of the value, so both
 -- instantiations are the SAME `Term` and the return type is supplied to the
 -- assertion. That is the twin pattern exactly: one body, two claims about it.
-example : progOk (under prog{ Nat }) prog{ Nat } = true := by native_decide
+example : progOk (under prog defer_check { Nat }) prog defer_check { Nat } = true := by native_decide
 example :
-    progRejects (under prog{ Bool }) "does not have return type" prog{ Bool } = true := by
+    progRejects (under prog defer_check { Bool }) "does not have its ascribed type" prog defer_check { Bool } = true := by
   native_decide
 
 /-! ## (7) THE OTHER HALF OF THE INFORMATION RULE — an ascribed PURE block
 
     A block with no `fn` in it carries no specification, so nothing can be asked
-    of it — unless a `-> τ` supplies one, and then the check that type asks for is
-    `hasTypeT`, not the ⇒-walk. This extends elaboration-time checking to PROOFS:
-    a lemma with a type error fails at its own definition instead of at a `chk`
-    probe in another file.
+    of it — unless a SEAL supplies one. `(e : τ)` is the ascription, in the
+    grammar, and its symbolic-⇒ rule verifies the term at the node. This extends
+    elaboration-time checking to PROOFS: a lemma with a type error fails at its
+    own definition instead of at a `chk` probe in another file.
 
-    `LeRefl` is `StdLemmas`' own, verbatim, with its type moved from the separate
-    `LeReflTy` definition into the ascription. -/
+    `LeRefl` is `StdLemmas`' own, verbatim, sealed at the type its separate
+    `LeReflTy` definition states.
+
+    **The `!=` is the point, not a workaround.** `prog -> τ { M }` treated the
+    type as elaboration METADATA and produced `M`; a seal is a TERM FORMER and
+    produces `.seal s M τ`. So retiring `-> τ` in favour of the seal changes what
+    the block evaluates to, and this assertion pins that difference rather than
+    hiding it. Anything comparing a sealed block against an unsealed constant has
+    to account for the seal. -/
 
 example :
-    ((prog -> Π (N : Nat) → Le N N {
-        λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
-          Z => unit,
-          S (K) Ih => Ih } })
-     == StdLemmas.LeRefl) = true := by native_decide
+    (prog{ (λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
+             Z => unit,
+             S (K) Ih => Ih } : Π (N : Nat) → Le N N) } != StdLemmas.LeRefl) = true := by
+  native_decide
 
-/-! And the lie fails at the definition. The message is thinner than the program
-    path's — `hasTypeT` answers `false` without saying where inside the term the
-    mismatch was, so there is no statement to point at and the error lands on the
-    ascription (the plan's S3 is what would sharpen it). Thinner, but local: this
-    is the lemma's own line. -/
+/-! And the lie fails at the definition, at the seal node.
+
+    **A COST OF THE MIGRATION, RECORDED RATHER THAN HIDDEN.** The retired
+    `checkPureDiag` path printed one line — "the term does not have its stated
+    type (Π(N : ⇝Nat). Id #N #N)" — naming only the TYPE. The seal prints the
+    whole NORMALIZED TERM before naming the type, so the same lie on a real
+    `StdLemmas` proof produces roughly fifteen lines of `natRec` spine. That is
+    worse to read, and it is also unpinnable: any change to normalization would
+    break a `#guard_msgs` on it.
+
+    So the specimen here is deliberately TINY — `(unit : Nat)` — which keeps the
+    property under test (a pure ascription mismatch reports at the seal) and drops
+    only the incidental bulk. The verbosity is a real regression against the
+    retired path and belongs in the report, not in this file's expectations. -/
 
 /--
 error: dllbc:
-the term does not have its stated type (Π(N : ⇝Nat). Id #N #N)
+seal: the sealed term (unit) does not have its ascribed type (Nat)
 -/
 #guard_msgs in
-#check (prog -> Π (N : Nat) → Id Nat N N {
-  λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
-    Z => unit,
-    S (K) Ih => Ih } } : Term)
+#check (prog{ (unit : Nat) } : Term)
 
-/-! ## (8) A bare pure block is checked by nothing, and that is information
-    absence rather than a policy
+/-! ## (8) `defer_check` elaborates and checks nothing
 
-    No `fn`, no ascription: there is no specification anywhere, and a λ is
-    checkable but not synthesizable. Nothing is deferred here — there is simply
-    no question to ask. It elaborates to exactly what `ty{ }` gives. -/
+    The one explicit opt-out. It parses and binds; no walk, no verdict. What it
+    marks is a block whose checking lives at its PROBE — a proof checked by a
+    `chk`, a spec term, a rejection twin whose rejection is its assertion. -/
 
 example :
-    ((prog{ λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
+    ((prog defer_check { λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
                     Z => unit, S (K) Ih => Ih } })
      == StdLemmas.LeRefl) = true := by native_decide
+
+/-! ## (9) THE SEAL IS THE ASCRIPTION — the specimen that retired `prog -> τ`
+
+    **This case is the user's own probe**, written during review to ask whether
+    the built-in ascription already did what the `-> τ` arm was hand-rolling. It
+    does. `(M : τ)` is surface syntax for `.seal s M τ`, and `Syntax.lean`'s
+    description of that node is verbatim the arm's job: "CHECKING (⇒, symbolic):
+    verify `t : u` ONCE, at the node — this check *is* the audit".
+
+    So the ascription is in the GRAMMAR, the check happens at a term node the
+    span machinery already localizes, and there is no macro side-channel and no
+    special-cased error attribution. `(5 : Unit)` is the lie and `(5 : Nat)`
+    beside it is the control — the block would elaborate but for the first seal.
+
+    That this passes today is the retirement's whole evidence. -/
+
+/--
+error: dllbc:
+seal: the sealed term (S (S (S (S (S Z))))) does not have its ascribed type (Unit)
+-/
+#guard_msgs in
+#check (prog{
+  (5 : Unit);
+  (5 : Nat);
+  ()
+} : Term)
 
 end Dllbc.Tests.ElabSpans

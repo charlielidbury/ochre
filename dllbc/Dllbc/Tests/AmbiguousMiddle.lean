@@ -26,8 +26,14 @@ of terms for which:
   * `readC` — the kernel's own ⇝ judgment, whose refusal list IS this calculus's
     definition of the pure sub-grammar (§1.3) — **ACCEPTS**, computing a value;
   * `checkProgram` — the ⇒-walk — **REJECTS**, with a real program error;
-  * `Term.needsRuntime` — the structural classifier the surface uses — says
-    **pure**, agreeing with `readC`.
+  * and the two disagree for a REASON, not by accident.
+
+**The block-level classifier this file was originally written against is gone.**
+`Term.needsRuntime` routed `prog{ }` between checkers and agreed with `readC`
+here, which is what the original third assertion pinned. Under the final design
+there is no router: `prog{ }` always ⇒-walks and per-binder capitalization does
+the intra-term staging. The finding survives the classifier's retirement intact,
+because it was never about the classifier — it is about the two ARROWS.
 
 Both arrows are right. Under ⇝ these are ordinary comptime computations that
 normalize. Under ⇒ the same syntax is a runtime call whose argument must have
@@ -72,11 +78,6 @@ def comptimeAccepts (t : Term) : Bool :=
 example : comptimeAccepts Dllbc.Tests.S26Seal.c7 = true := by native_decide
 example : comptimeAccepts Dllbc.Tests.S26Seal.c10 = true := by native_decide
 
--- The classifier AGREES with ⇝ — which is why the agreement battery passes on
--- them: this is not an under-fire, there is no grammar refusal to have missed.
-example : Term.needsRuntime Dllbc.Tests.S26Seal.c7 = false := by native_decide
-example : Term.needsRuntime Dllbc.Tests.S26Seal.c10 = false := by native_decide
-
 -- And ⇒ REJECTS both, with real program errors. This is the assertion the suite
 -- makes about them, and it remains true and remains live.
 example : progRejects Dllbc.Tests.S26Seal.c7 "does not have its parameter type" = true := by
@@ -85,9 +86,8 @@ example : progRejects Dllbc.Tests.S26Seal.c10 "holds ⊥" = true := by native_de
 
 /-! ## THE CONTROLS
 
-    Without these the file would pass if `comptimeAccepts` were constantly true
-    or `needsRuntime` constantly false. A term that is unambiguously a program
-    must come out the other way on both. -/
+    Without these the file would pass if `comptimeAccepts` were constantly true.
+    A term that is unambiguously a program must come out the other way. -/
 
 def realProgram : Term := prog defer_check {
   fn F (b : Bool) -> Unit { () };
@@ -97,11 +97,9 @@ def realProgram : Term := prog defer_check {
   () }
 
 example : comptimeAccepts realProgram = false := by native_decide
-example : Term.needsRuntime realProgram = true := by native_decide
 
--- …and a term that is unambiguously pure comes out accepted by BOTH arrows,
--- so "⇝ accepts" alone is not what makes a term ambiguous.
+-- …and a term that is unambiguously pure is accepted by ⇝ too, so "⇝ accepts"
+-- alone is not what makes a term ambiguous — the ⇒ verdict is the other half.
 example : comptimeAccepts ty{ λ (N : Nat). N } = true := by native_decide
-example : Term.needsRuntime ty{ λ (N : Nat). N } = false := by native_decide
 
 end Dllbc.Tests.AmbiguousMiddle

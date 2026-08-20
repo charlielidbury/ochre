@@ -535,3 +535,115 @@ imported `StdLemmas` at all — **`Diff`, `Boundaries`, `Traces`, `Ledger`**, an
 after the rebase **`HashMapDiff`, `HashMapPin`**. Each is self-sufficient rather
 than inheriting from a neighbour, because inheriting is the fragility. (Five more
 import it directly *and* have `StdLemmas`; that is belt-and-braces, not residue.)
+
+## 9. THE FINAL DESIGN — checking is the default; not-checking is an author's word
+
+> **This section supersedes §6 and the three-clause statement in §2b/§6.** Those
+> are kept above as the claim history, because the route to here is the argument
+> for here. What follows is what ships.
+
+**The rule, in one sentence.** *Checking is the default; not-checking is always an
+author's explicit word; a block whose checking lives at its probe says so with
+`defer_check`.*
+
+Three forms became two:
+
+* `prog{ … }` — **always checks.** A top-level ⇒-walk. No content classifier.
+* `prog defer_check { … }` — **the one opt-out.** Parse and bind, check nothing.
+
+`prog -> τ { … }` is **retired**, and so is the classifier that routed between
+checkers.
+
+### 9.1 Why there is no `-> τ`: the calculus already had the type-carrier
+
+The ascription mechanism is **the seal**. `(M : τ)` is surface syntax elaborating
+to `.seal s M τ`, and `Syntax.lean`'s own description of it is verbatim what the
+`-> τ` arm was hand-implementing: "CHECKING (⇒, symbolic): verify `t : u` ONCE, at
+the node — this check *is* the audit — then yield a σ : u."
+
+So both halves of `-> τ` were already in the grammar. A pure term's intended type
+is `(e : τ)`. A program's return type is the seal too — the `fn` lowering already
+seals bodies at their return types, which is the same seal audit the breadcrumb
+has been crossing all along. One grammar, no macro side-channel, and no
+special-cased error attribution: the check happens at a term node the span
+machinery localizes like any other.
+
+**The pinned specimen is `Tests/Simple.lean`.** `prog{ (5 : Unit); … }` must
+report *at the seal node*, and does:
+
+```
+Dllbc/Tests/Simple.lean:16:2: error: dllbc:
+seal: the sealed term (S (S (S (S (S Z))))) does not have its ascribed type (Unit)
+```
+
+### 9.2 The checked-proof idiom, and why the law that refuses one is right
+
+A bare λ under ⇒ is **refused**, deliberately — "a λ is knowledge and needs a
+comptime destination — a capital `let`, a ⇝ parameter, a Σ0 component, or an
+ascription" (M33 Σ0's no-⇒-λ law, landed at the third attempt). Measured over the
+corpus, that law is what decides the shape of this design:
+
+| of the blocks unchecked before this change | |
+|---|---|
+| sampled | 586 |
+| fail a top-level ⇒-walk | 324 |
+| — of those, "a λ needs a comptime destination" | **303** |
+| — of those, `lookupSlot` free-variable fragments | 15 |
+| — of those, genuine program errors | 6 |
+| λ-headed among the **failures** | **302** |
+| λ-headed among the **passers** | **0** |
+
+The correlation is total, which is what makes it structural. And the refusal
+message is not an obstacle — **it names the idiom**. A new proof that wants
+elaboration-time checking supplies the destination the law asks for, and the
+destination is the seal: `prog{ (λ (N : Nat). … : Π (N : Nat) → Le N N) }`. Its
+specification IS its type, and the grammar carries it.
+
+The 303 existing proofs are not converted, because they are checked at their
+`chk` probes already; under §9.3 they say so.
+
+### 9.3 What `defer_check` means, and who wears it
+
+It marks a block **constructed for later checking** — the intent is check-later,
+and the mark states it. That is the whole population: proofs checked at their
+probes, spec terms, free-variable templates, rejection twins whose rejection IS
+the assertion, and fragments whose callee prefix arrives from a Lean-level
+assembler.
+
+Two consequences worth stating plainly. **No assertion changes and nothing
+previously unchecked starts checking** — this is a marking pass, not a semantic
+one. And **a separate parse-only macro is unnecessary**: `defer_check` already is
+parse-and-bind-only, so the fragment class and the template class share one
+spelling.
+
+### 9.4 Three invented mechanisms, each replaced by semantics already present
+
+The design arrived at through §§1–8 proposed machinery the calculus turned out
+not to need. Each fell to a question about what the code already does, and the
+pattern is worth recording because it recurred three times in one review:
+
+| proposed | what was already there |
+|---|---|
+| a block-level content classifier to pick an arrow | **per-binder capitalization** — `letStep` reads a capital binder by ⇝ and a lowercase one by ⇒ (`Machine.lean`), shared by all three drivers, so a top-level ⇒-walk routes sub-terms by the author's own annotations |
+| a separate pure-checking path (`checkPureDiag`) | **⇝ evaluation is a checking evaluation** — evaluating a λ interprets its body and checks it against its arguments |
+| a `-> τ` macro arm to carry an intended type | **the seal** — `(M : τ)`, whose symbolic-⇒ rule *is* the audit |
+
+The classifier, `Term.needsRuntime`, and the drift guard that existed only to
+watch it (`Tests/FragmentAgreement.lean`) retire together: no classifier, no
+drift. `checkPureDiag` retires with the `-> τ` arm that was its only caller, and
+`pureFuel` with it — `checkPureDiag` was its only reader.
+
+**The sharpest form of the pattern: one of the three "new facts" was already an
+assertion in this suite.** `Tests/Functions.lean` contains
+
+```
+def lamValued : Term := prog{ let f = λ (N : Nat). Add N 1; () }
+example : progRejects lamValued "needs a comptime destination" = true
+```
+
+— a LOWERCASE `let f = λ…`, asserted to be refused. "λ is comptime-only" was not
+a correction supplied from outside; it is something the corpus tests on every
+build, and the design that contradicted it had simply not been checked against
+its own test suite. The lesson is narrower and more useful than "ask the user":
+**before inventing a mechanism, grep the suite for an assertion about the thing
+you are about to assume.**
