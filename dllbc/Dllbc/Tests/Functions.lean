@@ -2539,7 +2539,7 @@ def paramAlias : Term := prog{
   Fst(Pair(1, 2))
 }
 
-example : progOk paramAlias (prog{ Nat }) = true := by native_decide
+example : progOk paramAlias (prog defer_check { Nat }) = true := by native_decide
 example : progRuns paramAlias = true := by native_decide
 
 /-- The alias in RETURN-type position — the case the surface always elaborated
@@ -2553,16 +2553,22 @@ def retAlias : Term := prog{
 example : progOk retAlias = true := by native_decide
 example : progRuns retAlias = true := by native_decide
 
-/-- Citing a lowercase binding from a parameter type is refused by the citation
-    rule (§2.4), with the message a body citation gets — the rule never asked
-    what the citation was for. -/
+/-- A LOWERCASE alias never gets as far as the citation rule any more
+    (types-no-exec, 2026-08-20). This used to reject at the `fn`'s parameter
+    type — the seal's citation rule, "capital bindings in scope" — with the
+    lowercase `let` itself checking fine, a type sitting in a runtime slot.
+    The refusal moved from the seal's citation rule to `readR`'s own arm: `Σ`
+    is a ⇝ form with no ⇒ reading, so the program now dies one line earlier,
+    at `let natPair = Σ …`, before the `fn` is ever looked at.
+    (`defer_check`: a rejecting program's rejection IS its assertion, so it
+    must not elaborate under always-check — the marking pass's rule.) -/
 def lowerAlias : Term := prog defer_check {
   let natPair = Σ (l: Nat) . Nat;
   fn Fst(p: natPair) -> Nat { 1 };
   ()
 }
 
-example : progRejects lowerAlias "capital bindings in scope" = true := by native_decide
+example : progRejects lowerAlias "no ⇒ reading" = true := by native_decide
 
 end Dllbc.Tests.FnAlias
 end

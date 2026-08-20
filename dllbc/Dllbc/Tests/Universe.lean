@@ -354,4 +354,104 @@ example : chkS [(0, .const "Bool")] prog defer_check { %OptP %(Term.sym 0) Nat }
     encoding actually is. -/
 example : chkL prog defer_check { Σ (b : Bool). %OptP b Nat } U = true := by native_decide
 
+/-! ## §6 Types have no ⇒ reading (types-no-exec, 2026-08-20)
+
+    M35 gave types a value-level standing in ⇝ — `Poly(Nat, 5)` passes `Nat` at
+    a capital parameter, `Pair(Nat, 5)` packs it under a capital Σ binder — and
+    ⇒ had kept a leftover reading of its own: a type WRITTEN or COMPUTED at a
+    lowercase binder was ⇝-read and handed back as a runtime datum, so
+    `let t = Σ (l : Nat). Nat; ()` checked and RAN with a type in a runtime
+    slot. The ruling removes that reading rather than fencing it: a type has no
+    meaningful runtime representation, so `readR`'s former arms are refusals now
+    (the standing `.borrowT` and `.cmpT` always had), and `pureLift` refuses a
+    type-former HEAD on arrival (`Pure.typeFormerHead`) — which is what catches
+    an APPLIED former like `List Nat` (an `.app` spine, unreachable by arm
+    removal) and a spine that merely COMPUTES to a type. The ⇝ channels are
+    untouched, and §3 above staying green is half of this section's claim. -/
+
+/-- WRITTEN bare formers at a lowercase `let`: each dies on its own removed
+    arm, by name. -/
+def sigWritten : Term := prog defer_check { let t = Σ (l : Nat). Nat; () }
+example : progRejects sigWritten "no ⇒ reading" = true := by native_decide
+
+def piWritten : Term := prog defer_check { let t = Π (x : Nat) → Nat; () }
+example : progRejects piWritten "no ⇒ reading" = true := by native_decide
+
+def typeWritten : Term := prog defer_check { let t = Type; () }
+example : progRejects typeWritten "no ⇒ reading" = true := by native_decide
+
+def idWritten : Term := prog defer_check { let t = Id Nat 1 1; () }
+example : progRejects idWritten "no ⇒ reading" = true := by native_decide
+
+/-- WRITTEN applied formers: `List Nat` is `.app (.const "List") (.const
+    "Nat")`, so it reaches the pure lift through `readR`'s `.app` arm and is
+    refused there, by its head. -/
+def listApplied : Term := prog defer_check { let t = List Nat; () }
+example : progRejects listApplied "⇒ produced a type" = true := by native_decide
+
+def arrApplied : Term := prog defer_check { let t = Array 2 Nat; () }
+example : progRejects arrApplied "⇒ produced a type" = true := by native_decide
+
+/-- COMPUTED: a pure spine that whnf's to a type — `OptP True Nat` reduces to
+    `Nat` — arriving at a lowercase `let`. Nothing about the WRITTEN form says
+    "type"; only the lift's head test can catch it. -/
+def computedType : Term := prog defer_check { let t = %OptP True Nat; () }
+example : progRejects computedType "⇒ produced a type" = true := by native_decide
+
+/-- The program's TAIL is ⇒-read too, and a type there refuses through the same
+    arm — there is no separate tail admission to forget. -/
+def tailType : Term := prog defer_check { let x = 1; Σ (l : Nat). Nat }
+example : progRejects tailType "no ⇒ reading" = true := by native_decide
+
+/-- A constructor FIELD is ⇒-read (`readArgs` reads a `ctorApp`'s arguments
+    with no type in hand), so a type written inside one hits the same arms.
+    The TYPED route stays open: `Pair(Nat, 5)` at `Σ (T : Type). T` reads its
+    first component by the capital binder's ⇝ — §3(a) above. -/
+def ctorFieldType : Term := prog defer_check { let l = Cons(Nat, Nil); () }
+example : progRejects ctorFieldType "no ⇒ reading" = true := by native_decide
+
+/-- A `fn` whose RUNTIME body returns a type: the body's tail is read against
+    the declared return type (`readResult`), `Type` pins no Σ/⇝ route, so the
+    tail falls to `readR` and dies on the removed `Σ` arm — inside the seal's
+    audit, before the binding. -/
+def fnRetType : Term := prog defer_check {
+  fn Bad (x : Nat) -> Type { Σ (l : Nat). Nat };
+  () }
+example : progRejects fnRetType "no ⇒ reading" = true := by native_decide
+
+/-- The ⇝ channel is untouched: the same Σ at a CAPITAL `let` checks and RUNS
+    (e7822aa4 made it citable from a `fn`'s types — `Tests/Functions.lean`
+    FnAlias; §3's Poly/Pair battery above is the value-level half). -/
+def sigCapital : Term := prog{ let NatPair = Σ (l : Nat). Nat; () }
+example : progOk sigCapital = true := by native_decide
+example : progRuns sigCapital = true := by native_decide
+
+/-! ### The head vocabulary agrees with the exhaustiveness table
+
+    `Pure.typeFormerHead`'s const-name row and `Pure.typeCtors`'s rows must
+    agree — a former added to one and not the other is a type ⇒ silently moves
+    again — and adjacency alone is not a check (the S33Macro lesson). Both
+    directions, over the basis: every type `typeCtors` answers for has a
+    type-former head, and every const name the head test refuses is a former
+    `typeCtors` knows (applied, where application is what makes it a type). -/
+
+def formerBasis : List Term :=
+  [prog defer_check { Nat }, prog defer_check { Bool }, prog defer_check { Unit }, prog defer_check { Bot }, prog defer_check { List Nat },
+   prog defer_check { Σ (X : Nat). Nat }, prog defer_check { Id Nat unit unit }, prog defer_check { Array 2 Nat }]
+example : formerBasis.all Pure.typeFormerHead = true := by native_decide
+example : (["Nat", "Bool", "Unit", "Bot"].all
+      (fun c => (Pure.typeCtors (.const c)).isSome)
+    && (Pure.typeCtors prog defer_check { List Nat }).isSome
+    && (Pure.typeCtors prog defer_check { Array 2 Nat }).isSome) = true := by native_decide
+
+/-- …and the heads the lift must KEEP lifting are not in the vocabulary: a
+    stuck recursor spine (a runtime list value in checking mode), a
+    constructor, a σ. -/
+example : Pure.typeFormerHead
+    (.app (.app (.const "natRec") (.const "@motive")) (.ctorApp "Z" [])) = false := by
+  native_decide
+example : Pure.typeFormerHead (.ctorApp "Cons" [.ctorApp "Z" [], .ctorApp "Nil" []]) = false := by
+  native_decide
+example : Pure.typeFormerHead (Term.sym 0) = false := by native_decide
+
 end Dllbc.Tests.Universe

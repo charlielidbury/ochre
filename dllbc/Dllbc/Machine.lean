@@ -616,6 +616,14 @@ mutual
     | _, .const "Bool" => true
     | _, .const "Unit" => true
     | _, .idT _ _ _ => true
+    -- The `.type`/`.pi` arms are REACHABLE, but no longer from a ⇒-read of a
+    -- written or computed type (types-no-exec removed that reading outright).
+    -- What still arrives here typed `Type` or `Π` is a σ — a generic `fn`'s
+    -- comptime type parameter in `sctx`, which `indexKindV` classifies by its
+    -- recorded TYPE — and a Σ component position via `indexKindComp` below.
+    -- Copy-on-read is a KEEP: these say a type-classified σ copies rather than
+    -- moves, which the differential needs (modes cannot replace index-kind
+    -- copying).
     | _, .type => true
     | _, .pi _ _ _ => true
     | fuel + 1, .sigmaT _ dom cod => indexKindComp fuel dom && indexKindComp fuel cod
@@ -5004,7 +5012,19 @@ def pureLift (fuel : Nat) (t : Term) : M Val := do
   match Pure.whnf fuel v with
   | .lam _ _ _ =>
     throwErr s!"⇒ produced a function value ({v.pretty}) — a λ is knowledge and needs a comptime destination: a capital `let`, a ⇝ parameter, a Σ0 component or tail, or an ascription. A PARTIAL APPLICATION is a function too (`Add 1` awaits its second argument), which is why this fires on a spine that was not written as a λ. Bind it to a capital name first, pass it at a capital parameter, put it under a `Σ0` tail, or ascribe it."
-  | _ => pure (.know v)
+  -- **…and the lift's result must not be a TYPE either** (types-no-exec,
+  -- 2026-08-20): the λ arm's sentence, completed. `readR`'s arm removal
+  -- refuses a type former WRITTEN at ⇒; this refuses one COMPUTED — a
+  -- projection or eliminator spine that whnf's to `Nat`, or an APPLIED former
+  -- like `List Nat`, which is an `.app` spine and so can only be caught here,
+  -- by its head. Everything else the `.app` arm sends over still lifts: a
+  -- stuck `natRec P z s σ` is a runtime list value in checking mode, an
+  -- `arrCat xs ys` is a runtime array value, and neither has a type-former
+  -- head (`Pure.typeFormerHead`).
+  | w =>
+    if Pure.typeFormerHead w then
+      throwErr s!"⇒ produced a type ({v.pretty}) — a ⇝ form with no ⇒ reading (a type has no runtime representation, so it cannot be moved into a runtime slot). Give it a comptime destination: a capital `let`, a ⇝ parameter, a capital Σ component, or an ascription."
+    else pure (.know v)
 
 /-! ## Seal sites, and the σ a site has (M32 R3, suspensions.md §2.4)
 
@@ -5308,25 +5328,39 @@ mutual
         let ω ← getEnv
         popArmScope fuel 1 ((ω.drop (ω.length - 1)).flatMap (fun kv => kv.2.loanIds))
         pure (.ctor "unit" [])
-      -- The pure lift (§1.3): on the borrow-free fragment ⇒ coincides with ⇝ up
-      -- to variable consumption. A comptime-only former (a proof term — an
-      -- eliminator application, a Π-typed λ, `Id A a b`, a type) is an
-      -- unrestricted value, so ⇒ delegates to ⇝ (`readC`) and hands back the
-      -- result as an ordinary runtime datum: it can be stored in a constructor
-      -- field, passed to a call, or returned. (Snapshot reads are
-      -- non-destructive; that is the "up to consumption" — these values are
-      -- copyable/erasable, so nothing is moved out.) `Refl` needs no lift (it is
-      -- an ordinary `ctorApp`, handled above); `borrowT` is a telescope-position
-      -- type, never a value.
-      -- Before projecting, demand-end the loans parked at the places this read
-      -- goes through (§5.2's "proper payload" premise; see `collapseCDerefs`).
-      -- Only on the lift, where a body reads live places — `readC` proper is used
-      -- on types/specs too and stays the read-only projection it is documented as.
-      | .type => pureLift fuel t
-      | .const _ => pureLift fuel t
-      | .pvar _ => pureLift fuel t
-      | .pi _ _ _ => pureLift fuel t
-      | .sigmaT _ _ _ => pureLift fuel t
+      -- **TYPES HAVE NO ⇒ READING** (types-no-exec, 2026-08-20) — and this is
+      -- a REVERSAL of the documented §1.3 stance, not a hole closed. The
+      -- comment that stood here argued: "on the borrow-free fragment ⇒
+      -- coincides with ⇝ up to variable consumption. A comptime-only former (a
+      -- proof term — an eliminator application, a Π-typed λ, `Id A a b`, a
+      -- type) is an unrestricted value, so ⇒ delegates to ⇝ (`readC`) and
+      -- hands back the result as an ordinary runtime datum" — and these five
+      -- arms were that delegation's front door, so `let t = Σ (l : Nat). Nat;`
+      -- checked and RAN with a type sitting in a runtime slot. The coincidence
+      -- argument is true and does not license that: it says the VALUE the two
+      -- arrows compute agrees, not that a runtime destination for it exists. A
+      -- type has no meaningful runtime representation, so ⇒ has nothing to
+      -- move — the ruling removes the reading rather than fencing it, and what
+      -- stands here is the same refusal-by-name `.borrowT` and `.cmpT` always
+      -- had (Lean match exhaustiveness is why a removed case is spelled as a
+      -- named throwErr arm).
+      --
+      -- **The boundary the lift keeps**: PROOFS and computed DATA still lift;
+      -- types and functions do not, each with its own refusal site. A proof
+      -- term is admitted exactly as §1.3 said — `Refl` is an ordinary
+      -- `ctorApp` (handled above), a stuck eliminator application or a `len`/
+      -- `add`/`j` spine reaches `pureLift` through the `.app` arm and lifts as
+      -- `.know` — because a proof VALUE is erasable data, not a type. A
+      -- Π-typed λ is refused by the destination rule (`readR`'s λ arm WRITTEN,
+      -- `pureLift`'s λ case COMPUTED); a type is refused HERE when written and
+      -- by `pureLift`'s head test when computed or applied
+      -- (`Pure.typeFormerHead` — `List Nat` is an `.app` spine, so arm
+      -- removal alone cannot reach it).
+      | .type => throwErr "readR (⇒): `Type` is a type — a ⇝ form with no ⇒ reading (a type has no runtime representation, so it cannot be moved into a runtime slot). Give it a comptime destination: a capital `let`, a ⇝ parameter, a capital Σ component, or an ascription."
+      | .const c => throwErr s!"readR (⇒): the constant `{c}` is comptime knowledge (a type or a pure former) — a ⇝ form with no ⇒ reading. Give it a comptime destination: a capital `let`, a ⇝ parameter, a capital Σ component, or an ascription."
+      | .pvar n => throwErr s!"readR (⇒): pure variable `{n}` is comptime knowledge — a ⇝ form with no ⇒ reading. Give it a comptime destination: a capital `let`, a ⇝ parameter, a capital Σ component, or an ascription."
+      | .pi _ _ _ => throwErr s!"readR (⇒): `Π` ({t.pretty}) is a type — a ⇝ form with no ⇒ reading (a type has no runtime representation, so it cannot be moved into a runtime slot). Give it a comptime destination: a capital `let`, a ⇝ parameter, a capital Σ component, or an ascription."
+      | .sigmaT _ _ _ => throwErr s!"readR (⇒): `Σ` ({t.pretty}) is a type — a ⇝ form with no ⇒ reading (a type has no runtime representation, so it cannot be moved into a runtime slot). Give it a comptime destination: a capital `let`, a ⇝ parameter, a capital Σ component, or an ascription."
       -- **A recursor over runtime arms is ⇒'s, not ⇝'s** (§7 cost 5). The pure
       -- lift below sends every other application spine to `readC`; one whose arms
       -- are BODIES has no comptime reading at all (`readC` refuses `.lamR`), so ⇒
@@ -5434,7 +5468,7 @@ mutual
               else do collapseCDerefs fuel t; pureLift fuel t
             | none => do collapseCDerefs fuel t; pureLift fuel t
           | none => do collapseCDerefs fuel t; pureLift fuel t
-      | .idT _ _ _ => do collapseCDerefs fuel t; pureLift fuel t
+      | .idT _ _ _ => throwErr s!"readR (⇒): `Id` ({t.pretty}) is a type — a ⇝ form with no ⇒ reading (a type has no runtime representation, so it cannot be moved into a runtime slot; its PROOF `Refl` is an ordinary constructor and moves as data). Give the type a comptime destination: a capital `let`, a ⇝ parameter, a capital Σ component, or an ascription."
       -- ¶2.2's ⇒ column at the two new steps, and the regularity §1.3 asks the
       -- reader to notice: each behaves the way the corresponding column behaves at
       -- `*`. `t[i]` moves the element out (a hole in the slot) or copies it under
@@ -5562,7 +5596,16 @@ mutual
       -- also hands the executing machine, since M33's prerequisite). So the arm
       -- is formed here rather than ⇒-read: it has a contract, and having one is
       -- exactly what the destination rule asks for.
-      let v ← if i == mi then pure (Val.know erasedMotive)
+      -- **A pre-motive slot is a TYPE PARAMETER, and it is ⇝'s** (types-no-exec,
+      -- 2026-08-20). A recursor's telescope is [type params…, motive, arms…] —
+      -- `listRec A P pn pc` has exactly one, the element type `A` — and this
+      -- used to `readR` it, which worked only because `readR` gave a written
+      -- `.const` a ⇒ reading via the pure lift. Stage 0's flip ledger caught it
+      -- (b3/d1: `listRec Nat …` red on the removed arm): the slot is a type
+      -- position, comptime knowledge exactly as the motive beside it, so it is
+      -- read by the same channel a ⇝ call argument is, not patched back into ⇒.
+      let v ← if i < mi then pure (Val.know (← readComptimeArg fuel a))
+              else if i == mi then pure (Val.know erasedMotive)
               else match a with
                    | .lam _ _ _ => mkClosure fuel a
                    | _ => readR fuel a

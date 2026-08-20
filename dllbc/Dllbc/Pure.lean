@@ -674,6 +674,41 @@ def typeCtors : Term → Option (List String)
     | some (n, _) => if (Term.natOf? (whnf 1000 n)).isSome then some ["Arr"] else none
     | none => none
 
+/-- The head constant of an application spine (`List Nat` ↦ `List`), if any. -/
+def spineHeadConst? : Term → Option String
+  | .const c => some c
+  | .app f _ => spineHeadConst? f
+  | _ => none
+
+/-- **Is this whnf'd term a TYPE-FORMER head — a ⇝ form with no ⇒ reading?**
+
+    The vocabulary is `typeCtors`'s, one entry up, plus the formers `typeCtors`
+    has no constructor set for: the universe itself, `Π` (its values are λs,
+    which ⇒ refuses by the destination rule), and the two binder-mode markers
+    (`⇝τ`, `&mut (s : τ ↝ τ')`), which are not even types but have exactly as
+    little ⇒ standing. Spelled as a HEAD test because `readR`'s arm removal
+    cannot reach an APPLIED former — `List Nat` is `.app (.const "List")
+    (.const "Nat")`, which arrives at the pure lift through the `.app` arm —
+    and a head test is also what admits everything the lift must keep: a stuck
+    `natRec P z s σ` (head `natRec`), an `arrCat xs ys` run (head `arrCat`), a
+    σ-headed neutral (no const head at all).
+
+    The const-name row below and `typeCtors`'s rows must agree — a former added
+    to one and not the other is a type ⇒ silently moves again — and the
+    agreement is asserted in both directions in `Tests/Universe.lean` (the
+    S33Macro pattern), not kept by adjacency alone. -/
+def typeFormerHead : Term → Bool
+  | .type => true
+  | .pi _ _ _ => true
+  | .sigmaT _ _ _ => true
+  | .idT _ _ _ => true
+  | .cmpT _ => true
+  | .borrowT _ _ _ => true
+  | t => match spineHeadConst? t with
+    | some c => c == "Nat" || c == "Bool" || c == "Unit" || c == "Bot"
+                || c == "List" || c == "Array"
+    | none => false
+
 end Pure
 
 namespace Val
