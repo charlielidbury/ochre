@@ -144,12 +144,25 @@ def replayTo (deltas : List PointDelta) (key : Term) : Option PointState :=
         | none => st := st.step d
       return st
 
-/-- What a binder held at a point, with the σ-context to render it against. -/
-def factAt (deltas : List PointDelta) (key : Term) (x : Var) :
-    Option (Val × List (Nat × Term)) :=
-  match replayTo deltas key with
-  | none => none
-  | some st => (st.env.find? (fun kv => kv.1 == x)).map (fun kv => (kv.2, st.sctx))
+/-- What a binder held at a point, with the σ-context to render it against, and
+    the ARM TRAIL of the path this answer is from.
+
+    One entry per path that reaches the point. A statement inside a match is
+    walked once per branch and legitimately holds different things each time
+    (§4), so the surface is handed all of them and decides what to show —
+    rather than being handed the first and left to imply it is the only one. -/
+def factsAt (paths : List (List PointDelta)) (key : Term) (x : Var) :
+    List (List (String × String) × Val × List (Nat × Term)) :=
+  paths.filterMap fun deltas =>
+    match replayTo deltas key with
+    | none => none
+    | some st => (st.env.find? (fun kv => kv.1 == x)).map fun kv =>
+        -- The trail of the delta filed AT this statement on this path: where the
+        -- reader's cursor is, in branch terms.
+        let trail := (deltas.find? (fun d =>
+          match d.stmtKey with | some k => stmtKeyOf k == stmtKeyOf key | none => false)).map
+            (·.trail) |>.getD []
+        (trail, kv.2, st.sctx)
 
 /-- **The same walk, with the `let` type table carried out of it** (docs/16).
 
@@ -164,20 +177,23 @@ def factAt (deltas : List PointDelta) (key : Term) (x : Var) :
     merging anything. -/
 def checkProgramHover (t : Term) (retType? : Option Term := none)
     (pointHover : Bool := false) :
-    Except Diag (List LetNote × List PointDelta) :=
+    Except Diag (List LetNote × List (List PointDelta)) :=
   let paths := programPaths { initSt with hover := true, pointHover } t
   (programVerdict retType? paths).map fun _ =>
     (paths.foldr (fun r acc =>
       match r with
       | .ok (_, st) => st.ledgers.letTypes.reverse ++ acc
       | .error _ => acc) [],
-     -- The change history, oldest first per path (docs/17 §2). Empty unless
-     -- `pointHover`, which is what makes the option observable — and therefore
-     -- what makes §9's measurement checkable rather than assumed.
-     paths.foldr (fun r acc =>
+     -- The change history, oldest first WITHIN each path and grouped BY path
+     -- (docs/17 §2). Grouped rather than concatenated because a point is a
+     -- position ON A PATH (§4): the same statement is walked once per path with
+     -- a different state each time, and flattening them would silently answer
+     -- with whichever path happened to come first. Empty unless `pointHover`,
+     -- which is what makes the option observable.
+     paths.filterMap (fun r =>
       match r with
-      | .ok (_, st) => st.ledgers.points.reverse ++ acc
-      | .error _ => acc) [])
+      | .ok (_, st) => some st.ledgers.points.reverse
+      | .error _ => none))
 
 /-- **Check a program** (§8): one symbolic ⇒-walk, auditing each path's result at
     `retType`. No table: scope is the call table (§8). -/

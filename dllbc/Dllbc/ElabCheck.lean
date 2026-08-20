@@ -321,19 +321,62 @@ def pointTooltip (name : String) (v : Dllbc.Val) (sctx : List (Nat × Dllbc.Term
 
 /-- The point-fact for one occurrence, if its statement was walked and its binder
     was live there. `none` declines — see `replayTo`. -/
-def pointFactFor (pts : List Dllbc.PointDelta) (o : Dllbc.Surface.OccNote)
-    (keys : List Dllbc.Term) (i : Nat) : Option (Dllbc.Val × List (Nat × Dllbc.Term)) :=
+def pointFactFor (pts : List (List Dllbc.PointDelta)) (o : Dllbc.Surface.OccNote)
+    (keys : List Dllbc.Term) (i : Nat) :
+    List (List (String × String) × Dllbc.Val × List (Nat × Dllbc.Term)) :=
   match keys[i]? with
-  | none => none
-  | some key => Dllbc.factAt pts key ⟨o.id, o.name⟩
+  | none => []
+  | some key => Dllbc.factsAt pts key ⟨o.id, o.name⟩
 
-/-- The point half of a tooltip, WITHOUT re-naming the variable — for appending
-    to a static answer that has already named it. A type and its contents are
-    different questions, so the reader gets `v : τ` and then what is in it here. -/
-def pointSuffix (v : Dllbc.Val) (sctx : List (Nat × Dllbc.Term)) : String :=
+/-- `x ⇒ Cons, n ⇒ S` — which arms this path took, outermost first. -/
+def trailText (trail : List (String × String)) : String :=
+  ", ".intercalate (trail.reverse.map fun p => s!"{p.1} ⇒ {p.2}")
+
+/-- How many differing per-path answers a tooltip shows before it stops listing.
+
+    **A cap, not a summary.** Three is enough to see that the paths disagree and
+    how; past that the tooltip stops being a tooltip. What is over the cap is
+    COUNTED rather than dropped silently, because "and 4 more" is information and
+    an unannounced truncation is a lie. -/
+def pathCap : Nat := 3
+
+/-- Render the per-path answers for one occurrence.
+
+    When every path agrees there is one answer and no ceremony — which is the
+    common case, and it must not be made to look conditional. When they disagree
+    each answer is labelled with the arm trail that produced it, because "which
+    path" is the other half of the answer (docs/05's own argument for putting the
+    trail in error messages, applied to tooltips). -/
+def renderPaths (solo body : Dllbc.Val → List (Nat × Dllbc.Term) → String)
+    (facts : List (List (String × String) × Dllbc.Val × List (Nat × Dllbc.Term))) :
+    Option String :=
+  match facts with
+  | [] => none
+  | _ =>
+    -- Distinctness is decided on the SHORT body so two paths that differ only in
+    -- how the solo form would caption them do not read as a disagreement.
+    let rendered := facts.map fun (tr, v, sctx) => (tr, body v sctx, v, sctx)
+    let distinct := rendered.foldl (fun acc p =>
+      if acc.any (fun q => q.2.1 == p.2.1) then acc else acc ++ [p]) []
+    match distinct with
+    -- Every path agrees: one answer, rendered in full, with no ceremony implying
+    -- it was conditional.
+    | [(_, _, v, sctx)] => some (solo v sctx)
+    | [] => none
+    | _ =>
+      let shown := distinct.take pathCap
+      let extra := distinct.length - shown.length
+      let listed := "; ".intercalate (shown.map fun (tr, txt, _, _) =>
+        if tr.isEmpty then txt else s!"{txt} *(on {trailText tr})*")
+      some (listed ++ if extra > 0 then s!"; *…and {extra} more path(s)*" else "")
+
+/-- The point half of a tooltip, WITHOUT re-naming the variable — so it can be
+    appended to a static answer that has already named it, and so per-path
+    variants can be listed without repeating the name once each. -/
+def pointBody (v : Dllbc.Val) (sctx : List (Nat × Dllbc.Term)) : String :=
   match symTypeOf v sctx with
-  | some τ => s!" — here a `{Dllbc.Term.pretty τ}`"
-  | none => s!" — here `{Dllbc.Val.pretty (annotateSyms sctx v)}`"
+  | some τ => s!"a `{Dllbc.Term.pretty τ}`"
+  | none => s!"`{Dllbc.Val.pretty (annotateSyms sctx v)}`"
 
 /-- Reify accumulated key syntaxes into key **values**, to match a breadcrumb. -/
 def keyValues (keys : Array Syntax) : TermElabM (List Dllbc.Term) := do
@@ -349,7 +392,7 @@ def keyValues (keys : Array Syntax) : TermElabM (List Dllbc.Term) := do
     reporting, a missing type is the ordinary case for a block that was never
     checked (`defer_check`, or a splice) and for a binder no path reached. -/
 def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote)
-    (pts : List Dllbc.PointDelta) : TermElabM Unit := do
+    (pts : List (List Dllbc.PointDelta)) : TermElabM Unit := do
   for (ref, text) in spans.hovers do
     pushHover ref text
   unless spans.occs.isEmpty do
@@ -364,15 +407,16 @@ def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote)
     let mut ki := 0
     for o in spans.occs do
       let point? := if o.stmt.isNone || pts.isEmpty then none
-                    else
-                      let r := pointFactFor pts o keys ki
-                      r
+                    else renderPaths (fun v sc =>
+                            if o.static?.isSome then pointBody v sc
+                            else pointTooltip o.name v sc)
+                          pointBody (pointFactFor pts o keys ki)
       if o.stmt.isSome && !pts.isEmpty then ki := ki + 1
       match point?, o.static? with
       -- A parameter with a point-fact: its TYPE and its CONTENTS HERE, which are
       -- different questions and both worth answering.
-      | some (v, sctx), some stat => pushHover o.ref (stat ++ pointSuffix v sctx)
-      | some (v, sctx), none => pushHover o.ref (pointTooltip o.name v sctx)
+      | some txt, some stat => pushHover o.ref (stat ++ " — here " ++ txt)
+      | some txt, none => pushHover o.ref txt
       | none, some stat => pushHover o.ref stat
       | none, none =>
         if let some (e, differs) := idx[(o.id, o.name)]? then
@@ -412,9 +456,6 @@ def spanFor (norm : Dllbc.Term → Dllbc.Term) (entries : Array (Syntax × Synta
     | some (_, ref) => some (ref, dup)
     | none => none
 
-/-- `x ⇒ Cons, n ⇒ S` — which arms this path took, outermost first. -/
-def trailText (trail : List (String × String)) : String :=
-  ", ".intercalate (trail.reverse.map fun p => s!"{p.1} ⇒ {p.2}")
 
 /-- Report a rejection at the narrowest syntax the breadcrumb identifies: the
     offending call argument, else the statement, else the return type for an
