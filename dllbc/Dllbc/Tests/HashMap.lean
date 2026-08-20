@@ -298,24 +298,27 @@ def packNav : Term := prog{
           self : &mut (Σ (cap : Nat).
             Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). Le (S Z) cap)) -> &mut Nat {
     let Hle1 = PackCapLe (*self);
-    match self {
-      Pair(cap, r1) => match r1 {
-        Pair(slots, Hcap) => {
-          -- A bare deref TAKES the payload, even a Nat's (the exit audit is
-          -- per-leaf and found the hole) — so the read is an explicit
-          -- take-and-refill, and the local Nat then copies freely.
-          let c = *cap;
-          *cap := c;
-          let Pair(i, Pair(r, hd)) = SlotOf(key, c, Hle1);
-          let pre = &m (*slots)[Z ; i ; S r | LeAdd i (S r) | hd];
-          let cell = &m (*slots)[i ; 1 ; r];
-          let bb = &m (*cell)[0];
-          match bb {
-            Nil => { *bb := Cons(Pair(key, 0), Nil);
-                     match bb { Nil => (), Cons(hd2, tl2) =>
-                       match hd2 { Pair(kk, vv) => &m *vv } } },
-            Cons(hd2, tl2) => match hd2 { Pair(kk, vv) => &m *vv }
-          } } } } };
+    let Pair(cap, Pair(slots, Hcap)) = self;
+
+    -- A bare deref TAKES the payload, even a Nat's (the exit audit is
+    -- per-leaf and found the hole) — so the read is an explicit
+    -- take-and-refill, and the local Nat then copies freely.
+    let c = *cap;
+    *cap := c;
+    let Pair(i, Pair(r, hd)) = SlotOf(key, c, Hle1);
+    let pre = &m (*slots)[Z ; i ; S r | LeAdd i (S r) | hd];
+    let cell = &m (*slots)[i ; 1 ; r];
+    let bb = &m (*cell)[0];
+    match bb {
+      Nil => {
+        *bb := Cons(Pair(key, 0), Nil);
+        match bb {
+          Nil => (),
+          Cons(Pair(kk, vv), tl2) => &m *vv
+        }
+      },
+      Cons(hd2, tl2) => match hd2 { Pair(kk, vv) => &m *vv }
+    } };
   () }
 example : progOk packNav = true := by native_decide
 
@@ -4383,23 +4386,18 @@ def gmProbe1 : Term := prog{
           if e : Eqb *kk key { &m *vv } else { WalkVal(f2, key, dflt, &m *tl) }
       } } };
   fn GetMutRaw (fuel : Nat, key : Nat, dflt : Nat,
-                self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
-                  Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))).
-                    HMInvT cap load n slots)) -> &mut Nat {
+                self : &mut %HashMapT) -> &mut Nat
+  {
     let HLe1 = PackLe1 (*self);
-    match self {
-      Pair(cap, r1) => match r1 {
-        Pair(load, r2) => match r2 {
-          Pair(nn, r3) => match r3 {
-            Pair(slots, HInv) => {
-              let c = *cap;
-              *cap := c;
-              let Pair(i, Pair(r, Pair(hd, him))) = SlotOfE(key, c, HLe1);
-              let pre = &m (*slots)[Z ; i ; S r | LeAdd i (S r) | hd];
-              let cell = &m (*slots)[i ; 1 ; r];
-              let bb = &m (*cell)[0];
-              WalkVal(fuel, key, dflt, bb)
-            } } } } } };
+    let Pair(cap, Pair(load, Pair(nn, Pair(slots, HInv)))) = self;
+    let c = *cap;
+    *cap := c;
+    let Pair(i, Pair(r, Pair(hd, him))) = SlotOfE(key, c, HLe1);
+    let pre = &m (*slots)[Z ; i ; S r | LeAdd i (S r) | hd];
+    let cell = &m (*slots)[i ; 1 ; r];
+    let bb = &m (*cell)[0];
+    WalkVal(fuel, key, dflt, bb)
+  };
   () }
 
 /-- Probe G2: the layered shape — the carve lives in `SlotGet`, whose param is
@@ -4432,15 +4430,11 @@ def gmProbe2 : Term := prog{
                   Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))).
                     HMInvT cap load n slots)) -> &mut Nat {
     let HLe1 = PackLe1 (*self);
-    match self {
-      Pair(cap, r1) => match r1 {
-        Pair(load, r2) => match r2 {
-          Pair(nn, r3) => match r3 {
-            Pair(slots, HInv) => {
-              let c = *cap;
-              *cap := c;
-              SlotGet(fuel, c, key, dflt, &m *slots, HLe1)
-            } } } } } };
+    let Pair(cap, Pair(load, Pair(nn, Pair(slots, HInv)))) = self;
+    let c = *cap;
+    *cap := c;
+    SlotGet(fuel, c, key, dflt, &m *slots, HLe1)
+  };
   () }
 
 /-- Probe G3: NO CARVE — a symbolic-index ELEMENT borrow into the slots field,
