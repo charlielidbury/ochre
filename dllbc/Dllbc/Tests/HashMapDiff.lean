@@ -291,31 +291,39 @@ def hmGmUnder (tail2 : Term) : Term :=
 example : progRejects (hmGmUnder prog defer_check { () }) "does not have its owed type"
     = true := by native_decide
 
-/-- AENEAS' test1 (icfp22/hashmap.rs), the differential the doc fixes: cap 32,
-    keys 0/128/1024/1056 all collide in slot 0 by construction; overwrite via
-    the get_mut path; remove; re-check the survivors. -/
+/-- AENEAS' test1 (icfp22/hashmap.rs), the differential the doc fixes: keys
+    that all collide in slot 0 by construction and exceed the capacity;
+    overwrite via the get_mut path; remove; re-check the survivors.
+
+    It used to be cap 32 with keys 0/128/1024/1056 to line up with Aeneas
+    verbatim, but numerals are unary, and that run cost 970s of every fresh
+    build (~16 of its 24 minutes, profiled 2026-08-20: the normalizer's spine
+    walk over the giant S-chains). Cap 8 with keys 0/16/64/80 is the same test
+    — same collision structure, same op sequence — at 1.5s; lining up with
+    Aeneas' literal constants will only be possible once we have non-unary
+    numbers. -/
 def gmTest1 : Term := hmGmUnder prog defer_check {
-  let Pair(m0, Ev0) = NewHM(32, unit);
+  let Pair(m0, Ev0) = NewHM(8, unit);
   let b1 = &m m0;
   InsertHM(64, 0, 42, b1, unit);
   let b2 = &m m0;
-  InsertHM(64, %(Term.nat 128), 18, b2, unit);
+  InsertHM(64, %(Term.nat 16), 18, b2, unit);
   let b3 = &m m0;
-  InsertHM(64, %(Term.nat 1024), %(Term.nat 138), b3, unit);
+  InsertHM(64, %(Term.nat 64), %(Term.nat 138), b3, unit);
   let b4 = &m m0;
-  InsertHM(64, %(Term.nat 1056), %(Term.nat 256), b4, unit);
+  InsertHM(64, %(Term.nat 80), %(Term.nat 256), b4, unit);
   let b5 = &m m0;
-  let e1 = GetMutHM(64, %(Term.nat 1024), b5, unit);
+  let e1 = GetMutHM(64, %(Term.nat 64), b5, unit);
   *e1 := 56;
   let b6 = &m m0;
-  RemoveHM(64, %(Term.nat 1024), b6, unit);
+  RemoveHM(64, %(Term.nat 64), b6, unit);
   let y = m0;
   () }
 
 example : (runHM gmTest1 ==
-    some (32, 128, 3,
-      (List.replicate 32 ([] : List (Nat × Nat))).set 0
-        [(0, 42), (128, 18), (1056, 256)])) = true := by native_decide
+    some (8, 32, 3,
+      (List.replicate 8 ([] : List (Nat × Nat))).set 0
+        [(0, 42), (16, 18), (80, 256)])) = true := by native_decide
 
 /-- The or_insert path, both arms: key 5 absent (inserts default 7 through the
     verified InsertHM, so n is accounted), then written through the returned

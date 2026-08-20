@@ -634,11 +634,14 @@ def timeIt (label : String) (f : Unit → String) : IO Unit := do
 def verdict (t : Term) : String :=
   match checkProgram t with | .ok _ => "OK" | .error e => "ERR: " ++ e
 
-#eval do
-  timeIt "S26 Qed  pure-fragment check of the proof" (fun _ => toString (chk big bigTy))
-  for k in [1, 8, 32, 128] do
-    timeIt s!"S26 Qed  transparent x{k}" (fun _ => verdict (unsealedK k))
-    timeIt s!"S26 Qed  SEALED      x{k}" (fun _ => verdict (sealedK k))
+-- PARKED (2026-08-20): this sweep asserts nothing (`verdict` catches errors
+-- into printed strings; the section's claims are native_decide'd above) and
+-- cost ~9s of every build re-deriving the §E table. Uncomment to re-measure.
+-- #eval do
+--   timeIt "S26 Qed  pure-fragment check of the proof" (fun _ => toString (chk big bigTy))
+--   for k in [1, 8, 32, 128] do
+--     timeIt s!"S26 Qed  transparent x{k}" (fun _ => verdict (unsealedK k))
+--     timeIt s!"S26 Qed  SEALED      x{k}" (fun _ => verdict (sealedK k))
 
 end Dllbc.Tests.S26Seal
 end
