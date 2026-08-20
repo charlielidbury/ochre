@@ -118,6 +118,25 @@ confined to the move path.
 Deallocations tell the same story from the other side: upstream frees one old
 box per moved entry (31 vs 5 at the first resize), the splice frees none.
 
+### "Exactly `new_with_capacity` and nothing more", checked exactly
+
+`…::splice_resize_allocates_exactly_the_new_table` measures a transcription of
+`allocate_slots` (a `Vec::new()` plus `capacity` pushes of `AList::Nil`) as an
+independent reference, rather than hard-coding the doubling chain — so the
+assertion stays exact even if `Vec`'s growth policy changes. The splice's resize
+profile is then that reference plus the single node the triggering insert adds
+for its own entry, matching on count, on bytes, and on the size histogram
+element by element:
+
+```
+reference: allocate_slots(64)   allocs=5  bytes=2976  sizes=[(96,1),(192,1),(384,1),(768,1),(1536,1)]
+splice   cap 32->64             allocs=6  bytes=3000  sizes=[(24,1),(96,1),(192,1),(384,1),(768,1),(1536,1)]
+reference: allocate_slots(128)  allocs=6  bytes=6048  sizes=[(96,1),…,(3072,1)]
+splice   cap 64->128            allocs=7  bytes=6072  sizes=[(24,1),(96,1),…,(3072,1)]
+reference: allocate_slots(256)  allocs=7  bytes=12192 sizes=[(96,1),…,(6144,1)]
+splice   cap 128->256           allocs=8  bytes=12216 sizes=[(24,1),(96,1),…,(6144,1)]
+```
+
 ### The slope (`…::allocation_count_is_linear_in_entries_for_baseline_and_flat_for_splice`)
 
 This is the claim that does not depend on how `Vec` happens to grow.

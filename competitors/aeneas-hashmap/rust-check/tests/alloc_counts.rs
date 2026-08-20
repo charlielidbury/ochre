@@ -143,6 +143,71 @@ fn resize_allocations() {
     }
 }
 
+/// `allocate_slots` transcribed, so the test has an independently measured
+/// reference for what building the new table costs.
+///
+/// Upstream builds the new slots array as `Vec::new()` followed by `capacity`
+/// pushes of `AList::Nil`, so its allocation behaviour is `Vec`'s doubling
+/// policy and nothing else. Measuring a transcription rather than hard-coding
+/// the chain `96, 192, 384, …` keeps the assertion exact without making it
+/// hostage to a future change in how `Vec` grows.
+fn measure_allocate_slots(capacity: usize) -> Counts {
+    let (v, counts) = measure(
+        std::mem::size_of::<baseline::AList<u64>>(),
+        || {
+            let mut slots: Vec<baseline::AList<u64>> = Vec::new();
+            let mut n = capacity;
+            while n > 0 {
+                slots.push(baseline::AList::Nil);
+                n -= 1;
+            }
+            slots
+        },
+    );
+    assert_eq!(v.len(), capacity);
+    counts
+}
+
+/// The claim in its strongest form: during a resize the splice performs
+/// *exactly* the allocations of `new_with_capacity` and not one more.
+#[test]
+fn splice_resize_allocates_exactly_the_new_table() {
+    println!();
+    for (entries, capacity) in resize_points(3) {
+        let reference = measure_allocate_slots(capacity * 2);
+        let s = measure_resizing_insert::<splice::HashMap<u64>>(entries, |i| i * 32);
+        report(
+            &format!("reference: allocate_slots({})", capacity * 2),
+            0,
+            &reference,
+        );
+        report(&format!("splice   cap {capacity}->{}", capacity * 2), entries, &s);
+
+        // One node for the entry the triggering insert adds, and then precisely
+        // the new table.
+        assert_eq!(
+            s.allocs,
+            reference.allocs + 1,
+            "splice at cap {capacity}: allocations beyond the new table and the inserted entry"
+        );
+        assert_eq!(
+            s.bytes,
+            reference.bytes + <splice::HashMap<u64> as MapUnderTest>::node_size(),
+            "splice at cap {capacity}: bytes beyond the new table and the inserted entry"
+        );
+        // Same sizes, same multiplicities, in the same order — with the single
+        // node the insert added.
+        let mut expected = reference.size_histogram();
+        let node = <splice::HashMap<u64> as MapUnderTest>::node_size();
+        expected.insert(0, (node, 1));
+        assert_eq!(
+            s.size_histogram(),
+            expected,
+            "splice at cap {capacity}: allocation profile differs from the new table's"
+        );
+    }
+}
+
 /// The slope, stated as its own claim: doubling the number of entries moved
 /// doubles upstream's allocation count and leaves the splice's unchanged. This
 /// is the part that does not depend on how `Vec` happens to grow.
