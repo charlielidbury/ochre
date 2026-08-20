@@ -1,0 +1,325 @@
+// Full name: hashmap::{HashMap<T>[TraitClause0]}::move_elements_from_list
+fn move_elements_from_list<'_0, T>(ntable: &'_0 mut HashMap<T>[TraitClause0], ls: AList<T>[TraitClause0])
+where
+    TraitClause0: (T: Sized),
+    TypeOutlives0: T: '_0,
+{
+    let _0: (); // return
+    let ntable: &'1 mut HashMap<T>[TraitClause0]; // arg #1
+    let ls: AList<T>[TraitClause0]; // arg #2
+    let k: usize; // local
+    let v: T; // local
+    let tl: Box<AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]; // local
+    let hash: usize; // local
+    let _7: &'3 usize; // anonymous local
+    let _8: &'4 usize; // anonymous local
+    let hash_mod: usize; // local
+    let _10: usize; // anonymous local
+    let _11: usize; // anonymous local
+    let _12: &'6 Vec<AList<T>[TraitClause0], Global>[{built_in impl Sized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]; // anonymous local
+    let _13: bool; // anonymous local
+    let dst: &'8 mut AList<T>[TraitClause0]; // local
+    let _15: &'9 mut AList<T>[TraitClause0]; // anonymous local
+    let _16: &'11 mut Vec<AList<T>[TraitClause0], Global>[{built_in impl Sized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]; // anonymous local
+    let _17: usize; // anonymous local
+    let dst_head: AList<T>[TraitClause0]; // local
+    let _19: &'12 mut AList<T>[TraitClause0]; // anonymous local
+    let _20: AList<T>[TraitClause0]; // anonymous local
+    let rest: AList<T>[TraitClause0]; // local
+    let _22: &'13 mut AList<T>[TraitClause0]; // anonymous local
+    let _23: &'14 mut AList<T>[TraitClause0]; // anonymous local
+    let _24: AList<T>[TraitClause0]; // anonymous local
+    let _25: AList<T>[TraitClause0]; // anonymous local
+    let _26: usize; // anonymous local
+    let _27: T; // anonymous local
+    let _28: Box<AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]; // anonymous local
+    let _29: (usize, bool); // anonymous local
+    let _30: AList<T>[TraitClause0]; // anonymous local
+
+    storage_live(_0)
+    storage_live(_13)
+    storage_live(_29)
+    _0 = ()
+    // As long as there are elements in the list, move them
+    loop {
+        match ls {
+            AList::Cons => {
+                storage_live(k)
+                k = copy (ls as variant AList::Cons)._0
+                storage_live(v)
+                v = move (ls as variant AList::Cons)._1
+                storage_live(tl)
+                tl = move (ls as variant AList::Cons)._2
+                storage_live(hash)
+                storage_live(_7)
+                storage_live(_8)
+                // Find the destination bucket, as `insert_no_resize` would
+                _8 = &k
+                _7 = &(*_8)
+                hash = hash_key<'16>(move _7)
+                ↳⚡ // Rotate: take the destination's head out, park it in the
+                    // node's own tail box (which hands back the rest of the
+                    // source list), then make the node the destination's head.
+                    // Three enum-sized writes, no allocation, no drop.
+                    // Move the elements out of the tail
+                    conditional_drop[impl_Destruct_for_Box::drop_glue<'17, AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]] tl
+                    ↳⚡ unwind_terminate
+                    conditional_drop[{built_in impl Destruct for T}::drop_glue<'21>] v
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'22, T>[TraitClause0]] ls
+                    ↳⚡ unwind_terminate
+                    unwind_continue
+                storage_dead(_7)
+                fake_read(hash)
+                storage_dead(_8)
+                storage_live(hash_mod)
+                storage_live(_10)
+                _10 = copy hash
+                storage_live(_11)
+                storage_live(_12)
+                _12 = &(*ntable).slots
+                _11 = alloc::vec::{Vec<T, A>[TraitClause0, TraitClause1, TraitClause2]}::len<'19, AList<T>[TraitClause0], Global>[{built_in impl Sized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global](move _12)
+                ↳⚡ conditional_drop[impl_Destruct_for_Box::drop_glue<'17, AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]] tl
+                    ↳⚡ unwind_terminate
+                    conditional_drop[{built_in impl Destruct for T}::drop_glue<'21>] v
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'22, T>[TraitClause0]] ls
+                    ↳⚡ unwind_terminate
+                    unwind_continue
+                storage_dead(_12)
+                _13 = copy _11 == const 0usize
+                assert(move _13 == false) (remainder_by_zero) else panic
+                ↳⚡ conditional_drop[impl_Destruct_for_Box::drop_glue<'17, AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]] tl
+                    ↳⚡ unwind_terminate
+                    conditional_drop[{built_in impl Destruct for T}::drop_glue<'21>] v
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'22, T>[TraitClause0]] ls
+                    ↳⚡ unwind_terminate
+                    unwind_continue
+                hash_mod = move _10 ub.% move _11
+                storage_dead(_11)
+                storage_dead(_10)
+                fake_read(hash_mod)
+                storage_live(dst)
+                storage_live(_15)
+                storage_live(_16)
+                _16 = &mut (*ntable).slots
+                storage_live(_17)
+                _17 = copy hash_mod
+                _15 = impl_IndexMut_for_Vec::index_mut<'24, AList<T>[TraitClause0], usize, Global>[{built_in impl Sized for AList<T>[TraitClause0]}, {built_in impl Sized for usize}, {built_in impl Sized for Global}, impl_SliceIndex_slice_for_usize<AList<T>[TraitClause0]>[{built_in impl Sized for AList<T>[TraitClause0]}], impl_Allocator_for_Global](move _16, move _17)
+                ↳⚡ conditional_drop[impl_Destruct_for_Box::drop_glue<'17, AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]] tl
+                    ↳⚡ unwind_terminate
+                    conditional_drop[{built_in impl Destruct for T}::drop_glue<'21>] v
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'22, T>[TraitClause0]] ls
+                    ↳⚡ unwind_terminate
+                    unwind_continue
+                storage_dead(_17)
+                storage_dead(_16)
+                dst = &mut (*_15)
+                fake_read(dst)
+                storage_live(dst_head)
+                storage_live(_19)
+                _19 = &two-phase-mut (*dst)
+                storage_live(_20)
+                _20 = AList::Nil {  }
+                dst_head = replace<'26, AList<T>[TraitClause0]>[{built_in impl Sized for AList<T>[TraitClause0]}](move _19, move _20)
+                ↳⚡ conditional_drop[impl_Destruct_for_AList::drop_glue<'27, T>[TraitClause0]] _20
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_Box::drop_glue<'17, AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]] tl
+                    ↳⚡ unwind_terminate
+                    conditional_drop[{built_in impl Destruct for T}::drop_glue<'21>] v
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'22, T>[TraitClause0]] ls
+                    ↳⚡ unwind_terminate
+                    unwind_continue
+                storage_dead(_20)
+                storage_dead(_19)
+                fake_read(dst_head)
+                storage_live(rest)
+                storage_live(_22)
+                storage_live(_23)
+                _23 = &mut (*tl)
+                _22 = &two-phase-mut (*_23)
+                storage_live(_24)
+                _24 = move dst_head
+                rest = replace<'29, AList<T>[TraitClause0]>[{built_in impl Sized for AList<T>[TraitClause0]}](move _22, move _24)
+                ↳⚡ conditional_drop[impl_Destruct_for_AList::drop_glue<'30, T>[TraitClause0]] _24
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'32, T>[TraitClause0]] dst_head
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_Box::drop_glue<'17, AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]] tl
+                    ↳⚡ unwind_terminate
+                    conditional_drop[{built_in impl Destruct for T}::drop_glue<'21>] v
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'22, T>[TraitClause0]] ls
+                    ↳⚡ unwind_terminate
+                    unwind_continue
+                storage_dead(_24)
+                storage_dead(_22)
+                fake_read(rest)
+                storage_dead(_23)
+                storage_live(_25)
+                storage_live(_26)
+                _26 = copy k
+                storage_live(_27)
+                _27 = move v
+                storage_live(_28)
+                _28 = move tl
+                _25 = AList::Cons { _0: move _26, _1: move _27, _2: move _28 }
+                conditional_drop[impl_Destruct_for_Box::drop_glue<'31, AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]] _28
+                ↳⚡ conditional_drop[{built_in impl Destruct for T}::drop_glue<'34>] _27
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'36, T>[TraitClause0]] _25
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'38, T>[TraitClause0]] rest
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'32, T>[TraitClause0]] dst_head
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_Box::drop_glue<'17, AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]] tl
+                    ↳⚡ unwind_terminate
+                    conditional_drop[{built_in impl Destruct for T}::drop_glue<'21>] v
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'22, T>[TraitClause0]] ls
+                    ↳⚡ unwind_terminate
+                    unwind_continue
+                storage_dead(_28)
+                conditional_drop[{built_in impl Destruct for T}::drop_glue<'33>] _27
+                ↳⚡ conditional_drop[impl_Destruct_for_AList::drop_glue<'36, T>[TraitClause0]] _25
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'38, T>[TraitClause0]] rest
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'32, T>[TraitClause0]] dst_head
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_Box::drop_glue<'17, AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]] tl
+                    ↳⚡ unwind_terminate
+                    conditional_drop[{built_in impl Destruct for T}::drop_glue<'21>] v
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'22, T>[TraitClause0]] ls
+                    ↳⚡ unwind_terminate
+                    unwind_continue
+                storage_dead(_27)
+                storage_dead(_26)
+                conditional_drop[impl_Destruct_for_AList::drop_glue<'35, T>[TraitClause0]] (*dst)
+                ↳⚡ (*dst) = move _25
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'36, T>[TraitClause0]] _25
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'38, T>[TraitClause0]] rest
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'32, T>[TraitClause0]] dst_head
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_Box::drop_glue<'17, AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]] tl
+                    ↳⚡ unwind_terminate
+                    conditional_drop[{built_in impl Destruct for T}::drop_glue<'21>] v
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'22, T>[TraitClause0]] ls
+                    ↳⚡ unwind_terminate
+                    unwind_continue
+                (*dst) = move _25
+                conditional_drop[impl_Destruct_for_AList::drop_glue<'37, T>[TraitClause0]] _25
+                ↳⚡ conditional_drop[impl_Destruct_for_AList::drop_glue<'38, T>[TraitClause0]] rest
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'32, T>[TraitClause0]] dst_head
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_Box::drop_glue<'17, AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]] tl
+                    ↳⚡ unwind_terminate
+                    conditional_drop[{built_in impl Destruct for T}::drop_glue<'21>] v
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'22, T>[TraitClause0]] ls
+                    ↳⚡ unwind_terminate
+                    unwind_continue
+                storage_dead(_25)
+                _29 = copy (*ntable).num_entries checked.+ const 1usize
+                assert(move _29.1 == false) (overflow) else panic
+                ↳⚡ conditional_drop[impl_Destruct_for_AList::drop_glue<'38, T>[TraitClause0]] rest
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'32, T>[TraitClause0]] dst_head
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_Box::drop_glue<'17, AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]] tl
+                    ↳⚡ unwind_terminate
+                    conditional_drop[{built_in impl Destruct for T}::drop_glue<'21>] v
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'22, T>[TraitClause0]] ls
+                    ↳⚡ unwind_terminate
+                    unwind_continue
+                (*ntable).num_entries = move _29.0
+                storage_live(_30)
+                _30 = move rest
+                conditional_drop[impl_Destruct_for_AList::drop_glue<'39, T>[TraitClause0]] ls
+                ↳⚡ ls = move _30
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'41, T>[TraitClause0]] _30
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'38, T>[TraitClause0]] rest
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'32, T>[TraitClause0]] dst_head
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_Box::drop_glue<'17, AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]] tl
+                    ↳⚡ unwind_terminate
+                    conditional_drop[{built_in impl Destruct for T}::drop_glue<'21>] v
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'22, T>[TraitClause0]] ls
+                    ↳⚡ unwind_terminate
+                    unwind_continue
+                ls = move _30
+                conditional_drop[impl_Destruct_for_AList::drop_glue<'40, T>[TraitClause0]] _30
+                ↳⚡ conditional_drop[impl_Destruct_for_AList::drop_glue<'38, T>[TraitClause0]] rest
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'32, T>[TraitClause0]] dst_head
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_Box::drop_glue<'17, AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]] tl
+                    ↳⚡ unwind_terminate
+                    conditional_drop[{built_in impl Destruct for T}::drop_glue<'21>] v
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'22, T>[TraitClause0]] ls
+                    ↳⚡ unwind_terminate
+                    unwind_continue
+                storage_dead(_30)
+                conditional_drop[impl_Destruct_for_AList::drop_glue<'42, T>[TraitClause0]] rest
+                ↳⚡ conditional_drop[impl_Destruct_for_AList::drop_glue<'32, T>[TraitClause0]] dst_head
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_Box::drop_glue<'17, AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]] tl
+                    ↳⚡ unwind_terminate
+                    conditional_drop[{built_in impl Destruct for T}::drop_glue<'21>] v
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'22, T>[TraitClause0]] ls
+                    ↳⚡ unwind_terminate
+                    unwind_continue
+                storage_dead(rest)
+                conditional_drop[impl_Destruct_for_AList::drop_glue<'43, T>[TraitClause0]] dst_head
+                ↳⚡ conditional_drop[impl_Destruct_for_Box::drop_glue<'17, AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]] tl
+                    ↳⚡ unwind_terminate
+                    conditional_drop[{built_in impl Destruct for T}::drop_glue<'21>] v
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'22, T>[TraitClause0]] ls
+                    ↳⚡ unwind_terminate
+                    unwind_continue
+                storage_dead(dst_head)
+                storage_dead(_15)
+                storage_dead(dst)
+                storage_dead(hash_mod)
+                storage_dead(hash)
+                conditional_drop[impl_Destruct_for_Box::drop_glue<'44, AList<T>[TraitClause0], Global>[{built_in impl MetaSized for AList<T>[TraitClause0]}, {built_in impl Sized for Global}, impl_Allocator_for_Global]] tl
+                ↳⚡ conditional_drop[{built_in impl Destruct for T}::drop_glue<'21>] v
+                    ↳⚡ unwind_terminate
+                    conditional_drop[impl_Destruct_for_AList::drop_glue<'22, T>[TraitClause0]] ls
+                    ↳⚡ unwind_terminate
+                    unwind_continue
+                storage_dead(tl)
+                conditional_drop[{built_in impl Destruct for T}::drop_glue<'45>] v
+                ↳⚡ conditional_drop[impl_Destruct_for_AList::drop_glue<'22, T>[TraitClause0]] ls
+                    ↳⚡ unwind_terminate
+                    unwind_continue
+                storage_dead(v)
+                storage_dead(k)
+                continue 0
+            },
+            AList::Nil => {
+                break 0
+            },
+        }
+    }
+    _0 = ()
+    conditional_drop[impl_Destruct_for_AList::drop_glue<'20, T>[TraitClause0]] ls
+    ↳⚡ unwind_continue
+    return
+}

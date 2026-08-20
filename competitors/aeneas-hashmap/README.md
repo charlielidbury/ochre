@@ -33,9 +33,10 @@ slots vector, matching what the DLLBC flagship does. `rust-check/` is a cargo
 package that compiles both files (by `#[path]`, not by copying) and measures
 them side by side under a counting global allocator: upstream allocates one node
 per entry moved, the splice allocates none, and both pass the same behavioural
-tests against a `std::collections::HashMap` oracle. `../SPLICE-NOTES.md` has the
-numbers and the reasoning; `current/` and `icfp22/` remain untouched vendored
-artifacts.
+tests against a `std::collections::HashMap` oracle. `pipeline/` runs the real
+Charon + Aeneas toolchain over both variants — it translates cleanly, and the
+generated Lean and Rocq are checked in there. `SPLICE-NOTES.md` has the numbers
+and the reasoning; `current/` and `icfp22/` remain untouched vendored artifacts.
 
 ## Comparison ledger (from the paper, for the flagship writeup)
 

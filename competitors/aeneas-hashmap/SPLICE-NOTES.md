@@ -241,6 +241,104 @@ three per implementation:
   the map takes the live count to zero.
 - **`clear`** on a grown table drops all 300 values it discards.
 
-## Aeneas pipeline
+## Does the Aeneas pipeline swallow it? Yes, entirely
 
-See "Pipeline experiment" below.
+`pipeline/README.md` has the full account, the pinned tool revisions, and the
+generated definitions; `pipeline/translate.sh` reproduces it. In short: Charon
+`0.1.236` (rev `f5a61c8f2cb695213b427ab696f8088f357b5dea`, the revision Aeneas
+pins) and Aeneas `937ff0d` translate the splice on the first try, no errors, no
+warnings, into both the Lean and the Rocq backend. The invocation is validated
+by the baseline column: the vendored `current/hashmap.rs` is byte-identical to
+upstream `main`'s `tests/src/hashmap.rs`, and the Lean produced for it here is
+identical to the `tests/lean/Hashmap/Funs.lean` upstream has checked in.
+
+`Types.lean` is identical for the two. `Funs.lean` is 432 lines against 442, and
+the whole difference is one function body:
+
+```lean
+-- upstream
+def HashMap.move_elements_from_list_loop
+  {T : Type} (ntable : HashMap T) (ls : AList T) : Result (HashMap T) := do
+  match ls with
+  | AList.Cons k v tl =>
+    let ntable1 ← HashMap.insert_no_resize ntable k v
+    HashMap.move_elements_from_list_loop ntable1 tl
+  | AList.Nil => ok ntable
+partial_fixpoint
+
+-- the splice
+def HashMap.move_elements_from_list_loop
+  {T : Type} (ls : AList T) (ntable : HashMap T) : Result (HashMap T) := do
+  match ls with
+  | AList.Cons k v tl =>
+    let hash ← hash_key k
+    let i := alloc.vec.Vec.len ntable.slots
+    let hash_mod ← hash % i
+    let (dst, index_mut_back) ←
+      alloc.vec.Vec.index_mut (core.slice.index.SliceIndexUsizeSlice (AList T))
+        ntable.slots hash_mod
+    let (dst_head, _) := core.mem.replace dst AList.Nil
+    let (rest, tl1) := core.mem.replace tl dst_head
+    let i1 ← ntable.num_entries + 1#usize
+    let v1 := index_mut_back (AList.Cons k v tl1)
+    HashMap.move_elements_from_list_loop rest
+      { ntable with num_entries := i1, slots := v1 }
+  | AList.Nil => ok ntable
+partial_fixpoint
+```
+
+The single most important thing in that output, for this comparison: **`Box` is
+already erased.** `tl : AList T`, not `Box (AList T)`. Allocation is invisible in
+Aeneas's functional model, so making the resize allocation-free changes nothing
+about what must be proved *on account of allocating less*. It changes things only
+because it is a different function. `&mut *tl` translated without complaint, and
+`core.mem.replace` was already a supported primitive that upstream's own
+`move_elements` loop uses — the splice adds no new vocabulary. Aeneas even
+optimises one of the three writes away: `let (dst_head, _) := core.mem.replace
+dst AList.Nil` discards the `Nil`, which is dead because `index_mut_back`
+overwrites the slot before anything reads it.
+
+## What proof obligations would change
+
+Not attempted — out of scope — but the shape is clear from upstream's own
+`tests/lean/Hashmap/Properties.lean`, and the answer is smaller than expected.
+
+`move_elements_from_list_spec` there already carries the hypotheses
+
+```lean
+(hDisjoint1 : ∀ key v, ntable.lookup key = some v → slot.lookup key = none)
+(hDisjoint2 : ∀ key v, slot.lookup key = some v → ntable.lookup key = none)
+```
+
+and its very first step derives `hLookupKey : ntable.lookup key = none`. That is
+*exactly* the fact the splice's unconditional prepend needs — the key being
+moved is absent from the destination. So the splice does **not** introduce a new
+invariant; it needs the one the proof already threads, one step earlier. (It is
+also the same fact DLLBC's `SlotPush` carries explicitly as its `Hfr`
+hypothesis: "every key still in the source is absent from the destination".)
+
+What would actually have to be redone:
+
+- The proof's first `step` cites `insert_no_resize_spec` (about 100 lines,
+  Properties.lean 331–430). There is no `insert_no_resize` call any more, so
+  that citation has to be replaced by a direct argument about prepending into
+  `slots[hash_mod]`. It should be *shorter*, because there is no duplicate-key
+  case to split on — but it is new work, and the pieces it needs already exist
+  as simp lemmas (`slot_s_inv_cons`, `distinct_keys_cons`).
+- The five conclusions of the theorem are unchanged in statement. `lookup` is
+  order-insensitive, so prepend-versus-append is invisible to all of them, and
+  the length conclusion `ntable1.al_v.length = ntable.al_v.length +
+  slot.v.length` still holds.
+- Two arithmetic obligations move rather than appear: the LLBC shows
+  `remainder_by_zero` for `hash % slots.len()` and `overflow` for `num_entries +
+  1` now sitting in the move function. Upstream has both — inside
+  `insert_no_resize`. Inlining relocated them.
+- The ICFP'22 F* artifact would need more churn than the modern Lean one,
+  because its model `hash_map_move_elements_from_list_s` is literally a fold of
+  `hash_map_insert_no_resize_s`, and the flattening lemmas built on it
+  (`…_s_as_flat_lem`, `hash_map_move_elements_s_flat_append_lem`) are stated
+  over that fold. Those are model-level definitions and would be restated over a
+  prepend.
+- Nothing about termination: both versions are `partial_fixpoint`, no
+  `decreases` clause either way. (That is a newer Aeneas than the ICFP'22
+  artifact, where `Hashmap.Clauses.fst` held hand-written measures.)
