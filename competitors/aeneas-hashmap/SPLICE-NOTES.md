@@ -342,3 +342,53 @@ What would actually have to be redone:
 - Nothing about termination: both versions are `partial_fixpoint`, no
   `decreases` clause either way. (That is a newer Aeneas than the ICFP'22
   artifact, where `Hashmap.Clauses.fst` held hand-written measures.)
+
+## So what does the comparison actually support claiming?
+
+The honest headline, stated first because it is the one that changed: **the
+allocation-optimal resize is not a DLLBC capability.** It is ordinary safe Rust
+that the reference implementation simply did not write. Eight statements, no
+`unsafe`, no new dependency, no borrow-checker fight — NLL accepts the whole
+rotation with a single `dst` borrow — and the Aeneas toolchain translates the
+result without a murmur. Anyone claiming Aeneas *cannot* express a one-allocation
+resize would be wrong, and this directory is the demonstration.
+
+On naturalness the two are closer than the line counts suggest, and the
+difference is about where the proof lives, not about the code:
+
+- DLLBC's `SlotPush` is 113 lines (`HashMap.lean` 3625–3737). Its mutation is
+  four of them — `let tmp = *tail; *tail := *bb; *bb := *src; *src := tmp;` —
+  and essentially everything else is the intrinsic proof carried in the same
+  function, because the invariant lives in the container's type.
+- The Rust splice is eight statements and carries no proof at all. Upstream's
+  proof of the corresponding lemma is a separate 3,247-line F* file (or the
+  modern 1,086-line Lean one), written extrinsically.
+
+So: comparable code, and the proof burden differs in placement rather than
+existence. And the extra fact the prepend needs — the moved key is absent from
+the destination — turns out to be a hypothesis **both** systems already carry
+(upstream's `hDisjoint2`, DLLBC's `Hfr`). Neither pays a new invariant for it.
+
+What the measurements support saying:
+
+1. The vendored Aeneas reference allocates one bucket node per moved entry:
+   786 node allocations to build a 400-entry map where 400 would do, exactly
+   2.0×, with a slope of exactly 1 against entries moved. Measured, asserted.
+2. A relinking resize brings that to zero-during-move — precisely
+   `new_with_capacity`'s allocations and not one byte more — while passing the
+   same behavioural, leak and drop tests.
+3. The Aeneas pipeline is not the obstacle: it translates the relinking version
+   as readily as the re-inserting one.
+4. `Box` is erased in Aeneas's functional model, so **their proofs neither
+   guarantee nor contradict any allocation count.** The zero-allocation property
+   lives in the Rust, not in the verification. That is worth stating alongside
+   the DLLBC claim rather than against it, because the DLLBC docstring says the
+   same thing about itself: one allocation is a property of the program's shape
+   under a move-compiling backend, not of the checker's value-level semantics.
+
+What the measurements do **not** support saying: that DLLBC's resize is faster
+than Aeneas's, or that Aeneas's approach forces the extra allocation. Neither is
+true. What DLLBC's version shows is that the *verified* allocation-optimal
+resize is writable there with the proof in the same artifact — and what this
+directory adds is that the unverified Rust half of that is easy, so the
+interesting claim is about the proof, not about the allocation.
