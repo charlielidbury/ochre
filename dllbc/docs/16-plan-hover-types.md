@@ -306,7 +306,13 @@ collection-flag pattern, a gate on metadata collection, not a semantic mode).
 >
 > **Per-module, collection ON vs OFF**, best of two runs each, same tree, the only
 > difference being a `set_option dllbc.hover false` after the imports (which forces
-> a real rebuild — Lake keys its cache on content, so a `touch` replays instead):
+> a real rebuild — Lake keys its cache on content, so a `touch` replays instead).
+>
+> **This protocol suits a DISTRIBUTED cost and should not be reused for a
+> concentrated one** (added by `docs/17`, which tried): it works here because
+> collection touches every block the module elaborates. Where a cost falls on only
+> the few blocks that check, per-module timing dilutes it below noise and reports
+> nothing in either direction — that case needs a harness aimed at the checker.
 >
 > | module | hover on | hover off | Δ |
 > |---|---|---|---|

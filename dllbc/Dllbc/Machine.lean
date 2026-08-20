@@ -159,6 +159,56 @@ structure LetNote where
   sctx : List (Nat × Term)
 deriving Inhabited
 
+/-! ## The diagnostic LEDGERS — one record, so a new channel crosses for free
+
+    **Why this is a record and not three fields on `St`.** Three diagnostic
+    channels have now been added to this machine — the breadcrumb (docs/05), the
+    hover type table (docs/16) and the point deltas (docs/17) — and **all three
+    had to be taught, separately and after the fact, to cross `checkRFnBody`'s
+    seal**, because a sealed body's state is discarded and each channel was a
+    field threaded by hand. The third was written by the author of the second's
+    documentation, which is the evidence that finished the argument:
+
+    > A signpost its own author misses is not working as a signpost.
+
+    The fix is not a fourth warning. It is to make the carry a UNIT: the ledgers
+    are one field, `auditAllPathsD` carries one thing, and a fourth channel joins
+    by construction rather than by remembering.
+
+    **The breadcrumb is deliberately NOT in here, and the distinction is real.**
+    It is a CURSOR — overwritten as the walk moves, copied out only on the failing
+    path so a rejection reports where it happened. These are LEDGERS —
+    append-only, accumulated across every path, carried out on success. Same door,
+    opposite direction, different rule; grouping them would make one line shorter
+    and the semantics wrong. -/
+structure Ledgers where
+  /-- Binder ↦ what the checker knew at its binding (docs/16 S2). Newest first. -/
+  letTypes : List LetNote := []
+  /-- The state's change history as DELTAS, newest first (docs/17 §2).
+
+      **Deltas, not per-binder snapshots**, and the difference is asymptotic. A
+      `refineSym` sweeps every entry of Ω, so recording "the fact for each binder
+      at this point" would be O(|Ω|) per refinement and quadratic over a walk.
+      The refinement's own content is one pair — σ and its replacement — so the
+      delta is O(1) and a binder's fact at a point is recovered by replaying.
+      Written down here because the naive reading of "record a fact at every
+      primitive" is the quadratic one. -/
+  points : List PointDelta := []
+deriving Inhabited
+
+/-- How much this ledger grew past `base` — the entries a sealed body added on
+    its own, with the enclosing ones left behind so they are not copied per path. -/
+def Ledgers.own (path base : Ledgers) : Ledgers :=
+  { letTypes := path.letTypes.take (path.letTypes.length - base.letTypes.length)
+    points   := path.points.take   (path.points.length   - base.points.length) }
+
+/-- Prepend one ledger to another. Prepending keeps the earliest path's entries
+    last in a newest-first list, which is what makes the surface's first-path rule
+    come out right after its reverse. -/
+def Ledgers.append (a b : Ledgers) : Ledgers :=
+  { letTypes := a.letTypes ++ b.letTypes, points := a.points ++ b.points }
+
+
 /-- Machine state: the environment Ω plus fresh-supply counters. `nextVar` is
     unused by §2 (all runtime var ids are minted by the macro) but is here for
     the runtime-binder minting later milestones (match) will need. -/
@@ -325,29 +375,12 @@ structure St where
   /-- Collect `letTypes`? Off for every existing caller (`initSt`), on only for the
       elaborator's hover pass. A `let` costs one boolean test when it is off. -/
   hover : Bool := false
-  /-- What the checker knew about each `let` binder AT ITS BINDING, newest first.
-      Nothing is rendered here — `Term.pretty` on the binding path would be a real
-      cost for a string almost nobody reads — so every component is stored as it
-      already exists in hand and the surface renders on demand. -/
-  letTypes : List LetNote := []
-  -- POINT HOVERS (docs/17). Collected on the success path like `letTypes`, and
-  -- separately gated because it is recorded at the MUTATION PRIMITIVES rather
-  -- than at one binding site — which is the whole design (docs/17 §2) and also
-  -- the whole cost question (§9), since `refineSym` fires during array place
-  -- evaluation and that is the flagship's hot path.
-  /-- Collect `points`? Off for every existing caller. -/
+  /-- Collect `ledgers.points`? Off for every existing caller. -/
   pointHover : Bool := false
-  /-- The state's change history as DELTAS, newest first: what changed, and the
-      breadcrumb it changed under.
-
-      **Deltas, not per-binder snapshots**, and the difference is asymptotic. A
-      `refineSym` sweeps every entry of Ω, so recording "the fact for each binder
-      at this point" would be O(|Ω|) per refinement and quadratic over a walk.
-      The refinement's own content is one pair — σ and its replacement — so the
-      delta is O(1) and a binder's fact at a point is recovered by replaying.
-      This is the shape docs/17 §2 calls for; it is written down here because the
-      naive reading of "record a fact at every primitive" is the quadratic one. -/
-  points : List PointDelta := []
+  /-- **THE DIAGNOSTIC LEDGERS, as one field.** See `Ledgers`: a new channel is a
+      field there and crosses the seal for free, because the carry is this one
+      name and not a list of them. -/
+  ledgers : Ledgers := {}
 deriving Inhabited
 
 /-- The machine monad: errors are `String`s, state is `St`. -/
@@ -411,7 +444,8 @@ def noteArm (scrut : Var) (ctor : String) : M Unit :=
 def notePoint (c : PointChange) : M Unit :=
   modify fun s =>
     if !s.pointHover then s else
-      { s with points := { stmtKey := s.stmtKey, trail := s.trail, change := c } :: s.points }
+      { s with ledgers.points :=
+          { stmtKey := s.stmtKey, trail := s.trail, change := c } :: s.ledgers.points }
 
 /-- Record what a `let` bound, for `x : τ` tooltips (docs/16). Called from
     `letStep` — the one shared binding site — so all three drivers file, and a
@@ -431,7 +465,8 @@ def noteLetType (x : Var) (v : Val) : M Unit :=
           | some σ => s.sctx.lookup σ
           | none => none
         | _ => none
-      { s with letTypes := { binder := x, ty? := τ?, val := v, sctx := s.sctx } :: s.letTypes }
+      { s with ledgers.letTypes :=
+          { binder := x, ty? := τ?, val := v, sctx := s.sctx } :: s.ledgers.letTypes }
 
 /-! ## State helpers -/
 
@@ -4970,19 +5005,19 @@ def auditAllPaths : Nat → Term → List (Except String (Val × St)) → St →
     σ-bearing: it is a key into a source table, no value is observed through it,
     and the frame isolation this function exists to enforce is about Ω,
     obligations and groups, none of which it touches. -/
-def auditAllPathsD : Nat → Term → List (Except Diag (Val × St)) → (Nat × Nat) → St → M St
+def auditAllPathsD : Nat → Term → List (Except Diag (Val × St)) → Ledgers → St → M St
   | _, _, [], _, acc => pure acc
   | _, _, .error d :: _, _, _ => do
     modify fun s => { s with stmtKey := d.stmtKey, argKey := d.argKey, trail := d.trail }
     throwErr d.msg
-  | fuel, ret, .ok (v, st) :: rest, (base, basePts), acc =>
+  | fuel, ret, .ok (v, st) :: rest, base, acc =>
     match (auditAction fuel ret v).run st with
     | .error e sErr => do
       modify fun s =>
         { s with stmtKey := sErr.stmtKey, argKey := sErr.argKey, trail := sErr.trail }
       throwErr e
     | .ok _ st' =>
-      auditAllPathsD fuel ret rest (base, basePts)
+      auditAllPathsD fuel ret rest base
         { acc with nextLoan := max acc.nextLoan st'.nextLoan
                    nextSym := max acc.nextSym st'.nextSym
                    nextGroup := max acc.nextGroup st'.nextGroup
@@ -5000,16 +5035,12 @@ def auditAllPathsD : Nat → Term → List (Except Diag (Val × St)) → (Nat ×
                    -- Prepending keeps the earliest path's entries last in the
                    -- newest-first list, which is what makes the surface's
                    -- first-path rule come out right after its reverse.
-                   letTypes := st'.letTypes.take (st'.letTypes.length - base)
-                               ++ acc.letTypes
-                   -- THE SAME DOOR, THE THIRD CHANNEL (docs/17 §2). The
-                   -- breadcrumb needed this, `letTypes` needed this, and the
-                   -- point deltas need it for the same reason: a `fn` body is
-                   -- where the corpus lives, and its state changes are the ones
-                   -- a reader hovers. `basePts` is the entry length, so each
-                   -- path contributes only its own.
-                   points := st'.points.take (st'.points.length - basePts)
-                             ++ acc.points }
+                   -- ONE CARRY FOR EVERY LEDGER (docs/17). This line used to be
+                   -- one per channel, added after the fact each time a channel
+                   -- was found to be dying at the seal — three for three. It is
+                   -- now a unit, so a fourth channel is a field on `Ledgers` and
+                   -- crosses without touching this function.
+                   ledgers := Ledgers.append (Ledgers.own st'.ledgers base) acc.ledgers }
 
 /-! ## §8's globals: what a function body may name besides its own binders
 
@@ -6241,7 +6272,7 @@ mutual
       -- here; that left every error in a function body unlocalized, which is where
       -- most of the corpus is.
       let advanced ← auditAllPathsD fuel ret
-        (exploreD fuel (pushContinuations body) st0) (st0.letTypes.length, st0.points.length) st0
+        (exploreD fuel (pushContinuations body) st0) st0.ledgers st0
       -- `sealSites` crosses back out with the supplies, and for the same reason
       -- (M32 R3): it is a fact about which σ ids are spoken for, so restoring the
       -- caller's copy would let a later mint hand out a σ this audit already
@@ -6250,10 +6281,10 @@ mutual
       set { saved with nextLoan := advanced.nextLoan, nextSym := advanced.nextSym
                        nextGroup := advanced.nextGroup
                        sealSites := advanced.sealSites
-                       -- The body's `x : τ` entries, carried out (docs/16).
-                       letTypes := advanced.letTypes
-                       -- and the body's point deltas with them (docs/17).
-                       points := advanced.points }
+                       -- Every diagnostic LEDGER, carried out as one thing
+                       -- (docs/17). See `Ledgers`: three channels each learned
+                       -- this door the hard way, so it is now a single name.
+                       ledgers := advanced.ledgers }
   termination_by fuel _ _ _ => (fuel, 6, 0)
   /-- **The seal, at either arrow** (M32 R3, suspensions.md §2.4). One rule, two
       callers: `readR`'s `.seal` arm and the `let` arrow's ⇝ reader

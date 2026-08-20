@@ -109,14 +109,14 @@ def checkProgramHover (t : Term) (retType? : Option Term := none)
   (programVerdict retType? paths).map fun _ =>
     (paths.foldr (fun r acc =>
       match r with
-      | .ok (_, st) => st.letTypes.reverse ++ acc
+      | .ok (_, st) => st.ledgers.letTypes.reverse ++ acc
       | .error _ => acc) [],
      -- The change history, oldest first per path (docs/17 §2). Empty unless
      -- `pointHover`, which is what makes the option observable — and therefore
      -- what makes §9's measurement checkable rather than assumed.
      paths.foldr (fun r acc =>
       match r with
-      | .ok (_, st) => st.points.reverse ++ acc
+      | .ok (_, st) => st.ledgers.points.reverse ++ acc
       | .error _ => acc) [])
 
 /-- **Check a program** (§8): one symbolic ⇒-walk, auditing each path's result at

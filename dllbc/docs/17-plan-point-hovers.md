@@ -245,11 +245,29 @@ otherwise). That is the hot path of the flagship. `docs/16`'s recording was one
 cons per `let`; this is one record per refinement in array-heavy code, which is a
 different order of frequency.
 
-**The measurement, before any surface work:** per-module elaboration on
-`Tests/HashMap` (the flagship) and `Tests/ArraySort` (quicksort) with recording
-on and off, plus a from-scratch suite number, uncontended — the same protocol
-`docs/16` §"Cost" used, whose numbers are the baseline. Reported as a checkpoint
-before implementation continues.
+**The measurement, before any surface work**, and the protocol has to match the
+COST SHAPE rather than be inherited:
+
+> **A distributed cost is measured per module; a concentrated cost needs a
+> harness aimed at the checker.** `docs/16`'s cost was spread over every block it
+> elaborated, so per-module timing suited it. This one is concentrated in the few
+> blocks that actually check — 18 of 279 in the flagship — so per-module timing
+> dilutes it below noise and reports nothing either way. Reusing the inherited
+> protocol here produced two uninformative readings before the mismatch was
+> noticed.
+
+Reported as a checkpoint before implementation continues.
+
+**Doctrine, earned here rather than quoted:** *a number that flatters beyond
+plausibility is a bug in the harness until proven otherwise.* This harness
+reported 0 ms for 20 array-flagship checks, which is not a fast result but an
+impossible one.
+
+**The REPLAY cost is deferred, not deleted.** §2's O(1) delta moves work from
+recording to reading: recovering a binder's fact at a point means replaying the
+deltas up to it. That is the join's cost, it is paid per hover rather than per
+check, and it lands in the final measurement table as its own line — otherwise
+the lane's cost claim covers one end of the design and calls it the whole.
 
 Gated behind an option (`dllbc.pointHover`) exactly as `dllbc.hover` is, for the
 same reason: this is the part collected on the SUCCESS path, so "what does it
@@ -306,10 +324,19 @@ with numbers in hand is the checkpoint's job.
 > 4.
 >
 > This is the door `docs/16` documents and names, written up by the same author
-> who then walked into it again on the next channel. **A signpost that its own
-> author misses is not a working signpost**, which is an argument for making the
-> carry structural — one "diagnostic fields" record crossing as a unit — rather
-> than for adding a fourth warning. Filed for the implementation, not fixed here.
+> who then walked into it again on the next channel. **A signpost its own author
+> misses is not working as a signpost**, which is an argument for making the
+> carry structural rather than for adding a fourth warning.
+>
+> **DONE, and before the surface work rather than after** — so the surface builds
+> on the final shape instead of migrating onto it. The ledgers are one record
+> (`Ledgers`), `auditAllPathsD` carries one thing, and a fourth channel is a field
+> plus two lines in `Ledgers.own`/`Ledgers.append`, adjacent to the field, with
+> nothing to remember at the seal. All three existing channels were migrated in
+> the same commit. The breadcrumb stays out of the record on purpose: it is a
+> CURSOR (overwritten as the walk moves, copied out on the failing path), not a
+> LEDGER (append-only, accumulated, carried out on success) — same door, opposite
+> direction, different rule.
 
 ## 10. Acceptance
 
