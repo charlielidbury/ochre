@@ -2556,7 +2556,7 @@ example : progRuns retAlias = true := by native_decide
 /-- Citing a lowercase binding from a parameter type is refused by the citation
     rule (§2.4), with the message a body citation gets — the rule never asked
     what the citation was for. -/
-def lowerAlias : Term := prog{
+def lowerAlias : Term := prog defer_check {
   let natPair = Σ (l: Nat) . Nat;
   fn Fst(p: natPair) -> Nat { 1 };
   ()

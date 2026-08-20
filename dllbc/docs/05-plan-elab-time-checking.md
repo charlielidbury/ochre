@@ -304,11 +304,18 @@ This is a migration progress bar and not a limit. The number rises as programs m
 >    should-fail probe must not bind a constant. Use
 >    `#guard_msgs in #check (prog check{ … } : Term)`. The demo file is written
 >    entirely in that shape for this reason.
-> 3. **Lean 4.16: a quotation in argument position inside a `partial mutual` block
->    makes the kernel reject the whole block** with "unknown free variable
->    `_kernel_fresh.N`". Keep the key builders outside the walker's mutual block —
->    which is better structure anyway, since it puts the key normal forms in one
->    place.
+> 3. **HISTORICAL — fixed between 4.16 and 4.33, and the structure stays anyway.**
+>    On **Lean 4.16** a quotation in argument position inside a `partial mutual`
+>    block made the kernel reject the whole block with "unknown free variable
+>    `_kernel_fresh.N`". Re-probed on **Lean 4.33** (the toolchain main moved to)
+>    with the same shape — a quotation passed as an argument between two
+>    `partial` functions in one `mutual` — and it elaborates clean. The bug is
+>    gone.
+>
+>    The advice it produced is kept, because it never rested on the bug: the key
+>    builders live outside the walker's mutual block, which puts the key normal
+>    forms in one place. A workaround that was independently the better structure
+>    survives the thing it worked around.
 >
 > The lookup-fails-loudly rule in the bullet above is implemented as written: an
 > unmatched breadcrumb reports at the program with "no span for the failing
