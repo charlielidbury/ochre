@@ -130,10 +130,12 @@ def s1Expected : Nat × List (List (Nat × Nat)) :=
   modelRun 4 [(5, 70), (1, 10), (5, 71), (9, 90), (2, 20)]
 
 -- The fifth distinct-key insert trips the ledger (5·4 > 16), so the map
--- RESIZES to cap 8 and rehashes: 5 leaves the 1/9 collision chain, order of
--- the survivors preserved by the move fold.
+-- RESIZES to cap 8 and rehashes: 5 leaves the 1/9 collision chain. The
+-- rotation move (hm-rotate-resize) PREPENDS each moved node — zero fresh
+-- nodes — so same-slot survivors come out reversed: (9,90) before (1,10).
+-- FindL + NodupB make the order spec-irrelevant.
 example : (runHM s1RunCaller ==
-    some (8, 32, 4, [[], [(1, 10), (9, 90)], [(2, 20)], [], [], [(5, 71)], [], []]))
+    some (8, 32, 4, [[], [(9, 90), (1, 10)], [(2, 20)], [], [], [(5, 71)], [], []]))
     = true := by native_decide
 
 -- …and the pre-resize model still pins the cap-4 semantics (two-sided).
