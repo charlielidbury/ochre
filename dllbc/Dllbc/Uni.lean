@@ -1050,15 +1050,21 @@ partial def elabLamBinders (rctx : List (String × Nat)) (pctx : List String) (n
     pure (rctx', n2, #[entry] ++ more)
 
 /-- Build the telescope entry syntaxes, threading the runtime-var context so that
-    parameter `i`'s type sees exactly params `0 .. i-1` (each at its positional
-    id) — the `seedTelescope` convention. Types elaborate in type mode (⇝). -/
-partial def buildTele (rctx : List (String × Nat)) (i : Nat) :
+    parameter `i`'s type sees params `0 .. i-1` (each at its positional id) — the
+    `seedTelescope` convention — and then the ENCLOSING scope, exactly as the
+    return type and the body do (the `fn` row's R2 rule). Params come first in
+    the lookup, so a parameter shadows an enclosing binding of its name. The
+    positional ids collide with the enclosing block's counter and that is fine
+    for the same reason it is fine for the body: Ω resolves by NAME (M32 R1).
+    Types elaborate in type mode (⇝). -/
+partial def buildTele (params : List (String × Nat)) (rctx : List (String × Nat))
+    (pctx : List String) (i : Nat) :
     List (String × TSyntax `uterm) → MacroM (Array (TSyntax `term))
   | [] => pure #[]
   | (nm, τ) :: rest => do
-    let (τT, _) ← elabUTerm rctx [] 0 τ
+    let (τT, _) ← elabUTerm (params ++ rctx) pctx 0 τ
     let entry ← `((($(quote nm), $τT) : String × Dllbc.Term))
-    let rest' ← buildTele (rctx ++ [(nm, i)]) (i + 1) rest
+    let rest' ← buildTele (params ++ [(nm, i)]) rctx pctx (i + 1) rest
     pure (#[entry] ++ rest')
 
 partial def elabUArms (rctx : List (String × Nat)) (pctx : List String) (next : Nat) :
@@ -1157,7 +1163,7 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- at runtime id `i`, fresh binders from `n`. Identical to what `decl{ }` builds
     -- — deliberately, since the `FnDef` this produces has to BE the one it builds.
     let fullRctx : List (String × Nat) := names.zip (List.range n)
-    let teleSyns ← buildTele [] 0 parsed
+    let teleSyns ← buildTele [] rctx pctx 0 parsed
     -- **THE BODY SEES THE ENCLOSING SCOPE** (M32 R2, suspensions.md §2.6). The
     -- `decl{}`-era params-only context retires here: a `fn` body may cite the
     -- comptime bindings lexically above it — a sibling `fn`'s name, a `let H0 =

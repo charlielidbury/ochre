@@ -2498,3 +2498,72 @@ example : ((prog{ let r = (λ (x : Nat). x : Π (x : Nat) → Nat) 3; () })
 end Dllbc.Tests.FnStmt
 end
 -- └── end of what was `FnStmt.lean` ───────────────────────────────────────────────
+
+-- ┌── type aliases across the `fn` boundary ───────────────────────────────────────
+section
+namespace Dllbc.Tests.FnAlias
+/-!
+# A comptime alias is citable from a `fn`'s TYPES
+
+`let NatPair = Σ (l : Nat). Nat` is an ordinary capital binding holding a type,
+and §2.4's citation rule never distinguished what a citation is FOR — a body may
+cite the capital bindings in scope, and a telescope domain or return type is
+read in the same fresh frame the body is. Two places used to disagree with that
+sentence, one per layer:
+
+  * the SURFACE built parameter types against an empty context (`buildTele [] 0`),
+    so `fn Fst(p : NatPair)` fell through `resolveName` to the raw-Lean
+    fallthrough and died as a Lean `unknown identifier` — before any kernel code
+    ran. Parameter types now see params-then-enclosing-scope, exactly the
+    context the return type and the body always saw;
+  * the KERNEL's seal admission scanned the BODY only
+    (`Term.freeRVars … body`), so an alias the surface DID resolve (return-type
+    position) reached `checkRFnBody`'s fresh Ω unadmitted and failed its read as
+    `lookupSlot: … not an entry of Ω`. The scan now covers the telescope domains
+    and the return type — the same citation set `Term.freeRVars` reports for the
+    seal node itself, which is what keys the seal memo.
+
+The rejection half is the citation rule's own: a LOWERCASE binding cited from a
+type is refused by `admitGlobals` with the same message a body citation gets.
+-/
+
+/-- The motivating program: an alias declared in the block, cited by a parameter
+    type, and the function called from the tail. -/
+def paramAlias : Term := prog{
+  let NatPair = Σ (l: Nat) . Nat;
+  fn Fst(p: NatPair) -> Nat {
+    match p {
+      Pair(l, r) => l
+    }
+  };
+  Fst(Pair(1, 2))
+}
+
+example : progOk paramAlias (prog{ Nat }) = true := by native_decide
+example : progRuns paramAlias = true := by native_decide
+
+/-- The alias in RETURN-type position — the case the surface always elaborated
+    and the kernel's body-only scan refused. -/
+def retAlias : Term := prog{
+  let NatPair = Σ (l: Nat) . Nat;
+  fn Mk(x: Nat) -> NatPair { Pair(x, x) };
+  ()
+}
+
+example : progOk retAlias = true := by native_decide
+example : progRuns retAlias = true := by native_decide
+
+/-- Citing a lowercase binding from a parameter type is refused by the citation
+    rule (§2.4), with the message a body citation gets — the rule never asked
+    what the citation was for. -/
+def lowerAlias : Term := prog{
+  let natPair = Σ (l: Nat) . Nat;
+  fn Fst(p: natPair) -> Nat { 1 };
+  ()
+}
+
+example : progRejects lowerAlias "capital bindings in scope" = true := by native_decide
+
+end Dllbc.Tests.FnAlias
+end
+-- └── end of type aliases across the `fn` boundary ────────────────────────────────

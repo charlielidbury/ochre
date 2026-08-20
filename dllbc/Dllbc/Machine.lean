@@ -5877,14 +5877,29 @@ mutual
   def checkRFnBody : Nat → List (Var × Term) → Term → Term → M Unit
     | fuel, tel, ret, body => do
       let saved ← get
-      -- §8's globals cross frame isolation, and nothing else does. The body's free
-      -- variables are its callees — bindings lexically above it — and the fresh Ω
+      -- §8's globals cross frame isolation, and nothing else does. The seal's free
+      -- variables are its citations — bindings lexically above it — and the fresh Ω
       -- is seeded with exactly those, resolved (and admitted) against the
       -- enclosing scope BEFORE the wipe. This is also where a sealed function's
       -- capture check happens at all: a sealed λ goes straight to `sealFn`
       -- without ever forming the closure, so `readR`'s own capture filter never
       -- runs on it.
-      let gl ← admitGlobals "seal" tel.length (Term.freeRVars (tel.map (·.1.name)) body)
+      --
+      -- The scan covers the TYPES as well as the body: the telescope domains and
+      -- the return type are read inside the fresh frame too (`seedTelescopeV`,
+      -- the `readC ret` below), so a comptime alias cited there — `let NatPair =
+      -- Σ …; fn Fst(p : NatPair) …` — crosses the wipe by the same rule as one
+      -- cited in the body. This is also what `Term.freeRVars` says of the seal
+      -- node itself (its `.seal`/`.lam` rows scan the ascription and the
+      -- domains), so the memo key and this admission agree on the citation set.
+      -- Telescope names are bound throughout: a param cited by a later param's
+      -- type or by the return type resolves against the frame's own seeds, not
+      -- the enclosing scope.
+      let telNames := tel.map (·.1.name)
+      let gl ← admitGlobals "seal" tel.length
+        (Term.freeRVars telNames body
+          ++ (tel.map (fun p => Term.freeRVars telNames p.2)).join
+          ++ Term.freeRVars telNames ret)
       -- `scopeMarks` joins the wipe for the same reason as Ω: a watermark is an
       -- index INTO Ω, so an enclosing scope's mark means nothing against the
       -- fresh one, and the sealed body's own scopes are its own (M31 Stage 0).
