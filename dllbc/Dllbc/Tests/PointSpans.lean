@@ -70,4 +70,31 @@ example : Term := prog{
     } };
   () }
 
+/-! ## (P3) MULTI-PATH — labelled, not first-past-the-post
+
+    This is the case that was silently first-path until the seal carry was made
+    per-path. A borrow-mode match refines the parent's payload per branch (M14),
+    so below the match `v` genuinely holds two different things, and the tooltip
+    says both with the arm trail that produced each. Past three the list stops
+    and COUNTS the remainder; it never truncates silently.
+
+    It is also the user's original narrowing question, answered: the NARROWED
+    SHAPE is visible on the parent through the suspension. What does not exist is
+    value-narrowing on an owned scrutinee — `match n` moves it.
+
+      (P3a) L95 C14  `v`   ⇒  **v : `&mut List Nat`** — here `borrowₘ ℓ0 (Cons loanₘ ℓ1 loanₘ ℓ2)` *(on v ⇒ Cons)*; `borrowₘ ℓ0 Nil` *(on v ⇒ Nil)*
+      (P3b) L93 C34  `hd`  ⇒  **hd ≡ `borrowₘ ℓ1 (σ2 : Nat)`** — binding-time shape
+-/
+
+example : Term := prog{
+  fn M (v : &mut List Nat) -> Unit {
+    match v {
+      Nil => (),
+      Cons(hd, tl) => { let a = *hd; *hd := a; () }
+    };
+    let w = *v;
+    *v := w;
+    () };
+  () }
+
 end Dllbc.Tests.PointSpans

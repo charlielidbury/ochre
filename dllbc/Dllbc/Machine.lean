@@ -195,7 +195,7 @@ deriving Inhabited
 structure Ledgers where
   /-- Binder ↦ what the checker knew at its binding (docs/16 S2). Newest first. -/
   letTypes : List LetNote := []
-  /-- The state's change history as DELTAS, newest first (docs/17 §2).
+  /-- THIS path's change history as DELTAS, newest first (docs/17 §2).
 
       **Deltas, not per-binder snapshots**, and the difference is asymptotic. A
       `refineSym` sweeps every entry of Ω, so recording "the fact for each binder
@@ -205,19 +205,51 @@ structure Ledgers where
       Written down here because the naive reading of "record a fact at every
       primitive" is the quadratic one. -/
   points : List PointDelta := []
+  /-- COMPLETED sub-paths, each oldest-first — a sealed body's branches, kept
+      APART rather than concatenated (docs/17 §4).
+
+      **This is the third lesson from the same door, and the first that changed
+      the shape rather than joining it.** Appending body paths into one stream
+      was the settled carry, and it is wrong at this granularity: a point is a
+      position ON A PATH, so a statement walked once per branch has one answer
+      per branch. Flattened, the replay stops at whichever branch came first and
+      the rest are unreachable — first-path-unlabelled, in `fn` bodies, which is
+      where every multi-path answer that matters lives. -/
+  paths : List (List PointDelta) := []
 deriving Inhabited
 
 /-- How much this ledger grew past `base` — the entries a sealed body added on
     its own, with the enclosing ones left behind so they are not copied per path. -/
 def Ledgers.own (path base : Ledgers) : Ledgers :=
   { letTypes := path.letTypes.take (path.letTypes.length - base.letTypes.length)
-    points   := path.points.take   (path.points.length   - base.points.length) }
+    points   := path.points.take   (path.points.length   - base.points.length)
+    paths    := path.paths.take    (path.paths.length    - base.paths.length) }
 
 /-- Prepend one ledger to another. Prepending keeps the earliest path's entries
     last in a newest-first list, which is what makes the surface's first-path rule
     come out right after its reverse. -/
 def Ledgers.append (a b : Ledgers) : Ledgers :=
-  { letTypes := a.letTypes ++ b.letTypes, points := a.points ++ b.points }
+  { letTypes := a.letTypes ++ b.letTypes, points := a.points ++ b.points
+    paths := a.paths ++ b.paths }
+
+/-- Retire one finished sub-path. Its deltas become a path of their own and the
+    enclosing stream does NOT absorb them — that is the whole point (docs/17 §4).
+
+    **`full`, not `own`, and this is not an optimisation detail.** A path is its
+    WHOLE history, so the entry it is closed with must include everything before
+    the fork — the telescope seed above all, since `seedTelescopeV` runs before
+    the body's state is captured and therefore lands in the base. Closing with
+    `own` alone produces branches that begin after their own parameters were
+    bound, and a replay over one of those finds no binding for any parameter at
+    all. (It did that for exactly one build; the symptom was every parameter
+    losing its point answer while `let`-bound locals kept theirs.)
+
+    `own` is still right for `letTypes`, which is keyed by binder and would
+    otherwise gain a duplicate per branch. -/
+def Ledgers.closePath (full own acc : Ledgers) : Ledgers :=
+  { letTypes := own.letTypes ++ acc.letTypes
+    points := acc.points
+    paths := full.points.reverse :: (own.paths ++ acc.paths) }
 
 
 /-- Machine state: the environment Ω plus fresh-supply counters. `nextVar` is
@@ -5052,7 +5084,13 @@ def auditAllPathsD : Nat → Term → List (Except Diag (Val × St)) → Ledgers
                    -- was found to be dying at the seal — three for three. It is
                    -- now a unit, so a fourth channel is a field on `Ledgers` and
                    -- crosses without touching this function.
-                   ledgers := Ledgers.append (Ledgers.own st'.ledgers base) acc.ledgers }
+                   --
+                   -- `closePath`, not `append`: each body path's deltas stay a
+                   -- path of their own instead of being concatenated into one
+                   -- stream. Appending was the settled shape and was wrong —
+                   -- see `Ledgers.paths`.
+                   ledgers := Ledgers.closePath st'.ledgers
+                                (Ledgers.own st'.ledgers base) acc.ledgers }
 
 /-! ## §8's globals: what a function body may name besides its own binders
 

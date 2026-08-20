@@ -190,10 +190,12 @@ def checkProgramHover (t : Term) (retType? : Option Term := none)
      -- a different state each time, and flattening them would silently answer
      -- with whichever path happened to come first. Empty unless `pointHover`,
      -- which is what makes the option observable.
-     paths.filterMap (fun r =>
+     paths.flatMap (fun r =>
       match r with
-      | .ok (_, st) => some st.ledgers.points.reverse
-      | .error _ => none))
+      -- This top-level path's own stream, plus every sealed body path that
+      -- finished inside it — each kept separate (docs/17 §4).
+      | .ok (_, st) => st.ledgers.points.reverse :: st.ledgers.paths
+      | .error _ => []))
 
 /-- **Check a program** (§8): one symbolic ⇒-walk, auditing each path's result at
     `retType`. No table: scope is the call table (§8). -/
