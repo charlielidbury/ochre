@@ -16,6 +16,18 @@ register_option dllbc.hover : Bool := {
   descr := "collect DLLBC hover types (`x : τ` tooltips) while elaborating `prog{ }` blocks"
 }
 
+/-- **Point hovers** (docs/17) — record the checker's state changes as deltas, so
+    a tooltip can answer about the reader's position rather than about a binder.
+
+    Default FALSE while the lane's go/no-go measurement is outstanding: the
+    recording hangs off `refineSym`, which fires during array place evaluation,
+    and whether that is affordable on the flagship is exactly what §9 measures.
+    The option exists before the surface does precisely so it can be measured. -/
+register_option dllbc.pointHover : Bool := {
+  defValue := false
+  descr := "collect DLLBC point-hover deltas (docs/17); off pending the cost checkpoint"
+}
+
 namespace Dllbc
 
 /-! # `prog check { … }` — the check happens AS IT ELABORATES (docs/05)
@@ -438,16 +450,22 @@ def elabChecked (ref : Syntax) (act : UM (TSyntax `term)) : TermElabM Expr := do
   -- Same walk either way (`checkProgramHover` is `checkProgramDiag`'s paths and
   -- verdict with the seed's `hover` flag flipped), so the accept/reject decision
   -- does not depend on whether anyone is collecting tooltips.
-  let res := if hover then checkProgramHover v none else (checkProgramDiag v none).map (fun _ => [])
+  let pointHover ← (return dllbc.pointHover.get (← getOptions))
+  let res :=
+    if hover then checkProgramHover v none pointHover
+    else (checkProgramDiag v none).map (fun _ => ([], []))
   let t2 ← IO.monoMsNow
   trace[Dllbc.check] "checked: reify {t1 - t0}ms, check {t2 - t1}ms"
   match res with
-  | .ok tbl =>
+  | .ok (tbl, pts) =>
     -- THE HOVER PUSH IS ON THE SUCCESS PATH, and that is the one structural way
     -- this feature differs from the error spans beside it (docs/16): a squiggle
     -- costs nothing until something fails, a tooltip costs on every block that
     -- checks. Which is why the option above exists and why the cost is measured.
     if hover then pushHovers spans tbl
+    -- docs/17 §9's instrument: the delta count is how a measurement run confirms
+    -- the option reached the checker instead of measuring nothing.
+    unless pts.isEmpty do trace[Dllbc.check] "point deltas: {pts.length}"
     return e
   | .error diag =>
     -- THE SECOND WALK, and the only place one happens. The first ran without

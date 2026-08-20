@@ -113,6 +113,32 @@ structure Group where
   -- `pin` of `some (sym σ′)`). A group is an ORDERING — what must end before
   -- what — and nothing else (12-design §2.1).
 
+/-- One change to the checker's state, tagged with where it happened (docs/17).
+
+    The three constructors are the three kinds of change a tooltip can be asked
+    about: a binder appearing, a binder's value being replaced, and a σ being
+    learned. Everything else that mutates Ω is one of these at a different call
+    site.
+
+    **No rendering and no traversal** — every field is a value already in hand at
+    the primitive, so a delta costs one allocation. -/
+inductive PointChange where
+  /-- `bindSlot`: a binder enters Ω. -/
+  | bound  (x : Var) (v : Val)
+  /-- `setSlot`: a binder's value is replaced in place. -/
+  | set    (x : Var) (v : Val)
+  /-- `refineSym`: σ is learned to be `repl`, everywhere at once. -/
+  | refine (sym : Nat) (repl : Term)
+deriving Inhabited
+
+/-- A change, plus the breadcrumb identifying WHERE it happened — which is what
+    makes it a point-fact rather than just a change. -/
+structure PointDelta where
+  stmtKey : Option Term
+  trail : List (String × String)
+  change : PointChange
+deriving Inhabited
+
 /-- What the checker knew about one `let` binder at its binding (docs/16 S2).
 
     **Everything here is a value the machine already held**, which is what keeps
@@ -304,6 +330,24 @@ structure St where
       cost for a string almost nobody reads — so every component is stored as it
       already exists in hand and the surface renders on demand. -/
   letTypes : List LetNote := []
+  -- POINT HOVERS (docs/17). Collected on the success path like `letTypes`, and
+  -- separately gated because it is recorded at the MUTATION PRIMITIVES rather
+  -- than at one binding site — which is the whole design (docs/17 §2) and also
+  -- the whole cost question (§9), since `refineSym` fires during array place
+  -- evaluation and that is the flagship's hot path.
+  /-- Collect `points`? Off for every existing caller. -/
+  pointHover : Bool := false
+  /-- The state's change history as DELTAS, newest first: what changed, and the
+      breadcrumb it changed under.
+
+      **Deltas, not per-binder snapshots**, and the difference is asymptotic. A
+      `refineSym` sweeps every entry of Ω, so recording "the fact for each binder
+      at this point" would be O(|Ω|) per refinement and quadratic over a walk.
+      The refinement's own content is one pair — σ and its replacement — so the
+      delta is O(1) and a binder's fact at a point is recovered by replaying.
+      This is the shape docs/17 §2 calls for; it is written down here because the
+      naive reading of "record a fact at every primitive" is the quadratic one. -/
+  points : List PointDelta := []
 deriving Inhabited
 
 /-- The machine monad: errors are `String`s, state is `St`. -/
@@ -358,6 +402,16 @@ def noteArg (t : Term) : M Unit := modify fun s => { s with argKey := some t }
     reading quadratic in the length of the run. -/
 def noteArm (scrut : Var) (ctor : String) : M Unit :=
   modify fun s => { s with trail := (scrut.name, ctor) :: s.trail }
+
+/-- Record a state change against the breadcrumb it happened under (docs/17 §2).
+
+    Called from the mutation primitives themselves, which is what makes
+    carry-forward the definition of "the state here" rather than an interpolation
+    (§3). One boolean test when the flag is off. -/
+def notePoint (c : PointChange) : M Unit :=
+  modify fun s =>
+    if !s.pointHover then s else
+      { s with points := { stmtKey := s.stmtKey, trail := s.trail, change := c } :: s.points }
 
 /-- Record what a `let` bound, for `x : τ` tooltips (docs/16). Called from
     `letStep` — the one shared binding site — so all three drivers file, and a
@@ -468,7 +522,8 @@ def lookupSlot (x : Var) : M Val := do
   | none => throwErr s!"lookupSlot: {x.name}#{x.id} is not an entry of Ω (unbound at runtime)"
 
 /-- Append a fresh binding to Ω (insertion-ordered). -/
-def bindSlot (x : Var) (v : Val) : M Unit :=
+def bindSlot (x : Var) (v : Val) : M Unit := do
+  notePoint (.bound x v)
   modify (fun s => { s with env := s.env ++ [(x, v)] })
 
 /-! ### Scope watermarks (M31 Stage 0)
@@ -498,6 +553,7 @@ def takeScopeMark : M (Option (Nat × Bool)) := do
 
 /-- Overwrite an existing slot in place, preserving order. Errors if absent. -/
 def setSlot (x : Var) (v : Val) : M Unit := do
+  notePoint (.set x v)
   let ω ← getEnv
   match slotIdx? ω x with
   | some j => setEnv (ω.zipIdx.map (fun p => if p.2 == j then (p.1.1, v) else p.1))
@@ -1285,6 +1341,11 @@ def refineSym (σ : Nat) (v : Val) : M Unit := do
   let repl ← match v with
     | .know t => pure t
     | _ => throwErr s!"refineSym: σ{σ} := {v.pretty} carries a state marker (⊥/loan/borrow) — knowledge/state violation (§3.2)"
+  -- THE HOT ONE (docs/17 §9): this fires during array place evaluation
+  -- (`carveAt`/`carveBody`/`elementize`), not only at arm entries, so its
+  -- frequency in the flagship is the lane's go/no-go. The delta is the σ and its
+  -- replacement — O(1) — never the swept Ω, which would be quadratic.
+  notePoint (.refine σ repl)
   modify (fun s => { s with
     env := s.env.map (fun kv => (kv.1, substSym σ repl kv.2)),
     sctx := s.sctx.map (fun p => (p.1, Term.substSym σ repl p.2)),
@@ -4909,19 +4970,19 @@ def auditAllPaths : Nat → Term → List (Except String (Val × St)) → St →
     σ-bearing: it is a key into a source table, no value is observed through it,
     and the frame isolation this function exists to enforce is about Ω,
     obligations and groups, none of which it touches. -/
-def auditAllPathsD : Nat → Term → List (Except Diag (Val × St)) → Nat → St → M St
+def auditAllPathsD : Nat → Term → List (Except Diag (Val × St)) → (Nat × Nat) → St → M St
   | _, _, [], _, acc => pure acc
   | _, _, .error d :: _, _, _ => do
     modify fun s => { s with stmtKey := d.stmtKey, argKey := d.argKey, trail := d.trail }
     throwErr d.msg
-  | fuel, ret, .ok (v, st) :: rest, base, acc =>
+  | fuel, ret, .ok (v, st) :: rest, (base, basePts), acc =>
     match (auditAction fuel ret v).run st with
     | .error e sErr => do
       modify fun s =>
         { s with stmtKey := sErr.stmtKey, argKey := sErr.argKey, trail := sErr.trail }
       throwErr e
     | .ok _ st' =>
-      auditAllPathsD fuel ret rest base
+      auditAllPathsD fuel ret rest (base, basePts)
         { acc with nextLoan := max acc.nextLoan st'.nextLoan
                    nextSym := max acc.nextSym st'.nextSym
                    nextGroup := max acc.nextGroup st'.nextGroup
@@ -4940,7 +5001,15 @@ def auditAllPathsD : Nat → Term → List (Except Diag (Val × St)) → Nat →
                    -- newest-first list, which is what makes the surface's
                    -- first-path rule come out right after its reverse.
                    letTypes := st'.letTypes.take (st'.letTypes.length - base)
-                               ++ acc.letTypes }
+                               ++ acc.letTypes
+                   -- THE SAME DOOR, THE THIRD CHANNEL (docs/17 §2). The
+                   -- breadcrumb needed this, `letTypes` needed this, and the
+                   -- point deltas need it for the same reason: a `fn` body is
+                   -- where the corpus lives, and its state changes are the ones
+                   -- a reader hovers. `basePts` is the entry length, so each
+                   -- path contributes only its own.
+                   points := st'.points.take (st'.points.length - basePts)
+                             ++ acc.points }
 
 /-! ## §8's globals: what a function body may name besides its own binders
 
@@ -6172,7 +6241,7 @@ mutual
       -- here; that left every error in a function body unlocalized, which is where
       -- most of the corpus is.
       let advanced ← auditAllPathsD fuel ret
-        (exploreD fuel (pushContinuations body) st0) st0.letTypes.length st0
+        (exploreD fuel (pushContinuations body) st0) (st0.letTypes.length, st0.points.length) st0
       -- `sealSites` crosses back out with the supplies, and for the same reason
       -- (M32 R3): it is a fact about which σ ids are spoken for, so restoring the
       -- caller's copy would let a later mint hand out a σ this audit already
@@ -6182,7 +6251,9 @@ mutual
                        nextGroup := advanced.nextGroup
                        sealSites := advanced.sealSites
                        -- The body's `x : τ` entries, carried out (docs/16).
-                       letTypes := advanced.letTypes }
+                       letTypes := advanced.letTypes
+                       -- and the body's point deltas with them (docs/17).
+                       points := advanced.points }
   termination_by fuel _ _ _ => (fuel, 6, 0)
   /-- **The seal, at either arrow** (M32 R3, suspensions.md §2.4). One rule, two
       callers: `readR`'s `.seal` arm and the `let` arrow's ⇝ reader

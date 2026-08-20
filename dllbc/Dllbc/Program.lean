@@ -102,14 +102,22 @@ def checkProgramDiag (t : Term) (retType? : Option Term := some ty{ Unit }) :
     into program order, so a key's FIRST entry is the first path's — which is the
     v1 rule, and the reason the surface can say "(differs per path)" without
     merging anything. -/
-def checkProgramHover (t : Term) (retType? : Option Term := none) :
-    Except Diag (List LetNote) :=
-  let paths := programPaths { initSt with hover := true } t
+def checkProgramHover (t : Term) (retType? : Option Term := none)
+    (pointHover : Bool := false) :
+    Except Diag (List LetNote × List PointDelta) :=
+  let paths := programPaths { initSt with hover := true, pointHover } t
   (programVerdict retType? paths).map fun _ =>
-    paths.foldr (fun r acc =>
+    (paths.foldr (fun r acc =>
       match r with
       | .ok (_, st) => st.letTypes.reverse ++ acc
-      | .error _ => acc) []
+      | .error _ => acc) [],
+     -- The change history, oldest first per path (docs/17 §2). Empty unless
+     -- `pointHover`, which is what makes the option observable — and therefore
+     -- what makes §9's measurement checkable rather than assumed.
+     paths.foldr (fun r acc =>
+      match r with
+      | .ok (_, st) => st.points.reverse ++ acc
+      | .error _ => acc) [])
 
 /-- **Check a program** (§8): one symbolic ⇒-walk, auditing each path's result at
     `retType`. No table: scope is the call table (§8). -/

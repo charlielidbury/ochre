@@ -262,6 +262,55 @@ to be stated as such); or keep binder granularity for values and point
 granularity only for σ types; or stop, and leave `docs/16` shipped. Deciding that
 with numbers in hand is the checkpoint's job.
 
+> **CHECKPOINT RESULT — GO. The recording is free at corpus scale, and the first
+> two ways of measuring it were both wrong.**
+>
+> **The number that answers the question.** `Tests/PointCost`, timing the
+> checker directly on the two flagships, 50 checks each:
+>
+> | program | recording off | recording on | Δ | deltas per check |
+> |---|---|---|---|---|
+> | array flagship (`S25ArrSort.arrChain`) | 19761 ms | 19703 ms | **−58 ms** | 433 |
+> | list flagship (`S23Direct.flagship`) | 8414 ms | 8448 ms | **+34 ms** | 239 |
+>
+> That is 395 ms and 168 ms per check, and the deltas cost nothing measurable —
+> one figure negative, one positive, both about 0.3%. 433 deltas against a 395 ms
+> check is not a cost, and the O(1)-delta shape (§2) is why: the swept Ω is never
+> recorded, only the σ and its replacement.
+>
+> **FIRST WRONG MEASUREMENT: per-module elaboration timings, which measure the
+> wrong thing on today's corpus.** `docs/16`'s protocol was applied first —
+> `Tests/HashMap` and `Tests/ArraySort`, recording on vs off — and reported
+> +1.15% on HashMap, then nothing on a repeat. Both readings are uninformative,
+> because **`Tests/HashMap` has 261 `prog defer_check` blocks against 18 checked
+> ones** and records 431 deltas in the whole module; `ArraySort` records 253. Those
+> modules' minutes are `native_decide` and compilation, not elaboration-time
+> checking. A protocol that was right for `docs/16` — whose cost was spread over
+> every block — is wrong here, where the cost is concentrated in the few blocks
+> that actually check.
+>
+> **SECOND WRONG MEASUREMENT: the harness timed nothing.** `let r := f ()` is a
+> lazy binding, so the timed region built a thunk and the work happened later,
+> inside the `println`. It reported **0 ms for 20 array-flagship checks** — a
+> number that should have been rejected on sight and instead was briefly believed.
+> The tell was a follow-up run at N=5000 taking twenty minutes at 99% CPU for work
+> that had supposedly cost nothing. `IO.lazyPure` forces inside the timed region;
+> the harness says so at its head.
+>
+> **AND THE SEAL ATE THE DELTAS, on the third channel in a row.** The first
+> instrumented run reported **1 delta** for a program with a three-statement `fn`
+> body. `checkRFnBody` discards the sealed body's state, so everything inside any
+> function was being dropped — and every earlier measurement was therefore an
+> undercount of an already-uninformative number. Fixed as `letTypes` was, carried
+> out by `auditAllPathsD` with its own base length; the same program then reported
+> 4.
+>
+> This is the door `docs/16` documents and names, written up by the same author
+> who then walked into it again on the next channel. **A signpost that its own
+> author misses is not a working signpost**, which is an argument for making the
+> carry structural — one "diagnostic fields" record crossing as a unit — rather
+> than for adding a fourth warning. Filed for the implementation, not fixed here.
+
 ## 10. Acceptance
 
 The demo file grows per-point cases, MCP-verified as `docs/16`'s were, and the
