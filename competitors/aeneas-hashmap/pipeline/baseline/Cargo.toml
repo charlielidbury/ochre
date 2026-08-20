@@ -1,0 +1,18 @@
+# Charon translates a crate, so each variant gets a minimal one. `src/lib.rs` is
+# a SYMLINK to the file it translates — no copy, so the source that is
+# translated and the source that is read cannot diverge.
+#
+# Both packages are called `hashmap` on purpose: the generated definitions then
+# carry identical names in both directions and `diff` shows only the bodies.
+
+[package]
+name = "hashmap"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "hashmap"
+path = "src/lib.rs"
+
+[dependencies]

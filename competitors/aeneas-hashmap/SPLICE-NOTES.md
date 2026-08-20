@@ -146,6 +146,42 @@ map's own data. Upstream allocates **2.0×** that, 386 of its 786 nodes being
 entries it rebuilt only to throw the originals away. Its 415 frees drop to 29 —
 the splice's remaining frees are all vector reallocation, not nodes.
 
+### The other saving, and what it is not (`tests/walk_cost.rs`)
+
+Allocation is not the only per-entry cost the splice removes. `insert_no_resize`
+also walks the destination bucket to its end, because that is how it would find
+a duplicate key to overwrite; during a resize there are none, so the walk is
+pure overhead. Prepending makes moving an entry O(1) instead of O(destination
+bucket length).
+
+That is a constant factor, not an exponent, and the notes should not overclaim
+it. The ordinary `insert` path still walks its bucket looking for the key and
+the splice does not touch that path, so on an adversarial workload where every
+key collides at every capacity both versions remain quadratic. Building a map
+from empty, release build:
+
+```
+all keys collide at every capacity (stride 131072):
+  n=2000   upstream    4.579ms  splice    2.461ms  (1.9x)
+  n=4000   upstream   18.504ms  splice   10.690ms  (1.7x)
+  n=8000   upstream   73.840ms  splice   38.677ms  (1.9x)
+keys spread across slots (short buckets):
+  n=2000   upstream  103.947µs  splice   77.755µs  (1.3x)
+  n=4000   upstream  226.928µs  splice  145.408µs  (1.6x)
+  n=8000   upstream  446.554µs  splice  382.875µs  (1.2x)
+```
+
+Both columns quadruple per doubling of `n` in the colliding case — that is
+`insert`'s own walk, unchanged — and the splice takes a factor of about 1.9 out
+of it. The realistic case is the second block, where the gain is the allocations
+alone. These numbers are printed, never asserted: a timing assertion would be
+flaky, and the allocation counts above are what is machine-checked.
+
+Getting this measurement wrong the first time is worth recording: keys `i * 32`
+all share slot 0 at capacity 32, but fan out over eight slots by capacity 256,
+so the first attempt showed almost no gap. The stride has to exceed *every*
+capacity the table will reach, not just the initial one.
+
 ## Behavioural equivalence (`tests/equivalence.rs`)
 
 Six tests, each run against both files, all green in debug and release:
