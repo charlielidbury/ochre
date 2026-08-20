@@ -113,6 +113,26 @@ structure Group where
   -- `pin` of `some (sym σ′)`). A group is an ORDERING — what must end before
   -- what — and nothing else (12-design §2.1).
 
+/-- What the checker knew about one `let` binder at its binding (docs/16 S2).
+
+    **Everything here is a value the machine already held**, which is what keeps
+    the hover table off the cost ledger: no rendering, no traversal, and `sctx` is
+    an immutable list so carrying it is a pointer copy rather than a copy.
+
+    `ty?` is the σ's type when the bound value IS a σ. It is `none` for a value
+    that is not one — including a CONSTRUCTOR TREE OVER σs, `Cons σ0 σ1`, which
+    has no single σ to look up and no type recorded anywhere. `sctx` is what lets
+    the surface say something useful about that case anyway: the σs are in the
+    rendered value, and their types are in here. -/
+structure LetNote where
+  binder : Var
+  ty? : Option Term
+  val : Val
+  /-- The σ-context AS IT STOOD at this binding — so a σ inside `val` can be
+      given its type without the surface having to guess or re-derive one. -/
+  sctx : List (Nat × Term)
+deriving Inhabited
+
 /-- Machine state: the environment Ω plus fresh-supply counters. `nextVar` is
     unused by §2 (all runtime var ids are minted by the macro) but is here for
     the runtime-binder minting later milestones (match) will need. -/
@@ -279,12 +299,11 @@ structure St where
   /-- Collect `letTypes`? Off for every existing caller (`initSt`), on only for the
       elaborator's hover pass. A `let` costs one boolean test when it is off. -/
   hover : Bool := false
-  /-- What the checker knew about each `let` binder AT ITS BINDING, newest first:
-      the binder, the σ's `sctx` type when the bound value is symbolic, and the
-      value itself. Nothing is rendered here — `Term.pretty` on the binding path
-      would be a real cost for a string almost nobody reads — so both components
-      are stored as they already exist in hand and the surface renders on demand. -/
-  letTypes : List (Var × Option Term × Val) := []
+  /-- What the checker knew about each `let` binder AT ITS BINDING, newest first.
+      Nothing is rendered here — `Term.pretty` on the binding path would be a real
+      cost for a string almost nobody reads — so every component is stored as it
+      already exists in hand and the surface renders on demand. -/
+  letTypes : List LetNote := []
 deriving Inhabited
 
 /-- The machine monad: errors are `String`s, state is `St`. -/
@@ -358,7 +377,7 @@ def noteLetType (x : Var) (v : Val) : M Unit :=
           | some σ => s.sctx.lookup σ
           | none => none
         | _ => none
-      { s with letTypes := (x, τ?, v) :: s.letTypes }
+      { s with letTypes := { binder := x, ty? := τ?, val := v, sctx := s.sctx } :: s.letTypes }
 
 /-! ## State helpers -/
 

@@ -192,19 +192,56 @@ whole answer rather than a footnote to a `Dllbc.Term`. -/
 /-- Is this option on? -/
 def hoverEnabled : TermElabM Bool := return dllbc.hover.get (← getOptions)
 
-/-- What the checker knew about a binder, as markdown.
+/-- Which σ ids does this rendered value mention?
 
-    **The two cases are genuinely different questions and are spelled
-    differently.** A symbolic value has a type, in `sctx`, and reads `x : τ`. A
-    concrete one has no type recorded anywhere — this is a bidirectional checker
-    with `hasType` and no synthesis function, so there is nothing to look up and
-    nothing honest to invent — and reads `x ≡ v`, which is not a weaker answer but
-    a stronger one: the checker knows the value. Printing a guessed type instead
-    would replace a fact with an inference. -/
-def letTooltip (name : String) (τ? : Option Dllbc.Term) (v : Dllbc.Val) : String :=
-  match τ? with
+    Read off the RENDERED STRING rather than by walking the `Val`, and that is a
+    deliberate choice rather than laziness: a parallel traversal would be a second
+    implementation of `Val.prettyPrec`'s notion of "what is displayed here", and
+    the two would drift. This asks the only question that matters — *which σs does
+    the reader actually see?* — of the very text the reader sees. It cannot
+    mangle the value rendering, because it does not touch it; the worst a
+    mis-scan can do is omit or add a line of legend. -/
+def symsMentioned (s : String) : List Nat :=
+  -- Split on the sigil and read the digits that open each piece: no recursion to
+  -- justify, and in first-appearance order, which is the order the reader's eye
+  -- meets them in the value.
+  match s.splitOn "σ" with
+  | [] => []
+  | _ :: pieces =>
+    pieces.foldl (fun acc p =>
+      match p.toList.takeWhile Char.isDigit with
+      | [] => acc
+      | ds =>
+        let n := ds.foldl (fun a d => a * 10 + (d.toNat - '0'.toNat)) 0
+        if acc.contains n then acc else acc ++ [n]) []
+
+/-- What the checker knew about a binder, as markdown. THREE forms, because the
+    checker distinguishes three situations and flattening them would lie.
+
+    * **`x : τ`** — the bound value IS a σ, and `sctx` has its type. A type is
+      genuinely all there is to say.
+    * **`x ≡ v`, comptime-known** — the value is fully concrete. Not a weaker
+      answer than a type but a stronger one: the checker knows the value, and
+      printing a guessed type would replace a fact with an inference.
+    * **`x ≡ v`, binding-time SHAPE** — the value is a constructor tree over σs,
+      `Cons σ0 σ1`. This is the case the two-form version got wrong: calling it
+      "comptime-known" is a misnomer, because *the shape is known and the
+      components are not*. The σs are named in the rendering and their types are
+      in `sctx`, so they are listed rather than left as bare `σ0`, which is the
+      difference between a tooltip that tells you something and one that shows
+      you an internal name. -/
+def letTooltip (name : String) (n : Dllbc.LetNote) : String :=
+  match n.ty? with
   | some τ => s!"**{name} : `{Dllbc.Term.pretty τ}`**"
-  | none => s!"**{name} ≡ `{Dllbc.Val.pretty v}`** — comptime-known value"
+  | none =>
+    let rendered := Dllbc.Val.pretty n.val
+    let syms := symsMentioned rendered
+    let legend := syms.filterMap fun σ =>
+      (n.sctx.lookup σ).map fun τ => s!"σ{σ} : {Dllbc.Term.pretty τ}"
+    if legend.isEmpty then
+      s!"**{name} ≡ `{rendered}`** — comptime-known value"
+    else
+      s!"**{name} ≡ `{rendered}`** — binding-time shape; " ++ ", ".intercalate legend
 
 /-- First entry per binder, flagged when a later one disagrees.
 
@@ -213,13 +250,17 @@ def letTooltip (name : String) (τ? : Option Dllbc.Term) (v : Dllbc.Val) : Strin
     types. Nothing is merged and no per-path list is shown; a disagreement is
     reported as one. The raw entries are compared rather than their renderings, so
     the flag costs no pretty-printing. -/
-def letIndex (tbl : List (Dllbc.Var × Option Dllbc.Term × Dllbc.Val)) :
-    Std.HashMap (Nat × String) ((Option Dllbc.Term × Dllbc.Val) × Bool) :=
+def letIndex (tbl : List Dllbc.LetNote) :
+    Std.HashMap (Nat × String) (Dllbc.LetNote × Bool) :=
   tbl.foldl (fun m e =>
-    let k := (e.1.id, e.1.name)
+    let k := (e.binder.id, e.binder.name)
     match m[k]? with
-    | none => m.insert k (e.2, false)
-    | some (e0, differs) => if differs || e0 == e.2 then m else m.insert k (e0, true)) {}
+    | none => m.insert k (e, false)
+    | some (e0, differs) =>
+      -- Compared on what is DISPLAYED — the type and the value — and not on
+      -- `sctx`, which rides along for the legend and whose growth between two
+      -- paths is not a disagreement about this binder.
+      if differs || (e0.ty? == e.ty? && e0.val == e.val) then m else m.insert k (e0, true)) {}
 
 /-- Attach `text` as the hover content at `ref`. Positionless syntax is skipped:
     a leaf the server cannot locate is one nobody can hover. -/
@@ -240,15 +281,14 @@ def pushHover (ref : Syntax) (text : String) : TermElabM Unit := do
     passed over in silence — unlike a missing SPAN, which is a defect worth
     reporting, a missing type is the ordinary case for a block that was never
     checked (`defer_check`, or a splice) and for a binder no path reached. -/
-def pushHovers (spans : SpanAcc)
-    (tbl : List (Dllbc.Var × Option Dllbc.Term × Dllbc.Val)) : TermElabM Unit := do
+def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote) : TermElabM Unit := do
   for (ref, text) in spans.hovers do
     pushHover ref text
   unless tbl.isEmpty || spans.occs.isEmpty do
     let idx := letIndex tbl
     for (ref, id, name) in spans.occs do
       if let some (e, differs) := idx[(id, name)]? then
-        pushHover ref (letTooltip name e.1 e.2 ++
+        pushHover ref (letTooltip name e ++
           if differs then " *(differs per path)*" else "")
 
 /-- Elaborate a block and check NOTHING — the fence. Same value as `prog{ }`

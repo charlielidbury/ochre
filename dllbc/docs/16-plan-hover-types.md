@@ -155,6 +155,25 @@ info leaf per occurrence. Three honest edges, all documented rather than papered
 > |---|---|---|
 > | a σ, typed in `sctx` | ``**x : `Nat`**`` | a type is genuinely all there is |
 > | a concrete value | ``**x ≡ `S Z`** — comptime-known value`` | the value is MORE than a type, and `≡` says so |
+> | a σ-bearing TREE | ``**x ≡ `Cons σ0 σ1`** — binding-time shape; σ0 : Nat, σ1 : List Nat`` | the SHAPE is known and the components are not |
+>
+> **The third row was a two-row table until the corpus was asked a question it
+> had not been asked**, and the failure was one of LABELLING rather than of
+> rendering. `Cons(h, t)` over two parameters is not a σ (so nothing to look up)
+> and not concrete (so "comptime-known value" claimed knowledge of parts the
+> checker does not have). The value rendered correctly the whole time —
+> `Cons σ0 σ1` — under a caption that contradicted it.
+>
+> The fix says what is true, "binding-time **shape**", and then gives the σs
+> their types, because a bare `σ0` is an internal name and a reader owes nothing
+> to it. Cost: `LetNote` carries the `sctx` as it stood at the binding, which is
+> a POINTER COPY — the list is immutable and already in hand — so the third form
+> costs nothing the other two did not.
+>
+> Recorded because it generalizes past this feature: **a renderer can be right and
+> its caption wrong, and the caption is what a reader believes.** Nothing in the
+> value output was ever incorrect; the sentence around it was, and only asking for
+> a case nobody had asked for surfaced it.
 >
 > The `≡` rather than `:` is doing real work: it tells the reader which of the two
 > they are looking at without their having to know this rule. And it is the
@@ -334,7 +353,7 @@ any LSP client), not by `lake build`. The demo file's comments are the pinned re
 re-verification is one tool call per case.
 
 > **CONFIRMED, and the loop earned its keep three times.** `Tests/HoverSpans.lean`
-> ships with fourteen cases and **33 pinned positions**, every one verified
+> ships with sixteen cases and **37 pinned positions**, every one verified
 > through `textDocument/hover`; the responses recorded in it are the tool's, not
 > predictions. All eight cases the plan names are there, plus six the plan does
 > not: the borrow shape `v : &mut List Nat` (the spec's own headline), a `let a =
@@ -398,7 +417,7 @@ place with what implementation taught, in the house style.
 > | The seal crossing (`auditAllPathsD`'s `base` parameter, `checkRFnBody`'s carry-out) | `Machine.lean` |
 > | `programPaths`/`programVerdict`/`checkProgramHover` | `Program.lean` |
 > | `dllbc.hover`, `letTooltip`, `letIndex`, `pushHover`, `pushHovers` | `ElabCheck.lean` |
-> | 14 cases, 33 pinned positions | `Tests/HoverSpans.lean` |
+> | 16 cases, 37 pinned positions | `Tests/HoverSpans.lean` |
 >
 > **What is deliberately not built.** Match pattern binders get no S2 tooltip:
 > they are bound by the match rather than by `letStep`, so the one shared binding

@@ -219,4 +219,41 @@ example : Term := prog{
     } };
   () }
 
+/-! ## (15) A PARTIALLY-KNOWN value — the THIRD form, and why it exists
+
+    `Cons(h, t)` over two σs is not a σ (so there is no `sctx` entry to look up)
+    and not concrete either. The checker knows its SHAPE and not its components,
+    and calling that "comptime-known" — which the two-form renderer did — was a
+    misnomer: it claimed knowledge of the parts.
+
+    So a σ-bearing value says **binding-time shape** and lists what its σs are.
+    The σs are named in the value anyway; giving them their types is the
+    difference between a tooltip that tells you something and one that shows you
+    an internal name.
+
+      (15a) L241 C9   `x`  ⇒  **x ≡ `Cons σ0 σ1`** — binding-time shape; σ0 : Nat, σ1 : List Nat
+      (15b) L240 C9   `h`  ⇒  **h : `Nat`**        (S1, the parameter)
+      (15c) L240 C18  `t`  ⇒  **t : `List Nat`**   (S1, the parameter)
+-/
+
+example : Term := prog{
+  fn P (h : Nat, t : List Nat) -> Unit {
+    let x = Cons(h, t);
+    () };
+  () }
+
+/-! ## (16) MIXED — concrete head, symbolic tail
+
+    The rendering does not flatten: the known part is shown as itself and only
+    the unknown part is a σ, so the legend names exactly what is not known.
+
+      (16a) L255 C9  `y`  ⇒  **y ≡ `Cons (S Z) σ0`** — binding-time shape; σ0 : List Nat
+-/
+
+example : Term := prog{
+  fn Q (t : List Nat) -> Unit {
+    let y = Cons(1, t);
+    () };
+  () }
+
 end Dllbc.Tests.HoverSpans

@@ -103,7 +103,7 @@ def checkProgramDiag (t : Term) (retType? : Option Term := some ty{ Unit }) :
     v1 rule, and the reason the surface can say "(differs per path)" without
     merging anything. -/
 def checkProgramHover (t : Term) (retType? : Option Term := none) :
-    Except Diag (List (Var × Option Term × Val)) :=
+    Except Diag (List LetNote) :=
   let paths := programPaths { initSt with hover := true } t
   (programVerdict retType? paths).map fun _ =>
     paths.foldr (fun r acc =>
