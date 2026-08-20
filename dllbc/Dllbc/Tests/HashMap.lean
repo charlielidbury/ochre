@@ -23,13 +23,17 @@ the total or_insert-style walk from `hm-probe-getmut`.
 ## THE SINGLE-ALLOCATION RESIZE (branch `hm-rotate-resize`)
 
 A resize's ONLY runtime allocation is `MkSlots (2·cap)` — the new array of
-`Nil` buckets. The move path — `SlotPush`, `MoveBktR`, `MoveOne`, `MoveSlots`,
-and `InsertHM`'s resize arm — constructs NO data-level `Cons`/`Pair` node:
-grep those five fns and every `Cons(`/`Pair(` occurrence is a pattern, a type,
-or an erased/evidence position (comptime snapshots, Id/Π equations, invariant
-packs — all capital-Σ/Σ0 comptime components). The moved nodes reach the new
-table by mutation alone: `SlotPush` takes the bucket head off `src` and onto
-the carved `dst` cell with the mem::replace rotation
+`Nil` buckets. The move path — `SlotPush`, `MoveBktR`, `MoveOne`, `MoveSlots`
+— constructs NO data-level `Cons`/`Pair` node. The greppable audit over those
+four fns: the only constructor WRITE is `MoveOne`'s `*bbs := Nil` (a constant,
+the take-out), and every other `Cons(`/`Pair(` occurrence is a pattern, a
+type, or an erased/evidence position (comptime snapshots, Id/Π equations, the
+all-comptime return packs). `InsertHM`'s resize arm adds exactly `MkSlots
+(2·cap)` — THE allocation — plus the container repack `*self := Pair(…)` that
+every arm of every op performs (a struct-by-value write, not a bucket node).
+The moved nodes reach the new table by mutation alone: `SlotPush` takes the
+bucket head off `src` and onto the carved `dst` cell with the mem::replace
+rotation
 
     let tmp = *tail;  *tail := *bb;  *bb := *src;  *src := tmp;
 
