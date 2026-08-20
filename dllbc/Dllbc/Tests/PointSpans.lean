@@ -8,10 +8,11 @@ is what `textDocument/hover` returns at a pinned position, recorded beside it.
 There is no `#guard_msgs` analogue for hover, so `lake build` asserts only that
 these blocks elaborate.
 
-**`set_option dllbc.pointHover true` is what these cases turn on.** With it off —
-the default, and what `Tests/HoverSpans` runs under — every position here falls
-back to `docs/16`'s binder-granularity answer. That the two files disagree at the
-same source shape is the feature.
+**Point granularity is the DEFAULT since docs/17**, so these cases need no
+option. `set_option dllbc.pointHover false` reverts every position here to
+`docs/16`'s binder-granularity answer, which is what `Tests/HoverSpans` pins by
+setting exactly that. The two files disagreeing at the same source shape is the
+feature, and flipping one switch is how a reader sees both.
 -/
 
 open Dllbc
@@ -19,7 +20,6 @@ open Dllbc
 namespace Dllbc.Tests.PointSpans
 
 set_option trace.Dllbc.check false
-set_option dllbc.pointHover true
 
 /-! ## (P1) THE ACCEPTANCE CASE — docs/16 case (12), inverted
 

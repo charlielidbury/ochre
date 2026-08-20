@@ -16,16 +16,23 @@ register_option dllbc.hover : Bool := {
   descr := "collect DLLBC hover types (`x : τ` tooltips) while elaborating `prog{ }` blocks"
 }
 
-/-- **Point hovers** (docs/17) — record the checker's state changes as deltas, so
-    a tooltip can answer about the reader's position rather than about a binder.
+/-- **Point hovers** (docs/17) — a tooltip answers about the reader's POSITION
+    rather than about a binder: below a line that changed something, the variable
+    shows what it changed to.
 
-    Default FALSE while the lane's go/no-go measurement is outstanding: the
-    recording hangs off `refineSym`, which fires during array place evaluation,
-    and whether that is affordable on the flagship is exactly what §9 measures.
-    The option exists before the surface does precisely so it can be measured. -/
+    **Default TRUE**, and the reason is the user's own statement of what a hover
+    is for: "below the line where it got changed, the identifier shows the updated
+    value". Binder granularity is a different answer to a different question, and
+    it remains exactly one option-flip away — `set_option dllbc.pointHover false`
+    restores docs/16's behaviour wholesale, which is what `Tests/HoverSpans` runs
+    under and pins.
+
+    The cost stopped being an argument either way once both ends were measured
+    (docs/17 §9): recording is free, and reading is ~4 ms paid lazily inside
+    `mkDocString?`, so nothing is computed for a tooltip nobody opens. -/
 register_option dllbc.pointHover : Bool := {
-  defValue := false
-  descr := "collect DLLBC point-hover deltas (docs/17); off pending the cost checkpoint"
+  defValue := true
+  descr := "answer hovers about the reader's position, not the binder (docs/17); false restores docs/16's binder granularity"
 }
 
 namespace Dllbc
