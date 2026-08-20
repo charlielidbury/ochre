@@ -194,13 +194,14 @@ def hoverEnabled : TermElabM Bool := return dllbc.hover.get (← getOptions)
 
 /-- Which σ ids does this rendered value mention?
 
-    Read off the RENDERED STRING rather than by walking the `Val`, and that is a
-    deliberate choice rather than laziness: a parallel traversal would be a second
-    implementation of `Val.prettyPrec`'s notion of "what is displayed here", and
-    the two would drift. This asks the only question that matters — *which σs does
-    the reader actually see?* — of the very text the reader sees. It cannot
-    mangle the value rendering, because it does not touch it; the worst a
-    mis-scan can do is omit or add a line of legend. -/
+    Asked of the RENDERED STRING rather than by walking the `Val`, and that is
+    deliberate: the question is *which σs does the reader actually see?*, so it is
+    asked of the very text the reader sees. A traversal would be answering a
+    different question — which σs are present — and those differ wherever the
+    renderer elides (a closure shows its λ and not its captured environment).
+
+    It decides only WHICH substitutions to make; the substitution itself is the
+    kernel's, so a mis-scan cannot mangle a value, only leave a σ bare. -/
 def symsMentioned (s : String) : List Nat :=
   -- Split on the sigil and read the digits that open each piece: no recursion to
   -- justify, and in first-appearance order, which is the order the reader's eye
@@ -224,24 +225,35 @@ def symsMentioned (s : String) : List Nat :=
       answer than a type but a stronger one: the checker knows the value, and
       printing a guessed type would replace a fact with an inference.
     * **`x ≡ v`, binding-time SHAPE** — the value is a constructor tree over σs,
-      `Cons σ0 σ1`. This is the case the two-form version got wrong: calling it
-      "comptime-known" is a misnomer, because *the shape is known and the
-      components are not*. The σs are named in the rendering and their types are
-      in `sctx`, so they are listed rather than left as bare `σ0`, which is the
-      difference between a tooltip that tells you something and one that shows
-      you an internal name. -/
+      `Cons (σ0 : Nat) (σ1 : List Nat)`. This is the case the two-form version got
+      wrong: calling it "comptime-known" is a misnomer, because *the shape is
+      known and the components are not*.
+
+    **The σs carry their types INLINE, and that is the user's own ruling** — a
+    trailing legend shipped first and was put to them against this; they chose
+    inline, on the grounds that a type belongs where its σ is and a legend makes
+    the reader cross-reference. The known depth tradeoff (inline grows with the
+    tree, a legend does not) was stated when the choice was made.
+
+    **No parallel renderer, and no new traversal**: each σ is replaced by
+    `substSym` — the kernel's own refinement substitution, §3.2's — with a
+    `.const` carrying the annotated text, and the REAL `Val.pretty` prints the
+    result. `Term.prettyPrec` renders a `.const` as its bare name at every
+    precedence, so the parens in the text are the ones that appear. -/
 def letTooltip (name : String) (n : Dllbc.LetNote) : String :=
   match n.ty? with
   | some τ => s!"**{name} : `{Dllbc.Term.pretty τ}`**"
   | none =>
-    let rendered := Dllbc.Val.pretty n.val
-    let syms := symsMentioned rendered
-    let legend := syms.filterMap fun σ =>
-      (n.sctx.lookup σ).map fun τ => s!"σ{σ} : {Dllbc.Term.pretty τ}"
-    if legend.isEmpty then
-      s!"**{name} ≡ `{rendered}`** — comptime-known value"
-    else
-      s!"**{name} ≡ `{rendered}`** — binding-time shape; " ++ ", ".intercalate legend
+    match symsMentioned (Dllbc.Val.pretty n.val) with
+    | [] => s!"**{name} ≡ `{Dllbc.Val.pretty n.val}`** — comptime-known value"
+    | syms =>
+      -- A σ with no `sctx` entry is left bare rather than annotated with a
+      -- guess; the value is still σ-bearing, so the caption still says shape.
+      let annotated := syms.foldl (fun acc σ =>
+        match n.sctx.lookup σ with
+        | some τ => Dllbc.substSym σ (.const s!"(σ{σ} : {Dllbc.Term.pretty τ})") acc
+        | none => acc) n.val
+      s!"**{name} ≡ `{Dllbc.Val.pretty annotated}`** — binding-time shape"
 
 /-- First entry per binder, flagged when a later one disagrees.
 

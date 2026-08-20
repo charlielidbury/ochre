@@ -155,7 +155,7 @@ info leaf per occurrence. Three honest edges, all documented rather than papered
 > |---|---|---|
 > | a σ, typed in `sctx` | ``**x : `Nat`**`` | a type is genuinely all there is |
 > | a concrete value | ``**x ≡ `S Z`** — comptime-known value`` | the value is MORE than a type, and `≡` says so |
-> | a σ-bearing TREE | ``**x ≡ `Cons σ0 σ1`** — binding-time shape; σ0 : Nat, σ1 : List Nat`` | the SHAPE is known and the components are not |
+> | a σ-bearing TREE | ``**x ≡ `Cons (σ0 : Nat) (σ1 : List Nat)`** — binding-time shape`` | the SHAPE is known and the components are not |
 >
 > **The third row was a two-row table until the corpus was asked a question it
 > had not been asked**, and the failure was one of LABELLING rather than of
@@ -164,10 +164,29 @@ info leaf per occurrence. Three honest edges, all documented rather than papered
 > checker does not have). The value rendered correctly the whole time —
 > `Cons σ0 σ1` — under a caption that contradicted it.
 >
-> The fix says what is true, "binding-time **shape**", and then gives the σs
-> their types, because a bare `σ0` is an internal name and a reader owes nothing
-> to it. Cost: `LetNote` carries the `sctx` as it stood at the binding, which is
-> a POINTER COPY — the list is immutable and already in hand — so the third form
+> The fix says what is true, "binding-time **shape**", and gives each σ its type
+> INLINE, because a bare `σ0` is an internal name and a reader owes nothing to it.
+>
+> **Inline is the user's ruling, and the alternative was shipped first.** A
+> trailing legend (``Cons σ0 σ1`` … ``σ0 : Nat, σ1 : List Nat``) went out and was
+> put to them against the inline form, with the tradeoff stated: inline puts the
+> type where its σ is and needs no cross-referencing, and it grows with the tree,
+> where a legend stays one short line however deep the value goes. They chose
+> inline. Recorded because the tradeoff is real and a future deep-tree complaint
+> should find the decision rather than re-derive it.
+>
+> **Neither form needs a parallel renderer, and the shipped one needs no new
+> traversal at all.** Each σ is replaced by `substSym` — the kernel's own §3.2
+> refinement substitution, already written and already tested — carrying a
+> `.const` whose name is the annotated text, and the REAL `Val.pretty` prints the
+> result. `Term.prettyPrec` renders a `.const` as its bare name at every
+> precedence, so the parens that appear are the ones in the text. The scan that
+> decides WHICH σs to substitute reads the rendered string, which is the right
+> question to ask (*which σs does the reader see?*) rather than the convenient
+> one, and it can only leave a σ bare, never mangle a value.
+>
+> Cost: `LetNote` carries the `sctx` as it stood at the binding, which is a
+> POINTER COPY — the list is immutable and already in hand — so the third form
 > costs nothing the other two did not.
 >
 > Recorded because it generalizes past this feature: **a renderer can be right and

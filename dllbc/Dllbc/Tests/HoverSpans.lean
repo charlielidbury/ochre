@@ -226,12 +226,12 @@ example : Term := prog{
     and calling that "comptime-known" — which the two-form renderer did — was a
     misnomer: it claimed knowledge of the parts.
 
-    So a σ-bearing value says **binding-time shape** and lists what its σs are.
-    The σs are named in the value anyway; giving them their types is the
-    difference between a tooltip that tells you something and one that shows you
-    an internal name.
+    So a σ-bearing value says **binding-time shape**, and each σ carries its type
+    INLINE — a bare `σ0` is an internal name and a reader owes nothing to it.
+    (A trailing legend shipped first; the user chose inline, a type belonging
+    where its σ is rather than behind a cross-reference.)
 
-      (15a) L241 C9   `x`  ⇒  **x ≡ `Cons σ0 σ1`** — binding-time shape; σ0 : Nat, σ1 : List Nat
+      (15a) L241 C9   `x`  ⇒  **x ≡ `Cons (σ0 : Nat) (σ1 : List Nat)`** — binding-time shape
       (15b) L240 C9   `h`  ⇒  **h : `Nat`**        (S1, the parameter)
       (15c) L240 C18  `t`  ⇒  **t : `List Nat`**   (S1, the parameter)
 -/
@@ -244,10 +244,11 @@ example : Term := prog{
 
 /-! ## (16) MIXED — concrete head, symbolic tail
 
-    The rendering does not flatten: the known part is shown as itself and only
-    the unknown part is a σ, so the legend names exactly what is not known.
+    The rendering does not flatten: the known part is shown as itself, and only
+    the unknown part is a σ carrying its type. Nothing special makes this work —
+    the substitution reaches the σs and leaves everything else alone.
 
-      (16a) L255 C9  `y`  ⇒  **y ≡ `Cons (S Z) σ0`** — binding-time shape; σ0 : List Nat
+      (16a) L256 C9  `y`  ⇒  **y ≡ `Cons (S Z) (σ0 : List Nat)`** — binding-time shape
 -/
 
 example : Term := prog{
