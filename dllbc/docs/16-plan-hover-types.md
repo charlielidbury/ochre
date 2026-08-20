@@ -11,11 +11,16 @@
 > S1 and not S2; and the testing loop, including its stated limit.
 >
 > **What is WRONG and corrected below**, each at the paragraph that makes the
-> claim: the shadowing argument (§S2's third bullet — *the premise is false*), the
-> registry (§S1's last sentence — there isn't one), the description of what S2
-> records (§S2's opening — a concrete value has no type), and one thing the plan
-> does not mention at all, which cost the most time and is added as §"What the
-> seal eats".
+> claim: the shadowing argument (§S2's third bullet — *the premise is false*, and
+> the conclusion survives for another reason); the registry (§S1's last sentence —
+> there isn't one, and scope answers instead); and what S2 records (§S2's opening
+> — a concrete value has no type, and `x ≡ S Z` is the BETTER tooltip rather than
+> a fallback for a missing one).
+>
+> **One thing the plan does not mention at all** cost the most time and is added
+> as §"What the seal eats". It is the second diagnostic channel in a row to need
+> carriage across `checkRFnBody`, so that section now states it as a pattern with
+> a signposted door rather than as this feature's own bug.
 >
 > **The measurement came out at the good end**, and the option the plan asks for
 > is shipped anyway; see §"Cost, measured not assumed" for the numbers.
@@ -102,6 +107,25 @@ info leaf per occurrence. Three honest edges, all documented rather than papered
 > `Tests/HoverSpans.lean`: the parameter reports `v : Bool`, and both the
 > shadowing binder and its use report `v ≡ S Z`.
 >
+> **THE DESIGN PROPERTY, stated on its own because it is the point and not a
+> detail of the fix: an uncertain lookup DECLINES, it does not guess.** S1 answers
+> only when the occurrence resolves to the very binder whose annotation it holds;
+> anything else is handed to the checker, and if the checker has nothing either,
+> no DLLBC tooltip is pushed and the reader gets Lean's ordinary one. So the
+> failure direction is *silence*, never a confident mislabel.
+>
+> That direction is chosen, and it is the opposite of the one the span table
+> takes. A missing SPAN is reported loudly ("this is a span-table gap, please
+> report it") because every rejection was written somewhere and a gap is a defect.
+> A missing TYPE is the ordinary case — a `defer_check` block, a splice, a binder
+> no path reached, a match pattern binder — so reporting it would send readers
+> after bugs that are not there. **Loud where absence implies a defect, silent
+> where absence is normal**; the two tables differ because the two absences mean
+> different things.
+>
+> A tooltip is read at a glance and believed. Silence costs a reader one hover;
+> a wrong type costs them the debugging session that follows.
+>
 > **What the false premise still costs**, stated because it is the one place this
 > feature can be wrong rather than merely silent: two sibling `fn` bodies whose
 > binders collide in id AND name are indistinguishable to the join. Where their
@@ -112,25 +136,36 @@ info leaf per occurrence. Three honest edges, all documented rather than papered
 > fix, if it ever bites, is a hover slot minted per binder by the walker; not
 > built, because nothing has asked for it.
 
-> **AMENDED — "the rendered Ω-type of the bound value" does not always exist, and
-> nothing is invented when it doesn't.** This paragraph's opening assumes every
+> **AMENDED — `x ≡ S Z` IS THE BETTER TOOLTIP, and it is not a fallback.** This
+> paragraph asks for "the rendered Ω-type of the bound value", which assumes every
 > bound value has a type to render. A **symbolic** one does: a σ is a reserved
 > pure name and `sctx` holds its type, which is the whole of that case and gives
 > the `x : Nat` the plan is named for. A **concrete** one does not — this is a
 > bidirectional checker, `hasType` checks and nothing synthesizes, so there is no
-> function to ask and no entry anywhere to look up.
+> function to ask and no entry to look up.
 >
-> So the two cases are spelled differently on purpose:
+> The temptation is to read this as a gap and print something type-shaped anyway.
+> It is the reverse. **A type is what you say when you do not know the value; the
+> checker here knows the value.** `x : Nat` would be strictly less information
+> than `x ≡ S Z`, and it would be information the checker had to infer rather than
+> information it holds. So the two cases are spelled differently on purpose, and
+> the spelling says which question was answered:
 >
-> | the value | tooltip |
-> |---|---|
-> | symbolic (a σ) | ``**x : `Nat`**`` |
-> | concrete | ``**x ≡ `S Z`** — comptime-known value`` |
+> | what the checker holds | tooltip | why this spelling |
+> |---|---|---|
+> | a σ, typed in `sctx` | ``**x : `Nat`**`` | a type is genuinely all there is |
+> | a concrete value | ``**x ≡ `S Z`** — comptime-known value`` | the value is MORE than a type, and `≡` says so |
 >
-> The second is not a weaker answer standing in for a type; it is a stronger one.
-> The checker knows the value. Printing a guessed type instead would replace a
-> fact with an inference, which is the kind of thing this project treats as a
-> defect rather than a convenience.
+> The `≡` rather than `:` is doing real work: it tells the reader which of the two
+> they are looking at without their having to know this rule. And it is the
+> honest half of the same discipline the shadowing note states — printing a
+> guessed type would replace a fact with an inference, which this project treats
+> as a defect rather than a convenience.
+>
+> This also happens to be the shape a comptime language should want. §"functions
+> are comptime" is the neighbouring document's whole subject: what is known at ⇝
+> is knowledge, not merely a type, and a tooltip that flattened the two would be
+> hiding the distinction the calculus is built on.
 >
 > **Nothing is rendered at `letStep`.** The table stores the `sctx` lookup and the
 > value as they already exist in hand, and the surface renders on demand:
@@ -163,10 +198,34 @@ every particular, which is the part worth recording:
   feature at a `fn` and asking the server. The parameter beside it answered and
   the `let` returned nothing, which is exactly the shape docs/05 describes.
 
-The prescription that falls out, and it is more useful than "remember the seal":
-**a new diagnostic side table on `St` has two sites, not one — where it is
-written, and where the seal would otherwise eat it.** Both of the tables that now
-exist needed both.
+### This is now a PATTERN, and the next channel will hit it too
+
+Two diagnostic channels have been added to `St`, in two separate pieces of work,
+and **both needed carriage across `checkRFnBody` and neither anticipated it**:
+
+| channel | added by | what it keys | crossed the seal |
+|---|---|---|---|
+| the breadcrumb (`stmtKey`/`argKey`/`trail`) | docs/05 pillar B | source spans | at the second attempt — the reference implementation dropped it on purpose |
+| the hover type table (`letTypes`) | this plan | binder descriptions | at the second attempt — this plan did not mention the seal at all |
+
+Two for two is a pattern rather than a coincidence, and the reason is structural:
+**a diagnostic channel is about the SOURCE, and a function body is source like
+any other, while the seal exists to isolate the machine state that source
+produces.** Anything that follows the program's text rather than its Ω wants to
+cross; the isolation was never aimed at it.
+
+So the prescription, and it is more useful than "remember the seal":
+
+> **A new diagnostic side table on `St` has TWO sites, not one — where it is
+> written, and where the seal would otherwise eat it.** `checkRFnBody`'s closing
+> `set { saved with … }` is the door; `auditAllPathsD` is how you get through it.
+> Enumerate the fields that cross there before writing the table, not after the
+> first probe comes back empty.
+
+The door is now known and signposted from both ends — this section, and the
+comments at both sites. A third channel that still forgets it will have had to
+ignore three warnings, which is a different kind of mistake from the two that
+have already been made.
 
 ## Invariants (the port's, inherited verbatim)
 
