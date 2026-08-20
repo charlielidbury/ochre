@@ -2,7 +2,7 @@ import Dllbc.Program
 
 open Lean
 
-/-- **`x : τ` tooltips for DLLBC variables** (docs/10). On by default: the whole
+/-- **`x : τ` tooltips for DLLBC variables** (docs/16). On by default: the whole
     point is that hovering a variable in a `prog{ }` block answers, the way
     hovering a Lean variable does, without anyone opting in.
 
@@ -176,7 +176,7 @@ def elabWith (collect : Bool) (hover : Bool) (act : UM (TSyntax `term)) :
   synthesizeSyntheticMVarsNoPostponing
   return (← instantiateMVars e, spans)
 
-/-! ## Hover tooltips (docs/10)
+/-! ## Hover tooltips (docs/16)
 
 Two sources of truth meet here. The walker already resolved every identifier, so
 what a PARAMETER's occurrence means is settled at elaboration time and arrives
@@ -208,7 +208,7 @@ def letTooltip (name : String) (τ? : Option Dllbc.Term) (v : Dllbc.Val) : Strin
 
 /-- First entry per binder, flagged when a later one disagrees.
 
-    v1 is FIRST-PATH, per docs/10: a σ's type refines per branch, and a statement
+    v1 is FIRST-PATH, per docs/16: a σ's type refines per branch, and a statement
     is checked once per path, so one binder legitimately has several binding-time
     types. Nothing is merged and no per-path list is shown; a disagreement is
     reported as one. The raw entries are compared rather than their renderings, so
@@ -392,7 +392,7 @@ def elabChecked (ref : Syntax) (act : UM (TSyntax `term)) : TermElabM Expr := do
   match res with
   | .ok tbl =>
     -- THE HOVER PUSH IS ON THE SUCCESS PATH, and that is the one structural way
-    -- this feature differs from the error spans beside it (docs/10): a squiggle
+    -- this feature differs from the error spans beside it (docs/16): a squiggle
     -- costs nothing until something fails, a tooltip costs on every block that
     -- checks. Which is why the option above exists and why the cost is measured.
     if hover then pushHovers spans tbl

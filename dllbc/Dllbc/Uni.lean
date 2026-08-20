@@ -537,7 +537,7 @@ structure SpanAcc where
   stmts : Array (Syntax × Syntax) := #[]
   /-- Call-argument keys: the argument's own term, filed under its own span. -/
   args : Array (Syntax × Syntax) := #[]
-  -- HOVER METADATA (docs/10). A SECOND collection flag rather than a second
+  -- HOVER METADATA (docs/16). A SECOND collection flag rather than a second
   -- reader of `collect`, because the two are read on opposite paths: spans locate
   -- a REJECTION, hovers describe an ACCEPTED program. Sharing one flag would
   -- either collect spans on every passing elaboration (the +6.9% `collect` exists
@@ -835,7 +835,7 @@ def resolveName (rctx : List (String × Nat)) (pctx : List String) (x : Ident) :
           | some id => `(Dllbc.Term.var ⟨$(quote id), $(quote s)⟩)
           | none => pure ⟨x.raw⟩
 
-/-- File a hover for one identifier OCCURRENCE (docs/10).
+/-- File a hover for one identifier OCCURRENCE (docs/16).
 
     **This mirrors `resolveName`'s precedence and must keep mirroring it.** A name
     that resolves to a pure binder is not a runtime variable, and `resolveName`
@@ -1212,7 +1212,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
       return (out, n)
   | `(uterm| $x:ident) => do
     -- EVERY occurrence, not just the binder: the walker resolves each ident to
-    -- its variable already, so filing the pair costs one lookup (docs/10 S1).
+    -- its variable already, so filing the pair costs one lookup (docs/16 S1).
     noteIdent rctx pctx x
     return (← resolveName rctx pctx x, next)
   | _ => Macro.throwErrorAt stx "decl: unexpected term syntax"
@@ -1280,7 +1280,7 @@ partial def elabLamBinders (rctx : List (String × Nat)) (pctx : List String) (n
     let τD ← binderDom name τT
     let entry ← `(((⟨$(quote next), $(quote name)⟩ : Dllbc.Var), $τD))
     -- A runtime λ's binders are annotated exactly as a `fn`'s are, so they are
-    -- the same S1 case (docs/10). Their ids come from the counter rather than
+    -- the same S1 case (docs/16). Their ids come from the counter rather than
     -- from a position, which is why the entry carries `next` rather than an index.
     noteHover x.raw (hoverText name (srcText τ.raw))
     modify fun a =>
@@ -1397,7 +1397,7 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- the lemma just as thoroughly and would go unasked there.
     lemmaShadowCheckAt name (name.getId.toString)
     -- The binder's IDENT is kept, not just its name: it is the span a parameter's
-    -- tooltip is filed at (docs/10 S1).
+    -- tooltip is filed at (docs/16 S1).
     let parsedI ← ps.getElems.toList.mapM fun (p : TSyntax `ulamb) => match p with
       | `(ulamb| $x:ident : $τ:uterm) => pure (x, τ)
       | _ => Macro.throwErrorAt p "fn: malformed parameter (expected `x : τ`)"
@@ -1408,7 +1408,7 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- at runtime id `i`, fresh binders from `n`. Identical to what `decl{ }` builds
     -- — deliberately, since the `FnDef` this produces has to BE the one it builds.
     let fullRctx : List (String × Nat) := names.zip (List.range n)
-    -- **S1 — a parameter's type is ALREADY WRITTEN DOWN** (docs/10). The tooltip
+    -- **S1 — a parameter's type is ALREADY WRITTEN DOWN** (docs/16). The tooltip
     -- is the annotation's own source text: exact, no computation, and no checker
     -- involvement, which is why parameter hovers work in `prog defer_check { }`
     -- too. Keyed by the §5.2 positional id, so that a body-local `let` shadowing a
@@ -1462,7 +1462,7 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- audit could not carry out (see `auditAllPathsD`): the error lands on the
     -- declaration rather than on the whole program.
     spanOfFn nm (mkNullNode #[name, ret])
-    -- **A CALLEE'S SIGNATURE, from scope** (docs/10 S1's cheap extension). The
+    -- **A CALLEE'S SIGNATURE, from scope** (docs/16 S1's cheap extension). The
     -- plan says "from the registry"; there is no registry — docs/05 §1.A deleted
     -- it before it was written, because a callee is a binding lexically above the
     -- call and so scope IS the call table. Scope answers this question too, and
@@ -1513,7 +1513,7 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- none of the right-hand side's bulk.
     spanOfLet n1 name (mkNullNode #[x, e])
     -- The `let` BINDER's own span, filed like an occurrence: its type comes from
-    -- the checker (docs/10 S2), so it joins against `St.letTypes` exactly as the
+    -- the checker (docs/16 S2), so it joins against `St.letTypes` exactly as the
     -- uses below it do, under the same id.
     noteOcc x.raw n1 name
     let (rest', n2) ← elabUBlk ((name, n1) :: rctx) pctx' (n1 + 1) rest

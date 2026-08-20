@@ -91,7 +91,7 @@ def checkProgramDiag (t : Term) (retType? : Option Term := some ty{ Unit }) :
     Except Diag Unit :=
   programVerdict retType? (programPaths initSt t)
 
-/-- **The same walk, with the `let` type table carried out of it** (docs/10).
+/-- **The same walk, with the `let` type table carried out of it** (docs/16).
 
     Same seed but for `hover`, same paths, same verdict — so a program accepted
     here is accepted by `checkProgramDiag` and rejected here is rejected there,

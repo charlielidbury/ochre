@@ -267,7 +267,7 @@ structure St where
       One statement is checked once per path, so which path failed is half the
       diagnosis. -/
   trail : List (String × String) := []
-  -- THE HOVER TYPE TABLE (docs/10). Same class of thing as the breadcrumb above,
+  -- THE HOVER TYPE TABLE (docs/16). Same class of thing as the breadcrumb above,
   -- and it sits here for the same reason: no rule reads it, no accept/reject
   -- depends on it, and it is not σ-bearing, so the sweeps leave it alone.
   --
@@ -340,7 +340,7 @@ def noteArg (t : Term) : M Unit := modify fun s => { s with argKey := some t }
 def noteArm (scrut : Var) (ctor : String) : M Unit :=
   modify fun s => { s with trail := (scrut.name, ctor) :: s.trail }
 
-/-- Record what a `let` bound, for `x : τ` tooltips (docs/10). Called from
+/-- Record what a `let` bound, for `x : τ` tooltips (docs/16). Called from
     `letStep` — the one shared binding site — so all three drivers file, and a
     fourth would inherit it exactly as it inherits the breadcrumb.
 
@@ -4907,7 +4907,7 @@ def auditAllPathsD : Nat → Term → List (Except Diag (Val × St)) → Nat →
                    nextSym := max acc.nextSym st'.nextSym
                    nextGroup := max acc.nextGroup st'.nextGroup
                    -- THE HOVER TABLE CROSSES THE SEAL, for the same reason and by
-                   -- the same argument as the breadcrumb above (docs/10, docs/05
+                   -- the same argument as the breadcrumb above (docs/16, docs/05
                    -- pillar B): a `fn` body is where the corpus lives, so a table
                    -- that stopped at the seal would give `x : τ` tooltips to toy
                    -- programs and nothing else. It is a binder ↦ description map,
@@ -5575,7 +5575,7 @@ mutual
       noteStmt (.letIn x .unit .unit)
       let v ← if x.isComptime then readComptimeVal fuel rhs else readR fuel rhs
       -- The hover type table, filed at the same one site and for the same reason
-      -- (docs/10). AFTER the read, because the read is what produces the value the
+      -- (docs/16). AFTER the read, because the read is what produces the value the
       -- binder's type is read off, and BEFORE `bindSlot`, which is arbitrary —
       -- neither observes the other.
       noteLetType x v
@@ -6162,7 +6162,7 @@ mutual
       set { saved with nextLoan := advanced.nextLoan, nextSym := advanced.nextSym
                        nextGroup := advanced.nextGroup
                        sealSites := advanced.sealSites
-                       -- The body's `x : τ` entries, carried out (docs/10).
+                       -- The body's `x : τ` entries, carried out (docs/16).
                        letTypes := advanced.letTypes }
   termination_by fuel _ _ _ => (fuel, 6, 0)
   /-- **The seal, at either arrow** (M32 R3, suspensions.md §2.4). One rule, two

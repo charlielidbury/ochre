@@ -2,7 +2,7 @@ import Dllbc.ElabCheck
 import Dllbc.StdLemmas
 
 /-!
-# `x : τ` — hovering a DLLBC variable answers (docs/10)
+# `x : τ` — hovering a DLLBC variable answers (docs/16)
 
 Every case below is a block that ELABORATES; the assertion is not in the build
 output but in what `textDocument/hover` returns at a named position, recorded
