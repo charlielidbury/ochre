@@ -224,64 +224,46 @@ def throwDiag {α : Type} (ref : Syntax) (retRef : Option Syntax) (spans : SpanA
     throwErrorAt r (head ++ note)
   | none =>
     -- NO BREADCRUMB AT ALL versus A BREADCRUMB THAT DID NOT MATCH. Only the
-    -- second is a defect. The pure check (`checkPureDiag`) raises no breadcrumb
-    -- by construction — `hasTypeT` answers `false` without locating anything, so
-    -- there is no statement to have a span for — and telling the author to report
-    -- a span-table gap for it would be sending them after a bug that is not
-    -- there. That case reports at the ascription, which is the thing the check
-    -- was actually about.
+    -- second is a defect. Some rejections legitimately carry no breadcrumb — a
+    -- verdict reached without locating a statement, which has no span to find —
+    -- and telling the author to report a span-table gap for one of those would
+    -- send them after a bug that is not there. That case reports at the block.
     if diag.stmtKey.isNone && diag.argKey.isNone then
       throwErrorAt (retRef.getD ref) head
     else
       throwErrorAt ref (head ++ m!"\n(no span for the failing statement — reported at the \
         program; this is a span-table gap, please report it)")
 
-/-- Elaborate a block and check it with **the checker its content determines**.
+/-- Elaborate a block and CHECK IT. There is no routing and no second checker.
 
-    | content | ascription | check |
-    |---|---|---|
-    | classifies as a program | none | the ⇒-walk (`checkProgramDiag … none`) |
-    | classifies as a program | `-> τ` | the walk AND the audit at `τ` |
-    | pure | `-> τ` | `hasTypeT` against `τ` (`checkPureDiag`) |
-    | pure | none | nothing — there is no specification anywhere |
+    Every block gets the top-level ⇒-walk (`checkProgramDiag … none`). The
+    intra-term staging is not this function's business: it is the author's own
+    per-binder capitalization, which `letStep` reads on the way through (⇝ for a
+    capital binder, ⇒ for a lowercase one — `Machine.lean`, shared by `readR`,
+    `readRTail` and `exploreD`, so the checking driver inherits it).
 
-    **"Classifies as a program" means `isProgramValue`, NOT "contains a `fn`".**
-    The rows said `fn`-presence until this was corrected, and that is exactly the
-    test the port refuted: `let x = Cons(1,Nil); let y = x; let z = x` is a
-    use-after-move with no `fn` anywhere, and a syntactic reading files it as pure
-    and checks nothing. A docstring naming a test the code does not perform is the
-    one kind of comment this project treats as a defect, so it is named after the
-    function above.
+    A block that wants to state an intended type says so with a **seal**,
+    `(e : τ)`, and the seal's own symbolic-⇒ rule verifies it at the node. That is
+    why there is no `-> τ` parameter here and no pure-checking path: the calculus
+    already had the type-carrier, and its rule *is* the audit (`Syntax.lean`, the
+    `.seal` constructor).
 
-    The last row is information absence, not a deferral policy: a bare pure block
-    states no type, and a λ is checkable but not synthesizable, so there is
-    nothing any checker could be asked. The suite pairs a term with its type at
-    the probe site precisely because the definition does not carry it.
+    The one thing that is NOT checked is a block whose assembled value is not
+    closed — a spliced template. It has nothing to evaluate, and it is checked at
+    its instantiations by construction. That is detected here and declined
+    silently with a trace line.
 
-    ## A block is checked when THREE things hold, and the table is only the first
+    Everything else that should not be checked says so in the source, with
+    `prog defer_check { … }`: a block constructed for later checking at its probe.
 
-    Stating all three together is what makes this a rule rather than a rule with
-    exceptions bolted on:
-
-    1. **It carries its own specification** — a program, or an ascription. The
-       table above. Otherwise nothing can be asked.
-    2. **Its value is closed** — no free variable, no unsolved metavariable. The
-       spliced-template class: not comptime-known to the elaborator, so not
-       askable. Tested on the `Expr`, body AND return type.
-    3. **Its context is registry-resolvable** — every callee it names is bound
-       inside the block. The FRAGMENT class: a closed block whose callee prefix
-       arrives from a Lean-level assembler (`withPool (prog{ … })`, and the
-       hashmap flagship's `hmS1Under`/`hmGmUnder`/`hmPinUnder`) is only half a
-       program, and ⇒-walking it asks about a call table that has not been
-       assembled yet.
-
-    **(2) and (3) are the same idea at two levels**, which is why (3) completes
-    this rule instead of puncturing it: context not registry-known is to (3) what
-    value not comptime-known is to (2), and both say the elaborator has not been
-    given enough to answer. Only (2) is detected here and declined silently; (3)
-    is not detectable from the value alone — a fragment is indistinguishable from
-    a program with a genuinely unknown callee — so it is the manual fence's
-    population, 84 of the 297 sites. See docs/05 §2b and §6. -/
+    **Historical note, because the docstring here has been wrong twice and both
+    errors were the same kind.** It first described the classifier as testing for
+    `fn`-presence, which the code never did (it called `Term.needsRuntime`); the
+    correction was made, and then the classifier itself was deleted, leaving the
+    corrected table describing a routing that no longer exists. A comment naming a
+    test the code does not perform is the one kind this project treats as a
+    defect, and proximity is no protection — both versions sat two lines above the
+    function they misdescribed. -/
 def elabChecked (ref : Syntax) (act : UM (TSyntax `term)) : TermElabM Expr := do
   let (e, _) ← elabWith false act
   let isOpen (x : Expr) : Bool := x.hasMVar || x.hasFVar

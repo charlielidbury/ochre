@@ -74,7 +74,7 @@ readR(*): borrow payload is already a hole (⊥) — nothing to take
     S(k) => { let a = *v; let b = *v; *v := a; () }
   } } : Term)
 
-/-! ## (4) The return type
+/-! ## (4) A RESULT SEAL — what the retired `-> τ` used to express
 
     `-> τ` is what asks for the audit, so an audit rejection squiggles the type
     that was asked for rather than whichever statement happened to run last. -/
@@ -154,7 +154,7 @@ example :
     progRejects (under prog defer_check { Bool }) "does not have its ascribed type" prog defer_check { Bool } = true := by
   native_decide
 
-/-! ## (7) THE OTHER HALF OF THE INFORMATION RULE — an ascribed PURE block
+/-! ## (7) AN ASCRIBED PURE BLOCK — a proof checked at its own definition
 
     A block with no `fn` in it carries no specification, so nothing can be asked
     of it — unless a SEAL supplies one. `(e : τ)` is the ascription, in the
