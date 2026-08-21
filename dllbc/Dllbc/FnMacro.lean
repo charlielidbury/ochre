@@ -579,8 +579,7 @@ def fnElab (d : FnDef) : Except String Term := do
     written against the declaration has to be reordered the same way. Omitting
     this is invisible whenever `[k]` is already parameter 0 (which every flagship
     in this corpus happens to satisfy) and silently passes a borrow where a `Nat`
-    is expected otherwise. It was found by the migration report's disagreement
-    list, on `swap_at` and `pick` — two callers of `[i]`/`[k]` functions whose
+    is expected otherwise. It was found on callers of `[i]`/`[k]` functions whose
     decreasing parameter is not first. -/
 partial def retarget (binds : List (String × Var × Option Nat)) : Term → Term
   | .call f args =>

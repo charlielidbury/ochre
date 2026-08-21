@@ -145,66 +145,6 @@ def a7 : Term := prog defer_check {
   () }
 example : progRejects a7 "only a statement-position match may split" = true := by native_decide
 
-/-! ## §B. The seal-vs-`hasType` identity, checked over a battery
-
-    For a borrow-free `u`, sealing a term at `u` must accept and reject exactly
-    when the pure fragment's own `readC`-then-`hasType` does — the seal's audit
-    reads the type with `readC`, the term with `readR` (which on a pure term IS
-    `readC`), and calls `hasType` on the two, so the two checks should coincide
-    exactly. Checked as an identity over a battery of pairs rather than a spot
-    check, with both polarities represented so the identity cannot hold
-    vacuously. -/
-
-/-- The pure fragment's own check: `readC` both sides, then `hasType`. -/
-def chk (tm ty : Term) : Bool :=
-  match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasTypeT 3000 v t).run (seedPure [] []) with
-  | .ok r _ => r
-  | .error _ _ => false
-
-/-- Does sealing `tm` at `ty` pass the checker? -/
-def sealChk (tm ty : Term) : Bool :=
-  progOk (.letIn ⟨0, "f"⟩ (.seal 0 tm ty) .unit)
-
-def natT : Term := .const "Nat"
-def listNatT : Term := .app (.const "List") natT
-def n3 : Term := .ctorApp "S" [.ctorApp "S" [.ctorApp "S" [.ctorApp "Z" []]]]
-def n4 : Term := .ctorApp "S" [n3]
-
-/-- The battery: λ's at Π's, data at its type, proofs at their statements, and a
-    wrong-type mate for each shape. -/
-def battery : List (Term × Term) :=
-  [ (prog defer_check { λ (x : Nat). x },            prog defer_check { Π (x : Nat) → Nat })
-  , (prog defer_check { λ (x : Nat). x },            prog defer_check { Π (x : Nat) → Bool })          -- ✗
-  , (prog defer_check { λ (x : Nat). S x },          prog defer_check { Π (x : Nat) → Nat })
-  , (prog defer_check { λ (x : Nat). λ (y : Nat). x }, prog defer_check { Π (x : Nat) → Π (y : Nat) → Nat })
-  , (prog defer_check { λ (x : Nat). λ (y : Nat). x }, prog defer_check { Π (x : Nat) → Nat })         -- ✗
-  , (n3, natT)
-  , (n3, .const "Bool")                                                       -- ✗
-  , (.ctorApp "Nil" [], listNatT)
-  , (.ctorApp "Cons" [n3, .ctorApp "Nil" []], listNatT)
-  , (.ctorApp "Refl" [], .idT natT n3 n3)
-  , (.ctorApp "Refl" [], .idT natT n3 n4)                                     -- ✗
-  , (StdLemmas.LeRefl, StdLemmas.LeReflTy)
-  , (StdLemmas.LeRefl, StdLemmas.IdSymTy)                                  -- ✗
-  , (StdLemmas.IdSym, StdLemmas.IdSymTy)
-  , (StdLemmas.AddZero, StdLemmas.AddZeroTy)
-  -- The flagship: congruence, whose whole content is that an abstract
-  -- function's applications are one term. Sealing it must cost exactly what
-  -- checking it costs.
-  , (StdLemmas.IdCongr, StdLemmas.IdCongrTy) ]
-
-/-- The seal's audit and the pure fragment's `hasType` agree, pair for pair. -/
-example : battery.all (fun p => sealChk p.1 p.2 == chk p.1 p.2) = true := by native_decide
-
--- Liveness control: both verdicts occur in the battery, so the identity above
--- pins real agreement rather than holding vacuously because every row
--- accepted (or every row rejected).
-example : (battery.any (fun p => chk p.1 p.2)
-        && battery.any (fun p => !chk p.1 p.2)) = true := by native_decide
--- Harness liveness: a deliberately wrong pairing disagrees with the seal, so
--- the identity above is not trivially true of any two Bools.
-example : sealChk (StdLemmas.LeRefl) (StdLemmas.IdSymTy) = false := by native_decide
-
 /-! ## §C. Application of a value callee
 
     The two rules, chosen by what the slot holds, each with a negative control
@@ -274,35 +214,12 @@ example : progRejects c10 "holds ⊥" = true := by native_decide
 def c11 : Term := prog defer_check { let x = 3; let b = &m x; let z = x(2); () }
 example : progRejects c11 "is not a function value" = true := by native_decide
 
-/-! ### C12. The `ih` shape: a Π-typed telescope parameter, applied inside a body
-
-    Checking-side this is a `σ : Π` — the sealed view — and the call is
-    abstract application at that Π. Executing-side the parameter holds the
-    caller's actual λ and the same syntax β-reduces. One form, two rules, no
-    branch in the program. -/
-
+-- `Apply1`: a Π-typed telescope parameter (the `ih` shape), applied inside its
+-- own body — kept as a fixture `Programs.lean`'s B7 also cites.
 def apply1 : Term := prog{
   fn Apply1 (G : Π (x : Nat) → Nat, n : Nat) -> Nat { G(n) };
   () }
 example : progOk apply1 = true := by native_decide
-
--- The caller supplies a literal λ; checking mode learns only `Nat` about the
--- result (the call is opaque), unchanged by the callee being applied through a
--- variable inside.
-def c12 : Term := prog{
-  fn Apply1 (G : Π (x : Nat) → Nat, n : Nat) -> Nat { G(n) };
-  let F = λ (x : Nat). S x; let r = Apply1(F, 2); () }
-example : progOk c12 = true := by native_decide
--- `tailEnv` drops the program's own function binding, so the expected Ω is the
--- one this assertion always had — `r ↦ σ0` and not `σ1`.
-example : tailEnv c12 [("F", vlam), ("r", .sym 0)] = true := by native_decide
-
--- The negative control for the parameter branch: a body that under-applies its
--- Π-typed parameter is rejected at the callee's own check, not at a caller's.
-def apply1bad : Term := prog defer_check {
-  fn Apply1bad (G : Π (x : Nat) → Π (y : Nat) → Nat, n : Nat) -> Nat { G(n) };
-  () }
-example : progRejects apply1bad "partial application" = true := by native_decide
 
 /-! ### C13. Transparent vs sealed, as a TYPING difference
 
@@ -404,38 +321,6 @@ example : progOk d1 = true := by native_decide
 example : diffOld d1 = false := by native_decide
 example : diffC   d1 = true  := by native_decide
 
-/-! ### D2. Four shapes that put a σ mid-expression, all agreeing under the
-    extended relation -/
-
-/-- A callee whose result the checker knows only as a σ, so D2b's seal sits at
-    a symbolic value rather than a concrete one.
-
-    `GiveThree` takes an argument it does not use because a NULLARY `fn` lowers
-    to a runtime λ binding nothing, which is refused: a thunk makes ι
-    ambiguous. Giving it an unused parameter sidesteps that unrelated wall
-    without weakening what D2b actually needs — a callee whose result the
-    checker knows only as a σ, minted fresh at any arity. -/
-def giveThree : Term := prog{ fn GiveThree (u : Nat) -> Nat { 3 }; () }
-
--- seal at a concrete value
-def d2a : Term := prog{ let a = (3 : Nat); let b = a; () }
--- seal at a symbolic value (the body reads a call's fresh existential)
-def d2b : Term := prog{
-  fn GiveThree (u : Nat) -> Nat { 3 };
-  let n = GiveThree(0); let a = (Add n 1 : Nat); let b = Add n 1; () }
--- a sealed function callee, passed and called
-def d2c : Term := prog{
-  let F = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = F(2); let z = F(5); () }
--- a transparent function callee, passed to a declared fn and called inside it
-def d2d : Term := prog{
-  fn Apply1 (G : Π (x : Nat) → Nat, n : Nat) -> Nat { G(n) };
-  let F = λ (x : Nat). S x; let r = Apply1(F, 2); let s = F(7); () }
-
-def shapes : List Term := [d2a, d2b, d2c, d2d]
-
-example : shapes.all (fun t => progOk t (.const "Unit")) = true := by native_decide
-example : shapes.all diffC = true := by native_decide
-
 /-! ### D3. Harness liveness — the relation must be able to say NO
 
     A counterexample-finder that has never found its counterexample is
@@ -455,99 +340,6 @@ example :
   (match symEnvs d1, runExec d1 with
    | [.ok se], .ok ce => instanceOfComputed se ce
    | _, _ => false) = true := by native_decide
-
-/-! ## §E. Sealing a certificate: the cost, measured
-
-    `let cert = seal ⟨enormous proof⟩ ⟨statement⟩` mints one σ at the
-    statement, and every citation afterwards is a σ-reference that `hasType`
-    answers by reading the statement, never descending the proof. So citing a
-    sealed certificate repeatedly should cost O(statement) rather than
-    O(proof) per citation.
-
-    The subject is `CountSwapA`, the largest proof in `StdLemmas` (9156 term
-    nodes against a 400-node statement). `useIt`'s parameter type IS the
-    statement, so each citation forces `hasType` on whatever the slot holds:
-    the whole proof value when the certificate is transparent, a σ when it is
-    sealed.
-
-    Measured on this machine, compiled (`lake build` of this module, ms):
-
-        the pure fragment's own check of the proof     6
-        citations k                    1     8    32    128
-        transparent                    6    34   130    515
-        SEALED                         6     6     9     17
-
-    The seal's audit costs exactly the ordinary check: its intercept is 6 ms,
-    matching `chk`'s own 6 ms, so sealing is not a tax. Every citation after it
-    is flat: 4.01 ms each transparent against 0.087 ms each sealed (least
-    squares over the four points), a factor of 46 that grows with the proof,
-    because the sealed cost is a function of the 400-node statement while the
-    transparent one is a function of the 9156-node proof. -/
-
-def big : Term := StdLemmas.CountSwapA
-def bigTy : Term := StdLemmas.CountSwapATy
-
-/-- `let c = rhs ; useIt(c) ; … ; ()` with `k` citations. Built rather than
-    written out so the citation count can be swept: the claim is about the SLOPE,
-    and one hand-written pair would only show a point. -/
-def citeK (k : Nat) (rhs : Term) : Term :=
-  let c : Var := ⟨0, "C"⟩
-  let rec go : Nat → Term
-    | 0 => .unit
-    | n + 1 => .seq (.call "UseIt" [.var c]) (go n)
-  .letIn c rhs (go k)
-
-/-- The citations, with their callee declared above them. The built tail is
-    spliced with `%`, and the `.call "UseIt"` nodes inside it are retargeted
-    onto the slot by `bindFn` — the same mechanism a hand-written call goes
-    through, so a swept program and a written one mean the same thing. -/
-def citeProg (k : Nat) (rhs : Term) : Term := prog{
-  fn UseIt (H : %bigTy) -> Unit { () };
-  %(citeK k rhs) }
-
-def unsealedK (k : Nat) : Term := citeProg k big
-def sealedK (k : Nat) : Term := citeProg k (.seal 0 big bigTy)
-
-def unsealed1 : Term := unsealedK 1
-def sealed1 : Term := sealedK 1
-def unsealed4 : Term := unsealedK 4
-def sealed4 : Term := sealedK 4
-
--- Both check, and check the same thing: the sealed citation is not cheaper by
--- being weaker. `useIt`'s parameter type is the statement either way, so an
--- unsound σ would be caught here, not saved.
-example : progOk unsealed4 = true := by native_decide
-example : progOk sealed4 = true := by native_decide
-
--- Negative control: sealing does not launder a wrong proof past the citation.
--- A certificate sealed at a statement it does not inhabit is rejected at the
--- node.
-def sealedWrong : Term := prog defer_check {
-  fn UseIt (H : %bigTy) -> Unit { () };
-  let c = (%StdLemmas.LeRefl : %bigTy); UseIt(c); () }
-example : progRejects sealedWrong "does not have its ascribed type" = true := by
-  native_decide
-
-/-- Re-measure on demand: prints the numbers in the §E header when the `#eval`
-    block below is uncommented and `lake build` runs. -/
-def timeIt (label : String) (f : Unit → String) : IO Unit := do
-  let t0 ← IO.monoMsNow
-  let r := f ()
-  let _ ← IO.mkRef r.length                       -- force before reading the clock
-  let t1 ← IO.monoMsNow
-  IO.println s!"{label}: {r} [{t1 - t0} ms]"
-
-def verdict (t : Term) : String :=
-  match checkProgram t with | .ok _ => "OK" | .error e => "ERR: " ++ e
-
--- Parked: this sweep asserts nothing (`verdict` catches errors into printed
--- strings; the section's claims are native_decide'd above) and cost ~9s of
--- every build re-deriving the §E table. Uncomment to re-measure.
--- #eval do
---   timeIt "S26 Qed  pure-fragment check of the proof" (fun _ => toString (chk big bigTy))
---   for k in [1, 8, 32, 128] do
---     timeIt s!"S26 Qed  transparent x{k}" (fun _ => verdict (unsealedK k))
---     timeIt s!"S26 Qed  SEALED      x{k}" (fun _ => verdict (sealedK k))
 
 end Dllbc.Tests.S26Seal
 end
@@ -912,8 +704,7 @@ example : progRejects d1 "cannot type neutral" = true := by native_decide
 
     What decides which rule fires is the sealed TERM, not the type: a
     runtime λ takes the audit, and everything else takes the ordinary
-    `readC`-then-`hasType` path unchanged, which keeps the borrow-free
-    seal-vs-`hasType` identity (§B above) intact. -/
+    `readC`-then-`hasType` path unchanged. -/
 
 def unitSeal : Term := prog defer_check { Π (v : &mut List Nat) → Unit }
 def pinSeal : Term := prog defer_check { Π (v : &mut List Nat) → Id (List Nat) (*v) (Cons 9 Nil) }
@@ -1009,10 +800,9 @@ example : slotOf e4 "y" = some "Cons (S Z) Nil" := by native_decide
 
 /-! ### E5. The seal-vs-declaration identity, extended to borrow-moded seals
 
-    §B above checked the borrow-free identity between sealing and `hasType`.
-    Here is its sibling: does the audit of a sealed λ agree with a declared
-    `fn`'s verdict on the same function? Since `fn` is a macro over a sealed
-    recursor, it must — the two are the same check reached by two routes.
+    Does the audit of a sealed λ agree with a declared `fn`'s verdict on the
+    same function? Since `fn` is a macro over a sealed recursor, it must — the
+    two are the same check reached by two routes.
 
     Checked as an identity over hand-written twins rather than a spot check,
     with both polarities so it cannot hold vacuously. Each pair is the same

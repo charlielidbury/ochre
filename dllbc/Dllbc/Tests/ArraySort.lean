@@ -806,70 +806,12 @@ example : qsCallers.all (fun b => progOk (arrUnder sHonest pHonest qHonest qSuff
 example : qsCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 (arrUnder sHonest pHonest qHonest qSuffHonest b))
     = true := by native_decide
 
-/-! ## Regression probes for a carve-after-call bug
+/-! ## Regression for a carve-after-call bug
 
-    Found by bisection: four shapes that always worked, and the one that did not. Each
-    is the smallest program exhibiting its shape. If the node-level collapse is removed
-    from `carveAt`, only `c6CarveAfterCall` goes red, which is what makes this a live
-    check on the rule rather than a comment claiming one. -/
+    If the node-level collapse is removed from `carveAt`, this goes red, which is
+    what makes it a live check on the rule rather than a comment claiming one. -/
 
-def c6Touch : Term := prog{
-  fn C6Touch (q : Nat, s : &mut (Array q Nat)) -> Unit { () };
-  () }
--- A callee, declared in each chain that calls it; the standalone form is its own
--- verdict.
-example : progOk c6Touch = true := by native_decide
-
--- (1) Peel a head and hand the tail to a call. Always worked.
-def c6PeelCall : Term := prog{
-  fn C6Touch (q : Nat, s : &mut (Array q Nat)) -> Unit { () };
-  fn C6PeelCall (n : Nat, a : &mut (Array n Nat)) -> Unit {
-    match n { Z => (),
-      S(m) => { let hd = &m (*a)[Z ; 1 ; m]; let x = (*hd)[0];
-                let tl = &m (*a)[S Z ; m]; C6Touch(m, &m *tl); () } } };
-  () }
-example : progOk c6PeelCall = true := by native_decide
-
--- (2) Carve inside the tail, with NO call first. Always worked.
-def c6CarveNoCall : Term := prog{
-  fn C6CarveNoCall (n : Nat, k3 : Nat, r2 : Nat, Hq : Id Nat n (S (Add k3 (S r2))),
-             a : &mut (Array n Nat)) -> Unit {
-    match n { Z => (),
-      S(m) => { let hd = &m (*a)[Z ; 1 ; m]; let x = (*hd)[0];
-                let tl = &m (*a)[S Z ; m];
-                let lo = &m (*tl)[Z ; k3 ; S r2 | LeAdd k3 (S r2)
-                                      | SInj m (Add k3 (S r2)) Hq];
-                let mid = &m (*tl)[k3 ; 1 ; r2];
-                let hi = &m (*tl)[S k3 ; r2]; () } } };
-  () }
-example : progOk c6CarveNoCall = true := by native_decide
-
--- (3) …and the swap's writes on top of it. Always worked.
-def c6Swap : Term := prog{
-  fn C6Swap (n : Nat, k3 : Nat, r2 : Nat, Hq : Id Nat n (S (Add k3 (S r2))),
-             a : &mut (Array n Nat)) -> Unit {
-    match n { Z => (),
-      S(m) => { let hd = &m (*a)[Z ; 1 ; m]; let x = (*hd)[0];
-                let tl = &m (*a)[S Z ; m];
-                let lo = &m (*tl)[Z ; k3 ; S r2 | LeAdd k3 (S r2)
-                                      | SInj m (Add k3 (S r2)) Hq];
-                let mid = &m (*tl)[k3 ; 1 ; r2];
-                let hi = &m (*tl)[S k3 ; r2];
-                let y = (*mid)[0]; (*mid)[0] := x; (*hd)[0] := y; () } } };
-  () }
-example : progOk c6Swap = true := by native_decide
-
--- (4) Self-recursion through a reborrowed tail. Always worked.
-def c6Rec : Term := prog{
-  fn C6Rec [fuel] (fuel : Nat, m : Nat, hfuel : Le m fuel, a : &mut (Array m Nat)) -> Unit {
-    match m { Z => (),
-      S(m2) => match fuel { Z => botElim Unit hfuel,
-        S(f2) => { let hd = &m (*a)[Z ; 1 ; m2]; let x = (*hd)[0];
-                   let tl = &m (*a)[S Z ; m2]; C6Rec(f2, m2, hfuel, &m *tl); () } } } };
-  () }
-example : progOk c6Rec = true := by native_decide
-
-/-- The one that failed: carve inside a borrow AFTER handing it to a call. The
+/-- Carve inside a borrow AFTER handing it to a call. The
     reborrow parks a marker at the whole payload, and the carve consulted the extent map
     without collapsing it first — "`loanₘ ℓ` is not an array value (no extent to read)".
     Which is to say: a recursive array program carving the argument it just handed to

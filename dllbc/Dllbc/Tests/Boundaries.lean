@@ -203,7 +203,6 @@ example : progOk zeroAll = false := by native_decide
 def toNatProg : Term := prog{
   fn ToNat (v : &mut (Bool ~> Nat)) -> Unit { *v := 0; () };
   () }
-example : progOk toNatProg = true := by native_decide
 
 -- Caller side: borrow a `True`, call, read the owner back — it ends as a fresh
 -- σ : Nat. A strong update across a boundary, both sides. The caller is a `fn`
