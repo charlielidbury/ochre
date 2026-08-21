@@ -1134,7 +1134,7 @@ def killBorrowInΩ (ℓ : Nat) : M Val := do
   let ω ← getEnv
   match ω.findSome? (fun kv => findBorrowPayload ℓ kv.2) with
   | none =>
-    throwErr s!"end: borrow of ℓ{ℓ} is not an entry of Ω (its other end is in flight — cannot end)"
+    throwErr s!"end: borrow of ℓ{subNat ℓ} is not an entry of Ω (its other end is in flight — cannot end)"
   | some p => do
     setEnv (ω.map (fun kv => (kv.1, replaceBorrowWithBot ℓ kv.2)))
     pure p
@@ -1151,7 +1151,7 @@ def sendPayloadToLoan (ℓ : Nat) (p : Val) : M Unit := do
     -- wherever it lives, with no rule having to remember to say so.
     setEnv (ω.map (fun kv => (kv.1, Val.mergeArrays (replaceLoanMarker ℓ p kv.2))))
   else
-    throwErr s!"end: loan ℓ{ℓ} is not an entry of Ω (cannot plug payload back)"
+    throwErr s!"end: loan ℓ{subNat ℓ} is not an entry of Ω (cannot plug payload back)"
 
 -- `endLoan` (group-aware, §6.1) is defined after `hasType`, which it needs to
 -- audit issued-borrow payloads at group end.
@@ -1238,8 +1238,8 @@ def arrExtent (fuel : Nat) (v : Val) : M Term := do
       | some τ =>
         match Pure.asArrayTy? (Pure.whnf fuel τ).stripCmp with
         | some (n, _) => pure (Pure.nf fuel n)
-        | none => throwErr s!"array: σ{σ} is not of array type (its sctx type is {τ.pretty})"
-      | none => throwErr s!"array: σ{σ} has no type in sctx — cannot read its extent"
+        | none => throwErr s!"array: σ{subNat σ} is not of array type (its sctx type is {τ.pretty})"
+      | none => throwErr s!"array: σ{subNat σ} has no type in sctx — cannot read its extent"
     | none => throwErr s!"array: {v.pretty} is not an array value (no extent to read)"
 
 /-- One entry of ¶3.1's **extent map**: an offset, a count, and the body sitting
@@ -1318,10 +1318,10 @@ def findSeg (fuel : Nat) (lo cnt : Term) (v : Val) : M (Nat × Leaf) := do
 def notABorrow (v : Val) : String :=
   match v with
   | .bot => "*: cannot peel a vacant slot (⊥)"
-  | .loanM ℓ => s!"*: cannot peel loanₘ ℓ{ℓ} (suspended borrow)"
+  | .loanM ℓ => s!"*: cannot peel loanₘ ℓ{subNat ℓ} (suspended borrow)"
   | v =>
     match v.symOf? with
-    | some σ => s!"*: cannot peel symbolic value σ{σ} (not a borrow)"
+    | some σ => s!"*: cannot peel symbolic value σ{subNat σ} (not a borrow)"
     | none =>
       match Val.asCtor? v with
       | some (n, _) => s!"*: cannot peel constructor '{n}' (not a borrow)"
@@ -1419,7 +1419,7 @@ def refineSym (σ : Nat) (v : Val) : M Unit := do
   -- below, and the rejection it produces is the same sentence.
   let repl ← match v with
     | .know t => pure t
-    | _ => throwErr s!"refineSym: σ{σ} := {v.pretty} carries a state marker (⊥/loan/borrow) — knowledge/state violation (§3.2)"
+    | _ => throwErr s!"refineSym: σ{subNat σ} := {v.pretty} carries a state marker (⊥/loan/borrow) — knowledge/state violation (§3.2)"
   -- THE HOT ONE (docs/17 §9): this fires during array place evaluation
   -- (`carveAt`/`carveBody`/`elementize`), not only at arm entries, so its
   -- frequency in the flagship is the lane's go/no-go. The delta is the σ and its
@@ -1495,11 +1495,11 @@ def reflUnify (fuel : Nat) (a b : Term) : M Unit := do
   else match a'.symOf?, b'.symOf? with
     | some σa, _ =>
       if b'.symIds.contains σa then
-        throwErr s!"Refl: occurs check — endpoint σ{σa} occurs in the other endpoint ({b'.pretty})"
+        throwErr s!"Refl: occurs check — endpoint σ{subNat σa} occurs in the other endpoint ({b'.pretty})"
       else refineSym σa (.know b')
     | _, some σb =>
       if a'.symIds.contains σb then
-        throwErr s!"Refl: occurs check — endpoint σ{σb} occurs in the other endpoint ({a'.pretty})"
+        throwErr s!"Refl: occurs check — endpoint σ{subNat σb} occurs in the other endpoint ({a'.pretty})"
       else refineSym σb (.know a')
     | _, _ =>
       throwErr s!"Refl: both endpoints are rigid ({a'.pretty} vs {b'.pretty}) — no solution by refinement; use j/k to eliminate the identity"
@@ -2050,7 +2050,7 @@ mutual
       | some σ =>
         match (← get).sctx.lookup σ with
         | some vty => pure (Pure.convert fuel vty ty)
-        | none => throwErr s!"hasType: σ{σ} has no type in sctx"
+        | none => throwErr s!"hasType: σ{subNat σ} has no type in sctx"
       | none =>
       match v with
       -- A carved array node that collapsed into knowledge cannot occur — the
@@ -2311,7 +2311,7 @@ mutual
           match hd.symOf? with
           | some σ =>
             match (← get).sctx.lookup σ with
-            | none => throwErr s!"hasType: σ{σ} (applied) has no type in sctx"
+            | none => throwErr s!"hasType: σ{subNat σ} (applied) has no type in sctx"
             | some hty =>
               match ← synthSpine fuel hty.stripCmp args with
               | some resTy => pure (Pure.convert fuel ty resTy)
@@ -2467,21 +2467,21 @@ partial def buildResult (fuel : Nat) (inst : Omega) (subs : List (String × Term
     it fails here) — kill it, and return the surrendered payload. -/
 def endIssued (fuel : Nat) (ℓ : Nat) (owed : Term) (pin : Option Term := none) : M Val := do
   match (← getEnv).findSome? (fun kv => findBorrowPayload ℓ kv.2) with
-  | none => throwErr s!"group end: issued borrow ℓ{ℓ} is not locatable in Ω (cannot end the group)"
+  | none => throwErr s!"group end: issued borrow ℓ{subNat ℓ} is not locatable in Ω (cannot end the group)"
   | some payload => do
     match payload with
-    | .bot => throwErr s!"group end: issued borrow ℓ{ℓ} holds a hole (⊥) — nothing surrendered"
+    | .bot => throwErr s!"group end: issued borrow ℓ{subNat ℓ} holds a hole (⊥) — nothing surrendered"
     | _ =>
       if ← hasType fuel payload owed then do
         match pin with
         | some p =>
           if Pure.convert fuel (subsKnowledge payload) p then pure ()
-          else throwErr s!"group end: issued borrow ℓ{ℓ}'s surrendered payload ({payload.pretty}) violates the borrow's pin ({p.pretty}) — its contract says what comes back through it is {p.pretty}, and writing anything else through a pinned borrow is refused here"
+          else throwErr s!"group end: issued borrow ℓ{subNat ℓ}'s surrendered payload ({payload.pretty}) violates the borrow's pin ({p.pretty}) — its contract says what comes back through it is {p.pretty}, and writing anything else through a pinned borrow is refused here"
         | none => pure ()
         setEnv ((← getEnv).map (fun kv => (kv.1, replaceBorrowWithBot ℓ kv.2)))   -- kill
         pure payload
       else
-        throwErr s!"group end: issued borrow ℓ{ℓ}'s payload ({payload.pretty}) does not have its owed type ({owed.pretty})"
+        throwErr s!"group end: issued borrow ℓ{subNat ℓ}'s payload ({payload.pretty}) does not have its owed type ({owed.pretty})"
 
 /-- Release one captured loan: plug `v` where its marker sits. -/
 def releaseCaptured (ℓ : Nat) (v : Val) : M Unit := sendPayloadToLoan ℓ v
@@ -2492,7 +2492,7 @@ def releaseCaptured (ℓ : Nat) (v : Val) : M Unit := sendPayloadToLoan ℓ v
 def groupDebt (ℓ : Nat) (site : DebtSite) : M Debt := do
   match (← get).debts.find? (fun d => d.loan == ℓ && d.site == site) with
   | some d => pure d
-  | none => throwErr s!"group end: loan ℓ{ℓ} has no registered debt at its group site"
+  | none => throwErr s!"group end: loan ℓ{subNat ℓ} has no registered debt at its group site"
 
 /-- End a whole loan group (§6.1): issued borrows first, then captured atomically. -/
 def endGroup (fuel : Nat) (grp : Group) : M Unit := do
@@ -2689,10 +2689,10 @@ def carveBody (fuel : Nat) (body : Val) (loN cntN restN : Nat) (lo' cnt rest : T
           .ctor "Arr" (vs.drop (loN + cntN)))
   | _, some σ =>
     match (← get).sctx.lookup σ with
-    | none => throwErr s!"carve: σ{σ} has no type in sctx"
+    | none => throwErr s!"carve: σ{subNat σ} has no type in sctx"
     | some τ =>
       match Pure.asArrayTy? (Pure.whnf fuel τ).stripCmp with
-      | none => throwErr s!"carve: σ{σ} is not of array type ({τ.pretty})"
+      | none => throwErr s!"carve: σ{subNat σ} is not of array type ({τ.pretty})"
       | some (_, t) => do
         let mk : Term → M Term := fun c => do
           let s ← freshSym
@@ -2729,10 +2729,10 @@ def elementize (fuel : Nat) (body : Val) : M Val := do
   | some ("Arr", [_]), _ => pure body
   | _, some σ =>
     match (← get).sctx.lookup σ with
-    | none => throwErr s!"a[i]: σ{σ} has no type in sctx"
+    | none => throwErr s!"a[i]: σ{subNat σ} has no type in sctx"
     | some τ =>
       match Pure.asArrayTy? (Pure.whnf fuel τ).stripCmp with
-      | none => throwErr s!"a[i]: σ{σ} is not of array type ({τ.pretty})"
+      | none => throwErr s!"a[i]: σ{subNat σ} is not of array type ({τ.pretty})"
       | some (_, t) => do
         let e ← freshSym
         modify (fun st => { st with sctx := (e, t) :: st.sctx })
@@ -4105,7 +4105,7 @@ mutual
     | .bot => pure (some "a hole (⊥)")
     | .loanM ℓ => do
       if ← inFlight resultLoans ℓ then pure none
-      else pure (some s!"an uncollapsed loan (ℓ{ℓ})")
+      else pure (some s!"an uncollapsed loan (ℓ{subNat ℓ})")
     | .node _ args => residueHolesList resultLoans args
     | _ => pure none
   partial def residueHolesList (resultLoans : List Nat) : List Val → M (Option String)
@@ -4214,7 +4214,7 @@ mutual
             match ((← get).groups.findSome? (fun g =>
                 if g.captured.contains ℓ then some g.id else none)) with
             | none =>
-              throwErr s!"audit: the residue of a returned-borrow parameter holds a loan (ℓ{ℓ}) whose borrow is in neither Ω nor an open group, so the leaves the callee does not return cannot be typed. §6.1 exempts the returned sub-place, not the parameter — a place the audit cannot see is a place it cannot certify."
+              throwErr s!"audit: the residue of a returned-borrow parameter holds a loan (ℓ{subNat ℓ}) whose borrow is in neither Ω nor an open group, so the leaves the callee does not return cannot be typed. §6.1 exempts the returned sub-place, not the parameter — a place the audit cannot see is a place it cannot certify."
             | some ρ => do
               let owed := (← groupDebt ℓ (.call ρ)).owed
               let σ ← freshSym
@@ -4271,7 +4271,7 @@ mutual
             modify (fun st => { st with sctx := (σ, d.owed) :: st.sctx })
             pure (Term.sym σ)
         | none =>
-          throwErr s!"audit: pin discharge — loan ℓ{ℓ} is in neither the result, Ω, nor an open group, so its exit cannot be named"
+          throwErr s!"audit: pin discharge — loan ℓ{subNat ℓ} is in neither the result, Ω, nor an open group, so its exit cannot be named"
 
   /-- The pin fill: the parameter's payload as a TERM, with every lent place
       standing at its exit. The `Term`-producing twin of `spliceInFlight`, and
@@ -4340,7 +4340,7 @@ def auditPinnedObligation (fuel : Nat) (issued : List (Nat × Val × Term × Opt
   | some payload =>
     (match ← residueHoles resultLoans payload with
      | some what =>
-       throwErr s!"audit: argument borrow {argName} (ℓ{ob.loan}) holds {what} at return, in a leaf it still owns — take without refill. (payload: {payload.pretty})"
+       throwErr s!"audit: argument borrow {argName} (ℓ{subNat ob.loan}) holds {what} at return, in a leaf it still owns — take without refill. (payload: {payload.pretty})"
      | none => pure ())
   | none =>
     -- Fine iff the borrow itself left in the result (its exit IS the filled
@@ -4348,7 +4348,7 @@ def auditPinnedObligation (fuel : Nat) (issued : List (Nat × Val × Term × Opt
     -- it); anything else is the ordinary "lost" rejection.
     if (← inFlight resultLoans ob.loan)
        || (← get).groups.any (fun g => g.captured.contains ob.loan) then pure ()
-    else throwErr s!"audit: argument borrow {argName} (ℓ{ob.loan}) is neither locatable in Ω nor continued into a call — it was lost"
+    else throwErr s!"audit: argument borrow {argName} (ℓ{subNat ob.loan}) is neither locatable in Ω nor continued into a call — it was lost"
   let saved ← get
   let verdict ← (do
     -- One exit per issued loan, minted ONCE — shared by the fill and the pin's
@@ -4446,7 +4446,7 @@ def auditObligation (fuel : Nat) (issued : List (Nat × Val × Term × Option Te
       -- residue at all, and the issued-borrow check types what it points at);
       -- otherwise it is the old "lost" rejection.
       if ← inFlight resultLoans ob.loan then pure ()
-      else throwErr s!"audit: argument borrow {argName} (ℓ{ob.loan}) is neither locatable in Ω nor continued into a call — it was lost"
+      else throwErr s!"audit: argument borrow {argName} (ℓ{subNat ob.loan}) is neither locatable in Ω nor continued into a call — it was lost"
     | some payload => do
       -- (2) HUNT what the callee still owns for holes. Stops AT an in-flight
       -- marker: inside the returned place is the issued-borrow check's business.
@@ -4454,7 +4454,7 @@ def auditObligation (fuel : Nat) (issued : List (Nat × Val × Term × Option Te
       | some what =>
         let exempt := if resultLoans.isEmpty then "" else
           " §6.1 exempts the sub-place a returned borrow points at, not the whole parameter: every other leaf is a place the caller recovers verbatim, and this one has no value in it."
-        throwErr s!"audit: argument borrow {argName} (ℓ{ob.loan}) holds {what} at return, in a leaf it still owns — take without refill.{exempt} (payload: {payload.pretty})"
+        throwErr s!"audit: argument borrow {argName} (ℓ{subNat ob.loan}) holds {what} at return, in a leaf it still owns — take without refill.{exempt} (payload: {payload.pretty})"
       | none => do
         -- (3) TYPE it, with the in-flight places filled in — the ESCAPING ones
         -- opaquely, the rest with their payloads. A QUERY, so it runs SANDBOXED:
@@ -6229,11 +6229,11 @@ mutual
             | none => applyR fuel callee argVals
             | some σ =>
             match (← get).sctx.lookup σ with
-            | none => throwErr s!"call: callee {x.name} is σ{σ}, which has no type in sctx"
+            | none => throwErr s!"call: callee {x.name} is σ{subNat σ}, which has no type in sctx"
             | some σty => do
               let resTy ← instantiatePi fuel σty.stripCmp argVals
               match Pure.whnf fuel resTy with
-              | .pi _ d _ => throwErr s!"call: partial application — σ{σ} still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4)"
+              | .pi _ d _ => throwErr s!"call: partial application — σ{subNat σ} still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4)"
               | resTy => do
                 -- The runtime column of §2.3: the call FORGETS the application
                 -- and keeps only what the type promised. Deliberately NOT the
@@ -6770,8 +6770,8 @@ mutual
                 match upin with
                 | some pNew =>
                   if Pure.convert fuel pOld pNew then pure ()
-                  else throwErr s!"call: loan ℓ{ℓ} already owes the pin ({pOld.pretty}) and this callee pins its parameter to ({pNew.pretty}), which does not convert with it — at most one pin may be effective on a loan (D5), and a call may neither strengthen nor silently weaken one (D6)"
-                | none => throwErr s!"call: loan ℓ{ℓ} owes the pin ({pOld.pretty}) but this callee's parameter states none — an opaque callee releases a fresh existential, which cannot pay a pinned debt. To pin a loan, every group that holds it must pin it (12-design §2.2)."
+                  else throwErr s!"call: loan ℓ{subNat ℓ} already owes the pin ({pOld.pretty}) and this callee pins its parameter to ({pNew.pretty}), which does not convert with it — at most one pin may be effective on a loan (D5), and a call may neither strengthen nor silently weaken one (D6)"
+                | none => throwErr s!"call: loan ℓ{subNat ℓ} owes the pin ({pOld.pretty}) but this callee's parameter states none — an opaque callee releases a fresh existential, which cannot pay a pinned debt. To pin a loan, every group that holds it must pin it (12-design §2.2)."
               | none => pure ()))
           -- The group is the ORDERING; the contracts are debts (12-design §2.1):
           -- one per captured loan, pinned to the CALLEE's declared pin when the

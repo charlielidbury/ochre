@@ -171,7 +171,7 @@ def chkS (sctx : List (Nat × Term)) (tm ty : Term) : String :=
   | .ok r _ => s!"ok {r}"
   | .error e _ => s!"error {e}"
 
-/-- `σ0 = i`, `σ1 = k`, `σ2 : Array (add i k) T` — the telescope a decomposition
+/-- `σ₀ = i`, `σ₁ = k`, `σ₂ : Array (add i k) T` — the telescope a decomposition
     spelling has in scope. -/
 def splitCtx : List (Nat × Term) :=
   [(0, prog defer_check { Nat }), (1, prog defer_check { Nat }),
@@ -197,8 +197,8 @@ example : chkS splitCtx prog defer_check { atake %(Term.sym 0) %(Term.sym 1) %(T
 example : chkS splitCtx prog defer_check { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
     prog defer_check { Array %(Term.sym 0) Bool } = "ok false" := by native_decide
 
-/-- And the ARGUMENT's extent must be the sum: `σ3 : Array σ0 Nat` is too short
-    to be split at `(σ0, σ1)`. -/
+/-- And the ARGUMENT's extent must be the sum: `σ₃ : Array σ₀ Nat` is too short
+    to be split at `(σ₀, σ₁)`. -/
 example : chkS (splitCtx ++ [(3, prog defer_check { Array %(Term.sym 0) Nat })])
     prog defer_check { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 3) }
     prog defer_check { Array %(Term.sym 0) Nat } = "ok false" := by native_decide
@@ -453,18 +453,18 @@ example : progOk gmDecSymPin = true := by native_decide
 example : progOk gmDecSymPinRefl = true := by native_decide
 
 /-- The key twin, refused with the two sides differing in exactly one place: the
-    exit `σ21` sits in the KEY slot on the fill and in the VALUE slot on the pin.
+    exit `σ₂₁` sits in the KEY slot on the fill and in the VALUE slot on the pin.
     Everything else — the split, the prefix, the suffix — matches, which is what
     makes this the sharp negative rather than a shape mismatch. -/
 example : progRejects gmDecSymPinKey
-  "exits (Pair (arrCat σ1 (S σ2) σ13 (acons σ2 (Pair σ21 σ20) σ17)) σ7), does not convert with the declared pin (Pair (arrCat σ1 (S σ2) σ13 (acons σ2 (Pair σ19 σ21) σ17)) σ7)."
+  "exits (Pair (arrCat σ₁ (S σ₂) σ₁₃ (acons σ₂ (Pair σ₂₁ σ₂₀) σ₁₇)) σ₇), does not convert with the declared pin (Pair (arrCat σ₁ (S σ₂) σ₁₃ (acons σ₂ (Pair σ₁₉ σ₂₁) σ₁₇)) σ₇)."
   = true := by native_decide
 
 /-- **The wrong slot is refused BY THE STUCKNESS**, and the print is the argument
     for matching both extents rather than the total. The pin asks for the split
     `(Z, S (add i r))`; the carve made the split `(i, S r)`; the two are the same
     total extent and different compositions, so `splitAt?` declines and the pin
-    normalizes with `atake Z (S (natRec …)) (arrCat σ1 (S σ2) …)` still standing
+    normalizes with `atake Z (S (natRec …)) (arrCat σ₁ (S σ₂) …)` still standing
     in it. A rule that fired on the total would have handed this program the
     prefix of a decomposition it never made. -/
 example : progRejects gmDecSymPinWrongSlot

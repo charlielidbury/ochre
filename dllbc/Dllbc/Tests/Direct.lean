@@ -195,7 +195,7 @@ example : chk sfst_bad_target sfst_bad_target_ty = false := by native_decide
     first is not supported; no test needs it"). The tail's σ therefore carried a
     DANGLING `pvar` in its sctx type, and the pin was unusable:
 
-        call: argument (σ1) does not have its parameter type (Id σ0 (S Z))
+        call: argument (σ₁) does not have its parameter type (Id σ₀ (S Z))
 
     The fix threads the already-built components into the tail's type (Machine.lean,
     `buildResult`'s `subs`). These three tests are the smallest statement of the
@@ -2613,8 +2613,8 @@ example : progOk twoRec = true := by native_decide
     reading would be the set/nth form `Set i (NthL j s) (Set j (NthL i s) s)`. It is
     NOT. Through inline `nth2`, the audit reconstructs `*v`-exit from nth2's back
     `Set i r1 (Set j r2 *v)` with r1/r2 the FINAL borrow payloads — and those are
-    released as OPAQUE symbols `Set i σ8 (Set j σ7 s)`. The audit never learns
-    `σ8 = NthL j s`, `σ7 = NthL i s`: the imperative `*ei := *ej; *ej := t` moved
+    released as OPAQUE symbols `Set i σ₈ (Set j σ₇ s)`. The audit never learns
+    `σ₈ = NthL j s`, `σ₇ = NthL i s`: the imperative `*ei := *ej; *ej := t` moved
     values through borrows whose provenance the release does not retain. So the
     bridge (about the nth-form) does not even TYPE against the opaque-form exit —
     a DEEPER gap than set-vs-SwapL. Routing through `swapS` (swapSN) instead makes

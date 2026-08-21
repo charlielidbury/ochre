@@ -224,15 +224,17 @@ def hoverEnabled : TermElabM Bool := return dllbc.hover.get (← getOptions)
 def symsMentioned (s : String) : List Nat :=
   -- Split on the sigil and read the digits that open each piece: no recursion to
   -- justify, and in first-appearance order, which is the order the reader's eye
-  -- meets them in the value.
+  -- meets them in the value. The digits are SUBSCRIPTS — `Dllbc.subNat` is how
+  -- an index reaches rendered text, and this parser must stay its inverse.
+  let isSub : Char → Bool := fun c => 0x2080 ≤ c.toNat && c.toNat ≤ 0x2089
   match s.splitOn "σ" with
   | [] => []
   | _ :: pieces =>
     pieces.foldl (fun acc p =>
-      match p.toList.takeWhile Char.isDigit with
+      match p.toList.takeWhile isSub with
       | [] => acc
       | ds =>
-        let n := ds.foldl (fun a d => a * 10 + (d.toNat - '0'.toNat)) 0
+        let n := ds.foldl (fun a d => a * 10 + (d.toNat - 0x2080)) 0
         if acc.contains n then acc else acc ++ [n]) []
 
 /-- Give each σ in a value its type, inline, using the kernel's own refinement
@@ -243,7 +245,7 @@ def symsMentioned (s : String) : List Nat :=
 def annotateSyms (sctx : List (Nat × Dllbc.Term)) (v : Dllbc.Val) : Dllbc.Val :=
   (symsMentioned (Dllbc.Val.pretty v)).foldl (fun acc σ =>
     match sctx.lookup σ with
-    | some τ => Dllbc.substSym σ (.const s!"(σ{σ} : {Dllbc.Term.pretty τ})") acc
+    | some τ => Dllbc.substSym σ (.const s!"(σ{Dllbc.subNat σ} : {Dllbc.Term.pretty τ})") acc
     | none => acc) v
 
 /-- What the checker knew about a binder: `x ↦ v`, ONE form. Nothing a slot
@@ -251,7 +253,7 @@ def annotateSyms (sctx : List (Nat × Dllbc.Term)) (v : Dllbc.Val) : Dllbc.Val :
     and no caption classifying the answer — the contents are the answer, and a
     σ in them says exactly which parts are runtime-bound.
 
-    The σs carry their types INLINE (`Cons (σ0 : Nat) (σ1 : List Nat)`), the
+    The σs carry their types INLINE (`Cons (σ₀ : Nat) (σ₁ : List Nat)`), the
     user's own ruling over a trailing legend. No parallel renderer and no new
     traversal: each σ is replaced by `substSym` — the kernel's own refinement
     substitution, §3.2's — with a `.const` carrying the annotated text, and the

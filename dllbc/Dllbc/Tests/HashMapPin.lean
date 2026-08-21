@@ -144,8 +144,8 @@ def bktGetPinOnly : Term := prog defer_check {
   () }
 
 /-- **THE GATE'S VERDICT — red, and the print is the session's headline
-    finding.** The fill is the hit leg's `Cons (Pair σ18 σ22) σ17`; the pin
-    normalized to a `boolRec` STUCK on `Eqb σ11 σ18` whose True arm is
+    finding.** The fill is the hit leg's `Cons (Pair σ₁₈ σ₂₂) σ₁₇`; the pin
+    normalized to a `boolRec` STUCK on `Eqb σ₁₁ σ₁₈` whose True arm is
     LITERALLY that fill — one ι-step away, gated on the branch equation the
     body's `if e :` bound. The audit's conversion does not consult branch
     equations, and `Eqb` is a fold, stuck even at syntactically equal neutral

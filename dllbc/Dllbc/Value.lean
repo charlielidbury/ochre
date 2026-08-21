@@ -304,9 +304,9 @@ mutual
   def prettyPrec (prec : Nat) : Val → String
     | .know t => Term.prettyPrec prec t
     | .bot => "⊥"
-    | .loanM ℓ => s!"loanₘ ℓ{ℓ}"
+    | .loanM ℓ => s!"loanₘ ℓ{subNat ℓ}"
     | .borrowM ℓ p =>
-      let s := "borrowₘ ℓ" ++ toString ℓ ++ " " ++ prettyPrec 1 p
+      let s := "borrowₘ ℓ" ++ subNat ℓ ++ " " ++ prettyPrec 1 p
       if prec > 0 then s!"({s})" else s
     -- ¶1.1's array forms, rendered the way the design note's traces read (the trace
     -- suite IS the test suite): an owned run as `[3, 1, 2]`, a carved node as

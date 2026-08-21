@@ -63,7 +63,7 @@ example : expectEnv prog defer_check {
 /-! ## §2.2 Borrowing, writing through, and ending -/
 
 -- &mut mints a loan: the marker parks at x, ownership moves into b.
--- let x = 3; let b = &mut x  ⟹  x ↦ loanₘ ℓ0, b ↦ borrowₘ ℓ0 3
+-- let x = 3; let b = &mut x  ⟹  x ↦ loanₘ ℓ₀, b ↦ borrowₘ ℓ₀ 3
 example : expectEnv prog{
   let x = 3;
   let b = &m x;
@@ -71,7 +71,7 @@ example : expectEnv prog{
 } [("x", .loanM 0), ("b", .borrowM 0 (nat 3))] = true := by native_decide
 
 -- Writing through the borrow replaces the payload in place, b not consumed.
--- … *b := 7  ⟹  x ↦ loanₘ ℓ0, b ↦ borrowₘ ℓ0 7
+-- … *b := 7  ⟹  x ↦ loanₘ ℓ₀, b ↦ borrowₘ ℓ₀ 7
 example : expectEnv prog{
   let x = 3;
   let b = &m x;
@@ -79,7 +79,7 @@ example : expectEnv prog{
   ()
 } [("x", .loanM 0), ("b", .borrowM 0 (nat 7))] = true := by native_decide
 
--- Reading x forces a lazy End-Mut on ℓ0 first: 7 returns to x, b dies to ⊥; the
+-- Reading x forces a lazy End-Mut on ℓ₀ first: 7 returns to x, b dies to ⊥; the
 -- retry read then COPIES x (§2.1 — now marker-free), so x stays.
 -- … let y = x  ⟹  x ↦ 7 (copied), b ↦ ⊥, y ↦ 7
 example : expectEnv prog{
@@ -106,7 +106,7 @@ example : expectEnv prog{
 
 -- `*b` under ⇒ moves the payload out through the borrow, leaving a hole ⊥.
 -- let x = Cons(3, Nil); let b = &mut x; let tail = *b
---   ⟹  x ↦ loanₘ ℓ0, b ↦ borrowₘ ℓ0 ⊥, tail ↦ Cons 3 Nil
+--   ⟹  x ↦ loanₘ ℓ₀, b ↦ borrowₘ ℓ₀ ⊥, tail ↦ Cons 3 Nil
 example : expectEnv prog{
   let x = Cons(3, Nil);
   let b = &m x;
@@ -119,7 +119,7 @@ example : expectEnv prog{
 -- Cons-tree), so reading it into the new node MOVES it (§2.1 keeps Rust's line
 -- for aggregates) — tail ↦ ⊥.
 -- … *b := Cons(7, tail)
---   ⟹  x ↦ loanₘ ℓ0, b ↦ borrowₘ ℓ0 (Cons 7 (Cons 3 Nil)), tail ↦ ⊥
+--   ⟹  x ↦ loanₘ ℓ₀, b ↦ borrowₘ ℓ₀ (Cons 7 (Cons 3 Nil)), tail ↦ ⊥
 example : expectEnv prog{
   let x = Cons(3, Nil);
   let b = &m x;
@@ -133,9 +133,9 @@ example : expectEnv prog{
 /-! ## §2.5 Reborrow -/
 
 -- `&mut *b` reborrows the payload: b is suspended (holds a loan marker where
--- its payload was), the chain reads x → ℓ0 → ℓ1 → the value.
+-- its payload was), the chain reads x → ℓ₀ → ℓ₁ → the value.
 -- let x = 3; let b = &mut x; let c = &mut *b
---   ⟹  x ↦ loanₘ ℓ0, b ↦ borrowₘ ℓ0 (loanₘ ℓ1), c ↦ borrowₘ ℓ1 3
+--   ⟹  x ↦ loanₘ ℓ₀, b ↦ borrowₘ ℓ₀ (loanₘ ℓ₁), c ↦ borrowₘ ℓ₁ 3
 example : expectEnv prog{
   let x = 3;
   let b = &m x;
@@ -145,7 +145,7 @@ example : expectEnv prog{
   native_decide
 
 -- Reading x through the suspended reborrow collapses the whole chain: End-Mut
--- ℓ0 then End-Mut ℓ1 fire in turn (the fuel-bounded reorganize-retry loop), and
+-- ℓ₀ then End-Mut ℓ₁ fire in turn (the fuel-bounded reorganize-retry loop), and
 -- x's value arrives; the retry read then COPIES it (§2.1).
 --   ⟹  x ↦ 3 (copied), b ↦ ⊥, c ↦ ⊥, z ↦ 3
 example : expectEnv prog{
@@ -175,8 +175,8 @@ example : expectErr prog defer_check {
 } "not a place" = true := by native_decide
 
 -- The flagship §2.5 self-reborrow: `b := c` after `let c = &mut *b`. The RHS
--- ⇒-consumes c, so borrowₘ ℓ1 3 is in flight; drop must vacate b, which
--- requires ending ℓ1, whose borrow is exactly that in-flight value — no entry,
+-- ⇒-consumes c, so borrowₘ ℓ₁ 3 is in flight; drop must vacate b, which
+-- requires ending ℓ₁, whose borrow is exactly that in-flight value — no entry,
 -- no rule, rejected.
 example : expectErr prog defer_check {
   let x = 3;
@@ -247,7 +247,7 @@ example : expectEnv prog{
 -- **What the suspension survives, and what ends it.** The field binders are
 -- whole-value reborrows and the parent's payload is a Cons of loan markers — but
 -- the binders are the arm's, so the arm's close ENDS their reborrows (M31 Stage 0
--- drops in reverse binding order: ℓ2, then ℓ1) and each payload plugs back into
+-- drops in reverse binding order: ℓ₂, then ℓ₁) and each payload plugs back into
 -- the parent. What is observable one statement later is therefore the parent
 -- holding the strong-updated payload, not the marker chain. Before pop-with-drop
 -- the chain survived here and collapsed lazily at the next demand; this is the
@@ -263,8 +263,8 @@ example : expectEnv prog{
 } [("x", .loanM 0),
    ("b", .borrowM 0 (cons (nat 0) nil))] = true := by native_decide
 
--- Reading the owner back collapses the rest of the chain: End-Mut ℓ0 (parent) —
--- the field loans ℓ1, ℓ2 having already ended at the arm's close — so `x`'s value
+-- Reading the owner back collapses the rest of the chain: End-Mut ℓ₀ (parent) —
+-- the field loans ℓ₁, ℓ₂ having already ended at the arm's close — so `x`'s value
 -- arrives fully updated. `x` is a Cons-tree (DATA), so the read MOVES it (§2.1).
 -- y ↦ Cons 0 Nil.
 example : expectEnv prog{

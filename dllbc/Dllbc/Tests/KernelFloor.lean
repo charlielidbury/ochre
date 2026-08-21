@@ -95,7 +95,7 @@ def vecFT : Term :=
 def boolRecNat (t f b : Term) : Term :=
   .app (.app (.app (.app (.const "boolRec") (.lam "_" (.const "Bool") natT)) t) f) b
 
-/-- A slot holding `σ0`, and the term reading it. -/
+/-- A slot holding `σ₀`, and the term reading it. -/
 def sVar : Term := .var ⟨0, "s"⟩
 def seedS : Omega := [(⟨0, "s"⟩, .sym 0)]
 
@@ -460,7 +460,7 @@ example : progRejects (prog defer_check {
 def nncMotive : Term :=
   .lam "b" natV (.lam "q" (.idT natV sZ (.pvar "b")) (.app (.app natCodeV sZ) (.pvar "b")))
 def nncProof (n p : Term) : Term := jV natV sZ nncMotive unitV (sS n) p
--- σ0 = n : Nat, σ1 = p : Id Nat Z (S n)
+-- σ₀ = n : Nat, σ₁ = p : Id Nat Z (S n)
 def nncSctx : List (Nat × Term) := [(0, natV), (1, .idT natV sZ (sS (.sym 0)))]
 
 -- `natNoConf p : NatCode Z (S n)`, and — since that code reduces — `: ⊥`.
@@ -922,7 +922,7 @@ def escapedSigma : Term := prog defer_check { λ («§σ0» : Nat). «§σ0» }
 example : (match escapedSigma with
            | .lam nm _ _ => isReservedName nm.name
            | _ => true) = false := by native_decide
--- …so a refinement of σ0 passes straight through it, unfenced.
+-- …so a refinement of σ₀ passes straight through it, unfenced.
 example : (Term.beq (Term.substSym 0 (Term.nat 4)
              (.lam "«§σ0»" (.const "Nat") (.ctorApp "S" [Term.sym 0])))
            (.lam "«§σ0»" (.const "Nat") (.ctorApp "S" [Term.nat 4]))) = true := by native_decide
@@ -951,8 +951,8 @@ open Dllbc
     the failure mode is silent by construction (M30's measured count-equation
     break).
 
-    The suspension: ρ binds `V ↦ σ5` and `W ↦ σ6`, and the body is the stuck
-    spine `leb V W`. The generalized spine `leb σ5 σ6` is therefore **LATENT** —
+    The suspension: ρ binds `V ↦ σ₅` and `W ↦ σ₆`, and the body is the stuck
+    spine `leb V W`. The generalized spine `leb σ₅ σ₆` is therefore **LATENT** —
     it is nowhere in ρ and nowhere in the raw body, and it comes into existence
     only when the body is evaluated. (`leb` stands here for §19's own scrutinee,
     an unknown head that `whnfN` leaves neutral; the shape is what matters.) -/
@@ -996,15 +996,15 @@ example : (Val.symIdsRho latentRho).any (fun s => sp.symIds.contains s) = true :
 example : Term.beq withCooking eager = true := by native_decide
 
 -- NEGATIVE, and this is the half that makes the positive mean something: with
--- cooking disabled the same suspension DIVERGES — it re-mints `leb σ5 σ6` from
+-- cooking disabled the same suspension DIVERGES — it re-mints `leb σ₅ σ₆` from
 -- ingredients the sweep never touched, and speaks the pre-generalization
 -- vocabulary the branch has stopped using.
 example : Term.beq withoutCooking eager = false := by native_decide
 
 -- Named, so a reader sees WHICH two answers those are rather than taking the
 -- disagreement on trust.
-example : eager.pretty = "λ(§0 : Nat). σ99" := by native_decide
-example : withoutCooking.pretty = "λ(§0 : Nat). leb σ5 σ6" := by native_decide
+example : eager.pretty = "λ(§0 : Nat). σ₉₉" := by native_decide
+example : withoutCooking.pretty = "λ(§0 : Nat). leb σ₅ σ₆" := by native_decide
 
 /-! ## The rule is SUPPORT-SCOPED, and that is asserted rather than described
 
@@ -1035,7 +1035,7 @@ example : (match cookForGen 1000 sp.symIds impClosure with
     `Term.beq`, which compares binder NAMES, and `readback` names a binder by its
     LEVEL. So a generalized spine that itself CONTAINS a binder did not match its
     own occurrence under a λ: normalized at depth 0 the spine says `§0`, and the
-    same spine normalized one binder deeper says `§1`. `len σ5` is such a spine —
+    same spine normalized one binder deeper says `§1`. `len σ₅` is such a spine —
     it unfolds to a `listRec` over λ arms — and abstracting it reached every
     knowledge leaf in Ω and none of the occurrences inside a cooked closure body.
 
@@ -1060,9 +1060,9 @@ example : strContains lenSp.pretty "λ(§0" = true := by native_decide
 example : Term.beq (Term.abstractInto lenSp 98 (cooked lenLatent)) (cooked lenLatent)
           = false := by native_decide
 -- Named, so the flip is a rewrite and not merely a difference: the cooked body's
--- occurrence reads `σ98`, which is what the branch's refinement can then reach.
+-- occurrence reads `σ₉₈`, which is what the branch's refinement can then reach.
 example : (Term.abstractInto lenSp 98 (cooked lenLatent)).pretty
-          = "λ(§0 : Nat). σ98" := by native_decide
+          = "λ(§0 : Nat). σ₉₈" := by native_decide
 
 /-! ### The same limit as a PROGRAM (M33), and the pair that isolates it
 
@@ -1788,7 +1788,7 @@ open Dllbc
     comptime component's type was not reached — so that component alone read the
     ENTRY payload while every other component read the exit. The symptom is a
     type error at a branch whose proof is correct: `splitOff`'s `Z` arm returns
-    `Refl` at `Id Nil Nil` and the audit demanded `Id σ0 Nil` of it.
+    `Refl` at `Id Nil Nil` and the audit demanded `Id σ₀ Nil` of it.
 
     **This is what actually blocked R3b's residual 2, and it is not what R3b
     said blocked it.** R3b recorded the four red assertions as a CONSUMER

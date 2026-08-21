@@ -193,7 +193,7 @@ def escKey : Term := prog defer_check {
   () }
 
 example : progRejects escKey
-  "audit: self's payload (Pair σ2 (Pair [Pair σ9 σ8] σ5)) does not have its owed type"
+  "audit: self's payload (Pair σ₂ (Pair [Pair σ₉ σ₈] σ₅)) does not have its owed type"
   = true := by native_decide
 
 /-- Onto an ARRAY'S EXTENT. -/
@@ -203,7 +203,7 @@ def escExtent : Term := prog defer_check {
   () }
 
 example : progRejects escExtent
-  "(Pair σ6 (Pair σ4 σ5)) does not have its owed type (Σ(§0 : Nat). Σ(§1 : (Array #§0 Nat)). ⇝(natRec"
+  "(Pair σ₆ (Pair σ₄ σ₅)) does not have its owed type (Σ(§0 : Nat). Σ(§1 : (Array #§0 Nat)). ⇝(natRec"
   = true := by native_decide
 
 /-- Onto a cell a Σ0 tail PINS to a literal. -/
@@ -213,7 +213,7 @@ def escPinned : Term := prog defer_check {
   () }
 
 example : progRejects escPinned
-  "(Pair σ6 (Pair σ4 σ5)) does not have its owed type (Σ(§0 : Nat). Σ(§1 : Unit). ⇝(Id #§0 (S (S (S (S (S (S (S Z)))))))))"
+  "(Pair σ₆ (Pair σ₄ σ₅)) does not have its owed type (Σ(§0 : Nat). Σ(§1 : Unit). ⇝(Id #§0 (S (S (S (S (S (S (S Z)))))))))"
   = true := by native_decide
 
 /-- Onto a cell a LATER RUNTIME BINDER'S TYPE needs — the dependence is not in a
@@ -225,7 +225,7 @@ def escRuntimeDep : Term := prog defer_check {
   () }
 
 example : progRejects escRuntimeDep
-  "(Pair σ6 (Pair σ4 σ5)) does not have its owed type (Σ(§0 : Nat). Σ(§1 : (Array #§0 Nat)). Nat)"
+  "(Pair σ₆ (Pair σ₄ σ₅)) does not have its owed type (Σ(§0 : Nat). Σ(§1 : (Array #§0 Nat)). Nat)"
   = true := by native_decide
 
 /-- **NOT VACUOUS.** The same body one field over: the borrow escapes onto a
@@ -278,7 +278,7 @@ def escKeyV : Term := prog{
   () }
 
 example : progRejects escValV
-  "audit: self's payload (Pair σ2 (Pair Arr⟨(S Z) ▷ [Pair σ10 σ12], (S Z) ▷ σ8⟩ σ5)) does not have its owed type"
+  "audit: self's payload (Pair σ₂ (Pair Arr⟨(S Z) ▷ [Pair σ₁₀ σ₁₂], (S Z) ▷ σ₈⟩ σ₅)) does not have its owed type"
   = true := by native_decide
 example : progOk escKeyV = true := by native_decide
 
@@ -313,11 +313,11 @@ example : runBinding escKeyExploit "p"
   := by native_decide
 
 -- (2) The CHECKER refuses it, and the sentence names the opaque cell: the key
---     leaf reads `σ9`, filled at the escaping borrow's owed type. Compare §4's
+--     leaf reads `σ₉`, filled at the escaping borrow's owed type. Compare §4's
 --     `wrKey1`, whose key leaf reads `(S Z)` — the same write, kept instead of
 --     returned, judged on its actual value.
 example : progRejects escKeyExploit
-  "audit: self's payload (Pair σ2 (Pair [Pair σ9 σ8] σ5)) does not have its owed type"
+  "audit: self's payload (Pair σ₂ (Pair [Pair σ₉ σ₈] σ₅)) does not have its owed type"
   = true := by native_decide
 
 -- (3) …and that value does not inhabit the type the accepting checker left the
@@ -356,10 +356,10 @@ def wrKey1 : Term := prog defer_check {
 example : progOk wrVal1 = true := by native_decide
 
 -- The key leaf reads `(S Z)` — the value actually written. `escKeyExploit`'s
--- reads `σ9`. One escapes and one does not, and that is the only difference
+-- reads `σ₉`. One escapes and one does not, and that is the only difference
 -- between the two programs.
 example : progRejects wrKey1
-  "audit: self's payload (Pair σ2 (Pair [Pair (S Z) σ8] σ5)) does not have its owed type"
+  "audit: self's payload (Pair σ₂ (Pair [Pair (S Z) σ₈] σ₅)) does not have its owed type"
   = true := by native_decide
 
 /-! ## §5 The caller side
@@ -625,8 +625,8 @@ example : progOk bisA = true := by native_decide
 
 /-- **LEDGERED FLIP** (branch `audit-fold-segments`, Gap A): red → GREEN. The
     rejection this used to carry named its own cause — "the array comes back as
-    `Arr⟨1 ▷ [σ9], 1 ▷ σ8⟩`" — and the reading of it was one level off. The
-    obstacle was not `arrRec` failing to step past σ8; it was that a `§segs` node
+    `Arr⟨1 ▷ [σ₉], 1 ▷ σ₈⟩`" — and the reading of it was one level off. The
+    obstacle was not `arrRec` failing to step past σ₈; it was that a `§segs` node
     never reached `arrRec` at all. `subsKnowledge`, which says what a component
     contributes to a dependent tail, had no reading for a carve and returned
     `@stateComponent`, so the tail was demanded at a name that converts with
@@ -761,11 +761,11 @@ def layer1Ctl : Term := prog{
 example : progOk layer1Ctl = true := by native_decide
 example : progOk layer1 = false := by native_decide
 
-/-- `σ12` is the component-level mint. Nothing escapes here and the inner group is
+/-- `σ₁₂` is the component-level mint. Nothing escapes here and the inner group is
     closed, so no fill of any kind ran — this is `endGroup`'s release, not the
     audit's. -/
 example : progRejects layer1Val
-  "audit: self's payload (Pair σ8 (Pair σ12 σ11)) does not have its owed type"
+  "audit: self's payload (Pair σ₈ (Pair σ₁₂ σ₁₁)) does not have its owed type"
   = true := by native_decide
 
 
@@ -846,8 +846,8 @@ example : progOk gmKey2 = false := by native_decide
 
 /-- Carve at index 1 and index 2: the escaping borrow's σ is no longer reduced
     away, and these are the pinned probes of the gap. `gmValMid`'s payload prints
-    `Arr⟨1 ▷ σ6, 1 ▷ [Pair σ10 σ12], 1 ▷ σ8⟩` — `σ6` is the opaque prefix that
-    stops the fold and `σ12` is the fill the fold therefore never erases. -/
+    `Arr⟨1 ▷ σ₆, 1 ▷ [Pair σ₁₀ σ₁₂], 1 ▷ σ₈⟩` — `σ₆` is the opaque prefix that
+    stops the fold and `σ₁₂` is the fill the fold therefore never erases. -/
 def gmValMid : Term := prog defer_check {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a))
       -> &mut Nat {
@@ -865,7 +865,7 @@ def gmValLast : Term := prog defer_check {
   () }
 
 example : progRejects gmValMid
-  "audit: self's payload (Pair σ2 (Pair Arr⟨(S Z) ▷ σ6, (S Z) ▷ [Pair σ10 σ12], (S Z) ▷ σ8⟩ σ5)) does not have its owed type"
+  "audit: self's payload (Pair σ₂ (Pair Arr⟨(S Z) ▷ σ₆, (S Z) ▷ [Pair σ₁₀ σ₁₂], (S Z) ▷ σ₈⟩ σ₅)) does not have its owed type"
   = true := by native_decide
 example : progOk gmValLast = false := by native_decide
 
@@ -891,7 +891,7 @@ def gmValMinCtl : Term := prog{
   () }
 
 example : progRejects gmValMin
-  "audit: self's payload (Pair Arr⟨(S Z) ▷ σ4, (S Z) ▷ [Pair σ8 σ10]⟩ σ3) does not have its owed type"
+  "audit: self's payload (Pair Arr⟨(S Z) ▷ σ₄, (S Z) ▷ [Pair σ₈ σ₁₀]⟩ σ₃) does not have its owed type"
   = true := by native_decide
 example : progOk gmValMinCtl = true := by native_decide
 
@@ -950,7 +950,7 @@ example : progOk midSplit3 = true := by native_decide
     three-segment shape matches.
 
     `midCarveEscN` says it again without relying on that inference: carve at index
-    1, producing exactly the ⟨1 ▷ σ6, 1 ▷ [..], 1 ▷ σ8⟩ shape, and let the ESCAPING
+    1, producing exactly the ⟨1 ▷ σ₆, 1 ▷ [..], 1 ▷ σ₈⟩ shape, and let the ESCAPING
     borrow go onto the pack's `n` field instead of into the array. The spine is
     present and the array is filled with its actual payload; only `n` receives the
     fill's fresh σ, and the tail does not mention `n`. GREEN. The spine is not what
@@ -1095,7 +1095,7 @@ example : progRejects gmPinKey2at1 "pin is not met" = true := by native_decide
 
 /-- The measured BOUNDARY: `gmValMin`'s body verbatim, pin added, prefix NOT
     opened. The printed sides are the finding — fill
-    `arrCat 1 1 σ4 [Pair σ8 σ10]` against the update stuck at the σ4 prefix.
+    `arrCat 1 1 σ₄ [Pair σ₈ σ₁₀]` against the update stuck at the σ₄ prefix.
     Opening the prefix (one match) is what the walk does anyway. -/
 def gmPin2at1blind : Term := prog defer_check {
   fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a ~> (%PVSet2T) 1 (*res) s)) -> &mut Nat {

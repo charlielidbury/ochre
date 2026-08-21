@@ -160,10 +160,10 @@ example : Term := prog{
     binding-time snapshot, not its present payload — which is the S2 semantics
     stated in the plan, made visible without the eye leaving the line.
 
-      (12a) L172 C7   `b`  ⇒  **b ≡ `borrowₘ ℓ0 (Cons (S Z) Nil)`** — comptime-known value
+      (12a) L172 C7   `b`  ⇒  **b ≡ `borrowₘ ℓ₀ (Cons (S Z) Nil)`** — comptime-known value
       (12b) L173 C7   `a`  ⇒  **a ≡ `Cons (S Z) Nil`** — comptime-known value
-      (12c) L174 C4   `b`  ⇒  **b ≡ `borrowₘ ℓ0 (Cons (S Z) Nil)`** — comptime-known value
-      (12d) L175 C12  `b`  ⇒  **b ≡ `borrowₘ ℓ0 (Cons (S Z) Nil)`** — the PRE-write payload
+      (12c) L174 C4   `b`  ⇒  **b ≡ `borrowₘ ℓ₀ (Cons (S Z) Nil)`** — comptime-known value
+      (12d) L175 C12  `b`  ⇒  **b ≡ `borrowₘ ℓ₀ (Cons (S Z) Nil)`** — the PRE-write payload
       (12e) L175 C7   `d`  ⇒  **d ≡ `Cons (S (S Z)) Nil`** — the POST-write value
 -/
 
@@ -177,12 +177,12 @@ example : Term := prog{
 
 /-! ## (13) A REBORROW — distinct loan ids, and no loan graph
 
-    `t` gets its own loan (ℓ1 against `b`'s ℓ0). The nesting is NOT shown as a
+    `t` gets its own loan (ℓ₁ against `b`'s ℓ₀). The nesting is NOT shown as a
     borrow-of-borrow: what a `letStep` records is the payload, so a reborrow's
     tooltip names its own loan and the value beneath it, not the chain between.
 
-      (13a) L190 C7  `b`  ⇒  **b ≡ `borrowₘ ℓ0 (Cons (S Z) Nil)`** — comptime-known value
-      (13b) L191 C7  `t`  ⇒  **t ≡ `borrowₘ ℓ1 (Cons (S Z) Nil)`** — comptime-known value
+      (13a) L190 C7  `b`  ⇒  **b ≡ `borrowₘ ℓ₀ (Cons (S Z) Nil)`** — comptime-known value
+      (13b) L191 C7  `t`  ⇒  **t ≡ `borrowₘ ℓ₁ (Cons (S Z) Nil)`** — comptime-known value
 -/
 
 example : Term := prog{
@@ -233,11 +233,11 @@ example : Term := prog{
     misnomer: it claimed knowledge of the parts.
 
     So a σ-bearing value says **binding-time shape**, and each σ carries its type
-    INLINE — a bare `σ0` is an internal name and a reader owes nothing to it.
+    INLINE — a bare `σ₀` is an internal name and a reader owes nothing to it.
     (A trailing legend shipped first; the user chose inline, a type belonging
     where its σ is rather than behind a cross-reference.)
 
-      (15a) L247 C9   `x`  ⇒  **x ≡ `Cons (σ0 : Nat) (σ1 : List Nat)`** — binding-time shape
+      (15a) L247 C9   `x`  ⇒  **x ≡ `Cons (σ₀ : Nat) (σ₁ : List Nat)`** — binding-time shape
       (15b) L246 C9   `h`  ⇒  **h : `Nat`**        (S1, the parameter)
       (15c) L246 C18  `t`  ⇒  **t : `List Nat`**   (S1, the parameter)
 -/
@@ -254,7 +254,7 @@ example : Term := prog{
     the unknown part is a σ carrying its type. Nothing special makes this work —
     the substitution reaches the σs and leaves everything else alone.
 
-      (16a) L262 C9  `y`  ⇒  **y ≡ `Cons (S Z) (σ0 : List Nat)`** — binding-time shape
+      (16a) L262 C9  `y`  ⇒  **y ≡ `Cons (S Z) (σ₀ : List Nat)`** — binding-time shape
 -/
 
 example : Term := prog{

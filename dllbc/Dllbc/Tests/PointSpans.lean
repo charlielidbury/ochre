@@ -28,10 +28,10 @@ set_option trace.Dllbc.check false
     Here the same three occurrences give three different answers, each true at
     its own point:
 
-      (P1a) L44 C7   `b`  ⇒  **b ≡ `borrowₘ ℓ0 (Cons (S Z) Nil)`** — comptime-known value
-      (P1b) L45 C12  `b`  ⇒  **b ≡ `borrowₘ ℓ0 (Cons (S Z) Nil)`** — comptime-known value
-      (P1c) L46 C4   `b`  ⇒  **b ≡ `borrowₘ ℓ0 ⊥`** — comptime-known value
-      (P1d) L47 C12  `b`  ⇒  **b ≡ `borrowₘ ℓ0 (Cons (S (S Z)) Nil)`** — comptime-known value
+      (P1a) L44 C7   `b`  ⇒  **b ≡ `borrowₘ ℓ₀ (Cons (S Z) Nil)`** — comptime-known value
+      (P1b) L45 C12  `b`  ⇒  **b ≡ `borrowₘ ℓ₀ (Cons (S Z) Nil)`** — comptime-known value
+      (P1c) L46 C4   `b`  ⇒  **b ≡ `borrowₘ ℓ₀ ⊥`** — comptime-known value
+      (P1d) L47 C12  `b`  ⇒  **b ≡ `borrowₘ ℓ₀ (Cons (S (S Z)) Nil)`** — comptime-known value
 
     (P1d) is the acceptance test: below the write, `b` shows what the write put
     there. (P1c) is the same mechanism telling a harder truth — entering the
@@ -56,7 +56,7 @@ example : Term := prog{
     the source and the contents from the checker.
 
       (P2a) L66 C9   `v`  ⇒  **v : `&mut List Nat`**                       (at the binder: no point yet)
-      (P2b) L69 C27  `v`  ⇒  **v : `&mut List Nat`** — here `borrowₘ ℓ0 ⊥`
+      (P2b) L69 C27  `v`  ⇒  **v : `&mut List Nat`** — here `borrowₘ ℓ₀ ⊥`
 
     (P2b) is `match *v` having taken the payload out to bind the arm's fields;
     the arm writes it back on the next token. The type is unchanged and the
@@ -82,8 +82,8 @@ example : Term := prog{
     SHAPE is visible on the parent through the suspension. What does not exist is
     value-narrowing on an owned scrutinee — `match n` moves it.
 
-      (P3a) L95 C14  `v`   ⇒  **v : `&mut List Nat`** — here `borrowₘ ℓ0 (Cons loanₘ ℓ1 loanₘ ℓ2)` *(on v ⇒ Cons)*; `borrowₘ ℓ0 Nil` *(on v ⇒ Nil)*
-      (P3b) L93 C34  `hd`  ⇒  **hd ≡ `borrowₘ ℓ1 (σ2 : Nat)`** — binding-time shape
+      (P3a) L95 C14  `v`   ⇒  **v : `&mut List Nat`** — here `borrowₘ ℓ₀ (Cons loanₘ ℓ₁ loanₘ ℓ₂)` *(on v ⇒ Cons)*; `borrowₘ ℓ₀ Nil` *(on v ⇒ Nil)*
+      (P3b) L93 C34  `hd`  ⇒  **hd ≡ `borrowₘ ℓ₁ (σ₂ : Nat)`** — binding-time shape
 -/
 
 example : Term := prog{

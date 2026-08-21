@@ -46,7 +46,7 @@ lane because the lane is closed; each is a measurement, not an opinion.
 **(1) Fill with the issued borrow's ACTUAL payload, not a minted σ, wherever one
 is available.** The minted version was built first and worked, and cost two things
 that only show up at corpus scale. It RENUMBERED the corpus — `f8AgetGetMut` and
-`f9AgetElem` moved from σ17 to σ18 for a check with nothing to do with them,
+`f9AgetElem` moved from σ₁₇ to σ₁₈ for a check with nothing to do with them,
 because minting inside an audit moves the σ supply and the corpus names σs by
 number in `progRejects` needles and in every `tailEnv`. And it STOLE DIAGNOSES:
 filling at the issued borrow's *owed* type makes a wrong return type surface as a
@@ -368,16 +368,16 @@ def siblingBadWrite : Term := prog defer_check {
     let e = &m (*c)[0];
     e };
   () }
--- LEDGER (opaque fill): `σ9 → σ10`, and it is the ONLY assertion in the corpus
+-- LEDGER (opaque fill): `σ₉ → σ₁₀`, and it is the ONLY assertion in the corpus
 -- that the rule moved. The middle segment is the RETURNED cell, so it is filled
 -- opaquely now — a fresh σ minted inside the audit's sandbox rather than the
--- payload σ9 that was already there — and a mint moves the number by one. The
+-- payload σ₉ that was already there — and a mint moves the number by one. The
 -- verdict, the rule that produced it and every other segment are unchanged; the
 -- claim this test makes (a wrong-typed write into a SIBLING is caught, and only
 -- the audit catches it) is about `[True]` in the first segment and is untouched.
 -- The sandbox is why this is one number and not a corpus-wide renumbering.
 example : progRejects siblingBadWrite
-  "a's payload (Arr⟨(S Z) ▷ [True], (S Z) ▷ [σ10], (S Z) ▷ σ7⟩) does not have its owed type (Array (S (S (S Z))) Nat)"
+  "a's payload (Arr⟨(S Z) ▷ [True], (S Z) ▷ [σ₁₀], (S Z) ▷ σ₇⟩) does not have its owed type (Array (S (S (S Z))) Nat)"
   = true := by native_decide
 
 /-- The CONTROL that says the audit is the only thing checking writes at all: the
@@ -391,7 +391,7 @@ def siblingBadWriteUnit : Term := prog defer_check {
     () };
   () }
 example : progRejects siblingBadWriteUnit
-  "a's payload (Arr⟨(S Z) ▷ [True], (S (S Z)) ▷ σ4⟩) does not have its owed type"
+  "a's payload (Arr⟨(S Z) ▷ [True], (S (S Z)) ▷ σ₄⟩) does not have its owed type"
   = true := by native_decide
 
 /-! ### The CALL-GROUP shape: the returned borrow came out of an inner call
@@ -448,7 +448,7 @@ def callGroupBadWrite : Term := withWalk prog defer_check {
     Walk(f, bk) };
   () }
 example : progRejects callGroupBadWrite
-  "s's payload (Arr⟨(S Z) ▷ [True], (S Z) ▷ [σ24], (S Z) ▷ σ19⟩) does not have its owed type"
+  "s's payload (Arr⟨(S Z) ▷ [True], (S Z) ▷ [σ₂₄], (S Z) ▷ σ₁₉⟩) does not have its owed type"
   = true := by native_decide
 
 /-! ## §7 — THE ORDERING the fill forced
@@ -478,7 +478,7 @@ def badTyElem : Term := prog defer_check {
     e };
   () }
 example : progRejects badTyElem
-  "returned borrow's payload (σ8) does not have its owed type (Bool)" = true := by
+  "returned borrow's payload (σ₈) does not have its owed type (Bool)" = true := by
   native_decide
 
 def badWidth : Term := prog defer_check {
@@ -489,7 +489,7 @@ def badWidth : Term := prog defer_check {
     c };
   () }
 example : progRejects badWidth
-  "returned borrow's payload (σ6) does not have its owed type (Array (S (S Z)) Nat)"
+  "returned borrow's payload (σ₆) does not have its owed type (Array (S (S Z)) Nat)"
   = true := by native_decide
 
 end Dllbc.Tests.AuditExemption

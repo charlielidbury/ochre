@@ -79,6 +79,12 @@ def readbackName (d : Nat) : String := "§" ++ toString d
     them (suspensions.md §6, first sharp edge). Nothing rebinds a σ, so nothing
     can shadow one. -/
 
+/-- A number in SUBSCRIPT digits — how loan and σ indices display (`ℓ₀`,
+    `σ₁₂`). Display only: the internal name (`symName`) stays ASCII, so
+    recognition (`symOfName?`) is untouched; only what a reader sees changes. -/
+def subNat (n : Nat) : String :=
+  (toString n).map fun c => Char.ofNat (0x2080 + (c.toNat - '0'.toNat))
+
 /-- The reserved pure name a σ is written as. -/
 def symName (σ : Nat) : String := "§σ" ++ toString σ
 
@@ -1293,7 +1299,7 @@ def Term.resSugar (t : Term) : Term :=
 
 mutual
   def Term.prettyPrec (prec : Nat) : Term → String
-    | .pvar x => match symOfName? x with | some σ => s!"σ{σ}" | none => s!"#{x}"
+    | .pvar x => match symOfName? x with | some σ => s!"σ{subNat σ}" | none => s!"#{x}"
     | .type => "Type"
     | .const c => c
     | .unit => "()"

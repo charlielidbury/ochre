@@ -31,11 +31,11 @@ set_option trace.Dllbc.check false
     point of being able to put a probe anywhere. -/
 
 /--
-info: b ↦ borrowₘ ℓ0 (Cons (S Z) Nil)
+info: b ↦ borrowₘ ℓ₀ (Cons (S Z) Nil)
 ---
-info: b ↦ borrowₘ ℓ0 ⊥
+info: b ↦ borrowₘ ℓ₀ ⊥
 ---
-info: b ↦ borrowₘ ℓ0 (Cons (S (S Z)) Nil)
+info: b ↦ borrowₘ ℓ₀ (Cons (S (S Z)) Nil)
 -/
 #guard_msgs in
 example : Term := prog{
@@ -69,8 +69,8 @@ example :
     and the parameter answers from the checker's own seed like every other
     binder.
 
-    **σ0 carries its type inline, and the earlier "bare σ0" pin was retired
-    WITH its reasoning.** The old text argued printing `(σ0 : List Nat)` at the
+    **σ₀ carries its type inline, and the earlier "bare σ₀" pin was retired
+    WITH its reasoning.** The old text argued printing `(σ₀ : List Nat)` at the
     first statement would report a fact from the future, because `bindSlot`
     filed the binding before the type was registered. `seedTelescopeV` now
     registers the type FIRST — binding and registration are one seeding
@@ -78,7 +78,7 @@ example :
     not clairvoyance. -/
 
 /--
-info: v ↦ borrowₘ ℓ0 (σ0 : List Nat)
+info: v ↦ borrowₘ ℓ₀ (σ₀ : List Nat)
 -/
 #guard_msgs in
 example : Term := prog{
@@ -126,7 +126,7 @@ info: hd ↦ S Z
 ---
 info: tl ↦ Nil
 ---
-info: hd ↦ borrowₘ ℓ1 (σ2 : Nat)
+info: hd ↦ borrowₘ ℓ₁ (σ₂ : Nat)
 -/
 #guard_msgs in
 example : Term := prog{

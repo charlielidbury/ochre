@@ -447,7 +447,7 @@ example : expectErr prog defer_check { let a = Arr(3, 1, 2);
     resolves it by ending: `let p = &mut x; let q = &mut x;` is accepted today, with
     `p` killed and any later use of it stuck. Probed directly rather than assumed —
 
-        x ↦ loanₘ ℓ0,  p ↦ ⊥,  q ↦ borrowₘ ℓ0 3
+        x ↦ loanₘ ℓ₀,  p ↦ ⊥,  q ↦ borrowₘ ℓ₀ 3
 
     — so the array rule follows suit, which is also what makes ¶3.6's group trace work
     (`let z = a[0]` must end the group to read across it) and what §5.2 states as one

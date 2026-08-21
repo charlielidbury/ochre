@@ -282,7 +282,7 @@ example : progOk c2 = true := by native_decide
 example : tailEnv c2 [("F", .sym 0), ("y", .sym 1)] = true := by native_decide
 
 -- C3. Two calls are two events, and are NOT identified (§2.2's requirement on the
--- runtime column): σ1 and σ2 are distinct, each with its own type instance.
+-- runtime column): σ₁ and σ₂ are distinct, each with its own type instance.
 def c3 : Term := prog{
   let F = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = F(2); let z = F(2); () }
 example : tailEnv c3 [("F", .sym 0), ("y", .sym 1), ("z", .sym 2)] = true := by native_decide
@@ -357,7 +357,7 @@ def c12 : Term := prog{
   let F = λ (x : Nat). S x; let r = Apply1(F, 2); () }
 example : progOk c12 = true := by native_decide
 -- `tailEnv` drops the program's own function binding, so the expected Ω is the
--- one this assertion always had — `r ↦ σ0` and not `σ1`.
+-- one this assertion always had — `r ↦ σ₀` and not `σ₁`.
 example : tailEnv c12 [("F", vlam), ("r", .sym 0)] = true := by native_decide
 
 -- The negative control for the parameter branch: a body that under-applies its
@@ -442,7 +442,7 @@ example : progRejects c14bad "does not have return type" (prog defer_check { Le 
     everything else structurally. That suffices while every σ stands at a whole
     slot, which is where calls and group-ends put them. A seal puts a σ *inside
     ordinary arithmetic*: after `let a = (3 : Nat); let b = Add a 1` the
-    symbolic side holds the neutral spine `natRec … σ0` where the concrete side
+    symbolic side holds the neutral spine `natRec … σ₀` where the concrete side
     holds `4`. Structurally these differ, and the old relation reports a
     counterexample that is not one.
 
@@ -480,7 +480,7 @@ def diffOld (body : Term) : Bool :=
 def d1 : Term := prog{ let a = (3 : Nat); let b = Add a 1; () }
 example : progOk d1 = true := by native_decide
 -- The old relation calls this a counterexample. It is not one: the two
--- environments agree at σ0 := 3.
+-- environments agree at σ₀ := 3.
 example : diffOld d1 = false := by native_decide
 example : diffC   d1 = true  := by native_decide
 

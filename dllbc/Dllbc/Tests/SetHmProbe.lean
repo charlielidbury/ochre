@@ -206,7 +206,7 @@ def gmSymPinFold : Term := prog defer_check {
     step of a walking `GetMut`.
 
     (An extent written `S r` is REJECTED before any of this — `carve: premise (3)
-    is stuck — the leaf's extent (S σ0) is a compound neutral, not a flexible σ`.
+    is stuck — the leaf's extent (S σ₀) is a compound neutral, not a flexible σ`.
     That is `hm-probe-mod`'s capacity forcing, restated at the leaf: the extent is
     an opaque `m` plus a decomposition equation, everywhere, always.) -/
 
@@ -451,47 +451,47 @@ def packWalkCaller : Term := prog{
 
 example : progOk symCarveUnit = true := by native_decide
 example : progRejects symCarveEsc
-  "audit: self's payload (Pair Arr⟨σ1 ▷ σ13, (S Z) ▷ [Pair σ19 σ21], σ2 ▷ σ17⟩ σ7) does not have its owed type"
+  "audit: self's payload (Pair Arr⟨σ₁ ▷ σ₁₃, (S Z) ▷ [Pair σ₁₉ σ₂₁], σ₂ ▷ σ₁₇⟩ σ₇) does not have its owed type"
   = true := by native_decide
 
 example : progOk gmConc2at1open = true := by native_decide
 example : progRejects gmConc2at1blind
-  "exits (Pair (arrCat (S Z) (S Z) σ4 [Pair σ8 σ10]) σ3), does not convert with the declared pin (Pair (arrRec"
+  "exits (Pair (arrCat (S Z) (S Z) σ₄ [Pair σ₈ σ₁₀]) σ₃), does not convert with the declared pin (Pair (arrRec"
   = true := by native_decide
 
 /-- **SPELLING (i) IS REFUTED, and the print says why in one line.** The entry σ
     WAS refined to the composition — the declared pin's argument is the very same
-    `arrCat σ1 (S σ2) σ13 (acons σ2 (Pair σ19 σ20) σ17)` spine the fill carries,
-    with the entry value `σ20` where the fill has the exit `σ21`. The two sides do
+    `arrCat σ₁ (S σ₂) σ₁₃ (acons σ₂ (Pair σ₁₉ σ₂₀) σ₁₇)` spine the fill carries,
+    with the entry value `σ₂₀` where the fill has the exit `σ₂₁`. The two sides do
     not differ in shape at all. They differ because the pin is a `natRec` ON THE
-    INDEX `σ1`, and `σ1` is a σ, so it cannot take its first step. -/
+    INDEX `σ₁`, and `σ₁` is a σ, so it cannot take its first step. -/
 example : progRejects gmSymPinFold
-  "exits (Pair (arrCat σ1 (S σ2) σ13 (acons σ2 (Pair σ19 σ21) σ17)) σ7), does not convert with the declared pin (Pair (natRec"
+  "exits (Pair (arrCat σ₁ (S σ₂) σ₁₃ (acons σ₂ (Pair σ₁₉ σ₂₁) σ₁₇)) σ₇), does not convert with the declared pin (Pair (natRec"
   = true := by native_decide
 
 example : progOk gmSymAt0 = true := by native_decide
 example : progOk gmSymAt1 = true := by native_decide
 example : progRejects gmSymAt1blind
-  "exits (Pair (arrCat (S Z) (S σ1) σ8 (acons σ1 (Pair σ14 σ16) σ12)) σ6), does not convert with the declared pin (Pair (arrRec"
+  "exits (Pair (arrCat (S Z) (S σ₁) σ₈ (acons σ₁ (Pair σ₁₄ σ₁₆) σ₁₂)) σ₆), does not convert with the declared pin (Pair (arrRec"
   = true := by native_decide
 
 example : progOk decompExtent = true := by native_decide
 
 /-- **SPELLING (ii) IS REFUTED, and for a DIFFERENT reason — this is the print to
     take to a design discussion.** The two sides are the same term modulo which σ
-    stands at three leaves: the fill's carve pieces `σ14`/`σ18` and carved key
-    `σ20` against the parameters `σ2`/`σ4`/`σ3`. Index `σ0`, residue `σ1` and the
-    exit `σ22` in the value slot all MATCH. The decomposition spelling is the right
+    stands at three leaves: the fill's carve pieces `σ₁₄`/`σ₁₈` and carved key
+    `σ₂₀` against the parameters `σ₂`/`σ₄`/`σ₃`. Index `σ₀`, residue `σ₁` and the
+    exit `σ₂₂` in the value slot all MATCH. The decomposition spelling is the right
     shape and is unwritable for one reason only: `pinFill`'s prefix and suffix are
     minted by the carve, and a signature has no way to name them. -/
 example : progRejects gmSymPinDecomp
-  "exits (Pair (arrCat σ0 (S σ1) σ14 (acons σ1 (Pair σ20 σ22) σ18)) σ8), does not convert with the declared pin (Pair (arrCat σ0 (S σ1) σ2 (acons σ1 (Pair σ3 σ22) σ4)) σ8)."
+  "exits (Pair (arrCat σ₀ (S σ₁) σ₁₄ (acons σ₁ (Pair σ₂₀ σ₂₂) σ₁₈)) σ₈), does not convert with the declared pin (Pair (arrCat σ₀ (S σ₁) σ₂ (acons σ₁ (Pair σ₃ σ₂₂) σ₄)) σ₈)."
   = true := by native_decide
 
-/-- The key twin of the spelling that works: exit `σ19` in the key slot on the
+/-- The key twin of the spelling that works: exit `σ₁₉` in the key slot on the
     fill, in the value slot on the pin. -/
 example : progRejects gmSymAt1Key
-  "exits (Pair (acons (S σ1) (Pair σ11 σ12) (acons σ1 (Pair σ19 σ18) σ15)) σ6), does not convert with the declared pin (Pair (acons (S σ1) (Pair σ11 σ12) (acons σ1 (Pair σ17 σ19) σ15)) σ6)."
+  "exits (Pair (acons (S σ₁) (Pair σ₁₁ σ₁₂) (acons σ₁ (Pair σ₁₉ σ₁₈) σ₁₅)) σ₆), does not convert with the declared pin (Pair (acons (S σ₁) (Pair σ₁₁ σ₁₂) (acons σ₁ (Pair σ₁₇ σ₁₉) σ₁₅)) σ₆)."
   = true := by native_decide
 
 /-- **THE ANSWER.** A `GetMut` that WALKS to its slot discharges the fold-spelled
@@ -500,7 +500,7 @@ example : progOk walkDecls = true := by native_decide
 example : progOk packWalk = true := by native_decide
 
 example : progRejects packWalkKey
-  "audit: arr's pin is not met — the exit payload, hole-filled at the issued borrows' exits (acons σ0 (Pair σ9 σ8) σ5), does not convert with the declared pin (acons σ0 (Pair σ7 σ9) σ5)."
+  "audit: arr's pin is not met — the exit payload, hole-filled at the issued borrows' exits (acons σ₀ (Pair σ₉ σ₈) σ₅), does not convert with the declared pin (acons σ₀ (Pair σ₇ σ₉) σ₅)."
   = true := by native_decide
 
 /-! …and the caller checks AND runs: cell 1's value becomes 9, the keys are

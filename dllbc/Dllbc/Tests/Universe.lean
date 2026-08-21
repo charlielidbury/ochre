@@ -313,7 +313,7 @@ example :
     a `Type`-typed position. Pinned here because "the universe rule" is not the
     rule until the open cases are covered too. -/
 
-/-- Against a seeded `sctx`: `σ0 : Type` is what a telescope's comptime type
+/-- Against a seeded `sctx`: `σ₀ : Type` is what a telescope's comptime type
     parameter leaves behind, and the `symOf?` case at the top of the judgment
     types it by lookup and conversion. -/
 def chkS (sctx : List (Nat × Term)) (tm ty : Term) : String :=
