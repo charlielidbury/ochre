@@ -152,4 +152,35 @@ example : Term := prog{
     () };
   () }
 
+/-! ## (S6) A `show` ABOVE a match keys AT the match — the depth regression, pinned
+
+    The drain of pending `show`s was depth-blind: the first statement row to
+    tag after a `show` claimed it, and for a `show` above a statement-position
+    match that was `let u = Z` INSIDE the Cons arm — so the outer probe
+    reported the arm's suspension, a fact from the future, with no path label
+    to flag it (the Nil path declined). `takePendings`/`restorePendings` is
+    the fix; this case is the reporter's own program, and the first line is
+    the assertion that a probe above a match sees the UNNARROWED borrow. -/
+
+/--
+info: v ↦ borrowₘ ℓ₀ (σ₀ : List Nat)
+---
+info: v ↦ borrowₘ ℓ₀ (Cons loanₘ ℓ₁ loanₘ ℓ₂)
+-/
+#guard_msgs in
+example : Term := prog{
+  fn F (v : &mut List Nat) -> Unit {
+    show v;
+    match v {
+      Nil => (),
+      Cons(hd, tl) => {
+        show v;
+        let u = Z;
+        () }
+    };
+    let a = *v;
+    *v := a;
+    () };
+  () }
+
 end Dllbc.Tests.ShowSpans
