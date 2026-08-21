@@ -97,3 +97,25 @@ Join paths are 2N+2 (each arm closes its own diagnostic sub-path — the seal ca
 **Where the heuristic's edge sits:** rule (c) fires only on `Pair`-shaped results; its candidates come from arm `sctx` (bare σs) and the closed constructor basis, so a snd whose type needs a parametrized head (`List`) or whose disagreement is not the fst value verbatim falls to (d); nesting recurses but each level abstracts only its own fst. The rejection message names the remedy, and `packEvidence` is the worked example the message points at.
 
 **Residuals:** parametrized-head synthesis (a `Cons`-headed result with no owed source rejects — an inverse constructor-table would lift it); slot-level packs (rule (c) currently reaches only the result; a slot holding a written pack falls to rule 5/7); anti-unification under binders is name-sensitive (`pi`/`lam`/`sigmaT` require equal binder names — α-widening is mechanical if a case demands it); the `joinFreshTyped` σ carries no provenance for hovers ("joined from N arms" would earn its keep).
+
+---
+
+## 7. THE HOVER-SIMPLIFICATION SWEEP — a finding, not a deletion (2026-08-21)
+
+The follow-up question was whether the join lets the multi-path hover/`show` rendering machinery (`renderPaths`' multi-answer listing with arm trails and the cap-at-three, `letIndex`'s `differs` flag and the `*(differs per path)*` suffix) be retired. The premise: post-seam points are one joined path, in-arm points are one arm's path, and shared-prefix points repeat with identical deltas — so genuinely divergent answers at one point should be unreachable. **The sweep refutes the premise.**
+
+`Tests/MatchJoinSweep.lean` (not in build) replays every (statement-key × binder) point of thirteen corpus programs through the real ledger machinery and counts distinct rendered answers:
+
+| program | paths | points | point-div | let-div |
+|---|---|---|---|---|
+| the six MatchJoin programs | 1–8 | 3–27 | **0** | **0** |
+| S33Eager trio (statement-position borrow joins) | 5 | 26–34 | **0** | **0** |
+| flagship (list quicksort) | 14 | 1822 | **56** | 7 |
+| arrChain (array quicksort) | 14 | 3160 | **38** | 3 |
+| hashmap s1Chain / s2CheckedCaller | 31 | ~24k | **448** each | 13 |
+
+Every program whose matches the JOIN reaches renders one answer per point — the join's own half of the premise holds. The divergences all come from **tail-position matches, the corpus's dominant style, which the join deliberately leaves forked** (no continuation, one audited path per arm): a statement ABOVE a tail split appears in every one of that body's paths, and its σ-bearing state is NOT identical across them — per-path refinement sweeps the slots bound before the split, and per-path minting (a recursive call in each `if` branch) renumbers the σs, so the same binder legitimately renders `(σ₀ : List Nat)` on one path and `(σ₈ : List Nat)` on another. Samples: `Partition`'s `v`/`p`/`Hf` at the statements above its tail `if`, 56 points in the flagship alone.
+
+**So the boundary sits exactly at the match's position.** Statement-position match → joined → one answer, and the machinery's dedup collapses the shared prefix. Tail-position match → forked (by design: fork ≡ join is FALSE there only in bookkeeping — semantically each arm ends the body, but the paths still mint and refine separately) → the multi-answer rendering is load-bearing. Nothing is deleted; the sweep harness stays as the evidence and as the regression canary for whenever a later change (e.g. canonicalizing σ display per path) makes the count drop.
+
+What DID change under the join (from R2): the two purpose-built statement-position hover pins (`HoverSpans` §11, `PointSpans` §P3) are single-answer now, and their comments say so. `ShowSpans`' `#guard_msgs` suite — including upstream's S6 "a probe above a match sees the unnarrowed borrow" — passes verbatim, with the S6 claim STRENGTHENED: the pre-split state is literally the state the joined continuation resumes from.
