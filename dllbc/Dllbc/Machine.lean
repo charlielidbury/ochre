@@ -458,11 +458,15 @@ def Diag.of (msg : String) (s : St) : Diag :=
 /-- The key a statement is filed under: the statement stripped of its
     continuation, since the walkers rebuild continuations (the lazy seam shape)
     but never the statement itself. A `let` reduces to its binder — runtime ids are globally
-    unique, so that alone identifies the statement and costs nothing to carry. -/
+    unique, so that alone identifies the statement and costs nothing to carry.
+    Since detach-tails the continuation lives on the `.seq` NODE rather than on
+    the statement former, so stripping means keying at the seq's head — with the
+    `let`/`assign` heads reduced exactly as the bare forms are. -/
 def stmtKeyOf : Term → Term
-  | .letIn x _ _ => .letIn x .unit .unit
-  | .assign p rhs _ => .assign p rhs .unit
+  | .seq (.letIn x _) _ => .letIn x .unit
+  | .seq (.assign p rhs) _ => .assign p rhs
   | .seq e _ => e
+  | .letIn x _ => .letIn x .unit
   | .matchE s eqn _ => .matchE s eqn []
   | t => t
 
@@ -1650,11 +1654,15 @@ mutual
       pure (.know (.idT (← needKnow " Id" (← reflectC lets a)) (← needKnow " Id" (← reflectC lets b))
         (← needKnow " Id" (← reflectC lets c))))
     | .unit => pure (.ctor "unit" [])
-    | .letIn x rhs rest => do
-      -- Nothing is written to Ω, so a comptime read has no footprint and two
-      -- reads cannot disagree.
+    -- The `let` SPINE first (detach-tails): a let-headed `.seq` scopes its
+    -- binder over the chain's tail, so the `lets` context threads left-to-right
+    -- exactly as `eval`'s env does. Nothing is written to Ω, so a comptime read
+    -- has no footprint and two reads cannot disagree.
+    | .seq (.letIn x rhs) rest => do
       let v ← needKnow " let" (← reflectC lets rhs)
-      pure (.know (.letIn x v (← needKnow " let" (← reflectC (x.id :: lets) rest))))
+      pure (.know (.seq (.letIn x v) (← needKnow " let" (← reflectC (x.id :: lets) rest))))
+    | .letIn x rhs => do
+      pure (.know (.letIn x (← needKnow " let" (← reflectC lets rhs))))
     -- ¶2.2's ⇝ column at the two new steps. The snapshot of an array place is the
     -- snapshot of the SEGMENT sitting there — exact, and needing no new constant.
     -- Read-only, as ⇝ must be: it merges a local copy to find the segment but never
@@ -1671,9 +1679,9 @@ mutual
       -- `a[lo ; ..]` reads its count off the extent map, which is STATE; ⇝ is the
       -- read-only projection and may not consult it. Write the count in a type.
       throwErr "readC (⇝): `a[lo ; ..]` has no comptime reading — its count is read off the extent map, which is state (§3.2)"
-    | .assign _ _ _ => throwErr "readC (⇝): `:=` is excluded from the comptime fragment"
+    | .assign _ _ => throwErr "readC (⇝): `:=` is excluded from the comptime fragment"
     | .borrow _ => throwErr "readC (⇝): `&mut` is not in the comptime fragment"
-    | .seq _ _ => throwErr "readC (⇝): statement sequencing is not a comptime read"
+    | .seq _ _ => throwErr "readC (⇝): statement sequencing (other than a `let` head, which scopes) is not a comptime read"
     | .matchE _ _ _ => throwErr "readC (⇝): match not implemented in the comptime fragment this milestone"
     | .borrowT _ _ _ => throwErr "readC (⇝): borrow type `&mut (τ ↝ τ')` is only valid at a telescope position"
     -- **The callee is NAMED** (M31 Stage A), and it is load-bearing rather than
@@ -1923,8 +1931,8 @@ partial def calleeNames : Term → List String
   -- A seal's body is ordinary runtime code and may call; a value-callee call
   -- names no DECLARATION (that is the point of it), but its arguments may.
   | .seal _ t u => calleeNames t ++ calleeNames u
-  | .letIn _ a b => calleeNames a ++ calleeNames b
-  | .assign a b c => calleeNames a ++ calleeNames b ++ calleeNames c
+  | .letIn _ a => calleeNames a
+  | .assign a b => calleeNames a ++ calleeNames b
   | .seq a b => calleeNames a ++ calleeNames b
   | .ctorApp _ args => args.flatMap calleeNames
   | .borrow t | .deref t => calleeNames t
@@ -3324,7 +3332,11 @@ partial def collapseCDerefs (fuel : Nat) : Term → M Unit
   | .pi _ d b => do collapseCDerefs fuel d; collapseCDerefs fuel b
   | .sigmaT _ d b => do collapseCDerefs fuel d; collapseCDerefs fuel b
   | .cmpT τ => collapseCDerefs fuel τ                    -- M33a: ⇝ is transparent here
-  | .letIn _ rhs rest => do collapseCDerefs fuel rhs; collapseCDerefs fuel rest
+  -- The let SPINE only (detach-tails): a let-chain is what this traversed when
+  -- the tail was the letIn's own field. Any other `.seq` keeps the old
+  -- catchall skip — it never reached here collapsed before, and still doesn't.
+  | .seq (.letIn _ rhs) rest => do collapseCDerefs fuel rhs; collapseCDerefs fuel rest
+  | .letIn _ rhs => collapseCDerefs fuel rhs
   | _ => pure ()
 
 /-- Find the branch whose constructor name matches `name`. -/
@@ -5280,10 +5292,14 @@ def sealSym (key : SealKey) : M Nat := do
     SINGLE-PATH — a concrete scrutinee (⇒, or checking selection) and the
     one-branch match (where fork ≡ join exactly): the arm body, the binder, and
     the continuation behind the `@armScope`/`@popArmL` seam the pre-pass used
-    to build. `let` form. -/
+    to build. `let` form. The splice binds the arm's body to `x` and THEN
+    reaches the seam pop — `.seq (.letIn x br.body) (.seq @popArmL rest)` since
+    detach-tails, the same binding/seam order the tail-carrying `letIn` had:
+    `x` is the enclosing scope's binding, appended last when the seam is
+    reached, which is what `@popArmL`'s `retain = 1` depends on. -/
 def pushJoinArms (x : Var) (rest : Term) (bs : List Branch) : List Branch :=
   bs.map (fun br => Branch.mk br.ctor br.binders
-    (.seq (.const "@armScope") (.letIn x br.body (.seq (.const "@popArmL") rest))))
+    (.seq (.const "@armScope") (.seq (.letIn x br.body) (.seq (.const "@popArmL") rest))))
 
 /-- As `pushJoinArms`, `seq` form (`@popArm`, no binder survives the arm). -/
 def pushJoinArmsSeq (rest : Term) (bs : List Branch) : List Branch :=
@@ -5696,12 +5712,13 @@ mutual
       -- its continuations now, so the seam shape the pre-pass used to build is
       -- built HERE, lazily — one arm is selected (⇒ is concrete), the marker
       -- walk pops the arm scope, and executing behaviour is the old normal
-      -- form's by construction.
-      | .letIn x (.matchE s eqn bs) rest =>
+      -- form's by construction. Both shapes are `.seq`-headed since
+      -- detach-tails: the `let` shape is a let-headed seq whose rhs is the match.
+      | .seq (.letIn x (.matchE s eqn bs)) rest =>
         readR fuel (.matchE s eqn (pushJoinArms x rest bs))
       | .seq (.matchE s eqn bs) rest =>
         readR fuel (.matchE s eqn (pushJoinArmsSeq rest bs))
-      | .letIn x rhs rest => do
+      | .letIn x rhs => do
         -- **`let X = e` is a comptime binding** (§6): `e` is evaluated under ⇝,
         -- `X` is erased and non-consuming, and the fence confines it to
         -- ⇝-positions. Local spec abbreviations and locally-derived certificates
@@ -5713,17 +5730,24 @@ mutual
         -- because two right-hand sides were ⇒-formation events ⇝ had no rule for.
         -- ⇝ has the rules now (`readComptimeVal`), so the predicate is gone and
         -- this line is the invariant.
+        --
+        -- **A statement is a unit-valued EXPRESSION** (detach-tails): the tail
+        -- is not this former's any more, so the step is taken and unit comes
+        -- back. Statement-spine sequencing is `.seq`'s, below.
         letStep fuel x rhs
-        readR fuel rest
-      | .assign place rhs rest => do
+        pure (.ctor "unit" [])
+      | .assign place rhs => do
         assignStep fuel place rhs
-        readR fuel rest
+        pure (.ctor "unit" [])
       -- **One match rule, two drivers** (M33 Σ0's prerequisite): `matchStep` is
       -- what used to be spelled out here, and `readRTail` reaches the same rule
       -- rather than a copy of it.
       | .matchE scrut eqn branches => do readR fuel (← matchStep fuel scrut eqn branches)
+      -- **The statement spine** (detach-tails): `.seq` is the one sequencing
+      -- form, and the head dispatches through the shared step functions —
+      -- `stmtStep` — so the three drivers keep taking the same step.
       | .seq e rest => do
-        seqStep fuel e
+        stmtStep fuel e
         readR fuel rest
       -- **A `.call` never resolves** (M28 D9). §8's scope IS the call table: the
       -- surface turns `f(…)` into a SPINE on the binding lexically above it, so
@@ -5987,7 +6011,7 @@ mutual
       -- the rule itself is: three drivers take this same step. A `let` files
       -- under its binder alone — runtime ids are globally unique, so that
       -- identifies the statement outright and carries none of the RHS's bulk.
-      noteStmt (.letIn x .unit .unit)
+      noteStmt (.letIn x .unit)
       let v ← if x.isComptime then readComptimeVal fuel rhs else readR fuel rhs
       -- The hover type table, filed at the same one site and for the same reason
       -- (docs/16). AFTER the read, because the read is what produces the value the
@@ -5999,7 +6023,7 @@ mutual
   /-- The `assign` step: RHS by ⇒ first (§2.5 ordering), target by ⇐. -/
   def assignStep : Nat → Term → Term → M Unit
     | fuel, place, rhs => do
-      noteStmt (.assign place rhs .unit)
+      noteStmt (.assign place rhs)
       let v ← readR fuel rhs
       writeR fuel place v
   termination_by fuel _ _ => (fuel, 16, 0)
@@ -6007,6 +6031,18 @@ mutual
   def seqStep : Nat → Term → M Unit
     | fuel, e => do noteStmt (.seq e .unit); let _ ← readR fuel e; pure ()
   termination_by fuel _ => (fuel, 16, 0)
+  /-- **The statement-spine head dispatch** (detach-tails), shared by the three
+      drivers exactly as the steps themselves are: a `.seq`'s head is a `let`,
+      an assignment, or an expression statement, and each takes its own step.
+      Routing the first two here rather than through `readR`'s expression arms
+      keeps the breadcrumb discipline byte-identical — `letStep`/`assignStep`
+      file their own keys, and `seqStep`'s `.seq e .unit` key is never filed
+      for a head that has a statement key of its own. -/
+  def stmtStep : Nat → Term → M Unit
+    | fuel, .letIn x rhs => letStep fuel x rhs
+    | fuel, .assign place rhs => assignStep fuel place rhs
+    | fuel, e => seqStep fuel e
+  termination_by fuel _ => (fuel, 17, 0)
   /-- **⇒ with the tail's type in hand** (M33 Σ0's prerequisite, suspensions.md
       §2.7) — `readR` for every step of a body's statement spine, and `readResult`
       at the end of it.
@@ -6026,13 +6062,11 @@ mutual
     | 0, _, _ => throwErr "readRTail: out of fuel"
     | fuel + 1, ty, t =>
       match t with
-      | .letIn x (.matchE s eqn bs) rest =>
+      | .seq (.letIn x (.matchE s eqn bs)) rest =>
         readRTail fuel ty (.matchE s eqn (pushJoinArms x rest bs))
       | .seq (.matchE s eqn bs) rest =>
         readRTail fuel ty (.matchE s eqn (pushJoinArmsSeq rest bs))
-      | .letIn x rhs rest => do letStep fuel x rhs; readRTail fuel ty rest
-      | .assign place rhs rest => do assignStep fuel place rhs; readRTail fuel ty rest
-      | .seq e rest => do seqStep fuel e; readRTail fuel ty rest
+      | .seq e rest => do stmtStep fuel e; readRTail fuel ty rest
       | .matchE scrut eqn branches => do
         -- A match in TAIL position: every arm's body ends where this one does,
         -- so the type goes into the arm. (A STATEMENT-position match never gets
@@ -7051,25 +7085,20 @@ mutual
       -- — both shapes — checks its arms terminally under their refinements and
       -- then the continuation ONCE, from the pre-split state, per-slot by the
       -- conservative ladder. No annotation, no fork.
-      | .letIn x (.matchE scrut eqn branches) rest =>
+      | .seq (.letIn x (.matchE scrut eqn branches)) rest =>
         exploreJoin fuel (some x) scrut eqn branches rest st
       | .seq (.matchE scrut eqn branches) rest =>
         exploreJoin fuel none scrut eqn branches rest st
       -- §6's comptime `let`, HERE as well as in `readR`. The explore driver does
-      -- not route statement-spine steps through `readR`'s own `.letIn` case, so a
-      -- rule that lives only there would be dead for every real body. Since
-      -- M33's Σ0 prerequisite that is not two copies of the rule but ONE
-      -- (`letStep`), for the reason the third driver made unignorable.
-      | .letIn x rhs rest =>
-        match (letStep fuel x rhs).run st with
-        | .error e sErr => [.error (Diag.of e sErr)]
-        | .ok _ st' => exploreD fuel rest st'
+      -- not route statement-spine steps through `readR`'s own expression arms,
+      -- so a rule that lives only there would be dead for every real body.
+      -- Since M33's Σ0 prerequisite that is not copies of the rule but ONE per
+      -- former (`letStep`/`assignStep`/`seqStep`), for the reason the third
+      -- driver made unignorable — and since detach-tails the spine is
+      -- `.seq`-shaped, so ONE arm and the shared head dispatch (`stmtStep`)
+      -- cover all three.
       | .seq e rest =>
-        match (seqStep fuel e).run st with
-        | .error e sErr => [.error (Diag.of e sErr)]
-        | .ok _ st' => exploreD fuel rest st'
-      | .assign p rhs rest =>
-        match (assignStep fuel p rhs).run st with
+        match (stmtStep fuel e).run st with
         | .error e sErr => [.error (Diag.of e sErr)]
         | .ok _ st' => exploreD fuel rest st'
       | other =>                                     -- final expression
