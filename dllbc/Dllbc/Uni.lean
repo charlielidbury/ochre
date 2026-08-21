@@ -78,7 +78,10 @@ for:
 
   * **`let`** (M29 α) emitted a `.letIn` in one mode and a β-redex over a fresh
     binder in the other. One row emits `.letIn` and the kernel reads it under both
-    arrows; ⇝'s reading of it IS that β, built at reflection.
+    arrows. (⇝'s reading was a β built at reflection when M29 α landed; since
+    M32 R1 no redex is built anywhere — `Pure.eval` binds `Pure.letName x.id`
+    in its environment and evaluates the tail, see `Machine.lean`'s "`let` is
+    read by β, and `eval` performs it" note.)
   * **`&mut`** (M29 β) was the borrow OPERATION in one mode and the borrow TYPE in
     the other. They are spelled `&m` and `&mut` now, so each row emits its own
     node whatever surrounds it.
@@ -1604,9 +1607,11 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- **ONE `let`, both fragments** (M29 α). This row used to branch on the mode:
     -- ⇒ minted a runtime slot and emitted `.letIn`, ⇝ emitted the β-redex
     -- `(λ. rest) e` over an anonymous binder. The kernel now reads `.letIn` under
-    -- BOTH arrows — ⇝'s reading is that same β, built at reflection (`reflectC`)
-    -- — so the surface has nothing left to decide, and this was the first of the
-    -- two branches the mode flag had.
+    -- BOTH arrows — so the surface has nothing left to decide, and this was the
+    -- first of the two branches the mode flag had. (⇝'s reading was a β built at
+    -- reflection until M32 R1; now `reflectC` carries the `letIn` through as
+    -- itself and `Pure.eval` binds `Pure.letName x.id` in its environment — no
+    -- redex is constructed.)
     --
     -- The old spelling was not merely a second encoding, it was a second
     -- SCOPE: a `let` used to push `pctx` in one fragment and `rctx` in the other,
