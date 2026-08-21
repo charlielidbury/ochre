@@ -1,7 +1,7 @@
 import Dllbc.ElabCheck
 import Dllbc.Std
 
-/-! # Module states (docs/20 stages 1-2) — the surface
+/-! # Module states (docs/20 stages 1-3) — the surface
 
     `prog () { … }` and `prog (e) { … }` elaborate to a `Checked` — the term and
     the walk's ending state. Elaborating a module block IS its definition-site
@@ -114,5 +114,76 @@ example :
     && (useBoth.env.env.find? (fun kv => kv.1.name == "q")).isSome
     && useBoth.env.nextSym > std2.env.nextSym
     && std2.env.nextSym > std.env.nextSym := by native_decide
+
+/-! ## (7) The `[k]` hint crosses the boundary (stage 3)
+
+    `Walk`'s decreasing parameter is SECOND — the `TwoRec` / `Nth` shape
+    (`Tests/Direct.lean`, `Tests/Boundaries.lean`), where `fnElab` hoists `n`
+    to the front of the sealed telescope. Through stage 2 the seeded call
+    below was UNCALLABLE: the hint lived only in the macro layer, so the
+    imported call was built unpermuted and `&m xs` landed on the hoisted `Nat`
+    parameter — an argument-type rejection. The hint now persists in the
+    module's state (`Ledgers.hints`) and `moduleBinds` reads it back, so the
+    consumer calls in DECLARATION order and gets the same permutation a local
+    call gets. -/
+
+def walkMod : Checked := prog () {
+  fn Walk [n] (v : &mut List Nat, n : Nat) -> Unit {
+    match n { Z => (), S(k) => Walk(&m *v, k) } };
+  () }
+
+def useWalk : Checked := prog (walkMod.env) {
+  let xs = Cons(1, Nil);
+  let r = Walk(&m xs, 2);
+  () }
+
+/-- The permuted call checked: `r` is bound to the call's fresh existential and
+    the σ supply continued past the seed's. The elaboration going green is the
+    other half — types make an unpermuted call impossible here, since it would
+    pass a borrow where the hoisted telescope wants a `Nat`. -/
+example :
+    ((useWalk.env.env.find? (fun kv => kv.1.name == "r")).map (fun kv => kv.2.pretty)
+        == some "σ10")
+    && useWalk.env.nextSym > walkMod.env.nextSym := by native_decide
+
+/-- The persisted hint channel holds the declaration-order index of `Walk`'s
+    scrutinee — and nothing else, since only hinted `fn`s get entries. -/
+example : walkMod.env.ledgers.hints == [("Walk", 1)] := by native_decide
+
+/-- The channel survives the chain: `std2`'s walk audits `LeReflS`'s seal with
+    the seed's entries in hand, and they come back out (`Ledgers.closePath`).
+    `LeRefl`'s hint is index 0 — a no-op permutation, but a real entry — and
+    `LeReflS`, unhinted, adds none. -/
+example :
+    std.env.ledgers.hints == [("LeRefl", 0)]
+    && std2.env.ledgers.hints == [("LeRefl", 0)]
+    && useWalk.env.ledgers.hints == [("Walk", 1)] := by native_decide
+
+/-! ## (8) The span channel: statement spans persist as plain data
+
+    The `SpanAcc` join table the defining elaboration used to discard: each
+    statement's term key, with the defining MODULE's name and byte offsets.
+    Positions are file-content-dependent, so the assertions pin the invariants
+    — non-empty, the right module, well-formed extents, growth along a chain —
+    not the offsets themselves. -/
+
+example :
+    walkMod.env.ledgers.spans.length > 0
+    && walkMod.env.ledgers.spans.all (fun s =>
+         s.module == "Dllbc.Tests.ModuleStates" && s.start < s.stop)
+    -- The seeded block's channel extends the seed's: its own statements join
+    -- the imported ones rather than replacing them.
+    && useWalk.env.ledgers.spans.length > walkMod.env.ledgers.spans.length
+    := by native_decide
+
+/-- The hover-replay channels stay pinned off in a persisted state — stage 3
+    keeps `moduleFinalSt`'s equality story honest by rebuilding the ledgers
+    with ONLY the module-boundary channels (the seal audit would otherwise
+    leave `[] :: …` residue in `paths` even with the flags off). -/
+example :
+    walkMod.env.ledgers.letTypes.isEmpty
+    && walkMod.env.ledgers.points.isEmpty
+    && walkMod.env.ledgers.paths.isEmpty
+    && useWalk.env.ledgers.paths.isEmpty := by native_decide
 
 end Dllbc.Tests.ModuleStates

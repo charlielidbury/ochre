@@ -609,6 +609,17 @@ structure SpanAcc where
       never built, because scope IS the call table), and scope answers the same
       question here for the same reason. -/
   fsigs : List (String × String) := []
+  /-- `fn` name ↦ the declaration-order index of its `[k]` scrutinee (docs/20
+      stage 3). Filed UNGATED — behind neither `collect` nor `hover` — because
+      it is not diagnostic: a module block persists it (`Ledgers.hints`), and a
+      seeded consumer's call to the fn is permuted against the hoisted
+      telescope by exactly this entry. The cost is one push per hinted
+      declaration; the plain `prog{ }` forms simply never read it. Filed in
+      elaboration order, so a nested `fn` files before the declaration
+      enclosing it; `elabModule` keeps only names that survive to the module's
+      ending Ω, which drops body-local declarations (their binding dies with
+      the sealed body). -/
+  fnHints : Array (String × Nat) := #[]
 deriving Inhabited
 
 /-- The surface walker's monad: `MacroM` plus the span side channel. -/
@@ -1591,12 +1602,21 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- exactly the telescope, the binders, and the return type.
     tagOccsEntry occLo (← `(Dllbc.Term.letIn ⟨Dllbc.declSlot, $(quote nm)⟩ Dllbc.Term.unit))
     let (bodyT, _) ← elabUBlk (fullRctx ++ rctx) pctx n body
-    let decT ← match dec with
-      | none => `((none : Option Nat))
+    let decIdx? : Option Nat ← match dec with
+      | none => pure none
       | some d =>
         match names.findIdx? (· == d.getId.toString) with
-        | some i => `(some $(quote i))
+        | some i => pure (some i)
         | none => Macro.throwErrorAt d s!"fn: decreasing argument '{d.getId}' is not a parameter of '{name.getId}'"
+    let decT ← match decIdx? with
+      | none => `((none : Option Nat))
+      | some i => `(some $(quote i))
+    -- The `[k]` hint, filed as plain data (docs/20 stage 3). `bindFn` below
+    -- consumes the hint for THIS block's own calls; this entry is for the
+    -- blocks that come later — a module block persists it, and an imported
+    -- call is permuted by it. See `SpanAcc.fnHints`.
+    if let some i := decIdx? then
+      modify fun a => { a with fnHints := a.fnHints.push (nm, i) }
     -- The slot: the TAG `declSlot` (M32 R4). It used to be `progBase + next`,
     -- distinct per declaration, because a function's OWN body numbers its
     -- parameters from 0 and an id-keyed lookup would read a colliding binding as

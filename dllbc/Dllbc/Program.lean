@@ -411,30 +411,45 @@ def modulePathsD (seed : St) (t : Term) : Nat × List (Except Diag (Val × St)) 
 
 /-- **A module's final state**: the single-path walk from `seed`, bindings kept.
     Multi-path is refused — a block that forks has no one ending state to
-    persist. Hover collection is pinned OFF here, so a persisted state carries
-    empty ledgers regardless of what the seed carried: the judgment-relevant
-    projection is the whole value, and state equality on it means what it says
-    (docs/20's ledger-equivalence caveat, answered by construction until stage 3
-    deliberately puts spans in). -/
+    persist.
+
+    **The persisted ledgers keep exactly the module-boundary channels** (docs/20
+    stage 3): `hints` and `spans` ride through from the seed (the walk never
+    writes them, and `Ledgers.closePath` reads them back out of every `fn`
+    audit), while the hover-replay channels — `letTypes`, `points`, `paths` —
+    are pinned EMPTY. Pinning the `hover`/`pointHover` flags off (stage 1's
+    answer) was not quite enough for that: the seal audit retires one (empty)
+    path per audited body path unconditionally, so a flag-pinned state still
+    accumulated `[] :: …` residue in `ledgers.paths`; the explicit rebuild
+    makes "replay channels off" true by construction. Consequence for
+    equality: two persisted states are judgment-equivalent iff they agree up
+    to `hints`/`spans`, so assertions about seeding semantics should compare
+    judgment-relevant projections (Ω, the counters, `sealSites`), not whole
+    states — see the splice-agreement test, which already does. -/
 def moduleFinalSt (seed : St) (t : Term) : Except String St :=
   let (n', paths) := modulePathsD { seed with hover := false, pointHover := false } t
   match paths with
-  | [.ok p] => .ok { p.2 with nextSite := n' }
+  | [.ok p] =>
+    .ok { p.2 with
+          nextSite := n'
+          ledgers := { hints := p.2.ledgers.hints
+                       spans := p.2.ledgers.spans } }
   | [.error d] => .error d.msg
   | ps => .error s!"module: the walk forked into {ps.length} paths; a module must be single-path"
 
 /-- **Stage 2's resolution table**: the seed's declarations, name → the very
     `Var` the seed's Ω entry holds, newest binding first (Ω resolves
-    newest-wins, `findSlot?`). The `[k]` scrutinee hint does NOT travel in `St`
-    (stage-0 finding: it is macro-layer state), so every hint is `none` — an
-    imported `[k]`-hoisted fn whose scrutinee is not already parameter 0 is not
-    yet callable, because its call would be built unpermuted against the hoisted
-    telescope. Undetectable from here: the seed holds only the sealed σ and its
-    Π, and a hoisted signature is indistinguishable from one declared in that
-    order. The hint table joins the ledgers at stage 3. -/
+    newest-wins, `findSlot?`). The `[k]` scrutinee hint comes from the seed's
+    `ledgers.hints` channel (stage 3) — filed by the declaring block's own
+    elaboration, since the hint is macro-layer state the walk cannot recover (a
+    hoisted signature is indistinguishable from one declared in that order) —
+    so an imported call to a hinted fn gets the same argument permutation a
+    local call gets. A name with no entry is an unhinted fn; through stage 2,
+    when the channel did not exist, EVERY hint was `none` and an imported
+    `[k]`-hoisted fn whose scrutinee was not parameter 0 was uncallable. -/
 def moduleBinds (seed : St) : List (String × Var × Option Nat) :=
   ((seed.env.filter (fun kv => kv.1.id == declSlot)).map
-    (fun kv => (kv.1.name, kv.1, (none : Option Nat)))).reverse
+    (fun kv => (kv.1.name, kv.1, seed.ledgers.hints.lookup kv.1.name))).reverse
 
 /-- Retarget a consumer block's unresolved `.call`s at the seed's declarations —
     the same app-spine build `FnMacro.retarget` does for local `fn`s, from the
@@ -445,16 +460,28 @@ def moduleRetarget (seed : St) (t : Term) : Term :=
 /-- The value a `prog () { … }` / `prog (e) { … }` block elaborates to. The
     state is RE-DERIVED by the walk rather than quoted — `St` needs no `ToExpr`
     — and by purity it is the value the elaboration-time check computed: that
-    check ran the same walk from the same seed, differing only in the hover
-    ledgers, which `moduleFinalSt` pins empty. The error branch is a documented
-    panic, not a rejection channel: elaboration already REJECTED any block whose
-    walk fails, so this branch is reachable only by calling it directly on a
-    term the surface never accepted. -/
-def Checked.seeded (seed : St) (t : Term) : Checked :=
+    check ran the same walk from the same seed, differing only in the
+    hover-replay ledgers, which `moduleFinalSt` pins empty.
+
+    `hints` and `spans` are the block's OWN module-boundary entries (docs/20
+    stage 3), quoted by the elaborator as plain data — the two facts about the
+    block the walk cannot re-derive: the `[k]` hint died at the macro layer
+    (`fnElab` hoists it away) and the spans at the syntax layer. They are
+    prepended over what the seed's channels already carried through the walk,
+    keeping the ledgers newest-first like every other channel.
+
+    The error branch is a documented panic, not a rejection channel:
+    elaboration already REJECTED any block whose walk fails, so this branch is
+    reachable only by calling it directly on a term the surface never
+    accepted. -/
+def Checked.seeded (seed : St) (t : Term)
+    (hints : List (String × Nat) := []) (spans : List SpanNote := []) : Checked :=
   let t := moduleRetarget seed t
   { term := t
     env := match moduleFinalSt seed t with
-      | .ok st => st
+      | .ok st => { st with ledgers := { st.ledgers with
+                      hints := hints ++ st.ledgers.hints
+                      spans := spans ++ st.ledgers.spans } }
       | .error e => panic! s!"Checked.seeded: the module walk failed after elaboration accepted it — {e}" }
 
 end Dllbc

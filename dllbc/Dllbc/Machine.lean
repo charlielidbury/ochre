@@ -170,6 +170,20 @@ structure LetNote where
   sctx : List (Nat × Term)
 deriving Inhabited
 
+/-- One statement's source span, as PLAIN DATA (docs/20 stage 3): which module's
+    file the statement was written in, and its byte offsets there. This is the
+    `SpanAcc` join-table entry the defining elaboration used to discard, made
+    persistable so a seeded block still knows where its imports were written.
+    The key is the statement's own term, in `stmtKeyOf` normal form — the same
+    key the breadcrumb (`St.stmtKey`) is matched by — never `Lean.Syntax`, so
+    the kernel gains no elaborator imports. -/
+structure SpanNote where
+  stmtKey : Term
+  module : String
+  start : Nat
+  stop : Nat
+deriving Inhabited
+
 /-! ## The diagnostic LEDGERS — one record, so a new channel crosses for free
 
     **Why this is a record and not three fields on `St`.** Three diagnostic
@@ -216,6 +230,30 @@ structure Ledgers where
       the rest are unreachable — first-path-unlabelled, in `fn` bodies, which is
       where every multi-path answer that matters lives. -/
   paths : List (List PointDelta) := []
+  /-- Declaration name ↦ the declaration-order index of its `[k]` scrutinee
+      (docs/20 stage 3). Only hinted `fn`s have entries; newest first.
+
+      **A MODULE-BOUNDARY channel, and the writer/reader pattern differs from
+      the three replay channels above**: no rule writes it — the ELABORATOR
+      files it when a module block's `Checked` is assembled, because the `[k]`
+      hint is macro-layer state that dies before the walk (`fnElab` hoists the
+      scrutinee to the front and a hoisted signature is indistinguishable from
+      one declared in that order). It is read back only at the next module
+      boundary, by `moduleBinds`, so an imported call to a hinted fn gets the
+      same argument permutation a local call gets — without this channel an
+      imported `[k]`-hoisted fn whose scrutinee was not parameter 0 was
+      uncallable (the stage-2 restriction). The MACHINE never reads it, which
+      is what licenses it here next to the replay channels
+      (`PointDelta.sctx`'s rendering-only precedent, one step further: the
+      surface's call-building reads it, but no ⇒/⇝ rule does). It rides
+      `Ledgers` because the record IS the carry — a seeded walk that audits a
+      `fn` body brings the seed's entries back out of the seal by
+      construction. -/
+  hints : List (String × Nat) := []
+  /-- Statement-term-keyed source spans (docs/20 stage 3), the position half of
+      provenance. Same module-boundary pattern as `hints`: written once by the
+      elaborator into the block's persisted state, read only by rendering. -/
+  spans : List SpanNote := []
 deriving Inhabited
 
 /-- How much this ledger grew past `base` — the entries a sealed body added on
@@ -223,14 +261,17 @@ deriving Inhabited
 def Ledgers.own (path base : Ledgers) : Ledgers :=
   { letTypes := path.letTypes.take (path.letTypes.length - base.letTypes.length)
     points   := path.points.take   (path.points.length   - base.points.length)
-    paths    := path.paths.take    (path.paths.length    - base.paths.length) }
+    paths    := path.paths.take    (path.paths.length    - base.paths.length)
+    hints    := path.hints.take    (path.hints.length    - base.hints.length)
+    spans    := path.spans.take    (path.spans.length    - base.spans.length) }
 
 /-- Prepend one ledger to another. Prepending keeps the earliest path's entries
     last in a newest-first list, which is what makes the surface's first-path rule
     come out right after its reverse. -/
 def Ledgers.append (a b : Ledgers) : Ledgers :=
   { letTypes := a.letTypes ++ b.letTypes, points := a.points ++ b.points
-    paths := a.paths ++ b.paths }
+    paths := a.paths ++ b.paths, hints := a.hints ++ b.hints
+    spans := a.spans ++ b.spans }
 
 /-- Retire one finished sub-path. Its deltas become a path of their own and the
     enclosing stream does NOT absorb them — that is the whole point (docs/17 §4).
@@ -245,11 +286,20 @@ def Ledgers.append (a b : Ledgers) : Ledgers :=
     losing its point answer while `let`-bound locals kept theirs.)
 
     `own` is still right for `letTypes`, which is keyed by binder and would
-    otherwise gain a duplicate per branch. -/
+    otherwise gain a duplicate per branch.
+
+    The module-boundary channels take the `letTypes` carry: no rule writes them
+    (the elaborator does, at the boundary), so `own` is empty today and the
+    line reads `acc` back unchanged — but the enclosing entries MUST be read
+    back, because a seeded walk enters every `fn` audit with the seed's hints
+    and spans in `acc`, and a record literal that omitted the fields would
+    discard them at the first seal. -/
 def Ledgers.closePath (full own acc : Ledgers) : Ledgers :=
   { letTypes := own.letTypes ++ acc.letTypes
     points := acc.points
-    paths := full.points.reverse :: (own.paths ++ acc.paths) }
+    paths := full.points.reverse :: (own.paths ++ acc.paths)
+    hints := own.hints ++ acc.hints
+    spans := own.spans ++ acc.spans }
 
 
 /-- Machine state: the environment Ω plus fresh-supply counters. `nextVar` is

@@ -631,9 +631,11 @@ def elabChecked (ref : Syntax) (act : UM (TSyntax `term)) : TermElabM Expr := do
         to walk;
       * mode is pinned to checking (`modulePathsD`).
 
-    The emitted value is `Checked.seeded <seed> <raw term>` — the state is
-    re-derived on demand by the same pure walk, so no `ToExpr St` exists
-    anywhere. -/
+    The emitted value is `Checked.seeded <seed> <raw term> <hints> <spans>` —
+    the state is re-derived on demand by the same pure walk, so no `ToExpr St`
+    exists anywhere; the two trailing arguments (stage 3) are the plain-data
+    module-boundary channels only this elaboration can supply, quoted rather
+    than derived. -/
 def elabModule (ref : Syntax) (seed? : Option (TSyntax `term)) (b : TSyntax `ublk) :
     TermElabM Expr := do
   let seedE ← match seed? with
@@ -660,7 +662,15 @@ def elabModule (ref : Syntax) (seed? : Option (TSyntax `term)) (b : TSyntax `ubl
   let act : UM (TSyntax `term) := do
     let (t, _) ← elabUBlk seedRctx [] 0 b; pure t
   let hover ← hoverEnabled
-  let (e, spans) ← elabWith false hover act
+  -- `collect := true`, unlike `elabChecked` — the one deliberate cost reversal
+  -- (docs/20 stage 3). For a plain block the span table exists to locate a
+  -- rejection, so the passing path skips it; for a MODULE the table is carried
+  -- data — it persists in the block's ending state (`Ledgers.spans`) so later
+  -- blocks know where their imports were written — and a table that is wanted
+  -- on the passing path has to be collected on it. Module blocks are few; the
+  -- +6.9% that made `collect` opt-in was measured over every `ty{ }` in the
+  -- corpus.
+  let (e, spans) ← elabWith true hover act
   if e.hasMVar || e.hasFVar then
     throwErrorAt ref "prog (…): a module block must assemble to a closed value \
       — its check and its ending state are computed at elaboration, so a splice \
@@ -681,7 +691,39 @@ def elabModule (ref : Syntax) (seed? : Option (TSyntax `term)) (b : TSyntax `ubl
     if hover then
       pushHovers spans st.ledgers.letTypes.reverse
         (st.ledgers.points.reverse :: st.ledgers.paths)
-    return mkApp2 (mkConst ``Dllbc.Checked.seeded) seedE e
+    -- Stage 3: the module-boundary channels, quoted as plain data into the
+    -- emitted value. These are the two facts about the block the value-level
+    -- walk cannot re-derive — the `[k]` hint died at the macro layer, the
+    -- spans at the syntax layer — so they ride the `Checked.seeded` call as
+    -- arguments rather than being recomputed.
+    --
+    -- Hints: newest first (matching Ω's newest-wins resolution), restricted to
+    -- names that survived to the module's ending Ω — a `fn` declared inside
+    -- another `fn`'s body filed an entry too, but its binding died with the
+    -- sealed body and no consumer can call it. (Residual ambiguity: a
+    -- body-local fn SHARING a top-level fn's name keeps its entry; the newest
+    -- filing wins the lookup, which is the top-level one whenever the
+    -- top-level declaration comes later in the block.)
+    let hintList : List (String × Nat) :=
+      spans.fnHints.toList.reverse.filter fun p =>
+        st.env.any (fun kv => kv.1.id == Dllbc.declSlot && kv.1.name == p.1)
+    -- Spans: each statement key elaborates to its term — the same round-trip
+    -- `keyValues` does on the failing path — normalized HERE via `stmtKeyOf`
+    -- (Uni cannot name it; this module can, see `spanFor`), so the persisted
+    -- channel is directly joinable against a breadcrumb. A key with no
+    -- position (synthesized syntax) is skipped, not guessed at.
+    let modName := toString (← getMainModule)
+    let noteStxs : Array (TSyntax `term) ← spans.stmts.filterMapM fun (k, r) => do
+      match r.getPos?, r.getTailPos? with
+      | some lo, some hi =>
+        return some (← `(Dllbc.SpanNote.mk (Dllbc.stmtKeyOf $(⟨k⟩))
+            $(quote modName) $(quote lo.byteIdx) $(quote hi.byteIdx)))
+      | _, _ => return none
+    let spansE ← elabTerm (← `(([$noteStxs,*] : List Dllbc.SpanNote)))
+      (some (mkApp (mkConst ``List [levelZero]) (mkConst ``Dllbc.SpanNote)))
+    synthesizeSyntheticMVarsNoPostponing
+    let spansE ← instantiateMVars spansE
+    return mkApp4 (mkConst ``Dllbc.Checked.seeded) seedE e (toExpr hintList) spansE
   | _ =>
     match paths.findSome? (fun r => match r with | .error d => some d | .ok _ => none) with
     | some diag =>
