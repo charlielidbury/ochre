@@ -1,6 +1,6 @@
 # 20 — Module states: threading the checker state across `prog` blocks
 
-Status: agreed in discussion 2026-08-21. Stages 0–3 are built (see the staged-work entries below for what each actually is); stage 4 remains plan.
+Status: agreed in discussion 2026-08-21. Stages 0–3 are built on branch `module-states` (unmerged; see the staged-work entries below for what each actually is); stage 4 is in flight there.
 
 ## The problem
 
