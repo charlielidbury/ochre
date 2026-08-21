@@ -309,6 +309,15 @@ structure St where
       `nextSym` is what fills it, first-come, so a program whose seals are read
       in program order numbers them exactly as the ⇒-seal did. -/
   sealSites : List ((Nat × List Val) × Nat) := []
+  /-- **Where seal-site numbering stopped** (docs/20 stage 1). `Term.numberSeals`
+      restarts at 0 per boundary crossing, which is right for a standalone
+      program and wrong for a SEEDED one: this state's `sealSites` table already
+      owns the keys below this counter, so a block seeded from it must number its
+      own seals from here (`moduleBoundary`) or collide with them. Written by the
+      boundary pass, never by a rule — the counter lives in `St` because seeding
+      must mean literally "begin the walk with this state", and the site supply is
+      part of what the walk hands on. -/
+  nextSite : Nat := 0
   /-- Loan groups (§6.1). A call mints one; ending a captured loan ends the
       whole group. Replaces M6's flat owed map — a wire is the degenerate
       `issued = []` group. -/

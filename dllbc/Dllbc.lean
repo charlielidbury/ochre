@@ -32,4 +32,5 @@ import Dllbc.Tests.ShowSpans
 import Dllbc.Tests.Fence
 import Dllbc.Tests.AmbiguousMiddle
 import Dllbc.Tests.MatchJoin
+import Dllbc.Tests.ModuleStates
 

@@ -369,4 +369,92 @@ def tailPaths (t : Term) (expected : List Env) : Bool :=
   rs.length == expected.length &&
     (rs.zip expected).all (fun pr => match pr.1 with | .ok env => env == pr.2 | .error _ => false)
 
+/-! ## Module states (docs/20): a block's ending state, persisted
+
+    A module is a `prog` block interpreted once, at its own elaboration; its
+    ending `St` is kept and a later block seeds from it. Seeding means literally
+    "begin the walk with this state" — the same code path as mid-program state,
+    which stage 0 pinned by construction: every runner already threads the
+    initial `St` as an explicit parameter, so these functions substitute one. -/
+
+/-- A checked block: the term and the state its walk ends in. `env` is a CACHE
+    of the value the prefix-splice semantics assigns ("this program checks
+    exactly as if the seed's chain were textually prefixed to it") — `St` is
+    strict first-order data in a pure language, so the cache is definitionally
+    that value however it is reached. -/
+structure Checked where
+  term : Term
+  env : St
+
+/-- **The seeded program boundary**: `atBoundary` with the seal-site numbering
+    threaded. A seeded block's seals number from where the seed's numbering
+    stopped (`St.nextSite`) — numbered from 0 they would collide with the keys
+    the seed's `sealSites` table already owns, and the collision is silent: the
+    consumer's first seal at the same captured inputs REUSES the seed's σ
+    (stage-0 finding). Returns the next free site alongside the prepared term so
+    the final state can record where THIS block stopped. -/
+def moduleBoundary (seed : St) (t : Term) : Nat × Term :=
+  let (n', t') := Term.numberSealsGo seed.nextSite t
+  (n', pushContinuations t')
+
+/-- The seeded walk's paths, Diag-level, WITHOUT the closing `endScope`: a
+    module's bindings must persist into the next block, and `endScope` is the
+    demand that would consume them (the probe's `finalSt`). Mode is PINNED to
+    checking — a module is interpreted as knowledge, and a chain must be
+    mode-consistent (stage-0 finding: a checking-mode seed with `executing`
+    flipped on silently takes the checking path anyway, so the pin makes the
+    decision explicit rather than emergent). Hover flags ride the seed
+    untouched, so the elaborator can run this same walk collecting ledgers. -/
+def modulePathsD (seed : St) (t : Term) : Nat × List (Except Diag (Val × St)) :=
+  let (n', prepared) := moduleBoundary seed t
+  (n', exploreD defaultFuel prepared { seed with executing := false })
+
+/-- **A module's final state**: the single-path walk from `seed`, bindings kept.
+    Multi-path is refused — a block that forks has no one ending state to
+    persist. Hover collection is pinned OFF here, so a persisted state carries
+    empty ledgers regardless of what the seed carried: the judgment-relevant
+    projection is the whole value, and state equality on it means what it says
+    (docs/20's ledger-equivalence caveat, answered by construction until stage 3
+    deliberately puts spans in). -/
+def moduleFinalSt (seed : St) (t : Term) : Except String St :=
+  let (n', paths) := modulePathsD { seed with hover := false, pointHover := false } t
+  match paths with
+  | [.ok p] => .ok { p.2 with nextSite := n' }
+  | [.error d] => .error d.msg
+  | ps => .error s!"module: the walk forked into {ps.length} paths; a module must be single-path"
+
+/-- **Stage 2's resolution table**: the seed's declarations, name → the very
+    `Var` the seed's Ω entry holds, newest binding first (Ω resolves
+    newest-wins, `findSlot?`). The `[k]` scrutinee hint does NOT travel in `St`
+    (stage-0 finding: it is macro-layer state), so every hint is `none` — an
+    imported `[k]`-hoisted fn whose scrutinee is not already parameter 0 is not
+    yet callable, because its call would be built unpermuted against the hoisted
+    telescope. Undetectable from here: the seed holds only the sealed σ and its
+    Π, and a hoisted signature is indistinguishable from one declared in that
+    order. The hint table joins the ledgers at stage 3. -/
+def moduleBinds (seed : St) : List (String × Var × Option Nat) :=
+  ((seed.env.filter (fun kv => kv.1.id == declSlot)).map
+    (fun kv => (kv.1.name, kv.1, (none : Option Nat)))).reverse
+
+/-- Retarget a consumer block's unresolved `.call`s at the seed's declarations —
+    the same app-spine build `FnMacro.retarget` does for local `fn`s, from the
+    same function, so an imported call and a local call are one shape. -/
+def moduleRetarget (seed : St) (t : Term) : Term :=
+  FnMacro.retarget (moduleBinds seed) t
+
+/-- The value a `prog () { … }` / `prog (e) { … }` block elaborates to. The
+    state is RE-DERIVED by the walk rather than quoted — `St` needs no `ToExpr`
+    — and by purity it is the value the elaboration-time check computed: that
+    check ran the same walk from the same seed, differing only in the hover
+    ledgers, which `moduleFinalSt` pins empty. The error branch is a documented
+    panic, not a rejection channel: elaboration already REJECTED any block whose
+    walk fails, so this branch is reachable only by calling it directly on a
+    term the surface never accepted. -/
+def Checked.seeded (seed : St) (t : Term) : Checked :=
+  let t := moduleRetarget seed t
+  { term := t
+    env := match moduleFinalSt seed t with
+      | .ok st => st
+      | .error e => panic! s!"Checked.seeded: the module walk failed after elaboration accepted it — {e}" }
+
 end Dllbc

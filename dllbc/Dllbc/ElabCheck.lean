@@ -154,6 +154,14 @@ this, stop and report rather than widening it. -/
 
 syntax "prog{" ublk "}" : term
 syntax "prog" &"defer_check" "{" ublk "}" : term
+-- **The module forms** (docs/20 stages 1-2): `prog () { … }` seeds the empty
+-- state, `prog (e) { … }` seeds the `St` that `e` evaluates to. Both elaborate
+-- to a `Checked` — the term AND the walk's ending state — where the bare
+-- `prog{ }` above keeps elaborating to a `Term`; hundreds of sites depend on
+-- that, and the parenthesis is what says a state crosses the boundary. One
+-- rule with an optional seed rather than two rules, because `()` is itself a
+-- term and two rules would hand the parser an ambiguity.
+syntax "prog" "(" (term)? ")" "{" ublk "}" : term
 
 namespace ProgElab
 open Lean Elab Term Meta Dllbc.Surface
@@ -175,6 +183,17 @@ unsafe def evalKeysUnsafe (e : Expr) : TermElabM (List Dllbc.Term) :=
 
 @[implemented_by evalKeysUnsafe]
 opaque evalKeysValue (e : Expr) : TermElabM (List Dllbc.Term)
+
+/-- Evaluate a seed expression to an `St` **value** (docs/20): the module
+    elaborator needs the seed's actual state in hand — to resolve names against
+    its Ω and to run the check from it — so the expression is evaluated the same
+    way the assembled `Term` is. Cross-file the constant is compiled; same-file,
+    the same machinery falls back to the interpreter. -/
+unsafe def evalStUnsafe (e : Expr) : TermElabM Dllbc.St :=
+  Meta.evalExpr' Dllbc.St ``Dllbc.St e
+
+@[implemented_by evalStUnsafe]
+opaque evalStValue (e : Expr) : TermElabM Dllbc.St
 
 /-- `set_option trace.Dllbc.check true` reports, per program, the wall time spent
     reifying the value and the wall time spent checking — and says so when a
@@ -592,6 +611,87 @@ def elabChecked (ref : Syntax) (act : UM (TSyntax `term)) : TermElabM Expr := do
     let (_, spans) ← elabWith true false act
     throwDiag ref none spans diag
 
+/-- **Elaborate a module block** (docs/20 stages 1-2): the `prog () { … }` /
+    `prog (e) { … }` forms, producing a `Checked`.
+
+    The seed expression is evaluated to an `St` FIRST, because two things need
+    the value before the block's own syntax can be walked: name resolution
+    (stage 2 — the seed's Ω entries go into the surface's scope, so an
+    identifier or call that resolves to nothing local resolves against the seed
+    by name) and the check itself, which runs seeded — the same walk
+    `moduleFinalSt` performs, with the hover ledgers collected on top.
+
+    What differs from `elabChecked`, and why each difference is the design:
+      * the walk starts at the seed, not `initSt` — seeding IS a parameter
+        substitution (stage 0);
+      * no `endScope` — a module's bindings persist by definition;
+      * single path REQUIRED — a forking block has no one ending state;
+      * an open value (a splice of a local) is an ERROR, not a deferral: a
+        `Checked` cannot exist without its ending state, and there is no term
+        to walk;
+      * mode is pinned to checking (`modulePathsD`).
+
+    The emitted value is `Checked.seeded <seed> <raw term>` — the state is
+    re-derived on demand by the same pure walk, so no `ToExpr St` exists
+    anywhere. -/
+def elabModule (ref : Syntax) (seed? : Option (TSyntax `term)) (b : TSyntax `ublk) :
+    TermElabM Expr := do
+  let seedE ← match seed? with
+    | some s => do
+      let e ← elabTerm s (some (mkConst ``Dllbc.St))
+      synthesizeSyntheticMVarsNoPostponing
+      instantiateMVars e
+    | none => pure (mkConst ``Dllbc.initSt)
+  if seedE.hasMVar || seedE.hasFVar then
+    throwErrorAt ((seed?.map (·.raw)).getD ref) "prog (…): the seed must be a \
+      closed `St` expression — it is evaluated during elaboration, so a local \
+      or an unsolved metavariable has no value to evaluate to"
+  let seedSt ← evalStValue seedE
+  -- Stage 2, the scope half: every seed Ω entry is in surface scope by name.
+  -- Newest FIRST (the reverse of Ω's append order), so a later binding of a
+  -- name shadows an earlier one exactly as Ω's own newest-wins resolution
+  -- (`findSlot?`) reads it, and the block's own binders — consed on in front —
+  -- shadow imports. A declaration entry (`declSlot`) resolves as a fn slot: a
+  -- bare mention becomes `.var ⟨declSlot, name⟩`, the very Var the seed's env
+  -- entry holds, and a CALL falls through to `.call` for `moduleRetarget` to
+  -- rewrite — the same division of labour local `fn`s get.
+  let seedRctx : List (String × Nat) :=
+    (seedSt.env.map (fun kv => (kv.1.name, kv.1.id))).reverse
+  let act : UM (TSyntax `term) := do
+    let (t, _) ← elabUBlk seedRctx [] 0 b; pure t
+  let hover ← hoverEnabled
+  let (e, spans) ← elabWith false hover act
+  if e.hasMVar || e.hasFVar then
+    throwErrorAt ref "prog (…): a module block must assemble to a closed value \
+      — its check and its ending state are computed at elaboration, so a splice \
+      of a local (deferred in a plain prog block) cannot appear here"
+  let t0 ← IO.monoMsNow
+  let v ← evalTermValue e
+  let vr := Dllbc.moduleRetarget seedSt v
+  let t1 ← IO.monoMsNow
+  let pointHover ← (return dllbc.pointHover.get (← getOptions))
+  -- The SAME walk `Checked.seeded` will run at the value level, with the hover
+  -- ledgers collected on top; `moduleFinalSt` pins those off, so the persisted
+  -- state and this one differ in ledgers only — the plan's judgment-equivalence.
+  let (_, paths) := Dllbc.modulePathsD { seedSt with hover, pointHover } vr
+  let t2 ← IO.monoMsNow
+  trace[Dllbc.check] "module: reify {t1 - t0}ms, check {t2 - t1}ms"
+  match paths with
+  | [.ok (_, st)] =>
+    if hover then
+      pushHovers spans st.ledgers.letTypes.reverse
+        (st.ledgers.points.reverse :: st.ledgers.paths)
+    return mkApp2 (mkConst ``Dllbc.Checked.seeded) seedE e
+  | _ =>
+    match paths.findSome? (fun r => match r with | .error d => some d | .ok _ => none) with
+    | some diag =>
+      let (_, spans) ← elabWith true false act
+      throwDiag ref none spans diag
+    | none =>
+      throwErrorAt ref m!"prog (…): the module walk forked into {paths.length} \
+        paths; a module must be single-path, so its one ending state is \
+        well-defined"
+
 end ProgElab
 
 open Surface ProgElab in
@@ -604,5 +704,8 @@ elab_rules : term
   -- would delete the test rather than strengthen it. Measured at 107 sites.
   | `(prog defer_check { $b:ublk }) =>
     elabUnchecked (do let (t, _) ← elabUBlk [] [] 0 b; pure t)
+  -- The module forms (docs/20). One elaborator, seed optional: `()` is the
+  -- empty state, `(e)` is a state to continue from.
+  | `(prog ($[$e:term]?) { $b:ublk }) => elabModule b e b
 
 end Dllbc
