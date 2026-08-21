@@ -82,3 +82,34 @@ Plus one negative control pinning weakening: post-join `Refl : Id Nat n Z` (prov
 ## 7. Out of scope, named so nobody trips on it
 
 Loan-set borrows (region generalization) for §5.3-class conditional borrows; auto-join of convertible environments; joining differing array carve shapes via fold/`endGroup` reassembly (the packed-borrows residuals already pin fold-insensitivity at symbolic-prefix carves — do not couple this plan to that); any change to executing mode; retiring the fork (it remains the unannotated semantics).
+
+---
+
+## 8. AS BUILT (2026-08-21, branch `match-join`)
+
+> **SHIPPED, all stages.** The design held; four findings from contact with the machine, one deviation, one corrected prediction.
+
+**Stage 0 (commit `bc6b307b`).** The §3.4 composition was probed with ZERO library edits — a standalone driver assembled from the machine's own pieces, run under a `checkRFnBody`-skeleton harness. All four probes answered as predicted, and two implementation facts fell out that the real driver then reused verbatim: (1) the motive rides the ARM's `retTyVal`, so `refineSym` instantiates it per-arm for free — the plan's "the refinement machinery IS the motive instantiation," now measured rather than argued; (2) the arm-seam check is exactly the typing half of `auditAction` (botElim ex-falso escape + `hasType`), with obligations left open for the fn's exit audit on the joined path.
+
+**Stages 1+2 landed as ONE commit (`acbc175b`)** — deviation from the two-commit plan, because a stub join case would have paid the full Machine-rebuild twice for no bisect value. The carrier is as designed: `matchE : Var → Option Var → Option Term → List Branch → Term`, `none` everywhere today, ~44 library + 30 test sites threaded mechanically. `freeRVars` includes the motive's citations; `numberSeals` walks it; `stmtKeyOf` strips it with the continuation. The surface is the dedicated grammar row (`let x : τ = match …`, plain and `match h :` forms) rather than a general ascription — a motive is syntactically impossible anywhere else, which retires the plan's "motived match in seq position" question outright. An expression scrutinee pre-binds OUTSIDE the whole statement, so the join case always sees `letIn x (matchE …) rest`.
+
+**Finding: executing mode walks `readR`, not `exploreD`** — the plan's driver placement covered the checker only. A motived let-match under `runProgram` initially evaluated as an *expression-position* match: concrete-correct, but the arm binders leaked into the final Ω (`h`, `t` survived where the fork's `@popArmL` drops them — measured, fork vs join envs differing). The fix is the same move as the checker's concrete case: `readR` and `readRTail` each gain one row rebuilding the fork's seam shape (`pushJoinArms`) — at one arm fork ≡ join, so all three drivers agree by construction, and the measured envs are now identical. A comptime binder on a motived let is refused in all three drivers (⇝ has no match this milestone).
+
+**The v1 conservatisms, all reject-not-accept** (§5/§7 as shipped): the borrow-scrutinee re-mint types the fresh σ' at the scrutinee σ's ENTRY type, so a dependent `~>` contract through a joined borrow-match fails the exit audit rather than being assumed; `joinSlots` sends slots the arms disagree on to `⊥` (the conditional-move rule — divergent writes must ride the motive or keep the fork); loan-structure divergence surfaces as the audit's own refusals rather than a named seam error.
+
+**Stage 3 (commit `cb1fe168`).** 12 assertions in `Tests/MatchJoin.lean`, in the build. The pair worth naming is **agreeFork/agreeJoin**: both arms return `True`, the continuation cites `Refl : Id Bool b True` — fork ACCEPTS (b comptime-known per path), join REJECTS (σ_b opaque). That is §5 class (a) as a live pair, and the flip ledger below is its inverse check. Class (b) (heterogeneous typing) became *unwritable* rather than rejected — the grammar requires τ — which is a stronger disposition than the plan's. **Flip ledger**: reverting the join case to fork semantics turns exactly 3 assertions red — `agreeJoin`, `blindJoin`, `armWrong` — the three whose claim IS the join; every accept-side test stays green under fork, as weaker claims should.
+
+**Stage 4 (`Tests/MatchJoinCost.lean`, not in build).** N sequential two-branch matches on independent symbolic Nats, fork vs join:
+
+| N | fork paths | join paths | fork ×200 | join ×200 |
+|---|---|---|---|---|
+| 1 | 3 | 4 | 27 ms | 28 ms |
+| 2 | 5 | 6 | 64 ms | 52 ms |
+| 3 | 9 | 8 | 138 ms | 72 ms |
+| 6 | 65 | 14 | 1205 ms | 157 ms |
+
+Fork is 2^N + 1 and doubles per match; join is LINEAR (~+28 ms per match), 7.7× ahead at six matches and diverging. One prediction corrected: §6 guessed join paths at N+2; the actual 2N+2 counts each arm closing its own diagnostic-ledger sub-path (`mergeArmMints`'s `closePath`, the seal carry's rule) — the *walked-work* claim (continuation once) is what the wall-clock column verifies.
+
+**What needed no change at all**, worth recording because the plan feared some of it: no `Pure` change, no `Branch` change, no new `Term` node beyond the field, no audit change — the join is assembled entirely from `reorgScrut`/`symOwnedSetup`/`symBorrowSetup`/`exploreD`/`hasType`/`auditPaths` plus ~120 new lines of driver. The call boundary really did already contain the join.
+
+**Residuals for a later lane**: typed re-mint of non-scrutinee slots (needs a slot-type source; today `⊥`); the owed-type re-mint for dependent `~>` borrow scrutinees; hover rendering of the joined binder (σ_b renders as a bare σ — truthful, but a "joined from N arms" note would earn its keep); `readC` match support would give comptime lets the same seam.
