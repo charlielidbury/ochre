@@ -53,8 +53,8 @@ namespace Measure
 mutual
 partial def tsize : Term → Nat
   | .var _ | .pvar _ | .type | .unit | .const _ => 1
-  | .letIn _ a b => 1 + tsize a + tsize b
-  | .assign a b c => 1 + tsize a + tsize b + tsize c
+  | .letIn _ a => 1 + tsize a
+  | .assign a b => 1 + tsize a + tsize b
   | .ctorApp _ as => 1 + tsizeL as
   | .borrow t | .deref t | .cmpT t => 1 + tsize t
   | .index a b c => 1 + tsize a + tsize b + tsizeO c
@@ -97,8 +97,8 @@ partial def occ (needle : Term) : Term → Nat
     if Term.beq t needle then 1 else
     match t with
     | .var _ | .pvar _ | .type | .unit | .const _ => 0
-    | .letIn _ a b => occ needle a + occ needle b
-    | .assign a b c => occ needle a + occ needle b + occ needle c
+    | .letIn _ a => occ needle a
+    | .assign a b => occ needle a + occ needle b
     | .ctorApp _ as => occL needle as
     | .borrow x | .deref x | .cmpT x => occ needle x
     | .index a b c => occ needle a + occ needle b + occO needle c
@@ -139,8 +139,8 @@ partial def cov (ns : List (String × Term)) : Term → Nat
     | none =>
     match t with
     | .var _ | .pvar _ | .type | .unit | .const _ => 0
-    | .letIn _ a b => cov ns a + cov ns b
-    | .assign a b c => cov ns a + cov ns b + cov ns c
+    | .letIn _ a => cov ns a
+    | .assign a b => cov ns a + cov ns b
     | .ctorApp _ as => covL ns as
     | .borrow x | .deref x | .cmpT x => cov ns x
     | .index a b c => cov ns a + cov ns b + covO ns c

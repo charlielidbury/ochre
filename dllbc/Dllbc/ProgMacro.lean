@@ -44,7 +44,8 @@ namespace Dllbc
     The exclusions are where they were always enforced. A form with no comptime
     reading is refused by `reflectC`, whose refusal list IS this calculus's
     definition of the pure sub-grammar (§1.3): `.seal`, `.borrow`, `.assign`,
-    `.seq`, `.matchE`, `.call`, an imperative λ. A form with no runtime reading
+    `.seq` at a non-`let` head (a let-headed `.seq` is the statement spine and
+    scopes, detach-tails), `.matchE`, `.call`, an imperative λ. A form with no runtime reading
     is refused by `readR`: `.borrowT`, `.cmpT`. Each refusal names the form and
     gives the reason, which a mode flag could not do — it could only say that the
     brace was the other kind.
