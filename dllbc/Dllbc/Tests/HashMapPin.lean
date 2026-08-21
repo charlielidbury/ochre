@@ -2,25 +2,24 @@ import Dllbc.ElabCheck
 import Dllbc.Tests.HashMap
 
 /-!
-# The hashmap flagship's PINNED ops — S4: GetMut with a functional contract
+# The hashmap's pinned borrow-returning ops: GetMut and GetMutOrInsert
 
-The 2026-08-17 run pinned GetMut/GetMutOrInsert as executing-only: a returned
-borrow kept its group open and the audit could not re-type the packed invariant
-with a loan inside slots. Main has since landed the borrow re-founding
-(12-design, M35): `&mut (s : τ ~> E)` one-slot contracts, `*res` naming the
-issued borrow's exit payload, discharge by hole-filling, D9 value components,
-and `atake`/`adrop` — which `ArrCatIota` measured into "the blind carve at a
-symbolic index CHECKS". This module is the hashmap instance: `SetHM` (the
-pack→pack model update, decomposition-first), the pinned bucket walk, and
-`GetMutHM`/`GetMutOrInsertHM` per 13-'s un-deferred spec, closing with the
-two-call round-trip chain (`twoGetMutChain` at hashmap scale).
+`GetMut`/`GetMutOrInsert` hand back a `&mut` into the hashmap's slot array
+under a one-slot exit contract `~> E`: instead of re-typing the whole
+container symbolically, a returned `&mut (s : τ ~> E)` states what the
+container becomes once the borrow ends, with `*res` naming the borrow's own
+exit payload, and the checker discharges the contract by hole-filling rather
+than replaying the walk. This module builds the hashmap instance of that
+contract: `SetHM` (the pack-to-pack model update), the pinned bucket walk,
+and `GetMutHM`/`GetMutOrInsertHM`, closing with the round-trip law (what you
+write through the cursor is there on the next get) checked at hashmap scale.
 
-**The one spelling rule everything here hangs on:** every new spec function
-compares keys as `Eqb QUERY entrykey` — `FindL`'s own argument order — so that
-the walk's branch equations (`if e : Eqb key *kk`) name the very spine the
-pin's normalization gets stuck on. The S1 walks bound the FLIPPED orientation
-(`Eqb *kk key`) and repaired it with lemmas; a pin has no lemma slot, so the
-orientation is load-bearing here.
+Every spec function here compares keys as `Eqb query entrykey`, matching
+`FindL`'s own argument order, so the walk's branch equation (`if e : Eqb key
+*kk`) is exactly the spine the pin's normalization gets stuck on. The
+opposite orientation (`Eqb *kk key`) would need a repair lemma to line back
+up, and a pin has no lemma slot to hold one — so this argument order is
+load-bearing, not a style choice.
 -/
 
 section
@@ -33,11 +32,11 @@ open Dllbc.StdLemmas (LeRefl LeAdd LeAddL LeTrans LePredL
 
 namespace Dllbc.Tests.HashMap
 
-/-! ## (xxiv) The bucket-level update, in the pin's orientation
+/-! ## The bucket-level update, key-oriented
 
-    `BSetK q v l` — the entry at key `q` gets value `v`, keys and structure
-    untouched, no-op when `q` is absent. Mirrors `FindL` clause for clause so
-    the two can never disagree about which entry is "the" hit. -/
+    `BSetK q v l` sets the value at key `q` to `v`, leaving keys and structure
+    untouched; a no-op when `q` is absent. It mirrors `FindL` clause for
+    clause, so the two can never disagree about which entry is "the" hit. -/
 
 def BSetK : Term := prog defer_check {
   λ (Q : Nat). λ (V : Nat). λ (L : List (Σ (k : Nat). Nat)).
@@ -79,8 +78,8 @@ def HitTailEvTy : Term := prog defer_check {
 example : chkL HitTailEv HitTailEvTy = true := by native_decide
 
 /-- The hit leg's return conjunct: at `Eqb q k0 ≡ True`, the head's value IS
-    the bucket's answer at `q`. Stated in the D9 orientation (`Some (*r)` on
-    the left) so the constructed proof's type is verbatim the declared one. -/
+    the bucket's answer at `q`. Stated with `Some (*r)` on the left so the
+    constructed proof's type is verbatim the declared one. -/
 def FindEvHit : Term := prog defer_check {
   λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
   λ (E : Id Bool (Eqb Q K0) True).
@@ -111,17 +110,17 @@ def FindTailEvTy : Term := prog defer_check {
     Id OptN (FindL Q T) (FindL Q Cons(Pair(K0, V0), T)) }
 example : chkL FindTailEv FindTailEvTy = true := by native_decide
 
-/-! ## (xxv) THE GATE — does the key-driven walk discharge its pin?
+/-! ## Does a key-driven walk discharge its own pin?
 
-    The unmeasured mechanism this whole module rests on: the walk branches on
-    `Eqb key *kk` — a STUCK Bool — and the pin `BSetK key (*res) t`, normalized
-    at the audit, is stuck at exactly that `elim (Eqb key σkk)`. The audit is
-    branch-swept; the question is whether the branch's equation feeds its
-    conversion. `NthPin` (BorrowRefoundGoals) never asks it — its recursion is
-    on a Nat index and each branch refines a CONSTRUCTOR. The hit leg needs the
-    True arm taken, the miss leg the False arm (whose result must then converge
-    with the recursive call's projected pin at the shared exit σ). Pin-only
-    (plain `&mut Nat` return) so a failure names the pin, not D9. -/
+    A key-driven walk branches on `Eqb key *kk`, a stuck `Bool` over a
+    symbolic key. The pin `BSetK key (*res) t`, once normalized, is stuck at
+    that very `elim (Eqb key σkk)`, so discharge depends on whether the
+    checker's conversion can consult the branch's own equation (the hit leg
+    needs the True arm taken, the miss leg the False arm whose result must
+    converge with the recursive call's projected pin at the shared exit).
+    This test uses a plain `&mut Nat` return (no extra conjuncts) so a
+    failure can only be about the pin, not about anything else in the
+    signature. -/
 
 def bktGetPinOnly : Term := prog defer_check {
   fn BktGetP [fuel] (fuel : Nat, key : Nat,
@@ -143,20 +142,18 @@ def bktGetPinOnly : Term := prog defer_check {
           } } } } };
   () }
 
-/-- **THE GATE'S VERDICT — red, and the print is the session's headline
-    finding.** The fill is the hit leg's `Cons (Pair σ18 σ22) σ17`; the pin
-    normalized to a `boolRec` STUCK on `Eqb σ11 σ18` whose True arm is
-    LITERALLY that fill — one ι-step away, gated on the branch equation the
-    body's `if e :` bound. The audit's conversion does not consult branch
-    equations, and `Eqb` is a fold, stuck even at syntactically equal neutral
-    arguments (`EqbRefl` is a LEMMA, and a pin has no lemma slot). So no
-    KEY-comparing update can ever discharge a pin over symbolic keys — not by
-    accident but on principle: **a pin's data must be pin-computable.** The
-    key→position conversion cannot happen inside the pin, so it happens in the
-    signature: the walk below recurses on a POSITION (constructor refinement,
-    `NthPin`'s measured mechanism) and the position joins the parameters.
-    Kernel-scope alternatives, named not attempted: branch-equation-aware
-    audit conversion, or a neutral-reflexivity ι for `Eqb`. -/
+/-- **This is refused.** The hit-leg fill normalizes to `Cons (Pair σ18 σ22)
+    σ17`, but the pin itself normalizes to a `boolRec` stuck on `Eqb σ11 σ18`
+    — whose True arm is literally that fill, one ι-step away, gated on the
+    very branch equation the body's `if e :` already established. Conversion
+    does not consult branch equations, and `Eqb` is a fold that stays stuck
+    even at syntactically equal neutral arguments (`EqbRefl` is a lemma, and
+    a pin has no lemma slot). So no key-comparing update can ever discharge a
+    pin over a symbolic key — not by accident, but on principle: **a pin's
+    data must be pin-computable.** The key-to-position conversion can't
+    happen inside the pin, so it has to happen in the signature instead: the
+    walk below recurses on a position (a constructor, so each branch is a
+    real refinement) and the position joins the parameters. -/
 example : progRejects bktGetPinOnly
   "does not convert with the declared pin (boolRec" = true := by native_decide
 
@@ -243,12 +240,14 @@ def PosSStepTy : Term := prog defer_check {
     (Id Bool (Eqb Q K0) False) × (Id Nat P2 (FindPosL Q T)) }
 example : chkL PosSStep PosSStepTy = true := by native_decide
 
-/-! ### THE WALK, position-driven — and it discharges
+/-! ### The position-driven walk, and why it discharges
 
-    `NthPin`'s mechanism at the bucket: recurse on `p`, so every `natRec` the
-    pin owes steps in a branch where `p` is a CONSTRUCTOR. The key never needs
-    comparing at pin level; the D9 evidence reconstructs the `FindL` claim
-    from the position facts, value-level, where lemmas are allowed. -/
+    Recursing on `p` instead of the key means every recursive step the pin
+    owes lands in a branch where `p` is a constructor, so it's a real
+    refinement rather than a stuck fold. The key never needs comparing at
+    the pin level; the return evidence reconstructs the `FindL` claim from
+    the position facts afterward, at the value level, where lemmas are
+    allowed. -/
 
 def bktGetAtDecl : Term := prog{
   fn BktGetAt [p] (p : Nat, key : Nat,
@@ -279,12 +278,13 @@ def bktGetAtDecl : Term := prog{
 
 example : progOk bktGetAtDecl = true := by native_decide
 
-/-! ## (xxvii) The slot split, spelled so the pin can cite it
+/-! ## The slot split, spelled so the pin can cite it
 
-    The carve at slot `Mod key cap` must present its split point as terms the
-    pin's own normalization produces — `SlotOfE`'s MINTED σ's cannot convert
-    with `SetHM`'s internal `Mod`/`CoMod` spines, so the pinned op carves at
-    the literal applications and cites `ModSplit` instead of a minted `hd`. -/
+    Carving the slot array at `Mod key cap` needs its split point stated in
+    terms the pin's own normalization actually produces, not a fresh minted
+    variable that then fails to convert with `SetHM`'s internal `Mod`/`CoMod`
+    applications. So the pinned op carves at the literal applications and
+    cites `ModSplit` for the arithmetic instead. -/
 
 /-- The residue: everything after `key`'s slot. `cap = Mod key cap + S (CoMod
     key cap)` whenever `1 ≤ cap` — that is `ModSplit`. -/
@@ -301,20 +301,19 @@ def ModSplitTy : Term := prog defer_check {
     Id Nat C (Add (Mod Q C) (S (CoMod Q C))) }
 example : chkL ModSplit ModSplitTy = true := by native_decide
 
--- It computes: cap 5, key 7 → slot 2, residue 2; cap 32, key 1056 → slot 0.
+-- Concrete check: cap 5, key 7 splits into slot 2 and residue 2.
 example : chkL prog defer_check { Refl } prog defer_check { Id Nat 5 (Add (Mod 7 5) (S (CoMod 7 5))) } = true := by
   native_decide
 example : chkL prog defer_check { Refl } prog defer_check { Id Nat (CoMod 7 5) 2 } = true := by native_decide
 
-/-! ## (xxviii) `SetHM` — the pack→pack model update, decomposition-first
+/-! ## `SetHM` — the pack-to-pack model update, decomposition-first
 
-    The pin's whole job is to CONVERT with the hole-filled exit, so `SetHM`
-    names the carve's pieces with `atake`/`adrop` at the very split terms the
-    pinned body carves at (`Mod q cap`, `CoMod q cap`) — `AVSetDecT`'s shape
-    (ArrCatIota §3.1) lifted to the pack, with the element work done by
-    `BSetK` on the `acons`-headed suffix. The invariant value rides through
-    untouched, exactly as the toy's `PVSetDecT` carries `H`: a value write
-    keeps every clause's inhabitant. -/
+    `SetHM` names the carve's pieces with `atake`/`adrop` at the exact split
+    terms the pinned body carves at (`Mod q cap`, `CoMod q cap`), with the
+    element-level work done by `BSetK` on the `acons`-headed suffix — so
+    the pin's hole-filled exit converts against this decomposition rather
+    than an opaque update. The invariant component rides through untouched:
+    a value write keeps every clause's inhabitant as it was. -/
 
 def BumpHead : Term := prog defer_check {
   λ (Q : Nat). λ (V : Nat). λ (R : Nat). λ (A : Array (S R) (List (Σ (k : Nat). Nat))).
@@ -360,8 +359,8 @@ def SetHM : Term := prog defer_check {
                           (adrop (Mod Q Cap) (S (CoMod Q Cap)) Slots)),
                       Inv)))) } } } } }
 
--- It computes through the spec lookup: the hit key's answer moves, the frame
--- (a DIFFERENT key hashing to the same slot, and the size) does not.
+-- The hit key's answer moves; the frame — a different key hashing to the
+-- same slot, and the size — does not.
 example : chkL prog defer_check { Refl } prog defer_check { Id OptN (FindHM 3 (SetHM 3 99 hmEx)) (SomeN 99) }
   = true := by native_decide
 example : chkL prog defer_check { Refl } prog defer_check { Id OptN (FindHM 5 (SetHM 3 99 hmEx)) NoneN }
@@ -405,18 +404,17 @@ def SetHMSizeTy : Term := prog defer_check {
     Id Nat (SizeHM (SetHM Q V Hm)) (SizeHM Hm) }
 example : chkL SetHMSize SetHMSizeTy = true := by native_decide
 
-/-! ## (xxix) The map level — `SetHMAt`, and the pinned `GetMutHM`
+/-! ## The map level — `SetHMAt`, and the pinned `GetMutHM`
 
-    The occurs check closes the literal-spine route: a carve citing
-    `ModSplit key cap` would refine `σcap := Add (Mod key σcap) …` — cyclic —
-    so the slot index and residue enter as PARAMETERS with their equations as
-    evidence (`hm-probe-mod`'s forced shape, re-derived at the pin), and the
-    pin cites them: `SetHMAt i rr p (*res) s`, `gmDecSymPin`'s exact shape.
-    The KEY leaves the pin entirely — slot `i` and cell `p` are the
-    pin-computable data; `key` stays in the D9 return conjunct and the
-    equations (`Him`/`Hhit`/`Hpos`) tying the data to it. The caller mints
-    `i`/`rr` as `Mod`/`CoMod` and discharges `Hd` with `ModSplit` — which is
-    what (xxvii) was for. -/
+    Citing `ModSplit key cap` directly in the carve would refine
+    `σcap := Add (Mod key σcap) …`, which is cyclic and fails the occurs
+    check. So the slot index and residue enter as parameters instead, with
+    their defining equations carried as evidence, and the pin cites the
+    parameters: `SetHMAt i rr p (*res) s`. The key leaves the pin entirely —
+    slot `i` and cell `p` are the pin-computable data; `key` only appears in
+    the return conjuncts and in the equations (`Him`/`Hhit`/`Hpos`) tying the
+    data back to it. The caller mints `i`/`rr` as `Mod`/`CoMod` and
+    discharges `Hd` with `ModSplit` from the previous section. -/
 
 def BumpHeadP : Term := prog defer_check {
   λ (P : Nat). λ (V : Nat). λ (R : Nat). λ (A : Array (S R) (List (Σ (k : Nat). Nat))).
@@ -503,13 +501,12 @@ example : chkL AgetAtMod AgetAtModTy = true := by native_decide
 
 /-! ### The value-level lookup — the Refl-matchable conjunct
 
-    13-'s return conjunct `Id (Opt Nat) (Some (*r)) (FindHM key (old *self))`
-    wraps the payload in a RIGID constructor, and a `Refl`-match cannot refine
-    a σ under a rigid head ("both endpoints are rigid — no solution by
-    refinement"). The LIST law knew this: `NthPinEv`'s conjunct is the BARE
-    payload (`Id Nat (*r) (NthL i (old *v))`). So the op returns BOTH: the
-    Nat-level primary (`FindValHM`, the caller's `Refl`-match handle) and the
-    doc's Opt-shaped conjunct beside it. -/
+    A return conjunct like `Id (Opt Nat) (Some (*r)) (FindHM key (old *self))`
+    wraps the payload in a rigid constructor, and a `Refl`-match can't refine
+    a symbolic variable sitting under a rigid head on both sides. So the op
+    returns both: a bare Nat-level primary (`FindValHM`, the caller's
+    `Refl`-match handle) and the `Opt`-shaped conjunct alongside it for
+    callers that want the full statement. -/
 
 def FindVL : Term := prog defer_check {
   λ (Q : Nat). λ (L : List (Σ (k : Nat). Nat)).
@@ -572,7 +569,7 @@ def FindVTailEvTy : Term := prog defer_check {
     Id Nat (FindVL Q T) (FindVL Q Cons(Pair(K0, V0), T)) }
 example : chkL FindVTailEv FindVTailEvTy = true := by native_decide
 
-/-! ### The op — 13-'s GetMut, in the pin-computable spelling -/
+/-! ### `GetMut`, in the pin-computable spelling -/
 
 def hmPinUnder (tail : Term) : Term := prog{
   fn BktGetAt [p] (p : Nat, key : Nat,
@@ -685,27 +682,26 @@ def hmPinUnder (tail : Term) : Term := prog{
     } } } } } };
   %tail }
 
-/-- **13-'s GetMut CHECKS**: the map-level pin discharges through the carve
-    (`atake`/`adrop` ι at the parameter split), the bucket callee's projected
-    pin lands in the composition's cell, and the D9 conjunct is rebuilt from
-    the callee's evidence by the `AgetAtMod` transport. -/
+/-- **`GetMut` checks.** The map-level pin discharges through the carve
+    (`atake`/`adrop` reduce at the parameter split), the bucket callee's
+    projected pin lands in the composition's cell, and the return conjuncts
+    are rebuilt from the callee's evidence by the `AgetAtMod` transport. -/
 def errOf (t : Term) : String :=
   match checkProgram t prog defer_check { Unit } with | .ok _ => "OK" | .error e => e
 
 example : progOk (hmPinUnder prog defer_check { () }) = true := by native_decide
 
-/-! ## (xxx) THE E2E CHAIN — `twoGetMutChain` at hashmap scale
+/-! ## The end-to-end round-trip chain, at hashmap scale
 
-    Get the cursor, write 42 through it, get again at the same key: the second
-    call's evidence plus one `Refl`-match and the CHECKER derives `T ≡ 42` and
-    the exact final map — the fact the borrow-refounding milestone is named
-    for, on the packed container. The premises at a concrete pack are all
-    `Refl` (`Mod`/`CoMod`/`PosHM` compute), and — the part worth staring at —
-    they are `Refl` again at the SECOND call, whose argument is the first
-    call's PINNED RELEASE: `SetHMAt 1 0 0 42 m₀` computes because the pin made
-    the release a value, not an existential. That is precisely what the S1 run
-    could not have: an unpinned release is a fresh σ, and no premise about its
-    capacity or its buckets survives the call. -/
+    Get the cursor, write 42 through it, get again at the same key: the
+    second call's evidence plus one `Refl`-match lets the checker derive
+    `T ≡ 42` and the exact final map. The premises at a concrete pack are all
+    `Refl` (`Mod`/`CoMod`/`PosHM` compute) — and, notably, they are `Refl`
+    again at the second call, whose argument is the first call's pinned
+    release: `SetHMAt 1 0 0 42 m₀` computes because the pin made the release
+    a value, not a fresh existential. An unpinned release would leave no
+    premise about the resulting capacity or buckets for the second call to
+    reuse. -/
 
 def vN : Nat → Val | 0 => .ctor "Z" [] | n + 1 => .ctor "S" [vN n]
 def vP (a b : Val) : Val := .ctor "Pair" [a, b]
@@ -741,8 +737,8 @@ def hmChainCaller : Term := hmPinUnder prog defer_check {
 
 example : progOk hmChainCaller = true := by native_decide
 
-/-- THE LAW, in the checker's own environment: `T ≡ 42` (derived, not run) and
-    `y` is the exact updated pack. -/
+/-- The round-trip law, in the checker's own environment: `T ≡ 42` is derived
+    (not run), and `y` is the exact updated pack. -/
 example : tailEnv hmChainCaller
   [("m", .bot), ("b", .bot), ("pr", .bot), ("r", .bot),
    ("h", .ctor "Pair" [.sym 0, .sym 1]),
@@ -750,7 +746,7 @@ example : tailEnv hmChainCaller
    ("hv", .bot), ("ho", .sym 2),
    ("T", vN 42), ("y", vPackY)] = true := by native_decide
 
--- …and the lying expectation is refused: the same env with `T ↦ 43`.
+-- A control: the same environment with `T ↦ 43` is refused, not vacuous.
 example : tailEnv hmChainCaller
   [("m", .bot), ("b", .bot), ("pr", .bot), ("r", .bot),
    ("h", .ctor "Pair" [.sym 0, .sym 1]),
@@ -758,8 +754,8 @@ example : tailEnv hmChainCaller
    ("hv", .bot), ("ho", .sym 2),
    ("T", vN 43), ("y", vPackY)] = false := by native_decide
 
--- The executing machine computes the same final map — the checker/machine
--- divergence the original run pinned for get_mut CLOSES for the pinned op.
+-- The interpreter computes the same final map: checker and interpreter agree
+-- on the pinned op.
 def runV (t : Term) (name : String) : Option Val :=
   match runProgram t with
   | .ok env => env.lookup name
@@ -768,11 +764,13 @@ def runV (t : Term) (name : String) : Option Val :=
 example : (runV hmChainCaller "T" == some (vN 42)) = true := by native_decide
 example : (runV hmChainCaller "y" == some vPackY) = true := by native_decide
 
-/-! ## (xxxi) The counterfactual twins for the new greens -/
+/-! ## The counterfactual twins: what should be rejected -/
 
-/-- The KEY twin at the bucket walk: identical body, the `Z` leg escapes the
-    KEY borrow. The fill puts the exit in the key slot, the pin keeps it in
-    the value slot. Pin-only (no D9), so the refusal names the pin. -/
+/-- The key-escape twin: identical body to the working walk, except the `Z`
+    leg returns a borrow into the key instead of the value. The fill lands in
+    the key slot while the pin still expects the value slot, so this should
+    be refused. No extra return conjuncts here, so the refusal can only be
+    about the pin. -/
 def bktGetAtKey : Term := prog defer_check {
   fn BktGetK [p] (p : Nat, key : Nat,
       b : &mut (t : List (Σ (k : Nat). Nat) ~> BSetP p (*res) t),
@@ -798,9 +796,9 @@ def bktGetAtKey : Term := prog defer_check {
 
 example : progRejects bktGetAtKey "pin is not met" = true := by native_decide
 
-/-- The WRONG-POSITION caller: everything as the green chain, but the first
-    call claims position 1 where the key sits at 0 — the `Hpos` `Refl` has no
-    type to check at, and the caller is refused before any op runs. -/
+/-- The wrong-position caller: same as the working chain, but the first call
+    claims position 1 where the key actually sits at 0. The `Hpos` `Refl` has
+    no type to check at, so the caller is refused before any op runs. -/
 def hmChainWrongPos : Term := hmPinUnder prog defer_check {
   let m = Pair(2, Pair(8, Pair(1, Pair(Arr(Nil, Cons(Pair(3, 30), Nil)),
     Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
@@ -814,7 +812,7 @@ def hmChainWrongPos : Term := hmPinUnder prog defer_check {
 
 example : progOk hmChainWrongPos = false := by native_decide
 
-/-- The WRONG-SLOT caller: slot 0 claimed for key 3 at cap 2 — `Him`'s `Refl`
+/-- The wrong-slot caller: slot 0 claimed for key 3 at cap 2. `Him`'s `Refl`
     is refused. -/
 def hmChainWrongSlot : Term := hmPinUnder prog defer_check {
   let m = Pair(2, Pair(8, Pair(1, Pair(Arr(Nil, Cons(Pair(3, 30), Nil)),
@@ -829,7 +827,7 @@ def hmChainWrongSlot : Term := hmPinUnder prog defer_check {
 
 example : progOk hmChainWrongSlot = false := by native_decide
 
-/-! ## (xxxii) `GetMutOrInsert` — the or_insert vocabulary
+/-! ## `GetMutOrInsert` — the or_insert vocabulary
 
     Position-driven like GetMut, with two extra moving parts. (1) `FindPosL`
     of an ABSENT key is the bucket length — exactly the append site — so ONE
@@ -1110,21 +1108,21 @@ example : progOk (hmOrUnder prog defer_check { () }) = true := by native_decide
 
 /-! ### The or_insert round-trip — and the append path's honest seam
 
-    Fresh key 5 into slot 1 (colliding with key 1) at cap 4 (cap 2's ledger
-    has no room for a second entry — `Hroom` is a real premise), write 88
-    through the returned cursor, then GET the key back and `Refl`-match: the
-    checker derives `T ≡ 88` and the exact final map, count bumped once.
+    Fresh key 5 into slot 1 (colliding with key 1) at cap 4 — cap 2's ledger
+    has no room for a second entry, so `Hroom` is a real premise here — then
+    write 88 through the returned cursor and get the key back. A `Refl`-match
+    lets the checker derive `T ≡ 88`, the exact final map, and the count
+    bumped once.
 
-    THE SEAM, pinned honestly below (`orInsReuse`): the APPEND grows the
-    bucket, so the packed invariant's INHABITANT gains conjuncts — the entry
-    proof tree no longer typechecks at the released slots, and a second op on
-    the raw release is refused at the call's `hasType` ("does not have its
-    parameter type"). Value writes (GetMut) have no such seam — the proof tree
-    is shape-invariant under them. So the caller RE-ESTABLISHES the invariant
-    at the repack (at concrete data the new proofs are literal `Refl`/`unit`),
-    and the named follow-up is the invariant TRANSFORMER — `SetOrInsAt`
-    carrying a proof-rebuilding component (S2's `MkInv`/`SFCatGlue` machinery
-    as a spec function) instead of `Inv`-passthrough. -/
+    The seam this exposes (pinned honestly in `orInsReuse` below): appending
+    grows the bucket, so the packed invariant's inhabitant gains conjuncts —
+    the old proof tree no longer typechecks at the released slots, and a
+    second op on the raw release is refused ("does not have its parameter
+    type"). A plain value write (`GetMut`) has no such seam, since its proof
+    tree is shape-invariant. Here the caller instead re-establishes the
+    invariant by hand at the repack, where the new proof obligations are
+    literal `Refl`/`unit` at concrete data; a version of `SetOrInsAt` that
+    carries this repacking automatically is future work. -/
 
 def vPackOr : Val :=
   vP (vN 4) (vP (vN 16) (vP (vN 2) (vP
@@ -1173,8 +1171,8 @@ def orInsChain : Term := hmPinUnder (hmOrUnder prog defer_check {
 example : progOk orInsChain = true := by native_decide
 
 /-- The or_insert law in the checker's environment: `T ≡ 88`, `y` the exact
-    two-entry map — and the stale entry invariant (`IV`) sitting in plain view
-    as the seam the repack crossed. -/
+    two-entry map, and `IV` the stale entry invariant left over from before
+    the repack. -/
 example : tailEnv orInsChain
   [("m", .bot), ("b", .bot), ("pr", .bot), ("r", .bot), ("h", .bot),
    ("cc", vN 4), ("rest1", .bot), ("ll", vN 16), ("rest2", .bot),
@@ -1186,9 +1184,9 @@ example : tailEnv orInsChain
 example : (runV orInsChain "T" == some (vN 88)) = true := by native_decide
 example : (runV orInsChain "y" == some vPackOr) = true := by native_decide
 
-/-- THE PINNED SEAM: the same chain re-calling on the RAW release (no repack).
-    The append made the entry invariant inhabitant stale, and the second call
-    refuses the payload. -/
+/-- The same chain, re-calling on the raw release with no repack in between.
+    The append left the entry invariant's inhabitant stale, so the second
+    call is refused. -/
 def orInsReuse : Term := hmOrUnder prog defer_check {
   let m = Pair(4, Pair(16, Pair(1, Pair(Arr(Nil, Cons(Pair(1, 10), Nil), Nil, Nil),
     Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
@@ -1206,15 +1204,15 @@ def orInsReuse : Term := hmOrUnder prog defer_check {
 example : progRejects orInsReuse "does not have its parameter type" = true := by
   native_decide
 
-/-! ## (xxxiii) THE BRIDGE — the pin's spelling equals the doc's
+/-! ## The bridge: the pin's update equals the key-driven one
 
     The pin carries `BSetP p (*res)` (position-driven, pin-computable); the
-    doc's `SetHM` carries `BSetK key` (key-driven, the caller-facing law).
-    Wherever the position evidence holds they are THE SAME UPDATE — proved by
-    one induction, so a caller may rewrite its pinned release into the doc's
-    vocabulary. (The map-level equality follows pointwise at the carve
-    composition through `AgetAtMod`, the same way every crossing fact here
-    does; the bucket level is where the content lives.) -/
+    caller-facing law is stated with `SetHM`'s `BSetK key` (key-driven).
+    Wherever the position evidence holds, the two updates coincide — proved
+    by one induction — so a caller may rewrite its pinned release into the
+    key-driven vocabulary. The map-level equality follows the same way,
+    pointwise at the carve composition through `AgetAtMod`; the bucket level
+    below is where the actual content of the proof lives. -/
 
 def BSetPKEq : Term := prog defer_check {
   λ (Q : Nat). λ (V : Nat).

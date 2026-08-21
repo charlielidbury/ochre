@@ -7,50 +7,38 @@ import Dllbc.Tests.Diff
 /-!
 # Arrays — the carve, the elementization, and the transferred library
 
-**A consolidation bucket** (M28 D10). The suite grew one file per milestone, which
-made a test's home a fact about WHEN it was written rather than about what it is
-about. These files were merged here, in the order below, with their content moved
-VERBATIM — every namespace kept, so every cross-file reference in the tree still
-resolves, and each former file is fenced by a comment naming it so the git-log
-archaeology survives:
-
-  * `S24Arrays.lean`
-
-Each former file's `open`s are scoped by a `section`, so nothing leaks across the
-seams.
+Tests for array machinery: the formers (`arrCat`, `aget`, `acons`/`arrRec`, segment
+nodes), carving a `&mut Array` into disjoint element/range borrows at concrete and
+symbolic indices, and the rejections when a carve's premises fail. In-place array
+programs need simultaneous disjoint borrows into one array, and the carve plus
+disjointness demands are how the checker grants them soundly.
 -/
 
--- ┌── was `Dllbc/Tests/S24Arrays.lean` ──────────────────────────────────────────────
 section
--- for the `walk`/`walkArr` keep-cases' bridge assertion (see §(iv))
 
 /-!
-# §24 test suite — arrays, range places, and proof-licensed carving
+# Arrays, range places, and proof-licensed carving
 
-The mechanization of `docs/design-arrays-slices.md`. Stage (i) here is the
-representation layer, which the note is explicit has no semantic content (¶8.1: of
-five additions "exactly one — CARVE — has semantic content. The rest is
-representation"). What that buys is checked rather than assumed: every generic `Val`
-walker traverses an array node unchanged, because an array node is an ordinary `ctor`.
+The representation layer has no semantic content of its own: every generic `Val`
+walker traverses an array node unchanged, because an array node is an ordinary
+`ctor`. Only the carve itself is semantic; everything else here is representation.
 
-## The four value forms (¶1.1)
+## The four value forms
 
     Arr [v₁ … v_c]              an owned flat RUN — value form AND knowledge form
     sym σ                       opaque
     an `arrCat` spine           a stuck neutral
     §segs [§seg [c, b], …]      CARVED (state only; k ≥ 2)
 
-An UNCARVED array carries no wrapper: ¶1.1's "a single segment is abbreviated to its
-body, since the two are the same state". `§segs`/`§seg` are reserved names with no
+An UNCARVED array carries no wrapper: a single segment is abbreviated to its body,
+since the two are the same state. `§segs`/`§seg` are reserved names with no
 `ctorSig` entry, so no program can write or match one.
 
-## Element `i` is a subterm, which is the whole point
+## Element `i` is a subterm
 
-¶1.2's argument for basis membership over §7's declaration scheme is that every
-CIC-scheme inductive with a length index is right-nested, and a spine's prefixes and
-middles are not subterms. `Arr`'s fields are the elements, flat, so `a[i]` reaches
-child `i` and `a[lo ; cnt]` reaches a segment — both subterms. That is what makes a
-range borrow an ordinary `&mut` rather than a new aliasing judgment.
+`Arr`'s fields are the elements, flat, so `a[i]` reaches child `i` and `a[lo ; cnt]`
+reaches a segment — both subterms. That is what makes a range borrow an ordinary
+`&mut` rather than a new aliasing judgment.
 -/
 
 open Dllbc
@@ -58,21 +46,20 @@ open Dllbc.StdLemmas (LeRefl LeAdd)
 
 namespace Dllbc.Tests.S24Arrays
 
-/-- Type-check a closed term against a closed type in the pure seed (as §18/§19/§23). -/
+/-- Type-check a closed term against a closed type in the pure seed. -/
 def chk (tm ty : Term) : Bool :=
   match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasTypeT 3000 v t).run (seedPure [] []) with
   | .ok r _ => r
   | .error _ _ => false
 
-/-- Normalize a closed pure term to a value (§23's `pv`). -/
+/-- Normalize a closed pure term to a value. -/
 def pv (t : Term) : Term := Pure.nf 4000 t
 
-/-! ## (i.a) The former and its literal
+/-! ## The array former and its literal
 
     `ctorSig "Arr"`'s field telescope is `T` repeated `n` times at a CONCRETE `n`,
-    and `none` at a symbolic one — "one cannot write an array literal of unknown
-    length" (¶1.4). Hand-written rather than §7-generated, which is the concrete cost
-    of basis membership (¶9c) and the place a drift would start. -/
+    and `none` at a symbolic one: one cannot write an array literal of unknown
+    length. -/
 
 def arr3 : Term := prog defer_check { Arr(3, 1, 2) }
 example : chk arr3 prog defer_check { Array 3 Nat } = true := by native_decide
@@ -91,12 +78,11 @@ example : chk prog defer_check { Arr(3, True) } prog defer_check { Array 2 Nat }
 def arrSymLen : Term := prog defer_check { λ (N : Nat). Arr(3) }
 example : chk arrSymLen prog defer_check { Π (N : Nat) → Array N Nat } = false := by native_decide
 
-/-! ## (i.b) `arrCat` — the split view, and §3.2's knowledge/state line
+/-! ## `arrCat` — the split view
 
-    "The segment list is **state**. It lives in Ω… The `arrCat` neutral is
-    **knowledge**. It lives in types and snapshots, and it never mentions a marker or
-    a hole." So `arrCat` computes on run-headed arguments and is a legitimate stuck
-    neutral on σ's — the two halves of that sentence, mechanized. -/
+    The segment list is state; it lives in Ω. The `arrCat` neutral is knowledge; it
+    lives in types and snapshots and never mentions a marker or a hole. So `arrCat`
+    computes on run-headed arguments and is a legitimate stuck neutral on σ's. -/
 
 example : (pv prog defer_check { arrCat 2 1 Arr(3, 1) Arr(2) } == pv arr3) = true := by native_decide
 example : (pv prog defer_check { arrCat 0 3 Arr() Arr(3, 1, 2) } == pv arr3) = true := by native_decide
@@ -108,7 +94,7 @@ example : (pv prog defer_check { arrCat 2 1 (arrCat 1 1 Arr(3) Arr(1)) Arr(2) } 
            pv prog defer_check { arrCat 1 2 Arr(3) (arrCat 1 1 Arr(1) Arr(2)) }) = true := by native_decide
 
 -- The stuck case: two σ's have no name for their concatenation, but they do have a
--- term for it (¶1.1), which is all merge and the ⇝ fold need.
+-- term for it, which is all merge and the ⇝ fold need.
 def catSyms : Term := prog defer_check { arrCat %(Term.nat 2) %(Term.nat 1) %(Term.sym 0) %(Term.sym 1) }
 example : (Pure.nf 100 catSyms == catSyms) = true := by native_decide
 
@@ -117,7 +103,7 @@ example : (Pure.nf 100 catSyms == catSyms) = true := by native_decide
 example : (Pure.nf 200 prog defer_check { arrCat %(Term.nat 0) %(Term.nat 2) %(Term.ctorApp "Arr" []) %(Term.sym 0) } ==
            Term.sym 0) = true := by native_decide
 
-/-! ## (i.c) `aget` — the ⇝ column at an index place -/
+/-! ## `aget` — the ⇝ column at an index place -/
 
 example : (pv prog defer_check { aget Nat 3 0 Arr(3, 1, 2) } == Term.nat 3) = true := by native_decide
 example : (pv prog defer_check { aget Nat 3 2 Arr(3, 1, 2) } == Term.nat 2) = true := by native_decide
@@ -127,17 +113,17 @@ example : (pv prog defer_check { aget Nat 3 2 Arr(3, 1, 2) } == Term.nat 2) = tr
 def agetSymIdx : Term := Pure.nf 200 (pv prog defer_check { λ (I : Nat). aget Nat 3 I Arr(3, 1, 2) })
 example : (agetSymIdx == Pure.nf 200 agetSymIdx) = true := by native_decide
 
-/-! ## (i.d) The cons view: `acons` and `arrRec`
+/-! ## The cons view: `acons` and `arrRec`
 
-    ¶1.3's reason for the second view: "Every lemma in the quicksort library —
-    `Count`, `Sorted`, `Bound`, the order stack — transfers to arrays by replacing
-    `listRec` with `arrRec` and `Cons` with `acons`." The library transfer itself is
-    ¶6's migration; what is checked here is that the recursor computes. -/
+    The second view exists so that the quicksort library (`Count`, `Sorted`,
+    `Bound`, the order stack) transfers to arrays by replacing `listRec` with
+    `arrRec` and `Cons` with `acons`. What is checked here is that the recursor
+    computes. -/
 
 example : (pv prog defer_check { acons 2 3 Arr(1, 2) } == pv arr3) = true := by native_decide
 
--- `alen` by `arrRec` — deliberately, since ¶1.1 says an array's length is read off
--- its TYPE and never computed from its contents. This exists only to exercise ι.
+-- `alen` by `arrRec` — deliberately, since an array's length is read off its TYPE
+-- and never computed from its contents. This exists only to exercise ι.
 def alen : Term := prog defer_check {
   λ (N : Nat). λ (A : Array N Nat).
     arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Nat) Z
@@ -158,18 +144,17 @@ example : (pv prog defer_check { asum 3 Arr(3, 1, 2) } == Term.nat 6) = true := 
 def arrRecStuck : Term := Pure.nf 500 (pv prog defer_check { λ (N : Nat). λ (A : Array N Nat). alen N A })
 example : (arrRecStuck == Pure.nf 500 arrRecStuck) = true := by native_decide
 
-/-! ## (i.e) Segments: merge, drop-empty, and the ⇝ fold
+/-! ## Segments: merge, drop-empty, and the ⇝ fold
 
-    ¶1.1's two normalizations and ¶1.3's bridge. `§segs`/`§seg` have no surface
-    syntax, so these are built as values — which is the point: they are STATE. -/
+    `§segs`/`§seg` have no surface syntax, so these are built as values directly —
+    which is the point: they are STATE. -/
 
 def segsOf (l : List (Nat × Val)) : Val :=
   Val.segsNode (l.map (fun p => Val.segNode (Term.nat p.1) p.2))
 
--- ¶3.3's rejoin: "There is no rejoin rule. When the last marker under an array node
--- is gone, the merge normalization collapses the segments, and the array is a run
--- again — indistinguishable from one that was never carved." That indistinguishability
--- is ¶8.2's obligation 4 (merge is value-preserving) and is what keeps
+-- There is no explicit rejoin rule. When the last marker under an array node is
+-- gone, the merge normalization collapses the segments and the array is a run
+-- again, indistinguishable from one that was never carved. That is what keeps
 -- `canonicalize` a decision procedure for Ω-equality.
 example : (Val.mergeArrays (segsOf [(1, .ctor "Arr" [Val.nat 3]),
                                     (2, .ctor "Arr" [Val.nat 7, Val.nat 2])])
@@ -192,12 +177,12 @@ example : (Val.segsNode [Val.segNode (Term.nat 3) (.ctor "Arr" [Val.nat 3, Val.n
 example : (Val.mergeArrays (segsOf [(1, .ctor "Arr" [Val.nat 3]), (2, .loanM 0)])
            == segsOf [(1, .ctor "Arr" [Val.nat 3]), (2, .loanM 0)]) = true := by native_decide
 
--- The ⇝ bridge (¶1.3): the fold of a collapsed segment list is its `arrCat` spine.
+-- The ⇝ bridge: the fold of a collapsed segment list is its `arrCat` spine.
 example : (Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.sym 0), Val.segNode (Term.nat 2) (.sym 1)]
            == some prog defer_check { arrCat %(Term.nat 1) %(Term.nat 2) %(Term.sym 0) %(Term.sym 1) }) = true := by native_decide
 
--- "A suspended array has no snapshot; only a collapsed one does" — §5.2's
--- proper-payload premise, arriving at an array node. Both markers are rejected.
+-- A suspended array has no snapshot; only a collapsed one does. Both marker
+-- kinds are rejected.
 example : (Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.loanM 0),
                              Val.segNode (Term.nat 2) (.sym 1)]).isNone = true := by native_decide
 example : (Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.bot),
@@ -213,13 +198,12 @@ example : (Pure.nf 200 prog defer_check { arrCat %(Term.nat 1) %(Term.nat 2) %(T
                             %(Term.ctorApp "Arr" [Term.nat 7, Term.nat 2]) }
            == .ctorApp "Arr" [Term.nat 3, Term.nat 7, Term.nat 2]) = true := by native_decide
 
-/-! ## (i.f) Extents read off the value
+/-! ## Extents read off the value
 
-    A carve's premise (1) needs the extent map, which needs the node's total extent.
-    Every array-shaped value determines it EXCEPT a bare σ, whose extent lives in its
-    `sctx` type — so `arrExtentPure?` is partial by design and the machine wrapper
-    consults `sctx`. This is what let the design keep ¶1.1's abbreviation (no wrapper
-    on an uncarved array) instead of stamping every array value with its length. -/
+    A carve's containment premise needs the extent map, which needs the node's
+    total extent. Every array-shaped value determines it EXCEPT a bare σ, whose
+    extent lives in its `sctx` type instead — so `arrExtentPure?` is partial by
+    design and the machine wrapper consults `sctx`. -/
 
 example : (Val.arrExtentPure? (.ctor "Arr" [Val.nat 3, Val.nat 1, Val.nat 2])
            == some (Term.nat 3)) = true := by native_decide
@@ -230,15 +214,13 @@ example : (Pure.nf 100 ((Val.arrExtentPure? (Val.know
            == Term.nat 3) = true := by native_decide
 example : (Val.arrExtentPure? (.sym 0)).isNone = true := by native_decide
 
-/-! ## (i.g) Every generic walker traverses an array node unchanged
+/-! ## Every generic walker traverses an array node unchanged
 
-    Appendix A's load-bearing claim, and the reason ¶8.1 can say four of the five
-    additions are representation: an array node is an ordinary `ctor`, so `loanIds`,
-    `symIds`, `renumber`, `hasStateMarker` and `beq` need no case and MUST NOT get
-    one. A segment list with a loan in it is found by the existing traversals — which
-    is why ¶3.3's range-loan collapse and §3.3's field-loan collapse are one code
-    path, and why `refineSym`'s knowledge/state assertion is already live at the
-    carve's refinement site. -/
+    An array node is an ordinary `ctor`, so `loanIds`, `symIds`, `renumber`,
+    `hasStateMarker` and `beq` need no case and MUST NOT get one. A segment list
+    with a loan in it is found by the existing traversals — the same code path
+    that handles a field-loan collapse, and the reason `refineSym`'s
+    knowledge/state assertion is already live at the carve's refinement site. -/
 
 def carvedWithLoan : Val :=
   segsOf [(1, .sym 0), (2, .loanM 7), (1, .sym 1)]
@@ -246,32 +228,29 @@ def carvedWithLoan : Val :=
 example : (carvedWithLoan.loanIds == [7]) = true := by native_decide
 example : (carvedWithLoan.symIds == [0, 1]) = true := by native_decide
 -- The marker is in OWNED position of the array node (a segment body is a `ctor`
--- field), so a demand for the owner ends it — §2.2's rule verbatim, no new case.
+-- field), so a demand for the owner ends it — the existing rule, no new case.
 example : (firstLoanMarker carvedWithLoan == some 7) = true := by native_decide
--- …and it is STATE, so no σ may ever be refined to this tree (§3.2's invariant, the
--- assertion the carve inherits by going through `refineSym`).
+-- …and it is STATE, so no σ may ever be refined to this tree.
 example : Val.hasStateMarker carvedWithLoan = true := by native_decide
 example : Val.hasStateMarker (segsOf [(1, .sym 0), (2, .sym 1)]) = false := by native_decide
--- A hole in a segment is state too: `⇒` at a range place leaves one (¶2.2's
--- take-and-refill generalized from a borrow's payload to a run of an array).
+-- A hole in a segment is state too: `⇒` at a range place leaves one, generalizing
+-- take-and-refill from a borrow's payload to a run of an array.
 example : Val.hasStateMarker (segsOf [(1, .sym 0), (2, .bot)]) = true := by native_decide
 
--- `Arr`'s fields are ELEMENTS, flat — so element `i` is child `i`, a subterm. This is
--- ¶1.2's entire argument for the basis over the declaration scheme, and it is the
--- property the place grammar of ¶2 is defined against.
+-- `Arr`'s fields are ELEMENTS, flat — so element `i` is child `i`, a subterm.
 example : ((.ctor "Arr" [Val.nat 3, Val.nat 1, Val.nat 2] : Val).symIds == []) = true := by native_decide
 example : (Val.renumber id (· + 10) carvedWithLoan == segsOf [(1, .sym 10), (2, .loanM 7), (1, .sym 11)])
     = true := by native_decide
 
-/-! ## (i.h) `Le` and `Add` moved into the kernel
+/-! ## `Le` and `Add` live in the kernel
 
-    A DEVIATION worth flagging: `Le` and `Add` were library terms (`Std`), but the
-    CARVE rule's premises are *stated* against them — premise (2) IS a `Le`, premise
-    (3) decomposes an extent with `Add` — and a kernel rule cannot cite a library it
-    does not import. Two syntactically different `Add`s would never convert, which
-    would break the one conversion the whole residue-transition decision exists to
-    make definitional (¶3.4's audit). So both moved to `Pure.lean` and `Std` aliases
-    them; these two tests are the single-source-of-truth check. -/
+    `Le` and `Add` were library terms (`Std`), but the carve rule's premises are
+    stated against them — the containment premise IS a `Le`, and the residue
+    premise decomposes an extent with `Add` — and a kernel rule cannot cite a
+    library it does not import. Two syntactically different `Add`s would never
+    convert, which would break the definitional conversion the residue transition
+    relies on. So both moved to `Pure.lean`, with `Std` aliasing them; these two
+    tests are the single-source-of-truth check. -/
 
 example : (Pure.kAddFn == Dllbc.Std.addFn) = true := by native_decide
 example : (Pure.kLeFn == Dllbc.Std.LeFn) = true := by native_decide
@@ -279,14 +258,13 @@ example : (Pure.nf 200 prog defer_check { %(Pure.kAddFn) %(Term.nat 2) %(Term.na
 example : (Pure.nf 200 prog defer_check { %(Pure.kLeFn) %(Term.nat 2) %(Term.nat 3) } == .const "Unit") = true := by native_decide
 example : (Pure.nf 200 prog defer_check { %(Pure.kLeFn) %(Term.nat 3) %(Term.nat 2) } == .const "Bot") = true := by native_decide
 
-/-! ## (ii) CARVE, at concrete indices
+/-! ## CARVE, at concrete indices
 
-    ¶3's rule, and the design's only new one. At concrete indices "the containment
-    `Le`s compute to ⊤ — free by conversion", so premise (2) needs no annotation and
-    premise (3) is a no-op: ¶3.3's trace says exactly that, "residue transition: n = 3
-    concrete, both sides compute — nothing refined". -/
+    At concrete indices the containment `Le`s compute to ⊤ — free by conversion —
+    so the containment premise needs no annotation and the residue premise is a
+    no-op: both sides compute, nothing is refined. -/
 
-/-! ### ¶3.3's lifecycle
+/-! ### A carve-and-write lifecycle
 
     ```rust
     let a = [3, 1, 2];
@@ -295,8 +273,8 @@ example : (Pure.nf 200 prog defer_check { %(Pure.kLeFn) %(Term.nat 3) %(Term.nat
     ```
 
     Every step after the carve is a rule that already existed. The carve puts a loan
-    marker in a segment body, which is OWNED POSITION of `a`'s value, so §2.2's rule
-    reaches it unchanged; the write through `m` is an ordinary ⇐-fill at an index
+    marker in a segment body, which is OWNED POSITION of `a`'s value, so the existing
+    rule reaches it unchanged; the write through `m` is an ordinary ⇐-fill at an index
     place under a peel. -/
 
 def carveMid : Term := prog{ let a = Arr(3, 1, 2); let m = &m a[1 ; 2]; () }
@@ -314,33 +292,21 @@ example : expectEnv carveWritten
                        Val.segNode (Term.nat 2) (.loanM 0)]),
    ("m", .borrowM 0 (.ctor "Arr" [Val.nat 7, Val.nat 2]))] = true := by native_decide
 
-/-- **Rejoin is merge** (¶3.3), and here it is: demand the whole array and the loan
-    ends, the payload plugs into its marker, and the segments collapse. `b` is a plain
-    run — indistinguishable from one that was never carved, which is the property the
-    segment representation was chosen for and what keeps `canonicalize` a decision
-    procedure for Ω-equality. -/
+/-- Rejoin is merge: demand the whole array and the loan ends, the payload plugs
+    into its marker, and the segments collapse. `b` is a plain run —
+    indistinguishable from one that was never carved. -/
 example : expectEnv prog{
     let a = Arr(3, 1, 2); let m = &m a[1 ; 2]; (*m)[0] := 7; let b = a; () }
   [("a", .bot), ("m", .bot),
    ("b", .ctor "Arr" [Val.nat 3, Val.nat 7, Val.nat 2])] = true := by native_decide
 
-/-! ### FINDING — ¶3.3's trace ends the loan one step too eagerly, and it should not
+/-! ### An element read does not demand the whole array
 
-    The design note's own lifecycle finishes `let x = a[0];` with the comment "the read
-    demands a's node; a loan marker is in owned position, so §2.2 forces End-Mut ℓ
-    first: the payload plugs into the marker, m dies". That is written as though the
-    element read demands the WHOLE array. It does not, and §2.2's own wording is the
-    reason: what a ⇒-read ends is "every loan marker in owned position **within the
-    value it is about to move**". Reading `a[0]` moves one element, and that element
-    carries no marker.
-
-    Implementing §2.2 precisely rather than the trace literally gives strictly more:
-    the read succeeds and `m` STAYS LIVE, holding its disjoint half. Which is the
-    design's own headline — an element and a disjoint range of one array, both live,
-    coexisting because they are different subterms — arriving one paragraph before ¶3.4
-    claims it. The looser reading would have thrown that away for the trace's
-    convenience. Nothing else in the note depends on the eager ending; ¶3.3's point is
-    rejoin, which the test above shows on the demand that genuinely wants the array. -/
+    A ⇒-read ends every loan marker in owned position within the value it is
+    about to move. Reading `a[0]` moves one element, and that element carries no
+    marker, so the whole array's loan is not demanded. `m` stays live, holding its
+    disjoint half — an element and a disjoint range of one array, both live at
+    once, because they are different subterms. -/
 
 example : expectEnv prog{
     let a = Arr(3, 1, 2); let m = &m a[1 ; 2]; (*m)[0] := 7; let x = a[0]; () }
@@ -349,36 +315,35 @@ example : expectEnv prog{
    ("m", .borrowM 0 (.ctor "Arr" [Val.nat 7, Val.nat 2])),
    ("x", Val.nat 3)] = true := by native_decide
 
-/-! ### `get` and `Set` are not primitives (¶2.3)
+/-! ### `get` and `Set` are not primitives
 
     They are the two arrows at the index place. No kernel primitive is added for
-    either, and the M22 `NthL`/`nth2`/`Set` library — 26 lines of recursive cursor plus
-    a pure `Set` model — is what this DELETES rather than ports. -/
+    either. -/
 
--- ⇐ at an index place: write the element (with §2.3's drop of the displaced value
+-- ⇐ at an index place: write the element (with the drop of the displaced value
 -- forced first — a Nat, so discard).
 example : expectEnv prog{ let a = Arr(3, 1, 2); a[0] := 9; () }
   [("a", .ctor "Arr" [Val.nat 9, Val.nat 1, Val.nat 2])] = true := by native_decide
 
--- ⇒ at an index place: read the element. §2.1's copy-on-read applies (Nat is
--- index-kind), so the array keeps it — the doc's trace comment, mechanized.
+-- ⇒ at an index place: read the element. Copy-on-read applies (Nat is
+-- index-kind), so the array keeps it.
 example : expectEnv prog defer_check { let a = Arr(3, 1, 2); let x = a[2]; () }
   [("a", .ctor "Arr" [Val.nat 3, Val.nat 1, Val.nat 2]), ("x", Val.nat 2)]
     = true := by native_decide
 
 -- `&mut a[i]`: an element cursor, an ordinary borrow. The marker parks INSIDE the
 -- one-slot run, so the segment body stays at `Array 1 T` while the borrow's payload
--- is the element at `T` — ¶2.1's "`a[i]` is not `a[i ; 1]`", made structural.
+-- is the element at `T` — `a[i]` is not `a[i ; 1]`, made structural.
 example : expectEnv prog{ let a = Arr(3, 1, 2); let e = &m a[1]; *e := 8; let y = a[1]; () }
   [("a", .ctor "Arr" [Val.nat 3, Val.nat 8, Val.nat 2]), ("e", .bot), ("y", Val.nat 8)]
     = true := by native_decide
 
-/-! ### Take-and-refill at a range place (¶2.2)
+/-! ### Take-and-refill at a range place
 
-    §2.4's idiom generalized from "the payload of a borrow" to "a run of an array":
-    between the take and the refill the array holds a hole of known extent, no rule
-    reads it, and the refill is its one legal successor. That is how a rotation or a
-    memmove is written without a copy. -/
+    Generalized from "the payload of a borrow" to "a run of an array": between the
+    take and the refill the array holds a hole of known extent, no rule reads it,
+    and the refill is its one legal successor. That is how a rotation or a memmove
+    is written without a copy. -/
 
 example : expectEnv prog{ let a = Arr(3, 1, 2);
                            let run = a[1 ; 2];
@@ -387,16 +352,15 @@ example : expectEnv prog{ let a = Arr(3, 1, 2);
   [("a", .ctor "Arr" [Val.nat 3, Val.nat 1, Val.nat 2]), ("run", .bot), ("w", Val.nat 3)]
     = true := by native_decide
 
-/-! ### Carve of carve collapses definitionally (¶3.2's fourth Low\* lemma)
+/-! ### Carve of carve collapses definitionally
 
-    `carve_carve : (a[lo₁ ; cnt₁])[lo₂ ; cnt₂] ≡ a[Add lo₁ lo₂ ; cnt₂]` is the one the
-    doc says "a DLLBC implementer will underestimate", because without it every
-    sub-slice of a sub-slice accumulates a chain of offsets no conversion sees through.
-    It holds with no lemma at all, and for the reason the doc predicts: premise (3)
-    hands back LEAF-RELATIVE offsets, so a nested carve is an ordinary carve inside the
-    segment it landed in, and the offsets never compose into a chain. **The doc's own
-    diagnostic is that needing a lemma here would mean premise 3 is implemented wrong**
-    — so this passing is evidence about premise 3, not about nesting. -/
+    `carve_carve : (a[lo₁ ; cnt₁])[lo₂ ; cnt₂] ≡ a[Add lo₁ lo₂ ; cnt₂]` holds with
+    no lemma at all: without it, every sub-slice of a sub-slice would accumulate a
+    chain of offsets no conversion sees through. It holds because the residue
+    premise hands back LEAF-RELATIVE offsets, so a nested carve is an ordinary
+    carve inside the segment it landed in, and the offsets never compose into a
+    chain. Needing a lemma here would mean the residue premise is implemented
+    wrong — so this passing is evidence about that premise, not about nesting. -/
 
 example : expectEnv
     prog{ let a = Arr(3, 1, 2, 7, 5);
@@ -409,7 +373,7 @@ example : expectEnv
    ("b", .ctor "Arr" [Val.nat 3, Val.nat 1, Val.nat 9, Val.nat 7, Val.nat 5])]
     = true := by native_decide
 
-/-! ### The rejections (¶3.5), each falling out of a premise rather than a check -/
+/-! ### The rejections, each falling out of a premise rather than a check -/
 
 -- OVERLAP — premise (1), and the shape it actually takes. After `&mut a[0 ; 3]` the
 -- extent map is `[(0,3,loaned ℓ₁), (3,rest,owned)]`, and [2,5) is contained in NEITHER
@@ -437,23 +401,16 @@ example : expectErr prog defer_check { let a = Arr(3, 1, 2);
                            () }
   "meets a hole" = true := by native_decide
 
-/-! ### FINDING — a contained request DEMAND-ENDS rather than rejecting, and that is
-    the calculus's existing character rather than a new decision
+/-! ### A contained request demand-ends rather than rejecting
 
-    ¶3.5 reads as though any loaned leaf rejects. Two cases hide under that, and they
-    behave differently for a reason that predates arrays. A request that STRADDLES a
-    boundary has no leaf and is rejected (above). A request CONTAINED in a loaned leaf
-    is the situation `&mut x` twice already creates, and the existing whole-place rule
-    resolves it by ending: `let p = &mut x; let q = &mut x;` is accepted today, with
-    `p` killed and any later use of it stuck. Probed directly rather than assumed —
-
-        x ↦ loanₘ ℓ0,  p ↦ ⊥,  q ↦ borrowₘ ℓ0 3
-
-    — so the array rule follows suit, which is also what makes ¶3.6's group trace work
-    (`let z = a[0]` must end the group to read across it) and what §5.2 states as one
-    rule with several sites: every demand collapses first. Two live overlapping mutable
-    borrows remain unrepresentable; what differs from the note is only WHEN the second
-    one is rejected — at the first use of the dead borrow, not at its creation. -/
+    Two cases hide under "a loaned leaf", and they behave differently for a reason
+    that predates arrays. A request that STRADDLES a boundary has no leaf and is
+    rejected (above). A request CONTAINED in a loaned leaf is the situation
+    `&mut x` twice already creates, and the existing whole-place rule resolves it
+    by ending: `let p = &mut x; let q = &mut x;` is accepted, with `p` killed and
+    any later use of it stuck. The array rule follows suit: every demand collapses
+    first. Two live overlapping mutable borrows remain unrepresentable; the second
+    one is rejected at the first use of the dead borrow, not at its creation. -/
 
 example : expectEnv prog{ let a = Arr(3, 1, 2, 7, 5);
                            let p = &m a[0 ; 3];
@@ -475,14 +432,14 @@ example : expectErr prog defer_check { let a = Arr(3, 1, 2, 7, 5);
   "⊥" = true := by native_decide
 
 
-/-! ## (iii) The symbolic carve — ¶3.4, the case the whole design exists for
+/-! ## The symbolic carve
 
     Two range borrows of one array, live at once, with a symbolic length. They coexist
     not because the checker believes an aliasing argument but because, after the carve,
-    they are literally different subterms of one value tree — and §3.3's suspension
+    they are literally different subterms of one value tree — and the suspension
     machinery already knows what to do with those. -/
 
-/-- ¶3.4's `halves`, checked end to end.
+/-- `halves`, checked end to end.
 
     ```rust
     fn halves (a : &mut Array n Nat, k : Nat, h : Le k n) = {
@@ -508,20 +465,13 @@ def halves : Term := prog{
 
 example : progOk halves = true := by native_decide
 
--- PROBE (M27-δ): is disjointness DEMANDABLE rather than only observable?
-/-! ### DISJOINTNESS, converted from an Ω observation to a DEMAND (M27-δ)
+/-! ### Disjointness as a demand rather than an observation
 
-    `halvesSegLoans` asserted the aliasing invariant by reading the loan ids out
-    of the final Ω — `[1, 2]`, two distinct loans over one array. That assertion
-    could not survive `checkFn`, so it is restated as what a body can DO under the
-    invariant rather than what the machine happens to hold.
-
-    The observable consequence of disjointness is that both sub-borrows stay LIVE.
-    A second borrow of an overlapping place demand-ends the first (§5.2), so using
-    `l` after `r` has been taken is possible exactly when the two do not overlap.
-    The pair below is that, and it is a better assertion than the one it replaces:
-    it says the segments are SIMULTANEOUSLY USABLE, where the loan-id reading only
-    said they were separately recorded. -/
+    Disjointness is asserted by what a body can DO under the invariant, rather
+    than by reading the machine's internal loan ids. Both sub-borrows stay LIVE:
+    a second borrow of an overlapping place demand-ends the first, so using `l`
+    after `r` has been taken is possible exactly when the two do not overlap. The
+    pair below says the segments are SIMULTANEOUSLY USABLE. -/
 
 def halvesBoth : Term := prog{
   fn HalvesBoth (n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
@@ -552,38 +502,34 @@ def halvesSame : Term := prog defer_check {
 example : progRejects halvesSame "cannot peel a vacant slot" = true := by
   native_decide
 
--- `fnEnv` (the final Ω of a single-path body) went with `checkFn` (M27-δ):
--- entering a body with a TELESCOPE requires seeding it, and on the program path
--- such a body is entered only inside the seal's isolated frame, whose Ω is
--- discarded by design. Its three assertions were CONVERTED rather than dropped
--- where a demand form exists (`halvesBoth`/`halvesSame`, `threeWayAll`) and
--- recorded lost with the reason where none does (`readSame`).
+-- The final Ω of a single-path body is not directly observable: entering a body
+-- with a TELESCOPE requires seeding it, and such a body is entered only inside
+-- an isolated frame whose Ω is discarded by design. So an invariant once read
+-- off Ω is restated as a demand form where one exists (`halvesBoth`/`halvesSame`,
+-- `threeWayAll`), or recorded lost with the reason where none does (`readSame`).
 
+/-! ### Why the exit-type audit converts, and what it cost
 
--- (the loan-id reading it replaced is above, CONVERTED to the demand pair.)
-
-/-! ### Why the audit converts, and what it cost
-
-    ¶3.4: "the obligation type for `a` is `Array n Nat`; the collapsed payload's
+    The obligation type for `a` is `Array n Nat`; the collapsed payload's
     snapshot is `arrCat σ_l′ σ_r′` at `Array (Add σₖ rest) Nat`; and these convert
-    DEFINITIONALLY, because the residue transition refined `σₙ := Add σₖ rest` at the
-    carve. Had the carve computed `rest := Sub n k` instead, this final conversion
-    would have needed `Add k (Sub n k) ≡ n`, which is not definitional and would have
-    required a cited lemma at every audit of every array-mutating function in the
-    program. That is the entire argument for premise (3)."
+    DEFINITIONALLY, because the residue transition refined `σₙ := Add σₖ rest` at
+    the carve. Had the carve computed `rest := Sub n k` instead, this final
+    conversion would have needed `Add k (Sub n k) ≡ n`, which is not definitional
+    and would have required a cited lemma at every audit of every array-mutating
+    function in the program.
 
-    The `progOk` above IS that conversion succeeding. One implementation detail
-    turned out to be load-bearing and is worth naming, because getting it wrong looks
-    like the design failing: the extent sum must be RIGHT-NESTED with no trailing `Z`.
-    `Add` recurses on its first argument, so `Add rest Z` is stuck the moment `rest` is
-    symbolic, and `Array (Add k (Add rest Z))` never converts with `Array (Add k rest)`.
-    The first version of the audit had the trailing zero and this exact test failed —
-    not because premise (3) was wrong but because the sum was shaped wrong. -/
+    The `progOk` above IS that conversion succeeding. One implementation detail is
+    load-bearing: the extent sum must be RIGHT-NESTED with no trailing `Z`. `Add`
+    recurses on its first argument, so `Add rest Z` is stuck the moment `rest` is
+    symbolic, and `Array (Add k (Add rest Z))` never converts with
+    `Array (Add k rest)`. A version of the audit with the trailing zero failed
+    this exact test, not because the residue premise was wrong but because the
+    sum was shaped wrong. -/
 
 /-! ### Negative controls, one per premise -/
 
--- Premise (2), UNPROVED BOUND — "the *interesting* rejection: the program is not
--- wrong, it is unjustified". Same body, evidence not cited.
+-- Premise (2), UNPROVED BOUND — the interesting rejection: the program is not
+-- wrong, it is unjustified. Same body, evidence not cited.
 def noEvidence : Term := prog defer_check {
   fn NoEvidence (n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; k]; () };
@@ -599,10 +545,9 @@ def wrongEvidence : Term := prog defer_check {
   () }
 example : progRejects wrongEvidence "containment obligation" = true := by native_decide
 
--- Premise (3), RIGID LENGTH (¶8.4's named restriction). The leaf's extent is a
--- compound neutral rather than a flexible σ, so `m ≡ Add lo' (Add cnt rest)` has no
--- solution by refinement. Rejected with the remedy in the message, which is the one
--- the north star already uses: take the length as a parameter.
+-- Premise (3), RIGID LENGTH. The leaf's extent is a compound neutral rather than
+-- a flexible σ, so `m ≡ Add lo' (Add cnt rest)` has no solution by refinement.
+-- Rejected with the remedy in the message: take the length as a parameter.
 def rigidLength : Term := prog defer_check {
   fn RigidLength (p : Nat, q : Nat, k : Nat, H : Le k (Add p q),
                   a : &mut (Array (Add p q) Nat)) -> Unit {
@@ -614,13 +559,10 @@ example : progRejects rigidLength "Take the length as a telescope PARAMETER"
 
 /-! ### `refineSym`'s target list is the checklist
 
-    ¶3.2's sharpest warning: the carve's index refinement must reach every σ-bearing
-    component. Its named example was `St.selfRec` — "a carve whose index refinement
-    reached every component EXCEPT `St.selfRec` would not fail loudly; it would
-    silently corrupt the termination guard for **any function recursing on an
-    array**". **That component is gone with the guard** (M27-δ), so the example is
-    history; the WARNING is not, and it applies unchanged to every σ-bearing field
-    `refineSym` still sweeps.
+    The carve's index refinement must reach every σ-bearing component. A carve
+    whose refinement reached every component except one would not fail loudly;
+    it would silently corrupt whatever depends on that component. The warning
+    applies to every σ-bearing field `refineSym` sweeps.
 
     A function that recurses on fuel and carves on the way checks. -/
 
@@ -633,17 +575,11 @@ def walk : Term := prog{
   () }
 example : progOk walk = true := by native_decide
 
-/-! ### The regression test the doc asks for
+/-! ### Recursing on a carved sub-slice, declined at the hint
 
-    ~~Declaring the ARRAY as the decreasing argument and recursing on a carved
-    sub-slice is rejected, and the rejection's message names the snapshot the guard
-    compared against — `arrCat σ σ σ σ` after the carve, so asserting on the word
-    `arrCat` is a live check that `refineSym` swept `selfRec`.~~ **OVERTAKEN by
-    M27-δ**: there is no guard, no `selfRec`, and no message naming a snapshot. What
-    is left is the macro's own refusal, which declines `[a]`-on-a-borrow at §12
-    decision 8 — the same fact from the other side, and the one `S26Fuel` §B
-    asserts. The sweep itself is still exercised by every carve in this file that
-    checks; what is gone is this particular witness to it. -/
+    Declaring the array itself (rather than fuel) as the decreasing argument and
+    recursing on a carved sub-slice is refused by the macro at the hint: a hint
+    naming a BORROW has no recursor form, and the lowering declines it. -/
 
 def walkArr : Term := prog defer_check {
   fn WalkArr [a] (fuel : Nat, n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
@@ -654,42 +590,30 @@ def walkArr : Term := prog defer_check {
   () }
 -- The twin differs from `walk` in the HINT ALONE — `[a]` where `walk` says
 -- `[fuel]`, same telescope, same body, character for character — so what these two
--- verdicts isolate is the hint and nothing else. `[a]` names a BORROW, which has no
--- recursor form, and the lowering declines it at §12 decision 8.
---
--- It used to be a `FnDef` kept for `S26Migrate.p24`, from which `S27Dispose` §B read
--- the name "walkArr" into its declining residue. Written as a program the decline is
--- said directly, with the decision in the message (M28 D6).
+-- verdicts isolate is the hint and nothing else.
 example : progRejects walkArr FnMacro.fnRefusedNeedle = true := by native_decide
 example : progRejects walkArr "§12 decision 8" = true := by native_decide
 -- …and it can never pass green: the sentinel fires at the BINDING, so a refused
 -- function that nothing calls still fails.
 example : progOk walkArr = false := by native_decide
 
-/-! ### FINDING — recursion cannot decrease through a CARVED array payload
+/-! ### Recursion cannot decrease through a CARVED array payload
 
-    The rejection above is not a bug, and it is worth stating as a restriction because
-    ¶6's migration is a recursion over sub-slices. §8's guard compares the actual
-    against the parameter's current snapshot by `strictSubterm`, which counts only
-    CONSTRUCTOR fields as subterms and deliberately refuses application spines ("a
-    `Le`-headed neutral has no well-founded subterm order we could appeal to"). A
-    carve's body split refines the payload σ to an `arrCat` SPINE, so from that moment
-    no sub-slice is a structural predecessor of its parent.
+    The guard compares the actual against the parameter's current snapshot by
+    `strictSubterm`, which counts only CONSTRUCTOR fields as subterms and
+    deliberately refuses application spines. A carve's body split refines the
+    payload σ to an `arrCat` SPINE, so from that moment no sub-slice is a
+    structural predecessor of its parent. Recursion over sub-slices with no fuel
+    is therefore closed: either the guard learns that `arrCat`'s array arguments
+    are subterms of their concatenation, or array recursion stays fuel-carried. -/
 
-    ¶6's quicksort is unaffected — it decreases on `fuel`, and `walk` above is that
-    shape checking. But "recurse on the sub-slice, no fuel needed" is closed, and the
-    doc nowhere says so. Either the guard learns that `arrCat`'s array arguments are
-    subterms of their concatenation (true, and specific to this former), or array
-    recursion stays fuel-carried. -/
+/-! ### A segment's loan captured by a call, without the parent riding along
 
-/-! ### ¶3.6 — a segment's loan captured by a call, WITHOUT the parent riding along
-
-    The load-bearing step of ¶3.6's precision claim, which the doc says "was checked
-    rather than hoped": `processArgs` captures per-argument-borrow loans and nothing in
-    it walks to a parent or a sibling. Here that property meets an array segment for
-    the first time. The callee receives the left half; the right half stays borrowed by
-    the caller; the parent `a` is audited normally and its untouched segment never
-    entered the call. The frame is not described — it is simply still there. -/
+    `processArgs` captures per-argument-borrow loans and nothing in it walks to a
+    parent or a sibling. Here that property meets an array segment: the callee
+    receives the left half; the right half stays borrowed by the caller; the
+    parent `a` is audited normally and its untouched segment never entered the
+    call. The frame is not described — it is simply still there. -/
 
 def touch : Term := prog{
   fn Touch (p : Nat, l : &mut (Array p Nat)) -> Unit { () };
@@ -706,44 +630,41 @@ def callSeg : Term := prog{
   () }
 example : progOk callSeg = true := by native_decide
 
-/-! ### FINDING — the residue has no surface name, and ¶3.4/¶5/¶6 all assume it does
+/-! ### The residue has no surface name
 
-    ¶3.4 writes the second borrow as `&mut (*a)[k ; rest]`, ¶5's `split_at_mut` returns
-    `&mut (Array rest T)`, and ¶6's quicksort writes `&mut (*v)[S(i) ; rest]`. In every
-    case `rest` is a σ the CHECKER minted inside premise (3) — machine-internal, with
-    no binder any program can write. The doc notices the tension at ¶5 ("more honestly
-    written after the carve has run") but never resolves it.
+    The second borrow after a carve, `&mut (*a)[k ; rest]`, mentions a `rest`
+    that is a σ the CHECKER minted inside the residue premise — machine-internal,
+    with no binder any program can write.
 
-    `a[lo ; ..]` is the resolution, and it is not the `Sub` ¶2.1 bans: it reads the
-    residue's extent off the extent map, where premise (3) already parked it as a
-    GIVEN. No arithmetic, no new obligation.
+    `a[lo ; ..]` names the residue as a place: it reads the residue's extent off
+    the extent map, where the residue premise already parked it as a GIVEN. No
+    arithmetic, no new obligation, and not the `Sub` that index premises ban.
 
     What `..` does NOT solve is a CALL that must pass the residue's length as an
-    argument — ¶3.6's own `merge_into (l : &mut Array p Nat, r : &mut Array q Nat)`
-    needs a `q`, and `q` is that same unnameable σ. `callSeg` above passes only the
-    left half for exactly this reason. Three routes, none free: let a place's extent be
-    a comptime term (`alen (a[k ; ..])` — but the extent map is state, so ⇝ would be
-    reading state); let the carve BIND its residue in the surface (`let (l, rest) = …`,
-    which is a real binder form and the honest one); or have such callees take a Σ-typed
-    slice, `Σ (c : Nat). &mut (Array c T)`, which ¶4 already declares well-formed. The
-    third needs no new machinery and is probably the answer; it is untested here. -/
+    argument — a callee like `merge_into (l : &mut Array p Nat, r : &mut Array q
+    Nat)` needs a `q`, and `q` is that same unnameable σ. `callSeg` above passes
+    only the left half for exactly this reason. Three routes, none free: let a
+    place's extent be a comptime term (but the extent map is state, so ⇝ would be
+    reading state); let the carve BIND its residue in the surface (`let (l, rest)
+    = …`, a real binder form); or have such callees take a Σ-typed slice,
+    `Σ (c : Nat). &mut (Array c T)`. The third needs no new machinery and is
+    probably the answer; it is untested here. -/
 
-/-! ## (iv) Multi-marker collapse, and the differential over array bodies
+/-! ## Multi-marker collapse, and the differential over array bodies
 
-    ¶8.2's obligation 3, which the doc singles out: "a segment list can hold several
-    markers at once, so a partial collapse is now easy to write by accident. Each
-    executing former must preserve full collapse, and a negative test per rule branch —
-    the M20 lesson — should cover the multi-marker case specifically." -/
+    A segment list can hold several markers at once, so a partial collapse is
+    easy to write by accident. Each executing former must preserve full
+    collapse, and a negative test per rule branch should cover the multi-marker
+    case specifically. -/
 
 /-! ### Three markers in one node, collapsed by one demand
 
-    ¶3.6 already notes that a group's release "touches TWO markers in one owner's
-    tree, which is new only in arity". Owner demand is the same story at arity three:
-    `readR`'s move ends the leftmost marker and retries until none is left, so the
-    collapse is total by construction rather than by a loop someone wrote. Both
-    granularities are exercised, because they park markers in different places — a
-    range marker IS the segment body, an element marker sits INSIDE the one-slot
-    run. -/
+    A group's release touches TWO markers in one owner's tree at arity two;
+    owner demand is the same story at arity three: `readR`'s move ends the
+    leftmost marker and retries until none is left, so the collapse is total by
+    construction rather than by a loop someone wrote. Both granularities are
+    exercised, because they park markers in different places — a range marker IS
+    the segment body, an element marker sits INSIDE the one-slot run. -/
 
 example : expectEnv prog{
     let a = Arr(3, 1, 2);
@@ -761,21 +682,16 @@ example : expectEnv prog{
   [("a", .bot), ("p", .bot), ("q", .bot), ("r", .bot),
    ("b", .ctor "Arr" [Val.nat 7, Val.nat 8, Val.nat 9])] = true := by native_decide
 
-/-! **FINDING — this test found the bug the doc predicted, on its first run.**
+/-! ### A marker in the middle of three segments must block the fold
 
-    A node still holding a marker must not fold (¶1.3): it has no snapshot, so
-    `hasType` rejects it at the one place that judges. `arrFoldSegs?` was written as a
-    `foldr` over `Option (extent × body)`, and that shape CONFLATES "this body is not
-    owned" with "there is no accumulator yet" — both are `none`. So a marker followed
-    by an owned segment had its `none` silently overwritten by the earlier segment,
-    and the fold returned a SHORTER array as if it were the whole one.
-
-    It survived every earlier test because those put the marker LAST or first. It
-    takes a marker in the MIDDLE of three to see it — which is exactly ¶8.2's
-    obligation 3 ("a segment list can hold several markers at once, so a partial
-    collapse is now easy to write by accident") and exactly the M20 lesson about a
-    negative test per rule branch. Rewritten as a structural recursion where the two
-    `none`s cannot be confused. -/
+    A node still holding a marker must not fold: it has no snapshot, so `hasType`
+    rejects it at the one place that judges. An earlier `foldr`-over-`Option`
+    implementation of `arrFoldSegs?` conflated "this body is not owned" with
+    "there is no accumulator yet" — both are `none` — so a marker followed by an
+    owned segment had its `none` silently overwritten by the earlier segment, and
+    the fold returned a SHORTER array as if it were the whole one. A marker LAST
+    or FIRST does not expose this; only a marker in the MIDDLE of three does. Now
+    a structural recursion where the two `none`s cannot be confused. -/
 
 example : (Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.ctor "Arr" [Val.nat 7]),
                              Val.segNode (Term.nat 1) (.loanM 0),
@@ -800,29 +716,20 @@ example : ((Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.ctor "Arr" [Val.nat 7])
 
 /-! ### The differential harness, given array bodies
 
-    Appendix A: "The differential harness (M8/M9) should gain array bodies before
-    anything else is believed: the multi-marker collapse of ¶8.2's obligation 3 is
-    precisely the bug class a per-rule-branch negative test exists to catch."
-
-    The property is M9's, unchanged: for a `checkFn`-accepted caller, its CONCRETE
-    final environment (executing mode — calls run the callee's real body) is a
-    σ-instance of some accepted SYMBOLIC path's final environment (checking mode —
-    calls use the §5.3/§6.1 signature rule). -/
-
-/-! The differential's callees are DECLARED IN THEIR CALLERS now (M28 ν), so the
-    pool that used to carry them is gone and each shape is one self-contained
-    program. Both have arity one, which is what makes this available here: a
-    NULLARY `fn` lowers to a runtime λ binding nothing and the executing machine
-    refuses it, so a program declaring one checks but cannot be run (S26Seal's
-    `giveThree` is that case, and keeps its table). -/
+    The multi-marker collapse is precisely the bug class a per-rule-branch
+    negative test exists to catch, so the differential harness needs array
+    bodies too: for a `checkFn`-accepted caller, its CONCRETE final environment
+    (executing mode — calls run the callee's real body) is a σ-instance of some
+    accepted SYMBOLIC path's final environment (checking mode — calls use the
+    signature rule). -/
 
 /-- A carved segment handed to a call, then the whole array demanded back. -/
 def arrCaller1 : Term := prog{
   fn Fill1 (l : &mut (Array 1 Nat)) -> Unit { (*l)[0] := 9; () };
   let a = Arr(3, 1, 2); let s = &m a[1 ; 1]; Fill1(s); let b = a; () }
 
-/-- TWO carved segments, one passed to each of two calls, then rejoined — ¶3.6's
-    "several captured loans in one owner" at the arity the doc calls new. -/
+/-- TWO carved segments, one passed to each of two calls, then rejoined: several
+    captured loans in one owner. -/
 def arrCaller2 : Term := prog{
   fn Bump (l : &mut (Array 2 Nat)) -> Unit { (*l)[0] := 7; (*l)[1] := 8; () };
   let a = Arr(3, 1, 2, 7);
@@ -845,36 +752,31 @@ example : arrCallers.all (fun b => progOk b) = true := by native_decide
 example : arrCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 b)
     = true := by native_decide
 
-/-! ### FINDING — the simulation relation needed an array case, and the harness said so
+/-! ### The simulation relation needed an array case
 
-    The first array body handed to `diffV2` reported a counterexample, and it was a
-    FALSE one. Checking mode ends with
+    Checking mode ends with
 
         b ↦ Arr⟨1 ▷ [3], 1 ▷ σ₀, 1 ▷ [2]⟩
 
-    where executing mode ends with `b ↦ [3, 9, 2]`. Both are right. Merge concatenates
-    runs but leaves a σ body alone — it must, since two σ's have no run to concatenate
-    — so a checking-mode group release, which mints a fresh existential at the
-    segment's owed type, blocks exactly the rejoin the concrete run performs. The
-    values agree; the TREES do not.
+    where executing mode ends with `b ↦ [3, 9, 2]`. Both are right. Merge
+    concatenates runs but leaves a σ body alone — it must, since two σ's have no
+    run to concatenate — so a checking-mode group release, which mints a fresh
+    existential at the segment's owed type, blocks exactly the rejoin the
+    concrete run performs. The values agree; the TREES do not.
 
-    So the relation had to learn ¶1.3's fold: an array is compared up to its snapshot,
+    So the relation learns the fold: an array is compared up to its snapshot,
     which means splitting the concrete run by the symbolic extents and matching
-    segment-wise (`matchVal`'s `§segs`-vs-run case, S9Diff). This is §6.1's
-    already-flagged over-approximation — "a group releases atomically where the
-    concrete machine ends lazily" — arriving for arrays, and ¶3.6 predicts exactly
-    that: "any simulation relation that reconciled the old case reconciles this one".
-    It does, but not for free: the old relation was structural, and arrays are the
-    first values in the calculus whose state form is coarser than their value. Worth
-    knowing before the metatheory is written, since obligation 4 (merge is
-    value-preserving) is what the new case silently assumes. -/
+    segment-wise (`matchVal`'s `§segs`-vs-run case, S9Diff). This is the known
+    over-approximation of a group releasing atomically where the concrete
+    machine ends lazily, arriving for arrays — the old relation was structural,
+    and arrays are the first values in the calculus whose state form is coarser
+    than their value. -/
 
-/-! ## (v) Symbolic element access, the exhaustive split, and where it stops
+/-! ## Symbolic element access, the exhaustive split, and where it stops
 
-    ¶3.5's note on what range places replace: M13's `nth2` carries
-    `pij : Le (S i) j` and `p2 : Le (S j) (Len *v)`, and "the evidence has been
-    threaded through every swap site since M13 … Range places take the same terms and
-    give them their real job". So the obligation at `a[i]` had better BE that term. -/
+    What range places replace: evidence threaded through every swap site as
+    `Le (S i) j`-shaped bounds. Range places take the same terms and give them
+    their real job, so the obligation at `a[i]` had better BE that term. -/
 
 /-! ### Premise (2) must be spelled the way a program writes it
 
@@ -884,9 +786,9 @@ example : arrCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 b)
     First, the end of the range. `Add` recurses on its FIRST argument, so `Add lo cnt`
     is stuck whenever `lo` is symbolic — and at every `a[i]` the count is literally 1,
     making the obligation read `Le (Add i (S Z)) n`. No program writes that, and no
-    lemma in the library produces it. `S i` denotes the same number, is definitionally
-    a constructor tree, and is exactly M14's cursor bound. A concrete count is
-    therefore unrolled into successors; a symbolic one keeps `Add`, where it computes.
+    lemma in the library produces it. `S i` denotes the same number and is
+    definitionally a constructor tree. A concrete count is therefore unrolled
+    into successors; a symbolic one keeps `Add`, where it computes.
 
     Second, the containment is stated LEAF-RELATIVELY when the leaf-relative offset is
     already known. `Le` computes by double `natRec`, so `Le (Add b cnt) (Add b m)` is
@@ -901,7 +803,7 @@ def idxCited : Term := prog{
 example : progOk idxCited = true := by native_decide
 
 -- The same bound serves a width-1 RANGE, so the two spellings of "one slot" agree on
--- what they demand even though they differ on what they hand back (¶2.1).
+-- what they demand even though they differ on what they hand back.
 def rng1Cited : Term := prog{
   fn Rng1Cited (n : Nat, i : Nat, H : Le (S i) n, a : &mut (Array n Nat)) -> Unit {
     let e = &m (*a)[i ; 1 | H]; () };
@@ -917,10 +819,10 @@ example : progRejects idxWeakBound "containment obligation" = true := by native_
 
 /-! ### The exhaustive two-way split, with a call
 
-    ¶5's `split_at_mut` shape: carve the left half against a cited bound, take the rest
-    with `..`, and hand one half to a callee. The residues never leave — `σ_r` is the
-    same σ before and after the call — so the frame is not described, it is simply
-    still there (¶3.6). -/
+    A `split_at_mut` shape: carve the left half against a cited bound, take the
+    rest with `..`, and hand one half to a callee. The residues never leave —
+    `σ_r` is the same σ before and after the call — so the frame is not
+    described, it is simply still there. -/
 
 def threeWayTouch : Term := prog{
   fn ThreeWayTouch (p : Nat, l : &mut (Array p Nat)) -> Unit { () };
@@ -937,13 +839,10 @@ def splitTwo : Term := prog{
   () }
 example : progOk splitTwo = true := by native_decide
 
-/-! ### FINDING — the THREE-way split ¶6's quicksort needs does not check, and the
-    reason is the residue's namelessness rather than anything about the carve
+/-! ### A three-way split does not check, because the residue has no name
 
-    ¶6 writes the migrated quicksort as a three-way carve — left half, pivot slot,
-    right half — and lists its cost honestly as "the partition leaf must now produce
-    its pivot index TOGETHER WITH the two carve licenses". That understates it. Write
-    it out:
+    A three-way carve — left half, pivot slot, right half — needs the partition
+    leaf to produce its pivot index together with two carve licenses:
 
     ```
     let l = &mut (*v)[Z    ; i | h];   -- obligation `Le i n`        — writable
@@ -951,31 +850,31 @@ example : progOk splitTwo = true := by native_decide
     let r = &mut (*v)[S i ; ..];
     ```
 
-    The second carve is base-aligned into the residue leaf, so premise (2) asks for
-    `Le 1 rest` — leaf-relative and correct, and the sharpest possible statement of
-    the obligation. But `rest` is the σ premise (3) minted inside the FIRST carve. It
-    has no binder, so no term of that type can be written, and no license the partition
-    returns can mention it either.
+    The second carve is base-aligned into the residue leaf, so the containment
+    premise asks for `Le 1 rest` — leaf-relative and correct, the sharpest
+    possible statement of the obligation. But `rest` is the σ the residue
+    premise minted inside the FIRST carve. It has no binder, so no term of that
+    type can be written, and no license the partition returns can mention it
+    either.
 
-    So `..` is not enough. It names the residue as a PLACE, which is what ¶3.4's second
-    borrow needs; it does not name the residue's LENGTH, which is what any evidence
-    about the residue, and any call taking the residue, both need. The same wall stops
-    ¶3.6's `merge_into (r : &mut Array q Nat)` from being callable.
+    So `..` is not enough: it names the residue as a PLACE, which is what a
+    second borrow needs, but not the residue's LENGTH, which any evidence about
+    the residue, and any call taking the residue, both need. The same wall stops
+    a callee like `merge_into (r : &mut Array q Nat)` from being callable.
 
-    Three routes. (a) Let the program SUPPLY the residue rather than have the checker
-    mint it — `a[lo ; cnt ; rest | h]`, with premise (3) solving `m ≡ add lo' (add cnt
-    rest)` against the supplied term instead of a fresh σ. This keeps premise (3)
-    exactly as it is (still a solution transition, still no `Sub`), reduces to the
-    current behaviour when omitted, and is ¶8.4's own escape hatch: "name the equation
-    and carry it, rather than solving it". (b) Let the carve BIND its residue in the
-    surface. (c) Σ-typed slices, `Σ (c : Nat). &mut (Array c T)`, which ¶4 claims needs
-    "no new type" — true, but PROBED here and it needs new machinery: `seedTelescope`
-    has no case for a borrow under a type constructor, so the parameter is rejected by
-    `readC`, and `collectResultBorrows` has no dependent-Σ case for returning one.
+    Three routes. (a) Let the program SUPPLY the residue rather than have the
+    checker mint it — `a[lo ; cnt ; rest | h]`, with the residue premise solving
+    `m ≡ add lo' (add cnt rest)` against the supplied term instead of a fresh σ.
+    This keeps that premise exactly as it is (still a solution transition, still
+    no `Sub`) and reduces to the current behaviour when omitted. (b) Let the
+    carve BIND its residue in the surface. (c) Σ-typed slices,
+    `Σ (c : Nat). &mut (Array c T)` — needs new machinery: `seedTelescope` has no
+    case for a borrow under a type constructor, so the parameter is rejected by
+    `readC`, and `collectResultBorrows` has no dependent-Σ case for returning
+    one.
 
-    (a) is the smallest and the one that fits the existing rule. Recorded rather than
-    built: it changes the surface of the design's one new rule, which is the team
-    lead's call, not this milestone's. -/
+    (a) is the smallest and the one that fits the existing rule. Recorded rather
+    than built, since it changes the surface of the checker's one new rule. -/
 
 def pivotCarve : Term := prog defer_check {
   fn PivotCarve (n : Nat, i : Nat, H1 : Le i n, a : &mut (Array n Nat)) -> Unit {
@@ -986,24 +885,23 @@ def pivotCarve : Term := prog defer_check {
   () }
 example : progRejects pivotCarve "containment obligation" = true := by native_decide
 
-/-! ## (vi) The Σ-typed slice, PROBED — ¶4's runtime-length slice, built and settled
+/-! ## The Σ-typed slice, a runtime-length slice
 
-    ¶4 says `Σ (c : Nat). &mut (Array c T)` is "an ordinary Σ over a borrow, which §5.2
-    already declares well-formed. **No new type.**" That is true of the TYPE. It is not
-    true of the machine: §5's second opacity, "borrows stored under a type constructor",
-    had never reached a telescope entry. Two serious attempts, both landed, so the
-    question is answered by a working implementation rather than by argument.
+    `Σ (c : Nat). &mut (Array c T)` is an ordinary Σ over a borrow, well-formed
+    as a TYPE. But a borrow stored under a type constructor had never reached a
+    telescope entry, so the machine needed two attempts.
 
-    ATTEMPT 1, the callee side (`seedTelescope`): the slot holds a genuine pair, so the
-    length is a σ the body can name and the borrow carries an ordinary obligation.
+    ATTEMPT 1, the callee side (`seedTelescope`): the slot holds a genuine pair,
+    so the length is a σ the body can name and the borrow carries an ordinary
+    obligation.
 
-    ATTEMPT 2, the caller side (`processArgs`): the actual is a pair, the capture is the
-    borrow's loan, the length is checked like any other argument.
+    ATTEMPT 2, the caller side (`processArgs`): the actual is a pair, the
+    capture is the borrow's loan, the length is checked like any other
+    argument.
 
-    Both work. **And it does not solve the residue problem**, which is the point of the
-    probe: a caller must PRODUCE the length to construct the pair, so the Σ-slice serves
-    exactly the slices whose length was already nameable — the case that never needed
-    it. The tests below are the settlement, not a feature demo. -/
+    Both work, and neither solves the residue problem: a caller must PRODUCE the
+    length to construct the pair, so the Σ-slice serves exactly the slices whose
+    length was already nameable — the case that never needed it. -/
 
 def sigSlice : Term := prog{
   fn SigSlice (s : Σ (c : Nat). &mut (Array c Nat)) -> Unit { () };
@@ -1019,11 +917,9 @@ def useSlice : Term := prog{
   () }
 example : progOk useSlice = true := by native_decide
 
--- **The pre-migration spelling, kept as a golden** (M34). `let Pair(c, sl) = s;`
--- is not a new program, it is this one — same ids, same names, same `Term`, which
--- is what `rfl` says here. This is the migration's safety argument checked on
--- corpus code rather than on a model of it; `Tests.Sugar` proves the rule, and
--- this is one site standing for the 77 arms that took it.
+-- The `let Pair(c, sl) = s;` sugar desugars to exactly the `match` below — same
+-- ids, same names, same `Term` — which is what `rfl` says here. `Tests.Sugar`
+-- proves the desugaring rule in general; this checks it on real corpus code.
 example : useSlice = prog{
   fn UseSlice (s : Σ (c : Nat). &mut (Array c Nat)) -> Unit {
     match s { Pair(c, sl) => () } };
@@ -1085,27 +981,23 @@ example : (Pure.nf 300 prog defer_check { %(Pure.kLeFn) %(Term.nat 1) %(Term.cto
 example : (Pure.nf 300 prog defer_check { %(Pure.kLeFn) %(Term.nat 1) %(Term.sym 0) } == .const "Unit")
     = false := by native_decide
 
-/-! ## (vii) ROUTE (a) — the program supplies the residue, and ¶6's carve unblocks
+/-! ## Route (a) — the program supplies the residue, and the three-way carve unblocks
 
-    `a[lo ; cnt ; rest | h]` supplies premise (3)'s residue extent instead of letting
-    the checker mint a σ no binder can name. Premise (3) is otherwise untouched — the
-    same solution transition, still no `Sub` — and omitting the slot restores the
-    minting behaviour exactly.
+    `a[lo ; cnt ; rest | h]` supplies the residue premise's extent instead of
+    letting the checker mint a σ no binder can name. That premise is otherwise
+    untouched — the same solution transition, still no `Sub` — and omitting the
+    slot restores the minting behaviour exactly.
 
-    This is the third instance of a house pattern: an OPTIONAL surface element that
-    reifies something the checker already knows, declared rather than inferred, costing
-    nothing when absent. §1.2's `[k]` names the decreasing position; §3.2's `match h :`
-    names the branch equation; `a[lo ; cnt ; rest]` names the residue extent. In all
-    three the checker had the fact and the program could not cite it, and in all three
-    the fix is a binder-free naming rather than new semantics.
+    This is an OPTIONAL surface element that reifies something the checker
+    already knows, declared rather than inferred, costing nothing when absent —
+    the same house pattern as naming a decreasing position or a branch equation.
 
-    **The ordering is the trick.** The supplied equation is solved BEFORE premise (2)
-    is formed, so the obligation is stated over a decomposed extent — and then it often
-    computes away entirely. ¶3.2 says `Le a b` "is precisely the assertion that `b`
-    decomposes as `a` plus something", so supplying the decomposition supplies most of
-    the proof. -/
+    The ordering is the trick: the supplied equation is solved BEFORE the
+    containment premise is formed, so the obligation is stated over a decomposed
+    extent — and then it often computes away entirely, since `Le a b` is
+    precisely the assertion that `b` decomposes as `a` plus something. -/
 
-/-- ¶6's THREE-WAY carve: left half | pivot slot | right half, all three live at once.
+/-- THREE-WAY carve: left half | pivot slot | right half, all three live at once.
 
     ```rust
     let l = &mut (*v)[Z    ; i ; S j | LeAdd i (S j)];
@@ -1113,13 +1005,13 @@ example : (Pure.nf 300 prog defer_check { %(Pure.kLeFn) %(Term.nat 1) %(Term.sym
     let r = &mut (*v)[S i  ; ..];           -- degenerate
     ```
 
-    Exactly the shape ¶6 writes, and exactly the state it describes: "the pivot element
-    sits between two live borrows as a third segment that neither call can see. (Which
-    is correct: the pivot is in its final position and must not move. The calculus is
-    enforcing that, for free, by the same mechanism that keeps the halves apart.)"
+    The pivot element sits between two live borrows as a third segment that
+    neither call can see. The pivot is in its final position and must not move;
+    the calculus enforces that, for free, by the same mechanism that keeps the
+    halves apart.
 
-    The two obligations are the two the design predicts. The first is `Le i (Add i (S j))`
-    — `LeAdd`, which the library already had for M22. The second is `Le 1 (S j)`, which
+    The two obligations are the two predicted. The first is `Le i (Add i (S j))`
+    — `LeAdd`, already in the library. The second is `Le 1 (S j)`, which
     reduces to `Le Z j` and then to ⊤, so **the carve that could not be written at all
     now needs no evidence whatsoever**. -/
 def threeWay : Term := prog{
@@ -1151,9 +1043,6 @@ def threeWayAll : Term := prog{
   () }
 example : progOk threeWayAll = true := by native_decide
 
-
--- (the loan-id reading it replaced is above, CONVERTED to `threeWayAll`.)
-
 -- The pivot carve needs NO cited evidence, which is route (a)'s second payoff and the
 -- reason it beats merely naming the residue: `Le 1 rest` was unwritable, and after
 -- `rest := S j` the obligation is ⊤. Dropping `LeAdd` from the FIRST carve, whose
@@ -1167,13 +1056,13 @@ def threeWayNoFirstEv : Term := prog defer_check {
   () }
 example : progRejects threeWayNoFirstEv "containment obligation" = true := by native_decide
 
-/-- **The DECOMPOSITION CITATION's negative control**, and the one the M25 ruling turns
-    on. Supplying a residue asserts that the leaf's extent decomposes as `Add cnt rest`.
-    When the extent is a telescope parameter's σ that assertion is a constraint on this
-    function's CALLERS, and premise (3) refuses to impose it by unification — the
-    program must CITE the equation, exactly as M17 requires of every other cross-boundary
-    constraint. Before the ruling this checked, and a caller instantiating `n = 2` with
-    `i = j = 5` checked with it and then got STUCK when executed. -/
+/-- The decomposition citation's negative control. Supplying a residue asserts
+    that the leaf's extent decomposes as `Add cnt rest`. When the extent is a
+    telescope parameter's σ that assertion is a constraint on this function's
+    CALLERS, and the residue premise refuses to impose it by unification — the
+    program must CITE the equation, like every other cross-boundary constraint.
+    Without the check, a caller instantiating `n = 2` with `i = j = 5` would
+    check and then get STUCK when executed. -/
 def threeWayUncited : Term := prog defer_check {
   fn ThreeWayUncited (n : Nat, i : Nat, j : Nat, a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; i ; S j | LeAdd i (S j)];
@@ -1229,11 +1118,11 @@ example : progOk threeWayCall = true := by native_decide
 
 /-! ### The extent map's running base is spelled `S^k b` too
 
-    Same reason as R7's range end, found by the third carve: the segment after a
-    width-1 pivot has base `Add i 1`, which is stuck on a symbolic `i` and never
-    converts with the `S i` a program writes. A concrete count advances the base by
-    successors; a symbolic one keeps `Add`, where it computes. Without this,
-    `(*a)[S i ; ..]` cannot find the segment it just created. -/
+    Same reason as the range end: the segment after a width-1 pivot has base
+    `Add i 1`, which is stuck on a symbolic `i` and never converts with the `S i`
+    a program writes. A concrete count advances the base by successors; a
+    symbolic one keeps `Add`, where it computes. Without this, `(*a)[S i ; ..]`
+    cannot find the segment it just created. -/
 
 example : progOk (prog{
   fn BaseSpelling (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
@@ -1245,20 +1134,19 @@ example : progOk (prog{
   () }) = true := by native_decide
 
 
-/-! ## (viii) The ARRAY LIBRARY — ¶1.3's promise, and ¶6's crux claim
+/-! ## The array library
 
-    ¶1.3: "Every lemma in the quicksort library — `Count`, `Sorted`, `Bound`, the order
-    stack — transfers to arrays by replacing `listRec` with `arrRec` and `Cons` with
-    `acons`. Nothing about the migration requires re-deriving that mathematics."
+    Every lemma in the quicksort library — `Count`, `Sorted`, `Bound`, the order
+    stack — transfers to arrays by replacing `listRec` with `arrRec` and `Cons`
+    with `acons`, with nothing about the migration requiring the mathematics to
+    be re-derived. The glue lemma sets `Append ↦ arrCat` and
+    `Cons p b ↦ arrCat (Asingle p) r`, and it IS the array lemma, hypothesis for
+    hypothesis — the same statement modulo the container, so the migration
+    INHERITS that proof rather than opening a new one.
 
-    ¶6, on the glue: "Set `Append ↦ arrCat` and `Cons p b ↦ arrCat (Asingle p) r` and it
-    IS the array lemma, hypothesis for hypothesis — not merely the same shape but the
-    same statement modulo the container … So the migration INHERITS that proof rather
-    than opening a stratum. Claim exactly that and no wider: **one stratum deleted
-    outright** (locality), **one inherited** (the pivot glue), **none invented**."
-
-    Both claims are checkable and both check. The definitions and proofs in `StdLemmas`
-    are their list counterparts with that substitution applied and nothing else. -/
+    Both claims are checkable and both check. The definitions and proofs in
+    `StdLemmas` are their list counterparts with that substitution applied and
+    nothing else. -/
 
 def chkL (tm ty : Term) : Bool :=
   match (do let v ← readC 8000 tm; let t ← readC 8000 ty; hasTypeT 8000 v t).run (seedPure [] []) with
@@ -1286,8 +1174,8 @@ example : chk prog defer_check { Pair(unit, Pair(unit, Pair(unit, unit))) } prog
 example : chk prog defer_check { Pair(unit, Pair(unit, Pair(unit, unit))) } prog defer_check { SortedA 3 Arr(3, 2, 1) }
     = false := by native_decide
 
--- `arrCat (Asingle p) b` IS the array `Cons p b`: the doc's spelling of the pivot
--- splice reaches the cons view by computation, with no lemma relating them.
+-- `arrCat (Asingle p) b` IS the array `Cons p b`: the pivot splice reaches the
+-- cons view by computation, with no lemma relating them.
 example : (pv prog defer_check { arrCat 1 2 (Asingle 9) Arr(1, 2) } == pv prog defer_check { Arr(9, 1, 2) })
     = true := by native_decide
 
@@ -1304,19 +1192,18 @@ example : chkL BoundArrCat BoundArrCatTy = true := by native_decide
     arrCat (asingle p) r`, hypothesis for hypothesis, and nothing else changed. -/
 example : chkL SortedArrCat SortedArrCatTy = true := by native_decide
 
-/-- ¶6's other named survivor: "the one lemma that replaces `CountAppend`/`Take`/`Drop`
-    is `CountArrCat`, which is the same induction". It is the same induction — the
-    dependent Bool-elim on `Eqb x h` transfers unchanged, because `CountA` unfolds on an
-    `acons` exactly as `Count` unfolds on a `Cons`. First try. -/
+/-- `CountArrCat` replaces `CountAppend`/`Take`/`Drop`, and it is the same
+    induction — the dependent Bool-elim on `Eqb x h` transfers unchanged, because
+    `CountA` unfolds on an `acons` exactly as `Count` unfolds on a `Cons`. -/
 example : chkL CountArrCat CountArrCatTy = true := by native_decide
 
 /-! ### The permutation keystone, transferred
 
-    M23's hardest single step: "`Ub`/`Lb` (Σ-chains over the spine) are not natively
-    permutation-invariant. M22 named the route at the positional encoding: cross to the
-    multiset, where the property is `Π x. x > p → Count x l = Z` and permutation-
-    invariance is a one-line `IdTrans`." The crossing transfers with the container like
-    everything else — all eight lemmas, first try. -/
+    `Ub`/`Lb` (Σ-chains over the spine) are not natively permutation-invariant.
+    The route crosses to the multiset instead, where the property is
+    `Π x. x > p → Count x l = Z` and permutation-invariance is a one-line
+    `IdTrans`. The crossing transfers with the container like everything else —
+    all eight lemmas, first try. -/
 
 example : chkL CountAconsHit CountAconsHitTy = true := by native_decide
 example : chkL CountAconsMiss CountAconsMissTy = true := by native_decide
@@ -1327,43 +1214,39 @@ example : chkL NoBelowOfLbA NoBelowOfLbATy = true := by native_decide
 example : chkL LbOfNoBelowA LbOfNoBelowATy = true := by native_decide
 example : chkL LbPermA LbPermATy = true := by native_decide
 
-/-! ### FINDING — the transfer needed three ι-rules to be MECHANICAL rather than merely possible
+/-! ### The transfer needed three ι-rules to be mechanical
 
-    ¶1.3's promise is about the mathematics, and the mathematics did transfer verbatim.
-    What it does not mention is that the array constants have to compute the way the list
-    constructors do, or every step of a transferred proof wants a transport lemma the
-    list proof needs none of.
+    The mathematics transfers verbatim, but the array constants also have to
+    compute the way the list constructors do, or every step of a transferred
+    proof wants a transport lemma the list proof needs none of.
 
-    Two rules, both in `Pure.lean`. `arrCat` computes on an `acons`-headed left argument
-    (`arrCat (acons x xs) b ⇝ acons x (arrCat xs b)`), which is `append (Cons h t) u ⇝
-    Cons h (append t u)`; and `arrRec` fires on the cons view, so a predicate over arrays
-    unfolds on an `acons` exactly as its counterpart unfolds on a `Cons`. Without them
-    `SortedA (arrCat (acons h t) …)` does not UNFOLD, and `SortedAppendPivot`'s proof
-    turns entirely on that unfolding — its own docstring says "Both components are
-    definitional … which is why no `ListRw` transport appears anywhere in this proof."
+    Two rules, both in `Pure.lean`. `arrCat` computes on an `acons`-headed left
+    argument (`arrCat (acons x xs) b ⇝ acons x (arrCat xs b)`), which is
+    `append (Cons h t) u ⇝ Cons h (append t u)`; and `arrRec` fires on the cons
+    view, so a predicate over arrays unfolds on an `acons` exactly as its
+    counterpart unfolds on a `Cons`. Without them `SortedA (arrCat (acons h t) …)`
+    does not UNFOLD, and `SortedAppendPivot`'s proof turns entirely on that
+    unfolding — both components are definitional, so no transport lemma appears
+    anywhere in the proof.
 
-    A third rule was needed and is the one worth recording, because it was invisible
-    until the glue was written: a nonempty RUN on the left with a non-run on the right
-    peels its head into an `acons`. `Asingle p` COMPUTES to the run `[p]`, so ¶6's own
-    spelling `arrCat (Asingle p) r` was stuck for symbolic `r` — the doc's chosen
-    notation could not reach the cons view it is notation FOR. The rule is the same one
-    read through the other view: a literal is a cons spine that happens to be written
-    flat. -/
+    A third rule was invisible until the glue was written: a nonempty RUN on the
+    left with a non-run on the right peels its head into an `acons`. `Asingle p`
+    COMPUTES to the run `[p]`, so the spelling `arrCat (Asingle p) r` was stuck
+    for symbolic `r` — the notation could not reach the cons view it is notation
+    FOR. The rule is the same one read through the other view: a literal is a
+    cons spine that happens to be written flat. -/
 
+/-! ## A verified in-place array sort
 
-
-/-! ## (ix) THE CONVERSION IN MINIATURE — a verified in-place array sort
-
-    Everything above composes here: index places, the carve on a SYMBOLIC array, branch
-    equations, the transferred library, `old *v`, and the §5.4 exit-snapshot audit. The
-    postcondition is M23's quicksort signature at width two —
+    Everything above composes here: index places, the carve on a SYMBOLIC array,
+    branch equations, the transferred library, `old *v`, and the exit-snapshot
+    audit. The postcondition is the quicksort signature at width two —
 
         Σ (hs : SortedA 2 (*a)). (Π x. Id Nat (CountA x 2 (*a)) (CountA x 2 (old *a)))
 
-    — sortedness AND count-preservation over the exit snapshot, with **zero declared
-    backs**. It is not the full quicksort (¶6's partition is a new program, ledger G4),
-    but it is the whole stack end to end on a real in-place mutation, which is what the
-    full one will be made of. -/
+    — sortedness AND count-preservation over the exit snapshot, with zero
+    declared backs. It is not the full quicksort, but it is the whole stack end
+    to end on a real in-place mutation. -/
 
 -- Writing known values through index places, then proving sortedness of the exit.
 def setSorted : Term := prog{
@@ -1394,25 +1277,22 @@ def readTwo : Term := prog{
     let y = (*a)[1];
     () };
   () }
--- Its Ω assertion is recorded LOST below, and until this file migrated the only
--- thing still reading it was `S26Migrate.p24` — a pool, i.e. inventory. So it
--- gets the verdict that pool was computing for it: the declaration checks.
 example : progOk readTwo = true := by native_decide
 
-/-! ### …and at INDEX places the conversion FAILS, for a reason worth having
+/-! ### At INDEX places, the two-segment conversion fails, for a reason worth having
 
-    The deleted Ω assertion read `a`'s payload back as a two-segment node with the
-    takes at distinct positions. The conversion attempted here — take both, refill
-    both, and let the obligation audit demand that the takes were disjoint — does
-    not work, and the twin below is what says so rather than a hunch.
+    A hypothetical Ω-level assertion would read `a`'s payload back as a
+    two-segment node with the takes at distinct positions. The conversion
+    attempted here — take both, refill both, and let the obligation audit
+    demand that the takes were disjoint — does not work, and the twin below is
+    what says so rather than a hunch.
 
-    **Taking index 0 TWICE is ACCEPTED.** §2.1's copy-on-read is why: a concrete
-    `Nat` element is INDEX-KIND, so a take COPIES and leaves no hole, and there is
+    Taking index 0 TWICE is ACCEPTED. Copy-on-read is why: a concrete `Nat`
+    element is INDEX-KIND, so a take COPIES and leaves no hole, and there is
     no linearity at a copyable element type for a body to observe. The segment
-    structure the Ω assertion read is therefore an implementation detail at this
-    element type — unobservable through the language, with the behaviour covered by
-    the executing differential — and the assertion is recorded LOST on exactly that
-    rationale rather than replaced by something weaker that would still be green.
+    structure such an assertion would read is therefore an implementation
+    detail at this element type — unobservable through the language, with the
+    behaviour covered by the executing differential.
 
     The disjointness invariant itself is not lost: `halvesBoth`/`halvesSame` and
     `threeWayAll` above demand it at SEGMENT places, where the payload is an array
@@ -1428,7 +1308,7 @@ def readSame : Term := prog{
 -- The record of why the conversion fails, asserted rather than described.
 example : progOk readSame = true := by native_decide
 
-/-- **The miniature.** An in-place two-element sort over a symbolic borrow, verified
+/-- An in-place two-element sort over a symbolic borrow, verified
     `Sorted ∧ Perm` over the exit snapshot, zero backs. Both paths mutate or not through
     index places, and the audit judges the collapsed payload against a postcondition that
     names `*a` (exit) and `old *a` (entry). -/
@@ -1442,11 +1322,11 @@ def sort2 : Term := prog{
     } else {
       (*a)[0] := y;
       (*a)[1] := x;
-      -- §2.4: the count λ cited the two swapped elements, which is a snapshot of
+      -- The count λ cites the two swapped elements, which is a snapshot of
       -- values that are about to be nowhere in particular. Naming them says which
-      -- pair the equation is about — and note it does NOT matter that the writes
+      -- pair the equation is about — and it does NOT matter that the writes
       -- happened above, because `x` and `y` are index-kind and were copied, not
-      -- moved. The rule asks for the name, not for a different program.
+      -- moved.
       let X0 = x;
       let Y0 = y;
       Pair(Pair(LePredL y x (LebFalseGt x y h), Pair(unit, unit)),
@@ -1455,7 +1335,7 @@ def sort2 : Term := prog{
   () }
 example : progOk sort2 = true := by native_decide
 
-/-! ### Lying twins, one per conjunct — M23's discipline, applied here -/
+/-! ### Lying twins, one per conjunct -/
 
 -- Forget the swap and still claim sortedness. The False branch's goal is `Le x y`,
 -- which is exactly what the branch equation says is FALSE.
@@ -1488,7 +1368,5 @@ def sort2LieCount : Term := prog defer_check {
   () }
 example : progOk sort2LieCount = false := by native_decide
 
-
 end Dllbc.Tests.S24Arrays
 end
--- └── end of what was `S24Arrays.lean` ───────────────────────────────────────────────

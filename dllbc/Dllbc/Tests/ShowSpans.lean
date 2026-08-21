@@ -1,17 +1,12 @@
 import Dllbc.ElabCheck
 
 /-!
-# `show x` — a value made visible, where you put it (docs/18)
+# `show x` (docs/18)
 
-**This file asserts itself.** `Tests/HoverSpans` and `Tests/PointSpans` both carry
-the same limitation — there is no `#guard_msgs` analogue for hover, so their
-pinned positions are checkable only through a language server, one call per case.
-A `show` is a DIAGNOSTIC, and diagnostics are exactly what `#guard_msgs` pins. So
-the same answer becomes assertable by `lake build` purely by changing where it is
-delivered, and everything below is checked by the build rather than by a comment.
-
-`show x` prints, at its own position, exactly what hovering `x` there would say.
-Not a second renderer and not a second query — the same call, forced eagerly.
+`show x` prints, at its own position, exactly what hovering `x` there would say —
+the same computation, delivered as a diagnostic instead of a hover — which makes
+the answer assertable by `lake build` via `#guard_msgs`. Each case pins the
+printed text for one binder/position shape.
 -/
 
 open Dllbc
@@ -20,15 +15,10 @@ namespace Dllbc.Tests.ShowSpans
 
 set_option trace.Dllbc.check false
 
-/-! ## (S1) THE EVOLUTION TRACE — the user's own use case
+/-! ## (S1) One binder, shown at three points as it evolves
 
-    One variable, shown at three points, evolving. This is docs/17's
-    four-points-four-answers borrow with `show`s where the hovers were.
-
-    The middle one is the one worth pausing on: between `let a = *b` and the
-    write, the payload has been MOVED OUT, so the borrow is holding ⊥. A demo
-    that skipped it would be hiding the borrow discipline; showing it is the
-    point of being able to put a probe anywhere. -/
+    Between the move-out (`let a = *b`) and the write, the borrow holds ⊥;
+    the middle `show` pins that. -/
 
 /--
 info: **b ≡ `borrowₘ ℓ0 (Cons (S Z) Nil)`** — comptime-known value
@@ -49,10 +39,9 @@ example : Term := prog{
   let d = *b;
   () }
 
-/-! ## (S2) ERASURE — the kernel never learns the word
+/-! ## (S2) Erasure — `show` adds no node to `Term`
 
-    A program with `show`s is the SAME `Term` as one without. `Term` gains no
-    node, nothing is read, moved or borrowed, and Ω is untouched — so no program
+    A program with `show`s is the same `Term` as one without, so no program
     checks differently for having been probed. -/
 
 example :
@@ -62,20 +51,14 @@ example :
                let d = *b; () })) = true := by
   native_decide
 
-/-! ## (S3) A PARAMETER shows both of its answers
+/-! ## (S3) A parameter shows both of its answers
 
     The type from the source and the contents here — the same two-question form
     a point hover gives, because it is the same call.
 
-    **σ0 prints BARE here, and that is the immutability rule being obeyed rather
-    than a gap.** A delta carries the σ-context as it stood AT that change, and
-    the binding of a borrow parameter is filed by `bindSlot` during
-    `seedTelescopeV` before the σ's type is registered — so at this point the
-    checker genuinely did not yet know it. One statement later the annotation
-    appears. Printing `(σ0 : List Nat)` here would be reporting a fact from the
-    future, which is exactly what docs/17 §1 forbids; the alternative would be to
-    order the seed so the type lands first, which is a change to the checker for
-    a cosmetic gain and is not taken. -/
+    σ0 prints bare here: `bindSlot` files a borrow parameter's binding during
+    `seedTelescopeV`, before the σ's type is registered, so at this point the
+    checker does not yet know it. One statement later the annotation appears. -/
 
 /--
 info: **v : `&mut List Nat`** — here `borrowₘ ℓ0 σ0`
@@ -89,12 +72,11 @@ example : Term := prog{
     () };
   () }
 
-/-! ## (S4) A TRAILING `show` anchors to the final expression
+/-! ## (S4) A trailing `show` anchors to the final expression
 
-    A `show` takes its point from the NEXT statement, because the state entering
-    that statement is the state where the `show` is written. Every block ends in a
-    final expression, so a trailing `show` always has one to anchor to — which is
-    what makes the rule total rather than nearly so. -/
+    A `show` takes its point from the next statement, so the state it reports is
+    the state entering that statement. Every block ends in a final expression,
+    so a trailing `show` always has one to anchor to. -/
 
 /--
 info: **n ≡ `S Z`** — comptime-known value

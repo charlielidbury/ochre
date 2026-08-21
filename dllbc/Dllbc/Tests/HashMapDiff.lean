@@ -2,13 +2,13 @@ import Dllbc.ElabCheck
 import Dllbc.Tests.HashMap
 
 /-!
-# The hashmap flagship's EXECUTING layer
+# HashMap executing-layer tests
 
-The runtime differential (decoders, the trusted Lean-side model, the callers)
-and the borrow-returning ops' executing chain — split from `HashMap.lean` so
-that iterating on the verified chain does not re-run the cap-32 concrete
-executions (the interpreter evaluates the comptime layer too, and Aeneas'
-test1 at capacity 32 is the module's dominant build cost).
+This file runs the hashmap's executing layer: decoders from machine values to
+Lean values, a trusted Lean-side model, and callers that run the DLLBC ops
+concretely and compare the result against the model. It is kept separate from
+`HashMap.lean` so that iterating on the checked layer does not re-run the
+expensive concrete executions.
 -/
 
 section
@@ -25,15 +25,12 @@ open Dllbc.StdLemmas (LeRefl LeAdd LeAddL LeAddSucc LeTrans LeUpR LePredL
 namespace Dllbc.Tests.HashMap
 
 
-/-! ## (xvi) The S1 EXECUTING DIFFERENTIAL
+/-! ## S1 executing differential
 
     The same declarations the checker accepted, run on concrete maps and
-    compared against a trusted Lean-side reference (`runQsA`-style). The
-    callers here are runtime-only: their proof arguments are `unit`, which the
-    machine ignores — E2E rule, runs-to-X assertions only. (A checker-accepted
-    caller needs the size facts threaded through the ensures; S1's `Hroom`
-    additionally needs cap/load knowledge New's fixed ensures does not export,
-    which S2's resize removes — so the checked caller ships with S2.) -/
+    compared against the trusted Lean-side model. These callers are
+    runtime-only: their proof arguments are `unit`, which the machine
+    ignores, so each test is a runs-to-X assertion. -/
 
 def pairOfV : Val → Option (Val × Val)
   | v => match Val.asCtor? v with
@@ -63,8 +60,9 @@ def slotsOfV : Val → Option (List (List (Nat × Nat)))
     | some ("Arr", vs) => vs.mapM (bktOfV 2000)
     | _ => none
 
-/-- Decode a concrete pack: (cap, load, n, buckets). The invariant component is
-    ignored (erased in spirit; the interpreter carries it). -/
+/-- Decode a concrete pack into (cap, load, n, buckets). The invariant
+    component is dropped; it is carried by the interpreter but not needed to
+    state the model. -/
 def hmOfV (v : Val) : Option (Nat × Nat × Nat × List (List (Nat × Nat))) := do
   let (c, r1) ← pairOfV v
   let (l, r2) ← pairOfV r1
@@ -76,8 +74,8 @@ def hmOfV (v : Val) : Option (Nat × Nat × Nat × List (List (Nat × Nat))) := 
   let bs ← slotsOfV s
   pure (cap, load, nn, bs)
 
-/-- The trusted model: overwrite in place on hit, append at the bucket's end
-    on miss — `insert_in_list`'s specified behavior. -/
+/-- The trusted model for one bucket: overwrite the matching entry in place
+    on a hit, otherwise append the new entry at the bucket's end. -/
 def modelInsB (k v : Nat) : List (Nat × Nat) → List (Nat × Nat)
   | [] => [(k, v)]
   | (k2, v2) :: t => if k2 == k then (k, v) :: t else (k2, v2) :: modelInsB k v t
@@ -94,9 +92,9 @@ def modelRun (cap : Nat) (ops : List (Nat × Nat))
        modelIns cap acc.2 kv.1 kv.2))
     (0, List.replicate cap [])
 
-/-- `runProgram` with a caller-chosen step budget: a cap-32 concrete run
-    evaluates the comptime layer too (the interpreter tax) and blows the
-    default 1000-step fuel. -/
+/-- `runProgram` with a caller-chosen step budget: the interpreter also
+    evaluates the comptime layer, so a concrete run can exceed the default
+    1000-step fuel. -/
 def runProgramF (fuel : Nat) (t : Term) : Except String Env :=
   match (do let _ ← readR fuel (atBoundary t); endScope fuel).run
       { initSt with executing := true } with
@@ -129,16 +127,17 @@ def s1RunCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog 
 def s1Expected : Nat × List (List (Nat × Nat)) :=
   modelRun 4 [(5, 70), (1, 10), (5, 71), (9, 90), (2, 20)]
 
--- The fifth distinct-key insert trips the ledger (5·4 > 16), so the map
--- RESIZES to cap 8 and rehashes: 5 leaves the 1/9 collision chain. The
--- rotation move (hm-rotate-resize) PREPENDS each moved node — zero fresh
--- nodes — so same-slot survivors come out reversed: (9,90) before (1,10).
--- FindL + NodupB make the order spec-irrelevant.
+-- The fifth distinct-key insert trips the load threshold (5·4 > 16), so the
+-- map resizes to capacity 8 and rehashes; key 5 leaves the 1/9 collision
+-- chain. The resize move prepends each moved node, so same-slot survivors
+-- come out reversed: (9, 90) before (1, 10). Bucket order does not affect
+-- membership, so this is still a correct instance of the model.
 example : (runHM s1RunCaller ==
     some (8, 32, 4, [[], [(9, 90), (1, 10)], [(2, 20)], [], [], [(5, 71)], [], []]))
     = true := by native_decide
 
--- …and the pre-resize model still pins the cap-4 semantics (two-sided).
+-- The model computed directly at capacity 4 (no resize) matches the
+-- expected pre-resize bucket layout.
 example : (s1Expected == (4, [[], [(5, 71), (1, 10), (9, 90)], [(2, 20)], []]))
     = true := by native_decide
 
@@ -188,7 +187,8 @@ example : (runHM s1GrowCaller ==
     some (8, 32, 4, [[], [(1, 10)], [(2, 20)], [(3, 30)], [(4, 40)], [], [], []]))
     = true := by native_decide
 
--- The empty map runs and decodes: all buckets Nil, n = 0, load = 4·cap.
+-- A freshly created map decodes with every bucket empty, n = 0, and
+-- load = 4·cap.
 def s1NewCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog defer_check {
   let Pair(m0, Ev0) = NewHM(3, unit);
   let y = m0;
@@ -199,14 +199,13 @@ example : (runHM s1NewCaller == some (3, 12, 0, [[], [], []])) = true := by
 
 
 
-/-! ## (xix) GetMut / GetMutOrInsert — executing, with the check status pinned
+/-! ## GetMut / GetMutOrInsert, executing, with the check status pinned
 
-    The ops in the shape the wall analysis selects: total or_insert-style walk,
-    index-place element borrow, presence via a Bool walk, GetMutOrInsert as
-    contains-then-Insert-then-walk so the packed accounting stays TRUE at
-    runtime (the absent-key insert goes through the verified InsertHM). The
-    extended chain is progRejects-pinned (the audit wall above) and exercised
-    by the executing differential below — Aeneas' own test1. -/
+    GetMutHM borrows the entry via a total walk, ContainsHM tests presence
+    via a Bool walk, and GetMutOrInsertHM inserts a default through the
+    verified InsertHM before walking when the key is absent. The checker
+    still rejects this chain (pinned by the assertion below), but it is
+    exercised here to confirm it computes the correct answer at runtime. -/
 
 def hmGmUnder (tail2 : Term) : Term :=
   hmS1Under newRetHonest insRetHonest remRetHonest prog{
@@ -289,21 +288,13 @@ def hmGmUnder (tail2 : Term) : Term :=
     } };
   %tail2 }
 
--- The extended chain's check status, pinned with the audit's needle.
+-- The checker rejects the extended chain; this pins the exact error text.
 example : progRejects (hmGmUnder prog defer_check { () }) "does not have its owed type"
     = true := by native_decide
 
-/-- AENEAS' test1 (icfp22/hashmap.rs), the differential the doc fixes: keys
-    that all collide in slot 0 by construction and exceed the capacity;
-    overwrite via the get_mut path; remove; re-check the survivors.
-
-    It used to be cap 32 with keys 0/128/1024/1056 to line up with Aeneas
-    verbatim, but numerals are unary, and that run cost 970s of every fresh
-    build (~16 of its 24 minutes, profiled 2026-08-20: the normalizer's spine
-    walk over the giant S-chains). Cap 8 with keys 0/16/64/80 is the same test
-    — same collision structure, same op sequence — at 1.5s; lining up with
-    Aeneas' literal constants will only be possible once we have non-unary
-    numbers. -/
+/-- Keys 0, 16, 64, and 80 all reduce to slot 0 at capacity 8, so they chain
+    in one bucket. Overwrite key 64's value through GetMutHM, then remove
+    key 64, and check that the surviving three entries decode correctly. -/
 def gmTest1 : Term := hmGmUnder prog defer_check {
   let Pair(m0, Ev0) = NewHM(8, unit);
   let b1 = &m m0;
@@ -327,9 +318,10 @@ example : (runHM gmTest1 ==
       (List.replicate 8 ([] : List (Nat × Nat))).set 0
         [(0, 42), (16, 18), (80, 256)])) = true := by native_decide
 
-/-- The or_insert path, both arms: key 5 absent (inserts default 7 through the
-    verified InsertHM, so n is accounted), then written through the returned
-    borrow; key 5 again (present — no insert), written again. -/
+/-- Both arms of the or_insert path: key 5 absent (inserts default 7 through
+    the verified InsertHM, so n is accounted for), written through the
+    returned borrow; then key 5 again (present, so no insert), written
+    again. -/
 def gmTest2 : Term := hmGmUnder prog defer_check {
   let Pair(m0, Ev0) = NewHM(4, unit);
   let b1 = &m m0;

@@ -2,62 +2,33 @@ import Dllbc.Std
 import Dllbc.StdLemmas
 
 /-!
-# `EagerRec` — the normalizer forces a recursor's recursive result (§4)
+# `EagerRec` — the normalizer forces a recursor's recursive result
 
-`whnfN` used to hand a recursor's step function the recursive call as an
-unreduced `Sem` spine and β-bind it by extending an environment. `Sem` has no
-host thunks and reduction has no write-back, so every USE of that binder
-re-derived it: an arm mentioning `Rec` twice cost twice the whole sub-recursion,
-per level, which is exponential in the depth. `Pure.deepForce` fixes it by
-forcing the recursive argument to a call-by-value VALUE before the arm is entered
-— constructors forced all the way down, closures left closed, neutrals stuck.
+This file tests that the normalizer forces a recursor's recursive result to a
+value before entering an arm that uses it. Without the force, an arm that
+mentions the recursive call twice re-derives the whole sub-recursion each
+time it is used, doubling the cost at every level — exponential in the depth.
+With the force, the textbook `mod` spelling below computes in linear time
+instead.
 
-The force is asked for only when the arm MAKES the call (`Pure.armUsesRec`), and
-that gate is not an optimisation, it is what keeps the change from being a
-catastrophe. See the commit: forcing unconditionally costs `binomial(b, a)` on
-this very file's `Mod`, because `eqb`'s inner `elim B { Z => False, S (B') Rec =>
-RecA B' }` ignores its `Rec` — it is a case split, not a call, and in this
-calculus a case split on a `Nat` can only be spelled as a recursion.
+The force is applied only when an arm actually makes the recursive call,
+rather than merely case-splitting on the recursor's argument (which, in this
+calculus, can only be spelled as a recursion). Forcing unconditionally would
+itself be super-linear on arms that never call `Rec`, so the gate matters as
+much as the force does.
 
-## The shape that used to be exponential
-
-`ModT` below is the textbook `mod`: `mod (S a') b = let r = S (mod a' b) in
-if r == b then Z else r`. `Rec` occurs in the scrutinee AND in the `False`
-branch, which is exactly the doubling. The `hm-probe-mod` lane measured this
-shape at **87 s for `Mod 20 32`**, doubling per unit of dividend, and had to
-rewrite `Mod` into an accumulator whose step mentions `Rec` once to get a usable
-one. That rewrite is no longer required — the textbook spelling computes.
-
-## Measured scaling, divisor 32
-
-Wall clock of one `Pure.nf 4000000` per dividend, `lake env lean` against built
-oleans (the harness `hm-probe-mod` used, so the 87 s is the same kind of number):
-
-| dividend |  4 |  8 | 16 | 20 | 32 | 64 | 128 | 256 | 512 | 1056 |
-|----------|----|----|----|----|----|----|-----|-----|-----|------|
-| ms       |  1 |  2 |  5 |  6 | 15 | 27 |  51 | 100 | 200 |  425 |
-
-Linear — doubling the dividend doubles the time, and the doubling PER UNIT is
-gone. `Mod 20 32`: 87 s to 6 ms. `Mod 1056 32` — the Aeneas hashmap's own test
-key at its own capacity, which the old normalizer could not finish — 425 ms.
-
-## The cost model this leaves
-
-Eager changes cost, never answers, and `M2` below is the golden for the second
-half of that. What it does change: an arm that names its recursive result pays
-for it in full even down a branch that discards it, so an early-exit-shaped
-recursion costs the whole depth. An arm that does not name it at all pays
-nothing, because no call is made.
+Measured effect: `Mod 20 32` fell from 87 s to 6 ms, and time now scales
+linearly with the dividend instead of doubling per unit.
 -/
 
 namespace Dllbc.Tests.EagerRec
 open Dllbc
 
-/-! ## M1 — the textbook `mod`, written the way it used to be forbidden -/
+/-! ## M1 — the textbook `mod` -/
 
-/-- `mod a b`, the shape a textbook writes and the old normalizer could not run:
-    the recursive result is the scrutinee of the `Eqb` test AND the value the
-    `False` branch returns. -/
+/-- `mod a b`: the recursive result is both the scrutinee of the `Eqb` test and
+    the value the `False` branch returns — the shape that doubles cost without
+    forcing. -/
 def ModTFn : Term := prog defer_check {
   λ (A : Nat). λ (B : Nat).
     elim A return (λ (Am : Nat). Nat) {
@@ -69,8 +40,9 @@ def ModTFnT : Dllbc.Term := ModTFn
 
 def pv (t : Term) : Term := Pure.nf 4000000 t
 
-/-- Dividends are SPLICED as `Term.nat`, not written as surface numerals: a
-    surface `1056` would be a 1056-deep Lean syntax tree to elaborate. -/
+/-- Dividends are spliced in as `Term.nat` rather than written as surface
+    numerals: a surface `1056` would be a 1056-deep Lean syntax tree to
+    elaborate. -/
 def modOf (a b : Nat) : Term := pv prog{ %ModTFnT %(Term.nat a) %(Term.nat b) }
 
 example : (modOf 7 3).natOf? == some 1 := by native_decide
@@ -80,36 +52,30 @@ example : (modOf 0 3).natOf? == some 0 := by native_decide
 example : (modOf 20 32).natOf? == some 20 := by native_decide
 example : (modOf 999 7).natOf? == some 5 := by native_decide
 
--- Real sizes: the hashmap's keys at the hashmap's capacity. `Mod 20 32` alone
--- took 87 s before this change, and `Mod 1056 32` was out of reach entirely.
+-- Dividends matching the hashmap's real keys and bucket capacity.
 example : (modOf 32 32).natOf? == some 0 := by native_decide
 example : (modOf 128 32).natOf? == some 0 := by native_decide
 example : (modOf 1024 32).natOf? == some 0 := by native_decide
 example : (modOf 1056 32).natOf? == some 0 := by native_decide
 example : (modOf 1057 32).natOf? == some 1 := by native_decide
 
-/-! ## M2 — eager changes COST, never ANSWERS
+/-! ## M2 — eager cost is separate from the answer -/
 
-    Three ways an arm can fail to use what it was handed, and the answer is the
-    same in all of them. The interesting one is `ZeroOut`: its arm NAMES `Rec`, so
-    the call is made and forced, but the branch that runs discards it. -/
-
-/-- The arm ignores `Rec` outright — a case split wearing a recursion's clothes.
-    No call is made, so this is `Z` at any depth and costs nothing. -/
+/-- The arm ignores `Rec`, so no recursive call is made: the result is `Z` at
+    any depth, at no cost. -/
 def DiscardFn : Term := prog defer_check {
   λ (A : Nat). elim A return (λ (Am : Nat). Nat) { Z => Z, S (A') Rec => Z } }
 def DiscardFnT : Dllbc.Term := DiscardFn
 
-/-- The arm ignores `Rec` and answers with the PREDECESSOR instead. -/
+/-- The arm ignores `Rec` and returns the predecessor `A'` instead. -/
 def PredFn : Term := prog defer_check {
   λ (A : Nat). elim A return (λ (Am : Nat). Nat) { Z => Z, S (A') Rec => A' } }
 def PredFnT : Dllbc.Term := PredFn
 
-/-- The arm names `Rec`, so the recursive call is made and forced to a value —
-    and then the branch that runs throws it away. The scrutinee is `Eqb 1 0`,
-    which is `False` at every level, so the answer is `Z` however deep it went.
-    This is the cost/answer split stated as a term: full depth is paid, and the
-    result is what lazy reduction gave. -/
+/-- The arm names `Rec`, so the call is made and forced to a value, and then the
+    branch that runs discards it. The scrutinee `Eqb 1 0` is `False` at every
+    level, so the result is `Z` regardless of depth: full cost paid, same
+    answer either way. -/
 def ZeroOutFn : Term := prog defer_check {
   λ (A : Nat). elim A return (λ (Am : Nat). Nat) {
     Z => Z,
@@ -127,25 +93,20 @@ example : (app1 PredFnT 100).natOf? == some 99 := by native_decide
 example : (app1 ZeroOutFnT 0).natOf? == some 0 := by native_decide
 example : (app1 ZeroOutFnT 64).natOf? == some 0 := by native_decide
 
-/-! ### And it holds over a NEUTRAL, which is where forcing could have gone wrong
+/-! ### Forcing over a stuck neutral -/
 
-    `S (S x)` for a free `x` fires the recursor twice and then gets stuck. The
-    discarding arms never look, and `ZeroOut` forces a spine that contains a
-    neutral — `deepForce` has to leave that stuck rather than treat it as an
-    error or as a value. All three still answer `Z`. -/
-
+-- `S (S x)` for free `x` fires the recursor twice, then gets stuck; `deepForce`
+-- must leave the stuck neutral alone rather than treating it as an error.
 def openTwo : Term := prog defer_check { S(S(%(Term.pvar "x"))) }
 
 example : (pv prog defer_check { %DiscardFnT %openTwo }).natOf? == some 0 := by native_decide
 example : (pv prog defer_check { %ZeroOutFnT %openTwo }).natOf? == some 0 := by native_decide
 
-/-! ### The two spellings agree
+/-! ### The two spellings agree -/
 
-    `ModC` is the accumulator `hm-probe-mod` had to write because the textbook
-    shape was unusable — its step names `Rec` once and asks its question of an
-    ARGUMENT. It is no longer the only viable spelling, and the point of keeping
-    it here is that it must still give `ModT`'s answers. -/
-
+-- `ModC` is an accumulator-style alternative to `ModT`: its step names `Rec`
+-- once and questions an argument rather than the recursive result. Kept here
+-- to check it agrees with `ModT`, not because it is required.
 def NextRFn : Term := prog defer_check {
   λ (R : Nat). λ (C : Nat).
     elim C return (λ (Cz : Nat). Nat) { Z => Z, S (C') Rc => S(R) } }
@@ -164,7 +125,7 @@ def ModCFn : Term := prog defer_check {
         Rec B (%NextRFnT R C) (%NextCFnT B C) } }
 def ModCFnT : Dllbc.Term := ModCFn
 
-/-- `ModC`'s wrapper, matching `hm-probe-mod`'s `Mod`. -/
+/-- Wrapper for `ModCFn`, mirroring its accumulator-style calling convention. -/
 def modCOf (a b : Nat) : Term := pv prog{
   (λ (A : Nat). λ (B : Nat).
     elim B return (λ (Bz : Nat). Nat) {

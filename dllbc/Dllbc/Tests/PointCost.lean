@@ -2,27 +2,15 @@ import Dllbc
 open Dllbc
 
 /-!
-# docs/17 §9 — the go/no-go harness for point-delta recording
+A timing harness for point-delta recording (docs/17): times the flagship
+checks with recording on and off and reports the delta volume between them.
+The array flagship gets the full treatment because recording hangs off
+`refineSym`, which fires during array place evaluation, so it is the program
+that actually exercises the checker's recording path.
 
-**NOT in the default target.** Nothing imports this, so `lake build` does not
-build it and the suite pays nothing; run it with
+Not in the default build target — nothing imports this module, so `lake
+build` does not build it. Run it directly with
 `lake build Dllbc.Tests.PointCost` (~30 s, dominated by the checks themselves).
-
-It times the two flagships — the ARRAY one is the point, because recording hangs
-off `refineSym` and `refineSym` fires during array place evaluation — with the
-recording on and off, and reports the delta volume alongside.
-
-**Why a harness and not per-module elaboration timings.** Those were tried first
-and are uninformative on today's corpus: `Tests/HashMap` has 261
-`prog defer_check` blocks against 18 checked ones, so its build time is
-`native_decide` and compilation rather than elaboration-time checking, and the
-whole module records 431 deltas. Timing it measures the wrong thing. This
-measures the checker on a program that actually exercises it.
-
-**`IO.lazyPure` is load-bearing.** A plain `let r := f ()` is a lazy binding, so
-the first version of this harness timed an unevaluated thunk and reported 0 ms
-for work that took twenty minutes. Anything that reports suspiciously round
-zeros here is measuring nothing.
 -/
 
 def runN (n : Nat) (pt : Bool) (t : Term) : Nat := Id.run do
@@ -40,10 +28,10 @@ def timeIt (label : String) (f : Unit → Nat) : IO Unit := do
   let r ← IO.lazyPure (fun _ => f ())
   let t1 ← IO.monoMsNow
   IO.println s!"{label}: {t1-t0}ms  (sum {r})"
-/-- The REPLAY half: what one hover costs. `factsAt` replays the deltas up to a
-    point and reads a binder out — the work docs/17 §2 moved from recording to
-    reading. Asked at every statement key in the stream, which is the worst case a
-    reader can produce by hovering everything. -/
+/-- The replay half: what one hover costs. `factsAt` replays the deltas up to a
+    point and reads a binder out — the work moved from recording to reading.
+    Asked at every statement key in the stream, the worst case a reader can
+    produce by hovering everything. -/
 def replayAll (paths : List (List PointDelta)) : Nat := Id.run do
   let keys := (paths.flatten.filterMap (fun d => d.stmtKey))
   let mut n := 0

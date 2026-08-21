@@ -6,53 +6,33 @@ import Dllbc.StdLemmas
 import Dllbc.Tests.Diff
 
 /-!
-# `Dllbc.Tests.Universe` — the universe rule (M35)
+# `Dllbc.Tests.Universe` — the universe rule
 
-`hasTypeT` had arms for the binder formers — `Type`, `Π`, `Σ`, `Id` all answered
-`Type` — and **nothing at all for the rest of the type language**. `Nat`, `Bool`,
-`Unit`, `Bot`, `List T` and `Array n T` fell through to the M5 deferral
-("cannot type value …"), so the judgment `Nat : Type` was not false, it was an
-ERROR.
-
-That one hole cost value-level genericity outright, and it was measured twice
-before it was closed:
-
-  * the hm probe (O3) found that DECLARING `fn Poly (T : Type, x : T) -> T { x }`
-    works — `T` is capital, so it is a comptime binder, and a declaration never
-    has to type its own telescope's arguments — while CALLING it, `Poly(Nat, 5)`,
-    dies checking the actual `Nat` against the parameter type `Type`. The same
-    judgment is what a `Σ` packing a type needs, so `Pair(Nat, 5)` at
-    `Σ (T : Type). T` failed for the identical reason;
-  * the pin lane hit the classification half of it and worked around it with a
-    SYNTACTIC head-recogniser, because there was no semantic "is this a type" to
-    ask.
-
-§1 pins the formation rules, §2 the two refusals, §3 the payoff — the probe's
-failing battery, green.
+Tests the universe rule: which terms inhabit `Type`. The ground formers
+(`Nat`, `Bool`, `Unit`, `Bot`), the parameterised formers (`List`, `Array`),
+and the binder formers (`Π`, `Σ`, `Id`) are all types. A binder's mode marker
+(comptime `⇝τ`, borrow `&mut`) is not a type — a borrow-moded `Π` is a
+function signature, well-formed but not a type, so checking it against
+`Type` answers `false`, not an error. The payoff is value-level genericity:
+a function like `fn Poly (T : Type, x : T)` can be called at any type.
 
 ## The one design flag: `Type : Type`
 
-This checker is type-in-type, and in a full theory that is Girard's paradox: the
-logic is inconsistent, and a closed term of `Bot` can be built. It is accepted
-here because the repo's standing policy is **consistency deferred for soundness**
-— the property being built is that a checked program does at RUN time what its
-types say, and a universe hierarchy buys nothing for that while costing every
-former a level argument.
-
-What M35 changes is the arm's STANDING, not its verdict. `| .type => …` was
-already in `hasTypeT` before this lane, as an unreachable-in-practice leaf. The
-formation rules below now *depend* on it — `Σ (T : Type). T` is a type only
-because `Type` is one, and that Σ is precisely the shape the hashmap flagship
-wants — so it is load-bearing from here on. Refusing it is not cheap: it would
-take the payoff in §3 with it. Recorded rather than discovered.
+This checker is type-in-type, which is inconsistent in a full theory
+(Girard's paradox — a closed term of `Bot` can be built). It is accepted
+here because the standing policy is consistency deferred for soundness: the
+property being built is that a checked program does at run time what its
+types say, and a universe hierarchy buys nothing for that while costing
+every former a level argument. `Type : Type` is load-bearing rather than an
+unreachable leaf: `Σ (T : Type). T` is a type only because `Type` is one,
+and that shape is what the generic-function tests below depend on.
 -/
 
 namespace Dllbc.Tests.Universe
 
 open Dllbc
 
-/-- Type-check a closed term against a closed type in the pure seed (as §23/§24
-    of `ArraySort`, `Arrays`, `OpaqueFill`). -/
+/-- Type-check a closed term against a closed type in the pure seed. -/
 def chkL (tm ty : Term) : Bool :=
   match (do let v ← readC 8000 tm; let t ← readC 8000 ty; hasTypeT 8000 v t).run (seedPure [] []) with
   | .ok r _ => r
@@ -70,10 +50,9 @@ def chkRawMsg (tm ty : Term) : String :=
 
 def U : Term := prog defer_check { Type }
 
-/-- What the executing machine leaves in ONE binding (as `OpaqueFill`'s
-    `runBinding`). The whole final Ω is not the assertion here: it also holds the
-    declaration's own closure, whose printed body is not what these programs
-    claim. -/
+/-- What the executing machine leaves in ONE binding. The whole final Ω is not
+    the assertion here: it also holds the declaration's own closure, whose
+    printed body is not what these programs claim. -/
 def runBinding (t : Term) (name : String) : Option String :=
   match runProgram t with
   | .ok env => (env.lookup name).map Val.pretty
@@ -81,16 +60,16 @@ def runBinding (t : Term) (name : String) : Option String :=
 
 /-! ## §1 The formation rules
 
-    Each type former, at `Type`. The four ground constants first — these are the
-    ones `Poly(Nat, 5)` died on. -/
+    Each type former, checked against `Type`. The four ground constants
+    first. -/
 
 example : chkL prog defer_check { Nat } U = true := by native_decide
 example : chkL prog defer_check { Bool } U = true := by native_decide
 example : chkL prog defer_check { Unit } U = true := by native_decide
 example : chkL prog defer_check { Bot } U = true := by native_decide
 
-/-- `Type : Type` — the flagged arm, asserted so the decision has a test and not
-    just a comment. See the module header. -/
+/-- `Type : Type` — the design flag from the module header, asserted
+    directly. -/
 example : chkL U U = true := by native_decide
 
 /-- The two parameterised formers, including nested, which is what makes the
@@ -124,20 +103,18 @@ example : chkL prog defer_check { Array 3 } U = false := by native_decide
 
 /-! ## §2 The two binder-mode markers, refused
 
-    `⇝τ` and `&mut (s : τ ↝ τ′)` are written where a type goes and are not types:
-    they say how a BINDER takes its argument — comptime snapshot, runtime borrow
-    — which is the doctrine stated at both of their definitions in `Syntax.lean`.
-    The refusal is an ARM rather than a fall-through, because two things lean on
-    it and a fall-through would give today's verdict while losing tomorrow's
-    reason:
+    `⇝τ` and `&mut (s : τ ↝ τ′)` are written where a type goes and are not
+    types: they say how a binder takes its argument — comptime snapshot,
+    runtime borrow — as defined in `Syntax.lean`. The refusal is an explicit
+    arm rather than a fall-through, for two reasons:
 
-      * a `Π` whose domain is `&mut …` is a function SIGNATURE, and `hasType`
+      * a `Π` whose domain is `&mut …` is a function signature, and `hasType`
         already refuses to admit any value at one (`hasBorrowT ty` guards the
         closure arm) — the two refusals are the same rule, read from the two
         ends;
-      * `docs/12-design-borrow-refounding.md`'s proof-fragment exclusion IS "no
-        `borrowT` inhabits the universe". If the marker ever became a type, a
-        proof term could quantify over a borrow. -/
+      * borrow types are excluded from the proof fragment: no `borrowT` may
+        inhabit the universe, or a proof term could quantify over a
+        borrow. -/
 
 example : strContains (chkRawMsg (.cmpT (.const "Nat")) .type) "binder MODE" = true := by
   native_decide
@@ -155,13 +132,13 @@ example :
     is already shut, deliberately. -/
 example : chkL prog defer_check { &mut Nat } U = false := by native_decide
 
-/-! ## §3 The payoff — the hm probe's O3 battery, green
+/-! ## §3 The payoff — value-level genericity
 
-    Every assertion here was a recorded FAILURE in the probe. -/
+    A generic function callable at any type, and a `Σ` that packs a type
+    together with a value of it. -/
 
-/-- (a) A `Σ` packing a type: the existential the hashmap's slot vocabulary wants.
-    The first component is checked at `Type` — the judgment that did not exist —
-    and the second at whatever the first turned out to be, which is what makes
+/-- (a) A `Σ` packing a type: the first component is checked at `Type`, and
+    the second at whatever the first turned out to be, which is what makes
     the pack dependent rather than a pair of unrelated things. -/
 def sigTy : Term := prog defer_check { Σ (T : Type). T }
 example : chkL prog defer_check { Pair(Nat, 5) } sigTy = true := by native_decide
@@ -170,15 +147,16 @@ example : chkL prog defer_check { Pair(List Nat, Cons(1, Nil)) } sigTy = true :=
 /-- …and it DISCRIMINATES: the payload must inhabit the type that was packed. -/
 example : chkL prog defer_check { Pair(Bool, 5) } sigTy = false := by native_decide
 
-/-- (b) A generic `fn`, DECLARED — which already worked, kept as the control that
-    isolates the call as the thing that changed. -/
+/-- (b) A generic `fn` declaration, kept as a control: declaring a generic
+    function does not itself exercise the universe rule, only calling one
+    does. -/
 def polyDecl : Term := prog{
   fn Poly (T : Type, x : T) -> T { x };
   () }
 example : progOk polyDecl = true := by native_decide
 
-/-- (c) …and CALLED, which is the headline. `Poly(Nat, 5)` checks the actual
-    `Nat` against the parameter type `Type`, and that judgment is M35's. -/
+/-- (c) …and called: `Poly(Nat, 5)` checks the actual argument `Nat` against
+    the parameter type `Type`. -/
 def polyCall : Term := prog{
   fn Poly (T : Type, x : T) -> T { x };
   let y = Poly(Nat, 5);
@@ -217,10 +195,10 @@ example : progOk polyList = true := by native_decide
 example : progRuns polyList = true := by native_decide
 example : runBinding polyList "l" = some "Cons (S (S (S (S (S Z))))) Nil" := by native_decide
 
-/-- (f) The composite `new_with_capacity` wanted: a generic fill whose return
-    type is `Array n T` at a SYMBOLIC length and a comptime element type. Both
-    of the `Array` arm's premises are live here — `n : Nat` against a telescope
-    σ, and `T : Type` against the comptime parameter. -/
+/-- (f) A generic fill function whose return type is `Array n T` at a
+    symbolic length and a comptime element type. Both of the `Array` arm's
+    premises are live here — `n : Nat` against a telescope σ, and `T : Type`
+    against the comptime parameter. -/
 def MkFillFn : Term := prog defer_check {
   λ (T : Type). λ (X : T). λ (N : Nat). elim N return (λ (Nm : Nat). Array Nm T) {
     Z => Arr(),
@@ -234,14 +212,11 @@ def polyArr : Term := prog{
   () }
 example : progOk polyArr = true := by native_decide
 
-/-! ## §4 The binder formers EARN the universe
+/-! ## §4 The binder formers, checked recursively
 
-    `Π`, `Σ` and `Id` had arms before M35, and each was an unconditional "yes":
-    any `Π` whatsoever was a type. That was sound only because nothing could
-    reach them — with no rule for `Nat : Type` there was no `Type`-typed position
-    for a former to sit in. §1's arms create those positions, so the formers are
-    checked recursively now, and these are the cases that answer differently
-    because of it. -/
+    `Π`, `Σ` and `Id` are types only if their components are: a domain, a
+    codomain, or an `Id`'s carrier and endpoints that fail to be types (or
+    fail to inhabit them) make the whole former `false`. -/
 
 /-- A codomain that is not a type. -/
 example : chkL prog defer_check { Π (x : Nat) → 5 } U = false := by native_decide
@@ -262,32 +237,31 @@ example : chkL prog defer_check { Π (T : Type) → Π (X : T) → T } U = true 
 example : chkL prog defer_check { Π (n : Nat) → Array n (List Nat) } U = true := by native_decide
 example : chkL prog defer_check { Σ (c : Nat). Array c Nat } U = true := by native_decide
 
-/-- **A borrow-moded binder is a `false`, not §2's error.** `Π (v : &mut τ) → …`
-    is a well-formed thing — a function SIGNATURE, which is where `fsig` keeps
-    one — that does not inhabit `Type`. Asking directly whether `&mut τ` is a
-    type is the category error §2 answers. Two questions, two answers, and the
-    telescope-position one must not be routed into the other by recursion.
+/-- A borrow-moded binder is a `false`, not §2's error. `Π (v : &mut τ) → …`
+    is a well-formed thing — a function signature, which is where `fsig`
+    keeps one — that does not inhabit `Type`. Asking directly whether `&mut
+    τ` is a type is the category error §2 answers; the telescope-position
+    question must not be routed into that one by recursion.
 
-    The check is `atUniverse`'s second conjunct — `hasBorrowT` doing the job
-    `docs/12-design-borrow-refounding.md` §4.2 assigns it: "borrow types are
-    excluded from the proof fragment — a `borrowT` may not occur inside an `Id`,
-    inside a `Σ` a proof inhabits, or anywhere `Pure.nf` output is consumed as a
-    proof term". -/
+    The check is `atUniverse`'s second conjunct: `hasBorrowT` enforces that
+    borrow types are excluded from the proof fragment — a `borrowT` may not
+    occur inside an `Id`, inside a `Σ` a proof inhabits, or anywhere `Pure.nf`
+    output is consumed as a proof term. -/
 example :
   chkRawMsg (.pi "v" (.borrowT "s" (.const "Nat") (.const "Nat")) (.const "Nat")) .type
     = "ok false" := by native_decide
 
-/-- The CODOMAIN is in the exclusion too, and it has to be: `Π (x : Nat) → &mut
-    Nat` is a signature as much as the previous one is (a `fn` returning a
-    borrow), and if only the domain were tested the recursion would reach the
-    codomain, hit §2's arm, and throw where it owes a verdict. `atUniverse` tests
-    the whole former, which is why this is one check and not five. -/
+/-- The codomain is in the exclusion too: `Π (x : Nat) → &mut Nat` is a
+    signature as much as the domain case is (a `fn` returning a borrow), and
+    if only the domain were tested the recursion would reach the codomain,
+    hit §2's arm, and throw where it owes a verdict. `atUniverse` tests the
+    whole former, which is why this is one check and not five. -/
 example :
   chkRawMsg (.pi "x" (.const "Nat") (.borrowT "s" (.const "Nat") (.const "Nat"))) .type
     = "ok false" := by native_decide
 
-/-- Same premise, same answer, at a `List` — `List (&mut T)` is a runtime value
-    only, which is 12- §4.2's own example of what the exclusion is for. -/
+/-- Same premise, same answer, at a `List` — `List (&mut T)` is a runtime
+    value only. -/
 example :
   chkRawMsg (.app (.const "List") (.borrowT "s" (.const "Nat") (.const "Nat"))) .type
     = "ok false" := by native_decide
@@ -295,10 +269,10 @@ example :
   chkRawMsg (.sigmaT "c" (.const "Nat") (.borrowT "s" (.const "Nat") (.const "Nat"))) .type
     = "ok false" := by native_decide
 
-/-- The COMPTIME marker is the opposite case, and the asymmetry is the point: `⇝`
-    is a legal binder mode on a domain, so a `Π` carrying one is an ordinary
-    type — the arm strips before it checks. A `Σ` strips its TAIL too, since
-    `Σ0 (x : A). P` is the comptime-second-component spelling (M33). -/
+/-- The comptime marker is the opposite case, and the asymmetry is the point:
+    `⇝` is a legal binder mode on a domain, so a `Π` carrying one is an
+    ordinary type — the arm strips before it checks. A `Σ` strips its tail
+    too, since `Σ0 (x : A). P` is the comptime-second-component spelling. -/
 example : chkRawMsg (.pi "x" (.cmpT (.const "Nat")) (.const "Nat")) .type = "ok true" := by
   native_decide
 example :
@@ -307,11 +281,9 @@ example :
 
 /-! ## §5 Neutral types
 
-    A type need not be closed. Both neutral readings were already in the
-    judgment and neither needed a new arm — what they needed was for the
-    formations above to exist, so that a σ or a stuck spine could be REACHED in
-    a `Type`-typed position. Pinned here because "the universe rule" is not the
-    rule until the open cases are covered too. -/
+    A type need not be closed: a σ (a telescope variable) or a stuck spine
+    can also inhabit `Type`, once the formation rules above give them a
+    `Type`-typed position to be reached in. -/
 
 /-- Against a seeded `sctx`: `σ0 : Type` is what a telescope's comptime type
     parameter leaves behind, and the `symOf?` case at the top of the judgment
@@ -339,10 +311,11 @@ example :
   chkS [(0, prog defer_check { Π (x : Nat) → Type })] prog defer_check { %(Term.sym 0) 3 } .type = "ok true" := by
   native_decide
 
-/-- A STUCK SPINE that lands in `Type`: `OptP`, the hm probe's `Σ (Bool)` Option,
-    is a type-valued comptime fn — a `boolRec` whose motive is `λ _. Type`. At a
-    symbolic tag it does not reduce, and the spine case synthesizes `Type` from
-    the motive, which is what makes a type-level `match` a type. -/
+/-- A stuck spine that lands in `Type`: `OptP` is a type-valued comptime
+    function — a `boolRec` whose motive is `λ _. Type` — encoding `Option`
+    via `Σ (Bool)`. At a symbolic tag it does not reduce, and the spine case
+    synthesizes `Type` from the motive, which is what makes a type-level
+    `match` a type. -/
 def OptP : Term := prog defer_check {
   λ (B : Bool). λ (T : Type). elim B return (λ (Bm : Bool). Type) {
     True => T,
@@ -350,24 +323,21 @@ def OptP : Term := prog defer_check {
 example : chkS [(0, .const "Bool")] prog defer_check { %OptP %(Term.sym 0) Nat } .type = "ok true" := by
   native_decide
 
-/-- …and the same spine under a binder, which is the type the probe's Option
-    encoding actually is. -/
+/-- …and the same spine under a binder, which is the type the `Σ (Bool)`
+    Option encoding actually is. -/
 example : chkL prog defer_check { Σ (b : Bool). %OptP b Nat } U = true := by native_decide
 
-/-! ## §6 Types have no ⇒ reading (types-no-exec, 2026-08-20)
+/-! ## §6 Types have no ⇒ reading
 
-    M35 gave types a value-level standing in ⇝ — `Poly(Nat, 5)` passes `Nat` at
-    a capital parameter, `Pair(Nat, 5)` packs it under a capital Σ binder — and
-    ⇒ had kept a leftover reading of its own: a type WRITTEN or COMPUTED at a
-    lowercase binder was ⇝-read and handed back as a runtime datum, so
-    `let t = Σ (l : Nat). Nat; ()` checked and RAN with a type in a runtime
-    slot. The ruling removes that reading rather than fencing it: a type has no
-    meaningful runtime representation, so `readR`'s former arms are refusals now
-    (the standing `.borrowT` and `.cmpT` always had), and `pureLift` refuses a
-    type-former HEAD on arrival (`Pure.typeFormerHead`) — which is what catches
-    an APPLIED former like `List Nat` (an `.app` spine, unreachable by arm
-    removal) and a spine that merely COMPUTES to a type. The ⇝ channels are
-    untouched, and §3 above staying green is half of this section's claim. -/
+    Types have a value-level standing only through ⇝ (§3: `Poly(Nat, 5)`
+    passes `Nat` at a capital parameter, `Pair(Nat, 5)` packs it under a
+    capital Σ binder). A type written or computed at a lowercase binder is
+    ⇒-read instead, and has no meaningful runtime representation, so that
+    reading is refused rather than allowed to hand back a type as a runtime
+    datum: `readR`'s former arms are refusals (as the `.borrowT` and `.cmpT`
+    arms already were), and `pureLift` refuses a type-former head on arrival
+    (`Pure.typeFormerHead`) — catching both an applied former like `List Nat`
+    (an `.app` spine) and a spine that merely computes to a type. -/
 
 /-- WRITTEN bare formers at a lowercase `let`: each dies on its own removed
     arm, by name. -/
@@ -419,9 +389,9 @@ def fnRetType : Term := prog defer_check {
   () }
 example : progRejects fnRetType "no ⇒ reading" = true := by native_decide
 
-/-- The ⇝ channel is untouched: the same Σ at a CAPITAL `let` checks and RUNS
-    (e7822aa4 made it citable from a `fn`'s types — `Tests/Functions.lean`
-    FnAlias; §3's Poly/Pair battery above is the value-level half). -/
+/-- The ⇝ channel is untouched: the same Σ at a capital `let` checks and
+    runs; §3's Poly/Pair battery above is the value-level half of the same
+    story. -/
 def sigCapital : Term := prog{ let NatPair = Σ (l : Nat). Nat; () }
 example : progOk sigCapital = true := by native_decide
 example : progRuns sigCapital = true := by native_decide
@@ -429,11 +399,11 @@ example : progRuns sigCapital = true := by native_decide
 /-! ### The head vocabulary agrees with the exhaustiveness table
 
     `Pure.typeFormerHead`'s const-name row and `Pure.typeCtors`'s rows must
-    agree — a former added to one and not the other is a type ⇒ silently moves
-    again — and adjacency alone is not a check (the S33Macro lesson). Both
-    directions, over the basis: every type `typeCtors` answers for has a
-    type-former head, and every const name the head test refuses is a former
-    `typeCtors` knows (applied, where application is what makes it a type). -/
+    agree — a former added to one and not the other lets a type ⇒ silently
+    move again. Checked both directions, over the basis: every type
+    `typeCtors` answers for has a type-former head, and every const name the
+    head test refuses is a former `typeCtors` knows (applied, where
+    application is what makes it a type). -/
 
 def formerBasis : List Term :=
   [prog defer_check { Nat }, prog defer_check { Bool }, prog defer_check { Unit }, prog defer_check { Bot }, prog defer_check { List Nat },

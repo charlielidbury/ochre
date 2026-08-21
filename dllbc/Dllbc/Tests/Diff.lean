@@ -4,53 +4,35 @@ import Dllbc.Boundary
 import Dllbc.ProgMacro
 
 /-!
-# The differential — the two machines, and the relation that compares them
+# The differential: two machines, one relation
 
-**A consolidation bucket** (M28 D10). The suite grew one file per milestone, which
-made a test's home a fact about WHEN it was written rather than about what it is
-about. These files were merged here, in the order below, with their content moved
-VERBATIM — every namespace kept, so every cross-file reference in the tree still
-resolves, and each former file is fenced by a comment naming it so the git-log
-archaeology survives:
-
-  * `S8Diff.lean`
-  * `S9Diff.lean`
-
-Each former file's `open`s are scoped by a `section`, so nothing leaks across the
-seams.
+This file tests the differential between the two machines: the checker's
+symbolic walk and the executing machine. It enumerates generated function
+bodies per telescope, runs both machines on each, and asserts the simulation
+relation (`instanceOf`) between the outcomes, with the agreement counts
+pinned. The checker's verdict is only meaningful if a checked body's execution
+is an instance of what the checker predicted.
 -/
 
--- ┌── was `Dllbc/Tests/S8Diff.lean` ──────────────────────────────────────────────
 section
-/-!
-# Differential suite — the simulation theorem in testable form (§8)
+/-! ## Callee-side simulation: no calls
 
-**The property**: if the checker accepts a program (`progOk`), then every small
-concrete run of its body completes (is not stuck) and passes the concrete audit. This is
-the simulation theorem — the symbolic checker over-approximates concrete
-execution — as an exhaustively-checked `native_decide` proposition over a
-bounded enumeration of bodies. It is the automated counterexample-finder that a
-soundness bug (like M7's signature-driven `constrained`, once calls enter the
-generator) trips mechanically, and the promised precursor to any metatheory.
+This section exercises only body checking against concrete body runs; no
+generated body applies a function to another. If the checker accepts a body,
+every small concrete run of it must complete (not get stuck) and pass the
+concrete audit — the simulation theorem, as an exhaustively-checked
+`native_decide` proposition over a bounded enumeration of bodies.
 
-v1 scope: NO calls (so this exercises the *callee-side* simulation — body
-checking vs concrete body runs; caller-side group soundness needs calls, v2).
-Matches are generated **exhaustive** over the scrutinee type's full constructor
+Matches are generated exhaustive over the scrutinee type's full constructor
 set, deliberately: a non-exhaustive match is accepted (exhaustiveness checking
 is deferred with inductive declarations) but concretely stuck on the missing
 case — a known, separate gap, not the ownership soundness this suite targets.
 
-If any accepted body has a concretely-stuck or audit-failing instantiation, the
-`native_decide` below fails: that is a soundness counterexample, to be
+If any accepted body has a concretely-stuck or audit-failing instantiation,
+the `native_decide` below fails: that is a soundness counterexample, to be
 minimized and reported, never hidden.
 
-Counts (this run — and ASSERTED at the foot of this file, so a drift goes red
-rather than quietly falsifying this comment): 136 bodies generated across three
-telescopes, 75 accepted by `progOk`, 238 concrete runs — all complete and audit.
-No counterexample. "This run" is the honest reading: these describe the generator
-and the acceptance behaviour as they stand, and a legitimate change to either
-should update the numbers here, the assertions below, and the paper's §6.1
-together.
+Counts, per telescope (asserted at the end of this section):
   * `(v : &mut List Nat) → Unit`   : 91 gen / 47 accepted / 141 runs
   * `(n : Nat) → Nat`               : 32 gen / 15 accepted / 45 runs
   * `(b : &mut Nat, c : Bool) → Unit`: 13 gen / 13 accepted / 52 runs
@@ -61,7 +43,7 @@ open Dllbc.Val (nat nil cons)
 
 namespace Dllbc.Tests.S8Diff
 
--- CONV-SUBJECT: generator builds raw Terms by design
+-- Raw Term construction: the generator needs AST literals, not the `prog{}` macro.
 def tnat : Nat → Term | 0 => .ctorApp "Z" [] | n + 1 => .ctorApp "S" [tnat n]
 
 /-! ## Body generator for `(v : &mut List Nat) → Unit`
@@ -71,10 +53,9 @@ def tnat : Nat → Term | 0 => .ctorApp "Z" [] | n + 1 => .ctorApp "S" [tnat n]
     through 0/1/2 peels, `&mut`, `let`, `seq`, and match-through (exhaustive
     over `Nil`/`Cons`). `progOk` filters the ill-formed. -/
 
--- CONV-SUBJECT: generator builds raw Terms by design
+-- Raw Term construction: the generator needs AST literals, not the `prog{}` macro.
 def v0 : Term := .var ⟨0, "v"⟩
 
--- CONV-SUBJECT: generator builds raw Terms by design
 /-- Small expression pool over v (RHS / place fillers). -/
 def exprs : List Term :=
   [ .unit, nilT, tnat 0, tnat 1, .deref v0,
@@ -83,7 +64,6 @@ def exprs : List Term :=
     .var ⟨2, "x"⟩ ]
 where nilT : Term := .ctorApp "Nil" []
 
--- CONV-SUBJECT: generator builds raw Terms by design
 /-- Leaf statement bodies (each returns `()`), depth ≈ 1. -/
 def leafBodies : List Term :=
   [ .unit ]
@@ -108,28 +88,12 @@ def vBodies : List Term := leafBodies ++ matchBodies
 
 /-! ## The two programs a generated body becomes
 
-    **Recast to programs (M28 ρ).** This file's theorem is "accepted ⟹
-    concrete-safe, at every instantiation of the arguments", and it used to state
-    it over a `FnDef`: build one from the generated body, seed its TELESCOPE with
-    concrete values, explore, audit. A program has no telescope to seed — so
-    instead the instantiation becomes what it is in the language, a CALLER that
-    applies the function to a literal.
-
-    Each generated body therefore becomes two programs, and the theorem is a
-    statement about the pair:
-
-      * `vCheck b` — the function declared and left unapplied. Its seal audits at
-        the binding, so `progOk` here is the symbolic acceptance the old
-        `progOkOf` gave, and gives the same answer for the same reason (checked:
-        `fn f (…) { %b }` elaborates to a term IDENTICAL to the one the `FnDef`
-        path assembled).
-      * `vRun b a` — the same function applied to a concrete argument. `progRuns`
-        is "⇒-evaluating this completes", which is the half of the old
-        `diffCheck` that was about the concrete machine; the audit half was
-        checking-mode and is what `vCheck` asserts.
-
-    `seedConcrete` and `diffCheck` retire with the shape they served: nothing
-    seeds a telescope by hand any more, because a call does it. -/
+    Each generated body becomes two programs: `vCheck b` declares the function
+    and leaves it unapplied, so `progOk` gives the checker's verdict on the
+    body alone. `vRun b a` declares the same function and applies it to a
+    concrete argument, so `progRuns` is "evaluating this call completes". The
+    property below compares the two: accepted ⟹ every concrete run
+    completes. -/
 
 def vCheck (body : Term) : Term := prog{
   fn F (v : &mut List Nat) -> Unit { %body };
@@ -152,13 +116,13 @@ def vAccepted : List Term := vBodies.filter (fun b => progOk (vCheck b))
 example : vAccepted.all (fun b => vArgs.all (fun a => progRuns (vRun b a))) = true := by
   native_decide
 
-/-! ## Non-exhaustive bodies are now all rejected (§9)
+/-! ## Non-exhaustive matches are rejected
 
     With exhaustiveness checking, "accepted ⟹ concrete-safe" is unconditional
     over the generator's grammar: a symbolic match missing a constructor is
     rejected, so no accepted body can be concretely stuck on a missing branch. -/
 
--- CONV-SUBJECT: generator builds raw Terms by design
+-- Raw Term construction: the generator needs AST literals, not the `prog{}` macro.
 def vNonExhaustive : List Term :=
   (leafBodies.take 8).map (fun b => .matchE ⟨0, "v"⟩ none [.mk "Cons" [⟨2, "hd"⟩, ⟨3, "tl"⟩] b])   -- missing Nil
   ++ (leafBodies.take 8).map (fun b => .matchE ⟨0, "v"⟩ none [.mk "Nil" [] b])                       -- missing Cons
@@ -167,7 +131,7 @@ example : vNonExhaustive.all (fun b => !progOk (vCheck b)) = true := by native_d
 
 /-! ## Telescope `(n : Nat) → Nat` (owned symbolic argument, value return) -/
 
--- CONV-SUBJECT: generator builds raw Terms by design
+-- Raw Term construction: the generator needs AST literals, not the `prog{}` macro.
 def n0 : Term := .var ⟨0, "n"⟩
 def nLeaf : List Term := [tnat 0, tnat 1, n0, .var ⟨1, "m"⟩, .ctorApp "S" [.var ⟨1, "m"⟩]]
 
@@ -193,7 +157,7 @@ example : nAccepted.all (fun b => nArgs.all (fun a => progRuns (nRun b a))) = tr
 
 /-! ## Telescope `(b : &mut Nat, c : Bool) → Unit` (a borrow and a bool) -/
 
--- CONV-SUBJECT: generator builds raw Terms by design
+-- Raw Term construction: the generator needs AST literals, not the `prog{}` macro.
 def bb : Term := .var ⟨0, "b"⟩
 def bcLeaf : List Term :=
   [ .unit, .assign (.deref bb) (tnat 0) .unit, .assign (.deref bb) (tnat 1) .unit ]
@@ -221,27 +185,21 @@ def bcAccepted : List Term := bcBodies.filter (fun b => progOk (bcCheck b))
 example : bcAccepted.all (fun b => bcArgs.all (fun a => progRuns (bcRun b a.1 a.2))) = true := by
   native_decide
 
-/-! ## The counts, asserted
+/-! ## The counts, pinned
 
-    The header comment above quotes this harness's size — bodies generated,
-    bodies accepted, concrete runs — and the paper's §6.1 quotes it in turn. A
-    number in a comment is a claim nothing checks, and it duly went unchecked
-    across two milestones that touched both the `match` form the generator emits
-    and the take rule its bodies exercise. (It survived: the M23 currency pass
-    re-measured all three telescopes by hand and found them exact.) Asserting
-    them costs one `native_decide` each and turns the next drift into a red
-    build instead of a stale sentence in a paper.
-
-    These are DESCRIPTIVE, not normative: a legitimate change to the generator
-    or to what the checker accepts should update these numbers and the header
-    comment together. What they forbid is changing either silently. -/
+    The generated/accepted/run counts quoted in the header above are otherwise
+    just a claim nothing checks. Asserting them here turns a silent drift —
+    from a change to the generator or to what the checker accepts — into a red
+    build instead of a stale comment. These are descriptive, not normative: a
+    legitimate change should update both the numbers and the header
+    together. -/
 
 example : (vBodies.length, vAccepted.length) = (91, 47) := by native_decide
 example : (nBodies.length, nAccepted.length) = (32, 15) := by native_decide
 example : (bcBodies.length, bcAccepted.length) = (13, 13) := by native_decide
 
--- …and the totals the header and the paper actually quote: 136 generated, 75
--- accepted, 238 concrete runs (each accepted body run against its telescope's pool).
+-- The totals across all three telescopes: 136 generated, 75 accepted, 238
+-- concrete runs (each accepted body run against its telescope's pool).
 example : vBodies.length + nBodies.length + bcBodies.length = 136 := by native_decide
 example : vAccepted.length + nAccepted.length + bcAccepted.length = 75 := by native_decide
 example : vAccepted.length * vArgs.length + nAccepted.length * nArgs.length
@@ -249,37 +207,17 @@ example : vAccepted.length * vArgs.length + nAccepted.length * nArgs.length
 
 end Dllbc.Tests.S8Diff
 end
--- └── end of what was `S8Diff.lean` ───────────────────────────────────────────────
 
--- ┌── was `Dllbc/Tests/S9Diff.lean` ──────────────────────────────────────────────
 section
-/-!
-# Differential v2 — whole-program simulation (§9)
+/-! ## Whole-program simulation: callers and callees
 
-Closes M8's finding B: the differential now runs CALLER+CALLEE with the real
-simulation relation, so it catches wrong-value refinements — the class the M7
-`constrained` bug belonged to — not merely stuckness.
-
-The property, upgraded: for every `progOk`-accepted caller, its CONCRETE final
-environment (run in *executing* mode — calls run the callee's actual body) is a
-σ-**instance** of some accepted SYMBOLIC path's final environment (run in
-*checking* mode — calls use the §5.3/§6.1 signature rule). `instanceOf` is
-first-order matching: a symbolic `sym σ` matches any concrete value
-*consistently* (same σ ⟹ same value), constructors match structurally,
-loans/borrows up to the canonical renumbering. This is the simulation relation
-proper.
-
-**Harness validation** (the essential part — a counterexample-finder that has
-never found its counterexample is unvalidated): with the (removed, unsound)
-`constrained` wire forced on, the `advance`-caller differential goes RED; with
-it off, GREEN. The `advance` cursor shares `through`'s signature but writes only
-the tail, so the constrained refinement (owner ← surrendered tail) is a
-provably-wrong fact — exactly what the relation catches.
-
-Result (this run): 4 callers (through / advance / choose / push shaped), all
-accepted, all a σ-instance of an accepted symbolic path (GREEN). The
-`advance`-caller goes RED under forced-constrained and GREEN without —
-validated.
+The property extends to calls: for every accepted caller, its concrete final
+environment (executing mode — calls run the callee's body) is a σ-instance of
+some accepted symbolic path's final environment (checking mode — calls use the
+callee's signature). `instanceOf` is first-order matching: a symbolic value
+matches any concrete value consistently (the same σ always maps to the same
+value), constructors match structurally, borrows match up to the canonical
+renumbering.
 -/
 
 open Dllbc
@@ -287,14 +225,12 @@ open Dllbc.Val (nat nil cons)
 
 namespace Dllbc.Tests.S9Diff
 
-/-! ## The fixed callee pool, as a PREFIX (M28 σ)
+/-! ## The fixed callee pool
 
-    The four callees were `FnDef`s passed as `runExec`/`symEnvs`'s TABLE. They are
-    `fn` statements now, and a caller gets them by being written after them — which
-    is what "scope is the call table" means, and removes the last thing in this
-    file that was a declaration rather than a program. Both machines still do what
-    they did: the symbolic side checks a call against the callee's SIGNATURE (it is
-    sealed), the concrete side runs its body. -/
+    Four callees, declared as `fn` statements that a caller's program is
+    prefixed with; a call resolves against whichever callee precedes it in
+    scope. The symbolic side checks a call against the callee's sealed
+    signature; the concrete side runs the callee's body. -/
 
 def withPool (rest : Term) : Term := prog{
   fn Through (b : &mut List Nat) -> &mut List Nat { b };
@@ -308,15 +244,13 @@ def withPool (rest : Term) : Term := prog{
 /-- Match a symbolic value against a concrete one, threading a σ→value
     substitution (consistency: the same σ must map to the same value).
 
-    **Arrays are matched up to ¶1.3's fold, not structurally** (S24). A symbolic array
-    can be SEGMENTED where the concrete one is a run: merge concatenates runs but
-    leaves a σ body alone, so a checking-mode group release — a fresh existential at
-    the segment's owed type — blocks exactly the rejoin the executing run performs.
-    The two are the same value, the σ standing for the run's slice, so the relation
-    splits the concrete run by the symbolic extents and matches segment-wise. This is
-    §6.1's already-flagged over-approximation ("a group releases atomically where the
-    concrete machine ends lazily") arriving for arrays; without the case the harness
-    reports a false counterexample on the first array body it is given. -/
+    Arrays are matched up to the fold, not structurally: a symbolic array can be
+    segmented where the concrete one is a run, because a checking-mode group
+    release introduces a fresh existential at the segment's owed type rather
+    than rejoining it the way the executing run does. The relation splits the
+    concrete run by the symbolic extents and matches segment-wise; without this
+    case the harness reports a false counterexample on the first array body it
+    is given. -/
 partial def matchVal : Val → Val → List (Nat × Val) → Option (List (Nat × Val))
   | sv, cv, subst =>
     match sv.symOf? with
@@ -363,36 +297,24 @@ def matchEnv : Env → Env → List (Nat × Val) → Option (List (Nat × Val))
 /-- The concrete env is a σ-instance of the symbolic env. -/
 def instanceOf (symEnv concEnv : Env) : Bool := (matchEnv symEnv concEnv []).isSome
 
-/-! ## The relation, merged (M26-C)
+/-! ## The relation, up to computation
 
-    M26-A extended the relation a second time and, rather than folding the two
-    extensions together, left them side by side with a note: `matchVal` above has
-    the array-segment case but compares structurally; M26-A's `instanceOfComputed`
-    computes but has no segment case; **neither is a superset of the other**, and
-    a program that both carves an array and puts a σ inside arithmetic would be a
-    false counterexample under either. This is the merge.
-
-    Why a σ can now sit inside arithmetic at all: `.seal` is legal anywhere ⇒
-    evaluates (§5), so a checking-mode σ faces a concrete value MID-EXPRESSION
-    and not only at a call boundary or a group release — `let a = (3 : Nat);
-    let b = add a 1` leaves the symbolic side holding the neutral spine
-    `natRec … σ₀` where the concrete side holds `4`. Constraint 6 named this as a
-    new simulation-relation case in advance; it is one.
-
-    Two passes, and the merge is that **both** know about carves:
+    `matchVal` compares structurally; it has no case for a symbolic value that
+    sits inside an evaluated expression rather than at a call boundary or
+    group release — `let a = (3 : Nat); let b = add a 1` leaves the symbolic
+    side holding the neutral spine `natRec … σ₀` where the concrete side holds
+    `4`. `instanceOfC` below closes that gap in two passes:
 
       1. Collect σ ↦ concrete from every position where the symbolic side IS a
-         σ — descending through constructors, borrows, AND a carved `§segs` node
-         faced with a concrete run, which is where the array era's σ's live.
-         First binding wins; pass 2 is what catches an inconsistent one, so this
-         pass needs no failure mode.
-      2. Instantiate the whole symbolic environment, normalize, and compare with
-         `matchVal` — so the comparison is still up to ¶1.3's fold (segments
-         align against runs) but now also up to the pure fragment's own
-         computation.
+         σ — descending through constructors, borrows, and a carved `§segs`
+         node faced with a concrete run. First binding wins; an inconsistent
+         one is caught by the second pass.
+      2. Instantiate the whole symbolic environment, normalize, and compare
+         with `matchVal` — so the comparison is up to the array fold and up to
+         the pure fragment's own computation.
 
-    One relation, both capabilities: this is `instanceOf` with *instance* read up
-    to computation as well as up to the array fold. -/
+    This is `instanceOf` with *instance* read up to computation as well as up
+    to the array fold. -/
 
 /-- Pass 1. -/
 partial def collectSyms : Val → Val → List (Nat × Val) → List (Nat × Val)
@@ -400,9 +322,9 @@ partial def collectSyms : Val → Val → List (Nat × Val) → List (Nat × Val
     match sv.symOf? with
     | some σ => if (s.find? (·.1 == σ)).isSome then s else (σ, cv) :: s
     | none =>
-    -- THE MERGE: a carve on the symbolic side against a run on the concrete one.
-    -- Without this the σ standing for a released segment is never collected, and
-    -- pass 2 compares an uninstantiated `§segs` against a run.
+    -- A carve on the symbolic side against a run on the concrete one: without
+    -- this the σ standing for a released segment is never collected, and pass 2
+    -- compares an uninstantiated `§segs` against a run.
     match sv, Val.asCtor? cv with
     | .node "§segs" segs, some ("Arr", vs) => goSegs segs vs s
     | sv, _ =>
@@ -437,8 +359,7 @@ partial def nfVal (fuel : Nat) : Val → Val
     the kernel's own `Term.substSym` at the leaves; where it is not — a runtime
     function value standing for a sealed σ, which is what a checking-mode `F ↦ σ`
     faces concretely — only a whole leaf can be filled, because there is no `Term`
-    to splice a `λr` into. That asymmetry is R1's domain split showing up in the
-    harness, and it is exactly the set of positions the relation ever needs. -/
+    to splice a `λr` into. -/
 partial def substSymV (σ : Nat) (repl : Val) : Val → Val
   | .know t =>
     if Term.beq t (Term.sym σ) then repl
@@ -464,14 +385,9 @@ def instanceOfC (symEnv concEnv : Env) : Bool :=
 /-! ## The two runs and the differential check -/
 
 /-- Executing mode: run a body concretely (calls run callee bodies), returning
-    the caller's own final Ω, declarations dropped.
-
-    **The frame half of this filter is gone** (M32 R4). It read `id < progBase &&
-    id < 10000`: the first conjunct dropped declarations, the second dropped
-    inlined-callee frame slots, which `freshFrame` numbered from 10000. There are
-    no frame ids any more — a call opens a SCOPE and `popScopesTo` takes its slots
-    on the way out, which is what actually kept them from leaking — so the second
-    conjunct had nothing left to exclude. The first is now a tag test. -/
+    the caller's own final environment, declaration slots dropped. A call opens
+    its own scope, and `popScopesTo` pops it on the way out, so no callee slots
+    leak into the caller's environment. -/
 def runExec (body : Term) : Except String Env :=
   match (readR defaultFuel body).run { initSt with executing := true } with
   | .ok _ st => .ok (canonicalize (st.env.filter (fun kv => kv.1.id != declSlot)))
@@ -492,9 +408,9 @@ def diffV2 (body : Term) : Bool :=
       | .ok se => instanceOf se concEnv
       | .error _ => false)
 
-/-- The differential under the MERGED relation (M26-C). Same property, a relation
-    that no longer reports a false counterexample on a program that carves *and*
-    computes. -/
+/-- The differential under the relation extended to computation. Same
+    property, but no longer reports a false counterexample on a program that
+    both carves an array and computes. -/
 def diffC (body : Term) : Bool :=
   match runExec body with
   | .error _ => false
@@ -502,14 +418,11 @@ def diffC (body : Term) : Bool :=
       | .ok se => instanceOfC se concEnv
       | .error _ => false)
 
-/-- The differential on a PROGRAM rather than on a caller body: the concrete final
-    Ω is a σ-instance of some accepted symbolic path's.
-
-    It differs from `diffC` only in which walk it uses — `runProgram`/`programEnvs`
-    end the scope (§8's demand on everything a program still holds), where
-    `runExec`/`symEnvs` do not. Moved here from `S26Prog` in M28 D10: the
-    differential is this file's subject, and two files owning one relation is one
-    too many. -/
+/-- The differential on a whole program rather than on a caller body: the
+    concrete final environment is a σ-instance of some accepted symbolic
+    path's. It differs from `diffC` only in which walk it uses —
+    `runProgram`/`programEnvs` end the scope, where `runExec`/`symEnvs` do
+    not. -/
 def progDiff (t : Term) : Bool :=
   match runProgram t with
   | .error _ => false
@@ -519,7 +432,7 @@ def progDiff (t : Term) : Bool :=
 
 /-! ## Callers (each demands ALL its owners, so both runs fully collapse) -/
 
-/-- The choose caller from §6.1, demanding BOTH owners. -/
+/-- The choose caller, demanding BOTH owners. -/
 def chooseCaller : Term := withPool (prog defer_check {
   let a = 0; let b = 0; let pa = &m a; let pb = &m b;
   let r = Choose(True, pa, pb);
@@ -539,7 +452,7 @@ def callers : List Term :=
     chooseCaller,
     pushCaller ]
 
--- A caller IS a program, callees and all (M28 σ): no wrapper, no table.
+-- A caller is itself a program, callees and all: no wrapper, no table.
 def accepted : List Term := callers.filter (fun b => progOk b)
 
 -- Every accepted caller's concrete run is a σ-instance of an accepted symbolic
@@ -554,28 +467,15 @@ def advCallerBody : Term :=
 -- The real behaviour: the opaque σ matches the concrete value. GREEN.
 example : diffV2 advCallerBody = true := by native_decide
 
-/-! ### The same validation, at the COMPARATOR (M28 σ)
+/-! ### Discriminating a wrong refinement
 
-    This validation used to reintroduce the bug to catch it: a `forceConstrained`
-    flag flipped the kernel back to the unsound M7 inference and the differential
-    was asserted to go RED. That was the strongest form the claim can take, and it
-    cost kernel surface carried for one test — the flag and the `Group.constrained`
-    field it drove — which the suite's rule no longer pays for: a test asserts a
-    program's verdict, not a kernel flag's effect. Both are deleted (M28 τ).
+    The wrong refinement this validates against — the owner recovering the
+    surrendered tail — is written directly as an environment below, alongside
+    the honest one, and both are put to the relation: it must say NO to the
+    wrong environment and YES to the honest one. -/
 
-    So the same content is stated one level down, where it needs nothing from the
-    kernel. The wire's lie was specific and is writable directly: it refined the
-    owner to the SURRENDERED TAIL. Here is that environment, and the honest one
-    beside it, put to the relation.
-
-    **What this keeps and what it gives up.** It keeps the exact discrimination the
-    old control demonstrated — this relation says NO to that wrong refinement and
-    YES to the opaque σ. It gives up the demonstration that the FINDER, driven by a
-    kernel that really is buggy, arrives at that comparison at all. That is a real
-    reduction in strength and is recorded as one, not glossed. -/
-
-/-- What the removed `constrained` wire claimed: the owner recovers the tail the
-    issued borrow surrendered. -/
+/-- The wrong refinement: the owner recovers the tail the issued borrow
+    surrendered. -/
 def constrainedLie : Env := [("x", .bot), ("b", .bot), ("r", .bot), ("y", cons (nat 9) nil)]
 
 /-- What is true: the owner recovers an opaque existential. -/
@@ -593,17 +493,14 @@ example : (match runExec advCallerBody with
            | .ok ce => instanceOf honestSym ce && instanceOfC honestSym ce
            | .error _ => false) = true := by native_decide
 
-/-! ### The PINNED twin (M35): the opaque σ is no longer the only possibility
+/-! ### The pinned twin: a declared wire
 
-    `honestSym` above is what an UNPINNED signature yields, and it stays the
-    default. A signature that DECLARES the wire (`~> *res`, 12-design stage 5)
-    releases the surrendered payload itself, checked at both ends — so the
-    checking-mode environment now holds the CONCRETE written value, and the
-    simulation relation accepts it as an instance of the concrete run exactly
-    as it accepts the σ. The wire M28 τ refused to INFER is sound to DECLARE,
-    and `constrainedLie` above keeps recording why the inference was the wrong
-    route: `through` and `advance` no longer share a signature once one of them
-    writes its pin. -/
+    `honestSym` above is what an unpinned signature yields. A signature that
+    declares the wire (`~> *res`) releases the surrendered payload itself,
+    checked at both ends, so the checking-mode environment holds the concrete
+    written value directly — and the simulation relation accepts it exactly as
+    it accepts the opaque σ. `through` and `advance` no longer share a
+    signature once one of them writes its pin. -/
 
 def throughPinCallerBody : Term := prog{
   fn ThroughP (b : &mut (s : List Nat ~> *res)) -> &mut List Nat { b };
@@ -613,7 +510,7 @@ def throughPinCallerBody : Term := prog{
   let y = x;
   () }
 
--- The checker's own environment IS the written value now…
+-- The checker's own environment holds the written value directly…
 def pinnedKnown : Env := [("x", .bot), ("b", .bot), ("r", .bot), ("y", cons (nat 9) nil)]
 example : tailEnv throughPinCallerBody pinnedKnown = true := by native_decide
 
@@ -625,20 +522,15 @@ example : (match runExec throughPinCallerBody with
 -- …and the whole-program simulation holds for the pinned caller.
 example : diffV2 throughPinCallerBody = true := by native_decide
 
-/-! ### The merged relation, on this same set (M26-C)
+/-! ### Under the extended relation
 
-    Three assertions, because a merged relation has to be shown to have kept both
-    halves and to still be able to say NO. The array-carve half is exercised
-    where the array programs live (`S26Rec`, over `S24Arrays`' callers); here is
-    the σ-at-a-slot half, plus the harness validation that decides it. -/
+    The extended relation must still accept everything the plain one does, and
+    must still say NO to the wrong refinement. -/
 
 example : accepted.all (fun b => diffC b) = true := by native_decide
--- The merged relation can still say NO, and about the same wrong refinement:
--- computation does not launder it, because pass 2 compares the INSTANTIATED value.
--- Asserted above, at the comparator, over `constrainedLie` — `instanceOfC` is one
--- of the two relations that refuses it.
+-- Still says NO to the wrong refinement: computation does not launder it,
+-- because pass 2 compares the instantiated value.
 example : diffC advCallerBody = true := by native_decide
 
 end Dllbc.Tests.S9Diff
 end
--- └── end of what was `S9Diff.lean` ───────────────────────────────────────────────

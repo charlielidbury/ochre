@@ -6,47 +6,35 @@ import Dllbc.StdLemmas
 import Dllbc.Tests.Diff
 
 /-!
-# Direct proving — the list flagship, and the partition stack it was built on
+# Direct proving
 
-**A consolidation bucket** (M28 D10). The suite grew one file per milestone, which
-made a test's home a fact about WHEN it was written rather than about what it is
-about. These files were merged here, in the order below, with their content moved
-VERBATIM — every namespace kept, so every cross-file reference in the tree still
-resolves, and each former file is fenced by a comment naming it so the git-log
-archaeology survives:
-
-  * `S23Direct.lean`
-  * `S19Partition.lean`
-
-Each former file's `open`s are scoped by a `section`, so nothing leaks across the
-seams.
+Tests direct proving over lists: programs whose signatures state functional specs
+(via Σ types), with the body discharging the spec directly — Σ projections,
+dependent results at call sites, recursion as self-ensures, ownership splitting
+(`split_off`/`append_back`), a relational swap, `insert_at`, and branch equations.
+The checker's symbolic walk together with branch equations can discharge these
+proof obligations without a separate proof layer.
 -/
 
--- ┌── was `Dllbc/Tests/S23Direct.lean` ──────────────────────────────────────────────
 section
 /-!
-# §23 test suite — direct proving with NO declared backward specs
+## Direct proving with no declared backward specs
 
-M22 verified an in-place quicksort by *delegating* every mutation to a callee
-carrying a declared `back` (a pure model function) and citing lemmas about that
-model. That stack stays on main untouched, as the comparison baseline. M23 removes
-the `back`s: a callee's ONLY description is its return type — a postcondition over
-the exit snapshot (`*v` reads exit, `old *v` reads entry, §5.4) — and a caller sees
-an opaque exit plus whatever evidence the callee returned.
+A callee's only description is its return type — a postcondition over the exit
+snapshot (`*v` reads the exit, `old *v` reads the entry) — and a caller sees an
+opaque exit plus whatever evidence the callee returned.
 
-## Stage (i): `sigmaRec`, the missing recursor (§9)
+### `sigmaRec`, the missing recursor
 
-The kernel's comptime basis is "one recursor per former", and Σ was the omission:
-pure conjunctions could be *built* (`Pair(sortedcert, permcert)`) but never
-*projected*. §9 records the cost — the M22 quicksort postcondition's pain diary
-traces four separate structural detours to this one gap. With back-less callees the
-gap becomes load-bearing rather than merely expensive: a caller's whole knowledge of
-its callee's exit is the returned certificate, so it MUST be able to take that
+Pure conjunctions could be *built* (`Pair(sortedcert, permcert)`) but never
+*projected*: Σ needs its own recursor. With back-less callees this becomes
+load-bearing rather than merely expensive: a caller's whole knowledge of its
+callee's exit is the returned certificate, so it must be able to take that
 certificate apart.
 
 `sigmaRec A B P f p : P p`, with `ι : sigmaRec A B P f (Pair a b) ↦ f a b` — the
-standard dependent Σ eliminator, and non-recursive, so its single arm binds exactly
-the two fields and takes no `ih`. Σ's parameters are a type `A` and a *family*
+standard dependent Σ eliminator, non-recursive, so its single arm binds exactly the
+two fields and takes no `ih`. Σ's parameters are a type `A` and a *family*
 `B : A → Type` (unlike List's uniform parameter), which is why the `elim` sugar
 requires the motive's binder type to be written as the Σ itself: `A` and `λ x. B`
 are read off it.
@@ -61,20 +49,18 @@ open Dllbc.StdLemmas (LeRefl LeTrans LeUpR Append IdCongr IdTrans IdSym
 
 namespace Dllbc.Tests.S23Direct
 
-/-- Type-check a closed term against a closed type in the pure seed (as in §18/§19). -/
+/-- Type-check a closed term against a closed type in the pure seed. -/
 def chk (tm ty : Term) : Bool :=
   match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasTypeT 3000 v t).run (seedPure [] []) with
   | .ok r _ => r
   | .error _ _ => false
 
-/-! ## (i.a) Non-dependent Σ: the conjunction projections
+/-! ## Non-dependent Σ: the conjunction projections
 
     The shape every back-less caller needs: a callee returns `Σ (H : P). Q` — a
     conjunction certificate — and the caller projects out the conjunct it wants.
     `B` ignores its binder here, so the motive is constant and both projections are
-    ordinary. This is the M22 quicksort postcondition's own shape
-    (`Σ (Sortedpart : SortedR …). (Π n. Id …)`), which until now could only be
-    assembled, never taken apart. -/
+    ordinary. -/
 
 def and_left : Term := prog defer_check {
   λ (A : Nat). λ (B : Nat). λ (C : Nat).
@@ -96,8 +82,7 @@ example : chk and_right and_right_ty = true := by native_decide
 
 -- The projections COMPOSE with an ordinary lemma: destructure the conjunction and
 -- feed both halves to `LeTrans`. This is exactly what a caller does with a
--- returned certificate — the reason the recursor is a prerequisite for the rest of
--- M23 rather than a nicety.
+-- returned certificate.
 def and_trans : Term := prog defer_check {
   λ (A : Nat). λ (B : Nat). λ (C : Nat).
     λ (P : Σ (H : Le A B). Le B C).
@@ -107,7 +92,7 @@ def and_trans_ty : Term := prog defer_check {
   Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → (Σ (H : Le A B). Le B C) → Le A C }
 example : chk and_trans and_trans_ty = true := by native_decide
 
-/-! ## (i.b) Dependent Σ: the second projection needs a dependent motive
+/-! ## Dependent Σ: the second projection needs a dependent motive
 
     When `B` mentions its binder, `snd`'s type mentions `fst p` — so the motive is
     `λ q. Le (S Z) (sfst q)`, and the arm type-checks only because the ι-rule fires
@@ -128,7 +113,7 @@ def ssnd : Term := prog defer_check {
 def ssnd_ty : Term := prog defer_check { Π (P : Σ (n : Nat). Le (S Z) n) → Le (S Z) (sfst P) }
 example : chk ssnd ssnd_ty = true := by native_decide
 
-/-! ## (i.c) The ι-rule computes -/
+/-! ## The ι-rule computes -/
 
 -- `sfst (Pair 2 (LeRefl 2)) ⇝ 2`, by ι on a concrete Pair.
 def pv (t : Term) : Term := Pure.nf 4000 t
@@ -136,23 +121,23 @@ def vnat : Nat → Val | 0 => .ctor "Z" [] | k + 1 => .ctor "S" [vnat k]
 def sfstApp : Term := prog defer_check { sfst (Pair (S (S Z)) (LeRefl (S (S Z)))) }
 example : (Val.know (pv sfstApp) == vnat 2) = true := by native_decide
 
--- ι fires under binders on a Pair whose COMPONENTS are neutral — the case that
+-- ι fires under binders on a Pair whose components are neutral — the case that
 -- matters, since a caller destructures a certificate about symbolic values, never
 -- a closed one: `λ n. λ h. sfst (Pair n h)` normalizes to `λ n. λ h. n`.
 example : (pv (prog defer_check { λ (N : Nat). λ (H : Le (S Z) N). sfst (Pair N H) }) ==
            pv (prog defer_check { λ (N : Nat). λ (H : Le (S Z) N). N })) = true := by native_decide
 
--- The dual: a neutral TARGET has no `Pair` to fire on, so the spine is a legal
+-- The dual: a neutral target has no `Pair` to fire on, so the spine is a legal
 -- stuck value rather than an error — which is what lets `ssnd`'s motive above
 -- mention `sfst q` for a symbolic `q` and still be judged.
 
-/-! ## (i.d) Negative controls — one per rule branch
+/-! ## Negative controls — one per rule branch
 
     The typing rule has three premises that can fail (`f`, the target, and the
-    result convert) plus the ι-rule's shape condition; each gets a test, per the
-    M20 lesson (a negative test per RULE BRANCH, not per feature). -/
+    result convert) plus the ι-rule's shape condition; each gets a test, one per
+    rule branch rather than one per feature. -/
 
--- (1) Wrong arm component: `Pair(x)(y) => y` at the FIRST projection's type. The
+-- (1) Wrong arm component: `Pair(x)(y) => y` at the first projection's type. The
 -- arm must inhabit `P (Pair x y)`, which is `Le a b` — `y : Le b c` does not.
 def and_left_lie : Term := prog defer_check {
   λ (A : Nat). λ (B : Nat). λ (C : Nat).
@@ -161,13 +146,13 @@ def and_left_lie : Term := prog defer_check {
         Pair (X) (Y) => Y } }
 example : chk and_left_lie and_left_ty = false := by native_decide
 
--- (2) Wrong RESULT type: `sfst` returns `Nat`, and the claim is that it returns a
+-- (2) Wrong result type: `sfst` returns `Nat`, and the claim is that it returns a
 -- proof. `finish` converts the motive-at-target against the ascribed type; this is
 -- the branch that catches it.
 def sfst_lie_ty : Term := prog defer_check { (Σ (n : Nat). Le (S Z) n) → Le Z Z }
 example : chk sfst sfst_lie_ty = false := by native_decide
 
--- (3) Wrong DEPENDENT motive: the second projection claimed one bigger than the
+-- (3) Wrong dependent motive: the second projection claimed one bigger than the
 -- first component. `y : Le (S Z) x`, but `P (Pair x y)` is now `Le (S Z) (S x)` —
 -- off by one, and nothing bridges it. This is the branch that would silently pass
 -- if the motive were inferred from the arm rather than read off what is written.
@@ -178,22 +163,20 @@ def ssnd_lie : Term := prog defer_check {
 def ssnd_lie_ty : Term := prog defer_check { Π (P : Σ (n : Nat). Le (S Z) n) → Le (S Z) (S (sfst P)) }
 example : chk ssnd_lie ssnd_lie_ty = false := by native_decide
 
--- (4) Wrong TARGET: `sigmaRec` applied to something that is not of the Σ type it
+-- (4) Wrong target: `sigmaRec` applied to something that is not of the Σ type it
 -- declares. Here the target is a bare `Nat`, so the `s : Σ (x : A). B x` premise
 -- fails even though the arm is fine.
 def sfst_bad_target : Term := prog defer_check { sfst (S Z) }
 def sfst_bad_target_ty : Term := prog defer_check { Nat }
 example : chk sfst_bad_target sfst_bad_target_ty = false := by native_decide
 
-/-! ## Stage (ii) prelude: DEPENDENT Σ results at a call site
+/-! ## Dependent Σ results at a call site
 
     Building certificates is half of it; the other half is that a *caller* can
     receive one. A back-less callee's returned evidence is pinned to its own
     result — `Σ (r : List Nat). Id (List Nat) r (Drop i (old *v))` is split_off's
-    ensures — and until M23 the call rule built a Σ result's tail INDEPENDENTLY of
-    its head (`buildResult`'s own comment said so: "a dependent product over the
-    first is not supported; no test needs it"). The tail's σ therefore carried a
-    DANGLING `pvar` in its sctx type, and the pin was unusable:
+    ensures. Before the call rule built a Σ result's tail independently of its head,
+    the tail's σ carried a dangling `pvar` in its sctx type and the pin was unusable:
 
         call: argument (σ1) does not have its parameter type (Id σ0 (S Z))
 
@@ -201,7 +184,7 @@ example : chk sfst_bad_target sfst_bad_target_ty = false := by native_decide
     `buildResult`'s `subs`). These three tests are the smallest statement of the
     property: a pinned result is usable, and it is usable *because* of the pin. -/
 
--- A back-less callee returning a PINNED value, and a consumer whose second
+-- A back-less callee returning a pinned value, and a consumer whose second
 -- parameter's type mentions its first argument.
 def pinOne : Term := prog{
   fn PinOne () -> Σ (r : Nat). Id Nat r (S Z) { Pair(S Z, Refl) };
@@ -212,9 +195,9 @@ def useIt : Term := prog{
 example : progOk pinOne = true := by native_decide
 example : progOk useIt = true := by native_decide
 
--- The caller destructures the returned pair and feeds BOTH halves onward: `h`'s
+-- The caller destructures the returned pair and feeds both halves onward: `h`'s
 -- type is `Id σa (S Z)` for the very σa bound to `a`. This is the caller-side
--- shape every back-less callee in the rest of M23 depends on.
+-- shape every back-less callee below depends on.
 def usePin : Term := prog{
   fn PinOne () -> Σ (r : Nat). Id Nat r (S Z) { Pair(S Z, Refl) };
   fn UseIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () };
@@ -229,8 +212,7 @@ example : progOk usePin = true := by native_decide
 def useItLie : Term := prog{
   fn UseItLie (n : Nat, h : Id Nat n (S (S Z))) -> Unit { () };
   () }
--- A callee, written into each chain that calls it; the standalone form keeps
--- the verdict `S26Migrate.p23` was computing for it.
+-- A callee, checked standalone before it is used in the chains below.
 example : progOk useItLie = true := by native_decide
 def usePinLie : Term := prog defer_check {
   fn PinOne () -> Σ (r : Nat). Id Nat r (S Z) { Pair(S Z, Refl) };
@@ -248,8 +230,7 @@ example : progRejects usePinLie "does not have its parameter type" = true := by 
 def plainOne : Term := prog{
   fn PlainOne () -> Nat { S Z };
   () }
--- A callee, written into each chain that calls it; the standalone form keeps
--- the verdict `S26Migrate.p23` was computing for it.
+-- A callee, checked standalone before it is used in the chains below.
 example : progOk plainOne = true := by native_decide
 def useUnpinned : Term := prog defer_check {
   fn PlainOne () -> Nat { S Z };
@@ -258,62 +239,56 @@ def useUnpinned : Term := prog defer_check {
   () }
 example : progRejects useUnpinned "does not have its parameter type" = true := by native_decide
 
-/-! ## Stage (v): recursion = self-ensures under §8's snapshot-subterm guard
+/-! ## Recursion = self-ensures under a snapshot-subterm guard
 
-    A call is checked against a signature alone (§5.3) — recursion forces that — so
-    a SELF-call is admitted at the function's own declared return type. Through M22
-    that return type was `Unit` for every recursive FnDef, and the real content lived
-    in the declared `back`, checked by conversion. Remove the backs and the return
-    type IS the postcondition, at which point admitting a self-call unconditionally
-    is the Hoare rule for recursion with its side condition deleted: every false
-    statement proves itself. It did. On main, before this section:
+    A call is checked against a signature alone — recursion forces that — so a
+    self-call is admitted at the function's own declared return type. Once a
+    recursive function's return type is a genuine postcondition rather than `Unit`,
+    admitting a self-call unconditionally would be the Hoare rule for recursion with
+    its side condition deleted: every false statement proves itself:
 
-        fn bad () -> Id Nat Z (S Z) { bad() }            -- ACCEPTED
-        fn bad2 (n : Nat) -> Id Nat Z (S Z) { bad2(n) }  -- ACCEPTED
+        fn bad () -> Id Nat Z (S Z) { bad() }            -- would be ACCEPTED
+        fn bad2 (n : Nat) -> Id Nat Z (S Z) { bad2(n) }  -- would be ACCEPTED
 
-    The side condition is §1.2's `[k]`, finally operational: a self-call is admitted
-    only when the actual at the declared decreasing position is a STRICT STRUCTURAL
-    SUBTERM of that parameter's current snapshot. The checker being a symbolic
-    interpreter is what makes this cheap — inside `match n { S(m) => … }` the
-    parameter's snapshot has been ⇜-refined to `S σ_m` while the actual is `σ_m`, so
-    the comparison is ordinary structural equality on snapshots. The snapshot rides
-    `refineSym` with the rest of the σ-bearing state (the M10 invariant), which is
-    what makes it readable at the call site at all: owned match has meanwhile
-    emptied the parameter's runtime slot.
+    The side condition is `[k]`: a self-call is admitted only when the actual at the
+    declared decreasing position is a strict structural subterm of that parameter's
+    current snapshot. The checker being a symbolic interpreter is what makes this
+    cheap — inside `match n { S(m) => … }` the parameter's snapshot has been
+    ⇜-refined to `S σ_m` while the actual is `σ_m`, so the comparison is ordinary
+    structural equality on snapshots. The snapshot rides `refineSym` with the rest
+    of the σ-bearing state, which is what makes it readable at the call site at all:
+    owned match has meanwhile emptied the parameter's runtime slot.
 
-    A negative test per RULE BRANCH (the M20 lesson), not per feature. -/
+    A negative test per rule branch, not per feature. -/
 
--- The honest shape, and the one the rest of M23 rides: structural decrease on a
--- declared fuel argument.
+-- The honest shape, and the one the rest of this suite rides: structural decrease
+-- on a declared fuel argument.
 def recGood : Term := prog{
   fn RecGood [n] (n : Nat) -> Id Nat Z Z
         { match n { Z => Refl, S(m) => RecGood(m) } };
   () }
 example : progOk recGood = true := by native_decide
 
--- BRANCH 1 — no `[k]` at all. THE headline control: this exact FnDef was accepted
--- before the guard, and it proves `Z = S Z`.
+-- BRANCH 1 — no `[k]` at all. This exact FnDef would prove `Z = S Z` if admitted.
 def recBad : Term := prog defer_check {
   fn RecBad () -> Id Nat Z (S Z) { RecBad() };
   () }
--- MIGRATES, AND IS STILL REFUSED — with a different sentence, which is the whole
--- of what the guard's deletion costs. §7 makes a recursive occurrence the `ih`
--- BINDER, and §8 makes scope the let-chain: a self-call resolves to nothing,
--- because a let-chain cannot reference downward. So `Z = S Z` stays unprovable
--- not by a side condition but by the name not existing.
+-- Still refused, but for a different reason: a recursive occurrence is the `ih`
+-- binder, and scope is the let-chain, so a self-call resolves to nothing — a
+-- let-chain cannot reference downward. So `Z = S Z` stays unprovable not by a
+-- side condition but by the name not existing.
 example : progRejects recBad "unknown function" = true := by native_decide
 
--- BRANCH 2 — `[k]` declared, but the self-call passes the SAME fuel. Equal is not
+-- BRANCH 2 — `[k]` declared, but the self-call passes the same fuel. Equal is not
 -- strictly smaller; this is the shape the strictness in `strictSubterm` exists for.
 def recSame : Term := prog defer_check { fn RecSame [n] (n : Nat) -> Id Nat Z (S Z) { RecSame(n) }; () }
--- REFUSED AT THE ELABORATION, which is where this branch's content now lives:
--- §7 makes `ih` the sealed self-view AT THE PREDECESSOR, so a self-call at any
--- other argument has nothing to become, and `fnElab` says so rather than emitting
--- a recursor that would be a different function. Asserted on the refusal itself —
--- a twin that merely DECLINED would teach nothing.
+-- Refused at elaboration: `ih` is the sealed self-view at the predecessor, so a
+-- self-call at any other argument has nothing to become, and `fnElab` says so
+-- rather than emitting a recursor that would be a different function. Asserted on
+-- the refusal itself — a twin that merely declined would teach nothing.
 example : progRejects recSame "not the predecessor" = true := by native_decide
 
--- BRANCH 3 — decrease at the WRONG index. The return type here is TRUE, so the
+-- BRANCH 3 — decrease at the wrong index. The return type here is true, so the
 -- audit cannot be what rejects it: `[n]` is declared while `m` is what shrinks.
 -- (Without this control the previous two would pass on a guard that merely
 -- required *something* to decrease — which is unsound, since alternating branches
@@ -332,7 +307,7 @@ def recRightIdx : Term := prog{
   () }
 example : progOk recRightIdx = true := by native_decide
 
--- BRANCH 4 — an INCREASE reads as "not a subterm", not as a decrease: `S(m2)`
+-- BRANCH 4 — an increase reads as "not a subterm", not as a decrease: `S(m2)`
 -- against a snapshot of `S m2` is equality one level up, and equality never passes.
 def recGrow : Term := prog defer_check {
   fn RecGrow [n] (n : Nat) -> Id Nat Z Z
@@ -340,17 +315,15 @@ def recGrow : Term := prog defer_check {
   () }
 example : progRejects recGrow "not the predecessor" = true := by native_decide
 
--- BRANCH 5 — MUTUAL recursion. The guard is per-declaration, so `f → g → f` would
+-- BRANCH 5 — mutual recursion. The guard is per-declaration, so `f → g → f` would
 -- let each admit the other's postcondition with nothing decreasing anywhere: the
--- same hole through two doors. Rejected outright (§8's measures are where a general
--- story would live).
+-- same hole through two doors. Rejected outright: mutual recursion is unwritable
+-- rather than merely rejected, because `recMutB` is not in scope above `recMutA`.
+-- The rejection names the forward reference.
 def recMutA : Term := prog defer_check {
   fn RecMutA () -> Id Nat Z (S Z) { RecMutB() };
   fn RecMutB () -> Id Nat Z (S Z) { RecMutA() };
   () }
--- Same replacement, and §8 predicted exactly this: mutual recursion "becomes
--- unwritable" rather than staying rejected, because `recMutB` is not in scope
--- above `recMutA`. The rejection names the forward reference.
 example : progRejects recMutA "unknown function" = true := by
   native_decide
 
@@ -368,34 +341,31 @@ def recDeep : Term := prog defer_check {
   fn RecDeep [n] (n : Nat) -> Id Nat Z Z
         { match n { Z => Refl, S(a) => match a { Z => Refl, S(b) => RecDeep(b) } } };
   () }
--- **A MACRO LIMIT, NOT A CALCULUS ONE** (§12 open 3, corrected in M27-P1). The
--- macro declines two-constructors-down because §7 has it derive the motive
--- mechanically from the signature and this shape needs a different one. The FORM
--- exists and checks: `S27Dispose` §D writes `recDeep` as a sealed recursor and
--- accepts it, with a lie twin beside it. So what is asserted here is the macro's
--- refusal, and the carrier of the claim lives there.
+-- A macro limit, not a calculus one: the macro declines two-constructors-down
+-- because it derives the motive mechanically from the signature and this shape
+-- needs a different one. The form exists and checks as a sealed recursor written
+-- by hand; what is asserted here is only the macro's refusal.
 example : progRejects recDeep "not the predecessor" = true := by native_decide
 
 /-! ### The one shape the eliminators cannot express: `[v]`, and what it costs
 
-    A BORROW parameter decreases through its PAYLOAD snapshot — §8's guard in its
+    A borrow parameter decreases through its payload snapshot — the guard in its
     most literal form, and the only thing that shrinks in a list cursor with no
-    counter. Snapshots are entry-knowledge and are never rewritten by mutation
-    (§3.2), so the payload's structural decomposition is a fixed, well-founded
-    order, and the declaration path admitted it.
+    counter. Snapshots are entry-knowledge and are never rewritten by mutation, so
+    the payload's structural decomposition is a fixed, well-founded order, and the
+    declaration path admitted it.
 
-    It has no recursor form. §7 elaborates `[k]` to `natRec`/`listRec` over the
-    parameter itself, and a borrow is neither; §9's borrow-mode eliminator is FILED,
-    not built. §12 decision 8 accepted the regression and blessed fuel-threading as
-    the interim — a source change, since the signature grows a parameter and a bound
-    and every caller supplies them, and never something an elaboration invents
-    behind its author.
+    It has no recursor form: `[k]` elaborates to `natRec`/`listRec` over the
+    parameter itself, and a borrow is neither, and no borrow-mode eliminator exists.
+    Fuel-threading is the accepted interim — a source change, since the signature
+    grows a parameter and a bound and every caller supplies them, rather than
+    something an elaboration invents behind its author.
 
     So this is the whole of the `[v]` class, at program level: the `fn` lowering
-    refuses it, and it refuses POINTING AT THE DECISION rather than at a shape.
-    Three functions in this file used to be written this way — the list cursor
-    below, `append_back` and `partition` — and all three are fuel-threaded in
-    stage (vi)'s chain, where the price is one parameter and one dead branch. -/
+    refuses it, pointing at the decision rather than at a shape. Three functions in
+    this file are written this way in principle — the list cursor below,
+    `append_back` and `partition` — and all three are fuel-threaded in the flagship
+    chain below, where the price is one parameter and one dead branch. -/
 
 def borrowDecrease : Term := prog defer_check {
   fn ZeroAll [v] (v : &mut List Nat) -> Unit
@@ -404,51 +374,50 @@ def borrowDecrease : Term := prog defer_check {
 -- Refused by the needle no other error can produce…
 example : progRejects borrowDecrease FnMacro.fnRefusedNeedle = true := by native_decide
 -- …and the refusal's own diagnosis survives into the message, which is what makes
--- it a decision rather than a wall: the programmer is told to thread fuel.
+-- it a decision rather than a dead end: the programmer is told to thread fuel.
 example : progRejects borrowDecrease "§12 decision 8" = true := by native_decide
--- It can never pass green: the sentinel is reached at the BINDING, not at a call,
+-- It can never pass green: the sentinel is reached at the binding, not at a call,
 -- so a refused function that nothing calls still fails.
 example : progOk borrowDecrease = false := by native_decide
--- The paid twin — literally this function with a fuel parameter and a bound — is
--- `S26Fuel.zeroAllF`, which checks. The cost is measured, not estimated.
+-- The fuel-threaded twin of this function does check; the cost is measured, not
+-- estimated.
 
--- A NON-self call to a recursive function is untouched — the guard is about
--- self-calls, and every other call is the ordinary §5.3 signature rule.
+-- A non-self call to a recursive function is untouched — the guard is about
+-- self-calls, and every other call is the ordinary signature-checking rule.
 def recCaller : Term := prog{
   fn RecGood [n] (n : Nat) -> Id Nat Z Z { match n { Z => Refl, S(m) => RecGood(m) } };
   fn RecCaller () -> Id Nat Z Z { RecGood(S Z) };
   () }
--- The callee is in scope by being written above it — no table (M28 φ).
+-- The callee is in scope by being written above it.
 example : progOk recCaller = true := by native_decide
 
-/-! ## Stage (ii): ownership splitting — `split_off` and `append_back`
+/-! ## Ownership splitting — `split_off` and `append_back`
 
-    The data plan for a back-less quicksort: recursion over WHOLE lists instead of
-    `lo`/`Cnt` range indices. `split_off` takes the tail at depth `i` out of a
-    borrowed list and returns it BY VALUE (it cannot come back as a borrow — its
-    owner is local); `append_back` walks to the end and replaces the `Nil`. Between
-    them the caller owns two independent lists, sorts each, and glues.
+    The data plan for a back-less quicksort: recursion over whole lists instead of
+    range indices. `split_off` takes the tail at depth `i` out of a borrowed list
+    and returns it by value (it cannot come back as a borrow — its owner is local);
+    `append_back` walks to the end and replaces the `Nil`. Between them the caller
+    owns two independent lists, sorts each, and glues.
 
-    Both are back-less: the ONLY description of either is its return type. And both
-    ensures are stated in OBSERVATION functions — `Take`, `Drop`, `Append`, which
+    Both are back-less: the only description of either is its return type. And both
+    ensures are stated in observation functions — `Take`, `Drop`, `Append`, which
     define meaning independently of any implementation — not in a pure function
-    mirroring the body's own algorithm, which is what a declared `back` was. That
-    is the line: `Id (*v) (Take i (old *v))` IS split_off's spec, not a mirror of it.
+    mirroring the body's own algorithm. That is the line: `Id (*v) (Take i (old *v))`
+    is split_off's spec, not a mirror of it.
 
-    Both check with no declared back anywhere in the call tree, and the two machine
-    gaps they forced are recorded at their use sites below. -/
+    Both check with no declared back anywhere in the call tree. -/
 
 -- `append_back(v, w)`: walk to the end of `*v`, put `w` there. The exit reading is
--- `Append (old *v) w` — the whole postcondition, and the whole description. It is
--- the third `[v]` function, so it is written FUEL-THREADED, in stage (vi)'s chain
--- where its one caller lives.
+-- `Append (old *v) w` — the whole postcondition, and the whole description. It has
+-- no recursor form for its own decrease, so it is written fuel-threaded, in the
+-- flagship chain below where its one caller lives.
 
 /-! ### The telescope's own vocabulary
 
-    A `fn`'s parameters are `.var ⟨i, name⟩` at their positional index (§5.2), and a
-    return type written outside the header — a skeleton, below — has to name them
-    that way. These are those names, once, so that every skeleton in this file
-    splices them rather than re-deriving an index. -/
+    A `fn`'s parameters are `.var ⟨i, name⟩` at their positional index, and a return
+    type written outside the header — a skeleton, below — has to name them that
+    way. These are those names, once, so that every skeleton in this file splices
+    them rather than re-deriving an index. -/
 
 def listNatT : Term := .app (.const "List") (.const "Nat")
 def vT : Term := .var ⟨0, "v"⟩
@@ -461,38 +430,33 @@ def jT : Term := .var ⟨2, "j"⟩
 def sucT (t : Term) : Term := .ctorApp "S" [t]
 
 -- `split_off(v, i)`: `*v` keeps the first `i`, the rest comes back by value. The
--- returned tail is Σ-PINNED to `Drop i (old *v)` — the caller's only knowledge of a
--- value it did not compute, which is why stage (ii)'s prelude above had to land
--- first.
+-- returned tail is Σ-pinned to `Drop i (old *v)` — the caller's only knowledge of a
+-- value it did not compute.
 --
--- Written as a SKELETON over its return type and its tail (the M28 χ standard):
--- the body is thirty lines and the three spec twins below differ from the honest
--- form in exactly one named argument each, so the body is written ONCE and the
--- difference is by construction rather than by a reader comparing two spellings.
+-- Written as a skeleton over its return type and its tail: the body is thirty
+-- lines and the three spec twins below differ from the honest form in exactly one
+-- named argument each, so the body is written once and the difference is by
+-- construction rather than by a reader comparing two spellings.
 def soUnder (ret tail : Term) : Term := prog{
   fn SplitOff [i] (v : &mut List Nat, i : Nat, hi : Le i (Len *v)) -> %ret
         { match i {
-            -- i = Z: Take the whole payload out (§2.4's Take-and-refill, the idiom
-            -- Rust rejects with E0507) and leave `Nil`. `Take Z l = Nil` and
+            -- i = Z: take the whole payload out (take-and-refill, the idiom Rust
+            -- rejects with E0507) and leave `Nil`. `Take Z l = Nil` and
             -- `Drop Z l = l` both compute, so both conjuncts are `Refl`.
             Z => { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) },
             S(i2) => match v {
-              -- `hi : Le (S i2) (Len Nil)` is `Le (S i2) Z`, which IS `Bot`: the
-              -- branch is dead and the audit admits an ex-falso at any type (§5.4).
+              -- `hi : Le (S i2) (Len Nil)` is `Le (S i2) Z`, which is `Bot`: the
+              -- branch is dead and the audit admits an ex-falso at any type.
               Nil => botElim Unit hi,
               Cons(hd, tl) => {
-                -- `hi` passes down DEFINITIONALLY: `Len (Cons _ t) = S (Len t)`, so
-                -- `Le (S i2) (S (Len σ_tl))` already IS `Le i2 (Len σ_tl)`. The M14
-                -- bounds-cursor property, still holding.
+                -- `hi` passes down definitionally: `Len (Cons _ t) = S (Len t)`, so
+                -- `Le (S i2) (S (Len σ_tl))` already is `Le i2 (Len σ_tl)`.
                 let y1 = Take i2 (*tl);
                 let Pair(rr, Pair(H1, h2)) = SplitOff(&m *tl, i2, hi);
                 -- The prefix conjunct needs a congruence under `Cons (*hd)`, and
-                -- reading `*tl` here — AFTER handing `&mut *tl` to the call — is
-                -- the only way to name the callee's exit. That read is what
-                -- forced the ⇝-side demand-end (Machine.lean, `collapseCDerefs`):
-                -- before it, the projection returned the parked `loanₘ` itself and
-                -- a state marker rode silently into this proof term.
-                -- The suffix conjunct needs nothing: `Drop (S i2) (Cons h t)` IS
+                -- reading `*tl` here — after handing `&mut *tl` to the call — is
+                -- the only way to name the callee's exit.
+                -- The suffix conjunct needs nothing: `Drop (S i2) (Cons h t)` is
                 -- `Drop i2 t`, so the callee's `h2` is already the goal.
                 let H0 = *hd;
                 let c1 = IdCongr (List Nat) (List Nat) (λ (A : List Nat). Cons H0 A)
@@ -504,7 +468,7 @@ def soUnder (ret tail : Term) : Term := prog{
   %tail }
 
 /-- The return type, as a skeleton over its two conjuncts' right-hand sides. Still
-    SURFACE syntax — only the two subterms the twins vary are spliced — so what a
+    surface syntax — only the two subterms the twins vary are spliced — so what a
     reader compares is `Take i (old *v)` against `Take (S i) (old *v)`, one
     argument apart, and not two hand-built Σ-chains. -/
 def soRet (pre suf : Term) : Term := prog{
@@ -517,7 +481,7 @@ example : progOk splitOff = true := by native_decide
 /-! ### Not vacuous: the spec twins, and the body twin
 
     Three spec lies (shifting either index, and swapping the two conjuncts) and one
-    BODY lie. The spec lies are all caught on the `i = Z` path, so they alone would
+    body lie. The spec lies are all caught on the `i = Z` path, so they alone would
     leave the recursive path untested; the body lie breaks the congruence in the
     `Cons` branch and is the control for that path. -/
 
@@ -528,15 +492,14 @@ example : progRejects splitOffLieTake "does not have return type" = true := by n
 example : progRejects splitOffLieDrop "does not have return type" = true := by native_decide
 example : progRejects splitOffLieSwap "does not have return type" = true := by native_decide
 
--- The BODY lie: the congruence forgets to put `*hd` back on the front (identity
+-- The body lie: the congruence forgets to put `*hd` back on the front (identity
 -- instead of `Cons (*hd) ·`), so the prefix conjunct is off by the head element.
--- Rejected on the RECURSIVE path, which no spec twin above reaches.
+-- Rejected on the recursive path, which no spec twin above reaches.
 --
--- **Transcribed rather than sharing `soUnder`'s body, and that is forced.** What
--- varies is a subterm INSIDE the body that names `hd` — a binder the `fn` lowering
+-- Transcribed rather than sharing `soUnder`'s body, and that is forced: what
+-- varies is a subterm inside the body that names `hd` — a binder the `fn` lowering
 -- mints an id for — and a `%` splice is a Lean `Term` written outside the macro,
--- which has no way to say "the `hd` this match will bind". The χ/ψ rules are about
--- when sharing is worth its cost; this is the case where it is not available.
+-- which has no way to say "the `hd` this match will bind".
 def splitOffLieHead : Term := prog defer_check {
   fn SplitOff [i] (v : &mut List Nat, i : Nat, hi : Le i (Len *v)) -> %soHonest
         { match i {
@@ -557,7 +520,7 @@ example : progRejects splitOffLieHead "does not have return type" = true := by n
 
 /-! ### The executing differential — the body really splits
 
-    `progOk` proves the postcondition symbolically; this runs the SAME program on
+    `progOk` proves the postcondition symbolically; this runs the same program on
     concrete lists and confirms `*v` keeps `Take i l` while the returned value is
     `Drop i l`, at the two boundaries and in the middle. The caller rides `soUnder`'s
     own chain as its tail, so what runs is the function declared above it. -/
@@ -566,7 +529,6 @@ def tnatT : Nat → Term | 0 => .ctorApp "Z" [] | k + 1 => .ctorApp "S" [tnatT k
 def tlistT : List Nat → Term | [] => .ctorApp "Nil" [] | x :: xs => .ctorApp "Cons" [tnatT x, tlistT xs]
 def vnatV : Nat → Val | 0 => .ctor "Z" [] | k + 1 => .ctor "S" [vnatV k]
 def vlistV : List Nat → Val | [] => .ctor "Nil" [] | x :: xs => .ctor "Cons" [vnatV x, vlistV xs]
--- SUBJECT: the executing-mode differential's raw Term caller.
 def soCallerTail (l : List Nat) (i : Nat) : Term :=
   .letIn ⟨0, "x"⟩ (tlistT l)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "x"⟩))
@@ -581,51 +543,37 @@ example : runSplit [1,2,3,4] 2 = true := by native_decide   -- split in the midd
 example : runSplit [1,2,3] 0 = true := by native_decide      -- take nothing, hand the whole list back
 example : runSplit [1,2,3] 3 = true := by native_decide      -- take everything, hand back Nil
 
-/-! ## Stage (iii): the swap leaf, relational — and what it says about M22's arc
+/-! ## The swap leaf, relational
 
-    M22's central finding was that an in-place leaf mutating through pointer writes
-    has an OPAQUE exit, so no value-level postcondition is provable about it, and
-    the escape was delegation: mutate through a callee carrying a declared `back`
-    and cite a pure lemma about its model. From that, a three-feature arc was filed
-    forward — ISSUED-PAYLOAD PINNING, then the `SwapLSet` BRIDGE, then
-    AUDIT-REWRITE-ALONG-CITED-BRIDGES — as the route to provable inline leaves.
+    An in-place leaf mutating through pointer writes has an opaque exit, so no
+    value-level postcondition is provable about it directly — the escape is
+    delegation: mutate through a callee carrying a declared `back` and cite a pure
+    lemma about its model. But the opacity is a property of borrows issued by a
+    call: `buildResult` mints an issued borrow's payload as a fresh σ, because
+    signature-only checking has nothing to say what the payload is at issue time.
+    It is not a property of inline mutation. A leaf that does its own cursor work
+    through the body's own match-field borrows writes into a suspension the audit
+    collapses itself, so its exit is a constructor tree over known snapshots —
+    fully provable, with nothing minted opaquely anywhere.
 
-    That arc is not needed, and the reason is worth stating precisely, because it
-    sharpens the M22 finding rather than contradicting it. The opacity is a property
-    of borrows ISSUED BY A CALL: `buildResult` mints an issued borrow's payload as a
-    fresh σ, because signature-only checking has nothing to say what the payload IS
-    at issue time. It is NOT a property of inline mutation. A leaf that does its own
-    cursor work through the body's OWN match-field borrows (§3.3) writes into a
-    suspension the audit collapses itself, so its exit is a constructor tree over
-    known snapshots — fully provable, with nothing minted opaquely anywhere.
-
-    So the whole arc collapses to a program-level choice: walk the list yourself
-    instead of calling `nth2`. `set_at` below is the proof of that, and `swap_at`
-    shows the second feature evaporating too — the `SwapLSet` bridge M22 proved and
-    parked as forward infrastructure "for the audit to cite once pinning lands" is
-    just an ordinary lemma applied in the body, needing no audit machinery at all.
-    Feature 3 (audit-rewrite) had three convergence points in M22's ledger; this
-    removes two of them, and re-scopes pinning to "only if you insist on calling
-    a cursor rather than being one". -/
+    So the fix is a program-level choice: walk the list yourself instead of calling
+    a cursor helper. `set_at` below is the proof of that, and `swap_at` shows a
+    bridge lemma between the set-based and relational readings evaporating too —
+    it is just an ordinary lemma applied in the body, needing no audit machinery at
+    all. -/
 
 /-! `set_at(v, i, x)` writes `x` at position `i`, in place, through the body's own
-    field reborrows; `swap_at(v, i, j)` is two `set_at`s and the M22 bridge. They are
-    ONE chain because the second calls the first — the caller is in scope by being
-    written below it — and the chain takes BOTH return types as parameters, so each
+    field reborrows; `swap_at(v, i, j)` is two `set_at`s and a bridge lemma. They are
+    one chain because the second calls the first — the caller is in scope by being
+    written below it — and the chain takes both return types as parameters, so each
     of the four twins varies exactly one of them while the two bodies are written
     once.
 
-    **One chain serves both twin families, and that is a refinement of M28 χ's
-    forced-duplication note.** χ wrote `insert_at`'s header a second time inside
-    `pick`'s program because two `%`-spliced chains collided at `progBase` (an id
-    collision M32 R4 retired along with the arithmetic), and read it as the price
-    of the guard. The price is only paid when the two functions need
-    to be varied through DIFFERENT prefixes. Here they do not: a lying `set_at` is
-    refused at its own seal, and a sealed `let` fires its audit at its own node in
-    PROGRAM ORDER (§8, and `S26Prog` §B asserts it), so the message a `set_at` twin
-    is caught by is `set_at`'s — `swap_at`, which also breaks under it, is never
-    reached. Varying the second return type leaves the first honest and the
-    attribution is `swap_at`'s for the same reason. -/
+    One chain serves both twin families: a lying `set_at` is refused at its own
+    seal, and a sealed `let` fires its audit at its own node in program order, so
+    the message a `set_at` twin is caught by is `set_at`'s — `swap_at`, which also
+    breaks under it, is never reached. Varying the second return type leaves the
+    first honest and the attribution is `swap_at`'s for the same reason. -/
 
 def setSwapUnder (sret wret tail : Term) : Term := prog{
   fn SetAt [i] (v : &mut List Nat, i : Nat, x : Nat, hi : Le (S i) (Len *v)) -> %sret
@@ -644,45 +592,32 @@ def setSwapUnder (sret wret tail : Term) : Term := prog{
               }
             }
         } };
-  -- `SwapAt(v, i, j)`: two `SetAt`s and the M22 bridge, ensuring the model
+  -- `SwapAt(v, i, j)`: two `SetAt`s and a bridge lemma, ensuring the model
   -- function `SwapL` directly. Not recursive itself — the recursion is `SetAt`'s.
   fn SwapAt (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j,
                     p2 : Le (S j) (Len *v), hi : Le (S i) (Len *v)) -> %wret
         { let a = NthL i (*v);
           let b = NthL j (*v);
-          -- The M22 bridge, cited as an ordinary lemma in the body. No audit
-          -- feature, no pinning: `Set i b (Set j a s)` IS the set-form it relates.
+          -- The bridge, cited as an ordinary lemma in the body. No audit feature,
+          -- no pinning: `Set i b (Set j a s)` IS the set-form it relates.
           let bridge = SwapLSet i j (old *v) pij p2;
           let h1 = SetAt(&m *v, j, a, p2);
-          -- The bound tax (M21's, unchanged): the second write's bound is stated
-          -- over the LIVE `*v`, which the first write replaced with an opaque σ′, so
-          -- it transports back through `LenSet` along h1.
+          -- The second write's bound is stated over the LIVE `*v`, which the first
+          -- write replaced with an opaque σ′, so it transports back through
+          -- `LenSet` along h1.
           let hlen = IdTrans Nat (Len *v) (Len (Set j a (old *v))) (Len (old *v))
                        (IdCongr (List Nat) Nat Len (*v) (Set j a (old *v)) h1)
                        (LenSet j a (old *v));
           let hi2 = LeRwR (S i) (Len (old *v)) (Len *v)
                       (IdSym Nat (Len *v) (Len (old *v)) hlen) hi;
-          -- PAIN DIARY (the recurring idiom, now named). After the second call the
-          -- first call's exit σ′ can no longer be NAMED — `*v` reads the newest
-          -- value, and nothing binds an older one. So the entire remaining
-          -- derivation is staged as a FUNCTION OF THE NEXT EXIT while σ′ is still
-          -- readable, and applied afterwards. This is the third appearance of the
-          -- shape (M22's proof-linearity dodge, append_back's moved data argument,
-          -- and now a superseded intermediate snapshot), and it is the general one:
-          -- a body can only ever talk about the CURRENT exit, so any proof spanning
-          -- two mutations must be built before the second and applied after it.
-          -- The clean fix is a way to bind a snapshot — `let` at comptime, naming an
-          -- exit the way `old` names an entry.
-          -- **AND §2.4 MAKES THE SNAPSHOT VISIBLE** (M31 Stage A). The paragraph
-          -- above ends "the clean fix is a way to bind a snapshot", and this is
-          -- what the citation rule turns that into: the λ may no longer CITE a
-          -- runtime binding, so every value it was silently freezing at formation
-          -- is named first, on the line above, where a reader can see which
-          -- moment it belongs to. Nothing is staged differently — the λ closed
-          -- over exactly these values before, at exactly this point — the freeze
-          -- has simply stopped being implicit. `V0` is the pre-`h2` payload,
-          -- which is precisely the superseded intermediate the diary entry is
-          -- about, and it now has a name.
+          -- A body can only ever talk about the CURRENT exit: after the second call
+          -- the first call's exit σ′ can no longer be named, since `*v` reads the
+          -- newest value and nothing binds an older one. So the remaining
+          -- derivation is staged as a function of the next exit while σ′ is still
+          -- readable, and applied afterwards. Every value the closure below needs
+          -- is named first, on its own line, so a reader can see which moment each
+          -- one belongs to; `V0` is the pre-`h2` payload, the superseded
+          -- intermediate this staging is about.
           let I0 = i;
           let B0 = b;
           let J0 = j;
@@ -710,11 +645,9 @@ def exitIs (rhs : Term) : Term := prog{ Id (List Nat) %dvT %rhs }
 def setHonest : Term := exitIs (prog defer_check { Set %iT %xT %oldvT })
 def swapHonest : Term := exitIs (prog defer_check { SwapL %iT %jT %oldvT })
 
-/-- The pair, both honest. Also the regression pin M28's survey held separately:
-    `swap_at` calls `set_at [i]`, whose decreasing parameter is SECOND, so the sealed
-    callee's telescope is `(i, v, x, hi)` while the call is written in DECLARATION
-    order — the chain has to permute it (`retarget`), and before it did the borrow
-    was checked against `i : Nat`. -/
+/-- The pair, both honest. `swap_at` calls `set_at [i]`, whose decreasing parameter
+    is second, so the sealed callee's telescope is `(i, v, x, hi)` while the call is
+    written in declaration order — the chain has to permute it. -/
 def setSwap : Term := setSwapUnder setHonest swapHonest .unit
 example : progOk setSwap = true := by native_decide
 
@@ -730,11 +663,11 @@ example : progRejects (setSwapUnder setHonest (exitIs (prog defer_check { SwapL 
 example : progRejects (setSwapUnder setHonest (exitIs oldvT) .unit)
   "does not have return type" = true := by native_decide
 
-/-! ### The executing differential — the bodies really write and really swap -/
+/-! ### The executing differential — the bodies really write and really swap
 
--- SUBJECT: executing-mode raw Term callers (proof arguments are placeholders `()`,
--- which the executing run does not type-check). Each rides the honest chain as its
--- tail, so what runs is the function declared above it.
+    Proof arguments in the callers below are placeholders `()`, since the
+    executing run does not type-check. Each rides the honest chain as its tail, so
+    what runs is the function declared above it. -/
 def setCallerTail (l : List Nat) (i x : Nat) : Term :=
   .letIn ⟨0, "z"⟩ (tlistT l)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
@@ -766,20 +699,16 @@ example : runSwapAt [1,2,3] 0 2 = true := by native_decide      -- ends
 example : runSwapAt [1,2,3,4] 1 2 = true := by native_decide    -- adjacent interior
 example : runSwapAt [4,1,3,2,5] 0 4 = true := by native_decide  -- full span
 
-/-! ## Stage (iv) groundwork: `insert_at`, and where a body's knowledge runs out
+/-! ## `insert_at`
 
-    The relational partition needs one more mutator and one machine fact, and the
-    fact is the milestone's sharpest limitation, so it is established here with its
-    own negative control rather than discovered mid-proof.
+    The relational partition below needs one more mutator: `insert_at` is the
+    mutation a linked-list partition actually performs — relink one cell at index
+    `k`. (Lomuto's swap-based scan is an array algorithm; the naturalness-first
+    rule says the program stays natural, and `swap_at` above remains available for
+    anyone who wants the array shape.) It is `split_off`'s idiom again —
+    take-and-refill through the body's own borrows — and checks the same way. -/
 
-    `insert_at` is the mutation a LINKED-LIST partition actually performs: relink one
-    cell at index `k`. (Lomuto's swap-based scan is an array algorithm; the north
-    star's naturalness-first rule says the program stays natural, and `swap_at` above
-    remains available for anyone who wants the array shape.) It is `split_off`'s
-    idiom again — take-and-refill through the body's own borrows — and checks the
-    same way. -/
-
--- The return type is the ONLY description of this function, so it is written with
+-- The return type is the only description of this function, so it is written with
 -- `exitIs`, the shared mutator skeleton — honest and lies differ in exactly its one
 -- argument, provably, rather than by a reader comparing two spellings.
 def insLT (k x l : Term) : Term := .app (.app (.app Dllbc.StdLemmas.InsertL k) x) l
@@ -820,7 +749,6 @@ example : (Val.know (pv (insLC 3 9 [1,2,3])) == vlistV [1,2,3,9]) = true := by n
 example : (Val.know (pv (insLC 5 9 [1,2,3])) == vlistV [1,2,3,9]) = true := by native_decide
 example : (Val.know (pv (insLC 0 9 [])) == vlistV [9]) = true := by native_decide
 
--- SUBJECT: executing-mode raw Term caller.
 def insCallerTail (l : List Nat) (k x : Nat) : Term :=
   .letIn ⟨0, "z"⟩ (tlistT l)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
@@ -835,17 +763,16 @@ example : runInsertAt [1,2,3] 0 9 = true := by native_decide
 example : runInsertAt [1,2,3] 2 9 = true := by native_decide
 example : runInsertAt [1,2,3] 3 9 = true := by native_decide
 
-/-! ### THE WALL, and the rule that closes it: BRANCH EQUATIONS
+/-! ### The problem branch equations solve
 
-    M18's two-layer principle says motive abstraction handles OCCURRENCES and branch
-    equations handle KNOWLEDGE. A body-level `match` had only the first layer. When
-    the scrutinee is a stuck spine, `generalizeStuck` abstracts it to a fresh σ_b
-    across all σ-bearing state and the branch refines σ_b := True — so everything
-    that ALREADY mentioned the spine now reads `True`, which is what M19's stuckProbe
-    tests. But a body that writes `Leb a b` AFTER the split recomputes the spine, and
-    nothing hands back the equation.
+    Motive abstraction handles occurrences of the scrutinee; it does not, by
+    itself, hand the body any knowledge of the branch it took. When the scrutinee
+    is a stuck spine, `generalizeStuck` abstracts it to a fresh σ_b across all
+    σ-bearing state and the branch refines σ_b := True — so everything that already
+    mentioned the spine now reads `True`. But a body that writes `Leb a b` AFTER the
+    split recomputes the spine, and nothing hands back the equation.
 
-    That is exactly backwards for direct proving, where the body must PRODUCE the
+    That is exactly backwards for direct proving, where the body must produce the
     evidence rather than merely have its types agree. `Refl : Id Bool (Leb a b) True`
     does not check inside the `True` branch — kept here as the negative half of the
     pair: -/
@@ -853,8 +780,7 @@ example : runInsertAt [1,2,3] 3 9 = true := by native_decide
 def needLe : Term := prog{
   fn NeedLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
   () }
--- A callee, written into each chain that calls it; the standalone form keeps
--- the verdict `S26Migrate.p23` was computing for it.
+-- A callee, checked standalone before it is used in the chains below.
 example : progOk needLe = true := by native_decide
 def branchKnowledge : Term := prog defer_check {
   fn NeedLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
@@ -866,25 +792,25 @@ def branchKnowledge : Term := prog defer_check {
   () }
 example : progRejects branchKnowledge "does not have its parameter type" = true := by native_decide
 
-/-! **THE RULE** (M23 phase A). `match h : c { … }` additionally binds, in every
-    branch, an equation `h : Id τ ⟨the scrutinee's PRE-SPLIT value⟩ ⟨this branch's
+/-! **The rule.** `match h : c { … }` additionally binds, in every branch, an
+    equation `h : Id τ ⟨the scrutinee's pre-split value⟩ ⟨this branch's
     constructor⟩`. That is the standard dependent-match-with-equations shape — Lean's
-    `match h : x with`, Coq's `destruct … eqn:` — and it stays inside §3.2's
-    knowledge/state invariant, because the equation IS the branch's match-shape
-    knowledge: a fact about the value, true at entry and forever, until now applied
-    only as a substitution and here additionally reified as a citable term.
+    `match h : x with`, Coq's `destruct … eqn:` — and the equation IS the branch's
+    match-shape knowledge: a fact about the value, true at entry and forever, until
+    now applied only as a substitution and here additionally reified as a citable
+    term.
 
-    The pre-split value is where the two layers come apart. At an ordinary split ⇜
+    The pre-split value is where the two cases come apart. At an ordinary split ⇜
     rewrites the scrutinee's value to this constructor everywhere, so the equation's
     two endpoints are already identical and `h` is `Refl` — informative-free, as it
-    should be. At a STUCK split `generalizeStuck` ABSTRACTED the spine before the
+    should be. At a stuck split `generalizeStuck` abstracted the spine before the
     refinement, so nothing in the state mentions `Leb a b` any more and a body that
     recomputes it is talking about a term the refinement never saw. There the
     equation is a genuine hypothesis, minted as a fresh σ typed
     `Id Bool (Leb σa σb) True` — the one thing this rule adds.
 
-    The positive twin of `branchKnowledge`: the SAME body, with the equation cited in
-    place of `Refl`. The pair is the whole claim — the rule does exactly one new
+    The positive twin of `branchKnowledge`: the same body, with the equation cited
+    in place of `Refl`. The pair is the whole claim — the rule does exactly one new
     thing. -/
 
 def branchKnowledgeEq : Term := prog{
@@ -904,8 +830,7 @@ example : progOk branchKnowledgeEq = true := by native_decide
 def needGt : Term := prog{
   fn NeedGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () };
   () }
--- A callee, written into each chain that calls it; the standalone form keeps
--- the verdict `S26Migrate.p23` was computing for it.
+-- A callee, checked standalone before it is used in the chains below.
 example : progOk needGt = true := by native_decide
 def branchKnowledgeBoth : Term := prog{
   fn NeedLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
@@ -939,7 +864,7 @@ example : progOk branchKnowledgeIf = true := by
     concrete split (`Refl`). Each gets a control, plus the two ways the minted
     hypothesis could be a rubber stamp. -/
 
--- (1) The equation is the branch's OWN constructor, not the other one: citing
+-- (1) The equation is the branch's own constructor, not the other one: citing
 -- `LebFalseGt` on the True branch's `e : Id Bool (Leb a b) True` is rejected.
 def branchEqSwapped : Term := prog defer_check {
   fn NeedLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
@@ -953,14 +878,13 @@ def branchEqSwapped : Term := prog defer_check {
   () }
 example : progRejects branchEqSwapped "does not have its parameter type" = true := by native_decide
 
--- (2) The equation is about the SPINE THAT WAS SPLIT ON, not any spine: split on
+-- (2) The equation is about the spine that was split on, not any spine: split on
 -- `Leb a b`, then claim the equation is about `Leb b a`. Rejected — so the minted
 -- type is read off the abstracted scrutinee, not fabricated per use site.
 def needLeSwap : Term := prog{
   fn NeedLeSwap (a : Nat, b : Nat, h : Le b a) -> Unit { () };
   () }
--- A callee, written into each chain that calls it; the standalone form keeps
--- the verdict `S26Migrate.p23` was computing for it.
+-- A callee, checked standalone before it is used in the chains below.
 example : progOk needLeSwap = true := by native_decide
 def branchEqWrongSpine : Term := prog defer_check {
   fn NeedLeSwap (a : Nat, b : Nat, h : Le b a) -> Unit { () };
@@ -973,14 +897,13 @@ def branchEqWrongSpine : Term := prog defer_check {
   () }
 example : progRejects branchEqWrongSpine "does not have its parameter type" = true := by native_decide
 
--- (3) An ORDINARY symbolic split still yields only `Refl`: `n`'s equation in the
+-- (3) An ordinary symbolic split still yields only `Refl`: `n`'s equation in the
 -- `S` branch is `Id Nat (S σm) (S σm)` — ⇜ already rewrote the pre-split value, so
 -- both endpoints are the constructor tree and nothing off-diagonal is derivable.
 def wantEqLie : Term := prog{
   fn WantEqLie (n : Nat, h : Id Nat (S n) n) -> Unit { () };
   () }
--- A callee, written into each chain that calls it; the standalone form keeps
--- the verdict `S26Migrate.p23` was computing for it.
+-- A callee, checked standalone before it is used in the chains below.
 example : progOk wantEqLie = true := by native_decide
 def branchEqPlainSym : Term := prog defer_check {
   fn WantEqLie (n : Nat, h : Id Nat (S n) n) -> Unit { () };
@@ -989,12 +912,11 @@ def branchEqPlainSym : Term := prog defer_check {
   () }
 example : progRejects branchEqPlainSym "does not have its parameter type" = true := by native_decide
 
--- …and the reflexive reading of that same equation IS available: `Id Nat (S m) (S m)`.
+-- …and the reflexive reading of that same equation is available: `Id Nat (S m) (S m)`.
 def wantRefl : Term := prog{
   fn WantRefl (n : Nat, h : Id Nat (S n) (S n)) -> Unit { () };
   () }
--- A callee, written into each chain that calls it; the standalone form keeps
--- the verdict `S26Migrate.p23` was computing for it.
+-- A callee, checked standalone before it is used in the chains below.
 example : progOk wantRefl = true := by native_decide
 def branchEqPlainSymRefl : Term := prog{
   fn WantRefl (n : Nat, h : Id Nat (S n) (S n)) -> Unit { () };
@@ -1004,7 +926,7 @@ def branchEqPlainSymRefl : Term := prog{
 example : progOk branchEqPlainSymRefl = true := by
   native_decide
 
--- (4) The CONCRETE split (the executing side and any concrete scrutinee) binds the
+-- (4) The concrete split (the executing side and any concrete scrutinee) binds the
 -- equation too, so a body written with `match h :` runs. The differential below
 -- exercises the same path end to end.
 def concreteEq : Term := prog{
@@ -1015,25 +937,23 @@ def concreteEq : Term := prog{
   () }
 example : progOk concreteEq = true := by native_decide
 
--- (5) Not vacuous by scoping accident: WITHOUT the binder the same body is
--- unelaboratable (`e` is unbound), and WITH it the branch-free `Refl` of the wall
--- test is still rejected — i.e. binding `e` did not also make `Refl` check. This is
--- `branchKnowledge` above; the pair (it, `branchKnowledgeEq`) is the control.
+-- (5) Not vacuous by scoping accident: without the binder the same body is
+-- unelaboratable (`e` is unbound), and with it the branch-free `Refl` of the test
+-- above is still rejected — i.e. binding `e` did not also make `Refl` check. This
+-- is `branchKnowledge` above; the pair (it, `branchKnowledgeEq`) is the control.
 
 /-! ### The route around it, verified in both halves
 
-    Rather than add a `destruct-eqn:` to the body's match, keep the body BRANCH-FREE
+    Rather than add a `destruct-eqn:` to the body's match, keep the body branch-free
     and let the pure fragment do the case analysis, where the knowledge is available.
 
-    Half 1 — the body computes its decision as an INDEX with `boolRec` and never
+    Half 1 — the body computes its decision as an index with `boolRec` and never
     matches on it. The stuck spine flows through the call and meets the ensures
     definitionally. (This is a better program anyway: index arithmetic, not control
     flow, which is how the mutation was going to be expressed regardless.) -/
 
--- `insert_at`'s header is repeated here rather than spliced: a `%`-spliced tail
--- could not itself declare functions until M32 R4, because both chains numbered
--- their slots from `progBase` and collided by id. It can now; one chain, both
--- functions, is kept because it is what was written.
+-- `insert_at`'s header is repeated here rather than spliced: one chain, both
+-- functions, kept because it is what was written.
 def pick : Term := prog{
   fn InsertAt [k] (v : &mut List Nat, k : Nat, x : Nat) -> %insHonest
         { match k {
@@ -1052,21 +972,17 @@ def pick : Term := prog{
   fn Pick (v : &mut List Nat, x : Nat, p : Nat)
         -> Id (List Nat) (*v)
              (InsertL (boolRec (λ (B : Bool). Nat) Z (S Z) (Leb x p)) x (old *v))
-        -- (M26-B) `ki`, not `K`. §6 makes capitalisation the binder-mode marker,
-        -- and this binder is genuinely RUNTIME: `InsertAt` matches on the index
-        -- it is passed. The capital was stylistic — this was the only binder in
-        -- the whole corpus whose name contradicted its role, and the fence is
-        -- what found it.
+        -- `ki`, lowercase: this binder is genuinely runtime — `InsertAt` matches on
+        -- the index it is passed.
         { let ki = boolRec (λ (B : Bool). Nat) Z (S Z) (Leb x p);
           InsertAt(&m *v, ki, x) };
   () }
 example : progOk pick = true := by native_decide
 
-/-! Half 2 — the pure lemma, over the SAME stuck index, gets its branch knowledge
-    from a CONVOY MOTIVE: the motive carries `Id Bool <spine> b`, so each arm
+/-! Half 2 — the pure lemma, over the same stuck index, gets its branch knowledge
+    from a convoy motive: the motive carries `Id Bool <spine> b`, so each arm
     receives the equation as an argument and the whole elim is applied to `Refl`.
-    This is the idiom M22's `AllLeRExtendFar` already uses; naming it here because
-    it is the thing that makes the branch-free route work rather than merely move
+    This is the thing that makes the branch-free route work rather than merely move
     the problem. `ub_pick` is the shape every partition-invariant lemma will take. -/
 
 def ub_pick : Term := prog defer_check {
@@ -1086,41 +1002,36 @@ example : chk ub_pick ub_pick_ty = true := by native_decide
 
 -- `Ub`/`Lb` compute, and are Σ-chained (so `sigmaRec` consumes them).
 --
--- **The hand-written side's Σ binders are CAPITAL since M32 R3b**, and that is a
--- claim rather than a spelling: `Ub`/`Lb` chain PROOF components, §2.1 makes a
--- proof component's binder capital, and a capital Σ binder now carries `⇝` on its
--- domain — so a lowercase twin here would no longer be the same type. The
--- comparison is by `pv`, which prints the marker, so this is the assertion that
--- the library's own components declare themselves comptime.
+-- The hand-written side's Σ binders are capital: `Ub`/`Lb` chain proof
+-- components, a proof component's binder is capital, and a capital Σ binder
+-- carries `⇝` on its domain — so a lowercase twin here would no longer be the
+-- same type. The comparison is by `pv`, which prints the marker, so this is the
+-- assertion that the library's own components declare themselves comptime.
 example : (pv (prog defer_check { Ub (S (S Z)) (Cons (S Z) (Cons (S (S Z)) Nil)) }) ==
            pv (prog defer_check { Σ (H : Le (S Z) (S (S Z))). Σ (H2 : Le (S (S Z)) (S (S Z))). Unit })) = true := by native_decide
 example : (pv (prog defer_check { Lb Z (Cons (S Z) Nil) }) == pv (prog defer_check { Σ (H : Le Z (S Z)). Unit })) = true := by native_decide
 
-/-! ### The unshifted-motive question, settled: LATENT AND UNREACHABLE
+/-! ### The unshifted-motive question: latent and unreachable
 
     `hasType`'s `natRec`/`listRec` premises use the motive under the step's binders
-    WITHOUT shifting it (`.pi "§h" a (.pi "§t" listA (.pi "§ih" (.app p (.pvar "§t"))
-    …))`; it was `.pvar 0` and a missing shift when this note was written). Read as
-    de Bruijn terms that was a wrong-answer typing rule for an OPEN motive — one
-    mentioning an enclosing λ's variable — which is exactly the shape
-    `SortedAppendPivot` needs (induction on `a`, motive mentioning `p` and `b`).
-    So it looked like a live hazard for the rest of M23 and worth fixing first.
+    without shifting it. Read as de Bruijn terms that looks like a wrong-answer
+    typing rule for an OPEN motive — one mentioning an enclosing λ's variable —
+    which is exactly the shape `SortedAppendPivot` needs (induction on `a`, motive
+    mentioning `p` and `b`).
 
-    It is not, and the reason is worth recording because it is not obvious from the
-    premise construction: `hasType` INSTANTIATES every λ binder with a fresh σ as it
-    descends (the `.lam`-against-`.pi` case). By the time a recursor spine is
-    reached, every enclosing binder is a `sym`, so the motive it carries is
-    variable-free — and a shift is the identity on a variable-free value. Open
-    motives were a de Bruijn artifact of the elaborated term that the typing
-    descent never presents. A `.pi` codomain is the only place a bound variable
-    survives, and `hasType` returns `Type` there without checking inside.
+    It is not a hazard, and the reason is worth recording because it is not
+    obvious from the premise construction: `hasType` instantiates every λ binder
+    with a fresh σ as it descends (the `.lam`-against-`.pi` case). By the time a
+    recursor spine is reached, every enclosing binder is a `sym`, so the motive it
+    carries is variable-free — and a shift is the identity on a variable-free
+    value. Open motives were a de Bruijn artifact of the elaborated term that the
+    typing descent never presents. A `.pi` codomain is the only place a bound
+    variable survives, and `hasType` returns `Type` there without checking inside.
 
-    Verified rather than argued: these type-check, and they type-checked IDENTICALLY
-    with the shifts inserted (I wrote the fix, measured no difference, and reverted
-    it — three `shiftPure` calls on an unreachable case is complexity without
-    payoff). M30 deleted the shifts along with every other index, so what these now
-    pin is the descent discipline itself: if it ever changes, something fails here
-    first. -/
+    Verified rather than argued: these type-check, and they type-checked
+    identically with shifts inserted at the unreachable case — measured no
+    difference. What these pin is the descent discipline itself: if it ever
+    changes, something fails here first. -/
 
 def openMotiveL : Term := prog defer_check {
   λ (P : Nat). λ (L : List Nat).
@@ -1134,41 +1045,40 @@ def openMotiveN : Term := prog defer_check {
 def openMotiveN_ty : Term := prog defer_check { Π (P : Nat) → Π (N : Nat) → Le P P }
 example : chk openMotiveN openMotiveN_ty = true := by native_decide
 
-/-! ### A CHECKER GAP, filed for §9: a `let`-bound value is never type-checked
+/-! ### A checker gap: a `let`-bound value is never type-checked
 
     `readR`'s `let` reflects its right-hand side and binds it; nothing checks it
-    against anything, because nothing demands a type of it until it is CONSUMED.
+    against anything, because nothing demands a type of it until it is consumed.
     So an ill-typed dead proof is silently accepted:
 
         { let q = <any ill-typed proof term>; () }        -- ACCEPTED
 
     Path-sensitive laziness is a defensible design — an unconsumed value has no
-    obligation — but it means "the body checks" does not imply "everything written in
-    the body is well-typed", and that is a real hazard for anyone probing what the
-    checker knows. It cost me a false negative result: my first probe of the
-    branch-knowledge wall above was `{ let q = LebTrueLe a b Refl; () }`, which was
-    ACCEPTED, and I nearly concluded the body DOES get branch equations. The honest
-    probe (kept above) routes the proof into a consumer, and is rejected.
+    obligation — but it means "the body checks" does not imply "everything written
+    in the body is well-typed". A probe of the branch-knowledge test above that
+    merely `let`-binds the proof without consuming it (`{ let q = LebTrueLe a b
+    Refl; () }`) is accepted despite being ill-typed on the intended reading; the
+    honest probe (kept above) routes the proof into a consumer, and is rejected.
 
-    The paired discipline, since `Migrate.progOkOf`/`chk` also collapse "machine error" and
-    "typing false" into one `false`: confirm every negative control is an honest
-    typing rejection, and confirm every positive one is live by flipping it and
-    watching the build go red. Both were done for every test in this file. -/
+    The paired discipline throughout this file, since `chk`/`progOk` also collapse
+    "machine error" and "typing false" into one `false`: confirm every negative
+    control is an honest typing rejection, and confirm every positive one is live
+    by flipping it and watching the build go red. -/
 
 -- Generic J-transport at `List Nat` — `LeRwR` for arbitrary list predicates. Every
 -- certificate a back-less body returns is stated over an exit it knows only
--- PROPOSITIONALLY (from the callee's evidence), so transporting a proof along that
+-- propositionally (from the callee's evidence), so transporting a proof along that
 -- evidence is the universal last step; `LeRwR` already covers the `Le`-over-`Nat`
 -- case and this is the unrestricted one.
 example : chk Dllbc.StdLemmas.ListRw Dllbc.StdLemmas.ListRwTy = true := by native_decide
 
 /-! ### The pivot glue — `Sorted (a ++ p :: b)` from the four partition facts
 
-    A back-less partition hands its caller two WHOLE lists and a pivot, with the four
+    A back-less partition hands its caller two whole lists and a pivot, with the four
     facts `Sorted a`, `Ub p a`, `Sorted b`, `Lb p b`; `SortedAppendPivot` is what
     turns those into the sortedness half of quicksort's postcondition. The Σ-chained
-    predicates are taken apart with `sigmaRec` (stage (i)) — five projections first,
-    then the head-bound transport, then the induction. -/
+    predicates are taken apart with `sigmaRec` — five projections first, then the
+    head-bound transport, then the induction. -/
 
 example : chk SortedHead Dllbc.StdLemmas.SortedHeadTy = true := by native_decide
 example : chk SortedTail Dllbc.StdLemmas.SortedTailTy = true := by native_decide
@@ -1178,7 +1088,7 @@ example : chk LbBound Dllbc.StdLemmas.LbBoundTy = true := by native_decide
 example : chk BoundAppend Dllbc.StdLemmas.BoundAppendTy = true := by native_decide
 example : chk SortedAppendPivot Dllbc.StdLemmas.SortedAppendPivotTy = true := by native_decide
 
--- It COMPUTES, end to end: `[1] ++ 2 :: [3]` is sorted, from the four facts about
+-- It computes, end to end: `[1] ++ 2 :: [3]` is sorted, from the four facts about
 -- the parts. Every hypothesis at these values is a `⊤`-chain, so the witnesses are
 -- `Pair(unit, unit)` — the content is entirely in the lemma.
 def sap_app : Term := prog defer_check {
@@ -1188,11 +1098,11 @@ def sap_app_ty : Term := prog defer_check {
   Sorted (Cons (S Z) (Cons (S (S Z)) (Cons (S (S (S Z))) Nil))) }
 example : chk sap_app sap_app_ty = true := by native_decide
 
-/-! Honesty controls. Each flips ONE hypothesis and watches the check fail — the
+/-! Honesty controls. Each flips one hypothesis and watches the check fail — the
     two orientation flips (`Ub`/`Lb` swapped for their duals) and one arm lie. -/
 
 -- (1) `Ub p a` weakened to `Lb p a`: `UbHead` now receives `Σ (Le p h). Lb p t`
--- where it wants `Σ (Le h p). Ub p t`. Without a's elements being BELOW the pivot
+-- where it wants `Σ (Le h p). Ub p t`. Without a's elements being below the pivot
 -- the splice is not sorted, and the check says so.
 def sap_lie_ub_ty : Term := prog defer_check {
   Π (P : Nat) → Π (A : List Nat) → Π (B : List Nat) →
@@ -1207,7 +1117,7 @@ def sap_lie_lb_ty : Term := prog defer_check {
 example : chk SortedAppendPivot sap_lie_lb_ty = false := by native_decide
 
 -- (3) The `Nil` arm of the transport returning the wrong hypothesis: past the end of
--- `t` the new head is the PIVOT, so only `Le h p` inhabits the goal; handing back the
+-- `t` the new head is the pivot, so only `Le h p` inhabits the goal; handing back the
 -- (vacuous) `Bound h Nil` does not.
 def bound_append_lie : Term := prog defer_check {
   λ (H : Nat). λ (P : Nat). λ (T : List Nat). λ (B : List Nat).
@@ -1227,14 +1137,14 @@ def sap_bad_pivot_ty : Term := prog defer_check {
   Sorted (Cons (S Z) (Cons Z Nil)) }
 example : chk sap_bad_pivot sap_bad_pivot_ty = false := by native_decide
 
-/-! ## Stage (vi) prelude: the bound-survival keystone, checked
+/-! ## The bound-survival keystone, checked
 
-    A partition-based quicksort needs `Ub p a` for the left part AFTER sorting, while
-    the partition bounded it BEFORE — so a bound has to survive a permutation, and
-    `Ub`/`Lb` (Σ-chains over the spine) are not natively permutation-invariant. M22
-    named the route at the positional encoding: cross to the multiset, where the
-    property is `Π x. x > p → Count x l = Z` and permutation-invariance is a
-    one-line `IdTrans`. These are the whole-list instances. -/
+    A partition-based quicksort needs `Ub p a` for the left part after sorting, while
+    the partition bounded it before — so a bound has to survive a permutation, and
+    `Ub`/`Lb` (Σ-chains over the spine) are not natively permutation-invariant. The
+    route is to cross to the multiset, where the property is
+    `Π x. x > p → Count x l = Z` and permutation-invariance is a one-line `IdTrans`.
+    These are the whole-list instances. -/
 
 example : chk Dllbc.StdLemmas.LbHead Dllbc.StdLemmas.LbHeadTy = true := by native_decide
 example : chk Dllbc.StdLemmas.LbTail Dllbc.StdLemmas.LbTailTy = true := by native_decide
@@ -1246,19 +1156,17 @@ example : chk Dllbc.StdLemmas.LbOfNoBelow Dllbc.StdLemmas.LbOfNoBelowTy = true :
 example : chk Dllbc.StdLemmas.LbPerm Dllbc.StdLemmas.LbPermTy = true := by native_decide
 
 
-/-! # Stages (iv) and (vi): THE FLAGSHIP COHORT, as one program
+/-! # The flagship cohort, as one program
 
-    `partition`, `append_back` and `quicksort` are three sealed `let`s and a tail
-    (§8), and they are written here as ONE chain because that is what they are: the
-    caller reaches each callee by being written below it, and nothing is passed
-    beside anything.
+    `partition`, `append_back` and `quicksort` are three sealed `let`s and a tail,
+    written here as one chain because that is what they are: the caller reaches
+    each callee by being written below it, and nothing is passed beside anything.
 
-    ## Stage (iv) — the relational partition
+    ## The relational partition
 
-    `partition(v, p)`: `*v` keeps the elements `≤ p`, the rest comes back BY VALUE.
+    `partition(v, p)`: `*v` keeps the elements `≤ p`, the rest comes back by value.
     `split_off`'s silhouette, and the shape branch equations make writable — the body
-    branches on `Leb x p` and has to PRODUCE `Le x p` from the branch it took, which
-    is exactly what M23-iv measured as impossible and phase A closed.
+    branches on `Leb x p` and has to produce `Le x p` from the branch it took.
 
     The ensures is four conjuncts, all in observation vocabulary:
 
@@ -1267,65 +1175,60 @@ example : chk Dllbc.StdLemmas.LbPerm Dllbc.StdLemmas.LbPermTy = true := by nativ
       → Σ (Hlb : Lb p hi)                         -- the returned part is ≥ p
       → Π n. Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
 
-    `Ub`/`Lb`/`Count`/`Add` say what a list IS. Nothing here mirrors the body's own
-    algorithm — there is no `PartitionL` anywhere in this milestone, which is the
-    stage's whole point: every invariant is proven INDUCTIVELY IN THE BODY from the
-    recursive call's own ensures.
+    `Ub`/`Lb`/`Count`/`Add` say what a list is. Nothing here mirrors the body's own
+    algorithm; every invariant is proven inductively in the body from the recursive
+    call's own ensures.
 
-    The program is §4.1's take-and-rebuild, not Lomuto's array scan (the north star's
-    naturalness rule): take the payload, match it OWNED, put the tail back, recurse
-    through the parameter borrow, then push the head onto whichever side its
-    comparison chose. In-place by this calculus's standards — the only list cell ever
-    allocated is the one `Cons` a `Cons` becomes.
+    The program is take-and-rebuild, not Lomuto's array scan (the naturalness-first
+    rule): take the payload, match it owned, put the tail back, recurse through the
+    parameter borrow, then push the head onto whichever side its comparison chose.
+    In-place by this calculus's standards — the only list cell ever allocated is
+    the one `Cons` a `Cons` becomes.
 
-    ## Stage (vi) — quicksort
+    ## Quicksort
 
         fn quicksort [fuel] (fuel : Nat, v : &mut List Nat, Hfuel : Le (len *v) fuel)
           -> Σ (Hs : Sorted (*v)). Π n. Id Nat (count n (*v)) (count n (old *v))
 
-    Sorted AND a permutation, over the exit snapshot, and not one `back` in the call
+    Sorted and a permutation, over the exit snapshot, and not one `back` in the call
     tree: `partition`, `append_back` and the recursive calls are each described only
-    by their return type. The `Sorted` here is the STRUCTURAL Σ-chain, not M22's
-    positional `SortedR` — which is what sigmaRec (stage (i)) had to land for.
+    by their return type. The `Sorted` here is the structural Σ-chain, which is what
+    `sigmaRec` above had to land for.
 
-    THE PROGRAM. Take the payload; the head is the pivot; partition the tail through
+    The program: take the payload; the head is the pivot; partition the tail through
     `v`; sort the kept part in place through `v` and the returned part through a
     borrow of the local; glue with `append_back`. The sufficiency hypothesis makes
     the out-of-fuel path ⊥-dischargeable — with the two `Le` conjuncts partition
     returns supplying exactly the two `LeTrans`es that feed the recursive calls
     their own sufficiency.
 
-    THE ONE STRUCTURAL FACT the assembly needs beyond composition is BOUND SURVIVAL:
-    `SortedAppendPivot` wants `Ub x` of the SORTED left part, and the partition
-    bounded it before the sort. `UbPerm`/`LbPerm` (above) carry both bounds across
-    their sorts' count evidence. That is M22's keystone in whole-list form, and it is
-    the only place this proof is more than gluing.
+    The one structural fact the assembly needs beyond composition is bound
+    survival: `SortedAppendPivot` wants `Ub x` of the sorted left part, and the
+    partition bounded it before the sort. `UbPerm`/`LbPerm` (above) carry both
+    bounds across their sorts' count evidence — the only place this proof is more
+    than gluing.
 
-    PAIN DIARY — staging is now the dominant cost, and this body is the measurement.
-    Four builders (`mkCnt`, `mkUb`, `mkLb`, `fin`) exist for one reason: a proof must
+    Staging is the dominant remaining cost, and this body is the measurement. Four
+    builders (`mkCnt`, `mkUb`, `mkLb`, `fin`) exist for one reason: a proof must
     name values that later statements consume, and the body has no way to say "the
     value `rest` had" or "what `*v` held before that call". Each is applied in stages
-    as its arguments become available. Every one of them would disappear under the
-    filed `old`-for-consumed-things feature; none of them is doing mathematical work.
+    as its arguments become available; none of them is doing mathematical work.
 
-    ## ALL THREE ARE FUEL-THREADED, and that is decision 8's price, paid
+    ## All three are fuel-threaded
 
-    M23 wrote `partition` and `append_back` with `[v]` — decreasing through the
-    borrow's payload — and `quicksort` with `[fuel]`. The `[v]` shape has no
-    recursor form (see `borrowDecrease` in stage (v)), so §12 decision 8 blessed
-    fuel-threading as the interim, and this is that source change: each of the two
+    `partition` and `append_back` decrease through the borrow's payload, which has
+    no recursor form (see `borrowDecrease` above), so both are fuel-threaded: each
     grows a `fuel : Nat` parameter and a `Le (Len *v) fuel` bound, each grows a dead
     `Z` branch discharged by `botElim`, and every caller supplies both.
 
-    **The bound needs no lemma, and that is the interesting part.** At each recursive
-    call the bound passes down UNCHANGED: `Le (Len (Cons x rest)) (S f2)` IS
-    `Le (Len rest) f2` definitionally — the same bounds-cursor descent M14 found. And
-    `Hf` is CAPITAL in both callees, which is §6's mode discipline paying for the
-    migration: quicksort hands its `hfuel` to `partition` and still needs it twice
-    more, and a lowercase proof parameter would have MOVED it (R16).
+    The bound needs no lemma, and that is the interesting part. At each recursive
+    call the bound passes down unchanged: `Le (Len (Cons x rest)) (S f2)` is
+    `Le (Len rest) f2` definitionally. And `Hf` is capital in both callees: quicksort
+    hands its `hfuel` to `partition` and still needs it twice more, and a lowercase
+    proof parameter would have moved it.
 
-    `append_back`'s caller side is the one place fuel had to be INVENTED rather than
-    forwarded: quicksort calls it AFTER sorting both halves, and a sort returns a
+    `append_back`'s caller side is the one place fuel had to be invented rather than
+    forwarded: quicksort calls it after sorting both halves, and a sort returns a
     count equation, not a length bound. What works is the fuel that is exactly
     enough — `Len *v` itself, with `LeRefl` as its bound — staged in a `let` first,
     because a comptime argument mentioning `*v` would demand-collapse the loan it
@@ -1333,7 +1236,7 @@ example : chk Dllbc.StdLemmas.LbPerm Dllbc.StdLemmas.LbPermTy = true := by nativ
 
 /-! ### The cohort's telescope vocabulary
 
-    Both fuel-threaded callees put the borrow SECOND (the fuel is `[k]` and `[k]`
+    Both fuel-threaded callees put the borrow second (the fuel is `[k]` and `[k]`
     hoists to the front), so a return type written outside a header names it
     `.var ⟨1, "v"⟩`. -/
 
@@ -1345,10 +1248,10 @@ def fuelT : Term := .var ⟨0, "fuel"⟩
 
 /-! ### The return types
 
-    Written out per twin rather than through a skeleton, which is M28 ψ's rule: for
-    a SPEC lie the type IS the readable content, and each of these is one line of a
-    six-conjunct chain away from the honest form. Only the two telescope parameters
-    a return type cannot name from outside its header are spliced. -/
+    Written out per twin rather than through a skeleton: for a spec lie the type is
+    the readable content, and each of these is one line of a six-conjunct chain
+    away from the honest form. Only the two telescope parameters a return type
+    cannot name from outside its header are spliced. -/
 
 def partHonest : Term := prog defer_check {
   Σ (hi : List Nat). Σ (Hub : Ub %pT (*%vfT)). Σ (Hlb : Lb %pT hi).
@@ -1366,9 +1269,9 @@ def suffHonest : Term := prog defer_check { Le (Len *%vfT) %fuelT }
 
     Three parameters vary — `partition`'s return type, `quicksort`'s, and
     `quicksort`'s sufficiency hypothesis — which is every twin in this cohort except
-    the two BODY twins, and those cannot be shared at all (M28 D1's rule: a
-    difference inside a body, at a subterm naming a binder the `fn` lowering mints
-    an id for, has no splice that can reach it). Both are transcribed below. -/
+    the two body twins, and those cannot be shared at all: a difference inside a
+    body, at a subterm naming a binder the `fn` lowering mints an id for, has no
+    splice that can reach it. Both are transcribed below. -/
 
 def qsUnder (pret qret suff tail : Term) : Term := prog{
   fn Partition [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (Len *v) fuel) -> %pret
@@ -1378,25 +1281,18 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
           Nil => { *v := Nil;
                    Pair(Nil, Pair(unit, Pair(unit, Pair(unit, Pair(unit, λ (N : Nat). Refl))))) },
           Cons(x, rest) => match fuel {
-            -- Out of fuel with a non-empty list: `Hf : Le (S (Len rest)) Z` IS
+            -- Out of fuel with a non-empty list: `Hf : Le (S (Len rest)) Z` is
             -- `Bot`, so the path is dead and the audit admits an ex-falso at any
-            -- return type (§5.4). Guard + sufficiency hypothesis = TOTAL correctness.
+            -- return type. Guard + sufficiency hypothesis = total correctness.
             Z => botElim Unit Hf,
             S(f2) => {
-            -- PAIN DIARY (staging, and the first where the unnameable thing is an
-            -- ENTRY value, not an exit). Both Count steps must name `rest`, the tail
-            -- as it was at entry; but `rest` is DATA and `*v := rest` moves it, so
-            -- after the very next statement no term in the body denotes it. Dodged
-            -- as ever by building the derivation while it is still live and applying
-            -- it later. M23-iii stated the rule for exits ("a body can only talk
-            -- about the CURRENT exit"); this instance says the same of any consumed
-            -- parameter or binder, and it is a filing for `old` on consumed things.
-            -- §2.4: `Rest0` and `X0` are the snapshots these two were taking
-            -- implicitly. The paragraph above is about exactly this — "a body can
-            -- only talk about the CURRENT exit… a filing for `old` on consumed
-            -- things" — and the citation rule is what turns the filing into a
-            -- binding: the value is frozen HERE, before the call consumes it, and
-            -- the name says so.
+            -- Both Count steps must name `rest`, the tail as it was at entry; but
+            -- `rest` is data and `*v := rest` moves it, so after the very next
+            -- statement no term in the body denotes it. A body can only talk about
+            -- the current exit — the same is true of any consumed parameter or
+            -- binder — so the derivation is built while `rest`/`x` are still live
+            -- and applied later. `Rest0` and `X0` name those snapshots explicitly,
+            -- frozen here before the call consumes them.
             let Rest0 = rest;
             let X0 = x;
             let MkL = (λ (A : List Nat). λ (B : List Nat).
@@ -1405,23 +1301,22 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
             let MkR = (λ (A : List Nat). λ (B : List Nat).
                         λ (H : Π (N : Nat) → Id Nat (Add (Count N A) (Count N B)) (Count N Rest0)).
                           λ (N : Nat). CountConsR N X0 A B Rest0 (H N));
-            -- The lengths need no staged lambda: `Len rest` is a NAT, so naming the
+            -- The lengths need no staged lambda: `Len rest` is a Nat, so naming the
             -- computed value once, while `rest` is live, is enough. (The counts
             -- cannot do this — `Count n rest` is a family over `n`, and it is the
-            -- LIST the lemma needs, not any one of its counts.)
+            -- list the lemma needs, not any one of its counts.)
             let lr = Len rest;
             *v := rest;
-            -- The bound goes with the call, UNCHANGED: `Le (Len (Cons x rest)) (S f2)`
-            -- already IS `Le (Len rest) f2`.
+            -- The bound goes with the call, unchanged: `Le (Len (Cons x rest)) (S f2)`
+            -- already is `Le (Len rest) f2`.
             let Pair(hi, Pair(Hub, Pair(Hlb, Pair(Hl1, Pair(Hl2, Hcnt))))) = Partition(f2, &m *v, p, Hf);
-            -- THE BRANCH EQUATION, in its first real use. `e` is the only reason
+            -- The branch equation, in its first real use. `e` is the only reason
             -- either arm can build its bound: the split abstracted `Leb σ_x σ_p`
-            -- away, so `LebTrueLe x p Refl` is rejected here (see the wall test)
-            -- and `LebTrueLe x p e` is not.
+            -- away, so `LebTrueLe x p Refl` is rejected here and `LebTrueLe x p e`
+            -- is not.
             if e : Leb x p {
-              -- x ≤ p: the head belongs to the KEPT part. Derive both proofs
-              -- BEFORE the write, which consumes `lo` and `x` (§5.3's ordering
-              -- corollary, in its body-local form).
+              -- x ≤ p: the head belongs to the kept part. Derive both proofs
+              -- before the write, which consumes `lo` and `x`.
               let lo = *v;
               let Hub2 = Pair(LebTrueLe x p e, Hub);
               let Hl2b = LeUpR (Len hi) lr Hl2;
@@ -1429,7 +1324,7 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
               *v := Cons(x, lo);
               Pair(hi, Pair(Hub2, Pair(Hlb, Pair(Hl1, Pair(Hl2b, Cnt)))))
             } else {
-              -- x > p: the head belongs to the RETURNED part. `*v` is untouched,
+              -- x > p: the head belongs to the returned part. `*v` is untouched,
               -- so `hub` passes straight through.
               let Hlb2 = Pair(LePredL p x (LebFalseGt x p e), Hlb);
               let Hl1b = LeUpR (Len *v) lr Hl1;
@@ -1440,22 +1335,18 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
         } };
   -- `AppendBack(v, w)`: walk to the end of `*v`, put `w` there. The exit reading is
   -- `Append (old *v) w` — the whole postcondition, and the whole description. Its
-  -- return type is written INLINE, because nothing lies about it: no twin needs it
+  -- return type is written inline, because nothing lies about it: no twin needs it
   -- spliced, and inside the header `v` and `w` are the names the programmer wrote.
   fn AppendBack [fuel] (fuel : Nat, v : &mut List Nat, w : List Nat, Hf : Le (Len *v) fuel)
       -> Id (List Nat) (*v) (Append (old *v) w)
       { match v {
           Nil => { *v := w; Refl },
-          -- PAIN DIARY (staging, the M22 "proof linearity" entry's data twin). The
-          -- congruence needs to NAME its right endpoint, `Append (old *tl) w`, but
-          -- the recursive call has by then MOVED `w` (it is data, so §2.1 gives no
-          -- copy-on-read). Dodged by staging the endpoint as a runtime `let` while
-          -- `w` is still live. Same dodge, new cause: M22's was a proof consumed by
-          -- a mutation, this is a data argument consumed by the call the proof is
-          -- about. The general fix is the same one M22 queued — `old` for consumed
-          -- parameters, so a body can name any parameter's ENTRY value without
-          -- owning it, which is what M12 already grants the RETURN TYPE and denies
-          -- the body.
+          -- The congruence needs to name its right endpoint, `Append (old *tl) w`,
+          -- but the recursive call has by then moved `w` (it is data, so no
+          -- copy-on-read). Staging the endpoint as a runtime `let` while `w` is
+          -- still live avoids this: a body can name any parameter's entry value
+          -- without owning it in the return type, but not yet in the body itself,
+          -- so the value has to be captured before it is consumed.
           Cons(hd, tl) => match fuel {
             Z => botElim Unit Hf,
             S(f2) => {
@@ -1470,22 +1361,21 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
       { match *v {
           Nil => { *v := Nil; Pair(unit, λ (N : Nat). Refl) },
           Cons(x, rest) => match fuel {
-            -- Out of fuel with a non-empty list: `hfuel : Le (S (Len rest)) Z` IS
+            -- Out of fuel with a non-empty list: `hfuel : Le (S (Len rest)) Z` is
             -- `Bot`, so the path is dead and the audit admits an ex-falso at any
-            -- return type (§5.4). Guard + sufficiency hypothesis = TOTAL correctness.
+            -- return type. Guard + sufficiency hypothesis = total correctness.
             Z => botElim Unit Hfuel,
             S(f2) => {
               let lr = Len rest;
-              -- THE COUNT CHAIN, staged whole while `rest` is still nameable. Its
+              -- The count chain, staged whole while `rest` is still nameable. Its
               -- later arguments are the two parts before sorting (a, b) with the
               -- partition's own Count evidence, then the same two after sorting
               -- (a2, b2) with each sort's evidence, then the glued exit and
               -- `AppendBack`'s evidence. Read it as: rewrite the exit into an
               -- append, split the append's Count, move both parts back across
               -- their sorts, and land on the partition's equation.
-              -- §2.4: the citation rule, and the snapshots it makes visible.
-              -- `Rest0` is the tail as it is HERE — before `*v := rest` hands it
-              -- over — which is the value this builder was freezing implicitly.
+              -- `Rest0` is the tail as it is here — before `*v := rest` hands it
+              -- over — named explicitly so the closure below can cite it.
               let Rest0 = rest;
               let X0 = x;
               let MkCnt = (λ (A : List Nat). λ (B : List Nat).
@@ -1515,19 +1405,15 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
                                  (CountConsCongr N X0 B2 B (H2 N))))
                            (CountConsR N X0 A B Rest0 (Hp N))));
               *v := rest;
-              -- Decision 8's price at a CALL SITE: the fuel and the bound go with
-              -- the call, and the bound is `hfuel` UNCHANGED — after `*v := rest`
-              -- the callee wants `Le (Len rest) f2`, which is what it already is.
-              -- It SURVIVES the call because `Partition`'s `Hf` is capital.
+              -- The fuel and the bound go with the call, and the bound is `hfuel`
+              -- unchanged — after `*v := rest` the callee wants `Le (Len rest) f2`,
+              -- which is what it already is. It survives the call because
+              -- `Partition`'s `Hf` is capital.
               let Pair(hi, Pair(Hub, Pair(Hlb, Pair(Hl1, Pair(Hl2, Hpc))))) = Partition(f2, &m *v, x, Hfuel);
-              -- Both bounds are about to be invalidated as VALUES (the sorts
+              -- Both bounds are about to be invalidated as values (the sorts
               -- replace both lists), so their transports are staged now, while the
-              -- pre-sort lists are still nameable.
-              -- §2.4: the PRE-sort snapshots, named. `V0` and `Hi0` are the two
-              -- parts as they are HERE, before either sort replaces them, and that
-              -- is exactly what these builders were freezing implicitly. The
-              -- comment above already said "while the pre-sort lists are still
-              -- nameable"; the rule turns that sentence into two bindings.
+              -- pre-sort lists are still nameable. `V0` and `Hi0` name the two
+              -- parts as they are here, before either sort replaces them.
               let V0 = *v;
               let Hi0 = hi;
               let Hub0 = Hub;
@@ -1550,18 +1436,10 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
               let hub2 = MkUb (*v) Hc1;
               let hlb2 = MkLb hi Hc2;
               let Cnt2 = Cnt1 (*v) hi Hc1 Hc2;
-              -- The last staged builder: the glue's evidence arrives only
-              -- from `AppendBack`, by which time both parts are consumed.
-              -- §2.4: and the POST-sort snapshots, which are DIFFERENT values
-              -- from `V0`/`Hi0` above — both sorts wrote in place. The rule
-              -- makes that difference visible instead of leaving the reader to
-              -- date each capture by where it sits.
-              -- M33a: the two SORTEDNESS snapshots that stood here
-              -- (`let Hs1 = hs1`) are gone. They existed only because a
-              -- match arm bound a comptime component at a lowercase name,
-              -- and a runtime binding is not capturable — so `Fin` could
-              -- not cite the proof and a capital `let` had to re-read it.
-              -- With the arm binder spelling its mode, `Fin` cites it.
+              -- The last staged builder: the glue's evidence arrives only from
+              -- `AppendBack`, by which time both parts are consumed. `V1`/`Hi1`
+              -- name the post-sort snapshots explicitly — different values from
+              -- `V0`/`Hi0` above, since both sorts wrote in place.
               let V1 = *v;
               let Hi1 = hi;
               let Hub2 = hub2;
@@ -1583,19 +1461,19 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
         } };
   %tail }
 
-/-- THE HEADLINE: M23's in-place quicksort — `Sorted` and the permutation count
-    equation over the exit snapshot, no declared `back` anywhere in the call tree —
-    checks as ONE program, against no table at all. -/
+/-- The in-place quicksort — `Sorted` and the permutation count equation over the
+    exit snapshot, no declared `back` anywhere in the call tree — checks as one
+    program, against no table at all. -/
 def flagship : Term := qsUnder partHonest qsHonest suffHonest .unit
 example : progOk flagship = true := by native_decide
 
 /-! ### Not vacuous: `partition`'s four spec lies
 
-    The return type is the ONLY description of this function, so each conjunct gets
+    The return type is the only description of this function, so each conjunct gets
     a twin that changes exactly it. The body and the telescope are the chain's, so
     the lie is the only variable. -/
 
--- (1) UPPER BOUND on the wrong snapshot: `Ub p (old *v)` — true of the entry, and
+-- (1) Upper bound on the wrong snapshot: `Ub p (old *v)` — true of the entry, and
 -- the entry is not what the caller gets back.
 example : progRejects (qsUnder (prog defer_check {
     Σ (hi : List Nat). Σ (Hub : Ub %pT (old *%vfT)). Σ (Hlb : Lb %pT hi).
@@ -1603,22 +1481,16 @@ example : progRejects (qsUnder (prog defer_check {
       Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (Count N (old *%vfT)) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
--- (2) LOWER BOUND on the kept part instead of the returned one.
+-- (2) Lower bound on the kept part instead of the returned one.
 example : progRejects (qsUnder (prog defer_check {
     Σ (hi : List Nat). Σ (Hub : Ub %pT (*%vfT)). Σ (Hlb : Lb %pT (*%vfT)).
       Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))). Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT))).
       Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (Count N (old *%vfT)) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
--- (3) The returned part DROPPED from the count: "everything stayed in `*v`".
---
--- **The needle MOVED at M33, and the verdict did not** — the same flip M33a
--- recorded for `quicksortA`'s two spec lies, arriving here for the same reason
--- one layer down. With `Cnt` capital (§2.5's binding, capitalised now that the
--- Σ0 tail ⇝-reads it), the count proof is comptime knowledge and the lie is
--- caught where it is WRITTEN — at this body's own return, by the audit — instead
--- of one call later, where the caller found the argument ill-typed. Was "does not
--- have its parameter type".
+-- (3) The returned part dropped from the count: "everything stayed in `*v`". With
+-- `Cnt` capital, the count proof is comptime knowledge and the lie is caught where
+-- it is written — at this body's own return, by the audit.
 example : progRejects (qsUnder (prog defer_check {
     Σ (hi : List Nat). Σ (Hub : Ub %pT (*%vfT)). Σ (Hlb : Lb %pT hi).
       Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))). Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT))).
@@ -1634,47 +1506,41 @@ example : progRejects (qsUnder (prog defer_check {
 
 /-! ### Not vacuous: `quicksort`'s two spec lies, and the sufficiency hypothesis
 
-    Every twin here is chosen to survive the `Nil` path and die on the RECURSIVE one
-    — the first drafts of (1) and (2) were refuted at `Nil` (verified by reading the
-    rejected result term: `Pair unit (λn. Refl)`), which would have left the whole
-    assembly untested. -/
+    Every twin here is chosen to survive the `Nil` path and die on the recursive
+    one — refuting it only at `Nil` would have left the whole assembly untested. -/
 
--- (1) SORTEDNESS lied onto the wrong subject: the ENTRY is claimed sorted. True at
+-- (1) Sortedness lied onto the wrong subject: the entry is claimed sorted. True at
 -- `Nil` (so the base path still passes) and false for any unsorted input, and the
 -- body's evidence is about the exit.
 example : progRejects (qsUnder partHonest (prog defer_check {
     Σ0 (Hs : Sorted (old *%vfT)). Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) })
     suffHonest .unit) "does not have return type" = true := by native_decide
 
--- (2) PERMUTATION lied by DIRECTION: the two endpoints swapped. Again `Refl` at
+-- (2) Permutation lied by direction: the two endpoints swapped. Again `Refl` at
 -- `Nil`, and again the body's evidence points the other way once anything moves.
 example : progRejects (qsUnder partHonest (prog defer_check {
     Σ0 (Hs : Sorted (*%vfT)). Π (N : Nat) → Id Nat (Count N (old *%vfT)) (Count N (*%vfT)) })
     suffHonest .unit) "does not have its parameter type" = true := by native_decide
 
--- (3) The SUFFICIENCY HYPOTHESIS is load-bearing, not decoration. Keep the
--- parameter (so the body still elaborates and the rejection is about TYPING, not an
+-- (3) The sufficiency hypothesis is load-bearing, not decoration. Keep the
+-- parameter (so the body still elaborates and the rejection is about typing, not an
 -- unbound name) and weaken it to `Unit`: the `Z` branch's `botElim` then has no ⊥
 -- to eliminate, and the out-of-fuel path stops being dead. This is what makes the
--- guard-plus-hypothesis pair TOTAL correctness rather than partial.
--- The needle is the MECHANISM, not the generic one: with the hypothesis weakened,
--- the out-of-fuel branch's `botElim` has nothing to eliminate, and the audit says
--- exactly that. The record-update twin this replaces could only assert `!progOk`.
+-- guard-plus-hypothesis pair total correctness rather than partial.
 example : progRejects (qsUnder partHonest qsHonest (prog defer_check { Unit }) .unit)
   "botElim result on a non-⊥ argument" = true := by native_decide
 
-/-! ### The two BODY twins, transcribed
+/-! ### The two body twins, transcribed
 
     A spec lie is refutable somewhere the `Nil` path can be blamed for; these two are
-    wrong only on the RECURSIVE path, which is what makes them the twins that test
-    the recursion. Both are written out in full rather than shared through the chain,
-    and that is M28 D1's rule rather than a choice: what varies is a subterm INSIDE a
-    body naming a binder the `fn` lowering mints an id for, and a `%` splice is a
-    Lean `Term` written outside the macro — it has no way to say "the `hub` this
-    match will bind". Each carries only what it needs: the count lie needs no
-    quicksort at all, and the bound lie needs the whole cohort. -/
+    wrong only on the recursive path, which is what makes them the twins that test
+    the recursion. Both are written out in full rather than shared through the chain:
+    what varies is a subterm inside a body naming a binder the `fn` lowering mints an
+    id for, and a `%` splice is a Lean `Term` written outside the macro — it has no
+    way to say "the `hub` this match will bind". Each carries only what it needs: the
+    count lie needs no quicksort at all, and the bound lie needs the whole cohort. -/
 
-/-- `partitionLoses`: the `≤ p` head is DROPPED instead of being pushed back onto the
+/-- `partitionLoses`: the `≤ p` head is dropped instead of being pushed back onto the
     kept part — one write changed, `*v := lo` for `*v := Cons(x, lo)`. Wrong only on
     the recursive `True` path and only in the count conjunct; the bounds still hold
     of a list with one element missing. -/
@@ -1686,12 +1552,8 @@ def partitionLoses : Term := prog defer_check {
           Cons(x, rest) => match fuel {
             Z => botElim Unit Hf,
             S(f2) => {
-            -- §2.4: `Rest0` and `X0` are the snapshots these two were taking
-            -- implicitly. The paragraph above is about exactly this — "a body can
-            -- only talk about the CURRENT exit… a filing for `old` on consumed
-            -- things" — and the citation rule is what turns the filing into a
-            -- binding: the value is frozen HERE, before the call consumes it, and
-            -- the name says so.
+            -- `Rest0` and `X0` name the snapshots this derivation needs before the
+            -- call below consumes them.
             let Rest0 = rest;
             let X0 = x;
             let MkL = (λ (A : List Nat). λ (B : List Nat).
@@ -1708,7 +1570,7 @@ def partitionLoses : Term := prog defer_check {
               let Hub2 = Pair(LebTrueLe x p e, Hub);
               let Hl2b = LeUpR (Len hi) lr Hl2;
               let Cnt = MkL lo hi Hcnt;
-              -- THE LIE, and the only line that differs: the head is dropped.
+              -- The lie, and the only line that differs: the head is dropped.
               *v := lo;
               Pair(hi, Pair(Hub2, Pair(Hlb, Pair(Hl1, Pair(Hl2b, Cnt)))))
             } else {
@@ -1722,8 +1584,8 @@ def partitionLoses : Term := prog defer_check {
   () }
 example : progRejects partitionLoses "does not have return type" = true := by native_decide
 
-/-- `qsStaleBound`: the KEYSTONE is fed the bounds the PARTITION established, on the
-    parts as they were BEFORE their recursive sorts, instead of `UbPerm`/`LbPerm`'s
+/-- `qsStaleBound`: the keystone is fed the bounds the partition established, on the
+    parts as they were before their recursive sorts, instead of `UbPerm`/`LbPerm`'s
     transports of them — `SortedAppendPivot x (*v) hi Hs1 Hub Hs2 Hlb` for
     `… Hub2 … Hlb2`. Everything else is the chain's `quicksort` verbatim, so what the
     rejection isolates is exactly bound survival. -/
@@ -1735,12 +1597,8 @@ def qsStaleBound : Term := prog defer_check {
           Cons(x, rest) => match fuel {
             Z => botElim Unit Hf,
             S(f2) => {
-            -- §2.4: `Rest0` and `X0` are the snapshots these two were taking
-            -- implicitly. The paragraph above is about exactly this — "a body can
-            -- only talk about the CURRENT exit… a filing for `old` on consumed
-            -- things" — and the citation rule is what turns the filing into a
-            -- binding: the value is frozen HERE, before the call consumes it, and
-            -- the name says so.
+            -- `Rest0` and `X0` name the snapshots this derivation needs before the
+            -- call below consumes them.
             let Rest0 = rest;
             let X0 = x;
             let MkL = (λ (A : List Nat). λ (B : List Nat).
@@ -1788,9 +1646,8 @@ def qsStaleBound : Term := prog defer_check {
             Z => botElim Unit Hfuel,
             S(f2) => {
               let lr = Len rest;
-              -- §2.4: the citation rule, and the snapshots it makes visible.
-              -- `Rest0` is the tail as it is HERE — before `*v := rest` hands it
-              -- over — which is the value this builder was freezing implicitly.
+              -- `Rest0` is the tail as it is here — before `*v := rest` hands it
+              -- over — named explicitly so the closure below can cite it.
               let Rest0 = rest;
               let X0 = x;
               let MkCnt = (λ (A : List Nat). λ (B : List Nat).
@@ -1821,11 +1678,8 @@ def qsStaleBound : Term := prog defer_check {
                            (CountConsR N X0 A B Rest0 (Hp N))));
               *v := rest;
               let Pair(hi, Pair(Hub, Pair(Hlb, Pair(Hl1, Pair(Hl2, Hpc))))) = Partition(f2, &m *v, x, Hfuel);
-              -- §2.4: the PRE-sort snapshots, named. `V0` and `Hi0` are the two
-              -- parts as they are HERE, before either sort replaces them, and that
-              -- is exactly what these builders were freezing implicitly. The
-              -- comment above already said "while the pre-sort lists are still
-              -- nameable"; the rule turns that sentence into two bindings.
+              -- `V0`/`Hi0` name the two parts as they are here, before either sort
+              -- replaces them.
               let V0 = *v;
               let Hi0 = hi;
               let Hub0 = Hub;
@@ -1844,26 +1698,17 @@ def qsStaleBound : Term := prog defer_check {
               let hub2 = MkUb (*v) Hc1;
               let hlb2 = MkLb hi Hc2;
               let Cnt2 = Cnt1 (*v) hi Hc1 Hc2;
-              -- §2.4: and the POST-sort snapshots, which are DIFFERENT values
-              -- from `V0`/`Hi0` above — both sorts wrote in place. The rule
-              -- makes that difference visible instead of leaving the reader to
-              -- date each capture by where it sits.
-              -- M33a: the two SORTEDNESS snapshots that stood here
-              -- (`let Hs1 = hs1`) are gone. They existed only because a
-              -- match arm bound a comptime component at a lowercase name,
-              -- and a runtime binding is not capturable — so `Fin` could
-              -- not cite the proof and a capital `let` had to re-read it.
-              -- With the arm binder spelling its mode, `Fin` cites it.
+              -- `V1`/`Hi1` name the post-sort snapshots — different values from
+              -- `V0`/`Hi0` above, since both sorts wrote in place.
               let V1 = *v;
               let Hi1 = hi;
               let Fin = (λ (E : List Nat).
                   λ (Hap : Id (List Nat) E (Append V1 (Cons X0 Hi1))).
                     ListRw (λ (Z0 : List Nat). Sorted Z0) (Append V1 (Cons X0 Hi1)) E
                       (IdSym (List Nat) E (Append V1 (Cons X0 Hi1)) Hap)
-                      -- THE LIE, and the only line that differs: the PRE-sort
+                      -- The lie, and the only line that differs: the pre-sort
                       -- bounds (`Hub0`/`Hlb0`), not their transports across the
-                      -- sorts (`Hub2`/`Hlb2`). §2.4 sharpens the lie rather than
-                      -- hiding it: the two snapshots now have different names.
+                      -- sorts (`Hub2`/`Hlb2`).
                       (SortedAppendPivot X0 V1 Hi1 Hs1 Hub0 Hs2 Hlb0));
               let w = Cons(x, hi);
               let lv = Len *v;
@@ -1877,10 +1722,10 @@ example : progRejects qsStaleBound "does not have return type" = true := by nati
 
 /-! ### The executing differentials — the bodies really partition, and really sort
 
-    `progOk` proves the conjuncts symbolically; these run the SAME program on
+    `progOk` proves the conjuncts symbolically; these run the same program on
     concrete inputs. Each rides the honest chain as its tail, so what runs is what
-    was checked. `runPart` also exercises phase A's concrete-scrutinee branch end to
-    end: `if e : Leb x p` on a closed Bool takes the `ownedSelect` path, where the
+    was checked. `runPart` also exercises the concrete-scrutinee branch end to end:
+    `if e : Leb x p` on a closed Bool takes the `ownedSelect` path, where the
     equation is bound to `Refl`. -/
 
 def partCallerTail (l : List Nat) (pvv : Nat) : Term :=
@@ -1927,21 +1772,18 @@ example : runQs [4,1,3,2,5] = true := by native_decide
 
 end Dllbc.Tests.S23Direct
 end
--- └── end of what was `S23Direct.lean` ───────────────────────────────────────────────
 
--- ┌── was `Dllbc/Tests/S19Partition.lean` ──────────────────────────────────────────────
 section
 /-!
-# §19 test suite — partition (model + imperative), built on the M18 stack
+## Partition (model + imperative)
 
-This milestone assembles the crystallized architecture into its first real
-algorithm: an in-place Lomuto partition through a mutable borrow, whose declared
-backward spec is the pure `PartitionL` model, checked by conversion per path.
+An in-place Lomuto partition through a mutable borrow, whose declared backward
+spec is the pure `PartitionL` model, checked by conversion per path.
 
 It opens with the smallest complete instance of the architecture — a `swapS`
-caller that recovers the precise `SwapL i j s` (M17) and certifies its count with
-`CountSwapL'` (M18) — and gates the imperative body on a machine probe: splitting
-the driver on a STUCK Bool spine (`Leb x pivot`, x symbolic), which the current
+caller that recovers the precise `SwapL i j s` and certifies its count with
+`CountSwapL'` — and gates the imperative body on a machine probe: splitting the
+driver on a stuck Bool spine (`Leb x pivot`, x symbolic), which the current
 substitution-based ⇜ cannot do without generalizing the spine first.
 -/
 
@@ -1957,18 +1799,18 @@ namespace Dllbc.Tests.S19Partition
 def V (i : Nat) (n : String) : Term := .var ⟨i, n⟩
 def natT : Term := .const "Nat"
 
-/-- Type-check a closed term against a closed type in the pure seed (as in §18). -/
+/-- Type-check a closed term against a closed type in the pure seed. -/
 def chk (tm ty : Term) : Bool :=
   match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasTypeT 3000 v t).run (seedPure [] []) with
   | .ok r _ => r
   | .error _ _ => false
 
-/-! ## M19-A: the `CountSwapL'` corollary and its `LeUpR` glue -/
+/-! ## The `CountSwapL'` corollary and its `LeUpR` glue -/
 
 example : chk StdLemmas.LeUpR StdLemmas.LeUpRTy = true := by native_decide
 example : chk StdLemmas.CountSwapL' StdLemmas.CountSwapL'Ty = true := by native_decide
 
--- M20-2 length-equation plumbing: the bound-derivation glue.
+-- Length-equation plumbing: the bound-derivation glue.
 example : chk StdLemmas.LeAdd StdLemmas.LeAddTy = true := by native_decide
 example : chk StdLemmas.LeAddL StdLemmas.LeAddLTy = true := by native_decide
 example : chk StdLemmas.LeAddSucc StdLemmas.LeAddSuccTy = true := by native_decide
@@ -1978,10 +1820,9 @@ example : chk StdLemmas.HshiftFalse StdLemmas.HshiftFalseTy = true := by native_
 
 /-! ### The two telescopes' positional vocabulary
 
-    A return type written outside its own header names parameters as `.var ⟨i, name⟩`
-    (§5.2). These are the two that vary. -/
+    A return type written outside its own header names parameters as `.var ⟨i, name⟩`.
+    These are the two that vary. -/
 
--- SUBJECT: raw Term builders (tS/swapLT) feeding the lying specs below.
 def tS (t : Term) : Term := .ctorApp "S" [t]
 def swapLT (i j l : Term) : Term := .app (.app (.app StdLemmas.SwapL i) j) l
 
@@ -1993,18 +1834,14 @@ def evT : Term := .var ⟨0, "v"⟩
 def eiT : Term := .var ⟨1, "i"⟩
 def ejT : Term := .var ⟨2, "j"⟩
 
-/-! ## THE CHAIN — the cursor family and everything in this file that swaps
+/-! ## The cursor family and everything in this file that swaps
 
-    `NthL`, `nth2` and `swapS` are §17's cursor family, and they came here when
-    `S17Spec` retired (M28 D7): that file's other half was `through`, whose two
-    claims moved to `S7Group`, and this is the only place left that CALLS a cursor.
-    They are written once, at the head of one chain, with every subject that needs
-    them declared below them — because a callee is in scope by being written above
-    its caller (§8). (A `%`-spliced second chain could not declare functions until
-    M32 R4 retired the `progBase` collision; it can now, and this shape is kept
-    because it is what was written.)
+    `NthL`, `nth2` and `swapS` are the cursor family, and this is the only place
+    left that calls a cursor. They are written once, at the head of one chain,
+    with every subject that needs them declared below them — because a callee is
+    in scope by being written above its caller.
 
-    Two return types are PARAMETERS, because two subjects have lying twins:
+    Two return types are parameters, because two subjects have lying twins:
     `certSwapCount`'s (the count-preservation certificate) and `exitReject`'s (the
     exit-vs-entry reading). Everything else is written once. A lie is caught at its
     own function's seal — sealed `let`s fire their audits in program order — so the
@@ -2012,48 +1849,45 @@ def ejT : Term := .var ⟨2, "j"⟩
 
     ### `NthL`, `nth2`, `swapS`
 
-    §17 carried these with COMPOSING backward specs — `Set i r s`, then
-    `Set i r₁ (Set j r₂ s)` composing it, then `SwapL i j s` composing that. The
-    mechanism is gone (M27); what they check now is that the cursor bodies are
-    well-typed — the `Le`-bounded descent, the field reborrows, the `botElim` on the
-    impossible `Nil` path. The composing-spec claim's ensures-style successor is
-    `S23Direct.swapAt`, which states the whole swap as ONE equation over the exit
-    snapshot instead of as three specs that compose.
+    What they check is that the cursor bodies are well-typed — the `Le`-bounded
+    descent, the field reborrows, the `botElim` on the impossible `Nil` path. The
+    relational successor to their composing set-form specs is `swap_at` above,
+    which states the whole swap as one equation over the exit snapshot instead of
+    as three specs that compose.
 
-    ### `certSwapCount` — M19-A's opener, the architecture's smallest instance
+    ### `certSwapCount`, the architecture's smallest instance
 
-    A `swapS` caller over a SYMBOLIC list: it borrows `s`, swaps positions `i`/`j`
+    A `swapS` caller over a symbolic list: it borrows `s`, swaps positions `i`/`j`
     in place (imperative mutation), and its result is the count-preservation
-    CERTIFICATE `CountSwapL' m i j s pij p2`, computed over the entry snapshot.
+    certificate `CountSwapL' m i j s pij p2`, computed over the entry snapshot.
     Imperative mutation + pure lemma, end to end.
 
-    ### `pivotPlace` / `pivotPlaceH` — M20-2's conformance base
+    ### `pivotPlace` / `pivotPlaceH`, the conformance base
 
     The base of partition's recursion, isolated: place the pivot at the boundary `i`
     with a final swap. Cased on `i` because swapS cannot self-swap. `pivotPlace`
-    takes its bound directly; `pivotPlaceH` DERIVES it from the length equation the
+    takes its bound directly; `pivotPlaceH` derives it from the length equation the
     recursion carries (`hlen : Len *v = S (Add i g)`), which validates the full
     length-equation → swapS-bound chain the recursive partScan threads.
 
-    ### `partScanE` / `partitionE` — the executing partition
+    ### `partScanE` / `partitionE`, the executing partition
 
     The full recursive scan and its entry point. The three step cases each derive
-    their swapS bound (let-FIRST, per the §5.3 finding) and recurse.
+    their swapS bound (let-first) and recurse.
 
-    ### `exitReject` — M22-a, the exit snapshot is not the entry
+    ### `exitReject` — the exit snapshot is not the entry
 
-    A borrow parameter's bare `*v` in the RETURN TYPE reads the EXIT snapshot (the
+    A borrow parameter's bare `*v` in the return type reads the exit snapshot (the
     collapsed final payload, which the audit already computes); `old *v` names the
-    ENTRY one, usable in the type AND the body as a non-consuming reference. After a
-    swap they are different, so claiming the exit equals the entry is FALSE.
+    entry one, usable in the type and the body as a non-consuming reference. After a
+    swap they are different, so claiming the exit equals the entry is false.
 
-    The positive half is `Id (*v) (*v)`: both reads see the SAME exit snapshot,
+    The positive half is `Id (*v) (*v)`: both reads see the same exit snapshot,
     which is what makes the negative half about the entry rather than about `*v`
-    being freshly minted on each occurrence. What it is NOT is
-    `Id (*v) (SwapL i j (old *v))` — that is TRUE of this function and `Refl` cannot
+    being freshly minted on each occurrence. What it is not is
+    `Id (*v) (SwapL i j (old *v))` — that is true of this function and `Refl` cannot
     prove it, because `swapS` ensures nothing and the group end hands back an opaque
-    σ. Saying it needs the derivation `S23Direct.swapAt` carries, which is where
-    §C2's ledger already points.
+    σ. Saying it needs the derivation `swap_at` above carries.
 
     ### `lebProbe` — the reborrow-collapse repro
 
@@ -2145,7 +1979,7 @@ example : progOk chain = true := by native_decide
 example : progRejects (withCursors certLie exitHonest .unit)
   "does not have return type" = true := by native_decide
 
--- Negative control for M22-a: claim the EXIT reading equals the ENTRY one.
+-- Negative control: claim the exit reading equals the entry one.
 example : progRejects (withCursors certHonest exitStale .unit)
   "does not have return type" = true := by native_decide
 
@@ -2153,16 +1987,16 @@ example : progRejects (withCursors certHonest exitStale .unit)
 
     `partScanE`/`partitionE` are the in-place Lomuto partition, mirroring
     `PartitionL` exactly: `partScanE` recurses on the scan counter `k`, reads the
-    scan element with the PURE `NthL` on `*v` (a comptime read, the `Leb` condition),
+    scan element with the pure `NthL` on `*v` (a comptime read, the `Leb` condition),
     and branches — the `g = S g'` case swaps in place then recurses, the base places
     the pivot with a final swap (guarded on `i = S i'`, since swapS cannot
     self-swap).
 
-    **Their swapS bounds are placeholders `()`, so they do not type-check**, and
-    that is why they cannot ride the chain above: the point of that chain is
-    `progOk`. They are RUN, in executing mode, which does not type-check arguments —
-    the claim is conformance with the pure model on concrete inputs, which is what
-    the checking mode later proved on `S23Direct.partition` with real bounds.
+    Their swapS bounds are placeholders `()`, so they do not type-check, and that
+    is why they cannot ride the chain above: the point of that chain is `progOk`.
+    They are run in executing mode, which does not type-check arguments — the
+    claim is conformance with the pure model on concrete inputs, which is what the
+    checking mode later proves on `partition` above with real bounds.
 
     So the cursor family is written a second time here. That is the honest cost of
     one chain per verdict class, and it is the smaller cost: the alternative is a
@@ -2211,8 +2045,8 @@ def withScan (tail : Term) : Term := prog{
               match Leb (NthL (S (Add i g)) (*v)) pivot {
                 True => match g {
                   Z => PartScanE(v, k2, S(i), Z, pivot),
-                  -- `i` and `g2` are read MULTIPLE times here (boundary + scan position
-                  -- + the recursion), and §2.1 copy-on-read makes that natural: a
+                  -- `i` and `g2` are read multiple times here (boundary + scan position
+                  -- + the recursion), and copy-on-read makes that natural: a
                   -- `S`-constructor arg reads its var by copy (marker-free Nat), so the
                   -- indices are the plain `S i`, `S (Add i (S g2))`, `S g2`.
                   S(g2) => { SwapS(&m *v, S(i), S(Add i (S(g2))), (), ()); PartScanE(v, k2, S(i), S(g2), pivot) }
@@ -2229,95 +2063,32 @@ def withScan (tail : Term) : Term := prog{
         } };
   %tail }
 
-/-! ## M20-2 (the recursive partScan) — partition's scan loop, checked against PartScanL
-
-    The full recursive scan, declared `back = PartScanL pivot k i g (*v)`. Telescope
-    carries the length equation `hlen : Len *v = S (Add k (Add i g))` (k-first, so the
-    step reduces definitionally). Body mirrors the M19 executing partition; the three
-    step cases each derive their swapS bound (let-FIRST, per the §5.3 finding) and
-    recurse with an UPDATED hlen (an hshift arithmetic transport — definitional total,
-    plus a LenSwapL bridge in the swap case). resolveTree composes the recursive
-    call's back-spec with swapS's, exactly as pivotPlace proved for one swap. -/
-
--- SUBJECT: raw Term builders. `partScanLT`/`dv` (and `tS`/`zt`/`Refl`/`tlist` below)
--- construct the lying-spec inputs and the executing-differential expected values — the
--- raw Term IS the test subject here, not a surface form under test.
+-- `partScanLT`/`dv` are term builders left over from a retired declared-backward-spec
+-- mechanism; kept as they are still cited by a couple of definitions below.
 def partScanLT (pivot k i g l : Term) : Term := .app (.app (.app (.app (.app StdLemmas.PartScanL pivot) k) i) g) l
 def dv : Term := .deref (V 0 "v")
 
--- v=0, k=1, i=2, g=3, pivot=4, hlen=5; binders k'=6, c/i'=7, g'/hlenX=8, pij=9, p2=10, hlenTSg=11.
-/-! ## M21-3 — partScanRange: the subrange scan (partScan shifted by `lo`)
-
-    `partScanRange(v, lo, k, i, g, pivot, hle)` — partScan over the range `[lo, …)`.
-    Every position is `Add lo`-shifted; the boundary `i` and gap `g` are RELATIVE
-    to `lo`. The bound is now an INEQUALITY `hle : Le (add lo (S (add k (add i g))))
-    (len *v)` — a sub-range does not span to the end, so the old equation is false;
-    the Le is the honest invariant (the top scan/swap position stays < len). The
-    M20 Id-toolkit ports through the new `LeRwL`/`LeAddMonoL`/`AddSucc`
-    bridges: swap bounds are `LeTrans` of a `LeAddMonoL` lifted from the entry
-    bound, and each recursion threads `hle` via `LeRwL` + `IdCongr` through
-    `λx. Add lo (S x)` over the SAME hshift identities partScan uses. -/
-
-
-/-! ## M21-1 — the partition wrapper (back = PartitionL, the PartScanL composition)
-
-    partition fixes the public interface: pivot placement + the scan, over a
-    segment of length `n` (`hlenW : Len *v = n`). Declared `back = PartitionL n
-    (*v)` — authored (in StdLemmas) as exactly `n = Z ⇒ *v`, `n = S n' ⇒ PartScanL
-    (nth 0 *v) n' 0 0 *v`, the raw composition of partScan's declared back. The
-    scan call's hlen is hlenW transported by AddZero (the wrapper's `i = g = 0`,
-    so partScan's `S (Add n' (Add 0 0))` is `S (Add n' Z)`, bridged to `S n'`). -/
-
-
--- v=0, n=1, hlenW=2; body binders n'=3, pivot=4, hlen=5.
 def partitionLieBack : Term := swapLT (.ctorApp "Z" []) (tS (.ctorApp "Z" [])) dv
 def partScanLieBack : Term := partScanLT (V 4 "pivot") (V 1 "k") (V 3 "g") (V 2 "i") dv
-/-! ## The lying-back sweep — one lie per CALLEE-CHECKED declared-spec branch
-
-    A negative test per rule branch, not per feature (the M20 lesson). The §6.2
-    callee convert-check catches a lie only where the declared back is authored as
-    the raw suspension TREE (so tree ≡ back definitionally). Two such branches
-    beyond the ones already covered:
-    - borrow-returning multi-issued  → nth2Lie   (below)
-    - borrow-returning single-issued → throughLie (S17Spec — the M8 arc)
-    - Unit-returning recursive        → partScanLie (above; caught where an
-      untouched argument-borrow path exposes the swapped spec)
-
-    NOT callee-checked, by design: a back that is a higher-level REFORMULATION of
-    the raw tree — swapS's `SwapL i j *v` vs its set-based nth2 composition, and
-    pivotPlace's SwapL-based `baseBack` — never converts and is validated by the
-    DIFFERENTIAL (executing recovery = checking recovery), as M17 established. The
-    M20 auditAction extension checks in-place backs authored AS the tree (partScan);
-    reformulated backs remain the differential's job. -/
 
 def setL (k v l : Term) : Term := .app (.app (.app StdLemmas.Set k) v) l
 
--- Borrow-returning multi-issued: nth2 with i and j swapped in the two sets.
--- SUBJECT: a deliberately-wrong back-spec (raw Term, i/j swapped in the two sets) — the lie is the subject.
--- `nth2Lie` — a LYING backward spec (the two indices swapped), asserting that the
--- §6.2 callee check catches it. Retired with the mechanism in M27-P2: a test of a
--- deleted feature is not coverage. It is also the one back this corpus carried as
--- a RECORD UPDATE rather than as surface syntax, which is why the `back = …` sweep
--- did not reach it — M26-F's `with`-closure lesson, arriving from the other side.
-
-/-! ## M19-B (the gate) — splitting the driver on a STUCK Bool spine
+/-! ## Splitting the driver on a stuck Bool spine
 
     The imperative partition branches on `if Leb x pivot` with `x` symbolic; the
-    scrutinee reduces to a stuck spine `Leb σ σp`, NOT a bare σ, and the ⇜ split
-    (M3) needs a substitutable variable. The machine now GENERALIZES: on an owned
-    stuck spine, `generalizeStuck` NF's it and `abstractInto`s it to a fresh
-    `σb : Bool` across all σ-bearing state (the M10 invariant's targets), then the
-    ordinary owned-sym split refines σb → True/False per branch.
+    scrutinee reduces to a stuck spine `Leb σ σp`, not a bare σ, and the ⇜ split
+    needs a substitutable variable. The machine generalizes: on an owned stuck
+    spine, `generalizeStuck` NF's it and `abstractInto`s it to a fresh `σb : Bool`
+    across all σ-bearing state, then the ordinary owned-sym split refines
+    σb → True/False per branch.
 
-    The probe: a fn whose RETURN TYPE mentions the same `Leb n 2` spine, with two
-    `boolRec` sides that converge ONLY per branch (`Add Z x ≡ x`). Without the
+    The probe: a fn whose return type mentions the same `Leb n 2` spine, with two
+    `boolRec` sides that converge only per branch (`Add Z x ≡ x`). Without the
     split the two stuck `boolRec`s differ and neither `Refl` checks; with it, both
     paths reduce and check. Both the spine-in-the-value (the scrutinee) and the
     spine-in-the-type (the pinned return) must refine together — which is exactly
-    what generalizing across ALL σ-bearing state delivers. -/
+    what generalizing across all σ-bearing state delivers. -/
 
--- SUBJECT: raw Term/Val builders (zt/tnat/lebSp/boolRecNat/Refl) for the stuckProbe
--- lying variants and the pure-model checks — raw Terms are the point here.
 def zt : Term := .ctorApp "Z" []
 def tnat : Nat → Term | 0 => zt | k + 1 => tS (tnat k)
 def lebSp (n : Term) : Term := .app (.app Std.lebFnT n) (tnat 2)
@@ -2326,12 +2097,10 @@ def boolRecNat (t f sp : Term) : Term :=
 def Refl : Term := .ctorApp "Refl" []
 
 -- n = 0; the `if` binds a fresh scrutinee (id 1).
--- **Written out per twin rather than shared through a skeleton** (M28 ψ). The
--- retSkel form pays when a body is long enough that duplicating it hurts; this body
--- is two lines, so writing each twin in full keeps the honest return type in SURFACE
--- syntax — which for a convergence probe is the whole readable content — at the cost
--- of one repeated `let`. Sharing would have bought nothing and made the honest spec
--- a hand-built `Term`.
+-- Written out per twin rather than shared through a skeleton: this body is two
+-- lines, so writing each twin in full keeps the honest return type in surface
+-- syntax — which for a convergence probe is the whole readable content — at the
+-- cost of one repeated `let`.
 def stuckProbe : Term := prog{
   fn StuckProbe (n : Nat) -> Id Nat
         (boolRec (λ (B : Bool). Nat) (S Z) Z (Leb n (S (S Z))))
@@ -2340,10 +2109,9 @@ def stuckProbe : Term := prog{
   () }
 example : progOk stuckProbe = true := by native_decide
 
--- Not vacuous (a): the True side does NOT converge (`S Z` vs `S (S Z)`). The
+-- Not vacuous (a): the True side does not converge (`S Z` vs `S (S Z)`). The
 -- generalized σb refines to True in that path and the `boolRec` reduces to two
 -- distinct values, so `Refl` fails — proving the per-branch refinement is real.
--- SUBJECT: a deliberately-non-converging return type (raw Term) — the lie is the subject.
 def stuckProbeLieRet : Term := .idT natT
   (boolRecNat (tS zt) zt (lebSp (V 0 "n"))) (boolRecNat (tS (tS zt)) zt (lebSp (V 0 "n")))
 def stuckProbeLie : Term := prog defer_check {
@@ -2353,8 +2121,7 @@ def stuckProbeLie : Term := prog defer_check {
 example : progRejects stuckProbeLie "does not have return type" = true := by native_decide
 
 -- Not vacuous (b): a one-armed match is rejected as non-exhaustive — the
--- generalized σb is genuinely Bool-typed, so exhaustiveness demands True AND False.
--- SUBJECT: a deliberately non-exhaustive body (raw Term, one-armed match) — the defect is the subject.
+-- generalized σb is genuinely Bool-typed, so exhaustiveness demands True and False.
 def stuckProbeNonExhBody : Term := .letIn ⟨1, "c"⟩ (lebSp (V 0 "n")) (.matchE ⟨1, "c"⟩ none [.mk "True" [] Refl])
 def stuckProbeNonExh : Term := prog defer_check {
   fn StuckProbeNonExh (n : Nat) -> Id Nat
@@ -2364,7 +2131,7 @@ def stuckProbeNonExh : Term := prog defer_check {
   () }
 example : progRejects stuckProbeNonExh "non-exhaustive" = true := by native_decide
 
-/-! ## M19-C (model) — `PartitionL` computes the Lomuto partition
+/-! ## `PartitionL` computes the Lomuto partition
 
     Concrete validation of the pure model before wiring the imperative body to it:
     first-element pivot, `≤`-elements moved before it, `>`-elements after, pivot
@@ -2372,8 +2139,6 @@ example : progRejects stuckProbeNonExh "non-exhaustive" = true := by native_deci
     no swaps), a reverse-sorted input (all `≤`, boundary walks to the end), and a
     mixed input that exercises the `g = S g'` swap branch. -/
 
--- SUBJECT: raw Val/Term builders (pv/vnat/vlist/tlist) — construct the pure-model expected
--- values and the executing-mode inputs; the raw Val/Term IS the subject under test here.
 def pv (t : Term) : Term := Pure.nf 4000 t
 def vnat : Nat → Val | 0 => .ctor "Z" [] | k + 1 => .ctor "S" [vnat k]
 def vlist : List Nat → Val | [] => .ctor "Nil" [] | x :: xs => .ctor "Cons" [vnat x, vlist xs]
@@ -2385,7 +2150,7 @@ example : (Val.know (pv (partLT 3 [1,2,3])) == vlist [1,2,3]) = true := by nativ
 example : (Val.know (pv (partLT 3 [3,2,1])) == vlist [1,2,3]) = true := by native_decide          -- reverse sorted
 example : (Val.know (pv (partLT 5 [3,5,1,2,4])) == vlist [2,1,3,5,4]) = true := by native_decide   -- exercises the swap
 
-/-! ## M21-2 — PartIdxL (the boundary index) and SortL (the quicksort model) -/
+/-! ## `PartIdxL` (the boundary index) and `SortL` (the quicksort model) -/
 
 def idxLT (n : Nat) (l : List Nat) : Term := .app (.app StdLemmas.PartIdxL (tnat n)) (tlist l)
 def sortLT (fuel n : Nat) (l : List Nat) : Term := .app (.app (.app StdLemmas.SortL (tnat fuel)) (tnat n)) (tlist l)
@@ -2398,12 +2163,12 @@ example : (Val.know (pv (idxLT 5 [3,5,1,2,4])) == vnat 2) = true := by native_de
 
 -- SortL sorts (fuel = length). Small cases only — sortL's toValPure inlines the
 -- whole partition/scan stack, so pv/nfV on it is heavy; the executing quicksort
--- (M21-3) validates it on the larger input classes far more cheaply.
+-- below validates it on the larger input classes far more cheaply.
 example : (Val.know (pv (sortLT 2 2 [2,1])) == vlist [1,2]) = true := by native_decide          -- the smallest sort
 example : (Val.know (pv (sortLT 1 1 [7])) == vlist [7]) = true := by native_decide              -- singleton
 example : (Val.know (pv (sortLT 0 0 [])) == vlist []) = true := by native_decide                -- empty
 
-/-! ## M21-3 — SortRangeL (the index-bounded quicksort spec, plan of record) -/
+/-! ## `SortRangeL` (the index-bounded quicksort spec) -/
 
 def sortRangeLT (fuel lo Cnt : Nat) (l : List Nat) : Term :=
   .app (.app (.app (.app StdLemmas.SortRangeL (tnat fuel)) (tnat lo)) (tnat Cnt)) (tlist l)
@@ -2419,19 +2184,19 @@ example : (Val.know (pv (sortRangeLT 3 0 3 [3,2,1])) == vlist [1,2,3]) = true :=
 example : (Val.know (pv (sortRangeLT 2 1 2 [5,3,2,9])) == vlist [5,2,3,9]) = true := by native_decide
 example : (Val.know (pv (sortRangeLT 3 1 3 [9,3,1,2,7])) == vlist [9,1,2,3,7]) = true := by native_decide
 
-/-! ## M19-C (imperative, executing mode) — the body computes `PartitionL`
+/-! ## The body computes `PartitionL` (imperative, executing mode)
 
     The in-place Lomuto partition through a mutable borrow, mirroring `PartitionL`
     exactly. `partScanE` recurses on the scan counter `k`; each step reads the scan
-    element with the PURE `NthL` on `*v` (a comptime read, the `Leb` condition), and
+    element with the pure `NthL` on `*v` (a comptime read, the `Leb` condition), and
     branches: the `g = S g'` case does an in-place `swapS` then recurses; the base
     places the pivot with a final `swapS` (guarded on `i = S i'` — swapS cannot
     self-swap). Run in executing mode (bounds proofs are placeholders `()`, which
     the run does not type-check) to confirm the imperative algorithm agrees with the
-    pure model on concrete inputs — the conformance the checking mode will prove. -/
+    pure model on concrete inputs. -/
 
--- The subjects are the chain's `partScanE`/`partitionE` (M28 D7); what follows is
--- the caller that runs them, spliced in as its tail.
+-- The subjects are the chain's `partScanE`/`partitionE`; what follows is the
+-- caller that runs them, spliced in as its tail.
 
 -- Executing-mode caller: create a concrete list, borrow, partition in place, recover.
 def partCaller (lst : List Nat) (n : Nat) : Term :=
@@ -2448,10 +2213,7 @@ def runPart (lst : List Nat) (n : Nat) : Bool :=
 -- The executing-mode partition agrees with the pure model on every input class:
 -- already-partitioned (no swaps), reverse-sorted (all ≤, boundary walks to the
 -- end), and mixed inputs that exercise the interior `g = S g'` swap (the reborrow
--- `&mut *v` path). Getting here surfaced and fixed three machine gaps (see the M19
--- report): shiftVars now shifts runtime vars inside pure spines; readR's var-move
--- ends a suspended reborrow in a borrow's payload; and a reused comptime index is
--- authored as a pure `Add` spine so readR delegates to (non-consuming) readC.
+-- `&mut *v` path).
 example : runPart [3,1,2] 3 = true := by native_decide
 example : runPart [1,2,3] 3 = true := by native_decide          -- already partitioned (no swaps)
 example : runPart [3,2,1] 3 = true := by native_decide          -- reverse sorted
@@ -2459,80 +2221,29 @@ example : runPart [3,5,1,2,4] 5 = true := by native_decide      -- interior g=S 
 example : runPart [5,3,8,1,9,2] 6 = true := by native_decide    -- mixed, multiple interior swaps
 example : runPart [2,2,1,3,2] 5 = true := by native_decide      -- duplicates around the pivot
 
-/-! ## M20-3 differential — the CHECKING partScan FnDef, run EXECUTING, = PartScanL
-
-    The load-bearing conformance validator (the callee convert-check reaches the
-    back only where it's authored as the tree; the swapS leaf's reformulated back
-    is the differential's job). We run the SAME partScan FnDef that Migrate.progOkOf
-    accepts — bounds, hlen proofs and all — in EXECUTING mode on concrete lists,
-    and confirm its recovered list equals `PartScanL pivot k 0 0 l`. So the body's
-    actual effect matches the declared back on every input class: since Migrate.progOkOf
-    accepts `back = PartScanL`, executing = PartScanL = the recovered value. -/
-
--- SUBJECT: the executing-mode differential harness (raw Term caller + raw expected-value
--- needle). Generating the caller Term and the `PartScanL`-computed needle IS the test here.
-/-! ## M21-3 — partitionRange: the subrange partition wrapper (Σ-pinned relative index)
-
-    partitions the range [lo, lo+Cnt) in place and returns the pivot's RELATIVE
-    offset `i` (absolute = add lo i), Σ-pinned to `PartIdxRangeL lo Cnt *v`. The
-    precondition is the range-fits inequality `hbnd : Le (Add lo Cnt) (Len *v)`;
-    the partScanRange call's entry bound (i = g = 0) is hbnd bridged by AddZero
-    (`Add Cnt2 Z = Cnt2`), mirroring partition's (M21-1) hlenW-via-AddZero. -/
-
-
-/-! ## M21-3 — quicksort: the imperative in-place quicksort (back = SortRangeL)
-
-    THE NORTH STAR. `quicksort(v, fuel, lo, Cnt, hbnd)` sorts the `Cnt` elements at
-    offset `lo` in place. Fuel-structural (mirrors SortRangeL): out of fuel / Cnt ≤
-    1 is a no-op; otherwise pick the pivot, compute the pivot's relative index `i`
-    and the right-count `g` from the ENTRY list (before mutating), scan-partition
-    the range (partScanRange, whose back IS PartitionRangeL lo Cnt *v), then recurse
-    on [lo, lo+i) and [lo+i+1, …) — sequential reborrows of the one `*v`. Because
-    `i`/`g` are the pure `PartIdxRangeL`/`PartGapRangeL` of the entry list, the
-    body's suspension tree (partScanRange's back, then the two quicksort backs
-    composed) is DEFINITIONALLY sortRangeL's own unfold — conformance is conversion.
-
-    The two range bounds come from PartScanSizeL (i + g + 1 = Cnt) and the three
-    length-preservation lemmas (the partition and each recursive sort keep len *v,
-    so the bounds, stated over the live *v, transport back to len entry = hbnd). -/
-
-/-! ## M22-0 — the conformance baseline's validation suite (quicksort)
-
-    Closing the back-specced (simulation) baseline before the direct-proving
-    redirect: the lie is rejected, and the SAME checking-mode FnDef run executing on
-    every input class (plus a sub-range) recovers exactly `SortRangeL fuel lo Cnt l`
-    — so the body's effect is the pure model on concrete data, the conformance the
-    §6.2 callee check proves symbolically. -/
-
--- Not vacuous: identity is the right back only on the no-op paths (fuel Z / Cnt ≤ 1);
--- on the sort path the composed suspension tree is SortRangeL, not *v, so it rejects.
--- SUBJECT: a deliberately-wrong back-spec (raw Term, identity) — the lie is the subject.
+-- Leftover term builders (identity as a wrong back-spec, a subrange-scan
+-- caller) not currently exercised by an assertion in this file.
 def quicksortLieBack : Term := dv
 def partScanRangeLT (pivot lo k i g l : Term) : Term :=
   .app (.app (.app (.app (.app (.app StdLemmas.PartScanRangeL pivot) lo) k) i) g) l
--- SUBJECT: the executing-mode differential harness (raw Term caller).
 def psrCaller (lst : List Nat) (lo k pivot : Nat) : Term :=
   .letIn ⟨0, "x"⟩ (tlist lst)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "x"⟩))
       (.seq (.call "partScanRangeE" [.var ⟨1, "b"⟩, tnat lo, tnat k, tnat 0, tnat 0, tnat pivot])
         (.letIn ⟨2, "y"⟩ (.var ⟨0, "x"⟩) .unit)))
-/-! ## M22 execfix — the executing-mode reborrow-staleness regression + the payoff
 
-    The isolated repro of the pain diary above (`swapS(&mut *b,…)` then a comptime
-    deref through a FRESH reborrow), the sequential-swapS positive control (the
-    sub-call-read path that always worked, guarding it stays green), and the
-    now-unblocked FULL quicksort executing differential. -/
+/-! ## The executing-mode reborrow-staleness regression
 
--- The minimal reproducer: after an in-place `swapS(&mut *b,…)` the swapped elements
--- sit in the callee's element-borrows; a probe fn reborrows `&mut *b` and reads
--- `Leb (NthL Z (*v)) pivot` — the exact comptime-deref-through-a-reborrow that read a
--- stale `loanₘ` (stuck) before the fix. `match c` forces the Bool. Post-fix the
--- reborrow fully re-collapses *v, so `NthL Z (*v)` = 1, `Leb 1 5` = True, and the
--- owner `x` recovers the swapped [1,2,3].
--- (`lebProbe` is the chain's, M28 D7; what follows is the caller that runs it.)
+    After an in-place `swapS(&mut *b,…)` the swapped elements sit in the callee's
+    element-borrows; a probe fn reborrows `&mut *b` and reads `Leb (NthL Z (*v))
+    pivot` — the comptime-deref-through-a-reborrow that read a stale `loanₘ`
+    (stuck) before the fix. `match c` forces the Bool. Post-fix the reborrow fully
+    re-collapses `*v`, so `NthL Z (*v)` = 1, `Leb 1 5` = True, and the owner `x`
+    recovers the swapped `[1,2,3]`.
 
--- SUBJECT: raw Term caller for the isolated repro (x=[3,2,1]; b=&mut x; swapS through
--- *b; lebProbe reborrows *b and comptime-reads it; recover y).
+    The sequential-swapS positive control below guards that the fix does not
+    disturb the path that always worked. -/
+
 def swapLebCaller (lst : List Nat) : Term :=
   .letIn ⟨0,"x"⟩ (tlist lst)
     (.letIn ⟨1,"b"⟩ (.borrow (.var ⟨0,"x"⟩))
@@ -2549,7 +2260,7 @@ example : runSwapLebProbe [3,2,1] [1,2,3] = true := by native_decide
 
 -- Positive control: two sequential `swapS(&mut *b,…)` of the same positions compose
 -- to the identity ([3,2,1] again). This path always worked (swapS reads *v via its
--- OWN nth2 sub-call, a var-read that already cascades) — it guards that the fix does
+-- own nth2 sub-call, a var-read that already cascades) — it guards that the fix does
 -- not disturb the sequential-reborrow path.
 def swapTwiceCaller (lst : List Nat) : Term :=
   .letIn ⟨0,"x"⟩ (tlist lst)
@@ -2563,32 +2274,25 @@ def runSwapTwice (lst : List Nat) (expect : List Nat) : Bool :=
   | .error _ => false
 example : runSwapTwice [3,2,1] [3,2,1] = true := by native_decide
 
--- THE PAYOFF: the FULL quicksort FnDef — bounds, length lemmas and all — run in
--- EXECUTING mode on concrete lists, agreeing with the pure model `SortRangeL`. The
--- body's three sequential `&mut *v` reborrows (partition + two recursive calls) are
--- exactly the reborrow-collapse case the fix unblocks. Full-range callers (lo=0,
--- Cnt=len) so `hbnd = LeRefl (Len x) : Le (Add 0 Cnt) (Len x)`.
-/-! ## M22-a — exit-snapshot return types + `old *v` (§5.4, direct-proving enabler)
+/-! ## Exit-snapshot return types + `old *v`
 
-    A borrow parameter's bare `*v` in the RETURN TYPE reads the EXIT snapshot (the
+    A borrow parameter's bare `*v` in the return type reads the exit snapshot (the
     collapsed final payload, which the audit already computes); `old *v` names the
-    ENTRY snapshot (usable in the type AND the body, a non-consuming reference to
-    the entry value). Consumed params stay entry-pinned (M12). These prove the
-    reading is genuinely the exit value, not the entry. -/
+    entry snapshot (usable in the type and the body, a non-consuming reference to
+    the entry value). Consumed params stay entry-pinned. These prove the reading is
+    genuinely the exit value, not the entry. -/
 
--- The pair is the chain's `exitReject` (M28 D7): `Id (*v) (*v)` is accepted (both
--- reads see one exit snapshot) and `Id (*v) (old *v)` is rejected (the swap moved
--- things). The reading that is TRUE here and unprovable by `Refl` —
--- `Id (*v) (SwapL i j (old *v))` — is `S23Direct.swapAt`, which carries the
--- derivation; §C2 of the disposition ledger is where that hand-off is recorded.
+-- The pair is the chain's `exitReject`: `Id (*v) (*v)` is accepted (both reads
+-- see one exit snapshot) and `Id (*v) (old *v)` is rejected (the swap moved
+-- things). The reading that is true here and unprovable by `Refl` —
+-- `Id (*v) (SwapL i j (old *v))` — is `swap_at` above, which carries the derivation.
 
--- OLD/EXIT MIXED: len is preserved across the swap. *v (exit) = SwapL i j (old *v),
+-- Old/exit mixed: len is preserved across the swap. *v (exit) = SwapL i j (old *v),
 -- so `Len *v = Len (old *v)` is exactly LenSwapL at the entry snapshot — cited
 -- directly with `old *v` in the body (no need to save the list, which would move it).
-/-- Two self-calls in one arm, with `[f]` the SECOND parameter — so the hoist
-    permutation runs on a self-call (`progOf`'s `retarget`), which a surface-minted
-    `.callV` would have skipped. `S27Dispose` §C reads its verdict as the
-    disposition record for this function's retired `back = *v`. -/
+/-- Two self-calls in one arm, with `[f]` the second parameter — so the hoist
+    permutation runs on a self-call, which a surface-minted `.callV` would have
+    skipped. -/
 def twoRec : Term := prog{
   fn TwoRec [f] (v : &mut List Nat, f : Nat) -> Unit
         { match f {
@@ -2598,101 +2302,20 @@ def twoRec : Term := prog{
   () }
 example : progOk twoRec = true := by native_decide
 
-/-! ## M22-b — swapSE: count-preservation as a PROVEN postcondition (direct proving)
+/-! ## Why delegation, not inline mutation
 
-    The first ensures-form rung. NO back: the return type
-    `Π n. Id Nat (Count n (*v)) (Count n (old *v))` is a propositional postcondition
-    (swap preserves the multiset), and the body PROVES it from the exit reading —
-    the demoted baseline would have declared `back = SwapL i j *v` and leaned on the
-    conversion check instead. Here the cert is `CountSwapL'` (SwapL preserves count)
-    read directly at the entry snapshot `old *v`.
-
-    WHY DELEGATION, NOT INLINE (the rung's sharpest finding — see the two probes in
-    the milestone report). The intended route was to INLINE the swap via `nth2`
-    (reborrow `&mut *v`) and ride the §22 bridge, on the expectation that the exit
-    reading would be the set/nth form `Set i (NthL j s) (Set j (NthL i s) s)`. It is
-    NOT. Through inline `nth2`, the audit reconstructs `*v`-exit from nth2's back
-    `Set i r1 (Set j r2 *v)` with r1/r2 the FINAL borrow payloads — and those are
-    released as OPAQUE symbols `Set i σ8 (Set j σ7 s)`. The audit never learns
-    `σ8 = NthL j s`, `σ7 = NthL i s`: the imperative `*ei := *ej; *ej := t` moved
-    values through borrows whose provenance the release does not retain. So the
-    bridge (about the nth-form) does not even TYPE against the opaque-form exit —
-    a DEEPER gap than set-vs-SwapL. Routing through `swapS` (swapSN) instead makes
-    the exit reading the clean model function `SwapL i j (old *v)` (swapSN's back,
-    itself a provable postcondition — cf. exitAccept), and `CountSwapL'` matches it
-    directly with no bridge.
-
-    PAIN DIARY. Three entries.
-    • OPAQUE EXIT READINGS — and the THREE-FEATURE ARC (the campaign's principal
-      calculus-design finding). A leaf that mutates via pointer writes (`*ei := *ej`)
-      leaves an exit whose written values are opaque existentials, so NO value-level
-      postcondition (count/sort/perm) is provable about it. Root cause (one level
-      deeper, per team-lead): the opacity is NOT intrinsic to inline mutation — it is
-      minted at ONE point, buildResult, which creates an issued borrow's payload as a
-      FRESH OPAQUE σ because signature-only checking has nothing saying what the
-      payload IS at issue time. Everything downstream preserves information (the
-      caller's writes are fully watched; the back spec routes surrendered values
-      correctly) — only the issue point discards it. So the fix has a precise name:
-      ISSUED-PAYLOAD PINNING, the dual of exit-snapshot — a callee declaring what its
-      issued borrow's payload is at issue (`NthL` pinning `*r = NthL i (old *v)`), as
-      machinery not a returned proof. The arc: PINNING makes an inline leaf's exit the
-      set-form; the §22 BRIDGE (SwapLSet) rewrites set-form to the model function;
-      the AUDIT-REWRITE-BY-ID feature cites the bridge at the audit — together they
-      make inline leaves PROVABLE. Third convergence point for audit-rewrite (after
-      M17 callee-side and the exit-reading side).
-    • PROOF LINEARITY vs COUNT. Length preservation is FRICTION-FREE (lenPreserve:
-      `LenSwapL` is unconditional), but count preservation needs the bounds — the
-      cert wants `pij`/`p2` (CountSwapL' is bounded) AND the swap CONSUMES them.
-      Mechanism (per team-lead): proofs MOVE because indexKindV's sctx-type test
-      recognizes Nat/Bool/Unit/Id/Π/Type but NOT stuck proposition spines — a σ typed
-      `Le (S i) j` whnf's to a stuck natRec application (none of those heads), so it
-      fails index-kind and moves. Dodged here by ORDERING alone — the cert is
-      let-bound BEFORE the swapS call, reading pij/p2 (non-consuming, ⇝) while live;
-      swapS MOVES them after. Fragile: a postcondition citing the proofs AFTER the
-      mutation cannot be ordered around. Fix (QUEUED, now RECURRED — the tax was paid
-      again at partitionRangeE and quicksortE, the measured-pain threshold): extend
-      indexKindTy to erasure-bound stuck types (Le-headed), same §2.1 vacuity
-      rationale — proofs-as-copy-on-read. DEFERRED (per team-lead): staging is the
-      law of the ladder until a postcondition genuinely can't be staged before its
-      mutation, OR the audit-rewrite arc is green-lit. Viability rulings on the fix
-      shape: post-readC the Le former has unfolded to an anonymous recursor spine, so
-      there is no head to match — a naive "stuck-recursor-to-Type ⇒ copy" is DEAD, not
-      just fragile: a σ typed by a stuck `VecF Nat n` is exactly stuck-recursor-to-Type
-      yet copying it copies DATA (a vector), the very E0382 class index-kind exists to
-      prevent. The sound form is making `Le` a PRIMITIVE former (like Id's `.idT`),
-      which also gives audit-rewrite a head to recognize — so it belongs WITH that
-      arc, not as a mid-ladder patch.
-    • CONVERGENT EVIDENCE. The §22 bridge `SwapLSet` (set-form ≡ SwapL) is proved
-      and kept in StdLemmas as forward infrastructure — the transport the audit-rewrite
-      feature cites once pinning lands, generalizing to partition's composed set-forms.
-      Separately: CountPartitionRangeL / CountSortRangeL are the very pure lemmas the
-      PRE-REDIRECT M22 plan wanted — the conformance and direct-proving architectures
-      have CONVERGED on the same pure-lemma obligations, differing only in where
-      evidence assembly happens. A paper observation. -/
-/-! ## M22-b — partitionRangeE: partition's PERMUTATION postcondition (direct proving)
-
-    The partition rung. NO back: the return type `Π n. Id Nat (count n *v)(count n
-    (old *v))` says partition permutes the range (preserves the multiset). Same
-    delegation discipline as swapSE — the mutation is delegated to `partitionRange`
-    (whose back `PartitionRangeL lo Cnt *v` is a CLOSED function of the input, so the
-    exit reading is provable, not opaque), and the cert is the pure permutation
-    lemma `CountPartitionRangeL` at the entry snapshot. Cert staged before the
-    consuming call (reads `hbnd` while live — the proof-linearity dodge again). This
-    is the count/Perm half of the eventual `Sorted *v ∧ Perm (old*v) *v` quicksort
-    postcondition; sortedness is the other axis, still ahead. -/
-/-! ## M22-b — quicksortE: quicksort's PERMUTATION postcondition (direct proving)
-
-    THE NORTH STAR, direct-proving form. NO back: retType `Π n. Id Nat (count n *v)
-    (count n (old *v))` says the in-place quicksort PERMUTES its range — a
-    propositional postcondition PROVEN in the body (the demoted baseline `quicksort`
-    FnDef instead declares `back = SortRangeL fuel lo Cnt *v` and checks conformance
-    by conversion). Same delegation discipline as the swap and partition rungs: the
-    sort is delegated to `quicksort` (back = SortRangeL, a closed function of the
-    input, so the exit reading is provable rather than opaque), and the cert is the
-    pure permutation lemma CountSortRangeL at the entry snapshot. Cert staged before
-    the consuming call (reads hbnd live). This is the Perm half of the full
-    `Sorted *v ∧ Perm (old*v) *v`; sortedness (AllLe/AllGe/sorted-glue) is the
-    remaining axis. -/
+    A leaf that mutates via pointer writes (`*ei := *ej`) leaves an exit whose
+    written values are opaque existentials, so no value-level postcondition
+    (count/sort/perm) is provable about it directly. The opacity is not intrinsic
+    to inline mutation — it is minted at the point where a callee's issued borrow
+    is created: signature-only checking has nothing saying what the payload is at
+    issue time, so it becomes a fresh opaque σ. Delegating the mutation to a callee
+    whose own exit reading is a closed model function (like `SwapL i j (old *v)`,
+    `PartitionRangeL lo Cnt *v`, or `SortRangeL fuel lo Cnt *v`) sidesteps the
+    problem entirely: the caller cites a pure lemma about that model at the entry
+    snapshot, staged before the call consumes the arguments the lemma needs. This
+    is the delegation discipline the flagship cohort above uses for `partition`,
+    `append_back` and `quicksort`'s count/permutation and sortedness
+    postconditions. -/
 end Dllbc.Tests.S19Partition
 end
--- └── end of what was `S19Partition.lean` ───────────────────────────────────────────────

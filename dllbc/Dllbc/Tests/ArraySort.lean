@@ -10,29 +10,15 @@ import Dllbc.Tests.Direct
 /-!
 # The array flagship — an in-place quicksort over `Array n Nat`
 
-**A consolidation bucket** (M28 D10). The suite grew one file per milestone, which
-made a test's home a fact about WHEN it was written rather than about what it is
-about. These files were merged here, in the order below, with their content moved
-VERBATIM — every namespace kept, so every cross-file reference in the tree still
-resolves, and each former file is fenced by a comment naming it so the git-log
-archaeology survives:
-
-  * `S25ArrSort.lean`
-
-Each former file's `open`s are scoped by a `section`, so nothing leaks across the
-seams.
+This file tests the array flagship: an in-place quicksort over `Array n Nat` whose
+signature carries the functional spec — sorted, and a permutation of the input
+(checked via element counts) — proved by the checker and confirmed by running the
+machine on concrete arrays. Lying twins accompany each conjunct so the accepts are
+not vacuous, and an executing differential shows the program really sorts in
+place.
 -/
 
--- ┌── was `Dllbc/Tests/S25ArrSort.lean` ──────────────────────────────────────────────
 section
-/-!
-# §25 test suite — the in-place array partition, and the array quicksort
-
-¶6's migration completed: the leaf program ledger G4 says does not transfer, and the
-assembly it feeds. `S24Arrays` established that every PIECE works (the carve, the
-elementization, the transferred library, `sort2` as the whole stack at width two);
-this file is the two programs those pieces were for.
--/
 
 open Dllbc
 open Dllbc.StdLemmas (LeRefl LeAdd LeAddL LeAddSucc LeTrans LeUpR LePredL
@@ -52,7 +38,7 @@ open Dllbc.StdLemmas (LeRefl LeAdd LeAddL LeAddSucc LeTrans LeUpR LePredL
 
 namespace Dllbc.Tests.S25ArrSort
 
-/-- Type-check a closed term against a closed type in the pure seed (as §23/§24). -/
+/-- Type-check a closed term against a closed type in the pure seed. -/
 def chkL (tm ty : Term) : Bool :=
   match (do let v ← readC 8000 tm; let t ← readC 8000 ty; hasTypeT 8000 v t).run (seedPure [] []) with
   | .ok r _ => r
@@ -60,10 +46,7 @@ def chkL (tm ty : Term) : Bool :=
 
 def pv (t : Term) : Term := Pure.nf 4000 t
 
--- (`progMsg`, the debugging helper that printed a declaration's check message,
--- retired in M28 D9 with `Migrate.cohort`.)
-
-/-! ## (i) The partition layer's predicates and their nil lemmas -/
+/-! ## Partition predicates and their nil lemmas -/
 
 example : chkL NatRw NatRwTy = true := by native_decide
 example : chkL LeZeroEq LeZeroEqTy = true := by native_decide
@@ -115,13 +98,12 @@ example : chkL CountSwapA CountSwapATy = true := by native_decide
 example : (Pure.nf 2000 prog defer_check { SortedA Z Arr() } == .const "Unit")
     = true := by native_decide
 
-/-! ## (ii) `splitA` — the scan
+/-! ## `splitA` — the scan
 
     `splitA(p, t)` rearranges `*t` in place so that its first `k` elements are ≤ `p`
     and the rest are ≥ `p`, and returns `k` with the right part's length.
 
-    THE PROGRAM, and why it is this one. Peel the head, split the tail recursively, and
-    then place the head:
+    Peel the head, split the tail recursively, and then place the head:
 
       * head ≤ p — it belongs at the front, where it already is. NO WRITE.
       * head > p and the tail's left part is empty — it belongs at the back, and
@@ -132,24 +114,19 @@ example : (Pure.nf 2000 prog defer_check { SortedA Z Arr() } == .const "Unit")
 
     Every element access is at index 0 of a segment the program carved, because there is
     no other kind: two independent symbolic indices into one array cannot both be
-    reached (measured — after the first carve no evidence a program can hold selects a
-    leaf for the second), so Lomuto's two-cursor scan is not writable and this shape is.
-    ¶6's "the right sub-slice is a segment with its own zero" is a hard constraint here,
-    not a convenience.
+    reached, so Lomuto's two-cursor scan is not writable and this shape is — the right
+    sub-slice must be a segment with its own zero.
 
-    PAIN DIARY — the staging tax, in its M23 form and for the M23 reason. `mkC` exists
-    because the count conjunct must name the tail AS IT WAS AT ENTRY, and `*tl` denotes
-    that only until the recursive call replaces it. Built while it is still live and
-    applied afterwards. One builder, four arguments; M23's quicksort needed four
-    builders. It would disappear under the filed `old`-for-consumed-things feature and
-    does no mathematical work. -/
+    `mkC` stages the count conjunct: it must name the tail AS IT WAS AT ENTRY, and `*tl`
+    denotes that only until the recursive call replaces it, so it is built while `*tl`
+    is still live and applied afterwards. -/
 
 /-! ### The three telescopes' positional vocabulary and their return types
 
-    A return type written outside its own header names parameters as `.var ⟨i, name⟩`
-    (§5.2). Written out per twin rather than through a skeleton, which is M28 ψ's
-    rule: for a SPEC lie the type IS the readable content, and each of these is one
-    conjunct of a five-conjunct chain away from the honest form. -/
+    A return type written outside its own header names parameters as `.var ⟨i, name⟩`.
+    Written out per twin rather than through a skeleton, since the type is the readable
+    content of a spec lie, and each of these is one conjunct of a five-conjunct chain
+    away from the honest form. -/
 
 -- splitA:     fuel=0, m=1, hfuel=2, p=3, t=4
 def mS : Term := .var ⟨1, "m"⟩
@@ -181,70 +158,62 @@ def qHonest : Term := prog defer_check {
 
 def qSuffHonest : Term := prog defer_check { Le %nQ %fuelQ }
 
-/-! ## (iii) `partitionA` — the leaf ¶6's ledger counts as surviving, and G4 says is new
+/-! ## `partitionA` — the partition leaf
 
     `partitionA(a)` picks `a[0]` as the pivot, splits the tail around it, and swaps the
     pivot into its final position — returning that position, the right part's length,
     and `PartA`.
 
-    IT IS NOT RECURSIVE, and it exists as a separate declaration for a reason that is
-    the lane's sharpest structural finding: **the function boundary is load-bearing.**
-    A body that has matched its own length `n` to `S m2` — which the head peel requires,
-    since only `(*a)[Z ; 1 ; m2]` converts against the rigid extent — can no longer
-    carve at a symbolic offset, because T2's rigid-length restriction now applies to
-    the whole array. So the sort cannot both select a pivot and carve at the returned
-    index. §6.2's opacity is the way out: a call re-mints the caller's payload as a
-    FRESH σ at the declared type, so the array comes back UNCARVED and with a FLEX
-    length — exactly the state the three-way carve needs. ¶5 advises "carve inline;
-    reach for the function only when you want the abstraction boundary". Here the
-    boundary is what makes the program possible at all. -/
-/-! ## (iv) `quicksortA` — the headline
+    IT IS NOT RECURSIVE, and it exists as a separate declaration because the function
+    boundary is load-bearing here. A body that has matched its own length `n` to `S m2`
+    — which the head peel requires, since only `(*a)[Z ; 1 ; m2]` converts against the
+    rigid extent — can no longer carve at a symbolic offset, because the rigid-length
+    restriction now applies to the whole array. So the sort cannot both select a pivot
+    and carve at the returned index. A call's opacity is the way out: it re-mints the
+    caller's payload as a FRESH σ at the declared type, so the array comes back
+    UNCARVED and with a FLEX length — exactly the state the three-way carve needs. -/
+/-! ## `quicksortA` — the array quicksort
 
         fn quicksortA [fuel] (fuel : Nat, n : Nat, hfuel : Le n fuel, a : &mut (Array n Nat))
           -> Σ (hs : SortedA n (*a)). Π x. Id Nat (CountA x n (*a)) (CountA x n (old *a))
 
-    M23's quicksort signature, re-posed on arrays: sorted AND a permutation, over the
-    exit snapshot, IN PLACE, with zero declared backs in the call tree. `partitionA`,
-    `splitA` and the two recursive calls are each described only by their return type.
+    Sorted AND a permutation, over the exit snapshot, IN PLACE, with zero declared
+    backs in the call tree. `partitionA`, `splitA` and the two recursive calls are each
+    described only by their return type.
 
     EMPTINESS IS TESTED WITH `Leb 1 n`, NOT BY MATCHING `n`, and that is forced twice
-    over. Matching would refine the length to `S m2`, and T2's rigid-extent restriction
-    then blocks the three-way carve outright ("premise (3) is stuck"). And the `Z` branch
-    could not be discharged anyway: there is no η at length zero, so `SortedA Z σ` is a
-    stuck `arrRec` rather than `Unit`. The False branch instead turns `Le n Z` into
+    over. Matching would refine the length to `S m2`, and the rigid-extent restriction
+    then blocks the three-way carve outright. And the `Z` branch could not be
+    discharged anyway: there is no η at length zero, so `SortedA Z σ` is a stuck
+    `arrRec` rather than `Unit`. The False branch instead turns `Le n Z` into
     `Id Nat n Z` (`LeZeroEq`) and feeds `SortedANil`.
 
-    THE ONE STRUCTURAL FACT beyond composition is M23's, unchanged: BOUND SURVIVAL.
-    `SortedArrCat` wants `UbA pv` of the SORTED left part, and the partition bounded it
-    before the sort. `UbPermA`/`LbPermA` carry both bounds across their sorts' own
-    count evidence. That is the keystone, transferred with the container in M24-ix, and
-    it is the only place this proof is more than gluing.
+    THE ONE STRUCTURAL FACT beyond composition: BOUND SURVIVAL. `SortedArrCat` wants
+    `UbA pv` of the SORTED left part, and the partition bounded it before the sort.
+    `UbPermA`/`LbPermA` carry both bounds across their sorts' own count evidence. That
+    is the keystone; it is the only place this proof is more than gluing.
 
-    PAIN DIARY — three staged builders, and the reason is M23's exactly. `mkTop` is built
-    BEFORE the partition call, because the count conjunct's far endpoint is `old *a` and a
-    body cannot write that; capturing `*a` while it still IS the entry value is the dodge.
-    `mkAD` and `mkS` are built after the carve and before the sorts, because both name the
-    sub-slices AS THEY WERE when the partition bounded them, and the recursive calls
-    replace those values. M23's list quicksort needed four builders for the same reason.
-    Sixth filing for `old`-on-consumed-things; none of the three does mathematical work. -/
+    Three staged builders. `mkTop` is built BEFORE the partition call, because the
+    count conjunct's far endpoint is `old *a` and a body cannot write that; capturing
+    `*a` while it still IS the entry value is the dodge. `mkAD` and `mkS` are built
+    after the carve and before the sorts, because both name the sub-slices AS THEY
+    WERE when the partition bounded them, and the recursive calls replace those
+    values. -/
 
-/-! ### THE CHAIN
+/-! ### The call chain
 
-    Three sealed `let`s and a tail (§8): `partitionA` calls `splitA`, `quicksortA`
-    calls both, and each is in scope by being written above its caller. Four things
-    vary — the three return types and `quicksortA`'s sufficiency hypothesis — which
-    is every twin in this file except the BODY twin below, and that one cannot be
-    shared at all (M28 D1's rule: a difference inside a body, at a subterm naming a
-    binder the `fn` lowering mints an id for, has no splice that can reach it). -/
+    Three sealed `let`s and a tail: `partitionA` calls `splitA`, `quicksortA` calls
+    both, and each is in scope by being written above its caller. Four things vary —
+    the three return types and `quicksortA`'s sufficiency hypothesis — which is every
+    twin in this file except the BODY twin below, and that one cannot be shared at
+    all: a difference inside a body, at a subterm naming a binder the `fn` lowering
+    mints an id for, has no splice that can reach it. -/
 
--- **This block is the splice auto-deferral's demonstration on the real thing.**
 -- This is the twin template: one body, five spliced return types, instantiated
 -- below both at types it satisfies and at types it does not. Asking for the check
--- is answered "deferred, the assembled value is not closed" — silently, with a
--- `trace.Dllbc.check` line and no marker to write — because a template HAS no
--- closed value and is checked at its instantiations by construction. Written here
--- rather than left bare so that the deferral is exercised by the suite rather than
--- only by the demo file (docs/05 §2a).
+-- of an uninstantiated template is answered "deferred, the assembled value is not
+-- closed" — silently, with a trace line and no marker to write — because a
+-- template has no closed value and is checked at its instantiations by construction.
 def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
   fn SplitA [fuel] (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
       -> %sret
@@ -268,9 +237,6 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
               -- the pre-swap state (`hsw`), then move that across the recursive call's
               -- own Count evidence (`hc`). Both non-swap branches pass `Refl` for the
               -- first leg.
-              -- §2.4: the snapshots this builder was taking implicitly, named. The
-              -- comment above already dates them ("staged while … still denotes"); the
-              -- citation rule turns the date into a binding.
               let Tl0 = *tl;
               let X0 = x;
               let M2 = m2;
@@ -342,9 +308,6 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
             let hd = &m (*a)[Z ; 1 ; m2];
             let x = (*hd)[0];
             let tl = &m (*a)[S Z ; m2];
-            -- §2.4: the snapshots this builder was taking implicitly, named. The
-            -- comment above already dates them ("staged while … still denotes"); the
-            -- citation rule turns the date into a binding.
             let Tl0 = *tl;
             let X0 = x;
             let M2 = m2;
@@ -403,9 +366,6 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
             S(f2) => {
               -- Staged while `*a` still denotes the ENTRY array: the Count chain's far
               -- endpoint is `old *a`, which no body term can name.
-              -- §2.4: the snapshots this builder was taking implicitly, named. The
-              -- comment above already dates them ("staged while … still denotes"); the
-              -- citation rule turns the date into a binding.
               let A0 = *a;
               let N0 = n;
               let MkTop = (λ (Dv : Array N0 Nat).
@@ -417,17 +377,14 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                         (Had Q) (Hd Q));
               -- `hfuel` is a PROOF, so passing it to the partition MOVES it. Both
               -- sufficiency bounds are therefore staged over it first — the same
-              -- capture-before-consume dodge M23 uses for a consumed `rest`.
-              -- §2.4: the snapshots this builder was taking implicitly, named. The
-              -- comment above already dates them ("staged while … still denotes"); the
-              -- citation rule turns the date into a binding.
+              -- capture-before-consume dodge used for a consumed `rest`.
               let Hfuel0 = hfuel;
               let N0 = n;
               let F2 = f2;
               let MkHf = (λ (Kv : Nat). λ (H : Le (S Kv) N0).
                             LeTrans (S Kv) N0 (S F2) H Hfuel0);
               let Pair(pvv, Pair(k, Pair(jj, Pair(Hlen, Pair(Hp, Hcnt))))) = PartitionA(S(f2), n, hfuel, LebTrueLe 1 n he, &m *a);
-              -- ¶6's three-way carve, at the index the partition just returned. The
+              -- The three-way carve, at the index the partition just returned. The
               -- first obligation is `LeAdd`; the second is `Le 1 (S jj)`, which route
               -- (a) reduces to ⊤; the third is degenerate.
               let l = &m (*a)[Z ; k ; S jj | LeAdd k (S jj) | Hlen];
@@ -441,9 +398,6 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
               let Top1 = MkTop (arrCat k (S jj) (*l) (acons jj e (*r))) Hcnt;
               -- The glue, staged: both bounds are about to be invalidated as VALUES by
               -- the recursive sorts, so their transports are set up now.
-              -- §2.4: the snapshots this builder was taking implicitly, named. The
-              -- comment above already dates them ("staged while … still denotes"); the
-              -- citation rule turns the date into a binding.
               let L0 = *l;
               let R0 = *r;
               let Pvv0 = pvv;
@@ -463,9 +417,6 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                       (SortedArrCat Pvv0 K0 L2 Jj0 R2 Hs1
                          (UbPermA Pvv0 K0 L2 K0 L0 H1 Hub0) Hs2
                          (LbPermA Pvv0 Jj0 R2 Jj0 R0 H2 Hlb0)));
-              -- §2.4: the snapshots this builder was taking implicitly, named. The
-              -- comment above already dates them ("staged while … still denotes"); the
-              -- citation rule turns the date into a binding.
               let L0 = *l;
               let R0 = *r;
               let E0 = e;
@@ -519,21 +470,19 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
         } };
   %tail }
 
-/-- THE HEADLINE: the array flagship checks as ONE program, against no table.
-    `quicksortA` is the array era's in-place scan — it carves, swaps through element
-    borrows, and returns an index. It shares no code with `S23Direct`'s list
-    quicksort: not the program, not the predicates, not the partition, not the
-    container. -/
+/-- The full chain checks as ONE program, against no table. `quicksortA` is an
+    in-place scan — it carves, swaps through element borrows, and returns an index.
+    It shares no code with the list quicksort elsewhere in this suite: not the
+    program, not the predicates, not the partition, not the container. -/
 def arrChain : Term := arrUnder sHonest pHonest qHonest qSuffHonest .unit
 example : progOk arrChain = true := by native_decide
 
 
-/-! ## (v) Not vacuous — a lying twin per conjunct
+/-! ## Non-vacuity twins — a lying variant per conjunct
 
     Each return type is the ONLY description of its function, so each conjunct gets a
     twin that changes exactly it, built by taking the `retType` off a lying header with
-    the same telescope so the body is shared verbatim and the lie is the only variable.
-    M23's discipline, applied to three declarations. -/
+    the same telescope so the body is shared verbatim and the lie is the only variable. -/
 
 -- `splitA`, conjunct 1: the length accounting says the two parts overlap by one.
 example : progOk (arrUnder (prog defer_check {
@@ -559,16 +508,15 @@ example : progOk (arrUnder (prog defer_check {
       Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (S (CountA Q %mS (old *%tS))) })
     pHonest qHonest qSuffHonest .unit) = false := by native_decide
 
-/-- **The BODY twin, and the one that matters most**: the swap is DELETED — the branch
+/-- The body twin, and the one that matters most: the swap is DELETED — the branch
     reads the two cells and writes neither, but claims the same postcondition. Every
     spec twin above can be blamed on some path; this one is wrong only on the swap
     path and only because the elements did not move. It isolates the single mutation
     the whole program performs.
 
-    Transcribed rather than shared through the chain, and that is M28 D1's rule
-    rather than a choice: what varies is inside the body, at a statement naming
-    binders the `fn` lowering mints ids for. It carries only `splitA`, since nothing
-    else is needed to refuse it. -/
+    Transcribed rather than shared through the chain: what varies is inside the body,
+    at a statement naming binders the `fn` lowering mints ids for, and no splice can
+    reach that. It carries only `splitA`, since nothing else is needed to refuse it. -/
 def splitANoSwap : Term := prog defer_check {
   fn SplitA [fuel] (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
       -> %sHonest
@@ -581,9 +529,6 @@ def splitANoSwap : Term := prog defer_check {
               let hd = &m (*t)[Z ; 1 ; m2];
               let x = (*hd)[0];
               let tl = &m (*t)[S Z ; m2];
-              -- §2.4: the snapshots this builder was taking implicitly, named. The
-              -- comment above already dates them ("staged while … still denotes"); the
-              -- citation rule turns the date into a binding.
               let Tl0 = *tl;
               let X0 = x;
               let M2 = m2;
@@ -658,14 +603,9 @@ example : progRejects (arrUnder sHonest (prog defer_check {
     qHonest qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 -- `quicksortA`, conjunct 1: sortedness lied onto the ENTRY. True at the empty array,
--- so the base path still passes and only the recursive one is blamed.
---
--- **The needle MOVED at M33a** (both of these), and the verdict did not. With
--- `Hs` capital the sortedness component is ⇝-read at `readResult`, so the lie is
--- caught where it is WRITTEN — at this body's own return — instead of one call
--- later, where the caller found the argument ill-typed. Was "does not have its
--- parameter type"; the two Direct.lean twins of these did not move, because
--- quicksort's own caller re-checks the conjunct either way.
+-- so the base path still passes and only the recursive one is blamed. With `Hs`
+-- capital the sortedness component is read at the function's own return, so the
+-- lie is caught there rather than one call later at the caller.
 example : progRejects (arrUnder sHonest pHonest (prog defer_check {
     Σ0 (Hs : SortedA %nQ (old *%aQ)).
       Π (Q : Nat) → Id Nat (CountA Q %nQ (*%aQ)) (CountA Q %nQ (old *%aQ)) })
@@ -712,27 +652,11 @@ example : progRejects (arrUnder sHonest pHonest qHonest (prog defer_check { Unit
   "botElim" = true := by native_decide
 
 
-/-! ## (vi) The EXECUTING differential — and the divergence it found
+/-! ## The executing differential
 
-    `Migrate.progOkOf` proves `Sorted ∧ Perm` symbolically. Running the SAME declarations on
-    concrete arrays is the control that can still indict them, and here it indicts the
-    MACHINE instead: the concrete and symbolic executions of a carving callee diverge,
-    for a reason no symbolic check can produce. Everything below is stated so that the
-    day the gap closes, this section goes red and has to be updated.
-
-    THE GAP, minimally: **a callee's segment borrows are never released when it
-    returns**, so in executing mode the caller's array stays carved with the callee's
-    dead markers. `mergeArrays` cannot rejoin it (a loan blocks the merge, ledger R4),
-    so the caller's next carve sees the callee's leftover segmentation instead of one
-    leaf, and premise (3) tries to unify the wrong extent.
-
-    In CHECKING mode this is invisible, and invisible for a principled reason: §6.2's
-    opacity re-mints the callee's payload as a fresh σ at the declared type, so the
-    caller always sees an UNCARVED array. That re-minting is not merely an
-    approximation of what the concrete machine does — it is a REPAIR of it. This is a
-    new instance of the over-approximation §6.1 already flags ("a group releases
-    atomically where the concrete machine ends lazily"), and it is the first one where
-    the concrete side is the one that is wrong. -/
+    `progOk` proves `Sorted ∧ Perm` symbolically. Running the same declarations on
+    concrete arrays is a further control, and it also demonstrates directly that
+    `quicksortA` really sorts, in place. -/
 
 def tnatT : Nat → Term | 0 => .ctorApp "Z" [] | k + 1 => .ctorApp "S" [tnatT k]
 def tarrT (l : List Nat) : Term := .ctorApp "Arr" (l.map tnatT)
@@ -787,21 +711,16 @@ def runSplA (l : List Nat) (pvt : Nat) : Option (List Nat) :=
 
 def sortedRef (l : List Nat) : List Nat := l.mergeSort (fun a b => a <= b)
 
-/-- Did it run at all — used by the G7 probes below, where the point is acceptance and
+/-- Did it run at all — used by the probes below, where the point is acceptance and
     execution agreeing rather than the value. -/
 def runsAtAll (t : Term) : Bool :=
   match Dllbc.Tests.S9Diff.runExec t with | .ok _ => true | .error _ => false
 
-/-! ### (vi.a) It really sorts, in place, on concrete arrays
+/-! ### It really sorts, in place, on concrete arrays
 
-    The same declarations `Migrate.progOkOf` verified symbolically, run on real inputs and
+    The same declarations `progOk` verified symbolically, run on real inputs and
     compared against a trusted sort. Duplicates, already-sorted and reverse-sorted
     included, since the empty-part paths are where a partition-based sort breaks. -/
-
-/-! ### (vi.a) What DOES run, and it is not nothing
-
-    Every execution that does not re-enter a carve after returning from a carving callee
-    is correct — the programs really do move elements, in place, to the right places. -/
 
 -- `splitA` on two elements: the pivot-crossing SWAP branch, EXECUTING. `[3,1]` at
 -- `p = 2` must come back `[1,3]` — the head crossed the boundary and the boundary
@@ -817,17 +736,13 @@ example : runSplA [] 2 == some [] := by native_decide
 example : runQsA [] == some (sortedRef []) := by native_decide
 example : runQsA [1] == some (sortedRef [1]) := by native_decide
 
-/-! ### (vi.b) G5 CLOSED — the executing differential, deep
+/-! ### The full sort, executing, at sizes that do re-enter a carve after a call
 
-    The divergence this section used to pin is gone. It was `Drop-empty`, in THREE
-    independent sites, and the ledger's G5 entry records each; the last of them is that a
-    ZERO-WIDTH request must not select the leaf it abuts, because `Le (Add lo Z) (Add b m)`
-    holds at a leaf's far end and the ordinary selection then demand-ends the live borrow
-    pinned there. All three are unreachable symbolically — a residue σ is never known to be
-    zero — and routine concretely, which is exactly why only an executing differential
-    could find them and why the checking side was right all along.
-
-    What used to be `runsAtAll … = false` is now the real thing. -/
+    These used to diverge from the checker's verdict: a zero-width carve request must
+    not select the leaf it abuts, but the ordinary selection demand-ended the live
+    borrow pinned at a leaf's far end anyway. Unreachable symbolically (a residue is
+    never known to be zero) and routine concretely, which is why only an executing
+    differential could find it. Fixed; these are its regression. -/
 
 example : runQsA [2, 1] == some (sortedRef [2, 1]) := by native_decide
 example : runQsA [3, 1, 2] == some (sortedRef [3, 1, 2]) := by native_decide
@@ -848,22 +763,17 @@ example : runSplA [3, 1, 4] 2 == some [1, 3, 4] := by native_decide
 example : runSplA [4, 1, 3, 2] 2 == some [2, 1, 4, 3] := by native_decide
 example : runSplA [] 2 == some [] := by native_decide
 
-/-! ### (vi.c) THE CROSS-DIFFERENTIAL — wired, and green as far as it runs
+/-! ### Cross-differential against the list quicksort
 
-    M23's `quicksort` is a relational take-and-rebuild over a LINKED LIST returning two
-    lists by value; `quicksortA` is an in-place scan over an ARRAY returning an index.
-    They share no code — not the program, not the predicates, not the partition, not the
-    container — and they were written against the same postcondition. Comparing them
-    elementwise is the control that catches a wrong SHARED reading of the spec, which
-    neither type checker would see.
+    The list quicksort elsewhere in this suite is a relational take-and-rebuild over a
+    LINKED LIST returning two lists by value; `quicksortA` is an in-place scan over an
+    ARRAY returning an index. They share no code — not the program, not the
+    predicates, not the partition, not the container — and they were written against
+    the same postcondition. Comparing them elementwise catches a wrong SHARED reading
+    of the spec that neither type checker would see on its own. -/
 
-    It is set up here in full and asserted on the inputs the array side can execute. The
-    remaining inputs are one bug away, and the moment the pinned tests above flip this
-    becomes the lane's real acceptance. -/
-
--- The list side is `S23Direct.qsRun` — the flagship cohort's own chain with a
--- caller as its tail (M28 D3), so the sort that runs here is the one checked
--- there, rather than three `FnDef`s handed over as a table.
+-- The list side is `S23Direct.qsRun`, run through its own caller, so the sort that
+-- runs here is the one checked there, rather than a table of `FnDef`s.
 def runQsL (l : List Nat) : Option (List Nat) :=
   match Dllbc.Tests.S9Diff.runExec (Dllbc.Tests.S23Direct.qsRun l) with
   | .ok env => (env.lookup "y").bind (listOfV 2000)
@@ -886,7 +796,7 @@ example : cross [2, 1] = true := by native_decide
 example : (match runQsA [2, 1] with | some a => a == [2, 1] | none => false) = false := by
   native_decide
 
-/-! ### (vi.c) M9's simulation property, over the array bodies that do run -/
+/-! ### The checker/machine simulation property, over the array bodies that run -/
 
 def qsCallers : List Term := [qsCallerA [3, 1, 2], qsCallerA [2, 1], qsCallerA [1]]
 
@@ -896,13 +806,12 @@ example : qsCallers.all (fun b => progOk (arrUnder sHonest pHonest qHonest qSuff
 example : qsCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 (arrUnder sHonest pHonest qHonest qSuffHonest b))
     = true := by native_decide
 
-/-! ## (vii) The five probes that located C6, kept as its regression
+/-! ## Regression probes for a carve-after-call bug
 
-    §5.2's demand-end reaching the carve (ledger C6) was found by bisection, and the
-    bisection is the test: four shapes that always worked, and the one that did not.
-    Each is the smallest program exhibiting its shape. If the node-level collapse is
-    removed from `carveAt`, only `c6CarveAfterCall` goes red — which is what makes this
-    a live check on the rule rather than a comment claiming one. -/
+    Found by bisection: four shapes that always worked, and the one that did not. Each
+    is the smallest program exhibiting its shape. If the node-level collapse is removed
+    from `carveAt`, only `c6CarveAfterCall` goes red, which is what makes this a live
+    check on the rule rather than a comment claiming one. -/
 
 def c6Touch : Term := prog{
   fn C6Touch (q : Nat, s : &mut (Array q Nat)) -> Unit { () };
@@ -960,7 +869,7 @@ def c6Rec : Term := prog{
   () }
 example : progOk c6Rec = true := by native_decide
 
-/-- (5) THE RED ONE, before C6: carve inside a borrow AFTER handing it to a call. The
+/-- The one that failed: carve inside a borrow AFTER handing it to a call. The
     reborrow parks a marker at the whole payload, and the carve consulted the extent map
     without collapsing it first — "`loanₘ ℓ` is not an array value (no extent to read)".
     Which is to say: a recursive array program carving the argument it just handed to
@@ -980,19 +889,18 @@ def c6CarveAfterCall : Term := prog{
   () }
 example : progOk c6CarveAfterCall = true := by native_decide
 
-/-! ### Why the scan is not Lomuto — the rejection, with M13's evidence threaded
+/-! ### Why the scan is not Lomuto
 
-    Ledger R13. `(*a)[i | h]` on a symbolic array works; a SECOND index does not, and
-    threading the ordering evidence does not rescue it. After the first carve the leaves
-    are `[0,i)`, `[i,i+1)`, `[S i, rest)`, and the second request lands in the third — so
-    premise (2) is formed LEAF-RELATIVELY against an offset `d` the machine minted while
-    solving `j ≡ Add (S i) d`. No program term has type `Le (S d) rest`, because `d` has
-    no surface name. **That is G1's wall arriving at the OFFSET rather than the extent**,
-    and route (a) closes only the extent half.
+    `(*a)[i | h]` on a symbolic array works; a SECOND index does not, and threading the
+    ordering evidence does not rescue it. After the first carve the leaves are
+    `[0,i)`, `[i,i+1)`, `[S i, rest)`, and the second request lands in the third — so
+    premise (2) is formed LEAF-RELATIVELY against an offset `d` the machine
+    minted while solving `j ≡ Add (S i) d`. No program term has type `Le (S d) rest`,
+    because `d` has no surface name.
 
     So `swap(a[i], a[j])` at two runtime cursors is unwritable, and `splitA`'s shape —
     every access at index 0 of a segment the program carved — is forced rather than
-    chosen. ¶6's "a segment with its own zero" is a constraint, not a convenience. -/
+    chosen: the right sub-slice must be a segment with its own zero. -/
 
 def twoCursor : Term := prog defer_check {
   fn TwoCursor (n : Nat, i : Nat, j : Nat, Pij : Le (S i) j, Pjn : Le (S j) n,
@@ -1014,10 +922,11 @@ def twoCursorRes : Term := prog defer_check {
   () }
 example : progRejects twoCursorRes "no segment starts at" = true := by native_decide
 
-/-! ## (viii) The G7 ruling, probed at the boundary it exists to protect
+/-! ## Carve obligations may not refine, only cite
 
-    Premise (3) may not refine a telescope parameter's σ to match a supplied residue;
-    it may solve along a CITED equation. The three probes the ruling asks for. -/
+    A telescope parameter's σ may not be refined to match a supplied residue; a carve
+    may solve along a CITED equation instead. The three probes that boundary asks
+    for. -/
 
 /-- The subject, as a prefix: its three callers below ride the same chain, so the
     callee is in scope by being declared above the code that calls it. -/
@@ -1037,7 +946,7 @@ example : progOk citedCallerOk = true := by native_decide
 
 /-- (2) …and it RUNS, which is the half that was broken. Before the ruling the checker
     accepted callers the concrete machine got stuck on; now acceptance and execution
-    agree on this shape, which is M8/M9's differential property restored for it. -/
+    agree on this shape, restoring the checker/machine differential property for it. -/
 example : runsAtAll citedCallerOk = true := by native_decide
 
 /-- (3) The caller that used to be the counterexample. `n = 2` with `i = j = 5` type-

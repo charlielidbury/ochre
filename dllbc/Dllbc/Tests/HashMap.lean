@@ -7,56 +7,52 @@ import Dllbc.Tests.Diff
 import Dllbc.Tests.Direct
 
 /-!
-# The hashmap flagship — a verified, resizable, in-place hashmap
+# The hashmap flagship: a verified, resizable, in-place hashmap
 
-`docs/13-hashmap-flagship.md` is the problem statement; the reference is the
-Aeneas ICFP'22 case study vendored at `competitors/aeneas-hashmap/`. Layout:
-slots are an array of association-list buckets, the hash is the identity, the
-slot is `Mod key cap`, load factor 4/5, resize by doubling. The invariant is
-packed in the container's type, so a `HashMap` value cannot exist broken.
+Tests a hashmap written in DLLBC: an array of association-list buckets, the
+hash is the identity, the slot is `Mod key cap`, load factor 4/5, resize by
+doubling. The invariant is packed into the container's type, so a broken
+`HashMap` value cannot be constructed.
 
-Ground ported here rather than rediscovered: slot arithmetic from branch
-`hm-probe-mod` (now in `StdLemmas`), the Σ(Bool) Option vocabulary from
-`hm-probe-opt`, the element-borrow bucket surgery from `hm-probe-arrays`, and
-the total or_insert-style walk from `hm-probe-getmut`.
+spec: `docs/13-hashmap-flagship.md`, reference implementation:
+`competitors/aeneas-hashmap/`.
 
-## THE SINGLE-ALLOCATION RESIZE (branch `hm-rotate-resize`)
+Tests check each operation against a pure spec function, plus lying-twin
+controls that confirm the checker rejects the corresponding bug.
 
-A resize's ONLY runtime allocation is `MkSlots (2·cap)` — the new array of
+## The single-allocation resize
+
+A resize's only runtime allocation is `MkSlots (2·cap)`, the new array of
 `Nil` buckets. The move path — `SlotPush`, `MoveBktR`, `MoveOne`, `MoveSlots`
-— constructs NO data-level `Cons`/`Pair` node. The greppable audit over those
-four fns: the only constructor WRITE is `MoveOne`'s `*bbs := Nil` (a constant,
-the take-out), and every other `Cons(`/`Pair(` occurrence is a pattern, a
-type, or an erased/evidence position (comptime snapshots, Id/Π equations, the
-all-comptime return packs). `InsertHM`'s resize arm adds exactly `MkSlots
-(2·cap)` — THE allocation — plus the container repack `*self := Pair(…)` that
-every arm of every op performs (a struct-by-value write, not a bucket node).
-The moved nodes reach the new table by mutation alone: `SlotPush` takes the
-bucket head off `src` and onto the carved `dst` cell with the mem::replace
-rotation
+— constructs no data-level `Cons`/`Pair` node: the only constructor write is
+`MoveOne`'s `*bbs := Nil` (a constant take-out), and every other
+`Cons(`/`Pair(` occurrence is a pattern, a type, or an erased/evidence
+position. `InsertHM`'s resize arm adds exactly `MkSlots (2·cap)` plus the
+container repack `*self := Pair(…)` that every arm of every op performs (a
+struct-by-value write, not a bucket node). The moved nodes reach the new
+table by mutation alone: `SlotPush` takes the bucket head off `src` and onto
+the carved `dst` cell with the mem::replace rotation
 
     let tmp = *tail;  *tail := *bb;  *bb := *src;  *src := tmp;
 
 where every read of node-typed data whose value reaches a runtime position is
-immediately followed by an overwrite of the slot it was read from — so under a
+immediately followed by an overwrite of the slot it was read from, so under a
 move-compiling backend each step is three pointer relinks, zero allocation.
 (`MoveOne`'s take-out `let bl = *bbs; *bbs := Nil` is the same idiom; `Nil` is
-a constant, not an allocation.) The old walk re-inserted every entry through
-`InsertInList`'s `*b := Cons(Pair(key, val), Nil)` — one fresh node per moved
-entry; the ordinary insert path legitimately keeps that one-node allocation,
-only the move path changed. The destination is never traversed: `MoveBktR`'s
-fuel bounds the SOURCE bucket length and the fuel ledger threaded through
-`MoveOne`/`MoveSlots`/`InsertHM` mentions only the source total — the old
-destination-walk fuel (`SlotUpd`'s array total) left the move path entirely.
+a constant, not an allocation.) The ordinary insert path still allocates one
+fresh node per `InsertInList`'s `*b := Cons(Pair(key, val), Nil)`; only the
+move path avoids it. The destination is never traversed: `MoveBktR`'s fuel
+bounds the source bucket length, and the fuel ledger threaded through
+`MoveOne`/`MoveSlots`/`InsertHM` mentions only the source total.
 
-The compilation-model caveat, honestly: DLLBC's checker semantics is
-value-level copy-on-read, so "one allocation" is a property of the program's
-SHAPE under a move-compiling backend (read-then-overwrite = move), the same
-way a Rust program's allocation behavior is a property of its shape. Comptime
-snapshots (`K0 = *kk`-style capital reads) are erased knowledge and never
-reach runtime. One observable consequence of moving instead of re-inserting:
-same-slot survivors of a resize appear in REVERSED order (prepend vs the old
-append) — order the spec (`FindL` + `NodupB`) is deliberately blind to.
+The compilation-model caveat: DLLBC's checker semantics is value-level
+copy-on-read, so "one allocation" is a property of the program's shape under
+a move-compiling backend (read-then-overwrite = move), the same way a Rust
+program's allocation behavior is a property of its shape. Comptime snapshots
+(`K0 = *kk`-style capital reads) are erased knowledge and never reach
+runtime. One observable consequence of moving instead of re-inserting:
+same-slot survivors of a resize appear in reversed order (prepend vs the old
+append), an order the spec (`FindL` + `NodupB`) is deliberately blind to.
 -/
 
 section
@@ -85,7 +81,7 @@ def chkL (tm ty : Term) : Bool :=
 
 def pv (t : Term) : Term := Pure.nf 4000000 t
 
-/-! ## (i) The slot arithmetic, ported from `hm-probe-mod` — green in `StdLemmas` -/
+/-! ## (i) The slot arithmetic -/
 
 def modOf (a b : Nat) : Term := pv prog{ Mod %(Term.nat a) %(Term.nat b) }
 def divOf (a b : Nat) : Term := pv prog{ Div %(Term.nat a) %(Term.nat b) }
@@ -96,8 +92,8 @@ example : (modOf 5 8).natOf? == some 5 := by native_decide
 example : (modOf 3 0).natOf? == some 0 := by native_decide
 example : (divOf 7 3).natOf? == some 2 := by native_decide
 
--- The Aeneas test's own keys at its own capacity: 0, 128, 1024, 1056 all land in
--- slot 0 of 32, which is what makes that test exercise the collision list.
+-- The reference test's own keys at its own capacity: 0, 128, 1024, 1056 all
+-- land in slot 0 of 32, which is what exercises the collision list.
 example : (modOf 128 32).natOf? == some 0 := by native_decide
 example : (modOf 1024 32).natOf? == some 0 := by native_decide
 example : (modOf 1056 32).natOf? == some 0 := by native_decide
@@ -126,7 +122,7 @@ example : chkL EqbSym EqbSymTy = true := by native_decide
 example : chkL IfDec IfDecTy = true := by native_decide
 example : chkL LedgerGrow LedgerGrowTy = true := by native_decide
 
--- `Mul` computes, and the ledger inequality is the intended integer restatement:
+-- `Mul` computes, and the ledger inequality is the integer restatement
 -- `5n ≤ 4c ⟺ n ≤ ⌊4c/5⌋`, spot-checked at the resize boundary.
 example : (pv prog defer_check { Mul 4 8 }).natOf? == some 32 := by native_decide
 -- cap 32: threshold 25 (= ⌊128/5⌋). 5·25 ≤ 128 holds, 5·26 ≤ 128 does not.
@@ -134,9 +130,9 @@ example : chkL prog defer_check { unit } prog defer_check { Le (Mul 5 25) (Mul 4
 example : chkL prog defer_check { unit } prog defer_check { Le (Mul 5 26) (Mul 4 32) } = false := by native_decide
 example : (pv prog defer_check { Div (Mul 4 32) 5 }).natOf? == some 25 := by native_decide
 
-/-! ## (iii) The slot write, ported from `hm-probe-mod`'s carve probe: the index
-    and residue are minted across a CALL returning a Σ (comptime spellings fail
-    the occurs check), then the carve cites the returned equation. -/
+/-! ## (iii) The slot write: the index and residue are minted across a call
+    returning a Σ (comptime spellings fail the occurs check), then the carve
+    cites the returned equation. -/
 
 def slotDecls : Term := prog{
   fn SlotOf (h : Nat, n : Nat, Hne : Le (S Z) n)
@@ -195,9 +191,8 @@ example : runSlot 1 == some [0, 9, 0, 0] := by native_decide
 example : runSlot 6 == some [0, 0, 9, 0] := by native_decide
 example : runSlot 7 == some [0, 0, 0, 9] := by native_decide
 
-/-! ## (iv) The elim sugar reads its element type (ported patch, `hm-probe-opt`
-    commit 6b5a724e): recursion over `List (Σ (k : Nat). Nat)` — a bucket —
-    checks through the sugar. These two were the probe's minimal failures. -/
+/-! ## (iv) The elim sugar reads its element type: recursion over
+    `List (Σ (k : Nat). Nat)` — a bucket — checks through the sugar. -/
 
 example : chkL prog defer_check {
     λ (B : List (Σ (k : Nat). Nat)).
@@ -213,13 +208,12 @@ example : chkL prog defer_check {
         Cons (E) (T) Rec => Rec } }
   prog defer_check { Π (B : List (List Nat)) → Nat } = true := by native_decide
 
-/-! ## (v) SHAPE PROBES — the two load-bearing unknowns, answered by assertion
+/-! ## (v) Shape probes
 
-    The packed container stands or falls on (a) take-and-refill of a Σ-pack with
-    a `Σ0` invariant tail through `&mut self` — including whether the destructure
-    REFINES the entry σ, so `old *self` claims compute — and (b) through-borrow
-    navigation of the same pack for the borrow-returning ops. Nothing in the
-    probe branches ever destructured a dependent pack. -/
+    The packed container depends on (a) take-and-refill of a Σ-pack with a
+    `Σ0` invariant tail through `&mut self` — including whether the destructure
+    refines the entry σ, so `old *self` claims compute — and (b) through-borrow
+    navigation of the same pack for the borrow-returning ops. -/
 
 def whyP (t : Term) : String :=
   match checkProgram t prog defer_check { Unit } with
@@ -227,11 +221,11 @@ def whyP (t : Term) : String :=
   | .error e => "REJECTED: " ++ e
 
 /-- A pure identity on a `Le` proof. A destructured Σ0 tail comes back at a
-    CAPITAL binder, and a bare capital citation in a constructor argument is
-    fenced (`cannot be ⇒-moved`) even where the component's mode is comptime —
-    but an APPLICATION in the same position is ⇝-computed, and the real code's
-    repacked invariants are lemma applications anyway. `KeepLe` is the minimal
-    such application, for the probes. -/
+    capital binder, and a bare capital citation in a constructor argument is
+    fenced (`cannot be ⇒-moved`) even where the component's mode is comptime,
+    but an application in the same position is ⇝-computed — and the real
+    code's repacked invariants are lemma applications anyway. `KeepLe` is the
+    minimal such application. -/
 def KeepLe : Term := prog defer_check { λ (A : Nat). λ (B : Nat). λ (H : Le A B). H }
 
 /-- (a1) Round-trip: take the pack, rebuild it, refill. The proof component is
@@ -244,9 +238,9 @@ def packRoundtrip : Term := prog{
   () }
 example : progOk packRoundtrip = true := by native_decide
 
-/-- (a2) THE REFINEMENT QUESTION: does `old *self` compute through the
-    destructure? If matching refines the entry σ to `Pair(σn, …)`, both sides
-    of the returned equation reduce to `σn` and `Refl` closes it. -/
+/-- (a2) Does `old *self` compute through the destructure? If matching
+    refines the entry σ to `Pair(σn, …)`, both sides of the returned equation
+    reduce to `σn` and `Refl` closes it. -/
 def FstOf : Term := prog defer_check {
   λ (P : Σ (n : Nat). Σ0 (w : Nat). Le n w).
     elim P return (λ (Pm : Σ (n : Nat). Σ0 (w : Nat). Le n w). Nat) {
@@ -261,7 +255,7 @@ def packRefines : Term := prog{
   () }
 example : progOk packRefines = true := by native_decide
 
-/-- (a3) A REAL update under the packed proof: bump both components; the proof
+/-- (a3) An update under the packed proof: bump both components; the proof
     transports by conversion (`Le (S n) (S w) ⇝ Le n w`). -/
 def packBump : Term := prog{
   fn BumpBoth (self : &mut (Σ (n : Nat). Σ0 (w : Nat). Le n w)) -> Unit {
@@ -271,7 +265,7 @@ def packBump : Term := prog{
   () }
 example : progOk packBump = true := by native_decide
 
--- …and the lying refill is REFUSED: `Hw : Le n w` does not inhabit `Le (S n) w`.
+-- …and the lying refill is refused: `Hw : Le n w` does not inhabit `Le (S n) w`.
 def packBumpLie : Term := prog defer_check {
   fn BumpLie (self : &mut (Σ (n : Nat). Σ0 (w : Nat). Le n w)) -> Unit {
     let Pair(n, Pair(w, Hw)) = *self;
@@ -280,8 +274,8 @@ def packBumpLie : Term := prog defer_check {
   () }
 example : progOk packBumpLie = false := by native_decide
 
-/-- (a4) The Insert SKELETON at a toy invariant: take the pack, mint the slot
-    across a call, carve the slots ARRAY (a local, after the take), push into
+/-- (a4) An insert skeleton at a toy invariant: take the pack, mint the slot
+    across a call, carve the slots array (a local, after the take), push into
     the bucket through the element borrow, repack, refill. -/
 def packCarve : Term := prog{
   fn SlotOf (h : Nat, n : Nat, Hne : Le (S Z) n)
@@ -304,7 +298,7 @@ def packCarve : Term := prog{
   () }
 example : progOk packCarve = true := by native_decide
 
-/-- The toy pack's cap projection — pure, over the VALUE. -/
+/-- The toy pack's cap projection — pure, over the value. -/
 def FstCap : Term := prog defer_check {
   λ (P : Σ (cap : Nat). Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). Le (S Z) cap).
     elim P return (λ (Pm : Σ (cap : Nat).
@@ -312,8 +306,8 @@ def FstCap : Term := prog defer_check {
       Pair (Cap) (R1) => Cap } }
 
 /-- The packed proof, extracted by comptime projection. A through-borrow match
-    binds the Σ0 tail to STATE (a borrow), which a ⇝-position cannot read — so
-    invariant clauses are snapshotted off `*self` BEFORE the destructure. -/
+    binds the Σ0 tail to state (a borrow), which a ⇝-position cannot read, so
+    invariant clauses are snapshotted off `*self` before the destructure. -/
 def PackCapLe : Term := prog defer_check {
   λ (P : Σ (cap : Nat). Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). Le (S Z) cap).
     elim P return (λ (Pm : Σ (cap : Nat).
@@ -338,9 +332,8 @@ def packNav : Term := prog{
     let Hle1 = PackCapLe (*self);
     let Pair(cap, Pair(slots, Hcap)) = self;
 
-    -- A bare deref TAKES the payload, even a Nat's (the exit audit is
-    -- per-leaf and found the hole) — so the read is an explicit
-    -- take-and-refill, and the local Nat then copies freely.
+    -- A bare deref takes the payload, even a Nat's, so the read is an
+    -- explicit take-and-refill, and the local Nat then copies freely.
     let c = *cap;
     *cap := c;
     let Pair(i, Pair(r, hd)) = SlotOf(key, c, Hle1);
@@ -360,15 +353,15 @@ def packNav : Term := prog{
   () }
 example : progOk packNav = true := by native_decide
 
-/-! ## (vi) The Σ(Bool) Option vocabulary (`hm-probe-opt`) and the bucket specs -/
+/-! ## (vi) The Σ(Bool) Option vocabulary and the bucket specs -/
 
 def OptP : Term := prog defer_check {
   λ (B : Bool). λ (T : Type). elim B return (λ (Bm : Bool). Type) {
     True => T,
     False => Unit } }
 
-/-- `Opt T` — the option type at payload `T`. The kernel has no Option (that
-    decision is closed; `hm-option-kernel` is the parked road-not-taken). -/
+/-- `Opt T` — the option type at payload `T`. The kernel has no native Option
+    type; this Σ(Bool) encoding stands in for it. -/
 def Opt : Term := prog defer_check { λ (T : Type). Σ (b : Bool). OptP b T }
 
 /-- `Some`/`None` at `Nat`, v1's value type. -/
@@ -379,8 +372,8 @@ example : chkL prog defer_check { SomeN 5 } prog defer_check { Opt Nat } = true 
 example : chkL NoneN prog defer_check { Opt Nat } = true := by native_decide
 example : chkL prog defer_check { Pair(True, unit) } prog defer_check { Opt Nat } = false := by native_decide
 
-/-- Bucket lookup: first match wins, `None` past the end. The `Opt`-typed
-    listRec over entries — the recursion the ported elim sugar exists for. -/
+/-- Bucket lookup: first match wins, `None` past the end. An `Opt`-typed
+    recursion over entries. -/
 def FindL : Term := prog defer_check {
   λ (Q : Nat). λ (L : List (Σ (k : Nat). Nat)).
     elim L return (λ (Lm : List (Σ (k : Nat). Nat)). Opt Nat) {
@@ -397,7 +390,7 @@ def IsSomeB : Term := prog defer_check {
     elim O return (λ (Om : Σ (b : Bool). OptP b Nat). Bool) {
       Pair (Bb) (P2) => Bb } }
 
-/-- `HitL q l` — is `q` present? Defined THROUGH `FindL` so the two can never
+/-- `HitL q l` — is `q` present? Defined through `FindL` so the two can never
     disagree. -/
 def HitL : Term := prog defer_check {
   λ (Q : Nat). λ (L : List (Σ (k : Nat). Nat)). IsSomeB (FindL Q L) }
@@ -423,10 +416,11 @@ example : chkL prog defer_check { Refl } prog defer_check { Id Nat
 
 /-! ## (vii) The slots-level spec functions
 
-    `AgetB` is OUR getter, not the kernel's `aget`: `aget` reduces only on a
-    literal `Arr` (no `acons`/`arrCat` step), so nothing about it at a carve
-    composition is provable. `AgetB` is an `arrRec` fold, computes on the cons
-    view, and every crossing lemma about it is an ordinary induction. -/
+    `AgetB` is this file's getter, not the kernel's `aget`: `aget` reduces
+    only on a literal `Arr` (no `acons`/`arrCat` step), so nothing about it at
+    a carve composition is provable. `AgetB` is an `arrRec` fold, computes on
+    the cons view, and every crossing lemma about it is an ordinary
+    induction. -/
 
 def AgetB : Term := prog defer_check {
   λ (M : Nat). λ (A : Array M (List (Σ (k : Nat). Nat))). λ (I : Nat).
@@ -463,18 +457,18 @@ example : chkL prog defer_check { Refl } prog defer_check { Id Nat
 
 /-! ## (viii) The packed invariant
 
-    `HMInv`'s clauses (13-hashmap-flagship.md, content fixed): `Le 1 cap`; every
-    entry in slot `i` has `Mod key cap = i`; `n` equals the total entry count;
-    `load` is the 4/5 threshold ledger for `cap` — carried Div-free as
-    `load = 4·cap` with occupancy `5·n ≤ load` (see the StdLemmas ledger note).
+    `HMInv`'s clauses: `Le 1 cap`; every entry in slot `i` has
+    `Mod key cap = i`; `n` equals the total entry count; `load` is the 4/5
+    threshold ledger for `cap`, carried Div-free as `load = 4·cap` with
+    occupancy `5·n ≤ load` (see the StdLemmas ledger note).
 
-    PLUS one clause the listed four do not name but the fixed op specs force:
-    keys within a bucket are pairwise DISTINCT (`NodupB`). Aeneas' own invariant
-    has it (`slot_t_inv`'s pairwise-distinct conjunct), and both Remove's and
-    resize's pointwise Find equations are FALSE without it: removing the first
-    of two same-key entries surfaces the shadowed one, and rehashing reorders
-    same-key entries, so `FindRem`/Insert-through-resize would each need it
-    anyway. Recorded as a deviation-by-necessity, mirroring the reference. -/
+    Plus one clause the op specs force even though it isn't one of the above:
+    keys within a bucket are pairwise distinct (`NodupB`). The reference
+    implementation's own invariant has it (`slot_t_inv`'s pairwise-distinct
+    conjunct), and both Remove's and resize's pointwise Find equations are
+    false without it: removing the first of two same-key entries surfaces the
+    shadowed one, and rehashing reorders same-key entries, so
+    `FindRem`/Insert-through-resize would each need it anyway. -/
 
 def AllKeysMod : Term := prog defer_check {
   λ (Cap : Nat). λ (I : Nat). λ (L : List (Σ (k : Nat). Nat)).
@@ -519,7 +513,7 @@ def HMInvT : Term := prog defer_check {
       (Id Nat N (TotalE Cap Slots) ×
       SlotsFrom Cap Cap Slots Z))) }
 
-/-- THE CONTAINER. The invariant is packed in the type: a `HashMap` value
+/-- The container. The invariant is packed in the type: a `HashMap` value
     cannot exist broken, every op's invariant-preservation proof is returning a
     well-typed pack, and it survives opaque group ends. -/
 def HashMapT : Term := prog defer_check {
@@ -537,8 +531,8 @@ def hmEx : Term := prog defer_check {
 
 example : chkL hmEx HashMapT = true := by native_decide
 
--- …and the invariant is not vacuous: the same pack with the entry in the WRONG
--- slot (key 3 in slot 0) is refused — the `Mod` clause has no `Refl`.
+-- …and the invariant is not vacuous: the same pack with the entry in the
+-- wrong slot (key 3 in slot 0) is refused — the `Mod` clause has no `Refl`.
 example : chkL prog defer_check {
   Pair(2, Pair(8, Pair(1, Pair(Arr(Cons(Pair(3, 30), Nil), Nil),
     Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
@@ -552,7 +546,7 @@ example : chkL prog defer_check {
       Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
         unit)))))))))) } HashMapT = false := by native_decide
 
--- …and a bucket with a DUPLICATE key is refused by the Nodup clause.
+-- …and a bucket with a duplicate key is refused by the Nodup clause.
 example : chkL prog defer_check {
   Pair(2, Pair(8, Pair(2, Pair(Arr(Nil, Cons(Pair(3, 30), Cons(Pair(3, 31), Nil))),
     Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
@@ -627,8 +621,8 @@ def HitHM : Term := prog defer_check {
       Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
     IsSomeB (FindHM Q Hm) }
 
-/-! The model updates (fixed content): `FindIns` is `Some v` at `key`, the old
-    answer elsewhere; `FindRem` is `None` at `key`; the size updates state the
+/-! The model updates: `FindIns` is `Some v` at `key`, the old answer
+    elsewhere; `FindRem` is `None` at `key`; the size updates state the
     "bumped/decremented iff" via a spec function, not a conditional Π. -/
 
 def FindIns : Term := prog defer_check {
@@ -789,7 +783,7 @@ example : chkL InvSlots InvSlotsTy = true := by native_decide
     Everything an op proves is stated over the carve composition
     `arrCat M (S R) L (acons R B H)` (lo ++ [cell] ++ hi), which the checker
     converts with the carved place's payload. Each lemma is one `arrRec`
-    induction on the LEFT part. -/
+    induction on the left part. -/
 
 def AgetBCatMid : Term := prog defer_check {
   λ (R : Nat). λ (B : List (Σ (k : Nat). Nat)).
@@ -926,7 +920,7 @@ def BoolRwFTy : Term := prog defer_check {
   Π (T : Type) → Π (X : T) → Π (Y : T) → Π (B : Bool) → Id Bool B False →
     Id T (boolRec (λ (W2 : Bool). T) X Y B) Y }
 
-/-- `a ≤ b` and `a ≠ b` make `a` STRICTLY below `b` — the frame case's
+/-- `a ≤ b` and `a ≠ b` make `a` strictly below `b` — the frame case's
     trichotomy converter. -/
 def LeNeLt : Term := prog defer_check {
   λ (A : Nat). elim A return (λ (Az : Nat).
@@ -1059,7 +1053,7 @@ example : chkL SFCatLo SFCatLoTy = true := by native_decide
 example : chkL SFCatMid SFCatMidTy = true := by native_decide
 example : chkL SFCatHi SFCatHiTy = true := by native_decide
 
-/-- The reglue: lo's invariants, the NEW cell's `SlotInv` at the boundary
+/-- The reglue: lo's invariants, the new cell's `SlotInv` at the boundary
     index, hi's invariants — back to the whole composition. Every op's
     invariant-preservation exit goes through this. -/
 def SFCatGlue : Term := prog defer_check {
@@ -1110,7 +1104,7 @@ example : chkL SFCatGlue SFCatGlueTy = true := by native_decide
 /-! ## (xii) The bucket walk's evidence, as standalone pure lemmas
 
     `insert_in_list`'s three branches each owe five conjuncts; every non-Refl
-    one is proven here over Π-bound state, so the walk's body only APPLIES them
+    one is proven here over Π-bound state, so the walk's body only applies them
     at its snapshots. `OptN`/`BktT` abbreviate the two types (splices — never
     used at an elim motive, where the sugar reads syntax). -/
 
@@ -1155,7 +1149,7 @@ def BoolPushSTy : Term := prog defer_check {
            (S (boolRec (λ (W2 : Bool). Nat) X Y B)) }
 example : chkL BoolPushS BoolPushSTy = true := by native_decide
 
-/-- HIT branch, presence: the head key equals `key`, so the bucket answers. -/
+/-- The hit branch, presence: the head key equals `key`, so the bucket answers. -/
 def HitEvHit : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT).
   λ (E : Id Bool (Eqb K0 Key) True).
@@ -1171,7 +1165,7 @@ def HitEvHitTy : Term := prog defer_check {
     Id Bool True (HitL Key (Cons(Pair(K0, V0), T0))) }
 example : chkL HitEvHit HitEvHitTy = true := by native_decide
 
-/-- HIT branch, the pointwise Find equation: overwrite in place. -/
+/-- The hit branch, the pointwise Find equation: overwrite in place. -/
 def PtEvHit : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (V1 : Nat). λ (Key : Nat). λ (T0 : BktT).
   λ (E : Id Bool (Eqb K0 Key) True).
@@ -1210,7 +1204,7 @@ def PtEvHitTy : Term := prog defer_check {
       (BFindIns Q Key V1 (Cons(Pair(K0, V0), T0))) }
 example : chkL PtEvHit PtEvHitTy = true := by native_decide
 
-/-- HIT branch, the length equation: present key, length unchanged. -/
+/-- The hit branch, the length equation: present key, length unchanged. -/
 def LnEvHit : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (V1 : Nat). λ (Key : Nat). λ (T0 : BktT).
   λ (E : Id Bool (Eqb K0 Key) True).
@@ -1231,8 +1225,8 @@ def LnEvHitTy : Term := prog defer_check {
     Id Nat (LenE (Cons(Pair(K0, V1), T0))) (BLenIns Key (Cons(Pair(K0, V0), T0))) }
 example : chkL LnEvHit LnEvHitTy = true := by native_decide
 
-/-- MISS branch, presence: the head is not `key`, so presence delegates to the
-    tail — on both the old and the new bucket. -/
+/-- The miss branch, presence: the head is not `key`, so presence delegates to
+    the tail — on both the old and the new bucket. -/
 def HitEvMiss : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT). λ (H2 : Bool).
   λ (E : Id Bool (Eqb K0 Key) False).
@@ -1251,7 +1245,7 @@ def HitEvMissTy : Term := prog defer_check {
     Id Bool H2 (HitL Key (Cons(Pair(K0, V0), T0))) }
 example : chkL HitEvMiss HitEvMissTy = true := by native_decide
 
-/-- MISS branch, the pointwise Find equation lifted through the untouched head. -/
+/-- The miss branch, the pointwise Find equation lifted through the untouched head. -/
 def UpdEvMiss : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (X : OptN). λ (Key : Nat).
   λ (T0 : BktT). λ (T1 : BktT).
@@ -1300,7 +1294,7 @@ def UpdEvMissTy : Term := prog defer_check {
       (BFindUpd Q Key X (Cons(Pair(K0, V0), T0))) }
 example : chkL UpdEvMiss UpdEvMissTy = true := by native_decide
 
-/-- MISS branch, the length equation lifted through the head. -/
+/-- The miss branch, the length equation lifted through the head. -/
 def LnEvMiss : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT). λ (T1 : BktT).
   λ (E : Id Bool (Eqb K0 Key) False).
@@ -1332,8 +1326,8 @@ def LnEvMissTy : Term := prog defer_check {
     Id Nat (LenE (Cons(Pair(K0, V0), T1))) (BLenIns Key (Cons(Pair(K0, V0), T0))) }
 example : chkL LnEvMiss LnEvMissTy = true := by native_decide
 
-/-- MISS branch, the Nodup head clause: `K0` absent from the tail stays absent
-    after inserting a DIFFERENT key into it. -/
+/-- The miss branch, the Nodup head clause: `K0` absent from the tail stays
+    absent after inserting a different key into it. -/
 def UpdNdMiss : Term := prog defer_check {
   λ (K0 : Nat). λ (X : OptN). λ (Key : Nat). λ (T0 : BktT). λ (T1 : BktT).
   λ (E : Id Bool (Eqb K0 Key) False).
@@ -1365,7 +1359,7 @@ def LoadHM : Term := prog defer_check {
             Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))). HMInvT Cap load n slots). Nat) {
           Pair (Load) (R2) => Load } } }
 
-/-- The invariant, assembled by ONE application — a bare capital citation in a
+/-- The invariant, assembled by one application — a bare capital citation in a
     refill's constructor argument is fenced, an application is not, so every
     op's exit packs through this. -/
 def MkInv : Term := prog defer_check {
@@ -1558,7 +1552,7 @@ def UpdPtDiffTy : Term := prog defer_check {
         (Mod Q (Add I (S R))))) }
 example : chkL UpdPtDiff UpdPtDiffTy = true := by native_decide
 
-/-- THE POINTWISE LIFT: the walk's bucket equation becomes Insert's whole-map
+/-- The pointwise lift: the walk's bucket equation becomes Insert's whole-map
     equation, by deciding `q`'s slot against the written slot. -/
 def UpdPointwise : Term := prog defer_check {
   λ (I : Nat). λ (R : Nat). λ (Key : Nat). λ (X : OptN).
@@ -1589,7 +1583,7 @@ example : chkL UpdPointwise UpdPointwiseTy = true := by native_decide
 
 /-! ## (xiv) `New`'s builder and its three lemmas, and the slot pack -/
 
-/-- `n` empty buckets, by `acons` recursion (probe O2's shape). -/
+/-- `n` empty buckets, by `acons` recursion. -/
 def MkSlots : Term := prog defer_check {
   λ (N : Nat). elim N return (λ (Nm : Nat). Array Nm (List (Σ (k : Nat). Nat))) {
     Z => Arr(),
@@ -1614,7 +1608,7 @@ def TotalMkSlotsTy : Term := prog defer_check {
   Π (N : Nat) → Id Nat (TotalE N (MkSlots N)) Z }
 example : chkL TotalMkSlots TotalMkSlotsTy = true := by native_decide
 
-/-- Every slot of the fresh table reads back `Nil` — at ANY index, in range or
+/-- Every slot of the fresh table reads back `Nil` — at any index, in range or
     not, which is why `New`'s find-spec needs no bound side-condition. -/
 def AgetBMkSlots : Term := prog defer_check {
   λ (N : Nat).
@@ -1632,8 +1626,8 @@ def AgetBMkSlotsTy : Term := prog defer_check {
 example : chkL AgetBMkSlots AgetBMkSlotsTy = true := by native_decide
 
 /-- The slot quadruple `SlotOfE` returns: index, residue, the carve equation,
-    and — new over the probe's `SlotOf` — the identity tying the index to the
-    hash, which the pointwise lift consumes as `Him`. -/
+    and the identity tying the index to the hash, which the pointwise lift
+    consumes as `Him`. -/
 def SlotPack : Term := prog defer_check {
   λ (H : Nat). λ (N : Nat). λ (Hne : Le (S Z) N).
     elim (ModDec (Mod H N) N (ModLtN H N Hne)) return
@@ -1647,9 +1641,8 @@ example : chkL SlotPack SlotPackTy = true := by native_decide
 
 /-! ## (xvii) Remove's walk evidence
 
-    The remove walk is a take-and-rebuild over the OWNED bucket (M23's list
-    quicksort shape): unlink the hit cell and MOVE its value out — values stay
-    move-only. Its models: -/
+    The remove walk is a take-and-rebuild over the owned bucket: unlink the
+    hit cell and move its value out — values stay move-only. Its models: -/
 
 def BFindRem : Term := prog defer_check {
   λ (Q : Nat). λ (Key : Nat). λ (L : BktT).
@@ -1673,7 +1666,7 @@ def BoolSameTy : Term := prog defer_check {
     Id T X (boolRec (λ (W2 : Bool). T) X X B) }
 example : chkL BoolSame BoolSameTy = true := by native_decide
 
-/-- An absent key's lookup IS `None` — the Σ(Bool) Option has no Unit-η, so
+/-- An absent key's lookup is `None` — the Σ(Bool) Option has no Unit-η, so
     this is an induction, not a projection. -/
 def NotHitFindNone : Term := prog defer_check {
   λ (Q : Nat). λ (L : BktT).
@@ -1731,7 +1724,7 @@ def HitLenPosTy : Term := prog defer_check {
   Π (Q : Nat) → Π (L : BktT) → Id Bool (HitL Q L) True → Le (S Z) (LenE L) }
 example : chkL HitLenPos HitLenPosTy = true := by native_decide
 
-/-- REMOVE HIT: the unlinked value was the bucket's answer. -/
+/-- Remove's hit case: the unlinked value was the bucket's answer. -/
 def RemHrHit : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT).
   λ (E : Id Bool (Eqb K0 Key) True).
@@ -1745,9 +1738,9 @@ def RemHrHitTy : Term := prog defer_check {
     Id OptN (SomeN V0) (FindL Key (Cons(Pair(K0, V0), T0))) }
 example : chkL RemHrHit RemHrHitTy = true := by native_decide
 
-/-- REMOVE HIT, pointwise: the tail IS the removed bucket, and at `Q = Key`
-    the tail answers `None` because Nodup says the unlinked cell was the only
-    one. -/
+/-- Remove's hit case, pointwise: the tail is the removed bucket, and at
+    `Q = Key` the tail answers `None` because Nodup says the unlinked cell was
+    the only one. -/
 def RemPtHit : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT).
   λ (E : Id Bool (Eqb K0 Key) True).
@@ -1804,7 +1797,7 @@ def RemLnHitTy : Term := prog defer_check {
     Id Nat (LenE T0) (BLenRem Key (Cons(Pair(K0, V0), T0))) }
 example : chkL RemLnHit RemLnHitTy = true := by native_decide
 
-/-- REMOVE MISS: the returned option delegates past the untouched head. -/
+/-- Remove's miss case: the returned option delegates past the untouched head. -/
 def RemHrMiss : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT). λ (Ret : OptN).
   λ (E : Id Bool (Eqb K0 Key) False).
@@ -1821,8 +1814,8 @@ def RemHrMissTy : Term := prog defer_check {
     Id OptN Ret (FindL Key (Cons(Pair(K0, V0), T0))) }
 example : chkL RemHrMiss RemHrMissTy = true := by native_decide
 
-/-- REMOVE MISS, length: `BLenRem` lifts through the head; the hit side needs
-    the tail nonempty (`HitLenPos`) so `S ∘ Pred` cancels. -/
+/-- Remove's miss case, length: `BLenRem` lifts through the head; the hit side
+    needs the tail nonempty (`HitLenPos`) so `S ∘ Pred` cancels. -/
 def RemLnMiss : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT). λ (T1 : BktT).
   λ (E : Id Bool (Eqb K0 Key) False).
@@ -2002,7 +1995,7 @@ def RemTotEvTy : Term := prog defer_check {
       (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H))) }
 example : chkL RemTotEv RemTotEvTy = true := by native_decide
 
-/-! ## (xxi) S2 — resize. The move fold's pure evidence, bucket level first. -/
+/-! ## (xxi) Resize. The move fold's pure evidence, bucket level first. -/
 
 /-- A key found in a well-hashed bucket hashes to that bucket's slot. -/
 def HitKeyMod : Term := prog defer_check {
@@ -2350,7 +2343,7 @@ def ResizeGlueTy : Term := prog defer_check {
     Π (Q : Nat) → Id OptN (DF Q) (M Q) }
 example : chkL ResizeGlue ResizeGlueTy = true := by native_decide
 
-/-- Disjointness survives one bucket move: a key the NILLED source still
+/-- Disjointness survives one bucket move: a key the nilled source still
     answers is off the moved bucket, so the after-move table still lacks it. -/
 def MoveDisjStep : Term := prog defer_check {
   λ (J : Nat). λ (R : Nat).
@@ -2697,9 +2690,9 @@ def MoveSlotsPtTy : Term := prog defer_check {
           (Mod Q (Add J (S R))))))) }
 example : chkL MoveSlotsPt MoveSlotsPtTy = true := by native_decide
 
-/-- The moved head stays fresh for the tail's move: derived OUTSIDE the walk,
+/-- The moved head stays fresh for the tail's move: derived outside the walk,
     because a λ inside a recursive fn may not cite that fn's own Π-typed
-    parameter (measured: lamFeedG/J below the chain; snapshots do not help). -/
+    parameter (see `lamFeedG`/`lamFeedJ` below; snapshots do not help). -/
 def MoveFreshStep : Term := prog defer_check {
   λ (C2v : Nat). λ (K : Nat). λ (V : Nat). λ (TL : BktT).
   λ (D0A : Array C2v BktT). λ (D1A : Array C2v BktT).
@@ -3110,10 +3103,10 @@ example : chkL MoveLevelNil MoveLevelNilTy = true := by native_decide
 
 /-! ### The rotation move's pure vocabulary (probed in `ProbeRotate.lean`)
 
-    `SlotPush` moves ONE bucket node from src to dst by mutation (the
+    `SlotPush` moves one bucket node from src to dst by mutation (the
     mem::replace rotation) instead of constructing a fresh node. Its evidence
     is definitional where the old walk's was inductive, because the pushed
-    bucket is LITERALLY `Cons(head, old-bucket)`. The vocabulary: emptiness as
+    bucket is literally `Cons(head, old-bucket)`. The vocabulary: emptiness as
     a Bool (`IsNilB` — the drain loop cannot match src, SlotPush does), the
     three Nil lemmas, the definitional push equation, the done-arm collapses,
     the two invariant-extension builders, and the identity applications for
@@ -3176,7 +3169,7 @@ def NotNilLenPosTy : Term := prog defer_check {
     Id Bool (IsNilB L) False → Le (S Z) (LenE L) }
 example : chkL NotNilLenPos NotNilLenPosTy = true := by native_decide
 
-/-- THE PUSH EQUATION, definitional: prepending `(K0, V0)` answers `Some V0`
+/-- The push equation, definitional: prepending `(K0, V0)` answers `Some V0`
     at `K0` and delegates elsewhere — no walk, so no induction. This is
     `MoveStepPt`'s `H1` hypothesis shape verbatim. -/
 def PtEvPush : Term := prog defer_check {
@@ -3242,7 +3235,7 @@ def MkNdConsTy : Term := prog defer_check {
     NodupB (Cons(Pair(K, V), B)) }
 example : chkL MkNdCons MkNdConsTy = true := by native_decide
 
-/-! ## (xv) THE S1 CHAIN — fixed-capacity map, full specs
+/-! ## (xv) The fixed-capacity map chain, full specs
 
     ArraySort's `arrUnder` shape: one Lean function building the declaration
     chain, the spec return types spliced so the lying twins share the bodies
@@ -4417,12 +4410,12 @@ def remRetHonest : Term := prog defer_check {
 
 
 
-/-! ### PINNED (found the hard way, S2): inside a RECURSIVE fn, a λ may not
+/-! ### A restriction on recursive fns: inside a recursive fn, a λ may not
     cite the fn's own Π-typed parameter — not even through a snapshot
-    (lamFeedG/J red) — while citing snapshots of data works (H) and passing
-    the parameter itself onward works (I). Every fold-evidence builder in the
-    move layer is therefore a TOP-LEVEL pure lemma applied to the parameter,
-    never a local λ over it. -/
+    (`lamFeedG`/`lamFeedJ` are rejected below) — while citing snapshots of
+    data works (`lamFeedH`) and passing the parameter itself onward works
+    (`lamFeedI`). Every fold-evidence builder in the move layer is therefore a
+    top-level pure lemma applied to the parameter, never a local λ over it. -/
 def lamFeedG : Term := prog defer_check {
   fn Eat [fuel] (fuel : Nat, n : Nat,
                  Hp : Π (K2 : Nat) → Π (Hk2 : Le K2 n) → Le K2 (S n)) -> Unit {
@@ -4484,16 +4477,17 @@ example : progOk lamFeedJ = false := by native_decide
 
 
 
-/-- THE HEADLINE: the whole chain — walk, slot pack, New, the move layer,
-    Insert WITH RESIZE, Remove — checks as ONE program, against no table. -/
+/-- The whole chain — walk, slot pack, New, the move layer, Insert with
+    resize, Remove — checks as one program, against no table. -/
 def s1Chain : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog defer_check { () }
 example : progOk s1Chain = true := by native_decide
 
-/-- THE CHECKED CALLER: the fixed ensures are exactly sufficient for a caller
-    to discharge Insert's preconditions BY PROOF — New's size conjunct
+/-- The checked caller: the fixed ensures are exactly sufficient for a caller
+    to discharge Insert's preconditions by proof — New's size conjunct
     transports the fuel bound, and with resize in place there is no headroom
-    obligation left. (S1's Hroom made this impossible without invariant
-    projections; the resize is what closes the spec.) -/
+    obligation left. (Without resize, discharging the precondition needed an
+    explicit headroom hypothesis derived from invariant projections; the
+    resize is what closes the spec.) -/
 def s2CheckedCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog defer_check {
   let Pair(m0, ev0) = NewHM(2, unit);
   let M0 = m0;
@@ -4506,7 +4500,7 @@ def s2CheckedCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest p
   () }
 example : progOk s2CheckedCaller = true := by native_decide
 
-/-! ### The rotation, checked with VALUES — the single-allocation move's core
+/-! ### The rotation, checked with values — the single-allocation move's core
 
     The mem::replace chain through a matched borrow: each lowercase read is
     immediately followed by an overwrite of the slot it was read from, so a
@@ -4538,8 +4532,8 @@ example : progOk rotValues = true := by native_decide
 
 
 
--- BISECTION P1: identity round-trip of the REAL container through &mut —
--- destructure, project the clauses, repack via MkInv, refill.
+-- P1: identity round-trip of the real container through &mut — destructure,
+-- project the clauses, repack via MkInv, refill.
 def s1P1 : Term := prog{
   fn Touch (self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
       Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots)) -> Unit {
@@ -4556,8 +4550,8 @@ def s1P1 : Term := prog{
   () }
 example : progOk s1P1 = true := by native_decide
 
--- BISECTION P2a: carve, then refill with the UNTOUCHED entry clauses (typed at
--- the entry slots sigma) — isolates the audit-side segment-fold conversion.
+-- P2a: carve, then refill with the untouched entry clauses (typed at the
+-- entry slots sigma) — isolates the audit-side segment-fold conversion.
 def s1P2a : Term := prog{
   fn SlotOfE (h : Nat, n : Nat, Hne : Le (S Z) n)
       -> Σ (i : Nat). Σ (r : Nat). Σ (hd : Id Nat n (Add i (S r))). Id Nat i (Mod h n) {
@@ -4581,21 +4575,17 @@ def s1P2a : Term := prog{
       MkInv cap load nn SL0 HLe1 HLoad HLed HCnt HSf))));
     () };
   () }
--- LEDGERED FLIP (rebase onto 87818899, Gap A): this was the PINNED LIMIT that
--- shaped the op layer — the exit audit could not re-type a DEPENDENT pack whose
--- array component was still segmented, even though the sigma/composition
--- equation IS definitional (s1P2c below proved that; the gap was the audit's
--- conversion). Main's audit-fold commit (9dfc964b: "the exit audit folds a
--- rejoined carve before re-typing a dependent pack") closes exactly that gap,
--- and this probe now CHECKS: the carve is rejoined at the exit, the fold
--- rebuilds the whole-array value, and the pack re-types against it. The op
--- layer's callee routing (SlotUpd/SlotRem/MoveOne) remains VALID and stays as
--- built — this flip records that the boundary is no longer FORCED, not that it
--- was wrong.
+-- The exit audit needs a carved array rejoined before it can re-type a
+-- dependent pack: the array component may not stay segmented, even though
+-- the sigma/composition equation is definitional (`s1P2c` below proves
+-- that). `s1P2a` checks exactly this: the carve is rejoined at the exit, the
+-- fold rebuilds the whole-array value, and the pack re-types against it. The
+-- op layer's callee routing (`SlotUpd`/`SlotRem`/`MoveOne`) does not need to
+-- route around this.
 example : progOk s1P2a = true := by native_decide
 
 -- P2c/P2d: is the entry sigma definitionally the composition of the segment
--- sigmas, from a carve of a LOCAL owned array? Asked with an ascribed Refl.
+-- sigmas, from a carve of a local owned array? Asked with an ascribed Refl.
 def s1P2c : Term := prog{
   fn Touch (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
             a : Array n (List (Σ (k : Nat). Nat))) -> Unit {
@@ -4618,8 +4608,8 @@ example : progOk s1P2c = true := by native_decide
 
 /-! ## (xviii) The borrow-returning ops — shape probes first
 
-    GetMut must return a borrow INTO the pack, so its carve group cannot close
-    before the return. Two candidate shapes over the REAL container: the carve
+    GetMut must return a borrow into the pack, so its carve group cannot close
+    before the return. Two candidate shapes over the real container: the carve
     inline in the pack-navigating fn, and the carve pushed into a `SlotGet`
     callee whose parameter is the plain (non-dependent) array borrow. -/
 
@@ -4716,7 +4706,7 @@ def gmProbe2 : Term := prog defer_check {
   };
   () }
 
-/-- Probe G3: NO CARVE — a symbolic-index ELEMENT borrow into the slots field,
+/-- Probe G3: no carve — a symbolic-index element borrow into the slots field,
     with the bound built from the packed `Le 1 cap` and the minted slot
     identity. Slots stays one leaf holding one element loan. -/
 def gmProbe3 : Term := prog defer_check {
@@ -4755,43 +4745,45 @@ def gmProbe3 : Term := prog defer_check {
               WalkVal(fuel, key, dflt, bb)
             } } } } } };
   () }
-/-! ### THE WALL, pinned (all three assertions below): the borrow-returning
-    ops cannot CHECK against the intrinsically-packed container today.
+/-! ### A known kernel gap: the borrow-returning ops (pinned by the three
+    assertions below) cannot check against the intrinsically-packed
+    container today.
 
     A returned borrow keeps its group open across the op's return, so the exit
     audit re-types self's payload with a loan (and the carve's segmentation)
-    still inside the slots component. For a PLAIN owed type that is fine — the
-    audit exempts the returned borrow's sub-place and checks the rest
-    (quicksortA's shape; packNav's toy pack with a slots-INDEPENDENT tail
-    passes the same way). But HashMapT's Σ0 tail is `HMInvT cap load n slots`:
-    re-typing it needs the WHOLE slots value, which no exemption can provide
-    while a leaf of it is lent out — and every route to a bucket element goes
-    through a carve or an index place (gmProbe1 inline, gmProbe3 index-place)
-    or a callee boundary whose group-end re-mints the component and orphans
-    the packed proof (gmProbe2).
+    still inside the slots component. For a plain owned type that is fine —
+    the audit exempts the returned borrow's sub-place and checks the rest
+    (`quicksortA`'s shape; `packNav`'s toy pack with a slots-independent tail
+    passes the same way). But `HashMapT`'s Σ0 tail is `HMInvT cap load n
+    slots`: re-typing it needs the whole slots value, which no exemption can
+    provide while a leaf of it is lent out — and every route to a bucket
+    element goes through a carve or an index place (`gmProbe1` inline,
+    `gmProbe3` index-place) or a callee boundary whose group-end re-mints the
+    component and orphans the packed proof (`gmProbe2`).
 
-    This is `12-design-borrow-refounding.md`'s loan-attached-debts gap arriving
-    at the SAFETY layer, not just the functional one: the flagship doc's
-    "verified for safety + the packed invariant" expectation for GetMut was
-    calibrated on the probe-era WHOLE-PARAMETER audit exemption, which was
-    unsound and has since been fixed to per-sub-place (see AuditExemption) —
-    the sound audit closes exactly the loophole the design would have used.
-    Fixing it is kernel work (the audit/conversion in Machine.lean), so per
-    the process rule this is pinned and reported, not patched. The ops below
-    are still EXERCISED by the executing differential (the machine runs them
-    correctly); their chain is asserted progRejects with the audit's needle. -/
+    This is `12-design-borrow-refounding.md`'s loan-attached-debts gap
+    arriving at the safety layer, not just the functional one: the flagship
+    doc's "verified for safety + the packed invariant" expectation for GetMut
+    was calibrated on an earlier whole-parameter audit exemption, which was
+    unsound and has since been fixed to per-sub-place (see
+    `AuditExemption.lean`) — the sound audit closes exactly the loophole the
+    design would have used. Fixing it is kernel work (the audit/conversion in
+    `Machine.lean`), so it is reported here rather than patched. The ops
+    below are still exercised by the executing differential (the machine
+    runs them correctly); their chain is asserted `progRejects` with the
+    audit's needle. -/
 
 example : progOk gmProbe1 = false := by native_decide
 example : progOk gmProbe2 = false := by native_decide
 example : progOk gmProbe3 = false := by native_decide
 
 
-/-! ## (xx) NOT VACUOUS — the lying twins, one per conjunct
+/-! ## (xx) Not vacuous: the lying twins, one per conjunct
 
-    Each return type is the ONLY description of its op, so each fixed conjunct
-    gets a twin changing exactly it: the chain is shared VERBATIM through the
-    splice and the lie is the only variable (M23's discipline; ArraySort's
-    form). Every one must be REFUSED. -/
+    Each return type is the only description of its op, so each fixed conjunct
+    gets a twin changing exactly it: the chain is shared verbatim through the
+    splice and the lie is the only variable (ArraySort's form). Every one must
+    be refused. -/
 
 -- New, conjunct 1: the fresh map claims to answer every key with `Some 0`.
 example : progOk (hmS1Under (prog defer_check {
@@ -4799,21 +4791,21 @@ example : progOk (hmS1Under (prog defer_check {
     Id Nat (SizeHM hm) Z })
   insRetHonest remRetHonest prog defer_check { () }) = false := by native_decide
 
--- New, conjunct 2: the fresh map claims size ONE.
+-- New, conjunct 2: the fresh map claims size one.
 example : progOk (hmS1Under (prog defer_check {
     Σ (hm : HashMapT). Σ0 (Hfind : Π (Q : Nat) → Id OptN (FindHM Q hm) NoneN).
     Id Nat (SizeHM hm) (S Z) })
   insRetHonest remRetHonest prog defer_check { () }) = false := by native_decide
 
--- Insert, conjunct 1a: the find-equation lied onto the ENTRY map — the exit
--- claims the OLD answers (the update never happened).
+-- Insert, conjunct 1a: the find-equation lied onto the entry map — the exit
+-- claims the old answers (the update never happened).
 example : progOk (hmS1Under newRetHonest (prog defer_check {
     Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (old *%selfIv))
          (FindIns Q %keyIv %valIv (old *%selfIv))).
     Id Nat (SizeHM (*%selfIv)) (SizeIns %keyIv (old *%selfIv)) })
   remRetHonest prog defer_check { () }) = false := by native_decide
 
--- Insert, conjunct 1b: the frame direction FLIPPED — the model updated the
+-- Insert, conjunct 1b: the frame direction flipped — the model updated the
 -- exit state instead of the entry state.
 example : progOk (hmS1Under newRetHonest (prog defer_check {
     Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (old *%selfIv))
@@ -4828,7 +4820,7 @@ example : progOk (hmS1Under newRetHonest (prog defer_check {
     Id Nat (SizeHM (*%selfIv)) (S (SizeIns %keyIv (old *%selfIv))) })
   remRetHonest prog defer_check { () }) = false := by native_decide
 
--- Remove, conjunct 1: the returned option claims the EXIT map's answer (which
+-- Remove, conjunct 1: the returned option claims the exit map's answer (which
 -- is None at the removed key) instead of the entry map's.
 example : progOk (hmS1Under newRetHonest insRetHonest (prog defer_check {
     Σ (r : Σ (bb : Bool). OptP bb Nat).
@@ -4857,9 +4849,9 @@ example : progOk (hmS1Under newRetHonest insRetHonest (prog defer_check {
     Id Nat (SizeHM (*%selfRv)) (SizeIns %keyRv (old *%selfRv)) })
   prog defer_check { () }) = false := by native_decide
 
-/-! ## (xxii) NOT VACUOUS, part 2 — the BODY twins (transcribed, M28 D1) -/
+/-! ## (xxii) Not vacuous, part 2: the body twins -/
 
-/-- BODY TWIN: insert into the UNHASHED slot — the slot pack computed off the
+/-- Body twin: insert into the unhashed slot — the slot pack computed off the
     wrong key. Caught where it is written: the returned identity cannot say
     `i = Mod h n`. -/
 def twinUnhashedSlot : Term := prog defer_check {
@@ -4869,7 +4861,7 @@ def twinUnhashedSlot : Term := prog defer_check {
   () }
 example : progOk twinUnhashedSlot = false := by native_decide
 
-/-- BODY TWIN: skip the duplicate-key OVERWRITE — the hit branch reads
+/-- Body twin: skip the duplicate-key overwrite — the hit branch reads
     everything and writes nothing, claiming the same conjuncts. Caught at the
     walk's own return: the exit bucket still holds the old value. -/
 def twinNoOverwrite : Term := prog defer_check {
@@ -4921,10 +4913,10 @@ def twinNoOverwrite : Term := prog defer_check {
   () }
 example : progOk twinNoOverwrite = false := by native_decide
 
-/-- BODY TWIN: skip the `n` BUMP — the fresh-key path packs the old count.
+/-- Body twin: skip the `n` bump — the fresh-key path packs the old count.
     The pack's counting clause has no proof at the stale `n`, and the ledger
-    argument no longer types either. Transcribed with the full insert prefix
-    (M28 D1: a body difference has no splice that can reach it). -/
+    argument no longer types either. Transcribed with the full insert prefix,
+    since a body difference has no splice that can reach it. -/
 def twinNoBumpUnder (iret : Term) : Term := prog{
   fn InsertInList [fuel] (fuel : Nat, cap : Nat, islot : Nat, key : Nat, val : Nat,
                           b : &mut (List (Σ (k : Nat). Nat)),
@@ -5713,9 +5705,9 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
   () }
 example : progOk (twinNoBumpUnder insRetHonest) = false := by native_decide
 
-/-- BODY TWIN: skip the RESIZE — the ledger-tripped path packs at the OLD
+/-- Body twin: skip the resize — the ledger-tripped path packs at the old
     capacity anyway, transcribing the no-resize arm into the else-arm. Caught
-    by the PACKED LOAD LEDGER: the branch equation says the threshold test
+    by the packed load ledger: the branch equation says the threshold test
     came out False, so its LebTrueLe citation cannot type. -/
 def twinNoResizeUnder (iret : Term) : Term := prog{
   fn InsertInList [fuel] (fuel : Nat, cap : Nat, islot : Nat, key : Nat, val : Nat,

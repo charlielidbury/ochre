@@ -4,34 +4,17 @@ import Dllbc.Std
 import Dllbc.StdLemmas
 
 /-!
-# Stage-0 viability probe for the pin (12-design §10)
+This file probes, at the kernel level, whether the conversions a pinned borrow
+contract needs are definitional on the standard library's real definitions.
+Chiefly: `Set (S k) r (Cons h tl) ≡ Cons h (Set k r tl)` with all atoms
+neutral (the recursor ι-steps on the constructor heads without needing the
+index), plus the `Z` leg, the read-only law `Set i (Nth i s) s ≡ s`
+(definitional at concrete indices, stuck at symbolic ones — both directions
+asserted), and inertness of the `@res` marker through normalization and
+`readC`.
 
-THE GATE, per the design doc: "verify that the `Nth` `S(k)` branch's conversion in
-§2.3 actually goes through definitionally on `SetNth`'s real corpus definition …
-before stage 1, not after stage 4." The corpus's list update is `StdLemmas.Set`
-(the doc's `SetNth`), which recurses on the index FIRST.
-
-The claim, at the audit's own level of symbolism: in the `S(k)` branch every
-participant is a σ (the match refined `i := S σk`, `v`'s payload to
-`Cons σh σtl`), so the conversion the discharge runs is
-
-    Set (S σk) σr (Cons σh σtl)   ≡?   Cons σh (Set σk σr σtl)
-
-with all four atoms NEUTRAL. If that is definitional (the recursor ι-steps on the
-`S` head and the `Cons` head without needing σk), the pin needs no bridging
-equations and stage 5 is viable. σ's are `pvar`s with reserved names; plain
-`pvar`s convert by the same rule, so the probe uses ordinary names.
-
-Also probed here, because stage 5's design leans on each:
-  * the `Z` leg;
-  * the read-only law's derivation leg `Set i (NthL i s) s ≡ s` — expected
-    DEFINITIONAL at concrete `i`/`s` and STUCK at symbolic ones (the test file's
-    "states it both ways");
-  * inertness of the `@res` marker (the kernel form `*res` will elaborate to):
-    it must ride through `Pure.nf` as a neutral spine and through `readC`
-    without a reflection error.
-
-NOT imported by `Dllbc.lean` — a scratch module, built directly.
+Not imported by `Dllbc.lean` — a scratch module, built directly
+(`lake build Dllbc.Tests.PinProbe`).
 -/
 
 open Dllbc
@@ -47,7 +30,7 @@ def pt : Term := .pvar "t"
 def ps : Term := .pvar "s"
 def pi' : Term := .pvar "i"
 
-/-! ## THE GATE: the `S(k)` leg, all atoms neutral -/
+/-! ## The `S(k)` leg, all atoms neutral -/
 
 def lhsS : Term := prog{ Set (S %pk) %pr (Cons %ph %pt) }
 def rhsS : Term := prog{ Cons %ph (Set %pk %pr %pt) }
@@ -91,19 +74,15 @@ def rcOk (tm : Term) : Bool :=
 
 example : rcOk lhsRes = true := by native_decide
 
-/-! ## Classification probes (D1's one-slot rule) — A MEASURED FINDING
+/-! ## Classification probes: is a claim's RHS a type or a pin?
 
-    The obvious classifier — `hasTypeT rhs Type` — is WRONG on this kernel, and
-    the probe measured it rather than assuming it: `hasTypeT` has universe arms
-    for `.pi`/`.sigmaT`/`.idT`/`.type` and NONE for a bare type constant or a
-    neutral type application, so `Nat : Type` and `List Nat : Type` both throw
-    ("cannot type value/neutral") and a chk-wrapper reads `false`. Under that
-    classifier the corpus's `&mut (s : Bool ~> Nat)` would silently become a PIN.
-
-    So D1's kind classification must be a dedicated type-recognizer
-    (`isOwedTypeT`, stage 5): whnf, then type-former head / type-constant head /
+    `hasTypeT rhs Type` is not a usable classifier: `hasTypeT` has universe
+    arms for `.pi`/`.sigmaT`/`.idT`/`.type` but none for a bare type constant or
+    a neutral type application, so `Nat : Type` and `List Nat : Type` both
+    throw and a chk-wrapper reads `false`. A real classifier needs a dedicated
+    type-recognizer instead: whnf, then type-former head / type-constant head /
     `List`/`Array` spine / σ whose `sctx` type is `Type` ⇒ owed-type claim;
-    anything else ⇒ pin. The two assertions below pin the finding that forced it. -/
+    anything else ⇒ pin. -/
 
 def chkT (tm ty : Term) : Bool :=
   match (do let v ← readC 8000 tm; let t ← readC 8000 ty; hasTypeT 8000 v t).run (seedPure [] []) with
@@ -113,14 +92,14 @@ def chkT (tm ty : Term) : Bool :=
 -- Σ-types DO inhabit the universe by `hasTypeT`…
 example : chkT prog{ Σ (l : List Nat). Id Nat (Len l) (Len (Cons 1 Nil)) } prog{ Type }
   = true := by native_decide
--- …but a bare type constant and a neutral type application do NOT (the finding).
+-- …but a bare type constant and a neutral type application do NOT.
 example : chkT prog{ Nat } prog{ Type } = false := by native_decide
 example : chkT prog{ List Nat } prog{ Type } = false := by native_decide
 -- Pin-shaped terms are not types under any reading.
 example : chkT prog{ Set (S Z) 9 (Cons 1 (Cons 2 Nil)) } prog{ Type } = false := by native_decide
 example : chkT prog{ Cons 1 Nil } prog{ Type } = false := by native_decide
 
-/-! ## Stage-5 smoke: the mechanism end to end (kept as the probe's record) -/
+/-! ## End-to-end smoke: pins through a function boundary -/
 
 def why (t : Term) : String :=
   match checkProgram t prog{ Unit } with
@@ -147,6 +126,9 @@ def throughPinCallerP : Term := prog{
 #eval IO.println (why throughPinP)
 #eval IO.println (tails throughPinCallerP)
 
+-- A pin returned across a call boundary: the callee hands back `&mut Nat`
+-- carrying a claim about where it sits in the caller's list, and the caller
+-- can write through it and still recover the whole list afterward.
 def withNthPinP (rest : Term) : Term := prog{
   fn NthPin [i] (i : Nat, v : &mut (s : List Nat ~> Set i (*res) s), p : Le (S i) (Len *v)) -> &mut Nat {
     match v {
@@ -167,6 +149,8 @@ def withNthPinP (rest : Term) : Term := prog{
   let y = x;
   () }))
 
+-- Same shape but both contracts are reflexive (`s ~> s`, `t ~> t`): the
+-- returned borrow is read-only, so a write through it should be rejected.
 def withGetROP (rest : Term) : Term := prog{
   fn GetRO [i] (i : Nat, v : &mut (s : List Nat ~> s), p : Le (S i) (Len *v)) -> &mut (t : Nat ~> t) {
     match v {
@@ -194,7 +178,7 @@ def withGetROP (rest : Term) : Term := prog{
   let y = x;
   () }))
 
-/-! ## Residual (a) smoke: pins over CARVED ARRAYS — the toy pack GetMut -/
+/-! ## Pins over arrays: a toy "get-mut" packed inside a Σ0 invariant -/
 
 /-- OpaqueFill's `AllK7`, copied: every KEY is 7, values unread. -/
 def AllK7 : Term := prog{
@@ -286,8 +270,8 @@ def gmPinKey2at1 : Term := prog{
         match e { Pair(kk, vv) => &m *kk } } } } } };
   () }
 
-/-- …and the UNOPENED-prefix probe: gmValMin's exact body with only the pin
-    added. Whether this closes is the measured boundary of the mechanism. -/
+/-- Same as `gmPin2at1` but WITHOUT opening cell 0 first: tests whether the
+    conversion still goes through when the prefix isn't exposed. -/
 def gmPin2at1blind : Term := prog{
   fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). %AllK7 2 a ~> (%PVSet2T) 1 (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
@@ -301,7 +285,7 @@ def gmPin2at1blind : Term := prog{
 #eval IO.println (why gmPinKey2at1)
 #eval IO.println (why gmPin2at1blind)
 
-/-! ## Residual (b) smoke: D9 — the cursor says WHERE it points -/
+/-! ## Evidence-carrying returns: the borrow states where it points -/
 
 /-- Evidence alone (no pin): `Σ (r : &mut Nat). Id Nat (*r) (NthL i (old *v))`. -/
 def withNthEv (rest : Term) : Term := prog{
@@ -333,8 +317,8 @@ def withNthPinEv (rest : Term) : Term := prog{
 
 #eval IO.println (why (withNthPinEv prog{ () }))
 
--- The derived read-only, COMPLETED: match the evidence, and the release computes
--- to the entry list exactly.
+-- Match the evidence, then release: the recovered list equals the original
+-- exactly.
 #eval IO.println (tails (withNthPinEv prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &m x;
@@ -345,8 +329,8 @@ def withNthPinEv (rest : Term) : Term := prog{
       let y = x;
       () } } } } }))
 
--- THE TWO-CALL ROUND-TRIP CHAIN: call, write, call again — the caller DERIVES
--- what the second borrow holds.
+-- Two-call chain: call, write, call again. The caller derives what the
+-- second borrow holds from the evidence alone.
 #eval IO.println (tails (withNthPinEv prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &m x;
@@ -361,7 +345,8 @@ def withNthPinEv (rest : Term) : Term := prog{
         let y = x;
         () } } } } } } }))
 
--- Negative: a body returning evidence about the WRONG position.
+-- Negative: a body returning evidence about the wrong position should be
+-- rejected.
 #eval IO.println (why (prog{
   fn BadEv (i : Nat, v : &mut List Nat, p : Le (S i) (Len *v)) -> Σ (r : &mut Nat). Id Nat (*r) (NthL 1 (old *v)) {
     match v {
@@ -370,7 +355,10 @@ def withNthPinEv (rest : Term) : Term := prog{
     } };
   () }))
 
--- S27Mixed movement probes (D9)
+-- Three variants on a claim about which index the head sits at: a false
+-- claim (`Z ≡ S Z`) that must be rejected, a true claim (`Z ≡ Z`) that must
+-- be accepted, and the false claim again but stated on a lambda with an
+-- explicit type ascription instead of a `fn` declaration.
 #eval IO.println (why (prog{
   fn HeadLie (v : &mut List Nat, hi : Le (S Z) (Len *v))
         -> Σ (x : &mut Nat). Id Nat Z (S Z)
