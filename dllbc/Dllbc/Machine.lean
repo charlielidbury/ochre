@@ -1411,7 +1411,7 @@ def placeToPosRaw : Term → M Pos
     mentions the refined σ, e.g. `Id Nat σ 2`, is substituted like anything
     else — the seam §10 exercises). The replacement `v` must be marker-free
     (§3.2 knowledge/state): substituting a hole/loan/borrow for a σ would smuggle
-    state into entry-knowledge — the etiology of the M21 `PartIdxL n ⊥` bug. -/
+    state into entry-knowledge — the etiology of a class of bug where a spec is instantiated at `⊥`. -/
 def refineSym (σ : Nat) (v : Val) : M Unit := do
   -- The knowledge/state premise, which is now the SHAPE of the argument rather
   -- than a scan of it: a store value is knowledge exactly when it is a `know`
@@ -1574,7 +1574,7 @@ mutual
         -- excludes ⊥. A comptime read of a moved/uninitialized slot is a
         -- use-after-move; rejecting it here stops a silent ⊥ from riding into a
         -- pure value and surfacing layers later as an opaque untypeable ⊥ (the
-        -- M21 `PartIdxL n ⊥` etiology: reading the owned-consumed scrutinee).
+        -- spec-at-`⊥` etiology: reading the owned-consumed scrutinee).
         match ← lookupSlot x with
         | .bot => throwErr s!"readC (⇝): {x.name}#{x.id} holds ⊥ (use-after-move or uninitialized in a comptime read)"
         | v => pure v
@@ -2933,7 +2933,7 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Term) (given : Option Ter
         -- both sides compute — nothing refined"), and the arithmetic is meta-level on
         -- numerals, never a `sub` in the object language. Symbolic extents mint `rest`
         -- and solve `m ≡ add lo' (add cnt rest)` — the equation ¶3.2 reaches with
-        -- `le_split` twice plus `AddCancelL`, asserted here in its cancelled form
+        -- `le_split` twice plus an add-cancellation lemma, asserted here in its cancelled form
         -- because the checker unpacks the witnesses itself and no program term ever
         -- projects them.
         let lo'N := Term.natOf? (Pure.nf fuel lo')

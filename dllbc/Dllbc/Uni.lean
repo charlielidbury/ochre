@@ -52,7 +52,7 @@ Every identifier resolves or errors: pure binder → `pvar`; earlier telescope
 param → `var`; known constructor → `ctorApp`; kernel const → `const`; a friendly
 reified-function alias (`Le`, `Len`, `Add`, …) → its `…FnT` Term constant; else
 the **Lean identifier** of that name, which must denote a `Dllbc.Term` in scope
-(a library lemma like `SwapL`, `Set`, `SortRangeL`) — the documented fallback.
+(a library lemma like `SwapL` or `Set`) — the documented fallback.
 
 ## Body
 
@@ -393,7 +393,7 @@ def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "
 /-- Friendly aliases for the reified library functions whose surface name differs
     from their `…FnT` Term-constant (`Le` ↦ `LeFnT`, etc.). Everything else falls
     through to the raw-Lean-identifier resolution, so lemma Terms (`SwapL`, `Set`,
-    `SortRangeL`, …) are referenced by their own names via the use-site `open`s.
+    `SwapL`, …) are referenced by their own names via the use-site `open`s.
 
     **The keys are PascalCase since M31 Stage A** (§2.1): "the standard
     vocabulary capitalises with everything else — `Len`, `Add`, `Count`, `Take`

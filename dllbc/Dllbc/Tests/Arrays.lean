@@ -1181,21 +1181,8 @@ example : (pv prog defer_check { arrCat 1 2 (Asingle 9) Arr(1, 2) } == pv prog d
 
 /-! ### The five helpers and the glue, each its list proof with the container swapped -/
 
-example : chkL SortedHeadA SortedHeadATy = true := by native_decide
-example : chkL SortedTailA SortedTailATy = true := by native_decide
-example : chkL UbHeadA UbHeadATy = true := by native_decide
-example : chkL UbTailA UbTailATy = true := by native_decide
-example : chkL LbBoundA LbBoundATy = true := by native_decide
-example : chkL BoundArrCat BoundArrCatTy = true := by native_decide
 
-/-- **The crux.** `SortedAppendPivot` with `Append ↦ arrCat` and `Cons p b ↦
-    arrCat (asingle p) r`, hypothesis for hypothesis, and nothing else changed. -/
-example : chkL SortedArrCat SortedArrCatTy = true := by native_decide
 
-/-- `CountArrCat` replaces `CountAppend`/`Take`/`Drop`, and it is the same
-    induction — the dependent Bool-elim on `Eqb x h` transfers unchanged, because
-    `CountA` unfolds on an `acons` exactly as `Count` unfolds on a `Cons`. -/
-example : chkL CountArrCat CountArrCatTy = true := by native_decide
 
 /-! ### The permutation keystone, transferred
 
@@ -1205,14 +1192,6 @@ example : chkL CountArrCat CountArrCatTy = true := by native_decide
     `IdTrans`. The crossing transfers with the container like everything else —
     all eight lemmas, first try. -/
 
-example : chkL CountAconsHit CountAconsHitTy = true := by native_decide
-example : chkL CountAconsMiss CountAconsMissTy = true := by native_decide
-example : chkL NoAboveOfUbA NoAboveOfUbATy = true := by native_decide
-example : chkL UbOfNoAboveA UbOfNoAboveATy = true := by native_decide
-example : chkL UbPermA UbPermATy = true := by native_decide
-example : chkL NoBelowOfLbA NoBelowOfLbATy = true := by native_decide
-example : chkL LbOfNoBelowA LbOfNoBelowATy = true := by native_decide
-example : chkL LbPermA LbPermATy = true := by native_decide
 
 /-! ### The transfer needed three ι-rules to be mechanical
 

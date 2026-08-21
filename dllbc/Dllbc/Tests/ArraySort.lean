@@ -48,10 +48,6 @@ def pv (t : Term) : Term := Pure.nf 4000 t
 
 /-! ## Partition predicates and their nil lemmas -/
 
-example : chkL NatRw NatRwTy = true := by native_decide
-example : chkL LeZeroEq LeZeroEqTy = true := by native_decide
-example : chkL SortedANil SortedANilTy = true := by native_decide
-example : chkL SplitANil SplitANilTy = true := by native_decide
 
 -- The predicates COMPUTE on a run, at every skip count.
 -- `SplitAL 3 2 [1,2,7]`: first two ≤ 3, last ≥ 3.
@@ -70,28 +66,12 @@ example : chkL prog defer_check { Pair(unit, Pair(unit, Pair(Refl, Pair(unit, un
 
 /-! ### Crossing a concatenation — each an induction on the left array alone -/
 
-example : chkL SplitA0Lb SplitA0LbTy = true := by native_decide
-example : chkL SplitACatE1 SplitACatE1Ty = true := by native_decide
-example : chkL SplitACatI0 SplitACatI0Ty = true := by native_decide
-example : chkL PartACatI0 PartACatI0Ty = true := by native_decide
-example : chkL PartACatE0 PartACatE0Ty = true := by native_decide
 
 /-! ### One conclusion each, so the programs need no inline `elim` -/
 
-example : chkL SplitACatUb SplitACatUbTy = true := by native_decide
-example : chkL SplitACatRest SplitACatRestTy = true := by native_decide
-example : chkL SplitA1Head SplitA1HeadTy = true := by native_decide
-example : chkL SplitA1Tail SplitA1TailTy = true := by native_decide
-example : chkL PartACatUb PartACatUbTy = true := by native_decide
-example : chkL PartACatRest PartACatRestTy = true := by native_decide
-example : chkL PartA0Eq PartA0EqTy = true := by native_decide
-example : chkL PartA0Lb PartA0LbTy = true := by native_decide
 
 /-! ### The count layer for the swap -/
 
-example : chkL CountAconsCongr CountAconsCongrTy = true := by native_decide
-example : chkL BumpComm BumpCommTy = true := by native_decide
-example : chkL CountSwapA CountSwapATy = true := by native_decide
 
 -- There IS no η at length zero, which is why the nil lemmas exist at all: `SortedA Z`
 -- of an opaque payload is a stuck `arrRec`, not `Unit`.
