@@ -31,11 +31,11 @@ set_option trace.Dllbc.check false
     point of being able to put a probe anywhere. -/
 
 /--
-info: **b ≡ `borrowₘ ℓ0 (Cons (S Z) Nil)`** — comptime-known value
+info: b ↦ borrowₘ ℓ0 (Cons (S Z) Nil)
 ---
-info: **b ≡ `borrowₘ ℓ0 ⊥`** — comptime-known value
+info: b ↦ borrowₘ ℓ0 ⊥
 ---
-info: **b ≡ `borrowₘ ℓ0 (Cons (S (S Z)) Nil)`** — comptime-known value
+info: b ↦ borrowₘ ℓ0 (Cons (S (S Z)) Nil)
 -/
 #guard_msgs in
 example : Term := prog{
@@ -62,23 +62,23 @@ example :
                let d = *b; () })) = true := by
   native_decide
 
-/-! ## (S3) A PARAMETER shows both of its answers
+/-! ## (S3) A PARAMETER shows its entry state, σ typed inline
 
-    The type from the source and the contents here — the same two-question form
-    a point hover gives, because it is the same call.
+    One answer, one form — the static "type from the source" half is gone
+    (2026-08-21 ruling: under strong updates nothing about a slot is timeless),
+    and the parameter answers from the checker's own seed like every other
+    binder.
 
-    **σ0 prints BARE here, and that is the immutability rule being obeyed rather
-    than a gap.** A delta carries the σ-context as it stood AT that change, and
-    the binding of a borrow parameter is filed by `bindSlot` during
-    `seedTelescopeV` before the σ's type is registered — so at this point the
-    checker genuinely did not yet know it. One statement later the annotation
-    appears. Printing `(σ0 : List Nat)` here would be reporting a fact from the
-    future, which is exactly what docs/17 §1 forbids; the alternative would be to
-    order the seed so the type lands first, which is a change to the checker for
-    a cosmetic gain and is not taken. -/
+    **σ0 carries its type inline, and the earlier "bare σ0" pin was retired
+    WITH its reasoning.** The old text argued printing `(σ0 : List Nat)` at the
+    first statement would report a fact from the future, because `bindSlot`
+    filed the binding before the type was registered. `seedTelescopeV` now
+    registers the type FIRST — binding and registration are one seeding
+    instant, so the delta carrying its own σ's type is ordering within a point,
+    not clairvoyance. -/
 
 /--
-info: **v : `&mut List Nat`** — here `borrowₘ ℓ0 σ0`
+info: v ↦ borrowₘ ℓ0 (σ0 : List Nat)
 -/
 #guard_msgs in
 example : Term := prog{
@@ -97,7 +97,7 @@ example : Term := prog{
     what makes the rule total rather than nearly so. -/
 
 /--
-info: **n ≡ `S Z`** — comptime-known value
+info: n ↦ S Z
 -/
 #guard_msgs in
 example : Term := prog{

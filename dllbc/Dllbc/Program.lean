@@ -164,6 +164,65 @@ def factsAt (paths : List (List PointDelta)) (key : Term) (x : Var) :
             (·.trail) |>.getD []
         (trail, kv.2, st.sctx)
 
+/-- The state at the END of the seeding run filed under `key`, provided `x`
+    itself was BOUND during that run — the ENTRY point of a `fn` body.
+
+    A telescope occurrence sits inside what the seeds build, so its answer is
+    the seeds' result: "entering the body" rather than "entering a statement".
+    The seeds file under the `fn`'s own `let`-statement key (the cursor does not
+    move between `letStep` and `seedTelescopeV`), so the key is one the surface
+    can construct — but the same key also names the `fn` statement in the
+    ENCLOSING path, where the run binds the function name rather than the
+    parameters. The x-was-bound-in-this-run guard is what tells the two apart:
+    a run that did not seed `x` is skipped, and a path with no run that did
+    declines. This also keeps a colliding enclosing ⟨id, name⟩ from answering
+    for a parameter.
+
+    Known limit, stated rather than hidden: a fn NESTED inside a same-named fn
+    shares its ancestor's key, and its ancestor's seeds are in its paths'
+    history, so a same-named-and-same-positioned parameter answers from the
+    ancestor's run. -/
+def replayEntry (deltas : List PointDelta) (key : Term) (x : Var) :
+    Option (List (String × String) × PointState) := Id.run do
+  let key := stmtKeyOf key
+  let mut st : PointState := {}
+  let mut inRun := false
+  let mut seeded := false
+  let mut outer := false
+  let mut trail : List (String × String) := []
+  for d in deltas do
+    let isKey := match d.stmtKey with
+      | some k => stmtKeyOf k == key
+      | none => false
+    if isKey then
+      if !inRun then
+        inRun := true; seeded := false; outer := false
+      if let .bound y _ := d.change then
+        -- A run that binds the fn's own `declSlot`-tagged Var is the ENCLOSING
+        -- instance of the key — the ledger crosses the seal as a unit, so the
+        -- outer stream carries the seeds too, but with the post-restore σ
+        -- context and an env the outer scope never had. Skip it; the body
+        -- path's own run is the honest one.
+        if y.id == declSlot then outer := true
+        else if y == x then seeded := true; trail := d.trail
+      st := st.step d
+    else
+      if inRun && seeded && !outer then return some (trail, st)
+      inRun := false
+      st := st.step d
+  if inRun && seeded && !outer then return some (trail, st)
+  return none
+
+/-- `factsAt` for ENTRY-tagged occurrences (telescope positions): one entry per
+    path whose keyed run seeded the binder. Ancestor prefixes make a body's seed
+    run appear in every descendant path too; identical runs render identically
+    and collapse in `renderPaths`' distinctness fold. -/
+def factsAtEntry (paths : List (List PointDelta)) (key : Term) (x : Var) :
+    List (List (String × String) × Val × List (Nat × Term)) :=
+  paths.filterMap fun deltas =>
+    (replayEntry deltas key x).bind fun (trail, st) =>
+      (st.env.find? (fun kv => kv.1 == x)).map fun kv => (trail, kv.2, st.sctx)
+
 /-- **The same walk, with the `let` type table carried out of it** (docs/16).
 
     Same seed but for `hover`, same paths, same verdict — so a program accepted

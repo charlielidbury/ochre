@@ -246,47 +246,20 @@ def annotateSyms (sctx : List (Nat × Dllbc.Term)) (v : Dllbc.Val) : Dllbc.Val :
     | some τ => Dllbc.substSym σ (.const s!"(σ{σ} : {Dllbc.Term.pretty τ})") acc
     | none => acc) v
 
-/-- The σ's type, when the value IS a σ — the same question `noteLetType` asks at
-    a binding, asked again at a point. -/
-def symTypeOf (v : Dllbc.Val) (sctx : List (Nat × Dllbc.Term)) : Option Dllbc.Term :=
-  match v with
-  | .know (.pvar p) => match Dllbc.symOfName? p with
-    | some σ => sctx.lookup σ
-    | none => none
-  | _ => none
+/-- What the checker knew about a binder: `x ↦ v`, ONE form. Nothing a slot
+    holds is timeless under strong updates, so there is no type-vs-value split
+    and no caption classifying the answer — the contents are the answer, and a
+    σ in them says exactly which parts are runtime-bound.
 
-/-- What the checker knew about a binder, as markdown. THREE forms, because the
-    checker distinguishes three situations and flattening them would lie.
-
-    * **`x : τ`** — the bound value IS a σ, and `sctx` has its type. A type is
-      genuinely all there is to say.
-    * **`x ≡ v`, comptime-known** — the value is fully concrete. Not a weaker
-      answer than a type but a stronger one: the checker knows the value, and
-      printing a guessed type would replace a fact with an inference.
-    * **`x ≡ v`, binding-time SHAPE** — the value is a constructor tree over σs,
-      `Cons (σ0 : Nat) (σ1 : List Nat)`. This is the case the two-form version got
-      wrong: calling it "comptime-known" is a misnomer, because *the shape is
-      known and the components are not*.
-
-    **The σs carry their types INLINE, and that is the user's own ruling** — a
-    trailing legend shipped first and was put to them against this; they chose
-    inline, on the grounds that a type belongs where its σ is and a legend makes
-    the reader cross-reference. The known depth tradeoff (inline grows with the
-    tree, a legend does not) was stated when the choice was made.
-
-    **No parallel renderer, and no new traversal**: each σ is replaced by
-    `substSym` — the kernel's own refinement substitution, §3.2's — with a
-    `.const` carrying the annotated text, and the REAL `Val.pretty` prints the
-    result. `Term.prettyPrec` renders a `.const` as its bare name at every
-    precedence, so the parens in the text are the ones that appear. -/
+    The σs carry their types INLINE (`Cons (σ0 : Nat) (σ1 : List Nat)`), the
+    user's own ruling over a trailing legend. No parallel renderer and no new
+    traversal: each σ is replaced by `substSym` — the kernel's own refinement
+    substitution, §3.2's — with a `.const` carrying the annotated text, and the
+    REAL `Val.pretty` prints the result. `Term.prettyPrec` renders a `.const`
+    as its bare name at every precedence, so the parens in the text are the
+    ones that appear. -/
 def letTooltip (name : String) (n : Dllbc.LetNote) : String :=
-  match n.ty? with
-  | some τ => s!"**{name} : `{Dllbc.Term.pretty τ}`**"
-  | none =>
-    match symsMentioned (Dllbc.Val.pretty n.val) with
-    | [] => s!"**{name} ≡ `{Dllbc.Val.pretty n.val}`** — comptime-known value"
-    | _ =>
-      s!"**{name} ≡ `{Dllbc.Val.pretty (annotateSyms n.sctx n.val)}`** — binding-time shape"
+  s!"{name} ↦ {Dllbc.Val.pretty (annotateSyms n.sctx n.val)}"
 
 /-- First entry per binder, flagged when a later one disagrees.
 
@@ -328,19 +301,23 @@ def pushHover (ref : Syntax) (text : Unit → String) : TermElabM Unit := do
     mkDocString? := some fun _ => pure (text ())
   }
 
-/-- Render what a binder held AT A POINT (docs/17), reusing docs/16's three
-    forms so a tooltip does not change shape when it changes granularity. -/
+/-- Render what a binder held AT A POINT (docs/17), through `letTooltip` so a
+    tooltip does not change shape when it changes granularity. -/
 def pointTooltip (name : String) (v : Dllbc.Val) (sctx : List (Nat × Dllbc.Term)) : String :=
-  letTooltip name { binder := ⟨0, name⟩, ty? := symTypeOf v sctx, val := v, sctx := sctx }
+  letTooltip name { binder := ⟨0, name⟩, ty? := none, val := v, sctx := sctx }
 
 /-- The point-fact for one occurrence, if its statement was walked and its binder
-    was live there. `none` declines — see `replayTo`. -/
+    was live there. `none` declines — see `replayTo`. An ENTRY occurrence (a
+    telescope position) reads "entering the body" instead of "entering the
+    statement" — `factsAtEntry`, the seeds' result. -/
 def pointFactFor (pts : List (List Dllbc.PointDelta)) (o : Dllbc.Surface.OccNote)
     (keys : List Dllbc.Term) (i : Nat) :
     List (List (String × String) × Dllbc.Val × List (Nat × Dllbc.Term)) :=
   match keys[i]? with
   | none => []
-  | some key => Dllbc.factsAt pts key ⟨o.id, o.name⟩
+  | some key =>
+    if o.entry then Dllbc.factsAtEntry pts key ⟨o.id, o.name⟩
+    else Dllbc.factsAt pts key ⟨o.id, o.name⟩
 
 /-- `x ⇒ Cons, n ⇒ S` — which arms this path took, outermost first. -/
 def trailText (trail : List (String × String)) : String :=
@@ -384,13 +361,11 @@ def renderPaths (solo body : Dllbc.Val → List (Nat × Dllbc.Term) → String)
         if tr.isEmpty then txt else s!"{txt} *(on {trailText tr})*")
       some (listed ++ if extra > 0 then s!"; *…and {extra} more path(s)*" else "")
 
-/-- The point half of a tooltip, WITHOUT re-naming the variable — so it can be
-    appended to a static answer that has already named it, and so per-path
-    variants can be listed without repeating the name once each. -/
+/-- One path's answer WITHOUT the name — for per-path listings, where the name
+    repeating once per path would be noise. Also the string per-path
+    DISTINCTNESS is decided on (see `renderPaths`). -/
 def pointBody (v : Dllbc.Val) (sctx : List (Nat × Dllbc.Term)) : String :=
-  match symTypeOf v sctx with
-  | some τ => s!"a `{Dllbc.Term.pretty τ}`"
-  | none => s!"`{Dllbc.Val.pretty (annotateSyms sctx v)}`"
+  Dllbc.Val.pretty (annotateSyms sctx v)
 
 /-- Reify accumulated key syntaxes into key **values**, to match a breadcrumb. -/
 def keyValues (keys : Array Syntax) : TermElabM (List Dllbc.Term) := do
@@ -427,9 +402,7 @@ def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote)
       let ki' := ki
       let point? : Option (Unit → String) :=
         if hasPoint then
-          some (fun _ => (renderPaths (fun v sc =>
-                            if o.static?.isSome then pointBody v sc
-                            else pointTooltip o.name v sc)
+          some (fun _ => (renderPaths (pointTooltip o.name)
                           pointBody (pointFactFor pts o keys ki')).getD "")
         else none
       if o.stmt.isSome && !pts.isEmpty then ki := ki + 1
@@ -439,25 +412,25 @@ def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote)
       -- when someone points at it. If these could disagree a reader would have to
       -- know which to believe, so they are one call.
       if spans.showOccs.contains oi then
-        let shown := match point?, o.static? with
-          | some txt, some stat => stat ++ " — here " ++ txt ()
-          | some txt, none => txt ()
-          | none, some stat => stat
-          | none, none =>
+        let shown := match point? with
+          | some txt => txt ()
+          | none =>
             match idx[(o.id, o.name)]? with
             | some (e, differs) =>
               letTooltip o.name e ++ (if differs then " *(differs per path)*" else "")
             -- Nothing known: say so rather than printing an empty box. A `show`
             -- is an author's explicit request, so silence would read as a bug.
-            | none => s!"**{o.name}** — no value here (not checked, or not live)"
+            | none => s!"{o.name} — no value here (not checked, or not live)"
         logInfoAt o.ref shown
-      match point?, o.static? with
-      -- A parameter with a point-fact: its TYPE and its CONTENTS HERE, which are
-      -- different questions and both worth answering.
-      | some txt, some stat => pushHover o.ref (fun _ => stat ++ " — here " ++ txt ())
-      | some txt, none => pushHover o.ref txt
-      | none, some stat => pushHover o.ref (fun _ => stat)
-      | none, none =>
+      -- The static annotation channel is GONE (user ruling, 2026-08-21): under
+      -- strong updates nothing about a slot is timeless, so the annotation's
+      -- scope-wide "x : τ" claim is one the calculus does not make. The point
+      -- answer is the whole answer — telescope positions included, via ENTRY
+      -- occurrences — the binder fact recorded AT THE BINDING is the fallback,
+      -- and with neither the tooltip declines rather than echoing the source.
+      match point? with
+      | some txt => pushHover o.ref txt
+      | none =>
         if let some (e, differs) := idx[(o.id, o.name)]? then
           pushHover o.ref (fun _ => letTooltip o.name e ++
             if differs then " *(differs per path)*" else "")

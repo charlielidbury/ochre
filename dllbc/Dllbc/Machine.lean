@@ -3918,9 +3918,12 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Debt)
       let τVal ← readC fuel τ
       let σ ← freshSym
       let ℓ ← freshLoan
-      bindSlot x (.borrowM ℓ (.know (Term.sym σ)))
-      -- record σ as this borrow's entry snapshot (§5.4 `old *v`).
+      -- The type is registered BEFORE the binding files, so the binding's point
+      -- delta carries its own σ's type (docs/17): registration and binding are
+      -- one seeding instant, so this is ordering within a point, not a fact from
+      -- the future. Also records σ as this borrow's entry snapshot (§5.4 `old *v`).
       modify (fun s => { s with sctx := (σ, τVal) :: s.sctx, entrySyms := (x.id, σ) :: s.entrySyms })
+      bindSlot x (.borrowM ℓ (.know (Term.sym σ)))
       let SVal ← readC fuel S
       let opened := Pure.nf fuel (Pure.openBinder fuel sn SVal (Term.sym σ))   -- RHS[s := σ]
       -- D1's one-slot classification: a TYPE is the owed-type claim (today's
@@ -3946,8 +3949,10 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Debt)
       let τVal := Pure.openBinder fuel cn (← readC fuel τ) (Term.sym σc)
       let σ ← freshSym
       let ℓ ← freshLoan
-      bindSlot x (.ctor "Pair" [.know (Term.sym σc), .borrowM ℓ (.know (Term.sym σ))])
+      -- Type before binding, as in the borrow branch above: the seed delta
+      -- carries its own σ's type.
       modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
+      bindSlot x (.ctor "Pair" [.know (Term.sym σc), .borrowM ℓ (.know (Term.sym σ))])
       -- `S` binds the payload snapshot at `sn`, the Σ's own binder is `cn`, and
       -- the two are opened by name — where under de Bruijn the second opening had
       -- to know that the first had dropped it from index 1 to index 0.
@@ -3978,14 +3983,14 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Debt)
       else do
         let τVal ← readC fuel tyTerm
         let σ ← freshSym
-        bindSlot x (.know (Term.sym σ))
         modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
+        bindSlot x (.know (Term.sym σ))
         seedTelescopeV fuel rest
     | tyTerm => do
       let τVal ← readC fuel tyTerm
       let σ ← freshSym
-      bindSlot x (.know (Term.sym σ))
       modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
+      bindSlot x (.know (Term.sym σ))
       seedTelescopeV fuel rest
 
 /-- The `FnDef` view: parameter `i` gets runtime var id `i` — the §5.2 convention a

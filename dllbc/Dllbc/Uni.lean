@@ -527,16 +527,15 @@ structure OccNote where
   id : Nat
   name : String
   stmt : Option Syntax := none
-  /-- The S1 answer for this span, when there is one — a parameter's annotation.
-
-      **Carried rather than pushed separately, because the two are not rivals.**
-      docs/16 let S1 WIN for a parameter: its annotation is exact and S2 had only
-      a binding-time fact to offer against it. Under point hovers that precedence
-      hides the case the design exists for — a borrow parameter whose payload a
-      match arm has narrowed still reports `v : &mut List Nat`, which is true and
-      says nothing about what is in it here. The type and the contents are
-      different questions, so the tooltip answers both. -/
-  static? : Option String := none
+  /-- An ENTRY occurrence — a telescope position: a parameter binder, an
+      occurrence inside a parameter's type, or the return type. Its point is
+      "entering the body" — the state at the END of `stmt`'s seeding run —
+      rather than "entering `stmt`", so the join reads it through
+      `factsAtEntry` instead of `factsAt`. This replaced the static annotation
+      channel (`static?`, deleted 2026-08-21): under strong updates nothing
+      about a slot is timeless, so a parameter answers from the checker's own
+      seeds like every other binder. -/
+  entry : Bool := false
 deriving Inhabited
 
 /-- Key-term syntax paired with the source syntax it was written at. -/
@@ -585,16 +584,6 @@ structure SpanAcc where
       binding, joined against the checker's tables by id AND name — and, for
       point hovers (docs/17), by the STATEMENT it occurs in. -/
   occs : Array OccNote := #[]
-  /-- Lexically scoped, innermost first: `(name, runtime id, annotation text)` for
-      every parameter binder in scope.
-
-      **The id is in the key and is not decoration.** A body may shadow a
-      parameter (`let v = …` under `(v : &mut List Nat)`), and a name-only lookup
-      would then show the parameter's annotation on an occurrence of the `let`.
-      Requiring the occurrence to resolve to the parameter's own id is what makes
-      shadowing fall through to the checker's table instead of reporting a stale
-      answer confidently. -/
-  ptypes : List (String × Nat × String) := []
   /-- Occurrence indices that a `show` filed — the sites whose answer is printed
       EAGERLY as a diagnostic rather than waiting to be hovered (docs/18). -/
   showOccs : Array Nat := #[]
@@ -658,25 +647,36 @@ def tagOccsFrom (lo : Nat) (key : TSyntax `term) : UM Unit :=
             { o with stmt := some key.raw } else o)
         pendingOccs := #[] }
 
+/-- Tag every occurrence filed since `lo` as an ENTRY occurrence of the body
+    keyed `key` — telescope positions: parameter binders, occurrences inside
+    parameter types, and the return type (see `OccNote.entry`). Pending
+    occurrences are NOT drained: a `show` above a `fn` statement anchors to a
+    statement, not to a body's inside. -/
+def tagOccsEntry (lo : Nat) (key : TSyntax `term) : UM Unit :=
+  modify fun a =>
+    if !a.hover then a else
+      { a with occs := a.occs.mapIdx (fun i o =>
+          if i ≥ lo && o.stmt.isNone then
+            { o with stmt := some key.raw, entry := true } else o) }
+
 /-- Render a binder's tooltip. One place, so a binder and its occurrences cannot
     drift into two spellings. -/
 def hoverText (name : String) (ty : String) : String := s!"**{name} : `{ty}`**"
 
-/-- Run `act` with extra parameter types and callee signatures in scope, and put
-    the scope back afterwards.
+/-- Run `act` with extra callee signatures in scope, and put the scope back
+    afterwards.
 
     Save-and-restore on the accumulator rather than a new argument threaded
-    through the walker: `ptypes`/`fsigs` are lexically scoped, the walker is a
-    30-call mutual block, and the port's standing rule is to ride existing walker
-    state rather than add a layer. The restore is skipped on the throwing path,
-    which costs nothing — a block that failed to elaborate has no tooltips. -/
-def withHoverScope {α : Type} (ps : List (String × Nat × String))
-    (fs : List (String × String)) (act : UM α) : UM α := do
+    through the walker: `fsigs` is lexically scoped, the walker is a 30-call
+    mutual block, and the port's standing rule is to ride existing walker state
+    rather than add a layer. The restore is skipped on the throwing path, which
+    costs nothing — a block that failed to elaborate has no tooltips. -/
+def withHoverScope {α : Type} (fs : List (String × String)) (act : UM α) : UM α := do
   let a ← get
   if !a.hover then act else do
-    modify fun a => { a with ptypes := ps ++ a.ptypes, fsigs := fs ++ a.fsigs }
+    modify fun a => { a with fsigs := fs ++ a.fsigs }
     let r ← act
-    modify fun a' => { a' with ptypes := a.ptypes, fsigs := a.fsigs }
+    modify fun a' => { a' with fsigs := a.fsigs }
     pure r
 
 /-- File a statement key at its source span. -/
@@ -922,17 +922,7 @@ def noteIdent (rctx : List (String × Nat)) (pctx : List String) (x : Ident) : U
   let s := x.getId.toString
   if pctx.contains s then return
   match localId rctx s with
-  | some id =>
-    -- A parameter answers from its own annotation (S1) — but only when the
-    -- occurrence resolves to THAT binder; see `SpanAcc.ptypes`.
-    match a.ptypes.find? (fun p => p.1 == s && p.2.1 == id) with
-    | some p =>
-      -- BOTH: the annotation (always true) and the point-fact (what is in it
-      -- here). See `OccNote.static?`.
-      let note : OccNote :=
-        { ref := x.raw, id := id, name := s, static? := some (hoverText s p.2.2) }
-      modify fun acc => if acc.hover then { acc with occs := acc.occs.push note } else acc
-    | none => noteOcc x.raw id s
+  | some id => noteOcc x.raw id s
   | none =>
     match fnSlotId rctx s with
     | some id =>
@@ -1099,14 +1089,8 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     if parsed.isEmpty then
       Macro.throwErrorAt stx "λr: a runtime λ must bind at least one argument. `λ(){ … }` is a thunk, and a thunk makes ι ambiguous — an arm applied to no arguments and an arm with nothing owed become the same spine. A recursor arm at a non-functional motive is an ordinary term; write it as one."
     parsed.forM (fun p => liftM (checkBinder p.1))
-    -- `elabLamBinders` pushes each binder's annotation into scope as it mints it
-    -- (a binder's type may mention the ones to its left, so the pushes have to be
-    -- incremental); this is the matching pop, which is what keeps the scope
-    -- lexical.
-    let saved := (← get).ptypes
     let (rctx', next', binderSyns) ← elabLamBinders rctx pctx next parsed
     let (b', n) ← elabUBlk rctx' pctx next' b
-    modify fun a => if a.hover then { a with ptypes := saved } else a
     return (← `(Dllbc.Term.lamTel [$binderSyns,*] $b'), n)
   | `(uterm| Π ($x:ident : $τ:uterm) → $b:uterm) => do
     checkBinder x
@@ -1358,12 +1342,10 @@ partial def elabLamBinders (rctx : List (String × Nat)) (pctx : List String) (n
     let (τT, n1) ← elabUTerm rctx pctx (next + 1) τ
     let τD ← binderDom name τT
     let entry ← `(((⟨$(quote next), $(quote name)⟩ : Dllbc.Var), $τD))
-    -- A runtime λ's binders are annotated exactly as a `fn`'s are, so they are
-    -- the same S1 case (docs/16). Their ids come from the counter rather than
-    -- from a position, which is why the entry carries `next` rather than an index.
+    -- A runtime λ's binder SITE keeps the annotation hover (reading the source
+    -- at the annotation itself). Its occurrences ride the point machinery like
+    -- any other binder — the ptypes/static channel is gone (2026-08-21 ruling).
     noteHover x.raw (hoverText name (srcText τ.raw))
-    modify fun a =>
-      if a.hover then { a with ptypes := (name, next, srcText τ.raw) :: a.ptypes } else a
     let (rctx', n2, more) ← elabLamBinders ((name, next) :: rctx) pctx n1 rest
     pure (rctx', n2, #[entry] ++ more)
 
@@ -1487,17 +1469,17 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- at runtime id `i`, fresh binders from `n`. Identical to what `decl{ }` builds
     -- — deliberately, since the `FnDef` this produces has to BE the one it builds.
     let fullRctx : List (String × Nat) := names.zip (List.range n)
-    -- **S1 — a parameter's type is ALREADY WRITTEN DOWN** (docs/16). The tooltip
-    -- is the annotation's own source text: exact, no computation, and no checker
-    -- involvement, which is why parameter hovers work in `prog defer_check { }`
-    -- too. Keyed by the §5.2 positional id, so that a body-local `let` shadowing a
-    -- parameter falls through to the checker's table instead of being answered
-    -- confidently from the wrong binder.
-    let pTypes : List (String × Nat × String) :=
-      (parsedI.zip (List.range n)).map fun ((x, τ), i) =>
-        (x.getId.toString, i, srcText τ.raw)
-    parsedI.forM fun (x, τ) => noteHover x.raw (hoverText x.getId.toString (srcText τ.raw))
-    let teleSyns ← withHoverScope pTypes [] (buildTele [] rctx pctx 0 parsed)
+    -- Parameter binders and every occurrence in the telescope are ENTRY
+    -- occurrences (docs/17, `OccNote.entry`): they answer from the checker's own
+    -- seeds, replayed to "entering the body". The annotation channel this
+    -- replaced (`pTypes`/`static?`) is gone — under strong updates nothing about
+    -- a slot is timeless, and a parameter's entry state IS its annotation,
+    -- checked. Binders are filed at their §5.2 positional ids, same as their
+    -- occurrences resolve.
+    let occLo ← occMark
+    (parsedI.zip (List.range n)).forM fun ((x, _), i) =>
+      noteOcc x.raw i x.getId.toString
+    let teleSyns ← buildTele [] rctx pctx 0 parsed
     -- **THE BODY SEES THE ENCLOSING SCOPE** (M32 R2, suspensions.md §2.6). The
     -- `decl{}`-era params-only context retires here: a `fn` body may cite the
     -- comptime bindings lexically above it — a sibling `fn`'s name, a `let H0 =
@@ -1514,15 +1496,21 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- assumed: with id-keying the citation is bound by whichever parameter shares
     -- its number, drops out of ρ, and the sealed body's fresh Ω has nothing to
     -- resolve it against.
-    let (retT, _) ← withHoverScope pTypes [] (elabUTerm (fullRctx ++ rctx) pctx 0 ret)
-    let (bodyT, _) ← withHoverScope pTypes [] (elabUBlk (fullRctx ++ rctx) pctx n body)
+    let (retT, _) ← elabUTerm (fullRctx ++ rctx) pctx 0 ret
+    let nm := name.getId.toString
+    -- The entry key is this `fn`'s own `let`-statement key — the seeds file
+    -- under it, because the cursor does not move between `letStep` and the seal
+    -- check (`replayEntry`). Tagged BEFORE the body elaborates, so the range is
+    -- exactly the telescope, the binders, and the return type.
+    tagOccsEntry occLo (← `(Dllbc.Term.letIn ⟨Dllbc.declSlot, $(quote nm)⟩
+                              Dllbc.Term.unit Dllbc.Term.unit))
+    let (bodyT, _) ← elabUBlk (fullRctx ++ rctx) pctx n body
     let decT ← match dec with
       | none => `((none : Option Nat))
       | some d =>
         match names.findIdx? (· == d.getId.toString) with
         | some i => `(some $(quote i))
         | none => Macro.throwErrorAt d s!"fn: decreasing argument '{d.getId}' is not a parameter of '{name.getId}'"
-    let nm := name.getId.toString
     -- The slot: the TAG `declSlot` (M32 R4). It used to be `progBase + next`,
     -- distinct per declaration, because a function's OWN body numbers its
     -- parameters from 0 and an id-keyed lookup would read a colliding binding as
@@ -1551,7 +1539,7 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
         (parsedI.map fun (x, τ) => s!"{x.getId} : {srcText τ.raw}")
       ++ ") -> " ++ srcText ret.raw
     noteHover name.raw (hoverText nm sigText)
-    let (rest', n2) ← withHoverScope [] [(nm, sigText)]
+    let (rest', n2) ← withHoverScope [(nm, sigText)]
       (elabUBlk ((nm, Dllbc.declSlot) :: rctx) pctx next rest)
     return (← `(Dllbc.Term.letIn $slot
                   (Dllbc.FnMacro.fnElabOrFail
