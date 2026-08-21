@@ -179,12 +179,19 @@ mutual
 inductive Term where
   /-- Variable occurrence. Under ⇒ this is a *move*. -/
   | var    : Var → Term
-  /-- `let x = rhs ; rest` — bind `x` to the ⇒-value of `rhs`, then run `rest`. -/
-  | letIn  : Var → Term → Term → Term
-  /-- `place := rhs ; rest` — ⇒-read `rhs`, ⇐-write it into `place`, then `rest`.
-      `place` is syntactically an arbitrary `Term`; ⇐ is only *defined* on
-      place shapes (a variable under zero or more `*` peels). -/
-  | assign : Term → Term → Term → Term
+  /-- `let x = rhs` — bind `x` to the ⇒-value of `rhs`. A statement is an
+      ordinary unit-valued EXPRESSION (detach-tails): it carries no continuation
+      of its own, and a statement spine is a right-nested `.seq` chain ending in
+      the block's final expression. The binding a `let` makes is visible
+      left-to-right until a binder boundary (λ/Π/Σ entry, a match arm) — a
+      `.seq (.letIn x rhs) rest` spine scopes `x` over `rest`, which is what the
+      tail used to spell structurally. -/
+  | letIn  : Var → Term → Term
+  /-- `place := rhs` — ⇒-read `rhs`, ⇐-write it into `place`; unit-valued, tail
+      detached exactly as `letIn`'s. `place` is syntactically an arbitrary
+      `Term`; ⇐ is only *defined* on place shapes (a variable under zero or more
+      `*` peels). -/
+  | assign : Term → Term → Term
   /-- Constructor application `C(a, b, …)`; nullary `C` is `ctorApp C []`. -/
   | ctorApp : String → List Term → Term
   /-- `&mut t` — mint a loan; `&mut *x` is reborrow. -/
@@ -238,9 +245,13 @@ inductive Term where
       branch), exactly as in Lean's `match h : x with`. `none` is the plain
       form — nothing extra is bound and nothing is minted. -/
   | matchE : Var → Option Var → List Branch → Term
-  /-- `e ; rest` — expression statement: ⇒-evaluate `e` for effect, discard
-      its value, then run `rest`. Sequences a `match` (or any effectful term)
-      used in statement position without binding a throwaway slot. -/
+  /-- `e ; rest` — **the one sequencing form** (detach-tails): ⇒-evaluate `e`
+      for effect, discard its value, then run `rest`. Every statement spine is a
+      right-nested chain of these — `let x = e ; rest` is `.seq (.letIn x e) rest`,
+      `p := e ; rest` is `.seq (.assign p e) rest` — ending in the block's final
+      expression (`.unit` when there is none). A `.letIn` head scopes its binder
+      over the chain's tail; traversals with binder awareness carry a dedicated
+      `.seq (.letIn …) rest` case for exactly that. -/
   | seq    : Term → Term → Term
   /-- `f(a, …)` — a call to a declared function (§5.3), checked against the
       signature alone. Unifying `fn` with λ is deferred (§10). -/
@@ -429,11 +440,17 @@ def Term.peelLams : Term → List (Var × Term) × Term
     those is one both arrows agree about. -/
 mutual
   def Term.imperative : Term → Bool
-    | .assign _ _ _ | .borrow _ | .seq _ _ | .matchE _ _ _
+    -- A let-headed `.seq` is the statement spine a `let x = e ; rest` block
+    -- elaborates to (detach-tails), and it classifies by its PARTS — exactly as
+    -- the tail-carrying `.letIn x rhs rest` did — because ⇝ has a rule for it
+    -- (`eval` binds and threads). Any OTHER `.seq` head is effect sequencing and
+    -- stays imperative unconditionally, matching `reflectC`'s refusal.
+    | .seq (.letIn _ rhs) rest => Term.imperative rhs || Term.imperative rest
+    | .assign _ _ | .borrow _ | .seq _ _ | .matchE _ _ _
     | .call _ _ | .seal _ _ _ => true
     -- `a[lo ; ..]` reads its count off the extent map, which is state.
     | .range _ _ none _ _ _ => true
-    | .letIn _ rhs rest => Term.imperative rhs || Term.imperative rest
+    | .letIn _ rhs => Term.imperative rhs
     | .lam _ d b | .pi _ d b | .sigmaT _ d b | .borrowT _ d b =>
       Term.imperative d || Term.imperative b
     -- **A `.var`-headed spine is what `.callV` was** (M32 R4), and keeping it
@@ -582,15 +599,15 @@ def Term.unitPi (ret : Term) : Term := .pi "§u" (.cmpT (.const "Unit")) ret
     Innermost-last, so an earlier ρ entry is visible to a later one's knowledge,
     which is the order Ω records them in. -/
 def Term.underRho (ρ : List (Var × Term)) (node : Term) : Term :=
-  ρ.foldr (fun p acc => .letIn p.1 p.2 acc) node
+  ρ.foldr (fun p acc => .seq (.letIn p.1 p.2) acc) node
 
 /-! ## Structural term equality (manual; `deriving` can't cross the nesting) -/
 
 mutual
   def Term.beq : Term → Term → Bool
     | .var x, .var y => x == y
-    | .letIn x a b, .letIn y c d => x == y && Term.beq a c && Term.beq b d
-    | .assign a b c, .assign d e f => Term.beq a d && Term.beq b e && Term.beq c f
+    | .letIn x a, .letIn y c => x == y && Term.beq a c
+    | .assign a b, .assign d e => Term.beq a d && Term.beq b e
     | .ctorApp n as, .ctorApp m bs => n == m && Term.beqList as bs
     | .borrow a, .borrow b => Term.beq a b
     | .deref a, .deref b => Term.beq a b
@@ -853,8 +870,13 @@ def Term.freePNames (t : Term) : List String := Term.freePNamesGo [] t
 mutual
   def Term.freeRVars (bound : List String) : Term → List Var
     | .var x => if bound.contains x.name then [] else [x]
-    | .letIn x rhs rest => Term.freeRVars bound rhs ++ Term.freeRVars (x.name :: bound) rest
-    | .assign p e rest => Term.freeRVars bound p ++ Term.freeRVars bound e ++ Term.freeRVars bound rest
+    -- The SPINE case first: a let-headed `.seq` scopes its binder over the
+    -- chain's tail (detach-tails), which is what the tail-carrying `.letIn`
+    -- spelled structurally. A bare `.letIn` binds nothing outside itself.
+    | .seq (.letIn x rhs) rest =>
+      Term.freeRVars bound rhs ++ Term.freeRVars (x.name :: bound) rest
+    | .letIn _ rhs => Term.freeRVars bound rhs
+    | .assign p e => Term.freeRVars bound p ++ Term.freeRVars bound e
     | .ctorApp _ args => Term.freeRVarsList bound args
     | .borrow t | .deref t => Term.freeRVars bound t
     | .index t i ev =>
@@ -1347,8 +1369,8 @@ mutual
     | .call f _ => f ++ "(…)"
     | .index t i _ => Term.prettyPrec 1 t ++ "[" ++ Term.prettyPrec 0 i ++ "]"
     | .range t lo _ _ _ _ => Term.prettyPrec 1 t ++ "[" ++ Term.prettyPrec 0 lo ++ " ; …]"
-    | .letIn x _ _ => s!"let {x.name} = …"
-    | .assign _ _ _ => "… := …"
+    | .letIn x _ => s!"let {x.name} = …"
+    | .assign _ _ => "… := …"
     | .seq _ _ => "… ; …"
     | .matchE x _ _ => s!"match {x.name} " ++ "{…}"
   termination_by t => sizeOf t
@@ -1423,15 +1445,13 @@ mutual
       let (n1, t') := Term.numberSealsGo (n + 1) t
       let (n2, u') := Term.numberSealsGo n1 u
       (n2, .seal n t' u')
-    | .letIn x a b =>
+    | .letIn x a =>
+      let (n1, a') := Term.numberSealsGo n a
+      (n1, .letIn x a')
+    | .assign a b =>
       let (n1, a') := Term.numberSealsGo n a
       let (n2, b') := Term.numberSealsGo n1 b
-      (n2, .letIn x a' b')
-    | .assign a b c =>
-      let (n1, a') := Term.numberSealsGo n a
-      let (n2, b') := Term.numberSealsGo n1 b
-      let (n3, c') := Term.numberSealsGo n2 c
-      (n3, .assign a' b' c')
+      (n2, .assign a' b')
     | .ctorApp c args =>
       let (n1, args') := Term.numberSealsList n args
       (n1, .ctorApp c args')

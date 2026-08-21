@@ -8,9 +8,15 @@ type), Π, Σ, λ, application, constructors, and a fixed basis of recursors as
 built-in constants (`natRec`, `boolRec`, `botElim`). This module is its
 evaluator, and since M32 R1 it is the **classic NbE split**:
 
-    eval     : PEnv → Term → Sem          -- syntax in, semantics out
+    eval     : PEnv → Term → Sem × PEnv   -- syntax in, semantics + output env out
     readback : Sem → Term                 -- semantics in, canonical syntax out
     nf       : Term → Term                -- their composition, the normal form
+
+(`eval` THREADS its environment (detach-tails): a `let` is a unit-valued
+expression whose one effect is extending the env, `seq` chains thread
+left-to-right, and binder entry — the closure — is what delimits a scope. Every
+consumer that wants only the value takes `.1`; the env component exists for the
+statement spine and dies at every binder boundary.)
 
 `Sem` is the semantic domain and it is TRANSIENT: it exists for the duration of
 one normalization and nothing outside this file ever holds one. What the checker
@@ -192,13 +198,21 @@ def rebuildSpineT : Term → List Term → Term
 
     ### `let` is β, and `eval` performs it
 
-    `let x = e ; rest` binds the runtime slot `x`'s reserved pure name to `e`'s
-    value and evaluates `rest` under it. An occurrence is `.var x`, resolved
-    through the same environment. This replaces M30's reflected redex: there is no
-    λ to build and no body to abstract over, because an environment extension is
-    exactly what the redex was there to express. Nothing is transplanted — the
-    argument is a VALUE before the inner binder is entered — which is the one move
-    a named representation cannot do safely.
+    `let x = e` binds the runtime slot `x`'s reserved pure name to `e`'s value
+    and returns unit; the binding rides OUT in `eval`'s env component, so the
+    tail of the `.seq` spine it sits in evaluates under it (detach-tails — the
+    tail used to be the `letIn`'s own third field). An occurrence is `.var x`,
+    resolved through the same environment. This replaces M30's reflected redex:
+    there is no λ to build and no body to abstract over, because an environment
+    extension is exactly what the redex was there to express. Nothing is
+    transplanted — the argument is a VALUE before the inner binder is entered —
+    which is the one move a named representation cannot do safely.
+
+    **Scope is delimited by binder entry and nothing else.** A binding made in a
+    spine is visible left-to-right until a λ/Π/Σ body or a match arm closes over
+    it: `Sem.closure` captures ρ at formation, `instBody` evaluates under the
+    captured env, and the CALLER continues with its own — so callee-side
+    extensions die at body exit with no explicit rule. Brackets do NOT delimit.
 
     ### Freshness, and why it is a LEVEL and not a counter
 
@@ -322,46 +336,85 @@ mutual
   /-- Evaluate the term `t` against the comptime environment `ρ`. Strong
       everywhere except under a binder, where the body is suspended.
 
-      Runtime STATEMENT forms are `stuck` leaves. That is not an omission: they
-      are not knowledge, `eval` computes knowledge, and a rule for one here would
-      be the first step of the door nbe.md §3.3 is holding shut. -/
-  def eval : Nat → PEnv → Term → Sem
-    | 0, _, t => .stuck t
+      **The environment THREADS** (detach-tails): the result carries the output
+      env, extended only by `.letIn` and passed left-to-right through `.seq` and
+      through every former's children. Binder cases return the INPUT env — the
+      body is suspended, and callee-side extensions die at `instBody`'s exit.
+      Sibling order is normative: a binding made in an earlier child is visible
+      in later ones.
+
+      Runtime STATEMENT forms other than the `let` spine are `stuck` leaves.
+      That is not an omission: they are not knowledge, `eval` computes
+      knowledge, and a rule for one here would be the first step of the door
+      nbe.md §3.3 is holding shut. A `.seq` whose head evaluation gets STUCK is
+      itself stuck — evaluating past an effect it cannot perform would silently
+      drop the effect. -/
+  def eval : Nat → PEnv → Term → Sem × PEnv
+    | 0, ρ, t => (.stuck t, ρ)
     | fuel + 1, ρ, t =>
       match t with
       | .pvar x =>
-        match ρ.lookup x with
-        | some w => w
-        | none => .pvar x                       -- free: a name means itself
+        (match ρ.lookup x with
+         | some w => w
+         | none => .pvar x, ρ)                  -- free: a name means itself
       | .var x =>
-        match ρ.lookup (letName x.id) with
-        | some w => w
-        | none => .stuck (.var x)               -- an Ω slot: not knowledge here
-      | .letIn x rhs rest =>
-        eval (fuel + 1) ((letName x.id, eval (fuel + 1) ρ rhs) :: ρ) rest
-      | .type => .type
-      | .const c => .const c
-      | .unit => .ctor "unit" []
+        (match ρ.lookup (letName x.id) with
+         | some w => w
+         | none => .stuck (.var x), ρ)          -- an Ω slot: not knowledge here
+      -- `let x = rhs` — the ONE env-writing former. Unit-valued; the binding
+      -- rides out in the env component and scopes over the rest of whatever
+      -- spine this sits in (there is no tail HERE any more).
+      | .letIn x rhs =>
+        let (v, ρ1) := eval (fuel + 1) ρ rhs
+        (.ctor "unit" [], (letName x.id, v) :: ρ1)
+      -- `e ; rest`: evaluate `e` for its env effect, discard its value, run
+      -- `rest` under the output env. A stuck head sticks the whole seq (see
+      -- the docstring above).
+      | .seq a b =>
+        match eval (fuel + 1) ρ a with
+        | (.stuck _, _) => (.stuck t, ρ)
+        | (_, ρ1) => eval (fuel + 1) ρ1 b
+      | .type => (.type, ρ)
+      | .const c => (.const c, ρ)
+      | .unit => (.ctor "unit" [], ρ)
       -- The binder's NAME is what the semantic domain binds: `Sem` is the
       -- comptime domain and a comptime occurrence is a `pvar`, so the `Var`'s
       -- slot id (`noSlot` for a binder written here) has nothing to resolve.
-      | .lam x dom body => .lam x.name (eval (fuel + 1) ρ dom) (.closure ρ body)
-      | .pi x dom cod => .pi x (eval (fuel + 1) ρ dom) (.closure ρ cod)
-      | .sigmaT x dom cod => .sigmaT x (eval (fuel + 1) ρ dom) (.closure ρ cod)
-      | .cmpT τ => .cmpT (eval (fuel + 1) ρ τ)
-      | .app f a => whnfN (fuel + 1) (.app (eval (fuel + 1) ρ f) (eval (fuel + 1) ρ a))
-      | .ctorApp n args => .ctor n (evalList (fuel + 1) ρ args)
-      | .idT a b c => .idT (eval (fuel + 1) ρ a) (eval (fuel + 1) ρ b) (eval (fuel + 1) ρ c)
-      | s => .stuck s
+      -- The INPUT env comes back, and the closure captures it: a binding made
+      -- inside the domain is local to the domain.
+      | .lam x dom body => (.lam x.name (eval (fuel + 1) ρ dom).1 (.closure ρ body), ρ)
+      | .pi x dom cod => (.pi x (eval (fuel + 1) ρ dom).1 (.closure ρ cod), ρ)
+      | .sigmaT x dom cod => (.sigmaT x (eval (fuel + 1) ρ dom).1 (.closure ρ cod), ρ)
+      | .cmpT τ =>
+        let (v, ρ1) := eval (fuel + 1) ρ τ
+        (.cmpT v, ρ1)
+      | .app f a =>
+        let (fv, ρ1) := eval (fuel + 1) ρ f
+        let (av, ρ2) := eval (fuel + 1) ρ1 a
+        (whnfN (fuel + 1) (.app fv av), ρ2)
+      | .ctorApp n args =>
+        let (vs, ρ1) := evalList (fuel + 1) ρ args
+        (.ctor n vs, ρ1)
+      | .idT a b c =>
+        let (av, ρ1) := eval (fuel + 1) ρ a
+        let (bv, ρ2) := eval (fuel + 1) ρ1 b
+        let (cv, ρ3) := eval (fuel + 1) ρ2 c
+        (.idT av bv cv, ρ3)
+      | s => (.stuck s, ρ)
   termination_by fuel _ t => (fuel, 1, sizeOf t)
-  def evalList : Nat → PEnv → List Term → List Sem
-    | _, _, [] => []
-    | fuel, ρ, t :: ts => eval fuel ρ t :: evalList fuel ρ ts
+  def evalList : Nat → PEnv → List Term → List Sem × PEnv
+    | _, ρ, [] => ([], ρ)
+    | fuel, ρ, t :: ts =>
+      let (v, ρ1) := eval fuel ρ t
+      let (vs, ρ2) := evalList fuel ρ1 ts
+      (v :: vs, ρ2)
   termination_by fuel _ ts => (fuel, 1, sizeOf ts)
   /-- **Open the binder `x` at `arg`** — the one operation that replaces
-      substitution at every one of its sites. -/
+      substitution at every one of its sites. The callee-side env extension is
+      DISCARDED here (`.1`), which is the whole of the scope rule: bindings made
+      inside a binder body die at body exit. -/
   def instBody : Nat → String → Sem → Sem → Sem
-    | fuel, x, .closure ρ b, arg => eval fuel ((x, arg) :: ρ) b
+    | fuel, x, .closure ρ b, arg => (eval fuel ((x, arg) :: ρ) b).1
     | _, _, b, _ => b                           -- a binder body is always a closure
   termination_by fuel _ _ _ => (fuel, 2, 0)
   /-- **Force to a call-by-value value.** Weak-head reduce, and if the head turns
@@ -395,7 +448,7 @@ mutual
   def whnfN : Nat → Sem → Sem
     | 0, v => v
     | fuel + 1, v =>
-      let sAdd : Sem → Sem → Sem := fun a b => .app (.app (eval fuel [] kAddFn) a) b
+      let sAdd : Sem → Sem → Sem := fun a b => .app (.app (eval fuel [] kAddFn).1 a) b
       let (head, args) := collectSpine v
       match head, args with
       | .lam x _ b, a :: rest =>                      -- β, by environment extension
@@ -563,7 +616,7 @@ end
 /-- Normal form by evaluation: evaluate against the empty environment, read back
     from depth zero. Canonical up to binder names, which is what lets `convert`
     stay a structural comparison. -/
-def nf (fuel : Nat) (t : Term) : Term := readback fuel 0 (eval fuel [] t)
+def nf (fuel : Nat) (t : Term) : Term := readback fuel 0 (eval fuel [] t).1
 
 /-- **Weak-head reduction**, for callers that want a head exposed.
 
@@ -591,7 +644,7 @@ def convert (fuel : Nat) (a b : Term) : Bool := Term.convEq (nf fuel a) (nf fuel
     the binder is entered. (`substP` at a `§σ`-name is safe for the opposite
     reason — nothing binds a σ.) -/
 def openBinder (fuel : Nat) (x : String) (body arg : Term) : Term :=
-  readback fuel 0 (eval fuel [(x, eval fuel [] arg)] body)
+  readback fuel 0 (eval fuel [(x, (eval fuel [] arg).1)] body).1
 
 /-! ## Constructor signature table (§4)
 

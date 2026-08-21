@@ -151,8 +151,8 @@ partial def maxVarId : Term → Nat
   | .var x => x.id
   -- Both SENTINELS are excluded (M32 R4 adds `declSlot` beside `noSlot`): they
   -- are tags, not ids in the program's space, and either would swamp the max.
-  | .letIn x rhs rest => max (realId x) (max (maxVarId rhs) (maxVarId rest))
-  | .assign p e rest => max (maxVarId p) (max (maxVarId e) (maxVarId rest))
+  | .letIn x rhs => max (realId x) (maxVarId rhs)
+  | .assign p e => max (maxVarId p) (maxVarId e)
   | .ctorApp _ args | .call _ args => args.foldl (fun a t => max a (maxVarId t)) 0
   | .borrow t | .deref t | .cmpT t => maxVarId t
   | .index t i ev =>
@@ -176,10 +176,10 @@ partial def maxVarId : Term → Nat
 /-- Rename one runtime variable throughout (binding occurrences included). -/
 partial def renameVar (from_ to : Var) : Term → Term
   | .var x => if x.id == from_.id then .var to else .var x
-  | .letIn x rhs rest =>
-    .letIn (if x.id == from_.id then to else x) (renameVar from_ to rhs) (renameVar from_ to rest)
-  | .assign p e rest =>
-    .assign (renameVar from_ to p) (renameVar from_ to e) (renameVar from_ to rest)
+  | .letIn x rhs =>
+    .letIn (if x.id == from_.id then to else x) (renameVar from_ to rhs)
+  | .assign p e =>
+    .assign (renameVar from_ to p) (renameVar from_ to e)
   | .seq a b => .seq (renameVar from_ to a) (renameVar from_ to b)
   | .ctorApp n args => .ctorApp n (args.map (renameVar from_ to))
   | .call n args => .call n (args.map (renameVar from_ to))
@@ -220,9 +220,9 @@ partial def resolveScrut (k : Var) (ctor : String) (rebind : List Var) : Term �
     else
       .matchE s eqn (brs.map (fun b =>
         Branch.mk b.ctor b.binders (resolveScrut k ctor rebind b.body)))
-  | .letIn x rhs rest => .letIn x (resolveScrut k ctor rebind rhs) (resolveScrut k ctor rebind rest)
-  | .assign p e rest =>
-    .assign (resolveScrut k ctor rebind p) (resolveScrut k ctor rebind e) (resolveScrut k ctor rebind rest)
+  | .letIn x rhs => .letIn x (resolveScrut k ctor rebind rhs)
+  | .assign p e =>
+    .assign (resolveScrut k ctor rebind p) (resolveScrut k ctor rebind e)
   | .seq a b => .seq (resolveScrut k ctor rebind a) (resolveScrut k ctor rebind b)
   | .ctorApp n args => .ctorApp n (args.map (resolveScrut k ctor rebind))
   | .call n args => .call n (args.map (resolveScrut k ctor rebind))
@@ -244,8 +244,8 @@ partial def branchBinders (k : Var) (ctor : String) : Term → Option (List Var)
       | some b => some b.binders
       | none => none
     else brs.findSome? (fun b => branchBinders k ctor b.body)
-  | .letIn _ rhs rest => (branchBinders k ctor rhs).orElse (fun _ => branchBinders k ctor rest)
-  | .assign _ e rest => (branchBinders k ctor e).orElse (fun _ => branchBinders k ctor rest)
+  | .letIn _ rhs => branchBinders k ctor rhs
+  | .assign _ e => branchBinders k ctor e
   | .seq a b => (branchBinders k ctor a).orElse (fun _ => branchBinders k ctor b)
   | _ => none
 
@@ -269,9 +269,8 @@ def succBinder (k : Var) (t : Term) : Option Var := (branchBinders k "S" t).bind
 partial def selfScrutArgs (name : String) (k : Nat) : Term → List Term
   | .call f args =>
     (if f == name then (args[k]?).toList else []) ++ args.flatMap (selfScrutArgs name k)
-  | .letIn _ rhs rest => selfScrutArgs name k rhs ++ selfScrutArgs name k rest
-  | .assign p e rest =>
-    selfScrutArgs name k p ++ selfScrutArgs name k e ++ selfScrutArgs name k rest
+  | .letIn _ rhs => selfScrutArgs name k rhs
+  | .assign p e => selfScrutArgs name k p ++ selfScrutArgs name k e
   | .seq a b => selfScrutArgs name k a ++ selfScrutArgs name k b
   | .ctorApp _ args => args.flatMap (selfScrutArgs name k)
   | .app f a => selfScrutArgs name k f ++ selfScrutArgs name k a
@@ -287,9 +286,9 @@ partial def renameSelf (from_ to : String) : Term → Term
     .call (if f == from_ then to else f) (args.map (renameSelf from_ to))
   | .app f a => .app (renameSelf from_ to f) (renameSelf from_ to a)
   | .ctorApp n args => .ctorApp n (args.map (renameSelf from_ to))
-  | .letIn x rhs rest => .letIn x (renameSelf from_ to rhs) (renameSelf from_ to rest)
-  | .assign p e rest =>
-    .assign (renameSelf from_ to p) (renameSelf from_ to e) (renameSelf from_ to rest)
+  | .letIn x rhs => .letIn x (renameSelf from_ to rhs)
+  | .assign p e =>
+    .assign (renameSelf from_ to p) (renameSelf from_ to e)
   | .seq a b => .seq (renameSelf from_ to a) (renameSelf from_ to b)
   | .borrow t => .borrow (renameSelf from_ to t)
   | .deref t => .deref (renameSelf from_ to t)
@@ -306,9 +305,9 @@ partial def selfToIh (name : String) (k : Nat) (ih : Var) : Term → Term
   | .call f args =>
     let args' := args.map (selfToIh name k ih)
     if f == name then Term.appSpine (.var ih) (args'.eraseIdx k) else .call f args'
-  | .letIn x rhs rest => .letIn x (selfToIh name k ih rhs) (selfToIh name k ih rest)
-  | .assign p e rest =>
-    .assign (selfToIh name k ih p) (selfToIh name k ih e) (selfToIh name k ih rest)
+  | .letIn x rhs => .letIn x (selfToIh name k ih rhs)
+  | .assign p e =>
+    .assign (selfToIh name k ih p) (selfToIh name k ih e)
   | .seq a b => .seq (selfToIh name k ih a) (selfToIh name k ih b)
   | .ctorApp n args => .ctorApp n (args.map (selfToIh name k ih))
   | .app f a => .app (selfToIh name k ih f) (selfToIh name k ih a)
@@ -598,8 +597,8 @@ partial def retarget (binds : List (String × Var × Option Nat)) : Term → Ter
     | some (v, none) => Term.appSpine (.var v) (if args'.isEmpty then [.unit] else args')
     | none => .call f args'
   | .ctorApp n args => .ctorApp n (args.map (retarget binds))
-  | .letIn x rhs rest => .letIn x (retarget binds rhs) (retarget binds rest)
-  | .assign p e rest => .assign (retarget binds p) (retarget binds e) (retarget binds rest)
+  | .letIn x rhs => .letIn x (retarget binds rhs)
+  | .assign p e => .assign (retarget binds p) (retarget binds e)
   | .seq a b => .seq (retarget binds a) (retarget binds b)
   | .borrow t => .borrow (retarget binds t)
   | .deref t => .deref (retarget binds t)
@@ -691,7 +690,7 @@ def progOf (ds : List FnDef) (tail : Term) : Except String Term := do
       -- forward reference and a residual self-call show up as the unknown
       -- function they are, rather than as a dangling variable.
       let above := binds.take i
-      pure (.letIn ⟨declSlot, d.name⟩ (retarget above t) (← go (i + 1) rest))
+      pure (.seq (.letIn ⟨declSlot, d.name⟩ (retarget above t)) (← go (i + 1) rest))
   go 0 ds
 
 end FnMacro

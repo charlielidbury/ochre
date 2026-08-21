@@ -732,18 +732,17 @@ def spanOfStmt (t : TSyntax `term) (ref : Syntax) : UM Unit :=
 
 /-- File a `let` statement under its binder alone (runtime ids are unique). -/
 def spanOfLet (id : Nat) (name : String) (ref : Syntax) : UM Unit := do
-  noteStmtSpan (← `(Dllbc.Term.letIn ⟨$(quote id), $(quote name)⟩ Dllbc.Term.unit Dllbc.Term.unit)) ref
+  noteStmtSpan (← `(Dllbc.Term.letIn ⟨$(quote id), $(quote name)⟩ Dllbc.Term.unit)) ref
 
 /-- File a `fn` statement. It is a `let` like any other, but every `fn` shares the
     `declSlot` TAG as its id (M32 R4), so the NAME is what distinguishes one from
     another here — which is exactly what `Ω` resolves by. -/
 def spanOfFn (name : String) (ref : Syntax) : UM Unit := do
-  noteStmtSpan (← `(Dllbc.Term.letIn ⟨Dllbc.declSlot, $(quote name)⟩ Dllbc.Term.unit
-                      Dllbc.Term.unit)) ref
+  noteStmtSpan (← `(Dllbc.Term.letIn ⟨Dllbc.declSlot, $(quote name)⟩ Dllbc.Term.unit)) ref
 
 /-- File an assignment under its place and right-hand side. -/
 def spanOfAssign (place rhs : TSyntax `term) (ref : Syntax) : UM Unit := do
-  noteStmtSpan (← `(Dllbc.Term.assign $place $rhs Dllbc.Term.unit)) ref
+  noteStmtSpan (← `(Dllbc.Term.assign $place $rhs)) ref
 
 /-- File each of a call's arguments under its own span. -/
 def spanOfArgs (keys : Array (TSyntax `term)) (refs : Array Syntax) : UM Unit :=
@@ -984,7 +983,7 @@ def wrapScrut (scrut : TSyntax `term) (pre? : Option (TSyntax `term))
     (body : TSyntax `term) : MacroM (TSyntax `term) :=
   match pre? with
   | none => pure body
-  | some e => `(Dllbc.Term.letIn $scrut $e $body)
+  | some e => `(Dllbc.Term.seq (Dllbc.Term.letIn $scrut $e) $body)
 
 partial def collectAppU : TSyntax `uterm → TSyntax `uterm × Array (TSyntax `uterm)
   | `(uterm| $f:uterm $a:uterm) => let (h, as) := collectAppU f; (h, as.push a)
@@ -1268,7 +1267,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     let scrutId := n1
     let (t', n2) ← elabUBlk rctx pctx (n1 + 1) t
     let (f', n3) ← elabUBlk rctx pctx n2 f
-    return (← `(Dllbc.Term.letIn ⟨$(quote scrutId), "__if"⟩ $c'
+    return (← `(Dllbc.Term.seq (Dllbc.Term.letIn ⟨$(quote scrutId), "__if"⟩ $c')
       (Dllbc.Term.matchE ⟨$(quote scrutId), "__if"⟩ none
         [Dllbc.Branch.mk "True" [] $t', Dllbc.Branch.mk "False" [] $f'])), n3)
   | `(uterm| if $h:ident : $c:uterm { $t:ublk } else { $f:ublk }) => do
@@ -1277,7 +1276,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     let rctx' := (hName, n1 + 1) :: rctx
     let (t', n2) ← elabUBlk rctx' pctx (n1 + 2) t
     let (f', n3) ← elabUBlk rctx' pctx n2 f
-    return (← `(Dllbc.Term.letIn ⟨$(quote n1), "__if"⟩ $c'
+    return (← `(Dllbc.Term.seq (Dllbc.Term.letIn ⟨$(quote n1), "__if"⟩ $c')
       (Dllbc.Term.matchE ⟨$(quote n1), "__if"⟩ (some ⟨$(quote (n1 + 1)), $(quote hName)⟩)
         [Dllbc.Branch.mk "True" [] $t', Dllbc.Branch.mk "False" [] $f'])), n3)
   | `(uterm| elim $scrut:uterm return $motive:uterm { $arms,* }) =>
@@ -1551,8 +1550,7 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- under it, because the cursor does not move between `letStep` and the seal
     -- check (`replayEntry`). Tagged BEFORE the body elaborates, so the range is
     -- exactly the telescope, the binders, and the return type.
-    tagOccsEntry occLo (← `(Dllbc.Term.letIn ⟨Dllbc.declSlot, $(quote nm)⟩
-                              Dllbc.Term.unit Dllbc.Term.unit))
+    tagOccsEntry occLo (← `(Dllbc.Term.letIn ⟨Dllbc.declSlot, $(quote nm)⟩ Dllbc.Term.unit))
     let (bodyT, _) ← elabUBlk (fullRctx ++ rctx) pctx n body
     let decT ← match dec with
       | none => `((none : Option Nat))
@@ -1591,9 +1589,10 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     restorePendings held
     let (rest', n2) ← withHoverScope [(nm, sigText)]
       (elabUBlk ((nm, Dllbc.declSlot) :: rctx) pctx next rest)
-    return (← `(Dllbc.Term.letIn $slot
-                  (Dllbc.FnMacro.fnElabOrFail
-                    (Dllbc.FnDef.mk $(quote nm) [$teleSyns,*] $retT $bodyT $decT))
+    return (← `(Dllbc.Term.seq
+                  (Dllbc.Term.letIn $slot
+                    (Dllbc.FnMacro.fnElabOrFail
+                      (Dllbc.FnDef.mk $(quote nm) [$teleSyns,*] $retT $bodyT $decT)))
                   (Dllbc.FnMacro.bindFn $slot $decT $rest')), n2)
   | `(ublk| let $x:ident = $e:uterm ; $rest:ublk) => do
     checkBinder x
@@ -1641,10 +1640,11 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- — is filed under this statement's key, which is the POINT a hover on any of
     -- them asks about (docs/17).
     restorePendings held
-    tagOccsFrom occLo (← `(Dllbc.Term.letIn ⟨$(quote n1), $(quote name)⟩
-                             Dllbc.Term.unit Dllbc.Term.unit))
+    tagOccsFrom occLo (← `(Dllbc.Term.letIn ⟨$(quote n1), $(quote name)⟩ Dllbc.Term.unit))
     let (rest', n2) ← elabUBlk ((name, n1) :: rctx) pctx' (n1 + 1) rest
-    return (← `(Dllbc.Term.letIn ⟨$(quote n1), $(quote name)⟩ $e' $rest'), n2)
+    -- The tail is DETACHED (detach-tails): the row emits a `.seq` whose head is
+    -- the tail-less `.letIn` — the kernel scopes the binder over the seq's tail.
+    return (← `(Dllbc.Term.seq (Dllbc.Term.letIn ⟨$(quote n1), $(quote name)⟩ $e') $rest'), n2)
   -- **`let C(a, b) = e ; rest` = `match e { C(a, b) => rest }`** (M34 sugar (ii)).
   --
   -- The elaboration is the `uarm` path with the arm body supplied by the ENCLOSING
@@ -1690,9 +1690,9 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     let (e', n2) ← elabUTerm rctx pctx n1 e
     spanOfAssign p' e' (mkNullNode #[p, e])
     restorePendings held
-    tagOccsFrom occLo (← `(Dllbc.Term.assign $p' $e' Dllbc.Term.unit))
+    tagOccsFrom occLo (← `(Dllbc.Term.assign $p' $e'))
     let (rest', n3) ← elabUBlk rctx pctx n2 rest
-    return (← `(Dllbc.Term.assign $p' $e' $rest'), n3)
+    return (← `(Dllbc.Term.seq (Dllbc.Term.assign $p' $e') $rest'), n3)
   -- **`show x ; rest` — ERASED** (docs/18). Emits `rest` and nothing else: no
   -- node, no read, no move, no borrow, no Ω. The identifier is resolved exactly
   -- as any other occurrence is (so an unknown name gets the ordinary
