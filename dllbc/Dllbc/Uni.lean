@@ -78,7 +78,10 @@ for:
 
   * **`let`** (M29 α) emitted a `.letIn` in one mode and a β-redex over a fresh
     binder in the other. One row emits `.letIn` and the kernel reads it under both
-    arrows; ⇝'s reading of it IS that β, built at reflection.
+    arrows. (⇝'s reading was a β built at reflection when M29 α landed; since
+    M32 R1 no redex is built anywhere — `Pure.eval` binds `Pure.letName x.id`
+    in its environment and evaluates the tail, see `Machine.lean`'s "`let` is
+    read by β, and `eval` performs it" note.)
   * **`&mut`** (M29 β) was the borrow OPERATION in one mode and the borrow TYPE in
     the other. They are spelled `&m` and `&mut` now, so each row emits its own
     node whatever surrounds it.
@@ -289,9 +292,6 @@ syntax:max ident noWs "(" upat,* ")" : upat                  -- a nested constru
 syntax (name := ublkFn)
   "fn" ident ("[" ident "]")? "(" ulamb,* ")" "->" uterm "{" ublk "}" ";" ublk : ublk
 syntax "let" ident "=" uterm ";" ublk : ublk                 -- runtime let (→ letIn)
--- THE JOINING MATCH (docs/19): the ascription is the join marker AND the motive.
-syntax "let" ident ":" uterm "=" "match" uterm "{" uarm,* "}" ";" ublk : ublk
-syntax "let" ident ":" uterm "=" "match" ident ":" uterm "{" uarm,* "}" ";" ublk : ublk
 -- **THE SINGLETON-CONSTRUCTOR `let`** (M34 sugar (ii)). `let C(a, b) = e ; rest`
 -- is `match e { C(a, b) => rest }` — the REST OF THE BLOCK moves inside the arm,
 -- which is the whole of the transformation and the whole of the readability win:
@@ -508,11 +508,12 @@ are untouched by a single byte; the positions ride alongside the value, not
 inside it.
 
 The key is the term itself, in `stmtKeyOf` normal form, rather than a path.
-`atBoundary`'s `pushContinuations` duplicates each continuation into every match
-arm before the checker walks the program, so a statement's *position* in the
-walked term is not its position in the source and differs per arm — while its
-*term* is the same term in every copy. Matching on the term is invariant under
-that normalization for free, and needs no second implementation of the fork
+A statement inside a match arm (or a terminal match's arms) is still walked
+once per path, and single-path walks rebuild the arm seam lazily
+(`pushJoinArms`), so a statement's *position* in the walked term is not its
+position in the source — while its *term* is the same term in every copy.
+Matching on the term is invariant under all of that for free, and needs no
+second implementation of the walk
 logic.
 
 Assembling this costs nothing at check time: the entries are unelaborated syntax,
@@ -662,6 +663,25 @@ def tagOccsEntry (lo : Nat) (key : TSyntax `term) : UM Unit :=
           if i ≥ lo && o.stmt.isNone then
             { o with stmt := some key.raw, entry := true } else o) }
 
+/-- Steal the pending `show` occurrences for the duration of a statement's own
+    elaboration. **The drain is depth-blind and this is the correction**: a
+    nested block inside the statement's parts (a match arm, an fn body) files
+    and drains its OWN pendings through the same accumulator, so without the
+    steal, an outer `show` is keyed by the first statement INSIDE the nested
+    block — the state one arm deep, presented as the state here. Found live: a
+    `show` above a statement-position match answered with the Cons arm's
+    suspension. Every row that elaborates sub-terms before its `tagOccsFrom`
+    steals first and restores just before tagging. -/
+def takePendings : UM (Array Nat) := do
+  let a ← get
+  set { a with pendingOccs := (#[] : Array Nat) }
+  return a.pendingOccs
+
+/-- Put stolen pendings back, immediately before the stealing row's own
+    `tagOccsFrom` — they drain there, at the depth they were filed. -/
+def restorePendings (held : Array Nat) : UM Unit :=
+  modify fun a => { a with pendingOccs := a.pendingOccs ++ held }
+
 /-- Render a binder's tooltip. One place, so a binder and its occurrences cannot
     drift into two spellings. -/
 def hoverText (name : String) (ty : String) : String := s!"**{name} : `{ty}`**"
@@ -763,7 +783,7 @@ def upatParts (p : TSyntax `upat) : MacroM (Ident × Option (List (TSyntax `upat
     returned here. -/
 partial def mintPatArgs (rctx : List (String × Nat)) (next : Nat) :
     List (TSyntax `upat) →
-    MacroM (List (String × Nat) × Nat × Array (TSyntax `term) × List PendingPat)
+    UM (List (String × Nat) × Nat × Array (TSyntax `term) × List PendingPat)
   | [] => pure (rctx, next, #[], [])
   | p :: ps => do
     -- The identifier comes back from `upatParts` and is not read off `p` directly:
@@ -771,10 +791,15 @@ partial def mintPatArgs (rctx : List (String × Nat)) (next : Nat) :
     -- `upat` wearing an `Ident`'s type and `getId` answers the anonymous name for
     -- it — a binder called "" that nothing can refer to, which is a silent
     -- unbound-variable error at every use site rather than a type error here.
-    match ← upatParts p with
+    match ← liftM (upatParts p) with
     | (x, none) => do
-      checkBinder x
+      liftM (checkBinder x)
       let name := x.getId.toString
+      -- The binder IS an occurrence (docs/17): filed here at its minted id, and
+      -- entry-tagged by the enclosing match/let-pattern row with that match's
+      -- key — arm-entry binds file under it, so `replayEntry` answers with this
+      -- arm's own seed, per path.
+      noteOcc x.raw next name
       let v ← `((⟨$(quote next), $(quote name)⟩ : Dllbc.Var))
       let (rctx', n, vs, pend) ← mintPatArgs ((name, next) :: rctx) (next + 1) ps
       pure (rctx', n, #[v] ++ vs, pend)
@@ -793,9 +818,14 @@ partial def wrapPats (rctx : List (String × Nat)) (next : Nat) (pend : List Pen
   match pend with
   | [] => body rctx next
   | (v, c, args) :: rest => do
+    let occLo ← occMark
     let (rctx', n1, vars, pend') ← mintPatArgs rctx next args
+    -- A nested pattern's binders belong to the GENERATED inner match, whose key
+    -- this row is about to build — tagged here, before the outer row's sweep
+    -- can hand them the outer key.
+    tagOccsEntry occLo (← `(Dllbc.Term.matchE $v none []))
     let (inner, n2) ← wrapPats rctx' n1 (pend' ++ rest) body
-    return (← `(Dllbc.Term.matchE $v none none
+    return (← `(Dllbc.Term.matchE $v none
       [Dllbc.Branch.mk $(quote c.getId.toString) [$vars,*] $inner]), n2)
 
 /-- The branch-equation form takes NO nested patterns in v1, and says so here.
@@ -1198,8 +1228,15 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
       | none => return (← `(Dllbc.Term.call $(quote name) [$args',*]), n)
   | `(uterm| match $e:uterm { $arms,* }) => do
     let (scrut, pre?, n1) ← elabScrut rctx pctx next e
+    -- Pattern binders (and bare-arm-body stragglers no statement row keyed) are
+    -- ENTRY occurrences of this match: arm-entry binds file under the match key,
+    -- so `replayEntry` answers each from its own arm's seed, per path. Occs a
+    -- body row already keyed keep their key (`stmt.isNone` guard); nested
+    -- pattern binders were keyed by `wrapPats` with their inner match first.
+    let occLo ← occMark
     let (arms', n) ← elabUArms rctx pctx n1 arms.getElems.toList
-    return (← wrapScrut scrut pre? (← `(Dllbc.Term.matchE $scrut none none [$arms',*])), n)
+    tagOccsEntry occLo (← `(Dllbc.Term.matchE $scrut none []))
+    return (← wrapScrut scrut pre? (← `(Dllbc.Term.matchE $scrut none [$arms',*])), n)
   -- M23: `match h : x { … }` — the branch-equation form. One binder for the whole
   -- match (its TYPE is what varies per arm), as in Lean's `match h : x with`.
   --
@@ -1218,8 +1255,13 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
       | _ => pure ()
     let (scrut, pre?, n1) ← elabScrut rctx pctx next e
     let hName := h.getId.toString
+    -- The equation binder and the arms' binders are entry occurrences, exactly
+    -- as in the plain row above.
+    let occLo ← occMark
+    noteOcc h.raw n1 hName
     let (arms', n) ← elabUArms ((hName, n1) :: rctx) pctx (n1 + 1) arms.getElems.toList
-    let m ← `(Dllbc.Term.matchE $scrut (some ⟨$(quote n1), $(quote hName)⟩) none [$arms',*])
+    tagOccsEntry occLo (← `(Dllbc.Term.matchE $scrut (some ⟨$(quote n1), $(quote hName)⟩) []))
+    let m ← `(Dllbc.Term.matchE $scrut (some ⟨$(quote n1), $(quote hName)⟩) [$arms',*])
     return (← wrapScrut scrut pre? m, n)
   | `(uterm| if $c:uterm { $t:ublk } else { $f:ublk }) => do  -- §12 sugar → Bool match
     let (c', n1) ← elabUTerm rctx pctx next c
@@ -1227,7 +1269,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     let (t', n2) ← elabUBlk rctx pctx (n1 + 1) t
     let (f', n3) ← elabUBlk rctx pctx n2 f
     return (← `(Dllbc.Term.letIn ⟨$(quote scrutId), "__if"⟩ $c'
-      (Dllbc.Term.matchE ⟨$(quote scrutId), "__if"⟩ none none
+      (Dllbc.Term.matchE ⟨$(quote scrutId), "__if"⟩ none
         [Dllbc.Branch.mk "True" [] $t', Dllbc.Branch.mk "False" [] $f'])), n3)
   | `(uterm| if $h:ident : $c:uterm { $t:ublk } else { $f:ublk }) => do
     let (c', n1) ← elabUTerm rctx pctx next c
@@ -1236,7 +1278,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     let (t', n2) ← elabUBlk rctx' pctx (n1 + 2) t
     let (f', n3) ← elabUBlk rctx' pctx n2 f
     return (← `(Dllbc.Term.letIn ⟨$(quote n1), "__if"⟩ $c'
-      (Dllbc.Term.matchE ⟨$(quote n1), "__if"⟩ (some ⟨$(quote (n1 + 1)), $(quote hName)⟩) none
+      (Dllbc.Term.matchE ⟨$(quote n1), "__if"⟩ (some ⟨$(quote (n1 + 1)), $(quote hName)⟩)
         [Dllbc.Branch.mk "True" [] $t', Dllbc.Branch.mk "False" [] $f'])), n3)
   | `(uterm| elim $scrut:uterm return $motive:uterm { $arms,* }) =>
     elabUElim rctx pctx next scrut motive arms.getElems
@@ -1439,6 +1481,10 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
   -- terms of the arrow; deleting it loses no rejection, only a duplicate.
   | `(ublk| fn $name:ident $[[$dec:ident]]? ( $ps,* ) -> $ret:uterm { $body:ublk } ; $rest:ublk) => do
     checkBinder name
+    -- A pending `show` above this `fn` must not drain inside its body (the
+    -- depth-blind hazard `takePendings` documents); it keys at the statement
+    -- AFTER the declaration instead.
+    let held ← takePendings
     -- **A FUNCTION NAME IS CAPITALISED** (M31 Stage A, §2.1). A `fn` desugars to
     -- a `let` of a λ ascribed its Π, and a function is comptime knowledge — so
     -- the binding that holds one must be a capital binding, by the same one rule
@@ -1542,61 +1588,17 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
         (parsedI.map fun (x, τ) => s!"{x.getId} : {srcText τ.raw}")
       ++ ") -> " ++ srcText ret.raw
     noteHover name.raw (hoverText nm sigText)
+    restorePendings held
     let (rest', n2) ← withHoverScope [(nm, sigText)]
       (elabUBlk ((nm, Dllbc.declSlot) :: rctx) pctx next rest)
     return (← `(Dllbc.Term.letIn $slot
                   (Dllbc.FnMacro.fnElabOrFail
                     (Dllbc.FnDef.mk $(quote nm) [$teleSyns,*] $retT $bodyT $decT))
                   (Dllbc.FnMacro.bindFn $slot $decT $rest')), n2)
-  -- **THE JOINING MATCH** (docs/19): `let x : τ = match s { … }; rest` — arms
-  -- as the uterm match row elaborates them; the emitted `matchE` carries
-  -- `some τ`, `pushContinuations` leaves the statement shape standing, and
-  -- `exploreD`'s join case checks each arm against τ and runs `rest` ONCE. An
-  -- expression scrutinee pre-binds OUTSIDE the whole statement (sugar (i)'s
-  -- move), so the join case still sees `letIn x (matchE …) rest`.
-  | `(ublk| let $x:ident : $τ:uterm = match $e:uterm { $arms,* } ; $rest:ublk) => do
-    checkBinder x
-    let occLo ← occMark
-    let (τ', n0) ← elabUTerm rctx pctx next τ
-    let (scrut, pre?, n1) ← elabScrut rctx pctx n0 e
-    let (arms', n2) ← elabUArms rctx pctx n1 arms.getElems.toList
-    let name := x.getId.toString
-    let pctx' := pctx.filter (fun s => s != name)
-    spanOfLet n2 name (mkNullNode #[x.raw, e.raw])
-    noteOcc x.raw n2 name
-    tagOccsFrom occLo (← `(Dllbc.Term.letIn ⟨$(quote n2), $(quote name)⟩
-                             Dllbc.Term.unit Dllbc.Term.unit))
-    let m ← `(Dllbc.Term.matchE $scrut none (some $τ') [$arms',*])
-    let (rest', n3) ← elabUBlk ((name, n2) :: rctx) pctx' (n2 + 1) rest
-    let stmt ← `(Dllbc.Term.letIn ⟨$(quote n2), $(quote name)⟩ $m $rest')
-    return (← wrapScrut scrut pre? stmt, n3)
-  -- …and the branch-equation form, `let x : τ = match h : s { … }; rest`.
-  | `(ublk| let $x:ident : $τ:uterm = match $h:ident : $e:uterm { $arms,* } ; $rest:ublk) => do
-    checkBinder x
-    checkBinder h
-    let occLo ← occMark
-    for arm in arms.getElems do
-      match arm with
-      | `(uarm| $_:ident ($args,*) => $_:uarmBody) =>
-        args.getElems.forM (fun p => liftM (refuseNestedPat p))
-      | _ => pure ()
-    let (τ', n0) ← elabUTerm rctx pctx next τ
-    let (scrut, pre?, n1) ← elabScrut rctx pctx n0 e
-    let hName := h.getId.toString
-    let (arms', n2) ← elabUArms ((hName, n1) :: rctx) pctx (n1 + 1) arms.getElems.toList
-    let name := x.getId.toString
-    let pctx' := pctx.filter (fun s => s != name)
-    spanOfLet n2 name (mkNullNode #[x.raw, e.raw])
-    noteOcc x.raw n2 name
-    tagOccsFrom occLo (← `(Dllbc.Term.letIn ⟨$(quote n2), $(quote name)⟩
-                             Dllbc.Term.unit Dllbc.Term.unit))
-    let m ← `(Dllbc.Term.matchE $scrut (some ⟨$(quote n1), $(quote hName)⟩) (some $τ') [$arms',*])
-    let (rest', n3) ← elabUBlk ((name, n2) :: rctx) pctx' (n2 + 1) rest
-    let stmt ← `(Dllbc.Term.letIn ⟨$(quote n2), $(quote name)⟩ $m $rest')
-    return (← wrapScrut scrut pre? stmt, n3)
   | `(ublk| let $x:ident = $e:uterm ; $rest:ublk) => do
     checkBinder x
     let occLo ← occMark
+    let held ← takePendings
     let (e', n1) ← elabUTerm rctx pctx next e
     -- **`let X = e` is a comptime binding** (§6) and needs no macro support: the
     -- mode of a runtime binder IS its `Var`'s name, so the kernel reads it off
@@ -1606,9 +1608,11 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- **ONE `let`, both fragments** (M29 α). This row used to branch on the mode:
     -- ⇒ minted a runtime slot and emitted `.letIn`, ⇝ emitted the β-redex
     -- `(λ. rest) e` over an anonymous binder. The kernel now reads `.letIn` under
-    -- BOTH arrows — ⇝'s reading is that same β, built at reflection (`reflectC`)
-    -- — so the surface has nothing left to decide, and this was the first of the
-    -- two branches the mode flag had.
+    -- BOTH arrows — so the surface has nothing left to decide, and this was the
+    -- first of the two branches the mode flag had. (⇝'s reading was a β built at
+    -- reflection until M32 R1; now `reflectC` carries the `letIn` through as
+    -- itself and `Pure.eval` binds `Pure.letName x.id` in its environment — no
+    -- redex is constructed.)
     --
     -- The old spelling was not merely a second encoding, it was a second
     -- SCOPE: a `let` used to push `pctx` in one fragment and `rctx` in the other,
@@ -1636,6 +1640,7 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- Every occurrence in this statement — the right-hand side's and the binder's
     -- — is filed under this statement's key, which is the POINT a hover on any of
     -- them asks about (docs/17).
+    restorePendings held
     tagOccsFrom occLo (← `(Dllbc.Term.letIn ⟨$(quote n1), $(quote name)⟩
                              Dllbc.Term.unit Dllbc.Term.unit))
     let (rest', n2) ← elabUBlk ((name, n1) :: rctx) pctx' (n1 + 1) rest
@@ -1657,21 +1662,34 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
   -- pre-existing — see the `let` row above. Whichever way it is settled, it should
   -- be settled for both at once, since these desugar to each other's forms.)
   | `(ublk| let $c:ident($args,*) = $e:uterm ; $rest:ublk) => do
+    let occLo0 ← occMark
+    let held ← takePendings
     let (scrut, pre?, n1) ← elabScrut rctx pctx next e
+    -- This row IS an arm whose body is the enclosing block, so its binders are
+    -- entry occurrences of the match it emits — tagged before the block
+    -- elaborates, so the range is the pattern alone.
+    let occLo ← occMark
     let (rctx', n2, argVars, pend) ← mintPatArgs rctx n1 args.getElems.toList
+    tagOccsEntry occLo (← `(Dllbc.Term.matchE $scrut none []))
+    -- The scrutinee's occurrences and any pending `show` above this row key at
+    -- the emitted match — the statement this row is.
+    restorePendings held
+    tagOccsFrom occLo0 (← `(Dllbc.Term.matchE $scrut none []))
     -- Nested arguments (M34 sugar (iii)) wrap the rest of the block in their
     -- matches, which is the same rewrite `elabUArm` performs — and has to be, since
     -- this row IS an arm whose body is the enclosing block. `let Pair(a, Pair(b, c))
     -- = p ;` and the two-line chain that spells it out are one `Term`.
     let (rest', n3) ← wrapPats rctx' n2 pend (fun r k => elabUBlk r pctx k rest)
-    let m ← `(Dllbc.Term.matchE $scrut none none
+    let m ← `(Dllbc.Term.matchE $scrut none
                 [Dllbc.Branch.mk $(quote c.getId.toString) [$argVars,*] $rest'])
     return (← wrapScrut scrut pre? m, n3)
   | `(ublk| $p:uterm := $e:uterm ; $rest:ublk) => do
     let occLo ← occMark
+    let held ← takePendings
     let (p', n1) ← elabUTerm rctx pctx next p
     let (e', n2) ← elabUTerm rctx pctx n1 e
     spanOfAssign p' e' (mkNullNode #[p, e])
+    restorePendings held
     tagOccsFrom occLo (← `(Dllbc.Term.assign $p' $e' Dllbc.Term.unit))
     let (rest', n3) ← elabUBlk rctx pctx n2 rest
     return (← `(Dllbc.Term.assign $p' $e' $rest'), n3)
@@ -1694,13 +1712,16 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     elabUBlk rctx pctx next rest
   | `(ublk| $e:uterm ; $rest:ublk) => do
     let occLo ← occMark
+    let held ← takePendings
     let (e', n1) ← elabUTerm rctx pctx next e
     spanOfStmt e' e
+    restorePendings held
     tagOccsFrom occLo e'
     let (rest', n2) ← elabUBlk rctx pctx n1 rest
     return (← `(Dllbc.Term.seq $e' $rest'), n2)
   | `(ublk| $e:uterm) => do
     let occLo ← occMark
+    let held ← takePendings
     let (e', n) ← elabUTerm rctx pctx next e
     -- The block's final expression. `stmtKeyOf` is applied in the emitted
     -- expression rather than mirrored by hand: a final `match` files under the
@@ -1711,6 +1732,7 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- block's final expression fell back to binder granularity. A pre-existing
     -- hole in docs/17's surface, fixed here because a trailing `show` anchors to
     -- this statement and there is always one.
+    restorePendings held
     tagOccsFrom occLo e'
     return (e', n)
   | _ => Macro.throwErrorAt stx "decl: unexpected block syntax"

@@ -451,9 +451,13 @@ def zeroHead : Term := withAny prog defer_check {
   ()
 }
 
+-- JOINED (docs/19 v2): one continuation path. The arms disagreed about the
+-- payload (`Cons 0 σtl` vs `Nil`), so the seam re-minted it as a fresh σ at the
+-- payload's own type — `y` is that σ, and the per-arm values are gone. The
+-- count is still half the assertion, now in the other direction: a fork
+-- reappearing here would make it two again.
 example : tailPaths zeroHead
-  [ [("x", .bot), ("b", .bot), ("y", cons (nat 0) (.sym 0))],
-    [("x", .bot), ("b", .bot), ("y", nil)] ] = true := by native_decide
+  [ [("x", .bot), ("b", .bot), ("y", .sym 0)] ] = true := by native_decide
 
 /-! ## §3.4 Symbolic variant change -/
 
@@ -467,12 +471,11 @@ def variantChange : Term := withAny prog defer_check {
   ()
 }
 
--- Both paths now leave the SAME Ω — the Cons path's `hd`/`tl` left with the arm
--- (M31 Stage 0) and were the only thing distinguishing it. The path COUNT is
--- what this assertion still discriminates on, which is the half it was kept for.
+-- JOINED (docs/19 v2), and this one is the LOSSLESS rule live: both arms leave
+-- the payload `Nil` (the Cons arm wrote it), the values convert, and the seam
+-- passes `Nil` through — no σ, no knowledge lost, one path.
 example : tailPaths variantChange
-  [ [("x", .bot), ("b", .bot), ("y", nil)],
-    [("x", .bot), ("b", .bot), ("y", nil)] ] = true := by native_decide
+  [ [("x", .bot), ("b", .bot), ("y", nil)] ] = true := by native_decide
 
 /-! ## Two-level symbolic match (composed refinements) -/
 

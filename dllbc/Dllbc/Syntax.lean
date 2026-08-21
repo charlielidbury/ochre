@@ -236,15 +236,8 @@ inductive Term where
       a proof of `Id τ ⟨the scrutinee's pre-split value⟩ ⟨this branch's
       constructor⟩`. One name for the whole match (its *type* is what varies per
       branch), exactly as in Lean's `match h : x with`. `none` is the plain
-      form — nothing extra is bound and nothing is minted.
-
-      The `Option Term` is the **motive** (docs/19): the declared result type of
-      a JOINING match, the surface `let x : τ = match s { … }`. `some τ` makes
-      the match a seam — each arm is checked against τ under its own refinement
-      and the continuation runs ONCE, from the pre-split environment, with `x`
-      a fresh σ : τ. `none` is today's fork: `pushContinuations` duplicates the
-      continuation into every arm and each path is walked to the fn's exit. -/
-  | matchE : Var → Option Var → Option Term → List Branch → Term
+      form — nothing extra is bound and nothing is minted. -/
+  | matchE : Var → Option Var → List Branch → Term
   /-- `e ; rest` — expression statement: ⇒-evaluate `e` for effect, discard
       its value, then run `rest`. Sequences a `match` (or any effectful term)
       used in statement position without binding a throwaway slot. -/
@@ -436,7 +429,7 @@ def Term.peelLams : Term → List (Var × Term) × Term
     those is one both arrows agree about. -/
 mutual
   def Term.imperative : Term → Bool
-    | .assign _ _ _ | .borrow _ | .seq _ _ | .matchE _ _ _ _
+    | .assign _ _ _ | .borrow _ | .seq _ _ | .matchE _ _ _
     | .call _ _ | .seal _ _ _ => true
     -- `a[lo ; ..]` reads its count off the extent map, which is state.
     | .range _ _ none _ _ _ => true
@@ -605,7 +598,7 @@ mutual
     | .range a l c r e eq1, .range b m d q f eq2 =>
       Term.beq a b && Term.beq l m && Term.beqOpt c d && Term.beqOpt r q
         && Term.beqOpt e f && Term.beqOpt eq1 eq2
-    | .matchE x e m as, .matchE y f m2 bs => x == y && e == f && Term.beqOpt m m2 && Term.beqBranches as bs
+    | .matchE x e as, .matchE y f bs => x == y && e == f && Term.beqBranches as bs
     | .seq a b, .seq c d => Term.beq a c && Term.beq b d
     | .call f as, .call g bs => f == g && Term.beqList as bs
     -- **The SITE is decoration here** (M32 R3), for the reason R2 gave for a λ's
@@ -873,9 +866,8 @@ mutual
         ++ (match rest with | some r => Term.freeRVars bound r | none => [])
         ++ (match ev with | some e => Term.freeRVars bound e | none => [])
         ++ (match eqc with | some e => Term.freeRVars bound e | none => [])
-    | .matchE scrut eqn m brs =>
+    | .matchE scrut eqn brs =>
       (if bound.contains scrut.name then [] else [scrut])
-        ++ (match m with | some t => Term.freeRVars bound t | none => [])
         ++ Term.freeRVarsBranches (match eqn with | some h => h.name :: bound | none => bound) brs
     | .seq a b => Term.freeRVars bound a ++ Term.freeRVars bound b
     | .call _ args => Term.freeRVarsList bound args
@@ -1358,7 +1350,7 @@ mutual
     | .letIn x _ _ => s!"let {x.name} = …"
     | .assign _ _ _ => "… := …"
     | .seq _ _ => "… ; …"
-    | .matchE x _ _ _ => s!"match {x.name} " ++ "{…}"
+    | .matchE x _ _ => s!"match {x.name} " ++ "{…}"
   termination_by t => sizeOf t
   def Term.prettyArgs : List Term → String
     | [] => ""
@@ -1446,12 +1438,9 @@ mutual
     | .call f args =>
       let (n1, args') := Term.numberSealsList n args
       (n1, .call f args')
-    | .matchE x eqn m brs =>
-      let (n0, m') := match m with
-        | some t => let (k, t') := Term.numberSealsGo n t; (k, some t')
-        | none => (n, none)
-      let (n1, brs') := Term.numberSealsBranches n0 brs
-      (n1, .matchE x eqn m' brs')
+    | .matchE x eqn brs =>
+      let (n1, brs') := Term.numberSealsBranches n brs
+      (n1, .matchE x eqn brs')
     | .seq a b =>
       let (n1, a') := Term.numberSealsGo n a
       let (n2, b') := Term.numberSealsGo n1 b

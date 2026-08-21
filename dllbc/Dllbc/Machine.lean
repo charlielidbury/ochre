@@ -364,7 +364,7 @@ structure St where
 
       The arm flag exists because the two are unwound by different events. A
       frame unwinds to a depth it recorded itself. An arm unwinds at the `@popArm`
-      seam `pushContinuations` left in its body — and the seam has to take any
+      seam the lazy builders (`pushJoinArms`) left in its body — and the seam has to take any
       scopes still open *inside* the arm with it, since a match in TAIL position
       within that arm has no seam of its own and its binders die with the arm that
       contains them. "Pop until an arm has been popped" is that rule, and the flag
@@ -393,10 +393,11 @@ structure St where
   -- across a refinement through them — so `refineSym`/`generalizeStuck` leave them
   -- alone and §3.2's swept-state principle does not apply.
   --
-  -- The key is the statement's own TERM rather than a path index because
-  -- `pushContinuations` DUPLICATES each continuation into every match arm: a
-  -- statement's position in the walked term is not its position in the source, and
-  -- differs per arm, while its term is the same term in every copy.
+  -- The key is the statement's own TERM rather than a path index because a
+  -- statement can still be walked more than once — arms of a terminal match are
+  -- one path each, and single-path walks rebuild the seam shape lazily
+  -- (`pushJoinArms`) — so its position in the walked term is not its position
+  -- in the source, while its term is the same term in every copy.
   /-- The statement currently being executed, in `stmtKeyOf` normal form. -/
   stmtKey : Option Term := none
   /-- The call argument currently being checked (`processArgs`), if any. Restored
@@ -455,14 +456,14 @@ def Diag.of (msg : String) (s : St) : Diag :=
   { msg := msg, stmtKey := s.stmtKey, argKey := s.argKey, trail := s.trail }
 
 /-- The key a statement is filed under: the statement stripped of its
-    continuation, since `pushContinuations` rewrites continuations but never the
-    statement itself. A `let` reduces to its binder — runtime ids are globally
+    continuation, since the walkers rebuild continuations (the lazy seam shape)
+    but never the statement itself. A `let` reduces to its binder — runtime ids are globally
     unique, so that alone identifies the statement and costs nothing to carry. -/
 def stmtKeyOf : Term → Term
   | .letIn x _ _ => .letIn x .unit .unit
   | .assign p rhs _ => .assign p rhs .unit
   | .seq e _ => e
-  | .matchE s eqn _ _ => .matchE s eqn none []
+  | .matchE s eqn _ => .matchE s eqn []
   | t => t
 
 /-- Enter a statement. Clears the argument key: a failure after a call returned
@@ -1673,7 +1674,7 @@ mutual
     | .assign _ _ _ => throwErr "readC (⇝): `:=` is excluded from the comptime fragment"
     | .borrow _ => throwErr "readC (⇝): `&mut` is not in the comptime fragment"
     | .seq _ _ => throwErr "readC (⇝): statement sequencing is not a comptime read"
-    | .matchE _ _ _ _ => throwErr "readC (⇝): match not implemented in the comptime fragment this milestone"
+    | .matchE _ _ _ => throwErr "readC (⇝): match not implemented in the comptime fragment this milestone"
     | .borrowT _ _ _ => throwErr "readC (⇝): borrow type `&mut (τ ↝ τ')` is only valid at a telescope position"
     -- **The callee is NAMED** (M31 Stage A), and it is load-bearing rather than
     -- cosmetic: `fn`'s statement lowering turns a refusal into an unbound `.call`
@@ -1927,7 +1928,7 @@ partial def calleeNames : Term → List String
   | .seq a b => calleeNames a ++ calleeNames b
   | .ctorApp _ args => args.flatMap calleeNames
   | .borrow t | .deref t => calleeNames t
-  | .matchE _ _ m bs => (match m with | some t => calleeNames t | none => []) ++ bs.flatMap (fun b => calleeNames b.body)
+  | .matchE _ _ bs => bs.flatMap (fun b => calleeNames b.body)
   | .app f a => calleeNames f ++ calleeNames a
   -- The one λ covers what `.lamR` used to need its own line for: an imperative
   -- body is ordinary runtime code and may call declared functions, so the
@@ -3330,10 +3331,11 @@ partial def collapseCDerefs (fuel : Nat) : Term → M Unit
 def findBranch (branches : List Branch) (name : String) : Option Branch :=
   branches.find? (fun b => b.ctor == name)
 
-/-- **Does this arm body carry a seam?** (M31 Stage 0.) `pushContinuations` marks
-    every arm it fuses with a continuation by wrapping its body in
-    `@armScope`, and the mark is what the arm's scope is TAGGED with when it
-    opens.
+/-- **Does this arm body carry a seam?** (M31 Stage 0.) The lazy seam builders
+    (`pushJoinArms`/`pushJoinArmsSeq`) mark every arm they fuse with a
+    continuation by wrapping its body in `@armScope`, and the mark is what the
+    arm's scope is TAGGED with when it opens. A joining match's arms carry no
+    mark — they are checked terminally and their states end at the seam.
 
     The tag is load-bearing rather than decorative, and the case that forces it is
     an arm whose body ends in a TAIL-position match: at the seam, the open scopes
@@ -3851,47 +3853,6 @@ def checkExhaustive (fuel : Nat) (scrutσ : Nat) (branches : List Branch) : M Un
         throwErr s!"match: non-exhaustive — no branch for constructor '{missing}' of the scrutinee's type"
       | none => pure ()
 
-
-/-! Move each statement-spine match into tail position by pushing the
-    continuation into every branch (duplicating it): `seq (matchE) k` and
-    `let y = matchE; k` become terminal matches. Match in *expression*
-    position is left where it is — `explore`/`readR` reject it clearly. -/
-mutual
-  def pushContinuations : Term → Term
-    | .letIn x rhs rest =>
-      match pushContinuations rhs with
-      -- A MOTIVED match (docs/19) keeps its continuation OUT of the arms: the
-      -- statement shape survives normalization and `exploreD`'s join case is
-      -- what consumes it. Only the `let` row can carry a motive (the grammar
-      -- puts it nowhere else), so the seq case below needs no twin.
-      -- (`pushContinuations rhs` reached the terminal row first, so `bs` arrive
-      -- with their arm INTERNALS already normalized — no second push here.)
-      | .matchE s eqn (some m) bs =>
-        .letIn x (.matchE s eqn (some m) bs) (pushContinuations rest)
-      | .matchE s eqn none bs =>
-        -- The seam marker goes between the arm's body and the continuation, and
-        -- AFTER `x` is bound: `x` is the enclosing scope's, the arm's binders are
-        -- not (M31 Stage 0, `readR`'s `@popArmL` case).
-        let k := Term.seq (.const "@popArmL") (pushContinuations rest)
-        .matchE s eqn none (bs.map (fun br => Branch.mk br.ctor br.binders
-          (.seq (.const "@armScope") (.letIn x br.body k))))
-      | rhs' => .letIn x rhs' (pushContinuations rest)
-    | .seq e rest =>
-      match pushContinuations e with
-      | .matchE s eqn m bs =>
-        let k := Term.seq (.const "@popArm") (pushContinuations rest)
-        .matchE s eqn m (bs.map (fun br => Branch.mk br.ctor br.binders
-          (.seq (.const "@armScope") (.seq br.body k))))
-      | e' => .seq e' (pushContinuations rest)
-    | .assign p rhs rest => .assign p rhs (pushContinuations rest)
-    | .matchE s eqn m bs => .matchE s eqn m (pushBranches bs)
-    | t => t
-  termination_by t => sizeOf t
-  def pushBranches : List Branch → List Branch
-    | [] => []
-    | (.mk c bs body) :: rest => Branch.mk c bs (pushContinuations body) :: pushBranches rest
-  termination_by bs => sizeOf bs
-end
 
 /-- Seed the telescope into Ω and `sctx`, returning the borrow obligations.
     Argument `i` gets runtime var id `i`. A pure (unrestricted) type τ →
@@ -5310,56 +5271,70 @@ def sealSym (key : SealKey) : M Nat := do
     modify (fun s => { s with sealSites := (key, σ) :: s.sealSites })
     pure σ
 
-/-! ## The join seam's helpers (docs/19)
+/-! ## The join seam's helpers (docs/19 v2)
 
-    Plain defs — the driver `exploreJoin` lives in the mutual below, these do
-    not recurse into it. -/
+    Plain defs — the drivers live in the mutual below, these do not recurse
+    into it. -/
 
-/-- Rebuild the FORK shape for a motived match on a CONCRETE scrutinee:
-    selection picks one arm, so fork ≡ join and `exploreMatch` — executing-mode
-    differential included — does exactly what it does today. `rest` and the arm
-    bodies arrive already `pushContinuations`-normalized. -/
+/-- Rebuild the FORK shape for a statement match that will be walked
+    SINGLE-PATH — a concrete scrutinee (⇒, or checking selection) and the
+    one-branch match (where fork ≡ join exactly): the arm body, the binder, and
+    the continuation behind the `@armScope`/`@popArmL` seam the pre-pass used
+    to build. `let` form. -/
 def pushJoinArms (x : Var) (rest : Term) (bs : List Branch) : List Branch :=
   bs.map (fun br => Branch.mk br.ctor br.binders
     (.seq (.const "@armScope") (.letIn x br.body (.seq (.const "@popArmL") rest))))
 
-/-- The seam check on one arm result: the TYPING half of `auditAction` — the
-    botElim ex-falso escape, then `hasType` against the arm's `retTyVal`, which
-    holds the MOTIVE as this arm's refinement rewrote it (`refineSym` sweeps
-    `retTyVal`, so the motive is instantiated per-arm for free). Obligations are
-    NOT audited here: loans stay open across the seam and the fn's exit audit
-    asks about them once, on the joined path. -/
-def armSeamCheck (fuel : Nat) (v : Val) : M Unit := do
-  match (← get).retTyVal with
-  | none => throwErr "join: arm state lost its motive"
-  | some motiveArm =>
-    match (match v with | .know t => Pure.collectSpineT t | _ => (.unit, [])) with
-    | (.const "botElim", [_, x]) =>
-      if ← hasTypeT fuel x (.const "Bot") then pure ()
-      else throwErr s!"join: botElim arm result on a non-⊥ argument ({x.pretty})"
-    | _ =>
-      if ← hasType fuel v motiveArm then pure ()
-      else throwErr s!"join: arm result ({v.pretty}) does not have the declared motive ({motiveArm.pretty})"
+/-- As `pushJoinArms`, `seq` form (`@popArm`, no binder survives the arm). -/
+def pushJoinArmsSeq (rest : Term) (bs : List Branch) : List Branch :=
+  bs.map (fun br => Branch.mk br.ctor br.binders
+    (.seq (.const "@armScope") (.seq br.body (.seq (.const "@popArm") rest))))
 
-/-- **The slot join** (docs/19 §3.4): the continuation's Ω, one slot at a time.
-    A slot every arm left `Val.beq`-equal to the pre-split value passes through;
-    a slot the arms all rewrote to ONE agreed value takes it (every path did
-    it); a slot the arms disagree about is CONSUMED — `⊥` — the conditional-move
-    rule, conservative for writes too: a borrow payload the arms diverged on
-    becomes a hole the exit audit will refuse, so divergent effects must ride
-    the motive or keep the fork. The scrutinee's slot is handled before this
-    runs and is skipped here. -/
-def joinSlots (scrut : Var) (base : Omega) (armEnvs : List Omega) : Omega :=
-  base.map (fun (kv : Var × Val) =>
-    if kv.1.id == scrut.id then kv else
-    let armVs := armEnvs.filterMap (fun ω => (ω.find? (fun e => e.1.id == kv.1.id)).map (·.2))
-    if armVs.length != armEnvs.length then (kv.1, .bot)   -- dropped in some arm
-    else if armVs.all (fun v => Val.beq v kv.2) then kv
-    else match armVs with
-      | v0 :: vs =>
-        if vs.all (fun v => Val.beq v v0) then (kv.1, v0)
-        else (kv.1, .bot)
-      | [] => kv)
+mutual
+  /-- Marker-free: knowledge and constructor nodes only — no holes, loans,
+      borrows, closures. What the join's value rules may pass or type. -/
+  def pureValP : Val → Bool
+    | .know _ => true
+    | .node _ args => pureValListP args
+    | _ => false
+  termination_by v => sizeOf v
+  def pureValListP : List Val → Bool
+    | [] => true
+    | v :: vs => pureValP v && pureValListP vs
+  termination_by vs => sizeOf vs
+end
+
+/-- Does `t` avoid every σ in `[lo, hi)`? An arm-minted σ may not cross the
+    seam: two arms mint from the SAME counter, so the same id can mean two
+    different things (both arms of an `if` mint their equation at one id), and
+    a value or type citing one would smuggle arm-local meaning into the joined
+    state. Probed by substitution rather than a dedicated collector. -/
+def symFreeIn (lo hi : Nat) (t : Term) : Bool :=
+  (List.range (hi - lo)).all (fun i =>
+    Term.beq (Term.substSym (lo + i) (.const "@joinProbe") t) t)
+
+/-- The closed constructor basis's head types — rule (b)'s synthesis for
+    constructor-headed values. Parametrized heads (`Cons`…) are NOT here: their
+    parameter is not synthesizable from a value, so they fall through to the
+    pack rule or the rejection. -/
+def ctorHeadTy? : String → Option Term
+  | "True" | "False" => some (.const "Bool")
+  | "Z" | "S" => some (.const "Nat")
+  | "unit" => some (.const "Unit")
+  | _ => none
+
+/-- A candidate type for one arm's value: a bare σ reads its type from that
+    ARM's exit `sctx`; a constructor-headed value from the closed basis. -/
+def joinHeadTy? (v : Val) (sctxA : List (Nat × Term)) : Option Term :=
+  match v.symOf? with
+  | some σ => sctxA.lookup σ
+  | none =>
+    match subsKnowledge v with
+    | .ctorApp c _ => ctorHeadTy? c
+    | t =>
+      match Pure.collectSpineT t with
+      | (.const c, _) => ctorHeadTy? c
+      | _ => none
 
 /-- Merge the arms' minted state into the join base: counters past every arm's
     (the `auditAllPathsD` move), seal-site keys unioned (a σ a nested seal was
@@ -5376,6 +5351,132 @@ def mergeArmMints (base : St) (exits : List St) : St :=
                else e :: acc) a.sealSites,
              ledgers := Ledgers.closePath s.ledgers
                           (Ledgers.own s.ledgers base.ledgers) a.ledgers }) base
+
+/-- End every loan an ARM minted (id ≥ `lo`), innermost (latest) first — the
+    loan-ending half of the seam pop, run on the arm's exit state so a borrow
+    scrutinee's payload collapses back to a VALUE the ladder can read. Loans
+    the arm inherited (id < `lo`) are the continuation's business, not the
+    arm's, and are left alone. -/
+def collapseArmLoansFrom (fuel : Nat) (lo : Nat) : M Unit := do
+  let hi := (← get).nextLoan
+  for i in List.range (hi - lo) do
+    let ℓ := hi - 1 - i
+    if (← getEnv).any (fun kv => (findBorrowPayload ℓ kv.2).isSome) then
+      endLoan fuel ℓ
+
+/-- **THE LADDER** (docs/19 v2 §2): join one slot's (or the result's) values
+    across the arms, conservatively.
+
+      1. a base value every arm left `Val.beq`-identical → the base (lossless);
+      2. `⊥` anywhere on top → `⊥` (conditional move = moved after);
+      3. borrows: same loan in every arm → recurse on the payloads (owed type
+         as the synthesis source); anything else structural → reject;
+      4. marker-free values that CONVERT across arms, citing no arm-minted σ →
+         pass the agreed value through (lossless — this is what keeps agreeing
+         arms free);
+      5. a synthesizable common type (arm `sctx` for σs, the closed basis for
+         constructor heads) → fresh σ at it;
+      6. `Pair` values → the dependent-pack heuristic: join components left to
+         right; when a component joins at a fresh σ, LATER components' candidate
+         types first abstract that component's per-arm VALUE into the σ
+         (`Term.abstractInto`) — `Pair(True, e)`/`Pair(False, e)` joins at
+         `Σ (b : Bool). Id … b` with no annotation;
+      7. otherwise reject, naming the slot, the arms, and the remedy.
+
+    `arms` pairs each arm's value with (its exit `sctx`, its σ-mint range).
+    `where` is the slot's name for the error; `ctors` label the arms. -/
+def joinVal (slotName : String) (ctors : List String) (st0sctx : List (Nat × Term))
+    (lo : Nat) :
+    Nat → Option Val → List (Val × List (Nat × Term) × Nat) → Option Term → M Val
+  | 0, _, _, _ => throwErr "join: out of fuel (value ladder)"
+  | _, _, [], _ => throwErr s!"join: no arms at {slotName} (unreachable)"
+  | fuel + 1, base?, arms@((v0, sctx0, hi0) :: restArms), tySrc => do
+    let vs := arms.map (·.1)
+    let disagreeMsg := s!"join: the arms disagree at {slotName} ({String.intercalate ", " (ctors.zip vs |>.map (fun (c, v) => s!"{c} ⇒ {v.pretty}"))}) and no common type is synthesizable — make the match return the disagreement as data (with its evidence, e.g. a Pair carrying a branch equation), or restructure into one match"
+    -- (1) untouched slot
+    if let some b := base? then
+      if vs.all (fun v => Val.beq v b) then return b
+    -- (2) conditional move
+    if vs.any (fun v => match v with | .bot => true | _ => false) then return .bot
+    -- (3) borrow structure
+    match base? with
+    | some (.borrowM ℓ pb) =>
+      let pays ← arms.mapM (fun (v, sctxA, hiA) => do
+        match v with
+        | .borrowM ℓ2 p =>
+          if ℓ2 == ℓ then pure (p, sctxA, hiA)
+          else throwErr s!"join: the arms disagree at {slotName} — the slot holds DIFFERENT loans per arm (ℓ{ℓ} vs ℓ{ℓ2}); a borrow chosen per-branch needs loan-set borrows, which are out of scope — restructure so both branches leave the same borrow"
+        | _ => throwErr s!"join: the arms disagree at {slotName} — a borrow in one arm is {v.pretty} in another; restructure so the branches leave the same shape")
+      -- the owed type: the loan's debt if the caller recorded one, else the
+      -- payload σ's own type in the pre-split sctx
+      let tySrc2 := tySrc.orElse (fun _ => pb.symOf?.bind (st0sctx.lookup ·))
+      let p ← joinVal slotName ctors st0sctx lo fuel (some pb) pays tySrc2
+      return .borrowM ℓ p
+    | _ =>
+    if !(vs.all pureValP) then throwErr disagreeMsg
+    -- (4) agreeing pure values, arm-σ-free
+    let armFree := arms.all (fun (v, _, hiA) => symFreeIn lo hiA (subsKnowledge v))
+    if armFree && vs.all (fun v => Pure.convert fuel (subsKnowledge v) (subsKnowledge v0)) then
+      return v0
+    -- (6, tried before 5 for Pairs) the dependent-pack heuristic
+    match vs.mapM Val.asCtor? with
+    | some cs =>
+      if cs.all (fun c => c.1 == "Pair" && c.2.length == 2) then do
+        let fsts := (arms.zip cs).map (fun ((_, sctxA, hiA), c) => (c.2[0]!, sctxA, hiA))
+        let snds := (arms.zip cs).map (fun ((_, sctxA, hiA), c) => (c.2[1]!, sctxA, hiA))
+        let fst ← joinVal (slotName ++ ".1") ctors st0sctx lo fuel none fsts none
+        match fst.symOf? with
+        | none => do
+          let snd ← joinVal (slotName ++ ".2") ctors st0sctx lo fuel none snds none
+          return .ctor "Pair" [fst, snd]
+        | some σf => do
+          -- σf is fresh: later components' types abstract each arm's FIRST
+          -- value into it before comparing
+          let cands ← snds.foldlM (fun acc (v, sctxA, hiA) => do
+            match joinHeadTy? v sctxA with
+            | none => throwErr disagreeMsg
+            | some τ => pure (acc ++ [(Term.abstractInto (subsKnowledge (fsts[acc.length]!).1) σf τ, hiA)])) []
+          match cands with
+          | [] => throwErr disagreeMsg
+          | (τ0, hi0c) :: restC => do
+            if !(symFreeIn lo hi0c τ0) then throwErr disagreeMsg
+            if restC.all (fun (τ, hiA) => symFreeIn lo hiA τ && Pure.convert fuel τ τ0) then do
+              let σs ← freshSym
+              modify fun st => { st with sctx := (σs, τ0) :: st.sctx }
+              return .ctor "Pair" [fst, .know (.sym σs)]
+            else throwErr disagreeMsg
+      else joinFreshTyped fuel arms tySrc disagreeMsg
+    | none => joinFreshTyped fuel arms tySrc disagreeMsg
+  termination_by fuel _ _ _ => fuel
+where
+  /-- (5) a fresh σ at a synthesized common type: the owed/declared source when
+      one exists, else the first arm's head synthesis — then every arm's value
+      must actually HAVE the candidate type (`hasType`, the checker's own
+      judgment — not per-arm re-synthesis, which would refuse `Nil` at
+      `List Nat` for wanting a parameter it cannot invent). -/
+  joinFreshTyped (fuel : Nat)
+      (arms : List (Val × List (Nat × Term) × Nat)) (tySrc : Option Term)
+      (disagreeMsg : String) : M Val := do
+    let cand? := tySrc.orElse (fun _ =>
+      match arms with
+      | (v0, sctx0, _) :: _ => joinHeadTy? v0 sctx0
+      | [] => none)
+    match cand? with
+    | none => throwErr disagreeMsg
+    | some τ => do
+      if !(symFreeIn lo ((arms.map (·.2.2)).foldl max lo) τ) then throwErr disagreeMsg
+      -- an arm's value is typed in the ARM's context — its σs live in the
+      -- arm's exit sctx, not the join's
+      let oks ← arms.mapM (fun (v, sctxA, _) => do
+        let saved := (← get).sctx
+        modify fun st => { st with sctx := sctxA }
+        let ok ← hasType fuel v τ
+        modify fun st => { st with sctx := saved }
+        pure ok)
+      if !(oks.all id) then throwErr disagreeMsg
+      let σ ← freshSym
+      modify fun st => { st with sctx := (σ, τ) :: st.sctx }
+      pure (.know (.sym σ))
 
 /-! ## ⇒ (read): the move arrow
 
@@ -5536,13 +5637,15 @@ mutual
             setAtPos fuel pos (.loanM ℓ)                   -- park the loan marker
             mergeRoot pos.root                             -- the residues re-merge around it
             pure (.borrowM ℓ v)                            -- ownership of v moves into the borrow
-      -- A MOTIVED let-match evaluated by ⇒ (docs/19): a concrete run selects
-      -- one arm, so fork ≡ join — rebuild the fork's seam shape and walk it,
-      -- which is what pops the arm scope (`@popArmL`) exactly as the fork does.
-      | .letIn x (.matchE s eqn (some _) bs) rest =>
-        if x.isComptime then
-          throwErr s!"join: '{x.name}' — a comptime let cannot take a runtime match (⇝ has no match)"
-        else readR fuel (.matchE s eqn none (pushJoinArms x rest bs))
+      -- A STATEMENT-SHAPE match evaluated by ⇒ (docs/19 v2): the spine keeps
+      -- its continuations now, so the seam shape the pre-pass used to build is
+      -- built HERE, lazily — one arm is selected (⇒ is concrete), the marker
+      -- walk pops the arm scope, and executing behaviour is the old normal
+      -- form's by construction.
+      | .letIn x (.matchE s eqn bs) rest =>
+        readR fuel (.matchE s eqn (pushJoinArms x rest bs))
+      | .seq (.matchE s eqn bs) rest =>
+        readR fuel (.matchE s eqn (pushJoinArmsSeq rest bs))
       | .letIn x rhs rest => do
         -- **`let X = e` is a comptime binding** (§6): `e` is evaluated under ⇝,
         -- `X` is erased and non-consuming, and the fence confines it to
@@ -5563,7 +5666,7 @@ mutual
       -- **One match rule, two drivers** (M33 Σ0's prerequisite): `matchStep` is
       -- what used to be spelled out here, and `readRTail` reaches the same rule
       -- rather than a copy of it.
-      | .matchE scrut eqn _ branches => do readR fuel (← matchStep fuel scrut eqn branches)
+      | .matchE scrut eqn branches => do readR fuel (← matchStep fuel scrut eqn branches)
       | .seq e rest => do
         seqStep fuel e
         readR fuel rest
@@ -5616,8 +5719,9 @@ mutual
       | .lam _ _ _ => throwErr s!"a λ is knowledge and needs a comptime destination — a capital `let`, a ⇝ parameter, a Σ0 component or tail, or an ascription. This one ({t.pretty}) is in none of them: it is being ⇒-read, which is the arrow that MOVES runtime data, and a function value is not runtime data. Bind it to a capital name first (`let F = λ …`), pass it at a capital parameter, put it under a `Σ0` tail, or ascribe it (`(λ … : Π …)`)."
 
       | .unit => pure (.ctor "unit" [])
-      -- **The match-arm seam** (M31 Stage 0). `pushContinuations` fuses a
-      -- statement-position match with the continuation that followed it, which
+      -- **The match-arm seam** (M31 Stage 0). A single-path walk fuses a
+      -- statement-position match with the continuation that followed it
+      -- (`pushJoinArms`, built where the match is walked), which
       -- puts the continuation lexically INSIDE each arm and so silently extends
       -- the arm binders' scope over it. These two markers are the seam the fusion
       -- would otherwise erase: they name the point where the arm's own body
@@ -5867,19 +5971,18 @@ mutual
     | 0, _, _ => throwErr "readRTail: out of fuel"
     | fuel + 1, ty, t =>
       match t with
-      | .letIn x (.matchE s eqn (some _) bs) rest =>
-        if x.isComptime then
-          throwErr s!"join: '{x.name}' — a comptime let cannot take a runtime match (⇝ has no match)"
-        else readRTail fuel ty (.matchE s eqn none (pushJoinArms x rest bs))
+      | .letIn x (.matchE s eqn bs) rest =>
+        readRTail fuel ty (.matchE s eqn (pushJoinArms x rest bs))
+      | .seq (.matchE s eqn bs) rest =>
+        readRTail fuel ty (.matchE s eqn (pushJoinArmsSeq rest bs))
       | .letIn x rhs rest => do letStep fuel x rhs; readRTail fuel ty rest
       | .assign place rhs rest => do assignStep fuel place rhs; readRTail fuel ty rest
       | .seq e rest => do seqStep fuel e; readRTail fuel ty rest
-      | .matchE scrut eqn _ branches => do
-        -- A match in TAIL position: every arm's body ends where this one does, so
-        -- the type goes into the arm. This is what `pushContinuations` makes the
-        -- common case — a statement-position match is fused with the continuation
-        -- that followed it, so a body whose source ends in `Pair(…)` after a match
-        -- has that `Pair` inside each arm.
+      | .matchE scrut eqn branches => do
+        -- A match in TAIL position: every arm's body ends where this one does,
+        -- so the type goes into the arm. (A STATEMENT-position match never gets
+        -- here raw — the rows above rebuild the seam shape first — so this is
+        -- the genuine tail case, plus the rebuilt shapes those rows produce.)
         readRTail fuel ty (← matchStep fuel scrut eqn branches)
       | other => readResult fuel ty other
   termination_by fuel _ _ => (fuel, 0, 0)
@@ -6149,12 +6252,12 @@ mutual
       frame's loans nor its environment can outlive it. -/
   def applyClosure : Nat → Omega → List Var → Term → Option Term → List Val → M Val
     | fuel, ρ, names, body, ascr, args => do
-      -- **The body is normalized here too** (M31 Stage 0). `checkRFnBody` has
-      -- always walked `pushContinuations body`; the executing machine walked the
-      -- body raw, and the two agreed about match-arm scope only by accident.
-      -- Now both walk the same normal form, so the seam markers (and therefore
-      -- the arm scopes) are the same on both.
-      let normalized := pushContinuations body
+      -- **No pre-normalization since docs/19 v2**: the spine keeps its
+      -- continuations, and the seam shape is built lazily at the point of use —
+      -- `readRTail`'s own statement-match rows (⇒, concrete selection) and
+      -- `exploreD`'s join rows (checking) construct the SAME `pushJoinArms`
+      -- shape, so the M31 checker/executor arm-scope agreement holds at the
+      -- builder rather than at a pre-pass.
       -- **The frame is a scope** (M31 Stage 0): its watermark is taken before the
       -- parameters land, and `popScopesTo` below both ends the borrows it still
       -- holds and takes its slots with it. Loans the result carries out are
@@ -6169,7 +6272,7 @@ mutual
       -- later — which is now also the whole of what a frame is.
       ρ.forM (fun kv => bindSlot kv.1 kv.2)
       (names.zip args).forM (fun p => bindSlot p.1 p.2)
-      let res ← readRTail fuel (calleeRetTy names ascr) normalized
+      let res ← readRTail fuel (calleeRetTy names ascr) body
       popScopesTo fuel (depth - 1) 0 res.loanIds
       pure res
   termination_by fuel _ _ _ _ _ => (fuel, 4, 0)
@@ -6413,7 +6516,7 @@ mutual
       -- here; that left every error in a function body unlocalized, which is where
       -- most of the corpus is.
       let advanced ← auditAllPathsD fuel ret
-        (exploreD fuel (pushContinuations body) st0) st0.ledgers st0
+        (exploreD fuel body st0) st0.ledgers st0
       -- `sealSites` crosses back out with the supplies, and for the same reason
       -- (M32 R3): it is a fact about which σ ids are spoken for, so restoring the
       -- caller's copy would let a later mint hand out a σ this audit already
@@ -6874,9 +6977,10 @@ mutual
                                     debts := s.debts ++ callDebts ++ issueDebts })
           pure resultVal
   termination_by fuel _ _ => (fuel, 5, 0)
-  -- Walk the (already `pushContinuations`-normalized) statement spine,
+  -- Walk the statement spine as written (docs/19 v2: no pre-normalization),
   -- returning one result per execution path. Non-match steps delegate to the
-  -- single-path `M` machinery; a terminal match forks per branch on a symbolic
+  -- single-path `M` machinery; a STATEMENT-position match is JOINED
+  -- (`exploreJoin`); a terminal match forks per branch on a symbolic
   -- scrutinee, stays single-path on a concrete one. Fuel bounds spine depth.
   -- The lexicographic `(fuel, tag, len)` measure admits the same-fuel handoffs
   -- (match → per-branch loop → branch body). -/
@@ -6884,22 +6988,23 @@ mutual
     | 0, _, _ => [.error { msg := "explore: out of fuel" }]
     | fuel + 1, t, st =>
       match t with
-      -- A TERMINAL match ignores any motive: nothing follows it, so there is
-      -- nothing to join and the fork semantics is the join. Only the statement
-      -- shape below has a seam to build.
-      | .matchE scrut eqn _ branches => exploreMatch fuel scrut eqn branches st
-      -- **THE JOIN** (docs/19): `let x : τ = match s { … }; rest` — arms are
-      -- checked against τ under their own refinements, `rest` runs ONCE.
-      | .letIn x (.matchE scrut eqn (some motive) branches) rest =>
-        if x.isComptime then
-          [.error { msg := s!"join: '{x.name}' — a comptime let cannot take a runtime match (⇝ has no match)" }]
-        else exploreJoin fuel x scrut eqn motive branches rest st
+      -- A TERMINAL match: nothing follows it, so there is nothing to join —
+      -- one audited path per arm, exactly as ever (a tail match's arms each
+      -- end the body, and the fork and the join coincide with no continuation).
+      | .matchE scrut eqn branches => exploreMatch fuel scrut eqn branches st
+      -- **THE JOIN, UNCONDITIONALLY** (docs/19 v2): a STATEMENT-position match
+      -- — both shapes — checks its arms terminally under their refinements and
+      -- then the continuation ONCE, from the pre-split state, per-slot by the
+      -- conservative ladder. No annotation, no fork.
+      | .letIn x (.matchE scrut eqn branches) rest =>
+        exploreJoin fuel (some x) scrut eqn branches rest st
+      | .seq (.matchE scrut eqn branches) rest =>
+        exploreJoin fuel none scrut eqn branches rest st
       -- §6's comptime `let`, HERE as well as in `readR`. The explore driver does
       -- not route statement-spine steps through `readR`'s own `.letIn` case, so a
-      -- rule that lives only there would be dead for every real body — which is
-      -- what `pushContinuations` normalizes a body into. Since M33's Σ0
-      -- prerequisite that is not two copies of the rule but ONE (`letStep`), for
-      -- the reason the third driver made unignorable.
+      -- rule that lives only there would be dead for every real body. Since
+      -- M33's Σ0 prerequisite that is not two copies of the rule but ONE
+      -- (`letStep`), for the reason the third driver made unignorable.
       | .letIn x rhs rest =>
         match (letStep fuel x rhs).run st with
         | .error e sErr => [.error (Diag.of e sErr)]
@@ -6981,7 +7086,7 @@ mutual
       -- real body writes — arrives here instead. Fencing one and not the other
       -- would have left the headline rejection (`match Fuel`) unreachable, which
       -- is how this was found: the test failed, not the reasoning.
-      match (do noteStmt (.matchE scrut eqn none branches)
+      match (do noteStmt (.matchE scrut eqn branches)
                 fenceComptime scrut "cannot be the scrutinee of a runtime match").run st with
       | .error e sErr => [.error (Diag.of e sErr)]
       | .ok _ st =>
@@ -7020,16 +7125,22 @@ mutual
        | .ok body st' => exploreD fuel body st')
       ++ exploreSymBranches fuel scrut borrow ℓ σ stuck eqn rest st
   termination_by fuel _ _ _ _ _ _ branches _ => (fuel, 1, branches.length)
-  /-- **The join driver** (docs/19 §3): `let x : τ = match scrut { … }; rest`.
-      Arms are checked against τ under their own refinements (`joinSym`); the
-      continuation runs ONCE, from the pre-split state, with `x` a fresh σ : τ.
-      A CONCRETE scrutinee selects one arm, so fork ≡ join — the fork shape is
-      rebuilt (`pushJoinArms`) and `exploreMatch` handles it exactly as today,
-      executing-mode differential included. -/
-  def exploreJoin : Nat → Var → Var → Option Var → Term → List Branch → Term → St →
+  /-- **The join driver, unconditional** (docs/19 v2): a STATEMENT-position
+      match, either shape. `x?` is the `let` binder (`none` for `seq`, whose
+      result is discarded). A CONCRETE scrutinee and the ONE-BRANCH match are
+      walked single-path in the fork shape — with one arm the fork and the join
+      are the same walk, so field knowledge and arm scoping are kept losslessly
+      — and every genuinely branching symbolic match is joined. -/
+  def exploreJoin : Nat → Option Var → Var → Option Var → List Branch → Term → St →
       List (Except Diag (Val × St))
-    | fuel, x, scrut, eqn, motive, branches, rest, st =>
-      match (do noteStmt (.matchE scrut eqn none branches)
+    | fuel, x?, scrut, eqn, branches, rest, st =>
+      let rebuilt := match x? with
+        | some x => pushJoinArms x rest branches
+        | none => pushJoinArmsSeq rest branches
+      if branches.length == 1 then
+        exploreMatch fuel scrut eqn rebuilt st
+      else
+      match (do noteStmt (.matchE scrut eqn branches)
                 fenceComptime scrut "cannot be the scrutinee of a runtime match"
                 reorgScrut fuel scrut).run st with
       | .error e sErr => [.error (Diag.of e sErr)]
@@ -7038,74 +7149,80 @@ mutual
         | .ownedCtor _ _ | .borrowCtor _ _ _ =>
           -- Delegate on the ORIGINAL state: `exploreMatch` re-runs the fence
           -- and the reorganization itself.
-          exploreMatch fuel scrut eqn (pushJoinArms x rest branches) st
+          exploreMatch fuel scrut eqn rebuilt st
         | .ownedSym σ stuck =>
-          joinSym fuel x scrut motive false 0 σ stuck eqn branches rest stR
+          joinSym fuel x? scrut false 0 σ stuck eqn branches rest stR
         | .borrowSym ℓ σ =>
-          joinSym fuel x scrut motive true ℓ σ none eqn branches rest stR
-  termination_by fuel _ _ _ _ _ _ _ => (fuel, 3, 0)
-  /-- The symbolic half of the join: every arm from the same pre-split `St₀`,
-      each checked against the motive under its own refinement, then ONE
-      continuation from `St₀` + the seam's re-mints (docs/19 §3.4). -/
-  def joinSym : Nat → Var → Var → Term → Bool → Nat → Nat → Option Term → Option Var →
+          joinSym fuel x? scrut true ℓ σ none eqn branches rest stR
+  termination_by fuel _ _ _ _ _ _ => (fuel, 3, 0)
+  /-- The symbolic join: every arm from the same pre-split `St₀` (checked
+      exactly as today — refinement, branch equations, modes), then ONE
+      continuation from `St₀` with every slot joined by the ladder and the
+      result bound by it too. Per-arm knowledge dies at the seam; obligations
+      carry from `St₀` (loan-keyed); the fn's audit runs once, on the joined
+      path. -/
+  def joinSym : Nat → Option Var → Var → Bool → Nat → Nat → Option Term → Option Var →
       List Branch → Term → St → List (Except Diag (Val × St))
-    | fuel, x, scrut, motive, borrow, ℓ, σ, stuck, eqn, branches, rest, stR =>
-      match (do let mv ← readC fuel motive
-                checkExhaustive fuel σ branches
-                pure mv).run stR with
+    | fuel, x?, scrut, borrow, ℓ, σ, stuck, eqn, branches, rest, stR =>
+      match (checkExhaustive fuel σ branches).run stR with
       | .error e sErr => [.error (Diag.of e sErr)]
-      | .ok mv st0 =>
-        let armPaths := exploreJoinArms fuel scrut borrow ℓ σ stuck eqn mv branches st0
+      | .ok _ st0 =>
+        let armPaths := exploreJoinArms fuel scrut borrow ℓ σ stuck eqn st0.nextLoan branches st0
         match armPaths.foldr (fun p acc => do pure ((← p) :: (← acc)))
                 (Except.ok [] : Except Diag (List (Val × St))) with
         | .error d => [.error d]
         | .ok exits =>
           let stM := mergeArmMints st0 (exits.map (·.2))
+          let ctors := branches.map (·.ctor)
+          let armCtx := exits.map (fun (_, stA) => (stA.sctx, stA.nextSym))
           let joinAct : M Unit := do
-            -- The scrutinee's slot: consumed (owned), or the payload re-minted
-            -- as a fresh σ' at the scrutinee σ's own type (borrow — arms may
-            -- have written through it; the opaque-fill move). An untyped σ
-            -- leaves a hole the exit audit will refuse — conservative.
-            if borrow then
-              match (← get).sctx.lookup σ with
-              | none => setSlot scrut (.borrowM ℓ .bot)
-              | some τs => do
-                let σ' ← freshSym
-                modify fun s => { s with sctx := (σ', τs) :: s.sctx }
-                setSlot scrut (.borrowM ℓ (.know (.sym σ')))
-            else setSlot scrut .bot
-            -- The rest of Ω, slot by slot.
-            modify fun s => { s with
-              env := joinSlots scrut s.env (exits.map (fun e => e.2.env)) }
-            -- The result: a fresh σ at the motive — the motive VALUE as read at
-            -- the PRE-SPLIT state, so it stands at the un-refined scrutinee σ.
-            let σb ← freshSym
-            modify fun s => { s with sctx := (σb, mv) :: s.sctx }
-            bindSlot x (.know (.sym σb))
+            -- Ω, slot by slot: the ladder decides each one. A slot an arm
+            -- dropped is gone (⊥). The scrutinee needs no special case — an
+            -- owned split leaves it ⊥ in every arm (rule 2), and a borrow
+            -- split leaves the same loan whose collapsed payload the ladder
+            -- re-types at the owed source (rule 3).
+            let baseEnv := (← get).env
+            let newEnv ← baseEnv.mapM (fun kv => do
+              let armVs := (exits.zip armCtx).map (fun ((_, stA), (sctxA, hiA)) =>
+                (((stA.env.find? (fun e => e.1.id == kv.1.id)).map (·.2)).getD .bot, sctxA, hiA))
+              let v ← joinVal s!"'{kv.1.name}'" ctors st0.sctx st0.nextSym fuel (some kv.2) armVs none
+              pure (kv.1, v))
+            modify fun stJ => { stJ with env := newEnv }
+            -- the result: the ladder again, with no base — bound only for the
+            -- `let` shape; a `seq` match's result is discarded, disagreements
+            -- and all
+            match x? with
+            | none => pure ()
+            | some x => do
+              let armRs := (exits.zip armCtx).map (fun ((v, _), (sctxA, hiA)) => (v, sctxA, hiA))
+              let rv ← joinVal s!"the result bound to '{x.name}'" ctors st0.sctx st0.nextSym fuel none armRs none
+              bindSlot x rv
           match joinAct.run stM with
           | .error e sErr => [.error (Diag.of e sErr)]
           | .ok _ stJ => exploreD fuel rest stJ
-  termination_by fuel _ _ _ _ _ _ _ _ _ _ _ => (fuel, 2, 1)
-  /-- One arm of a joining match: setup exactly as the fork's
-      (`symOwnedSetup`/`symBorrowSetup`, branch equations included), explored
-      TERMINALLY with the motive riding `retTyVal` — so `refineSym` instantiates
-      the motive per-arm — and each arm path sealed by `armSeamCheck`. -/
+  termination_by fuel _ _ _ _ _ _ _ _ _ _ => (fuel, 2, 1)
+  /-- One arm of a joining match: setup exactly as the fork's (`symOwnedSetup`/
+      `symBorrowSetup` — refinement, branch equations, modes), explored
+      TERMINALLY with no result type (`retTyVal := none`; the seam's ladder is
+      what judges the values), then the arm's own loans ended
+      (`collapseArmLoansFrom`) so a borrow scrutinee's payload is a VALUE at
+      the seam. -/
   def exploreJoinArms : Nat → Var → Bool → Nat → Nat → Option Term → Option Var →
-      Term → List Branch → St → List (Except Diag (Val × St))
+      Nat → List Branch → St → List (Except Diag (Val × St))
     | _, _, _, _, _, _, _, _, [], _ => []
-    | fuel, scrut, borrow, ℓ, σ, stuck, eqn, mv, br :: rest, st =>
+    | fuel, scrut, borrow, ℓ, σ, stuck, eqn, loanLo, br :: rest, st =>
       (match ((if borrow then symBorrowSetup fuel scrut ℓ σ eqn br
                else symOwnedSetup fuel scrut σ stuck eqn br)).run st with
        | .error e sErr => [.error (Diag.of e sErr)]
        | .ok body st' =>
-         (exploreD fuel body { st' with retTyVal := some mv }).map (fun p =>
+         (exploreD fuel body { st' with retTyVal := none }).map (fun p =>
            match p with
            | .error d => .error d
            | .ok (v, stA) =>
-             match (armSeamCheck fuel v).run stA with
+             match (collapseArmLoansFrom fuel loanLo).run stA with
              | .error e sErr => .error (Diag.of e sErr)
              | .ok _ stA' => .ok (v, stA')))
-      ++ exploreJoinArms fuel scrut borrow ℓ σ stuck eqn mv rest st
+      ++ exploreJoinArms fuel scrut borrow ℓ σ stuck eqn loanLo rest st
   termination_by fuel _ _ _ _ _ _ _ branches _ => (fuel, 1, branches.length)
 end
 
@@ -7127,27 +7244,25 @@ def defaultFuel : Nat := 1000
     statement spine. Every entry point that turns a `Term` into a run goes
     through here, and nothing else does.
 
-    The ORDER is load-bearing in one direction only. `pushContinuations`
-    DUPLICATES a continuation into each arm of a match, so numbering afterwards
-    would give the copies different sites — and they are one program point, on
-    paths that are alternatives to each other. Numbering first means the copies
-    share a site, which is the reading that makes "the same seal at the same
-    inputs" mean what it says.
-
-    Bodies entered later (`checkRFnBody`, a callee frame) re-normalize but are
-    NOT re-numbered: they were part of the program when it crossed this boundary,
-    so their seals already carry their sites. Renumbering one from zero is
-    exactly the collision this function exists to make unwritable. -/
-def atBoundary (t : Term) : Term := pushContinuations (Term.numberSeals t).2
+    Numbering is all that remains here since docs/19 v2: the statement spine is
+    NOT rewritten — continuations stay where the program wrote them, the seam
+    shape is built lazily where a match is walked (`pushJoinArms` at `readR`/
+    `readRTail`'s statement-match rows and `exploreD`'s concrete delegation),
+    and the checking walk joins instead of duplicating. The old pre-pass
+    duplicated continuations into arms, which is why numbering had to come
+    first; with no duplication the order constraint is vacuous, and bodies
+    entered later (`checkRFnBody`, a callee frame) are simply walked as they
+    are, their seals already carrying their sites. -/
+def atBoundary (t : Term) : Term := (Term.numberSeals t).2
 
 /-- Run a program with a fresh state: ⇒-read it, then return the final
     canonicalized Ω (loan ids renumbered to first-appearance order), or the
     error. The return value of the read is discarded — §2 tests inspect Ω. -/
 def runProg (t : Term) (fuel : Nat := defaultFuel) : Except String Env :=
-  -- Normalized, since M31 Stage 0, for the reason `Program.runProgram` already
-  -- was: the seam markers `pushContinuations` inserts are what close a match
-  -- arm's scope, and a harness that walked the raw term would be the one place in
-  -- the machine where arm binders still outlived their arm.
+  -- The seam markers that close a match arm's scope are built where the match
+  -- is walked (`pushJoinArms` at `readR`'s statement-match rows), so the raw
+  -- term is the right thing to hand over — `atBoundary` numbers seals and
+  -- nothing else since docs/19 v2.
   match (readR fuel (atBoundary t)).run initSt with
   | .ok _ st => .ok (canonicalize st.env)
   | .error e _ => .error e

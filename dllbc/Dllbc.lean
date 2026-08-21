@@ -38,5 +38,4 @@ import Dllbc.Tests.PointSpans
 import Dllbc.Tests.ShowSpans
 import Dllbc.Tests.Fence
 import Dllbc.Tests.AmbiguousMiddle
-import Dllbc.Tests.MatchJoin
 

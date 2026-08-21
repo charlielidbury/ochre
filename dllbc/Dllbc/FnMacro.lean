@@ -160,9 +160,9 @@ partial def maxVarId : Term → Nat
   | .range t lo cnt rest ev eq =>
     [maxVarId t, maxVarId lo, (cnt.map maxVarId).getD 0, (rest.map maxVarId).getD 0,
      (ev.map maxVarId).getD 0, (eq.map maxVarId).getD 0].foldl max 0
-  | .matchE s eqn m brs =>
+  | .matchE s eqn brs =>
     brs.foldl (fun a b => max a (max (b.binders.foldl (fun c v => max c v.id) 0) (maxVarId b.body)))
-      (max ((m.map maxVarId).getD 0) (max s.id ((eqn.map (·.id)).getD 0)))
+      (max s.id ((eqn.map (·.id)).getD 0))
   | .seq a b | .app a b | .seal _ a b => max (maxVarId a) (maxVarId b)
   -- The one λ (M32 R2): the BINDER's id counts too, which is what the `lamR`
   -- fold over its telescope was for. A comptime binder's `noSlot` would swamp
@@ -185,8 +185,8 @@ partial def renameVar (from_ to : Var) : Term → Term
   | .call n args => .call n (args.map (renameVar from_ to))
   | .borrow t => .borrow (renameVar from_ to t)
   | .deref t => .deref (renameVar from_ to t)
-  | .matchE s eqn m brs =>
-    .matchE (if s.id == from_.id then to else s) eqn (m.map (renameVar from_ to)) (brs.map (fun b =>
+  | .matchE s eqn brs =>
+    .matchE (if s.id == from_.id then to else s) eqn (brs.map (fun b =>
       Branch.mk b.ctor (b.binders.map (fun v => if v.id == from_.id then to else v))
         (renameVar from_ to b.body)))
   | .app a b => .app (renameVar from_ to a) (renameVar from_ to b)
@@ -205,7 +205,7 @@ partial def renameVar (from_ to : Var) : Term → Term
     which is what makes this work when the scrutinee's match is nested inside
     another one, as `quicksort`'s is. -/
 partial def resolveScrut (k : Var) (ctor : String) (rebind : List Var) : Term → Term
-  | .matchE s eqn m brs =>
+  | .matchE s eqn brs =>
     if s.id == k.id then
       match brs.find? (fun b => b.ctor == ctor) with
       | some b =>
@@ -215,10 +215,10 @@ partial def resolveScrut (k : Var) (ctor : String) (rebind : List Var) : Term �
         let body := (b.binders.zip rebind).foldl
           (fun t p => renameVar p.1 p.2 t) (resolveScrut k ctor rebind b.body)
         body
-      | none => .matchE s eqn m (brs.map (fun b =>
+      | none => .matchE s eqn (brs.map (fun b =>
           Branch.mk b.ctor b.binders (resolveScrut k ctor rebind b.body)))
     else
-      .matchE s eqn m (brs.map (fun b =>
+      .matchE s eqn (brs.map (fun b =>
         Branch.mk b.ctor b.binders (resolveScrut k ctor rebind b.body)))
   | .letIn x rhs rest => .letIn x (resolveScrut k ctor rebind rhs) (resolveScrut k ctor rebind rest)
   | .assign p e rest =>
@@ -238,7 +238,7 @@ partial def resolveScrut (k : Var) (ctor : String) (rebind : List Var) : Term �
     rebinding the identity — the body is not rewritten at all in the common case
     of a single `match` on the scrutinee. -/
 partial def branchBinders (k : Var) (ctor : String) : Term → Option (List Var)
-  | .matchE s _ _ brs =>
+  | .matchE s _ brs =>
     if s.id == k.id then
       match brs.find? (fun b => b.ctor == ctor) with
       | some b => some b.binders
@@ -276,7 +276,7 @@ partial def selfScrutArgs (name : String) (k : Nat) : Term → List Term
   | .ctorApp _ args => args.flatMap (selfScrutArgs name k)
   | .app f a => selfScrutArgs name k f ++ selfScrutArgs name k a
   | .borrow t | .deref t => selfScrutArgs name k t
-  | .matchE _ _ _ brs => brs.flatMap (fun b => selfScrutArgs name k b.body)
+  | .matchE _ _ brs => brs.flatMap (fun b => selfScrutArgs name k b.body)
   | _ => []
 
 /-- Rename every call of `from_` to `to`. For comparing two declarations that are
@@ -293,8 +293,8 @@ partial def renameSelf (from_ to : String) : Term → Term
   | .seq a b => .seq (renameSelf from_ to a) (renameSelf from_ to b)
   | .borrow t => .borrow (renameSelf from_ to t)
   | .deref t => .deref (renameSelf from_ to t)
-  | .matchE s eqn m brs =>
-    .matchE s eqn (m.map (renameSelf from_ to)) (brs.map (fun b => Branch.mk b.ctor b.binders (renameSelf from_ to b.body)))
+  | .matchE s eqn brs =>
+    .matchE s eqn (brs.map (fun b => Branch.mk b.ctor b.binders (renameSelf from_ to b.body)))
   | .lam x d body => .lam x d (renameSelf from_ to body)
   | t => t
 
@@ -314,8 +314,8 @@ partial def selfToIh (name : String) (k : Nat) (ih : Var) : Term → Term
   | .app f a => .app (selfToIh name k ih f) (selfToIh name k ih a)
   | .borrow t => .borrow (selfToIh name k ih t)
   | .deref t => .deref (selfToIh name k ih t)
-  | .matchE s eqn m brs =>
-    .matchE s eqn (m.map (selfToIh name k ih)) (brs.map (fun b => Branch.mk b.ctor b.binders (selfToIh name k ih b.body)))
+  | .matchE s eqn brs =>
+    .matchE s eqn (brs.map (fun b => Branch.mk b.ctor b.binders (selfToIh name k ih b.body)))
   | t => t
 
 /-! ## The elaboration -/
@@ -604,8 +604,8 @@ partial def retarget (binds : List (String × Var × Option Nat)) : Term → Ter
   | .seq a b => .seq (retarget binds a) (retarget binds b)
   | .borrow t => .borrow (retarget binds t)
   | .deref t => .deref (retarget binds t)
-  | .matchE s eqn m brs =>
-    .matchE s eqn (m.map (retarget binds)) (brs.map (fun b => Branch.mk b.ctor b.binders (retarget binds b.body)))
+  | .matchE s eqn brs =>
+    .matchE s eqn (brs.map (fun b => Branch.mk b.ctor b.binders (retarget binds b.body)))
   | .seal s t u => .seal s (retarget binds t) (retarget binds u)
   | .app a b => .app (retarget binds a) (retarget binds b)
   | .idT a b c => .idT (retarget binds a) (retarget binds b) (retarget binds c)

@@ -70,20 +70,22 @@ example : Term := prog{
     } };
   () }
 
-/-! ## (P3) MULTI-PATH — labelled, not first-past-the-post
+/-! ## (P3) THE JOIN SEAM, borrow mode (docs/19 v2)
 
-    This is the case that was silently first-path until the seal carry was made
-    per-path. A borrow-mode match refines the parent's payload per branch (M14),
-    so below the match `v` genuinely holds two different things, and the tooltip
-    says both with the arm trail that produced each. Past three the list stops
-    and COUNTS the remainder; it never truncates silently.
+    A borrow-mode match refines the parent's payload per branch (M14) INSIDE
+    the arms — where per-path answers still exist, with their arm trails. Below
+    the match the arms' payloads disagreed (`Cons …` vs `Nil`), so the seam
+    re-minted the payload as a fresh σ at its own type and the continuation is
+    checked once: `v`'s tooltip below the match is ONE answer, the joined
+    borrow, with no arm trail.
 
-    It is also the user's original narrowing question, answered: the NARROWED
-    SHAPE is visible on the parent through the suspension. What does not exist is
-    value-narrowing on an owned scrutinee — `match n` moves it.
+    The original narrowing question's answer moved with the seam: the NARROWED
+    SHAPE is visible on the parent through the suspension inside each arm; the
+    joined payload below is deliberately opaque — that is the weakening the
+    join declares.
 
-      (P3a) L95 C14  `v`   ⇒  **v : `&mut List Nat`** — here `borrowₘ ℓ₀ (Cons loanₘ ℓ₁ loanₘ ℓ₂)` *(on v ⇒ Cons)*; `borrowₘ ℓ₀ Nil` *(on v ⇒ Nil)*
-      (P3b) L93 C34  `hd`  ⇒  **hd ≡ `borrowₘ ℓ₁ (σ₂ : Nat)`** — binding-time shape
+      (P3a) L95 C14  `v`   ⇒  **v : `&mut List Nat`** — here `borrowₘ ℓ₀ (σ : List Nat)`, the joined payload
+      (P3b) L93 C34  `hd`  ⇒  **hd ≡ `borrowₘ ℓ₁ (σ₂ : Nat)`** — binding-time shape, inside the arm
 -/
 
 example : Term := prog{

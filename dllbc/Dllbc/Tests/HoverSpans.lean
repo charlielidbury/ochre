@@ -130,15 +130,16 @@ example : Term := prog{
   fn K (v : &mut List Nat) -> Unit { let a = *v; *v := a; () };
   () }
 
-/-! ## (11) PATH-SENSITIVITY — one binder, two binding-time answers
+/-! ## (11) THE JOIN SEAM — one binder, ONE answer below the match (docs/19 v2)
 
-    `pushContinuations` duplicates a match's continuation into every arm, so a
-    `let` written after a fork is checked once per path — one binder, one id,
-    and legitimately more than one type. v1 shows the FIRST path's and says that
-    the others disagreed; it does not merge them and does not list them.
+    A statement-position match is JOINED: the arms disagree about `b`
+    (`True`/`False`), so the seam binds it to a fresh σ at the synthesized
+    common type `Bool`, and everything below the match is checked once. The
+    per-path answers this section used to pin survive only INSIDE arms, where
+    paths still genuinely exist.
 
-      (11a) L145 C9   `b`  ⇒  **b ≡ `True`** … *(differs per path)*
-      (11b) L146 C13  `b`  ⇒  **b ≡ `True`** … *(differs per path)* -/
+      (11a) L145 C9   `b`  ⇒  **b ≡ `(σ : Bool)`** — the joined binder
+      (11b) L146 C13  `b`  ⇒  the same σ, once -/
 
 example : Term := prog{
   fn P (n : Nat) -> Unit {
