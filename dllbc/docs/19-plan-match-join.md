@@ -63,3 +63,37 @@ Note what does NOT flip, because of ladder rule (a): arms that agree (`match n {
 ## 5. Out of scope
 
 Loan-set borrows (branch-divergent borrows stay rejections); joining differing carve shapes via fold/`endGroup` reassembly; any executing-mode change; any `Term` or syntax change (hard constraint, not preference); resurrecting the fork in any form.
+
+---
+
+## 6. AS BUILT (2026-08-21, branch `match-join`, v2 rework)
+
+> **SHIPPED, R1–R4.** The join is unconditional, the carrier and syntax are byte-identical to `origin/main`, and the whole corpus is green with exactly two assertions changed. Three findings from contact, each recorded at its site.
+
+**R1+R2 (one commit, `9c5f66fc`).** Syntax.lean/Uni.lean/FnMacro.lean and the six once-threaded test files are `git checkout origin/main` — identical, not re-edited — so Term construction is main's by construction; the `Sugar` goldens re-ran green as the canary. `pushContinuations` is DELETED, not disabled: `atBoundary` numbers seals and nothing else, and the seam shape is built lazily where a match is walked — `pushJoinArms`/`pushJoinArmsSeq` at `readR`/`readRTail`'s new statement-match rows (⇒ selects one arm, markers pop the arm scope, envs bit-identical — the executing-mode question §2 left to the implementer, answered: generalize the lazy rows, keep no pre-pass) and at `exploreD`'s concrete delegation.
+
+**The driver.** `exploreD` routes both statement shapes to `exploreJoin`. Two single-path delegations before any join: a concrete scrutinee, and **the one-branch match** — fork ≡ join exactly at N=1, so `let Pair(a, b) = e` destructures keep field σs and knowledge losslessly, which is what spares the corpus's pervasive Σ idiom from the seam entirely. Genuinely branching symbolic matches join by the ladder (`joinVal`), rules as §2 with two contact corrections:
+
+* **Rule 5 validates by `hasType`, not re-synthesis** — the first cut required every arm to synthesize the candidate type and wrongly refused `Nil` at `List Nat` (a parameter no value can invent). Found by the corpus (`S33Eager`, `PointSpans` P3) within minutes of the driver landing. Each arm's value is judged under that ARM's own exit `sctx`.
+* **Rule (c) is a real anti-unifier, not an abstraction** — `Term.abstractInto` of the first component's value mangled the flagship's own case: `True`/`False` occur INSIDE the unfolded `Leb` spine, so blanket replacement rewrote each arm's candidate differently and nothing converged. `antiUnify` walks the candidates simultaneously: agreement stays, a position where each arm's subterm is that arm's own first-component value becomes σf, same-shaped nodes recurse, exotic heads fail closed to rule (d). With it, `Pair(True, e)`/`Pair(False, e)` joins at `Id Bool (Leb a b) σf` and the full roundtrip — destructure, re-split the flag, `LebTrueLe` on the refined evidence — checks end to end with zero annotation (`packEvidence`).
+
+Also load-bearing: `symFreeIn` (an arm-minted σ may not cross the seam — two arms mint from the SAME counter, so one id can mean two different things; both arms of an `if` mint their branch equation at one id) and `collapseArmLoansFrom` (the arm's own loans are ended at its seam so a borrow payload is a VALUE the ladder can read; inherited loans are left for the continuation).
+
+**Corpus fallout, complete list:** two assertions — `Traces`' `zeroHead` and `variantChange` `tailPaths`, the path-STRUCTURE canaries, now pinning ONE joined path each (`variantChange` is rule 4 live: both arms leave `Nil`, it passes through; `zeroHead` is rule 5: payloads disagree, fresh σ at `List Nat`). `Programs`' `S33Eager` trio and `PointSpans` P3 accept unchanged through rule 5. The hover comments (`HoverSpans` §11, `PointSpans` §P3) now describe the joined single answers; per-path answers survive only inside arms.
+
+**R3 (`5bbb935b`), rule per test:** seqJoins (5), agreeArms (4 — v1's always-mint inversion, now accepting), correlClass (§3's pin, rejected "does not have its ascribed type"), divergentBorrows (7, the named-slot message), packEvidence (6, the flagship), borrowWrite (3→5), concreteJoin (selection + `progRunsTo`), joinNonExh (exhaustiveness), singleArm (N=1). **Flip ledger 4/4:** reverting the two `exploreD` join rows to the fork shape turns exactly `correlClass`, `divergentBorrows`, `zeroHead`, `variantChange` red — the four claims that ARE the joined semantics — and nothing else.
+
+**R4, measured** (same annotation-free programs as the v1 fork baseline):
+
+| N | fork paths | join paths | fork ×200 | join ×200 |
+|---|---|---|---|---|
+| 1 | 3 | 4 | 27 ms | 33 ms |
+| 2 | 5 | 6 | 64 ms | 62 ms |
+| 3 | 9 | 8 | 138 ms | 96 ms |
+| 6 | 65 | 14 | 1205 ms | 214 ms |
+
+Join paths are 2N+2 (each arm closes its own diagnostic sub-path — the seal carry's rule — plus one continuation path and the top level); wall-clock is linear at ~+30 ms per match against the fork's doubling, 5.6× ahead at N=6 and diverging. The measured programs carry no annotation — the user-experience constraint, held in the measurement itself.
+
+**Where the heuristic's edge sits:** rule (c) fires only on `Pair`-shaped results; its candidates come from arm `sctx` (bare σs) and the closed constructor basis, so a snd whose type needs a parametrized head (`List`) or whose disagreement is not the fst value verbatim falls to (d); nesting recurses but each level abstracts only its own fst. The rejection message names the remedy, and `packEvidence` is the worked example the message points at.
+
+**Residuals:** parametrized-head synthesis (a `Cons`-headed result with no owed source rejects — an inverse constructor-table would lift it); slot-level packs (rule (c) currently reaches only the result; a slot holding a written pack falls to rule 5/7); anti-unification under binders is name-sensitive (`pi`/`lam`/`sigmaT` require equal binder names — α-widening is mechanical if a case demands it); the `joinFreshTyped` σ carries no provenance for hovers ("joined from N arms" would earn its keep).
