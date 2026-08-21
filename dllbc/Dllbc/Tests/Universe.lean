@@ -14,7 +14,10 @@ and the binder formers (`Π`, `Σ`, `Id`) are all types. A binder's mode marker
 (comptime `⇝τ`, borrow `&mut`) is not a type — a borrow-moded `Π` is a
 function signature, well-formed but not a type, so checking it against
 `Type` answers `false`, not an error. The payoff is value-level genericity:
-a function like `fn Poly (T : Type, x : T)` can be called at any type.
+a function like `fn Poly (T : Type, x : T)` can be called at any type. The
+closing battery checks the type vocabulary's internal agreement — the surface's
+reserved constructor names, the kernel's constructor signatures, and the
+exhaustiveness table must name the same basis.
 
 ## The one design flag: `Type : Type`
 
@@ -425,3 +428,66 @@ example : Pure.typeFormerHead (.ctorApp "Cons" [.ctorApp "Z" [], .ctorApp "Nil" 
 example : Pure.typeFormerHead (Term.sym 0) = false := by native_decide
 
 end Dllbc.Tests.Universe
+
+section
+namespace Dllbc.Tests.S33Macro
+open Dllbc Dllbc.Tests
+
+/-! ## The same function, written twice — the surface and the kernel
+
+    The kernel's `Add` is a hand-written `Term` (`Pure.kAddFn`), because the
+    carve rule's premises are stated against it and a kernel rule cannot cite
+    a library it does not import. The surface can say the same thing
+    (`surfAdd`), and this battery checks that the two spellings are actually
+    one term rather than merely two terms that compute the same answer.
+
+    Conversion is mode-blind (`Term.convEq`), and both are `natRec` over the
+    same arms, so they always denoted the same function. What is checked here
+    is stronger: `Term.alphaEq` — the key `abstractInto` generalizes with — is
+    mode-sensitive, so agreeing under it also means every comptime/runtime
+    marker matches between the two spellings, right down to the recursor's
+    arm binders and its unwritable motive binder `§_`. -/
+
+def surfAdd : Term :=
+  prog defer_check { λ (A : Nat). λ (B : Nat). elim A return (λ (N : Nat). Nat) { Z => B, S (A') R => S(R) } }
+
+-- `surfAdd` names its motive binder `N` where the kernel names it `Am`, so
+-- this line says two independently-written surface spellings of `Add` are one
+-- term up to α — and since `Term.alphaEq` is mode-sensitive, it is also
+-- saying every marker agrees.
+example : Term.alphaEq surfAdd Pure.kAddFn = true := by native_decide
+example : (Pure.nf 1000 surfAdd == Pure.nf 1000 Pure.kAddFn) = true := by native_decide
+example : Term.convEq (Pure.nf 1000 surfAdd) (Pure.nf 1000 Pure.kAddFn) = true := by native_decide
+
+-- The behaviour, so that a later respell that agrees structurally and computes
+-- something else cannot pass on the two lines above.
+example : (Pure.nf 200 (.app (.app surfAdd (Term.nat 2)) (Term.nat 3)) == Term.nat 5) = true := by
+  native_decide
+
+/-! ## The constructor basis, checked instead of kept adjacent
+
+    `Val.ctorNames` is the list the surface reserves as binder keywords, and
+    `Pure.ctorSig` is the kernel's field-type table. They must agree, and a
+    build failure enforces that now rather than a comment noting they sit next
+    to each other.
+
+    Both directions. Every reserved name has a signature; and every
+    constructor the exhaustiveness table can name, at each type former there
+    is, is reserved. The second is what catches a constructor added to
+    `ctorSig` and `typeCtors` and forgotten at the surface. -/
+
+def basisTypes : List Term :=
+  [prog defer_check { Nat }, prog defer_check { Bool }, prog defer_check { Unit }, prog defer_check { Bot }, prog defer_check { List Nat },
+   prog defer_check { Σ (X : Nat). Nat }, prog defer_check { Id Nat unit unit }, prog defer_check { Array 2 Nat }]
+
+example : Val.ctorNames.all (fun n => (Pure.ctorSig n).isSome) = true := by native_decide
+example : basisTypes.all (fun ty => ((Pure.typeCtors ty).getD []).all
+    (fun c => Val.ctorNames.contains c)) = true := by native_decide
+
+-- …and the control the two lines above need: a name outside the basis has no
+-- signature, so the first is a claim about this list rather than about `ctorSig`
+-- answering for everything.
+example : (Pure.ctorSig "Cons2").isNone = true := by native_decide
+
+end Dllbc.Tests.S33Macro
+end

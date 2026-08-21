@@ -19,7 +19,11 @@ binder is runtime. The tests cover the comptime-argument rule, capital `let`,
 fuel-threading, erased data, borrow-typed binders being runtime-only, and the
 containment that stops a borrow from leaking into the comptime fragment. Later
 sections test that a program is itself just a term (a let-chain with no declared
-functions) and that a recursion's result is a fully evaluated value.
+functions) and that a recursion's result is a fully evaluated value. The closing
+batteries cover the rest of the mode discipline: a function value must arrive at
+a comptime destination, `Σ0` (the comptime-tail pair), comptime domains staying
+transparent to the type walks, and the mode convention reaching match-arm
+binders.
 
 Why the modes matter: the split lets one language serve as both program and proof
 without the proof layer ever touching runtime state.
@@ -1814,4 +1818,365 @@ example : (match runProgram citesIhTwice with
    | .error _ => none) = some "S (S (S Z))" := by native_decide
 
 end Dllbc.Tests.S33Eager
+end
+
+section
+namespace Dllbc.Tests.S32Backstop
+open Dllbc
+
+/-! ## What is left of the mode backstop (suspensions.md §2.5)
+
+    "A function may not land in a runtime binding" is enforced at exactly one
+    site now: `refuseFnBinding`, at the `let`. Two other checks that used to
+    enforce the same rule are gone — one because `fenceComptime` already
+    refuses the same programs a layer earlier, the other because the site it
+    guarded is unreachable. This battery is the evidence for all three. -/
+
+-- `bindFields`' check is unreachable, not redundant: to put a function in a
+-- constructor field you must ⇒-read one, and the bindings that hold one are
+-- capital, which the erasure fence refuses. The field never receives a
+-- function, so the check there had nothing left to catch.
+def fieldFn : Term := prog defer_check {
+  fn Inc (n : Nat) -> Nat { S n };
+  let p = Pair(Inc, 1);
+  () }
+example : progRejects fieldFn "cannot be ⇒-moved" = true := by native_decide
+
+/-! ## The rule: a runtime binding may never hold a function value
+
+    A proof of a ∀-statement is a λ, and the corpus binds those at lowercase
+    names, so nothing in this calculus alone distinguishes a proof from a
+    computation — both bind a partial application at a Π type, with no
+    Prop/Type split to tell them apart. Σ0 resolves this positionally instead:
+    every position that can hold a function now has a way to say "comptime" —
+    a capital `let`, a ⇝ parameter, a Σ0 component or tail, an ascription, a
+    recursor arm — so the rule becomes "a function value must arrive somewhere
+    that reads by ⇝" rather than "tell a proof from a computation". Two
+    refusals enforce it: `readR`'s λ arm for a λ that is written, and the pure
+    lift for one that is computed.
+
+    Each program below is kept with a one-character accepting twin, so the
+    rejection is discriminating against its own accept and not against
+    nothing. -/
+
+-- `Add 1` is a function and `f` is a runtime binding; the refusal is at the
+-- pure lift — the shape `readR`'s λ arm cannot see, because `Add 1` is a spine
+-- until it is evaluated and a `λ (B : Nat). natRec …` after.
+def computePartial : Term := prog defer_check { let f = Add 1; () }
+example : progRejects computePartial "⇒ produced a function value" = true := by native_decide
+
+-- …and the accepting twin, one character away.
+def computePartialCap : Term := prog defer_check { let F = Add 1; () }
+example : progOk computePartialCap = true := by native_decide
+
+-- Its twin — a λ-valued runtime binding, refused by a different rule: this is
+-- the refusal at `readR`'s λ arm, the destination rule, which sees the λ
+-- before anything is evaluated and names every destination there is.
+-- `computePartial` above is the same rule one step later, at the pure lift.
+def lamValued : Term := prog defer_check { let f = λ (N : Nat). Add N 1; () }
+example : progRejects lamValued "needs a comptime destination" = true := by native_decide
+
+-- …and the accepting twin, one character away: the same λ at a capital binder.
+-- Without it the rejection above would also pass for a rule that refused λs.
+def lamValuedCap : Term := prog defer_check { let F = λ (N : Nat). Add N 1; () }
+example : progOk lamValuedCap = true := by native_decide
+
+/-! ## The Σ component's binder mode, and exactly how far it reaches
+
+    A capital binding handed out as a Σ component used to fail, because
+    `readArgs` reads a `ctorApp`'s arguments with no type in hand and
+    therefore ⇒-reads all of them. `readResult` gives the tail of a body a
+    type-directed read instead: a `Pair` checked against a `Σ` reads each
+    component by that component's binder, so a capital Σ binder makes its
+    component comptime and its value ⇝-read.
+
+    These two programs are that rule and its negative control, and they differ
+    in one character — the case of the Σ's binder. -/
+
+open Dllbc.StdLemmas in
+/-- A proof returned as a Σ component at a **capital** binder: ⇝-read, accepted. -/
+def sigmaProofCapital : Term := prog{
+  fn F (n : Nat) -> Σ (H : Le n n). Nat { let H0 = LeRefl n; Pair(H0, n) };
+  () }
+example : progOk sigmaProofCapital = true := by native_decide
+
+open Dllbc.StdLemmas in
+/-- The same program with the Σ binder lowercase: the component is ⇒-read, and
+    the fence refuses the capital binding. Without this control the acceptance
+    above would also pass for a rule that simply stopped fencing. -/
+def sigmaProofLower : Term := prog defer_check {
+  fn F (n : Nat) -> Σ (h : Le n n). Nat { let H0 = LeRefl n; Pair(H0, n) };
+  () }
+example : progRejects sigmaProofLower "cannot be ⇒-moved" = true := by native_decide
+
+open Dllbc.StdLemmas in
+/-- A Σ chain's last component has no binder, so there is nothing for
+    `readResult` to read positionally: the same proof at the same capital
+    binding, in the tail position instead of a bindered one, is rejected — the
+    tail of a Σ chain is runtime-moded. Its accepting twin, one character
+    away, is `sigmaTailProof0` in the Σ0 battery below, which gives the tail a
+    way to say "comptime".
+
+    This is where quicksort's `cnt` sits. Its ensures is
+    `Σ (hi : List Nat). … → Π n. Id …`, and the trailing `Π n. Id …` is the
+    ∀-proof: five components have binders and the sixth is the tail. -/
+def sigmaTailProof : Term := prog defer_check {
+  fn F (n : Nat) -> Σ (H : Le n n). Le n n { let H0 = LeRefl n; Pair(H0, H0) };
+  () }
+example : progRejects sigmaTailProof "the TAIL of a Σ chain is runtime-moded" = true := by
+  native_decide
+
+end Dllbc.Tests.S32Backstop
+end
+
+section
+namespace Dllbc.Tests.S33Sigma0
+
+open Dllbc Dllbc.Tests
+
+/-! ## Σ0 — the comptime tail (suspensions.md §2.7)
+
+    `Σ0 (x : A). P` is the pair whose second projection is comptime — DLLBC's
+    subset type, with comptime where Lean's `Subtype`/Coq's `sig` use
+    Prop/irrelevance. It is not a new former: it is `sigmaT` with the existing
+    `Term.cmpT` on the codomain, the same marker a capital binder puts on a
+    domain, seen from the other end of the pair. Same `Pair`, same `sigmaRec`.
+
+    Three things are pinned here — construction, destruction, erasure — and each
+    against a spelling one character away, so every accept is discriminating. -/
+
+/-! ## Construction: a proof in the tail
+
+    `S32Backstop.sigmaTailProof` is this program with `Σ` where this one has
+    `Σ0`, and it is rejected. The two differ in one character, and that
+    character is the whole feature. -/
+
+open Dllbc.StdLemmas in
+def sigmaTailProof0 : Term := prog{
+  fn F (n : Nat) -> Σ0 (H : Le n n). Le n n { let H0 = LeRefl n; Pair(H0, H0) };
+  () }
+example : progOk sigmaTailProof0 = true := by native_decide
+
+/-! A λ literal in a Σ0 tail is legal, and this is a property of the position
+    rather than an accident: the tail is read by ⇝, so a λ there lands in a
+    comptime channel and needs no other destination. The proof of a
+    ∀-statement — the shape the mode backstop above could not accommodate
+    positionally — is exactly this. -/
+open Dllbc.StdLemmas in
+def tailLam0 : Term := prog{
+  fn F (n : Nat) -> Σ0 (H : Le n n). (Π (N : Nat) → Le N N)
+    { let H0 = LeRefl n; Pair(H0, λ (N : Nat). LeRefl N) };
+  () }
+example : progOk tailLam0 = true := by native_decide
+
+/-! ## Destruction: the arm binder that receives a Σ0 tail must be capital
+
+    `componentMode` needs no case of its own — it already asks `sctx` per
+    field, and `reattachSigmaMode` writes the tail's entry the way it writes
+    the first component's. Four programs: two type spellings (`Σ`/`Σ0`) times
+    two arm spellings, and the diagonal is what is accepted. -/
+
+def s0V : Term := .var ⟨0, "v"⟩
+
+/-- Σ0 producer, capital tail binder at the consumer: accepted. -/
+def tail0Upper : Term := prog{
+  fn Zap0 (v : &mut List Nat) -> Σ0 (k : Nat). Id (List Nat) (*%s0V) Nil
+    { *v := Nil; Pair(Z, Refl) };
+  fn Use0 (w : &mut List Nat) -> Unit
+    { let Pair(k2, H2) = Zap0(&m *w); () };
+  () }
+example : progOk tail0Upper = true := by native_decide
+
+/-- …and lowercase at the same consumer: refused, because the tail is comptime. -/
+def tail0Lower : Term := prog defer_check {
+  fn Zap0 (v : &mut List Nat) -> Σ0 (k : Nat). Id (List Nat) (*%s0V) Nil
+    { *v := Nil; Pair(Z, Refl) };
+  fn Use0 (w : &mut List Nat) -> Unit
+    { let Pair(k2, h2) = Zap0(&m *w); () };
+  () }
+example : progRejects tail0Lower "Capitalise the arm binder" = true := by native_decide
+
+/-- The same consumer over a plain `Σ`: now lowercase is the legal spelling… -/
+def tailRunLower : Term := prog{
+  fn Zap (v : &mut List Nat) -> Σ (k : Nat). Id (List Nat) (*%s0V) Nil
+    { *v := Nil; Pair(Z, Refl) };
+  fn Use (w : &mut List Nat) -> Unit
+    { let Pair(k2, h2) = Zap(&m *w); () };
+  () }
+example : progOk tailRunLower = true := by native_decide
+
+/-- …and capital is refused. One character in the callee's return type decides
+    which spelling of the caller's arm is legal, in both directions — which is
+    what says the rule reads the type and not the shape. -/
+def tailRunUpper : Term := prog defer_check {
+  fn Zap (v : &mut List Nat) -> Σ (k : Nat). Id (List Nat) (*%s0V) Nil
+    { *v := Nil; Pair(Z, Refl) };
+  fn Use (w : &mut List Nat) -> Unit
+    { let Pair(k2, H2) = Zap(&m *w); () };
+  () }
+example : progRejects tailRunUpper "lower-case the arm binder" = true := by native_decide
+
+/-! ## Erasure: the executing machine is untouched
+
+    A Σ0 component is comptime knowledge — evaluated today, dropped by
+    compilation, exactly as a capital Σ component already is. So the program runs,
+    and the data component is what the run leaves behind. -/
+
+open Dllbc.StdLemmas in
+def erase0 : Term := prog{
+  fn F0 (n : Nat) -> Σ0 (k : Nat). Le n n { let H0 = LeRefl n; Pair(n, H0) };
+  let Pair(a, H) = F0(S(S(Z)));
+  let y = a; () }
+example : progOk erase0 = true := by native_decide
+example : (match runProgram erase0 with
+           | .ok env => (env.lookup "y") == some (Val.nat 2)
+           | .error _ => false) = true := by native_decide
+
+/-! ## Elimination: `sigmaRec`, unchanged
+
+    Σ0 introduces no new eliminator, and this is that promise as two programs:
+    the same `elim` over the same pair, with the motive's binder type written
+    `Σ` in one and `Σ0` in the other. `sigmaRec`'s second parameter is the type
+    family `λ x. B`, and `⇝` is a mode marker rather than part of `B`, so a
+    Σ0's family is its Σ twin's and the elimination is literally the same
+    term. -/
+
+open Dllbc.StdLemmas in
+def elimSig : Term := prog defer_check {
+  let P0 = Pair(Z, LeRefl Z);
+  let K = elim P0 return (λ (p : Σ (k : Nat). Le Z Z). Nat) { Pair (k) (h) => k };
+  () }
+example : progOk elimSig = true := by native_decide
+
+open Dllbc.StdLemmas in
+def elimSig0 : Term := prog defer_check {
+  let P0 = Pair(Z, LeRefl Z);
+  let K = elim P0 return (λ (p : Σ0 (k : Nat). Le Z Z). Nat) { Pair (k) (H) => k };
+  () }
+example : progOk elimSig0 = true := by native_decide
+
+end Dllbc.Tests.S33Sigma0
+end
+
+section
+namespace Dllbc.Tests.S33Cmp
+open Dllbc
+
+/-! ## A `⇝` domain is transparent to the kernel's type walks
+
+    A capital binder's mode marker sits on the Σ domain — `Σ (H : τ)`
+    elaborates to `.sigmaT "H" (⇝τ) …`. Three of the walks that traverse a
+    return type had no case for the `⇝τ` former: they end in a `| t => t`-shaped
+    fallthrough, so a `⇝τ` was treated as a leaf and its subterm was skipped in
+    silence.
+
+    `markExit` is the one with teeth. The exit-snapshot transform stamps a
+    borrow parameter's `*v` as `@exit(*v)` throughout the return type, and a
+    comptime component's type was not reached — so that component alone read
+    the entry payload while every other component read the exit. The symptom
+    is a type error at a branch whose proof is correct: `splitOff`'s `Z` arm
+    returns `Refl` at `Id Nil Nil` and the audit demanded `Id σ0 Nil` of it.
+
+    This is a producer-side silent skip rather than a consumer problem — a
+    match-arm binder's case being unchecked against the Σ's (S33Arms, below)
+    is worth checking on its own terms, but it is not what unblocks this.
+
+    Pinned as one program in two spellings one character apart, plus the lie that
+    makes the accept discriminating. -/
+
+def zapUnder (dom : Term) : Term := prog{
+  fn Zap (v : &mut List Nat) -> %dom { *v := Nil; Pair(Refl, unit) };
+  () }
+
+def zapV : Term := .var ⟨0, "v"⟩
+
+-- The comptime component: its `Id` mentions `*v`, so it is exactly the type
+-- `markExit` has to reach through the `⇝` to stamp.
+def zapCmp : Term := prog defer_check { Σ (H : Id (List Nat) (*%zapV) Nil). Unit }
+-- …and its one-character twin, the control that says the `⇝` is the whole
+-- difference.
+def zapRun : Term := prog defer_check { Σ (h : Id (List Nat) (*%zapV) Nil). Unit }
+-- …and the lie, so neither accept is vacuous: the exit is `Nil`, not `[Z]`.
+def zapLie : Term := prog defer_check { Σ (H : Id (List Nat) (*%zapV) (Cons Z Nil)). Unit }
+
+example : progOk (zapUnder zapCmp) = true := by native_decide
+example : progOk (zapUnder zapRun) = true := by native_decide
+example : progRejects (zapUnder zapLie) "does not have return type" = true := by native_decide
+
+end Dllbc.Tests.S33Cmp
+end
+
+section
+namespace Dllbc.Tests.S33Arms
+open Dllbc
+
+/-! ## The mode convention reaches the match arm
+
+    A match arm's binders are binders, and they were the last position whose
+    spelling nothing read. Both directions are checked, because they are two
+    different mistakes — a capital binder over data claims erasure of something
+    the match moves; a lowercase binder over a comptime component is the
+    runtime-binding-holds-knowledge state the `let` already refuses
+    (`fenceComptime`), reached by a rule that was not looking.
+
+    Each direction is one program in two spellings one character apart, so each
+    reject is discriminating against its own accept rather than against nothing. -/
+
+/-! ## Direction 1 — a capital arm binder over a runtime data component
+
+    `Cons`' head and tail are data at every type there is, which is why this
+    direction needs no type in hand at all: the fixed constructor basis decides
+    it, and `Pair` is the only member it does not decide. -/
+
+def armDataLower : Term := prog{
+  match Cons(Z, Nil) { Nil => (), Cons(h, t) => () } }
+
+def armDataUpper : Term := prog defer_check {
+  match Cons(Z, Nil) { Nil => (), Cons(H, t) => () } }
+
+example : progOk armDataLower = true := by native_decide
+example : progRejects armDataUpper "lower-case the arm binder" = true := by native_decide
+
+/-! ## Direction 2 — a lowercase arm binder over a comptime component
+
+    The producer is `S33Cmp.zapCmp`'s shape: a Σ whose component binder is
+    capital, so `readResult` ⇝-reads that component and the caller's
+    `buildResult` mints its σ at a `⇝` type. That `sctx` entry is the whole of
+    the mode source — no type is re-derived at the match. -/
+
+def armV : Term := .var ⟨0, "v"⟩
+
+def armCmpUpper : Term := prog{
+  fn Zap (v : &mut List Nat) -> Σ (H : Id (List Nat) (*%armV) Nil). Unit
+    { *v := Nil; Pair(Refl, unit) };
+  fn Use (w : &mut List Nat) -> Unit
+    { let Pair(H2, u) = Zap(&m *w); () };
+  () }
+
+def armCmpLower : Term := prog defer_check {
+  fn Zap (v : &mut List Nat) -> Σ (H : Id (List Nat) (*%armV) Nil). Unit
+    { *v := Nil; Pair(Refl, unit) };
+  fn Use (w : &mut List Nat) -> Unit
+    { let Pair(h2, u) = Zap(&m *w); () };
+  () }
+
+example : progOk armCmpUpper = true := by native_decide
+example : progRejects armCmpLower "Capitalise the arm binder" = true := by native_decide
+
+/-! ## …and the same consumer over a runtime component is unchanged
+
+    The control that says direction 2 keys on the producing Σ binder's case and
+    not on the component sitting in a `Pair`: one character in the callee's
+    return type flips which spelling of the caller's arm is legal. -/
+
+def armRunLower : Term := prog{
+  fn Zap (v : &mut List Nat) -> Σ (h : Id (List Nat) (*%armV) Nil). Unit
+    { *v := Nil; Pair(Refl, unit) };
+  fn Use (w : &mut List Nat) -> Unit
+    { let Pair(h2, u) = Zap(&m *w); () };
+  () }
+
+example : progOk armRunLower = true := by native_decide
+
+end Dllbc.Tests.S33Arms
 end
