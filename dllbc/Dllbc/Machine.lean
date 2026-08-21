@@ -5364,6 +5364,61 @@ def collapseArmLoansFrom (fuel : Nat) (lo : Nat) : M Unit := do
     if (← getEnv).any (fun kv => (findBorrowPayload ℓ kv.2).isSome) then
       endLoan fuel ℓ
 
+/-- **Anti-unification for the pack heuristic** (docs/19 v2 rule (c)). Join the
+    arms' candidate TYPES: a position where every arm agrees stays; a position
+    where each arm's subterm is that arm's OWN first-component value (or an
+    already-minted σf hole from an earlier fold step) becomes `σf`; same-shaped
+    nodes recurse; anything else fails the heuristic — whole-term abstraction is
+    NOT enough, because a value like `True` also occurs INSIDE an unfolded
+    `Leb` spine and blanket replacement mangles each arm differently (found by
+    the flagship `Pair(True, e)` case itself). Pure-fragment node coverage;
+    an exotic head fails closed. -/
+partial def antiUnify (σf : Nat) : List (Term × Term) → Option Term
+  | [] => none
+  | ts@((t0, _) :: rest) =>
+    if ts.all (fun (t, r) => Term.alphaEq t r || Term.beq t (.sym σf)) then some (.sym σf)
+    else if rest.all (fun (t, _) => Term.alphaEq t t0) then some t0
+    else
+      let zip1 := fun (f : Term → Term) (get : Term → Option Term) => do
+        let sub ← antiUnify σf (← ts.mapM (fun (t, r) => (get t).map ((·, r))))
+        pure (f sub)
+      let zip2 := fun (f : Term → Term → Term)
+                      (g1 : Term → Option Term) (g2 : Term → Option Term) => do
+        let s1 ← antiUnify σf (← ts.mapM (fun (t, r) => (g1 t).map ((·, r))))
+        let s2 ← antiUnify σf (← ts.mapM (fun (t, r) => (g2 t).map ((·, r))))
+        pure (f s1 s2)
+      match t0 with
+      | .app _ _ => zip2 .app
+          (fun t => match t with | .app f _ => some f | _ => none)
+          (fun t => match t with | .app _ a => some a | _ => none)
+      | .idT _ _ _ => do
+        let ga := fun (t : Term) => match t with | .idT a _ _ => some a | _ => none
+        let gb := fun (t : Term) => match t with | .idT _ b _ => some b | _ => none
+        let gc := fun (t : Term) => match t with | .idT _ _ c => some c | _ => none
+        let sa ← antiUnify σf (← ts.mapM (fun (t, r) => (ga t).map ((·, r))))
+        let sb ← antiUnify σf (← ts.mapM (fun (t, r) => (gb t).map ((·, r))))
+        let sc ← antiUnify σf (← ts.mapM (fun (t, r) => (gc t).map ((·, r))))
+        pure (.idT sa sb sc)
+      | .ctorApp c args0 => do
+        let argss ← ts.mapM (fun (t, r) => match t with
+          | .ctorApp c2 args => if c2 == c && args.length == args0.length
+                                then some (args, r) else none
+          | _ => none)
+        let joined ← (List.range args0.length).mapM (fun i =>
+          antiUnify σf (argss.map (fun (args, r) => (args[i]!, r))))
+        pure (.ctorApp c joined)
+      | .cmpT _ => zip1 .cmpT (fun t => match t with | .cmpT u => some u | _ => none)
+      | .pi n _ _ => zip2 (.pi n)
+          (fun t => match t with | .pi n2 d _ => if n2 == n then some d else none | _ => none)
+          (fun t => match t with | .pi n2 _ b => if n2 == n then some b else none | _ => none)
+      | .sigmaT n _ _ => zip2 (.sigmaT n)
+          (fun t => match t with | .sigmaT n2 d _ => if n2 == n then some d else none | _ => none)
+          (fun t => match t with | .sigmaT n2 _ b => if n2 == n then some b else none | _ => none)
+      | .lam x _ _ => zip2 (.lam x)
+          (fun t => match t with | .lam x2 d _ => if x2 == x then some d else none | _ => none)
+          (fun t => match t with | .lam x2 _ b => if x2 == x then some b else none | _ => none)
+      | _ => none
+
 /-- **THE LADDER** (docs/19 v2 §2): join one slot's (or the result's) values
     across the arms, conservatively.
 
@@ -5430,21 +5485,21 @@ def joinVal (slotName : String) (ctors : List String) (st0sctx : List (Nat × Te
           let snd ← joinVal (slotName ++ ".2") ctors st0sctx lo fuel none snds none
           return .ctor "Pair" [fst, snd]
         | some σf => do
-          -- σf is fresh: later components' types abstract each arm's FIRST
-          -- value into it before comparing
+          -- σf is fresh: ANTI-UNIFY the later components' types across the
+          -- arms — agreement stays, each arm's own first-component value (at a
+          -- position where the arms disagree) becomes σf, mismatched shapes
+          -- fail the heuristic
           let cands ← snds.foldlM (fun acc (v, sctxA, hiA) => do
             match joinHeadTy? v sctxA with
             | none => throwErr disagreeMsg
-            | some τ => pure (acc ++ [(Term.abstractInto (subsKnowledge (fsts[acc.length]!).1) σf τ, hiA)])) []
-          match cands with
-          | [] => throwErr disagreeMsg
-          | (τ0, hi0c) :: restC => do
-            if !(symFreeIn lo hi0c τ0) then throwErr disagreeMsg
-            if restC.all (fun (τ, hiA) => symFreeIn lo hiA τ && Pure.convert fuel τ τ0) then do
-              let σs ← freshSym
-              modify fun st => { st with sctx := (σs, τ0) :: st.sctx }
-              return .ctor "Pair" [fst, .know (.sym σs)]
-            else throwErr disagreeMsg
+            | some τ => pure (acc ++ [(τ, subsKnowledge (fsts[acc.length]!).1, hiA)])) []
+          match antiUnify σf (cands.map (fun (τ, r, _) => (τ, r))) with
+          | none => throwErr disagreeMsg
+          | some τj => do
+            if !(cands.all (fun (_, _, hiA) => symFreeIn lo hiA τj)) then throwErr disagreeMsg
+            let σs ← freshSym
+            modify fun st => { st with sctx := (σs, τj) :: st.sctx }
+            return .ctor "Pair" [fst, .know (.sym σs)]
       else joinFreshTyped fuel arms tySrc disagreeMsg
     | none => joinFreshTyped fuel arms tySrc disagreeMsg
   termination_by fuel _ _ _ => fuel
