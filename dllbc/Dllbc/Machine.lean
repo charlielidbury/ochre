@@ -1765,8 +1765,8 @@ end
 
 -- **`@res k` — a pin's name for the k-th issued borrow's exit payload**
 -- (12-design §2.5/D3(a)). The surface's `*res` lowers to `@res 0`; the marker is
--- a neutral const spine, so it rides through nf/convert/readC untouched (probed
--- in `Tests.PinProbe`) and is substituted only here, by the two discharge sites:
+-- a neutral const spine, so it rides through nf/convert/readC untouched and is
+-- substituted only here, by the two discharge sites:
 -- the audit opens a pin at FRESH exit σ's, the group end at the ACTUAL
 -- surrendered payloads. Same substitution, two instantiations — §2.3's "one
 -- rule" requirement, made literal.
@@ -6538,7 +6538,7 @@ mutual
         -- the asymmetry M33a and Σ0 spent two stages closing — so the wrap is the
         -- ELABORATION's, and one spelling reaches both machines.
         -- Measured cost of refusing over the corpus: one hand-written term
-        -- (`Ledger.deepBaseArm`), already written as `Term.lamTel []`.
+        -- (`Tests.S27Dispose.deepBaseArm`), already written as `Term.lamTel []`.
         if binders.isEmpty then
           throwErr s!"seal: this recursor arm is a bare term, not a λ. Every arm is a λ, because an arm is a BODY and a body that is not suspended runs when the spine is formed rather than when ι selects it. An arm the motive owes nothing binds the unit binder — write it `Term.lamTel [(unitBinder, .cmpT (.const \"Unit\"))] ⟨body⟩`, which is what `fn`'s elaboration writes for you."
         let owed := binders.drop pre.length

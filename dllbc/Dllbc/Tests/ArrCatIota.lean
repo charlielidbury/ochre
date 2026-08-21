@@ -183,12 +183,11 @@ example : chkS splitCtx
 
 /-! ## §3 The target — a blind carve at a symbolic index, pinned
 
-    The container, the fold-spelled update, and the programs below are shared
-    with `SetHmProbe`, unchanged where they are the same, so a verdict that
-    moves is attributable to the projections alone. -/
+    The container, the fold-spelled update, and the programs below keep the
+    same shapes as the update they compare against, so a verdict that moves is
+    attributable to the projections alone. -/
 
-/-- The container: an array of key-value pairs where every key is 7. Reused
-    unchanged from `SetHmProbe` so the comparison isolates the update. -/
+/-- The container: an array of key-value pairs where every key is 7. -/
 def AllK7 : Term := prog defer_check {
   λ (M : Nat). λ (A : Array M (Σ (k : Nat). Nat)).
     arrRec (Σ (k : Nat). Nat)
@@ -201,8 +200,8 @@ def AllK7 : Term := prog defer_check {
       M A }
 
 /-- The fold-spelled update: walks the cons view index-first, keeping the key
-    and replacing the value at the target index. Reused unchanged from
-    `SetHmProbe`; `AVSetDecT` below wraps it rather than replacing it. -/
+    and replacing the value at the target index. `AVSetDecT` below wraps it
+    rather than replacing it. -/
 def AVSetT : Term := prog defer_check {
   λ (I : Nat). λ (V : Nat).
     elim I return (λ (Z0 : Nat). Π (N : Nat) → Π (A : Array N (Σ (k : Nat). Nat)) → Array N (Σ (k : Nat). Nat)) {

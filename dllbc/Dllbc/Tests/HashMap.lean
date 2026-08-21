@@ -3101,7 +3101,7 @@ def MoveLevelNilTy : Term := prog defer_check {
       Id (List (Σ (k : Nat). Nat)) (AgetB CF SM J2) Nil }
 example : chkL MoveLevelNil MoveLevelNilTy = true := by native_decide
 
-/-! ### The rotation move's pure vocabulary (probed in `ProbeRotate.lean`)
+/-! ### The rotation move's pure vocabulary
 
     `SlotPush` moves one bucket node from src to dst by mutation (the
     mem::replace rotation) instead of constructing a fresh node. Its evidence

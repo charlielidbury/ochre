@@ -2216,3 +2216,106 @@ example : progRejects lowerAlias "no ⇒ reading" = true := by native_decide
 
 end Dllbc.Tests.FnAlias
 end
+
+section
+
+open Dllbc
+
+namespace Dllbc.Tests.S27Dispose
+
+open Dllbc.Tests
+
+/-! ### `recSame`, `recWrongIdx`, `recGrow` — negative controls for a deleted guard
+
+    A self-call at the same argument, at a different one, and at a larger one.
+    Their subject was a snapshot-subterm check that no longer exists, but each is
+    still rejected for an independent reason: the recursor's `ih` is bound at the
+    predecessor, so a self-call anywhere else has nothing to become, and the
+    let-chain cannot reference downward, so the un-elaborated form resolves to no
+    function at all. -/
+
+def guardTwins : List Term := [S23Direct.recSame, S23Direct.recWrongIdx, S23Direct.recGrow]
+
+example : guardTwins.all (fun t => progRejects t "not the predecessor") = true := by native_decide
+-- Not vacuous: the honest sibling elaborates, so the three refusals are about the
+-- argument and not about the shape.
+example : progOk S23Direct.recGood = true := by native_decide
+
+/-! ### `recDeep` — a macro limit, not a calculus limit
+
+    `recDeep` recurses two constructors down: an arm's `ih` is bound at the
+    *immediate* predecessor of the motive it is given, so reaching two steps back
+    needs a motive that already carries both values. The macro derives only the
+    motive that matches the function signature, so it cannot produce this one and
+    declines the declaration — but a hand-written recursor with a stronger motive
+    typechecks, which is what the rest of this section checks:
+
+    1. **`recDeep`'s own motive is CONSTANT** (`Π (n : Nat) → Id Nat Z Z` — nothing
+       depends on `n`), so `ih : P a` already IS `P b` for every `b`. The direct
+       recursor expresses it verbatim, and that is what the program below checks.
+    2. **The general two-down shape** — where `P` really does depend on `n` — has
+       a described route and NOT a mechanized one, and the distinction is left
+       standing rather than blurred: a course-of-values motive `Q m := P m × P (S m)`,
+       whose base arm inhabits `P 0` and `P 1` directly and whose step arm at `a`
+       with `ih : Q a` returns `Pair(snd ih, fst ih)` — `P (S a)` is `ih`'s second
+       component and the two-down call `f a` is its first — then one projection at
+       the end. One `natRec`, one stronger motive. Nothing below checks this; it is
+       filed as the route, and only construction 1 is a build fact.
+
+    So the limit is real but it is a **macro** limit, not a calculus one: `fnElab`
+    derives the motive mechanically from the signature (§7: "the motive is derived
+    from the signature — so the macro needs no inference"), and neither of these
+    motives is that one. That is the same shape as §9's own survey warning — "the
+    eliminator must accept a motive stronger than the signature, plus a weakening
+    step" — arriving a second time, from the other end of the language, before §9
+    is built. Filed as a macro capability rather than as an expressiveness wall. -/
+
+def deepSealT : Term := prog defer_check { Π (n : Nat) → Id Nat Z Z }
+def deepMotT : Term := prog defer_check { λ (n : Nat). Id Nat Z Z }
+
+/-- `recDeep`, hand-written as a sealed recursor. The step arm keeps the corpus's
+    own inner `match a`, reaching `ih` from inside it — the move the macro refuses
+    to make on the author's behalf.
+
+    The base arm must bind a unit binder rather than an empty telescope: an arm
+    that is not a λ is not a suspension, so it would run when the spine is formed
+    rather than when ι selects it. `deepBaseArmBare` below is the rejected twin
+    that omits the binder. -/
+def deepBaseArm : Term :=
+  Term.lamTel [(unitBinder, .cmpT (.const "Unit"))] (.ctorApp "Refl" [])
+def deepBaseArmBare : Term := Term.lamTel [] (.ctorApp "Refl" [])
+def deepStepArm : Term :=
+  -- `ih`'s domain is the motive at the predecessor; `deepMotT` is constant, so
+  -- `ih : P a` already is `P b` for every `b`.
+  Term.lamTel [(⟨0, "a"⟩, .const "Nat"), (⟨1, "ih"⟩, prog defer_check { Id Nat Z Z })]
+    (.matchE ⟨0, "a"⟩ none
+      [ .mk "Z" [] (.ctorApp "Refl" [])
+      , .mk "S" [⟨2, "b"⟩] (.var ⟨1, "ih"⟩) ])
+def deepRec : Term :=
+  .app (.app (.app (.const "natRec") deepMotT) deepBaseArm) deepStepArm
+def recDeepProg : Term := .letIn ⟨900, "F"⟩ (.seal 0 deepRec deepSealT) .unit
+
+example : progOk recDeepProg = true := by native_decide
+
+/-- The same program with the base arm left bare is refused: the two differ in
+    one binder, which is what makes the accept above about the arm's shape
+    rather than about the program. -/
+def recDeepBare : Term :=
+  .letIn ⟨900, "F"⟩ (.seal 0
+    (.app (.app (.app (.const "natRec") deepMotT) deepBaseArmBare) deepStepArm) deepSealT) .unit
+example : progRejects recDeepBare "is a bare term, not a λ" = true := by native_decide
+
+/-- The seal really audits the recursor: ascribed at a Π claiming
+    `Id Nat Z (S Z)` instead, the arms cannot inhabit it and this is rejected. -/
+def deepSealLie : Term := prog defer_check { Π (n : Nat) → Id Nat Z (S Z) }
+def recDeepLie : Term :=
+  .letIn ⟨900, "F"⟩ (.seal 0 (.app (.app (.app (.const "natRec")
+    (prog defer_check { λ (n : Nat). Id Nat Z (S Z) })) deepBaseArm) deepStepArm) deepSealLie) .unit
+example : progOk recDeepLie = false := by native_decide
+
+/-- The macro itself still declines the declaration: the form is expressible, but
+    `fnElab` does not derive this motive. -/
+example : progRejects S23Direct.recDeep "not the predecessor" = true := by native_decide
+
+end Dllbc.Tests.S27Dispose
+end

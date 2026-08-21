@@ -24,8 +24,7 @@ register_option dllbc.hover : Bool := {
     is for: "below the line where it got changed, the identifier shows the updated
     value". Binder granularity is a different answer to a different question, and
     it remains exactly one option-flip away — `set_option dllbc.pointHover false`
-    restores docs/16's behaviour wholesale, which is what `Tests/HoverSpans` runs
-    under and pins.
+    restores docs/16's behaviour wholesale.
 
     The cost stopped being an argument either way once both ends were measured
     (docs/17 §9): recording is free, and reading is ~4 ms paid lazily inside
