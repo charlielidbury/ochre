@@ -760,7 +760,7 @@ def upatParts (p : TSyntax `upat) : MacroM (Ident × Option (List (TSyntax `upat
     returned here. -/
 partial def mintPatArgs (rctx : List (String × Nat)) (next : Nat) :
     List (TSyntax `upat) →
-    MacroM (List (String × Nat) × Nat × Array (TSyntax `term) × List PendingPat)
+    UM (List (String × Nat) × Nat × Array (TSyntax `term) × List PendingPat)
   | [] => pure (rctx, next, #[], [])
   | p :: ps => do
     -- The identifier comes back from `upatParts` and is not read off `p` directly:
@@ -768,10 +768,15 @@ partial def mintPatArgs (rctx : List (String × Nat)) (next : Nat) :
     -- `upat` wearing an `Ident`'s type and `getId` answers the anonymous name for
     -- it — a binder called "" that nothing can refer to, which is a silent
     -- unbound-variable error at every use site rather than a type error here.
-    match ← upatParts p with
+    match ← liftM (upatParts p) with
     | (x, none) => do
-      checkBinder x
+      liftM (checkBinder x)
       let name := x.getId.toString
+      -- The binder IS an occurrence (docs/17): filed here at its minted id, and
+      -- entry-tagged by the enclosing match/let-pattern row with that match's
+      -- key — arm-entry binds file under it, so `replayEntry` answers with this
+      -- arm's own seed, per path.
+      noteOcc x.raw next name
       let v ← `((⟨$(quote next), $(quote name)⟩ : Dllbc.Var))
       let (rctx', n, vs, pend) ← mintPatArgs ((name, next) :: rctx) (next + 1) ps
       pure (rctx', n, #[v] ++ vs, pend)
@@ -790,7 +795,12 @@ partial def wrapPats (rctx : List (String × Nat)) (next : Nat) (pend : List Pen
   match pend with
   | [] => body rctx next
   | (v, c, args) :: rest => do
+    let occLo ← occMark
     let (rctx', n1, vars, pend') ← mintPatArgs rctx next args
+    -- A nested pattern's binders belong to the GENERATED inner match, whose key
+    -- this row is about to build — tagged here, before the outer row's sweep
+    -- can hand them the outer key.
+    tagOccsEntry occLo (← `(Dllbc.Term.matchE $v none []))
     let (inner, n2) ← wrapPats rctx' n1 (pend' ++ rest) body
     return (← `(Dllbc.Term.matchE $v none
       [Dllbc.Branch.mk $(quote c.getId.toString) [$vars,*] $inner]), n2)
@@ -1195,7 +1205,14 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
       | none => return (← `(Dllbc.Term.call $(quote name) [$args',*]), n)
   | `(uterm| match $e:uterm { $arms,* }) => do
     let (scrut, pre?, n1) ← elabScrut rctx pctx next e
+    -- Pattern binders (and bare-arm-body stragglers no statement row keyed) are
+    -- ENTRY occurrences of this match: arm-entry binds file under the match key,
+    -- so `replayEntry` answers each from its own arm's seed, per path. Occs a
+    -- body row already keyed keep their key (`stmt.isNone` guard); nested
+    -- pattern binders were keyed by `wrapPats` with their inner match first.
+    let occLo ← occMark
     let (arms', n) ← elabUArms rctx pctx n1 arms.getElems.toList
+    tagOccsEntry occLo (← `(Dllbc.Term.matchE $scrut none []))
     return (← wrapScrut scrut pre? (← `(Dllbc.Term.matchE $scrut none [$arms',*])), n)
   -- M23: `match h : x { … }` — the branch-equation form. One binder for the whole
   -- match (its TYPE is what varies per arm), as in Lean's `match h : x with`.
@@ -1215,7 +1232,12 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
       | _ => pure ()
     let (scrut, pre?, n1) ← elabScrut rctx pctx next e
     let hName := h.getId.toString
+    -- The equation binder and the arms' binders are entry occurrences, exactly
+    -- as in the plain row above.
+    let occLo ← occMark
+    noteOcc h.raw n1 hName
     let (arms', n) ← elabUArms ((hName, n1) :: rctx) pctx (n1 + 1) arms.getElems.toList
+    tagOccsEntry occLo (← `(Dllbc.Term.matchE $scrut (some ⟨$(quote n1), $(quote hName)⟩) []))
     let m ← `(Dllbc.Term.matchE $scrut (some ⟨$(quote n1), $(quote hName)⟩) [$arms',*])
     return (← wrapScrut scrut pre? m, n)
   | `(uterm| if $c:uterm { $t:ublk } else { $f:ublk }) => do  -- §12 sugar → Bool match
@@ -1609,7 +1631,12 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
   -- be settled for both at once, since these desugar to each other's forms.)
   | `(ublk| let $c:ident($args,*) = $e:uterm ; $rest:ublk) => do
     let (scrut, pre?, n1) ← elabScrut rctx pctx next e
+    -- This row IS an arm whose body is the enclosing block, so its binders are
+    -- entry occurrences of the match it emits — tagged before the block
+    -- elaborates, so the range is the pattern alone.
+    let occLo ← occMark
     let (rctx', n2, argVars, pend) ← mintPatArgs rctx n1 args.getElems.toList
+    tagOccsEntry occLo (← `(Dllbc.Term.matchE $scrut none []))
     -- Nested arguments (M34 sugar (iii)) wrap the rest of the block in their
     -- matches, which is the same rewrite `elabUArm` performs — and has to be, since
     -- this row IS an arm whose body is the enclosing block. `let Pair(a, Pair(b, c))

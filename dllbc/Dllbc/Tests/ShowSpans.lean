@@ -105,4 +105,51 @@ example : Term := prog{
   show n;
   () }
 
+/-! ## (S5) PATTERN BINDERS are binders like any other
+
+    A match arm's binders are seeded at arm entry, under the match statement's
+    key, per path — so they hover (and `show`) from their own arm's seed
+    through `replayEntry`, exactly as a parameter answers from the telescope's.
+    Ownership match binds the payload's components; borrow-mode match binds
+    reborrow loans INTO the payload, and the tooltip says which.
+
+    KNOWN LIMIT, stated: a `show` whose anchor is an arm's FINAL EXPRESSION
+    declines ("no value here") — continuation-grafting rewrites an arm's tail,
+    so the machine files no key for it and the surface's anchor points at a
+    statement that never happens. A `show` above any real arm statement works;
+    the shows below anchor to the `let`s after them. Pattern-binder HOVERS are
+    unaffected — they are entry occurrences of the match key, not anchored
+    forward. -/
+
+/--
+info: hd ↦ S Z
+---
+info: tl ↦ Nil
+---
+info: hd ↦ borrowₘ ℓ1 (σ2 : Nat)
+-/
+#guard_msgs in
+example : Term := prog{
+  let x = Cons(1, Nil);
+  let r = match x {
+    Nil => Z,
+    Cons(hd, tl) => {
+      show hd;
+      show tl;
+      let k = hd;
+      k }
+  };
+  fn F (v : &mut List Nat) -> Unit {
+    match v {
+      Nil => (),
+      Cons(hd, tl) => {
+        show hd;
+        let u = Z;
+        () }
+    };
+    let a = *v;
+    *v := a;
+    () };
+  () }
+
 end Dllbc.Tests.ShowSpans
