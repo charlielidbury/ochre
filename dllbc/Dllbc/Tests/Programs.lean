@@ -178,7 +178,7 @@ example : progOk b4lo = true := by native_decide
 -- fence fires on the place's syntactic root before the place is navigated at
 -- all, which is the property being pinned (a place expression may carve, and a
 -- fence that ran after that would have already reorganized the state).
-def b5body : Term := .letIn ⟨1, "e"⟩ (.index (.var ⟨0, "N"⟩) (.ctorApp "Z" []) none) .unit
+def b5body : Term := .seq (.letIn ⟨1, "e"⟩ (.index (.var ⟨0, "N"⟩) (.ctorApp "Z" []) none)) .unit
 -- The body is spliced with `%`, the escape hatch that lets a hand-built `Term`
 -- stand in for a `fn` statement's block.
 def b5hi : Term := prog defer_check { fn B5 (N : Nat) -> Unit { %b5body }; () }
@@ -1412,8 +1412,9 @@ example : progRejects d2borrow "a runtime (lowercase) binding" = true := by nati
 -- through a call-free body, so it is the variable rule and not the call rule
 -- doing the work — C1 above covers the call side.)
 def d2free : Term :=
-  .letIn ⟨0, "g"⟩ (.seal 0 (Term.lamTel [(⟨1, "a"⟩, .const "Nat")] (.letIn ⟨2, "z"⟩ (.var ⟨9, "nope"⟩) (.var ⟨1, "a"⟩)))
-    (prog defer_check { Π (a : Nat) → Nat })) .unit
+  .seq (.letIn ⟨0, "g"⟩ (.seal 0 (Term.lamTel [(⟨1, "a"⟩, .const "Nat")]
+      (.seq (.letIn ⟨2, "z"⟩ (.var ⟨9, "nope"⟩)) (.var ⟨1, "a"⟩)))
+    (prog defer_check { Π (a : Nat) → Nat }))) .unit
 example : progRejects d2free "not bound anywhere above it" = true := by native_decide
 
 -- D3. A sealed proof is not a global either, and that is deliberate rather than
@@ -1539,8 +1540,8 @@ example : progDiff (Tests.S23Direct.qsRun [3, 1, 2]) = true := by native_decide
 /-- A symbolic scrutinee at the top level of a program: an abstract call's result
     is a σ, and matching on one is what forks the driver's paths. -/
 def hSplit (inZ inS : Term) : Term :=
-  .letIn ⟨0, "F"⟩ (prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) })
-    (.letIn ⟨1, "n"⟩ (Term.appSpine (.var ⟨0, "F"⟩) [prog defer_check { 3 }])
+  .seq (.letIn ⟨0, "F"⟩ (prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) }))
+    (.seq (.letIn ⟨1, "n"⟩ (Term.appSpine (.var ⟨0, "F"⟩) [prog defer_check { 3 }]))
       (.matchE ⟨1, "n"⟩ none [Branch.mk "Z" [] inZ, Branch.mk "S" [⟨2, "k"⟩] inS]))
 
 -- H0. The split is real: two paths, not one.
@@ -1551,8 +1552,8 @@ example : (programEnvs (hSplit .unit .unit)).length == 2 := by native_decide
 -- exercises the admitted-globals rule through the branch driver.
 def hGlobal (bad : Bool) : Term :=
   hSplit .unit
-    (.letIn ⟨3, "G"⟩ (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (Term.appSpine (.var ⟨0, "F"⟩) [.var ⟨4, "y"⟩]))
-      (.letIn ⟨5, "r"⟩ (Term.appSpine (.var ⟨3, "G"⟩) [.var ⟨2, "k"⟩])
+    (.seq (.letIn ⟨3, "G"⟩ (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (Term.appSpine (.var ⟨0, "F"⟩) [.var ⟨4, "y"⟩])))
+      (.seq (.letIn ⟨5, "r"⟩ (Term.appSpine (.var ⟨3, "G"⟩) [.var ⟨2, "k"⟩]))
         (if bad then prog defer_check { True } else .unit)))
 example : progOk (hGlobal false) = true := by native_decide
 -- The negative twin at the SAME position: the branch is entered and its result
@@ -1564,16 +1565,17 @@ example : progRejects (hGlobal true) "does not have return type" = true := by na
 -- this is data capture: the same rejection §D2a pins, reached the other way.)
 def hCapture : Term :=
   hSplit .unit
-    (.letIn ⟨3, "G"⟩ (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (.letIn ⟨6, "z"⟩ (.var ⟨2, "k"⟩) (.var ⟨4, "y"⟩)))
+    (.seq (.letIn ⟨3, "G"⟩ (Term.lamTel [(⟨4, "y"⟩, .const "Nat")]
+        (.seq (.letIn ⟨6, "z"⟩ (.var ⟨2, "k"⟩)) (.var ⟨4, "y"⟩))))
       .unit)
 example : progRejects hCapture "a runtime (lowercase) binding" = true := by native_decide
 
 -- H3. A seal inside a branch fires its audit there, in that branch's own state.
 def hSeal (bad : Bool) : Term :=
   hSplit .unit
-    (.letIn ⟨3, "Sf"⟩
+    (.seq (.letIn ⟨3, "Sf"⟩
       (.seal 0 (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (.var ⟨4, "y"⟩))
-        (if bad then prog defer_check { Π (y : Nat) → Bool } else prog defer_check { Π (y : Nat) → Nat }))
+        (if bad then prog defer_check { Π (y : Nat) → Bool } else prog defer_check { Π (y : Nat) → Nat })))
       .unit)
 example : progOk (hSeal false) = true := by native_decide
 example : progRejects (hSeal true) "does not have return type (Bool)" = true := by native_decide
@@ -1583,16 +1585,16 @@ example : progRejects (hSeal true) "does not have return type (Bool)" = true := 
 -- the path that does not has nothing to demand — and the differential is what
 -- says both are right, since the concrete run takes exactly one of them.
 def hLend : Term :=
-  .letIn ⟨0, "Push"⟩
+  .seq (.letIn ⟨0, "Push"⟩
     (prog{ (λ(e : Nat, v : &mut (s : List Nat ~> List Nat)){
-                  let tail = *v; *v := Cons(e, tail); () } : Π (e : Nat) → Π (v : &mut (s : List Nat ~> List Nat)) → Unit) })
-    (.letIn ⟨1, "l"⟩ (prog defer_check { Cons(1, Nil) })
-      (.letIn ⟨2, "id"⟩ (prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) })
-        (.letIn ⟨3, "n"⟩ (Term.appSpine (.var ⟨2, "id"⟩) [prog defer_check { 3 }])
+                  let tail = *v; *v := Cons(e, tail); () } : Π (e : Nat) → Π (v : &mut (s : List Nat ~> List Nat)) → Unit) }))
+    (.seq (.letIn ⟨1, "l"⟩ (prog defer_check { Cons(1, Nil) }))
+      (.seq (.letIn ⟨2, "id"⟩ (prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) }))
+        (.seq (.letIn ⟨3, "n"⟩ (Term.appSpine (.var ⟨2, "id"⟩) [prog defer_check { 3 }]))
           (.matchE ⟨3, "n"⟩ none
             [Branch.mk "Z" [] .unit,
              Branch.mk "S" [⟨4, "k"⟩]
-               (.letIn ⟨5, "r"⟩ (Term.appSpine (.var ⟨0, "Push"⟩) [.var ⟨4, "k"⟩, .borrow (.var ⟨1, "l"⟩)])
+               (.seq (.letIn ⟨5, "r"⟩ (Term.appSpine (.var ⟨0, "Push"⟩) [.var ⟨4, "k"⟩, .borrow (.var ⟨1, "l"⟩)]))
                  .unit)]))))
 example : progOk hLend = true := by native_decide
 example : progDiff hLend = true := by native_decide
@@ -2205,8 +2207,8 @@ partial def lowerComptime : Term → Nat
       + lowerComptime d + lowerComptime b
   | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => lowerComptime d + lowerComptime b
   | .app f a | .seq f a | .seal _ f a => lowerComptime f + lowerComptime a
-  | .letIn _ r t => lowerComptime r + lowerComptime t
-  | .assign p e r => lowerComptime p + lowerComptime e + lowerComptime r
+  | .letIn _ r => lowerComptime r
+  | .assign p e => lowerComptime p + lowerComptime e
   | .idT a b c => lowerComptime a + lowerComptime b + lowerComptime c
   | .ctorApp _ as | .call _ as => (as.map lowerComptime).foldl (· + ·) 0
   | .matchE _ _ bs => (bs.map (fun br => lowerComptime br.body)).foldl (· + ·) 0
@@ -2219,8 +2221,8 @@ partial def slotBinders : Term → Nat
   | .lam x d b => (if x.bindsSlot then 1 else 0) + slotBinders d + slotBinders b
   | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => slotBinders d + slotBinders b
   | .app f a | .seq f a | .seal _ f a => slotBinders f + slotBinders a
-  | .letIn _ r t => slotBinders r + slotBinders t
-  | .assign p e r => slotBinders p + slotBinders e + slotBinders r
+  | .letIn _ r => slotBinders r
+  | .assign p e => slotBinders p + slotBinders e
   | .idT a b c => slotBinders a + slotBinders b + slotBinders c
   | .ctorApp _ as | .call _ as => (as.map slotBinders).foldl (· + ·) 0
   | .matchE _ _ bs => (bs.map (fun br => slotBinders br.body)).foldl (· + ·) 0
@@ -2242,8 +2244,8 @@ partial def unmarkedCaps : Term → Nat
       + unmarkedCaps d + unmarkedCaps b
   | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => unmarkedCaps d + unmarkedCaps b
   | .app f a | .seq f a | .seal _ f a => unmarkedCaps f + unmarkedCaps a
-  | .letIn _ r t => unmarkedCaps r + unmarkedCaps t
-  | .assign p e r => unmarkedCaps p + unmarkedCaps e + unmarkedCaps r
+  | .letIn _ r => unmarkedCaps r
+  | .assign p e => unmarkedCaps p + unmarkedCaps e
   | .idT a b c => unmarkedCaps a + unmarkedCaps b + unmarkedCaps c
   | .ctorApp _ as | .call _ as => (as.map unmarkedCaps).foldl (· + ·) 0
   | .matchE _ _ bs => (bs.map (fun br => unmarkedCaps br.body)).foldl (· + ·) 0
@@ -2260,8 +2262,8 @@ partial def keyDisagree : Term → Nat
       + keyDisagree d + keyDisagree b
   | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => keyDisagree d + keyDisagree b
   | .app f a | .seq f a | .seal _ f a => keyDisagree f + keyDisagree a
-  | .letIn _ r t => keyDisagree r + keyDisagree t
-  | .assign p e r => keyDisagree p + keyDisagree e + keyDisagree r
+  | .letIn _ r => keyDisagree r
+  | .assign p e => keyDisagree p + keyDisagree e
   | .idT a b c => keyDisagree a + keyDisagree b + keyDisagree c
   | .ctorApp _ as | .call _ as => (as.map keyDisagree).foldl (· + ·) 0
   | .matchE _ _ bs => (bs.map (fun br => keyDisagree br.body)).foldl (· + ·) 0
@@ -2277,8 +2279,8 @@ partial def comptimeSlotParams : Term → Nat
       + comptimeSlotParams d + comptimeSlotParams b
   | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => comptimeSlotParams d + comptimeSlotParams b
   | .app f a | .seq f a | .seal _ f a => comptimeSlotParams f + comptimeSlotParams a
-  | .letIn _ r t => comptimeSlotParams r + comptimeSlotParams t
-  | .assign p e r => comptimeSlotParams p + comptimeSlotParams e + comptimeSlotParams r
+  | .letIn _ r => comptimeSlotParams r
+  | .assign p e => comptimeSlotParams p + comptimeSlotParams e
   | .idT a b c => comptimeSlotParams a + comptimeSlotParams b + comptimeSlotParams c
   | .ctorApp _ as | .call _ as => (as.map comptimeSlotParams).foldl (· + ·) 0
   | .matchE _ _ bs => (bs.map (fun br => comptimeSlotParams br.body)).foldl (· + ·) 0
@@ -2293,8 +2295,8 @@ partial def impLams : Term → Nat
     (if Term.lamImperative (.lam x d b) then 1 else 0) + impLams d + impLams b
   | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => impLams d + impLams b
   | .app f a | .seq f a | .seal _ f a => impLams f + impLams a
-  | .letIn _ r t => impLams r + impLams t
-  | .assign p e r => impLams p + impLams e + impLams r
+  | .letIn _ r => impLams r
+  | .assign p e => impLams p + impLams e
   | .idT a b c => impLams a + impLams b + impLams c
   | .ctorApp _ as | .call _ as => (as.map impLams).foldl (· + ·) 0
   | .matchE _ _ bs => (bs.map (fun br => impLams br.body)).foldl (· + ·) 0
@@ -2379,8 +2381,8 @@ partial def cmpSigmas : Term → Nat
   | .sigmaT _ d b => (if Term.domComptime d then 1 else 0) + cmpSigmas d + cmpSigmas b
   | .lam _ d b | .pi _ d b | .borrowT _ d b => cmpSigmas d + cmpSigmas b
   | .app f a | .seq f a | .seal _ f a => cmpSigmas f + cmpSigmas a
-  | .letIn _ r t => cmpSigmas r + cmpSigmas t
-  | .assign p e r => cmpSigmas p + cmpSigmas e + cmpSigmas r
+  | .letIn _ r => cmpSigmas r
+  | .assign p e => cmpSigmas p + cmpSigmas e
   | .idT a b c => cmpSigmas a + cmpSigmas b + cmpSigmas c
   | .ctorApp _ as | .call _ as => (as.map cmpSigmas).foldl (· + ·) 0
   | .matchE _ _ bs => (bs.map (fun br => cmpSigmas br.body)).foldl (· + ·) 0
@@ -2395,8 +2397,8 @@ partial def capArms : Term → Nat
       (br.binders.filter (fun x => isUpperInit x.name)).length + capArms br.body)).foldl (· + ·) 0
   | .lam _ d b | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => capArms d + capArms b
   | .app f a | .seq f a | .seal _ f a => capArms f + capArms a
-  | .letIn _ r t => capArms r + capArms t
-  | .assign p e r => capArms p + capArms e + capArms r
+  | .letIn _ r => capArms r
+  | .assign p e => capArms p + capArms e
   | .idT a b c => capArms a + capArms b + capArms c
   | .ctorApp _ as | .call _ as => (as.map capArms).foldl (· + ·) 0
   | .borrow t | .deref t | .cmpT t => capArms t
@@ -2410,8 +2412,8 @@ partial def lowerArms : Term → Nat
       (br.binders.filter (fun x => !isUpperInit x.name)).length + lowerArms br.body)).foldl (· + ·) 0
   | .lam _ d b | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => lowerArms d + lowerArms b
   | .app f a | .seq f a | .seal _ f a => lowerArms f + lowerArms a
-  | .letIn _ r t => lowerArms r + lowerArms t
-  | .assign p e r => lowerArms p + lowerArms e + lowerArms r
+  | .letIn _ r => lowerArms r
+  | .assign p e => lowerArms p + lowerArms e
   | .idT a b c => lowerArms a + lowerArms b + lowerArms c
   | .ctorApp _ as | .call _ as => (as.map lowerArms).foldl (· + ·) 0
   | .borrow t | .deref t | .cmpT t => lowerArms t

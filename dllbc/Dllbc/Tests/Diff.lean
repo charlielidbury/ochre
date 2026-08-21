@@ -69,12 +69,12 @@ def leafBodies : List Term :=
   [ .unit ]
   ++ exprs.map (fun e => .seq e .unit)                          -- e ; ()
   -- p := e ; ()  for p a place through 0/1/2 peels
-  ++ ([v0, .deref v0].flatMap fun p => exprs.map fun e => .assign p e .unit)
+  ++ ([v0, .deref v0].flatMap fun p => exprs.map fun e => .seq (.assign p e) .unit)
   -- the take-and-refill idiom
-  ++ [ .letIn ⟨2, "tail"⟩ (.deref v0)
-        (.assign (.deref v0) (.ctorApp "Cons" [tnat 0, .var ⟨2, "tail"⟩]) .unit) ]
+  ++ [ .seq (.letIn ⟨2, "tail"⟩ (.deref v0))
+        (.seq (.assign (.deref v0) (.ctorApp "Cons" [tnat 0, .var ⟨2, "tail"⟩])) .unit) ]
   -- a stray let
-  ++ [ .letIn ⟨2, "x"⟩ (.deref v0) .unit ]
+  ++ [ .seq (.letIn ⟨2, "x"⟩ (.deref v0)) .unit ]
 
 /-- Bodies with one exhaustive match-through on v, branches drawn from
     `leafBodies` (capped). In the `Cons` branch, hd = id 2, tl = id 3. -/
@@ -137,8 +137,8 @@ def nLeaf : List Term := [tnat 0, tnat 1, n0, .var ⟨1, "m"⟩, .ctorApp "S" [.
 
 def nBodies : List Term :=
   [ n0, tnat 0, tnat 1, .ctorApp "S" [n0], .ctorApp "S" [tnat 0],
-    .letIn ⟨1, "x"⟩ n0 (.ctorApp "S" [.var ⟨1, "x"⟩]),
-    .letIn ⟨1, "x"⟩ (tnat 0) n0 ]
+    .seq (.letIn ⟨1, "x"⟩ n0) (.ctorApp "S" [.var ⟨1, "x"⟩]),
+    .seq (.letIn ⟨1, "x"⟩ (tnat 0)) n0 ]
   -- exhaustive match on n
   ++ (nLeaf.take 5).flatMap fun b1 =>
        (nLeaf.take 5).map fun b2 =>
@@ -160,11 +160,11 @@ example : nAccepted.all (fun b => nArgs.all (fun a => progRuns (nRun b a))) = tr
 -- Raw Term construction: the generator needs AST literals, not the `prog{}` macro.
 def bb : Term := .var ⟨0, "b"⟩
 def bcLeaf : List Term :=
-  [ .unit, .assign (.deref bb) (tnat 0) .unit, .assign (.deref bb) (tnat 1) .unit ]
+  [ .unit, .seq (.assign (.deref bb) (tnat 0)) .unit, .seq (.assign (.deref bb) (tnat 1)) .unit ]
 
 def bcBodies : List Term :=
   bcLeaf
-  ++ [ .letIn ⟨2, "tk"⟩ (.deref bb) (.assign (.deref bb) (tnat 0) .unit) ]   -- take + refill
+  ++ [ .seq (.letIn ⟨2, "tk"⟩ (.deref bb)) (.seq (.assign (.deref bb) (tnat 0)) .unit) ]   -- take + refill
   -- exhaustive match on c
   ++ (bcLeaf.take 5).flatMap fun b1 =>
        (bcLeaf.take 5).map fun b2 =>

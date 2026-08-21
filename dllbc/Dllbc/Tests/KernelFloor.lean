@@ -1080,7 +1080,7 @@ open Dllbc
 /-- The first seal in a term, with its site as the boundary pass assigned it. -/
 partial def firstSeal : Term → Option (Nat × Term × Term)
   | .seal s t u => some (s, t, u)
-  | .letIn _ a b => (firstSeal a).orElse (fun _ => firstSeal b)
+  | .letIn _ a => firstSeal a
   | .seq a b | .app a b => (firstSeal a).orElse (fun _ => firstSeal b)
   | .lam _ d b | .pi _ d b | .sigmaT _ d b => (firstSeal d).orElse (fun _ => firstSeal b)
   | _ => none
@@ -1179,7 +1179,7 @@ def twoSealsRenamed : Term := prog{
 /-- Every site in a term, in traversal order. -/
 partial def sites : Term → List Nat
   | .seal s t u => s :: sites t ++ sites u
-  | .letIn _ a b => sites a ++ sites b
+  | .letIn _ a => sites a
   | .seq a b | .app a b => sites a ++ sites b
   | .lam _ d b | .pi _ d b | .sigmaT _ d b => sites d ++ sites b
   | _ => []

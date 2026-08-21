@@ -1383,7 +1383,7 @@ open Dllbc
 def annotated : Term := prog{ let G = λ(a : Nat) { a }; () }
 
 example : (match annotated with
-           | .letIn _ (.lam _ τ _) _ => Term.beq τ (.const "Nat")
+           | .seq (.letIn _ (.lam _ τ _)) _ => Term.beq τ (.const "Nat")
            | _ => false) = true := by native_decide
 
 -- A capitalized binder's domain carries the comptime marker, which is what
@@ -1391,7 +1391,7 @@ example : (match annotated with
 -- against.
 def annotatedCmp : Term := prog{ let G = λ(A : Nat) { A }; () }
 example : (match annotatedCmp with
-           | .letIn _ (.lam _ τ _) _ => Term.beq τ (.cmpT (.const "Nat"))
+           | .seq (.letIn _ (.lam _ τ _)) _ => Term.beq τ (.cmpT (.const "Nat"))
            | _ => false) = true := by native_decide
 
 /-! ## §B. …and the VALUE drops the domain
@@ -1486,7 +1486,7 @@ def bndProgram : Term := prog{
 
 /-- The sealed recursor the `fn` statement bound. -/
 def bndSeal : Option Term :=
-  match bndProgram with | .letIn _ t _ => some t | _ => none
+  match bndProgram with | .seq (.letIn _ t) _ => some t | _ => none
 
 /-- The declaration's own domain for `Hn`, as the header writes it: `Le (Len *v) n`
     with the comptime marker, since `Hn` is capitalized. Written out because
@@ -1567,7 +1567,7 @@ example : (match bndArms with
     recursor. The binder is capital, matching what an elaborated
     declaration's binder is — this hand-built term stands in for what the
     `fn` row emits, so it has to agree with it. -/
-def bndProg (t : Term) : Term := .letIn ⟨900, "F"⟩ t .unit
+def bndProg (t : Term) : Term := .seq (.letIn ⟨900, "F"⟩ t) .unit
 
 /-- `bndProgram`'s sealed recursor with the step arm's `i`-th annotation replaced, and nothing else
     touched. `none` when the elaboration is not the shape this section reads. -/
@@ -1809,7 +1809,7 @@ example : progOk juxSaturated (.const "Nat") = true := by native_decide
 -- call distinguishable without a token: the basis is closed, so the test is
 -- exact.
 example : (match (prog defer_check { let x = S 3; () } : Term) with
-           | .letIn _ (.ctorApp "S" [_]) _ => true
+           | .seq (.letIn _ (.ctorApp "S" [_])) _ => true
            | _ => false) = true := by native_decide
 
 -- G8. A CAPITAL head is never routed, in either position: a capital
@@ -2083,7 +2083,7 @@ def deepStepArm : Term :=
       , .mk "S" [⟨2, "b"⟩] (.var ⟨1, "ih"⟩) ])
 def deepRec : Term :=
   .app (.app (.app (.const "natRec") deepMotT) deepBaseArm) deepStepArm
-def recDeepProg : Term := .letIn ⟨900, "F"⟩ (.seal 0 deepRec deepSealT) .unit
+def recDeepProg : Term := .seq (.letIn ⟨900, "F"⟩ (.seal 0 deepRec deepSealT)) .unit
 
 example : progOk recDeepProg = true := by native_decide
 
@@ -2091,16 +2091,16 @@ example : progOk recDeepProg = true := by native_decide
     one binder, which is what makes the accept above about the arm's shape
     rather than about the program. -/
 def recDeepBare : Term :=
-  .letIn ⟨900, "F"⟩ (.seal 0
-    (.app (.app (.app (.const "natRec") deepMotT) deepBaseArmBare) deepStepArm) deepSealT) .unit
+  .seq (.letIn ⟨900, "F"⟩ (.seal 0
+    (.app (.app (.app (.const "natRec") deepMotT) deepBaseArmBare) deepStepArm) deepSealT)) .unit
 example : progRejects recDeepBare "is a bare term, not a λ" = true := by native_decide
 
 /-- The seal really audits the recursor: ascribed at a Π claiming
     `Id Nat Z (S Z)` instead, the arms cannot inhabit it and this is rejected. -/
 def deepSealLie : Term := prog defer_check { Π (n : Nat) → Id Nat Z (S Z) }
 def recDeepLie : Term :=
-  .letIn ⟨900, "F"⟩ (.seal 0 (.app (.app (.app (.const "natRec")
-    (prog defer_check { λ (n : Nat). Id Nat Z (S Z) })) deepBaseArm) deepStepArm) deepSealLie) .unit
+  .seq (.letIn ⟨900, "F"⟩ (.seal 0 (.app (.app (.app (.const "natRec")
+    (prog defer_check { λ (n : Nat). Id Nat Z (S Z) })) deepBaseArm) deepStepArm) deepSealLie)) .unit
 example : progOk recDeepLie = false := by native_decide
 
 /-- The macro itself still declines the declaration: the form is expressible, but

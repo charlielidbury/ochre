@@ -39,11 +39,11 @@ def borrowMatch : Term := prog{
   match b { Pair(l, r) => { *l := 1; () } } }
 
 def borrowMatchHand : Term :=
-  .letIn ⟨0, "v"⟩ (.ctorApp "Pair" [nat 0, nat 1])
-    (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "v"⟩))
+  .seq (.letIn ⟨0, "v"⟩ (.ctorApp "Pair" [nat 0, nat 1]))
+    (.seq (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "v"⟩)))
       (.matchE ⟨1, "b"⟩ none
         [.mk "Pair" [⟨2, "l"⟩, ⟨3, "r"⟩]
-          (.assign (.deref (.var ⟨2, "l"⟩)) (nat 1) .unit)]))
+          (.seq (.assign (.deref (.var ⟨2, "l"⟩)) (nat 1)) .unit)]))
 
 example : borrowMatch = borrowMatchHand := by rfl
 
@@ -62,7 +62,7 @@ def eqnMatch : Term := prog{
   match h : n { Z => (), S(m) => () } }
 
 def eqnMatchHand : Term :=
-  .letIn ⟨0, "n"⟩ (nat 0)
+  .seq (.letIn ⟨0, "n"⟩ (nat 0))
     (.matchE ⟨0, "n"⟩ (some ⟨1, "h"⟩)
       [.mk "Z" [] .unit, .mk "S" [⟨2, "m"⟩] .unit])
 
@@ -273,13 +273,13 @@ def nestedArm : Term := prog{
   match l { Nil => (), Cons(Pair(kk, vv), tl) => { let out = vv; () } } }
 
 def nestedArmHand : Term :=
-  .letIn ⟨0, "l"⟩ (.ctorApp "Cons" [.ctorApp "Pair" [nat 1, nat 2], .ctorApp "Nil" []])
+  .seq (.letIn ⟨0, "l"⟩ (.ctorApp "Cons" [.ctorApp "Pair" [nat 1, nat 2], .ctorApp "Nil" []]))
     (.matchE ⟨0, "l"⟩ none
       [.mk "Nil" [] .unit,
        .mk "Cons" [⟨1, "§p1"⟩, ⟨2, "tl"⟩]
          (.matchE ⟨1, "§p1"⟩ none
            [.mk "Pair" [⟨3, "kk"⟩, ⟨4, "vv"⟩]
-             (.letIn ⟨5, "out"⟩ (.var ⟨4, "vv"⟩) .unit)])])
+             (.seq (.letIn ⟨5, "out"⟩ (.var ⟨4, "vv"⟩)) .unit)])])
 
 example : nestedArm = nestedArmHand := by rfl
 
@@ -304,15 +304,15 @@ def deep3 : Term := prog{
   () }
 
 def deep3Hand : Term :=
-  .letIn ⟨0, "p"⟩
-      (.ctorApp "Pair" [nat 1, .ctorApp "Pair" [nat 2, .ctorApp "Pair" [nat 3, nat 4]]])
+  .seq (.letIn ⟨0, "p"⟩
+      (.ctorApp "Pair" [nat 1, .ctorApp "Pair" [nat 2, .ctorApp "Pair" [nat 3, nat 4]]]))
     (.matchE ⟨0, "p"⟩ none
       [.mk "Pair" [⟨1, "a"⟩, ⟨2, "§p2"⟩]
         (.matchE ⟨2, "§p2"⟩ none
           [.mk "Pair" [⟨3, "b"⟩, ⟨4, "§p4"⟩]
             (.matchE ⟨4, "§p4"⟩ none
               [.mk "Pair" [⟨5, "c"⟩, ⟨6, "d"⟩]
-                (.letIn ⟨7, "out"⟩ (.var ⟨6, "d"⟩) .unit)])])])
+                (.seq (.letIn ⟨7, "out"⟩ (.var ⟨6, "d"⟩)) .unit)])])])
 
 example : deep3 = deep3Hand := by rfl
 example : progOk deep3 = true := by native_decide

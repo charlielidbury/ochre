@@ -77,11 +77,12 @@ each was removed by giving the kernel the rule the surface had been standing in
 for:
 
   * **`let`** (M29 α) emitted a `.letIn` in one mode and a β-redex over a fresh
-    binder in the other. One row emits `.letIn` and the kernel reads it under both
-    arrows. (⇝'s reading was a β built at reflection when M29 α landed; since
-    M32 R1 no redex is built anywhere — `Pure.eval` binds `Pure.letName x.id`
-    in its environment and evaluates the tail, see `Machine.lean`'s "`let` is
-    read by β, and `eval` performs it" note.)
+    binder in the other. One row emits the `let` — since detach-tails as the
+    spine `.seq (.letIn x e) rest` — and the kernel reads it under both arrows.
+    (⇝'s reading was a β built at reflection when M29 α landed; since M32 R1 no
+    redex is built anywhere — `Pure.eval` binds `Pure.letName x.id` in its
+    environment and the `.seq` tail evaluates under it, see `Machine.lean`'s
+    "`let` is read by β, and `eval` performs it" note.)
   * **`&mut`** (M29 β) was the borrow OPERATION in one mode and the borrow TYPE in
     the other. They are spelled `&m` and `&mut` now, so each row emits its own
     node whatever surrounds it.

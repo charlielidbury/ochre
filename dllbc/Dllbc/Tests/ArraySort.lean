@@ -666,18 +666,18 @@ def arrOfV : Val → Option (List Nat)
 /-- Build the array, borrow it, sort it in place, read it back. `hfuel` is `Le n n`,
     which computes to `Unit` at a concrete length. -/
 def qsCallerA (l : List Nat) : Term :=
-  .letIn ⟨0, "z"⟩ (tarrT l)
-    (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
+  .seq (.letIn ⟨0, "z"⟩ (tarrT l))
+    (.seq (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩)))
       (.seq (.call "QuicksortA" [tnatT l.length, tnatT l.length, .unit, .var ⟨1, "b"⟩])
-        (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
+        (.seq (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩)) .unit)))
 
 /-- `splitA` alone, so the divergence can be exhibited one call deep instead of three. -/
 def splCaller (l : List Nat) (pvt : Nat) : Term :=
-  .letIn ⟨0, "z"⟩ (tarrT l)
-    (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
-      (.letIn ⟨2, "r"⟩ (.call "SplitA"
-          [tnatT l.length, tnatT l.length, .unit, tnatT pvt, .var ⟨1, "b"⟩])
-        (.letIn ⟨3, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
+  .seq (.letIn ⟨0, "z"⟩ (tarrT l))
+    (.seq (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩)))
+      (.seq (.letIn ⟨2, "r"⟩ (.call "SplitA"
+          [tnatT l.length, tnatT l.length, .unit, tnatT pvt, .var ⟨1, "b"⟩]))
+        (.seq (.letIn ⟨3, "y"⟩ (.var ⟨0, "z"⟩)) .unit)))
 
 def runQsA (l : List Nat) : Option (List Nat) :=
   match Dllbc.Tests.S9Diff.runExec (arrUnder sHonest pHonest qHonest qSuffHonest (qsCallerA l)) with
