@@ -1931,7 +1931,7 @@ example : progDiff (Tests.S23Direct.qsRun [3, 1, 2]) = true := by native_decide
 def hSplit (inZ inS : Term) : Term :=
   .letIn ⟨0, "F"⟩ (prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) })
     (.letIn ⟨1, "n"⟩ (Term.appSpine (.var ⟨0, "F"⟩) [prog defer_check { 3 }])
-      (.matchE ⟨1, "n"⟩ none [Branch.mk "Z" [] inZ, Branch.mk "S" [⟨2, "k"⟩] inS]))
+      (.matchE ⟨1, "n"⟩ none none [Branch.mk "Z" [] inZ, Branch.mk "S" [⟨2, "k"⟩] inS]))
 
 -- H0. The split is real: two paths, not one.
 example : (programEnvs (hSplit .unit .unit)).length == 2 := by native_decide
@@ -1979,7 +1979,7 @@ def hLend : Term :=
     (.letIn ⟨1, "l"⟩ (prog defer_check { Cons(1, Nil) })
       (.letIn ⟨2, "id"⟩ (prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) })
         (.letIn ⟨3, "n"⟩ (Term.appSpine (.var ⟨2, "id"⟩) [prog defer_check { 3 }])
-          (.matchE ⟨3, "n"⟩ none
+          (.matchE ⟨3, "n"⟩ none none
             [Branch.mk "Z" [] .unit,
              Branch.mk "S" [⟨4, "k"⟩]
                (.letIn ⟨5, "r"⟩ (Term.appSpine (.var ⟨0, "Push"⟩) [.var ⟨4, "k"⟩, .borrow (.var ⟨1, "l"⟩)])

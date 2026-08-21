@@ -571,7 +571,7 @@ def soCallerTail (l : List Nat) (i : Nat) : Term :=
   .letIn ⟨0, "x"⟩ (tlistT l)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "x"⟩))
       (.letIn ⟨2, "p"⟩ (.call "SplitOff" [.var ⟨1, "b"⟩, tnatT i, .unit])
-        (.matchE ⟨2, "p"⟩ none [.mk "Pair" [⟨3, "rr"⟩, ⟨4, "q"⟩] (.letIn ⟨5, "y"⟩ (.var ⟨0, "x"⟩) .unit)])))
+        (.matchE ⟨2, "p"⟩ none none [.mk "Pair" [⟨3, "rr"⟩, ⟨4, "q"⟩] (.letIn ⟨5, "y"⟩ (.var ⟨0, "x"⟩) .unit)])))
 def runSplit (l : List Nat) (i : Nat) : Bool :=
   match Dllbc.Tests.S9Diff.runExec (soUnder soHonest (soCallerTail l i)) with
   | .ok env => env.lookup "y" == some (vlistV (l.take i)) && env.lookup "rr" == some (vlistV (l.drop i))
@@ -1888,7 +1888,7 @@ def partCallerTail (l : List Nat) (pvv : Nat) : Term :=
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
       (.letIn ⟨2, "r"⟩ (.call "Partition"
           [tnatT l.length, .var ⟨1, "b"⟩, tnatT pvv, .unit])
-        (.matchE ⟨2, "r"⟩ none
+        (.matchE ⟨2, "r"⟩ none none
           [.mk "Pair" [⟨3, "hi"⟩, ⟨4, "q"⟩] (.letIn ⟨5, "y"⟩ (.var ⟨0, "z"⟩) .unit)])))
 def runPart (l : List Nat) (pvv : Nat) : Bool :=
   match Dllbc.Tests.S9Diff.runExec (qsUnder partHonest qsHonest suffHonest (partCallerTail l pvv)) with
@@ -2355,7 +2355,7 @@ example : progRejects stuckProbeLie "does not have return type" = true := by nat
 -- Not vacuous (b): a one-armed match is rejected as non-exhaustive — the
 -- generalized σb is genuinely Bool-typed, so exhaustiveness demands True AND False.
 -- SUBJECT: a deliberately non-exhaustive body (raw Term, one-armed match) — the defect is the subject.
-def stuckProbeNonExhBody : Term := .letIn ⟨1, "c"⟩ (lebSp (V 0 "n")) (.matchE ⟨1, "c"⟩ none [.mk "True" [] Refl])
+def stuckProbeNonExhBody : Term := .letIn ⟨1, "c"⟩ (lebSp (V 0 "n")) (.matchE ⟨1, "c"⟩ none none [.mk "True" [] Refl])
 def stuckProbeNonExh : Term := prog defer_check {
   fn StuckProbeNonExh (n : Nat) -> Id Nat
         (boolRec (λ (B : Bool). Nat) (S Z) Z (Leb n (S (S Z))))

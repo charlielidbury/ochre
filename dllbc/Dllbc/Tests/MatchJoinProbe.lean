@@ -53,7 +53,7 @@ def armSeamCheck (fuel : Nat) (v : Val) : M Unit := do
     `x` is bound to a fresh σ : motive; the continuation `k` runs ONCE. -/
 def joinMatchK (fuel : Nat) (x scrut : Var) (motive : Term)
     (branches : List Branch) (k : St → PathsD) (st : St) : PathsD :=
-  match (do noteStmt (.matchE scrut none branches)
+  match (do noteStmt (.matchE scrut none none branches)
             fenceComptime scrut "cannot be the scrutinee of a runtime match"
             let mv ← readC fuel motive
             let d ← reorgScrut fuel scrut
@@ -182,6 +182,6 @@ def armsListWrite : List Branch :=
   checkBodyWith [(vN, natT)] unitT
     (joinMatchK fuel vB vN boolT armsBoolN
       (fun st => exploreD fuel
-        (pushContinuations (.seq (.matchE vB none [.mk "True" [] .unit]) .unit)) st)))
+        (pushContinuations (.seq (.matchE vB none none [.mk "True" [] .unit]) .unit)) st)))
 
 end Dllbc.Tests.MatchJoinProbe

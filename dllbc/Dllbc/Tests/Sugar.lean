@@ -56,7 +56,7 @@ def borrowMatch : Term := prog{
 def borrowMatchHand : Term :=
   .letIn ⟨0, "v"⟩ (.ctorApp "Pair" [nat 0, nat 1])
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "v"⟩))
-      (.matchE ⟨1, "b"⟩ none
+      (.matchE ⟨1, "b"⟩ none none
         [.mk "Pair" [⟨2, "l"⟩, ⟨3, "r"⟩]
           (.assign (.deref (.var ⟨2, "l"⟩)) (nat 1) .unit)]))
 
@@ -80,7 +80,7 @@ def eqnMatch : Term := prog{
 
 def eqnMatchHand : Term :=
   .letIn ⟨0, "n"⟩ (nat 0)
-    (.matchE ⟨0, "n"⟩ (some ⟨1, "h"⟩)
+    (.matchE ⟨0, "n"⟩ (some ⟨1, "h"⟩) none
       [.mk "Z" [] .unit, .mk "S" [⟨2, "m"⟩] .unit])
 
 example : eqnMatch = eqnMatchHand := by rfl
@@ -318,10 +318,10 @@ def nestedArm : Term := prog{
 
 def nestedArmHand : Term :=
   .letIn ⟨0, "l"⟩ (.ctorApp "Cons" [.ctorApp "Pair" [nat 1, nat 2], .ctorApp "Nil" []])
-    (.matchE ⟨0, "l"⟩ none
+    (.matchE ⟨0, "l"⟩ none none
       [.mk "Nil" [] .unit,
        .mk "Cons" [⟨1, "§p1"⟩, ⟨2, "tl"⟩]
-         (.matchE ⟨1, "§p1"⟩ none
+         (.matchE ⟨1, "§p1"⟩ none none
            [.mk "Pair" [⟨3, "kk"⟩, ⟨4, "vv"⟩]
              (.letIn ⟨5, "out"⟩ (.var ⟨4, "vv"⟩) .unit)])])
 
@@ -353,11 +353,11 @@ def deep3 : Term := prog{
 def deep3Hand : Term :=
   .letIn ⟨0, "p"⟩
       (.ctorApp "Pair" [nat 1, .ctorApp "Pair" [nat 2, .ctorApp "Pair" [nat 3, nat 4]]])
-    (.matchE ⟨0, "p"⟩ none
+    (.matchE ⟨0, "p"⟩ none none
       [.mk "Pair" [⟨1, "a"⟩, ⟨2, "§p2"⟩]
-        (.matchE ⟨2, "§p2"⟩ none
+        (.matchE ⟨2, "§p2"⟩ none none
           [.mk "Pair" [⟨3, "b"⟩, ⟨4, "§p4"⟩]
-            (.matchE ⟨4, "§p4"⟩ none
+            (.matchE ⟨4, "§p4"⟩ none none
               [.mk "Pair" [⟨5, "c"⟩, ⟨6, "d"⟩]
                 (.letIn ⟨7, "out"⟩ (.var ⟨6, "d"⟩) .unit)])])])
 

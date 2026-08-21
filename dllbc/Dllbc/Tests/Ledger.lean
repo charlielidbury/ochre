@@ -288,7 +288,7 @@ def deepStepArm : Term :=
   -- which is the whole content of the correction this section records: `ih : P a`
   -- already IS `P b` for every `b` when `P` ignores its index.
   Term.lamTel [(⟨0, "a"⟩, .const "Nat"), (⟨1, "ih"⟩, prog defer_check { Id Nat Z Z })]
-    (.matchE ⟨0, "a"⟩ none
+    (.matchE ⟨0, "a"⟩ none none
       [ .mk "Z" [] (.ctorApp "Refl" [])
       , .mk "S" [⟨2, "b"⟩] (.var ⟨1, "ih"⟩) ])
 def deepRec : Term :=
@@ -546,7 +546,7 @@ partial def lowerComptime : Term → Nat
   | .assign p e r => lowerComptime p + lowerComptime e + lowerComptime r
   | .idT a b c => lowerComptime a + lowerComptime b + lowerComptime c
   | .ctorApp _ as | .call _ as => (as.map lowerComptime).foldl (· + ·) 0
-  | .matchE _ _ bs => (bs.map (fun br => lowerComptime br.body)).foldl (· + ·) 0
+  | .matchE _ _ _ bs => (bs.map (fun br => lowerComptime br.body)).foldl (· + ·) 0
   | .borrow t | .deref t | .cmpT t => lowerComptime t
   | _ => 0
 
@@ -560,7 +560,7 @@ partial def slotBinders : Term → Nat
   | .assign p e r => slotBinders p + slotBinders e + slotBinders r
   | .idT a b c => slotBinders a + slotBinders b + slotBinders c
   | .ctorApp _ as | .call _ as => (as.map slotBinders).foldl (· + ·) 0
-  | .matchE _ _ bs => (bs.map (fun br => slotBinders br.body)).foldl (· + ·) 0
+  | .matchE _ _ _ bs => (bs.map (fun br => slotBinders br.body)).foldl (· + ·) 0
   | .borrow t | .deref t | .cmpT t => slotBinders t
   | _ => 0
 
@@ -588,7 +588,7 @@ partial def unmarkedCaps : Term → Nat
   | .assign p e r => unmarkedCaps p + unmarkedCaps e + unmarkedCaps r
   | .idT a b c => unmarkedCaps a + unmarkedCaps b + unmarkedCaps c
   | .ctorApp _ as | .call _ as => (as.map unmarkedCaps).foldl (· + ·) 0
-  | .matchE _ _ bs => (bs.map (fun br => unmarkedCaps br.body)).foldl (· + ·) 0
+  | .matchE _ _ _ bs => (bs.map (fun br => unmarkedCaps br.body)).foldl (· + ·) 0
   | .borrow t | .deref t | .cmpT t => unmarkedCaps t
   | _ => 0
 
@@ -607,7 +607,7 @@ partial def keyDisagree : Term → Nat
   | .assign p e r => keyDisagree p + keyDisagree e + keyDisagree r
   | .idT a b c => keyDisagree a + keyDisagree b + keyDisagree c
   | .ctorApp _ as | .call _ as => (as.map keyDisagree).foldl (· + ·) 0
-  | .matchE _ _ bs => (bs.map (fun br => keyDisagree br.body)).foldl (· + ·) 0
+  | .matchE _ _ _ bs => (bs.map (fun br => keyDisagree br.body)).foldl (· + ·) 0
   | .borrow t | .deref t | .cmpT t => keyDisagree t
   | _ => 0
 
@@ -625,7 +625,7 @@ partial def comptimeSlotParams : Term → Nat
   | .assign p e r => comptimeSlotParams p + comptimeSlotParams e + comptimeSlotParams r
   | .idT a b c => comptimeSlotParams a + comptimeSlotParams b + comptimeSlotParams c
   | .ctorApp _ as | .call _ as => (as.map comptimeSlotParams).foldl (· + ·) 0
-  | .matchE _ _ bs => (bs.map (fun br => comptimeSlotParams br.body)).foldl (· + ·) 0
+  | .matchE _ _ _ bs => (bs.map (fun br => comptimeSlotParams br.body)).foldl (· + ·) 0
   | .borrow t | .deref t | .cmpT t => comptimeSlotParams t
   | _ => 0
 
@@ -641,7 +641,7 @@ partial def impLams : Term → Nat
   | .assign p e r => impLams p + impLams e + impLams r
   | .idT a b c => impLams a + impLams b + impLams c
   | .ctorApp _ as | .call _ as => (as.map impLams).foldl (· + ·) 0
-  | .matchE _ _ bs => (bs.map (fun br => impLams br.body)).foldl (· + ·) 0
+  | .matchE _ _ _ bs => (bs.map (fun br => impLams br.body)).foldl (· + ·) 0
   | .borrow t | .deref t | .cmpT t => impLams t
   | _ => 0
 
@@ -796,14 +796,14 @@ partial def cmpSigmas : Term → Nat
   | .assign p e r => cmpSigmas p + cmpSigmas e + cmpSigmas r
   | .idT a b c => cmpSigmas a + cmpSigmas b + cmpSigmas c
   | .ctorApp _ as | .call _ as => (as.map cmpSigmas).foldl (· + ·) 0
-  | .matchE _ _ bs => (bs.map (fun br => cmpSigmas br.body)).foldl (· + ·) 0
+  | .matchE _ _ _ bs => (bs.map (fun br => cmpSigmas br.body)).foldl (· + ·) 0
   | .borrow t | .deref t | .cmpT t => cmpSigmas t
   | _ => 0
 
 /-- Match-arm binders spelled CAPITAL — the consumer side, and the population
     `checkArmModes` refuses to leave lowercase. -/
 partial def capArms : Term → Nat
-  | .matchE _ _ bs =>
+  | .matchE _ _ _ bs =>
     (bs.map (fun br =>
       (br.binders.filter (fun x => isUpperInit x.name)).length + capArms br.body)).foldl (· + ·) 0
   | .lam _ d b | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => capArms d + capArms b
@@ -818,7 +818,7 @@ partial def capArms : Term → Nat
 /-- …and the ones that stay LOWERCASE, which is the other half of the claim: the
     check is bidirectional, so this number is asserted by the same run. -/
 partial def lowerArms : Term → Nat
-  | .matchE _ _ bs =>
+  | .matchE _ _ _ bs =>
     (bs.map (fun br =>
       (br.binders.filter (fun x => !isUpperInit x.name)).length + lowerArms br.body)).foldl (· + ·) 0
   | .lam _ d b | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => lowerArms d + lowerArms b
