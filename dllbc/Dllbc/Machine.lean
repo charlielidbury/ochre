@@ -5536,6 +5536,13 @@ mutual
             setAtPos fuel pos (.loanM ℓ)                   -- park the loan marker
             mergeRoot pos.root                             -- the residues re-merge around it
             pure (.borrowM ℓ v)                            -- ownership of v moves into the borrow
+      -- A MOTIVED let-match evaluated by ⇒ (docs/19): a concrete run selects
+      -- one arm, so fork ≡ join — rebuild the fork's seam shape and walk it,
+      -- which is what pops the arm scope (`@popArmL`) exactly as the fork does.
+      | .letIn x (.matchE s eqn (some _) bs) rest =>
+        if x.isComptime then
+          throwErr s!"join: '{x.name}' — a comptime let cannot take a runtime match (⇝ has no match)"
+        else readR fuel (.matchE s eqn none (pushJoinArms x rest bs))
       | .letIn x rhs rest => do
         -- **`let X = e` is a comptime binding** (§6): `e` is evaluated under ⇝,
         -- `X` is erased and non-consuming, and the fence confines it to
@@ -5860,6 +5867,10 @@ mutual
     | 0, _, _ => throwErr "readRTail: out of fuel"
     | fuel + 1, ty, t =>
       match t with
+      | .letIn x (.matchE s eqn (some _) bs) rest =>
+        if x.isComptime then
+          throwErr s!"join: '{x.name}' — a comptime let cannot take a runtime match (⇝ has no match)"
+        else readRTail fuel ty (.matchE s eqn none (pushJoinArms x rest bs))
       | .letIn x rhs rest => do letStep fuel x rhs; readRTail fuel ty rest
       | .assign place rhs rest => do assignStep fuel place rhs; readRTail fuel ty rest
       | .seq e rest => do seqStep fuel e; readRTail fuel ty rest
@@ -6880,7 +6891,9 @@ mutual
       -- **THE JOIN** (docs/19): `let x : τ = match s { … }; rest` — arms are
       -- checked against τ under their own refinements, `rest` runs ONCE.
       | .letIn x (.matchE scrut eqn (some motive) branches) rest =>
-        exploreJoin fuel x scrut eqn motive branches rest st
+        if x.isComptime then
+          [.error { msg := s!"join: '{x.name}' — a comptime let cannot take a runtime match (⇝ has no match)" }]
+        else exploreJoin fuel x scrut eqn motive branches rest st
       -- §6's comptime `let`, HERE as well as in `readR`. The explore driver does
       -- not route statement-spine steps through `readR`'s own `.letIn` case, so a
       -- rule that lives only there would be dead for every real body — which is
