@@ -210,7 +210,7 @@ example :
     which extends elaboration-time checking to proofs: a lemma with a type
     error fails at its own definition rather than at a separate `chk` probe.
 
-    This copies `StdLemmas.LeRefl` verbatim and seals it at the type
+    This copies `StdLemmas.LeReflRaw` verbatim and seals it at the type
     `LeReflTy` states. The comparison uses `!=`, not `==`: sealing is a term
     former, so `(e : τ)` produces `.seal s e τ`, a different term from the
     unsealed `e`, and the two sides are never expected to be equal. -/
@@ -218,7 +218,7 @@ example :
 example :
     (prog{ (λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
              Z => unit,
-             S (K) Ih => Ih } : Π (N : Nat) → Le N N) } != StdLemmas.LeRefl) = true := by
+             S (K) Ih => Ih } : Π (N : Nat) → Le N N) } != StdLemmas.LeReflRaw) = true := by
   native_decide
 
 /-! And a failing ascription reports at the seal node.
@@ -244,7 +244,7 @@ seal: the sealed term (unit) does not have its ascribed type (Nat)
 example :
     ((prog defer_check { λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
                     Z => unit, S (K) Ih => Ih } })
-     == StdLemmas.LeRefl) = true := by native_decide
+     == StdLemmas.LeReflRaw) = true := by native_decide
 
 /-! ## (9) The ascription is the check
 

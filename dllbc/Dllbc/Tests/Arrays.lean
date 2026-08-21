@@ -42,7 +42,7 @@ reaches a segment — both subterms. That is what makes a range borrow an ordina
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (LeRefl LeAdd)
+open Dllbc.StdLemmas (LeReflRaw LeAddRaw)
 
 namespace Dllbc.Tests.S24Arrays
 
@@ -452,7 +452,7 @@ example : expectErr prog defer_check { let a = Arr(3, 1, 2, 7, 5);
     `n ≡ Add k rest` with `n` flex, refining the LENGTH INDEX everywhere; and its body
     split refines `σ := arrCat k rest σ_l σ_r`. The SECOND does nothing at all — its
     request IS the leaf, so no split and no refinement fire, and no evidence is
-    demanded because `Le b b` and `Le x x` are `LeRefl`. That asymmetry is the general
+    demanded because `Le b b` and `Le x x` are `LeReflRaw`. That asymmetry is the general
     shape of an exhaustive split, and it is why this costs ONE proof rather than two. -/
 def halves : Term := prog{
   fn Halves (n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
@@ -511,8 +511,8 @@ example : progRejects halvesSame "cannot peel a vacant slot" = true := by
     The obligation type for `a` is `Array n Nat`; the collapsed payload's
     snapshot is `arrCat σ_l′ σ_r′` at `Array (Add σₖ rest) Nat`; and these convert
     DEFINITIONALLY, because the residue transition refined `σₙ := Add σₖ rest` at
-    the carve. Had the carve computed `rest := Sub n k` instead, this final
-    conversion would have needed `Add k (Sub n k) ≡ n`, which is not definitional
+    the carve. Had the carve computed `rest := SubRaw n k` instead, this final
+    conversion would have needed `Add k (SubRaw n k) ≡ n`, which is not definitional
     and would have required a cited lemma at every audit of every array-mutating
     function in the program.
 
@@ -568,7 +568,7 @@ def walk : Term := prog{
   fn Walk [fuel] (fuel : Nat, n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
     match fuel {
       Z => (),
-      S(f2) => { let l = &m (*a)[Z ; k | H]; Walk(f2, k, k, LeRefl k, l) }
+      S(f2) => { let l = &m (*a)[Z ; k | H]; Walk(f2, k, k, LeReflRaw k, l) }
     } };
   () }
 example : progOk walk = true := by native_decide
@@ -583,7 +583,7 @@ def walkArr : Term := prog defer_check {
   fn WalkArr [a] (fuel : Nat, n : Nat, k : Nat, H : Le k n, a : &mut (Array n Nat)) -> Unit {
     match fuel {
       Z => (),
-      S(f2) => { let l = &m (*a)[Z ; k | H]; WalkArr(f2, k, k, LeRefl k, l) }
+      S(f2) => { let l = &m (*a)[Z ; k | H]; WalkArr(f2, k, k, LeReflRaw k, l) }
     } };
   () }
 -- The twin differs from `walk` in the HINT ALONE — `[a]` where `walk` says
@@ -636,7 +636,7 @@ example : progOk callSeg = true := by native_decide
 
     `a[lo ; ..]` names the residue as a place: it reads the residue's extent off
     the extent map, where the residue premise already parked it as a GIVEN. No
-    arithmetic, no new obligation, and not the `Sub` that index premises ban.
+    arithmetic, no new obligation, and not the `SubRaw` that index premises ban.
 
     What `..` does NOT solve is a CALL that must pass the residue's length as an
     argument — a callee like `merge_into (l : &mut Array p Nat, r : &mut Array q
@@ -864,7 +864,7 @@ example : progOk splitTwo = true := by native_decide
     checker mint it — `a[lo ; cnt ; rest | h]`, with the residue premise solving
     `m ≡ add lo' (add cnt rest)` against the supplied term instead of a fresh σ.
     This keeps that premise exactly as it is (still a solution transition, still
-    no `Sub`) and reduces to the current behaviour when omitted. (b) Let the
+    no `SubRaw`) and reduces to the current behaviour when omitted. (b) Let the
     carve BIND its residue in the surface. (c) Σ-typed slices,
     `Σ (c : Nat). &mut (Array c T)` — needs new machinery: `seedTelescope` has no
     case for a borrow under a type constructor, so the parameter is rejected by
@@ -983,7 +983,7 @@ example : (Pure.nf 300 prog defer_check { %(Pure.kLeFn) 1 %(Term.sym 0) } == .co
 
     `a[lo ; cnt ; rest | h]` supplies the residue premise's extent instead of
     letting the checker mint a σ no binder can name. That premise is otherwise
-    untouched — the same solution transition, still no `Sub` — and omitting the
+    untouched — the same solution transition, still no `SubRaw` — and omitting the
     slot restores the minting behaviour exactly.
 
     This is an OPTIONAL surface element that reifies something the checker
@@ -998,7 +998,7 @@ example : (Pure.nf 300 prog defer_check { %(Pure.kLeFn) 1 %(Term.sym 0) } == .co
 /-- THREE-WAY carve: left half | pivot slot | right half, all three live at once.
 
     ```rust
-    let l = &mut (*v)[Z    ; i ; S j | LeAdd i (S j)];
+    let l = &mut (*v)[Z    ; i ; S j | LeAddRaw i (S j)];
     let p = &mut (*v)[i    ; 1 ; j];        -- obligation ⊤; no evidence needed
     let r = &mut (*v)[S i  ; ..];           -- degenerate
     ```
@@ -1009,13 +1009,13 @@ example : (Pure.nf 300 prog defer_check { %(Pure.kLeFn) 1 %(Term.sym 0) } == .co
     halves apart.
 
     The two obligations are the two predicted. The first is `Le i (Add i (S j))`
-    — `LeAdd`, already in the library. The second is `Le 1 (S j)`, which
+    — `LeAddRaw`, already in the library. The second is `Le 1 (S j)`, which
     reduces to `Le Z j` and then to ⊤, so **the carve that could not be written at all
     now needs no evidence whatsoever**. -/
 def threeWay : Term := prog{
   fn ThreeWay (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
                a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | Heq];
+    let l = &m (*a)[Z ; i ; S j | LeAddRaw i (S j) | Heq];
     let p = &m (*a)[i ; 1 ; j];
     let r = &m (*a)[S i ; ..];
     () };
@@ -1028,7 +1028,7 @@ example : progOk threeWay = true := by native_decide
 def threeWayAll : Term := prog{
   fn ThreeWayAll (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
                   a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | Heq];
+    let l = &m (*a)[Z ; i ; S j | LeAddRaw i (S j) | Heq];
     let p = &m (*a)[i ; 1 ; j];
     let r = &m (*a)[S i ; ..];
     let z = *r;
@@ -1043,12 +1043,12 @@ example : progOk threeWayAll = true := by native_decide
 
 -- The pivot carve needs NO cited evidence, which is route (a)'s second payoff and the
 -- reason it beats merely naming the residue: `Le 1 rest` was unwritable, and after
--- `rest := S j` the obligation is ⊤. Dropping `LeAdd` from the FIRST carve, whose
+-- `rest := S j` the obligation is ⊤. Dropping `LeAddRaw` from the FIRST carve, whose
 -- obligation does not compute away, is still rejected.
 def threeWayNoFirstEv : Term := prog defer_check {
   fn ThreeWayNoFirstEv (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
                         a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeRefl i | Heq];
+    let l = &m (*a)[Z ; i ; S j | LeReflRaw i | Heq];
     let p = &m (*a)[i ; 1 ; j];
     () };
   () }
@@ -1063,7 +1063,7 @@ example : progRejects threeWayNoFirstEv "containment obligation" = true := by na
     check and then get STUCK when executed. -/
 def threeWayUncited : Term := prog defer_check {
   fn ThreeWayUncited (n : Nat, i : Nat, j : Nat, a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j)];
+    let l = &m (*a)[Z ; i ; S j | LeAddRaw i (S j)];
     () };
   () }
 example : progRejects threeWayUncited "may not impose it by refining" = true := by
@@ -1074,7 +1074,7 @@ example : progRejects threeWayUncited "may not impose it by refining" = true := 
 def threeWayWrongEq : Term := prog defer_check {
   fn ThreeWayWrongEq (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S (S j))),
                       a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | Heq];
+    let l = &m (*a)[Z ; i ; S j | LeAddRaw i (S j) | Heq];
     () };
   () }
 example : progRejects threeWayWrongEq "cited decomposition does not have type" = true := by
@@ -1086,7 +1086,7 @@ example : progRejects threeWayWrongEq "cited decomposition does not have type" =
 def threeWayLyingResidue : Term := prog defer_check {
   fn ThreeWayLyingResidue (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i j),
                            a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; j | LeAdd i j | Heq];
+    let l = &m (*a)[Z ; i ; j | LeAddRaw i j | Heq];
     let p = &m (*a)[i ; 1 ; j];
     () };
   () }
@@ -1105,7 +1105,7 @@ def threeWayCall : Term := prog{
   fn SliceTake (q : Nat, s : &mut (Array q Nat)) -> Unit { () };
   fn ThreeWayCall (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
                    a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | Heq];
+    let l = &m (*a)[Z ; i ; S j | LeAddRaw i (S j) | Heq];
     let p = &m (*a)[i ; 1 ; j];
     let r = &m (*a)[S i ; ..];
     SliceTake(i, l);
@@ -1125,7 +1125,7 @@ example : progOk threeWayCall = true := by native_decide
 example : progOk (prog{
   fn BaseSpelling (n : Nat, i : Nat, j : Nat, Heq : Id Nat n (Add i (S j)),
                    a : &mut (Array n Nat)) -> Unit {
-    let l = &m (*a)[Z ; i ; S j | LeAdd i (S j) | Heq];
+    let l = &m (*a)[Z ; i ; S j | LeAddRaw i (S j) | Heq];
     let p = &m (*a)[i ; 1 ; j];
     let r = &m (*a)[S i ; j];
     () };
@@ -1152,15 +1152,15 @@ def chkL (tm ty : Term) : Bool :=
   | .error _ _ => false
 
 open Dllbc.StdLemmas (CountA SortedA UbA LbA BoundA Asingle
-  SortedHeadA SortedHeadATy SortedTailA SortedTailATy
-  UbHeadA UbHeadATy UbTailA UbTailATy LbBoundA LbBoundATy
-  BoundArrCat BoundArrCatTy SortedArrCat SortedArrCatTy
-  CountArrCat CountArrCatTy
-  CountAconsHit CountAconsHitTy CountAconsMiss CountAconsMissTy
-  NoAboveOfUbA NoAboveOfUbATy UbOfNoAboveA UbOfNoAboveATy
-  UbPermA UbPermATy NoBelowOfLbA NoBelowOfLbATy
-  LbOfNoBelowA LbOfNoBelowATy LbPermA LbPermATy
-  CountSwap2 CountSwap2Ty LebTrueLe LebFalseGt LePredL)
+  SortedHeadARaw SortedHeadATy SortedTailARaw SortedTailATy
+  UbHeadARaw UbHeadATy UbTailARaw UbTailATy LbBoundARaw LbBoundATy
+  BoundArrCatRaw BoundArrCatTy SortedArrCatRaw SortedArrCatTy
+  CountArrCatRaw CountArrCatTy
+  CountAconsHitRaw CountAconsHitTy CountAconsMissRaw CountAconsMissTy
+  NoAboveOfUbARaw NoAboveOfUbATy UbOfNoAboveARaw UbOfNoAboveATy
+  UbPermARaw UbPermATy NoBelowOfLbARaw NoBelowOfLbATy
+  LbOfNoBelowARaw LbOfNoBelowATy LbPermARaw LbPermATy
+  CountSwap2Raw CountSwap2Ty LebTrueLeRaw LebFalseGtRaw LePredLRaw)
 
 -- The predicates COMPUTE, on a run and on the cons view alike.
 example : (pv prog defer_check { CountA 2 4 Arr(1, 2, 2, 3) } == Term.nat 2) = true := by native_decide
@@ -1187,7 +1187,7 @@ example : (pv prog defer_check { arrCat 1 2 (Asingle 9) Arr(1, 2) } == pv prog d
     `Ub`/`Lb` (Σ-chains over the spine) are not natively permutation-invariant.
     The route crosses to the multiset instead, where the property is
     `Π x. x > p → Count x l = Z` and permutation-invariance is a one-line
-    `IdTrans`. The crossing transfers with the container like everything else —
+    `IdTransRaw`. The crossing transfers with the container like everything else —
     all eight lemmas, first try. -/
 
 
@@ -1202,7 +1202,7 @@ example : (pv prog defer_check { arrCat 1 2 (Asingle 9) Arr(1, 2) } == pv prog d
     `append (Cons h t) u ⇝ Cons h (append t u)`; and `arrRec` fires on the cons
     view, so a predicate over arrays unfolds on an `acons` exactly as its
     counterpart unfolds on a `Cons`. Without them `SortedA (arrCat (acons h t) …)`
-    does not UNFOLD, and `SortedAppendPivot`'s proof turns entirely on that
+    does not UNFOLD, and `SortedAppendPivotRaw`'s proof turns entirely on that
     unfolding — both components are definitional, so no transport lemma appears
     anywhere in the proof.
 
@@ -1295,7 +1295,7 @@ def sort2 : Term := prog{
     let x = (*a)[0];
     let y = (*a)[1];
     if h : Leb x y {
-      Pair(Pair(LebTrueLe x y h, Pair(unit, unit)), λ (N : Nat). Refl)
+      Pair(Pair(LebTrueLeRaw x y h, Pair(unit, unit)), λ (N : Nat). Refl)
     } else {
       (*a)[0] := y;
       (*a)[1] := x;
@@ -1306,8 +1306,8 @@ def sort2 : Term := prog{
       -- moved.
       let X0 = x;
       let Y0 = y;
-      Pair(Pair(LePredL y x (LebFalseGt x y h), Pair(unit, unit)),
-           λ (N : Nat). CountSwap2 N X0 Y0)
+      Pair(Pair(LePredLRaw y x (LebFalseGtRaw x y h), Pair(unit, unit)),
+           λ (N : Nat). CountSwap2Raw N X0 Y0)
     } };
   () }
 example : progOk sort2 = true := by native_decide
@@ -1321,14 +1321,14 @@ def sort2LieSorted : Term := prog defer_check {
     let x = (*a)[0];
     let y = (*a)[1];
     if h : Leb x y {
-      Pair(LebTrueLe x y h, Pair(unit, unit))
+      Pair(LebTrueLeRaw x y h, Pair(unit, unit))
     } else {
-      Pair(LePredL y x (LebFalseGt x y h), Pair(unit, unit))
+      Pair(LePredLRaw y x (LebFalseGtRaw x y h), Pair(unit, unit))
     } };
   () }
 example : progOk sort2LieSorted = false := by native_decide
 
--- Do the swap, then claim the counts did not move. `CountSwap2` is genuinely load-
+-- Do the swap, then claim the counts did not move. `CountSwap2Raw` is genuinely load-
 -- bearing: `Refl` in its place is rejected.
 def sort2LieCount : Term := prog defer_check {
   fn Sort2LieCount (a : &mut (Array 2 Nat))
@@ -1336,11 +1336,11 @@ def sort2LieCount : Term := prog defer_check {
     let x = (*a)[0];
     let y = (*a)[1];
     if h : Leb x y {
-      Pair(Pair(LebTrueLe x y h, Pair(unit, unit)), λ (N : Nat). Refl)
+      Pair(Pair(LebTrueLeRaw x y h, Pair(unit, unit)), λ (N : Nat). Refl)
     } else {
       (*a)[0] := y;
       (*a)[1] := x;
-      Pair(Pair(LePredL y x (LebFalseGt x y h), Pair(unit, unit)), λ (N : Nat). Refl)
+      Pair(Pair(LePredLRaw y x (LebFalseGtRaw x y h), Pair(unit, unit)), λ (N : Nat). Refl)
     } };
   () }
 example : progOk sort2LieCount = false := by native_decide

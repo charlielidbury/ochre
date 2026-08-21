@@ -37,7 +37,7 @@ the loop. A macro regression cannot move a subject here, so a red line means the
 kernel itself changed; that also makes this file the control group when a kernel
 change turns the corpus red, telling apart a rule change from a surface change.
 It is also the anchor for the hand-built terms other suites round-trip against
-(e.g. `S15Elab`'s check of `StdLemmas.LeRefl` against `Std.le_reflT`).
+(e.g. `S15Elab`'s check of `StdLemmas.LeReflRaw` against `Std.le_reflT`).
 
 σ's are seeded via a variable slot (`readC` reads the snapshot).
 -/
@@ -565,12 +565,12 @@ end
 
 section
 /-!
-## The pure surface authoring layer, and `LeTrans`
+## The pure surface authoring layer, and `LeTransRaw`
 
-Names and explicit motives, authored in `prog{ }`, let a lemma like `LeTrans`
+Names and explicit motives, authored in `prog{ }`, let a lemma like `LeTransRaw`
 be checked without a unifier: the raw hand-built equivalent is a nested
 dependent induction over many de Bruijn binder contexts, where a mis-indexed
-binder fails silently with no locus. `LeTrans` is the evidence, plus J warm-ups
+binder fails silently with no locus. `LeTransRaw` is the evidence, plus J warm-ups
 and the round-trip that a hand-built term and its surface elaboration are
 convertible.
 
@@ -590,11 +590,11 @@ def chk (tm ty : Term) : Bool :=
   | .ok r _ => r
   | .error _ _ => false
 
-/-! ## Elaboration round-trip: surface `LeRefl` = the hand-built kernel term -/
+/-! ## Elaboration round-trip: surface `LeReflRaw` = the hand-built kernel term -/
 
--- The surface `LeRefl` (StdLemmas) elaborates to a `Term` convertible with the
+-- The surface `LeReflRaw` (StdLemmas) elaborates to a `Term` convertible with the
 -- hand-built `Std.le_reflT`.
-example : expectConv [] [] Dllbc.StdLemmas.LeRefl Std.le_reflT = true := by native_decide
+example : expectConv [] [] Dllbc.StdLemmas.LeReflRaw Std.le_reflT = true := by native_decide
 
 /-! ## `let` is one form, with two ways it can capture
 
@@ -634,22 +634,22 @@ example : expectConv [] []
 
 /-! ## The lemmas check at their stated types -/
 
-example : chk Dllbc.StdLemmas.LeRefl Dllbc.StdLemmas.LeReflTy = true := by native_decide
--- `LeTrans` authored in the surface, checked — the acceptance test.
-example : chk Dllbc.StdLemmas.LeTrans Dllbc.StdLemmas.LeTransTy = true := by native_decide
-example : chk Dllbc.StdLemmas.IdTrans Dllbc.StdLemmas.IdTransTy = true := by native_decide
-example : chk Dllbc.StdLemmas.IdCongr Dllbc.StdLemmas.IdCongrTy = true := by native_decide
+example : chk Dllbc.StdLemmas.LeReflRaw Dllbc.StdLemmas.LeReflTy = true := by native_decide
+-- `LeTransRaw` authored in the surface, checked — the acceptance test.
+example : chk Dllbc.StdLemmas.LeTransRaw Dllbc.StdLemmas.LeTransTy = true := by native_decide
+example : chk Dllbc.StdLemmas.IdTransRaw Dllbc.StdLemmas.IdTransTy = true := by native_decide
+example : chk Dllbc.StdLemmas.IdCongrRaw Dllbc.StdLemmas.IdCongrTy = true := by native_decide
 
-/-! ## `LeTrans` applied in a checked function
+/-! ## `LeTransRaw` applied in a checked function
 
-    A body that ⇒-lifts `LeTrans Nat a b c p q` (the pure lift) and returns it
+    A body that ⇒-lifts `LeTransRaw Nat a b c p q` (the pure lift) and returns it
     at the dependent type `Le a c` (instantiated at the actuals). -/
 
--- `LeTrans a b c p q` (Le is monomorphic at Nat — no type argument), cited by
+-- `LeTransRaw a b c p q` (Le is monomorphic at Nat — no type argument), cited by
 -- name through the surface's identifier fallback.
 def useTrans : Term := prog{
   fn UseTrans (a : Nat, b : Nat, c : Nat, p : Le a b, q : Le b c) -> Le a c
-        { StdLemmas.LeTrans a b c p q };
+        { StdLemmas.LeTransRaw a b c p q };
   () }
 example : progOk useTrans = true := by native_decide
 

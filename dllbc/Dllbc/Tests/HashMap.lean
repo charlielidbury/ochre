@@ -64,17 +64,17 @@ append), an order the spec (`FindL` + `NodupB`) is deliberately blind to.
 section
 
 open Dllbc
-open Dllbc.StdLemmas (LeRefl LeAdd LeAddL LeAddSucc LeTrans LeUpR LePredL
-  LebTrueLe LebFalseGt AddSucc AddZero AddComm AddAssoc IdTrans IdCongr IdSym
-  NatRw NatRwTy LeZeroEq LeAntisym BoolFT BoolTF Znots SInj Pred
-  LeRwL LeRwR LeAddMonoL EqbRefl
-  NextR NextC NextQ ModC Mod DivC Div StepInv StepInvTy ModCLt ModCLtTy
-  ModLtN ModLtNTy ModDec ModDecTy
-  Mul AddSwapL AddSwapLTy AddInterchange AddInterchangeTy MulSucc MulSuccTy
-  MulAddR MulAddRTy MulTwoDouble MulTwoDoubleTy LeAddMonoR LeAddMonoRTy
-  LeAddMono LeAddMonoTy LeMulR LeMulRTy Le5M4 Le5M4Ty FiveN4Zero FiveN4ZeroTy
-  LeLebTrue LeLebTrueTy EqbTrueEq EqbTrueEqTy EqbSym EqbSymTy IfDec IfDecTy
-  LedgerGrow LedgerGrowTy)
+open Dllbc.StdLemmas (LeReflRaw LeAddRaw LeAddLRaw LeAddSuccRaw LeTransRaw LeUpRRaw LePredLRaw
+  LebTrueLeRaw LebFalseGtRaw AddSuccRaw AddZeroRaw AddCommRaw AddAssocRaw IdTransRaw IdCongrRaw IdSymRaw
+  NatRwRaw NatRwTy LeZeroEqRaw LeAntisymRaw BoolFTRaw BoolTFRaw ZnotsRaw SInjRaw Pred
+  LeRwLRaw LeRwRRaw LeAddMonoLRaw EqbReflRaw
+  NextR NextC NextQ ModC Mod DivC Div StepInvRaw StepInvTy ModCLtRaw ModCLtTy
+  ModLtNRaw ModLtNTy ModDecRaw ModDecTy
+  Mul AddSwapLRaw AddSwapLTy AddInterchangeRaw AddInterchangeTy MulSuccRaw MulSuccTy
+  MulAddRRaw MulAddRTy MulTwoDoubleRaw MulTwoDoubleTy LeAddMonoRRaw LeAddMonoRTy
+  LeAddMonoRaw LeAddMonoTy LeMulRRaw LeMulRTy Le5M4Raw Le5M4Ty FiveN4ZeroRaw FiveN4ZeroTy
+  LeLebTrueRaw LeLebTrueTy EqbTrueEqRaw EqbTrueEqTy EqbSymRaw EqbSymTy IfDecRaw IfDecTy
+  LedgerGrowRaw LedgerGrowTy)
 
 namespace Dllbc.Tests.HashMap
 
@@ -124,12 +124,12 @@ example : (pv prog defer_check { Div (Mul 4 32) 5 }).natOf? == some 25 := by nat
 def slotDecls : Term := prog{
   fn SlotOf (h : Nat, n : Nat, Hne : Le (S Z) n)
       -> Σ (i : Nat). Σ (r : Nat). Id Nat n (Add i (S r)) {
-    Pair(Mod h n, ModDec (Mod h n) n (ModLtN h n Hne))
+    Pair(Mod h n, ModDecRaw (Mod h n) n (ModLtNRaw h n Hne))
   };
   fn SlotWrite (h : Nat, n : Nat, v : Nat, Hne : Le (S Z) n,
                 slots : &mut (Array n Nat)) -> Unit {
     let Pair(i, Pair(r, hd)) = SlotOf(h, n, Hne);
-    let pre = &m (*slots)[Z ; i ; S r | LeAdd i (S r) | hd];
+    let pre = &m (*slots)[Z ; i ; S r | LeAddRaw i (S r) | hd];
     let cell = &m (*slots)[i ; 1 ; r];
     (*cell)[0] := v;
     ()
@@ -152,12 +152,12 @@ def arrOfV : Val → Option (List Nat)
 def slotCaller (h : Nat) : Term := prog{
   fn SlotOf (h : Nat, n : Nat, Hne : Le (S Z) n)
       -> Σ (i : Nat). Σ (r : Nat). Id Nat n (Add i (S r)) {
-    Pair(Mod h n, ModDec (Mod h n) n (ModLtN h n Hne))
+    Pair(Mod h n, ModDecRaw (Mod h n) n (ModLtNRaw h n Hne))
   };
   fn SlotWrite (h : Nat, n : Nat, v : Nat, Hne : Le (S Z) n,
                 slots : &mut (Array n Nat)) -> Unit {
     let Pair(i, Pair(r, hd)) = SlotOf(h, n, Hne);
-    let pre = &m (*slots)[Z ; i ; S r | LeAdd i (S r) | hd];
+    let pre = &m (*slots)[Z ; i ; S r | LeAddRaw i (S r) | hd];
     let cell = &m (*slots)[i ; 1 ; r];
     (*cell)[0] := v;
     ()
@@ -267,7 +267,7 @@ example : progOk packBumpLie = false := by native_decide
 def packCarve : Term := prog{
   fn SlotOf (h : Nat, n : Nat, Hne : Le (S Z) n)
       -> Σ (i : Nat). Σ (r : Nat). Id Nat n (Add i (S r)) {
-    Pair(Mod h n, ModDec (Mod h n) n (ModLtN h n Hne))
+    Pair(Mod h n, ModDecRaw (Mod h n) n (ModLtNRaw h n Hne))
   };
   fn Ins0 (key : Nat, val : Nat,
            self : &mut (Σ (cap : Nat).
@@ -275,7 +275,7 @@ def packCarve : Term := prog{
     let Pair(cap, Pair(slots, Hcap)) = *self;
     let Pair(i, Pair(r, hd)) = SlotOf(key, cap, Hcap);
     let sb = &m slots;
-    let pre = &m (*sb)[Z ; i ; S r | LeAdd i (S r) | hd];
+    let pre = &m (*sb)[Z ; i ; S r | LeAddRaw i (S r) | hd];
     let cell = &m (*sb)[i ; 1 ; r];
     let bb = &m (*cell)[0];
     let tl = *bb;
@@ -311,7 +311,7 @@ def PackCapLe : Term := prog defer_check {
 def packNav : Term := prog{
   fn SlotOf (h : Nat, n : Nat, Hne : Le (S Z) n)
       -> Σ (i : Nat). Σ (r : Nat). Id Nat n (Add i (S r)) {
-    Pair(Mod h n, ModDec (Mod h n) n (ModLtN h n Hne))
+    Pair(Mod h n, ModDecRaw (Mod h n) n (ModLtNRaw h n Hne))
   };
   fn Nav (key : Nat,
           self : &mut (Σ (cap : Nat).
@@ -324,7 +324,7 @@ def packNav : Term := prog{
     let c = *cap;
     *cap := c;
     let Pair(i, Pair(r, hd)) = SlotOf(key, c, Hle1);
-    let pre = &m (*slots)[Z ; i ; S r | LeAdd i (S r) | hd];
+    let pre = &m (*slots)[Z ; i ; S r | LeAddRaw i (S r) | hd];
     let cell = &m (*slots)[i ; 1 ; r];
     let bb = &m (*cell)[0];
     match bb {
@@ -558,7 +558,7 @@ example : chkL prog defer_check {
 
     Each is a nested Σ-elim down the container; the motive spells the suffix
     telescope at each level (the elim sugar reads `A`/`B` off the motive's
-    binder type syntactically — `SortedHead`'s precedent). -/
+    binder type syntactically — `SortedHeadRaw`'s precedent). -/
 
 def CapHM : Term := prog defer_check {
   λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
@@ -667,7 +667,7 @@ example : chkL prog defer_check { Refl } prog defer_check { Id Nat (SizeRem 5 %h
 /-! ## (x) Projecting the invariant's clauses
 
     Generic product projections first (`A × B` converts with the spelled
-    `Σ (Hx : A). B` — `SortedHead`'s precedent), then the five named clause
+    `Σ (Hx : A). B` — `SortedHeadRaw`'s precedent), then the five named clause
     projections every op body opens with. -/
 
 def FstT : Term := prog defer_check {
@@ -861,7 +861,7 @@ example : chkL AgetBCatMid AgetBCatMidTy = true := by native_decide
 example : chkL AgetBCatLo AgetBCatLoTy = true := by native_decide
 example : chkL AgetBCatHi AgetBCatHiTy = true := by native_decide
 
-/-- `CountArrCat`'s shape for the entry counter. -/
+/-- `CountArrCatRaw`'s shape for the entry counter. -/
 def TotalArrCat : Term := prog defer_check {
   λ (Q : Nat). λ (X : Array Q (List (Σ (k : Nat). Nat))).
   λ (M : Nat). λ (L : Array M (List (Σ (k : Nat). Nat))).
@@ -874,16 +874,16 @@ def TotalArrCat : Term := prog defer_check {
         λ (T : Array K (List (Σ (k : Nat). Nat))).
         λ (Ih : Id Nat (TotalE (Add K Q) (arrCat K Q T X))
                        (Add (TotalE K T) (TotalE Q X))).
-          IdTrans Nat
+          IdTransRaw Nat
             (Add (LenE H2) (TotalE (Add K Q) (arrCat K Q T X)))
             (Add (LenE H2) (Add (TotalE K T) (TotalE Q X)))
             (Add (Add (LenE H2) (TotalE K T)) (TotalE Q X))
-            (IdCongr Nat Nat (λ (X2 : Nat). Add (LenE H2) X2)
+            (IdCongrRaw Nat Nat (λ (X2 : Nat). Add (LenE H2) X2)
               (TotalE (Add K Q) (arrCat K Q T X))
               (Add (TotalE K T) (TotalE Q X)) Ih)
-            (IdSym Nat (Add (Add (LenE H2) (TotalE K T)) (TotalE Q X))
+            (IdSymRaw Nat (Add (Add (LenE H2) (TotalE K T)) (TotalE Q X))
               (Add (LenE H2) (Add (TotalE K T) (TotalE Q X)))
-              (AddAssoc (LenE H2) (TotalE K T) (TotalE Q X))))
+              (AddAssocRaw (LenE H2) (TotalE K T) (TotalE Q X))))
       M L }
 def TotalArrCatTy : Term := prog defer_check {
   Π (Q : Nat) → Π (X : Array Q (List (Σ (k : Nat). Nat))) →
@@ -895,14 +895,14 @@ def TotalArrCatTy : Term := prog defer_check {
     every pointwise-Find branch performs. -/
 def BoolRwT : Term := prog defer_check {
   λ (T : Type). λ (X : T). λ (Y : T). λ (B : Bool). λ (E : Id Bool B True).
-    IdCongr Bool T (λ (W : Bool). boolRec (λ (W2 : Bool). T) X Y W) B True E }
+    IdCongrRaw Bool T (λ (W : Bool). boolRec (λ (W2 : Bool). T) X Y W) B True E }
 def BoolRwTTy : Term := prog defer_check {
   Π (T : Type) → Π (X : T) → Π (Y : T) → Π (B : Bool) → Id Bool B True →
     Id T (boolRec (λ (W2 : Bool). T) X Y B) X }
 
 def BoolRwF : Term := prog defer_check {
   λ (T : Type). λ (X : T). λ (Y : T). λ (B : Bool). λ (E : Id Bool B False).
-    IdCongr Bool T (λ (W : Bool). boolRec (λ (W2 : Bool). T) X Y W) B False E }
+    IdCongrRaw Bool T (λ (W : Bool). boolRec (λ (W2 : Bool). T) X Y W) B False E }
 def BoolRwFTy : Term := prog defer_check {
   Π (T : Type) → Π (X : T) → Π (Y : T) → Π (B : Bool) → Id Bool B False →
     Id T (boolRec (λ (W2 : Bool). T) X Y B) Y }
@@ -915,7 +915,7 @@ def LeNeLt : Term := prog defer_check {
     Z => λ (B : Nat).
       elim B return (λ (Bz : Nat). Le Z Bz → Id Bool (Eqb Z Bz) False → Le (S Z) Bz) {
         Z => λ (H : Le Z Z). λ (E : Id Bool (Eqb Z Z) False).
-          botElim (Le (S Z) Z) (BoolTF E),
+          botElim (Le (S Z) Z) (BoolTFRaw E),
         S (B2) Ihb => λ (H : Le Z (S B2)). λ (E : Id Bool (Eqb Z (S B2)) False). unit },
     S (A2) Ih => λ (B : Nat).
       elim B return (λ (Bz : Nat). Le (S A2) Bz → Id Bool (Eqb (S A2) Bz) False →
@@ -934,7 +934,7 @@ example : chkL LeNeLt LeNeLtTy = true := by native_decide
 
 /-! ### `SlotsFrom` across the carve: three extractors and the reglue. The fold's
     starting index is generalized through every induction (no per-depth
-    ladders); the step arms pay one `AddSucc` transport each. -/
+    ladders); the step arms pay one `AddSuccRaw` transport each. -/
 
 def SFCatLo : Term := prog defer_check {
   λ (Cap : Nat). λ (R : Nat). λ (B : List (Σ (k : Nat). Nat)).
@@ -988,8 +988,8 @@ def SFCatMid : Term := prog defer_check {
           λ (I : Nat).
           λ (Hs : Σ (Hx : SlotInv Cap I H2).
               SlotsFrom Cap (Add K (S R)) (arrCat K (S R) T (acons R B H)) (S I)).
-            NatRw (λ (W : Nat). SlotInv Cap W B) (Add K (S I)) (S (Add K I))
-              (AddSucc K I)
+            NatRwRaw (λ (W : Nat). SlotInv Cap W B) (Add K (S I)) (S (Add K I))
+              (AddSuccRaw K I)
               (Ih (S I)
                 (SndT (SlotInv Cap I H2)
                   (SlotsFrom Cap (Add K (S R)) (arrCat K (S R) T (acons R B H)) (S I)) Hs)))
@@ -1022,8 +1022,8 @@ def SFCatHi : Term := prog defer_check {
           λ (I : Nat).
           λ (Hs : Σ (Hx : SlotInv Cap I H2).
               SlotsFrom Cap (Add K (S R)) (arrCat K (S R) T (acons R B H)) (S I)).
-            NatRw (λ (W : Nat). SlotsFrom Cap R H (S W)) (Add K (S I)) (S (Add K I))
-              (AddSucc K I)
+            NatRwRaw (λ (W : Nat). SlotsFrom Cap R H (S W)) (Add K (S I)) (S (Add K I))
+              (AddSuccRaw K I)
               (Ih (S I)
                 (SndT (SlotInv Cap I H2)
                   (SlotsFrom Cap (Add K (S R)) (arrCat K (S R) T (acons R B H)) (S I)) Hs)))
@@ -1071,10 +1071,10 @@ def SFCatGlue : Term := prog defer_check {
             Pair(FstT (SlotInv Cap I H2) (SlotsFrom Cap K T (S I)) Hl,
                  Ih (S I)
                    (SndT (SlotInv Cap I H2) (SlotsFrom Cap K T (S I)) Hl)
-                   (NatRw (λ (W : Nat). SlotInv Cap W B) (S (Add K I)) (Add K (S I))
-                     (IdSym Nat (Add K (S I)) (S (Add K I)) (AddSucc K I)) Hm)
-                   (NatRw (λ (W : Nat). SlotsFrom Cap R H (S W)) (S (Add K I)) (Add K (S I))
-                     (IdSym Nat (Add K (S I)) (S (Add K I)) (AddSucc K I)) Hh)))
+                   (NatRwRaw (λ (W : Nat). SlotInv Cap W B) (S (Add K I)) (Add K (S I))
+                     (IdSymRaw Nat (Add K (S I)) (S (Add K I)) (AddSuccRaw K I)) Hm)
+                   (NatRwRaw (λ (W : Nat). SlotsFrom Cap R H (S W)) (S (Add K I)) (Add K (S I))
+                     (IdSymRaw Nat (Add K (S I)) (S (Add K I)) (AddSuccRaw K I)) Hh)))
       M L }
 def SFCatGlueTy : Term := prog defer_check {
   Π (Cap : Nat) → Π (R : Nat) → Π (B : List (Σ (k : Nat). Nat)) →
@@ -1140,12 +1140,12 @@ example : chkL BoolPushS BoolPushSTy = true := by native_decide
 def HitEvHit : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT).
   λ (E : Id Bool (Eqb K0 Key) True).
-    NatRw (λ (W : Nat). Id Bool True (HitL Key (Cons(Pair(W, V0), T0)))) Key K0
-      (IdSym Nat K0 Key (EqbTrueEq K0 Key E))
-      (IdSym Bool (HitL Key (Cons(Pair(Key, V0), T0))) True
-        (IdCongr OptN Bool IsSomeB
+    NatRwRaw (λ (W : Nat). Id Bool True (HitL Key (Cons(Pair(W, V0), T0)))) Key K0
+      (IdSymRaw Nat K0 Key (EqbTrueEqRaw K0 Key E))
+      (IdSymRaw Bool (HitL Key (Cons(Pair(Key, V0), T0))) True
+        (IdCongrRaw OptN Bool IsSomeB
           (FindL Key (Cons(Pair(Key, V0), T0))) (SomeN V0)
-          (BoolRwT OptN (SomeN V0) (FindL Key T0) (Eqb Key Key) (EqbRefl Key)))) }
+          (BoolRwT OptN (SomeN V0) (FindL Key T0) (Eqb Key Key) (EqbReflRaw Key)))) }
 def HitEvHitTy : Term := prog defer_check {
   Π (K0 : Nat) → Π (V0 : Nat) → Π (Key : Nat) → Π (T0 : BktT) →
     Id Bool (Eqb K0 Key) True →
@@ -1156,29 +1156,29 @@ example : chkL HitEvHit HitEvHitTy = true := by native_decide
 def PtEvHit : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (V1 : Nat). λ (Key : Nat). λ (T0 : BktT).
   λ (E : Id Bool (Eqb K0 Key) True).
-    NatRw (λ (W : Nat).
+    NatRwRaw (λ (W : Nat).
         Π (Q : Nat) → Id OptN
           (FindL Q (Cons(Pair(W, V1), T0)))
           (BFindIns Q Key V1 (Cons(Pair(W, V0), T0))))
       Key K0
-      (IdSym Nat K0 Key (EqbTrueEq K0 Key E))
+      (IdSymRaw Nat K0 Key (EqbTrueEqRaw K0 Key E))
       (λ (Q : Nat).
-        IfDec (Eqb Q Key)
+        IfDecRaw (Eqb Q Key)
           (Id OptN (FindL Q (Cons(Pair(Key, V1), T0)))
                    (BFindIns Q Key V1 (Cons(Pair(Key, V0), T0))))
           (λ (E2 : Id Bool (Eqb Q Key) True).
-            IdTrans OptN (FindL Q (Cons(Pair(Key, V1), T0))) (SomeN V1)
+            IdTransRaw OptN (FindL Q (Cons(Pair(Key, V1), T0))) (SomeN V1)
               (BFindIns Q Key V1 (Cons(Pair(Key, V0), T0)))
               (BoolRwT OptN (SomeN V1) (FindL Q T0) (Eqb Q Key) E2)
-              (IdSym OptN (BFindIns Q Key V1 (Cons(Pair(Key, V0), T0))) (SomeN V1)
+              (IdSymRaw OptN (BFindIns Q Key V1 (Cons(Pair(Key, V0), T0))) (SomeN V1)
                 (BoolRwT OptN (SomeN V1)
                   (FindL Q (Cons(Pair(Key, V0), T0))) (Eqb Q Key) E2)))
           (λ (E2 : Id Bool (Eqb Q Key) False).
-            IdTrans OptN (FindL Q (Cons(Pair(Key, V1), T0))) (FindL Q T0)
+            IdTransRaw OptN (FindL Q (Cons(Pair(Key, V1), T0))) (FindL Q T0)
               (BFindIns Q Key V1 (Cons(Pair(Key, V0), T0)))
               (BoolRwF OptN (SomeN V1) (FindL Q T0) (Eqb Q Key) E2)
-              (IdSym OptN (BFindIns Q Key V1 (Cons(Pair(Key, V0), T0))) (FindL Q T0)
-                (IdTrans OptN (BFindIns Q Key V1 (Cons(Pair(Key, V0), T0)))
+              (IdSymRaw OptN (BFindIns Q Key V1 (Cons(Pair(Key, V0), T0))) (FindL Q T0)
+                (IdTransRaw OptN (BFindIns Q Key V1 (Cons(Pair(Key, V0), T0)))
                   (FindL Q (Cons(Pair(Key, V0), T0))) (FindL Q T0)
                   (BoolRwF OptN (SomeN V1)
                     (FindL Q (Cons(Pair(Key, V0), T0))) (Eqb Q Key) E2)
@@ -1195,17 +1195,17 @@ example : chkL PtEvHit PtEvHitTy = true := by native_decide
 def LnEvHit : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (V1 : Nat). λ (Key : Nat). λ (T0 : BktT).
   λ (E : Id Bool (Eqb K0 Key) True).
-    NatRw (λ (W : Nat). Id Nat (LenE (Cons(Pair(W, V1), T0)))
+    NatRwRaw (λ (W : Nat). Id Nat (LenE (Cons(Pair(W, V1), T0)))
                                (BLenIns Key (Cons(Pair(W, V0), T0)))) Key K0
-      (IdSym Nat K0 Key (EqbTrueEq K0 Key E))
-      (IdSym Nat (BLenIns Key (Cons(Pair(Key, V0), T0)))
+      (IdSymRaw Nat K0 Key (EqbTrueEqRaw K0 Key E))
+      (IdSymRaw Nat (BLenIns Key (Cons(Pair(Key, V0), T0)))
         (LenE (Cons(Pair(Key, V0), T0)))
         (BoolRwT Nat (LenE (Cons(Pair(Key, V0), T0)))
           (S (LenE (Cons(Pair(Key, V0), T0))))
           (HitL Key (Cons(Pair(Key, V0), T0)))
-          (IdCongr OptN Bool IsSomeB
+          (IdCongrRaw OptN Bool IsSomeB
             (FindL Key (Cons(Pair(Key, V0), T0))) (SomeN V0)
-            (BoolRwT OptN (SomeN V0) (FindL Key T0) (Eqb Key Key) (EqbRefl Key))))) }
+            (BoolRwT OptN (SomeN V0) (FindL Key T0) (Eqb Key Key) (EqbReflRaw Key))))) }
 def LnEvHitTy : Term := prog defer_check {
   Π (K0 : Nat) → Π (V0 : Nat) → Π (V1 : Nat) → Π (Key : Nat) → Π (T0 : BktT) →
     Id Bool (Eqb K0 Key) True →
@@ -1218,13 +1218,13 @@ def HitEvMiss : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT). λ (H2 : Bool).
   λ (E : Id Bool (Eqb K0 Key) False).
   λ (Hh : Id Bool H2 (HitL Key T0)).
-    IdTrans Bool H2 (HitL Key T0) (HitL Key (Cons(Pair(K0, V0), T0)))
+    IdTransRaw Bool H2 (HitL Key T0) (HitL Key (Cons(Pair(K0, V0), T0)))
       Hh
-      (IdSym Bool (HitL Key (Cons(Pair(K0, V0), T0))) (HitL Key T0)
-        (IdCongr OptN Bool IsSomeB
+      (IdSymRaw Bool (HitL Key (Cons(Pair(K0, V0), T0))) (HitL Key T0)
+        (IdCongrRaw OptN Bool IsSomeB
           (FindL Key (Cons(Pair(K0, V0), T0))) (FindL Key T0)
           (BoolRwF OptN (SomeN V0) (FindL Key T0) (Eqb Key K0)
-            (IdTrans Bool (Eqb Key K0) (Eqb K0 Key) False (EqbSym Key K0) E)))) }
+            (IdTransRaw Bool (Eqb Key K0) (Eqb K0 Key) False (EqbSymRaw Key K0) E)))) }
 def HitEvMissTy : Term := prog defer_check {
   Π (K0 : Nat) → Π (V0 : Nat) → Π (Key : Nat) → Π (T0 : BktT) → Π (H2 : Bool) →
     Id Bool (Eqb K0 Key) False →
@@ -1239,35 +1239,35 @@ def UpdEvMiss : Term := prog defer_check {
   λ (E : Id Bool (Eqb K0 Key) False).
   λ (Hp : Π (Q : Nat) → Id OptN (FindL Q T1) (BFindUpd Q Key X T0)).
     λ (Q : Nat).
-      IfDec (Eqb Q Key)
+      IfDecRaw (Eqb Q Key)
         (Id OptN (FindL Q (Cons(Pair(K0, V0), T1)))
                  (BFindUpd Q Key X (Cons(Pair(K0, V0), T0))))
         (λ (E2 : Id Bool (Eqb Q Key) True).
-          IdTrans OptN (FindL Q (Cons(Pair(K0, V0), T1))) (FindL Q T1)
+          IdTransRaw OptN (FindL Q (Cons(Pair(K0, V0), T1))) (FindL Q T1)
             (BFindUpd Q Key X (Cons(Pair(K0, V0), T0)))
             (BoolRwF OptN (SomeN V0) (FindL Q T1) (Eqb Q K0)
-              (IdTrans Bool (Eqb Q K0) (Eqb Key K0) False
-                (IdCongr Nat Bool (λ (W : Nat). Eqb W K0) Q Key (EqbTrueEq Q Key E2))
-                (IdTrans Bool (Eqb Key K0) (Eqb K0 Key) False (EqbSym Key K0) E)))
-            (IdTrans OptN (FindL Q T1) X
+              (IdTransRaw Bool (Eqb Q K0) (Eqb Key K0) False
+                (IdCongrRaw Nat Bool (λ (W : Nat). Eqb W K0) Q Key (EqbTrueEqRaw Q Key E2))
+                (IdTransRaw Bool (Eqb Key K0) (Eqb K0 Key) False (EqbSymRaw Key K0) E)))
+            (IdTransRaw OptN (FindL Q T1) X
               (BFindUpd Q Key X (Cons(Pair(K0, V0), T0)))
-              (IdTrans OptN (FindL Q T1) (BFindUpd Q Key X T0) X
+              (IdTransRaw OptN (FindL Q T1) (BFindUpd Q Key X T0) X
                 (Hp Q)
                 (BoolRwT OptN X (FindL Q T0) (Eqb Q Key) E2))
-              (IdSym OptN (BFindUpd Q Key X (Cons(Pair(K0, V0), T0))) X
+              (IdSymRaw OptN (BFindUpd Q Key X (Cons(Pair(K0, V0), T0))) X
                 (BoolRwT OptN X
                   (FindL Q (Cons(Pair(K0, V0), T0))) (Eqb Q Key) E2))))
         (λ (E2 : Id Bool (Eqb Q Key) False).
-          IdTrans OptN (FindL Q (Cons(Pair(K0, V0), T1)))
+          IdTransRaw OptN (FindL Q (Cons(Pair(K0, V0), T1)))
             (FindL Q (Cons(Pair(K0, V0), T0)))
             (BFindUpd Q Key X (Cons(Pair(K0, V0), T0)))
-            (IdCongr OptN OptN
+            (IdCongrRaw OptN OptN
               (λ (W : OptN). boolRec (λ (W2 : Bool). OptN) (SomeN V0) W (Eqb Q K0))
               (FindL Q T1) (FindL Q T0)
-              (IdTrans OptN (FindL Q T1) (BFindUpd Q Key X T0) (FindL Q T0)
+              (IdTransRaw OptN (FindL Q T1) (BFindUpd Q Key X T0) (FindL Q T0)
                 (Hp Q)
                 (BoolRwF OptN X (FindL Q T0) (Eqb Q Key) E2)))
-            (IdSym OptN (BFindUpd Q Key X (Cons(Pair(K0, V0), T0)))
+            (IdSymRaw OptN (BFindUpd Q Key X (Cons(Pair(K0, V0), T0)))
               (FindL Q (Cons(Pair(K0, V0), T0)))
               (BoolRwF OptN X
                 (FindL Q (Cons(Pair(K0, V0), T0))) (Eqb Q Key) E2))) }
@@ -1286,25 +1286,25 @@ def LnEvMiss : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT). λ (T1 : BktT).
   λ (E : Id Bool (Eqb K0 Key) False).
   λ (Hl : Id Nat (LenE T1) (BLenIns Key T0)).
-    IdTrans Nat (S (LenE T1)) (S (BLenIns Key T0))
+    IdTransRaw Nat (S (LenE T1)) (S (BLenIns Key T0))
       (BLenIns Key (Cons(Pair(K0, V0), T0)))
-      (IdCongr Nat Nat (λ (W : Nat). S W) (LenE T1) (BLenIns Key T0) Hl)
-      (IdSym Nat (BLenIns Key (Cons(Pair(K0, V0), T0))) (S (BLenIns Key T0))
-        (IdTrans Nat (BLenIns Key (Cons(Pair(K0, V0), T0)))
+      (IdCongrRaw Nat Nat (λ (W : Nat). S W) (LenE T1) (BLenIns Key T0) Hl)
+      (IdSymRaw Nat (BLenIns Key (Cons(Pair(K0, V0), T0))) (S (BLenIns Key T0))
+        (IdTransRaw Nat (BLenIns Key (Cons(Pair(K0, V0), T0)))
           (boolRec (λ (W2 : Bool). Nat)
             (LenE (Cons(Pair(K0, V0), T0)))
             (S (LenE (Cons(Pair(K0, V0), T0))))
             (HitL Key T0))
           (S (BLenIns Key T0))
-          (IdCongr Bool Nat
+          (IdCongrRaw Bool Nat
             (λ (W : Bool). boolRec (λ (W2 : Bool). Nat)
               (LenE (Cons(Pair(K0, V0), T0)))
               (S (LenE (Cons(Pair(K0, V0), T0)))) W)
             (HitL Key (Cons(Pair(K0, V0), T0))) (HitL Key T0)
-            (IdCongr OptN Bool IsSomeB
+            (IdCongrRaw OptN Bool IsSomeB
               (FindL Key (Cons(Pair(K0, V0), T0))) (FindL Key T0)
               (BoolRwF OptN (SomeN V0) (FindL Key T0) (Eqb Key K0)
-                (IdTrans Bool (Eqb Key K0) (Eqb K0 Key) False (EqbSym Key K0) E))))
+                (IdTransRaw Bool (Eqb Key K0) (Eqb K0 Key) False (EqbSymRaw Key K0) E))))
           (BoolPushS (LenE T0) (S (LenE T0)) (HitL Key T0)))) }
 def LnEvMissTy : Term := prog defer_check {
   Π (K0 : Nat) → Π (V0 : Nat) → Π (Key : Nat) → Π (T0 : BktT) → Π (T1 : BktT) →
@@ -1320,9 +1320,9 @@ def UpdNdMiss : Term := prog defer_check {
   λ (E : Id Bool (Eqb K0 Key) False).
   λ (Hp : Π (Q : Nat) → Id OptN (FindL Q T1) (BFindUpd Q Key X T0)).
   λ (Hn : Id Bool (HitL K0 T0) False).
-    IdTrans Bool (HitL K0 T1) (HitL K0 T0) False
-      (IdCongr OptN Bool IsSomeB (FindL K0 T1) (FindL K0 T0)
-        (IdTrans OptN (FindL K0 T1) (BFindUpd K0 Key X T0) (FindL K0 T0)
+    IdTransRaw Bool (HitL K0 T1) (HitL K0 T0) False
+      (IdCongrRaw OptN Bool IsSomeB (FindL K0 T1) (FindL K0 T0)
+        (IdTransRaw OptN (FindL K0 T1) (BFindUpd K0 Key X T0) (FindL K0 T0)
           (Hp K0)
           (BoolRwF OptN X (FindL K0 T0) (Eqb K0 Key) E)))
       Hn }
@@ -1372,26 +1372,26 @@ def UpdPtSame : Term := prog defer_check {
   λ (Hb : Π (Q : Nat) → Id OptN (FindL Q B1) (BFindUpd Q Key X B0)).
   λ (Q : Nat).
   λ (Ej : Id Bool (Eqb (Mod Q (Add I (S R))) I) True).
-    NatRw (λ (W : Nat).
+    NatRwRaw (λ (W : Nat).
         Id OptN
           (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H)) W))
           (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H)) W)))
       I (Mod Q (Add I (S R)))
-      (IdSym Nat (Mod Q (Add I (S R))) I (EqbTrueEq (Mod Q (Add I (S R))) I Ej))
-      (IdTrans OptN
+      (IdSymRaw Nat (Mod Q (Add I (S R))) I (EqbTrueEqRaw (Mod Q (Add I (S R))) I Ej))
+      (IdTransRaw OptN
         (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H)) I))
         (FindL Q B1)
         (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H)) I))
-        (IdCongr BktT OptN (λ (W : BktT). FindL Q W)
+        (IdCongrRaw BktT OptN (λ (W : BktT). FindL Q W)
           (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H)) I) B1
           (AgetBCatMid R B1 H I L))
-        (IdTrans OptN (FindL Q B1) (BFindUpd Q Key X B0)
+        (IdTransRaw OptN (FindL Q B1) (BFindUpd Q Key X B0)
           (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H)) I))
           (Hb Q)
-          (IdSym OptN
+          (IdSymRaw OptN
             (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H)) I))
             (BFindUpd Q Key X B0)
-            (IdCongr BktT OptN (λ (W : BktT). BFindUpd Q Key X W)
+            (IdCongrRaw BktT OptN (λ (W : BktT). BFindUpd Q Key X W)
               (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H)) I) B0
               (AgetBCatMid R B0 H I L))))) }
 def UpdPtSameTy : Term := prog defer_check {
@@ -1408,14 +1408,14 @@ example : chkL UpdPtSame UpdPtSameTy = true := by native_decide
 
 /-- Different-slot case: `q`'s bucket is untouched. `Eqb Q Key = True` is dead
     (equal keys share a slot); otherwise the slot is strictly left of the cell
-    (`AgetBCatLo`) or strictly right (`ModDec` mints the offset, `AgetBCatHi`). -/
+    (`AgetBCatLo`) or strictly right (`ModDecRaw` mints the offset, `AgetBCatHi`). -/
 def UpdPtDiff : Term := prog defer_check {
   λ (I : Nat). λ (R : Nat). λ (Key : Nat). λ (X : OptN).
   λ (L : Array I BktT). λ (B0 : BktT). λ (B1 : BktT). λ (H : Array R BktT).
   λ (Him : Id Nat I (Mod Key (Add I (S R)))).
   λ (Q : Nat).
   λ (Ej : Id Bool (Eqb (Mod Q (Add I (S R))) I) False).
-    IfDec (Eqb Q Key)
+    IfDecRaw (Eqb Q Key)
       (Id OptN
         (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
           (Mod Q (Add I (S R)))))
@@ -1428,42 +1428,42 @@ def UpdPtDiff : Term := prog defer_check {
               (Mod Q (Add I (S R)))))
             (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
               (Mod Q (Add I (S R))))))
-          (BoolTF (IdTrans Bool True (Eqb (Mod Q (Add I (S R))) I) False
-            (IdSym Bool (Eqb (Mod Q (Add I (S R))) I) True
-              (IdTrans Bool (Eqb (Mod Q (Add I (S R))) I) (Eqb I I) True
-                (IdCongr Nat Bool (λ (W : Nat). Eqb W I) (Mod Q (Add I (S R))) I
-                  (IdTrans Nat (Mod Q (Add I (S R))) (Mod Key (Add I (S R))) I
-                    (IdCongr Nat Nat (λ (W : Nat). Mod W (Add I (S R))) Q Key
-                      (EqbTrueEq Q Key E2))
-                    (IdSym Nat I (Mod Key (Add I (S R))) Him)))
-                (EqbRefl I)))
+          (BoolTFRaw (IdTransRaw Bool True (Eqb (Mod Q (Add I (S R))) I) False
+            (IdSymRaw Bool (Eqb (Mod Q (Add I (S R))) I) True
+              (IdTransRaw Bool (Eqb (Mod Q (Add I (S R))) I) (Eqb I I) True
+                (IdCongrRaw Nat Bool (λ (W : Nat). Eqb W I) (Mod Q (Add I (S R))) I
+                  (IdTransRaw Nat (Mod Q (Add I (S R))) (Mod Key (Add I (S R))) I
+                    (IdCongrRaw Nat Nat (λ (W : Nat). Mod W (Add I (S R))) Q Key
+                      (EqbTrueEqRaw Q Key E2))
+                    (IdSymRaw Nat I (Mod Key (Add I (S R))) Him)))
+                (EqbReflRaw I)))
             Ej)))
       (λ (E2 : Id Bool (Eqb Q Key) False).
-        IfDec (Leb (Mod Q (Add I (S R))) I)
+        IfDecRaw (Leb (Mod Q (Add I (S R))) I)
           (Id OptN
             (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
               (Mod Q (Add I (S R)))))
             (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
               (Mod Q (Add I (S R))))))
           (λ (El : Id Bool (Leb (Mod Q (Add I (S R))) I) True).
-            IdTrans OptN
+            IdTransRaw OptN
               (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
                 (Mod Q (Add I (S R)))))
               (FindL Q (AgetB I L (Mod Q (Add I (S R)))))
               (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
                 (Mod Q (Add I (S R)))))
-              (IdCongr BktT OptN (λ (W : BktT). FindL Q W)
+              (IdCongrRaw BktT OptN (λ (W : BktT). FindL Q W)
                 (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
                   (Mod Q (Add I (S R))))
                 (AgetB I L (Mod Q (Add I (S R))))
                 (AgetBCatLo R B1 H I L (Mod Q (Add I (S R)))
                   (LeNeLt (Mod Q (Add I (S R))) I
-                    (LebTrueLe (Mod Q (Add I (S R))) I El) Ej)))
-              (IdSym OptN
+                    (LebTrueLeRaw (Mod Q (Add I (S R))) I El) Ej)))
+              (IdSymRaw OptN
                 (BFindUpd Q Key X (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
                   (Mod Q (Add I (S R)))))
                 (FindL Q (AgetB I L (Mod Q (Add I (S R)))))
-                (IdTrans OptN
+                (IdTransRaw OptN
                   (BFindUpd Q Key X (AgetB (Add I (S R))
                     (arrCat I (S R) L (acons R B0 H)) (Mod Q (Add I (S R)))))
                   (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
@@ -1473,16 +1473,16 @@ def UpdPtDiff : Term := prog defer_check {
                     (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
                       (Mod Q (Add I (S R)))))
                     (Eqb Q Key) E2)
-                  (IdCongr BktT OptN (λ (W : BktT). FindL Q W)
+                  (IdCongrRaw BktT OptN (λ (W : BktT). FindL Q W)
                     (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
                       (Mod Q (Add I (S R))))
                     (AgetB I L (Mod Q (Add I (S R))))
                     (AgetBCatLo R B0 H I L (Mod Q (Add I (S R)))
                       (LeNeLt (Mod Q (Add I (S R))) I
-                        (LebTrueLe (Mod Q (Add I (S R))) I El) Ej))))))
+                        (LebTrueLeRaw (Mod Q (Add I (S R))) I El) Ej))))))
           (λ (El : Id Bool (Leb (Mod Q (Add I (S R))) I) False).
-            elim (ModDec I (Mod Q (Add I (S R)))
-                (LebFalseGt (Mod Q (Add I (S R))) I El)) return
+            elim (ModDecRaw I (Mod Q (Add I (S R)))
+                (LebFalseGtRaw (Mod Q (Add I (S R))) I El)) return
               (λ (W : Σ (R2 : Nat). Id Nat (Mod Q (Add I (S R))) (Add I (S R2))).
                 Id OptN
                   (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
@@ -1490,29 +1490,29 @@ def UpdPtDiff : Term := prog defer_check {
                   (BFindUpd Q Key X (AgetB (Add I (S R))
                     (arrCat I (S R) L (acons R B0 H)) (Mod Q (Add I (S R)))))) {
               Pair (D) (Hd) =>
-                NatRw (λ (W : Nat).
+                NatRwRaw (λ (W : Nat).
                     Id OptN
                       (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H)) W))
                       (BFindUpd Q Key X (AgetB (Add I (S R))
                         (arrCat I (S R) L (acons R B0 H)) W)))
                   (Add I (S D)) (Mod Q (Add I (S R)))
-                  (IdSym Nat (Mod Q (Add I (S R))) (Add I (S D)) Hd)
-                  (IdTrans OptN
+                  (IdSymRaw Nat (Mod Q (Add I (S R))) (Add I (S D)) Hd)
+                  (IdTransRaw OptN
                     (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
                       (Add I (S D))))
                     (FindL Q (AgetB R H D))
                     (BFindUpd Q Key X (AgetB (Add I (S R))
                       (arrCat I (S R) L (acons R B0 H)) (Add I (S D))))
-                    (IdCongr BktT OptN (λ (W : BktT). FindL Q W)
+                    (IdCongrRaw BktT OptN (λ (W : BktT). FindL Q W)
                       (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
                         (Add I (S D)))
                       (AgetB R H D)
                       (AgetBCatHi R B1 H D I L))
-                    (IdSym OptN
+                    (IdSymRaw OptN
                       (BFindUpd Q Key X (AgetB (Add I (S R))
                         (arrCat I (S R) L (acons R B0 H)) (Add I (S D))))
                       (FindL Q (AgetB R H D))
-                      (IdTrans OptN
+                      (IdTransRaw OptN
                         (BFindUpd Q Key X (AgetB (Add I (S R))
                           (arrCat I (S R) L (acons R B0 H)) (Add I (S D))))
                         (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
@@ -1522,7 +1522,7 @@ def UpdPtDiff : Term := prog defer_check {
                           (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
                             (Add I (S D))))
                           (Eqb Q Key) E2)
-                        (IdCongr BktT OptN (λ (W : BktT). FindL Q W)
+                        (IdCongrRaw BktT OptN (λ (W : BktT). FindL Q W)
                           (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B0 H))
                             (Add I (S D)))
                           (AgetB R H D)
@@ -1547,7 +1547,7 @@ def UpdPointwise : Term := prog defer_check {
   λ (Him : Id Nat I (Mod Key (Add I (S R)))).
   λ (Hb : Π (Q : Nat) → Id OptN (FindL Q B1) (BFindUpd Q Key X B0)).
     λ (Q : Nat).
-      IfDec (Eqb (Mod Q (Add I (S R))) I)
+      IfDecRaw (Eqb (Mod Q (Add I (S R))) I)
         (Id OptN
           (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B1 H))
             (Mod Q (Add I (S R)))))
@@ -1617,7 +1617,7 @@ example : chkL AgetBMkSlots AgetBMkSlotsTy = true := by native_decide
     consumes as `Him`. -/
 def SlotPack : Term := prog defer_check {
   λ (H : Nat). λ (N : Nat). λ (Hne : Le (S Z) N).
-    elim (ModDec (Mod H N) N (ModLtN H N Hne)) return
+    elim (ModDecRaw (Mod H N) N (ModLtNRaw H N Hne)) return
         (λ (Q : Σ (R : Nat). Id Nat N (Add (Mod H N) (S R))).
           Σ (i : Nat). Σ (r : Nat). Σ (hd : Id Nat N (Add i (S r))). Id Nat i (Mod H N)) {
       Pair (R0) (Hd0) => Pair(Mod H N, Pair(R0, Pair(Hd0, Refl))) } }
@@ -1664,25 +1664,25 @@ def NotHitFindNone : Term := prog defer_check {
         elim E return (λ (Em : Σ (k : Nat). Nat).
             Id Bool (HitL Q (Cons(Em, T))) False → Id OptN (FindL Q (Cons(Em, T))) NoneN) {
           Pair (K2) (V2) => λ (Hn : Id Bool (HitL Q (Cons(Pair(K2, V2), T))) False).
-            IfDec (Eqb Q K2)
+            IfDecRaw (Eqb Q K2)
               (Id OptN (FindL Q (Cons(Pair(K2, V2), T))) NoneN)
               (λ (E2 : Id Bool (Eqb Q K2) True).
                 botElim (Id OptN (FindL Q (Cons(Pair(K2, V2), T))) NoneN)
-                  (BoolTF (IdTrans Bool True (HitL Q (Cons(Pair(K2, V2), T))) False
-                    (IdSym Bool (HitL Q (Cons(Pair(K2, V2), T))) True
-                      (IdTrans Bool (HitL Q (Cons(Pair(K2, V2), T)))
+                  (BoolTFRaw (IdTransRaw Bool True (HitL Q (Cons(Pair(K2, V2), T))) False
+                    (IdSymRaw Bool (HitL Q (Cons(Pair(K2, V2), T))) True
+                      (IdTransRaw Bool (HitL Q (Cons(Pair(K2, V2), T)))
                         (IsSomeB (SomeN V2)) True
-                        (IdCongr OptN Bool IsSomeB
+                        (IdCongrRaw OptN Bool IsSomeB
                           (FindL Q (Cons(Pair(K2, V2), T))) (SomeN V2)
                           (BoolRwT OptN (SomeN V2) (FindL Q T) (Eqb Q K2) E2))
                         Refl))
                     Hn)))
               (λ (E2 : Id Bool (Eqb Q K2) False).
-                IdTrans OptN (FindL Q (Cons(Pair(K2, V2), T))) (FindL Q T) NoneN
+                IdTransRaw OptN (FindL Q (Cons(Pair(K2, V2), T))) (FindL Q T) NoneN
                   (BoolRwF OptN (SomeN V2) (FindL Q T) (Eqb Q K2) E2)
-                  (Ih (IdTrans Bool (HitL Q T) (HitL Q (Cons(Pair(K2, V2), T))) False
-                    (IdSym Bool (HitL Q (Cons(Pair(K2, V2), T))) (HitL Q T)
-                      (IdCongr OptN Bool IsSomeB
+                  (Ih (IdTransRaw Bool (HitL Q T) (HitL Q (Cons(Pair(K2, V2), T))) False
+                    (IdSymRaw Bool (HitL Q (Cons(Pair(K2, V2), T))) (HitL Q T)
+                      (IdCongrRaw OptN Bool IsSomeB
                         (FindL Q (Cons(Pair(K2, V2), T))) (FindL Q T)
                         (BoolRwF OptN (SomeN V2) (FindL Q T) (Eqb Q K2) E2)))
                     Hn))) } } }
@@ -1705,7 +1705,7 @@ def HitLenPos : Term := prog defer_check {
     elim L return (λ (Lm : List (Σ (k : Nat). Nat)).
         Id Bool (HitL Q Lm) True → Le (S Z) (LenE Lm)) {
       Nil => λ (Hh : Id Bool (HitL Q Nil) True).
-        botElim (Le (S Z) (LenE Nil)) (BoolFT Hh),
+        botElim (Le (S Z) (LenE Nil)) (BoolFTRaw Hh),
       Cons (E) (T) Ih => λ (Hh : Id Bool (HitL Q (Cons(E, T))) True). unit } }
 def HitLenPosTy : Term := prog defer_check {
   Π (Q : Nat) → Π (L : BktT) → Id Bool (HitL Q L) True → Le (S Z) (LenE L) }
@@ -1715,10 +1715,10 @@ example : chkL HitLenPos HitLenPosTy = true := by native_decide
 def RemHrHit : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT).
   λ (E : Id Bool (Eqb K0 Key) True).
-    NatRw (λ (W : Nat). Id OptN (SomeN V0) (FindL Key (Cons(Pair(W, V0), T0))))
-      Key K0 (IdSym Nat K0 Key (EqbTrueEq K0 Key E))
-      (IdSym OptN (FindL Key (Cons(Pair(Key, V0), T0))) (SomeN V0)
-        (BoolRwT OptN (SomeN V0) (FindL Key T0) (Eqb Key Key) (EqbRefl Key))) }
+    NatRwRaw (λ (W : Nat). Id OptN (SomeN V0) (FindL Key (Cons(Pair(W, V0), T0))))
+      Key K0 (IdSymRaw Nat K0 Key (EqbTrueEqRaw K0 Key E))
+      (IdSymRaw OptN (FindL Key (Cons(Pair(Key, V0), T0))) (SomeN V0)
+        (BoolRwT OptN (SomeN V0) (FindL Key T0) (Eqb Key Key) (EqbReflRaw Key))) }
 def RemHrHitTy : Term := prog defer_check {
   Π (K0 : Nat) → Π (V0 : Nat) → Π (Key : Nat) → Π (T0 : BktT) →
     Id Bool (Eqb K0 Key) True →
@@ -1732,30 +1732,30 @@ def RemPtHit : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT).
   λ (E : Id Bool (Eqb K0 Key) True).
   λ (Hn : Id Bool (HitL K0 T0) False).
-    NatRw (λ (W : Nat). Π (Q : Nat) →
+    NatRwRaw (λ (W : Nat). Π (Q : Nat) →
         Id OptN (FindL Q T0) (BFindRem Q Key (Cons(Pair(W, V0), T0))))
-      Key K0 (IdSym Nat K0 Key (EqbTrueEq K0 Key E))
+      Key K0 (IdSymRaw Nat K0 Key (EqbTrueEqRaw K0 Key E))
       (λ (Q : Nat).
-        IfDec (Eqb Q Key)
+        IfDecRaw (Eqb Q Key)
           (Id OptN (FindL Q T0) (BFindRem Q Key (Cons(Pair(Key, V0), T0))))
           (λ (E2 : Id Bool (Eqb Q Key) True).
-            NatRw (λ (W : Nat).
+            NatRwRaw (λ (W : Nat).
                 Id OptN (FindL W T0) (BFindRem W Key (Cons(Pair(Key, V0), T0))))
-              Key Q (IdSym Nat Q Key (EqbTrueEq Q Key E2))
-              (IdTrans OptN (FindL Key T0) NoneN
+              Key Q (IdSymRaw Nat Q Key (EqbTrueEqRaw Q Key E2))
+              (IdTransRaw OptN (FindL Key T0) NoneN
                 (BFindRem Key Key (Cons(Pair(Key, V0), T0)))
                 (NotHitFindNone Key T0
-                  (NatRw (λ (W : Nat). Id Bool (HitL W T0) False) K0 Key
-                    (EqbTrueEq K0 Key E) Hn))
-                (IdSym OptN (BFindRem Key Key (Cons(Pair(Key, V0), T0))) NoneN
+                  (NatRwRaw (λ (W : Nat). Id Bool (HitL W T0) False) K0 Key
+                    (EqbTrueEqRaw K0 Key E) Hn))
+                (IdSymRaw OptN (BFindRem Key Key (Cons(Pair(Key, V0), T0))) NoneN
                   (BoolRwT OptN NoneN (FindL Key (Cons(Pair(Key, V0), T0)))
-                    (Eqb Key Key) (EqbRefl Key)))))
+                    (Eqb Key Key) (EqbReflRaw Key)))))
           (λ (E2 : Id Bool (Eqb Q Key) False).
-            IdTrans OptN (FindL Q T0) (FindL Q (Cons(Pair(Key, V0), T0)))
+            IdTransRaw OptN (FindL Q T0) (FindL Q (Cons(Pair(Key, V0), T0)))
               (BFindRem Q Key (Cons(Pair(Key, V0), T0)))
-              (IdSym OptN (FindL Q (Cons(Pair(Key, V0), T0))) (FindL Q T0)
+              (IdSymRaw OptN (FindL Q (Cons(Pair(Key, V0), T0))) (FindL Q T0)
                 (BoolRwF OptN (SomeN V0) (FindL Q T0) (Eqb Q Key) E2))
-              (IdSym OptN (BFindRem Q Key (Cons(Pair(Key, V0), T0)))
+              (IdSymRaw OptN (BFindRem Q Key (Cons(Pair(Key, V0), T0)))
                 (FindL Q (Cons(Pair(Key, V0), T0)))
                 (BoolRwF OptN NoneN (FindL Q (Cons(Pair(Key, V0), T0)))
                   (Eqb Q Key) E2)))) }
@@ -1769,15 +1769,15 @@ example : chkL RemPtHit RemPtHitTy = true := by native_decide
 def RemLnHit : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT).
   λ (E : Id Bool (Eqb K0 Key) True).
-    NatRw (λ (W : Nat). Id Nat (LenE T0) (BLenRem Key (Cons(Pair(W, V0), T0))))
-      Key K0 (IdSym Nat K0 Key (EqbTrueEq K0 Key E))
-      (IdSym Nat (BLenRem Key (Cons(Pair(Key, V0), T0))) (LenE T0)
+    NatRwRaw (λ (W : Nat). Id Nat (LenE T0) (BLenRem Key (Cons(Pair(W, V0), T0))))
+      Key K0 (IdSymRaw Nat K0 Key (EqbTrueEqRaw K0 Key E))
+      (IdSymRaw Nat (BLenRem Key (Cons(Pair(Key, V0), T0))) (LenE T0)
         (BoolRwT Nat (Pred (LenE (Cons(Pair(Key, V0), T0))))
           (LenE (Cons(Pair(Key, V0), T0)))
           (HitL Key (Cons(Pair(Key, V0), T0)))
-          (IdCongr OptN Bool IsSomeB
+          (IdCongrRaw OptN Bool IsSomeB
             (FindL Key (Cons(Pair(Key, V0), T0))) (SomeN V0)
-            (BoolRwT OptN (SomeN V0) (FindL Key T0) (Eqb Key Key) (EqbRefl Key))))) }
+            (BoolRwT OptN (SomeN V0) (FindL Key T0) (Eqb Key Key) (EqbReflRaw Key))))) }
 def RemLnHitTy : Term := prog defer_check {
   Π (K0 : Nat) → Π (V0 : Nat) → Π (Key : Nat) → Π (T0 : BktT) →
     Id Bool (Eqb K0 Key) True →
@@ -1789,11 +1789,11 @@ def RemHrMiss : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT). λ (Ret : OptN).
   λ (E : Id Bool (Eqb K0 Key) False).
   λ (Hr : Id OptN Ret (FindL Key T0)).
-    IdTrans OptN Ret (FindL Key T0) (FindL Key (Cons(Pair(K0, V0), T0)))
+    IdTransRaw OptN Ret (FindL Key T0) (FindL Key (Cons(Pair(K0, V0), T0)))
       Hr
-      (IdSym OptN (FindL Key (Cons(Pair(K0, V0), T0))) (FindL Key T0)
+      (IdSymRaw OptN (FindL Key (Cons(Pair(K0, V0), T0))) (FindL Key T0)
         (BoolRwF OptN (SomeN V0) (FindL Key T0) (Eqb Key K0)
-          (IdTrans Bool (Eqb Key K0) (Eqb K0 Key) False (EqbSym Key K0) E))) }
+          (IdTransRaw Bool (Eqb Key K0) (Eqb K0 Key) False (EqbSymRaw Key K0) E))) }
 def RemHrMissTy : Term := prog defer_check {
   Π (K0 : Nat) → Π (V0 : Nat) → Π (Key : Nat) → Π (T0 : BktT) → Π (Ret : OptN) →
     Id Bool (Eqb K0 Key) False →
@@ -1807,26 +1807,26 @@ def RemLnMiss : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT). λ (T1 : BktT).
   λ (E : Id Bool (Eqb K0 Key) False).
   λ (Hl : Id Nat (LenE T1) (BLenRem Key T0)).
-    IdTrans Nat (LenE (Cons(Pair(K0, V0), T1))) (S (BLenRem Key T0))
+    IdTransRaw Nat (LenE (Cons(Pair(K0, V0), T1))) (S (BLenRem Key T0))
       (BLenRem Key (Cons(Pair(K0, V0), T0)))
-      (IdCongr Nat Nat (λ (W : Nat). S W) (LenE T1) (BLenRem Key T0) Hl)
-      (IdSym Nat (BLenRem Key (Cons(Pair(K0, V0), T0))) (S (BLenRem Key T0))
-        (IdTrans Nat (BLenRem Key (Cons(Pair(K0, V0), T0)))
+      (IdCongrRaw Nat Nat (λ (W : Nat). S W) (LenE T1) (BLenRem Key T0) Hl)
+      (IdSymRaw Nat (BLenRem Key (Cons(Pair(K0, V0), T0))) (S (BLenRem Key T0))
+        (IdTransRaw Nat (BLenRem Key (Cons(Pair(K0, V0), T0)))
           (boolRec (λ (W2 : Bool). Nat)
             (Pred (LenE (Cons(Pair(K0, V0), T0))))
             (LenE (Cons(Pair(K0, V0), T0)))
             (HitL Key T0))
           (S (BLenRem Key T0))
-          (IdCongr Bool Nat
+          (IdCongrRaw Bool Nat
             (λ (W : Bool). boolRec (λ (W2 : Bool). Nat)
               (Pred (LenE (Cons(Pair(K0, V0), T0))))
               (LenE (Cons(Pair(K0, V0), T0))) W)
             (HitL Key (Cons(Pair(K0, V0), T0))) (HitL Key T0)
-            (IdCongr OptN Bool IsSomeB
+            (IdCongrRaw OptN Bool IsSomeB
               (FindL Key (Cons(Pair(K0, V0), T0))) (FindL Key T0)
               (BoolRwF OptN (SomeN V0) (FindL Key T0) (Eqb Key K0)
-                (IdTrans Bool (Eqb Key K0) (Eqb K0 Key) False (EqbSym Key K0) E))))
-          (IfDec (HitL Key T0)
+                (IdTransRaw Bool (Eqb Key K0) (Eqb K0 Key) False (EqbSymRaw Key K0) E))))
+          (IfDecRaw (HitL Key T0)
             (Id Nat
               (boolRec (λ (W2 : Bool). Nat)
                 (Pred (LenE (Cons(Pair(K0, V0), T0))))
@@ -1834,29 +1834,29 @@ def RemLnMiss : Term := prog defer_check {
                 (HitL Key T0))
               (S (BLenRem Key T0)))
             (λ (Eh : Id Bool (HitL Key T0) True).
-              IdTrans Nat
+              IdTransRaw Nat
                 (boolRec (λ (W2 : Bool). Nat)
                   (Pred (LenE (Cons(Pair(K0, V0), T0))))
                   (LenE (Cons(Pair(K0, V0), T0)))
                   (HitL Key T0))
                 (LenE T0) (S (BLenRem Key T0))
                 (BoolRwT Nat (LenE T0) (S (LenE T0)) (HitL Key T0) Eh)
-                (IdSym Nat (S (BLenRem Key T0)) (LenE T0)
-                  (IdTrans Nat (S (BLenRem Key T0)) (S (Pred (LenE T0))) (LenE T0)
-                    (IdCongr Nat Nat (λ (W : Nat). S W)
+                (IdSymRaw Nat (S (BLenRem Key T0)) (LenE T0)
+                  (IdTransRaw Nat (S (BLenRem Key T0)) (S (Pred (LenE T0))) (LenE T0)
+                    (IdCongrRaw Nat Nat (λ (W : Nat). S W)
                       (BLenRem Key T0) (Pred (LenE T0))
                       (BoolRwT Nat (Pred (LenE T0)) (LenE T0) (HitL Key T0) Eh))
                     (SPredPos (LenE T0) (HitLenPos Key T0 Eh)))))
             (λ (Ef : Id Bool (HitL Key T0) False).
-              IdTrans Nat
+              IdTransRaw Nat
                 (boolRec (λ (W2 : Bool). Nat)
                   (Pred (LenE (Cons(Pair(K0, V0), T0))))
                   (LenE (Cons(Pair(K0, V0), T0)))
                   (HitL Key T0))
                 (S (LenE T0)) (S (BLenRem Key T0))
                 (BoolRwF Nat (LenE T0) (S (LenE T0)) (HitL Key T0) Ef)
-                (IdSym Nat (S (BLenRem Key T0)) (S (LenE T0))
-                  (IdCongr Nat Nat (λ (W : Nat). S W)
+                (IdSymRaw Nat (S (BLenRem Key T0)) (S (LenE T0))
+                  (IdCongrRaw Nat Nat (λ (W : Nat). S W)
                     (BLenRem Key T0) (LenE T0)
                     (BoolRwF Nat (Pred (LenE T0)) (LenE T0) (HitL Key T0) Ef))))))) }
 def RemLnMissTy : Term := prog defer_check {
@@ -1882,7 +1882,7 @@ def RemTotEv : Term := prog defer_check {
   λ (I : Nat). λ (R : Nat). λ (Key : Nat).
   λ (L : Array I BktT). λ (B0 : BktT). λ (B1 : BktT). λ (H : Array R BktT).
   λ (Hl : Id Nat (LenE B1) (BLenRem Key B0)).
-    IfDec (HitL Key B0)
+    IfDecRaw (HitL Key B0)
       (Id Nat
         (boolRec (λ (W2 : Bool). Nat)
           (S (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H))))
@@ -1890,7 +1890,7 @@ def RemTotEv : Term := prog defer_check {
           (HitL Key B0))
         (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H))))
       (λ (Eh : Id Bool (HitL Key B0) True).
-        IdTrans Nat
+        IdTransRaw Nat
           (boolRec (λ (W2 : Bool). Nat)
             (S (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H))))
             (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H)))
@@ -1901,46 +1901,46 @@ def RemTotEv : Term := prog defer_check {
             (S (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H))))
             (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H)))
             (HitL Key B0) Eh)
-          (IdTrans Nat
+          (IdTransRaw Nat
             (S (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H))))
             (S (Add (TotalE I L) (Add (LenE B1) (TotalE R H))))
             (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H)))
-            (IdCongr Nat Nat (λ (W : Nat). S W)
+            (IdCongrRaw Nat Nat (λ (W : Nat). S W)
               (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H)))
               (Add (TotalE I L) (Add (LenE B1) (TotalE R H)))
               (TotalArrCat (S R) (acons R B1 H) I L))
-            (IdTrans Nat
+            (IdTransRaw Nat
               (S (Add (TotalE I L) (Add (LenE B1) (TotalE R H))))
               (S (Add (TotalE I L) (Add (Pred (LenE B0)) (TotalE R H))))
               (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H)))
-              (IdCongr Nat Nat
+              (IdCongrRaw Nat Nat
                 (λ (W : Nat). S (Add (TotalE I L) (Add W (TotalE R H))))
                 (LenE B1) (Pred (LenE B0))
-                (IdTrans Nat (LenE B1) (BLenRem Key B0) (Pred (LenE B0))
+                (IdTransRaw Nat (LenE B1) (BLenRem Key B0) (Pred (LenE B0))
                   Hl
                   (BoolRwT Nat (Pred (LenE B0)) (LenE B0) (HitL Key B0) Eh)))
-              (IdTrans Nat
+              (IdTransRaw Nat
                 (S (Add (TotalE I L) (Add (Pred (LenE B0)) (TotalE R H))))
                 (Add (TotalE I L) (Add (S (Pred (LenE B0))) (TotalE R H)))
                 (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H)))
-                (IdSym Nat
+                (IdSymRaw Nat
                   (Add (TotalE I L) (Add (S (Pred (LenE B0))) (TotalE R H)))
                   (S (Add (TotalE I L) (Add (Pred (LenE B0)) (TotalE R H))))
-                  (AddSucc (TotalE I L) (Add (Pred (LenE B0)) (TotalE R H))))
-                (IdTrans Nat
+                  (AddSuccRaw (TotalE I L) (Add (Pred (LenE B0)) (TotalE R H))))
+                (IdTransRaw Nat
                   (Add (TotalE I L) (Add (S (Pred (LenE B0))) (TotalE R H)))
                   (Add (TotalE I L) (Add (LenE B0) (TotalE R H)))
                   (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H)))
-                  (IdCongr Nat Nat
+                  (IdCongrRaw Nat Nat
                     (λ (W : Nat). Add (TotalE I L) (Add W (TotalE R H)))
                     (S (Pred (LenE B0))) (LenE B0)
                     (SPredPos (LenE B0) (HitLenPos Key B0 Eh)))
-                  (IdSym Nat
+                  (IdSymRaw Nat
                     (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H)))
                     (Add (TotalE I L) (Add (LenE B0) (TotalE R H)))
                     (TotalArrCat (S R) (acons R B0 H) I L)))))))
       (λ (Ef : Id Bool (HitL Key B0) False).
-        IdTrans Nat
+        IdTransRaw Nat
           (boolRec (λ (W2 : Bool). Nat)
             (S (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H))))
             (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H)))
@@ -1951,22 +1951,22 @@ def RemTotEv : Term := prog defer_check {
             (S (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H))))
             (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H)))
             (HitL Key B0) Ef)
-          (IdTrans Nat
+          (IdTransRaw Nat
             (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B1 H)))
             (Add (TotalE I L) (Add (LenE B1) (TotalE R H)))
             (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H)))
             (TotalArrCat (S R) (acons R B1 H) I L)
-            (IdTrans Nat
+            (IdTransRaw Nat
               (Add (TotalE I L) (Add (LenE B1) (TotalE R H)))
               (Add (TotalE I L) (Add (LenE B0) (TotalE R H)))
               (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H)))
-              (IdCongr Nat Nat
+              (IdCongrRaw Nat Nat
                 (λ (W : Nat). Add (TotalE I L) (Add W (TotalE R H)))
                 (LenE B1) (LenE B0)
-                (IdTrans Nat (LenE B1) (BLenRem Key B0) (LenE B0)
+                (IdTransRaw Nat (LenE B1) (BLenRem Key B0) (LenE B0)
                   Hl
                   (BoolRwF Nat (Pred (LenE B0)) (LenE B0) (HitL Key B0) Ef)))
-              (IdSym Nat
+              (IdSymRaw Nat
                 (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H)))
                 (Add (TotalE I L) (Add (LenE B0) (TotalE R H)))
                 (TotalArrCat (S R) (acons R B0 H) I L))))) }
@@ -1990,7 +1990,7 @@ def HitKeyMod : Term := prog defer_check {
     elim L return (λ (Lm : List (Σ (k : Nat). Nat)).
         AllKeysMod Cap I Lm → Id Bool (HitL K2 Lm) True → Id Nat (Mod K2 Cap) I) {
       Nil => λ (Ha : AllKeysMod Cap I Nil). λ (Hh : Id Bool (HitL K2 Nil) True).
-        botElim (Id Nat (Mod K2 Cap) I) (BoolFT Hh),
+        botElim (Id Nat (Mod K2 Cap) I) (BoolFTRaw Hh),
       Cons (E) (T) Ih =>
         elim E return (λ (Em : Σ (k : Nat). Nat).
             AllKeysMod Cap I (Cons(Em, T)) → Id Bool (HitL K2 (Cons(Em, T))) True →
@@ -1998,16 +1998,16 @@ def HitKeyMod : Term := prog defer_check {
           Pair (K3) (V3) =>
             λ (Ha : AllKeysMod Cap I (Cons(Pair(K3, V3), T))).
             λ (Hh : Id Bool (HitL K2 (Cons(Pair(K3, V3), T))) True).
-              IfDec (Eqb K2 K3) (Id Nat (Mod K2 Cap) I)
+              IfDecRaw (Eqb K2 K3) (Id Nat (Mod K2 Cap) I)
                 (λ (E2 : Id Bool (Eqb K2 K3) True).
-                  NatRw (λ (W : Nat). Id Nat (Mod W Cap) I) K3 K2
-                    (IdSym Nat K2 K3 (EqbTrueEq K2 K3 E2))
+                  NatRwRaw (λ (W : Nat). Id Nat (Mod W Cap) I) K3 K2
+                    (IdSymRaw Nat K2 K3 (EqbTrueEqRaw K2 K3 E2))
                     (FstT (Id Nat (Mod K3 Cap) I) (AllKeysMod Cap I T) Ha))
                 (λ (E2 : Id Bool (Eqb K2 K3) False).
                   Ih (SndT (Id Nat (Mod K3 Cap) I) (AllKeysMod Cap I T) Ha)
-                    (IdTrans Bool (HitL K2 T) (HitL K2 (Cons(Pair(K3, V3), T))) True
-                      (IdSym Bool (HitL K2 (Cons(Pair(K3, V3), T))) (HitL K2 T)
-                        (IdCongr OptN Bool IsSomeB
+                    (IdTransRaw Bool (HitL K2 T) (HitL K2 (Cons(Pair(K3, V3), T))) True
+                      (IdSymRaw Bool (HitL K2 (Cons(Pair(K3, V3), T))) (HitL K2 T)
+                        (IdCongrRaw OptN Bool IsSomeB
                           (FindL K2 (Cons(Pair(K3, V3), T))) (FindL K2 T)
                           (BoolRwF OptN (SomeN V3) (FindL K2 T) (Eqb K2 K3) E2)))
                       Hh)) } } }
@@ -2020,15 +2020,15 @@ example : chkL HitKeyMod HitKeyModTy = true := by native_decide
 def NotHitOfMod : Term := prog defer_check {
   λ (Cap : Nat). λ (I : Nat). λ (K2 : Nat). λ (L : BktT).
   λ (Ha : AllKeysMod Cap I L). λ (Ne : Id Bool (Eqb (Mod K2 Cap) I) False).
-    IfDec (HitL K2 L) (Id Bool (HitL K2 L) False)
+    IfDecRaw (HitL K2 L) (Id Bool (HitL K2 L) False)
       (λ (Eh : Id Bool (HitL K2 L) True).
         botElim (Id Bool (HitL K2 L) False)
-          (BoolTF (IdTrans Bool True (Eqb (Mod K2 Cap) I) False
-            (IdSym Bool (Eqb (Mod K2 Cap) I) True
-              (IdTrans Bool (Eqb (Mod K2 Cap) I) (Eqb I I) True
-                (IdCongr Nat Bool (λ (W : Nat). Eqb W I) (Mod K2 Cap) I
+          (BoolTFRaw (IdTransRaw Bool True (Eqb (Mod K2 Cap) I) False
+            (IdSymRaw Bool (Eqb (Mod K2 Cap) I) True
+              (IdTransRaw Bool (Eqb (Mod K2 Cap) I) (Eqb I I) True
+                (IdCongrRaw Nat Bool (λ (W : Nat). Eqb W I) (Mod K2 Cap) I
                   (HitKeyMod Cap I K2 L Ha Eh))
-                (EqbRefl I)))
+                (EqbReflRaw I)))
             Ne)))
       (λ (Ef : Id Bool (HitL K2 L) False). Ef) }
 def NotHitOfModTy : Term := prog defer_check {
@@ -2039,7 +2039,7 @@ example : chkL NotHitOfMod NotHitOfModTy = true := by native_decide
 
 def Le1Mul2 : Term := prog defer_check {
   λ (C : Nat). λ (H : Le (S Z) C).
-    LeTrans (S Z) C (Mul 2 C) H (LeAdd C (Add C Z)) }
+    LeTransRaw (S Z) C (Mul 2 C) H (LeAddRaw C (Add C Z)) }
 def Le1Mul2Ty : Term := prog defer_check { Π (C : Nat) → Le (S Z) C → Le (S Z) (Mul 2 C) }
 example : chkL Le1Mul2 Le1Mul2Ty = true := by native_decide
 
@@ -2060,12 +2060,12 @@ def TotalNilAll : Term := prog defer_check {
           Id Nat (TotalE K T) Z).
         λ (Hn : Π (J2 : Nat) → Le (S J2) (S K) →
             Id (List (Σ (k : Nat). Nat)) (AgetB (S K) (acons K H2 T) J2) Nil).
-          IdTrans Nat (Add (LenE H2) (TotalE K T)) (Add (LenE H2) Z) Z
-            (IdCongr Nat Nat (λ (W : Nat). Add (LenE H2) W) (TotalE K T) Z
+          IdTransRaw Nat (Add (LenE H2) (TotalE K T)) (Add (LenE H2) Z) Z
+            (IdCongrRaw Nat Nat (λ (W : Nat). Add (LenE H2) W) (TotalE K T) Z
               (Ih (λ (J2 : Nat). λ (Hb : Le (S J2) K). Hn (S J2) Hb)))
-            (IdTrans Nat (Add (LenE H2) Z) (LenE H2) Z
-              (AddZero (LenE H2))
-              (IdCongr (List (Σ (k : Nat). Nat)) Nat
+            (IdTransRaw Nat (Add (LenE H2) Z) (LenE H2) Z
+              (AddZeroRaw (LenE H2))
+              (IdCongrRaw (List (Σ (k : Nat). Nat)) Nat
                 (λ (W : List (Σ (k : Nat). Nat)). LenE W)
                 H2 Nil (Hn Z unit))))
       M A }
@@ -2087,35 +2087,35 @@ def MoveStepPt : Term := prog defer_check {
   λ (H2 : Π (Q : Nat) → Id OptN (D2 Q)
        (boolRec (λ (W2 : Bool). OptN) (FindL Q TL) (D1 Q) (HitL Q TL))).
     λ (Q : Nat).
-      IfDec (Eqb Q K)
+      IfDecRaw (Eqb Q K)
         (Id OptN (D2 Q)
           (boolRec (λ (W2 : Bool). OptN)
             (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
             (HitL Q (Cons(Pair(K, V), TL)))))
         (λ (E2 : Id Bool (Eqb Q K) True).
-          IdTrans OptN (D2 Q) (SomeN V)
+          IdTransRaw OptN (D2 Q) (SomeN V)
             (boolRec (λ (W2 : Bool). OptN)
               (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
               (HitL Q (Cons(Pair(K, V), TL))))
-            (IdTrans OptN (D2 Q) (D1 Q) (SomeN V)
-              (IdTrans OptN (D2 Q)
+            (IdTransRaw OptN (D2 Q) (D1 Q) (SomeN V)
+              (IdTransRaw OptN (D2 Q)
                 (boolRec (λ (W2 : Bool). OptN) (FindL Q TL) (D1 Q) (HitL Q TL))
                 (D1 Q)
                 (H2 Q)
                 (BoolRwF OptN (FindL Q TL) (D1 Q) (HitL Q TL)
-                  (NatRw (λ (W : Nat). Id Bool (HitL W TL) False) K Q
-                    (IdSym Nat Q K (EqbTrueEq Q K E2)) Hnd)))
-              (IdTrans OptN (D1 Q)
+                  (NatRwRaw (λ (W : Nat). Id Bool (HitL W TL) False) K Q
+                    (IdSymRaw Nat Q K (EqbTrueEqRaw Q K E2)) Hnd)))
+              (IdTransRaw OptN (D1 Q)
                 (boolRec (λ (W2 : Bool). OptN) (SomeN V) (D0 Q) (Eqb Q K))
                 (SomeN V)
                 (H1 Q)
                 (BoolRwT OptN (SomeN V) (D0 Q) (Eqb Q K) E2)))
-            (IdSym OptN
+            (IdSymRaw OptN
               (boolRec (λ (W2 : Bool). OptN)
                 (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
                 (HitL Q (Cons(Pair(K, V), TL))))
               (SomeN V)
-              (IdTrans OptN
+              (IdTransRaw OptN
                 (boolRec (λ (W2 : Bool). OptN)
                   (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
                   (HitL Q (Cons(Pair(K, V), TL))))
@@ -2123,35 +2123,35 @@ def MoveStepPt : Term := prog defer_check {
                 (SomeN V)
                 (BoolRwT OptN (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
                   (HitL Q (Cons(Pair(K, V), TL)))
-                  (IdSym Bool True (HitL Q (Cons(Pair(K, V), TL)))
+                  (IdSymRaw Bool True (HitL Q (Cons(Pair(K, V), TL)))
                     (HitEvHit K V Q TL
-                      (IdTrans Bool (Eqb K Q) (Eqb Q K) True (EqbSym K Q) E2))))
-                (NatRw (λ (W : Nat).
+                      (IdTransRaw Bool (Eqb K Q) (Eqb Q K) True (EqbSymRaw K Q) E2))))
+                (NatRwRaw (λ (W : Nat).
                     Id OptN (FindL W (Cons(Pair(K, V), TL))) (SomeN V))
-                  K Q (IdSym Nat Q K (EqbTrueEq Q K E2))
-                  (BoolRwT OptN (SomeN V) (FindL K TL) (Eqb K K) (EqbRefl K))))))
+                  K Q (IdSymRaw Nat Q K (EqbTrueEqRaw Q K E2))
+                  (BoolRwT OptN (SomeN V) (FindL K TL) (Eqb K K) (EqbReflRaw K))))))
         (λ (E2 : Id Bool (Eqb Q K) False).
-          IfDec (HitL Q TL)
+          IfDecRaw (HitL Q TL)
             (Id OptN (D2 Q)
               (boolRec (λ (W2 : Bool). OptN)
                 (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
                 (HitL Q (Cons(Pair(K, V), TL)))))
             (λ (Eh : Id Bool (HitL Q TL) True).
-              IdTrans OptN (D2 Q) (FindL Q TL)
+              IdTransRaw OptN (D2 Q) (FindL Q TL)
                 (boolRec (λ (W2 : Bool). OptN)
                   (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
                   (HitL Q (Cons(Pair(K, V), TL))))
-                (IdTrans OptN (D2 Q)
+                (IdTransRaw OptN (D2 Q)
                   (boolRec (λ (W2 : Bool). OptN) (FindL Q TL) (D1 Q) (HitL Q TL))
                   (FindL Q TL)
                   (H2 Q)
                   (BoolRwT OptN (FindL Q TL) (D1 Q) (HitL Q TL) Eh))
-                (IdSym OptN
+                (IdSymRaw OptN
                   (boolRec (λ (W2 : Bool). OptN)
                     (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
                     (HitL Q (Cons(Pair(K, V), TL))))
                   (FindL Q TL)
-                  (IdTrans OptN
+                  (IdTransRaw OptN
                     (boolRec (λ (W2 : Bool). OptN)
                       (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
                       (HitL Q (Cons(Pair(K, V), TL))))
@@ -2159,14 +2159,14 @@ def MoveStepPt : Term := prog defer_check {
                       (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
                       (HitL Q TL))
                     (FindL Q TL)
-                    (IdCongr Bool OptN
+                    (IdCongrRaw Bool OptN
                       (λ (W : Bool). boolRec (λ (W2 : Bool). OptN)
                         (FindL Q (Cons(Pair(K, V), TL))) (D0 Q) W)
                       (HitL Q (Cons(Pair(K, V), TL))) (HitL Q TL)
-                      (IdCongr OptN Bool IsSomeB
+                      (IdCongrRaw OptN Bool IsSomeB
                         (FindL Q (Cons(Pair(K, V), TL))) (FindL Q TL)
                         (BoolRwF OptN (SomeN V) (FindL Q TL) (Eqb Q K) E2)))
-                    (IdTrans OptN
+                    (IdTransRaw OptN
                       (boolRec (λ (W2 : Bool). OptN)
                         (FindL Q (Cons(Pair(K, V), TL))) (D0 Q) (HitL Q TL))
                       (FindL Q (Cons(Pair(K, V), TL)))
@@ -2175,27 +2175,27 @@ def MoveStepPt : Term := prog defer_check {
                         (HitL Q TL) Eh)
                       (BoolRwF OptN (SomeN V) (FindL Q TL) (Eqb Q K) E2)))))
             (λ (Ef : Id Bool (HitL Q TL) False).
-              IdTrans OptN (D2 Q) (D0 Q)
+              IdTransRaw OptN (D2 Q) (D0 Q)
                 (boolRec (λ (W2 : Bool). OptN)
                   (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
                   (HitL Q (Cons(Pair(K, V), TL))))
-                (IdTrans OptN (D2 Q) (D1 Q) (D0 Q)
-                  (IdTrans OptN (D2 Q)
+                (IdTransRaw OptN (D2 Q) (D1 Q) (D0 Q)
+                  (IdTransRaw OptN (D2 Q)
                     (boolRec (λ (W2 : Bool). OptN) (FindL Q TL) (D1 Q) (HitL Q TL))
                     (D1 Q)
                     (H2 Q)
                     (BoolRwF OptN (FindL Q TL) (D1 Q) (HitL Q TL) Ef))
-                  (IdTrans OptN (D1 Q)
+                  (IdTransRaw OptN (D1 Q)
                     (boolRec (λ (W2 : Bool). OptN) (SomeN V) (D0 Q) (Eqb Q K))
                     (D0 Q)
                     (H1 Q)
                     (BoolRwF OptN (SomeN V) (D0 Q) (Eqb Q K) E2)))
-                (IdSym OptN
+                (IdSymRaw OptN
                   (boolRec (λ (W2 : Bool). OptN)
                     (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
                     (HitL Q (Cons(Pair(K, V), TL))))
                   (D0 Q)
-                  (IdTrans OptN
+                  (IdTransRaw OptN
                     (boolRec (λ (W2 : Bool). OptN)
                       (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
                       (HitL Q (Cons(Pair(K, V), TL))))
@@ -2203,11 +2203,11 @@ def MoveStepPt : Term := prog defer_check {
                       (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
                       (HitL Q TL))
                     (D0 Q)
-                    (IdCongr Bool OptN
+                    (IdCongrRaw Bool OptN
                       (λ (W : Bool). boolRec (λ (W2 : Bool). OptN)
                         (FindL Q (Cons(Pair(K, V), TL))) (D0 Q) W)
                       (HitL Q (Cons(Pair(K, V), TL))) (HitL Q TL)
-                      (IdCongr OptN Bool IsSomeB
+                      (IdCongrRaw OptN Bool IsSomeB
                         (FindL Q (Cons(Pair(K, V), TL))) (FindL Q TL)
                         (BoolRwF OptN (SomeN V) (FindL Q TL) (Eqb Q K) E2)))
                     (BoolRwF OptN (FindL Q (Cons(Pair(K, V), TL))) (D0 Q)
@@ -2233,39 +2233,39 @@ def NeBucketEq : Term := prog defer_check {
   λ (LS : Array J BktT). λ (BJ : BktT). λ (HS : Array R BktT).
   λ (W : Nat).
   λ (Ne : Id Bool (Eqb W J) False).
-    IfDec (Leb W J)
+    IfDecRaw (Leb W J)
       (Id (List (Σ (k : Nat). Nat))
         (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) W)
         (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) W))
       (λ (El : Id Bool (Leb W J) True).
-        IdTrans (List (Σ (k : Nat). Nat))
+        IdTransRaw (List (Σ (k : Nat). Nat))
           (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) W)
           (AgetB J LS W)
           (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) W)
-          (AgetBCatLo R Nil HS J LS W (LeNeLt W J (LebTrueLe W J El) Ne))
-          (IdSym (List (Σ (k : Nat). Nat))
+          (AgetBCatLo R Nil HS J LS W (LeNeLt W J (LebTrueLeRaw W J El) Ne))
+          (IdSymRaw (List (Σ (k : Nat). Nat))
             (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) W)
             (AgetB J LS W)
-            (AgetBCatLo R BJ HS J LS W (LeNeLt W J (LebTrueLe W J El) Ne))))
+            (AgetBCatLo R BJ HS J LS W (LeNeLt W J (LebTrueLeRaw W J El) Ne))))
       (λ (El : Id Bool (Leb W J) False).
-        elim (ModDec J W (LebFalseGt W J El)) return
+        elim (ModDecRaw J W (LebFalseGtRaw W J El)) return
           (λ (Wd : Σ (R2 : Nat). Id Nat W (Add J (S R2))).
             Id (List (Σ (k : Nat). Nat))
               (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) W)
               (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) W)) {
           Pair (Dd) (Hd) =>
-            NatRw (λ (W2 : Nat).
+            NatRwRaw (λ (W2 : Nat).
                 Id (List (Σ (k : Nat). Nat))
                   (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) W2)
                   (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) W2))
               (Add J (S Dd)) W
-              (IdSym Nat W (Add J (S Dd)) Hd)
-              (IdTrans (List (Σ (k : Nat). Nat))
+              (IdSymRaw Nat W (Add J (S Dd)) Hd)
+              (IdTransRaw (List (Σ (k : Nat). Nat))
                 (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) (Add J (S Dd)))
                 (AgetB R HS Dd)
                 (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) (Add J (S Dd)))
                 (AgetBCatHi R Nil HS Dd J LS)
-                (IdSym (List (Σ (k : Nat). Nat))
+                (IdSymRaw (List (Σ (k : Nat). Nat))
                   (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) (Add J (S Dd)))
                   (AgetB R HS Dd)
                   (AgetBCatHi R BJ HS Dd J LS))) }) }
@@ -2291,35 +2291,35 @@ def ResizeGlue : Term := prog defer_check {
       (boolRec (λ (W2 : Bool). OptN) (DM Q) (DN Q) (IsSomeB (DM Q)))).
   λ (He : Π (Q : Nat) → Id Bool (IsSomeB (M Q)) False → Id OptN (M Q) NoneN).
     λ (Q : Nat).
-      IfDec (IsSomeB (M Q)) (Id OptN (DF Q) (M Q))
+      IfDecRaw (IsSomeB (M Q)) (Id OptN (DF Q) (M Q))
         (λ (E2 : Id Bool (IsSomeB (M Q)) True).
-          IdTrans OptN (DF Q)
+          IdTransRaw OptN (DF Q)
             (boolRec (λ (W2 : Bool). OptN) (M Q) (DN Q) (IsSomeB (M Q)))
             (M Q)
-            (IdTrans OptN (DF Q)
+            (IdTransRaw OptN (DF Q)
               (boolRec (λ (W2 : Bool). OptN) (DM Q) (DN Q) (IsSomeB (DM Q)))
               (boolRec (λ (W2 : Bool). OptN) (M Q) (DN Q) (IsSomeB (M Q)))
               (HF Q)
-              (IdCongr OptN OptN
+              (IdCongrRaw OptN OptN
                 (λ (X : OptN). boolRec (λ (W2 : Bool). OptN) X (DN Q) (IsSomeB X))
                 (DM Q) (M Q) (HM Q)))
             (BoolRwT OptN (M Q) (DN Q) (IsSomeB (M Q)) E2))
         (λ (E2 : Id Bool (IsSomeB (M Q)) False).
-          IdTrans OptN (DF Q) (DN Q) (M Q)
-            (IdTrans OptN (DF Q)
+          IdTransRaw OptN (DF Q) (DN Q) (M Q)
+            (IdTransRaw OptN (DF Q)
               (boolRec (λ (W2 : Bool). OptN) (M Q) (DN Q) (IsSomeB (M Q)))
               (DN Q)
-              (IdTrans OptN (DF Q)
+              (IdTransRaw OptN (DF Q)
                 (boolRec (λ (W2 : Bool). OptN) (DM Q) (DN Q) (IsSomeB (DM Q)))
                 (boolRec (λ (W2 : Bool). OptN) (M Q) (DN Q) (IsSomeB (M Q)))
                 (HF Q)
-                (IdCongr OptN OptN
+                (IdCongrRaw OptN OptN
                   (λ (X : OptN). boolRec (λ (W2 : Bool). OptN) X (DN Q) (IsSomeB X))
                   (DM Q) (M Q) (HM Q)))
               (BoolRwF OptN (M Q) (DN Q) (IsSomeB (M Q)) E2))
-            (IdTrans OptN (DN Q) NoneN (M Q)
+            (IdTransRaw OptN (DN Q) NoneN (M Q)
               (HN Q)
-              (IdSym OptN (M Q) NoneN (He Q E2)))) }
+              (IdSymRaw OptN (M Q) NoneN (He Q E2)))) }
 def ResizeGlueTy : Term := prog defer_check {
   Π (M : Nat → OptN) → Π (DM : Nat → OptN) → Π (DF : Nat → OptN) → Π (DN : Nat → OptN) →
     (Π (Q : Nat) → Id OptN (DN Q) NoneN) →
@@ -2346,54 +2346,54 @@ def MoveDisjStep : Term := prog defer_check {
     λ (K2 : Nat).
     λ (Hs : Id Bool (IsSomeB (FindL K2 (AgetB (Add J (S R))
         (arrCat J (S R) LS (acons R Nil HS)) (Mod K2 (Add J (S R)))))) True).
-      IfDec (Eqb (Mod K2 (Add J (S R))) J)
+      IfDecRaw (Eqb (Mod K2 (Add J (S R))) J)
         (Id OptN (D1 K2) NoneN)
         (λ (E2 : Id Bool (Eqb (Mod K2 (Add J (S R))) J) True).
           botElim (Id OptN (D1 K2) NoneN)
-            (BoolFT (IdTrans Bool False
+            (BoolFTRaw (IdTransRaw Bool False
               (IsSomeB (FindL K2 (AgetB (Add J (S R))
                 (arrCat J (S R) LS (acons R Nil HS)) (Mod K2 (Add J (S R))))))
               True
-              (IdSym Bool
+              (IdSymRaw Bool
                 (IsSomeB (FindL K2 (AgetB (Add J (S R))
                   (arrCat J (S R) LS (acons R Nil HS)) (Mod K2 (Add J (S R))))))
                 False
-                (IdCongr (List (Σ (k : Nat). Nat)) Bool
+                (IdCongrRaw (List (Σ (k : Nat). Nat)) Bool
                   (λ (Wb : List (Σ (k : Nat). Nat)). IsSomeB (FindL K2 Wb))
                   (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS))
                     (Mod K2 (Add J (S R))))
                   Nil
-                  (NatRw (λ (W : Nat).
+                  (NatRwRaw (λ (W : Nat).
                       Id (List (Σ (k : Nat). Nat))
                         (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) W)
                         Nil)
                     J (Mod K2 (Add J (S R)))
-                    (IdSym Nat (Mod K2 (Add J (S R))) J
-                      (EqbTrueEq (Mod K2 (Add J (S R))) J E2))
+                    (IdSymRaw Nat (Mod K2 (Add J (S R))) J
+                      (EqbTrueEqRaw (Mod K2 (Add J (S R))) J E2))
                     (AgetBCatMid R Nil HS J LS))))
               Hs)))
         (λ (E2 : Id Bool (Eqb (Mod K2 (Add J (S R))) J) False).
-          IdTrans OptN (D1 K2) (D0 K2) NoneN
-            (IdTrans OptN (D1 K2)
+          IdTransRaw OptN (D1 K2) (D0 K2) NoneN
+            (IdTransRaw OptN (D1 K2)
               (boolRec (λ (W2 : Bool). OptN) (FindL K2 BJ) (D0 K2) (HitL K2 BJ))
               (D0 K2)
               (HptB K2)
               (BoolRwF OptN (FindL K2 BJ) (D0 K2) (HitL K2 BJ)
                 (NotHitOfMod (Add J (S R)) J K2 BJ HakJ E2)))
             (Hdisj K2
-              (IdTrans Bool
+              (IdTransRaw Bool
                 (IsSomeB (FindL K2 (AgetB (Add J (S R))
                   (arrCat J (S R) LS (acons R BJ HS)) (Mod K2 (Add J (S R))))))
                 (IsSomeB (FindL K2 (AgetB (Add J (S R))
                   (arrCat J (S R) LS (acons R Nil HS)) (Mod K2 (Add J (S R))))))
                 True
-                (IdCongr (List (Σ (k : Nat). Nat)) Bool
+                (IdCongrRaw (List (Σ (k : Nat). Nat)) Bool
                   (λ (Wb : List (Σ (k : Nat). Nat)). IsSomeB (FindL K2 Wb))
                   (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS))
                     (Mod K2 (Add J (S R))))
                   (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS))
                     (Mod K2 (Add J (S R))))
-                  (IdSym (List (Σ (k : Nat). Nat))
+                  (IdSymRaw (List (Σ (k : Nat). Nat))
                     (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS))
                       (Mod K2 (Add J (S R))))
                     (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS))
@@ -2425,24 +2425,24 @@ def MoveNilStep : Term := prog defer_check {
        Id (List (Σ (k : Nat). Nat))
          (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) J2) Nil).
     λ (J2 : Nat). λ (Hb : Id Bool (Leb (S J2) (S J)) True).
-      IfDec (Eqb J2 J)
+      IfDecRaw (Eqb J2 J)
         (Id (List (Σ (k : Nat). Nat))
           (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) J2) Nil)
         (λ (E2 : Id Bool (Eqb J2 J) True).
-          NatRw (λ (W : Nat).
+          NatRwRaw (λ (W : Nat).
               Id (List (Σ (k : Nat). Nat))
                 (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) W) Nil)
-            J J2 (IdSym Nat J2 J (EqbTrueEq J2 J E2))
+            J J2 (IdSymRaw Nat J2 J (EqbTrueEqRaw J2 J E2))
             (AgetBCatMid R Nil HS J LS))
         (λ (E2 : Id Bool (Eqb J2 J) False).
-          IdTrans (List (Σ (k : Nat). Nat))
+          IdTransRaw (List (Σ (k : Nat). Nat))
             (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) J2)
             (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) J2)
             Nil
             (NeBucketEq J R LS BJ HS J2 E2)
             (HsrcLo J2
-              (LeLebTrue (S J2) J
-                (LeNeLt J2 J (LebTrueLe J2 J Hb) E2)))) }
+              (LeLebTrueRaw (S J2) J
+                (LeNeLt J2 J (LebTrueLeRaw J2 J Hb) E2)))) }
 def MoveNilStepTy : Term := prog defer_check {
   Π (J : Nat) → Π (R : Nat) →
   Π (LS : Array J BktT) → Π (BJ : BktT) → Π (HS : Array R BktT) →
@@ -2465,28 +2465,28 @@ def MoveSlotsFrame : Term := prog defer_check {
   λ (H10 : Id OptN (D1 Q) (D0 Q)).
   λ (HR : Id OptN (D2 Q)
       (boolRec (λ (W2 : Bool). OptN) (FindL Q AN) (D1 Q) (IsSomeB (FindL Q AN)))).
-    IdTrans OptN (D2 Q)
+    IdTransRaw OptN (D2 Q)
       (boolRec (λ (W2 : Bool). OptN) (FindL Q W) (D0 Q) (IsSomeB (FindL Q W)))
       (boolRec (λ (W2 : Bool). OptN) (FindL Q AE) (D0 Q) (IsSomeB (FindL Q AE)))
-      (IdTrans OptN (D2 Q)
+      (IdTransRaw OptN (D2 Q)
         (boolRec (λ (W2 : Bool). OptN) (FindL Q W) (D1 Q) (IsSomeB (FindL Q W)))
         (boolRec (λ (W2 : Bool). OptN) (FindL Q W) (D0 Q) (IsSomeB (FindL Q W)))
-        (IdTrans OptN (D2 Q)
+        (IdTransRaw OptN (D2 Q)
           (boolRec (λ (W2 : Bool). OptN) (FindL Q AN) (D1 Q) (IsSomeB (FindL Q AN)))
           (boolRec (λ (W2 : Bool). OptN) (FindL Q W) (D1 Q) (IsSomeB (FindL Q W)))
           HR
-          (IdCongr BktT OptN
+          (IdCongrRaw BktT OptN
             (λ (Wb : BktT). boolRec (λ (W2 : Bool). OptN)
               (FindL Q Wb) (D1 Q) (IsSomeB (FindL Q Wb)))
             AN W HN))
-        (IdCongr OptN OptN
+        (IdCongrRaw OptN OptN
           (λ (Wo : OptN). boolRec (λ (W2 : Bool). OptN)
             (FindL Q W) Wo (IsSomeB (FindL Q W)))
           (D1 Q) (D0 Q) H10))
-      (IdCongr BktT OptN
+      (IdCongrRaw BktT OptN
         (λ (Wb : BktT). boolRec (λ (W2 : Bool). OptN)
           (FindL Q Wb) (D0 Q) (IsSomeB (FindL Q Wb)))
-        W AE (IdSym BktT AE W HE)) }
+        W AE (IdSymRaw BktT AE W HE)) }
 def MoveSlotsFrameTy : Term := prog defer_check {
   Π (AE : BktT) → Π (AN : BktT) → Π (W : BktT) →
   Π (D0 : Nat → OptN) → Π (D1 : Nat → OptN) → Π (D2 : Nat → OptN) →
@@ -2516,7 +2516,7 @@ def MoveSlotsPt : Term := prog defer_check {
          (IsSomeB (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS))
            (Mod Q (Add J (S R)))))))).
     λ (Q : Nat).
-      IfDec (Eqb (Mod Q (Add J (S R))) J)
+      IfDecRaw (Eqb (Mod Q (Add J (S R))) J)
         (Id OptN (D2 Q)
           (boolRec (λ (W2 : Bool). OptN)
             (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS))
@@ -2525,7 +2525,7 @@ def MoveSlotsPt : Term := prog defer_check {
             (IsSomeB (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS))
               (Mod Q (Add J (S R))))))))
         (λ (Ej : Id Bool (Eqb (Mod Q (Add J (S R))) J) True).
-          NatRw (λ (W : Nat).
+          NatRwRaw (λ (W : Nat).
               Id OptN (D2 Q)
                 (boolRec (λ (W2 : Bool). OptN)
                   (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) W))
@@ -2533,18 +2533,18 @@ def MoveSlotsPt : Term := prog defer_check {
                   (IsSomeB (FindL Q
                     (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) W)))))
             J (Mod Q (Add J (S R)))
-            (IdSym Nat (Mod Q (Add J (S R))) J
-              (EqbTrueEq (Mod Q (Add J (S R))) J Ej))
-            (IdTrans OptN (D2 Q)
+            (IdSymRaw Nat (Mod Q (Add J (S R))) J
+              (EqbTrueEqRaw (Mod Q (Add J (S R))) J Ej))
+            (IdTransRaw OptN (D2 Q)
               (boolRec (λ (W2 : Bool). OptN) (FindL Q BJ) (D0 Q) (HitL Q BJ))
               (boolRec (λ (W2 : Bool). OptN)
                 (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) J))
                 (D0 Q)
                 (IsSomeB (FindL Q
                   (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) J))))
-              (IdTrans OptN (D2 Q) (D1 Q)
+              (IdTransRaw OptN (D2 Q) (D1 Q)
                 (boolRec (λ (W2 : Bool). OptN) (FindL Q BJ) (D0 Q) (HitL Q BJ))
-                (IdTrans OptN (D2 Q)
+                (IdTransRaw OptN (D2 Q)
                   (boolRec (λ (W2 : Bool). OptN)
                     (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS))
                       (Mod Q (Add J (S R)))))
@@ -2554,36 +2554,36 @@ def MoveSlotsPt : Term := prog defer_check {
                         (Mod Q (Add J (S R)))))))
                   (D1 Q)
                   (HptR Q)
-                  (IdCongr BktT OptN
+                  (IdCongrRaw BktT OptN
                     (λ (Wb : BktT). boolRec (λ (W2 : Bool). OptN)
                       (FindL Q Wb) (D1 Q) (IsSomeB (FindL Q Wb)))
                     (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS))
                       (Mod Q (Add J (S R))))
                     Nil
-                    (NatRw (λ (W : Nat).
+                    (NatRwRaw (λ (W : Nat).
                         Id (List (Σ (k : Nat). Nat))
                           (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) W)
                           Nil)
                       J (Mod Q (Add J (S R)))
-                      (IdSym Nat (Mod Q (Add J (S R))) J
-                        (EqbTrueEq (Mod Q (Add J (S R))) J Ej))
+                      (IdSymRaw Nat (Mod Q (Add J (S R))) J
+                        (EqbTrueEqRaw (Mod Q (Add J (S R))) J Ej))
                       (AgetBCatMid R Nil HS J LS))))
                 (HptB Q))
-              (IdSym OptN
+              (IdSymRaw OptN
                 (boolRec (λ (W2 : Bool). OptN)
                   (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) J))
                   (D0 Q)
                   (IsSomeB (FindL Q
                     (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) J))))
                 (boolRec (λ (W2 : Bool). OptN) (FindL Q BJ) (D0 Q) (HitL Q BJ))
-                (IdCongr BktT OptN
+                (IdCongrRaw BktT OptN
                   (λ (Wb : BktT). boolRec (λ (W2 : Bool). OptN)
                     (FindL Q Wb) (D0 Q) (IsSomeB (FindL Q Wb)))
                   (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) J)
                   BJ
                   (AgetBCatMid R BJ HS J LS)))))
         (λ (Ej : Id Bool (Eqb (Mod Q (Add J (S R))) J) False).
-          IfDec (Leb (Mod Q (Add J (S R))) J)
+          IfDecRaw (Leb (Mod Q (Add J (S R))) J)
             (Id OptN (D2 Q)
               (boolRec (λ (W2 : Bool). OptN)
                 (FindL Q (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS))
@@ -2602,11 +2602,11 @@ def MoveSlotsPt : Term := prog defer_check {
                 D0 D1 D2 Q
                 (AgetBCatLo R BJ HS J LS (Mod Q (Add J (S R)))
                   (LeNeLt (Mod Q (Add J (S R))) J
-                    (LebTrueLe (Mod Q (Add J (S R))) J El) Ej))
+                    (LebTrueLeRaw (Mod Q (Add J (S R))) J El) Ej))
                 (AgetBCatLo R Nil HS J LS (Mod Q (Add J (S R)))
                   (LeNeLt (Mod Q (Add J (S R))) J
-                    (LebTrueLe (Mod Q (Add J (S R))) J El) Ej))
-                (IdTrans OptN (D1 Q)
+                    (LebTrueLeRaw (Mod Q (Add J (S R))) J El) Ej))
+                (IdTransRaw OptN (D1 Q)
                   (boolRec (λ (W2 : Bool). OptN) (FindL Q BJ) (D0 Q) (HitL Q BJ))
                   (D0 Q)
                   (HptB Q)
@@ -2614,8 +2614,8 @@ def MoveSlotsPt : Term := prog defer_check {
                     (NotHitOfMod (Add J (S R)) J Q BJ HakJ Ej)))
                 (HptR Q))
             (λ (El : Id Bool (Leb (Mod Q (Add J (S R))) J) False).
-              elim (ModDec J (Mod Q (Add J (S R)))
-                  (LebFalseGt (Mod Q (Add J (S R))) J El)) return
+              elim (ModDecRaw J (Mod Q (Add J (S R)))
+                  (LebFalseGtRaw (Mod Q (Add J (S R))) J El)) return
                 (λ (Wd : Σ (R2 : Nat). Id Nat (Mod Q (Add J (S R))) (Add J (S R2))).
                   Id OptN (D2 Q)
                     (boolRec (λ (W2 : Bool). OptN)
@@ -2633,21 +2633,21 @@ def MoveSlotsPt : Term := prog defer_check {
                       (Mod Q (Add J (S R))))
                     (AgetB R HS Dd)
                     D0 D1 D2 Q
-                    (NatRw (λ (W : Nat).
+                    (NatRwRaw (λ (W : Nat).
                         Id (List (Σ (k : Nat). Nat))
                           (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R BJ HS)) W)
                           (AgetB R HS Dd))
                       (Add J (S Dd)) (Mod Q (Add J (S R)))
-                      (IdSym Nat (Mod Q (Add J (S R))) (Add J (S Dd)) Hd)
+                      (IdSymRaw Nat (Mod Q (Add J (S R))) (Add J (S Dd)) Hd)
                       (AgetBCatHi R BJ HS Dd J LS))
-                    (NatRw (λ (W : Nat).
+                    (NatRwRaw (λ (W : Nat).
                         Id (List (Σ (k : Nat). Nat))
                           (AgetB (Add J (S R)) (arrCat J (S R) LS (acons R Nil HS)) W)
                           (AgetB R HS Dd))
                       (Add J (S Dd)) (Mod Q (Add J (S R)))
-                      (IdSym Nat (Mod Q (Add J (S R))) (Add J (S Dd)) Hd)
+                      (IdSymRaw Nat (Mod Q (Add J (S R))) (Add J (S Dd)) Hd)
                       (AgetBCatHi R Nil HS Dd J LS))
-                    (IdTrans OptN (D1 Q)
+                    (IdTransRaw OptN (D1 Q)
                       (boolRec (λ (W2 : Bool). OptN) (FindL Q BJ) (D0 Q) (HitL Q BJ))
                       (D0 Q)
                       (HptB Q)
@@ -2690,30 +2690,30 @@ def MoveFreshStep : Term := prog defer_check {
   λ (Hfr0 : Π (K2 : Nat) → Π (Hk2 : Id Bool (HitL K2 (Cons(Pair(K, V), TL))) True) →
       Id OptN (FindL K2 (AgetB C2v D0A (Mod K2 C2v))) NoneN).
     (λ (K2 : Nat). λ (Hk : Id Bool (HitL K2 TL) True).
-                  IfDec (Eqb K2 K)
+                  IfDecRaw (Eqb K2 K)
                     (Id OptN (FindL K2 (AgetB C2v D1A (Mod K2 C2v))) NoneN)
                     (λ (E2 : Id Bool (Eqb K2 K) True).
                       botElim (Id OptN (FindL K2 (AgetB C2v D1A (Mod K2 C2v))) NoneN)
-                        (BoolTF (IdTrans Bool True (HitL K TL) False
-                          (IdSym Bool (HitL K TL) True
-                            (NatRw (λ (W : Nat). Id Bool (HitL W TL) True) K2 K
-                              (EqbTrueEq K2 K E2) Hk))
+                        (BoolTFRaw (IdTransRaw Bool True (HitL K TL) False
+                          (IdSymRaw Bool (HitL K TL) True
+                            (NatRwRaw (λ (W : Nat). Id Bool (HitL W TL) True) K2 K
+                              (EqbTrueEqRaw K2 K E2) Hk))
                           (Hnd0))))
                     (λ (E2 : Id Bool (Eqb K2 K) False).
-                      IdTrans OptN (FindL K2 (AgetB C2v D1A (Mod K2 C2v)))
+                      IdTransRaw OptN (FindL K2 (AgetB C2v D1A (Mod K2 C2v)))
                         (FindL K2 (AgetB C2v D0A (Mod K2 C2v))) NoneN
-                        (IdTrans OptN (FindL K2 (AgetB C2v D1A (Mod K2 C2v)))
+                        (IdTransRaw OptN (FindL K2 (AgetB C2v D1A (Mod K2 C2v)))
                           (boolRec (λ (W2 : Bool). OptN) (SomeN V)
                             (FindL K2 (AgetB C2v D0A (Mod K2 C2v))) (Eqb K2 K))
                           (FindL K2 (AgetB C2v D0A (Mod K2 C2v)))
                           (Hpt K2)
                           (BoolRwF OptN (SomeN V)
                             (FindL K2 (AgetB C2v D0A (Mod K2 C2v))) (Eqb K2 K) E2))
-                        (Hfr0 K2 (IdSym Bool True (HitL K2 (Cons(Pair(K, V), TL)))
+                        (Hfr0 K2 (IdSymRaw Bool True (HitL K2 (Cons(Pair(K, V), TL)))
                           (HitEvMiss K V K2 TL True
-                            (IdTrans Bool (Eqb K K2) (Eqb K2 K) False
-                              (EqbSym K K2) E2)
-                            (IdSym Bool (HitL K2 TL) True Hk)))))) }
+                            (IdTransRaw Bool (Eqb K K2) (Eqb K2 K) False
+                              (EqbSymRaw K K2) E2)
+                            (IdSymRaw Bool (HitL K2 TL) True Hk)))))) }
 def MoveFreshStepTy : Term := prog defer_check {
   Π (C2v : Nat) → Π (K : Nat) → Π (V : Nat) → Π (TL : BktT) →
   Π (D0A : Array C2v BktT) → Π (D1A : Array C2v BktT) →
@@ -2741,20 +2741,20 @@ def MoveSlotsFresh : Term := prog defer_check {
       Id OptN (FindL K2 (AgetB C2v DDv (Mod K2 C2v))) NoneN).
     (λ (K2 : Nat). λ (Hk : Id Bool (HitL K2 BJv) True).
                 Hdisj0 K2
-                  (IdTrans Bool
+                  (IdTransRaw Bool
                     (IsSomeB (FindL K2 (AgetB (Add Jv (S Rv))
                       (arrCat Jv (S Rv) LSv (acons Rv BJv HSv)) (Mod K2 (Add Jv (S Rv))))))
                     (IsSomeB (FindL K2 BJv)) True
-                    (IdCongr (List (Σ (k : Nat). Nat)) Bool
+                    (IdCongrRaw (List (Σ (k : Nat). Nat)) Bool
                       (λ (Wb : List (Σ (k : Nat). Nat)). IsSomeB (FindL K2 Wb))
                       (AgetB (Add Jv (S Rv)) (arrCat Jv (S Rv) LSv (acons Rv BJv HSv)) (Mod K2 (Add Jv (S Rv))))
                       BJv
-                      (NatRw (λ (W : Nat).
+                      (NatRwRaw (λ (W : Nat).
                           Id (List (Σ (k : Nat). Nat))
                             (AgetB (Add Jv (S Rv)) (arrCat Jv (S Rv) LSv (acons Rv BJv HSv)) W)
                             BJv)
                         Jv (Mod K2 (Add Jv (S Rv)))
-                        (IdSym Nat (Mod K2 (Add Jv (S Rv))) Jv (HitKeyMod (Add Jv (S Rv)) Jv K2 BJv HakJv Hk))
+                        (IdSymRaw Nat (Mod K2 (Add Jv (S Rv))) Jv (HitKeyMod (Add Jv (S Rv)) Jv K2 BJv HakJv Hk))
                         (AgetBCatMid Rv BJv HSv Jv LSv)))
                     Hk)) }
 def MoveSlotsFreshTy : Term := prog defer_check {
@@ -2780,13 +2780,13 @@ def MoveBasePt : Term := prog defer_check {
   λ (Hlo : Π (J2 : Nat) → Π (Hb2 : Id Bool (Leb (S J2) Jv) True) →
       Id (List (Σ (k : Nat). Nat)) (AgetB CFv Sv J2) Nil).
     λ (Q : Nat).
-      IdSym OptN
+      IdSymRaw OptN
         (boolRec (λ (W2 : Bool). OptN)
           (FindL Q (AgetB CFv Sv (Mod Q CFv)))
           (FindL Q (AgetB C2v Dv (Mod Q C2v)))
           (IsSomeB (FindL Q (AgetB CFv Sv (Mod Q CFv)))))
         (FindL Q (AgetB C2v Dv (Mod Q C2v)))
-        (IdCongr (List (Σ (k : Nat). Nat)) OptN
+        (IdCongrRaw (List (Σ (k : Nat). Nat)) OptN
           (λ (Wb : List (Σ (k : Nat). Nat)).
             boolRec (λ (W2 : Bool). OptN)
               (FindL Q Wb)
@@ -2794,9 +2794,9 @@ def MoveBasePt : Term := prog defer_check {
               (IsSomeB (FindL Q Wb)))
           (AgetB CFv Sv (Mod Q CFv)) Nil
           (Hlo (Mod Q CFv)
-            (LeLebTrue (S (Mod Q CFv)) Jv
-              (NatRw (λ (W : Nat). Le (S (Mod Q CFv)) W) CFv Jv Hjz
-                (ModLtN Q CFv HLe1Fv))))) }
+            (LeLebTrueRaw (S (Mod Q CFv)) Jv
+              (NatRwRaw (λ (W : Nat). Le (S (Mod Q CFv)) W) CFv Jv Hjz
+                (ModLtNRaw Q CFv HLe1Fv))))) }
 def MoveBasePtTy : Term := prog defer_check {
   Π (CFv : Nat) → Π (Jv : Nat) → Π (C2v : Nat) →
   Π (Sv : Array CFv BktT) → Π (Dv : Array C2v BktT) →
@@ -2818,8 +2818,8 @@ def MoveBaseNil : Term := prog defer_check {
   λ (Hlo : Π (J2 : Nat) → Π (Hb2 : Id Bool (Leb (S J2) Jv) True) →
       Id (List (Σ (k : Nat). Nat)) (AgetB CFv Sv J2) Nil).
     λ (J2 : Nat). λ (Hb : Le (S J2) CFv).
-      Hlo J2 (LeLebTrue (S J2) Jv
-        (NatRw (λ (W : Nat). Le (S J2) W) CFv Jv Hjz Hb)) }
+      Hlo J2 (LeLebTrueRaw (S J2) Jv
+        (NatRwRaw (λ (W : Nat). Le (S J2) W) CFv Jv Hjz Hb)) }
 def MoveBaseNilTy : Term := prog defer_check {
   Π (CFv : Nat) → Π (Jv : Nat) → Π (Sv : Array CFv BktT) →
     Id Nat CFv Jv →
@@ -2837,11 +2837,11 @@ def AgetBktCongr : Term := prog defer_check {
   λ (Hpt : Π (Q : Nat) → Id OptN (D1 Q)
       (boolRec (λ (W2 : Bool). OptN) (FindL Q B1) (D0 Q) (HitL Q B1))).
     λ (Q : Nat).
-      IdTrans OptN (D1 Q)
+      IdTransRaw OptN (D1 Q)
         (boolRec (λ (W2 : Bool). OptN) (FindL Q B1) (D0 Q) (HitL Q B1))
         (boolRec (λ (W2 : Bool). OptN) (FindL Q A1) (D0 Q) (HitL Q A1))
         (Hpt Q)
-        (IdCongr (List (Σ (k : Nat). Nat)) OptN
+        (IdCongrRaw (List (Σ (k : Nat). Nat)) OptN
           (λ (Wb : List (Σ (k : Nat). Nat)). boolRec (λ (W2 : Bool). OptN)
             (FindL Q Wb) (D0 Q) (IsSomeB (FindL Q Wb)))
           B1 A1 Hb) }
@@ -2879,9 +2879,9 @@ def SFAgetInv : Term := prog defer_check {
               Z => λ (Hb : Le (S Z) (S K)).
                 FstT (SlotInv Cap I0 H2) (SlotsFrom Cap K T (S I0)) Hs,
               S (J2) Ihj => λ (Hb : Le (S (S J2)) (S K)).
-                NatRw (λ (W : Nat). SlotInv Cap W (AgetB K T J2))
+                NatRwRaw (λ (W : Nat). SlotInv Cap W (AgetB K T J2))
                   (Add J2 (S I0)) (S (Add J2 I0))
-                  (AddSucc J2 I0)
+                  (AddSuccRaw J2 I0)
                   (Ih (S I0)
                     (SndT (SlotInv Cap I0 H2) (SlotsFrom Cap K T (S I0)) Hs)
                     J2 Hb) })
@@ -2913,35 +2913,35 @@ def MoveLevelPt : Term := prog defer_check {
       (boolRec (λ (W2 : Bool). OptN) (FindL Q (AgetB CF SM (Mod Q CF))) (D1 Q)
         (IsSomeB (FindL Q (AgetB CF SM (Mod Q CF)))))).
     λ (Q : Nat).
-      IfDec (Eqb (Mod Q CF) Jv)
+      IfDecRaw (Eqb (Mod Q CF) Jv)
         (Id OptN (D2 Q)
           (boolRec (λ (W2 : Bool). OptN) (FindL Q (AgetB CF S0 (Mod Q CF))) (D0 Q)
             (IsSomeB (FindL Q (AgetB CF S0 (Mod Q CF))))))
         (λ (Ej : Id Bool (Eqb (Mod Q CF) Jv) True).
-          NatRw (λ (W : Nat).
+          NatRwRaw (λ (W : Nat).
               Id OptN (D2 Q)
                 (boolRec (λ (W2 : Bool). OptN) (FindL Q (AgetB CF S0 W)) (D0 Q)
                   (IsSomeB (FindL Q (AgetB CF S0 W)))))
             Jv (Mod Q CF)
-            (IdSym Nat (Mod Q CF) Jv (EqbTrueEq (Mod Q CF) Jv Ej))
-            (IdTrans OptN (D2 Q) (D1 Q)
+            (IdSymRaw Nat (Mod Q CF) Jv (EqbTrueEqRaw (Mod Q CF) Jv Ej))
+            (IdTransRaw OptN (D2 Q) (D1 Q)
               (boolRec (λ (W2 : Bool). OptN) (FindL Q (AgetB CF S0 Jv)) (D0 Q)
                 (IsSomeB (FindL Q (AgetB CF S0 Jv))))
-              (IdTrans OptN (D2 Q)
+              (IdTransRaw OptN (D2 Q)
                 (boolRec (λ (W2 : Bool). OptN)
                   (FindL Q (AgetB CF SM (Mod Q CF))) (D1 Q)
                   (IsSomeB (FindL Q (AgetB CF SM (Mod Q CF)))))
                 (D1 Q)
                 (HptR Q)
-                (IdCongr (List (Σ (k : Nat). Nat)) OptN
+                (IdCongrRaw (List (Σ (k : Nat). Nat)) OptN
                   (λ (Wb : List (Σ (k : Nat). Nat)).
                     boolRec (λ (W2 : Bool). OptN) (FindL Q Wb) (D1 Q)
                       (IsSomeB (FindL Q Wb)))
                   (AgetB CF SM (Mod Q CF)) Nil
-                  (NatRw (λ (W : Nat).
+                  (NatRwRaw (λ (W : Nat).
                       Id (List (Σ (k : Nat). Nat)) (AgetB CF SM W) Nil)
                     Jv (Mod Q CF)
-                    (IdSym Nat (Mod Q CF) Jv (EqbTrueEq (Mod Q CF) Jv Ej))
+                    (IdSymRaw Nat (Mod Q CF) Jv (EqbTrueEqRaw (Mod Q CF) Jv Ej))
                     Hnil)))
               (HptB Q)))
         (λ (Ej : Id Bool (Eqb (Mod Q CF) Jv) False).
@@ -2952,7 +2952,7 @@ def MoveLevelPt : Term := prog defer_check {
             D0 D1 D2 Q
             Refl
             (Hfrm (Mod Q CF) Ej)
-            (IdTrans OptN (D1 Q)
+            (IdTransRaw OptN (D1 Q)
               (boolRec (λ (W2 : Bool). OptN) (FindL Q (AgetB CF S0 Jv)) (D0 Q)
                 (HitL Q (AgetB CF S0 Jv)))
               (D0 Q)
@@ -2998,25 +2998,25 @@ def MoveLevelDisj : Term := prog defer_check {
       (AgetB CF S0 (Mod K2 CF)))) True) → Id OptN (D0 K2) NoneN).
     λ (K2 : Nat).
     λ (Hs : Id Bool (IsSomeB (FindL K2 (AgetB CF SM (Mod K2 CF)))) True).
-      IfDec (Eqb (Mod K2 CF) Jv)
+      IfDecRaw (Eqb (Mod K2 CF) Jv)
         (Id OptN (D1 K2) NoneN)
         (λ (Ej : Id Bool (Eqb (Mod K2 CF) Jv) True).
           botElim (Id OptN (D1 K2) NoneN)
-            (BoolFT (IdTrans Bool False
+            (BoolFTRaw (IdTransRaw Bool False
               (IsSomeB (FindL K2 (AgetB CF SM (Mod K2 CF)))) True
-              (IdSym Bool (IsSomeB (FindL K2 (AgetB CF SM (Mod K2 CF)))) False
-                (IdCongr (List (Σ (k : Nat). Nat)) Bool
+              (IdSymRaw Bool (IsSomeB (FindL K2 (AgetB CF SM (Mod K2 CF)))) False
+                (IdCongrRaw (List (Σ (k : Nat). Nat)) Bool
                   (λ (Wb : List (Σ (k : Nat). Nat)). IsSomeB (FindL K2 Wb))
                   (AgetB CF SM (Mod K2 CF)) Nil
-                  (NatRw (λ (W : Nat).
+                  (NatRwRaw (λ (W : Nat).
                       Id (List (Σ (k : Nat). Nat)) (AgetB CF SM W) Nil)
                     Jv (Mod K2 CF)
-                    (IdSym Nat (Mod K2 CF) Jv (EqbTrueEq (Mod K2 CF) Jv Ej))
+                    (IdSymRaw Nat (Mod K2 CF) Jv (EqbTrueEqRaw (Mod K2 CF) Jv Ej))
                     Hnil)))
               Hs)))
         (λ (Ej : Id Bool (Eqb (Mod K2 CF) Jv) False).
-          IdTrans OptN (D1 K2) (D0 K2) NoneN
-            (IdTrans OptN (D1 K2)
+          IdTransRaw OptN (D1 K2) (D0 K2) NoneN
+            (IdTransRaw OptN (D1 K2)
               (boolRec (λ (W2 : Bool). OptN) (FindL K2 (AgetB CF S0 Jv)) (D0 K2)
                 (HitL K2 (AgetB CF S0 Jv)))
               (D0 K2)
@@ -3025,12 +3025,12 @@ def MoveLevelDisj : Term := prog defer_check {
                 (HitL K2 (AgetB CF S0 Jv))
                 (NotHitOfMod CF Jv K2 (AgetB CF S0 Jv) HakJ Ej)))
             (Hdisj0 K2
-              (IdTrans Bool (IsSomeB (FindL K2 (AgetB CF S0 (Mod K2 CF))))
+              (IdTransRaw Bool (IsSomeB (FindL K2 (AgetB CF S0 (Mod K2 CF))))
                 (IsSomeB (FindL K2 (AgetB CF SM (Mod K2 CF)))) True
-                (IdCongr (List (Σ (k : Nat). Nat)) Bool
+                (IdCongrRaw (List (Σ (k : Nat). Nat)) Bool
                   (λ (Wb : List (Σ (k : Nat). Nat)). IsSomeB (FindL K2 Wb))
                   (AgetB CF S0 (Mod K2 CF)) (AgetB CF SM (Mod K2 CF))
-                  (IdSym (List (Σ (k : Nat). Nat))
+                  (IdSymRaw (List (Σ (k : Nat). Nat))
                     (AgetB CF SM (Mod K2 CF)) (AgetB CF S0 (Mod K2 CF))
                     (Hfrm (Mod K2 CF) Ej)))
                 Hs))) }
@@ -3064,17 +3064,17 @@ def MoveLevelNil : Term := prog defer_check {
   λ (Hlo : Π (J2 : Nat) → Π (Hb2 : Id Bool (Leb (S J2) Jv) True) →
       Id (List (Σ (k : Nat). Nat)) (AgetB CF S0 J2) Nil).
     λ (J2 : Nat). λ (Hb : Id Bool (Leb (S J2) (S Jv)) True).
-      IfDec (Eqb J2 Jv)
+      IfDecRaw (Eqb J2 Jv)
         (Id (List (Σ (k : Nat). Nat)) (AgetB CF SM J2) Nil)
         (λ (E2 : Id Bool (Eqb J2 Jv) True).
-          NatRw (λ (W : Nat). Id (List (Σ (k : Nat). Nat)) (AgetB CF SM W) Nil)
-            Jv J2 (IdSym Nat J2 Jv (EqbTrueEq J2 Jv E2)) Hnil)
+          NatRwRaw (λ (W : Nat). Id (List (Σ (k : Nat). Nat)) (AgetB CF SM W) Nil)
+            Jv J2 (IdSymRaw Nat J2 Jv (EqbTrueEqRaw J2 Jv E2)) Hnil)
         (λ (E2 : Id Bool (Eqb J2 Jv) False).
-          IdTrans (List (Σ (k : Nat). Nat))
+          IdTransRaw (List (Σ (k : Nat). Nat))
             (AgetB CF SM J2) (AgetB CF S0 J2) Nil
             (Hfrm J2 E2)
-            (Hlo J2 (LeLebTrue (S J2) Jv
-              (LeNeLt J2 Jv (LebTrueLe J2 Jv Hb) E2)))) }
+            (Hlo J2 (LeLebTrueRaw (S J2) Jv
+              (LeNeLt J2 Jv (LebTrueLeRaw J2 Jv Hb) E2)))) }
 def MoveLevelNilTy : Term := prog defer_check {
   Π (CF : Nat) → Π (Jv : Nat) →
   Π (S0 : Array CF (List (Σ (k : Nat). Nat))) →
@@ -3124,7 +3124,7 @@ def NilHitFalse : Term := prog defer_check {
         Id Bool (IsNilB Lm) True → Id Bool (HitL Q Lm) False) {
       Nil => λ (Hn : Id Bool True True). Refl,
       Cons (E) (T) Rec => λ (Hn : Id Bool False True).
-        botElim (Id Bool (HitL Q (Cons(E, T))) False) (BoolFT Hn) } }
+        botElim (Id Bool (HitL Q (Cons(E, T))) False) (BoolFTRaw Hn) } }
 def NilHitFalseTy : Term := prog defer_check {
   Π (Q : Nat) → Π (L : List (Σ (k : Nat). Nat)) →
     Id Bool (IsNilB L) True → Id Bool (HitL Q L) False }
@@ -3137,7 +3137,7 @@ def NilLenZ : Term := prog defer_check {
         Id Bool (IsNilB Lm) True → Id Nat (LenE Lm) Z) {
       Nil => λ (Hn : Id Bool True True). Refl,
       Cons (E) (T) Rec => λ (Hn : Id Bool False True).
-        botElim (Id Nat (LenE (Cons(E, T))) Z) (BoolFT Hn) } }
+        botElim (Id Nat (LenE (Cons(E, T))) Z) (BoolFTRaw Hn) } }
 def NilLenZTy : Term := prog defer_check {
   Π (L : List (Σ (k : Nat). Nat)) →
     Id Bool (IsNilB L) True → Id Nat (LenE L) Z }
@@ -3149,7 +3149,7 @@ def NotNilLenPos : Term := prog defer_check {
     elim L return (λ (Lm : List (Σ (k : Nat). Nat)).
         Id Bool (IsNilB Lm) False → Le (S Z) (LenE Lm)) {
       Nil => λ (Hn : Id Bool True False).
-        botElim (Le (S Z) (LenE Nil)) (BoolTF Hn),
+        botElim (Le (S Z) (LenE Nil)) (BoolTFRaw Hn),
       Cons (E) (T) Rec => λ (Hn : Id Bool False False). unit } }
 def NotNilLenPosTy : Term := prog defer_check {
   Π (L : List (Σ (k : Nat). Nat)) →
@@ -3173,7 +3173,7 @@ def MoveDonePt : Term := prog defer_check {
   λ (C2 : Nat). λ (Bd : BktT). λ (Dd : Array C2 BktT).
   λ (E : Id Bool (IsNilB Bd) True).
     λ (Q : Nat).
-      IdSym OptN
+      IdSymRaw OptN
         (boolRec (λ (W2 : Bool). OptN) (FindL Q Bd)
           (FindL Q (AgetB C2 Dd (Mod Q C2))) (HitL Q Bd))
         (FindL Q (AgetB C2 Dd (Mod Q C2)))
@@ -3191,8 +3191,8 @@ example : chkL MoveDonePt MoveDonePtTy = true := by native_decide
 def MoveDoneTot : Term := prog defer_check {
   λ (C2 : Nat). λ (Bd : BktT). λ (Dd : Array C2 BktT).
   λ (E : Id Bool (IsNilB Bd) True).
-    IdSym Nat (Add (LenE Bd) (TotalE C2 Dd)) (TotalE C2 Dd)
-      (IdCongr Nat Nat (λ (W : Nat). Add W (TotalE C2 Dd))
+    IdSymRaw Nat (Add (LenE Bd) (TotalE C2 Dd)) (TotalE C2 Dd)
+      (IdCongrRaw Nat Nat (λ (W : Nat). Add W (TotalE C2 Dd))
         (LenE Bd) Z (NilLenZ Bd E)) }
 def MoveDoneTotTy : Term := prog defer_check {
   Π (C2 : Nat) → Π (Bd : BktT) → Π (Dd : Array C2 BktT) →
@@ -3354,10 +3354,10 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
     let Cap0 = cap;
     Pair(Pair(cap, Pair(Mul 4 cap, Pair(Z, Pair(MkSlots cap,
         MkInv cap (Mul 4 cap) Z (MkSlots cap) HLe1 Refl unit
-          (IdSym Nat (TotalE cap (MkSlots cap)) Z (TotalMkSlots cap))
+          (IdSymRaw Nat (TotalE cap (MkSlots cap)) Z (TotalMkSlots cap))
           (SFMkSlots cap cap Z))))),
       Pair(λ (Q : Nat).
-             IdCongr (List (Σ (k : Nat). Nat)) (Σ (bb : Bool). OptP bb Nat)
+             IdCongrRaw (List (Σ (k : Nat). Nat)) (Σ (bb : Bool). OptP bb Nat)
                (λ (W : List (Σ (k : Nat). Nat)). FindL Q W)
                (AgetB Cap0 (MkSlots Cap0) (Mod Q Cap0)) Nil
                (AgetBMkSlots Cap0 (Mod Q Cap0)),
@@ -3383,7 +3383,7 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
         let I0 = i;
         let R0 = r;
         let Him0 = him;
-        let pre = &m (*b)[Z ; i ; S r | LeAdd i (S r) | hd];
+        let pre = &m (*b)[Z ; i ; S r | LeAddRaw i (S r) | hd];
         let cell = &m (*b)[i ; 1 ; r];
         let hic = &m (*b)[S i ; r];
         let bb = &m (*cell)[0];
@@ -3391,115 +3391,115 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
         let B0 = *bb;
         let H0 = *hic;
         let HsfL = SFCatLo cap r B0 H0 i L0 Z Hsf;
-        let HsfM = NatRw (λ (W : Nat). SlotInv Cap0 W B0) (Add I0 Z) I0 (AddZero I0)
+        let HsfM = NatRwRaw (λ (W : Nat). SlotInv Cap0 W B0) (Add I0 Z) I0 (AddZeroRaw I0)
                      (SFCatMid cap r B0 H0 i L0 Z Hsf);
         let HsfH = SFCatHi cap r B0 H0 i L0 Z Hsf;
         let Hak0 = FstT (AllKeysMod cap i B0) (NodupB B0) HsfM;
         let Hnd0 = SndT (AllKeysMod cap i B0) (NodupB B0) HsfM;
         let Htot0 = TotalArrCat (S r) (acons r B0 H0) i L0;
-        let HlenB = LeRwR (LenE B0)
+        let HlenB = LeRwRRaw (LenE B0)
                       (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
                       (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
-                      (IdSym Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
+                      (IdSymRaw Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
                         (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0))) Htot0)
-                      (LeTrans (LenE B0) (Add (LenE B0) (TotalE r H0))
+                      (LeTransRaw (LenE B0) (Add (LenE B0) (TotalE r H0))
                         (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
-                        (LeAdd (LenE B0) (TotalE r H0))
-                        (LeAddL (Add (LenE B0) (TotalE r H0)) (TotalE i L0)));
-        let HfB = LeTrans (LenE B0)
+                        (LeAddRaw (LenE B0) (TotalE r H0))
+                        (LeAddLRaw (Add (LenE B0) (TotalE r H0)) (TotalE i L0)));
+        let HfB = LeTransRaw (LenE B0)
                     (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))) fuel
                     HlenB
-                    (LePredL (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))) fuel Hfl);
+                    (LePredLRaw (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))) fuel Hfl);
         let Pair(hit2, Pair(Hh2, Pair(Hpt2, Pair(Hln2, Pair(Hak3, Hnd3))))) =
           InsertInList(fuel, cap, i, key, val, &m *bb, HfB,
-            IdSym Nat i (Mod key cap) him, Hak0, Hnd0);
+            IdSymRaw Nat i (Mod key cap) him, Hak0, Hnd0);
         let B1 = *bb;
         let Hit0 = hit2;
         let Htot1 = TotalArrCat (S r) (acons r B1 H0) i L0;
         let Hpt = UpdPointwise i r key (SomeN val) L0 B0 B1 H0 him Hpt2;
-        let HsIz = NatRw (λ (W : Nat). SlotInv Cap0 W B1) I0 (Add I0 Z)
-                     (IdSym Nat (Add I0 Z) I0 (AddZero I0))
+        let HsIz = NatRwRaw (λ (W : Nat). SlotInv Cap0 W B1) I0 (Add I0 Z)
+                     (IdSymRaw Nat (Add I0 Z) I0 (AddZeroRaw I0))
                      (MkSlotInv cap i B1 Hak3 Hnd3);
         let H5x = SFCatGlue cap r B1 H0 i L0 Z HsfL HsIz HsfH;
-        let HhB = IdTrans Bool Hit0 (HitL Key0 B0)
+        let HhB = IdTransRaw Bool Hit0 (HitL Key0 B0)
                     (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
                       (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
                     Hh2
-                    (IdSym Bool
+                    (IdSymRaw Bool
                       (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
                         (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
                       (HitL Key0 B0)
-                      (NatRw (λ (W : Nat). Id Bool
+                      (NatRwRaw (λ (W : Nat). Id Bool
                           (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
                             (arrCat I0 (S R0) L0 (acons R0 B0 H0)) W)))
                           (HitL Key0 B0))
                         I0 (Mod Key0 Cap0) Him0
-                        (IdCongr (List (Σ (k : Nat). Nat)) Bool
+                        (IdCongrRaw (List (Σ (k : Nat). Nat)) Bool
                           (λ (W : List (Σ (k : Nat). Nat)). IsSomeB (FindL Key0 W))
                           (AgetB (Add I0 (S R0))
                             (arrCat I0 (S R0) L0 (acons R0 B0 H0)) I0) B0
                           (AgetBCatMid R0 B0 H0 I0 L0))));
         match e2 : hit2 {
           True => {
-            let HitB0 = IdTrans Bool (HitL Key0 B0) Hit0 True
-                          (IdSym Bool Hit0 (HitL Key0 B0) Hh2) e2;
-            let HlenEq = IdTrans Nat (LenE B1) (BLenIns Key0 B0) (LenE B0)
+            let HitB0 = IdTransRaw Bool (HitL Key0 B0) Hit0 True
+                          (IdSymRaw Bool Hit0 (HitL Key0 B0) Hh2) e2;
+            let HlenEq = IdTransRaw Nat (LenE B1) (BLenIns Key0 B0) (LenE B0)
                            Hln2
                            (BoolRwT Nat (LenE B0) (S (LenE B0)) (HitL Key0 B0) HitB0);
-            let HtotEq = IdTrans Nat (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
+            let HtotEq = IdTransRaw Nat (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
                            (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
                            (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
-                           (IdTrans Nat
+                           (IdTransRaw Nat
                              (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
                              (Add (TotalE i L0) (Add (LenE B1) (TotalE r H0)))
                              (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
                              Htot1
-                             (IdCongr Nat Nat
+                             (IdCongrRaw Nat Nat
                                (λ (W : Nat). Add (TotalE I0 L0) (Add W (TotalE R0 H0)))
                                (LenE B1) (LenE B0) HlenEq))
-                           (IdSym Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
+                           (IdSymRaw Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
                              (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0))) Htot0);
             Pair(True,
-              Pair(IdTrans Bool True Hit0
+              Pair(IdTransRaw Bool True Hit0
                      (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
                        (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
-                     (IdSym Bool Hit0 True e2) HhB,
+                     (IdSymRaw Bool Hit0 True e2) HhB,
               Pair(Hpt, Pair(HtotEq, H5x))))
           },
           False => {
-            let HitB0F = IdTrans Bool (HitL Key0 B0) Hit0 False
-                           (IdSym Bool Hit0 (HitL Key0 B0) Hh2) e2;
-            let HlenEqF = IdTrans Nat (LenE B1) (BLenIns Key0 B0) (S (LenE B0))
+            let HitB0F = IdTransRaw Bool (HitL Key0 B0) Hit0 False
+                           (IdSymRaw Bool Hit0 (HitL Key0 B0) Hh2) e2;
+            let HlenEqF = IdTransRaw Nat (LenE B1) (BLenIns Key0 B0) (S (LenE B0))
                             Hln2
                             (BoolRwF Nat (LenE B0) (S (LenE B0)) (HitL Key0 B0) HitB0F);
-            let HtotEqF = IdTrans Nat (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
+            let HtotEqF = IdTransRaw Nat (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
                             (Add (TotalE i L0) (S (Add (LenE B0) (TotalE r H0))))
                             (S (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))))
-                            (IdTrans Nat
+                            (IdTransRaw Nat
                               (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
                               (Add (TotalE i L0) (Add (LenE B1) (TotalE r H0)))
                               (Add (TotalE i L0) (S (Add (LenE B0) (TotalE r H0))))
                               Htot1
-                              (IdCongr Nat Nat
+                              (IdCongrRaw Nat Nat
                                 (λ (W : Nat). Add (TotalE I0 L0) (Add W (TotalE R0 H0)))
                                 (LenE B1) (S (LenE B0)) HlenEqF))
-                            (IdTrans Nat
+                            (IdTransRaw Nat
                               (Add (TotalE i L0) (S (Add (LenE B0) (TotalE r H0))))
                               (S (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0))))
                               (S (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))))
-                              (AddSucc (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
-                              (IdCongr Nat Nat (λ (W : Nat). S W)
+                              (AddSuccRaw (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
+                              (IdCongrRaw Nat Nat (λ (W : Nat). S W)
                                 (Add (TotalE I0 L0) (Add (LenE B0) (TotalE R0 H0)))
                                 (TotalE Cap0 (arrCat I0 (S R0) L0 (acons R0 B0 H0)))
-                                (IdSym Nat
+                                (IdSymRaw Nat
                                   (TotalE Cap0 (arrCat I0 (S R0) L0 (acons R0 B0 H0)))
                                   (Add (TotalE I0 L0) (Add (LenE B0) (TotalE R0 H0)))
                                   Htot0)));
             Pair(False,
-              Pair(IdTrans Bool False Hit0
+              Pair(IdTransRaw Bool False Hit0
                      (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
                        (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
-                     (IdSym Bool Hit0 False e2) HhB,
+                     (IdSymRaw Bool Hit0 False e2) HhB,
               Pair(Hpt, Pair(HtotEqF, H5x))))
           }
         }
@@ -3525,7 +3525,7 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
         let I0 = i;
         let R0 = r;
         let Him0 = him;
-        let pre = &m (*b)[Z ; i ; S r | LeAdd i (S r) | hd];
+        let pre = &m (*b)[Z ; i ; S r | LeAddRaw i (S r) | hd];
         let cell = &m (*b)[i ; 1 ; r];
         let hic = &m (*b)[S i ; r];
         let bb = &m (*cell)[0];
@@ -3533,25 +3533,25 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
         let B0 = *bb;
         let H0 = *hic;
         let HsfL = SFCatLo cap r B0 H0 i L0 Z Hsf;
-        let HsfM = NatRw (λ (W : Nat). SlotInv Cap0 W B0) (Add I0 Z) I0 (AddZero I0)
+        let HsfM = NatRwRaw (λ (W : Nat). SlotInv Cap0 W B0) (Add I0 Z) I0 (AddZeroRaw I0)
                      (SFCatMid cap r B0 H0 i L0 Z Hsf);
         let HsfH = SFCatHi cap r B0 H0 i L0 Z Hsf;
         let Hak0 = FstT (AllKeysMod cap i B0) (NodupB B0) HsfM;
         let Hnd0 = SndT (AllKeysMod cap i B0) (NodupB B0) HsfM;
         let Htot0 = TotalArrCat (S r) (acons r B0 H0) i L0;
-        let HlenB = LeRwR (LenE B0)
+        let HlenB = LeRwRRaw (LenE B0)
                       (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
                       (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
-                      (IdSym Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
+                      (IdSymRaw Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
                         (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0))) Htot0)
-                      (LeTrans (LenE B0) (Add (LenE B0) (TotalE r H0))
+                      (LeTransRaw (LenE B0) (Add (LenE B0) (TotalE r H0))
                         (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
-                        (LeAdd (LenE B0) (TotalE r H0))
-                        (LeAddL (Add (LenE B0) (TotalE r H0)) (TotalE i L0)));
-        let HfB = LeTrans (LenE B0)
+                        (LeAddRaw (LenE B0) (TotalE r H0))
+                        (LeAddLRaw (Add (LenE B0) (TotalE r H0)) (TotalE i L0)));
+        let HfB = LeTransRaw (LenE B0)
                     (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))) fuel
                     HlenB
-                    (LePredL (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))) fuel Hfl);
+                    (LePredLRaw (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))) fuel Hfl);
         let bcur = *bb;
         let Pair(rr2, Pair(l3, Pair(Hr2, Pair(Hpt2, Pair(Hln2, Pair(Hak4, Hnd4)))))) =
           RemoveL(fuel, cap, i, key, bcur, HfB, Hak0, Hnd0);
@@ -3559,29 +3559,29 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
         let B1 = *bb;
         let Ret0 = rr2;
         let Hpt = UpdPointwise i r key NoneN L0 B0 B1 H0 him Hpt2;
-        let HsIz = NatRw (λ (W : Nat). SlotInv Cap0 W B1) I0 (Add I0 Z)
-                     (IdSym Nat (Add I0 Z) I0 (AddZero I0))
+        let HsIz = NatRwRaw (λ (W : Nat). SlotInv Cap0 W B1) I0 (Add I0 Z)
+                     (IdSymRaw Nat (Add I0 Z) I0 (AddZeroRaw I0))
                      (MkSlotInv cap i B1 Hak4 Hnd4);
         let H5x = SFCatGlue cap r B1 H0 i L0 Z HsfL HsIz HsfH;
-        let HrMap = IdTrans OptN Ret0 (FindL Key0 B0)
+        let HrMap = IdTransRaw OptN Ret0 (FindL Key0 B0)
                       (FindL Key0 (AgetB (Add I0 (S R0))
                         (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0)))
                       Hr2
-                      (IdSym OptN
+                      (IdSymRaw OptN
                         (FindL Key0 (AgetB (Add I0 (S R0))
                           (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0)))
                         (FindL Key0 B0)
-                        (NatRw (λ (W : Nat). Id OptN
+                        (NatRwRaw (λ (W : Nat). Id OptN
                             (FindL Key0 (AgetB (Add I0 (S R0))
                               (arrCat I0 (S R0) L0 (acons R0 B0 H0)) W))
                             (FindL Key0 B0))
                           I0 (Mod Key0 Cap0) Him0
-                          (IdCongr (List (Σ (k : Nat). Nat)) OptN
+                          (IdCongrRaw (List (Σ (k : Nat). Nat)) OptN
                             (λ (W : List (Σ (k : Nat). Nat)). FindL Key0 W)
                             (AgetB (Add I0 (S R0))
                               (arrCat I0 (S R0) L0 (acons R0 B0 H0)) I0) B0
                             (AgetBCatMid R0 B0 H0 I0 L0))));
-        let Htot = IdTrans Nat
+        let Htot = IdTransRaw Nat
                      (boolRec (λ (W2 : Bool). Nat)
                        (S (TotalE (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B1 H0))))
                        (TotalE (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B1 H0)))
@@ -3591,14 +3591,14 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
                        (TotalE (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B1 H0)))
                        (HitL Key0 B0))
                      (TotalE (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0)))
-                     (IdCongr Bool Nat
+                     (IdCongrRaw Bool Nat
                        (λ (W : Bool). boolRec (λ (W2 : Bool). Nat)
                          (S (TotalE (Add I0 (S R0))
                            (arrCat I0 (S R0) L0 (acons R0 B1 H0))))
                          (TotalE (Add I0 (S R0))
                            (arrCat I0 (S R0) L0 (acons R0 B1 H0))) W)
                        (IsSomeB Ret0) (HitL Key0 B0)
-                       (IdCongr OptN Bool IsSomeB Ret0 (FindL Key0 B0) Hr2))
+                       (IdCongrRaw OptN Bool IsSomeB Ret0 (FindL Key0 B0) Hr2))
                      (RemTotEv I0 R0 Key0 L0 B0 B1 H0 Hln2);
         Pair(rr2, Pair(HrMap, Pair(Hpt, Pair(Htot, H5x))))
       };
@@ -3625,14 +3625,14 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
          Σ0 (Htot : Id Nat (TotalE cap2 (*dst)) (S (TotalE cap2 (old *dst)))).
          SlotsFrom cap2 cap2 (*dst) Z
       { match src {
-          Nil => botElim Unit (BoolTF Hne),
+          Nil => botElim Unit (BoolTFRaw Hne),
           Cons(Pair(kk, vv), tail) => {
             let C2 = cap2;
             let K0 = *kk;
             let V0 = *vv;
             let T0 = *tail;
-            let HfrK = Hfr K0 (IdSym Bool True (HitL K0 (Cons(Pair(K0, V0), T0)))
-                         (HitEvHit K0 V0 K0 T0 (EqbRefl K0)));
+            let HfrK = Hfr K0 (IdSymRaw Bool True (HitL K0 (Cons(Pair(K0, V0), T0)))
+                         (HitEvHit K0 V0 K0 T0 (EqbReflRaw K0)));
             let HndHd = FstT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd;
             let HndTl = SndT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd;
             let k0 = *kk;
@@ -3641,7 +3641,7 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
             let I0 = i;
             let R0 = r;
             let Him0 = him;
-            let pre = &m (*dst)[Z ; i ; S r | LeAdd i (S r) | hd];
+            let pre = &m (*dst)[Z ; i ; S r | LeAddRaw i (S r) | hd];
             let cell = &m (*dst)[i ; 1 ; r];
             let hic = &m (*dst)[S i ; r];
             let bb = &m (*cell)[0];
@@ -3649,26 +3649,26 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
             let B0 = *bb;
             let H0 = *hic;
             let HsfL = SFCatLo cap2 r B0 H0 i L0 Z Hsf;
-            let HsfM = NatRw (λ (W : Nat). SlotInv C2 W B0) (Add I0 Z) I0 (AddZero I0)
+            let HsfM = NatRwRaw (λ (W : Nat). SlotInv C2 W B0) (Add I0 Z) I0 (AddZeroRaw I0)
                          (SFCatMid cap2 r B0 H0 i L0 Z Hsf);
             let HsfH = SFCatHi cap2 r B0 H0 i L0 Z Hsf;
             let Hak0 = FstT (AllKeysMod cap2 i B0) (NodupB B0) HsfM;
             let Hnd0 = SndT (AllKeysMod cap2 i B0) (NodupB B0) HsfM;
-            let HfrB0 = NatRw (λ (W : Nat). Id OptN (FindL K0 (AgetB (Add I0 (S R0))
+            let HfrB0 = NatRwRaw (λ (W : Nat). Id OptN (FindL K0 (AgetB (Add I0 (S R0))
                             (arrCat I0 (S R0) L0 (acons R0 B0 H0)) W)) NoneN)
-                          (Mod K0 C2) I0 (IdSym Nat I0 (Mod K0 C2) Him0) HfrK;
-            let HndK0 = IdTrans Bool (HitL K0 B0) (IsSomeB NoneN) False
-                          (IdCongr OptN Bool IsSomeB (FindL K0 B0) NoneN
-                            (IdTrans OptN (FindL K0 B0)
+                          (Mod K0 C2) I0 (IdSymRaw Nat I0 (Mod K0 C2) Him0) HfrK;
+            let HndK0 = IdTransRaw Bool (HitL K0 B0) (IsSomeB NoneN) False
+                          (IdCongrRaw OptN Bool IsSomeB (FindL K0 B0) NoneN
+                            (IdTransRaw OptN (FindL K0 B0)
                               (FindL K0 (AgetB (Add I0 (S R0))
                                 (arrCat I0 (S R0) L0 (acons R0 B0 H0)) I0))
                               NoneN
-                              (IdCongr (List (Σ (k : Nat). Nat)) OptN
+                              (IdCongrRaw (List (Σ (k : Nat). Nat)) OptN
                                 (λ (W : List (Σ (k : Nat). Nat)). FindL K0 W)
                                 B0
                                 (AgetB (Add I0 (S R0))
                                   (arrCat I0 (S R0) L0 (acons R0 B0 H0)) I0)
-                                (IdSym (List (Σ (k : Nat). Nat))
+                                (IdSymRaw (List (Σ (k : Nat). Nat))
                                   (AgetB (Add I0 (S R0))
                                     (arrCat I0 (S R0) L0 (acons R0 B0 H0)) I0)
                                   B0
@@ -3687,26 +3687,26 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
                          (arrCat I0 (S R0) L0 (acons R0 B1 H0))
                          HndHd Hpt Hfr;
             let HakB1 = MkAkCons C2 I0 K0 V0 B0
-                          (IdSym Nat I0 (Mod K0 C2) Him0) Hak0;
+                          (IdSymRaw Nat I0 (Mod K0 C2) Him0) Hak0;
             let HndB1 = MkNdCons K0 V0 B0 HndK0 Hnd0;
-            let HsIz = NatRw (λ (W : Nat). SlotInv C2 W B1) I0 (Add I0 Z)
-                         (IdSym Nat (Add I0 Z) I0 (AddZero I0))
+            let HsIz = NatRwRaw (λ (W : Nat). SlotInv C2 W B1) I0 (Add I0 Z)
+                         (IdSymRaw Nat (Add I0 Z) I0 (AddZeroRaw I0))
                          (MkSlotInv cap2 i B1 HakB1 HndB1);
             let H5x = SFCatGlue cap2 r B1 H0 i L0 Z HsfL HsIz HsfH;
-            let Htot = IdTrans Nat
+            let Htot = IdTransRaw Nat
                          (TotalE C2 (arrCat I0 (S R0) L0 (acons R0 B1 H0)))
                          (Add (TotalE I0 L0) (Add (LenE B1) (TotalE R0 H0)))
                          (S (TotalE C2 (arrCat I0 (S R0) L0 (acons R0 B0 H0))))
                          (TotalArrCat (S R0) (acons R0 B1 H0) I0 L0)
-                         (IdTrans Nat
+                         (IdTransRaw Nat
                            (Add (TotalE I0 L0) (Add (LenE B1) (TotalE R0 H0)))
                            (S (Add (TotalE I0 L0) (Add (LenE B0) (TotalE R0 H0))))
                            (S (TotalE C2 (arrCat I0 (S R0) L0 (acons R0 B0 H0))))
-                           (AddSucc (TotalE I0 L0) (Add (LenE B0) (TotalE R0 H0)))
-                           (IdCongr Nat Nat (λ (W : Nat). S W)
+                           (AddSuccRaw (TotalE I0 L0) (Add (LenE B0) (TotalE R0 H0)))
+                           (IdCongrRaw Nat Nat (λ (W : Nat). S W)
                              (Add (TotalE I0 L0) (Add (LenE B0) (TotalE R0 H0)))
                              (TotalE C2 (arrCat I0 (S R0) L0 (acons R0 B0 H0)))
-                             (IdSym Nat
+                             (IdSymRaw Nat
                                (TotalE C2 (arrCat I0 (S R0) L0 (acons R0 B0 H0)))
                                (Add (TotalE I0 L0) (Add (LenE B0) (TotalE R0 H0)))
                                (TotalArrCat (S R0) (acons R0 B0 H0) I0 L0))));
@@ -3739,7 +3739,7 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
           match fuel {
             Z => {
               let Bd = *src;
-              botElim Unit (LeTrans (S Z) (LenE Bd) Z (NotNilLenPos Bd e) Hdep)
+              botElim Unit (LeTransRaw (S Z) (LenE Bd) Z (NotNilLenPos Bd e) Hdep)
             },
             S(f2) => {
               let C2 = cap2;
@@ -3752,13 +3752,13 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
               let D1s = *dst;
               let Pair(HptR, Pair(HtotR, HsfR)) =
                 MoveBktR(f2, cap2, &m *src, &m *dst, HLe1,
-                  LeRwL (S f2) (LenE B0s) (S (LenE S1s)) Hln2 Hdep,
+                  LeRwLRaw (S f2) (LenE B0s) (S (LenE S1s)) Hln2 Hdep,
                   Hsf2, Hnd2, Hfr2);
               let D2s = *dst;
               Pair(AgetBktCongr (Cons(Pair(K0, V0), T0)) B0s
                      (λ (Qz : Nat). FindL Qz (AgetB C2 D0s (Mod Qz C2)))
                      (λ (Qz : Nat). FindL Qz (AgetB C2 D2s (Mod Qz C2)))
-                     (IdSym (List (Σ (k : Nat). Nat)) B0s (Cons(Pair(K0, V0), T0)) Hdec)
+                     (IdSymRaw (List (Σ (k : Nat). Nat)) B0s (Cons(Pair(K0, V0), T0)) Hdec)
                      (MoveStepPt K0 V0 T0
                        (λ (Qz : Nat). FindL Qz (AgetB C2 D0s (Mod Qz C2)))
                        (λ (Qz : Nat). FindL Qz (AgetB C2 D1s (Mod Qz C2)))
@@ -3768,22 +3768,22 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
                          (λ (Qz : Nat). FindL Qz (AgetB C2 D1s (Mod Qz C2)))
                          (λ (Qz : Nat). FindL Qz (AgetB C2 D2s (Mod Qz C2)))
                          Hsrc HptR)),
-                Pair(IdTrans Nat (TotalE C2 D2s)
+                Pair(IdTransRaw Nat (TotalE C2 D2s)
                        (Add (LenE S1s) (TotalE C2 D1s))
                        (Add (LenE B0s) (TotalE C2 D0s))
                        HtotR
-                       (IdTrans Nat (Add (LenE S1s) (TotalE C2 D1s))
+                       (IdTransRaw Nat (Add (LenE S1s) (TotalE C2 D1s))
                          (S (Add (LenE S1s) (TotalE C2 D0s)))
                          (Add (LenE B0s) (TotalE C2 D0s))
-                         (IdTrans Nat (Add (LenE S1s) (TotalE C2 D1s))
+                         (IdTransRaw Nat (Add (LenE S1s) (TotalE C2 D1s))
                            (Add (LenE S1s) (S (TotalE C2 D0s)))
                            (S (Add (LenE S1s) (TotalE C2 D0s)))
-                           (IdCongr Nat Nat (λ (W : Nat). Add (LenE S1s) W)
+                           (IdCongrRaw Nat Nat (λ (W : Nat). Add (LenE S1s) W)
                              (TotalE C2 D1s) (S (TotalE C2 D0s)) Htot2)
-                           (AddSucc (LenE S1s) (TotalE C2 D0s)))
-                         (IdCongr Nat Nat (λ (W : Nat). Add W (TotalE C2 D0s))
+                           (AddSuccRaw (LenE S1s) (TotalE C2 D0s)))
+                         (IdCongrRaw Nat Nat (λ (W : Nat). Add W (TotalE C2 D0s))
                            (S (LenE S1s)) (LenE B0s)
-                           (IdSym Nat (LenE B0s) (S (LenE S1s)) Hln2))),
+                           (IdSymRaw Nat (LenE B0s) (S (LenE S1s)) Hln2))),
                   HsfR))
             } }
         } };
@@ -3817,7 +3817,7 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
         let C2 = cap2;
         let J0 = j;
         let M2 = m2;
-        let pre = &m (*src)[Z ; j ; S m2 | LeAdd j (S m2) | Hj];
+        let pre = &m (*src)[Z ; j ; S m2 | LeAddRaw j (S m2) | Hj];
         let cell = &m (*src)[j ; 1 ; m2];
         let hic = &m (*src)[S j ; m2];
         let bbs = &m (*cell)[0];
@@ -3825,124 +3825,124 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
         let BJ0 = *bbs;
         let HS0 = *hic;
         let HsfLs = SFCatLo capF m2 BJ0 HS0 j LS0 Z HsfS;
-        let HsfMs = NatRw (λ (W : Nat). SlotInv CF W BJ0) (Add J0 Z) J0 (AddZero J0)
+        let HsfMs = NatRwRaw (λ (W : Nat). SlotInv CF W BJ0) (Add J0 Z) J0 (AddZeroRaw J0)
                       (SFCatMid capF m2 BJ0 HS0 j LS0 Z HsfS);
         let HsfHs = SFCatHi capF m2 BJ0 HS0 j LS0 Z HsfS;
         let HakJ = FstT (AllKeysMod capF j BJ0) (NodupB BJ0) HsfMs;
         let HndJ = SndT (AllKeysMod capF j BJ0) (NodupB BJ0) HsfMs;
         let Htot0s = TotalArrCat (S m2) (acons m2 BJ0 HS0) j LS0;
         let D0d = *dst;
-        let HlenBj = LeRwR (LenE BJ0)
+        let HlenBj = LeRwRRaw (LenE BJ0)
                        (Add (TotalE j LS0) (Add (LenE BJ0) (TotalE m2 HS0)))
                        (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
-                       (IdSym Nat
+                       (IdSymRaw Nat
                          (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
                          (Add (TotalE j LS0) (Add (LenE BJ0) (TotalE m2 HS0)))
                          Htot0s)
-                       (LeTrans (LenE BJ0) (Add (LenE BJ0) (TotalE m2 HS0))
+                       (LeTransRaw (LenE BJ0) (Add (LenE BJ0) (TotalE m2 HS0))
                          (Add (TotalE j LS0) (Add (LenE BJ0) (TotalE m2 HS0)))
-                         (LeAdd (LenE BJ0) (TotalE m2 HS0))
-                         (LeAddL (Add (LenE BJ0) (TotalE m2 HS0)) (TotalE j LS0)));
+                         (LeAddRaw (LenE BJ0) (TotalE m2 HS0))
+                         (LeAddLRaw (Add (LenE BJ0) (TotalE m2 HS0)) (TotalE j LS0)));
         let bl = *bbs;
         *bbs := Nil;
         let Pair(HptB, Pair(HtotB, HsfD1)) =
           MoveBktR(tfuel, cap2, &m bl, &m *dst, HLe1,
-            LeTrans (LenE BJ0)
+            LeTransRaw (LenE BJ0)
               (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0))) tfuel
               HlenBj
-              (LePredL (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0))) tfuel Htf),
+              (LePredLRaw (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0))) tfuel Htf),
             HsfD, HndJ,
             MoveSlotsFresh j m2 cap2 LS0 BJ0 HS0 D0d HakJ Hdisj);
         let D1d = *dst;
         let HsfS1 = SFCatGlue capF m2 Nil HS0 j LS0 Z HsfLs
-                      (NatRw (λ (W : Nat). SlotInv CF W Nil) J0 (Add J0 Z)
-                        (IdSym Nat (Add J0 Z) J0 (AddZero J0))
+                      (NatRwRaw (λ (W : Nat). SlotInv CF W Nil) J0 (Add J0 Z)
+                        (IdSymRaw Nat (Add J0 Z) J0 (AddZeroRaw J0))
                         (MkSlotInv capF j Nil unit unit))
                       HsfHs;
-        let HsumStep = IdTrans Nat
+        let HsumStep = IdTransRaw Nat
             (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 Nil HS0)))
               (TotalE cap2 D1d))
             (Add (Add (TotalE j LS0) (TotalE m2 HS0))
               (Add (LenE BJ0) (TotalE cap2 D0d)))
             (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
               (TotalE cap2 D0d))
-            (IdTrans Nat
+            (IdTransRaw Nat
               (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 Nil HS0)))
                 (TotalE cap2 D1d))
               (Add (Add (TotalE j LS0) (TotalE m2 HS0)) (TotalE cap2 D1d))
               (Add (Add (TotalE j LS0) (TotalE m2 HS0))
                 (Add (LenE BJ0) (TotalE cap2 D0d)))
-              (IdCongr Nat Nat
+              (IdCongrRaw Nat Nat
                 (λ (W : Nat). Add W (TotalE C2 D1d))
                 (TotalE capF (arrCat j (S m2) LS0 (acons m2 Nil HS0)))
                 (Add (TotalE j LS0) (TotalE m2 HS0))
                 (TotalArrCat (S m2) (acons m2 Nil HS0) j LS0))
-              (IdCongr Nat Nat
+              (IdCongrRaw Nat Nat
                 (λ (W : Nat). Add (Add (TotalE J0 LS0) (TotalE M2 HS0)) W)
                 (TotalE cap2 D1d)
                 (Add (LenE BJ0) (TotalE cap2 D0d))
                 HtotB))
-            (IdTrans Nat
+            (IdTransRaw Nat
               (Add (Add (TotalE j LS0) (TotalE m2 HS0))
                 (Add (LenE BJ0) (TotalE cap2 D0d)))
               (Add (Add (TotalE j LS0) (LenE BJ0))
                 (Add (TotalE m2 HS0) (TotalE cap2 D0d)))
               (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
                 (TotalE cap2 D0d))
-              (AddInterchange (TotalE j LS0) (TotalE m2 HS0) (LenE BJ0)
+              (AddInterchangeRaw (TotalE j LS0) (TotalE m2 HS0) (LenE BJ0)
                 (TotalE cap2 D0d))
-              (IdTrans Nat
+              (IdTransRaw Nat
                 (Add (Add (TotalE j LS0) (LenE BJ0))
                   (Add (TotalE m2 HS0) (TotalE cap2 D0d)))
                 (Add (Add (Add (TotalE j LS0) (LenE BJ0)) (TotalE m2 HS0))
                   (TotalE cap2 D0d))
                 (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
                   (TotalE cap2 D0d))
-                (IdSym Nat
+                (IdSymRaw Nat
                   (Add (Add (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0))
                     (TotalE C2 D0d))
                   (Add (Add (TotalE J0 LS0) (LenE BJ0))
                     (Add (TotalE M2 HS0) (TotalE C2 D0d)))
-                  (AddAssoc (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0)
+                  (AddAssocRaw (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0)
                     (TotalE C2 D0d)))
-                (IdTrans Nat
+                (IdTransRaw Nat
                   (Add (Add (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0))
                     (TotalE C2 D0d))
                   (Add (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
                     (TotalE C2 D0d))
                   (Add (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)))
                     (TotalE C2 D0d))
-                  (IdCongr Nat Nat (λ (W : Nat). Add W (TotalE C2 D0d))
+                  (IdCongrRaw Nat Nat (λ (W : Nat). Add W (TotalE C2 D0d))
                     (Add (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0))
                     (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
-                    (AddAssoc (TotalE J0 LS0) (LenE BJ0) (TotalE M2 HS0)))
-                  (IdCongr Nat Nat (λ (W : Nat). Add W (TotalE C2 D0d))
+                    (AddAssocRaw (TotalE J0 LS0) (LenE BJ0) (TotalE M2 HS0)))
+                  (IdCongrRaw Nat Nat (λ (W : Nat). Add W (TotalE C2 D0d))
                     (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
                     (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)))
-                    (IdSym Nat
+                    (IdSymRaw Nat
                       (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)))
                       (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
                       Htot0s)))));
-        let Hsdc = LeRwR (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 Nil HS0)))
+        let Hsdc = LeRwRRaw (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 Nil HS0)))
                      (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
                      (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)))
-                     (IdSym Nat (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)))
+                     (IdSymRaw Nat (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)))
                        (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
                        Htot0s)
-                     (LeRwL (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
+                     (LeRwLRaw (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
                        (Add (TotalE J0 LS0) (TotalE M2 HS0))
                        (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 Nil HS0)))
-                       (IdSym Nat (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 Nil HS0)))
+                       (IdSymRaw Nat (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 Nil HS0)))
                          (Add (TotalE J0 LS0) (TotalE M2 HS0))
                          (TotalArrCat (S M2) (acons M2 Nil HS0) J0 LS0))
-                       (LeAddMonoL (TotalE J0 LS0) (TotalE M2 HS0)
+                       (LeAddMonoLRaw (TotalE J0 LS0) (TotalE M2 HS0)
                          (Add (LenE BJ0) (TotalE M2 HS0))
-                         (LeAddL (TotalE M2 HS0) (LenE BJ0))));
+                         (LeAddLRaw (TotalE M2 HS0) (LenE BJ0))));
         Pair(AgetBktCongr BJ0
                (AgetB (Add J0 (S M2)) (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)) J0)
                (λ (Qz : Nat). FindL Qz (AgetB C2 D0d (Mod Qz C2)))
                (λ (Qz : Nat). FindL Qz (AgetB C2 D1d (Mod Qz C2)))
-               (IdSym (List (Σ (k : Nat). Nat))
+               (IdSymRaw (List (Σ (k : Nat). Nat))
                  (AgetB (Add J0 (S M2)) (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)) J0)
                  BJ0
                  (AgetBCatMid M2 BJ0 HS0 J0 LS0))
@@ -3985,7 +3985,7 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
             let C2 = cap2;
             let Dd = *dst;
             let Sd = *src;
-            let Hjz = IdTrans Nat CF (Add J0 Z) J0 Hj (AddZero J0);
+            let Hjz = IdTransRaw Nat CF (Add J0 Z) J0 Hj (AddZeroRaw J0);
             Pair(MoveBasePt CF J0 C2 Sd Dd HLe1F Hjz HsrcLo,
               Pair(MoveBaseNil CF J0 Sd Hjz HsrcLo,
                 Pair(Refl, HsfD)))
@@ -3997,12 +3997,12 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
             let M2 = m2;
             let S0d = *src;
             let D0d = *dst;
-            let HinvJ = NatRw (λ (W : Nat). SlotInv CF W (AgetB CF S0d J0))
-                          (Add J0 Z) J0 (AddZero J0)
+            let HinvJ = NatRwRaw (λ (W : Nat). SlotInv CF W (AgetB CF S0d J0))
+                          (Add J0 Z) J0 (AddZeroRaw J0)
                           (SFAgetInv capF capF S0d Z HsfS j
-                            (LeRwR (S j) (Add j (S m2)) capF
-                              (IdSym Nat capF (Add j (S m2)) Hj)
-                              (LeAddSucc j m2)));
+                            (LeRwRRaw (S j) (Add j (S m2)) capF
+                              (IdSymRaw Nat capF (Add j (S m2)) Hj)
+                              (LeAddSuccRaw j m2)));
             let HakJ = FstT (AllKeysMod CF J0 (AgetB CF S0d J0))
                          (NodupB (AgetB CF S0d J0)) HinvJ;
             let Pair(HptO, Pair(HnilO, Pair(HfrmO,
@@ -4018,9 +4018,9 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
             let HnilR = MoveLevelNil CF J0 S0d SMd HnilO HfrmO HsrcLo;
             let Pair(HptR, Pair(HsrcFR, Pair(HtotR, HsfD2))) =
               MoveSlots(m2, S j, tfuel, capF, cap2,
-                IdTrans Nat capF (Add j (S m2)) (S (Add j m2)) Hj (AddSucc j m2),
+                IdTransRaw Nat capF (Add j (S m2)) (S (Add j m2)) Hj (AddSuccRaw j m2),
                 &m *src, &m *dst, HLe1, HLe1F,
-                LeTrans (S (TotalE CF SMd)) (S (TotalE CF S0d)) tfuel HsdcO Htf,
+                LeTransRaw (S (TotalE CF SMd)) (S (TotalE CF S0d)) tfuel HsdcO Htf,
                 HsfSO, HsfDO, HdisjR, HnilR);
             let D2d = *dst;
             Pair(MoveLevelPt CF J0 S0d SMd
@@ -4029,7 +4029,7 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
                    (λ (Qz : Nat). FindL Qz (AgetB C2 D2d (Mod Qz C2)))
                    HakJ HnilO HfrmO HptO HptR,
               Pair(HsrcFR,
-                Pair(IdTrans Nat
+                Pair(IdTransRaw Nat
                        (Add (TotalE CF (*src)) (TotalE C2 D2d))
                        (Add (TotalE CF SMd) (TotalE C2 D1d))
                        (Add (TotalE CF S0d) (TotalE C2 D0d))
@@ -4056,18 +4056,18 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
         let sb = &m slots;
         let Pair(hit2, Pair(Hh2, Pair(Hpt2, Pair(Htot2, Hsf2)))) =
           SlotUpd(fuel, cap, key, val, &m *sb, HLe1,
-            LeRwL fuel (S nn) (S (TotalE Cap0 SL0))
-              (IdCongr Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
-              (LePredL (S nn) fuel Hfuel),
+            LeRwLRaw fuel (S nn) (S (TotalE Cap0 SL0))
+              (IdCongrRaw Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
+              (LePredLRaw (S nn) fuel Hfuel),
             HSf);
         let SL1 = *sb;
         let Hit0 = hit2;
         match e2 : hit2 {
           True => {
-            let H4x = IdTrans Nat nn (TotalE Cap0 SL0) (TotalE Cap0 SL1)
+            let H4x = IdTransRaw Nat nn (TotalE Cap0 SL0) (TotalE Cap0 SL1)
                         HCnt
-                        (IdSym Nat (TotalE Cap0 SL1) (TotalE Cap0 SL0)
-                          (IdTrans Nat (TotalE Cap0 SL1)
+                        (IdSymRaw Nat (TotalE Cap0 SL1) (TotalE Cap0 SL0)
+                          (IdTransRaw Nat (TotalE Cap0 SL1)
                             (boolRec (λ (W2 : Bool). Nat) (TotalE Cap0 SL0)
                               (S (TotalE Cap0 SL0)) Hit0)
                             (TotalE Cap0 SL0)
@@ -4077,24 +4077,24 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
             *self := Pair(cap, Pair(load, Pair(nn, Pair(slots,
               MkInv cap load nn SL1 HLe1 HLoad HLed H4x Hsf2))));
             Pair(Hpt2,
-              IdSym Nat
+              IdSymRaw Nat
                 (boolRec (λ (W2 : Bool). Nat) nn (S nn)
                   (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
                 nn
                 (BoolRwT Nat nn (S nn)
                   (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                  (IdTrans Bool
+                  (IdTransRaw Bool
                     (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
                     Hit0 True
-                    (IdSym Bool Hit0
+                    (IdSymRaw Bool Hit0
                       (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))) Hh2)
                     e2)))
           },
           False => {
-            let H4y = IdTrans Nat (S nn) (S (TotalE Cap0 SL0)) (TotalE Cap0 SL1)
-                        (IdCongr Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
-                        (IdSym Nat (TotalE Cap0 SL1) (S (TotalE Cap0 SL0))
-                          (IdTrans Nat (TotalE Cap0 SL1)
+            let H4y = IdTransRaw Nat (S nn) (S (TotalE Cap0 SL0)) (TotalE Cap0 SL1)
+                        (IdCongrRaw Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
+                        (IdSymRaw Nat (TotalE Cap0 SL1) (S (TotalE Cap0 SL0))
+                          (IdTransRaw Nat (TotalE Cap0 SL1)
                             (boolRec (λ (W2 : Bool). Nat) (TotalE Cap0 SL0)
                               (S (TotalE Cap0 SL0)) Hit0)
                             (S (TotalE Cap0 SL0))
@@ -4104,18 +4104,18 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
             if e4 : Leb (Mul 5 (S nn)) load {
               *self := Pair(cap, Pair(load, Pair(S(nn), Pair(slots,
                 MkInv cap load (S nn) SL1 HLe1 HLoad
-                  (LebTrueLe (Mul 5 (S nn)) load e4) H4y Hsf2))));
+                  (LebTrueLeRaw (Mul 5 (S nn)) load e4) H4y Hsf2))));
               Pair(Hpt2,
-                IdSym Nat
+                IdSymRaw Nat
                   (boolRec (λ (W2 : Bool). Nat) nn (S nn)
                     (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
                   (S nn)
                   (BoolRwF Nat nn (S nn)
                     (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                    (IdTrans Bool
+                    (IdTransRaw Bool
                       (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
                       Hit0 False
-                      (IdSym Bool Hit0
+                      (IdSymRaw Bool Hit0
                         (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))) Hh2)
                       e2)))
             } else {
@@ -4127,20 +4127,20 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
               let HdisjB = (λ (K2 : Nat).
                     λ (Hs : Id Bool (IsSomeB (FindL K2
                         (AgetB Cap0 SL1 (Mod K2 Cap0)))) True).
-                      IdCongr (List (Σ (k : Nat). Nat)) OptN
+                      IdCongrRaw (List (Σ (k : Nat). Nat)) OptN
                         (λ (Wb : List (Σ (k : Nat). Nat)). FindL K2 Wb)
                         (AgetB C2b DN0 (Mod K2 C2b)) Nil
                         (AgetBMkSlots C2b (Mod K2 C2b))
 );
               let HnilB = (λ (J2 : Nat). λ (Hb : Id Bool (Leb (S J2) Z) True).
                       botElim (Id (List (Σ (k : Nat). Nat))
-                        (AgetB Cap0 SL1 J2) Nil) (BoolFT Hb)
+                        (AgetB Cap0 SL1 J2) Nil) (BoolFTRaw Hb)
 );
               let Pair(HptM, Pair(HsrcFM, Pair(HtotM, HsfM))) =
                 MoveSlots(cap, Z, fuel, cap, Mul 2 cap, Refl, &m *sb, &m *db,
                   Le1Mul2 cap HLe1, HLe1,
-                  LeRwL fuel (S (S nn)) (S (TotalE Cap0 SL1))
-                    (IdCongr Nat Nat (λ (W : Nat). S W) (S nn) (TotalE Cap0 SL1) H4y)
+                  LeRwLRaw fuel (S (S nn)) (S (TotalE Cap0 SL1))
+                    (IdCongrRaw Nat Nat (λ (W : Nat). S W) (S nn) (TotalE Cap0 SL1) H4y)
                     Hfuel,
                   Hsf2,
                   SFMkSlots (Mul 2 cap) (Mul 2 cap) Z, HdisjB, HnilB);
@@ -4150,33 +4150,33 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
                 MkInv (Mul 2 cap) (Mul 4 (Mul 2 cap)) (S nn) SL2
                   (Le1Mul2 cap HLe1)
                   Refl
-                  (LedgerGrow cap nn HLe1
-                    (LeRwR (Mul 5 nn) load (Mul 4 cap) HLoad HLed))
-                  (IdTrans Nat (S nn) (TotalE Cap0 SL1) (TotalE C2b SL2)
+                  (LedgerGrowRaw cap nn HLe1
+                    (LeRwRRaw (Mul 5 nn) load (Mul 4 cap) HLoad HLed))
+                  (IdTransRaw Nat (S nn) (TotalE Cap0 SL1) (TotalE C2b SL2)
                     H4y
-                    (IdSym Nat (TotalE C2b SL2) (TotalE Cap0 SL1)
-                      (IdTrans Nat (TotalE C2b SL2)
+                    (IdSymRaw Nat (TotalE C2b SL2) (TotalE Cap0 SL1)
+                      (IdTransRaw Nat (TotalE C2b SL2)
                         (Add (TotalE Cap0 SL1b) (TotalE C2b SL2))
                         (TotalE Cap0 SL1)
-                        (IdSym Nat
+                        (IdSymRaw Nat
                           (Add (TotalE Cap0 SL1b) (TotalE C2b SL2))
                           (TotalE C2b SL2)
-                          (IdCongr Nat Nat (λ (W : Nat). Add W (TotalE C2b SL2))
+                          (IdCongrRaw Nat Nat (λ (W : Nat). Add W (TotalE C2b SL2))
                             (TotalE Cap0 SL1b) Z
                             (TotalNilAll Cap0 SL1b HsrcFM)))
-                        (IdTrans Nat
+                        (IdTransRaw Nat
                           (Add (TotalE Cap0 SL1b) (TotalE C2b SL2))
                           (Add (TotalE Cap0 SL1) (TotalE C2b DN0))
                           (TotalE Cap0 SL1)
                           HtotM
-                          (IdTrans Nat
+                          (IdTransRaw Nat
                             (Add (TotalE Cap0 SL1) (TotalE C2b DN0))
                             (Add (TotalE Cap0 SL1) Z)
                             (TotalE Cap0 SL1)
-                            (IdCongr Nat Nat
+                            (IdCongrRaw Nat Nat
                               (λ (W : Nat). Add (TotalE Cap0 SL1) W)
                               (TotalE C2b DN0) Z (TotalMkSlots C2b))
-                            (AddZero (TotalE Cap0 SL1)))))))
+                            (AddZeroRaw (TotalE Cap0 SL1)))))))
                   HsfM))));
               Pair(ResizeGlue
                      (λ (Qz : Nat). boolRec (λ (W2 : Bool). OptN) (SomeN Val0)
@@ -4185,7 +4185,7 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
                      (λ (Qz : Nat). FindL Qz (AgetB C2b SL2 (Mod Qz C2b)))
                      (λ (Qz : Nat). FindL Qz (AgetB C2b DN0 (Mod Qz C2b)))
                      (λ (Qz : Nat).
-                       IdCongr (List (Σ (k : Nat). Nat)) OptN
+                       IdCongrRaw (List (Σ (k : Nat). Nat)) OptN
                          (λ (Wb : List (Σ (k : Nat). Nat)). FindL Qz Wb)
                          (AgetB C2b DN0 (Mod Qz C2b)) Nil
                          (AgetBMkSlots C2b (Mod Qz C2b)))
@@ -4195,7 +4195,7 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
                            (SomeN Val0)
                            (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                            (Eqb Qz Key0))) False).
-                         IfDec (Eqb Qz Key0)
+                         IfDecRaw (Eqb Qz Key0)
                            (Id OptN (boolRec (λ (W2 : Bool). OptN) (SomeN Val0)
                              (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                              (Eqb Qz Key0)) NoneN)
@@ -4204,19 +4204,19 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
                                  (SomeN Val0)
                                  (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                  (Eqb Qz Key0)) NoneN)
-                               (BoolTF (IdTrans Bool True
+                               (BoolTFRaw (IdTransRaw Bool True
                                  (IsSomeB (boolRec (λ (W2 : Bool). OptN)
                                    (SomeN Val0)
                                    (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                    (Eqb Qz Key0)))
                                  False
-                                 (IdSym Bool
+                                 (IdSymRaw Bool
                                    (IsSomeB (boolRec (λ (W2 : Bool). OptN)
                                      (SomeN Val0)
                                      (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                      (Eqb Qz Key0)))
                                    True
-                                   (IdCongr OptN Bool IsSomeB
+                                   (IdCongrRaw OptN Bool IsSomeB
                                      (boolRec (λ (W2 : Bool). OptN) (SomeN Val0)
                                        (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                        (Eqb Qz Key0))
@@ -4226,7 +4226,7 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
                                        (Eqb Qz Key0) E5)))
                                  Ee)))
                            (λ (E5 : Id Bool (Eqb Qz Key0) False).
-                             IdTrans OptN
+                             IdTransRaw OptN
                                (boolRec (λ (W2 : Bool). OptN) (SomeN Val0)
                                  (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                  (Eqb Qz Key0))
@@ -4236,19 +4236,19 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
                                  (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                  (Eqb Qz Key0) E5)
                                (NotHitFindNone Qz (AgetB Cap0 SL0 (Mod Qz Cap0))
-                                 (IdTrans Bool
+                                 (IdTransRaw Bool
                                    (IsSomeB (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0))))
                                    (IsSomeB (boolRec (λ (W2 : Bool). OptN)
                                      (SomeN Val0)
                                      (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                      (Eqb Qz Key0)))
                                    False
-                                   (IdCongr OptN Bool IsSomeB
+                                   (IdCongrRaw OptN Bool IsSomeB
                                      (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                      (boolRec (λ (W2 : Bool). OptN) (SomeN Val0)
                                        (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                        (Eqb Qz Key0))
-                                     (IdSym OptN
+                                     (IdSymRaw OptN
                                        (boolRec (λ (W2 : Bool). OptN) (SomeN Val0)
                                          (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                          (Eqb Qz Key0))
@@ -4257,16 +4257,16 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
                                          (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                          (Eqb Qz Key0) E5)))
                                    Ee)))),
-                IdSym Nat
+                IdSymRaw Nat
                   (boolRec (λ (W2 : Bool). Nat) nn (S nn)
                     (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
                   (S nn)
                   (BoolRwF Nat nn (S nn)
                     (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                    (IdTrans Bool
+                    (IdTransRaw Bool
                       (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
                       Hit0 False
-                      (IdSym Bool Hit0
+                      (IdSymRaw Bool Hit0
                         (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))) Hh2)
                       e2)))
             }
@@ -4292,8 +4292,8 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
         let sb = &m slots;
         let Pair(rr, Pair(Hr2, Pair(Hpt2, Pair(Htot2, Hsf2)))) =
           SlotRem(fuel, cap, key, &m *sb, HLe1,
-            LeRwL fuel (S nn) (S (TotalE Cap0 SL0))
-              (IdCongr Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
+            LeRwLRaw fuel (S nn) (S (TotalE Cap0 SL0))
+              (IdCongrRaw Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
               Hfuel,
             HSf);
         let SL1 = *sb;
@@ -4302,60 +4302,60 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
           Pair(tg, pv) => match e3 : tg {
             True => match nn {
               Z => botElim Unit
-                     (Znots (TotalE Cap0 SL1)
-                       (IdSym Nat (S (TotalE Cap0 SL1)) Z
-                         (IdTrans Nat (S (TotalE Cap0 SL1)) (TotalE Cap0 SL0) Z
-                           Htot2 (IdSym Nat Z (TotalE Cap0 SL0) HCnt)))),
+                     (ZnotsRaw (TotalE Cap0 SL1)
+                       (IdSymRaw Nat (S (TotalE Cap0 SL1)) Z
+                         (IdTransRaw Nat (S (TotalE Cap0 SL1)) (TotalE Cap0 SL0) Z
+                           Htot2 (IdSymRaw Nat Z (TotalE Cap0 SL0) HCnt)))),
               S(m2) => {
-                let H4r = SInj m2 (TotalE Cap0 SL1)
-                            (IdTrans Nat (S m2) (TotalE Cap0 SL0) (S (TotalE Cap0 SL1))
-                              HCnt (IdSym Nat (S (TotalE Cap0 SL1)) (TotalE Cap0 SL0) Htot2));
+                let H4r = SInjRaw m2 (TotalE Cap0 SL1)
+                            (IdTransRaw Nat (S m2) (TotalE Cap0 SL0) (S (TotalE Cap0 SL1))
+                              HCnt (IdSymRaw Nat (S (TotalE Cap0 SL1)) (TotalE Cap0 SL0) Htot2));
                 *self := Pair(cap, Pair(load, Pair(m2, Pair(slots,
                   MkInv cap load m2 SL1 HLe1 HLoad
-                    (LeTrans (Mul 5 m2) (Mul 5 (S m2)) load
-                      (LeMulR 5 m2 (S m2) (LeUpR m2 m2 (LeRefl m2)))
+                    (LeTransRaw (Mul 5 m2) (Mul 5 (S m2)) load
+                      (LeMulRRaw 5 m2 (S m2) (LeUpRRaw m2 m2 (LeReflRaw m2)))
                       HLed)
                     H4r Hsf2))));
                 Pair(Pair(True, pv),
                   Pair(Hr2,
                   Pair(Hpt2,
-                    IdSym Nat
+                    IdSymRaw Nat
                       (boolRec (λ (W2 : Bool). Nat) (Pred N0) N0
                         (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
                       (Pred N0)
                       (BoolRwT Nat (Pred N0) N0
                         (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                        (IdTrans Bool
+                        (IdTransRaw Bool
                           (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
                           (IsSomeB Ret0) True
-                          (IdSym Bool (IsSomeB Ret0)
+                          (IdSymRaw Bool (IsSomeB Ret0)
                             (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                            (IdCongr OptN Bool IsSomeB Ret0
+                            (IdCongrRaw OptN Bool IsSomeB Ret0
                               (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))) Hr2))
                           e3)))))
               }
             },
             False => {
-              let H4n = IdTrans Nat nn (TotalE Cap0 SL0) (TotalE Cap0 SL1)
+              let H4n = IdTransRaw Nat nn (TotalE Cap0 SL0) (TotalE Cap0 SL1)
                           HCnt
-                          (IdSym Nat (TotalE Cap0 SL1) (TotalE Cap0 SL0) Htot2);
+                          (IdSymRaw Nat (TotalE Cap0 SL1) (TotalE Cap0 SL0) Htot2);
               *self := Pair(cap, Pair(load, Pair(nn, Pair(slots,
                 MkInv cap load nn SL1 HLe1 HLoad HLed H4n Hsf2))));
               Pair(Pair(False, pv),
                 Pair(Hr2,
                 Pair(Hpt2,
-                  IdSym Nat
+                  IdSymRaw Nat
                     (boolRec (λ (W2 : Bool). Nat) (Pred N0) N0
                       (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
                     N0
                     (BoolRwF Nat (Pred N0) N0
                       (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                      (IdTrans Bool
+                      (IdTransRaw Bool
                         (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
                         (IsSomeB Ret0) False
-                        (IdSym Bool (IsSomeB Ret0)
+                        (IdSymRaw Bool (IsSomeB Ret0)
                           (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                          (IdCongr OptN Bool IsSomeB Ret0
+                          (IdCongrRaw OptN Bool IsSomeB Ret0
                             (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))) Hr2))
                         e3)))))
             }
@@ -4425,7 +4425,7 @@ def lamFeedH : Term := prog{
       Z => (),
       S(f2) => {
         let N0 = n;
-        let Hgive = (λ (K2 : Nat). λ (Hk : Le K2 N0). LeUpR K2 N0 Hk);
+        let Hgive = (λ (K2 : Nat). λ (Hk : Le K2 N0). LeUpRRaw K2 N0 Hk);
         Eat(f2, n, Hgive);
         ()
       } } };
@@ -4481,8 +4481,8 @@ def s2CheckedCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest p
   let Pair(HfindN, HsizeN) = ev0;
   let b1 = &m m0;
   let Pair(Hpt1, Hsz1) = InsertHM(9, 5, 70, b1,
-    NatRw (λ (W : Nat). Le (S (S W)) 9) Z (SizeHM M0)
-      (IdSym Nat (SizeHM M0) Z HsizeN) unit);
+    NatRwRaw (λ (W : Nat). Le (S (S W)) 9) Z (SizeHM M0)
+      (IdSymRaw Nat (SizeHM M0) Z HsizeN) unit);
   let y = m0;
   () }
 example : progOk s2CheckedCaller = true := by native_decide
@@ -4554,7 +4554,7 @@ def s1P2a : Term := prog{
     let SL0 = slots;
     let Pair(i, Pair(r, Pair(hd, him))) = SlotOfE(key, cap, HLe1);
     let sb = &m slots;
-    let pre = &m (*sb)[Z ; i ; S r | LeAdd i (S r) | hd];
+    let pre = &m (*sb)[Z ; i ; S r | LeAddRaw i (S r) | hd];
     let cell = &m (*sb)[i ; 1 ; r];
     let hic = &m (*sb)[S i ; r];
     let bb = &m (*cell)[0];
@@ -4578,7 +4578,7 @@ def s1P2c : Term := prog{
             a : Array n (List (Σ (k : Nat). Nat))) -> Unit {
     let SL0 = a;
     let sb = &m a;
-    let pre = &m (*sb)[Z ; i ; S r | LeAdd i (S r) | hd];
+    let pre = &m (*sb)[Z ; i ; S r | LeAddRaw i (S r) | hd];
     let cell = &m (*sb)[i ; 1 ; r];
     let hic = &m (*sb)[S i ; r];
     let bb = &m (*cell)[0];
@@ -4649,7 +4649,7 @@ def gmProbe1 : Term := prog defer_check {
     let c = *cap;
     *cap := c;
     let Pair(i, Pair(r, Pair(hd, him))) = SlotOfE(key, c, HLe1);
-    let pre = &m (*slots)[Z ; i ; S r | LeAdd i (S r) | hd];
+    let pre = &m (*slots)[Z ; i ; S r | LeAddRaw i (S r) | hd];
     let cell = &m (*slots)[i ; 1 ; r];
     let bb = &m (*cell)[0];
     WalkVal(fuel, key, dflt, bb)
@@ -4677,7 +4677,7 @@ def gmProbe2 : Term := prog defer_check {
               b : &mut (Array cap (List (Σ (k : Nat). Nat))),
               HLe1 : Le (S Z) cap) -> &mut Nat {
     let Pair(i, Pair(r, Pair(hd, him))) = SlotOfE(key, cap, HLe1);
-    let pre = &m (*b)[Z ; i ; S r | LeAdd i (S r) | hd];
+    let pre = &m (*b)[Z ; i ; S r | LeAddRaw i (S r) | hd];
     let cell = &m (*b)[i ; 1 ; r];
     let bb = &m (*cell)[0];
     WalkVal(fuel, key, dflt, bb) };
@@ -4726,9 +4726,9 @@ def gmProbe3 : Term := prog defer_check {
               let C0 = c;
               let Pair(i, Pair(r, Pair(hd, him))) = SlotOfE(key, c, HLe1);
               let Him0 = him;
-              let bb = &m (*slots)[i | NatRw (λ (W : Nat). Le (S W) C0)
-                (Mod key C0) i (IdSym Nat i (Mod key C0) Him0)
-                (ModLtN key C0 HLe1)];
+              let bb = &m (*slots)[i | NatRwRaw (λ (W : Nat). Le (S W) C0)
+                (Mod key C0) i (IdSymRaw Nat i (Mod key C0) Him0)
+                (ModLtNRaw key C0 HLe1)];
               WalkVal(fuel, key, dflt, bb)
             } } } } } };
   () }
@@ -4974,7 +4974,7 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
         let I0 = i;
         let R0 = r;
         let Him0 = him;
-        let pre = &m (*b)[Z ; i ; S r | LeAdd i (S r) | hd];
+        let pre = &m (*b)[Z ; i ; S r | LeAddRaw i (S r) | hd];
         let cell = &m (*b)[i ; 1 ; r];
         let hic = &m (*b)[S i ; r];
         let bb = &m (*cell)[0];
@@ -4982,115 +4982,115 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
         let B0 = *bb;
         let H0 = *hic;
         let HsfL = SFCatLo cap r B0 H0 i L0 Z Hsf;
-        let HsfM = NatRw (λ (W : Nat). SlotInv Cap0 W B0) (Add I0 Z) I0 (AddZero I0)
+        let HsfM = NatRwRaw (λ (W : Nat). SlotInv Cap0 W B0) (Add I0 Z) I0 (AddZeroRaw I0)
                      (SFCatMid cap r B0 H0 i L0 Z Hsf);
         let HsfH = SFCatHi cap r B0 H0 i L0 Z Hsf;
         let Hak0 = FstT (AllKeysMod cap i B0) (NodupB B0) HsfM;
         let Hnd0 = SndT (AllKeysMod cap i B0) (NodupB B0) HsfM;
         let Htot0 = TotalArrCat (S r) (acons r B0 H0) i L0;
-        let HlenB = LeRwR (LenE B0)
+        let HlenB = LeRwRRaw (LenE B0)
                       (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
                       (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
-                      (IdSym Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
+                      (IdSymRaw Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
                         (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0))) Htot0)
-                      (LeTrans (LenE B0) (Add (LenE B0) (TotalE r H0))
+                      (LeTransRaw (LenE B0) (Add (LenE B0) (TotalE r H0))
                         (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
-                        (LeAdd (LenE B0) (TotalE r H0))
-                        (LeAddL (Add (LenE B0) (TotalE r H0)) (TotalE i L0)));
-        let HfB = LeTrans (LenE B0)
+                        (LeAddRaw (LenE B0) (TotalE r H0))
+                        (LeAddLRaw (Add (LenE B0) (TotalE r H0)) (TotalE i L0)));
+        let HfB = LeTransRaw (LenE B0)
                     (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))) fuel
                     HlenB
-                    (LePredL (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))) fuel Hfl);
+                    (LePredLRaw (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))) fuel Hfl);
         let Pair(hit2, Pair(Hh2, Pair(Hpt2, Pair(Hln2, Pair(Hak3, Hnd3))))) =
           InsertInList(fuel, cap, i, key, val, &m *bb, HfB,
-            IdSym Nat i (Mod key cap) him, Hak0, Hnd0);
+            IdSymRaw Nat i (Mod key cap) him, Hak0, Hnd0);
         let B1 = *bb;
         let Hit0 = hit2;
         let Htot1 = TotalArrCat (S r) (acons r B1 H0) i L0;
         let Hpt = UpdPointwise i r key (SomeN val) L0 B0 B1 H0 him Hpt2;
-        let HsIz = NatRw (λ (W : Nat). SlotInv Cap0 W B1) I0 (Add I0 Z)
-                     (IdSym Nat (Add I0 Z) I0 (AddZero I0))
+        let HsIz = NatRwRaw (λ (W : Nat). SlotInv Cap0 W B1) I0 (Add I0 Z)
+                     (IdSymRaw Nat (Add I0 Z) I0 (AddZeroRaw I0))
                      (MkSlotInv cap i B1 Hak3 Hnd3);
         let H5x = SFCatGlue cap r B1 H0 i L0 Z HsfL HsIz HsfH;
-        let HhB = IdTrans Bool Hit0 (HitL Key0 B0)
+        let HhB = IdTransRaw Bool Hit0 (HitL Key0 B0)
                     (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
                       (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
                     Hh2
-                    (IdSym Bool
+                    (IdSymRaw Bool
                       (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
                         (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
                       (HitL Key0 B0)
-                      (NatRw (λ (W : Nat). Id Bool
+                      (NatRwRaw (λ (W : Nat). Id Bool
                           (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
                             (arrCat I0 (S R0) L0 (acons R0 B0 H0)) W)))
                           (HitL Key0 B0))
                         I0 (Mod Key0 Cap0) Him0
-                        (IdCongr (List (Σ (k : Nat). Nat)) Bool
+                        (IdCongrRaw (List (Σ (k : Nat). Nat)) Bool
                           (λ (W : List (Σ (k : Nat). Nat)). IsSomeB (FindL Key0 W))
                           (AgetB (Add I0 (S R0))
                             (arrCat I0 (S R0) L0 (acons R0 B0 H0)) I0) B0
                           (AgetBCatMid R0 B0 H0 I0 L0))));
         match e2 : hit2 {
           True => {
-            let HitB0 = IdTrans Bool (HitL Key0 B0) Hit0 True
-                          (IdSym Bool Hit0 (HitL Key0 B0) Hh2) e2;
-            let HlenEq = IdTrans Nat (LenE B1) (BLenIns Key0 B0) (LenE B0)
+            let HitB0 = IdTransRaw Bool (HitL Key0 B0) Hit0 True
+                          (IdSymRaw Bool Hit0 (HitL Key0 B0) Hh2) e2;
+            let HlenEq = IdTransRaw Nat (LenE B1) (BLenIns Key0 B0) (LenE B0)
                            Hln2
                            (BoolRwT Nat (LenE B0) (S (LenE B0)) (HitL Key0 B0) HitB0);
-            let HtotEq = IdTrans Nat (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
+            let HtotEq = IdTransRaw Nat (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
                            (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
                            (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
-                           (IdTrans Nat
+                           (IdTransRaw Nat
                              (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
                              (Add (TotalE i L0) (Add (LenE B1) (TotalE r H0)))
                              (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
                              Htot1
-                             (IdCongr Nat Nat
+                             (IdCongrRaw Nat Nat
                                (λ (W : Nat). Add (TotalE I0 L0) (Add W (TotalE R0 H0)))
                                (LenE B1) (LenE B0) HlenEq))
-                           (IdSym Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
+                           (IdSymRaw Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
                              (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0))) Htot0);
             Pair(True,
-              Pair(IdTrans Bool True Hit0
+              Pair(IdTransRaw Bool True Hit0
                      (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
                        (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
-                     (IdSym Bool Hit0 True e2) HhB,
+                     (IdSymRaw Bool Hit0 True e2) HhB,
               Pair(Hpt, Pair(HtotEq, H5x))))
           },
           False => {
-            let HitB0F = IdTrans Bool (HitL Key0 B0) Hit0 False
-                           (IdSym Bool Hit0 (HitL Key0 B0) Hh2) e2;
-            let HlenEqF = IdTrans Nat (LenE B1) (BLenIns Key0 B0) (S (LenE B0))
+            let HitB0F = IdTransRaw Bool (HitL Key0 B0) Hit0 False
+                           (IdSymRaw Bool Hit0 (HitL Key0 B0) Hh2) e2;
+            let HlenEqF = IdTransRaw Nat (LenE B1) (BLenIns Key0 B0) (S (LenE B0))
                             Hln2
                             (BoolRwF Nat (LenE B0) (S (LenE B0)) (HitL Key0 B0) HitB0F);
-            let HtotEqF = IdTrans Nat (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
+            let HtotEqF = IdTransRaw Nat (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
                             (Add (TotalE i L0) (S (Add (LenE B0) (TotalE r H0))))
                             (S (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))))
-                            (IdTrans Nat
+                            (IdTransRaw Nat
                               (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
                               (Add (TotalE i L0) (Add (LenE B1) (TotalE r H0)))
                               (Add (TotalE i L0) (S (Add (LenE B0) (TotalE r H0))))
                               Htot1
-                              (IdCongr Nat Nat
+                              (IdCongrRaw Nat Nat
                                 (λ (W : Nat). Add (TotalE I0 L0) (Add W (TotalE R0 H0)))
                                 (LenE B1) (S (LenE B0)) HlenEqF))
-                            (IdTrans Nat
+                            (IdTransRaw Nat
                               (Add (TotalE i L0) (S (Add (LenE B0) (TotalE r H0))))
                               (S (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0))))
                               (S (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))))
-                              (AddSucc (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
-                              (IdCongr Nat Nat (λ (W : Nat). S W)
+                              (AddSuccRaw (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
+                              (IdCongrRaw Nat Nat (λ (W : Nat). S W)
                                 (Add (TotalE I0 L0) (Add (LenE B0) (TotalE R0 H0)))
                                 (TotalE Cap0 (arrCat I0 (S R0) L0 (acons R0 B0 H0)))
-                                (IdSym Nat
+                                (IdSymRaw Nat
                                   (TotalE Cap0 (arrCat I0 (S R0) L0 (acons R0 B0 H0)))
                                   (Add (TotalE I0 L0) (Add (LenE B0) (TotalE R0 H0)))
                                   Htot0)));
             Pair(False,
-              Pair(IdTrans Bool False Hit0
+              Pair(IdTransRaw Bool False Hit0
                      (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
                        (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
-                     (IdSym Bool Hit0 False e2) HhB,
+                     (IdSymRaw Bool Hit0 False e2) HhB,
               Pair(Hpt, Pair(HtotEqF, H5x))))
           }
         }
@@ -5121,24 +5121,24 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
               let T0 = tl2;
               let C2 = cap2;
               let D0s = *dst;
-              let HfrK = Hfr K0 (IdSym Bool True (HitL K0 (Cons(Pair(K0, V0), T0)))
-                           (HitEvHit K0 V0 K0 T0 (EqbRefl K0)));
+              let HfrK = Hfr K0 (IdSymRaw Bool True (HitL K0 (Cons(Pair(K0, V0), T0)))
+                           (HitEvHit K0 V0 K0 T0 (EqbReflRaw K0)));
               let Pair(hit2, Pair(Hh2, Pair(Hpt2, Pair(Htot2, Hsf2)))) =
                 SlotUpd(tfuel, cap2, kk, vv, &m *dst, HLe1,
-                  LeTrans (S (TotalE cap2 D0s))
+                  LeTransRaw (S (TotalE cap2 D0s))
                     (S (Add (LenE (Cons(Pair(K0, V0), T0))) (TotalE cap2 D0s))) tfuel
-                    (LeAddL (TotalE cap2 D0s) (LenE (Cons(Pair(K0, V0), T0)))) Htf,
+                    (LeAddLRaw (TotalE cap2 D0s) (LenE (Cons(Pair(K0, V0), T0)))) Htf,
                   Hsf);
-              let Hh0 = IdTrans Bool hit2
+              let Hh0 = IdTransRaw Bool hit2
                           (IsSomeB (FindL K0 (AgetB C2 D0s (Mod K0 C2)))) False
                           Hh2
-                          (IdTrans Bool (IsSomeB (FindL K0 (AgetB C2 D0s (Mod K0 C2))))
+                          (IdTransRaw Bool (IsSomeB (FindL K0 (AgetB C2 D0s (Mod K0 C2))))
                             (IsSomeB NoneN) False
-                            (IdCongr OptN Bool IsSomeB
+                            (IdCongrRaw OptN Bool IsSomeB
                               (FindL K0 (AgetB C2 D0s (Mod K0 C2))) NoneN HfrK)
                             Refl);
               let D1s = *dst;
-              let Htot1 = IdTrans Nat (TotalE C2 D1s)
+              let Htot1 = IdTransRaw Nat (TotalE C2 D1s)
                             (boolRec (λ (W2 : Bool). Nat) (TotalE C2 D0s)
                               (S (TotalE C2 D0s)) hit2)
                             (S (TotalE C2 D0s))
@@ -5146,20 +5146,20 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
                             (BoolRwF Nat (TotalE C2 D0s) (S (TotalE C2 D0s)) hit2 Hh0);
               let Pair(HptR, Pair(HtotR, HsfR)) =
                 MoveBkt(f2, tfuel, cap2, tl2, &m *dst, HLe1, Hdep,
-                  LeRwL tfuel
+                  LeRwLRaw tfuel
                     (S (S (Add (LenE T0) (TotalE C2 D0s))))
                     (S (Add (LenE T0) (TotalE C2 D1s)))
-                    (IdSym Nat (S (Add (LenE T0) (TotalE C2 D1s)))
+                    (IdSymRaw Nat (S (Add (LenE T0) (TotalE C2 D1s)))
                       (S (S (Add (LenE T0) (TotalE C2 D0s))))
-                      (IdCongr Nat Nat (λ (W : Nat). S W)
+                      (IdCongrRaw Nat Nat (λ (W : Nat). S W)
                         (Add (LenE T0) (TotalE C2 D1s))
                         (S (Add (LenE T0) (TotalE C2 D0s)))
-                        (IdTrans Nat (Add (LenE T0) (TotalE C2 D1s))
+                        (IdTransRaw Nat (Add (LenE T0) (TotalE C2 D1s))
                           (Add (LenE T0) (S (TotalE C2 D0s)))
                           (S (Add (LenE T0) (TotalE C2 D0s)))
-                          (IdCongr Nat Nat (λ (W : Nat). Add (LenE T0) W)
+                          (IdCongrRaw Nat Nat (λ (W : Nat). Add (LenE T0) W)
                             (TotalE C2 D1s) (S (TotalE C2 D0s)) Htot1)
-                          (AddSucc (LenE T0) (TotalE C2 D0s)))))
+                          (AddSuccRaw (LenE T0) (TotalE C2 D0s)))))
                     Htf,
                   Hsf2,
                   SndT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd,
@@ -5172,16 +5172,16 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
                      (λ (Qz : Nat). FindL Qz (AgetB C2 D2s (Mod Qz C2)))
                      (FstT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd)
                      Hpt2 HptR,
-                Pair(IdTrans Nat (TotalE C2 D2s)
+                Pair(IdTransRaw Nat (TotalE C2 D2s)
                        (Add (LenE T0) (TotalE C2 D1s))
                        (Add (LenE (Cons(Pair(K0, V0), T0))) (TotalE C2 D0s))
                        HtotR
-                       (IdTrans Nat (Add (LenE T0) (TotalE C2 D1s))
+                       (IdTransRaw Nat (Add (LenE T0) (TotalE C2 D1s))
                          (Add (LenE T0) (S (TotalE C2 D0s)))
                          (Add (LenE (Cons(Pair(K0, V0), T0))) (TotalE C2 D0s))
-                         (IdCongr Nat Nat (λ (W : Nat). Add (LenE T0) W)
+                         (IdCongrRaw Nat Nat (λ (W : Nat). Add (LenE T0) W)
                            (TotalE C2 D1s) (S (TotalE C2 D0s)) Htot1)
-                         (AddSucc (LenE T0) (TotalE C2 D0s))),
+                         (AddSuccRaw (LenE T0) (TotalE C2 D0s))),
                      HsfR))
             } }
         } };
@@ -5214,7 +5214,7 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
         let C2 = cap2;
         let J0 = j;
         let M2 = m2;
-        let pre = &m (*src)[Z ; j ; S m2 | LeAdd j (S m2) | Hj];
+        let pre = &m (*src)[Z ; j ; S m2 | LeAddRaw j (S m2) | Hj];
         let cell = &m (*src)[j ; 1 ; m2];
         let hic = &m (*src)[S j ; m2];
         let bbs = &m (*cell)[0];
@@ -5222,42 +5222,42 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
         let BJ0 = *bbs;
         let HS0 = *hic;
         let HsfLs = SFCatLo capF m2 BJ0 HS0 j LS0 Z HsfS;
-        let HsfMs = NatRw (λ (W : Nat). SlotInv CF W BJ0) (Add J0 Z) J0 (AddZero J0)
+        let HsfMs = NatRwRaw (λ (W : Nat). SlotInv CF W BJ0) (Add J0 Z) J0 (AddZeroRaw J0)
                       (SFCatMid capF m2 BJ0 HS0 j LS0 Z HsfS);
         let HsfHs = SFCatHi capF m2 BJ0 HS0 j LS0 Z HsfS;
         let HakJ = FstT (AllKeysMod capF j BJ0) (NodupB BJ0) HsfMs;
         let HndJ = SndT (AllKeysMod capF j BJ0) (NodupB BJ0) HsfMs;
         let Htot0s = TotalArrCat (S m2) (acons m2 BJ0 HS0) j LS0;
         let D0d = *dst;
-        let HlenBj = LeRwR (LenE BJ0)
+        let HlenBj = LeRwRRaw (LenE BJ0)
                        (Add (TotalE j LS0) (Add (LenE BJ0) (TotalE m2 HS0)))
                        (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
-                       (IdSym Nat
+                       (IdSymRaw Nat
                          (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
                          (Add (TotalE j LS0) (Add (LenE BJ0) (TotalE m2 HS0)))
                          Htot0s)
-                       (LeTrans (LenE BJ0) (Add (LenE BJ0) (TotalE m2 HS0))
+                       (LeTransRaw (LenE BJ0) (Add (LenE BJ0) (TotalE m2 HS0))
                          (Add (TotalE j LS0) (Add (LenE BJ0) (TotalE m2 HS0)))
-                         (LeAdd (LenE BJ0) (TotalE m2 HS0))
-                         (LeAddL (Add (LenE BJ0) (TotalE m2 HS0)) (TotalE j LS0)));
+                         (LeAddRaw (LenE BJ0) (TotalE m2 HS0))
+                         (LeAddLRaw (Add (LenE BJ0) (TotalE m2 HS0)) (TotalE j LS0)));
         let bl = *bbs;
         *bbs := Nil;
         let Pair(HptB, Pair(HtotB, HsfD1)) =
           MoveBkt(tfuel, tfuel, cap2, bl, &m *dst, HLe1,
-            LeTrans (LenE BJ0)
+            LeTransRaw (LenE BJ0)
               (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0))) tfuel
               HlenBj
-              (LePredL (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0))) tfuel
-                (LeTrans (S (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0))))
+              (LePredLRaw (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0))) tfuel
+                (LeTransRaw (S (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0))))
                   (S (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
                     (TotalE cap2 D0d))) tfuel
-                  (LeAdd (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
+                  (LeAddRaw (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
                     (TotalE cap2 D0d))
                   Htf)),
-            LeTrans (S (Add (LenE BJ0) (TotalE cap2 D0d)))
+            LeTransRaw (S (Add (LenE BJ0) (TotalE cap2 D0d)))
               (S (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
                 (TotalE cap2 D0d))) tfuel
-              (LeAddMonoR (LenE BJ0)
+              (LeAddMonoRRaw (LenE BJ0)
                 (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
                 (TotalE cap2 D0d) HlenBj)
               Htf,
@@ -5265,71 +5265,71 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
             MoveSlotsFresh j m2 cap2 LS0 BJ0 HS0 D0d HakJ Hdisj);
         let D1d = *dst;
         let HsfS1 = SFCatGlue capF m2 Nil HS0 j LS0 Z HsfLs
-                      (NatRw (λ (W : Nat). SlotInv CF W Nil) J0 (Add J0 Z)
-                        (IdSym Nat (Add J0 Z) J0 (AddZero J0))
+                      (NatRwRaw (λ (W : Nat). SlotInv CF W Nil) J0 (Add J0 Z)
+                        (IdSymRaw Nat (Add J0 Z) J0 (AddZeroRaw J0))
                         (MkSlotInv capF j Nil unit unit))
                       HsfHs;
-        let HsumStep = IdTrans Nat
+        let HsumStep = IdTransRaw Nat
             (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 Nil HS0)))
               (TotalE cap2 D1d))
             (Add (Add (TotalE j LS0) (TotalE m2 HS0))
               (Add (LenE BJ0) (TotalE cap2 D0d)))
             (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
               (TotalE cap2 D0d))
-            (IdTrans Nat
+            (IdTransRaw Nat
               (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 Nil HS0)))
                 (TotalE cap2 D1d))
               (Add (Add (TotalE j LS0) (TotalE m2 HS0)) (TotalE cap2 D1d))
               (Add (Add (TotalE j LS0) (TotalE m2 HS0))
                 (Add (LenE BJ0) (TotalE cap2 D0d)))
-              (IdCongr Nat Nat
+              (IdCongrRaw Nat Nat
                 (λ (W : Nat). Add W (TotalE C2 D1d))
                 (TotalE capF (arrCat j (S m2) LS0 (acons m2 Nil HS0)))
                 (Add (TotalE j LS0) (TotalE m2 HS0))
                 (TotalArrCat (S m2) (acons m2 Nil HS0) j LS0))
-              (IdCongr Nat Nat
+              (IdCongrRaw Nat Nat
                 (λ (W : Nat). Add (Add (TotalE J0 LS0) (TotalE M2 HS0)) W)
                 (TotalE cap2 D1d)
                 (Add (LenE BJ0) (TotalE cap2 D0d))
                 HtotB))
-            (IdTrans Nat
+            (IdTransRaw Nat
               (Add (Add (TotalE j LS0) (TotalE m2 HS0))
                 (Add (LenE BJ0) (TotalE cap2 D0d)))
               (Add (Add (TotalE j LS0) (LenE BJ0))
                 (Add (TotalE m2 HS0) (TotalE cap2 D0d)))
               (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
                 (TotalE cap2 D0d))
-              (AddInterchange (TotalE j LS0) (TotalE m2 HS0) (LenE BJ0)
+              (AddInterchangeRaw (TotalE j LS0) (TotalE m2 HS0) (LenE BJ0)
                 (TotalE cap2 D0d))
-              (IdTrans Nat
+              (IdTransRaw Nat
                 (Add (Add (TotalE j LS0) (LenE BJ0))
                   (Add (TotalE m2 HS0) (TotalE cap2 D0d)))
                 (Add (Add (Add (TotalE j LS0) (LenE BJ0)) (TotalE m2 HS0))
                   (TotalE cap2 D0d))
                 (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
                   (TotalE cap2 D0d))
-                (IdSym Nat
+                (IdSymRaw Nat
                   (Add (Add (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0))
                     (TotalE C2 D0d))
                   (Add (Add (TotalE J0 LS0) (LenE BJ0))
                     (Add (TotalE M2 HS0) (TotalE C2 D0d)))
-                  (AddAssoc (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0)
+                  (AddAssocRaw (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0)
                     (TotalE C2 D0d)))
-                (IdTrans Nat
+                (IdTransRaw Nat
                   (Add (Add (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0))
                     (TotalE C2 D0d))
                   (Add (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
                     (TotalE C2 D0d))
                   (Add (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)))
                     (TotalE C2 D0d))
-                  (IdCongr Nat Nat (λ (W : Nat). Add W (TotalE C2 D0d))
+                  (IdCongrRaw Nat Nat (λ (W : Nat). Add W (TotalE C2 D0d))
                     (Add (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0))
                     (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
-                    (AddAssoc (TotalE J0 LS0) (LenE BJ0) (TotalE M2 HS0)))
-                  (IdCongr Nat Nat (λ (W : Nat). Add W (TotalE C2 D0d))
+                    (AddAssocRaw (TotalE J0 LS0) (LenE BJ0) (TotalE M2 HS0)))
+                  (IdCongrRaw Nat Nat (λ (W : Nat). Add W (TotalE C2 D0d))
                     (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
                     (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)))
-                    (IdSym Nat
+                    (IdSymRaw Nat
                       (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)))
                       (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
                       Htot0s)))));
@@ -5337,7 +5337,7 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
                (AgetB (Add J0 (S M2)) (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)) J0)
                (λ (Qz : Nat). FindL Qz (AgetB C2 D0d (Mod Qz C2)))
                (λ (Qz : Nat). FindL Qz (AgetB C2 D1d (Mod Qz C2)))
-               (IdSym (List (Σ (k : Nat). Nat))
+               (IdSymRaw (List (Σ (k : Nat). Nat))
                  (AgetB (Add J0 (S M2)) (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)) J0)
                  BJ0
                  (AgetBCatMid M2 BJ0 HS0 J0 LS0))
@@ -5379,7 +5379,7 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
             let C2 = cap2;
             let Dd = *dst;
             let Sd = *src;
-            let Hjz = IdTrans Nat CF (Add J0 Z) J0 Hj (AddZero J0);
+            let Hjz = IdTransRaw Nat CF (Add J0 Z) J0 Hj (AddZeroRaw J0);
             Pair(MoveBasePt CF J0 C2 Sd Dd HLe1F Hjz HsrcLo,
               Pair(MoveBaseNil CF J0 Sd Hjz HsrcLo,
                 Pair(Refl, HsfD)))
@@ -5391,12 +5391,12 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
             let M2 = m2;
             let S0d = *src;
             let D0d = *dst;
-            let HinvJ = NatRw (λ (W : Nat). SlotInv CF W (AgetB CF S0d J0))
-                          (Add J0 Z) J0 (AddZero J0)
+            let HinvJ = NatRwRaw (λ (W : Nat). SlotInv CF W (AgetB CF S0d J0))
+                          (Add J0 Z) J0 (AddZeroRaw J0)
                           (SFAgetInv capF capF S0d Z HsfS j
-                            (LeRwR (S j) (Add j (S m2)) capF
-                              (IdSym Nat capF (Add j (S m2)) Hj)
-                              (LeAddSucc j m2)));
+                            (LeRwRRaw (S j) (Add j (S m2)) capF
+                              (IdSymRaw Nat capF (Add j (S m2)) Hj)
+                              (LeAddSuccRaw j m2)));
             let HakJ = FstT (AllKeysMod CF J0 (AgetB CF S0d J0))
                          (NodupB (AgetB CF S0d J0)) HinvJ;
             let Pair(HptO, Pair(HnilO, Pair(HfrmO, Pair(HtotO, Pair(HsfSO, HsfDO))))) =
@@ -5411,15 +5411,15 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
             let HnilR = MoveLevelNil CF J0 S0d SMd HnilO HfrmO HsrcLo;
             let Pair(HptR, Pair(HsrcFR, Pair(HtotR, HsfD2))) =
               MoveSlots(m2, S j, tfuel, capF, cap2,
-                IdTrans Nat capF (Add j (S m2)) (S (Add j m2)) Hj (AddSucc j m2),
+                IdTransRaw Nat capF (Add j (S m2)) (S (Add j m2)) Hj (AddSuccRaw j m2),
                 &m *src, &m *dst, HLe1, HLe1F,
-                LeRwL tfuel
+                LeRwLRaw tfuel
                   (S (Add (TotalE CF S0d) (TotalE C2 D0d)))
                   (S (Add (TotalE CF SMd) (TotalE C2 D1d)))
-                  (IdSym Nat
+                  (IdSymRaw Nat
                     (S (Add (TotalE CF SMd) (TotalE C2 D1d)))
                     (S (Add (TotalE CF S0d) (TotalE C2 D0d)))
-                    (IdCongr Nat Nat (λ (W : Nat). S W)
+                    (IdCongrRaw Nat Nat (λ (W : Nat). S W)
                       (Add (TotalE CF SMd) (TotalE C2 D1d))
                       (Add (TotalE CF S0d) (TotalE C2 D0d))
                       HtotO))
@@ -5432,7 +5432,7 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
                    (λ (Qz : Nat). FindL Qz (AgetB C2 D2d (Mod Qz C2)))
                    HakJ HnilO HfrmO HptO HptR,
               Pair(HsrcFR,
-                Pair(IdTrans Nat
+                Pair(IdTransRaw Nat
                        (Add (TotalE CF (*src)) (TotalE C2 D2d))
                        (Add (TotalE CF SMd) (TotalE C2 D1d))
                        (Add (TotalE CF S0d) (TotalE C2 D0d))
@@ -5459,18 +5459,18 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
         let sb = &m slots;
         let Pair(hit2, Pair(Hh2, Pair(Hpt2, Pair(Htot2, Hsf2)))) =
           SlotUpd(fuel, cap, key, val, &m *sb, HLe1,
-            LeRwL fuel (S nn) (S (TotalE Cap0 SL0))
-              (IdCongr Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
-              (LePredL (S nn) fuel Hfuel),
+            LeRwLRaw fuel (S nn) (S (TotalE Cap0 SL0))
+              (IdCongrRaw Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
+              (LePredLRaw (S nn) fuel Hfuel),
             HSf);
         let SL1 = *sb;
         let Hit0 = hit2;
         match e2 : hit2 {
           True => {
-            let H4x = IdTrans Nat nn (TotalE Cap0 SL0) (TotalE Cap0 SL1)
+            let H4x = IdTransRaw Nat nn (TotalE Cap0 SL0) (TotalE Cap0 SL1)
                         HCnt
-                        (IdSym Nat (TotalE Cap0 SL1) (TotalE Cap0 SL0)
-                          (IdTrans Nat (TotalE Cap0 SL1)
+                        (IdSymRaw Nat (TotalE Cap0 SL1) (TotalE Cap0 SL0)
+                          (IdTransRaw Nat (TotalE Cap0 SL1)
                             (boolRec (λ (W2 : Bool). Nat) (TotalE Cap0 SL0)
                               (S (TotalE Cap0 SL0)) Hit0)
                             (TotalE Cap0 SL0)
@@ -5480,24 +5480,24 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
             *self := Pair(cap, Pair(load, Pair(nn, Pair(slots,
               MkInv cap load nn SL1 HLe1 HLoad HLed H4x Hsf2))));
             Pair(Hpt2,
-              IdSym Nat
+              IdSymRaw Nat
                 (boolRec (λ (W2 : Bool). Nat) nn (S nn)
                   (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
                 nn
                 (BoolRwT Nat nn (S nn)
                   (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                  (IdTrans Bool
+                  (IdTransRaw Bool
                     (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
                     Hit0 True
-                    (IdSym Bool Hit0
+                    (IdSymRaw Bool Hit0
                       (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))) Hh2)
                     e2)))
           },
           False => {
-            let H4y = IdTrans Nat (S nn) (S (TotalE Cap0 SL0)) (TotalE Cap0 SL1)
-                        (IdCongr Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
-                        (IdSym Nat (TotalE Cap0 SL1) (S (TotalE Cap0 SL0))
-                          (IdTrans Nat (TotalE Cap0 SL1)
+            let H4y = IdTransRaw Nat (S nn) (S (TotalE Cap0 SL0)) (TotalE Cap0 SL1)
+                        (IdCongrRaw Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
+                        (IdSymRaw Nat (TotalE Cap0 SL1) (S (TotalE Cap0 SL0))
+                          (IdTransRaw Nat (TotalE Cap0 SL1)
                             (boolRec (λ (W2 : Bool). Nat) (TotalE Cap0 SL0)
                               (S (TotalE Cap0 SL0)) Hit0)
                             (S (TotalE Cap0 SL0))
@@ -5507,18 +5507,18 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
             if e4 : Leb (Mul 5 (S nn)) load {
               *self := Pair(cap, Pair(load, Pair(nn, Pair(slots,
                 MkInv cap load nn SL1 HLe1 HLoad
-                  (LebTrueLe (Mul 5 (S nn)) load e4) H4y Hsf2))));
+                  (LebTrueLeRaw (Mul 5 (S nn)) load e4) H4y Hsf2))));
               Pair(Hpt2,
-                IdSym Nat
+                IdSymRaw Nat
                   (boolRec (λ (W2 : Bool). Nat) nn (S nn)
                     (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
                   (S nn)
                   (BoolRwF Nat nn (S nn)
                     (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                    (IdTrans Bool
+                    (IdTransRaw Bool
                       (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
                       Hit0 False
-                      (IdSym Bool Hit0
+                      (IdSymRaw Bool Hit0
                         (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))) Hh2)
                       e2)))
             } else {
@@ -5530,33 +5530,33 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
               let HdisjB = (λ (K2 : Nat).
                     λ (Hs : Id Bool (IsSomeB (FindL K2
                         (AgetB Cap0 SL1 (Mod K2 Cap0)))) True).
-                      IdCongr (List (Σ (k : Nat). Nat)) OptN
+                      IdCongrRaw (List (Σ (k : Nat). Nat)) OptN
                         (λ (Wb : List (Σ (k : Nat). Nat)). FindL K2 Wb)
                         (AgetB C2b DN0 (Mod K2 C2b)) Nil
                         (AgetBMkSlots C2b (Mod K2 C2b))
 );
               let HnilB = (λ (J2 : Nat). λ (Hb : Id Bool (Leb (S J2) Z) True).
                       botElim (Id (List (Σ (k : Nat). Nat))
-                        (AgetB Cap0 SL1 J2) Nil) (BoolFT Hb)
+                        (AgetB Cap0 SL1 J2) Nil) (BoolFTRaw Hb)
 );
               let Pair(HptM, Pair(HsrcFM, Pair(HtotM, HsfM))) =
                 MoveSlots(cap, Z, fuel, cap, Mul 2 cap, Refl, &m *sb, &m *db,
                   Le1Mul2 cap HLe1, HLe1,
-                  LeRwL fuel (S (S nn))
+                  LeRwLRaw fuel (S (S nn))
                     (S (Add (TotalE Cap0 SL1) (TotalE C2b DN0)))
-                    (IdSym Nat (S (Add (TotalE Cap0 SL1) (TotalE C2b DN0)))
+                    (IdSymRaw Nat (S (Add (TotalE Cap0 SL1) (TotalE C2b DN0)))
                       (S (S nn))
-                      (IdCongr Nat Nat (λ (W : Nat). S W)
+                      (IdCongrRaw Nat Nat (λ (W : Nat). S W)
                         (Add (TotalE Cap0 SL1) (TotalE C2b DN0)) (S nn)
-                        (IdTrans Nat (Add (TotalE Cap0 SL1) (TotalE C2b DN0))
+                        (IdTransRaw Nat (Add (TotalE Cap0 SL1) (TotalE C2b DN0))
                           (Add (TotalE Cap0 SL1) Z) (S nn)
-                          (IdCongr Nat Nat
+                          (IdCongrRaw Nat Nat
                             (λ (W : Nat). Add (TotalE Cap0 SL1) W)
                             (TotalE C2b DN0) Z (TotalMkSlots C2b))
-                          (IdTrans Nat (Add (TotalE Cap0 SL1) Z)
+                          (IdTransRaw Nat (Add (TotalE Cap0 SL1) Z)
                             (TotalE Cap0 SL1) (S nn)
-                            (AddZero (TotalE Cap0 SL1))
-                            (IdSym Nat (S nn) (TotalE Cap0 SL1) H4y)))))
+                            (AddZeroRaw (TotalE Cap0 SL1))
+                            (IdSymRaw Nat (S nn) (TotalE Cap0 SL1) H4y)))))
                     Hfuel,
                   Hsf2,
                   SFMkSlots (Mul 2 cap) (Mul 2 cap) Z, HdisjB, HnilB);
@@ -5566,33 +5566,33 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
                 MkInv (Mul 2 cap) (Mul 4 (Mul 2 cap)) (S nn) SL2
                   (Le1Mul2 cap HLe1)
                   Refl
-                  (LedgerGrow cap nn HLe1
-                    (LeRwR (Mul 5 nn) load (Mul 4 cap) HLoad HLed))
-                  (IdTrans Nat (S nn) (TotalE Cap0 SL1) (TotalE C2b SL2)
+                  (LedgerGrowRaw cap nn HLe1
+                    (LeRwRRaw (Mul 5 nn) load (Mul 4 cap) HLoad HLed))
+                  (IdTransRaw Nat (S nn) (TotalE Cap0 SL1) (TotalE C2b SL2)
                     H4y
-                    (IdSym Nat (TotalE C2b SL2) (TotalE Cap0 SL1)
-                      (IdTrans Nat (TotalE C2b SL2)
+                    (IdSymRaw Nat (TotalE C2b SL2) (TotalE Cap0 SL1)
+                      (IdTransRaw Nat (TotalE C2b SL2)
                         (Add (TotalE Cap0 SL1b) (TotalE C2b SL2))
                         (TotalE Cap0 SL1)
-                        (IdSym Nat
+                        (IdSymRaw Nat
                           (Add (TotalE Cap0 SL1b) (TotalE C2b SL2))
                           (TotalE C2b SL2)
-                          (IdCongr Nat Nat (λ (W : Nat). Add W (TotalE C2b SL2))
+                          (IdCongrRaw Nat Nat (λ (W : Nat). Add W (TotalE C2b SL2))
                             (TotalE Cap0 SL1b) Z
                             (TotalNilAll Cap0 SL1b HsrcFM)))
-                        (IdTrans Nat
+                        (IdTransRaw Nat
                           (Add (TotalE Cap0 SL1b) (TotalE C2b SL2))
                           (Add (TotalE Cap0 SL1) (TotalE C2b DN0))
                           (TotalE Cap0 SL1)
                           HtotM
-                          (IdTrans Nat
+                          (IdTransRaw Nat
                             (Add (TotalE Cap0 SL1) (TotalE C2b DN0))
                             (Add (TotalE Cap0 SL1) Z)
                             (TotalE Cap0 SL1)
-                            (IdCongr Nat Nat
+                            (IdCongrRaw Nat Nat
                               (λ (W : Nat). Add (TotalE Cap0 SL1) W)
                               (TotalE C2b DN0) Z (TotalMkSlots C2b))
-                            (AddZero (TotalE Cap0 SL1)))))))
+                            (AddZeroRaw (TotalE Cap0 SL1)))))))
                   HsfM))));
               Pair(ResizeGlue
                      (λ (Qz : Nat). boolRec (λ (W2 : Bool). OptN) (SomeN Val0)
@@ -5601,7 +5601,7 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
                      (λ (Qz : Nat). FindL Qz (AgetB C2b SL2 (Mod Qz C2b)))
                      (λ (Qz : Nat). FindL Qz (AgetB C2b DN0 (Mod Qz C2b)))
                      (λ (Qz : Nat).
-                       IdCongr (List (Σ (k : Nat). Nat)) OptN
+                       IdCongrRaw (List (Σ (k : Nat). Nat)) OptN
                          (λ (Wb : List (Σ (k : Nat). Nat)). FindL Qz Wb)
                          (AgetB C2b DN0 (Mod Qz C2b)) Nil
                          (AgetBMkSlots C2b (Mod Qz C2b)))
@@ -5611,7 +5611,7 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
                            (SomeN Val0)
                            (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                            (Eqb Qz Key0))) False).
-                         IfDec (Eqb Qz Key0)
+                         IfDecRaw (Eqb Qz Key0)
                            (Id OptN (boolRec (λ (W2 : Bool). OptN) (SomeN Val0)
                              (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                              (Eqb Qz Key0)) NoneN)
@@ -5620,19 +5620,19 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
                                  (SomeN Val0)
                                  (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                  (Eqb Qz Key0)) NoneN)
-                               (BoolTF (IdTrans Bool True
+                               (BoolTFRaw (IdTransRaw Bool True
                                  (IsSomeB (boolRec (λ (W2 : Bool). OptN)
                                    (SomeN Val0)
                                    (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                    (Eqb Qz Key0)))
                                  False
-                                 (IdSym Bool
+                                 (IdSymRaw Bool
                                    (IsSomeB (boolRec (λ (W2 : Bool). OptN)
                                      (SomeN Val0)
                                      (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                      (Eqb Qz Key0)))
                                    True
-                                   (IdCongr OptN Bool IsSomeB
+                                   (IdCongrRaw OptN Bool IsSomeB
                                      (boolRec (λ (W2 : Bool). OptN) (SomeN Val0)
                                        (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                        (Eqb Qz Key0))
@@ -5642,7 +5642,7 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
                                        (Eqb Qz Key0) E5)))
                                  Ee)))
                            (λ (E5 : Id Bool (Eqb Qz Key0) False).
-                             IdTrans OptN
+                             IdTransRaw OptN
                                (boolRec (λ (W2 : Bool). OptN) (SomeN Val0)
                                  (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                  (Eqb Qz Key0))
@@ -5652,19 +5652,19 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
                                  (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                  (Eqb Qz Key0) E5)
                                (NotHitFindNone Qz (AgetB Cap0 SL0 (Mod Qz Cap0))
-                                 (IdTrans Bool
+                                 (IdTransRaw Bool
                                    (IsSomeB (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0))))
                                    (IsSomeB (boolRec (λ (W2 : Bool). OptN)
                                      (SomeN Val0)
                                      (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                      (Eqb Qz Key0)))
                                    False
-                                   (IdCongr OptN Bool IsSomeB
+                                   (IdCongrRaw OptN Bool IsSomeB
                                      (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                      (boolRec (λ (W2 : Bool). OptN) (SomeN Val0)
                                        (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                        (Eqb Qz Key0))
-                                     (IdSym OptN
+                                     (IdSymRaw OptN
                                        (boolRec (λ (W2 : Bool). OptN) (SomeN Val0)
                                          (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                          (Eqb Qz Key0))
@@ -5673,16 +5673,16 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
                                          (FindL Qz (AgetB Cap0 SL0 (Mod Qz Cap0)))
                                          (Eqb Qz Key0) E5)))
                                    Ee)))),
-                IdSym Nat
+                IdSymRaw Nat
                   (boolRec (λ (W2 : Bool). Nat) nn (S nn)
                     (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
                   (S nn)
                   (BoolRwF Nat nn (S nn)
                     (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                    (IdTrans Bool
+                    (IdTransRaw Bool
                       (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
                       Hit0 False
-                      (IdSym Bool Hit0
+                      (IdSymRaw Bool Hit0
                         (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))) Hh2)
                       e2)))
             }
@@ -5695,7 +5695,7 @@ example : progOk (twinNoBumpUnder insRetHonest) = false := by native_decide
 /-- Body twin: skip the resize — the ledger-tripped path packs at the old
     capacity anyway, transcribing the no-resize arm into the else-arm. Caught
     by the packed load ledger: the branch equation says the threshold test
-    came out False, so its LebTrueLe citation cannot type. -/
+    came out False, so its LebTrueLeRaw citation cannot type. -/
 def twinNoResizeUnder (iret : Term) : Term := prog{
   fn InsertInList [fuel] (fuel : Nat, cap : Nat, islot : Nat, key : Nat, val : Nat,
                           b : &mut (List (Σ (k : Nat). Nat)),
@@ -5766,7 +5766,7 @@ def twinNoResizeUnder (iret : Term) : Term := prog{
         let I0 = i;
         let R0 = r;
         let Him0 = him;
-        let pre = &m (*b)[Z ; i ; S r | LeAdd i (S r) | hd];
+        let pre = &m (*b)[Z ; i ; S r | LeAddRaw i (S r) | hd];
         let cell = &m (*b)[i ; 1 ; r];
         let hic = &m (*b)[S i ; r];
         let bb = &m (*cell)[0];
@@ -5774,115 +5774,115 @@ def twinNoResizeUnder (iret : Term) : Term := prog{
         let B0 = *bb;
         let H0 = *hic;
         let HsfL = SFCatLo cap r B0 H0 i L0 Z Hsf;
-        let HsfM = NatRw (λ (W : Nat). SlotInv Cap0 W B0) (Add I0 Z) I0 (AddZero I0)
+        let HsfM = NatRwRaw (λ (W : Nat). SlotInv Cap0 W B0) (Add I0 Z) I0 (AddZeroRaw I0)
                      (SFCatMid cap r B0 H0 i L0 Z Hsf);
         let HsfH = SFCatHi cap r B0 H0 i L0 Z Hsf;
         let Hak0 = FstT (AllKeysMod cap i B0) (NodupB B0) HsfM;
         let Hnd0 = SndT (AllKeysMod cap i B0) (NodupB B0) HsfM;
         let Htot0 = TotalArrCat (S r) (acons r B0 H0) i L0;
-        let HlenB = LeRwR (LenE B0)
+        let HlenB = LeRwRRaw (LenE B0)
                       (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
                       (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
-                      (IdSym Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
+                      (IdSymRaw Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
                         (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0))) Htot0)
-                      (LeTrans (LenE B0) (Add (LenE B0) (TotalE r H0))
+                      (LeTransRaw (LenE B0) (Add (LenE B0) (TotalE r H0))
                         (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
-                        (LeAdd (LenE B0) (TotalE r H0))
-                        (LeAddL (Add (LenE B0) (TotalE r H0)) (TotalE i L0)));
-        let HfB = LeTrans (LenE B0)
+                        (LeAddRaw (LenE B0) (TotalE r H0))
+                        (LeAddLRaw (Add (LenE B0) (TotalE r H0)) (TotalE i L0)));
+        let HfB = LeTransRaw (LenE B0)
                     (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))) fuel
                     HlenB
-                    (LePredL (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))) fuel Hfl);
+                    (LePredLRaw (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))) fuel Hfl);
         let Pair(hit2, Pair(Hh2, Pair(Hpt2, Pair(Hln2, Pair(Hak3, Hnd3))))) =
           InsertInList(fuel, cap, i, key, val, &m *bb, HfB,
-            IdSym Nat i (Mod key cap) him, Hak0, Hnd0);
+            IdSymRaw Nat i (Mod key cap) him, Hak0, Hnd0);
         let B1 = *bb;
         let Hit0 = hit2;
         let Htot1 = TotalArrCat (S r) (acons r B1 H0) i L0;
         let Hpt = UpdPointwise i r key (SomeN val) L0 B0 B1 H0 him Hpt2;
-        let HsIz = NatRw (λ (W : Nat). SlotInv Cap0 W B1) I0 (Add I0 Z)
-                     (IdSym Nat (Add I0 Z) I0 (AddZero I0))
+        let HsIz = NatRwRaw (λ (W : Nat). SlotInv Cap0 W B1) I0 (Add I0 Z)
+                     (IdSymRaw Nat (Add I0 Z) I0 (AddZeroRaw I0))
                      (MkSlotInv cap i B1 Hak3 Hnd3);
         let H5x = SFCatGlue cap r B1 H0 i L0 Z HsfL HsIz HsfH;
-        let HhB = IdTrans Bool Hit0 (HitL Key0 B0)
+        let HhB = IdTransRaw Bool Hit0 (HitL Key0 B0)
                     (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
                       (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
                     Hh2
-                    (IdSym Bool
+                    (IdSymRaw Bool
                       (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
                         (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
                       (HitL Key0 B0)
-                      (NatRw (λ (W : Nat). Id Bool
+                      (NatRwRaw (λ (W : Nat). Id Bool
                           (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
                             (arrCat I0 (S R0) L0 (acons R0 B0 H0)) W)))
                           (HitL Key0 B0))
                         I0 (Mod Key0 Cap0) Him0
-                        (IdCongr (List (Σ (k : Nat). Nat)) Bool
+                        (IdCongrRaw (List (Σ (k : Nat). Nat)) Bool
                           (λ (W : List (Σ (k : Nat). Nat)). IsSomeB (FindL Key0 W))
                           (AgetB (Add I0 (S R0))
                             (arrCat I0 (S R0) L0 (acons R0 B0 H0)) I0) B0
                           (AgetBCatMid R0 B0 H0 I0 L0))));
         match e2 : hit2 {
           True => {
-            let HitB0 = IdTrans Bool (HitL Key0 B0) Hit0 True
-                          (IdSym Bool Hit0 (HitL Key0 B0) Hh2) e2;
-            let HlenEq = IdTrans Nat (LenE B1) (BLenIns Key0 B0) (LenE B0)
+            let HitB0 = IdTransRaw Bool (HitL Key0 B0) Hit0 True
+                          (IdSymRaw Bool Hit0 (HitL Key0 B0) Hh2) e2;
+            let HlenEq = IdTransRaw Nat (LenE B1) (BLenIns Key0 B0) (LenE B0)
                            Hln2
                            (BoolRwT Nat (LenE B0) (S (LenE B0)) (HitL Key0 B0) HitB0);
-            let HtotEq = IdTrans Nat (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
+            let HtotEq = IdTransRaw Nat (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
                            (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
                            (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
-                           (IdTrans Nat
+                           (IdTransRaw Nat
                              (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
                              (Add (TotalE i L0) (Add (LenE B1) (TotalE r H0)))
                              (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
                              Htot1
-                             (IdCongr Nat Nat
+                             (IdCongrRaw Nat Nat
                                (λ (W : Nat). Add (TotalE I0 L0) (Add W (TotalE R0 H0)))
                                (LenE B1) (LenE B0) HlenEq))
-                           (IdSym Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
+                           (IdSymRaw Nat (TotalE cap (arrCat i (S r) L0 (acons r B0 H0)))
                              (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0))) Htot0);
             Pair(True,
-              Pair(IdTrans Bool True Hit0
+              Pair(IdTransRaw Bool True Hit0
                      (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
                        (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
-                     (IdSym Bool Hit0 True e2) HhB,
+                     (IdSymRaw Bool Hit0 True e2) HhB,
               Pair(Hpt, Pair(HtotEq, H5x))))
           },
           False => {
-            let HitB0F = IdTrans Bool (HitL Key0 B0) Hit0 False
-                           (IdSym Bool Hit0 (HitL Key0 B0) Hh2) e2;
-            let HlenEqF = IdTrans Nat (LenE B1) (BLenIns Key0 B0) (S (LenE B0))
+            let HitB0F = IdTransRaw Bool (HitL Key0 B0) Hit0 False
+                           (IdSymRaw Bool Hit0 (HitL Key0 B0) Hh2) e2;
+            let HlenEqF = IdTransRaw Nat (LenE B1) (BLenIns Key0 B0) (S (LenE B0))
                             Hln2
                             (BoolRwF Nat (LenE B0) (S (LenE B0)) (HitL Key0 B0) HitB0F);
-            let HtotEqF = IdTrans Nat (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
+            let HtotEqF = IdTransRaw Nat (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
                             (Add (TotalE i L0) (S (Add (LenE B0) (TotalE r H0))))
                             (S (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))))
-                            (IdTrans Nat
+                            (IdTransRaw Nat
                               (TotalE cap (arrCat i (S r) L0 (acons r B1 H0)))
                               (Add (TotalE i L0) (Add (LenE B1) (TotalE r H0)))
                               (Add (TotalE i L0) (S (Add (LenE B0) (TotalE r H0))))
                               Htot1
-                              (IdCongr Nat Nat
+                              (IdCongrRaw Nat Nat
                                 (λ (W : Nat). Add (TotalE I0 L0) (Add W (TotalE R0 H0)))
                                 (LenE B1) (S (LenE B0)) HlenEqF))
-                            (IdTrans Nat
+                            (IdTransRaw Nat
                               (Add (TotalE i L0) (S (Add (LenE B0) (TotalE r H0))))
                               (S (Add (TotalE i L0) (Add (LenE B0) (TotalE r H0))))
                               (S (TotalE cap (arrCat i (S r) L0 (acons r B0 H0))))
-                              (AddSucc (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
-                              (IdCongr Nat Nat (λ (W : Nat). S W)
+                              (AddSuccRaw (TotalE i L0) (Add (LenE B0) (TotalE r H0)))
+                              (IdCongrRaw Nat Nat (λ (W : Nat). S W)
                                 (Add (TotalE I0 L0) (Add (LenE B0) (TotalE R0 H0)))
                                 (TotalE Cap0 (arrCat I0 (S R0) L0 (acons R0 B0 H0)))
-                                (IdSym Nat
+                                (IdSymRaw Nat
                                   (TotalE Cap0 (arrCat I0 (S R0) L0 (acons R0 B0 H0)))
                                   (Add (TotalE I0 L0) (Add (LenE B0) (TotalE R0 H0)))
                                   Htot0)));
             Pair(False,
-              Pair(IdTrans Bool False Hit0
+              Pair(IdTransRaw Bool False Hit0
                      (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
                        (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 Cap0))))
-                     (IdSym Bool Hit0 False e2) HhB,
+                     (IdSymRaw Bool Hit0 False e2) HhB,
               Pair(Hpt, Pair(HtotEqF, H5x))))
           }
         }
@@ -5913,24 +5913,24 @@ def twinNoResizeUnder (iret : Term) : Term := prog{
               let T0 = tl2;
               let C2 = cap2;
               let D0s = *dst;
-              let HfrK = Hfr K0 (IdSym Bool True (HitL K0 (Cons(Pair(K0, V0), T0)))
-                           (HitEvHit K0 V0 K0 T0 (EqbRefl K0)));
+              let HfrK = Hfr K0 (IdSymRaw Bool True (HitL K0 (Cons(Pair(K0, V0), T0)))
+                           (HitEvHit K0 V0 K0 T0 (EqbReflRaw K0)));
               let Pair(hit2, Pair(Hh2, Pair(Hpt2, Pair(Htot2, Hsf2)))) =
                 SlotUpd(tfuel, cap2, kk, vv, &m *dst, HLe1,
-                  LeTrans (S (TotalE cap2 D0s))
+                  LeTransRaw (S (TotalE cap2 D0s))
                     (S (Add (LenE (Cons(Pair(K0, V0), T0))) (TotalE cap2 D0s))) tfuel
-                    (LeAddL (TotalE cap2 D0s) (LenE (Cons(Pair(K0, V0), T0)))) Htf,
+                    (LeAddLRaw (TotalE cap2 D0s) (LenE (Cons(Pair(K0, V0), T0)))) Htf,
                   Hsf);
-              let Hh0 = IdTrans Bool hit2
+              let Hh0 = IdTransRaw Bool hit2
                           (IsSomeB (FindL K0 (AgetB C2 D0s (Mod K0 C2)))) False
                           Hh2
-                          (IdTrans Bool (IsSomeB (FindL K0 (AgetB C2 D0s (Mod K0 C2))))
+                          (IdTransRaw Bool (IsSomeB (FindL K0 (AgetB C2 D0s (Mod K0 C2))))
                             (IsSomeB NoneN) False
-                            (IdCongr OptN Bool IsSomeB
+                            (IdCongrRaw OptN Bool IsSomeB
                               (FindL K0 (AgetB C2 D0s (Mod K0 C2))) NoneN HfrK)
                             Refl);
               let D1s = *dst;
-              let Htot1 = IdTrans Nat (TotalE C2 D1s)
+              let Htot1 = IdTransRaw Nat (TotalE C2 D1s)
                             (boolRec (λ (W2 : Bool). Nat) (TotalE C2 D0s)
                               (S (TotalE C2 D0s)) hit2)
                             (S (TotalE C2 D0s))
@@ -5938,20 +5938,20 @@ def twinNoResizeUnder (iret : Term) : Term := prog{
                             (BoolRwF Nat (TotalE C2 D0s) (S (TotalE C2 D0s)) hit2 Hh0);
               let Pair(HptR, Pair(HtotR, HsfR)) =
                 MoveBkt(f2, tfuel, cap2, tl2, &m *dst, HLe1, Hdep,
-                  LeRwL tfuel
+                  LeRwLRaw tfuel
                     (S (S (Add (LenE T0) (TotalE C2 D0s))))
                     (S (Add (LenE T0) (TotalE C2 D1s)))
-                    (IdSym Nat (S (Add (LenE T0) (TotalE C2 D1s)))
+                    (IdSymRaw Nat (S (Add (LenE T0) (TotalE C2 D1s)))
                       (S (S (Add (LenE T0) (TotalE C2 D0s))))
-                      (IdCongr Nat Nat (λ (W : Nat). S W)
+                      (IdCongrRaw Nat Nat (λ (W : Nat). S W)
                         (Add (LenE T0) (TotalE C2 D1s))
                         (S (Add (LenE T0) (TotalE C2 D0s)))
-                        (IdTrans Nat (Add (LenE T0) (TotalE C2 D1s))
+                        (IdTransRaw Nat (Add (LenE T0) (TotalE C2 D1s))
                           (Add (LenE T0) (S (TotalE C2 D0s)))
                           (S (Add (LenE T0) (TotalE C2 D0s)))
-                          (IdCongr Nat Nat (λ (W : Nat). Add (LenE T0) W)
+                          (IdCongrRaw Nat Nat (λ (W : Nat). Add (LenE T0) W)
                             (TotalE C2 D1s) (S (TotalE C2 D0s)) Htot1)
-                          (AddSucc (LenE T0) (TotalE C2 D0s)))))
+                          (AddSuccRaw (LenE T0) (TotalE C2 D0s)))))
                     Htf,
                   Hsf2,
                   SndT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd,
@@ -5964,16 +5964,16 @@ def twinNoResizeUnder (iret : Term) : Term := prog{
                      (λ (Qz : Nat). FindL Qz (AgetB C2 D2s (Mod Qz C2)))
                      (FstT (Id Bool (HitL K0 T0) False) (NodupB T0) Hnd)
                      Hpt2 HptR,
-                Pair(IdTrans Nat (TotalE C2 D2s)
+                Pair(IdTransRaw Nat (TotalE C2 D2s)
                        (Add (LenE T0) (TotalE C2 D1s))
                        (Add (LenE (Cons(Pair(K0, V0), T0))) (TotalE C2 D0s))
                        HtotR
-                       (IdTrans Nat (Add (LenE T0) (TotalE C2 D1s))
+                       (IdTransRaw Nat (Add (LenE T0) (TotalE C2 D1s))
                          (Add (LenE T0) (S (TotalE C2 D0s)))
                          (Add (LenE (Cons(Pair(K0, V0), T0))) (TotalE C2 D0s))
-                         (IdCongr Nat Nat (λ (W : Nat). Add (LenE T0) W)
+                         (IdCongrRaw Nat Nat (λ (W : Nat). Add (LenE T0) W)
                            (TotalE C2 D1s) (S (TotalE C2 D0s)) Htot1)
-                         (AddSucc (LenE T0) (TotalE C2 D0s))),
+                         (AddSuccRaw (LenE T0) (TotalE C2 D0s))),
                      HsfR))
             } }
         } };
@@ -6006,7 +6006,7 @@ def twinNoResizeUnder (iret : Term) : Term := prog{
         let C2 = cap2;
         let J0 = j;
         let M2 = m2;
-        let pre = &m (*src)[Z ; j ; S m2 | LeAdd j (S m2) | Hj];
+        let pre = &m (*src)[Z ; j ; S m2 | LeAddRaw j (S m2) | Hj];
         let cell = &m (*src)[j ; 1 ; m2];
         let hic = &m (*src)[S j ; m2];
         let bbs = &m (*cell)[0];
@@ -6014,42 +6014,42 @@ def twinNoResizeUnder (iret : Term) : Term := prog{
         let BJ0 = *bbs;
         let HS0 = *hic;
         let HsfLs = SFCatLo capF m2 BJ0 HS0 j LS0 Z HsfS;
-        let HsfMs = NatRw (λ (W : Nat). SlotInv CF W BJ0) (Add J0 Z) J0 (AddZero J0)
+        let HsfMs = NatRwRaw (λ (W : Nat). SlotInv CF W BJ0) (Add J0 Z) J0 (AddZeroRaw J0)
                       (SFCatMid capF m2 BJ0 HS0 j LS0 Z HsfS);
         let HsfHs = SFCatHi capF m2 BJ0 HS0 j LS0 Z HsfS;
         let HakJ = FstT (AllKeysMod capF j BJ0) (NodupB BJ0) HsfMs;
         let HndJ = SndT (AllKeysMod capF j BJ0) (NodupB BJ0) HsfMs;
         let Htot0s = TotalArrCat (S m2) (acons m2 BJ0 HS0) j LS0;
         let D0d = *dst;
-        let HlenBj = LeRwR (LenE BJ0)
+        let HlenBj = LeRwRRaw (LenE BJ0)
                        (Add (TotalE j LS0) (Add (LenE BJ0) (TotalE m2 HS0)))
                        (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
-                       (IdSym Nat
+                       (IdSymRaw Nat
                          (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
                          (Add (TotalE j LS0) (Add (LenE BJ0) (TotalE m2 HS0)))
                          Htot0s)
-                       (LeTrans (LenE BJ0) (Add (LenE BJ0) (TotalE m2 HS0))
+                       (LeTransRaw (LenE BJ0) (Add (LenE BJ0) (TotalE m2 HS0))
                          (Add (TotalE j LS0) (Add (LenE BJ0) (TotalE m2 HS0)))
-                         (LeAdd (LenE BJ0) (TotalE m2 HS0))
-                         (LeAddL (Add (LenE BJ0) (TotalE m2 HS0)) (TotalE j LS0)));
+                         (LeAddRaw (LenE BJ0) (TotalE m2 HS0))
+                         (LeAddLRaw (Add (LenE BJ0) (TotalE m2 HS0)) (TotalE j LS0)));
         let bl = *bbs;
         *bbs := Nil;
         let Pair(HptB, Pair(HtotB, HsfD1)) =
           MoveBkt(tfuel, tfuel, cap2, bl, &m *dst, HLe1,
-            LeTrans (LenE BJ0)
+            LeTransRaw (LenE BJ0)
               (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0))) tfuel
               HlenBj
-              (LePredL (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0))) tfuel
-                (LeTrans (S (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0))))
+              (LePredLRaw (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0))) tfuel
+                (LeTransRaw (S (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0))))
                   (S (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
                     (TotalE cap2 D0d))) tfuel
-                  (LeAdd (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
+                  (LeAddRaw (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
                     (TotalE cap2 D0d))
                   Htf)),
-            LeTrans (S (Add (LenE BJ0) (TotalE cap2 D0d)))
+            LeTransRaw (S (Add (LenE BJ0) (TotalE cap2 D0d)))
               (S (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
                 (TotalE cap2 D0d))) tfuel
-              (LeAddMonoR (LenE BJ0)
+              (LeAddMonoRRaw (LenE BJ0)
                 (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
                 (TotalE cap2 D0d) HlenBj)
               Htf,
@@ -6057,71 +6057,71 @@ def twinNoResizeUnder (iret : Term) : Term := prog{
             MoveSlotsFresh j m2 cap2 LS0 BJ0 HS0 D0d HakJ Hdisj);
         let D1d = *dst;
         let HsfS1 = SFCatGlue capF m2 Nil HS0 j LS0 Z HsfLs
-                      (NatRw (λ (W : Nat). SlotInv CF W Nil) J0 (Add J0 Z)
-                        (IdSym Nat (Add J0 Z) J0 (AddZero J0))
+                      (NatRwRaw (λ (W : Nat). SlotInv CF W Nil) J0 (Add J0 Z)
+                        (IdSymRaw Nat (Add J0 Z) J0 (AddZeroRaw J0))
                         (MkSlotInv capF j Nil unit unit))
                       HsfHs;
-        let HsumStep = IdTrans Nat
+        let HsumStep = IdTransRaw Nat
             (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 Nil HS0)))
               (TotalE cap2 D1d))
             (Add (Add (TotalE j LS0) (TotalE m2 HS0))
               (Add (LenE BJ0) (TotalE cap2 D0d)))
             (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
               (TotalE cap2 D0d))
-            (IdTrans Nat
+            (IdTransRaw Nat
               (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 Nil HS0)))
                 (TotalE cap2 D1d))
               (Add (Add (TotalE j LS0) (TotalE m2 HS0)) (TotalE cap2 D1d))
               (Add (Add (TotalE j LS0) (TotalE m2 HS0))
                 (Add (LenE BJ0) (TotalE cap2 D0d)))
-              (IdCongr Nat Nat
+              (IdCongrRaw Nat Nat
                 (λ (W : Nat). Add W (TotalE C2 D1d))
                 (TotalE capF (arrCat j (S m2) LS0 (acons m2 Nil HS0)))
                 (Add (TotalE j LS0) (TotalE m2 HS0))
                 (TotalArrCat (S m2) (acons m2 Nil HS0) j LS0))
-              (IdCongr Nat Nat
+              (IdCongrRaw Nat Nat
                 (λ (W : Nat). Add (Add (TotalE J0 LS0) (TotalE M2 HS0)) W)
                 (TotalE cap2 D1d)
                 (Add (LenE BJ0) (TotalE cap2 D0d))
                 HtotB))
-            (IdTrans Nat
+            (IdTransRaw Nat
               (Add (Add (TotalE j LS0) (TotalE m2 HS0))
                 (Add (LenE BJ0) (TotalE cap2 D0d)))
               (Add (Add (TotalE j LS0) (LenE BJ0))
                 (Add (TotalE m2 HS0) (TotalE cap2 D0d)))
               (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
                 (TotalE cap2 D0d))
-              (AddInterchange (TotalE j LS0) (TotalE m2 HS0) (LenE BJ0)
+              (AddInterchangeRaw (TotalE j LS0) (TotalE m2 HS0) (LenE BJ0)
                 (TotalE cap2 D0d))
-              (IdTrans Nat
+              (IdTransRaw Nat
                 (Add (Add (TotalE j LS0) (LenE BJ0))
                   (Add (TotalE m2 HS0) (TotalE cap2 D0d)))
                 (Add (Add (Add (TotalE j LS0) (LenE BJ0)) (TotalE m2 HS0))
                   (TotalE cap2 D0d))
                 (Add (TotalE capF (arrCat j (S m2) LS0 (acons m2 BJ0 HS0)))
                   (TotalE cap2 D0d))
-                (IdSym Nat
+                (IdSymRaw Nat
                   (Add (Add (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0))
                     (TotalE C2 D0d))
                   (Add (Add (TotalE J0 LS0) (LenE BJ0))
                     (Add (TotalE M2 HS0) (TotalE C2 D0d)))
-                  (AddAssoc (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0)
+                  (AddAssocRaw (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0)
                     (TotalE C2 D0d)))
-                (IdTrans Nat
+                (IdTransRaw Nat
                   (Add (Add (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0))
                     (TotalE C2 D0d))
                   (Add (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
                     (TotalE C2 D0d))
                   (Add (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)))
                     (TotalE C2 D0d))
-                  (IdCongr Nat Nat (λ (W : Nat). Add W (TotalE C2 D0d))
+                  (IdCongrRaw Nat Nat (λ (W : Nat). Add W (TotalE C2 D0d))
                     (Add (Add (TotalE J0 LS0) (LenE BJ0)) (TotalE M2 HS0))
                     (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
-                    (AddAssoc (TotalE J0 LS0) (LenE BJ0) (TotalE M2 HS0)))
-                  (IdCongr Nat Nat (λ (W : Nat). Add W (TotalE C2 D0d))
+                    (AddAssocRaw (TotalE J0 LS0) (LenE BJ0) (TotalE M2 HS0)))
+                  (IdCongrRaw Nat Nat (λ (W : Nat). Add W (TotalE C2 D0d))
                     (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
                     (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)))
-                    (IdSym Nat
+                    (IdSymRaw Nat
                       (TotalE CF (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)))
                       (Add (TotalE J0 LS0) (Add (LenE BJ0) (TotalE M2 HS0)))
                       Htot0s)))));
@@ -6129,7 +6129,7 @@ def twinNoResizeUnder (iret : Term) : Term := prog{
                (AgetB (Add J0 (S M2)) (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)) J0)
                (λ (Qz : Nat). FindL Qz (AgetB C2 D0d (Mod Qz C2)))
                (λ (Qz : Nat). FindL Qz (AgetB C2 D1d (Mod Qz C2)))
-               (IdSym (List (Σ (k : Nat). Nat))
+               (IdSymRaw (List (Σ (k : Nat). Nat))
                  (AgetB (Add J0 (S M2)) (arrCat J0 (S M2) LS0 (acons M2 BJ0 HS0)) J0)
                  BJ0
                  (AgetBCatMid M2 BJ0 HS0 J0 LS0))
@@ -6171,7 +6171,7 @@ def twinNoResizeUnder (iret : Term) : Term := prog{
             let C2 = cap2;
             let Dd = *dst;
             let Sd = *src;
-            let Hjz = IdTrans Nat CF (Add J0 Z) J0 Hj (AddZero J0);
+            let Hjz = IdTransRaw Nat CF (Add J0 Z) J0 Hj (AddZeroRaw J0);
             Pair(MoveBasePt CF J0 C2 Sd Dd HLe1F Hjz HsrcLo,
               Pair(MoveBaseNil CF J0 Sd Hjz HsrcLo,
                 Pair(Refl, HsfD)))
@@ -6183,12 +6183,12 @@ def twinNoResizeUnder (iret : Term) : Term := prog{
             let M2 = m2;
             let S0d = *src;
             let D0d = *dst;
-            let HinvJ = NatRw (λ (W : Nat). SlotInv CF W (AgetB CF S0d J0))
-                          (Add J0 Z) J0 (AddZero J0)
+            let HinvJ = NatRwRaw (λ (W : Nat). SlotInv CF W (AgetB CF S0d J0))
+                          (Add J0 Z) J0 (AddZeroRaw J0)
                           (SFAgetInv capF capF S0d Z HsfS j
-                            (LeRwR (S j) (Add j (S m2)) capF
-                              (IdSym Nat capF (Add j (S m2)) Hj)
-                              (LeAddSucc j m2)));
+                            (LeRwRRaw (S j) (Add j (S m2)) capF
+                              (IdSymRaw Nat capF (Add j (S m2)) Hj)
+                              (LeAddSuccRaw j m2)));
             let HakJ = FstT (AllKeysMod CF J0 (AgetB CF S0d J0))
                          (NodupB (AgetB CF S0d J0)) HinvJ;
             let Pair(HptO, Pair(HnilO, Pair(HfrmO, Pair(HtotO, Pair(HsfSO, HsfDO))))) =
@@ -6203,15 +6203,15 @@ def twinNoResizeUnder (iret : Term) : Term := prog{
             let HnilR = MoveLevelNil CF J0 S0d SMd HnilO HfrmO HsrcLo;
             let Pair(HptR, Pair(HsrcFR, Pair(HtotR, HsfD2))) =
               MoveSlots(m2, S j, tfuel, capF, cap2,
-                IdTrans Nat capF (Add j (S m2)) (S (Add j m2)) Hj (AddSucc j m2),
+                IdTransRaw Nat capF (Add j (S m2)) (S (Add j m2)) Hj (AddSuccRaw j m2),
                 &m *src, &m *dst, HLe1, HLe1F,
-                LeRwL tfuel
+                LeRwLRaw tfuel
                   (S (Add (TotalE CF S0d) (TotalE C2 D0d)))
                   (S (Add (TotalE CF SMd) (TotalE C2 D1d)))
-                  (IdSym Nat
+                  (IdSymRaw Nat
                     (S (Add (TotalE CF SMd) (TotalE C2 D1d)))
                     (S (Add (TotalE CF S0d) (TotalE C2 D0d)))
-                    (IdCongr Nat Nat (λ (W : Nat). S W)
+                    (IdCongrRaw Nat Nat (λ (W : Nat). S W)
                       (Add (TotalE CF SMd) (TotalE C2 D1d))
                       (Add (TotalE CF S0d) (TotalE C2 D0d))
                       HtotO))
@@ -6224,7 +6224,7 @@ def twinNoResizeUnder (iret : Term) : Term := prog{
                    (λ (Qz : Nat). FindL Qz (AgetB C2 D2d (Mod Qz C2)))
                    HakJ HnilO HfrmO HptO HptR,
               Pair(HsrcFR,
-                Pair(IdTrans Nat
+                Pair(IdTransRaw Nat
                        (Add (TotalE CF (*src)) (TotalE C2 D2d))
                        (Add (TotalE CF SMd) (TotalE C2 D1d))
                        (Add (TotalE CF S0d) (TotalE C2 D0d))
@@ -6251,18 +6251,18 @@ def twinNoResizeUnder (iret : Term) : Term := prog{
         let sb = &m slots;
         let Pair(hit2, Pair(Hh2, Pair(Hpt2, Pair(Htot2, Hsf2)))) =
           SlotUpd(fuel, cap, key, val, &m *sb, HLe1,
-            LeRwL fuel (S nn) (S (TotalE Cap0 SL0))
-              (IdCongr Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
-              (LePredL (S nn) fuel Hfuel),
+            LeRwLRaw fuel (S nn) (S (TotalE Cap0 SL0))
+              (IdCongrRaw Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
+              (LePredLRaw (S nn) fuel Hfuel),
             HSf);
         let SL1 = *sb;
         let Hit0 = hit2;
         match e2 : hit2 {
           True => {
-            let H4x = IdTrans Nat nn (TotalE Cap0 SL0) (TotalE Cap0 SL1)
+            let H4x = IdTransRaw Nat nn (TotalE Cap0 SL0) (TotalE Cap0 SL1)
                         HCnt
-                        (IdSym Nat (TotalE Cap0 SL1) (TotalE Cap0 SL0)
-                          (IdTrans Nat (TotalE Cap0 SL1)
+                        (IdSymRaw Nat (TotalE Cap0 SL1) (TotalE Cap0 SL0)
+                          (IdTransRaw Nat (TotalE Cap0 SL1)
                             (boolRec (λ (W2 : Bool). Nat) (TotalE Cap0 SL0)
                               (S (TotalE Cap0 SL0)) Hit0)
                             (TotalE Cap0 SL0)
@@ -6272,24 +6272,24 @@ def twinNoResizeUnder (iret : Term) : Term := prog{
             *self := Pair(cap, Pair(load, Pair(nn, Pair(slots,
               MkInv cap load nn SL1 HLe1 HLoad HLed H4x Hsf2))));
             Pair(Hpt2,
-              IdSym Nat
+              IdSymRaw Nat
                 (boolRec (λ (W2 : Bool). Nat) nn (S nn)
                   (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
                 nn
                 (BoolRwT Nat nn (S nn)
                   (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                  (IdTrans Bool
+                  (IdTransRaw Bool
                     (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
                     Hit0 True
-                    (IdSym Bool Hit0
+                    (IdSymRaw Bool Hit0
                       (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))) Hh2)
                     e2)))
           },
           False => {
-            let H4y = IdTrans Nat (S nn) (S (TotalE Cap0 SL0)) (TotalE Cap0 SL1)
-                        (IdCongr Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
-                        (IdSym Nat (TotalE Cap0 SL1) (S (TotalE Cap0 SL0))
-                          (IdTrans Nat (TotalE Cap0 SL1)
+            let H4y = IdTransRaw Nat (S nn) (S (TotalE Cap0 SL0)) (TotalE Cap0 SL1)
+                        (IdCongrRaw Nat Nat (λ (W : Nat). S W) N0 (TotalE Cap0 SL0) HCnt)
+                        (IdSymRaw Nat (TotalE Cap0 SL1) (S (TotalE Cap0 SL0))
+                          (IdTransRaw Nat (TotalE Cap0 SL1)
                             (boolRec (λ (W2 : Bool). Nat) (TotalE Cap0 SL0)
                               (S (TotalE Cap0 SL0)) Hit0)
                             (S (TotalE Cap0 SL0))
@@ -6299,35 +6299,35 @@ def twinNoResizeUnder (iret : Term) : Term := prog{
             if e4 : Leb (Mul 5 (S nn)) load {
               *self := Pair(cap, Pair(load, Pair(S(nn), Pair(slots,
                 MkInv cap load (S nn) SL1 HLe1 HLoad
-                  (LebTrueLe (Mul 5 (S nn)) load e4) H4y Hsf2))));
+                  (LebTrueLeRaw (Mul 5 (S nn)) load e4) H4y Hsf2))));
               Pair(Hpt2,
-                IdSym Nat
+                IdSymRaw Nat
                   (boolRec (λ (W2 : Bool). Nat) nn (S nn)
                     (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
                   (S nn)
                   (BoolRwF Nat nn (S nn)
                     (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                    (IdTrans Bool
+                    (IdTransRaw Bool
                       (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
                       Hit0 False
-                      (IdSym Bool Hit0
+                      (IdSymRaw Bool Hit0
                         (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))) Hh2)
                       e2)))
             } else {
               *self := Pair(cap, Pair(load, Pair(S(nn), Pair(slots,
                 MkInv cap load (S nn) SL1 HLe1 HLoad
-                  (LebTrueLe (Mul 5 (S nn)) load e4) H4y Hsf2))));
+                  (LebTrueLeRaw (Mul 5 (S nn)) load e4) H4y Hsf2))));
               Pair(Hpt2,
-                IdSym Nat
+                IdSymRaw Nat
                   (boolRec (λ (W2 : Bool). Nat) nn (S nn)
                     (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))))
                   (S nn)
                   (BoolRwF Nat nn (S nn)
                     (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
-                    (IdTrans Bool
+                    (IdTransRaw Bool
                       (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0))))
                       Hit0 False
-                      (IdSym Bool Hit0
+                      (IdSymRaw Bool Hit0
                         (IsSomeB (FindL Key0 (AgetB Cap0 SL0 (Mod Key0 Cap0)))) Hh2)
                       e2)))
             }
@@ -6367,10 +6367,10 @@ load-bearing, not a style choice.
 section
 
 open Dllbc
-open Dllbc.StdLemmas (LeRefl LeAdd LeAddL LeTrans LePredL
-  AddSucc AddZero IdTrans IdCongr IdSym NatRw BoolFT BoolTF
-  LeRwL LeRwR EqbRefl EqbTrueEq EqbSym IfDec Znots SInj
-  Mod ModLtN Sub AddSubCancel Mul)
+open Dllbc.StdLemmas (LeReflRaw LeAddRaw LeAddLRaw LeTransRaw LePredLRaw
+  AddSuccRaw AddZeroRaw IdTransRaw IdCongrRaw IdSymRaw NatRwRaw BoolFTRaw BoolTFRaw
+  LeRwLRaw LeRwRRaw EqbReflRaw EqbTrueEqRaw EqbSymRaw IfDecRaw ZnotsRaw SInjRaw
+  Mod ModLtNRaw SubRaw AddSubCancelRaw Mul)
 
 namespace Dllbc.Tests.HashMap
 
@@ -6406,9 +6406,9 @@ def HitTailEv : Term := prog defer_check {
   λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
   λ (E : Id Bool (Eqb Q K0) False).
   λ (H : Id Bool (HitL Q Cons(Pair(K0, V0), T)) True).
-    IdTrans Bool (HitL Q T) (HitL Q Cons(Pair(K0, V0), T)) True
-      (IdSym Bool (HitL Q Cons(Pair(K0, V0), T)) (HitL Q T)
-        (IdCongr Bool Bool
+    IdTransRaw Bool (HitL Q T) (HitL Q Cons(Pair(K0, V0), T)) True
+      (IdSymRaw Bool (HitL Q Cons(Pair(K0, V0), T)) (HitL Q T)
+        (IdCongrRaw Bool Bool
           (λ (W : Bool). IsSomeB (elim W return (λ (Bm : Bool). Σ (bb : Bool). OptP bb Nat) {
             True => SomeN V0, False => FindL Q T }))
           (Eqb Q K0) False E))
@@ -6425,8 +6425,8 @@ example : chkL HitTailEv HitTailEvTy = true := by native_decide
 def FindEvHit : Term := prog defer_check {
   λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
   λ (E : Id Bool (Eqb Q K0) True).
-    IdSym OptN (FindL Q Cons(Pair(K0, V0), T)) (SomeN V0)
-      (IdCongr Bool OptN
+    IdSymRaw OptN (FindL Q Cons(Pair(K0, V0), T)) (SomeN V0)
+      (IdCongrRaw Bool OptN
         (λ (W : Bool). elim W return (λ (Bm : Bool). Σ (bb : Bool). OptP bb Nat) {
           True => SomeN V0, False => FindL Q T })
         (Eqb Q K0) True E) }
@@ -6441,8 +6441,8 @@ example : chkL FindEvHit FindEvHitTy = true := by native_decide
 def FindTailEv : Term := prog defer_check {
   λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
   λ (E : Id Bool (Eqb Q K0) False).
-    IdSym OptN (FindL Q Cons(Pair(K0, V0), T)) (FindL Q T)
-      (IdCongr Bool OptN
+    IdSymRaw OptN (FindL Q Cons(Pair(K0, V0), T)) (FindL Q T)
+      (IdCongrRaw Bool OptN
         (λ (W : Bool). elim W return (λ (Bm : Bool). Σ (bb : Bool). OptP bb Nat) {
           True => SomeN V0, False => FindL Q T })
         (Eqb Q K0) False E) }
@@ -6470,7 +6470,7 @@ def bktGetPinOnly : Term := prog defer_check {
       Hin : Id Bool (HitL key (*b)) True,
       Hf : Le (LenE (*b)) fuel) -> &mut Nat {
     match b {
-      Nil => botElim Unit (BoolFT Hin),
+      Nil => botElim Unit (BoolFTRaw Hin),
       Cons(Pair(kk, vv), tl) => match fuel {
         Z => botElim Unit Hf,
         S(f2) => {
@@ -6489,7 +6489,7 @@ def bktGetPinOnly : Term := prog defer_check {
     — whose True arm is literally that fill, one ι-step away, gated on the
     very branch equation the body's `if e :` already established. Conversion
     does not consult branch equations, and `Eqb` is a fold that stays stuck
-    even at syntactically equal neutral arguments (`EqbRefl` is a lemma, and
+    even at syntactically equal neutral arguments (`EqbReflRaw` is a lemma, and
     a pin has no lemma slot). So no key-comparing update can ever discharge a
     pin over a symbolic key — not by accident, but on principle: **a pin's
     data must be pin-computable.** The key-to-position conversion can't
@@ -6546,13 +6546,13 @@ example : chkL prog defer_check { Refl } prog defer_check { Id (List (Σ (k : Na
 def PosZHit : Term := prog defer_check {
   λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
   λ (Hp : Id Nat Z (FindPosL Q Cons(Pair(K0, V0), T))).
-    IfDec (Eqb Q K0) (Id Bool (Eqb Q K0) True)
+    IfDecRaw (Eqb Q K0) (Id Bool (Eqb Q K0) True)
       (λ (Et : Id Bool (Eqb Q K0) True). Et)
       (λ (Ef : Id Bool (Eqb Q K0) False).
         botElim (Id Bool (Eqb Q K0) True)
-          (Znots (FindPosL Q T)
-            (IdTrans Nat Z (FindPosL Q Cons(Pair(K0, V0), T)) (S (FindPosL Q T)) Hp
-              (IdCongr Bool Nat (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
+          (ZnotsRaw (FindPosL Q T)
+            (IdTransRaw Nat Z (FindPosL Q Cons(Pair(K0, V0), T)) (S (FindPosL Q T)) Hp
+              (IdCongrRaw Bool Nat (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
                 True => Z, False => S (FindPosL Q T) }) (Eqb Q K0) False Ef)))) }
 def PosZHitTy : Term := prog defer_check {
   Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
@@ -6564,17 +6564,17 @@ example : chkL PosZHit PosZHitTy = true := by native_decide
 def PosSStep : Term := prog defer_check {
   λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)). λ (P2 : Nat).
   λ (Hp : Id Nat (S P2) (FindPosL Q Cons(Pair(K0, V0), T))).
-    IfDec (Eqb Q K0) ((Id Bool (Eqb Q K0) False) × (Id Nat P2 (FindPosL Q T)))
+    IfDecRaw (Eqb Q K0) ((Id Bool (Eqb Q K0) False) × (Id Nat P2 (FindPosL Q T)))
       (λ (Et : Id Bool (Eqb Q K0) True).
         botElim ((Id Bool (Eqb Q K0) False) × (Id Nat P2 (FindPosL Q T)))
-          (Znots P2 (IdSym Nat (S P2) Z
-            (IdTrans Nat (S P2) (FindPosL Q Cons(Pair(K0, V0), T)) Z Hp
-              (IdCongr Bool Nat (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
+          (ZnotsRaw P2 (IdSymRaw Nat (S P2) Z
+            (IdTransRaw Nat (S P2) (FindPosL Q Cons(Pair(K0, V0), T)) Z Hp
+              (IdCongrRaw Bool Nat (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
                 True => Z, False => S (FindPosL Q T) }) (Eqb Q K0) True Et)))))
       (λ (Ef : Id Bool (Eqb Q K0) False).
-        Pair(Ef, SInj P2 (FindPosL Q T)
-          (IdTrans Nat (S P2) (FindPosL Q Cons(Pair(K0, V0), T)) (S (FindPosL Q T)) Hp
-            (IdCongr Bool Nat (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
+        Pair(Ef, SInjRaw P2 (FindPosL Q T)
+          (IdTransRaw Nat (S P2) (FindPosL Q Cons(Pair(K0, V0), T)) (S (FindPosL Q T)) Hp
+            (IdCongrRaw Bool Nat (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
               True => Z, False => S (FindPosL Q T) }) (Eqb Q K0) False Ef)))) }
 def PosSStepTy : Term := prog defer_check {
   Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
@@ -6598,7 +6598,7 @@ def bktGetAtDecl : Term := prog{
       Hpos : Id Nat p (FindPosL key (*b)))
       -> Σ (r : &mut Nat). Id OptN (SomeN (*r)) (FindL key (old *b)) {
     match b {
-      Nil => botElim Unit (BoolFT Hhit),
+      Nil => botElim Unit (BoolFTRaw Hhit),
       Cons(Pair(kk, vv), tl) => {
         let K0 = *kk;
         let V0 = *vv;
@@ -6612,7 +6612,7 @@ def bktGetAtDecl : Term := prog{
             let Pair(r2, h2) = BktGetAt(p2, key, &m *tl,
               HitTailEv key K0 V0 T0 Emiss Hhit, Epos2);
             let W0 = *r2;
-            Pair(r2, IdTrans OptN (SomeN W0) (FindL key T0)
+            Pair(r2, IdTransRaw OptN (SomeN W0) (FindL key T0)
               (FindL key Cons(Pair(K0, V0), T0)) h2
               (FindTailEv key K0 V0 T0 Emiss))
           } } } } };
@@ -6630,14 +6630,14 @@ example : progOk bktGetAtDecl = true := by native_decide
 
 /-- The residue: everything after `key`'s slot. `cap = Mod key cap + S (CoMod
     key cap)` whenever `1 ≤ cap` — that is `ModSplit`. -/
-def CoMod : Term := prog defer_check { λ (Q : Nat). λ (C : Nat). Sub C (S (Mod Q C)) }
+def CoMod : Term := prog defer_check { λ (Q : Nat). λ (C : Nat). SubRaw C (S (Mod Q C)) }
 
 def ModSplit : Term := prog defer_check {
   λ (Q : Nat). λ (C : Nat). λ (H : Le (S Z) C).
-    IdSym Nat (Add (Mod Q C) (S (CoMod Q C))) C
-      (IdTrans Nat (Add (Mod Q C) (S (CoMod Q C))) (S (Add (Mod Q C) (CoMod Q C))) C
-        (AddSucc (Mod Q C) (CoMod Q C))
-        (AddSubCancel C (S (Mod Q C)) (ModLtN Q C H))) }
+    IdSymRaw Nat (Add (Mod Q C) (S (CoMod Q C))) C
+      (IdTransRaw Nat (Add (Mod Q C) (S (CoMod Q C))) (S (Add (Mod Q C) (CoMod Q C))) C
+        (AddSuccRaw (Mod Q C) (CoMod Q C))
+        (AddSubCancelRaw C (S (Mod Q C)) (ModLtNRaw Q C H))) }
 def ModSplitTy : Term := prog defer_check {
   Π (Q : Nat) → Π (C : Nat) → Le (S Z) C →
     Id Nat C (Add (Mod Q C) (S (CoMod Q C))) }
@@ -6828,7 +6828,7 @@ def AgetAtMod : Term := prog defer_check {
   λ (L : Array I (List (Σ (k : Nat). Nat))). λ (B : List (Σ (k : Nat). Nat)).
   λ (H : Array R (List (Σ (k : Nat). Nat))).
   λ (Him : Id Nat I M).
-    NatRw (λ (W : Nat). Id (List (Σ (k : Nat). Nat))
+    NatRwRaw (λ (W : Nat). Id (List (Σ (k : Nat). Nat))
         (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) W) B)
       I M Him
       (AgetBCatMid R B H I L) }
@@ -6885,8 +6885,8 @@ example : chkL prog defer_check { Refl } prog defer_check { Id Nat (FindValHM 3 
 def FindVEvHit : Term := prog defer_check {
   λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
   λ (E : Id Bool (Eqb Q K0) True).
-    IdSym Nat (FindVL Q Cons(Pair(K0, V0), T)) V0
-      (IdCongr Bool Nat
+    IdSymRaw Nat (FindVL Q Cons(Pair(K0, V0), T)) V0
+      (IdCongrRaw Bool Nat
         (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
           True => V0, False => FindVL Q T })
         (Eqb Q K0) True E) }
@@ -6900,8 +6900,8 @@ example : chkL FindVEvHit FindVEvHitTy = true := by native_decide
 def FindVTailEv : Term := prog defer_check {
   λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
   λ (E : Id Bool (Eqb Q K0) False).
-    IdSym Nat (FindVL Q Cons(Pair(K0, V0), T)) (FindVL Q T)
-      (IdCongr Bool Nat
+    IdSymRaw Nat (FindVL Q Cons(Pair(K0, V0), T)) (FindVL Q T)
+      (IdCongrRaw Bool Nat
         (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
           True => V0, False => FindVL Q T })
         (Eqb Q K0) False E) }
@@ -6921,7 +6921,7 @@ def hmPinUnder (tail : Term) : Term := prog{
       -> Σ (r : &mut Nat). (Id Nat (*r) (FindVL key (old *b)))
            × (Id OptN (SomeN (*r)) (FindL key (old *b))) {
     match b {
-      Nil => botElim Unit (BoolFT Hhit),
+      Nil => botElim Unit (BoolFTRaw Hhit),
       Cons(Pair(kk, vv), tl) => {
         let K0 = *kk;
         let V0 = *vv;
@@ -6942,9 +6942,9 @@ def hmPinUnder (tail : Term) : Term := prog{
             let Hv2 = FstT (Id Nat W0 (FindVL key T0)) (Id OptN (SomeN W0) (FindL key T0)) h2;
             let Ho2 = SndT (Id Nat W0 (FindVL key T0)) (Id OptN (SomeN W0) (FindL key T0)) h2;
             Pair(r2, Pair(
-              IdTrans Nat W0 (FindVL key T0) (FindVL key Cons(Pair(K0, V0), T0)) Hv2
+              IdTransRaw Nat W0 (FindVL key T0) (FindVL key Cons(Pair(K0, V0), T0)) Hv2
                 (FindVTailEv key K0 V0 T0 Emiss),
-              IdTrans OptN (SomeN W0) (FindL key T0)
+              IdTransRaw OptN (SomeN W0) (FindL key T0)
                 (FindL key Cons(Pair(K0, V0), T0)) Ho2
                 (FindTailEv key K0 V0 T0 Emiss)))
           } } } } };
@@ -6963,7 +6963,7 @@ def hmPinUnder (tail : Term) : Term := prog{
       let R0 = rr;
       let Key0 = key;
       let C0 = *capb;
-      let pre = &m (*sb)[Z ; i ; S rr | LeAdd i (S rr) | Hd];
+      let pre = &m (*sb)[Z ; i ; S rr | LeAddRaw i (S rr) | Hd];
       let cell = &m (*sb)[i ; 1 ; rr];
       let hic = &m (*sb)[S i ; rr];
       let bb = &m (*cell)[0];
@@ -6971,24 +6971,24 @@ def hmPinUnder (tail : Term) : Term := prog{
       let B0 = *bb;
       let H0 = *hic;
       let EB = AgetAtMod I0 R0 (Mod Key0 C0) L0 B0 H0 Him;
-      let HhitB = IdTrans Bool (HitL Key0 B0)
+      let HhitB = IdTransRaw Bool (HitL Key0 B0)
                     (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
                       (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0)))) True
-                    (IdSym Bool
+                    (IdSymRaw Bool
                       (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
                         (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0))))
                       (HitL Key0 B0)
-                      (IdCongr (List (Σ (k : Nat). Nat)) Bool
+                      (IdCongrRaw (List (Σ (k : Nat). Nat)) Bool
                         (λ (W : List (Σ (k : Nat). Nat)). IsSomeB (FindL Key0 W))
                         (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
                           (Mod Key0 C0)) B0 EB))
                     Hhit;
-      let HposB = IdTrans Nat p
+      let HposB = IdTransRaw Nat p
                     (FindPosL Key0 (AgetB (Add I0 (S R0))
                       (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0)))
                     (FindPosL Key0 B0)
                     Hpos
-                    (IdCongr (List (Σ (k : Nat). Nat)) Nat
+                    (IdCongrRaw (List (Σ (k : Nat). Nat)) Nat
                       (λ (W : List (Σ (k : Nat). Nat)). FindPosL Key0 W)
                       (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
                         (Mod Key0 C0)) B0 EB);
@@ -6997,27 +6997,27 @@ def hmPinUnder (tail : Term) : Term := prog{
       let HvB = FstT (Id Nat W0 (FindVL Key0 B0)) (Id OptN (SomeN W0) (FindL Key0 B0)) hb;
       let HoB = SndT (Id Nat W0 (FindVL Key0 B0)) (Id OptN (SomeN W0) (FindL Key0 B0)) hb;
       Pair(rb, Pair(
-        IdTrans Nat W0 (FindVL Key0 B0)
+        IdTransRaw Nat W0 (FindVL Key0 B0)
           (FindVL Key0 (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
             (Mod Key0 C0)))
           HvB
-          (IdSym Nat
+          (IdSymRaw Nat
             (FindVL Key0 (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
               (Mod Key0 C0)))
             (FindVL Key0 B0)
-            (IdCongr (List (Σ (k : Nat). Nat)) Nat
+            (IdCongrRaw (List (Σ (k : Nat). Nat)) Nat
               (λ (W : List (Σ (k : Nat). Nat)). FindVL Key0 W)
               (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0))
               B0 EB)),
-        IdTrans OptN (SomeN W0) (FindL Key0 B0)
+        IdTransRaw OptN (SomeN W0) (FindL Key0 B0)
           (FindL Key0 (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
             (Mod Key0 C0)))
           HoB
-          (IdSym OptN
+          (IdSymRaw OptN
             (FindL Key0 (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
               (Mod Key0 C0)))
             (FindL Key0 B0)
-            (IdCongr (List (Σ (k : Nat). Nat)) OptN
+            (IdCongrRaw (List (Σ (k : Nat). Nat)) OptN
               (λ (W : List (Σ (k : Nat). Nat)). FindL Key0 W)
               (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0))
               B0 EB))))
@@ -7119,7 +7119,7 @@ def bktGetAtKey : Term := prog defer_check {
       Hhit : Id Bool (HitL key (*b)) True,
       Hpos : Id Nat p (FindPosL key (*b))) -> &mut Nat {
     match b {
-      Nil => botElim Unit (BoolFT Hhit),
+      Nil => botElim Unit (BoolFTRaw Hhit),
       Cons(Pair(kk, vv), tl) => {
         let K0 = *kk;
         let V0 = *vv;
@@ -7224,16 +7224,16 @@ example : chkL prog defer_check { Refl } prog defer_check { Id Nat (OrDefHM 5 77
 def OrDHitEv : Term := prog defer_check {
   λ (Q : Nat). λ (D : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
   λ (E : Id Bool (Eqb Q K0) True).
-    IdSym Nat (OrDefL Q D Cons(Pair(K0, V0), T)) V0
-      (IdTrans Nat (OrDefL Q D Cons(Pair(K0, V0), T))
+    IdSymRaw Nat (OrDefL Q D Cons(Pair(K0, V0), T)) V0
+      (IdTransRaw Nat (OrDefL Q D Cons(Pair(K0, V0), T))
         (FindVL Q Cons(Pair(K0, V0), T)) V0
-        (IdCongr Bool Nat
+        (IdCongrRaw Bool Nat
           (λ (W : Bool). elim (IsSomeB (elim W return (λ (B2 : Bool). Σ (bb : Bool). OptP bb Nat) {
               True => SomeN V0, False => FindL Q T }))
             return (λ (B3 : Bool). Nat) {
               True => FindVL Q Cons(Pair(K0, V0), T), False => D })
           (Eqb Q K0) True E)
-        (IdSym Nat V0 (FindVL Q Cons(Pair(K0, V0), T)) (FindVEvHit Q K0 V0 T E))) }
+        (IdSymRaw Nat V0 (FindVL Q Cons(Pair(K0, V0), T)) (FindVEvHit Q K0 V0 T E))) }
 def OrDHitEvTy : Term := prog defer_check {
   Π (Q : Nat) → Π (D : Nat) → Π (K0 : Nat) → Π (V0 : Nat) →
   Π (T : List (Σ (k : Nat). Nat)) →
@@ -7245,22 +7245,22 @@ example : chkL OrDHitEv OrDHitEvTy = true := by native_decide
 def OrDMissEv : Term := prog defer_check {
   λ (Q : Nat). λ (D : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
   λ (E : Id Bool (Eqb Q K0) False).
-    IdSym Nat (OrDefL Q D Cons(Pair(K0, V0), T)) (OrDefL Q D T)
-      (IdTrans Nat (OrDefL Q D Cons(Pair(K0, V0), T))
+    IdSymRaw Nat (OrDefL Q D Cons(Pair(K0, V0), T)) (OrDefL Q D T)
+      (IdTransRaw Nat (OrDefL Q D Cons(Pair(K0, V0), T))
         (elim (HitL Q T) return (λ (B3 : Bool). Nat) {
           True => FindVL Q Cons(Pair(K0, V0), T), False => D })
         (OrDefL Q D T)
-        (IdCongr Bool Nat
+        (IdCongrRaw Bool Nat
           (λ (W : Bool). elim (IsSomeB (elim W return (λ (B2 : Bool). Σ (bb : Bool). OptP bb Nat) {
               True => SomeN V0, False => FindL Q T }))
             return (λ (B3 : Bool). Nat) {
               True => FindVL Q Cons(Pair(K0, V0), T), False => D })
           (Eqb Q K0) False E)
-        (IdCongr Nat Nat
+        (IdCongrRaw Nat Nat
           (λ (W : Nat). elim (HitL Q T) return (λ (B3 : Bool). Nat) {
             True => W, False => D })
           (FindVL Q Cons(Pair(K0, V0), T)) (FindVL Q T)
-          (IdSym Nat (FindVL Q T) (FindVL Q Cons(Pair(K0, V0), T))
+          (IdSymRaw Nat (FindVL Q T) (FindVL Q Cons(Pair(K0, V0), T))
             (FindVTailEv Q K0 V0 T E)))) }
 def OrDMissEvTy : Term := prog defer_check {
   Π (Q : Nat) → Π (D : Nat) → Π (K0 : Nat) → Π (V0 : Nat) →
@@ -7322,13 +7322,13 @@ def OrDAgetEv : Term := prog defer_check {
   λ (L : Array I (List (Σ (k : Nat). Nat))). λ (B : List (Σ (k : Nat). Nat)).
   λ (H : Array R (List (Σ (k : Nat). Nat))).
   λ (Him : Id Nat I M).
-    IdSym Nat
+    IdSymRaw Nat
       (elim (IsSomeB (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M)))
         return (λ (B3 : Bool). Nat) {
           True => FindVL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M),
           False => D })
       (OrDefL Q D B)
-      (IdTrans Nat
+      (IdTransRaw Nat
         (elim (IsSomeB (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M)))
           return (λ (B3 : Bool). Nat) {
             True => FindVL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M),
@@ -7337,19 +7337,19 @@ def OrDAgetEv : Term := prog defer_check {
           True => FindVL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M),
           False => D })
         (OrDefL Q D B)
-        (IdCongr (List (Σ (k : Nat). Nat)) Nat
+        (IdCongrRaw (List (Σ (k : Nat). Nat)) Nat
           (λ (W : List (Σ (k : Nat). Nat)).
             elim (IsSomeB (FindL Q W)) return (λ (B3 : Bool). Nat) {
               True => FindVL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M),
               False => D })
           (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M) B
           (AgetAtMod I R M L B H Him))
-        (IdCongr Nat Nat
+        (IdCongrRaw Nat Nat
           (λ (W : Nat). elim (IsSomeB (FindL Q B)) return (λ (B3 : Bool). Nat) {
             True => W, False => D })
           (FindVL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M))
           (FindVL Q B)
-          (IdCongr (List (Σ (k : Nat). Nat)) Nat
+          (IdCongrRaw (List (Σ (k : Nat). Nat)) Nat
             (λ (W : List (Σ (k : Nat). Nat)). FindVL Q W)
             (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M) B
             (AgetAtMod I R M L B H Him)))) }
@@ -7379,7 +7379,7 @@ def hmOrUnder (tail : Term) : Term := prog{
           match b { Cons(hd, tl) => match hd { Pair(kk, vv) =>
             Pair(&m *vv, Refl) } }
         },
-        S(p2) => botElim Unit (Znots p2 (IdSym Nat (S p2) Z Hpos))
+        S(p2) => botElim Unit (ZnotsRaw p2 (IdSymRaw Nat (S p2) Z Hpos))
       },
       Cons(Pair(kk, vv), tl) => {
         let K0 = *kk;
@@ -7393,7 +7393,7 @@ def hmOrUnder (tail : Term) : Term := prog{
             let Epos2 = SndT (Id Bool (Eqb key K0) False) (Id Nat p2 (FindPosL key T0)) Ep;
             let Pair(r2, h2) = BktPutAt(p2, key, d, &m *tl, Epos2);
             let W0 = *r2;
-            Pair(r2, IdTrans Nat W0 (OrDefL key d T0)
+            Pair(r2, IdTransRaw Nat W0 (OrDefL key d T0)
               (OrDefL key d Cons(Pair(K0, V0), T0)) h2
               (OrDMissEv key d K0 V0 T0 Emiss))
           } } } } };
@@ -7414,19 +7414,19 @@ def hmOrUnder (tail : Term) : Term := prog{
       let Key0 = key;
       let D0 = d;
       let C0 = *capb;
-      let pre = &m (*sb)[Z ; i ; S rr | LeAdd i (S rr) | Hd];
+      let pre = &m (*sb)[Z ; i ; S rr | LeAddRaw i (S rr) | Hd];
       let cell = &m (*sb)[i ; 1 ; rr];
       let hic = &m (*sb)[S i ; rr];
       let bb = &m (*cell)[0];
       let L0 = *pre;
       let B0 = *bb;
       let H0 = *hic;
-      let HposB = IdTrans Nat p
+      let HposB = IdTransRaw Nat p
                     (FindPosL Key0 (AgetB (Add I0 (S R0))
                       (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0)))
                     (FindPosL Key0 B0)
                     Hpos
-                    (IdCongr (List (Σ (k : Nat). Nat)) Nat
+                    (IdCongrRaw (List (Σ (k : Nat). Nat)) Nat
                       (λ (W : List (Σ (k : Nat). Nat)). FindPosL Key0 W)
                       (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
                         (Mod Key0 C0)) B0
@@ -7434,7 +7434,7 @@ def hmOrUnder (tail : Term) : Term := prog{
       *nb := n2;
       let Pair(rb, hb) = BktPutAt(p, key, d, &m *bb, HposB);
       let W0 = *rb;
-      Pair(rb, IdTrans Nat W0 (OrDefL Key0 D0 B0)
+      Pair(rb, IdTransRaw Nat W0 (OrDefL Key0 D0 B0)
         (elim (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
             (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0))))
           return (λ (B3 : Bool). Nat) {
@@ -7563,67 +7563,67 @@ def BSetPKEq : Term := prog defer_check {
         Π (P : Nat) → Id Nat P (FindPosL Q Lm) →
           Id (List (Σ (k : Nat). Nat)) (BSetP P V Lm) (BSetK Q V Lm)) {
       Nil => λ (P : Nat). λ (Hp : Id Nat P (FindPosL Q Nil)).
-        NatRw (λ (W : Nat). Id (List (Σ (k : Nat). Nat)) (BSetP W V Nil) Nil)
-          Z P (IdSym Nat P Z Hp) Refl,
+        NatRwRaw (λ (W : Nat). Id (List (Σ (k : Nat). Nat)) (BSetP W V Nil) Nil)
+          Z P (IdSymRaw Nat P Z Hp) Refl,
       Cons (E) (T) Rec =>
         elim E return (λ (Em : Σ (k : Nat). Nat).
             Π (P : Nat) → Id Nat P (FindPosL Q Cons(Em, T)) →
               Id (List (Σ (k : Nat). Nat)) (BSetP P V Cons(Em, T)) (BSetK Q V Cons(Em, T))) {
           Pair (K2) (V2) => λ (P : Nat). λ (Hp : Id Nat P (FindPosL Q Cons(Pair(K2, V2), T))).
-            IfDec (Eqb Q K2)
+            IfDecRaw (Eqb Q K2)
               (Id (List (Σ (k : Nat). Nat))
                 (BSetP P V Cons(Pair(K2, V2), T)) (BSetK Q V Cons(Pair(K2, V2), T)))
               (λ (Et : Id Bool (Eqb Q K2) True).
-                IdTrans (List (Σ (k : Nat). Nat))
+                IdTransRaw (List (Σ (k : Nat). Nat))
                   (BSetP P V Cons(Pair(K2, V2), T))
                   Cons(Pair(K2, V), T)
                   (BSetK Q V Cons(Pair(K2, V2), T))
-                  (NatRw (λ (W : Nat). Id (List (Σ (k : Nat). Nat))
+                  (NatRwRaw (λ (W : Nat). Id (List (Σ (k : Nat). Nat))
                       (BSetP W V Cons(Pair(K2, V2), T)) Cons(Pair(K2, V), T))
                     Z P
-                    (IdSym Nat P Z
-                      (IdTrans Nat P (FindPosL Q Cons(Pair(K2, V2), T)) Z Hp
-                        (IdCongr Bool Nat
+                    (IdSymRaw Nat P Z
+                      (IdTransRaw Nat P (FindPosL Q Cons(Pair(K2, V2), T)) Z Hp
+                        (IdCongrRaw Bool Nat
                           (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
                             True => Z, False => S (FindPosL Q T) })
                           (Eqb Q K2) True Et)))
                     Refl)
-                  (IdSym (List (Σ (k : Nat). Nat))
+                  (IdSymRaw (List (Σ (k : Nat). Nat))
                     (BSetK Q V Cons(Pair(K2, V2), T)) Cons(Pair(K2, V), T)
-                    (IdCongr Bool (List (Σ (k : Nat). Nat))
+                    (IdCongrRaw Bool (List (Σ (k : Nat). Nat))
                       (λ (W : Bool). elim W return (λ (Bm : Bool). List (Σ (k : Nat). Nat)) {
                         True => Cons(Pair(K2, V), T),
                         False => Cons(Pair(K2, V2), BSetK Q V T) })
                       (Eqb Q K2) True Et)))
               (λ (Ef : Id Bool (Eqb Q K2) False).
-                IdTrans (List (Σ (k : Nat). Nat))
+                IdTransRaw (List (Σ (k : Nat). Nat))
                   (BSetP P V Cons(Pair(K2, V2), T))
                   Cons(Pair(K2, V2), BSetK Q V T)
                   (BSetK Q V Cons(Pair(K2, V2), T))
-                  (IdTrans (List (Σ (k : Nat). Nat))
+                  (IdTransRaw (List (Σ (k : Nat). Nat))
                     (BSetP P V Cons(Pair(K2, V2), T))
                     Cons(Pair(K2, V2), BSetP (FindPosL Q T) V T)
                     Cons(Pair(K2, V2), BSetK Q V T)
-                    (NatRw (λ (W : Nat). Id (List (Σ (k : Nat). Nat))
+                    (NatRwRaw (λ (W : Nat). Id (List (Σ (k : Nat). Nat))
                         (BSetP W V Cons(Pair(K2, V2), T))
                         Cons(Pair(K2, V2), BSetP (FindPosL Q T) V T))
                       (S (FindPosL Q T)) P
-                      (IdSym Nat P (S (FindPosL Q T))
-                        (IdTrans Nat P (FindPosL Q Cons(Pair(K2, V2), T))
+                      (IdSymRaw Nat P (S (FindPosL Q T))
+                        (IdTransRaw Nat P (FindPosL Q Cons(Pair(K2, V2), T))
                           (S (FindPosL Q T)) Hp
-                          (IdCongr Bool Nat
+                          (IdCongrRaw Bool Nat
                             (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
                               True => Z, False => S (FindPosL Q T) })
                             (Eqb Q K2) False Ef)))
                       Refl)
-                    (IdCongr (List (Σ (k : Nat). Nat)) (List (Σ (k : Nat). Nat))
+                    (IdCongrRaw (List (Σ (k : Nat). Nat)) (List (Σ (k : Nat). Nat))
                       (λ (W : List (Σ (k : Nat). Nat)). Cons(Pair(K2, V2), W))
                       (BSetP (FindPosL Q T) V T) (BSetK Q V T)
                       (Rec (FindPosL Q T) Refl)))
-                  (IdSym (List (Σ (k : Nat). Nat))
+                  (IdSymRaw (List (Σ (k : Nat). Nat))
                     (BSetK Q V Cons(Pair(K2, V2), T))
                     Cons(Pair(K2, V2), BSetK Q V T)
-                    (IdCongr Bool (List (Σ (k : Nat). Nat))
+                    (IdCongrRaw Bool (List (Σ (k : Nat). Nat))
                       (λ (W : Bool). elim W return (λ (Bm : Bool). List (Σ (k : Nat). Nat)) {
                         True => Cons(Pair(K2, V), T),
                         False => Cons(Pair(K2, V2), BSetK Q V T) })
@@ -7651,13 +7651,13 @@ expensive concrete executions.
 section
 
 open Dllbc
-open Dllbc.StdLemmas (LeRefl LeAdd LeAddL LeAddSucc LeTrans LeUpR LePredL
-  LebTrueLe LebFalseGt AddSucc AddZero AddComm AddAssoc IdTrans IdCongr IdSym
-  NatRw LeZeroEq LeAntisym BoolFT BoolTF Znots SInj Pred
-  LeRwL LeRwR LeAddMonoL EqbRefl
-  NextR NextC NextQ ModC Mod DivC Div ModLtN ModDec
-  Mul MulSucc LeAddMonoR LeAddMono LeMulR
-  LeLebTrue EqbTrueEq EqbSym IfDec LedgerGrow)
+open Dllbc.StdLemmas (LeReflRaw LeAddRaw LeAddLRaw LeAddSuccRaw LeTransRaw LeUpRRaw LePredLRaw
+  LebTrueLeRaw LebFalseGtRaw AddSuccRaw AddZeroRaw AddCommRaw AddAssocRaw IdTransRaw IdCongrRaw IdSymRaw
+  NatRwRaw LeZeroEqRaw LeAntisymRaw BoolFTRaw BoolTFRaw ZnotsRaw SInjRaw Pred
+  LeRwLRaw LeRwRRaw LeAddMonoLRaw EqbReflRaw
+  NextR NextC NextQ ModC Mod DivC Div ModLtNRaw ModDecRaw
+  Mul MulSuccRaw LeAddMonoRRaw LeAddMonoRaw LeMulRRaw
+  LeLebTrueRaw EqbTrueEqRaw EqbSymRaw IfDecRaw LedgerGrowRaw)
 
 namespace Dllbc.Tests.HashMap
 
@@ -7872,9 +7872,9 @@ def hmGmUnder (tail2 : Term) : Term :=
               let C0 = c;
               let Pair(i, Pair(r, Pair(hd, him))) = SlotOfE(key, c, HLe1);
               let Him0 = him;
-              let bb = &m (*slots)[i | NatRw (λ (W : Nat). Le (S W) C0)
-                (Mod key C0) i (IdSym Nat i (Mod key C0) Him0)
-                (ModLtN key C0 HLe1)];
+              let bb = &m (*slots)[i | NatRwRaw (λ (W : Nat). Le (S W) C0)
+                (Mod key C0) i (IdSymRaw Nat i (Mod key C0) Him0)
+                (ModLtNRaw key C0 HLe1)];
               WalkVal(fuel, key, dflt, bb)
             } } } } } };
   fn GetMutHM (fuel : Nat, key : Nat,
@@ -7907,9 +7907,9 @@ def hmGmUnder (tail2 : Term) : Term :=
               let C0 = c;
               let Pair(i, Pair(r, Pair(hd, him))) = SlotOfE(key, c, HLe1);
               let Him0 = him;
-              let bb = &m (*slots)[i | NatRw (λ (W : Nat). Le (S W) C0)
-                (Mod key C0) i (IdSym Nat i (Mod key C0) Him0)
-                (ModLtN key C0 HLe1)];
+              let bb = &m (*slots)[i | NatRwRaw (λ (W : Nat). Le (S W) C0)
+                (Mod key C0) i (IdSymRaw Nat i (Mod key C0) Him0)
+                (ModLtNRaw key C0 HLe1)];
               ContainsWalk(fuel, key, bb)
             } } } } } };
   fn GetMutOrInsertHM (fuel : Nat, key : Nat, dflt : Nat,

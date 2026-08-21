@@ -521,7 +521,7 @@ section
 namespace Dllbc.Tests.S32Spine
 
 open Dllbc Dllbc.Tests
-open Dllbc.StdLemmas (LeRefl)
+open Dllbc.StdLemmas (LeReflRaw)
 
 /-! ## The application spine, and what retiring a node must not take with it
 
@@ -582,7 +582,7 @@ example : progOk rememberNeutral = true := by native_decide
 -- event; this is the refusal that retired with `.callV` and came back on the
 -- value.
 def enterRefused : Term := prog defer_check {
-  fn GiveLe (a : Nat) -> Le a a { %LeRefl a };
+  fn GiveLe (a : Nat) -> Le a a { %LeReflRaw a };
   fn Caller (n : Nat) -> Unit { let P = GiveLe(n); () };
   () }
 example : progRejects enterRefused "not in the comptime fragment" = true := by native_decide

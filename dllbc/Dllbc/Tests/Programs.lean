@@ -61,7 +61,7 @@ program.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (LeRefl LeTrans)
+open Dllbc.StdLemmas (LeReflRaw LeTransRaw)
 open Dllbc.Tests.S9Diff (diffC)
 
 namespace Dllbc.Tests.S26Modes
@@ -133,12 +133,12 @@ example : progRejects a5hi "cannot be the scrutinee of a runtime match" = true :
 -- silent fall-back to a move; the `let`-bound form below works.
 def a6bad : Term := prog defer_check {
   fn UseLeC (a : Nat, b : Nat, H : Le a b) -> Unit { () };
-  fn GiveLe (a : Nat) -> Le a a { %LeRefl a };
+  fn GiveLe (a : Nat) -> Le a a { %LeReflRaw a };
   fn Caller (n : Nat) -> Unit { UseLeC(n, n, GiveLe(n)); () };
   () }
 def a6ok : Term := prog{
   fn UseLeC (a : Nat, b : Nat, H : Le a b) -> Unit { () };
-  fn GiveLe (a : Nat) -> Le a a { %LeRefl a };
+  fn GiveLe (a : Nat) -> Le a a { %LeReflRaw a };
   fn Caller (n : Nat) -> Unit
   { let p = GiveLe(n); UseLeC(n, n, p); UseLeC(n, n, p); () };
   () }
@@ -327,7 +327,7 @@ example : progRejects c2 "cannot be ⇒-moved" = true := by native_decide
 -- existential and has none, so a capital `let` cannot bind one — honest, and
 -- pointing at the lowercase `let` that can.
 def c3bad : Term := prog defer_check {
-  fn GiveLe (a : Nat) -> Le a a { %LeRefl a };
+  fn GiveLe (a : Nat) -> Le a a { %LeReflRaw a };
   fn Caller (n : Nat) -> Unit { let P = GiveLe(n); () };
   () }
 example : progRejects c3bad "not in the comptime fragment" = true := by native_decide
@@ -337,7 +337,7 @@ example : progRejects c3bad "not in the comptime fragment" = true := by native_d
 def c4 : Term := prog{
   fn UseLeC (a : Nat, b : Nat, H : Le a b) -> Unit { () };
   fn Caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
-  { let Q = LeTrans n m m hnm (%LeRefl m);
+  { let Q = LeTransRaw n m m hnm (%LeReflRaw m);
     UseLeC(n, m, Q); UseLeC(n, m, Q); hnm };
   () }
 example : progOk c4 = true := by native_decide
@@ -546,7 +546,7 @@ def qsish : Term := prog{
         Z => (),
         S(f2) => {
           Step(&m *v, S(f2), Hfuel);                       -- passed to a call…
-          let Q = LeTrans (Len (old *v)) (S f2) (S f2) Hfuel (LeRefl (S f2));
+          let Q = LeTransRaw (Len (old *v)) (S f2) (S f2) Hfuel (LeReflRaw (S f2));
                                                               -- …and cited afterwards
           UseLeC(Len (old *v), S(f2), Q);                     -- the derived certificate, used
           () } } };
@@ -566,7 +566,7 @@ def qsishLo : Term := prog defer_check {
         Z => (),
         S(f2) => {
           StepLo(&m *v, S(f2), Hfuel);
-          let Q = LeTrans (Len (old *v)) (S f2) (S f2) Hfuel (LeRefl (S f2));
+          let Q = LeTransRaw (Len (old *v)) (S f2) (S f2) Hfuel (LeReflRaw (S f2));
           UseLeC(Len (old *v), S(f2), Q);
           () } } };
   () }
@@ -739,7 +739,7 @@ their sites below.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (Len Le Znots)
+open Dllbc.StdLemmas (Len Le ZnotsRaw)
 
 namespace Dllbc.Tests.S27Mixed
 
@@ -793,7 +793,7 @@ example : progRejects a2lie "does not have return type" = true := by native_deci
 
 -- A5a: the direct route to the same absurdity, refused as it always was.
 def a5direct : Term := prog defer_check {
-  fn Direct () -> Bot { Znots Z Refl };
+  fn Direct () -> Bot { ZnotsRaw Z Refl };
   () }
 example : progRejects a5direct "does not have return type" = true := by native_decide
 
@@ -898,7 +898,7 @@ example : progOk Tests.S6Call.toNatProg = true := by native_decide
 
     A spec-carrying in-place swap of positions 0 and 1, its ↝-obligation the Σ
     `Σ (l : List Nat). Id Nat (Len l) (Len s)`. The cursor work stays inside one
-    body: the entry proof `LenSwapL 0 1 (*v)` is captured non-destructively; the
+    body: the entry proof `LenSwapLRaw 0 1 (*v)` is captured non-destructively; the
     two element cursors (one from `v`, one from its tail, disjoint by
     construction) swap by take-and-fill; `let l = *v` collapses the field loans
     transparently to the swapped list; `*v := Pair(l, proof)` fills the Σ. The
@@ -912,7 +912,7 @@ example : progOk Tests.S6Call.toNatProg = true := by native_decide
 def withSwapS01 (rest : Term) : Term := prog{
   fn SwapS01 (v : &mut (s : List Nat ~> Σ (l : List Nat). Id Nat (Len l) (Len s)),
                     p : Le 2 (Len (*v))) -> Unit {
-    let proof = StdLemmas.LenSwapL 0 1 (*v);
+    let proof = StdLemmas.LenSwapLRaw 0 1 (*v);
     match v {
       Nil => botElim Unit p,
       Cons(h0, t0) => {
@@ -1040,7 +1040,7 @@ branch, and the array cursor costs something else (§B).
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (LeRefl Len Le)
+open Dllbc.StdLemmas (LeReflRaw Len Le)
 
 namespace Dllbc.Tests.S26Fuel
 
@@ -1171,7 +1171,7 @@ program that was never run.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (LeTrans LeRefl LeUpR IdCongr Append Len Le)
+open Dllbc.StdLemmas (LeTransRaw LeReflRaw LeUpRRaw IdCongrRaw Append Len Le)
 
 namespace Dllbc.Tests.S26Prog
 
@@ -1419,7 +1419,7 @@ example : progRejects d2free "not bound anywhere above it" = true := by native_d
 -- an oversight: a body that wants it should take it as a capital parameter
 -- instead. Recorded as a limitation with its route beside it, not as a defect.
 def d3 : Term := prog defer_check {
-  let cert = (LeRefl 3 : Le 3 3);
+  let cert = (LeReflRaw 3 : Le 3 3);
   let G = (λ(a : Nat){ let z = cert; a } : Π (a : Nat) → Nat);
   () }
 example : progRejects d3 "a runtime (lowercase) binding" = true := by native_decide
@@ -1441,15 +1441,15 @@ example : progRejects d3 "a runtime (lowercase) binding" = true := by native_dec
 -- specifically cannot be bound. Under the rule as it now stands a proof bound
 -- capital IS citable from inside a body, and D3c below pins that rather than
 -- leaving it to be inferred from this paragraph.
-def d3cap : Term := prog{ let C = (LeRefl 3 : Le 3 3); () }
+def d3cap : Term := prog{ let C = (LeReflRaw 3 : Le 3 3); () }
 example : progOk d3cap = true := by native_decide
 
 -- D3c. The citation half, which D3/D3b together imply and neither checks: the
 -- capital proof cited from inside a λ body, at a ⇝ position. Accepted, since a
 -- capital binder is always citable regardless of what value it holds.
 def d3cite : Term := prog{
-  let C = (LeRefl 3 : Le 3 3);
-  let G = (λ(a : Nat){ LeUpR 3 3 C } : Π (a : Nat) → Le 3 (S 3));
+  let C = (LeReflRaw 3 : Le 3 3);
+  let G = (λ(a : Nat){ LeUpRRaw 3 3 C } : Π (a : Nat) → Le 3 (S 3));
   () }
 example : progOk d3cite = true := by native_decide
 
@@ -1458,7 +1458,7 @@ example : progOk d3cite = true := by native_decide
 -- takes it before the citation rule is even consulted. Capture is open;
 -- consumption is not.
 def d3move : Term := prog defer_check {
-  let C = (LeRefl 3 : Le 3 3);
+  let C = (LeReflRaw 3 : Le 3 3);
   let G = (λ(a : Nat){ let z = C; a } : Π (a : Nat) → Nat);
   () }
 example : progRejects d3move "cannot be ⇒-moved" = true := by native_decide
@@ -1896,7 +1896,7 @@ example : progOk lamValuedCap = true := by native_decide
 open Dllbc.StdLemmas in
 /-- A proof returned as a Σ component at a **capital** binder: ⇝-read, accepted. -/
 def sigmaProofCapital : Term := prog{
-  fn F (n : Nat) -> Σ (H : Le n n). Nat { let H0 = LeRefl n; Pair(H0, n) };
+  fn F (n : Nat) -> Σ (H : Le n n). Nat { let H0 = LeReflRaw n; Pair(H0, n) };
   () }
 example : progOk sigmaProofCapital = true := by native_decide
 
@@ -1905,7 +1905,7 @@ open Dllbc.StdLemmas in
     the fence refuses the capital binding. Without this control the acceptance
     above would also pass for a rule that simply stopped fencing. -/
 def sigmaProofLower : Term := prog defer_check {
-  fn F (n : Nat) -> Σ (h : Le n n). Nat { let H0 = LeRefl n; Pair(H0, n) };
+  fn F (n : Nat) -> Σ (h : Le n n). Nat { let H0 = LeReflRaw n; Pair(H0, n) };
   () }
 example : progRejects sigmaProofLower "cannot be ⇒-moved" = true := by native_decide
 
@@ -1921,7 +1921,7 @@ open Dllbc.StdLemmas in
     `Σ (hi : List Nat). … → Π n. Id …`, and the trailing `Π n. Id …` is the
     ∀-proof: five components have binders and the sixth is the tail. -/
 def sigmaTailProof : Term := prog defer_check {
-  fn F (n : Nat) -> Σ (H : Le n n). Le n n { let H0 = LeRefl n; Pair(H0, H0) };
+  fn F (n : Nat) -> Σ (H : Le n n). Le n n { let H0 = LeReflRaw n; Pair(H0, H0) };
   () }
 example : progRejects sigmaTailProof "the TAIL of a Σ chain is runtime-moded" = true := by
   native_decide
@@ -1953,7 +1953,7 @@ open Dllbc Dllbc.Tests
 
 open Dllbc.StdLemmas in
 def sigmaTailProof0 : Term := prog{
-  fn F (n : Nat) -> Σ0 (H : Le n n). Le n n { let H0 = LeRefl n; Pair(H0, H0) };
+  fn F (n : Nat) -> Σ0 (H : Le n n). Le n n { let H0 = LeReflRaw n; Pair(H0, H0) };
   () }
 example : progOk sigmaTailProof0 = true := by native_decide
 
@@ -1965,7 +1965,7 @@ example : progOk sigmaTailProof0 = true := by native_decide
 open Dllbc.StdLemmas in
 def tailLam0 : Term := prog{
   fn F (n : Nat) -> Σ0 (H : Le n n). (Π (N : Nat) → Le N N)
-    { let H0 = LeRefl n; Pair(H0, λ (N : Nat). LeRefl N) };
+    { let H0 = LeReflRaw n; Pair(H0, λ (N : Nat). LeReflRaw N) };
   () }
 example : progOk tailLam0 = true := by native_decide
 
@@ -2022,7 +2022,7 @@ example : progRejects tailRunUpper "lower-case the arm binder" = true := by nati
 
 open Dllbc.StdLemmas in
 def erase0 : Term := prog{
-  fn F0 (n : Nat) -> Σ0 (k : Nat). Le n n { let H0 = LeRefl n; Pair(n, H0) };
+  fn F0 (n : Nat) -> Σ0 (k : Nat). Le n n { let H0 = LeReflRaw n; Pair(n, H0) };
   let Pair(a, H) = F0(S(S(Z)));
   let y = a; () }
 example : progOk erase0 = true := by native_decide
@@ -2041,14 +2041,14 @@ example : (match runProgram erase0 with
 
 open Dllbc.StdLemmas in
 def elimSig : Term := prog defer_check {
-  let P0 = Pair(Z, LeRefl Z);
+  let P0 = Pair(Z, LeReflRaw Z);
   let K = elim P0 return (λ (p : Σ (k : Nat). Le Z Z). Nat) { Pair (k) (h) => k };
   () }
 example : progOk elimSig = true := by native_decide
 
 open Dllbc.StdLemmas in
 def elimSig0 : Term := prog defer_check {
-  let P0 = Pair(Z, LeRefl Z);
+  let P0 = Pair(Z, LeReflRaw Z);
   let K = elim P0 return (λ (p : Σ0 (k : Nat). Le Z Z). Nat) { Pair (k) (H) => k };
   () }
 example : progOk elimSig0 = true := by native_decide

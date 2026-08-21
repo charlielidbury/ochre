@@ -18,7 +18,7 @@ dependent tail at the array the segments concatenate back to.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (LeAdd SortedA)
+open Dllbc.StdLemmas (LeAddRaw SortedA)
 
 namespace Dllbc.Tests.AuditFold
 
@@ -44,7 +44,7 @@ def packCarveRepack : Term := prog{
     let Pair(arr, HS) = *self;
     let SL0 = arr;
     let sb = &m arr;
-    let pre = &m (*sb)[Z ; i ; S r | LeAdd i (S r) | hd];
+    let pre = &m (*sb)[Z ; i ; S r | LeAddRaw i (S r) | hd];
     let cell = &m (*sb)[i ; 1 ; r];
     let hic = &m (*sb)[S i ; r];
     *self := Pair(arr, SortedAId n SL0 HS);
@@ -77,7 +77,7 @@ def carveRejoinEq : Term := prog{
             a : Array n Nat) -> Unit {
     let SL0 = a;
     let sb = &m a;
-    let pre = &m (*sb)[Z ; i ; S r | LeAdd i (S r) | hd];
+    let pre = &m (*sb)[Z ; i ; S r | LeAddRaw i (S r) | hd];
     let cell = &m (*sb)[i ; 1 ; r];
     let hic = &m (*sb)[S i ; r];
     let L0 = *pre;
@@ -106,7 +106,7 @@ def packCarveHole : Term := prog defer_check {
     let Pair(arr, HS) = *self;
     let SL0 = arr;
     let sb = &m arr;
-    let pre = &m (*sb)[Z ; i ; S r | LeAdd i (S r) | hd];
+    let pre = &m (*sb)[Z ; i ; S r | LeAddRaw i (S r) | hd];
     let cell = &m (*sb)[i ; 1 ; r];
     let hic = &m (*sb)[S i ; r];
     let stolen = *cell;
@@ -126,7 +126,7 @@ def packCarveWrite : Term := prog defer_check {
     let Pair(arr, HS) = *self;
     let SL0 = arr;
     let sb = &m arr;
-    let pre = &m (*sb)[Z ; i ; S r | LeAdd i (S r) | hd];
+    let pre = &m (*sb)[Z ; i ; S r | LeAddRaw i (S r) | hd];
     let cell = &m (*sb)[i ; 1 ; r];
     let hic = &m (*sb)[S i ; r];
     *cell := Arr(7);

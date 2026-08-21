@@ -1,6 +1,6 @@
 # 20 — Module states: threading the checker state across `prog` blocks
 
-Status: agreed in discussion 2026-08-21. Stages 0–3 are built (see the staged-work entries below for what each actually is); stage 4 remains plan.
+Status: agreed in discussion 2026-08-21. Stages 0–3 are built (see the staged-work entries below for what each actually is); stage 4's lemma layer is done (see its entry); consumer migration to chain consumption remains.
 
 ## The problem
 
@@ -111,7 +111,15 @@ The one piece of real machinery: `prog (sortLemmas.env) { … }` checks at elabo
    * **`spans : List SpanNote`** — statement-term key (stored in `stmtKeyOf` normal form, directly joinable against a breadcrumb) with `module : String` and byte offsets, `Lean.Syntax` nowhere. `elabModule` collects its span table with `collect := true` — the one deliberate reversal of "a passing block pays nothing for its spans": for a module the table is carried data, not rejection diagnostics, and module blocks are few — and quotes the entries into the emitted value instead of discarding them.
    * **The carry did its job**: `Ledgers.closePath` reads the seed's entries back out of every `fn` audit, so the channels survive `checkRFnBody` by construction (asserted across a two-module chain). `moduleFinalSt` now persists ledgers as ONLY these two channels, hover-replay channels rebuilt empty (see the stage-1 correction above). Judgment equivalence is therefore "equal up to `hints`/`spans`", and it bites exactly where the plan said it would: state-equality assertions compare judgment-relevant projections — the splice-agreement test already did, and no existing assertion moved.
    * Point-hover and `show` replay for IMPORTED names is deliberately not built here — that is UX on top of the carried data, and the S1 source-truth path is untouched. What falls out for free is the data side: a hinted import is callable, and the span channel gives any future cross-file hover its positions.
-5. **Stage 4:** port `Std`/`StdLemmas` to module blocks written with `fn`; delete the battery, the `Ty` defs, and the splice plumbing. The E2E-rule exemption list drops the battery it briefly named.
+5. **Stage 4 — the library port, DONE for the lemma layer (2026-08-21).** All 110 StdLemmas lemma pairs live in `StdChain.lean` as one `prog () { … }` block (`Dllbc.std : Checked`), elaborating in ~34 s with `maxHeartbeats 0 — the measured one-block cost; the block can be cut at any statement boundary and chained if that ever hurts the edit loop. 41 lemmas are native match+recursion rewrites; 69 wrap the original proof term applied to the parameters. The original raw terms are renamed `XRaw` in `StdLemmas.lean` (the shadow guard requires the old constant's name to differ; the corpus's `L`-suffix convention collides for `LeAdd`/`LeAddMono`, hence `Raw`), the `chkLib` battery is deleted (the chain's elaboration subsumes it), and the 16 consumer files' citations were renamed mechanically. `Tests/ModuleStates.lean` consumes the real chain: seeded from `Dllbc.std.env`, citing a native lemma, feeding its result to another, and calling a wrapper lemma.
+
+   The port measured the `fn`-lemma boundary precisely, across ten independent transcription agents:
+   * **Consumption discipline decides P1.** `Le`-style lemmas (proofs consumed by type: refinement, botElim) rewrite natively. `Id`-lemmas whose recursive step composes through `j`/`IdCongr`/`IdTrans` cannot: `j` consumes its witness by value, a `fn`'s `Ih` is an opaque existential, and matching `Refl` on it is stuck rigid-rigid. Recursive `Id`-arithmetic stays wrapped under the current kernel.
+   * `fnElab` lowers `[k]` recursion to `natRec`/`listRec` only — array-shaped lemmas cannot go native regardless of spelling. Non-recursive matches (Σ-projections) have no scrutinee-type restriction.
+   * A named capital Σ binder makes its component comptime, and a comptime arm binder cannot be returned as a runtime result — `Ub`/`Lb` projections stay wrapped while `Sorted`/`Bound`'s anonymous-product cousins go native.
+   * A proof premise used more than once per branch must be CAPITAL (a lowercase proof is a linear runtime resource, one read per path), Π-typed or not.
+   * An all-comptime `fn` body cannot call a sibling `fn` (a call is ⇒-only; the body is ⇝ throughout); pure application of a raw constant is fine. In mixed bodies, a sibling call cannot nest inside a juxtaposed pure application — bind it with a lowercase `let` first. Self-calls are exempt (they become `Ih`).
+   * Known diagnostics gap: this last failure class reports with no span, pointing at the block's first `fn`.
 6. **Deferred:** state merges (diamonds stay structurally impossible until a use case forces the question).
 
 ## Open questions

@@ -29,7 +29,7 @@ removing real staging from a realistic body.
 namespace Dllbc.Tests.SigmaCopy
 
 open Dllbc
-open Dllbc.StdLemmas (LeTrans LeAdd LebTrueLe IdCongr IdSym LeRwL)
+open Dllbc.StdLemmas (LeTransRaw LeAddRaw LebTrueLeRaw IdCongrRaw IdSymRaw LeRwLRaw)
 
 /-! ## (i) Positive and negative cases, one binding used twice
 
@@ -278,22 +278,22 @@ def grow (tail : Term) : Term := uAddC prog{
            mload : (Σ0 (n : Nat). Le n MAX))
       -> (Σ (c2 : (Σ0 (n : Nat). Le n MAX)). (Σ0 (n : Nat). Le n MAX))
       { if hg : Leb (Add (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth)) MAX {
-          let HBig = LebTrueLe
+          let HBig = LebTrueLeRaw
                        (Add (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth))
                        MAX hg;
-          let HA = LeTrans (Add (Val MAX capacity) (Val MAX growth))
+          let HA = LeTransRaw (Add (Val MAX capacity) (Val MAX growth))
                      (Add (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth)) MAX
-                     (LeAdd (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth))
+                     (LeAddRaw (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth))
                      HBig;
           let Pair(nc, Enc) = AddUC(MAX, capacity, growth, HA);
           -- `capacity` and `growth` were both moved by the call above, and both
           -- are named here directly, with no staging beforehand.
-          let HB = LeRwL MAX
+          let HB = LeRwLRaw MAX
                      (Add (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth))
                      (Add (Val MAX nc) (Val MAX growth))
-                     (IdCongr Nat Nat (λ (X : Nat). Add X (Val MAX growth))
+                     (IdCongrRaw Nat Nat (λ (X : Nat). Add X (Val MAX growth))
                        (Add (Val MAX capacity) (Val MAX growth)) (Val MAX nc)
-                       (IdSym Nat (Val MAX nc)
+                       (IdSymRaw Nat (Val MAX nc)
                          (Add (Val MAX capacity) (Val MAX growth)) Enc))
                      HBig;
           -- The result is the pack itself, after the call that consumed it —

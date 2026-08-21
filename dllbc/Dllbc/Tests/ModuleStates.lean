@@ -1,4 +1,5 @@
 import Dllbc.ElabCheck
+import Dllbc.StdChain
 import Dllbc.Std
 
 /-! # Module states (docs/20 stages 1-3) — the surface
@@ -185,5 +186,24 @@ example :
     && walkMod.env.ledgers.points.isEmpty
     && walkMod.env.ledgers.paths.isEmpty
     && useWalk.env.ledgers.paths.isEmpty := by native_decide
+
+/-! ## (7) The real standard library, consumed
+
+    `Dllbc.std` is the 110-lemma chain (StdChain.lean). Seeding from its state
+    and citing lemmas by name — including feeding one imported lemma's result
+    to another — is the design's whole payoff, exercised on the real library
+    rather than this file's toy module. -/
+
+def useStd : Checked := prog (Dllbc.std.env) {
+  let p = LeRefl(3);
+  let w = LeUpR(3, 3, p);
+  let u = AddComm(2, 3);
+  () }
+
+example :
+    (useStd.env.env.find? (fun kv => kv.1.name == "p")).isSome
+    && (useStd.env.env.find? (fun kv => kv.1.name == "w")).isSome
+    && (useStd.env.env.find? (fun kv => kv.1.name == "u")).isSome
+    && useStd.env.nextSym > Dllbc.std.env.nextSym := by native_decide
 
 end Dllbc.Tests.ModuleStates

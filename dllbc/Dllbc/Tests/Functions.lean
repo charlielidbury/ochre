@@ -49,7 +49,7 @@ runtime variable, and falls through to the declaration table otherwise.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (LeRefl LeTrans)
+open Dllbc.StdLemmas (LeReflRaw LeTransRaw)
 
 namespace Dllbc.Tests.S26Seal
 
@@ -256,12 +256,12 @@ example : progRejects c13s "does not have its parameter type" = true := by nativ
     projectable. -/
 
 def sigLemTy : Term := prog defer_check { Π (x : Nat) → Σ (H : Le x x). Le x x }
-def sigLem : Term := prog defer_check { λ (x : Nat). Pair (LeRefl x) (LeRefl x) }
+def sigLem : Term := prog defer_check { λ (x : Nat). Pair (LeReflRaw x) (LeReflRaw x) }
 
 def c14 : Term := prog{
   let f = (%sigLem : %sigLemTy);
   let p = f(2);
-  elim p return (λ (W : Σ (H : Le 2 2). Le 2 2). Le 2 2) { Pair (a) (b) => LeTrans 2 2 2 a b } }
+  elim p return (λ (W : Σ (H : Le 2 2). Le 2 2). Le 2 2) { Pair (a) (b) => LeTransRaw 2 2 2 a b } }
 -- The program's result is the projection, so its return type — passed as
 -- `progOk`'s second argument — is what the audit checks it at.
 example : progOk c14 (prog defer_check { Le 2 2 }) = true := by native_decide
@@ -377,7 +377,7 @@ borrow while it waits.
 
 open Dllbc
 open Dllbc.Tests.S9Diff (runExec symEnvs instanceOfC diffC)
-open Dllbc.StdLemmas (IdCongr)
+open Dllbc.StdLemmas (IdCongrRaw)
 
 namespace Dllbc.Tests.S26Rec
 
@@ -976,7 +976,7 @@ def splitSealed : Term := prog{
            Cons(hd, tl) => {
              let y1 = Take i2 (*tl);
              let Pair(rr, Pair(H1, h2)) = Ih(&m *tl, hi);
-             let c1 = IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
+             let c1 = IdCongrRaw (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                         (*tl) y1 H1;
              Pair(rr, Pair(c1, h2)) } } }) : %splitTy);
   () }
@@ -1019,7 +1019,7 @@ def splitSpecLie : Term := prog defer_check {
            Cons(hd, tl) => {
              let y1 = Take i2 (*tl);
              let Pair(rr, Pair(H1, h2)) = Ih(&m *tl, hi);
-             let c1 = IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
+             let c1 = IdCongrRaw (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                         (*tl) y1 H1;
              Pair(rr, Pair(c1, h2)) } } }) : %splitTyLie);
   () }
@@ -1044,7 +1044,7 @@ def splitBodyLie : Term := prog defer_check {
            Cons(hd, tl) => {
              let y1 = Take i2 (*tl);
              let Pair(rr, Pair(H1, h2)) = Ih(&m *tl, hi);
-             let c1 = IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
+             let c1 = IdCongrRaw (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                         (*tl) y1 H1;
              Pair(rr, Pair(H1, h2)) } } }) : %splitTy);
   () }
@@ -1210,7 +1210,7 @@ def j1 : Term := prog{
            Cons(hd, tl) => {
              let y1 = Take i2 (*tl);
              let Pair(rr, Pair(H1, h2)) = Ih(&m *tl, hi);
-             let c1 = IdCongr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
+             let c1 = IdCongrRaw (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                         (*tl) y1 H1;
              Pair(rr, Pair(c1, h2)) } } }) : %splitTy);
   let x = Cons(1, Cons(2, Cons(3, Nil)));

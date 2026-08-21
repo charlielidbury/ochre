@@ -2388,7 +2388,7 @@ mutual
       | .lam x d b =>
         -- λ against Π: check the domains convert, then the body under a fresh σ
         -- witness for the binder (a checking-time hypothesis added to `sctx`).
-        -- This is what lets a Π-typed lemma (`LeRefl : Π n. Le n n`) and the
+        -- This is what lets a Π-typed lemma (`LeReflRaw : Π n. Le n n`) and the
         -- recursors' step arguments — both λs — type-check.
         --
         -- The λ's binder and the Π's need not agree in NAME, and the two openings
@@ -2923,13 +2923,13 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Term) (given : Option Ter
   let leaves ← extentMap fuel node
   -- Degenerate carve (¶3.2): "when the request coincides with the leaf, no split and
   -- no refinement happen at all". No obligation either — `Le b b` and `Le x x` are
-  -- `LeRefl`, so demanding evidence would be friction with no content. This is the
+  -- `LeReflRaw`, so demanding evidence would be friction with no content. This is the
   -- asymmetry ¶3.4 says IS the design: an exhaustive split costs ONE proof, not two.
   let degenerate := leaves.find? (fun l => Pure.convert fuel l.base lo && Pure.convert fuel l.count cnt)
   -- Premise (2): form each candidate leaf's obligation and check the evidence against
   -- it; the first that types SELECTS the leaf — "the evidence's type is the selector".
   -- Deterministic without a tie-break, because leaves are disjoint. A degenerate
-  -- request needs no evidence at all: its two `Le`s are `LeRefl`, so demanding a term
+  -- request needs no evidence at all: its two `Le`s are `LeReflRaw`, so demanding a term
   -- would be friction with no content. That asymmetry is ¶3.4's, and it is why an
   -- exhaustive split costs ONE proof rather than two.
   let sel ← match degenerate with
@@ -5843,7 +5843,7 @@ mutual
       --   * an ascription → `sealValue`, where a λ is FORMED, not ⇒-read.
       --
       -- What is left is a λ written in a position with nothing to say it is
-      -- knowledge — R3's `Pair(SplitANil …, λ (q : Nat). Refl)`, a constructor
+      -- knowledge — R3's `Pair(SplitANilRaw …, λ (q : Nat). Refl)`, a constructor
       -- ARGUMENT read by `readArgs`, which had no type in hand and so no way to
       -- decide. That is §2.5's FIRST surviving spelling, and Σ0 is what makes
       -- refusing it a rule with a fix rather than a rule with a wall: the fix is

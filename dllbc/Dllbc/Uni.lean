@@ -59,7 +59,7 @@ the **Lean identifier** of that name, which must denote a `Dllbc.Term` in scope
 A function's body is `ublk` with the telescope names pre-bound in
 order at ids `0 .. n-1` and fresh binders minted from `n`, the `seedTelescope`
 convention. That is the only place in the surface where a name arrives pre-bound.
-Bodies laden with pure proof terms (a `botElim` ex-falso branch, a `LeRwR` bound
+Bodies laden with pure proof terms (a `botElim` ex-falso branch, a `LeRwRRaw` bound
 derivation) can be spliced whole with `%term`, which is a `uterm` and therefore a
 block's final expression — the escape hatch `decl{ … = %t }` used to provide,
 available uniformly wherever an expression is.
@@ -95,7 +95,7 @@ statement layer.
 **no-whitespace** paren argument list — is a runtime **call** (lowercase head) or
 **ctorApp** (uppercase). Space-separated **juxtaposition** `f a b` (incl.
 `f (a) b`) is **pure application** (`ctorApp` when the head is a known ctor). So
-`Nth(&m *tl, k, p)` is a call, `botElim Unit p` and `LeRwR (S x) y` are
+`Nth(&m *tl, k, p)` is a call, `botElim Unit p` and `LeRwRRaw (S x) y` are
 application spines, `S(*l)` / `S *l` both mean `ctorApp "S" [*l]`. -/
 
 declare_syntax_cat uterm

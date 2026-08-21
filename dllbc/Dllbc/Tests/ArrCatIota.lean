@@ -25,7 +25,7 @@ open Dllbc
 
 namespace Dllbc.Tests.ArrCatIota
 
-open Dllbc.StdLemmas (LeAdd LeRefl IdCongr IdSym AddZero)
+open Dllbc.StdLemmas (LeAddRaw LeReflRaw IdCongrRaw IdSymRaw AddZeroRaw)
 
 /-! ## §1 The ι-rules
 
@@ -293,7 +293,7 @@ def gmDecSymPin : Term := prog{
         self : &mut (s : Σ0 (a : Array n (Σ (k : Nat). Nat)). AllK7 n a
                        ~> (%PVSetDecT) n i r (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
-      let pre = &m (*a)[Z ; i ; S r | LeAdd i (S r) | hd];
+      let pre = &m (*a)[Z ; i ; S r | LeAddRaw i (S r) | hd];
       let cell = &m (*a)[i ; 1 ; r];
       let e = &m (*cell)[0];
       match e { Pair(kk, vv) => &m *vv } } } };
@@ -307,7 +307,7 @@ def gmDecSymPinRefl : Term := prog{
         self : &mut (s : Σ0 (a : Array (Add i (S r)) (Σ (k : Nat). Nat)). AllK7 (Add i (S r)) a
                        ~> (%PVSetDecT) (Add i (S r)) i r (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
-      let pre = &m (*a)[Z ; i ; S r | LeAdd i (S r) | Refl];
+      let pre = &m (*a)[Z ; i ; S r | LeAddRaw i (S r) | Refl];
       let cell = &m (*a)[i ; 1 ; r];
       let e = &m (*cell)[0];
       match e { Pair(kk, vv) => &m *vv } } } };
@@ -325,7 +325,7 @@ def gmDecSymPinKey : Term := prog defer_check {
         self : &mut (s : Σ0 (a : Array n (Σ (k : Nat). Nat)). AllK7 n a
                        ~> (%PVSetDecT) n i r (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
-      let pre = &m (*a)[Z ; i ; S r | LeAdd i (S r) | hd];
+      let pre = &m (*a)[Z ; i ; S r | LeAddRaw i (S r) | hd];
       let cell = &m (*a)[i ; 1 ; r];
       let e = &m (*cell)[0];
       match e { Pair(kk, vv) => &m *kk } } } };
@@ -356,7 +356,7 @@ def gmDecSymPinWrongSlot : Term := prog defer_check {
         self : &mut (s : Σ0 (a : Array n (Σ (k : Nat). Nat)). AllK7 n a
                        ~> (%PVSetDecT) n Z (Add i r) (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
-      let pre = &m (*a)[Z ; i ; S r | LeAdd i (S r) | hd];
+      let pre = &m (*a)[Z ; i ; S r | LeAddRaw i (S r) | hd];
       let cell = &m (*a)[i ; 1 ; r];
       let e = &m (*cell)[0];
       match e { Pair(kk, vv) => &m *vv } } } };
@@ -377,7 +377,7 @@ def gmDecCaller : Term := prog{
         self : &mut (s : Σ0 (a : Array n (Σ (k : Nat). Nat)). AllK7 n a
                        ~> (%PVSetDecT) n i r (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
-      let pre = &m (*a)[Z ; i ; S r | LeAdd i (S r) | hd];
+      let pre = &m (*a)[Z ; i ; S r | LeAddRaw i (S r) | hd];
       let cell = &m (*a)[i ; 1 ; r];
       let e = &m (*cell)[0];
       match e { Pair(kk, vv) => &m *vv } } } };

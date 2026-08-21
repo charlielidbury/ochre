@@ -398,7 +398,7 @@ def Term.appSpine (head : Term) : List Term → Term
     needed in `Syntax.lean` rather than only in the machine because
     `Term.imperative` consults it: a `.var` head names an Ω SLOT, so applying one
     is ⇒-entry, exactly as the `.callV` case said. A `.const`/`.pvar` head is a
-    pure spine and stays comptime — which is why `fn UseTrans (…) { LeTrans a b c
+    pure spine and stays comptime — which is why `fn UseTrans (…) { LeTransRaw a b c
     p q }` is still classified by its BINDERS (M32 R2's second half) and not by
     this. -/
 def Term.appSpineVar? : Term → Option (Var × List Term)

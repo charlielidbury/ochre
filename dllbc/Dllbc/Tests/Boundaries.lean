@@ -466,8 +466,8 @@ namespace Dllbc.Tests.S12Inst
 
 /-! ## The dependent return type, instantiated at the actual -/
 
--- `use_refl (n : Nat) → Le n n = LeRefl n`. The body pure-lifts the proof
--- term `LeRefl n`; the audit checks it against the pinned `Le n n`.
+-- `use_refl (n : Nat) → Le n n = LeReflRaw n`. The body pure-lifts the proof
+-- term `LeReflRaw n`; the audit checks it against the pinned `Le n n`.
 def useRefl : Term := prog{
   fn UseRefl (n : Nat) -> Le n n { le_reflT n };
   () }
