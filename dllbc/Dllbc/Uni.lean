@@ -120,6 +120,10 @@ syntax:max "*" uterm:max : uterm                            -- deref / peel
 syntax:max "old" "*" uterm:max : uterm                      -- §5.4 old *v: entry snapshot of a borrow-param deref
 syntax:max "Id" uterm:max uterm:max uterm:max : uterm        -- Id A a b
 syntax:max ident noWs "(" uterm,* ")" : uterm                -- call / ctorApp (NO space before `(`)
+-- `@name(E)` — a claim-site marker (docs/21), identity on `E`. The PARENTHESIZED
+-- form on purpose: bare `@name E` would fight application juxtaposition for `E`'s
+-- extent, and a claim site should read as exactly one delimited thing.
+syntax:max "@" noWs ident noWs "(" uterm ")" : uterm         -- @name(E) — marker
 -- ¶2.1's two new place steps. They bind TIGHTER than the peel, so a reborrow of a
 -- range through a borrow is written `&m (*v)[lo ; cnt]` and `*v[i]` would mean
 -- `*(v[i])` — peel the borrow stored AT slot `i`, which is how an `Array n (&mut T)`
@@ -1048,6 +1052,11 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
   | `(uterm| ($e:uterm)) => elabUTerm rctx pctx next e
   | `(uterm| Type) => return (← `(Dllbc.Term.type), next)
   | `(uterm| % $e:term) => return (← `(($e : Dllbc.Term)), next)
+  | `(uterm| @$nm:ident($e:uterm)) => do
+    -- The marker row wraps and nothing else: occurrences inside `E` file as
+    -- normal (spans, hovers), and the node is stripped at the program boundary.
+    let (e', n) ← elabUTerm rctx pctx next e
+    return (← `(Dllbc.Term.marker $(quote nm.getId.toString) $e'), n)
   | `(uterm| $n:num) => return (← buildNat n.getNat, next)
   | `(uterm| old * $e:uterm) => do
     -- §5.4 `old *v`: the ENTRY snapshot, sugar over the telescope's existing

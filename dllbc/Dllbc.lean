@@ -29,6 +29,7 @@ import Dllbc.Tests.ArrCatIota
 import Dllbc.Tests.HashMap
 import Dllbc.Tests.ElabSpans
 import Dllbc.Tests.ShowSpans
+import Dllbc.Tests.MarkedTwins
 import Dllbc.Tests.Fence
 import Dllbc.Tests.AmbiguousMiddle
 import Dllbc.Tests.MatchJoin

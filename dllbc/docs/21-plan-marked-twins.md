@@ -63,3 +63,13 @@ Two requests INTO docs/20, so they are designed in rather than bolted on:
 * One mutated twin rejected with a meaningful needle.
 * `show`/hover behave identically in marked code (a `#guard_msgs` show beside a marker).
 * Full suite green.
+
+## 8. As built (2026-08-21, this lane) — where the build filled in the plan
+
+All of the above landed (`Tests/MarkedTwins.lean`); the record here is what the plan left open and the build decided, plus one wording drift a twin-writer must know:
+
+* The one traversal is `Term.mapMarkersGo` (Syntax.lean) — non-monadic, a polymorphic accumulator threaded exactly as `numberSealsGo` threads its counter, and TOTAL: structural recursion goes through, so no `partial` and no `Inhabited` obligations. `stripMarkers` and `replaceMarked?` are its two instantiations; the row list lives once and mirrors `numberSealsGo`'s row for row.
+* Two machine-side matches turned out to have NO catch-all for §4's catch-all sentence to cover (`reflectC`, `readR` — the compiler surfaced both as missing-cases). Each got an explicit loud-error row ("marker reached the machine — stripped at the program boundary; a side entry must pre-strip"), which is §4's never-silent rule applied to the stronger case.
+* §2's sketch needle "does not have its owed type" is not what a return-type lie produces. The audit's actual message is `result (…) does not have return type (…the lie…)`, and the acceptance twin pins that real message with the strengthened claim in it — so the pin cannot be met by a twin rejected for being garbage.
+* §5's seam was verified counterfactually rather than assumed: with the elaborator's key strip stubbed out, the acceptance `show` beside the marked `:=` statement silently declined its point answer and fell back to the binder fact, failing the `#guard_msgs` pin; restored, it answers `⊥` identically to the unmarked program. The discriminating probe is an ASSIGN statement on purpose — `stmtKeyOf` keeps an assign's rhs (where the marker sits) but reduces a `let` to its binder, so a marked `let` would never have exercised the seam.
+* Span-lookup normalization strips BEFORE `stmtKeyOf`, not after: a marker wrapping a whole statement would push `stmtKeyOf` into its catch-all and keep the continuation the machine's key dropped.

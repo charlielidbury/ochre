@@ -285,6 +285,16 @@ inductive Term where
       rest as a suspension; ⇝'s rule for it (`readComptimeVal`) is a rule at the
       NODE, which reduces it to the σ its site names. -/
   | seal   : Nat → Term → Term → Term
+  /-- `.marker name e` — a NAMED CLAIM SITE, and TEST SCAFFOLDING ONLY (docs/21).
+      Semantics: identity — `@name(e)` IS `e`. A marked honest program declares
+      where its lying twins will attack, and `Term.replaceMarked?` mutates
+      exactly there (exactly-one contract). The machine NEVER sees one:
+      `Machine.atBoundary` strips markers before seal numbering, the
+      `numberSeals` precedent — no eval rule, no checking rule, no `Val` form.
+      Ruled scaffolding-only at spec time; using this as a general annotation
+      mechanism re-opens the kernel-surface-for-tests question and must not
+      happen by drift. -/
+  | marker : String → Term → Term
   /-- Terminal form, the value a statement sequence returns when it has no
       final expression. -/
   | unit   : Term
@@ -448,6 +458,8 @@ mutual
     | .seq (.letIn _ rhs) rest => Term.imperative rhs || Term.imperative rest
     | .assign _ _ | .borrow _ | .seq _ _ | .matchE _ _ _
     | .call _ _ | .seal _ _ _ => true
+    -- A marker is its body (identity semantics, docs/21).
+    | .marker _ e => Term.imperative e
     -- `a[lo ; ..]` reads its count off the extent map, which is state.
     | .range _ _ none _ _ _ => true
     | .letIn _ rhs => Term.imperative rhs
@@ -625,6 +637,7 @@ mutual
     -- sealed σ by, and that is a question about identity over time rather than
     -- about equality of syntax.
     | .seal _ a b, .seal _ c d => Term.beq a c && Term.beq b d
+    | .marker n a, .marker m b => n == m && Term.beq a b
     | .unit, .unit => true
     | .pvar x, .pvar y => x == y
     | .type, .type => true
@@ -894,6 +907,7 @@ mutual
     | .seq a b => Term.freeRVars bound a ++ Term.freeRVars bound b
     | .call _ args => Term.freeRVarsList bound args
     | .seal _ t u => Term.freeRVars bound t ++ Term.freeRVars bound u
+    | .marker _ e => Term.freeRVars bound e
     -- **The one λ, scoped as the telescope it is** (M32 R2). The domain is read
     -- OUTSIDE the binder and the body inside it, which is exactly what
     -- `freeRVarsBinders` did to `lamR`'s list — a binder type is dependent (`ih`'s
@@ -1366,6 +1380,7 @@ mutual
     | .deref t => "*" ++ Term.prettyPrec 1 t
     | .borrow t => "&mut " ++ Term.prettyPrec 1 t
     | .seal _ t _ => "(" ++ Term.prettyPrec 0 t ++ " : …)"
+    | .marker n e => "@" ++ n ++ "(" ++ Term.prettyPrec 0 e ++ ")"
     | .call f _ => f ++ "(…)"
     | .index t i _ => Term.prettyPrec 1 t ++ "[" ++ Term.prettyPrec 0 i ++ "]"
     | .range t lo _ _ _ _ => Term.prettyPrec 1 t ++ "[" ++ Term.prettyPrec 0 lo ++ " ; …]"
@@ -1437,6 +1452,12 @@ def Term.natOf? : Term → Option Nat
 mutual
   /-- Number the seals in `t`, starting at `n`; returns the next free site. -/
   def Term.numberSealsGo (n : Nat) : Term → (Nat × Term)
+    -- Markers are stripped BEFORE this pass at the program boundary
+    -- (`Machine.atBoundary`); the row exists for totality and for direct calls
+    -- on unstripped terms, and numbers through the marker transparently.
+    | .marker nm e =>
+      let (n1, e') := Term.numberSealsGo n e
+      (n1, .marker nm e')
     | .seal _ t u =>
       -- The site is taken BEFORE the children are numbered, so a seal's own
       -- number is smaller than any seal nested inside it — which is the order
@@ -1525,6 +1546,133 @@ end
     in their own space and are `St.sealSites`' key, never a σ id — it is there so
     a test can say "this program has a seal" before asserting about the seal. -/
 def Term.numberSeals (t : Term) : (Nat × Term) := Term.numberSealsGo 0 t
+
+/-! ## Markers: the one traversal, and what is derived from it (docs/21)
+
+    A marker names a claim site and means its body. Everything marker-shaped —
+    the boundary strip, the twin-minting replacement — is one full traversal
+    with a different action at the marker node, so the row list lives ONCE
+    (`mapMarkersGo`) and mirrors `numberSealsGo`'s exactly: same rows, same
+    left-to-right order, an accumulator threaded the same way. A row added to
+    one traversal without the other is a bug this comment is trying to make
+    findable. -/
+
+mutual
+  /-- Walk `t` and apply `f` at every marker node — the accumulator, the
+      marker's name, and its already-mapped BODY (children first, so nested
+      markers are resolved inside-out). `f`'s result replaces the whole marker
+      node and is NOT re-traversed: a replacement is an output, and re-walking
+      it would let a replacement body containing the target name loop or
+      double-count. -/
+  def Term.mapMarkersGo {σ : Type} (f : σ → String → Term → (σ × Term)) (s : σ) : Term → (σ × Term)
+    | .marker nm e =>
+      let (s1, e') := Term.mapMarkersGo f s e
+      f s1 nm e'
+    | .seal k t u =>
+      let (s1, t') := Term.mapMarkersGo f s t
+      let (s2, u') := Term.mapMarkersGo f s1 u
+      (s2, .seal k t' u')
+    | .letIn x a b =>
+      let (s1, a') := Term.mapMarkersGo f s a
+      let (s2, b') := Term.mapMarkersGo f s1 b
+      (s2, .letIn x a' b')
+    | .assign a b c =>
+      let (s1, a') := Term.mapMarkersGo f s a
+      let (s2, b') := Term.mapMarkersGo f s1 b
+      let (s3, c') := Term.mapMarkersGo f s2 c
+      (s3, .assign a' b' c')
+    | .ctorApp c args =>
+      let (s1, args') := Term.mapMarkersList f s args
+      (s1, .ctorApp c args')
+    | .call fn args =>
+      let (s1, args') := Term.mapMarkersList f s args
+      (s1, .call fn args')
+    | .matchE x eqn brs =>
+      let (s1, brs') := Term.mapMarkersBranches f s brs
+      (s1, .matchE x eqn brs')
+    | .seq a b =>
+      let (s1, a') := Term.mapMarkersGo f s a
+      let (s2, b') := Term.mapMarkersGo f s1 b
+      (s2, .seq a' b')
+    | .app a b =>
+      let (s1, a') := Term.mapMarkersGo f s a
+      let (s2, b') := Term.mapMarkersGo f s1 b
+      (s2, .app a' b')
+    | .lam x d b =>
+      let (s1, d') := Term.mapMarkersGo f s d
+      let (s2, b') := Term.mapMarkersGo f s1 b
+      (s2, .lam x d' b')
+    | .pi x d c =>
+      let (s1, d') := Term.mapMarkersGo f s d
+      let (s2, c') := Term.mapMarkersGo f s1 c
+      (s2, .pi x d' c')
+    | .sigmaT x d c =>
+      let (s1, d') := Term.mapMarkersGo f s d
+      let (s2, c') := Term.mapMarkersGo f s1 c
+      (s2, .sigmaT x d' c')
+    | .borrowT x d c =>
+      let (s1, d') := Term.mapMarkersGo f s d
+      let (s2, c') := Term.mapMarkersGo f s1 c
+      (s2, .borrowT x d' c')
+    | .idT a b c =>
+      let (s1, a') := Term.mapMarkersGo f s a
+      let (s2, b') := Term.mapMarkersGo f s1 b
+      let (s3, c') := Term.mapMarkersGo f s2 c
+      (s3, .idT a' b' c')
+    | .borrow a => let (s1, a') := Term.mapMarkersGo f s a; (s1, .borrow a')
+    | .deref a => let (s1, a') := Term.mapMarkersGo f s a; (s1, .deref a')
+    | .cmpT a => let (s1, a') := Term.mapMarkersGo f s a; (s1, .cmpT a')
+    | .index a i k =>
+      let (s1, a') := Term.mapMarkersGo f s a
+      let (s2, i') := Term.mapMarkersGo f s1 i
+      (s2, .index a' i' k)
+    | .range a lo cnt p q r =>
+      let (s1, a') := Term.mapMarkersGo f s a
+      let (s2, lo') := Term.mapMarkersGo f s1 lo
+      let (s3, cnt') := Term.mapMarkersOpt f s2 cnt
+      (s3, .range a' lo' cnt' p q r)
+    | t => (s, t)
+  def Term.mapMarkersList {σ : Type} (f : σ → String → Term → (σ × Term)) (s : σ) : List Term → (σ × List Term)
+    | [] => (s, [])
+    | t :: ts =>
+      let (s1, t') := Term.mapMarkersGo f s t
+      let (s2, ts') := Term.mapMarkersList f s1 ts
+      (s2, t' :: ts')
+  def Term.mapMarkersOpt {σ : Type} (f : σ → String → Term → (σ × Term)) (s : σ) : Option Term → (σ × Option Term)
+    | none => (s, none)
+    | some t => let (s1, t') := Term.mapMarkersGo f s t; (s1, some t')
+  def Term.mapMarkersBranches {σ : Type} (f : σ → String → Term → (σ × Term)) (s : σ) : List Branch → (σ × List Branch)
+    | [] => (s, [])
+    | .mk c bs body :: rest =>
+      let (s1, body') := Term.mapMarkersGo f s body
+      let (s2, rest') := Term.mapMarkersBranches f s1 rest
+      (s2, .mk c bs body' :: rest')
+end
+
+/-- Erase every marker: `@name(e)` becomes `e`. Runs FIRST at the program
+    boundary (`Machine.atBoundary`), before seal numbering — the ordering
+    docs/21 §6 states once — so the machine provably never sees a marker. -/
+def Term.stripMarkers (t : Term) : Term :=
+  (Term.mapMarkersGo (fun _ _ e => ((), e)) () t).2
+
+/-- Swap the BODY of the marker named `name` for `repl`, keeping the marker
+    node — the twin stays addressable, and strip-transparency covers the
+    replacement. Fails unless EXACTLY ONE marker of that name exists (the
+    Edit-tool contract, docs/21 §3): zero hits and multiple hits are loud
+    errors that also say which markers the term DOES have, so a renamed claim
+    site can never make a twin silently test nothing. -/
+def Term.replaceMarked? (name : String) (repl : Term) (t : Term) : Except String Term :=
+  let ((hits, seen), t') := Term.mapMarkersGo
+    (fun (acc : Nat × List String) nm e =>
+      let (hits, seen) := acc
+      if nm == name then ((hits + 1, seen ++ [nm]), .marker nm repl)
+      else ((hits, seen ++ [nm]), .marker nm e))
+    (0, []) t
+  let present := if seen.isEmpty then "none" else String.intercalate ", " (seen.map (fun n => s!"'{n}'"))
+  match hits with
+  | 1 => .ok t'
+  | 0 => .error s!"marker '{name}' not found — markers present: {present}"
+  | n => .error s!"marker '{name}' occurs {n} times (must be exactly one) — markers present: {present}"
 
 /-! ## Reading a binder's mode off its domain (combining-fns §6)
 

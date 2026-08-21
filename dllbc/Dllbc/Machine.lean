@@ -1759,6 +1759,10 @@ mutual
     -- that cannot mean it. The sentence is unchanged for the case it still
     -- covers.
     | .seal _ _ _ => throwErr "readC (⇝): `seal` is not in the comptime fragment — a seal inside a TYPE has no reading, because a type is consumed at its own event and there is no binding for the sealed σ to land in. A seal is read at a `let` (§2.4)"
+    -- A marker is stripped at the program boundary (`atBoundary`, docs/21) and
+    -- has no rule anywhere in the machine; one reaching ⇝ is a strip that was
+    -- bypassed, and silence here would launder it into the semantics.
+    | .marker n _ => throwErr s!"readC (⇝): marker @{n}(…) reached the machine — markers are test scaffolding stripped at the program boundary (docs/21); a term checked through a side entry must be pre-stripped"
   def reflectCList (lets : List Nat) : List Term → M (List Val)
     | [] => pure []
     | t :: ts => do pure ((← reflectC lets t) :: (← reflectCList lets ts))
@@ -6043,6 +6047,9 @@ mutual
       -- `⇝τ` outside a λ/Π domain is a mode marker that escaped its binder. Same
       -- standing as `borrowT` on the line above, and the same rejection.
       | .cmpT _ => throwErr "readR (⇒): `⇝τ` is a binder-mode marker (§6), legal only as a λ/Π domain — not a term and not a movable value"
+      -- A claim-site marker is stripped at the program boundary (`atBoundary`,
+      -- docs/21); one reaching ⇒ means the strip was bypassed. Loud, never silent.
+      | .marker n _ => throwErr s!"readR (⇒): marker @{n}(…) reached the machine — markers are test scaffolding stripped at the program boundary (docs/21); a term checked through a side entry must be pre-stripped"
   termination_by fuel _ => (fuel, 0, 0)
   /-- **One rule per statement former, three drivers** (M33 Σ0's prerequisite).
 
@@ -7395,8 +7402,13 @@ def defaultFuel : Nat := 1000
     duplicated continuations into arms, which is why numbering had to come
     first; with no duplication the order constraint is vacuous, and bodies
     entered later (`checkRFnBody`, a callee frame) are simply walked as they
-    are, their seals already carrying their sites. -/
-def atBoundary (t : Term) : Term := (Term.numberSeals t).2
+    are, their seals already carrying their sites.
+
+    Markers are stripped FIRST (docs/21 §4, the ordering §6 states once):
+    `@name e` is identity, so a marker must not shift a seal's site or reach a
+    machine rule, and stripping before numbering makes both true at the one
+    entry — the whole marker-blindness guarantee is this line. -/
+def atBoundary (t : Term) : Term := (Term.numberSeals (Term.stripMarkers t)).2
 
 /-- Run a program with a fresh state: ⇒-read it, then return the final
     canonicalized Ω (loan ids renumbered to first-appearance order), or the

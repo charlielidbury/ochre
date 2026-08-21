@@ -419,8 +419,11 @@ def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote)
     -- wherever it exists, and where it does not (no deltas, an untagged
     -- occurrence, a binder not live at that point) the binder answer still
     -- serves. Neither guesses: both decline rather than approximating.
+    -- Surface keys are built from EMITTED syntax, markers included; the delta
+    -- stream's keys come from the stripped walk (docs/21 §5). Strip here or a
+    -- point answer inside a marked statement silently declines.
     let keys ← if pts.isEmpty then pure [] else
-      keyValues (spans.occs.filterMap (fun o => o.stmt))
+      (·.map Dllbc.Term.stripMarkers) <$> keyValues (spans.occs.filterMap (fun o => o.stmt))
     let mut ki := 0
     for oi in [0 : spans.occs.size] do
       let o := spans.occs[oi]!
@@ -512,10 +515,15 @@ def throwDiag {α : Type} (ref : Syntax) (retRef : Option Syntax) (spans : SpanA
     | none => pure none
     | some c => pure (spanFor norm entries (← keyValues (entries.map (·.1))) c)
   -- The argument is narrower than the statement it sits in, so it wins.
+  -- Both norms strip markers FIRST (docs/21 §5): the crumb is from the stripped
+  -- walk, the keys are from emitted syntax — and stripping before `stmtKeyOf`
+  -- rather than after, because a marker wrapping a whole statement would push
+  -- `stmtKeyOf` into its catch-all and keep the continuation the machine's key
+  -- dropped.
   let hit ← do
-    match ← find id spans.args diag.argKey with
+    match ← find Dllbc.Term.stripMarkers spans.args diag.argKey with
     | some h => pure (some h)
-    | none => find Dllbc.stmtKeyOf spans.stmts diag.stmtKey
+    | none => find (fun k => Dllbc.stmtKeyOf (Dllbc.Term.stripMarkers k)) spans.stmts diag.stmtKey
   match hit with
   | some (r, dup) =>
     let note := if dup then m!"\n(this statement is written more than once in the program; \
