@@ -35,4 +35,5 @@ import Dllbc.Tests.AmbiguousMiddle
 import Dllbc.Tests.MatchJoin
 import Dllbc.StdChain
 import Dllbc.Tests.ModuleStates
+import Dllbc.Tests.Parse
 
