@@ -251,7 +251,7 @@ example : chkL prog defer_check { Σ (c : Nat). Array c Nat } U = true := by nat
     occur inside an `Id`, inside a `Σ` a proof inhabits, or anywhere `Pure.nf`
     output is consumed as a proof term. -/
 example :
-  chkRawMsg (.pi "v" (.borrowT "s" (.const "Nat") (.const "Nat")) (.const "Nat")) .type
+  chkRawMsg ty{ Π (v : &mut (s : Nat ~> Nat)) → Nat } .type
     = "ok false" := by native_decide
 
 /-- The codomain is in the exclusion too: `Π (x : Nat) → &mut Nat` is a
@@ -260,26 +260,26 @@ example :
     hit §2's arm, and throw where it owes a verdict. `atUniverse` tests the
     whole former, which is why this is one check and not five. -/
 example :
-  chkRawMsg (.pi "x" (.const "Nat") (.borrowT "s" (.const "Nat") (.const "Nat"))) .type
+  chkRawMsg ty{ Π (x : Nat) → &mut (s : Nat ~> Nat) } .type
     = "ok false" := by native_decide
 
 /-- Same premise, same answer, at a `List` — `List (&mut T)` is a runtime
     value only. -/
 example :
-  chkRawMsg (.app (.const "List") (.borrowT "s" (.const "Nat") (.const "Nat"))) .type
+  chkRawMsg ty{ List (&mut (s : Nat ~> Nat)) } .type
     = "ok false" := by native_decide
 example :
-  chkRawMsg (.sigmaT "c" (.const "Nat") (.borrowT "s" (.const "Nat") (.const "Nat"))) .type
+  chkRawMsg ty{ Σ (c : Nat). &mut (s : Nat ~> Nat) } .type
     = "ok false" := by native_decide
 
 /-- The comptime marker is the opposite case, and the asymmetry is the point:
     `⇝` is a legal binder mode on a domain, so a `Π` carrying one is an
     ordinary type — the arm strips before it checks. A `Σ` strips its tail
     too, since `Σ0 (x : A). P` is the comptime-second-component spelling. -/
-example : chkRawMsg (.pi "x" (.cmpT (.const "Nat")) (.const "Nat")) .type = "ok true" := by
+example : chkRawMsg ty{ Π (X : Nat) → Nat } .type = "ok true" := by
   native_decide
 example :
-  chkRawMsg (.sigmaT "x" (.const "Nat") (.cmpT (.const "Nat"))) .type = "ok true" := by
+  chkRawMsg ty{ Σ0 (x : Nat). Nat } .type = "ok true" := by
   native_decide
 
 /-! ## §5 Neutral types
@@ -461,7 +461,7 @@ example : Term.convEq (Pure.nf 1000 surfAdd) (Pure.nf 1000 Pure.kAddFn) = true :
 
 -- The behaviour, so that a later respell that agrees structurally and computes
 -- something else cannot pass on the two lines above.
-example : (Pure.nf 200 (.app (.app surfAdd (Term.nat 2)) (Term.nat 3)) == Term.nat 5) = true := by
+example : (Pure.nf 200 ty{ %surfAdd 2 3 } == Term.nat 5) = true := by
   native_decide
 
 /-! ## The constructor basis, checked instead of kept adjacent

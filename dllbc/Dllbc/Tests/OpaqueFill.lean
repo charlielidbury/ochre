@@ -855,7 +855,7 @@ def AVSetT : Term := prog defer_check {
       Z => λ (N : Nat). λ (A : Array N (Σ (k : Nat). Nat)).
         arrRec (Σ (k : Nat). Nat)
           (λ (M : Nat). λ (Az : Array M (Σ (k : Nat). Nat)). Array M (Σ (k : Nat). Nat))
-          %(Term.ctorApp "Arr" [])
+          Arr()
           (λ (M : Nat). λ (X : Σ (k : Nat). Nat). λ (XS : Array M (Σ (k : Nat). Nat)).
             λ (Ih : Array M (Σ (k : Nat). Nat)).
               acons M (elim X return (λ (Xz : Σ (k : Nat). Nat). Σ (k : Nat). Nat) {
@@ -864,7 +864,7 @@ def AVSetT : Term := prog defer_check {
       S (I2) Rec => λ (N : Nat). λ (A : Array N (Σ (k : Nat). Nat)).
         arrRec (Σ (k : Nat). Nat)
           (λ (M : Nat). λ (Az : Array M (Σ (k : Nat). Nat)). Array M (Σ (k : Nat). Nat))
-          %(Term.ctorApp "Arr" [])
+          Arr()
           (λ (M : Nat). λ (X : Σ (k : Nat). Nat). λ (XS : Array M (Σ (k : Nat). Nat)).
             λ (Ih : Array M (Σ (k : Nat). Nat)).
               acons M X (Rec M XS))
