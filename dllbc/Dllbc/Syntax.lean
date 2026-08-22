@@ -1572,15 +1572,13 @@ mutual
       let (s1, t') := Term.mapMarkersGo f s t
       let (s2, u') := Term.mapMarkersGo f s1 u
       (s2, .seal k t' u')
-    | .letIn x a b =>
+    | .letIn x a =>
+      let (s1, a') := Term.mapMarkersGo f s a
+      (s1, .letIn x a')
+    | .assign a b =>
       let (s1, a') := Term.mapMarkersGo f s a
       let (s2, b') := Term.mapMarkersGo f s1 b
-      (s2, .letIn x a' b')
-    | .assign a b c =>
-      let (s1, a') := Term.mapMarkersGo f s a
-      let (s2, b') := Term.mapMarkersGo f s1 b
-      let (s3, c') := Term.mapMarkersGo f s2 c
-      (s3, .assign a' b' c')
+      (s2, .assign a' b')
     | .ctorApp c args =>
       let (s1, args') := Term.mapMarkersList f s args
       (s1, .ctorApp c args')
@@ -1649,9 +1647,10 @@ mutual
       (s2, .mk c bs body' :: rest')
 end
 
-/-- Erase every marker: `@name(e)` becomes `e`. Runs FIRST at the program
-    boundary (`Machine.atBoundary`), before seal numbering — the ordering
-    docs/21 §6 states once — so the machine provably never sees a marker. -/
+/-- Erase every marker: `@name e` becomes `e`. Runs FIRST at BOTH program
+    boundaries — the root's `Machine.atBoundary` and the seeded
+    `moduleBoundary` — before seal numbering, the ordering docs/21 §6 states
+    once, so the machine provably never sees a marker. -/
 def Term.stripMarkers (t : Term) : Term :=
   (Term.mapMarkersGo (fun _ _ e => ((), e)) () t).2
 

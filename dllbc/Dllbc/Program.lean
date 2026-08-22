@@ -429,9 +429,18 @@ def Checked.init : Checked :=
     the seed's `sealSites` table already owns, and the collision is silent: the
     consumer's first seal at the same captured inputs REUSES the seed's σ
     (stage-0 finding). Returns the next free site alongside the prepared term so
-    the final state can record where THIS block stopped. -/
+    the final state can record where THIS block stopped.
+
+    **The boundary ordering, stated once** (docs/21 §6's second request):
+    strip markers, THEN number seals, counters continuing from the seed. This
+    is the second of exactly two boundaries (`atBoundary` is the root's), and a
+    seeded walk bypasses the root's entirely — so the strip has to be here or a
+    marked module program reaches `reflectC`/`readR`'s loud rows. The
+    `Checked.term` a block persists KEEPS its markers (the retargeted term is
+    stored before this boundary), which is what lets a seeded twin be minted
+    from it by `replaceMarked?`. -/
 def moduleBoundary (seed : St) (t : Term) : Nat × Term :=
-  Term.numberSealsGo seed.nextSite t
+  Term.numberSealsGo seed.nextSite (Term.stripMarkers t)
 
 /-- The seeded walk's paths, Diag-level, WITHOUT the closing `endScope`: a
     module's bindings must persist into the next block, and `endScope` is the

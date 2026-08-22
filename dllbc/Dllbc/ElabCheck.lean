@@ -730,12 +730,14 @@ def elabModule (ref : Syntax) (seed? : Option (TSyntax `term)) (b : TSyntax `ubl
     -- `keyValues` does on the failing path — normalized HERE via `stmtKeyOf`
     -- (Uni cannot name it; this module can, see `spanFor`), so the persisted
     -- channel is directly joinable against a breadcrumb. A key with no
-    -- position (synthesized syntax) is skipped, not guessed at.
+    -- position (synthesized syntax) is skipped, not guessed at. Markers are
+    -- stripped FIRST (docs/21 §5, the third key join): the emitted key carries
+    -- them, the breadcrumb a later seeded walk files never does.
     let modName := toString (← getMainModule)
     let noteStxs : Array (TSyntax `term) ← spans.stmts.filterMapM fun (k, r) => do
       match r.getPos?, r.getTailPos? with
       | some lo, some hi =>
-        return some (← `(Dllbc.SpanNote.mk (Dllbc.stmtKeyOf $(⟨k⟩))
+        return some (← `(Dllbc.SpanNote.mk (Dllbc.stmtKeyOf (Dllbc.Term.stripMarkers $(⟨k⟩)))
             $(quote modName) $(quote lo.byteIdx) $(quote hi.byteIdx)))
       | _, _ => return none
     let spansE ← elabTerm (← `(([$noteStxs,*] : List Dllbc.SpanNote)))

@@ -56,6 +56,8 @@ Two requests INTO docs/20, so they are designed in rather than bolted on:
 1. Expose a **seeded rejection check** — "check this `Term` against this seed `St`, expect failure" — as a callable function, not elaborator-internal. Twins under module states are mutated `Checked.term`s re-checked against the same seed.
 2. State the boundary ordering once: strip markers, then number seals, counters continuing from the seed.
 
+**The deferral condition has been met** (2026-08-22): docs/20 stages 1–2 (and through stage 6) merged to main, this lane rebased onto it, and both requests are delivered — see §8. The ArraySort pilot is therefore unblocked and is the NEXT lane; it is not started here.
+
 ## 7. Acceptance (this lane)
 
 * Transparency pinned: `stripMarkers markedT == plainT` by `native_decide`, and the marked program `progOk`.
@@ -78,3 +80,11 @@ Second pass, same day — brackets become optional (user request):
 
 * ONE grammar row, `syntax:10 "@" noWs ident uterm:10`, replaced the dedicated parenthesized row. The extent of a bare marker is MAXIMAL — everything a level-10 parse absorbs, application spines and arrows included (`@m Nat → Nat` marks the arrow, not its domain) — stopping only at a real delimiter: `,` `)` `;` `{`. So `Cons(@m Z, Nil)` marks `Z` alone, and a bare claim in a `fn` return type runs to the body's `{`. All pinned as `Term` equalities in Tests/MarkedTwins §T5, and the three spellings `@m E` / `@m(E)` / `@m (E)` are pinned equal.
 * Kernel-spelling collisions, verified rather than assumed, and the two cases DIFFER: `@old …` never parses, because `old` is already a keyword of the grammar (the `old *v` row) — refused by the parser as "expected identifier". `res` is an ordinary identifier, so `@res …` parses under the generic row and the ELABORATOR refuses the name loudly (a marker named `res` would silently mean its body's current value where `*res` means the exit payload). The parser refusal has no `#guard_msgs` pin — a term that fails to parse fails the whole command before `#guard_msgs` can guard it (tried) — so it is recorded here and in the test's prose; the elaborator refusal pins.
+
+Third pass, 2026-08-22 — rebased onto main's module-states merge (docs/20, through stage 6), and what that met:
+
+* **There are now TWO boundaries, and the strip lives in both.** The root's `atBoundary` (which main had already reduced to seal numbering alone — docs/19 v2 dropped `pushContinuations`, the one merge conflict, resolved by keeping main's text and adding the strip) and the seeded `moduleBoundary`, which every `prog (seed) { … }` walk and every `*From` helper enters through, bypassing the root's entirely. Request #2 is delivered as `moduleBoundary`'s docstring sentence and its one line: strip markers, then number seals from `seed.nextSite`.
+* **Request #1 was delivered as asked, with one improvement**: `progRejectsFrom`/`progOkFrom`/`checkProgramFrom` take a `Checked` (both twins) rather than a bare `St`, so a caller cannot hand the executing twin to the checking machine. A twin under a module state is exactly the mutated `Checked.term` re-checked against the same seed (Tests/MarkedTwins §T7, the seeded golden/twin pair, real message pinned). `Checked.term` is persisted BEFORE the boundary, so its markers survive into the value a twin is minted from.
+* **A third key join** appeared with module states: the persisted span channel (`SpanNote.mk (stmtKeyOf k) …`, the elaborator quoting surface statement keys into the module's ledgers for later localization). Same seam, same fix: strip before `stmtKeyOf`.
+* **`FnMacro.retarget` has a catch-all** and runs BEFORE the boundary, so without a row a `.call` inside a marked claim would have been left unresolved — silently, as the kernel's "unknown function". It gained a transparent marker row. This is the §4 catch-all hazard met in practice: a catch-all in a pass that runs pre-strip is not "treats a leaked marker as an error", it is "skips the marker's body", and every such pass needs the row.
+* Main's raw-term migration made `letIn`/`assign` two-field; `mapMarkersGo` re-mirrored `numberSealsGo` row for row, as its header says it must.

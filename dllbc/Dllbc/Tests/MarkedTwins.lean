@@ -46,6 +46,25 @@ example : (Term.stripMarkers markedProg == plainProg) = true := by native_decide
 example : (markedProg == plainProg) = false := by native_decide
 example : progOk markedProg = true := by native_decide
 
+-- A CALL inside a marker. `fn` declarations retarget every later `f(…)` into an
+-- app spine on the binding (`FnMacro.retarget`, via `bindFn`) — a pass that
+-- runs BEFORE the boundary strip and has a catch-all, so without its marker
+-- row the call under `@site` would have stayed an unresolved `.call` and the
+-- strip equality below would fail (the plain program's call is a spine). Found
+-- on the rebase onto module states, where the same pass resolves imports.
+def markedCall : Term := prog{
+  fn F () -> Nat { S Z };
+  let y = @site F();
+  () }
+
+def plainCall : Term := prog{
+  fn F () -> Nat { S Z };
+  let y = F();
+  () }
+
+example : (Term.stripMarkers markedCall == plainCall) = true := by native_decide
+example : progOk markedCall = true := by native_decide
+
 /-! ## (T2) THE CONTRACT — zero and duplicate hits are loud
 
     `replaceMarked?` is the Edit-tool contract (docs/21 §3): exactly one marker
@@ -181,5 +200,49 @@ error: '@res' cannot be a marker name: it collides with the kernel spelling `@re
 -/
 #guard_msgs in
 example : Term := ty{ @res Z }
+
+/-! ## (T7) A SEEDED TWIN — docs/21 §6's first request, met by the module lane
+
+    docs/21 §6 asked docs/20 for a CALLABLE seeded rejection check, so that a
+    twin under a module state could be a mutated `Checked.term` re-checked
+    against the same seed. The module lane delivered it as
+    `progRejectsFrom`/`progOkFrom` (docs/20 stage 6), and this section is that
+    request verified against reality rather than taken on the promise:
+
+    * a library module declares `PinOne`, unmarked;
+    * a golden consumer seeded from it carries a marked claim in its OWN
+      return type, and checks (`progOkFrom` on its persisted term);
+    * the twin is minted from the golden's PERSISTED term — `Checked.term` is
+      stored before the module boundary, so its markers survive, and
+      `FnMacro.retarget` (the one pre-boundary pass) has a transparent marker
+      row so the call inside the claim's fn was resolved against the seed —
+      and is rejected FROM THE SAME SEED with its real message pinned.
+
+    The second boundary matters here: a seeded walk enters through
+    `moduleBoundary`, never `atBoundary`, and the strip lives in both. -/
+
+def pinLib : Checked := prog () {
+  fn PinOne () -> Σ (r : Nat). Id Nat r (S Z) { Pair(S Z, Refl) };
+  () }
+
+def pinUse : Checked := prog (pinLib) {
+  fn Relay () -> Σ (r : Nat). @claim Id Nat r (S Z) {
+    let Pair(a, h) = PinOne();
+    Pair(a, h) };
+  () }
+
+example : progOkFrom pinLib pinUse.term = true := by native_decide
+
+def pinUseTwin : Term :=
+  match Term.replaceMarked? "claim" ty{ Id Nat %(Dllbc.Term.pvar "r") (S(S(Z))) } pinUse.term with
+  | .ok t => t
+  | .error _ => .unit
+
+example : (pinUseTwin == pinUse.term) = false := by native_decide
+-- The relayed result is the seed's opaque pair (σ₃, σ₄), and the audit names
+-- the strengthened claim it cannot meet — the lie, in the seeded message.
+example : progRejectsFrom pinLib pinUseTwin
+  "result (Pair σ₃ σ₄) does not have return type (Σ(§0 : Nat). Id #§0 (S (S Z)))" = true := by
+  native_decide
 
 end Dllbc.Tests.MarkedTwins

@@ -605,6 +605,11 @@ partial def retarget (binds : List (String × Var × Option Nat)) : Term → Ter
   | .matchE s eqn brs =>
     .matchE s eqn (brs.map (fun b => Branch.mk b.ctor b.binders (retarget binds b.body)))
   | .seal s t u => .seal s (retarget binds t) (retarget binds u)
+  -- Transparent (docs/21): this pass runs BEFORE the boundary strip, and the
+  -- catch-all below would otherwise leave a call inside a marked claim as an
+  -- unresolved `.call` — silently, since the kernel's "unknown function" then
+  -- reads as the program's fault rather than the marker's.
+  | .marker n e => .marker n (retarget binds e)
   | .app a b => .app (retarget binds a) (retarget binds b)
   | .idT a b c => .idT (retarget binds a) (retarget binds b) (retarget binds c)
   | .pi n a b => .pi n (retarget binds a) (retarget binds b)
