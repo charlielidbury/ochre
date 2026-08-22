@@ -594,13 +594,20 @@ example : progRejects enterRefused "not in the comptime fragment" = true := by n
     off the arguments alone, a nullary `fn` whose body is only a call would
     classify pure — its one binder is the Unit-desugar's comptime `U§`, so the
     binder half cannot save it, and `.app (.var g) .unit` has no imperative
-    leaf. A `.const`/`.pvar` head stays comptime, which is the pure spine. -/
+    leaf. A `.const`/`.pvar` head stays comptime, which is the pure spine.
 
-example : Term.imperative (.app (.var ⟨0, "g"⟩) .unit) = true := by native_decide
-example : Term.imperative (.app (.const "Len") (.var ⟨0, "l"⟩)) = false := by native_decide
-example : Term.imperative (.app (.pvar "Le") (.pvar "a")) = false := by native_decide
+    The probes are `prog_parse { }` fragments bound by hand (docs/22 §2.4) —
+    there is no program around a classifier probe, so the head's KIND is
+    supplied by the context: `g` a runtime slot, `P`/`a` pure binders. The
+    const-headed probe reads `natRec` where it used to read a hand-written
+    `.const "Len"`, because the surface resolves `Len` to its `…FnT` λ, which
+    is a different head kind from the one this line is about. -/
+
+example : Term.imperative (Term.bindFree [("g", 0)] [] prog_parse { g () }) = true := by native_decide
+example : Term.imperative (Term.bindFree [("l", 0)] [] prog_parse { natRec l }) = false := by native_decide
+example : Term.imperative (Term.bindFree [] ["P", "a"] prog_parse { P a }) = false := by native_decide
 -- A bare `.var` is a snapshot read, not a call, and both arrows have a rule.
-example : Term.imperative (.var ⟨0, "g"⟩) = false := by native_decide
+example : Term.imperative (Term.bindFree [("g", 0)] [] prog_parse { g }) = false := by native_decide
 
 /-! ## E. The `[k]` permutation survives
 

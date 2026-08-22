@@ -98,8 +98,10 @@ example : (app1 ZeroOutFnT 64).natOf? == some 0 := by native_decide
 /-! ### Forcing over a stuck neutral -/
 
 -- `S (S x)` for free `x` fires the recursor twice, then gets stuck; `deepForce`
--- must leave the stuck neutral alone rather than treating it as an error.
-def openTwo : Term := prog_parse { S(S(%(Term.pvar "x"))) }
+-- must leave the stuck neutral alone rather than treating it as an error. `x` is
+-- a free PURE variable — the fragment's free name, bound as one by hand (docs/22
+-- §2.4), since this term goes to the normalizer directly and has no splice site.
+def openTwo : Term := Term.bindFree [] ["x"] prog_parse { S(S(x)) }
 
 example : (pv prog_parse { %DiscardFnT %openTwo }).natOf? == some 0 := by native_decide
 example : (pv prog_parse { %ZeroOutFnT %openTwo }).natOf? == some 0 := by native_decide

@@ -1536,11 +1536,15 @@ example : progDiff (Tests.S23Direct.qsRun [3, 1, 2]) = true := by native_decide
     the branch is not merely skipped. -/
 
 /-- A symbolic scrutinee at the top level of a program: an abstract call's result
-    is a σ, and matching on one is what forks the driver's paths. -/
-def hSplit (inZ inS : Term) : Term :=
-  .seq (.letIn ⟨0, "F"⟩ (prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) }))
-    (.seq (.letIn ⟨1, "n"⟩ (Term.appSpine (.var ⟨0, "F"⟩) [prog_parse { 3 }]))
-      (.matchE ⟨1, "n"⟩ none [Branch.mk "Z" [] inZ, Branch.mk "S" [⟨2, "k"⟩] inS]))
+    is a σ, and matching on one is what forks the driver's paths. The branch
+    bodies are spliced, and a body is a `prog_parse { }` fragment (docs/22): it
+    names `F` and `k` — the program-level binding above and the arm's own
+    binder — and the splice binds them, which is what used to force these to be
+    raw `Term`s with `F` at id 0 and `k` at 2 by hand. -/
+def hSplit (inZ inS : Term) : Term := prog_parse {
+  let F = (λ (x : Nat). x : Π (x : Nat) → Nat);
+  let n = F(3);
+  match n { Z => %inZ, S(k) => %inS } }
 
 -- H0. The split is real: two paths, not one.
 example : (programEnvs (hSplit .unit .unit)).length == 2 := by native_decide
@@ -1549,10 +1553,10 @@ example : (programEnvs (hSplit .unit .unit)).length == 2 := by native_decide
 -- the program-level binding two `let`s above; the branch is a body, so this
 -- exercises the admitted-globals rule through the branch driver.
 def hGlobal (bad : Bool) : Term :=
-  hSplit .unit
-    (.seq (.letIn ⟨3, "G"⟩ (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (Term.appSpine (.var ⟨0, "F"⟩) [.var ⟨4, "y"⟩])))
-      (.seq (.letIn ⟨5, "r"⟩ (Term.appSpine (.var ⟨3, "G"⟩) [.var ⟨2, "k"⟩]))
-        (if bad then prog_parse { True } else .unit)))
+  hSplit .unit (prog_parse {
+    let G = λ(y : Nat){ F(y) };
+    let r = G(k);
+    %(if bad then prog_parse { True } else .unit) })
 example : progOk (hGlobal false) = true := by native_decide
 -- The negative twin at the SAME position: the branch is entered and its result
 -- audited, so the accept above is not the branch being skipped.
@@ -1562,19 +1566,14 @@ example : progRejects (hGlobal true) "does not have return type" = true := by na
 -- on a path than at the top level. (`k` is the branch's own binder, a `Nat`, so
 -- this is data capture: the same rejection §D2a pins, reached the other way.)
 def hCapture : Term :=
-  hSplit .unit
-    (.seq (.letIn ⟨3, "G"⟩ (Term.lamTel [(⟨4, "y"⟩, .const "Nat")]
-        (.seq (.letIn ⟨6, "z"⟩ (.var ⟨2, "k"⟩)) (.var ⟨4, "y"⟩))))
-      .unit)
+  hSplit .unit (prog_parse { let G = λ(y : Nat){ let z = k; y }; () })
 example : progRejects hCapture "a runtime (lowercase) binding" = true := by native_decide
 
 -- H3. A seal inside a branch fires its audit there, in that branch's own state.
 def hSeal (bad : Bool) : Term :=
-  hSplit .unit
-    (.seq (.letIn ⟨3, "Sf"⟩
-      (.seal 0 (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (.var ⟨4, "y"⟩))
-        (if bad then prog_parse { Π (y : Nat) → Bool } else prog_parse { Π (y : Nat) → Nat })))
-      .unit)
+  hSplit .unit (prog_parse {
+    let Sf = (λ(y : Nat){ y } : %(if bad then prog_parse { Π (y : Nat) → Bool } else prog_parse { Π (y : Nat) → Nat }));
+    () })
 example : progOk (hSeal false) = true := by native_decide
 example : progRejects (hSeal true) "does not have return type (Bool)" = true := by native_decide
 
@@ -1582,18 +1581,13 @@ example : progRejects (hSeal true) "does not have return type (Bool)" = true := 
 -- branch only, so the path that lends must demand it back at its own end while
 -- the path that does not has nothing to demand — and the differential is what
 -- says both are right, since the concrete run takes exactly one of them.
-def hLend : Term :=
-  .seq (.letIn ⟨0, "Push"⟩
-    (prog{ (λ(e : Nat, v : &mut (s : List Nat ~> List Nat)){
-                  let tail = *v; *v := Cons(e, tail); () } : Π (e : Nat) → Π (v : &mut (s : List Nat ~> List Nat)) → Unit) }))
-    (.seq (.letIn ⟨1, "l"⟩ (prog_parse { Cons(1, Nil) }))
-      (.seq (.letIn ⟨2, "id"⟩ (prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) }))
-        (.seq (.letIn ⟨3, "n"⟩ (Term.appSpine (.var ⟨2, "id"⟩) [prog_parse { 3 }]))
-          (.matchE ⟨3, "n"⟩ none
-            [Branch.mk "Z" [] .unit,
-             Branch.mk "S" [⟨4, "k"⟩]
-               (.seq (.letIn ⟨5, "r"⟩ (Term.appSpine (.var ⟨0, "Push"⟩) [.var ⟨4, "k"⟩, .borrow (.var ⟨1, "l"⟩)]))
-                 .unit)]))))
+def hLend : Term := prog{
+  let Push = (λ(e : Nat, v : &mut (s : List Nat ~> List Nat)){
+                let tail = *v; *v := Cons(e, tail); () } : Π (e : Nat) → Π (v : &mut (s : List Nat ~> List Nat)) → Unit);
+  let l = Cons(1, Nil);
+  let id = (λ (x : Nat). x : Π (x : Nat) → Nat);
+  let n = id(3);
+  match n { Z => (), S(k) => { let r = Push(k, &m l); () } } }
 example : progOk hLend = true := by native_decide
 example : progDiff hLend = true := by native_decide
 -- It really is two paths, and the lending one really does end its loan: no path
