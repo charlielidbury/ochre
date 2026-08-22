@@ -104,14 +104,14 @@ def std : Checked := prog () {
   };
 
   fn CountConsCongr (m : Nat, h : Nat, l1 : List Nat, l2 : List Nat,
-      p : Id Nat (Dllbc.StdLemmas.Count m l1) (Dllbc.StdLemmas.Count m l2))
+      P : Id Nat (Dllbc.StdLemmas.Count m l1) (Dllbc.StdLemmas.Count m l2))
       -> Id Nat (Dllbc.StdLemmas.Count m (Cons h l1)) (Dllbc.StdLemmas.Count m (Cons h l2)) {
-    Dllbc.StdLemmas.CountConsCongrRaw m h l1 l2 p
+    Dllbc.StdLemmas.CountConsCongrRaw m h l1 l2 P
   };
 
-  fn CountConsHit (m : Nat, a : Nat, l : List Nat, hq : Id Bool (Dllbc.StdLemmas.Eqb m a) True)
+  fn CountConsHit (m : Nat, a : Nat, l : List Nat, Hq : Id Bool (Dllbc.StdLemmas.Eqb m a) True)
       -> Id Nat (Dllbc.StdLemmas.Count m (Cons a l)) (S (Dllbc.StdLemmas.Count m l)) {
-    Dllbc.StdLemmas.CountConsHitRaw m a l hq
+    Dllbc.StdLemmas.CountConsHitRaw m a l Hq
   };
 
   fn SwapLSet (i : Nat, j : Nat, l : List Nat,
@@ -124,46 +124,46 @@ def std : Checked := prog () {
 
   -- ── segment 2 ──
 
-  fn BoolFT (h : Id Bool False True) -> Bot { Dllbc.StdLemmas.BoolFTRaw h };
+  fn BoolFT (H : Id Bool False True) -> Bot { Dllbc.StdLemmas.BoolFTRaw H };
 
-  fn BoolTF (h : Id Bool True False) -> Bot { Dllbc.StdLemmas.BoolTFRaw h };
+  fn BoolTF (H : Id Bool True False) -> Bot { Dllbc.StdLemmas.BoolTFRaw H };
 
-  fn LebTrueLe [a] (a : Nat, b : Nat, h : Id Bool (Leb a b) True) -> Le a b {
+  fn LebTrueLe [a] (a : Nat, b : Nat, H : Id Bool (Leb a b) True) -> Le a b {
     match a {
       Z => unit,
       S(a') => match b {
-        Z => { let bad = BoolFT(h); botElim (Le (S a') Z) bad },
-        S(b') => LebTrueLe(a', b', h)
+        Z => { let bad = BoolFT(H); botElim (Le (S a') Z) bad },
+        S(b') => LebTrueLe(a', b', H)
       }
     }
   };
 
-  fn LebFalseGt [a] (a : Nat, b : Nat, h : Id Bool (Leb a b) False) -> Le (S b) a {
+  fn LebFalseGt [a] (a : Nat, b : Nat, H : Id Bool (Leb a b) False) -> Le (S b) a {
     match a {
-      Z => { let bad = BoolTF(h); botElim (Le (S b) Z) bad },
+      Z => { let bad = BoolTF(H); botElim (Le (S b) Z) bad },
       S(a') => match b {
         Z => unit,
-        S(b') => LebFalseGt(a', b', h)
+        S(b') => LebFalseGt(a', b', H)
       }
     }
   };
 
-  fn LeAntisym [a] (a : Nat, b : Nat, h1 : Le a b, h2 : Le b a) -> Id Nat a b {
+  fn LeAntisym [a] (a : Nat, b : Nat, H1 : Le a b, H2 : Le b a) -> Id Nat a b {
     match a {
       Z => match b {
         Z => Refl,
-        S(b') => botElim (Id Nat Z (S b')) h2
+        S(b') => botElim (Id Nat Z (S b')) H2
       },
       S(a') => match b {
-        Z => botElim (Id Nat (S a') Z) h1,
-        S(b') => { let ih = LeAntisym(a', b', h1, h2); IdCongr Nat Nat (λ (n : Nat). S n) a' b' ih }
+        Z => botElim (Id Nat (S a') Z) H1,
+        S(b') => { let ih = LeAntisym(a', b', H1, H2); IdCongr Nat Nat (λ (n : Nat). S n) a' b' ih }
       }
     }
   };
 
-  fn Znots (x : Nat, h : Id Nat Z (S x)) -> Bot { Dllbc.StdLemmas.ZnotsRaw x h };
+  fn Znots (x : Nat, H : Id Nat Z (S x)) -> Bot { Dllbc.StdLemmas.ZnotsRaw x H };
 
-  fn SInj (m : Nat, n : Nat, h : Id Nat (S m) (S n)) -> Id Nat m n { Dllbc.StdLemmas.SInjRaw m n h };
+  fn SInj (m : Nat, n : Nat, H : Id Nat (S m) (S n)) -> Id Nat m n { Dllbc.StdLemmas.SInjRaw m n H };
 
   fn Sub [a] (a : Nat, b : Nat) -> Nat {
     match a {
@@ -175,44 +175,44 @@ def std : Checked := prog () {
     }
   };
 
-  fn AddSubCancel (a : Nat, b : Nat, h : Le b a) -> Id Nat (Add b (Dllbc.StdLemmas.SubRaw a b)) a { Dllbc.StdLemmas.AddSubCancelRaw a b h };
+  fn AddSubCancel (a : Nat, b : Nat, H : Le b a) -> Id Nat (Add b (Dllbc.StdLemmas.SubRaw a b)) a { Dllbc.StdLemmas.AddSubCancelRaw a b H };
 
-  fn LePredL (a : Nat, b : Nat, h : Le (S a) b) -> Le a b { Dllbc.StdLemmas.LePredLRaw a b h };
+  fn LePredL (a : Nat, b : Nat, H : Le (S a) b) -> Le a b { Dllbc.StdLemmas.LePredLRaw a b H };
 
-  fn EqbGtFalse [h] (h : Nat, x : Nat, hlt : Le (S h) x) -> Id Bool (Eqb x h) False {
+  fn EqbGtFalse [h] (h : Nat, x : Nat, Hlt : Le (S h) x) -> Id Bool (Eqb x h) False {
     match h {
       Z => match x {
-        Z => botElim (Id Bool (Eqb Z Z) False) hlt,
+        Z => botElim (Id Bool (Eqb Z Z) False) Hlt,
         S(x') => Refl
       },
       S(h') => match x {
-        Z => botElim (Id Bool (Eqb Z (S h')) False) hlt,
-        S(x') => EqbGtFalse(h', x', hlt)
+        Z => botElim (Id Bool (Eqb Z (S h')) False) Hlt,
+        S(x') => EqbGtFalse(h', x', Hlt)
       }
     }
   };
 
   -- ── segment 3 ──
 
-  fn EqbLtFalse [a] (a : Nat, b : Nat, hab : Le (S a) b) -> Id Bool (Eqb a b) False {
+  fn EqbLtFalse [a] (a : Nat, b : Nat, Hab : Le (S a) b) -> Id Bool (Eqb a b) False {
     match a {
       Z => match b {
-        Z => botElim (Id Bool (Eqb Z Z) False) hab,
+        Z => botElim (Id Bool (Eqb Z Z) False) Hab,
         S(b2) => Refl },
       S(a2) => match b {
-        Z => botElim (Id Bool (Eqb (S a2) Z) False) hab,
-        S(b2) => EqbLtFalse(a2, b2, hab) } } };
+        Z => botElim (Id Bool (Eqb (S a2) Z) False) Hab,
+        S(b2) => EqbLtFalse(a2, b2, Hab) } } };
 
-  fn CountConsMiss (m : Nat, h : Nat, t : List Nat, hq : Id Bool (Eqb m h) False) ->
+  fn CountConsMiss (m : Nat, h : Nat, t : List Nat, Hq : Id Bool (Eqb m h) False) ->
       Id Nat (Count m (Cons h t)) (Count m t) {
-    Dllbc.StdLemmas.CountConsMissRaw m h t hq };
+    Dllbc.StdLemmas.CountConsMissRaw m h t Hq };
 
   fn EqbRefl [n] (n : Nat) -> Id Bool (Eqb n n) True {
     match n { Z => Refl, S(n2) => EqbRefl(n2) } };
 
   fn ListRw (P : List Nat → Type, x : List Nat, y : List Nat,
-      h : Id (List Nat) x y, px : P x) -> P y {
-    Dllbc.StdLemmas.ListRwRaw P x y h px };
+      H : Id (List Nat) x y, px : P x) -> P y {
+    Dllbc.StdLemmas.ListRwRaw P x y H px };
 
   fn SortedHead (h : Nat, t : List Nat, s0 : Sorted (Cons h t)) -> Bound h t {
     match s0 { Pair(x, y) => x } };
@@ -250,55 +250,55 @@ def std : Checked := prog () {
   -- sharing problem entirely — the original already checks (chkLib,
   -- StdLemmas.lean:2036).
   fn SortedAppendPivot (p : Nat, a : List Nat, b : List Nat,
-      sa : Sorted a, ua : Ub p a, sb : Sorted b, lb0 : Lb p b) ->
+      Sa : Sorted a, ua : Ub p a, Sb : Sorted b, lb0 : Lb p b) ->
       Sorted (Append a (Cons p b)) {
-    Dllbc.StdLemmas.SortedAppendPivotRaw p a b sa ua sb lb0 };
+    Dllbc.StdLemmas.SortedAppendPivotRaw p a b Sa ua Sb lb0 };
 
   -- ── segment 4 ──
 
   fn CountConsL (n : Nat, x : Nat, a : List Nat, b : List Nat, c : List Nat,
-      h : Id Nat (Add (Count n a) (Count n b)) (Count n c))
+      H : Id Nat (Add (Count n a) (Count n b)) (Count n c))
       -> Id Nat (Add (Count n (Cons x a)) (Count n b)) (Count n (Cons x c)) {
-    Dllbc.StdLemmas.CountConsLRaw n x a b c h };
+    Dllbc.StdLemmas.CountConsLRaw n x a b c H };
 
   fn CountConsR (n : Nat, x : Nat, a : List Nat, b : List Nat, c : List Nat,
-      h : Id Nat (Add (Count n a) (Count n b)) (Count n c))
+      H : Id Nat (Add (Count n a) (Count n b)) (Count n c))
       -> Id Nat (Add (Count n a) (Count n (Cons x b))) (Count n (Cons x c)) {
-    Dllbc.StdLemmas.CountConsRRaw n x a b c h };
+    Dllbc.StdLemmas.CountConsRRaw n x a b c H };
 
-  fn LbHead (p : Nat, h : Nat, t : List Nat, u : Dllbc.StdLemmas.Lb p (Cons h t)) -> Le p h {
-    Dllbc.StdLemmas.LbHeadRaw p h t u };
+  fn LbHead (p : Nat, h : Nat, t : List Nat, U : Dllbc.StdLemmas.Lb p (Cons h t)) -> Le p h {
+    Dllbc.StdLemmas.LbHeadRaw p h t U };
 
-  fn LbTail (p : Nat, h : Nat, t : List Nat, u : Dllbc.StdLemmas.Lb p (Cons h t)) -> Dllbc.StdLemmas.Lb p t {
-    Dllbc.StdLemmas.LbTailRaw p h t u };
+  fn LbTail (p : Nat, h : Nat, t : List Nat, U : Dllbc.StdLemmas.Lb p (Cons h t)) -> Dllbc.StdLemmas.Lb p t {
+    Dllbc.StdLemmas.LbTailRaw p h t U };
 
-  fn NoAboveOfUb (p : Nat, l : List Nat, hu : Dllbc.StdLemmas.Ub p l, x : Nat, hx : Le (S p) x)
+  fn NoAboveOfUb (p : Nat, l : List Nat, Hu : Dllbc.StdLemmas.Ub p l, x : Nat, Hx : Le (S p) x)
       -> Id Nat (Count x l) Z {
-    Dllbc.StdLemmas.NoAboveOfUbRaw p l hu x hx };
+    Dllbc.StdLemmas.NoAboveOfUbRaw p l Hu x Hx };
 
   fn UbOfNoAbove (p : Nat, l : List Nat,
       HN : (Π (x : Nat) → Le (S p) x → Id Nat (Count x l) Z)) -> Dllbc.StdLemmas.Ub p l {
     Dllbc.StdLemmas.UbOfNoAboveRaw p l HN };
 
   fn UbPerm (p : Nat, a : List Nat, b : List Nat,
-      HC : (Π (n : Nat) → Id Nat (Count n a) (Count n b)), hb : Dllbc.StdLemmas.Ub p b) -> Dllbc.StdLemmas.Ub p a {
-    Dllbc.StdLemmas.UbPermRaw p a b HC hb };
+      HC : (Π (n : Nat) → Id Nat (Count n a) (Count n b)), Hb : Dllbc.StdLemmas.Ub p b) -> Dllbc.StdLemmas.Ub p a {
+    Dllbc.StdLemmas.UbPermRaw p a b HC Hb };
 
-  fn NoBelowOfLb (p : Nat, l : List Nat, hl : Dllbc.StdLemmas.Lb p l, x : Nat, hx : Le (S x) p)
+  fn NoBelowOfLb (p : Nat, l : List Nat, Hl : Dllbc.StdLemmas.Lb p l, x : Nat, Hx : Le (S x) p)
       -> Id Nat (Count x l) Z {
-    Dllbc.StdLemmas.NoBelowOfLbRaw p l hl x hx };
+    Dllbc.StdLemmas.NoBelowOfLbRaw p l Hl x Hx };
 
   fn LbOfNoBelow (p : Nat, l : List Nat,
       HN : (Π (x : Nat) → Le (S x) p → Id Nat (Count x l) Z)) -> Dllbc.StdLemmas.Lb p l {
     Dllbc.StdLemmas.LbOfNoBelowRaw p l HN };
 
   fn LbPerm (p : Nat, a : List Nat, b : List Nat,
-      HC : (Π (n : Nat) → Id Nat (Count n a) (Count n b)), hb : Dllbc.StdLemmas.Lb p b) -> Dllbc.StdLemmas.Lb p a {
-    Dllbc.StdLemmas.LbPermRaw p a b HC hb };
+      HC : (Π (n : Nat) → Id Nat (Count n a) (Count n b)), Hb : Dllbc.StdLemmas.Lb p b) -> Dllbc.StdLemmas.Lb p a {
+    Dllbc.StdLemmas.LbPermRaw p a b HC Hb };
 
   fn SortedHeadA (k : Nat, h : Nat, t : Array k Nat,
-      s0 : Dllbc.StdLemmas.SortedA (S k) (acons k h t)) -> Dllbc.StdLemmas.BoundA h k t {
-    Dllbc.StdLemmas.SortedHeadARaw k h t s0 };
+      S0 : Dllbc.StdLemmas.SortedA (S k) (acons k h t)) -> Dllbc.StdLemmas.BoundA h k t {
+    Dllbc.StdLemmas.SortedHeadARaw k h t S0 };
 
   -- ── segment 5 ──
 
@@ -328,24 +328,24 @@ def std : Checked := prog () {
   -- is a splice of the existing StdLemmas proof applied to the new telescope —
   -- bare qualified identifier with DSL space-application, no `%`.
 
-  fn LbBoundA (P : Nat, N : Nat, A : Array N Nat, hl : Dllbc.StdLemmas.LbA P N A)
+  fn LbBoundA (P : Nat, N : Nat, A : Array N Nat, Hl : Dllbc.StdLemmas.LbA P N A)
       -> Dllbc.StdLemmas.BoundA P N A {
-    Dllbc.StdLemmas.LbBoundARaw P N A hl
+    Dllbc.StdLemmas.LbBoundARaw P N A Hl
   };
 
   fn BoundArrCat (H : Nat, P : Nat, K : Nat, T : Array K Nat, Q : Nat, B : Array Q Nat,
-      hbt : Dllbc.StdLemmas.BoundA H K T, hhp : Le H P)
+      Hbt : Dllbc.StdLemmas.BoundA H K T, Hhp : Le H P)
       -> Dllbc.StdLemmas.BoundA H (Add K (S Q))
            (arrCat K (S Q) T (arrCat 1 Q (Dllbc.StdLemmas.Asingle P) B)) {
-    Dllbc.StdLemmas.BoundArrCatRaw H P K T Q B hbt hhp
+    Dllbc.StdLemmas.BoundArrCatRaw H P K T Q B Hbt Hhp
   };
 
   fn SortedArrCat (P : Nat, M : Nat, A : Array M Nat, Q : Nat, B : Array Q Nat,
-      sa : Dllbc.StdLemmas.SortedA M A, ua : Dllbc.StdLemmas.UbA P M A,
-      sb : Dllbc.StdLemmas.SortedA Q B, lb0 : Dllbc.StdLemmas.LbA P Q B)
+      Sa : Dllbc.StdLemmas.SortedA M A, Ua : Dllbc.StdLemmas.UbA P M A,
+      Sb : Dllbc.StdLemmas.SortedA Q B, Lb0 : Dllbc.StdLemmas.LbA P Q B)
       -> Dllbc.StdLemmas.SortedA (Add M (S Q))
            (arrCat M (S Q) A (arrCat 1 Q (Dllbc.StdLemmas.Asingle P) B)) {
-    Dllbc.StdLemmas.SortedArrCatRaw P M A Q B sa ua sb lb0
+    Dllbc.StdLemmas.SortedArrCatRaw P M A Q B Sa Ua Sb Lb0
   };
 
   fn CountArrCat (X : Nat, M : Nat, A : Array M Nat, Q : Nat, B : Array Q Nat)
@@ -354,21 +354,21 @@ def std : Checked := prog () {
     Dllbc.StdLemmas.CountArrCatRaw X M A Q B
   };
 
-  fn CountAconsHit (M : Nat, A : Nat, K : Nat, L : Array K Nat, hq : Id Bool (Eqb M A) True)
+  fn CountAconsHit (M : Nat, A : Nat, K : Nat, L : Array K Nat, Hq : Id Bool (Eqb M A) True)
       -> Id Nat (Dllbc.StdLemmas.CountA M (S K) (acons K A L))
            (S (Dllbc.StdLemmas.CountA M K L)) {
-    Dllbc.StdLemmas.CountAconsHitRaw M A K L hq
+    Dllbc.StdLemmas.CountAconsHitRaw M A K L Hq
   };
 
-  fn CountAconsMiss (M : Nat, H : Nat, K : Nat, T : Array K Nat, hq : Id Bool (Eqb M H) False)
+  fn CountAconsMiss (M : Nat, H : Nat, K : Nat, T : Array K Nat, Hq : Id Bool (Eqb M H) False)
       -> Id Nat (Dllbc.StdLemmas.CountA M (S K) (acons K H T)) (Dllbc.StdLemmas.CountA M K T) {
-    Dllbc.StdLemmas.CountAconsMissRaw M H K T hq
+    Dllbc.StdLemmas.CountAconsMissRaw M H K T Hq
   };
 
-  fn NoAboveOfUbA (P : Nat, N : Nat, A : Array N Nat, hu : Dllbc.StdLemmas.UbA P N A,
-      X : Nat, hx : Le (S P) X)
+  fn NoAboveOfUbA (P : Nat, N : Nat, A : Array N Nat, Hu : Dllbc.StdLemmas.UbA P N A,
+      X : Nat, Hx : Le (S P) X)
       -> Id Nat (Dllbc.StdLemmas.CountA X N A) Z {
-    Dllbc.StdLemmas.NoAboveOfUbARaw P N A hu X hx
+    Dllbc.StdLemmas.NoAboveOfUbARaw P N A Hu X Hx
   };
 
   fn UbOfNoAboveA (P : Nat, N : Nat, A : Array N Nat,
@@ -405,8 +405,8 @@ def std : Checked := prog () {
   fn NatRw (P : Nat → Type, X : Nat, Y : Nat, H : Id Nat X Y, Px : P X) -> P Y {
     Dllbc.StdLemmas.NatRwRaw P X Y H Px };
 
-  fn LeZeroEq [n] (n : Nat, h : Le n Z) -> Id Nat n Z {
-    match n { Z => Refl, S(n2) => botElim (Id Nat (S n2) Z) h } };
+  fn LeZeroEq [n] (n : Nat, H : Le n Z) -> Id Nat n Z {
+    match n { Z => Refl, S(n2) => botElim (Id Nat (S n2) Z) H } };
 
   fn SortedANil (N : Nat, A : Array N Nat, H : Id Nat N Z) -> Dllbc.StdLemmas.SortedA N A {
     Dllbc.StdLemmas.SortedANilRaw N A H };
@@ -525,12 +525,12 @@ def std : Checked := prog () {
                 (acons (Add K (S R)) X (arrCat K (S R) L (acons R Y G)))) {
     Dllbc.StdLemmas.CountSwapARaw Q X Y K L R G };
 
-  fn StepInv (b : Nat, r : Nat, c : Nat, h : Le (Add r c) b) ->
+  fn StepInv (b : Nat, r : Nat, c : Nat, H : Le (Add r c) b) ->
       Le (Add (Dllbc.StdLemmas.NextR r c) (Dllbc.StdLemmas.NextC b c)) b {
     match c {
       Z => Dllbc.StdLemmas.LeReflRaw b,
       S(c2) => Dllbc.StdLemmas.LeRwLRaw b (Add r (S c2)) (S (Add r c2))
-                  (Dllbc.StdLemmas.AddSuccRaw r c2) h } };
+                  (Dllbc.StdLemmas.AddSuccRaw r c2) H } };
 
   fn ModCLt [a] (a : Nat, b : Nat, r : Nat, c : Nat, h : Le (Add r c) b) ->
       Le (S (Dllbc.StdLemmas.ModC a b r c)) (S b) {
@@ -539,9 +539,9 @@ def std : Checked := prog () {
       S(a2) => ModCLt(a2, b, (Dllbc.StdLemmas.NextR r c), (Dllbc.StdLemmas.NextC b c),
                   StepInv(b, r, c, h)) } };
 
-  fn ModLtN (a : Nat, n : Nat, h : Le (S Z) n) -> Le (S (Dllbc.StdLemmas.Mod a n)) n {
+  fn ModLtN (a : Nat, n : Nat, H : Le (S Z) n) -> Le (S (Dllbc.StdLemmas.Mod a n)) n {
     match n {
-      Z => botElim (Le (S (Dllbc.StdLemmas.Mod a Z)) Z) h,
+      Z => botElim (Le (S (Dllbc.StdLemmas.Mod a Z)) Z) H,
       S(b2) => ModCLt(a, b2, Z, b2, Dllbc.StdLemmas.LeReflRaw b2) } };
 
   fn ModDec (I : Nat, N : Nat, H : Le (S I) N) -> Σ (R : Nat). Id Nat N (Add I (S R)) {
@@ -603,8 +603,8 @@ def std : Checked := prog () {
     StdLemmas.MulTwoDoubleRaw a c };
 
   -- P2: straight-line (LeRwR/LeRwL/AddComm/LeAddMonoL), no recursion.
-  fn LeAddMonoR (a : Nat, b : Nat, k : Nat, h : Le a b) -> Le (Add a k) (Add b k) {
-    StdLemmas.LeAddMonoRRaw a b k h };
+  fn LeAddMonoR (a : Nat, b : Nat, k : Nat, H : Le a b) -> Le (Add a k) (Add b k) {
+    StdLemmas.LeAddMonoRRaw a b k H };
 
   -- P2: straight-line (LeTrans/LeAddMonoR-shaped composition), no recursion.
   fn LeAddMono (a : Nat, b : Nat, c : Nat, d : Nat, H1 : Le a b, H2 : Le c d) ->
@@ -630,37 +630,37 @@ def std : Checked := prog () {
       S(a2) => LeAddMono(b, c, StdLemmas.Mul a2 b, StdLemmas.Mul a2 c, H, LeMulR(a2, b, c, H)) } };
 
   -- P2: straight-line (LeTrans applied at unit / LeMulR), no recursion.
-  fn Le5M4 (c : Nat, h : Le 2 c) -> Le 5 (StdLemmas.Mul 4 c) {
-    StdLemmas.Le5M4Raw c h };
+  fn Le5M4 (c : Nat, H : Le 2 c) -> Le 5 (StdLemmas.Mul 4 c) {
+    StdLemmas.Le5M4Raw c H };
 
   -- P1: elim on N, no self-call in either arm (the S arm discharges by
-  -- botElim on the impossible `h`) — match ⇜-refines `h`'s type per arm
+  -- botElim on the impossible `H`) — match ⇜-refines `H`'s type per arm
   -- exactly as the LeTrans model does for its premises.
-  fn FiveN4Zero (n : Nat, h : Le (StdLemmas.Mul 5 n) 4) -> Id Nat n Z {
+  fn FiveN4Zero (n : Nat, H : Le (StdLemmas.Mul 5 n) 4) -> Id Nat n Z {
     match n {
       Z => Refl,
       S(n2) => botElim (Id Nat (S n2) Z)
-        (StdLemmas.LeRwLRaw 4 (StdLemmas.Mul 5 (S n2)) (Add 5 (StdLemmas.Mul 5 n2)) (StdLemmas.MulSuccRaw 5 n2) h) } };
+        (StdLemmas.LeRwLRaw 4 (StdLemmas.Mul 5 (S n2)) (Add 5 (StdLemmas.Mul 5 n2)) (StdLemmas.MulSuccRaw 5 n2) H) } };
 
   -- P1: elim on A, inner elim on B per arm, self-call `Ih B2 H` — the
   -- LeTrans-shaped nested match, decreasing only on A.
-  fn LeLebTrue [a] (a : Nat, b : Nat, h : Le a b) -> Id Bool (Leb a b) True {
+  fn LeLebTrue [a] (a : Nat, b : Nat, H : Le a b) -> Id Bool (Leb a b) True {
     match a {
       Z => Refl,
       S(a2) => match b {
-        Z => botElim (Id Bool (Leb (S a2) Z) True) h,
-        S(b2) => LeLebTrue(a2, b2, h) } } };
+        Z => botElim (Id Bool (Leb (S a2) Z) True) H,
+        S(b2) => LeLebTrue(a2, b2, H) } } };
 
   -- P1: elim on A, inner elim on B per arm, self-call `Ih B2 H` in the S/S
   -- case only.
-  fn EqbTrueEq [a] (a : Nat, b : Nat, h : Id Bool (Eqb a b) True) -> Id Nat a b {
+  fn EqbTrueEq [a] (a : Nat, b : Nat, H : Id Bool (Eqb a b) True) -> Id Nat a b {
     match a {
       Z => match b {
         Z => Refl,
-        S(b2) => botElim (Id Nat Z (S b2)) (StdLemmas.BoolFTRaw h) },
+        S(b2) => botElim (Id Nat Z (S b2)) (StdLemmas.BoolFTRaw H) },
       S(a2) => match b {
-        Z => botElim (Id Nat (S a2) Z) (StdLemmas.BoolFTRaw h),
-        S(b2) => StdLemmas.IdCongrRaw Nat Nat (λ (x : Nat). S x) a2 b2 (EqbTrueEq(a2, b2, h)) } } };
+        Z => botElim (Id Nat (S a2) Z) (StdLemmas.BoolFTRaw H),
+        S(b2) => StdLemmas.IdCongrRaw Nat Nat (λ (x : Nat). S x) a2 b2 (EqbTrueEq(a2, b2, H)) } } };
 
   -- P1: elim on A, inner elim on B per arm, self-call `Ih B2` in the S/S
   -- case only (no premise to carry).
@@ -676,9 +676,9 @@ def std : Checked := prog () {
 
   -- P2: the resize-ledger combinator (IfDec/NatRw dispatch on non-decreasing
   -- premises) — splice the existing checked proof.
-  fn LedgerGrow (c : Nat, n : Nat, h1 : Le (S Z) c, hle : Le (StdLemmas.Mul 5 n) (StdLemmas.Mul 4 c)) ->
+  fn LedgerGrow (c : Nat, n : Nat, H1 : Le (S Z) c, Hle : Le (StdLemmas.Mul 5 n) (StdLemmas.Mul 4 c)) ->
       Le (StdLemmas.Mul 5 (S n)) (StdLemmas.Mul 4 (StdLemmas.Mul 2 c)) {
-    StdLemmas.LedgerGrowRaw c n h1 hle };
+    StdLemmas.LedgerGrowRaw c n H1 Hle };
 
   ()
 }
