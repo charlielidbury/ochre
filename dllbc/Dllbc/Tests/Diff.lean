@@ -43,45 +43,43 @@ open Dllbc.Val (nat nil cons)
 
 namespace Dllbc.Tests.S8Diff
 
--- Raw Term construction: the generator needs AST literals, not the `prog{}` macro.
-def tnat : Nat → Term | 0 => .ctorApp "Z" [] | n + 1 => .ctorApp "S" [tnat n]
-
 /-! ## Body generator for `(v : &mut List Nat) → Unit`
 
-    v is runtime var 0; match binders use fixed ids 2 (hd/x/tail), 3 (tl). A
-    two-level, capped enumeration over the grammar constructs: `*`-take, `:=`
-    through 0/1/2 peels, `&mut`, `let`, `seq`, and match-through (exhaustive
-    over `Nil`/`Cons`). `progOk` filters the ill-formed. -/
+    The pools are `prog_parse { }` FRAGMENTS (docs/22): `v` is free in every one
+    and is the telescope's own `v` where a body is spliced into `fn F (v : …) {
+    %body }` — a fragment is a term with free names, and the splice is
+    substitution. The pools used to be raw `Term` literals ("the generator needs
+    AST literals, not the `prog{}` macro"), and the conversion was witnessed
+    body-for-body against them: the same `Term`, exactly, and the same 91/47
+    below.
 
--- Raw Term construction: the generator needs AST literals, not the `prog{}` macro.
-def v0 : Term := .var "v"
+    A two-level, capped enumeration over the grammar constructs: `*`-take, `:=`
+    through 0/1/2 peels, `&mut`, `let`, `seq`, and match-through (exhaustive
+    over `Nil`/`Cons`). `progOk` filters the ill-formed — including `x`, a name
+    no telescope binds, which the boundary refuses as unbound. -/
 
 /-- Small expression pool over v (RHS / place fillers). -/
 def exprs : List Term :=
-  [ .unit, nilT, tnat 0, tnat 1, .deref v0,
-    .ctorApp "Cons" [tnat 0, nilT],
-    .ctorApp "Cons" [tnat 0, .deref v0],
-    .var "x" ]
-where nilT : Term := .ctorApp "Nil" []
+  [ prog_parse { () }, prog_parse { Nil }, prog_parse { 0 }, prog_parse { 1 }, prog_parse { *v },
+    prog_parse { Cons(0, Nil) }, prog_parse { Cons(0, *v) }, prog_parse { x } ]
 
 /-- Leaf statement bodies (each returns `()`), depth ≈ 1. -/
 def leafBodies : List Term :=
-  [ .unit ]
-  ++ exprs.map (fun e => .seq e .unit)                          -- e ; ()
+  [ prog_parse { () } ]
+  ++ exprs.map (fun e => prog_parse { %e; () })                                  -- e ; ()
   -- p := e ; ()  for p a place through 0/1/2 peels
-  ++ ([v0, .deref v0].flatMap fun p => exprs.map fun e => .seq (.assign p e) .unit)
+  ++ ([prog_parse { v }, prog_parse { *v }].flatMap fun p => exprs.map fun e => prog_parse { %p := %e; () })
   -- the take-and-refill idiom
-  ++ [ .seq (.letIn (Var.slot "tail") (.deref v0))
-        (.seq (.assign (.deref v0) (.ctorApp "Cons" [tnat 0, .var "tail"])) .unit) ]
+  ++ [ prog_parse { let tail = *v; *v := Cons(0, tail); () } ]
   -- a stray let
-  ++ [ .seq (.letIn (Var.slot "x") (.deref v0)) .unit ]
+  ++ [ prog_parse { let x = *v; () } ]
 
 /-- Bodies with one exhaustive match-through on v, branches drawn from
-    `leafBodies` (capped). In the `Cons` branch, hd = id 2, tl = id 3. -/
+    `leafBodies` (capped). `v` is a free scrutinee — a name like any other. -/
 def matchBodies : List Term :=
   (leafBodies.take 8).flatMap fun bNil =>
     (leafBodies.take 8).map fun bCons =>
-      .matchE "v" none [.mk "Nil" [] bNil, .mk "Cons" [Var.slot "hd", Var.slot "tl"] bCons]
+      prog_parse { match v { Nil => %bNil, Cons(hd, tl) => %bCons } }
 
 /-- All generated bodies for the list-borrow telescope. -/
 def vBodies : List Term := leafBodies ++ matchBodies
@@ -122,27 +120,25 @@ example : vAccepted.all (fun b => vArgs.all (fun a => progRuns (vRun b a))) = tr
     over the generator's grammar: a symbolic match missing a constructor is
     rejected, so no accepted body can be concretely stuck on a missing branch. -/
 
--- Raw Term construction: the generator needs AST literals, not the `prog{}` macro.
 def vNonExhaustive : List Term :=
-  (leafBodies.take 8).map (fun b => .matchE "v" none [.mk "Cons" [Var.slot "hd", Var.slot "tl"] b])   -- missing Nil
-  ++ (leafBodies.take 8).map (fun b => .matchE "v" none [.mk "Nil" [] b])                       -- missing Cons
+  (leafBodies.take 8).map (fun b => prog_parse { match v { Cons(hd, tl) => %b } })   -- missing Nil
+  ++ (leafBodies.take 8).map (fun b => prog_parse { match v { Nil => %b } })         -- missing Cons
 
 example : vNonExhaustive.all (fun b => !progOk (vCheck b)) = true := by native_decide
 
 /-! ## Telescope `(n : Nat) → Nat` (owned symbolic argument, value return) -/
 
--- Raw Term construction: the generator needs AST literals, not the `prog{}` macro.
-def n0 : Term := .var "n"
-def nLeaf : List Term := [tnat 0, tnat 1, n0, .var "m", .ctorApp "S" [.var "m"]]
+-- `n` free, the header's; `m` free, the `S(m)` arm's each leaf is spliced under.
+def nLeaf : List Term := [prog_parse { 0 }, prog_parse { 1 }, prog_parse { n }, prog_parse { m }, prog_parse { S(m) }]
 
 def nBodies : List Term :=
-  [ n0, tnat 0, tnat 1, .ctorApp "S" [n0], .ctorApp "S" [tnat 0],
-    .seq (.letIn (Var.slot "x") n0) (.ctorApp "S" [.var "x"]),
-    .seq (.letIn (Var.slot "x") (tnat 0)) n0 ]
+  [ prog_parse { n }, prog_parse { 0 }, prog_parse { 1 }, prog_parse { S(n) }, prog_parse { S(0) },
+    prog_parse { let x = n; S(x) },
+    prog_parse { let x = 0; n } ]
   -- exhaustive match on n
   ++ (nLeaf.take 5).flatMap fun b1 =>
        (nLeaf.take 5).map fun b2 =>
-         .matchE "n" none [.mk "Z" [] b1, .mk "S" [Var.slot "m"] b2]
+         prog_parse { match n { Z => %b1, S(m) => %b2 } }
 
 def nCheck (body : Term) : Term := prog{ fn F (n : Nat) -> Nat { %body }; () }
 def nRun (body arg : Term) : Term := prog{
@@ -157,18 +153,16 @@ example : nAccepted.all (fun b => nArgs.all (fun a => progRuns (nRun b a))) = tr
 
 /-! ## Telescope `(b : &mut Nat, c : Bool) → Unit` (a borrow and a bool) -/
 
--- Raw Term construction: the generator needs AST literals, not the `prog{}` macro.
-def bb : Term := .var "b"
 def bcLeaf : List Term :=
-  [ .unit, .seq (.assign (.deref bb) (tnat 0)) .unit, .seq (.assign (.deref bb) (tnat 1)) .unit ]
+  [ prog_parse { () }, prog_parse { *b := 0; () }, prog_parse { *b := 1; () } ]
 
 def bcBodies : List Term :=
   bcLeaf
-  ++ [ .seq (.letIn (Var.slot "tk") (.deref bb)) (.seq (.assign (.deref bb) (tnat 0)) .unit) ]   -- take + refill
+  ++ [ prog_parse { let tk = *b; *b := 0; () } ]   -- take + refill
   -- exhaustive match on c
   ++ (bcLeaf.take 5).flatMap fun b1 =>
        (bcLeaf.take 5).map fun b2 =>
-         .matchE "c" none [.mk "True" [] b1, .mk "False" [] b2]
+         prog_parse { match c { True => %b1, False => %b2 } }
 
 def bcCheck (body : Term) : Term := prog{
   fn F (b : &mut Nat, c : Bool) -> Unit { %body };

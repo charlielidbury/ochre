@@ -76,8 +76,25 @@ Two things the build taught that the plan had wrong, recorded where they were fo
 * **The constant table stays the surface's, in parse mode too** (§3 item 9 as planned is WITHDRAWN). Deferring a lowercase constant to the splice was built and broke `StdChain`: `IdCongrRaw`'s `j A X …`, spliced into a chain `fn` whose parameter is named `j`, was captured — every library proof is a fragment spliced somewhere, and it does not want capture of `j`. So `resolveName` resolves constructors, constants and aliases at parse whatever the mode, exactly as before; the one cost, stated: a fragment cannot cite a splice-site binder named `j`, `k`, `natRec`, …, and §H's conversion names its arm binder accordingly.
 * **A free name under ⇝ is a free pure name, not an error.** The first cut errored on an Ω miss in `reflectC` and ArrCatIota's owed types (`&mut (s : … ~> … s …)`) fell over: the machine reads them with `s` open. Rather than chase every open-binder read, the resolver keeps `pvar`'s reading for an unbound name and the BOUNDARY is what refuses a program's own free names (§5) — ⇒ still errors, since a slot read is always Ω. The open-binder reads additionally pass their binders as `bound`, so a body slot of the same name (HashMap's `hit`, a `let` in the body and a Σ binder in the return type) is not read in the binder's place.
 
-### 7.1 Conversions (the census's non-twin open-term sites)
+### 7.2 Rebased onto the marker merge (docs/21, main a41752cf)
+
+The marker mechanism landed on main mid-lane and the two compose at three seams, each resolved preserving both semantics: the boundary is THREE passes in a stated order — strip markers, assert closedness, number seals — at both `atBoundary` and `moduleBoundary` (a marker must not hide a free name, and `Term.freeVars` sees through one: the `.marker` row is its body); the marker rows joined the one-var traversals (`freeVars`, `imperativeIn` under its `pure` context, `prettyPrecIn`; `mapMarkersGo` needed nothing — it never touches a binder or an occurrence); the `@name E` syntax row rides the one-`Scope` walker, parse mode included (a fragment may carry markers, and they mean their bodies wherever it lands). ElabCheck's key strips extend to the `bindKey` join (`LetNote.stmtKey` comes from the stripped walk). Tests/MarkedTwins updated mechanically: `Term.pvar "r"` → `Term.var "r"`, and the pinned needles' `#§0` rendering → `§0`.
+
+### 7.3 Conversions (the census's non-twin open-term sites)
+
+Each converted with a local witness against the raw form BEFORE the raw form was deleted; neither survives in the commit. With no ids the witness is EXACT `Term.beq` everywhere but §H, where it is exact after the one rename the constant table forces.
 
 | site | raw form | converted to | witness before deletion |
 |---|---|---|---|
-| (filled in per commit) | | | |
+| Diff.lean Df1 — `exprs`/`leafBodies`/`matchBodies`/`vNonExhaustive`, `nLeaf`/`nBodies`, `bcLeaf`/`bcBodies` | `.var "v"`, `.letIn (Var.slot "tail") …`, `.matchE "v" none [… [Var.slot "hd", Var.slot "tl"] …]` | `prog_parse { }` pools with `v`/`n`/`b`/`c` free; `match v { … }` a free scrutinee | exact `beq`, every pool; 91/47, 32/15, 13/13 unchanged |
+| Programs.lean P5 — `hSplit` | raw `let`/`let`/`matchE` spine over spliced branch bodies | `prog_parse { let F = …; let n = F(3); match n { Z => %inZ, S(m) => %inS } }` | exact `beq` after `renameVar k m` on the raw |
+| Programs.lean P5 — `hGlobal`/`hCapture`/`hSeal` | raw branch bodies citing `F` and `k` | `prog_parse { let G = λ(y : Nat){ F y }; let r = G(m); … }` etc. | exact `beq` after the rename; the four verdicts unchanged |
+| Programs.lean P5 — `hLend` | raw six-`let` spine | one closed `prog{ }` | exact `beq` after the rename |
+| Functions.lean F7/F8 — `bndDeclHn`, `leLen` | `%(Std.LeFnT) (%(Std.lenFnT) %(Term.deref (.var "v"))) %b` | `prog_parse { Le (Len *v) %b }` — a fragment naming the residual telescope's `v` | exact `beq` at `Z` and at a `.var` |
+| Functions.lean F9 payloads | `.const "Bool"`, `.borrowT "§_" (List Bool) (List Bool)` | `ty{ Bool }`, `ty{ &mut List Bool }` | exact `beq` |
+| Sugar.lean S2 classifier probes | `.app (.var "g") .unit`, `.app (.const "Len") (.var "l")`, `.lam "Le" .type (.app (.var "Le") (.var "a"))`, `.var "g"` | `prog_parse { g () }`, `prog_parse { natRec l }`, `prog_parse { λ (le : Type). le a }`, `prog_parse { g }` | exact `beq`; the four classifier answers unchanged. `Len`/`Le` respelled: the surface resolves them to their `…FnT` λ-terms, a different head kind from the one the probe is about, and a capital binder would mark its domain |
+| EagerRec.lean E2 — `openTwo` | `S(S(%(Term.var "x")))` | `prog_parse { S(S(x)) }` | exact `beq` |
+
+Left alone, as briefed: the twin skeletons (Direct D1/D4, ArraySort A1, HashMap H1, Programs P6's `zapUnder`) — docs/21's marked-twins plan retires them. Their vocabulary is now `def vT : Term := .var "v"`, which a reader can see is nothing but the name.
+
+§H's `k → m`: the raw §H bound the arm's predecessor `k` and cited it from the branch bodies; a fragment's `k` is the `Id` eliminator (§7.1), so the converted arm binds `m`. The one limit a fragment has, met on its first conversion.

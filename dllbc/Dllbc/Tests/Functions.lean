@@ -1490,8 +1490,7 @@ def bndSeal : Option Term :=
     with the comptime marker, since `Hn` is capitalized. Written out because
     it is what a TRANSCRIPTION would have produced, and E2/F3b are the
     controls that say the elaboration produces something else. -/
-def bndDeclHn : Term :=
-  .cmpT prog_parse { %(Std.LeFnT) (%(Std.lenFnT) %(Term.deref (.var "v"))) %(Term.var "n") }
+def bndDeclHn : Term := .cmpT prog_parse { Le (Len *v) n }
 
 /-- The two arms of the emitted `natRec`, as annotated binder lists. -/
 def bndArms : Option (List (Var × Term) × List (Var × Term)) :=
@@ -1505,9 +1504,9 @@ example : (match bndArms with
            | some (z, s) => z.length == 2 && s.length == 4
            | none => false) = true := by native_decide
 
-/-- `Le (Len *v) b`, at the positional `v` the residual telescope keeps. -/
-def leLen (b : Term) : Term :=
-  prog{ %(Std.LeFnT) (%(Std.lenFnT) %(Term.deref (.var "v"))) %b }
+/-- `Le (Len *v) b`, at the `v` the residual telescope keeps — a fragment
+    naming it (docs/22). -/
+def leLen (b : Term) : Term := prog_parse { Le (Len *v) %b }
 
 -- E1. The bound binder, at each constructor. `Hn` is capitalized, so its
 -- domain carries the comptime marker — the annotation is the domain as
@@ -1613,7 +1612,7 @@ example : (match bndR, bndDec with
            | _, _ => false) = true := by native_decide
 
 -- F2. …and the predecessor binder is checked by the same rule.
-example : (match stepArmWith 0 (.const "Bool") with
+example : (match stepArmWith 0 ty{ Bool } with
            | some t => progRejects (bndProg t) "the recursor's premise does not give it"
            | none => false) = true := by native_decide
 
@@ -1643,9 +1642,7 @@ example : (match stepArmWith 3 bndDeclHn with
            | none => false) = true := by native_decide
 
 -- F4. …and an ordinary trailing binder, mistyped outright.
-example : (match stepArmWith 2
-             (.borrowT "§_" (.app (.const "List") (.const "Bool"))
-                       (.app (.const "List") (.const "Bool"))) with
+example : (match stepArmWith 2 ty{ &mut List Bool } with
            | some t => progRejects (bndProg t) "a domain the ascription does not bind it at"
            | none => false) = true := by native_decide
 
