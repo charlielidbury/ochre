@@ -174,14 +174,13 @@ def b4lo : Term := prog{ fn B4 (n : Nat) -> Unit { n := 3; () }; () }
 example : progRejects b4hi "cannot be written through" = true := by native_decide
 example : progOk b4lo = true := by native_decide
 
--- B5. The index/slice step. Built by hand rather than through the surface: the
--- fence fires on the place's syntactic root before the place is navigated at
--- all, which is the property being pinned (a place expression may carve, and a
--- fence that ran after that would have already reorganized the state).
-def b5body : Term := .seq (.letIn ⟨1, "e"⟩ (.index (.var ⟨0, "N"⟩) (.ctorApp "Z" []) none)) .unit
--- The body is spliced with `%`, the escape hatch that lets a hand-built `Term`
--- stand in for a `fn` statement's block.
-def b5hi : Term := prog defer_check { fn B5 (N : Nat) -> Unit { %b5body }; () }
+-- B5. The index/slice step. The fence fires on the place's syntactic root
+-- before the place is navigated at all, which is the property being pinned (a
+-- place expression may carve, and a fence that ran after that would have
+-- already reorganized the state). `N[Z]` is the `a[i]` row — `.index N Z none`
+-- — and the surface elaborates it on a comptime binder without complaint; the
+-- refusal is the checker's.
+def b5hi : Term := prog defer_check { fn B5 (N : Nat) -> Unit { let e = N[Z]; () }; () }
 example : progRejects b5hi "cannot be indexed or sliced" = true := by native_decide
 
 -- B6. A capital binder handed to a lowercase parameter. Same rejection as B1,
@@ -373,11 +372,10 @@ example : progRejects d3 "cannot be the scrutinee of a runtime match" = true := 
     comptime judgment, and a call still tells them apart. -/
 
 -- E1. The mode is invisible to conversion…
-example : Pure.convert 1000 (.pi "X" (.cmpT (.const "Nat")) (.const "Nat"))
-                           (.pi "x" (.const "Nat") (.const "Nat")) = true := by native_decide
+example : Pure.convert 1000 ty{ Π (X : Nat) → Nat } ty{ Π (x : Nat) → Nat } = true := by native_decide
 -- …and not erased by normalization, which is what leaves a call something to
 -- read. (`==` is mode-blind, so this has to be asked structurally.)
-example : (match Pure.nf 1000 (Term.pi "X" (.cmpT (.const "Nat")) (.const "Nat")) with
+example : (match Pure.nf 1000 ty{ Π (X : Nat) → Nat } with
            | .pi _ d _ => Term.domComptime d
            | _ => false) = true := by native_decide
 
@@ -1202,8 +1200,8 @@ def rawEnvs (t : Term) : List (Except String Env) :=
 -- state, which is what makes the return type a real demand site rather than
 -- decoration.
 def a1 : Term := prog defer_check { let x = 3; let y = S(x); y }
-example : progOk a1 (.const "Nat") = true := by native_decide
-example : progRejects a1 "does not have return type" (.const "Bool") = true := by native_decide
+example : progOk a1 ty{ Nat } = true := by native_decide
+example : progRejects a1 "does not have return type" ty{ Bool } = true := by native_decide
 -- `x` survives its own use: a `Nat` is index-kind, so copy-on-read leaves the
 -- owner intact where data proper would be moved out.
 example : progRunsTo a1 [("x", Val.nat 3), ("y", Val.nat 4)] = true := by native_decide
@@ -1217,7 +1215,7 @@ def a2 : Term := prog{
   let G = (λ(y : Nat){ F(y) } : Π (y : Nat) → Nat);
   let r = G(3);
   r }
-example : progOk a2 (.const "Nat") = true := by native_decide
+example : progOk a2 ty{ Nat } = true := by native_decide
 example : progDiff a2 = true := by native_decide
 -- The claim that it was really the seal that made `f` callable: the same program
 -- with `f` bound to a NON-function is refused, and the refusal names the capture.
@@ -1265,7 +1263,7 @@ example : progRejects b1 "does not have return type (Bool)" = true := by native_
 def b2vac : Term := prog{ let G = λ(x : Nat){ True }; () }
 def b2live : Term := prog{ let G = λ(x : Nat){ True }; let r = G(1); r }
 example : progOk b2vac = true := by native_decide
-example : progRejects b2live "does not have return type (Nat)" (.const "Nat") = true := by native_decide
+example : progRejects b2live "does not have return type (Nat)" ty{ Nat } = true := by native_decide
 
 -- B3. Program order, pinned the only way it can be: two lies, and the one that
 -- is reported is the first. (Both messages have the same shape, so the needles
@@ -1304,7 +1302,7 @@ def c1ok : Term := prog{
   let G = (λ(y : Nat){ H(y) } : Π (y : Nat) → Nat);
   let r = G(3);
   r }
-example : progOk c1ok (.const "Nat") = true := by native_decide
+example : progOk c1ok ty{ Nat } = true := by native_decide
 example : progDiff c1ok = true := by native_decide
 
 /-! ### C2. What a caller keeps is exactly what the callee's seal ascribes
@@ -1370,7 +1368,7 @@ def d1 : Term := prog{
   let H = (λ(z : Nat){ G(G(z)) } : Π (z : Nat) → Nat);
   let r = H(0);
   r }
-example : progOk d1 (.const "Nat") = true := by native_decide
+example : progOk d1 ty{ Nat } = true := by native_decide
 -- The executing machine agrees, and on the VALUE: four applications of successor.
 example : (match runProgram d1 with
            | .ok env => env.lookup "r" == some (Val.nat 4)
@@ -1396,7 +1394,7 @@ def d2dataOk : Term := prog{
   let r = G(1, n);
   r }
 example : progRejects d2data "a runtime (lowercase) binding" = true := by native_decide
-example : progOk d2dataOk (.const "Nat") = true := by native_decide
+example : progOk d2dataOk ty{ Nat } = true := by native_decide
 
 -- D2b. A borrow — the case this rule is really about, since a captured borrow
 -- is a suspended loan with no scope to end it in.
@@ -1978,11 +1976,9 @@ example : progOk tailLam0 = true := by native_decide
     the first component's. Four programs: two type spellings (`Σ`/`Σ0`) times
     two arm spellings, and the diagonal is what is accepted. -/
 
-def s0V : Term := .var ⟨0, "v"⟩
-
 /-- Σ0 producer, capital tail binder at the consumer: accepted. -/
 def tail0Upper : Term := prog{
-  fn Zap0 (v : &mut List Nat) -> Σ0 (k : Nat). Id (List Nat) (*%s0V) Nil
+  fn Zap0 (v : &mut List Nat) -> Σ0 (k : Nat). Id (List Nat) (*v) Nil
     { *v := Nil; Pair(Z, Refl) };
   fn Use0 (w : &mut List Nat) -> Unit
     { let Pair(k2, H2) = Zap0(&m *w); () };
@@ -1991,7 +1987,7 @@ example : progOk tail0Upper = true := by native_decide
 
 /-- …and lowercase at the same consumer: refused, because the tail is comptime. -/
 def tail0Lower : Term := prog defer_check {
-  fn Zap0 (v : &mut List Nat) -> Σ0 (k : Nat). Id (List Nat) (*%s0V) Nil
+  fn Zap0 (v : &mut List Nat) -> Σ0 (k : Nat). Id (List Nat) (*v) Nil
     { *v := Nil; Pair(Z, Refl) };
   fn Use0 (w : &mut List Nat) -> Unit
     { let Pair(k2, h2) = Zap0(&m *w); () };
@@ -2000,7 +1996,7 @@ example : progRejects tail0Lower "Capitalise the arm binder" = true := by native
 
 /-- The same consumer over a plain `Σ`: now lowercase is the legal spelling… -/
 def tailRunLower : Term := prog{
-  fn Zap (v : &mut List Nat) -> Σ (k : Nat). Id (List Nat) (*%s0V) Nil
+  fn Zap (v : &mut List Nat) -> Σ (k : Nat). Id (List Nat) (*v) Nil
     { *v := Nil; Pair(Z, Refl) };
   fn Use (w : &mut List Nat) -> Unit
     { let Pair(k2, h2) = Zap(&m *w); () };
@@ -2011,7 +2007,7 @@ example : progOk tailRunLower = true := by native_decide
     which spelling of the caller's arm is legal, in both directions — which is
     what says the rule reads the type and not the shape. -/
 def tailRunUpper : Term := prog defer_check {
-  fn Zap (v : &mut List Nat) -> Σ (k : Nat). Id (List Nat) (*%s0V) Nil
+  fn Zap (v : &mut List Nat) -> Σ (k : Nat). Id (List Nat) (*v) Nil
     { *v := Nil; Pair(Z, Refl) };
   fn Use (w : &mut List Nat) -> Unit
     { let Pair(k2, H2) = Zap(&m *w); () };
@@ -2146,17 +2142,15 @@ example : progRejects armDataUpper "lower-case the arm binder" = true := by nati
     `buildResult` mints its σ at a `⇝` type. That `sctx` entry is the whole of
     the mode source — no type is re-derived at the match. -/
 
-def armV : Term := .var ⟨0, "v"⟩
-
 def armCmpUpper : Term := prog{
-  fn Zap (v : &mut List Nat) -> Σ (H : Id (List Nat) (*%armV) Nil). Unit
+  fn Zap (v : &mut List Nat) -> Σ (H : Id (List Nat) (*v) Nil). Unit
     { *v := Nil; Pair(Refl, unit) };
   fn Use (w : &mut List Nat) -> Unit
     { let Pair(H2, u) = Zap(&m *w); () };
   () }
 
 def armCmpLower : Term := prog defer_check {
-  fn Zap (v : &mut List Nat) -> Σ (H : Id (List Nat) (*%armV) Nil). Unit
+  fn Zap (v : &mut List Nat) -> Σ (H : Id (List Nat) (*v) Nil). Unit
     { *v := Nil; Pair(Refl, unit) };
   fn Use (w : &mut List Nat) -> Unit
     { let Pair(h2, u) = Zap(&m *w); () };
@@ -2172,7 +2166,7 @@ example : progRejects armCmpLower "Capitalise the arm binder" = true := by nativ
     return type flips which spelling of the caller's arm is legal. -/
 
 def armRunLower : Term := prog{
-  fn Zap (v : &mut List Nat) -> Σ (h : Id (List Nat) (*%armV) Nil). Unit
+  fn Zap (v : &mut List Nat) -> Σ (h : Id (List Nat) (*v) Nil). Unit
     { *v := Nil; Pair(Refl, unit) };
   fn Use (w : &mut List Nat) -> Unit
     { let Pair(h2, u) = Zap(&m *w); () };
