@@ -198,12 +198,22 @@ def useStd : Checked := prog (Dllbc.std.env) {
   let p = LeRefl(3);
   let w = LeUpR(3, 3, p);
   let u = AddComm(2, 3);
+  -- The chain is self-contained: `Mul` is a spec function bound in the seed
+  -- (StdChain's closing `let`s), so it reduces in a consumer's type, and it
+  -- agrees with the literal the chain's own lemma types cite (`LedgerGrow`'s
+  -- `Le (Mul 5 n) (Mul 4 c)` accepts a proof stated with the seed's name).
+  let m = (Refl : Id Nat (Mul 2 3) 6);
+  let h1 = LeRefl(1);
+  let hle = (unit : Le (Mul 5 0) (Mul 4 1));
+  let g = LedgerGrow(1, 0, h1, hle);
   () }
 
 example :
     (useStd.env.env.find? (fun kv => kv.1.name == "p")).isSome
     && (useStd.env.env.find? (fun kv => kv.1.name == "w")).isSome
     && (useStd.env.env.find? (fun kv => kv.1.name == "u")).isSome
+    && (useStd.env.env.find? (fun kv => kv.1.name == "m")).isSome
+    && (useStd.env.env.find? (fun kv => kv.1.name == "g")).isSome
     && useStd.env.nextSym > Dllbc.std.env.nextSym := by native_decide
 
 
