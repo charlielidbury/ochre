@@ -93,7 +93,7 @@ def readCOn (t : Term) : String :=
   | .ok v _ => "ACCEPTED " ++ v.pretty
   | .error e _ => e
 
-example : strContains (readCOn (.seal 0 (.ctorApp "Z" []) (.const "Nat")))
+example : strContains (readCOn ty{ (Z : Nat) })
   "not in the comptime fragment" = true := by native_decide
 -- …including buried inside a pure former, which is the position where a
 -- comptime reduction rule would have to reduce it if one existed.
@@ -152,7 +152,7 @@ example : progRejects a7 "only a statement-position match may split" = true := b
 
 -- The λ as it sits in Ω: a raw closure — the syntax as written, under the
 -- environment it captured (empty here, since the body cites nothing).
-def vlam : Val := .closure [] (.lam "x" (.const "Nat") (.ctorApp "S" [.pvar "x"])) none
+def vlam : Val := .closure [] ty{ λ (x : Nat). S x } none
 
 -- C1. Body known, so unfold: a literal λ callee β-reduces, and the caller
 -- knows the result exactly — `y ↦ 3`, not an existential.
@@ -482,7 +482,7 @@ def readCOn (t : Term) : String :=
   | .ok v _ => "ACCEPTED " ++ v.pretty
   | .error e _ => e
 
-example : strContains (readCOn (Term.lamTel [(⟨0, "x"⟩, .const "Nat")] (.var ⟨0, "x"⟩)))
+example : strContains (readCOn ty{ λ(x : Nat){ x } })
   "not in the comptime fragment" = true := by native_decide
 -- …including buried inside a pure former, which is where a mode flag
 -- consulted only at the top would have let it through.
@@ -1404,7 +1404,7 @@ example : (match annotatedCmp with
 -- The type-level half, and it is the stronger of the two: this expression
 -- typechecks exactly because `Val.rfn`'s binders are `Var` and not
 -- `Var × Term`. A ledger that fails to compile is the one that cannot drift.
-example : Val := .closure [] (Term.lamTel [(⟨0, "a"⟩, .const "Nat")] .unit) none
+example : Val := .closure [] ty{ λ(a : Nat){ () } } none
 
 -- The live half: an ANNOTATED λ evaluates to a value printed with names alone.
 example : (match runProgram annotated with
@@ -1447,10 +1447,8 @@ example : progOk telType = true := by native_decide
 /-! ## §D. Equality sees the domains -/
 
 -- `Term.beq` compares them structurally.
-example : Term.beq (Term.lamTel [(⟨0, "a"⟩, .const "Nat")] .unit)
-                   (Term.lamTel [(⟨0, "a"⟩, .const "Bool")] .unit) = false := by native_decide
-example : Term.beq (Term.lamTel [(⟨0, "a"⟩, .const "Nat")] .unit)
-                   (Term.lamTel [(⟨0, "a"⟩, .const "Nat")] .unit) = true := by native_decide
+example : Term.beq ty{ λ(a : Nat){ () } } ty{ λ(a : Bool){ () } } = false := by native_decide
+example : Term.beq ty{ λ(a : Nat){ () } } ty{ λ(a : Nat){ () } } = true := by native_decide
 
 /-! ## §E. `fnElab`'s arm annotations
 
@@ -1762,7 +1760,7 @@ example : (match runProgram juxRec with
 
 -- G3. A transparent runtime λ, called by juxtaposition.
 def juxLam : Term := prog{ let G = λ(a : Nat) { S(a) }; let r = G 1; r }
-example : progOk juxLam (.const "Nat") = true := by native_decide
+example : progOk juxLam ty{ Nat } = true := by native_decide
 
 /-! ### G5. The router, made observable
 
@@ -1803,7 +1801,7 @@ def juxSaturated : Term := prog{
   let F = (λ(a : Nat, b : Nat) { a } : Π (a : Nat) → Π (b : Nat) → Nat);
   let r = F 1 2;
   r }
-example : progOk juxSaturated (.const "Nat") = true := by native_decide
+example : progOk juxSaturated ty{ Nat } = true := by native_decide
 
 -- G7. A RESERVED head stays a constructor, which is what keeps `S n` and a
 -- call distinguishable without a token: the basis is closed, so the test is
