@@ -4,30 +4,20 @@ import Dllbc.ProgMacro
 import Dllbc.Program
 
 /-!
-# Traces — the §2/§3 walks, verbatim from the document, and the symbolic split
+# Traces
 
-**A consolidation bucket** (M28 D10). The suite grew one file per milestone, which
-made a test's home a fact about WHEN it was written rather than about what it is
-about. These files were merged here, in the order below, with their content moved
-VERBATIM — every namespace kept, so every cross-file reference in the tree still
-resolves, and each former file is fenced by a comment naming it so the git-log
-archaeology survives:
-
-  * `S2.lean`
-  * `S3.lean`
-  * `S3Sym.lean`
-
-Each former file's `open`s are scoped by a `section`, so nothing leaks across the
-seams.
+Tests for the executing borrow machine's basic walks: moves and the vacant
+slot, borrowing and writing through, ending a borrow, drop, take-and-refill,
+reborrow, match in owned and borrow mode (concrete and symbolic scrutinees),
+variant change through a parent, and frame/scope cleanup — plus the
+rejections, where no rule applies and stuckness is the error.
 -/
 
--- ┌── was `Dllbc/Tests/S2.lean` ──────────────────────────────────────────────
 section
 /-!
-# §2 test suite — "First Programs"
+# First programs
 
-Every annotated trace in doc §2 is encoded as a `native_decide` test: the
-program (written in the `prog{…}` surface syntax) is run to its final
+Each program (written in the `prog{…}` surface syntax) is run to its final
 environment, canonicalized (loan ids renumbered to first-appearance order),
 and compared against the expected Ω built from `Val` constructors. Rejection
 programs assert `.error` carrying a distinctive substring.
@@ -41,10 +31,9 @@ open Dllbc.Val (nat nil cons)
 
 namespace Dllbc.Tests.S2
 
-/-! ## §2.1 Moves, and the vacant slot -/
+/-! ## Moves, and the vacant slot -/
 
 -- A move consumes: `x` moves out, ⊥ is left behind; a vacant slot refills.
--- let x = 3; let y = x; x := 7  ⟹  x ↦ 7, y ↦ 3
 example : expectEnv prog{
   let x = 3;
   let y = x;
@@ -52,18 +41,16 @@ example : expectEnv prog{
   ()
 } [("x", nat 7), ("y", nat 3)] = true := by native_decide
 
--- §2.1 copy-on-read: reading a marker-free value copies it, the owner stays.
--- let x = 3; let y = x  ⟹  x ↦ 3 (copied), y ↦ 3
+-- Copy-on-read: reading a marker-free value copies it, the owner stays.
 example : expectEnv prog defer_check {
   let x = 3;
   let y = x;
   ()
 } [("x", nat 3), ("y", nat 3)] = true := by native_decide
 
-/-! ## §2.2 Borrowing, writing through, and ending -/
+/-! ## Borrowing, writing through, and ending -/
 
 -- &mut mints a loan: the marker parks at x, ownership moves into b.
--- let x = 3; let b = &mut x  ⟹  x ↦ loanₘ ℓ₀, b ↦ borrowₘ ℓ₀ 3
 example : expectEnv prog{
   let x = 3;
   let b = &m x;
@@ -71,7 +58,6 @@ example : expectEnv prog{
 } [("x", .loanM 0), ("b", .borrowM 0 (nat 3))] = true := by native_decide
 
 -- Writing through the borrow replaces the payload in place, b not consumed.
--- … *b := 7  ⟹  x ↦ loanₘ ℓ₀, b ↦ borrowₘ ℓ₀ 7
 example : expectEnv prog{
   let x = 3;
   let b = &m x;
@@ -80,8 +66,7 @@ example : expectEnv prog{
 } [("x", .loanM 0), ("b", .borrowM 0 (nat 7))] = true := by native_decide
 
 -- Reading x forces a lazy End-Mut on ℓ₀ first: 7 returns to x, b dies to ⊥; the
--- retry read then COPIES x (§2.1 — now marker-free), so x stays.
--- … let y = x  ⟹  x ↦ 7 (copied), b ↦ ⊥, y ↦ 7
+-- retry read then copies x (now marker-free), so x stays.
 example : expectEnv prog{
   let x = 3;
   let b = &m x;
@@ -90,11 +75,10 @@ example : expectEnv prog{
   ()
 } [("x", nat 7), ("b", .bot), ("y", nat 7)] = true := by native_decide
 
-/-! ## §2.3 Drop -/
+/-! ## Drop -/
 
 -- Assigning onto a live borrow forces a drop of its contents first: End-Mut
 -- returns 3 to x, the dead borrow is discarded, then 9 fills.
--- let x = 3; let b = &mut x; b := 9  ⟹  x ↦ 3, b ↦ 9
 example : expectEnv prog{
   let x = 3;
   let b = &m x;
@@ -102,11 +86,9 @@ example : expectEnv prog{
   ()
 } [("x", nat 3), ("b", nat 9)] = true := by native_decide
 
-/-! ## §2.4 Take and refill: reading through a borrow -/
+/-! ## Take and refill: reading through a borrow -/
 
 -- `*b` under ⇒ moves the payload out through the borrow, leaving a hole ⊥.
--- let x = Cons(3, Nil); let b = &mut x; let tail = *b
---   ⟹  x ↦ loanₘ ℓ₀, b ↦ borrowₘ ℓ₀ ⊥, tail ↦ Cons 3 Nil
 example : expectEnv prog{
   let x = Cons(3, Nil);
   let b = &m x;
@@ -115,11 +97,8 @@ example : expectEnv prog{
 } [("x", .loanM 0), ("b", .borrowM 0 .bot), ("tail", cons (nat 3) nil)] = true := by
   native_decide
 
--- The refill closes the hole; no list node was copied. `tail` is DATA (a
--- Cons-tree), so reading it into the new node MOVES it (§2.1 keeps Rust's line
--- for aggregates) — tail ↦ ⊥.
--- … *b := Cons(7, tail)
---   ⟹  x ↦ loanₘ ℓ₀, b ↦ borrowₘ ℓ₀ (Cons 7 (Cons 3 Nil)), tail ↦ ⊥
+-- The refill closes the hole; no list node was copied. `tail` is data (a
+-- Cons-tree), so reading it into the new node moves it — tail ↦ ⊥.
 example : expectEnv prog{
   let x = Cons(3, Nil);
   let b = &m x;
@@ -130,12 +109,10 @@ example : expectEnv prog{
    ("b", .borrowM 0 (cons (nat 7) (cons (nat 3) nil))),
    ("tail", .bot)] = true := by native_decide
 
-/-! ## §2.5 Reborrow -/
+/-! ## Reborrow -/
 
 -- `&mut *b` reborrows the payload: b is suspended (holds a loan marker where
--- its payload was), the chain reads x → ℓ₀ → ℓ₁ → the value.
--- let x = 3; let b = &mut x; let c = &mut *b
---   ⟹  x ↦ loanₘ ℓ₀, b ↦ borrowₘ ℓ₀ (loanₘ ℓ₁), c ↦ borrowₘ ℓ₁ 3
+-- its payload was), the chain reads x → ℓ0 → ℓ1 → the value.
 example : expectEnv prog{
   let x = 3;
   let b = &m x;
@@ -146,8 +123,7 @@ example : expectEnv prog{
 
 -- Reading x through the suspended reborrow collapses the whole chain: End-Mut
 -- ℓ₀ then End-Mut ℓ₁ fire in turn (the fuel-bounded reorganize-retry loop), and
--- x's value arrives; the retry read then COPIES it (§2.1).
---   ⟹  x ↦ 3 (copied), b ↦ ⊥, c ↦ ⊥, z ↦ 3
+-- x's value arrives; the retry read then copies it.
 example : expectEnv prog{
   let x = 3;
   let b = &m x;
@@ -158,9 +134,9 @@ example : expectEnv prog{
 
 /-! ## Rejections (stuckness = no applicable rule) -/
 
--- §2.1 copy-on-read makes a marker-free value re-readable: the second read of x
--- copies again — no use-after-move. (Use-after-move rejections now live on
--- marker-carrying values — a moved borrow, a taken payload.)
+-- Copy-on-read makes a marker-free value re-readable: the second read of x
+-- copies again — no use-after-move. Use-after-move rejections live on
+-- marker-carrying values instead — a moved borrow, a taken payload.
 example : expectEnv prog defer_check {
   let x = 3;
   let y = x;
@@ -174,10 +150,9 @@ example : expectErr prog defer_check {
   ()
 } "not a place" = true := by native_decide
 
--- The flagship §2.5 self-reborrow: `b := c` after `let c = &mut *b`. The RHS
--- ⇒-consumes c, so borrowₘ ℓ₁ 3 is in flight; drop must vacate b, which
--- requires ending ℓ₁, whose borrow is exactly that in-flight value — no entry,
--- no rule, rejected.
+-- The self-reborrow: `b := c` after `let c = &mut *b`. The RHS ⇒-consumes c,
+-- so borrowₘ ℓ1 3 is in flight; drop must vacate b, which requires ending ℓ1,
+-- whose borrow is exactly that in-flight value — no entry, no rule, rejected.
 example : expectErr prog defer_check {
   let x = 3;
   let b = &m x;
@@ -188,21 +163,19 @@ example : expectErr prog defer_check {
 
 end Dllbc.Tests.S2
 end
--- └── end of what was `S2.lean` ───────────────────────────────────────────────
 
--- ┌── was `Dllbc/Tests/S3.lean` ──────────────────────────────────────────────
 section
 /-!
-# §3 test suite — "Match" (concrete machine)
+# Match (concrete machine)
 
-The runtime content of §3: owned destructuring (§3.1) and borrow-mode match —
-field reborrows, suspension, variant change through the parent (§3.3–3.4). The
-symbolic layer (§3.2 σ, ⇜ refinement) is out of scope (milestone 3).
+Owned destructuring and borrow-mode match: field reborrows, suspension, and
+variant change through the parent. The symbolic layer (σ, ⇜ refinement) is
+covered separately below.
 
-Same golden-Ω style as S2: run the `prog{…}` program, compare the final
+Same golden-Ω style as above: run the `prog{…}` program, compare the final
 canonicalized environment (loan ids in first-appearance order) against the
 expected Ω, or assert a distinctive error substring. Since there are no
-functions yet, §3's traces are adapted — branch bodies rebuild a constructor
+functions yet, these traces are adapted — branch bodies rebuild a constructor
 or return a component instead of computing `a + b`, and the parent is read
 back after the match to observe the lazy End-Mut collapse.
 -/
@@ -215,13 +188,11 @@ namespace Dllbc.Tests.S3
 /-- A `Pair` value, for expected environments. -/
 def pair (a b : Val) : Val := .ctor "Pair" [a, b]
 
-/-! ## §3.1 Owned mode: destructuring -/
+/-! ## Owned mode: destructuring -/
 
 -- The scrutinee is ⇒-consumed, its fields move into the binders; the branch
--- rebuilds the pair, reading `a`/`b` by copy (§2.1, marker-free). The binders are
--- the ARM's, so they leave with it (M31 Stage 0 pop-with-drop) — before that they
--- outlived it, and the environment read `a ↦ 3, b ↦ 7` after the match.
--- p ↦ ⊥, q ↦ Pair 3 7.
+-- rebuilds the pair, reading `a`/`b` by copy (marker-free). The binders are the
+-- arm's, so they leave with it when the arm closes.
 example : expectEnv prog{
   let p = Pair(3, 7);
   let q = match p { Pair(a, b) => Pair(a, b) };
@@ -230,10 +201,10 @@ example : expectEnv prog{
   native_decide
 
 -- A nested owned match: destructure the pair, then destructure its second
--- field. The inner match is in TAIL position within the outer arm, so it has no
--- seam of its own and its binders die with the arm that contains them: one pop
--- takes `a`, `rest`, `h` and `t` together (M31 Stage 0), and only the outer
--- `let`'s `r` survives.
+-- field. The inner match is in tail position within the outer arm, so it has
+-- no seam of its own and its binders die with the arm that contains them: one
+-- pop takes `a`, `rest`, `h` and `t` together, and only the outer `let`'s `r`
+-- survives.
 example : expectEnv prog{
   let p = Pair(1, Cons(2, Nil));
   let r = match p {
@@ -242,16 +213,14 @@ example : expectEnv prog{
   ()
 } [("p", .bot), ("r", pair (nat 1) (nat 2))] = true := by native_decide
 
-/-! ## §3.3 Borrow mode: matching through -/
+/-! ## Borrow mode: matching through -/
 
--- **What the suspension survives, and what ends it.** The field binders are
--- whole-value reborrows and the parent's payload is a Cons of loan markers — but
--- the binders are the arm's, so the arm's close ENDS their reborrows (M31 Stage 0
--- drops in reverse binding order: ℓ₂, then ℓ₁) and each payload plugs back into
--- the parent. What is observable one statement later is therefore the parent
--- holding the strong-updated payload, not the marker chain. Before pop-with-drop
--- the chain survived here and collapsed lazily at the next demand; this is the
--- timing shift, and the value it collapses to is the same one.
+-- The field binders are whole-value reborrows and the parent's payload is a
+-- Cons of loan markers — but the binders are the arm's, so the arm's close
+-- ends their reborrows (in reverse binding order: ℓ2, then ℓ1) and each
+-- payload plugs back into the parent. What is observable one statement later
+-- is therefore the parent holding the strong-updated payload, not the marker
+-- chain.
 example : expectEnv prog{
   let x = Cons(3, Nil);
   let b = &m x;
@@ -263,10 +232,9 @@ example : expectEnv prog{
 } [("x", .loanM 0),
    ("b", .borrowM 0 (cons (nat 0) nil))] = true := by native_decide
 
--- Reading the owner back collapses the rest of the chain: End-Mut ℓ₀ (parent) —
--- the field loans ℓ₁, ℓ₂ having already ended at the arm's close — so `x`'s value
--- arrives fully updated. `x` is a Cons-tree (DATA), so the read MOVES it (§2.1).
--- y ↦ Cons 0 Nil.
+-- Reading the owner back collapses the rest of the chain: End-Mut ℓ0 (parent)
+-- — the field loans ℓ1, ℓ2 having already ended at the arm's close — so `x`'s
+-- value arrives fully updated. `x` is a Cons-tree (data), so the read moves it.
 example : expectEnv prog{
   let x = Cons(3, Nil);
   let b = &m x;
@@ -290,7 +258,7 @@ example : expectEnv prog{
   ()
 } [("x", .bot), ("b", .bot), ("y", nil)] = true := by native_decide
 
-/-! ## §3.4 Variant change through the parent -/
+/-! ## Variant change through the parent -/
 
 -- The Cons branch replaces the parent's payload with a different variant:
 -- `*b := Nil` forces a drop of the old payload (a Cons of field-loan markers
@@ -313,7 +281,6 @@ example : expectEnv prog{
 -- Match `b` through, then match the field binder `tl` (itself a reborrow)
 -- through — a two-level suspension. Writing `*h2 := 0` updates the inner
 -- element; reading the owner collapses the whole nested chain.
--- y ↦ Cons 1 (Cons 0 Nil).
 example : expectEnv prog{
   let x = Cons(1, Cons(2, Nil));
   let b = &m x;
@@ -331,8 +298,8 @@ example : expectEnv prog{
 
 /-! ## Rejections -/
 
--- Match on a moved variable: `p = Nil` is DATA (a List), so `let q = p` MOVES it
--- (§2.1 keeps Rust's line for aggregates), and the later match finds the slot ⊥.
+-- Match on a moved variable: `p = Nil` is data (a List), so `let q = p` moves
+-- it, and the later match finds the slot ⊥.
 example : expectErr prog defer_check {
   let p = Nil;
   let q = p;
@@ -357,33 +324,25 @@ example : expectErr prog defer_check {
 
 end Dllbc.Tests.S3
 end
--- └── end of what was `S3.lean` ───────────────────────────────────────────────
 
--- ┌── was `Dllbc/Tests/S3Sym.lean` ──────────────────────────────────────────────
 section
 /-!
-# §3.2 test suite — the symbolic layer (σ and ⇜)
+# Match, symbolic scrutinee
 
 Matching a *symbolic* scrutinee splits the run: the `explore` driver forks one
 path per branch, each entered by a ⇜ refinement (`writeC`) that substitutes
 `C (sym σ₁) … (sym σₙ)` for σ everywhere in Ω. Owned mode then destructures;
-borrow mode reborrows the fields. Concrete programs are unaffected (the S2/S3
-suites still pass).
+borrow mode reborrows the fields. Concrete programs are unaffected.
 
-**Where the σ comes from.** These tests used to inject one, seeding Ω by hand
-(`expectPaths [(⟨0,"n"⟩, .sym 0)] …`) on the grounds that symbolic entries have
-no surface syntax. They do not need one: §6.1's call rule hands a caller a fresh
-existential at the callee's return type, so `let n = anyNat()` *is* a symbolic
-`n`, minted by the checker rather than by the harness. Every test below is now a
-program the surface can write, and the ones that observed a mid-borrow state
-(`x ↦ loanₘ ℓ, b ↦ borrowₘ ℓ σ`) reach it the way a program does — own the value,
-then borrow it.
+Every test below is a program the surface can write: the call rule hands a
+caller a fresh existential at the callee's return type, so `let n = anyNat()`
+*is* a symbolic `n`, minted by the checker. The ones that observe a mid-borrow
+state (`x ↦ loanₘ ℓ, b ↦ borrowₘ ℓ σ`) reach it the way a program does — own
+the value, then borrow it.
 
-Golden-Ω style, unchanged: `progPathsOfT` compares the per-path
-canonicalized environments (ℓ- and σ-ids renumbered to first-appearance order) in
-branch-declaration order, and the path COUNT with them. It drops the cohort's own
-function bindings, so what is compared is exactly what the hand-seeded harness
-used to compare — the expected environments below are the originals, unedited.
+Golden-Ω style, unchanged: `tailPaths` compares the per-path canonicalized
+environments (ℓ- and σ-ids renumbered to first-appearance order) in
+branch-declaration order, and the path count with them.
 -/
 
 open Dllbc
@@ -391,33 +350,26 @@ open Dllbc.Val (nat nil cons)
 
 namespace Dllbc.Tests.S3Sym
 
-/-- Two declarations that exist to be CALLED. Checking mode never runs a callee's
-    body — it applies the §5.3/§6.1 signature rule — so what a caller learns from
-    `anyNat()` is exactly "a Nat, and nothing else", which is what a σ is. The
-    bodies are irrelevant to every test in this file and are the simplest that
-    typecheck.
+/-- Two declarations that exist to be called. Checking mode never runs a
+    callee's body — it applies the signature rule — so what a caller learns
+    from `anyNat()` is exactly "a Nat, and nothing else", which is what a σ
+    is. The bodies are irrelevant to every test in this file and are the
+    simplest that typecheck.
 
-    Both are written as a PREFIX: every test below is `withAny prog{ … }` and gets
-    them in scope. This was once the only legal shape: a `%`-spliced tail could
-    not itself declare functions until M32 R4, because both chains numbered their
-    slots from `progBase` and collided by id. It can now; the prefix form is kept
-    because it is what was written. -/
+    Written as a prefix: every test below is `withAny prog{ … }` and gets
+    them in scope. -/
 def withAny (rest : Term) : Term := prog{
   fn AnyNat () -> Nat { 0 };
   fn AnyList () -> List Nat { Nil };
   %rest }
 
-/-! The file-local `progPathsOfT` retired with the `FnDef` subjects it took (M28
-    ν): `tailPaths` in `Dllbc/Program.lean` is the same three lines over a
-    program, and carries the same reason for existing. The COUNT is half the
-    assertion and not a formality — §3.2's whole claim is that matching a symbolic
-    scrutinee splits the run, so a rewrite that checked only the environments would
-    still pass if the fork stopped happening. That is also why these assertions
-    exist at all: deleting them was weighed when the file moved off its hand-seeded
-    Ω, and they were kept for the path-count canary and for the doc traces they
-    carry verbatim. -/
+/-! `tailPaths` (in `Dllbc/Program.lean`) runs a program and compares the
+    per-path environments and the path count. The count is half the
+    assertion, not a formality: the whole claim here is that matching a
+    symbolic scrutinee splits the run, so an assertion that checked only the
+    environments would still pass if the fork stopped happening. -/
 
-/-! ## §3.2 Symbolic scrutinee: refinement as ⇜ (owned mode) -/
+/-! ## Symbolic scrutinee: refinement as ⇜ (owned mode) -/
 
 -- is_zero's shape: n ↦ (σ : Nat); a two-branch owned match splits into two
 -- paths. Z branch: ⇜ σ := Z, then n consumed to ⊥. S branch: ⇜ σ := S σ′,
@@ -431,12 +383,12 @@ example : tailPaths isZero
   [ [("n", .bot)],
     [("n", .bot), ("m", .sym 0)] ] = true := by native_decide
 
-/-! ## §3.3 Borrow mode on a symbolic payload -/
+/-! ## Borrow mode on a symbolic payload -/
 
 -- zero_head, symbolic: b ↦ borrowₘ ℓ (σ : List). The Cons branch reborrows the
 -- fields, `*hd := 0` strong-updates the head, and demanding the owner collapses
--- the chain to `Cons 0 σ₂` (the doc's trace verbatim). The Nil branch refines
--- the payload to Nil. Two paths.
+-- the chain to `Cons 0 σ₂`. The Nil branch refines the payload to Nil. Two
+-- paths.
 def zeroHead : Term := withAny prog defer_check {
   let x = AnyList();
   let b = &m x;
@@ -459,7 +411,7 @@ def zeroHead : Term := withAny prog defer_check {
 example : tailPaths zeroHead
   [ [("x", .bot), ("b", .bot), ("y", .sym 0)] ] = true := by native_decide
 
-/-! ## §3.4 Symbolic variant change -/
+/-! ## Symbolic variant change -/
 
 -- `*b := Nil` in the Cons branch drops the reborrowed fields (their loans are Ω
 -- entries) and installs Nil; both paths leave the owner holding Nil.
@@ -471,9 +423,9 @@ def variantChange : Term := withAny prog defer_check {
   ()
 }
 
--- JOINED (docs/19 v2), and this one is the LOSSLESS rule live: both arms leave
--- the payload `Nil` (the Cons arm wrote it), the values convert, and the seam
--- passes `Nil` through — no σ, no knowledge lost, one path.
+-- Both paths now leave the same Ω — the Cons path's `hd`/`tl` left with the
+-- arm and were the only thing distinguishing it. The path count is what this
+-- assertion still discriminates on.
 example : tailPaths variantChange
   [ [("x", .bot), ("b", .bot), ("y", nil)] ] = true := by native_decide
 
@@ -521,10 +473,7 @@ example : progRejects exprPosition "expression position"
 
 end Dllbc.Tests.S3Sym
 end
--- └── end of what was `S3Sym.lean` ───────────────────────────────────────────────
 
-
--- ┌── M31 Stage 0: pop-with-drop ─────────────────────────────────────────────
 section
 /-!
 # Scopes pop, and dropping ends what they held
@@ -534,10 +483,11 @@ arm's close, a call frame's slots at return. Each popped entry surrenders the
 borrows it holds first, in reverse binding order — Rust's — so the ends that used
 to wait for the next demand happen at the scope boundary instead.
 
-The §3 traces above already carry the arm half in their expected environments
-(the binders are simply not there any more). What is asserted here is the part
-those traces cannot show: that the pop is not a leak — the drop really runs — and
-that the one case where an entry must NOT go still works.
+The match traces above already carry the arm half in their expected
+environments (the binders are simply not there any more). What is asserted
+here is the part those traces cannot show: that the pop is not a leak — the
+drop really runs — and that the one case where an entry must not go still
+works.
 -/
 
 open Dllbc
@@ -550,8 +500,8 @@ namespace Dllbc.Tests.S31Pop
 -- The arm reborrows the fields and writes through one of them. At the arm's
 -- close both reborrows end — last-bound first — so the parent is whole again
 -- without anything having demanded it, and the owner reads back its updated
--- value. Compare the §3.3 trace above, which observes the same program one
--- statement earlier.
+-- value. Compare the borrow-mode match trace above, which observes the same
+-- program one statement earlier.
 def armDrop : Term := prog{
   let x = Cons(3, Cons(4, Nil));
   let b = &m x;
@@ -587,11 +537,10 @@ example : progRunsTo armEscape
 
 /-! ## A frame's slots leave with the frame -/
 
--- The callee binds `v` and, in its arm, `hd` and `tl`. None of them is an entry
--- of Ω once the call has returned — which is what retired the `id < 10000`
--- filter every Ω-reading harness used to carry (`Program.runProgram`). Asserted
--- as absence-from-Ω rather than as a whole expected environment because the
--- declaration entry itself is a runtime λ, which has no writable literal.
+-- The callee binds `v` and, in its arm, `hd` and `tl`. None of them is an
+-- entry of Ω once the call has returned. Asserted as absence-from-Ω rather
+-- than as a whole expected environment because the declaration entry itself
+-- is a runtime λ, which has no writable literal.
 def frameDrop : Term := prog{
   fn SetHead (v : &mut (List Nat ~> List Nat)) -> Unit {
     match v { Cons(hd, tl) => { *hd := 0; () }, Nil => () }
@@ -611,4 +560,3 @@ example : (match runProgram frameDrop with
 
 end Dllbc.Tests.S31Pop
 end
--- └── end of M31 Stage 0 ────────────────────────────────────────────────────

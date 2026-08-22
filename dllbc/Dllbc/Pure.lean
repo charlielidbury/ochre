@@ -457,7 +457,7 @@ mutual
       -- suffix — unless it can PROJECT them out of the entry. With these two it
       -- can, and the update is written decomposition-first instead of as a
       -- `natRec` on the index, which is the shape that cannot step when the
-      -- index is symbolic (`SetHmProbe` §3.2).
+      -- index is symbolic.
       | .const "atake", i :: k :: a :: rest =>
         let a' := whnfN fuel a
         match splitAt? fuel i k a' with

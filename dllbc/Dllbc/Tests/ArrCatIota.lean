@@ -5,45 +5,18 @@ import Dllbc.Std
 import Dllbc.StdLemmas
 
 /-!
-# `ArrCatIota` — `atake`/`adrop`, the two projections of a composition
+# `ArrCatIota` — the `atake`/`adrop` array projections
 
-`SetHmProbe` measured that the hashmap flagship's natural `GetMut` — a BLIND carve
-at a symbolic slot index, pinned `~> SetHM key (*res) s` — is refused in both
-available spellings of `SetHM`, and named the fix in one sentence:
+This file tests the `atake`/`adrop` array projections and their ι-rules
+(`atake i k (arrCat i k lo hi) ↝ lo`, `adrop` likewise), which let a program
+name the prefix and suffix that a carve mints. With them, an update at a
+symbolic slot index can be written decomposition-first, and its pinned
+contract discharges without walking the array element by element.
 
-> Give `arrCat` projections with ι-rules (`ATake i k (arrCat i k lo hi) ↝ lo`,
-> `ADrop` likewise) and `SetHM` could be written decomposition-first and would
-> converge with the fill on the refined spine, with no walk.
-
-This file is that addition and its measurement. The formers are spelled `atake`
-and `adrop` — lowercase, joining `aget`/`acons` rather than the capitalized type
-former `Array`, since they denote functions and the capitalized basis names are
-the reserved ones (`Uni.reservedBinder`).
-
-## Why the projections and nothing else
-
-The probe's §4 print says the two sides of the refused discharge are *the same
-term modulo three σ's*: `pinFill`'s carve pieces against the parameters standing
-in for them. So what the pin needs is not new reasoning — it is the ability to
-NAME the prefix, the suffix and the carved key, which a signature cannot do
-because the carve mints them. `atake i k` and `adrop i k` name the first two.
-
-The third — the key at the cell — needs nothing new, and that is the smallest-set
-finding here. `adrop i (S r)` lands on the `acons`-headed suffix, and at that
-point the index the update recurses on is the literal `Z`, so the EXISTING
-fold-spelled update (`AVSetT`, an `arrRec` over the cons view) computes in one ι
-step and keeps the key itself. What blocked §3.2 was a `natRec` on a symbolic
-index; the decomposition removes the symbol, not the fold.
-
-## Contents
-
-  * §1 the ι-rules compute — concrete runs, symbolic compositions, and the
-    non-firing cases that must stay stuck.
-  * §2 the typing arms.
-  * §3 THE TARGET — `SetHmProbe`'s two refused shapes, re-posed with a
-    decomposition-first `SetHM`, plus its key-cell negative and its
-    concrete-index controls.
-  * §4 the counterfactual and the linearity probe.
+Why: a carve at a symbolic index mints pieces no signature can name, and
+naming them is exactly what the projections add. The element at the cell
+needs no further vocabulary — after the drop the update recurses on the
+literal `Z`, so the existing fold-spelled update computes in one ι step.
 -/
 
 section
@@ -56,11 +29,10 @@ open Dllbc.StdLemmas (LeAdd LeRefl IdCongr IdSym AddZero)
 
 /-! ## §1 The ι-rules
 
-    `atake i k` and `adrop i k` fire on exactly two shapes: a composition whose
-    split point CONVERTS with `(i, k)`, and an owned run at a concrete `i` whose
-    length is `i + k`. Everything else is stuck, and §1.3 below is the half of
-    that which matters — a projection that fired at the wrong split point would
-    be unsound, not merely imprecise. -/
+    `atake i k` and `adrop i k` fire on two shapes: a composition whose split
+    point converts with `(i, k)`, and an owned run of length `i + k`. Anything
+    else stays stuck — firing at the wrong split point would be unsound, not
+    just imprecise. -/
 
 /-! ### §1.1 On an owned run -/
 
@@ -71,14 +43,13 @@ example : (Pure.nf 200 prog defer_check { adrop 0 3 Arr(3, 1, 2) } == prog defer
 example : (Pure.nf 200 prog defer_check { atake 3 0 Arr(3, 1, 2) } == prog defer_check { Arr(3, 1, 2) }) = true := by native_decide
 example : (Pure.nf 200 prog defer_check { adrop 3 0 Arr(3, 1, 2) } == prog defer_check { Arr() }) = true := by native_decide
 
-/-- A run whose length is not `i + k` is NOT this composition, and the projection
-    stays stuck rather than guessing. -/
+/-- A run whose length is not `i + k` is not this composition, so the
+    projection stays stuck rather than guessing. -/
 example : (Pure.nf 200 prog defer_check { atake 1 1 Arr(3, 1, 2) } == prog defer_check { Arr(3) }) = false := by native_decide
 
-/-! ### §1.2 On a composition, symbolically — the rule the discharge needs -/
+/-! ### §1.2 On a composition, symbolically -/
 
-/-- `atake i k (arrCat i k lo hi) ↝ lo`, with every one of `i`, `k`, `lo`, `hi`
-    opaque. This is the ι-rule as `SetHmProbe` §4 asked for it. -/
+/-- `atake i k (arrCat i k lo hi) ↝ lo`, with `i`, `k`, `lo`, `hi` all opaque. -/
 example : (Pure.nf 600
     prog defer_check { λ (I : Nat). λ (K : Nat). λ (Lo : Array I Nat). λ (Hi : Array K Nat).
             atake I K (arrCat I K Lo Hi) }
@@ -93,7 +64,7 @@ example : (Pure.nf 600
     prog defer_check { λ (I : Nat). λ (K : Nat). λ (Lo : Array I Nat). λ (Hi : Array K Nat). Hi })
   = true := by native_decide
 
-/-- The extents are compared by CONVERSION, not by tree equality: the carve's
+/-- The extents are compared by conversion, not by tree equality: the carve's
     fold builds its right extent with `add` (`Val.segsExtent?`), so the spine a
     discharge meets says `add 1 r` where the signature says `S r`. -/
 example : (Pure.nf 600
@@ -103,18 +74,18 @@ example : (Pure.nf 600
     prog defer_check { λ (R : Nat). λ (I : Nat). λ (Lo : Array I Nat). λ (Hi : Array (S R) Nat). Lo })
   = true := by native_decide
 
-/-! ### §1.3 …and the splits that are NOT this one stay stuck
+/-! ### §1.3 …and splits that are not this one stay stuck
 
-    `atake 1 2` of `arrCat 2 1 lo hi` is not `lo`: both are arrays of extent 3 and
-    the total extent is the same, so a rule that matched on it would be a bug
-    rather than an approximation. -/
+    `atake 1 2` of `arrCat 2 1 lo hi` is not `lo`: both are arrays of extent 3
+    and the total extent is the same, so a rule that matched on the total
+    would be a bug, not an approximation. -/
 
 example : (Pure.nf 600
     prog defer_check { λ (Lo : Array 2 Nat). λ (Hi : Array 1 Nat). atake 1 2 (arrCat 2 1 Lo Hi) }
   == Pure.nf 600 prog defer_check { λ (Lo : Array 2 Nat). λ (Hi : Array 1 Nat). Lo })
   = false := by native_decide
 
-/-- A stuck projection is a NORMAL FORM — it does not keep unfolding — which is
+/-- A stuck projection is a normal form — it does not keep unfolding — which is
     what lets it sit inside a pin and be compared. -/
 def stuckTake : Term :=
   Pure.nf 600 prog defer_check { λ (I : Nat). λ (K : Nat). λ (A : Array (Add I K) Nat). atake I K A }
@@ -124,24 +95,17 @@ example : (Pure.nf 600 stuckTake == stuckTake) = true := by native_decide
 example : (Pure.nf 400 prog defer_check { atake 1 2 %(Term.sym 0) }
   == prog defer_check { atake 1 2 %(Term.sym 0) }) = true := by native_decide
 
-/-! ### §1.4 What is NOT here — the smallest-set measurement
+/-! ### §1.4 Two rules that are not needed
 
-    Two further families were on the table and neither is needed, which is worth
-    pinning because "needed" was measured and not guessed.
-
-    **`acons`-stepping variants.** `atake (S i) k (acons m x xs) ↝ acons _ x
-    (atake i k xs)` would let a projection peel a cons view one element at a time
-    instead of requiring the composition. It is not here: §3's discharge never
-    meets that shape, because a BLIND carve at a symbolic index leaves the top
-    former `arrCat` (nothing opened the prefix, so its left argument is a σ and
-    `arrCat`'s own `acons`-headed rule does not fire either). The assertion below
-    is the boundary as it stands, so a future shape that does need the peel finds
-    the fact rather than rediscovering it.
+    **`acons`-stepping.** `atake (S i) k (acons m x xs) ↝ acons _ x (atake i k
+    xs)` would let a projection peel a cons view one element at a time instead
+    of requiring the composition. It is not needed: a carve at a symbolic
+    index never opens the prefix, so the array stays headed by `arrCat`, and
+    `arrCat`'s own `acons`-headed rule does not fire either.
 
     **Element-level projections at the cell** (a head/tail pair, or an `aget`
-    that fires on `acons`). Also not here, for the reason `AVSetDecT` states: the
-    drop lands on the `acons`-headed suffix with the index reduced to the literal
-    `Z`, and the EXISTING `arrRec` fold computes from there. -/
+    that fires on `acons`) are also not needed: after the drop the index is
+    the literal `Z`, and the existing `arrRec` fold computes from there. -/
 
 example : (Pure.nf 600
     prog defer_check { λ (I : Nat). λ (K : Nat). λ (X : Nat). λ (XS : Array (Add I K) Nat).
@@ -154,18 +118,17 @@ example : (Pure.nf 600
 /-! ## §2 The typing arms
 
     `atake i k a : Array i T` and `adrop i k a : Array k T` for
-    `a : Array (add i k) T`. Both are CHECKED rather than synthesized, exactly as
-    `arrCat`/`acons` are and for the same reason — the element type comes from the
-    expected type, so neither carries a `T` — and both sites the decomposition
-    spelling puts them in supply one (`arrCat`'s own premise, and `arrRec`'s
-    array premise inside the fold).
+    `a : Array (add i k) T`. Both are checked rather than synthesized, like
+    `arrCat`/`acons` and for the same reason: the element type comes from the
+    expected type, so neither carries a `T`.
 
-    §1 already covers a projection that COMPUTES: `hasTypeT` weak-heads its value
-    first, so `atake 1 2 Arr(3,1,2)` is typed as the run it reduces to. The arms
-    below are what happens when it does not — a symbolic array, which is the only
-    shape a pin ever meets. -/
+    §1 covers a projection that computes: `hasTypeT` weak-heads its value first,
+    so `atake 1 2 Arr(3,1,2)` is typed as the run it reduces to. The arms below
+    cover the case a pin actually meets — a symbolic array that does not
+    reduce. -/
 
-/-- `hasTypeT` against a seeded `sctx` (as `Universe`'s `chkS`). -/
+/-- Runs `hasTypeT` against a seeded context, reporting `ok`/`error` as a
+    string for comparison in assertions. -/
 def chkS (sctx : List (Nat × Term)) (tm ty : Term) : String :=
   match (hasTypeT 8000 tm ty).run (seedPure [] sctx) with
   | .ok r _ => s!"ok {r}"
@@ -182,7 +145,7 @@ example : chkS splitCtx prog defer_check { atake %(Term.sym 0) %(Term.sym 1) %(T
 example : chkS splitCtx prog defer_check { adrop %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
     prog defer_check { Array %(Term.sym 1) Nat } = "ok true" := by native_decide
 
-/-- The extent is the one the projection NAMES, not the other one and not the
+/-- The extent is the one the projection names, not the other one and not the
     total: a `take` is not a `drop` and neither is the whole array. -/
 example : chkS splitCtx prog defer_check { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
     prog defer_check { Array %(Term.sym 1) Nat } = "ok false" := by native_decide
@@ -197,8 +160,8 @@ example : chkS splitCtx prog defer_check { atake %(Term.sym 0) %(Term.sym 1) %(T
 example : chkS splitCtx prog defer_check { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
     prog defer_check { Array %(Term.sym 0) Bool } = "ok false" := by native_decide
 
-/-- And the ARGUMENT's extent must be the sum: `σ₃ : Array σ₀ Nat` is too short
-    to be split at `(σ₀, σ₁)`. -/
+/-- The argument's extent must be the sum: `σ3 : Array σ0 Nat` is too short to
+    be split at `(σ0, σ1)`. -/
 example : chkS (splitCtx ++ [(3, prog defer_check { Array %(Term.sym 0) Nat })])
     prog defer_check { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 3) }
     prog defer_check { Array %(Term.sym 0) Nat } = "ok false" := by native_decide
@@ -218,14 +181,13 @@ example : chkS splitCtx
     prog defer_check { Array %(prog defer_check { %(Pure.kAddFn) %(Term.sym 0) %(Term.sym 1) }) Nat }
   = "ok true" := by native_decide
 
-/-! ## §3 THE TARGET — the blind carve at a symbolic index, pinned
+/-! ## §3 The target — a blind carve at a symbolic index, pinned
 
-    Everything below is `SetHmProbe`'s §1–§5 re-posed. The container, the
-    fold-spelled update and the programs are that file's, verbatim where they are
-    unchanged, so the two measurements compose and a verdict that moves is
-    attributable to the projections and to nothing else. -/
+    The container, the fold-spelled update, and the programs below keep the
+    same shapes as the update they compare against, so a verdict that moves is
+    attributable to the projections alone. -/
 
-/-- `SetHmProbe` §1's container, verbatim: every KEY is 7, no value read. -/
+/-- The container: an array of key-value pairs where every key is 7. -/
 def AllK7 : Term := prog defer_check {
   λ (M : Nat). λ (A : Array M (Σ (k : Nat). Nat)).
     arrRec (Σ (k : Nat). Nat)
@@ -237,9 +199,9 @@ def AllK7 : Term := prog defer_check {
             Pair (K2) (V2) => Id Nat K2 7 }) × Ih)
       M A }
 
-/-- `SetHmProbe` §3's fold-spelled update, verbatim: index-first, cons-view,
-    keeping the key and replacing the value. It is REUSED below rather than
-    replaced — see `AVSetDecT`. -/
+/-- The fold-spelled update: walks the cons view index-first, keeping the key
+    and replacing the value at the target index. `AVSetDecT` below wraps it
+    rather than replacing it. -/
 def AVSetT : Term := prog defer_check {
   λ (I : Nat). λ (V : Nat).
     elim I return (λ (Z0 : Nat). Π (N : Nat) → Π (A : Array N (Σ (k : Nat). Nat)) → Array N (Σ (k : Nat). Nat)) {
@@ -263,27 +225,23 @@ def AVSetT : Term := prog defer_check {
 
 /-! ### §3.1 The decomposition-first update
 
-    `AVSetDecT i r v` splits the array at `(i, S r)`, applies the EXISTING
-    fold-spelled update at index `Z` to the suffix, and recomposes. Two things
-    about it are the point of this whole lane:
+    `AVSetDecT i r v` splits the array at `(i, S r)`, applies the existing
+    fold-spelled update at index `Z` to the suffix, and recomposes.
 
-      * The prefix and the suffix are named by `atake`/`adrop` rather than taken
-        as parameters, which is what `SetHmProbe` §4 says a signature cannot do —
-        so this is writable where `gmSymPinDecomp` was not.
-      * The element-level work needs NO new vocabulary. After the drop the index
-        is the literal `Z`, so `AVSetT Z v` computes in one `arrRec` ι step on
-        the `acons`-headed suffix and keeps the key itself. §3.2 measured the
-        alternative (a head/tail projection pair) as unnecessary before it was
-        written; what blocked §3.2 of the probe was a `natRec` on a SYMBOLIC
-        index, and the decomposition removes the symbol, not the fold. -/
+      * The prefix and the suffix are named by `atake`/`adrop` instead of being
+        taken as parameters — a signature alone cannot name pieces a carve
+        mints.
+      * The element-level work needs no new vocabulary: after the drop, the
+        index is the literal `Z`, so `AVSetT Z v` computes in one `arrRec`
+        ι step on the `acons`-headed suffix and keeps the key. -/
 
 def AVSetDecT : Term := prog defer_check {
   λ (I : Nat). λ (R : Nat). λ (V : Nat). λ (N : Nat). λ (A : Array N (Σ (k : Nat). Nat)).
     arrCat I (S R) (atake I (S R) A) ((%AVSetT) Z V (S R) (adrop I (S R) A)) }
 
-/-- **It is the same function**, which is what keeps `SetHM`'s STATEMENT fixed:
-    `AVSetDecT i r v` and `AVSetT i v` agree wherever the extent is `i + (S r)`.
-    Asserted on runs, at each of the three slots of a 3-array. -/
+/-- The two updates agree wherever the extent is `i + (S r)`: `AVSetDecT i r v`
+    and `AVSetT i v` compute the same array. Checked at each of the three
+    slots of a 3-element array. -/
 def sampleArr : Term := prog defer_check { Arr(Pair(7, 1), Pair(7, 2), Pair(7, 3)) }
 
 example : (Pure.nf 4000 prog defer_check { (%AVSetDecT) 0 2 9 3 %sampleArr }
@@ -297,10 +255,10 @@ example : (Pure.nf 4000 prog defer_check { (%AVSetDecT) 2 0 9 3 %sampleArr }
 example : (Pure.nf 4000 prog defer_check { (%AVSetDecT) 1 1 9 3 %sampleArr }
         == prog defer_check { Arr(Pair(7, 1), Pair(7, 9), Pair(7, 3)) }) = true := by native_decide
 
-/-- **And on a SYMBOLIC composition it computes**, which is the property the
-    fold-spelled `AVSetT` does not have and the whole reason for the lane: the
-    index `I` is opaque, and the update still steps to the recomposed spine with
-    the entry key kept and the new value in place. -/
+/-- On a symbolic composition it still computes: with the index `I` opaque,
+    the update steps to the recomposed spine with the entry key kept and the
+    new value in place. The fold-spelled `AVSetT` alone cannot do this, since
+    it needs a concrete index to recurse on. -/
 example : (Pure.nf 4000
     prog defer_check { λ (I : Nat). λ (R : Nat). λ (V : Nat). λ (K0 : Nat).
           λ (Lo : Array I (Σ (k : Nat). Nat)). λ (V0 : Nat).
@@ -314,8 +272,8 @@ example : (Pure.nf 4000
             arrCat I (S R) Lo (acons R (Pair K0 V) Hi) })
   = true := by native_decide
 
-/-- The same at the pack level — `SetHmProbe`'s `PVSetNT` with the
-    decomposition-first update inside. -/
+/-- The same update at the pack level: unwraps the Σ0, applies `AVSetDecT`, and
+    rewraps with the same proof component. -/
 def PVSetDecT : Term := prog defer_check {
   λ (N : Nat). λ (I : Nat). λ (R : Nat). λ (V : Nat).
     λ (P : Σ0 (a : Array N (Σ (k : Nat). Nat)). AllK7 N a).
@@ -323,14 +281,12 @@ def PVSetDecT : Term := prog defer_check {
                        Σ0 (a : Array N (Σ (k : Nat). Nat)). AllK7 N a) {
         Pair (A) (H) => Pair ((%AVSetDecT) I R V N A) H } }
 
-/-! ### §3.2 THE HEADLINE — `gmSymPinFold`'s program, now GREEN
+/-! ### §3.2 The blind carve, pinned
 
-    `SetHmProbe` §3.2's `gmSymPinFold`, character for character, with the
-    fold-spelled pin replaced by the decomposition-first one (and `r` — already a
-    parameter, because `hm-probe-mod`'s capacity forcing makes the carve need it —
-    passed to it). The carve is BLIND: nothing in front of the slot is opened, the
-    index is symbolic, the extent is opaque with a decomposition equation. This is
-    the program someone would write, and it is what the walk was the fallback for. -/
+    `gmDecSymPin` carves an array at a symbolic index `i` with nothing in
+    front of the slot opened, and its pin is the decomposition-first update.
+    This is the program a caller would naturally write for an O(1) update at a
+    symbolic index. -/
 
 def gmDecSymPin : Term := prog{
   fn G (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
@@ -343,9 +299,9 @@ def gmDecSymPin : Term := prog{
       match e { Pair(kk, vv) => &m *vv } } } };
   () }
 
-/-- …and `gmSymPinDecomp`'s shape, the one §4 called "the right shape and
-    unwritable": extent spelled as the decomposition, carve citing `Refl`, and now
-    with the pieces PROJECTED instead of taken as parameters. -/
+/-- The same carve with the extent spelled directly as the decomposition
+    `Add i (S r)` and the carve citing `Refl`, rather than carrying a separate
+    equality hypothesis. -/
 def gmDecSymPinRefl : Term := prog{
   fn G (i : Nat, r : Nat,
         self : &mut (s : Σ0 (a : Array (Add i (S r)) (Σ (k : Nat). Nat)). AllK7 (Add i (S r)) a
@@ -359,11 +315,10 @@ def gmDecSymPinRefl : Term := prog{
 
 /-! ### §3.3 The negative controls
 
-    A green verdict is only worth what its twin's red is. `gmDecSymPinKey`
-    escapes the KEY borrow where the pin puts the exit in the VALUE slot; the
-    concrete-index pair is `SetHmProbe` §3.1's port controls, which must keep
-    saying that the decomposition spelling did not weaken anything at a concrete
-    index either. -/
+    `gmDecSymPinKey` escapes the key borrow where the pin declares the exit in
+    the value slot, and must be rejected. The concrete-index pair checks that
+    the decomposition spelling does not weaken anything at a concrete index
+    either. -/
 
 def gmDecSymPinKey : Term := prog defer_check {
   fn G (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
@@ -407,10 +362,10 @@ def gmDecSymPinWrongSlot : Term := prog defer_check {
       match e { Pair(kk, vv) => &m *vv } } } };
   () }
 
-/-! ### §3.4 …and it RUNS
+/-! ### §3.4 …and it runs
 
-    The E2E half, as `SetHmProbe` §6.2: instantiate at extent 3 / index 1, take
-    the pinned cursor, write `9` through it, end the group, read the pack back. -/
+    End-to-end: instantiate at extent 3, index 1; take the pinned cursor;
+    write `9` through it; end the group; read the pack back. -/
 
 def runBinding (t : Term) (name : String) : Option String :=
   match runProgram t with
@@ -433,40 +388,36 @@ def gmDecCaller : Term := prog{
   *c := 9;
   () }
 
-/-! ### §3.5 THE VERDICTS
+/-! ### §3.5 Verdicts
 
-        gmDecSymPin           BLIND carve, SYMBOLIC index, pinned    GREEN ← the answer
-        gmDecSymPinRefl       …extent spelled as the decomposition   GREEN
-        gmDecSymPinKey        the KEY twin                           red
+        gmDecSymPin           blind carve, symbolic index, pinned    green (the target case)
+        gmDecSymPinRefl       …extent spelled as the decomposition   green
+        gmDecSymPinKey        the key twin                           red
         gmDecSymPinWrongSlot  the pin at the wrong slot              red
-        gmDecConc2at1blind    concrete index, blind                  GREEN
-        gmDecConc2at1open     concrete index, prefix opened          GREEN
-        gmDecCaller           …and it runs, writing cell 1           GREEN
+        gmDecConc2at1blind    concrete index, blind                  green
+        gmDecConc2at1open     concrete index, prefix opened          green
+        gmDecCaller           …and it runs, writing cell 1           green
 -/
 
-/-- **THE HEADLINE.** `SetHmProbe` §3.2's `gmSymPinFold` — refused with
-    "the declared pin (Pair (natRec" because the fold could not step on a σ index
-    — is GREEN once `SetHM` is spelled with the projections. The blind carve at a
-    symbolic index in an opaque-extent array discharges its map-level pin, which
-    is the O(1) `GetMut` the walk was standing in for. -/
+/-- The blind carve at a symbolic index, in an array of opaque extent, type-
+    checks once the update is spelled with the projections: this is the O(1)
+    `GetMut` case, with no element-by-element walk needed. -/
 example : progOk gmDecSymPin = true := by native_decide
 example : progOk gmDecSymPinRefl = true := by native_decide
 
-/-- The key twin, refused with the two sides differing in exactly one place: the
-    exit `σ₂₁` sits in the KEY slot on the fill and in the VALUE slot on the pin.
-    Everything else — the split, the prefix, the suffix — matches, which is what
-    makes this the sharp negative rather than a shape mismatch. -/
+/-- The key twin: everything matches except that the fill's exit sits in the
+    key slot while the pin declares it in the value slot. It is rejected with
+    the two sides differing in exactly that one place. -/
 example : progRejects gmDecSymPinKey
   "exits (Pair (arrCat σ₁ (S σ₂) σ₁₃ (acons σ₂ (Pair σ₂₁ σ₂₀) σ₁₇)) σ₇), does not convert with the declared pin (Pair (arrCat σ₁ (S σ₂) σ₁₃ (acons σ₂ (Pair σ₁₉ σ₂₁) σ₁₇)) σ₇)."
   = true := by native_decide
 
-/-- **The wrong slot is refused BY THE STUCKNESS**, and the print is the argument
-    for matching both extents rather than the total. The pin asks for the split
-    `(Z, S (add i r))`; the carve made the split `(i, S r)`; the two are the same
-    total extent and different compositions, so `splitAt?` declines and the pin
-    normalizes with `atake Z (S (natRec …)) (arrCat σ₁ (S σ₂) …)` still standing
-    in it. A rule that fired on the total would have handed this program the
-    prefix of a decomposition it never made. -/
+/-- The wrong slot is refused by stuckness, not by a failed comparison: the pin
+    asks for the split `(Z, S (add i r))` while the carve made the split
+    `(i, S r)`. Same total extent, different compositions, so `splitAt?`
+    declines and the projection stays stuck in the normal form. A rule that
+    matched on the total extent alone would have handed this program a prefix
+    it never carved. -/
 example : progRejects gmDecSymPinWrongSlot
   "does not convert with the declared pin (Pair (arrCat Z (S (natRec" = true := by native_decide
 
@@ -483,45 +434,36 @@ example : runBinding gmDecCaller "p"
 
 /-! ## §4 The counterfactual, and what the projections cost
 
-    **The counterfactual, run.** Replace the two `whnfN` arms with the stuck
-    rebuild they fall through to, keep everything else, and build the tree from
-    scratch: **20 assertions go red, all of them in this file, and nothing
-    anywhere else in the suite moves.** They are §1.1's six run computations,
-    §1.2's three symbolic ones, §3.1's five (the three agreements with `AVSetT`,
-    the written value, and the symbolic composition), and §3.2/§3.3's six greens
-    (`gmDecSymPin`, `gmDecSymPinRefl`, the two concrete controls, `gmDecCaller`
-    and its run) — plus, the twentieth, `gmDecSymPinKey`'s NEEDLE: that program
-    stays rejected without the rules, but for a different reason, so the message
-    it is pinned on is no longer the message it gets.
+    **Counterfactual.** Replacing the two `atake`/`adrop` ι-rules with the
+    stuck rebuild they fall through to turns 20 assertions red, all in this
+    file and nothing elsewhere in the suite: the run computations of §1.1, the
+    symbolic ones of §1.2, the five agreements and computations of §3.1, and
+    the six greens of §3.2/§3.3. A twentieth case, `gmDecSymPinKey`, still gets
+    rejected without the rules, but for a different reason, so its pinned
+    message changes too. Every other negative survives the removal, since
+    §1.3, §1.4 and `gmDecSymPinWrongSlot` all assert that a projection stays
+    stuck, which is exactly what an absent rule leaves behind.
 
-    Every other negative here survives the removal, and that is the honest half
-    of the design: §1.3, §1.4 and `gmDecSymPinWrongSlot` all assert that a
-    projection is STUCK, which is exactly what an absent rule leaves behind.
-
-    **What they cost** (`lake env lean` against the built oleans, `IO.monoMsNow`
-    around `Pure.nf`; medians of a single run, which is all a linearity claim
-    needs):
+    **Cost** (medians from `IO.monoMsNow` around `Pure.nf`, run against the
+    built oleans):
 
         atake n n (run 2n)          n=200 → 2 ms   400 → 3    800 → 5    1600 → 10
         adrop n n (run 2n)          n=200 → 1 ms   400 → 2    800 → 5    1600 →  9
         AVSetDec 0 (n-1) (run n)    n=100 → 4 ms   200 → 5    400 → 10    800 → 22
         AVSet    0       (run n)    n=100 → 3 ms   200 → 6    400 → 11    800 → 20
 
-    Doubling the extent doubles the time in each family, so the projections are
-    linear and the decomposition-first update costs what the fold-spelled one
-    costs at the same slot — the spelling that makes the pin discharge is not
-    paid for in normalization.
+    Doubling the extent doubles the time in each family: the projections are
+    linear, and the decomposition-first update costs the same as the
+    fold-spelled one at the same slot.
 
-    The third family answers the sharing question directly. Projecting the SAME
-    composition twice (`arrCat n n (atake …) (adrop …)`) costs 3/6/12 ms at
-    n=200/400/800 against 2/3/6 ms for the take alone: exactly twice the work for
-    twice the result, which is one pass each and no re-derivation of the argument.
-    That is the property `AVSetDecT` needs — it names `A` twice — and it holds
-    for the NbE reason rather than by luck: `A` is a bound name, `eval` resolves
-    it through the environment, and both arms match on the one `Sem` the lookup
-    returns. `deepForce`/`armUsesRec` are not involved and correctly so; they are
-    consulted at exactly the three recursor arms in `whnfN`, each time to ask
-    whether a STEP ARM makes its recursive call, and a projection has no step arm. -/
+    Projecting the same composition twice (`arrCat n n (atake …) (adrop …)`)
+    costs 3/6/12 ms at n=200/400/800 against 2/3/6 ms for the take alone —
+    twice the work for twice the result, with no re-derivation of the shared
+    argument. `AVSetDecT` needs exactly this, since it names `A` twice: `A` is
+    a bound name, `eval` resolves it once through the environment, and both
+    arms match on the same `Sem` the lookup returns. `deepForce`/`armUsesRec`
+    play no role here, since they apply only at recursor step arms, and a
+    projection has no step arm. -/
 
 end Dllbc.Tests.ArrCatIota
 

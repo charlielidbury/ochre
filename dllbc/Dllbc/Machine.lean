@@ -1412,7 +1412,7 @@ def placeToPosRaw : Term → M Pos
     mentions the refined σ, e.g. `Id Nat σ 2`, is substituted like anything
     else — the seam §10 exercises). The replacement `v` must be marker-free
     (§3.2 knowledge/state): substituting a hole/loan/borrow for a σ would smuggle
-    state into entry-knowledge — the etiology of the M21 `PartIdxL n ⊥` bug. -/
+    state into entry-knowledge — the etiology of a class of bug where a spec is instantiated at `⊥`. -/
 def refineSym (σ : Nat) (v : Val) : M Unit := do
   -- The knowledge/state premise, which is now the SHAPE of the argument rather
   -- than a scan of it: a store value is knowledge exactly when it is a `know`
@@ -1575,7 +1575,7 @@ mutual
         -- excludes ⊥. A comptime read of a moved/uninitialized slot is a
         -- use-after-move; rejecting it here stops a silent ⊥ from riding into a
         -- pure value and surfacing layers later as an opaque untypeable ⊥ (the
-        -- M21 `PartIdxL n ⊥` etiology: reading the owned-consumed scrutinee).
+        -- spec-at-`⊥` etiology: reading the owned-consumed scrutinee).
         match ← lookupSlot x with
         | .bot => throwErr s!"readC (⇝): {x.name}#{x.id} holds ⊥ (use-after-move or uninitialized in a comptime read)"
         | v => pure v
@@ -1766,8 +1766,8 @@ end
 
 -- **`@res k` — a pin's name for the k-th issued borrow's exit payload**
 -- (12-design §2.5/D3(a)). The surface's `*res` lowers to `@res 0`; the marker is
--- a neutral const spine, so it rides through nf/convert/readC untouched (probed
--- in `Tests.PinProbe`) and is substituted only here, by the two discharge sites:
+-- a neutral const spine, so it rides through nf/convert/readC untouched and is
+-- substituted only here, by the two discharge sites:
 -- the audit opens a pin at FRESH exit σ's, the group end at the ACTUAL
 -- surrendered payloads. Same substitution, two instantiations — §2.3's "one
 -- rule" requirement, made literal.
@@ -2934,7 +2934,7 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Term) (given : Option Ter
         -- both sides compute — nothing refined"), and the arithmetic is meta-level on
         -- numerals, never a `sub` in the object language. Symbolic extents mint `rest`
         -- and solve `m ≡ add lo' (add cnt rest)` — the equation ¶3.2 reaches with
-        -- `le_split` twice plus `AddCancelL`, asserted here in its cancelled form
+        -- `le_split` twice plus an add-cancellation lemma, asserted here in its cancelled form
         -- because the checker unpacks the witnesses itself and no program term ever
         -- projects them.
         let lo'N := Term.natOf? (Pure.nf fuel lo')
@@ -6787,7 +6787,7 @@ mutual
         -- the asymmetry M33a and Σ0 spent two stages closing — so the wrap is the
         -- ELABORATION's, and one spelling reaches both machines.
         -- Measured cost of refusing over the corpus: one hand-written term
-        -- (`Ledger.deepBaseArm`), already written as `Term.lamTel []`.
+        -- (`Tests.S27Dispose.deepBaseArm`), already written as `Term.lamTel []`.
         if binders.isEmpty then
           throwErr s!"seal: this recursor arm is a bare term, not a λ. Every arm is a λ, because an arm is a BODY and a body that is not suspended runs when the spine is formed rather than when ι selects it. An arm the motive owes nothing binds the unit binder — write it `Term.lamTel [(unitBinder, .cmpT (.const \"Unit\"))] ⟨body⟩`, which is what `fn`'s elaboration writes for you."
         let owed := binders.drop pre.length

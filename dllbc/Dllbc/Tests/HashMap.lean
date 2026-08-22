@@ -7,56 +7,58 @@ import Dllbc.Tests.Diff
 import Dllbc.Tests.Direct
 
 /-!
-# The hashmap flagship — a verified, resizable, in-place hashmap
+# The hashmap flagship: a verified, resizable, in-place hashmap
 
-`docs/13-hashmap-flagship.md` is the problem statement; the reference is the
-Aeneas ICFP'22 case study vendored at `competitors/aeneas-hashmap/`. Layout:
-slots are an array of association-list buckets, the hash is the identity, the
-slot is `Mod key cap`, load factor 4/5, resize by doubling. The invariant is
-packed in the container's type, so a `HashMap` value cannot exist broken.
+Tests a hashmap written in DLLBC: an array of association-list buckets, the
+hash is the identity, the slot is `Mod key cap`, load factor 4/5, resize by
+doubling. The invariant is packed into the container's type, so a broken
+`HashMap` value cannot be constructed.
 
-Ground ported here rather than rediscovered: slot arithmetic from branch
-`hm-probe-mod` (now in `StdLemmas`), the Σ(Bool) Option vocabulary from
-`hm-probe-opt`, the element-borrow bucket surgery from `hm-probe-arrays`, and
-the total or_insert-style walk from `hm-probe-getmut`.
+spec: `docs/13-hashmap-flagship.md`, reference implementation:
+`competitors/aeneas-hashmap/`.
 
-## THE SINGLE-ALLOCATION RESIZE (branch `hm-rotate-resize`)
+Tests check each operation against a pure spec function, plus lying-twin
+controls that confirm the checker rejects the corresponding bug.
 
-A resize's ONLY runtime allocation is `MkSlots (2·cap)` — the new array of
+Three layers in this one file: the checked map (spec functions, packed
+invariant, the op chain and its twins), then the pinned borrow-returning ops
+(`GetMutHM`/`GetMutOrInsertHM`, whose contracts need `~>`/`*res`), then the
+executing layer (concrete runs decoded and compared against a trusted
+Lean-side model).
+
+## The single-allocation resize
+
+A resize's only runtime allocation is `MkSlots (2·cap)`, the new array of
 `Nil` buckets. The move path — `SlotPush`, `MoveBktR`, `MoveOne`, `MoveSlots`
-— constructs NO data-level `Cons`/`Pair` node. The greppable audit over those
-four fns: the only constructor WRITE is `MoveOne`'s `*bbs := Nil` (a constant,
-the take-out), and every other `Cons(`/`Pair(` occurrence is a pattern, a
-type, or an erased/evidence position (comptime snapshots, Id/Π equations, the
-all-comptime return packs). `InsertHM`'s resize arm adds exactly `MkSlots
-(2·cap)` — THE allocation — plus the container repack `*self := Pair(…)` that
-every arm of every op performs (a struct-by-value write, not a bucket node).
-The moved nodes reach the new table by mutation alone: `SlotPush` takes the
-bucket head off `src` and onto the carved `dst` cell with the mem::replace
-rotation
+— constructs no data-level `Cons`/`Pair` node: the only constructor write is
+`MoveOne`'s `*bbs := Nil` (a constant take-out), and every other
+`Cons(`/`Pair(` occurrence is a pattern, a type, or an erased/evidence
+position. `InsertHM`'s resize arm adds exactly `MkSlots (2·cap)` plus the
+container repack `*self := Pair(…)` that every arm of every op performs (a
+struct-by-value write, not a bucket node). The moved nodes reach the new
+table by mutation alone: `SlotPush` takes the bucket head off `src` and onto
+the carved `dst` cell with the mem::replace rotation
 
     let tmp = *tail;  *tail := *bb;  *bb := *src;  *src := tmp;
 
 where every read of node-typed data whose value reaches a runtime position is
-immediately followed by an overwrite of the slot it was read from — so under a
+immediately followed by an overwrite of the slot it was read from, so under a
 move-compiling backend each step is three pointer relinks, zero allocation.
 (`MoveOne`'s take-out `let bl = *bbs; *bbs := Nil` is the same idiom; `Nil` is
-a constant, not an allocation.) The old walk re-inserted every entry through
-`InsertInList`'s `*b := Cons(Pair(key, val), Nil)` — one fresh node per moved
-entry; the ordinary insert path legitimately keeps that one-node allocation,
-only the move path changed. The destination is never traversed: `MoveBktR`'s
-fuel bounds the SOURCE bucket length and the fuel ledger threaded through
-`MoveOne`/`MoveSlots`/`InsertHM` mentions only the source total — the old
-destination-walk fuel (`SlotUpd`'s array total) left the move path entirely.
+a constant, not an allocation.) The ordinary insert path still allocates one
+fresh node per `InsertInList`'s `*b := Cons(Pair(key, val), Nil)`; only the
+move path avoids it. The destination is never traversed: `MoveBktR`'s fuel
+bounds the source bucket length, and the fuel ledger threaded through
+`MoveOne`/`MoveSlots`/`InsertHM` mentions only the source total.
 
-The compilation-model caveat, honestly: DLLBC's checker semantics is
-value-level copy-on-read, so "one allocation" is a property of the program's
-SHAPE under a move-compiling backend (read-then-overwrite = move), the same
-way a Rust program's allocation behavior is a property of its shape. Comptime
-snapshots (`K0 = *kk`-style capital reads) are erased knowledge and never
-reach runtime. One observable consequence of moving instead of re-inserting:
-same-slot survivors of a resize appear in REVERSED order (prepend vs the old
-append) — order the spec (`FindL` + `NodupB`) is deliberately blind to.
+The compilation-model caveat: DLLBC's checker semantics is value-level
+copy-on-read, so "one allocation" is a property of the program's shape under
+a move-compiling backend (read-then-overwrite = move), the same way a Rust
+program's allocation behavior is a property of its shape. Comptime snapshots
+(`K0 = *kk`-style capital reads) are erased knowledge and never reach
+runtime. One observable consequence of moving instead of re-inserting:
+same-slot survivors of a resize appear in reversed order (prepend vs the old
+append), an order the spec (`FindL` + `NodupB`) is deliberately blind to.
 -/
 
 section
@@ -85,7 +87,7 @@ def chkL (tm ty : Term) : Bool :=
 
 def pv (t : Term) : Term := Pure.nf 4000000 t
 
-/-! ## (i) The slot arithmetic, ported from `hm-probe-mod` — green in `StdLemmas` -/
+/-! ## (i) The slot arithmetic -/
 
 def modOf (a b : Nat) : Term := pv prog{ Mod %(Term.nat a) %(Term.nat b) }
 def divOf (a b : Nat) : Term := pv prog{ Div %(Term.nat a) %(Term.nat b) }
@@ -96,37 +98,18 @@ example : (modOf 5 8).natOf? == some 5 := by native_decide
 example : (modOf 3 0).natOf? == some 0 := by native_decide
 example : (divOf 7 3).natOf? == some 2 := by native_decide
 
--- The Aeneas test's own keys at its own capacity: 0, 128, 1024, 1056 all land in
--- slot 0 of 32, which is what makes that test exercise the collision list.
+-- The reference test's own keys at its own capacity: 0, 128, 1024, 1056 all
+-- land in slot 0 of 32, which is what exercises the collision list.
 example : (modOf 128 32).natOf? == some 0 := by native_decide
 example : (modOf 1024 32).natOf? == some 0 := by native_decide
 example : (modOf 1056 32).natOf? == some 0 := by native_decide
 example : (modOf 1057 32).natOf? == some 1 := by native_decide
 
-example : chkL StepInv StepInvTy = true := by native_decide
-example : chkL ModCLt ModCLtTy = true := by native_decide
-example : chkL ModLtN ModLtNTy = true := by native_decide
-example : chkL ModDec ModDecTy = true := by native_decide
 
 /-! ## (ii) The ledger arithmetic -/
 
-example : chkL AddSwapL AddSwapLTy = true := by native_decide
-example : chkL AddInterchange AddInterchangeTy = true := by native_decide
-example : chkL MulSucc MulSuccTy = true := by native_decide
-example : chkL MulAddR MulAddRTy = true := by native_decide
-example : chkL MulTwoDouble MulTwoDoubleTy = true := by native_decide
-example : chkL LeAddMonoR LeAddMonoRTy = true := by native_decide
-example : chkL LeAddMono LeAddMonoTy = true := by native_decide
-example : chkL LeMulR LeMulRTy = true := by native_decide
-example : chkL Le5M4 Le5M4Ty = true := by native_decide
-example : chkL FiveN4Zero FiveN4ZeroTy = true := by native_decide
-example : chkL LeLebTrue LeLebTrueTy = true := by native_decide
-example : chkL EqbTrueEq EqbTrueEqTy = true := by native_decide
-example : chkL EqbSym EqbSymTy = true := by native_decide
-example : chkL IfDec IfDecTy = true := by native_decide
-example : chkL LedgerGrow LedgerGrowTy = true := by native_decide
 
--- `Mul` computes, and the ledger inequality is the intended integer restatement:
+-- `Mul` computes, and the ledger inequality is the integer restatement
 -- `5n ≤ 4c ⟺ n ≤ ⌊4c/5⌋`, spot-checked at the resize boundary.
 example : (pv prog defer_check { Mul 4 8 }).natOf? == some 32 := by native_decide
 -- cap 32: threshold 25 (= ⌊128/5⌋). 5·25 ≤ 128 holds, 5·26 ≤ 128 does not.
@@ -134,9 +117,9 @@ example : chkL prog defer_check { unit } prog defer_check { Le (Mul 5 25) (Mul 4
 example : chkL prog defer_check { unit } prog defer_check { Le (Mul 5 26) (Mul 4 32) } = false := by native_decide
 example : (pv prog defer_check { Div (Mul 4 32) 5 }).natOf? == some 25 := by native_decide
 
-/-! ## (iii) The slot write, ported from `hm-probe-mod`'s carve probe: the index
-    and residue are minted across a CALL returning a Σ (comptime spellings fail
-    the occurs check), then the carve cites the returned equation. -/
+/-! ## (iii) The slot write: the index and residue are minted across a call
+    returning a Σ (comptime spellings fail the occurs check), then the carve
+    cites the returned equation. -/
 
 def slotDecls : Term := prog{
   fn SlotOf (h : Nat, n : Nat, Hne : Le (S Z) n)
@@ -195,9 +178,8 @@ example : runSlot 1 == some [0, 9, 0, 0] := by native_decide
 example : runSlot 6 == some [0, 0, 9, 0] := by native_decide
 example : runSlot 7 == some [0, 0, 0, 9] := by native_decide
 
-/-! ## (iv) The elim sugar reads its element type (ported patch, `hm-probe-opt`
-    commit 6b5a724e): recursion over `List (Σ (k : Nat). Nat)` — a bucket —
-    checks through the sugar. These two were the probe's minimal failures. -/
+/-! ## (iv) The elim sugar reads its element type: recursion over
+    `List (Σ (k : Nat). Nat)` — a bucket — checks through the sugar. -/
 
 example : chkL prog defer_check {
     λ (B : List (Σ (k : Nat). Nat)).
@@ -213,13 +195,12 @@ example : chkL prog defer_check {
         Cons (E) (T) Rec => Rec } }
   prog defer_check { Π (B : List (List Nat)) → Nat } = true := by native_decide
 
-/-! ## (v) SHAPE PROBES — the two load-bearing unknowns, answered by assertion
+/-! ## (v) Shape probes
 
-    The packed container stands or falls on (a) take-and-refill of a Σ-pack with
-    a `Σ0` invariant tail through `&mut self` — including whether the destructure
-    REFINES the entry σ, so `old *self` claims compute — and (b) through-borrow
-    navigation of the same pack for the borrow-returning ops. Nothing in the
-    probe branches ever destructured a dependent pack. -/
+    The packed container depends on (a) take-and-refill of a Σ-pack with a
+    `Σ0` invariant tail through `&mut self` — including whether the destructure
+    refines the entry σ, so `old *self` claims compute — and (b) through-borrow
+    navigation of the same pack for the borrow-returning ops. -/
 
 def whyP (t : Term) : String :=
   match checkProgram t prog defer_check { Unit } with
@@ -227,11 +208,11 @@ def whyP (t : Term) : String :=
   | .error e => "REJECTED: " ++ e
 
 /-- A pure identity on a `Le` proof. A destructured Σ0 tail comes back at a
-    CAPITAL binder, and a bare capital citation in a constructor argument is
-    fenced (`cannot be ⇒-moved`) even where the component's mode is comptime —
-    but an APPLICATION in the same position is ⇝-computed, and the real code's
-    repacked invariants are lemma applications anyway. `KeepLe` is the minimal
-    such application, for the probes. -/
+    capital binder, and a bare capital citation in a constructor argument is
+    fenced (`cannot be ⇒-moved`) even where the component's mode is comptime,
+    but an application in the same position is ⇝-computed — and the real
+    code's repacked invariants are lemma applications anyway. `KeepLe` is the
+    minimal such application. -/
 def KeepLe : Term := prog defer_check { λ (A : Nat). λ (B : Nat). λ (H : Le A B). H }
 
 /-- (a1) Round-trip: take the pack, rebuild it, refill. The proof component is
@@ -244,9 +225,9 @@ def packRoundtrip : Term := prog{
   () }
 example : progOk packRoundtrip = true := by native_decide
 
-/-- (a2) THE REFINEMENT QUESTION: does `old *self` compute through the
-    destructure? If matching refines the entry σ to `Pair(σn, …)`, both sides
-    of the returned equation reduce to `σn` and `Refl` closes it. -/
+/-- (a2) Does `old *self` compute through the destructure? If matching
+    refines the entry σ to `Pair(σn, …)`, both sides of the returned equation
+    reduce to `σn` and `Refl` closes it. -/
 def FstOf : Term := prog defer_check {
   λ (P : Σ (n : Nat). Σ0 (w : Nat). Le n w).
     elim P return (λ (Pm : Σ (n : Nat). Σ0 (w : Nat). Le n w). Nat) {
@@ -261,7 +242,7 @@ def packRefines : Term := prog{
   () }
 example : progOk packRefines = true := by native_decide
 
-/-- (a3) A REAL update under the packed proof: bump both components; the proof
+/-- (a3) An update under the packed proof: bump both components; the proof
     transports by conversion (`Le (S n) (S w) ⇝ Le n w`). -/
 def packBump : Term := prog{
   fn BumpBoth (self : &mut (Σ (n : Nat). Σ0 (w : Nat). Le n w)) -> Unit {
@@ -271,7 +252,7 @@ def packBump : Term := prog{
   () }
 example : progOk packBump = true := by native_decide
 
--- …and the lying refill is REFUSED: `Hw : Le n w` does not inhabit `Le (S n) w`.
+-- …and the lying refill is refused: `Hw : Le n w` does not inhabit `Le (S n) w`.
 def packBumpLie : Term := prog defer_check {
   fn BumpLie (self : &mut (Σ (n : Nat). Σ0 (w : Nat). Le n w)) -> Unit {
     let Pair(n, Pair(w, Hw)) = *self;
@@ -280,8 +261,8 @@ def packBumpLie : Term := prog defer_check {
   () }
 example : progOk packBumpLie = false := by native_decide
 
-/-- (a4) The Insert SKELETON at a toy invariant: take the pack, mint the slot
-    across a call, carve the slots ARRAY (a local, after the take), push into
+/-- (a4) An insert skeleton at a toy invariant: take the pack, mint the slot
+    across a call, carve the slots array (a local, after the take), push into
     the bucket through the element borrow, repack, refill. -/
 def packCarve : Term := prog{
   fn SlotOf (h : Nat, n : Nat, Hne : Le (S Z) n)
@@ -304,7 +285,7 @@ def packCarve : Term := prog{
   () }
 example : progOk packCarve = true := by native_decide
 
-/-- The toy pack's cap projection — pure, over the VALUE. -/
+/-- The toy pack's cap projection — pure, over the value. -/
 def FstCap : Term := prog defer_check {
   λ (P : Σ (cap : Nat). Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). Le (S Z) cap).
     elim P return (λ (Pm : Σ (cap : Nat).
@@ -312,8 +293,8 @@ def FstCap : Term := prog defer_check {
       Pair (Cap) (R1) => Cap } }
 
 /-- The packed proof, extracted by comptime projection. A through-borrow match
-    binds the Σ0 tail to STATE (a borrow), which a ⇝-position cannot read — so
-    invariant clauses are snapshotted off `*self` BEFORE the destructure. -/
+    binds the Σ0 tail to state (a borrow), which a ⇝-position cannot read, so
+    invariant clauses are snapshotted off `*self` before the destructure. -/
 def PackCapLe : Term := prog defer_check {
   λ (P : Σ (cap : Nat). Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). Le (S Z) cap).
     elim P return (λ (Pm : Σ (cap : Nat).
@@ -338,9 +319,8 @@ def packNav : Term := prog{
     let Hle1 = PackCapLe (*self);
     let Pair(cap, Pair(slots, Hcap)) = self;
 
-    -- A bare deref TAKES the payload, even a Nat's (the exit audit is
-    -- per-leaf and found the hole) — so the read is an explicit
-    -- take-and-refill, and the local Nat then copies freely.
+    -- A bare deref takes the payload, even a Nat's, so the read is an
+    -- explicit take-and-refill, and the local Nat then copies freely.
     let c = *cap;
     *cap := c;
     let Pair(i, Pair(r, hd)) = SlotOf(key, c, Hle1);
@@ -360,15 +340,15 @@ def packNav : Term := prog{
   () }
 example : progOk packNav = true := by native_decide
 
-/-! ## (vi) The Σ(Bool) Option vocabulary (`hm-probe-opt`) and the bucket specs -/
+/-! ## (vi) The Σ(Bool) Option vocabulary and the bucket specs -/
 
 def OptP : Term := prog defer_check {
   λ (B : Bool). λ (T : Type). elim B return (λ (Bm : Bool). Type) {
     True => T,
     False => Unit } }
 
-/-- `Opt T` — the option type at payload `T`. The kernel has no Option (that
-    decision is closed; `hm-option-kernel` is the parked road-not-taken). -/
+/-- `Opt T` — the option type at payload `T`. The kernel has no native Option
+    type; this Σ(Bool) encoding stands in for it. -/
 def Opt : Term := prog defer_check { λ (T : Type). Σ (b : Bool). OptP b T }
 
 /-- `Some`/`None` at `Nat`, v1's value type. -/
@@ -379,8 +359,8 @@ example : chkL prog defer_check { SomeN 5 } prog defer_check { Opt Nat } = true 
 example : chkL NoneN prog defer_check { Opt Nat } = true := by native_decide
 example : chkL prog defer_check { Pair(True, unit) } prog defer_check { Opt Nat } = false := by native_decide
 
-/-- Bucket lookup: first match wins, `None` past the end. The `Opt`-typed
-    listRec over entries — the recursion the ported elim sugar exists for. -/
+/-- Bucket lookup: first match wins, `None` past the end. An `Opt`-typed
+    recursion over entries. -/
 def FindL : Term := prog defer_check {
   λ (Q : Nat). λ (L : List (Σ (k : Nat). Nat)).
     elim L return (λ (Lm : List (Σ (k : Nat). Nat)). Opt Nat) {
@@ -397,7 +377,7 @@ def IsSomeB : Term := prog defer_check {
     elim O return (λ (Om : Σ (b : Bool). OptP b Nat). Bool) {
       Pair (Bb) (P2) => Bb } }
 
-/-- `HitL q l` — is `q` present? Defined THROUGH `FindL` so the two can never
+/-- `HitL q l` — is `q` present? Defined through `FindL` so the two can never
     disagree. -/
 def HitL : Term := prog defer_check {
   λ (Q : Nat). λ (L : List (Σ (k : Nat). Nat)). IsSomeB (FindL Q L) }
@@ -423,10 +403,11 @@ example : chkL prog defer_check { Refl } prog defer_check { Id Nat
 
 /-! ## (vii) The slots-level spec functions
 
-    `AgetB` is OUR getter, not the kernel's `aget`: `aget` reduces only on a
-    literal `Arr` (no `acons`/`arrCat` step), so nothing about it at a carve
-    composition is provable. `AgetB` is an `arrRec` fold, computes on the cons
-    view, and every crossing lemma about it is an ordinary induction. -/
+    `AgetB` is this file's getter, not the kernel's `aget`: `aget` reduces
+    only on a literal `Arr` (no `acons`/`arrCat` step), so nothing about it at
+    a carve composition is provable. `AgetB` is an `arrRec` fold, computes on
+    the cons view, and every crossing lemma about it is an ordinary
+    induction. -/
 
 def AgetB : Term := prog defer_check {
   λ (M : Nat). λ (A : Array M (List (Σ (k : Nat). Nat))). λ (I : Nat).
@@ -463,18 +444,18 @@ example : chkL prog defer_check { Refl } prog defer_check { Id Nat
 
 /-! ## (viii) The packed invariant
 
-    `HMInv`'s clauses (13-hashmap-flagship.md, content fixed): `Le 1 cap`; every
-    entry in slot `i` has `Mod key cap = i`; `n` equals the total entry count;
-    `load` is the 4/5 threshold ledger for `cap` — carried Div-free as
-    `load = 4·cap` with occupancy `5·n ≤ load` (see the StdLemmas ledger note).
+    `HMInv`'s clauses: `Le 1 cap`; every entry in slot `i` has
+    `Mod key cap = i`; `n` equals the total entry count; `load` is the 4/5
+    threshold ledger for `cap`, carried Div-free as `load = 4·cap` with
+    occupancy `5·n ≤ load` (see the StdLemmas ledger note).
 
-    PLUS one clause the listed four do not name but the fixed op specs force:
-    keys within a bucket are pairwise DISTINCT (`NodupB`). Aeneas' own invariant
-    has it (`slot_t_inv`'s pairwise-distinct conjunct), and both Remove's and
-    resize's pointwise Find equations are FALSE without it: removing the first
-    of two same-key entries surfaces the shadowed one, and rehashing reorders
-    same-key entries, so `FindRem`/Insert-through-resize would each need it
-    anyway. Recorded as a deviation-by-necessity, mirroring the reference. -/
+    Plus one clause the op specs force even though it isn't one of the above:
+    keys within a bucket are pairwise distinct (`NodupB`). The reference
+    implementation's own invariant has it (`slot_t_inv`'s pairwise-distinct
+    conjunct), and both Remove's and resize's pointwise Find equations are
+    false without it: removing the first of two same-key entries surfaces the
+    shadowed one, and rehashing reorders same-key entries, so
+    `FindRem`/Insert-through-resize would each need it anyway. -/
 
 def AllKeysMod : Term := prog defer_check {
   λ (Cap : Nat). λ (I : Nat). λ (L : List (Σ (k : Nat). Nat)).
@@ -519,7 +500,7 @@ def HMInvT : Term := prog defer_check {
       (Id Nat N (TotalE Cap Slots) ×
       SlotsFrom Cap Cap Slots Z))) }
 
-/-- THE CONTAINER. The invariant is packed in the type: a `HashMap` value
+/-- The container. The invariant is packed in the type: a `HashMap` value
     cannot exist broken, every op's invariant-preservation proof is returning a
     well-typed pack, and it survives opaque group ends. -/
 def HashMapT : Term := prog defer_check {
@@ -537,8 +518,8 @@ def hmEx : Term := prog defer_check {
 
 example : chkL hmEx HashMapT = true := by native_decide
 
--- …and the invariant is not vacuous: the same pack with the entry in the WRONG
--- slot (key 3 in slot 0) is refused — the `Mod` clause has no `Refl`.
+-- …and the invariant is not vacuous: the same pack with the entry in the
+-- wrong slot (key 3 in slot 0) is refused — the `Mod` clause has no `Refl`.
 example : chkL prog defer_check {
   Pair(2, Pair(8, Pair(1, Pair(Arr(Cons(Pair(3, 30), Nil), Nil),
     Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
@@ -552,7 +533,7 @@ example : chkL prog defer_check {
       Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
         unit)))))))))) } HashMapT = false := by native_decide
 
--- …and a bucket with a DUPLICATE key is refused by the Nodup clause.
+-- …and a bucket with a duplicate key is refused by the Nodup clause.
 example : chkL prog defer_check {
   Pair(2, Pair(8, Pair(2, Pair(Arr(Nil, Cons(Pair(3, 30), Cons(Pair(3, 31), Nil))),
     Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
@@ -627,8 +608,8 @@ def HitHM : Term := prog defer_check {
       Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
     IsSomeB (FindHM Q Hm) }
 
-/-! The model updates (fixed content): `FindIns` is `Some v` at `key`, the old
-    answer elsewhere; `FindRem` is `None` at `key`; the size updates state the
+/-! The model updates: `FindIns` is `Some v` at `key`, the old answer
+    elsewhere; `FindRem` is `None` at `key`; the size updates state the
     "bumped/decremented iff" via a spec function, not a conditional Π. -/
 
 def FindIns : Term := prog defer_check {
@@ -789,7 +770,7 @@ example : chkL InvSlots InvSlotsTy = true := by native_decide
     Everything an op proves is stated over the carve composition
     `arrCat M (S R) L (acons R B H)` (lo ++ [cell] ++ hi), which the checker
     converts with the carved place's payload. Each lemma is one `arrRec`
-    induction on the LEFT part. -/
+    induction on the left part. -/
 
 def AgetBCatMid : Term := prog defer_check {
   λ (R : Nat). λ (B : List (Σ (k : Nat). Nat)).
@@ -926,7 +907,7 @@ def BoolRwFTy : Term := prog defer_check {
   Π (T : Type) → Π (X : T) → Π (Y : T) → Π (B : Bool) → Id Bool B False →
     Id T (boolRec (λ (W2 : Bool). T) X Y B) Y }
 
-/-- `a ≤ b` and `a ≠ b` make `a` STRICTLY below `b` — the frame case's
+/-- `a ≤ b` and `a ≠ b` make `a` strictly below `b` — the frame case's
     trichotomy converter. -/
 def LeNeLt : Term := prog defer_check {
   λ (A : Nat). elim A return (λ (Az : Nat).
@@ -1059,7 +1040,7 @@ example : chkL SFCatLo SFCatLoTy = true := by native_decide
 example : chkL SFCatMid SFCatMidTy = true := by native_decide
 example : chkL SFCatHi SFCatHiTy = true := by native_decide
 
-/-- The reglue: lo's invariants, the NEW cell's `SlotInv` at the boundary
+/-- The reglue: lo's invariants, the new cell's `SlotInv` at the boundary
     index, hi's invariants — back to the whole composition. Every op's
     invariant-preservation exit goes through this. -/
 def SFCatGlue : Term := prog defer_check {
@@ -1110,7 +1091,7 @@ example : chkL SFCatGlue SFCatGlueTy = true := by native_decide
 /-! ## (xii) The bucket walk's evidence, as standalone pure lemmas
 
     `insert_in_list`'s three branches each owe five conjuncts; every non-Refl
-    one is proven here over Π-bound state, so the walk's body only APPLIES them
+    one is proven here over Π-bound state, so the walk's body only applies them
     at its snapshots. `OptN`/`BktT` abbreviate the two types (splices — never
     used at an elim motive, where the sugar reads syntax). -/
 
@@ -1155,7 +1136,7 @@ def BoolPushSTy : Term := prog defer_check {
            (S (boolRec (λ (W2 : Bool). Nat) X Y B)) }
 example : chkL BoolPushS BoolPushSTy = true := by native_decide
 
-/-- HIT branch, presence: the head key equals `key`, so the bucket answers. -/
+/-- The hit branch, presence: the head key equals `key`, so the bucket answers. -/
 def HitEvHit : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT).
   λ (E : Id Bool (Eqb K0 Key) True).
@@ -1171,7 +1152,7 @@ def HitEvHitTy : Term := prog defer_check {
     Id Bool True (HitL Key (Cons(Pair(K0, V0), T0))) }
 example : chkL HitEvHit HitEvHitTy = true := by native_decide
 
-/-- HIT branch, the pointwise Find equation: overwrite in place. -/
+/-- The hit branch, the pointwise Find equation: overwrite in place. -/
 def PtEvHit : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (V1 : Nat). λ (Key : Nat). λ (T0 : BktT).
   λ (E : Id Bool (Eqb K0 Key) True).
@@ -1210,7 +1191,7 @@ def PtEvHitTy : Term := prog defer_check {
       (BFindIns Q Key V1 (Cons(Pair(K0, V0), T0))) }
 example : chkL PtEvHit PtEvHitTy = true := by native_decide
 
-/-- HIT branch, the length equation: present key, length unchanged. -/
+/-- The hit branch, the length equation: present key, length unchanged. -/
 def LnEvHit : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (V1 : Nat). λ (Key : Nat). λ (T0 : BktT).
   λ (E : Id Bool (Eqb K0 Key) True).
@@ -1231,8 +1212,8 @@ def LnEvHitTy : Term := prog defer_check {
     Id Nat (LenE (Cons(Pair(K0, V1), T0))) (BLenIns Key (Cons(Pair(K0, V0), T0))) }
 example : chkL LnEvHit LnEvHitTy = true := by native_decide
 
-/-- MISS branch, presence: the head is not `key`, so presence delegates to the
-    tail — on both the old and the new bucket. -/
+/-- The miss branch, presence: the head is not `key`, so presence delegates to
+    the tail — on both the old and the new bucket. -/
 def HitEvMiss : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT). λ (H2 : Bool).
   λ (E : Id Bool (Eqb K0 Key) False).
@@ -1251,7 +1232,7 @@ def HitEvMissTy : Term := prog defer_check {
     Id Bool H2 (HitL Key (Cons(Pair(K0, V0), T0))) }
 example : chkL HitEvMiss HitEvMissTy = true := by native_decide
 
-/-- MISS branch, the pointwise Find equation lifted through the untouched head. -/
+/-- The miss branch, the pointwise Find equation lifted through the untouched head. -/
 def UpdEvMiss : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (X : OptN). λ (Key : Nat).
   λ (T0 : BktT). λ (T1 : BktT).
@@ -1300,7 +1281,7 @@ def UpdEvMissTy : Term := prog defer_check {
       (BFindUpd Q Key X (Cons(Pair(K0, V0), T0))) }
 example : chkL UpdEvMiss UpdEvMissTy = true := by native_decide
 
-/-- MISS branch, the length equation lifted through the head. -/
+/-- The miss branch, the length equation lifted through the head. -/
 def LnEvMiss : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT). λ (T1 : BktT).
   λ (E : Id Bool (Eqb K0 Key) False).
@@ -1332,8 +1313,8 @@ def LnEvMissTy : Term := prog defer_check {
     Id Nat (LenE (Cons(Pair(K0, V0), T1))) (BLenIns Key (Cons(Pair(K0, V0), T0))) }
 example : chkL LnEvMiss LnEvMissTy = true := by native_decide
 
-/-- MISS branch, the Nodup head clause: `K0` absent from the tail stays absent
-    after inserting a DIFFERENT key into it. -/
+/-- The miss branch, the Nodup head clause: `K0` absent from the tail stays
+    absent after inserting a different key into it. -/
 def UpdNdMiss : Term := prog defer_check {
   λ (K0 : Nat). λ (X : OptN). λ (Key : Nat). λ (T0 : BktT). λ (T1 : BktT).
   λ (E : Id Bool (Eqb K0 Key) False).
@@ -1365,7 +1346,7 @@ def LoadHM : Term := prog defer_check {
             Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))). HMInvT Cap load n slots). Nat) {
           Pair (Load) (R2) => Load } } }
 
-/-- The invariant, assembled by ONE application — a bare capital citation in a
+/-- The invariant, assembled by one application — a bare capital citation in a
     refill's constructor argument is fenced, an application is not, so every
     op's exit packs through this. -/
 def MkInv : Term := prog defer_check {
@@ -1558,7 +1539,7 @@ def UpdPtDiffTy : Term := prog defer_check {
         (Mod Q (Add I (S R))))) }
 example : chkL UpdPtDiff UpdPtDiffTy = true := by native_decide
 
-/-- THE POINTWISE LIFT: the walk's bucket equation becomes Insert's whole-map
+/-- The pointwise lift: the walk's bucket equation becomes Insert's whole-map
     equation, by deciding `q`'s slot against the written slot. -/
 def UpdPointwise : Term := prog defer_check {
   λ (I : Nat). λ (R : Nat). λ (Key : Nat). λ (X : OptN).
@@ -1589,7 +1570,7 @@ example : chkL UpdPointwise UpdPointwiseTy = true := by native_decide
 
 /-! ## (xiv) `New`'s builder and its three lemmas, and the slot pack -/
 
-/-- `n` empty buckets, by `acons` recursion (probe O2's shape). -/
+/-- `n` empty buckets, by `acons` recursion. -/
 def MkSlots : Term := prog defer_check {
   λ (N : Nat). elim N return (λ (Nm : Nat). Array Nm (List (Σ (k : Nat). Nat))) {
     Z => Arr(),
@@ -1614,7 +1595,7 @@ def TotalMkSlotsTy : Term := prog defer_check {
   Π (N : Nat) → Id Nat (TotalE N (MkSlots N)) Z }
 example : chkL TotalMkSlots TotalMkSlotsTy = true := by native_decide
 
-/-- Every slot of the fresh table reads back `Nil` — at ANY index, in range or
+/-- Every slot of the fresh table reads back `Nil` — at any index, in range or
     not, which is why `New`'s find-spec needs no bound side-condition. -/
 def AgetBMkSlots : Term := prog defer_check {
   λ (N : Nat).
@@ -1632,8 +1613,8 @@ def AgetBMkSlotsTy : Term := prog defer_check {
 example : chkL AgetBMkSlots AgetBMkSlotsTy = true := by native_decide
 
 /-- The slot quadruple `SlotOfE` returns: index, residue, the carve equation,
-    and — new over the probe's `SlotOf` — the identity tying the index to the
-    hash, which the pointwise lift consumes as `Him`. -/
+    and the identity tying the index to the hash, which the pointwise lift
+    consumes as `Him`. -/
 def SlotPack : Term := prog defer_check {
   λ (H : Nat). λ (N : Nat). λ (Hne : Le (S Z) N).
     elim (ModDec (Mod H N) N (ModLtN H N Hne)) return
@@ -1647,9 +1628,8 @@ example : chkL SlotPack SlotPackTy = true := by native_decide
 
 /-! ## (xvii) Remove's walk evidence
 
-    The remove walk is a take-and-rebuild over the OWNED bucket (M23's list
-    quicksort shape): unlink the hit cell and MOVE its value out — values stay
-    move-only. Its models: -/
+    The remove walk is a take-and-rebuild over the owned bucket: unlink the
+    hit cell and move its value out — values stay move-only. Its models: -/
 
 def BFindRem : Term := prog defer_check {
   λ (Q : Nat). λ (Key : Nat). λ (L : BktT).
@@ -1673,7 +1653,7 @@ def BoolSameTy : Term := prog defer_check {
     Id T X (boolRec (λ (W2 : Bool). T) X X B) }
 example : chkL BoolSame BoolSameTy = true := by native_decide
 
-/-- An absent key's lookup IS `None` — the Σ(Bool) Option has no Unit-η, so
+/-- An absent key's lookup is `None` — the Σ(Bool) Option has no Unit-η, so
     this is an induction, not a projection. -/
 def NotHitFindNone : Term := prog defer_check {
   λ (Q : Nat). λ (L : BktT).
@@ -1731,7 +1711,7 @@ def HitLenPosTy : Term := prog defer_check {
   Π (Q : Nat) → Π (L : BktT) → Id Bool (HitL Q L) True → Le (S Z) (LenE L) }
 example : chkL HitLenPos HitLenPosTy = true := by native_decide
 
-/-- REMOVE HIT: the unlinked value was the bucket's answer. -/
+/-- Remove's hit case: the unlinked value was the bucket's answer. -/
 def RemHrHit : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT).
   λ (E : Id Bool (Eqb K0 Key) True).
@@ -1745,9 +1725,9 @@ def RemHrHitTy : Term := prog defer_check {
     Id OptN (SomeN V0) (FindL Key (Cons(Pair(K0, V0), T0))) }
 example : chkL RemHrHit RemHrHitTy = true := by native_decide
 
-/-- REMOVE HIT, pointwise: the tail IS the removed bucket, and at `Q = Key`
-    the tail answers `None` because Nodup says the unlinked cell was the only
-    one. -/
+/-- Remove's hit case, pointwise: the tail is the removed bucket, and at
+    `Q = Key` the tail answers `None` because Nodup says the unlinked cell was
+    the only one. -/
 def RemPtHit : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT).
   λ (E : Id Bool (Eqb K0 Key) True).
@@ -1804,7 +1784,7 @@ def RemLnHitTy : Term := prog defer_check {
     Id Nat (LenE T0) (BLenRem Key (Cons(Pair(K0, V0), T0))) }
 example : chkL RemLnHit RemLnHitTy = true := by native_decide
 
-/-- REMOVE MISS: the returned option delegates past the untouched head. -/
+/-- Remove's miss case: the returned option delegates past the untouched head. -/
 def RemHrMiss : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT). λ (Ret : OptN).
   λ (E : Id Bool (Eqb K0 Key) False).
@@ -1821,8 +1801,8 @@ def RemHrMissTy : Term := prog defer_check {
     Id OptN Ret (FindL Key (Cons(Pair(K0, V0), T0))) }
 example : chkL RemHrMiss RemHrMissTy = true := by native_decide
 
-/-- REMOVE MISS, length: `BLenRem` lifts through the head; the hit side needs
-    the tail nonempty (`HitLenPos`) so `S ∘ Pred` cancels. -/
+/-- Remove's miss case, length: `BLenRem` lifts through the head; the hit side
+    needs the tail nonempty (`HitLenPos`) so `S ∘ Pred` cancels. -/
 def RemLnMiss : Term := prog defer_check {
   λ (K0 : Nat). λ (V0 : Nat). λ (Key : Nat). λ (T0 : BktT). λ (T1 : BktT).
   λ (E : Id Bool (Eqb K0 Key) False).
@@ -2002,7 +1982,7 @@ def RemTotEvTy : Term := prog defer_check {
       (TotalE (Add I (S R)) (arrCat I (S R) L (acons R B0 H))) }
 example : chkL RemTotEv RemTotEvTy = true := by native_decide
 
-/-! ## (xxi) S2 — resize. The move fold's pure evidence, bucket level first. -/
+/-! ## (xxi) Resize. The move fold's pure evidence, bucket level first. -/
 
 /-- A key found in a well-hashed bucket hashes to that bucket's slot. -/
 def HitKeyMod : Term := prog defer_check {
@@ -2350,7 +2330,7 @@ def ResizeGlueTy : Term := prog defer_check {
     Π (Q : Nat) → Id OptN (DF Q) (M Q) }
 example : chkL ResizeGlue ResizeGlueTy = true := by native_decide
 
-/-- Disjointness survives one bucket move: a key the NILLED source still
+/-- Disjointness survives one bucket move: a key the nilled source still
     answers is off the moved bucket, so the after-move table still lacks it. -/
 def MoveDisjStep : Term := prog defer_check {
   λ (J : Nat). λ (R : Nat).
@@ -2697,9 +2677,9 @@ def MoveSlotsPtTy : Term := prog defer_check {
           (Mod Q (Add J (S R))))))) }
 example : chkL MoveSlotsPt MoveSlotsPtTy = true := by native_decide
 
-/-- The moved head stays fresh for the tail's move: derived OUTSIDE the walk,
+/-- The moved head stays fresh for the tail's move: derived outside the walk,
     because a λ inside a recursive fn may not cite that fn's own Π-typed
-    parameter (measured: lamFeedG/J below the chain; snapshots do not help). -/
+    parameter (see `lamFeedG`/`lamFeedJ` below; snapshots do not help). -/
 def MoveFreshStep : Term := prog defer_check {
   λ (C2v : Nat). λ (K : Nat). λ (V : Nat). λ (TL : BktT).
   λ (D0A : Array C2v BktT). λ (D1A : Array C2v BktT).
@@ -3108,12 +3088,12 @@ def MoveLevelNilTy : Term := prog defer_check {
       Id (List (Σ (k : Nat). Nat)) (AgetB CF SM J2) Nil }
 example : chkL MoveLevelNil MoveLevelNilTy = true := by native_decide
 
-/-! ### The rotation move's pure vocabulary (probed in `ProbeRotate.lean`)
+/-! ### The rotation move's pure vocabulary
 
-    `SlotPush` moves ONE bucket node from src to dst by mutation (the
+    `SlotPush` moves one bucket node from src to dst by mutation (the
     mem::replace rotation) instead of constructing a fresh node. Its evidence
     is definitional where the old walk's was inductive, because the pushed
-    bucket is LITERALLY `Cons(head, old-bucket)`. The vocabulary: emptiness as
+    bucket is literally `Cons(head, old-bucket)`. The vocabulary: emptiness as
     a Bool (`IsNilB` — the drain loop cannot match src, SlotPush does), the
     three Nil lemmas, the definitional push equation, the done-arm collapses,
     the two invariant-extension builders, and the identity applications for
@@ -3176,7 +3156,7 @@ def NotNilLenPosTy : Term := prog defer_check {
     Id Bool (IsNilB L) False → Le (S Z) (LenE L) }
 example : chkL NotNilLenPos NotNilLenPosTy = true := by native_decide
 
-/-- THE PUSH EQUATION, definitional: prepending `(K0, V0)` answers `Some V0`
+/-- The push equation, definitional: prepending `(K0, V0)` answers `Some V0`
     at `K0` and delegates elsewhere — no walk, so no induction. This is
     `MoveStepPt`'s `H1` hypothesis shape verbatim. -/
 def PtEvPush : Term := prog defer_check {
@@ -3242,7 +3222,7 @@ def MkNdConsTy : Term := prog defer_check {
     NodupB (Cons(Pair(K, V), B)) }
 example : chkL MkNdCons MkNdConsTy = true := by native_decide
 
-/-! ## (xv) THE S1 CHAIN — fixed-capacity map, full specs
+/-! ## (xv) The fixed-capacity map chain, full specs
 
     ArraySort's `arrUnder` shape: one Lean function building the declaration
     chain, the spec return types spliced so the lying twins share the bodies
@@ -4417,12 +4397,12 @@ def remRetHonest : Term := prog defer_check {
 
 
 
-/-! ### PINNED (found the hard way, S2): inside a RECURSIVE fn, a λ may not
+/-! ### A restriction on recursive fns: inside a recursive fn, a λ may not
     cite the fn's own Π-typed parameter — not even through a snapshot
-    (lamFeedG/J red) — while citing snapshots of data works (H) and passing
-    the parameter itself onward works (I). Every fold-evidence builder in the
-    move layer is therefore a TOP-LEVEL pure lemma applied to the parameter,
-    never a local λ over it. -/
+    (`lamFeedG`/`lamFeedJ` are rejected below) — while citing snapshots of
+    data works (`lamFeedH`) and passing the parameter itself onward works
+    (`lamFeedI`). Every fold-evidence builder in the move layer is therefore a
+    top-level pure lemma applied to the parameter, never a local λ over it. -/
 def lamFeedG : Term := prog defer_check {
   fn Eat [fuel] (fuel : Nat, n : Nat,
                  Hp : Π (K2 : Nat) → Π (Hk2 : Le K2 n) → Le K2 (S n)) -> Unit {
@@ -4484,16 +4464,17 @@ example : progOk lamFeedJ = false := by native_decide
 
 
 
-/-- THE HEADLINE: the whole chain — walk, slot pack, New, the move layer,
-    Insert WITH RESIZE, Remove — checks as ONE program, against no table. -/
+/-- The whole chain — walk, slot pack, New, the move layer, Insert with
+    resize, Remove — checks as one program, against no table. -/
 def s1Chain : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog defer_check { () }
 example : progOk s1Chain = true := by native_decide
 
-/-- THE CHECKED CALLER: the fixed ensures are exactly sufficient for a caller
-    to discharge Insert's preconditions BY PROOF — New's size conjunct
+/-- The checked caller: the fixed ensures are exactly sufficient for a caller
+    to discharge Insert's preconditions by proof — New's size conjunct
     transports the fuel bound, and with resize in place there is no headroom
-    obligation left. (S1's Hroom made this impossible without invariant
-    projections; the resize is what closes the spec.) -/
+    obligation left. (Without resize, discharging the precondition needed an
+    explicit headroom hypothesis derived from invariant projections; the
+    resize is what closes the spec.) -/
 def s2CheckedCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog defer_check {
   let Pair(m0, ev0) = NewHM(2, unit);
   let M0 = m0;
@@ -4506,7 +4487,7 @@ def s2CheckedCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest p
   () }
 example : progOk s2CheckedCaller = true := by native_decide
 
-/-! ### The rotation, checked with VALUES — the single-allocation move's core
+/-! ### The rotation, checked with values — the single-allocation move's core
 
     The mem::replace chain through a matched borrow: each lowercase read is
     immediately followed by an overwrite of the slot it was read from, so a
@@ -4538,8 +4519,8 @@ example : progOk rotValues = true := by native_decide
 
 
 
--- BISECTION P1: identity round-trip of the REAL container through &mut —
--- destructure, project the clauses, repack via MkInv, refill.
+-- P1: identity round-trip of the real container through &mut — destructure,
+-- project the clauses, repack via MkInv, refill.
 def s1P1 : Term := prog{
   fn Touch (self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
       Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots)) -> Unit {
@@ -4556,8 +4537,8 @@ def s1P1 : Term := prog{
   () }
 example : progOk s1P1 = true := by native_decide
 
--- BISECTION P2a: carve, then refill with the UNTOUCHED entry clauses (typed at
--- the entry slots sigma) — isolates the audit-side segment-fold conversion.
+-- P2a: carve, then refill with the untouched entry clauses (typed at the
+-- entry slots sigma) — isolates the audit-side segment-fold conversion.
 def s1P2a : Term := prog{
   fn SlotOfE (h : Nat, n : Nat, Hne : Le (S Z) n)
       -> Σ (i : Nat). Σ (r : Nat). Σ (hd : Id Nat n (Add i (S r))). Id Nat i (Mod h n) {
@@ -4581,21 +4562,17 @@ def s1P2a : Term := prog{
       MkInv cap load nn SL0 HLe1 HLoad HLed HCnt HSf))));
     () };
   () }
--- LEDGERED FLIP (rebase onto 87818899, Gap A): this was the PINNED LIMIT that
--- shaped the op layer — the exit audit could not re-type a DEPENDENT pack whose
--- array component was still segmented, even though the sigma/composition
--- equation IS definitional (s1P2c below proved that; the gap was the audit's
--- conversion). Main's audit-fold commit (9dfc964b: "the exit audit folds a
--- rejoined carve before re-typing a dependent pack") closes exactly that gap,
--- and this probe now CHECKS: the carve is rejoined at the exit, the fold
--- rebuilds the whole-array value, and the pack re-types against it. The op
--- layer's callee routing (SlotUpd/SlotRem/MoveOne) remains VALID and stays as
--- built — this flip records that the boundary is no longer FORCED, not that it
--- was wrong.
+-- The exit audit needs a carved array rejoined before it can re-type a
+-- dependent pack: the array component may not stay segmented, even though
+-- the sigma/composition equation is definitional (`s1P2c` below proves
+-- that). `s1P2a` checks exactly this: the carve is rejoined at the exit, the
+-- fold rebuilds the whole-array value, and the pack re-types against it. The
+-- op layer's callee routing (`SlotUpd`/`SlotRem`/`MoveOne`) does not need to
+-- route around this.
 example : progOk s1P2a = true := by native_decide
 
 -- P2c/P2d: is the entry sigma definitionally the composition of the segment
--- sigmas, from a carve of a LOCAL owned array? Asked with an ascribed Refl.
+-- sigmas, from a carve of a local owned array? Asked with an ascribed Refl.
 def s1P2c : Term := prog{
   fn Touch (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
             a : Array n (List (Σ (k : Nat). Nat))) -> Unit {
@@ -4618,8 +4595,8 @@ example : progOk s1P2c = true := by native_decide
 
 /-! ## (xviii) The borrow-returning ops — shape probes first
 
-    GetMut must return a borrow INTO the pack, so its carve group cannot close
-    before the return. Two candidate shapes over the REAL container: the carve
+    GetMut must return a borrow into the pack, so its carve group cannot close
+    before the return. Two candidate shapes over the real container: the carve
     inline in the pack-navigating fn, and the carve pushed into a `SlotGet`
     callee whose parameter is the plain (non-dependent) array borrow. -/
 
@@ -4716,7 +4693,7 @@ def gmProbe2 : Term := prog defer_check {
   };
   () }
 
-/-- Probe G3: NO CARVE — a symbolic-index ELEMENT borrow into the slots field,
+/-- Probe G3: no carve — a symbolic-index element borrow into the slots field,
     with the bound built from the packed `Le 1 cap` and the minted slot
     identity. Slots stays one leaf holding one element loan. -/
 def gmProbe3 : Term := prog defer_check {
@@ -4755,43 +4732,45 @@ def gmProbe3 : Term := prog defer_check {
               WalkVal(fuel, key, dflt, bb)
             } } } } } };
   () }
-/-! ### THE WALL, pinned (all three assertions below): the borrow-returning
-    ops cannot CHECK against the intrinsically-packed container today.
+/-! ### A known kernel gap: the borrow-returning ops (pinned by the three
+    assertions below) cannot check against the intrinsically-packed
+    container today.
 
     A returned borrow keeps its group open across the op's return, so the exit
     audit re-types self's payload with a loan (and the carve's segmentation)
-    still inside the slots component. For a PLAIN owed type that is fine — the
-    audit exempts the returned borrow's sub-place and checks the rest
-    (quicksortA's shape; packNav's toy pack with a slots-INDEPENDENT tail
-    passes the same way). But HashMapT's Σ0 tail is `HMInvT cap load n slots`:
-    re-typing it needs the WHOLE slots value, which no exemption can provide
-    while a leaf of it is lent out — and every route to a bucket element goes
-    through a carve or an index place (gmProbe1 inline, gmProbe3 index-place)
-    or a callee boundary whose group-end re-mints the component and orphans
-    the packed proof (gmProbe2).
+    still inside the slots component. For a plain owned type that is fine —
+    the audit exempts the returned borrow's sub-place and checks the rest
+    (`quicksortA`'s shape; `packNav`'s toy pack with a slots-independent tail
+    passes the same way). But `HashMapT`'s Σ0 tail is `HMInvT cap load n
+    slots`: re-typing it needs the whole slots value, which no exemption can
+    provide while a leaf of it is lent out — and every route to a bucket
+    element goes through a carve or an index place (`gmProbe1` inline,
+    `gmProbe3` index-place) or a callee boundary whose group-end re-mints the
+    component and orphans the packed proof (`gmProbe2`).
 
-    This is `12-design-borrow-refounding.md`'s loan-attached-debts gap arriving
-    at the SAFETY layer, not just the functional one: the flagship doc's
-    "verified for safety + the packed invariant" expectation for GetMut was
-    calibrated on the probe-era WHOLE-PARAMETER audit exemption, which was
-    unsound and has since been fixed to per-sub-place (see AuditExemption) —
-    the sound audit closes exactly the loophole the design would have used.
-    Fixing it is kernel work (the audit/conversion in Machine.lean), so per
-    the process rule this is pinned and reported, not patched. The ops below
-    are still EXERCISED by the executing differential (the machine runs them
-    correctly); their chain is asserted progRejects with the audit's needle. -/
+    This is `12-design-borrow-refounding.md`'s loan-attached-debts gap
+    arriving at the safety layer, not just the functional one: the flagship
+    doc's "verified for safety + the packed invariant" expectation for GetMut
+    was calibrated on an earlier whole-parameter audit exemption, which was
+    unsound and has since been fixed to per-sub-place (see
+    `AuditExemption.lean`) — the sound audit closes exactly the loophole the
+    design would have used. Fixing it is kernel work (the audit/conversion in
+    `Machine.lean`), so it is reported here rather than patched. The ops
+    below are still exercised by the executing differential (the machine
+    runs them correctly); their chain is asserted `progRejects` with the
+    audit's needle. -/
 
 example : progOk gmProbe1 = false := by native_decide
 example : progOk gmProbe2 = false := by native_decide
 example : progOk gmProbe3 = false := by native_decide
 
 
-/-! ## (xx) NOT VACUOUS — the lying twins, one per conjunct
+/-! ## (xx) Not vacuous: the lying twins, one per conjunct
 
-    Each return type is the ONLY description of its op, so each fixed conjunct
-    gets a twin changing exactly it: the chain is shared VERBATIM through the
-    splice and the lie is the only variable (M23's discipline; ArraySort's
-    form). Every one must be REFUSED. -/
+    Each return type is the only description of its op, so each fixed conjunct
+    gets a twin changing exactly it: the chain is shared verbatim through the
+    splice and the lie is the only variable (ArraySort's form). Every one must
+    be refused. -/
 
 -- New, conjunct 1: the fresh map claims to answer every key with `Some 0`.
 example : progOk (hmS1Under (prog defer_check {
@@ -4799,21 +4778,21 @@ example : progOk (hmS1Under (prog defer_check {
     Id Nat (SizeHM hm) Z })
   insRetHonest remRetHonest prog defer_check { () }) = false := by native_decide
 
--- New, conjunct 2: the fresh map claims size ONE.
+-- New, conjunct 2: the fresh map claims size one.
 example : progOk (hmS1Under (prog defer_check {
     Σ (hm : HashMapT). Σ0 (Hfind : Π (Q : Nat) → Id OptN (FindHM Q hm) NoneN).
     Id Nat (SizeHM hm) (S Z) })
   insRetHonest remRetHonest prog defer_check { () }) = false := by native_decide
 
--- Insert, conjunct 1a: the find-equation lied onto the ENTRY map — the exit
--- claims the OLD answers (the update never happened).
+-- Insert, conjunct 1a: the find-equation lied onto the entry map — the exit
+-- claims the old answers (the update never happened).
 example : progOk (hmS1Under newRetHonest (prog defer_check {
     Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (old *%selfIv))
          (FindIns Q %keyIv %valIv (old *%selfIv))).
     Id Nat (SizeHM (*%selfIv)) (SizeIns %keyIv (old *%selfIv)) })
   remRetHonest prog defer_check { () }) = false := by native_decide
 
--- Insert, conjunct 1b: the frame direction FLIPPED — the model updated the
+-- Insert, conjunct 1b: the frame direction flipped — the model updated the
 -- exit state instead of the entry state.
 example : progOk (hmS1Under newRetHonest (prog defer_check {
     Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (old *%selfIv))
@@ -4828,7 +4807,7 @@ example : progOk (hmS1Under newRetHonest (prog defer_check {
     Id Nat (SizeHM (*%selfIv)) (S (SizeIns %keyIv (old *%selfIv))) })
   remRetHonest prog defer_check { () }) = false := by native_decide
 
--- Remove, conjunct 1: the returned option claims the EXIT map's answer (which
+-- Remove, conjunct 1: the returned option claims the exit map's answer (which
 -- is None at the removed key) instead of the entry map's.
 example : progOk (hmS1Under newRetHonest insRetHonest (prog defer_check {
     Σ (r : Σ (bb : Bool). OptP bb Nat).
@@ -4857,9 +4836,9 @@ example : progOk (hmS1Under newRetHonest insRetHonest (prog defer_check {
     Id Nat (SizeHM (*%selfRv)) (SizeIns %keyRv (old *%selfRv)) })
   prog defer_check { () }) = false := by native_decide
 
-/-! ## (xxii) NOT VACUOUS, part 2 — the BODY twins (transcribed, M28 D1) -/
+/-! ## (xxii) Not vacuous, part 2: the body twins -/
 
-/-- BODY TWIN: insert into the UNHASHED slot — the slot pack computed off the
+/-- Body twin: insert into the unhashed slot — the slot pack computed off the
     wrong key. Caught where it is written: the returned identity cannot say
     `i = Mod h n`. -/
 def twinUnhashedSlot : Term := prog defer_check {
@@ -4869,7 +4848,7 @@ def twinUnhashedSlot : Term := prog defer_check {
   () }
 example : progOk twinUnhashedSlot = false := by native_decide
 
-/-- BODY TWIN: skip the duplicate-key OVERWRITE — the hit branch reads
+/-- Body twin: skip the duplicate-key overwrite — the hit branch reads
     everything and writes nothing, claiming the same conjuncts. Caught at the
     walk's own return: the exit bucket still holds the old value. -/
 def twinNoOverwrite : Term := prog defer_check {
@@ -4921,10 +4900,10 @@ def twinNoOverwrite : Term := prog defer_check {
   () }
 example : progOk twinNoOverwrite = false := by native_decide
 
-/-- BODY TWIN: skip the `n` BUMP — the fresh-key path packs the old count.
+/-- Body twin: skip the `n` bump — the fresh-key path packs the old count.
     The pack's counting clause has no proof at the stale `n`, and the ledger
-    argument no longer types either. Transcribed with the full insert prefix
-    (M28 D1: a body difference has no splice that can reach it). -/
+    argument no longer types either. Transcribed with the full insert prefix,
+    since a body difference has no splice that can reach it. -/
 def twinNoBumpUnder (iret : Term) : Term := prog{
   fn InsertInList [fuel] (fuel : Nat, cap : Nat, islot : Nat, key : Nat, val : Nat,
                           b : &mut (List (Σ (k : Nat). Nat)),
@@ -5713,9 +5692,9 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
   () }
 example : progOk (twinNoBumpUnder insRetHonest) = false := by native_decide
 
-/-- BODY TWIN: skip the RESIZE — the ledger-tripped path packs at the OLD
+/-- Body twin: skip the resize — the ledger-tripped path packs at the old
     capacity anyway, transcribing the no-resize arm into the else-arm. Caught
-    by the PACKED LOAD LEDGER: the branch equation says the threshold test
+    by the packed load ledger: the branch equation says the threshold test
     came out False, so its LebTrueLe citation cannot type. -/
 def twinNoResizeUnder (iret : Term) : Term := prog{
   fn InsertInList [fuel] (fuel : Nat, cap : Nat, islot : Nat, key : Nat, val : Nat,
@@ -6359,6 +6338,1642 @@ def twinNoResizeUnder (iret : Term) : Term := prog{
 example : progOk (twinNoResizeUnder insRetHonest) = false := by native_decide
 
 
+
+
+end Dllbc.Tests.HashMap
+end
+
+/-!
+# The hashmap's pinned borrow-returning ops: GetMut and GetMutOrInsert
+
+`GetMut`/`GetMutOrInsert` hand back a `&mut` into the hashmap's slot array
+under a one-slot exit contract `~> E`: instead of re-typing the whole
+container symbolically, a returned `&mut (s : τ ~> E)` states what the
+container becomes once the borrow ends, with `*res` naming the borrow's own
+exit payload, and the checker discharges the contract by hole-filling rather
+than replaying the walk. This module builds the hashmap instance of that
+contract: `SetHM` (the pack-to-pack model update), the pinned bucket walk,
+and `GetMutHM`/`GetMutOrInsertHM`, closing with the round-trip law (what you
+write through the cursor is there on the next get) checked at hashmap scale.
+
+Every spec function here compares keys as `Eqb query entrykey`, matching
+`FindL`'s own argument order, so the walk's branch equation (`if e : Eqb key
+*kk`) is exactly the spine the pin's normalization gets stuck on. The
+opposite orientation (`Eqb *kk key`) would need a repair lemma to line back
+up, and a pin has no lemma slot to hold one — so this argument order is
+load-bearing, not a style choice.
+-/
+
+section
+
+open Dllbc
+open Dllbc.StdLemmas (LeRefl LeAdd LeAddL LeTrans LePredL
+  AddSucc AddZero IdTrans IdCongr IdSym NatRw BoolFT BoolTF
+  LeRwL LeRwR EqbRefl EqbTrueEq EqbSym IfDec Znots SInj
+  Mod ModLtN Sub AddSubCancel Mul)
+
+namespace Dllbc.Tests.HashMap
+
+/-! ## The bucket-level update, key-oriented
+
+    `BSetK q v l` sets the value at key `q` to `v`, leaving keys and structure
+    untouched; a no-op when `q` is absent. It mirrors `FindL` clause for
+    clause, so the two can never disagree about which entry is "the" hit. -/
+
+def BSetK : Term := prog defer_check {
+  λ (Q : Nat). λ (V : Nat). λ (L : List (Σ (k : Nat). Nat)).
+    elim L return (λ (Lm : List (Σ (k : Nat). Nat)). List (Σ (k : Nat). Nat)) {
+      Nil => Nil,
+      Cons (E) (T) Rec =>
+        elim E return (λ (Em : Σ (k : Nat). Nat). List (Σ (k : Nat). Nat)) {
+          Pair (K2) (V2) =>
+            elim (Eqb Q K2) return (λ (Bm : Bool). List (Σ (k : Nat). Nat)) {
+              True => Cons(Pair(K2, V), T),
+              False => Cons(Pair(K2, V2), Rec) } } } }
+
+example : chkL prog defer_check { Refl } prog defer_check { Id (List (Σ (k : Nat). Nat))
+  (BSetK 3 99 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil)))
+  Cons(Pair(1, 10), Cons(Pair(3, 99), Nil)) } = true := by native_decide
+example : chkL prog defer_check { Refl } prog defer_check { Id (List (Σ (k : Nat). Nat))
+  (BSetK 7 99 Cons(Pair(1, 10), Nil)) Cons(Pair(1, 10), Nil) } = true := by native_decide
+example : chkL prog defer_check { Refl } prog defer_check { Id (List (Σ (k : Nat). Nat))
+  (BSetK 3 99 Cons(Pair(3, 30), Cons(Pair(3, 31), Nil)))
+  Cons(Pair(3, 99), Cons(Pair(3, 31), Nil)) } = true := by native_decide
+
+/-- Presence survives a non-hit head: from `Eqb q k0 ≡ False` and presence in
+    the whole bucket, presence in the tail — the walk's recursion premise. -/
+def HitTailEv : Term := prog defer_check {
+  λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
+  λ (E : Id Bool (Eqb Q K0) False).
+  λ (H : Id Bool (HitL Q Cons(Pair(K0, V0), T)) True).
+    IdTrans Bool (HitL Q T) (HitL Q Cons(Pair(K0, V0), T)) True
+      (IdSym Bool (HitL Q Cons(Pair(K0, V0), T)) (HitL Q T)
+        (IdCongr Bool Bool
+          (λ (W : Bool). IsSomeB (elim W return (λ (Bm : Bool). Σ (bb : Bool). OptP bb Nat) {
+            True => SomeN V0, False => FindL Q T }))
+          (Eqb Q K0) False E))
+      H }
+def HitTailEvTy : Term := prog defer_check {
+  Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
+    Id Bool (Eqb Q K0) False → Id Bool (HitL Q Cons(Pair(K0, V0), T)) True →
+    Id Bool (HitL Q T) True }
+example : chkL HitTailEv HitTailEvTy = true := by native_decide
+
+/-- The hit leg's return conjunct: at `Eqb q k0 ≡ True`, the head's value IS
+    the bucket's answer at `q`. Stated with `Some (*r)` on the left so the
+    constructed proof's type is verbatim the declared one. -/
+def FindEvHit : Term := prog defer_check {
+  λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
+  λ (E : Id Bool (Eqb Q K0) True).
+    IdSym OptN (FindL Q Cons(Pair(K0, V0), T)) (SomeN V0)
+      (IdCongr Bool OptN
+        (λ (W : Bool). elim W return (λ (Bm : Bool). Σ (bb : Bool). OptP bb Nat) {
+          True => SomeN V0, False => FindL Q T })
+        (Eqb Q K0) True E) }
+def FindEvHitTy : Term := prog defer_check {
+  Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
+    Id Bool (Eqb Q K0) True →
+    Id OptN (SomeN V0) (FindL Q Cons(Pair(K0, V0), T)) }
+example : chkL FindEvHit FindEvHitTy = true := by native_decide
+
+/-- The miss leg's transport: a non-hit head is skipped by the lookup, so tail
+    evidence lifts to the whole bucket. -/
+def FindTailEv : Term := prog defer_check {
+  λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
+  λ (E : Id Bool (Eqb Q K0) False).
+    IdSym OptN (FindL Q Cons(Pair(K0, V0), T)) (FindL Q T)
+      (IdCongr Bool OptN
+        (λ (W : Bool). elim W return (λ (Bm : Bool). Σ (bb : Bool). OptP bb Nat) {
+          True => SomeN V0, False => FindL Q T })
+        (Eqb Q K0) False E) }
+def FindTailEvTy : Term := prog defer_check {
+  Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
+    Id Bool (Eqb Q K0) False →
+    Id OptN (FindL Q T) (FindL Q Cons(Pair(K0, V0), T)) }
+example : chkL FindTailEv FindTailEvTy = true := by native_decide
+
+/-! ## Does a key-driven walk discharge its own pin?
+
+    A key-driven walk branches on `Eqb key *kk`, a stuck `Bool` over a
+    symbolic key. The pin `BSetK key (*res) t`, once normalized, is stuck at
+    that very `elim (Eqb key σkk)`, so discharge depends on whether the
+    checker's conversion can consult the branch's own equation (the hit leg
+    needs the True arm taken, the miss leg the False arm whose result must
+    converge with the recursive call's projected pin at the shared exit).
+    This test uses a plain `&mut Nat` return (no extra conjuncts) so a
+    failure can only be about the pin, not about anything else in the
+    signature. -/
+
+def bktGetPinOnly : Term := prog defer_check {
+  fn BktGetP [fuel] (fuel : Nat, key : Nat,
+      b : &mut (t : List (Σ (k : Nat). Nat) ~> BSetK key (*res) t),
+      Hin : Id Bool (HitL key (*b)) True,
+      Hf : Le (LenE (*b)) fuel) -> &mut Nat {
+    match b {
+      Nil => botElim Unit (BoolFT Hin),
+      Cons(Pair(kk, vv), tl) => match fuel {
+        Z => botElim Unit Hf,
+        S(f2) => {
+          let K0 = *kk;
+          let V0 = *vv;
+          let T0 = *tl;
+          if e : Eqb key *kk {
+            &m *vv
+          } else {
+            BktGetP(f2, key, &m *tl, HitTailEv key K0 V0 T0 e Hin, Hf)
+          } } } } };
+  () }
+
+/-- **This is refused.** The hit-leg fill normalizes to `Cons (Pair σ18 σ22)
+    σ17`, but the pin itself normalizes to a `boolRec` stuck on `Eqb σ11 σ18`
+    — whose True arm is literally that fill, one ι-step away, gated on the
+    very branch equation the body's `if e :` already established. Conversion
+    does not consult branch equations, and `Eqb` is a fold that stays stuck
+    even at syntactically equal neutral arguments (`EqbRefl` is a lemma, and
+    a pin has no lemma slot). So no key-comparing update can ever discharge a
+    pin over a symbolic key — not by accident, but on principle: **a pin's
+    data must be pin-computable.** The key-to-position conversion can't
+    happen inside the pin, so it has to happen in the signature instead: the
+    walk below recurses on a position (a constructor, so each branch is a
+    real refinement) and the position joins the parameters. -/
+example : progRejects bktGetPinOnly
+  "does not convert with the declared pin (boolRec" = true := by native_decide
+
+/-! ### The position vocabulary: where `key` sits, and the update that needs
+    no comparison -/
+
+/-- `FindPosL q l` — the hit's position; `LenE l` when absent (every miss adds
+    one `S`), which is exactly the or_insert write site. -/
+def FindPosL : Term := prog defer_check {
+  λ (Q : Nat). λ (L : List (Σ (k : Nat). Nat)).
+    elim L return (λ (Lm : List (Σ (k : Nat). Nat)). Nat) {
+      Nil => Z,
+      Cons (E) (T) Rec =>
+        elim E return (λ (Em : Σ (k : Nat). Nat). Nat) {
+          Pair (K2) (V2) =>
+            elim (Eqb Q K2) return (λ (Bm : Bool). Nat) {
+              True => Z,
+              False => S(Rec) } } } }
+
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat
+  (FindPosL 3 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil))) 1 } = true := by native_decide
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat
+  (FindPosL 9 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil))) 2 } = true := by native_decide
+
+/-- `BSetP p v l` — value at position `p` becomes `v`, key and structure kept,
+    no-op past the end. Index-first, so a constructor-refined `p` steps it with
+    NO key comparison anywhere — this is what makes it pin-dischargeable where
+    `BSetK` is not. -/
+def BSetP : Term := prog defer_check {
+  λ (P : Nat). λ (V : Nat).
+    elim P return (λ (Pz : Nat). Π (L : List (Σ (k : Nat). Nat)) → List (Σ (k : Nat). Nat)) {
+      Z => λ (L : List (Σ (k : Nat). Nat)).
+        elim L return (λ (Lm : List (Σ (k : Nat). Nat)). List (Σ (k : Nat). Nat)) {
+          Nil => Nil,
+          Cons (E) (T) Rec =>
+            Cons(elim E return (λ (Em : Σ (k : Nat). Nat). Σ (k : Nat). Nat) {
+              Pair (K2) (V2) => Pair(K2, V) }, T) },
+      S (P2) Rec => λ (L : List (Σ (k : Nat). Nat)).
+        elim L return (λ (Lm : List (Σ (k : Nat). Nat)). List (Σ (k : Nat). Nat)) {
+          Nil => Nil,
+          Cons (E) (T) Rec2 => Cons(E, Rec T) } } }
+
+example : chkL prog defer_check { Refl } prog defer_check { Id (List (Σ (k : Nat). Nat))
+  (BSetP 1 99 Cons(Pair(1, 10), Cons(Pair(3, 30), Nil)))
+  Cons(Pair(1, 10), Cons(Pair(3, 99), Nil)) } = true := by native_decide
+
+/-- Position `Z` on a hit bucket means the HEAD is the hit. -/
+def PosZHit : Term := prog defer_check {
+  λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
+  λ (Hp : Id Nat Z (FindPosL Q Cons(Pair(K0, V0), T))).
+    IfDec (Eqb Q K0) (Id Bool (Eqb Q K0) True)
+      (λ (Et : Id Bool (Eqb Q K0) True). Et)
+      (λ (Ef : Id Bool (Eqb Q K0) False).
+        botElim (Id Bool (Eqb Q K0) True)
+          (Znots (FindPosL Q T)
+            (IdTrans Nat Z (FindPosL Q Cons(Pair(K0, V0), T)) (S (FindPosL Q T)) Hp
+              (IdCongr Bool Nat (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
+                True => Z, False => S (FindPosL Q T) }) (Eqb Q K0) False Ef)))) }
+def PosZHitTy : Term := prog defer_check {
+  Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
+    Id Nat Z (FindPosL Q Cons(Pair(K0, V0), T)) → Id Bool (Eqb Q K0) True }
+example : chkL PosZHit PosZHitTy = true := by native_decide
+
+/-- Position `S p2` on a bucket means the head MISSED and `p2` locates the key
+    in the tail — the walk's recursion evidence, in one package. -/
+def PosSStep : Term := prog defer_check {
+  λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)). λ (P2 : Nat).
+  λ (Hp : Id Nat (S P2) (FindPosL Q Cons(Pair(K0, V0), T))).
+    IfDec (Eqb Q K0) ((Id Bool (Eqb Q K0) False) × (Id Nat P2 (FindPosL Q T)))
+      (λ (Et : Id Bool (Eqb Q K0) True).
+        botElim ((Id Bool (Eqb Q K0) False) × (Id Nat P2 (FindPosL Q T)))
+          (Znots P2 (IdSym Nat (S P2) Z
+            (IdTrans Nat (S P2) (FindPosL Q Cons(Pair(K0, V0), T)) Z Hp
+              (IdCongr Bool Nat (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
+                True => Z, False => S (FindPosL Q T) }) (Eqb Q K0) True Et)))))
+      (λ (Ef : Id Bool (Eqb Q K0) False).
+        Pair(Ef, SInj P2 (FindPosL Q T)
+          (IdTrans Nat (S P2) (FindPosL Q Cons(Pair(K0, V0), T)) (S (FindPosL Q T)) Hp
+            (IdCongr Bool Nat (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
+              True => Z, False => S (FindPosL Q T) }) (Eqb Q K0) False Ef)))) }
+def PosSStepTy : Term := prog defer_check {
+  Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
+  Π (P2 : Nat) → Id Nat (S P2) (FindPosL Q Cons(Pair(K0, V0), T)) →
+    (Id Bool (Eqb Q K0) False) × (Id Nat P2 (FindPosL Q T)) }
+example : chkL PosSStep PosSStepTy = true := by native_decide
+
+/-! ### The position-driven walk, and why it discharges
+
+    Recursing on `p` instead of the key means every recursive step the pin
+    owes lands in a branch where `p` is a constructor, so it's a real
+    refinement rather than a stuck fold. The key never needs comparing at
+    the pin level; the return evidence reconstructs the `FindL` claim from
+    the position facts afterward, at the value level, where lemmas are
+    allowed. -/
+
+def bktGetAtDecl : Term := prog{
+  fn BktGetAt [p] (p : Nat, key : Nat,
+      b : &mut (t : List (Σ (k : Nat). Nat) ~> BSetP p (*res) t),
+      Hhit : Id Bool (HitL key (*b)) True,
+      Hpos : Id Nat p (FindPosL key (*b)))
+      -> Σ (r : &mut Nat). Id OptN (SomeN (*r)) (FindL key (old *b)) {
+    match b {
+      Nil => botElim Unit (BoolFT Hhit),
+      Cons(Pair(kk, vv), tl) => {
+        let K0 = *kk;
+        let V0 = *vv;
+        let T0 = *tl;
+        match p {
+          Z => Pair(&m *vv, FindEvHit key K0 V0 T0 (PosZHit key K0 V0 T0 Hpos)),
+          S(p2) => {
+            let Ep = PosSStep key K0 V0 T0 p2 Hpos;
+            let Emiss = FstT (Id Bool (Eqb key K0) False) (Id Nat p2 (FindPosL key T0)) Ep;
+            let Epos2 = SndT (Id Bool (Eqb key K0) False) (Id Nat p2 (FindPosL key T0)) Ep;
+            let Pair(r2, h2) = BktGetAt(p2, key, &m *tl,
+              HitTailEv key K0 V0 T0 Emiss Hhit, Epos2);
+            let W0 = *r2;
+            Pair(r2, IdTrans OptN (SomeN W0) (FindL key T0)
+              (FindL key Cons(Pair(K0, V0), T0)) h2
+              (FindTailEv key K0 V0 T0 Emiss))
+          } } } } };
+  () }
+
+example : progOk bktGetAtDecl = true := by native_decide
+
+/-! ## The slot split, spelled so the pin can cite it
+
+    Carving the slot array at `Mod key cap` needs its split point stated in
+    terms the pin's own normalization actually produces, not a fresh minted
+    variable that then fails to convert with `SetHM`'s internal `Mod`/`CoMod`
+    applications. So the pinned op carves at the literal applications and
+    cites `ModSplit` for the arithmetic instead. -/
+
+/-- The residue: everything after `key`'s slot. `cap = Mod key cap + S (CoMod
+    key cap)` whenever `1 ≤ cap` — that is `ModSplit`. -/
+def CoMod : Term := prog defer_check { λ (Q : Nat). λ (C : Nat). Sub C (S (Mod Q C)) }
+
+def ModSplit : Term := prog defer_check {
+  λ (Q : Nat). λ (C : Nat). λ (H : Le (S Z) C).
+    IdSym Nat (Add (Mod Q C) (S (CoMod Q C))) C
+      (IdTrans Nat (Add (Mod Q C) (S (CoMod Q C))) (S (Add (Mod Q C) (CoMod Q C))) C
+        (AddSucc (Mod Q C) (CoMod Q C))
+        (AddSubCancel C (S (Mod Q C)) (ModLtN Q C H))) }
+def ModSplitTy : Term := prog defer_check {
+  Π (Q : Nat) → Π (C : Nat) → Le (S Z) C →
+    Id Nat C (Add (Mod Q C) (S (CoMod Q C))) }
+example : chkL ModSplit ModSplitTy = true := by native_decide
+
+-- Concrete check: cap 5, key 7 splits into slot 2 and residue 2.
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat 5 (Add (Mod 7 5) (S (CoMod 7 5))) } = true := by
+  native_decide
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat (CoMod 7 5) 2 } = true := by native_decide
+
+/-! ## `SetHM` — the pack-to-pack model update, decomposition-first
+
+    `SetHM` names the carve's pieces with `atake`/`adrop` at the exact split
+    terms the pinned body carves at (`Mod q cap`, `CoMod q cap`), with the
+    element-level work done by `BSetK` on the `acons`-headed suffix — so
+    the pin's hole-filled exit converts against this decomposition rather
+    than an opaque update. The invariant component rides through untouched:
+    a value write keeps every clause's inhabitant as it was. -/
+
+def BumpHead : Term := prog defer_check {
+  λ (Q : Nat). λ (V : Nat). λ (R : Nat). λ (A : Array (S R) (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
+        Array Mz (List (Σ (k : Nat). Nat)))
+      Arr()
+      (λ (M : Nat). λ (X : List (Σ (k : Nat). Nat)).
+        λ (XS : Array M (List (Σ (k : Nat). Nat))).
+        λ (Ih : Array M (List (Σ (k : Nat). Nat))).
+          acons M (BSetK Q V X) XS)
+      (S R) A }
+
+def SetHM : Term := prog defer_check {
+  λ (Q : Nat). λ (V : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim Hm return (λ (H0 : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+        Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+          Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+      Pair (Cap) (R1) =>
+        elim R1 return (λ (H1 : Σ (load : Nat). Σ (n : Nat).
+            Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))). HMInvT Cap load n slots).
+            Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+              Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+          Pair (Load) (R2) =>
+            elim R2 return (λ (H2 : Σ (n : Nat).
+                Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                  HMInvT Cap Load n slots).
+                Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                  Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+              Pair (N) (R3) =>
+                elim R3 return (λ (H3 : Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                    HMInvT Cap Load N slots).
+                    Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+                  Pair (Slots) (Inv) =>
+                    Pair(Cap, Pair(Load, Pair(N, Pair(
+                      arrCat (Mod Q Cap) (S (CoMod Q Cap))
+                        (atake (Mod Q Cap) (S (CoMod Q Cap)) Slots)
+                        (BumpHead Q V (CoMod Q Cap)
+                          (adrop (Mod Q Cap) (S (CoMod Q Cap)) Slots)),
+                      Inv)))) } } } } }
+
+-- The hit key's answer moves; the frame — a different key hashing to the
+-- same slot, and the size — does not.
+example : chkL prog defer_check { Refl } prog defer_check { Id OptN (FindHM 3 (SetHM 3 99 hmEx)) (SomeN 99) }
+  = true := by native_decide
+example : chkL prog defer_check { Refl } prog defer_check { Id OptN (FindHM 5 (SetHM 3 99 hmEx)) NoneN }
+  = true := by native_decide
+example : chkL prog defer_check { Refl } prog defer_check { Id OptN (FindHM 7 (SetHM 7 99 hmEx)) NoneN }
+  = true := by native_decide
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat (SizeHM (SetHM 3 99 hmEx)) 1 } = true := by
+  native_decide
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat (CapHM (SetHM 3 99 hmEx)) 2 } = true := by
+  native_decide
+
+/-- `SetHM` preserves the size — the second call's fuel bound. Nested Σ-elims
+    to the leaf, where both sides compute to the same `N` and `Refl` closes. -/
+def SetHMSize : Term := prog defer_check {
+  λ (Q : Nat). λ (V : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim Hm return (λ (H0 : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+        Id Nat (SizeHM (SetHM Q V H0)) (SizeHM H0)) {
+      Pair (Cap) (R1) =>
+        elim R1 return (λ (H1 : Σ (load : Nat). Σ (n : Nat).
+            Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))). HMInvT Cap load n slots).
+            Id Nat (SizeHM (SetHM Q V Pair(Cap, H1))) (SizeHM Pair(Cap, H1))) {
+          Pair (Load) (R2) =>
+            elim R2 return (λ (H2 : Σ (n : Nat).
+                Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                  HMInvT Cap Load n slots).
+                Id Nat (SizeHM (SetHM Q V Pair(Cap, Pair(Load, H2))))
+                  (SizeHM Pair(Cap, Pair(Load, H2)))) {
+              Pair (N) (R3) =>
+                elim R3 return (λ (H3 : Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                    HMInvT Cap Load N slots).
+                    Id Nat (SizeHM (SetHM Q V Pair(Cap, Pair(Load, Pair(N, H3)))))
+                      (SizeHM Pair(Cap, Pair(Load, Pair(N, H3))))) {
+                  Pair (Slots) (Inv) => Refl } } } } }
+def SetHMSizeTy : Term := prog defer_check {
+  Π (Q : Nat) → Π (V : Nat) →
+  Π (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) →
+    Id Nat (SizeHM (SetHM Q V Hm)) (SizeHM Hm) }
+example : chkL SetHMSize SetHMSizeTy = true := by native_decide
+
+/-! ## The map level — `SetHMAt`, and the pinned `GetMutHM`
+
+    Citing `ModSplit key cap` directly in the carve would refine
+    `σcap := Add (Mod key σcap) …`, which is cyclic and fails the occurs
+    check. So the slot index and residue enter as parameters instead, with
+    their defining equations carried as evidence, and the pin cites the
+    parameters: `SetHMAt i rr p (*res) s`. The key leaves the pin entirely —
+    slot `i` and cell `p` are the pin-computable data; `key` only appears in
+    the return conjuncts and in the equations (`Him`/`Hhit`/`Hpos`) tying the
+    data back to it. The caller mints `i`/`rr` as `Mod`/`CoMod` and
+    discharges `Hd` with `ModSplit` from the previous section. -/
+
+def BumpHeadP : Term := prog defer_check {
+  λ (P : Nat). λ (V : Nat). λ (R : Nat). λ (A : Array (S R) (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
+        Array Mz (List (Σ (k : Nat). Nat)))
+      Arr()
+      (λ (M : Nat). λ (X : List (Σ (k : Nat). Nat)).
+        λ (XS : Array M (List (Σ (k : Nat). Nat))).
+        λ (Ih : Array M (List (Σ (k : Nat). Nat))).
+          acons M (BSetP P V X) XS)
+      (S R) A }
+
+def SetHMAt : Term := prog defer_check {
+  λ (I : Nat). λ (R : Nat). λ (P : Nat). λ (V : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim Hm return (λ (H0 : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+        Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+          Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+      Pair (Cap) (R1) =>
+        elim R1 return (λ (H1 : Σ (load : Nat). Σ (n : Nat).
+            Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))). HMInvT Cap load n slots).
+            Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+              Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+          Pair (Load) (R2) =>
+            elim R2 return (λ (H2 : Σ (n : Nat).
+                Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                  HMInvT Cap Load n slots).
+                Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                  Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+              Pair (N) (R3) =>
+                elim R3 return (λ (H3 : Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                    HMInvT Cap Load N slots).
+                    Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+                  Pair (Slots) (Inv) =>
+                    Pair(Cap, Pair(Load, Pair(N, Pair(
+                      arrCat I (S R) (atake I (S R) Slots)
+                        (BumpHeadP P V R (adrop I (S R) Slots)),
+                      Inv)))) } } } } }
+
+/-- The position of `q` in its hashed bucket, over the pack. -/
+def PosHM : Term := prog defer_check {
+  λ (Q : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim Hm return (λ (H0 : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots). Nat) {
+      Pair (Cap) (R1) =>
+        elim R1 return (λ (H1 : Σ (load : Nat). Σ (n : Nat).
+            Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))). HMInvT Cap load n slots). Nat) {
+          Pair (Load) (R2) =>
+            elim R2 return (λ (H2 : Σ (n : Nat).
+                Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                  HMInvT Cap Load n slots). Nat) {
+              Pair (N) (R3) =>
+                elim R3 return (λ (H3 : Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                    HMInvT Cap Load N slots). Nat) {
+                  Pair (Slots) (Inv) => FindPosL Q (AgetB Cap Slots (Mod Q Cap)) } } } } }
+
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat (PosHM 3 hmEx) Z } = true := by native_decide
+
+/-- The crossing fact at the carve, index moved to the hash by the equation:
+    `AgetB` of the composition at `Mod q cap` IS the carved bucket. -/
+def AgetAtMod : Term := prog defer_check {
+  λ (I : Nat). λ (R : Nat). λ (M : Nat).
+  λ (L : Array I (List (Σ (k : Nat). Nat))). λ (B : List (Σ (k : Nat). Nat)).
+  λ (H : Array R (List (Σ (k : Nat). Nat))).
+  λ (Him : Id Nat I M).
+    NatRw (λ (W : Nat). Id (List (Σ (k : Nat). Nat))
+        (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) W) B)
+      I M Him
+      (AgetBCatMid R B H I L) }
+def AgetAtModTy : Term := prog defer_check {
+  Π (I : Nat) → Π (R : Nat) → Π (M : Nat) →
+  Π (L : Array I (List (Σ (k : Nat). Nat))) → Π (B : List (Σ (k : Nat). Nat)) →
+  Π (H : Array R (List (Σ (k : Nat). Nat))) →
+    Id Nat I M →
+    Id (List (Σ (k : Nat). Nat))
+      (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M) B }
+example : chkL AgetAtMod AgetAtModTy = true := by native_decide
+
+/-! ### The value-level lookup — the Refl-matchable conjunct
+
+    A return conjunct like `Id (Opt Nat) (Some (*r)) (FindHM key (old *self))`
+    wraps the payload in a rigid constructor, and a `Refl`-match can't refine
+    a symbolic variable sitting under a rigid head on both sides. So the op
+    returns both: a bare Nat-level primary (`FindValHM`, the caller's
+    `Refl`-match handle) and the `Opt`-shaped conjunct alongside it for
+    callers that want the full statement. -/
+
+def FindVL : Term := prog defer_check {
+  λ (Q : Nat). λ (L : List (Σ (k : Nat). Nat)).
+    elim L return (λ (Lm : List (Σ (k : Nat). Nat)). Nat) {
+      Nil => Z,
+      Cons (E) (T) Rec =>
+        elim E return (λ (Em : Σ (k : Nat). Nat). Nat) {
+          Pair (K2) (V2) =>
+            elim (Eqb Q K2) return (λ (Bm : Bool). Nat) {
+              True => V2,
+              False => Rec } } } }
+
+def FindValHM : Term := prog defer_check {
+  λ (Q : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim Hm return (λ (H0 : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots). Nat) {
+      Pair (Cap) (R1) =>
+        elim R1 return (λ (H1 : Σ (load : Nat). Σ (n : Nat).
+            Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))). HMInvT Cap load n slots). Nat) {
+          Pair (Load) (R2) =>
+            elim R2 return (λ (H2 : Σ (n : Nat).
+                Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                  HMInvT Cap Load n slots). Nat) {
+              Pair (N) (R3) =>
+                elim R3 return (λ (H3 : Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                    HMInvT Cap Load N slots). Nat) {
+                  Pair (Slots) (Inv) => FindVL Q (AgetB Cap Slots (Mod Q Cap)) } } } } }
+
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat (FindValHM 3 hmEx) 30 } = true := by native_decide
+
+/-- The hit leg's Nat-level conjunct. -/
+def FindVEvHit : Term := prog defer_check {
+  λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
+  λ (E : Id Bool (Eqb Q K0) True).
+    IdSym Nat (FindVL Q Cons(Pair(K0, V0), T)) V0
+      (IdCongr Bool Nat
+        (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
+          True => V0, False => FindVL Q T })
+        (Eqb Q K0) True E) }
+def FindVEvHitTy : Term := prog defer_check {
+  Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
+    Id Bool (Eqb Q K0) True →
+    Id Nat V0 (FindVL Q Cons(Pair(K0, V0), T)) }
+example : chkL FindVEvHit FindVEvHitTy = true := by native_decide
+
+/-- The miss leg's Nat-level transport. -/
+def FindVTailEv : Term := prog defer_check {
+  λ (Q : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
+  λ (E : Id Bool (Eqb Q K0) False).
+    IdSym Nat (FindVL Q Cons(Pair(K0, V0), T)) (FindVL Q T)
+      (IdCongr Bool Nat
+        (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
+          True => V0, False => FindVL Q T })
+        (Eqb Q K0) False E) }
+def FindVTailEvTy : Term := prog defer_check {
+  Π (Q : Nat) → Π (K0 : Nat) → Π (V0 : Nat) → Π (T : List (Σ (k : Nat). Nat)) →
+    Id Bool (Eqb Q K0) False →
+    Id Nat (FindVL Q T) (FindVL Q Cons(Pair(K0, V0), T)) }
+example : chkL FindVTailEv FindVTailEvTy = true := by native_decide
+
+/-! ### `GetMut`, in the pin-computable spelling -/
+
+def hmPinUnder (tail : Term) : Term := prog{
+  fn BktGetAt [p] (p : Nat, key : Nat,
+      b : &mut (t : List (Σ (k : Nat). Nat) ~> BSetP p (*res) t),
+      Hhit : Id Bool (HitL key (*b)) True,
+      Hpos : Id Nat p (FindPosL key (*b)))
+      -> Σ (r : &mut Nat). (Id Nat (*r) (FindVL key (old *b)))
+           × (Id OptN (SomeN (*r)) (FindL key (old *b))) {
+    match b {
+      Nil => botElim Unit (BoolFT Hhit),
+      Cons(Pair(kk, vv), tl) => {
+        let K0 = *kk;
+        let V0 = *vv;
+        let T0 = *tl;
+        match p {
+          Z => {
+            let Ehit = PosZHit key K0 V0 T0 Hpos;
+            Pair(&m *vv, Pair(FindVEvHit key K0 V0 T0 Ehit,
+              FindEvHit key K0 V0 T0 Ehit))
+          },
+          S(p2) => {
+            let Ep = PosSStep key K0 V0 T0 p2 Hpos;
+            let Emiss = FstT (Id Bool (Eqb key K0) False) (Id Nat p2 (FindPosL key T0)) Ep;
+            let Epos2 = SndT (Id Bool (Eqb key K0) False) (Id Nat p2 (FindPosL key T0)) Ep;
+            let Pair(r2, h2) = BktGetAt(p2, key, &m *tl,
+              HitTailEv key K0 V0 T0 Emiss Hhit, Epos2);
+            let W0 = *r2;
+            let Hv2 = FstT (Id Nat W0 (FindVL key T0)) (Id OptN (SomeN W0) (FindL key T0)) h2;
+            let Ho2 = SndT (Id Nat W0 (FindVL key T0)) (Id OptN (SomeN W0) (FindL key T0)) h2;
+            Pair(r2, Pair(
+              IdTrans Nat W0 (FindVL key T0) (FindVL key Cons(Pair(K0, V0), T0)) Hv2
+                (FindVTailEv key K0 V0 T0 Emiss),
+              IdTrans OptN (SomeN W0) (FindL key T0)
+                (FindL key Cons(Pair(K0, V0), T0)) Ho2
+                (FindTailEv key K0 V0 T0 Emiss)))
+          } } } } };
+  fn GetMutHM (i : Nat, rr : Nat, p : Nat, key : Nat,
+      self : &mut (s : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+          Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots
+        ~> SetHMAt i rr p (*res) s),
+      Hd : Id Nat (CapHM (*self)) (Add i (S rr)),
+      Him : Id Nat i (Mod key (CapHM (*self))),
+      Hhit : Id Bool (HitHM key (*self)) True,
+      Hpos : Id Nat p (PosHM key (*self)))
+      -> Σ (r : &mut Nat). (Id Nat (*r) (FindValHM key (old *self)))
+           × (Id OptN (SomeN (*r)) (FindHM key (old *self))) {
+    match self { Pair(capb, r1) => match r1 { Pair(loadb, r2x) => match r2x { Pair(nb, r3) => match r3 { Pair(sb, Invb) => {
+      let I0 = i;
+      let R0 = rr;
+      let Key0 = key;
+      let C0 = *capb;
+      let pre = &m (*sb)[Z ; i ; S rr | LeAdd i (S rr) | Hd];
+      let cell = &m (*sb)[i ; 1 ; rr];
+      let hic = &m (*sb)[S i ; rr];
+      let bb = &m (*cell)[0];
+      let L0 = *pre;
+      let B0 = *bb;
+      let H0 = *hic;
+      let EB = AgetAtMod I0 R0 (Mod Key0 C0) L0 B0 H0 Him;
+      let HhitB = IdTrans Bool (HitL Key0 B0)
+                    (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
+                      (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0)))) True
+                    (IdSym Bool
+                      (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
+                        (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0))))
+                      (HitL Key0 B0)
+                      (IdCongr (List (Σ (k : Nat). Nat)) Bool
+                        (λ (W : List (Σ (k : Nat). Nat)). IsSomeB (FindL Key0 W))
+                        (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
+                          (Mod Key0 C0)) B0 EB))
+                    Hhit;
+      let HposB = IdTrans Nat p
+                    (FindPosL Key0 (AgetB (Add I0 (S R0))
+                      (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0)))
+                    (FindPosL Key0 B0)
+                    Hpos
+                    (IdCongr (List (Σ (k : Nat). Nat)) Nat
+                      (λ (W : List (Σ (k : Nat). Nat)). FindPosL Key0 W)
+                      (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
+                        (Mod Key0 C0)) B0 EB);
+      let Pair(rb, hb) = BktGetAt(p, key, &m *bb, HhitB, HposB);
+      let W0 = *rb;
+      let HvB = FstT (Id Nat W0 (FindVL Key0 B0)) (Id OptN (SomeN W0) (FindL Key0 B0)) hb;
+      let HoB = SndT (Id Nat W0 (FindVL Key0 B0)) (Id OptN (SomeN W0) (FindL Key0 B0)) hb;
+      Pair(rb, Pair(
+        IdTrans Nat W0 (FindVL Key0 B0)
+          (FindVL Key0 (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
+            (Mod Key0 C0)))
+          HvB
+          (IdSym Nat
+            (FindVL Key0 (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
+              (Mod Key0 C0)))
+            (FindVL Key0 B0)
+            (IdCongr (List (Σ (k : Nat). Nat)) Nat
+              (λ (W : List (Σ (k : Nat). Nat)). FindVL Key0 W)
+              (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0))
+              B0 EB)),
+        IdTrans OptN (SomeN W0) (FindL Key0 B0)
+          (FindL Key0 (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
+            (Mod Key0 C0)))
+          HoB
+          (IdSym OptN
+            (FindL Key0 (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
+              (Mod Key0 C0)))
+            (FindL Key0 B0)
+            (IdCongr (List (Σ (k : Nat). Nat)) OptN
+              (λ (W : List (Σ (k : Nat). Nat)). FindL Key0 W)
+              (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0))
+              B0 EB))))
+    } } } } } };
+  %tail }
+
+/-- **`GetMut` checks.** The map-level pin discharges through the carve
+    (`atake`/`adrop` reduce at the parameter split), the bucket callee's
+    projected pin lands in the composition's cell, and the return conjuncts
+    are rebuilt from the callee's evidence by the `AgetAtMod` transport. -/
+def errOf (t : Term) : String :=
+  match checkProgram t prog defer_check { Unit } with | .ok _ => "OK" | .error e => e
+
+example : progOk (hmPinUnder prog defer_check { () }) = true := by native_decide
+
+/-! ## The end-to-end round-trip chain, at hashmap scale
+
+    Get the cursor, write 42 through it, get again at the same key: the
+    second call's evidence plus one `Refl`-match lets the checker derive
+    `T ≡ 42` and the exact final map. The premises at a concrete pack are all
+    `Refl` (`Mod`/`CoMod`/`PosHM` compute) — and, notably, they are `Refl`
+    again at the second call, whose argument is the first call's pinned
+    release: `SetHMAt 1 0 0 42 m₀` computes because the pin made the release
+    a value, not a fresh existential. An unpinned release would leave no
+    premise about the resulting capacity or buckets for the second call to
+    reuse. -/
+
+def vN : Nat → Val | 0 => .ctor "Z" [] | n + 1 => .ctor "S" [vN n]
+def vP (a b : Val) : Val := .ctor "Pair" [a, b]
+def vU : Val := .ctor "unit" []
+def vR : Val := .ctor "Refl" []
+def vNil : Val := .ctor "Nil" []
+
+/-- The expected final pack: cap 2, load 8, n 1, slot 1 = `[(3, 42)]`, and the
+    entry pack's own invariant inhabitant riding through unchanged. -/
+def vPackY : Val :=
+  vP (vN 2) (vP (vN 8) (vP (vN 1) (vP
+    (.ctor "Arr" [vNil, .ctor "Cons" [vP (vN 3) (vN 42), vNil]])
+    (vP vU (vP vR (vP vU (vP vR
+      (vP (vP vU vU) (vP (vP (vP vR vU) (vP vR vU)) vU)))))))))
+
+def hmChainCaller : Term := hmPinUnder prog defer_check {
+  let m = Pair(2, Pair(8, Pair(1, Pair(Arr(Nil, Cons(Pair(3, 30), Nil)),
+    Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
+      Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
+        unit))))))))));
+  let b = &m m;
+  let pr = GetMutHM(1, 0, 0, 3, b, Refl, Refl, Refl, Refl);
+  match pr { Pair(r, h) => {
+    *r := 42;
+    let b2 = &m m;
+    let pr2 = GetMutHM(1, 0, 0, 3, b2, Refl, Refl, Refl, Refl);
+    match pr2 { Pair(r2, h2) => {
+      let Pair(hv, ho) = h2;
+      match hv { Refl => {
+        let T = *r2;
+        let y = m;
+        () } } } } } } }
+
+example : progOk hmChainCaller = true := by native_decide
+
+/-- The round-trip law, in the checker's own environment: `T ≡ 42` is derived
+    (not run), and `y` is the exact updated pack. -/
+example : tailEnv hmChainCaller
+  [("m", .bot), ("b", .bot), ("pr", .bot), ("r", .bot),
+   ("h", .ctor "Pair" [.sym 0, .sym 1]),
+   ("b2", .bot), ("pr2", .bot), ("r2", .bot), ("h2", .bot),
+   ("hv", .bot), ("ho", .sym 2),
+   ("T", vN 42), ("y", vPackY)] = true := by native_decide
+
+-- A control: the same environment with `T ↦ 43` is refused, not vacuous.
+example : tailEnv hmChainCaller
+  [("m", .bot), ("b", .bot), ("pr", .bot), ("r", .bot),
+   ("h", .ctor "Pair" [.sym 0, .sym 1]),
+   ("b2", .bot), ("pr2", .bot), ("r2", .bot), ("h2", .bot),
+   ("hv", .bot), ("ho", .sym 2),
+   ("T", vN 43), ("y", vPackY)] = false := by native_decide
+
+-- The interpreter computes the same final map: checker and interpreter agree
+-- on the pinned op.
+def runV (t : Term) (name : String) : Option Val :=
+  match runProgram t with
+  | .ok env => env.lookup name
+  | .error _ => none
+
+example : (runV hmChainCaller "T" == some (vN 42)) = true := by native_decide
+example : (runV hmChainCaller "y" == some vPackY) = true := by native_decide
+
+/-! ## The counterfactual twins: what should be rejected -/
+
+/-- The key-escape twin: identical body to the working walk, except the `Z`
+    leg returns a borrow into the key instead of the value. The fill lands in
+    the key slot while the pin still expects the value slot, so this should
+    be refused. No extra return conjuncts here, so the refusal can only be
+    about the pin. -/
+def bktGetAtKey : Term := prog defer_check {
+  fn BktGetK [p] (p : Nat, key : Nat,
+      b : &mut (t : List (Σ (k : Nat). Nat) ~> BSetP p (*res) t),
+      Hhit : Id Bool (HitL key (*b)) True,
+      Hpos : Id Nat p (FindPosL key (*b))) -> &mut Nat {
+    match b {
+      Nil => botElim Unit (BoolFT Hhit),
+      Cons(Pair(kk, vv), tl) => {
+        let K0 = *kk;
+        let V0 = *vv;
+        let T0 = *tl;
+        match p {
+          Z => &m *kk,
+          S(p2) => {
+            let Ep = PosSStep key K0 V0 T0 p2 Hpos;
+            BktGetK(p2, key, &m *tl,
+              HitTailEv key K0 V0 T0
+                (FstT (Id Bool (Eqb key K0) False) (Id Nat p2 (FindPosL key T0)) Ep)
+                Hhit,
+              SndT (Id Bool (Eqb key K0) False) (Id Nat p2 (FindPosL key T0)) Ep)
+          } } } } };
+  () }
+
+example : progRejects bktGetAtKey "pin is not met" = true := by native_decide
+
+/-- The wrong-position caller: same as the working chain, but the first call
+    claims position 1 where the key actually sits at 0. The `Hpos` `Refl` has
+    no type to check at, so the caller is refused before any op runs. -/
+def hmChainWrongPos : Term := hmPinUnder prog defer_check {
+  let m = Pair(2, Pair(8, Pair(1, Pair(Arr(Nil, Cons(Pair(3, 30), Nil)),
+    Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
+      Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
+        unit))))))))));
+  let b = &m m;
+  let pr = GetMutHM(1, 0, 1, 3, b, Refl, Refl, Refl, Refl);
+  match pr { Pair(r, h) => {
+    *r := 42;
+    () } } }
+
+example : progOk hmChainWrongPos = false := by native_decide
+
+/-- The wrong-slot caller: slot 0 claimed for key 3 at cap 2. `Him`'s `Refl`
+    is refused. -/
+def hmChainWrongSlot : Term := hmPinUnder prog defer_check {
+  let m = Pair(2, Pair(8, Pair(1, Pair(Arr(Nil, Cons(Pair(3, 30), Nil)),
+    Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
+      Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
+        unit))))))))));
+  let b = &m m;
+  let pr = GetMutHM(0, 1, 0, 3, b, Refl, Refl, Refl, Refl);
+  match pr { Pair(r, h) => {
+    *r := 42;
+    () } } }
+
+example : progOk hmChainWrongSlot = false := by native_decide
+
+/-! ## `GetMutOrInsert` — the or_insert vocabulary
+
+    Position-driven like GetMut, with two extra moving parts. (1) `FindPosL`
+    of an ABSENT key is the bucket length — exactly the append site — so ONE
+    update (`BPutP`: set at `p`, or append `(key, v)` past the end) covers hit
+    and fresh alike, and the walk needs no hit/miss branching. (2) The count
+    moves: the pin cannot compute `hit ? n : S n` (the hit is not
+    pin-computable data at the outer level), so the NEW COUNT `n2` is a
+    parameter, the BODY writes it into the pack (`*nb := n2`), and honesty is
+    a premise (`Hn2` ties `n2` to the hit; `Hroom` keeps the ledger). -/
+
+def BPutP : Term := prog defer_check {
+  λ (P : Nat). λ (Key : Nat). λ (V : Nat).
+    elim P return (λ (Pz : Nat). Π (L : List (Σ (k : Nat). Nat)) → List (Σ (k : Nat). Nat)) {
+      Z => λ (L : List (Σ (k : Nat). Nat)).
+        elim L return (λ (Lm : List (Σ (k : Nat). Nat)). List (Σ (k : Nat). Nat)) {
+          Nil => Cons(Pair(Key, V), Nil),
+          Cons (E) (T) Rec =>
+            Cons(elim E return (λ (Em : Σ (k : Nat). Nat). Σ (k : Nat). Nat) {
+              Pair (K2) (V2) => Pair(K2, V) }, T) },
+      S (P2) Rec => λ (L : List (Σ (k : Nat). Nat)).
+        elim L return (λ (Lm : List (Σ (k : Nat). Nat)). List (Σ (k : Nat). Nat)) {
+          Nil => Cons(Pair(Key, V), Nil),
+          Cons (E) (T) Rec2 => Cons(E, Rec T) } } }
+
+example : chkL prog defer_check { Refl } prog defer_check { Id (List (Σ (k : Nat). Nat))
+  (BPutP 1 5 77 Cons(Pair(1, 10), Nil))
+  Cons(Pair(1, 10), Cons(Pair(5, 77), Nil)) } = true := by native_decide
+example : chkL prog defer_check { Refl } prog defer_check { Id (List (Σ (k : Nat). Nat))
+  (BPutP 0 5 77 Cons(Pair(1, 10), Nil))
+  Cons(Pair(1, 77), Nil) } = true := by native_decide
+
+/-- What the returned borrow holds at entry: the old value if the key was
+    there, the default if not. -/
+def OrDefL : Term := prog defer_check {
+  λ (Q : Nat). λ (D : Nat). λ (L : List (Σ (k : Nat). Nat)).
+    elim (HitL Q L) return (λ (Bm : Bool). Nat) {
+      True => FindVL Q L,
+      False => D } }
+
+def OrDefHM : Term := prog defer_check {
+  λ (Q : Nat). λ (D : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim (HitHM Q Hm) return (λ (Bm : Bool). Nat) {
+      True => FindValHM Q Hm,
+      False => D } }
+
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat (OrDefHM 3 77 hmEx) 30 } = true := by native_decide
+example : chkL prog defer_check { Refl } prog defer_check { Id Nat (OrDefHM 5 77 hmEx) 77 } = true := by native_decide
+
+/-- A hit at the head makes the whole bucket's `OrDefL` its head value. -/
+def OrDHitEv : Term := prog defer_check {
+  λ (Q : Nat). λ (D : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
+  λ (E : Id Bool (Eqb Q K0) True).
+    IdSym Nat (OrDefL Q D Cons(Pair(K0, V0), T)) V0
+      (IdTrans Nat (OrDefL Q D Cons(Pair(K0, V0), T))
+        (FindVL Q Cons(Pair(K0, V0), T)) V0
+        (IdCongr Bool Nat
+          (λ (W : Bool). elim (IsSomeB (elim W return (λ (B2 : Bool). Σ (bb : Bool). OptP bb Nat) {
+              True => SomeN V0, False => FindL Q T }))
+            return (λ (B3 : Bool). Nat) {
+              True => FindVL Q Cons(Pair(K0, V0), T), False => D })
+          (Eqb Q K0) True E)
+        (IdSym Nat V0 (FindVL Q Cons(Pair(K0, V0), T)) (FindVEvHit Q K0 V0 T E))) }
+def OrDHitEvTy : Term := prog defer_check {
+  Π (Q : Nat) → Π (D : Nat) → Π (K0 : Nat) → Π (V0 : Nat) →
+  Π (T : List (Σ (k : Nat). Nat)) →
+    Id Bool (Eqb Q K0) True →
+    Id Nat V0 (OrDefL Q D Cons(Pair(K0, V0), T)) }
+example : chkL OrDHitEv OrDHitEvTy = true := by native_decide
+
+/-- A miss at the head passes `OrDefL` through to the tail. -/
+def OrDMissEv : Term := prog defer_check {
+  λ (Q : Nat). λ (D : Nat). λ (K0 : Nat). λ (V0 : Nat). λ (T : List (Σ (k : Nat). Nat)).
+  λ (E : Id Bool (Eqb Q K0) False).
+    IdSym Nat (OrDefL Q D Cons(Pair(K0, V0), T)) (OrDefL Q D T)
+      (IdTrans Nat (OrDefL Q D Cons(Pair(K0, V0), T))
+        (elim (HitL Q T) return (λ (B3 : Bool). Nat) {
+          True => FindVL Q Cons(Pair(K0, V0), T), False => D })
+        (OrDefL Q D T)
+        (IdCongr Bool Nat
+          (λ (W : Bool). elim (IsSomeB (elim W return (λ (B2 : Bool). Σ (bb : Bool). OptP bb Nat) {
+              True => SomeN V0, False => FindL Q T }))
+            return (λ (B3 : Bool). Nat) {
+              True => FindVL Q Cons(Pair(K0, V0), T), False => D })
+          (Eqb Q K0) False E)
+        (IdCongr Nat Nat
+          (λ (W : Nat). elim (HitL Q T) return (λ (B3 : Bool). Nat) {
+            True => W, False => D })
+          (FindVL Q Cons(Pair(K0, V0), T)) (FindVL Q T)
+          (IdSym Nat (FindVL Q T) (FindVL Q Cons(Pair(K0, V0), T))
+            (FindVTailEv Q K0 V0 T E)))) }
+def OrDMissEvTy : Term := prog defer_check {
+  Π (Q : Nat) → Π (D : Nat) → Π (K0 : Nat) → Π (V0 : Nat) →
+  Π (T : List (Σ (k : Nat). Nat)) →
+    Id Bool (Eqb Q K0) False →
+    Id Nat (OrDefL Q D T) (OrDefL Q D Cons(Pair(K0, V0), T)) }
+example : chkL OrDMissEv OrDMissEvTy = true := by native_decide
+
+def BumpPutP : Term := prog defer_check {
+  λ (P : Nat). λ (Key : Nat). λ (V : Nat). λ (R : Nat).
+  λ (A : Array (S R) (List (Σ (k : Nat). Nat))).
+    arrRec (List (Σ (k : Nat). Nat))
+      (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))).
+        Array Mz (List (Σ (k : Nat). Nat)))
+      Arr()
+      (λ (M : Nat). λ (X : List (Σ (k : Nat). Nat)).
+        λ (XS : Array M (List (Σ (k : Nat). Nat))).
+        λ (Ih : Array M (List (Σ (k : Nat). Nat))).
+          acons M (BPutP P Key V X) XS)
+      (S R) A }
+
+/-- The or_insert release: slot `i`'s bucket put-or-appended at `(p, key)`,
+    and the count REPLACED by the parameter `n2` — the body stores it, the
+    signature's `Hn2` premise keeps it honest. -/
+def SetOrInsAt : Term := prog defer_check {
+  λ (I : Nat). λ (R : Nat). λ (P : Nat). λ (N2 : Nat). λ (Key : Nat). λ (V : Nat).
+  λ (Hm : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+    elim Hm return (λ (H0 : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+        Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots).
+        Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+          Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+      Pair (Cap) (R1) =>
+        elim R1 return (λ (H1 : Σ (load : Nat). Σ (n : Nat).
+            Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))). HMInvT Cap load n slots).
+            Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+              Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+          Pair (Load) (R2) =>
+            elim R2 return (λ (H2 : Σ (n : Nat).
+                Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                  HMInvT Cap Load n slots).
+                Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                  Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+              Pair (N) (R3) =>
+                elim R3 return (λ (H3 : Σ0 (slots : Array Cap (List (Σ (k : Nat). Nat))).
+                    HMInvT Cap Load N slots).
+                    Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                      Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots) {
+                  Pair (Slots) (Inv) =>
+                    Pair(Cap, Pair(Load, Pair(N2, Pair(
+                      arrCat I (S R) (atake I (S R) Slots)
+                        (BumpPutP P Key V R (adrop I (S R) Slots)),
+                      Inv)))) } } } } }
+
+/-- The map-to-bucket `OrDefL` glue at the carve — packaged so the op's body
+    applies one lemma instead of inlining the two-place congruence. -/
+def OrDAgetEv : Term := prog defer_check {
+  λ (Q : Nat). λ (D : Nat). λ (I : Nat). λ (R : Nat). λ (M : Nat).
+  λ (L : Array I (List (Σ (k : Nat). Nat))). λ (B : List (Σ (k : Nat). Nat)).
+  λ (H : Array R (List (Σ (k : Nat). Nat))).
+  λ (Him : Id Nat I M).
+    IdSym Nat
+      (elim (IsSomeB (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M)))
+        return (λ (B3 : Bool). Nat) {
+          True => FindVL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M),
+          False => D })
+      (OrDefL Q D B)
+      (IdTrans Nat
+        (elim (IsSomeB (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M)))
+          return (λ (B3 : Bool). Nat) {
+            True => FindVL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M),
+            False => D })
+        (elim (IsSomeB (FindL Q B)) return (λ (B3 : Bool). Nat) {
+          True => FindVL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M),
+          False => D })
+        (OrDefL Q D B)
+        (IdCongr (List (Σ (k : Nat). Nat)) Nat
+          (λ (W : List (Σ (k : Nat). Nat)).
+            elim (IsSomeB (FindL Q W)) return (λ (B3 : Bool). Nat) {
+              True => FindVL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M),
+              False => D })
+          (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M) B
+          (AgetAtMod I R M L B H Him))
+        (IdCongr Nat Nat
+          (λ (W : Nat). elim (IsSomeB (FindL Q B)) return (λ (B3 : Bool). Nat) {
+            True => W, False => D })
+          (FindVL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M))
+          (FindVL Q B)
+          (IdCongr (List (Σ (k : Nat). Nat)) Nat
+            (λ (W : List (Σ (k : Nat). Nat)). FindVL Q W)
+            (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M) B
+            (AgetAtMod I R M L B H Him)))) }
+def OrDAgetEvTy : Term := prog defer_check {
+  Π (Q : Nat) → Π (D : Nat) → Π (I : Nat) → Π (R : Nat) → Π (M : Nat) →
+  Π (L : Array I (List (Σ (k : Nat). Nat))) → Π (B : List (Σ (k : Nat). Nat)) →
+  Π (H : Array R (List (Σ (k : Nat). Nat))) →
+    Id Nat I M →
+    Id Nat (OrDefL Q D B)
+      (elim (IsSomeB (FindL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M)))
+        return (λ (B3 : Bool). Nat) {
+          True => FindVL Q (AgetB (Add I (S R)) (arrCat I (S R) L (acons R B H)) M),
+          False => D }) }
+example : chkL OrDAgetEv OrDAgetEvTy = true := by native_decide
+
+/-! ### The or_insert ops -/
+
+def hmOrUnder (tail : Term) : Term := prog{
+  fn BktPutAt [p] (p : Nat, key : Nat, d : Nat,
+      b : &mut (t : List (Σ (k : Nat). Nat) ~> BPutP p key (*res) t),
+      Hpos : Id Nat p (FindPosL key (*b)))
+      -> Σ (r : &mut Nat). Id Nat (*r) (OrDefL key d (old *b)) {
+    match b {
+      Nil => match p {
+        Z => {
+          *b := Cons(Pair(key, d), Nil);
+          match b { Cons(hd, tl) => match hd { Pair(kk, vv) =>
+            Pair(&m *vv, Refl) } }
+        },
+        S(p2) => botElim Unit (Znots p2 (IdSym Nat (S p2) Z Hpos))
+      },
+      Cons(Pair(kk, vv), tl) => {
+        let K0 = *kk;
+        let V0 = *vv;
+        let T0 = *tl;
+        match p {
+          Z => Pair(&m *vv, OrDHitEv key d K0 V0 T0 (PosZHit key K0 V0 T0 Hpos)),
+          S(p2) => {
+            let Ep = PosSStep key K0 V0 T0 p2 Hpos;
+            let Emiss = FstT (Id Bool (Eqb key K0) False) (Id Nat p2 (FindPosL key T0)) Ep;
+            let Epos2 = SndT (Id Bool (Eqb key K0) False) (Id Nat p2 (FindPosL key T0)) Ep;
+            let Pair(r2, h2) = BktPutAt(p2, key, d, &m *tl, Epos2);
+            let W0 = *r2;
+            Pair(r2, IdTrans Nat W0 (OrDefL key d T0)
+              (OrDefL key d Cons(Pair(K0, V0), T0)) h2
+              (OrDMissEv key d K0 V0 T0 Emiss))
+          } } } } };
+  fn GetMutOrInsertHM (i : Nat, rr : Nat, p : Nat, n2 : Nat, key : Nat, d : Nat,
+      self : &mut (s : Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+          Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots
+        ~> SetOrInsAt i rr p n2 key (*res) s),
+      Hd : Id Nat (CapHM (*self)) (Add i (S rr)),
+      Him : Id Nat i (Mod key (CapHM (*self))),
+      Hpos : Id Nat p (PosHM key (*self)),
+      Hn2 : Id Nat n2 (elim (HitHM key (*self)) return (λ (Bm : Bool). Nat) {
+        True => SizeHM (*self), False => S (SizeHM (*self)) }),
+      Hroom : Le (Mul 5 n2) (LoadHM (*self)))
+      -> Σ (r : &mut Nat). Id Nat (*r) (OrDefHM key d (old *self)) {
+    match self { Pair(capb, r1) => match r1 { Pair(loadb, r2x) => match r2x { Pair(nb, r3) => match r3 { Pair(sb, Invb) => {
+      let I0 = i;
+      let R0 = rr;
+      let Key0 = key;
+      let D0 = d;
+      let C0 = *capb;
+      let pre = &m (*sb)[Z ; i ; S rr | LeAdd i (S rr) | Hd];
+      let cell = &m (*sb)[i ; 1 ; rr];
+      let hic = &m (*sb)[S i ; rr];
+      let bb = &m (*cell)[0];
+      let L0 = *pre;
+      let B0 = *bb;
+      let H0 = *hic;
+      let HposB = IdTrans Nat p
+                    (FindPosL Key0 (AgetB (Add I0 (S R0))
+                      (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0)))
+                    (FindPosL Key0 B0)
+                    Hpos
+                    (IdCongr (List (Σ (k : Nat). Nat)) Nat
+                      (λ (W : List (Σ (k : Nat). Nat)). FindPosL Key0 W)
+                      (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0))
+                        (Mod Key0 C0)) B0
+                      (AgetAtMod I0 R0 (Mod Key0 C0) L0 B0 H0 Him));
+      *nb := n2;
+      let Pair(rb, hb) = BktPutAt(p, key, d, &m *bb, HposB);
+      let W0 = *rb;
+      Pair(rb, IdTrans Nat W0 (OrDefL Key0 D0 B0)
+        (elim (IsSomeB (FindL Key0 (AgetB (Add I0 (S R0))
+            (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0))))
+          return (λ (B3 : Bool). Nat) {
+            True => FindVL Key0 (AgetB (Add I0 (S R0))
+              (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0)),
+            False => D0 })
+        hb
+        (OrDAgetEv Key0 D0 I0 R0 (Mod Key0 C0) L0 B0 H0 Him))
+    } } } } } };
+  %tail }
+
+example : progOk (hmOrUnder prog defer_check { () }) = true := by native_decide
+
+/-! ### The or_insert round-trip — and the append path's honest seam
+
+    Fresh key 5 into slot 1 (colliding with key 1) at cap 4 — cap 2's ledger
+    has no room for a second entry, so `Hroom` is a real premise here — then
+    write 88 through the returned cursor and get the key back. A `Refl`-match
+    lets the checker derive `T ≡ 88`, the exact final map, and the count
+    bumped once.
+
+    The seam this exposes (pinned honestly in `orInsReuse` below): appending
+    grows the bucket, so the packed invariant's inhabitant gains conjuncts —
+    the old proof tree no longer typechecks at the released slots, and a
+    second op on the raw release is refused ("does not have its parameter
+    type"). A plain value write (`GetMut`) has no such seam, since its proof
+    tree is shape-invariant. Here the caller instead re-establishes the
+    invariant by hand at the repack, where the new proof obligations are
+    literal `Refl`/`unit` at concrete data; a version of `SetOrInsAt` that
+    carries this repacking automatically is future work. -/
+
+def vPackOr : Val :=
+  vP (vN 4) (vP (vN 16) (vP (vN 2) (vP
+    (.ctor "Arr" [vNil,
+      .ctor "Cons" [vP (vN 1) (vN 10), .ctor "Cons" [vP (vN 5) (vN 88), vNil]],
+      vNil, vNil])
+    (vP vU (vP vR (vP vU (vP vR
+      (vP (vP vU vU)
+        (vP (vP (vP vR (vP vR vU)) (vP vR (vP vR vU)))
+          (vP (vP vU vU) (vP (vP vU vU) vU)))))))))))
+
+/-- The stale entry invariant, still visible as knowledge after the repack. -/
+def vInvStale : Val :=
+  vP vU (vP vR (vP vU (vP vR
+    (vP (vP vU vU) (vP (vP (vP vR vU) (vP vR vU))
+      (vP (vP vU vU) (vP (vP vU vU) vU)))))))
+
+def orInsChain : Term := hmPinUnder (hmOrUnder prog defer_check {
+  let m = Pair(4, Pair(16, Pair(1, Pair(Arr(Nil, Cons(Pair(1, 10), Nil), Nil, Nil),
+    Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
+      Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
+        Pair(Pair(unit, unit), Pair(Pair(unit, unit), unit))))))))))));
+  let b = &m m;
+  let pr = GetMutOrInsertHM(1, 2, 1, 2, 5, 77, b, Refl, Refl, Refl, Refl, unit);
+  match pr { Pair(r, h) => {
+    match h { Refl => {
+      *r := 88;
+      let Pair(cc, rest1) = m;
+      let Pair(ll, rest2) = rest1;
+      let Pair(nn, rest3) = rest2;
+      let Pair(ss, IV) = rest3;
+      let m2 = Pair(cc, Pair(ll, Pair(nn, Pair(ss,
+        Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
+          Pair(Pair(unit, unit),
+            Pair(Pair(Pair(Refl, Pair(Refl, unit)), Pair(Refl, Pair(Refl, unit))),
+              Pair(Pair(unit, unit), Pair(Pair(unit, unit), unit))))))))))));
+      let b2 = &m m2;
+      let pr2 = GetMutHM(1, 2, 1, 5, b2, Refl, Refl, Refl, Refl);
+      match pr2 { Pair(r2, h2) => {
+        let Pair(hv, ho) = h2;
+        match hv { Refl => {
+          let T = *r2;
+          let y = m2;
+          () } } } } } } } } })
+
+example : progOk orInsChain = true := by native_decide
+
+/-- The or_insert law in the checker's environment: `T ≡ 88`, `y` the exact
+    two-entry map, and `IV` the stale entry invariant left over from before
+    the repack. -/
+example : tailEnv orInsChain
+  [("m", .bot), ("b", .bot), ("pr", .bot), ("r", .bot), ("h", .bot),
+   ("cc", vN 4), ("rest1", .bot), ("ll", vN 16), ("rest2", .bot),
+   ("nn", vN 2), ("rest3", .bot), ("ss", .bot), ("IV", vInvStale),
+   ("m2", .bot), ("b2", .bot), ("pr2", .bot), ("r2", .bot), ("h2", .bot),
+   ("hv", .bot), ("ho", .sym 0),
+   ("T", vN 88), ("y", vPackOr)] = true := by native_decide
+
+example : (runV orInsChain "T" == some (vN 88)) = true := by native_decide
+example : (runV orInsChain "y" == some vPackOr) = true := by native_decide
+
+/-- The same chain, re-calling on the raw release with no repack in between.
+    The append left the entry invariant's inhabitant stale, so the second
+    call is refused. -/
+def orInsReuse : Term := hmOrUnder prog defer_check {
+  let m = Pair(4, Pair(16, Pair(1, Pair(Arr(Nil, Cons(Pair(1, 10), Nil), Nil, Nil),
+    Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
+      Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
+        Pair(Pair(unit, unit), Pair(Pair(unit, unit), unit))))))))))));
+  let b = &m m;
+  let pr = GetMutOrInsertHM(1, 2, 1, 2, 5, 77, b, Refl, Refl, Refl, Refl, unit);
+  match pr { Pair(r, h) => {
+    *r := 88;
+    let b2 = &m m;
+    let pr2 = GetMutOrInsertHM(1, 2, 1, 2, 5, 77, b2, Refl, Refl, Refl, Refl, unit);
+    match pr2 { Pair(r2, h2) => {
+      () } } } } }
+
+example : progRejects orInsReuse "does not have its parameter type" = true := by
+  native_decide
+
+/-! ## The bridge: the pin's update equals the key-driven one
+
+    The pin carries `BSetP p (*res)` (position-driven, pin-computable); the
+    caller-facing law is stated with `SetHM`'s `BSetK key` (key-driven).
+    Wherever the position evidence holds, the two updates coincide — proved
+    by one induction — so a caller may rewrite its pinned release into the
+    key-driven vocabulary. The map-level equality follows the same way,
+    pointwise at the carve composition through `AgetAtMod`; the bucket level
+    below is where the actual content of the proof lives. -/
+
+def BSetPKEq : Term := prog defer_check {
+  λ (Q : Nat). λ (V : Nat).
+  λ (L : List (Σ (k : Nat). Nat)).
+    elim L return (λ (Lm : List (Σ (k : Nat). Nat)).
+        Π (P : Nat) → Id Nat P (FindPosL Q Lm) →
+          Id (List (Σ (k : Nat). Nat)) (BSetP P V Lm) (BSetK Q V Lm)) {
+      Nil => λ (P : Nat). λ (Hp : Id Nat P (FindPosL Q Nil)).
+        NatRw (λ (W : Nat). Id (List (Σ (k : Nat). Nat)) (BSetP W V Nil) Nil)
+          Z P (IdSym Nat P Z Hp) Refl,
+      Cons (E) (T) Rec =>
+        elim E return (λ (Em : Σ (k : Nat). Nat).
+            Π (P : Nat) → Id Nat P (FindPosL Q Cons(Em, T)) →
+              Id (List (Σ (k : Nat). Nat)) (BSetP P V Cons(Em, T)) (BSetK Q V Cons(Em, T))) {
+          Pair (K2) (V2) => λ (P : Nat). λ (Hp : Id Nat P (FindPosL Q Cons(Pair(K2, V2), T))).
+            IfDec (Eqb Q K2)
+              (Id (List (Σ (k : Nat). Nat))
+                (BSetP P V Cons(Pair(K2, V2), T)) (BSetK Q V Cons(Pair(K2, V2), T)))
+              (λ (Et : Id Bool (Eqb Q K2) True).
+                IdTrans (List (Σ (k : Nat). Nat))
+                  (BSetP P V Cons(Pair(K2, V2), T))
+                  Cons(Pair(K2, V), T)
+                  (BSetK Q V Cons(Pair(K2, V2), T))
+                  (NatRw (λ (W : Nat). Id (List (Σ (k : Nat). Nat))
+                      (BSetP W V Cons(Pair(K2, V2), T)) Cons(Pair(K2, V), T))
+                    Z P
+                    (IdSym Nat P Z
+                      (IdTrans Nat P (FindPosL Q Cons(Pair(K2, V2), T)) Z Hp
+                        (IdCongr Bool Nat
+                          (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
+                            True => Z, False => S (FindPosL Q T) })
+                          (Eqb Q K2) True Et)))
+                    Refl)
+                  (IdSym (List (Σ (k : Nat). Nat))
+                    (BSetK Q V Cons(Pair(K2, V2), T)) Cons(Pair(K2, V), T)
+                    (IdCongr Bool (List (Σ (k : Nat). Nat))
+                      (λ (W : Bool). elim W return (λ (Bm : Bool). List (Σ (k : Nat). Nat)) {
+                        True => Cons(Pair(K2, V), T),
+                        False => Cons(Pair(K2, V2), BSetK Q V T) })
+                      (Eqb Q K2) True Et)))
+              (λ (Ef : Id Bool (Eqb Q K2) False).
+                IdTrans (List (Σ (k : Nat). Nat))
+                  (BSetP P V Cons(Pair(K2, V2), T))
+                  Cons(Pair(K2, V2), BSetK Q V T)
+                  (BSetK Q V Cons(Pair(K2, V2), T))
+                  (IdTrans (List (Σ (k : Nat). Nat))
+                    (BSetP P V Cons(Pair(K2, V2), T))
+                    Cons(Pair(K2, V2), BSetP (FindPosL Q T) V T)
+                    Cons(Pair(K2, V2), BSetK Q V T)
+                    (NatRw (λ (W : Nat). Id (List (Σ (k : Nat). Nat))
+                        (BSetP W V Cons(Pair(K2, V2), T))
+                        Cons(Pair(K2, V2), BSetP (FindPosL Q T) V T))
+                      (S (FindPosL Q T)) P
+                      (IdSym Nat P (S (FindPosL Q T))
+                        (IdTrans Nat P (FindPosL Q Cons(Pair(K2, V2), T))
+                          (S (FindPosL Q T)) Hp
+                          (IdCongr Bool Nat
+                            (λ (W : Bool). elim W return (λ (Bm : Bool). Nat) {
+                              True => Z, False => S (FindPosL Q T) })
+                            (Eqb Q K2) False Ef)))
+                      Refl)
+                    (IdCongr (List (Σ (k : Nat). Nat)) (List (Σ (k : Nat). Nat))
+                      (λ (W : List (Σ (k : Nat). Nat)). Cons(Pair(K2, V2), W))
+                      (BSetP (FindPosL Q T) V T) (BSetK Q V T)
+                      (Rec (FindPosL Q T) Refl)))
+                  (IdSym (List (Σ (k : Nat). Nat))
+                    (BSetK Q V Cons(Pair(K2, V2), T))
+                    Cons(Pair(K2, V2), BSetK Q V T)
+                    (IdCongr Bool (List (Σ (k : Nat). Nat))
+                      (λ (W : Bool). elim W return (λ (Bm : Bool). List (Σ (k : Nat). Nat)) {
+                        True => Cons(Pair(K2, V), T),
+                        False => Cons(Pair(K2, V2), BSetK Q V T) })
+                      (Eqb Q K2) False Ef))) } } }
+def BSetPKEqTy : Term := prog defer_check {
+  Π (Q : Nat) → Π (V : Nat) → Π (L : List (Σ (k : Nat). Nat)) → Π (P : Nat) →
+    Id Nat P (FindPosL Q L) →
+    Id (List (Σ (k : Nat). Nat)) (BSetP P V L) (BSetK Q V L) }
+example : chkL BSetPKEq BSetPKEqTy = true := by native_decide
+
+end Dllbc.Tests.HashMap
+
+end
+
+/-!
+# HashMap executing-layer tests
+
+This file runs the hashmap's executing layer: decoders from machine values to
+Lean values, a trusted Lean-side model, and callers that run the DLLBC ops
+concretely and compare the result against the model. It is kept separate from
+`HashMap.lean` so that iterating on the checked layer does not re-run the
+expensive concrete executions.
+-/
+
+section
+
+open Dllbc
+open Dllbc.StdLemmas (LeRefl LeAdd LeAddL LeAddSucc LeTrans LeUpR LePredL
+  LebTrueLe LebFalseGt AddSucc AddZero AddComm AddAssoc IdTrans IdCongr IdSym
+  NatRw LeZeroEq LeAntisym BoolFT BoolTF Znots SInj Pred
+  LeRwL LeRwR LeAddMonoL EqbRefl
+  NextR NextC NextQ ModC Mod DivC Div ModLtN ModDec
+  Mul MulSucc LeAddMonoR LeAddMono LeMulR
+  LeLebTrue EqbTrueEq EqbSym IfDec LedgerGrow)
+
+namespace Dllbc.Tests.HashMap
+
+
+/-! ## S1 executing differential
+
+    The same declarations the checker accepted, run on concrete maps and
+    compared against the trusted Lean-side model. These callers are
+    runtime-only: their proof arguments are `unit`, which the machine
+    ignores, so each test is a runs-to-X assertion. -/
+
+def pairOfV : Val → Option (Val × Val)
+  | v => match Val.asCtor? v with
+    | some ("Pair", [a, b]) => some (a, b)
+    | _ => none
+
+def entryOfV : Val → Option (Nat × Nat)
+  | v => match pairOfV v with
+    | some (a, b) =>
+      match natOfV 4000 a, natOfV 4000 b with
+      | some k, some w => some (k, w)
+      | _, _ => none
+    | none => none
+
+def bktOfV : Nat → Val → Option (List (Nat × Nat))
+  | f, v =>
+    match Val.asCtor? v, f with
+    | some ("Nil", []), _ => some []
+    | some ("Cons", [h, t]), f' + 1 =>
+      match entryOfV h, bktOfV f' t with
+      | some e, some es => some (e :: es)
+      | _, _ => none
+    | _, _ => none
+
+def slotsOfV : Val → Option (List (List (Nat × Nat)))
+  | v => match Val.asCtor? v with
+    | some ("Arr", vs) => vs.mapM (bktOfV 2000)
+    | _ => none
+
+/-- Decode a concrete pack into (cap, load, n, buckets). The invariant
+    component is dropped; it is carried by the interpreter but not needed to
+    state the model. -/
+def hmOfV (v : Val) : Option (Nat × Nat × Nat × List (List (Nat × Nat))) := do
+  let (c, r1) ← pairOfV v
+  let (l, r2) ← pairOfV r1
+  let (n, r3) ← pairOfV r2
+  let (s, _) ← pairOfV r3
+  let cap ← natOfV 4000 c
+  let load ← natOfV 4000 l
+  let nn ← natOfV 4000 n
+  let bs ← slotsOfV s
+  pure (cap, load, nn, bs)
+
+/-- The trusted model for one bucket: overwrite the matching entry in place
+    on a hit, otherwise append the new entry at the bucket's end. -/
+def modelInsB (k v : Nat) : List (Nat × Nat) → List (Nat × Nat)
+  | [] => [(k, v)]
+  | (k2, v2) :: t => if k2 == k then (k, v) :: t else (k2, v2) :: modelInsB k v t
+
+def modelIns (cap : Nat) (bs : List (List (Nat × Nat))) (k v : Nat)
+    : List (List (Nat × Nat)) :=
+  bs.mapIdx (fun i b => if i == k % cap then modelInsB k v b else b)
+
+def modelRun (cap : Nat) (ops : List (Nat × Nat))
+    : Nat × List (List (Nat × Nat)) :=
+  ops.foldl (fun (acc : Nat × List (List (Nat × Nat))) (kv : Nat × Nat) =>
+      let present := (acc.2.getD (kv.1 % cap) []).any (fun e => e.1 == kv.1)
+      ((if present then acc.1 else acc.1 + 1),
+       modelIns cap acc.2 kv.1 kv.2))
+    (0, List.replicate cap [])
+
+/-- `runProgram` with a caller-chosen step budget: the interpreter also
+    evaluates the comptime layer, so a concrete run can exceed the default
+    1000-step fuel. -/
+def runProgramF (fuel : Nat) (t : Term) : Except String Env :=
+  match (do let _ ← readR fuel (atBoundary t); endScope fuel).run
+      { initSt with executing := true } with
+  | .ok _ st => .ok (canonicalize st.env)
+  | .error e _ => .error e
+
+def runHM (t : Term) : Option (Nat × Nat × Nat × List (List (Nat × Nat))) :=
+  match runProgramF 2000000 t with
+  | .ok env => (env.lookup "y").bind hmOfV
+  | .error _ => none
+
+/-- Five inserts at cap 4: keys 5, 1, 9 all collide in slot 1 (the middle one
+    walks past a miss), key 5 re-inserted mid-sequence must OVERWRITE in place,
+    key 2 lands alone. -/
+def s1RunCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog defer_check {
+  let Pair(m0, Ev0) = NewHM(4, unit);
+  let b1 = &m m0;
+  InsertHM(9, 5, 70, b1, unit);
+  let b2 = &m m0;
+  InsertHM(9, 1, 10, b2, unit);
+  let b3 = &m m0;
+  InsertHM(9, 5, 71, b3, unit);
+  let b4 = &m m0;
+  InsertHM(9, 9, 90, b4, unit);
+  let b5 = &m m0;
+  InsertHM(9, 2, 20, b5, unit);
+  let y = m0;
+  () }
+
+def s1Expected : Nat × List (List (Nat × Nat)) :=
+  modelRun 4 [(5, 70), (1, 10), (5, 71), (9, 90), (2, 20)]
+
+-- The fifth distinct-key insert trips the load threshold (5·4 > 16), so the
+-- map resizes to capacity 8 and rehashes; key 5 leaves the 1/9 collision
+-- chain. The resize move prepends each moved node, so same-slot survivors
+-- come out reversed: (9, 90) before (1, 10). Bucket order does not affect
+-- membership, so this is still a correct instance of the model.
+example : (runHM s1RunCaller ==
+    some (8, 32, 4, [[], [(9, 90), (1, 10)], [(2, 20)], [], [], [(5, 71)], [], []]))
+    = true := by native_decide
+
+-- The model computed directly at capacity 4 (no resize) matches the
+-- expected pre-resize bucket layout.
+example : (s1Expected == (4, [[], [(5, 71), (1, 10), (9, 90)], [(2, 20)], []]))
+    = true := by native_decide
+
+/-- The insert sequence followed by three removes: key 5 (bucket-1 head, a
+    hit), key 7 (a miss — nothing changes), key 1 (mid-bucket unlink). -/
+def s1RemCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog defer_check {
+  let Pair(m0, Ev0) = NewHM(4, unit);
+  let b1 = &m m0;
+  InsertHM(9, 5, 70, b1, unit);
+  let b2 = &m m0;
+  InsertHM(9, 1, 10, b2, unit);
+  let b3 = &m m0;
+  InsertHM(9, 5, 71, b3, unit);
+  let b4 = &m m0;
+  InsertHM(9, 9, 90, b4, unit);
+  let b5 = &m m0;
+  InsertHM(9, 2, 20, b5, unit);
+  let b6 = &m m0;
+  RemoveHM(9, 5, b6, unit);
+  let b7 = &m m0;
+  RemoveHM(9, 7, b7, unit);
+  let b8 = &m m0;
+  RemoveHM(9, 1, b8, unit);
+  let y = m0;
+  () }
+
+example : (runHM s1RemCaller ==
+    some (8, 32, 2, [[], [(9, 90)], [(2, 20)], [], [], [], [], []]))
+    = true := by native_decide
+
+/-- From capacity 1 (threshold 0), four inserts force THREE doubling resizes:
+    1 → 2 → 4 → 8, every entry re-slotted by the move fold each time. -/
+def s1GrowCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog defer_check {
+  let Pair(m0, Ev0) = NewHM(1, unit);
+  let b1 = &m m0;
+  InsertHM(9, 1, 10, b1, unit);
+  let b2 = &m m0;
+  InsertHM(9, 2, 20, b2, unit);
+  let b3 = &m m0;
+  InsertHM(9, 3, 30, b3, unit);
+  let b4 = &m m0;
+  InsertHM(9, 4, 40, b4, unit);
+  let y = m0;
+  () }
+
+example : (runHM s1GrowCaller ==
+    some (8, 32, 4, [[], [(1, 10)], [(2, 20)], [(3, 30)], [(4, 40)], [], [], []]))
+    = true := by native_decide
+
+-- A freshly created map decodes with every bucket empty, n = 0, and
+-- load = 4·cap.
+def s1NewCaller : Term := hmS1Under newRetHonest insRetHonest remRetHonest prog defer_check {
+  let Pair(m0, Ev0) = NewHM(3, unit);
+  let y = m0;
+  () }
+example : (runHM s1NewCaller == some (3, 12, 0, [[], [], []])) = true := by
+  native_decide
+
+
+
+
+/-! ## GetMut / GetMutOrInsert, executing, with the check status pinned
+
+    GetMutHM borrows the entry via a total walk, ContainsHM tests presence
+    via a Bool walk, and GetMutOrInsertHM inserts a default through the
+    verified InsertHM before walking when the key is absent. The checker
+    still rejects this chain (pinned by the assertion below), but it is
+    exercised here to confirm it computes the correct answer at runtime. -/
+
+def hmGmUnder (tail2 : Term) : Term :=
+  hmS1Under newRetHonest insRetHonest remRetHonest prog{
+  fn WalkVal [fuel] (fuel : Nat, key : Nat, dflt : Nat,
+                     b : &mut (List (Σ (k : Nat). Nat))) -> &mut Nat {
+    match fuel {
+      Z => { *b := Cons(Pair(key, dflt), Nil);
+             match b { Nil => (), Cons(Pair(kk, vv), tl) => &m *vv } },
+      S(f2) => match b {
+        Nil => { *b := Cons(Pair(key, dflt), Nil);
+                 match b { Nil => (), Cons(Pair(kk, vv), tl) => &m *vv } },
+        Cons(Pair(kk, vv), tl) =>
+          if e : Eqb *kk key { &m *vv } else { WalkVal(f2, key, dflt, &m *tl) }
+      } } };
+  fn GetMutRaw (fuel : Nat, key : Nat, dflt : Nat,
+                self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                  Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))).
+                    HMInvT cap load n slots)) -> &mut Nat {
+    let HLe1 = PackLe1 (*self);
+    match self {
+      Pair(cap, r1) => match r1 {
+        Pair(load, r2) => match r2 {
+          Pair(nn, r3) => match r3 {
+            Pair(slots, HInv) => {
+              let c = *cap;
+              *cap := c;
+              let C0 = c;
+              let Pair(i, Pair(r, Pair(hd, him))) = SlotOfE(key, c, HLe1);
+              let Him0 = him;
+              let bb = &m (*slots)[i | NatRw (λ (W : Nat). Le (S W) C0)
+                (Mod key C0) i (IdSym Nat i (Mod key C0) Him0)
+                (ModLtN key C0 HLe1)];
+              WalkVal(fuel, key, dflt, bb)
+            } } } } } };
+  fn GetMutHM (fuel : Nat, key : Nat,
+               self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                 Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))).
+                   HMInvT cap load n slots),
+               Hin : Id Bool (HitHM key (*self)) True) -> &mut Nat {
+    GetMutRaw(fuel, key, Z, &m *self) };
+  fn ContainsWalk [fuel] (fuel : Nat, key : Nat,
+                          b : &mut (List (Σ (k : Nat). Nat))) -> Bool {
+    match fuel {
+      Z => False,
+      S(f2) => match b {
+        Nil => False,
+        Cons(Pair(kk, vv), tl) =>
+          if e : Eqb *kk key { True } else { ContainsWalk(f2, key, &m *tl) }
+      } } };
+  fn ContainsHM (fuel : Nat, key : Nat,
+                 self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                   Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))).
+                     HMInvT cap load n slots)) -> Bool {
+    let HLe1 = PackLe1 (*self);
+    match self {
+      Pair(cap, r1) => match r1 {
+        Pair(load, r2) => match r2 {
+          Pair(nn, r3) => match r3 {
+            Pair(slots, HInv) => {
+              let c = *cap;
+              *cap := c;
+              let C0 = c;
+              let Pair(i, Pair(r, Pair(hd, him))) = SlotOfE(key, c, HLe1);
+              let Him0 = him;
+              let bb = &m (*slots)[i | NatRw (λ (W : Nat). Le (S W) C0)
+                (Mod key C0) i (IdSym Nat i (Mod key C0) Him0)
+                (ModLtN key C0 HLe1)];
+              ContainsWalk(fuel, key, bb)
+            } } } } } };
+  fn GetMutOrInsertHM (fuel : Nat, key : Nat, dflt : Nat,
+                       self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
+                         Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))).
+                           HMInvT cap load n slots),
+                       Hfuel : Le (S (S (SizeHM (*self)))) fuel) -> &mut Nat {
+    if ContainsHM(fuel, key, &m *self) {
+      GetMutRaw(fuel, key, dflt, &m *self)
+    } else {
+      InsertHM(fuel, key, dflt, &m *self, Hfuel);
+      GetMutRaw(fuel, key, dflt, &m *self)
+    } };
+  %tail2 }
+
+-- The checker rejects the extended chain; this pins the exact error text.
+example : progRejects (hmGmUnder prog defer_check { () }) "does not have its owed type"
+    = true := by native_decide
+
+/-- Keys 0, 16, 64, and 80 all reduce to slot 0 at capacity 8, so they chain
+    in one bucket. Overwrite key 64's value through GetMutHM, then remove
+    key 64, and check that the surviving three entries decode correctly. -/
+def gmTest1 : Term := hmGmUnder prog defer_check {
+  let Pair(m0, Ev0) = NewHM(8, unit);
+  let b1 = &m m0;
+  InsertHM(64, 0, 42, b1, unit);
+  let b2 = &m m0;
+  InsertHM(64, %(Term.nat 16), 18, b2, unit);
+  let b3 = &m m0;
+  InsertHM(64, %(Term.nat 64), %(Term.nat 138), b3, unit);
+  let b4 = &m m0;
+  InsertHM(64, %(Term.nat 80), %(Term.nat 256), b4, unit);
+  let b5 = &m m0;
+  let e1 = GetMutHM(64, %(Term.nat 64), b5, unit);
+  *e1 := 56;
+  let b6 = &m m0;
+  RemoveHM(64, %(Term.nat 64), b6, unit);
+  let y = m0;
+  () }
+
+example : (runHM gmTest1 ==
+    some (8, 32, 3,
+      (List.replicate 8 ([] : List (Nat × Nat))).set 0
+        [(0, 42), (16, 18), (80, 256)])) = true := by native_decide
+
+/-- Both arms of the or_insert path: key 5 absent (inserts default 7 through
+    the verified InsertHM, so n is accounted for), written through the
+    returned borrow; then key 5 again (present, so no insert), written
+    again. -/
+def gmTest2 : Term := hmGmUnder prog defer_check {
+  let Pair(m0, Ev0) = NewHM(4, unit);
+  let b1 = &m m0;
+  InsertHM(9, 1, 10, b1, unit);
+  let b2 = &m m0;
+  let e1 = GetMutOrInsertHM(9, 5, 7, b2, unit);
+  *e1 := 9;
+  let b3 = &m m0;
+  let e2 = GetMutOrInsertHM(9, 5, 7, b3, unit);
+  *e2 := 11;
+  let y = m0;
+  () }
+
+example : (runHM gmTest2 ==
+    some (4, 16, 2, [[], [(1, 10), (5, 11)], [], []])) = true := by native_decide
 
 
 end Dllbc.Tests.HashMap
