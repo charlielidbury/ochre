@@ -638,8 +638,7 @@ example : progRejects (arrUnder sHonest pHonest qHonest (prog defer_check { Unit
     concrete arrays is a further control, and it also demonstrates directly that
     `quicksortA` really sorts, in place. -/
 
-def tnatT : Nat → Term | 0 => .ctorApp "Z" [] | k + 1 => .ctorApp "S" [tnatT k]
-def tarrT (l : List Nat) : Term := .ctorApp "Arr" (l.map tnatT)
+def tarrT (l : List Nat) : Term := .ctorApp "Arr" (l.map Term.nat)
 
 def natOfV : Nat → Val → Option Nat
   | f, v =>
@@ -665,19 +664,20 @@ def arrOfV : Val → Option (List Nat)
 
 /-- Build the array, borrow it, sort it in place, read it back. `hfuel` is `Le n n`,
     which computes to `Unit` at a concrete length. -/
-def qsCallerA (l : List Nat) : Term :=
-  .seq (.letIn ⟨0, "z"⟩ (tarrT l))
-    (.seq (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩)))
-      (.seq (.call "QuicksortA" [tnatT l.length, tnatT l.length, .unit, .var ⟨1, "b"⟩])
-        (.seq (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩)) .unit)))
+def qsCallerA (l : List Nat) : Term := prog defer_check {
+  let z = %(tarrT l);
+  let b = &m z;
+  QuicksortA(%(Term.nat l.length), %(Term.nat l.length), (), b);
+  let y = z;
+  () }
 
 /-- `splitA` alone, so the divergence can be exhibited one call deep instead of three. -/
-def splCaller (l : List Nat) (pvt : Nat) : Term :=
-  .seq (.letIn ⟨0, "z"⟩ (tarrT l))
-    (.seq (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩)))
-      (.seq (.letIn ⟨2, "r"⟩ (.call "SplitA"
-          [tnatT l.length, tnatT l.length, .unit, tnatT pvt, .var ⟨1, "b"⟩]))
-        (.seq (.letIn ⟨3, "y"⟩ (.var ⟨0, "z"⟩)) .unit)))
+def splCaller (l : List Nat) (pvt : Nat) : Term := prog defer_check {
+  let z = %(tarrT l);
+  let b = &m z;
+  let r = SplitA(%(Term.nat l.length), %(Term.nat l.length), (), %(Term.nat pvt), b);
+  let y = z;
+  () }
 
 def runQsA (l : List Nat) : Option (List Nat) :=
   match Dllbc.Tests.S9Diff.runExec (arrUnder sHonest pHonest qHonest qSuffHonest (qsCallerA l)) with

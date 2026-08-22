@@ -419,7 +419,6 @@ example : progOk recCaller = true := by native_decide
     way. These are those names, once, so that every skeleton in this file splices
     them rather than re-deriving an index. -/
 
-def listNatT : Term := .app (.const "List") (.const "Nat")
 def vT : Term := .var ⟨0, "v"⟩
 def dvT : Term := .deref vT
 def oldvT : Term := .app (.const "old") dvT
@@ -523,15 +522,13 @@ example : progRejects splitOffLieHead "does not have return type" = true := by n
     `Drop i l`, at the two boundaries and in the middle. The caller rides `soUnder`'s
     own chain as its tail, so what runs is the function declared above it. -/
 
-def tnatT : Nat → Term | 0 => .ctorApp "Z" [] | k + 1 => .ctorApp "S" [tnatT k]
-def tlistT : List Nat → Term | [] => .ctorApp "Nil" [] | x :: xs => .ctorApp "Cons" [tnatT x, tlistT xs]
 def vnatV : Nat → Val | 0 => .ctor "Z" [] | k + 1 => .ctor "S" [vnatV k]
 def vlistV : List Nat → Val | [] => .ctor "Nil" [] | x :: xs => .ctor "Cons" [vnatV x, vlistV xs]
-def soCallerTail (l : List Nat) (i : Nat) : Term :=
-  .seq (.letIn ⟨0, "x"⟩ (tlistT l))
-    (.seq (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "x"⟩)))
-      (.seq (.letIn ⟨2, "p"⟩ (.call "SplitOff" [.var ⟨1, "b"⟩, tnatT i, .unit]))
-        (.matchE ⟨2, "p"⟩ none [.mk "Pair" [⟨3, "rr"⟩, ⟨4, "q"⟩] (.seq (.letIn ⟨5, "y"⟩ (.var ⟨0, "x"⟩)) .unit)])))
+def soCallerTail (l : List Nat) (i : Nat) : Term := prog defer_check {
+  let x = %(Std.ofList (l.map Term.nat));
+  let b = &m x;
+  let p = SplitOff(b, %(Term.nat i), ());
+  match p { Pair(rr, q) => { let y = x; () } } }
 def runSplit (l : List Nat) (i : Nat) : Bool :=
   match Dllbc.Tests.S9Diff.runExec (soUnder soHonest (soCallerTail l i)) with
   | .ok env => env.lookup "y" == some (vlistV (l.take i)) && env.lookup "rr" == some (vlistV (l.drop i))
@@ -666,11 +663,12 @@ example : progRejects (setSwapUnder setHonest (exitIs oldvT) .unit)
     Proof arguments in the callers below are placeholders `()`, since the
     executing run does not type-check. Each rides the honest chain as its tail, so
     what runs is the function declared above it. -/
-def setCallerTail (l : List Nat) (i x : Nat) : Term :=
-  .seq (.letIn ⟨0, "z"⟩ (tlistT l))
-    (.seq (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩)))
-      (.seq (.call "SetAt" [.var ⟨1, "b"⟩, tnatT i, tnatT x, .unit])
-        (.seq (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩)) .unit)))
+def setCallerTail (l : List Nat) (i x : Nat) : Term := prog defer_check {
+  let z = %(Std.ofList (l.map Term.nat));
+  let b = &m z;
+  SetAt(b, %(Term.nat i), %(Term.nat x), ());
+  let y = z;
+  () }
 def runSetAt (l : List Nat) (i x : Nat) : Bool :=
   match Dllbc.Tests.S9Diff.runExec (setSwapUnder setHonest swapHonest (setCallerTail l i x)) with
   | .ok env => env.lookup "y" == some (vlistV (l.set i x))
@@ -680,11 +678,12 @@ example : runSetAt [1,2,3] 0 9 = true := by native_decide
 example : runSetAt [1,2,3] 2 9 = true := by native_decide
 example : runSetAt [5,5,5,5] 1 7 = true := by native_decide
 
-def swapCallerTail (l : List Nat) (i j : Nat) : Term :=
-  .seq (.letIn ⟨0, "z"⟩ (tlistT l))
-    (.seq (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩)))
-      (.seq (.call "SwapAt" [.var ⟨1, "b"⟩, tnatT i, tnatT j, .unit, .unit, .unit])
-        (.seq (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩)) .unit)))
+def swapCallerTail (l : List Nat) (i j : Nat) : Term := prog defer_check {
+  let z = %(Std.ofList (l.map Term.nat));
+  let b = &m z;
+  SwapAt(b, %(Term.nat i), %(Term.nat j), (), (), ());
+  let y = z;
+  () }
 def runSwapAt (l : List Nat) (i j : Nat) : Bool :=
   match Dllbc.Tests.S9Diff.runExec (setSwapUnder setHonest swapHonest (swapCallerTail l i j)) with
   | .ok env =>
@@ -1517,13 +1516,11 @@ example : progRejects qsStaleBound "does not have return type" = true := by nati
     `if e : Leb x p` on a closed Bool takes the `ownedSelect` path, where the
     equation is bound to `Refl`. -/
 
-def partCallerTail (l : List Nat) (pvv : Nat) : Term :=
-  .seq (.letIn ⟨0, "z"⟩ (tlistT l))
-    (.seq (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩)))
-      (.seq (.letIn ⟨2, "r"⟩ (.call "Partition"
-          [tnatT l.length, .var ⟨1, "b"⟩, tnatT pvv, .unit]))
-        (.matchE ⟨2, "r"⟩ none
-          [.mk "Pair" [⟨3, "hi"⟩, ⟨4, "q"⟩] (.seq (.letIn ⟨5, "y"⟩ (.var ⟨0, "z"⟩)) .unit)])))
+def partCallerTail (l : List Nat) (pvv : Nat) : Term := prog defer_check {
+  let z = %(Std.ofList (l.map Term.nat));
+  let b = &m z;
+  let r = Partition(%(Term.nat l.length), b, %(Term.nat pvv), ());
+  match r { Pair(hi, q) => { let y = z; () } } }
 def runPart (l : List Nat) (pvv : Nat) : Bool :=
   match Dllbc.Tests.S9Diff.runExec (qsUnder partHonest qsHonest suffHonest (partCallerTail l pvv)) with
   | .ok env =>
@@ -1540,11 +1537,12 @@ example : runPart [2,2,2] 2 = true := by native_decide       -- the boundary: x 
 /-- The caller the sort's differentials share: own a list, lend it, sort, read it
     back. `Hfuel : Le (Len l) (Len l)` is supplied as `()` — the bound holds by
     COMPUTATION here, which is the ordinary route for a concrete payload. -/
-def qsCallerTail (l : List Nat) : Term :=
-  .seq (.letIn ⟨0, "z"⟩ (tlistT l))
-    (.seq (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩)))
-      (.seq (.call "Quicksort" [tnatT l.length, .var ⟨1, "b"⟩, .unit])
-        (.seq (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩)) .unit)))
+def qsCallerTail (l : List Nat) : Term := prog defer_check {
+  let z = %(Std.ofList (l.map Term.nat));
+  let b = &m z;
+  Quicksort(%(Term.nat l.length), b, ());
+  let y = z;
+  () }
 def qsRun (l : List Nat) : Term := qsUnder partHonest qsHonest suffHonest (qsCallerTail l)
 def runQs (l : List Nat) : Bool :=
   match Dllbc.Tests.S9Diff.runExec (qsRun l) with
