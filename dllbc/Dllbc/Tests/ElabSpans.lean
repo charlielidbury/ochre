@@ -198,9 +198,9 @@ def under (ret : Term) : Term := prog{
 -- The ascribed return type is elaboration metadata, not part of the value,
 -- so both instantiations below produce the same `Term`; the check against
 -- each return type happens only via `progOk`/`progRejects`'s own argument.
-example : progOk (under prog defer_check { Nat }) prog defer_check { Nat } = true := by native_decide
+example : progOk (under prog_parse { Nat }) prog_parse { Nat } = true := by native_decide
 example :
-    progRejects (under prog defer_check { Bool }) "does not have its ascribed type" prog defer_check { Bool } = true := by
+    progRejects (under prog_parse { Bool }) "does not have its ascribed type" prog_parse { Bool } = true := by
   native_decide
 
 /-! ## (7) An ascribed pure block — checked at its own definition
@@ -236,13 +236,13 @@ seal: the sealed term (unit) does not have its ascribed type (Nat)
 #guard_msgs in
 #check (prog{ (unit : Nat) } : Term)
 
-/-! ## (8) `defer_check` elaborates and checks nothing
+/-! ## (8) `prog_parse` elaborates and checks nothing
 
     The explicit opt-out: the block parses and binds but the checker never
     walks it. Whatever verifies it does so elsewhere, at a separate probe. -/
 
 example :
-    ((prog defer_check { λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
+    ((prog_parse { λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
                     Z => unit, S (K) Ih => Ih } })
      == StdLemmas.LeReflRaw) = true := by native_decide
 

@@ -6,7 +6,7 @@ import Dllbc.Std
 open Dllbc
 
 -- the "std module": one lemma, match+recursion form
-def stdBlock : Term := prog defer_check {
+def stdBlock : Term := prog_parse {
   fn LeRefl [n] (n : Nat) -> Le n n {
     match n { Z => unit, S(k) => LeRefl(k) } };
   () }
@@ -36,7 +36,7 @@ def seededRun : String :=
 #eval seededRun
 
 -- the splice: same two pieces in ONE block
-def spliced : Term := prog defer_check {
+def spliced : Term := prog_parse {
   fn LeRefl [n] (n : Nat) -> Le n n {
     match n { Z => unit, S(k) => LeRefl(k) } };
   let y = LeRefl(2);

@@ -238,7 +238,7 @@ example : progOk vecPushLet = true := by native_decide
 -- Forget `*l := S(*l)` and the second field is checked against the stuck
 -- `VecF Nat σₗ`, which the concrete `Pair` cannot inhabit — rejected, as in
 -- `Boundaries`.
-example : progRejects (prog defer_check {
+example : progRejects (prog_parse {
     fn Push (e : Nat, v : &mut (Σ (l : Nat). %Tests.S5Bound.vecFT Nat l)) -> Unit {
       let Pair(l, xs) = v;
       *xs := Pair(e, *xs);
@@ -253,7 +253,7 @@ example : progRejects (prog defer_check {
     constructor. The macro layer keeps no constructor table of its own — it
     does not need to know which types have exactly one constructor. -/
 
-def headByLet : Term := prog defer_check {
+def headByLet : Term := prog_parse {
   fn Head (l : List Nat) -> Nat { let Cons(h, t) = l; h };
   () }
 
@@ -448,7 +448,7 @@ def vecPushNested : Term := prog{
 
 example : progOk vecPushNested = true := by native_decide
 
-example : progRejects (prog defer_check {
+example : progRejects (prog_parse {
     fn Push (e : Nat, v : &mut (Σ (n : Nat). Σ (l : Nat). %Tests.S5Bound.vecFT Nat l))
         -> Unit {
       let Pair(n, Pair(l, xs)) = v;
@@ -467,7 +467,7 @@ example : progRejects (prog defer_check {
     one-branch match on a `Nat`; no sibling arm can complete it, since DLLBC
     matches are one arm per head constructor and this is not the head. -/
 
-def nestedNonExh : Term := prog defer_check {
+def nestedNonExh : Term := prog_parse {
   fn F (l : List Nat) -> Unit { match l { Nil => (), Cons(Z, tl) => () } };
   () }
 
@@ -540,8 +540,8 @@ open Dllbc.StdLemmas (LeReflRaw)
     claim has and the one that makes every other assertion about calls apply to
     juxtaposition automatically. -/
 
-def spelledCall : Term := prog defer_check { let F = λ (x : Nat). x; let z = F(2); () }
-def spelledJux  : Term := prog defer_check { let F = λ (x : Nat). x; let z = F 2; () }
+def spelledCall : Term := prog_parse { let F = λ (x : Nat). x; let z = F(2); () }
+def spelledJux  : Term := prog_parse { let F = λ (x : Nat). x; let z = F 2; () }
 example : Term.beq spelledCall spelledJux = true := by native_decide
 
 /-! ## B. ⇒ mints at the instantiated codomain
@@ -581,7 +581,7 @@ example : progOk rememberNeutral = true := by native_decide
 -- Refused: a sealed function's call, ⇝-read at a capital `let`. Entering is an
 -- event; this is the refusal that retired with `.callV` and came back on the
 -- value.
-def enterRefused : Term := prog defer_check {
+def enterRefused : Term := prog_parse {
   fn GiveLe (a : Nat) -> Le a a { %LeReflRaw a };
   fn Caller (n : Nat) -> Unit { let P = GiveLe(n); () };
   () }

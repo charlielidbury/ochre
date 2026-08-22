@@ -33,7 +33,7 @@ namespace Dllbc.Tests.AuditFold
 /-- The identity on the invariant, so the repack's tail is an application (a
     ⇝-position) rather than a bare comptime binder, which the erasure fence
     refuses to ⇒-move. -/
-def SortedAId : Term := prog defer_check {
+def SortedAId : Term := prog_parse {
   λ (N : Nat). λ (A : Array N Nat). λ (H : SortedA N A). H }
 
 /-- The acceptance test: carve the pack's array three ways, return every
@@ -100,7 +100,7 @@ example : progOk carveRejoinEq = true := by native_decide
 
 /-- A genuinely un-rejoined hole: the middle segment is moved out and not
     refilled. -/
-def packCarveHole : Term := prog defer_check {
+def packCarveHole : Term := prog_parse {
   fn Touch (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
             self : &mut (Σ0 (a : Array n Nat). SortedA n a)) -> Unit {
     let Pair(arr, HS) = *self;
@@ -120,7 +120,7 @@ example : progRejects packCarveHole
     because a `7` was written into the cell and the entry clause is about the
     array that was there before. Confirms the fold only lets the audit *state*
     what the array is — it does not make the audit vacuous. -/
-def packCarveWrite : Term := prog defer_check {
+def packCarveWrite : Term := prog_parse {
   fn Touch (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
             self : &mut (Σ0 (a : Array n Nat). SortedA n a)) -> Unit {
     let Pair(arr, HS) = *self;
@@ -153,7 +153,7 @@ def segsSuspended : Val :=
   .node "§segs" [Val.segNode (Term.nat 1) (Val.sym 0), Val.segNode (Term.nat 2) (.loanM 0)]
 
 example : Term.beq (subsKnowledge segsRejoined)
-  prog defer_check { arrCat 1 2 %(Term.sym 0) %(Term.sym 1) } = true := by native_decide
+  prog_parse { arrCat 1 2 %(Term.sym 0) %(Term.sym 1) } = true := by native_decide
 
 example : Term.beq (subsKnowledge segsSuspended) (.const "@stateComponent") = true := by
   native_decide

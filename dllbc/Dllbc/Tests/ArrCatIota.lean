@@ -36,42 +36,42 @@ open Dllbc.StdLemmas (LeAddRaw LeReflRaw IdCongrRaw IdSymRaw AddZeroRaw)
 
 /-! ### §1.1 On an owned run -/
 
-example : (Pure.nf 200 prog defer_check { atake 1 2 Arr(3, 1, 2) } == prog defer_check { Arr(3) }) = true := by native_decide
-example : (Pure.nf 200 prog defer_check { adrop 1 2 Arr(3, 1, 2) } == prog defer_check { Arr(1, 2) }) = true := by native_decide
-example : (Pure.nf 200 prog defer_check { atake 0 3 Arr(3, 1, 2) } == prog defer_check { Arr() }) = true := by native_decide
-example : (Pure.nf 200 prog defer_check { adrop 0 3 Arr(3, 1, 2) } == prog defer_check { Arr(3, 1, 2) }) = true := by native_decide
-example : (Pure.nf 200 prog defer_check { atake 3 0 Arr(3, 1, 2) } == prog defer_check { Arr(3, 1, 2) }) = true := by native_decide
-example : (Pure.nf 200 prog defer_check { adrop 3 0 Arr(3, 1, 2) } == prog defer_check { Arr() }) = true := by native_decide
+example : (Pure.nf 200 prog_parse { atake 1 2 Arr(3, 1, 2) } == prog_parse { Arr(3) }) = true := by native_decide
+example : (Pure.nf 200 prog_parse { adrop 1 2 Arr(3, 1, 2) } == prog_parse { Arr(1, 2) }) = true := by native_decide
+example : (Pure.nf 200 prog_parse { atake 0 3 Arr(3, 1, 2) } == prog_parse { Arr() }) = true := by native_decide
+example : (Pure.nf 200 prog_parse { adrop 0 3 Arr(3, 1, 2) } == prog_parse { Arr(3, 1, 2) }) = true := by native_decide
+example : (Pure.nf 200 prog_parse { atake 3 0 Arr(3, 1, 2) } == prog_parse { Arr(3, 1, 2) }) = true := by native_decide
+example : (Pure.nf 200 prog_parse { adrop 3 0 Arr(3, 1, 2) } == prog_parse { Arr() }) = true := by native_decide
 
 /-- A run whose length is not `i + k` is not this composition, so the
     projection stays stuck rather than guessing. -/
-example : (Pure.nf 200 prog defer_check { atake 1 1 Arr(3, 1, 2) } == prog defer_check { Arr(3) }) = false := by native_decide
+example : (Pure.nf 200 prog_parse { atake 1 1 Arr(3, 1, 2) } == prog_parse { Arr(3) }) = false := by native_decide
 
 /-! ### §1.2 On a composition, symbolically -/
 
 /-- `atake i k (arrCat i k lo hi) ↝ lo`, with `i`, `k`, `lo`, `hi` all opaque. -/
 example : (Pure.nf 600
-    prog defer_check { λ (I : Nat). λ (K : Nat). λ (Lo : Array I Nat). λ (Hi : Array K Nat).
+    prog_parse { λ (I : Nat). λ (K : Nat). λ (Lo : Array I Nat). λ (Hi : Array K Nat).
             atake I K (arrCat I K Lo Hi) }
   == Pure.nf 600
-    prog defer_check { λ (I : Nat). λ (K : Nat). λ (Lo : Array I Nat). λ (Hi : Array K Nat). Lo })
+    prog_parse { λ (I : Nat). λ (K : Nat). λ (Lo : Array I Nat). λ (Hi : Array K Nat). Lo })
   = true := by native_decide
 
 example : (Pure.nf 600
-    prog defer_check { λ (I : Nat). λ (K : Nat). λ (Lo : Array I Nat). λ (Hi : Array K Nat).
+    prog_parse { λ (I : Nat). λ (K : Nat). λ (Lo : Array I Nat). λ (Hi : Array K Nat).
             adrop I K (arrCat I K Lo Hi) }
   == Pure.nf 600
-    prog defer_check { λ (I : Nat). λ (K : Nat). λ (Lo : Array I Nat). λ (Hi : Array K Nat). Hi })
+    prog_parse { λ (I : Nat). λ (K : Nat). λ (Lo : Array I Nat). λ (Hi : Array K Nat). Hi })
   = true := by native_decide
 
 /-- The extents are compared by conversion, not by tree equality: the carve's
     fold builds its right extent with `add` (`Val.segsExtent?`), so the spine a
     discharge meets says `add 1 r` where the signature says `S r`. -/
 example : (Pure.nf 600
-    prog defer_check { λ (R : Nat). λ (I : Nat). λ (Lo : Array I Nat). λ (Hi : Array (S R) Nat).
+    prog_parse { λ (R : Nat). λ (I : Nat). λ (Lo : Array I Nat). λ (Hi : Array (S R) Nat).
             atake I (Add 1 R) (arrCat I (S R) Lo Hi) }
   == Pure.nf 600
-    prog defer_check { λ (R : Nat). λ (I : Nat). λ (Lo : Array I Nat). λ (Hi : Array (S R) Nat). Lo })
+    prog_parse { λ (R : Nat). λ (I : Nat). λ (Lo : Array I Nat). λ (Hi : Array (S R) Nat). Lo })
   = true := by native_decide
 
 /-! ### §1.3 …and splits that are not this one stay stuck
@@ -81,19 +81,19 @@ example : (Pure.nf 600
     would be a bug, not an approximation. -/
 
 example : (Pure.nf 600
-    prog defer_check { λ (Lo : Array 2 Nat). λ (Hi : Array 1 Nat). atake 1 2 (arrCat 2 1 Lo Hi) }
-  == Pure.nf 600 prog defer_check { λ (Lo : Array 2 Nat). λ (Hi : Array 1 Nat). Lo })
+    prog_parse { λ (Lo : Array 2 Nat). λ (Hi : Array 1 Nat). atake 1 2 (arrCat 2 1 Lo Hi) }
+  == Pure.nf 600 prog_parse { λ (Lo : Array 2 Nat). λ (Hi : Array 1 Nat). Lo })
   = false := by native_decide
 
 /-- A stuck projection is a normal form — it does not keep unfolding — which is
     what lets it sit inside a pin and be compared. -/
 def stuckTake : Term :=
-  Pure.nf 600 prog defer_check { λ (I : Nat). λ (K : Nat). λ (A : Array (Add I K) Nat). atake I K A }
+  Pure.nf 600 prog_parse { λ (I : Nat). λ (K : Nat). λ (A : Array (Add I K) Nat). atake I K A }
 example : (Pure.nf 600 stuckTake == stuckTake) = true := by native_decide
 
 /-- A bare σ has no visible split, so both projections are stuck on one. -/
-example : (Pure.nf 400 prog defer_check { atake 1 2 %(Term.sym 0) }
-  == prog defer_check { atake 1 2 %(Term.sym 0) }) = true := by native_decide
+example : (Pure.nf 400 prog_parse { atake 1 2 %(Term.sym 0) }
+  == prog_parse { atake 1 2 %(Term.sym 0) }) = true := by native_decide
 
 /-! ### §1.4 Two rules that are not needed
 
@@ -108,10 +108,10 @@ example : (Pure.nf 400 prog defer_check { atake 1 2 %(Term.sym 0) }
     the literal `Z`, and the existing `arrRec` fold computes from there. -/
 
 example : (Pure.nf 600
-    prog defer_check { λ (I : Nat). λ (K : Nat). λ (X : Nat). λ (XS : Array (Add I K) Nat).
+    prog_parse { λ (I : Nat). λ (K : Nat). λ (X : Nat). λ (XS : Array (Add I K) Nat).
             atake (S I) K (acons (Add I K) X XS) }
   == Pure.nf 600
-    prog defer_check { λ (I : Nat). λ (K : Nat). λ (X : Nat). λ (XS : Array (Add I K) Nat).
+    prog_parse { λ (I : Nat). λ (K : Nat). λ (X : Nat). λ (XS : Array (Add I K) Nat).
             acons I X (atake I K XS) })
   = false := by native_decide
 
@@ -137,48 +137,48 @@ def chkS (sctx : List (Nat × Term)) (tm ty : Term) : String :=
 /-- `σ₀ = i`, `σ₁ = k`, `σ₂ : Array (add i k) T` — the telescope a decomposition
     spelling has in scope. -/
 def splitCtx : List (Nat × Term) :=
-  [(0, prog defer_check { Nat }), (1, prog defer_check { Nat }),
-   (2, prog defer_check { Array %(prog defer_check { %(Pure.kAddFn) %(Term.sym 0) %(Term.sym 1) }) Nat })]
+  [(0, prog_parse { Nat }), (1, prog_parse { Nat }),
+   (2, prog_parse { Array %(prog_parse { %(Pure.kAddFn) %(Term.sym 0) %(Term.sym 1) }) Nat })]
 
-example : chkS splitCtx prog defer_check { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
-    prog defer_check { Array %(Term.sym 0) Nat } = "ok true" := by native_decide
-example : chkS splitCtx prog defer_check { adrop %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
-    prog defer_check { Array %(Term.sym 1) Nat } = "ok true" := by native_decide
+example : chkS splitCtx prog_parse { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
+    prog_parse { Array %(Term.sym 0) Nat } = "ok true" := by native_decide
+example : chkS splitCtx prog_parse { adrop %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
+    prog_parse { Array %(Term.sym 1) Nat } = "ok true" := by native_decide
 
 /-- The extent is the one the projection names, not the other one and not the
     total: a `take` is not a `drop` and neither is the whole array. -/
-example : chkS splitCtx prog defer_check { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
-    prog defer_check { Array %(Term.sym 1) Nat } = "ok false" := by native_decide
-example : chkS splitCtx prog defer_check { adrop %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
-    prog defer_check { Array %(Term.sym 0) Nat } = "ok false" := by native_decide
-example : chkS splitCtx prog defer_check { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
-    prog defer_check { Array %(prog defer_check { %(Pure.kAddFn) %(Term.sym 0) %(Term.sym 1) }) Nat }
+example : chkS splitCtx prog_parse { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
+    prog_parse { Array %(Term.sym 1) Nat } = "ok false" := by native_decide
+example : chkS splitCtx prog_parse { adrop %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
+    prog_parse { Array %(Term.sym 0) Nat } = "ok false" := by native_decide
+example : chkS splitCtx prog_parse { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
+    prog_parse { Array %(prog_parse { %(Pure.kAddFn) %(Term.sym 0) %(Term.sym 1) }) Nat }
   = "ok false" := by native_decide
 
 /-- The element type is carried through, so a projection of a `Nat` array is not
     an array of pairs. -/
-example : chkS splitCtx prog defer_check { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
-    prog defer_check { Array %(Term.sym 0) Bool } = "ok false" := by native_decide
+example : chkS splitCtx prog_parse { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
+    prog_parse { Array %(Term.sym 0) Bool } = "ok false" := by native_decide
 
 /-- The argument's extent must be the sum: `σ3 : Array σ0 Nat` is too short to
     be split at `(σ0, σ1)`. -/
-example : chkS (splitCtx ++ [(3, prog defer_check { Array %(Term.sym 0) Nat })])
-    prog defer_check { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 3) }
-    prog defer_check { Array %(Term.sym 0) Nat } = "ok false" := by native_decide
+example : chkS (splitCtx ++ [(3, prog_parse { Array %(Term.sym 0) Nat })])
+    prog_parse { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 3) }
+    prog_parse { Array %(Term.sym 0) Nat } = "ok false" := by native_decide
 
 /-- Non-array expected types are refused outright, which is the `asArrayTy?`
     guard `arrCat` has. -/
-example : chkS splitCtx prog defer_check { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
-    prog defer_check { Nat } = "ok false" := by native_decide
+example : chkS splitCtx prog_parse { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
+    prog_parse { Nat } = "ok false" := by native_decide
 
 /-- **The composition of the two typings is `arrCat`'s own premise**, which is
     the statement that these three formers fit together: `arrCat i k (atake i k a)
     (adrop i k a) : Array (add i k) T` whenever `a` is. -/
 example : chkS splitCtx
-    prog defer_check { arrCat %(Term.sym 0) %(Term.sym 1)
+    prog_parse { arrCat %(Term.sym 0) %(Term.sym 1)
             (atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 2))
             (adrop %(Term.sym 0) %(Term.sym 1) %(Term.sym 2)) }
-    prog defer_check { Array %(prog defer_check { %(Pure.kAddFn) %(Term.sym 0) %(Term.sym 1) }) Nat }
+    prog_parse { Array %(prog_parse { %(Pure.kAddFn) %(Term.sym 0) %(Term.sym 1) }) Nat }
   = "ok true" := by native_decide
 
 /-! ## §3 The target — a blind carve at a symbolic index, pinned
@@ -188,7 +188,7 @@ example : chkS splitCtx
     attributable to the projections alone. -/
 
 /-- The container: an array of key-value pairs where every key is 7. -/
-def AllK7 : Term := prog defer_check {
+def AllK7 : Term := prog_parse {
   λ (M : Nat). λ (A : Array M (Σ (k : Nat). Nat)).
     arrRec (Σ (k : Nat). Nat)
       (λ (Mz : Nat). λ (Az : Array Mz (Σ (k : Nat). Nat)). Type)
@@ -202,7 +202,7 @@ def AllK7 : Term := prog defer_check {
 /-- The fold-spelled update: walks the cons view index-first, keeping the key
     and replacing the value at the target index. `AVSetDecT` below wraps it
     rather than replacing it. -/
-def AVSetT : Term := prog defer_check {
+def AVSetT : Term := prog_parse {
   λ (I : Nat). λ (V : Nat).
     elim I return (λ (Z0 : Nat). Π (N : Nat) → Π (A : Array N (Σ (k : Nat). Nat)) → Array N (Σ (k : Nat). Nat)) {
       Z => λ (N : Nat). λ (A : Array N (Σ (k : Nat). Nat)).
@@ -235,38 +235,38 @@ def AVSetT : Term := prog defer_check {
         index is the literal `Z`, so `AVSetT Z v` computes in one `arrRec`
         ι step on the `acons`-headed suffix and keeps the key. -/
 
-def AVSetDecT : Term := prog defer_check {
+def AVSetDecT : Term := prog_parse {
   λ (I : Nat). λ (R : Nat). λ (V : Nat). λ (N : Nat). λ (A : Array N (Σ (k : Nat). Nat)).
     arrCat I (S R) (atake I (S R) A) ((%AVSetT) Z V (S R) (adrop I (S R) A)) }
 
 /-- The two updates agree wherever the extent is `i + (S r)`: `AVSetDecT i r v`
     and `AVSetT i v` compute the same array. Checked at each of the three
     slots of a 3-element array. -/
-def sampleArr : Term := prog defer_check { Arr(Pair(7, 1), Pair(7, 2), Pair(7, 3)) }
+def sampleArr : Term := prog_parse { Arr(Pair(7, 1), Pair(7, 2), Pair(7, 3)) }
 
-example : (Pure.nf 4000 prog defer_check { (%AVSetDecT) 0 2 9 3 %sampleArr }
-        == Pure.nf 4000 prog defer_check { (%AVSetT) 0 9 3 %sampleArr }) = true := by native_decide
-example : (Pure.nf 4000 prog defer_check { (%AVSetDecT) 1 1 9 3 %sampleArr }
-        == Pure.nf 4000 prog defer_check { (%AVSetT) 1 9 3 %sampleArr }) = true := by native_decide
-example : (Pure.nf 4000 prog defer_check { (%AVSetDecT) 2 0 9 3 %sampleArr }
-        == Pure.nf 4000 prog defer_check { (%AVSetT) 2 9 3 %sampleArr }) = true := by native_decide
+example : (Pure.nf 4000 prog_parse { (%AVSetDecT) 0 2 9 3 %sampleArr }
+        == Pure.nf 4000 prog_parse { (%AVSetT) 0 9 3 %sampleArr }) = true := by native_decide
+example : (Pure.nf 4000 prog_parse { (%AVSetDecT) 1 1 9 3 %sampleArr }
+        == Pure.nf 4000 prog_parse { (%AVSetT) 1 9 3 %sampleArr }) = true := by native_decide
+example : (Pure.nf 4000 prog_parse { (%AVSetDecT) 2 0 9 3 %sampleArr }
+        == Pure.nf 4000 prog_parse { (%AVSetT) 2 9 3 %sampleArr }) = true := by native_decide
 
 /-- …and it writes the value it says it writes, keeping the keys. -/
-example : (Pure.nf 4000 prog defer_check { (%AVSetDecT) 1 1 9 3 %sampleArr }
-        == prog defer_check { Arr(Pair(7, 1), Pair(7, 9), Pair(7, 3)) }) = true := by native_decide
+example : (Pure.nf 4000 prog_parse { (%AVSetDecT) 1 1 9 3 %sampleArr }
+        == prog_parse { Arr(Pair(7, 1), Pair(7, 9), Pair(7, 3)) }) = true := by native_decide
 
 /-- On a symbolic composition it still computes: with the index `I` opaque,
     the update steps to the recomposed spine with the entry key kept and the
     new value in place. The fold-spelled `AVSetT` alone cannot do this, since
     it needs a concrete index to recurse on. -/
 example : (Pure.nf 4000
-    prog defer_check { λ (I : Nat). λ (R : Nat). λ (V : Nat). λ (K0 : Nat).
+    prog_parse { λ (I : Nat). λ (R : Nat). λ (V : Nat). λ (K0 : Nat).
           λ (Lo : Array I (Σ (k : Nat). Nat)). λ (V0 : Nat).
           λ (Hi : Array R (Σ (k : Nat). Nat)).
             (%AVSetDecT) I R V (Add I (S R))
               (arrCat I (S R) Lo (acons R (Pair K0 V0) Hi)) }
   == Pure.nf 4000
-    prog defer_check { λ (I : Nat). λ (R : Nat). λ (V : Nat). λ (K0 : Nat).
+    prog_parse { λ (I : Nat). λ (R : Nat). λ (V : Nat). λ (K0 : Nat).
           λ (Lo : Array I (Σ (k : Nat). Nat)). λ (V0 : Nat).
           λ (Hi : Array R (Σ (k : Nat). Nat)).
             arrCat I (S R) Lo (acons R (Pair K0 V) Hi) })
@@ -274,7 +274,7 @@ example : (Pure.nf 4000
 
 /-- The same update at the pack level: unwraps the Σ0, applies `AVSetDecT`, and
     rewraps with the same proof component. -/
-def PVSetDecT : Term := prog defer_check {
+def PVSetDecT : Term := prog_parse {
   λ (N : Nat). λ (I : Nat). λ (R : Nat). λ (V : Nat).
     λ (P : Σ0 (a : Array N (Σ (k : Nat). Nat)). AllK7 N a).
       elim P return (λ (Pz : Σ0 (a : Array N (Σ (k : Nat). Nat)). AllK7 N a).
@@ -320,7 +320,7 @@ def gmDecSymPinRefl : Term := prog{
     the decomposition spelling does not weaken anything at a concrete index
     either. -/
 
-def gmDecSymPinKey : Term := prog defer_check {
+def gmDecSymPinKey : Term := prog_parse {
   fn G (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
         self : &mut (s : Σ0 (a : Array n (Σ (k : Nat). Nat)). AllK7 n a
                        ~> (%PVSetDecT) n i r (*res) s)) -> &mut Nat {
@@ -351,7 +351,7 @@ def gmDecConc2at1open : Term := prog{
 
 /-- The wrong SLOT: the pin says the update happens at `i`, the carve reaches
     `i` but the pin is instantiated at index `Z`. -/
-def gmDecSymPinWrongSlot : Term := prog defer_check {
+def gmDecSymPinWrongSlot : Term := prog_parse {
   fn G (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
         self : &mut (s : Σ0 (a : Array n (Σ (k : Nat). Nat)). AllK7 n a
                        ~> (%PVSetDecT) n Z (Add i r) (*res) s)) -> &mut Nat {

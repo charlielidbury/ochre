@@ -147,13 +147,17 @@ fragility, not the fix.
 **INVARIANT, and it must survive any future move of this syntax.** Declaring
 `prog` as a leading atom makes it a RESERVED TOKEN: `prog` can no longer be an
 identifier anywhere downstream of this file. The corpus has no such identifier
-today (checked), and the `defer_check`/`->` forms below are written so the
-reservation is not widened — `defer_check` is `&"defer_check"`, a non-reserved
-keyword, so it stays usable as an identifier. If a future placement threatens
-this, stop and report rather than widening it. -/
+today (checked), and the `->` forms below are written so the reservation is
+not widened. If a future placement threatens this, stop and report rather than
+widening it. -/
 
 syntax "prog{" ublk "}" : term
-syntax "prog" &"defer_check" "{" ublk "}" : term
+-- `prog_parse { … }` is the PARSING STAGE alone: the block elaborates to a
+-- `Term` and no judgment runs. A different operation from `prog{ }`, so a
+-- different name rather than a flag on `prog` — its population is programs
+-- that exist BECAUSE they fail (a `progRejects` twin's rejection is the
+-- assertion) and library terms checked elsewhere.
+syntax "prog_parse" "{" ublk "}" : term
 -- **The module forms** (docs/20 stages 1-2): `prog () { … }` seeds the empty
 -- state, `prog (e) { … }` seeds the `St` that `e` evaluates to. Both elaborate
 -- to a `Checked` — the term AND the walk's ending state — where the bare
@@ -399,7 +403,7 @@ def keyValues (keys : Array Syntax) : TermElabM (List Dllbc.Term) := do
     joined onto the occurrences that need them. An occurrence with no entry is
     passed over in silence — unlike a missing SPAN, which is a defect worth
     reporting, a missing type is the ordinary case for a block that was never
-    checked (`defer_check`, or a splice) and for a binder no path reached. -/
+    checked (`prog_parse`, or a splice) and for a binder no path reached. -/
 def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote)
     (pts : List (List Dllbc.PointDelta)) : TermElabM Unit := do
   for (ref, text) in spans.hovers do
@@ -549,7 +553,7 @@ def throwDiag {α : Type} (ref : Syntax) (retRef : Option Syntax) (spans : SpanA
     silently with a trace line.
 
     Everything else that should not be checked says so in the source, with
-    `prog defer_check { … }`: a block constructed for later checking at its probe.
+    `prog_parse { … }`: a block constructed for later checking at its probe.
 
     **Historical note, because the docstring here has been wrong twice and both
     errors were the same kind.** It first described the classifier as testing for
@@ -740,11 +744,7 @@ open Surface ProgElab in
 elab_rules : term
   | `(prog{ $b:ublk }) =>
     elabChecked b (do let (t, _) ← elabUBlk [] [] 0 b; pure t)
-  -- THE FENCE, and it is the only annotation the information rule asks anyone to
-  -- write. Its population is programs that exist BECAUSE they fail: a
-  -- `progRejects` twin's rejection IS the assertion, so failing to elaborate
-  -- would delete the test rather than strengthen it. Measured at 107 sites.
-  | `(prog defer_check { $b:ublk }) =>
+  | `(prog_parse { $b:ublk }) =>
     elabUnchecked (do let (t, _) ← elabUBlk [] [] 0 b; pure t)
   -- The module forms (docs/20). One elaborator, seed optional: `()` is the
   -- empty state, `(e)` is a state to continue from.

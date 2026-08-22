@@ -48,7 +48,7 @@ def runBinding (t : Term) (name : String) : Option String :=
     wrong key in it — which is exactly the property an escaping borrow onto a
     key cell destroys. -/
 
-def AllK7 : Term := prog defer_check {
+def AllK7 : Term := prog_parse {
   λ (M : Nat). λ (A : Array M (Σ (k : Nat). Nat)).
     arrRec (Σ (k : Nat). Nat)
       (λ (Mz : Nat). λ (Az : Array Mz (Σ (k : Nat). Nat)). Type)
@@ -59,10 +59,10 @@ def AllK7 : Term := prog defer_check {
             Pair (K2) (V2) => Id Nat K2 7 }) × Ih)
       M A }
 
-example : chkL prog defer_check { Pair(Refl, Pair(Refl, unit)) }
-  prog defer_check { AllK7 2 Arr(Pair(7, 1), Pair(7, 2)) } = true := by native_decide
-example : chkL prog defer_check { Pair(Refl, Pair(Refl, unit)) }
-  prog defer_check { AllK7 2 Arr(Pair(7, 1), Pair(8, 2)) } = false := by native_decide
+example : chkL prog_parse { Pair(Refl, Pair(Refl, unit)) }
+  prog_parse { AllK7 2 Arr(Pair(7, 1), Pair(7, 2)) } = true := by native_decide
+example : chkL prog_parse { Pair(Refl, Pair(Refl, unit)) }
+  prog_parse { AllK7 2 Arr(Pair(7, 1), Pair(8, 2)) } = false := by native_decide
 
 /-! ## Escaping borrows onto cells the pack's type depends on
 
@@ -70,7 +70,7 @@ example : chkL prog defer_check { Pair(Refl, Pair(Refl, unit)) }
     should be rejected. -/
 
 /-- Escapes onto a cell the packed invariant hashes. -/
-def escKey : Term := prog defer_check {
+def escKey : Term := prog_parse {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). AllK7 1 a))
       -> &mut Nat {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
@@ -83,7 +83,7 @@ example : progRejects escKey
   = true := by native_decide
 
 /-- Escapes onto an array's extent. -/
-def escExtent : Term := prog defer_check {
+def escExtent : Term := prog_parse {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array n Nat). Le (S Z) n)) -> &mut Nat {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => &m *nn } } };
   () }
@@ -93,7 +93,7 @@ example : progRejects escExtent
   = true := by native_decide
 
 /-- Escapes onto a cell a Σ0 tail pins to a literal. -/
-def escPinned : Term := prog defer_check {
+def escPinned : Term := prog_parse {
   fn G (self : &mut (Σ (x : Nat). Σ0 (d : Unit). Id Nat x 7)) -> &mut Nat {
     match self { Pair(xx, r1) => match r1 { Pair(dd, H) => &m *xx } } };
   () }
@@ -104,7 +104,7 @@ example : progRejects escPinned
 
 /-- Escapes onto a cell a later runtime binder's type needs — the dependence is
     not in a Σ0 tail at all. -/
-def escRuntimeDep : Term := prog defer_check {
+def escRuntimeDep : Term := prog_parse {
   fn G (self : &mut (Σ (n : Nat). Σ (a : Array n Nat). Nat)) -> &mut Nat {
     match self { Pair(nn, r1) => match r1 { Pair(a, w) => &m *nn } } };
   () }
@@ -132,7 +132,7 @@ example : progOk escVal = true := by native_decide
     it the two verdicts swap: escaping onto the value is refused, escaping onto
     the key is accepted. -/
 
-def AllV7 : Term := prog defer_check {
+def AllV7 : Term := prog_parse {
   λ (M : Nat). λ (A : Array M (Σ (k : Nat). Nat)).
     arrRec (Σ (k : Nat). Nat)
       (λ (Mz : Nat). λ (Az : Array Mz (Σ (k : Nat). Nat)). Type)
@@ -144,7 +144,7 @@ def AllV7 : Term := prog defer_check {
       M A }
 
 /-- Escaping value borrow, invariant reads values — refused. -/
-def escValV : Term := prog defer_check {
+def escValV : Term := prog_parse {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllV7 2 a))
       -> &mut Nat {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
@@ -173,7 +173,7 @@ example : progOk escKeyV = true := by native_decide
     caller: take the borrow, write a 1 into the cell the invariant says is a 7,
     and let the group end. Three parts; only the last is about the checker. -/
 
-def escKeyExploit : Term := prog defer_check {
+def escKeyExploit : Term := prog_parse {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). AllK7 1 a))
       -> &mut Nat {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
@@ -203,12 +203,12 @@ example : progRejects escKeyExploit
 
 -- (3) …and the written value does not inhabit the type the accepting checker
 --     left the caller holding: `Refl` proves `Id Nat 7 7`, not `Id Nat 1 7`.
-example : chkL prog defer_check { Pair(Refl, unit) } prog defer_check { AllK7 1 Arr(Pair(7, 5)) } = true := by
+example : chkL prog_parse { Pair(Refl, unit) } prog_parse { AllK7 1 Arr(Pair(7, 5)) } = true := by
   native_decide
-example : chkL prog defer_check { Pair(Refl, unit) } prog defer_check { AllK7 1 Arr(Pair(1, 5)) } = false := by
+example : chkL prog_parse { Pair(Refl, unit) } prog_parse { AllK7 1 Arr(Pair(1, 5)) } = false := by
   native_decide
-example : chkL prog defer_check { Pair(Z, Pair(Arr(Pair(1, 5)), Pair(Refl, unit))) }
-  prog defer_check { Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). AllK7 1 a } = false := by
+example : chkL prog_parse { Pair(Z, Pair(Arr(Pair(1, 5)), Pair(Refl, unit))) }
+  prog_parse { Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). AllK7 1 a } = false := by
   native_decide
 
 /-! ## The other side of the split: non-escaping writes
@@ -224,7 +224,7 @@ def wrVal1 : Term := prog{
       match e { Pair(kk, vv) => { *vv := 99; () } } } } } };
   () }
 
-def wrKey1 : Term := prog defer_check {
+def wrKey1 : Term := prog_parse {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). AllK7 1 a))
       -> Unit {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
@@ -270,8 +270,8 @@ example : progOk g5Caller = true := by native_decide
 example : runBinding g5Caller "p"
   = some "Pair Z (Pair [Pair (S (S (S (S (S (S (S Z))))))) (S Z)] (Pair Refl unit))"
   := by native_decide
-example : chkL prog defer_check { Pair(Z, Pair(Arr(Pair(7, 1)), Pair(Refl, unit))) }
-  prog defer_check { Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). AllK7 1 a } = true := by
+example : chkL prog_parse { Pair(Z, Pair(Arr(Pair(7, 1)), Pair(Refl, unit))) }
+  prog_parse { Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). AllK7 1 a } = true := by
   native_decide
 
 /-! ## The same claim on the real hashmap invariant
@@ -285,34 +285,34 @@ example : chkL prog defer_check { Pair(Z, Pair(Arr(Pair(7, 1)), Pair(Refl, unit)
     in the cell, with the proof term the same one the concrete pack carries: the
     stored proof still inhabits the abstracted type. -/
 
-def NextR : Term := prog defer_check {
+def NextR : Term := prog_parse {
   λ (R : Nat). λ (C : Nat).
     elim C return (λ (Cz : Nat). Nat) { Z => Z, S (C2) Rc => S(R) } }
-def NextC : Term := prog defer_check {
+def NextC : Term := prog_parse {
   λ (B : Nat). λ (C : Nat).
     elim C return (λ (Cz : Nat). Nat) { Z => B, S (C2) Rc => C2 } }
-def ModC : Term := prog defer_check {
+def ModC : Term := prog_parse {
   λ (A : Nat).
     elim A return (λ (Az : Nat). Π (B : Nat) → Π (R : Nat) → Π (C : Nat) → Nat) {
       Z => λ (B : Nat). λ (R : Nat). λ (C : Nat). R,
       S (A2) Rec => λ (B : Nat). λ (R : Nat). λ (C : Nat).
         Rec B (NextR R C) (NextC B C) } }
-def Mod : Term := prog defer_check {
+def Mod : Term := prog_parse {
   λ (A : Nat). λ (B : Nat).
     elim B return (λ (Bz : Nat). Nat) { Z => Z, S (B2) Rb => ModC A B2 Z B2 } }
-def Mul : Term := prog defer_check {
+def Mul : Term := prog_parse {
   λ (A : Nat). λ (B : Nat). elim A return (λ (Az : Nat). Nat) {
     Z => Z, S (A2) Rec => Add B Rec } }
 
-def OptP : Term := prog defer_check {
+def OptP : Term := prog_parse {
   λ (B : Bool). λ (T : Type). elim B return (λ (Bm : Bool). Type) {
     True => T,
     False => Unit } }
-def Opt : Term := prog defer_check { λ (T : Type). Σ (b : Bool). OptP b T }
-def SomeN : Term := prog defer_check { λ (V : Nat). Pair(True, V) }
-def NoneN : Term := prog defer_check { Pair(False, unit) }
+def Opt : Term := prog_parse { λ (T : Type). Σ (b : Bool). OptP b T }
+def SomeN : Term := prog_parse { λ (V : Nat). Pair(True, V) }
+def NoneN : Term := prog_parse { Pair(False, unit) }
 
-def FindL : Term := prog defer_check {
+def FindL : Term := prog_parse {
   λ (Q : Nat). λ (L : List (Σ (k : Nat). Nat)).
     elim L return (λ (Lm : List (Σ (k : Nat). Nat)). Opt Nat) {
       Nil => NoneN,
@@ -323,21 +323,21 @@ def FindL : Term := prog defer_check {
               True => SomeN V2,
               False => Rec } } } }
 
-def IsSomeB : Term := prog defer_check {
+def IsSomeB : Term := prog_parse {
   λ (O : Σ (b : Bool). OptP b Nat).
     elim O return (λ (Om : Σ (b : Bool). OptP b Nat). Bool) {
       Pair (Bb) (P2) => Bb } }
 
-def HitL : Term := prog defer_check {
+def HitL : Term := prog_parse {
   λ (Q : Nat). λ (L : List (Σ (k : Nat). Nat)). IsSomeB (FindL Q L) }
 
-def LenE : Term := prog defer_check {
+def LenE : Term := prog_parse {
   λ (L : List (Σ (k : Nat). Nat)).
     elim L return (λ (Lm : List (Σ (k : Nat). Nat)). Nat) {
       Nil => Z,
       Cons (E) (T) Rec => S(Rec) } }
 
-def TotalE : Term := prog defer_check {
+def TotalE : Term := prog_parse {
   λ (M : Nat). λ (A : Array M (List (Σ (k : Nat). Nat))).
     arrRec (List (Σ (k : Nat). Nat))
       (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))). Nat)
@@ -347,7 +347,7 @@ def TotalE : Term := prog defer_check {
           Add (LenE H) Ih)
       M A }
 
-def AllKeysMod : Term := prog defer_check {
+def AllKeysMod : Term := prog_parse {
   λ (Cap : Nat). λ (I : Nat). λ (L : List (Σ (k : Nat). Nat)).
     elim L return (λ (Lm : List (Σ (k : Nat). Nat)). Type) {
       Nil => Unit,
@@ -355,7 +355,7 @@ def AllKeysMod : Term := prog defer_check {
         (elim E return (λ (Em : Σ (k : Nat). Nat). Type) {
           Pair (K2) (V2) => Id Nat (Mod K2 Cap) I }) × Rec } }
 
-def NodupB : Term := prog defer_check {
+def NodupB : Term := prog_parse {
   λ (L : List (Σ (k : Nat). Nat)).
     elim L return (λ (Lm : List (Σ (k : Nat). Nat)). Type) {
       Nil => Unit,
@@ -363,11 +363,11 @@ def NodupB : Term := prog defer_check {
         (elim E return (λ (Em : Σ (k : Nat). Nat). Type) {
           Pair (K2) (V2) => Id Bool (HitL K2 T) False }) × Rec } }
 
-def SlotInv : Term := prog defer_check {
+def SlotInv : Term := prog_parse {
   λ (Cap : Nat). λ (I : Nat). λ (L : List (Σ (k : Nat). Nat)).
     AllKeysMod Cap I L × NodupB L }
 
-def SlotsFrom : Term := prog defer_check {
+def SlotsFrom : Term := prog_parse {
   λ (Cap : Nat). λ (M : Nat). λ (A : Array M (List (Σ (k : Nat). Nat))). λ (I0 : Nat).
     arrRec (List (Σ (k : Nat). Nat))
       (λ (Mz : Nat). λ (Az : Array Mz (List (Σ (k : Nat). Nat))). Nat → Type)
@@ -378,7 +378,7 @@ def SlotsFrom : Term := prog defer_check {
           SlotInv Cap I2 H × Ih (S I2))
       M A I0 }
 
-def HMInvT : Term := prog defer_check {
+def HMInvT : Term := prog_parse {
   λ (Cap : Nat). λ (Load : Nat). λ (N : Nat).
     λ (Slots : Array Cap (List (Σ (k : Nat). Nat))).
       Le (S Z) Cap ×
@@ -387,69 +387,69 @@ def HMInvT : Term := prog defer_check {
       (Id Nat N (TotalE Cap Slots) ×
       SlotsFrom Cap Cap Slots Z))) }
 
-def HashMapT : Term := prog defer_check {
+def HashMapT : Term := prog_parse {
   Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
     Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots }
 
 /-- A concrete inhabitant of `HashMapT`, as a compute test. -/
-def hmEx : Term := prog defer_check {
+def hmEx : Term := prog_parse {
   Pair(2, Pair(8, Pair(1, Pair(Arr(Nil, Cons(Pair(3, 30), Nil)),
     Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
       Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
         unit)))))))))) }
-def hmExInv : Term := prog defer_check {
+def hmExInv : Term := prog_parse {
   Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
     Pair(Pair(unit, unit), Pair(Pair(Pair(Refl, unit), Pair(Refl, unit)),
       unit)))))) }
 
 example : chkL hmEx HashMapT = true := by native_decide
-example : chkL hmExInv prog defer_check {
+example : chkL hmExInv prog_parse {
   HMInvT 2 8 1 Arr(Nil, Cons(Pair(3, 30), Nil)) } = true := by native_decide
 
 -- The value leaf abstracted: same proof, universally quantified. All five
 -- clauses survive — `TotalE` counts entries, `AllKeysMod` and `NodupB` read keys.
-example : chkL prog defer_check { λ (V : Nat). hmExInv } prog defer_check {
+example : chkL prog_parse { λ (V : Nat). hmExInv } prog_parse {
   Π (V : Nat) → HMInvT 2 8 1 Arr(Nil, Cons(Pair(3, V), Nil)) } = true := by native_decide
-example : chkL prog defer_check {
+example : chkL prog_parse {
   λ (V : Nat). Pair(2, Pair(8, Pair(1, Pair(Arr(Nil, Cons(Pair(3, V), Nil)), hmExInv)))) }
-  prog defer_check { Π (V : Nat) → HashMapT } = true := by native_decide
+  prog_parse { Π (V : Nat) → HashMapT } = true := by native_decide
 
 -- The key leaf abstracted: refused, and it should be — a key write really would
 -- break hashing.
-example : chkL prog defer_check { λ (K : Nat). hmExInv } prog defer_check {
+example : chkL prog_parse { λ (K : Nat). hmExInv } prog_parse {
   Π (K : Nat) → HMInvT 2 8 1 Arr(Nil, Cons(Pair(K, 30), Nil)) } = false := by native_decide
-example : chkL prog defer_check {
+example : chkL prog_parse {
   λ (K : Nat). Pair(2, Pair(8, Pair(1, Pair(Arr(Nil, Cons(Pair(K, 30), Nil)), hmExInv)))) }
-  prog defer_check { Π (K : Nat) → HashMapT } = false := by native_decide
+  prog_parse { Π (K : Nat) → HashMapT } = false := by native_decide
 
 /-! `NodupB`'s conjunct is `Id Bool (HitL K2 T) False`, and `HitL` runs `FindL`,
     which builds `SomeN V2` out of a value before `IsSomeB` projects the tag off
     again. A one-entry bucket never exercises this path — the tail is `Nil` — so
     a two-entry bucket is needed to test value-insensitivity here. -/
 
-def hm2Inv : Term := prog defer_check {
+def hm2Inv : Term := prog_parse {
   Pair(unit, Pair(Refl, Pair(unit, Pair(Refl,
     Pair(Pair(unit, unit),
     Pair(Pair(Pair(Refl, Pair(Refl, unit)), Pair(Refl, Pair(Refl, unit))),
     Pair(Pair(unit, unit), Pair(Pair(unit, unit), unit)))))))) }
 
-example : chkL prog defer_check {
+example : chkL prog_parse {
   Pair(4, Pair(16, Pair(2, Pair(Arr(Nil, Cons(Pair(1, 10), Cons(Pair(5, 50), Nil)), Nil, Nil),
     hm2Inv)))) } HashMapT = true := by native_decide
 
-example : chkL prog defer_check { λ (V1 : Nat). λ (V2 : Nat). hm2Inv } prog defer_check {
+example : chkL prog_parse { λ (V1 : Nat). λ (V2 : Nat). hm2Inv } prog_parse {
   Π (V1 : Nat) → Π (V2 : Nat) →
     HMInvT 4 16 2 Arr(Nil, Cons(Pair(1, V1), Cons(Pair(5, V2), Nil)), Nil, Nil) }
   = true := by native_decide
 
-example : chkL prog defer_check { λ (K2 : Nat). hm2Inv } prog defer_check {
+example : chkL prog_parse { λ (K2 : Nat). hm2Inv } prog_parse {
   Π (K2 : Nat) →
     HMInvT 4 16 2 Arr(Nil, Cons(Pair(1, 10), Cons(Pair(K2, 50), Nil)), Nil, Nil) }
   = false := by native_decide
 
 /-- A whole bucket abstracted — what a `&mut (List …)` escaping onto a slot would
     fill. Refused: the folds have no `Cons`/`Nil` to step on. -/
-example : chkL prog defer_check { λ (B : List (Σ (k : Nat). Nat)). hmExInv } prog defer_check {
+example : chkL prog_parse { λ (B : List (Σ (k : Nat). Nat)). hmExInv } prog_parse {
   Π (B : List (Σ (k : Nat). Nat)) → HMInvT 2 8 1 Arr(Nil, B) } = false := by native_decide
 
 /-! ## `GetMut` over an intrinsically packed container
@@ -550,14 +550,14 @@ def bisG : Term := prog{
       let b = &m *a; () } } } };
   () }
 
-def bisH : Term := prog defer_check {
+def bisH : Term := prog_parse {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a))
       -> Unit {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
       let b = &m *a; *b := Arr(Pair(1, 1), Pair(2, 2)); () } } } };
   () }
 
-def bisK : Term := prog defer_check {
+def bisK : Term := prog_parse {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a))
       -> Unit {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
@@ -580,7 +580,7 @@ example : progOk bisK = false := by native_decide
     `layer1Ctl` is the control: the identical boundary over an array-independent
     tail is accepted, so the boundary alone is not what fails. -/
 
-def layer1 : Term := prog defer_check {
+def layer1 : Term := prog_parse {
   fn Get (a : &mut (Array 1 (Σ (k : Nat). Nat))) -> &mut Nat {
     let e = &m (*a)[0];
     match e { Pair(kk, vv) => &m *vv } };
@@ -589,7 +589,7 @@ def layer1 : Term := prog defer_check {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => Get(&m *a) } } };
   () }
 
-def layer1Val : Term := prog defer_check {
+def layer1Val : Term := prog_parse {
   fn Get (a : &mut (Array 1 (Σ (k : Nat). Nat))) -> Unit {
     let e = &m (*a)[0];
     match e { Pair(kk, vv) => () } };
@@ -674,7 +674,7 @@ def gmVal3 : Term := prog{
       match e { Pair(kk, vv) => &m *vv } } } } };
   () }
 
-def gmKey2 : Term := prog defer_check {
+def gmKey2 : Term := prog_parse {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a))
       -> &mut Nat {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
@@ -692,7 +692,7 @@ example : progOk gmKey2 = false := by native_decide
     away. `gmValMid`'s payload prints `Arr⟨1 ▷ σ6, 1 ▷ [Pair σ10 σ12], 1 ▷ σ8⟩` —
     `σ6` is the opaque prefix that stops the fold and `σ12` is the fill the fold
     therefore never erases. -/
-def gmValMid : Term := prog defer_check {
+def gmValMid : Term := prog_parse {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a))
       -> &mut Nat {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
@@ -700,7 +700,7 @@ def gmValMid : Term := prog defer_check {
       match e { Pair(kk, vv) => &m *vv } } } } };
   () }
 
-def gmValLast : Term := prog defer_check {
+def gmValLast : Term := prog_parse {
   fn G (self : &mut (Σ (n : Nat). Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a))
       -> &mut Nat {
     match self { Pair(nn, r1) => match r1 { Pair(a, H) => {
@@ -718,7 +718,7 @@ example : progOk gmValLast = false := by native_decide
     1 — one leading opaque slice is enough to keep the invariant's fold from
     reaching the filled leaf. Same mechanism as `gmValMid`, two components
     smaller. -/
-def gmValMin : Term := prog defer_check {
+def gmValMin : Term := prog_parse {
   fn G (self : &mut (Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a)) -> &mut Nat {
     match self { Pair(a, H) => {
       let e = &m (*a)[1];
@@ -849,7 +849,7 @@ example : progOk frontCarveEscN = true := by native_decide
     `gmValMid` above are unaffected by this: the fill's conservatism is
     unchanged, and the pin routes around it rather than removing it. -/
 
-def AVSetT : Term := prog defer_check {
+def AVSetT : Term := prog_parse {
   λ (I : Nat). λ (V : Nat).
     elim I return (λ (Z0 : Nat). Π (N : Nat) → Π (A : Array N (Σ (k : Nat). Nat)) → Array N (Σ (k : Nat). Nat)) {
       Z => λ (N : Nat). λ (A : Array N (Σ (k : Nat). Nat)).
@@ -870,13 +870,13 @@ def AVSetT : Term := prog defer_check {
               acons M X (Rec M XS))
           N A } }
 
-def PVSet2T : Term := prog defer_check {
+def PVSet2T : Term := prog_parse {
   λ (I : Nat). λ (V : Nat). λ (P : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a).
     elim P return (λ (Pz : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a).
                      Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a) {
       Pair (A) (H) => Pair ((%AVSetT) I V 2 A) H } }
 
-def PVSet3T : Term := prog defer_check {
+def PVSet3T : Term := prog_parse {
   λ (I : Nat). λ (V : Nat). λ (P : Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a).
     elim P return (λ (Pz : Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a).
                      Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a) {
@@ -918,7 +918,7 @@ example : progOk gmPin3at2 = true := by native_decide
 /-- Negative control: the same pin with the key escaping. The fill puts the
     shared exit in the key slot, the pin puts it in the value slot, and the two
     sides are reported differing in exactly those positions. -/
-def gmPinKey2at1 : Term := prog defer_check {
+def gmPinKey2at1 : Term := prog_parse {
   fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a ~> (%PVSet2T) 1 (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
       let e0 = &m (*a)[0];
@@ -933,7 +933,7 @@ example : progRejects gmPinKey2at1 "pin is not met" = true := by native_decide
     opened. The reported sides are the finding — fill
     `arrCat 1 1 σ₄ [Pair σ₈ σ₁₀]` against the update stuck at the σ₄ prefix.
     Opening the prefix (one match) is what the walk does anyway. -/
-def gmPin2at1blind : Term := prog defer_check {
+def gmPin2at1blind : Term := prog_parse {
   fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a ~> (%PVSet2T) 1 (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
       let e = &m (*a)[1];

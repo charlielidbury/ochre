@@ -50,7 +50,7 @@ example : progRejects Dllbc.Tests.S26Seal.c10 "holds ⊥" = true := by native_de
     constantly true. A term that is unambiguously a program must come out the
     other way. -/
 
-def realProgram : Term := prog defer_check {
+def realProgram : Term := prog_parse {
   fn F (b : Bool) -> Unit { () };
   let x = Cons(1, Nil);
   let v = &m x;

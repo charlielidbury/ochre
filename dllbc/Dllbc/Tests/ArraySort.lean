@@ -51,18 +51,18 @@ def pv (t : Term) : Term := Pure.nf 4000 t
 
 -- The predicates COMPUTE on a run, at every skip count.
 -- `SplitAL 3 2 [1,2,7]`: first two ≤ 3, last ≥ 3.
-example : chkL prog defer_check { Pair(unit, Pair(unit, Pair(unit, unit))) }
-               prog defer_check { SplitAL 3 2 3 Arr(1, 2, 7) } = true := by native_decide
+example : chkL prog_parse { Pair(unit, Pair(unit, Pair(unit, unit))) }
+               prog_parse { SplitAL 3 2 3 Arr(1, 2, 7) } = true := by native_decide
 -- …and it is NOT vacuous: the same array does not split at 1 (element 1 is `2 ≥ 3`? no).
-example : chkL prog defer_check { Pair(unit, Pair(unit, Pair(unit, unit))) }
-               prog defer_check { SplitAL 3 1 3 Arr(1, 2, 7) } = false := by native_decide
+example : chkL prog_parse { Pair(unit, Pair(unit, Pair(unit, unit))) }
+               prog_parse { SplitAL 3 1 3 Arr(1, 2, 7) } = false := by native_decide
 
 -- `PartA 3 2 [1,2,3,7]`: first two ≤ 3, element 2 IS 3, the rest ≥ 3.
-example : chkL prog defer_check { Pair(unit, Pair(unit, Pair(Refl, Pair(unit, unit)))) }
-               prog defer_check { PartA 3 2 4 Arr(1, 2, 3, 7) } = true := by native_decide
+example : chkL prog_parse { Pair(unit, Pair(unit, Pair(Refl, Pair(unit, unit)))) }
+               prog_parse { PartA 3 2 4 Arr(1, 2, 3, 7) } = true := by native_decide
 -- The pivot-identity conjunct is load-bearing: element 2 is 4, not 3.
-example : chkL prog defer_check { Pair(unit, Pair(unit, Pair(Refl, Pair(unit, unit)))) }
-               prog defer_check { PartA 3 2 4 Arr(1, 2, 4, 7) } = false := by native_decide
+example : chkL prog_parse { Pair(unit, Pair(unit, Pair(Refl, Pair(unit, unit)))) }
+               prog_parse { PartA 3 2 4 Arr(1, 2, 4, 7) } = false := by native_decide
 
 /-! ### Crossing a concatenation — each an induction on the left array alone -/
 
@@ -75,7 +75,7 @@ example : chkL prog defer_check { Pair(unit, Pair(unit, Pair(Refl, Pair(unit, un
 
 -- There IS no η at length zero, which is why the nil lemmas exist at all: `SortedA Z`
 -- of an opaque payload is a stuck `arrRec`, not `Unit`.
-example : (Pure.nf 2000 prog defer_check { SortedA Z Arr() } == .const "Unit")
+example : (Pure.nf 2000 prog_parse { SortedA Z Arr() } == .const "Unit")
     = true := by native_decide
 
 /-! ## `splitA` — the scan
@@ -120,23 +120,23 @@ def nQ : Term := .var ⟨1, "n"⟩
 def aQ : Term := .var ⟨3, "a"⟩
 def fuelQ : Term := .var ⟨0, "fuel"⟩
 
-def sHonest : Term := prog defer_check {
+def sHonest : Term := prog_parse {
   Σ (k : Nat). Σ (r : Nat).
     Σ (Hlen : Id Nat %mS (Add k r)).
     Σ0 (Hsp : SplitAL %pS k %mS (*%tS)).
     Π (Q : Nat) → Id Nat (CountA Q %mS (*%tS)) (CountA Q %mS (old *%tS)) }
 
-def pHonest : Term := prog defer_check {
+def pHonest : Term := prog_parse {
   Σ (pvv : Nat). Σ (k : Nat). Σ (jj : Nat).
     Σ (Hlen : Id Nat %nP (Add k (S jj))).
     Σ0 (Hp : PartA pvv k %nP (*%aP)).
     Π (Q : Nat) → Id Nat (CountA Q %nP (*%aP)) (CountA Q %nP (old *%aP)) }
 
-def qHonest : Term := prog defer_check {
+def qHonest : Term := prog_parse {
   Σ0 (Hs : SortedA %nQ (*%aQ)).
     Π (Q : Nat) → Id Nat (CountA Q %nQ (*%aQ)) (CountA Q %nQ (old *%aQ)) }
 
-def qSuffHonest : Term := prog defer_check { Le %nQ %fuelQ }
+def qSuffHonest : Term := prog_parse { Le %nQ %fuelQ }
 
 /-! ## `partitionA` — the partition leaf
 
@@ -465,7 +465,7 @@ example : progOk arrChain = true := by native_decide
     the same telescope so the body is shared verbatim and the lie is the only variable. -/
 
 -- `splitA`, conjunct 1: the length accounting says the two parts overlap by one.
-example : progOk (arrUnder (prog defer_check {
+example : progOk (arrUnder (prog_parse {
     Σ (k : Nat). Σ (r : Nat).
       Σ (Hlen : Id Nat %mS (Add k (S r))).
       Σ0 (Hsp : SplitAL %pS k %mS (*%tS)).
@@ -473,7 +473,7 @@ example : progOk (arrUnder (prog defer_check {
     pHonest qHonest qSuffHonest .unit) = false := by native_decide
 
 -- `splitA`, conjunct 2: the ordering claimed of the ENTRY array rather than the exit.
-example : progOk (arrUnder (prog defer_check {
+example : progOk (arrUnder (prog_parse {
     Σ (k : Nat). Σ (r : Nat).
       Σ (Hlen : Id Nat %mS (Add k r)).
       Σ0 (Hsp : SplitAL %pS k %mS (old *%tS)).
@@ -481,7 +481,7 @@ example : progOk (arrUnder (prog defer_check {
     pHonest qHonest qSuffHonest .unit) = false := by native_decide
 
 -- `splitA`, conjunct 3: the counts off by one, which no path can reach.
-example : progOk (arrUnder (prog defer_check {
+example : progOk (arrUnder (prog_parse {
     Σ (k : Nat). Σ (r : Nat).
       Σ (Hlen : Id Nat %mS (Add k r)).
       Σ0 (Hsp : SplitAL %pS k %mS (*%tS)).
@@ -497,7 +497,7 @@ example : progOk (arrUnder (prog defer_check {
     Transcribed rather than shared through the chain: what varies is inside the body,
     at a statement naming binders the `fn` lowering mints ids for, and no splice can
     reach that. It carries only `splitA`, since nothing else is needed to refuse it. -/
-def splitANoSwap : Term := prog defer_check {
+def splitANoSwap : Term := prog_parse {
   fn SplitA [fuel] (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
       -> %sHonest
       { match m {
@@ -567,7 +567,7 @@ def splitANoSwap : Term := prog defer_check {
 example : progOk splitANoSwap = false := by native_decide
 
 -- `partitionA`, conjunct 1: the length accounting forgets the pivot cell.
-example : progRejects (arrUnder sHonest (prog defer_check {
+example : progRejects (arrUnder sHonest (prog_parse {
     Σ (pvv : Nat). Σ (k : Nat). Σ (jj : Nat).
       Σ (Hlen : Id Nat %nP (Add k jj)).
       Σ0 (Hp : PartA pvv k %nP (*%aP)).
@@ -575,7 +575,7 @@ example : progRejects (arrUnder sHonest (prog defer_check {
     qHonest qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 -- `partitionA`, conjunct 2: the partition claimed of the ENTRY array.
-example : progRejects (arrUnder sHonest (prog defer_check {
+example : progRejects (arrUnder sHonest (prog_parse {
     Σ (pvv : Nat). Σ (k : Nat). Σ (jj : Nat).
       Σ (Hlen : Id Nat %nP (Add k (S jj))).
       Σ0 (Hp : PartA pvv k %nP (old *%aP)).
@@ -586,14 +586,14 @@ example : progRejects (arrUnder sHonest (prog defer_check {
 -- so the base path still passes and only the recursive one is blamed. With `Hs`
 -- capital the sortedness component is read at the function's own return, so the
 -- lie is caught there rather than one call later at the caller.
-example : progRejects (arrUnder sHonest pHonest (prog defer_check {
+example : progRejects (arrUnder sHonest pHonest (prog_parse {
     Σ0 (Hs : SortedA %nQ (old *%aQ)).
       Π (Q : Nat) → Id Nat (CountA Q %nQ (*%aQ)) (CountA Q %nQ (old *%aQ)) })
     qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 -- `quicksortA`, conjunct 2: the permutation lied by DIRECTION. Again `Refl` at the
 -- empty array, and again the body's evidence points the other way once anything moves.
-example : progRejects (arrUnder sHonest pHonest (prog defer_check {
+example : progRejects (arrUnder sHonest pHonest (prog_parse {
     Σ0 (Hs : SortedA %nQ (*%aQ)).
       Π (Q : Nat) → Id Nat (CountA Q %nQ (old *%aQ)) (CountA Q %nQ (*%aQ)) })
     qSuffHonest .unit) "does not have return type" = true := by native_decide
@@ -603,7 +603,7 @@ example : progRejects (arrUnder sHonest pHonest (prog defer_check {
 -- The three-way carve's ONE cited obligation is load-bearing: drop `LeAddRaw` and the
 -- carve has nothing to select a leaf with. (The pivot carve needs no evidence at all —
 -- route (a) reduces `Le 1 (S jj)` to ⊤ — so this is the only citation in the body.)
-def carveNoEv : Term := prog defer_check {
+def carveNoEv : Term := prog_parse {
   fn CarveNoEv (n : Nat, k : Nat, jj : Nat, Heq : Id Nat n (Add k (S jj)),
                 a : &mut (Array n Nat)) -> Unit {
     let l = &m (*a)[Z ; k ; S jj];
@@ -628,7 +628,7 @@ example : progOk carveWithEv = true := by native_decide
 -- The sufficiency hypothesis is load-bearing, not decoration: keep the parameter (so
 -- the body still elaborates and the rejection is about TYPING) and weaken it to `Unit`.
 -- The out-of-fuel path then has no ⊥ to eliminate and stops being dead.
-example : progRejects (arrUnder sHonest pHonest qHonest (prog defer_check { Unit }) .unit)
+example : progRejects (arrUnder sHonest pHonest qHonest (prog_parse { Unit }) .unit)
   "botElim" = true := by native_decide
 
 
@@ -824,7 +824,7 @@ example : progOk c6CarveAfterCall = true := by native_decide
     every access at index 0 of a segment the program carved — is forced rather than
     chosen: the right sub-slice must be a segment with its own zero. -/
 
-def twoCursor : Term := prog defer_check {
+def twoCursor : Term := prog_parse {
   fn TwoCursor (n : Nat, i : Nat, j : Nat, Pij : Le (S i) j, Pjn : Le (S j) n,
                 a : &mut (Array n Nat)) -> Unit {
     let x = (*a)[i | LeTransRaw (S i) j n Pij (LePredLRaw j n Pjn)];
@@ -835,7 +835,7 @@ example : progRejects twoCursor "no leaf" = true := by native_decide
 
 -- Route (a) cannot rescue it either: the second request does not START a segment, so
 -- there is no leaf for the supplied residue to decompose.
-def twoCursorRes : Term := prog defer_check {
+def twoCursorRes : Term := prog_parse {
   fn TwoCursorRes (n : Nat, i : Nat, j : Nat, r1 : Nat, r2 : Nat,
                    a : &mut (Array n Nat)) -> Unit {
     let x = &m (*a)[i ; 1 ; r1 | LeAddRaw i (S r1)];
@@ -858,11 +858,11 @@ def withCitedCarve (rest : Term) : Term := prog{
     let l = &m (*a)[Z ; i ; S j | LeAddRaw i (S j) | Heq];
     () };
   %rest }
-example : progOk (withCitedCarve prog defer_check { () }) = true := by native_decide
+example : progOk (withCitedCarve prog_parse { () }) = true := by native_decide
 
 /-- (1) A caller whose numbers are CONSISTENT: `n = 3, i = 1, j = 1`, and `Refl`
     inhabits `Id Nat 3 (Add 1 (S 1))` because both sides compute to 3. -/
-def citedCallerOk : Term := withCitedCarve prog defer_check {
+def citedCallerOk : Term := withCitedCarve prog_parse {
   let z = Arr(1, 2, 3); let b = &m z; CitedCarve(3, 1, 1, Refl, b); let y = z; () }
 example : progOk citedCallerOk = true := by native_decide
 
@@ -875,7 +875,7 @@ example : runsAtAll citedCallerOk = true := by native_decide
     checked before the ruling and then got stuck executing; now `Refl` cannot inhabit
     `Id Nat 2 (Add 5 (S 5))` and the CALLER is rejected, at its own boundary, with the
     constraint recorded in the signature it violated. -/
-def citedCallerBad : Term := withCitedCarve prog defer_check {
+def citedCallerBad : Term := withCitedCarve prog_parse {
   let z = Arr(1, 2); let b = &m z; CitedCarve(2, 5, 5, Refl, b); let y = z; () }
 example : progOk citedCallerBad = false := by native_decide
 

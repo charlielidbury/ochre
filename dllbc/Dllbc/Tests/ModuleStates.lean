@@ -43,7 +43,7 @@ example :
 
 /-! ## (3) Splice agreement: seeding means prefix-splicing -/
 
-def spliced : Term := prog defer_check {
+def spliced : Term := prog_parse {
   fn LeRefl [n] (n : Nat) -> Le n n {
     match n { Z => unit, S(k) => LeRefl(k) } };
   let y = LeRefl(2);

@@ -50,7 +50,7 @@ example : progOk pairNatTwice = true := by native_decide
     aggregate is, and duplicating it would be exactly the silent copy the move
     discipline exists to prevent. The negative control for the probe above —
     the two programs differ only in that one type. -/
-def pairListTwice : Term := prog defer_check {
+def pairListTwice : Term := prog_parse {
   fn Snk (p : (Σ (a : Nat). List Nat)) -> Unit { () };
   fn Chain (p : (Σ (a : Nat). List Nat)) -> Unit { let x = Snk(p); let y = Snk(p); () };
   () }
@@ -65,7 +65,7 @@ example : progRejects pairListTwice "p#0 holds ⊥ (use-after-move" = true := by
     and `Val.ctor` collapses a node to a knowledge leaf only when every child is
     knowledge, so this value never reaches the `Pair` rule at all — it takes
     `indexKindV`'s `node` answer, which is MOVE. -/
-def sliceTwice : Term := prog defer_check {
+def sliceTwice : Term := prog_parse {
   fn SliceTouch (s : Σ (c : Nat). &mut (Array c Nat)) -> Unit { () };
   fn Twice (s : Σ (c : Nat). &mut (Array c Nat)) -> Unit {
     let x = SliceTouch(s); let y = SliceTouch(s); () };
@@ -85,7 +85,7 @@ example : progRejects sliceTwice "s#0 holds ⊥ (use-after-move" = true := by na
     Σ's domain and family off the binder's type syntactically, so the pack
     would have to be respelled at every elimination. -/
 
-def Val : Term := prog defer_check {
+def Val : Term := prog_parse {
   λ (MAX : Nat). λ (A : Σ0 (n : Nat). Le n MAX).
     elim A return (λ (Q : Σ0 (n : Nat). Le n MAX). Nat) { Pair (x) (h) => x } }
 
@@ -122,7 +122,7 @@ example : progOk nestedPackTwice = true := by native_decide
     pack as `U 15` with the `0` deleted — is a `Nat` and a runtime proof, and a
     runtime proof of a stuck-typed proposition is not index-kind. There has to
     be a way to say "erased"; there is no way to guess it. -/
-def unmarkedPropTwice : Term := prog defer_check {
+def unmarkedPropTwice : Term := prog_parse {
   fn Snk (p : (Σ (n : Nat). Le n 15)) -> Unit { () };
   fn Chain (p : (Σ (n : Nat). Le n 15)) -> Unit { let a = Snk(p); let b = Snk(p); () };
   () }
@@ -135,7 +135,7 @@ example : progRejects unmarkedPropTwice "p#0 holds ⊥ (use-after-move" = true :
     the proof sits at a lowercase binder — a runtime component of stuck type.
     Capitalise that binder and the pack copies (`nestedPackTwice` above is that
     program): the two read alike, and the marker is the whole difference. -/
-def tailMarkedWrongEndTwice : Term := prog defer_check {
+def tailMarkedWrongEndTwice : Term := prog_parse {
   fn Snk (p : (Σ (n : Nat). Σ0 (h : Le n 15). Unit)) -> Unit { () };
   fn Chain (p : (Σ (n : Nat). Σ0 (h : Le n 15). Unit)) -> Unit {
     let a = Snk(p); let b = Snk(p); () };
@@ -188,7 +188,7 @@ example : (match runProgram pairNatConcreteTwice with
 /-- The negative control, executing: a pack with a `List` in it is refused on
     the second consuming call, at a concrete value rather than at a σ. The two
     machines agree about the move as well as about the copy. -/
-def pairListConcreteTwice : Term := prog defer_check {
+def pairListConcreteTwice : Term := prog_parse {
   fn Snk (p : (Σ (a : Nat). List Nat)) -> Unit { () };
   let q = Pair(4, Cons(1, Nil));
   let out = Snk(q);
@@ -212,7 +212,7 @@ example : progRejects pairListConcreteTwice "q#0 holds ⊥ (use-after-move" = tr
     exempt and both machines move the pack. -/
 
 /-- Used twice: refused, and refused for the same reason in both machines. -/
-def packListTail : Term := prog defer_check {
+def packListTail : Term := prog_parse {
   fn Snk (p : (Σ0 (n : Nat). List Nat)) -> Unit { () };
   fn Chain (p : (Σ0 (n : Nat). List Nat)) -> Unit { let a = Snk(p); let b = Snk(p); () };
   let q = Pair(3, Cons(1, Nil));
@@ -265,7 +265,7 @@ def uAddC (tail : Term) : Term := prog{
       { Pair(Pair(Add (Val MAX a) (Val MAX b), H), Refl) };
   %tail }
 
-example : progOk (uAddC prog defer_check { () }) = true := by native_decide
+example : progOk (uAddC prog_parse { () }) = true := by native_decide
 
 /-- The growth guard, staging-free. `capacity` and `growth` are both consumed
     by the first call and both cited after it; `nc` is consumed by the second
@@ -305,7 +305,7 @@ def grow (tail : Term) : Term := uAddC prog{
         } };
   %tail }
 
-example : progOk (grow prog defer_check { () }) = true := by native_decide
+example : progOk (grow prog_parse { () }) = true := by native_decide
 
 /-! ### It runs, on both branches
 

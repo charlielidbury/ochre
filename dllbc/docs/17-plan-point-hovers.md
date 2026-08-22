@@ -323,7 +323,7 @@ with numbers in hand is the checkpoint's job.
 > wrong thing on today's corpus.** `docs/16`'s protocol was applied first —
 > `Tests/HashMap` and `Tests/ArraySort`, recording on vs off — and reported
 > +1.15% on HashMap, then nothing on a repeat. Both readings are uninformative,
-> because **`Tests/HashMap` has 261 `prog defer_check` blocks against 18 checked
+> because **`Tests/HashMap` has 261 `prog_parse` blocks against 18 checked
 > ones** and records 431 deltas in the whole module; `ArraySort` records 253. Those
 > modules' minutes are `native_decide` and compilation, not elaboration-time
 > checking. A protocol that was right for `docs/16` — whose cost was spread over

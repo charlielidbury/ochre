@@ -104,7 +104,7 @@ def vRun (body arg : Term) : Term := prog{
   let x = %arg; let p = &m x; F(p); () }
 
 /-- Concrete payloads for v: the small list pool, as the terms a caller writes. -/
-def vArgs : List Term := [prog defer_check { Nil }, prog defer_check { Cons(1, Nil) }, prog defer_check { Cons(1, Cons(2, Nil)) }]
+def vArgs : List Term := [prog_parse { Nil }, prog_parse { Cons(1, Nil) }, prog_parse { Cons(1, Cons(2, Nil)) }]
 
 /-! ## The property, for the list-borrow telescope
 
@@ -148,7 +148,7 @@ def nCheck (body : Term) : Term := prog{ fn F (n : Nat) -> Nat { %body }; () }
 def nRun (body arg : Term) : Term := prog{
   fn F (n : Nat) -> Nat { %body };
   let r = F(%arg); () }
-def nArgs : List Term := [prog defer_check { 0 }, prog defer_check { 1 }, prog defer_check { 2 }]
+def nArgs : List Term := [prog_parse { 0 }, prog_parse { 1 }, prog_parse { 2 }]
 
 def nAccepted : List Term := nBodies.filter (fun b => progOk (nCheck b))
 
@@ -177,8 +177,8 @@ def bcRun (body a0 a1 : Term) : Term := prog{
   fn F (b : &mut Nat, c : Bool) -> Unit { %body };
   let x = %a0; let p = &m x; F(p, %a1); () }
 def bcArgs : List (Term × Term) :=
-  [ (prog defer_check { 0 }, prog defer_check { True }), (prog defer_check { 0 }, prog defer_check { False }),
-    (prog defer_check { 1 }, prog defer_check { True }), (prog defer_check { 1 }, prog defer_check { False }) ]
+  [ (prog_parse { 0 }, prog_parse { True }), (prog_parse { 0 }, prog_parse { False }),
+    (prog_parse { 1 }, prog_parse { True }), (prog_parse { 1 }, prog_parse { False }) ]
 
 def bcAccepted : List Term := bcBodies.filter (fun b => progOk (bcCheck b))
 
@@ -433,7 +433,7 @@ def progDiff (t : Term) : Bool :=
 /-! ## Callers (each demands ALL its owners, so both runs fully collapse) -/
 
 /-- The choose caller, demanding BOTH owners. -/
-def chooseCaller : Term := withPool (prog defer_check {
+def chooseCaller : Term := withPool (prog_parse {
   let a = 0; let b = 0; let pa = &m a; let pb = &m b;
   let r = Choose(True, pa, pb);
   *r := 7;
@@ -441,14 +441,14 @@ def chooseCaller : Term := withPool (prog defer_check {
   () })
 
 /-- A push caller. -/
-def pushCaller : Term := withPool (prog defer_check {
+def pushCaller : Term := withPool (prog_parse {
   let x = Cons(1, Nil); let b = &m x; Push(7, b); let y = x; () })
 
 /-! ## The property, over the caller set -/
 
 def callers : List Term :=
-  [ withPool (prog defer_check { let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = Through(b); *r := Cons(9, Nil); let y = x; () }),
-    withPool (prog defer_check { let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = Advance(b); *r := Cons(9, Nil); let y = x; () }),
+  [ withPool (prog_parse { let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = Through(b); *r := Cons(9, Nil); let y = x; () }),
+    withPool (prog_parse { let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = Advance(b); *r := Cons(9, Nil); let y = x; () }),
     chooseCaller,
     pushCaller ]
 
@@ -462,7 +462,7 @@ example : accepted.all (fun b => diffV2 b) = true := by native_decide
 /-! ## The advance caller, which the validation below is about -/
 
 def advCallerBody : Term :=
-  withPool (prog defer_check { let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = Advance(b); *r := Cons(9, Nil); let y = x; () })
+  withPool (prog_parse { let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = Advance(b); *r := Cons(9, Nil); let y = x; () })
 
 -- The real behaviour: the opaque σ matches the concrete value. GREEN.
 example : diffV2 advCallerBody = true := by native_decide

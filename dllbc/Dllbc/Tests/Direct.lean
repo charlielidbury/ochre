@@ -62,33 +62,33 @@ def chk (tm ty : Term) : Bool :=
     `B` ignores its binder here, so the motive is constant and both projections are
     ordinary. -/
 
-def and_left : Term := prog defer_check {
+def and_left : Term := prog_parse {
   λ (A : Nat). λ (B : Nat). λ (C : Nat).
     λ (P : Σ (H : Le A B). Le B C).
       elim P return (λ (Q : Σ (H : Le A B). Le B C). Le A B) {
         Pair (X) (Y) => X } }
-def and_left_ty : Term := prog defer_check {
+def and_left_ty : Term := prog_parse {
   Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → (Σ (H : Le A B). Le B C) → Le A B }
 example : chk and_left and_left_ty = true := by native_decide
 
-def and_right : Term := prog defer_check {
+def and_right : Term := prog_parse {
   λ (A : Nat). λ (B : Nat). λ (C : Nat).
     λ (P : Σ (H : Le A B). Le B C).
       elim P return (λ (Q : Σ (H : Le A B). Le B C). Le B C) {
         Pair (X) (Y) => Y } }
-def and_right_ty : Term := prog defer_check {
+def and_right_ty : Term := prog_parse {
   Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → (Σ (H : Le A B). Le B C) → Le B C }
 example : chk and_right and_right_ty = true := by native_decide
 
 -- The projections COMPOSE with an ordinary lemma: destructure the conjunction and
 -- feed both halves to `LeTransRaw`. This is exactly what a caller does with a
 -- returned certificate.
-def and_trans : Term := prog defer_check {
+def and_trans : Term := prog_parse {
   λ (A : Nat). λ (B : Nat). λ (C : Nat).
     λ (P : Σ (H : Le A B). Le B C).
       elim P return (λ (Q : Σ (H : Le A B). Le B C). Le A C) {
         Pair (X) (Y) => LeTransRaw A B C X Y } }
-def and_trans_ty : Term := prog defer_check {
+def and_trans_ty : Term := prog_parse {
   Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → (Σ (H : Le A B). Le B C) → Le A C }
 example : chk and_trans and_trans_ty = true := by native_decide
 
@@ -99,18 +99,18 @@ example : chk and_trans and_trans_ty = true := by native_decide
     *inside the type*: `sfst (Pair x y)` reduces to `x`. This is dependent Σ
     elimination proper, not a pair of independent projections. -/
 
-def sfst : Term := prog defer_check {
+def sfst : Term := prog_parse {
   λ (P : Σ (n : Nat). Le (S Z) n).
     elim P return (λ (Q : Σ (n : Nat). Le (S Z) n). Nat) {
       Pair (X) (Y) => X } }
-def sfst_ty : Term := prog defer_check { (Σ (n : Nat). Le (S Z) n) → Nat }
+def sfst_ty : Term := prog_parse { (Σ (n : Nat). Le (S Z) n) → Nat }
 example : chk sfst sfst_ty = true := by native_decide
 
-def ssnd : Term := prog defer_check {
+def ssnd : Term := prog_parse {
   λ (P : Σ (n : Nat). Le (S Z) n).
     elim P return (λ (Q : Σ (n : Nat). Le (S Z) n). Le (S Z) (sfst Q)) {
       Pair (X) (Y) => Y } }
-def ssnd_ty : Term := prog defer_check { Π (P : Σ (n : Nat). Le (S Z) n) → Le (S Z) (sfst P) }
+def ssnd_ty : Term := prog_parse { Π (P : Σ (n : Nat). Le (S Z) n) → Le (S Z) (sfst P) }
 example : chk ssnd ssnd_ty = true := by native_decide
 
 /-! ## The ι-rule computes -/
@@ -118,14 +118,14 @@ example : chk ssnd ssnd_ty = true := by native_decide
 -- `sfst (Pair 2 (LeReflRaw 2)) ⇝ 2`, by ι on a concrete Pair.
 def pv (t : Term) : Term := Pure.nf 4000 t
 def vnat : Nat → Val | 0 => .ctor "Z" [] | k + 1 => .ctor "S" [vnat k]
-def sfstApp : Term := prog defer_check { sfst (Pair (S (S Z)) (LeReflRaw (S (S Z)))) }
+def sfstApp : Term := prog_parse { sfst (Pair (S (S Z)) (LeReflRaw (S (S Z)))) }
 example : (Val.know (pv sfstApp) == vnat 2) = true := by native_decide
 
 -- ι fires under binders on a Pair whose components are neutral — the case that
 -- matters, since a caller destructures a certificate about symbolic values, never
 -- a closed one: `λ n. λ h. sfst (Pair n h)` normalizes to `λ n. λ h. n`.
-example : (pv (prog defer_check { λ (N : Nat). λ (H : Le (S Z) N). sfst (Pair N H) }) ==
-           pv (prog defer_check { λ (N : Nat). λ (H : Le (S Z) N). N })) = true := by native_decide
+example : (pv (prog_parse { λ (N : Nat). λ (H : Le (S Z) N). sfst (Pair N H) }) ==
+           pv (prog_parse { λ (N : Nat). λ (H : Le (S Z) N). N })) = true := by native_decide
 
 -- The dual: a neutral target has no `Pair` to fire on, so the spine is a legal
 -- stuck value rather than an error — which is what lets `ssnd`'s motive above
@@ -139,7 +139,7 @@ example : (pv (prog defer_check { λ (N : Nat). λ (H : Le (S Z) N). sfst (Pair 
 
 -- (1) Wrong arm component: `Pair(x)(y) => y` at the first projection's type. The
 -- arm must inhabit `P (Pair x y)`, which is `Le a b` — `y : Le b c` does not.
-def and_left_lie : Term := prog defer_check {
+def and_left_lie : Term := prog_parse {
   λ (A : Nat). λ (B : Nat). λ (C : Nat).
     λ (P : Σ (H : Le A B). Le B C).
       elim P return (λ (Q : Σ (H : Le A B). Le B C). Le A B) {
@@ -149,25 +149,25 @@ example : chk and_left_lie and_left_ty = false := by native_decide
 -- (2) Wrong result type: `sfst` returns `Nat`, and the claim is that it returns a
 -- proof. `finish` converts the motive-at-target against the ascribed type; this is
 -- the branch that catches it.
-def sfst_lie_ty : Term := prog defer_check { (Σ (n : Nat). Le (S Z) n) → Le Z Z }
+def sfst_lie_ty : Term := prog_parse { (Σ (n : Nat). Le (S Z) n) → Le Z Z }
 example : chk sfst sfst_lie_ty = false := by native_decide
 
 -- (3) Wrong dependent motive: the second projection claimed one bigger than the
 -- first component. `y : Le (S Z) x`, but `P (Pair x y)` is now `Le (S Z) (S x)` —
 -- off by one, and nothing bridges it. This is the branch that would silently pass
 -- if the motive were inferred from the arm rather than read off what is written.
-def ssnd_lie : Term := prog defer_check {
+def ssnd_lie : Term := prog_parse {
   λ (P : Σ (n : Nat). Le (S Z) n).
     elim P return (λ (Q : Σ (n : Nat). Le (S Z) n). Le (S Z) (S (sfst Q))) {
       Pair (X) (Y) => Y } }
-def ssnd_lie_ty : Term := prog defer_check { Π (P : Σ (n : Nat). Le (S Z) n) → Le (S Z) (S (sfst P)) }
+def ssnd_lie_ty : Term := prog_parse { Π (P : Σ (n : Nat). Le (S Z) n) → Le (S Z) (S (sfst P)) }
 example : chk ssnd_lie ssnd_lie_ty = false := by native_decide
 
 -- (4) Wrong target: `sigmaRec` applied to something that is not of the Σ type it
 -- declares. Here the target is a bare `Nat`, so the `s : Σ (x : A). B x` premise
 -- fails even though the arm is fine.
-def sfst_bad_target : Term := prog defer_check { sfst (S Z) }
-def sfst_bad_target_ty : Term := prog defer_check { Nat }
+def sfst_bad_target : Term := prog_parse { sfst (S Z) }
+def sfst_bad_target_ty : Term := prog_parse { Nat }
 example : chk sfst_bad_target sfst_bad_target_ty = false := by native_decide
 
 /-! ## Dependent Σ results at a call site
@@ -214,7 +214,7 @@ def useItLie : Term := prog{
   () }
 -- A callee, checked standalone before it is used in the chains below.
 example : progOk useItLie = true := by native_decide
-def usePinLie : Term := prog defer_check {
+def usePinLie : Term := prog_parse {
   fn PinOne () -> Σ (r : Nat). Id Nat r (S Z) { Pair(S Z, Refl) };
   fn UseItLie (n : Nat, h : Id Nat n (S (S Z))) -> Unit { () };
   fn UsePinLie () -> Unit
@@ -232,7 +232,7 @@ def plainOne : Term := prog{
   () }
 -- A callee, checked standalone before it is used in the chains below.
 example : progOk plainOne = true := by native_decide
-def useUnpinned : Term := prog defer_check {
+def useUnpinned : Term := prog_parse {
   fn PlainOne () -> Nat { S Z };
   fn UseIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () };
   fn UseUnpinned () -> Unit { let a = PlainOne(); UseIt(a, Refl); () };
@@ -270,7 +270,7 @@ def recGood : Term := prog{
 example : progOk recGood = true := by native_decide
 
 -- BRANCH 1 — no `[k]` at all. This exact FnDef would prove `Z = S Z` if admitted.
-def recBad : Term := prog defer_check {
+def recBad : Term := prog_parse {
   fn RecBad () -> Id Nat Z (S Z) { RecBad() };
   () }
 -- Still refused, but for a different reason: a recursive occurrence is the `ih`
@@ -281,7 +281,7 @@ example : progRejects recBad "unknown function" = true := by native_decide
 
 -- BRANCH 2 — `[k]` declared, but the self-call passes the same fuel. Equal is not
 -- strictly smaller; this is the shape the strictness in `strictSubterm` exists for.
-def recSame : Term := prog defer_check { fn RecSame [n] (n : Nat) -> Id Nat Z (S Z) { RecSame(n) }; () }
+def recSame : Term := prog_parse { fn RecSame [n] (n : Nat) -> Id Nat Z (S Z) { RecSame(n) }; () }
 -- Refused at elaboration: `ih` is the sealed self-view at the predecessor, so a
 -- self-call at any other argument has nothing to become, and `fnElab` says so
 -- rather than emitting a recursor that would be a different function. Asserted on
@@ -293,7 +293,7 @@ example : progRejects recSame "not the predecessor" = true := by native_decide
 -- (Without this control the previous two would pass on a guard that merely
 -- required *something* to decrease — which is unsound, since alternating branches
 -- can each decrease a different coordinate forever.)
-def recWrongIdx : Term := prog defer_check {
+def recWrongIdx : Term := prog_parse {
   fn RecWrongIdx [n] (n : Nat, m : Nat) -> Id Nat Z Z
         { match m { Z => Refl, S(m2) => RecWrongIdx(n, m2) } };
   () }
@@ -309,7 +309,7 @@ example : progOk recRightIdx = true := by native_decide
 
 -- BRANCH 4 — an increase reads as "not a subterm", not as a decrease: `S(m2)`
 -- against a snapshot of `S m2` is equality one level up, and equality never passes.
-def recGrow : Term := prog defer_check {
+def recGrow : Term := prog_parse {
   fn RecGrow [n] (n : Nat) -> Id Nat Z Z
         { match n { Z => Refl, S(m2) => RecGrow(S(m2)) } };
   () }
@@ -320,7 +320,7 @@ example : progRejects recGrow "not the predecessor" = true := by native_decide
 -- same hole through two doors. Rejected outright: mutual recursion is unwritable
 -- rather than merely rejected, because `recMutB` is not in scope above `recMutA`.
 -- The rejection names the forward reference.
-def recMutA : Term := prog defer_check {
+def recMutA : Term := prog_parse {
   fn RecMutA () -> Id Nat Z (S Z) { RecMutB() };
   fn RecMutB () -> Id Nat Z (S Z) { RecMutA() };
   () }
@@ -337,7 +337,7 @@ example : progOk recList = true := by native_decide
 -- Two constructors down is still a strict subterm (the relation is transitive, not
 -- just one-step) — which the quicksort recursion needs, since it peels `Cnt` twice
 -- before recursing.
-def recDeep : Term := prog defer_check {
+def recDeep : Term := prog_parse {
   fn RecDeep [n] (n : Nat) -> Id Nat Z Z
         { match n { Z => Refl, S(a) => match a { Z => Refl, S(b) => RecDeep(b) } } };
   () }
@@ -367,7 +367,7 @@ example : progRejects recDeep "not the predecessor" = true := by native_decide
     `append_back` and `partition` — and all three are fuel-threaded in the flagship
     chain below, where the price is one parameter and one dead branch. -/
 
-def borrowDecrease : Term := prog defer_check {
+def borrowDecrease : Term := prog_parse {
   fn ZeroAll [v] (v : &mut List Nat) -> Unit
         { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ZeroAll(tl); () } } };
   () }
@@ -471,7 +471,7 @@ def soUnder (ret tail : Term) : Term := prog{
 def soRet (pre suf : Term) : Term := prog{
   Σ (ret : List Nat). Σ (H1 : Id (List Nat) %dvT %pre). Id (List Nat) ret %suf }
 
-def soHonest : Term := soRet (prog defer_check { Take %iT %oldvT }) (prog defer_check { Drop %iT %oldvT })
+def soHonest : Term := soRet (prog_parse { Take %iT %oldvT }) (prog_parse { Drop %iT %oldvT })
 def splitOff : Term := soUnder soHonest .unit
 example : progOk splitOff = true := by native_decide
 
@@ -482,9 +482,9 @@ example : progOk splitOff = true := by native_decide
     leave the recursive path untested; the body lie breaks the congruence in the
     `Cons` branch and is the control for that path. -/
 
-def splitOffLieTake : Term := soUnder (soRet (prog defer_check { Take (S %iT) %oldvT }) (prog defer_check { Drop %iT %oldvT })) .unit
-def splitOffLieDrop : Term := soUnder (soRet (prog defer_check { Take %iT %oldvT }) (prog defer_check { Drop (S %iT) %oldvT })) .unit
-def splitOffLieSwap : Term := soUnder (soRet (prog defer_check { Drop %iT %oldvT }) (prog defer_check { Take %iT %oldvT })) .unit
+def splitOffLieTake : Term := soUnder (soRet (prog_parse { Take (S %iT) %oldvT }) (prog_parse { Drop %iT %oldvT })) .unit
+def splitOffLieDrop : Term := soUnder (soRet (prog_parse { Take %iT %oldvT }) (prog_parse { Drop (S %iT) %oldvT })) .unit
+def splitOffLieSwap : Term := soUnder (soRet (prog_parse { Drop %iT %oldvT }) (prog_parse { Take %iT %oldvT })) .unit
 example : progRejects splitOffLieTake "does not have return type" = true := by native_decide
 example : progRejects splitOffLieDrop "does not have return type" = true := by native_decide
 example : progRejects splitOffLieSwap "does not have return type" = true := by native_decide
@@ -497,7 +497,7 @@ example : progRejects splitOffLieSwap "does not have return type" = true := by n
 -- varies is a subterm inside the body that names `hd` — a binder the `fn` lowering
 -- mints an id for — and a `%` splice is a Lean `Term` written outside the macro,
 -- which has no way to say "the `hd` this match will bind".
-def splitOffLieHead : Term := prog defer_check {
+def splitOffLieHead : Term := prog_parse {
   fn SplitOff [i] (v : &mut List Nat, i : Nat, hi : Le i (Len *v)) -> %soHonest
         { match i {
             Z => { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) },
@@ -637,8 +637,8 @@ def setSwapUnder (sret wret tail : Term) : Term := prog{
     syntax, one spliced subterm, so the twins below read as the lie they are. -/
 def exitIs (rhs : Term) : Term := prog{ Id (List Nat) %dvT %rhs }
 
-def setHonest : Term := exitIs (prog defer_check { Set %iT %xT %oldvT })
-def swapHonest : Term := exitIs (prog defer_check { SwapL %iT %jT %oldvT })
+def setHonest : Term := exitIs (prog_parse { Set %iT %xT %oldvT })
+def swapHonest : Term := exitIs (prog_parse { SwapL %iT %jT %oldvT })
 
 /-- The pair, both honest. `swap_at` calls `set_at [i]`, whose decreasing parameter
     is second, so the sealed callee's telescope is `(i, v, x, hi)` while the call is
@@ -649,11 +649,11 @@ example : progOk setSwap = true := by native_decide
 /-! ### Not vacuous -/
 
 -- The index off by one, and the no-op, once per function.
-example : progRejects (setSwapUnder (exitIs (prog defer_check { Set (S %iT) %xT %oldvT })) swapHonest .unit)
+example : progRejects (setSwapUnder (exitIs (prog_parse { Set (S %iT) %xT %oldvT })) swapHonest .unit)
   "does not have return type" = true := by native_decide
 example : progRejects (setSwapUnder (exitIs oldvT) swapHonest .unit)
   "does not have return type" = true := by native_decide
-example : progRejects (setSwapUnder setHonest (exitIs (prog defer_check { SwapL (S %iT) %jT %oldvT })) .unit)
+example : progRejects (setSwapUnder setHonest (exitIs (prog_parse { SwapL (S %iT) %jT %oldvT })) .unit)
   "does not have return type" = true := by native_decide
 example : progRejects (setSwapUnder setHonest (exitIs oldvT) .unit)
   "does not have return type" = true := by native_decide
@@ -771,7 +771,7 @@ example : progOk branchKnowledgeIf = true := by
 
 -- (1) The equation is the branch's own constructor, not the other one: citing
 -- `LebFalseGtRaw` on the True branch's `e : Id Bool (Leb a b) True` is rejected.
-def branchEqSwapped : Term := prog defer_check {
+def branchEqSwapped : Term := prog_parse {
   fn NeedLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
   fn NeedGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () };
   fn BranchEqSwapped (a : Nat, b : Nat) -> Unit
@@ -791,7 +791,7 @@ def needLeSwap : Term := prog{
   () }
 -- A callee, checked standalone before it is used in the chains below.
 example : progOk needLeSwap = true := by native_decide
-def branchEqWrongSpine : Term := prog defer_check {
+def branchEqWrongSpine : Term := prog_parse {
   fn NeedLeSwap (a : Nat, b : Nat, h : Le b a) -> Unit { () };
   fn BranchEqWrongSpine (a : Nat, b : Nat) -> Unit
         { let c = Leb a b;
@@ -810,7 +810,7 @@ def wantEqLie : Term := prog{
   () }
 -- A callee, checked standalone before it is used in the chains below.
 example : progOk wantEqLie = true := by native_decide
-def branchEqPlainSym : Term := prog defer_check {
+def branchEqPlainSym : Term := prog_parse {
   fn WantEqLie (n : Nat, h : Id Nat (S n) n) -> Unit { () };
   fn BranchEqPlainSym (n : Nat) -> Unit
         { match e : n { Z => (), S(m) => { WantEqLie(m, e); () } } };
@@ -849,9 +849,9 @@ example : progOk concreteEq = true := by native_decide
 -- carries `⇝` on its domain — so a lowercase twin here would no longer be the
 -- same type. The comparison is by `pv`, which prints the marker, so this is the
 -- assertion that the library's own components declare themselves comptime.
-example : (pv (prog defer_check { Ub (S (S Z)) (Cons (S Z) (Cons (S (S Z)) Nil)) }) ==
-           pv (prog defer_check { Σ (H : Le (S Z) (S (S Z))). Σ (H2 : Le (S (S Z)) (S (S Z))). Unit })) = true := by native_decide
-example : (pv (prog defer_check { Lb Z (Cons (S Z) Nil) }) == pv (prog defer_check { Σ (H : Le Z (S Z)). Unit })) = true := by native_decide
+example : (pv (prog_parse { Ub (S (S Z)) (Cons (S Z) (Cons (S (S Z)) Nil)) }) ==
+           pv (prog_parse { Σ (H : Le (S Z) (S (S Z))). Σ (H2 : Le (S (S Z)) (S (S Z))). Unit })) = true := by native_decide
+example : (pv (prog_parse { Lb Z (Cons (S Z) Nil) }) == pv (prog_parse { Σ (H : Le Z (S Z)). Unit })) = true := by native_decide
 
 -- Generic J-transport at `List Nat` — `LeRwRRaw` for arbitrary list predicates. Every
 -- certificate a back-less body returns is stated over an exit it knows only
@@ -879,10 +879,10 @@ example : chk SortedAppendPivotRaw Dllbc.StdLemmas.SortedAppendPivotTy = true :=
 -- It computes, end to end: `[1] ++ 2 :: [3]` is sorted, from the four facts about
 -- the parts. Every hypothesis at these values is a `⊤`-chain, so the witnesses are
 -- `Pair(unit, unit)` — the content is entirely in the lemma.
-def sap_app : Term := prog defer_check {
+def sap_app : Term := prog_parse {
   SortedAppendPivotRaw (S (S Z)) (Cons (S Z) Nil) (Cons (S (S (S Z))) Nil)
     Pair(unit, unit) Pair(unit, unit) Pair(unit, unit) Pair(unit, unit) }
-def sap_app_ty : Term := prog defer_check {
+def sap_app_ty : Term := prog_parse {
   Sorted (Cons (S Z) (Cons (S (S Z)) (Cons (S (S (S Z))) Nil))) }
 example : chk sap_app sap_app_ty = true := by native_decide
 
@@ -892,14 +892,14 @@ example : chk sap_app sap_app_ty = true := by native_decide
 -- (1) `Ub p a` weakened to `Lb p a`: `UbHeadRaw` now receives `Σ (Le p h). Lb p t`
 -- where it wants `Σ (Le h p). Ub p t`. Without a's elements being below the pivot
 -- the splice is not sorted, and the check says so.
-def sap_lie_ub_ty : Term := prog defer_check {
+def sap_lie_ub_ty : Term := prog_parse {
   Π (P : Nat) → Π (A : List Nat) → Π (B : List Nat) →
     Sorted A → Lb P A → Sorted B → Lb P B → Sorted (Append A (Cons P B)) }
 example : chk SortedAppendPivotRaw sap_lie_ub_ty = false := by native_decide
 
 -- (2) `Lb p b` weakened to `Ub p b`: `LbBoundRaw` is fed the wrong direction, so the
 -- pivot no longer bounds b's head.
-def sap_lie_lb_ty : Term := prog defer_check {
+def sap_lie_lb_ty : Term := prog_parse {
   Π (P : Nat) → Π (A : List Nat) → Π (B : List Nat) →
     Sorted A → Ub P A → Sorted B → Ub P B → Sorted (Append A (Cons P B)) }
 example : chk SortedAppendPivotRaw sap_lie_lb_ty = false := by native_decide
@@ -907,7 +907,7 @@ example : chk SortedAppendPivotRaw sap_lie_lb_ty = false := by native_decide
 -- (3) The `Nil` arm of the transport returning the wrong hypothesis: past the end of
 -- `t` the new head is the pivot, so only `Le h p` inhabits the goal; handing back the
 -- (vacuous) `Bound h Nil` does not.
-def bound_append_lie : Term := prog defer_check {
+def bound_append_lie : Term := prog_parse {
   λ (H : Nat). λ (P : Nat). λ (T : List Nat). λ (B : List Nat).
     elim T return (λ (Tz : List Nat).
         Bound H Tz → Le H P → Bound H (Append Tz (Cons P B))) {
@@ -918,10 +918,10 @@ example : chk bound_append_lie Dllbc.StdLemmas.BoundAppendTy = false := by nativ
 -- (4) Liveness of the `Ub` hypothesis at concrete values: pivot 0 under a left part
 -- containing 1 needs `Le 1 0 = ⊥`, which `Pair(unit, unit)` does not inhabit — so the
 -- positive computation above passed on its hypotheses, not on a rubber stamp.
-def sap_bad_pivot : Term := prog defer_check {
+def sap_bad_pivot : Term := prog_parse {
   SortedAppendPivotRaw Z (Cons (S Z) Nil) Nil
     Pair(unit, unit) Pair(unit, unit) unit unit }
-def sap_bad_pivot_ty : Term := prog defer_check {
+def sap_bad_pivot_ty : Term := prog_parse {
   Sorted (Cons (S Z) (Cons Z Nil)) }
 example : chk sap_bad_pivot sap_bad_pivot_ty = false := by native_decide
 
@@ -1041,17 +1041,17 @@ def fuelT : Term := .var ⟨0, "fuel"⟩
     away from the honest form. Only the two telescope parameters a return type
     cannot name from outside its header are spliced. -/
 
-def partHonest : Term := prog defer_check {
+def partHonest : Term := prog_parse {
   Σ (hi : List Nat). Σ (Hub : Ub %pT (*%vfT)). Σ (Hlb : Lb %pT hi).
     Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))). Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT))).
     Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (Count N (old *%vfT)) }
 
-def qsHonest : Term := prog defer_check {
+def qsHonest : Term := prog_parse {
   Σ0 (Hs : Sorted (*%vfT)). Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) }
 
 /-- The sufficiency hypothesis's type — a telescope entry, so it is a parameter of
     the chain too. Its twin is the one that weakens it to `Unit`. -/
-def suffHonest : Term := prog defer_check { Le (Len *%vfT) %fuelT }
+def suffHonest : Term := prog_parse { Le (Len *%vfT) %fuelT }
 
 /-! ### The chain, once
 
@@ -1263,14 +1263,14 @@ example : progOk flagship = true := by native_decide
 
 -- (1) Upper bound on the wrong snapshot: `Ub p (old *v)` — true of the entry, and
 -- the entry is not what the caller gets back.
-example : progRejects (qsUnder (prog defer_check {
+example : progRejects (qsUnder (prog_parse {
     Σ (hi : List Nat). Σ (Hub : Ub %pT (old *%vfT)). Σ (Hlb : Lb %pT hi).
       Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))). Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT))).
       Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (Count N (old *%vfT)) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (2) Lower bound on the kept part instead of the returned one.
-example : progRejects (qsUnder (prog defer_check {
+example : progRejects (qsUnder (prog_parse {
     Σ (hi : List Nat). Σ (Hub : Ub %pT (*%vfT)). Σ (Hlb : Lb %pT (*%vfT)).
       Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))). Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT))).
       Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (Count N (old *%vfT)) })
@@ -1279,14 +1279,14 @@ example : progRejects (qsUnder (prog defer_check {
 -- (3) The returned part dropped from the count: "everything stayed in `*v`". With
 -- `Cnt` capital, the count proof is comptime knowledge and the lie is caught where
 -- it is written — at this body's own return, by the audit.
-example : progRejects (qsUnder (prog defer_check {
+example : progRejects (qsUnder (prog_parse {
     Σ (hi : List Nat). Σ (Hub : Ub %pT (*%vfT)). Σ (Hlb : Lb %pT hi).
       Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))). Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT))).
       Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (4) …and the count off by one, which no `Nil`-path argument can reach.
-example : progRejects (qsUnder (prog defer_check {
+example : progRejects (qsUnder (prog_parse {
     Σ (hi : List Nat). Σ (Hub : Ub %pT (*%vfT)). Σ (Hlb : Lb %pT hi).
       Σ (Hl1 : Le (Len *%vfT) (Len (old *%vfT))). Σ0 (Hl2 : Le (Len hi) (Len (old *%vfT))).
       Π (N : Nat) → Id Nat (Add (Count N (*%vfT)) (Count N hi)) (S (Count N (old *%vfT))) })
@@ -1300,13 +1300,13 @@ example : progRejects (qsUnder (prog defer_check {
 -- (1) Sortedness lied onto the wrong subject: the entry is claimed sorted. True at
 -- `Nil` (so the base path still passes) and false for any unsorted input, and the
 -- body's evidence is about the exit.
-example : progRejects (qsUnder partHonest (prog defer_check {
+example : progRejects (qsUnder partHonest (prog_parse {
     Σ0 (Hs : Sorted (old *%vfT)). Π (N : Nat) → Id Nat (Count N (*%vfT)) (Count N (old *%vfT)) })
     suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (2) Permutation lied by direction: the two endpoints swapped. Again `Refl` at
 -- `Nil`, and again the body's evidence points the other way once anything moves.
-example : progRejects (qsUnder partHonest (prog defer_check {
+example : progRejects (qsUnder partHonest (prog_parse {
     Σ0 (Hs : Sorted (*%vfT)). Π (N : Nat) → Id Nat (Count N (old *%vfT)) (Count N (*%vfT)) })
     suffHonest .unit) "does not have its parameter type" = true := by native_decide
 
@@ -1315,7 +1315,7 @@ example : progRejects (qsUnder partHonest (prog defer_check {
 -- unbound name) and weaken it to `Unit`: the `Z` branch's `botElim` then has no ⊥
 -- to eliminate, and the out-of-fuel path stops being dead. This is what makes the
 -- guard-plus-hypothesis pair total correctness rather than partial.
-example : progRejects (qsUnder partHonest qsHonest (prog defer_check { Unit }) .unit)
+example : progRejects (qsUnder partHonest qsHonest (prog_parse { Unit }) .unit)
   "botElim result on a non-⊥ argument" = true := by native_decide
 
 /-! ### The two body twins, transcribed
@@ -1332,7 +1332,7 @@ example : progRejects (qsUnder partHonest qsHonest (prog defer_check { Unit }) .
     kept part — one write changed, `*v := lo` for `*v := Cons(x, lo)`. Wrong only on
     the recursive `True` path and only in the count conjunct; the bounds still hold
     of a list with one element missing. -/
-def partitionLoses : Term := prog defer_check {
+def partitionLoses : Term := prog_parse {
   fn Partition [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (Len *v) fuel) -> %partHonest
       { match *v {
           Nil => { *v := Nil;
@@ -1377,7 +1377,7 @@ example : progRejects partitionLoses "does not have return type" = true := by na
     transports of them — `SortedAppendPivotRaw x (*v) hi Hs1 Hub Hs2 Hlb` for
     `… Hub2 … Hlb2`. Everything else is the chain's `quicksort` verbatim, so what the
     rejection isolates is exactly bound survival. -/
-def qsStaleBound : Term := prog defer_check {
+def qsStaleBound : Term := prog_parse {
   fn Partition [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (Len *v) fuel) -> %partHonest
       { match *v {
           Nil => { *v := Nil;

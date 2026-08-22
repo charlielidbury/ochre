@@ -29,7 +29,7 @@ open Dllbc
 /-- `mod a b`: the recursive result is both the scrutinee of the `Eqb` test and
     the value the `False` branch returns — the shape that doubles cost without
     forcing. -/
-def ModTFn : Term := prog defer_check {
+def ModTFn : Term := prog_parse {
   λ (A : Nat). λ (B : Nat).
     elim A return (λ (Am : Nat). Nat) {
       Z => Z,
@@ -65,12 +65,12 @@ example : (modOf 1057 32).natOf? == some 1 := by native_decide
 
 /-- The arm ignores `Rec`, so no recursive call is made: the result is `Z` at
     any depth, at no cost. -/
-def DiscardFn : Term := prog defer_check {
+def DiscardFn : Term := prog_parse {
   λ (A : Nat). elim A return (λ (Am : Nat). Nat) { Z => Z, S (A') Rec => Z } }
 def DiscardFnT : Dllbc.Term := DiscardFn
 
 /-- The arm ignores `Rec` and returns the predecessor `A'` instead. -/
-def PredFn : Term := prog defer_check {
+def PredFn : Term := prog_parse {
   λ (A : Nat). elim A return (λ (Am : Nat). Nat) { Z => Z, S (A') Rec => A' } }
 def PredFnT : Dllbc.Term := PredFn
 
@@ -78,7 +78,7 @@ def PredFnT : Dllbc.Term := PredFn
     branch that runs discards it. The scrutinee `Eqb 1 0` is `False` at every
     level, so the result is `Z` regardless of depth: full cost paid, same
     answer either way. -/
-def ZeroOutFn : Term := prog defer_check {
+def ZeroOutFn : Term := prog_parse {
   λ (A : Nat). elim A return (λ (Am : Nat). Nat) {
     Z => Z,
     S (A') Rec => elim (Eqb (S(Z)) Z) return (λ (Bm : Bool). Nat) {
@@ -99,27 +99,27 @@ example : (app1 ZeroOutFnT 64).natOf? == some 0 := by native_decide
 
 -- `S (S x)` for free `x` fires the recursor twice, then gets stuck; `deepForce`
 -- must leave the stuck neutral alone rather than treating it as an error.
-def openTwo : Term := prog defer_check { S(S(%(Term.pvar "x"))) }
+def openTwo : Term := prog_parse { S(S(%(Term.pvar "x"))) }
 
-example : (pv prog defer_check { %DiscardFnT %openTwo }).natOf? == some 0 := by native_decide
-example : (pv prog defer_check { %ZeroOutFnT %openTwo }).natOf? == some 0 := by native_decide
+example : (pv prog_parse { %DiscardFnT %openTwo }).natOf? == some 0 := by native_decide
+example : (pv prog_parse { %ZeroOutFnT %openTwo }).natOf? == some 0 := by native_decide
 
 /-! ### The two spellings agree -/
 
 -- `ModC` is an accumulator-style alternative to `ModT`: its step names `Rec`
 -- once and questions an argument rather than the recursive result. Kept here
 -- to check it agrees with `ModT`, not because it is required.
-def NextRFn : Term := prog defer_check {
+def NextRFn : Term := prog_parse {
   λ (R : Nat). λ (C : Nat).
     elim C return (λ (Cz : Nat). Nat) { Z => Z, S (C') Rc => S(R) } }
 def NextRFnT : Dllbc.Term := NextRFn
 
-def NextCFn : Term := prog defer_check {
+def NextCFn : Term := prog_parse {
   λ (B : Nat). λ (C : Nat).
     elim C return (λ (Cz : Nat). Nat) { Z => B, S (C') Rc => C' } }
 def NextCFnT : Dllbc.Term := NextCFn
 
-def ModCFn : Term := prog defer_check {
+def ModCFn : Term := prog_parse {
   λ (A : Nat).
     elim A return (λ (Az : Nat). Π (B : Nat) → Π (R : Nat) → Π (C : Nat) → Nat) {
       Z => λ (B : Nat). λ (R : Nat). λ (C : Nat). R,

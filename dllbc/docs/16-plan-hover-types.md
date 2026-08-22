@@ -46,7 +46,7 @@ cannot push info.
 source — `(v : &mut List Nat)` — and the `Uni.lean` walker holds both the ident's and
 the type's `TSyntax`. Hover for a parameter renders the **annotation's source text**
 (exact, zero computation, no checker involvement). Consequences worth stating: S1
-hovers work in `prog defer_check { }` blocks too, and for every *occurrence* of the
+hovers work in `prog_parse { }` blocks too, and for every *occurrence* of the
 parameter, not just the binder — the walker resolves every ident to its variable id
 (`resolveName`), so it can emit an (occurrence-span, var-id) pair wherever the name
 appears. Cheap extension in the same pass: hovering a **callee name** shows its

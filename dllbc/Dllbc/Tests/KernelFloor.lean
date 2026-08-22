@@ -342,7 +342,7 @@ example : progOk learnDemand = true := by native_decide
 -- The twin, and it is what makes the certificate a demand rather than a
 -- decoration: the same `let m = n` and the same seal with the match removed. `m`
 -- is unrefined, so `Refl` has nothing to inhabit.
-def learnDemandNo : Term := prog defer_check {
+def learnDemandNo : Term := prog_parse {
   fn LearnDemandNo (n : Nat, p : Id Nat n 2) -> Unit {
     let m = n; let c = (Refl : Id Nat m 2); () };
   () }
@@ -371,7 +371,7 @@ example : progOk learnBorrowDemand = true := by native_decide
 -- Rigid-rigid: `p : Id Nat Z (S Z)`. Neither endpoint is a σ, so there is no
 -- solution by refinement — stuck, naming `j`/`k` as the elimination route. The
 -- kernel does not auto-discharge the conflict; that is the library's job (below).
-def rigidStuck : Term := prog defer_check {
+def rigidStuck : Term := prog_parse {
   fn RigidStuck (p : Id Nat 0 1) -> Nat { match p { Refl => 0 } };
   () }
 
@@ -380,7 +380,7 @@ example : progRejects rigidStuck "j/k" = true := by native_decide
 
 -- Occurs check: `p : Id Nat n (S n)`. Refining `n := S n` would be cyclic —
 -- rejected before it can loop.
-def occursFn : Term := prog defer_check {
+def occursFn : Term := prog_parse {
   fn Occ (n : Nat, p : Id Nat n (S n)) -> Unit { match p { Refl => () } };
   () }
 
@@ -389,17 +389,17 @@ example : progRejects occursFn "occurs check" = true := by native_decide
 /-! ## Exhaustiveness and scope (Id's constructor set is `{Refl}`) -/
 
 -- An empty match on `p : Id Nat n 2` is non-exhaustive: `Refl` is uncovered.
-example : progRejects (prog defer_check {
+example : progRejects (prog_parse {
   fn F (n : Nat, p : Id Nat n 2) -> Unit { match p { } }; () }) "non-exhaustive" = true := by native_decide
 
 -- A stray non-`Refl` constructor is likewise not enough to be exhaustive.
-example : progRejects (prog defer_check {
+example : progRejects (prog_parse {
   fn F (n : Nat, p : Id Nat n 2) -> Unit { match p { Z => () } }; () }) "non-exhaustive" = true := by native_decide
 
 -- Scope guard: `Id` over a *borrow* type is rejected — reflecting the borrow-type
 -- index throws (borrow types live only at telescope positions), no special
 -- machinery needed. (Id over ordinary indexed types is unrestricted.)
-example : progRejects (prog defer_check {
+example : progRejects (prog_parse {
   fn F (q : Id (&mut Nat) 0 0) -> Unit { () }; () }) "borrow type" = true := by native_decide
 
 /-! ## The fording library — no confusion, injectivity, K, all as checked terms
@@ -505,23 +505,23 @@ namespace Dllbc.Tests.S11Lib
     impossible to get wrong with a name. -/
 
 /-- `NatCode`'s `Z` row: `Z ↦ ⊤`, `S _ ↦ ⊥`. -/
-def zCase : Term := prog defer_check {
+def zCase : Term := prog_parse {
   λ (M : Nat). natRec (λ (X : Nat). Type) Unit (λ (X : Nat). λ (R : Type). Bot) M }
 
 /-- `NatCode`'s `S` row: `Z ↦ ⊥`, `S m2 ↦ code of the predecessors` (the
     outer recursor's `ih`, applied). -/
-def sCase : Term := prog defer_check {
+def sCase : Term := prog_parse {
   λ (N : Nat). λ (F : Π (X : Nat) → Type). λ (M : Nat).
     natRec (λ (X : Nat). Type) Bot (λ (M2 : Nat). λ (R : Type). F M2) M }
 
 /-- `NatCode : Nat → Nat → Type`, by `natRec` at a Π-valued motive. -/
-def natCode : Term := prog defer_check {
+def natCode : Term := prog_parse {
   λ (A : Nat). natRec (λ (X : Nat). Π (Y : Nat) → Type) zCase sCase A }
 
 /-- The no-confusion motive at `Z`: `λ m. λ (q : Id Nat Z m). NatCode Z m`. With
     `j`'s `d := unit : NatCode Z Z`, `j Nat Z nncMotive unit (S n) p` has type
     `NatCode Z (S n)`, which computes to `Bot`. -/
-def nncMotive : Term := prog defer_check { λ (M : Nat). λ (Q : Id Nat Z M). natCode Z M }
+def nncMotive : Term := prog_parse { λ (M : Nat). λ (Q : Id Nat Z M). natCode Z M }
 
 /-! ## ⇒ produces proof terms -/
 
@@ -552,7 +552,7 @@ example : progOk (prog{
 -- Not vacuous: the discharge is what closes the branch, and without it the arm
 -- has nothing of the return type to give. The same function with the `False` arm
 -- returning the PROOF rather than eliminating it is rejected.
-example : progRejects (prog defer_check {
+example : progRejects (prog_parse {
   fn DischargeLie (n : Nat, p : Id Nat Z (S n), b : Bool) -> Nat {
     match b {
       True => Z,
@@ -605,10 +605,10 @@ example : expectConv [] [] Dllbc.StdLemmas.LeReflRaw Std.le_reflT = true := by n
     measured as a wrong answer before the fix, not merely hypothesized. -/
 
 -- (1) The merged `let` means what the β-redex it replaced meant.
-example : expectConv [] [] prog defer_check { let a = 2 ; Add a a } prog defer_check { (λ (A : Nat). Add A A) 2 } = true := by
+example : expectConv [] [] prog_parse { let a = 2 ; Add a a } prog_parse { (λ (A : Nat). Add A A) 2 } = true := by
   native_decide
 -- (2) …and a `let` chain still means its nesting.
-example : expectConv [] [] prog defer_check { let a = 2 ; let b = S a ; Add a b } prog defer_check { 5 } = true := by
+example : expectConv [] [] prog_parse { let a = 2 ; let b = S a ; Add a b } prog_parse { 5 } = true := by
   native_decide
 
 -- (3) A `let` may shadow a pure binder, and the innermost one wins. A pure λ's
@@ -617,20 +617,20 @@ example : expectConv [] [] prog defer_check { let a = 2 ; let b = S a ; Add a b 
 -- reachable route. `resolveName` consults that context first, so without the
 -- surface's mask this reads the arm's `k` — measured as `Z`, not `7`.
 example : expectConv [] []
-    prog defer_check { elim 1 return (λ (X : Nat). Nat) { Z => 0, S(K) Ih => let k = 7 ; k } }
-    prog defer_check { 7 } = true := by native_decide
+    prog_parse { elim 1 return (λ (X : Nat). Nat) { Z => 0, S(K) Ih => let k = 7 ; k } }
+    prog_parse { 7 } = true := by native_decide
 
 -- (4) A let-bound value mentioning a pure binder, read two binders deeper. ⇝
 -- reads `let` by β and lifts the value from the depth it was bound at to the
 -- depth it is used at; the Ω-binding reading this replaced did not, and returned
 -- a value pointing at the inner arm's binders instead. `s = S k = 1`.
 example : expectConv [] []
-    prog defer_check { elim 1 return (λ (X : Nat). Nat) {
+    prog_parse { elim 1 return (λ (X : Nat). Nat) {
             Z => 0,
             S(K) Ih =>
               let s = S K ;
               elim 1 return (λ (Y : Nat). Nat) { Z => 0, S(J) Ih2 => s } } }
-    prog defer_check { 1 } = true := by native_decide
+    prog_parse { 1 } = true := by native_decide
 
 /-! ## The lemmas check at their stated types -/
 
@@ -661,13 +661,13 @@ example : progOk useTrans = true := by native_decide
 -- clause and thus visible, so the failure is comprehensible. The surfaced error
 -- is: "audit: result (…) does not have return type (…)".
 def LeFn : Term := Std.LeFnT
-def badReflClosed : Term := prog defer_check {
+def badReflClosed : Term := prog_parse {
   λ (N : Nat). elim N return (λ (M : Nat). LeFn Z M) { Z => unit, S (K) Ih => Ih } }
 -- A deliberately-lying function: the return type claims `Le n n` while the
 -- body proves `Le Z n`, side by side so the lie is explicit. The body is the
 -- pure term above, spliced and applied — the mis-motive is what is under
 -- test, so it stays exactly as written.
-def badRefl : Term := prog defer_check {
+def badRefl : Term := prog_parse {
   fn BadRefl (n : Nat) -> Le n n { %badReflClosed n };
   () }
 example : progRejects badRefl "does not have return type" = true := by native_decide
@@ -693,15 +693,15 @@ example : progRejects badRefl "does not have return type" = true := by native_de
 
 -- The dot form elaborates to the pair former it names. Σ0's `0` is the `.cmpT`
 -- on the codomain and nothing else — same `sigmaT`, same binder.
-example : prog defer_check { Σ (x : Nat). Nat } = Term.sigmaT "x" (.const "Nat") (.const "Nat") := by rfl
-example : prog defer_check { Σ0 (h : Nat). Nat }
+example : prog_parse { Σ (x : Nat). Nat } = Term.sigmaT "x" (.const "Nat") (.const "Nat") := by rfl
+example : prog_parse { Σ0 (h : Nat). Nat }
     = Term.sigmaT "h" (.const "Nat") (.cmpT (.const "Nat")) := by rfl
 
 -- A Σ tower associates to the right, so a chain of dots nests rather than
 -- flattening. (`Id A a b` is its own grammar row and builds `Term.idT`, not an
 -- application spine over a `.const "Id"` — worth spelling out once, since the
 -- surface gives no hint of it.)
-example : prog defer_check { Σ (n : Nat). Σ (r : Nat). Id Nat n r }
+example : prog_parse { Σ (n : Nat). Σ (r : Nat). Id Nat n r }
     = Term.sigmaT "n" (.const "Nat")
         (Term.sigmaT "r" (.const "Nat")
           (Term.idT (.const "Nat") (.pvar "n") (.pvar "r"))) := by rfl
@@ -712,7 +712,7 @@ example : prog defer_check { Σ (n : Nat). Σ (r : Nat). Id Nat n r }
 -- binder's `.cmpT` marker lands on its domain — the elaborated Π is not the one
 -- you would write by hand, and the golden says so rather than hiding it behind
 -- a round-trip.)
-example : prog defer_check { Σ (n : Nat). Π (Q : Nat) → Id Nat n Q }
+example : prog_parse { Σ (n : Nat). Π (Q : Nat) → Id Nat n Q }
     = Term.sigmaT "n" (.const "Nat")
         (Term.pi "Q" (.cmpT (.const "Nat"))
           (Term.idT (.const "Nat") (.pvar "n") (.pvar "Q"))) := by rfl
@@ -722,7 +722,7 @@ example : prog defer_check { Σ (n : Nat). Π (Q : Nat) → Id Nat n Q }
 -- a dot and comes back out as one, and there is no longer any other way in.
 example : Term.pretty (Term.sigmaT "n" (.const "Nat") (.const "Bool")) = "Σ(n : Nat). Bool" := by
   native_decide
-example : Term.pretty prog defer_check { Σ (n : Nat). Nat } = "Σ(n : Nat). Nat" := by native_decide
+example : Term.pretty prog_parse { Σ (n : Nat). Nat } = "Σ(n : Nat). Nat" := by native_decide
 
 end Dllbc.Tests.S15Elab
 end
@@ -781,7 +781,7 @@ example : reaches (symName 0) = false := by native_decide
 
 -- An escaped identifier does not land in the namespace: the escape is part of
 -- the name.
-def escapedSigma : Term := prog defer_check { λ («§σ0» : Nat). «§σ0» }
+def escapedSigma : Term := prog_parse { λ («§σ0» : Nat). «§σ0» }
 example : (match escapedSigma with
            | .lam nm _ _ => isReservedName nm.name
            | _ => true) = false := by native_decide
@@ -905,9 +905,9 @@ example : (match cookForGen 1000 sp.symIds impClosure with
     That is deliberately more informative than deleting it — the line that
     used to say "the sweep finds nothing here" now says "the sweep finds it",
     and the two are the same measurement. -/
-def lenBody : Term := prog defer_check { %(Std.lenFnT) %(Term.var vSlot) }
+def lenBody : Term := prog_parse { %(Std.lenFnT) %(Term.var vSlot) }
 def lenLatent : Val := .closure [(vSlot, .know (Term.sym 5))] (.lam "§x" (.const "Nat") lenBody) none
-def lenSp : Term := Pure.nf 1000 (prog defer_check { %(Std.lenFnT) %(Term.sym 5) })
+def lenSp : Term := Pure.nf 1000 (prog_parse { %(Std.lenFnT) %(Term.sym 5) })
 -- The spine binds: it unfolds to a `listRec` over λ arms, so its normal form
 -- carries binders and their names are levels.
 example : strContains lenSp.pretty "λ(§0" = true := by native_decide
@@ -976,7 +976,7 @@ example : progOk alphaRepro = true := by native_decide
 -- spine is `False` is still rejected. Without this, "α-insensitive" could have
 -- been read as "matches more things than it should", and an accept that a
 -- rubber-stamping sweep would also produce says nothing about the key.
-def alphaReproLie : Term := prog defer_check {
+def alphaReproLie : Term := prog_parse {
   fn NeedFalse (B : Bool, h : Id Bool B False) -> Unit { () };
   fn AlphaReproLie (L : List Nat) -> Unit
         { let F = λ (X : Nat). Leb (Len L) (S (S Z));
@@ -996,7 +996,7 @@ example : progRejects alphaReproLie "does not have its parameter type" = true :=
     right answer here, which is why the fix is a change to the sweep's key
     rather than to its traversal. -/
 def lenSpDeeper : Term :=
-  match Pure.nf 1000 prog defer_check { Π (X : Nat) → Len %(Term.sym 5) } with
+  match Pure.nf 1000 prog_parse { Π (X : Nat) → Len %(Term.sym 5) } with
   | .pi _ _ c => c
   | t => t
 example : Term.beq lenSp lenSpDeeper = false := by native_decide
@@ -1038,7 +1038,7 @@ example : progOk lamCitesEnclosing = true := by native_decide
 -- binding is not capturable, because a λ is formed now and used later and a
 -- runtime citation would be an implicit snapshot taken in that gap. The
 -- surface can see `h0` now; the kernel is what says no.
-def lamCitesRuntime : Term := prog defer_check {
+def lamCitesRuntime : Term := prog_parse {
   let h0 = 3;
   let G = λ(a : Nat) { let Snap = h0; a };
   () }

@@ -453,7 +453,7 @@ This is a migration progress bar and not a limit. The number rises as programs m
 > is information absence, not policy.
 >
 > **What it costs, measured, and this is the honest part.** The annotation does
-> not disappear, it INVERTS: `prog defer_check { … }` is now written at **275
+> not disappear, it INVERTS: `prog_parse { … }` is now written at **275
 > sites across 18 files**. §2b predicted 107. The gap is a class §2b did not have
 > — *program fragments*, blocks that are closed and syntactically programs but
 > whose callee prefix is supplied by a Lean-level assembler (`withPool (prog{ … })`),
@@ -556,7 +556,7 @@ author's explicit word; a block whose checking lives at its probe says so with
 Three forms became two:
 
 * `prog{ … }` — **always checks.** A top-level ⇒-walk. No content classifier.
-* `prog defer_check { … }` — **the one opt-out.** Parse and bind, check nothing.
+* `prog_parse { … }` — **the one opt-out.** Parse and bind, check nothing.
 
 `prog -> τ { … }` is **retired**, and so is the classifier that routed between
 checkers.

@@ -32,17 +32,17 @@ abbrev Leb : Term := Std.lebFnT
 
 /-! ## `LeReflRaw`, `LeTransRaw` — the acceptance test -/
 
-def LeReflRaw : Term := prog defer_check {
+def LeReflRaw : Term := prog_parse {
   λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
     Z => unit,
     S (K) Ih => Ih } }
-def LeReflTy : Term := prog defer_check { Π (N : Nat) → Le N N }
+def LeReflTy : Term := prog_parse { Π (N : Nat) → Le N N }
 
 -- The wall. Single outer elim on `a`; the `S` case elims on `b`, whose `S` case
 -- elims on `c`, with the IH applied at the peeled proofs — every step
 -- definitional through the `Le` equations. Nested, but every binder is NAMED and
 -- every motive is written once and visible.
-def LeTransRaw : Term := prog defer_check {
+def LeTransRaw : Term := prog_parse {
   λ (A : Nat).
     elim A return (λ (A0 : Nat). Π (B : Nat) → Π (C : Nat) → Le A0 B → Le B C → Le A0 C) {
       Z => λ (B : Nat). λ (C : Nat). λ (Hab : Le Z B). λ (Hbc : Le B C). unit,
@@ -56,7 +56,7 @@ def LeTransRaw : Term := prog defer_check {
             } Hbc0
         } Hab Hbc
     } }
-def LeTransTy : Term := prog defer_check {
+def LeTransTy : Term := prog_parse {
   Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → Le A B → Le B C → Le A C }
 
 -- Right-successor monotonicity: `a ≤ b ⟹ a ≤ S b`. Double induction (on `a`,
@@ -64,7 +64,7 @@ def LeTransTy : Term := prog defer_check {
 -- (`Le (S a') Z = ⊥`, else `Le a' b'` and the IH lifts it to `Le a' (S b')`).
 -- The glue `CountSwapL'` needs to bend swapS's `Le (S i) j` into count_swapL's
 -- `Le (S i) (Len l)` via one `LeTransRaw`.
-def LeUpRRaw : Term := prog defer_check {
+def LeUpRRaw : Term := prog_parse {
   λ (A : Nat). elim A return (λ (Az : Nat). Π (B : Nat) → Le Az B → Le Az (S B)) {
     Z => λ (B : Nat). λ (H : Le Z B). unit,
     S (A') Ih => λ (B : Nat). λ (H : Le (S A') B).
@@ -72,46 +72,46 @@ def LeUpRRaw : Term := prog defer_check {
         Z => λ (H0 : Le (S A') Z). botElim (Le (S A') (S Z)) H0,
         S (B') Ihb => λ (H0 : Le (S A') (S B')). Ih B' H0
       } H } }
-def LeUpRTy : Term := prog defer_check { Π (A : Nat) → Π (B : Nat) → Le A B → Le A (S B) }
+def LeUpRTy : Term := prog_parse { Π (A : Nat) → Π (B : Nat) → Le A B → Le A (S B) }
 
 -- `i ≤ i + g`: the boundary never passes the scan position it feeds. A clean
 -- induction on `i` (`Add (S i') g = S (Add i' g)`, so `Le (S i') (Add (S i') g)`
 -- reduces to the IH). The partition swaps consume this as their `pij`.
-def LeAddRaw : Term := prog defer_check {
+def LeAddRaw : Term := prog_parse {
   λ (I : Nat). elim I return (λ (Iz : Nat). Π (G : Nat) → Le Iz (Add Iz G)) {
     Z => λ (G : Nat). unit,
     S (I') Ih => λ (G : Nat). Ih G } }
-def LeAddTy : Term := prog defer_check { Π (I : Nat) → Π (G : Nat) → Le I (Add I G) }
+def LeAddTy : Term := prog_parse { Π (I : Nat) → Π (G : Nat) → Le I (Add I G) }
 
 -- `b ≤ a + b` — the companion where the summand is on the LEFT (`LeAddRaw` has it on
 -- the right). Induction on `a`: base is `LeReflRaw` (`Add Z b = b`), step lifts the
 -- IH with `LeUpRRaw` (`Add (S a') b = S (Add a' b)`). The scan-position bound uses
 -- this because the length equation carries the remaining count `k` on the left.
-def LeAddLRaw : Term := prog defer_check {
+def LeAddLRaw : Term := prog_parse {
   λ (B : Nat). λ (A : Nat).
     elim A return (λ (Az : Nat). Le B (Add Az B)) {
       Z => LeReflRaw B,
       S (A') Ih => LeUpRRaw B (Add A' B) Ih } }
-def LeAddLTy : Term := prog defer_check { Π (B : Nat) → Π (A : Nat) → Le B (Add A B) }
+def LeAddLTy : Term := prog_parse { Π (B : Nat) → Π (A : Nat) → Le B (Add A B) }
 
 -- `S i ≤ i + (S g)` — the swap's `pij`: the boundary `S i` is below the scan
 -- position `S (Add i (S g))` whenever the gap is non-empty. Induction on `i`
 -- avoids an AddSuccRaw transport (`Add (S i') x = S (Add i' x)` is definitional),
 -- so no rewrite is needed here.
-def LeAddSuccRaw : Term := prog defer_check {
+def LeAddSuccRaw : Term := prog_parse {
   λ (I : Nat). elim I return (λ (Iz : Nat). Π (G : Nat) → Le (S Iz) (Add Iz (S G))) {
     Z => λ (G : Nat). unit,
     S (I') Ih => λ (G : Nat). Ih G } }
-def LeAddSuccTy : Term := prog defer_check { Π (I : Nat) → Π (G : Nat) → Le (S I) (Add I (S G)) }
+def LeAddSuccTy : Term := prog_parse { Π (I : Nat) → Π (G : Nat) → Le (S I) (Add I (S G)) }
 
 -- Transport a `Le` along an `Id` on its SECOND argument: `x = y ⟹ Le a x → Le a
 -- y`. The bounds derived over the arithmetic normal form are moved onto `len *v`
 -- (and back through `LenSwapLRaw`) with this J-transport — the "LeTransRaw/le_step
 -- glue where descent is not definitional".
-def LeRwRRaw : Term := prog defer_check {
+def LeRwRRaw : Term := prog_parse {
   λ (A : Nat). λ (X : Nat). λ (Y : Nat). λ (H : Id Nat X Y). λ (P : Le A X).
     j Nat X (λ (Y' : Nat). λ (Hh : Id Nat X Y'). Le A Y') P Y H }
-def LeRwRTy : Term := prog defer_check { Π (A : Nat) → Π (X : Nat) → Π (Y : Nat) → Id Nat X Y → Le A X → Le A Y }
+def LeRwRTy : Term := prog_parse { Π (A : Nat) → Π (X : Nat) → Π (Y : Nat) → Id Nat X Y → Le A X → Le A Y }
 
 -- Transport a `Le` along an `Id` on its FIRST (smaller) argument: `x = y ⟹ Le x
 -- b → Le y b`. The range partition's bound `Le (add lo (S (add k (add i g))))
@@ -119,72 +119,72 @@ def LeRwRTy : Term := prog defer_check { Π (A : Nat) → Π (X : Nat) → Π (Y
 -- its SYNTACTIC form shifts as k descends and i/g grow; this moves the bound
 -- between forms via the hshift identities — the Le mirror of LeRwRRaw, and the one
 -- lemma the M20 Id-toolkit lacked for the subrange generalization (§21).
-def LeRwLRaw : Term := prog defer_check {
+def LeRwLRaw : Term := prog_parse {
   λ (B : Nat). λ (X : Nat). λ (Y : Nat). λ (H : Id Nat X Y). λ (P : Le X B).
     j Nat X (λ (Y' : Nat). λ (Hh : Id Nat X Y'). Le Y' B) P Y H }
-def LeRwLTy : Term := prog defer_check { Π (B : Nat) → Π (X : Nat) → Π (Y : Nat) → Id Nat X Y → Le X B → Le Y B }
+def LeRwLTy : Term := prog_parse { Π (B : Nat) → Π (X : Nat) → Π (Y : Nat) → Id Nat X Y → Le X B → Le Y B }
 
 -- Left-add monotonicity: `a ≤ b ⟹ lo + a ≤ lo + b`. Induction on `lo`: base is
 -- the hypothesis (`Add Z x = x`), step is the IH verbatim (`add (S lo') x =
 -- S (add lo' x)` and `Le (S _) (S _) = Le _ _` are both definitional). The range
 -- partition's swap bounds shift the entry bound `Le (S i) (S (Add i g))` through
 -- `Add lo` to reach `Le (Add lo (S i)) (Add lo (S (Add i g)))` (§21).
-def LeAddMonoLRaw : Term := prog defer_check {
+def LeAddMonoLRaw : Term := prog_parse {
   λ (Lo : Nat). λ (A : Nat). λ (B : Nat). λ (H : Le A B).
     elim Lo return (λ (Loz : Nat). Le (Add Loz A) (Add Loz B)) {
       Z => H,
       S (Lo') Ih => Ih } }
-def LeAddMonoLTy : Term := prog defer_check { Π (Lo : Nat) → Π (A : Nat) → Π (B : Nat) → Le A B → Le (Add Lo A) (Add Lo B) }
+def LeAddMonoLTy : Term := prog_parse { Π (Lo : Nat) → Π (A : Nat) → Π (B : Nat) → Le A B → Le (Add Lo A) (Add Lo B) }
 
 /-! ## `IdTransRaw`, `IdCongrRaw` — the J warm-ups partition's count-chaining consumes -/
 
-def IdTransRaw : Term := prog defer_check {
+def IdTransRaw : Term := prog_parse {
   λ (A : Type). λ (X : A). λ (Y : A). λ (Z0 : A). λ (P : Id A X Y). λ (Q : Id A Y Z0).
     j A X (λ (Y' : A). λ (H : Id A X Y'). Id A Y' Z0 → Id A X Z0) (λ (H : Id A X Z0). H) Y P Q }
-def IdTransTy : Term := prog defer_check {
+def IdTransTy : Term := prog_parse {
   Π (A : Type) → Π (X : A) → Π (Y : A) → Π (Z0 : A) → Id A X Y → Id A Y Z0 → Id A X Z0 }
 
-def IdCongrRaw : Term := prog defer_check {
+def IdCongrRaw : Term := prog_parse {
   λ (A : Type). λ (B : Type). λ (F : A → B). λ (X : A). λ (Y : A). λ (P : Id A X Y).
     j A X (λ (Y' : A). λ (H : Id A X Y'). Id B (F X) (F Y')) Refl Y P }
-def IdCongrTy : Term := prog defer_check {
+def IdCongrTy : Term := prog_parse {
   Π (A : Type) → Π (B : Type) → Π (F : A → B) → Π (X : A) → Π (Y : A) → Id A X Y → Id B (F X) (F Y) }
 
-def IdSymRaw : Term := prog defer_check {
+def IdSymRaw : Term := prog_parse {
   λ (A : Type). λ (X : A). λ (Y : A). λ (P : Id A X Y).
     j A X (λ (Y' : A). λ (H : Id A X Y'). Id A Y' X) Refl Y P }
-def IdSymTy : Term := prog defer_check { Π (A : Type) → Π (X : A) → Π (Y : A) → Id A X Y → Id A Y X }
+def IdSymTy : Term := prog_parse { Π (A : Type) → Π (X : A) → Π (Y : A) → Id A X Y → Id A Y X }
 
 /-! ## Arithmetic — the first double-inductions after the wall (§16 calibration) -/
 
-def AddZeroRaw : Term := prog defer_check {
+def AddZeroRaw : Term := prog_parse {
   λ (A : Nat). elim A return (λ (X : Nat). Id Nat (Add X Z) X) {
     Z => Refl,
     S (A') Ih => IdCongrRaw Nat Nat (λ (N : Nat). S N) (Add A' Z) A' Ih } }
-def AddZeroTy : Term := prog defer_check { Π (A : Nat) → Id Nat (Add A Z) A }
+def AddZeroTy : Term := prog_parse { Π (A : Nat) → Id Nat (Add A Z) A }
 
-def AddSuccRaw : Term := prog defer_check {
+def AddSuccRaw : Term := prog_parse {
   λ (A : Nat). λ (B : Nat). elim A return (λ (X : Nat). Id Nat (Add X (S B)) (S (Add X B))) {
     Z => Refl,
     S (A') Ih => IdCongrRaw Nat Nat (λ (N : Nat). S N) (Add A' (S B)) (S (Add A' B)) Ih } }
-def AddSuccTy : Term := prog defer_check { Π (A : Nat) → Π (B : Nat) → Id Nat (Add A (S B)) (S (Add A B)) }
+def AddSuccTy : Term := prog_parse { Π (A : Nat) → Π (B : Nat) → Id Nat (Add A (S B)) (S (Add A B)) }
 
 -- Commutativity: the classic proof, authored in the surface and checked first try.
-def AddCommRaw : Term := prog defer_check {
+def AddCommRaw : Term := prog_parse {
   λ (A : Nat). elim A return (λ (X : Nat). Π (B : Nat) → Id Nat (Add X B) (Add B X)) {
     Z => λ (B : Nat). IdSymRaw Nat (Add B Z) B (AddZeroRaw B),
     S (A') Ih => λ (B : Nat).
       IdTransRaw Nat (S (Add A' B)) (S (Add B A')) (Add B (S A'))
         (IdCongrRaw Nat Nat (λ (N : Nat). S N) (Add A' B) (Add B A') (Ih B))
         (IdSymRaw Nat (Add B (S A')) (S (Add B A')) (AddSuccRaw B A')) } }
-def AddCommTy : Term := prog defer_check { Π (A : Nat) → Π (B : Nat) → Id Nat (Add A B) (Add B A) }
+def AddCommTy : Term := prog_parse { Π (A : Nat) → Π (B : Nat) → Id Nat (Add A B) (Add B A) }
 
-def AddAssocRaw : Term := prog defer_check {
+def AddAssocRaw : Term := prog_parse {
   λ (A : Nat). elim A return (λ (X : Nat). Π (B : Nat) → Π (C : Nat) → Id Nat (Add (Add X B) C) (Add X (Add B C))) {
     Z => λ (B : Nat). λ (C : Nat). Refl,
     S (A') Ih => λ (B : Nat). λ (C : Nat).
       IdCongrRaw Nat Nat (λ (N : Nat). S N) (Add (Add A' B) C) (Add A' (Add B C)) (Ih B C) } }
-def AddAssocTy : Term := prog defer_check { Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → Id Nat (Add (Add A B) C) (Add A (Add B C)) }
+def AddAssocTy : Term := prog_parse { Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → Id Nat (Add (Add A B) C) (Add A (Add B C)) }
 
 /-! ## The length-equation shift lemmas — `hlen` updates for the recursive partScan
 
@@ -195,7 +195,7 @@ def AddAssocTy : Term := prog defer_check { Π (A : Nat) → Π (B : Nat) → Π
     Std `Add` recurses on its first argument). Two shapes cover all three cases:
     boundary advance (True-Z, True-S g') and gap growth (False). -/
 
-def CountAppendRaw : Term := prog defer_check {
+def CountAppendRaw : Term := prog_parse {
   λ (M : Nat). λ (A : List Nat). λ (B : List Nat).
     elim A return (λ (X : List Nat). Id Nat (Count M (Append X B)) (Add (Count M X) (Count M B))) {
       Nil => Refl,
@@ -207,21 +207,21 @@ def CountAppendRaw : Term := prog defer_check {
           False => Ih
         }
     } }
-def CountAppendTy : Term := prog defer_check {
+def CountAppendTy : Term := prog_parse {
   Π (M : Nat) → Π (A : List Nat) → Π (B : List Nat) →
     Id Nat (Count M (Append A B)) (Add (Count M A) (Count M B)) }
 
-def NthL : Term := prog defer_check {
+def NthL : Term := prog_parse {
   λ (K : Nat). elim K return (λ (Z0 : Nat). List Nat → Nat) {
     Z => λ (L : List Nat). elim L return (λ (Z0 : List Nat). Nat) { Nil => Z, Cons (H) (T) Ihl => H },
     S (K') Rec => λ (L : List Nat). elim L return (λ (Z0 : List Nat). Nat) { Nil => Z, Cons (H) (T) Ihl => Rec T } } }
 
-def Set : Term := prog defer_check {
+def Set : Term := prog_parse {
   λ (K : Nat). λ (V : Nat). elim K return (λ (Z0 : Nat). List Nat → List Nat) {
     Z => λ (L : List Nat). elim L return (λ (Z0 : List Nat). List Nat) { Nil => Nil, Cons (H) (T) Ihl => Cons V T },
     S (K') Rec => λ (L : List Nat). elim L return (λ (Z0 : List Nat). List Nat) { Nil => Nil, Cons (H) (T) Ihl => Cons H (Rec T) } } }
 
-def SwapL : Term := prog defer_check {
+def SwapL : Term := prog_parse {
   λ (I : Nat). elim I return (λ (Z0 : Nat). Nat → List Nat → List Nat) {
     Z => λ (J : Nat). λ (L : List Nat). elim L return (λ (Z0 : List Nat). List Nat) {
       Nil => Nil,
@@ -243,7 +243,7 @@ def SwapL : Term := prog defer_check {
 
 abbrev Len : Term := Std.lenFnT
 
-def LenSetRaw : Term := prog defer_check {
+def LenSetRaw : Term := prog_parse {
   λ (K : Nat). λ (V : Nat).
     elim K return (λ (Z0 : Nat). Π (L : List Nat) → Id Nat (Len (Set Z0 V L)) (Len L)) {
       Z => λ (L : List Nat). elim L return (λ (X : List Nat). Id Nat (Len (Set Z V X)) (Len X)) {
@@ -251,9 +251,9 @@ def LenSetRaw : Term := prog defer_check {
       S (K') Ih => λ (L : List Nat). elim L return (λ (X : List Nat). Id Nat (Len (Set (S K') V X)) (Len X)) {
         Nil => Refl,
         Cons (H) (T) Ihl => IdCongrRaw Nat Nat (λ (N : Nat). S N) (Len (Set K' V T)) (Len T) (Ih T) } } }
-def LenSetTy : Term := prog defer_check { Π (K : Nat) → Π (V : Nat) → Π (L : List Nat) → Id Nat (Len (Set K V L)) (Len L) }
+def LenSetTy : Term := prog_parse { Π (K : Nat) → Π (V : Nat) → Π (L : List Nat) → Id Nat (Len (Set K V L)) (Len L) }
 
-def LenSwapLRaw : Term := prog defer_check {
+def LenSwapLRaw : Term := prog_parse {
   λ (I : Nat).
     elim I return (λ (Z0 : Nat). Π (J : Nat) → Π (L : List Nat) → Id Nat (Len (SwapL Z0 J L)) (Len L)) {
       Z => λ (J : Nat). λ (L : List Nat).
@@ -268,7 +268,7 @@ def LenSwapLRaw : Term := prog defer_check {
           Cons (Y) (Ys) Ihl => elim J return (λ (W : Nat). Id Nat (Len (SwapL (S I') W (Cons Y Ys))) (Len (Cons Y Ys))) {
             Z => Refl,
             S (J') Jih => IdCongrRaw Nat Nat (λ (N : Nat). S N) (Len (SwapL I' J' Ys)) (Len Ys) (Ih J' Ys) } } } }
-def LenSwapLTy : Term := prog defer_check { Π (I : Nat) → Π (J : Nat) → Π (L : List Nat) → Id Nat (Len (SwapL I J L)) (Len L) }
+def LenSwapLTy : Term := prog_parse { Π (I : Nat) → Π (J : Nat) → Π (L : List Nat) → Id Nat (Len (SwapL I J L)) (Len L) }
 
 /-! ## The bounded `CountSwapL` stack (§18)
 
@@ -300,10 +300,10 @@ def LenSwapLTy : Term := prog defer_check { Π (I : Nat) → Π (J : Nat) → Π
     for a subterm STUCK behind an abstract scrutinee, which this stack avoids by
     construction. -/
 
-def CountConsCongrRaw : Term := prog defer_check {
+def CountConsCongrRaw : Term := prog_parse {
   λ (M : Nat). λ (H : Nat). λ (L1 : List Nat). λ (L2 : List Nat). λ (P : Id Nat (Count M L1) (Count M L2)).
     IdCongrRaw Nat Nat (λ (R : Nat). boolRec (λ (W : Bool). Nat) (S R) R (Eqb M H)) (Count M L1) (Count M L2) P }
-def CountConsCongrTy : Term := prog defer_check {
+def CountConsCongrTy : Term := prog_parse {
   Π (M : Nat) → Π (H : Nat) → Π (L1 : List Nat) → Π (L2 : List Nat) →
     Id Nat (Count M L1) (Count M L2) → Id Nat (Count M (Cons H L1)) (Count M (Cons H L2)) }
 
@@ -313,17 +313,17 @@ def CountConsCongrTy : Term := prog defer_check {
 -- that `Count (Cons …)` unfolds to. Abstraction alone cannot do this (the subterm
 -- hides behind the scrutinee's own reduction); this is the knowledge half. The
 -- imperative tie-in returns THIS applied to its params.
-def CountConsHitRaw : Term := prog defer_check {
+def CountConsHitRaw : Term := prog_parse {
   λ (M : Nat). λ (A : Nat). λ (L : List Nat). λ (Hq : Id Bool (Eqb M A) True).
     j Bool True
       (λ (Z0 : Bool). λ (H : Id Bool True Z0).
         Id Nat (boolRec (λ (W : Bool). Nat) (S (Count M L)) (Count M L) Z0) (S (Count M L)))
       Refl (Eqb M A) (IdSymRaw Bool (Eqb M A) True Hq) }
-def CountConsHitTy : Term := prog defer_check {
+def CountConsHitTy : Term := prog_parse {
   Π (M : Nat) → Π (A : Nat) → Π (L : List Nat) → Id Bool (Eqb M A) True →
     Id Nat (Count M (Cons A L)) (S (Count M L)) }
 
-def SwapLSetRaw : Term := prog defer_check {
+def SwapLSetRaw : Term := prog_parse {
   λ (I : Nat).
     elim I return (λ (Iz : Nat). Π (J : Nat) → Π (L : List Nat) → Le (S Iz) J → Le (S J) (Len L) →
         Id (List Nat) (Set Iz (NthL J L) (Set J (NthL Iz L) L)) (SwapL Iz J L)) {
@@ -353,7 +353,7 @@ def SwapLSetRaw : Term := prog defer_check {
                 IdCongrRaw (List Nat) (List Nat) (λ (T : List Nat). Cons Y T)
                   (Set I' (NthL J' Ys) (Set J' (NthL I' Ys) Ys)) (SwapL I' J' Ys) (Ih J' Ys Pijs P2s)
             } Pij P2 } } }
-def SwapLSetTy : Term := prog defer_check {
+def SwapLSetTy : Term := prog_parse {
   Π (I : Nat) → Π (J : Nat) → Π (L : List Nat) → Le (S I) J → Le (S J) (Len L) →
     Id (List Nat) (Set I (NthL J L) (Set J (NthL I L) L)) (SwapL I J L) }
 
@@ -378,18 +378,18 @@ def SwapLSetTy : Term := prog defer_check {
     pivot's final position — the split point the caller recurses on (`[0, i)` and
     `(i, Len)`). partition exposes it as its return value; SortL rides it. -/
 
-def BoolFTRaw : Term := prog defer_check {
+def BoolFTRaw : Term := prog_parse {
   λ (H : Id Bool False True).
     j Bool False (λ (Y' : Bool). λ (Hh : Id Bool False Y'). elim Y' return (λ (Z0 : Bool). Type) { True => Bot, False => Unit })
       unit True H }
-def BoolFTTy : Term := prog defer_check { Id Bool False True → Bot }
-def BoolTFRaw : Term := prog defer_check {
+def BoolFTTy : Term := prog_parse { Id Bool False True → Bot }
+def BoolTFRaw : Term := prog_parse {
   λ (H : Id Bool True False).
     j Bool True (λ (Y' : Bool). λ (Hh : Id Bool True Y'). elim Y' return (λ (Z0 : Bool). Type) { True => Unit, False => Bot })
       unit False H }
-def BoolTFTy : Term := prog defer_check { Id Bool True False → Bot }
+def BoolTFTy : Term := prog_parse { Id Bool True False → Bot }
 
-def LebTrueLeRaw : Term := prog defer_check {
+def LebTrueLeRaw : Term := prog_parse {
   λ (A : Nat).
     elim A return (λ (Az : Nat). Π (B : Nat) → Id Bool (Leb Az B) True → Le Az B) {
       Z => λ (B : Nat). λ (H : Id Bool (Leb Z B) True). unit,
@@ -397,9 +397,9 @@ def LebTrueLeRaw : Term := prog defer_check {
         elim B return (λ (Bz : Nat). Id Bool (Leb (S A') Bz) True → Le (S A') Bz) {
           Z => λ (H : Id Bool (Leb (S A') Z) True). botElim (Le (S A') Z) (BoolFTRaw H),
           S (B') Ihb => λ (H : Id Bool (Leb (S A') (S B')) True). Ih B' H } } }
-def LebTrueLeTy : Term := prog defer_check { Π (A : Nat) → Π (B : Nat) → Id Bool (Leb A B) True → Le A B }
+def LebTrueLeTy : Term := prog_parse { Π (A : Nat) → Π (B : Nat) → Id Bool (Leb A B) True → Le A B }
 
-def LebFalseGtRaw : Term := prog defer_check {
+def LebFalseGtRaw : Term := prog_parse {
   λ (A : Nat).
     elim A return (λ (Az : Nat). Π (B : Nat) → Id Bool (Leb Az B) False → Le (S B) Az) {
       Z => λ (B : Nat). λ (H : Id Bool (Leb Z B) False). botElim (Le (S B) Z) (BoolTFRaw H),
@@ -407,12 +407,12 @@ def LebFalseGtRaw : Term := prog defer_check {
         elim B return (λ (Bz : Nat). Id Bool (Leb (S A') Bz) False → Le (S Bz) (S A')) {
           Z => λ (H : Id Bool (Leb (S A') Z) False). unit,
           S (B') Ihb => λ (H : Id Bool (Leb (S A') (S B')) False). Ih B' H } } }
-def LebFalseGtTy : Term := prog defer_check { Π (A : Nat) → Π (B : Nat) → Id Bool (Leb A B) False → Le (S B) A }
+def LebFalseGtTy : Term := prog_parse { Π (A : Nat) → Π (B : Nat) → Id Bool (Leb A B) False → Le (S B) A }
 
 -- Nat antisymmetry (Le a b → Le b a → a = b) — the glue derives its boundary equality
 -- (`S k = i` at the last-left/pivot pair) from the two-sided Le bounds a leb-split
 -- yields. Double induction; mixed-parity bases are ⊥, equal-parity step is IdCongrRaw S.
-def LeAntisymRaw : Term := prog defer_check {
+def LeAntisymRaw : Term := prog_parse {
   λ (A : Nat).
     elim A return (λ (Az : Nat). Π (B : Nat) → Le Az B → Le B Az → Id Nat Az B) {
       Z => λ (B : Nat).
@@ -424,7 +424,7 @@ def LeAntisymRaw : Term := prog defer_check {
           Z => λ (H1 : Le (S A') Z). λ (H2 : Le Z (S A')). botElim (Id Nat (S A') Z) H1,
           S (B') Ihb => λ (H1 : Le (S A') (S B')). λ (H2 : Le (S B') (S A')).
             IdCongrRaw Nat Nat (λ (N : Nat). S N) A' B' (Ih B' H1 H2) } } }
-def LeAntisymTy : Term := prog defer_check { Π (A : Nat) → Π (B : Nat) → Le A B → Le B A → Id Nat A B }
+def LeAntisymTy : Term := prog_parse { Π (A : Nat) → Π (B : Nat) → Le A B → Le B A → Id Nat A B }
 
 /-! ## AllLeR growth/transport helpers — the region-invariant toolkit (§22, M22-c step 2)
 
@@ -437,25 +437,25 @@ def LeAntisymTy : Term := prog defer_check { Π (A : Nat) → Π (B : Nat) → L
     (fed by the swap-locality lemmas). `AddSwapSucc` bridges index-first `Add a (S b)`
     to `Add b (S a)` — the recurring predicate↔model add-order glue. -/
 
-def ZnotsRaw : Term := prog defer_check {
+def ZnotsRaw : Term := prog_parse {
   λ (X : Nat). λ (H : Id Nat Z (S X)).
     j Nat Z (λ (Y : Nat). λ (Hy : Id Nat Z Y). elim Y return (λ (Yy : Nat). Type) { Z => Unit, S (K) Ih => Bot })
       unit (S X) H }
-def ZnotsTy : Term := prog defer_check { Π (X : Nat) → Id Nat Z (S X) → Bot }
+def ZnotsTy : Term := prog_parse { Π (X : Nat) → Id Nat Z (S X) → Bot }
 
-def Pred : Term := prog defer_check { λ (N : Nat). elim N return (λ (Z0 : Nat). Nat) { Z => Z, S (K) Ih => K } }
-def SInjRaw : Term := prog defer_check {
+def Pred : Term := prog_parse { λ (N : Nat). elim N return (λ (Z0 : Nat). Nat) { Z => Z, S (K) Ih => K } }
+def SInjRaw : Term := prog_parse {
   λ (M : Nat). λ (N : Nat). λ (H : Id Nat (S M) (S N)).
     IdCongrRaw Nat Nat Pred (S M) (S N) H }
-def SInjTy : Term := prog defer_check { Π (M : Nat) → Π (N : Nat) → Id Nat (S M) (S N) → Id Nat M N }
+def SInjTy : Term := prog_parse { Π (M : Nat) → Π (N : Nat) → Id Nat (S M) (S N) → Id Nat M N }
 
-def SubRaw : Term := prog defer_check {
+def SubRaw : Term := prog_parse {
   λ (A : Nat).
     elim A return (λ (Az : Nat). Nat → Nat) {
       Z => λ (B : Nat). Z,
       S (A') Rec => λ (B : Nat). elim B return (λ (Bz : Nat). Nat) { Z => S A', S (B') Bih => Rec B' } } }
-def SubTy : Term := prog defer_check { Π (A : Nat) → Nat → Nat }
-def AddSubCancelRaw : Term := prog defer_check {
+def SubTy : Term := prog_parse { Π (A : Nat) → Nat → Nat }
+def AddSubCancelRaw : Term := prog_parse {
   λ (A : Nat).
     elim A return (λ (Az : Nat). Π (B : Nat) → Le B Az → Id Nat (Add B (SubRaw Az B)) Az) {
       Z => λ (B : Nat).
@@ -467,7 +467,7 @@ def AddSubCancelRaw : Term := prog defer_check {
           Z => λ (H : Le Z (S A')). Refl,
           S (B') Bih => λ (H : Le (S B') (S A')).
             IdCongrRaw Nat Nat (λ (N : Nat). S N) (Add B' (SubRaw A' B')) A' (Ih B' H) } } }
-def AddSubCancelTy : Term := prog defer_check { Π (A : Nat) → Π (B : Nat) → Le B A → Id Nat (Add B (SubRaw A B)) A }
+def AddSubCancelTy : Term := prog_parse { Π (A : Nat) → Π (B : Nat) → Le B A → Id Nat (Add B (SubRaw A B)) A }
 
 /-! ## The GLUE — assemble a sorted range from sorted halves (§22, M22-c step 4)
 
@@ -482,11 +482,11 @@ def AddSubCancelTy : Term := prog defer_check { Π (A : Nat) → Π (B : Nat) �
     reindex_* helpers, then SortedR right). Every arithmetic bridge is discharged by
     the add-order toolkit — the positional-predicate ↔ offset-model tax, paid once
     per bound. All kernel-green. -/
-def LePredLRaw : Term := prog defer_check {
+def LePredLRaw : Term := prog_parse {
   λ (A : Nat). λ (B : Nat). λ (H : Le (S A) B).
     LeTransRaw A (S A) B (LeUpRRaw A A (LeReflRaw A)) H }
-def LePredLTy : Term := prog defer_check { Π (A : Nat) → Π (B : Nat) → Le (S A) B → Le A B }
-def EqbGtFalseRaw : Term := prog defer_check {
+def LePredLTy : Term := prog_parse { Π (A : Nat) → Π (B : Nat) → Le (S A) B → Le A B }
+def EqbGtFalseRaw : Term := prog_parse {
   λ (H : Nat).
     elim H return (λ (Hz : Nat). Π (X : Nat) → Le (S Hz) X → Id Bool (Eqb X Hz) False) {
       Z => λ (X : Nat).
@@ -497,9 +497,9 @@ def EqbGtFalseRaw : Term := prog defer_check {
         elim X return (λ (Xz : Nat). Le (S (S H')) Xz → Id Bool (Eqb Xz (S H')) False) {
           Z => λ (Hlt : Le (S (S H')) Z). botElim (Id Bool (Eqb Z (S H')) False) Hlt,
           S (X') Xih => λ (Hlt : Le (S (S H')) (S X')). Ih X' Hlt } } }
-def EqbGtFalseTy : Term := prog defer_check { Π (H : Nat) → Π (X : Nat) → Le (S H) X → Id Bool (Eqb X H) False }
+def EqbGtFalseTy : Term := prog_parse { Π (H : Nat) → Π (X : Nat) → Le (S H) X → Id Bool (Eqb X H) False }
 
-def EqbLtFalseRaw : Term := prog defer_check {
+def EqbLtFalseRaw : Term := prog_parse {
   λ (A : Nat).
     elim A return (λ (Az : Nat). Π (B : Nat) → Le (S Az) B → Id Bool (Eqb Az B) False) {
       Z => λ (B : Nat).
@@ -510,41 +510,41 @@ def EqbLtFalseRaw : Term := prog defer_check {
         elim B return (λ (Bz : Nat). Le (S (S A')) Bz → Id Bool (Eqb (S A') Bz) False) {
           Z => λ (Hlt : Le (S (S A')) Z). botElim (Id Bool (Eqb (S A') Z) False) Hlt,
           S (B') Bih => λ (Hlt : Le (S (S A')) (S B')). Ih B' Hlt } } }
-def EqbLtFalseTy : Term := prog defer_check { Π (A : Nat) → Π (B : Nat) → Le (S A) B → Id Bool (Eqb A B) False }
+def EqbLtFalseTy : Term := prog_parse { Π (A : Nat) → Π (B : Nat) → Le (S A) B → Id Bool (Eqb A B) False }
 
-def CountConsMissRaw : Term := prog defer_check {
+def CountConsMissRaw : Term := prog_parse {
   λ (M : Nat). λ (H : Nat). λ (T : List Nat). λ (Hq : Id Bool (Eqb M H) False).
     j Bool False
       (λ (Z0 : Bool). λ (Hh : Id Bool False Z0).
         Id Nat (boolRec (λ (W : Bool). Nat) (S (Count M T)) (Count M T) Z0) (Count M T))
       Refl (Eqb M H) (IdSymRaw Bool (Eqb M H) False Hq) }
-def CountConsMissTy : Term := prog defer_check {
+def CountConsMissTy : Term := prog_parse {
   Π (M : Nat) → Π (H : Nat) → Π (T : List Nat) → Id Bool (Eqb M H) False →
     Id Nat (Count M (Cons H T)) (Count M T) }
 
-def EqbReflRaw : Term := prog defer_check {
+def EqbReflRaw : Term := prog_parse {
   λ (N : Nat). elim N return (λ (Nz : Nat). Id Bool (Eqb Nz Nz) True) {
     Z => Refl,
     S (N') Ih => Ih } }
-def EqbReflTy : Term := prog defer_check { Π (N : Nat) → Id Bool (Eqb N N) True }
+def EqbReflTy : Term := prog_parse { Π (N : Nat) → Id Bool (Eqb N N) True }
 
-def Ub : Term := prog defer_check {
+def Ub : Term := prog_parse {
   λ (P : Nat). λ (L : List Nat).
     elim L return (λ (Lz : List Nat). Type) {
       Nil => Unit,
       Cons (H) (T) Ih => Σ (Hh : Le H P). Ih } }
 
-def Lb : Term := prog defer_check {
+def Lb : Term := prog_parse {
   λ (P : Nat). λ (L : List Nat).
     elim L return (λ (Lz : List Nat). Type) {
       Nil => Unit,
       Cons (H) (T) Ih => Σ (Hh : Le P H). Ih } }
 
-def ListRwRaw : Term := prog defer_check {
+def ListRwRaw : Term := prog_parse {
   λ (P : List Nat → Type). λ (X : List Nat). λ (Y : List Nat).
     λ (H : Id (List Nat) X Y). λ (Px : P X).
       j (List Nat) X (λ (Y2 : List Nat). λ (Hh : Id (List Nat) X Y2). P Y2) Px Y H }
-def ListRwTy : Term := prog defer_check {
+def ListRwTy : Term := prog_parse {
   Π (P : List Nat → Type) → Π (X : List Nat) → Π (Y : List Nat) →
     Id (List Nat) X Y → P X → P Y }
 
@@ -563,46 +563,46 @@ def ListRwTy : Term := prog defer_check {
     (Cons h t)` but the λ domain is written as the UNFOLDED Σ, because the Σ-elim
     sugar reads `A` and `λx. B` off the motive's binder type syntactically. -/
 
-def SortedHeadRaw : Term := prog defer_check {
+def SortedHeadRaw : Term := prog_parse {
   λ (H : Nat). λ (T : List Nat). λ (S0 : Σ (Hb : Bound H T). Sorted T).
     elim S0 return (λ (Q : Σ (Hb : Bound H T). Sorted T). Bound H T) {
       Pair (X) (Y) => X } }
-def SortedHeadTy : Term := prog defer_check {
+def SortedHeadTy : Term := prog_parse {
   Π (H : Nat) → Π (T : List Nat) → Sorted (Cons H T) → Bound H T }
 
-def SortedTailRaw : Term := prog defer_check {
+def SortedTailRaw : Term := prog_parse {
   λ (H : Nat). λ (T : List Nat). λ (S0 : Σ (Hb : Bound H T). Sorted T).
     elim S0 return (λ (Q : Σ (Hb : Bound H T). Sorted T). Sorted T) {
       Pair (X) (Y) => Y } }
-def SortedTailTy : Term := prog defer_check {
+def SortedTailTy : Term := prog_parse {
   Π (H : Nat) → Π (T : List Nat) → Sorted (Cons H T) → Sorted T }
 
-def UbHeadRaw : Term := prog defer_check {
+def UbHeadRaw : Term := prog_parse {
   λ (P : Nat). λ (H : Nat). λ (T : List Nat). λ (U : Σ (Hu : Le H P). Ub P T).
     elim U return (λ (Q : Σ (Hu : Le H P). Ub P T). Le H P) {
       Pair (X) (Y) => X } }
-def UbHeadTy : Term := prog defer_check {
+def UbHeadTy : Term := prog_parse {
   Π (P : Nat) → Π (H : Nat) → Π (T : List Nat) → Ub P (Cons H T) → Le H P }
 
-def UbTailRaw : Term := prog defer_check {
+def UbTailRaw : Term := prog_parse {
   λ (P : Nat). λ (H : Nat). λ (T : List Nat). λ (U : Σ (Hu : Le H P). Ub P T).
     elim U return (λ (Q : Σ (Hu : Le H P). Ub P T). Ub P T) {
       Pair (X) (Y) => Y } }
-def UbTailTy : Term := prog defer_check {
+def UbTailTy : Term := prog_parse {
   Π (P : Nat) → Π (H : Nat) → Π (T : List Nat) → Ub P (Cons H T) → Ub P T }
 
 /-- `Lb p l ⟹ Bound p l`: a lower bound on EVERY element is in particular a bound on
     the HEAD, which is all `Sorted (Cons p b)` asks of the pivot. The two predicates
     agree definitionally at `Nil` (both `⊤`) and differ at `Cons` only by how much
     they say, so this is a `listRec` whose `Cons` arm is a first projection. -/
-def LbBoundRaw : Term := prog defer_check {
+def LbBoundRaw : Term := prog_parse {
   λ (P : Nat). λ (L : List Nat).
     elim L return (λ (Lz : List Nat). Lb P Lz → Bound P Lz) {
       Nil => λ (Hn : Unit). Hn,
       Cons (H) (T) Ih => λ (Hl : Σ (Hh : Le P H). Lb P T).
         elim Hl return (λ (Q : Σ (Hh : Le P H). Lb P T). Le P H) {
           Pair (X) (Y) => X } } }
-def LbBoundTy : Term := prog defer_check {
+def LbBoundTy : Term := prog_parse {
   Π (P : Nat) → Π (L : List Nat) → Lb P L → Bound P L }
 
 /-- Head-bound transport across the splice: if `h` bounds the head of `t`, and `h ≤
@@ -612,13 +612,13 @@ def LbBoundTy : Term := prog defer_check {
     unchanged by the append (so the bound is the first hypothesis, verbatim). No IH is
     consumed — `Bound` looks exactly one cell deep, so this recursion is a case
     analysis and nothing more. -/
-def BoundAppendRaw : Term := prog defer_check {
+def BoundAppendRaw : Term := prog_parse {
   λ (H : Nat). λ (P : Nat). λ (T : List Nat). λ (B : List Nat).
     elim T return (λ (Tz : List Nat).
         Bound H Tz → Le H P → Bound H (Append Tz (Cons P B))) {
       Nil => λ (Hb : Unit). λ (Hp : Le H P). Hp,
       Cons (H2) (T2) Ih => λ (Hb : Le H H2). λ (Hp : Le H P). Hb } }
-def BoundAppendTy : Term := prog defer_check {
+def BoundAppendTy : Term := prog_parse {
   Π (H : Nat) → Π (P : Nat) → Π (T : List Nat) → Π (B : List Nat) →
     Bound H T → Le H P → Bound H (Append T (Cons P B)) }
 
@@ -643,7 +643,7 @@ def BoundAppendTy : Term := prog defer_check {
     definitional — `Append (Cons h t) (Cons p b)` whnf's to `Cons h (append t (Cons p
     b))`, so `Sorted` unfolds straight onto the pair — which is why no `ListRwRaw`
     transport appears anywhere in this proof. -/
-def SortedAppendPivotRaw : Term := prog defer_check {
+def SortedAppendPivotRaw : Term := prog_parse {
   λ (P : Nat). λ (A : List Nat). λ (B : List Nat).
     λ (Sa : Sorted A). λ (Ua : Ub P A). λ (Sb : Sorted B). λ (Lb0 : Lb P B).
       elim A return (λ (Az : List Nat).
@@ -653,7 +653,7 @@ def SortedAppendPivotRaw : Term := prog defer_check {
           Pair(BoundAppendRaw H P T B (SortedHeadRaw H T Sc) (UbHeadRaw P H T Uc),
                Ih (SortedTailRaw H T Sc) (UbTailRaw P H T Uc))
       } Sa Ua }
-def SortedAppendPivotTy : Term := prog defer_check {
+def SortedAppendPivotTy : Term := prog_parse {
   Π (P : Nat) → Π (A : List Nat) → Π (B : List Nat) →
     Sorted A → Ub P A → Sorted B → Lb P B → Sorted (Append A (Cons P B)) }
 
@@ -676,7 +676,7 @@ def SortedAppendPivotTy : Term := prog defer_check {
 
 /-- Head onto the LEFT part. `Add (S u) w` is definitionally `S (Add u w)` (`Add`
     recurses on its first argument), so the `True` arm is one `IdCongrRaw`. -/
-def CountConsLRaw : Term := prog defer_check {
+def CountConsLRaw : Term := prog_parse {
   λ (N : Nat). λ (X : Nat). λ (A : List Nat). λ (B : List Nat). λ (C : List Nat).
     λ (H : Id Nat (Add (Count N A) (Count N B)) (Count N C)).
       elim (Eqb N X) return (λ (Bv : Bool).
@@ -685,7 +685,7 @@ def CountConsLRaw : Term := prog defer_check {
         True => IdCongrRaw Nat Nat (λ (R : Nat). S R)
                   (Add (Count N A) (Count N B)) (Count N C) H,
         False => H } }
-def CountConsLTy : Term := prog defer_check {
+def CountConsLTy : Term := prog_parse {
   Π (N : Nat) → Π (X : Nat) → Π (A : List Nat) → Π (B : List Nat) → Π (C : List Nat) →
     Id Nat (Add (Count N A) (Count N B)) (Count N C) →
     Id Nat (Add (Count N (Cons X A)) (Count N B)) (Count N (Cons X C)) }
@@ -693,7 +693,7 @@ def CountConsLTy : Term := prog defer_check {
 /-- Head onto the RIGHT part. Here the successor lands under `Add`'s SECOND argument,
     which is where the asymmetry of a first-argument-recursive `Add` shows up: the
     `True` arm needs `AddSuccRaw` before the `IdCongrRaw`. -/
-def CountConsRRaw : Term := prog defer_check {
+def CountConsRRaw : Term := prog_parse {
   λ (N : Nat). λ (X : Nat). λ (A : List Nat). λ (B : List Nat). λ (C : List Nat).
     λ (H : Id Nat (Add (Count N A) (Count N B)) (Count N C)).
       elim (Eqb N X) return (λ (Bv : Bool).
@@ -705,7 +705,7 @@ def CountConsRRaw : Term := prog defer_check {
                   (IdCongrRaw Nat Nat (λ (R : Nat). S R)
                     (Add (Count N A) (Count N B)) (Count N C) H),
         False => H } }
-def CountConsRTy : Term := prog defer_check {
+def CountConsRTy : Term := prog_parse {
   Π (N : Nat) → Π (X : Nat) → Π (A : List Nat) → Π (B : List Nat) → Π (C : List Nat) →
     Id Nat (Add (Count N A) (Count N B)) (Count N C) →
     Id Nat (Add (Count N A) (Count N (Cons X B))) (Count N (Cons X C)) }
@@ -728,24 +728,24 @@ def CountConsRTy : Term := prog defer_check {
     only to be crossed. -/
 
 /-- The two `Lb` projections, mirroring `UbHeadRaw`/`UbTailRaw`. -/
-def LbHeadRaw : Term := prog defer_check {
+def LbHeadRaw : Term := prog_parse {
   λ (P : Nat). λ (H : Nat). λ (T : List Nat). λ (U : Σ (Hu : Le P H). Lb P T).
     elim U return (λ (Q : Σ (Hu : Le P H). Lb P T). Le P H) {
       Pair (X) (Y) => X } }
-def LbHeadTy : Term := prog defer_check {
+def LbHeadTy : Term := prog_parse {
   Π (P : Nat) → Π (H : Nat) → Π (T : List Nat) → Lb P (Cons H T) → Le P H }
 
-def LbTailRaw : Term := prog defer_check {
+def LbTailRaw : Term := prog_parse {
   λ (P : Nat). λ (H : Nat). λ (T : List Nat). λ (U : Σ (Hu : Le P H). Lb P T).
     elim U return (λ (Q : Σ (Hu : Le P H). Lb P T). Lb P T) {
       Pair (X) (Y) => Y } }
-def LbTailTy : Term := prog defer_check {
+def LbTailTy : Term := prog_parse {
   Π (P : Nat) → Π (H : Nat) → Π (T : List Nat) → Lb P (Cons H T) → Lb P T }
 
 /-- `Ub p l ⟹ nothing above p occurs in l`. At `Cons h t` the head misses every
     `x > p`, because `h ≤ p < x` makes `Eqb x h` False (`EqbGtFalseRaw`), so the count
     steps past the head onto the IH. -/
-def NoAboveOfUbRaw : Term := prog defer_check {
+def NoAboveOfUbRaw : Term := prog_parse {
   λ (P : Nat). λ (L : List Nat).
     elim L return (λ (Lz : List Nat).
         Ub P Lz → Π (X : Nat) → Le (S P) X → Id Nat (Count X Lz) Z) {
@@ -755,7 +755,7 @@ def NoAboveOfUbRaw : Term := prog defer_check {
           (CountConsMissRaw X H T
             (EqbGtFalseRaw H X (LeTransRaw (S H) (S P) X (UbHeadRaw P H T U) Hx)))
           (Ih (UbTailRaw P H T U) X Hx) } }
-def NoAboveOfUbTy : Term := prog defer_check {
+def NoAboveOfUbTy : Term := prog_parse {
   Π (P : Nat) → Π (L : List Nat) → Ub P L →
     Π (X : Nat) → Le (S P) X → Id Nat (Count X L) Z }
 
@@ -764,7 +764,7 @@ def NoAboveOfUbTy : Term := prog defer_check {
     h t)` (`EqbReflRaw`), and `Z = S _` is `znots`. The tail hypothesis is the same
     argument run the other way: `Count x (Cons h t) = Z` forces `Count x t = Z`,
     trivially when `Eqb x h` misses and by the same contradiction when it hits. -/
-def UbOfNoAboveRaw : Term := prog defer_check {
+def UbOfNoAboveRaw : Term := prog_parse {
   λ (P : Nat). λ (L : List Nat).
     elim L return (λ (Lz : List Nat).
         (Π (X : Nat) → Le (S P) X → Id Nat (Count X Lz) Z) → Ub P Lz) {
@@ -793,24 +793,24 @@ def UbOfNoAboveRaw : Term := prog defer_check {
                       (IdSymRaw Nat (Count X (Cons H T)) (Count X T) (CountConsMissRaw X H T Eq))
                       (Hn X Hx)
                 } Refl)) } }
-def UbOfNoAboveTy : Term := prog defer_check {
+def UbOfNoAboveTy : Term := prog_parse {
   Π (P : Nat) → Π (L : List Nat) →
     (Π (X : Nat) → Le (S P) X → Id Nat (Count X L) Z) → Ub P L }
 
 /-- THE KEYSTONE. An upper bound survives any count-preserving rearrangement — which
     is exactly what a recursive sort hands back about the part it sorted. -/
-def UbPermRaw : Term := prog defer_check {
+def UbPermRaw : Term := prog_parse {
   λ (P : Nat). λ (A : List Nat). λ (B : List Nat).
     λ (Hc : Π (N : Nat) → Id Nat (Count N A) (Count N B)). λ (Hb : Ub P B).
       UbOfNoAboveRaw P A (λ (X : Nat). λ (Hx : Le (S P) X).
         IdTransRaw Nat (Count X A) (Count X B) Z (Hc X) (NoAboveOfUbRaw P B Hb X Hx)) }
-def UbPermTy : Term := prog defer_check {
+def UbPermTy : Term := prog_parse {
   Π (P : Nat) → Π (A : List Nat) → Π (B : List Nat) →
     (Π (N : Nat) → Id Nat (Count N A) (Count N B)) → Ub P B → Ub P A }
 
 /-- The `Lb` mirror: `Lb p l ⟹ nothing strictly below p occurs`. Here the head misses
     every `x < p ≤ h` by `EqbLtFalseRaw`. -/
-def NoBelowOfLbRaw : Term := prog defer_check {
+def NoBelowOfLbRaw : Term := prog_parse {
   λ (P : Nat). λ (L : List Nat).
     elim L return (λ (Lz : List Nat).
         Lb P Lz → Π (X : Nat) → Le (S X) P → Id Nat (Count X Lz) Z) {
@@ -820,11 +820,11 @@ def NoBelowOfLbRaw : Term := prog defer_check {
           (CountConsMissRaw X H T
             (EqbLtFalseRaw X H (LeTransRaw (S X) P H Hx (LbHeadRaw P H T U))))
           (Ih (LbTailRaw P H T U) X Hx) } }
-def NoBelowOfLbTy : Term := prog defer_check {
+def NoBelowOfLbTy : Term := prog_parse {
   Π (P : Nat) → Π (L : List Nat) → Lb P L →
     Π (X : Nat) → Le (S X) P → Id Nat (Count X L) Z }
 
-def LbOfNoBelowRaw : Term := prog defer_check {
+def LbOfNoBelowRaw : Term := prog_parse {
   λ (P : Nat). λ (L : List Nat).
     elim L return (λ (Lz : List Nat).
         (Π (X : Nat) → Le (S X) P → Id Nat (Count X Lz) Z) → Lb P Lz) {
@@ -853,16 +853,16 @@ def LbOfNoBelowRaw : Term := prog defer_check {
                       (IdSymRaw Nat (Count X (Cons H T)) (Count X T) (CountConsMissRaw X H T Eq))
                       (Hn X Hx)
                 } Refl)) } }
-def LbOfNoBelowTy : Term := prog defer_check {
+def LbOfNoBelowTy : Term := prog_parse {
   Π (P : Nat) → Π (L : List Nat) →
     (Π (X : Nat) → Le (S X) P → Id Nat (Count X L) Z) → Lb P L }
 
-def LbPermRaw : Term := prog defer_check {
+def LbPermRaw : Term := prog_parse {
   λ (P : Nat). λ (A : List Nat). λ (B : List Nat).
     λ (Hc : Π (N : Nat) → Id Nat (Count N A) (Count N B)). λ (Hb : Lb P B).
       LbOfNoBelowRaw P A (λ (X : Nat). λ (Hx : Le (S X) P).
         IdTransRaw Nat (Count X A) (Count X B) Z (Hc X) (NoBelowOfLbRaw P B Hb X Hx)) }
-def LbPermTy : Term := prog defer_check {
+def LbPermTy : Term := prog_parse {
   Π (P : Nat) → Π (A : List Nat) → Π (B : List Nat) →
     (Π (N : Nat) → Id Nat (Count N A) (Count N B)) → Lb P B → Lb P A }
 
@@ -880,7 +880,7 @@ def LbPermTy : Term := prog defer_check {
     cons view. Without them `SortedA (arrCat (acons h t) …)` would not UNFOLD, and every
     step of the glue would want a transport lemma where the list proof needs none. -/
 
-def CountA : Term := prog defer_check {
+def CountA : Term := prog_parse {
   λ (X : Nat). λ (N : Nat). λ (A : Array N Nat).
     arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Nat) Z
       (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat). λ (Ih : Nat).
@@ -888,27 +888,27 @@ def CountA : Term := prog defer_check {
       N A }
 
 /-- `BoundA p a` — the head of `a` is ≥ `p`. `Bound`'s transfer. -/
-def BoundA : Term := prog defer_check {
+def BoundA : Term := prog_parse {
   λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
     arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Type) Unit
       (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat). λ (Ih : Type). Le P H) N A }
 
 /-- `SortedA a` — the Σ-chain over the spine. `Sorted`'s transfer. -/
-def SortedA : Term := prog defer_check {
+def SortedA : Term := prog_parse {
   λ (N : Nat). λ (A : Array N Nat).
     arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Type) Unit
       (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat). λ (Ih : Type).
         Σ (Hb : BoundA H K T). Ih) N A }
 
 /-- `UbA p a` — every element of `a` is ≤ `p`. `Ub`'s transfer. -/
-def UbA : Term := prog defer_check {
+def UbA : Term := prog_parse {
   λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
     arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Type) Unit
       (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat). λ (Ih : Type).
         Σ (Hh : Le H P). Ih) N A }
 
 /-- `LbA p a` — every element of `a` is ≥ `p`. `Lb`'s transfer. -/
-def LbA : Term := prog defer_check {
+def LbA : Term := prog_parse {
   λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
     arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Type) Unit
       (λ (K : Nat). λ (H : Nat). λ (T : Array K Nat). λ (Ih : Type).
@@ -916,7 +916,7 @@ def LbA : Term := prog defer_check {
 
 /-- `Asingle x` — the one-element array, `[x]`. ¶6's glue is stated over
     `arrCat (Asingle p) r`, which is the array spelling of `Cons p b`. -/
-def Asingle : Term := prog defer_check { λ (X : Nat). acons Z X Arr() }
+def Asingle : Term := prog_parse { λ (X : Nat). acons Z X Arr() }
 
 /-! ### The glue, and the standing claim it tests
 
@@ -931,45 +931,45 @@ def Asingle : Term := prog defer_check { λ (X : Nat). acons Z X Arr() }
     so the doc's chosen spelling of the pivot splice needs no lemma to relate it to the
     cons view. -/
 
-def SortedHeadARaw : Term := prog defer_check {
+def SortedHeadARaw : Term := prog_parse {
   λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
     λ (S0 : Σ (Hb : BoundA H K T). SortedA K T).
       elim S0 return (λ (Q : Σ (Hb : BoundA H K T). SortedA K T). BoundA H K T) {
         Pair (X) (Y) => X } }
-def SortedHeadATy : Term := prog defer_check {
+def SortedHeadATy : Term := prog_parse {
   Π (K : Nat) → Π (H : Nat) → Π (T : Array K Nat) →
     SortedA (S K) (acons K H T) → BoundA H K T }
 
-def SortedTailARaw : Term := prog defer_check {
+def SortedTailARaw : Term := prog_parse {
   λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
     λ (S0 : Σ (Hb : BoundA H K T). SortedA K T).
       elim S0 return (λ (Q : Σ (Hb : BoundA H K T). SortedA K T). SortedA K T) {
         Pair (X) (Y) => Y } }
-def SortedTailATy : Term := prog defer_check {
+def SortedTailATy : Term := prog_parse {
   Π (K : Nat) → Π (H : Nat) → Π (T : Array K Nat) →
     SortedA (S K) (acons K H T) → SortedA K T }
 
-def UbHeadARaw : Term := prog defer_check {
+def UbHeadARaw : Term := prog_parse {
   λ (P : Nat). λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
     λ (U : Σ (Hu : Le H P). UbA P K T).
       elim U return (λ (Q : Σ (Hu : Le H P). UbA P K T). Le H P) {
         Pair (X) (Y) => X } }
-def UbHeadATy : Term := prog defer_check {
+def UbHeadATy : Term := prog_parse {
   Π (P : Nat) → Π (K : Nat) → Π (H : Nat) → Π (T : Array K Nat) →
     UbA P (S K) (acons K H T) → Le H P }
 
-def UbTailARaw : Term := prog defer_check {
+def UbTailARaw : Term := prog_parse {
   λ (P : Nat). λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
     λ (U : Σ (Hu : Le H P). UbA P K T).
       elim U return (λ (Q : Σ (Hu : Le H P). UbA P K T). UbA P K T) {
         Pair (X) (Y) => Y } }
-def UbTailATy : Term := prog defer_check {
+def UbTailATy : Term := prog_parse {
   Π (P : Nat) → Π (K : Nat) → Π (H : Nat) → Π (T : Array K Nat) →
     UbA P (S K) (acons K H T) → UbA P K T }
 
 /-- `LbA p a ⟹ BoundA p a`, `LbBoundRaw`'s transfer: a lower bound on every element is in
     particular a bound on the head, which is all `SortedA (acons p b)` asks of the pivot. -/
-def LbBoundARaw : Term := prog defer_check {
+def LbBoundARaw : Term := prog_parse {
   λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
     arrRec Nat (λ (M : Nat). λ (B : Array M Nat). LbA P M B → BoundA P M B)
       (λ (Hn : Unit). Hn)
@@ -979,14 +979,14 @@ def LbBoundARaw : Term := prog defer_check {
             elim Hl return (λ (Q : Σ (Hh : Le P H). LbA P K T). Le P H) {
               Pair (X) (Y) => X })
       N A }
-def LbBoundATy : Term := prog defer_check {
+def LbBoundATy : Term := prog_parse {
   Π (P : Nat) → Π (N : Nat) → Π (A : Array N Nat) → LbA P N A → BoundA P N A }
 
 /-- `BoundAppendRaw`'s transfer: the head bound survives the splice. The recursion IS the
     case analysis — at the empty array the new head is the PIVOT, otherwise the head is
     unchanged by the concatenation. No IH is consumed, because `BoundA` looks exactly one
     cell deep. -/
-def BoundArrCatRaw : Term := prog defer_check {
+def BoundArrCatRaw : Term := prog_parse {
   λ (H : Nat). λ (P : Nat). λ (K : Nat). λ (T : Array K Nat).
     λ (Q : Nat). λ (B : Array Q Nat).
       arrRec Nat (λ (M : Nat). λ (Tz : Array M Nat).
@@ -998,7 +998,7 @@ def BoundArrCatRaw : Term := prog defer_check {
               BoundA H (Add K2 (S Q)) (arrCat K2 (S Q) T2 (arrCat 1 Q (Asingle P) B))).
             λ (Hb : Le H H2). λ (Hp : Le H P). Hb)
         K T }
-def BoundArrCatTy : Term := prog defer_check {
+def BoundArrCatTy : Term := prog_parse {
   Π (H : Nat) → Π (P : Nat) → Π (K : Nat) → Π (T : Array K Nat) →
     Π (Q : Nat) → Π (B : Array Q Nat) →
       BoundA H K T → Le H P →
@@ -1008,7 +1008,7 @@ def BoundArrCatTy : Term := prog defer_check {
     nothing else changed. This is ¶6's "textbook quicksort correctness statement, in the
     textbook shape", and the standing check on the whole migration: if this were not the
     near-verbatim restatement, something would be off. -/
-def SortedArrCatRaw : Term := prog defer_check {
+def SortedArrCatRaw : Term := prog_parse {
   λ (P : Nat). λ (M : Nat). λ (A : Array M Nat). λ (Q : Nat). λ (B : Array Q Nat).
     λ (Sa : SortedA M A). λ (Ua : UbA P M A). λ (Sb : SortedA Q B). λ (Lb0 : LbA P Q B).
       arrRec Nat (λ (Mz : Nat). λ (Az : Array Mz Nat).
@@ -1023,7 +1023,7 @@ def SortedArrCatRaw : Term := prog defer_check {
                 Pair(BoundArrCatRaw H P K T Q B (SortedHeadARaw K H T Sc) (UbHeadARaw P K H T Uc),
                      Ih (SortedTailARaw K H T Sc) (UbTailARaw P K H T Uc)))
         M A Sa Ua }
-def SortedArrCatTy : Term := prog defer_check {
+def SortedArrCatTy : Term := prog_parse {
   Π (P : Nat) → Π (M : Nat) → Π (A : Array M Nat) → Π (Q : Nat) → Π (B : Array Q Nat) →
     SortedA M A → UbA P M A → SortedA Q B → LbA P Q B →
       SortedA (Add M (S Q)) (arrCat M (S Q) A (arrCat 1 Q (Asingle P) B)) }
@@ -1033,7 +1033,7 @@ def SortedArrCatTy : Term := prog defer_check {
     (count x b)`, which is the same induction." It is the same induction — the `Cons`
     arm's dependent Bool-elim on `Eqb x h` transfers unchanged, because `CountA` unfolds
     on an `acons` exactly as `Count` unfolds on a `Cons`. -/
-def CountArrCatRaw : Term := prog defer_check {
+def CountArrCatRaw : Term := prog_parse {
   λ (X : Nat). λ (M : Nat). λ (A : Array M Nat). λ (Q : Nat). λ (B : Array Q Nat).
     arrRec Nat (λ (Mz : Nat). λ (Az : Array Mz Nat).
         Id Nat (CountA X (Add Mz Q) (arrCat Mz Q Az B))
@@ -1053,7 +1053,7 @@ def CountArrCatRaw : Term := prog defer_check {
                       (Add (CountA X K T) (CountA X Q B)) Ih,
             False => Ih })
       M A }
-def CountArrCatTy : Term := prog defer_check {
+def CountArrCatTy : Term := prog_parse {
   Π (X : Nat) → Π (M : Nat) → Π (A : Array M Nat) → Π (Q : Nat) → Π (B : Array Q Nat) →
     Id Nat (CountA X (Add M Q) (arrCat M Q A B)) (Add (CountA X M A) (CountA X Q B)) }
 
@@ -1064,38 +1064,38 @@ def CountArrCatTy : Term := prog defer_check {
     `Π x. x > p → Count x l = Z` and permutation-invariance is a one-line `IdTransRaw`."
     That crossing transfers with the container like everything else. -/
 
-def CountAconsHitRaw : Term := prog defer_check {
+def CountAconsHitRaw : Term := prog_parse {
   λ (M : Nat). λ (A : Nat). λ (K : Nat). λ (L : Array K Nat). λ (Hq : Id Bool (Eqb M A) True).
     j Bool True
       (λ (Z0 : Bool). λ (H : Id Bool True Z0).
         Id Nat (boolRec (λ (W : Bool). Nat) (S (CountA M K L)) (CountA M K L) Z0)
                (S (CountA M K L)))
       Refl (Eqb M A) (IdSymRaw Bool (Eqb M A) True Hq) }
-def CountAconsHitTy : Term := prog defer_check {
+def CountAconsHitTy : Term := prog_parse {
   Π (M : Nat) → Π (A : Nat) → Π (K : Nat) → Π (L : Array K Nat) → Id Bool (Eqb M A) True →
     Id Nat (CountA M (S K) (acons K A L)) (S (CountA M K L)) }
 
-def CountAconsMissRaw : Term := prog defer_check {
+def CountAconsMissRaw : Term := prog_parse {
   λ (M : Nat). λ (H : Nat). λ (K : Nat). λ (T : Array K Nat). λ (Hq : Id Bool (Eqb M H) False).
     j Bool False
       (λ (Z0 : Bool). λ (Hh : Id Bool False Z0).
         Id Nat (boolRec (λ (W : Bool). Nat) (S (CountA M K T)) (CountA M K T) Z0)
                (CountA M K T))
       Refl (Eqb M H) (IdSymRaw Bool (Eqb M H) False Hq) }
-def CountAconsMissTy : Term := prog defer_check {
+def CountAconsMissTy : Term := prog_parse {
   Π (M : Nat) → Π (H : Nat) → Π (K : Nat) → Π (T : Array K Nat) → Id Bool (Eqb M H) False →
     Id Nat (CountA M (S K) (acons K H T)) (CountA M K T) }
 
-def LbHeadA : Term := prog defer_check {
+def LbHeadA : Term := prog_parse {
   λ (P : Nat). λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
     λ (U : Σ (Hh : Le P H). LbA P K T).
       elim U return (λ (Q : Σ (Hh : Le P H). LbA P K T). Le P H) { Pair (X) (Y) => X } }
-def LbTailA : Term := prog defer_check {
+def LbTailA : Term := prog_parse {
   λ (P : Nat). λ (K : Nat). λ (H : Nat). λ (T : Array K Nat).
     λ (U : Σ (Hh : Le P H). LbA P K T).
       elim U return (λ (Q : Σ (Hh : Le P H). LbA P K T). LbA P K T) { Pair (X) (Y) => Y } }
 
-def NoAboveOfUbARaw : Term := prog defer_check {
+def NoAboveOfUbARaw : Term := prog_parse {
   λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
     arrRec Nat (λ (M : Nat). λ (Az : Array M Nat).
         UbA P M Az → Π (X : Nat) → Le (S P) X → Id Nat (CountA X M Az) Z)
@@ -1108,11 +1108,11 @@ def NoAboveOfUbARaw : Term := prog defer_check {
                 (EqbGtFalseRaw H X (LeTransRaw (S H) (S P) X (UbHeadARaw P K H T U) Hx)))
               (Ih (UbTailARaw P K H T U) X Hx))
       N A }
-def NoAboveOfUbATy : Term := prog defer_check {
+def NoAboveOfUbATy : Term := prog_parse {
   Π (P : Nat) → Π (N : Nat) → Π (A : Array N Nat) → UbA P N A →
     Π (X : Nat) → Le (S P) X → Id Nat (CountA X N A) Z }
 
-def UbOfNoAboveARaw : Term := prog defer_check {
+def UbOfNoAboveARaw : Term := prog_parse {
   λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
     arrRec Nat (λ (M : Nat). λ (Az : Array M Nat).
         (Π (X : Nat) → Le (S P) X → Id Nat (CountA X M Az) Z) → UbA P M Az)
@@ -1146,24 +1146,24 @@ def UbOfNoAboveARaw : Term := prog defer_check {
                           (Hn X Hx)
                     } Refl)))
       N A }
-def UbOfNoAboveATy : Term := prog defer_check {
+def UbOfNoAboveATy : Term := prog_parse {
   Π (P : Nat) → Π (N : Nat) → Π (A : Array N Nat) →
     (Π (X : Nat) → Le (S P) X → Id Nat (CountA X N A) Z) → UbA P N A }
 
 /-- THE KEYSTONE, transferred: an upper bound survives any count-preserving
     rearrangement — which is exactly what a recursive sort hands back about the part it
     sorted. -/
-def UbPermARaw : Term := prog defer_check {
+def UbPermARaw : Term := prog_parse {
   λ (P : Nat). λ (M : Nat). λ (A : Array M Nat). λ (Q : Nat). λ (B : Array Q Nat).
     λ (Hc : Π (X : Nat) → Id Nat (CountA X M A) (CountA X Q B)). λ (Hb : UbA P Q B).
       UbOfNoAboveARaw P M A (λ (X : Nat). λ (Hx : Le (S P) X).
         IdTransRaw Nat (CountA X M A) (CountA X Q B) Z (Hc X)
           (NoAboveOfUbARaw P Q B Hb X Hx)) }
-def UbPermATy : Term := prog defer_check {
+def UbPermATy : Term := prog_parse {
   Π (P : Nat) → Π (M : Nat) → Π (A : Array M Nat) → Π (Q : Nat) → Π (B : Array Q Nat) →
     (Π (X : Nat) → Id Nat (CountA X M A) (CountA X Q B)) → UbA P Q B → UbA P M A }
 
-def NoBelowOfLbARaw : Term := prog defer_check {
+def NoBelowOfLbARaw : Term := prog_parse {
   λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
     arrRec Nat (λ (M : Nat). λ (Az : Array M Nat).
         LbA P M Az → Π (X : Nat) → Le (S X) P → Id Nat (CountA X M Az) Z)
@@ -1176,11 +1176,11 @@ def NoBelowOfLbARaw : Term := prog defer_check {
                 (EqbLtFalseRaw X H (LeTransRaw (S X) P H Hx (LbHeadA P K H T U))))
               (Ih (LbTailA P K H T U) X Hx))
       N A }
-def NoBelowOfLbATy : Term := prog defer_check {
+def NoBelowOfLbATy : Term := prog_parse {
   Π (P : Nat) → Π (N : Nat) → Π (A : Array N Nat) → LbA P N A →
     Π (X : Nat) → Le (S X) P → Id Nat (CountA X N A) Z }
 
-def LbOfNoBelowARaw : Term := prog defer_check {
+def LbOfNoBelowARaw : Term := prog_parse {
   λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
     arrRec Nat (λ (M : Nat). λ (Az : Array M Nat).
         (Π (X : Nat) → Le (S X) P → Id Nat (CountA X M Az) Z) → LbA P M Az)
@@ -1214,24 +1214,24 @@ def LbOfNoBelowARaw : Term := prog defer_check {
                           (Hn X Hx)
                     } Refl)))
       N A }
-def LbOfNoBelowATy : Term := prog defer_check {
+def LbOfNoBelowATy : Term := prog_parse {
   Π (P : Nat) → Π (N : Nat) → Π (A : Array N Nat) →
     (Π (X : Nat) → Le (S X) P → Id Nat (CountA X N A) Z) → LbA P N A }
 
-def LbPermARaw : Term := prog defer_check {
+def LbPermARaw : Term := prog_parse {
   λ (P : Nat). λ (M : Nat). λ (A : Array M Nat). λ (Q : Nat). λ (B : Array Q Nat).
     λ (Hc : Π (X : Nat) → Id Nat (CountA X M A) (CountA X Q B)). λ (Hb : LbA P Q B).
       LbOfNoBelowARaw P M A (λ (X : Nat). λ (Hx : Le (S X) P).
         IdTransRaw Nat (CountA X M A) (CountA X Q B) Z (Hc X)
           (NoBelowOfLbARaw P Q B Hb X Hx)) }
-def LbPermATy : Term := prog defer_check {
+def LbPermATy : Term := prog_parse {
   Π (P : Nat) → Π (M : Nat) → Π (A : Array M Nat) → Π (Q : Nat) → Π (B : Array Q Nat) →
     (Π (X : Nat) → Id Nat (CountA X M A) (CountA X Q B)) → LbA P Q B → LbA P M A }
 
 /-- Two-element count commutation over arrays — `Cons2Comm`'s transfer at the fixed
     width the miniature sort needs. Double case split on `Eqb`, all four arms `Refl`;
     the `Eqb m a = False` arm needs no inner split because both sides already agree. -/
-def CountSwap2Raw : Term := prog defer_check {
+def CountSwap2Raw : Term := prog_parse {
   λ (M : Nat). λ (A : Nat). λ (B : Nat).
     elim (Eqb M A) generalizing (Id Nat (CountA M 2 Arr(B, A)) (CountA M 2 Arr(A, B))) {
       True => elim (Eqb M B) generalizing
@@ -1239,7 +1239,7 @@ def CountSwap2Raw : Term := prog defer_check {
                 (S (boolRec (λ (W : Bool). Nat) (S Z) Z (Eqb M B)))) {
         True => Refl, False => Refl },
       False => Refl } }
-def CountSwap2Ty : Term := prog defer_check {
+def CountSwap2Ty : Term := prog_parse {
   Π (M : Nat) → Π (A : Nat) → Π (B : Nat) →
     Id Nat (CountA M 2 Arr(B, A)) (CountA M 2 Arr(A, B)) }
 
@@ -1275,21 +1275,21 @@ def CountSwap2Ty : Term := prog defer_check {
 /-- Transport along a `Nat` identity — `ListRwRaw`'s counterpart, needed to move the
     glue from the pivot VALUE the partition returned to the element sitting in the
     carved pivot slot. -/
-def NatRwRaw : Term := prog defer_check {
+def NatRwRaw : Term := prog_parse {
   λ (P : Nat → Type). λ (X : Nat). λ (Y : Nat). λ (H : Id Nat X Y). λ (Px : P X).
     j Nat X (λ (Y2 : Nat). λ (Hh : Id Nat X Y2). P Y2) Px Y H }
-def NatRwTy : Term := prog defer_check {
+def NatRwTy : Term := prog_parse {
   Π (P : Nat → Type) → Π (X : Nat) → Π (Y : Nat) → Id Nat X Y → P X → P Y }
 
 /-- `Le n Z ⟹ n = Z`. The array quicksort tests emptiness with `Leb 1 n` rather than
     by matching `n`, because matching refines the length to `S m` and T2's rigid-extent
     restriction then blocks the three-way carve at the returned index. So the False
     branch holds `Le n Z` and has to turn it into the equation the nil lemmas want. -/
-def LeZeroEqRaw : Term := prog defer_check {
+def LeZeroEqRaw : Term := prog_parse {
   λ (N : Nat). elim N return (λ (Z0 : Nat). Le Z0 Z → Id Nat Z0 Z) {
     Z => λ (H : Le Z Z). Refl,
     S (N2) Ih => λ (H : Bot). botElim (Id Nat (S N2) Z) H } }
-def LeZeroEqTy : Term := prog defer_check { Π (N : Nat) → Le N Z → Id Nat N Z }
+def LeZeroEqTy : Term := prog_parse { Π (N : Nat) → Le N Z → Id Nat N Z }
 
 /-- `SortedA` of an array whose LENGTH is zero.
 
@@ -1298,7 +1298,7 @@ def LeZeroEqTy : Term := prog defer_check { Π (N : Nat) → Le N Z → Id Nat N
     length-zero payload does not compute to `Unit` and the sort's base case cannot be
     discharged by the trivial term. The induction is on the ARRAY with the equation
     carried, and the cons case is dead. -/
-def SortedANilRaw : Term := prog defer_check {
+def SortedANilRaw : Term := prog_parse {
   λ (N : Nat). λ (A : Array N Nat).
     arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Id Nat M Z → SortedA M B)
       (λ (H : Id Nat Z Z). unit)
@@ -1307,11 +1307,11 @@ def SortedANilRaw : Term := prog defer_check {
           λ (H : Id Nat (S K) Z).
             botElim (SortedA (S K) (acons K Hh T)) (ZnotsRaw K (IdSymRaw Nat (S K) Z H)))
       N A }
-def SortedANilTy : Term := prog defer_check {
+def SortedANilTy : Term := prog_parse {
   Π (N : Nat) → Π (A : Array N Nat) → Id Nat N Z → SortedA N A }
 
 /-- `SplitAL p k a` — the first `k` elements are ≤ `p`, the rest are ≥ `p`. -/
-def SplitAL : Term := prog defer_check {
+def SplitAL : Term := prog_parse {
   λ (P : Nat). λ (K : Nat). λ (N : Nat). λ (A : Array N Nat).
     arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Π (Kz : Nat) → Type)
       (λ (Kz : Nat). Unit)
@@ -1326,7 +1326,7 @@ def SplitAL : Term := prog defer_check {
     rest are ≥ `pv`. The pivot's presence at the split point is what the sort needs and
     `SplitAL` does not give: without it the element in the carved pivot slot is merely
     ≥ `p`, and `LbA (that element)` of the right half does not follow. -/
-def PartA : Term := prog defer_check {
+def PartA : Term := prog_parse {
   λ (Pv : Nat). λ (K : Nat). λ (N : Nat). λ (A : Array N Nat).
     arrRec Nat (λ (M : Nat). λ (B : Array M Nat). Π (Kz : Nat) → Type)
       (λ (Kz : Nat). Unit)
@@ -1339,7 +1339,7 @@ def PartA : Term := prog defer_check {
 
 /-- `SplitAL` of a length-zero array, at any skip count — `SortedANilRaw`'s twin, and
     needed for the same reason. -/
-def SplitANilRaw : Term := prog defer_check {
+def SplitANilRaw : Term := prog_parse {
   λ (P : Nat). λ (Kz : Nat). λ (N : Nat). λ (A : Array N Nat). λ (Hz : Id Nat N Z).
     arrRec Nat (λ (M : Nat). λ (B : Array M Nat).
         Π (K2 : Nat) → Id Nat M Z → SplitAL P K2 M B)
@@ -1349,7 +1349,7 @@ def SplitANilRaw : Term := prog defer_check {
           λ (K2 : Nat). λ (H : Id Nat (S M) Z).
             botElim (SplitAL P K2 (S M) (acons M Hh T)) (ZnotsRaw M (IdSymRaw Nat (S M) Z H)))
       N A Kz Hz }
-def SplitANilTy : Term := prog defer_check {
+def SplitANilTy : Term := prog_parse {
   Π (P : Nat) → Π (Kz : Nat) → Π (N : Nat) → Π (A : Array N Nat) →
     Id Nat N Z → SplitAL P Kz N A }
 
@@ -1367,7 +1367,7 @@ def SplitANilTy : Term := prog defer_check {
 
 /-- A zero skip count is a lower bound on the whole array — the crossing from the
     partition layer back into ¶1.3's transferred library. -/
-def SplitA0LbRaw : Term := prog defer_check {
+def SplitA0LbRaw : Term := prog_parse {
   λ (P : Nat). λ (N : Nat). λ (A : Array N Nat).
     arrRec Nat (λ (M : Nat). λ (B : Array M Nat). SplitAL P Z M B → LbA P M B)
       (λ (H : Unit). unit)
@@ -1377,14 +1377,14 @@ def SplitA0LbRaw : Term := prog defer_check {
             elim S0 return (λ (Qz : Σ (H2 : Le P Hh). SplitAL P Z K T). LbA P (S K) (acons K Hh T)) {
               Pair (U) (V) => Pair(U, Ih V) })
       N A }
-def SplitA0LbTy : Term := prog defer_check {
+def SplitA0LbTy : Term := prog_parse {
   Π (P : Nat) → Π (N : Nat) → Π (A : Array N Nat) → SplitAL P Z N A → LbA P N A }
 
 /-- Split a `SplitAL` whose skip count runs ONE PAST the left part: the left part is
     wholly bounded, and what is left is a `SplitAL` at skip 1 over the right part. This
     is the shape the swap branch needs — it reads off both "the left part is all ≤ p"
     and "the element about to be swapped out is ≤ p" in one step. -/
-def SplitACatE1Raw : Term := prog defer_check {
+def SplitACatE1Raw : Term := prog_parse {
   λ (P : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
     arrRec Nat (λ (Kz : Nat). λ (Lz : Array Kz Nat).
         SplitAL P (S Kz) (Add Kz Mm) (arrCat Kz Mm Lz W) →
@@ -1402,14 +1402,14 @@ def SplitACatE1Raw : Term := prog defer_check {
                     Σ (Hu : UbA P (S K2) (acons K2 Hh T)). SplitAL P (S Z) Mm W) {
                   Pair (A1) (B1) => Pair(Pair(U, A1), B1) } })
       K L }
-def SplitACatE1Ty : Term := prog defer_check {
+def SplitACatE1Ty : Term := prog_parse {
   Π (P : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
     SplitAL P (S K) (Add K Mm) (arrCat K Mm L W) →
       Σ (Hu : UbA P K L). SplitAL P (S Z) Mm W }
 
 /-- The converse at skip exactly `k`: a bounded left part in front of a `SplitAL` at
     skip zero is a `SplitAL` at skip `k`. -/
-def SplitACatI0Raw : Term := prog defer_check {
+def SplitACatI0Raw : Term := prog_parse {
   λ (P : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
     arrRec Nat (λ (Kz : Nat). λ (Lz : Array Kz Nat).
         UbA P Kz Lz → SplitAL P Z Mm W → SplitAL P Kz (Add Kz Mm) (arrCat Kz Mm Lz W))
@@ -1422,13 +1422,13 @@ def SplitACatI0Raw : Term := prog defer_check {
                 SplitAL P (S K2) (Add (S K2) Mm) (arrCat (S K2) Mm (acons K2 Hh T) W)) {
               Pair (A1) (B1) => Pair(A1, Ih B1 H) })
       K L }
-def SplitACatI0Ty : Term := prog defer_check {
+def SplitACatI0Ty : Term := prog_parse {
   Π (P : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
     UbA P K L → SplitAL P Z Mm W → SplitAL P K (Add K Mm) (arrCat K Mm L W) }
 
 /-- `PartA`'s introduction, the partition's last step: a bounded left part in front of
     a `PartA` at skip zero (which is "the head IS the pivot, the tail is ≥ it"). -/
-def PartACatI0Raw : Term := prog defer_check {
+def PartACatI0Raw : Term := prog_parse {
   λ (Pv : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
     arrRec Nat (λ (Kz : Nat). λ (Lz : Array Kz Nat).
         UbA Pv Kz Lz → PartA Pv Z Mm W → PartA Pv Kz (Add Kz Mm) (arrCat Kz Mm Lz W))
@@ -1441,7 +1441,7 @@ def PartACatI0Raw : Term := prog defer_check {
                 PartA Pv (S K2) (Add (S K2) Mm) (arrCat (S K2) Mm (acons K2 Hh T) W)) {
               Pair (A1) (B1) => Pair(A1, Ih B1 H) })
       K L }
-def PartACatI0Ty : Term := prog defer_check {
+def PartACatI0Ty : Term := prog_parse {
   Π (Pv : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
     UbA Pv K L → PartA Pv Z Mm W → PartA Pv K (Add K Mm) (arrCat K Mm L W) }
 
@@ -1450,7 +1450,7 @@ def PartACatI0Ty : Term := prog defer_check {
     slot and the right segment — which unfolds, with no further lemma, to exactly
     `Id Nat (that element) pv` and `LbA pv (right segment)`. Those three facts are
     `SortedArrCatRaw`'s four hypotheses minus the two the recursive calls supply. -/
-def PartACatE0Raw : Term := prog defer_check {
+def PartACatE0Raw : Term := prog_parse {
   λ (Pv : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
     arrRec Nat (λ (Kz : Nat). λ (Lz : Array Kz Nat).
         PartA Pv Kz (Add Kz Mm) (arrCat Kz Mm Lz W) →
@@ -1468,7 +1468,7 @@ def PartACatE0Raw : Term := prog defer_check {
                     Σ (Hu : UbA Pv (S K2) (acons K2 Hh T)). PartA Pv Z Mm W) {
                   Pair (A1) (B1) => Pair(Pair(U, A1), B1) } })
       K L }
-def PartACatE0Ty : Term := prog defer_check {
+def PartACatE0Ty : Term := prog_parse {
   Π (Pv : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
     PartA Pv K (Add K Mm) (arrCat K Mm L W) →
       Σ (Hu : UbA Pv K L). PartA Pv Z Mm W }
@@ -1481,84 +1481,84 @@ def PartACatE0Ty : Term := prog defer_check {
     crossing into its two conclusions moves that cost into the pure layer, where writing
     the types is free, and keeps the programs readable. -/
 
-def SplitACatUbRaw : Term := prog defer_check {
+def SplitACatUbRaw : Term := prog_parse {
   λ (P : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
     λ (S0 : SplitAL P (S K) (Add K Mm) (arrCat K Mm L W)).
       elim (SplitACatE1Raw P K Mm L W S0)
         return (λ (Qz : Σ (Hu : UbA P K L). SplitAL P (S Z) Mm W). UbA P K L) {
           Pair (U) (V) => U } }
-def SplitACatUbTy : Term := prog defer_check {
+def SplitACatUbTy : Term := prog_parse {
   Π (P : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
     SplitAL P (S K) (Add K Mm) (arrCat K Mm L W) → UbA P K L }
 
-def SplitACatRestRaw : Term := prog defer_check {
+def SplitACatRestRaw : Term := prog_parse {
   λ (P : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
     λ (S0 : SplitAL P (S K) (Add K Mm) (arrCat K Mm L W)).
       elim (SplitACatE1Raw P K Mm L W S0)
         return (λ (Qz : Σ (Hu : UbA P K L). SplitAL P (S Z) Mm W). SplitAL P (S Z) Mm W) {
           Pair (U) (V) => V } }
-def SplitACatRestTy : Term := prog defer_check {
+def SplitACatRestTy : Term := prog_parse {
   Π (P : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
     SplitAL P (S K) (Add K Mm) (arrCat K Mm L W) → SplitAL P (S Z) Mm W }
 
 /-- A skip-1 `SplitAL` over a cons: its head is bounded, and its tail is a skip-0 one.
     Both are definitional unfoldings; naming them keeps the swap branch flat. -/
-def SplitA1HeadRaw : Term := prog defer_check {
+def SplitA1HeadRaw : Term := prog_parse {
   λ (P : Nat). λ (R : Nat). λ (G : Array R Nat). λ (Yv : Nat).
     λ (S0 : Σ (Hh : Le Yv P). SplitAL P Z R G).
       elim S0 return (λ (Qz : Σ (Hh : Le Yv P). SplitAL P Z R G). Le Yv P) {
         Pair (U) (V) => U } }
-def SplitA1HeadTy : Term := prog defer_check {
+def SplitA1HeadTy : Term := prog_parse {
   Π (P : Nat) → Π (R : Nat) → Π (G : Array R Nat) → Π (Yv : Nat) →
     SplitAL P (S Z) (S R) (acons R Yv G) → Le Yv P }
 
-def SplitA1TailRaw : Term := prog defer_check {
+def SplitA1TailRaw : Term := prog_parse {
   λ (P : Nat). λ (R : Nat). λ (G : Array R Nat). λ (Yv : Nat).
     λ (S0 : Σ (Hh : Le Yv P). SplitAL P Z R G).
       elim S0 return (λ (Qz : Σ (Hh : Le Yv P). SplitAL P Z R G). SplitAL P Z R G) {
         Pair (U) (V) => V } }
-def SplitA1TailTy : Term := prog defer_check {
+def SplitA1TailTy : Term := prog_parse {
   Π (P : Nat) → Π (R : Nat) → Π (G : Array R Nat) → Π (Yv : Nat) →
     SplitAL P (S Z) (S R) (acons R Yv G) → SplitAL P Z R G }
 
-def PartACatUbRaw : Term := prog defer_check {
+def PartACatUbRaw : Term := prog_parse {
   λ (Pv : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
     λ (S0 : PartA Pv K (Add K Mm) (arrCat K Mm L W)).
       elim (PartACatE0Raw Pv K Mm L W S0)
         return (λ (Qz : Σ (Hu : UbA Pv K L). PartA Pv Z Mm W). UbA Pv K L) {
           Pair (U) (V) => U } }
-def PartACatUbTy : Term := prog defer_check {
+def PartACatUbTy : Term := prog_parse {
   Π (Pv : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
     PartA Pv K (Add K Mm) (arrCat K Mm L W) → UbA Pv K L }
 
-def PartACatRestRaw : Term := prog defer_check {
+def PartACatRestRaw : Term := prog_parse {
   λ (Pv : Nat). λ (K : Nat). λ (Mm : Nat). λ (L : Array K Nat). λ (W : Array Mm Nat).
     λ (S0 : PartA Pv K (Add K Mm) (arrCat K Mm L W)).
       elim (PartACatE0Raw Pv K Mm L W S0)
         return (λ (Qz : Σ (Hu : UbA Pv K L). PartA Pv Z Mm W). PartA Pv Z Mm W) {
           Pair (U) (V) => V } }
-def PartACatRestTy : Term := prog defer_check {
+def PartACatRestTy : Term := prog_parse {
   Π (Pv : Nat) → Π (K : Nat) → Π (Mm : Nat) → Π (L : Array K Nat) → Π (W : Array Mm Nat) →
     PartA Pv K (Add K Mm) (arrCat K Mm L W) → PartA Pv Z Mm W }
 
 /-- The pivot slot, read off a skip-0 `PartA`: the element there IS the pivot, and
     everything after it is bounded below by the pivot. These two are `SortedArrCatRaw`'s
     remaining hypotheses, and the reason `PartA` records the pivot's identity at all. -/
-def PartA0EqRaw : Term := prog defer_check {
+def PartA0EqRaw : Term := prog_parse {
   λ (Pv : Nat). λ (Jj : Nat). λ (G : Array Jj Nat). λ (Ev : Nat).
     λ (S0 : Σ (He : Id Nat Ev Pv). LbA Pv Jj G).
       elim S0 return (λ (Qz : Σ (He : Id Nat Ev Pv). LbA Pv Jj G). Id Nat Ev Pv) {
         Pair (U) (V) => U } }
-def PartA0EqTy : Term := prog defer_check {
+def PartA0EqTy : Term := prog_parse {
   Π (Pv : Nat) → Π (Jj : Nat) → Π (G : Array Jj Nat) → Π (Ev : Nat) →
     PartA Pv Z (S Jj) (acons Jj Ev G) → Id Nat Ev Pv }
 
-def PartA0LbRaw : Term := prog defer_check {
+def PartA0LbRaw : Term := prog_parse {
   λ (Pv : Nat). λ (Jj : Nat). λ (G : Array Jj Nat). λ (Ev : Nat).
     λ (S0 : Σ (He : Id Nat Ev Pv). LbA Pv Jj G).
       elim S0 return (λ (Qz : Σ (He : Id Nat Ev Pv). LbA Pv Jj G). LbA Pv Jj G) {
         Pair (U) (V) => V } }
-def PartA0LbTy : Term := prog defer_check {
+def PartA0LbTy : Term := prog_parse {
   Π (Pv : Nat) → Π (Jj : Nat) → Π (G : Array Jj Nat) → Π (Ev : Nat) →
     PartA Pv Z (S Jj) (acons Jj Ev G) → LbA Pv Jj G }
 
@@ -1572,16 +1572,16 @@ def PartA0LbTy : Term := prog defer_check {
 
 /-- `CountA`'s own step function, named so a congruence can be stated over it: the
     count of a cons is a `bump` of the count of its tail. -/
-def BumpN : Term := prog defer_check {
+def BumpN : Term := prog_parse {
   λ (B : Bool). λ (C : Nat). elim B return (λ (W : Bool). Nat) { True => S C, False => C } }
 
 /-- Congruence for `CountA` under a cons — `CountConsCongrRaw`'s array counterpart. -/
-def CountAconsCongrRaw : Term := prog defer_check {
+def CountAconsCongrRaw : Term := prog_parse {
   λ (Q : Nat). λ (H : Nat). λ (K : Nat). λ (T1 : Array K Nat). λ (T2 : Array K Nat).
     λ (Hc : Id Nat (CountA Q K T1) (CountA Q K T2)).
       IdCongrRaw Nat Nat (λ (C : Nat). BumpN (Eqb Q H) C)
         (CountA Q K T1) (CountA Q K T2) Hc }
-def CountAconsCongrTy : Term := prog defer_check {
+def CountAconsCongrTy : Term := prog_parse {
   Π (Q : Nat) → Π (H : Nat) → Π (K : Nat) → Π (T1 : Array K Nat) → Π (T2 : Array K Nat) →
     Id Nat (CountA Q K T1) (CountA Q K T2) →
       Id Nat (CountA Q (S K) (acons K H T1)) (CountA Q (S K) (acons K H T2)) }
@@ -1590,7 +1590,7 @@ def CountAconsCongrTy : Term := prog defer_check {
     exchanged elements is being counted does not matter. Four arms; the two mixed ones
     are `AddSuccRaw` and its symmetry, and the two matching ones are `Refl` — `CountSwap2Raw`
     at width two had all four `Refl` because both counts were concrete. -/
-def BumpCommRaw : Term := prog defer_check {
+def BumpCommRaw : Term := prog_parse {
   λ (B1 : Bool). λ (B2 : Bool). λ (Cl : Nat). λ (Cg : Nat).
     elim B1 return (λ (W : Bool).
         Id Nat (BumpN B2 (Add Cl (BumpN W Cg))) (BumpN W (Add Cl (BumpN B2 Cg)))) {
@@ -1604,14 +1604,14 @@ def BumpCommRaw : Term := prog defer_check {
             Id Nat (BumpN W2 (Add Cl Cg)) (Add Cl (BumpN W2 Cg))) {
           True => IdSymRaw Nat (Add Cl (S Cg)) (S (Add Cl Cg)) (AddSuccRaw Cl Cg),
           False => Refl } } }
-def BumpCommTy : Term := prog defer_check {
+def BumpCommTy : Term := prog_parse {
   Π (B1 : Bool) → Π (B2 : Bool) → Π (Cl : Nat) → Π (Cg : Nat) →
     Id Nat (BumpN B2 (Add Cl (BumpN B1 Cg))) (BumpN B1 (Add Cl (BumpN B2 Cg))) }
 
 /-- **The swap preserves every count**, stated over exactly the spine the partition
     produces: head, left segment, the swapped cell, right segment. Two `CountArrCatRaw`
     rewrites bracket `BumpCommRaw`. -/
-def CountSwapARaw : Term := prog defer_check {
+def CountSwapARaw : Term := prog_parse {
   λ (Q : Nat). λ (X : Nat). λ (Y : Nat). λ (K : Nat). λ (L : Array K Nat).
   λ (R : Nat). λ (G : Array R Nat).
     IdTransRaw Nat
@@ -1634,7 +1634,7 @@ def CountSwapARaw : Term := prog defer_check {
              (CountA Q (Add K (S R)) (arrCat K (S R) L (acons R Y G)))
              (Add (CountA Q K L) (CountA Q (S R) (acons R Y G)))
              (CountArrCatRaw Q K L (S R) (acons R Y G))))) }
-def CountSwapATy : Term := prog defer_check {
+def CountSwapATy : Term := prog_parse {
   Π (Q : Nat) → Π (X : Nat) → Π (Y : Nat) → Π (K : Nat) → Π (L : Array K Nat) →
   Π (R : Nat) → Π (G : Array R Nat) →
     Id Nat (CountA Q (S (Add K (S R))) (acons (Add K (S R)) Y (arrCat K (S R) L (acons R X G))))
@@ -1652,17 +1652,17 @@ def CountSwapATy : Term := prog defer_check {
     wrap, `R + C = B` the invariant; each step asks its question of `C` — an
     ARGUMENT — so `Rec` occurs exactly once and the whole thing is linear. -/
 
-def NextR : Term := prog defer_check {
+def NextR : Term := prog_parse {
   λ (R : Nat). λ (C : Nat).
     elim C return (λ (Cz : Nat). Nat) { Z => Z, S (C2) Rc => S(R) } }
-def NextC : Term := prog defer_check {
+def NextC : Term := prog_parse {
   λ (B : Nat). λ (C : Nat).
     elim C return (λ (Cz : Nat). Nat) { Z => B, S (C2) Rc => C2 } }
-def NextQ : Term := prog defer_check {
+def NextQ : Term := prog_parse {
   λ (Q : Nat). λ (C : Nat).
     elim C return (λ (Cz : Nat). Nat) { Z => S(Q), S (C2) Rc => Q } }
 
-def ModC : Term := prog defer_check {
+def ModC : Term := prog_parse {
   λ (A : Nat).
     elim A return (λ (Az : Nat). Π (B : Nat) → Π (R : Nat) → Π (C : Nat) → Nat) {
       Z => λ (B : Nat). λ (R : Nat). λ (C : Nat). R,
@@ -1671,11 +1671,11 @@ def ModC : Term := prog defer_check {
 
 /-- `Mod a b`, with `Mod a Z = Z` (nothing downstream divides by zero; every lemma
     is stated over `Le 1 n`). -/
-def Mod : Term := prog defer_check {
+def Mod : Term := prog_parse {
   λ (A : Nat). λ (B : Nat).
     elim B return (λ (Bz : Nat). Nat) { Z => Z, S (B2) Rb => ModC A B2 Z B2 } }
 
-def DivC : Term := prog defer_check {
+def DivC : Term := prog_parse {
   λ (A : Nat).
     elim A return (λ (Az : Nat).
         Π (B : Nat) → Π (R : Nat) → Π (C : Nat) → Π (Q : Nat) → Nat) {
@@ -1683,23 +1683,23 @@ def DivC : Term := prog defer_check {
       S (A2) Rec => λ (B : Nat). λ (R : Nat). λ (C : Nat). λ (Q : Nat).
         Rec B (NextR R C) (NextC B C) (NextQ Q C) } }
 
-def Div : Term := prog defer_check {
+def Div : Term := prog_parse {
   λ (A : Nat). λ (B : Nat).
     elim B return (λ (Bz : Nat). Nat) { Z => Z, S (B2) Rb => DivC A B2 Z B2 Z } }
 
 /-- One increment preserves `R + C ≤ B`: the `Z` arm is the wrap's reset to
     `(Z, B)` and the `S` arm is one `AddSuccRaw` transport. -/
-def StepInvRaw : Term := prog defer_check {
+def StepInvRaw : Term := prog_parse {
   λ (B : Nat). λ (R : Nat). λ (C : Nat).
     elim C return (λ (Cz : Nat). Le (Add R Cz) B → Le (Add (NextR R Cz) (NextC B Cz)) B) {
       Z => λ (H : Le (Add R Z) B). LeReflRaw B,
       S (C2) Rc => λ (H : Le (Add R (S C2)) B).
         LeRwLRaw B (Add R (S C2)) (S (Add R C2)) (AddSuccRaw R C2) H } }
-def StepInvTy : Term := prog defer_check {
+def StepInvTy : Term := prog_parse {
   Π (B : Nat) → Π (R : Nat) → Π (C : Nat) →
     Le (Add R C) B → Le (Add (NextR R C) (NextC B C)) B }
 
-def ModCLtRaw : Term := prog defer_check {
+def ModCLtRaw : Term := prog_parse {
   λ (A : Nat).
     elim A return (λ (Az : Nat).
         Π (B : Nat) → Π (R : Nat) → Π (C : Nat) →
@@ -1708,25 +1708,25 @@ def ModCLtRaw : Term := prog defer_check {
              LeTransRaw R (Add R C) B (LeAddRaw R C) H,
       S (A2) Ih => λ (B : Nat). λ (R : Nat). λ (C : Nat). λ (H : Le (Add R C) B).
              Ih B (NextR R C) (NextC B C) (StepInvRaw B R C H) } }
-def ModCLtTy : Term := prog defer_check {
+def ModCLtTy : Term := prog_parse {
   Π (A : Nat) → Π (B : Nat) → Π (R : Nat) → Π (C : Nat) →
     Le (Add R C) B → Le (S (ModC A B R C)) (S B) }
 
 /-- The slot index is below the capacity — in the form a PROGRAM can use: the
     capacity is an opaque `n` carrying `Le 1 n`, not the pattern `S c`, because
     the carve's premise (3) refines a σ and `S c` is rigid. -/
-def ModLtNRaw : Term := prog defer_check {
+def ModLtNRaw : Term := prog_parse {
   λ (A : Nat). λ (N : Nat).
     elim N return (λ (Nz : Nat). Le (S Z) Nz → Le (S (Mod A Nz)) Nz) {
       Z => λ (H : Le (S Z) Z). botElim (Le (S (Mod A Z)) Z) H,
       S (B2) Rb => λ (H : Le (S Z) (S B2)). ModCLtRaw A B2 Z B2 (LeReflRaw B2) } }
-def ModLtNTy : Term := prog defer_check {
+def ModLtNTy : Term := prog_parse {
   Π (A : Nat) → Π (N : Nat) → Le (S Z) N → Le (S (Mod A N)) N }
 
 /-- Minting the carve's decomposition: `i < n` becomes the residue and the
     equation premise (3) wants CITED. The Σ must cross a CALL boundary to be
     usable (comptime projections mention `n` and fail the occurs check). -/
-def ModDecRaw : Term := prog defer_check {
+def ModDecRaw : Term := prog_parse {
   λ (I : Nat).
     elim I return (λ (Iz : Nat).
         Π (N : Nat) → Le (S Iz) N → Σ (R : Nat). Id Nat N (Add Iz (S R))) {
@@ -1743,7 +1743,7 @@ def ModDecRaw : Term := prog defer_check {
                 Σ (R : Nat). Id Nat (S N2) (Add (S I2) (S R))) {
               Pair (X) (Y) =>
                 Pair(X, IdCongrRaw Nat Nat (λ (Nn : Nat). S Nn) N2 (Add I2 (S X)) Y) } } } }
-def ModDecTy : Term := prog defer_check {
+def ModDecTy : Term := prog_parse {
   Π (I : Nat) → Π (N : Nat) → Le (S I) N → Σ (R : Nat). Id Nat N (Add I (S R)) }
 
 /-! ## Multiplication, and the load-ledger arithmetic
@@ -1755,11 +1755,11 @@ def ModDecTy : Term := prog defer_check {
     one fact resize owes: a map at the threshold that takes one more entry fits
     under the DOUBLED capacity's threshold. -/
 
-def Mul : Term := prog defer_check {
+def Mul : Term := prog_parse {
   λ (A : Nat). λ (B : Nat). elim A return (λ (Az : Nat). Nat) {
     Z => Z, S (A2) Rec => Add B Rec } }
 
-def AddSwapLRaw : Term := prog defer_check {
+def AddSwapLRaw : Term := prog_parse {
   λ (A : Nat). λ (B : Nat). λ (C : Nat).
     elim A return (λ (Az : Nat). Id Nat (Add Az (Add B C)) (Add B (Add Az C))) {
       Z => Refl,
@@ -1767,11 +1767,11 @@ def AddSwapLRaw : Term := prog defer_check {
         IdTransRaw Nat (S (Add A2 (Add B C))) (S (Add B (Add A2 C))) (Add B (S (Add A2 C)))
           (IdCongrRaw Nat Nat (λ (X : Nat). S X) (Add A2 (Add B C)) (Add B (Add A2 C)) Ih)
           (IdSymRaw Nat (Add B (S (Add A2 C))) (S (Add B (Add A2 C))) (AddSuccRaw B (Add A2 C))) } }
-def AddSwapLTy : Term := prog defer_check {
+def AddSwapLTy : Term := prog_parse {
   Π (A : Nat) → Π (B : Nat) → Π (C : Nat) →
     Id Nat (Add A (Add B C)) (Add B (Add A C)) }
 
-def AddInterchangeRaw : Term := prog defer_check {
+def AddInterchangeRaw : Term := prog_parse {
   λ (A : Nat). λ (B : Nat). λ (C : Nat). λ (D : Nat).
     IdTransRaw Nat (Add (Add A B) (Add C D)) (Add A (Add B (Add C D))) (Add (Add A C) (Add B D))
       (AddAssocRaw A B (Add C D))
@@ -1780,11 +1780,11 @@ def AddInterchangeRaw : Term := prog defer_check {
           (AddSwapLRaw B C D))
         (IdSymRaw Nat (Add (Add A C) (Add B D)) (Add A (Add C (Add B D)))
           (AddAssocRaw A C (Add B D)))) }
-def AddInterchangeTy : Term := prog defer_check {
+def AddInterchangeTy : Term := prog_parse {
   Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → Π (D : Nat) →
     Id Nat (Add (Add A B) (Add C D)) (Add (Add A C) (Add B D)) }
 
-def MulSuccRaw : Term := prog defer_check {
+def MulSuccRaw : Term := prog_parse {
   λ (A : Nat). λ (B : Nat).
     elim A return (λ (Az : Nat). Id Nat (Mul Az (S B)) (Add Az (Mul Az B))) {
       Z => Refl,
@@ -1795,10 +1795,10 @@ def MulSuccRaw : Term := prog defer_check {
             (Add A2 (Add B (Mul A2 B)))
             (IdCongrRaw Nat Nat (λ (X : Nat). Add B X) (Mul A2 (S B)) (Add A2 (Mul A2 B)) Ih)
             (AddSwapLRaw B A2 (Mul A2 B))) } }
-def MulSuccTy : Term := prog defer_check {
+def MulSuccTy : Term := prog_parse {
   Π (A : Nat) → Π (B : Nat) → Id Nat (Mul A (S B)) (Add A (Mul A B)) }
 
-def MulAddRRaw : Term := prog defer_check {
+def MulAddRRaw : Term := prog_parse {
   λ (A : Nat). λ (B : Nat). λ (C : Nat).
     elim A return (λ (Az : Nat).
         Id Nat (Mul Az (Add B C)) (Add (Mul Az B) (Mul Az C))) {
@@ -1810,68 +1810,68 @@ def MulAddRRaw : Term := prog defer_check {
           (IdCongrRaw Nat Nat (λ (X : Nat). Add (Add B C) X)
             (Mul A2 (Add B C)) (Add (Mul A2 B) (Mul A2 C)) Ih)
           (AddInterchangeRaw B C (Mul A2 B) (Mul A2 C)) } }
-def MulAddRTy : Term := prog defer_check {
+def MulAddRTy : Term := prog_parse {
   Π (A : Nat) → Π (B : Nat) → Π (C : Nat) →
     Id Nat (Mul A (Add B C)) (Add (Mul A B) (Mul A C)) }
 
-def MulTwoDoubleRaw : Term := prog defer_check {
+def MulTwoDoubleRaw : Term := prog_parse {
   λ (A : Nat). λ (C : Nat).
     IdTransRaw Nat (Mul A (Mul 2 C)) (Mul A (Add C C)) (Add (Mul A C) (Mul A C))
       (IdCongrRaw Nat Nat (λ (X : Nat). Mul A (Add C X)) (Add C Z) C (AddZeroRaw C))
       (MulAddRRaw A C C) }
-def MulTwoDoubleTy : Term := prog defer_check {
+def MulTwoDoubleTy : Term := prog_parse {
   Π (A : Nat) → Π (C : Nat) → Id Nat (Mul A (Mul 2 C)) (Add (Mul A C) (Mul A C)) }
 
-def LeAddMonoRRaw : Term := prog defer_check {
+def LeAddMonoRRaw : Term := prog_parse {
   λ (A : Nat). λ (B : Nat). λ (K : Nat). λ (H : Le A B).
     LeRwRRaw (Add A K) (Add K B) (Add B K) (AddCommRaw K B)
       (LeRwLRaw (Add K B) (Add K A) (Add A K) (AddCommRaw K A) (LeAddMonoLRaw K A B H)) }
-def LeAddMonoRTy : Term := prog defer_check {
+def LeAddMonoRTy : Term := prog_parse {
   Π (A : Nat) → Π (B : Nat) → Π (K : Nat) → Le A B → Le (Add A K) (Add B K) }
 
-def LeAddMonoRaw : Term := prog defer_check {
+def LeAddMonoRaw : Term := prog_parse {
   λ (A : Nat). λ (B : Nat). λ (C : Nat). λ (D : Nat). λ (H1 : Le A B). λ (H2 : Le C D).
     LeTransRaw (Add A C) (Add B C) (Add B D) (LeAddMonoRRaw A B C H1) (LeAddMonoLRaw B C D H2) }
-def LeAddMonoTy : Term := prog defer_check {
+def LeAddMonoTy : Term := prog_parse {
   Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → Π (D : Nat) →
     Le A B → Le C D → Le (Add A C) (Add B D) }
 
-def LeMulRRaw : Term := prog defer_check {
+def LeMulRRaw : Term := prog_parse {
   λ (A : Nat). λ (B : Nat). λ (C : Nat). λ (H : Le B C).
     elim A return (λ (Az : Nat). Le (Mul Az B) (Mul Az C)) {
       Z => unit,
       S (A2) Ih => LeAddMonoRaw B C (Mul A2 B) (Mul A2 C) H Ih } }
-def LeMulRTy : Term := prog defer_check {
+def LeMulRTy : Term := prog_parse {
   Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → Le B C → Le (Mul A B) (Mul A C) }
 
-def Le5M4Raw : Term := prog defer_check {
+def Le5M4Raw : Term := prog_parse {
   λ (C : Nat). λ (H : Le 2 C).
     LeTransRaw 5 (Mul 4 2) (Mul 4 C) unit (LeMulRRaw 4 2 C H) }
-def Le5M4Ty : Term := prog defer_check { Π (C : Nat) → Le 2 C → Le 5 (Mul 4 C) }
+def Le5M4Ty : Term := prog_parse { Π (C : Nat) → Le 2 C → Le 5 (Mul 4 C) }
 
 /-- Integrality at the one capacity the ≤-chain misses: `5n ≤ 4` forces `n = 0`. -/
-def FiveN4ZeroRaw : Term := prog defer_check {
+def FiveN4ZeroRaw : Term := prog_parse {
   λ (N : Nat). elim N return (λ (Nz : Nat). Le (Mul 5 Nz) 4 → Id Nat Nz Z) {
     Z => λ (H : Le (Mul 5 Z) 4). Refl,
     S (N2) Ih => λ (H : Le (Mul 5 (S N2)) 4).
       botElim (Id Nat (S N2) Z)
         (LeRwLRaw 4 (Mul 5 (S N2)) (Add 5 (Mul 5 N2)) (MulSuccRaw 5 N2) H) } }
-def FiveN4ZeroTy : Term := prog defer_check { Π (N : Nat) → Le (Mul 5 N) 4 → Id Nat N Z }
+def FiveN4ZeroTy : Term := prog_parse { Π (N : Nat) → Le (Mul 5 N) 4 → Id Nat N Z }
 
 /-- The converse reflection to `LebTrueLeRaw`: an established order closes the test. -/
-def LeLebTrueRaw : Term := prog defer_check {
+def LeLebTrueRaw : Term := prog_parse {
   λ (A : Nat). elim A return (λ (Az : Nat). Π (B : Nat) → Le Az B → Id Bool (Leb Az B) True) {
     Z => λ (B : Nat). λ (H : Le Z B). Refl,
     S (A2) Ih => λ (B : Nat).
       elim B return (λ (Bz : Nat). Le (S A2) Bz → Id Bool (Leb (S A2) Bz) True) {
         Z => λ (H : Le (S A2) Z). botElim (Id Bool (Leb (S A2) Z) True) H,
         S (B2) Ihb => λ (H : Le (S A2) (S B2)). Ih B2 H } } }
-def LeLebTrueTy : Term := prog defer_check {
+def LeLebTrueTy : Term := prog_parse {
   Π (A : Nat) → Π (B : Nat) → Le A B → Id Bool (Leb A B) True }
 
 /-- `Eqb`'s soundness at symbolic arguments — the lemma every hashmap key test
     converts through. -/
-def EqbTrueEqRaw : Term := prog defer_check {
+def EqbTrueEqRaw : Term := prog_parse {
   λ (A : Nat). elim A return (λ (Az : Nat).
       Π (B : Nat) → Id Bool (Eqb Az B) True → Id Nat Az B) {
     Z => λ (B : Nat). elim B return (λ (Bz : Nat). Id Bool (Eqb Z Bz) True → Id Nat Z Bz) {
@@ -1883,29 +1883,29 @@ def EqbTrueEqRaw : Term := prog defer_check {
         Z => λ (H : Id Bool (Eqb (S A2) Z) True). botElim (Id Nat (S A2) Z) (BoolFTRaw H),
         S (B2) Ihb => λ (H : Id Bool (Eqb (S A2) (S B2)) True).
           IdCongrRaw Nat Nat (λ (X : Nat). S X) A2 B2 (Ih B2 H) } } }
-def EqbTrueEqTy : Term := prog defer_check {
+def EqbTrueEqTy : Term := prog_parse {
   Π (A : Nat) → Π (B : Nat) → Id Bool (Eqb A B) True → Id Nat A B }
 
-def EqbSymRaw : Term := prog defer_check {
+def EqbSymRaw : Term := prog_parse {
   λ (A : Nat). elim A return (λ (Az : Nat). Π (B : Nat) → Id Bool (Eqb Az B) (Eqb B Az)) {
     Z => λ (B : Nat). elim B return (λ (Bz : Nat). Id Bool (Eqb Z Bz) (Eqb Bz Z)) {
       Z => Refl, S (B2) Ihb => Refl },
     S (A2) Ih => λ (B : Nat).
       elim B return (λ (Bz : Nat). Id Bool (Eqb (S A2) Bz) (Eqb Bz (S A2))) {
         Z => Refl, S (B2) Ihb => Ih B2 } } }
-def EqbSymTy : Term := prog defer_check {
+def EqbSymTy : Term := prog_parse {
   Π (A : Nat) → Π (B : Nat) → Id Bool (Eqb A B) (Eqb B A) }
 
 /-- The pure fragment's `if e : …`: case on a stuck Bool, each branch receiving
     the equation it teaches. The workhorse of every pointwise-Find proof. -/
-def IfDecRaw : Term := prog defer_check {
+def IfDecRaw : Term := prog_parse {
   λ (B : Bool). λ (T : Type).
     λ (F : Id Bool B True → T). λ (G : Id Bool B False → T).
       boolRec (λ (Bm : Bool). (Id Bool Bm True → T) → ((Id Bool Bm False → T) → T))
         (λ (F2 : Id Bool True True → T). λ (G2 : Id Bool True False → T). F2 Refl)
         (λ (F2 : Id Bool False True → T). λ (G2 : Id Bool False False → T). G2 Refl)
         B F G }
-def IfDecTy : Term := prog defer_check {
+def IfDecTy : Term := prog_parse {
   Π (B : Bool) → Π (T : Type) →
     (Id Bool B True → T) → (Id Bool B False → T) → T }
 
@@ -1913,7 +1913,7 @@ def IfDecTy : Term := prog defer_check {
     doubled capacity. The `Leb 2 C` split exists because the ≤-chain
     `4c + 5 ≤ 8c` needs `c ≥ 2`, and `c = 1` closes by integrality instead
     (`5n ≤ 4` forces `n = 0`, and `5 ≤ 8` computes). -/
-def LedgerGrowRaw : Term := prog defer_check {
+def LedgerGrowRaw : Term := prog_parse {
   λ (C : Nat). λ (N : Nat). λ (H1 : Le (S Z) C). λ (Hle : Le (Mul 5 N) (Mul 4 C)).
     IfDecRaw (Leb 2 C) (Le (Mul 5 (S N)) (Mul 4 (Mul 2 C)))
       (λ (E : Id Bool (Leb 2 C) True).
@@ -1931,7 +1931,7 @@ def LedgerGrowRaw : Term := prog defer_check {
             NatRwRaw (λ (Nz : Nat). Le (Mul 5 (S Nz)) (Mul 4 (Mul 2 (S Z)))) Z N
               (IdSymRaw Nat N Z (FiveN4ZeroRaw N Hle1)) unit)
           Hle) }
-def LedgerGrowTy : Term := prog defer_check {
+def LedgerGrowTy : Term := prog_parse {
   Π (C : Nat) → Π (N : Nat) → Le (S Z) C → Le (Mul 5 N) (Mul 4 C) →
     Le (Mul 5 (S N)) (Mul 4 (Mul 2 C)) }
 
