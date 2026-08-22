@@ -7,13 +7,16 @@ import Dllbc.Std
 
 /-! # The standard lemma chain (docs/20 stage 4)
 
-    Every standard-library lemma as an `fn`, in one module block: the signature
-    is the stated type, the body is the proof, and this block elaborating IS the
-    definition-site check. 41 are native match+recursion rewrites; the rest
-    apply the original proof term (an `XRaw` constant of `StdChainRaw` below) to
-    the parameters. The spec functions and predicate formers are bound into the
-    state at the END of the block, so the file imports no lemma library and
-    consumers seed from `std.env` alone, citing lemmas and formers by name. -/
+    Every standard-library lemma as an `fn`, in a chain of module blocks, each
+    seeded from the one before (`std0`, `std1 := prog (std0) { … }`, …, `std`):
+    the signature is the stated type, the body is the proof, and a block
+    elaborating IS the definition-site check of the lemmas in it. 41 are native
+    match+recursion rewrites; the rest apply the original proof term (an `XRaw`
+    constant of `StdChainRaw` below) to the parameters. The spec functions and
+    predicate formers are bound into the state at the END of the chain, in the
+    final link `std`, so the file imports no lemma library and consumers seed
+    from `std` alone, citing lemmas and formers by name. Only `std` is a
+    consumer-facing name; the links are the cuts described below. -/
 
 namespace Dllbc
 
@@ -1105,8 +1108,37 @@ def LedgerGrowRaw : Term := prog_parse {
           Hle) }
 end StdChainRaw
 
+/-! ## The links
+
+    One block per transcription segment (the `-- ── segment k ──` markers are
+    the cuts, and they are arbitrary: docs/20's "cut the block at any statement
+    boundary and thread env"), the former `let`s alone in the last. The `fn`
+    ORDER is the single block's order, unchanged; a call to a lemma in an
+    earlier link resolves by name through the seed (`Checked.seeded` retargets a
+    block's calls at the seed's declarations, and a `[k]` hint rides the seed's
+    `ledgers.hints`), a call to a sibling in the same link through `bindFn` as
+    before. Cutting changes nothing the consumer can observe — `std.env` holds
+    every lemma and former either way — and it was forced, twice over, by the
+    shape of ONE block rather than by anything semantic:
+
+    * **The code generator's recursion guard.** A block's `Term` is quoted as a
+      right-nested `Expr` — the `fn` row expands to `FnMacro.bindFn slot dec
+      (rest)`, so 136 statements are 136 nested applications — and compiling
+      the `def` recurses into that nesting. At 136 statements it reports
+      "maximum recursion depth reached in the code generator" (main's
+      detach-tails commits changed the per-statement shape and pushed it over;
+      `set_option maxRecDepth` does not reach this guard). Ten links of 11
+      `fn`s and one of 26 `let`s compile without comment.
+    * **The elaboration cost is superlinear in the block's length.** Each
+      `bindFn` retargets the whole REST of the block, so one block walks each
+      statement's tail once per `fn` above it. Measured on the same tree, same
+      136 statements: one block elaborates in 80 s (and then fails to compile);
+      these eleven links elaborate in 5.8 s total, 17 s wall for the module
+      including the `StdChainRaw` constants. The seed Ω is the same size in
+      both — the links save the tail walks, not the refinements. -/
+
 set_option maxHeartbeats 0 in
-def std : Checked := prog () {
+def std0 : Checked := prog () {
   -- ── segment 0 ──
 
   fn LeRefl [n] (n : Nat) -> Le n n {
@@ -1148,6 +1180,11 @@ def std : Checked := prog () {
   fn IdCongr (A : Type, B : Type, F : A → B, x : A, y : A, p : Id A x y) -> Id B (F x) (F y) {
     match p { Refl => Refl } };
 
+  ()
+}
+
+set_option maxHeartbeats 0 in
+def std1 : Checked := prog (std0) {
   -- ── segment 1 ──
 
 
@@ -1211,6 +1248,11 @@ def std : Checked := prog () {
     Dllbc.StdChainRaw.SwapLSetRaw i j l pij p2
   };
 
+  ()
+}
+
+set_option maxHeartbeats 0 in
+def std2 : Checked := prog (std1) {
   -- ── segment 2 ──
 
   fn BoolFT (H : Id Bool False True) -> Bot { Dllbc.StdChainRaw.BoolFTRaw H };
@@ -1281,6 +1323,11 @@ def std : Checked := prog () {
     }
   };
 
+  ()
+}
+
+set_option maxHeartbeats 0 in
+def std3 : Checked := prog (std2) {
   -- ── segment 3 ──
 
   fn EqbLtFalse [a] (a : Nat, b : Nat, Hab : Le (S a) b) -> Id Bool (Eqb a b) False {
@@ -1343,6 +1390,11 @@ def std : Checked := prog () {
       Sorted (Dllbc.StdChainRaw.Append a (Cons p b)) {
     Dllbc.StdChainRaw.SortedAppendPivotRaw p a b Sa ua Sb lb0 };
 
+  ()
+}
+
+set_option maxHeartbeats 0 in
+def std4 : Checked := prog (std3) {
   -- ── segment 4 ──
 
   fn CountConsL (n : Nat, x : Nat, a : List Nat, b : List Nat, c : List Nat,
@@ -1389,6 +1441,11 @@ def std : Checked := prog () {
       S0 : Dllbc.StdChainRaw.SortedA (S k) (acons k h t)) -> Dllbc.StdChainRaw.BoundA h k t {
     Dllbc.StdChainRaw.SortedHeadARaw k h t S0 };
 
+  ()
+}
+
+set_option maxHeartbeats 0 in
+def std5 : Checked := prog (std4) {
   -- ── segment 5 ──
 
 
@@ -1466,6 +1523,11 @@ def std : Checked := prog () {
     Dllbc.StdChainRaw.UbOfNoAboveARaw P N A Hn
   };
 
+  ()
+}
+
+set_option maxHeartbeats 0 in
+def std6 : Checked := prog (std5) {
   -- ── segment 6 ──
 
   fn UbPermA (P : Nat, M : Nat, A : Array M Nat, Q : Nat, B : Array Q Nat,
@@ -1513,6 +1575,11 @@ def std : Checked := prog () {
       Σ (Hu : Dllbc.StdChainRaw.UbA P K L). Dllbc.StdChainRaw.SplitAL P (S Z) Mm W {
     Dllbc.StdChainRaw.SplitACatE1Raw P K Mm L W Hs };
 
+  ()
+}
+
+set_option maxHeartbeats 0 in
+def std7 : Checked := prog (std6) {
   -- ── segment 7 ──
 
   fn SplitACatI0 (P : Nat, K : Nat, Mm : Nat, L : Array K Nat, W : Array Mm Nat,
@@ -1588,6 +1655,11 @@ def std : Checked := prog () {
                       Dllbc.StdChainRaw.LbA Pv Jj G) {
       Pair (U) (V) => V } };
 
+  ()
+}
+
+set_option maxHeartbeats 0 in
+def std8 : Checked := prog (std7) {
   -- ── segment 8 ──
 
 
@@ -1682,6 +1754,11 @@ def std : Checked := prog () {
             (Add (Dllbc.StdChainRaw.Mul a2 b) (Dllbc.StdChainRaw.Mul a2 c)) MulAddR(a2, b, c))
           hi } } };
 
+  ()
+}
+
+set_option maxHeartbeats 0 in
+def std9 : Checked := prog (std8) {
   -- ── segment 9 ──
 
 
@@ -1769,6 +1846,11 @@ def std : Checked := prog () {
       Le (Dllbc.StdChainRaw.Mul 5 (S n)) (Dllbc.StdChainRaw.Mul 4 (Dllbc.StdChainRaw.Mul 2 c)) {
     Dllbc.StdChainRaw.LedgerGrowRaw c n H1 Hle };
 
+  ()
+}
+
+set_option maxHeartbeats 0 in
+def std : Checked := prog (std9) {
   -- ── the spec functions and predicate formers, bound LAST so consumers resolve
   -- them by name from the seed while the fn checks above never sweep them (each
   -- σ-refinement rebuilds every Ω binding; the raw proof terms are not bound at
@@ -1802,5 +1884,6 @@ def std : Checked := prog () {
 
   ()
 }
+
 
 end Dllbc

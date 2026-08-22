@@ -664,7 +664,7 @@ def arrOfV : Val → Option (List Nat)
 
 /-- Build the array, borrow it, sort it in place, read it back. `hfuel` is `Le n n`,
     which computes to `Unit` at a concrete length. -/
-def qsCallerA (l : List Nat) : Term := prog defer_check {
+def qsCallerA (l : List Nat) : Term := prog_parse {
   let z = %(tarrT l);
   let b = &m z;
   QuicksortA(%(Term.nat l.length), %(Term.nat l.length), (), b);
@@ -672,7 +672,7 @@ def qsCallerA (l : List Nat) : Term := prog defer_check {
   () }
 
 /-- `splitA` alone, so the divergence can be exhibited one call deep instead of three. -/
-def splCaller (l : List Nat) (pvt : Nat) : Term := prog defer_check {
+def splCaller (l : List Nat) (pvt : Nat) : Term := prog_parse {
   let z = %(tarrT l);
   let b = &m z;
   let r = SplitA(%(Term.nat l.length), %(Term.nat l.length), (), %(Term.nat pvt), b);

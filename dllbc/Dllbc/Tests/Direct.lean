@@ -524,7 +524,7 @@ example : progRejects splitOffLieHead "does not have return type" = true := by n
 
 def vnatV : Nat → Val | 0 => .ctor "Z" [] | k + 1 => .ctor "S" [vnatV k]
 def vlistV : List Nat → Val | [] => .ctor "Nil" [] | x :: xs => .ctor "Cons" [vnatV x, vlistV xs]
-def soCallerTail (l : List Nat) (i : Nat) : Term := prog defer_check {
+def soCallerTail (l : List Nat) (i : Nat) : Term := prog_parse {
   let x = %(Std.ofList (l.map Term.nat));
   let b = &m x;
   let p = SplitOff(b, %(Term.nat i), ());
@@ -663,7 +663,7 @@ example : progRejects (setSwapUnder setHonest (exitIs oldvT) .unit)
     Proof arguments in the callers below are placeholders `()`, since the
     executing run does not type-check. Each rides the honest chain as its tail, so
     what runs is the function declared above it. -/
-def setCallerTail (l : List Nat) (i x : Nat) : Term := prog defer_check {
+def setCallerTail (l : List Nat) (i x : Nat) : Term := prog_parse {
   let z = %(Std.ofList (l.map Term.nat));
   let b = &m z;
   SetAt(b, %(Term.nat i), %(Term.nat x), ());
@@ -678,7 +678,7 @@ example : runSetAt [1,2,3] 0 9 = true := by native_decide
 example : runSetAt [1,2,3] 2 9 = true := by native_decide
 example : runSetAt [5,5,5,5] 1 7 = true := by native_decide
 
-def swapCallerTail (l : List Nat) (i j : Nat) : Term := prog defer_check {
+def swapCallerTail (l : List Nat) (i j : Nat) : Term := prog_parse {
   let z = %(Std.ofList (l.map Term.nat));
   let b = &m z;
   SwapAt(b, %(Term.nat i), %(Term.nat j), (), (), ());
@@ -1516,7 +1516,7 @@ example : progRejects qsStaleBound "does not have return type" = true := by nati
     `if e : Leb x p` on a closed Bool takes the `ownedSelect` path, where the
     equation is bound to `Refl`. -/
 
-def partCallerTail (l : List Nat) (pvv : Nat) : Term := prog defer_check {
+def partCallerTail (l : List Nat) (pvv : Nat) : Term := prog_parse {
   let z = %(Std.ofList (l.map Term.nat));
   let b = &m z;
   let r = Partition(%(Term.nat l.length), b, %(Term.nat pvv), ());
@@ -1537,7 +1537,7 @@ example : runPart [2,2,2] 2 = true := by native_decide       -- the boundary: x 
 /-- The caller the sort's differentials share: own a list, lend it, sort, read it
     back. `Hfuel : Le (Len l) (Len l)` is supplied as `()` — the bound holds by
     COMPUTATION here, which is the ordinary route for a concrete payload. -/
-def qsCallerTail (l : List Nat) : Term := prog defer_check {
+def qsCallerTail (l : List Nat) : Term := prog_parse {
   let z = %(Std.ofList (l.map Term.nat));
   let b = &m z;
   Quicksort(%(Term.nat l.length), b, ());
