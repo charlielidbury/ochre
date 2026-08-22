@@ -206,4 +206,31 @@ example :
     && (useStd.env.env.find? (fun kv => kv.1.name == "u")).isSome
     && useStd.env.nextSym > Dllbc.std.env.nextSym := by native_decide
 
+
+/-! ## (8) Seeded test helpers — the golden-and-mutants pattern
+
+    A golden program is a checked `prog (seed) { … }`; its mutants are Terms
+    (built by `prog_parse` or by editing `golden.term`) checked from the SAME
+    seed by `progRejectsFrom`/`progOkFrom`. The fragment below is unseeded at
+    elaboration: its `LeRefl(True)` is an unresolved `.call` that the helper
+    retargets at the seed's declarations before walking. -/
+
+def mutantArg : Term := prog_parse { let y = LeRefl(True); () }
+example : progRejectsFrom Dllbc.std.env mutantArg "does not have its parameter type" = true := by
+  native_decide
+
+def goldenTerm : Term := prog_parse { let y = LeRefl(2); () }
+example : progOkFrom Dllbc.std.env goldenTerm = true := by native_decide
+
+-- A mutant made from a CHECKED golden's own term (already retargeted): the
+-- helper's retarget is a no-op on it and the walk still runs from the seed.
+example : progOkFrom Dllbc.std.env use1.term = true := by native_decide
+
+/-- Executing from the seed: the program's own bindings, the seed's dropped.
+    Known limitation (docs/20): the seed was interpreted in checking mode, so a
+    library fn called under `executing := true` is not entered — `y` is an
+    existential here, not a concrete proof value. A library interpreted in
+    executing mode would be needed for concrete proof values to flow. -/
+example : (runProgramFrom Dllbc.std.env goldenTerm).isOk = true := by native_decide
+
 end Dllbc.Tests.ModuleStates

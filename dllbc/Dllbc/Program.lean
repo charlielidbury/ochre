@@ -457,6 +457,60 @@ def moduleBinds (seed : St) : List (String × Var × Option Nat) :=
 def moduleRetarget (seed : St) (t : Term) : Term :=
   FnMacro.retarget (moduleBinds seed) t
 
+/-! ## Seeded test helpers (docs/20 stage 6)
+
+    The checking helpers above walk from `initSt`. A program that cites a module's
+    lemmas must walk from that module's state instead, and its unresolved calls
+    must first be retargeted at the seed's declarations — the two steps
+    `Checked.seeded` performs, with the verdict read off instead of the state
+    kept. A term built by mutating a `Checked.term` (already retargeted) passes
+    through `moduleRetarget` unchanged; a fresh fragment citing a library lemma
+    gets resolved by it. -/
+
+/-- The seeded ⇒-walk's paths, scopes ended: `programPaths` from `seed`, with the
+    seed's seal-site numbering continued and the block's calls retargeted. -/
+def programPathsFrom (seed : St) (t : Term) : List (Except Diag (Val × St)) :=
+  let (_, prepared) := moduleBoundary seed (moduleRetarget seed t)
+  (exploreD defaultFuel prepared { seed with executing := false }).map
+    (fun r => r.bind (fun p =>
+      match (endScope defaultFuel).run p.2 with
+      | .ok _ st => .ok (p.1, st)
+      | .error e s => .error (Diag.of e s)))
+
+/-- **Check a program from a seed** — `checkProgram` with the module's state as
+    the starting point. -/
+def checkProgramFrom (seed : St) (t : Term) (retType : Term := ty{ Unit }) :
+    Except String Unit :=
+  Except.mapError Diag.msg (programVerdict (some retType) (programPathsFrom seed t))
+
+/-- The seeded program checks. -/
+def progOkFrom (seed : St) (t : Term) (retType : Term := ty{ Unit }) : Bool :=
+  match checkProgramFrom seed t retType with | .ok _ => true | .error _ => false
+
+/-- The seeded program is rejected, and the error mentions `needle`. -/
+def progRejectsFrom (seed : St) (t : Term) (needle : String) (retType : Term := ty{ Unit }) :
+    Bool :=
+  match checkProgramFrom seed t retType with
+  | .ok _ => false
+  | .error e => strContains e needle
+
+/-- **Run a program from a seed**, concretely, returning what the program ITSELF
+    left in Ω: the seed's own entries (the library's declarations among them) are
+    dropped before canonicalization, so an expected environment names only the
+    program's bindings — as `progRunsTo`'s do. -/
+def runProgramFrom (seed : St) (t : Term) : Except String Env :=
+  let (_, prepared) := moduleBoundary seed (moduleRetarget seed t)
+  match (do let _ ← readR defaultFuel prepared; endScope defaultFuel).run
+      { seed with executing := true } with
+  | .ok _ st =>
+    let seeded := seed.env.map (·.1)
+    .ok (canonicalize (st.env.filter (fun kv => !seeded.contains kv.1)))
+  | .error e _ => .error e
+
+/-- The seeded program runs to the given final Ω (the program's own bindings). -/
+def progRunsToFrom (seed : St) (t : Term) (expected : Env) : Bool :=
+  match runProgramFrom seed t with | .ok env => env == expected | .error _ => false
+
 /-- The value a `prog () { … }` / `prog (e) { … }` block elaborates to. The
     state is RE-DERIVED by the walk rather than quoted — `St` needs no `ToExpr`
     — and by purity it is the value the elaboration-time check computed: that
