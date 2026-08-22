@@ -196,23 +196,24 @@ example : progRuns (prog_parse {
 -- first — never a by-name hit on a live `v`.
 example : progRejects scrutFrag "free identifier 'v'" = true := by native_decide
 
-/-! ## A lowercase kernel constant is decided at the splice, binders first
+/-! ## A lowercase kernel constant is the splice site's binder when one is in view
 
     `k` is the `Id` eliminator AND the name every `S(k) =>` arm binds. Inline
-    the local wins because it is looked up first; a fragment cannot look it up,
-    so `k` stays free and `bindIdent` asks the splice site's binders before the
-    constant table. With no binder anywhere — a bare fragment at the boundary —
-    it is the eliminator. -/
+    the local wins because it is looked up before the table; a fragment has no
+    local to find, classifies `k` as the constant, and `bindFree`'s `.const`
+    row lets the splice site's binder claim it — so the spliced program is the
+    inline one. With no binder anywhere it stays the eliminator. -/
 
 def kFrag : Term := prog_parse { S(k) }
-example : kFrag.freeIdents = ["k"] := by native_decide
+example : kFrag.freeIdents = [] := by native_decide
+example : Term.beq kFrag (.ctorApp "S" [.const "k"]) = true := by native_decide
 
 def kSpliced : Term := prog{ fn Bump (n : Nat) -> Nat { match n { Z => 0, S(k) => %kFrag } }; () }
 def kInline : Term := prog{ fn Bump (n : Nat) -> Nat { match n { Z => 0, S(k) => S(k) } }; () }
 example : Term.beq kSpliced kInline = true := by native_decide
 
 example : Term.beq (Term.rejectFree prog_parse { k }) (.const "k") = true := by native_decide
-example : Term.beq (Term.rejectFree prog_parse { natRec }) (.const "natRec") = true := by native_decide
+example : Term.beq (Term.rejectFree (.ident "natRec")) (.const "natRec") = true := by native_decide
 
 /-! ## A call whose head the splice site binds
 

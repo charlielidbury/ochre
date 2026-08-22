@@ -999,10 +999,14 @@ open Lean.Elab Lean.Elab.Term in
 elab_rules : term
   | `(ident_or_free% $x:ident) => do
     let termTy := Lean.mkConst ``Dllbc.Term
-    if !x.getId.isAtomic then elabTerm x (some termTy)
-    else match ← resolveId? x with
-      | some _ => elabTerm x (some termTy)
-      | none => return mkApp (Lean.mkConst ``Dllbc.Term.ident) (mkStrLit x.getId.toString)
+    -- Known-or-not, and nothing more: an ambiguous global (`Append` the Lean
+    -- class against `StdLemmas.Append`) is for `elabTerm`'s overload resolution
+    -- against the expected type, exactly as the bare identifier always was.
+    let known := !x.getId.isAtomic
+      || ((← getLCtx).findFromUserName? x.getId).isSome
+      || !(← resolveGlobalName x.getId).isEmpty
+    if known then elabTerm x (some termTy)
+    else return mkApp (Lean.mkConst ``Dllbc.Term.ident) (mkStrLit x.getId.toString)
 
 /-- Resolve a bare identifier in a type/back position. Pure binder in scope →
     `pvar` at that very name; earlier telescope param → `var`; constructor →
@@ -1024,12 +1028,13 @@ def resolveName (parse : Bool) (rctx : List (String × Nat)) (pctx : List String
     | none =>
       if ctorSet.contains s then `(Dllbc.Term.ctorApp $(quote s) [])
       -- A LOWERCASE constant (`k`, `natRec`, …) is shadowable by an ordinary
-      -- binder, and in a fragment that binder may be at the splice site: left
-      -- to `bindIdent`, which asks the binders first and the table last. The
-      -- capitalized ones are reserved as binders and need no such deferral.
-      else if constSet.contains s then
-        if parse && !Dllbc.isUpperInit s then `(Dllbc.Term.ident $(quote s))
-        else `(Dllbc.Term.const $(quote s))
+      -- binder, and in a fragment that binder may be at the splice site. It is
+      -- still classified HERE — a `prog_parse` term is routinely handed to the
+      -- normalizer with no boundary in between (`pv`, KernelFloor), and an
+      -- `.ident` there resolves to nothing — and the splice site's binders get
+      -- their say in `bindFree`'s `.const` row, which is the same "scope beats
+      -- the table" this chain applies when the binder is in view.
+      else if constSet.contains s then `(Dllbc.Term.const $(quote s))
       else match aliasMap.lookup s with
         | some n => pure ⟨(mkIdent n).raw⟩
         | none =>

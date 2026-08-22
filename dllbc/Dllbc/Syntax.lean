@@ -1625,12 +1625,12 @@ end
     two PROJECTIONS (`atake`/`adrop`), which are what lets a signature name the
     pieces a carve mints.
 
-    Here rather than in the surface because the splice-site bind needs it: a
-    LOWERCASE one (`k`, `j`, `natRec`, …) is shadowable by an ordinary binder
-    (`reservedBinder` refuses only the capitalized ones), so a fragment meeting
-    a free `k` cannot know whether it is the eliminator or the match arm's
-    binder at the splice site — it stays `.ident` and is decided by
-    `bindIdent`, binders first. -/
+    Here rather than in the surface because the boundary's bind (`rejectFree`,
+    the empty-context splice) resolves a leftover `.ident` against it, table
+    last. A LOWERCASE one (`k`, `j`, `natRec`, …) is shadowable by an ordinary
+    binder (`reservedBinder` refuses only the capitalized ones); the parser
+    still classifies it, and `bindFree`'s `.const` row lets the splice site's
+    binders claim it — see there. -/
 def constNames : List String :=
   ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "boolRec", "listRec", "sigmaRec", "botElim", "j", "k",
    "Array", "arrCat", "acons", "arrRec", "aget", "atake", "adrop"]
@@ -1654,7 +1654,19 @@ mutual
     | .var x => .var x
     | .unit => .unit
     | .type => .type
-    | .const c => .const c
+    -- **A constant the splice site shadows** is the splice site's binder, as it
+    -- would be inline: `resolveName` looks a binder up before the table, so
+    -- `k` under an `S(k) =>` arm is the arm's `k` and not the `Id` eliminator.
+    -- A fragment classifies `k` as the constant because no binder of its own
+    -- claims it; the binder it could not see is here. Only the lowercase
+    -- constants can ever match (the capitalized ones are reserved as binders),
+    -- and a closed program spliced under such a binder reads as it would
+    -- inline, which is what capture-on-splice means.
+    | .const c =>
+      if pctx.contains c then .pvar c
+      else match rctx.lookup c with
+        | some id => if id == declSlot then .const c else .var ⟨id, c⟩
+        | none => .const c
     | .pvar x => .pvar x
     | .letIn x a => .letIn x (Term.bindFree rctx pctx a)
     | .assign a b => .assign (Term.bindFree rctx pctx a) (Term.bindFree rctx pctx b)
