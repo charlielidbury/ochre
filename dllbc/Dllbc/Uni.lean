@@ -120,10 +120,13 @@ syntax:max "*" uterm:max : uterm                            -- deref / peel
 syntax:max "old" "*" uterm:max : uterm                      -- §5.4 old *v: entry snapshot of a borrow-param deref
 syntax:max "Id" uterm:max uterm:max uterm:max : uterm        -- Id A a b
 syntax:max ident noWs "(" uterm,* ")" : uterm                -- call / ctorApp (NO space before `(`)
--- `@name(E)` — a claim-site marker (docs/21), identity on `E`. The PARENTHESIZED
--- form on purpose: bare `@name E` would fight application juxtaposition for `E`'s
--- extent, and a claim site should read as exactly one delimited thing.
-syntax:max "@" noWs ident noWs "(" uterm ")" : uterm         -- @name(E) — marker
+-- `@name E` — a claim-site marker (docs/21), identity on `E`. LOOSE binding, the
+-- λ-style prefix: the marker takes the MAXIMAL term to its right (application
+-- spines, arrows — anything a level-10 parse absorbs), stopping only at a real
+-- delimiter (`,` `)` `;` `{`), so `-> @claim Id Nat r (S Z) {` marks the whole
+-- spine bare. `@name(E)` is the SAME row through ordinary grouping — the uterm
+-- after the ident is `(E)` — so both spellings exist without a second row.
+syntax:10 "@" noWs ident uterm:10 : uterm                    -- @name E — marker
 -- ¶2.1's two new place steps. They bind TIGHTER than the peel, so a reborrow of a
 -- range through a borrow is written `&m (*v)[lo ; cnt]` and `*v[i]` would mean
 -- `*(v[i])` — peel the borrow stored AT slot `i`, which is how an `Array n (&mut T)`
@@ -1052,11 +1055,21 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
   | `(uterm| ($e:uterm)) => elabUTerm rctx pctx next e
   | `(uterm| Type) => return (← `(Dllbc.Term.type), next)
   | `(uterm| % $e:term) => return (← `(($e : Dllbc.Term)), next)
-  | `(uterm| @$nm:ident($e:uterm)) => do
+  | `(uterm| @$nm:ident $e:uterm) => do
     -- The marker row wraps and nothing else: occurrences inside `E` file as
     -- normal (spans, hovers), and the node is stripped at the program boundary.
+    --
+    -- ONE name is REFUSED, loudly: `@res` is the kernel form of `*res`, and a
+    -- marker named `res` would parse under this row and then silently mean its
+    -- body's CURRENT value instead of the exit payload. `@old` needs no guard
+    -- here — `old` is a KEYWORD of this grammar (the `old *v` row), so the
+    -- parser itself refuses it as the row's ident; verified, not assumed
+    -- (Tests/MarkedTwins pins both refusals as they actually read).
+    let s := nm.getId.toString
+    if s == "res" then
+      Macro.throwErrorAt nm s!"'@res' cannot be a marker name: it collides with the kernel spelling `@res(…)` (the exit payload, written `*res`), and a marker named 'res' would silently mean its body's CURRENT value instead. Pick another name."
     let (e', n) ← elabUTerm rctx pctx next e
-    return (← `(Dllbc.Term.marker $(quote nm.getId.toString) $e'), n)
+    return (← `(Dllbc.Term.marker $(quote s) $e'), n)
   | `(uterm| $n:num) => return (← buildNat n.getNat, next)
   | `(uterm| old * $e:uterm) => do
     -- §5.4 `old *v`: the ENTRY snapshot, sugar over the telescope's existing

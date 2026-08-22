@@ -68,15 +68,17 @@ example : (match Term.replaceMarked? "m" Term.unit twoSame with
 /-! ## (T3) THE POINT — an honest fn, and its twin lies in the return type
 
     `pinHonest` is Direct.lean's `PinOne` with its claim NAMED: the return type
-    pins the result to `S Z`, and `@claim(…)` declares that pin as the attack
-    surface. The twin is not written — it is MINTED, by swapping the claim's
-    body for `Id Nat r (S (S Z))` in the honest `Term` value. The body still
-    returns `Refl` for `S Z`, so the twin is rejected at its own declaration,
-    for the meaningful reason (the certificate does not prove the strengthened
-    claim), and `twin != honest` pins that the mutation landed. -/
+    pins the result to `S Z`, and `@claim …` declares that pin as the attack
+    surface — BARE, no brackets, marking the whole `Id` spine up to the body's
+    `{` (the loose λ-style extent). The twin is not written — it is MINTED, by
+    swapping the claim's body for `Id Nat r (S (S Z))` in the honest `Term`
+    value. The body still returns `Refl` for `S Z`, so the twin is rejected at
+    its own declaration, for the meaningful reason (the certificate does not
+    prove the strengthened claim), and `twin != honest` pins that the mutation
+    landed. -/
 
 def pinHonest : Term := prog{
-  fn PinOne () -> Σ (r : Nat). @claim(Id Nat r (S Z)) { Pair(S Z, Refl) };
+  fn PinOne () -> Σ (r : Nat). @claim Id Nat r (S Z) { Pair(S Z, Refl) };
   () }
 
 example : progOk pinHonest = true := by native_decide
@@ -136,5 +138,48 @@ example : Term := prog{
   *b := Cons(2, Nil);
   let d = *b;
   () }
+
+/-! ## (T5) THE SPELLINGS AND THE EXTENT — one row, pinned truth
+
+    `@name E` is ONE loose grammar row (λ-style prefix); `@name(E)` and
+    `@name (E)` are the same row reading a grouped uterm, not a second
+    spelling. The extent of a bare marker is MAXIMAL: everything a level-10
+    parse absorbs to its right — a whole application spine, a whole arrow —
+    stopping only at a real delimiter. So inside an argument list the comma
+    delimits (`Cons(@m Z, Nil)` marks `Z` alone), and `@m Nat → Nat` marks the
+    ARROW, not its domain. Each pin below is one of those sentences as a
+    `Term` equality. -/
+
+example : (ty{ @m Z } == Term.marker "m" (.ctorApp "Z" [])) = true := by native_decide
+example : (ty{ @m(Z) } == ty{ @m Z }) = true := by native_decide
+example : (ty{ @m (Z) } == ty{ @m Z }) = true := by native_decide
+example : (ty{ Cons(@m Z, Nil) }
+           == Term.ctorApp "Cons" [.marker "m" (.ctorApp "Z" []), .ctorApp "Nil" []]) = true := by
+  native_decide
+example : (ty{ @m Cons(Z, Nil) } == Term.marker "m" (ty{ Cons(Z, Nil) })) = true := by
+  native_decide
+example : (ty{ @m Nat → Nat } == Term.marker "m" (ty{ Nat → Nat })) = true := by native_decide
+
+/-! ## (T6) NEGATIVE CONTROL — a marker cannot impersonate a kernel spelling
+
+    `@old(…)` is the kernel's own entry-snapshot spine (surface: `old *v`) and
+    `@res` is the kernel form of `*res`; a marker by either name would mean
+    its body's CURRENT value, silently. Neither gets through, and the two pins
+    below the comment record how, which DIFFERS between the two: `old` is a
+    KEYWORD of the grammar (the `old *v` row), so `@old Z` dies in the PARSER
+    — "unexpected token 'old'; expected identifier" — which is also why it has
+    no `#guard_msgs` pin here: a term that fails to parse fails the whole
+    command before `#guard_msgs` can guard it (tried; the pin form does not
+    exist). `res` is an ordinary identifier (`*res` matches it as one), so
+    `@res` parses under the generic row and the ELABORATOR refuses the name —
+    that one pins. The magic spellings themselves never enter the marker row —
+    their surface forms are `old *v` and `*res`, no `@` in either — and the
+    full suite's `old`/`res` tests pin that they still parse as themselves. -/
+
+/--
+error: '@res' cannot be a marker name: it collides with the kernel spelling `@res(…)` (the exit payload, written `*res`), and a marker named 'res' would silently mean its body's CURRENT value instead. Pick another name.
+-/
+#guard_msgs in
+example : Term := ty{ @res Z }
 
 end Dllbc.Tests.MarkedTwins
