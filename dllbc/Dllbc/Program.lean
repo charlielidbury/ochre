@@ -394,8 +394,7 @@ structure Checked where
     (stage-0 finding). Returns the next free site alongside the prepared term so
     the final state can record where THIS block stopped. -/
 def moduleBoundary (seed : St) (t : Term) : Nat × Term :=
-  let (n', t') := Term.numberSealsGo seed.nextSite t
-  (n', pushContinuations t')
+  Term.numberSealsGo seed.nextSite t
 
 /-- The seeded walk's paths, Diag-level, WITHOUT the closing `endScope`: a
     module's bindings must persist into the next block, and `endScope` is the

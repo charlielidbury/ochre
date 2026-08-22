@@ -17,7 +17,7 @@ names the ladder rule it exercises.
 
 namespace Dllbc.Tests.MatchJoin
 open Dllbc
-open Dllbc.StdLemmas (LebTrueLe)
+open Dllbc.StdLemmas (LebTrueLeRaw)
 
 /-! ## (1) THE HEADLINE — sequential matches stop multiplying (ladder rule 5:
     disagreeing results re-mint as fresh σ : Bool, continuation walked once). -/
@@ -51,7 +51,7 @@ example : progOk agreeArms = true := by native_decide
     re-split learns nothing about `n`, and the citation fails. The remedy is
     (5) below: return the evidence as data. -/
 
-def correlClass : Term := prog defer_check {
+def correlClass : Term := prog_parse {
   fn P (n : Nat) -> Unit {
     let N0 = n;
     let b = match n { Z => True, S(k) => False };
@@ -64,7 +64,7 @@ example : progRejects correlClass "does not have its ascribed type" = true := by
 /-! ## (4) BRANCH-DIVERGENT BORROWS STAY REJECTED (rule 7; loan-sets out of
     scope) — with the seam's own message naming the slot and the remedy. -/
 
-def divergentBorrows : Term := prog defer_check {
+def divergentBorrows : Term := prog_parse {
   fn F (c : Bool, x : &mut Nat, y : &mut Nat) -> Unit {
     let r = match c { True => x, False => y };
     *r := 5;
@@ -79,7 +79,7 @@ example : progRejects divergentBorrows "the arms disagree at the result" = true 
     (`Id Bool (Leb a b) True` / `… False` join at `Id Bool (Leb a b) σf`), so
     the pack needs no annotation. The continuation destructures, re-splits the
     flag, and the True arm's refinement σf := True turns the evidence back
-    into `Id Bool (Leb a b) True` — `LebTrueLe` closes it. This is the
+    into `Id Bool (Leb a b) True` — `LebTrueLeRaw` closes it. This is the
     correlation class (3), repaired by the language's own idiom. -/
 
 def packEvidence : Term := prog{
@@ -88,7 +88,7 @@ def packEvidence : Term := prog{
     let c = Leb a b;
     let p = match e : c { True => Pair(True, e), False => Pair(False, e) };
     let Pair(flag, ev) = p;
-    match flag { True => { NeedLe(a, b, LebTrueLe a b ev); () }, False => () }
+    match flag { True => { NeedLe(a, b, LebTrueLeRaw a b ev); () }, False => () }
   };
   () }
 example : progOk packEvidence = true := by native_decide
@@ -123,7 +123,7 @@ example : progRunsTo concreteJoin
 
 /-! ## (8) The join is exhaustiveness-checked like any symbolic split. -/
 
-def joinNonExh : Term := prog defer_check {
+def joinNonExh : Term := prog_parse {
   fn P (n : Nat) -> Unit {
     let b = match n { Z => True };
     () };

@@ -591,7 +591,7 @@ structure SpanAcc where
   /-- Spans whose tooltip the WALKER already knows, rendered: a parameter binder
       or occurrence (its annotation is right there in the source) and a callee
       name (its signature is the `fn` above it). No checker involvement, so these
-      work in `prog defer_check { }` too. -/
+      work in `prog_parse { }` too. -/
   hovers : Array (Syntax × String) := #[]
   /-- Spans whose tooltip only the CHECKER knows: an occurrence of a runtime
       binding, joined against the checker's tables by id AND name — and, for
