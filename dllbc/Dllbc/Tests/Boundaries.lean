@@ -35,15 +35,12 @@ namespace Dllbc.Tests.S5Bound
 
 /-! ## Pure library (types as terms) -/
 
-def natT : Term := .const "Nat"
-def listNatT : Term := .app (.const "List") natT
-/-- `VecF T n = natRec (λ_.Type) Unit (λn'. λrec. Σ(_:T). rec) n`. -/
-def vecFT : Term :=
-  .lam "T" .type (.lam "n" natT
-    (.app (.app (.app (.app (.const "natRec") (.lam "_" natT .type)) (.const "Unit"))
-      (.lam "n'" natT (.lam "rec" .type (.sigmaT "_" (.pvar "T") (.pvar "rec"))))) (.pvar "n")))
-/-- `Σ (l : Nat). VecF Nat l` — the self-describing length-vector pair. -/
-def sigVecF : Term := .sigmaT "l" natT (.app (.app vecFT natT) (.pvar "l"))
+/-- `VecF T n = natRec (λ_.Type) Unit (λn'. λrec. Σ(_:T). rec) n`. Lowercase
+    binders throughout: a capital one would put the comptime marker `⇝` on its
+    domain (`Surface.binderDom`), and this type carries no modes. -/
+def vecFT : Term := ty{
+  λ (t : Type). λ (n : Nat).
+    natRec (λ (m : Nat). Type) Unit (λ (n' : Nat). λ (rec : Type). Σ (x : t). rec) n }
 
 /-! ## List push, by take and rebuild -/
 
