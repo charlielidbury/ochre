@@ -136,6 +136,19 @@ def noSlot : Nat := 0xFFFF_FFFF_FFFF
     them, which is why that check retired here rather than being re-expressed. -/
 def declSlot : Nat := 0xFFFF_FFFF_FFFE
 
+/-- **An UNRESOLVED match scrutinee's slot** (docs/22 §2.2) — the third tag.
+
+    A parsed fragment (`prog_parse { }`) leaves a name it does not bind as
+    `Term.ident`, to be bound where the fragment is spliced. The one occurrence
+    position the grammar does not let be a `Term` is a match's scrutinee, which
+    is a `Var` by §3 — so a free `match v { … }` carries its free-ness here, in
+    the id, and `Term.bindFree` rewrites it by name exactly as it rewrites an
+    `.ident`. `findSlot?` answers `none` for this tag, so one that escapes the
+    boundary is "unbound at runtime" rather than a silent by-name hit on whatever
+    `v` happens to be live; `Term.freeIdents` reports it so the boundary rejects
+    it first. -/
+def freeSlot : Nat := 0xFFFF_FFFF_FFFD
+
 instance : Coe String Var := ⟨fun s => ⟨noSlot, s⟩⟩
 
 /-- Does this identifier start with an uppercase letter? **The mode marker**
@@ -365,6 +378,22 @@ inductive Term where
       callee's λ/Π to decide which arrow evaluates the argument. Same room, two
       doors (§2.3). -/
   | cmpT   : Term → Term
+  /-- **An UNRESOLVED identifier** (docs/22). A `prog_parse { }` fragment leaves
+      a name it does not itself bind as this node, and the block the fragment is
+      spliced into binds it against ITS binders (`Term.bindFree`, emitted around
+      every `%` splice) — capture-on-splice, unhygienic on purpose.
+
+      **Kernel-invisible by construction.** It exists between a fragment's parse
+      and its splice; at the program boundary (`Machine.atBoundary`, the
+      `numberSeals` precedent) one that survives is rejected with "free
+      identifier 'v' has no binder at the splice site". No arrow has a rule for
+      it: every machine `match` that meets one throws "unresolved identifier
+      reached the machine", and the traversals below treat it as a leaf. It is
+      NOT a third variable kind — `.var` and `.pvar` stay the parser's
+      classification, and this is what the parser could not classify. The
+      endpoint where one `.ident` replaces both and the evaluator classifies by
+      lookup waits for docs/20 (docs/22 §5). -/
+  | ident  : String → Term
 /-- A match branch: a constructor name, one-level-deep field binders (display
     names carrying fresh runtime ids), and a body term. -/
 inductive Branch where
@@ -658,6 +687,7 @@ mutual
     -- M28 cluster C with its one consumer. The argument is unchanged, it just has
     -- one witness now instead of two.)
     | .cmpT a, .cmpT b => Term.beq a b
+    | .ident a, .ident b => a == b
     | _, _ => false
   termination_by t u => sizeOf t + sizeOf u
   def Term.beqList : List Term → List Term → Bool
@@ -1373,6 +1403,9 @@ mutual
     | .assign _ _ => "… := …"
     | .seq _ _ => "… ; …"
     | .matchE x _ _ => s!"match {x.name} " ++ "{…}"
+    -- Distinct from both `#x` (a pure variable) and `x#id` (a slot): a reader of
+    -- a rejection should see that the name never resolved.
+    | .ident x => s!"?{x}"
   termination_by t => sizeOf t
   def Term.prettyArgs : List Term → String
     | [] => ""
@@ -1525,6 +1558,172 @@ end
     in their own space and are `St.sealSites`' key, never a σ id — it is there so
     a test can say "this program has a seal" before asserting about the seal. -/
 def Term.numberSeals (t : Term) : (Nat × Term) := Term.numberSealsGo 0 t
+
+/-! ## Free identifiers: the splice-site bind and the boundary rejection (docs/22)
+
+    A `prog_parse { }` fragment resolves every name it can — its own binders,
+    constructors, constants, aliases, Lean-level names — and leaves the rest as
+    `.ident`. Two things consume those nodes, and nothing else ever sees one:
+
+      * **`bindFree`**, emitted by the walker around every `%` splice with the
+        walker's OWN contexts at that point, resolves them against the enclosing
+        block's binders — `.pvar` for a pure binder (which wins, as it does in
+        `Surface.resolveName`), `.var ⟨id, s⟩` for a runtime local or a `fn`
+        slot, and otherwise unchanged, for an OUTER splice to bind. A fragment's
+        own binders already resolved their occurrences at parse, so an `.ident`
+        is free by construction and this is a leaf map with no binder awareness:
+        the fragment is lexical inside and dynamic at its edge, which is the
+        hygiene ruling (docs/22 §4).
+      * **`rejectFree`**, at `Machine.atBoundary`, turns a program in which one
+        survives into a term the machine refuses distinctively — the
+        `fnElabOrFail` precedent: an unbound `.call` whose NAME is the message,
+        reached unconditionally because it IS the program. A rejection rather
+        than a strip, because an unresolved name is an error in the program and
+        not scaffolding; at the boundary rather than at the first rule that
+        meets the node, because a free name in a branch the walk never takes
+        must still be loud. The boundary keeps its `Term → Term` signature, so
+        this composes with `numberSeals` (and the marker strip) as one more pass.
+
+    The one occurrence position that is a `Var` and not a `Term` — a match's
+    scrutinee — carries free-ness as the `freeSlot` tag, and both functions
+    treat it as the `.ident` it would have been. -/
+
+mutual
+  /-- Every unresolved identifier in `t`, in pre-order. Binder-blind on purpose
+      (see the section header): nothing binds an `.ident`. -/
+  def Term.freeIdents : Term → List String
+    | .ident s => [s]
+    | .var _ | .unit | .type | .const _ | .pvar _ => []
+    | .letIn _ a => Term.freeIdents a
+    | .assign a b | .seq a b | .app a b => Term.freeIdents a ++ Term.freeIdents b
+    | .ctorApp _ args | .call _ args => Term.freeIdentsList args
+    | .borrow a | .deref a | .cmpT a => Term.freeIdents a
+    | .index a i ev => Term.freeIdents a ++ Term.freeIdents i ++ Term.freeIdentsOpt ev
+    | .range a lo cnt rest ev eqc =>
+      Term.freeIdents a ++ Term.freeIdents lo ++ Term.freeIdentsOpt cnt
+        ++ Term.freeIdentsOpt rest ++ Term.freeIdentsOpt ev ++ Term.freeIdentsOpt eqc
+    | .matchE x _ brs =>
+      (if x.id == freeSlot then [x.name] else []) ++ Term.freeIdentsBranches brs
+    | .seal _ t u => Term.freeIdents t ++ Term.freeIdents u
+    | .lam _ d b | .pi _ d b | .sigmaT _ d b | .borrowT _ d b =>
+      Term.freeIdents d ++ Term.freeIdents b
+    | .idT a b c => Term.freeIdents a ++ Term.freeIdents b ++ Term.freeIdents c
+  def Term.freeIdentsList : List Term → List String
+    | [] => []
+    | t :: ts => Term.freeIdents t ++ Term.freeIdentsList ts
+  def Term.freeIdentsOpt : Option Term → List String
+    | none => []
+    | some t => Term.freeIdents t
+  def Term.freeIdentsBranches : List Branch → List String
+    | [] => []
+    | .mk _ _ body :: rest => Term.freeIdents body ++ Term.freeIdentsBranches rest
+end
+
+/-- The kernel constants a bare name resolves to (`Surface.constSet` is this
+    list): type formers, recursors, eliminators, and ¶1.1/¶1.3's array basis —
+    the former, the split view, the cons view, the read, and the split view's
+    two PROJECTIONS (`atake`/`adrop`), which are what lets a signature name the
+    pieces a carve mints.
+
+    Here rather than in the surface because the splice-site bind needs it: a
+    LOWERCASE one (`k`, `j`, `natRec`, …) is shadowable by an ordinary binder
+    (`reservedBinder` refuses only the capitalized ones), so a fragment meeting
+    a free `k` cannot know whether it is the eliminator or the match arm's
+    binder at the splice site — it stays `.ident` and is decided by
+    `bindIdent`, binders first. -/
+def constNames : List String :=
+  ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "boolRec", "listRec", "sigmaRec", "botElim", "j", "k",
+   "Array", "arrCat", "acons", "arrRec", "aget", "atake", "adrop"]
+
+/-- Resolve one free name against a splice site's contexts — `resolveName`'s
+    order for the families an `.ident` can still belong to: the pure binder
+    first, then the runtime context (a local or a `fn` slot), then the kernel
+    constant table. -/
+def Term.bindIdent (rctx : List (String × Nat)) (pctx : List String) (s : String) : Term :=
+  if pctx.contains s then .pvar s
+  else match rctx.lookup s with
+    | some id => .var ⟨id, s⟩
+    | none => if constNames.contains s then .const s else .ident s
+
+mutual
+  /-- **The splice-site bind.** Resolve every `.ident` (and every `freeSlot`
+      scrutinee) in `t` against the enclosing block's contexts; a name neither
+      binds stays free for an outer splice, or for the boundary. -/
+  def Term.bindFree (rctx : List (String × Nat)) (pctx : List String) : Term → Term
+    | .ident s => Term.bindIdent rctx pctx s
+    | .var x => .var x
+    | .unit => .unit
+    | .type => .type
+    | .const c => .const c
+    | .pvar x => .pvar x
+    | .letIn x a => .letIn x (Term.bindFree rctx pctx a)
+    | .assign a b => .assign (Term.bindFree rctx pctx a) (Term.bindFree rctx pctx b)
+    | .seq a b => .seq (Term.bindFree rctx pctx a) (Term.bindFree rctx pctx b)
+    | .app a b => .app (Term.bindFree rctx pctx a) (Term.bindFree rctx pctx b)
+    | .ctorApp c args => .ctorApp c (Term.bindFreeList rctx pctx args)
+    -- `f(a, b)` whose head names nothing in the fragment is a `.call`, as in a
+    -- closed program. At the splice site a runtime LOCAL of that name makes it
+    -- the spine `f(a, b)` would have been written inline ("scope beats the
+    -- table", the surface's call row); a `fn` slot leaves it for `retarget`,
+    -- which is what rewrites a closed program's calls too.
+    | .call f args =>
+      let args' := Term.bindFreeList rctx pctx args
+      match rctx.lookup f with
+      | some id => if id == declSlot then .call f args' else Term.appSpine (.var ⟨id, f⟩) args'
+      | none => .call f args'
+    | .borrow a => .borrow (Term.bindFree rctx pctx a)
+    | .deref a => .deref (Term.bindFree rctx pctx a)
+    | .cmpT a => .cmpT (Term.bindFree rctx pctx a)
+    | .index a i ev =>
+      .index (Term.bindFree rctx pctx a) (Term.bindFree rctx pctx i) (Term.bindFreeOpt rctx pctx ev)
+    | .range a lo cnt rest ev eqc =>
+      .range (Term.bindFree rctx pctx a) (Term.bindFree rctx pctx lo)
+        (Term.bindFreeOpt rctx pctx cnt) (Term.bindFreeOpt rctx pctx rest)
+        (Term.bindFreeOpt rctx pctx ev) (Term.bindFreeOpt rctx pctx eqc)
+    | .matchE x eqn brs =>
+      -- A scrutinee is a PLACE, so only a runtime local answers for it — a pure
+      -- binder or a `fn` slot is not one (`Surface.elabScrut` refuses both), and
+      -- the tag stays for the boundary to report.
+      let x' := if x.id == freeSlot then
+          (match rctx.lookup x.name with
+           | some id => if id == declSlot then x else ⟨id, x.name⟩
+           | none => x)
+        else x
+      .matchE x' eqn (Term.bindFreeBranches rctx pctx brs)
+    | .seal n t u => .seal n (Term.bindFree rctx pctx t) (Term.bindFree rctx pctx u)
+    | .lam x d b => .lam x (Term.bindFree rctx pctx d) (Term.bindFree rctx pctx b)
+    | .pi x d b => .pi x (Term.bindFree rctx pctx d) (Term.bindFree rctx pctx b)
+    | .sigmaT x d b => .sigmaT x (Term.bindFree rctx pctx d) (Term.bindFree rctx pctx b)
+    | .borrowT x d b => .borrowT x (Term.bindFree rctx pctx d) (Term.bindFree rctx pctx b)
+    | .idT a b c =>
+      .idT (Term.bindFree rctx pctx a) (Term.bindFree rctx pctx b) (Term.bindFree rctx pctx c)
+  def Term.bindFreeList (rctx : List (String × Nat)) (pctx : List String) : List Term → List Term
+    | [] => []
+    | t :: ts => Term.bindFree rctx pctx t :: Term.bindFreeList rctx pctx ts
+  def Term.bindFreeOpt (rctx : List (String × Nat)) (pctx : List String) : Option Term → Option Term
+    | none => none
+    | some t => some (Term.bindFree rctx pctx t)
+  def Term.bindFreeBranches (rctx : List (String × Nat)) (pctx : List String) : List Branch → List Branch
+    | [] => []
+    | .mk c bs body :: rest =>
+      .mk c bs (Term.bindFree rctx pctx body) :: Term.bindFreeBranches rctx pctx rest
+end
+
+/-- The needle a program rejected for a surviving free identifier is recognised
+    by. Reserved (`§`), so no `fn` can be called this. -/
+def freeIdentNeedle : String := "§free-identifier"
+
+/-- **The boundary rejection.** The boundary is the outermost splice site, into
+    the EMPTY context: what `bindFree [] []` can still resolve there is the
+    constant table (a bare fragment's `k` is the eliminator, with no binder
+    above it to say otherwise), and a program in which anything survives that
+    is replaced by a term the machine refuses, carrying the first offender's
+    name. -/
+def Term.rejectFree (t : Term) : Term :=
+  let t := Term.bindFree [] [] t
+  match Term.freeIdents t with
+  | [] => t
+  | s :: _ => .call s!"{freeIdentNeedle}: free identifier '{s}' has no binder at the splice site" []
 
 /-! ## Reading a binder's mode off its domain (combining-fns §6)
 

@@ -630,6 +630,9 @@ def setEnv (ω : Omega) : M Unit := modify (fun s => { s with env := ω })
 
 /-- The newest binding of `x`'s NAME in `ω`, if any. -/
 def findSlot? (ω : Omega) (x : Var) : Option (Var × Val) :=
+  -- An unresolved scrutinee (`freeSlot`, docs/22) is bound by NOTHING: a by-name
+  -- hit here would be the dynamic capture the boundary exists to refuse.
+  if x.id == freeSlot then none else
   (ω.filter (fun kv => kv.1.name == x.name)).getLast?
 
 /-- **Must a call of this callee be ENTERED?** — i.e. is applying it an EVENT?
@@ -1759,6 +1762,9 @@ mutual
     -- that cannot mean it. The sentence is unchanged for the case it still
     -- covers.
     | .seal _ _ _ => throwErr "readC (⇝): `seal` is not in the comptime fragment — a seal inside a TYPE has no reading, because a type is consumed at its own event and there is no binding for the sealed σ to land in. A seal is read at a `let` (§2.4)"
+    -- Unreachable through the boundary (`atBoundary` rejects first, docs/22);
+    -- a backstop for the direct kernel entries, and loud by policy.
+    | .ident s => throwErr s!"readC (⇝): unresolved identifier '{s}' reached the machine — a prog_parse fragment's free name was never bound at a splice site"
   def reflectCList (lets : List Nat) : List Term → M (List Val)
     | [] => pure []
     | t :: ts => do pure ((← reflectC lets t) :: (← reflectCList lets ts))
@@ -6043,6 +6049,9 @@ mutual
       -- `⇝τ` outside a λ/Π domain is a mode marker that escaped its binder. Same
       -- standing as `borrowT` on the line above, and the same rejection.
       | .cmpT _ => throwErr "readR (⇒): `⇝τ` is a binder-mode marker (§6), legal only as a λ/Π domain — not a term and not a movable value"
+      -- Unreachable through the boundary (`atBoundary` rejects first, docs/22);
+      -- a backstop for the direct kernel entries, and loud by policy.
+      | .ident s => throwErr s!"readR (⇒): unresolved identifier '{s}' reached the machine — a prog_parse fragment's free name was never bound at a splice site"
   termination_by fuel _ => (fuel, 0, 0)
   /-- **One rule per statement former, three drivers** (M33 Σ0's prerequisite).
 
@@ -7395,8 +7404,15 @@ def defaultFuel : Nat := 1000
     duplicated continuations into arms, which is why numbering had to come
     first; with no duplication the order constraint is vacuous, and bodies
     entered later (`checkRFnBody`, a callee frame) are simply walked as they
-    are, their seals already carrying their sites. -/
-def atBoundary (t : Term) : Term := (Term.numberSeals t).2
+    are, their seals already carrying their sites.
+
+    **Free identifiers are rejected here too** (docs/22): a `prog_parse { }`
+    fragment's unresolved name that no splice site bound is replaced, program
+    and all, by the distinctive refusal `Term.rejectFree` builds — so a
+    `Term.ident` provably never reaches a rule, by the same argument that a
+    seal's site is assigned before any rule sees it. Rejection before numbering,
+    so the poison term is what gets numbered (it has no seals). -/
+def atBoundary (t : Term) : Term := (Term.numberSeals (Term.rejectFree t)).2
 
 /-- Run a program with a fresh state: ⇒-read it, then return the final
     canonicalized Ω (loan ids renumbered to first-appearance order), or the

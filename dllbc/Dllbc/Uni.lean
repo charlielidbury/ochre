@@ -63,6 +63,17 @@ Bodies laden with pure proof terms (a `botElim` ex-falso branch, a `LeRwRRaw` bo
 derivation) can be spliced whole with `%term`, which is a `uterm` and therefore a
 block's final expression — the escape hatch `decl{ … = %t }` used to provide,
 available uniformly wherever an expression is.
+
+## Fragments (docs/22)
+
+`prog_parse { … }` (ElabCheck.lean) is this same grammar with och's law switched
+off: a name the fragment does not bind and Lean does not know is emitted as
+`Term.ident`, and **the `%` splice binds it** — every `%e` elaborates to
+`Term.bindFree rctx pctx e` with the contexts this walker holds at that point,
+so a fragment's free `hd` spliced into a match arm that binds `hd` is that arm's
+`hd`. Capture-on-splice, unhygienic on purpose; a name no splice site binds is
+rejected at the program boundary. The flag is `SpanAcc.parse`, read at exactly
+the two places an unresolved name used to be an error.
 -/
 
 open Lean
@@ -396,12 +407,12 @@ def buildNat (k : Nat) : MacroM (TSyntax `term) :=
     M26-B gives the list a second job — reserving these names as binder keywords
     — and two lists that must agree is one list too many. -/
 def ctorSet : List String := Dllbc.Val.ctorNames
-/-- Kernel constants (type formers / recursors / eliminators) → `const`. -/
-def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "boolRec", "listRec", "sigmaRec", "botElim", "j", "k",
-  -- ¶1.1/¶1.3's array basis: the former, the split view, the cons view, the read,
-  -- and the split view's two PROJECTIONS (`atake`/`adrop`), which are what lets a
-  -- signature name the pieces a carve mints.
-  "Array", "arrCat", "acons", "arrRec", "aget", "atake", "adrop"]
+/-- Kernel constants (type formers / recursors / eliminators) → `const`.
+    **Sourced from the kernel** (`Dllbc.constNames`) for `ctorSet`'s reason,
+    since docs/22 gave the list a second reader — the splice-site bind, which
+    must resolve a fragment's free `k` to the eliminator exactly when no binder
+    at the splice site claims it. -/
+def constSet : List String := Dllbc.constNames
 /-- Friendly aliases for the reified library functions whose surface name differs
     from their `…FnT` Term-constant (`Le` ↦ `LeFnT`, etc.). Everything else falls
     through to the raw-Lean-identifier resolution, so lemma Terms (`SwapL`, `Set`,
@@ -620,6 +631,15 @@ structure SpanAcc where
       ending Ω, which drops body-local declarations (their binding dies with
       the sealed body). -/
   fnHints : Array (String × Nat) := #[]
+  /-- **Och's law, switched off** (docs/22): this is a `prog_parse { }` fragment,
+      and a name that resolves to nothing is emitted as `Term.ident` for the
+      splice site to bind, instead of as the Lean identifier that makes it an
+      error. ONE reader — `resolveName`'s final fallthrough (and `elabScrut`'s,
+      the scrutinee being a `Var`) — and it turns an ERROR into a term: no source
+      `prog{ }` accepts elaborates differently under it, which is the property
+      that separates it from the mode flag M29 γ deleted (see `collect`'s
+      docstring for that distinction drawn once already). -/
+  parse : Bool := false
 deriving Inhabited
 
 /-- The surface walker's monad: `MacroM` plus the span side channel. -/
@@ -959,16 +979,43 @@ def lemmaShadowCheckAt (ref : Syntax) (s : String) : MacroM Unit := do
   if !cands.isEmpty then
     Macro.throwErrorAt ref s!"fn: '{s}' shadows the library lemma `Dllbc.StdLemmas.{s}`. A `fn` slot is resolved before the raw-Lean fallthrough, so no block below this declaration can name the lemma, and under M32's name-keyed Ω the two spellings resolve one store entry. Give the LEMMA the `L` suffix ({s} → {s}L) — the function is the user-facing name and does not move."
 
+/-- **The Lean fallthrough, asked at elaboration** (docs/22 §2.2). `prog{ }`'s
+    last resort for a name is the Lean identifier of that name, which must
+    denote a `Dllbc.Term` in scope — a library lemma, or a Lean local of the
+    enclosing `def`. A `prog_parse { }` fragment wants the SAME resort and one
+    more below it: a name Lean does not know either is `Term.ident`, for the
+    splice site to bind.
+
+    Whether Lean knows a name is not a question a `MacroM` can answer — it sees
+    globals (`resolveGlobalName`) and not the local context — so the walker
+    emits this and the answer is given here, by a term elaborator with the full
+    scope in hand. That is what keeps the one property a parse-mode flag must
+    have: every bare name `prog{ }` accepts, `prog_parse { }` reads the same way.
+    A dotted name is never a DLLBC binder, so it is elaborated as Lean would
+    without asking. -/
+syntax (name := identOrFree) "ident_or_free%" ident : term
+
+open Lean.Elab Lean.Elab.Term in
+elab_rules : term
+  | `(ident_or_free% $x:ident) => do
+    let termTy := Lean.mkConst ``Dllbc.Term
+    if !x.getId.isAtomic then elabTerm x (some termTy)
+    else match ← resolveId? x with
+      | some _ => elabTerm x (some termTy)
+      | none => return mkApp (Lean.mkConst ``Dllbc.Term.ident) (mkStrLit x.getId.toString)
+
 /-- Resolve a bare identifier in a type/back position. Pure binder in scope →
     `pvar` at that very name; earlier telescope param → `var`; constructor →
     nullary `ctorApp`; kernel const → `const`; reified-function alias → its `…FnT`
     Term; a `fn` slot above it → `var` at that slot; else the Lean identifier of
-    that name (a `Term` in scope).
+    that name (a `Term` in scope) — or, in a `prog_parse { }` fragment (`parse`),
+    that identifier if Lean knows it and `Term.ident` otherwise
+    (`ident_or_free%`).
 
     The `fn` slot is consulted LAST but one, after the alias table and before the
     raw fallthrough, so that adding it changes the answer for no name that already
     had one. -/
-def resolveName (rctx : List (String × Nat)) (pctx : List String) (x : Ident) : MacroM (TSyntax `term) := do
+def resolveName (parse : Bool) (rctx : List (String × Nat)) (pctx : List String) (x : Ident) : MacroM (TSyntax `term) := do
   let s := x.getId.toString
   if pctx.contains s then `(Dllbc.Term.pvar $(quote s))
   else
@@ -976,13 +1023,19 @@ def resolveName (rctx : List (String × Nat)) (pctx : List String) (x : Ident) :
     | some id => `(Dllbc.Term.var ⟨$(quote id), $(quote s)⟩)
     | none =>
       if ctorSet.contains s then `(Dllbc.Term.ctorApp $(quote s) [])
-      else if constSet.contains s then `(Dllbc.Term.const $(quote s))
+      -- A LOWERCASE constant (`k`, `natRec`, …) is shadowable by an ordinary
+      -- binder, and in a fragment that binder may be at the splice site: left
+      -- to `bindIdent`, which asks the binders first and the table last. The
+      -- capitalized ones are reserved as binders and need no such deferral.
+      else if constSet.contains s then
+        if parse && !Dllbc.isUpperInit s then `(Dllbc.Term.ident $(quote s))
+        else `(Dllbc.Term.const $(quote s))
       else match aliasMap.lookup s with
         | some n => pure ⟨(mkIdent n).raw⟩
         | none =>
           match fnSlotId rctx s with
           | some id => `(Dllbc.Term.var ⟨$(quote id), $(quote s)⟩)
-          | none => pure ⟨x.raw⟩
+          | none => if parse then `(ident_or_free% $x) else pure ⟨x.raw⟩
 
 /-- File a hover for one identifier OCCURRENCE (docs/16).
 
@@ -1047,7 +1100,15 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
   | `(uterm| ()) => return (← `(Dllbc.Term.unit), next)
   | `(uterm| ($e:uterm)) => elabUTerm rctx pctx next e
   | `(uterm| Type) => return (← `(Dllbc.Term.type), next)
-  | `(uterm| % $e:term) => return (← `(($e : Dllbc.Term)), next)
+  -- **THE SPLICE SITE BINDS** (docs/22 §2.3). The spliced value is a Lean
+  -- expression the macro never has in hand, so the bind is emitted around it
+  -- and runs when the enclosing definition is evaluated: `bindFree` resolves a
+  -- `prog_parse { }` fragment's free names against the contexts THIS row holds —
+  -- the same `rctx`/`pctx` a name written inline here would resolve in. Emitted
+  -- in the empty context too (the identity), because a row that special-cases
+  -- the empty context is a second row.
+  | `(uterm| % $e:term) =>
+    return (← `(Dllbc.Term.bindFree $(quote rctx) $(quote pctx) ($e : Dllbc.Term)), next)
   | `(uterm| $n:num) => return (← buildNat n.getNat, next)
   | `(uterm| old * $e:uterm) => do
     -- §5.4 `old *v`: the ENTRY snapshot, sugar over the telescope's existing
@@ -1352,7 +1413,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
       -- kind of choice. See `appSpineVar?` in `Machine.lean`.
       else
         noteIdent rctx pctx h
-        let hterm ← resolveName rctx pctx h
+        let hterm ← resolveName (← get).parse rctx pctx h
         let out ← argTerms.foldlM (fun acc a => `(Dllbc.Term.app $acc $a)) hterm
         return (out, n)
     | _ => do
@@ -1364,7 +1425,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     -- EVERY occurrence, not just the binder: the walker resolves each ident to
     -- its variable already, so filing the pair costs one lookup (docs/16 S1).
     noteIdent rctx pctx x
-    return (← resolveName rctx pctx x, next)
+    return (← resolveName (← get).parse rctx pctx x, next)
   | _ => Macro.throwErrorAt stx "decl: unexpected term syntax"
 
 /-- **The scrutinee half of every match row** (M34 sugar (i)). Returns the `Var`
@@ -1405,7 +1466,20 @@ partial def elabScrut (rctx : List (String × Nat)) (pctx : List String) (next :
     let s := x.getId.toString
     match localId rctx s with
     | some id => return (← `((⟨$(quote id), $(quote s)⟩ : Dllbc.Var)), none, next)
-    | none => Macro.throwErrorAt x s!"decl: match scrutinee '{s}' is not a bound runtime variable"
+    | none =>
+      -- **A FREE SCRUTINEE in a `prog_parse { }` fragment** (docs/22 §2.2) is the
+      -- one free occurrence the grammar makes a `Var` rather than a `Term`, so
+      -- its free-ness is the `freeSlot` tag and `bindFree` rewrites it by name.
+      -- Only a name that resolves to NOTHING in the fragment takes this path —
+      -- a pure binder, a constructor, a constant or a `fn` slot is refused
+      -- exactly as in a closed program, for the reason given above.
+      let known := pctx.contains s || ctorSet.contains s
+        || (constSet.contains s && Dllbc.isUpperInit s)
+        || (aliasMap.lookup s).isSome || (fnSlotId rctx s).isSome
+      if (← get).parse && !known then
+        return (← `((⟨Dllbc.freeSlot, $(quote s)⟩ : Dllbc.Var)), none, next)
+      else
+        Macro.throwErrorAt x s!"decl: match scrutinee '{s}' is not a bound runtime variable"
   | _ => do
     -- The fresh binder is minted at the POST-RHS counter and the block continues
     -- at `+1` — the `let` row's own discipline, because this is a `let`.
@@ -1772,7 +1846,7 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
       else a
     -- `resolveName` for its ERROR only: an unbound name must fail here as it
     -- would anywhere else. The resolved term is discarded — that is the erasure.
-    let _ ← resolveName rctx pctx x
+    let _ ← resolveName (← get).parse rctx pctx x
     elabUBlk rctx pctx next rest
   | `(ublk| $e:uterm ; $rest:ublk) => do
     let occLo ← occMark

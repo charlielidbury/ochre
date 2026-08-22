@@ -83,9 +83,18 @@ namespace Dllbc
         `Dllbc.Term` in scope (a library definition like `SwapL`); an unbound name
         is a Lean elaboration error, never a silent fallback.
 
-    `%e` splices a Lean-level `Term` expression `e` directly (an escape hatch), and
-    the recursor sugar `elim … return …` / `elim … generalizing …` (§15b, §18) is
-    part of the grammar.
+    `%e` splices a Lean-level `Term` expression `e` (an escape hatch) — and binds
+    its free identifiers against the splice site's binders, which is how a
+    `prog_parse { }` fragment (docs/22) lands in its context; the recursor sugar
+    `elim … return …` / `elim … generalizing …` (§15b, §18) is part of the grammar.
+
+    ## The empty context, revisited: fragments (docs/22)
+
+    The argument above covers PROGRAMS. A fragment — a spec skeleton, a branch
+    body, a generator pool — is not a program, and `prog_parse { }` is the form
+    for it: the same grammar, a free name left as `Term.ident`, bound where the
+    fragment is `%`-spliced. No `…With` list is reinstated; the context is the
+    splice site's own, which nobody writes down.
 
     ## This brace does not check, and `prog check { … }` does (`ElabCheck.lean`)
 

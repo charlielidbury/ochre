@@ -156,7 +156,12 @@ syntax "prog{" ublk "}" : term
 -- `Term` and no judgment runs. A different operation from `prog{ }`, so a
 -- different name rather than a flag on `prog` — its population is programs
 -- that exist BECAUSE they fail (a `progRejects` twin's rejection is the
--- assertion) and library terms checked elsewhere.
+-- assertion), library terms checked elsewhere, and FRAGMENTS (docs/22): a
+-- name the block does not bind and Lean does not know is left as
+-- `Term.ident`, to be bound where the block is `%`-spliced (capture-on-splice,
+-- unhygienic on purpose, docs/22 §4). Och's law is a property of the CHECKED
+-- brace; the parse stage has no judgment to refuse a free name with, and a
+-- free name that reaches a program boundary unbound is rejected there.
 syntax "prog_parse" "{" ublk "}" : term
 -- **The module forms** (docs/20 stages 1-2): `prog () { … }` seeds the empty
 -- state, `prog (e) { … }` seeds from the `Checked` that `e` evaluates to (both
@@ -751,8 +756,15 @@ open Surface ProgElab in
 elab_rules : term
   | `(prog{ $b:ublk }) =>
     elabChecked b (do let (t, _) ← elabUBlk [] [] 0 b; pure t)
+  -- The parse flag rides the walker's state (`SpanAcc.parse`) rather than a
+  -- new argument threaded through the 30-call mutual block — the house rule for
+  -- walker state (`withHoverScope`). Set before the walk, read at the two
+  -- fallthroughs (docs/22).
   | `(prog_parse { $b:ublk }) =>
-    elabUnchecked (do let (t, _) ← elabUBlk [] [] 0 b; pure t)
+    elabUnchecked (do
+      modify fun a => { a with parse := true }
+      let (t, _) ← elabUBlk [] [] 0 b
+      pure t)
   -- The module forms (docs/20). One elaborator, seed optional: `()` is the
   -- empty state, `(e)` is a state to continue from.
   | `(prog ($[$e:term]?) { $b:ublk }) => elabModule b e b
