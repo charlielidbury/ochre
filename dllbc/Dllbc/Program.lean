@@ -377,14 +377,51 @@ def tailPaths (t : Term) (expected : List Env) : Bool :=
     which stage 0 pinned by construction: every runner already threads the
     initial `St` as an explicit parameter, so these functions substitute one. -/
 
-/-- A checked block: the term and the state its walk ends in. `env` is a CACHE
-    of the value the prefix-splice semantics assigns ("this program checks
-    exactly as if the seed's chain were textually prefixed to it") — `St` is
-    strict first-order data in a pure language, so the cache is definitionally
-    that value however it is reached. -/
+/-- A checked block: the term and the states its walks end in — ONE PER
+    MACHINE. Each is a CACHE of the value the prefix-splice semantics assigns
+    ("this program checks / runs exactly as if the seed's chain were textually
+    prefixed to it") — `St` is strict first-order data in a pure language, so
+    the cache is definitionally that value however it is reached.
+
+    **Two twins, because the two machines leave different states and neither
+    can stand in for the other** (docs/20 stage 6). The checking walk leaves
+    each `fn` as a sealed σ (Ω ↦ σ, `fsig`/`sctx`/`sealSites` entries) and the
+    body survives only in `term`; a consumer RUN from that state takes the
+    signature-only call rule (`callDeclC`, mints) and never enters the body, so
+    `y ↦ σ` where the spliced program gives `y ↦ unit`. The executing walk
+    leaves each `fn` as a closure (or a recursor spine over closures), which a
+    consumer run enters. And a chain must be mode-consistent all the way to its
+    root: an executing twin built on a CHECKING seed silently degrades to
+    minting (the probe's mixed row), so `exec` threads from the seed's `exec`,
+    never from its `env`.
+
+    `exec` is an `Except` where `env` is not: a module's elaboration IS its
+    check, so a block whose checking walk fails never becomes a `Checked` — but
+    an executing walk can fail where the checking one passed (the checking
+    call rule reads a signature, the executing one runs the body, which may
+    exhaust its fuel or get stuck on something the signature did not promise),
+    and the failure is a property of the runtime, not a rejection of the
+    module. It propagates down the chain: a consumer of a module whose `exec`
+    failed has no executing state to run from, and its run helpers report the
+    seed's error.
+
+    **The exec twin must never be used for CHECKING**: a checking walk from it
+    ENTERS library bodies (a closure is applied, not audited at its signature),
+    so it goes green by a different judgment — concrete `y` where the stated
+    semantics says σ. The helpers below take a `Checked` and pick the twin by
+    mode, so the ordinary surface cannot cross them. -/
 structure Checked where
   term : Term
+  /-- The checking machine's ending state: the state to CHECK from. -/
   env : St
+  /-- The executing machine's ending state: the state to RUN from. -/
+  exec : Except String St
+
+/-- **The empty root**: what `prog () { … }` seeds from — both twins at
+    `initSt`, each in its own mode. The term is a placeholder; nothing reads a
+    root's term. -/
+def Checked.init : Checked :=
+  { term := .unit, env := initSt, exec := .ok { initSt with executing := true } }
 
 /-- **The seeded program boundary**: `atBoundary` with the seal-site numbering
     threaded. A seeded block's seals number from where the seed's numbering
@@ -408,9 +445,9 @@ def modulePathsD (seed : St) (t : Term) : Nat × List (Except Diag (Val × St)) 
   let (n', prepared) := moduleBoundary seed t
   (n', exploreD defaultFuel prepared { seed with executing := false })
 
-/-- **A module's final state**: the single-path walk from `seed`, bindings kept.
-    Multi-path is refused — a block that forks has no one ending state to
-    persist.
+/-- **The persisted shape**, shared by both twins: the site counter recorded
+    where this block's numbering stopped, and the ledgers rebuilt as ONLY the
+    module-boundary channels.
 
     **The persisted ledgers keep exactly the module-boundary channels** (docs/20
     stage 3): `hints` and `spans` ride through from the seed (the walk never
@@ -425,16 +462,36 @@ def modulePathsD (seed : St) (t : Term) : Nat × List (Except Diag (Val × St)) 
     to `hints`/`spans`, so assertions about seeding semantics should compare
     judgment-relevant projections (Ω, the counters, `sealSites`), not whole
     states — see the splice-agreement test, which already does. -/
+def persistSt (nextSite : Nat) (st : St) : St :=
+  { st with nextSite
+            ledgers := { hints := st.ledgers.hints
+                         spans := st.ledgers.spans } }
+
+/-- **A module's final state**, checking twin: the single-path walk from
+    `seed`, bindings kept. Multi-path is refused — a block that forks has no
+    one ending state to persist. -/
 def moduleFinalSt (seed : St) (t : Term) : Except String St :=
   let (n', paths) := modulePathsD { seed with hover := false, pointHover := false } t
   match paths with
-  | [.ok p] =>
-    .ok { p.2 with
-          nextSite := n'
-          ledgers := { hints := p.2.ledgers.hints
-                       spans := p.2.ledgers.spans } }
+  | [.ok p] => .ok (persistSt n' p.2)
   | [.error d] => .error d.msg
   | ps => .error s!"module: the walk forked into {ps.length} paths; a module must be single-path"
+
+/-- **A module's executing twin** (docs/20 stage 6): the SAME term, walked by
+    the executing machine from the seed's executing state — `readR` with
+    `executing := true`, bindings kept (no `endScope`), the seal-site numbering
+    threaded exactly as `moduleFinalSt` threads it. Single-path by nature: the
+    executing machine never forks. Under it a `fn` is a transparent seal
+    (`sealExec`): a closure carrying its Π, or a recursor spine over closures,
+    which is what a consumer's run then ENTERS. Nothing is audited here — the
+    checking twin did that — so this walk costs what forming the closures
+    costs. -/
+def moduleExecSt (seed : St) (t : Term) : Except String St :=
+  let (n', prepared) := moduleBoundary seed t
+  match (readR defaultFuel prepared).run
+      { seed with executing := true, hover := false, pointHover := false } with
+  | .ok _ st => .ok (persistSt n' st)
+  | .error e _ => .error e
 
 /-- **Stage 2's resolution table**: the seed's declarations, name → the very
     `Var` the seed's Ω entry holds, newest binding first (Ω resolves
@@ -464,11 +521,18 @@ def moduleRetarget (seed : St) (t : Term) : Term :=
     `Checked.seeded` performs, with the verdict read off instead of the state
     kept. A term built by mutating a `Checked.term` (already retargeted) passes
     through `moduleRetarget` unchanged; a fresh fragment citing a library lemma
-    gets resolved by it. -/
+    gets resolved by it.
 
-/-- The seeded ⇒-walk's paths, scopes ended: `programPaths` from `seed`, with the
-    seed's seal-site numbering continued and the block's calls retargeted. -/
-def programPathsFrom (seed : St) (t : Term) : List (Except Diag (Val × St)) :=
+    **Every helper takes the `Checked`, not an `St`, and picks the twin by
+    mode**: the check helpers walk from `env`, the run helpers from `exec`. That
+    is the API enforcing "the exec twin is never checked from" — a caller
+    holding a `Checked` cannot hand the wrong state to the wrong machine. -/
+
+/-- The seeded ⇒-walk's paths, scopes ended: `programPaths` from the CHECKING
+    twin, with the seed's seal-site numbering continued and the block's calls
+    retargeted. -/
+def programPathsFrom (m : Checked) (t : Term) : List (Except Diag (Val × St)) :=
+  let seed := m.env
   let (_, prepared) := moduleBoundary seed (moduleRetarget seed t)
   (exploreD defaultFuel prepared { seed with executing := false }).map
     (fun r => r.bind (fun p =>
@@ -476,65 +540,83 @@ def programPathsFrom (seed : St) (t : Term) : List (Except Diag (Val × St)) :=
       | .ok _ st => .ok (p.1, st)
       | .error e s => .error (Diag.of e s)))
 
-/-- **Check a program from a seed** — `checkProgram` with the module's state as
-    the starting point. -/
-def checkProgramFrom (seed : St) (t : Term) (retType : Term := ty{ Unit }) :
+/-- **Check a program from a seed** — `checkProgram` with the module's checking
+    state as the starting point. -/
+def checkProgramFrom (m : Checked) (t : Term) (retType : Term := ty{ Unit }) :
     Except String Unit :=
-  Except.mapError Diag.msg (programVerdict (some retType) (programPathsFrom seed t))
+  Except.mapError Diag.msg (programVerdict (some retType) (programPathsFrom m t))
 
 /-- The seeded program checks. -/
-def progOkFrom (seed : St) (t : Term) (retType : Term := ty{ Unit }) : Bool :=
-  match checkProgramFrom seed t retType with | .ok _ => true | .error _ => false
+def progOkFrom (m : Checked) (t : Term) (retType : Term := ty{ Unit }) : Bool :=
+  match checkProgramFrom m t retType with | .ok _ => true | .error _ => false
 
 /-- The seeded program is rejected, and the error mentions `needle`. -/
-def progRejectsFrom (seed : St) (t : Term) (needle : String) (retType : Term := ty{ Unit }) :
+def progRejectsFrom (m : Checked) (t : Term) (needle : String) (retType : Term := ty{ Unit }) :
     Bool :=
-  match checkProgramFrom seed t retType with
+  match checkProgramFrom m t retType with
   | .ok _ => false
   | .error e => strContains e needle
 
-/-- **Run a program from a seed**, concretely, returning what the program ITSELF
-    left in Ω: the seed's own entries (the library's declarations among them) are
-    dropped before canonicalization, so an expected environment names only the
-    program's bindings — as `progRunsTo`'s do. -/
-def runProgramFrom (seed : St) (t : Term) : Except String Env :=
-  let (_, prepared) := moduleBoundary seed (moduleRetarget seed t)
-  match (do let _ ← readR defaultFuel prepared; endScope defaultFuel).run
-      { seed with executing := true } with
-  | .ok _ st =>
-    let seeded := seed.env.map (·.1)
-    .ok (canonicalize (st.env.filter (fun kv => !seeded.contains kv.1)))
-  | .error e _ => .error e
+/-- **Run a program from a seed**, concretely — from the EXECUTING twin, so a
+    library `fn` the program calls is entered and concrete values flow back
+    (`y ↦ unit` from `LeRefl(2)`, as the spliced program gives). Returns what
+    the program ITSELF left in Ω: the seed's own entries (the library's
+    declarations among them) are dropped before canonicalization, so an
+    expected environment names only the program's bindings — as `progRunsTo`'s
+    do. A seed whose executing walk failed has no state to run from, and that
+    error is the answer. -/
+def runProgramFrom (m : Checked) (t : Term) : Except String Env :=
+  m.exec.bind fun seed =>
+    let (_, prepared) := moduleBoundary seed (moduleRetarget seed t)
+    match (do let _ ← readR defaultFuel prepared; endScope defaultFuel).run
+        { seed with executing := true } with
+    | .ok _ st =>
+      let seeded := seed.env.map (·.1)
+      .ok (canonicalize (st.env.filter (fun kv => !seeded.contains kv.1)))
+    | .error e _ => .error e
 
 /-- The seeded program runs to the given final Ω (the program's own bindings). -/
-def progRunsToFrom (seed : St) (t : Term) (expected : Env) : Bool :=
-  match runProgramFrom seed t with | .ok env => env == expected | .error _ => false
+def progRunsToFrom (m : Checked) (t : Term) (expected : Env) : Bool :=
+  match runProgramFrom m t with | .ok env => env == expected | .error _ => false
 
-/-- The value a `prog () { … }` / `prog (e) { … }` block elaborates to. The
-    state is RE-DERIVED by the walk rather than quoted — `St` needs no `ToExpr`
-    — and by purity it is the value the elaboration-time check computed: that
-    check ran the same walk from the same seed, differing only in the
-    hover-replay ledgers, which `moduleFinalSt` pins empty.
+/-- The value a `prog () { … }` / `prog (e) { … }` block elaborates to. Both
+    states are RE-DERIVED by their walks rather than quoted — `St` needs no
+    `ToExpr` — and by purity the checking one is the value the
+    elaboration-time check computed: that check ran the same walk from the
+    same seed, differing only in the hover-replay ledgers, which
+    `moduleFinalSt` pins empty. (Measured, docs/20: the re-derivation of the
+    110-fn standard chain costs ~0.8 s natively, once per process.)
+
+    The executing twin threads from the SEED's executing twin — the one
+    structural requirement of stage 6. Mode mixing anywhere in a chain
+    degrades silently to minting, so the twin is chained from the root, and a
+    seed whose twin failed propagates that failure rather than starting a
+    fresh executing walk from the checking state.
 
     `hints` and `spans` are the block's OWN module-boundary entries (docs/20
     stage 3), quoted by the elaborator as plain data — the two facts about the
     block the walk cannot re-derive: the `[k]` hint died at the macro layer
     (`fnElab` hoists it away) and the spans at the syntax layer. They are
     prepended over what the seed's channels already carried through the walk,
-    keeping the ledgers newest-first like every other channel.
+    keeping the ledgers newest-first like every other channel — on BOTH twins,
+    so `moduleBinds` reads the same table whichever state a helper retargets
+    at (a hinted import is callable from either).
 
     The error branch is a documented panic, not a rejection channel:
     elaboration already REJECTED any block whose walk fails, so this branch is
     reachable only by calling it directly on a term the surface never
     accepted. -/
-def Checked.seeded (seed : St) (t : Term)
+def Checked.seeded (seed : Checked) (t : Term)
     (hints : List (String × Nat) := []) (spans : List SpanNote := []) : Checked :=
-  let t := moduleRetarget seed t
+  let t := moduleRetarget seed.env t
+  let stamp (st : St) : St :=
+    { st with ledgers := { st.ledgers with
+                hints := hints ++ st.ledgers.hints
+                spans := spans ++ st.ledgers.spans } }
   { term := t
-    env := match moduleFinalSt seed t with
-      | .ok st => { st with ledgers := { st.ledgers with
-                      hints := hints ++ st.ledgers.hints
-                      spans := spans ++ st.ledgers.spans } }
-      | .error e => panic! s!"Checked.seeded: the module walk failed after elaboration accepted it — {e}" }
+    env := match moduleFinalSt seed.env t with
+      | .ok st => stamp st
+      | .error e => panic! s!"Checked.seeded: the module walk failed after elaboration accepted it — {e}"
+    exec := (seed.exec.bind (fun s => moduleExecSt s t)).map stamp }
 
 end Dllbc

@@ -30,7 +30,7 @@ def std : Checked := prog () {
 
 /-! ## (2) A seeded consumer: `LeRefl` resolves against the seed -/
 
-def use1 : Checked := prog (std.env) {
+def use1 : Checked := prog (std) {
   let y = LeRefl(2);
   () }
 
@@ -72,7 +72,7 @@ def sealMod : Checked := prog () {
   fn A () -> Nat { 2 };
   () }
 
-def sealUse : Checked := prog (sealMod.env) {
+def sealUse : Checked := prog (sealMod) {
   fn B () -> Nat { 3 };
   () }
 
@@ -91,7 +91,7 @@ error: dllbc:
 call: argument (True) does not have its parameter type (Nat)
 -/
 #guard_msgs in
-#check (prog (std.env) {
+#check (prog (std) {
   let y = LeRefl(True);
   () } : Checked)
 
@@ -101,11 +101,11 @@ call: argument (True) does not have its parameter type (Nat)
     the citation is captured from the seed's Ω exactly as a local sibling's
     would be — and the final consumer calls both lemmas of the chain. -/
 
-def std2 : Checked := prog (std.env) {
+def std2 : Checked := prog (std) {
   fn LeReflS (n : Nat) -> Le n n { LeRefl(n) };
   () }
 
-def useBoth : Checked := prog (std2.env) {
+def useBoth : Checked := prog (std2) {
   let p = LeRefl(1);
   let q = LeReflS(2);
   () }
@@ -133,7 +133,7 @@ def walkMod : Checked := prog () {
     match n { Z => (), S(k) => Walk(&m *v, k) } };
   () }
 
-def useWalk : Checked := prog (walkMod.env) {
+def useWalk : Checked := prog (walkMod) {
   let xs = Cons(1, Nil);
   let r = Walk(&m xs, 2);
   () }
@@ -194,7 +194,7 @@ example :
     to another — is the design's whole payoff, exercised on the real library
     rather than this file's toy module. -/
 
-def useStd : Checked := prog (Dllbc.std.env) {
+def useStd : Checked := prog (Dllbc.std) {
   let p = LeRefl(3);
   let w = LeUpR(3, 3, p);
   let u = AddComm(2, 3);
@@ -226,21 +226,61 @@ example :
     retargets at the seed's declarations before walking. -/
 
 def mutantArg : Term := prog_parse { let y = LeRefl(True); () }
-example : progRejectsFrom Dllbc.std.env mutantArg "does not have its parameter type" = true := by
+example : progRejectsFrom Dllbc.std mutantArg "does not have its parameter type" = true := by
   native_decide
 
 def goldenTerm : Term := prog_parse { let y = LeRefl(2); () }
-example : progOkFrom Dllbc.std.env goldenTerm = true := by native_decide
+example : progOkFrom Dllbc.std goldenTerm = true := by native_decide
 
 -- A mutant made from a CHECKED golden's own term (already retargeted): the
 -- helper's retarget is a no-op on it and the walk still runs from the seed.
-example : progOkFrom Dllbc.std.env use1.term = true := by native_decide
+example : progOkFrom Dllbc.std use1.term = true := by native_decide
 
-/-- Executing from the seed: the program's own bindings, the seed's dropped.
-    Known limitation (docs/20): the seed was interpreted in checking mode, so a
-    library fn called under `executing := true` is not entered — `y` is an
-    existential here, not a concrete proof value. A library interpreted in
-    executing mode would be needed for concrete proof values to flow. -/
-example : (runProgramFrom Dllbc.std.env goldenTerm).isOk = true := by native_decide
+/-! ## (9) The executing twin: a seeded RUN enters library bodies
+
+    `Checked.exec` is the SAME block walked by the executing machine, chained
+    from the seed's own executing twin. Before it (docs/20 stage 6's "known
+    limitation") a run from the checking state took the signature-only call
+    rule and left `y ↦ σ`; the prefix-splice semantics held for checking only.
+    The control is the spliced program run by `runProgram`: the two machines
+    now each satisfy "runs exactly as if the seed's chain were textually
+    prefixed". -/
+
+/-- The run from the twin agrees with the splice control: `y ↦ unit`, the
+    concrete proof `LeRefl(2)` computes to, not an existential. (`runProgram`
+    reports the declaration too — `LeRefl ↦` its recursor spine — where the
+    seeded helper drops the seed's entries, so the control is filtered to the
+    program's own binding.) -/
+example :
+    (runProgram spliced).toOption.map (·.filter (·.1 != "LeRefl"))
+      == (runProgramFrom std goldenTerm).toOption
+    && (runProgram spliced).isOk := by native_decide
+example : progRunsToFrom std goldenTerm [("y", .ctor "unit" [])] = true := by native_decide
+
+/-- A two-link chain runs concretely: `std2`'s `LeReflS` calls the imported
+    `LeRefl` from inside its own body, and both are entered. -/
+def chainRun : Term := prog_parse { let q = LeReflS(2); let p = LeRefl(3); () }
+example : progRunsToFrom std2 chainRun [("q", .ctor "unit" []), ("p", .ctor "unit" [])] = true := by
+  native_decide
+
+/-- The real library, run: proofs by `match` compute to `unit`, and `AddComm`
+    — a wrapper over a raw proof term — computes to `Refl`. -/
+def useStdRun : Term := prog_parse {
+  let p = LeRefl(3);
+  let w = LeUpR(3, 3, p);
+  let u = AddComm(2, 3);
+  () }
+example : progRunsToFrom Dllbc.std useStdRun
+    [("p", .ctor "unit" []), ("w", .ctor "unit" []), ("u", .ctor "Refl" [])] = true := by native_decide
+
+/-- The twins are distinct states of the same block: the checking one holds
+    `LeRefl` as a sealed σ, the executing one as the recursor spine a
+    consumer's run enters — and both number their seal sites identically. -/
+example :
+    ((std.env.env.find? (fun kv => kv.1.name == "LeRefl")).map (fun kv => kv.2.pretty.startsWith "σ")
+        == some true)
+    && (std.exec.toOption.bind (fun s => (s.env.find? (fun kv => kv.1.name == "LeRefl")).map
+          (fun kv => kv.2.pretty.startsWith "σ")) == some false)
+    && std.exec.toOption.map (·.nextSite) == some std.env.nextSite := by native_decide
 
 end Dllbc.Tests.ModuleStates

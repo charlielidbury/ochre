@@ -159,8 +159,9 @@ syntax "prog{" ublk "}" : term
 -- assertion) and library terms checked elsewhere.
 syntax "prog_parse" "{" ublk "}" : term
 -- **The module forms** (docs/20 stages 1-2): `prog () { … }` seeds the empty
--- state, `prog (e) { … }` seeds the `St` that `e` evaluates to. Both elaborate
--- to a `Checked` — the term AND the walk's ending state — where the bare
+-- state, `prog (e) { … }` seeds from the `Checked` that `e` evaluates to (both
+-- of its twins — stage 6). Both elaborate
+-- to a `Checked` — the term AND the walks' ending states — where the bare
 -- `prog{ }` above keeps elaborating to a `Term`; hundreds of sites depend on
 -- that, and the parenthesis is what says a state crosses the boundary. One
 -- rule with an optional seed rather than two rules, because `()` is itself a
@@ -188,16 +189,19 @@ unsafe def evalKeysUnsafe (e : Expr) : TermElabM (List Dllbc.Term) :=
 @[implemented_by evalKeysUnsafe]
 opaque evalKeysValue (e : Expr) : TermElabM (List Dllbc.Term)
 
-/-- Evaluate a seed expression to an `St` **value** (docs/20): the module
-    elaborator needs the seed's actual state in hand — to resolve names against
-    its Ω and to run the check from it — so the expression is evaluated the same
-    way the assembled `Term` is. Cross-file the constant is compiled; same-file,
-    the same machinery falls back to the interpreter. -/
-unsafe def evalStUnsafe (e : Expr) : TermElabM Dllbc.St :=
-  Meta.evalExpr' Dllbc.St ``Dllbc.St e
+/-- Evaluate a seed expression to a `Checked` **value** (docs/20): the module
+    elaborator needs the seed's actual checking state in hand — to resolve
+    names against its Ω and to run the check from it — so the expression is
+    evaluated the same way the assembled `Term` is. Cross-file the constant is
+    compiled; same-file, the same machinery falls back to the interpreter. The
+    whole `Checked` is evaluated (both twins), because the emitted value
+    chains the seed's executing twin too; the elaborator itself reads only
+    `.env`. -/
+unsafe def evalCheckedUnsafe (e : Expr) : TermElabM Dllbc.Checked :=
+  Meta.evalExpr' Dllbc.Checked ``Dllbc.Checked e
 
-@[implemented_by evalStUnsafe]
-opaque evalStValue (e : Expr) : TermElabM Dllbc.St
+@[implemented_by evalCheckedUnsafe]
+opaque evalCheckedValue (e : Expr) : TermElabM Dllbc.Checked
 
 /-- `set_option trace.Dllbc.check true` reports, per program, the wall time spent
     reifying the value and the wall time spent checking — and says so when a
@@ -618,8 +622,8 @@ def elabChecked (ref : Syntax) (act : UM (TSyntax `term)) : TermElabM Expr := do
 /-- **Elaborate a module block** (docs/20 stages 1-2): the `prog () { … }` /
     `prog (e) { … }` forms, producing a `Checked`.
 
-    The seed expression is evaluated to an `St` FIRST, because two things need
-    the value before the block's own syntax can be walked: name resolution
+    The seed expression is evaluated to a `Checked` FIRST, because two things
+    need its checking state before the block's own syntax can be walked: name resolution
     (stage 2 — the seed's Ω entries go into the surface's scope, so an
     identifier or call that resolves to nothing local resolves against the seed
     by name) and the check itself, which runs seeded — the same walk
@@ -644,15 +648,18 @@ def elabModule (ref : Syntax) (seed? : Option (TSyntax `term)) (b : TSyntax `ubl
     TermElabM Expr := do
   let seedE ← match seed? with
     | some s => do
-      let e ← elabTerm s (some (mkConst ``Dllbc.St))
+      let e ← elabTerm s (some (mkConst ``Dllbc.Checked))
       synthesizeSyntheticMVarsNoPostponing
       instantiateMVars e
-    | none => pure (mkConst ``Dllbc.initSt)
+    | none => pure (mkConst ``Dllbc.Checked.init)
   if seedE.hasMVar || seedE.hasFVar then
     throwErrorAt ((seed?.map (·.raw)).getD ref) "prog (…): the seed must be a \
-      closed `St` expression — it is evaluated during elaboration, so a local \
-      or an unsolved metavariable has no value to evaluate to"
-  let seedSt ← evalStValue seedE
+      closed `Checked` expression — it is evaluated during elaboration, so a \
+      local or an unsolved metavariable has no value to evaluate to"
+  -- The CHECKING twin is the elaborator's state: scope and the diagnostic
+  -- walk both read it. The executing twin is chained at the value level by
+  -- `Checked.seeded`; nothing here runs anything.
+  let seedSt := (← evalCheckedValue seedE).env
   -- Stage 2, the scope half: every seed Ω entry is in surface scope by name.
   -- Newest FIRST (the reverse of Ω's append order), so a later binding of a
   -- name shadows an earlier one exactly as Ω's own newest-wins resolution
