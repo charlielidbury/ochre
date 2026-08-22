@@ -500,6 +500,10 @@ def throwDiag {α : Type} (ref : Syntax) (retRef : Option Syntax) (spans : SpanA
     -- verdict reached without locating a statement, which has no span to find —
     -- and telling the author to report a span-table gap for one of those would
     -- send them after a bug that is not there. That case reports at the block.
+    --
+    -- The one class that HAS reached the gap branch was a key that was stale
+    -- rather than missing: a statement keyed by its own term, filed before
+    -- `bindFn` retargeted the sibling-`fn` calls inside it (`Uni.rekeySpansFrom`).
     if diag.stmtKey.isNone && diag.argKey.isNone then
       throwErrorAt (retRef.getD ref) head
     else

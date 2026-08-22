@@ -749,6 +749,36 @@ def spanOfAssign (place rhs : TSyntax `term) (ref : Syntax) : UM Unit := do
 def spanOfArgs (keys : Array (TSyntax `term)) (refs : Array Syntax) : UM Unit :=
   (keys.zip refs).forM fun kr => noteArgSpan kr.1 kr.2
 
+/-- **A key follows its term through `bindFn`.** The `fn` row emits
+    `bindFn slot dec rest`, and `retarget` rewrites every `f(…)` in `rest` — a
+    `.call` becomes an app spine on the binding, arguments permuted to the
+    callee's hoist — so the term the WALKER notes as its breadcrumb is the
+    retargeted one. A key filed from the surface syntax is the pre-retarget term,
+    and the two differ exactly where a statement keyed by its own term (an
+    expression statement, a body's final expression, an assignment's right-hand
+    side, a call argument) mentions a sibling `fn`. That mismatch is what sent the
+    pure reader's refusals to the "span-table gap" fallback.
+
+    So every key filed while `rest` was elaborated is wrapped in the SAME
+    `bindFn` the term goes through, and nothing is mirrored by hand: `bindFn`
+    applied statement-wise is `bindFn` applied to the block, because `retarget`
+    is structural. `let`/`fn` keys are binders and pass through unchanged. -/
+def rekeySpansFrom (stmtLo argLo : Nat) (slot decT : TSyntax `term) : UM Unit := do
+  let a ← get
+  if !a.collect then return
+  let wrap (k : Syntax) : UM Syntax := do
+    let k' : TSyntax `term := ⟨k⟩
+    return (← `(Dllbc.FnMacro.bindFn $slot $decT $k')).raw
+  let mut stmts := a.stmts
+  for i in [stmtLo : stmts.size] do
+    let (k, r) := stmts[i]!
+    stmts := stmts.set! i ((← wrap k), r)
+  let mut args := a.args
+  for i in [argLo : args.size] do
+    let (k, r) := args[i]!
+    args := args.set! i ((← wrap k), r)
+  modify fun a => { a with stmts, args }
+
 /-- Is this argument a nested PATTERN rather than a BINDER? Either it is a
     constructor applied to arguments, or it is a NULLARY constructor spelled bare
     — `Cons(Z, tl)`, `Pair(True, x)`.
@@ -1588,8 +1618,13 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
       ++ ") -> " ++ srcText ret.raw
     noteHover name.raw (hoverText nm sigText)
     restorePendings held
+    -- The keys `rest` files are re-keyed through the `bindFn` below, because
+    -- that is what the walker's breadcrumb sees (`rekeySpansFrom`).
+    let stmtLo := (← get).stmts.size
+    let argLo := (← get).args.size
     let (rest', n2) ← withHoverScope [(nm, sigText)]
       (elabUBlk ((nm, Dllbc.declSlot) :: rctx) pctx next rest)
+    rekeySpansFrom stmtLo argLo slot decT
     return (← `(Dllbc.Term.seq
                   (Dllbc.Term.letIn $slot
                     (Dllbc.FnMacro.fnElabOrFail

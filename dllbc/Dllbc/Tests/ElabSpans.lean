@@ -115,6 +115,63 @@ readR: a#1 holds ⊥ (use-after-move or uninitialized). If a CALL moved it and t
   fn H (x : Nat) -> Unit { let a = Cons(1, Nil); let b = a; let c = a; () };
   () } : Term)
 
+/-! ## (4c) A pure-reader refusal on a statement that calls a sibling `fn`
+
+    `Add 1 (A(n))` is ⇝-read as `B`'s tail, and the reader refuses the `A(n)`
+    inside it: a sealed callee must be ENTERED, which is ⇒'s. The error must
+    land on that tail expression, not on the program.
+
+    This is the case that used to reach the "span-table gap" fallback, and the
+    reason was not a missing key: a statement keyed by its OWN TERM (a tail
+    expression, an expression statement, a call argument) is filed from the
+    surface syntax, while the walker sees the term AFTER `bindFn` retargeted
+    `A(n)` into an app spine on `A`'s slot. `let`/`fn` keys are binders and never
+    noticed. `rekeySpansFrom` (Uni.lean) re-keys through the same `bindFn`.
+
+    The span is the STATEMENT — the whole tail expression, not the `A(n)`
+    inside it — because a statement is the narrowest thing the table keys
+    short of a call argument. -/
+
+/--
+error: dllbc:
+readC (⇝): a call is not in the comptime fragment — its result is a fresh existential, minted at an EVENT, and ⇝ has none. (Comptime application of an ABSTRACT function is the structured neutral `f a` and does reflect; a sealed or imperative callee must be entered, which is ⇒'s.)
+-/
+#guard_msgs in
+#check (prog{
+  fn A (n : Nat) -> Nat { n };
+  fn B (n : Nat) -> Nat { Add 1 (A(n)) };
+  () } : Term)
+
+/-! The same refusal at a call ARGUMENT that mentions a sibling `fn` under a
+    pure spine: the argument key is re-keyed too, so it lands on the argument
+    `Add 1 (A(2))` rather than the `let`. -/
+
+/--
+error: dllbc:
+readC (⇝): a call is not in the comptime fragment — its result is a fresh existential, minted at an EVENT, and ⇝ has none. (Comptime application of an ABSTRACT function is the structured neutral `f a` and does reflect; a sealed or imperative callee must be entered, which is ⇒'s.)
+-/
+#guard_msgs in
+#check (prog{
+  fn A (n : Nat) -> Nat { n };
+  fn F (n : Nat) -> Nat { n };
+  let r = F(Add 1 (A(2)));
+  () } : Term)
+
+/-! And a `[k]`-hoisted callee whose decreasing parameter is not first: the
+    retarget PERMUTES the call's arguments, so a key rewritten by hand (`.call`
+    to app spine, arguments in declaration order) would still miss. The key
+    goes through `bindFn` itself, so it cannot. -/
+
+/--
+error: dllbc:
+readC (⇝): a call is not in the comptime fragment — its result is a fresh existential, minted at an EVENT, and ⇝ has none. (Comptime application of an ABSTRACT function is the structured neutral `f a` and does reflect; a sealed or imperative callee must be entered, which is ⇒'s.)
+-/
+#guard_msgs in
+#check (prog{
+  fn A [l] (n : Nat, l : List Nat) -> Nat { match l { Nil => n, Cons(h, t) => A(n, t) } };
+  fn B (n : Nat) -> Nat { Add 1 (A(n, Nil)) };
+  () } : Term)
+
 /-! ## (5) Checking doesn't change the term
 
     Checking is a side effect of elaboration; it does not change the value.
