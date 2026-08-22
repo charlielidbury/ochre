@@ -377,10 +377,18 @@ def patName (id : Nat) : String := "§p" ++ toString id
 -- index lookup itself: `pctx` is now a set of names in scope and the question asked
 -- of it is membership.)
 
-/-- Build the `Term` syntax for the numeral `k` as `S (S (… Z))`. -/
-partial def buildNat : Nat → MacroM (TSyntax `term)
-  | 0 => `(Dllbc.Term.ctorApp "Z" [])
-  | k + 1 => do let inner ← buildNat k; `(Dllbc.Term.ctorApp "S" [$inner])
+/-- Build the `Term` syntax for the numeral `k`: ONE node, `Dllbc.Term.nat k`,
+    which IS the `S (S (… Z))` chain by definition (`Term.nat` unfolds to
+    `ctorApp "S" [… ctorApp "Z" []]`, so the emitted `Term` is unchanged).
+
+    It used to emit the chain as k nested `ctorApp` syntax nodes. That made a
+    surface numeral cost k in elaboration depth: `ty{ 1056 }` hit
+    `maxRecDepth` at the default 512 and only elaborated with the limit raised,
+    which is why the corpus spliced large dividends as `%(Term.nat k)` instead
+    of writing them (EagerRec's `modOf`, HashMap's keys). That reason is gone;
+    the `%` splice remains only where `k` is a Lean parameter. -/
+def buildNat (k : Nat) : MacroM (TSyntax `term) :=
+  `(Dllbc.Term.nat $(Syntax.mkNumLit (toString k)))
 
 /-- Kernel constructors → `ctorApp`. **Sourced from the kernel's own basis**
     (`Val.ctorNames`, which `Pure.ctorSig` must track) rather than repeated here,

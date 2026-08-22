@@ -27,6 +27,19 @@ open Dllbc.Term (nat)
 
 namespace Dllbc.Tests.Sugar
 
+/-! ## A numeral is the `S (S … Z)` chain, built as one node
+
+    `Surface.buildNat` emits `Term.nat k` rather than `k` nested `ctorApp`
+    syntax nodes. The `Term` is the same — `Term.nat` IS the chain — which the
+    first line says by `rfl` against the spelled-out form. The second is why it
+    matters: a literal `1056` used to be a 1056-deep syntax tree that exhausted
+    `maxRecDepth`, which is what made the corpus splice large numerals as
+    `%(Term.nat k)`. -/
+
+example : ty{ 3 } = .ctorApp "S" [.ctorApp "S" [.ctorApp "S" [.ctorApp "Z" []]]] := by rfl
+example : (ty{ 138 } == nat 138) = true := by native_decide
+example : (ty{ 1056 } == nat 1056) = true := by native_decide
+
 /-! ## A plain variable is matched directly
 
     The scrutinee below is `b`, a borrow. The hand-written term has the

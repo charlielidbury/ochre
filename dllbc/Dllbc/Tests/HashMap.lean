@@ -7937,16 +7937,16 @@ def gmTest1 : Term := hmGmUnder prog defer_check {
   let b1 = &m m0;
   InsertHM(64, 0, 42, b1, unit);
   let b2 = &m m0;
-  InsertHM(64, %(Term.nat 16), 18, b2, unit);
+  InsertHM(64, 16, 18, b2, unit);
   let b3 = &m m0;
-  InsertHM(64, %(Term.nat 64), %(Term.nat 138), b3, unit);
+  InsertHM(64, 64, 138, b3, unit);
   let b4 = &m m0;
-  InsertHM(64, %(Term.nat 80), %(Term.nat 256), b4, unit);
+  InsertHM(64, 80, 256, b4, unit);
   let b5 = &m m0;
-  let e1 = GetMutHM(64, %(Term.nat 64), b5, unit);
+  let e1 = GetMutHM(64, 64, b5, unit);
   *e1 := 56;
   let b6 = &m m0;
-  RemoveHM(64, %(Term.nat 64), b6, unit);
+  RemoveHM(64, 64, b6, unit);
   let y = m0;
   () }
 

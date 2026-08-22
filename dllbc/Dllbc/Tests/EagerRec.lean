@@ -40,9 +40,11 @@ def ModTFnT : Dllbc.Term := ModTFn
 
 def pv (t : Term) : Term := Pure.nf 4000000 t
 
-/-- Dividends are spliced in as `Term.nat` rather than written as surface
-    numerals: a surface `1056` would be a 1056-deep Lean syntax tree to
-    elaborate. -/
+/-- Dividends are spliced in as `Term.nat` because `a` and `b` are Lean
+    parameters, not because of cost: a surface numeral is now one syntax node
+    (`Surface.buildNat` emits `Term.nat k`), so a literal `1056` elaborates as
+    fast as `%(Term.nat 1056)` — it used to be a 1056-deep syntax tree that hit
+    `maxRecDepth`. -/
 def modOf (a b : Nat) : Term := pv prog{ %ModTFnT %(Term.nat a) %(Term.nat b) }
 
 example : (modOf 7 3).natOf? == some 1 := by native_decide

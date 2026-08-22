@@ -153,7 +153,7 @@ def segsSuspended : Val :=
   .node "§segs" [Val.segNode (Term.nat 1) (Val.sym 0), Val.segNode (Term.nat 2) (.loanM 0)]
 
 example : Term.beq (subsKnowledge segsRejoined)
-  prog defer_check { arrCat %(Term.nat 1) %(Term.nat 2) %(Term.sym 0) %(Term.sym 1) } = true := by native_decide
+  prog defer_check { arrCat 1 2 %(Term.sym 0) %(Term.sym 1) } = true := by native_decide
 
 example : Term.beq (subsKnowledge segsSuspended) (.const "@stateComponent") = true := by
   native_decide

@@ -95,12 +95,12 @@ example : (pv prog defer_check { arrCat 2 1 (arrCat 1 1 Arr(3) Arr(1)) Arr(2) } 
 
 -- The stuck case: two σ's have no name for their concatenation, but they do have a
 -- term for it, which is all merge and the ⇝ fold need.
-def catSyms : Term := prog defer_check { arrCat %(Term.nat 2) %(Term.nat 1) %(Term.sym 0) %(Term.sym 1) }
+def catSyms : Term := prog defer_check { arrCat 2 1 %(Term.sym 0) %(Term.sym 1) }
 example : (Pure.nf 100 catSyms == catSyms) = true := by native_decide
 
 -- `arrCat m k a b : Array (Add m k) T` — the empty-run absorption is what makes a
 -- DEGENERATE carve's rejoin conversion definitional instead of lemma-mediated.
-example : (Pure.nf 200 prog defer_check { arrCat %(Term.nat 0) %(Term.nat 2) %(Term.ctorApp "Arr" []) %(Term.sym 0) } ==
+example : (Pure.nf 200 prog defer_check { arrCat 0 2 Arr() %(Term.sym 0) } ==
            Term.sym 0) = true := by native_decide
 
 /-! ## `aget` — the ⇝ column at an index place -/
@@ -179,7 +179,7 @@ example : (Val.mergeArrays (segsOf [(1, .ctor "Arr" [Val.nat 3]), (2, .loanM 0)]
 
 -- The ⇝ bridge: the fold of a collapsed segment list is its `arrCat` spine.
 example : (Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.sym 0), Val.segNode (Term.nat 2) (.sym 1)]
-           == some prog defer_check { arrCat %(Term.nat 1) %(Term.nat 2) %(Term.sym 0) %(Term.sym 1) }) = true := by native_decide
+           == some prog defer_check { arrCat 1 2 %(Term.sym 0) %(Term.sym 1) }) = true := by native_decide
 
 -- A suspended array has no snapshot; only a collapsed one does. Both marker
 -- kinds are rejected.
@@ -192,10 +192,8 @@ example : (Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.bot),
 -- knowledge form of a rejoined array IS the uncarved one, definitionally.
 example : (Val.arrFoldSegs? [Val.segNode (Term.nat 1) (.ctor "Arr" [Val.nat 3]),
                              Val.segNode (Term.nat 2) (.ctor "Arr" [Val.nat 7, Val.nat 2])]
-           == some prog defer_check { arrCat %(Term.nat 1) %(Term.nat 2) %(Term.ctorApp "Arr" [Term.nat 3])
-                          %(Term.ctorApp "Arr" [Term.nat 7, Term.nat 2]) }) = true := by native_decide
-example : (Pure.nf 200 prog defer_check { arrCat %(Term.nat 1) %(Term.nat 2) %(Term.ctorApp "Arr" [Term.nat 3])
-                            %(Term.ctorApp "Arr" [Term.nat 7, Term.nat 2]) }
+           == some prog defer_check { arrCat 1 2 Arr(3) Arr(7, 2) }) = true := by native_decide
+example : (Pure.nf 200 prog defer_check { arrCat 1 2 Arr(3) Arr(7, 2) }
            == .ctorApp "Arr" [Term.nat 3, Term.nat 7, Term.nat 2]) = true := by native_decide
 
 /-! ## Extents read off the value
@@ -210,7 +208,7 @@ example : (Val.arrExtentPure? (.ctor "Arr" [Val.nat 3, Val.nat 1, Val.nat 2])
 example : (Pure.nf 100 ((Val.arrExtentPure? (segsOf [(1, .sym 0), (2, .sym 1)])).getD Term.zero)
            == Term.nat 3) = true := by native_decide
 example : (Pure.nf 100 ((Val.arrExtentPure? (Val.know
-             prog defer_check { arrCat %(Term.nat 1) %(Term.nat 2) %(Term.sym 0) %(Term.sym 1) })).getD Term.zero)
+             prog defer_check { arrCat 1 2 %(Term.sym 0) %(Term.sym 1) })).getD Term.zero)
            == Term.nat 3) = true := by native_decide
 example : (Val.arrExtentPure? (.sym 0)).isNone = true := by native_decide
 
@@ -254,9 +252,9 @@ example : (Val.renumber id (· + 10) carvedWithLoan == segsOf [(1, .sym 10), (2,
 
 example : (Pure.kAddFn == Dllbc.Std.addFn) = true := by native_decide
 example : (Pure.kLeFn == Dllbc.Std.LeFn) = true := by native_decide
-example : (Pure.nf 200 prog defer_check { %(Pure.kAddFn) %(Term.nat 2) %(Term.nat 3) } == Term.nat 5) = true := by native_decide
-example : (Pure.nf 200 prog defer_check { %(Pure.kLeFn) %(Term.nat 2) %(Term.nat 3) } == .const "Unit") = true := by native_decide
-example : (Pure.nf 200 prog defer_check { %(Pure.kLeFn) %(Term.nat 3) %(Term.nat 2) } == .const "Bot") = true := by native_decide
+example : (Pure.nf 200 prog defer_check { %(Pure.kAddFn) 2 3 } == Term.nat 5) = true := by native_decide
+example : (Pure.nf 200 prog defer_check { %(Pure.kLeFn) 2 3 } == .const "Unit") = true := by native_decide
+example : (Pure.nf 200 prog defer_check { %(Pure.kLeFn) 3 2 } == .const "Bot") = true := by native_decide
 
 /-! ## CARVE, at concrete indices
 
@@ -976,9 +974,9 @@ example : progRejects recSlice "only valid at a telescope position" = true := by
     obligation `Le 1 σ_rest` reduces to `Le Z j`, which is ⊤ and needs no evidence at
     all. Stuck while the residue is a bare σ; free the moment it has a shape. -/
 
-example : (Pure.nf 300 prog defer_check { %(Pure.kLeFn) %(Term.nat 1) %(Term.ctorApp "S" [.sym 0]) } == .const "Unit")
+example : (Pure.nf 300 prog defer_check { %(Pure.kLeFn) 1 S(%(Term.sym 0)) } == .const "Unit")
     = true := by native_decide
-example : (Pure.nf 300 prog defer_check { %(Pure.kLeFn) %(Term.nat 1) %(Term.sym 0) } == .const "Unit")
+example : (Pure.nf 300 prog defer_check { %(Pure.kLeFn) 1 %(Term.sym 0) } == .const "Unit")
     = false := by native_decide
 
 /-! ## Route (a) — the program supplies the residue, and the three-way carve unblocks
