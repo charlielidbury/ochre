@@ -21,14 +21,14 @@ def sweep (name : String) (t : Term) : IO Unit := do
   | .ok (lets, pts) =>
     -- the letTypes side: `letIndex`-equivalent disagreement count
     let mut letDiffs := 0
-    let mut seen : List (Nat × String × Option Term × Val) := []
+    let mut seen : List (Option Term × String × Option Term × Val) := []
     for e in lets do
-      match seen.find? (fun q => q.1 == e.binder.id && q.2.1 == e.binder.name) with
-      | none => seen := (e.binder.id, e.binder.name, e.ty?, e.val) :: seen
+      match seen.find? (fun q => q.1 == e.stmtKey && q.2.1 == e.binder.name) with
+      | none => seen := (e.stmtKey, e.binder.name, e.ty?, e.val) :: seen
       | some (_, _, ty0, v0) =>
         if !(ty0 == e.ty? && Val.beq v0 e.val) then
           letDiffs := letDiffs + 1
-          IO.println s!"{name}: LET-DIVERGENCE at {e.binder.name}#{e.binder.id}"
+          IO.println s!"{name}: LET-DIVERGENCE at {e.binder.name}"
     -- the point side
     let keys := (pts.flatten.filterMap (·.stmtKey)).foldl (fun acc k =>
       if acc.any (fun k2 => Term.beq k2 k) then acc else k :: acc) []
@@ -55,7 +55,7 @@ def sweep (name : String) (t : Term) : IO Unit := do
         if distinct.length > 1 then
           pointDiffs := pointDiffs + 1
           let listed := String.intercalate " ⇔ " distinct
-          IO.println s!"{name}: POINT-DIVERGENCE at ({k.pretty}, {x.name}#{x.id}): {listed}"
+          IO.println s!"{name}: POINT-DIVERGENCE at ({k.pretty}, {x.name}): {listed}"
     IO.println s!"{name}: {pts.length} path(s), {points} point(s), {pointDiffs} point-divergence(s), {letDiffs} let-divergence(s)"
 
 #eval show IO Unit from do

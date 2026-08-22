@@ -457,8 +457,8 @@ example : tailPaths twoLevel
 -- ⇜ (writeC) refines only a symbolic place; aimed at a concrete value it errors.
 -- This one keeps its hand-seeded Ω on purpose: it drives the arrow DIRECTLY,
 -- with no program around it, so there is nothing for a program to be written in.
-example : expectMErr [(⟨0,"x"⟩, cons (nat 3) nil)]
-  (writeC (.var ⟨0,"x"⟩) (nat 9)) "expected a symbolic" = true := by native_decide
+example : expectMErr [(Var.slot "x", cons (nat 3) nil)]
+  (writeC (.var "x") (nat 9)) "expected a symbolic" = true := by native_decide
 
 -- A symbolic match in expression position (a constructor argument) cannot split
 -- and is rejected clearly by the pre-pass / readR.

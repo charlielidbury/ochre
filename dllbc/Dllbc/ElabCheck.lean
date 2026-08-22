@@ -289,24 +289,31 @@ def annotateSyms (sctx : List (Nat × Dllbc.Term)) (v : Dllbc.Val) : Dllbc.Val :
 def letTooltip (name : String) (n : Dllbc.LetNote) : String :=
   s!"{name} ↦ {Dllbc.Val.pretty (annotateSyms n.sctx n.val)}"
 
+/-- A binder's identity in the `let` table: its name and the key of the `let`
+    statement that bound it (docs/22 §3 item 2) — so `let v` under a parameter
+    `v`, or two `let v`s, are two entries and an occurrence joins to ITS binder
+    or to none. -/
+abbrev LetKey := String × Option Dllbc.Term
+
 /-- First entry per binder, flagged when a later one disagrees.
 
     v1 is FIRST-PATH, per docs/16: a σ's type refines per branch, and a statement
     is checked once per path, so one binder legitimately has several binding-time
     types. Nothing is merged and no per-path list is shown; a disagreement is
     reported as one. The raw entries are compared rather than their renderings, so
-    the flag costs no pretty-printing. -/
-def letIndex (tbl : List Dllbc.LetNote) :
-    Std.HashMap (Nat × String) (Dllbc.LetNote × Bool) :=
+    the flag costs no pretty-printing. An association list rather than a hash
+    map, because the key carries a `Term`. -/
+def letIndex (tbl : List Dllbc.LetNote) : List (LetKey × (Dllbc.LetNote × Bool)) :=
   tbl.foldl (fun m e =>
-    let k := (e.binder.id, e.binder.name)
-    match m[k]? with
-    | none => m.insert k (e, false)
+    let k : LetKey := (e.binder.name, e.stmtKey.map Dllbc.stmtKeyOf)
+    match m.lookup k with
+    | none => m ++ [(k, (e, false))]
     | some (e0, differs) =>
       -- Compared on what is DISPLAYED — the type and the value — and not on
       -- `sctx`, which rides along for the legend and whose growth between two
       -- paths is not a disagreement about this binder.
-      if differs || (e0.ty? == e.ty? && e0.val == e.val) then m else m.insert k (e0, true)) {}
+      if differs || (e0.ty? == e.ty? && e0.val == e.val) then m
+      else m.map (fun kv => if kv.1 == k then (k, (e0, true)) else kv)) []
 
 /-- Attach `text` as the hover content at `ref`. Positionless syntax is skipped:
     a leaf the server cannot locate is one nobody can hover. -/
@@ -332,7 +339,7 @@ def pushHover (ref : Syntax) (text : Unit → String) : TermElabM Unit := do
 /-- Render what a binder held AT A POINT (docs/17), through `letTooltip` so a
     tooltip does not change shape when it changes granularity. -/
 def pointTooltip (name : String) (v : Dllbc.Val) (sctx : List (Nat × Dllbc.Term)) : String :=
-  letTooltip name { binder := ⟨0, name⟩, ty? := none, val := v, sctx := sctx }
+  letTooltip name { binder := Dllbc.Var.slot name, stmtKey := none, ty? := none, val := v, sctx := sctx }
 
 /-- The point-fact for one occurrence, if its statement was walked and its binder
     was live there. `none` declines — see `replayTo`. An ENTRY occurrence (a
@@ -344,8 +351,8 @@ def pointFactFor (pts : List (List Dllbc.PointDelta)) (o : Dllbc.Surface.OccNote
   match keys[i]? with
   | none => []
   | some key =>
-    if o.entry then Dllbc.factsAtEntry pts key ⟨o.id, o.name⟩
-    else Dllbc.factsAt pts key ⟨o.id, o.name⟩
+    if o.entry then Dllbc.factsAtEntry pts key o.name
+    else Dllbc.factsAt pts key o.name
 
 /-- `x ⇒ Cons, n ⇒ S` — which arms this path took, outermost first. -/
 def trailText (trail : List (String × String)) : String :=
@@ -424,7 +431,13 @@ def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote)
     -- point answer inside a marked statement silently declines.
     let keys ← if pts.isEmpty then pure [] else
       (·.map Dllbc.Term.stripMarkers) <$> keyValues (spans.occs.filterMap (fun o => o.stmt))
+    -- The binder keys, evaluated the same way, for the `let`-table join —
+    -- stripped for the same reason: `LetNote.stmtKey` comes from the stripped
+    -- walk, and the emitted `let` key may carry a marker in its right-hand side.
+    let bkeys ← if tbl.isEmpty then pure [] else
+      (·.map Dllbc.Term.stripMarkers) <$> keyValues (spans.occs.filterMap (fun o => o.bindKey))
     let mut ki := 0
+    let mut bi := 0
     for oi in [0 : spans.occs.size] do
       let o := spans.occs[oi]!
       -- Nothing is computed here — `hasPoint` only asks whether this occurrence
@@ -437,6 +450,16 @@ def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote)
                           pointBody (pointFactFor pts o keys ki')).getD "")
         else none
       if o.stmt.isSome && !pts.isEmpty then ki := ki + 1
+      -- The binder fact this occurrence may fall back to: the entry under its
+      -- name AND the key of the `let` it resolved to. No `let` (a parameter, a
+      -- pattern binder) — no fallback.
+      let binderFact : Option (Dllbc.LetNote × Bool) :=
+        if o.bindKey.isSome && !tbl.isEmpty then
+          match bkeys[bi]? with
+          | some bk => idx.lookup (o.name, some (Dllbc.stmtKeyOf bk))
+          | none => none
+        else none
+      if o.bindKey.isSome && !tbl.isEmpty then bi := bi + 1
       -- **`show x` — the SAME answer, eagerly, as a diagnostic** (docs/18). Not a
       -- second renderer and not a second query: the string below is the one the
       -- tooltip would have produced at this occurrence, forced now instead of
@@ -446,7 +469,7 @@ def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote)
         let shown := match point? with
           | some txt => txt ()
           | none =>
-            match idx[(o.id, o.name)]? with
+            match binderFact with
             | some (e, differs) =>
               letTooltip o.name e ++ (if differs then " *(differs per path)*" else "")
             -- Nothing known: say so rather than printing an empty box. A `show`
@@ -462,7 +485,7 @@ def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote)
       match point? with
       | some txt => pushHover o.ref txt
       | none =>
-        if let some (e, differs) := idx[(o.id, o.name)]? then
+        if let some (e, differs) := binderFact then
           pushHover o.ref (fun _ => letTooltip o.name e ++
             if differs then " *(differs per path)*" else "")
 
@@ -672,14 +695,12 @@ def elabModule (ref : Syntax) (seed? : Option (TSyntax `term)) (b : TSyntax `ubl
   -- Newest FIRST (the reverse of Ω's append order), so a later binding of a
   -- name shadows an earlier one exactly as Ω's own newest-wins resolution
   -- (`findSlot?`) reads it, and the block's own binders — consed on in front —
-  -- shadow imports. A declaration entry (`declSlot`) resolves as a fn slot: a
-  -- bare mention becomes `.var ⟨declSlot, name⟩`, the very Var the seed's env
-  -- entry holds, and a CALL falls through to `.call` for `moduleRetarget` to
-  -- rewrite — the same division of labour local `fn`s get.
-  let seedRctx : List (String × Nat) :=
-    (seedSt.env.map (fun kv => (kv.1.name, kv.1.id))).reverse
-  let act : UM (TSyntax `term) := do
-    let (t, _) ← elabUBlk seedRctx [] 0 b; pure t
+  -- shadow imports. A declaration entry (`decl`) resolves as a fn slot: a bare
+  -- mention becomes `.var name`, and a CALL falls through to `.call` for
+  -- `moduleRetarget` to rewrite — the same division of labour local `fn`s get.
+  let seedScope : Scope :=
+    (seedSt.env.map (fun kv => (⟨kv.1.name, kv.1.kind, none⟩ : Scoped))).reverse
+  let act : UM (TSyntax `term) := elabUBlk seedScope b
   let hover ← hoverEnabled
   -- `collect := true`, unlike `elabChecked` — the one deliberate cost reversal
   -- (docs/20 stage 3). For a plain block the span table exists to locate a
@@ -725,7 +746,7 @@ def elabModule (ref : Syntax) (seed? : Option (TSyntax `term)) (b : TSyntax `ubl
     -- top-level declaration comes later in the block.)
     let hintList : List (String × Nat) :=
       spans.fnHints.toList.reverse.filter fun p =>
-        st.env.any (fun kv => kv.1.id == Dllbc.declSlot && kv.1.name == p.1)
+        st.env.any (fun kv => kv.1.isDecl && kv.1.name == p.1)
     -- Spans: each statement key elaborates to its term — the same round-trip
     -- `keyValues` does on the failing path — normalized HERE via `stmtKeyOf`
     -- (Uni cannot name it; this module can, see `spanFor`), so the persisted
@@ -760,9 +781,11 @@ end ProgElab
 open Surface ProgElab in
 elab_rules : term
   | `(prog{ $b:ublk }) =>
-    elabChecked b (do let (t, _) ← elabUBlk [] [] 0 b; pure t)
+    elabChecked b (elabUBlk [] b)
   | `(prog_parse { $b:ublk }) =>
-    elabUnchecked (do let (t, _) ← elabUBlk [] [] 0 b; pure t)
+    elabUnchecked (do
+      modify fun a => { a with parse := true }
+      elabUBlk [] b)
   -- The module forms (docs/20). One elaborator, seed optional: `()` is the
   -- empty state, `(e)` is a state to continue from.
   | `(prog ($[$e:term]?) { $b:ublk }) => elabModule b e b

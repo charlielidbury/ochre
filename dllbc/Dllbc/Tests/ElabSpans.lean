@@ -42,7 +42,7 @@ call: argument (S (S (S Z))) does not have its parameter type (Bool)
 
 /--
 error: dllbc:
-readR: x#0 holds ⊥ (use-after-move or uninitialized). If a CALL moved it and that callee only needs it in types or proofs, capitalizing the callee's parameter makes the argument a ⇝-read, which consumes nothing (§6).
+readR: x holds ⊥ (use-after-move or uninitialized). If a CALL moved it and that callee only needs it in types or proofs, capitalizing the callee's parameter makes the argument a ⇝-read, which consumes nothing (§6).
 -/
 #guard_msgs in
 #check (prog{
@@ -108,7 +108,7 @@ call: argument (S (S (S Z))) does not have its parameter type (Bool)
 
 /--
 error: dllbc:
-readR: a#1 holds ⊥ (use-after-move or uninitialized). If a CALL moved it and that callee only needs it in types or proofs, capitalizing the callee's parameter makes the argument a ⇝-read, which consumes nothing (§6).
+readR: a holds ⊥ (use-after-move or uninitialized). If a CALL moved it and that callee only needs it in types or proofs, capitalizing the callee's parameter makes the argument a ⇝-read, which consumes nothing (§6).
 -/
 #guard_msgs in
 #check (prog{

@@ -155,12 +155,6 @@ def arrRun? : Term → Option (List Term)
   | .ctorApp "Arr" vs => some vs
   | _ => none
 
-/-- The pure binder a reflected `let` binds, for the runtime slot `id`. Reserved
-    (`isReservedName`), which is what keeps the binding capture-free: no source
-    binder can shadow it, and runtime ids are globally unique so no `let` can
-    shadow another. -/
-def letName (id : Nat) : String := "§let" ++ toString id
-
 /-- Collect an application spine into its head and argument list (in order). -/
 def collectSpine : Sem → Sem × List Sem
   | .app f a => let (h, as) := collectSpine f; (h, as ++ [a])
@@ -247,7 +241,7 @@ def semNatOf? : Sem → Option Nat
     for it would hide that. -/
 mutual
   def semToTerm : Sem → Term
-    | .pvar x => .pvar x
+    | .pvar x => .var x
     | .type => .type
     | .const c => .const c
     | .stuck t => t
@@ -290,7 +284,7 @@ mutual
       recursion arms, and forcing costs time where a wrong `false` would cost the
       duplication this whole mechanism exists to remove. -/
   def mentionsP (x : String) : Term → Bool
-    | .pvar y => y == x
+    | .var y => y == x
     | .cmpT τ => mentionsP x τ
     | .lam y dom b => mentionsP x dom || (y.name != x && mentionsP x b)
     | .pi y dom b | .sigmaT y dom b | .borrowT y dom b =>
@@ -299,7 +293,7 @@ mutual
     | .idT a b c => mentionsP x a || mentionsP x b || mentionsP x c
     | .ctorApp _ args => mentionsPList x args
     | .deref t | .borrow t => mentionsP x t
-    | .var _ | .type | .unit | .const _ => false
+    | .type | .unit | .const _ => false
     | _ => true                                 -- statement forms: assume it does
   termination_by t => sizeOf t
   def mentionsPList (x : String) : List Term → Bool
@@ -353,20 +347,20 @@ mutual
     | 0, ρ, t => (.stuck t, ρ)
     | fuel + 1, ρ, t =>
       match t with
-      | .pvar x =>
+      -- ONE `var` (docs/22): bound in ρ — by a binder's application or by a
+      -- ⇝-`let` below — it is that; unbound, a name means itself. An Ω slot
+      -- never reaches here unresolved: `reflectC` read it.
+      | .var x =>
         (match ρ.lookup x with
          | some w => w
-         | none => .pvar x, ρ)                  -- free: a name means itself
-      | .var x =>
-        (match ρ.lookup (letName x.id) with
-         | some w => w
-         | none => .stuck (.var x), ρ)          -- an Ω slot: not knowledge here
+         | none => .pvar x, ρ)
       -- `let x = rhs` — the ONE env-writing former. Unit-valued; the binding
       -- rides out in the env component and scopes over the rest of whatever
-      -- spine this sits in (there is no tail HERE any more).
+      -- spine this sits in (there is no tail HERE any more). It binds its own
+      -- name, which is the scope rule.
       | .letIn x rhs =>
         let (v, ρ1) := eval (fuel + 1) ρ rhs
-        (.ctor "unit" [], (letName x.id, v) :: ρ1)
+        (.ctor "unit" [], (x.name, v) :: ρ1)
       -- `e ; rest`: evaluate `e` for its env effect, discard its value, run
       -- `rest` under the output env. A stuck head sticks the whole seq (see
       -- the docstring above).

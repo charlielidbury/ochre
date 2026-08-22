@@ -98,32 +98,15 @@ namespace FnMacro
     indices past the binder it was introducing, at every binder crossed, and that
     lifting is the identity under names. -/
 
-/-- The pure binder a telescope parameter is abstracted to. RESERVED, keyed on the
-    parameter's globally-unique runtime id: a source binder cannot write one, and
-    two parameters cannot collide even if a program names them both `x`, so the
-    abstraction needs no freshness check and no not-under-a-shadowing-binder guard.
-    (The parameter's own name would read better in a printed Π and would be wrong
-    for exactly those two reasons.) -/
-def paramName (x : Var) : String := "§p" ++ toString x.id
-
-/-- Replace `.var x` by the pure variable `paramName x`, descending everything a
-    type is made of. -/
-partial def absVar (x : Var) : Term → Term
-  | .var y => if y == x then .pvar (paramName x) else .var y
-  | .pi n d c => .pi n (absVar x d) (absVar x c)
-  | .sigmaT n d c => .sigmaT n (absVar x d) (absVar x c)
-  | .lam n d b => .lam n (absVar x d) (absVar x b)
-  | .borrowT n τ S => .borrowT n (absVar x τ) (absVar x S)
-  | .app f a => .app (absVar x f) (absVar x a)
-  | .idT a b c => .idT (absVar x a) (absVar x b) (absVar x c)
-  | .ctorApp n args => .ctorApp n (args.map (absVar x))
-  | .cmpT τ => .cmpT (absVar x τ)
-  | .deref t => .deref (absVar x t)
-  | .index t i ev => .index (absVar x t) (absVar x i) (ev.map (absVar x))
-  | .range t lo cnt rest ev eq =>
-    .range (absVar x t) (absVar x lo) (cnt.map (absVar x))
-      (rest.map (absVar x)) (ev.map (absVar x)) (eq.map (absVar x))
-  | t => t
+/-- A telescope parameter's Π binder is the parameter's OWN NAME (docs/22). It
+    used to be a reserved `§p<id>`, keyed on the parameter's globally-unique id,
+    with every occurrence rewritten to it — abstraction was needed because the
+    body's `.var ⟨id, "v"⟩` and the Π's pure binder were two namespaces. Under
+    one `var` they are the same name already, so the Π binds it and nothing is
+    rewritten; the printed Π reads as the header wrote it. Two parameters of one
+    telescope cannot share a name (the surface refuses it, and `seedTelescope`
+    asserts it). -/
+def paramName (x : Var) : String := x.name
 
 /-- A λ/Π domain carrying its binder's mode (§6): `⇝τ` for a capitalized binder.
     `piPeel` checks the two against each other, so getting this wrong is caught. -/
@@ -136,48 +119,19 @@ def markDom (x : Var) (τ : Term) : Term :=
     back. -/
 def telePi : List (Var × Term) → Term → Term
   | [], ret => ret
-  | (x, τ) :: rest, ret => .pi (paramName x) (markDom x τ) (absVar x (telePi rest ret))
+  | (x, τ) :: rest, ret => .pi (paramName x) (markDom x τ) (telePi rest ret)
 
 /-! ## Resolving the scrutinee's match, and rewriting self-calls -/
 
-/-- A `Var`'s id if it is one, and `0` if it is a sentinel — `noSlot` (a comptime
-    binder) or `declSlot` (a program declaration). Neither is an id in the
-    program's space and either would swamp a maximum. -/
-def realId (x : Var) : Nat := if x.id == noSlot || x.id == declSlot then 0 else x.id
-
-/-- The largest runtime var id anywhere in a term — for minting `ih` above every
-    id the body already uses. -/
-partial def maxVarId : Term → Nat
-  | .var x => x.id
-  -- Both SENTINELS are excluded (M32 R4 adds `declSlot` beside `noSlot`): they
-  -- are tags, not ids in the program's space, and either would swamp the max.
-  | .letIn x rhs => max (realId x) (maxVarId rhs)
-  | .assign p e => max (maxVarId p) (maxVarId e)
-  | .ctorApp _ args | .call _ args => args.foldl (fun a t => max a (maxVarId t)) 0
-  | .borrow t | .deref t | .cmpT t => maxVarId t
-  | .index t i ev =>
-    max (maxVarId t) (max (maxVarId i) ((ev.map maxVarId).getD 0))
-  | .range t lo cnt rest ev eq =>
-    [maxVarId t, maxVarId lo, (cnt.map maxVarId).getD 0, (rest.map maxVarId).getD 0,
-     (ev.map maxVarId).getD 0, (eq.map maxVarId).getD 0].foldl max 0
-  | .matchE s eqn brs =>
-    brs.foldl (fun a b => max a (max (b.binders.foldl (fun c v => max c v.id) 0) (maxVarId b.body)))
-      (max s.id ((eqn.map (·.id)).getD 0))
-  | .seq a b | .app a b | .seal _ a b => max (maxVarId a) (maxVarId b)
-  -- The one λ (M32 R2): the BINDER's id counts too, which is what the `lamR`
-  -- fold over its telescope was for. A comptime binder's `noSlot` would swamp
-  -- the maximum, so it is excluded — it is not an id in the program's space.
-  | .lam x a b => max (realId x) (max (maxVarId a) (maxVarId b))
-  | .pi _ a b | .sigmaT _ a b | .borrowT _ a b =>
-    max (maxVarId a) (maxVarId b)
-  | .idT a b c => max (maxVarId a) (max (maxVarId b) (maxVarId c))
-  | _ => 0
-
-/-- Rename one runtime variable throughout (binding occurrences included). -/
+/-- Rename one runtime variable throughout (binding occurrences included). By
+    NAME, every occurrence and every binder of it: a consistent renaming of a
+    name is meaning-preserving whatever the shadowing, and its one client
+    (`resolveScrut`'s rebinding of a branch's field binders to the arm's) is the
+    identity whenever the body has a `match` on the scrutinee. -/
 partial def renameVar (from_ to : Var) : Term → Term
-  | .var x => if x.id == from_.id then .var to else .var x
+  | .var x => if x == from_.name then .var to.name else .var x
   | .letIn x rhs =>
-    .letIn (if x.id == from_.id then to else x) (renameVar from_ to rhs)
+    .letIn (if x.name == from_.name then to else x) (renameVar from_ to rhs)
   | .assign p e =>
     .assign (renameVar from_ to p) (renameVar from_ to e)
   | .seq a b => .seq (renameVar from_ to a) (renameVar from_ to b)
@@ -186,8 +140,8 @@ partial def renameVar (from_ to : Var) : Term → Term
   | .borrow t => .borrow (renameVar from_ to t)
   | .deref t => .deref (renameVar from_ to t)
   | .matchE s eqn brs =>
-    .matchE (if s.id == from_.id then to else s) eqn (brs.map (fun b =>
-      Branch.mk b.ctor (b.binders.map (fun v => if v.id == from_.id then to else v))
+    .matchE (if s == from_.name then to.name else s) eqn (brs.map (fun b =>
+      Branch.mk b.ctor (b.binders.map (fun v => if v.name == from_.name then to else v))
         (renameVar from_ to b.body)))
   | .app a b => .app (renameVar from_ to a) (renameVar from_ to b)
   | .idT a b c => .idT (renameVar from_ to a) (renameVar from_ to b) (renameVar from_ to c)
@@ -206,7 +160,7 @@ partial def renameVar (from_ to : Var) : Term → Term
     another one, as `quicksort`'s is. -/
 partial def resolveScrut (k : Var) (ctor : String) (rebind : List Var) : Term → Term
   | .matchE s eqn brs =>
-    if s.id == k.id then
+    if s == k.name then
       match brs.find? (fun b => b.ctor == ctor) with
       | some b =>
         -- The kept branch, with its field binders renamed to the arm's. The
@@ -239,7 +193,7 @@ partial def resolveScrut (k : Var) (ctor : String) (rebind : List Var) : Term �
     of a single `match` on the scrutinee. -/
 partial def branchBinders (k : Var) (ctor : String) : Term → Option (List Var)
   | .matchE s _ brs =>
-    if s.id == k.id then
+    if s == k.name then
       match brs.find? (fun b => b.ctor == ctor) with
       | some b => some b.binders
       | none => none
@@ -304,7 +258,7 @@ partial def renameSelf (from_ to : String) : Term → Term
 partial def selfToIh (name : String) (k : Nat) (ih : Var) : Term → Term
   | .call f args =>
     let args' := args.map (selfToIh name k ih)
-    if f == name then Term.appSpine (.var ih) (args'.eraseIdx k) else .call f args'
+    if f == name then Term.appSpine (.var ih.name) (args'.eraseIdx k) else .call f args'
   | .letIn x rhs => .letIn x (selfToIh name k ih rhs)
   | .assign p e =>
     .assign (selfToIh name k ih p) (selfToIh name k ih e)
@@ -319,10 +273,9 @@ partial def selfToIh (name : String) (k : Nat) (ih : Var) : Term → Term
 
 /-! ## The elaboration -/
 
-/-- The telescope as `Var`s, at the §5.2 positional convention its own types are
-    written against. -/
+/-- The telescope as slot binders. -/
 def teleVars (tel : List (String × Term)) : List (Var × Term) :=
-  tel.zipIdx.map (fun p => (Var.mk p.2 p.1.1, p.1.2))
+  tel.map (fun p => (Var.slot p.1, p.2))
 
 /-- Move the `[k]`-th entry to the front.
 
@@ -336,9 +289,9 @@ def hoist (k : Nat) (tel : List (Var × Term)) : Except String (List (Var × Ter
   | none => .error s!"fn: [{k}] is out of range for a {tel.length}-parameter telescope"
   | some (kv, kτ) =>
     let earlier := (tel.take k).map (·.1)
-    match (Term.freeRVars [] kτ).find? (fun y => earlier.any (fun e => e.id == y.id)) with
+    match (Term.freeVars [] kτ).find? (fun y => earlier.any (fun e => e.name == y)) with
     | some y =>
-      .error s!"fn: the decreasing parameter '{kv.name}' cannot be hoisted to the front of the telescope — its type mentions '{y.name}', which is declared before it. §7 makes [k] a scrutinee-selection hint and the motive is the sealed Π with that binder peeled off the FRONT, so the scrutinee's own type must be statable first."
+      .error s!"fn: the decreasing parameter '{kv.name}' cannot be hoisted to the front of the telescope — its type mentions '{y}', which is declared before it. §7 makes [k] a scrutinee-selection hint and the motive is the sealed Π with that binder peeled off the FRONT, so the scrutinee's own type must be statable first."
     | none => .ok ((kv, kτ) :: (tel.take k ++ tel.drop (k + 1)))
 
 /-- **The nullary `fn`'s Unit parameter** (M32 R2, suspensions.md §1).
@@ -426,32 +379,39 @@ def fnElab (d : FnDef) : Except String Term := do
     -- and because the kernel calls the same thing `R` (`sealRec` peels it off the
     -- ascription instead of building it, and the two agree by `telePi`/`piPeel`
     -- being inverse).
-    let R : Term := absVar kv (telePi rest d.retType)
-    let motive : Term := .lam (paramName kv) scrutDom R
-    -- Fresh binders for the step arm, above every id the body already uses.
-    let base := max (maxVarId d.body) (tel.foldl (fun a p => max a p.1.id) 0) + 1
-    -- The step arm's binders keep the names AND the ids the body's own `match k`
-    -- gave them, so the rebinding below is the identity whenever there is one such
-    -- match. For a list that is the head and the tail; for a `Nat`, the
-    -- predecessor. `dec` is the one a self-call must recurse on.
+    let R : Term := telePi rest d.retType
+    -- The motive binds the scrutinee under a RESERVED name (`§n` for a
+    -- scrutinee `n`): it is machine-minted, never cited, and a lowercase pure
+    -- binder named `n` would read as a comptime binder that failed to spell
+    -- its mode (Programs.lean's census). `R` itself keeps the parameter's own
+    -- name — every arm annotation is an instance of it at that name.
+    let mName := "§" ++ paramName kv
+    let motive : Term := .lam mName scrutDom (Term.substP (paramName kv) (.var mName) R)
+    -- The step arm's binders are the body's own `match k` branch binders, so the
+    -- rebinding below is the identity whenever there is one such match. For a
+    -- list that is the head and the tail; for a `Nat`, the predecessor. `dec` is
+    -- the one a self-call must recurse on. With no such match the names are
+    -- MINTED (`hd`, `k'`): a body that never matches its scrutinee cannot cite
+    -- these, and an inner binder of the same name shadows them lexically.
     let (baseCtor, stepCtor) := if elemTy?.isSome then ("Nil", "Cons") else ("Z", "S")
+    let minted : List Var :=
+      if elemTy?.isSome then [Var.slot "hd", Var.slot (kv.name ++ "'")]
+      else [Var.slot (kv.name ++ "'")]
     let stepBs : List Var := match branchBinders kv stepCtor d.body with
       | some bs =>
         if elemTy?.isSome then
           match bs with
           | [h, t] => [h, t]
-          | _ => [⟨base, "hd"⟩, ⟨base + 2, kv.name ++ "'"⟩]
+          | _ => minted
         else match bs with
           | [p] => [p]
-          | _ => [⟨base, kv.name ++ "'"⟩]
-      | none =>
-        if elemTy?.isSome then [⟨base, "hd"⟩, ⟨base + 2, kv.name ++ "'"⟩]
-        else [⟨base, kv.name ++ "'"⟩]
+          | _ => minted
+      | none => minted
     let dec : Var := stepBs.getLast!
     -- `ih`'s domain is the motive at the PREDECESSOR — a term nothing in the
     -- source wrote. Computed here rather than below because its SHAPE decides the
     -- binder's own spelling.
-    let ihTy : Term := Term.substP (paramName kv) (.var dec) R
+    let ihTy : Term := Term.substP (paramName kv) (.var dec.name) R
     -- **`Ih` IS CAPITAL WHEN IT HOLDS A FUNCTION, and lowercase when it holds
     -- data** (M33b, suspensions.md §2.1/§2.5). §2.1's rule reaches every binder
     -- and this one was out of its migration's reach — the corpus's `ih`s were
@@ -473,8 +433,10 @@ def fnElab (d : FnDef) : Except String Term := do
     -- self-call `RecGood(m)` drops its only argument and IS the bare `.var ih`
     -- that the arm returns. Making that return legal would need the recursor's
     -- signature to carry modes, which is filed as its own milestone.
-    let ih : Var :=
-      ⟨base + 1, match ihTy with | .pi _ _ _ => "Ih" | _ => "ih"⟩
+    -- A minted NAME (docs/22): a body that binds `ih` itself and self-calls
+    -- inside that binding would capture; the checker, not this macro, reports
+    -- the program that results.
+    let ih : Var := Var.slot (match ihTy with | .pi _ _ _ => "Ih" | _ => "ih")
     -- THE ARMS: the WHOLE body twice, with `match k` resolved to one branch each.
     let zBody := resolveScrut kv baseCtor [] d.body
     let sResolved := resolveScrut kv stepCtor stepBs d.body
@@ -483,7 +445,7 @@ def fnElab (d : FnDef) : Except String Term := do
     -- than left to the kernel, which would accept the (well-founded) elaboration
     -- of a source that is not.
     match (selfScrutArgs d.name k sResolved).find? (fun a =>
-        match a with | .var y => y.id != dec.id | _ => true) with
+        match a with | .var y => y != dec.name | _ => true) with
     | some _ =>
       .error s!"fn: '{d.name}' calls itself with a decreasing argument [{k}] that is not the predecessor '{dec.name}' its `{stepCtor}` branch binds. §7 makes a recursive occurrence `ih` — the sealed self-view AT THE PREDECESSOR — so there is nothing for a self-call at any other argument to become. (This is the check that keeps the macro from silently turning a non-terminating source into a terminating recursor: the elaborated term would be well-founded and would check, but it would be a different function.)"
     | none => pure ()
@@ -497,7 +459,7 @@ def fnElab (d : FnDef) : Except String Term := do
     -- non-closed. Said here rather than left to the kernel's closedness rejection,
     -- which would name the variable without naming the cause.
     let restIds := rest.map (·.1)
-    let stray := (Term.freeRVars (restIds.map (·.name)) zBody).find? (fun y => y.name == kv.name)
+    let stray := (Term.freeVars (restIds.map (·.name)) zBody).find? (fun y => y == kv.name)
     match stray with
     | some _ =>
       .error s!"fn: the base arm still mentions '{kv.name}' after `match {kv.name}` was resolved to its `{baseCtor}` branch. The scrutinee does not exist inside an arm — it is the recursor's argument — so a body may only reach it through a match on it."
@@ -531,7 +493,7 @@ def fnElab (d : FnDef) : Except String Term := do
     match elemTy? with
     | none =>
       let zTel := armTelOrUnit (← armTel restIds (Term.substP (paramName kv) (.ctorApp "Z" []) R))
-      let sTel ← armTel restIds (Term.substP (paramName kv) (.ctorApp "S" [.var dec]) R)
+      let sTel ← armTel restIds (Term.substP (paramName kv) (.ctorApp "S" [.var dec.name]) R)
       .ok (.seal 0
         (.app (.app (.app (.const "natRec") motive)
           (Term.lamTel zTel zBody))
@@ -541,7 +503,7 @@ def fnElab (d : FnDef) : Except String Term := do
       let hd : Var := stepBs.head!
       let zTel := armTelOrUnit (← armTel restIds (Term.substP (paramName kv) (.ctorApp "Nil" []) R))
       let sTel ← armTel restIds
-        (Term.substP (paramName kv) (.ctorApp "Cons" [.var hd, .var dec]) R)
+        (Term.substP (paramName kv) (.ctorApp "Cons" [.var hd.name, .var dec.name]) R)
       .ok (.seal 0
         (.app (.app (.app (.app (.const "listRec") a) motive)
           (Term.lamTel zTel zBody))
@@ -586,15 +548,15 @@ partial def retarget (binds : List (String × Var × Option Nat)) : Term → Ter
     match binds.lookup f with
     | some (v, some k) =>
       match args'[k]? with
-      | some a => Term.appSpine (.var v) (a :: args'.eraseIdx k)
-      | none => Term.appSpine (.var v) args'    -- arity mismatch: the kernel reports it
+      | some a => Term.appSpine (.var v.name) (a :: args'.eraseIdx k)
+      | none => Term.appSpine (.var v.name) args'    -- arity mismatch: the kernel reports it
     -- **A no-argument call supplies the nullary desugar's `()`** (M32 R2). A
     -- declared callee with an empty argument list is a nullary `fn`, and
     -- `fnElab` gave it the comptime `U§ : ⇝Unit` binder that §1 prescribes; the
     -- unit is put here rather than written, so the desugar is invisible at the
     -- surface from both ends. (A no-argument call of a callee that is NOT nullary
     -- is an arity error either way, and the kernel still reports it.)
-    | some (v, none) => Term.appSpine (.var v) (if args'.isEmpty then [.unit] else args')
+    | some (v, none) => Term.appSpine (.var v.name) (if args'.isEmpty then [.unit] else args')
     | none => .call f args'
   | .ctorApp n args => .ctorApp n (args.map (retarget binds))
   | .letIn x rhs => .letIn x (retarget binds rhs)
@@ -682,7 +644,7 @@ def bindFn (v : Var) (dec : Option Nat) (rest : Term) : Term :=
     unknown function it is. -/
 def progOf (ds : List FnDef) (tail : Term) : Except String Term := do
   let binds : List (String × Var × Option Nat) :=
-    ds.map (fun d => (d.name, ⟨declSlot, d.name⟩, d.dec))
+    ds.map (fun d => (d.name, (Var.decl d.name), d.dec))
   let rec go (i : Nat) : List FnDef → Except String Term
     -- The tail is in the accumulated scope, so its calls are retargeted too — which
     -- is what lets an existing `FnDef`-era caller term be handed over unchanged and
@@ -695,7 +657,7 @@ def progOf (ds : List FnDef) (tail : Term) : Except String Term := do
       -- forward reference and a residual self-call show up as the unknown
       -- function they are, rather than as a dangling variable.
       let above := binds.take i
-      pure (.seq (.letIn ⟨declSlot, d.name⟩ (retarget above t)) (← go (i + 1) rest))
+      pure (.seq (.letIn (Var.decl d.name) (retarget above t)) (← go (i + 1) rest))
   go 0 ds
 
 end FnMacro

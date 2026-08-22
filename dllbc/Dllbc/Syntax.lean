@@ -16,23 +16,25 @@ only the forms the §2 concrete machine needs right now:
 The λ / application / Π / `Type` / `match` forms of §1.1 join in later
 milestones (§3 match, §5 boundaries, §7 inductives).
 
-## Runtime variables carry globally-unique ids
+## A variable is a NAME (docs/22, one `var`)
 
-A runtime variable is a `Nat` id (globally unique, minted by the surface macros
-at elaboration time) paired with a display `String`. There is **no**
-de Bruijn indexing in the machine layer and **no** shifting anywhere — the
-macro resolves names to ids while elaborating, and an unresolved name is an
-elaboration-time error (mirroring `Och/Macro.lean`'s discipline that killed
-the silent-999 sentinel bug). The environment Ω is then keyed by these ids,
-so shadowing is a fresh id, never a name clash.
+A variable occurrence is `var "x"` — one constructor for the comptime fragment
+and the runtime one, and the name is the whole identity. What a name means is
+decided by SCOPE, structurally, where the term is reflected: an occurrence under
+an enclosing pure binder of that name (λ/Π/Σ, a borrow type's snapshot binder,
+a ⇝-`let`) is a pure variable, and otherwise it is an Ω slot — which is what it
+always is in a ⇒ position. Lookup-the-nearest-binding is the scope rule for
+both, and shadowing is that mechanism rather than a hazard: `λ (x : τ). λ (x :
+υ). x` means the inner one, `let x = …; let x = …; x` the later one, and
+nothing gensyms.
 
-## Pure variables carry SOURCE NAMES (M30 step 2, `docs/nbe.md` §5)
-
-And so, since M30 step 2, does the comptime fragment: `lam`/`pi`/`sigmaT` and
-`borrowT`'s snapshot binder each carry the name they were written with, an
-occurrence is `pvar "x"`, and lookup-the-nearest-binding is the scope rule.
-Shadowing is that mechanism rather than a hazard — `λ (x : τ). λ (x : υ). x`
-means the inner one — and nothing gensyms.
+Runtime variables used to carry a globally-unique id minted by the surface;
+since M32 R1 Ω resolves by name, newest wins, and the id was decoration. With
+it gone a term written outside its binding context — a `prog_parse { }`
+fragment — is simply a term with free names, and the block it is spliced into
+binds them by the same rule (docs/22 §6, the hygiene ruling). There is **no**
+de Bruijn indexing in the machine layer and **no** shifting anywhere (the
+compensation for substitution that M30 step 1 deleted).
 
 The de Bruijn indices this replaces were a compensation for SUBSTITUTION, which
 M30 step 1 deleted: an evaluator that carries an environment to a body never
@@ -92,51 +94,41 @@ def symName (σ : Nat) : String := "§σ" ++ toString σ
 def symOfName? (s : String) : Option Nat :=
   if s.startsWith "§σ" then (s.drop 2).toNat? else none
 
-/-- A runtime variable: a globally-unique `id` plus a display `name`. -/
-structure Var where
-  id : Nat
-  name : String
+/-- **What kind of binder a `Var` is** — the one thing its name does not say
+    (docs/22 §2). These are M32 R4's two tags, `noSlot` and `declSlot`, as an
+    enum: nothing compares, orders, offsets or mints one.
+
+      * `pure`: a comptime λ binder. Its argument lands in the comptime
+        environment, not in Ω (`Var.bindsSlot`), which is what tells a λ that is
+        ⇒-ENTERED from one ⇝ reduces (`Term.lamImperative`).
+      * `slot`: a telescope parameter, a `let`, a match's binders — an Ω slot.
+      * `decl`: a `fn` statement's binding. A declaration IS a `let` (M28 θ), so
+        the term cannot tell `fn F` from `let F = (λ … : Π …)`; the harness
+        projections that report "what this code leaves in Ω" without the
+        program's own function bindings (`tailEnvs`, `moduleBinds`) ask the
+        binder. -/
+inductive BinderKind where
+  | pure | slot | decl
 deriving DecidableEq, BEq, Repr, Inhabited
 
-/-- **A pure binder is a `Var` with no slot** (M32 R2). One λ former means one
-    binder type, and a `Var` is the one that carries both things a binder can
-    need: the NAME, which is what every resolution keys on since M32 R1, and the
-    `id`, which only a binder whose argument lands in Ω has any use for.
+/-- A BINDER: its name, and what kind of binder it is. Occurrences are names
+    (`Term.var : String → Term`); only a binding position carries a `Var`. -/
+structure Var where
+  name : String
+  kind : BinderKind := .slot
+deriving DecidableEq, BEq, Repr, Inhabited
 
-    So a comptime binder is written `"x"` and read as `⟨noSlot, "x"⟩`. The id is
-    the residue of the runtime half and it leaves with the rest of E2's id
-    machinery at R4; until then this coercion is what keeps the ~150 hand-written
-    pure λs spelled the way they were written.
+/-- An Ω-slot binder. -/
+def Var.slot (name : String) : Var := ⟨name, .slot⟩
+/-- A pure (comptime λ) binder. -/
+def Var.pure (name : String) : Var := ⟨name, .pure⟩
+/-- A declaration's binder. -/
+def Var.decl (name : String) : Var := ⟨name, .decl⟩
+/-- Is this a declaration's binder? -/
+def Var.isDecl (x : Var) : Bool := x.kind == .decl
 
-    **`noSlot` is a real sentinel and not a zero**, because `Term.freeRVars` asks
-    which of a term's binders bind a `.var` occurrence and it asks by id: a pure
-    binder must bind NOTHING there (its argument lands in the comptime
-    environment, not in Ω, and `.var` names an Ω slot), while an imperative λ's
-    binder must bind its own id exactly as `lamR`'s telescope did. Zero would have
-    silently bound every occurrence of runtime slot `#0`. -/
-def noSlot : Nat := 0xFFFF_FFFF_FFFF
-
-/-- **A program-level DECLARATION's slot** (M32 R4) — the `let` a `fn` statement
-    becomes (§8: "a declaration is a `let`, and the binding IS the name").
-
-    A TAG, and that is the whole change from what it replaces. `FnMacro.progBase`
-    was an arithmetic base: declaration `i` bound at `900 + i`, so declarations
-    were distinguishable from locals by being ABOVE a number, from each other by
-    their index, and a body was checked not to mint an id that reached the base.
-    Every one of those three jobs was about ID resolution, and R1 made Ω resolve
-    by NAME — `findSlot?` never reads an id — so what is left is the one question
-    the arithmetic was also answering: *is this Ω entry a declaration?* The two
-    consumers are the harness projections that report "what this code leaves in
-    Ω" without the program's own function bindings in the way.
-
-    A single constant rather than `900 + i` also removes the collision the
-    arithmetic created: two `%`-spliced chains both numbered from `900`, so
-    `withA (withB …)` had `A` and `B` at the SAME id under DIFFERENT names, and
-    `bindFn` refused it. Under name-keying nothing was ever going to confuse
-    them, which is why that check retired here rather than being re-expressed. -/
-def declSlot : Nat := 0xFFFF_FFFF_FFFE
-
-instance : Coe String Var := ⟨fun s => ⟨noSlot, s⟩⟩
+/-- A pure λ written by hand binds a pure binder: `Term.lam "x" …`. -/
+instance : Coe String Var := ⟨fun s => ⟨s, .pure⟩⟩
 
 /-- Does this identifier start with an uppercase letter? **The mode marker**
     (combining-fns §6): a capitalized binder is COMPTIME, a lowercase one is
@@ -177,8 +169,9 @@ def Var.isComptime (x : Var) : Bool := isUpperInit x.name
     variable"); patterns are one constructor deep. -/
 mutual
 inductive Term where
-  /-- Variable occurrence. Under ⇒ this is a *move*. -/
-  | var    : Var → Term
+  /-- Variable occurrence, by name — pure or runtime, decided by scope (the
+      header). Under ⇒ this is a *move*. -/
+  | var    : String → Term
   /-- `let x = rhs` — bind `x` to the ⇒-value of `rhs`. A statement is an
       ordinary unit-valued EXPRESSION (detach-tails): it carries no continuation
       of its own, and a statement spine is a right-nested `.seq` chain ending in
@@ -244,7 +237,7 @@ inductive Term where
       constructor⟩`. One name for the whole match (its *type* is what varies per
       branch), exactly as in Lean's `match h : x with`. `none` is the plain
       form — nothing extra is bound and nothing is minted. -/
-  | matchE : Var → Option Var → List Branch → Term
+  | matchE : String → Option Var → List Branch → Term
   /-- `e ; rest` — **the one sequencing form** (detach-tails): ⇒-evaluate `e`
       for effect, discard its value, then run `rest`. Every statement spine is a
       right-nested chain of these — `let x = e ; rest` is `.seq (.letIn x e) rest`,
@@ -301,7 +294,6 @@ inductive Term where
   -- Pure fragment (§4): the comptime type theory's formers. Pure binders carry
   -- their SOURCE NAME (M30 step 2); `readC` (⇝) reflects these into the matching
   -- `Val` forms and reduces. Runtime `var`/`let` (named ids) are unaffected.
-  | pvar   : String → Term           -- pure variable occurrence, by name
   | type   : Term                    -- the universe
   | pi     : String → Term → Term → Term      -- Π (x : dom) → cod
   | sigmaT : String → Term → Term → Term      -- Σ (x : fst-type). snd-type
@@ -411,7 +403,7 @@ def Term.appSpine (head : Term) : List Term → Term
     pure spine and stays comptime — which is why `fn UseTrans (…) { LeTransRaw a b c
     p q }` is still classified by its BINDERS (M32 R2's second half) and not by
     this. -/
-def Term.appSpineVar? : Term → Option (Var × List Term)
+def Term.appSpineVar? : Term → Option (String × List Term)
   | .app f a =>
     match Term.appSpineVar? f with
     | some (x, as) => some (x, as ++ [a])
@@ -449,49 +441,65 @@ def Term.peelLams : Term → List (Var × Term) × Term
     snapshot read, β, a payload projection, a segment read), so a body built from
     those is one both arrows agree about. -/
 mutual
-  def Term.imperative : Term → Bool
+  /-- `pure` is the list of pure binders the term sits under — the one piece of
+      scope this classifier needs (docs/22 §3 item 8), because a `.var`-headed
+      spine is ⇒-entry only when the head is an Ω slot, and under one `var` the
+      head's name alone cannot say which. -/
+  def Term.imperativeIn (pure : List String) : Term → Bool
     -- A let-headed `.seq` is the statement spine a `let x = e ; rest` block
     -- elaborates to (detach-tails), and it classifies by its PARTS — exactly as
     -- the tail-carrying `.letIn x rhs rest` did — because ⇝ has a rule for it
     -- (`eval` binds and threads). Any OTHER `.seq` head is effect sequencing and
-    -- stays imperative unconditionally, matching `reflectC`'s refusal.
-    | .seq (.letIn _ rhs) rest => Term.imperative rhs || Term.imperative rest
+    -- stays imperative unconditionally, matching `reflectC`'s refusal. The
+    -- binder is a slot, so it ends a pure binding of the same name for `rest`.
+    | .seq (.letIn x rhs) rest =>
+      Term.imperativeIn pure rhs || Term.imperativeIn (pure.filter (· != x.name)) rest
     | .assign _ _ | .borrow _ | .seq _ _ | .matchE _ _ _
     | .call _ _ | .seal _ _ _ => true
     -- A marker is its body (identity semantics, docs/21).
-    | .marker _ e => Term.imperative e
+    | .marker _ e => Term.imperativeIn pure e
     -- `a[lo ; ..]` reads its count off the extent map, which is state.
     | .range _ _ none _ _ _ => true
-    | .letIn _ rhs => Term.imperative rhs
-    | .lam _ d b | .pi _ d b | .sigmaT _ d b | .borrowT _ d b =>
-      Term.imperative d || Term.imperative b
+    | .letIn _ rhs => Term.imperativeIn pure rhs
+    | .lam x d b =>
+      Term.imperativeIn pure d
+        || Term.imperativeIn (if x.kind != .pure then pure.filter (· != x.name) else x.name :: pure) b
+    | .pi x d b | .sigmaT x d b | .borrowT x d b =>
+      Term.imperativeIn pure d || Term.imperativeIn (x :: pure) b
     -- **A `.var`-headed spine is what `.callV` was** (M32 R4), and keeping it
     -- named here is the whole of what retiring the node costs. Without this the
     -- classification would be read off the ARGUMENTS alone, and a nullary
     -- `fn F () { g() }` — whose only binder is the Unit-desugar's comptime `U§`,
     -- and whose body is now `.app (.var g) .unit` — would classify PURE. A
-    -- `.const`/`.pvar` head stays comptime, which is the pure spine `readC`
-    -- remembers.
+    -- `.const` head, or a head bound by a pure binder above (`λ (P : Π …). P x`),
+    -- stays comptime, which is the pure spine `readC` remembers.
     | .app f a =>
-      (Term.appSpineVar? (.app f a)).isSome || Term.imperative f || Term.imperative a
-    | .idT a b c => Term.imperative a || Term.imperative b || Term.imperative c
-    | .ctorApp _ args => Term.imperativeList args
-    | .deref t | .cmpT t => Term.imperative t
+      (match Term.appSpineVar? (.app f a) with
+        | some (x, _) => !pure.contains x
+        | none => false)
+        || Term.imperativeIn pure f || Term.imperativeIn pure a
+    | .idT a b c => Term.imperativeIn pure a || Term.imperativeIn pure b || Term.imperativeIn pure c
+    | .ctorApp _ args => Term.imperativeListIn pure args
+    | .deref t | .cmpT t => Term.imperativeIn pure t
     | .index t i ev =>
-      Term.imperative t || Term.imperative i
-        || (match ev with | some e => Term.imperative e | none => false)
+      Term.imperativeIn pure t || Term.imperativeIn pure i
+        || (match ev with | some e => Term.imperativeIn pure e | none => false)
     | .range t lo (some cnt) rest ev eqc =>
-      Term.imperative t || Term.imperative lo || Term.imperative cnt
-        || (match rest with | some r => Term.imperative r | none => false)
-        || (match ev with | some e => Term.imperative e | none => false)
-        || (match eqc with | some e => Term.imperative e | none => false)
+      Term.imperativeIn pure t || Term.imperativeIn pure lo || Term.imperativeIn pure cnt
+        || (match rest with | some r => Term.imperativeIn pure r | none => false)
+        || (match ev with | some e => Term.imperativeIn pure e | none => false)
+        || (match eqc with | some e => Term.imperativeIn pure e | none => false)
     | _ => false
   termination_by t => sizeOf t
-  def Term.imperativeList : List Term → Bool
+  def Term.imperativeListIn (pure : List String) : List Term → Bool
     | [] => false
-    | t :: ts => Term.imperative t || Term.imperativeList ts
+    | t :: ts => Term.imperativeIn pure t || Term.imperativeListIn pure ts
   termination_by ts => sizeOf ts
 end
+
+/-- Is this a BODY rather than a term — see the header above. Asked at the top
+    of a term, with no pure binder in scope. -/
+def Term.imperative (t : Term) : Bool := Term.imperativeIn [] t
 
 /-- **Does this binder name an Ω SLOT?** — i.e. does its argument arrive by ⇒, at
     entry, into the store, rather than by ⇝ into the comptime environment?
@@ -517,11 +525,11 @@ end
     `fn` all of whose parameters are capital from imperative to pure — the exact
     regression R3b's number was measuring the exposure to.
 
-    What R4 does deliver is that this is no longer E2's machinery: `noSlot` is a
-    TAG, alongside `declSlot`, and nothing in the kernel compares, orders or
-    offsets an id any more. The test survives; the arithmetic it used to sit
-    among does not. -/
-def Var.bindsSlot (x : Var) : Bool := x.id != noSlot
+    What R4 delivered is that this is no longer E2's machinery: `noSlot` became
+    a TAG, and docs/22 made the tag a KIND (`BinderKind.pure`) and deleted the
+    id around it. The test survives; the arithmetic it used to sit among does
+    not. -/
+def Var.bindsSlot (x : Var) : Bool := x.kind != .pure
 
 /-- Is this λ an IMPERATIVE one — is applying it ⇒-ENTRY rather than ⇝ reduction?
 
@@ -542,10 +550,19 @@ def Var.bindsSlot (x : Var) : Bool := x.id != noSlot
     Asked of the whole node, so `λ(x : τ, y : υ){ … }` is judged by all its
     binders and by what is under them, rather than by the inner λ it is sugar
     for. -/
-def Term.lamImperative : Term → Bool
+def Term.lamImperativeIn (pure : List String) : Term → Bool
   | t =>
     let (tel, body) := Term.peelLams t
-    Term.imperative body || tel.any (fun p => p.1.bindsSlot)
+    -- The body is classified UNDER the λ's own pure binders: a pure λ that
+    -- applies one of them (`λ (ih : …). ih b`) is a pure spine, not ⇒-entry.
+    let pureBinders := tel.filterMap (fun p => if p.1.bindsSlot then none else some p.1.name)
+    Term.imperativeIn (pureBinders ++ pure) body || tel.any (fun p => p.1.bindsSlot)
+
+/-- `lamImperativeIn` with no enclosing pure binder — right for a λ that is a
+    VALUE (a closure's node, a recursor arm at a ⇒-spine): its free heads are
+    Ω names. A λ met INSIDE a type or a library term is under binders, and the
+    reflection passes them (`reflectC`). -/
+def Term.lamImperative (t : Term) : Bool := Term.lamImperativeIn [] t
 
 /-! ## The unit binder — what a λ with nothing to bind binds
 
@@ -577,13 +594,9 @@ def Term.lamImperative : Term → Bool
 /-- The unit binder's name. Reserved: `§` is not an `ident` character. -/
 def unitBinderName : String := "U§"
 
-/-- The unit binder. Its id is `0` — the positional convention a one-parameter
-    telescope has, and harmless for an arm because an arm that takes this binder
-    is by construction one whose residual telescope is EMPTY, so there is no
-    sibling parameter for `0` to collide with. It BINDS A SLOT, which is what
-    routes such an arm through ⇒-entry (a fresh frame per ι) rather than through
-    β. -/
-def unitBinder : Var := ⟨0, unitBinderName⟩
+/-- The unit binder. It BINDS A SLOT, which is what routes such an arm through
+    ⇒-entry (a fresh frame per ι) rather than through β. -/
+def unitBinder : Var := Var.slot unitBinderName
 
 /-- Is this the unit binder? Asked of an arm's leading binder by ι (does it owe a
     `()`?) and by the two contract derivations (does its Π gain a `Unit`?). -/
@@ -639,7 +652,6 @@ mutual
     | .seal _ a b, .seal _ c d => Term.beq a c && Term.beq b d
     | .marker n a, .marker m b => n == m && Term.beq a b
     | .unit, .unit => true
-    | .pvar x, .pvar y => x == y
     | .type, .type => true
     -- Binder NAMES are compared, which makes this equality up-to-nothing rather
     -- than up-to-α. That is what its clients want: `absOcc` (§18's occurrence
@@ -723,12 +735,11 @@ def bndPos? (l : List String) (x : String) : Option Nat :=
 
 mutual
   def Term.alphaEqGo (lc rc : List String) : Term → Term → Bool
-    | .pvar x, .pvar y =>
+    | .var x, .var y =>
       match bndPos? lc x, bndPos? rc y with
       | some i, some j => i == j                       -- both bound: same binder
       | none, none => x == y                           -- both free: same name
       | _, _ => false
-    | .var x, .var y => x == y
     | .type, .type => true
     | .const n, .const m => n == m
     | .unit, .unit => true
@@ -788,7 +799,7 @@ def Term.alphaEq (t u : Term) : Bool := Term.alphaEqGo [] [] t u
     would draw from. -/
 mutual
   def Term.substP : String → Term → Term → Term
-    | x, s, .pvar y => if y == x then s else .pvar y
+    | x, s, .var y => if y == x then s else .var y
     | x, s, .cmpT τ => .cmpT (Term.substP x s τ)           -- a domain: outside the binder
     -- The three pure binders and `borrowT`'s snapshot binder: the domain is
     -- outside the binder, the body inside it — so a body whose binder rebinds `x`
@@ -830,7 +841,7 @@ end
     and treats a runtime statement form as a leaf for the same reason it does. -/
 mutual
   def Term.freePNamesGo (bound : List String) : Term → List String
-    | .pvar x => if bound.contains x then [] else [x]
+    | .var x => if bound.contains x then [] else [x]
     | .cmpT τ => Term.freePNamesGo bound τ
     | .lam y dom b => Term.freePNamesGo bound dom ++ Term.freePNamesGo (y.name :: bound) b
     | .pi y dom b | .sigmaT y dom b | .borrowT y dom b =>
@@ -859,80 +870,75 @@ end
 
 def Term.freePNames (t : Term) : List String := Term.freePNamesGo [] t
 
-/-! ## Free runtime variables (M26-C; keyed by NAME since M32 R2)
+/-! ## Free variables (M26-C; keyed by NAME since M32 R2; ONE namespace since docs/22)
 
     §7 cost 2 says a runtime λ is the *boring* kind of function value: "closed —
     arms reference only their own binders and globals". This is what makes that
     **checked rather than assumed** — and since R2 it is what computes ρ, because
     the free variables of a λ node ARE its capture (`admitGlobals`).
 
-    **The bound set is NAMES, not ids** (M32 R2). R1 made Ω resolve by name,
-    newest wins, so a name IS a binder's identity and asking "does one of this
-    term's binders bind this occurrence" by id asks a question the store stopped
-    answering. It is not a widening either: within one elaboration the macro
-    mints unique ids, so id-keying and name-keying agree — EXCEPT where they
-    genuinely disagree, and there the name is right, because an occurrence under
-    a rebinding of its name resolves to the inner binder in the store too. What
-    it unblocks is §2.6: a `fn` body may now be elaborated in the enclosing
-    scope, whose bindings are numbered from the block's own counter and therefore
-    collide with the telescope's positional ids `0 … n-1`.
+    **The bound set is NAMES** (M32 R2). R1 made Ω resolve by name, newest wins,
+    so a name IS a binder's identity, and an occurrence under a rebinding of its
+    name resolves to the inner binder in the store too.
 
-    A λ binder binds here only when it BINDS A SLOT: a comptime binder's argument
-    lands in the comptime environment, and `.var` names an Ω slot, so a pure
-    `λ (N : Nat). …` must not shadow a citation of the runtime slot `N`. -/
+    **Every binder binds its name** (docs/22 §1): with one `var` constructor a
+    pure `λ (N : Nat). … N …` binds the `N` inside it, exactly as the store and
+    the evaluator read it — lexical scope, one rule. (Under two constructors a
+    pure binder bound only `pvar`s and let a `.var N` inside it reach the slot
+    `N`; that reading is gone with the distinction that carried it.) So this is
+    the one free-variable function: the boundary's closedness check and the
+    closure capture ask it the same question. -/
 mutual
-  def Term.freeRVars (bound : List String) : Term → List Var
-    | .var x => if bound.contains x.name then [] else [x]
+  def Term.freeVars (bound : List String) : Term → List String
+    | .var x => if bound.contains x then [] else [x]
     -- The SPINE case first: a let-headed `.seq` scopes its binder over the
     -- chain's tail (detach-tails), which is what the tail-carrying `.letIn`
     -- spelled structurally. A bare `.letIn` binds nothing outside itself.
     | .seq (.letIn x rhs) rest =>
-      Term.freeRVars bound rhs ++ Term.freeRVars (x.name :: bound) rest
-    | .letIn _ rhs => Term.freeRVars bound rhs
-    | .assign p e => Term.freeRVars bound p ++ Term.freeRVars bound e
-    | .ctorApp _ args => Term.freeRVarsList bound args
-    | .borrow t | .deref t => Term.freeRVars bound t
+      Term.freeVars bound rhs ++ Term.freeVars (x.name :: bound) rest
+    | .letIn _ rhs => Term.freeVars bound rhs
+    | .assign p e => Term.freeVars bound p ++ Term.freeVars bound e
+    | .ctorApp _ args => Term.freeVarsList bound args
+    | .borrow t | .deref t => Term.freeVars bound t
     | .index t i ev =>
-      Term.freeRVars bound t ++ Term.freeRVars bound i
-        ++ (match ev with | some e => Term.freeRVars bound e | none => [])
+      Term.freeVars bound t ++ Term.freeVars bound i
+        ++ (match ev with | some e => Term.freeVars bound e | none => [])
     | .range t lo cnt rest ev eqc =>
-      Term.freeRVars bound t ++ Term.freeRVars bound lo
-        ++ (match cnt with | some c => Term.freeRVars bound c | none => [])
-        ++ (match rest with | some r => Term.freeRVars bound r | none => [])
-        ++ (match ev with | some e => Term.freeRVars bound e | none => [])
-        ++ (match eqc with | some e => Term.freeRVars bound e | none => [])
+      Term.freeVars bound t ++ Term.freeVars bound lo
+        ++ (match cnt with | some c => Term.freeVars bound c | none => [])
+        ++ (match rest with | some r => Term.freeVars bound r | none => [])
+        ++ (match ev with | some e => Term.freeVars bound e | none => [])
+        ++ (match eqc with | some e => Term.freeVars bound e | none => [])
     | .matchE scrut eqn brs =>
-      (if bound.contains scrut.name then [] else [scrut])
-        ++ Term.freeRVarsBranches (match eqn with | some h => h.name :: bound | none => bound) brs
-    | .seq a b => Term.freeRVars bound a ++ Term.freeRVars bound b
-    | .call _ args => Term.freeRVarsList bound args
-    | .seal _ t u => Term.freeRVars bound t ++ Term.freeRVars bound u
-    | .marker _ e => Term.freeRVars bound e
+      (if bound.contains scrut then [] else [scrut])
+        ++ Term.freeVarsBranches (match eqn with | some h => h.name :: bound | none => bound) brs
+    | .seq a b => Term.freeVars bound a ++ Term.freeVars bound b
+    | .call _ args => Term.freeVarsList bound args
+    | .seal _ t u => Term.freeVars bound t ++ Term.freeVars bound u
+    -- A marker is its body (identity semantics, docs/21) — the closedness check
+    -- sees through it, so a marker cannot hide a free name from the boundary.
+    | .marker _ e => Term.freeVars bound e
     -- **The one λ, scoped as the telescope it is** (M32 R2). The domain is read
-    -- OUTSIDE the binder and the body inside it, which is exactly what
-    -- `freeRVarsBinders` did to `lamR`'s list — a binder type is dependent (`ih`'s
-    -- mentions the predecessor bound to its left, `hfuel : Le (len *v) fuel`
-    -- mentions the borrow bound to its left), and nesting says so without a
-    -- second traversal. A comptime binder's `noSlot` id binds nothing here, which
-    -- is the whole of why it is a sentinel.
-    | .lam x d b =>
-      Term.freeRVars bound d
-        ++ Term.freeRVars (if x.bindsSlot then x.name :: bound else bound) b
-    | .app a b => Term.freeRVars bound a ++ Term.freeRVars bound b
-    | .pi _ a b | .sigmaT _ a b | .borrowT _ a b =>
-      Term.freeRVars bound a ++ Term.freeRVars bound b
-    | .idT a b c => Term.freeRVars bound a ++ Term.freeRVars bound b ++ Term.freeRVars bound c
-    | .cmpT τ => Term.freeRVars bound τ
+    -- OUTSIDE the binder and the body inside it — a binder type is dependent
+    -- (`ih`'s mentions the predecessor bound to its left, `hfuel : Le (len *v)
+    -- fuel` mentions the borrow bound to its left), and nesting says so without
+    -- a second traversal.
+    | .lam x d b => Term.freeVars bound d ++ Term.freeVars (x.name :: bound) b
+    | .pi x d b | .sigmaT x d b | .borrowT x d b =>
+      Term.freeVars bound d ++ Term.freeVars (x :: bound) b
+    | .app a b => Term.freeVars bound a ++ Term.freeVars bound b
+    | .idT a b c => Term.freeVars bound a ++ Term.freeVars bound b ++ Term.freeVars bound c
+    | .cmpT τ => Term.freeVars bound τ
     | _ => []
   termination_by t => sizeOf t
-  def Term.freeRVarsList (bound : List String) : List Term → List Var
+  def Term.freeVarsList (bound : List String) : List Term → List String
     | [] => []
-    | t :: ts => Term.freeRVars bound t ++ Term.freeRVarsList bound ts
+    | t :: ts => Term.freeVars bound t ++ Term.freeVarsList bound ts
   termination_by ts => sizeOf ts
-  def Term.freeRVarsBranches (bound : List String) : List Branch → List Var
+  def Term.freeVarsBranches (bound : List String) : List Branch → List String
     | [] => []
     | (.mk _ bs body) :: rest =>
-      Term.freeRVars (bs.map (·.name) ++ bound) body ++ Term.freeRVarsBranches bound rest
+      Term.freeVars (bs.map (·.name) ++ bound) body ++ Term.freeVarsBranches bound rest
   termination_by bs => sizeOf bs
 end
 
@@ -949,30 +955,30 @@ end
 mutual
   def absOcc (e : Term) (x : String) (shadowed : List String) : Term → Term
     | .lam y dom b =>
-      if Term.beq (.lam y dom b) e then .pvar x
+      if Term.beq (.lam y dom b) e then .var x
       else .lam y (absOcc e x shadowed dom)
         (if shadowed.contains y.name then b else absOcc e x shadowed b)
     | .pi y dom cod =>
-      if Term.beq (.pi y dom cod) e then .pvar x
+      if Term.beq (.pi y dom cod) e then .var x
       else .pi y (absOcc e x shadowed dom)
         (if shadowed.contains y then cod else absOcc e x shadowed cod)
     | .sigmaT y dom cod =>
-      if Term.beq (.sigmaT y dom cod) e then .pvar x
+      if Term.beq (.sigmaT y dom cod) e then .var x
       else .sigmaT y (absOcc e x shadowed dom)
         (if shadowed.contains y then cod else absOcc e x shadowed cod)
     | .app f a =>
-      if Term.beq (.app f a) e then .pvar x
+      if Term.beq (.app f a) e then .var x
       else .app (absOcc e x shadowed f) (absOcc e x shadowed a)
     | .idT a b c =>
-      if Term.beq (.idT a b c) e then .pvar x
+      if Term.beq (.idT a b c) e then .var x
       else .idT (absOcc e x shadowed a) (absOcc e x shadowed b) (absOcc e x shadowed c)
     | .ctorApp n args =>
-      if Term.beq (.ctorApp n args) e then .pvar x
+      if Term.beq (.ctorApp n args) e then .var x
       else .ctorApp n (absOccList e x shadowed args)
     -- A mode marker is never itself an abstraction target (it is not a term),
     -- so recurse straight through rather than testing it.
     | .cmpT τ => .cmpT (absOcc e x shadowed τ)
-    | s => if Term.beq s e then .pvar x else s   -- leaves, `pvar` among them
+    | s => if Term.beq s e then .var x else s   -- leaves, `var` among them
   termination_by s => sizeOf s
   def absOccList (e : Term) (x : String) (shadowed : List String) : List Term → List Term
     | [] => []
@@ -1074,11 +1080,11 @@ def trivialOwedT : Term → Bool
     sweep in the system (suspensions.md §3). -/
 
 /-- A σ as a term. -/
-def Term.sym (σ : Nat) : Term := .pvar (symName σ)
+def Term.sym (σ : Nat) : Term := .var (symName σ)
 
 /-- The σ a term IS, if it is a bare one. -/
 def Term.symOf? : Term → Option Nat
-  | .pvar x => symOfName? x
+  | .var x => symOfName? x
   | _ => none
 
 /-! Symbolic ids occurring in `t`, in pre-order of first appearance.
@@ -1089,7 +1095,7 @@ def Term.symOf? : Term → Option Nat
     untouched by the other would be renumbered out of existence. -/
 mutual
   def Term.symIds : Term → List Nat
-    | .pvar x => match symOfName? x with | some σ => [σ] | none => []
+    | .var x => match symOfName? x with | some σ => [σ] | none => []
     | .cmpT τ => Term.symIds τ
     | .lam _ d b | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => Term.symIds d ++ Term.symIds b
     | .app f a => Term.symIds f ++ Term.symIds a
@@ -1115,7 +1121,7 @@ end
 /-! Rewrite every σ id by `f` — canonicalization's other half. -/
 mutual
   def Term.renumberSyms (f : Nat → Nat) : Term → Term
-    | .pvar x => match symOfName? x with | some σ => .pvar (symName (f σ)) | none => .pvar x
+    | .var x => match symOfName? x with | some σ => .var (symName (f σ)) | none => .var x
     | .cmpT τ => .cmpT (Term.renumberSyms f τ)
     | .lam y d b => .lam y (Term.renumberSyms f d) (Term.renumberSyms f b)
     | .pi y d b => .pi y (Term.renumberSyms f d) (Term.renumberSyms f b)
@@ -1245,11 +1251,10 @@ mutual
     | .cmpT a, .cmpT b => Term.convEq a b
     | .cmpT a, b => Term.convEq a b
     | a, .cmpT b => Term.convEq a b
-    | .pvar x, .pvar y => x == y
+    | .var x, .var y => x == y
     | .type, .type => true
     | .const n, .const m => n == m
     | .unit, .unit => true
-    | .var x, .var y => x == y
     | .ctorApp n as, .ctorApp m bs => n == m && Term.convEqList as bs
     | .app a b, .app c d => Term.convEq a c && Term.convEq b d
     | .idT a b c, .idT d e f => Term.convEq a d && Term.convEq b e && Term.convEq c f
@@ -1334,25 +1339,24 @@ def Term.resSugar (t : Term) : Term :=
   | ks => Term.resSugarGo (ks.any (· ≥ 1)) t
 
 mutual
-  def Term.prettyPrec (prec : Nat) : Term → String
-    | .pvar x => match symOfName? x with | some σ => s!"σ{subNat σ}" | none => s!"#{x}"
+  def Term.prettyPrecIn (pure : List String) (prec : Nat) : Term → String
+    | .var x => match symOfName? x with | some σ => s!"σ{subNat σ}" | none => x
     | .type => "Type"
     | .const c => c
     | .unit => "()"
-    | .var x => s!"{x.name}#{x.id}"
-    | .cmpT τ => "⇝" ++ Term.prettyPrec 1 τ
-    | .ctorApp "Arr" vs => "[" ++ Term.prettyCommas vs ++ "]"
-    | .ctorApp "§segs" segs => "Arr⟨" ++ Term.prettyCommas segs ++ "⟩"
-    | .ctorApp "§seg" [c, b] => Term.prettyPrec 1 c ++ " ▷ " ++ Term.prettyPrec 0 b
+    | .cmpT τ => "⇝" ++ Term.prettyPrecIn pure 1 τ
+    | .ctorApp "Arr" vs => "[" ++ Term.prettyCommasIn pure vs ++ "]"
+    | .ctorApp "§segs" segs => "Arr⟨" ++ Term.prettyCommasIn pure segs ++ "⟩"
+    | .ctorApp "§seg" [c, b] => Term.prettyPrecIn pure 1 c ++ " ▷ " ++ Term.prettyPrecIn pure 0 b
     | .ctorApp name [] => name
     | .ctorApp name args =>
-      let s := name ++ Term.prettyArgs args
+      let s := name ++ Term.prettyArgsIn pure args
       if prec > 0 then s!"({s})" else s
     | .pi x d c =>
-      let s := s!"Π({x} : {Term.prettyPrec 1 d}). {Term.prettyPrec 0 c}"
+      let s := s!"Π({x} : {Term.prettyPrecIn pure 1 d}). {Term.prettyPrecIn (x :: pure) 0 c}"
       if prec > 0 then s!"({s})" else s
     | .sigmaT x d c =>
-      let s := s!"Σ({x} : {Term.prettyPrec 1 d}). {Term.prettyPrec 0 c}"
+      let s := s!"Σ({x} : {Term.prettyPrecIn pure 1 d}). {Term.prettyPrecIn (x :: pure) 0 c}"
       if prec > 0 then s!"({s})" else s
     -- **One former, two renderings, and the same property picks them** (M32 R2).
     -- A comptime λ prints as the term it is. An imperative one prints its BINDERS
@@ -1360,45 +1364,48 @@ mutual
     -- WHICH function, and the body is a whole program — which is what `lamR`/`rfn`
     -- printed and is why `slotOf`'s goldens are unchanged.
     | .lam x d b =>
-      if Term.lamImperative (.lam x d b) then
+      if Term.lamImperativeIn pure (.lam x d b) then
         -- No paren guard, exactly as `lamR`/`rfn` had none: the form brackets
         -- itself, and `slotOf`'s golden spells it unparenthesized in argument
         -- position.
         "λr(" ++ String.intercalate ", " ((Term.peelLams (.lam x d b)).1.map (·.1.name)) ++ "){…}"
       else
-        let s := s!"λ({x.name} : {Term.prettyPrec 1 d}). {Term.prettyPrec 0 b}"
+        let s := s!"λ({x.name} : {Term.prettyPrecIn pure 1 d}). {Term.prettyPrecIn (x.name :: pure) 0 b}"
         if prec > 0 then s!"({s})" else s
     | .app f a =>
-      let s := Term.prettyPrec 0 f ++ " " ++ Term.prettyPrec 1 a
+      let s := Term.prettyPrecIn pure 0 f ++ " " ++ Term.prettyPrecIn pure 1 a
       if prec > 0 then s!"({s})" else s
     | .idT _ a b =>
-      let s := s!"Id {Term.prettyPrec 1 a} {Term.prettyPrec 1 b}"
+      let s := s!"Id {Term.prettyPrecIn pure 1 a} {Term.prettyPrecIn pure 1 b}"
       if prec > 0 then s!"({s})" else s
     | .borrowT x τ S =>
-      let s := s!"&mut ({x} : {Term.prettyPrec 0 τ} ↝ {Term.prettyPrec 0 S})"
+      let s := s!"&mut ({x} : {Term.prettyPrecIn pure 0 τ} ↝ {Term.prettyPrecIn (x :: pure) 0 S})"
       if prec > 0 then s!"({s})" else s
-    | .deref t => "*" ++ Term.prettyPrec 1 t
-    | .borrow t => "&mut " ++ Term.prettyPrec 1 t
-    | .seal _ t _ => "(" ++ Term.prettyPrec 0 t ++ " : …)"
-    | .marker n e => "@" ++ n ++ "(" ++ Term.prettyPrec 0 e ++ ")"
+    | .deref t => "*" ++ Term.prettyPrecIn pure 1 t
+    | .borrow t => "&mut " ++ Term.prettyPrecIn pure 1 t
+    | .seal _ t _ => "(" ++ Term.prettyPrecIn pure 0 t ++ " : …)"
+    | .marker n e => "@" ++ n ++ "(" ++ Term.prettyPrecIn pure 0 e ++ ")"
     | .call f _ => f ++ "(…)"
-    | .index t i _ => Term.prettyPrec 1 t ++ "[" ++ Term.prettyPrec 0 i ++ "]"
-    | .range t lo _ _ _ _ => Term.prettyPrec 1 t ++ "[" ++ Term.prettyPrec 0 lo ++ " ; …]"
+    | .index t i _ => Term.prettyPrecIn pure 1 t ++ "[" ++ Term.prettyPrecIn pure 0 i ++ "]"
+    | .range t lo _ _ _ _ => Term.prettyPrecIn pure 1 t ++ "[" ++ Term.prettyPrecIn pure 0 lo ++ " ; …]"
     | .letIn x _ => s!"let {x.name} = …"
     | .assign _ _ => "… := …"
     | .seq _ _ => "… ; …"
-    | .matchE x _ _ => s!"match {x.name} " ++ "{…}"
+    | .matchE x _ _ => s!"match {x} " ++ "{…}"
   termination_by t => sizeOf t
-  def Term.prettyArgs : List Term → String
+  def Term.prettyArgsIn (pure : List String) : List Term → String
     | [] => ""
-    | a :: as => " " ++ Term.prettyPrec 1 a ++ Term.prettyArgs as
+    | a :: as => " " ++ Term.prettyPrecIn pure 1 a ++ Term.prettyArgsIn pure as
   termination_by as => sizeOf as
-  def Term.prettyCommas : List Term → String
+  def Term.prettyCommasIn (pure : List String) : List Term → String
     | [] => ""
-    | [a] => Term.prettyPrec 0 a
-    | a :: as => Term.prettyPrec 0 a ++ ", " ++ Term.prettyCommas as
+    | [a] => Term.prettyPrecIn pure 0 a
+    | a :: as => Term.prettyPrecIn pure 0 a ++ ", " ++ Term.prettyCommasIn pure as
   termination_by as => sizeOf as
 end
+
+/-- Rendering at a precedence, with no enclosing pure binder. -/
+def Term.prettyPrec (prec : Nat) (t : Term) : String := Term.prettyPrecIn [] prec t
 
 /-- Doc-trace rendering of a term (top level, no surrounding parens). -/
 def Term.pretty (t : Term) : String := Term.prettyPrec 0 (Term.resSugar t)
@@ -1672,6 +1679,34 @@ def Term.replaceMarked? (name : String) (repl : Term) (t : Term) : Except String
   | 1 => .ok t'
   | 0 => .error s!"marker '{name}' not found — markers present: {present}"
   | n => .error s!"marker '{name}' occurs {n} times (must be exactly one) — markers present: {present}"
+/-! ## The boundary's closedness check (docs/22 §5)
+
+    With one `var`, a name that resolves to nothing where a term is WRITTEN may
+    still resolve where it is EVALUATED — that is what a `prog_parse { }`
+    fragment is. So a program is CLOSED at its boundary: a fragment spliced where
+    nothing binds its names reaches `atBoundary` with them free, and the
+    program is replaced by a term the machine refuses distinctively — the
+    `fnElabOrFail` precedent — rather than walked until (or unless) a rule
+    meets the name. σ's are not free; a module seed's bindings are supplied by
+    the caller. (The constructor, constant and alias tables are the SURFACE's,
+    resolved at parse in every mode — see `Surface.resolveName`.) -/
+
+/-- The needle a program rejected for a free name is recognised by. Reserved
+    (`§`), so no `fn` can be called this. -/
+def unboundNeedle : String := "§unbound-identifier"
+
+/-- The free names of a program that nothing binds — not a binder above them,
+    not the σ namespace, not the seed. -/
+def Term.unboundNames (seed : List String) (t : Term) : List String :=
+  (Term.freeVars seed t).filter fun x => (symOfName? x).isNone
+
+/-- **The boundary's closedness check.** A closed program is itself; one with a
+    free name is replaced by a term the machine refuses, carrying the first
+    offender. -/
+def Term.rejectUnbound (seed : List String) (t : Term) : Term :=
+  match Term.unboundNames seed t with
+  | [] => t
+  | x :: _ => .call s!"{unboundNeedle}: unbound identifier '{x}' — nothing at the program boundary binds it (a fragment's free name resolves where the fragment is spliced, and this one was spliced nowhere that binds it)" []
 
 /-! ## Reading a binder's mode off its domain (combining-fns §6)
 
@@ -1747,7 +1782,7 @@ def piPeel : List Var → Term → Except String (List (Var × Term) × Term)
       if Term.domComptime dom != x.isComptime then
         .error s!"seal: binder '{x.name}' is {if x.isComptime then "capitalized (comptime, §6)" else "lowercase (runtime, §6)"} but the ascribed type binds it as {if Term.domComptime dom then "comptime (⇝τ)" else "runtime"}. A binder's mode is a claim about whether the body may observe its argument at runtime, and the ascription is what callers are promised — the two cannot differ."
       else
-        match piPeel xs (Term.substP y (.var x) cod) with
+        match piPeel xs (Term.substP y (.var x.name) cod) with
         | .ok (rest, ret) => .ok ((x, dom.stripCmp) :: rest, ret)
         | .error e => .error e
     | _ =>

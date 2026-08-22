@@ -74,8 +74,8 @@ namespace Dllbc
     `StdLemmas` is written in it. Name resolution for a bare identifier `x`
     (`Surface.resolveName`):
 
-      * a **bound** name → the pure variable of that very name (`pvar`);
-      * an earlier telescope parameter → its absolute runtime `var`;
+      * a **bound** name — a pure binder, a runtime local, a `fn` slot — → `var`
+        at that very name (ONE constructor, docs/22; the term's scope says which);
       * a known **constructor** (`Z`, `S`, `Cons`, `Refl`, `unit`, …) → `ctorApp`;
       * a kernel **constant** (`Nat`, `List`, `natRec`, `j`, …) → `const`;
       * a reified-function alias (`Le`, `Len`, `Add`, …) → its `…FnT` Term constant;
@@ -102,7 +102,7 @@ syntax "ty{" ublk "}" : term
 
 macro_rules
   | `(ty{ $b:ublk }) => do
-    let ((t, _), _) ← StateT.run (Dllbc.Surface.elabUBlk [] [] 0 b) {}
+    let (t, _) ← StateT.run (Dllbc.Surface.elabUBlk [] b) {}
     pure t
 
 end Dllbc

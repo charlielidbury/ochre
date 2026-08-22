@@ -54,14 +54,14 @@ def tnat : Nat → Term | 0 => .ctorApp "Z" [] | n + 1 => .ctorApp "S" [tnat n]
     over `Nil`/`Cons`). `progOk` filters the ill-formed. -/
 
 -- Raw Term construction: the generator needs AST literals, not the `prog{}` macro.
-def v0 : Term := .var ⟨0, "v"⟩
+def v0 : Term := .var "v"
 
 /-- Small expression pool over v (RHS / place fillers). -/
 def exprs : List Term :=
   [ .unit, nilT, tnat 0, tnat 1, .deref v0,
     .ctorApp "Cons" [tnat 0, nilT],
     .ctorApp "Cons" [tnat 0, .deref v0],
-    .var ⟨2, "x"⟩ ]
+    .var "x" ]
 where nilT : Term := .ctorApp "Nil" []
 
 /-- Leaf statement bodies (each returns `()`), depth ≈ 1. -/
@@ -71,17 +71,17 @@ def leafBodies : List Term :=
   -- p := e ; ()  for p a place through 0/1/2 peels
   ++ ([v0, .deref v0].flatMap fun p => exprs.map fun e => .seq (.assign p e) .unit)
   -- the take-and-refill idiom
-  ++ [ .seq (.letIn ⟨2, "tail"⟩ (.deref v0))
-        (.seq (.assign (.deref v0) (.ctorApp "Cons" [tnat 0, .var ⟨2, "tail"⟩])) .unit) ]
+  ++ [ .seq (.letIn (Var.slot "tail") (.deref v0))
+        (.seq (.assign (.deref v0) (.ctorApp "Cons" [tnat 0, .var "tail"])) .unit) ]
   -- a stray let
-  ++ [ .seq (.letIn ⟨2, "x"⟩ (.deref v0)) .unit ]
+  ++ [ .seq (.letIn (Var.slot "x") (.deref v0)) .unit ]
 
 /-- Bodies with one exhaustive match-through on v, branches drawn from
     `leafBodies` (capped). In the `Cons` branch, hd = id 2, tl = id 3. -/
 def matchBodies : List Term :=
   (leafBodies.take 8).flatMap fun bNil =>
     (leafBodies.take 8).map fun bCons =>
-      .matchE ⟨0, "v"⟩ none [.mk "Nil" [] bNil, .mk "Cons" [⟨2, "hd"⟩, ⟨3, "tl"⟩] bCons]
+      .matchE "v" none [.mk "Nil" [] bNil, .mk "Cons" [Var.slot "hd", Var.slot "tl"] bCons]
 
 /-- All generated bodies for the list-borrow telescope. -/
 def vBodies : List Term := leafBodies ++ matchBodies
@@ -124,25 +124,25 @@ example : vAccepted.all (fun b => vArgs.all (fun a => progRuns (vRun b a))) = tr
 
 -- Raw Term construction: the generator needs AST literals, not the `prog{}` macro.
 def vNonExhaustive : List Term :=
-  (leafBodies.take 8).map (fun b => .matchE ⟨0, "v"⟩ none [.mk "Cons" [⟨2, "hd"⟩, ⟨3, "tl"⟩] b])   -- missing Nil
-  ++ (leafBodies.take 8).map (fun b => .matchE ⟨0, "v"⟩ none [.mk "Nil" [] b])                       -- missing Cons
+  (leafBodies.take 8).map (fun b => .matchE "v" none [.mk "Cons" [Var.slot "hd", Var.slot "tl"] b])   -- missing Nil
+  ++ (leafBodies.take 8).map (fun b => .matchE "v" none [.mk "Nil" [] b])                       -- missing Cons
 
 example : vNonExhaustive.all (fun b => !progOk (vCheck b)) = true := by native_decide
 
 /-! ## Telescope `(n : Nat) → Nat` (owned symbolic argument, value return) -/
 
 -- Raw Term construction: the generator needs AST literals, not the `prog{}` macro.
-def n0 : Term := .var ⟨0, "n"⟩
-def nLeaf : List Term := [tnat 0, tnat 1, n0, .var ⟨1, "m"⟩, .ctorApp "S" [.var ⟨1, "m"⟩]]
+def n0 : Term := .var "n"
+def nLeaf : List Term := [tnat 0, tnat 1, n0, .var "m", .ctorApp "S" [.var "m"]]
 
 def nBodies : List Term :=
   [ n0, tnat 0, tnat 1, .ctorApp "S" [n0], .ctorApp "S" [tnat 0],
-    .seq (.letIn ⟨1, "x"⟩ n0) (.ctorApp "S" [.var ⟨1, "x"⟩]),
-    .seq (.letIn ⟨1, "x"⟩ (tnat 0)) n0 ]
+    .seq (.letIn (Var.slot "x") n0) (.ctorApp "S" [.var "x"]),
+    .seq (.letIn (Var.slot "x") (tnat 0)) n0 ]
   -- exhaustive match on n
   ++ (nLeaf.take 5).flatMap fun b1 =>
        (nLeaf.take 5).map fun b2 =>
-         .matchE ⟨0, "n"⟩ none [.mk "Z" [] b1, .mk "S" [⟨1, "m"⟩] b2]
+         .matchE "n" none [.mk "Z" [] b1, .mk "S" [Var.slot "m"] b2]
 
 def nCheck (body : Term) : Term := prog{ fn F (n : Nat) -> Nat { %body }; () }
 def nRun (body arg : Term) : Term := prog{
@@ -158,17 +158,17 @@ example : nAccepted.all (fun b => nArgs.all (fun a => progRuns (nRun b a))) = tr
 /-! ## Telescope `(b : &mut Nat, c : Bool) → Unit` (a borrow and a bool) -/
 
 -- Raw Term construction: the generator needs AST literals, not the `prog{}` macro.
-def bb : Term := .var ⟨0, "b"⟩
+def bb : Term := .var "b"
 def bcLeaf : List Term :=
   [ .unit, .seq (.assign (.deref bb) (tnat 0)) .unit, .seq (.assign (.deref bb) (tnat 1)) .unit ]
 
 def bcBodies : List Term :=
   bcLeaf
-  ++ [ .seq (.letIn ⟨2, "tk"⟩ (.deref bb)) (.seq (.assign (.deref bb) (tnat 0)) .unit) ]   -- take + refill
+  ++ [ .seq (.letIn (Var.slot "tk") (.deref bb)) (.seq (.assign (.deref bb) (tnat 0)) .unit) ]   -- take + refill
   -- exhaustive match on c
   ++ (bcLeaf.take 5).flatMap fun b1 =>
        (bcLeaf.take 5).map fun b2 =>
-         .matchE ⟨1, "c"⟩ none [.mk "True" [] b1, .mk "False" [] b2]
+         .matchE "c" none [.mk "True" [] b1, .mk "False" [] b2]
 
 def bcCheck (body : Term) : Term := prog{
   fn F (b : &mut Nat, c : Bool) -> Unit { %body };
@@ -390,14 +390,14 @@ def instanceOfC (symEnv concEnv : Env) : Bool :=
     leak into the caller's environment. -/
 def runExec (body : Term) : Except String Env :=
   match (readR defaultFuel body).run { initSt with executing := true } with
-  | .ok _ st => .ok (canonicalize (st.env.filter (fun kv => kv.1.id != declSlot)))
+  | .ok _ st => .ok (canonicalize (st.env.filter (fun kv => !kv.1.isDecl)))
   | .error e _ => .error e
 
 /-- Checking mode: the accepted symbolic paths' final environments. -/
 def symEnvs (body : Term) : List (Except String Env) :=
   (explore defaultFuel (atBoundary body) initSt).map
     (fun r => r.map (fun p => canonicalize (p.2.env.filter (fun kv =>
-      kv.1.id != declSlot))))
+      !kv.1.isDecl))))
 
 /-- The differential: the concrete final env is an instance of some symbolic
     path's final env. -/

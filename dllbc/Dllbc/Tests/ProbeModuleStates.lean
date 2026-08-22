@@ -22,7 +22,7 @@ def finalSt (t : Term) : Option St :=
 
 -- hand-built consumer: let y = LeRefl(2); ()  (call = app spine at a name-keyed var)
 def consumer : Term :=
-  .letIn ⟨950, "y"⟩ (.app (.var ⟨0, "LeRefl"⟩) (Term.nat 2)) .unit
+  .letIn (Var.slot "y") (.app (.var "LeRefl") (Term.nat 2)) .unit
 
 -- seeded run of the consumer
 def seededRun : String :=

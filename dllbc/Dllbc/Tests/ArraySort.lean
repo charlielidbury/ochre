@@ -109,16 +109,16 @@ example : (Pure.nf 2000 prog_parse { SortedA Z Arr() } == .const "Unit")
     away from the honest form. -/
 
 -- splitA:     fuel=0, m=1, hfuel=2, p=3, t=4
-def mS : Term := .var ⟨1, "m"⟩
-def pS : Term := .var ⟨3, "p"⟩
-def tS : Term := .var ⟨4, "t"⟩
+def mS : Term := .var "m"
+def pS : Term := .var "p"
+def tS : Term := .var "t"
 -- partitionA: fuel=0, n=1, hfuel=2, hne=3, a=4
-def nP : Term := .var ⟨1, "n"⟩
-def aP : Term := .var ⟨4, "a"⟩
+def nP : Term := .var "n"
+def aP : Term := .var "a"
 -- quicksortA: fuel=0, n=1, hfuel=2, a=3
-def nQ : Term := .var ⟨1, "n"⟩
-def aQ : Term := .var ⟨3, "a"⟩
-def fuelQ : Term := .var ⟨0, "fuel"⟩
+def nQ : Term := .var "n"
+def aQ : Term := .var "a"
+def fuelQ : Term := .var "fuel"
 
 def sHonest : Term := prog_parse {
   Σ (k : Nat). Σ (r : Nat).

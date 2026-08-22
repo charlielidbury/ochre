@@ -99,7 +99,7 @@ example : (app1 ZeroOutFnT 64).natOf? == some 0 := by native_decide
 
 -- `S (S x)` for free `x` fires the recursor twice, then gets stuck; `deepForce`
 -- must leave the stuck neutral alone rather than treating it as an error.
-def openTwo : Term := prog_parse { S(S(%(Term.pvar "x"))) }
+def openTwo : Term := prog_parse { S(S(%(Term.var "x"))) }
 
 example : (pv prog_parse { %DiscardFnT %openTwo }).natOf? == some 0 := by native_decide
 example : (pv prog_parse { %ZeroOutFnT %openTwo }).natOf? == some 0 := by native_decide

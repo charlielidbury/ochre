@@ -419,12 +419,12 @@ example : progOk recCaller = true := by native_decide
     way. These are those names, once, so that every skeleton in this file splices
     them rather than re-deriving an index. -/
 
-def vT : Term := .var ⟨0, "v"⟩
+def vT : Term := .var "v"
 def dvT : Term := .deref vT
 def oldvT : Term := .app (.const "old") dvT
-def iT : Term := .var ⟨1, "i"⟩
-def xT : Term := .var ⟨2, "x"⟩
-def jT : Term := .var ⟨2, "j"⟩
+def iT : Term := .var "i"
+def xT : Term := .var "x"
+def jT : Term := .var "j"
 
 -- `split_off(v, i)`: `*v` keeps the first `i`, the rest comes back by value. The
 -- returned tail is Σ-pinned to `Drop i (old *v)` — the caller's only knowledge of a
@@ -1026,13 +1026,13 @@ example : chk Dllbc.StdLemmas.LbPermRaw Dllbc.StdLemmas.LbPermTy = true := by na
 
     Both fuel-threaded callees put the borrow second (the fuel is `[k]` and `[k]`
     hoists to the front), so a return type written outside a header names it
-    `.var ⟨1, "v"⟩`. -/
+    `.var "v"`. -/
 
-def vfT : Term := .var ⟨1, "v"⟩
+def vfT : Term := .var "v"
 def dvfT : Term := .deref vfT
 def oldvfT : Term := .app (.const "old") dvfT
-def pT : Term := .var ⟨2, "p"⟩
-def fuelT : Term := .var ⟨0, "fuel"⟩
+def pT : Term := .var "p"
+def fuelT : Term := .var "fuel"
 
 /-! ### The return types
 

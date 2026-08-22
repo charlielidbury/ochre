@@ -54,7 +54,7 @@ def pairListTwice : Term := prog_parse {
   fn Snk (p : (Σ (a : Nat). List Nat)) -> Unit { () };
   fn Chain (p : (Σ (a : Nat). List Nat)) -> Unit { let x = Snk(p); let y = Snk(p); () };
   () }
-example : progRejects pairListTwice "p#0 holds ⊥ (use-after-move" = true := by native_decide
+example : progRejects pairListTwice "p holds ⊥ (use-after-move" = true := by native_decide
 
 /-- The slice pack `Σ (c : Nat). &mut (Array c Nat)` still moves: a borrow
     component is neither copyable nor erased, and copying the pack would hand
@@ -70,7 +70,7 @@ def sliceTwice : Term := prog_parse {
   fn Twice (s : Σ (c : Nat). &mut (Array c Nat)) -> Unit {
     let x = SliceTouch(s); let y = SliceTouch(s); () };
   () }
-example : progRejects sliceTwice "s#0 holds ⊥ (use-after-move" = true := by native_decide
+example : progRejects sliceTwice "s holds ⊥ (use-after-move" = true := by native_decide
 
 /-! ## (ii) The refinement pack the feature is for
 
@@ -126,7 +126,7 @@ def unmarkedPropTwice : Term := prog_parse {
   fn Snk (p : (Σ (n : Nat). Le n 15)) -> Unit { () };
   fn Chain (p : (Σ (n : Nat). Le n 15)) -> Unit { let a = Snk(p); let b = Snk(p); () };
   () }
-example : progRejects unmarkedPropTwice "p#0 holds ⊥ (use-after-move" = true := by
+example : progRejects unmarkedPropTwice "p holds ⊥ (use-after-move" = true := by
   native_decide
 
 /-- The proof-in-the-domain spelling with a lowercase binder also moves.
@@ -140,7 +140,7 @@ def tailMarkedWrongEndTwice : Term := prog_parse {
   fn Chain (p : (Σ (n : Nat). Σ0 (h : Le n 15). Unit)) -> Unit {
     let a = Snk(p); let b = Snk(p); () };
   () }
-example : progRejects tailMarkedWrongEndTwice "p#0 holds ⊥ (use-after-move" = true := by
+example : progRejects tailMarkedWrongEndTwice "p holds ⊥ (use-after-move" = true := by
   native_decide
 
 /-! ## (iii) The differential — the two machines classify the same pack
@@ -194,7 +194,7 @@ def pairListConcreteTwice : Term := prog_parse {
   let out = Snk(q);
   let out2 = Snk(q);
   () }
-example : progRejects pairListConcreteTwice "q#0 holds ⊥ (use-after-move" = true := by
+example : progRejects pairListConcreteTwice "q holds ⊥ (use-after-move" = true := by
   native_decide
 
 /-! ### Why the marker alone is not enough: a marked component of aggregate type
@@ -218,7 +218,7 @@ def packListTail : Term := prog_parse {
   let q = Pair(3, Cons(1, Nil));
   let o = Chain(q);
   () }
-example : progRejects packListTail "p#0 holds ⊥ (use-after-move" = true := by native_decide
+example : progRejects packListTail "p holds ⊥ (use-after-move" = true := by native_decide
 
 /-- Used once: accepted and runs, so the rejection above is about the second
     use and not about the type being unusable. -/

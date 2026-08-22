@@ -3230,9 +3230,9 @@ example : chkL MkNdCons MkNdConsTy = true := by native_decide
     NewHM: cap=0, HLe1=1.  InsertHM: fuel=0, key=1, val=2, self=3, Hfuel=4,
     Hroom=5. -/
 
-def keyIv : Term := .var ⟨1, "key"⟩
-def valIv : Term := .var ⟨2, "val"⟩
-def selfIv : Term := .var ⟨3, "self"⟩
+def keyIv : Term := .var "key"
+def valIv : Term := .var "val"
+def selfIv : Term := .var "self"
 
 /-- A slot's invariant pair, by application (the constructor-argument fence). -/
 def MkSlotInv : Term := prog_parse {
@@ -4380,8 +4380,8 @@ def insRetHonest : Term := prog_parse {
 /-- `Remove`'s honest ensures — the three fixed conjuncts: the removed value
     is the old answer at `key`, the pointwise `FindRem` equation, and the
     `SizeRem` size accounting. Telescope: fuel=0, key=1, self=2, Hfuel=3. -/
-def keyRv : Term := .var ⟨1, "key"⟩
-def selfRv : Term := .var ⟨2, "self"⟩
+def keyRv : Term := .var "key"
+def selfRv : Term := .var "self"
 def remRetHonest : Term := prog_parse {
   Σ (r : Σ (bb : Bool). OptP bb Nat).
   Σ (Hr : Id OptN r (FindHM %keyRv (old *%selfRv))).

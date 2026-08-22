@@ -52,11 +52,11 @@ def borrowMatch : Term := prog{
   match b { Pair(l, r) => { *l := 1; () } } }
 
 def borrowMatchHand : Term :=
-  .seq (.letIn ⟨0, "v"⟩ (.ctorApp "Pair" [nat 0, nat 1]))
-    (.seq (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "v"⟩)))
-      (.matchE ⟨1, "b"⟩ none
-        [.mk "Pair" [⟨2, "l"⟩, ⟨3, "r"⟩]
-          (.seq (.assign (.deref (.var ⟨2, "l"⟩)) (nat 1)) .unit)]))
+  .seq (.letIn (Var.slot "v") (.ctorApp "Pair" [nat 0, nat 1]))
+    (.seq (.letIn (Var.slot "b") (.borrow (.var "v")))
+      (.matchE "b" none
+        [.mk "Pair" [Var.slot "l", Var.slot "r"]
+          (.seq (.assign (.deref (.var "l")) (nat 1)) .unit)]))
 
 example : borrowMatch = borrowMatchHand := by rfl
 
@@ -75,9 +75,9 @@ def eqnMatch : Term := prog{
   match h : n { Z => (), S(m) => () } }
 
 def eqnMatchHand : Term :=
-  .seq (.letIn ⟨0, "n"⟩ (nat 0))
-    (.matchE ⟨0, "n"⟩ (some ⟨1, "h"⟩)
-      [.mk "Z" [] .unit, .mk "S" [⟨2, "m"⟩] .unit])
+  .seq (.letIn (Var.slot "n") (nat 0))
+    (.matchE "n" (some (Var.slot "h"))
+      [.mk "Z" [] .unit, .mk "S" [Var.slot "m"] .unit])
 
 example : eqnMatch = eqnMatchHand := by rfl
 
@@ -286,13 +286,13 @@ def nestedArm : Term := prog{
   match l { Nil => (), Cons(Pair(kk, vv), tl) => { let out = vv; () } } }
 
 def nestedArmHand : Term :=
-  .seq (.letIn ⟨0, "l"⟩ (.ctorApp "Cons" [.ctorApp "Pair" [nat 1, nat 2], .ctorApp "Nil" []]))
-    (.matchE ⟨0, "l"⟩ none
+  .seq (.letIn (Var.slot "l") (.ctorApp "Cons" [.ctorApp "Pair" [nat 1, nat 2], .ctorApp "Nil" []]))
+    (.matchE "l" none
       [.mk "Nil" [] .unit,
-       .mk "Cons" [⟨1, "§p1"⟩, ⟨2, "tl"⟩]
-         (.matchE ⟨1, "§p1"⟩ none
-           [.mk "Pair" [⟨3, "kk"⟩, ⟨4, "vv"⟩]
-             (.seq (.letIn ⟨5, "out"⟩ (.var ⟨4, "vv"⟩)) .unit)])])
+       .mk "Cons" [Var.slot "§p0", Var.slot "tl"]
+         (.matchE "§p0" none
+           [.mk "Pair" [Var.slot "kk", Var.slot "vv"]
+             (.seq (.letIn (Var.slot "out") (.var "vv")) .unit)])])
 
 example : nestedArm = nestedArmHand := by rfl
 
@@ -317,22 +317,22 @@ def deep3 : Term := prog{
   () }
 
 def deep3Hand : Term :=
-  .seq (.letIn ⟨0, "p"⟩
+  .seq (.letIn (Var.slot "p")
       (.ctorApp "Pair" [nat 1, .ctorApp "Pair" [nat 2, .ctorApp "Pair" [nat 3, nat 4]]]))
-    (.matchE ⟨0, "p"⟩ none
-      [.mk "Pair" [⟨1, "a"⟩, ⟨2, "§p2"⟩]
-        (.matchE ⟨2, "§p2"⟩ none
-          [.mk "Pair" [⟨3, "b"⟩, ⟨4, "§p4"⟩]
-            (.matchE ⟨4, "§p4"⟩ none
-              [.mk "Pair" [⟨5, "c"⟩, ⟨6, "d"⟩]
-                (.seq (.letIn ⟨7, "out"⟩ (.var ⟨6, "d"⟩)) .unit)])])])
+    (.matchE "p" none
+      [.mk "Pair" [Var.slot "a", Var.slot "§p0"]
+        (.matchE "§p0" none
+          [.mk "Pair" [Var.slot "b", Var.slot "§p1"]
+            (.matchE "§p1" none
+              [.mk "Pair" [Var.slot "c", Var.slot "d"]
+                (.seq (.letIn (Var.slot "out") (.var "d")) .unit)])])])
 
 example : deep3 = deep3Hand := by rfl
 example : progOk deep3 = true := by native_decide
 -- `flat3`'s Ω, with `z1`/`z2` replaced by the minted names and nothing else
 -- changed — not even the ids, which the goldens above pin exactly.
 example : progRunsTo deep3
-    [("p", .bot), ("a", Val.nat 1), ("§p2", .bot), ("b", Val.nat 2), ("§p4", .bot),
+    [("p", .bot), ("a", Val.nat 1), ("§p0", .bot), ("b", Val.nat 2), ("§p1", .bot),
      ("c", Val.nat 3), ("d", Val.nat 4), ("out", Val.nat 4)] = true := by native_decide
 
 /-! ### A five-deep nest, in all three spellings
@@ -376,8 +376,8 @@ example : progRunsTo chain5
      ("c", Val.nat 3), ("z3", .bot), ("d", Val.nat 4), ("e", Val.nat 5),
      ("out", Val.nat 5)] = true := by native_decide
 example : progRunsTo nest5
-    [("p", .bot), ("a", Val.nat 1), ("§p2", .bot), ("b", Val.nat 2), ("§p4", .bot),
-     ("c", Val.nat 3), ("§p6", .bot), ("d", Val.nat 4), ("e", Val.nat 5),
+    [("p", .bot), ("a", Val.nat 1), ("§p0", .bot), ("b", Val.nat 2), ("§p1", .bot),
+     ("c", Val.nat 3), ("§p2", .bot), ("d", Val.nat 4), ("e", Val.nat 5),
      ("out", Val.nat 5)] = true := by native_decide
 
 /-! ### Reborrowing through a nested pattern
@@ -404,7 +404,7 @@ example : progOk nestedWrite = true := by native_decide
 -- match moved the payload into `y` and `z`.
 example : progRunsTo nestedWrite
     [("t", Val.ctor "Pair" [Val.nat 1, Val.ctor "Pair" [Val.nat 2, Val.nat 3]]),
-     ("b", .bot), ("x", .bot), ("§p3", .bot), ("y", .bot), ("z", .bot)] = true := by
+     ("b", .bot), ("x", .bot), ("§p0", .bot), ("y", .bot), ("z", .bot)] = true := by
   native_decide
 
 -- A borrowed list whose elements are pairs, cleared through the borrow. The
@@ -512,7 +512,7 @@ example : progOk twoNested = true := by native_decide
 -- `out` is 1. Under one shared name it would be 3, and the two ⊥ slots below
 -- would be one.
 example : progRunsTo twoNested
-    [("q", .bot), ("§p1", .bot), ("§p2", .bot), ("a", Val.nat 1), ("b", Val.nat 2),
+    [("q", .bot), ("§p0", .bot), ("§p1", .bot), ("a", Val.nat 1), ("b", Val.nat 2),
      ("c", Val.nat 3), ("d", Val.nat 4), ("out", Val.nat 1)] = true := by native_decide
 
 end Dllbc.Tests.Sugar
@@ -596,11 +596,11 @@ example : progRejects enterRefused "not in the comptime fragment" = true := by n
     binder half cannot save it, and `.app (.var g) .unit` has no imperative
     leaf. A `.const`/`.pvar` head stays comptime, which is the pure spine. -/
 
-example : Term.imperative (.app (.var ⟨0, "g"⟩) .unit) = true := by native_decide
-example : Term.imperative (.app (.const "Len") (.var ⟨0, "l"⟩)) = false := by native_decide
-example : Term.imperative (.app (.pvar "Le") (.pvar "a")) = false := by native_decide
+example : Term.imperative (.app (.var "g") .unit) = true := by native_decide
+example : Term.imperative (.app (.const "Len") (.var "l")) = false := by native_decide
+example : Term.lamImperative (.lam "Le" .type (.app (.var "Le") (.var "a"))) = false := by native_decide
 -- A bare `.var` is a snapshot read, not a call, and both arrows have a rule.
-example : Term.imperative (.var ⟨0, "g"⟩) = false := by native_decide
+example : Term.imperative (.var "g") = false := by native_decide
 
 /-! ## E. The `[k]` permutation survives
 
@@ -614,24 +614,24 @@ example : Term.imperative (.var ⟨0, "g"⟩) = false := by native_decide
 
 -- `[k]` at parameter 1: the built spine puts argument 1 first.
 example : Term.beq
-    (FnMacro.retarget [("f", ⟨7, "f"⟩, some 1)] (.call "f" [.unit, .type]))
-    (Term.appSpine (.var ⟨7, "f"⟩) [.type, .unit]) = true := by native_decide
+    (FnMacro.retarget [("f", Var.decl "f", some 1)] (.call "f" [.unit, .type]))
+    (Term.appSpine (.var "f") [.type, .unit]) = true := by native_decide
 
 -- …and with no hint, declaration order is kept — without which the line above
 -- would pass on a `retarget` that reordered unconditionally.
 example : Term.beq
-    (FnMacro.retarget [("f", ⟨7, "f"⟩, none)] (.call "f" [.unit, .type]))
-    (Term.appSpine (.var ⟨7, "f"⟩) [.unit, .type]) = true := by native_decide
+    (FnMacro.retarget [("f", Var.decl "f", none)] (.call "f" [.unit, .type]))
+    (Term.appSpine (.var "f") [.unit, .type]) = true := by native_decide
 
 -- The nullary desugar's `()` still arrives at the call site, which is what
 -- makes a no-argument `fn` a spine at all rather than a bare variable.
 example : Term.beq
-    (FnMacro.retarget [("f", ⟨7, "f"⟩, none)] (.call "f" []))
-    (.app (.var ⟨7, "f"⟩) .unit) = true := by native_decide
+    (FnMacro.retarget [("f", Var.decl "f", none)] (.call "f" []))
+    (.app (.var "f") .unit) = true := by native_decide
 
 -- And the spine reader inverts the builder, head and all.
-example : (Term.appSpineVar? (Term.appSpine (.var ⟨9, "f"⟩) [.unit, .type]))
-    == some (⟨9, "f"⟩, [.unit, .type]) := by native_decide
+example : (Term.appSpineVar? (Term.appSpine (.var "f") [.unit, .type]))
+    == some ("f", [.unit, .type]) := by native_decide
 example : (Term.appSpineVar? (Term.appSpine (.const "Len") [.unit])).isSome = false := by
   native_decide
 

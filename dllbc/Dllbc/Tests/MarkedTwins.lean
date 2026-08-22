@@ -103,7 +103,7 @@ def pinHonest : Term := prog{
 example : progOk pinHonest = true := by native_decide
 
 def pinTwin : Term :=
-  match Term.replaceMarked? "claim" ty{ Id Nat %(Dllbc.Term.pvar "r") (S(S(Z))) } pinHonest with
+  match Term.replaceMarked? "claim" ty{ Id Nat %(Dllbc.Term.var "r") (S(S(Z))) } pinHonest with
   | .ok t => t
   -- Unreachable while T2 holds; `.unit` cannot satisfy the rejection pin below,
   -- so a contract regression fails T3 rather than passing it vacuously.
@@ -114,7 +114,7 @@ example : (pinTwin == pinHonest) = false := by native_decide
 -- strengthened claim (`S (S Z)`) the certificate cannot meet, so this pin
 -- cannot be satisfied by a twin that was rejected for being garbage.
 example : progRejects pinTwin
-  "does not have return type (Σ(§0 : Nat). Id #§0 (S (S Z)))" = true := by native_decide
+  "does not have return type (Σ(§0 : Nat). Id §0 (S (S Z)))" = true := by native_decide
 
 /-! ## (T4) THE SEAM — `show` answers identically in marked code (docs/21 §5)
 
@@ -234,7 +234,7 @@ def pinUse : Checked := prog (pinLib) {
 example : progOkFrom pinLib pinUse.term = true := by native_decide
 
 def pinUseTwin : Term :=
-  match Term.replaceMarked? "claim" ty{ Id Nat %(Dllbc.Term.pvar "r") (S(S(Z))) } pinUse.term with
+  match Term.replaceMarked? "claim" ty{ Id Nat %(Dllbc.Term.var "r") (S(S(Z))) } pinUse.term with
   | .ok t => t
   | .error _ => .unit
 
@@ -242,7 +242,7 @@ example : (pinUseTwin == pinUse.term) = false := by native_decide
 -- The relayed result is the seed's opaque pair (σ₃, σ₄), and the audit names
 -- the strengthened claim it cannot meet — the lie, in the seeded message.
 example : progRejectsFrom pinLib pinUseTwin
-  "result (Pair σ₃ σ₄) does not have return type (Σ(§0 : Nat). Id #§0 (S (S Z)))" = true := by
+  "result (Pair σ₃ σ₄) does not have return type (Σ(§0 : Nat). Id §0 (S (S Z)))" = true := by
   native_decide
 
 end Dllbc.Tests.MarkedTwins

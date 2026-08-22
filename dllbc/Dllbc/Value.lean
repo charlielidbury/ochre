@@ -227,7 +227,7 @@ def sym (σ : Nat) : Val := .know (Term.sym σ)
 
 /-- The σ a value IS, if it is a bare one. -/
 def symOf? : Val → Option Nat
-  | .know (.pvar x) => symOfName? x
+  | .know (.var x) => symOfName? x
   | _ => none
 
 /-! Structural equality on values. Written by hand (mutually with the list

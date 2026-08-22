@@ -58,8 +58,8 @@ def tnat : Nat → Term | 0 => .ctorApp "Z" [] | n + 1 => .ctorApp "S" [tnat n]
 /-- `Add m n = natRec (λ_.Nat) n (λ_. λr. S r) m`. -/
 def addT : Term :=
   .lam "m" natT (.lam "n" natT
-    (.app (.app (.app (.app (.const "natRec") (.lam "_" natT natT)) (.pvar "n"))
-      (.lam "_" natT (.lam "r" natT (.ctorApp "S" [.pvar "r"])))) (.pvar "m")))
+    (.app (.app (.app (.app (.const "natRec") (.lam "_" natT natT)) (.var "n"))
+      (.lam "_" natT (.lam "r" natT (.ctorApp "S" [.var "r"])))) (.var "m")))
 
 /-- `VecF T n = natRec (λ_.Type) Unit (λn'. λrec. Σ(_:T). rec) n` — a `Vec`-shaped
     family by large elimination: `VecF Nat Z = Unit`, `VecF Nat (S n) =
@@ -67,15 +67,15 @@ def addT : Term :=
 def vecFT : Term :=
   .lam "T" .type (.lam "n" natT
     (.app (.app (.app (.app (.const "natRec") (.lam "_" natT .type)) (.const "Unit"))
-      (.lam "n'" natT (.lam "rec" .type (.sigmaT "_" (.pvar "T") (.pvar "rec"))))) (.pvar "n")))
+      (.lam "n'" natT (.lam "rec" .type (.sigmaT "_" (.var "T") (.var "rec"))))) (.var "n")))
 
 /-- `boolRec (λ_.Nat) t f b`. -/
 def boolRecNat (t f b : Term) : Term :=
   .app (.app (.app (.app (.const "boolRec") (.lam "_" (.const "Bool") natT)) t) f) b
 
 /-- A slot holding `σ₀`, and the term reading it. -/
-def sVar : Term := .var ⟨0, "s"⟩
-def seedS : Omega := [(⟨0, "s"⟩, .sym 0)]
+def sVar : Term := .var "s"
+def seedS : Omega := [(Var.slot "s", .sym 0)]
 
 /-! ## β / ι reduction (⇝) -/
 
@@ -99,7 +99,7 @@ example : expectReadC seedS [] (.app (.app (.const "botElim") natT) sVar)
 -- level-named ones readback mints (`§0`, `§1`) rather than the source's.
 example : expectReadC seedS [] (.app (.app addT sVar) (tnat 1))
   (.app (.app (.app (.app (.const "natRec") (.lam "§0" (.const "Nat") (.const "Nat"))) (nat 1))
-    (.lam "§0" (.const "Nat") (.lam "§1" (.const "Nat") (.ctorApp "S" [.pvar "§1"])))) (.sym 0)) = true := by
+    (.lam "§0" (.const "Nat") (.lam "§1" (.const "Nat") (.ctorApp "S" [.var "§1"])))) (.sym 0)) = true := by
   native_decide
 
 -- Conversion of stuck neutrals: reflexive, and sensitive to the argument.
@@ -124,9 +124,9 @@ def listNat : Term := .app (.const "List") natV
 def vecFV : Term :=
   .lam "T" .type (.lam "n" natV
     (.app (.app (.app (.app (.const "natRec") (.lam "_" natV .type)) (.const "Unit"))
-      (.lam "n'" natV (.lam "rec" .type (.sigmaT "_" (.pvar "T") (.pvar "rec"))))) (.pvar "n")))
+      (.lam "n'" natV (.lam "rec" .type (.sigmaT "_" (.var "T") (.var "rec"))))) (.var "n")))
 /-- `Σ (l : Nat). VecF Nat l` (the l is a genuine dependency). -/
-def sigVecF : Term := .sigmaT "l" natV (.app (.app vecFV natV) (.pvar "l"))
+def sigVecF : Term := .sigmaT "l" natV (.app (.app vecFV natV) (.var "l"))
 
 -- Positives: `Cons σₑ σ : List Nat` under sctx = {σₑ : Nat, σ : List Nat};
 -- `Pair 1 p : Σ (l:Nat). VecF Nat l` with `p = Pair 5 unit : VecF Nat 1` — the
@@ -150,7 +150,7 @@ example : expectHasType [] []
 -- Two λ's that differ only in their bodies are not convertible (no eta; bodies
 -- compared structurally after normalization, which renames both binders to the
 -- same level name and so cannot be what tells them apart).
-example : Pure.convert 1000 (.lam "u" natV (.pvar "u")) (.lam "u" natV (.ctorApp "Z" [])) = false := by
+example : Pure.convert 1000 (.lam "u" natV (.var "u")) (.lam "u" natV (.ctorApp "Z" [])) = false := by
   native_decide
 
 /-! ## Readback is canonical
@@ -177,37 +177,37 @@ example : Pure.convert 1000 (.lam "u" natV (.pvar "u")) (.lam "u" natV (.ctorApp
 -- (1) and (2): the binder a normal form carries is its level, in the reserved
 -- namespace. Written as the whole tree rather than as a predicate, so a change to
 -- the naming scheme fails HERE and says what it changed to.
-example : (Pure.nf 1000 (.lam "x" natV (.pvar "x")) == .lam "§0" natV (.pvar "§0")) = true := by
+example : (Pure.nf 1000 (.lam "x" natV (.var "x")) == .lam "§0" natV (.var "§0")) = true := by
   native_decide
-example : (Pure.nf 1000 (.lam "a" natV (.lam "b" natV (.app (.pvar "a") (.pvar "b"))))
-            == .lam "§0" natV (.lam "§1" natV (.app (.pvar "§0") (.pvar "§1")))) = true := by
+example : (Pure.nf 1000 (.lam "a" natV (.lam "b" natV (.app (.var "a") (.var "b"))))
+            == .lam "§0" natV (.lam "§1" natV (.app (.var "§0") (.var "§1")))) = true := by
   native_decide
 
 -- (3): two α-variants of one function read back to the same tree — not merely to
 -- convertible ones, which is the weaker fact `convert` would still give if
 -- readback minted from a counter.
-example : (Pure.nf 1000 (.lam "a" natV (.lam "b" natV (.app (.pvar "a") (.pvar "b"))))
-            == Pure.nf 1000 (.lam "p" natV (.lam "q" natV (.app (.pvar "p") (.pvar "q"))))) = true := by
+example : (Pure.nf 1000 (.lam "a" natV (.lam "b" natV (.app (.var "a") (.var "b"))))
+            == Pure.nf 1000 (.lam "p" natV (.lam "q" natV (.app (.var "p") (.var "q"))))) = true := by
   native_decide
 
 -- (4): and so they convert. (Under the de Bruijn representation this was true for
 -- a reason that no longer exists — the binders had no names to differ in.)
-example : Pure.convert 1000 (.lam "x" natV (.pvar "x")) (.lam "y" natV (.pvar "y")) = true := by
+example : Pure.convert 1000 (.lam "x" natV (.var "x")) (.lam "y" natV (.var "y")) = true := by
   native_decide
 
 -- (5): shadowing is the scope rule. `λ (x : Nat). λ (x : Nat). x` is the second
 -- projection, and both halves are asserted — it converts with `λ a. λ b. b` and
 -- does not convert with `λ a. λ b. a`. Nothing was renamed to make this work;
 -- the evaluator's environment is prepended to and the lookup finds the first hit.
-example : Pure.convert 1000 (.lam "x" natV (.lam "x" natV (.pvar "x")))
-                           (.lam "a" natV (.lam "b" natV (.pvar "b"))) = true := by native_decide
-example : Pure.convert 1000 (.lam "x" natV (.lam "x" natV (.pvar "x")))
-                           (.lam "a" natV (.lam "b" natV (.pvar "a"))) = false := by native_decide
+example : Pure.convert 1000 (.lam "x" natV (.lam "x" natV (.var "x")))
+                           (.lam "a" natV (.lam "b" natV (.var "b"))) = true := by native_decide
+example : Pure.convert 1000 (.lam "x" natV (.lam "x" natV (.var "x")))
+                           (.lam "a" natV (.lam "b" natV (.var "a"))) = false := by native_decide
 
 -- (6): the renaming is not an erasure — two functions that differ in which binder
 -- they return stay distinct after it.
-example : Pure.convert 1000 (.lam "a" natV (.lam "b" natV (.pvar "a")))
-                           (.lam "a" natV (.lam "b" natV (.pvar "b"))) = false := by native_decide
+example : Pure.convert 1000 (.lam "a" natV (.lam "b" natV (.var "a")))
+                           (.lam "a" natV (.lam "b" natV (.var "b"))) = false := by native_decide
 
 -- The namespace itself: what readback mints is reserved, and a source binder may
 -- not be. The second is the surface check rather than the tokenizer, because an
@@ -269,17 +269,17 @@ def botElimV (t x : Term) : Term := .app (.app (.const "botElim") t) x
     code of predecessors, mixed `↦ ⊥`. The diagonal `NatCode a a` is `⊤`. -/
 def zCase : Term :=
   .lam "b" natV (natRecV (.lam "_" natV .type) (.const "Unit")
-    (.lam "_" natV (.lam "_" .type (.const "Bot"))) (.pvar "b"))
+    (.lam "_" natV (.lam "_" .type (.const "Bot"))) (.var "b"))
 def sCase : Term :=
   .lam "a'" natV (.lam "recA" (.pi "_" natV .type) (.lam "b" natV
     (natRecV (.lam "_" natV .type) (.const "Bot")
-      (.lam "b'" natV (.lam "_" .type (.app (.pvar "recA") (.pvar "b'")))) (.pvar "b"))))
-def natCodeV : Term := .lam "a" natV (natRecV (.lam "_" natV (.pi "_" natV .type)) zCase sCase (.pvar "a"))
+      (.lam "b'" natV (.lam "_" .type (.app (.var "recA") (.var "b'")))) (.var "b"))))
+def natCodeV : Term := .lam "a" natV (natRecV (.lam "_" natV (.pi "_" natV .type)) zCase sCase (.var "a"))
 def natCode (a b : Term) : Term := .app (.app natCodeV a) b
 
 /-- `Pred : Nat → Nat` (`Pred Z = Z`, `Pred (S n) = n`). -/
 def predV : Term :=
-  .lam "n" natV (natRecV (.lam "_" natV natV) sZ (.lam "m" natV (.lam "_" natV (.pvar "m"))) (.pvar "n"))
+  .lam "n" natV (natRecV (.lam "_" natV natV) sZ (.lam "m" natV (.lam "_" natV (.var "m"))) (.var "n"))
 
 /-! ## The ι-rules: `j` and `k` fire on `Refl`
 
@@ -418,7 +418,7 @@ example : progRejects (prog_parse {
 
 -- P = λb'. λ_ : Id Nat Z b'. NatCode Z b'
 def nncMotive : Term :=
-  .lam "b" natV (.lam "q" (.idT natV sZ (.pvar "b")) (.app (.app natCodeV sZ) (.pvar "b")))
+  .lam "b" natV (.lam "q" (.idT natV sZ (.var "b")) (.app (.app natCodeV sZ) (.var "b")))
 def nncProof (n p : Term) : Term := jV natV sZ nncMotive unitV (sS n) p
 -- σ₀ = n : Nat, σ₁ = p : Id Nat Z (S n)
 def nncSctx : List (Nat × Term) := [(0, natV), (1, .idT natV sZ (sS (.sym 0)))]
@@ -442,7 +442,7 @@ example : expectHasType [] nncSctx (botElimV (.const "Bool") (nncProof (.sym 0) 
     b`. (`pred (S σ)` reduces because the `S` is concrete around the symbol.) -/
 
 def injMotive (a : Term) : Term :=
-  .lam "y" natV (.lam "q" (.idT natV (sS a) (.pvar "y")) (.idT natV a (.app predV (.pvar "y"))))
+  .lam "y" natV (.lam "q" (.idT natV (sS a) (.var "y")) (.idT natV a (.app predV (.var "y"))))
 def injProof (a b p : Term) : Term := jV natV (sS a) (injMotive a) refl (sS b) p
 def injSctx : List (Nat × Term) := [(0, natV), (1, natV), (2, .idT natV (sS (.sym 0)) (sS (.sym 1)))]
 
@@ -460,7 +460,7 @@ example : expectHasType [] injSctx (injProof (.sym 0) (.sym 1) (.sym 2)) (.idT n
     a decided commitment of this kernel. -/
 
 def idAA (a : Term) : Term := .idT natV a a
-def uipMotive (a : Term) : Term := .lam "q" (idAA a) (.idT (idAA a) (.pvar "q") refl)
+def uipMotive (a : Term) : Term := .lam "q" (idAA a) (.idT (idAA a) (.var "q") refl)
 def uipProof (a p : Term) : Term := kV natV a (uipMotive a) refl p
 def uipSctx : List (Nat × Term) := [(0, natV), (1, idAA (.sym 0))]
 
@@ -704,7 +704,7 @@ example : prog_parse { Σ0 (h : Nat). Nat }
 example : prog_parse { Σ (n : Nat). Σ (r : Nat). Id Nat n r }
     = Term.sigmaT "n" (.const "Nat")
         (Term.sigmaT "r" (.const "Nat")
-          (Term.idT (.const "Nat") (.pvar "n") (.pvar "r"))) := by rfl
+          (Term.idT (.const "Nat") (.var "n") (.var "r"))) := by rfl
 
 -- A Σ whose codomain is a Π keeps the Π's arrow: the two formers are told apart
 -- by their punctuation, which is the whole point. The dot is the pair and the
@@ -715,7 +715,7 @@ example : prog_parse { Σ (n : Nat). Σ (r : Nat). Id Nat n r }
 example : prog_parse { Σ (n : Nat). Π (Q : Nat) → Id Nat n Q }
     = Term.sigmaT "n" (.const "Nat")
         (Term.pi "Q" (.cmpT (.const "Nat"))
-          (Term.idT (.const "Nat") (.pvar "n") (.pvar "Q"))) := by rfl
+          (Term.idT (.const "Nat") (.var "n") (.var "Q"))) := by rfl
 
 -- The printer spells the dot (`Term.prettyPrec`'s `.sigmaT` case), which is the
 -- round-trip the surface owes a user reading a rejection message: a Σ goes in as
@@ -768,7 +768,8 @@ def reaches (nm : String) : Bool :=
 
 example : reaches (readbackName 0) = true := by native_decide
 example : reaches genName = true := by native_decide
-example : reaches (Pure.letName 7) = true := by native_decide
+-- (`Pure.letName` — the reserved name a reflected `let` bound its slot to —
+-- retired with docs/22: a ⇝-`let` binds its own name.)
 example : reaches "§p3" = true := by native_decide
 example : reaches "§_" = true := by native_decide
 example : reaches "§k" = true := by native_decide
@@ -816,11 +817,11 @@ open Dllbc
     only when the body is evaluated. (`leb` stands here for an unknown head
     that `whnfN` leaves neutral; the shape is what matters.) -/
 
-def vSlot : Var := ⟨700, "V"⟩
-def wSlot : Var := ⟨701, "W"⟩
+def vSlot : Var := Var.slot "V"
+def wSlot : Var := Var.slot "W"
 def latentRho : List (Var × Val) :=
   [(vSlot, .know (Term.sym 5)), (wSlot, .know (Term.sym 6))]
-def latentBody : Term := .app (.app (.const "leb") (.var vSlot)) (.var wSlot)
+def latentBody : Term := .app (.app (.const "leb") (.var vSlot.name)) (.var wSlot.name)
 def latentNode : Term := .lam "§x" (.const "Nat") latentBody
 def latent : Val := .closure latentRho latentNode none
 
@@ -882,7 +883,7 @@ example : (match cookForGen 1000 sp.symIds unrelated with
     entered — and cooking one is not merely pointless but undefined, since ⇝ has
     no rule for a write. Its ρ is still descended, because a comptime closure can
     sit inside one. -/
-def impNode : Term := Term.lamTel [(⟨702, "w"⟩, .const "Nat")] (.seq (.var vSlot) .unit)
+def impNode : Term := Term.lamTel [(Var.slot "w", .const "Nat")] (.seq (.var vSlot.name) .unit)
 def impClosure : Val := .closure latentRho impNode none
 example : (match cookForGen 1000 sp.symIds impClosure with
            | .closure ρ n _ => ρ.length == 2 && Term.beq n impNode
@@ -905,7 +906,7 @@ example : (match cookForGen 1000 sp.symIds impClosure with
     That is deliberately more informative than deleting it — the line that
     used to say "the sweep finds nothing here" now says "the sweep finds it",
     and the two are the same measurement. -/
-def lenBody : Term := prog_parse { %(Std.lenFnT) %(Term.var vSlot) }
+def lenBody : Term := prog_parse { %(Std.lenFnT) %(Term.var vSlot.name) }
 def lenLatent : Val := .closure [(vSlot, .know (Term.sym 5))] (.lam "§x" (.const "Nat") lenBody) none
 def lenSp : Term := Pure.nf 1000 (prog_parse { %(Std.lenFnT) %(Term.sym 5) })
 -- The spine binds: it unfolds to a `listRec` over λ arms, so its normal form
@@ -1112,7 +1113,7 @@ example : (Term.numberSeals c2).1 = 1 := by native_decide
 def capSeal : Term := prog{
   let N = 1; let F = (λ (X : Nat). N : Π (X : Nat) → Nat); () }
 
-def stAt (n : Nat) : St := { initSt with env := [(⟨0, "N"⟩, .know (Term.nat n))] }
+def stAt (n : Nat) : St := { initSt with env := [(Var.slot "N", .know (Term.nat n))] }
 
 /-- Read a seal node in a given state: the value, and the state it leaves. -/
 def readSeal (node : Nat × Term × Term) (st : St) : Except String (Val × St) :=
@@ -1153,7 +1154,7 @@ def twiceDiff : Option (Val × Val) :=
     match readSeal nd (stAt 1) with
     | .error _ => none
     | .ok (v1, st1) =>
-      match readSeal nd { st1 with env := [(⟨0, "N"⟩, .know (Term.nat 2))] } with
+      match readSeal nd { st1 with env := [(Var.slot "N", .know (Term.nat 2))] } with
       | .error _ => none
       | .ok (v2, _) => some (v1, v2)
 
@@ -1218,8 +1219,8 @@ example : execSealSites = some 0 := by native_decide
 -- because the return type does not depend on the argument, so the surface
 -- mints its unused name for it.
 example : progRunsTo execProg [("Inc", .closure []
-            (Term.lamTel [(⟨0, "n"⟩, .const "Nat")] (.ctorApp "S" [.var ⟨0, "n"⟩]))
-            (some (.pi "§p0" (.const "Nat") (.const "Nat")))),
+            (Term.lamTel [(Var.slot "n", .const "Nat")] (.ctorApp "S" [.var "n"]))
+            (some (.pi "n" (.const "Nat") (.const "Nat")))),
           ("y", Val.nat 3)] = true := by native_decide
 
 end Dllbc.Tests.S32Seal

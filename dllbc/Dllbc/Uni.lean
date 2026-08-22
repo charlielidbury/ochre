@@ -30,14 +30,12 @@ Telescope entry types, the return type, and the `↝` right-hand side elaborate
 through the same `uterm` as everything else — Σ/Π/λ/→/Id/application/`Type` —
 extended with two things the boundary needs:
 
-  * a **runtime-var context**: the names of EARLIER telescope parameters resolve
-    to `.var ⟨i, name⟩` with positional 0-based ids — the exact convention
-    `seedTelescope` seeds (argument `i` ↦ var id `i`) and the corpus's `V i "…"`
-    references use. Runtime vars are absolute ids, so crossing a Σ/Π/λ binder
-    does NOT shift them (matching §5.2: a runtime var in a type is resolved by ⇝
-    to its snapshot, never a pure binder).
-  * `*x` in type position → `.deref (.var ⟨i, name⟩)` — the comptime deref the
-    corpus writes as `dv`/`lenT (.deref (.var vv))`.
+  * the names of EARLIER telescope parameters are in scope, and resolve to
+    `.var name` — ONE constructor for a pure binder and an Ω slot (docs/22):
+    which it is, the term's scope says, where `reflectC` reads it. A parameter
+    cited in a type is an Ω read of its snapshot (§5.2) because no pure binder
+    of that name encloses the citation.
+  * `*x` in type position → `.deref (.var "x")` — the comptime deref.
 
 `&mut τ` (the borrow TYPE — the OPERATION is `&m e`, M29 β) is
 `borrowT τ (weaken τ)` (the corpus's plain-borrow encoding; for the
@@ -48,11 +46,13 @@ convention in Syntax.lean.
 
 ## Resolution discipline (och's law)
 
-Every identifier resolves or errors: pure binder → `pvar`; earlier telescope
-param → `var`; known constructor → `ctorApp`; kernel const → `const`; a friendly
+Every identifier resolves or errors: a binder in scope (pure, slot or `fn`)
+→ `var`; known constructor → `ctorApp`; kernel const → `const`; a friendly
 reified-function alias (`Le`, `Len`, `Add`, …) → its `…FnT` Term constant; else
 the **Lean identifier** of that name, which must denote a `Dllbc.Term` in scope
-(a library lemma like `SwapL` or `Set`) — the documented fallback.
+(a library lemma like `SwapL` or `Set`) — the documented fallback. In
+`prog_parse { }` the last step has one more rung: a name Lean does not know is
+a free `var`, for the splice site to bind (docs/22 §5).
 
 ## Body
 
@@ -334,6 +334,37 @@ syntax "show" ident ";" ublk : ublk                          -- show (erased)
 namespace Surface
 open Lean
 
+/-! ## Scope (docs/22 §5)
+
+    ONE list of the names in scope, innermost first — what `rctx` (runtime
+    locals and `fn` slots, at their ids) and `pctx` (pure binders) used to be
+    as two. Under one `var` the emitted term is `.var name` whatever kind of
+    binder the name resolved to; the kind is read only where the emitted term
+    differs by it (a call on a slot head is an app spine, on a `fn` slot a
+    `.call` for `retarget`; a match refuses a non-slot head; hovers file for
+    slots). The walker mints nothing: a binder's identity is its name. -/
+
+/-- One name in scope. -/
+structure Scoped where
+  name : String
+  kind : BinderKind
+  /-- For a `let`-bound slot, the key syntax of the statement that bound it —
+      see `OccNote.bindKey`. -/
+  key : Option Syntax := none
+deriving Inhabited
+
+abbrev Scope := List Scoped
+
+/-- The innermost binding of a name, if any. -/
+def Scope.find? (sc : Scope) (s : String) : Option Scoped := List.find? (·.name == s) sc
+
+/-- Bind a pure (λ/Π/Σ) binder over a scope. -/
+def pushPure (x : String) (sc : Scope) : Scope := ⟨x, .pure, none⟩ :: sc
+/-- Bind an Ω slot — a parameter, a `let` (with its statement key), a pattern
+    binder — over a scope. -/
+def pushSlot (x : String) (sc : Scope) (key : Option Syntax := none) : Scope :=
+  ⟨x, .slot, key⟩ :: sc
+
 /-- The binder a pure form gets when NOTHING can refer to it: a plain `&mut τ`'s
     entry snapshot, and the non-dependent arrow's domain. Reserved, so it is not
     merely unused but unwritable. -/
@@ -374,7 +405,8 @@ def scrutName : String := "§m"
     would send the first match's header to the SECOND payload — a silent wrong
     answer, not an error. Suffixing with the id the binder is minted at makes the
     names as distinct as the ids, which the one global counter already guarantees. -/
-def patName (id : Nat) : String := "§p" ++ toString id
+def patName (n : Nat) : String := "§p" ++ toString n
+
 
 -- (`shadowedName` and `idxOf?` were deleted in M30 step 2. The first existed so
 -- that a `let` shadowing a pure binder could occupy that binder's `pctx` slot —
@@ -513,7 +545,7 @@ def binderDom (nm : String) (τ : TSyntax `term) : MacroM (TSyntax `term) :=
 
 /-- A nested pattern argument that has been given a slot and is waiting for its
     match: the slot's `Var` syntax, the constructor, and the arguments to match. -/
-abbrev PendingPat := TSyntax `term × Ident × List (TSyntax `upat)
+abbrev PendingPat := String × Ident × List (TSyntax `upat)
 
 /-! ## The span side channel
 
@@ -544,9 +576,14 @@ failed and a span is needed. -/
     declines rather than guessing a nearby one. -/
 structure OccNote where
   ref : Syntax
-  id : Nat
   name : String
   stmt : Option Syntax := none
+  /-- The statement key of the `let` this occurrence resolved to, when it
+      resolved to one (docs/22 §3 item 2): what lets the binder-granularity
+      fallback join an occurrence to ITS binder under shadowing, rather than to
+      whichever `let` of that name was filed first. `none` for a parameter, a
+      pattern binder, a `fn` slot — those have no `let` note to join to. -/
+  bindKey : Option Syntax := none
   /-- An ENTRY occurrence — a telescope position: a parameter binder, an
       occurrence inside a parameter's type, or the return type. Its point is
       "entering the body" — the state at the END of `stmt`'s seeding run —
@@ -627,10 +664,29 @@ structure SpanAcc where
       ending Ω, which drops body-local declarations (their binding dies with
       the sealed body). -/
   fnHints : Array (String × Nat) := #[]
+  /-- The `§pN` supply (`freshPat`). -/
+  fresh : Nat := 0
+  /-- **Och's law, switched off** (docs/22 §5): this is a `prog_parse { }`
+      block, and a name that resolves to nothing is emitted as `.var name` for
+      the splice site to bind, instead of as the Lean identifier that makes it an
+      error. One reader — `resolveName`'s final fallthrough (and `elabScrut`'s,
+      for a scrutinee) — and it turns an ERROR into a term: no source `prog{ }`
+      accepts elaborates differently under it. -/
+  parse : Bool := false
 deriving Inhabited
 
 /-- The surface walker's monad: `MacroM` plus the span side channel. -/
 abbrev UM := StateT SpanAcc MacroM
+
+/-- The fresh-name supply for `patName` (docs/22 §3 item 4): the one thing the
+    walker still counts, because sibling nested patterns must bind DISTINCT
+    reserved names. Per block; a spliced fragment's `§p0` cannot be live at the
+    same time as the host's (`patName`'s own argument: the header reads the slot
+    before any arm body — where a fragment can land — runs). -/
+def freshPat : UM String := do
+  let a ← get
+  set { a with fresh := a.fresh + 1 }
+  return patName a.fresh
 
 /-! ## Hover metadata: filing, scoping, and reading source text -/
 
@@ -651,9 +707,9 @@ def noteHover (ref : Syntax) (text : String) : UM Unit :=
     statement is filled in afterwards by `tagOccsFrom`, because a statement's key
     is not known until it has been walked (a `let`'s binder id is the counter
     AFTER its right-hand side). -/
-def noteOcc (ref : Syntax) (id : Nat) (name : String) : UM Unit :=
+def noteOcc (ref : Syntax) (name : String) (bindKey : Option Syntax := none) : UM Unit :=
   modify fun a =>
-    if a.hover then { a with occs := a.occs.push { ref, id, name } } else a
+    if a.hover then { a with occs := a.occs.push { ref, name, bindKey } } else a
 
 /-- Where the occurrence array stands before a statement is walked. -/
 def occMark : UM Nat := return (← get).occs.size
@@ -757,15 +813,25 @@ def noteArgSpan (key : TSyntax `term) (ref : Syntax) : UM Unit :=
 def spanOfStmt (t : TSyntax `term) (ref : Syntax) : UM Unit :=
   noteStmtSpan t ref
 
-/-- File a `let` statement under its binder alone (runtime ids are unique). -/
-def spanOfLet (id : Nat) (name : String) (ref : Syntax) : UM Unit := do
-  noteStmtSpan (← `(Dllbc.Term.letIn ⟨$(quote id), $(quote name)⟩ Dllbc.Term.unit)) ref
+/-- A `let` statement's key: its binder AND its right-hand side (docs/22 §4) —
+    the shape `assign`'s key already has. The id that made the binder alone
+    unique is gone; two `let x = e` with the same `e` are the same statement
+    written twice, which the span lookup already reports as such. -/
+def letKey (name : String) (rhs : TSyntax `term) : MacroM (TSyntax `term) :=
+  `(Dllbc.Term.letIn (Dllbc.Var.slot $(quote name)) $rhs)
 
-/-- File a `fn` statement. It is a `let` like any other, but every `fn` shares the
-    `declSlot` TAG as its id (M32 R4), so the NAME is what distinguishes one from
-    another here — which is exactly what `Ω` resolves by. -/
+/-- File a `let` statement under its key. -/
+def spanOfLet (key : TSyntax `term) (ref : Syntax) : UM Unit := noteStmtSpan key ref
+
+/-- A `fn` statement's key: its binder alone. Every `fn` binder is a `decl`, so
+    the NAME is what distinguishes one from another here — which is exactly
+    what `Ω` resolves by. -/
+def fnKey (name : String) : MacroM (TSyntax `term) :=
+  `(Dllbc.Term.letIn (Dllbc.Var.decl $(quote name)) Dllbc.Term.unit)
+
+/-- File a `fn` statement. -/
 def spanOfFn (name : String) (ref : Syntax) : UM Unit := do
-  noteStmtSpan (← `(Dllbc.Term.letIn ⟨Dllbc.declSlot, $(quote name)⟩ Dllbc.Term.unit)) ref
+  noteStmtSpan (← fnKey name) ref
 
 /-- File an assignment under its place and right-hand side. -/
 def spanOfAssign (place rhs : TSyntax `term) (ref : Syntax) : UM Unit := do
@@ -827,20 +893,18 @@ def upatParts (p : TSyntax `upat) : MacroM (Ident × Option (List (TSyntax `upat
     pure (x, if ctorSet.contains x.getId.toString then some [] else none)
   | _ => Macro.throwErrorAt p "decl: unexpected pattern argument"
 
-/-- Mint fresh runtime ids for one row of pattern arguments, extending `rctx` and
-    returning the extended context, the next free id, the argument `Var` syntaxes
-    (in order) and the nested arguments deferred to `wrapPats`. Binder ids are
-    ABSOLUTE and globally unique — minted from one counter threaded through every
-    elaborator — which is why they stay distinct across the arms of a single match.
+/-- Bind one row of pattern arguments, extending the scope and returning the
+    extended scope, the argument `Var` syntaxes (in order) and the nested
+    arguments deferred to `wrapPats`.
 
-    A nested argument takes a slot like any other and puts NOTHING into `rctx`:
-    its name is reserved, so no source can refer to it, and the only reader it
-    will ever have is the `.matchE` header `wrapPats` builds from the `Var`
-    returned here. -/
-partial def mintPatArgs (rctx : List (String × Nat)) (next : Nat) :
+    A nested argument takes a slot like any other and puts NOTHING into scope:
+    its name is reserved and FRESH (`freshPat`), so no source can refer to it,
+    and the only reader it will ever have is the `.matchE` header `wrapPats`
+    builds from the name returned here. -/
+partial def mintPatArgs (sc : Scope) :
     List (TSyntax `upat) →
-    UM (List (String × Nat) × Nat × Array (TSyntax `term) × List PendingPat)
-  | [] => pure (rctx, next, #[], [])
+    UM (Scope × Array (TSyntax `term) × List PendingPat)
+  | [] => pure (sc, #[], [])
   | p :: ps => do
     -- The identifier comes back from `upatParts` and is not read off `p` directly:
     -- `upat`'s binder row WRAPS its ident in a node of its own, so `⟨p.raw⟩` is a
@@ -851,38 +915,39 @@ partial def mintPatArgs (rctx : List (String × Nat)) (next : Nat) :
     | (x, none) => do
       liftM (checkBinder x)
       let name := x.getId.toString
-      -- The binder IS an occurrence (docs/17): filed here at its minted id, and
-      -- entry-tagged by the enclosing match/let-pattern row with that match's
-      -- key — arm-entry binds file under it, so `replayEntry` answers with this
-      -- arm's own seed, per path.
-      noteOcc x.raw next name
-      let v ← `((⟨$(quote next), $(quote name)⟩ : Dllbc.Var))
-      let (rctx', n, vs, pend) ← mintPatArgs ((name, next) :: rctx) (next + 1) ps
-      pure (rctx', n, #[v] ++ vs, pend)
+      -- The binder IS an occurrence (docs/17): filed here, and entry-tagged by
+      -- the enclosing match/let-pattern row with that match's key — arm-entry
+      -- binds file under it, so `replayEntry` answers with this arm's own seed,
+      -- per path.
+      noteOcc x.raw name
+      let v ← `(Dllbc.Var.slot $(quote name))
+      let (sc', vs, pend) ← mintPatArgs (pushSlot name sc) ps
+      pure (sc', #[v] ++ vs, pend)
     | (c, some args) => do
-      let v ← `((⟨$(quote next), $(quote (patName next))⟩ : Dllbc.Var))
-      let (rctx', n, vs, pend) ← mintPatArgs rctx (next + 1) ps
-      pure (rctx', n, #[v] ++ vs, (v, c, args) :: pend)
+      let nm ← freshPat
+      let v ← `(Dllbc.Var.slot $(quote nm))
+      let (sc', vs, pend) ← mintPatArgs sc ps
+      pure (sc', #[v] ++ vs, (nm, c, args) :: pend)
 
 /-- Wrap `body` in the deferred nested matches, outermost first. `body` is a
     continuation rather than a syntax tree because the two rows that call this
     disagree about what a body IS — an arm's is a `uarmBody`, the `let` pattern's
     is the REST OF THE BLOCK — and they agree about everything else. -/
-partial def wrapPats (rctx : List (String × Nat)) (next : Nat) (pend : List PendingPat)
-    (body : List (String × Nat) → Nat → UM (TSyntax `term × Nat)) :
-    UM (TSyntax `term × Nat) := do
+partial def wrapPats (sc : Scope) (pend : List PendingPat)
+    (body : Scope → UM (TSyntax `term)) :
+    UM (TSyntax `term) := do
   match pend with
-  | [] => body rctx next
-  | (v, c, args) :: rest => do
+  | [] => body sc
+  | (nm, c, args) :: rest => do
     let occLo ← occMark
-    let (rctx', n1, vars, pend') ← mintPatArgs rctx next args
+    let (sc', vars, pend') ← mintPatArgs sc args
     -- A nested pattern's binders belong to the GENERATED inner match, whose key
     -- this row is about to build — tagged here, before the outer row's sweep
     -- can hand them the outer key.
-    tagOccsEntry occLo (← `(Dllbc.Term.matchE $v none []))
-    let (inner, n2) ← wrapPats rctx' n1 (pend' ++ rest) body
-    return (← `(Dllbc.Term.matchE $v none
-      [Dllbc.Branch.mk $(quote c.getId.toString) [$vars,*] $inner]), n2)
+    tagOccsEntry occLo (← `(Dllbc.Term.matchE $(quote nm) none []))
+    let inner ← wrapPats sc' (pend' ++ rest) body
+    return (← `(Dllbc.Term.matchE $(quote nm) none
+      [Dllbc.Branch.mk $(quote c.getId.toString) [$vars,*] $inner]))
 
 /-- The branch-equation form takes NO nested patterns in v1, and says so here.
 
@@ -898,15 +963,13 @@ def refuseNestedPat (p : TSyntax `upat) : MacroM Unit := do
     Macro.throwErrorAt p "decl: the branch-equation form `match h : e { … }` does not take nested patterns. `h`'s type is the equation between the scrutinee and THIS arm's constructor, and no equation is defined at a nested position — write the inner match explicitly (with its own `match h2 : …` if it needs one)."
   else pure ()
 
-/-! ## Locals and `fn` slots in one context (M31 Stage A)
+/-! ## Locals and `fn` slots in one scope (M31 Stage A; one list since docs/22)
 
-    A `fn` statement's name now goes into `rctx` alongside the ordinary runtime
+    A `fn` statement's name goes into scope alongside the ordinary runtime
     locals, because §2.1 makes a function an ordinary comptime BINDING and a
     binding is something a bare name may denote (`let F = Main`). They are told
-    apart by the id, which since M32 R4 is the TAG `Var.declSlot` rather than a
-    position above `progBase` — same question, no arithmetic to keep in step.
-
-    Separate they must stay, because two rows want the LOCALS only:
+    apart by the binder's KIND (`BinderKind.decl`, what the `declSlot` tag was),
+    and two rows want the LOCALS only:
 
       * `f(a, b)` must keep falling through to `.call`, whose rewrite into the
         app SPINE is `retarget`'s — and `retarget` also PERMUTES the arguments of
@@ -917,11 +980,11 @@ def refuseNestedPat (p : TSyntax `upat) : MacroM Unit := do
         than by a test.
       * `match x { … }` wants a runtime scrutinee, and a function is not one. -/
 
-/-- An ordinary runtime local — a `fn` slot is not one. -/
-def localId (rctx : List (String × Nat)) (s : String) : Option Nat :=
-  match rctx.lookup s with
-  | some id => if id == Dllbc.declSlot then none else some id
-  | none => none
+/-- An ordinary runtime local — a `fn` slot is not one, and nor is a pure binder. -/
+def isLocal (sc : Scope) (s : String) : Bool :=
+  match sc.find? s with
+  | some e => e.kind == .slot
+  | none => false
 
 /-- A `fn` slot bound above this point, by the name it was declared with.
 
@@ -939,10 +1002,10 @@ def localId (rctx : List (String × Nat)) (s : String) : Option Nat :=
     `fn SplitA` against the split predicate, now `SplitAL`. The invariant was
     stated in the corpus and enforced nowhere; `lemmaShadowCheck` below enforces
     it, at the one place both names are in view. -/
-def fnSlotId (rctx : List (String × Nat)) (s : String) : Option Nat :=
-  match rctx.lookup s with
-  | some id => if id == Dllbc.declSlot then some id else none
-  | none => none
+def isFnSlot (sc : Scope) (s : String) : Bool :=
+  match sc.find? s with
+  | some e => e.kind == .decl
+  | none => false
 
 /-- **The L-suffix condition, checked** (M32 R1).
 
@@ -966,30 +1029,57 @@ def lemmaShadowCheckAt (ref : Syntax) (s : String) : MacroM Unit := do
   if !cands.isEmpty then
     Macro.throwErrorAt ref s!"fn: '{s}' shadows the library lemma `Dllbc.StdLemmas.{s}`. A `fn` slot is resolved before the raw-Lean fallthrough, so no block below this declaration can name the lemma, and under M32's name-keyed Ω the two spellings resolve one store entry. Give the LEMMA the `L` suffix ({s} → {s}L) — the function is the user-facing name and does not move."
 
-/-- Resolve a bare identifier in a type/back position. Pure binder in scope →
-    `pvar` at that very name; earlier telescope param → `var`; constructor →
-    nullary `ctorApp`; kernel const → `const`; reified-function alias → its `…FnT`
-    Term; a `fn` slot above it → `var` at that slot; else the Lean identifier of
-    that name (a `Term` in scope).
+/-- **The Lean fallthrough, asked at elaboration** (docs/22 §5). `prog{ }`'s
+    last resort for a name is the Lean identifier of that name, which must
+    denote a `Dllbc.Term` in scope — a library lemma, or a Lean local of the
+    enclosing `def`. A `prog_parse { }` block wants the SAME resort and one more
+    below it: a name Lean does not know either is `.var name`, free, for the
+    splice site to bind.
 
-    The `fn` slot is consulted LAST but one, after the alias table and before the
-    raw fallthrough, so that adding it changes the answer for no name that already
-    had one. -/
-def resolveName (rctx : List (String × Nat)) (pctx : List String) (x : Ident) : MacroM (TSyntax `term) := do
+    Whether Lean knows a name is not a question a `MacroM` can answer — it sees
+    globals (`resolveGlobalName`) and not the local context — so the walker
+    emits this and the answer is given here, by a term elaborator with the full
+    scope in hand. Known-or-not and nothing more: an ambiguous global (`Append`
+    the Lean class against `StdLemmas.Append`) is for `elabTerm`'s overload
+    resolution against the expected type, exactly as the bare identifier always
+    was. A dotted name is never a DLLBC binder, so it is elaborated as Lean
+    would without asking. -/
+syntax (name := identOrFree) "ident_or_free%" ident : term
+
+open Lean.Elab Lean.Elab.Term in
+elab_rules : term
+  | `(ident_or_free% $x:ident) => do
+    let termTy := Lean.mkConst ``Dllbc.Term
+    let known := !x.getId.isAtomic
+      || ((← getLCtx).findFromUserName? x.getId).isSome
+      || !(← resolveGlobalName x.getId).isEmpty
+    if known then elabTerm x (some termTy)
+    else return mkApp (Lean.mkConst ``Dllbc.Term.var) (mkStrLit x.getId.toString)
+
+/-- Resolve a bare identifier. A binder in scope — pure, slot or `fn` — is
+    `.var` at that name (ONE constructor, docs/22; which it is, the term's
+    scope says); a constructor → nullary `ctorApp`; a kernel const → `const`;
+    a reified-function alias → its `…FnT` Term; else the Lean identifier of that
+    name (a `Term` in scope) — or, in a `prog_parse { }` block (`parse`), that
+    identifier if Lean knows it and a free `.var` otherwise (`ident_or_free%`).
+
+    A binder shadows the table, as it always did (`pctx`-first, then `rctx`,
+    before the constructor and constant tables): `λ (k : Nat). k` is the binder
+    and not the `Id` eliminator. **The tables are resolved HERE, in parse mode
+    too** — a name that is a constructor, a constant or an alias is that,
+    whatever the splice site binds. Deferring the lowercase constants to the
+    splice was tried and is recorded in docs/22 §7.1: every library proof is
+    spliced somewhere, and `IdCongrRaw`'s `j A X …` was captured by a chain
+    `fn`'s parameter named `j`. The cost is stated there: a fragment cannot
+    cite a splice-site binder named `j`, `k`, `natRec`, …. -/
+def resolveName (parse : Bool) (sc : Scope) (x : Ident) : MacroM (TSyntax `term) := do
   let s := x.getId.toString
-  if pctx.contains s then `(Dllbc.Term.pvar $(quote s))
-  else
-    match localId rctx s with
-    | some id => `(Dllbc.Term.var ⟨$(quote id), $(quote s)⟩)
-    | none =>
-      if ctorSet.contains s then `(Dllbc.Term.ctorApp $(quote s) [])
-      else if constSet.contains s then `(Dllbc.Term.const $(quote s))
-      else match aliasMap.lookup s with
-        | some n => pure ⟨(mkIdent n).raw⟩
-        | none =>
-          match fnSlotId rctx s with
-          | some id => `(Dllbc.Term.var ⟨$(quote id), $(quote s)⟩)
-          | none => pure ⟨x.raw⟩
+  if (sc.find? s).isSome then `(Dllbc.Term.var $(quote s))
+  else if ctorSet.contains s then `(Dllbc.Term.ctorApp $(quote s) [])
+  else if constSet.contains s then `(Dllbc.Term.const $(quote s))
+  else match aliasMap.lookup s with
+    | some n => pure ⟨(mkIdent n).raw⟩
+    | none => if parse then `(ident_or_free% $x) else pure ⟨x.raw⟩
 
 /-- File a hover for one identifier OCCURRENCE (docs/16).
 
@@ -1005,32 +1095,28 @@ def resolveName (rctx : List (String × Nat)) (pctx : List String) (x : Ident) :
     a Lean-level lemma all hover as themselves in the ordinary Lean way once they
     reach the emitted term, and inventing a DLLBC tooltip for them would replace
     real information with a guess. -/
-def noteIdent (rctx : List (String × Nat)) (pctx : List String) (x : Ident) : UM Unit := do
+def noteIdent (sc : Scope) (x : Ident) : UM Unit := do
   let a ← get
   if !a.hover then return
   let s := x.getId.toString
-  if pctx.contains s then return
-  match localId rctx s with
-  | some id => noteOcc x.raw id s
-  | none =>
-    match fnSlotId rctx s with
-    | some id =>
-      match a.fsigs.lookup s with
-      | some sig => noteHover x.raw (hoverText s sig)
-      | none => noteOcc x.raw id s
-    | none => pure ()
+  match sc.find? s with
+  | some ⟨_, .pure, _⟩ => return
+  | some ⟨_, .slot, key⟩ => noteOcc x.raw s key
+  | some ⟨_, .decl, _⟩ =>
+    match a.fsigs.lookup s with
+    | some sig => noteHover x.raw (hoverText s sig)
+    | none => noteOcc x.raw s
+  | none => pure ()
 
 /-! ## Unified `uterm` / `ublk` elaborators (§ points 1–3)
 
-Runtime binders (let, match patterns) mint fresh absolute ids threaded through
-`next`: a `let` binds at the post-RHS counter value and continues at `+1`, and a
-match's arm binders are minted from one counter across ALL arms, so no two
-binders in a body ever share an id. This is the id discipline of the retired
-runtime-body grammar, reproduced here exactly — every one of its 70 sites in the
-suite was checked byte-for-byte against this elaborator before it was deleted
-(M28 α–δ).
-Pure binders (λ/Π/Σ/→) push their NAME onto `pctx` and never touch `next`; a
-runtime var referenced from inside a pure spine stays `.var`. -/
+A binder's identity is its NAME (docs/22): a `let`, a match's arm binders, a
+runtime λ's telescope and a pure λ/Π/Σ binder all push their name onto the one
+scope list, innermost first, and an occurrence is `.var name` whichever kind of
+binder it resolved to. The walker mints nothing except the reserved `§pN`
+names for nested patterns (`freshPat`). (The runtime-body grammar this replaced
+minted a globally-unique id per binder; M32 R1 made Ω resolve by name and the
+id was decoration from then on.) -/
 
 /-- Put a matched expression's `let` back around the match, or nothing at all when
     the scrutinee was already a place (M34). The two match rows and the
@@ -1048,16 +1134,18 @@ partial def collectAppU : TSyntax `uterm → TSyntax `uterm × Array (TSyntax `u
 
 mutual
 
-partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
-    (stx : TSyntax `uterm) : UM (TSyntax `term × Nat) := do
+partial def elabUTerm (sc : Scope)
+    (stx : TSyntax `uterm) : UM (TSyntax `term) := do
   match stx with
-  | `(uterm| ()) => return (← `(Dllbc.Term.unit), next)
-  | `(uterm| ($e:uterm)) => elabUTerm rctx pctx next e
-  | `(uterm| Type) => return (← `(Dllbc.Term.type), next)
-  | `(uterm| % $e:term) => return (← `(($e : Dllbc.Term)), next)
+  | `(uterm| ()) => return (← `(Dllbc.Term.unit))
+  | `(uterm| ($e:uterm)) => elabUTerm sc e
+  | `(uterm| Type) => return (← `(Dllbc.Term.type))
+  | `(uterm| % $e:term) => return (← `(($e : Dllbc.Term)))
   | `(uterm| @$nm:ident $e:uterm) => do
     -- The marker row wraps and nothing else: occurrences inside `E` file as
     -- normal (spans, hovers), and the node is stripped at the program boundary.
+    -- Parse mode included — a fragment may carry markers, and they mean their
+    -- bodies wherever the fragment lands.
     --
     -- ONE name is REFUSED, loudly: `@res` is the kernel form of `*res`, and a
     -- marker named `res` would parse under this row and then silently mean its
@@ -1068,15 +1156,15 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     let s := nm.getId.toString
     if s == "res" then
       Macro.throwErrorAt nm s!"'@res' cannot be a marker name: it collides with the kernel spelling `@res(…)` (the exit payload, written `*res`), and a marker named 'res' would silently mean its body's CURRENT value instead. Pick another name."
-    let (e', n) ← elabUTerm rctx pctx next e
-    return (← `(Dllbc.Term.marker $(quote s) $e'), n)
-  | `(uterm| $n:num) => return (← buildNat n.getNat, next)
+    let e' ← elabUTerm sc e
+    return (← `(Dllbc.Term.marker $(quote s) $e'))
+  | `(uterm| $n:num) => return (← buildNat n.getNat)
   | `(uterm| old * $e:uterm) => do
     -- §5.4 `old *v`: the ENTRY snapshot, sugar over the telescope's existing
     -- payload snapshot. Elaborates to `@old(*v)`; `markExit` strips the marker to
     -- a plain `*v` read at seed (entry), so it never reaches the kernel.
-    let (e', n) ← elabUTerm rctx pctx next e
-    return (← `(Dllbc.Term.app (Dllbc.Term.const "old") (Dllbc.Term.deref $e')), n)
+    let e' ← elabUTerm sc e
+    return (← `(Dllbc.Term.app (Dllbc.Term.const "old") (Dllbc.Term.deref $e')))
   | `(uterm| * $e:uterm) => do
     -- **`*res` — the exit payload of the issued borrow** (12-design D1/D3(a)).
     -- `res` is a RESERVED name (reservedBinder refuses it as a binder, and the
@@ -1090,70 +1178,70 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     -- arrive with the split_at_mut stage, not here.
     match e with
     | `(uterm| res) =>
-      return (← `(Dllbc.Term.app (Dllbc.Term.const "@res") (Dllbc.Term.ctorApp "Z" [])), next)
+      return (← `(Dllbc.Term.app (Dllbc.Term.const "@res") (Dllbc.Term.ctorApp "Z" [])))
     | _ =>
-    let (e', n) ← elabUTerm rctx pctx next e
-    return (← `(Dllbc.Term.deref $e'), n)
+    let e' ← elabUTerm sc e
+    return (← `(Dllbc.Term.deref $e'))
   | `(uterm| $a:uterm[$i:uterm]) => do
-    let (a', n1) ← elabUTerm rctx pctx next a
-    let (i', n2) ← elabUTerm rctx pctx n1 i
-    return (← `(Dllbc.Term.index $a' $i' none), n2)
+    let a' ← elabUTerm sc a
+    let i' ← elabUTerm sc i
+    return (← `(Dllbc.Term.index $a' $i' none))
   | `(uterm| $a:uterm[$i:uterm | $h:uterm]) => do
-    let (a', n1) ← elabUTerm rctx pctx next a
-    let (i', n2) ← elabUTerm rctx pctx n1 i
-    let (h', n3) ← elabUTerm rctx pctx n2 h
-    return (← `(Dllbc.Term.index $a' $i' (some $h')), n3)
+    let a' ← elabUTerm sc a
+    let i' ← elabUTerm sc i
+    let h' ← elabUTerm sc h
+    return (← `(Dllbc.Term.index $a' $i' (some $h')))
   | `(uterm| $a:uterm[$lo:uterm ; ..]) => do
-    let (a', n1) ← elabUTerm rctx pctx next a
-    let (lo', n2) ← elabUTerm rctx pctx n1 lo
-    return (← `(Dllbc.Term.range $a' $lo' none none none none), n2)
+    let a' ← elabUTerm sc a
+    let lo' ← elabUTerm sc lo
+    return (← `(Dllbc.Term.range $a' $lo' none none none none))
   | `(uterm| $a:uterm[$lo:uterm ; $c:uterm ; $r:uterm]) => do
-    let (a', n1) ← elabUTerm rctx pctx next a
-    let (lo', n2) ← elabUTerm rctx pctx n1 lo
-    let (c', n3) ← elabUTerm rctx pctx n2 c
-    let (r', n4) ← elabUTerm rctx pctx n3 r
-    return (← `(Dllbc.Term.range $a' $lo' (some $c') (some $r') none none), n4)
+    let a' ← elabUTerm sc a
+    let lo' ← elabUTerm sc lo
+    let c' ← elabUTerm sc c
+    let r' ← elabUTerm sc r
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') (some $r') none none))
   | `(uterm| $a:uterm[$lo:uterm ; $c:uterm ; $r:uterm | $h:uterm]) => do
-    let (a', n1) ← elabUTerm rctx pctx next a
-    let (lo', n2) ← elabUTerm rctx pctx n1 lo
-    let (c', n3) ← elabUTerm rctx pctx n2 c
-    let (r', n4) ← elabUTerm rctx pctx n3 r
-    let (h', n5) ← elabUTerm rctx pctx n4 h
-    return (← `(Dllbc.Term.range $a' $lo' (some $c') (some $r') (some $h') none), n5)
+    let a' ← elabUTerm sc a
+    let lo' ← elabUTerm sc lo
+    let c' ← elabUTerm sc c
+    let r' ← elabUTerm sc r
+    let h' ← elabUTerm sc h
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') (some $r') (some $h') none))
   | `(uterm| $a:uterm[$lo:uterm ; $c:uterm ; $r:uterm | $h:uterm | $q:uterm]) => do
-    let (a', n1) ← elabUTerm rctx pctx next a
-    let (lo', n2) ← elabUTerm rctx pctx n1 lo
-    let (c', n3) ← elabUTerm rctx pctx n2 c
-    let (r', n4) ← elabUTerm rctx pctx n3 r
-    let (h', n5) ← elabUTerm rctx pctx n4 h
-    let (q', n6) ← elabUTerm rctx pctx n5 q
-    return (← `(Dllbc.Term.range $a' $lo' (some $c') (some $r') (some $h') (some $q')), n6)
+    let a' ← elabUTerm sc a
+    let lo' ← elabUTerm sc lo
+    let c' ← elabUTerm sc c
+    let r' ← elabUTerm sc r
+    let h' ← elabUTerm sc h
+    let q' ← elabUTerm sc q
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') (some $r') (some $h') (some $q')))
   | `(uterm| $a:uterm[$lo:uterm ; $c:uterm]) => do
-    let (a', n1) ← elabUTerm rctx pctx next a
-    let (lo', n2) ← elabUTerm rctx pctx n1 lo
-    let (c', n3) ← elabUTerm rctx pctx n2 c
-    return (← `(Dllbc.Term.range $a' $lo' (some $c') none none none), n3)
+    let a' ← elabUTerm sc a
+    let lo' ← elabUTerm sc lo
+    let c' ← elabUTerm sc c
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') none none none))
   | `(uterm| $a:uterm[$lo:uterm ; $c:uterm | $h:uterm]) => do
-    let (a', n1) ← elabUTerm rctx pctx next a
-    let (lo', n2) ← elabUTerm rctx pctx n1 lo
-    let (c', n3) ← elabUTerm rctx pctx n2 c
-    let (h', n4) ← elabUTerm rctx pctx n3 h
-    return (← `(Dllbc.Term.range $a' $lo' (some $c') none (some $h') none), n4)
+    let a' ← elabUTerm sc a
+    let lo' ← elabUTerm sc lo
+    let c' ← elabUTerm sc c
+    let h' ← elabUTerm sc h
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') none (some $h') none))
   | `(uterm| &mut ( $x:ident : $τ:uterm ~> $s:uterm )) => do     -- borrow type, snapshot binder
-    let (τ', n1) ← elabUTerm rctx pctx next τ
-    let (s', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 s
-    return (← `(Dllbc.Term.borrowT $(quote (x.getId.toString)) $τ' $s'), n2)
+    let τ' ← elabUTerm sc τ
+    let s' ← elabUTerm (pushPure x.getId.toString sc) s
+    return (← `(Dllbc.Term.borrowT $(quote (x.getId.toString)) $τ' $s'))
   -- The two spellings whose snapshot binder is UNUSED get a reserved name, and no
   -- weakening: `shiftPure 1 0` used to sit on both of these lines and is the
   -- identity under names (M30 step 2). `trivialOwedT` reads the second shape and
   -- was simplified with them.
   | `(uterm| &mut ( $τ:uterm ~> $s:uterm )) => do                -- borrow type, owed type ignores s
-    let (τ', n1) ← elabUTerm rctx pctx next τ
-    let (s', n2) ← elabUTerm rctx pctx n1 s
-    return (← `(Dllbc.Term.borrowT $(quote unusedSnapName) $τ' $s'), n2)
+    let τ' ← elabUTerm sc τ
+    let s' ← elabUTerm sc s
+    return (← `(Dllbc.Term.borrowT $(quote unusedSnapName) $τ' $s'))
   | `(uterm| &mut $e:uterm) => do                                -- the borrow TYPE, in any position
-    let (e', n) ← elabUTerm rctx pctx next e
-    return (← `(Dllbc.Term.borrowT $(quote unusedSnapName) $e' $e'), n)
+    let e' ← elabUTerm sc e
+    return (← `(Dllbc.Term.borrowT $(quote unusedSnapName) $e' $e'))
   | `(uterm| &m $e:uterm) => do                                  -- the borrow OPERATION, in any position
     -- M29 β. This row and the one above are the two spellings, and neither asks
     -- which arrow it is under: `&m` in a ⇝ position is a `.borrow`, which
@@ -1163,22 +1251,21 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     -- existed and neither was reachable while the surface was deciding; the
     -- exclusions are the KERNEL's, and this is what it takes for the surface to
     -- stop making them on its behalf.
-    let (e', n) ← elabUTerm rctx pctx next e
-    return (← `(Dllbc.Term.borrow $e'), n)
+    let e' ← elabUTerm sc e
+    return (← `(Dllbc.Term.borrow $e'))
   | `(uterm| Id $a:uterm $b:uterm $c:uterm) => do
-    let (a', n1) ← elabUTerm rctx pctx next a
-    let (b', n2) ← elabUTerm rctx pctx n1 b
-    let (c', n3) ← elabUTerm rctx pctx n2 c
-    return (← `(Dllbc.Term.idT $a' $b' $c'), n3)
+    let a' ← elabUTerm sc a
+    let b' ← elabUTerm sc b
+    let c' ← elabUTerm sc c
+    return (← `(Dllbc.Term.idT $a' $b' $c'))
   | `(uterm| λ ($x:ident : $τ:uterm). $b:uterm) => do
     checkBinder x
-    let (τ', n1) ← elabUTerm rctx pctx next τ
-    let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
+    let τ' ← elabUTerm sc τ
+    let b' ← elabUTerm (pushPure x.getId.toString sc) b
     return (← `(Dllbc.Term.lam $(quote (x.getId.toString))
-      $(← binderDom (x.getId.toString) τ') $b'), n2)
+      $(← binderDom (x.getId.toString) τ') $b'))
   | `(uterm| λ ($bs:ulamb,*) { $b:ublk }) => do
-    -- Runtime binders, so fresh absolute ids threaded through `next` exactly as
-    -- `let` and match patterns mint them — and pushed onto `rctx`, not `pctx`:
+    -- Runtime binders — slots, exactly as `let` and match patterns bind them:
     -- the body reaches them through Ω. The body is a ⇒ position whatever
     -- surrounds the node, which is the same asymmetry the seal has.
     let parsed ← bs.getElems.toList.mapM fun (p : TSyntax `ulamb) => match p with
@@ -1193,15 +1280,15 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     if parsed.isEmpty then
       Macro.throwErrorAt stx "λr: a runtime λ must bind at least one argument. `λ(){ … }` is a thunk, and a thunk makes ι ambiguous — an arm applied to no arguments and an arm with nothing owed become the same spine. A recursor arm at a non-functional motive is an ordinary term; write it as one."
     parsed.forM (fun p => liftM (checkBinder p.1))
-    let (rctx', next', binderSyns) ← elabLamBinders rctx pctx next parsed
-    let (b', n) ← elabUBlk rctx' pctx next' b
-    return (← `(Dllbc.Term.lamTel [$binderSyns,*] $b'), n)
+    let (sc', binderSyns) ← elabLamBinders sc parsed
+    let b' ← elabUBlk sc' b
+    return (← `(Dllbc.Term.lamTel [$binderSyns,*] $b'))
   | `(uterm| Π ($x:ident : $τ:uterm) → $b:uterm) => do
     checkBinder x
-    let (τ', n1) ← elabUTerm rctx pctx next τ
-    let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
+    let τ' ← elabUTerm sc τ
+    let b' ← elabUTerm (pushPure x.getId.toString sc) b
     return (← `(Dllbc.Term.pi $(quote (x.getId.toString))
-      $(← binderDom (x.getId.toString) τ') $b'), n2)
+      $(← binderDom (x.getId.toString) τ') $b'))
   -- Σ binders are name-checked but carry NO mode. §6 gives modes to "λ, Π, and
   -- `let` alike" — the binders of *parameters* — and a Σ's binder names a
   -- projection, not a parameter: erasing one component of a pair is QTT
@@ -1216,10 +1303,10 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
   -- by renaming alone — the mode was gone before anything could read it.
   | `(uterm| Σ ($x:ident : $τ:uterm). $b:uterm) => do
     checkBinder x
-    let (τ', n1) ← elabUTerm rctx pctx next τ
-    let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
+    let τ' ← elabUTerm sc τ
+    let b' ← elabUTerm (pushPure x.getId.toString sc) b
     return (← `(Dllbc.Term.sigmaT $(quote (x.getId.toString))
-      $(← binderDom (x.getId.toString) τ') $b'), n2)
+      $(← binderDom (x.getId.toString) τ') $b'))
   -- **Σ0 — THE COMPTIME TAIL** (M33, suspensions.md §2.7), and it is NOT a new
   -- former. A Σ's binder has always spelled its own component's mode; the TAIL
   -- has no binder, so until here it had no way to say anything and was silently
@@ -1231,36 +1318,36 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
   -- off it.
   | `(uterm| Σ0 ($x:ident : $τ:uterm). $b:uterm) => do
     checkBinder x
-    let (τ', n1) ← elabUTerm rctx pctx next τ
-    let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
+    let τ' ← elabUTerm sc τ
+    let b' ← elabUTerm (pushPure x.getId.toString sc) b
     return (← `(Dllbc.Term.sigmaT $(quote (x.getId.toString))
-      $(← binderDom (x.getId.toString) τ') (Dllbc.Term.cmpT $b')), n2)
+      $(← binderDom (x.getId.toString) τ') (Dllbc.Term.cmpT $b')))
   -- The non-dependent arrow's binder is reserved and is NOT pushed onto `pctx`:
   -- nothing can refer to it, which is what "non-dependent" means. (The de Bruijn
   -- version had to push a placeholder, because every binder crossed moved the
   -- indices below it.)
   | `(uterm| $a:uterm → $b:uterm) => do
-    let (a', n1) ← elabUTerm rctx pctx next a
-    let (b', n2) ← elabUTerm rctx pctx n1 b
-    return (← `(Dllbc.Term.pi $(quote unusedSnapName) $a' $b'), n2)
+    let a' ← elabUTerm sc a
+    let b' ← elabUTerm sc b
+    return (← `(Dllbc.Term.pi $(quote unusedSnapName) $a' $b'))
   -- …and the same for the pair. The binder is the arrow's — reserved, unpushed,
   -- and UNMARKED, which is the point rather than an omission: `⇝` on a Σ domain
   -- is a claim about how that component is read, and a component nothing can
   -- name makes no such claim.
   | `(uterm| $a:uterm × $b:uterm) => do
-    let (a', n1) ← elabUTerm rctx pctx next a
-    let (b', n2) ← elabUTerm rctx pctx n1 b
-    return (← `(Dllbc.Term.sigmaT $(quote unusedSnapName) $a' $b'), n2)
+    let a' ← elabUTerm sc a
+    let b' ← elabUTerm sc b
+    return (← `(Dllbc.Term.sigmaT $(quote unusedSnapName) $a' $b'))
   | `(uterm| &mut ( $x:ident : $τ:uterm )) =>
     Macro.throwErrorAt x s!"&mut ({x.getId} : τ) is not a borrow type — the snapshot-binder spelling is `&mut ({x.getId} : τ ~> τ')`, where `τ'` is what the borrow OWES back and `{x.getId}` is its entry snapshot, bound as pure var 0 in `τ'`. Without the `~> τ'` this would read as `&mut` applied to the ascription `({x.getId} : τ)`, which is a borrow of a SEAL — never meaningful, since a seal is not a place. If you meant a plain borrow of the type, write `&mut τ`."
   | `(uterm| ($t:uterm : $u:uterm)) => do
     -- The body is a ⇒ position (term mode) whatever surrounds the node; the
     -- ascribed type is a ⇝ position. That asymmetry is the seal itself.
-    let (t', n1) ← elabUTerm rctx pctx next t
-    let (u', n2) ← elabUTerm rctx pctx n1 u
-    return (← `(Dllbc.Term.seal 0 $t' $u'), n2)
+    let t' ← elabUTerm sc t
+    let u' ← elabUTerm sc u
+    return (← `(Dllbc.Term.seal 0 $t' $u'))
   | `(uterm| $c:ident($args,*)) => do                 -- no-space paren: call / ctorApp
-    let (args', n) ← elabUList rctx pctx next args.getElems.toList
+    let args' ← elabUList sc args.getElems.toList
     let name := c.getId.toString
     -- **A known CONSTRUCTOR, not merely a capital head** (M26-B). §6 makes
     -- capitalisation the binder-mode marker, so `G(n)` — a capital *binder*
@@ -1272,7 +1359,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     -- basis — and it turns what used to be "unknown constructor 'G'" into the
     -- call it was always meant to be.)
     if ctorSet.contains name then
-      return (← `(Dllbc.Term.ctorApp $(quote name) [$args',*]), n)
+      return (← `(Dllbc.Term.ctorApp $(quote name) [$args',*]))
     else
       -- **Scope beats the table** (§8's direction, arriving early because M26-A
       -- needs it): a head that names a BOUND RUNTIME VARIABLE is a value-callee
@@ -1292,22 +1379,21 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
       -- The CALLEE NAME. `noteIdent` sends a `fn` slot to its signature and a
       -- value-callee slot to the checker's table, which is the same split the two
       -- lines below make for the emitted term.
-      noteIdent rctx pctx c
-      match localId rctx name with
-      | some id =>
-        return (← `(Dllbc.Term.appSpine (.var ⟨$(quote id), $(quote name)⟩) [$args',*]), n)
-      | none => return (← `(Dllbc.Term.call $(quote name) [$args',*]), n)
+      noteIdent sc c
+      if isLocal sc name then
+        return (← `(Dllbc.Term.appSpine (.var $(quote name)) [$args',*]))
+      else return (← `(Dllbc.Term.call $(quote name) [$args',*]))
   | `(uterm| match $e:uterm { $arms,* }) => do
-    let (scrut, pre?, n1) ← elabScrut rctx pctx next e
+    let (scrut, pre?) ← elabScrut sc e
     -- Pattern binders (and bare-arm-body stragglers no statement row keyed) are
     -- ENTRY occurrences of this match: arm-entry binds file under the match key,
     -- so `replayEntry` answers each from its own arm's seed, per path. Occs a
     -- body row already keyed keep their key (`stmt.isNone` guard); nested
     -- pattern binders were keyed by `wrapPats` with their inner match first.
     let occLo ← occMark
-    let (arms', n) ← elabUArms rctx pctx n1 arms.getElems.toList
+    let arms' ← elabUArms sc arms.getElems.toList
     tagOccsEntry occLo (← `(Dllbc.Term.matchE $scrut none []))
-    return (← wrapScrut scrut pre? (← `(Dllbc.Term.matchE $scrut none [$arms',*])), n)
+    return (← wrapScrut scrut pre? (← `(Dllbc.Term.matchE $scrut none [$arms',*])))
   -- M23: `match h : x { … }` — the branch-equation form. One binder for the whole
   -- match (its TYPE is what varies per arm), as in Lean's `match h : x with`.
   --
@@ -1324,45 +1410,44 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
       match arm with
       | `(uarm| $_:ident ($args,*) => $_:uarmBody) => args.getElems.forM (fun p => liftM (refuseNestedPat p))
       | _ => pure ()
-    let (scrut, pre?, n1) ← elabScrut rctx pctx next e
+    let (scrut, pre?) ← elabScrut sc e
     let hName := h.getId.toString
     -- The equation binder and the arms' binders are entry occurrences, exactly
     -- as in the plain row above.
     let occLo ← occMark
-    noteOcc h.raw n1 hName
-    let (arms', n) ← elabUArms ((hName, n1) :: rctx) pctx (n1 + 1) arms.getElems.toList
-    tagOccsEntry occLo (← `(Dllbc.Term.matchE $scrut (some ⟨$(quote n1), $(quote hName)⟩) []))
-    let m ← `(Dllbc.Term.matchE $scrut (some ⟨$(quote n1), $(quote hName)⟩) [$arms',*])
-    return (← wrapScrut scrut pre? m, n)
+    noteOcc h.raw hName
+    let arms' ← elabUArms (pushSlot hName sc) arms.getElems.toList
+    tagOccsEntry occLo (← `(Dllbc.Term.matchE $scrut (some (Dllbc.Var.slot $(quote hName))) []))
+    let m ← `(Dllbc.Term.matchE $scrut (some (Dllbc.Var.slot $(quote hName))) [$arms',*])
+    return (← wrapScrut scrut pre? m)
   | `(uterm| if $c:uterm { $t:ublk } else { $f:ublk }) => do  -- §12 sugar → Bool match
-    let (c', n1) ← elabUTerm rctx pctx next c
-    let scrutId := n1
-    let (t', n2) ← elabUBlk rctx pctx (n1 + 1) t
-    let (f', n3) ← elabUBlk rctx pctx n2 f
-    return (← `(Dllbc.Term.seq (Dllbc.Term.letIn ⟨$(quote scrutId), "__if"⟩ $c')
-      (Dllbc.Term.matchE ⟨$(quote scrutId), "__if"⟩ none
-        [Dllbc.Branch.mk "True" [] $t', Dllbc.Branch.mk "False" [] $f'])), n3)
+    let c' ← elabUTerm sc c
+    let t' ← elabUBlk sc t
+    let f' ← elabUBlk sc f
+    return (← `(Dllbc.Term.seq (Dllbc.Term.letIn (Dllbc.Var.slot "__if") $c')
+      (Dllbc.Term.matchE "__if" none
+        [Dllbc.Branch.mk "True" [] $t', Dllbc.Branch.mk "False" [] $f'])))
   | `(uterm| if $h:ident : $c:uterm { $t:ublk } else { $f:ublk }) => do
-    let (c', n1) ← elabUTerm rctx pctx next c
+    let c' ← elabUTerm sc c
     let hName := h.getId.toString
-    let rctx' := (hName, n1 + 1) :: rctx
-    let (t', n2) ← elabUBlk rctx' pctx (n1 + 2) t
-    let (f', n3) ← elabUBlk rctx' pctx n2 f
-    return (← `(Dllbc.Term.seq (Dllbc.Term.letIn ⟨$(quote n1), "__if"⟩ $c')
-      (Dllbc.Term.matchE ⟨$(quote n1), "__if"⟩ (some ⟨$(quote (n1 + 1)), $(quote hName)⟩)
-        [Dllbc.Branch.mk "True" [] $t', Dllbc.Branch.mk "False" [] $f'])), n3)
+    let sc' := pushSlot hName sc
+    let t' ← elabUBlk sc' t
+    let f' ← elabUBlk sc' f
+    return (← `(Dllbc.Term.seq (Dllbc.Term.letIn (Dllbc.Var.slot "__if") $c')
+      (Dllbc.Term.matchE "__if" (some (Dllbc.Var.slot $(quote hName)))
+        [Dllbc.Branch.mk "True" [] $t', Dllbc.Branch.mk "False" [] $f'])))
   | `(uterm| elim $scrut:uterm return $motive:uterm { $arms,* }) =>
-    elabUElim rctx pctx next scrut motive arms.getElems
+    elabUElim sc scrut motive arms.getElems
   | `(uterm| elim $scrut:uterm generalizing $goal:uterm { $arms,* }) =>
-    elabUGenElim rctx pctx next scrut goal arms.getElems
+    elabUGenElim sc scrut goal arms.getElems
   | `(uterm| $_:uterm $_:uterm) => do                 -- application spine (juxtaposition)
     let (head, args) := collectAppU stx
     match head with
     | `(uterm| $h:ident) =>
       let hs := h.getId.toString
-      let (argTerms, n) ← elabUList rctx pctx next args.toList
-      if ctorSet.contains hs && !pctx.contains hs && (localId rctx hs).isNone then
-        return (← `(Dllbc.Term.ctorApp $(quote hs) [$argTerms,*]), n)
+      let argTerms ← elabUList sc args.toList
+      if ctorSet.contains hs && (sc.find? hs).isNone then
+        return (← `(Dllbc.Term.ctorApp $(quote hs) [$argTerms,*]))
       -- **JUXTAPOSITION IS ALREADY ONE FORM, and β leaves the surface alone**
       -- (M27). `f a b` elaborates to a `.app` spine over the head's resolution,
       -- and when that head is a runtime slot the spine is exactly what a call is
@@ -1373,20 +1458,20 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
       -- at `readR`'s `.app` case, where `runtimeRecSpine?` already makes the same
       -- kind of choice. See `appSpineVar?` in `Machine.lean`.
       else
-        noteIdent rctx pctx h
-        let hterm ← resolveName rctx pctx h
+        noteIdent sc h
+        let hterm ← resolveName (← get).parse sc h
         let out ← argTerms.foldlM (fun acc a => `(Dllbc.Term.app $acc $a)) hterm
-        return (out, n)
+        return out
     | _ => do
-      let (hterm, n0) ← elabUTerm rctx pctx next head
-      let (argTerms, n) ← elabUList rctx pctx n0 args.toList
+      let hterm ← elabUTerm sc head
+      let argTerms ← elabUList sc args.toList
       let out ← argTerms.foldlM (fun acc a => `(Dllbc.Term.app $acc $a)) hterm
-      return (out, n)
+      return out
   | `(uterm| $x:ident) => do
     -- EVERY occurrence, not just the binder: the walker resolves each ident to
     -- its variable already, so filing the pair costs one lookup (docs/16 S1).
-    noteIdent rctx pctx x
-    return (← resolveName rctx pctx x, next)
+    noteIdent sc x
+    return (← resolveName (← get).parse sc x)
   | _ => Macro.throwErrorAt stx "decl: unexpected term syntax"
 
 /-- **The scrutinee half of every match row** (M34 sugar (i)). Returns the `Var`
@@ -1412,10 +1497,10 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     miss the ident row, take the fresh-slot path, and MOVE what `match v { … }`
     reborrows — the same program, differing by two characters, differing in
     ownership. -/
-partial def elabScrut (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
-    (e : TSyntax `uterm) : UM (TSyntax `term × Option (TSyntax `term) × Nat) := do
+partial def elabScrut (sc : Scope)
+    (e : TSyntax `uterm) : UM (TSyntax `term × Option (TSyntax `term)) := do
   match e with
-  | `(uterm| ($inner:uterm)) => elabScrut rctx pctx next inner
+  | `(uterm| ($inner:uterm)) => elabScrut sc inner
   | `(uterm| $x:ident) => do
     -- **THE SCRUTINEE IS AN OCCURRENCE LIKE ANY OTHER** (docs/16). This row is why
     -- it needed saying: the plain-variable path answers here and never reaches
@@ -1423,24 +1508,31 @@ partial def elabScrut (rctx : List (String × Nat)) (pctx : List String) (next :
     -- everywhere EXCEPT in `match n { … }` — and match scrutinees are everywhere.
     -- Found by probing rather than by reading: `n` reported `Nat` at its binder
     -- and nothing one line below it.
-    noteIdent rctx pctx x
+    noteIdent sc x
     let s := x.getId.toString
-    match localId rctx s with
-    | some id => return (← `((⟨$(quote id), $(quote s)⟩ : Dllbc.Var)), none, next)
-    | none => Macro.throwErrorAt x s!"decl: match scrutinee '{s}' is not a bound runtime variable"
+    if isLocal sc s then return (← `($(quote s)), none)
+    -- **A free scrutinee in a `prog_parse { }` block** (docs/22 §5) is the name
+    -- itself — it resolves where the block is spliced. Only a name that resolves
+    -- to NOTHING here takes this path; a pure binder, a constructor, a constant
+    -- or a `fn` slot is refused exactly as in a closed program, for the reason
+    -- given above.
+    else if (← get).parse && (sc.find? s).isNone && !ctorSet.contains s
+        && !constSet.contains s && (aliasMap.lookup s).isNone then
+      return (← `($(quote s)), none)
+    else Macro.throwErrorAt x s!"decl: match scrutinee '{s}' is not a bound runtime variable"
   | _ => do
     -- The fresh binder is minted at the POST-RHS counter and the block continues
     -- at `+1` — the `let` row's own discipline, because this is a `let`.
-    let (e', n1) ← elabUTerm rctx pctx next e
-    return (← `((⟨$(quote n1), $(quote scrutName)⟩ : Dllbc.Var)), some e', n1 + 1)
+    let e' ← elabUTerm sc e
+    return (← `($(quote scrutName)), some e')
 
-partial def elabUList (rctx : List (String × Nat)) (pctx : List String) (next : Nat) :
-    List (TSyntax `uterm) → UM (Array (TSyntax `term) × Nat)
-  | [] => pure (#[], next)
+partial def elabUList (sc : Scope) :
+    List (TSyntax `uterm) → UM (Array (TSyntax `term))
+  | [] => pure (#[])
   | a :: as => do
-    let (a', n1) ← elabUTerm rctx pctx next a
-    let (rest, n2) ← elabUList rctx pctx n1 as
-    pure (#[a'] ++ rest, n2)
+    let a' ← elabUTerm sc a
+    let rest ← elabUList sc as
+    pure (#[a'] ++ rest)
 
 /-- A runtime λ's annotated binders (M27), elaborated as a TELESCOPE: each domain
     is read under the binders to its left and not its own, which is what lets
@@ -1450,75 +1542,71 @@ partial def elabUList (rctx : List (String × Nat)) (pctx : List String) (next :
     mode to make it one, which is what let the flag go. `binderDom` puts §6's
     comptime marker on a capitalized binder's domain, which is what makes the
     annotation agree with the ascription `piPeel` checks it against. -/
-partial def elabLamBinders (rctx : List (String × Nat)) (pctx : List String) (next : Nat) :
-    List (Ident × TSyntax `uterm) → UM (List (String × Nat) × Nat × Array (TSyntax `term))
-  | [] => pure (rctx, next, #[])
+partial def elabLamBinders (sc : Scope) :
+    List (Ident × TSyntax `uterm) → UM (Scope × Array (TSyntax `term))
+  | [] => pure (sc, #[])
   | (x, τ) :: rest => do
     let name := x.getId.toString
-    let (τT, n1) ← elabUTerm rctx pctx (next + 1) τ
+    let τT ← elabUTerm sc τ
     let τD ← binderDom name τT
-    let entry ← `(((⟨$(quote next), $(quote name)⟩ : Dllbc.Var), $τD))
+    let entry ← `((Dllbc.Var.slot $(quote name), $τD))
     -- A runtime λ's binder SITE keeps the annotation hover (reading the source
     -- at the annotation itself). Its occurrences ride the point machinery like
     -- any other binder — the ptypes/static channel is gone (2026-08-21 ruling).
     noteHover x.raw (hoverText name (srcText τ.raw))
-    let (rctx', n2, more) ← elabLamBinders ((name, next) :: rctx) pctx n1 rest
-    pure (rctx', n2, #[entry] ++ more)
+    let (sc', more) ← elabLamBinders (pushSlot name sc) rest
+    pure (sc', #[entry] ++ more)
 
-/-- Build the telescope entry syntaxes, threading the runtime-var context so that
-    parameter `i`'s type sees params `0 .. i-1` (each at its positional id) — the
-    `seedTelescope` convention — and then the ENCLOSING scope, exactly as the
-    return type and the body do (the `fn` row's R2 rule). Params come first in
-    the lookup, so a parameter shadows an enclosing binding of its name. The
-    positional ids collide with the enclosing block's counter and that is fine
-    for the same reason it is fine for the body: Ω resolves by NAME (M32 R1).
-    Types elaborate in type mode (⇝). -/
-partial def buildTele (params : List (String × Nat)) (rctx : List (String × Nat))
-    (pctx : List String) (i : Nat) :
+/-- Build the telescope entry syntaxes, threading the scope so that parameter
+    `i`'s type sees params `0 .. i-1` — the `seedTelescope` convention — and
+    then the ENCLOSING scope, exactly as the return type and the body do (the
+    `fn` row's R2 rule). Params come first in the lookup, so a parameter
+    shadows an enclosing binding of its name. -/
+partial def buildTele (params : Scope) (sc : Scope) :
     List (String × TSyntax `uterm) → UM (Array (TSyntax `term))
   | [] => pure #[]
   | (nm, τ) :: rest => do
-    let (τT, _) ← elabUTerm (params ++ rctx) pctx 0 τ
+    let τT ← elabUTerm (params ++ sc) τ
     let entry ← `((($(quote nm), $τT) : String × Dllbc.Term))
-    let rest' ← buildTele (params ++ [(nm, i)]) rctx pctx (i + 1) rest
+    let rest' ← buildTele (params ++ [⟨nm, .slot, none⟩]) sc rest
     pure (#[entry] ++ rest')
 
-partial def elabUArms (rctx : List (String × Nat)) (pctx : List String) (next : Nat) :
-    List (TSyntax `uarm) → UM (Array (TSyntax `term) × Nat)
-  | [] => pure (#[], next)
+partial def elabUArms (sc : Scope) :
+    List (TSyntax `uarm) → UM (Array (TSyntax `term))
+  | [] => pure (#[])
   | a :: as => do
-    let (a', n1) ← elabUArm rctx pctx next a
-    let (rest, n2) ← elabUArms rctx pctx n1 as
-    pure (#[a'] ++ rest, n2)
+    let a' ← elabUArm sc a
+    let rest ← elabUArms sc as
+    pure (#[a'] ++ rest)
 
-partial def elabUArm (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
-    (arm : TSyntax `uarm) : UM (TSyntax `term × Nat) := do
+partial def elabUArm (sc : Scope)
+    (arm : TSyntax `uarm) : UM (TSyntax `term) := do
   match arm with
   | `(uarm| $c:ident => $body:uarmBody) => do
-    let (body', n) ← elabUArmBody rctx pctx next body
-    return (← `(Dllbc.Branch.mk $(quote c.getId.toString) [] $body'), n)
+    let body' ← elabUArmBody sc body
+    return (← `(Dllbc.Branch.mk $(quote c.getId.toString) [] $body'))
   | `(uarm| $c:ident ($args,*) => $body:uarmBody) => do
     -- The head's arguments are minted first, ALL of them, and the nested ones
     -- then wrap the body from the counter the body would have started at — which
     -- is what makes this arm the same `Term` as its hand-written twin and not
     -- merely a convertible one (`Tests.Sugar`'s goldens).
-    let (rctx', n1, argVars, pend) ← mintPatArgs rctx next args.getElems.toList
-    let (body', n) ← wrapPats rctx' n1 pend (fun r k => elabUArmBody r pctx k body)
-    return (← `(Dllbc.Branch.mk $(quote c.getId.toString) [$argVars,*] $body'), n)
+    let (sc', argVars, pend) ← mintPatArgs sc args.getElems.toList
+    let body' ← wrapPats sc' pend (fun r => elabUArmBody r body)
+    return (← `(Dllbc.Branch.mk $(quote c.getId.toString) [$argVars,*] $body'))
   | _ => Macro.throwErrorAt arm "decl: unexpected match arm"
 
-partial def elabUArmBody (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
-    (body : TSyntax `uarmBody) : UM (TSyntax `term × Nat) := do
+partial def elabUArmBody (sc : Scope)
+    (body : TSyntax `uarmBody) : UM (TSyntax `term) := do
   match body with
-  | `(uarmBody| { $b:ublk }) => elabUBlk rctx pctx next b
+  | `(uarmBody| { $b:ublk }) => elabUBlk sc b
   | `(uarmBody| $e:uterm) => do          -- a bare arm body IS the arm's final statement
-    let (e', n) ← elabUTerm rctx pctx next e
+    let e' ← elabUTerm sc e
     spanOfStmt e' e
-    return (e', n)
+    return e'
   | _ => Macro.throwErrorAt body "decl: unexpected arm body"
 
-partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
-    (stx : TSyntax `ublk) : UM (TSyntax `term × Nat) := do
+partial def elabUBlk (sc : Scope)
+    (stx : TSyntax `ublk) : UM (TSyntax `term) := do
   match stx with
   -- **`fn` — the declaration statement** (M28 θ). This is `FnMacro.progOf` unrolled
   -- one binding at a time, and reusing its two moving parts rather than
@@ -1584,22 +1672,23 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
       | _ => Macro.throwErrorAt p "fn: malformed parameter (expected `x : τ`)"
     let parsed := parsedI.map fun (x, τ) => (x.getId.toString, τ)
     let names := parsed.map (·.1)
-    let n := names.length
-    -- The telescope's own §5.2 positional context, and the body's: parameter `i`
-    -- at runtime id `i`, fresh binders from `n`. Identical to what `decl{ }` builds
-    -- — deliberately, since the `FnDef` this produces has to BE the one it builds.
-    let fullRctx : List (String × Nat) := names.zip (List.range n)
+    -- The telescope's own scope, and the body's: the parameters, by name, as
+    -- slots. Two parameters of one telescope cannot share a name — the kernel
+    -- seeds them by name and says so (`seedTelescope`); refused here too, at
+    -- the header, where the fix can be named.
+    match names.find? (fun nm => (names.filter (· == nm)).length > 1) with
+    | some dup => Macro.throwErrorAt name s!"fn: '{name.getId}' binds the parameter '{dup}' twice. Parameters are bound by NAME (docs/22), so two of one name would be one slot."
+    | none => pure ()
+    let fullSc : Scope := names.map (fun nm => ⟨nm, .slot, none⟩)
     -- Parameter binders and every occurrence in the telescope are ENTRY
     -- occurrences (docs/17, `OccNote.entry`): they answer from the checker's own
     -- seeds, replayed to "entering the body". The annotation channel this
     -- replaced (`pTypes`/`static?`) is gone — under strong updates nothing about
     -- a slot is timeless, and a parameter's entry state IS its annotation,
-    -- checked. Binders are filed at their §5.2 positional ids, same as their
-    -- occurrences resolve.
+    -- checked.
     let occLo ← occMark
-    (parsedI.zip (List.range n)).forM fun ((x, _), i) =>
-      noteOcc x.raw i x.getId.toString
-    let teleSyns ← buildTele [] rctx pctx 0 parsed
+    parsedI.forM fun (x, _) => noteOcc x.raw x.getId.toString
+    let teleSyns ← buildTele [] sc parsed
     -- **THE BODY SEES THE ENCLOSING SCOPE** (M32 R2, suspensions.md §2.6). The
     -- `decl{}`-era params-only context retires here: a `fn` body may cite the
     -- comptime bindings lexically above it — a sibling `fn`'s name, a `let H0 =
@@ -1616,14 +1705,14 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- assumed: with id-keying the citation is bound by whichever parameter shares
     -- its number, drops out of ρ, and the sealed body's fresh Ω has nothing to
     -- resolve it against.
-    let (retT, _) ← elabUTerm (fullRctx ++ rctx) pctx 0 ret
+    let retT ← elabUTerm (fullSc ++ sc) ret
     let nm := name.getId.toString
     -- The entry key is this `fn`'s own `let`-statement key — the seeds file
     -- under it, because the cursor does not move between `letStep` and the seal
     -- check (`replayEntry`). Tagged BEFORE the body elaborates, so the range is
     -- exactly the telescope, the binders, and the return type.
-    tagOccsEntry occLo (← `(Dllbc.Term.letIn ⟨Dllbc.declSlot, $(quote nm)⟩ Dllbc.Term.unit))
-    let (bodyT, _) ← elabUBlk (fullRctx ++ rctx) pctx n body
+    tagOccsEntry occLo (← fnKey nm)
+    let bodyT ← elabUBlk (fullSc ++ sc) body
     let decIdx? : Option Nat ← match dec with
       | none => pure none
       | some d =>
@@ -1645,7 +1734,7 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- that parameter. Ω resolves by NAME (M32 R1), so distinctness bought
     -- nothing and the shared tag says the one thing still asked of it: this
     -- entry is a declaration. `next` is no longer consumed here.
-    let slot ← `((⟨Dllbc.declSlot, $(quote nm)⟩ : Dllbc.Var))
+    let slot ← `(Dllbc.Var.decl $(quote nm))
     -- **The name goes into scope for the rest of the block** (M31 Stage A). A
     -- function is an ordinary comptime binding now (§2.1), so a bare `Main` is a
     -- name-use of one and `let F = Main` is the ⇝ copy of knowledge the model says
@@ -1672,19 +1761,19 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- that is what the walker's breadcrumb sees (`rekeySpansFrom`).
     let stmtLo := (← get).stmts.size
     let argLo := (← get).args.size
-    let (rest', n2) ← withHoverScope [(nm, sigText)]
-      (elabUBlk ((nm, Dllbc.declSlot) :: rctx) pctx next rest)
+    let rest' ← withHoverScope [(nm, sigText)]
+      (elabUBlk (⟨nm, .decl, none⟩ :: sc) rest)
     rekeySpansFrom stmtLo argLo slot decT
     return (← `(Dllbc.Term.seq
                   (Dllbc.Term.letIn $slot
                     (Dllbc.FnMacro.fnElabOrFail
                       (Dllbc.FnDef.mk $(quote nm) [$teleSyns,*] $retT $bodyT $decT)))
-                  (Dllbc.FnMacro.bindFn $slot $decT $rest')), n2)
+                  (Dllbc.FnMacro.bindFn $slot $decT $rest')))
   | `(ublk| let $x:ident = $e:uterm ; $rest:ublk) => do
     checkBinder x
     let occLo ← occMark
     let held ← takePendings
-    let (e', n1) ← elabUTerm rctx pctx next e
+    let e' ← elabUTerm sc e
     -- **`let X = e` is a comptime binding** (§6) and needs no macro support: the
     -- mode of a runtime binder IS its `Var`'s name, so the kernel reads it off
     -- the `letIn` this line already emits. Recorded here because the absence of
@@ -1713,24 +1802,24 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- entry had to stay to keep every index below it at its level; under names
     -- there is nothing below it to keep.) ⇒ bodies had the same hole and are fixed
     -- with it.
-    let pctx' := pctx.filter (fun s => s != name)
-    -- File this statement at `x = e`. The key is the BINDER alone: runtime ids
-    -- are globally unique, so it identifies the statement outright and carries
-    -- none of the right-hand side's bulk.
-    spanOfLet n1 name (mkNullNode #[x, e])
+
+    -- File this statement at `x = e`, under its key — binder and right-hand
+    -- side (`letKey`, docs/22 §4).
+    let key ← letKey name e'
+    spanOfLet key (mkNullNode #[x, e])
     -- The `let` BINDER's own span, filed like an occurrence: its type comes from
     -- the checker (docs/16 S2), so it joins against `St.letTypes` exactly as the
     -- uses below it do, under the same id.
-    noteOcc x.raw n1 name
+    noteOcc x.raw name (some key.raw)
     -- Every occurrence in this statement — the right-hand side's and the binder's
     -- — is filed under this statement's key, which is the POINT a hover on any of
     -- them asks about (docs/17).
     restorePendings held
-    tagOccsFrom occLo (← `(Dllbc.Term.letIn ⟨$(quote n1), $(quote name)⟩ Dllbc.Term.unit))
-    let (rest', n2) ← elabUBlk ((name, n1) :: rctx) pctx' (n1 + 1) rest
+    tagOccsFrom occLo key
+    let rest' ← elabUBlk (pushSlot name sc (some key.raw)) rest
     -- The tail is DETACHED (detach-tails): the row emits a `.seq` whose head is
     -- the tail-less `.letIn` — the kernel scopes the binder over the seq's tail.
-    return (← `(Dllbc.Term.seq (Dllbc.Term.letIn ⟨$(quote n1), $(quote name)⟩ $e') $rest'), n2)
+    return (← `(Dllbc.Term.seq (Dllbc.Term.letIn (Dllbc.Var.slot $(quote name)) $e') $rest'))
   -- **`let C(a, b) = e ; rest` = `match e { C(a, b) => rest }`** (M34 sugar (ii)).
   --
   -- The elaboration is the `uarm` path with the arm body supplied by the ENCLOSING
@@ -1750,12 +1839,12 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
   | `(ublk| let $c:ident($args,*) = $e:uterm ; $rest:ublk) => do
     let occLo0 ← occMark
     let held ← takePendings
-    let (scrut, pre?, n1) ← elabScrut rctx pctx next e
+    let (scrut, pre?) ← elabScrut sc e
     -- This row IS an arm whose body is the enclosing block, so its binders are
     -- entry occurrences of the match it emits — tagged before the block
     -- elaborates, so the range is the pattern alone.
     let occLo ← occMark
-    let (rctx', n2, argVars, pend) ← mintPatArgs rctx n1 args.getElems.toList
+    let (sc', argVars, pend) ← mintPatArgs sc args.getElems.toList
     tagOccsEntry occLo (← `(Dllbc.Term.matchE $scrut none []))
     -- The scrutinee's occurrences and any pending `show` above this row key at
     -- the emitted match — the statement this row is.
@@ -1765,20 +1854,20 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- matches, which is the same rewrite `elabUArm` performs — and has to be, since
     -- this row IS an arm whose body is the enclosing block. `let Pair(a, Pair(b, c))
     -- = p ;` and the two-line chain that spells it out are one `Term`.
-    let (rest', n3) ← wrapPats rctx' n2 pend (fun r k => elabUBlk r pctx k rest)
+    let rest' ← wrapPats sc' pend (fun r => elabUBlk r rest)
     let m ← `(Dllbc.Term.matchE $scrut none
                 [Dllbc.Branch.mk $(quote c.getId.toString) [$argVars,*] $rest'])
-    return (← wrapScrut scrut pre? m, n3)
+    return (← wrapScrut scrut pre? m)
   | `(ublk| $p:uterm := $e:uterm ; $rest:ublk) => do
     let occLo ← occMark
     let held ← takePendings
-    let (p', n1) ← elabUTerm rctx pctx next p
-    let (e', n2) ← elabUTerm rctx pctx n1 e
+    let p' ← elabUTerm sc p
+    let e' ← elabUTerm sc e
     spanOfAssign p' e' (mkNullNode #[p, e])
     restorePendings held
     tagOccsFrom occLo (← `(Dllbc.Term.assign $p' $e'))
-    let (rest', n3) ← elabUBlk rctx pctx n2 rest
-    return (← `(Dllbc.Term.seq (Dllbc.Term.assign $p' $e') $rest'), n3)
+    let rest' ← elabUBlk sc rest
+    return (← `(Dllbc.Term.seq (Dllbc.Term.assign $p' $e') $rest'))
   -- **`show x ; rest` — ERASED** (docs/18). Emits `rest` and nothing else: no
   -- node, no read, no move, no borrow, no Ω. The identifier is resolved exactly
   -- as any other occurrence is (so an unknown name gets the ordinary
@@ -1787,28 +1876,28 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
   -- because the state entering that statement is the state here.
   | `(ublk| show $x:ident ; $rest:ublk) => do
     let mark ← occMark
-    noteIdent rctx pctx x
+    noteIdent sc x
     modify fun a =>
       if a.hover && a.occs.size > mark then
         { a with pendingOccs := a.pendingOccs.push mark, showOccs := a.showOccs.push mark }
       else a
     -- `resolveName` for its ERROR only: an unbound name must fail here as it
     -- would anywhere else. The resolved term is discarded — that is the erasure.
-    let _ ← resolveName rctx pctx x
-    elabUBlk rctx pctx next rest
+    let _ ← resolveName (← get).parse sc x
+    elabUBlk sc rest
   | `(ublk| $e:uterm ; $rest:ublk) => do
     let occLo ← occMark
     let held ← takePendings
-    let (e', n1) ← elabUTerm rctx pctx next e
+    let e' ← elabUTerm sc e
     spanOfStmt e' e
     restorePendings held
     tagOccsFrom occLo e'
-    let (rest', n2) ← elabUBlk rctx pctx n1 rest
-    return (← `(Dllbc.Term.seq $e' $rest'), n2)
+    let rest' ← elabUBlk sc rest
+    return (← `(Dllbc.Term.seq $e' $rest'))
   | `(ublk| $e:uterm) => do
     let occLo ← occMark
     let held ← takePendings
-    let (e', n) ← elabUTerm rctx pctx next e
+    let e' ← elabUTerm sc e
     -- The block's final expression. `stmtKeyOf` is applied in the emitted
     -- expression rather than mirrored by hand: a final `match` files under the
     -- same `matchE s eqn []` the walker computes, without this walker knowing
@@ -1820,7 +1909,7 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- this statement and there is always one.
     restorePendings held
     tagOccsFrom occLo e'
-    return (e', n)
+    return e'
   | _ => Macro.throwErrorAt stx "decl: unexpected block syntax"
 
 /-- `elim scrut return motive { arms }` → the matching recursor (§15b). Pure — the
@@ -1843,10 +1932,10 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     index the arm's binder would occupy — hence `pOf`'s `leading` argument, whose
     entries existed only to be counted. Under names the arm's binder is named and
     the substitution says so. -/
-partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
-    (scrut motive : TSyntax `uterm) (arms : Array (TSyntax `uelimArm)) : UM (TSyntax `term × Nat) := do
-  let (scrutT, n1) ← elabUTerm rctx pctx next scrut
-  let (motiveT, n2) ← elabUTerm rctx pctx n1 motive
+partial def elabUElim (sc : Scope)
+    (scrut motive : TSyntax `uterm) (arms : Array (TSyntax `uelimArm)) : UM (TSyntax `term) := do
+  let scrutT ← elabUTerm sc scrut
+  let motiveT ← elabUTerm sc motive
   let motiveBare := match motive with | `(uterm| ($e:uterm)) => e | _ => motive
   let (mName, mTy, mBody) ← match motiveBare with
     | `(uterm| λ ($x:ident : $τ:uterm). $b:uterm) => pure (x.getId.toString, τ, b)
@@ -1867,32 +1956,32 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
     | _ => none)
   -- `P ⟨target⟩`: the motive body with the motive's binder renamed to the arm's.
   let pOf (target : String) : UM (TSyntax `term) := do
-    let b := (← elabUTerm rctx (mName :: pctx) n2 mBody).1
-    `(Dllbc.Term.substP $(quote mName) (Dllbc.Term.pvar $(quote target)) $b)
+    let b := (← elabUTerm (pushPure mName sc) mBody)
+    `(Dllbc.Term.substP $(quote mName) (Dllbc.Term.var $(quote target)) $b)
   if names.contains "Z" || names.contains "S" then
-    let (_, _, zb) ← getArm "Z"; let z := (← elabUBlk rctx pctx n2 zb).1
+    let (_, _, zb) ← getArm "Z"; let z := (← elabUBlk sc zb)
     let (sb, sih, sbody) ← getArm "S"
     let kName := (sb[0]!).getId.toString
     let ihName := (sih.getD (mkIdent `ih)).getId.toString
     let ihDom ← pOf kName
-    let body := (← elabUBlk rctx (ihName :: kName :: pctx) n2 sbody).1
+    let body := (← elabUBlk (pushPure ihName (pushPure kName sc)) sbody)
     let kDom ← binderDom kName (← `(Dllbc.Term.const "Nat"))
     let ihDomM ← binderDom ihName ihDom
     return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "natRec") $motiveT) $z)
         (Dllbc.Term.lam $(quote kName) $kDom
-          (Dllbc.Term.lam $(quote ihName) $ihDomM $body))) $scrutT), n2)
+          (Dllbc.Term.lam $(quote ihName) $ihDomM $body))) $scrutT))
   else if names.contains "True" || names.contains "False" then
-    let (_, _, tb) ← getArm "True"; let t := (← elabUBlk rctx pctx n2 tb).1
-    let (_, _, fb) ← getArm "False"; let f := (← elabUBlk rctx pctx n2 fb).1
-    return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "boolRec") $motiveT) $t) $f) $scrutT), n2)
+    let (_, _, tb) ← getArm "True"; let t := (← elabUBlk sc tb)
+    let (_, _, fb) ← getArm "False"; let f := (← elabUBlk sc fb)
+    return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "boolRec") $motiveT) $t) $f) $scrutT))
   else if names.contains "Nil" || names.contains "Cons" then
-    let (_, _, nb) ← getArm "Nil"; let n := (← elabUBlk rctx pctx n2 nb).1
+    let (_, _, nb) ← getArm "Nil"; let n := (← elabUBlk sc nb)
     let (cb, cih, cbody) ← getArm "Cons"
     let hName := (cb[0]!).getId.toString
     let tName := (cb[1]!).getId.toString
     let ihName := (cih.getD (mkIdent `ih)).getId.toString
     let ihDom ← pOf tName
-    let body := (← elabUBlk rctx (ihName :: tName :: hName :: pctx) n2 cbody).1
+    let body := (← elabUBlk (pushPure ihName (pushPure tName (pushPure hName sc))) cbody)
     -- **The ELEMENT TYPE is read out of the motive's binder type**, exactly as the
     -- `Pair` branch below reads `A`/`B` out of `Σ (y : A). B`. It used to be the
     -- literal `Nat` in all three places this needs it — `listRec`'s `A` argument
@@ -1911,7 +2000,7 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
         | `(uterm| $x:ident) => if x.getId.toString == "List" then some elemArgs[0]! else none
         | _ => none
     let elemT ← match elemSyn with
-      | some a => pure (← elabUTerm rctx pctx n2 a).1
+      | some a => pure (← elabUTerm sc a)
       | none => `(Dllbc.Term.const "Nat")
     let hDom ← binderDom hName elemT
     let tDom ← binderDom tName (← `(Dllbc.Term.app (Dllbc.Term.const "List") $elemT))
@@ -1919,7 +2008,7 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
     return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "listRec") $elemT) $motiveT) $n)
         (Dllbc.Term.lam $(quote hName) $hDom
           (Dllbc.Term.lam $(quote tName) $tDom
-            (Dllbc.Term.lam $(quote ihName) $ihDomM $body)))) $scrutT), n2)
+            (Dllbc.Term.lam $(quote ihName) $ihDomM $body)))) $scrutT))
   else if names.contains "Pair" then
     -- Σ elimination (§9). `sigmaRec` takes Σ's two parameters — the domain `A` and
     -- the FAMILY `λ x. B` — so the motive's binder type must be written as the Σ
@@ -1935,19 +2024,19 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
       -- Σ twin has, and the row below is the whole of Σ0's elimination.
       | `(uterm| Σ0 ($y:ident : $A:uterm). $B:uterm) => pure (A, y.getId.toString, B)
       | _ => Macro.throwError "elim: a Pair motive's binder type must be written as `Σ (x : A). B` (or `Σ0 (x : A). B`)"
-    let aT := (← elabUTerm rctx pctx n2 aSyn).1
+    let aT := (← elabUTerm sc aSyn)
     -- `B` under its own binder — correct for the family `λ x. B` as written, and
     -- renamed below for the arm's second binder domain, whatever the arm calls it.
-    let bT := (← elabUTerm rctx (bName :: pctx) n2 bSyn).1
+    let bT := (← elabUTerm (pushPure bName sc) bSyn)
     let (pb, _, pbody) ← getArm "Pair"
     let xName := (pb[0]!).getId.toString
     let yName := (pb[1]!).getId.toString
-    let body := (← elabUBlk rctx (yName :: xName :: pctx) n2 pbody).1
+    let body := (← elabUBlk (pushPure yName (pushPure xName sc)) pbody)
     -- `B` reaches the Σ's own binder, and the arm names that field itself — so the
     -- arm's second domain is `B` with the Σ binder renamed, the same move `pOf`
     -- makes for a recursor's `ih`.
     let xDom ← binderDom xName aT
-    let yDom ← binderDom yName (← `(Dllbc.Term.substP $(quote bName) (Dllbc.Term.pvar $(quote xName)) $bT))
+    let yDom ← binderDom yName (← `(Dllbc.Term.substP $(quote bName) (Dllbc.Term.var $(quote xName)) $bT))
     -- The type FAMILY `λ x. B` is the Σ read back as a function, so its binder is
     -- the Σ's own binder and takes the Σ's own domain — marker included. Written
     -- unmarked, it was the one place a `Σ (Hu : A). B` and the family
@@ -1956,7 +2045,7 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
     return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "sigmaRec") $aT)
         (Dllbc.Term.lam $(quote bName) $famDom $bT)) $motiveT)
         (Dllbc.Term.lam $(quote xName) $xDom
-          (Dllbc.Term.lam $(quote yName) $yDom $body))) $scrutT), n2)
+          (Dllbc.Term.lam $(quote yName) $yDom $body))) $scrutT))
   else
     Macro.throwError "elim: arms do not match a known recursor (Nat/Bool/List/Σ)"
 
@@ -1964,15 +2053,15 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
     `λ x. abstractOccurrences scrut goal` — the natural goal with the computed
     subterm abstracted at all its occurrences, mechanically. Bool motives only (the
     count algebra's case-on-`eqb`); Nat/List use the `return` form. -/
-partial def elabUGenElim (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
-    (scrut goal : TSyntax `uterm) (arms : Array (TSyntax `uelimArm)) : UM (TSyntax `term × Nat) := do
-  let (scrutT, n1) ← elabUTerm rctx pctx next scrut
-  let (goalT, n2) ← elabUTerm rctx pctx n1 goal
+partial def elabUGenElim (sc : Scope)
+    (scrut goal : TSyntax `uterm) (arms : Array (TSyntax `uelimArm)) : UM (TSyntax `term) := do
+  let scrutT ← elabUTerm sc scrut
+  let goalT ← elabUTerm sc goal
   let armBody (c : String) : UM (TSyntax `term) := do
     for arm in arms do
       match arm with
       | `(uelimArm| $ctor:ident $[($_:ident)]* $[$_:ident]? => $body:ublk) =>
-        if ctor.getId.toString == c then return (← elabUBlk rctx pctx n2 body).1
+        if ctor.getId.toString == c then return (← elabUBlk sc body)
       | _ => pure ()
     Macro.throwError s!"elim generalizing: missing arm '{c}'"
   let names := arms.filterMap (fun a => match a with
@@ -1984,7 +2073,7 @@ partial def elabUGenElim (rctx : List (String × Nat)) (pctx : List String) (nex
     let nf := Lean.mkIdent `Dllbc.Std.nfTerm
     let motive ← `(Dllbc.Term.lam Dllbc.genName (Dllbc.Term.const "Bool")
       (Dllbc.abstractOccurrences ($nf $scrutT) ($nf $goalT)))
-    return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "boolRec") $motive) $t) $f) $scrutT), n2)
+    return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "boolRec") $motive) $t) $f) $scrutT))
   else
     Macro.throwError "elim generalizing: only Bool motives supported (§18); Nat/List use the `return` form"
 

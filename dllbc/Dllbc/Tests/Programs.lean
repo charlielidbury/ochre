@@ -1406,14 +1406,16 @@ def d2borrow : Term := prog_parse {
 example : progRejects d2borrow "a runtime (lowercase) binding" = true := by native_decide
 
 -- D2c. A free variable that names nothing is a different rejection with a
--- different message: a let-chain cannot reference downward. (Reached here
--- through a call-free body, so it is the variable rule and not the call rule
--- doing the work — C1 above covers the call side.)
+-- different message. Under one `var` (docs/22) it is the BOUNDARY's: a name
+-- nothing in the program binds is refused before any rule runs, so the
+-- let-chain's "cannot reference downward" (`admitGlobals`) is never reached
+-- by a program with a free name — it still guards the λ's CAPTURE of names
+-- that are bound, which D2a/D2b above exercise.
 def d2free : Term :=
-  .seq (.letIn ⟨0, "g"⟩ (.seal 0 (Term.lamTel [(⟨1, "a"⟩, .const "Nat")]
-      (.seq (.letIn ⟨2, "z"⟩ (.var ⟨9, "nope"⟩)) (.var ⟨1, "a"⟩)))
+  .seq (.letIn (Var.slot "g") (.seal 0 (Term.lamTel [(Var.slot "a", .const "Nat")]
+      (.seq (.letIn (Var.slot "z") (.var "nope")) (.var "a")))
     (prog_parse { Π (a : Nat) → Nat }))) .unit
-example : progRejects d2free "not bound anywhere above it" = true := by native_decide
+example : progRejects d2free "unbound identifier 'nope'" = true := by native_decide
 
 -- D3. A sealed proof is not a global either, and that is deliberate rather than
 -- an oversight: a body that wants it should take it as a capital parameter
@@ -1538,9 +1540,9 @@ example : progDiff (Tests.S23Direct.qsRun [3, 1, 2]) = true := by native_decide
 /-- A symbolic scrutinee at the top level of a program: an abstract call's result
     is a σ, and matching on one is what forks the driver's paths. -/
 def hSplit (inZ inS : Term) : Term :=
-  .seq (.letIn ⟨0, "F"⟩ (prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) }))
-    (.seq (.letIn ⟨1, "n"⟩ (Term.appSpine (.var ⟨0, "F"⟩) [prog_parse { 3 }]))
-      (.matchE ⟨1, "n"⟩ none [Branch.mk "Z" [] inZ, Branch.mk "S" [⟨2, "k"⟩] inS]))
+  .seq (.letIn (Var.slot "F") (prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) }))
+    (.seq (.letIn (Var.slot "n") (Term.appSpine (.var "F") [prog_parse { 3 }]))
+      (.matchE "n" none [Branch.mk "Z" [] inZ, Branch.mk "S" [Var.slot "k"] inS]))
 
 -- H0. The split is real: two paths, not one.
 example : (programEnvs (hSplit .unit .unit)).length == 2 := by native_decide
@@ -1550,8 +1552,8 @@ example : (programEnvs (hSplit .unit .unit)).length == 2 := by native_decide
 -- exercises the admitted-globals rule through the branch driver.
 def hGlobal (bad : Bool) : Term :=
   hSplit .unit
-    (.seq (.letIn ⟨3, "G"⟩ (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (Term.appSpine (.var ⟨0, "F"⟩) [.var ⟨4, "y"⟩])))
-      (.seq (.letIn ⟨5, "r"⟩ (Term.appSpine (.var ⟨3, "G"⟩) [.var ⟨2, "k"⟩]))
+    (.seq (.letIn (Var.slot "G") (Term.lamTel [(Var.slot "y", .const "Nat")] (Term.appSpine (.var "F") [.var "y"])))
+      (.seq (.letIn (Var.slot "r") (Term.appSpine (.var "G") [.var "k"]))
         (if bad then prog_parse { True } else .unit)))
 example : progOk (hGlobal false) = true := by native_decide
 -- The negative twin at the SAME position: the branch is entered and its result
@@ -1563,16 +1565,16 @@ example : progRejects (hGlobal true) "does not have return type" = true := by na
 -- this is data capture: the same rejection §D2a pins, reached the other way.)
 def hCapture : Term :=
   hSplit .unit
-    (.seq (.letIn ⟨3, "G"⟩ (Term.lamTel [(⟨4, "y"⟩, .const "Nat")]
-        (.seq (.letIn ⟨6, "z"⟩ (.var ⟨2, "k"⟩)) (.var ⟨4, "y"⟩))))
+    (.seq (.letIn (Var.slot "G") (Term.lamTel [(Var.slot "y", .const "Nat")]
+        (.seq (.letIn (Var.slot "z") (.var "k")) (.var "y"))))
       .unit)
 example : progRejects hCapture "a runtime (lowercase) binding" = true := by native_decide
 
 -- H3. A seal inside a branch fires its audit there, in that branch's own state.
 def hSeal (bad : Bool) : Term :=
   hSplit .unit
-    (.seq (.letIn ⟨3, "Sf"⟩
-      (.seal 0 (Term.lamTel [(⟨4, "y"⟩, .const "Nat")] (.var ⟨4, "y"⟩))
+    (.seq (.letIn (Var.slot "Sf")
+      (.seal 0 (Term.lamTel [(Var.slot "y", .const "Nat")] (.var "y"))
         (if bad then prog_parse { Π (y : Nat) → Bool } else prog_parse { Π (y : Nat) → Nat })))
       .unit)
 example : progOk (hSeal false) = true := by native_decide
@@ -1583,16 +1585,16 @@ example : progRejects (hSeal true) "does not have return type (Bool)" = true := 
 -- the path that does not has nothing to demand — and the differential is what
 -- says both are right, since the concrete run takes exactly one of them.
 def hLend : Term :=
-  .seq (.letIn ⟨0, "Push"⟩
+  .seq (.letIn (Var.slot "Push")
     (prog{ (λ(e : Nat, v : &mut (s : List Nat ~> List Nat)){
                   let tail = *v; *v := Cons(e, tail); () } : Π (e : Nat) → Π (v : &mut (s : List Nat ~> List Nat)) → Unit) }))
-    (.seq (.letIn ⟨1, "l"⟩ (prog_parse { Cons(1, Nil) }))
-      (.seq (.letIn ⟨2, "id"⟩ (prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) }))
-        (.seq (.letIn ⟨3, "n"⟩ (Term.appSpine (.var ⟨2, "id"⟩) [prog_parse { 3 }]))
-          (.matchE ⟨3, "n"⟩ none
+    (.seq (.letIn (Var.slot "l") (prog_parse { Cons(1, Nil) }))
+      (.seq (.letIn (Var.slot "id") (prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) }))
+        (.seq (.letIn (Var.slot "n") (Term.appSpine (.var "id") [prog_parse { 3 }]))
+          (.matchE "n" none
             [Branch.mk "Z" [] .unit,
-             Branch.mk "S" [⟨4, "k"⟩]
-               (.seq (.letIn ⟨5, "r"⟩ (Term.appSpine (.var ⟨0, "Push"⟩) [.var ⟨4, "k"⟩, .borrow (.var ⟨1, "l"⟩)]))
+             Branch.mk "S" [Var.slot "k"]
+               (.seq (.letIn (Var.slot "r") (Term.appSpine (.var "Push") [.var "k", .borrow (.var "l")]))
                  .unit)]))))
 example : progOk hLend = true := by native_decide
 example : progDiff hLend = true := by native_decide
@@ -2086,7 +2088,7 @@ def zapUnder (dom : Term) : Term := prog{
   fn Zap (v : &mut List Nat) -> %dom { *v := Nil; Pair(Refl, unit) };
   () }
 
-def zapV : Term := .var ⟨0, "v"⟩
+def zapV : Term := .var "v"
 
 -- The comptime component: its `Id` mentions `*v`, so it is exactly the type
 -- `markExit` has to reach through the `⇝` to stamp.
@@ -2283,19 +2285,27 @@ partial def comptimeSlotParams : Term → Nat
 
 /-- λ nodes this term classifies as imperative. The number the telescope rule
     protects: if the slot test were swapped for a case test, every `fn` whose
-    parameters are all capital would leave this count and lose its audit. -/
-partial def impLams : Term → Nat
+    parameters are all capital would leave this count and lose its audit.
+
+    Classified UNDER the pure binders each node sits below (docs/22 §3 item 8),
+    exactly as `reflectC` classifies: with one `var`, a nested pure λ that
+    applies an OUTER pure binder (`λ F. λ B. … F b …`) is a pure spine only
+    when the outer binder is in view, and the node alone cannot see it. -/
+partial def impLamsIn (pure : List String) : Term → Nat
   | .lam x d b =>
-    (if Term.lamImperative (.lam x d b) then 1 else 0) + impLams d + impLams b
-  | .pi _ d b | .sigmaT _ d b | .borrowT _ d b => impLams d + impLams b
-  | .app f a | .seq f a | .seal _ f a => impLams f + impLams a
-  | .letIn _ r => impLams r
-  | .assign p e => impLams p + impLams e
-  | .idT a b c => impLams a + impLams b + impLams c
-  | .ctorApp _ as | .call _ as => (as.map impLams).foldl (· + ·) 0
-  | .matchE _ _ bs => (bs.map (fun br => impLams br.body)).foldl (· + ·) 0
-  | .borrow t | .deref t | .cmpT t => impLams t
+    (if Term.lamImperativeIn pure (.lam x d b) then 1 else 0) + impLamsIn pure d
+      + impLamsIn (if x.bindsSlot then pure.filter (· != x.name) else x.name :: pure) b
+  | .pi x d b | .sigmaT x d b | .borrowT x d b => impLamsIn pure d + impLamsIn (x :: pure) b
+  | .app f a | .seq f a | .seal _ f a => impLamsIn pure f + impLamsIn pure a
+  | .letIn _ r => impLamsIn pure r
+  | .assign p e => impLamsIn pure p + impLamsIn pure e
+  | .idT a b c => impLamsIn pure a + impLamsIn pure b + impLamsIn pure c
+  | .ctorApp _ as | .call _ as => (as.map (impLamsIn pure)).foldl (· + ·) 0
+  | .matchE _ _ bs => (bs.map (fun br => impLamsIn pure br.body)).foldl (· + ·) 0
+  | .borrow t | .deref t | .cmpT t => impLamsIn pure t
   | _ => 0
+
+def impLams (t : Term) : Nat := impLamsIn [] t
 
 -- The in-place quicksort, the largest program in the corpus, with its specs and
 -- library lemmas elaborated in: every comptime binder spells its mode, and the

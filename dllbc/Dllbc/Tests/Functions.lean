@@ -486,7 +486,7 @@ example : strContains (readCOn ty{ λ(x : Nat){ x } })
   "not in the comptime fragment" = true := by native_decide
 -- …including buried inside a pure former, which is where a mode flag
 -- consulted only at the top would have let it through.
-example : strContains (readCOn (.app (.const "S") (Term.lamTel [(⟨0, "x"⟩, .const "Nat")] (.var ⟨0, "x"⟩))))
+example : strContains (readCOn (.app (.const "S") (Term.lamTel [(Var.slot "x", .const "Nat")] (.var "x"))))
   "not in the comptime fragment" = true := by native_decide
 
 /-! ## §B. ι with the arms as bodies — the executing machine
@@ -1491,7 +1491,7 @@ def bndSeal : Option Term :=
     it is what a TRANSCRIPTION would have produced, and E2/F3b are the
     controls that say the elaboration produces something else. -/
 def bndDeclHn : Term :=
-  .cmpT prog_parse { %(Std.LeFnT) (%(Std.lenFnT) %(Term.deref (.var ⟨1, "v"⟩))) %(Term.var ⟨0, "n"⟩) }
+  .cmpT prog_parse { %(Std.LeFnT) (%(Std.lenFnT) %(Term.deref (.var "v"))) %(Term.var "n") }
 
 /-- The two arms of the emitted `natRec`, as annotated binder lists. -/
 def bndArms : Option (List (Var × Term) × List (Var × Term)) :=
@@ -1507,7 +1507,7 @@ example : (match bndArms with
 
 /-- `Le (Len *v) b`, at the positional `v` the residual telescope keeps. -/
 def leLen (b : Term) : Term :=
-  prog{ %(Std.LeFnT) (%(Std.lenFnT) %(Term.deref (.var ⟨1, "v"⟩))) %b }
+  prog{ %(Std.LeFnT) (%(Std.lenFnT) %(Term.deref (.var "v"))) %b }
 
 -- E1. The bound binder, at each constructor. `Hn` is capitalized, so its
 -- domain carries the comptime marker — the annotation is the domain as
@@ -1516,7 +1516,7 @@ example : (match bndArms with
            | some (z, s) =>
              let dec := (s[0]!).1
              Term.beq (z[1]!).2 (.cmpT (leLen (.ctorApp "Z" [])))
-               && Term.beq (s[3]!).2 (.cmpT (leLen (.ctorApp "S" [.var dec])))
+               && Term.beq (s[3]!).2 (.cmpT (leLen (.ctorApp "S" [.var dec.name])))
            | none => false) = true := by native_decide
 
 -- E2. …and neither is the DECLARATION's own domain, which is what a naive
@@ -1534,8 +1534,8 @@ example : (match bndArms with
 example : (match bndArms with
            | some (_, s) =>
              let dec := (s[0]!).1
-             match piPeel [⟨1, "v"⟩, ⟨2, "Hn"⟩] (s[1]!).2 with
-             | .ok (tel, _) => tel.length == 2 && Term.beq (tel[1]!).2 (leLen (.var dec))
+             match piPeel [Var.slot "v", Var.slot "Hn"] (s[1]!).2 with
+             | .ok (tel, _) => tel.length == 2 && Term.beq (tel[1]!).2 (leLen (.var dec.name))
              | .error _ => false
            | none => false) = true := by native_decide
 
@@ -1565,7 +1565,7 @@ example : (match bndArms with
     recursor. The binder is capital, matching what an elaborated
     declaration's binder is — this hand-built term stands in for what the
     `fn` row emits, so it has to agree with it. -/
-def bndProg (t : Term) : Term := .seq (.letIn ⟨900, "F"⟩ t) .unit
+def bndProg (t : Term) : Term := .seq (.letIn (Var.decl "F") t) .unit
 
 /-- `bndProgram`'s sealed recursor with the step arm's `i`-th annotation replaced, and nothing else
     touched. `none` when the elaboration is not the shape this section reads. -/
@@ -1598,7 +1598,7 @@ example : progOk bndProgram = true := by native_decide
 -- route to the same fact.
 example : (match bndR, bndArms, bndDec with
            | some (n, R), some (_, s), some dec =>
-             Term.beq (s[1]!).2 (Term.substP n (.var dec) R)
+             Term.beq (s[1]!).2 (Term.substP n (.var dec.name) R)
            | _, _, _ => false) = true := by native_decide
 
 -- F1. `ih` at the arm's own level: `R` at `S dec` where the premise gives `R`
@@ -1607,7 +1607,7 @@ example : (match bndR, bndArms, bndDec with
 -- by anything downstream.
 example : (match bndR, bndDec with
            | some (n, R), some dec =>
-             match stepArmWith 1 (Term.substP n (.ctorApp "S" [.var dec]) R) with
+             match stepArmWith 1 (Term.substP n (.ctorApp "S" [.var dec.name]) R) with
              | some t => progRejects (bndProg t) "the recursor's premise does not give it"
              | none => false
            | _, _ => false) = true := by native_decide
@@ -1622,7 +1622,7 @@ example : (match stepArmWith 0 (.const "Bool") with
 -- branch of the check.
 example : (match bndDec with
            | some dec =>
-             match stepArmWith 3 (.cmpT (leLen (.var dec))) with
+             match stepArmWith 3 (.cmpT (leLen (.var dec.name))) with
              | some t => progRejects (bndProg t) "a domain the ascription does not bind it at"
              | none => false
            | none => false) = true := by native_decide
@@ -1631,14 +1631,15 @@ example : (match bndDec with
 -- DECLARATION's own domain, `Le (Len *v) n`, where the motive at this
 -- constructor gives `Le (Len *v) (S n')`.
 --
--- It is refused at the CONVERSION, and where it fires is part of the claim.
 -- The declaration's domain mentions the scrutinee `n`, which does not exist
--- inside an arm — so a closedness rejection was the other plausible
--- outcome, and would have been the conversion passing for the wrong reason.
--- `piAgree` runs before the body is entered, so the domains are compared
--- first, and the message below is the comparison's own.
+-- inside an arm: under one `var` (docs/22) that `n` is a FREE NAME of the
+-- program, and the boundary refuses a program with one before any rule runs
+-- (§5 there) — so this perturbation is caught as the unbound identifier it
+-- is, ahead of the conversion. (Under two namespaces the free `n` was an Ω
+-- slot the walk never met, and the conversion was what caught it; F3 above
+-- still pins that path, with a CLOSED mis-level annotation.)
 example : (match stepArmWith 3 bndDeclHn with
-           | some t => progRejects (bndProg t) "a domain the ascription does not bind it at"
+           | some t => progRejects (bndProg t) "unbound identifier 'n'"
            | none => false) = true := by native_decide
 
 -- F4. …and an ordinary trailing binder, mistyped outright.
@@ -2075,13 +2076,13 @@ def deepBaseArmBare : Term := Term.lamTel [] (.ctorApp "Refl" [])
 def deepStepArm : Term :=
   -- `ih`'s domain is the motive at the predecessor; `deepMotT` is constant, so
   -- `ih : P a` already is `P b` for every `b`.
-  Term.lamTel [(⟨0, "a"⟩, .const "Nat"), (⟨1, "ih"⟩, prog_parse { Id Nat Z Z })]
-    (.matchE ⟨0, "a"⟩ none
+  Term.lamTel [(Var.slot "a", .const "Nat"), (Var.slot "ih", prog_parse { Id Nat Z Z })]
+    (.matchE "a" none
       [ .mk "Z" [] (.ctorApp "Refl" [])
-      , .mk "S" [⟨2, "b"⟩] (.var ⟨1, "ih"⟩) ])
+      , .mk "S" [Var.slot "b"] (.var "ih") ])
 def deepRec : Term :=
   .app (.app (.app (.const "natRec") deepMotT) deepBaseArm) deepStepArm
-def recDeepProg : Term := .seq (.letIn ⟨900, "F"⟩ (.seal 0 deepRec deepSealT)) .unit
+def recDeepProg : Term := .seq (.letIn (Var.decl "F") (.seal 0 deepRec deepSealT)) .unit
 
 example : progOk recDeepProg = true := by native_decide
 
@@ -2089,7 +2090,7 @@ example : progOk recDeepProg = true := by native_decide
     one binder, which is what makes the accept above about the arm's shape
     rather than about the program. -/
 def recDeepBare : Term :=
-  .seq (.letIn ⟨900, "F"⟩ (.seal 0
+  .seq (.letIn (Var.decl "F") (.seal 0
     (.app (.app (.app (.const "natRec") deepMotT) deepBaseArmBare) deepStepArm) deepSealT)) .unit
 example : progRejects recDeepBare "is a bare term, not a λ" = true := by native_decide
 
@@ -2097,7 +2098,7 @@ example : progRejects recDeepBare "is a bare term, not a λ" = true := by native
     `Id Nat Z (S Z)` instead, the arms cannot inhabit it and this is rejected. -/
 def deepSealLie : Term := prog_parse { Π (n : Nat) → Id Nat Z (S Z) }
 def recDeepLie : Term :=
-  .seq (.letIn ⟨900, "F"⟩ (.seal 0 (.app (.app (.app (.const "natRec")
+  .seq (.letIn (Var.decl "F") (.seal 0 (.app (.app (.app (.const "natRec")
     (prog_parse { λ (n : Nat). Id Nat Z (S Z) })) deepBaseArm) deepStepArm) deepSealLie)) .unit
 example : progOk recDeepLie = false := by native_decide
 

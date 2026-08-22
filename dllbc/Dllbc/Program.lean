@@ -68,7 +68,7 @@ partial def endScope (fuel : Nat) : M Unit := do
     than a second one written to agree with it: the two differ in the seed state
     and in what they do with the paths afterwards, and in nothing else. -/
 def programPaths (st0 : St) (t : Term) : List (Except Diag (Val × St)) :=
-  (exploreD defaultFuel (atBoundary t) st0).map
+  (exploreD defaultFuel (atBoundary t (st0.env.map (·.1.name))) st0).map
     (fun r => r.bind (fun p =>
       match (endScope defaultFuel).run p.2 with
       | .ok _ st => .ok (p.1, st)
@@ -130,11 +130,21 @@ def PointState.step (s : PointState) (d : PointDelta) : PointState :=
 
     `none` when no delta is filed under the key at all — the honest answer, and
     the one that keeps decline-don't-guess: an unrecognised point declines rather
-    than falling back to some nearby state. -/
+    than falling back to some nearby state.
+
+    **And `none` when the key is filed under more than one RUN on the path**
+    (docs/22 §4). A key is a statement's term; with binder ids gone, two
+    statements written identically have one key, and a hover at either would
+    otherwise be answered with the first's state. Two runs — two maximal
+    stretches of deltas filed under the key, separated by a delta filed under
+    some other — are two statement instances, and the point is ambiguous. -/
 def replayTo (deltas : List PointDelta) (key : Term) : Option PointState :=
   let key := stmtKeyOf key
-  if !(deltas.any fun d => match d.stmtKey with | some k => stmtKeyOf k == key | none => false)
-  then none
+  let isKey (d : PointDelta) : Bool :=
+    match d.stmtKey with | some k => stmtKeyOf k == key | none => false
+  let runs := (deltas.foldl (fun (acc : Nat × Bool) d =>
+    if isKey d then (if acc.2 then acc else (acc.1 + 1, true)) else (acc.1, false)) (0, false)).1
+  if runs != 1 then none
   else
     some <| Id.run do
       let mut st : PointState := {}
@@ -151,12 +161,14 @@ def replayTo (deltas : List PointDelta) (key : Term) : Option PointState :=
     walked once per branch and legitimately holds different things each time
     (§4), so the surface is handed all of them and decides what to show —
     rather than being handed the first and left to imply it is the only one. -/
-def factsAt (paths : List (List PointDelta)) (key : Term) (x : Var) :
+def factsAt (paths : List (List PointDelta)) (key : Term) (x : String) :
     List (List (String × String) × Val × List (Nat × Term)) :=
   paths.filterMap fun deltas =>
     match replayTo deltas key with
     | none => none
-    | some st => (st.env.find? (fun kv => kv.1 == x)).map fun kv =>
+    -- By NAME, newest wins — the store's own resolution (docs/22): the binder
+    -- live at this point under that name is the one the occurrence means.
+    | some st => (findSlot? st.env x).map fun kv =>
         -- The trail of the delta filed AT this statement on this path: where the
         -- reader's cursor is, in branch terms.
         let trail := (deltas.find? (fun d =>
@@ -182,7 +194,7 @@ def factsAt (paths : List (List PointDelta)) (key : Term) (x : Var) :
     shares its ancestor's key, and its ancestor's seeds are in its paths'
     history, so a same-named-and-same-positioned parameter answers from the
     ancestor's run. -/
-def replayEntry (deltas : List PointDelta) (key : Term) (x : Var) :
+def replayEntry (deltas : List PointDelta) (key : Term) (x : String) :
     Option (List (String × String) × PointState) := Id.run do
   let key := stmtKeyOf key
   let mut st : PointState := {}
@@ -203,8 +215,8 @@ def replayEntry (deltas : List PointDelta) (key : Term) (x : Var) :
         -- outer stream carries the seeds too, but with the post-restore σ
         -- context and an env the outer scope never had. Skip it; the body
         -- path's own run is the honest one.
-        if y.id == declSlot then outer := true
-        else if y == x then seeded := true; trail := d.trail
+        if y.isDecl then outer := true
+        else if y.name == x then seeded := true; trail := d.trail
       st := st.step d
     else
       if inRun && seeded && !outer then return some (trail, st)
@@ -217,11 +229,11 @@ def replayEntry (deltas : List PointDelta) (key : Term) (x : Var) :
     path whose keyed run seeded the binder. Ancestor prefixes make a body's seed
     run appear in every descendant path too; identical runs render identically
     and collapse in `renderPaths`' distinctness fold. -/
-def factsAtEntry (paths : List (List PointDelta)) (key : Term) (x : Var) :
+def factsAtEntry (paths : List (List PointDelta)) (key : Term) (x : String) :
     List (List (String × String) × Val × List (Nat × Term)) :=
   paths.filterMap fun deltas =>
     (replayEntry deltas key x).bind fun (trail, st) =>
-      (st.env.find? (fun kv => kv.1 == x)).map fun kv => (trail, kv.2, st.sctx)
+      (findSlot? st.env x).map fun kv => (trail, kv.2, st.sctx)
 
 /-- **The same walk, with the `let` type table carried out of it** (docs/16).
 
@@ -351,7 +363,7 @@ def tailEnvs (t : Term) : List (Except String Env) :=
     (fun r => r.bind (fun p =>
       match (endScope defaultFuel).run p.2 with
       | .ok _ st => .ok (canonicalize (st.env.filter (fun kv =>
-          kv.1.id != declSlot)))
+          !kv.1.isDecl)))
       | .error e _ => .error e))
 
 /-- One path, and the tail leaves exactly this Ω. -/
@@ -440,7 +452,10 @@ def Checked.init : Checked :=
     stored before this boundary), which is what lets a seeded twin be minted
     from it by `replaceMarked?`. -/
 def moduleBoundary (seed : St) (t : Term) : Nat × Term :=
-  Term.numberSealsGo seed.nextSite (Term.stripMarkers t)
+  -- Same three passes, same order as `atBoundary` (docs/21 §4, docs/22 §5):
+  -- strip markers, assert closedness against the seed's names, number seals.
+  Term.numberSealsGo seed.nextSite
+    (Term.rejectUnbound (seed.env.map (·.1.name)) (Term.stripMarkers t))
 
 /-- The seeded walk's paths, Diag-level, WITHOUT the closing `endScope`: a
     module's bindings must persist into the next block, and `endScope` is the
@@ -513,7 +528,7 @@ def moduleExecSt (seed : St) (t : Term) : Except String St :=
     when the channel did not exist, EVERY hint was `none` and an imported
     `[k]`-hoisted fn whose scrutinee was not parameter 0 was uncallable. -/
 def moduleBinds (seed : St) : List (String × Var × Option Nat) :=
-  ((seed.env.filter (fun kv => kv.1.id == declSlot)).map
+  ((seed.env.filter (fun kv => kv.1.isDecl)).map
     (fun kv => (kv.1.name, kv.1, seed.ledgers.hints.lookup kv.1.name))).reverse
 
 /-- Retarget a consumer block's unresolved `.call`s at the seed's declarations —

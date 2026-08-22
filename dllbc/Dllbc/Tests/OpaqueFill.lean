@@ -89,7 +89,7 @@ def escExtent : Term := prog_parse {
   () }
 
 example : progRejects escExtent
-  "(Pair σ₆ (Pair σ₄ σ₅)) does not have its owed type (Σ(§0 : Nat). Σ(§1 : (Array #§0 Nat)). ⇝(natRec"
+  "(Pair σ₆ (Pair σ₄ σ₅)) does not have its owed type (Σ(§0 : Nat). Σ(§1 : (Array §0 Nat)). ⇝(natRec"
   = true := by native_decide
 
 /-- Escapes onto a cell a Σ0 tail pins to a literal. -/
@@ -99,7 +99,7 @@ def escPinned : Term := prog_parse {
   () }
 
 example : progRejects escPinned
-  "(Pair σ₆ (Pair σ₄ σ₅)) does not have its owed type (Σ(§0 : Nat). Σ(§1 : Unit). ⇝(Id #§0 (S (S (S (S (S (S (S Z)))))))))"
+  "(Pair σ₆ (Pair σ₄ σ₅)) does not have its owed type (Σ(§0 : Nat). Σ(§1 : Unit). ⇝(Id §0 (S (S (S (S (S (S (S Z)))))))))"
   = true := by native_decide
 
 /-- Escapes onto a cell a later runtime binder's type needs — the dependence is
@@ -110,7 +110,7 @@ def escRuntimeDep : Term := prog_parse {
   () }
 
 example : progRejects escRuntimeDep
-  "(Pair σ₆ (Pair σ₄ σ₅)) does not have its owed type (Σ(§0 : Nat). Σ(§1 : (Array #§0 Nat)). Nat)"
+  "(Pair σ₆ (Pair σ₄ σ₅)) does not have its owed type (Σ(§0 : Nat). Σ(§1 : (Array §0 Nat)). Nat)"
   = true := by native_decide
 
 /-- Control: the same body one field over. The borrow escapes onto a value cell,
