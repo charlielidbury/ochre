@@ -210,7 +210,7 @@ example : chkL MkFillFn MkFillTy = true := by native_decide
 example : chkL MkFillTy U = true := by native_decide
 
 def polyArr : Term := prog{
-  fn Fill (T : Type, x : T, n : Nat) -> Array n T { %MkFillFn T x n };
+  fn Fill (T : Type, x : T, n : Nat) -> Array n T { MkFillFn T x n };
   () }
 example : progOk polyArr = true := by native_decide
 
@@ -322,12 +322,12 @@ def OptP : Term := prog_parse {
   λ (B : Bool). λ (T : Type). elim B return (λ (Bm : Bool). Type) {
     True => T,
     False => Unit } }
-example : chkS [(0, .const "Bool")] prog_parse { %OptP %(Term.sym 0) Nat } .type = "ok true" := by
+example : chkS [(0, .const "Bool")] prog_parse { OptP %(Term.sym 0) Nat } .type = "ok true" := by
   native_decide
 
 /-- …and the same spine under a binder, which is the type the `Σ (Bool)`
     Option encoding actually is. -/
-example : chkL prog_parse { Σ (b : Bool). %OptP b Nat } U = true := by native_decide
+example : chkL prog_parse { Σ (b : Bool). OptP b Nat } U = true := by native_decide
 
 /-! ## §6 Types have no ⇒ reading
 
@@ -367,7 +367,7 @@ example : progRejects arrApplied "⇒ produced a type" = true := by native_decid
 /-- COMPUTED: a pure spine that whnf's to a type — `OptP True Nat` reduces to
     `Nat` — arriving at a lowercase `let`. Nothing about the WRITTEN form says
     "type"; only the lift's head test can catch it. -/
-def computedType : Term := prog_parse { let t = %OptP True Nat; () }
+def computedType : Term := prog_parse { let t = OptP True Nat; () }
 example : progRejects computedType "⇒ produced a type" = true := by native_decide
 
 /-- The program's TAIL is ⇒-read too, and a type there refuses through the same
@@ -460,7 +460,7 @@ example : Term.convEq (Pure.nf 1000 surfAdd) (Pure.nf 1000 Pure.kAddFn) = true :
 
 -- The behaviour, so that a later respell that agrees structurally and computes
 -- something else cannot pass on the two lines above.
-example : (Pure.nf 200 ty{ %surfAdd 2 3 } == Term.nat 5) = true := by
+example : (Pure.nf 200 ty{ surfAdd 2 3 } == Term.nat 5) = true := by
   native_decide
 
 /-! ## The constructor basis, checked instead of kept adjacent
