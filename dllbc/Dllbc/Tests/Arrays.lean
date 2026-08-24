@@ -249,8 +249,8 @@ example : (Val.renumber id (· + 10) carvedWithLoan == segsOf [(1, .sym 10), (2,
     relies on. So both moved to `Pure.lean`, with `Std` aliasing them; these two
     tests are the single-source-of-truth check. -/
 
-example : (Pure.kAddFn == Dllbc.Std.addFn) = true := by native_decide
-example : (Pure.kLeFn == Dllbc.Std.LeFn) = true := by native_decide
+example : (Pure.kAddFn == Dllbc.Std.Add) = true := by native_decide
+example : (Pure.kLeFn == Dllbc.Std.Le) = true := by native_decide
 example : (Pure.nf 200 prog_parse { Pure.kAddFn 2 3 } == Term.nat 5) = true := by native_decide
 example : (Pure.nf 200 prog_parse { Pure.kLeFn 2 3 } == .const "Unit") = true := by native_decide
 example : (Pure.nf 200 prog_parse { Pure.kLeFn 3 2 } == .const "Bot") = true := by native_decide

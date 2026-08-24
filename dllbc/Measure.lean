@@ -222,12 +222,12 @@ def timeNi (label : String) (n : Nat) (f : Nat → String) : IO Unit := do
   IO.println s!"  {label}: {last} — {tot} ms total, {tot * 1000 / n} µs mean (x{n})"
 
 def libEntries : List (String × Term) :=
-  [ ("Le",      Std.LeFnT),    ("count",  Std.countFnT),
-    ("Bound",   Std.BoundFnT), ("Sorted", Std.SortedFnT),
-    ("len",     Std.lenFnT),   ("take",   Std.takeFnT),
-    ("drop",    Std.dropFnT),  ("eqb",    Std.eqbFnT),
-    ("leb",     Std.lebFnT),   ("add",    Std.addFnT),
-    ("append",  Std.appendFnT) ]
+  [ ("Le",      Std.Le),    ("Count",  Std.Count),
+    ("Bound",   Std.Bound), ("Sorted", Std.Sorted),
+    ("Len",     Std.Len),   ("Take",   Std.Take),
+    ("Drop",    Std.Drop),  ("Eqb",    Std.Eqb),
+    ("Leb",     Std.Leb),   ("Add",    Std.Add),
+    ("Append",  Std.Append) ]
 
 /-! ## The subjects — the heaviest checks in the suite -/
 
