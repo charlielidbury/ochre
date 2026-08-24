@@ -98,7 +98,7 @@ def packEvidence : Term := prog{
     let c = Leb a b;
     let p = match e : c { True => Pair(True, e), False => Pair(False, e) };
     let Pair(flag, ev) = p;
-    match flag { True => { NeedLe(a, b, (%(Dllbc.StdChainRaw.LebTrueLeRaw)) a b ev); () }, False => () }
+    match flag { True => { NeedLe(a, b, (Dllbc.StdChainRaw.LebTrueLeRaw) a b ev); () }, False => () }
   };
   () }
 example : progOk packEvidence = true := by native_decide
