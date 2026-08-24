@@ -276,7 +276,7 @@ def uAddC (tail : Term) : Term := prog{
       -> (Σ0 (r : (Σ0 (n : Nat). Le n MAX))
             . Id Nat (Val MAX r) (Add (Val MAX a) (Val MAX b)))
       { Pair(Pair(Add (Val MAX a) (Val MAX b), H), Refl) };
-  %tail }
+  tail }
 
 example : progOk (uAddC prog_parse { () }) = true := by native_decide
 
@@ -316,7 +316,7 @@ def grow (tail : Term) : Term := uAddC prog{
         } else {
           Pair(capacity, mload)
         } };
-  %tail }
+  tail }
 
 example : progOk (grow prog_parse { () }) = true := by native_decide
 
