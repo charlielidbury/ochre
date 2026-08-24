@@ -2,7 +2,7 @@ import Dllbc.Program
 import Dllbc.ProgMacro
 import Dllbc.Boundary
 import Dllbc.Std
-import Dllbc.StdLemmas
+import Dllbc.StdChain
 import Dllbc.Tests.Diff
 
 /-!
@@ -29,7 +29,7 @@ removing real staging from a realistic body.
 namespace Dllbc.Tests.SigmaCopy
 
 open Dllbc
-open Dllbc.StdLemmas (LeTransRaw LeAddRaw LebTrueLeRaw IdCongrRaw IdSymRaw LeRwLRaw)
+open Dllbc.StdChainRaw (LeTransRaw LeAddRaw LebTrueLeRaw IdCongrRaw IdSymRaw LeRwLRaw)
 
 /-! ## (i) Positive and negative cases, one binding used twice
 
@@ -249,8 +249,21 @@ example : (match runProgram packListTailOnce with
     cites, and a returned pack the body uses again after handing it away.
 
     The arithmetic is `Add`, standing in for the original's `Mul`/`Div` — those
-    lemmas are not in `StdLemmas`, and porting them would add nothing to the
-    staging point this file is making. -/
+    lemmas are not in the standard chain, and porting them would add nothing
+    to the staging point this file is making.
+
+    `grow`'s proof composes several lemma results together (`LeAdd`'s output
+    feeds `LeTrans`, `LeTrans`'s and `AddUC`'s feed `IdSym`/`IdCongr`, those
+    feed `LeRwL`) — a shape the CALL-based chain citation cannot check: a
+    `fn` call's result is an existential minted at an event, and a callee's
+    CAPITAL proof parameter is read comptime, so an event-minted existential
+    can never satisfy it (confirmed by probe: every citation below fails
+    `readC` the same way once turned into a call, regardless of `if`, return
+    shape, or how many calls are chained). `Dllbc.StdChainRaw` — the raw,
+    pure proof terms `StdChain.lean` itself is built from (docs/20 stage 4) —
+    is value-identical to the old library's citations (diffed verbatim) and
+    needs no seed, so citing it directly keeps this file's composed-chain
+    shape exactly as it was; only the import and the `open` line move. -/
 
 /-- The certified addition: `H` is the caller's obligation that the sum is in
     range, and the `Id` in the tail is what lets the next operation's
