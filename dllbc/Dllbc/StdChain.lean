@@ -36,7 +36,6 @@ namespace Dllbc
       (`refineSym`): binding them first cost the chain 98 s against 79 s. -/
 namespace StdChainRaw
 open Dllbc
-abbrev Append : Term := Std.Append
 def LeReflRaw : Term := prog_parse {
   λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
     Z => unit,
@@ -1223,7 +1222,7 @@ def std1 : Checked := prog (std0) {
   };
 
   fn CountAppend (m : Nat, a : List Nat, b : List Nat)
-      -> Id Nat (Count m (Dllbc.StdChainRaw.Append a b))
+      -> Id Nat (Count m (Dllbc.Std.Append a b))
            (Add (Count m a) (Count m b)) {
     Dllbc.StdChainRaw.CountAppendRaw m a b
   };
@@ -1381,7 +1380,7 @@ def std3 : Checked := prog (std2) {
     Dllbc.StdChainRaw.LbBoundRaw p l hl };
 
   fn BoundAppend (h : Nat, p : Nat, t : List Nat, b : List Nat, hb : Bound h t, hp : Le h p) ->
-      Bound h (Dllbc.StdChainRaw.Append t (Cons p b)) {
+      Bound h (Dllbc.Std.Append t (Cons p b)) {
     match t {
       Nil => hp,
       Cons(h2, t2) => hb } };
@@ -1394,7 +1393,7 @@ def std3 : Checked := prog (std2) {
   -- Dllbc.StdChainRaw.lean:2036).
   fn SortedAppendPivot (p : Nat, a : List Nat, b : List Nat,
       Sa : Sorted a, ua : Dllbc.StdChainRaw.Ub p a, Sb : Sorted b, lb0 : Dllbc.StdChainRaw.Lb p b) ->
-      Sorted (Dllbc.StdChainRaw.Append a (Cons p b)) {
+      Sorted (Dllbc.Std.Append a (Cons p b)) {
     Dllbc.StdChainRaw.SortedAppendPivotRaw p a b Sa ua Sb lb0 };
 
   ()
@@ -1862,7 +1861,7 @@ def std : Checked := prog (std9) {
   -- them by name from the seed while the fn checks above never sweep them (each
   -- σ-refinement rebuilds every Ω binding; the raw proof terms are not bound at
   -- all — bodies cite the `StdChainRaw` constants directly) ──
-  let Append = Dllbc.StdChainRaw.Append;
+  let Append = Dllbc.Std.Append;
   let NthL = Dllbc.StdChainRaw.NthL;
   let Set = Dllbc.StdChainRaw.Set;
   let SwapL = Dllbc.StdChainRaw.SwapL;

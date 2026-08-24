@@ -938,7 +938,7 @@ def bound_append_lie : Term := prog_parse {
       Cons (H2) (T2) Ih => λ (Hb : Le H H2). λ (Hp : Le H P). Hb } }
 def bound_append_ty : Term := prog_parse {
   Π (H : Nat) → Π (P : Nat) → Π (T : List Nat) → Π (B : List Nat) →
-    Bound H T → Le H P → Bound H (Dllbc.StdChainRaw.Append T (Cons P B)) }
+    Bound H T → Le H P → Bound H (Dllbc.Std.Append T (Cons P B)) }
 example : chk bound_append_lie bound_append_ty = false := by native_decide
 
 -- (4) Liveness of the `Ub` hypothesis at concrete values: pivot 0 under a left part
@@ -1132,7 +1132,7 @@ def qsM : Checked := prog (Dllbc.std) {
   -- return type is unmarked, because nothing lies about it: no twin attacks it, and
   -- inside the header `v` and `w` are the names the programmer wrote.
   fn AppendBack [fuel] (fuel : Nat, v : &mut List Nat, w : List Nat, Hf : Le (Len *v) fuel)
-      -> Id (List Nat) (*v) (Dllbc.StdChainRaw.Append (old *v) w)
+      -> Id (List Nat) (*v) (Dllbc.Std.Append (old *v) w)
       { match v {
           Nil => { *v := w; Refl },
           -- The congruence needs to name its right endpoint, `Append (old *tl) w`,
@@ -1144,7 +1144,7 @@ def qsM : Checked := prog (Dllbc.std) {
           Cons(hd, tl) => match fuel {
             Z => botElim Unit Hf,
             S(f2) => {
-              let y = Dllbc.StdChainRaw.Append (*tl) w;
+              let y = Dllbc.Std.Append (*tl) w;
               let h = AppendBack(f2, &m *tl, w, Hf);
               let H0 = *hd;
               IdCongrRaw (List Nat) (List Nat) (λ (A : List Nat). Cons H0 A) (*tl) y h
@@ -1183,14 +1183,14 @@ def qsM : Checked := prog (Dllbc.std) {
                   λ (A2 : List Nat). λ (B2 : List Nat).
                   λ (H1 : Π (N : Nat) → Id Nat (Count N A2) (Count N A)).
                   λ (H2 : Π (N : Nat) → Id Nat (Count N B2) (Count N B)).
-                  λ (E : List Nat). λ (Hap : Id (List Nat) E (Dllbc.StdChainRaw.Append A2 (Cons X0 B2))).
+                  λ (E : List Nat). λ (Hap : Id (List Nat) E (Dllbc.Std.Append A2 (Cons X0 B2))).
                     λ (N : Nat).
                       IdTransRaw Nat (Count N E) (Add (Count N A2) (Count N (Cons X0 B2)))
                                    (Count N (Cons X0 Rest0))
-                        (IdTransRaw Nat (Count N E) (Count N (Dllbc.StdChainRaw.Append A2 (Cons X0 B2)))
+                        (IdTransRaw Nat (Count N E) (Count N (Dllbc.Std.Append A2 (Cons X0 B2)))
                                       (Add (Count N A2) (Count N (Cons X0 B2)))
                            (IdCongrRaw (List Nat) Nat (λ (Z0 : List Nat). Count N Z0)
-                              E (Dllbc.StdChainRaw.Append A2 (Cons X0 B2)) Hap)
+                              E (Dllbc.Std.Append A2 (Cons X0 B2)) Hap)
                            (CountAppendRaw N A2 (Cons X0 B2)))
                         (IdTransRaw Nat (Add (Count N A2) (Count N (Cons X0 B2)))
                                       (Add (Count N A) (Count N (Cons X0 B)))
@@ -1248,9 +1248,9 @@ def qsM : Checked := prog (Dllbc.std) {
               let Hub2 = hub2;
               let Hlb2 = hlb2;
               let Fin = (λ (E : List Nat).
-                  λ (Hap : Id (List Nat) E (Dllbc.StdChainRaw.Append V1 (Cons X0 Hi1))).
-                    ListRwRaw (λ (Z0 : List Nat). Sorted Z0) (Dllbc.StdChainRaw.Append V1 (Cons X0 Hi1)) E
-                      (IdSymRaw (List Nat) E (Dllbc.StdChainRaw.Append V1 (Cons X0 Hi1)) Hap)
+                  λ (Hap : Id (List Nat) E (Dllbc.Std.Append V1 (Cons X0 Hi1))).
+                    ListRwRaw (λ (Z0 : List Nat). Sorted Z0) (Dllbc.Std.Append V1 (Cons X0 Hi1)) E
+                      (IdSymRaw (List Nat) E (Dllbc.Std.Append V1 (Cons X0 Hi1)) Hap)
                       (SortedAppendPivotRaw X0 V1 Hi1 Hs1 (@qsub Hub2) Hs2 (@qslb Hlb2)));
               let w = Cons(x, hi);
               -- The fuel that is exactly enough, staged BEFORE the borrow is
