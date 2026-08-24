@@ -873,23 +873,23 @@ def PVSet2T : Term := prog_parse {
   λ (I : Nat). λ (V : Nat). λ (P : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a).
     elim P return (λ (Pz : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a).
                      Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a) {
-      Pair (A) (H) => Pair ((%AVSetT) I V 2 A) H } }
+      Pair (A) (H) => Pair ((AVSetT) I V 2 A) H } }
 
 def PVSet3T : Term := prog_parse {
   λ (I : Nat). λ (V : Nat). λ (P : Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a).
     elim P return (λ (Pz : Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a).
                      Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a) {
-      Pair (A) (H) => Pair ((%AVSetT) I V 3 A) H } }
+      Pair (A) (H) => Pair ((AVSetT) I V 3 A) H } }
 
 def gmPin2at0 : Term := prog{
-  fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a ~> (%PVSet2T) 0 (*res) s)) -> &mut Nat {
+  fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a ~> (PVSet2T) 0 (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
       let e = &m (*a)[0];
       match e { Pair(kk, vv) => &m *vv } } } };
   () }
 
 def gmPin2at1 : Term := prog{
-  fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a ~> (%PVSet2T) 1 (*res) s)) -> &mut Nat {
+  fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a ~> (PVSet2T) 1 (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
       let e0 = &m (*a)[0];
       match e0 { Pair(k0, v0) => {
@@ -898,7 +898,7 @@ def gmPin2at1 : Term := prog{
   () }
 
 def gmPin3at2 : Term := prog{
-  fn G (self : &mut (s : Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a ~> (%PVSet3T) 2 (*res) s)) -> &mut Nat {
+  fn G (self : &mut (s : Σ0 (a : Array 3 (Σ (k : Nat). Nat)). AllK7 3 a ~> (PVSet3T) 2 (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
       let e0 = &m (*a)[0];
       match e0 { Pair(k0, v0) => {
@@ -918,7 +918,7 @@ example : progOk gmPin3at2 = true := by native_decide
     shared exit in the key slot, the pin puts it in the value slot, and the two
     sides are reported differing in exactly those positions. -/
 def gmPinKey2at1 : Term := prog_parse {
-  fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a ~> (%PVSet2T) 1 (*res) s)) -> &mut Nat {
+  fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a ~> (PVSet2T) 1 (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
       let e0 = &m (*a)[0];
       match e0 { Pair(k0, v0) => {
@@ -933,7 +933,7 @@ example : progRejects gmPinKey2at1 "pin is not met" = true := by native_decide
     `arrCat 1 1 σ₄ [Pair σ₈ σ₁₀]` against the update stuck at the σ₄ prefix.
     Opening the prefix (one match) is what the walk does anyway. -/
 def gmPin2at1blind : Term := prog_parse {
-  fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a ~> (%PVSet2T) 1 (*res) s)) -> &mut Nat {
+  fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a ~> (PVSet2T) 1 (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
       let e = &m (*a)[1];
       match e { Pair(kk, vv) => &m *vv } } } };
