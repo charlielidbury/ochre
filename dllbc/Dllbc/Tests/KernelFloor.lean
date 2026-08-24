@@ -775,6 +775,27 @@ example : Term.pretty (Term.sigmaT "n" (.const "Nat") (.const "Bool")) = "Σ(n :
   native_decide
 example : Term.pretty prog_parse { Σ (n : Nat). Nat } = "Σ(n : Nat). Nat" := by native_decide
 
+-- **A concrete `Nat` comes back out as the numeral it went in as.** `3` is
+-- surface sugar for the `Z`/`S` chain (`Term.nat` builds it), so a printer that
+-- spelled the chain handed the reader something nobody wrote and made them count
+-- it back. These four are the round-trip in the four positions it has to hold
+-- in: alone, at the bottom, under a constructor, and under a type former. `Z`
+-- is `0` for the same reason `S Z` is `1` — abbreviating one and not the other
+-- would tell a reader two stories about one type.
+example : Term.pretty prog_parse { Z } = "0" := by native_decide
+example : Term.pretty prog_parse { S (S Z) } = "2" := by native_decide
+example : Term.pretty prog_parse { Cons(3, Cons(2, Cons(1, Nil))) }
+    = "Cons 3 (Cons 2 (Cons 1 Nil))" := by native_decide
+example : Term.pretty prog_parse { Array 3 Nat } = "Array 3 Nat" := by native_decide
+
+-- …and the abbreviation stops exactly where the knowledge does. A chain over a
+-- free name never bottoms out in `Z`, so `natChainOf?` declines it and the unary
+-- spelling survives untouched. This is the assertion that matters: almost every
+-- string this printer produces is read inside a REJECTION, where "how much of
+-- this number does the checker actually have" is the question being asked, and a
+-- numeral over a σ would be an answer of "all of it".
+example : Term.pretty prog_parse { S (S n) } = "S (S n)" := by native_decide
+
 end Dllbc.Tests.S15Elab
 end
 
