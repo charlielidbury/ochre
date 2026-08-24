@@ -165,7 +165,7 @@ def polyCall : Term := prog{
   () }
 example : progOk polyCall = true := by native_decide
 example : progRuns polyCall = true := by native_decide
-example : runBinding polyCall "y" = some "S (S (S (S (S Z))))" := by native_decide
+example : runBinding polyCall "y" = some "5" := by native_decide
 
 /-- The call still discriminates on the payload: instantiating at `Nat` and
     passing a `Bool` is rejected, so the type parameter is doing work rather than
@@ -184,7 +184,7 @@ def polyTwice : Term := prog{
   () }
 example : progOk polyTwice = true := by native_decide
 example : progRuns polyTwice = true := by native_decide
-example : runBinding polyTwice "y" = some "S (S (S (S (S Z))))" := by native_decide
+example : runBinding polyTwice "y" = some "5" := by native_decide
 example : runBinding polyTwice "b" = some "True" := by native_decide
 
 /-- (e) A type parameter UNDER a formation — `List T` for a comptime `T` — which
@@ -195,7 +195,7 @@ def polyList : Term := prog{
   () }
 example : progOk polyList = true := by native_decide
 example : progRuns polyList = true := by native_decide
-example : runBinding polyList "l" = some "Cons (S (S (S (S (S Z))))) Nil" := by native_decide
+example : runBinding polyList "l" = some "Cons 5 Nil" := by native_decide
 
 /-- (f) A generic fill function whose return type is `Array n T` at a
     symbolic length and a comptime element type. Both of the `Array` arm's

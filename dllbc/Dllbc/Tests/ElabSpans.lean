@@ -27,7 +27,7 @@ set_option trace.Dllbc.check false
 
 /--
 error: dllbc:
-call: argument (S (S (S Z))) does not have its parameter type (Bool)
+call: argument (3) does not have its parameter type (Bool)
 -/
 #guard_msgs in
 #check (prog{
@@ -78,7 +78,7 @@ readR(*): borrow payload is already a hole (⊥) — nothing to take
 
 /--
 error: dllbc:
-seal: the sealed term (S Z) does not have its ascribed type (Bool)
+seal: the sealed term (1) does not have its ascribed type (Bool)
 -/
 #guard_msgs in
 #check (prog{
@@ -93,7 +93,7 @@ seal: the sealed term (S Z) does not have its ascribed type (Bool)
 
 /--
 error: dllbc:
-call: argument (S (S (S Z))) does not have its parameter type (Bool)
+call: argument (3) does not have its parameter type (Bool)
 -/
 #guard_msgs in
 #check (prog{
@@ -259,7 +259,7 @@ example :
 
 /--
 error: dllbc:
-seal: the sealed term (S (S (S (S (S Z))))) does not have its ascribed type (Unit)
+seal: the sealed term (5) does not have its ascribed type (Unit)
 -/
 #guard_msgs in
 #check (prog{

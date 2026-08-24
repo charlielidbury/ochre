@@ -1698,7 +1698,7 @@ def buildsToEnd : Term := prog{
 example : (match runProgram buildsToEnd with
    | .ok e => (e.lookup "r").map Val.pretty
    | .error _ => none)
-  = some "Cons Z (Cons Z (Cons Z (Cons (S Z) Nil)))" := by native_decide
+  = some "Cons 0 (Cons 0 (Cons 0 (Cons 1 Nil)))" := by native_decide
 
 /-! ## §B. Demand it as knowledge — the differential's own shape
 
@@ -1747,7 +1747,7 @@ example : progRuns overwriteTail = true := by native_decide
 -- …and the write really landed, which is what says the run above is not vacuous.
 example : (match runProgram overwriteTail with
    | .ok e => (e.lookup "r").map Val.pretty
-   | .error _ => none) = some "Cons Z Nil" := by native_decide
+   | .error _ => none) = some "Cons 0 Nil" := by native_decide
 
 /-! ## §D. Per-call freshness — two results, one of them mutated
 
@@ -1772,7 +1772,7 @@ example : progRuns twoBuildsBase = true := by native_decide
 example : (match runProgram twoBuildsBase with
    | .ok e => ((e.lookup "r1").map Val.pretty, (e.lookup "r2").map Val.pretty)
    | .error _ => (none, none))
-  = (some "Cons (S (S (S (S (S (S (S (S (S Z))))))))) Nil", some "Cons (S Z) Nil")
+  = (some "Cons 9 Nil", some "Cons 1 Nil")
   := by native_decide
 
 /-- Mutate a cell the recursion built — the tail of `Build(1)`, which under eager
@@ -1793,7 +1793,7 @@ example : progRuns twoBuildsTail = true := by native_decide
 example : (match runProgram twoBuildsTail with
    | .ok e => ((e.lookup "r1").map Val.pretty, (e.lookup "r2").map Val.pretty)
    | .error _ => (none, none))
-  = (some "Cons Z Nil", some "Cons Z (Cons (S Z) Nil)") := by native_decide
+  = (some "Cons 0 Nil", some "Cons 0 (Cons 1 Nil)") := by native_decide
 
 /-! ## §E. `Ih` is capital when it holds a function, and citing it twice is free
 
@@ -1822,7 +1822,7 @@ def citesIhTwice : Term := prog{
 example : progOk citesIhTwice = true := by native_decide
 example : (match runProgram citesIhTwice with
    | .ok e => (e.lookup "r").map Val.pretty
-   | .error _ => none) = some "S (S (S Z))" := by native_decide
+   | .error _ => none) = some "3" := by native_decide
 
 end Dllbc.Tests.S33Eager
 end

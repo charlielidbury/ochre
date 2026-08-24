@@ -478,17 +478,14 @@ example : progRejectsFrom Dllbc.std gmDecSymPinKey
     it never carved. -/
 example : (gmDecSymPinWrongSlot == gmDecSymPin.term) = false := by native_decide
 example : progRejectsFrom Dllbc.std gmDecSymPinWrongSlot
-  "does not convert with the declared pin (Pair (arrCat Z (S (natRec" = true := by native_decide
+  "does not convert with the declared pin (Pair (arrCat 0 (S (natRec" = true := by native_decide
 
 example : progOk gmDecConc2at1blind = true := by native_decide
 example : progOk gmDecConc2at1open = true := by native_decide
 
 example : progOkFrom Dllbc.std gmDecCaller.term = true := by native_decide
 example : runBindingFrom Dllbc.std gmDecCaller.term "p"
-  = some ("Pair [Pair (S (S (S (S (S (S (S Z))))))) (S Z), "
-       ++ "Pair (S (S (S (S (S (S (S Z))))))) (S (S (S (S (S (S (S (S (S Z))))))))), "
-       ++ "Pair (S (S (S (S (S (S (S Z))))))) (S (S (S Z)))] "
-       ++ "(Pair Refl (Pair Refl (Pair Refl unit)))")
+  = some "Pair [Pair 7 1, Pair 7 9, Pair 7 3] (Pair Refl (Pair Refl (Pair Refl unit)))"
   := by native_decide
 
 /-! ## §4 The counterfactual, and what the projections cost

@@ -98,7 +98,7 @@ def escPinned : Term := prog_parse {
   () }
 
 example : progRejects escPinned
-  "(Pair σ₆ (Pair σ₄ σ₅)) does not have its owed type (Σ(§0 : Nat). Σ(§1 : Unit). ⇝(Id §0 (S (S (S (S (S (S (S Z)))))))))"
+  "(Pair σ₆ (Pair σ₄ σ₅)) does not have its owed type (Σ(§0 : Nat). Σ(§1 : Unit). ⇝(Id §0 7))"
   = true := by native_decide
 
 /-- Escapes onto a cell a later runtime binder's type needs — the dependence is
@@ -161,7 +161,7 @@ def escKeyV : Term := prog{
   () }
 
 example : progRejects escValV
-  "audit: self's payload (Pair σ₂ (Pair Arr⟨(S Z) ▷ [Pair σ₁₀ σ₁₂], (S Z) ▷ σ₈⟩ σ₅)) does not have its owed type"
+  "audit: self's payload (Pair σ₂ (Pair Arr⟨1 ▷ [Pair σ₁₀ σ₁₂], 1 ▷ σ₈⟩ σ₅)) does not have its owed type"
   = true := by native_decide
 example : progOk escKeyV = true := by native_decide
 
@@ -191,7 +191,7 @@ def escKeyExploit : Term := prog_parse {
 -- (1) The machine runs it: the key ends up 1 and the pack's stored `Refl` now
 --     sits at `Id Nat 1 7`. Execution does not consult the checker.
 example : runBinding escKeyExploit "p"
-  = some "Pair Z (Pair [Pair (S Z) (S (S (S (S (S Z)))))] (Pair Refl unit))"
+  = some "Pair 0 (Pair [Pair 1 5] (Pair Refl unit))"
   := by native_decide
 
 -- (2) The checker refuses it: the key leaf reads `σ9`, filled at the escaping
@@ -233,10 +233,10 @@ def wrKey1 : Term := prog_parse {
 
 example : progOk wrVal1 = true := by native_decide
 
--- The key leaf reads `(S Z)`, the value actually written, unlike the escaping
+-- The key leaf reads `1`, the value actually written, unlike the escaping
 -- `escKeyExploit`'s `σ9` for the same write.
 example : progRejects wrKey1
-  "audit: self's payload (Pair σ₂ (Pair [Pair (S Z) σ₈] σ₅)) does not have its owed type"
+  "audit: self's payload (Pair σ₂ (Pair [Pair 1 σ₈] σ₅)) does not have its owed type"
   = true := by native_decide
 
 /-! ## The caller side
@@ -267,7 +267,7 @@ example : progOk g5Caller = true := by native_decide
 -- The key survives the caller's write, so the pack the machine hands back really
 -- does inhabit the type the group end re-minted it at.
 example : runBinding g5Caller "p"
-  = some "Pair Z (Pair [Pair (S (S (S (S (S (S (S Z))))))) (S Z)] (Pair Refl unit))"
+  = some "Pair 0 (Pair [Pair 7 1] (Pair Refl unit))"
   := by native_decide
 example : chkL prog_parse { Pair(Z, Pair(Arr(Pair(7, 1)), Pair(Refl, unit))) }
   prog_parse { Σ (n : Nat). Σ0 (a : Array 1 (Σ (k : Nat). Nat)). AllK7 1 a } = true := by
@@ -708,7 +708,7 @@ def gmValLast : Term := prog_parse {
   () }
 
 example : progRejects gmValMid
-  "audit: self's payload (Pair σ₂ (Pair Arr⟨(S Z) ▷ σ₆, (S Z) ▷ [Pair σ₁₀ σ₁₂], (S Z) ▷ σ₈⟩ σ₅)) does not have its owed type"
+  "audit: self's payload (Pair σ₂ (Pair Arr⟨1 ▷ σ₆, 1 ▷ [Pair σ₁₀ σ₁₂], 1 ▷ σ₈⟩ σ₅)) does not have its owed type"
   = true := by native_decide
 example : progOk gmValLast = false := by native_decide
 
@@ -734,7 +734,7 @@ def gmValMinCtl : Term := prog{
   () }
 
 example : progRejects gmValMin
-  "audit: self's payload (Pair Arr⟨(S Z) ▷ σ₄, (S Z) ▷ [Pair σ₈ σ₁₀]⟩ σ₃) does not have its owed type"
+  "audit: self's payload (Pair Arr⟨1 ▷ σ₄, 1 ▷ [Pair σ₈ σ₁₀]⟩ σ₃) does not have its owed type"
   = true := by native_decide
 example : progOk gmValMinCtl = true := by native_decide
 

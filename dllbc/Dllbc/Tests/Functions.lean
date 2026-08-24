@@ -570,7 +570,7 @@ def slotOf (t : Term) (name : String) : Option String :=
 
 -- The list really is zeroed, in place, through the borrow — and the recursion
 -- really did happen, since a body that never recursed would leave the tail alone.
-example : slotOf b1 "y" = some "Cons Z (Cons Z Nil)" := by native_decide
+example : slotOf b1 "y" = some "Cons 0 (Cons 0 Nil)" := by native_decide
 
 -- …and the recursor itself sits in an ordinary runtime slot as a VALUE: a
 -- closed function value. `@motive` is the erased motive slot (a
@@ -590,7 +590,7 @@ def b2 : Term := prog{
   f(9, b);
   let y = x;
   () }
-example : slotOf b2 "y" = some "Cons Z (Cons Z Nil)" := by native_decide
+example : slotOf b2 "y" = some "Cons 0 (Cons 0 Nil)" := by native_decide
 
 -- B3. `listRec`, with a motive that is a function type — the shape a runtime
 -- recursor's motive always has, since the trailing binders are what carry
@@ -611,7 +611,7 @@ def b3 : Term := prog{
 example : progOk b3 = true := by native_decide
 -- One increment per element: the arm ran twice, through the same borrow, handed
 -- down the recursion and handed back.
-example : slotOf b3 "r" = some "S (S Z)" := by native_decide
+example : slotOf b3 "r" = some "2" := by native_decide
 
 /-! ### B4. A recursor stuck on a symbolic scrutinee is a VALUE, but applying
     one this way is refused
@@ -692,7 +692,7 @@ def b1short : Term := prog{
   let y = x;
   () }
 -- The mutant is a real program and a different one: it stops after the head.
-example : slotOf b1short "y" = some "Cons Z (Cons (S (S Z)) Nil)" := by native_decide
+example : slotOf b1short "y" = some "Cons 0 (Cons 2 Nil)" := by native_decide
 
 example :
   (match symEnvs b1, runExec b1short with
@@ -830,7 +830,7 @@ def e4 : Term := prog{
   let y = x;
   () }
 example : progOk e4 = true := by native_decide
-example : slotOf e4 "y" = some "Cons (S Z) Nil" := by native_decide
+example : slotOf e4 "y" = some "Cons 1 Nil" := by native_decide
 
 /-! ### E5. The seal-vs-declaration identity, extended to borrow-moded seals
 
@@ -931,7 +931,7 @@ example : diffC f1 = true := by native_decide
 example :
   (match Dllbc.Tests.S9Diff.runExec f1 with
    | .ok e => (e.lookup "y").map Val.pretty
-   | .error _ => none) = some "Cons Z (Cons Z Nil)" := by native_decide
+   | .error _ => none) = some "Cons 0 (Cons 0 Nil)" := by native_decide
 
 /-! ### F2. The motive is derived, and a written one that disagrees is refused
 
@@ -1259,7 +1259,7 @@ example : progOk j1 = true := by native_decide
 example :
   (match Dllbc.Tests.S9Diff.runExec j1 with
    | .ok e => (e.lookup "y").map Val.pretty
-   | .error _ => none) = some "Cons (S Z) Nil" := by native_decide
+   | .error _ => none) = some "Cons 1 Nil" := by native_decide
 
 -- …and the two machines agree on the whole final Ω.
 example : diffC j1 = true := by native_decide
@@ -1382,7 +1382,7 @@ def m0 : Term := prog{
 example : progOk m0 = true := by native_decide
 example : (match Dllbc.Tests.S9Diff.runExec m0 with
    | .ok e => (e.lookup "x").map Val.pretty
-   | .error _ => none) = some "Cons Z (Cons Z Nil)" := by native_decide
+   | .error _ => none) = some "Cons 0 (Cons 0 Nil)" := by native_decide
 
 end Dllbc.Tests.S26Rec
 end
@@ -1788,7 +1788,7 @@ example : Tests.S9Diff.progDiff juxRec = true := by native_decide
 -- It really recursed: the executing machine zeroes both elements.
 example : (match runProgram juxRec with
            | .ok env => (env.lookup "y").map Val.pretty
-           | .error _ => none) = some "Cons Z (Cons Z Nil)" := by native_decide
+           | .error _ => none) = some "Cons 0 (Cons 0 Nil)" := by native_decide
 
 -- G3. A transparent runtime λ, called by juxtaposition.
 def juxLam : Term := prog{ let G = λ(a : Nat) { S(a) }; let r = G 1; r }

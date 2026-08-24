@@ -31,11 +31,11 @@ set_option trace.Dllbc.check false
     point of being able to put a probe anywhere. -/
 
 /--
-info: b ↦ borrowₘ ℓ₀ (Cons (S Z) Nil)
+info: b ↦ borrowₘ ℓ₀ (Cons 1 Nil)
 ---
 info: b ↦ borrowₘ ℓ₀ ⊥
 ---
-info: b ↦ borrowₘ ℓ₀ (Cons (S (S Z)) Nil)
+info: b ↦ borrowₘ ℓ₀ (Cons 2 Nil)
 -/
 #guard_msgs in
 example : Term := prog{
@@ -97,7 +97,7 @@ example : Term := prog{
     what makes the rule total rather than nearly so. -/
 
 /--
-info: n ↦ S Z
+info: n ↦ 1
 -/
 #guard_msgs in
 example : Term := prog{
@@ -122,7 +122,7 @@ example : Term := prog{
     forward. -/
 
 /--
-info: hd ↦ S Z
+info: hd ↦ 1
 ---
 info: tl ↦ Nil
 ---
