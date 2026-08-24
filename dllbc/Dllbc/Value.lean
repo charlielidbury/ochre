@@ -294,12 +294,16 @@ def cons (h t : Val) : Val := .ctor "Cons" [h, t]
 
 /-! ## Pretty-printing (doc-trace shaped) -/
 
-/-! Render a value like the doc's trace comments: `loanₘ ℓ0`,
-    `borrowₘ ℓ0 (S (S (S Z)))`, `Cons 3 Nil`, `⊥`. `prec` guards parens.
+/-! Render a value like the doc's trace comments: `loanₘ ℓ0`, `borrowₘ ℓ0 3`,
+    `Cons 3 Nil`, `⊥`. `prec` guards parens.
 
     The knowledge half is `Term.prettyPrec`, which reproduces what these cases
-    used to print for the pure formers — including `Arr` as `[…]` and a σ as
-    `σ0` — so a rejection quoting a value reads the way it always did. -/
+    used to print for the pure formers — including `Arr` as `[…]`, a σ as `σ0`,
+    and a concrete `Z`/`S` chain as a decimal numeral, which is what makes the
+    `3`s above the real rendering rather than an aspiration. There is no numeral
+    case HERE and there does not need to be: `ctor` collapses an all-knowledge
+    node to a leaf, so every fully concrete `Nat` is a `.know` and never reaches
+    these rows. -/
 mutual
   def prettyPrec (prec : Nat) : Val → String
     | .know t => Term.prettyPrec prec t

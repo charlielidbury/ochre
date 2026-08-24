@@ -1294,14 +1294,30 @@ end
     case for case — including the two renderings that are about the ARRAY layer
     (`Arr` as `[…]`, `§segs` as `Arr⟨…⟩`) and the σ sigil, which is why a `pvar`
     asks `symOfName?` before falling back to `#name`. Rejections quote values, and
-    a suite that asserts on distinctive substrings is what holds this to it. -/
+    a suite that asserts on distinctive substrings is what holds this to it.
 
-/-- The literal index under an `@res` marker (a `Z`/`S` chain). Local to the
-    renderer's pre-pass; `Term.natOf?` lives below the printer and cannot be
-    reached from here. -/
-private def resIdxOf? : Term → Option Nat
+    The ONE rendering that has no `Val.prettyPrec` twin is the `Nat` numeral, and
+    that asymmetry is a theorem rather than an omission: `Val.ctor` collapses a
+    node whose children are all knowledge, so a fully concrete `Z`/`S` chain is
+    always a `.know` leaf and always arrives here. A surviving `Val.node "S"` is
+    one whose payload holds state, which is exactly the chain a numeral must not
+    abbreviate. -/
+
+/-- Read a `Z`/`S` chain as a literal `Nat`, when it bottoms out in `Z`.
+
+    The renderer's only arithmetic, serving both of its numeral readings: the
+    index under an `@res` marker (the pre-pass below) and a concrete `Nat` in the
+    printed term itself, which renders as a decimal numeral. Those are one
+    question, so they are one function. Local to the renderer because
+    `Term.natOf?` — the same read, for the kernel — lives below the printer and
+    cannot be reached from here.
+
+    A chain that does NOT bottom out in `Z` answers `none`, which is what keeps
+    `S (S σ₃)` printing as itself: a numeral is only ever an abbreviation for
+    something fully known. -/
+private def natChainOf? : Term → Option Nat
   | .ctorApp "Z" [] => some 0
-  | .ctorApp "S" [t] => (resIdxOf? t).map (· + 1)
+  | .ctorApp "S" [t] => (natChainOf? t).map (· + 1)
   | _ => none
 
 /-- **`@res k` prints the way the programmer writes it** (M35 addendum). The
@@ -1315,7 +1331,7 @@ private def resIdxOf? : Term → Option Nat
     `.const` carrying the surface spelling, and it runs inside `Term.pretty`, so
     no stored term is touched. -/
 partial def Term.resIndices : Term → List Nat
-  | .app (.const "@res") idx => (resIdxOf? idx).toList
+  | .app (.const "@res") idx => (natChainOf? idx).toList
   | .app f a => Term.resIndices f ++ Term.resIndices a
   | .deref t => Term.resIndices t
   | .ctorApp _ args => args.flatMap Term.resIndices
@@ -1327,7 +1343,7 @@ partial def Term.resIndices : Term → List Nat
 
 partial def Term.resSugarGo (paired : Bool) : Term → Term
   | .app (.const "@res") idx =>
-    (match resIdxOf? idx with
+    (match natChainOf? idx with
      | some k =>
        if !paired then .const "*res"
        else if k == 0 then .const "*(fst res)"
@@ -1361,6 +1377,23 @@ mutual
     | .ctorApp "Arr" vs => "[" ++ Term.prettyCommasIn pure vs ++ "]"
     | .ctorApp "§segs" segs => "Arr⟨" ++ Term.prettyCommasIn pure segs ++ "⟩"
     | .ctorApp "§seg" [c, b] => Term.prettyPrecIn pure 1 c ++ " ▷ " ++ Term.prettyPrecIn pure 0 b
+    -- **A concrete `Nat` prints as a numeral.** `Term.nat` is sugar in the
+    -- surface (doc §1.1) and the kernel form is the `Z`/`S` chain; a diagnostic
+    -- that spells `Array (S (S (S Z))) Nat` is making the reader count. The
+    -- abbreviation is only licensed when the chain is fully known — `natChainOf?`
+    -- answers `none` on a chain over a σ, and the generic rows below then print
+    -- `S (S σ₃)` exactly as they always did. `Z` itself is `0` for the same
+    -- reason `S Z` is `1`: a printer that abbreviated one and not the other
+    -- would be telling the reader two different stories about the same type.
+    | .ctorApp "Z" [] => "0"
+    | .ctorApp "S" [n] =>
+      match natChainOf? n with
+      | some k => toString (k + 1)
+      | none =>
+        -- Not a numeral, so this is the generic unary row, inlined because the
+        -- match above has already consumed the pattern it would have matched.
+        let s := "S " ++ Term.prettyPrecIn pure 1 n
+        if prec > 0 then s!"({s})" else s
     | .ctorApp name [] => name
     | .ctorApp name args =>
       let s := name ++ Term.prettyArgsIn pure args
