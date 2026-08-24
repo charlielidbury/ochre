@@ -36,7 +36,7 @@ namespace Dllbc
       (`refineSym`): binding them first cost the chain 98 s against 79 s. -/
 namespace StdChainRaw
 open Dllbc
-abbrev Append : Term := Std.appendFnT
+abbrev Append : Term := Std.Append
 def LeReflRaw : Term := prog_parse {
   λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
     Z => unit,

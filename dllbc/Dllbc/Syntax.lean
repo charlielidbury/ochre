@@ -1795,7 +1795,7 @@ def Term.stripCmp : Term → Term
     matching `⇝` on its domain, so the two halves of a comptime binder must be
     written together. R3b built `clam`/`cpi` to make that unforgettable in the one
     place there was no elaborator to enforce it: the kernel's own library terms
-    (`Std.lenFn`, `Pure.kLeFn`, …) were hand-written `Term`s with no macro between
+    (`Std.Len`, `Pure.kLeFn`, …) were hand-written `Term`s with no macro between
     them and the datatype.
 
     **There are none left.** With the surface below the kernel, `Pure` and `Std`

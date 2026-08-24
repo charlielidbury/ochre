@@ -711,7 +711,7 @@ example : progOk useTrans = true := by native_decide
 -- well-formed); the audit rejects it — the motive is written on the `return`
 -- clause and thus visible, so the failure is comprehensible. The surfaced error
 -- is: "audit: result (…) does not have return type (…)".
-def LeFn : Term := Std.LeFnT
+def LeFn : Term := Std.Le
 def badReflClosed : Term := prog_parse {
   λ (N : Nat). elim N return (λ (M : Nat). LeFn Z M) { Z => unit, S (K) Ih => Ih } }
 -- A deliberately-lying function: the return type claims `Le n n` while the

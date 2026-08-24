@@ -2323,7 +2323,7 @@ example : slotBinders qsFlagshipT = 22 := by native_decide
 
 -- Two kernel library terms, hand-written rather than elaborated: `len` and the
 -- `Le` predicate the carve rule's premises are stated against.
-example : lowerComptime Std.lenFnT = 0 := by native_decide
+example : lowerComptime Std.Len = 0 := by native_decide
 example : lowerComptime Pure.kLeFn = 0 := by native_decide
 
 /-! **`unmarkedCaps` on the flagship and the hand-written library, both 0.**
@@ -2341,7 +2341,7 @@ example : lowerComptime Pure.kLeFn = 0 := by native_decide
     was worth removing rather than documenting. -/
 example : unmarkedCaps qsFlagshipT = 0 := by native_decide
 example : unmarkedCaps Dllbc.Tests.S24Arrays.sort2.term = 0 := by native_decide
-example : unmarkedCaps Std.lenFnT = 0 := by native_decide
+example : unmarkedCaps Std.Len = 0 := by native_decide
 example : unmarkedCaps Pure.kLeFn = 0 := by native_decide
 example : unmarkedCaps Pure.kAddFn = 0 := by native_decide
 
@@ -2361,7 +2361,7 @@ example : unmarkedCaps Pure.kAddFn = 0 := by native_decide
     (capital, slotted) is the telescope rule's own population, which is content,
     not debt. -/
 example : keyDisagree qsFlagshipT = 0 := by native_decide
-example : keyDisagree Std.lenFnT = 0 := by native_decide
+example : keyDisagree Std.Len = 0 := by native_decide
 example : keyDisagree Pure.kLeFn = 0 := by native_decide
 
 -- The telescope rule's population: each `Hf`/`Hfuel` is a proof parameter of a

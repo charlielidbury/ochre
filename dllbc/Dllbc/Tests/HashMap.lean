@@ -376,7 +376,7 @@ def IsSomeB : Term := prog_parse {
 def HitL : Term := prog_parse {
   λ (Q : Nat). λ (L : List (Σ (k : Nat). Nat)). IsSomeB (FindL Q L) }
 
-/-- Bucket length (`Std.lenFn` is monomorphic at `List Nat`). -/
+/-- Bucket length (`Std.Len` is monomorphic at `List Nat`). -/
 def LenE : Term := prog_parse {
   λ (L : List (Σ (k : Nat). Nat)).
     elim L return (λ (Lm : List (Σ (k : Nat). Nat)). Nat) {
