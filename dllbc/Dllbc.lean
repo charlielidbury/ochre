@@ -6,7 +6,6 @@ import Dllbc.Boundary
 import Dllbc.Std
 import Dllbc.Uni
 import Dllbc.ProgMacro
-import Dllbc.StdLemmas
 import Dllbc.Program
 import Dllbc.ElabCheck
 import Dllbc.Tests.KernelFloor

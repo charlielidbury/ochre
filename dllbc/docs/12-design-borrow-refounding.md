@@ -688,7 +688,7 @@ let y = x;          -- the group ends here
 
 This is "whatever the user writes through a get_mut borrow is still there next time they get", and it is the precision the planned hashmap flagship is missing. Today the checker gives `y` a fresh σ and the executing machine gives it the right list — the pair `Boundaries.lean:373-395` already pins, from the other side.
 
-The callee-side obligation is §2.3's hole-filling, and the `S(k)` branch is the one that exercises the recursive resolution through the group's own pin. That branch is the viability probe named in §10, and it has been **hand-checked against the corpus's real `StdLemmas.Set`**, which recurses on the index first:
+The callee-side obligation is §2.3's hole-filling, and the `S(k)` branch is the one that exercises the recursive resolution through the group's own pin. That branch is the viability probe named in §10, and it has been **hand-checked against the corpus's real `StdChainRaw.Set`**, which recurses on the index first:
 
 ```
 Set Z     v (Cons h t) ⇝ Cons v t              -- the Z branch's pin, definitionally

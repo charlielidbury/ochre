@@ -203,11 +203,11 @@ def timeN (label : String) (n : Nat) (f : Unit → String) : IO Unit := do
     a seal-based tier CANNOT touch; the second is the mass it could. -/
 
 def lemmaEntries : List (String × Term) :=
-  [ ("LeRefl",      StdLemmas.LeReflRaw),      ("LeTrans",     StdLemmas.LeTransRaw),
-    ("LeUpR",       StdLemmas.LeUpRRaw),       ("IdTrans",     StdLemmas.IdTransRaw),
-    ("IdCongr",     StdLemmas.IdCongrRaw),     ("LebTrueLe",   StdLemmas.LebTrueLeRaw),
-    ("LebFalseGt",  StdLemmas.LebFalseGtRaw),  ("LePredL",     StdLemmas.LePredLRaw),
-    ("CountConsL",  StdLemmas.CountConsLRaw),  ("CountConsR",  StdLemmas.CountConsRRaw) ]
+  [ ("LeRefl",      StdChainRaw.LeReflRaw),      ("LeTrans",     StdChainRaw.LeTransRaw),
+    ("LeUpR",       StdChainRaw.LeUpRRaw),       ("IdTrans",     StdChainRaw.IdTransRaw),
+    ("IdCongr",     StdChainRaw.IdCongrRaw),     ("LebTrueLe",   StdChainRaw.LebTrueLeRaw),
+    ("LebFalseGt",  StdChainRaw.LebFalseGtRaw),  ("LePredL",     StdChainRaw.LePredLRaw),
+    ("CountConsL",  StdChainRaw.CountConsLRaw),  ("CountConsR",  StdChainRaw.CountConsRRaw) ]
 
 /-- `timeN`, but the subject depends on the iteration index, so a pure call
     cannot be hoisted out of the loop as a loop invariant. -/

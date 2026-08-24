@@ -292,15 +292,18 @@ Read: by induction on `N`, prove `Le N N`; at `Z` the goal computes to a trivial
 (`unit` inhabits it); at `S K` the induction hypothesis `Ih` is exactly the goal. Every
 binder is capital because everything in sight is knowledge. The motive after `return`
 is written by you, always — nothing is inferred. Nested `elim`s express nested
-induction (see `LeTrans` in `StdLemmas.lean` for the canonical three-level example).
+induction (see `LeTrans` in `StdChain.lean` for the canonical three-level example).
 
 The equation toolkit is `Refl`, `IdSym`, `IdTrans`, and `IdCongr` (map a function
 across an equation). Most proofs about this vocabulary are chains of those four plus
 library lemmas, with computation silently closing the gaps.
 
-**The standard library is `Dllbc/StdLemmas.lean`.** Before proving anything about `Le`,
+**The standard library is `Dllbc/StdChain.lean`.** Before proving anything about `Le`,
 `Count`, `Append`, `Sorted`, or their `Array` counterparts, look there — the lemma you
-want likely exists, and every lemma's statement is written right next to its proof.
+want likely exists, and every lemma's statement is written right next to its proof. It
+is a chain of `prog` blocks ending in `Dllbc.std`, the one consumer-facing name, whose
+state holds the whole library; each lemma is a `fn` link, checked against its stated
+type at its own declaration.
 Library lemmas are cited in bodies by name, applied like any function.
 
 One honest caveat, the single place where a proof's case follows its *use*: a proof you
@@ -574,5 +577,5 @@ its callers without writing it twice.
 for List programs (every function in chapters 7–9 lives there), `Tests/Arrays.lean` for
 the carve, `Tests/ArraySort.lean` for the full array quicksort, `Tests/Functions.lean`
 for chapter 2's ground truth, `Tests/KernelFloor.lean` for the mode law's one-character
-test pairs; and `StdLemmas.lean` for every lemma cited anywhere. All of them are
+test pairs; and `StdChain.lean` for every lemma cited anywhere. All of them are
 written to be read.

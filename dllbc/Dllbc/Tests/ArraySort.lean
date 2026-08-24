@@ -65,7 +65,7 @@ spliced constant checks ("readC (⇝): a call is not in the comptime fragment",
 isolated by switching only the resolution mode, 2026-08-24). That is a
 module-states residual, not a marker one; until it lands, the flagship is a
 LINK, and links qualify. The old file's selective 14-line
-`open Dllbc.StdLemmas (…)` list is gone either way.
+`open` of the retired pure library is gone either way.
 -/
 
 section

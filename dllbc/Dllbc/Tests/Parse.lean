@@ -1,6 +1,6 @@
 import Dllbc.Program
 import Dllbc.ElabCheck
-import Dllbc.StdLemmas
+import Dllbc.StdChain
 
 /-!
 # `prog_parse { … }` fragments — free names, bound where they land (docs/22)
@@ -17,7 +17,7 @@ the inline program, byte for byte.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (LeReflRaw)
+open Dllbc.StdChainRaw (LeReflRaw)
 
 namespace Dllbc.Tests.Parse
 

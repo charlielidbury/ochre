@@ -52,7 +52,7 @@ The plan was written when `prog{ }` meant "a program" and `pure{ }` meant "a
 term". M29 γ merged them: that brace now delimits an ARBITRARY TERM, and — in its
 own header's words — "a term's fragment is not a property of where it was
 WRITTEN, it is a property of which arrow CONSUMES it". Most of the ~1700 `prog{ }`
-sites in this corpus are types and proof terms (`StdLemmas` alone is 450 of them),
+sites in this corpus are types and proof terms (`StdChain` alone is 135 of them),
 and `checkProgram` has no business ⇒-walking a `Π`. So the brace cannot say
 "check me". The word `check` says it, and it is the only thing that does.
 
@@ -122,14 +122,14 @@ figure was 26, and it was an undercount: it counted DEFINITIONS that contain a
 block rather than blocks, which diverges most in `Machine`, where a single
 `hasTypeT` line can nest two (`ty{ Array %(ty{ … }) %t }`).
 
-`StdLemmas` imports this file, so the checking `prog{ }` reaches most of the
-corpus transitively (its own 450 blocks are pure and check nothing).
+`StdChain` imports this file, so the checking `prog{ }` reaches most of the
+corpus transitively (its own 135 blocks are pure and check nothing).
 
 **FORGETTING THE IMPORT IS A PARSE ERROR, NOT A SILENT SKIP — and the reason is
 that the SYNTAX moved, not just the elaborator.** An earlier draft of this
 paragraph claimed the opposite: that a module missing the import "would get the
 LOW-level brace silently", the forgot-the-import-silently-unchecked failure mode,
-and that routing through `StdLemmas` was what made forgetting it impossible. That
+and that routing through the pure library was what made forgetting it impossible. That
 is wrong, and the build said so. `prog{` is declared HERE and nowhere else —
 `ProgMacro` declares `ty{` — so a module that cannot see this file has no `prog{`
 token at all and reports `unknown identifier 'prog'`. There is no low-level brace
@@ -140,7 +140,7 @@ mode the transitive-import argument was constructed to avoid cannot occur,
 because the two braces are different tokens rather than the same token with two
 meanings. **The transitive-import argument was also empirically false**: four of
 the 22 test modules (`Diff`, `Boundaries`, `Traces`, `Ledger`) never imported
-`StdLemmas` at all. They now import this file directly, and each is self-
+the pure library at all. They now import this file directly, and each is self-
 sufficient rather than inheriting from a neighbour — because inheriting is the
 fragility, not the fix.
 

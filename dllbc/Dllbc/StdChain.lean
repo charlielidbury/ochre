@@ -1088,6 +1088,13 @@ def IfDecRaw : Term := prog_parse {
         (λ (F2 : Id Bool True True → T). λ (G2 : Id Bool True False → T). F2 Refl)
         (λ (F2 : Id Bool False True → T). λ (G2 : Id Bool False False → T). G2 Refl)
         B F G }
+/-- **The load-ledger arithmetic, Div-free.** The hashmap's 4/5 load factor is
+    carried without floor division: `n ≤ ⌊4·cap/5⌋` is, for integers, exactly
+    `5·n ≤ 4·cap`, and "n exceeds the threshold" is exactly `5·n > 4·cap` — so the
+    packed ledger stores `Mul 4 cap` and compares against `Mul 5 n`, and no
+    floor-division lemma library is needed. `LedgerGrowRaw` is the one fact resize
+    owes: a map at the threshold that takes one more entry fits under the DOUBLED
+    capacity's threshold. -/
 def LedgerGrowRaw : Term := prog_parse {
   λ (C : Nat). λ (N : Nat). λ (H1 : Le (S Z) C). λ (Hle : Le (Mul 5 N) (Mul 4 C)).
     IfDecRaw (Leb 2 C) (Le (Mul 5 (S N)) (Mul 4 (Mul 2 C)))

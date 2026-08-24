@@ -437,14 +437,14 @@ including how a symbolic array becomes a run of named elements once its elements
 is what turns "the test said yes" into `Le`. This is M23's branch-equation feature and it
 is not optional — a body that recomputes `leb x p` after the split learns nothing
 (§3.2, and M23-iv's wall). `leb_true_le` / `leb_false_gt` / `le_pred_l` are in
-`StdLemmas`.
+`StdChain`.
 
 **Recursion.** Fuel-decreasing, `[fuel]`. See §4 below for why nothing else is available
 and why nothing else is needed.
 
 ## 3. What is on the shelf
 
-**The complete array library** (`Dllbc/StdLemmas.lean`, M24 section at the end), every
+**The complete array library** (`Dllbc/StdChain.lean`, M24 section at the end), every
 member its list counterpart with `listRec ↦ arrRec` and `Cons ↦ acons`:
 
 * predicates — `countA`, `BoundA`, `SortedA`, `UbA`, `LbA`, `asingle`, `anil`;
@@ -470,7 +470,7 @@ passing both halves to calls at their program-named lengths. Copy the shape.
 **The bounds vocabulary is M13/M14's, unchanged.** `a[i | h]` wants `h : Le (S i) n` —
 character for character the cursor bound the swap sites have threaded since M13 (R7).
 `le_add`, `le_add_succ`, `le_add_l`, `le_refl`, `le_trans`, `le_pred_l`, `le_rw_l/r` are
-all in `StdLemmas` from M22 and apply verbatim.
+all in `StdChain` from M22 and apply verbatim.
 
 **The worked miniature.** `sort2` — an in-place two-element sort carrying M23's quicksort
 signature at width two, `Σ (hs : SortedA 2 (*a)) → (Π x. Id Nat (countA x 2 (*a)) (countA

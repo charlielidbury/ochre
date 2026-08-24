@@ -441,7 +441,7 @@ example : chkL prog_parse { Refl } prog_parse { Id Nat
     `HMInv`'s clauses: `Le 1 cap`; every entry in slot `i` has
     `Mod key cap = i`; `n` equals the total entry count; `load` is the 4/5
     threshold ledger for `cap`, carried Div-free as `load = 4·cap` with
-    occupancy `5·n ≤ load` (see the StdLemmas ledger note).
+    occupancy `5·n ≤ load` (see `LedgerGrowRaw`'s ledger note in StdChain).
 
     Plus one clause the op specs force even though it isn't one of the above:
     keys within a bucket are pairwise distinct (`NodupB`). The reference
@@ -3218,11 +3218,24 @@ example : chkL MkNdCons MkNdConsTy = true := by native_decide
 
 /-! ## (xv) The fixed-capacity map chain, full specs
 
-    ArraySort's `arrUnder` shape: one Lean function building the declaration
-    chain, the spec return types spliced so the lying twins share the bodies
-    verbatim. A spec fragment cites the telescope's parameters BARE — `key`,
-    `val`, `*self`, `old *self` — and the splice binds them at the header
-    (docs/22); there is no positional vocabulary to keep in step. -/
+    TWO chained modules, seeded from the standard library and checked AT
+    ELABORATION: `hmM0 := prog (Dllbc.std) { … }` holds the six bucket-level and
+    allocation links (`InsertInList`, `RemoveL`, `SlotOfE`, `NewHM`, `SlotUpd`,
+    `SlotRem`), and `hmM := prog (hmM0) { … }` holds the six map-level ones
+    (`SlotPush`, `MoveBktR`, `MoveOne`, `MoveSlots`, `InsertHM`, `RemoveHM`).
+    `hmM` is the consumer-facing seed. The cut is forced rather than stylistic:
+    one module this size dies in the code generator, which is the eleven-links
+    law StdChain hit first (docs/21 §11).
+
+    Return types are written INLINE in their headers, where the parameters have
+    their own names — no Lean function taking spliced return types, no telescope
+    vocabulary to keep in step. The claim sites are NAMED with `@marker`s: eight
+    carry the spec conjuncts (`nfind`/`nsize` for New, `ifind`/`iframe`/`isize`
+    for Insert, `rfound`/`rpt`/`rsize` for Remove) and three sit inside bodies
+    (`ivv`, `igrow`, `inogrow`). Every lying twin below is MINTED — one marked
+    claim edited on the persisted `Checked.term`, checked from the same seed —
+    so a twin is the honest program but for the one site, as a value-level fact
+    rather than by a reader trusting that two spellings share a body. -/
 
 
 /-- A slot's invariant pair, by application (the constructor-argument fence). -/

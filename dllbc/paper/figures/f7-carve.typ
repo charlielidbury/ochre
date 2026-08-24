@@ -172,5 +172,5 @@ namespace). Every implementing function below was re-verified to exist at
   ([premise (2)], [`carveAt` obligation formation; `hasType`], [`Arrays` (`S24Arrays`)]),
   ([#smallcaps[K-Cite] / #smallcaps[K-Cite-Eq]], [`carveAt` (cited-equation arm)], [`Arrays` (`S24Arrays`: `threeWayUncited`, `threeWayWrongEq`)]),
   ([rejoin], [`sendPayloadToLoan` → merge], [`Arrays` (`S24Arrays`)]),
-  ([the array library], [`StdLemmas` (M24 section)], [`Arrays` (`S24Arrays`), `ArraySort` (`S25ArrSort`)]),
+  ([the array library], [`StdChain` (M24 section)], [`Arrays` (`S24Arrays`), `ArraySort` (`S25ArrSort`)]),
 )

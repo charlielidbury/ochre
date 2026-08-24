@@ -262,7 +262,7 @@ syntax:max "if" uterm "{" ublk "}" "else" "{" ublk "}" : uterm  -- §12 sugar ov
 syntax:max "if" ident ":" uterm "{" ublk "}" "else" "{" ublk "}" : uterm  -- …with a branch equation
 
 -- Pure eliminator sugar (§15b) — for `ty{}` / comptime positions. Arm bodies are
--- `ublk` so a `let x = e ; …` proof-let sequence (StdLemmas) works uniformly.
+-- `ublk` so a `let x = e ; …` proof-let sequence (StdChain) works uniformly.
 declare_syntax_cat uelimArm
 syntax ident ("(" ident ")")* (ident)? "=>" ublk : uelimArm
 syntax:max "elim" uterm:max "return" uterm:max "{" uelimArm,* "}" : uterm
@@ -1040,24 +1040,28 @@ def isFnSlot (sc : Scope) (s : String) : Bool :=
 /-- **The L-suffix condition, checked** (M32 R1).
 
     A `fn` slot wins over the raw-Lean fallthrough, so a `fn` whose name spells a
-    `StdLemmas` lemma makes that lemma unreachable in every block the `fn` is
+    library lemma makes that lemma unreachable in every block the `fn` is
     above — silently, since both readings are well-typed. Under M32's name-keyed Ω
     the same spelling additionally resolves the same STORE entry, so what was a
     surface-level shadowing is now a store-level one too, and a convention nobody
     checks is the wrong size of guarantee for it.
 
     The test is asked of the collision family the convention is about — a
-    `Dllbc.StdLemmas` definition of that exact name — rather than of any Lean
+    `Dllbc.StdChainRaw` definition of that exact name — rather than of any Lean
     global, because "is this identifier bound somewhere in Lean" answers yes for
     reasons that have nothing to do with the corpus (a `List` combinator, an
     opened namespace) and would refuse `fn` names that shadow nothing anyone can
     write here. The fix named in the message is the one the corpus already took
     twice: the LEMMA takes the suffix, because the function is the user-facing
-    name (Stage C addendum item 2). -/
+    name (Stage C addendum item 2).
+
+    The family is the chain's raw-term namespace: 110 `XRaw` proof terms and the
+    25 spec formers, which is every name a block below a `fn` could want to cite
+    from the library by the Lean fallthrough. -/
 def lemmaShadowCheckAt (ref : Syntax) (s : String) : MacroM Unit := do
-  let cands ← Macro.resolveGlobalName (`Dllbc.StdLemmas ++ Name.mkSimple s)
+  let cands ← Macro.resolveGlobalName (`Dllbc.StdChainRaw ++ Name.mkSimple s)
   if !cands.isEmpty then
-    Macro.throwErrorAt ref s!"fn: '{s}' shadows the library lemma `Dllbc.StdLemmas.{s}`. A `fn` slot is resolved before the raw-Lean fallthrough, so no block below this declaration can name the lemma, and under M32's name-keyed Ω the two spellings resolve one store entry. Give the LEMMA the `L` suffix ({s} → {s}L) — the function is the user-facing name and does not move."
+    Macro.throwErrorAt ref s!"fn: '{s}' shadows the library lemma `Dllbc.StdChainRaw.{s}`. A `fn` slot is resolved before the raw-Lean fallthrough, so no block below this declaration can name the lemma, and under M32's name-keyed Ω the two spellings resolve one store entry. Give the LEMMA the `L` suffix ({s} → {s}L) — the function is the user-facing name and does not move."
 
 /-- **The Lean fallthrough, asked at elaboration** (docs/22 §5). `prog{ }`'s
     last resort for a name is the Lean identifier of that name, which must
@@ -1070,7 +1074,7 @@ def lemmaShadowCheckAt (ref : Syntax) (s : String) : MacroM Unit := do
     globals (`resolveGlobalName`) and not the local context — so the walker
     emits this and the answer is given here, by a term elaborator with the full
     scope in hand. Known-or-not and nothing more: an ambiguous global (`Append`
-    the Lean class against `StdLemmas.Append`) is for `elabTerm`'s overload
+    the Lean class against `StdChainRaw.Append`) is for `elabTerm`'s overload
     resolution against the expected type, exactly as the bare identifier always
     was. A dotted name is never a DLLBC binder, so it is elaborated as Lean
     would without asking. -/

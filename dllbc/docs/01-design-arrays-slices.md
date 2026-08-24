@@ -719,7 +719,7 @@ The **frame** problem dissolves, and completely rather than partially: M22's loc
 
 The **gluing** problem does not dissolve at all. A caller holding `Sorted σ′` still has to reassemble it to `Sorted (arrCat σₚ (arrCat σ′ σₛ))`, and "a pure lemma about `arrCat`" is doing quiet work in that sentence — it is the real mathematical content of quicksort's correctness and no representation choice makes it free. What the migration buys is that the lemma is the *textbook* one rather than an index-simulated one.
 
-And this can now be checked rather than asserted, because M23 landed the List-world counterpart while this document was being written (`sorted_append_pivot`, `StdLemmas.lean:3657`):
+And this can now be checked rather than asserted, because M23 landed the List-world counterpart while this document was being written (`sorted_append_pivot`, now `StdChain.lean`'s `SortedAppendPivot` link):
 
 ```
     Π (a b : List Nat) (p : Nat) →

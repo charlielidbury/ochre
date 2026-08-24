@@ -71,7 +71,7 @@ namespace Dllbc
     contexts. The fix was not a unifier or case trees — it was *names and explicit
     structure*, elaborated to the kernel `Term` by the macro
     layer, in a resolve-or-error discipline. That is what this grammar is, and
-    `StdLemmas` is written in it. Name resolution for a bare identifier `x`
+    `StdChain` is written in it. Name resolution for a bare identifier `x`
     (`Surface.resolveName`):
 
       * a **bound** name — a pure binder, a runtime local, a `fn` slot — → `var`

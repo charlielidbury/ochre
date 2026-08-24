@@ -47,7 +47,7 @@ open Dllbc
 -- QUALIFIED inside the seeded blocks below: a seed-bound former in an
 -- imperative fn's audit is the module-states residual docs/21 §9 records, and
 -- the chain's own links already qualify for the same reason. The old selective
--- `open Dllbc.StdLemmas (…)` list — 26 names — is gone.
+-- `open` of the retired pure library — 26 names — is gone.
 open Dllbc.StdChainRaw
 
 namespace Dllbc.Tests.S23Direct
@@ -580,9 +580,13 @@ example : runSplit [1,2,3] 3 = true := by native_decide      -- take everything,
 /-! `set_at(v, i, x)` writes `x` at position `i`, in place, through the body's own
     field reborrows; `swap_at(v, i, j)` is two `set_at`s and a bridge lemma. They are
     one chain because the second calls the first — the caller is in scope by being
-    written below it — and the chain takes both return types as parameters, so each
-    of the four twins varies exactly one of them while the two bodies are written
-    once.
+    written below it — and both return types are written INLINE in their headers
+    with their claim sites marked, `@sset` and `@sswap`. Each of the four twins is
+    minted by editing one of those two marks on the persisted `Checked.term`, so
+    the two bodies are not merely written once, they are the SAME term: a twin is
+    the honest module but for the marked claim. `SetAt` is `[i]`-hoisted, so its
+    claim fans out to 3 copies and the mint edits all of them (count pinned);
+    `SwapAt` is unhoisted, 1.
 
     One chain serves both twin families: a lying `set_at` is refused at its own
     seal, and a sealed `let` fires its audit at its own node in program order, so
