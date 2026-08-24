@@ -6,7 +6,7 @@ namespace Dllbc
 
 /-! ## `ty{ … }` — THE surface (§8)
 
-    A program is a term, so its surface is the term surface: `ublk`, elaborated in
+    A program is a term, so its surface is the term surface: `uterm`, elaborated in
     the empty context. There is no declaration form to write and nothing for this
     macro to assemble — which is the point, and which is why it is one line. A
     declaration is a STATEMENT of the block (`fn`, M28 θ), since §8 says a
@@ -98,10 +98,10 @@ namespace Dllbc
     elaborator that performs it lives in `ElabCheck.lean` — above `Program.lean`,
     because it calls `checkProgramDiag` and this file is below it. -/
 
-syntax "ty{" ublk "}" : term
+syntax "ty{" uterm "}" : term
 
 macro_rules
-  | `(ty{ $b:ublk }) => do
+  | `(ty{ $b:uterm }) => do
     let (t, _) ← StateT.run (Dllbc.Surface.elabUBlk [] b) {}
     pure t
 

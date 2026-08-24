@@ -146,6 +146,12 @@ The `; ()` this replaces was ceremony wherever the caller wanted the block for i
 environment rather than for its value, which is most of the time.
 
 A block is a statement, or a statement and a block — one `;`, joining the two.
+There is no separate grammar for blocks: a statement IS a term, a block IS a
+term, and `;` is an operator on terms, because that is what the calculus says
+(`.seq` is a constructor of `Term` like any other). One consequence you can use:
+parentheses group a block as readily as they group an expression, so
+`let x = (let y = a; y); …` is how a block is nested inside an expression.
+
 Bodies are therefore sequences of statements, usually ending in an expression:
 
 ```

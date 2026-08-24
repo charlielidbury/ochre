@@ -2,12 +2,18 @@ import Lean
 import Dllbc.FnMacro
 
 /-!
-# `uterm` / `ublk` — THE term grammar
+# `uterm` — THE term grammar
 
-One grammar, and there is one way in: `ty{ }` (ProgMacro.lean) is `ublk`,
-elaborated in the empty context. `fn` is a STATEMENT of `ublk` (M28 θ), so a
-declaration is written where a `let` is written and there is no separate
-declaration surface to learn.
+**ONE CATEGORY.** A term, a statement and a block are the same thing here, because
+they are the same thing in the AST: `Term` is one type and `.seq : Term → Term →
+Term` is one of its constructors. `ty{ }` (ProgMacro.lean) is a `uterm`,
+elaborated in the empty context, and so is every body, arm and block. `fn` is a
+STATEMENT (M28 θ), so a declaration is written where a `let` is written and there
+is no separate declaration surface to learn.
+
+`ublk` used to be a second category — "uterm plus sequencing" — and `ustmt` was
+briefly a third between them. Both are gone; the merge was inward, and what holds
+the layers apart now is PRECEDENCE, not category (see the `;` row's note).
 
 **THERE IS EXACTLY ONE MACRO** (M29 γ). There were two — `ty{ }` and `pure{ }`,
 the same call to this elaborator differing by one boolean, "is this position
@@ -56,7 +62,7 @@ a free `var`, for the splice site to bind (docs/22 §5).
 
 ## Body
 
-A function's body is `ublk` with the telescope names pre-bound in
+A function's body is a `uterm` with the telescope names pre-bound in
 order at ids `0 .. n-1` and fresh binders minted from `n`, the `seedTelescope`
 convention. That is the only place in the surface where a name arrives pre-bound.
 Bodies laden with pure proof terms (a `botElim` ex-falso branch, a `LeRwRRaw` bound
@@ -69,7 +75,7 @@ open Lean
 
 namespace Dllbc
 
-/-! ## The unified `uterm` / `ublk` grammar (§ phase-3 point 1 — ONE term grammar)
+/-! ## The unified `uterm` grammar (§ phase-3 point 1 — ONE term grammar)
 
 A single expression grammar spanning BOTH fragments, elaborated by one function
 with no mode parameter. The flag it used to carry had exactly two readers, and
@@ -88,8 +94,9 @@ for:
     node whatever surrounds it.
 
 Every form is therefore shared: application spines, λ/Π/Σ/→/Id/`Type`, `*e`, `Id`,
-`let`, `&m`, `&mut`, `fn`, constructor/const/lemma references. `ublk` is the
-statement layer.
+`let`, `&m`, `&mut`, `fn`, constructor/const/lemma references — and the statements
+and the sequencer are rows of the same category, held apart from the expressions
+by precedence alone.
 
 **The one disambiguation rule (§ point 2):** `f(a, b)` — an identifier with a
 **no-whitespace** paren argument list — is a runtime **call** (lowercase head) or
@@ -98,11 +105,12 @@ statement layer.
 `Nth(&m *tl, k, p)` is a call, `botElim Unit p` and `LeRwRRaw (S x) y` are
 application spines, `S(*l)` / `S *l` both mean `ctorApp "S" [*l]`. -/
 
+-- **ONE CATEGORY FOR TERMS, STATEMENTS AND BLOCKS.** `Term` is one type and
+-- `.seq : Term → Term → Term` is one of its constructors, so a statement is a
+-- term, a block is a term, and the surface says so with one category. See the
+-- precedence note at `;` below for the discipline that makes that safe. (`ublk`
+-- and `ustmt` are gone. `ublk` was "uterm plus sequencing" — the merge is inward.)
 declare_syntax_cat uterm
--- **A STATEMENT, WITH NO TAIL** — see the rows below `uterm`'s, and the two `ublk`
--- rows that follow them, which are the whole of sequencing in this grammar.
-declare_syntax_cat ustmt
-declare_syntax_cat ublk
 declare_syntax_cat uarm
 declare_syntax_cat uarmBody
 -- **A PATTERN ARGUMENT** (M34 sugar (iii)) — a binder, or a constructor applied to
@@ -135,28 +143,35 @@ syntax:10 "@" noWs ident uterm:10 : uterm                    -- @name E — mark
 -- `*(v[i])` — peel the borrow stored AT slot `i`, which is how an `Array n (&mut T)`
 -- is reached. `| h` cites the containment evidence (¶3.2's supply route 2); without
 -- it the bound must compute (route 1). Offset-and-count, never lower-and-upper.
-syntax:max uterm:max noWs "[" uterm "]" : uterm                         -- a[i]
-syntax:max uterm:max noWs "[" uterm "|" uterm "]" : uterm               -- a[i | h]
-syntax:max uterm:max noWs "[" uterm ";" uterm "]" : uterm               -- a[lo ; cnt]
-syntax:max uterm:max noWs "[" uterm ";" uterm "|" uterm "]" : uterm     -- a[lo ; cnt | h]
+-- **EVERY OPERAND IS `uterm:6`, and that is load-bearing rather than tidy.** These
+-- rows spell `;` as a LITERAL SEPARATOR, and since the categories merged `;` is
+-- also the sequencer's token — so an operand parsed at the open level would take
+-- `lo ; cnt` as one sequenced term, and `a[lo ; cnt]` would either misparse as
+-- `a[seq(lo, cnt)]` through the single-operand row or go ambiguous between the
+-- two. `:6` sits above the sequencer (1) and above the statement rows (5) and
+-- below everything an index can actually be, so what these accept is unchanged.
+syntax:max uterm:max noWs "[" uterm:6 "]" : uterm                         -- a[i]
+syntax:max uterm:max noWs "[" uterm:6 "|" uterm:6 "]" : uterm             -- a[i | h]
+syntax:max uterm:max noWs "[" uterm:6 ";" uterm:6 "]" : uterm             -- a[lo ; cnt]
+syntax:max uterm:max noWs "[" uterm:6 ";" uterm:6 "|" uterm:6 "]" : uterm -- a[lo ; cnt | h]
 -- `a[lo ; ..]` — to the end of the segment starting at `lo`. NAMES premise (3)'s
 -- residue rather than computing `sub n lo`; without it ¶3.4's second borrow is
 -- unwritable, since the doc spells it `[k ; rest]` and `rest` is a machine-minted σ.
-syntax:max uterm:max noWs "[" uterm ";" ".." "]" : uterm                -- a[lo ; ..]
+syntax:max uterm:max noWs "[" uterm:6 ";" ".." "]" : uterm              -- a[lo ; ..]
 -- ROUTE (a): `a[lo ; cnt ; rest | h]` SUPPLIES the residue's extent instead of letting
 -- premise (3) mint a σ no binder can name. Same solution transition, still no `sub`;
 -- omit it and the checker mints, exactly as before. Third instance of the house
 -- pattern after `[k]` and `match h :` — an optional surface element reifying a fact
 -- the checker already has, declared rather than inferred, free when absent.
-syntax:max uterm:max noWs "[" uterm ";" uterm ";" uterm "]" : uterm            -- a[lo ; cnt ; rest]
-syntax:max uterm:max noWs "[" uterm ";" uterm ";" uterm "|" uterm "]" : uterm  -- a[lo ; cnt ; rest | h]
+syntax:max uterm:max noWs "[" uterm:6 ";" uterm:6 ";" uterm:6 "]" : uterm            -- a[lo ; cnt ; rest]
+syntax:max uterm:max noWs "[" uterm:6 ";" uterm:6 ";" uterm:6 "|" uterm:6 "]" : uterm -- a[lo ; cnt ; rest | h]
 -- …and the DECOMPOSITION CITATION. A supplied residue asserts a decomposition of the
 -- leaf's extent; when that extent is a telescope parameter's σ, the assertion is a
 -- constraint on the function's CALLERS, and premise (3) may not impose it by
 -- unification (M7/M8's inferred constrained wire; M17's lesson that cross-boundary
 -- constraints are DECLARED and checked). The program cites the equation and premise (3)
 -- solves along it. Free when the decomposition already holds by conversion.
-syntax:max uterm:max noWs "[" uterm ";" uterm ";" uterm "|" uterm "|" uterm "]" : uterm
+syntax:max uterm:max noWs "[" uterm:6 ";" uterm:6 ";" uterm:6 "|" uterm:6 "|" uterm:6 "]" : uterm
 -- **THE OPERATION AND THE TYPE ARE SPELLED DIFFERENTLY** (M29 β). `&m e` mints a
 -- loan on the place `e`; `&mut τ` is the type of a borrow of a `τ`. They used to
 -- share the spelling `&mut` and be told apart by the elaboration mode, which was
@@ -190,8 +205,8 @@ syntax:10 "λ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- lambda
 -- them is one conversion. The document's grammar wrote `λ (x : τ). t` from the
 -- start — this is the surface returning to it, not a new decision.
 declare_syntax_cat ulamb
-syntax ident ":" uterm : ulamb
-syntax:max "λ" "(" ulamb,* ")" "{" ublk "}" : uterm          -- an imperative λ
+syntax ident ":" uterm:6 : ulamb
+syntax:max "λ" "(" ulamb,* ")" "{" uterm "}" : uterm         -- an imperative λ
 syntax:10 "Π" "(" ident ":" uterm ")" "→" uterm:10 : uterm   -- Pi
 -- **Σ BINDS WITH A DOT, and Π with an arrow** — the punctuation says which former
 -- you are looking at before the head letter does. A Π *is* a function, so its
@@ -259,20 +274,28 @@ syntax:70 "&mut" "(" ident ":" uterm ")" : uterm             -- always an error
 -- Binding such a scrutinee to a fresh slot first would move it, and the money
 -- test would stop being about the forgotten length update. The sugar fires only
 -- where the old grammar rejected the scrutinee outright.
-syntax:max "match" uterm "{" uarm,* "}" : uterm              -- runtime match (§3)
-syntax:max "match" ident ":" uterm "{" uarm,* "}" : uterm    -- …with a branch equation (M23)
-syntax:max "if" uterm "{" ublk "}" "else" "{" ublk "}" : uterm  -- §12 sugar over a Bool match
-syntax:max "if" ident ":" uterm "{" ublk "}" "else" "{" ublk "}" : uterm  -- …with a branch equation
+syntax:max "match" uterm:6 "{" uarm,* "}" : uterm            -- runtime match (§3)
+syntax:max "match" ident ":" uterm:6 "{" uarm,* "}" : uterm  -- …with a branch equation (M23)
+syntax:max "if" uterm:6 "{" uterm "}" "else" "{" uterm "}" : uterm  -- §12 sugar over a Bool match
+syntax:max "if" ident ":" uterm:6 "{" uterm "}" "else" "{" uterm "}" : uterm  -- …with a branch equation
 
--- Pure eliminator sugar (§15b) — for `ty{}` / comptime positions. Arm bodies are
--- `ublk` so a `let x = e ; …` proof-let sequence (StdChain) works uniformly.
+-- Pure eliminator sugar (§15b) — for `ty{}` / comptime positions. An arm body is a
+-- `uterm`, so a `let x = e ; …` proof-let sequence (StdChain) works uniformly —
+-- which since the merge is not a special allowance but the ordinary reading.
 declare_syntax_cat uelimArm
-syntax ident ("(" ident ")")* (ident)? "=>" ublk : uelimArm
+syntax ident ("(" ident ")")* (ident)? "=>" uterm : uelimArm
 syntax:max "elim" uterm:max "return" uterm:max "{" uelimArm,* "}" : uterm
 syntax:max "elim" uterm:max "generalizing" uterm:max "{" uelimArm,* "}" : uterm
 
-syntax "{" ublk "}" : uarmBody                               -- braced block arm body
-syntax uterm : uarmBody                                      -- bare expression arm body
+syntax "{" uterm "}" : uarmBody                              -- braced block arm body
+-- **A BARE ARM BODY STAYS AN EXPRESSION** (`uterm:6`), where the BRACED one above
+-- takes a whole block. Since the merge nothing in the grammar would stop a bare
+-- body from being a `;` chain — the arm list's `,` would end it — and the reason
+-- not to allow it is not uniformity but the hover plumbing: a bare body is keyed
+-- as ONE statement (docs/23), which a chain is not, and an enclosing `show`'s
+-- pending must not drain inside an arm (ShowSpans S6). Braces are how a block is
+-- written here, and they already work.
+syntax uterm:6 : uarmBody                                    -- bare expression arm body
 syntax ident "=>" uarmBody : uarm                            -- nullary pattern
 -- **THE ARGUMENTS ARE PATTERNS** (M34 sugar (iii)). They used to be `ident,*`, so
 -- reading a field of a field cost an explicit inner match and a name for the
@@ -318,20 +341,27 @@ syntax:max ident noWs "(" upat,* ")" : upat                  -- a nested constru
 -- elaboration, because it is decidable from the syntax alone.
 --
 -- **THE TAIL IS GONE FROM THE ROW.** `fn` was the first statement allowed to end
--- a block and for a while it carried its own `(";" ublk)?` to say so; the `ublk`
--- rows below say it for every statement now, so there is nothing left here to
--- write. What `fn` still does with a tail it HAS — pass it through `bindFn` —
--- happens in the walker, and the walker's `fn` row is where that is argued.
+-- a block and for a while it carried its own `(";" ublk)?` to say so; the `;` row
+-- below says it for every statement now, so there is nothing left here to write.
+-- What `fn` still does with a tail it HAS — pass it through `bindFn` — happens in
+-- the walker, and the walker's `fn` row is where that is argued.
 --
 -- (The row used to be `(name := ublkFn)`. It was named for a query that no longer
 -- exists — `ElabCheck`'s information rule, "a `fn` carries its own `-> retType`,
 -- so a block containing one carries its own specification and needs no
 -- annotation" — and that reason had already lapsed twice: nothing asks the kind,
 -- and with `-> R` optional the premise is not true of every `fn`. Nothing in the
--- tree referred to the name, so it goes rather than being carried into `ustmt`
--- under a corrected spelling.)
-syntax "fn" ident ("[" ident "]")? "(" ulamb,* ")" ("->" uterm)? "{" ublk "}" : ustmt
-syntax "let" ident "=" uterm : ustmt                         -- runtime let (→ letIn)
+-- tree referred to the name, so it went rather than being renamed for a category
+-- that has since been deleted too.)
+syntax:5 "fn" ident ("[" ident "]")? "(" ulamb,* ")" ("->" uterm:6)? "{" uterm "}" : uterm
+-- **`uterm:6` ON THE RIGHT-HAND SIDE IS WHAT KEEPS THE `;` OUT OF IT.** At the open
+-- level the sequencer (level 1) is a production the right-hand side would accept,
+-- and `let x = a ; b` would bind `x` to `seq(a, b)` — silently, since that is a
+-- term. `:6` sits above the sequencer and above the statement rows, so the
+-- right-hand side is exactly the expression it was when `uterm` and `ublk` were
+-- two categories; `let x = (let y = a ; y)` is how the other reading is written,
+-- through the grouping row, which since the merge IS block-bracketing.
+syntax:5 "let" ident "=" uterm:6 : uterm                     -- runtime let (→ letIn)
 -- **THE SINGLETON-CONSTRUCTOR `let`** (M34 sugar (ii)). `let C(a, b) = e ; rest`
 -- is `match e { C(a, b) => rest }` — the REST OF THE BLOCK moves inside the arm,
 -- which is the whole of the transformation and the whole of the readability win:
@@ -349,13 +379,14 @@ syntax "let" ident "=" uterm : ustmt                         -- runtime let (→
 --
 -- `noWs` before `(`, matching the call/ctorApp row: `C(a, b)` is one token-run
 -- everywhere in this grammar.
-syntax "let" ident noWs "(" upat,* ")" "=" uterm : ustmt
-syntax uterm ":=" uterm : ustmt                              -- assignment
--- An expression is a statement, run for its effect when a `;` follows it and for
--- its VALUE when nothing does. One row for both, because the difference is the
--- block's, not the statement's — `elabUBlk` decides it and the walker's `uterm`
--- row does not ask.
-syntax uterm : ustmt                                         -- expression statement
+syntax:5 "let" ident noWs "(" upat,* ")" "=" uterm:6 : uterm
+-- Both sides at `:6`, for the right-hand side's reason above and for the place's:
+-- at the open level a place would try to extend itself through this very row.
+syntax:5 uterm:6 ":=" uterm:6 : uterm                        -- assignment
+-- (THE EXPRESSION-STATEMENT ROW IS GONE, and it did not need replacing. It read
+-- `syntax uterm : ustmt` — a coercion whose only content was "an expression may
+-- stand where a statement stands", which is a THEOREM of one category rather than
+-- a rule to write down. `elabUBlk`'s fallthrough is where it lives now.)
 -- **`show x` — a value made visible where you put it** (docs/18). ERASED: this
 -- row emits `rest` and nothing else, so the kernel never learns the word and a
 -- program with `show`s is the same `Term` as one without. What it leaves behind
@@ -364,17 +395,39 @@ syntax uterm : ustmt                                         -- expression state
 -- `show` is already a Lean keyword, so declaring it as a leading atom reserves
 -- no token that was not reserved — the question `ElabCheck`'s invariant note says
 -- to ask before adding one.
-syntax "show" ident : ustmt                                  -- show (erased)
+syntax:5 "show" ident : uterm                                -- show (erased)
 
 /-! ## THE ONE `;`
 
-    A block is a statement, or a statement and a block:
+    One row, and it builds `.seq`:
 
-        syntax ustmt ";" ublk : ublk
-        syntax ustmt : ublk
+        syntax:1 uterm:2 ";" uterm:1 : uterm
 
-    and that is every `;` in this grammar. It builds `.seq`, which is the ONE
-    sequencer the calculus has.
+    **`uterm:2` ON THE LEFT IS WHAT MAKES A STATEMENT A STATEMENT.** The row sits
+    at level 1, so a left operand demanded at level 2 cannot itself be a `;` node —
+    the left of every `;` is exactly one statement, and the nesting goes right.
+    That is the guarantee a separate `ustmt` category would have bought by
+    duplication, bought here by precedence instead. `uterm:1` on the right admits
+    another `;`, which is what makes the chain right-associative and gives
+    `a ; b ; c` the shape `.seq a (.seq b c)` the kernel reads.
+
+    **THE PRECEDENCE DISCIPLINE, since it is the whole risk of one category.**
+    Three levels are reserved below everything that was here before (the lowest
+    pre-existing level was 10, for `λ`/`Π`/`Σ`/`→`/`@`):
+
+      * **1** — the sequencer.
+      * **5** — the statements: `let`, `let C(…)`, `:=`, `show`, `fn`.
+      * **6** — the threshold a position asks for when it must stay an EXPRESSION,
+        i.e. must not swallow a `;` and must not admit a statement.
+
+    Every site that embeds a term where a `;` could follow it, or that spells `;`
+    itself, asks for `:6`: the two `let` right-hand sides, both sides of `:=`,
+    `fn`'s `-> R`, the `match`/`if` scrutinee, and — the one that would have failed
+    loudly — every operand of the `a[…]` index and range rows, which use `;` as a
+    literal separator. Everything else stays at the open level and thereby BECOMES
+    block-capable, which is the merge paying for itself: `( … )` grouping is now
+    also block-bracketing, arm bodies and `{ … }` bodies take a statement chain
+    with no row of their own saying so, and none of it took a new rule.
 
     **This is the AST's shape, and it stopped being the grammar's at
     detach-tails.** `Term.letIn x rhs tail` used to carry its own tail, so a `let`
@@ -405,8 +458,7 @@ syntax "show" ident : ustmt                                  -- show (erased)
     sugar), and `show x` IS its tail (the row is erased). What the restructure
     buys is not that those three vanish — they are real — but that they are named
     as the exceptions to one rule instead of being six independent rules. -/
-syntax ustmt ";" ublk : ublk
-syntax ustmt : ublk
+syntax:1 uterm:2 ";" uterm:1 : uterm
 
 namespace Surface
 open Lean
@@ -1215,7 +1267,7 @@ def noteIdent (sc : Scope) (x : Ident) : UM Unit := do
     | none => noteOcc x.raw s
   | none => pure ()
 
-/-! ## Unified `uterm` / `ublk` elaborators (§ points 1–3)
+/-! ## Unified `uterm` elaborators (§ points 1–3)
 
 A binder's identity is its NAME (docs/22): a `let`, a match's arm binders, a
 runtime λ's telescope and a pure λ/Π/Σ binder all push their name onto the one
@@ -1245,7 +1297,20 @@ partial def elabUTerm (sc : Scope)
     (stx : TSyntax `uterm) : UM (TSyntax `term) := do
   match stx with
   | `(uterm| ()) => return (← `(Dllbc.Term.unit))
-  | `(uterm| ($e:uterm)) => elabUTerm sc e
+  -- **`( … )` IS BLOCK-BRACKETING AS WELL AS GROUPING**, for free and with no row
+  -- of its own: since the categories merged, an interior that SEQUENCES is a
+  -- block, so `let x = (let y = a ; y)` is how a nested block is written.
+  --
+  -- Only a `;` interior takes that route, and the asymmetry is deliberate rather
+  -- than lazy: `elabUBlk`'s fallthrough files a STATEMENT span and keys the
+  -- occurrences under it, which is right for a statement and wrong for a
+  -- parenthesised sub-expression — the machine files no deltas under `(f x)`, so
+  -- keying `f` and `x` there would take away answers they get today from the
+  -- enclosing statement.
+  | `(uterm| ($e:uterm)) =>
+    match e with
+    | `(uterm| $_:uterm ; $_:uterm) => elabUBlk sc e
+    | _ => elabUTerm sc e
   | `(uterm| Type) => return (← `(Dllbc.Term.type))
   | `(uterm| % $e:term) => return (← `(($e : Dllbc.Term)))
   | `(uterm| @$nm:ident $e:uterm) => do
@@ -1371,7 +1436,7 @@ partial def elabUTerm (sc : Scope)
     let b' ← elabUTerm (pushPure x.getId.toString sc) b
     return (← `(Dllbc.Term.lam $(quote (x.getId.toString))
       $(← binderDom (x.getId.toString) τ') $b'))
-  | `(uterm| λ ($bs:ulamb,*) { $b:ublk }) => do
+  | `(uterm| λ ($bs:ulamb,*) { $b:uterm }) => do
     -- Runtime binders — slots, exactly as `let` and match patterns bind them:
     -- the body reaches them through Ω. The body is a ⇒ position whatever
     -- surrounds the node, which is the same asymmetry the seal has.
@@ -1527,14 +1592,14 @@ partial def elabUTerm (sc : Scope)
     tagOccsEntry occLo (← `(Dllbc.Term.matchE $scrut (some (Dllbc.Var.slot $(quote hName))) []))
     let m ← `(Dllbc.Term.matchE $scrut (some (Dllbc.Var.slot $(quote hName))) [$arms',*])
     return (← wrapScrut scrut pre? m)
-  | `(uterm| if $c:uterm { $t:ublk } else { $f:ublk }) => do  -- §12 sugar → Bool match
+  | `(uterm| if $c:uterm { $t:uterm } else { $f:uterm }) => do  -- §12 sugar → Bool match
     let c' ← elabUTerm sc c
     let t' ← elabUBlk sc t
     let f' ← elabUBlk sc f
     return (← `(Dllbc.Term.seq (Dllbc.Term.letIn (Dllbc.Var.slot "__if") $c')
       (Dllbc.Term.matchE "__if" none
         [Dllbc.Branch.mk "True" [] $t', Dllbc.Branch.mk "False" [] $f'])))
-  | `(uterm| if $h:ident : $c:uterm { $t:ublk } else { $f:ublk }) => do
+  | `(uterm| if $h:ident : $c:uterm { $t:uterm } else { $f:uterm }) => do
     let c' ← elabUTerm sc c
     let hName := h.getId.toString
     let sc' := pushSlot hName sc
@@ -1705,7 +1770,7 @@ partial def elabUArm (sc : Scope)
 partial def elabUArmBody (sc : Scope)
     (body : TSyntax `uarmBody) : UM (TSyntax `term) := do
   match body with
-  | `(uarmBody| { $b:ublk }) => elabUBlk sc b
+  | `(uarmBody| { $b:uterm }) => elabUBlk sc b
   | `(uarmBody| $e:uterm) => do          -- a bare arm body IS the arm's final statement
     -- **AND SO IT TAGS ITS OCCURRENCES, exactly as a block's final expression
     -- does** (docs/23). This row filed a SPAN and no occurrence key, so an
@@ -1732,20 +1797,22 @@ partial def elabUArmBody (sc : Scope)
     return e'
   | _ => Macro.throwErrorAt body "decl: unexpected arm body"
 
-/-- A block: a statement, or a statement and a block. TWO ROWS, and the one `;`
-    in this grammar.
+/-- Read `stx` as a BLOCK: a statement, or a statement and a block.
+
+    Two lines, because the grammar is two shapes — a `;` node, or anything else.
+    There is no `ublk` category for this to dispatch on any more; what makes the
+    left of a `;` exactly one statement is the sequencer's `uterm:2`, so this
+    function may take the left operand as a statement without re-checking it.
 
     The tail is handed to the statement rather than elaborated here, because three
-    of the six statements do something with it other than being sequenced before
-    it — see the `ustmt` rows' header, and each of the three at its own row.
-    `seqStmt` is what the other three call, and it is the one place a `.seq` is
-    built from a `;`. -/
+    of the five statements do something with it other than being sequenced before
+    it — see the `;` row's header, and each of the three at its own row. `seqStmt`
+    is what the rest call, and it is the one place a `.seq` is built from a `;`. -/
 partial def elabUBlk (sc : Scope)
-    (stx : TSyntax `ublk) : UM (TSyntax `term) := do
+    (stx : TSyntax `uterm) : UM (TSyntax `term) := do
   match stx with
-  | `(ublk| $st:ustmt ; $rest:ublk) => elabUStmt sc st (some rest)
-  | `(ublk| $st:ustmt) => elabUStmt sc st none
-  | _ => Macro.throwErrorAt stx "decl: unexpected block syntax"
+  | `(uterm| $st:uterm ; $rest:uterm) => elabUStmt sc st (some rest)
+  | _ => elabUStmt sc stx none
 
 /-- Sequence a statement before its block's tail — or BE the block, when there is
     none. **The `.seq` builder, and the only one.** A statement's term is the same
@@ -1757,7 +1824,7 @@ partial def elabUBlk (sc : Scope)
     half of what the six hardcoded tails cost — six chances to extend the wrong
     scope, or to forget to. -/
 partial def seqStmt (stmt : TSyntax `term) (tailSc : Scope)
-    (rest : Option (TSyntax `ublk)) : UM (TSyntax `term) := do
+    (rest : Option (TSyntax `uterm)) : UM (TSyntax `term) := do
   match rest with
   | some rest => return (← `(Dllbc.Term.seq $stmt $(← elabUBlk tailSc rest)))
   | none => return stmt
@@ -1768,9 +1835,17 @@ partial def seqStmt (stmt : TSyntax `term) (tailSc : Scope)
     Most rows hand `rest` straight to `seqStmt` and never look at it. The three
     that do look at it own their continuation, and each says at its own row what
     it does with it and why nothing else would serve. -/
-partial def elabUStmt (sc : Scope) (stx : TSyntax `ustmt)
-    (rest : Option (TSyntax `ublk)) : UM (TSyntax `term) := do
+partial def elabUStmt (sc : Scope) (stx : TSyntax `uterm)
+    (rest : Option (TSyntax `uterm)) : UM (TSyntax `term) := do
   match stx with
+  -- **UNREACHABLE, and said out loud rather than left to a confusing failure.**
+  -- `elabUBlk` peels a `;` before calling here, and the sequencer's left operand
+  -- is demanded at `uterm:2` — above the `;` row's own level — so no `;` node can
+  -- arrive. If one ever does, the precedence discipline has been broken and this
+  -- says which invariant, rather than reporting some downstream symptom.
+  | `(uterm| $_:uterm ; $_:uterm) =>
+    Macro.throwErrorAt stx "decl: internal — a `;` reached the statement walker. The sequencer's left operand is `uterm:2`, above the `;` row's level, so a statement can never itself be one; a change to those precedences has broken that."
+
   -- **`fn` — the declaration statement** (M28 θ). It emits a `let` of the §7
   -- lowering, one binding at a time, out of the two moving parts that already
   -- exist rather than reimplementing either:
@@ -1830,7 +1905,7 @@ partial def elabUStmt (sc : Scope) (stx : TSyntax `ustmt)
   -- `; rest` omitted drops the `.seq` and the `bindFn` — with no tail there is
   -- nothing to retarget, and the statement is the block's last, a bare `.letIn`
   -- whose value is `()`.
-  | `(ustmt| fn $name:ident $[[$dec:ident]]? ( $ps,* ) $[-> $ret:uterm]? { $body:ublk }) => do
+  | `(uterm| fn $name:ident $[[$dec:ident]]? ( $ps,* ) $[-> $ret:uterm]? { $body:uterm }) => do
     checkBinder name
     -- **A RECURSIVE `fn` CANNOT BE TRANSPARENT**, which is why a `[k]` needs a
     -- return type. The missing `-> R` is the symptom; the incompatibility is the
@@ -2012,7 +2087,7 @@ partial def elabUStmt (sc : Scope) (stx : TSyntax `ustmt)
     -- existing shape rather than a new one and the kernel is untouched. The
     -- block's value is `()`.
     | none => return rhs
-  | `(ustmt| let $x:ident = $e:uterm) => do
+  | `(uterm| let $x:ident = $e:uterm) => do
     checkBinder x
     let occLo ← occMark
     let held ← takePendings
@@ -2082,7 +2157,7 @@ partial def elabUStmt (sc : Scope) (stx : TSyntax `ustmt)
   -- there. (`let x = e` DOES filter, and the asymmetry between the two is
   -- pre-existing — see the `let` row above. Whichever way it is settled, it should
   -- be settled for both at once, since these desugar to each other's forms.)
-  | `(ustmt| let $c:ident($args,*) = $e:uterm) => do
+  | `(uterm| let $c:ident($args,*) = $e:uterm) => do
     let occLo0 ← occMark
     let held ← takePendings
     let (scrut, pre?) ← elabScrut sc e
@@ -2107,7 +2182,7 @@ partial def elabUStmt (sc : Scope) (stx : TSyntax `ustmt)
     let m ← `(Dllbc.Term.matchE $scrut none
                 [Dllbc.Branch.mk $(quote c.getId.toString) [$argVars,*] $rest'])
     return (← wrapScrut scrut pre? m)
-  | `(ustmt| $p:uterm := $e:uterm) => do
+  | `(uterm| $p:uterm := $e:uterm) => do
     let occLo ← occMark
     let held ← takePendings
     let p' ← elabUTerm sc p
@@ -2155,7 +2230,7 @@ partial def elabUStmt (sc : Scope) (stx : TSyntax `ustmt)
   -- `takePendings` exists for — so an undrained pending is one an enclosing
   -- block's next statement can claim, keying a `show` written inside a match arm
   -- at a statement one level out.
-  | `(ustmt| show $x:ident) => do
+  | `(uterm| show $x:ident) => do
     let mark ← occMark
     noteIdent sc x
     modify fun a =>
@@ -2172,23 +2247,27 @@ partial def elabUStmt (sc : Scope) (stx : TSyntax `ustmt)
       spanOfStmt u stx
       tagOccsFrom mark u
       return u
-  -- **AN EXPRESSION IS A STATEMENT** — ONE ROW, where there were two.
+  -- **AN EXPRESSION IS A STATEMENT** — and since the merge that is not a row at
+  -- all, it is this walker's FALLTHROUGH.
   --
-  -- The old pair (`uterm ";" ublk` and `uterm`, "expression statement" and "final
-  -- expression") had byte-identical bodies and differed only in what they did with
-  -- a tail, which is `seqStmt`'s question and not this row's. They were the
-  -- clearest case of the surface spelling a distinction the calculus does not
-  -- make: a statement run for its effect and a block's value are the same term,
-  -- read by whatever follows it.
+  -- There were three spellings of it. `uterm ";" ublk` and `uterm : ublk`
+  -- ("expression statement" and "final expression") had byte-identical bodies and
+  -- differed only in what they did with a tail, which is `seqStmt`'s question;
+  -- they merged into one row. Then `syntax uterm : ustmt` was a coercion whose
+  -- whole content was "an expression may stand where a statement stands" — a
+  -- THEOREM of one category, not a rule to write. What is left is: whatever is not
+  -- one of the five statement forms above is an expression, run for its effect
+  -- when something follows it and for its VALUE when nothing does.
   --
   -- `stmtKeyOf` is applied in the emitted expression rather than mirrored by hand,
   -- so a final `match` files under the same `matchE s eqn []` the walker computes
   -- without this walker knowing that rule. And occurrences ARE tagged here — the
   -- final-expression case did not tag them until docs/18 §3, so anything named in
   -- a block's last expression fell back to binder granularity; a pre-existing hole
-  -- in docs/17's surface, and the merge means there is now one row that can have
-  -- it rather than two that must agree not to.
-  | `(ustmt| $e:uterm) => do
+  -- in docs/17's surface, and now there is one place that can have it rather than
+  -- three that must agree not to.
+  | _ => do
+    let e := stx
     let occLo ← occMark
     let held ← takePendings
     let e' ← elabUTerm sc e
@@ -2196,7 +2275,6 @@ partial def elabUStmt (sc : Scope) (stx : TSyntax `ustmt)
     restorePendings held
     tagOccsFrom occLo e'
     seqStmt e' sc rest
-  | _ => Macro.throwErrorAt stx "decl: unexpected statement syntax"
 
 /-- `elim scrut return motive { arms }` → the matching recursor (§15b). Pure — the
     arm binders (k/ih/h/t) push `pctx`, never `next`. The arm binder DOMAINS are
@@ -2226,19 +2304,19 @@ partial def elabUElim (sc : Scope)
   let (mName, mTy, mBody) ← match motiveBare with
     | `(uterm| λ ($x:ident : $τ:uterm). $b:uterm) => pure (x.getId.toString, τ, b)
     | _ => Macro.throwError "elim: motive must be a λ `(x : τ). …`"
-  let armFor (c : String) : UM (Option (Array Ident × Option Ident × TSyntax `ublk)) := do
+  let armFor (c : String) : UM (Option (Array Ident × Option Ident × TSyntax `uterm)) := do
     for arm in arms do
       match arm with
-      | `(uelimArm| $ctor:ident $[($bs:ident)]* $[$ih:ident]? => $body:ublk) =>
+      | `(uelimArm| $ctor:ident $[($bs:ident)]* $[$ih:ident]? => $body:uterm) =>
         if ctor.getId.toString == c then return some (bs, ih, body)
       | _ => pure ()
     return none
-  let getArm (c : String) : UM (Array Ident × Option Ident × TSyntax `ublk) := do
+  let getArm (c : String) : UM (Array Ident × Option Ident × TSyntax `uterm) := do
     match ← armFor c with
     | some r => pure r
     | none => Macro.throwError s!"elim: missing arm for constructor '{c}'"
   let names := arms.filterMap (fun a => match a with
-    | `(uelimArm| $ctor:ident $[($_:ident)]* $[$_:ident]? => $_:ublk) => some ctor.getId.toString
+    | `(uelimArm| $ctor:ident $[($_:ident)]* $[$_:ident]? => $_:uterm) => some ctor.getId.toString
     | _ => none)
   -- `P ⟨target⟩`: the motive body with the motive's binder renamed to the arm's.
   let pOf (target : String) : UM (TSyntax `term) := do
@@ -2346,12 +2424,12 @@ partial def elabUGenElim (sc : Scope)
   let armBody (c : String) : UM (TSyntax `term) := do
     for arm in arms do
       match arm with
-      | `(uelimArm| $ctor:ident $[($_:ident)]* $[$_:ident]? => $body:ublk) =>
+      | `(uelimArm| $ctor:ident $[($_:ident)]* $[$_:ident]? => $body:uterm) =>
         if ctor.getId.toString == c then return (← elabUBlk sc body)
       | _ => pure ()
     Macro.throwError s!"elim generalizing: missing arm '{c}'"
   let names := arms.filterMap (fun a => match a with
-    | `(uelimArm| $ctor:ident $[($_:ident)]* $[$_:ident]? => $_:ublk) => some ctor.getId.toString
+    | `(uelimArm| $ctor:ident $[($_:ident)]* $[$_:ident]? => $_:uterm) => some ctor.getId.toString
     | _ => none)
   if names.contains "True" || names.contains "False" then
     let t ← armBody "True"

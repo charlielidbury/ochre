@@ -151,13 +151,13 @@ today (checked), and the `->` forms below are written so the reservation is
 not widened. If a future placement threatens this, stop and report rather than
 widening it. -/
 
-syntax "prog{" ublk "}" : term
+syntax "prog{" uterm "}" : term
 -- `prog_parse { … }` is the PARSING STAGE alone: the block elaborates to a
 -- `Term` and no judgment runs. A different operation from `prog{ }`, so a
 -- different name rather than a flag on `prog` — its population is programs
 -- that exist BECAUSE they fail (a `progRejects` twin's rejection is the
 -- assertion) and library terms checked elsewhere.
-syntax "prog_parse" "{" ublk "}" : term
+syntax "prog_parse" "{" uterm "}" : term
 -- **The module forms** (docs/20 stages 1-2): `prog () { … }` seeds the empty
 -- state, `prog (e) { … }` seeds from the `Checked` that `e` evaluates to (both
 -- of its twins — stage 6). Both elaborate
@@ -166,7 +166,7 @@ syntax "prog_parse" "{" ublk "}" : term
 -- that, and the parenthesis is what says a state crosses the boundary. One
 -- rule with an optional seed rather than two rules, because `()` is itself a
 -- term and two rules would hand the parser an ambiguity.
-syntax "prog" "(" (term)? ")" "{" ublk "}" : term
+syntax "prog" "(" (term)? ")" "{" uterm "}" : term
 
 namespace ProgElab
 open Lean Elab Term Meta Dllbc.Surface
@@ -699,7 +699,7 @@ def elabChecked (ref : Syntax) (act : UM (TSyntax `term)) : TermElabM Expr := do
     exists anywhere; the two trailing arguments (stage 3) are the plain-data
     module-boundary channels only this elaboration can supply, quoted rather
     than derived. -/
-def elabModule (ref : Syntax) (seed? : Option (TSyntax `term)) (b : TSyntax `ublk) :
+def elabModule (ref : Syntax) (seed? : Option (TSyntax `term)) (b : TSyntax `uterm) :
     TermElabM Expr := do
   let seedE ← match seed? with
     | some s => do
@@ -804,14 +804,14 @@ end ProgElab
 
 open Surface ProgElab in
 elab_rules : term
-  | `(prog{ $b:ublk }) =>
+  | `(prog{ $b:uterm }) =>
     elabChecked b (elabUBlk [] b)
-  | `(prog_parse { $b:ublk }) =>
+  | `(prog_parse { $b:uterm }) =>
     elabUnchecked (do
       modify fun a => { a with parse := true }
       elabUBlk [] b)
   -- The module forms (docs/20). One elaborator, seed optional: `()` is the
   -- empty state, `(e)` is a state to continue from.
-  | `(prog ($[$e:term]?) { $b:ublk }) => elabModule b e b
+  | `(prog ($[$e:term]?) { $b:uterm }) => elabModule b e b
 
 end Dllbc

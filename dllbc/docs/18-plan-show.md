@@ -125,12 +125,13 @@ identifier it could previously use.
 The row, in the statement layer beside the others:
 
 ```
-syntax "show" ident : ustmt
+syntax:5 "show" ident : uterm
 ```
 
 (It was written `syntax "show" ident ";" ublk : ublk` — every statement row
-carried its own tail then. `ublk` is two rows now, `ustmt ";" ublk` and `ustmt`,
-and the `;` in them is the only one in the grammar.)
+carried its own tail then, and `ublk` was a category of its own. There is one
+category now; a statement is a `uterm` at level 5, and the only `;` in the
+grammar is the sequencer at level 1.)
 
 An unknown identifier at a `show` site gets the ordinary unbound-identifier
 error, because it goes through the same `resolveName`/`noteIdent` path as every

@@ -890,9 +890,9 @@ example : tailEnv showAtEnd [("x", Val.nat 0)] = true := by native_decide
 
 /-! ### G. FIVE STATEMENT FORMS, ONE SEQUENCER
 
-    `ublk` is two rows — `ustmt ";" ublk` and `ustmt` — so a block is a statement,
-    or a statement and a block, and the `;` that joins them is the only one in the
-    grammar. Every statement's tail used to be part of its own row.
+    One row carries a `;` — `syntax:1 uterm:2 ";" uterm:1 : uterm` — so a block is
+    a statement, or a statement and a block, and it builds `.seq`. Every
+    statement's tail used to be part of its own row.
 
     This golden is the whole surface in one block, spelled out as the `Term` it
     must produce. It is here because the restructure's claim is SOURCE
@@ -948,6 +948,60 @@ example : prog{ let p = Pair(1, 2); let Pair(a, b) = p }
         (.matchE "p" none [.mk "Pair" [Var.slot "a", Var.slot "b"] .unit]) := by rfl
 example : tailEnv prog{ let p = Pair(1, 2); let Pair(a, b) = p }
     [("p", .bot), ("a", Val.nat 1), ("b", Val.nat 2)] = true := by native_decide
+
+/-! ### H. ONE CATEGORY, held apart by PRECEDENCE
+
+    `ublk` is gone and so is the `ustmt` that briefly stood between it and `uterm`.
+    A term, a statement and a block are one category, because they are one type in
+    the AST — and what keeps the layers from running into each other is three
+    reserved precedence levels: **1** for `;`, **5** for the statements, **6** for
+    every position that must stay an EXPRESSION.
+
+    The four batteries below are the places that discipline is load-bearing. Each
+    would have failed SILENTLY — producing a different term rather than a parse
+    error — which is why they are goldens and not merely a green build. -/
+
+-- **(1) THE `let` RIGHT-HAND SIDE DOES NOT SWALLOW THE `;`.** At the open level
+-- the sequencer is a production the right-hand side would accept, so `let x = 0; 1`
+-- would bind `x` to `seq(0, 1)` — and that is a term, so nothing downstream would
+-- have complained. `uterm:6` is what makes the `;` the block's.
+example : prog{ let x = 0; 1 } = .seq (.letIn (Var.slot "x") (nat 0)) (nat 1) := by rfl
+
+-- …and the chain associates RIGHT, which is the shape the kernel walks. `uterm:2`
+-- on the sequencer's LEFT operand is what forces it: the left of a `;` sits above
+-- the `;` row's own level and so can never be another `;`.
+example : prog{ let x = 0; let y = 1; 2 }
+    = .seq (.letIn (Var.slot "x") (nat 0))
+        (.seq (.letIn (Var.slot "y") (nat 1)) (nat 2)) := by rfl
+
+-- **(2) `( … )` IS BLOCK-BRACKETING**, and it took no row to become so: the
+-- grouping row was already there, and its interior is now a `uterm` that may
+-- sequence. This is the merge paying for itself rather than costing.
+example : prog{ let x = (let y = 1; y); x }
+    = .seq (.letIn (Var.slot "x") (.seq (.letIn (Var.slot "y") (nat 1)) (.var "y")))
+        (.var "x") := by rfl
+example : progOk prog{ let x = (let y = 1; y); x } (retType := ty{ Nat }) = true := by
+  native_decide
+
+-- **(3) THE INDEX AND RANGE ROWS SPELL `;` THEMSELVES**, which is why every
+-- bracket operand asks for `:6`. Left at the open level, `a[lo ; cnt]`'s interior
+-- parses as ONE sequenced term and the single-operand row `a[i]` accepts it, so a
+-- range would silently become an index of a `.seq`. Counterfactually checked, and
+-- the failure is louder than that: with those two rows back at the open level
+-- `Uni.lean` itself stops compiling, because `elabUTerm`'s own arm quotations can
+-- no longer be resolved against the ambiguous grammar.
+example : Term.pretty prog_parse{ a[lo ; cnt] } = "a[lo ; …]" := by native_decide
+example : Term.pretty prog_parse{ a[i] } = "a[i]" := by native_decide
+
+-- **(4) SOURCE COMPATIBILITY for the forms the merge moved under.** An `elim`
+-- written the way the corpus writes it — per-field parens, then a trailing
+-- induction hypothesis — still lowers to the recursor spine, and its arm bodies
+-- are `uterm`s now rather than `ublk`s. (A `match` with a braced body has its
+-- golden at the top of this file, `borrowMatch`; a `fn`'s are §A and §B.)
+example : Term.pretty
+      prog_parse{ elim n return (λ (m : Nat). Nat) { Z => Z, S (k) ih => S(S(ih)) } }
+    = "natRec (λ(m : Nat). Nat) 0 (λ(k : Nat). λ(ih : Nat). S (S ih)) n" := by
+  native_decide
 
 end Dllbc.Tests.FnTails
 end
