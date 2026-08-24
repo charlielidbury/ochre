@@ -888,5 +888,66 @@ example : showAtEnd = .seq (.letIn (Var.slot "x") (nat 0)) .unit := by rfl
 example : progOk showAtEnd = true := by native_decide
 example : tailEnv showAtEnd [("x", Val.nat 0)] = true := by native_decide
 
+/-! ### G. FIVE STATEMENT FORMS, ONE SEQUENCER
+
+    `ublk` is two rows — `ustmt ";" ublk` and `ustmt` — so a block is a statement,
+    or a statement and a block, and the `;` that joins them is the only one in the
+    grammar. Every statement's tail used to be part of its own row.
+
+    This golden is the whole surface in one block, spelled out as the `Term` it
+    must produce. It is here because the restructure's claim is SOURCE
+    COMPATIBILITY: the corpus is ~640 `fn` sites deep in this grammar, and a
+    change that keeps every program parsing but produces a different term for one
+    of them would be a silent change of meaning. A block using five of the six
+    statement forms at once is the shape a per-row test cannot check, since what
+    the restructure moved is precisely the joining.
+
+    `fn` is the sixth and is left out of this one on purpose: its term goes
+    through `fnElabOrFail` and `bindFn`, neither of which reduces, so it cannot
+    be an `rfl` golden. §B and §C pin its shapes, and §C's `nullaryCalled` /
+    `unaryCalled` pin that `bindFn` still fires through the new sequencer — a
+    retargeted call is what they run. -/
+
+/-- info: v ↦ 1 -/
+#guard_msgs in
+def everyStatement : Term := prog{
+  let p = Pair(1, 2);
+  let Pair(a, b) = p;
+  let v = a;
+  show v;
+  v := 9;
+  v }
+
+-- The `show` is not in the hand form because it is not in the term: erased means
+-- erased. The `let Pair(…)` IS the `.matchE`, and everything written after it sits
+-- INSIDE the arm — which is the one statement here whose continuation does not
+-- become a `.seq`.
+def everyStatementHand : Term :=
+  .seq (.letIn (Var.slot "p") (.ctorApp "Pair" [nat 1, nat 2]))
+    (.matchE "p" none
+      [.mk "Pair" [Var.slot "a", Var.slot "b"]
+        (.seq (.letIn (Var.slot "v") (.var "a"))
+          (.seq (.assign (.var "v") (nat 9)) (.var "v")))])
+
+example : everyStatement = everyStatementHand := by rfl
+example : progOk everyStatement (retType := ty{ Nat }) = true := by native_decide
+-- One path, and it leaves exactly this Ω: `p` moved out by the match (⊥), the two
+-- field binders alive, and `v` holding the 9 the assignment wrote over the 1 the
+-- `show` reported.
+example : tailEnv everyStatement
+    [("p", .bot), ("a", Val.nat 1), ("b", Val.nat 2), ("v", Val.nat 9)] = true := by
+  native_decide
+
+-- The pattern `let` may end a block too, which it could not before the sequencer
+-- was factored out: its row consumed a `";" ublk` and so had no tail-less
+-- spelling to give. What it wraps around the continuation it is given is a match
+-- ARM, so with no continuation the arm body is `()` — it destructures and
+-- discards, which is what the source says.
+example : prog{ let p = Pair(1, 2); let Pair(a, b) = p }
+    = .seq (.letIn (Var.slot "p") (.ctorApp "Pair" [nat 1, nat 2]))
+        (.matchE "p" none [.mk "Pair" [Var.slot "a", Var.slot "b"] .unit]) := by rfl
+example : tailEnv prog{ let p = Pair(1, 2); let Pair(a, b) = p }
+    [("p", .bot), ("a", Val.nat 1), ("b", Val.nat 2)] = true := by native_decide
+
 end Dllbc.Tests.FnTails
 end

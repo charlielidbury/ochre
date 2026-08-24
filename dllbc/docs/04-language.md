@@ -145,7 +145,8 @@ let out = Reverse(l)      -- and the caller reads `out` out of the final environ
 The `; ()` this replaces was ceremony wherever the caller wanted the block for its
 environment rather than for its value, which is most of the time.
 
-Bodies are sequences of statements ending in an expression:
+A block is a statement, or a statement and a block — one `;`, joining the two.
+Bodies are therefore sequences of statements, usually ending in an expression:
 
 ```
 let x = e;        -- runtime bind        let X = e;   -- comptime bind

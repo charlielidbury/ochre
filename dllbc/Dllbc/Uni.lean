@@ -99,6 +99,9 @@ statement layer.
 application spines, `S(*l)` / `S *l` both mean `ctorApp "S" [*l]`. -/
 
 declare_syntax_cat uterm
+-- **A STATEMENT, WITH NO TAIL** — see the rows below `uterm`'s, and the two `ublk`
+-- rows that follow them, which are the whole of sequencing in this grammar.
+declare_syntax_cat ustmt
 declare_syntax_cat ublk
 declare_syntax_cat uarm
 declare_syntax_cat uarmBody
@@ -314,42 +317,21 @@ syntax:max ident noWs "(" upat,* ")" : upat                  -- a nested constru
 -- is no motive to derive; the row below refuses that pairing by name, at Lean
 -- elaboration, because it is decidable from the syntax alone.
 --
--- **THE TAIL IS OPTIONAL TOO** (`(";" ublk)?`) — as it now is on every other
--- statement row below, though `fn` had it first. Such a block is a bare `.letIn`
--- in tail position and its value is `()`; both arrows already read that (`readR`
--- and `exploreD`'s final-expression arm on ⇒, `Pure.eval` on ⇝), which is
--- detach-tails having already done the work. ONE row rather than two: the two
--- readings differ by whether a `;` follows, so longest-match separates them with
--- no ambiguity.
+-- **THE TAIL IS GONE FROM THE ROW.** `fn` was the first statement allowed to end
+-- a block and for a while it carried its own `(";" ublk)?` to say so; the `ublk`
+-- rows below say it for every statement now, so there is nothing left here to
+-- write. What `fn` still does with a tail it HAS — pass it through `bindFn` —
+-- happens in the walker, and the walker's `fn` row is where that is argued.
 --
--- **Named** so the row can be pointed at. It was named for a query that no longer
+-- (The row used to be `(name := ublkFn)`. It was named for a query that no longer
 -- exists — `ElabCheck`'s information rule, "a `fn` carries its own `-> retType`,
 -- so a block containing one carries its own specification and needs no
--- annotation" — and that reason has now lapsed twice: nothing asks the kind, and
--- with `-> R` optional the premise is no longer true of every `fn`.
-syntax (name := ublkFn)
-  "fn" ident ("[" ident "]")? "(" ulamb,* ")" ("->" uterm)? "{" ublk "}" (";" ublk)? : ublk
--- **EVERY STATEMENT ROW'S TAIL IS OPTIONAL**, so any statement may be a block's
--- LAST. `fn` got this first — see its row above for why the shape is one row with
--- an optional tail rather than two rows — and the rest follow here, because the
--- reason was never anything about `fn`.
---
--- A block's value is the value of what it ends with, and a STATEMENT's value is
--- `()`. So a block ending in a statement is a block whose value is `()`, which is
--- a term of the calculus already rather than a shape the kernel had to be taught:
--- `readR` returns `.ctor "unit" []` from a bare `.letIn` and from a bare
--- `.assign`, `exploreD`'s final-expression arm reaches both through `readResult`,
--- `Pure.eval` reads a bare `.letIn` on ⇝, and `stmtKeyOf` keys both (its `.letIn`
--- arm, and its catch-all for `.assign`, which lands on the same key the seq'd
--- form gets). Verified against the built kernel rather than assumed:
--- `let v = 0; v := 1` checks and runs to `[(v, 1)]`, and `let x = 0` alone checks
--- and runs to `[(x, 0)]`.
---
--- What this retires is the trailing `; ()` a caller wrote when it wanted a block
--- for its Ω and not for its value. `runProgramFrom m prog_parse { let out =
--- Reverse(…); () }` reads `out` back out of the final Ω, so the `()` was pure
--- ceremony; the block is now `prog_parse { let out = Reverse(…) }`.
-syntax "let" ident "=" uterm (";" ublk)? : ublk              -- runtime let (→ letIn)
+-- annotation" — and that reason had already lapsed twice: nothing asks the kind,
+-- and with `-> R` optional the premise is not true of every `fn`. Nothing in the
+-- tree referred to the name, so it goes rather than being carried into `ustmt`
+-- under a corrected spelling.)
+syntax "fn" ident ("[" ident "]")? "(" ulamb,* ")" ("->" uterm)? "{" ublk "}" : ustmt
+syntax "let" ident "=" uterm : ustmt                         -- runtime let (→ letIn)
 -- **THE SINGLETON-CONSTRUCTOR `let`** (M34 sugar (ii)). `let C(a, b) = e ; rest`
 -- is `match e { C(a, b) => rest }` — the REST OF THE BLOCK moves inside the arm,
 -- which is the whole of the transformation and the whole of the readability win:
@@ -367,10 +349,13 @@ syntax "let" ident "=" uterm (";" ublk)? : ublk              -- runtime let (→
 --
 -- `noWs` before `(`, matching the call/ctorApp row: `C(a, b)` is one token-run
 -- everywhere in this grammar.
-syntax "let" ident noWs "(" upat,* ")" "=" uterm ";" ublk : ublk
-syntax uterm ":=" uterm (";" ublk)? : ublk                   -- assignment
-syntax uterm ";" ublk : ublk                                 -- expression statement (seq)
-syntax uterm : ublk                                          -- final expression
+syntax "let" ident noWs "(" upat,* ")" "=" uterm : ustmt
+syntax uterm ":=" uterm : ustmt                              -- assignment
+-- An expression is a statement, run for its effect when a `;` follows it and for
+-- its VALUE when nothing does. One row for both, because the difference is the
+-- block's, not the statement's — `elabUBlk` decides it and the walker's `uterm`
+-- row does not ask.
+syntax uterm : ustmt                                         -- expression statement
 -- **`show x` — a value made visible where you put it** (docs/18). ERASED: this
 -- row emits `rest` and nothing else, so the kernel never learns the word and a
 -- program with `show`s is the same `Term` as one without. What it leaves behind
@@ -379,7 +364,49 @@ syntax uterm : ublk                                          -- final expression
 -- `show` is already a Lean keyword, so declaring it as a leading atom reserves
 -- no token that was not reserved — the question `ElabCheck`'s invariant note says
 -- to ask before adding one.
-syntax "show" ident (";" ublk)? : ublk                       -- show (erased)
+syntax "show" ident : ustmt                                  -- show (erased)
+
+/-! ## THE ONE `;`
+
+    A block is a statement, or a statement and a block:
+
+        syntax ustmt ";" ublk : ublk
+        syntax ustmt : ublk
+
+    and that is every `;` in this grammar. It builds `.seq`, which is the ONE
+    sequencer the calculus has.
+
+    **This is the AST's shape, and it stopped being the grammar's at
+    detach-tails.** `Term.letIn x rhs tail` used to carry its own tail, so a `let`
+    structurally WAS a binder over the rest of its block and a row that swallowed
+    `";" ublk` was reading the node it built. Detach-tails split that into a
+    tail-less `.letIn` and a `.seq` and made `.seq` the sole sequencer — but every
+    statement row kept its hardcoded tail, so the surface went on spelling six
+    sequencers for a kernel with one. Six `;`s, six recursions into `elabUBlk`,
+    six places to get the scope threading right, and a seventh row (`uterm : ublk`)
+    whose whole content was "the same thing, without a `;` after it".
+
+    A block ending in a statement is a block whose value is `()` — a term of the
+    calculus already rather than a shape the kernel had to be taught. `readR`
+    returns `.ctor "unit" []` from a bare `.letIn` and from a bare `.assign`,
+    `exploreD`'s final-expression arm reaches both through `readResult`,
+    `Pure.eval` reads a bare `.letIn` on ⇝, and `stmtKeyOf` keys both (its
+    `.letIn` arm; its catch-all for `.assign`, landing on the same key the seq'd
+    form gets). Verified against the built kernel: `let v = 0; v := 1` checks and
+    runs to `[(v, 1)]`, and `let x = 0` alone checks and runs to `[(x, 0)]`.
+
+    **Three of the six statements own their continuation rather than being
+    sequenced before it**, and the split is honest rather than hidden: `elabUBlk`
+    hands the tail to `elabUStmt`, `seqStmt` is the one place a `.seq` is built
+    from it, and the three rows that do not call `seqStmt` each argue at their own
+    row why they cannot. `fn` passes the tail through `bindFn` (a rewrite of the
+    tail, including an argument permutation the surface would otherwise skip),
+    `let C(a, b) = e` moves the tail INSIDE a match arm (which is the whole of the
+    sugar), and `show x` IS its tail (the row is erased). What the restructure
+    buys is not that those three vanish — they are real — but that they are named
+    as the exceptions to one rule instead of being six independent rules. -/
+syntax ustmt ";" ublk : ublk
+syntax ustmt : ublk
 
 namespace Surface
 open Lean
@@ -1705,8 +1732,44 @@ partial def elabUArmBody (sc : Scope)
     return e'
   | _ => Macro.throwErrorAt body "decl: unexpected arm body"
 
+/-- A block: a statement, or a statement and a block. TWO ROWS, and the one `;`
+    in this grammar.
+
+    The tail is handed to the statement rather than elaborated here, because three
+    of the six statements do something with it other than being sequenced before
+    it — see the `ustmt` rows' header, and each of the three at its own row.
+    `seqStmt` is what the other three call, and it is the one place a `.seq` is
+    built from a `;`. -/
 partial def elabUBlk (sc : Scope)
     (stx : TSyntax `ublk) : UM (TSyntax `term) := do
+  match stx with
+  | `(ublk| $st:ustmt ; $rest:ublk) => elabUStmt sc st (some rest)
+  | `(ublk| $st:ustmt) => elabUStmt sc st none
+  | _ => Macro.throwErrorAt stx "decl: unexpected block syntax"
+
+/-- Sequence a statement before its block's tail — or BE the block, when there is
+    none. **The `.seq` builder, and the only one.** A statement's term is the same
+    node either way; what a `;` adds is a `.seq` and a continuation wrapped around
+    it, which is exactly what detach-tails made `.seq` mean.
+
+    `tailSc` is the scope the tail is read in: the statement's own scope, extended
+    by whatever it binds. Threading it here rather than at each row is the other
+    half of what the six hardcoded tails cost — six chances to extend the wrong
+    scope, or to forget to. -/
+partial def seqStmt (stmt : TSyntax `term) (tailSc : Scope)
+    (rest : Option (TSyntax `ublk)) : UM (TSyntax `term) := do
+  match rest with
+  | some rest => return (← `(Dllbc.Term.seq $stmt $(← elabUBlk tailSc rest)))
+  | none => return stmt
+
+/-- One statement, plus the tail of the block it sits in — `none` when it ENDS
+    that block.
+
+    Most rows hand `rest` straight to `seqStmt` and never look at it. The three
+    that do look at it own their continuation, and each says at its own row what
+    it does with it and why nothing else would serve. -/
+partial def elabUStmt (sc : Scope) (stx : TSyntax `ustmt)
+    (rest : Option (TSyntax `ublk)) : UM (TSyntax `term) := do
   match stx with
   -- **`fn` — the declaration statement** (M28 θ). It emits a `let` of the §7
   -- lowering, one binding at a time, out of the two moving parts that already
@@ -1744,7 +1807,7 @@ partial def elabUBlk (sc : Scope)
   -- `; rest` omitted drops the `.seq` and the `bindFn` — with no tail there is
   -- nothing to retarget, and the statement is the block's last, a bare `.letIn`
   -- whose value is `()`.
-  | `(ublk| fn $name:ident $[[$dec:ident]]? ( $ps,* ) $[-> $ret:uterm]? { $body:ublk } $[; $rest:ublk]?) => do
+  | `(ustmt| fn $name:ident $[[$dec:ident]]? ( $ps,* ) $[-> $ret:uterm]? { $body:ublk }) => do
     checkBinder name
     -- **A RECURSIVE `fn` CANNOT BE TRANSPARENT**, which is why a `[k]` needs a
     -- return type. The missing `-> R` is the symptom; the incompatibility is the
@@ -1926,7 +1989,7 @@ partial def elabUBlk (sc : Scope)
     -- existing shape rather than a new one and the kernel is untouched. The
     -- block's value is `()`.
     | none => return rhs
-  | `(ublk| let $x:ident = $e:uterm $[; $rest:ublk]?) => do
+  | `(ustmt| let $x:ident = $e:uterm) => do
     checkBinder x
     let occLo ← occMark
     let held ← takePendings
@@ -1973,18 +2036,13 @@ partial def elabUBlk (sc : Scope)
     -- them asks about (docs/17).
     restorePendings held
     tagOccsFrom occLo key
-    -- The tail is DETACHED (detach-tails): with one, the row emits a `.seq` whose
-    -- head is the tail-less `.letIn` — the kernel scopes the binder over the seq's
-    -- tail. WITHOUT one, that head IS the block: no `.seq`, because there is no
-    -- second statement to sequence, and nothing binds the name because there is
-    -- nothing after it to use it. Both arrows read the bare form already (see the
-    -- syntax rows), and it is the same `.letIn` either way — the two branches
-    -- differ only in what is wrapped around it.
-    match rest with
-    | some rest => do
-      let rest' ← elabUBlk (pushSlot name sc (some key.raw)) rest
-      return (← `(Dllbc.Term.seq (Dllbc.Term.letIn (Dllbc.Var.slot $(quote name)) $e') $rest'))
-    | none => return (← `(Dllbc.Term.letIn (Dllbc.Var.slot $(quote name)) $e'))
+    -- The tail is DETACHED (detach-tails), so this row emits the tail-less
+    -- `.letIn` and nothing else — `seqStmt` decides whether a `.seq` goes around
+    -- it, and the kernel scopes the binder over that seq's tail. The scope handed
+    -- on is this one plus the name, which is the whole of what a `let` contributes
+    -- to the rest of its block.
+    seqStmt (← `(Dllbc.Term.letIn (Dllbc.Var.slot $(quote name)) $e'))
+      (pushSlot name sc (some key.raw)) rest
   -- **`let C(a, b) = e ; rest` = `match e { C(a, b) => rest }`** (M34 sugar (ii)).
   --
   -- The elaboration is the `uarm` path with the arm body supplied by the ENCLOSING
@@ -2001,7 +2059,7 @@ partial def elabUBlk (sc : Scope)
   -- there. (`let x = e` DOES filter, and the asymmetry between the two is
   -- pre-existing — see the `let` row above. Whichever way it is settled, it should
   -- be settled for both at once, since these desugar to each other's forms.)
-  | `(ublk| let $c:ident($args,*) = $e:uterm ; $rest:ublk) => do
+  | `(ustmt| let $c:ident($args,*) = $e:uterm) => do
     let occLo0 ← occMark
     let held ← takePendings
     let (scrut, pre?) ← elabScrut sc e
@@ -2019,11 +2077,14 @@ partial def elabUBlk (sc : Scope)
     -- matches, which is the same rewrite `elabUArm` performs — and has to be, since
     -- this row IS an arm whose body is the enclosing block. `let Pair(a, Pair(b, c))
     -- = p ;` and the two-line chain that spells it out are one `Term`.
-    let rest' ← wrapPats sc' pend (fun r => elabUBlk r rest)
+    let rest' ← wrapPats sc' pend (fun r =>
+      match rest with
+      | some rest => elabUBlk r rest
+      | none => `(Dllbc.Term.unit))
     let m ← `(Dllbc.Term.matchE $scrut none
                 [Dllbc.Branch.mk $(quote c.getId.toString) [$argVars,*] $rest'])
     return (← wrapScrut scrut pre? m)
-  | `(ublk| $p:uterm := $e:uterm $[; $rest:ublk]?) => do
+  | `(ustmt| $p:uterm := $e:uterm) => do
     let occLo ← occMark
     let held ← takePendings
     let p' ← elabUTerm sc p
@@ -2031,15 +2092,11 @@ partial def elabUBlk (sc : Scope)
     spanOfAssign p' e' (mkNullNode #[p, e])
     restorePendings held
     tagOccsFrom occLo (← `(Dllbc.Term.assign $p' $e'))
-    -- An assignment binds nothing, so the tail-less form is the bare `.assign` and
-    -- the scope is the same on both sides of the `match`. `readR` gives it
-    -- `.ctor "unit" []` exactly as it gives the seq'd one, and `stmtKeyOf`'s
-    -- catch-all keys it identically — a `let v = 0; v := 1` runs to `[(v, 1)]`.
-    match rest with
-    | some rest => do
-      let rest' ← elabUBlk sc rest
-      return (← `(Dllbc.Term.seq (Dllbc.Term.assign $p' $e') $rest'))
-    | none => return (← `(Dllbc.Term.assign $p' $e'))
+    -- An assignment BINDS NOTHING, so the scope it hands on is the one it was
+    -- given. `readR` gives the bare `.assign` `.ctor "unit" []` exactly as it
+    -- gives the seq'd one, and `stmtKeyOf`'s catch-all keys the two identically —
+    -- `let v = 0; v := 1` runs to `[(v, 1)]`.
+    seqStmt (← `(Dllbc.Term.assign $p' $e')) sc rest
   -- **`show x ; rest` — ERASED** (docs/18). Emits `rest` and nothing else: no
   -- node, no read, no move, no borrow, no Ω. The identifier is resolved exactly
   -- as any other occurrence is (so an unknown name gets the ordinary
@@ -2075,7 +2132,7 @@ partial def elabUBlk (sc : Scope)
   -- `takePendings` exists for — so an undrained pending is one an enclosing
   -- block's next statement can claim, keying a `show` written inside a match arm
   -- at a statement one level out.
-  | `(ublk| show $x:ident $[; $rest:ublk]?) => do
+  | `(ustmt| show $x:ident) => do
     let mark ← occMark
     noteIdent sc x
     modify fun a =>
@@ -2092,32 +2149,31 @@ partial def elabUBlk (sc : Scope)
       spanOfStmt u stx
       tagOccsFrom mark u
       return u
-  | `(ublk| $e:uterm ; $rest:ublk) => do
+  -- **AN EXPRESSION IS A STATEMENT** — ONE ROW, where there were two.
+  --
+  -- The old pair (`uterm ";" ublk` and `uterm`, "expression statement" and "final
+  -- expression") had byte-identical bodies and differed only in what they did with
+  -- a tail, which is `seqStmt`'s question and not this row's. They were the
+  -- clearest case of the surface spelling a distinction the calculus does not
+  -- make: a statement run for its effect and a block's value are the same term,
+  -- read by whatever follows it.
+  --
+  -- `stmtKeyOf` is applied in the emitted expression rather than mirrored by hand,
+  -- so a final `match` files under the same `matchE s eqn []` the walker computes
+  -- without this walker knowing that rule. And occurrences ARE tagged here — the
+  -- final-expression case did not tag them until docs/18 §3, so anything named in
+  -- a block's last expression fell back to binder granularity; a pre-existing hole
+  -- in docs/17's surface, and the merge means there is now one row that can have
+  -- it rather than two that must agree not to.
+  | `(ustmt| $e:uterm) => do
     let occLo ← occMark
     let held ← takePendings
     let e' ← elabUTerm sc e
     spanOfStmt e' e
     restorePendings held
     tagOccsFrom occLo e'
-    let rest' ← elabUBlk sc rest
-    return (← `(Dllbc.Term.seq $e' $rest'))
-  | `(ublk| $e:uterm) => do
-    let occLo ← occMark
-    let held ← takePendings
-    let e' ← elabUTerm sc e
-    -- The block's final expression. `stmtKeyOf` is applied in the emitted
-    -- expression rather than mirrored by hand: a final `match` files under the
-    -- same `matchE s eqn []` the walker computes, without this walker knowing
-    -- that rule.
-    spanOfStmt e' e
-    -- This row did NOT tag occurrences until docs/18 §3, so anything named in a
-    -- block's final expression fell back to binder granularity. A pre-existing
-    -- hole in docs/17's surface, fixed here because a trailing `show` anchors to
-    -- this statement and there is always one.
-    restorePendings held
-    tagOccsFrom occLo e'
-    return e'
-  | _ => Macro.throwErrorAt stx "decl: unexpected block syntax"
+    seqStmt e' sc rest
+  | _ => Macro.throwErrorAt stx "decl: unexpected statement syntax"
 
 /-- `elim scrut return motive { arms }` → the matching recursor (§15b). Pure — the
     arm binders (k/ih/h/t) push `pctx`, never `next`. The arm binder DOMAINS are
