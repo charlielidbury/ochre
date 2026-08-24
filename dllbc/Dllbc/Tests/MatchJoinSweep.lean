@@ -68,12 +68,12 @@ def sweep (name : String) (t : Term) : IO Unit := do
   sweep "S33Eager overwriteTail" Dllbc.Tests.S33Eager.overwriteTail
   sweep "S33Eager twoBuildsBase" Dllbc.Tests.S33Eager.twoBuildsBase
   sweep "S33Eager twoBuildsTail" Dllbc.Tests.S33Eager.twoBuildsTail
-  sweep "flagship (list quicksort)" Dllbc.Tests.S23Direct.flagship
+  -- Both flagships are SEEDED modules since the docs/21 train; their persisted
+  -- terms, markers stripped, are closed (formers qualified, lemmas spliced), so
+  -- the unseeded sweep keeps its subjects.
+  sweep "flagship (list quicksort, stripped)" (Term.stripMarkers Dllbc.Tests.S23Direct.qsM.term)
   sweep "hashmap s2CheckedCaller" Dllbc.Tests.HashMap.s2CheckedCaller
   sweep "hashmap s1Chain" Dllbc.Tests.HashMap.s1Chain
-  -- The array flagship is SEEDED since docs/21's pilot; this sweep's walker
-  -- (`checkProgramHover`) is unseeded, so the chain has no closed subject here.
-  -- Its hover behavior is pinned in the flagship file itself (the guarded
-  -- `show` inside QuicksortA).
+  sweep "arrChain (array quicksort, stripped)" (Term.stripMarkers Dllbc.Tests.S25ArrSort.arrSort.term)
 
 end Dllbc.Tests.MatchJoinSweep

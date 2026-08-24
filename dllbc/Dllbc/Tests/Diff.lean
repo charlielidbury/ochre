@@ -414,6 +414,21 @@ def diffC (body : Term) : Bool :=
       | .ok se => instanceOfC se concEnv
       | .error _ => false)
 
+/-- The SEEDED differential (docs/21 stage-1 train): the concrete final
+    environment of a fragment run from a module's executing twin is a σ-instance
+    of some accepted symbolic path's, the seed's own entries dropped on both
+    sides — `diffC` for the golden-and-mutants world, where the flagship is a
+    `Checked` and its callers are fragments. -/
+def diffFrom (m : Checked) (body : Term) : Bool :=
+  match runProgramFrom m body with
+  | .error _ => false
+  | .ok concEnv =>
+    let seeded := m.env.env.map (·.1)
+    (programPathsFrom m body).any fun r => match r with
+      | .ok (_, st) =>
+        instanceOfC (canonicalize (st.env.filter (fun kv => !seeded.contains kv.1))) concEnv
+      | .error _ => false
+
 /-- The differential on a whole program rather than on a caller body: the
     concrete final environment is a σ-instance of some accepted symbolic
     path's. It differs from `diffC` only in which walk it uses —

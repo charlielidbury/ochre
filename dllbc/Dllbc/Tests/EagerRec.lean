@@ -1,5 +1,5 @@
 import Dllbc.Std
-import Dllbc.StdChain
+import Dllbc.ElabCheck
 
 /-!
 # `EagerRec` — the normalizer forces a recursor's recursive result

@@ -724,7 +724,7 @@ example : runSplA [4, 1, 3, 2] 2 == some [2, 1, 4, 3] := by native_decide
 -- The list side is `S23Direct.qsRun`, run through its own caller, so the sort that
 -- runs here is the one checked there, rather than a table of `FnDef`s.
 def runQsL (l : List Nat) : Option (List Nat) :=
-  match Dllbc.Tests.S9Diff.runExec (Dllbc.Tests.S23Direct.qsRun l) with
+  match Dllbc.Tests.S23Direct.qsRunEnv l with
   | .ok env => (env.lookup "y").bind (listOfV 2000)
   | .error _ => none
 

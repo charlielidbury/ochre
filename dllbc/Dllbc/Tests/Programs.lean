@@ -1507,8 +1507,11 @@ example : (programEnvs push).any (fun r => match r with
     on the whole final state of the largest program in the corpus. -/
 
 /-- The two machines agree on the whole final state of the flagship — the
-    differential, run on a program at the largest scale the corpus has. -/
-example : progDiff (Tests.S23Direct.qsRun [3, 1, 2]) = true := by native_decide
+    differential, run on a program at the largest scale the corpus has. Seeded
+    since the docs/21 train: the flagship is a `Checked`, its caller a fragment,
+    and the agreement is `S9Diff.diffFrom` (seed entries dropped on both sides). -/
+example : Dllbc.Tests.S9Diff.diffFrom Dllbc.Tests.S23Direct.qsM
+  (Dllbc.Tests.S23Direct.qsCallerTail [3, 1, 2]) = true := by native_decide
 
 /-! ## §G. The array flagship, likewise asserted where it lives
 
@@ -2311,9 +2314,12 @@ def impLams (t : Term) : Nat := impLamsIn [] t
 
 -- The in-place quicksort, the largest program in the corpus, with its specs and
 -- library lemmas elaborated in: every comptime binder spells its mode, and the
--- 22 runtime binders are untouched by the naming convention.
-example : lowerComptime Dllbc.Tests.S23Direct.flagship = 0 := by native_decide
-example : slotBinders Dllbc.Tests.S23Direct.flagship = 22 := by native_decide
+-- 22 runtime binders are untouched by the naming convention. The subject is the
+-- honest module's persisted term, markers stripped — the census counts the
+-- PROGRAM, not the twin scaffolding.
+def qsFlagshipT : Term := Term.stripMarkers Dllbc.Tests.S23Direct.qsM.term
+example : lowerComptime qsFlagshipT = 0 := by native_decide
+example : slotBinders qsFlagshipT = 22 := by native_decide
 
 -- Two kernel library terms, hand-written rather than elaborated: `len` and the
 -- `Le` predicate the carve rule's premises are stated against.
@@ -2333,7 +2339,7 @@ example : lowerComptime Pure.kLeFn = 0 := by native_decide
     was inert to every judgment that runs. It is not inert to `Term.alphaEq`,
     the key binder abstraction generalizes with, which is why the asymmetry
     was worth removing rather than documenting. -/
-example : unmarkedCaps Dllbc.Tests.S23Direct.flagship = 0 := by native_decide
+example : unmarkedCaps qsFlagshipT = 0 := by native_decide
 example : unmarkedCaps Dllbc.Tests.S24Arrays.sort2.term = 0 := by native_decide
 example : unmarkedCaps Std.lenFnT = 0 := by native_decide
 example : unmarkedCaps Pure.kLeFn = 0 := by native_decide
@@ -2354,7 +2360,7 @@ example : unmarkedCaps Pure.kAddFn = 0 := by native_decide
     binder whose argument has nowhere to land — while `comptimeSlotParams`
     (capital, slotted) is the telescope rule's own population, which is content,
     not debt. -/
-example : keyDisagree Dllbc.Tests.S23Direct.flagship = 0 := by native_decide
+example : keyDisagree qsFlagshipT = 0 := by native_decide
 example : keyDisagree Std.lenFnT = 0 := by native_decide
 example : keyDisagree Pure.kLeFn = 0 := by native_decide
 
@@ -2363,7 +2369,7 @@ example : keyDisagree Pure.kLeFn = 0 := by native_decide
 -- the length/fuel facts it relates are themselves capital; each `Ih` is the
 -- recursor's self-view of the function at the predecessor, which is a Π and so
 -- must be comptime under §2.5 (no runtime binding may hold a function).
-example : comptimeSlotParams Dllbc.Tests.S23Direct.flagship = 9 := by native_decide
+example : comptimeSlotParams qsFlagshipT = 9 := by native_decide
 
 /-! **The count the rule protects.** A case test at `Term.lamImperative` would
     take every all-capital-parameter `fn` out of this number. It lands on
@@ -2371,7 +2377,7 @@ example : comptimeSlotParams Dllbc.Tests.S23Direct.flagship = 9 := by native_dec
     coincidence: a telescope is nested λs, so a λ node is imperative exactly when
     a slot binder sits at or below it in its own chain, and each slot binder is
     the innermost such node for exactly one prefix. -/
-example : impLams Dllbc.Tests.S23Direct.flagship = 22 := by native_decide
+example : impLams qsFlagshipT = 22 := by native_decide
 
 
 /-! ## The Σ half: comptime components and the arm binders that consume them
@@ -2425,9 +2431,9 @@ partial def lowerArms : Term → Nat
   | .borrow t | .deref t | .cmpT t => lowerArms t
   | _ => 0
 
-example : cmpSigmas Dllbc.Tests.S23Direct.flagship = 91 := by native_decide
-example : capArms Dllbc.Tests.S23Direct.flagship = 14 := by native_decide
-example : lowerArms Dllbc.Tests.S23Direct.flagship = 22 := by native_decide
+example : cmpSigmas qsFlagshipT = 91 := by native_decide
+example : capArms qsFlagshipT = 14 := by native_decide
+example : lowerArms qsFlagshipT = 22 := by native_decide
 
 /-! **The three numbers, read together.**
 

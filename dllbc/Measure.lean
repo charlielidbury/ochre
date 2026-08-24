@@ -231,19 +231,15 @@ def libEntries : List (String × Term) :=
 
 /-! ## The subjects — the heaviest checks in the suite -/
 
+-- Both flagships are SEEDED modules since the docs/21 train; their persisted
+-- terms, markers stripped, are CLOSED (formers qualified, lemmas spliced), so
+-- the classic corpus keeps both subjects. `arrVerdict` additionally measures
+-- the SEEDED check — the walk the suite's twins actually pay for.
 def subjects : List (String × Term) :=
-  [ ("list flagship  (quicksort, Sorted ∧ Perm)", Tests.S23Direct.flagship) ]
-
--- The array flagship is SEEDED since docs/21's pilot (`prog (Dllbc.std) { … }`):
--- its persisted term is census-able like any Term, but its CHECK runs from the
--- std state — so it rides the static loop via `staticSubjects` and the dynamic
--- sections through `arrVerdict`, which is `progOkFrom` at the same seed the
--- suite's twins use.
-def arrTerm : Term := Tests.S25ArrSort.arrSort.term
-def staticSubjects : List (String × Term) :=
-  subjects ++ [("array flagship (quicksortA chain, seeded)", arrTerm)]
+  [ ("list flagship  (quicksort, Sorted ∧ Perm, stripped)", Term.stripMarkers Tests.S23Direct.qsM.term),
+    ("array flagship (quicksortA chain, stripped)",         Term.stripMarkers Tests.S25ArrSort.arrSort.term) ]
 def arrVerdict : Unit → String := fun _ =>
-  match checkProgramFrom Dllbc.std arrTerm with
+  match checkProgramFrom Dllbc.std Tests.S25ArrSort.arrSort.term with
   | .ok _ => "OK" | .error e => "ERR: " ++ (e.take 60).toString
 
 /-- `phasec load` runs ONLY the checking loop, so a `perf record` over it
@@ -263,7 +259,7 @@ def main : IO Unit := do
   IO.println ""
 
   IO.println "=== 2. STATIC: what the flagship carries ==="
-  for (nm, t) in staticSubjects do
+  for (nm, t) in subjects do
     let total := tsize t
     IO.println s!"  {nm}"
     IO.println s!"    whole program term: {total} nodes"
