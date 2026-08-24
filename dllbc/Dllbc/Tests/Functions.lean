@@ -135,7 +135,7 @@ def natIdT : Term := prog_parse { Π (x : Nat) → Nat }
 
 -- as a call argument, where the mint happens inside `processArgs`
 def a6a : Term := prog{
-  fn TakesFn (g : %natIdT) -> Unit { () };
+  fn TakesFn (g : natIdT) -> Unit { () };
   TakesFn((λ (x : Nat). x : Π (x : Nat) → Nat)); () }
 example : progOk a6a = true := by native_decide
 
@@ -146,13 +146,13 @@ example : progOk a6b = true := by native_decide
 -- in return position: a function whose result IS a sealed function. The audit
 -- reads the σ's type out of `sctx` and converts against it.
 def a6c : Term := prog{
-  fn MkId () -> %natIdT { (λ (x : Nat). x : Π (x : Nat) → Nat) };
+  fn MkId () -> natIdT { (λ (x : Nat). x : Π (x : Nat) → Nat) };
   () }
 example : progOk a6c = true := by native_decide
 -- …and the same in return position with the wrong ascription is caught at the
 -- node, before the return type is ever consulted.
 def a6d : Term := prog_parse {
-  fn MkId () -> %natIdT { (λ (x : Nat). x : Π (x : Nat) → Bool) };
+  fn MkId () -> natIdT { (λ (x : Nat). x : Π (x : Nat) → Bool) };
   () }
 example : progRejects a6d "does not have its ascribed type" = true := by native_decide
 
@@ -283,7 +283,7 @@ def sigLemTy : Term := prog_parse { Π (x : Nat) → Σ (H : Le x x). Le x x }
 def sigLem : Term := prog_parse { λ (x : Nat). Pair (LeReflRaw x) (LeReflRaw x) }
 
 def c14 : Term := prog{
-  let f = (%sigLem : %sigLemTy);
+  let f = (sigLem : sigLemTy);
   let p = f(2);
   elim p return (λ (W : Σ (H : Le 2 2). Le 2 2). Le 2 2) { Pair (a) (b) => LeTransRaw 2 2 2 a b } }
 -- The program's result is the projection, so its return type — passed as
@@ -294,7 +294,7 @@ example : progOk c14 (prog_parse { Le 2 2 }) = true := by native_decide
 -- is never typed until something asks for its type (`readC` computes, it does
 -- not check), so the wrong projection is only caught when the audit wants it.
 def c14bad : Term := prog{
-  let f = (%sigLem : %sigLemTy);
+  let f = (sigLem : sigLemTy);
   let p = f(2);
   elim p return (λ (W : Σ (H : Le 2 2). Le 2 2). Le 3 2) { Pair (a) (b) => a } }
 example : progRejects c14bad "does not have return type" (prog_parse { Le 3 2 }) = true := by native_decide
@@ -553,7 +553,7 @@ def zeroMot : Term := prog_parse { λ (f : Nat). Π (v : &mut List Nat) → Unit
 def b1 : Term := prog{
   let x = Cons(1, Cons(2, Nil));
   let b = &m x;
-  let f = natRec %zeroMot
+  let f = natRec zeroMot
             (λ(v : &mut List Nat) { () })
             (λ(f2 : Nat, Ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
                { match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih(tl); () } } });
@@ -583,7 +583,7 @@ example : slotOf b1 "f" = some "natRec @motive λr(v){…} λr(f2, Ih, v){…}" 
 def b2 : Term := prog{
   let x = Cons(1, Cons(2, Nil));
   let b = &m x;
-  let f = natRec %zeroMot
+  let f = natRec zeroMot
             (λ(v : &mut List Nat) { () })
             (λ(f2 : Nat, Ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
                { match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih(tl); () } } });
@@ -601,7 +601,7 @@ def b3 : Term := prog{
   let l = Cons(7, Cons(8, Nil));
   let acc = 0;
   let a = &m acc;
-  let f = listRec Nat %bumpMot
+  let f = listRec Nat bumpMot
             (λ(w : &mut Nat) { () })
             (λ(h : Nat, t : List Nat, Ih : Π (v : &mut Nat) → Unit, v : &mut Nat)
                { *v := S(*v); Ih(v); () });
@@ -625,7 +625,7 @@ example : slotOf b3 "r" = some "S (S Z)" := by native_decide
 def b4 : Term := prog_parse { fn B4 (fuel : Nat) -> Unit {
   let x = Cons(1, Nil);
   let b = &m x;
-  let f = natRec %zeroMot
+  let f = natRec zeroMot
             (λ(v : &mut List Nat) { () })
             (λ(f2 : Nat, Ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
                { match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih(tl); () } } });
@@ -638,7 +638,7 @@ example : progRejects b4 "stuck on a symbolic scrutinee" = true := by native_dec
 -- forming a value, so this checks. The pair says the rejection above is
 -- about applying a stuck recursor, not about writing one.
 def b4v : Term := prog{
-  let f = natRec %zeroMot
+  let f = natRec zeroMot
             (λ(v : &mut List Nat) { () })
             (λ(f2 : Nat, Ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
                { match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih(tl); () } } });
@@ -684,7 +684,7 @@ example : Tests.S26Seal.diffOld Tests.S26Seal.d1 = false := by native_decide
 def b1short : Term := prog{
   let x = Cons(1, Cons(2, Nil));
   let b = &m x;
-  let f = natRec %zeroMot
+  let f = natRec zeroMot
             (λ(v : &mut List Nat) { () })
             (λ(f2 : Nat, Ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
                { match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih(tl); () } } });
@@ -723,7 +723,7 @@ example :
 def lenMot : Term := prog_parse { λ (L : List Nat). Nat }
 def d1 : Term := prog_parse { fn Caller () -> Nat {
   let l = Cons(7, Cons(8, Nil));
-  let f = listRec Nat %lenMot Z (λ(h : Nat, t : List Nat, ih : Nat) { S(ih) });
+  let f = listRec Nat lenMot Z (λ(h : Nat, t : List Nat, ih : Nat) { S(ih) });
   f(l) }; () }
 example : progRejects d1 "cannot type neutral" = true := by native_decide
 
@@ -746,7 +746,7 @@ def pinSeal : Term := prog_parse { Π (v : &mut List Nat) → Id (List Nat) (*v)
 -- E1. The rule, end to end: a sealed function taking a borrow is checked at the
 -- node, called through its σ by the table's own call rule, and executes.
 def e1 : Term := prog{
-  let F = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : %unitSeal);
+  let F = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : unitSeal);
   let x = Cons(1, Nil);
   let b = &m x;
   F(b);
@@ -768,7 +768,7 @@ example : diffC e1 = true := by native_decide
     what you write". -/
 
 def e2 : Term := prog{ fn Caller (v : &mut List Nat) -> Id (List Nat) (*v) (Cons 9 Nil) {
-  let F = (λ(w : &mut List Nat) { *w := Cons(9, Nil); Refl } : %pinSeal);
+  let F = (λ(w : &mut List Nat) { *w := Cons(9, Nil); Refl } : pinSeal);
   F(&m *v) }; () }
 example : progOk e2 = true := by native_decide
 
@@ -776,7 +776,7 @@ example : progOk e2 = true := by native_decide
 -- back and cannot state its own postcondition. Sound, honest, useless — one
 -- ascription apart from e2.
 def e2none : Term := prog_parse { fn Caller (v : &mut List Nat) -> Id (List Nat) (*v) (Cons 9 Nil) {
-  let F = (λ(w : &mut List Nat) { *w := Cons(9, Nil); () } : %unitSeal);
+  let F = (λ(w : &mut List Nat) { *w := Cons(9, Nil); () } : unitSeal);
   F(&m *v) }; () }
 example : progRejects e2none "does not have return type" = true := by native_decide
 
@@ -786,35 +786,35 @@ example : progRejects e2none "does not have return type" = true := by native_dec
 -- audit, with the audit's own message — `Refl` does not inhabit the
 -- equation the ascription promised.
 def e3a : Term := prog_parse {
-  let F = (λ(v : &mut List Nat) { *v := Cons(8, Nil); Refl } : %pinSeal); () }
+  let F = (λ(v : &mut List Nat) { *v := Cons(8, Nil); Refl } : pinSeal); () }
 example : progRejects e3a "does not have return type" = true := by native_decide
 
 -- The body leaves a hole in its argument borrow: the OBLIGATION audit, which
 -- only exists because the seal now seeds a telescope.
 def e3b : Term := prog_parse {
-  let F = (λ(v : &mut List Nat) { let l = *v; () } : %unitSeal); () }
+  let F = (λ(v : &mut List Nat) { let l = *v; () } : unitSeal); () }
 example : progRejects e3b "holds a hole (⊥) at return" = true := by native_decide
 
 -- Mode disagreement: the λ's binder is lowercase where the ascription binds
 -- comptime. The ascription is the contract, so this is checked.
 def cmpSeal : Term := prog_parse { Π (N : Nat) → Nat }
 def e3c : Term := prog_parse {
-  let F = (λ(n : Nat) { S(n) } : %cmpSeal); () }
+  let F = (λ(n : Nat) { S(n) } : cmpSeal); () }
 example : progRejects e3c "the ascribed type binds it as comptime" = true := by native_decide
 -- …and its twin, one character apart, is accepted.
 def e3cok : Term := prog{
-  let F = (λ(N : Nat) { Z } : %cmpSeal); () }
+  let F = (λ(N : Nat) { Z } : cmpSeal); () }
 example : progOk e3cok = true := by native_decide
 
 -- Arity disagreement, at the ascription rather than at a call.
 def e3d : Term := prog_parse {
-  let F = (λ(v : &mut List Nat, w : Nat) { () } : %unitSeal); () }
+  let F = (λ(v : &mut List Nat, w : Nat) { () } : unitSeal); () }
 example : progRejects e3d "no Π binder left for it" = true := by native_decide
 
 -- Sealing something that is NOT a runtime λ at a function signature (see A4
 -- above, for the borrow-free case).
 def e3e : Term := prog_parse {
-  let F = (λ (x : Nat). x : %unitSeal); () }
+  let F = (λ (x : Nat). x : unitSeal); () }
 example : progRejects e3e "the sealed term must be a runtime λ" = true := by native_decide
 
 /-! ### E4. Frame isolation — the sealed body's effects stay inside the check
@@ -826,7 +826,7 @@ example : progRejects e3e "the sealed term must be a runtime λ" = true := by na
 
 def e4 : Term := prog{
   let x = Cons(1, Nil);
-  let F = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : %unitSeal);
+  let F = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : unitSeal);
   let y = x;
   () }
 example : progOk e4 = true := by native_decide
@@ -908,10 +908,10 @@ def zeroSeal : Term := prog_parse { Π (fuel : Nat) → Π (v : &mut List Nat) �
 
 
 def f1 : Term := prog{
-  let F = (natRec %zeroMot
+  let F = (natRec zeroMot
                  (λ(v : &mut List Nat) { () })
                  (λ(f2 : Nat, Ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
-                    { match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih(tl); () } } }) : %zeroSeal);
+                    { match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih(tl); () } } }) : zeroSeal);
   let x = Cons(1, Cons(2, Nil));
   let b = &m x;
   F(3, b);
@@ -942,10 +942,10 @@ example :
 
 def wrongMot : Term := prog_parse { λ (F : Nat). Π (v : &mut List Nat) → Nat }
 def f2 : Term := prog_parse {
-  let F = (natRec %wrongMot
+  let F = (natRec wrongMot
                  (λ(v : &mut List Nat) { () })
                  (λ(f2 : Nat, Ih : Π (v : &mut List Nat) → Nat, v : &mut List Nat)
-                    { match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih(tl); () } } }) : %zeroSeal);
+                    { match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih(tl); () } } }) : zeroSeal);
   () }
 example : progRejects f2 "not the one its ascription derives" = true := by native_decide
 
@@ -957,10 +957,10 @@ example : progRejects f2 "not the one its ascription derives" = true := by nativ
     the whole recursor being checked as one lump. -/
 
 def f3 : Term := prog_parse {
-  let F = (natRec %zeroMot
+  let F = (natRec zeroMot
                  (λ(v : &mut List Nat) { let l = *v; () })
                  (λ(f2 : Nat, Ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
-                    { match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih(tl); () } } }) : %zeroSeal);
+                    { match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih(tl); () } } }) : zeroSeal);
   () }
 example : progRejects f3 "holds a hole (⊥) at return" = true := by native_decide
 
@@ -996,7 +996,7 @@ def splitMot : Term := prog_parse {
     argument is gone, because ι supplies it — and the `match i` disappears
     into the two arms. -/
 def splitSealed : Term := prog{
-  let F = (natRec %splitMot
+  let F = (natRec splitMot
       (λ(v : &mut List Nat, hi : Le Z (Len *v))
          { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
       (λ(i2 : Nat,
@@ -1012,7 +1012,7 @@ def splitSealed : Term := prog{
              let Pair(rr, Pair(H1, h2)) = Ih(&m *tl, hi);
              let c1 = IdCongrRaw (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                         (*tl) y1 H1;
-             Pair(rr, Pair(c1, h2)) } } }) : %splitTy);
+             Pair(rr, Pair(c1, h2)) } } }) : splitTy);
   () }
 
 -- This hand-written sealed recursor and `S23Direct.splitOff` are the same
@@ -1039,7 +1039,7 @@ def splitTyLie : Term := prog_parse {
 
 -- A SPEC lie: the prefix conjunct claims `Drop` where the body leaves `Take`.
 def splitSpecLie : Term := prog_parse {
-  let F = (natRec %splitMotLie
+  let F = (natRec splitMotLie
       (λ(v : &mut List Nat, hi : Le Z (Len *v))
          { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
       (λ(i2 : Nat,
@@ -1055,7 +1055,7 @@ def splitSpecLie : Term := prog_parse {
              let Pair(rr, Pair(H1, h2)) = Ih(&m *tl, hi);
              let c1 = IdCongrRaw (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                         (*tl) y1 H1;
-             Pair(rr, Pair(c1, h2)) } } }) : %splitTyLie);
+             Pair(rr, Pair(c1, h2)) } } }) : splitTyLie);
   () }
 -- Caught on the BASE arm (`Pair σ (Pair Refl Refl)` against `Id Nil σ`), exactly
 -- where `S23Direct` says its spec lies are caught.
@@ -1064,7 +1064,7 @@ example : progRejects splitSpecLie "does not have return type" = true := by nati
 -- A BODY lie: the `Cons` arm forgets to restore the head, so the prefix conjunct
 -- is false on the recursive path — the arm `ih` lives in.
 def splitBodyLie : Term := prog_parse {
-  let F = (natRec %splitMot
+  let F = (natRec splitMot
       (λ(v : &mut List Nat, hi : Le Z (Len *v))
          { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
       (λ(i2 : Nat,
@@ -1080,7 +1080,7 @@ def splitBodyLie : Term := prog_parse {
              let Pair(rr, Pair(H1, h2)) = Ih(&m *tl, hi);
              let c1 = IdCongrRaw (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                         (*tl) y1 H1;
-             Pair(rr, Pair(H1, h2)) } } }) : %splitTy);
+             Pair(rr, Pair(H1, h2)) } } }) : splitTy);
   () }
 -- Caught on the STEP arm — the one `ih` lives in, and the one the spec lie
 -- above leaves untested. Same division of labour as the four twins the
@@ -1155,9 +1155,9 @@ def badMot : Term := prog_parse { λ (n : Nat). Π (u : Unit) → Id Nat Z (S Z)
 def badTy : Term := prog_parse { Π (n : Nat) → Π (u : Unit) → Id Nat Z (S Z) }
 
 def h2 : Term := prog_parse {
-  let F = (natRec %badMot
+  let F = (natRec badMot
                  (λ(u : Unit) { Refl })
-                 (λ(n2 : Nat, Ih : Π (u : Unit) → Id Nat Z (S Z), u : Unit) { Ih(u) }) : %badTy);
+                 (λ(n2 : Nat, Ih : Π (u : Unit) → Id Nat Z (S Z), u : Unit) { Ih(u) }) : badTy);
   () }
 example : progRejects h2 "does not have return type" = true := by native_decide
 
@@ -1194,11 +1194,11 @@ def bndTy : Term := prog_parse {
 -- The arm hands `ih` its OWN bound, `Le (Len *v) (S n2)`, where `ih` binds
 -- `Le (Len *v) n2`. Refused, by the argument check at the abstract call.
 def i1 : Term := prog_parse {
-  let F = (natRec %bndMot
+  let F = (natRec bndMot
                  (λ(v : &mut List Nat, Hn : Le (Len *v) Z) { () })
                  (λ(n2 : Nat,
                     Ih : Π (v : &mut List Nat) → Π (Hn : Le (Len *v) n2) → Unit,
-                    v : &mut List Nat, Hn : Le (Len *v) (S n2)) { Ih(&m *v, Hn); () }) : %bndTy);
+                    v : &mut List Nat, Hn : Le (Len *v) (S n2)) { Ih(&m *v, Hn); () }) : bndTy);
   () }
 example : progRejects i1 "does not have its parameter type" = true := by native_decide
 
@@ -1210,12 +1210,12 @@ example : progRejects i1 "does not have its parameter type" = true := by native_
 -- a lemma. It is the TYPE that carries this, so nothing separately checks
 -- it.
 def i2 : Term := prog{
-  let F = (natRec %bndMot
+  let F = (natRec bndMot
                  (λ(v : &mut List Nat, Hn : Le (Len *v) Z) { () })
                  (λ(n2 : Nat,
                     Ih : Π (v : &mut List Nat) → Π (Hn : Le (Len *v) n2) → Unit,
                     v : &mut List Nat, Hn : Le (Len *v) (S n2))
-                    { match v { Nil => (), Cons(hd, tl) => { Ih(&m *tl, Hn); () } } }) : %bndTy);
+                    { match v { Nil => (), Cons(hd, tl) => { Ih(&m *tl, Hn); () } } }) : bndTy);
   () }
 example : progOk i2 = true := by native_decide
 
@@ -1230,7 +1230,7 @@ example : progOk i2 = true := by native_decide
     computation, not by citation. -/
 
 def j1 : Term := prog{
-  let F = (natRec %splitMot
+  let F = (natRec splitMot
       (λ(v : &mut List Nat, hi : Le Z (Len *v))
          { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
       (λ(i2 : Nat,
@@ -1246,7 +1246,7 @@ def j1 : Term := prog{
              let Pair(rr, Pair(H1, h2)) = Ih(&m *tl, hi);
              let c1 = IdCongrRaw (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                         (*tl) y1 H1;
-             Pair(rr, Pair(c1, h2)) } } }) : %splitTy);
+             Pair(rr, Pair(c1, h2)) } } }) : splitTy);
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &m x;
   let r = F(1, b, ());
@@ -1284,7 +1284,7 @@ def k1 : Term := prog{ fn K1 (n : Nat) -> Unit {
     Z => (),
     S(m) => {
       -- a seal as a `let` right-hand side, inside a branch
-      let F = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : %unitSeal);
+      let F = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : unitSeal);
       let x = Cons(1, Nil);
       let b = &m x;
       -- a sealed call in statement position, inside a branch
@@ -1299,7 +1299,7 @@ def k2 : Term := prog_parse { fn K2 (n : Nat) -> Unit {
   match n {
     Z => (),
     S(m) => {
-      let F = (λ(v : &mut List Nat) { *v := Cons(8, Nil); Refl } : %pinSeal);
+      let F = (λ(v : &mut List Nat) { *v := Cons(8, Nil); Refl } : pinSeal);
       () } } }; () }
 example : progRejects k2 "does not have return type" = true := by native_decide
 
@@ -1307,10 +1307,10 @@ example : progRejects k2 "does not have return type" = true := by native_decide
 -- (`explore`'s fall-through to `readR`). The ascription here is borrow-free
 -- because a declared `fn` cannot yet return a borrow-moded Π.
 def natFn : Term := prog_parse { Π (n : Nat) → Nat }
-def k3 : Term := prog{ fn K3 (n : Nat) -> %natFn {
+def k3 : Term := prog{ fn K3 (n : Nat) -> natFn {
   match n {
-    Z => (λ(m : Nat) { Z } : %natFn),
-    S(m) => (λ(k : Nat) { S(k) } : %natFn) } }; () }
+    Z => (λ(m : Nat) { Z } : natFn),
+    S(m) => (λ(k : Nat) { S(k) } : natFn) } }; () }
 example : progOk k3 = true := by native_decide
 
 /-! ## §M. Binding `ih` to a local is refused, on both machines, and the
@@ -1332,11 +1332,11 @@ def mMot : Term := prog_parse { λ (n : Nat). Π (v : &mut List Nat) → Unit }
 
 /-- The arm binds `ih` to a local and then still calls it. -/
 def m1 : Term := prog_parse {
-  let F = (natRec %mMot
+  let F = (natRec mMot
                  (λ(v : &mut List Nat) { () })
                  (λ(n2 : Nat, Ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat) {
                     let g = Ih;
-                    match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih(tl); () } } }) : %mSeal);
+                    match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih(tl); () } } }) : mSeal);
   let x = Cons(1, Cons(2, Nil));
   let b = &m x;
   F(3, b);
@@ -1350,11 +1350,11 @@ example : progRejects m1 "cannot be ⇒-moved" = true := by native_decide
 -- The migrated twin: the same body with the binder capitalised is accepted,
 -- so the refusal is about the binder's mode and not about naming `ih` at all.
 def m1cap : Term := prog{
-  let F = (natRec %mMot
+  let F = (natRec mMot
                  (λ(v : &mut List Nat) { () })
                  (λ(n2 : Nat, Ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat) {
                     let G = Ih;
-                    match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih(tl); () } } }) : %mSeal);
+                    match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih(tl); () } } }) : mSeal);
   let x = Cons(1, Cons(2, Nil));
   let b = &m x;
   F(3, b);
@@ -1371,10 +1371,10 @@ example : (match Dllbc.Tests.S9Diff.runExec m1 with
 -- Not vacuous: the SAME body without the `let g = ih` line checks, so the
 -- rejection above is about reading `ih` as a value and not about the shape.
 def m0 : Term := prog{
-  let F = (natRec %mMot
+  let F = (natRec mMot
                  (λ(v : &mut List Nat) { () })
                  (λ(n2 : Nat, Ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat) {
-                    match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih(tl); () } } }) : %mSeal);
+                    match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih(tl); () } } }) : mSeal);
   let x = Cons(1, Cons(2, Nil));
   let b = &m x;
   F(3, b);
@@ -1540,7 +1540,7 @@ example : (match bndArms with
 
 /-- `Le (Len *v) b`, at the `v` the residual telescope keeps — a fragment
     naming it (docs/22). -/
-def leLen (b : Term) : Term := prog_parse { Le (Len *v) %b }
+def leLen (b : Term) : Term := prog_parse { Le (Len *v) b }
 
 -- E1. The bound binder, at each constructor. `Hn` is capitalized, so its
 -- domain carries the comptime marker — the annotation is the domain as
@@ -1696,7 +1696,7 @@ example : (match bndArms with
 def fnTy : Term := prog_parse { Π (v : &mut List Nat) → Unit }
 
 def annOk : Term := prog{
-  let F = (λ(v : &mut List Nat) { *v := Nil; () } : %fnTy);
+  let F = (λ(v : &mut List Nat) { *v := Nil; () } : fnTy);
   () }
 example : progOk annOk = true := by native_decide
 
@@ -1704,7 +1704,7 @@ example : progOk annOk = true := by native_decide
 -- the annotation is compared against the ascription rather than merely
 -- carried along unread.
 def annBad : Term := prog_parse {
-  let F = (λ(v : &mut List Bool) { *v := Nil; () } : %fnTy);
+  let F = (λ(v : &mut List Bool) { *v := Nil; () } : fnTy);
   () }
 example : progRejects annBad "a domain the ascription does not bind it at" = true := by
   native_decide
@@ -1729,7 +1729,7 @@ def juxSealTy : Term := prog_parse { Π (v : &mut List Nat) → Unit }
 
 -- G1. A sealed function called by juxtaposition, in statement position.
 def juxSeal : Term := prog{
-  let F = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : %juxSealTy);
+  let F = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : juxSealTy);
   let x = Cons(1, Nil);
   let b = &m x;
   F b;
@@ -1752,7 +1752,7 @@ example : Tests.S9Diff.progDiff juxSeal = true := by native_decide
 -- agree on it, so juxtaposition changed how a call is WRITTEN and not what
 -- it does.
 def juxSealComma : Term := prog{
-  let F = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : %juxSealTy);
+  let F = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : juxSealTy);
   let x = Cons(1, Nil);
   let b = &m x;
   F(b);
@@ -1769,10 +1769,10 @@ example : (match runProgram juxSeal, runProgram juxSealComma with
 def juxRecMot : Term := prog_parse { λ (n : Nat). Π (v : &mut List Nat) → Unit }
 def juxRecTy : Term := prog_parse { Π (n : Nat) → Π (v : &mut List Nat) → Unit }
 def juxRec : Term := prog{
-  let F = (natRec %juxRecMot
+  let F = (natRec juxRecMot
                  (λ(v : &mut List Nat) { () })
                  (λ(n2 : Nat, Ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
-                    { match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih tl; () } } }) : %juxRecTy);
+                    { match v { Nil => (), Cons(hd, tl) => { *hd := 0; Ih tl; () } } }) : juxRecTy);
   let x = Cons(1, Cons(2, Nil));
   let b = &m x;
   F 3 b;
@@ -1899,10 +1899,10 @@ open Dllbc
 
 namespace Dllbc.Tests.FnStmt
 
-/-! ## §A. Two `fn` chains composed through a `%` splice
+/-! ## §A. Two `fn` chains composed through a spliced tail
 
     Sharing a prefix is ordinary let-chain composition — a Lean function
-    taking the rest of the block and splicing it — and half the corpus is
+    taking the rest of the block and citing it bare — and half the corpus is
     written that way. Nesting two chains resolves each name to its own
     declaration, by NAME rather than by numeric slot; what still shadows is
     a chain redeclaring an outer chain's NAME, which is lexical shadowing
@@ -1913,8 +1913,8 @@ namespace Dllbc.Tests.FnStmt
 -- were ever confused, `A(1)` would reach a two-parameter callee and be an
 -- arity error. An accept can only happen if each name reaches its OWN
 -- declaration.
-def withA (rest : Term) : Term := prog{ fn A (n : Nat) -> Nat { n }; %rest }
-def withB (rest : Term) : Term := prog{ fn B (n : Nat, m : Nat) -> Nat { n }; %rest }
+def withA (rest : Term) : Term := prog{ fn A (n : Nat) -> Nat { n }; rest }
+def withB (rest : Term) : Term := prog{ fn B (n : Nat, m : Nat) -> Nat { n }; rest }
 
 -- Nested: ACCEPTED.
 example : progOk (withA (withB (prog_parse { let r = A(1); let s = B(2, 3); () }))) = true := by
@@ -1960,7 +1960,7 @@ example : progOk (prog{
 -- differ.
 def ascribed : Term := prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) }
 example : ((prog_parse { let r = (λ (x : Nat). x : Π (x : Nat) → Nat) 3; () })
-        == (prog_parse { let r = %ascribed 3; () })) = true := by native_decide
+        == (prog_parse { let r = ascribed 3; () })) = true := by native_decide
 
 /-! ## §C. `[k]` naming a non-parameter is a LEAN error
 
