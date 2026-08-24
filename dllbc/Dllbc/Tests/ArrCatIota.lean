@@ -141,7 +141,7 @@ def chkS (sctx : List (Nat × Term)) (tm ty : Term) : String :=
     spelling has in scope. -/
 def splitCtx : List (Nat × Term) :=
   [(0, prog_parse { Nat }), (1, prog_parse { Nat }),
-   (2, prog_parse { Array %(prog_parse { %(Pure.kAddFn) %(Term.sym 0) %(Term.sym 1) }) Nat })]
+   (2, prog_parse { Array %(prog_parse { Pure.kAddFn %(Term.sym 0) %(Term.sym 1) }) Nat })]
 
 example : chkS splitCtx prog_parse { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
     prog_parse { Array %(Term.sym 0) Nat } = "ok true" := by native_decide
@@ -155,7 +155,7 @@ example : chkS splitCtx prog_parse { atake %(Term.sym 0) %(Term.sym 1) %(Term.sy
 example : chkS splitCtx prog_parse { adrop %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
     prog_parse { Array %(Term.sym 0) Nat } = "ok false" := by native_decide
 example : chkS splitCtx prog_parse { atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 2) }
-    prog_parse { Array %(prog_parse { %(Pure.kAddFn) %(Term.sym 0) %(Term.sym 1) }) Nat }
+    prog_parse { Array %(prog_parse { Pure.kAddFn %(Term.sym 0) %(Term.sym 1) }) Nat }
   = "ok false" := by native_decide
 
 /-- The element type is carried through, so a projection of a `Nat` array is not
@@ -181,7 +181,7 @@ example : chkS splitCtx
     prog_parse { arrCat %(Term.sym 0) %(Term.sym 1)
             (atake %(Term.sym 0) %(Term.sym 1) %(Term.sym 2))
             (adrop %(Term.sym 0) %(Term.sym 1) %(Term.sym 2)) }
-    prog_parse { Array %(prog_parse { %(Pure.kAddFn) %(Term.sym 0) %(Term.sym 1) }) Nat }
+    prog_parse { Array %(prog_parse { Pure.kAddFn %(Term.sym 0) %(Term.sym 1) }) Nat }
   = "ok true" := by native_decide
 
 /-! ## §3 The target — a blind carve at a symbolic index, pinned
@@ -240,22 +240,22 @@ def AVSetT : Term := prog_parse {
 
 def AVSetDecT : Term := prog_parse {
   λ (I : Nat). λ (R : Nat). λ (V : Nat). λ (N : Nat). λ (A : Array N (Σ (k : Nat). Nat)).
-    arrCat I (S R) (atake I (S R) A) ((%AVSetT) Z V (S R) (adrop I (S R) A)) }
+    arrCat I (S R) (atake I (S R) A) ((AVSetT) Z V (S R) (adrop I (S R) A)) }
 
 /-- The two updates agree wherever the extent is `i + (S r)`: `AVSetDecT i r v`
     and `AVSetT i v` compute the same array. Checked at each of the three
     slots of a 3-element array. -/
 def sampleArr : Term := prog_parse { Arr(Pair(7, 1), Pair(7, 2), Pair(7, 3)) }
 
-example : (Pure.nf 4000 prog_parse { (%AVSetDecT) 0 2 9 3 %sampleArr }
-        == Pure.nf 4000 prog_parse { (%AVSetT) 0 9 3 %sampleArr }) = true := by native_decide
-example : (Pure.nf 4000 prog_parse { (%AVSetDecT) 1 1 9 3 %sampleArr }
-        == Pure.nf 4000 prog_parse { (%AVSetT) 1 9 3 %sampleArr }) = true := by native_decide
-example : (Pure.nf 4000 prog_parse { (%AVSetDecT) 2 0 9 3 %sampleArr }
-        == Pure.nf 4000 prog_parse { (%AVSetT) 2 9 3 %sampleArr }) = true := by native_decide
+example : (Pure.nf 4000 prog_parse { (AVSetDecT) 0 2 9 3 sampleArr }
+        == Pure.nf 4000 prog_parse { (AVSetT) 0 9 3 sampleArr }) = true := by native_decide
+example : (Pure.nf 4000 prog_parse { (AVSetDecT) 1 1 9 3 sampleArr }
+        == Pure.nf 4000 prog_parse { (AVSetT) 1 9 3 sampleArr }) = true := by native_decide
+example : (Pure.nf 4000 prog_parse { (AVSetDecT) 2 0 9 3 sampleArr }
+        == Pure.nf 4000 prog_parse { (AVSetT) 2 9 3 sampleArr }) = true := by native_decide
 
 /-- …and it writes the value it says it writes, keeping the keys. -/
-example : (Pure.nf 4000 prog_parse { (%AVSetDecT) 1 1 9 3 %sampleArr }
+example : (Pure.nf 4000 prog_parse { (AVSetDecT) 1 1 9 3 sampleArr }
         == prog_parse { Arr(Pair(7, 1), Pair(7, 9), Pair(7, 3)) }) = true := by native_decide
 
 /-- On a symbolic composition it still computes: with the index `I` opaque,
@@ -266,7 +266,7 @@ example : (Pure.nf 4000
     prog_parse { λ (I : Nat). λ (R : Nat). λ (V : Nat). λ (K0 : Nat).
           λ (Lo : Array I (Σ (k : Nat). Nat)). λ (V0 : Nat).
           λ (Hi : Array R (Σ (k : Nat). Nat)).
-            (%AVSetDecT) I R V (Add I (S R))
+            (AVSetDecT) I R V (Add I (S R))
               (arrCat I (S R) Lo (acons R (Pair K0 V0) Hi)) }
   == Pure.nf 4000
     prog_parse { λ (I : Nat). λ (R : Nat). λ (V : Nat). λ (K0 : Nat).
@@ -282,7 +282,7 @@ def PVSetDecT : Term := prog_parse {
     λ (P : Σ0 (a : Array N (Σ (k : Nat). Nat)). AllK7 N a).
       elim P return (λ (Pz : Σ0 (a : Array N (Σ (k : Nat). Nat)). AllK7 N a).
                        Σ0 (a : Array N (Σ (k : Nat). Nat)). AllK7 N a) {
-        Pair (A) (H) => Pair ((%AVSetDecT) I R V N A) H } }
+        Pair (A) (H) => Pair ((AVSetDecT) I R V N A) H } }
 
 /-! ### §3.2 The blind carve, pinned — a seeded golden
 
@@ -303,7 +303,7 @@ def PVSetDecT : Term := prog_parse {
 def gmDecSymPin : Checked := prog (Dllbc.std) {
   fn G (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
         self : &mut (s : Σ0 (a : Array n (Σ (k : Nat). Nat)). AllK7 n a
-                       ~> @slot (%PVSetDecT) n i r (*res) s)) -> &mut Nat {
+                       ~> @slot (PVSetDecT) n i r (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
       let h1 = LeAdd(i, S r);
       let pre = &m (*a)[Z ; i ; S r | h1 | hd];
@@ -318,7 +318,7 @@ def gmDecSymPin : Checked := prog (Dllbc.std) {
 def gmDecSymPinRefl : Checked := prog (Dllbc.std) {
   fn G (i : Nat, r : Nat,
         self : &mut (s : Σ0 (a : Array (Add i (S r)) (Σ (k : Nat). Nat)). AllK7 (Add i (S r)) a
-                       ~> (%PVSetDecT) (Add i (S r)) i r (*res) s)) -> &mut Nat {
+                       ~> (PVSetDecT) (Add i (S r)) i r (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
       let h1 = LeAdd(i, S r);
       let pre = &m (*a)[Z ; i ; S r | h1 | Refl];
@@ -353,7 +353,7 @@ def markedBody? (name : String) (t : Term) : Option Term :=
     replacement writes the occurrence `kk` — Ω resolution is name-keyed
     (`findSlot?`), and a borrow is machine-side, so the NAME is what binds. -/
 def gmDecSymPinKey : Term :=
-  match Term.replaceMarked? "exit" ty{ &m * %(Dllbc.Term.var "kk") } gmDecSymPin.term with
+  match Term.replaceMarked? "exit" prog_parse { &m *kk } gmDecSymPin.term with
   | .ok t => t
   -- Unreachable while the marker exists; `.unit` CHECKS as a program, so a
   -- contract regression fails the rejection pin below rather than passing it.
@@ -361,7 +361,7 @@ def gmDecSymPinKey : Term :=
 
 def gmDecConc2at1blind : Term := prog{
   fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a
-                       ~> (%PVSetDecT) 2 1 0 (*res) s)) -> &mut Nat {
+                       ~> (PVSetDecT) 2 1 0 (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
       let e = &m (*a)[1];
       match e { Pair(kk, vv) => &m *vv } } } };
@@ -369,7 +369,7 @@ def gmDecConc2at1blind : Term := prog{
 
 def gmDecConc2at1open : Term := prog{
   fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a
-                       ~> (%PVSetDecT) 2 1 0 (*res) s)) -> &mut Nat {
+                       ~> (PVSetDecT) 2 1 0 (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
       let e0 = &m (*a)[0];
       match e0 { Pair(k0, v0) => {
@@ -400,7 +400,7 @@ def gmDecSymPinWrongSlot : Term :=
   match markedBody? "slot" gmDecSymPin.term with
   | some (.app (.app (.app (.app (.app f n) i) r) res) sv) =>
     match replaceMarkedN "slot"
-        (.app (.app (.app (.app (.app f n) ty{ Z }) ty{ Add %(i) %(r) }) res) sv)
+        (.app (.app (.app (.app (.app f n) ty{ Z }) ty{ Add i r }) res) sv)
         gmDecSymPin.term with
     | (2, t) => t
     | _ => .unit
@@ -423,7 +423,7 @@ def runBindingFrom (m : Checked) (t : Term) (name : String) : Option String :=
 def gmDecCaller : Checked := prog (Dllbc.std) {
   fn GetMut (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
         self : &mut (s : Σ0 (a : Array n (Σ (k : Nat). Nat)). AllK7 n a
-                       ~> (%PVSetDecT) n i r (*res) s)) -> &mut Nat {
+                       ~> (PVSetDecT) n i r (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
       let h1 = LeAdd(i, S r);
       let pre = &m (*a)[Z ; i ; S r | h1 | hd];
