@@ -1778,14 +1778,37 @@ partial def elabUStmt (sc : Scope) (stx : TSyntax `ustmt)
   --   * the right-hand side is `fnElabOrFail`, i.e. `fnElab` — the §7 lowering,
   --     with a refusal turned into a term the checker refuses distinctively;
   --   * the REST is passed through `bindFn`, i.e. `retarget` — which is how a call
-  --     written in the tail finds the binding. That is not an optimisation over
-  --     putting the name in `rctx`: `retarget` also PERMUTES a call's arguments to
-  --     match a `[k]`-hoisted callee's telescope, and a spine minted at the
-  --     surface would skip the permutation. Eight functions in this corpus have a
-  --     `[k]` that is not parameter 0, so the difference is real and silent.
-  --     `bindFn` adds the one check the surface cannot make for itself — that the
-  --     rest does not already bind this slot, which is what two `%`-spliced chains
-  --     would do.
+  --     written in the tail finds the binding. `retarget` also PERMUTES a call's
+  --     arguments to match a `[k]`-hoisted callee's telescope; eight functions in
+  --     this corpus have a `[k]` that is not parameter 0, so that part is real and
+  --     silent.
+  --
+  -- **THE PERMUTATION IS NOT WHY THIS ROW OWNS ITS TAIL**, and the older comment
+  -- here said it was. The permutation is available at the surface — put the `[k]`
+  -- index on the `Scoped` entry the `fn` row already pushes, and the call row can
+  -- build the permuted spine itself. That was built and measured: the full suite
+  -- goes GREEN with the call row minting the spine, so a surface that only ever
+  -- had to serve calls it can SEE would need no `bindFn` at all.
+  --
+  -- What it cannot see is a SPLICE, and that is the reason. A fragment is
+  -- elaborated where it is written and bound where it is spliced (docs/22 §7, the
+  -- `parse` flag), so a call inside one is a `.call` to a name that does not exist
+  -- yet — and `bindFn`, running on the assembled `Term` at the splice site, is
+  -- what binds it. The corpus is built on this: `Tests/Traces`' `withAny rest`
+  -- and `Tests/Functions`' `withA rest` wrap a Lean-level fragment in a
+  -- declaration and every test in those files calls through it, and
+  -- `Tests/HashMap`'s `growArm` — a `prog_parse` fragment — calls `MoveSlots`,
+  -- which is declared in a different `def` a thousand lines below it. With the
+  -- call row doing everything it could, `bindFn` still rewrote calls under
+  -- EIGHTEEN distinct names across five test files; each one is a call the
+  -- surface had no way to resolve.
+  --
+  -- (`retarget` would not retire in any case: `Program.moduleRetarget` is its
+  -- other caller, resolving an imported call against a seeded module's Ω from
+  -- `ledgers.hints` — macro-layer state a consumer block's surface does not hold.
+  -- Its docstring says why that matters: an imported call and a local call are
+  -- ONE shape because they are one function. Moving the local half to the surface
+  -- would make them two implementations of one rule.)
   --
   -- Passing `rest` through `retarget` rather than binding the name in `rctx` also
   -- reproduces §8's scoping exactly: the name is not in scope in its own
