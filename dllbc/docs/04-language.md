@@ -108,6 +108,31 @@ That single fact explains everything about how functions behave:
   * **Calling never consumes.** The call reads the function binding as knowledge —
     that is what capital means — so a function can be called any number of times.
 
+**The return type is optional, and leaving it off leaves off the ascription.** `fn Idf
+(x : Nat) { x }` is `let Idf = λ (x : Nat) { x }` — the λ on its own, with no `: Π …`
+wrapped around it. That ascription is what makes a function *opaque*: with one, the
+body is checked once, at the definition, and every caller sees only the signature.
+Without one the function is transparent — its body goes wherever it is called and is
+checked there. So an unsealed function that is never called is never checked, and one
+that is called in three places is checked three times, against what is true at each of
+them. Write `-> R` when you want the definition to stand on its own and its callers to
+be held to a signature; leave it off for a small helper you would rather have inlined.
+
+A recursive definition still needs one. `[k]` says which argument shrinks, and what the
+checker recurses on is built out of the return type, so there is nothing to build
+without it: `fn Count [n] (n : Nat) { n }` is refused, with that as the message.
+
+**The last `fn` in a block may drop its `;`.** A block can end with a definition instead
+of an expression:
+
+```
+let v = 0;
+fn Helper (x : Nat) -> Nat { x }
+```
+
+and such a block's value is `()`. `fn` is the only statement that may end a block this
+way — `let x = e` still needs something after it.
+
 Bodies are sequences of statements ending in an expression:
 
 ```

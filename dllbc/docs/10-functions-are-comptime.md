@@ -567,6 +567,8 @@ change.
 > `Value.prettyOmega`) are reported rather than deleted — `progOf` in particular
 > is cited in test prose as an equivalence, so removing it costs documentation.
 
+**`progOf` is gone** (2026-08-24, with `fn`'s optional tails). Its reprieve above rested on a citation that turned out not to exist: the only surviving mention was a handoff document's equivalence table (`08-M27-HANDOFF.md`, the four-helper translation table in §γ), never test prose. It had zero callers, and `Uni.lean`'s `fn` row — the one thing that named it — now names the two parts it actually reuses, `fnElabOrFail` and `bindFn`. The other three of the four remain reported-not-deleted.
+
 The sequencing rationale, restated for the new shape: M31 is the SEMANTICS milestone
 (mode flip, naming, capture/citation rules — enumerable differential), M32 is the
 REPRESENTATION milestone (suspensions, one λ, one store keying — zero differential).
