@@ -225,7 +225,7 @@ example : tailEnv letCall
     checking the same program. -/
 
 def vecPushLet : Term := prog{
-  fn Push (e : Nat, v : &mut (Σ (l : Nat). %Tests.S5Bound.vecFT Nat l)) -> Unit {
+  fn Push (e : Nat, v : &mut (Σ (l : Nat). Tests.S5Bound.vecFT Nat l)) -> Unit {
     let Pair(l, xs) = v;
     *xs := Pair(e, *xs);
     *l := S(*l);
@@ -239,7 +239,7 @@ example : progOk vecPushLet = true := by native_decide
 -- `VecF Nat σₗ`, which the concrete `Pair` cannot inhabit — rejected, as in
 -- `Boundaries`.
 example : progRejects (prog_parse {
-    fn Push (e : Nat, v : &mut (Σ (l : Nat). %Tests.S5Bound.vecFT Nat l)) -> Unit {
+    fn Push (e : Nat, v : &mut (Σ (l : Nat). Tests.S5Bound.vecFT Nat l)) -> Unit {
       let Pair(l, xs) = v;
       *xs := Pair(e, *xs);
       () };
@@ -437,7 +437,7 @@ example : progRunsTo clearHead
     change the rejection. -/
 
 def vecPushNested : Term := prog{
-  fn Push (e : Nat, v : &mut (Σ (n : Nat). Σ (l : Nat). %Tests.S5Bound.vecFT Nat l))
+  fn Push (e : Nat, v : &mut (Σ (n : Nat). Σ (l : Nat). Tests.S5Bound.vecFT Nat l))
       -> Unit {
     let Pair(n, Pair(l, xs)) = v;
     *xs := Pair(e, *xs);
@@ -449,7 +449,7 @@ def vecPushNested : Term := prog{
 example : progOk vecPushNested = true := by native_decide
 
 example : progRejects (prog_parse {
-    fn Push (e : Nat, v : &mut (Σ (n : Nat). Σ (l : Nat). %Tests.S5Bound.vecFT Nat l))
+    fn Push (e : Nat, v : &mut (Σ (n : Nat). Σ (l : Nat). Tests.S5Bound.vecFT Nat l))
         -> Unit {
       let Pair(n, Pair(l, xs)) = v;
       *xs := Pair(e, *xs);
@@ -582,7 +582,7 @@ example : progOk rememberNeutral = true := by native_decide
 -- event; this is the refusal that retired with `.callV` and came back on the
 -- value.
 def enterRefused : Term := prog_parse {
-  fn GiveLe (a : Nat) -> Le a a { %LeReflRaw a };
+  fn GiveLe (a : Nat) -> Le a a { LeReflRaw a };
   fn Caller (n : Nat) -> Unit { let P = GiveLe(n); () };
   () }
 example : progRejects enterRefused "not in the comptime fragment" = true := by native_decide
