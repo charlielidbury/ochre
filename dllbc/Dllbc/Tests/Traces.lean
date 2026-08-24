@@ -361,7 +361,7 @@ namespace Dllbc.Tests.S3Sym
 def withAny (rest : Term) : Term := prog{
   fn AnyNat () -> Nat { 0 };
   fn AnyList () -> List Nat { Nil };
-  %rest }
+  rest }
 
 /-! `tailPaths` (in `Dllbc/Program.lean`) runs a program and compares the
     per-path environments and the path count. The count is half the
