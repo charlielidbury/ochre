@@ -149,6 +149,7 @@ partial def renameVar (from_ to : Var) : Term → Term
   | .lam n a b => .lam n (renameVar from_ to a) (renameVar from_ to b)
   | .sigmaT n a b => .sigmaT n (renameVar from_ to a) (renameVar from_ to b)
   | .cmpT t => .cmpT (renameVar from_ to t)
+  | .marker n e => .marker n (renameVar from_ to e)   -- transparent (docs/21)
   | t => t
 
 /-- Resolve every `match k { … }` on the scrutinee parameter to one branch.
@@ -183,6 +184,7 @@ partial def resolveScrut (k : Var) (ctor : String) (rebind : List Var) : Term �
   | .app f a => .app (resolveScrut k ctor rebind f) (resolveScrut k ctor rebind a)
   | .borrow t => .borrow (resolveScrut k ctor rebind t)
   | .deref t => .deref (resolveScrut k ctor rebind t)
+  | .marker n e => .marker n (resolveScrut k ctor rebind e)   -- transparent (docs/21)
   | t => t
 /-- The binder the body's own `match k { … S(k2) => … }` gives the predecessor.
 
@@ -201,6 +203,7 @@ partial def branchBinders (k : Var) (ctor : String) : Term → Option (List Var)
   | .letIn _ rhs => branchBinders k ctor rhs
   | .assign _ e => branchBinders k ctor e
   | .seq a b => (branchBinders k ctor a).orElse (fun _ => branchBinders k ctor b)
+  | .marker _ e => branchBinders k ctor e   -- transparent (docs/21)
   | _ => none
 
 /-- The `S` branch's binder, which is the `Nat` case of `branchBinders`. -/
@@ -230,6 +233,9 @@ partial def selfScrutArgs (name : String) (k : Nat) : Term → List Term
   | .app f a => selfScrutArgs name k f ++ selfScrutArgs name k a
   | .borrow t | .deref t => selfScrutArgs name k t
   | .matchE _ _ brs => brs.flatMap (fun b => selfScrutArgs name k b.body)
+  -- Transparent (docs/21): a self-call under a marker must still be seen by
+  -- the termination check, or the macro silently repairs what it should refuse.
+  | .marker _ e => selfScrutArgs name k e
   | _ => []
 
 /-- Rename every call of `from_` to `to`. For comparing two declarations that are
@@ -249,6 +255,7 @@ partial def renameSelf (from_ to : String) : Term → Term
   | .matchE s eqn brs =>
     .matchE s eqn (brs.map (fun b => Branch.mk b.ctor b.binders (renameSelf from_ to b.body)))
   | .lam x d body => .lam x d (renameSelf from_ to body)
+  | .marker n e => .marker n (renameSelf from_ to e)   -- transparent (docs/21)
   | t => t
 
 /-- A self-call becomes an `ih` application with the scrutinee argument dropped:
@@ -269,6 +276,7 @@ partial def selfToIh (name : String) (k : Nat) (ih : Var) : Term → Term
   | .deref t => .deref (selfToIh name k ih t)
   | .matchE s eqn brs =>
     .matchE s eqn (brs.map (fun b => Branch.mk b.ctor b.binders (selfToIh name k ih b.body)))
+  | .marker n e => .marker n (selfToIh name k ih e)   -- transparent (docs/21)
   | t => t
 
 /-! ## The elaboration -/

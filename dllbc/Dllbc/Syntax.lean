@@ -800,7 +800,11 @@ def Term.alphaEq (t u : Term) : Bool := Term.alphaEqGo [] [] t u
 mutual
   def Term.substP : String → Term → Term → Term
     | x, s, .var y => if y == x then s else .var y
-    | x, s, .cmpT τ => .cmpT (Term.substP x s τ)           -- a domain: outside the binder
+    | x, s, .cmpT τ => .cmpT (Term.substP x s τ)
+    -- Transparent (docs/21): runs on `fn` return types at the macro layer (the
+    -- `[k]` hoist's motive/arm substitutions), BEFORE the boundary strip — the
+    -- leaf catch-all would leave a marked claim's names unsubstituted.
+    | x, s, .marker n e => .marker n (Term.substP x s e)           -- a domain: outside the binder
     -- The three pure binders and `borrowT`'s snapshot binder: the domain is
     -- outside the binder, the body inside it — so a body whose binder rebinds `x`
     -- is left alone, which is the whole of the scope discipline.
@@ -843,6 +847,9 @@ mutual
   def Term.freePNamesGo (bound : List String) : Term → List String
     | .var x => if bound.contains x then [] else [x]
     | .cmpT τ => Term.freePNamesGo bound τ
+    -- Transparent (docs/21): walks types before the boundary strip (`absOcc`'s
+    -- shadowed set); the leaf catch-all would hide a marked subterm's names.
+    | .marker _ t => Term.freePNamesGo bound t
     | .lam y dom b => Term.freePNamesGo bound dom ++ Term.freePNamesGo (y.name :: bound) b
     | .pi y dom b | .sigmaT y dom b | .borrowT y dom b =>
       Term.freePNamesGo bound dom ++ Term.freePNamesGo (y :: bound) b
@@ -978,6 +985,10 @@ mutual
     -- A mode marker is never itself an abstraction target (it is not a term),
     -- so recurse straight through rather than testing it.
     | .cmpT τ => .cmpT (absOcc e x shadowed τ)
+    -- A CLAIM marker likewise (docs/21): it is its body, and `e` never contains
+    -- one — recurse through, keeping the node. This pass runs at elaboration
+    -- (§18's motive generalization), before any boundary strip.
+    | .marker n b => .marker n (absOcc e x shadowed b)
     | s => if Term.beq s e then .var x else s   -- leaves, `var` among them
   termination_by s => sizeOf s
   def absOccList (e : Term) (x : String) (shadowed : List String) : List Term → List Term
@@ -1005,6 +1016,8 @@ def abstractOccurrences (e t : Term) : Term := absOcc e genName (Term.freePNames
     `Boundary` where it was born — `Machine` cannot import `Boundary`. -/
 def hasBorrowT : Term → Bool
   | .borrowT _ _ _ => true
+  -- Transparent (docs/21): a marked claim may be (or contain) a borrow type.
+  | .marker _ τ => hasBorrowT τ
   | .sigmaT _ a b => hasBorrowT a || hasBorrowT b
   | .pi _ a b => hasBorrowT a || hasBorrowT b
   | .app a b => hasBorrowT a || hasBorrowT b
@@ -1660,6 +1673,24 @@ end
     once, so the machine provably never sees a marker. -/
 def Term.stripMarkers (t : Term) : Term :=
   (Term.mapMarkersGo (fun _ _ e => ((), e)) () t).2
+
+/-- Apply `edit` to the body of EVERY marker named `name` — each copy edited in
+    its own context — keeping the nodes; returns how many were hit. The
+    LOWERING companion to `replaceMarked?` (docs/21 §9, found at the flagship):
+    a `fn` lowering FANS OUT its types — a hoisted fn's return type is copied
+    into the recursor motive, the ih's type and the seal; a hoisted parameter
+    type fans wider still — so a claim marked ONCE at the surface occurs
+    several times in the lowered `Term`, and a twin must flip every copy of
+    the one site together or the function disagrees with itself. Editing per
+    copy (rather than replanting one extracted body) keeps copies honest when
+    the lowering has substituted into them. The count is RETURNED rather than
+    checked: the caller pins the fan-out it expects, which keeps zero-hit
+    loudness (0 satisfies no pin) and turns the copy count into a stated
+    fact. -/
+def Term.editMarked (name : String) (edit : Term → Term) (t : Term) : Nat × Term :=
+  Term.mapMarkersGo
+    (fun n nm e => if nm == name then (n + 1, .marker nm (edit e)) else (n, .marker nm e))
+    0 t
 
 /-- Swap the BODY of the marker named `name` for `repl`, keeping the marker
     node — the twin stays addressable, and strip-transparency covers the
