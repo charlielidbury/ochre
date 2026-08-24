@@ -1676,16 +1676,28 @@ partial def elabUBlk (sc : Scope)
   -- whose value is `()`.
   | `(ublk| fn $name:ident $[[$dec:ident]]? ( $ps,* ) $[-> $ret:uterm]? { $body:ublk } $[; $rest:ublk]?) => do
     checkBinder name
-    -- **A `[k]` NEEDS A RETURN TYPE**, refused here rather than in `fnElab`. §7
-    -- derives the recursor's motive from the sealed Π with the scrutinee peeled
-    -- off the front, so with nothing sealed there is no motive to derive. The
-    -- pairing is decidable from the SYNTAX — no telescope type is consulted —
-    -- and `FnMacro`'s policy puts cheap syntactic refusals at Lean elaboration,
-    -- where the fix can be named, and routes only semantic ones through
-    -- `fnElabOrFail`'s sentinel.
+    -- **A RECURSIVE `fn` CANNOT BE TRANSPARENT**, which is why a `[k]` needs a
+    -- return type. The missing `-> R` is the symptom; the incompatibility is the
+    -- fact, and it is not a gap a later milestone could infer away:
+    --
+    --   * unsealed means the checker UNFOLDS the body at the call site, by β;
+    --   * β alone does not terminate on a recursive body;
+    --   * the reduction that does terminate is ι, which fires on a CONSTRUCTOR —
+    --     and "fires on a constructor" is exactly a recursor with a motive.
+    --
+    -- So a recursive function is a recursor whether or not it is spelled as one,
+    -- and §7 builds the motive from the sealed Π with the scrutinee peeled off
+    -- the front. The return type is what there is to build it from. That is the
+    -- SECOND thing to say, not the first, and the message below is ordered that
+    -- way.
+    --
+    -- Refused here rather than in `fnElab` because the pairing is decidable from
+    -- the SYNTAX — no telescope type is consulted — and `FnMacro`'s policy puts
+    -- cheap syntactic refusals at Lean elaboration, where the fix can be named,
+    -- routing only semantic ones through `fnElabOrFail`'s sentinel.
     if let some d := dec then
       if ret.isNone then
-        Macro.throwErrorAt d s!"fn: '{name.getId}' declares the decreasing argument '{d.getId}' but has no return type. §7 builds the recursor's motive from the sealed Π with the scrutinee peeled off the front, so a recursive `fn` must state what it returns — give '{name.getId}' a `-> R`."
+        Macro.throwErrorAt d s!"fn: '{name.getId}' recurses on '{d.getId}', and a recursive function cannot be transparent. With no return type there is no seal, and with no seal the checker unfolds the body at each call site by β — which on a recursive body never terminates. The reduction that does terminate is ι, which fires on a constructor, and firing on a constructor IS a recursor with a motive; §7 builds that motive from the sealed Π with the scrutinee peeled off the front, so the return type is what there is to build it from. No later inference can supply it. Give '{name.getId}' a `-> R`."
     -- A pending `show` above this `fn` must not drain inside its body (the
     -- depth-blind hazard `takePendings` documents); it keys at the statement
     -- AFTER the declaration instead.

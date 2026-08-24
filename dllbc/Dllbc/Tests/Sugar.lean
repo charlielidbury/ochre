@@ -798,18 +798,26 @@ def unsealedBogusCalled : Term :=
 example : progRejects unsealedBogusCalled "call: unknown function 'Bogus'" = true := by
   native_decide
 
-/-! ### E. A `[k]` still needs a return type
+/-! ### E. A RECURSIVE `fn` CANNOT BE TRANSPARENT
 
-    §7 builds the recursor's motive from the sealed Π with the scrutinee peeled
-    off the front, so with nothing sealed there is no motive to derive. The
-    pairing is decidable from the SYNTAX alone — no telescope type is consulted —
-    so it is refused at the `fn` row, at Lean elaboration, where the fix can be
-    named, rather than through `fnElabOrFail`'s sentinel, which carries the
-    semantic refusals. `#guard_msgs` pins the message, since the message is the
-    point of a refusal test. -/
+    Which is why a `[k]` needs a return type — the missing `-> R` is the symptom
+    and the incompatibility is the fact. Unsealed means the checker unfolds the
+    body at the call site by β (§D); β does not terminate on a recursive body;
+    the reduction that does terminate is ι, which fires on a CONSTRUCTOR, and
+    firing on a constructor is exactly a recursor with a motive. So a recursive
+    function is a recursor whether or not it is spelled as one, and §7 builds
+    that motive from the sealed Π with the scrutinee peeled off the front. No
+    later inference could supply what is missing.
+
+    The pairing is decidable from the SYNTAX alone — no telescope type is
+    consulted — so it is refused at the `fn` row, at Lean elaboration, where the
+    fix can be named, rather than through `fnElabOrFail`'s sentinel, which
+    carries the semantic refusals. `#guard_msgs` pins the message, since the
+    message is the point of a refusal test, and this message's ORDER is part of
+    the point: the incompatibility first, the motive second, the fix last. -/
 
 /--
-error: fn: 'Count' declares the decreasing argument 'n' but has no return type. §7 builds the recursor's motive from the sealed Π with the scrutinee peeled off the front, so a recursive `fn` must state what it returns — give 'Count' a `-> R`.
+error: fn: 'Count' recurses on 'n', and a recursive function cannot be transparent. With no return type there is no seal, and with no seal the checker unfolds the body at each call site by β — which on a recursive body never terminates. The reduction that does terminate is ι, which fires on a constructor, and firing on a constructor IS a recursor with a motive; §7 builds that motive from the sealed Π with the scrutinee peeled off the front, so the return type is what there is to build it from. No later inference can supply it. Give 'Count' a `-> R`.
 -/
 #guard_msgs in
 example : Term := prog{ fn Count [n] (n : Nat) { n } }

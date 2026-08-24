@@ -196,7 +196,7 @@ The **motive is derived from the signature** — the sealed Π with the recursor
 
 Neither reading is the other in disguise. The choice is the ordinary one between the two callee rules the language already has — *the body is known, so unfold it* against *the body is withheld, so only the type's promise* — and writing `-> R` is how a `fn` asks for the second.
 
-**A `[k]` still requires one.** The motive is the sealed Π with the scrutinee peeled off the front, so with nothing sealed there is no motive to derive. The surface refuses that pairing at the `fn` header, where it can name the fix, rather than in the lowering.
+**And a recursive `fn` cannot be transparent at all**, which is why `[k]` still requires a return type. The missing `-> R` is the symptom; the incompatibility is the fact. Unsealed means the body is unfolded at the call site by β; β does not terminate on a recursive body; and the reduction that does terminate is ι, which fires on a *constructor* — and firing on a constructor is precisely a recursor with a motive. A recursive function is therefore a recursor whether or not it is spelled as one, and the motive is the sealed Π with the scrutinee peeled off the front, so with nothing sealed there is nothing to derive it from. This is not a gap that inference could close in some later milestone: the two readings above are the two reductions, and only one of them terminates here. The surface refuses the pairing at the `fn` header, where it can name the fix, rather than in the lowering.
 
 ---
 

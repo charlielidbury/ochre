@@ -118,9 +118,14 @@ that is called in three places is checked three times, against what is true at e
 them. Write `-> R` when you want the definition to stand on its own and its callers to
 be held to a signature; leave it off for a small helper you would rather have inlined.
 
-A recursive definition still needs one. `[k]` says which argument shrinks, and what the
-checker recurses on is built out of the return type, so there is nothing to build
-without it: `fn Count [n] (n : Nat) { n }` is refused, with that as the message.
+**A recursive definition can never leave it off**, and the reason is not a missing
+feature. Leaving the return type off says "check my body wherever it is called" — and
+checking a call means substituting the body in, which on a recursive function never
+finishes. What does finish is stepping on a constructor: the argument `[k]` names gets
+smaller until it runs out. That stepping is what the checker actually does with a
+recursive definition, and to do it, it needs the one thing every step has to arrive at
+— the return type. So `fn Count [n] (n : Nat) { n }` is refused, and it is refused for
+good: no later cleverness could work the type out instead.
 
 **The last `fn` in a block may drop its `;`.** A block can end with a definition instead
 of an expression:

@@ -388,7 +388,7 @@ def fnElab (d : FnDef) : Except String Term := do
   -- surface cannot write a `FnDef` of this shape, so only a hand-built one
   -- reaches here.
   | some _, none =>
-    .error s!"fn: '{d.name}' declares a decreasing argument but has no return type. §7 derives the recursor's motive from the sealed Π with the scrutinee peeled off the front, so there is no motive without one. (The `fn` row refuses this at the surface; a `FnDef` built by hand can still reach here.)"
+    .error s!"fn: '{d.name}' recurses but has no return type, and a recursive function cannot be transparent — unsealed means the body is unfolded at each call site by β, which never terminates on a recursive body, and the terminating reduction is ι, which fires on a constructor and so IS a recursor with a motive. §7 builds that motive from the sealed Π with the scrutinee peeled off the front, so there is nothing to build it from here. (The `fn` row refuses this at the surface, where the fix can be named; a `FnDef` built by hand can still reach this arm.)"
   | some k, some retType => do
     let (kv, kτ) ← match tel[k]? with
       | some e => pure e
