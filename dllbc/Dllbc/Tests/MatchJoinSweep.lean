@@ -72,8 +72,10 @@ def sweep (name : String) (t : Term) : IO Unit := do
   -- terms, markers stripped, are closed (formers qualified, lemmas spliced), so
   -- the unseeded sweep keeps its subjects.
   sweep "flagship (list quicksort, stripped)" (Term.stripMarkers Dllbc.Tests.S23Direct.qsM.term)
-  sweep "hashmap s2CheckedCaller" Dllbc.Tests.HashMap.s2CheckedCaller
-  sweep "hashmap s1Chain" Dllbc.Tests.HashMap.s1Chain
+  -- The hashmap chain is TWO chained modules since the docs/21 train; the
+  -- first (bucket + slot layer) strips to a closed subject, the second's
+  -- callees live in the first's seed and have no closed composition.
+  sweep "hashmap hmM0 (bucket+slot layer, stripped)" (Term.stripMarkers Dllbc.Tests.HashMap.hmM0.term)
   sweep "arrChain (array quicksort, stripped)" (Term.stripMarkers Dllbc.Tests.S25ArrSort.arrSort.term)
 
 end Dllbc.Tests.MatchJoinSweep
