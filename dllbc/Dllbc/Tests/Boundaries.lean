@@ -162,7 +162,7 @@ namespace Dllbc.Tests.S6Call
     written as `withPush (prog{ … })` and gets `push` in scope. -/
 def withPush (rest : Term) : Term := prog{
   fn Push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; *v := Cons(e, tail); () };
-  %rest }
+  rest }
 
 /-! ## The wire: consume and promise -/
 
@@ -607,11 +607,11 @@ def vlist : List Nat → Val | [] => .ctor "Nil" [] | h :: t => .ctor "Cons" [vn
 
 /-! ## The segment vocabulary computes (`Len`/`Take`/`Drop`) -/
 
-example : (Pure.nf 1000 (prog_parse { %(Std.lenFnT) %(Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]) })
+example : (Pure.nf 1000 (prog_parse { Len Cons(1, Cons(2, Cons(3, Nil))) })
     == Std.ofNat 3) = true := by native_decide
-example : (Pure.nf 1000 (prog_parse { %(Std.takeFnT) %(Std.ofNat 2) %(Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]) })
+example : (Pure.nf 1000 (prog_parse { Take 2 Cons(1, Cons(2, Cons(3, Nil))) })
     == Dllbc.Std.ofList [Std.ofNat 1, Std.ofNat 2]) = true := by native_decide
-example : (Pure.nf 1000 (prog_parse { %(Std.dropFnT) %(Std.ofNat 2) %(Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]) })
+example : (Pure.nf 1000 (prog_parse { Drop 2 Cons(1, Cons(2, Cons(3, Nil))) })
     == Dllbc.Std.ofList [Std.ofNat 3]) = true := by native_decide
 
 /-! ## The cursor family, as a prefix
@@ -657,7 +657,7 @@ def withCursors (rest : Term) : Term := prog{
     *ei := *ej;
     *ej := t;
     () };
-  %rest }
+  rest }
 
 /-- All three check, as the one program they are. `nth2`'s call to `NthL` and
     `swap`'s to `nth2` are retargeted into the chain, which for `NthL`/`nth2`
