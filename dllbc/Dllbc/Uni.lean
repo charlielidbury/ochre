@@ -53,10 +53,10 @@ convention in Syntax.lean.
 ## Resolution discipline (och's law)
 
 Every identifier resolves or errors: a binder in scope (pure, slot or `fn`)
-→ `var`; known constructor → `ctorApp`; kernel const → `const`; a friendly
-reified-function alias (`Le`, `Len`, `Add`, …) → its `…FnT` Term constant; else
+→ `var`; known constructor → `ctorApp`; kernel const → `const`; else
 the **Lean identifier** of that name, which must denote a `Dllbc.Term` in scope
-(a library lemma like `SwapL` or `Set`) — the documented fallback. In
+— the documented fallback, and the rung the standard vocabulary (`Le`, `Len`,
+`Add`, …) now arrives down alongside the library lemmas (`SwapL`, `Set`). In
 `prog_parse { }` the last step has one more rung: a name Lean does not know is
 a free `var`, for the splice site to bind (docs/22 §5).
 
@@ -241,7 +241,7 @@ syntax:10 uterm:11 "→" uterm:10 : uterm                      -- non-dependent 
 -- spelling for "this component's mode is nobody's business", which is exactly
 -- what the kernel's own `Sorted` says by writing `§_` — the reserved binder the
 -- surface already mints for `→`, carrying no mode because nothing can cite it.
--- Found by respelling `Std.SortedFn`, whose `Bound h t × Sorted t` is the
+-- Found by respelling `Std.Sorted`, whose `Bound h t × Sorted t` is the
 -- corpus's one non-dependent Σ.
 syntax:20 uterm:21 "×" uterm:20 : uterm                      -- non-dependent Σ
 -- M26-A's seal (combining-fns §5), written as ASCRIPTION (M28 ξ). Still a
@@ -608,29 +608,6 @@ def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "
   -- and the split view's two PROJECTIONS (`atake`/`adrop`), which are what lets a
   -- signature name the pieces a carve mints.
   "Array", "arrCat", "acons", "arrRec", "aget", "atake", "adrop"]
-/-- Friendly aliases for the reified library functions whose surface name differs
-    from their `…FnT` Term-constant (`Le` ↦ `LeFnT`, etc.). Everything else falls
-    through to the raw-Lean-identifier resolution, so lemma Terms (`SwapL`, `Set`,
-    `SwapL`, …) are referenced by their own names via the use-site `open`s.
-
-    **The keys are PascalCase since M31 Stage A** (§2.1): "the standard
-    vocabulary capitalises with everything else — `Len`, `Add`, `Count`, `Take`
-    join the already-capital `Le`, `Sorted` — one rule for every name that denotes
-    a function, library or user's." The `…FnT` Terms they map to keep their Lean
-    names, because a Lean identifier is not a DLLBC binder and carries no mode.
-
-    **Stage C completed the rule at the lemmas** (§2.1's "library or user's").
-    Stage A had left them lowercase on the same carries-no-mode argument; that
-    argument is sound about the KERNEL and wrong about the READER, who sees one
-    surface vocabulary in which `SwapL` and `Quicksort` are both functions. So
-    the lemma Terms below the alias table are PascalCase too, and the abbrevs
-    here — `Add`, `Count`, `Take`, … — now merely restate their alias key. -/
-def aliasMap : List (String × Name) :=
-  [("Le", `Dllbc.Std.LeFnT), ("Len", `Dllbc.Std.lenFnT), ("Add", `Dllbc.Std.addFnT),
-   ("Leb", `Dllbc.Std.lebFnT), ("Count", `Dllbc.Std.countFnT), ("Eqb", `Dllbc.Std.eqbFnT),
-   ("Take", `Dllbc.Std.takeFnT), ("Drop", `Dllbc.Std.dropFnT),
-   ("Sorted", `Dllbc.Std.SortedFnT), ("Bound", `Dllbc.Std.BoundFnT)]
-
 /-! ## Binder names, and what capitalisation may mean (combining-fns §6)
 
     §6 makes **capitalisation the binder-mode marker** — a capital binder is
@@ -1272,7 +1249,7 @@ def lemmaShadowCheckAt (ref : Syntax) (s : String) : MacroM Unit := do
     globals (`resolveGlobalName`) and not the local context — so the walker
     emits this and the answer is given here, by a term elaborator with the full
     scope in hand. Known-or-not and nothing more: an ambiguous global (`Append`
-    the Lean class against `StdChainRaw.Append`) is for `elabTerm`'s overload
+    the Lean class against `Dllbc.Std.Append`) is for `elabTerm`'s overload
     resolution against the expected type, exactly as the bare identifier always
     was. A dotted name is never a DLLBC binder, so it is elaborated as Lean
     would without asking. -/
@@ -1291,15 +1268,23 @@ elab_rules : term
 /-- Resolve a bare identifier. A binder in scope — pure, slot or `fn` — is
     `.var` at that name (ONE constructor, docs/22; which it is, the term's
     scope says); a constructor → nullary `ctorApp`; a kernel const → `const`;
-    a reified-function alias → its `…FnT` Term; else the Lean identifier of that
-    name (a `Term` in scope) — or, in a `prog_parse { }` block (`parse`), that
-    identifier if Lean knows it and a free `.var` otherwise (`ident_or_free%`).
+    else the Lean identifier of that name (a `Term` in scope) — or, in a
+    `prog_parse { }` block (`parse`), that identifier if Lean knows it and a free
+    `.var` otherwise (`ident_or_free%`).
 
-    A binder shadows the table, as it always did (`pctx`-first, then `rctx`,
+    **There used to be a fourth rung**, between the constants and the
+    fallthrough: `aliasMap`, a ten-entry table mapping `Le ↦ Dllbc.Std.LeFnT`,
+    `Add ↦ Dllbc.Std.addFnT`, …. It is gone, and nothing replaced it — those
+    constants are now spelled `Dllbc.Std.Le` and `Dllbc.Std.Add`, exported into
+    `Dllbc`, and so they arrive down the fallthrough as `SwapL` and `Set` always
+    did. A hardcoded list of surface names does not belong in the macro layer,
+    and this one had to name constants three modules above it.
+
+    A binder shadows the tables, as it always did (`pctx`-first, then `rctx`,
     before the constructor and constant tables): `λ (k : Nat). k` is the binder
     and not the `Id` eliminator. **The tables are resolved HERE, in parse mode
-    too** — a name that is a constructor, a constant or an alias is that,
-    whatever the splice site binds. Deferring the lowercase constants to the
+    too** — a name that is a constructor or a constant is that, whatever the
+    splice site binds. Deferring the lowercase constants to the
     splice was tried and is recorded in docs/22 §7.1: every library proof is
     spliced somewhere, and `IdCongrRaw`'s `j A X …` was captured by a chain
     `fn`'s parameter named `j`. The cost is stated there: a fragment cannot
@@ -1309,9 +1294,7 @@ def resolveName (parse : Bool) (sc : Scope) (x : Ident) : MacroM (TSyntax `term)
   if (sc.find? s).isSome then `(Dllbc.Term.var $(quote s))
   else if ctorSet.contains s then `(Dllbc.Term.ctorApp $(quote s) [])
   else if constSet.contains s then `(Dllbc.Term.const $(quote s))
-  else match aliasMap.lookup s with
-    | some n => pure ⟨(mkIdent n).raw⟩
-    | none => if parse then `(ident_or_free% $x) else pure ⟨x.raw⟩
+  else if parse then `(ident_or_free% $x) else pure ⟨x.raw⟩
 
 /-- File a hover for one identifier OCCURRENCE (docs/16).
 
@@ -1761,7 +1744,7 @@ partial def elabScrut (sc : Scope)
     -- or a `fn` slot is refused exactly as in a closed program, for the reason
     -- given above.
     else if (← get).parse && (sc.find? s).isNone && !ctorSet.contains s
-        && !constSet.contains s && (aliasMap.lookup s).isNone then
+        && !constSet.contains s then
       return (← `($(quote s)), none)
     else Macro.throwErrorAt x s!"decl: match scrutinee '{s}' is not a bound runtime variable"
   | _ => do

@@ -78,10 +78,12 @@ namespace Dllbc
         at that very name (ONE constructor, docs/22; the term's scope says which);
       * a known **constructor** (`Z`, `S`, `Cons`, `Refl`, `unit`, …) → `ctorApp`;
       * a kernel **constant** (`Nat`, `List`, `natRec`, `j`, …) → `const`;
-      * a reified-function alias (`Le`, `Len`, `Add`, …) → its `…FnT` Term constant;
       * anything else → the **Lean identifier** of that name, which must denote a
-        `Dllbc.Term` in scope (a library definition like `SwapL`); an unbound name
-        is a Lean elaboration error, never a silent fallback.
+        `Dllbc.Term` in scope; an unbound name is a Lean elaboration error, never
+        a silent fallback. The standard vocabulary (`Le`, `Len`, `Add`, …) arrives
+        down this rung like any library definition (`SwapL`, `Set`) — `Dllbc.Std`
+        exports its constants under their surface names, which is why there is no
+        alias table above it any more.
 
     `%e` splices a Lean-level `Term` expression `e` directly (an escape hatch), and
     the recursor sugar `elim … return …` / `elim … generalizing …` (§15b, §18) is
