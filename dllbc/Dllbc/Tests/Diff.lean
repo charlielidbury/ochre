@@ -47,8 +47,10 @@ namespace Dllbc.Tests.S8Diff
 
     The pools are `prog_parse { }` FRAGMENTS (docs/22): `v` is free in every one
     and is the telescope's own `v` where a body is spliced into `fn F (v : …) {
-    %body }` — a fragment is a term with free names, and the splice is
-    substitution. The pools used to be raw `Term` literals ("the generator needs
+    body }` — a fragment is a term with free names, the splice is substitution,
+    and a Lean-level name (`e`, `body`) is cited BARE: a name the walker does
+    not bind resolves to the Lean binding of that name, which IS the `%` splice
+    of it (Tests/Parse pins the equality). The pools used to be raw `Term` literals ("the generator needs
     AST literals, not the `prog{}` macro"), and the conversion was witnessed
     body-for-body against them: the same `Term`, exactly, and the same 91/47
     below.
@@ -66,9 +68,9 @@ def exprs : List Term :=
 /-- Leaf statement bodies (each returns `()`), depth ≈ 1. -/
 def leafBodies : List Term :=
   [ prog_parse { () } ]
-  ++ exprs.map (fun e => prog_parse { %e; () })                                  -- e ; ()
+  ++ exprs.map (fun e => prog_parse { e; () })                                  -- e ; ()
   -- p := e ; ()  for p a place through 0/1/2 peels
-  ++ ([prog_parse { v }, prog_parse { *v }].flatMap fun p => exprs.map fun e => prog_parse { %p := %e; () })
+  ++ ([prog_parse { v }, prog_parse { *v }].flatMap fun p => exprs.map fun e => prog_parse { p := e; () })
   -- the take-and-refill idiom
   ++ [ prog_parse { let tail = *v; *v := Cons(0, tail); () } ]
   -- a stray let
@@ -79,7 +81,7 @@ def leafBodies : List Term :=
 def matchBodies : List Term :=
   (leafBodies.take 8).flatMap fun bNil =>
     (leafBodies.take 8).map fun bCons =>
-      prog_parse { match v { Nil => %bNil, Cons(hd, tl) => %bCons } }
+      prog_parse { match v { Nil => bNil, Cons(hd, tl) => bCons } }
 
 /-- All generated bodies for the list-borrow telescope. -/
 def vBodies : List Term := leafBodies ++ matchBodies
@@ -94,12 +96,12 @@ def vBodies : List Term := leafBodies ++ matchBodies
     completes. -/
 
 def vCheck (body : Term) : Term := prog{
-  fn F (v : &mut List Nat) -> Unit { %body };
+  fn F (v : &mut List Nat) -> Unit { body };
   () }
 
 def vRun (body arg : Term) : Term := prog{
-  fn F (v : &mut List Nat) -> Unit { %body };
-  let x = %arg; let p = &m x; F(p); () }
+  fn F (v : &mut List Nat) -> Unit { body };
+  let x = arg; let p = &m x; F(p); () }
 
 /-- Concrete payloads for v: the small list pool, as the terms a caller writes. -/
 def vArgs : List Term := [prog_parse { Nil }, prog_parse { Cons(1, Nil) }, prog_parse { Cons(1, Cons(2, Nil)) }]
@@ -121,8 +123,8 @@ example : vAccepted.all (fun b => vArgs.all (fun a => progRuns (vRun b a))) = tr
     rejected, so no accepted body can be concretely stuck on a missing branch. -/
 
 def vNonExhaustive : List Term :=
-  (leafBodies.take 8).map (fun b => prog_parse { match v { Cons(hd, tl) => %b } })   -- missing Nil
-  ++ (leafBodies.take 8).map (fun b => prog_parse { match v { Nil => %b } })         -- missing Cons
+  (leafBodies.take 8).map (fun b => prog_parse { match v { Cons(hd, tl) => b } })   -- missing Nil
+  ++ (leafBodies.take 8).map (fun b => prog_parse { match v { Nil => b } })         -- missing Cons
 
 example : vNonExhaustive.all (fun b => !progOk (vCheck b)) = true := by native_decide
 
@@ -138,12 +140,12 @@ def nBodies : List Term :=
   -- exhaustive match on n
   ++ (nLeaf.take 5).flatMap fun b1 =>
        (nLeaf.take 5).map fun b2 =>
-         prog_parse { match n { Z => %b1, S(m) => %b2 } }
+         prog_parse { match n { Z => b1, S(m) => b2 } }
 
-def nCheck (body : Term) : Term := prog{ fn F (n : Nat) -> Nat { %body }; () }
+def nCheck (body : Term) : Term := prog{ fn F (n : Nat) -> Nat { body }; () }
 def nRun (body arg : Term) : Term := prog{
-  fn F (n : Nat) -> Nat { %body };
-  let r = F(%arg); () }
+  fn F (n : Nat) -> Nat { body };
+  let r = F(arg); () }
 def nArgs : List Term := [prog_parse { 0 }, prog_parse { 1 }, prog_parse { 2 }]
 
 def nAccepted : List Term := nBodies.filter (fun b => progOk (nCheck b))
@@ -162,14 +164,14 @@ def bcBodies : List Term :=
   -- exhaustive match on c
   ++ (bcLeaf.take 5).flatMap fun b1 =>
        (bcLeaf.take 5).map fun b2 =>
-         prog_parse { match c { True => %b1, False => %b2 } }
+         prog_parse { match c { True => b1, False => b2 } }
 
 def bcCheck (body : Term) : Term := prog{
-  fn F (b : &mut Nat, c : Bool) -> Unit { %body };
+  fn F (b : &mut Nat, c : Bool) -> Unit { body };
   () }
 def bcRun (body a0 a1 : Term) : Term := prog{
-  fn F (b : &mut Nat, c : Bool) -> Unit { %body };
-  let x = %a0; let p = &m x; F(p, %a1); () }
+  fn F (b : &mut Nat, c : Bool) -> Unit { body };
+  let x = a0; let p = &m x; F(p, a1); () }
 def bcArgs : List (Term × Term) :=
   [ (prog_parse { 0 }, prog_parse { True }), (prog_parse { 0 }, prog_parse { False }),
     (prog_parse { 1 }, prog_parse { True }), (prog_parse { 1 }, prog_parse { False }) ]
@@ -231,7 +233,7 @@ def withPool (rest : Term) : Term := prog{
   fn Advance (b : &mut List Nat) -> &mut List Nat { match b { Nil => b, Cons(hd, tl) => tl } };
   fn Choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat { match c { True => x, False => y } };
   fn Push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; *v := Cons(e, tail); () };
-  %rest }
+  rest }
 
 /-! ## The simulation relation: `instanceOf` -/
 
