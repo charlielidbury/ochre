@@ -45,7 +45,7 @@ def pv (t : Term) : Term := Pure.nf 4000000 t
     (`Surface.buildNat` emits `Term.nat k`), so a literal `1056` elaborates as
     fast as `%(Term.nat 1056)` — it used to be a 1056-deep syntax tree that hit
     `maxRecDepth`. -/
-def modOf (a b : Nat) : Term := pv prog{ %ModTFnT %(Term.nat a) %(Term.nat b) }
+def modOf (a b : Nat) : Term := pv prog{ ModTFnT %(Term.nat a) %(Term.nat b) }
 
 example : (modOf 7 3).natOf? == some 1 := by native_decide
 example : (modOf 6 3).natOf? == some 0 := by native_decide
@@ -86,7 +86,7 @@ def ZeroOutFn : Term := prog_parse {
       False => Z } } }
 def ZeroOutFnT : Dllbc.Term := ZeroOutFn
 
-def app1 (f : Term) (a : Nat) : Term := pv prog{ %f %(Term.nat a) }
+def app1 (f : Term) (a : Nat) : Term := pv prog{ f %(Term.nat a) }
 
 example : (app1 DiscardFnT 0).natOf? == some 0 := by native_decide
 example : (app1 DiscardFnT 64).natOf? == some 0 := by native_decide
@@ -101,8 +101,8 @@ example : (app1 ZeroOutFnT 64).natOf? == some 0 := by native_decide
 -- must leave the stuck neutral alone rather than treating it as an error.
 def openTwo : Term := prog_parse { S(S(x)) }
 
-example : (pv prog_parse { %DiscardFnT %openTwo }).natOf? == some 0 := by native_decide
-example : (pv prog_parse { %ZeroOutFnT %openTwo }).natOf? == some 0 := by native_decide
+example : (pv prog_parse { DiscardFnT openTwo }).natOf? == some 0 := by native_decide
+example : (pv prog_parse { ZeroOutFnT openTwo }).natOf? == some 0 := by native_decide
 
 /-! ### The two spellings agree -/
 
@@ -124,7 +124,7 @@ def ModCFn : Term := prog_parse {
     elim A return (λ (Az : Nat). Π (B : Nat) → Π (R : Nat) → Π (C : Nat) → Nat) {
       Z => λ (B : Nat). λ (R : Nat). λ (C : Nat). R,
       S (A') Rec => λ (B : Nat). λ (R : Nat). λ (C : Nat).
-        Rec B (%NextRFnT R C) (%NextCFnT B C) } }
+        Rec B (NextRFnT R C) (NextCFnT B C) } }
 def ModCFnT : Dllbc.Term := ModCFn
 
 /-- Wrapper for `ModCFn`, mirroring its accumulator-style calling convention. -/
@@ -132,7 +132,7 @@ def modCOf (a b : Nat) : Term := pv prog{
   (λ (A : Nat). λ (B : Nat).
     elim B return (λ (Bz : Nat). Nat) {
       Z => Z,
-      S (B') Rb => %ModCFnT A B' Z B' }) %(Term.nat a) %(Term.nat b) }
+      S (B') Rb => ModCFnT A B' Z B' }) %(Term.nat a) %(Term.nat b) }
 
 example : modCOf 7 3 == modOf 7 3 := by native_decide
 example : modCOf 20 32 == modOf 20 32 := by native_decide
