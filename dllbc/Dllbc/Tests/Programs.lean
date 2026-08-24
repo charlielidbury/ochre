@@ -1,6 +1,6 @@
 import Dllbc.Program
 import Dllbc.Std
-import Dllbc.StdLemmas
+import Dllbc.StdChain
 import Dllbc.ProgMacro
 import Dllbc.Tests.Functions
 import Dllbc.Tests.Boundaries
@@ -27,6 +27,15 @@ binders.
 
 Why the modes matter: the split lets one language serve as both program and proof
 without the proof layer ever touching runtime state.
+
+The lemma material cited below comes from `Dllbc.StdChainRaw`, the raw proof
+terms at their post-migration home (docs/20). No program here seeds from the
+chain's state: every citation sits in the comptime fragment — a capital `let`'s
+right-hand side, a splice at a capital argument, a λ body, a sealed proof
+binding — which is the very discipline under test, and a chain call's result is
+not comptime (§C3 pins exactly that). So the citations stay raw splices,
+retargeted to the constants' new home; the terms are value-identical, and every
+verdict and needle below is the pre-migration one unchanged.
 -/
 
 section
@@ -61,7 +70,7 @@ program.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (LeReflRaw LeTransRaw)
+open Dllbc.StdChainRaw (LeReflRaw LeTransRaw)
 open Dllbc.Tests.S9Diff (diffC)
 
 namespace Dllbc.Tests.S26Modes
@@ -739,7 +748,7 @@ their sites below.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (Len Le ZnotsRaw)
+open Dllbc.StdChainRaw (ZnotsRaw)
 
 namespace Dllbc.Tests.S27Mixed
 
@@ -912,7 +921,7 @@ example : progOk Tests.S6Call.toNatProg = true := by native_decide
 def withSwapS01 (rest : Term) : Term := prog{
   fn SwapS01 (v : &mut (s : List Nat ~> Σ (l : List Nat). Id Nat (Len l) (Len s)),
                     p : Le 2 (Len (*v))) -> Unit {
-    let proof = StdLemmas.LenSwapLRaw 0 1 (*v);
+    let proof = StdChainRaw.LenSwapLRaw 0 1 (*v);
     match v {
       Nil => botElim Unit p,
       Cons(h0, t0) => {
@@ -1040,7 +1049,6 @@ branch, and the array cursor costs something else (§B).
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (LeReflRaw Len Le)
 
 namespace Dllbc.Tests.S26Fuel
 
@@ -1171,7 +1179,7 @@ program that was never run.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (LeTransRaw LeReflRaw LeUpRRaw IdCongrRaw Append Len Le)
+open Dllbc.StdChainRaw (LeReflRaw LeUpRRaw)
 
 namespace Dllbc.Tests.S26Prog
 
@@ -1632,7 +1640,6 @@ a borrow and returns `Unit`. The three programs below each consume the result a
 different way, to pin exactly what "eager" has to mean operationally. -/
 
 open Dllbc
-open Dllbc.StdLemmas (Len)
 
 namespace Dllbc.Tests.S33Eager
 
@@ -1890,14 +1897,14 @@ example : progOk lamValuedCap = true := by native_decide
     These two programs are that rule and its negative control, and they differ
     in one character — the case of the Σ's binder. -/
 
-open Dllbc.StdLemmas in
+open Dllbc.StdChainRaw in
 /-- A proof returned as a Σ component at a **capital** binder: ⇝-read, accepted. -/
 def sigmaProofCapital : Term := prog{
   fn F (n : Nat) -> Σ (H : Le n n). Nat { let H0 = LeReflRaw n; Pair(H0, n) };
   () }
 example : progOk sigmaProofCapital = true := by native_decide
 
-open Dllbc.StdLemmas in
+open Dllbc.StdChainRaw in
 /-- The same program with the Σ binder lowercase: the component is ⇒-read, and
     the fence refuses the capital binding. Without this control the acceptance
     above would also pass for a rule that simply stopped fencing. -/
@@ -1906,7 +1913,7 @@ def sigmaProofLower : Term := prog_parse {
   () }
 example : progRejects sigmaProofLower "cannot be ⇒-moved" = true := by native_decide
 
-open Dllbc.StdLemmas in
+open Dllbc.StdChainRaw in
 /-- A Σ chain's last component has no binder, so there is nothing for
     `readResult` to read positionally: the same proof at the same capital
     binding, in the tail position instead of a bindered one, is rejected — the
@@ -1948,7 +1955,7 @@ open Dllbc Dllbc.Tests
     `Σ0`, and it is rejected. The two differ in one character, and that
     character is the whole feature. -/
 
-open Dllbc.StdLemmas in
+open Dllbc.StdChainRaw in
 def sigmaTailProof0 : Term := prog{
   fn F (n : Nat) -> Σ0 (H : Le n n). Le n n { let H0 = LeReflRaw n; Pair(H0, H0) };
   () }
@@ -1959,7 +1966,7 @@ example : progOk sigmaTailProof0 = true := by native_decide
     comptime channel and needs no other destination. The proof of a
     ∀-statement — the shape the mode backstop above could not accommodate
     positionally — is exactly this. -/
-open Dllbc.StdLemmas in
+open Dllbc.StdChainRaw in
 def tailLam0 : Term := prog{
   fn F (n : Nat) -> Σ0 (H : Le n n). (Π (N : Nat) → Le N N)
     { let H0 = LeReflRaw n; Pair(H0, λ (N : Nat). LeReflRaw N) };
@@ -2017,7 +2024,7 @@ example : progRejects tailRunUpper "lower-case the arm binder" = true := by nati
     compilation, exactly as a capital Σ component already is. So the program runs,
     and the data component is what the run leaves behind. -/
 
-open Dllbc.StdLemmas in
+open Dllbc.StdChainRaw in
 def erase0 : Term := prog{
   fn F0 (n : Nat) -> Σ0 (k : Nat). Le n n { let H0 = LeReflRaw n; Pair(n, H0) };
   let Pair(a, H) = F0(S(S(Z)));
@@ -2036,14 +2043,14 @@ example : (match runProgram erase0 with
     Σ0's family is its Σ twin's and the elimination is literally the same
     term. -/
 
-open Dllbc.StdLemmas in
+open Dllbc.StdChainRaw in
 def elimSig : Term := prog_parse {
   let P0 = Pair(Z, LeReflRaw Z);
   let K = elim P0 return (λ (p : Σ (k : Nat). Le Z Z). Nat) { Pair (k) (h) => k };
   () }
 example : progOk elimSig = true := by native_decide
 
-open Dllbc.StdLemmas in
+open Dllbc.StdChainRaw in
 def elimSig0 : Term := prog_parse {
   let P0 = Pair(Z, LeReflRaw Z);
   let K = elim P0 return (λ (p : Σ0 (k : Nat). Le Z Z). Nat) { Pair (k) (H) => k };

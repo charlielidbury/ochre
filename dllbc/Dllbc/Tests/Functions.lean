@@ -1,6 +1,5 @@
 import Dllbc.Program
 import Dllbc.Std
-import Dllbc.StdLemmas
 import Dllbc.ProgMacro
 import Dllbc.Tests.Diff
 import Dllbc.Boundary
@@ -49,9 +48,34 @@ runtime variable, and falls through to the declaration table otherwise.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (LeReflRaw LeTransRaw)
 
 namespace Dllbc.Tests.S26Seal
+
+/-! `LeReflRaw`/`LeTransRaw` are file-local raw proof terms (not a library
+    citation): §C14 below splices `LeTransRaw` into a pure `elim` arm by bare
+    juxtaposition, and `sigLem`'s body is a PURE λ ascribed at a seal — the
+    pure fragment has no call syntax, so a chain citation (`LeTrans(…)`,
+    minting an opaque σ) is not an option here at all; the concrete proof term
+    is the only thing that can sit in either position. -/
+
+def LeReflRaw : Term := prog_parse {
+  λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
+    Z => unit,
+    S (K) Ih => Ih } }
+def LeTransRaw : Term := prog_parse {
+  λ (A : Nat).
+    elim A return (λ (A0 : Nat). Π (B : Nat) → Π (C : Nat) → Le A0 B → Le B C → Le A0 C) {
+      Z => λ (B : Nat). λ (C : Nat). λ (Hab : Le Z B). λ (Hbc : Le B C). unit,
+      S (A') Ih => λ (B : Nat). λ (C : Nat). λ (Hab : Le (S A') B). λ (Hbc : Le B C).
+        elim B return (λ (B0 : Nat). Le (S A') B0 → Le B0 C → Le (S A') C) {
+          Z => λ (Hab0 : Le (S A') Z). λ (Hbc0 : Le Z C). botElim (Le (S A') C) Hab0,
+          S (B') Ihb => λ (Hab0 : Le (S A') (S B')). λ (Hbc0 : Le (S B') C).
+            elim C return (λ (C0 : Nat). Le (S B') C0 → Le (S A') C0) {
+              Z => λ (Hbc1 : Le (S B') Z). botElim (Le (S A') Z) Hbc1,
+              S (C') Ihc => λ (Hbc1 : Le (S B') (S C')). Ih B' C' Hab0 Hbc1
+            } Hbc0
+        } Hab Hbc
+    } }
 
 /-! A rejection is always asserted on its error MESSAGE, never collapsed to a
     Bool: `hasType` returns `false` for "does not have this type", and the seal
@@ -377,9 +401,19 @@ borrow while it waits.
 
 open Dllbc
 open Dllbc.Tests.S9Diff (runExec symEnvs instanceOfC diffC)
-open Dllbc.StdLemmas (IdCongrRaw)
 
 namespace Dllbc.Tests.S26Rec
+
+/-! `IdCongrRaw` is a file-local raw proof term, not a library citation: §G's
+    `splitSealed` is a hand-transcription of `S23Direct.splitOff`'s body
+    (Tests/Direct.lean, not yet migrated off the old library), so it has to
+    keep the same raw citation `splitOff` still uses for the identity claim
+    (§E5/§G) to mean anything — a chain call here would compare a different
+    program, not the same one reached by two routes. -/
+
+def IdCongrRaw : Term := prog_parse {
+  λ (A : Type). λ (B : Type). λ (F : A → B). λ (X : A). λ (Y : A). λ (P : Id A X Y).
+    j A X (λ (Y' : A). λ (H : Id A X Y'). Id B (F X) (F Y')) Refl Y P }
 
 /-! ## The declared side's two verdicts
 

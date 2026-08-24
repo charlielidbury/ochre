@@ -2,7 +2,7 @@ import Dllbc.Program
 import Dllbc.ProgMacro
 import Dllbc.Boundary
 import Dllbc.Std
-import Dllbc.StdLemmas
+import Dllbc.StdChain
 import Dllbc.Tests.Diff
 
 /-!
@@ -29,7 +29,6 @@ removing real staging from a realistic body.
 namespace Dllbc.Tests.SigmaCopy
 
 open Dllbc
-open Dllbc.StdLemmas (LeTransRaw LeAddRaw LebTrueLeRaw IdCongrRaw IdSymRaw LeRwLRaw)
 
 /-! ## (i) Positive and negative cases, one binding used twice
 
@@ -249,8 +248,18 @@ example : (match runProgram packListTailOnce with
     cites, and a returned pack the body uses again after handing it away.
 
     The arithmetic is `Add`, standing in for the original's `Mul`/`Div` — those
-    lemmas are not in `StdLemmas`, and porting them would add nothing to the
-    staging point this file is making. -/
+    lemmas are not in the standard chain (docs/20), and porting them would add
+    nothing to the staging point this file is making.
+
+    `grow`'s proof cites the chain — `LeAdd`/`LeTrans`/`LebTrueLe`/`IdCongr`/
+    `IdSym`/`LeRwL` — by call-and-bind rather than as inline raw proof terms.
+    `uAddC`/`grow`/`growCall` stay Lean-level `Term`-producing functions,
+    composed by splicing `%tail` exactly as before the migration: a module
+    block (`prog (e) { … }`) demands a CLOSED value at elaboration, and these
+    are open until `growCall` supplies the concrete tail, so the citations
+    resolve at the assertion site instead — `progOkFrom`/`runProgramFrom`
+    seeded from `Dllbc.std`, the deferred form docs/20 §6 describes for a
+    citation with no seeded module wrapper. -/
 
 /-- The certified addition: `H` is the caller's obligation that the sum is in
     range, and the `Id` in the tail is what lets the next operation's
@@ -265,7 +274,7 @@ def uAddC (tail : Term) : Term := prog{
       { Pair(Pair(Add (Val MAX a) (Val MAX b), H), Refl) };
   %tail }
 
-example : progOk (uAddC prog_parse { () }) = true := by native_decide
+example : progOkFrom Dllbc.std (uAddC prog_parse { () }) = true := by native_decide
 
 /-- The growth guard, staging-free. `capacity` and `growth` are both consumed
     by the first call and both cited after it; `nc` is consumed by the second
@@ -278,24 +287,23 @@ def grow (tail : Term) : Term := uAddC prog{
            mload : (Σ0 (n : Nat). Le n MAX))
       -> (Σ (c2 : (Σ0 (n : Nat). Le n MAX)). (Σ0 (n : Nat). Le n MAX))
       { if hg : Leb (Add (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth)) MAX {
-          let HBig = LebTrueLeRaw
-                       (Add (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth))
-                       MAX hg;
-          let HA = LeTransRaw (Add (Val MAX capacity) (Val MAX growth))
-                     (Add (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth)) MAX
-                     (LeAddRaw (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth))
-                     HBig;
+          let HBig = LebTrueLe(
+                       Add (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth),
+                       MAX, hg);
+          let hAdd = LeAdd(Add (Val MAX capacity) (Val MAX growth), Val MAX growth);
+          let HA = LeTrans(Add (Val MAX capacity) (Val MAX growth),
+                     Add (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth), MAX,
+                     hAdd, HBig);
           let Pair(nc, Enc) = AddUC(MAX, capacity, growth, HA);
           -- `capacity` and `growth` were both moved by the call above, and both
           -- are named here directly, with no staging beforehand.
-          let HB = LeRwLRaw MAX
-                     (Add (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth))
-                     (Add (Val MAX nc) (Val MAX growth))
-                     (IdCongrRaw Nat Nat (λ (X : Nat). Add X (Val MAX growth))
-                       (Add (Val MAX capacity) (Val MAX growth)) (Val MAX nc)
-                       (IdSymRaw Nat (Val MAX nc)
-                         (Add (Val MAX capacity) (Val MAX growth)) Enc))
-                     HBig;
+          let hSym = IdSym(Nat, Val MAX nc, Add (Val MAX capacity) (Val MAX growth), Enc);
+          let hCongr = IdCongr(Nat, Nat, λ (X : Nat). Add X (Val MAX growth),
+                     Add (Val MAX capacity) (Val MAX growth), Val MAX nc, hSym);
+          let HB = LeRwL(MAX,
+                     Add (Add (Val MAX capacity) (Val MAX growth)) (Val MAX growth),
+                     Add (Val MAX nc) (Val MAX growth),
+                     hCongr, HBig);
           -- The result is the pack itself, after the call that consumed it —
           -- not a re-mint from staged halves.
           let Pair(nd, End) = AddUC(MAX, nc, growth, HB);
@@ -305,7 +313,7 @@ def grow (tail : Term) : Term := uAddC prog{
         } };
   %tail }
 
-example : progOk (grow prog_parse { () }) = true := by native_decide
+example : progOkFrom Dllbc.std (grow prog_parse { () }) = true := by native_decide
 
 /-! ### It runs, on both branches
 
@@ -322,16 +330,19 @@ def growCall (m cap g ml : Nat) : Term := grow prog{
   let out2 = Val %(Term.nat m) b;
   () }
 
+/-- Against the executing twin: the chain's lemmas are entered and computed
+    concretely (docs/20 §6), so the values match what the unseeded run
+    computed before the migration. -/
 def growOut (t : Term) (a b : Nat) : Bool :=
-  match runProgram t with
+  match runProgramFrom Dllbc.std t with
   | .ok env => (env.lookup "out") == some (Val.nat a) && (env.lookup "out2") == some (Val.nat b)
   | .error _ => false
 
 -- The guard holds: capacity 3 grows to 5, load recomputes to 7.
-example : progOk (growCall 15 3 2 0) = true := by native_decide
+example : progOkFrom Dllbc.std (growCall 15 3 2 0) = true := by native_decide
 example : growOut (growCall 15 3 2 0) 5 7 = true := by native_decide
 -- The guard fails: capacity 13 and load 9 come back unchanged.
-example : progOk (growCall 15 13 2 9) = true := by native_decide
+example : progOkFrom Dllbc.std (growCall 15 13 2 9) = true := by native_decide
 example : growOut (growCall 15 13 2 9) 13 9 = true := by native_decide
 
 end Dllbc.Tests.SigmaCopy

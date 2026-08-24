@@ -1,5 +1,4 @@
 import Dllbc.ElabCheck
-import Dllbc.StdLemmas
 import Dllbc.Tests.Functions
 
 /-!

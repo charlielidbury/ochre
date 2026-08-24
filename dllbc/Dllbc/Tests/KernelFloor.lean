@@ -3,7 +3,7 @@ import Dllbc.Program
 import Dllbc.ProgMacro
 import Dllbc.Boundary
 import Dllbc.Std
-import Dllbc.StdLemmas
+import Dllbc.ElabCheck
 
 /-!
 # The kernel floor
@@ -37,7 +37,7 @@ the loop. A macro regression cannot move a subject here, so a red line means the
 kernel itself changed; that also makes this file the control group when a kernel
 change turns the corpus red, telling apart a rule change from a surface change.
 It is also the anchor for the hand-built terms other suites round-trip against
-(e.g. `S15Elab`'s check of `StdLemmas.LeReflRaw` against `Std.le_reflT`).
+(e.g. `S15Elab`'s check of its file-local `LeReflRaw` against `Std.le_reflT`).
 
 σ's are seeded via a variable slot (`readC` reads the snapshot).
 -/
@@ -590,11 +590,62 @@ def chk (tm ty : Term) : Bool :=
   | .ok r _ => r
   | .error _ _ => false
 
+/-! ## The lemma terms, file-local
+
+    Four proof terms and their stated types, copied verbatim from the chain's
+    `Dllbc.StdChainRaw` constants (where the old lemma library's terms moved).
+    Copies rather than an import, and the reason is this file's control-group
+    role: the chain module CHECKS every lemma as it elaborates, so importing it
+    would let a kernel change that breaks a chain lemma stop this file from
+    BUILDING — exactly when its red-means-kernel reading is needed. A
+    `prog_parse` copy only parses; nothing the kernel does can keep it from
+    compiling. And the subject of every assertion below is the term itself —
+    what the surface elaborates it to, and that it checks at its stated type —
+    so a local copy is the claim stated in full, not a fork of the library. -/
+
+def LeReflRaw : Term := prog_parse {
+  λ (N : Nat). elim N return (λ (M : Nat). Le M M) {
+    Z => unit,
+    S (K) Ih => Ih } }
+def LeReflTy : Term := prog_parse { Π (N : Nat) → Le N N }
+
+-- Single outer elim on `A`; the `S` case elims on `B`, whose `S` case elims on
+-- `C`, with the IH applied at the peeled proofs — every step definitional
+-- through the `Le` equations.
+def LeTransRaw : Term := prog_parse {
+  λ (A : Nat).
+    elim A return (λ (A0 : Nat). Π (B : Nat) → Π (C : Nat) → Le A0 B → Le B C → Le A0 C) {
+      Z => λ (B : Nat). λ (C : Nat). λ (Hab : Le Z B). λ (Hbc : Le B C). unit,
+      S (A') Ih => λ (B : Nat). λ (C : Nat). λ (Hab : Le (S A') B). λ (Hbc : Le B C).
+        elim B return (λ (B0 : Nat). Le (S A') B0 → Le B0 C → Le (S A') C) {
+          Z => λ (Hab0 : Le (S A') Z). λ (Hbc0 : Le Z C). botElim (Le (S A') C) Hab0,
+          S (B') Ihb => λ (Hab0 : Le (S A') (S B')). λ (Hbc0 : Le (S B') C).
+            elim C return (λ (C0 : Nat). Le (S B') C0 → Le (S A') C0) {
+              Z => λ (Hbc1 : Le (S B') Z). botElim (Le (S A') Z) Hbc1,
+              S (C') Ihc => λ (Hbc1 : Le (S B') (S C')). Ih B' C' Hab0 Hbc1
+            } Hbc0
+        } Hab Hbc
+    } }
+def LeTransTy : Term := prog_parse {
+  Π (A : Nat) → Π (B : Nat) → Π (C : Nat) → Le A B → Le B C → Le A C }
+
+def IdTransRaw : Term := prog_parse {
+  λ (A : Type). λ (X : A). λ (Y : A). λ (Z0 : A). λ (P : Id A X Y). λ (Q : Id A Y Z0).
+    j A X (λ (Y' : A). λ (H : Id A X Y'). Id A Y' Z0 → Id A X Z0) (λ (H : Id A X Z0). H) Y P Q }
+def IdTransTy : Term := prog_parse {
+  Π (A : Type) → Π (X : A) → Π (Y : A) → Π (Z0 : A) → Id A X Y → Id A Y Z0 → Id A X Z0 }
+
+def IdCongrRaw : Term := prog_parse {
+  λ (A : Type). λ (B : Type). λ (F : A → B). λ (X : A). λ (Y : A). λ (P : Id A X Y).
+    j A X (λ (Y' : A). λ (H : Id A X Y'). Id B (F X) (F Y')) Refl Y P }
+def IdCongrTy : Term := prog_parse {
+  Π (A : Type) → Π (B : Type) → Π (F : A → B) → Π (X : A) → Π (Y : A) → Id A X Y → Id B (F X) (F Y) }
+
 /-! ## Elaboration round-trip: surface `LeReflRaw` = the hand-built kernel term -/
 
--- The surface `LeReflRaw` (StdLemmas) elaborates to a `Term` convertible with the
+-- The surface `LeReflRaw` elaborates to a `Term` convertible with the
 -- hand-built `Std.le_reflT`.
-example : expectConv [] [] Dllbc.StdLemmas.LeReflRaw Std.le_reflT = true := by native_decide
+example : expectConv [] [] LeReflRaw Std.le_reflT = true := by native_decide
 
 /-! ## `let` is one form, with two ways it can capture
 
@@ -634,11 +685,11 @@ example : expectConv [] []
 
 /-! ## The lemmas check at their stated types -/
 
-example : chk Dllbc.StdLemmas.LeReflRaw Dllbc.StdLemmas.LeReflTy = true := by native_decide
+example : chk LeReflRaw LeReflTy = true := by native_decide
 -- `LeTransRaw` authored in the surface, checked — the acceptance test.
-example : chk Dllbc.StdLemmas.LeTransRaw Dllbc.StdLemmas.LeTransTy = true := by native_decide
-example : chk Dllbc.StdLemmas.IdTransRaw Dllbc.StdLemmas.IdTransTy = true := by native_decide
-example : chk Dllbc.StdLemmas.IdCongrRaw Dllbc.StdLemmas.IdCongrTy = true := by native_decide
+example : chk LeTransRaw LeTransTy = true := by native_decide
+example : chk IdTransRaw IdTransTy = true := by native_decide
+example : chk IdCongrRaw IdCongrTy = true := by native_decide
 
 /-! ## `LeTransRaw` applied in a checked function
 
@@ -649,7 +700,7 @@ example : chk Dllbc.StdLemmas.IdCongrRaw Dllbc.StdLemmas.IdCongrTy = true := by 
 -- name through the surface's identifier fallback.
 def useTrans : Term := prog{
   fn UseTrans (a : Nat, b : Nat, c : Nat, p : Le a b, q : Le b c) -> Le a c
-        { StdLemmas.LeTransRaw a b c p q };
+        { LeTransRaw a b c p q };
   () }
 example : progOk useTrans = true := by native_decide
 

@@ -1,5 +1,5 @@
 import Dllbc.ElabCheck
-import Dllbc.StdLemmas
+import Dllbc.ProgMacro
 
 /-!
 # What the fence does, and what it does not do

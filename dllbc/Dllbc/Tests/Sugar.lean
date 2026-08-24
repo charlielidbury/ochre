@@ -1,7 +1,7 @@
 import Dllbc.Program
 import Dllbc.ProgMacro
 import Dllbc.Std
-import Dllbc.StdLemmas
+import Dllbc.StdChain
 import Dllbc.Tests.Boundaries
 import Dllbc.FnMacro
 
@@ -521,7 +521,7 @@ section
 namespace Dllbc.Tests.S32Spine
 
 open Dllbc Dllbc.Tests
-open Dllbc.StdLemmas (LeReflRaw)
+open Dllbc.StdChainRaw (LeReflRaw)
 
 /-! ## The application spine, and what retiring a node must not take with it
 

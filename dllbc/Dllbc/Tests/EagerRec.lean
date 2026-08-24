@@ -1,5 +1,5 @@
 import Dllbc.Std
-import Dllbc.StdLemmas
+import Dllbc.StdChain
 
 /-!
 # `EagerRec` — the normalizer forces a recursor's recursive result

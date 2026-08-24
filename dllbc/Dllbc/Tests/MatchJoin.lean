@@ -3,7 +3,7 @@ import Dllbc.Machine
 import Dllbc.ProgMacro
 import Dllbc.Program
 import Dllbc.Std
-import Dllbc.StdLemmas
+import Dllbc.StdChain
 
 /-!
 # MatchJoin — the unconditional join (docs/19 v2), accepted/rejected
@@ -17,7 +17,6 @@ names the ladder rule it exercises.
 
 namespace Dllbc.Tests.MatchJoin
 open Dllbc
-open Dllbc.StdLemmas (LebTrueLeRaw)
 
 /-! ## (1) THE HEADLINE — sequential matches stop multiplying (ladder rule 5:
     disagreeing results re-mint as fresh σ : Bool, continuation walked once). -/
@@ -79,19 +78,20 @@ example : progRejects divergentBorrows "the arms disagree at the result" = true 
     (`Id Bool (Leb a b) True` / `… False` join at `Id Bool (Leb a b) σf`), so
     the pack needs no annotation. The continuation destructures, re-splits the
     flag, and the True arm's refinement σf := True turns the evidence back
-    into `Id Bool (Leb a b) True` — `LebTrueLeRaw` closes it. This is the
-    correlation class (3), repaired by the language's own idiom. -/
+    into `Id Bool (Leb a b) True` — `LebTrueLe` (docs/20: the standard chain's
+    proof, called and bound) closes it. This is the correlation class (3),
+    repaired by the language's own idiom. -/
 
-def packEvidence : Term := prog{
+def packEvidence : Checked := prog (Dllbc.std) {
   fn NeedLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
   fn P (a : Nat, b : Nat) -> Unit {
     let c = Leb a b;
     let p = match e : c { True => Pair(True, e), False => Pair(False, e) };
     let Pair(flag, ev) = p;
-    match flag { True => { NeedLe(a, b, LebTrueLeRaw a b ev); () }, False => () }
+    match flag { True => { let h = LebTrueLe(a, b, ev); NeedLe(a, b, h); () }, False => () }
   };
   () }
-example : progOk packEvidence = true := by native_decide
+example : progOkFrom Dllbc.std packEvidence.term = true := by native_decide
 
 /-! ## (6) BORROW-MODE JOIN WITH AN ARM WRITE (rules 3 then 5 on the payload):
     the arm writes through a field borrow, the seam collapses the arm's loans

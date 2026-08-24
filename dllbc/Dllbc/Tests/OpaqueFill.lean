@@ -2,7 +2,6 @@ import Dllbc.Program
 import Dllbc.Boundary
 import Dllbc.ProgMacro
 import Dllbc.Std
-import Dllbc.StdLemmas
 import Dllbc.Tests.Diff
 
 /-!
