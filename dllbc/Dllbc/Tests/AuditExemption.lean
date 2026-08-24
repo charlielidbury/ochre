@@ -327,7 +327,7 @@ def withWalk (rest : Term) : Term := prog{
         Cons(hd, tl) => Walk(f2, &m *tl)
       }
     } };
-  %rest }
+  rest }
 
 def callGroupOk : Term := withWalk prog_parse {
   fn GetMutC (s : &mut (Array 3 (List Nat)), f : Nat) -> &mut Nat {
