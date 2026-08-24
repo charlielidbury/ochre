@@ -112,13 +112,14 @@ application spines, `S(*l)` / `S *l` both mean `ctorApp "S" [*l]`. -/
 -- and `ustmt` are gone. `ublk` was "uterm plus sequencing" — the merge is inward.)
 declare_syntax_cat uterm
 declare_syntax_cat uarm
-declare_syntax_cat uarmBody
 -- **A PATTERN ARGUMENT** (M34 sugar (iii)) — a binder, or a constructor applied to
 -- more of them. This category exists only for ARGUMENT position, and that is not
 -- an oversight: at the head of an arm a bare identifier names a CONSTRUCTOR
 -- (`Nil => …`), and in argument position the same identifier is a BINDER
--- (`Cons(h, t) => …`). One category cannot mean both, so `uarm` keeps its own two
--- rows for the head and uses `upat` for what sits inside the parens.
+-- (`Cons(h, t) => …`). One category cannot mean both, so `uarm` spells its head as
+-- an `ident` and uses `upat` for what sits inside the parens. It is the one arm
+-- category left: `uarmBody` and `uelimArm` are gone, and `upat` stays for this
+-- reason, which is about MEANING rather than about shape.
 declare_syntax_cat upat
 
 syntax:max ident : uterm
@@ -279,33 +280,70 @@ syntax:max "match" ident ":" uterm:6 "{" uarm,* "}" : uterm  -- …with a branch
 syntax:max "if" uterm:6 "{" uterm "}" "else" "{" uterm "}" : uterm  -- §12 sugar over a Bool match
 syntax:max "if" ident ":" uterm:6 "{" uterm "}" "else" "{" uterm "}" : uterm  -- …with a branch equation
 
--- Pure eliminator sugar (§15b) — for `ty{}` / comptime positions. An arm body is a
--- `uterm`, so a `let x = e ; …` proof-let sequence (StdChain) works uniformly —
--- which since the merge is not a special allowance but the ordinary reading.
-declare_syntax_cat uelimArm
-syntax ident ("(" ident ")")* (ident)? "=>" uterm : uelimArm
-syntax:max "elim" uterm:max "return" uterm:max "{" uelimArm,* "}" : uterm
-syntax:max "elim" uterm:max "generalizing" uterm:max "{" uelimArm,* "}" : uterm
+-- Pure eliminator sugar (§15b) — for `ty{}` / comptime positions. `elim`'s arms
+-- are `uarm`s, the SAME arms a `match` takes: `uelimArm` is gone.
+syntax:max "elim" uterm:max "return" uterm:max "{" uarm,* "}" : uterm
+syntax:max "elim" uterm:max "generalizing" uterm:max "{" uarm,* "}" : uterm
 
-syntax "{" uterm "}" : uarmBody                              -- braced block arm body
--- **A BARE ARM BODY STAYS AN EXPRESSION** (`uterm:6`), where the BRACED one above
--- takes a whole block. Since the merge nothing in the grammar would stop a bare
--- body from being a `;` chain — the arm list's `,` would end it — and the reason
--- not to allow it is not uniformity but the hover plumbing: a bare body is keyed
--- as ONE statement (docs/23), which a chain is not, and an enclosing `show`'s
--- pending must not drain inside an arm (ShowSpans S6). Braces are how a block is
--- written here, and they already work.
-syntax uterm:6 : uarmBody                                    -- bare expression arm body
-syntax ident "=>" uarmBody : uarm                            -- nullary pattern
--- **THE ARGUMENTS ARE PATTERNS** (M34 sugar (iii)). They used to be `ident,*`, so
--- reading a field of a field cost an explicit inner match and a name for the
--- intermediate; `Cons(Pair(k, v), tl) => …` is now written where it is meant.
--- The rewrite is 1:1 with that hand-spelling and nothing cleverer — see
--- `mintPatArgs`/`wrapPats`. DLLBC match stays ONE ARM PER HEAD CONSTRUCTOR:
--- there is no cross-arm grouping and no pattern matrix, so `Cons(Z, tl)` is not
--- a partial arm that some other arm completes — it is a one-branch inner match
--- on the head's payload, and §9 refuses it as non-exhaustive.
-syntax ident "(" upat,* ")" "=>" uarmBody : uarm             -- applied pattern C(x, D(y))
+/-! ### ONE ARM
+
+    Two rows, differing only in whether the body is braced:
+
+        syntax ident ("(" upat,* ")")* (ident)? "=>" "{" uterm "}" : uarm
+        syntax ident ("(" upat,* ")")* (ident)? "=>" uterm : uarm
+
+    **`uarmBody` AND `uelimArm` ARE BOTH GONE**, and the second is the interesting
+    one. There were two arm notations in this grammar and they were two categories:
+
+        Cons(h, t) => …          a `match` arm: the fields, comma-separated
+        Cons (H) (T) R => …      an `elim` arm: a paren per field, then the IH
+
+    The head is `ident`, then ANY NUMBER OF PAREN GROUPS, then an optional
+    identifier. The groups are CONCATENATED, so `Cons(h, t)`, `Cons (h) (t)` and
+    `Cons(h) (t)` are one arm written three ways — "a constructor's fields, however
+    you choose to group the parens" is a coherent reading, and it is what lets both
+    corpus notations keep parsing with nothing migrated. `Cons(H, T) R => …`, the
+    spelling nobody could write before, is legal too.
+
+    **The genuine difference between the two arm kinds is SEMANTIC and is now
+    checked as one**: an `elim` arm binds an INDUCTION HYPOTHESIS and a `match` arm
+    has nothing to bind one from, so a trailing identifier in a `match` is refused
+    by `elabUArm` — with a message that can say what an `elim` is — rather than by
+    the absence of a row. Conversely an `elim` arm's fields must be plain binders,
+    so a nested pattern there is refused by `elimBinders`. A difference in meaning
+    belongs to the elaborator; a second category was the surface guessing at it.
+
+    **THE ARGUMENTS ARE PATTERNS** (M34 sugar (iii)). They used to be `ident,*`, so
+    reading a field of a field cost an explicit inner match and a name for the
+    intermediate; `Cons(Pair(k, v), tl) => …` is now written where it is meant.
+    The rewrite is 1:1 with that hand-spelling and nothing cleverer — see
+    `mintPatArgs`/`wrapPats`. DLLBC match stays ONE ARM PER HEAD CONSTRUCTOR:
+    there is no cross-arm grouping and no pattern matrix, so `Cons(Z, tl)` is not
+    a partial arm that some other arm completes — it is a one-branch inner match
+    on the head's payload, and §9 refuses it as non-exhaustive.
+
+    **TWO ROWS AND NOT ONE, because a general `{ uterm }` term row does not work.**
+    That would have made the body just a `uterm` and left one arm row; it was built
+    and it fails, for the reason a reader would guess and at a site they might not:
+    `{ … }` at `:max` is a valid application ARGUMENT (`uterm:65 uterm:66`), and the
+    first thing in this file that is a term followed by a brace is the `match` row's
+    SCRUTINEE. `match x { Nil => … }` parses `x { Nil` as an application spine and
+    then meets `,` — measured, and it does not merely mis-parse a program: it stops
+    `Uni.lean` compiling, because `elabUTerm`'s own `match` quotation is the first
+    casualty ("unexpected token ',*'; expected '}'"). Braces stay attached to the
+    constructs that use them.
+
+    **A BRACED body is a BLOCK and a bare one is ONE STATEMENT**, which is the only
+    thing the two rows differ by and is not merely bracketing. A bare body is keyed
+    as a single statement (docs/23) and must not let an enclosing `show`'s pending
+    drain inside the arm (ShowSpans S6); a braced body goes to `elabUBlk` and each
+    of its statements keys itself. Since the category merge a bare body could have
+    been a `;` chain — nothing in the grammar stops it, the arm list's `,` would
+    end it — and it is `elabArmBody` that sends such a body down the block route,
+    so the distinction survives as a fact about what was written rather than as a
+    restriction on what can be. -/
+syntax ident ("(" upat,* ")")* (ident)? "=>" "{" uterm "}" : uarm
+syntax ident ("(" upat,* ")")* (ident)? "=>" uterm : uarm
 -- `noWs` before `(`, matching the call/ctorApp row and the `let` row below:
 -- `C(a, b)` is one token-run everywhere in this grammar.
 syntax:max ident : upat                                      -- a binder
@@ -1048,6 +1086,40 @@ def upatParts (p : TSyntax `upat) : MacroM (Ident × Option (List (TSyntax `upat
     pure (x, if ctorSet.contains x.getId.toString then some [] else none)
   | _ => Macro.throwErrorAt p "decl: unexpected pattern argument"
 
+/-- One arm, taken apart, whichever of the two notations it was written in.
+
+    The head constructor; its field patterns, with EVERY PAREN GROUP CONCATENATED,
+    so `Cons(h, t)`, `Cons (h) (t)` and `Cons(h) (t)` come back the same; the
+    trailing identifier, which is an `elim` arm's induction hypothesis and a
+    `match` arm's error; the body; and whether the body was BRACED, which decides
+    block-or-statement and nothing else.
+
+    One reader for both arm kinds is the point: what used to be two grammar
+    categories is one shape here, and the two differences that are real —
+    the IH, and whether a field may be a nested pattern — are asked about
+    downstream by the elaborator that cares. -/
+def armParts (arm : TSyntax `uarm) :
+    MacroM (Ident × List (TSyntax `upat) × Option Ident × TSyntax `uterm × Bool) := do
+  match arm with
+  | `(uarm| $c:ident $[($ps,*)]* $[$ih:ident]? => { $b:uterm }) =>
+    pure (c, (ps.toList.flatMap (fun g => g.getElems.toList)), ih, b, true)
+  | `(uarm| $c:ident $[($ps,*)]* $[$ih:ident]? => $b:uterm) =>
+    pure (c, (ps.toList.flatMap (fun g => g.getElems.toList)), ih, b, false)
+  | _ => Macro.throwErrorAt arm "decl: unexpected arm"
+
+/-- An `elim` arm's field binders. A recursor's arm binds PLAIN NAMES — its
+    domains come from the recursor scheme, so there is nothing for a nested
+    pattern to be matched against — and refusing one here is the elaborator-level
+    half of what a separate `uelimArm` category used to do by not having a row for
+    it. The message names the fix, which the missing row could not. -/
+def elimBinders (c : Ident) (ps : List (TSyntax `upat)) : MacroM (Array Ident) := do
+  let mut out := #[]
+  for p in ps do
+    match p with
+    | `(upat| $x:ident) => out := out.push x
+    | _ => Macro.throwErrorAt p s!"elim: '{c.getId}' binds a nested pattern here, and a recursor's arm binds plain names — its binder types come from the recursor scheme, so there is nothing for a pattern to be matched against. Bind a name and `match` on it inside the arm."
+  return out
+
 /-- Bind one row of pattern arguments, extending the scope and returning the
     extended scope, the argument `Var` syntaxes (in order) and the nested
     arguments deferred to `wrapPats`.
@@ -1086,8 +1158,9 @@ partial def mintPatArgs (sc : Scope) :
 
 /-- Wrap `body` in the deferred nested matches, outermost first. `body` is a
     continuation rather than a syntax tree because the two rows that call this
-    disagree about what a body IS — an arm's is a `uarmBody`, the `let` pattern's
-    is the REST OF THE BLOCK — and they agree about everything else. -/
+    disagree about what a body IS — an arm's is its own syntax, braced or bare
+    (`elabArmBody`), and the `let` pattern's is the REST OF THE BLOCK — and they
+    agree about everything else. -/
 partial def wrapPats (sc : Scope) (pend : List PendingPat)
     (body : Scope → UM (TSyntax `term)) :
     UM (TSyntax `term) := do
@@ -1579,9 +1652,8 @@ partial def elabUTerm (sc : Scope)
     -- equation binder has no meaning at a nested position, so the form that binds
     -- one does not take them. See `refuseNestedPat`.
     for arm in arms.getElems do
-      match arm with
-      | `(uarm| $_:ident ($args,*) => $_:uarmBody) => args.getElems.forM (fun p => liftM (refuseNestedPat p))
-      | _ => pure ()
+      let (_, ps, _, _, _) ← liftM (armParts arm)
+      ps.forM (fun p => liftM (refuseNestedPat p))
     let (scrut, pre?) ← elabScrut sc e
     let hName := h.getId.toString
     -- The equation binder and the arms' binders are entry occurrences, exactly
@@ -1751,27 +1823,43 @@ partial def elabUArms (sc : Scope) :
     let rest ← elabUArms sc as
     pure (#[a'] ++ rest)
 
+/-- A `match` arm. ONE path, where there were two rows: `mintPatArgs` on the empty
+    field list returns the scope it was given and `wrapPats` on no deferrals is its
+    continuation, so the nullary arm is the applied one with nothing in it — which
+    it always was, spelled twice.
+
+    **A TRAILING NAME IS REFUSED HERE**, and this is the elaborator-level half of
+    what `uelimArm` used to be. The two arm notations are one grammar row now, so
+    `Cons(h, t) ih => …` parses in a `match`; what makes it wrong is not the shape
+    but the meaning — a `match` steps once and has no recursive result to hand
+    over — and a refusal that can say so is worth more than a missing row that
+    reports "unexpected match arm". -/
 partial def elabUArm (sc : Scope)
     (arm : TSyntax `uarm) : UM (TSyntax `term) := do
-  match arm with
-  | `(uarm| $c:ident => $body:uarmBody) => do
-    let body' ← elabUArmBody sc body
-    return (← `(Dllbc.Branch.mk $(quote c.getId.toString) [] $body'))
-  | `(uarm| $c:ident ($args,*) => $body:uarmBody) => do
-    -- The head's arguments are minted first, ALL of them, and the nested ones
-    -- then wrap the body from the counter the body would have started at — which
-    -- is what makes this arm the same `Term` as its hand-written twin and not
-    -- merely a convertible one (`Tests.Sugar`'s goldens).
-    let (sc', argVars, pend) ← mintPatArgs sc args.getElems.toList
-    let body' ← wrapPats sc' pend (fun r => elabUArmBody r body)
-    return (← `(Dllbc.Branch.mk $(quote c.getId.toString) [$argVars,*] $body'))
-  | _ => Macro.throwErrorAt arm "decl: unexpected match arm"
+  let (c, ps, ih, body, braced) ← liftM (armParts arm)
+  if let some ihId := ih then
+    Macro.throwErrorAt ihId s!"match: '{c.getId}' names '{ihId.getId}' after its fields, and a match arm has nothing to bind there. A trailing name is an `elim` arm's INDUCTION HYPOTHESIS — the recursive call's result — and a `match` steps once, so there is no such result to hand you. To recurse, write an `elim … return …` over the scrutinee, or give a `fn` a `[k]`."
+  -- The head's arguments are minted first, ALL of them, and the nested ones
+  -- then wrap the body from the counter the body would have started at — which
+  -- is what makes this arm the same `Term` as its hand-written twin and not
+  -- merely a convertible one (`Tests.Sugar`'s goldens).
+  let (sc', argVars, pend) ← mintPatArgs sc ps
+  let body' ← wrapPats sc' pend (fun r => elabArmBody r body braced)
+  return (← `(Dllbc.Branch.mk $(quote c.getId.toString) [$argVars,*] $body'))
 
-partial def elabUArmBody (sc : Scope)
-    (body : TSyntax `uarmBody) : UM (TSyntax `term) := do
+/-- An arm's body. **BRACED IS A BLOCK, BARE IS ONE STATEMENT**, and that is the
+    only thing the two arm rows differ by.
+
+    A bare body that SEQUENCES goes down the block route too. Since the category
+    merge nothing in the grammar stops one — the arm list's `,` ends it — so the
+    distinction the hover plumbing needs is made HERE, on what was written, rather
+    than by a precedence that would forbid the spelling. -/
+partial def elabArmBody (sc : Scope)
+    (body : TSyntax `uterm) (braced : Bool) : UM (TSyntax `term) := do
+  if braced then return (← elabUBlk sc body)
   match body with
-  | `(uarmBody| { $b:uterm }) => elabUBlk sc b
-  | `(uarmBody| $e:uterm) => do          -- a bare arm body IS the arm's final statement
+  | `(uterm| $_:uterm ; $_:uterm) => elabUBlk sc body
+  | e => do                              -- a bare arm body IS the arm's final statement
     -- **AND SO IT TAGS ITS OCCURRENCES, exactly as a block's final expression
     -- does** (docs/23). This row filed a SPAN and no occurrence key, so an
     -- identifier named in a bare arm body fell through to the match row's
@@ -1795,7 +1883,6 @@ partial def elabUArmBody (sc : Scope)
     tagOccsFrom occLo e'
     restorePendings held
     return e'
-  | _ => Macro.throwErrorAt body "decl: unexpected arm body"
 
 /-- Read `stx` as a BLOCK: a statement, or a statement and a block.
 
@@ -2297,27 +2384,30 @@ partial def elabUStmt (sc : Scope) (stx : TSyntax `uterm)
     entries existed only to be counted. Under names the arm's binder is named and
     the substitution says so. -/
 partial def elabUElim (sc : Scope)
-    (scrut motive : TSyntax `uterm) (arms : Array (TSyntax `uelimArm)) : UM (TSyntax `term) := do
+    (scrut motive : TSyntax `uterm) (arms : Array (TSyntax `uarm)) : UM (TSyntax `term) := do
   let scrutT ← elabUTerm sc scrut
   let motiveT ← elabUTerm sc motive
   let motiveBare := match motive with | `(uterm| ($e:uterm)) => e | _ => motive
   let (mName, mTy, mBody) ← match motiveBare with
     | `(uterm| λ ($x:ident : $τ:uterm). $b:uterm) => pure (x.getId.toString, τ, b)
     | _ => Macro.throwError "elim: motive must be a λ `(x : τ). …`"
+  -- The arms are `uarm`s — the same arms a `match` takes (`uelimArm` is gone) —
+  -- read through `armParts`, which concatenates the paren groups so `S (k) ih`
+  -- and `S(k) ih` are one arm. `elimBinders` is the other half of what the second
+  -- category used to do by construction: a recursor's arm binds PLAIN NAMES, so a
+  -- nested pattern is refused by name here rather than by a missing row.
   let armFor (c : String) : UM (Option (Array Ident × Option Ident × TSyntax `uterm)) := do
     for arm in arms do
-      match arm with
-      | `(uelimArm| $ctor:ident $[($bs:ident)]* $[$ih:ident]? => $body:uterm) =>
-        if ctor.getId.toString == c then return some (bs, ih, body)
-      | _ => pure ()
+      let (ctor, ps, ih, body, _) ← liftM (armParts arm)
+      if ctor.getId.toString == c then
+        return some (← liftM (elimBinders ctor ps), ih, body)
     return none
   let getArm (c : String) : UM (Array Ident × Option Ident × TSyntax `uterm) := do
     match ← armFor c with
     | some r => pure r
     | none => Macro.throwError s!"elim: missing arm for constructor '{c}'"
-  let names := arms.filterMap (fun a => match a with
-    | `(uelimArm| $ctor:ident $[($_:ident)]* $[$_:ident]? => $_:uterm) => some ctor.getId.toString
-    | _ => none)
+  let names ← arms.mapM (fun a => do
+    let (ctor, _, _, _, _) ← liftM (armParts a); pure ctor.getId.toString)
   -- `P ⟨target⟩`: the motive body with the motive's binder renamed to the arm's.
   let pOf (target : String) : UM (TSyntax `term) := do
     let b := (← elabUTerm (pushPure mName sc) mBody)
@@ -2418,19 +2508,18 @@ partial def elabUElim (sc : Scope)
     subterm abstracted at all its occurrences, mechanically. Bool motives only (the
     count algebra's case-on-`eqb`); Nat/List use the `return` form. -/
 partial def elabUGenElim (sc : Scope)
-    (scrut goal : TSyntax `uterm) (arms : Array (TSyntax `uelimArm)) : UM (TSyntax `term) := do
+    (scrut goal : TSyntax `uterm) (arms : Array (TSyntax `uarm)) : UM (TSyntax `term) := do
   let scrutT ← elabUTerm sc scrut
   let goalT ← elabUTerm sc goal
   let armBody (c : String) : UM (TSyntax `term) := do
     for arm in arms do
-      match arm with
-      | `(uelimArm| $ctor:ident $[($_:ident)]* $[$_:ident]? => $body:uterm) =>
-        if ctor.getId.toString == c then return (← elabUBlk sc body)
-      | _ => pure ()
+      let (ctor, ps, _, body, _) ← liftM (armParts arm)
+      if ctor.getId.toString == c then
+        let _ ← liftM (elimBinders ctor ps)
+        return (← elabUBlk sc body)
     Macro.throwError s!"elim generalizing: missing arm '{c}'"
-  let names := arms.filterMap (fun a => match a with
-    | `(uelimArm| $ctor:ident $[($_:ident)]* $[$_:ident]? => $_:uterm) => some ctor.getId.toString
-    | _ => none)
+  let names ← arms.mapM (fun a => do
+    let (ctor, _, _, _, _) ← liftM (armParts a); pure ctor.getId.toString)
   if names.contains "True" || names.contains "False" then
     let t ← armBody "True"
     let f ← armBody "False"

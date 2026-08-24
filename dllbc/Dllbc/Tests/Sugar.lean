@@ -1003,5 +1003,58 @@ example : Term.pretty
     = "natRec (λ(m : Nat). Nat) 0 (λ(k : Nat). λ(ih : Nat). S (S ih)) n" := by
   native_decide
 
+/-! ### I. ONE ARM, two notations
+
+    `uarmBody` and `uelimArm` are gone. There is one `uarm`, two rows differing
+    only in whether the body is braced:
+
+        syntax ident ("(" upat,* ")")* (ident)? "=>" "{" uterm "}" : uarm
+        syntax ident ("(" upat,* ")")* (ident)? "=>" uterm : uarm
+
+    The head, then ANY NUMBER of paren groups, then an optional identifier. The
+    groups CONCATENATE, which is what lets both corpus notations — a `match` arm's
+    comma-separated fields and an `elim` arm's paren-per-field plus its trailing
+    induction hypothesis — keep parsing with nothing migrated.
+
+    The claim is not that they parse but that they parse to ONE TERM, so every
+    golden below is an equation between spellings rather than a `progOk`. -/
+
+-- A `match` arm's fields, grouped three ways. `Cons(h) (t)` is the spelling
+-- nobody could write before and it means what it looks like.
+example : prog{ let l = Cons(1, Nil); match l { Nil => 0, Cons(h, t) => h } }
+        = prog{ let l = Cons(1, Nil); match l { Nil => 0, Cons (h) (t) => h } } := by rfl
+example : prog{ let l = Cons(1, Nil); match l { Nil => 0, Cons(h, t) => h } }
+        = prog{ let l = Cons(1, Nil); match l { Nil => 0, Cons(h) (t) => h } } := by rfl
+
+-- An `elim` arm, in the corpus's spelling and in the `match` one.
+example : prog_parse{ elim n return (λ (m : Nat). Nat) { Z => Z, S (k) ih => S(ih) } }
+        = prog_parse{ elim n return (λ (m : Nat). Nat) { Z => Z, S(k) ih => S(ih) } } := by
+  rfl
+
+-- An `elim` arm may be BRACED now, which `uelimArm` had no row for: its body is a
+-- `uarm` body like any other, so it takes a block on the same terms a `match`
+-- arm's does.
+example : prog_parse{ elim n return (λ (m : Nat). Nat) { Z => { Z }, S (k) ih => { S(ih) } } }
+        = prog_parse{ elim n return (λ (m : Nat). Nat) { Z => Z, S (k) ih => S(ih) } } := by
+  rfl
+
+/-! The two arm kinds differ in MEANING, and that difference is now checked by the
+    elaborator instead of enforced by the absence of a grammar row. Both messages
+    are pinned, because a refusal's message is the point of it — and because a
+    check nothing exercises is a check that has not been run. -/
+
+/--
+error: match: 'Cons' names 'ih' after its fields, and a match arm has nothing to bind there. A trailing name is an `elim` arm's INDUCTION HYPOTHESIS — the recursive call's result — and a `match` steps once, so there is no such result to hand you. To recurse, write an `elim … return …` over the scrutinee, or give a `fn` a `[k]`.
+-/
+#guard_msgs in
+example : Term := prog{ let l = Cons(1, Nil); match l { Nil => 0, Cons(h, t) ih => h } }
+
+/--
+error: elim: 'S' binds a nested pattern here, and a recursor's arm binds plain names — its binder types come from the recursor scheme, so there is nothing for a pattern to be matched against. Bind a name and `match` on it inside the arm.
+-/
+#guard_msgs in
+example : Term :=
+  prog_parse{ elim n return (λ (m : Nat). Nat) { Z => Z, S (Pair(a, b)) ih => Z } }
+
 end Dllbc.Tests.FnTails
 end
