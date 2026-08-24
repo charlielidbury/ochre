@@ -71,6 +71,9 @@ def sweep (name : String) (t : Term) : IO Unit := do
   sweep "flagship (list quicksort)" Dllbc.Tests.S23Direct.flagship
   sweep "hashmap s2CheckedCaller" Dllbc.Tests.HashMap.s2CheckedCaller
   sweep "hashmap s1Chain" Dllbc.Tests.HashMap.s1Chain
-  sweep "arrChain (array quicksort)" Dllbc.Tests.S25ArrSort.arrChain
+  -- The array flagship is SEEDED since docs/21's pilot; this sweep's walker
+  -- (`checkProgramHover`) is unseeded, so the chain has no closed subject here.
+  -- Its hover behavior is pinned in the flagship file itself (the guarded
+  -- `show` inside QuicksortA).
 
 end Dllbc.Tests.MatchJoinSweep

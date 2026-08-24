@@ -43,16 +43,17 @@ def replayAll (paths : List (List PointDelta)) : Nat := Id.run do
         | .refine _ _ => pure ()
   return n
 
+-- The array flagship is SEEDED since docs/21's pilot; this harness's walker
+-- (`checkProgramHover`) is unseeded, so the list flagship is the remaining
+-- closed subject. The seeded chain's hover ledgers ride `modulePathsD` and are
+-- exercised (and pinned) in the flagship file's own guarded `show`.
 #eval show IO Unit from do
-  let a := Tests.S25ArrSort.arrChain
   let l := Tests.S23Direct.flagship
-  match checkProgramHover a none true with
+  match checkProgramHover l none true with
   | .ok (_, pts) =>
     let keys := (pts.flatten.filterMap (fun d => d.stmtKey))
-    IO.println s!"arrChain: {pts.length} path(s), {pts.flatten.length} deltas, {keys.length} keyed"
-    timeIt "arrChain replay: every binder at every key" (fun _ => replayAll pts)
-  | .error _ => IO.println "arrChain: rejected"
-  timeIt "arrChain x50 point=false" (fun _ => runN 50 false a)
-  timeIt "arrChain x50 point=true " (fun _ => runN 50 true  a)
+    IO.println s!"list: {pts.length} path(s), {pts.flatten.length} deltas, {keys.length} keyed"
+    timeIt "list replay: every binder at every key" (fun _ => replayAll pts)
+  | .error _ => IO.println "list: rejected"
   timeIt "list     x50 point=false" (fun _ => runN 50 false l)
   timeIt "list     x50 point=true " (fun _ => runN 50 true  l)

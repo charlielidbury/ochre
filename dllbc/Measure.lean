@@ -52,7 +52,8 @@ namespace Measure
 
 mutual
 partial def tsize : Term → Nat
-  | .var _ | .pvar _ | .type | .unit | .const _ => 1
+  | .var _ | .type | .unit | .const _ => 1
+  | .marker _ a => 1 + tsize a
   | .letIn _ a => 1 + tsize a
   | .assign a b => 1 + tsize a + tsize b
   | .ctorApp _ as => 1 + tsizeL as
@@ -96,7 +97,8 @@ partial def occ (needle : Term) : Term → Nat
   | t =>
     if Term.beq t needle then 1 else
     match t with
-    | .var _ | .pvar _ | .type | .unit | .const _ => 0
+    | .var _ | .type | .unit | .const _ => 0
+    | .marker _ a => occ needle a
     | .letIn _ a => occ needle a
     | .assign a b => occ needle a + occ needle b
     | .ctorApp _ as => occL needle as
@@ -138,7 +140,8 @@ partial def cov (ns : List (String × Term)) : Term → Nat
     | some (_, hit) => tsize hit
     | none =>
     match t with
-    | .var _ | .pvar _ | .type | .unit | .const _ => 0
+    | .var _ | .type | .unit | .const _ => 0
+    | .marker _ a => cov ns a
     | .letIn _ a => cov ns a
     | .assign a b => cov ns a + cov ns b
     | .ctorApp _ as => covL ns as
@@ -200,11 +203,11 @@ def timeN (label : String) (n : Nat) (f : Unit → String) : IO Unit := do
     a seal-based tier CANNOT touch; the second is the mass it could. -/
 
 def lemmaEntries : List (String × Term) :=
-  [ ("LeRefl",      StdLemmas.LeRefl),      ("LeTrans",     StdLemmas.LeTrans),
-    ("LeUpR",       StdLemmas.LeUpR),       ("IdTrans",     StdLemmas.IdTrans),
-    ("IdCongr",     StdLemmas.IdCongr),     ("LebTrueLe",   StdLemmas.LebTrueLe),
-    ("LebFalseGt",  StdLemmas.LebFalseGt),  ("LePredL",     StdLemmas.LePredL),
-    ("CountConsL",  StdLemmas.CountConsL),  ("CountConsR",  StdLemmas.CountConsR) ]
+  [ ("LeRefl",      StdLemmas.LeReflRaw),      ("LeTrans",     StdLemmas.LeTransRaw),
+    ("LeUpR",       StdLemmas.LeUpRRaw),       ("IdTrans",     StdLemmas.IdTransRaw),
+    ("IdCongr",     StdLemmas.IdCongrRaw),     ("LebTrueLe",   StdLemmas.LebTrueLeRaw),
+    ("LebFalseGt",  StdLemmas.LebFalseGtRaw),  ("LePredL",     StdLemmas.LePredLRaw),
+    ("CountConsL",  StdLemmas.CountConsLRaw),  ("CountConsR",  StdLemmas.CountConsRRaw) ]
 
 /-- `timeN`, but the subject depends on the iteration index, so a pure call
     cannot be hoisted out of the loop as a loop invariant. -/
@@ -229,8 +232,19 @@ def libEntries : List (String × Term) :=
 /-! ## The subjects — the heaviest checks in the suite -/
 
 def subjects : List (String × Term) :=
-  [ ("list flagship  (quicksort, Sorted ∧ Perm)", Tests.S23Direct.flagship),
-    ("array flagship (quicksortA chain)",         Tests.S25ArrSort.arrChain) ]
+  [ ("list flagship  (quicksort, Sorted ∧ Perm)", Tests.S23Direct.flagship) ]
+
+-- The array flagship is SEEDED since docs/21's pilot (`prog (Dllbc.std) { … }`):
+-- its persisted term is census-able like any Term, but its CHECK runs from the
+-- std state — so it rides the static loop via `staticSubjects` and the dynamic
+-- sections through `arrVerdict`, which is `progOkFrom` at the same seed the
+-- suite's twins use.
+def arrTerm : Term := Tests.S25ArrSort.arrSort.term
+def staticSubjects : List (String × Term) :=
+  subjects ++ [("array flagship (quicksortA chain, seeded)", arrTerm)]
+def arrVerdict : Unit → String := fun _ =>
+  match checkProgramFrom Dllbc.std arrTerm with
+  | .ok _ => "OK" | .error e => "ERR: " ++ (e.take 60).toString
 
 /-- `phasec load` runs ONLY the checking loop, so a `perf record` over it
     attributes every sample to the checker and none to this file's own static
@@ -239,6 +253,7 @@ def subjects : List (String × Term) :=
 def loadOnly : IO Unit := do
   for (nm, t) in subjects do
     timeN s!"{nm} [perf load]" 50 (fun _ => verdict t)
+  timeN "array flagship (seeded) [perf load]" 50 arrVerdict
 
 def main : IO Unit := do
   IO.println "=== 1. STATIC: the inlined library ==="
@@ -248,7 +263,7 @@ def main : IO Unit := do
   IO.println ""
 
   IO.println "=== 2. STATIC: what the flagship carries ==="
-  for (nm, t) in subjects do
+  for (nm, t) in staticSubjects do
     let total := tsize t
     IO.println s!"  {nm}"
     IO.println s!"    whole program term: {total} nodes"
@@ -287,11 +302,13 @@ def main : IO Unit := do
   IO.println "=== 3. DYNAMIC: wall time of the heaviest checks ==="
   for (nm, t) in subjects do
     timeN nm 5 (fun _ => verdict t)
+  timeN "array flagship (seeded check from std)" 5 arrVerdict
   IO.println ""
 
   IO.println "=== 4. DYNAMIC: the same check, many times (for perf sampling) ==="
   for (nm, t) in subjects do
     timeN s!"{nm} [perf load]" 50 (fun _ => verdict t)
+  timeN "array flagship (seeded) [perf load]" 50 arrVerdict
   IO.println ""
 
   -- The suite's DLLBC time is dominated by ONE assertion, and it is not a check:
