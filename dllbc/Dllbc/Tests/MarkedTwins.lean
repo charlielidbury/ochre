@@ -111,10 +111,11 @@ def pinTwin : Term :=
 
 example : (pinTwin == pinHonest) = false := by native_decide
 -- The needle carries the LIE, not just the verdict: the audit names the
--- strengthened claim (`S (S Z)`) the certificate cannot meet, so this pin
--- cannot be satisfied by a twin that was rejected for being garbage.
+-- strengthened claim (the `S (S Z)` the twin swapped in, which the printer
+-- renders `2`) that the certificate cannot meet, so this pin cannot be
+-- satisfied by a twin that was rejected for being garbage.
 example : progRejects pinTwin
-  "does not have return type (Σ(§0 : Nat). Id §0 (S (S Z)))" = true := by native_decide
+  "does not have return type (Σ(§0 : Nat). Id §0 2)" = true := by native_decide
 
 /-! ## (T4) THE SEAM — `show` answers identically in marked code (docs/21 §5)
 
@@ -242,7 +243,7 @@ example : (pinUseTwin == pinUse.term) = false := by native_decide
 -- The relayed result is the seed's opaque pair (σ₃, σ₄), and the audit names
 -- the strengthened claim it cannot meet — the lie, in the seeded message.
 example : progRejectsFrom pinLib pinUseTwin
-  "result (Pair σ₃ σ₄) does not have return type (Σ(§0 : Nat). Id §0 (S (S Z)))" = true := by
+  "result (Pair σ₃ σ₄) does not have return type (Σ(§0 : Nat). Id §0 2)" = true := by
   native_decide
 
 end Dllbc.Tests.MarkedTwins

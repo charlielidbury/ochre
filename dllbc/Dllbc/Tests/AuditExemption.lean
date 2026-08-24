@@ -291,7 +291,7 @@ def siblingBadWrite : Term := prog_parse {
 -- σ9. The verdict, the rule, and every other segment are unchanged — this test
 -- is still about the wrong-typed write (`[True]`) in the first segment.
 example : progRejects siblingBadWrite
-  "a's payload (Arr⟨(S Z) ▷ [True], (S Z) ▷ [σ₁₀], (S Z) ▷ σ₇⟩) does not have its owed type (Array (S (S (S Z))) Nat)"
+  "a's payload (Arr⟨1 ▷ [True], 1 ▷ [σ₁₀], 1 ▷ σ₇⟩) does not have its owed type (Array 3 Nat)"
   = true := by native_decide
 
 /-- The control showing the audit is the only thing checking writes at all: the
@@ -305,7 +305,7 @@ def siblingBadWriteUnit : Term := prog_parse {
     () };
   () }
 example : progRejects siblingBadWriteUnit
-  "a's payload (Arr⟨(S Z) ▷ [True], (S (S Z)) ▷ σ₄⟩) does not have its owed type"
+  "a's payload (Arr⟨1 ▷ [True], 2 ▷ σ₄⟩) does not have its owed type"
   = true := by native_decide
 
 /-! ### The call-group shape: the returned borrow came out of an inner call
@@ -363,7 +363,7 @@ def callGroupBadWrite : Term := withWalk prog_parse {
     Walk(f, bk) };
   () }
 example : progRejects callGroupBadWrite
-  "s's payload (Arr⟨(S Z) ▷ [True], (S Z) ▷ [σ₂₄], (S Z) ▷ σ₁₉⟩) does not have its owed type"
+  "s's payload (Arr⟨1 ▷ [True], 1 ▷ [σ₂₄], 1 ▷ σ₁₉⟩) does not have its owed type"
   = true := by native_decide
 
 /-! ## §7 — the ordering the fill forced
@@ -403,7 +403,7 @@ def badWidth : Term := prog_parse {
     c };
   () }
 example : progRejects badWidth
-  "returned borrow's payload (σ₆) does not have its owed type (Array (S (S Z)) Nat)"
+  "returned borrow's payload (σ₆) does not have its owed type (Array 2 Nat)"
   = true := by native_decide
 
 end Dllbc.Tests.AuditExemption
