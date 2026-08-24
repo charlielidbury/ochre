@@ -183,6 +183,23 @@ def composedInline : Term := prog{
 example : Term.beq composed composedInline = true := by native_decide
 example : progOk composed = true := by native_decide
 
+/-! ## The splice and the bare name are one form
+
+    `%e` splices a Lean-level `Term`; a bare name that resolves to a Lean
+    constant or local of type `Term` IS that splice (`prog{ }`'s documented
+    fallback, and `ident_or_free%`'s first rung in a fragment). The de-splice
+    sweep (dllbc-desplice) rewrites `%X` to `X` on this equality; these are its
+    ground-truth pins, one per shape: a fragment citing a name the walker does
+    not bind, a `%(Term.var "x")` leaf as the bare free name, and a literal
+    numeral splice as the numeral (`buildNat` emits one `Term.nat k` node). -/
+
+example : Term.beq (prog_parse { fn F (v : &mut List Nat, i : Nat) -> specFrag { Refl }; () })
+                   (prog_parse { fn F (v : &mut List Nat, i : Nat) -> %specFrag { Refl }; () }) = true := by
+  native_decide
+example : Term.beq (prog_parse { Id Nat r (S(S(Z))) })
+                   (prog_parse { Id Nat %(Dllbc.Term.var "r") (S(S(Z))) }) = true := by native_decide
+example : Term.beq (prog_parse { 1056 }) (prog_parse { %(Term.nat 1056) }) = true := by native_decide
+
 /-! ## The two limits a fragment has, stated
 
     A fragment is parsed without the splice site's binders in view, and two of

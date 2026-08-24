@@ -103,7 +103,7 @@ def pinHonest : Term := prog{
 example : progOk pinHonest = true := by native_decide
 
 def pinTwin : Term :=
-  match Term.replaceMarked? "claim" ty{ Id Nat %(Dllbc.Term.var "r") (S(S(Z))) } pinHonest with
+  match Term.replaceMarked? "claim" prog_parse { Id Nat r (S(S(Z))) } pinHonest with
   | .ok t => t
   -- Unreachable while T2 holds; `.unit` cannot satisfy the rejection pin below,
   -- so a contract regression fails T3 rather than passing it vacuously.
@@ -234,7 +234,7 @@ def pinUse : Checked := prog (pinLib) {
 example : progOkFrom pinLib pinUse.term = true := by native_decide
 
 def pinUseTwin : Term :=
-  match Term.replaceMarked? "claim" ty{ Id Nat %(Dllbc.Term.var "r") (S(S(Z))) } pinUse.term with
+  match Term.replaceMarked? "claim" prog_parse { Id Nat r (S(S(Z))) } pinUse.term with
   | .ok t => t
   | .error _ => .unit
 
