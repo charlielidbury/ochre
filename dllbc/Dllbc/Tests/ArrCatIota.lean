@@ -2,7 +2,7 @@ import Dllbc.Program
 import Dllbc.Boundary
 import Dllbc.ProgMacro
 import Dllbc.Std
-import Dllbc.StdLemmas
+import Dllbc.StdChain
 
 /-!
 # `ArrCatIota` — the `atake`/`adrop` array projections
@@ -17,6 +17,11 @@ Why: a carve at a symbolic index mints pieces no signature can name, and
 naming them is exactly what the projections add. The element at the cell
 needs no further vocabulary — after the drop the update recurses on the
 literal `Z`, so the existing fold-spelled update computes in one ι step.
+
+§3's programs consume the standard chain (docs/20): the accepted carves are
+module blocks seeded from `Dllbc.std`, citing `LeAdd` by call-and-bind, and
+the rejects are marked twins minted from the golden's persisted term
+(docs/21). The file has no dependency on the old splice-based lemma library.
 -/
 
 section
@@ -24,8 +29,6 @@ section
 open Dllbc
 
 namespace Dllbc.Tests.ArrCatIota
-
-open Dllbc.StdLemmas (LeAddRaw LeReflRaw IdCongrRaw IdSymRaw AddZeroRaw)
 
 /-! ## §1 The ι-rules
 
@@ -281,55 +284,81 @@ def PVSetDecT : Term := prog_parse {
                        Σ0 (a : Array N (Σ (k : Nat). Nat)). AllK7 N a) {
         Pair (A) (H) => Pair ((%AVSetDecT) I R V N A) H } }
 
-/-! ### §3.2 The blind carve, pinned
+/-! ### §3.2 The blind carve, pinned — a seeded golden
 
     `gmDecSymPin` carves an array at a symbolic index `i` with nothing in
     front of the slot opened, and its pin is the decomposition-first update.
     This is the program a caller would naturally write for an O(1) update at a
-    symbolic index. -/
+    symbolic index.
 
-def gmDecSymPin : Term := prog{
+    The program is a module block seeded from the standard chain (docs/20):
+    elaborating the `def` IS its definition-site check, and the containment
+    evidence is CALL-AND-BIND against the chain's `LeAdd` — `let h1 =
+    LeAdd(i, S r)` binds an opaque σ at `Le i (Add i (S r))` and the carve's
+    evidence slot consumes it by TYPE — where the old spelling spliced the
+    raw `LeAddRaw i (S r)` as an inline reducible spine. The two markers
+    (`@slot`, `@exit`) declare the claim sites §3.3's twins lie about
+    (docs/21): the pin's instantiation and the exit's slot. -/
+
+def gmDecSymPin : Checked := prog (Dllbc.std) {
   fn G (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
         self : &mut (s : Σ0 (a : Array n (Σ (k : Nat). Nat)). AllK7 n a
-                       ~> (%PVSetDecT) n i r (*res) s)) -> &mut Nat {
+                       ~> @slot (%PVSetDecT) n i r (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
-      let pre = &m (*a)[Z ; i ; S r | LeAddRaw i (S r) | hd];
+      let h1 = LeAdd(i, S r);
+      let pre = &m (*a)[Z ; i ; S r | h1 | hd];
       let cell = &m (*a)[i ; 1 ; r];
       let e = &m (*cell)[0];
-      match e { Pair(kk, vv) => &m *vv } } } };
+      match e { Pair(kk, vv) => @exit &m *vv } } } };
   () }
 
 /-- The same carve with the extent spelled directly as the decomposition
     `Add i (S r)` and the carve citing `Refl`, rather than carrying a separate
     equality hypothesis. -/
-def gmDecSymPinRefl : Term := prog{
+def gmDecSymPinRefl : Checked := prog (Dllbc.std) {
   fn G (i : Nat, r : Nat,
         self : &mut (s : Σ0 (a : Array (Add i (S r)) (Σ (k : Nat). Nat)). AllK7 (Add i (S r)) a
                        ~> (%PVSetDecT) (Add i (S r)) i r (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
-      let pre = &m (*a)[Z ; i ; S r | LeAddRaw i (S r) | Refl];
+      let h1 = LeAdd(i, S r);
+      let pre = &m (*a)[Z ; i ; S r | h1 | Refl];
       let cell = &m (*a)[i ; 1 ; r];
       let e = &m (*cell)[0];
       match e { Pair(kk, vv) => &m *vv } } } };
   () }
 
-/-! ### §3.3 The negative controls
+/-! ### §3.3 The negative controls — marked twins
 
     `gmDecSymPinKey` escapes the key borrow where the pin declares the exit in
     the value slot, and must be rejected. The concrete-index pair checks that
     the decomposition spelling does not weaken anything at a concrete index
-    either. -/
+    either.
 
-def gmDecSymPinKey : Term := prog_parse {
-  fn G (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
-        self : &mut (s : Σ0 (a : Array n (Σ (k : Nat). Nat)). AllK7 n a
-                       ~> (%PVSetDecT) n i r (*res) s)) -> &mut Nat {
-    match self { Pair(a, H) => {
-      let pre = &m (*a)[Z ; i ; S r | LeAddRaw i (S r) | hd];
-      let cell = &m (*a)[i ; 1 ; r];
-      let e = &m (*cell)[0];
-      match e { Pair(kk, vv) => &m *kk } } } };
-  () }
+    Both rejects are MUTATIONS of the accepted `gmDecSymPin` (docs/21): each
+    swaps one marked claim site of the golden's persisted term and is
+    re-checked against the same seed, so "same program, one lie" is a
+    value-level fact rather than a restated 12-line program the reader diffs
+    by eye. -/
+
+/-- The body of the marker named `name` (the last-visited copy, when the site
+    is reified more than once — see `replaceMarkedN` below) — for REUSING the
+    honest subterms when a twin's replacement must reference the golden's own
+    binders. -/
+def markedBody? (name : String) (t : Term) : Option Term :=
+  (Term.mapMarkersGo
+    (fun acc nm e => (if nm == name then e :: acc else acc, Term.marker nm e))
+    ([] : List Term) t).1.head?
+
+/-- The KEY twin: the exit moved from the value slot to the key slot. The
+    replacement writes `kk` at id 0 — Ω resolution is name-keyed (`findSlot?`
+    never reads an id), and a borrow is machine-side, so the NAME is what
+    binds; the sibling binder's minted id need not be guessed. -/
+def gmDecSymPinKey : Term :=
+  match Term.replaceMarked? "exit" ty{ &m * %(Dllbc.Term.var ⟨0, "kk"⟩) } gmDecSymPin.term with
+  | .ok t => t
+  -- Unreachable while the marker exists; `.unit` CHECKS as a program, so a
+  -- contract regression fails the rejection pin below rather than passing it.
+  | .error _ => .unit
 
 def gmDecConc2at1blind : Term := prog{
   fn G (self : &mut (s : Σ0 (a : Array 2 (Σ (k : Nat). Nat)). AllK7 2 a
@@ -349,35 +378,56 @@ def gmDecConc2at1open : Term := prog{
         match e { Pair(kk, vv) => &m *vv } } } } } };
   () }
 
+/-- Replace the body of EVERY marker named `name`, returning the hit count —
+    for a claim site the `fn` macro reifies TWICE: a parameter type lands in
+    both the seal's Π domain and the body λ's domain, so a marker written once
+    in a signature occurs twice in the elaborated term and `replaceMarked?`'s
+    exactly-one contract trips on the duplication (loudly, as designed). The
+    caller pins the count instead, keeping the loudness-on-drift. -/
+def replaceMarkedN (name : String) (repl : Term) (t : Term) : Nat × Term :=
+  Term.mapMarkersGo
+    (fun hits nm e =>
+      if nm == name then (hits + 1, Term.marker nm repl) else (hits, Term.marker nm e))
+    0 t
+
 /-- The wrong SLOT: the pin says the update happens at `i`, the carve reaches
-    `i` but the pin is instantiated at index `Z`. -/
-def gmDecSymPinWrongSlot : Term := prog_parse {
-  fn G (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
-        self : &mut (s : Σ0 (a : Array n (Σ (k : Nat). Nat)). AllK7 n a
-                       ~> (%PVSetDecT) n Z (Add i r) (*res) s)) -> &mut Nat {
-    match self { Pair(a, H) => {
-      let pre = &m (*a)[Z ; i ; S r | LeAddRaw i (S r) | hd];
-      let cell = &m (*a)[i ; 1 ; r];
-      let e = &m (*cell)[0];
-      match e { Pair(kk, vv) => &m *vv } } } };
-  () }
+    `i` but the pin is instantiated at index `Z` (residue `Add i r`, keeping
+    the total extent). The replacement rebuilds the honest pin's OWN spine —
+    `f n i r res s` with the index argument swapped for `Z` and the residue
+    for `Add i r` — reusing the golden's `i`/`r` subterms, so the fn-parameter
+    references are inherited rather than reconstructed. Both reified copies of
+    the signature's claim site are replaced, and the count is pinned at 2. -/
+def gmDecSymPinWrongSlot : Term :=
+  match markedBody? "slot" gmDecSymPin.term with
+  | some (.app (.app (.app (.app (.app f n) i) r) res) sv) =>
+    match replaceMarkedN "slot"
+        (.app (.app (.app (.app (.app f n) ty{ Z }) ty{ Add %(i) %(r) }) res) sv)
+        gmDecSymPin.term with
+    | (2, t) => t
+    | _ => .unit
+  | _ => .unit
 
 /-! ### §3.4 …and it runs
 
     End-to-end: instantiate at extent 3, index 1; take the pinned cursor;
-    write `9` through it; end the group; read the pack back. -/
+    write `9` through it; end the group; read the pack back. The run is from
+    the seed's EXECUTING twin (`runProgramFrom`), so the chain's `LeAdd` is
+    entered and computes concretely where the checking walk left an opaque σ. -/
 
-def runBinding (t : Term) (name : String) : Option String :=
-  match runProgram t with
+/-- `runBinding` against the executing twin: the value the program left in one
+    of ITS OWN bindings (the seeded helper drops the seed's entries). -/
+def runBindingFrom (m : Checked) (t : Term) (name : String) : Option String :=
+  match runProgramFrom m t with
   | .ok env => (env.lookup name).map Val.pretty
   | .error _ => none
 
-def gmDecCaller : Term := prog{
+def gmDecCaller : Checked := prog (Dllbc.std) {
   fn GetMut (n : Nat, i : Nat, r : Nat, hd : Id Nat n (Add i (S r)),
         self : &mut (s : Σ0 (a : Array n (Σ (k : Nat). Nat)). AllK7 n a
                        ~> (%PVSetDecT) n i r (*res) s)) -> &mut Nat {
     match self { Pair(a, H) => {
-      let pre = &m (*a)[Z ; i ; S r | LeAddRaw i (S r) | hd];
+      let h1 = LeAdd(i, S r);
+      let pre = &m (*a)[Z ; i ; S r | h1 | hd];
       let cell = &m (*a)[i ; 1 ; r];
       let e = &m (*cell)[0];
       match e { Pair(kk, vv) => &m *vv } } } };
@@ -397,19 +447,28 @@ def gmDecCaller : Term := prog{
         gmDecConc2at1blind    concrete index, blind                  green
         gmDecConc2at1open     concrete index, prefix opened          green
         gmDecCaller           …and it runs, writing cell 1           green
--/
+
+    The greens are asserted twice over: the golden `def`s elaborate (the
+    definition-site check, which a red program fails as a build error), and
+    `progOkFrom` re-checks the persisted term with the closing `endScope` and
+    the `Unit` return audit — the module walk runs NEITHER (bindings must
+    persist, docs/20), so the old `progOk` does NOT collapse into the
+    elaboration and stays as its seeded form. -/
 
 /-- The blind carve at a symbolic index, in an array of opaque extent, type-
     checks once the update is spelled with the projections: this is the O(1)
     `GetMut` case, with no element-by-element walk needed. -/
-example : progOk gmDecSymPin = true := by native_decide
-example : progOk gmDecSymPinRefl = true := by native_decide
+example : progOkFrom Dllbc.std gmDecSymPin.term = true := by native_decide
+example : progOkFrom Dllbc.std gmDecSymPinRefl.term = true := by native_decide
 
 /-- The key twin: everything matches except that the fill's exit sits in the
     key slot while the pin declares it in the value slot. It is rejected with
-    the two sides differing in exactly that one place. -/
-example : progRejects gmDecSymPinKey
-  "exits (Pair (arrCat σ₁ (S σ₂) σ₁₃ (acons σ₂ (Pair σ₂₁ σ₂₀) σ₁₇)) σ₇), does not convert with the declared pin (Pair (arrCat σ₁ (S σ₂) σ₁₃ (acons σ₂ (Pair σ₁₉ σ₂₁) σ₁₇)) σ₇)."
+    the two sides differing in exactly that one place. (The σ indices continue
+    from the chain's supply — the seed's `nextSym` — so they sit in the
+    thousands; the message's shape is the pre-migration one unchanged.) -/
+example : (gmDecSymPinKey == gmDecSymPin.term) = false := by native_decide
+example : progRejectsFrom Dllbc.std gmDecSymPinKey
+  "exits (Pair (arrCat σ₃₃₁₀ (S σ₃₃₁₁) σ₃₃₁₉ (acons σ₃₃₁₁ (Pair σ₃₃₂₇ σ₃₃₂₆) σ₃₃₂₃)) σ₃₃₁₆), does not convert with the declared pin (Pair (arrCat σ₃₃₁₀ (S σ₃₃₁₁) σ₃₃₁₉ (acons σ₃₃₁₁ (Pair σ₃₃₂₅ σ₃₃₂₇) σ₃₃₂₃)) σ₃₃₁₆)."
   = true := by native_decide
 
 /-- The wrong slot is refused by stuckness, not by a failed comparison: the pin
@@ -418,14 +477,15 @@ example : progRejects gmDecSymPinKey
     declines and the projection stays stuck in the normal form. A rule that
     matched on the total extent alone would have handed this program a prefix
     it never carved. -/
-example : progRejects gmDecSymPinWrongSlot
+example : (gmDecSymPinWrongSlot == gmDecSymPin.term) = false := by native_decide
+example : progRejectsFrom Dllbc.std gmDecSymPinWrongSlot
   "does not convert with the declared pin (Pair (arrCat Z (S (natRec" = true := by native_decide
 
 example : progOk gmDecConc2at1blind = true := by native_decide
 example : progOk gmDecConc2at1open = true := by native_decide
 
-example : progOk gmDecCaller = true := by native_decide
-example : runBinding gmDecCaller "p"
+example : progOkFrom Dllbc.std gmDecCaller.term = true := by native_decide
+example : runBindingFrom Dllbc.std gmDecCaller.term "p"
   = some ("Pair [Pair (S (S (S (S (S (S (S Z))))))) (S Z), "
        ++ "Pair (S (S (S (S (S (S (S Z))))))) (S (S (S (S (S (S (S (S (S Z))))))))), "
        ++ "Pair (S (S (S (S (S (S (S Z))))))) (S (S (S Z)))] "
@@ -442,7 +502,11 @@ example : runBinding gmDecCaller "p"
     rejected without the rules, but for a different reason, so its pinned
     message changes too. Every other negative survives the removal, since
     §1.3, §1.4 and `gmDecSymPinWrongSlot` all assert that a projection stays
-    stuck, which is exactly what an absent rule leaves behind.
+    stuck, which is exactly what an absent rule leaves behind. (Measured
+    against the pre-migration file; since the consumer migration the §3
+    greens are seeded goldens, so their failure mode under the revert is an
+    elaboration error at the `def` — a build failure rather than a red
+    assertion — with `progOkFrom` red beside it.)
 
     **Cost** (medians from `IO.monoMsNow` around `Pure.nf`, run against the
     built oleans):
