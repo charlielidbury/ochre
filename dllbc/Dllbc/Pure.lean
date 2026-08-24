@@ -116,10 +116,12 @@ namespace Pure
 
     One rule holds at these sites and is worth stating, because it is invisible
     until it breaks: below `Std` you must splice the kernel constants, NOT write
-    the friendly surface names. `ty{ Add a b }` resolves `Add` through
-    `Surface.aliasMap` to `Dllbc.Std.addFnT`, which this module is beneath in the
-    import graph. `Array` and `arrCat` are fine unspliced — they are `constSet`
-    entries, kernel basis, not library. -/
+    the friendly surface names. `ty{ Add a b }` resolves `Add` as an ordinary Lean
+    identifier, and the constant it would find — `Dllbc.Std.Add`, exported into
+    `Dllbc` — is above this module in the import graph, so here it finds nothing.
+    That is the rule enforcing itself rather than a convention to remember: the
+    error is `unknown identifier`, at the site. `Array` and `arrCat` are fine
+    unspliced — they are `constSet` entries, kernel basis, not library. -/
 
 /-- `add a b` by recursion on `a` (`add Z b = b`, `add (S a') b = S (add a' b)`). -/
 def kAddFn : Term :=

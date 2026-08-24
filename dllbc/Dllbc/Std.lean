@@ -21,14 +21,14 @@ name**, which must denote a `Dllbc.Term` in scope. A file that writes
 `open Dllbc.Std` therefore gets `Le`, `Add`, `Count`, … in its `ty{ }` blocks for
 free, resolving to the constants below.
 
-That fallthrough is the only mechanism there is. Until this commit series there
-was a second one — `Surface.aliasMap`, a ten-entry table in `Uni.lean` mapping
-`Le ↦ Dllbc.Std.LeFnT` and so on — and it existed for exactly one reason: the
-constants were spelled `LeFnT`, `addFnT`, `countFnT`, and a table was needed to
-bridge the name to the spelling. Spelling them `Le`, `Add`, `Count` retires the
-table, because there is no longer a gap for it to bridge. The `…Fn`/`…FnT` pairs
-collapsed with it: `Term` in this file *is* `Dllbc.Term`, so the two were the
-same definition written twice.
+That fallthrough is the only mechanism there is. There used to be a second one —
+`Surface.aliasMap`, a ten-entry table in `Uni.lean` mapping `Le ↦
+Dllbc.Std.LeFnT` and so on — and it existed for exactly one reason: the constants
+were spelled `LeFnT`, `addFnT`, `countFnT`, and something had to bridge the name
+to the spelling. Spelling them `Le`, `Add`, `Count` retired the table, because
+there is no longer a gap for it to bridge. The `…Fn`/`…FnT` pairs went with it:
+`Term` in this file *is* `Dllbc.Term`, so the two were the same definition
+written twice.
 
 ## Why the header no longer says "the quicksort pure library"
 
@@ -107,17 +107,6 @@ def ofList : List Term → Term
   | [] => ty{ Nil }
   | h :: t => ty{ Cons(%h, %(ofList t)) }
 
-/-! ## `Le`, `Eqb`, `Bound`, … each carry a `…FnT` twin for ONE commit
-
-    `Surface.aliasMap` — the ten-entry table in `Uni.lean` this series retires —
-    still maps the surface names to `Dllbc.Std.…FnT`, and it is consulted BEFORE
-    the Lean-identifier fallthrough. So while it lives, a `ty{ }` in this very
-    file citing `Le` reaches `LeFnT` and not `Le`, and `Bound`, `Count` and
-    `Sorted` all cite their predecessors that way. The twins keep the tree green
-    until `Uni.lean` (owned by another lane this session) can be touched; they are
-    deleted in the same commit as the table, and the interleaving goes with
-    them. -/
-
 /-! ## `Le : Nat → Nat → Type`  (Z ≤ _ ↦ ⊤ ; S ≤ Z ↦ ⊥ ; S ≤ S ↦ recurse)
 
     `Le` LIVES in the kernel (`Pure.kLeFn`) and is aliased here. The CARVE rule's
@@ -127,7 +116,6 @@ def ofList : List Term → Term
     Single source of truth, asserted in S24Arrays (i.h). -/
 
 def Le : Dllbc.Term := kLeFn
-abbrev LeFnT : Dllbc.Term := Le
 
 /-! ## `Eqb`, `Leb : Nat → Nat → Bool` — runtime-usable decision procedures -/
 
@@ -135,13 +123,11 @@ def Eqb : Dllbc.Term := ty{
   λ (A : Nat). elim A return (λ (Am : Nat). Nat → Bool) {
     Z => λ (B : Nat). elim B return (λ (Bm : Nat). Bool) { Z => True, S (B') Rec => False },
     S (A') RecA => λ (B : Nat). elim B return (λ (Bm : Nat). Bool) { Z => False, S (B') Rec => RecA B' } } }
-abbrev eqbFnT : Dllbc.Term := Eqb
 
 def Leb : Dllbc.Term := ty{
   λ (A : Nat). elim A return (λ (Am : Nat). Nat → Bool) {
     Z => λ (B : Nat). True,
     S (A') RecA => λ (B : Nat). elim B return (λ (Bm : Nat). Bool) { Z => False, S (B') Rec => RecA B' } } }
-abbrev lebFnT : Dllbc.Term := Leb
 
 /-! ## `Len` — the segment vocabulary's length (§14) -/
 
@@ -149,7 +135,6 @@ def Len : Dllbc.Term := ty{
   λ (L : List Nat). elim L return (λ (Lm : List Nat). Nat) {
     Nil => Z,
     Cons (H) (T) Rec => S(Rec) } }
-abbrev lenFnT : Dllbc.Term := Len
 
 /-! ## `Count : Nat → List Nat → Nat` — the multiset counter (`listRec` + `boolRec`)
 
@@ -162,7 +147,6 @@ def Count : Dllbc.Term := ty{
   λ (N : Nat). λ (L : List Nat). elim L return (λ (Lm : List Nat). Nat) {
     Nil => Z,
     Cons (H) (T) Rec => elim (Eqb N H) return (λ (Bm : Bool). Nat) { True => S(Rec), False => Rec } } }
-abbrev countFnT : Dllbc.Term := Count
 
 /-! ## `Bound : Nat → List Nat → Type` and `Sorted : List Nat → Type` -/
 
@@ -171,7 +155,6 @@ def Bound : Dllbc.Term := ty{
   λ (H : Nat). λ (L : List Nat). elim L return (λ (Lm : List Nat). Type) {
     Nil => Unit,
     Cons (H') (T) Rec => Le H H' } }
-abbrev BoundFnT : Dllbc.Term := Bound
 
 -- `Sorted l` : Nil ↦ ⊤ ; Cons h t ↦ Bound h t × Sorted t. The `×` is the
 -- non-dependent Σ (M33 macro-top): the second component does not mention the
@@ -181,7 +164,6 @@ def Sorted : Dllbc.Term := ty{
   λ (L : List Nat). elim L return (λ (Lm : List Nat). Type) {
     Nil => Unit,
     Cons (H) (T) Rec => Bound H T × Rec } }
-abbrev SortedFnT : Dllbc.Term := Sorted
 
 /-! ## `Take`, `Drop` — the prefix and suffix a segment-scoped spec talks about
 
@@ -194,7 +176,6 @@ def Take : Dllbc.Term := ty{
     S (N') RecN => λ (L : List Nat). elim L return (λ (Lm : List Nat). List Nat) {
       Nil => Nil,
       Cons (H) (T) R => Cons(H, RecN T) } } }
-abbrev takeFnT : Dllbc.Term := Take
 
 def Drop : Dllbc.Term := ty{
   λ (N : Nat). elim N return (λ (Nm : Nat). List Nat → List Nat) {
@@ -202,13 +183,11 @@ def Drop : Dllbc.Term := ty{
     S (N') RecN => λ (L : List Nat). elim L return (λ (Lm : List Nat). List Nat) {
       Nil => Nil,
       Cons (H) (T) R => RecN T } } }
-abbrev dropFnT : Dllbc.Term := Drop
 
 /-- `Add a b` by recursion on `a`. Aliased from the kernel for the same reason as
     `Le`: premise (3) of CARVE decomposes an extent with `add`, so the kernel
     needs it. -/
 def Add : Dllbc.Term := kAddFn
-abbrev addFnT : Dllbc.Term := Add
 
 /-- `Append a b` by recursion on `a` (`Nil ↦ b`, `Cons h t ↦ Cons h (Append t b)`). -/
 def Append : Dllbc.Term := ty{
