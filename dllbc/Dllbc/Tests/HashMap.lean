@@ -646,23 +646,23 @@ def SizeRem : Term := prog_parse {
 
 -- They compute on the concrete inhabitant: key 3 is present with 30, key 5
 -- shares its bucket and misses, key 4 hits the empty bucket.
-example : chkL prog_parse { Refl } prog_parse { Id (Opt Nat) (FindHM 3 %hmEx) (SomeN 30) } = true := by
+example : chkL prog_parse { Refl } prog_parse { Id (Opt Nat) (FindHM 3 hmEx) (SomeN 30) } = true := by
   native_decide
-example : chkL prog_parse { Refl } prog_parse { Id (Opt Nat) (FindHM 5 %hmEx) NoneN } = true := by
+example : chkL prog_parse { Refl } prog_parse { Id (Opt Nat) (FindHM 5 hmEx) NoneN } = true := by
   native_decide
-example : chkL prog_parse { Refl } prog_parse { Id (Opt Nat) (FindHM 4 %hmEx) NoneN } = true := by
+example : chkL prog_parse { Refl } prog_parse { Id (Opt Nat) (FindHM 4 hmEx) NoneN } = true := by
   native_decide
-example : chkL prog_parse { Refl } prog_parse { Id Nat (SizeHM %hmEx) 1 } = true := by native_decide
-example : chkL prog_parse { Refl } prog_parse { Id (Opt Nat) (FindIns 3 5 9 %hmEx) (SomeN 30) } = true := by
+example : chkL prog_parse { Refl } prog_parse { Id Nat (SizeHM hmEx) 1 } = true := by native_decide
+example : chkL prog_parse { Refl } prog_parse { Id (Opt Nat) (FindIns 3 5 9 hmEx) (SomeN 30) } = true := by
   native_decide
-example : chkL prog_parse { Refl } prog_parse { Id (Opt Nat) (FindIns 5 5 9 %hmEx) (SomeN 9) } = true := by
+example : chkL prog_parse { Refl } prog_parse { Id (Opt Nat) (FindIns 5 5 9 hmEx) (SomeN 9) } = true := by
   native_decide
-example : chkL prog_parse { Refl } prog_parse { Id (Opt Nat) (FindRem 3 3 %hmEx) NoneN } = true := by
+example : chkL prog_parse { Refl } prog_parse { Id (Opt Nat) (FindRem 3 3 hmEx) NoneN } = true := by
   native_decide
-example : chkL prog_parse { Refl } prog_parse { Id Nat (SizeIns 5 %hmEx) 2 } = true := by native_decide
-example : chkL prog_parse { Refl } prog_parse { Id Nat (SizeIns 3 %hmEx) 1 } = true := by native_decide
-example : chkL prog_parse { Refl } prog_parse { Id Nat (SizeRem 3 %hmEx) Z } = true := by native_decide
-example : chkL prog_parse { Refl } prog_parse { Id Nat (SizeRem 5 %hmEx) 1 } = true := by native_decide
+example : chkL prog_parse { Refl } prog_parse { Id Nat (SizeIns 5 hmEx) 2 } = true := by native_decide
+example : chkL prog_parse { Refl } prog_parse { Id Nat (SizeIns 3 hmEx) 1 } = true := by native_decide
+example : chkL prog_parse { Refl } prog_parse { Id Nat (SizeRem 3 hmEx) Z } = true := by native_decide
+example : chkL prog_parse { Refl } prog_parse { Id Nat (SizeRem 5 hmEx) 1 } = true := by native_decide
 
 /-! ## (x) Projecting the invariant's clauses
 
@@ -3226,13 +3226,10 @@ example : chkL MkNdCons MkNdConsTy = true := by native_decide
 
     ArraySort's `arrUnder` shape: one Lean function building the declaration
     chain, the spec return types spliced so the lying twins share the bodies
-    verbatim. `New`'s and `Insert`'s telescopes for the spliced types:
-    NewHM: cap=0, HLe1=1.  InsertHM: fuel=0, key=1, val=2, self=3, Hfuel=4,
-    Hroom=5. -/
+    verbatim. A spec fragment cites the telescope's parameters BARE — `key`,
+    `val`, `*self`, `old *self` — and the splice binds them at the header
+    (docs/22); there is no positional vocabulary to keep in step. -/
 
-def keyIv : Term := .var "key"
-def valIv : Term := .var "val"
-def selfIv : Term := .var "self"
 
 /-- A slot's invariant pair, by application (the constructor-argument fence). -/
 def MkSlotInv : Term := prog_parse {
@@ -3350,7 +3347,7 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
   fn SlotOfE (h : Nat, n : Nat, Hne : Le (S Z) n)
       -> Σ (i : Nat). Σ (r : Nat). Σ (hd : Id Nat n (Add i (S r))). Id Nat i (Mod h n) {
     SlotPack h n Hne };
-  fn NewHM (cap : Nat, HLe1 : Le (S Z) cap) -> %nret {
+  fn NewHM (cap : Nat, HLe1 : Le (S Z) cap) -> nret {
     let Cap0 = cap;
     Pair(Pair(cap, Pair(Mul 4 cap, Pair(Z, Pair(MkSlots cap,
         MkInv cap (Mul 4 cap) Z (MkSlots cap) HLe1 Refl unit
@@ -4041,7 +4038,7 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
                self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
                  Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots),
                Hfuel : Le (S (S (SizeHM (*self)))) fuel)
-      -> %iret
+      -> iret
       {
         let Pair(cap, Pair(load, Pair(nn, Pair(slots, HInv)))) = *self;
         let Cap0 = cap;
@@ -4277,7 +4274,7 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
                self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
                  Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots),
                Hfuel : Le (S (SizeHM (*self))) fuel)
-      -> %rret
+      -> rret
       {
         let Pair(cap, Pair(load, Pair(nn, Pair(slots, HInv)))) = *self;
         let Cap0 = cap;
@@ -4362,7 +4359,7 @@ def hmS1Under (nret iret rret tail : Term) : Term := prog{
           }
         }
       };
-  %tail }
+  tail }
 
 /-- `New`'s honest ensures: finds nothing, size zero. -/
 def newRetHonest : Term := prog_parse {
@@ -4373,21 +4370,19 @@ def newRetHonest : Term := prog_parse {
     equation (subsuming Aeneas' found + frame in one total claim) and the size
     accounting via the `SizeIns` spec function. -/
 def insRetHonest : Term := prog_parse {
-  Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (*%selfIv))
-       (FindIns Q %keyIv %valIv (old *%selfIv))).
-  Id Nat (SizeHM (*%selfIv)) (SizeIns %keyIv (old *%selfIv)) }
+  Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (*self))
+       (FindIns Q key val (old *self))).
+  Id Nat (SizeHM (*self)) (SizeIns key (old *self)) }
 
 /-- `Remove`'s honest ensures — the three fixed conjuncts: the removed value
     is the old answer at `key`, the pointwise `FindRem` equation, and the
     `SizeRem` size accounting. Telescope: fuel=0, key=1, self=2, Hfuel=3. -/
-def keyRv : Term := .var "key"
-def selfRv : Term := .var "self"
 def remRetHonest : Term := prog_parse {
   Σ (r : Σ (bb : Bool). OptP bb Nat).
-  Σ (Hr : Id OptN r (FindHM %keyRv (old *%selfRv))).
-  Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (*%selfRv))
-       (FindRem Q %keyRv (old *%selfRv))).
-  Id Nat (SizeHM (*%selfRv)) (SizeRem %keyRv (old *%selfRv)) }
+  Σ (Hr : Id OptN r (FindHM key (old *self))).
+  Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (*self))
+       (FindRem Q key (old *self))).
+  Id Nat (SizeHM (*self)) (SizeRem key (old *self)) }
 
 
 
@@ -4642,7 +4637,7 @@ def gmProbe1 : Term := prog_parse {
           if e : Eqb *kk key { &m *vv } else { WalkVal(f2, key, dflt, &m *tl) }
       } } };
   fn GetMutRaw (fuel : Nat, key : Nat, dflt : Nat,
-                self : &mut %HashMapT) -> &mut Nat
+                self : &mut HashMapT) -> &mut Nat
   {
     let HLe1 = PackLe1 (*self);
     let Pair(cap, Pair(load, Pair(nn, Pair(slots, HInv)))) = self;
@@ -4787,53 +4782,53 @@ example : progOk (hmS1Under (prog_parse {
 -- Insert, conjunct 1a: the find-equation lied onto the entry map — the exit
 -- claims the old answers (the update never happened).
 example : progOk (hmS1Under newRetHonest (prog_parse {
-    Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (old *%selfIv))
-         (FindIns Q %keyIv %valIv (old *%selfIv))).
-    Id Nat (SizeHM (*%selfIv)) (SizeIns %keyIv (old *%selfIv)) })
+    Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (old *self))
+         (FindIns Q key val (old *self))).
+    Id Nat (SizeHM (*self)) (SizeIns key (old *self)) })
   remRetHonest prog_parse { () }) = false := by native_decide
 
 -- Insert, conjunct 1b: the frame direction flipped — the model updated the
 -- exit state instead of the entry state.
 example : progOk (hmS1Under newRetHonest (prog_parse {
-    Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (old *%selfIv))
-         (FindIns Q %keyIv %valIv (*%selfIv))).
-    Id Nat (SizeHM (*%selfIv)) (SizeIns %keyIv (old *%selfIv)) })
+    Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (old *self))
+         (FindIns Q key val (*self))).
+    Id Nat (SizeHM (*self)) (SizeIns key (old *self)) })
   remRetHonest prog_parse { () }) = false := by native_decide
 
 -- Insert, conjunct 2: the size accounting off by one.
 example : progOk (hmS1Under newRetHonest (prog_parse {
-    Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (*%selfIv))
-         (FindIns Q %keyIv %valIv (old *%selfIv))).
-    Id Nat (SizeHM (*%selfIv)) (S (SizeIns %keyIv (old *%selfIv))) })
+    Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (*self))
+         (FindIns Q key val (old *self))).
+    Id Nat (SizeHM (*self)) (S (SizeIns key (old *self))) })
   remRetHonest prog_parse { () }) = false := by native_decide
 
 -- Remove, conjunct 1: the returned option claims the exit map's answer (which
 -- is None at the removed key) instead of the entry map's.
 example : progOk (hmS1Under newRetHonest insRetHonest (prog_parse {
     Σ (r : Σ (bb : Bool). OptP bb Nat).
-    Σ (Hr : Id OptN r (FindHM %keyRv (*%selfRv))).
-    Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (*%selfRv))
-         (FindRem Q %keyRv (old *%selfRv))).
-    Id Nat (SizeHM (*%selfRv)) (SizeRem %keyRv (old *%selfRv)) })
+    Σ (Hr : Id OptN r (FindHM key (*self))).
+    Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (*self))
+         (FindRem Q key (old *self))).
+    Id Nat (SizeHM (*self)) (SizeRem key (old *self)) })
   prog_parse { () }) = false := by native_decide
 
 -- Remove, conjunct 2: the pointwise equation lied onto the entry map.
 example : progOk (hmS1Under newRetHonest insRetHonest (prog_parse {
     Σ (r : Σ (bb : Bool). OptP bb Nat).
-    Σ (Hr : Id OptN r (FindHM %keyRv (old *%selfRv))).
-    Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (old *%selfRv))
-         (FindRem Q %keyRv (old *%selfRv))).
-    Id Nat (SizeHM (*%selfRv)) (SizeRem %keyRv (old *%selfRv)) })
+    Σ (Hr : Id OptN r (FindHM key (old *self))).
+    Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (old *self))
+         (FindRem Q key (old *self))).
+    Id Nat (SizeHM (*self)) (SizeRem key (old *self)) })
   prog_parse { () }) = false := by native_decide
 
 -- Remove, conjunct 3: size accounting flipped to SizeIns's shape (bump-if-
 -- absent instead of drop-if-present).
 example : progOk (hmS1Under newRetHonest insRetHonest (prog_parse {
     Σ (r : Σ (bb : Bool). OptP bb Nat).
-    Σ (Hr : Id OptN r (FindHM %keyRv (old *%selfRv))).
-    Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (*%selfRv))
-         (FindRem Q %keyRv (old *%selfRv))).
-    Id Nat (SizeHM (*%selfRv)) (SizeIns %keyRv (old *%selfRv)) })
+    Σ (Hr : Id OptN r (FindHM key (old *self))).
+    Σ0 (Hpt : Π (Q : Nat) → Id OptN (FindHM Q (*self))
+         (FindRem Q key (old *self))).
+    Id Nat (SizeHM (*self)) (SizeIns key (old *self)) })
   prog_parse { () }) = false := by native_decide
 
 /-! ## (xxii) Not vacuous, part 2: the body twins -/
@@ -5444,7 +5439,7 @@ def twinNoBumpUnder (iret : Term) : Term := prog{
                self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
                  Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots),
                Hfuel : Le (S (S (SizeHM (*self)))) fuel)
-      -> %iret
+      -> iret
       {
         let Pair(cap, Pair(load, Pair(nn, Pair(slots, HInv)))) = *self;
         let Cap0 = cap;
@@ -6236,7 +6231,7 @@ def twinNoResizeUnder (iret : Term) : Term := prog{
                self : &mut (Σ (cap : Nat). Σ (load : Nat). Σ (n : Nat).
                  Σ0 (slots : Array cap (List (Σ (k : Nat). Nat))). HMInvT cap load n slots),
                Hfuel : Le (S (S (SizeHM (*self)))) fuel)
-      -> %iret
+      -> iret
       {
         let Pair(cap, Pair(load, Pair(nn, Pair(slots, HInv)))) = *self;
         let Cap0 = cap;
@@ -7022,7 +7017,7 @@ def hmPinUnder (tail : Term) : Term := prog{
               (AgetB (Add I0 (S R0)) (arrCat I0 (S R0) L0 (acons R0 B0 H0)) (Mod Key0 C0))
               B0 EB))))
     } } } } } };
-  %tail }
+  tail }
 
 /-- **`GetMut` checks.** The map-level pin discharges through the carve
     (`atake`/`adrop` reduce at the parameter split), the bucket callee's
@@ -7444,7 +7439,7 @@ def hmOrUnder (tail : Term) : Term := prog{
         hb
         (OrDAgetEv Key0 D0 I0 R0 (Mod Key0 C0) L0 B0 H0 Him))
     } } } } } };
-  %tail }
+  tail }
 
 example : progOk (hmOrUnder prog_parse { () }) = true := by native_decide
 
@@ -7923,7 +7918,7 @@ def hmGmUnder (tail2 : Term) : Term :=
       InsertHM(fuel, key, dflt, &m *self, Hfuel);
       GetMutRaw(fuel, key, dflt, &m *self)
     } };
-  %tail2 }
+  tail2 }
 
 -- The checker rejects the extended chain; this pins the exact error text.
 example : progRejects (hmGmUnder prog_parse { () }) "does not have its owed type"
