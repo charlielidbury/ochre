@@ -3,7 +3,7 @@ import Dllbc.Machine
 import Dllbc.ProgMacro
 import Dllbc.Program
 import Dllbc.Std
-import Dllbc.StdLemmas
+import Dllbc.StdChain
 
 /-!
 # MatchJoin — the unconditional join (docs/19 v2), accepted/rejected
@@ -17,7 +17,6 @@ names the ladder rule it exercises.
 
 namespace Dllbc.Tests.MatchJoin
 open Dllbc
-open Dllbc.StdLemmas (LebTrueLeRaw)
 
 /-! ## (1) THE HEADLINE — sequential matches stop multiplying (ladder rule 5:
     disagreeing results re-mint as fresh σ : Bool, continuation walked once). -/
@@ -79,7 +78,18 @@ example : progRejects divergentBorrows "the arms disagree at the result" = true 
     (`Id Bool (Leb a b) True` / `… False` join at `Id Bool (Leb a b) σf`), so
     the pack needs no annotation. The continuation destructures, re-splits the
     flag, and the True arm's refinement σf := True turns the evidence back
-    into `Id Bool (Leb a b) True` — `LebTrueLeRaw` closes it. This is the
+    into `Id Bool (Leb a b) True` — `LebTrueLeRaw` closes it. The heuristic's
+    refinement propagation is sensitive to the citation staying a PURE
+    APPLICATION in this arm (a call-and-bind through the chain's sealed
+    `LebTrueLe`, or any further statement after it that calls another sealed
+    `fn`, drops the refinement and the argument no longer converts — probed
+    2026-08-24, the raw splice behaves identically regardless of which
+    library copy supplies it, so this is not a value difference):
+    `Dllbc.StdChainRaw.LebTrueLeRaw` is value-identical to the pre-migration
+    copy this file used to cite (`native_decide`-checked), so it stays a
+    file-local pure-term ingredient (docs/20 §6 playbook: a
+    conversion-sensitive citation can't move to a chain call), spliced from
+    the chain's own raw copy. This is the
     correlation class (3), repaired by the language's own idiom. -/
 
 def packEvidence : Term := prog{
@@ -88,7 +98,7 @@ def packEvidence : Term := prog{
     let c = Leb a b;
     let p = match e : c { True => Pair(True, e), False => Pair(False, e) };
     let Pair(flag, ev) = p;
-    match flag { True => { NeedLe(a, b, LebTrueLeRaw a b ev); () }, False => () }
+    match flag { True => { NeedLe(a, b, (%(Dllbc.StdChainRaw.LebTrueLeRaw)) a b ev); () }, False => () }
   };
   () }
 example : progOk packEvidence = true := by native_decide
