@@ -193,7 +193,7 @@ example :
 
 def under (ret : Term) : Term := prog{
   let x = S(Z);
-  (x : %ret) }
+  (x : ret) }
 
 -- The ascribed return type is elaboration metadata, not part of the value,
 -- so both instantiations below produce the same `Term`; the check against
