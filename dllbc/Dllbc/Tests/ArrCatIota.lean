@@ -350,11 +350,10 @@ def markedBody? (name : String) (t : Term) : Option Term :=
     ([] : List Term) t).1.head?
 
 /-- The KEY twin: the exit moved from the value slot to the key slot. The
-    replacement writes `kk` at id 0 — Ω resolution is name-keyed (`findSlot?`
-    never reads an id), and a borrow is machine-side, so the NAME is what
-    binds; the sibling binder's minted id need not be guessed. -/
+    replacement writes the occurrence `kk` — Ω resolution is name-keyed
+    (`findSlot?`), and a borrow is machine-side, so the NAME is what binds. -/
 def gmDecSymPinKey : Term :=
-  match Term.replaceMarked? "exit" ty{ &m * %(Dllbc.Term.var ⟨0, "kk"⟩) } gmDecSymPin.term with
+  match Term.replaceMarked? "exit" ty{ &m * %(Dllbc.Term.var "kk") } gmDecSymPin.term with
   | .ok t => t
   -- Unreachable while the marker exists; `.unit` CHECKS as a program, so a
   -- contract regression fails the rejection pin below rather than passing it.

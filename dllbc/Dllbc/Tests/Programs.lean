@@ -2334,7 +2334,7 @@ example : lowerComptime Pure.kLeFn = 0 := by native_decide
     the key binder abstraction generalizes with, which is why the asymmetry
     was worth removing rather than documenting. -/
 example : unmarkedCaps Dllbc.Tests.S23Direct.flagship = 0 := by native_decide
-example : unmarkedCaps Dllbc.Tests.S24Arrays.sort2 = 0 := by native_decide
+example : unmarkedCaps Dllbc.Tests.S24Arrays.sort2.term = 0 := by native_decide
 example : unmarkedCaps Std.lenFnT = 0 := by native_decide
 example : unmarkedCaps Pure.kLeFn = 0 := by native_decide
 example : unmarkedCaps Pure.kAddFn = 0 := by native_decide
