@@ -623,6 +623,22 @@ structure OccNote where
       about a slot is timeless, so a parameter answers from the checker's own
       seeds like every other binder. -/
   entry : Bool := false
+  /-- A SECOND, coarser point this occurrence may fall back to (docs/23): the
+      key of the enclosing match, for an occurrence that already has a statement
+      of its own.
+
+      **It exists because a bare arm body is two points at once**, and the two
+      answer through different doors. `Cons(hd, tl) => IdJ(tl)` is a statement —
+      the machine files deltas under its key — so `tl` wants `factsAt` there. But
+      the machine's key for that statement is the term it WALKS, which a call
+      retarget or the `[k]` recursor rewrite can make a different term from the
+      one the surface emitted; when the two disagree, `factsAt` finds no run and
+      the arm's own seed is still the honest coarser answer. So the tail key is
+      tried first and this is what is left when it misses.
+
+      `none` for everything the match row tags outright — a pattern binder has no
+      statement of its own, so its entry key IS its `stmt`. -/
+  entryKey : Option Syntax := none
 deriving Inhabited
 
 /-- Key-term syntax paired with the source syntax it was written at. -/
@@ -768,13 +784,23 @@ def tagOccsFrom (lo : Nat) (key : TSyntax `term) : UM Unit :=
     keyed `key` — telescope positions: parameter binders, occurrences inside
     parameter types, and the return type (see `OccNote.entry`). Pending
     occurrences are NOT drained: a `show` above a `fn` statement anchors to a
-    statement, not to a body's inside. -/
+    statement, not to a body's inside.
+
+    An occurrence that ALREADY has a statement keeps it and takes this key as its
+    FALLBACK (`OccNote.entryKey`, docs/23) rather than being passed over. That is
+    the whole of the arm-tail fix's safety: the tail row's key is more specific
+    and is tried first, and where the machine files under a term the surface
+    cannot reproduce — a retargeted call, the `[k]` recursor's `Ih` — the arm's
+    own seed still answers, exactly as it did before the tail row existed. -/
 def tagOccsEntry (lo : Nat) (key : TSyntax `term) : UM Unit :=
   modify fun a =>
     if !a.hover then a else
       { a with occs := a.occs.mapIdx (fun i o =>
-          if i ≥ lo && o.stmt.isNone then
-            { o with stmt := some key.raw, entry := true } else o) }
+          if i ≥ lo then
+            if o.stmt.isNone then { o with stmt := some key.raw, entry := true }
+            else if o.entryKey.isNone && !o.entry then { o with entryKey := some key.raw }
+            else o
+          else o) }
 
 /-- Steal the pending `show` occurrences for the duration of a statement's own
     elaboration. **The drain is depth-blind and this is the correction**: a
@@ -1634,8 +1660,28 @@ partial def elabUArmBody (sc : Scope)
   match body with
   | `(uarmBody| { $b:ublk }) => elabUBlk sc b
   | `(uarmBody| $e:uterm) => do          -- a bare arm body IS the arm's final statement
+    -- **AND SO IT TAGS ITS OCCURRENCES, exactly as a block's final expression
+    -- does** (docs/23). This row filed a SPAN and no occurrence key, so an
+    -- identifier named in a bare arm body fell through to the match row's
+    -- `tagOccsEntry` — which answers only for names that arm's own seed BOUND.
+    -- The consequence a reader meets: `Nil => dst` hovers as nothing, because the
+    -- base arm seeds no binder at all, while `Cons(hd, tl) => tl` answers. The
+    -- fix is the sibling row's, one function down and four lines long: the arm's
+    -- tail IS a statement, the machine files deltas under its key, so the surface
+    -- keys the occurrences there and `factsAt` replays to it. Pattern BINDERS are
+    -- unaffected — `mintPatArgs` files them before this row's mark, so they keep
+    -- the match's entry key, which is the point they are actually bound at.
+    let occLo ← occMark
+    -- Stolen and put back UNTAGGED, which is where this differs from the sibling
+    -- row and why: a pending `show` above the enclosing statement belongs to that
+    -- statement, not to one arm of a match inside it (ShowSpans S6's regression).
+    -- The sibling row restores before tagging because there the pendings are its
+    -- own block's; here they can only ever be an ancestor's.
+    let held ← takePendings
     let e' ← elabUTerm sc e
     spanOfStmt e' e
+    tagOccsFrom occLo e'
+    restorePendings held
     return e'
   | _ => Macro.throwErrorAt body "decl: unexpected arm body"
 

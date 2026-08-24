@@ -183,4 +183,47 @@ example : Term := prog{
     () };
   () }
 
+/-! ## (S7) A `[k]` RECURSION — the arms answer, the scrutinee cannot (docs/23)
+
+    `fn F [k] …` is lowered to a RECURSOR before anything is checked (`FnMacro`
+    §7), and the lowering CONSUMES the match the source wrote: the scrutinee
+    becomes the recursor's own argument and stops being a binding at all, each
+    arm becomes a λ, and the self-call becomes `Ih`. What that costs and what it
+    does not are both on show below.
+
+    **It does not cost the arms.** `dst` reports a different σ in each branch —
+    σ₀ under `Nil`, σ₄ under `Cons` — so the per-arm facts are recorded and
+    recovered correctly through a rewrite that left no `match` node behind.
+
+    **It does cost the scrutinee, and irrecoverably.** `src` has no value at any
+    point inside the body: not one the recorder missed, but none, because the
+    checked program eliminated it. `no value here` is the true answer and the
+    only honest one — the alternative would be to print its declared type, which
+    is the channel deleted on 2026-08-21 for saying something timeless about a
+    slot under strong updates.
+
+    Hovering these same positions says the same thing (docs/18's claim), which is
+    what makes this case the assertable half of a defect report about hover. -/
+
+/--
+info: src — no value here (not checked, or not live)
+---
+info: dst ↦ (σ₀ : List Nat)
+---
+info: src — no value here (not checked, or not live)
+---
+info: hd ↦ (σ₁ : Nat)
+---
+info: dst ↦ (σ₄ : List Nat)
+-/
+#guard_msgs in
+example : Term := prog{
+  fn RevS [src] (src: List Nat, dst: List Nat) -> List Nat {
+    match src {
+      Nil => { show src; show dst; let a = dst; a },
+      Cons(hd, tl) => { show src; show hd; show dst; let b = Cons(hd, dst); RevS(tl, b) }
+    }
+  };
+  () }
+
 end Dllbc.Tests.ShowSpans

@@ -342,17 +342,31 @@ def pointTooltip (name : String) (v : Dllbc.Val) (sctx : List (Nat × Dllbc.Term
   letTooltip name { binder := Dllbc.Var.slot name, stmtKey := none, ty? := none, val := v, sctx := sctx }
 
 /-- The point-fact for one occurrence, if its statement was walked and its binder
-    was live there. `none` declines — see `replayTo`. An ENTRY occurrence (a
+    was live there. `[]` declines — see `replayTo`. An ENTRY occurrence (a
     telescope position) reads "entering the body" instead of "entering the
-    statement" — `factsAtEntry`, the seeds' result. -/
+    statement" — `factsAtEntry`, the seeds' result.
+
+    **Two keys, tried finest first** (docs/23). An occurrence in a bare match arm
+    has a statement of its own AND an enclosing match; the statement is the more
+    specific point, so it wins wherever the machine filed a run under it, and the
+    match's arm-entry answers when it did not. That second case is not an edge:
+    the machine keys a statement by the term it WALKS, and a retargeted call or
+    the `[k]` recursor's `Ih` rewrite makes that a different term from the one the
+    surface emitted. Neither branch guesses — each declines on its own terms and
+    the fallback is a genuine fact about a coarser point, not an interpolation. -/
 def pointFactFor (pts : List (List Dllbc.PointDelta)) (o : Dllbc.Surface.OccNote)
-    (keys : List Dllbc.Term) (i : Nat) :
+    (keys : List Dllbc.Term) (i : Nat) (ekeys : List Dllbc.Term) (ei : Nat) :
     List (List (String × String) × Dllbc.Val × List (Nat × Dllbc.Term)) :=
-  match keys[i]? with
-  | none => []
-  | some key =>
-    if o.entry then Dllbc.factsAtEntry pts key o.name
-    else Dllbc.factsAt pts key o.name
+  let here : List (List (String × String) × Dllbc.Val × List (Nat × Dllbc.Term)) :=
+    match keys[i]? with
+    | none => []
+    | some key =>
+      if o.entry then Dllbc.factsAtEntry pts key o.name
+      else Dllbc.factsAt pts key o.name
+  if !here.isEmpty then here else
+    match ekeys[ei]? with
+    | none => []
+    | some key => Dllbc.factsAtEntry pts key o.name
 
 /-- `x ⇒ Cons, n ⇒ S` — which arms this path took, outermost first. -/
 def trailText (trail : List (String × String)) : String :=
@@ -436,20 +450,30 @@ def pushHovers (spans : SpanAcc) (tbl : List Dllbc.LetNote)
     -- walk, and the emitted `let` key may carry a marker in its right-hand side.
     let bkeys ← if tbl.isEmpty then pure [] else
       (·.map Dllbc.Term.stripMarkers) <$> keyValues (spans.occs.filterMap (fun o => o.bindKey))
+    -- The COARSER point an occurrence may fall back to (docs/23): the enclosing
+    -- match, for an occurrence that has a statement of its own. Same round-trip
+    -- and the same stripping; a short list, since only a bare arm body's
+    -- occurrences carry one.
+    let ekeys ← if pts.isEmpty then pure [] else
+      (·.map Dllbc.Term.stripMarkers) <$> keyValues (spans.occs.filterMap (fun o => o.entryKey))
     let mut ki := 0
     let mut bi := 0
+    let mut ei := 0
     for oi in [0 : spans.occs.size] do
       let o := spans.occs[oi]!
       -- Nothing is computed here — `hasPoint` only asks whether this occurrence
       -- HAS a point answer, and the answer itself is built inside the thunk.
-      let hasPoint := o.stmt.isSome && !pts.isEmpty && !(pointFactFor pts o keys ki).isEmpty
+      let hasPoint := (o.stmt.isSome || o.entryKey.isSome) && !pts.isEmpty
+        && !(pointFactFor pts o keys ki ekeys ei).isEmpty
       let ki' := ki
+      let ei' := ei
       let point? : Option (Unit → String) :=
         if hasPoint then
           some (fun _ => (renderPaths (pointTooltip o.name)
-                          pointBody (pointFactFor pts o keys ki')).getD "")
+                          pointBody (pointFactFor pts o keys ki' ekeys ei')).getD "")
         else none
       if o.stmt.isSome && !pts.isEmpty then ki := ki + 1
+      if o.entryKey.isSome && !pts.isEmpty then ei := ei + 1
       -- The binder fact this occurrence may fall back to: the entry under its
       -- name AND the key of the `let` it resolved to. No `let` (a parameter, a
       -- pattern binder) — no fallback.
