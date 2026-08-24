@@ -243,3 +243,23 @@ def le_refl_ty : Term := ty{ Π (N : Nat) → Le N N }
 def nfTerm (t : Dllbc.Term) : Dllbc.Term := Dllbc.Pure.nf 1000 t
 
 end Dllbc.Std
+
+/-! ## The vocabulary is exported into `Dllbc`, which is what the table did
+
+    `Surface.aliasMap` answered for `Le`, `Add`, `Count`, … in EVERY block that
+    could see them, and that globality is the half of it worth keeping: a
+    standard vocabulary you have to re-`open` per file is a vocabulary with a
+    ritual. The export says the same thing in ordinary Lean scoping — every one
+    of the twenty consuming modules already writes `open Dllbc`, so the names
+    arrive with no per-file edit at all — and it says it at the LIBRARY layer
+    rather than as a hardcoded list inside the macro.
+
+    It also keeps the rule for files BELOW this one intact for free, without
+    anyone having to remember it. `Machine`, `Pure`, `Syntax` and `Uni` do not
+    import `Dllbc.Std`, so the export is invisible to them and a bare `Le` there
+    is the error it should be; those files splice the kernel constants
+    (`Pure.kLeFn`, `kAddFn`) as they always have. -/
+
+namespace Dllbc
+export Std (Le Eqb Leb Len Count Bound Sorted Take Drop Add Append)
+end Dllbc
