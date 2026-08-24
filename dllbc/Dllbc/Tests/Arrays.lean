@@ -251,9 +251,9 @@ example : (Val.renumber id (· + 10) carvedWithLoan == segsOf [(1, .sym 10), (2,
 
 example : (Pure.kAddFn == Dllbc.Std.addFn) = true := by native_decide
 example : (Pure.kLeFn == Dllbc.Std.LeFn) = true := by native_decide
-example : (Pure.nf 200 prog_parse { %(Pure.kAddFn) 2 3 } == Term.nat 5) = true := by native_decide
-example : (Pure.nf 200 prog_parse { %(Pure.kLeFn) 2 3 } == .const "Unit") = true := by native_decide
-example : (Pure.nf 200 prog_parse { %(Pure.kLeFn) 3 2 } == .const "Bot") = true := by native_decide
+example : (Pure.nf 200 prog_parse { Pure.kAddFn 2 3 } == Term.nat 5) = true := by native_decide
+example : (Pure.nf 200 prog_parse { Pure.kLeFn 2 3 } == .const "Unit") = true := by native_decide
+example : (Pure.nf 200 prog_parse { Pure.kLeFn 3 2 } == .const "Bot") = true := by native_decide
 
 /-! ## CARVE, at concrete indices
 
@@ -973,9 +973,9 @@ example : progRejects recSlice "only valid at a telescope position" = true := by
     obligation `Le 1 σ_rest` reduces to `Le Z j`, which is ⊤ and needs no evidence at
     all. Stuck while the residue is a bare σ; free the moment it has a shape. -/
 
-example : (Pure.nf 300 prog_parse { %(Pure.kLeFn) 1 S(%(Term.sym 0)) } == .const "Unit")
+example : (Pure.nf 300 prog_parse { Pure.kLeFn 1 S(%(Term.sym 0)) } == .const "Unit")
     = true := by native_decide
-example : (Pure.nf 300 prog_parse { %(Pure.kLeFn) 1 %(Term.sym 0) } == .const "Unit")
+example : (Pure.nf 300 prog_parse { Pure.kLeFn 1 %(Term.sym 0) } == .const "Unit")
     = false := by native_decide
 
 /-! ## Route (a) — the program supplies the residue, and the three-way carve unblocks
