@@ -33,7 +33,23 @@ namespace Dllbc
       bindings exist for consumers' TYPES (a seed binding cited in a type reduces),
       so only the 26 formers are bound and none of the `XRaw` terms are — and they
       are bound LAST, because every σ-refinement rebuilds every Ω binding
-      (`refineSym`): binding them first cost the chain 98 s against 79 s. -/
+      (`refineSym`).
+
+      **The number that justified LAST is stale, and its subject no longer
+      exists.** "98 s against 79 s" was measured on the SINGLE 136-statement
+      block, which stopped compiling on the detach-tails rebase and was cut into
+      the eleven links below (docs/20 §5, "Cut into links"); docs/20 records 17 s
+      wall for the cut module against 85 s for the block it replaced, and marks
+      the 98/79 pair superseded. On this machine today a full-file
+      `lake build Dllbc.StdChain` — dependencies warm, so the figure is Lean
+      elaborating this module and compiling `StdChainRaw` — is **13–14 s** across
+      five samples. The ORDER argument is unaffected: `refineSym` still rebuilds
+      every Ω binding, so binding early is still more work. Its magnitude on the
+      link structure has not been re-measured, and the one adjacent datum says it
+      is now small — adding ten further bindings to this final link measured 14 s
+      against a 14 s baseline. Anyone about to spend the 19 s should re-take it
+      first. (Binding the ten `Std` formers early is separately impossible, not
+      merely slow: docs/24 §3d.) -/
 namespace StdChainRaw
 open Dllbc
 def LeReflRaw : Term := prog_parse {
