@@ -719,7 +719,7 @@ def badReflClosed : Term := prog_parse {
 -- pure term above, spliced and applied — the mis-motive is what is under
 -- test, so it stays exactly as written.
 def badRefl : Term := prog_parse {
-  fn BadRefl (n : Nat) -> Le n n { %badReflClosed n };
+  fn BadRefl (n : Nat) -> Le n n { badReflClosed n };
   () }
 example : progRejects badRefl "does not have return type" = true := by native_decide
 
@@ -957,9 +957,9 @@ example : (match cookForGen 1000 sp.symIds impClosure with
     That is deliberately more informative than deleting it — the line that
     used to say "the sweep finds nothing here" now says "the sweep finds it",
     and the two are the same measurement. -/
-def lenBody : Term := prog_parse { %(Std.lenFnT) %(Term.var vSlot.name) }
+def lenBody : Term := prog_parse { Len V }
 def lenLatent : Val := .closure [(vSlot, .know (Term.sym 5))] (.lam "§x" (.const "Nat") lenBody) none
-def lenSp : Term := Pure.nf 1000 (prog_parse { %(Std.lenFnT) %(Term.sym 5) })
+def lenSp : Term := Pure.nf 1000 (prog_parse { Len %(Term.sym 5) })
 -- The spine binds: it unfolds to a `listRec` over λ arms, so its normal form
 -- carries binders and their names are levels.
 example : strContains lenSp.pretty "λ(§0" = true := by native_decide
