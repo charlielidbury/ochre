@@ -127,16 +127,23 @@ recursive definition, and to do it, it needs the one thing every step has to arr
 — the return type. So `fn Count [n] (n : Nat) { n }` is refused, and it is refused for
 good: no later cleverness could work the type out instead.
 
-**The last `fn` in a block may drop its `;`.** A block can end with a definition instead
-of an expression:
+**The last statement in a block may drop its `;`.** A block can end with a statement
+instead of an expression:
 
 ```
 let v = 0;
 fn Helper (x : Nat) -> Nat { x }
 ```
 
-and such a block's value is `()`. `fn` is the only statement that may end a block this
-way — `let x = e` still needs something after it.
+and such a block's value is `()`. Every statement may do this — `fn` first, but also
+`let x = e`, `p := e` and `show x`:
+
+```
+let out = Reverse(l)      -- and the caller reads `out` out of the final environment
+```
+
+The `; ()` this replaces was ceremony wherever the caller wanted the block for its
+environment rather than for its value, which is most of the time.
 
 Bodies are sequences of statements ending in an expression:
 

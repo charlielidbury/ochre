@@ -79,9 +79,20 @@ own; it borrows the one immediately after it, and the answer is not an
 approximation of what it wants but literally it.
 
 **A `show` at the end of a block still has a next statement**, which is what
-makes this total rather than nearly-total: every `ublk` ends with a final
-expression, and a final expression is a statement the walker files a span for.
-`show x; ()` anchors to `()`.
+makes this total rather than nearly-total: `show x; ()` anchors to `()`, and a
+final expression is a statement the walker files a span for.
+
+This survived the grammar change that let any statement end a block. A block need
+no longer end in a final expression, so `show x` with no tail has no next
+statement written — and the row supplies one, emitting the `()` the author would
+have written. `show x` and `show x; ()` are then the same term filed the same
+way, and the anchor above is unchanged rather than special-cased.
+
+The honest limit, which the `; ()` spelling already had: `replayTo` answers only
+where a delta is filed under the key, and a `()` changes nothing, so it files
+none. A `show` anchored to a `()` therefore falls back to the binder fact —
+what the name held at its binding — rather than the state at the show site. A
+`show` followed by a real statement gets the point answer.
 
 **The plumbing, and one gap it exposed.** A show's occurrence is filed before the
 statement it will be keyed to has been walked, so `SpanAcc` grows a small list of

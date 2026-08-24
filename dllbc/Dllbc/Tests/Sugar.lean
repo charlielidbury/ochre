@@ -656,10 +656,9 @@ open Dllbc
     other.
 
     Omitting `; rest` is a change of SHAPE and nothing else: the `.seq` and the
-    `bindFn` go, because there is no tail to sequence and none to retarget. That
-    makes `fn` the one statement form that may end a block — `let x = e` still
-    owes its `; rest`, and the grammar refuses a block that ends with one before
-    any checking happens.
+    `bindFn` go, because there is no tail to sequence and none to retarget. `fn`
+    had this first and no longer has it alone — §F below pins the same rule for
+    every other statement row.
 
     Omitting `-> R` is a change of MEANING: no return type is no Π, no Π is no
     seal, and the seal is what makes a function opaque and what makes its body
@@ -707,7 +706,8 @@ example : Term.beq unsealedFn sealedFn = false := by native_decide
     The tail-less form is not the `; ()` form — `.letIn` and `.seq (.letIn …) ()`
     are genuinely different terms and asserting equality between them would be
     false. What is true, and what dropping the tail amounts to, is that the `; ()`
-    form is the tail-less form with a `.seq` and a tail put back around it. -/
+    form is the tail-less form with a `.seq` and a tail put back around it. §F
+    below says the same of every other statement, in the same shape. -/
 
 def tailLess : Term := prog{ fn U () -> Unit { () } }
 def withTail : Term := prog{ fn U () -> Unit { () } ; () }
@@ -821,6 +821,72 @@ error: fn: 'Count' recurses on 'n', and a recursive function cannot be transpare
 -/
 #guard_msgs in
 example : Term := prog{ fn Count [n] (n : Nat) { n } }
+
+/-! ### F. EVERY statement may end a block
+
+    §B is not a fact about `fn`. A block's value is the value of what it ends
+    with, a statement's value is `()`, and every arrow already reads a statement
+    former in tail position — so `let x = e`, `p := e` and `show x` end a block
+    on the same terms `fn` does, and the grammar says so with the same
+    `(";" ublk)?` on each row.
+
+    Each is pinned the way §B pins `fn`'s: the `; ()` form is the tail-less form
+    with a `.seq` and a `()` put back around it, said as an equation so it cannot
+    pass by being vacuously true of some other head node. `rfl` rather than
+    §A–§E's `native_decide` — no `retarget` is involved in any of these, so the
+    terms reduce in the kernel. -/
+
+-- `let x = e`. The bare `.letIn` is the head the `; ()` form wraps, and it is the
+-- head the CHAIN sequences: a tail-less `let` in the middle of nothing and a
+-- tail-less `let` after another statement are the same node in both places.
+example : prog{ let x = 0 } = .letIn (Var.slot "x") (nat 0) := by rfl
+example : prog{ let x = 0; () } = .seq prog{ let x = 0 } .unit := by rfl
+example : prog{ let x = 0; let y = 1 }
+    = .seq (.letIn (Var.slot "x") (nat 0)) (.letIn (Var.slot "y") (nat 1)) := by rfl
+
+-- It checks and it runs, and the binding it made is in the Ω the block leaves —
+-- which is the whole reason a caller wanted to drop the `; ()`: the value was
+-- never what it was reading.
+example : progOk prog{ let x = 0 } = true := by native_decide
+example : tailEnv prog{ let x = 0 } [("x", Val.nat 0)] = true := by native_decide
+
+-- `p := e`. An assignment binds nothing, so the tail-less form differs from the
+-- seq'd one in shape alone — and `readR` gives the bare node `()` exactly as it
+-- gives the seq'd one.
+example : prog{ let v = 0; v := 1 }
+    = .seq (.letIn (Var.slot "v") (nat 0)) (.assign (.var "v") (nat 1)) := by rfl
+example : progOk prog{ let v = 0; v := 1 } = true := by native_decide
+example : tailEnv prog{ let v = 0; v := 1 } [("v", Val.nat 1)] = true := by native_decide
+
+-- `show x` is the one that needed a decision rather than an unwrapping: the row
+-- is ERASED — it emits its tail and nothing else — so with no tail there is
+-- nothing to emit and something must be. It emits `()`, which is what every
+-- other statement ending a block is worth, so `show` agrees with them rather
+-- than inventing a third answer. The program is therefore the `show`-free one
+-- with a `()` where the `show` stood, which is what erasure means here.
+--
+-- The DIAGNOSTIC is pinned with it, because the `()` is what the `show`'s
+-- occurrence KEYS at — a `show` notes the state entering the statement after it,
+-- and here that statement is the emitted `()`. So the two spellings agree on the
+-- occurrence as well as on the term, which is the claim worth guarding: `show x`
+-- and `show x ; ()` are one program filed one way. Tests/ShowSpans owns this
+-- rendering; what is asserted here is that ending a block does not change it.
+
+/-- info: x ↦ 0 -/
+#guard_msgs in
+def showAtEnd : Term := prog{ let x = 0; show x }
+
+/-- info: x ↦ 0 -/
+#guard_msgs in
+def showThenUnit : Term := prog{ let x = 0; show x; () }
+
+-- The two spellings are ONE TERM, not two that happen to agree — this row emits
+-- the `()` the other row was written with. So unlike `let` and `:=` above, whose
+-- tail-less forms drop a `.seq`, dropping a `show`'s tail drops nothing at all.
+example : showAtEnd = showThenUnit := by rfl
+example : showAtEnd = .seq (.letIn (Var.slot "x") (nat 0)) .unit := by rfl
+example : progOk showAtEnd = true := by native_decide
+example : tailEnv showAtEnd [("x", Val.nat 0)] = true := by native_decide
 
 end Dllbc.Tests.FnTails
 end
