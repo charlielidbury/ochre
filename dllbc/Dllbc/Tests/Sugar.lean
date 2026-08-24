@@ -644,3 +644,175 @@ example : (Term.appSpineVar? (Term.appSpine (.const "Len") [.unit])).isSome = fa
 
 end Dllbc.Tests.S32Spine
 end
+
+section
+namespace Dllbc.Tests.FnTails
+
+open Dllbc
+
+/-! ## `fn`'s two optional tails
+
+    `-> R` and `; rest` are both optional, and they are independent of each
+    other.
+
+    Omitting `; rest` is a change of SHAPE and nothing else: the `.seq` and the
+    `bindFn` go, because there is no tail to sequence and none to retarget. That
+    makes `fn` the one statement form that may end a block — `let x = e` still
+    owes its `; rest`, and the grammar refuses a block that ends with one before
+    any checking happens.
+
+    Omitting `-> R` is a change of MEANING: no return type is no Π, no Π is no
+    seal, and the seal is what makes a function opaque and what makes its body
+    audited once at the declaration. §A–§C below pin the shapes; §D pins the
+    meaning, as a differential against the sealed twin.
+
+    The goldens are `Term.beq` under `native_decide` rather than `rfl`, unlike
+    the rest of this file: `retarget` is `partial`, so a term the `fn` row built
+    does not reduce in the kernel and `rfl` cannot see through it. `Term.beq` is
+    the structural equality the rest of the corpus compares terms with. -/
+
+/-! ### A. No `-> R` is a bare λ
+
+    `fn F (…) { b }` is `let F = λ (…) { b }` — the same λ the `let` spelling
+    writes, with no ascription wrapped around it. The hand-written term binds
+    `Var.decl`, which is what a declaration's `let` binds and what `tailEnvs`
+    filters on; that is untouched by this row and is the one thing the `fn`
+    spelling and the `let` spelling still differ by. -/
+
+def unsealedFn : Term := prog{ fn Idf (x : Nat) { x } ; () }
+
+def unsealedHand : Term :=
+  .seq (.letIn (Var.decl "Idf") (.lam (Var.slot "x") (.const "Nat") (.var "x"))) .unit
+
+example : Term.beq unsealedFn unsealedHand = true := by native_decide
+
+-- The control, and the reason the line above reads as a change rather than as a
+-- restatement of what `fn` always did: WITH `-> Nat` the identical λ arrives
+-- wrapped in a seal at the Π the header wrote. One `.seal` node is the entire
+-- difference between the two.
+def sealedFn : Term := prog{ fn Idf (x : Nat) -> Nat { x } ; () }
+
+def sealedHand : Term :=
+  .seq (.letIn (Var.decl "Idf")
+         (.seal 0 (.lam (Var.slot "x") (.const "Nat") (.var "x"))
+                  (.pi "x" (.const "Nat") (.const "Nat")))) .unit
+
+example : Term.beq sealedFn sealedHand = true := by native_decide
+
+-- …and the two are not the same term, which neither line above says on its own.
+example : Term.beq unsealedFn sealedFn = false := by native_decide
+
+/-! ### B. No `; rest` is the bare `.letIn`
+
+    The tail-less form is not the `; ()` form — `.letIn` and `.seq (.letIn …) ()`
+    are genuinely different terms and asserting equality between them would be
+    false. What is true, and what dropping the tail amounts to, is that the `; ()`
+    form is the tail-less form with a `.seq` and a tail put back around it. -/
+
+def tailLess : Term := prog{ fn U () -> Unit { () } }
+def withTail : Term := prog{ fn U () -> Unit { () } ; () }
+
+example : Term.beq withTail (.seq tailLess .unit) = true := by native_decide
+
+-- …said the other way round, because the line above would also hold of a
+-- `tailLess` with some other head node entirely.
+example : (match tailLess with | .letIn _ _ => true | _ => false) = true := by native_decide
+
+-- Both check, and the tail-less one's value is `()`: a bare `.letIn` in tail
+-- position is a unit-valued statement under ⇒ (`readR`, and `exploreD`'s
+-- final-expression arm through `readResult`) and under ⇝ (`Pure.eval`). Its own
+-- binding is a declaration's, so `tailEnv` filters it out and the Ω is empty.
+example : progOk tailLess = true := by native_decide
+example : progOk withTail = true := by native_decide
+example : tailEnv tailLess ([] : Env) = true := by native_decide
+
+-- It ends a BLOCK, not merely a whole program: an ordinary statement above it is
+-- unaffected and what that statement left is still what the block leaves.
+def afterAStatement : Term := prog{ let v = 0; fn U () -> Unit { () } }
+example : progOk afterAStatement = true := by native_decide
+example : tailEnv afterAStatement [("v", Val.nat 0)] = true := by native_decide
+
+/-! ### C. Both tails off at once, and the nullary `()`-supply
+
+    The two omissions compose: with neither, a `fn` is the bare `.letIn` of the
+    bare λ. And the nullary-`Unit` desugar sits ABOVE `fnElab`'s choice of
+    reading, so a no-argument unsealed `fn` still gets its `Unit` binder and
+    `retarget` still supplies the `()` at the call site — without which `F()`
+    would be a bare variable rather than a spine. -/
+
+def bothOff : Term := prog{ fn Idf (x : Nat) { x } }
+
+example : Term.beq bothOff
+    (.letIn (Var.decl "Idf") (.lam (Var.slot "x") (.const "Nat") (.var "x"))) = true := by
+  native_decide
+
+-- Declared with no seal, and CALLED. The `()` arrives, the call reduces, and `y`
+-- is the concrete 7 — §D's transparency seen from the run side: an unsealed
+-- callee's body is what the call computes.
+def nullaryCalled : Term := prog{ fn F () { 7 } ; let y = F(); y }
+example : progOk nullaryCalled (retType := ty{ Nat }) = true := by native_decide
+example : tailEnv nullaryCalled [("y", Val.nat 7)] = true := by native_decide
+
+-- The sealed twin also checks and also receives its `()`, so the `()`-supply is
+-- not what the seal changes. What it changes is the ANSWER: entering a seal mints
+-- a fresh existential at the instantiated codomain, so `y` is `σ0`, not 7.
+def nullarySealed : Term := prog{ fn F () -> Nat { 7 } ; let y = F(); y }
+example : progOk nullarySealed (retType := ty{ Nat }) = true := by native_decide
+example : tailEnv nullarySealed [("y", Val.nat 7)] = false := by native_decide
+example : tailEnv nullarySealed [("y", .sym 0)] = true := by native_decide
+
+-- A unary unsealed callee is called the same way — `retarget` rewrites a call
+-- whether or not the binding it points at is sealed.
+def unaryCalled : Term := prog{ fn Twice (x : Nat) { S(S(x)) } ; let y = Twice(3); y }
+example : progOk unaryCalled (retType := ty{ Nat }) = true := by native_decide
+example : tailEnv unaryCalled [("y", Val.nat 5)] = true := by native_decide
+
+/-! ### D. THE AUDIT DIFFERENTIAL — what dropping the seal actually does
+
+    The seal is what triggers the declaration-time body audit. Without one the λ
+    is TRANSPARENT: it β-reduces at each call site, the checker meets the body
+    there, and so the body is checked once per call site — and not at all when
+    there is no call site. The three lines below are the whole claim, and it takes
+    all three, since each alone would pass for a reason that is not the point.
+
+    This is a feature, not a hole. Tests/Functions §C already pins the two callee
+    rules it chooses between — "body known, so unfold: a literal λ callee
+    β-reduces" against "body withheld, so only the type's promise" — and omitting
+    `-> R` picks the first, deliberately. -/
+
+-- `Bogus` is bound nowhere. UNSEALED and never called: accepted, because nothing
+-- ever looks inside the λ.
+def unsealedBogus : Term := prog_parse { fn G (x : Nat) { Bogus(x) } ; () }
+example : progOk unsealedBogus = true := by native_decide
+
+-- The same body, SEALED: rejected at the declaration, before any call, because
+-- the seal audits it there.
+def sealedBogus : Term := prog_parse { fn G (x : Nat) -> Nat { Bogus(x) } ; () }
+example : progOk sealedBogus = false := by native_decide
+example : progRejects sealedBogus "call: unknown function 'Bogus'" = true := by native_decide
+
+-- …and the unsealed one is not exempt, only deferred: CALL it and the checker
+-- meets the body at the call site and refuses it there, with the same message.
+def unsealedBogusCalled : Term :=
+  prog_parse { fn G (x : Nat) { Bogus(x) } ; let y = G(1); () }
+example : progRejects unsealedBogusCalled "call: unknown function 'Bogus'" = true := by
+  native_decide
+
+/-! ### E. A `[k]` still needs a return type
+
+    §7 builds the recursor's motive from the sealed Π with the scrutinee peeled
+    off the front, so with nothing sealed there is no motive to derive. The
+    pairing is decidable from the SYNTAX alone — no telescope type is consulted —
+    so it is refused at the `fn` row, at Lean elaboration, where the fix can be
+    named, rather than through `fnElabOrFail`'s sentinel, which carries the
+    semantic refusals. `#guard_msgs` pins the message, since the message is the
+    point of a refusal test. -/
+
+/--
+error: fn: 'Count' declares the decreasing argument 'n' but has no return type. §7 builds the recursor's motive from the sealed Π with the scrutinee peeled off the front, so a recursive `fn` must state what it returns — give 'Count' a `-> R`.
+-/
+#guard_msgs in
+example : Term := prog{ fn Count [n] (n : Nat) { n } }
+
+end Dllbc.Tests.FnTails
+end

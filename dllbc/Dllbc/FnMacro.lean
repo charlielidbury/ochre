@@ -68,7 +68,12 @@ namespace Dllbc
 structure FnDef where
   name : String
   telescope : List (String × Term)
-  retType : Term
+  /-- **`none` means NO SEAL** — not "infer it". The Π is the only thing the seal
+      is built from, so a declaration with no return type lowers to the bare λ and
+      the function stays TRANSPARENT: it β-reduces at its call sites and is
+      checked there, once each, rather than once against a signature. See
+      `fnElab`. -/
+  retType : Option Term
   body : Term
   /-- §1.2's `[k]` — purely the **scrutinee-selection hint**: which parameter the
       elaboration recurses on, hoisted to the front so the motive is the sealed Π
@@ -333,14 +338,40 @@ def armTelOrUnit (tel : List (Var × Term)) : List (Var × Term) :=
   if tel.isEmpty then [(unitBinder, markDom unitBinder (.const "Unit"))] else tel
 
 /-- `fn` as a macro: a `FnDef` becomes the term §7 says it is — `.seal ⟨recursor⟩
-    ⟨Π⟩` when it recurses, `.seal ⟨runtime λ⟩ ⟨Π⟩` when it does not.
+    ⟨Π⟩` when it recurses, `.seal ⟨runtime λ⟩ ⟨Π⟩` when it does not, and the BARE
+    runtime λ when it has no return type to seal at.
 
-    Returns the sealed TERM. Binding it is the caller's business, which is §8's
-    direction: a declaration is a `let`, and this is its right-hand side. -/
+    Returns the TERM. Binding it is the caller's business, which is §8's
+    direction: a declaration is a `let`, and this is its right-hand side.
+
+    **The seal is what triggers the declaration-time audit**, and dropping it is
+    the whole content of `retType = none`. A sealed function is checked ONCE, at
+    its declaration, against the Π it promised; an unsealed one is TRANSPARENT —
+    it β-reduces at each call site, the checker meets the body there, and so the
+    body is checked once per call site and not at all if it is never called.
+    Verified against the kernel: `let F = λ (x : Nat) { Bogus(x) }; ()` is
+    accepted, while ascribing that same body `Π (x : Nat) → Nat` is rejected with
+    `call: unknown function 'Bogus'`. Tests/Functions §C already pins the two
+    callee rules this chooses between — "body known, so unfold" against "body
+    withheld, so only the type's promise".
+
+    The nullary-`Unit` desugar above the match applies either way, so
+    `retarget`'s `()`-supply at a no-argument call site does not depend on the
+    seal. -/
 def fnElab (d : FnDef) : Except String Term := do
   let tel := if d.telescope.isEmpty then [(nullaryVar, Term.const "Unit")]
              else teleVars d.telescope
-  match d.dec with
+  -- The λ itself, shared by the sealed and unsealed readings so that the ONLY
+  -- difference between them is the ascription. The telescope IS the annotated
+  -- binder list (M27) — `markDom` puts each binder's mode on its domain, which is
+  -- what `telePi` does to build the Π the seal converts against, so the λ and its
+  -- ascription are built from one source.
+  let lam := Term.lamTel (tel.map (fun p => (p.1, markDom p.1 p.2))) d.body
+  match d.dec, d.retType with
+  -- UNSEALED: no return type, so no Π, so nothing to seal at — the right-hand
+  -- side is the λ and the `let` binds it directly. See the docstring for what
+  -- that costs and buys.
+  | none, none => .ok lam
   -- NON-RECURSIVE: the whole function is one runtime λ, sealed at its signature.
   -- A self-call here is deliberately NOT refused, and that is §8's own mechanism
   -- rather than an omission: the elaborated `let` is not in scope in its own
@@ -349,13 +380,16 @@ def fnElab (d : FnDef) : Except String Term := do
   -- reason `bad()` is unwritable — "not by a recursion rule; the binding is not in
   -- scope in its own right-hand side" — and a macro refusal here would paper over
   -- the demonstration.
-  -- The telescope IS the annotated binder list (M27) — `markDom` puts each
-  -- binder's mode on its domain, which is what `telePi` does to build the Π the
-  -- seal converts against, so the λ and its ascription are built from one source.
-  | none =>
-    .ok (.seal 0 (Term.lamTel (tel.map (fun p => (p.1, markDom p.1 p.2))) d.body)
-               (telePi tel d.retType))
-  | some k => do
+  | none, some retType => .ok (.seal 0 lam (telePi tel retType))
+  -- A `[k]` WITH NO RETURN TYPE is refused at the `fn` row itself (`Uni.lean`),
+  -- where the fix can be named, because the pairing is decidable from the syntax
+  -- alone and this file's policy puts cheap syntactic refusals at Lean
+  -- elaboration. This arm is the totality obligation for it and nothing more: the
+  -- surface cannot write a `FnDef` of this shape, so only a hand-built one
+  -- reaches here.
+  | some _, none =>
+    .error s!"fn: '{d.name}' declares a decreasing argument but has no return type. §7 derives the recursor's motive from the sealed Π with the scrutinee peeled off the front, so there is no motive without one. (The `fn` row refuses this at the surface; a `FnDef` built by hand can still reach here.)"
+  | some k, some retType => do
     let (kv, kτ) ← match tel[k]? with
       | some e => pure e
       | none => .error s!"fn: [{k}] is out of range for a {tel.length}-parameter telescope"
@@ -380,14 +414,14 @@ def fnElab (d : FnDef) : Except String Term := do
     let rest := hoisted.drop 1
     -- THE MOTIVE, derived from the signature: the sealed Π with the scrutinee
     -- peeled off (§7 — "so the macro needs no inference").
-    let piT := telePi hoisted d.retType
+    let piT := telePi hoisted retType
     let scrutDom := markDom kv kτ
     -- The motive's BODY: the residual telescope-and-return with the scrutinee
     -- abstracted. Named because every arm annotation below is an instance of it,
     -- and because the kernel calls the same thing `R` (`sealRec` peels it off the
     -- ascription instead of building it, and the two agree by `telePi`/`piPeel`
     -- being inverse).
-    let R : Term := telePi rest d.retType
+    let R : Term := telePi rest retType
     -- The motive binds the scrutinee under a RESERVED name (`§n` for a
     -- scrutinee `n`): it is machine-minted, never cited, and a lowercase pure
     -- binder named `n` would read as a comptime binder that failed to spell
@@ -644,29 +678,6 @@ def fnElabOrFail (d : FnDef) : Term :=
 def bindFn (v : Var) (dec : Option Nat) (rest : Term) : Term :=
   retarget [(v.name, v, dec)] rest
 
-
-/-- **A program from a cohort of declarations** (§8), in dependency order: each
-    becomes a sealed `let`, each body's calls are retargeted to the bindings above
-    it, and `tail` runs in the accumulated scope. No table, no forward reference —
-    a callee not yet bound stays a `.call` and is reported by the kernel as the
-    unknown function it is. -/
-def progOf (ds : List FnDef) (tail : Term) : Except String Term := do
-  let binds : List (String × Var × Option Nat) :=
-    ds.map (fun d => (d.name, (Var.decl d.name), d.dec))
-  let rec go (i : Nat) : List FnDef → Except String Term
-    -- The tail is in the accumulated scope, so its calls are retargeted too — which
-    -- is what lets an existing `FnDef`-era caller term be handed over unchanged and
-    -- become the program's `main`.
-    | [] => .ok (retarget binds tail)
-    | d :: rest => do
-      let t ← fnElab d
-      -- Only the bindings STRICTLY ABOVE this one are in scope for it — a binding
-      -- is not in scope in its own right-hand side — which is what makes both a
-      -- forward reference and a residual self-call show up as the unknown
-      -- function they are, rather than as a dangling variable.
-      let above := binds.take i
-      pure (.seq (.letIn (Var.decl d.name) (retarget above t)) (← go (i + 1) rest))
-  go 0 ds
 
 end FnMacro
 

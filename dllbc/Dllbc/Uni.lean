@@ -292,13 +292,43 @@ syntax:max ident noWs "(" upat,* ")" : upat                  -- a nested constru
 -- The binder telescope reuses `ulamb`, the runtime λ's binder category, because it
 -- is the same thing — a list of `x : τ` — and a second category for it would be a
 -- second thing to keep in step.
--- **Named**, because the surface has to be able to ASK whether a block contains
--- one (`ElabCheck`, the information rule): a `fn` carries its own `-> retType`,
--- so a block containing one carries its own specification and can be checked
--- without any annotation. That question is asked by syntax kind rather than by
--- scanning for the atom `fn`, which would also match a binder spelled `fn`.
+--
+-- **`-> R` IS OPTIONAL, AND OMITTING IT OMITS THE SEAL.** `fn F (x : Nat) { x }`
+-- is `let F = λ (x : Nat) { x }` and nothing else — a bare λ, unascribed. That is
+-- not shorthand for an inferred signature; it is a different program, because the
+-- SEAL is what makes a function opaque and what makes its body audited once, at
+-- the declaration. Without one the λ is TRANSPARENT: it β-reduces at each call
+-- site, the checker sees the body there, and so the body is checked once PER CALL
+-- SITE — and an uncalled one is never checked at all. Verified against the
+-- kernel: `let F = λ (x : Nat) { Bogus(x) }; ()` is ACCEPTED, and the same body
+-- ascribed `Π (x : Nat) → Nat` is REJECTED with `call: unknown function 'Bogus'`.
+--
+-- That difference is a feature, not a hole, and it is already pinned as a rule:
+-- Tests/Functions §C states the two callee readings — "body known, so unfold: a
+-- literal λ callee β-reduces" against "body withheld, so only the type's
+-- promise". An omitted `-> R` picks the first, deliberately, and a `fn` that
+-- wants to be checked against a signature says so by writing one.
+--
+-- A `[k]` still requires a return type. §7 derives the recursor's motive from the
+-- sealed Π with the scrutinee peeled off the front, so with nothing to seal there
+-- is no motive to derive; the row below refuses that pairing by name, at Lean
+-- elaboration, because it is decidable from the syntax alone.
+--
+-- **THE TAIL IS OPTIONAL TOO** (`(";" ublk)?`), which makes `fn` the one
+-- statement form that may END a block — `let x = e` still owes its `; rest`, and
+-- so does every other statement. Such a block is a bare `.letIn` in tail position
+-- and its value is `()`; both arrows already read that (`readR` and `exploreD`'s
+-- final-expression arm on ⇒, `Pure.eval` on ⇝), which is detach-tails having
+-- already done the work. ONE row rather than two: the two readings differ by
+-- whether a `;` follows, so longest-match separates them with no ambiguity.
+--
+-- **Named** so the row can be pointed at. It was named for a query that no longer
+-- exists — `ElabCheck`'s information rule, "a `fn` carries its own `-> retType`,
+-- so a block containing one carries its own specification and needs no
+-- annotation" — and that reason has now lapsed twice: nothing asks the kind, and
+-- with `-> R` optional the premise is no longer true of every `fn`.
 syntax (name := ublkFn)
-  "fn" ident ("[" ident "]")? "(" ulamb,* ")" "->" uterm "{" ublk "}" ";" ublk : ublk
+  "fn" ident ("[" ident "]")? "(" ulamb,* ")" ("->" uterm)? "{" ublk "}" (";" ublk)? : ublk
 syntax "let" ident "=" uterm ";" ublk : ublk                 -- runtime let (→ letIn)
 -- **THE SINGLETON-CONSTRUCTOR `let`** (M34 sugar (ii)). `let C(a, b) = e ; rest`
 -- is `match e { C(a, b) => rest }` — the REST OF THE BLOCK moves inside the arm,
@@ -1608,9 +1638,9 @@ partial def elabUArmBody (sc : Scope)
 partial def elabUBlk (sc : Scope)
     (stx : TSyntax `ublk) : UM (TSyntax `term) := do
   match stx with
-  -- **`fn` — the declaration statement** (M28 θ). This is `FnMacro.progOf` unrolled
-  -- one binding at a time, and reusing its two moving parts rather than
-  -- reimplementing them is what makes the two paths agree by construction:
+  -- **`fn` — the declaration statement** (M28 θ). It emits a `let` of the §7
+  -- lowering, one binding at a time, out of the two moving parts that already
+  -- exist rather than reimplementing either:
   --
   --   * the right-hand side is `fnElabOrFail`, i.e. `fnElab` — the §7 lowering,
   --     with a refusal turned into a term the checker refuses distinctively;
@@ -1638,8 +1668,24 @@ partial def elabUBlk (sc : Scope)
   -- pure judgment with none (§5). The surface's version was a restatement of the
   -- kernel's, made one layer early and phrased in terms of a flag rather than in
   -- terms of the arrow; deleting it loses no rejection, only a duplicate.
-  | `(ublk| fn $name:ident $[[$dec:ident]]? ( $ps,* ) -> $ret:uterm { $body:ublk } ; $rest:ublk) => do
+  --
+  -- **BOTH TAILS ARE OPTIONAL**, and they are independent. `-> R` omitted drops
+  -- the SEAL (see the syntax row: the λ goes in bare and stays transparent), and
+  -- `; rest` omitted drops the `.seq` and the `bindFn` — with no tail there is
+  -- nothing to retarget, and the statement is the block's last, a bare `.letIn`
+  -- whose value is `()`.
+  | `(ublk| fn $name:ident $[[$dec:ident]]? ( $ps,* ) $[-> $ret:uterm]? { $body:ublk } $[; $rest:ublk]?) => do
     checkBinder name
+    -- **A `[k]` NEEDS A RETURN TYPE**, refused here rather than in `fnElab`. §7
+    -- derives the recursor's motive from the sealed Π with the scrutinee peeled
+    -- off the front, so with nothing sealed there is no motive to derive. The
+    -- pairing is decidable from the SYNTAX — no telescope type is consulted —
+    -- and `FnMacro`'s policy puts cheap syntactic refusals at Lean elaboration,
+    -- where the fix can be named, and routes only semantic ones through
+    -- `fnElabOrFail`'s sentinel.
+    if let some d := dec then
+      if ret.isNone then
+        Macro.throwErrorAt d s!"fn: '{name.getId}' declares the decreasing argument '{d.getId}' but has no return type. §7 builds the recursor's motive from the sealed Π with the scrutinee peeled off the front, so a recursive `fn` must state what it returns — give '{name.getId}' a `-> R`."
     -- A pending `show` above this `fn` must not drain inside its body (the
     -- depth-blind hazard `takePendings` documents); it keys at the statement
     -- AFTER the declaration instead.
@@ -1705,7 +1751,15 @@ partial def elabUBlk (sc : Scope)
     -- assumed: with id-keying the citation is bound by whichever parameter shares
     -- its number, drops out of ρ, and the sealed body's fresh Ω has nothing to
     -- resolve it against.
-    let retT ← elabUTerm (fullSc ++ sc) ret
+    -- **NO `-> R` IS `none`, AND `none` IS NO SEAL** (`FnDef.retType`) — never an
+    -- inferred one. What is elaborated here is only the written return type, in
+    -- the telescope's scope so it may cite the parameters; with none written
+    -- there is nothing to elaborate, nothing to cite, and nothing to seal at.
+    let retT ← match ret with
+      | none => `((none : Option Dllbc.Term))
+      | some r => do
+        let t ← elabUTerm (fullSc ++ sc) r
+        `(some $t)
     let nm := name.getId.toString
     -- The entry key is this `fn`'s own `let`-statement key — the seeds file
     -- under it, because the cursor does not move between `letStep` and the seal
@@ -1745,30 +1799,51 @@ partial def elabUBlk (sc : Scope)
     -- fallback for a rejection raised inside the body whose own statement the
     -- audit could not carry out (see `auditAllPathsD`): the error lands on the
     -- declaration rather than on the whole program.
-    spanOfFn nm (mkNullNode #[name, ret])
+    -- The span is the name plus the return type when one is written, and the
+    -- name alone when it is not — there is no third thing to point at.
+    spanOfFn nm (mkNullNode (match ret with | some r => #[name, r] | none => #[name]))
     -- **A CALLEE'S SIGNATURE, from scope** (docs/16 S1's cheap extension). The
     -- plan says "from the registry"; there is no registry — docs/05 §1.A deleted
     -- it before it was written, because a callee is a binding lexically above the
     -- call and so scope IS the call table. Scope answers this question too, and
     -- the entry is visible for exactly `rest`: not inside the body (a `fn` is not
     -- in scope in its own right-hand side, §8) and not after the block.
+    -- The hover reads back what was WRITTEN, so an omitted return type is omitted
+    -- here too rather than filled in with a guess: a `fn` with no `-> R` has no
+    -- signature to show, and showing one would claim a seal that is not there.
     let sigText := "(" ++ ", ".intercalate
         (parsedI.map fun (x, τ) => s!"{x.getId} : {srcText τ.raw}")
-      ++ ") -> " ++ srcText ret.raw
+      ++ ")" ++ (match ret with | some r => " -> " ++ srcText r.raw | none => "")
     noteHover name.raw (hoverText nm sigText)
     restorePendings held
-    -- The keys `rest` files are re-keyed through the `bindFn` below, because
-    -- that is what the walker's breadcrumb sees (`rekeySpansFrom`).
-    let stmtLo := (← get).stmts.size
-    let argLo := (← get).args.size
-    let rest' ← withHoverScope [(nm, sigText)]
-      (elabUBlk (⟨nm, .decl, none⟩ :: sc) rest)
-    rekeySpansFrom stmtLo argLo slot decT
-    return (← `(Dllbc.Term.seq
-                  (Dllbc.Term.letIn $slot
-                    (Dllbc.FnMacro.fnElabOrFail
-                      (Dllbc.FnDef.mk $(quote nm) [$teleSyns,*] $retT $bodyT $decT)))
-                  (Dllbc.FnMacro.bindFn $slot $decT $rest')))
+    let rhs ← `(Dllbc.Term.letIn $slot
+                  (Dllbc.FnMacro.fnElabOrFail
+                    (Dllbc.FnDef.mk $(quote nm) [$teleSyns,*] $retT $bodyT $decT)))
+    match rest with
+    -- WITH A TAIL, the ordinary shape: the `let` sequenced before the rest, and
+    -- the rest passed through `bindFn` so a call written in it finds the binding
+    -- (and is permuted by the `[k]` hint). The keys `rest` files are re-keyed
+    -- through that `bindFn`, because that is what the walker's breadcrumb sees
+    -- (`rekeySpansFrom`).
+    | some rest => do
+      let stmtLo := (← get).stmts.size
+      let argLo := (← get).args.size
+      let rest' ← withHoverScope [(nm, sigText)]
+        (elabUBlk (⟨nm, .decl, none⟩ :: sc) rest)
+      rekeySpansFrom stmtLo argLo slot decT
+      return (← `(Dllbc.Term.seq $rhs (Dllbc.FnMacro.bindFn $slot $decT $rest')))
+    -- WITHOUT ONE, the `let` IS the block: no `.seq`, because there is no second
+    -- statement to sequence, and no `bindFn`, because retargeting is a rewrite of
+    -- the tail and there is no tail — a declaration nothing can call. Nor is
+    -- there anything to re-key or any hover scope to open, both of which exist
+    -- only for what `rest` would have filed.
+    --
+    -- A bare `.letIn` in tail position is meaningful under BOTH arrows already
+    -- (`readR` and `exploreD`'s final-expression arm via `readResult` on ⇒,
+    -- `Pure.eval` on ⇝, and `stmtKeyOf` has its arm), so this row emits an
+    -- existing shape rather than a new one and the kernel is untouched. The
+    -- block's value is `()`.
+    | none => return rhs
   | `(ublk| let $x:ident = $e:uterm ; $rest:ublk) => do
     checkBinder x
     let occLo ← occMark
