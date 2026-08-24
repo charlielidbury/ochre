@@ -142,12 +142,12 @@ example : progRejects a5hi "cannot be the scrutinee of a runtime match" = true :
 -- silent fall-back to a move; the `let`-bound form below works.
 def a6bad : Term := prog_parse {
   fn UseLeC (a : Nat, b : Nat, H : Le a b) -> Unit { () };
-  fn GiveLe (a : Nat) -> Le a a { %LeReflRaw a };
+  fn GiveLe (a : Nat) -> Le a a { LeReflRaw a };
   fn Caller (n : Nat) -> Unit { UseLeC(n, n, GiveLe(n)); () };
   () }
 def a6ok : Term := prog{
   fn UseLeC (a : Nat, b : Nat, H : Le a b) -> Unit { () };
-  fn GiveLe (a : Nat) -> Le a a { %LeReflRaw a };
+  fn GiveLe (a : Nat) -> Le a a { LeReflRaw a };
   fn Caller (n : Nat) -> Unit
   { let p = GiveLe(n); UseLeC(n, n, p); UseLeC(n, n, p); () };
   () }
@@ -336,7 +336,7 @@ example : progRejects c2 "cannot be ⇒-moved" = true := by native_decide
 -- existential and has none, so a capital `let` cannot bind one — honest, and
 -- pointing at the lowercase `let` that can.
 def c3bad : Term := prog_parse {
-  fn GiveLe (a : Nat) -> Le a a { %LeReflRaw a };
+  fn GiveLe (a : Nat) -> Le a a { LeReflRaw a };
   fn Caller (n : Nat) -> Unit { let P = GiveLe(n); () };
   () }
 example : progRejects c3bad "not in the comptime fragment" = true := by native_decide
@@ -346,7 +346,7 @@ example : progRejects c3bad "not in the comptime fragment" = true := by native_d
 def c4 : Term := prog{
   fn UseLeC (a : Nat, b : Nat, H : Le a b) -> Unit { () };
   fn Caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
-  { let Q = LeTransRaw n m m hnm (%LeReflRaw m);
+  { let Q = LeTransRaw n m m hnm (LeReflRaw m);
     UseLeC(n, m, Q); UseLeC(n, m, Q); hnm };
   () }
 example : progOk c4 = true := by native_decide
@@ -841,7 +841,7 @@ example : progOk twoBorrows = true := by native_decide
 def mixedSeal : Term := prog_parse { Π (v : &mut List Nat) → Σ (x : &mut Nat). Id Nat Z (S Z) }
 
 def sealProg : Term := prog_parse {
-  let F = (λ(v : &mut List Nat) { match v { Nil => (), Cons(hd, tl) => Pair(&m *hd, Refl) } } : %mixedSeal);
+  let F = (λ(v : &mut List Nat) { match v { Nil => (), Cons(hd, tl) => Pair(&m *hd, Refl) } } : mixedSeal);
   () }
 
 -- The program is still refused, though for an earlier reason: its `Nil` branch
@@ -855,7 +855,7 @@ example : progRejects sealProg "only valid at a telescope position" = true := by
 -- Not vacuous: an all-borrow ascription in the same position is accepted, so the
 -- refusal is about the MIXTURE and not about sealing a cursor at all.
 def borrowSeal : Term := prog_parse { Π (v : &mut List Nat) → &mut List Nat }
-def sealOk : Term := prog{ let F = (λ(v : &mut List Nat) { v } : %borrowSeal); () }
+def sealOk : Term := prog{ let F = (λ(v : &mut List Nat) { v } : borrowSeal); () }
 example : progOk sealOk = true := by native_decide
 
 /-! ## §E. A second containment — a lie in a parameter's owed type
@@ -939,7 +939,7 @@ def withSwapS01 (rest : Term) : Term := prog{
       }
     }
   };
-  %rest }
+  rest }
 
 /-- The declaration alone, checked at its seal. -/
 def swapS01 : Term := withSwapS01 prog_parse { () }
@@ -982,7 +982,7 @@ def fSeal : Term := prog_parse { Π (v : &mut List Nat) → Unit }
 -- F1. A sealed borrow-taking function bound to a second, lowercase slot: refused,
 -- since binding a function is comptime and the destination must be too.
 def f1read : Term := prog_parse {
-  let F = (λ(v : &mut List Nat) { () } : %fSeal);
+  let F = (λ(v : &mut List Nat) { () } : fSeal);
   let g = F;
   () }
 example : progRejects f1read "the binder to capitalise is the destination" = true := by
@@ -992,7 +992,7 @@ example : progRejects f1read "the binder to capitalise is the destination" = tru
 -- between the machines can arise from it, because a comptime binding is not a
 -- second owner — nothing was moved.
 def f1readCap : Term := prog{
-  let F = (λ(v : &mut List Nat) { () } : %fSeal);
+  let F = (λ(v : &mut List Nat) { () } : fSeal);
   let G = F;
   () }
 example : progOk f1readCap = true := by native_decide
@@ -1002,7 +1002,7 @@ example : progOk f1readCap = true := by native_decide
 -- the refusal here is the same one F1 gets.
 def gSeal : Term := prog_parse { Π (x : Nat) → Nat }
 def f2read : Term := prog_parse {
-  let F = (λ(x : Nat) { x } : %gSeal);
+  let F = (λ(x : Nat) { x } : gSeal);
   let g = F;
   () }
 example : progRejects f2read "the binder to capitalise is the destination" = true := by
@@ -1020,7 +1020,7 @@ example : progOk f2data = true := by native_decide
 -- call locates its callee rather than moving it, so it never reaches the read
 -- rule at all.
 def f3call : Term := prog{
-  let F = (λ(v : &mut List Nat) { () } : %fSeal);
+  let F = (λ(v : &mut List Nat) { () } : fSeal);
   let x = Cons(1, Nil);
   let b = &m x;
   F(b);
@@ -1326,7 +1326,7 @@ example : progDiff c1ok = true := by native_decide
     and caller are shared by construction rather than by two copies agreeing, so
     the difference the test measures is the only difference there is. -/
 def c2under (sig : Term) : Term := prog{
-  let F = (λ(n : Nat){ Pair(n, Refl) } : %sig);
+  let F = (λ(n : Nat){ Pair(n, Refl) } : sig);
   let r = F(3);
   r }
 /-- The retType the program is demanded at: the equation the caller wants. -/
@@ -1555,7 +1555,7 @@ example : progDiff (Tests.S23Direct.qsRun [3, 1, 2]) = true := by native_decide
 def hSplit (inZ inS : Term) : Term := prog_parse {
   let F = (λ (x : Nat). x : Π (x : Nat) → Nat);
   let n = F(3);
-  match n { Z => %inZ, S(m) => %inS } }
+  match n { Z => inZ, S(m) => inS } }
 
 -- H0. The split is real: two paths, not one.
 example : (programEnvs (hSplit .unit .unit)).length == 2 := by native_decide
@@ -2087,19 +2087,19 @@ open Dllbc
     makes the accept discriminating. -/
 
 def zapUnder (dom : Term) : Term := prog{
-  fn Zap (v : &mut List Nat) -> %dom { *v := Nil; Pair(Refl, unit) };
+  fn Zap (v : &mut List Nat) -> dom { *v := Nil; Pair(Refl, unit) };
   () }
 
 def zapV : Term := .var "v"
 
 -- The comptime component: its `Id` mentions `*v`, so it is exactly the type
 -- `markExit` has to reach through the `⇝` to stamp.
-def zapCmp : Term := prog_parse { Σ (H : Id (List Nat) (*%zapV) Nil). Unit }
+def zapCmp : Term := prog_parse { Σ (H : Id (List Nat) (*zapV) Nil). Unit }
 -- …and its one-character twin, the control that says the `⇝` is the whole
 -- difference.
-def zapRun : Term := prog_parse { Σ (h : Id (List Nat) (*%zapV) Nil). Unit }
+def zapRun : Term := prog_parse { Σ (h : Id (List Nat) (*zapV) Nil). Unit }
 -- …and the lie, so neither accept is vacuous: the exit is `Nil`, not `[Z]`.
-def zapLie : Term := prog_parse { Σ (H : Id (List Nat) (*%zapV) (Cons Z Nil)). Unit }
+def zapLie : Term := prog_parse { Σ (H : Id (List Nat) (*zapV) (Cons Z Nil)). Unit }
 
 example : progOk (zapUnder zapCmp) = true := by native_decide
 example : progOk (zapUnder zapRun) = true := by native_decide
