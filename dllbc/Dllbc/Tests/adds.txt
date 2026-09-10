@@ -1,0 +1,36 @@
+
+
+
+fn Add1(x: Nat, y: Nat) -> Nat {
+    match x {
+        Z => y,
+        S(px) => S(Add1 px y),
+    }
+}
+
+----
+
+fn Add(x: Nat, y: Nat) {
+    AddM(&m x, y);
+    x
+}
+
+fn AddM(x: &mut Nat, y: Nat) {
+    match x {
+        Z => *x := y,
+        S(px) => AddM px y,
+    }
+}
+
+----
+
+fn Add3(x: Nat, y: Nat) -> Nat {
+    match &m x {
+        Z => y,
+        S(px) => {
+            *px := Add3 *px y;
+            x
+        }
+    }
+}
+
