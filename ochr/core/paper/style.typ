@@ -52,3 +52,19 @@
 }
 #let rules(..rs) = align(center, rs.pos().join(h(1.2em, weak: true)))
 #let cfg(o, t) = $chevron.l #o, #t chevron.r$
+
+// Math-style syntax helpers: keywords bold upright, type/constructor names sans.
+#let kw(s) = math.bold(math.upright(s))
+#let ty(s) = math.sans(s)
+// A grammar as an aligned grid: rows of (lhs, productions, description); lhs empty for continuation lines.
+#let grammar(..rows) = {
+  let cells = ()
+  for r in rows.pos() {
+    let (lhs, rhs, desc) = r
+    cells.push(align(right, lhs))
+    cells.push(if lhs == [] { $|$ } else { $::=$ })
+    cells.push(rhs)
+    cells.push(text(size: 8.5pt, fill: luma(90), desc))
+  }
+  grid(columns: (auto, auto, auto, 1fr), column-gutter: (6pt, 6pt, 14pt), row-gutter: 6pt, align: (right, center, left, left + horizon), ..cells)
+}

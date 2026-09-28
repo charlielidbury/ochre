@@ -5,20 +5,17 @@ Ochr is a dependent type theory in the style of Lean's kernel @theory-of-lean, e
 == Syntax
 
 #figure(kind: image, supplement: [Figure],
-  ```
-  terms  t, u, A, B ::= x | Prop | Typeᵢ
-                      | Π(x₁:A₁ … xₙ:Aₙ). B                  dependent function type
-                      | fix f (x₁:A₁ … xₙ:Aₙ) : B by xⱼ := t  function (recursive on xⱼ, or not at all)
-                      | t(u₁, …, uₙ)                          saturated call
-                      | Nat | Z | S t | Unit | () | A × B | (t, u) | t.1 | t.2
-                      | Eq A t u | refl | J(A, a, b, P, h, t) | ⊤ | P ∧ Q | ⟨h, k⟩
-                      | &A                                     borrow type
-                      | p | &p | p := t | let x = t; u | t; u
-                      | match p { Z => t | S y => u }
-                      | Id A t u                               equality of computations
-  places p ::= x | *p | p.1
-  ```,
-  caption: [Syntax of Ochr. `Eq`, `⊤` and `∧` live in `Prop`. A `fix` without `by` is an ordinary λ.],
+  block(width: 100%, inset: (y: 4pt), grammar(
+    ($t, u, A, B$, $x | ty("Prop") | ty("Type")_i$, [variables, universes]),
+    ([], $Pi(x_1 : A_1 ... x_n : A_n). B | kw("fix") f (x_1 : A_1 ... x_n : A_n) : B space kw("by") x_j := t | t(u_1, ..., u_n)$, [functions, calls]),
+    ([], $ty("Nat") | ty("Z") | ty("S") t | ty("Unit") | () | A times B | (t, u) | t.1 | t.2$, [data]),
+    ([], $ty("Eq") A space t space u | kw("refl") | ty("J")(A, a, b, P, h, t) | top | P and Q | chevron.l h, k chevron.r$, [propositions]),
+    ([], $\&A | p | \&p | p := t | kw("let") x = t; u | t; u$, [places and borrows]),
+    ([], $kw("match") p space {ty("Z") => t | ty("S") y => u}$, [case analysis]),
+    ([], $ty("Id") A space t space u$, [computation equality]),
+    ($p$, $x | *p | p.1$, [places]),
+  )),
+  caption: [Syntax of Ochr. $ty("Eq")$, $top$ and $and$ live in $ty("Prop")$. A $kw("fix")$ without $kw("by")$ is an ordinary $lambda$.],
 ) <fig-syntax>
 
 @fig-syntax gives the syntax. Types and terms share one grammar, as in any pure type system. Functions are n-ary and calls are saturated: a partial application would be a closure capturing its arguments, and a closure capturing a borrow is outside the core. A recursive function names the parameter it recurses on.
@@ -32,12 +29,13 @@ The propositional fragment is Lean's: `Prop` is an impredicative universe with d
 == Values and environments
 
 #figure(kind: image, supplement: [Figure],
-  ```
-  values        v, w ::= Z | S v | () | (v, w) | ⋆ | closures | types
-                       | borrow_ℓ v | loan_ℓ | ⊥ | n
-  neutrals      n    ::= σ | ⌈t⌉
-  environments  Ω    ::= a stack of frames of bindings  x : A ↦ v
-  ```,
+  block(width: 100%, inset: (y: 4pt), grammar(
+    ($v, w$, $ty("Z") | ty("S") v | () | (v, w) | star | "closures" | "types"$, [data, proofs, closures, types]),
+    ([], $"borrow"_ell v | "loan"_ell | bot$, [borrows, loans, moved-out]),
+    ([], $n$, [neutrals]),
+    ($n$, $sigma | seal(t)$, [abstract values, sealed programs]),
+    ($Omega$, $dot.c | Omega, x : A |-> v | Omega | Omega'$, [bindings, grouped in frames]),
+  )),
   caption: [Runtime structures.],
 ) <fig-values>
 
