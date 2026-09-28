@@ -31,7 +31,7 @@ A `match` in the checked program on an abstract value cannot pick an arm, so eac
 
 == Erased terms leave no trace
 
-Types and proofs are erased at runtime. The machine mirrors this exactly: it evaluates an erased term on a private copy of the environment, argument evaluation included, and discards the copy. A term is erased when it stands in a type position, when its declared type has sort `Prop`, or when it is a call to a function whose codomain term is a sort or has declared sort `Prop`; the decision never looks at a normal form. Two things follow. A formed type is a closed statement about values, as described above. And a proof can have no effect on the program around it: it may mutate places freely, but only on its own copy. Running a proof and skipping it are therefore indistinguishable, and the machine skips proofs, which is what the compiled program does too.
+Types and proofs are erased at runtime. The machine mirrors this exactly: it evaluates an erased term on a private copy of the environment, argument evaluation included, and discards the copy. A term is erased when it stands in a type position, when its declared type has sort `Prop`, or when it is a call to a function whose codomain term is a sort or has declared sort `Prop`; the decision never looks at a normal form. Two things follow. A formed type is a closed statement about values, as described above. And a proof can have no effect on the program around it: it may mutate places it creates itself, on its own copy. Running a proof and skipping it are therefore indistinguishable, and the machine skips proofs, which is what the compiled program does too.
 
 Erased terms are also checked not to write, borrow or move a place that outlives them, except by handing it to another erased call. With the private copy this is redundant for a correctly classified term, and it is there as a fail-safe: if the two evaluation paths ever disagreed about whether a term is erased, the path that erases it would reject it rather than silently discard its effects. This is one principle, not a restriction on programs. `AddMZero`'s successor case borrows the field `p` to pass it to the induction hypothesis; the borrow happens on the private copy, and the real environment is untouched. Nothing in a program is marked pure, and any program may appear in a statement.
 
@@ -40,7 +40,7 @@ Erased terms are also checked not to write, borrow or move a place that outlives
 Each side condition was added in response to a concrete closed proof of false, or an accepted program that goes wrong, found while designing the calculus; each is a regression test in the implementation, and switching it off lets its counterexamples back in (@sec-impl). Most of them guard one invariant: a statement is evaluated once through closing off, at a definition's generic call, and again directly at each instance, and [Call-type] and [Split] equate the two, so every decision the two paths must agree on is made from syntax (@lem-stable).
 
 #figure(kind: image, supplement: [Figure],
-  table(columns: (auto, 1fr), stroke: none, inset: (x: 4pt, y: 3pt), align: (left, left),
+  block(breakable: false, { set text(size: 8.5pt); table(columns: (32%, 68%), stroke: none, inset: (x: 4pt, y: 3pt), align: (left, left),
     table.hline(stroke: 0.5pt),
     [*Condition*], [*What goes wrong without it*],
     table.hline(stroke: 0.4pt),
@@ -55,6 +55,6 @@ Each side condition was added in response to a concrete closed proof of false, o
     [Generalisations are global; fresh names never reused], [A generalisation made while forming a type is lost with its private copy, and its name is reissued for a different computation.],
     [Strict positivity], [`inductive Bad := Mk(f : Π(x : Bad). Empty)` proves `Eq Nat 0 1` through a proof that is never run.],
     table.hline(stroke: 0.5pt),
-  ),
+  )}),
   caption: [The side conditions of Ochr and the counterexamples that forced them.],
 ) <fig-why>
