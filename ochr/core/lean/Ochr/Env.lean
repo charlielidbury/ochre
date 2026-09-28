@@ -80,6 +80,7 @@ structure Config where
   patternWritesVisible : Bool := true -- v1.5 D32: writes through pattern variables are writes to the scrutinee
   genConsistent : Bool := true   -- finding G1: a generalised neutral stays generalised when normalisation re-derives it
   trace : Bool := false          -- record goals, splits and call types (for inspection)
+  genGlobal : Bool := false      -- fuzzer hook, emulates v1.8 D37: generalisation records and fresh-name counters survive restores
 deriving Inhabited, Repr
 
 structure MState where
@@ -125,8 +126,12 @@ def tick : M Unit := do
 
 /-- Restore a saved state, keeping the fuel spent and the [Rec] accumulators. -/
 def restoreKeep (saved : MState) : M Unit :=
-  modify fun cur => { saved with fuel := cur.fuel, classCache := cur.classCache,
-                                 recCands := cur.recCands.drop (cur.recCands.length - saved.recCands.length) }
+  modify fun cur =>
+    let s := { saved with fuel := cur.fuel, classCache := cur.classCache,
+                          recCands := cur.recCands.drop (cur.recCands.length - saved.recCands.length) }
+    if cur.cfg.genGlobal then
+      { s with neutrals := cur.neutrals, nextAbs := cur.nextAbs, absTy := cur.absTy, nextLoan := cur.nextLoan }
+    else s
 
 /-- Run `x` on a private copy of the state (P2, P6): its effects are discarded. -/
 def onCopy {α : Type} (x : M α) : M α := do
