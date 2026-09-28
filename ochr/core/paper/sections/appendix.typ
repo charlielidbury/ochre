@@ -28,7 +28,7 @@
 #let acc = $"acc"$
 #let cont = $"content"$
 
-This appendix defines Ochr completely: its syntax and runtime structures (@app-syntax), the machine (@app-machine), observation, `Id` and conversion (@app-conv), typing (@app-typing) and well-formed environments (@app-wf). Every derivation in the paper can be checked against it. It follows rule set v1.5, which the reference checker (@sec-impl) also implements. Each group of rules names the checker functions that implement it (in `Machine.lean` unless noted), and says where the checker differs. @app-notes lists the points where the prose rules left a choice and the reading taken here.
+This appendix defines Ochr completely: its syntax and runtime structures (@app-syntax), the machine (@app-machine), observation, `Id` and conversion (@app-conv), typing (@app-typing) and well-formed environments (@app-wf). Every derivation in the paper can be checked against it. It follows rule set v1.7. The reference checker (@sec-impl) implements v1.6: general inductive types and persistent generalisation (D34), with the erasure rule of v1.5; where it differs from v1.7 the text says so. Each group of rules names the checker functions that implement it (in `Machine.lean` unless noted), and says where the checker differs. @app-notes lists the points where the prose rules left a choice and the reading taken here.
 
 == Syntax and runtime structures <app-syntax>
 
@@ -41,21 +41,24 @@ This appendix defines Ochr completely: its syntax and runtime structures (@app-s
     ([], $kw("fix") f (x_1 : A_1 ... x_n : A_n) : B space kw("by") x_j := t$, [function, recursive on $x_j$]),
     ([], $kw("fix") f (x_1 : A_1 ... x_n : A_n) : B := t$, [function, not recursive ($lambda$)]),
     ([], $t(u_1, ..., u_n)$, [saturated call]),
-    ([], $ty("Nat") | ty("Z") | ty("S") t | ty("Unit") | () | A times B | (t, u) | t.1 | t.2$, [data]),
+    ([], $ty("D") | ty("C")(t_1, ..., t_k) | ty("Unit") | () | A times B | (t, u) | t.1 | t.2$, [inductive type, constructor; unit, pairs]),
     ([], $ty("Eq") A space t space u | kw("refl") | ty("J")(A, a, b, P, h, t) | top | P and Q | chevron.l h, k chevron.r$, [propositions]),
     ([], $\&A | p | \&p | p := t$, [borrow type; read, borrow, assign]),
     ([], $kw("let") x = t; u | kw("let") x : A = t; u | t; u$, [sequencing]),
-    ([], $kw("match") p space {ty("Z") => t | ty("S") y => u}$, [case analysis]),
+    ([], $kw("match") p space {ty("C")_1 (overline(y)_1) => t_1 | ... | ty("C")_m (overline(y)_m) => t_m}$, [case analysis, one arm per constructor]),
     ([], $ty("Id") A space t space u$, [equality of computations]),
     ([], $v$, [embedded value]),
-    ($p, q$, $x | dr p | p.1$, [places]),
+    ($p, q$, $x | dr p | p.g$, [places ($g$ a field name)]),
+    ($cal(P)$, $(kw("inductive") ty("D") := ty("C")_1 (overline(g_1 : A_1)) | ... | ty("C")_m (overline(g_m : A_m))) | (f := kw("fix") ...) | cal(P) thick cal(P)$, [programs]),
   )),
-  caption: [Terms. Embedded values occur only in sealed programs and in the code of closures, never in source programs.],
+  caption: [Terms and programs. Embedded values occur only in sealed programs and in the code of closures, never in source programs.],
 ) <fig-app-terms>
+
+*Inductive types* (v1.6). A declaration introduces a type $ty("D")$ with constructors $ty("C")_i$, each with named fields $g_(i 1) : A_(i 1), dots, g_(i k_i) : A_(i k_i)$. `Nat` is the declared type $ty("Nat") := ty("Z") | ty("S")(1 : ty("Nat"))$: `S t` abbreviates `S(t)`, and `p.1` is the predecessor place. The checker builds `Nat` in, with the same behaviour, and has `Bool`, lists and trees as declared types (`Check.lean`, `checkInd`).
 
 *Binding.* In `Π(x̄:Ā). B` and `fix f (x̄:Ā) : B … := t`, each `xᵢ` is bound in `Aᵢ₊₁ … Aₙ`, in `B` and in `t`. With `by xⱼ`, `f` is bound in `t` and nowhere else; without `by`, `f` is not bound at all, and in no case is `f` bound in `Ā` or `B` (D31). `let x = t; u` binds `x` in `u`. Terms are identified up to renaming of bound variables; the checker uses de Bruijn indices, so this is structural equality (`Syntax.lean`).
 
-*Pattern variables are places* (D32). The `y` of `match p { Z => t | S y => u }` is not a binder. We identify `u` with $u[p.1 slash y]$, which replaces the root `y` of every place in `u` by `p.1` (so `y` becomes `p.1`, and `y.1` becomes `p.1.1`), and write the match $kw("match") p {ty("Z") => t | ty("S") => u}$ when the distinction matters. Every definition below (free places, footprints, captures) is on such resolved terms. The checker resolves pattern variables when it parses (`Surface.resolve`).
+*Pattern variables are places* (D32). The variables $overline(y)_i = y_1, dots, y_(k_i)$ of the arm for $ty("C")_i$ are not binders: we identify the arm $t_i$ with $t_i [p.g_(i 1) slash y_1, dots, p.g_(i k_i) slash y_(k_i)]$, which replaces the root $y_j$ of every place in $t_i$ by the field place $p.g_(i j)$ (for `Nat`, `y` becomes `p.1` and `y.1` becomes `p.1.1`), and write the resolved match $kw("match") p {ty("C")_1 => t_1 | dots | ty("C")_m => t_m}$, abbreviated $m$ below. Every definition below (free places, footprints, captures) is on such resolved terms. The checker resolves pattern variables when it parses (`Surface.resolve`).
 
 *Borrow types.* `&A` occurs only as the whole declared type of a variable, a parameter or a function's result, and `A` contains no `&`: there are no borrows inside data and no borrows of borrows. The machine also checks this where values are built ([Pair], [Borrow], closure capture).
 
@@ -65,13 +68,13 @@ This appendix defines Ochr completely: its syntax and runtime structures (@app-s
 
 #figure(kind: image, supplement: [Figure],
   block(width: 100%, inset: (y: 4pt), grammar(
-    ($v, w, kappa$, $ty("Z") | ty("S") v | () | (v, w)$, [data]),
+    ($v, w, kappa$, $ty("C")(v_1, ..., v_k) | () | (v, w)$, [data]),
     ([], $star$, [the value of every proof]),
     ([], $"borrow"_ell v | "loan"_ell | bot$, [borrow, loan, moved-out place]),
     ([], $n | F | T$, [neutrals, function values, types]),
     ($n$, $sigma | seal(t)$, [abstract value, sealed program]),
     ($F$, $f | chevron.l overline(kappa) tack.r kw("fix") f (overline(x) : overline(A)) : B ... := t chevron.r$, [top-level function, closure]),
-    ($T$, $s | ty("Nat") | ty("Unit") | T times T | \&T | ty("Eq") T space v space w | top | T and T$, [types]),
+    ($T$, $s | ty("D") | ty("Unit") | T times T | \&T | ty("Eq") T space v space w | top | T and T$, [types]),
     ([], $chevron.l overline(kappa) tack.r Pi(overline(x) : overline(A)). B chevron.r | n$, [Π-closure, neutral type]),
     ($s$, $ty("Prop") | ty("Type")_i$, [sorts]),
     ($Omega$, $phi_1; ...; phi_k$, [frames, oldest first]),
@@ -90,11 +93,11 @@ A _sealed program_ ⌈`t`⌉ contains a closed term `t`: it has no free variable
 
 An environment $Omega = phi_1";" dots";" phi_k$ is a stack of frames, oldest first. A frame holds a sequence of _bindings_ `x : A ↦ v`, where the stored type `A` is omitted for the captured values and parameters bound by the untyped machine, followed by a sequence of _temporaries_ `v`, the values in flight during evaluation (evaluated arguments, the right-hand side of an assignment, a result while its frame is popped). The _positions_ π of Ω are its bindings and temporaries, ordered by frame, then bindings before temporaries, then by index; "in the order of Ω" refers to this order. Variables are resolved in the top frame. We write $Omega(pi)$ and $Omega(x)$ for contents, $Omega + (x : A |-> v)$ for a new binding in the top frame, $Omega dot v$ for a new temporary, and $Omega";" phi$ for a pushed frame.
 
-A _state_ is an environment together with: Δ, the type of every abstract value; ρ, the refinements made so far; the goal $G$ while a definition is being checked; and the [Rec] stack. We write Ω for the whole state and mention the other components only where a rule changes them. The global signature Σ records, for each top-level definition, its Π-type, its code, and its erasure flag $e_f$ (@app-erasure). A program is a sequence of top-level definitions, each checked by [Def] against the signature of those before it. #lean("Env.lean", "Check.lean")
+A _state_ is an environment together with: Δ, the type of every abstract value; ρ, the refinements made so far, of abstract values and of generalised sealed programs (D34); the goal $G$ while a definition is being checked; and the [Rec] stack. We write Ω for the whole state and mention the other components only where a rule changes them. The global signature Σ records every inductive declaration, and for each top-level definition its Π-type and its code. A program is checked item by item ([Ind], [Def], [Const]) against the signature of the items before it. #lean("Env.lean", "Check.lean")
 
 === Auxiliary definitions <app-aux>
 
-+ *Content and update.* $cont_Omega (x) = Omega(x)$; $cont_Omega (dr p) = w$ if $cont_Omega (p) = "borrow"_ell w$; $cont_Omega (p.1) = w$ if $cont_Omega (p) = ty("S") w$; otherwise $cont_Omega (p)$ is undefined (so reading `p.1` needs a known `S` head, and `*p` a borrow). $Omega[p |-> v]$ replaces that sub-value. The _prefixes_ of a place are $"pre"(x) = {x}$, $"pre"(dr p) = "pre"(p) union {dr p}$, $"pre"(p.1) = "pre"(p) union {p.1}$; $q subset.eq.sq p$ means $q in "pre"(p)$. #lean("content", "setPlace")
++ *Content and update.* $cont_Omega (x) = Omega(x)$; $cont_Omega (dr p) = w$ if $cont_Omega (p) = "borrow"_ell w$; $cont_Omega (p.g) = v_j$ if $cont_Omega (p) = ty("C")(v_1, dots, v_k)$ and $g$ is the $j$-th field of $ty("C")$; otherwise $cont_Omega (p)$ is undefined (so reading `p.g` needs a known constructor with field $g$, as reading `p.1` needs a known `S`, and `*p` needs a borrow). $Omega[p |-> v]$ replaces that sub-value. The _prefixes_ of a place are $"pre"(x) = {x}$, $"pre"(dr p) = "pre"(p) union {dr p}$, $"pre"(p.g) = "pre"(p) union {p.g}$; $q subset.eq.sq p$ means $q in "pre"(p)$. #lean("content", "setPlace")
 
 + *Loans an access must end* ([Access]). For reading, borrowing and assigning,
   $ L^R_Omega (p) = {ell mid(|) cont_Omega (q) = "loan"_ell, q in "pre"(p)} union "loans"(cont_Omega (p)), $
@@ -104,7 +107,7 @@ A _state_ is an environment together with: Δ, the type of every abstract value;
   $ "owners"_Omega (ell) = union.big_(pi : thin ell in "loans"(Omega(pi))) cases("owners"_Omega (m) & "if" Omega(pi) = "borrow"_m w, {pi} & "otherwise,") $
   a set of positions of Ω (well-defined by acyclicity, @app-wf). The owners of a variable are $"own"_Omega (x) = "owners"_Omega (ell)$ if $Omega(x) = "borrow"_ell w$, $emptyset$ if $Omega(x) = bot$, and ${x}$ otherwise. #lean("owners (Obs.lean)")
 
-+ *Place occurrences.* $"occ"(t)$ is the set of free place occurrences of a resolved term `t`, each with its kind: read (rd), borrowed (bw), assigned (as) or matched (sc). $"occ"(p) = {(p, "rd")}$, $"occ"(\&p) = {(p, "bw")}$, $"occ"(p := t) = {(p, "as")} union "occ"(t)$, $"occ"(kw("match") p {ty("Z") => t | ty("S") => u}) = {(p, "sc")} union "occ"(t) union "occ"(u)$; a binder removes the places rooted at the variable it binds; every other form takes the union over its subterms, including the types and the code of `Π` and `fix`. A variable `x` is a _borrow variable_ in Ω if its stored type is `&T` or $Omega(x)$ is a borrow. #lean("Term.placeOccs", "Term.freeOccs (Basic.lean)")
++ *Place occurrences.* $"occ"(t)$ is the set of free place occurrences of a resolved term `t`, each with its kind: read (rd), borrowed (bw), assigned (as) or matched (sc). $"occ"(p) = {(p, "rd")}$, $"occ"(\&p) = {(p, "bw")}$, $"occ"(p := t) = {(p, "as")} union "occ"(t)$, $"occ"(kw("match") p {ty("C")_1 => t_1 | dots | ty("C")_m => t_m}) = {(p, "sc")} union union.big_i "occ"(t_i)$; a binder removes the places rooted at the variable it binds; every other form takes the union over its subterms, including the types and the code of `Π` and `fix`. A variable `x` is a _borrow variable_ in Ω if its stored type is `&T` or $Omega(x)$ is a borrow. #lean("Term.placeOccs", "Term.freeOccs (Basic.lean)")
 
 + *Footprint* (D5, D18, D32).
   $ W_Omega (t, u) = union.big {"own"_Omega ("root"(p)) mid(|) (p, k) in "occ"(t) union "occ"(u), thick k in {"bw", "as"} "or root"(p) "is a borrow variable"}, $
@@ -112,11 +115,11 @@ A _state_ is an environment together with: Δ, the type of every abstract value;
 
 + *Substitution and normal form.* For an atom $a in {sigma, "loan"_ell}$, or a neutral `n` (for generalisation), $v[w slash a]$ replaces every occurrence of `a` in `v`, including inside sealed programs, closures and types, and then restores normal form: every sealed program that changed is replaced by its normal form ([Seal]), and every `Eq` and `∧` is rebuilt by the smart constructors $"eq"$ and $"and"$ of @app-conv. $Omega[w slash a]$ does this to every value of Ω; $Omega[w slash a]^+$ also to the stored types, to Δ and to the goal. #lean("substV", "substT", "substEnv")
 
-+ *Refinement and generalisation* ([Split]). A refinement is $sigma := ty("Z")$ or $sigma := ty("S") sigma'$ with σ' fresh and $Delta(sigma') = ty("Nat")$; $Omega[sigma := r]$ is $Omega[r slash sigma]^+$, and ρ records it. The _refined entry value_ is $rho^*(sigma) = rho^*(r)$ if ρ records $sigma := r$ and σ otherwise, extended through `S`; its _strict subterms_ are $"sub"(ty("S") v) = {v} union "sub"(v)$ and $"sub"(v) = emptyset$ otherwise. Generalising a neutral `n` is $Omega[sigma slash n]^+$ with σ fresh, $Delta(sigma) = ty("Nat")$. #lean("refine", "expandRefs", "strictSubterms", "generalizeNeutral")
++ *Refinement and generalisation* ([Split], D34). A refinement of an abstract value σ of inductive type $ty("D")$ is $sigma := ty("C")(sigma_1, dots, sigma_k)$ for a constructor $ty("C")(g_1 : A_1, dots, g_k : A_k)$ of $ty("D")$, with $sigma_j$ fresh and $Delta(sigma_j) = A_j$; $Omega[sigma := r]$ is $Omega[r slash sigma]^+$, and ρ records it. _Generalising_ a neutral $n = seal(t)$ (or an inert loan) at a place of type $T$ takes σ fresh with $Delta(sigma) = T$, forms $Omega[sigma slash n]^+$, and records $n := sigma$ in ρ, so that it persists: whenever normalisation derives $n$ again it yields $rho^*(sigma)$ ([Seal-stuck]), and whenever ρ grows every sealed program of the state is re-normalised. The _refined value_ $rho^*(v)$ applies ρ repeatedly, through constructors; the _strict subterms_ are $"sub"(ty("C")(v_1, dots, v_k)) = union.big_j ({v_j} union "sub"(v_j))$ and $"sub"(v) = emptyset$ otherwise. #lean("refine", "expandRefs", "strictSubterms", "generalizeNeutral", "canonNeutral", "renormAll")
 
 + *Drop.* $"drop"(Omega, v) = Omega'$ where $Omega dot v arrow.squiggly_ell Omega' dot bot$ ([End]) if $v = "borrow"_ell w$; $"drop"(Omega, v) = Omega$ if `v` is loan-free; otherwise $"drop"(Omega, v) = err$ (something still borrows a dying value). Popping a frame drops its bindings, newest first, with the call's result held as a temporary of the caller's frame: $"pop"(Omega";" phi, v)$. #lean("dropTopBind", "dropValue", "popFrame")
 
-+ *Types of places and values.* $"type"_Omega (x)$ is the stored type of `x`, or $"typeof"(Omega(x))$ if it has none; $"type"_Omega (dr p) = T$ if $"type"_Omega (p) = \&T$; $"type"_Omega (p.1) = ty("Nat")$ if $"type"_Omega (p) = ty("Nat")$. For values: `Z`, `S v` have type `Nat`; `()` has `Unit`; $(v, w)$ has $"typeof"(v) times "typeof"(w)$; σ has $Delta(sigma)$; `f` has its type in Σ; a closure $chevron.l overline(kappa) tack.r kw("fix") f (overline(x) : overline(A)) : B dots chevron.r$ has the Π-closure $chevron.l overline(kappa) tack.r Pi(overline(x) : overline(A)). B chevron.r$; $"borrow"_ell w$ has $\&"typeof"(w)$; a type has its sort (@app-typing). #lean("placeType", "valType")
++ *Types of places and values.* $"type"_Omega (x)$ is the stored type of `x`, or $"typeof"(Omega(x))$ if it has none; $"type"_Omega (dr p) = T$ if $"type"_Omega (p) = \&T$; $"type"_Omega (p.g) = A_j$ if $"type"_Omega (p) = ty("D")$ and $cont_Omega (p) = ty("C")(dots)$ with $g_j : A_j$ the field $g$ of $ty("C")$ (so a field's type is known once its constructor is). For values: $ty("C")(overline(v))$ has type $ty("D")$ for $ty("C")$ a constructor of $ty("D")$; `()` has `Unit`; $(v, w)$ has $"typeof"(v) times "typeof"(w)$; σ has $Delta(sigma)$; `f` has its type in Σ; a closure $chevron.l overline(kappa) tack.r kw("fix") f (overline(x) : overline(A)) : B dots chevron.r$ has the Π-closure $chevron.l overline(kappa) tack.r Pi(overline(x) : overline(A)). B chevron.r$; $"borrow"_ell w$ has $\&"typeof"(w)$; a type has its sort (@app-typing). #lean("placeType", "valType")
 
 + *The generic call* (D12, D27). For a Π-closure $Pi = chevron.l overline(kappa) tack.r Pi(x_1 : A_1 dots x_n : A_n). B chevron.r$, the _generic arguments_ $overline(a)$ are built left to right. In the frame $overline(kappa), x_1 : T_1 |-> a_1, dots, x_(i-1) : T_(i-1) |-> a_(i-1)$, evaluate $A_i$ in a type position to $T_i$ (@app-typing). If $T_i = \&T$, add an owned place $c_i : T |-> "loan"_(ell_i)$ to a bottom frame and let $a_i = "borrow"_(ell_i) sigma_i$ with $sigma_i : T$ and $ell_i$ fresh (this is the argument $\&c_i$ after [Borrow]); if $T_i$ has sort Prop, let $a_i = star$ (D27); otherwise $a_i = sigma_i$ with $sigma_i : T_i$ fresh. The _generic state_ is the frame of owned places $Gamma(Pi) = (c_i : T |-> "loan"_(ell_i))_(i : T_i = \&T)$, and the _parameter frame_ is $phi(Pi) = (overline(kappa), overline(x) : overline(T) |-> overline(a))$, each type stored with its binding. The generic call is $F(overline(a))$ at $Gamma(Pi)$. #lean("checkFix")
 
@@ -155,14 +158,13 @@ In [Assign] the new value travels as a temporary while `p` is accessed, so that 
 The annotated `let x : A = t; u` runs as `let x = t; u`: its annotation is a type position. A discarded value (`t; u`) is dropped like a binding: a borrow ends, and a live loan is an error. #lean("eval (.letIn, .seq)", "dropTopBind", "dropValue")
 
 #rules(
-  ir(name: "Z", $cfg(Omega, ty("Z")) ev cfg(Omega, ty("Z"))$),
+  ir(name: "Ctor", $cfg(Omega, overline(t)) ev^* cfg(Omega', overline(v))$, $cfg(Omega, ty("C")(overline(t))) ev cfg(Omega', ty("C")(overline(v)))$),
   ir(name: "Unit", $cfg(Omega, ()) ev cfg(Omega, ())$),
-  ir(name: "S", $cfg(Omega, t) ev cfg(Omega', v)$, $cfg(Omega, ty("S") t) ev cfg(Omega', ty("S") v)$),
   ir(name: "Pair", $cfg(Omega, t) ev cfg(Omega_1, v)$, $cfg(Omega_1 dot v, u) ev cfg(Omega_2 dot v', w)$, $v', w "borrow-free"$, $cfg(Omega, (t, u)) ev cfg(Omega_2, (v', w))$),
   ir(name: "Proj", $cfg(Omega, t) ev cfg(Omega', (v_1, v_2))$, $cfg(Omega, t.i) ev cfg(Omega', v_i)$),
   ir(name: "Proj-stuck", $cfg(Omega, t) ev cfg(Omega', n)$, $cfg(Omega, t.i) ev stk$),
 )
-#lean("evalCore (.zero, .succ, .tt, .pair, .fst, .snd)")
+A constructor evaluates its fields left to right, each into a temporary ([Args], below); its field types are borrow-free, so a constructor value holds no borrow. #lean("evalCore (.ctor, .zero, .succ, .tt, .pair, .fst, .snd)")
 
 === Functions, types and proofs
 
@@ -238,12 +240,11 @@ The row is chosen by the _declared_ codomain `B` of `F`'s type: the codomain ter
 === Matching
 
 #rules(
-  ir(name: "Match-Z", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = ty("Z")$, $cfg(Omega_1, t) ev r$, $cfg(Omega, kw("match") p {ty("Z") => t | ty("S") => u}) ev r$),
-  ir(name: "Match-S", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = ty("S") v$, $cfg(Omega_1, u) ev r$, $cfg(Omega, kw("match") p {ty("Z") => t | ty("S") => u}) ev r$),
+  ir(name: "Match", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = ty("C")_i (overline(v))$, $cfg(Omega_1, t_i) ev r$, $cfg(Omega, kw("match") p {ty("C")_1 => t_1 | dots | ty("C")_m => t_m}) ev r$),
   ir(name: "Match-stuck", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) "is a neutral or an inert loan"$, $cfg(Omega, kw("match") p {dots}) ev stk$),
   ir(name: "Match-err", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) "is undefined or" bot$, $cfg(Omega, kw("match") p {dots}) ev err$),
 )
-In the successor arm the pattern variable is the sub-place `p.1`, so `&y` reborrows the predecessor field in place. #lean("evalMatch", "accessNeutralHead")
+In arm $i$ the pattern variables are the field places $p.g_(i j)$, so `&y` reborrows a field in place (for `Nat`, the predecessor `p.1`). #lean("evalMatch", "evalMatchInd", "accessNeutralHead")
 
 === Sealed programs <app-seal>
 
@@ -251,19 +252,19 @@ Values are kept in normal form (P1). The normal form of a sealed program is comp
 
 #rules(
   ir(name: "Seal", $cfg(epsilon, t) ev cfg(Omega', v)$, $"nf"(seal(t)) = v$),
-  ir(name: "Seal-stuck", $cfg(epsilon, t) ev stk$, $"nf"(seal(t)) = seal(t)$),
+  ir(name: "Seal-stuck", $cfg(epsilon, t) ev stk$, $"nf"(seal(t)) = cases(rho^*(sigma) & "if" rho "records" seal(t) := sigma "(D34)", seal(t) & "otherwise")$),
   ir(name: "Seal-err", $cfg(epsilon, t) ev err$, $"nf"(seal(t)) = err$),
 )
-Every loan in `t` whose borrow lives outside the run is inert in it: [Access] does not end it (it is not live), [Read] copies it (it is loan-free), $"drop"$ accepts it, and a match on it is stuck, as on an abstract value. An error is a type error at the point that triggered the normalisation (D29). Normalisation happens whenever a sealed program is created or changed: by [Close], by [End] (substituting a loan), and by refinement or generalisation (@app-aux, item 6). The embedded values of a stuck sealed program are already normal, because substitution normalises inner sealed programs first. #lean("nfSealed", "substV")
+Every loan in `t` whose borrow lives outside the run is inert in it: [Access] does not end it (it is not live), [Read] copies it (it is loan-free), $"drop"$ accepts it, and a match on it is stuck, as on an abstract value. An error is a type error at the point that triggered the normalisation (D29). Normalisation happens whenever a sealed program is created or changed: by [Close], by [End] (substituting a loan), and by refinement or generalisation (@app-aux, items 6 and 7); a generalised sealed program stays generalised wherever it is derived again. The embedded values of a stuck sealed program are already normal, because substitution normalises inner sealed programs first. #lean("nfSealed", "substV", "canonNeutral")
 
 === Stuck blocks <app-block>
 
 A stuck match that is not the body of a call is closed off as a call of an anonymous function of its free places (D15, D22), captured as Rust captures closure variables. This happens only in the typing judgement ([Split], @app-typing), after the match's arms have been checked, which gives its type `B` and the set `M` of variables that some arm leaves ⊥ (moves out of).
 
-Let $m = kw("match") p {ty("Z") => t | ty("S") => u}$ be stuck in Ω, and give each occurrence $(q, k) in "occ"(m)$ a _mode_: `mv` (moved) if `q` is a whole variable `x` and either `x` is a borrow variable and $k in {"rd", "as"}$, or $x in M$; otherwise `ref` (borrowed) if $k in {"bw", "as"}$; otherwise `cp` (copied). The _captures_ $q_1, dots, q_m$ are the maximal places of $"occ"(m)$, those with no strict prefix among its places (D26: maximal prefixes). Each takes the largest mode of the occurrences at or below it ($"cp" < "ref" < "mv"$), and they are ordered by the position of their root, then by length. Capture $q_i$ becomes a parameter $z_i$ with argument $a_i$:
-$ (z_i : D_i, a_i) = cases((z_i : \&"type"_Omega (q_i), thick \&q_i) & "if" q_i "is" "ref,", (z_i : "type"_Omega (q_i), thick q_i) & "otherwise (a move if its content is a borrow, a copy if not)".) $
+Let $m = kw("match") p {ty("C")_1 => t_1 | dots | ty("C")_m => t_m}$ be stuck in Ω, and give each occurrence $(q, k) in "occ"(m)$ a _mode_: `mv` (moved) if `q` is a whole variable `x` and either `x` is a borrow variable and $k in {"rd", "as"}$, or $x in M$; otherwise `ref` (borrowed) if $k in {"bw", "as"}$; otherwise `cp` (copied). The _captures_ $q_1, dots, q_n$ are the maximal places of $"occ"(m)$, those with no strict prefix among its places (D26: maximal prefixes). Each takes the largest mode of the occurrences at or below it ($"cp" < "ref" < "mv"$), and they are ordered by the position of their root, then by length. Capture $q_i$ becomes a parameter $z_i$ with argument $a_i$:
+$ (z_i : U_i, a_i) = cases((z_i : \&"type"_Omega (q_i), thick \&q_i) & "if" q_i "is" "ref,", (z_i : "type"_Omega (q_i), thick q_i) & "otherwise (a move if its content is a borrow, a copy if not)".) $
 The body $m'$ is `m` with each place $q_i pi$ renamed to $(dr z_i) pi$ if $q_i$ is `ref`, and to $z_i pi$ otherwise. Then
-$ "block"(Omega, m, B, M) := F_m (a_1, dots, a_m) quad "where" F_m = chevron.l thin tack.r kw("fix") \_ (z_1 : D_1 dots z_m : D_m) : B := m' chevron.r, $
+$ "block"(Omega, m, B, M) := F_m (a_1, dots, a_n) quad "where" F_m = chevron.l thin tack.r kw("fix") \_ (z_1 : U_1 dots z_n : U_n) : B := m' chevron.r, $
 a non-recursive closure with no captured values. Evaluating the block by [Call] gets stuck on the head of `m` inside $F_m$'s body and closes off by [App-close], with [Close]'s row chosen by `B`. #lean("closeOffMatch", "splitThenClose")
 
 == Observation, `Id` and conversion <app-conv>
