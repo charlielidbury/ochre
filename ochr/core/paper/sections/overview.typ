@@ -146,6 +146,22 @@ AddSubId(x : &Nat, y : Nat) : Id Unit (AddSub(x, y)) (*x := y) by x :=
 
 Here the successor case copies the predecessor into a fresh place `c` instead of borrowing it in place. Borrowing would supply the surrounding `S` to the induction hypothesis, as in `AddMZero`, and the goal has no `S` to match: `AddSub` peels the successor off. Borrowing supplies the congruence and copying withholds it, and the programmer chooses.
 
+== Trees
+
+Nothing above is specific to numbers. With several constructors and several fields, a pattern variable names a field place, and the environment keeps every field that a recursive call does not touch. In-place insertion into a binary search tree recurses into the left or the right subtree according to a comparison, so which place is mutated depends on a value:
+
+```
+InsertM(t : &Tree, k : Nat) : Unit by t :=
+  match *t { Leaf          => *t := Node(Leaf, k, Leaf)
+           | Node(l, v, r) => let b = Lt(k, v); match b { True => InsertM(&l, k) | False => InsertM(&r, k) } }
+
+InsertMEq(t : &Tree, k : Nat) : Id Unit (InsertM(t, k)) (*t := Insert(*t, k)) by t :=
+  match *t { Leaf          => refl
+           | Node(l, v, r) => let b = Lt(k, v); match b { True => InsertMEq(&l, k) | False => InsertMEq(&r, k) } }
+```
+
+`Insert` is the pure insertion that rebuilds the path. In the `False` case, both the goal and the induction hypothesis, evaluated at the call site, observe the whole tree as `Node(σ_l, σ_v, ⌈…⌉)`: the fields `l` and `v` are carried by the environment, and only the right subtree differs, as in-place insertion on one side and pure insertion on the other. The proof is bare recursion again. The comparison `Lt(σ_k, σ_v)` is itself stuck, so the split on `b` is a split on a sealed program: the checker names its value by a fresh abstract value and replaces every derivation of the same closed program by it, including those produced later when the goal's sealed programs run again. A theorem about a measure mixes the two styles: `Size(Insert(t, k))` is `S(Size(t))` given one arithmetic lemma, `x + S y = S (x + y)`, which is proved in place by bare recursion and transferred to the pure `Add` by lending, as `AddZero` was.
+
 == Branching
 
 A `match` on an abstract value in the middle of a function cannot pick an arm. Each arm is checked separately, and the rest of the function is then checked once, from the state in which the match itself has been closed off like a call. This covers borrows whose origin depends on the branch:

@@ -2,7 +2,7 @@
 
 == What generalises directly
 
-*Inductive types.* The core has only `Nat` and `Unit`, but nothing in the rules is specific to them. A constructor with several fields gives several sub-places `p.1, …, p.k`; [Split] refines an abstract value to a constructor applied to fresh abstract values; [Rec] asks for a strict subterm of the entry value. In-place list append is `AddM` with `Cons` in place of `S`, and its theorems are proved the same way.
+*Inductive types.* The rules are stated for natural numbers, but nothing in them is specific to numbers, and the implementation supports user-declared inductive types (@sec-overview, @sec-impl): a constructor with several fields gives several sub-places, [Split] refines an abstract value to a constructor applied to fresh abstract values, and [Rec] asks for a strict subterm of the entry value. Indexed families are future work.
 
 *Opaque definitions.* A definition may be declared with a type and no body, or used through an abstract function value. A call to it is stuck at once and closed off, so its effects are recorded as sealed programs mentioning it, and every theorem about its callers remains available. This is how Ochr recovers the modularity of Aeneas's symbolic execution @aeneas, which never unfolds a callee: the programmer chooses, per definition, whether conversion may look inside.
 
@@ -18,7 +18,7 @@
 
 == Costs
 
-*Checking cost.* Type checking runs programs. On concrete data this is the cost of running them; on symbolic data each stuck call is closed off once, and each refinement re-runs the sealed programs that mention the refined value. Sealed programs are closed and canonical, so their normal forms can be cached and shared, and a refinement only re-runs what mentions it. Our implementation does no caching; #text(fill: red)[TODO: timings from the implementation]. We have not measured large programs.
+*Checking cost.* Type checking runs programs. On concrete data this is the cost of running them; on symbolic data each stuck call is closed off once, and each refinement re-runs the sealed programs that mention the refined value. Sealed programs are closed and canonical, so their normal forms can be cached and shared, and a refinement only re-runs what mentions it. Our implementation does no caching and decides every example of this paper in about 9 ms in total; we have not measured large programs.
 
 *Copying.* The calculus copies borrow-free data on reads. A compiled program should move instead, and an affine usage discipline on runtime code, outside the core, licenses implementing each last-use copy as a move. Types are exempt from that discipline, which is what lets `x + x = 2 · x` be stated for a type without a copy operation; this is the same separation between runtime usage and erased usage as quantitative type theory @qtt.
 
