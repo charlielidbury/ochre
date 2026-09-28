@@ -169,13 +169,13 @@ def PSt (Ω₂ : Env) (K : List Nat) (len : Nat) (next : Nat) : Option St → Pr
 
 theorem hasLive_frame {c : St} {P : Frame} (hc : PInv Ω₂ K c P) {v : Val}
     (hv : ∀ l ∈ v.names, Good Ω₂ K l) (extra : Val) :
-    hasLive (c.app (Ω₂.substPorts P)) extra v = hasLive (c.app [P]) extra v := by
+    hasLive (c.app (Ω₂.substPorts K P)) extra v = hasLive (c.app [P]) extra v := by
   unfold hasLive
   rw [Val.firstLive_congr v (fun l hl => by rw [live_app_good hc (hv l (Val.loans_sub_names hl))])]
 
 theorem dropVal_frame {c : St} {P : Frame} (hc : PInv Ω₂ K c P) {v : Val}
     (hv : ∀ l ∈ v.names, Good Ω₂ K l) (extra : Val) :
-    dropVal extra v (c.app (Ω₂.substPorts P)) = (dropVal extra v (c.app [P])).map (frameMap Ω₂) ∧
+    dropVal extra v (c.app (Ω₂.substPorts K P)) = (dropVal extra v (c.app [P])).map (frameMap K Ω₂) ∧
     PSt Ω₂ K c.env.length c.next (dropVal extra v (c.app [P])) := by
   cases v with
   | borrow l w =>
@@ -212,7 +212,7 @@ theorem PInv.grow {c c' : St} {P : Frame} (hc : PInv Ω₂ K c P) (hne : c'.env 
 
 theorem popFrameN_frame (extra : Val) :
     ∀ (n : Nat) (c : St) (P : Frame), PInv Ω₂ K c P → 2 ≤ c.env.length →
-      popFrameN extra n (c.app (Ω₂.substPorts P)) = (popFrameN extra n (c.app [P])).map (frameMap Ω₂) ∧
+      popFrameN extra n (c.app (Ω₂.substPorts K P)) = (popFrameN extra n (c.app [P])).map (frameMap K Ω₂) ∧
       PSt Ω₂ K (c.env.length - 1) c.next (popFrameN extra n (c.app [P])) := by
   intro n
   induction n with
@@ -276,7 +276,7 @@ theorem popFrameN_frame (extra : Val) :
 core frame (the core becomes empty: this is the pop that ends a call run in isolation). -/
 theorem popFrameN_frame1 (extra : Val) :
     ∀ (n : Nat) (c : St) (P : Frame), PInv Ω₂ K c P →
-      popFrameN extra n (c.app (Ω₂.substPorts P)) = (popFrameN extra n (c.app [P])).map (frameMap Ω₂) := by
+      popFrameN extra n (c.app (Ω₂.substPorts K P)) = (popFrameN extra n (c.app [P])).map (frameMap K Ω₂) := by
   intro n
   induction n with
   | zero =>
@@ -321,7 +321,7 @@ theorem popFrameN_frame1 (extra : Val) :
           exact ih c' P' hc'
 
 theorem popFrame_frame (extra : Val) {c : St} {P : Frame} (hc : PInv Ω₂ K c P) (h2 : 2 ≤ c.env.length) :
-    popFrame extra (c.app (Ω₂.substPorts P)) = (popFrame extra (c.app [P])).map (frameMap Ω₂) ∧
+    popFrame extra (c.app (Ω₂.substPorts K P)) = (popFrame extra (c.app [P])).map (frameMap K Ω₂) ∧
     PSt Ω₂ K (c.env.length - 1) c.next (popFrame extra (c.app [P])) := by
   have hh : ∀ X : Env, (c.app X).env.head? = c.env.head? := by
     intro X; obtain ⟨Ω, m⟩ := c; cases Ω with

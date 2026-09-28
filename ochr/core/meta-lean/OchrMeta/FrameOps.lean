@@ -82,9 +82,13 @@ theorem Frame.holds_mapVals_substSim {σ : Nat → Option Val} (hσ : ∀ m p, �
     simp only [Frame.holds, Frame.mapVals, List.map_cons, List.any_cons] at ih ⊢
     rw [ih, Val.isBorrowOf_substSim σ hσ]
 
-theorem Env.holds_substPorts {P : Frame} (hP : P.nb = 0) (Ω : Env) (l : Nat) :
-    Env.holds l (Ω.substPorts P) = Ω.holds l := by
-  have hσ : ∀ m p, portSub P m = some p → p.nb = 0 := fun m p h => Frame.nb_of_lookup hP h
+theorem Env.holds_substPorts {K : List Nat} {P : Frame} (hP : P.nb = 0) (Ω : Env) (l : Nat) :
+    Env.holds l (Ω.substPorts K P) = Ω.holds l := by
+  have hσ : ∀ m p, portSub K P m = some p → p.nb = 0 := by
+    intro m p h
+    simp only [portSub, Option.bind_eq_some_iff] at h
+    obtain ⟨i, _, h⟩ := h
+    exact Frame.nb_of_lookup hP h
   induction Ω with
   | nil => rfl
   | cons F Ω ih =>
@@ -266,18 +270,18 @@ def Good (Ω₂ : Env) (K : List Nat) (l : Nat) : Prop := Ω₂.holds l = false 
 structure PInv (Ω₂ : Env) (K : List Nat) (c : St) (P : Frame) : Prop where
   ne : c.env ≠ []
   pnb : P.nb = 0
-  keys : ∀ l ∈ K, (portSub P l).isSome
+  keys : ∀ l ∈ K, (portSub K P l).isSome
   good : ∀ l ∈ c.env.names, Good Ω₂ K l
   fresh : ∀ l, c.next ≤ l → Good Ω₂ K l
 
-theorem Env.substPorts_substLoan {Ω₂ : Env} {P : Frame} {l : Nat} (w : Val)
-    (h : l ∈ Ω₂.loans → (portSub P l).isSome) :
-    (Ω₂.substPorts P).substLoan l w = Ω₂.substPorts (P.mapVals (Val.substLoan l w)) := by
+theorem Env.substPorts_substLoan {Ω₂ : Env} {K : List Nat} {P : Frame} {l : Nat} (w : Val)
+    (h : l ∈ Ω₂.loans → (portSub K P l).isSome) :
+    (Ω₂.substPorts K P).substLoan l w = Ω₂.substPorts K (P.mapVals (Val.substLoan l w)) := by
   simp only [Env.substLoan, Env.substPorts, Env.mapVals_mapVals]
   apply Env.mapVals_congr
   intro F hF b hb
-  have hfun : portSub (Frame.mapVals (Val.substLoan l w) P) = fun m => (portSub P m).map (Val.substLoan l w) := by
-    funext m; exact portSub_mapVals _ _ _
+  have hfun : portSub K (Frame.mapVals (Val.substLoan l w) P) = fun m => (portSub K P m).map (Val.substLoan l w) := by
+    funext m; exact portSub_mapVals _ _ _ _
   simp only [Function.comp, hfun]
   apply Val.substSim_substLoan
   intro m hm hnone heq
@@ -299,7 +303,7 @@ theorem endWith_app (l : Nat) (w : Val) (c : St) (X : Env) :
 
 theorem endWith_frame {Ω₂ : Env} {K : List Nat} {c : St} {P : Frame} {l : Nat} (w : Val)
     (hc : PInv Ω₂ K c P) (hg : Good Ω₂ K l) :
-    endWith l w (c.app (Ω₂.substPorts P)) = (endWith l w (c.app [P])).map (frameMap Ω₂) := by
+    endWith l w (c.app (Ω₂.substPorts K P)) = (endWith l w (c.app [P])).map (frameMap K Ω₂) := by
   rw [endWith_app, endWith_app]
   split
   · simp only [Option.map_some, Env.substLoan_single, St.frameMap_app]
@@ -322,9 +326,9 @@ theorem endBorrow_app {l : Nat} {c : St} {X : Env} (hA : c.env.holds l = true) (
 
 theorem endBorrow_frame {Ω₂ : Env} {K : List Nat} {c : St} {P : Frame} {l : Nat}
     (hc : PInv Ω₂ K c P) (hA : c.env.holds l = true) (hg : Good Ω₂ K l) :
-    endBorrow l (c.app (Ω₂.substPorts P)) = (endBorrow l (c.app [P])).map (frameMap Ω₂) := by
+    endBorrow l (c.app (Ω₂.substPorts K P)) = (endBorrow l (c.app [P])).map (frameMap K Ω₂) := by
   have hXP : Env.holds l [P] = false := by rw [Env.holds_single, Frame.holds_of_nb hc.pnb]
-  have hXB : Env.holds l (Ω₂.substPorts P) = false := by rw [Env.holds_substPorts hc.pnb]; exact hg.1
+  have hXB : Env.holds l (Ω₂.substPorts K P) = false := by rw [Env.holds_substPorts hc.pnb]; exact hg.1
   rw [endBorrow_app hA hXP, endBorrow_app hA hXB]
   cases c.env.holderContent l with
   | none => rfl
@@ -526,7 +530,7 @@ def PRes (Ω₂ : Env) (K : List Nat) (len : Nat) : Res → Prop
 
 theorem live_app_good {Ω₂ : Env} {K : List Nat} {c : St} {P : Frame} (hc : PInv Ω₂ K c P)
     {l : Nat} (hg : Good Ω₂ K l) :
-    (c.app (Ω₂.substPorts P)).live l = (c.app [P]).live l := by
+    (c.app (Ω₂.substPorts K P)).live l = (c.app [P]).live l := by
   simp only [St.live, St.app_env, Env.holds_append, Env.holds_single, Frame.holds_of_nb hc.pnb,
     Env.holds_substPorts hc.pnb, hg.1]
 
@@ -536,7 +540,7 @@ theorem live_app_port {c : St} {P : Frame} (hP : P.nb = 0) (l : Nat) :
 
 theorem access_frame {Ω₂ : Env} {K : List Nat} (deep : Bool) (x : Var) (π : List Proj) :
     ∀ (N : Nat) (c : St) (P : Frame), (c.app [P]).env.nb = N → PInv Ω₂ K c P →
-      access deep x π (c.app (Ω₂.substPorts P)) = (access deep x π (c.app [P])).map (frameMap Ω₂) ∧
+      access deep x π (c.app (Ω₂.substPorts K P)) = (access deep x π (c.app [P])).map (frameMap K Ω₂) ∧
       PRes Ω₂ K c.env.length (access deep x π (c.app [P])) := by
   intro N
   induction N using Nat.strongRecOn with
@@ -549,7 +553,7 @@ theorem access_frame {Ω₂ : Env} {K : List Nat} (deep : Bool) (x : Var) (π : 
   | some v =>
     simp only
     have hvg : ∀ l ∈ v.names, Good Ω₂ K l := fun l hl' => hc.good l (St.lookup_names hl l hl')
-    have hw : walk (c.app (Ω₂.substPorts P)).live deep v π = walk (c.app [P]).live deep v π :=
+    have hw : walk (c.app (Ω₂.substPorts K P)).live deep v π = walk (c.app [P]).live deep v π :=
       walk_congr deep π v (fun l hl' => live_app_good hc (hvg l (Val.loans_sub_names hl')))
     rw [hw]
     cases hwk : walk (c.app [P]).live deep v π with

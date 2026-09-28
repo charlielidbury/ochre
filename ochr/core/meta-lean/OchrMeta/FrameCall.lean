@@ -10,7 +10,7 @@ variable {Ω₂ : Env} {K : List Nat}
 /-- An evaluator commutes with `frameMap` and keeps the port-side shape. -/
 def EvF (Ω₂ : Env) (K : List Nat) (ev : St → Term → Res) : Prop :=
   ∀ (c : St) (P : Frame) (t : Term), PInv Ω₂ K c P →
-    ev (c.app (Ω₂.substPorts P)) t = (ev (c.app [P]) t).map (frameMap Ω₂) ∧
+    ev (c.app (Ω₂.substPorts K P)) t = (ev (c.app [P]) t).map (frameMap K Ω₂) ∧
     PRes Ω₂ K c.env.length (ev (c.app [P]) t)
 
 theorem PInv.bind {c : St} {P : Frame} (hc : PInv Ω₂ K c P) (x : Var) {v : Val}
@@ -28,7 +28,7 @@ theorem St.length_bind {c : St} (hc : c.env ≠ []) (x : Var) (v : Val) : (c.bin
 
 theorem execArgs_frame {ev : St → Term → Res} (hev : EvF Ω₂ K ev) :
     ∀ (args : List Term) (i : Nat) (c : St) (P : Frame), PInv Ω₂ K c P →
-      execArgs ev i (c.app (Ω₂.substPorts P)) args = (execArgs ev i (c.app [P]) args).map (frameMap Ω₂) ∧
+      execArgs ev i (c.app (Ω₂.substPorts K P)) args = (execArgs ev i (c.app [P]) args).map (frameMap K Ω₂) ∧
       PRes Ω₂ K c.env.length (execArgs ev i (c.app [P]) args) := by
   intro args
   induction args with
@@ -53,8 +53,8 @@ theorem execArgs_frame {ev : St → Term → Res} (hev : EvF Ω₂ K ev) :
 
 theorem takeTemps_frame :
     ∀ (is : List Nat) (c : St) (P : Frame), PInv Ω₂ K c P →
-      takeTemps is (c.app (Ω₂.substPorts P)) =
-        (takeTemps is (c.app [P])).map (fun p => (p.1, frameMap Ω₂ p.2)) ∧
+      takeTemps is (c.app (Ω₂.substPorts K P)) =
+        (takeTemps is (c.app [P])).map (fun p => (p.1, frameMap K Ω₂ p.2)) ∧
       ∀ vs s', takeTemps is (c.app [P]) = some (vs, s') →
         ∃ c' P', s' = c'.app [P'] ∧ PInv Ω₂ K c' P' ∧ c'.env.length = c.env.length ∧
           c'.next = c.next ∧ ∀ v ∈ vs, ∀ l ∈ v.names, Good Ω₂ K l := by
@@ -157,7 +157,7 @@ theorem Val.names_ofList {as : List Val} {x : Nat} (h : x ∈ (Val.ofList as).na
 theorem fillLoans_frame :
     ∀ (fs : List (Nat × Val)) (c : St) (P : Frame), PInv Ω₂ K c P →
       (∀ p ∈ fs, Good Ω₂ K p.1 ∧ ∀ x ∈ p.2.names, Good Ω₂ K x) →
-      fillLoans fs (c.app (Ω₂.substPorts P)) = (fillLoans fs (c.app [P])).map (frameMap Ω₂) ∧
+      fillLoans fs (c.app (Ω₂.substPorts K P)) = (fillLoans fs (c.app [P])).map (frameMap K Ω₂) ∧
       PSt Ω₂ K c.env.length c.next (fillLoans fs (c.app [P])) := by
   intro fs
   induction fs with
@@ -187,7 +187,7 @@ theorem PInv.bump {c : St} {P : Frame} (hc : PInv Ω₂ K c P) : PInv Ω₂ K �
 
 theorem closeCall_frame (f : String) (d : FunDef) {ws : List Val} {c : St} {P : Frame}
     (hc : PInv Ω₂ K c P) (hws : ∀ w ∈ ws, ∀ l ∈ w.names, Good Ω₂ K l) :
-    closeCall f d ws (c.app (Ω₂.substPorts P)) = (closeCall f d ws (c.app [P])).map (frameMap Ω₂) ∧
+    closeCall f d ws (c.app (Ω₂.substPorts K P)) = (closeCall f d ws (c.app [P])).map (frameMap K Ω₂) ∧
     PRes Ω₂ K c.env.length (closeCall f d ws (c.app [P])) := by
   unfold closeCall
   cases hsa : sealArgs 0 d.params ws with
@@ -237,8 +237,8 @@ theorem closeCall_frame (f : String) (d : FunDef) {ws : List Val} {c : St} {P : 
         rcases hx with hx | rfl
         · exact hargs x hx
         · exact hk
-      have e1 : ({ c.app (Ω₂.substPorts P) with next := c.next + 1 } : St) =
-          (⟨c.env, c.next + 1⟩ : St).app (Ω₂.substPorts P) := rfl
+      have e1 : ({ c.app (Ω₂.substPorts K P) with next := c.next + 1 } : St) =
+          (⟨c.env, c.next + 1⟩ : St).app (Ω₂.substPorts K P) := rfl
       have e2 : ({ c.app [P] with next := c.next + 1 } : St) = (⟨c.env, c.next + 1⟩ : St).app [P] := rfl
       simp only [St.app_next] at e1 e2 ⊢
       rw [e1, e2]
@@ -300,7 +300,7 @@ theorem PInv.push {c : St} {P : Frame} (hc : PInv Ω₂ K c P) (F : Frame)
 theorem callWith_frame {run : St → Term → Res} (hrun : EvF Ω₂ K run) (cc : Bool) (f : String)
     (d : FunDef) {ws : List Val} {c : St} {P : Frame}
     (hc : PInv Ω₂ K c P) (hws : ∀ w ∈ ws, ∀ l ∈ w.names, Good Ω₂ K l) :
-    callWith run cc f d ws (c.app (Ω₂.substPorts P)) = (callWith run cc f d ws (c.app [P])).map (frameMap Ω₂) ∧
+    callWith run cc f d ws (c.app (Ω₂.substPorts K P)) = (callWith run cc f d ws (c.app [P])).map (frameMap K Ω₂) ∧
     PRes Ω₂ K c.env.length (callWith run cc f d ws (c.app [P])) := by
   unfold callWith
   cases hb : d.body with

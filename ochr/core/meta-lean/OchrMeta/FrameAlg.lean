@@ -9,16 +9,23 @@ is recovered by `frameMap Ω₂`, which substitutes the ports' final values into
 
 namespace OchrMeta
 
-def portSub (P : Frame) (l : Nat) : Option Val := P.lookup (.port l)
+/-- The value recorded for loan `l` by a ports frame `P` whose `i`-th port stands for loan `K[i]`.
+Ports are keyed by position (not by loan name), so that renaming loans commutes with forming
+the ports frame. -/
+def portSub (K : List Nat) (P : Frame) (l : Nat) : Option Val :=
+  (K.idxOf? l).bind fun i => P.lookup (.port i)
 
-def Env.substPorts (P : Frame) (Ω : Env) : Env := Ω.mapVals (Val.substSim (portSub P))
+def Env.substPorts (K : List Nat) (P : Frame) (Ω : Env) : Env := Ω.mapVals (Val.substSim (portSub K P))
+
+/-- The loans the ports of `Ω` stand for: its borrow names, without repetition. -/
+def Env.portKeys (Ω : Env) : List Nat := Ω.borrows.eraseDups
 
 /-- One port per borrow name of `Ω`, initially holding its own loan. -/
-def Env.portsOf (Ω : Env) : Frame := Ω.borrows.eraseDups.map fun l => (Var.port l, Val.loan l)
+def Env.portsOf (Ω : Env) : Frame := Ω.portKeys.zipIdx.map fun p => (Var.port p.2, Val.loan p.1)
 
 /-- Recover the full state from a port-side state `A ++ [P]`. -/
-def frameMap (Ω₂ : Env) (s : St) : St :=
-  ⟨s.env.dropLast ++ Ω₂.substPorts (s.env.getLastD []), s.next⟩
+def frameMap (K : List Nat) (Ω₂ : Env) (s : St) : St :=
+  ⟨s.env.dropLast ++ Ω₂.substPorts K (s.env.getLastD []), s.next⟩
 
 /-! ## Values -/
 
@@ -57,14 +64,19 @@ theorem Val.substSim_id (σ : Nat → Option Val) (hσ : ∀ l, σ l = none ∨ 
   | loan m => rcases hσ m with h | h <;> simp [Val.substSim, h]
   | _ => simp_all [Val.substSim]
 
-theorem portSub_mapVals (g : Val → Val) (P : Frame) (l : Nat) :
-    portSub (Frame.mapVals g P) l = (portSub P l).map g := by
+theorem Frame.lookup_mapVals (g : Val → Val) (P : Frame) (x : Var) :
+    (Frame.mapVals g P).lookup x = (P.lookup x).map g := by
   induction P with
   | nil => rfl
   | cons b P ih =>
-    obtain ⟨x, v⟩ := b
-    simp only [portSub, Frame.mapVals, List.map_cons, List.lookup_cons] at ih ⊢
+    obtain ⟨y, v⟩ := b
+    simp only [Frame.mapVals, List.map_cons, List.lookup_cons] at ih ⊢
     split <;> simp_all
+
+theorem portSub_mapVals (K : List Nat) (g : Val → Val) (P : Frame) (l : Nat) :
+    portSub K (Frame.mapVals g P) l = (portSub K P l).map g := by
+  simp only [portSub, Frame.lookup_mapVals]
+  cases K.idxOf? l <;> simp
 
 theorem Frame.mapVals_mapVals (g h : Val → Val) (F : Frame) :
     Frame.mapVals g (Frame.mapVals h F) = Frame.mapVals (g ∘ h) F := by
@@ -102,8 +114,8 @@ def app (s : St) (X : Env) : St := ⟨s.env ++ X, s.next⟩
 @[simp] theorem app_env (s : St) (X : Env) : (s.app X).env = s.env ++ X := rfl
 @[simp] theorem app_next (s : St) (X : Env) : (s.app X).next = s.next := rfl
 
-theorem frameMap_app (Ω₂ : Env) (c : St) (P : Frame) :
-    frameMap Ω₂ (c.app [P]) = c.app (Ω₂.substPorts P) := by
+theorem frameMap_app (K : List Nat) (Ω₂ : Env) (c : St) (P : Frame) :
+    frameMap K Ω₂ (c.app [P]) = c.app (Ω₂.substPorts K P) := by
   simp [frameMap, app]
 
 theorem lookup_app {s : St} (X : Env) (hs : s.env ≠ []) (x : Var) : (s.app X).lookup x = s.lookup x := by

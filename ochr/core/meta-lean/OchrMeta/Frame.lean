@@ -13,11 +13,11 @@ variable {Ω₂ : Env} {K : List Nat}
 
 /-- Full-side result `rf` is the port-side result `rp` seen through `frameMap`. -/
 def Sim (Ω₂ : Env) (K : List Nat) (len : Nat) (rf rp : Res) : Prop :=
-  rf = rp.map (frameMap Ω₂) ∧ PRes Ω₂ K len rp
+  rf = rp.map (frameMap K Ω₂) ∧ PRes Ω₂ K len rp
 
 theorem Sim.bind {len len' : Nat} {rf rp : Res} (h : Sim Ω₂ K len rf rp) {k : St → Val → Res}
     (hk : ∀ c' P' v, PInv Ω₂ K c' P' → c'.env.length = len → (∀ l ∈ v.names, Good Ω₂ K l) →
-      Sim Ω₂ K len' (k (c'.app (Ω₂.substPorts P')) v) (k (c'.app [P']) v)) :
+      Sim Ω₂ K len' (k (c'.app (Ω₂.substPorts K P')) v) (k (c'.app [P']) v)) :
     Sim Ω₂ K len' (rf.bind k) (rp.bind k) := by
   obtain ⟨h1, h2⟩ := h
   subst h1
@@ -29,12 +29,12 @@ theorem Sim.bind {len len' : Nat} {rf rp : Res} (h : Sim Ω₂ K len rf rp) {k :
   | _ => exact ⟨rfl, trivial⟩
 
 theorem Sim.ok {c : St} {P : Frame} (hc : PInv Ω₂ K c P) {v : Val} (hv : ∀ l ∈ v.names, Good Ω₂ K l) :
-    Sim Ω₂ K c.env.length (.ok (c.app (Ω₂.substPorts P)) v) (.ok (c.app [P]) v) :=
+    Sim Ω₂ K c.env.length (.ok (c.app (Ω₂.substPorts K P)) v) (.ok (c.app [P]) v) :=
   ⟨by simp [St.frameMap_app], c, P, rfl, hc, rfl, hv⟩
 
 theorem Sim.ok' {c : St} {P : Frame} (hc : PInv Ω₂ K c P) {len : Nat} (hl : c.env.length = len)
     {v : Val} (hv : ∀ l ∈ v.names, Good Ω₂ K l) :
-    Sim Ω₂ K len (.ok (c.app (Ω₂.substPorts P)) v) (.ok (c.app [P]) v) :=
+    Sim Ω₂ K len (.ok (c.app (Ω₂.substPorts K P)) v) (.ok (c.app [P]) v) :=
   hl ▸ Sim.ok hc hv
 
 theorem Sim.same {len : Nat} {r : Res} (h : ∀ s v, r ≠ .ok s v) : Sim Ω₂ K len r r := by
@@ -44,10 +44,10 @@ theorem Sim.same {len : Nat} {r : Res} (h : ∀ s v, r ≠ .ok s v) : Sim Ω₂ 
 
 /-- Option-valued state steps. -/
 theorem Sim.optBind {len : Nat} {c : St} {of op : Option St} {len' : Nat}
-    (h1 : of = op.map (frameMap Ω₂)) (h2 : PSt Ω₂ K len' c.next op) {k : St → Res} {kerr : Res}
+    (h1 : of = op.map (frameMap K Ω₂)) (h2 : PSt Ω₂ K len' c.next op) {k : St → Res} {kerr : Res}
     (hkerr : Sim Ω₂ K len kerr kerr)
     (hk : ∀ c' P', PInv Ω₂ K c' P' → c'.env.length = len' →
-      Sim Ω₂ K len (k (c'.app (Ω₂.substPorts P'))) (k (c'.app [P']))) :
+      Sim Ω₂ K len (k (c'.app (Ω₂.substPorts K P'))) (k (c'.app [P']))) :
     Sim Ω₂ K len (of.elim kerr k) (op.elim kerr k) := by
   subst h1
   cases op with
@@ -61,7 +61,7 @@ theorem Sim.err {len : Nat} : Sim Ω₂ K len .err .err := ⟨rfl, trivial⟩
 theorem Sim.stuck {len : Nat} : Sim Ω₂ K len .stuck .stuck := ⟨rfl, trivial⟩
 
 theorem access_sim (deep : Bool) (x : Var) (π : List Proj) {c : St} {P : Frame} (hc : PInv Ω₂ K c P) :
-    Sim Ω₂ K c.env.length (access deep x π (c.app (Ω₂.substPorts P))) (access deep x π (c.app [P])) :=
+    Sim Ω₂ K c.env.length (access deep x π (c.app (Ω₂.substPorts K P))) (access deep x π (c.app [P])) :=
   access_frame deep x π _ c P rfl hc
 
 theorem PInv.setPlace {c c' : St} {P : Frame} (hc : PInv Ω₂ K c P) {x : Var} {π : List Proj} {v : Val}
@@ -73,7 +73,7 @@ theorem PInv.setPlace {c c' : St} {P : Frame} (hc : PInv Ω₂ K c P) {x : Var} 
 /-- `setPlace` as a port-side `Option` step. -/
 theorem setPlace_sim {c : St} {P : Frame} (hc : PInv Ω₂ K c P) (x : Var) (π : List Proj) {v : Val}
     (hv : ∀ l ∈ v.names, Good Ω₂ K l) :
-    (c.app (Ω₂.substPorts P)).setPlace x π v = ((c.app [P]).setPlace x π v).map (frameMap Ω₂) ∧
+    (c.app (Ω₂.substPorts K P)).setPlace x π v = ((c.app [P]).setPlace x π v).map (frameMap K Ω₂) ∧
     PSt Ω₂ K c.env.length c.next ((c.app [P]).setPlace x π v) := by
   rw [St.setPlace_app _ hc.ne, St.setPlace_app _ hc.ne]
   cases h : c.setPlace x π v with
@@ -83,7 +83,7 @@ theorem setPlace_sim {c : St} {P : Frame} (hc : PInv Ω₂ K c P) (x : Var) (π 
     exact ⟨by simp [St.frameMap_app], c', P, rfl, hc', hl, hx ▸ Nat.le_refl _⟩
 
 theorem unbind_sim {c : St} {P : Frame} (hc : PInv Ω₂ K c P) (x : Var) :
-    (c.app (Ω₂.substPorts P)).unbind x = ((c.app [P]).unbind x).map (fun p => (p.1, frameMap Ω₂ p.2)) ∧
+    (c.app (Ω₂.substPorts K P)).unbind x = ((c.app [P]).unbind x).map (fun p => (p.1, frameMap K Ω₂ p.2)) ∧
     ∀ v s', (c.app [P]).unbind x = some (v, s') → ∃ c', s' = c'.app [P] ∧ PInv Ω₂ K c' P ∧
       c'.env.length = c.env.length ∧ c'.next = c.next ∧ ∀ l ∈ v.names, Good Ω₂ K l := by
   rw [St.unbind_app _ hc.ne, St.unbind_app _ hc.ne]
@@ -322,29 +322,50 @@ theorem Env.holds_sub_names {Ω : Env} {l : Nat} (h : Ω.holds l = true) : l ∈
   refine ⟨F, hF, b, hb, ?_⟩
   cases hv : b.2 <;> simp_all [Val.isBorrowOf, Val.names]
 
-theorem lookup_portList (L : List Nat) (l : Nat) :
-    List.lookup (Var.port l) (L.map fun m => (Var.port m, Val.loan m)) = if l ∈ L then some (.loan l) else none := by
-  induction L with
-  | nil => simp
-  | cons m L ih =>
-    simp only [List.map_cons, List.lookup_cons, List.mem_cons]
-    by_cases h : l = m
-    · subst h; simp
-    · have : (Var.port l == Var.port m) = false := by simp [h]
-      simp [this, ih, h]
+theorem lookup_portList (K : List Nat) :
+    ∀ (n i : Nat), (List.map (fun p : Nat × Nat => (Var.port p.2, Val.loan p.1)) (K.zipIdx n)).lookup
+      (Var.port (i + n)) = K[i]?.map Val.loan := by
+  induction K with
+  | nil => intro n i; simp
+  | cons k K ih =>
+    intro n i
+    simp only [List.zipIdx_cons, List.map_cons, List.lookup_cons]
+    cases i with
+    | zero => simp
+    | succ i =>
+      have hne : (Var.port (i + 1 + n) == Var.port n) = false := by simp
+      rw [hne]
+      simp only [Bool.false_eq_true, if_false, List.getElem?_cons_succ]
+      rw [show i + 1 + n = i + (n + 1) by omega]
+      exact ih (n + 1) i
 
 theorem portSub_portsOf (Ω : Env) (l : Nat) :
-    portSub (Env.portsOf Ω) l = if l ∈ Ω.borrows then some (.loan l) else none := by
-  simp only [portSub, Env.portsOf, lookup_portList, List.mem_eraseDups]
+    portSub Ω.portKeys (Env.portsOf Ω) l = if l ∈ Ω.borrows then some (.loan l) else none := by
+  simp only [portSub, Env.portsOf]
+  by_cases hl : l ∈ Ω.borrows
+  · rw [if_pos hl]
+    have hK : l ∈ Ω.portKeys := by simp [Env.portKeys, List.mem_eraseDups, hl]
+    obtain ⟨i, hi⟩ := Option.isSome_iff_exists.mp (List.isSome_idxOf?.mpr hK)
+    rw [hi]
+    obtain ⟨hlt, hget, _⟩ := List.idxOf?_eq_some_iff.mp hi
+    simp only [Option.bind_some]
+    have := lookup_portList Ω.portKeys 0 i
+    simp only [Nat.add_zero] at this
+    rw [this, List.getElem?_eq_getElem hlt, hget]; rfl
+  · rw [if_neg hl]
+    have hK : l ∉ Ω.portKeys := by simp [Env.portKeys, List.mem_eraseDups, hl]
+    rw [List.idxOf?_eq_none_iff.mpr hK]; rfl
 
 theorem portsOf_nb (Ω : Env) : Frame.nb (Env.portsOf Ω) = 0 := by
   simp only [Env.portsOf]
-  induction Ω.borrows.eraseDups with
-  | nil => rfl
-  | cons m L ih => simp [Frame.nb, Val.nb, ih]
+  generalize Ω.portKeys = K
+  suffices ∀ n, Frame.nb (List.map (fun p : Nat × Nat => (Var.port p.2, Val.loan p.1)) (K.zipIdx n)) = 0 from this 0
+  induction K with
+  | nil => intro n; rfl
+  | cons k K ih => intro n; simp [List.zipIdx_cons, Frame.nb, Val.nb, ih]
 
-theorem substPorts_portsOf (Ω₁ Ω₂ : Env) : Ω₂.substPorts (Env.portsOf Ω₁) = Ω₂ := by
-  have hid : ∀ v : Val, v.substSim (portSub (Env.portsOf Ω₁)) = v := by
+theorem substPorts_portsOf (Ω₁ Ω₂ : Env) : Ω₂.substPorts Ω₁.portKeys (Env.portsOf Ω₁) = Ω₂ := by
+  have hid : ∀ v : Val, v.substSim (portSub Ω₁.portKeys (Env.portsOf Ω₁)) = v := by
     apply Val.substSim_id
     intro l; rw [portSub_portsOf]; split <;> simp
   simp only [Env.substPorts, Env.mapVals]
@@ -363,13 +384,16 @@ theorem pinv_init {Ω₁ Ω₂ : Env} {next : Nat} (hne : Ω₁ ≠ [])
     (hheld : ∀ l ∈ Ω₁.names, Ω₂.holds l = false)
     (hshared : ∀ l ∈ Ω₁.loans, l ∈ Ω₂.loans → l ∈ Ω₁.borrows)
     (hfresh : ∀ l ∈ Ω₂.names, l < next) :
-    PInv Ω₂ Ω₁.borrows ⟨Ω₁, next⟩ (Env.portsOf Ω₁) where
+    PInv Ω₂ Ω₁.portKeys ⟨Ω₁, next⟩ (Env.portsOf Ω₁) where
   ne := hne
   pnb := portsOf_nb Ω₁
-  keys := by intro l hl; rw [portSub_portsOf]; simp [hl]
+  keys := by
+    intro l hl; rw [portSub_portsOf]
+    simp only [Env.portKeys, List.mem_eraseDups] at hl; simp [hl]
   good := by
     intro l hl
     refine ⟨hheld l hl, fun h2 => ?_⟩
+    simp only [Env.portKeys, List.mem_eraseDups]
     rcases Env.names_cases hl with h | h
     · exact hshared l h h2
     · exact h
@@ -392,7 +416,7 @@ theorem frame_local (Pr : Prog) (n : Nat) {Ω₁ Ω₂ : Env} {next : Nat} (t : 
     (hheld : ∀ l ∈ Ω₁.names, Ω₂.holds l = false)
     (hshared : ∀ l ∈ Ω₁.loans, l ∈ Ω₂.loans → l ∈ Ω₁.borrows)
     (hfresh : ∀ l ∈ Ω₂.names, l < next) :
-    exec Pr n ⟨Ω₁ ++ Ω₂, next⟩ t = (exec Pr n ⟨Ω₁ ++ [Env.portsOf Ω₁], next⟩ t).map (frameMap Ω₂) := by
+    exec Pr n ⟨Ω₁ ++ Ω₂, next⟩ t = (exec Pr n ⟨Ω₁ ++ [Env.portsOf Ω₁], next⟩ t).map (frameMap Ω₁.portKeys Ω₂) := by
   have h := (exec_frame Pr n ⟨Ω₁, next⟩ (Env.portsOf Ω₁) t (pinv_init hne hheld hshared hfresh)).1
   rw [substPorts_portsOf] at h
   exact h
@@ -404,7 +428,7 @@ theorem frame_local_eval (Pr : Prog) {Ω₁ Ω₂ : Env} {next : Nat} (t : Term)
     (hshared : ∀ l ∈ Ω₁.loans, l ∈ Ω₂.loans → l ∈ Ω₁.borrows)
     (hfresh : ∀ l ∈ Ω₂.names, l < next) :
     Eval Pr ⟨Ω₁ ++ Ω₂, next⟩ t r ↔
-      ∃ r₁, Eval Pr ⟨Ω₁ ++ [Env.portsOf Ω₁], next⟩ t r₁ ∧ r = r₁.map (frameMap Ω₂) := by
+      ∃ r₁, Eval Pr ⟨Ω₁ ++ [Env.portsOf Ω₁], next⟩ t r₁ ∧ r = r₁.map (frameMap Ω₁.portKeys Ω₂) := by
   constructor
   · rintro ⟨hr, n, hn⟩
     rw [frame_local Pr n t hne hheld hshared hfresh] at hn
@@ -451,7 +475,7 @@ theorem call_effect (Pr : Prog) (n : Nat) (cc : Bool) (f : String) {d : FunDef} 
     (hfresh : ∀ l ∈ s.env.names, l < s.next) :
     callWith (exec Pr n) cc f d ws s =
       match callRun Pr n d b ws s.next with
-      | .ok s' v => .ok (frameMap s.env s') v
+      | .ok s' v => .ok (frameMap (Env.portKeys [paramFrame d ws]) s.env s') v
       | .stuck => if cc then closeCall f d ws s else .stuck
       | .err => .err
       | .oof => .oof := by
