@@ -394,11 +394,25 @@ theorem termination_nonrec {P : Prog} (hord : Guard.Ordered P)
 every run from a well-formed state, concrete or symbolic, terminates (in a value, an error, or a
 stuck state).
 
-OPEN.  By `termination_of_recCalls` (proved) it reduces to termination of calls to recursive
-definitions; the guard's content is there: a simulation between the checker's run of the body
-from the generic call state (`Guard.gexec`) and the actual run of the body, under which each
-recursive call the actual run makes has a decreasing argument strictly smaller than the entry
-value (`Guard.guardArgs` + instantiation), so well-founded induction on the entry value applies. -/
+OPEN in general; proved without `sorry` for two sub-fragments:
+* `termination_nonrec` (this file): no recursive definition, any state;
+* `termination_bf` (GuardLemma1.lean): no borrows (no `&p` term, no `&T` parameter or result),
+  from a state with no borrow: the whole guard argument (simulation of the checker's branches by
+  the actual run, `sim_gexec`; strong induction on the actual entry value; call order).
+
+What the borrow case still needs, on top of that proof (whose structure carries over):
+1. the invariant: `exec_bf` (only the top frame changes) becomes Lemma 0 (W1–W4, `exec_wf`, itself
+   `sorry` in WF.lean), strengthened to hold at every call site, where `call_effect` (T2b,
+   Frame.lean) reduces a call to `callRun` from exactly the state the checker starts from;
+2. the approximation `VR` gains a loan-name correspondence `ρ` (symbolic `borrow ℓ`/`loan ℓ` stand
+   for actual `borrow ρℓ`/`loan ρℓ`), extended at each borrow creation: once an actual recursive
+   call has run, the two machines' fresh-name counters diverge;
+3. wildcards that carry loans: a call closed off at a borrow result leaves `loan_k` inside sealed
+   fills whose actual counterparts may not contain it (Tests/Basic.lean `t5_nose_counterexample`),
+   so [Access] can end a borrow symbolically that stays live in the actual run; the relation must
+   allow a symbolic `⊥` against a live actual borrow whose later [End] only writes into wildcard
+   positions.
+The measure (the entry content, through the borrow) and the rest of the argument are unchanged. -/
 theorem termination {P : Prog} (hP : Guard.WellGuarded P) {s : St} (hs : WF s) (t : Term) :
     ∃ n, exec P n s t ≠ .oof := by
   sorry

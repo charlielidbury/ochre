@@ -1,4 +1,4 @@
-import OchrMeta.Guard
+import OchrMeta.GuardLemma1
 import OchrMeta.Examples
 
 /-! # Regression tests of the [Rec] guard check (meta-model-v1 §3.4 `guard_rejects`, C3)
@@ -246,5 +246,47 @@ def pairT : FunDef where
 #guard verdict [("PairT", pairT)] "PairT" == .accept
 #guard (branches [("PairT", pairT)] "PairT").map (·.2) ==
   [.pair .zero .zero, .pair (.succ (.abs 1)) .zero]
+
+/-! ## Lemma 1, instantiated (borrow-free fragment)
+
+`termination_bf` applied to a concrete program: the checker's verdict is evaluated by the kernel
+(`decide +kernel`), so this is a proof, not a test run, that every run of `Dbl(a)` and `HalfV(a)`
+terminates, for every `a`.  The same evaluation refutes well-guardedness of `Re`, which diverges
+(above). -/
+
+/-- `HalfV(n : Nat) : Nat by n := match n { Z ⇒ Z | S m ⇒ match m { Z ⇒ Z | S q ⇒ S (HalfV(q)) } }` -/
+def halfV : FunDef where
+  params := [("n", .nat)]
+  ret := .nat
+  recPos := some 0
+  body := some (.mtch (V "n") .zero "m" (.mtch (V "m") .zero "q" (.succ (cl "HalfV" [rd (V "q")]))))
+
+def PV : Prog := [("Dbl", dbl), ("HalfV", halfV)]
+
+theorem PV_wellGuarded : WellGuarded PV := wellGuardedB_sound (fuel := 20) (by decide +kernel)
+
+theorem PV_bf : PV.BF := by
+  intro f d h
+  simp only [PV, Prog.find, List.lookup] at h
+  split at h
+  · cases h
+    exact ⟨by simp [dbl, Ty.isRef], by simp [dbl, Ty.isRef], by intro b hb; simp [dbl] at hb; subst hb; decide⟩
+  · split at h
+    · cases h
+      exact ⟨by simp [halfV, Ty.isRef], by simp [halfV, Ty.isRef], by intro b hb; simp [halfV] at hb; subst hb; decide⟩
+    · simp at h
+
+theorem num_noBorrow : ∀ a : Nat, (num a).noBorrow = true
+  | 0 => rfl
+  | a + 1 => by simp [num, Term.noBorrow, num_noBorrow a]
+
+example (a : Nat) : ∃ n, exec PV n ⟨[[]], 0⟩ (cl "HalfV" [cl "Dbl" [num a]]) ≠ .oof :=
+  termination_bf PV_wellGuarded PV_bf _ (by simp [cl, Term.noBorrow, Term.noBorrowList, num_noBorrow]) rfl
+
+example : wellGuardedB [("Re", re)] 20 = false := by decide +kernel
+example : wellGuardedB [("Loop", loop)] 20 = false := by decide +kernel
+
+#guard (List.range 6).all fun a =>
+  ((value (goIn PV 1000 [] (cl "HalfV" [cl "Dbl" [num a]]))).bind Val.toNat?) == some a
 
 end OchrMeta.Tests.GuardT
