@@ -130,3 +130,6 @@ D30 compares functions by their generic-call observation; for a function returni
 
 ## D39. [Seal]'s head guard covers neutral-headed calls (X5)
 RULES said both "a neutral-headed call closes off at once" and "[Seal]'s head call is not eligible for [Close]"; the checker applied the former at the head, re-creating D9's loop for a neutral head with an `&T` codomain (stack overflow). The guard wins: a sealed program whose head is a neutral-headed call stays as it is.
+
+## D40. A stuck block is erased exactly when each of its arms is (lean-checker P2)
+v1.7 said a block is erased when its match would be; a match's type inferred from its arms is *computed*, so a block whose arms call a data-class function returning `V(Z)` (declared type `U(Z)`, computing to `⊤ : Prop`) was erased at the generic call but its match ran directly at the instance (`BoomG : Eq Nat (S Z) Z`). Erasing a block only when every arm is itself erased keeps the decision syntactic; a non-erased block is always safe because its sealed programs re-run the arms, which make their own decisions. An annotation of declared sort Prop erases the whole annotated term on both paths.
