@@ -1,5 +1,6 @@
 import OchrMeta.Rename
 import OchrMeta.Interp
+import OchrMeta.Mono
 
 /-! # The [Close] equations: sealed programs are the call's backward functions
 
@@ -578,5 +579,493 @@ theorem callRun_seal_canon (Pr : Prog) (n : Nat) (d : FunDef) (b : Term) {ws as 
   rw [e1, e2, hws, sealWsL_rename _ _ _ has, sealWs_eq, sealWsL_rename _ _ _ has, ← hk,
     relabel_map_src hnd, relabel_map_src List.nodup_range']
   simp [hkk]
+
+end OchrMeta
+
+/-! ## Part E: the tails of the sealed programs -/
+
+namespace OchrMeta
+
+theorem Val.toList_ofList : ∀ as : List Val, (Val.ofList as).toList = as := by
+  intro as; induction as <;> simp_all [Val.ofList, Val.toList]
+
+theorem argFrameAfter_vals : ∀ (i c : Nat) (tys : List Ty) (as : List Val),
+    ∀ b ∈ argFrameAfter i c tys as, (∃ l, c ≤ l ∧ l < c + nRefs tys ∧ b.2 = .loan l) ∨ b.2 ∈ as := by
+  intro i c tys
+  induction tys generalizing i c with
+  | nil => intro as b hb; simp [argFrameAfter] at hb
+  | cons ty tys ih =>
+    intro as b hb
+    cases as with
+    | nil => cases ty <;> simp [argFrameAfter] at hb
+    | cons a as =>
+      cases ty with
+      | ref T =>
+        simp only [argFrameAfter, List.mem_cons] at hb
+        rcases hb with rfl | hb
+        · left; exact ⟨c, Nat.le_refl _, by simp [nRefs], rfl⟩
+        · rcases ih _ _ as b hb with ⟨l, h1, h2, h3⟩ | h
+          · left; exact ⟨l, by omega, by simp [nRefs]; omega, h3⟩
+          · right; exact List.mem_cons_of_mem _ h
+      | _ =>
+        simp only [argFrameAfter, List.mem_cons] at hb
+        rcases hb with rfl | hb
+        · right; simp
+        · rcases ih _ _ as b hb with ⟨l, h1, h2, h3⟩ | h
+          · left; exact ⟨l, h1, by simpa [nRefs] using h2, h3⟩
+          · right; exact List.mem_cons_of_mem _ h
+
+/-- T2b inside the sealed program: its head call, after the arguments, is the isolated run of
+the call on fresh borrows `N₀, N₀+1, …`, plugged back into the cells. -/
+theorem seal_call_effect (Pr : Prog) (k : Nat) (f : String) {d : FunDef} {b : Term} (hb : d.body = some b)
+    (as : List Val) (w : Val) (N₀ : Nat) (hlen : d.params.length = as.length)
+    (has : ∀ a ∈ as, a.loans = [] ∧ a ≠ .moved ∧ a.nb = 0) (hw : ∀ l ∈ w.names, l < N₀) (hwnb : w.nb = 0) :
+    callWith (exec Pr k) false f d (sealWs N₀ (d.params.map Prod.snd) as)
+        ⟨[argFrameAfter 0 N₀ (d.params.map Prod.snd) as ++ [(.hole, w)]], N₀ + nRefs (d.params.map Prod.snd)⟩ =
+      match callRun Pr k d b (sealWs N₀ (d.params.map Prod.snd) as) (N₀ + nRefs (d.params.map Prod.snd)) with
+      | .ok s' v => .ok (frameMap (Env.portKeys [paramFrame d (sealWs N₀ (d.params.map Prod.snd) as)])
+          [argFrameAfter 0 N₀ (d.params.map Prod.snd) as ++ [(.hole, w)]] s') v
+      | .stuck => .stuck
+      | .err => .err
+      | .oof => .oof := by
+  have htys : (d.params.map Prod.snd).length = as.length := by simp [hlen]
+  have hasn : ∀ a ∈ as, a.names = [] := fun a h => Val.names_nil (has a h).1 (has a h).2.2
+  -- the cells' frame holds no borrow
+  have hnb : ∀ b ∈ argFrameAfter 0 N₀ (d.params.map Prod.snd) as ++ [(.hole, w)], b.2.nb = 0 := by
+    intro b hb
+    rcases List.mem_append.mp hb with hb | hb
+    · rcases argFrameAfter_vals _ _ _ _ b hb with ⟨l, _, _, h⟩ | h
+      · rw [h]; rfl
+      · exact (has _ h).2.2
+    · simp at hb; rw [hb]; exact hwnb
+  have hnh : ∀ l, Env.holds l [argFrameAfter 0 N₀ (d.params.map Prod.snd) as ++ [(.hole, w)]] = false := by
+    intro l
+    simp only [Env.holds, List.any_cons, List.any_nil, Bool.or_false, Frame.holds, List.any_eq_false]
+    intro b hb h
+    rw [Val.not_isBorrowOf_of_nb (hnb b hb)] at h
+    cases h
+  have hws : ∀ v ∈ sealWs N₀ (d.params.map Prod.snd) as, v.loans = [] := by
+    rw [sealWs_eq]
+    generalize List.range' N₀ (nRefs (d.params.map Prod.snd)) = ns
+    clear hlen htys hasn hnb hnh
+    induction (d.params.map Prod.snd) generalizing ns as with
+    | nil => intro v hv; cases ns <;> cases as <;> simp [sealWsL] at hv
+    | cons ty tys ih =>
+      intro v hv
+      cases as with
+      | nil => cases ns <;> cases ty <;> simp [sealWsL] at hv
+      | cons a as =>
+        have ha := has a (by simp)
+        have has' := fun b hb => has b (List.mem_cons_of_mem a hb)
+        cases ty with
+        | ref T =>
+          cases ns with
+          | nil => simp [sealWsL] at hv
+          | cons l ns =>
+            simp only [sealWsL, List.mem_cons] at hv
+            rcases hv with rfl | hv
+            · simp [Val.loans, ha.1]
+            · exact ih as has' ns v hv
+        | _ =>
+          simp only [sealWsL, List.mem_cons] at hv
+          rcases hv with rfl | hv
+          · exact ha.1
+          · exact ih as has' ns v hv
+  have hce := call_effect Pr k false f hb (ws := sealWs N₀ (d.params.map Prod.snd) as)
+    (by rw [sealWs_length _ _ _ htys]; simp)
+    ⟨[argFrameAfter 0 N₀ (d.params.map Prod.snd) as ++ [(.hole, w)]], N₀ + nRefs (d.params.map Prod.snd)⟩
+    (fun _ _ l _ => hnh l)
+    (fun v hv l hl => by rw [hws v hv] at hl; cases hl)
+    (by
+      intro l hl
+      show l < N₀ + nRefs (d.params.map Prod.snd)
+      rw [Env.mem_names] at hl
+      obtain ⟨F, hF, b, hb, hlb⟩ := hl
+      simp at hF; subst hF
+      rcases List.mem_append.mp hb with hb | hb
+      · rcases argFrameAfter_vals _ _ _ _ b hb with ⟨l', _, h2, h⟩ | h
+        · rw [h] at hlb; simp [Val.names] at hlb; omega
+        · rw [hasn _ h] at hlb; cases hlb
+      · simp at hb; rw [hb] at hlb; have := hw l hlb; omega)
+  rw [hce]
+  cases callRun Pr k d b (sealWs N₀ (d.params.map Prod.snd) as) (N₀ + nRefs (d.params.map Prod.snd)) <;> rfl
+
+end OchrMeta
+
+namespace OchrMeta
+
+/-- Unfolding `sealArgs` one parameter at a time. -/
+theorem sealArgs_cons_ref {i : Nat} {y : Var} {T : Ty} {ps : List (Var × Ty)} {w : Val} {ws as : List Val}
+    {ls : List (Nat × Nat)} (h : sealArgs i ((y, .ref T) :: ps) (w :: ws) = some (as, ls)) :
+    ∃ l u as' ls', w = .borrow l u ∧ sealArgs (i + 1) ps ws = some (as', ls') ∧ as = u :: as' ∧ ls = (i, l) :: ls' := by
+  cases w with
+  | borrow l u =>
+    simp only [sealArgs] at h
+    cases hr : sealArgs (i + 1) ps ws with
+    | none => rw [hr] at h; cases h
+    | some q =>
+      obtain ⟨as', ls'⟩ := q
+      rw [hr] at h; simp at h; obtain ⟨rfl, rfl⟩ := h
+      exact ⟨l, u, as', ls', rfl, rfl, rfl, rfl⟩
+  | _ => simp [sealArgs] at h
+
+theorem sealArgs_cons_val {i : Nat} {y : Var} {ty : Ty} (hty : ∀ T, ty ≠ .ref T) {ps : List (Var × Ty)} {w : Val}
+    {ws as : List Val} {ls : List (Nat × Nat)} (h : sealArgs i ((y, ty) :: ps) (w :: ws) = some (as, ls)) :
+    ∃ as', sealArgs (i + 1) ps ws = some (as', ls) ∧ as = w :: as' := by
+  cases ty with
+  | ref T => exact absurd rfl (hty T)
+  | _ =>
+    simp only [sealArgs] at h
+    cases hr : sealArgs (i + 1) ps ws with
+    | none => rw [hr] at h; cases h
+    | some q =>
+      obtain ⟨as', ls'⟩ := q
+      rw [hr] at h; simp at h; obtain ⟨rfl, rfl⟩ := h
+      exact ⟨as', rfl, rfl⟩
+
+theorem sealArgs_pos : ∀ (i₀ : Nat) (ps : List (Var × Ty)) (ws as : List Val) (ls : List (Nat × Nat)),
+    sealArgs i₀ ps ws = some (as, ls) → ∀ q ∈ ls, i₀ ≤ q.1 := by
+  intro i₀ ps
+  induction ps generalizing i₀ with
+  | nil => intro ws as ls h; cases ws <;> simp [sealArgs] at h; obtain ⟨_, rfl⟩ := h; simp
+  | cons p ps ih =>
+    intro ws as ls h q hq
+    obtain ⟨y, ty⟩ := p
+    cases ws with
+    | nil => cases ty <;> simp [sealArgs] at h
+    | cons w ws =>
+      by_cases hty : ∃ T, ty = .ref T
+      · obtain ⟨T, rfl⟩ := hty
+        obtain ⟨l, u, as', ls', rfl, hr, rfl, rfl⟩ := sealArgs_cons_ref h
+        rcases List.mem_cons.mp hq with rfl | hq
+        · simp
+        · have := ih (i₀ + 1) ws as' ls' hr q hq; omega
+      · have hty' : ∀ T, ty ≠ .ref T := fun T h => hty ⟨T, h⟩
+        obtain ⟨as', hr, rfl⟩ := sealArgs_cons_val hty' h
+        have := ih (i₀ + 1) ws as' ls hr q hq; omega
+
+theorem sealArgs_cell : ∀ (i₀ : Nat) (ps : List (Var × Ty)) (ws as : List Val) (ls : List (Nat × Nat)) (c : Nat),
+    sealArgs i₀ ps ws = some (as, ls) → ∀ (j i ℓ : Nat), ls[j]? = some (i, ℓ) →
+      (argFrameAfter i₀ c (ps.map Prod.snd) as).lookup (Var.arg i) = some (.loan (c + j)) := by
+  intro i₀ ps
+  induction ps generalizing i₀ with
+  | nil =>
+    intro ws as ls c h
+    cases ws with
+    | nil => simp [sealArgs] at h; obtain ⟨rfl, rfl⟩ := h; simp
+    | cons w ws => simp [sealArgs] at h
+  | cons p ps ih =>
+    intro ws as ls c h j i ℓ hj
+    obtain ⟨y, ty⟩ := p
+    cases ws with
+    | nil => cases ty <;> simp [sealArgs] at h
+    | cons w ws =>
+      by_cases hty : ∃ T, ty = .ref T
+      · obtain ⟨T, rfl⟩ := hty
+        obtain ⟨l, u, as', ls', rfl, hr, rfl, rfl⟩ := sealArgs_cons_ref h
+        cases j with
+        | zero =>
+          simp at hj; obtain ⟨rfl, rfl⟩ := hj
+          simp [argFrameAfter]
+        | succ j =>
+          simp at hj
+          have hlt : i₀ < i := by
+            have := sealArgs_pos (i₀ + 1) ps ws as' ls' hr (i, ℓ) (List.mem_of_getElem? hj)
+            simp at this; omega
+          have : (Var.arg i == Var.arg i₀) = false := by simp; omega
+          simp only [List.map_cons, argFrameAfter, List.lookup_cons, this, Bool.false_eq_true, if_false]
+          rw [ih (i₀ + 1) ws as' ls' (c + 1) hr j i ℓ hj]
+          congr 2; omega
+      · have hty' : ∀ T, ty ≠ .ref T := fun T h => hty ⟨T, h⟩
+        obtain ⟨as', hr, rfl⟩ := sealArgs_cons_val hty' h
+        have hlt : i₀ < i := by
+          have := sealArgs_pos (i₀ + 1) ps ws as' ls hr (i, ℓ) (List.mem_of_getElem? hj)
+          simp at this; omega
+        have : (Var.arg i == Var.arg i₀) = false := by simp; omega
+        have hA : argFrameAfter i₀ c (ty :: ps.map Prod.snd) (w :: as') =
+            (Var.arg i₀, w) :: argFrameAfter (i₀ + 1) c (ps.map Prod.snd) as' := by
+          cases ty with
+          | ref T => exact absurd rfl (hty' T)
+          | _ => rfl
+        simp only [List.map_cons]
+        rw [hA]
+        simp only [List.lookup_cons, this, Bool.false_eq_true, if_false]
+        exact ih (i₀ + 1) ws as' ls c hr j i ℓ hj
+
+end OchrMeta
+
+namespace OchrMeta
+
+theorem Frame.borrows_zip : ∀ (xs : List Var) (vs : List Val), vs.length ≤ xs.length →
+    Frame.borrows (xs.zip vs) = vs.flatMap Val.borrows := by
+  intro xs
+  induction xs with
+  | nil => intro vs h; cases vs <;> simp_all [Frame.borrows]
+  | cons x xs ih =>
+    intro vs h
+    cases vs with
+    | nil => simp [Frame.borrows]
+    | cons v vs => simp [Frame.borrows, ih vs (by simp at h; omega)]
+
+theorem sealWsL_borrows : ∀ (ns : List Nat) (tys : List Ty) (as : List Val),
+    (∀ a ∈ as, a.names = []) → ns.length = nRefs tys → tys.length = as.length →
+    (sealWsL ns tys as).flatMap Val.borrows = ns := by
+  intro ns tys
+  induction tys generalizing ns with
+  | nil => intro as _ hn hl; cases as <;> cases ns <;> simp_all [sealWsL, nRefs]
+  | cons ty tys ih =>
+    intro as has hn hl
+    cases as with
+    | nil => simp at hl
+    | cons a as =>
+      have ha : a.borrows = [] := by
+        have := has a (by simp)
+        cases hb : a.borrows with
+        | nil => rfl
+        | cons x xs =>
+          have hx : x ∈ a.names := by
+            have : x ∈ a.borrows := by rw [hb]; simp
+            clear hb
+            induction a <;> simp_all [Val.borrows, Val.names] <;> grind
+          rw [this] at hx; cases hx
+      have has' := fun b hb => has b (List.mem_cons_of_mem a hb)
+      simp only [List.length_cons, Nat.add_right_cancel_iff] at hl
+      cases ty with
+      | ref T =>
+        cases ns with
+        | nil => simp [nRefs] at hn
+        | cons l ns =>
+          simp only [nRefs, List.length_cons, Nat.add_right_cancel_iff] at hn
+          simp [sealWsL, Val.borrows, ha, ih ns as has' hn hl]
+      | _ =>
+        simp only [nRefs] at hn
+        simp [sealWsL, ha, ih ns as has' hn hl]
+
+theorem sealWsL_length : ∀ (ns : List Nat) (tys : List Ty) (as : List Val),
+    ns.length = nRefs tys → tys.length = as.length → (sealWsL ns tys as).length = tys.length := by
+  intro ns tys
+  induction tys generalizing ns with
+  | nil => intro as hn hl; cases as <;> cases ns <;> simp_all [sealWsL]
+  | cons ty tys ih =>
+    intro as hn hl
+    cases as with
+    | nil => simp at hl
+    | cons a as =>
+      simp only [List.length_cons, Nat.add_right_cancel_iff] at hl
+      cases ty with
+      | ref T =>
+        cases ns with
+        | nil => simp [nRefs] at hn
+        | cons l ns =>
+          simp only [nRefs, List.length_cons, Nat.add_right_cancel_iff] at hn
+          simp [sealWsL, ih ns as hn hl]
+      | _ =>
+        simp only [nRefs] at hn
+        simp [sealWsL, ih ns as hn hl]
+
+/-- The port keys of the generic environment of a call on arguments with borrow names `ns`. -/
+theorem portKeys_sealWsL (d : FunDef) (ns : List Nat) (as : List Val) (has : ∀ a ∈ as, a.names = [])
+    (hn : ns.length = nRefs (d.params.map Prod.snd)) (hl : d.params.length = as.length) :
+    Env.portKeys [paramFrame d (sealWsL ns (d.params.map Prod.snd) as)] = ns := by
+  have hl' : (d.params.map Prod.snd).length = as.length := by simp [hl]
+  simp only [Env.portKeys, Env.borrows, paramFrame, List.append_nil]
+  rw [Frame.borrows_zip _ _ (by rw [sealWsL_length ns _ as hn hl']; simp), sealWsL_borrows ns _ as has hn hl']
+
+end OchrMeta
+
+namespace OchrMeta
+
+theorem sealWs_eq_L (N₀ : Nat) (d : FunDef) (as : List Val) :
+    sealWs N₀ (d.params.map Prod.snd) as = sealWsL (List.range' N₀ (nRefs (d.params.map Prod.snd))) (d.params.map Prod.snd) as :=
+  sealWs_eq _ _ _
+
+theorem Val.loans_nil_of_names {v : Val} (h : v.names = []) : v.loans = [] := by
+  cases hl : v.loans with
+  | nil => rfl
+  | cons x xs =>
+    have : x ∈ v.names := Val.loans_sub_names (by rw [hl]; simp)
+    rw [h] at this; cases this
+
+theorem Val.nb_of_names_nil {v : Val} (h : v.names = []) : v.nb = 0 := by
+  induction v <;> simp_all [Val.names, Val.nb]
+
+/-- The cells after the call: each borrowed cell holds the final content of its port. -/
+theorem cell_after_call {F : Frame} {i N₀ j k : Nat} {P' : Frame} {φ : Val}
+    (hF : F.lookup (Var.arg i) = some (.loan (N₀ + j))) (hj : j < k)
+    (hφ : P'.lookup (.port j) = some φ) :
+    (F.mapVals (Val.substSim (portSub (List.range' N₀ k) P'))).lookup (Var.arg i) = some φ := by
+  rw [Frame.lookup_mapVals, hF]
+  simp only [Option.map_some, Val.substSim, portSub]
+  have : (List.range' N₀ k).idxOf? (N₀ + j) = some j := by
+    rw [List.idxOf?_eq_some_iff]
+    refine ⟨by simp; omega, by simp, fun j' hj' heq => ?_⟩
+    simp at heq; omega
+  rw [this]
+  simp [hφ]
+
+theorem lookup_append_of_some {A B : Frame} {x : Var} {v : Val} (h : A.lookup x = some v) :
+    (A ++ B).lookup x = some v := by
+  induction A with
+  | nil => simp at h
+  | cons b A ih =>
+    obtain ⟨y, w⟩ := b
+    simp only [List.cons_append, List.lookup_cons] at h ⊢
+    split at h
+    · simp_all
+    · simp_all
+
+/-- **The [Close] equation for the fill of a borrowed place** (row `fin i`), on the sealed
+program's side: once its head call has completed with a name-free result, the sealed program
+`⌈L; C; cᵢ⌉` normalises to the final content of the `j`-th borrowed cell. -/
+theorem sealRun_fin (Pr : Prog) (m : Nat) {f : String} {d : FunDef} {b : Term}
+    (hf : Pr.find f = some d) (hb : d.body = some b) (hnp : d.ret ≠ .prop)
+    {ws as : List Val} {ls : List (Nat × Nat)} (hsa : sealArgs 0 d.params ws = some (as, ls))
+    (has : ∀ a ∈ as, a.loans = [] ∧ a ≠ .moved ∧ a.nb = 0)
+    {j i ℓ : Nat} (hj : ls[j]? = some (i, ℓ)) {s' : St} {v' : Val} {P' : Frame} {φ : Val}
+    (hrun : callRun Pr (m + 1) d b
+      (sealWs (Val.pair (Val.ofList as) .unit).freshAbove (d.params.map Prod.snd) as)
+      ((Val.pair (Val.ofList as) .unit).freshAbove + nRefs (d.params.map Prod.snd)) = .ok s' v')
+    (hs' : s'.env = [P']) (hv' : v'.names = []) (hφ : P'.lookup (.port j) = some φ)
+    (hφn : φ.names = []) (hφm : φ ≠ .moved) :
+    ∃ s'', sealRun Pr (m + 3) f (Val.ofList as) (.fin i) .unit = .ok s'' φ := by
+  generalize hN₀ : (Val.pair (Val.ofList as) .unit).freshAbove = N₀ at hrun
+  obtain ⟨hk, hlen⟩ := sealArgs_ls_length 0 d.params ws as ls hsa
+  have hasn : ∀ a ∈ as, a.names = [] := fun a h => Val.names_nil (has a h).1 (has a h).2.2
+  have hjk : j < nRefs (d.params.map Prod.snd) := by
+    rw [← hk]; exact (List.getElem?_eq_some_iff.mp hj).1
+  unfold sealRun
+  rw [hf]
+  simp only [sealFrame, Val.toList_ofList, sealTerm, hN₀]
+  rw [exec]
+  rw [exec_sealHead Pr m hf hnp as .unit N₀ hlen.symm has, seal_call_effect Pr (m + 1) f hb as .unit N₀ hlen.symm has
+    (by simp [Val.names]) rfl, hrun]
+  simp only
+  -- the head call's value is dropped
+  have hdrop : ∀ s, dropVal .unit v' s = some s := by
+    intro s
+    have hl : v'.loans = [] := by
+      cases h : v'.loans with
+      | nil => rfl
+      | cons x xs => have : x ∈ v'.names := Val.loans_sub_names (by rw [h]; simp)
+                     rw [hv'] at this; cases this
+    have hnb : ¬ ∃ l w, v' = .borrow l w := by
+      rintro ⟨l, w, rfl⟩; simp [Val.names] at hv'
+    cases v' with
+    | borrow l w => exact absurd ⟨l, w, rfl⟩ hnb
+    | _ => simp [dropVal, hasLive, Val.firstLive_noloans hl]
+  rw [Res.bind_ok, hdrop]
+  -- the final read of the cell
+  have hK : Env.portKeys [paramFrame d (sealWs N₀ (d.params.map Prod.snd) as)] =
+      List.range' N₀ (nRefs (d.params.map Prod.snd)) := by
+    rw [sealWs_eq_L]; exact portKeys_sealWsL d _ as hasn (by simp) hlen.symm
+  have hfm : frameMap (Env.portKeys [paramFrame d (sealWs N₀ (d.params.map Prod.snd) as)])
+      [argFrameAfter 0 N₀ (d.params.map Prod.snd) as ++ [(Var.hole, Val.unit)]] s' =
+      ⟨[(argFrameAfter 0 N₀ (d.params.map Prod.snd) as ++ [(Var.hole, Val.unit)]).mapVals
+        (Val.substSim (portSub (List.range' N₀ (nRefs (d.params.map Prod.snd))) P'))], s'.next⟩ := by
+    simp [frameMap, hs', hK, Env.substPorts, Env.mapVals]
+  rw [hfm]
+  have hcell := sealArgs_cell 0 d.params ws as ls N₀ hsa j i ℓ hj
+  have hlk := cell_after_call (lookup_append_of_some (B := [(.hole, .unit)]) hcell) hjk hφ
+  have hφl : φ.loans = [] := Val.loans_nil_of_names hφn
+  have hφb : φ.nb = 0 := Val.nb_of_names_nil hφn
+  exact ⟨_, exec_read_cell Pr (m + 1) hlk hφl hφm hφb⟩
+
+end OchrMeta
+
+namespace OchrMeta
+
+theorem Val.names_rename (ρ : Nat → Nat) (v : Val) : (v.rename ρ).names = v.names.map ρ := by
+  induction v <;> simp_all [Val.rename, Val.names]
+
+theorem Val.names_nil_of_rename {ρ : Nat → Nat} {v : Val} {u : Val} (h : v.rename ρ = u) (hu : u.names = []) :
+    v.names = [] := by
+  have := Val.names_rename ρ v
+  rw [h, hu] at this
+  exact List.map_eq_nil_iff.mp this.symm
+
+/-- More fuel does not change a terminated isolated call run. -/
+theorem callRun_mono (Pr : Prog) {n m : Nat} (h : n ≤ m) {d : FunDef} {b : Term} {ws : List Val} {N : Nat}
+    (hr : callRun Pr n d b ws N ≠ .oof) : callRun Pr m d b ws N = callRun Pr n d b ws N := by
+  unfold callRun at hr ⊢
+  have he : exec Pr n ⟨[paramFrame d ws, Env.portsOf [paramFrame d ws]], N⟩ b ≠ .oof := by
+    intro h'; rw [h'] at hr; exact hr rfl
+  rw [exec_mono_le Pr h he]
+
+/-- From the canonical bridge: a completed original call gives a completed sealed call, related
+by renaming. -/
+theorem callRun_seal_ok (Pr : Prog) (n : Nat) (d : FunDef) (b : Term) {ws as : List Val}
+    {ls : List (Nat × Nat)} (hsa : sealArgs 0 d.params ws = some (as, ls)) (has : ∀ a ∈ as, a.names = [])
+    (hnd : (ls.map Prod.snd).Nodup) {N : Nat} (hN : ∀ l ∈ ls.map Prod.snd, l < N) (N₀ : Nat)
+    {s : St} {v : Val} (hrun : callRun Pr n d b ws N = .ok s v) :
+    ∃ ρ₁ ρ₂ : Nat → Nat, ∃ s' v', callRun Pr n d b (sealWs N₀ (d.params.map Prod.snd) as) (N₀ + ls.length) = .ok s' v' ∧
+      s'.env.rename ρ₂ = s.env.rename ρ₁ ∧ v'.rename ρ₂ = v.rename ρ₁ := by
+  have h := callRun_seal_canon Pr n d b hsa has hnd hN N₀
+  rw [hrun] at h
+  simp only [Res.rename_ok] at h
+  revert h
+  cases callRun Pr n d b (sealWs N₀ (d.params.map Prod.snd) as) (N₀ + ls.length) with
+  | ok s' v' =>
+    intro h
+    simp only [Res.rename_ok, Res.ok.injEq] at h
+    exact ⟨_, _, s', v', rfl, (congrArg St.env h.1).symm, h.2.symm⟩
+  | stuck => intro h; cases h
+  | err => intro h; cases h
+  | oof => intro h; cases h
+
+end OchrMeta
+
+namespace OchrMeta
+
+/-- A single-frame environment renamed. -/
+theorem env_single_of_rename {ρ₁ ρ₂ : Nat → Nat} {E : Env} {P : Frame} (h : E.rename ρ₂ = Env.rename ρ₁ [P]) :
+    ∃ P', E = [P'] ∧ P'.mapVals (Val.rename ρ₂) = P.mapVals (Val.rename ρ₁) := by
+  cases E with
+  | nil => simp [Env.rename, Env.mapVals] at h
+  | cons F E =>
+    cases E with
+    | nil =>
+      simp only [Env.rename, Env.mapVals, List.map_cons, List.map_nil, List.cons.injEq, and_true] at h
+      exact ⟨F, rfl, h⟩
+    | cons G E => simp [Env.rename, Env.mapVals] at h
+
+theorem port_of_rename {ρ₁ ρ₂ : Nat → Nat} {P P' : Frame} (h : P'.mapVals (Val.rename ρ₂) = P.mapVals (Val.rename ρ₁))
+    {x : Var} {φ : Val} (hφ : P.lookup x = some φ) (hφn : φ.names = []) : P'.lookup x = some φ := by
+  have h1 := congrArg (fun F : Frame => F.lookup x) h
+  simp only [Frame.lookup_mapVals, hφ, Option.map_some] at h1
+  rw [Val.rename_of_names_nil hφn] at h1
+  cases hp : P'.lookup x with
+  | none => rw [hp] at h1; cases h1
+  | some φ' =>
+    rw [hp] at h1
+    simp only [Option.map_some, Option.some.injEq] at h1
+    have hn := Val.names_nil_of_rename h1 hφn
+    rw [Val.rename_of_names_nil hn] at h1
+    rw [h1]
+
+/-- **[Close] equation, row `fin i`** (the fill of a borrowed place, `⌈L; C; cᵢ⌉`).  If the call's
+isolated run completes with a name-free result and the `j`-th borrowed place's final content is
+`φ`, then the sealed program [Close] writes into that place normalises (by [Seal]) to `φ`. -/
+theorem close_fin (Pr : Prog) {n : Nat} {f : String} {d : FunDef} {b : Term}
+    (hf : Pr.find f = some d) (hb : d.body = some b) (hnp : d.ret ≠ .prop)
+    {ws as : List Val} {ls : List (Nat × Nat)} (hsa : sealArgs 0 d.params ws = some (as, ls))
+    (has : ∀ a ∈ as, a.loans = [] ∧ a ≠ .moved ∧ a.nb = 0)
+    (hnd : (ls.map Prod.snd).Nodup) {N : Nat} (hN : ∀ l ∈ ls.map Prod.snd, l < N)
+    {s : St} {v : Val} {P : Frame} (hrun : callRun Pr n d b ws N = .ok s v)
+    (hs : s.env = [P]) (hv : v.names = [])
+    {j i ℓ : Nat} (hj : ls[j]? = some (i, ℓ)) {φ : Val} (hφ : P.lookup (.port j) = some φ)
+    (hφn : φ.names = []) (hφm : φ ≠ .moved) :
+    ∀ m, n ≤ m + 1 → ∃ s'', sealRun Pr (m + 3) f (Val.ofList as) (.fin i) .unit = .ok s'' φ := by
+  intro m hm
+  have hasn : ∀ a ∈ as, a.names = [] := fun a h => Val.names_nil (has a h).1 (has a h).2.2
+  obtain ⟨hk, _⟩ := sealArgs_ls_length 0 d.params ws as ls hsa
+  have hrun' : callRun Pr (m + 1) d b ws N = .ok s v := by
+    rw [callRun_mono Pr hm (by rw [hrun]; simp)]; exact hrun
+  obtain ⟨ρ₁, ρ₂, s', v', hr', hse, hve⟩ :=
+    callRun_seal_ok Pr (m + 1) d b hsa hasn hnd hN (Val.pair (Val.ofList as) .unit).freshAbove hrun'
+  rw [hk] at hr'
+  rw [hs] at hse
+  obtain ⟨P', hs', hPP⟩ := env_single_of_rename hse
+  have hv' : v'.names = [] := Val.names_nil_of_rename (u := v) (by rw [hve, Val.rename_of_names_nil hv]) hv
+  exact sealRun_fin Pr m hf hb hnp hsa has hj hr' hs' hv' (port_of_rename hPP hφ hφn) hφn hφm
 
 end OchrMeta
