@@ -42,3 +42,9 @@
 = Conclusion
 #include "sections/conclusion.typ"
 #bibliography("refs.bib", style: "association-for-computing-machinery")
+
+#pagebreak()
+#counter(heading).update(0)
+#set heading(numbering: "A.1")
+= Formal definition <sec-appendix>
+#include "sections/appendix.typ"
