@@ -55,7 +55,7 @@ The last step uses the observational computation rules for equality @ott: equali
 Now the proof:
 
 ```
-AddMZero(x : &Nat) : Id Unit (AddM(x, 0)) () :=
+AddMZero(x : &Nat) : Id Unit (AddM(x, 0)) () by x :=
   match *x { Z => refl | S p => AddMZero(&p) }
 ```
 
@@ -81,17 +81,17 @@ For comparison, here is the same theorem about the pure wrapper:
 
 ```
 AddZero(x : Nat) : Id Nat (Add(x, 0)) x :=
-  match x { Z => refl | S p => cong S (AddZero(p)) }
+  match x { Z => refl | S p => AddMZero(&p) }
 ```
 
-`Add(x, 0)` writes nothing outside itself, so its observation is just its result, and the goal is again `Eq Nat N(σ) σ`, the very proposition `AddMZero`'s statement computed to. The induction hypothesis `AddZero(p)` is about a fresh copy of the predecessor, so the successor must be added by hand. In Ochr the in-place proof is the shorter one. The two theorems are also interchangeable: `AddZero(x) := AddMZero(&x)` type-checks, because both statements normalise to the same proposition.
+`Add(x, 0)` writes nothing outside itself, so its observation is just its result, and the goal is again `Eq Nat N(σ) σ`, the very proposition `AddMZero`'s statement computed to; in the successor case it is `Eq Nat (S N(σ')) (S σ')`. The proof borrows the predecessor field of the _owned_ number `x` and appeals to the in-place lemma. The environment again supplies the successor, so even the theorem about the pure function needs no congruence step. An induction hypothesis about a _copy_ of the predecessor, `AddZero(p)`, would have type `Eq Nat N(σ') σ'`, and the successor would have to be added by hand with a congruence lemma derived from `J`. The two theorems are interchangeable: `AddZero(x) := AddMZero(&x)` type-checks, because both statements normalise to the same proposition.
 
 == Returning a borrow
 
 A more idiomatic in-place addition first finds the final node and then writes through it:
 
 ```
-TailM(x : &Nat) : &Nat := match *x { Z => x | S p => TailM(&p) }
+TailM(x : &Nat) : &Nat by x := match *x { Z => x | S p => TailM(&p) }
 AddM'(x : &Nat, y : Nat) : Unit := let t = TailM(x); *t := y
 ```
 
@@ -107,7 +107,7 @@ In `AddM'`, the caller writes `y` through `t` and drops it; ending `borrow_k` su
 The equivalence of the two additions is proved by the same bare recursion:
 
 ```
-AddMEq(x : &Nat, y : Nat) : Id Unit (AddM(x, y)) (AddM'(x, y)) :=
+AddMEq(x : &Nat, y : Nat) : Id Unit (AddM(x, y)) (AddM'(x, y)) by x :=
   match *x { Z => refl | S p => AddMEq(&p, y) }
 ```
 
