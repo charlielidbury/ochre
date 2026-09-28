@@ -64,7 +64,7 @@ def switches : List (String × Config) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 296
+def Ochr.Registry.expectedTotal : Nat := 334
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
@@ -107,7 +107,11 @@ def hashMapGeneralize : List String :=
    "HashMap.RunCollide:rejected", "HashMap.RunRemove:rejected", "HashMap.RunRemoveGet:rejected",
    "HashMap.RunCount:rejected", "HashMap.BInsertGet:rejected", "HashMap.BInsertGetOther:rejected",
    "HashMap.BAbsent:rejected", "HashMap.AtMostOnce:rejected", "HashMap.BGetAbsent:rejected",
-   "HashMap.BRemoveGet:rejected", "HashMap.BRemoveGetOther:rejected"]
+   "HashMap.BRemoveGet:rejected", "HashMap.BRemoveGetOther:rejected", "HashMap.NthInsertGet:rejected",
+   "HashMap.InsertGet:rejected", "HashMap.NthInsertGetOther:rejected", "HashMap.BInsertAfterGet:rejected",
+   "HashMap.NthInsertAfterGet:rejected", "HashMap.InsertGetOther:rejected", "HashMap.BInsertLen:rejected",
+   "HashMap.NthInsertCount:rejected", "HashMap.InsertLen:rejected", "HashMap.BRemoveLen:rejected",
+   "HashMap.NthRemoveCount:rejected", "HashMap.RemoveLen:rejected"]
 open Ochr.Registry in
 #guard flips { generalize := false } ==
   ["More.MatchAfterOpaque:rejected", "GenTy.GenL:rejected", "Inductives.InsertM:rejected", "Inductives.Insert:rejected",
@@ -135,7 +139,11 @@ open Ochr.Registry in
 re-derive inside `BInsertM`/`BGet`/`BRemoveM` (finding G1's situation). -/
 def hashMapG1 : List String :=
   ["HashMap.BInsertGet:rejected", "HashMap.BInsertGetOther:rejected", "HashMap.BGetAbsent:rejected",
-   "HashMap.BRemoveGet:rejected", "HashMap.BRemoveGetOther:rejected"]
+   "HashMap.BRemoveGet:rejected", "HashMap.BRemoveGetOther:rejected", "HashMap.NthInsertGet:rejected",
+   "HashMap.InsertGet:rejected", "HashMap.NthInsertGetOther:rejected", "HashMap.BInsertAfterGet:rejected",
+   "HashMap.NthInsertAfterGet:rejected", "HashMap.InsertGetOther:rejected", "HashMap.BInsertLen:rejected",
+   "HashMap.NthInsertCount:rejected", "HashMap.InsertLen:rejected", "HashMap.BRemoveLen:rejected",
+   "HashMap.NthRemoveCount:rejected", "HashMap.RemoveLen:rejected"]
 open Ochr.Registry in
 #guard flips { genConsistent := false } == ["Inductives.InsertMEq:rejected", "Inductives.SizeInsert:rejected"] ++ hashMapG1
 open Ochr.Registry in

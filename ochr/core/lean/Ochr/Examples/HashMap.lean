@@ -205,10 +205,259 @@ ochr HashMap {
           False => refl
         | True => ExFalsoFT(Id Opt (BRemoveM(&*b, k); BGet(&*b, k2)) (let r = BGet(&*b, k2); BRemoveM(&*b, k); r),
                     BoolAbsurd(EqB(k, k2), h, EqBTrans(k', k, k2, refl, refl))) } } }
+  -- ## Phase 3: the index borrow (slot level)
+
+  def Le (a : Nat) (b : Nat) : Prop by a :=
+    match a { Z => ⊤ | S a' => match b { Z => Eq Nat Z (S Z) | S b' => Le(a', b') } }
+  def Last (s : Slots) : Nat by s := match s { SOne(b) => 0 | SCons(b, t) => S (Last(t)) }
+
+  -- H3a: writing through NthM(s, i), then reading slot i, gives the written bucket
+  def NthWriteSame (s : &Slots) (i : Nat) (x : Bucket) :
+      Id Bucket (let r = NthM(&*s, i); *r := x; Nth(*s, i)) (let r = NthM(&*s, i); *r := x; x) by s :=
+    match *s { SOne(b) => refl | SCons(b, t) => match i { Z => refl | S i' => NthWriteSame(&t, i', x) } }
+  -- H3b: ... and slot j ≠ i is unchanged, when both are in range (the index saturates)
+  def NthWriteOther (s : &Slots) (i : Nat) (j : Nat) (x : Bucket) (h : Id Bool (EqB(i, j)) False)
+      (hi : Le(i, Last(*s))) (hj : Le(j, Last(*s))) :
+      Id Bucket (let r = NthM(&*s, i); *r := x; Nth(*s, j)) (let v = Nth(*s, j); let r = NthM(&*s, i); *r := x; v) by s :=
+    match *s {
+      SOne(b) => match i {
+          Z => match j {
+              Z => ExFalsoFT(Id Bucket (let r = NthM(&*s, i); *r := x; Nth(*s, j)) (let v = Nth(*s, j); let r = NthM(&*s, i); *r := x; v),
+                     BoolAbsurd(EqB(i, j), h, refl))
+            | S _ => ExFalso(Id Bucket (let r = NthM(&*s, i); *r := x; Nth(*s, j)) (let v = Nth(*s, j); let r = NthM(&*s, i); *r := x; v), hj) }
+        | S _ => ExFalso(Id Bucket (let r = NthM(&*s, i); *r := x; Nth(*s, j)) (let v = Nth(*s, j); let r = NthM(&*s, i); *r := x; v), hi) }
+    | SCons(b, t) => match i {
+          Z => match j {
+              Z => ExFalsoFT(Id Bucket (let r = NthM(&*s, i); *r := x; Nth(*s, j)) (let v = Nth(*s, j); let r = NthM(&*s, i); *r := x; v),
+                     BoolAbsurd(EqB(i, j), h, refl))
+            | S _ => refl }
+        | S i' => match j { Z => refl | S j' => NthWriteOther(&t, i', j', x, h, hi, hj) } } }
+  -- out of range the index saturates: two different indices past the end hit the same slot
+  reject def NthWriteOtherNoRange (s : &Slots) (i : Nat) (j : Nat) (x : Bucket) (h : Id Bool (EqB(i, j)) False) :
+      Id Bucket (let r = NthM(&*s, i); *r := x; Nth(*s, j)) (let v = Nth(*s, j); let r = NthM(&*s, i); *r := x; v) by s :=
+    match *s {
+      SOne(b) => refl
+    | SCons(b, t) => match i {
+          Z => match j { Z => ExFalsoFT(Id Bucket (let r = NthM(&*s, i); *r := x; Nth(*s, j)) (let v = Nth(*s, j); let r = NthM(&*s, i); *r := x; v),
+                                 BoolAbsurd(EqB(i, j), h, refl)) | S _ => refl }
+        | S i' => match j { Z => refl | S j' => NthWriteOtherNoRange(&t, i', j', x, h) } } }
+
+  -- ## Phase 4: map level
+
+  -- H1 lifted through the index borrow, by recursion on the slots: the environment carries
+  -- the untouched slots, so no congruence lemma and no H3 is needed
+  def NthInsertGet (s : &Slots) (i : Nat) (k : Nat) (v : Nat) :
+      Id Opt (let r = NthM(&*s, i); BInsertM(r, k, v); let r2 = NthM(&*s, i); BGet(r2, k))
+             (let r = NthM(&*s, i); BInsertM(r, k, v); Some(v)) by s :=
+    match *s {
+      SOne(b) => BInsertGet(&b, k, v)
+    | SCons(b, t) => match i { Z => BInsertGet(&b, k, v) | S i' => NthInsertGet(&t, i', k, v) } }
+  -- H4 for InsertNoResize: split on the map and on whether the key was added (reproducing
+  -- the sealed `added` on a copy of the slots), then the slot lemma on a copy of the map
+  -- with the new length, so that the lemma observes a whole map
+  def InsertGet (hm : &HashMap) (k : Nat) (v : Nat) :
+      Id Opt (InsertNoResize(&*hm, k, v); Get(&*hm, k)) (InsertNoResize(&*hm, k, v); Some(v)) :=
+    match *hm { HM(n, len, slots) =>
+      let c = slots; let r = NthM(&c, Idx(k, n)); let a = BInsertM(r, k, v);
+      match a {
+        False => let d = HM(n, len, slots); match d { HM(n2, l2, s2) => NthInsertGet(&s2, Idx(k, n), k, v) }
+      | True => let d = HM(n, S len, slots); match d { HM(n2, l2, s2) => NthInsertGet(&s2, Idx(k, n), k, v) } } }
+  -- the length update matters: swapping the two arms is rejected
+  reject def InsertGetSwapLen (hm : &HashMap) (k : Nat) (v : Nat) :
+      Id Opt (InsertNoResize(&*hm, k, v); Get(&*hm, k)) (InsertNoResize(&*hm, k, v); Some(v)) :=
+    match *hm { HM(n, len, slots) =>
+      let c = slots; let r = NthM(&c, Idx(k, n)); let a = BInsertM(r, k, v);
+      match a {
+        False => let d = HM(n, S len, slots); match d { HM(n2, l2, s2) => NthInsertGet(&s2, Idx(k, n), k, v) }
+      | True => let d = HM(n, len, slots); match d { HM(n2, l2, s2) => NthInsertGet(&s2, Idx(k, n), k, v) } } }
+
+  -- H2 lifted through the index borrow (write at i, read at j): the same bucket is H2,
+  -- different buckets commute by computation
+  def NthInsertGetOther (s : &Slots) (i : Nat) (j : Nat) (k : Nat) (v : Nat) (k2 : Nat) (h : Id Bool (EqB(k, k2)) False) :
+      Id Opt (let r = NthM(&*s, i); BInsertM(r, k, v); let r2 = NthM(&*s, j); BGet(r2, k2))
+             (let r2 = NthM(&*s, j); let x = BGet(r2, k2); let r = NthM(&*s, i); BInsertM(r, k, v); x) by s :=
+    match *s {
+      SOne(b) => BInsertGetOther(&b, k, v, k2, h)
+    | SCons(b, t) => match i {
+        Z => match j { Z => BInsertGetOther(&b, k, v, k2, h) | S j' => refl }
+      | S i' => match j { Z => refl | S j' => NthInsertGetOther(&t, i', j', k, v, k2, h) } } }
+  -- finding F1 at the map level: in the RHS the lookup runs first, so the insert's `added`
+  -- is computed from the bucket's read-residue, a different sealed program; these two
+  -- lemmas say the insert's result does not see a previous lookup (on copies, so their
+  -- footprints are unchanged and their types are one equation)
+  def BInsertAfterGet (b : &Bucket) (k : Nat) (v : Nat) (k2 : Nat) :
+      Id Bool (let c = *b; BInsertM(&c, k, v)) (let c = *b; BGet(&c, k2); BInsertM(&c, k, v)) by b :=
+    match *b {
+      BNil => refl
+    | BCons(k', v', t) => let e2 = EqB(k', k2); match e2 {
+        False => let e = EqB(k', k); match e { False => BInsertAfterGet(&t, k, v, k2) | True => refl }
+      | True => refl } }
+  def NthInsertAfterGet (s : &Slots) (i : Nat) (j : Nat) (k : Nat) (v : Nat) (k2 : Nat) :
+      Id Bool (let c = *s; let r = NthM(&c, i); BInsertM(r, k, v))
+              (let c = *s; let r0 = NthM(&c, j); BGet(r0, k2); let r = NthM(&c, i); BInsertM(r, k, v)) by s :=
+    match *s {
+      SOne(b) => BInsertAfterGet(&b, k, v, k2)
+    | SCons(b, t) => match i {
+        Z => match j { Z => BInsertAfterGet(&b, k, v, k2) | S j' => refl }
+      | S i' => match j { Z => refl | S j' => NthInsertAfterGet(&t, i', j', k, v, k2) } } }
+  -- H5 for InsertNoResize: split on the two `added` programs (the LHS's, and the RHS's
+  -- after the lookup); the mixed arms contradict NthInsertAfterGet
+  def InsertGetOther (hm : &HashMap) (k : Nat) (v : Nat) (k2 : Nat) (h : Id Bool (EqB(k, k2)) False) :
+      Id Opt (InsertNoResize(&*hm, k, v); Get(&*hm, k2)) (let r = Get(&*hm, k2); InsertNoResize(&*hm, k, v); r) :=
+    match *hm { HM(n, len, slots) =>
+      let c = slots; let r = NthM(&c, Idx(k, n)); let a = BInsertM(r, k, v);
+      let c2 = slots; let r0 = NthM(&c2, Idx(k2, n)); let x = BGet(r0, k2); let r2 = NthM(&c2, Idx(k, n)); let a2 = BInsertM(r2, k, v);
+      let c3 = slots; let p = NthInsertAfterGet(&c3, Idx(k, n), Idx(k2, n), k, v, k2);
+      match a {
+        False => match a2 {
+            False => let d = HM(n, len, slots); match d { HM(n2, l2, s2) => NthInsertGetOther(&s2, Idx(k, n), Idx(k2, n), k, v, k2, h) }
+          | True => ExFalsoFT(Id Opt (InsertNoResize(&*hm, k, v); Get(&*hm, k2)) (let r = Get(&*hm, k2); InsertNoResize(&*hm, k, v); r), p) }
+      | True => match a2 {
+            False => ExFalsoFT(Id Opt (InsertNoResize(&*hm, k, v); Get(&*hm, k2)) (let r = Get(&*hm, k2); InsertNoResize(&*hm, k, v); r),
+                       BoolAbsurd(a, p, refl))
+          | True => let d = HM(n, S len, slots); match d { HM(n2, l2, s2) => NthInsertGetOther(&s2, Idx(k, n), Idx(k2, n), k, v, k2, h) } } } }
+  -- without NthInsertAfterGet the mixed arms (the two `added` disagree) do not check
+  reject def InsertGetOtherNoIndep (hm : &HashMap) (k : Nat) (v : Nat) (k2 : Nat) (h : Id Bool (EqB(k, k2)) False) :
+      Id Opt (InsertNoResize(&*hm, k, v); Get(&*hm, k2)) (let r = Get(&*hm, k2); InsertNoResize(&*hm, k, v); r) :=
+    match *hm { HM(n, len, slots) =>
+      let c = slots; let r = NthM(&c, Idx(k, n)); let a = BInsertM(r, k, v);
+      let c2 = slots; let r0 = NthM(&c2, Idx(k2, n)); let x = BGet(r0, k2); let r2 = NthM(&c2, Idx(k, n)); let a2 = BInsertM(r2, k, v);
+      match a {
+        False => match a2 {
+            False => let d = HM(n, len, slots); match d { HM(n2, l2, s2) => NthInsertGetOther(&s2, Idx(k, n), Idx(k2, n), k, v, k2, h) }
+          | True => refl }
+      | True => match a2 {
+            False => refl
+          | True => let d = HM(n, S len, slots); match d { HM(n2, l2, s2) => NthInsertGetOther(&s2, Idx(k, n), Idx(k2, n), k, v, k2, h) } } } }
+
+  -- ## Phase 5: the length invariant len = Count(slots)
+
+  -- x + S y = S (x + y), in place by bare recursion (as in Inductives.lean), both orientations
+  def AddMS (x : &Nat) (y : Nat) : Id Unit (AddM(&*x, y); *x := S *x) (AddM(x, S y)) by x :=
+    match *x { Z => refl | S p => AddMS(&p, y) }
+  def AddS (x : Nat) (y : Nat) : Id Nat (S (Add(x, y))) (Add(x, S y)) := AddMS(&x, y)
+  def SymmN (x : Nat) (y : Nat) (h : Id Nat x y) : Id Nat y x := J(Nat, x, y, λ(z : Nat) : Prop => Id Nat z x, h, refl)
+
+  -- a bucket grows by one exactly when the insert added the key. `Bump` is a helper, not an
+  -- inline match: an inline `match a {…}` in the statement is split while the type is
+  -- formed, which generalises the sealed `a` for good, and the later split on the bucket
+  -- cannot reach it (finding F2; `BInsertLenInline` below)
+  def Bump (a : Bool) (n : Nat) : Nat := match a { False => n | True => S n }
+  -- F2 in miniature: IsZ(x) is sealed at the generic call; forming the type splits the
+  -- inline match on it, generalising ⌈IsZ(σx)⌉ to a fresh σ for good, so the later split
+  -- x := Z cannot reach the block. The same statement through a helper function is proved
+  def IsZ (x : Nat) : Bool := match x { Z => True | S _ => False }
+  def B2N (a : Bool) : Nat := match a { False => 0 | True => 1 }
+  reject def InlineLost (x : Nat) : Id Nat (let a = IsZ(x); match a { False => 0 | True => 1 }) (match x { Z => 1 | S _ => 0 }) :=
+    match x { Z => refl | S _ => refl }
+  def HelperKept (x : Nat) : Id Nat (let a = IsZ(x); B2N(a)) (match x { Z => 1 | S _ => 0 }) :=
+    match x { Z => refl | S _ => refl }
+  def BInsertLen (b : &Bucket) (k : Nat) (v : Nat) :
+      Id Nat (let c = *b; let a = BInsertM(&c, k, v); Bump(a, BLen(*b))) (let c = *b; let a = BInsertM(&c, k, v); BLen(c)) by b :=
+    match *b {
+      BNil => refl
+    | BCons(k', v', t) => let e = EqB(k', k); match e {
+        True => refl
+      | False => let t0 = t; let ct = t; let a = BInsertM(&ct, k, v); let L = BLen(ct); match a {
+          False => J(Nat, BLen(t0), L, λ(z : Nat) : Prop => Id Nat (S (BLen(t0))) (S z), BInsertLen(&t, k, v), refl)
+        | True => J(Nat, S (BLen(t0)), L, λ(z : Nat) : Prop => Id Nat (S (S (BLen(t0)))) (S z), BInsertLen(&t, k, v), refl) } } }
+  reject def BInsertLenInline (b : &Bucket) (k : Nat) (v : Nat) :
+      Id Nat (let c = *b; let a = BInsertM(&c, k, v); match a { False => BLen(*b) | True => S (BLen(*b)) })
+             (let c = *b; let a = BInsertM(&c, k, v); BLen(c)) by b :=
+    match *b {
+      BNil => refl
+    | BCons(k', v', t) => let e = EqB(k', k); match e {
+        True => refl
+      | False => let t0 = t; let ct = t; let a = BInsertM(&ct, k, v); let L = BLen(ct); match a {
+          False => J(Nat, BLen(t0), L, λ(z : Nat) : Prop => Id Nat (S (BLen(t0))) (S z), BInsertLenInline(&t, k, v), refl)
+        | True => J(Nat, S (BLen(t0)), L, λ(z : Nat) : Prop => Id Nat (S (S (BLen(t0)))) (S z), BInsertLenInline(&t, k, v), refl) } } }
+  -- ... lifted through the index borrow; Count sums with Add, so each arm rewrites once
+  def NthInsertCount (s : &Slots) (i : Nat) (k : Nat) (v : Nat) :
+      Id Nat (let c = *s; let r = NthM(&c, i); let a = BInsertM(r, k, v); Bump(a, Count(*s)))
+             (let c = *s; let r = NthM(&c, i); let a = BInsertM(r, k, v); Count(c)) by s :=
+    match *s {
+      SOne(b) => BInsertLen(&b, k, v)
+    | SCons(b, t) => let b0 = b; let t0 = t; match i {
+        Z => let cb = b; let a = BInsertM(&cb, k, v); let L = BLen(cb); match a {
+            False => J(Nat, BLen(b0), L, λ(z : Nat) : Prop => Id Nat (Add(BLen(b0), Count(t0))) (Add(z, Count(t0))), BInsertLen(&b, k, v), refl)
+          | True => J(Nat, S (BLen(b0)), L, λ(z : Nat) : Prop => Id Nat (S (Add(BLen(b0), Count(t0)))) (Add(z, Count(t0))), BInsertLen(&b, k, v), refl) }
+      | S i' => let ct = t; let r = NthM(&ct, i'); let a = BInsertM(r, k, v); let C = Count(ct); match a {
+            False => J(Nat, Count(t0), C, λ(z : Nat) : Prop => Id Nat (Add(BLen(b0), Count(t0))) (Add(BLen(b0), z)), NthInsertCount(&t, i', k, v), refl)
+          | True => J(Nat, S (Count(t0)), C, λ(z : Nat) : Prop => Id Nat (S (Add(BLen(b0), Count(t0)))) (Add(BLen(b0), z)),
+                      NthInsertCount(&t, i', k, v), AddS(BLen(b0), Count(t0))) } } }
+  -- H6 for InsertNoResize: len = Count(slots) is preserved. Split on the map and on `added`;
+  -- the slot lemma on a copy of the slots, and one or two J steps against the hypothesis
+  def Len (m : HashMap) : Nat := match m { HM(n, len, s) => len }
+  def CountHM (m : HashMap) : Nat := match m { HM(n, len, s) => Count(s) }
+  def InsertLen (hm : &HashMap) (k : Nat) (v : Nat) (h : Id Nat (Len(*hm)) (CountHM(*hm))) :
+      Id Nat (InsertNoResize(&*hm, k, v); Len(*hm)) (InsertNoResize(&*hm, k, v); CountHM(*hm)) :=
+    match *hm { HM(n, len, slots) =>
+      let l0 = len; let s0 = slots;
+      let c = slots; let r = NthM(&c, Idx(k, n)); let a = BInsertM(r, k, v); let C = Count(c);
+      let c3 = slots; let p = NthInsertCount(&c3, Idx(k, n), k, v);
+      match a {
+        False => J(Nat, Count(s0), C, λ(z : Nat) : Prop => Id Nat l0 z, p, h)
+      | True => J(Nat, S (Count(s0)), C, λ(z : Nat) : Prop => Id Nat (S l0) z, p,
+                  J(Nat, l0, Count(s0), λ(z : Nat) : Prop => Id Nat (S l0) (S z), h, refl)) } }
+  -- the invariant is needed: without h the arms do not check
+  reject def InsertLenNoHyp (hm : &HashMap) (k : Nat) (v : Nat) :
+      Id Nat (InsertNoResize(&*hm, k, v); Len(*hm)) (InsertNoResize(&*hm, k, v); CountHM(*hm)) :=
+    match *hm { HM(n, len, slots) =>
+      let c3 = slots; let p = NthInsertCount(&c3, Idx(k, n), k, v); p }
+
+  -- remove: the bucket shrinks by one exactly when the key was removed.
+  -- Finding F3 (checker gap, lean-checker §11.2): a λ that captures a computed local (a
+  -- sealed value) and uses it in a typed position cannot be formed, since captured values
+  -- carry no type in the checker; RULES accepts it. So congruence under S is a lemma
+  reject def CaptureSealed (x : Nat) (y : Nat) (h : Id Nat (Add(x, y)) y) : Id Nat (S (Add(x, y))) (S y) :=
+    let L = Add(x, y); J(Nat, L, y, λ(z : Nat) : Prop => Id Nat (S L) (S z), h, refl)
+  def CongS (x : Nat) (y : Nat) (h : Id Nat x y) : Id Nat (S x) (S y) :=
+    J(Nat, x, y, λ(z : Nat) : Prop => Id Nat (S x) (S z), h, refl)
+  def CaptureSealedLemma (x : Nat) (y : Nat) (h : Id Nat (Add(x, y)) y) : Id Nat (S (Add(x, y))) (S y) :=
+    CongS(Add(x, y), y, h)
+  def BRemoveLen (b : &Bucket) (k : Nat) :
+      Id Nat (let c = *b; let a = BRemoveM(&c, k); Bump(a, BLen(c))) (BLen(*b)) by b :=
+    match *b {
+      BNil => refl
+    | BCons(k', v', t) => let e = EqB(k', k); match e {
+        True => refl
+      | False => let ct = t; let a = BRemoveM(&ct, k); match a {
+          False => CongS(BLen(ct), BLen(t), BRemoveLen(&t, k))
+        | True => CongS(S (BLen(ct)), BLen(t), BRemoveLen(&t, k)) } } }
+  def CongAddL (x : Nat) (y : Nat) (w : Nat) (h : Id Nat x y) : Id Nat (Add(x, w)) (Add(y, w)) :=
+    J(Nat, x, y, λ(z : Nat) : Prop => Id Nat (Add(x, w)) (Add(z, w)), h, refl)
+  def CongAddR (w : Nat) (x : Nat) (y : Nat) (h : Id Nat x y) : Id Nat (Add(w, x)) (Add(w, y)) :=
+    J(Nat, x, y, λ(z : Nat) : Prop => Id Nat (Add(w, x)) (Add(w, z)), h, refl)
+  def TransN (x : Nat) (y : Nat) (z : Nat) (h1 : Id Nat x y) (h2 : Id Nat y z) : Id Nat x z :=
+    J(Nat, y, z, λ(w : Nat) : Prop => Id Nat x w, h2, h1)
+  def NthRemoveCount (s : &Slots) (i : Nat) (k : Nat) :
+      Id Nat (let c = *s; let r = NthM(&c, i); let a = BRemoveM(r, k); Bump(a, Count(c))) (Count(*s)) by s :=
+    match *s {
+      SOne(b) => BRemoveLen(&b, k)
+    | SCons(b, t) => let b0 = b; let t0 = t; match i {
+        Z => let cb = b; let a = BRemoveM(&cb, k); let L = BLen(cb); match a {
+            False => CongAddL(L, BLen(b0), Count(t0), BRemoveLen(&b, k))
+          | True => CongAddL(S L, BLen(b0), Count(t0), BRemoveLen(&b, k)) }
+      | S i' => let ct = t; let r = NthM(&ct, i'); let a = BRemoveM(r, k); let C = Count(ct); match a {
+            False => CongAddR(BLen(b0), C, Count(t0), NthRemoveCount(&t, i', k))
+          | True => TransN(S (Add(BLen(b0), C)), Add(BLen(b0), S C), Add(BLen(b0), Count(t0)),
+                      AddS(BLen(b0), C), CongAddR(BLen(b0), S C, Count(t0), NthRemoveCount(&t, i', k))) } } }
+  def CongPred (x : Nat) (y : Nat) (h : Id Nat x y) : Id Nat (Pred(x)) (Pred(y)) :=
+    J(Nat, x, y, λ(z : Nat) : Prop => Id Nat (Pred(x)) (Pred(z)), h, refl)
+  -- H6 for Remove (len := Pred(len) when removed)
+  def RemoveLen (hm : &HashMap) (k : Nat) (h : Id Nat (Len(*hm)) (CountHM(*hm))) :
+      Id Nat (Remove(&*hm, k); Len(*hm)) (Remove(&*hm, k); CountHM(*hm)) :=
+    match *hm { HM(n, len, slots) =>
+      let l0 = len; let s0 = slots;
+      let c = slots; let r = NthM(&c, Idx(k, n)); let a = BRemoveM(r, k); let C = Count(c);
+      let c3 = slots; let p = NthRemoveCount(&c3, Idx(k, n), k);
+      match a {
+        False => TransN(l0, Count(s0), C, h, SymmN(C, Count(s0), p))
+      | True => CongPred(l0, S C, TransN(l0, Count(s0), S C, h, SymmN(S C, Count(s0), p))) } }
 }
 
 #eval IO.println (run "HashMap" HashMap).show
 
--- every verdict as expected, and exactly 57 assertions (a truncated file changes the count)
+-- every verdict as expected, and exactly 95 assertions (a truncated file changes the count)
 #guard (run "HashMap" HashMap).allAsExpected
-#guard (run "HashMap" HashMap).count == 57
+#guard (run "HashMap" HashMap).count == 95
