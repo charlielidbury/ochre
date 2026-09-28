@@ -1,6 +1,6 @@
-# Ochr core: an executable reference checker for RULES v1.8
+# Ochr core: an executable reference checker for RULES v1.9
 
-A Lean 4 implementation of the calculus in `ochr/core/RULES.md` (rule set v1.8), extended to user-declared inductive types: the machine of §3, observation and `Id` of §4, and the typing of §5, with the examples of §7 and the round-1 attacks as tests. It exists to run the examples, and to find every place where the rules are ambiguous or wrong. Findings are in `ochr/core/notes/lean-checker.md`.
+A Lean 4 implementation of the calculus in `ochr/core/RULES.md` (rule set v1.9), extended to user-declared inductive types: the machine of §3, observation and `Id` of §4, and the typing of §5, with the examples of §7 and the round-1 attacks as tests. It exists to run the examples, and to find every place where the rules are ambiguous or wrong. Findings are in `ochr/core/notes/lean-checker.md`.
 
 ## Build and run
 
@@ -10,7 +10,7 @@ lake build          # checks every example; a failing verdict or a wrong asserti
 lake exe tests      # prints every verdict table and the counterfactual ledger; exit 1 on any unexpected verdict
 ```
 
-Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A clean build takes about 27 seconds (most of it the counterfactual ledger) and prints every verdict table; `lake exe tests` compiles the runner first and prints per-declaration check times (all 239 declarations check in about 10.5 ms).
+Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A clean build takes about 42 seconds (most of it the counterfactual ledger) and prints every verdict table; `lake exe tests` compiles the runner first and prints per-declaration check times (all 247 declarations check in about 12.4 ms).
 
 ## Writing programs
 
@@ -35,7 +35,7 @@ ochr E1 {
 
 `def` expects acceptance and `reject def` expects rejection. `inductive List := Nil | Cons(h : Nat, t : List)` declares an inductive type; its constructors are applied like calls (`Cons(1, Nil)`), and `match xs { Nil => … | Cons(h, t) => … }` binds `h`, `t` as the field places `xs.h`, `xs.t`. `by x` names the decreasing parameter; a definition without `by` may not call itself. Calls are saturated and written `f(a, …)` with no space before the parenthesis. `S t`, `Id A t u` and `Eq A t u` are written by juxtaposition, and transport by `J(A, a, b, P, h, t)`. Other syntax: `&p`, `*p`, `p.1`, `p := t`, `let x = t; u`, `let x : T = t; u` (for a match, `T` is the block's type), `t; u`, `match p { Z => t | S y => u }` (and `S _`), `Π(x : A) (y : B). C`, `A → B`, `λ(x : A) : B => t`, `fix f (x : A) : B by x := t`, `(t : A)`, `()`, `(t, u)`, `⟨h, k⟩`, `refl`, `⊤`, `P ∧ Q`, `A × B`, `Nat`, `Unit`, `Prop`, `Type`, and numerals. `cong f h`, `trans h k` and `symm h` exist as derivable conveniences outside the core. A `λ` or `Π` in the bound position of a `let`, or a `Π` as a result type, needs parentheses.
 
-`Config` switches each turn off one rule, for counterfactual runs: `eraseOnCopy` (P2, v1.3), `multiOwner` (D18), `recGuard` (D17), `accessInside` (D19), `selfHeadOnly` (v1.1 head-only), `argNotBot` (v1.2 temporaries), `generalize` (v1.2 generalise-then-split), `blockMoves` (v1.3 captures), `proofParamsStar` (v1.4 D27), `recNested` ([Rec] inside nested functions), `erasureByDecl` (D28), `matchEndsInside` (D29), `closureConv` (D30), `unboundWithoutBy` (D31), `patternWritesVisible` (D32), `genConsistent` (finding G1), `classBySyntax`, `blockRule`, `seqByProof`, `rowByDecl` (D35), `leafRule` (findings P1, P3), `positivity` (D36), `globalRecords` (D37), `obsBorrow` (D38), `headGuardNeutral` (D39), `genPlaceType` ([Split-gen]'s type), `p5` (v1's call skipping), `inferRecPos` (v1's inferred decreasing parameter), and `trace`.
+`Config` switches each turn off one rule, for counterfactual runs: `eraseOnCopy` (P2, v1.3), `multiOwner` (D18), `recGuard` (D17), `accessInside` (D19), `selfHeadOnly` (v1.1 head-only), `argNotBot` (v1.2 temporaries), `generalize` (v1.2 generalise-then-split), `blockMoves` (v1.3 captures), `proofParamsStar` (v1.4 D27), `recNested` ([Rec] inside nested functions), `erasureByDecl` (D28), `matchEndsInside` (D29), `closureConv` (D30), `unboundWithoutBy` (D31), `patternWritesVisible` (D32), `genConsistent` (finding G1), `classBySyntax`, `blockRule`, `seqByProof`, `rowByDecl` (D35), `leafRule` (findings P1, P3), `positivity` (D36), `globalRecords` (D37), `obsBorrow` (D38), `headGuardNeutral` (D39), `genPlaceType` ([Split-gen]'s type), `confine` (D41), `confineBodies` (an extension of D41, off by default), `p5` (v1's call skipping), `inferRecPos` (v1's inferred decreasing parameter), and `trace`.
 
 ## Layout
 
@@ -50,7 +50,7 @@ ochr E1 {
 | `Ochr/Check.lean` | programs as sequences of top-level definitions |
 | `Ochr/Surface.lean`, `Ochr/Notation.lean` | named surface terms, their resolution, the `ochr` command |
 | `Ochr/Test.lean` | running programs, verdict tables, traces |
-| `Ochr/Examples/*.lean` | E1–E6, the attacks (rounds 1–3), v1.5, v1.7 and v1.8 regressions (breaker-fresh-v16 X1–X5, positivity), inductive types (lists, BSTs), unit tests (incl. D18), the registry, total count and counterfactual ledger |
+| `Ochr/Examples/*.lean` | E1–E6, the attacks (rounds 1–3), v1.5, v1.7, v1.8 and v1.9 regressions (breaker-fresh-v16 X1–X5, positivity, confinement), inductive types (lists, BSTs), unit tests (incl. D18), the registry, total count and counterfactual ledger |
 | `Tests.lean` | `lake exe tests` |
 
 ## Rule → function
@@ -78,7 +78,7 @@ ochr E1 {
 | §5 [Rec] | `recCheck` (a stack of contexts, one per enclosing function), `headOnly` (f only as a call head) |
 | §5 errors | the `err` calls in the functions above |
 | P1 conversion | `==` on normal forms (`Value.beq`, which ignores binder names) |
-| P2 erased terms | `eval` (flags *erased* and *proof*: a call by its callee's class; `let`/`;`/`match` iff their tail is a proof; proof formers; a variable declared of sort Prop (a flag on its binding: `paramFlags`, `leafProof`), a proof constant, a `λ` returning proofs; an ascription at a declared proposition), `fnClass`/`propDecl`/`declOfDom`/`declOfVal` (a function's class from its codomain term, v1.7), `evalType` (types on a private copy), `capture` (Π-types and closures close over values, never borrows) |
+| P2 erased terms | `eval` (flags *erased* and *proof*: a call by its callee's class; `let`/`;`/`match` iff their tail is a proof; proof formers; a variable declared of sort Prop (a flag on its binding: `paramFlags`, `leafProof`), a proof constant, a `λ` returning proofs; an ascription at a declared proposition), `fnClass`/`propDecl`/`declOfDom`/`declOfVal` (a function's class from its codomain term, v1.7), `logEffect`/`settleErased`/`flushPending`/`confinedCopy` (D41: erased runs are confined, judged by the outermost erased term; arguments of erased calls exempt), `evalType` (types on a private copy), `capture` (Π-types and closures close over values, never borrows) |
 
 ## Where the rules left a choice
 

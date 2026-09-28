@@ -37,7 +37,9 @@ ochr Probes {
   def Lemma (u : Unit) : ⊤ := refl
   def W5 (x : &Nat) : Unit := *x := 5
   reject def EffArg (x : &Nat) : Id Unit (Lemma(W5(&*x)); ()) (*x := 5) := refl
-  def EffArgErased (x : &Nat) : Id Unit (Lemma(W5(&*x)); ()) () := refl
+  -- (v1.9, D41: the proof's argument borrows *x for a data call, a step with an outer
+  -- effect inside an erased term, so this is now a type error rather than a no-op)
+  reject def EffArgErased (x : &Nat) : Id Unit (Lemma(W5(&*x)); ()) () := refl
   -- types are erased too: a type-valued call in program position leaves no trace (P2)
   def F5 (x : &Nat) : Prop := *x := 5; ⊤
   def TypeErased (x : &Nat) : Id Nat (let T = F5(&*x); *x) (*x) := refl

@@ -95,8 +95,26 @@ structure Config where
   obsBorrow : Bool := true       -- v1.8 D38: a borrow result is observed through a fresh value written into it
   headGuardNeutral : Bool := true -- v1.8 D39: [Seal]'s head guard covers neutral-headed calls
   genPlaceType : Bool := true    -- v1.8: a generalised σ has the matched place's type
+  confine : Bool := true         -- v1.9 D41: an erased term may not assign, borrow or move a place that outlives it
+  confineBodies : Bool := false  -- an extension of D41, not in RULES: the body of a function whose calls are
+                                 -- erased, and each arm of an erased stuck block, are confined too
   trace : Bool := false          -- record goals, splits and call types (for inspection)
 deriving Inhabited, Repr
+
+/-- D41: one assignment, borrow or move, by the position of its place's root. It is
+`pending` once an erased run it belongs to has affected a place outliving that run: an
+enclosing erased term in which the place is local resolves it, anything else rejects. -/
+structure Effect where
+  f : Nat
+  i : Nat
+  kind : String
+  place : Place
+  root : String          -- the root binding's name (printed only on an error)
+  pending : Bool := false
+deriving Inhabited
+
+def Effect.desc (e : Effect) : String :=
+  s!"{e.kind} {e.place.pp ((List.replicate e.place.root "?") ++ [e.root])}"
 
 structure MState where
   env : Env := #[{}]
@@ -118,6 +136,7 @@ structure MState where
   convStack : List (Value × Value) := []  -- function pairs being compared observationally (D30)
   neutrals : List (Value × Nat) := []     -- [Split] generalisations: sealed program ↦ its σ (finding G1)
   depth : Nat := 0                        -- call depth (bounded, like fuel: the checker must terminate)
+  effects : Array Effect := #[]           -- D41: assigns, borrows and moves so far (restored with the state)
 deriving Inhabited
 
 inductive Fail where
