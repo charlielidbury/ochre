@@ -7,7 +7,7 @@
 ])
 #let dg(x) = $#x^dagger$
 
-We show that Ochr is consistent and that its symbolic evaluator computes what programs actually do, using a model in Lean's type theory. The model reads a program that mutates what it borrows as a pure function from the current contents of its borrows to its result and their final contents. This is Aeneas's functional translation @aeneas; its backward functions appear here and only here. The results below say that sealed programs _are_ backward functions (@thm-sim). They say that a call affects only what it is passed (@thm-frame), that borrows may end in any order (@thm-canon), and that symbolic evaluation commutes with instantiation (@thm-natural). And they say that typing and conversion are preserved, so no false proposition has a closed proof (@thm-sound, @cor-consistent).
+We show that Ochr is consistent and that its symbolic evaluator computes what programs actually do, using a model in Lean's type theory. The model reads a program that mutates what it borrows as a pure function from the current contents of its borrows to its result and their final contents. This is Aeneas's functional translation @aeneas; its backward functions appear here and only here. The results below say that sealed programs _are_ backward functions (@thm-sim). They say that a call affects only what it is passed (@thm-frame), that borrows may end in any order (@thm-canon), and that symbolic evaluation commutes with instantiation on everything a type can observe (@thm-natural). And they say that typing and conversion are preserved, so no false proposition has a closed proof (@thm-sound, @cor-consistent).
 
 == The model <sec-meta-model>
 
@@ -89,32 +89,68 @@ The hardest case is (2) when $f$ returns a borrow. As the frame pops, the parame
 == Borrows may end in any order
 
 #thm([Theorem], [canonical observation], [
-  On a well-formed Ω, ending two borrows in either order and normalising gives the same environment, up to renaming of loans. A successful run that ends borrows earlier than the lazy strategy returns the same value and the same resolved contents as the lazy run. Hence the observation $⟦t⟧_Omega^W$ does not depend on when borrows end, and `Id` is well defined.
+  Let Ω be well formed.
+  + Ending two borrows in either order and re-normalising gives environments with the same resolution.
+  + If a run of $t$ from Ω succeeds while ending some borrows earlier than the lazy strategy would, then the lazy run succeeds too, with the same borrow-free result and the same resolution.
+  Hence the observation $⟦t⟧_Omega^W$ does not depend on when borrows end, and `Id` is well defined.
 ]) <thm-canon>
 
-_Proof sketch._ Up to normalisation, ending $ell$ is the substitution $h_ell := dg(v_ell)$, and two such substitutions commute by acyclicity. Suppose a run ends $ell$ at a point $A$, before the lazy run does at $B$. Between $A$ and $B$ that run cannot use $ell$, since it would read $bot$. And any access to the container of $ell$'s loan would have made the lazy run end $ell$ earlier. So both runs substitute the same content. ∎
+_Proof sketch._ (1) Up to re-normalisation, ending $ell$ is the substitution $h_ell := dg(v_ell)$, and two such substitutions commute by acyclicity. (2) Suppose the first run ends $ell$ at a point $A$, while the lazy run ends it later, at a demand, at a drop, or at the final resolution. After $A$ the first run cannot use $ell$, since it would read $bot$. Nor can it reach the positions of $ell$'s loan: any access to their container would make the lazy run end $ell$ there too. So every step of the first run is available to the lazy run, and both substitute the same content for $ell$'s loan. ∎
 
-The hardest case is a hole inside a sealed program. Ending its borrow re-normalises the sealed program, so the claim needs re-normalisation to commute with later substitutions. That is @thm-natural applied to a hole. Since [End] has no side condition and loans are variables, canonicity, often the delicate theorem about a lazy borrow semantics, becomes a corollary of naturality.
+For (1), the hardest case is a hole inside a sealed program. Ending its borrow re-runs the sealed program, and the order of two such re-runs must not matter. It does not: a completed sealed run ends its own borrows before reading its result, so its normal form is a resolved value, and $"Run"$ is compositional (@thm-sim). Either order therefore computes $"Run"$ of the fully substituted program. Part (2) is the part the rest of the metatheory leans on: it absorbs the extra borrow endings of the symbolic machine in @thm-natural.
 
 == Symbolic evaluation commutes with instantiation
 
 A _refinement_ α of Ω substitutes constructor patterns or closed values for abstract values, closed definable functions for abstract functions, and values for holes in sealed programs. $Omega arrow.b$ is Ω with its sealed programs re-normalised, and $approx$ is equality up to renaming of loans.
 
 #thm([Theorem], [naturality], [
-  If Ω is well formed, $cfg(Omega, t) arrow.b.double cfg(Omega', v)$ by the symbolic machine, and α refines Ω, then $cfg((Omega alpha) arrow.b, t alpha) arrow.b.double cfg(Omega'', v'')$ with $(Omega'', v'') approx ((Omega' alpha) arrow.b, (v alpha) arrow.b)$.
+  Let Ω be well formed, $cfg(Omega, t) arrow.b.double cfg(Omega', v)$ by the symbolic machine, and α a refinement of Ω.
+  + _Operationally_, $((Omega' alpha) arrow.b, (v alpha) arrow.b)$ is, up to $approx$, the result of a run of $t alpha$ from $(Omega alpha) arrow.b$ that ends some borrows earlier than the lazy strategy. So the lazy run $cfg((Omega alpha) arrow.b, t alpha) arrow.b.double cfg(Omega'', v'')$ exists. It has the same resolution, and when $v$ is borrow-free it has the same result.
+  + _Observationally_, for every footprint $W$, re-normalising the instantiated observation gives the observation of the instantiated term: $(⟦t⟧_Omega^W alpha) arrow.b = ⟦t alpha⟧_(Omega alpha)^W$.
 ]) <thm-natural>
 
 #thm([Corollary], [adequacy], [
-  If α is ground, the run of $t alpha$ closes nothing off: it is a concrete run, it terminates, and it computes the instantiated symbolic result. So every observation, and hence every `Id`, that the checker computes on abstract inputs is the observation the program makes on every concrete input.
+  If α is ground, the lazy run of $t alpha$ closes nothing off: it is a concrete run, it terminates, and it computes the instantiated symbolic observation. Every observation, and hence every `Id`, that the checker computes on abstract inputs is therefore the observation the program makes on every concrete input. The checker is sound in this sense, but it is not complete (see the remark below).
 ]) <cor-adequacy>
 
-_Proof sketch._ By induction on the symbolic derivation. Every step except closing off commutes with α on the nose. α substitutes atoms, and [Match], the only rule that is not uniform in atoms, takes an arm only on a constructor, which α preserves. Now suppose a call $C$ with argument contents $overline(u)$ was closed off. The refined run reaches $C$ with $overline(u) alpha$ and runs $f$'s body in a fresh frame; by @thm-frame this is the body's run alone. Re-normalising the sealed programs runs the same body on the same values. [Seal] unfolds the head call $C$ exactly once, and closes off inner calls exactly where the direct run does. So, by determinism, both runs stop at the same stuck match or complete identically. ∎
+_Proof sketch._ Part (1) is by induction on the symbolic derivation. Every step except closing off commutes with α on the nose. α substitutes atoms, and [Match], the only rule that is not uniform in atoms, takes an arm only on a constructor, which α preserves. At a [Close] of a call $C$ with argument contents $overline(u)$, the refined run reaches $C$ with $overline(u) alpha$ and runs $f$'s body alone (@thm-frame). Re-normalising the sealed programs runs the same body on the same values. [Seal] unfolds the head call exactly once, and closes off inner calls exactly where the direct run does. By determinism, both stop at the same stuck match or complete with the same results. They can differ in one place only: where a returned borrow's loan lives. The concrete run puts it into the one owner the borrow actually points into. The symbolic hole sits in the fill of every borrow argument the borrow _might_ point into, and an [Access] to any of those places ends the borrow. So the symbolic run can end a returned borrow at an access that the concrete run performs without ending it. That is an extra [End] step, and nothing else changes. Part (2) follows from (1) and @thm-canon (2), since an observation resolves every borrow. ∎
 
-The hardest case is a returned borrow when α lets the call complete. The direct run pops $f$'s frame while its parameter's borrow holds the returned loan $"loan"_q$, so the caller's owner receives $K["loan"_q]$, and the call returns $"borrow"_q c$. On the symbolic side the owner holds $seal("L; let r = C; *r := " "loan"_k "; " c_i)$. Re-normalising it runs $C$, leaving $c_i$ holding $K["loan"_(q')]$, writes the inert $"loan"_k$ through $r$, and reads $c_i$, where [Access] ends the run's own $q'$. The result is $K["loan"_k]$, equal up to $k <-> q$. This rests on loans being variables, on [Access] ending only the run's own loans, and on [Seal] not closing off its head call.
+The hardest case is again a returned borrow, and it has two sub-cases.
 
-*Thunkability is naturality.* In Pédrot and Tabareau's forcing model of dependent call-by-push-value, a computation is a family over forcing conditions, and it is _thunkable_ (behaves like a value) exactly when it is _natural_: running then restricting equals restricting then running @fire-triangle[Prop. 18]. Ochr's type-level evaluation has this shape. The normaliser runs at a condition Ω, which records which abstract values exist and what is known of them, and refinements are the restriction maps. [Split], which refines stored types in lockstep with the term, plays the role of their dependent `let`. @thm-natural is exactly the naturality condition. It is the precise sense in which types are free of effects although they run effectful programs.
+_No non-target owner accessed._ Suppose no possible owner other than the target was accessed before α. Then re-normalising reproduces the concrete state up to renaming. The concrete run pops $f$'s frame while its parameter's borrow holds the returned loan $"loan"_q$, so the target owner receives $K["loan"_q]$. On the symbolic side, re-normalising $seal("L; let r = C; *r := " "loan"_k "; " c_i)$ runs $C$, leaving $c_i$ holding $K["loan"_(q')]$. It then writes the inert $"loan"_k$ through $r$ and reads $c_i$, where [Access] ends the run's own $q'$. The result is $K["loan"_k]$, which matches $K["loan"_q]$ under $k <-> q$. This rests on loans being variables, on [Access] ending only the run's own loans, and on [Seal] not closing off its head call.
 
-This is a correspondence of invariants, not an embedding into their calculus, but it is a usable design test: a rule may act in type-level evaluation only if it is natural. Three candidate rules failed it. Joining a stuck match's results into fresh abstract values forgets what refinement would recover. Skipping proposition-valued _calls_, but not the same code outside a call, made a block differ sealed and unsealed. And non-structural recursion closes off on abstract arguments but diverges once they are instantiated.
+_A non-target owner accessed._ Suppose the symbolic run accessed a possible owner that α reveals is not the target. Then it has already ended the borrow, and only the resolutions of the two states agree.
+
+*Remark (holes over-approximate the target of a returned borrow).* This example is machine-checked in the Lean development.
+
+The setup:
+- `Pick(n, x, y) := match n { Z => x | S _ => y }`;
+- $Omega = {n |-> sigma, a |-> 1, b |-> 2, r |-> (), z |-> ()}$;
+- `t = r := Pick(n, &a, &b); z := b`;
+- $alpha = (sigma := sans("Z"))$.
+
+The symbolic run:
+- `Pick` is stuck on σ and is closed off.
+- The hole of its returned borrow sits in the fills of both `a` and `b`, since either may be the target.
+- Reading `b` therefore ends the returned borrow, and `r ↦ ⊥`.
+- After refinement, the state is ${a |-> 1, b |-> 2, r |-> bot, z |-> 2}$.
+
+The concrete run of $t alpha$:
+- `Pick` returns a borrow of `a`, so `b` holds no loan and `r` stays live.
+- The final state is ${a |-> "loan"_q, b |-> 2, r |-> "borrow"_q 1, z |-> 2}$.
+
+No renaming of loans relates these two states, though they resolve to the same contents. That is why @thm-natural is stated up to resolution.
+
+The cost is completeness, not soundness. The program `r := Pick(n, &a, &b); z := b; match n { Z => *r := 5 | S _ => () }` runs for every concrete `n`. But the checker rejects it: `r` is already $bot$ when the `Z` arm uses it. The error lands on that use. It goes away if the program uses `r` before reading `b`, or splits on `n` before the call. Recovering the program as written would need holes that record under which refinement they belong to which owner. Rust's borrow checker draws the same line: after `let r = if n == 0 { &mut a } else { &mut b }`, it treats `r` as borrowing from both `a` and `b` for as long as `r` is live, and rejects reading `b` in between. The checker is as conservative as Rust here, and the concrete machine is more permissive than both.
+
+*Thunkability is naturality.* In Pédrot and Tabareau's forcing model of dependent call-by-push-value, a computation is a family over forcing conditions. It is _thunkable_ (it behaves like a value) exactly when it is _natural_: running then restricting equals restricting then running @fire-triangle[Prop. 18]. Ochr's type-level evaluation has this shape. The normaliser runs at a condition Ω, which records which abstract values exist and what is known of them, and refinements are the restriction maps. [Split] refines stored types in lockstep with the term, and so plays the role of their dependent `let`.
+
+A type contains only observations, and observations are resolved. So part (2) of @thm-natural, the naturality square for everything a type can see, commutes on the nose. That is the precise sense in which types are free of effects although they run effectful programs. Operational states commute only up to extra borrow endings, by part (1). The difference is invisible to types and costs only the completeness just described.
+
+This is a correspondence of invariants, not an embedding into their calculus, but it is a usable design test: a rule may act in type-level evaluation only if it is natural on observations. Three candidate rules failed it:
+- joining a stuck match's results into fresh abstract values forgets what refinement would recover;
+- skipping proposition-valued _calls_, but not the same code outside a call, made a block observe differently sealed and unsealed;
+- non-structural recursion closes off on abstract arguments but diverges once they are instantiated.
 
 == Typing and conversion are preserved
 
