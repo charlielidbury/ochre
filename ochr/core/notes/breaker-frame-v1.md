@@ -19,3 +19,83 @@
 7. (d) Arms borrow different places and return them (`Pick`), then the continuation ends the returned borrow — BLOCKED: single live `borrow_k`; the two `?k` occurrences are owner-side loans, not two writers.
 8. (D16) Must-fail `Id Nat Z (S Z)` under trimmed `Eq` — still uninhabited (stuck; only `refl : ⊤`); consistency of this goal survives the trim.
 9. Fire triangle re-confirmed under P5 + D16 — still the CBV/restricted-substitution corner; large-elimination refutation of false Nat equations is retained, so no accidental weakening.
+
+---
+
+## Attack 1 (a) — exclusivity under loans-as-variables, no-side-condition [End]
+
+D11 makes a loan a variable bound by its borrow, and [End ℓ] a plain substitution with **no** side
+condition: `borrow_ℓ v ↦ ⊥`, `loan_ℓ ↦ v` everywhere. Aeneas's End-Mut required `v` loan-free (end
+inner borrows first). The attack: end a *parent* borrow while a child reborrow is live, hoping the
+child survives and comes to alias a fresh borrow (two live writers of one cell).
+
+Chain `c` reborrows `*b` reborrows `a`:
+```
+a ↦ loan_m        b ↦ borrow_m (loan_n)        c ↦ borrow_n v
+```
+End the parent `m` first (no side condition lets us, though its content holds `loan_n`):
+```
+[End m]:  b ↦ ⊥,  substitute (loan_n) for loan_m  ⟹  a ↦ loan_n,  b ↦ ⊥,  c ↦ borrow_n v
+```
+Now `c` is live and its loan sits at `a`: **c has become a direct borrow of a**. This is correct
+reborrow semantics, and crucially `loan_n` occurs in exactly **one** place (`a`), because the
+substitution replaced the single `loan_m` occurrence. To "alias something new" I must make a *second*
+live borrow reference the same cell. Two routes, both blocked:
+
+- **New borrow of `a`.** `&a` runs [Access] on `a`: "before borrowing `p`, end every borrow whose
+  loan occurs inside `content(p)`". `content(a) = loan_n`, so [Access] ends `c` first (`c ↦ ⊥`,
+  `a ↦ v`), then `&a` loans a fresh cell. No two live borrows; a later use of `c` reads `⊥` (error).
+- **Duplicate the loan.** The only way `loan_n` reaches two owned places is the duplicated-hole case
+  (a returned borrow from a multi-borrow call, D18). But that is one hole `?k` for one borrow `k`
+  occurring in two *owners* (loan positions), filled together when `k` ends. There is still exactly
+  one live `borrow_k` (held by the result). Two owner-side occurrences of `?k` are not two writers;
+  they are "two owners whose final content depends on `k`'s final value." No aliasing.
+
+**Outcome: BLOCKED, and D11 is actually more robust than Aeneas here.** Because ending is
+substitution, a loan can never split: `[End ℓ]` replaces each `loan_ℓ` occurrence by the one value
+`v`, and `[Access]`'s inside-content clause (D19/C5) ends any borrow before a conflicting access.
+
+**But T1a's written proof is invalid for v1.** meta-model T1a argues ends commute because
+"`end ℓ` is enabled only when ℓ's content holds no loan/hole, so it does not contain `h_ℓ'`." Under
+D11 there is no such enabling condition — I just ended `m` with `loan_n` inside its content. The
+right proof: ending is a set of substitutions `loan_ℓ := v_ℓ` on an **acyclic** dependency graph
+(I3), and a system of acyclic substitutions is confluent and terminating (hereditary substitution /
+Newman). The conclusion `ρ_Ω` well-defined survives; the stated reason does not. This should be fixed
+in the metatheory text, and it makes T1 *easier*, not harder.
+
+---
+
+## Attack 2 (f) — two loan-ending schedules, different observations
+
+The flagged top risk. I tried to build a schedule dependence. Pure (non-hole) ends first, three
+nested borrows, ending in both orders (continuing Attack 1's chain, now resolving fully):
+
+Schedule A (`m` then `n`): `a ↦ loan_n, c ↦ borrow_n v` → `[End n]` → `a ↦ v`.
+Schedule B (`n` then `m`): `[End n]` gives `b ↦ borrow_m v` (n's loan was inside b), then `[End m]`
+gives `a ↦ v`. **Same result `a ↦ v`.** In general, one-way dependence (`v_ℓ` mentions `loan_ℓ'`,
+not conversely) gives, in either order, `loan_ℓ ↦ v_ℓ[loan_ℓ' := v_ℓ']`; mutual dependence is
+forbidden by I3. So pure-end resolution is order-independent by substitution confluence. **No break.**
+
+The hole case is where canonicity is genuinely open. `[End k]` for a returned borrow does *not* just
+substitute: it substitutes the written value `w` for `?k` in the sealed programs **and
+re-normalises** (re-runs them). So canonicity of two hole-ends `k`, `k'` needs
+"substitute-`w`-then-normalise" to commute with "substitute-`w'`-then-normalise". That is exactly
+naturality of the normaliser under refinement — meta-model's T5 — which is **unproven**. I attacked
+it two ways:
+
+- **Overlapping targets.** For the schedule to matter, re-normalising after filling `?k` must change
+  what filling `?k'` produces. That needs the two returned borrows to write cells whose final
+  contents interfere. But two *live* mutable borrows into overlapping cells are impossible ([Access]
+  exclusivity, Attack 1), so `k` and `k'` write disjoint cells; their sealed programs mention
+  disjoint holes; filling one leaves the other inert ([Seal]: "a loan whose borrow is outside the run
+  is inert"). Disjoint substitutions on a confluent normaliser commute. No break found.
+- **Re-normalisation spawning a new hole.** Filling `?k` with a constructor can make a match inside
+  the sealed program fire and [Close] an inner call, minting a fresh hole `?k''`. I could not make
+  `?k''`'s owner set depend on the fill order, because the inner call's borrow arguments are
+  determined by the (deterministic) sealed run, not by when `k'` ends.
+
+**Outcome: NO BREAK, but not closed.** Canonicity holds for pure ends unconditionally; for holes it
+is exactly T5, and T5's own hardest case (returned-borrow [Close] under a completing refinement) is
+the one meta-model flags for mechanisation. I still bet the residual risk lives here, but I have no
+counterexample, and the structural argument (disjoint holes, deterministic seals) is fairly strong.
+Recommend: mechanise `AddM'`/`TailM` resolution first, as both round-1 and the meta-model say.
