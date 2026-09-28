@@ -30,7 +30,7 @@ partial def mkEq (A a b : Value) : Value :=
 
 def Place.root : Place → Nat
   | .var i => i
-  | .deref p | .fst p | .snd p => p.root
+  | .deref p | .fst p | .snd p | .field _ _ p => p.root
 
 /-- Replace the root variable of a place by a place. -/
 def Place.mapRoot (f : Nat → Place) : Place → Place
@@ -38,6 +38,7 @@ def Place.mapRoot (f : Nat → Place) : Place → Place
   | .deref p => .deref (p.mapRoot f)
   | .fst p => .fst (p.mapRoot f)
   | .snd p => .snd (p.mapRoot f)
+  | .field i h p => .field i h (p.mapRoot f)
 
 /-- How a place occurs in a term. -/
 inductive PKind where
@@ -72,6 +73,8 @@ partial def Term.mapFree (f : Nat → Nat → Place) (c : Nat) : Term → Term
   | .eq a b d => .eq (a.mapFree f c) (b.mapFree f c) (d.mapFree f c)
   | .id a b d => .id (a.mapFree f c) (b.mapFree f c) (d.mapFree f c)
   | .prim n as => .prim n (as.map (·.mapFree f c))
+  | .ctor t k h as => .ctor t k h (as.map (·.mapFree f c))
+  | .matchInd p t as => .matchInd (mp f c p) t (as.map fun (h, a) => (h, a.mapFree f c))
   | t => t
 
 partial def mapDoms (f : Nat → Nat → Place) (c : Nat) (ds : List Term) : List Term :=
@@ -110,6 +113,8 @@ partial def Term.mapFreePlace (f : Nat → Place → Place) (c : Nat) : Term →
   | .eq a b d => .eq (a.mapFreePlace f c) (b.mapFreePlace f c) (d.mapFreePlace f c)
   | .id a b d => .id (a.mapFreePlace f c) (b.mapFreePlace f c) (d.mapFreePlace f c)
   | .prim n as => .prim n (as.map (·.mapFreePlace f c))
+  | .ctor t k h as => .ctor t k h (as.map (·.mapFreePlace f c))
+  | .matchInd p t as => .matchInd (fp f c p) t (as.map fun (h, a) => (h, a.mapFreePlace f c))
   | t => t
 where
   fp (f : Nat → Place → Place) (c : Nat) (p : Place) : Place :=
@@ -133,7 +138,8 @@ partial def Term.placeOccs (c : Nat) : Term → List (Nat × Place × PKind)
   | .prod a b | .pair a b | .and a b | .andI a b | .cong a b | .ascribe a b =>
       a.placeOccs c ++ b.placeOccs c
   | .eq a b d | .id a b d => a.placeOccs c ++ b.placeOccs c ++ d.placeOccs c
-  | .prim _ as => as.flatMap (·.placeOccs c)
+  | .prim _ as | .ctor _ _ _ as => as.flatMap (·.placeOccs c)
+  | .matchInd p _ as => (c, p, .scrut) :: as.flatMap (·.2.placeOccs c)
   | _ => []
 
 /-- Free occurrences, with the root expressed as an index into the enclosing frame. -/
@@ -155,6 +161,7 @@ partial def Value.anyAtom (P : Value → Bool) (v : Value) : Bool :=
   | .tEq A a b => A.anyAtom P || a.anyAtom P || b.anyAtom P
   | .clo cs t | .tPi cs t => cs.any (·.anyAtom P) || t.anyAtom P
   | .sealed t => t.anyAtom P
+  | .ind _ _ _ fs => fs.any (·.anyAtom P)
   | _ => false
 
 partial def Term.anyAtom (P : Value → Bool) : Term → Bool
@@ -167,7 +174,8 @@ partial def Term.anyAtom (P : Value → Bool) : Term → Bool
   | .fix _ _ ds c _ b => ds.any (·.anyAtom P) || c.anyAtom P || b.anyAtom P
   | .call f as _ => f.anyAtom P || as.any (·.anyAtom P)
   | .eq a b c | .id a b c => a.anyAtom P || b.anyAtom P || c.anyAtom P
-  | .prim _ as => as.any (·.anyAtom P)
+  | .prim _ as | .ctor _ _ _ as => as.any (·.anyAtom P)
+  | .matchInd _ _ as => as.any (·.2.anyAtom P)
   | _ => false
 end
 
@@ -180,6 +188,7 @@ partial def Value.loans : Value → List Nat
   | .tEq A a b => A.loans ++ a.loans ++ b.loans
   | .clo cs t | .tPi cs t => cs.flatMap Value.loans ++ t.loans
   | .sealed t => t.loans
+  | .ind _ _ _ fs => fs.flatMap Value.loans
   | _ => []
 
 partial def Term.loans : Term → List Nat
@@ -192,7 +201,8 @@ partial def Term.loans : Term → List Nat
   | .fix _ _ ds c _ b => ds.flatMap Term.loans ++ c.loans ++ b.loans
   | .call f as _ => f.loans ++ as.flatMap Term.loans
   | .eq a b c | .id a b c => a.loans ++ b.loans ++ c.loans
-  | .prim _ as => as.flatMap Term.loans
+  | .prim _ as | .ctor _ _ _ as => as.flatMap Term.loans
+  | .matchInd _ _ as => as.flatMap (·.2.loans)
   | _ => []
 end
 

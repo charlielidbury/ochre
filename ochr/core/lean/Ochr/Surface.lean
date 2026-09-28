@@ -27,7 +27,7 @@ inductive STerm where
   | assign (p t : STerm)
   | letIn (x : String) (ty : Option STerm) (t u : STerm)
   | seq (t u : STerm)
-  | matchNat (scrut z : STerm) (y : String) (s : STerm)
+  | matchGen (scrut : STerm) (arms : List (String × List String × STerm))   -- C(x̄) => t
   | pi (bs : List (String × STerm)) (cod : STerm)
   | arrow (A B : STerm)
   | fix (f : String) (bs : List (String × STerm)) (ret : STerm) (dec : Option String) (body : STerm)
@@ -43,10 +43,11 @@ deriving Inhabited, Repr
 
 structure SDecl where
   name : String
-  params : List (String × STerm)
-  ret : STerm
+  params : List (String × STerm) := []
+  ret : STerm := .unitLit
+  body : STerm := .unitLit
   dec : Option String := none
-  body : STerm
+  ind? : Option (List (String × List (String × STerm))) := none   -- an inductive declaration
   expectAccept : Bool
 deriving Inhabited, Repr
 
@@ -69,7 +70,20 @@ where
     | .bound y :: rest, k => if y == x then some (.var k) else go rest (k + 1)
     | .alias y p :: rest, k => if y == x then some (shiftPlace k p) else go rest k
 
-abbrev R := Except String
+/-- The declared inductive types of the program: constructor name ↦ (type, index, field
+names), and the type names. -/
+structure Tables where
+  ctors : List (String × String × Nat × List String) := []
+  types : List String := []
+
+abbrev R := ReaderT Tables (Except String)
+
+def Tables.ofProgram (p : List SDecl) : Tables :=
+  p.foldl (fun t d => match d.ind? with
+    | some cs =>
+      { ctors := t.ctors ++ (cs.zipIdx.map fun ((cn, fs), i) => (cn, d.name, i, fs.map (·.1))),
+        types := t.types ++ [d.name] }
+    | none => t) {}
 
 def builtinNames : List String := ["Nat", "Unit", "Z", "refl", "S", "Id", "Eq", "cong"]
 
@@ -82,7 +96,7 @@ partial def toPlace (ctx : Ctx) : STerm → R Place
   | .proj 2 t => return .snd (← toPlace ctx t)
   | t => throw s!"not a place: {repr t}"
 
-def isPlace (ctx : Ctx) (t : STerm) : Bool := (toPlace ctx t).toOption.isSome
+def isPlace (ctx : Ctx) (t : STerm) : Bool := ((toPlace ctx t).run {}).toOption.isSome
 
 /-- The position of the parameter named by `by x`. -/
 def decIndex (bs : List (String × STerm)) : Option String → R (Option Nat)
@@ -100,7 +114,13 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
   | .ident x =>
     match lookup ctx x with
     | some p => pure (.place p)
-    | none => match x with
+    | none =>
+      let tb ← read
+      if tb.types.contains x then return .tind x
+      if let some (_, ty, i, fs) := tb.ctors.find? (·.1 == x) then
+        if fs.isEmpty then return .ctor ty i ⟨x⟩ []
+        throw s!"constructor {x} takes {fs.length} fields"
+      match x with
       | "Nat" => pure .nat
       | "Unit" => pure .unit
       | "Z" => pure .zero
@@ -120,6 +140,13 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
     if (lookup ctx "J").isSome then return .call (← resolve ctx false (.ident "J")) (← [A, a, b, P, h, u].mapM (resolve ctx false)) false
     return .prim "J" [← resolve ctx true A, ← resolve ctx false a, ← resolve ctx false b,
                       ← resolve ctx false P, ← resolve ctx false h, ← resolve ctx false u]
+  | .call (.ident c) as =>
+    let tb ← read
+    match (if (lookup ctx c).isSome then none else tb.ctors.find? (·.1 == c)) with
+    | some (_, ty, i, fs) =>
+      if fs.length != as.length then throw s!"constructor {c} takes {fs.length} fields, given {as.length}"
+      return .ctor ty i ⟨c⟩ (← as.mapM (resolve ctx false))
+    | none => return .call (← resolve ctx false (.ident c)) (← as.mapM (resolve ctx false)) false
   | .call f as => return .call (← resolve ctx false f) (← as.mapM (resolve ctx false)) false
   | .deref _ => return .place (← toPlace ctx t)
   | .proj i a =>
@@ -136,10 +163,29 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
       | none => pure a'
     return .letIn ⟨x⟩ a' (← resolve (.bound x :: ctx) ty u)
   | .seq a b => return .seq (← resolve ctx false a) (← resolve ctx ty b)
-  | .matchNat sc z y s =>
+  | .matchGen sc arms =>
     let p ← toPlace ctx sc
-    let ctxS := if y == "_" then ctx else .alias y (.fst p) :: ctx
-    return .matchNat p (← resolve ctx ty z) (← resolve ctxS ty s)
+    match arms with
+    | [("Z", [], z), ("S", [y], s)] =>
+      let ctxS := if y == "_" then ctx else .alias y (.fst p) :: ctx
+      return .matchNat p (← resolve ctx ty z) (← resolve ctxS ty s)
+    | [] => throw "a match with no arms"
+    | (c0, _, _) :: _ =>
+      let tb ← read
+      let some (_, tyName, _, _) := tb.ctors.find? (·.1 == c0)
+        | throw s!"{c0} is not a constructor (Nat's are written Z => … | S y => …, in that order)"
+      let cs := tb.ctors.filter (·.2.1 == tyName)
+      let mut out := #[]
+      for (cn, _, i, fs) in cs do
+        let some (_, vars, body) := arms.find? (·.1 == cn) | throw s!"match on {tyName}: no arm for {cn}"
+        if vars.length != fs.length then throw s!"pattern {cn} needs {fs.length} variables"
+        -- pattern variables are the sub-places p.fᵢ (RULES §1, D32)
+        let ctxA := (vars.zip (fs.zipIdx)).foldl (fun acc (v, (fname, j)) =>
+          if v == "_" then acc else .alias v (.field j ⟨fname⟩ p) :: acc) ctx
+        out := out.push (Hint.mk cn, ← resolve ctxA ty body)
+        let _ := i
+      if arms.length != cs.length then throw s!"match on {tyName}: {arms.length} arms for {cs.length} constructors"
+      return .matchInd p tyName out.toList
   | .pi bs cod =>
     let (ctx', hs, ds) ← binders ctx bs
     return .pi hs ds (← resolve ctx' true cod)
@@ -167,14 +213,22 @@ partial def binders (ctx : Ctx) : List (String × STerm) → R (Ctx × List Hint
     pure (ctx', ⟨x⟩ :: hs, A' :: ds)
 end
 
-/-- A top-level declaration becomes a `Def`; inside its body its own name is its `self`
-binder (whose value is the global function). -/
-def resolveDecl (d : SDecl) : R Def := do
+/-- A top-level declaration becomes an `Item`. Inside a definition's body its own name
+is its `self` binder (whose value is the global function). -/
+def resolveDecl (d : SDecl) : R Item := do
+  if let some cs := d.ind? then
+    let cs' ← cs.mapM fun (cn, fs) => do
+      pure (cn, ← fs.mapM fun (fname, FT) => do pure (fname, ← resolve [] true FT))
+    return .ind d.name cs'
   let (ctx', hs, ds) ← binders [] d.params
   let cod ← resolve ctx' true d.ret
   let body ←
     if d.params.isEmpty then resolve [] false d.body
     else resolve ((d.params.reverse.map fun (x, _) => Entry.bound x) ++ [.bound d.name]) false d.body
-  pure { name := d.name, hs := hs, doms := ds, cod := cod, dec := ← decIndex d.params d.dec, body := body }
+  pure (.defn { name := d.name, hs := hs, doms := ds, cod := cod, dec := ← decIndex d.params d.dec, body := body })
+
+/-- Resolve a whole program's declarations with its constructor table. -/
+def resolveProgram (p : List SDecl) (d : SDecl) : Except String Item :=
+  (resolveDecl d).run (Tables.ofProgram p)
 
 end Ochr.Surface

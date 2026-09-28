@@ -11,6 +11,7 @@ namespace Ochr
 
 inductive Step where
   | deref | fst | snd
+  | field (i : Nat) (h : Hint)
 deriving BEq, Inhabited
 
 /-- A place as its root variable and the steps from it, root first. -/
@@ -19,6 +20,7 @@ def Place.steps : Place → Nat × List Step
   | .deref p => let (i, s) := p.steps; (i, s ++ [.deref])
   | .fst p => let (i, s) := p.steps; (i, s ++ [.fst])
   | .snd p => let (i, s) := p.steps; (i, s ++ [.snd])
+  | .field k h p => let (i, s) := p.steps; (i, s ++ [.field k h])
 
 /-- One step of a path: `*` goes into the content of a borrow, `.1` into the
 predecessor of `S v` or the first component of a pair, `.2` into the second. -/
@@ -27,6 +29,7 @@ def stepV : Step → Value → Option Value
   | .fst, .succ w => some w
   | .fst, .pair a _ => some a
   | .snd, .pair _ b => some b
+  | .field i _, .ind _ _ _ fs => fs[i]?
   | _, _ => none
 
 def Value.follow (v : Value) : List Step → Option Value
@@ -40,6 +43,10 @@ def Value.updAt (f : Value → Value) : List Step → Value → Option Value
   | .fst :: ss, .succ w => (Value.updAt f ss w).map .succ
   | .fst :: ss, .pair a b => (Value.updAt f ss a).map (.pair · b)
   | .snd :: ss, .pair a b => (Value.updAt f ss b).map (.pair a ·)
+  | .field i _ :: ss, .ind t c h fs =>
+    match fs[i]? with
+    | some v => (Value.updAt f ss v).map fun v' => .ind t c h (fs.set i v')
+    | none => none
   | _, _ => none
 
 /-- The value held at a position contains `borrow_ℓ` (borrows are never inside

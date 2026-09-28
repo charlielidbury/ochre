@@ -1,6 +1,6 @@
-# Ochr core: an executable reference checker for RULES v1.4
+# Ochr core: an executable reference checker for RULES v1.5
 
-A Lean 4 implementation of the calculus in `ochr/core/RULES.md` (rule set v1.4): the machine of §3, observation and `Id` of §4, and the typing of §5, with the examples of §7 and the round-1 attacks as tests. It exists to run the examples, and to find every place where the rules are ambiguous or wrong. Findings are in `ochr/core/notes/lean-checker.md`.
+A Lean 4 implementation of the calculus in `ochr/core/RULES.md` (rule set v1.5), extended to user-declared inductive types: the machine of §3, observation and `Id` of §4, and the typing of §5, with the examples of §7 and the round-1 attacks as tests. It exists to run the examples, and to find every place where the rules are ambiguous or wrong. Findings are in `ochr/core/notes/lean-checker.md`.
 
 ## Build and run
 
@@ -10,7 +10,7 @@ lake build          # checks every example; a failing verdict or a wrong asserti
 lake exe tests      # prints every verdict table and the counterfactual ledger; exit 1 on any unexpected verdict
 ```
 
-Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A clean build takes about ten seconds and prints every verdict table; `lake exe tests` compiles the runner first (about 20 s) and prints per-declaration check times (all 139 declarations check in about 5 ms).
+Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A clean build takes about ten seconds and prints every verdict table; `lake exe tests` compiles the runner first (about 20 s) and prints per-declaration check times (all 185 declarations check in about 9 ms).
 
 ## Writing programs
 
@@ -33,9 +33,9 @@ ochr E1 {
 #guard (run "E1" E1).allAsExpected
 ```
 
-`def` expects acceptance and `reject def` expects rejection. `by x` names the decreasing parameter; a definition without `by` may not call itself. Calls are saturated and written `f(a, …)` with no space before the parenthesis. `S t`, `Id A t u` and `Eq A t u` are written by juxtaposition, and transport by `J(A, a, b, P, h, t)`. Other syntax: `&p`, `*p`, `p.1`, `p := t`, `let x = t; u`, `let x : T = t; u` (for a match, `T` is the block's type), `t; u`, `match p { Z => t | S y => u }` (and `S _`), `Π(x : A) (y : B). C`, `A → B`, `λ(x : A) : B => t`, `fix f (x : A) : B by x := t`, `(t : A)`, `()`, `(t, u)`, `⟨h, k⟩`, `refl`, `⊤`, `P ∧ Q`, `A × B`, `Nat`, `Unit`, `Prop`, `Type`, and numerals. `cong f h`, `trans h k` and `symm h` exist as derivable conveniences outside the core. A `λ` or `Π` in the bound position of a `let`, or a `Π` as a result type, needs parentheses.
+`def` expects acceptance and `reject def` expects rejection. `inductive List := Nil | Cons(h : Nat, t : List)` declares an inductive type; its constructors are applied like calls (`Cons(1, Nil)`), and `match xs { Nil => … | Cons(h, t) => … }` binds `h`, `t` as the field places `xs.h`, `xs.t`. `by x` names the decreasing parameter; a definition without `by` may not call itself. Calls are saturated and written `f(a, …)` with no space before the parenthesis. `S t`, `Id A t u` and `Eq A t u` are written by juxtaposition, and transport by `J(A, a, b, P, h, t)`. Other syntax: `&p`, `*p`, `p.1`, `p := t`, `let x = t; u`, `let x : T = t; u` (for a match, `T` is the block's type), `t; u`, `match p { Z => t | S y => u }` (and `S _`), `Π(x : A) (y : B). C`, `A → B`, `λ(x : A) : B => t`, `fix f (x : A) : B by x := t`, `(t : A)`, `()`, `(t, u)`, `⟨h, k⟩`, `refl`, `⊤`, `P ∧ Q`, `A × B`, `Nat`, `Unit`, `Prop`, `Type`, and numerals. `cong f h`, `trans h k` and `symm h` exist as derivable conveniences outside the core. A `λ` or `Π` in the bound position of a `let`, or a `Π` as a result type, needs parentheses.
 
-`Config` switches each turn off one rule, for counterfactual runs: `eraseOnCopy` (P2, v1.3), `multiOwner` (D18), `recGuard` (D17), `accessInside` (D19), `selfHeadOnly` (v1.1 head-only), `argNotBot` (v1.2 temporaries), `generalize` (v1.2 generalise-then-split), `blockMoves` (v1.3 captures), `proofParamsStar` (v1.4 D27), `recNested` ([Rec] inside nested functions), `p5` (v1's call skipping), `inferRecPos` (v1's inferred decreasing parameter), and `trace`.
+`Config` switches each turn off one rule, for counterfactual runs: `eraseOnCopy` (P2, v1.3), `multiOwner` (D18), `recGuard` (D17), `accessInside` (D19), `selfHeadOnly` (v1.1 head-only), `argNotBot` (v1.2 temporaries), `generalize` (v1.2 generalise-then-split), `blockMoves` (v1.3 captures), `proofParamsStar` (v1.4 D27), `recNested` ([Rec] inside nested functions), `erasureByDecl` (D28), `matchEndsInside` (D29), `closureConv` (D30), `unboundWithoutBy` (D31), `patternWritesVisible` (D32), `genConsistent` (finding G1), `p5` (v1's call skipping), `inferRecPos` (v1's inferred decreasing parameter), and `trace`.
 
 ## Layout
 
@@ -50,7 +50,7 @@ ochr E1 {
 | `Ochr/Check.lean` | programs as sequences of top-level definitions |
 | `Ochr/Surface.lean`, `Ochr/Notation.lean` | named surface terms, their resolution, the `ochr` command |
 | `Ochr/Test.lean` | running programs, verdict tables, traces |
-| `Ochr/Examples/*.lean` | E1–E6, the attacks, further probes, unit tests (incl. D18), the registry, total count and counterfactual ledger |
+| `Ochr/Examples/*.lean` | E1–E6, the attacks (rounds 1–3), v1.5 regressions, inductive types (lists, BSTs), unit tests (incl. D18), the registry, total count and counterfactual ledger |
 | `Tests.lean` | `lake exe tests` |
 
 ## Rule → function

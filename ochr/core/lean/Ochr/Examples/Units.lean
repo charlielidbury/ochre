@@ -6,7 +6,7 @@ open Ochr Ochr.Test Ochr.Surface
 
 namespace Ochr.Units
 
-def globalsOf (p : Program) : List GDef := globalsAfter {} (p.filterMap fun d => (resolveDecl d).toOption)
+def globalsOf (p : Program) : List GDef := (globalsAfter {} (p.filterMap fun d => (resolveProgram p d).toOption)).1
 
 def st (p : Program) (nAbs : Nat) : MState :=
   { globals := globalsOf p, nextAbs := nAbs, absTy := (List.replicate nAbs Value.tNat).toArray }

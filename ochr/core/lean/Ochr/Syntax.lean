@@ -32,6 +32,7 @@ inductive Place where
   | deref (p : Place)
   | fst (p : Place)
   | snd (p : Place)
+  | field (i : Nat) (h : Hint) (p : Place)   -- the i-th field of a constructor value (a pattern variable)
 
 inductive Term where
   | place (p : Place)                         -- read `p` ([Read])
@@ -55,6 +56,9 @@ inductive Term where
   | id (A t u : Term)                         -- `Id A t u` (§4)
   | ascribe (t A : Term)                      -- `(t : A)`
   | prim (n : String) (args : List Term)      -- `J A P h t`, `trans h k`, `symm h` (derivable from J)
+  | tind (n : String)                         -- a declared inductive type
+  | ctor (ty : String) (c : Nat) (h : Hint) (args : List Term)   -- constructor application
+  | matchInd (p : Place) (ty : String) (arms : List (Hint × Term))  -- one arm per constructor, in order
 
 /-- Runtime values (RULES §2). Types are values too. -/
 inductive Value where
@@ -71,12 +75,15 @@ inductive Value where
   | tRef (A : Value)
   | tPi (caps : List Value) (t : Term)        -- Π-type: a closure over formation-time values (P2)
   | sort (l : Nat)
+  | ind (ty : String) (c : Nat) (h : Hint) (fs : List Value)   -- a constructor value
+  | tInd (n : String)
 end
 
 mutual
 partial def Place.beq : Place → Place → Bool
   | .var i, .var j => i == j
   | .deref p, .deref q | .fst p, .fst q | .snd p, .snd q => p.beq q
+  | .field i _ p, .field j _ q => i == j && p.beq q
   | _, _ => false
 
 partial def Term.beqList : List Term → List Term → Bool
@@ -102,6 +109,9 @@ partial def Term.beq : Term → Term → Bool
   | .andI a b, .andI c d | .cong a b, .cong c d | .ascribe a b, .ascribe c d => a.beq c && b.beq d
   | .eq a b c, .eq d e f | .id a b c, .id d e f => a.beq d && b.beq e && c.beq f
   | .prim n as, .prim m bs => n == m && Term.beqList as bs
+  | .tind n, .tind m => n == m
+  | .ctor t c _ as, .ctor u d _ bs => t == u && c == d && Term.beqList as bs
+  | .matchInd p t as, .matchInd q u bs => p.beq q && t == u && Term.beqList (as.map (·.2)) (bs.map (·.2))
   | _, _ => false
 
 partial def Value.beqList : List Value → List Value → Bool
@@ -120,6 +130,8 @@ partial def Value.beq : Value → Value → Bool
   | .loan l, .loan m | .abs l, .abs m | .sort l, .sort m => l == m
   | .sealed t, .sealed u => t.beq u
   | .tEq a b c, .tEq d e f => a.beq d && b.beq e && c.beq f
+  | .ind t c _ fs, .ind u d _ gs => t == u && c == d && Value.beqList fs gs
+  | .tInd n, .tInd m => n == m
   | _, _ => false
 end
 

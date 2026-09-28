@@ -39,7 +39,8 @@ partial def Term.mentionsConst (n : String) : Term → Bool
   | .fix _ _ ds c _ b => ds.any (·.mentionsConst n) || c.mentionsConst n || b.mentionsConst n
   | .call f as _ => f.mentionsConst n || as.any (·.mentionsConst n)
   | .eq a b c | .id a b c => a.mentionsConst n || b.mentionsConst n || c.mentionsConst n
-  | .prim _ as => as.any (·.mentionsConst n)
+  | .prim _ as | .ctor _ _ _ as => as.any (·.mentionsConst n)
+  | .matchInd _ _ as => as.any (·.2.mentionsConst n)
   | _ => false
 
 /-- Check one definition and add it to the globals. -/
@@ -61,32 +62,65 @@ def checkDef (d : Def) : M Unit := do
     modify fun s => { s with globals := s.globals ++ [⟨d.name, ty, some fixT, .gfn d.name⟩] }
     checkFix (.gfn d.name) [] fixT
 
-/-- Check a list of definitions in order, with a fresh state per definition apart
-from the globals accepted so far. -/
-def checkDefs (cfg : Config) (ds : List Def) (fuel : Nat := 2000000) :
+/-- A program item: a definition, or an inductive type declaration. -/
+inductive Item where
+  | defn (d : Def)
+  | ind (name : String) (ctors : List (String × List (String × Term)))
+deriving Inhabited
+
+def Item.name : Item → String
+  | .defn d => d.name
+  | .ind n _ => n
+
+/-- Declare an inductive type: constructors with named fields of closed, borrow-free
+types; fields may mention the type itself (recursive) or earlier types. -/
+def checkInd (n : String) (ctors : List (String × List (String × Term))) : M Unit := do
+  if (← get).inds.any (·.name == n) then err s!"{n} is already declared"
+  modify fun s => { s with env := #[{}], inds := s.inds ++ [⟨n, []⟩] }
+  let mut cs := #[]
+  for (cn, fields) in ctors do
+    let mut fs := #[]
+    for (fname, FT) in fields do
+      let T ← evalType FT
+      if T.typeHasRef then err s!"field {fname} of {cn}: no borrows inside data"
+      if (← sortOf T) != 1 then err s!"field {fname} of {cn}: its type must be a data type in Type"
+      fs := fs.push (fname, T)
+    cs := cs.push (cn, fs.toList)
+  modify fun s => { s with inds := s.inds.map fun d => if d.name == n then ⟨n, cs.toList⟩ else d }
+
+def checkItem : Item → M Unit
+  | .defn d => checkDef d
+  | .ind n cs => checkInd n cs
+
+/-- Check a list of items in order, with a fresh state per item apart from the
+globals and inductive types accepted so far. -/
+def checkDefs (cfg : Config) (ds : List Item) (fuel : Nat := 2000000) :
     List (String × Verdict × Array String) := Id.run do
   let mut globals : List GDef := []
+  let mut inds : List IndDecl := []
   let mut out := #[]
   for d in ds do
-    let st : MState := { globals := globals, cfg := cfg, fuel := fuel }
-    let (r, tr) := ((checkDef d).run st).run.run #[]
+    let st : MState := { globals := globals, inds := inds, cfg := cfg, fuel := fuel }
+    let (r, tr) := ((checkItem d).run st).run.run #[]
     match r with
     | .ok ((), st') =>
       globals := st'.globals
+      inds := st'.inds
       out := out.push (d.name, .accepted, tr)
     | .error (.error m) => out := out.push (d.name, .rejected m, tr)
     | .error (.stuck _) => out := out.push (d.name, .rejected "internal: stuck escaped to the top", tr)
   pure out.toList
 
-/-- The globals after checking a list of definitions (rejected ones are left out). -/
-def globalsAfter (cfg : Config) (ds : List Def) : List GDef := Id.run do
+/-- The globals and inductive types after checking a list of items. -/
+def globalsAfter (cfg : Config) (ds : List Item) : List GDef × List IndDecl := Id.run do
   let mut globals : List GDef := []
+  let mut inds : List IndDecl := []
   for d in ds do
-    let st : MState := { globals := globals, cfg := cfg }
-    match (((checkDef d).run st).run.run #[]).1 with
-    | .ok ((), st') => globals := st'.globals
+    let st : MState := { globals := globals, inds := inds, cfg := cfg }
+    match (((checkItem d).run st).run.run #[]).1 with
+    | .ok ((), st') => globals := st'.globals; inds := st'.inds
     | .error _ => pure ()
-  pure globals
+  pure (globals, inds)
 
 /-- Run a machine computation from a given state (for unit tests). -/
 def runM {α : Type} (x : M α) (st : MState) : Except String α :=

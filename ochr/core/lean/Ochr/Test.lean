@@ -29,15 +29,15 @@ def Report.allAsExpected (r : Report) : Bool := r.rows.all Row.asExpected
 def Report.count (r : Report) : Nat := r.rows.length
 def Report.passed (r : Report) : Nat := (r.rows.filter Row.asExpected).length
 
-def run (name : String) (p : Program) (cfg : Config := {}) : Report := Id.run do
+def run (name : String) (p : Program) (cfg : Config := {}) (fuel : Nat := 2000000) : Report := Id.run do
   -- resolve every declaration; a resolution failure is a rejection of that declaration
-  let mut defs : List Def := []
+  let mut defs : List Item := []
   let mut bad : List (String × String) := []
   for d in p do
-    match resolveDecl d with
+    match resolveProgram p d with
     | .ok df => defs := defs ++ [df]
     | .error e => bad := bad ++ [(d.name, e)]
-  let verdicts := checkDefs cfg defs
+  let verdicts := checkDefs cfg defs fuel
   let rows := p.map fun d =>
     let (v, tr) := match bad.lookup d.name with
       | some e => (Verdict.rejected s!"(surface) {e}", #[])

@@ -11,24 +11,27 @@ is read from a reference after the clock starts, so the (pure) check cannot be
 computed ahead of it, and its verdict is stored before the clock stops. -/
 def timedRun (cfgRef : IO.Ref Config) (p : Program) : IO (List (String × Bool × Bool × Nat)) := do
   let mut globals : List GDef := []
+  let mut inds : List IndDecl := []
   let mut out := #[]
   let sink ← IO.mkRef (0 : Nat)
   for d in p do
     let t0 ← IO.monoNanosNow
     let cfg ← cfgRef.get
-    let ok : Bool := match resolveDecl d with
+    let ok : Bool := match resolveProgram p d with
       | .error _ => false
       | .ok df =>
-        let st : MState := { globals := globals, cfg := cfg }
-        match (((checkDef df).run st).run.run #[]).1 with
+        let st : MState := { globals := globals, inds := inds, cfg := cfg }
+        match (((checkItem df).run st).run.run #[]).1 with
         | .ok _ => true
         | .error _ => false
     sink.modify (· + (if ok then 1 else 0))
     let t1 ← IO.monoNanosNow
     if ok then
-      if let .ok df := resolveDecl d then
-        let st : MState := { globals := globals, cfg := cfg }
-        if let .ok ((), st') := (((checkDef df).run st).run.run #[]).1 then globals := st'.globals
+      if let .ok df := resolveProgram p d then
+        let st : MState := { globals := globals, inds := inds, cfg := cfg }
+        if let .ok ((), st') := (((checkItem df).run st).run.run #[]).1 then
+          globals := st'.globals
+          inds := st'.inds
     out := out.push (d.name, d.expectAccept, ok, (t1 - t0) / 1000)
   pure out.toList
 
