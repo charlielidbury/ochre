@@ -38,6 +38,7 @@ partial def Term.mentionsConst (n : String) : Term → Bool
   | .fix _ _ ds c b => ds.any (·.mentionsConst n) || c.mentionsConst n || b.mentionsConst n
   | .call f as _ => f.mentionsConst n || as.any (·.mentionsConst n)
   | .eq a b c | .id a b c => a.mentionsConst n || b.mentionsConst n || c.mentionsConst n
+  | .prim _ as => as.any (·.mentionsConst n)
   | _ => false
 
 /-- Check one definition and add it to the globals. -/
@@ -75,5 +76,22 @@ def checkDefs (cfg : Config) (ds : List Def) (fuel : Nat := 2000000) :
     | .error (.error m) => out := out.push (d.name, .rejected m, tr)
     | .error (.stuck _) => out := out.push (d.name, .rejected "internal: stuck escaped to the top", tr)
   pure out.toList
+
+/-- The globals after checking a list of definitions (rejected ones are left out). -/
+def globalsAfter (cfg : Config) (ds : List Def) : List GDef := Id.run do
+  let mut globals : List GDef := []
+  for d in ds do
+    let st : MState := { globals := globals, cfg := cfg }
+    match (((checkDef d).run st).run.run #[]).1 with
+    | .ok ((), st') => globals := st'.globals
+    | .error _ => pure ()
+  pure globals
+
+/-- Run a machine computation from a given state (for unit tests). -/
+def runM {α : Type} (x : M α) (st : MState) : Except String α :=
+  match ((x.run st).run.run #[]).1 with
+  | .ok (a, _) => .ok a
+  | .error (.error m) => .error m
+  | .error (.stuck _) => .error "stuck"
 
 end Ochr

@@ -20,6 +20,12 @@ normalises, and forming a type (`Id`) runs observations.
 
 namespace Ochr
 
+/-- Print a place with the names of the top frame's bindings. -/
+def ppPlace (p : Place) : M String := do
+  let f ← topIdx
+  let names := (← get).env[f]!.binds.toList.reverse.map (·.hint.name)
+  pure (p.pp names)
+
 /-- The content of a place (RULES §3: follow `x`, `*p` through `borrow_ℓ v` to `v`,
 `p.1` through `S v` to `v`). -/
 def content (p : Place) : M Value := do
@@ -27,7 +33,7 @@ def content (p : Place) : M Value := do
   let v ← getAt (← varPos i)
   match v.follow ss with
   | some w => pure w
-  | none => err s!"no such place: the path of {p.pp []} does not exist in {v}"
+  | none => err s!"no such place {← ppPlace p}: its path does not exist in {v}"
 
 def setPlace (p : Place) (new : Value) : M Unit := do
   let (i, ss) := p.steps
@@ -35,7 +41,7 @@ def setPlace (p : Place) (new : Value) : M Unit := do
   let v ← getAt pos
   match v.updAt (fun _ => new) ss with
   | some v' => setAt pos v'
-  | none => err s!"no such place: the path of {p.pp []} does not exist in {v}"
+  | none => err s!"no such place {← ppPlace p}: its path does not exist in {v}"
 
 /-- The first live loan met on the path to a place, including at the place itself. -/
 def firstLiveLoanOnPath (env : Env) : Value → List Step → Option Nat
@@ -84,6 +90,7 @@ partial def headOnly (isSelf : Nat → Place → Bool) (c : Nat) : Term → Bool
       headOnly isSelf c t && headOnly isSelf c u
   | .succ t | .fst t | .snd t | .ref t => headOnly isSelf c t
   | .eq a b d | .id a b d => headOnly isSelf c a && headOnly isSelf c b && headOnly isSelf c d
+  | .prim _ as => as.all (headOnly isSelf c)
   | _ => true
 
 /-- Same check for a top-level definition, whose self-reference is `const name`. -/
@@ -98,6 +105,7 @@ partial def constHeadOnly (n : String) : Term → Bool
   | .fix _ _ ds c b => ds.all (constHeadOnly n) && constHeadOnly n c && constHeadOnly n b
   | .call f as _ => constHeadOnly n f && as.all (constHeadOnly n)
   | .eq a b d | .id a b d => constHeadOnly n a && constHeadOnly n b && constHeadOnly n d
+  | .prim _ as => as.all (constHeadOnly n)
   | _ => true
 
 /-- The refined entry value of `σ`: `σ` with the [Split] refinements made so far
@@ -124,6 +132,7 @@ re-normalised (inner ones first, since the traversal rebuilds bottom-up), and `E
 and `∧` are rebuilt with their smart constructors. -/
 partial def substV (x r : Value) (v : Value) : M Value := do
   if !(v.anyAtom (· == x)) then return v
+  if v == x then return r
   match v with
   | .abs _ | .loan _ => return (if v == x then r else v)
   | .succ w => return .succ (← substV x r w)
@@ -162,6 +171,7 @@ partial def substT (x r : Value) (t : Term) : M Term := do
   | .ascribe a b => return .ascribe (← go a) (← go b)
   | .eq a b c => return .eq (← go a) (← go b) (← go c)
   | .id a b c => return .id (← go a) (← go b) (← go c)
+  | .prim n as => return .prim n (← as.mapM go)
   | _ => return t
 
 /-- Substitute in every value of Ω; with `types`, also in the stored types, the types
@@ -243,7 +253,7 @@ partial def readPlace (p : Place) : M Value := do
   accessPath p; accessInside p
   let v ← content p
   match v with
-  | .bot => err s!"[Read] {p.pp []} was moved out or its borrow ended (reading ⊥)"
+  | .bot => err s!"[Read] {← ppPlace p} was moved out or its borrow ended (reading ⊥)"
   | .borrow _ _ => setPlace p .bot; pure v
   | _ => pure v
 
@@ -252,7 +262,7 @@ partial def borrowPlace (p : Place) : M Value := do
   accessPath p; accessInside p
   let v ← content p
   match v with
-  | .bot => err s!"[Borrow] {p.pp []} was moved out (borrowing ⊥)"
+  | .bot => err s!"[Borrow] {← ppPlace p} was moved out (borrowing ⊥)"
   | .borrow _ _ => err "[Borrow] a borrow of a borrow (&&T is outside the core)"
   | _ =>
     let l ← freshLoan
@@ -268,7 +278,7 @@ partial def assignPlace (p : Place) (v : Value) : M Unit := do
   | .borrow l _ => endBorrow l
   | _ =>
     if !(liveLoansIn (← get).env old).isEmpty then
-      err s!"[Drop] the old content of {p.pp []} is overwritten while borrowed"
+      err s!"[Drop] the old content of {← ppPlace p} is overwritten while borrowed"
   let v' ← popTemp
   setPlace p v'
 
@@ -313,14 +323,14 @@ partial def placeType (p : Place) : M Value := do
     | none => valType (← getAt pos)
   | .deref q => match ← placeType q with
     | .tRef T => pure T
-    | T => err s!"*{q.pp []}: not a borrow (type {T})"
+    | T => err s!"*{← ppPlace q}: not a borrow (type {T})"
   | .fst q => match ← placeType q with
     | .tNat => pure .tNat
     | .tProd A _ => pure A
-    | T => err s!"{q.pp []}.1: no sub-place at type {T}"
+    | T => err s!"{← ppPlace q}.1: no sub-place at type {T}"
   | .snd q => match ← placeType q with
     | .tProd _ B => pure B
-    | T => err s!"{q.pp []}.2: no sub-place at type {T}"
+    | T => err s!"{← ppPlace q}.2: no sub-place at type {T}"
 
 /-- The type of a value, for untyped bindings (captured values) and embedded values. -/
 partial def valType (v : Value) : M Value := do
@@ -421,7 +431,7 @@ partial def eval (typed : Bool) (t : Term) : M (Value × Option Value) := do
   | .borrow p =>
     let T ← if typed then some <$> placeType p else pure none
     if let some T := T then
-      if T.typeHasRef then err s!"&{p.pp []}: a borrow of a borrow-typed place"
+      if T.typeHasRef then err s!"&{← ppPlace p}: a borrow of a borrow-typed place"
     pure (← borrowPlace p, T.map .tRef)
   | .assign p u =>
     let (v, Tv) ← eval typed u
@@ -479,6 +489,8 @@ partial def eval (typed : Bool) (t : Term) : M (Value × Option Value) := do
     pushTemp v
     let (w, B) ← eval typed b
     let v ← popTemp
+    if let (some A, some B) := (A, B) then
+      if A.typeHasRef || B.typeHasRef then err "a pair holding a borrow (no borrows inside data, RULES §1)"
     pure (.pair v w, match A, B with | some A, some B => some (.tProd A B) | _, _ => none)
   | .fst u | .snd u =>
     let (v, T) ← eval typed u
@@ -523,7 +535,38 @@ partial def eval (typed : Bool) (t : Term) : M (Value × Option Value) := do
     let A' ← evalType A
     if A'.typeHasRef then err "&A needs A borrow-free (RULES §1)"
     pure (.tRef A', some (.sort 1))
-  | .id A a b => pure (← idType A a b, some (.sort 0))
+  | .id A a b => pure (← idType typed A a b, some (.sort 0))
+  | .prim "J" [_, P, h, u] =>
+    -- transport: the value is unchanged; the type moves from `P a` to `P b`
+    let (Pv, PT) ← eval typed P
+    let (_, Th) ← eval typed h
+    let (v, Tu) ← eval typed u
+    if !typed then return (v, none)
+    match Th with
+    | some .tTop => pure (v, Tu)
+    | some (.tEq A a b) =>
+      let (Pa, _) ← callFn true Pv PT #[a] #[some A] false
+      expectTy "the transported term" Tu Pa
+      let (Pb, _) ← callFn true Pv PT #[b] #[some A] false
+      pure (v, some Pb)
+    | _ => err s!"J: the proof has type {Th.getD .bot}, which is not an equation"
+  | .prim "symm" [h] =>
+    let (_, Th) ← eval typed h
+    match Th with
+    | some (.tEq A a b) => pure (.proof, some (mkEq A b a))
+    | some .tTop => pure (.proof, some .tTop)
+    | _ => if typed then err "symm: not an equation" else pure (.proof, none)
+  | .prim "trans" [h, k] =>
+    let (_, Th) ← eval typed h
+    let (_, Tk) ← eval typed k
+    if !typed then return (.proof, none)
+    match Th, Tk with
+    | some .tTop, some T | some T, some .tTop => pure (.proof, some T)
+    | some (.tEq A a b), some (.tEq A' b' c) =>
+      unless A == A' && b == b' do err s!"trans: {Th.get!} and {Tk.get!} do not compose"
+      pure (.proof, some (mkEq A a c))
+    | _, _ => err "trans: not equations"
+  | .prim n _ => err s!"unknown primitive {n}"
   | .ascribe u A =>
     if !typed then return (← eval false u)
     let A' ← evalType A
@@ -619,6 +662,9 @@ partial def runBody (fv : Value) (cs : List Value) (t : Term) (ws : Array Value)
 
 partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array Value)
     (tys : Array (Option Value)) (head : Bool) : M (Value × Option Value) := do
+  if (← get).cfg.argNotBot then
+    if let some i := ws.findIdx? (· == .bot) then
+      err s!"[Call] argument {i + 1} is ⊥ at the call point (a later argument ended its borrow): an argument not of the parameter's type"
   -- A proof value is only ever called at a proposition: P5, not run.
   if fv == .proof then
     let B ← if typed then some <$> callType (← funType fv fT) ws tys else pure none
@@ -694,6 +740,9 @@ partial def recCheck (fv : Value) (ws : Array Value) : M Unit := do
       (strictSubterms (expandRefs st.refs (.abs σ))).contains u
     | _, _ => false
   set { st with recCands := cands, recCalls := st.recCalls + 1 }
+  -- fail at the offending call, before it is run (running it may not terminate)
+  if cands.isEmpty then
+    err s!"[Rec] no parameter decreases structurally in every recursive call (at {fv}({", ".intercalate (ws.toList.map toString)}): each recursive argument must be a strict subterm of that parameter's entry value as refined so far)"
 
 -- ### Match: [Match], [Split], stuck blocks
 
@@ -708,12 +757,27 @@ partial def evalMatch (typed : Bool) (p : Place) (z s : Term) : M (Value × Opti
   match v with
   | .zero => eval typed z
   | .succ _ => eval typed s
-  | .bot => err s!"[Match] on {p.pp []}, which was moved out"
+  | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
   | .abs σ => if typed then splitThenClose p z s σ else stuckNow
   | .sealed _ | .loan _ =>
-    if typed then err s!"[Split] on {p.pp []}, whose content {v} is a neutral but not an abstract value (RULES §5 splits only on σ)"
-    else stuckNow
+    if !typed then stuckNow
+    else
+      let σ ← generalizeNeutral p v
+      splitThenClose p z s σ
   | _ => err s!"[Match] on a non-Nat value {v}"
+
+/-- A match in the checked program on a neutral that is not an abstract value (e.g. a
+sealed program left by an opaque call, deriver-e346 §E4.3): v1's [Split] covers only
+`σ`. Clarification: generalise first, i.e. replace that neutral everywhere (Ω, stored
+types, goal) by a fresh `σ`, then split on it. This is dependent elimination with a
+generalised motive, sound in the model (meta-model §3.5); it may lose completeness. -/
+partial def generalizeNeutral (p : Place) (n : Value) : M Nat := do
+  unless (← get).cfg.generalize do
+    err s!"[Split] on {← ppPlace p}, whose content {n} is a neutral but not an abstract value (RULES §5 splits only on σ)"
+  let σ ← freshAbs .tNat
+  trace fun _ => s!"[Split] generalise {n} to σ{σ}"
+  substEnv n (.abs σ) true
+  pure σ
 
 /-- The free variables of a match that were moved out (became `⊥`) in an arm. -/
 partial def movedIn (fvs : List Nat) (before : List Value) : M (List Nat) := do
@@ -789,8 +853,8 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Nat) :
 
 /-- `⟦t⟧^W`: on a private copy of Ω, run `t`, end every borrow, and return the result
 paired with the final contents of the owners in `W`. -/
-partial def observe (t : Term) (A : Value) (W : List Pos) : M Value := onCopy do
-  let (v, T) ← eval true t
+partial def observe (typed : Bool) (t : Term) (A : Value) (W : List Pos) : M Value := onCopy do
+  let (v, T) ← eval typed t
   expectTy "a side of Id" T A
   pushTemp v
   endAll
@@ -800,7 +864,7 @@ partial def observe (t : Term) (A : Value) (W : List Pos) : M Value := onCopy do
 
 /-- `Id A t u ≡ Eq (A × T_W) ⟦t⟧^W ⟦u⟧^W`, both sides from the same Ω on independent
 copies. -/
-partial def idType (A t u : Term) : M Value := do
+partial def idType (typed : Bool) (A t u : Term) : M Value := do
   let A' ← evalType A
   if A'.typeHasRef then err s!"Id at {A'}: A must be borrow-free (RULES §4)"
   let st ← get
@@ -808,9 +872,9 @@ partial def idType (A t u : Term) : M Value := do
   let Ts ← W.mapM fun p => do
     match ← tyAt p with
     | some T => pure T
-    | none => err s!"Id: the owner at {repr p} has no stored type"
-  let a ← observe t A' W
-  let b ← observe u A' W
+    | none => valType (← getAt p)
+  let a ← observe typed t A' W
+  let b ← observe typed u A' W
   pure (mkEq (tupleType A' Ts) a b)
 
 -- ### Typing: [Def], [Split] in tail position
@@ -847,6 +911,9 @@ partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
       trace fun _ => s!"[Split] σ{σ} := S σ{σ'}"
       checkTail s k
       restoreKeep saved
+    | v@(.sealed _) | v@(.loan _) =>
+      discard (generalizeNeutral p v)
+      checkTail t k
     | _ =>
       let (v, T) ← eval true t
       k v T.get!

@@ -60,6 +60,8 @@ structure Config where
   recGuard : Bool := true        -- D17: [Rec] entry-value guard
   accessInside : Bool := true    -- D19: [Access] ends loans inside the accessed content
   selfHeadOnly : Bool := true    -- this checker's fix L1: `f` occurs only as the head of a call in its body
+  argNotBot : Bool := true       -- this checker's fix L2: an argument must not be ⊥ at the call point
+  generalize : Bool := true      -- clarification: [Split] on a sealed program generalises it to a fresh σ first
   trace : Bool := false          -- record goals, splits and call types (for inspection)
 deriving Inhabited, Repr
 

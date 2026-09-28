@@ -53,6 +53,7 @@ inductive Term where
   | ref (A : Term)                            -- the borrow type `&A`
   | id (A t u : Term)                         -- `Id A t u` (§4)
   | ascribe (t A : Term)                      -- `(t : A)`
+  | prim (n : String) (args : List Term)      -- `J A P h t`, `trans h k`, `symm h` (derivable from J)
 
 /-- Runtime values (RULES §2). Types are values too. -/
 inductive Value where
@@ -99,6 +100,7 @@ partial def Term.beq : Term → Term → Bool
   | .prod a b, .prod c d | .pair a b, .pair c d | .and a b, .and c d
   | .andI a b, .andI c d | .cong a b, .cong c d | .ascribe a b, .ascribe c d => a.beq c && b.beq d
   | .eq a b c, .eq d e f | .id a b c, .id d e f => a.beq d && b.beq e && c.beq f
+  | .prim n as, .prim m bs => n == m && Term.beqList as bs
   | _, _ => false
 
 partial def Value.beqList : List Value → List Value → Bool

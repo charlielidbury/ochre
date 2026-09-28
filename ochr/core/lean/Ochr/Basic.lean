@@ -71,6 +71,7 @@ partial def Term.mapFree (f : Nat → Nat → Place) (c : Nat) : Term → Term
   | .ascribe a b => .ascribe (a.mapFree f c) (b.mapFree f c)
   | .eq a b d => .eq (a.mapFree f c) (b.mapFree f c) (d.mapFree f c)
   | .id a b d => .id (a.mapFree f c) (b.mapFree f c) (d.mapFree f c)
+  | .prim n as => .prim n (as.map (·.mapFree f c))
   | t => t
 
 partial def mapDoms (f : Nat → Nat → Place) (c : Nat) (ds : List Term) : List Term :=
@@ -98,6 +99,7 @@ partial def Term.placeOccs (c : Nat) : Term → List (Nat × Place × PKind)
   | .prod a b | .pair a b | .and a b | .andI a b | .cong a b | .ascribe a b =>
       a.placeOccs c ++ b.placeOccs c
   | .eq a b d | .id a b d => a.placeOccs c ++ b.placeOccs c ++ d.placeOccs c
+  | .prim _ as => as.flatMap (·.placeOccs c)
   | _ => []
 
 /-- Free occurrences, with the root expressed as an index into the enclosing frame. -/
@@ -131,6 +133,7 @@ partial def Term.anyAtom (P : Value → Bool) : Term → Bool
   | .fix _ _ ds c b => ds.any (·.anyAtom P) || c.anyAtom P || b.anyAtom P
   | .call f as _ => f.anyAtom P || as.any (·.anyAtom P)
   | .eq a b c | .id a b c => a.anyAtom P || b.anyAtom P || c.anyAtom P
+  | .prim _ as => as.any (·.anyAtom P)
   | _ => false
 end
 
@@ -155,6 +158,7 @@ partial def Term.loans : Term → List Nat
   | .fix _ _ ds c b => ds.flatMap Term.loans ++ c.loans ++ b.loans
   | .call f as _ => f.loans ++ as.flatMap Term.loans
   | .eq a b c | .id a b c => a.loans ++ b.loans ++ c.loans
+  | .prim _ as => as.flatMap Term.loans
   | _ => []
 end
 

@@ -58,6 +58,7 @@ partial def Term.pp (ns : List String) : Term → String
   | .cong f h => s!"cong {f.ppArg ns} {h.ppArg ns}"
   | .ref a => s!"&{a.ppArg ns}"
   | .ascribe t a => s!"({t.pp ns} : {a.pp ns})"
+  | .prim n as => " ".intercalate (n :: as.map (·.ppArg ns))
 
 partial def Term.ppArg (ns : List String) (t : Term) : String :=
   match t with

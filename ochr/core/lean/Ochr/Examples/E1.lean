@@ -18,3 +18,7 @@ ochr E1 {
 }
 
 #eval IO.println (run "E1" E1).show
+
+-- every verdict as expected, and exactly 4 assertions (a truncated file changes the count)
+#guard (run "E1" E1).allAsExpected
+#guard (run "E1" E1).count == 4

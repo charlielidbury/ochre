@@ -104,6 +104,10 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
   | .app "Id" [A, a, b] => return .id (← resolve ctx true A) (← resolve ctx false a) (← resolve ctx false b)
   | .app "Eq" [A, a, b] => return .eq (← resolve ctx true A) (← resolve ctx false a) (← resolve ctx false b)
   | .app "cong" [f, h] => return .cong (← resolve ctx false f) (← resolve ctx false h)
+  | .app "J" [A, P, h, u] =>
+    return .prim "J" [← resolve ctx true A, ← resolve ctx false P, ← resolve ctx false h, ← resolve ctx false u]
+  | .app "trans" [h, k] => return .prim "trans" [← resolve ctx false h, ← resolve ctx false k]
+  | .app "symm" [h] => return .prim "symm" [← resolve ctx false h]
   | .app f as => throw s!"{f} applied by juxtaposition to {as.length} arguments (calls are written f(a, …))"
   | .call f as => return .call (← resolve ctx false f) (← as.mapM (resolve ctx false)) false
   | .deref _ => return .place (← toPlace ctx t)
