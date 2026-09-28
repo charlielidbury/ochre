@@ -31,7 +31,7 @@
 #include "sections/meta.typ"
 
 = Implementation <sec-impl>
-_Draft pending the Lean checker._
+#include "sections/impl.typ"
 
 = Related work <sec-related>
 #include "sections/related.typ"
