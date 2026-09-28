@@ -344,7 +344,7 @@ theorem portSub_portsOf (Ω : Env) (l : Nat) :
   simp only [portSub, Env.portsOf]
   by_cases hl : l ∈ Ω.borrows
   · rw [if_pos hl]
-    have hK : l ∈ Ω.portKeys := by simp [Env.portKeys, List.mem_eraseDups, hl]
+    have hK : l ∈ Ω.portKeys := hl
     obtain ⟨i, hi⟩ := Option.isSome_iff_exists.mp (List.isSome_idxOf?.mpr hK)
     rw [hi]
     obtain ⟨hlt, hget, _⟩ := List.idxOf?_eq_some_iff.mp hi
@@ -353,7 +353,7 @@ theorem portSub_portsOf (Ω : Env) (l : Nat) :
     simp only [Nat.add_zero] at this
     rw [this, List.getElem?_eq_getElem hlt, hget]; rfl
   · rw [if_neg hl]
-    have hK : l ∉ Ω.portKeys := by simp [Env.portKeys, List.mem_eraseDups, hl]
+    have hK : l ∉ Ω.portKeys := hl
     rw [List.idxOf?_eq_none_iff.mpr hK]; rfl
 
 theorem portsOf_nb (Ω : Env) : Frame.nb (Env.portsOf Ω) = 0 := by
@@ -389,11 +389,11 @@ theorem pinv_init {Ω₁ Ω₂ : Env} {next : Nat} (hne : Ω₁ ≠ [])
   pnb := portsOf_nb Ω₁
   keys := by
     intro l hl; rw [portSub_portsOf]
-    simp only [Env.portKeys, List.mem_eraseDups] at hl; simp [hl]
+    simp only [Env.portKeys] at hl; simp [hl]
   good := by
     intro l hl
     refine ⟨hheld l hl, fun h2 => ?_⟩
-    simp only [Env.portKeys, List.mem_eraseDups]
+    simp only [Env.portKeys]
     rcases Env.names_cases hl with h | h
     · exact hshared l h h2
     · exact h

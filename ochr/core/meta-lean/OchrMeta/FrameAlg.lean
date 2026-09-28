@@ -17,8 +17,9 @@ def portSub (K : List Nat) (P : Frame) (l : Nat) : Option Val :=
 
 def Env.substPorts (K : List Nat) (P : Frame) (Ω : Env) : Env := Ω.mapVals (Val.substSim (portSub K P))
 
-/-- The loans the ports of `Ω` stand for: its borrow names, without repetition. -/
-def Env.portKeys (Ω : Env) : List Nat := Ω.borrows.eraseDups
+/-- The loans the ports of `Ω` stand for: its borrow names (in a well-formed environment each
+occurs once; a repeated name gets a second, unused port). -/
+def Env.portKeys (Ω : Env) : List Nat := Ω.borrows
 
 /-- One port per borrow name of `Ω`, initially holding its own loan. -/
 def Env.portsOf (Ω : Env) : Frame := Ω.portKeys.zipIdx.map fun p => (Var.port p.2, Val.loan p.1)

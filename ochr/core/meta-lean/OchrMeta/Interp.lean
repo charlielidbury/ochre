@@ -11,13 +11,16 @@ theorem run_sound {P : Prog} {fuel : Nat} {s : St} {t : Term} {r : Res}
     (h : run P fuel s t = r) (hr : r ≠ .oof) : Eval P s t r :=
   ⟨hr, fuel, h⟩
 
+/-- The argument terms of a sealed program's head call: `&cᵢ` at borrow positions, `cᵢ` elsewhere. -/
+def sealArgTerms : Nat → List Ty → List Term
+  | _, [] => []
+  | i, .ref _ :: tys => .borrow (.var (.arg i)) :: sealArgTerms (i + 1) tys
+  | i, _ :: tys => .read (.var (.arg i)) :: sealArgTerms (i + 1) tys
+
 /-- The head call `C` of a sealed program: `f(ā)` with `aᵢ = &cᵢ` at borrow positions and `cᵢ`
 elsewhere, not eligible for [Close] (D9). -/
 def sealHead (f : String) (d : FunDef) : Term :=
-  .call f ((List.range d.params.length).zip (d.params.map Prod.snd) |>.map fun (i, ty) =>
-    match ty with
-    | .ref _ => .borrow (.var (.arg i))
-    | _ => .read (.var (.arg i))) false
+  .call f (sealArgTerms 0 (d.params.map Prod.snd)) false
 
 /-- The sealed program `L; C; K`, with `L`'s bindings supplied by the frame of `sealRun`. -/
 def sealTerm (f : String) (d : FunDef) : SealK → Term
@@ -28,8 +31,11 @@ def sealTerm (f : String) (d : FunDef) : SealK → Term
       (.seq (.assign (.deref (.var .rb)) (.read (.var .hole))) (.read (.var (.arg i))))
 
 /-- The frame binding `L`: `cᵢ ↦ argᵢ` and the hole `h ↦ w`. -/
-def sealFrame (args w : Val) : Frame :=
-  ((List.range args.toList.length).zip args.toList |>.map fun (i, v) => (Var.arg i, v)) ++ [(.hole, w)]
+def argFrame : Nat → List Val → Frame
+  | _, [] => []
+  | i, v :: vs => (Var.arg i, v) :: argFrame (i + 1) vs
+
+def sealFrame (args w : Val) : Frame := argFrame 0 args.toList ++ [(.hole, w)]
 
 /-- A fresh loan name above every loan occurring in `v`. -/
 def Val.freshAbove (v : Val) : Nat := v.loans.foldr max 0 + 1
