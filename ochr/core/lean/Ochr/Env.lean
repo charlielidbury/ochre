@@ -61,7 +61,8 @@ structure Config where
   accessInside : Bool := true    -- D19: [Access] ends loans inside the accessed content
   selfHeadOnly : Bool := true    -- this checker's fix L1: `f` occurs only as the head of a call in its body
   argNotBot : Bool := true       -- this checker's fix L2: an argument must not be ⊥ at the call point
-  generalize : Bool := true      -- clarification: [Split] on a sealed program generalises it to a fresh σ first
+  generalize : Bool := true      -- clarification C8: [Split] on a sealed program generalises it to a fresh σ first
+  blockMoves : Bool := true      -- clarification C5: a stuck block moves in a borrow variable that an arm moves
   trace : Bool := false          -- record goals, splits and call types (for inspection)
 deriving Inhabited, Repr
 
@@ -73,9 +74,9 @@ structure MState where
   absTy : Array Value := #[]
   refs : List (Nat × Value) := []     -- [Split] refinements made so far: σ ↦ Z | S σ'
   goal : Option Value := none
-  recCtx : Option RecCtx := none
-  recCands : List Nat := []           -- accumulators: survive branch restores
-  recCalls : Nat := 0
+  recStack : List RecCtx := []        -- the functions whose bodies enclose the current point
+  recCands : List (List Nat) := []    -- per function (top first): surviving recursive positions;
+                                      -- accumulators, they survive branch restores
   fuel : Nat := 2000000
   cfg : Config := {}
 deriving Inhabited
@@ -102,7 +103,8 @@ def tick : M Unit := do
 
 /-- Restore a saved state, keeping the fuel spent and the [Rec] accumulators. -/
 def restoreKeep (saved : MState) : M Unit :=
-  modify fun cur => { saved with fuel := cur.fuel, recCands := cur.recCands, recCalls := cur.recCalls }
+  modify fun cur => { saved with fuel := cur.fuel,
+                                 recCands := cur.recCands.drop (cur.recCands.length - saved.recCands.length) }
 
 /-- Run `x` on a private copy of the state (P2, P6): its effects are discarded. -/
 def onCopy {α : Type} (x : M α) : M α := do

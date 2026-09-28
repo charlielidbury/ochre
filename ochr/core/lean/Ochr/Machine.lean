@@ -727,22 +727,27 @@ partial def closeCall (fv : Value) (ws : Array Value) (kind : Kind) : M Value :=
 
 /-- [Rec]: at a recursive call, a parameter position survives if its argument (the
 content, through a borrow) is a strict subterm of that parameter's entry value as
-refined so far. The recursive position is any position that survives every call. -/
+refined so far. The recursive position is any position that survives every call.
+Every enclosing function being checked is considered, so a recursive call inside a
+nested closure is checked against the outer function's entry values (fix L3). -/
 partial def recCheck (fv : Value) (ws : Array Value) : M Unit := do
   let st ← get
-  let some ctx := st.recCtx | return
-  unless ctx.fn == fv do return
   if !st.cfg.recGuard then return
-  let cands := st.recCands.filter fun j =>
-    match ctx.entries[j]?.join, ws[j]? with
-    | some σ, some w =>
-      let u := match w with | .borrow _ u => u | u => u
-      (strictSubterms (expandRefs st.refs (.abs σ))).contains u
-    | _, _ => false
-  set { st with recCands := cands, recCalls := st.recCalls + 1 }
-  -- fail at the offending call, before it is run (running it may not terminate)
-  if cands.isEmpty then
-    err s!"[Rec] no parameter decreases structurally in every recursive call (at {fv}({", ".intercalate (ws.toList.map toString)}): each recursive argument must be a strict subterm of that parameter's entry value as refined so far)"
+  let mut candss := #[]
+  for (ctx, cands) in st.recStack.zip st.recCands do
+    if ctx.fn == fv then
+      let cands' := cands.filter fun j =>
+        match ctx.entries[j]?.join, ws[j]? with
+        | some σ, some w =>
+          let u := match w with | .borrow _ u => u | u => u
+          (strictSubterms (expandRefs st.refs (.abs σ))).contains u
+        | _, _ => false
+      -- fail at the offending call, before it is run (running it may not terminate)
+      if cands'.isEmpty then
+        err s!"[Rec] no parameter decreases structurally in every recursive call (at {fv}({", ".intercalate (ws.toList.map toString)}): each recursive argument must be a strict subterm of that parameter's entry value as refined so far)"
+      candss := candss.push cands'
+    else candss := candss.push cands
+  set { st with recCands := candss.toList }
 
 -- ### Match: [Match], [Split], stuck blocks
 
@@ -833,7 +838,8 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Nat) :
     hints := hints.push b.hint
     if isBorrowVar then
       doms := doms.push T
-      args := args.push (if moved.contains o then Term.place (.var o) else .borrow (.deref (.var o)))
+      let move := moved.contains o && (← get).cfg.blockMoves
+      args := args.push (if move then Term.place (.var o) else .borrow (.deref (.var o)))
     else if written then
       doms := doms.push (.tRef T)
       args := args.push (.borrow (.var o))
@@ -935,7 +941,9 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
     let n := ds.length
     unless headOnly (fun d p => p.root == d + n) 0 body do
       err s!"[Rec] {self.name} occurs in its own body other than as the head of a call (fix L1)"
-  modify fun s => { s with env := #[{}], goal := none, recCtx := none, refs := [] }
+  -- keep `refs` (refinements made on the way to a nested fix still hold) and the
+  -- enclosing functions' [Rec] contexts
+  modify fun s => { s with env := #[{}], goal := none }
   pushFrame
   for v in cs do pushBind ⟨"κ"⟩ none v
   let mut entries := #[]
@@ -965,8 +973,8 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
   pushBind self (some piTy) fv
   for b in F1.binds.extract cs.length F1.binds.size do pushBind b.hint b.ty b.val
   let cands := (entries.toList.zipIdx).filterMap fun (e, i) => e.map fun _ => i
-  modify fun s => { s with goal := some goal, recCtx := some ⟨fv, entries⟩,
-                            recCands := cands, recCalls := 0 }
+  modify fun s => { s with goal := some goal, recStack := ⟨fv, entries⟩ :: s.recStack,
+                            recCands := cands :: s.recCands }
   checkTail body fun v T => do
     pushTempAt ((← topIdx) - 1) v
     popFrame
@@ -975,11 +983,7 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
     trace fun _ => s!"[Def] {self.name}: path ends with type {T} against goal {g}"
     unless T == g do
       err s!"the body of {self.name} has type {T}, but the goal is {g}"
-  let st ← get
-  if st.cfg.recGuard && st.recCalls > 0 && st.recCands.isEmpty then
-    err s!"[Rec] no parameter of {self.name} decreases structurally in every recursive call (each recursive argument must be a strict subterm of that parameter's entry value)"
   restoreKeep saved
-  modify fun s => { s with recCands := saved.recCands, recCalls := saved.recCalls }
 
 end
 

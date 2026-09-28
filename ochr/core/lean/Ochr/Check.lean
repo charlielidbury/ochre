@@ -47,7 +47,7 @@ def checkDef (d : Def) : M Unit := do
     err s!"{d.name} occurs in its own type"
   if d.doms.isEmpty then
     -- a constant
-    modify fun s => { s with env := #[{}], goal := none, recCtx := none, refs := [] }
+    modify fun s => { s with env := #[{}], goal := none, recStack := [], recCands := [], refs := [] }
     let goal ← evalType d.cod
     let (v, T) ← eval true d.body
     unless T == some goal do

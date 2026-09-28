@@ -6,7 +6,7 @@ ledger. Exits 1 if any verdict is not the expected one. -/
 open Ochr Ochr.Test Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def expectedTotal : Nat := 82
+def expectedTotal : Nat := 105
 
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
 #guard (reports {}).all Report.allAsExpected

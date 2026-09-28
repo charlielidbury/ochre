@@ -78,10 +78,23 @@ ochr Attacks {
   def Apply (f : Π(x : Nat). Eq Nat 0 1) (x : Nat) : Eq Nat 0 1 := f(x)
   reject def Knot (x : Nat) : Eq Nat 0 1 := Apply(Knot, x)
   reject def KnotBoom : Eq Nat 0 1 := Knot(0)
+
+  -- lean-checker L3: the same through a nested closure. v1's [Rec] covers every
+  -- recursive call in the body of fix f, including those inside a nested λ, and the
+  -- λ is checked at its own generic call, so y is fresh: not a subterm of x's entry
+  -- value. (An earlier version of this checker reset the [Rec] context when checking
+  -- the nested λ and accepted both.)
+  reject def KnotL (x : Nat) : Eq Nat 0 1 := let g = (λ(y : Nat) : Eq Nat 0 1 => KnotL(y)); g(x)
+  reject def KnotLBoom : Eq Nat 0 1 := KnotL(0)
+  -- a structural call through a closure is fine: the closure captures the entry
+  -- value's predecessor, and the call is checked against the outer entry value
+  def Add (x : Nat) (y : Nat) : Nat := AddM(&x, y); x
+  def AddZeroC (x : Nat) : Id Nat (Add(x, 0)) x :=
+    match x { Z => refl | S p => let q = p; cong S ((λ(u : Unit) : Id Nat (Add(q, 0)) q => AddZeroC(q))(())) }
 }
 
 #eval IO.println (run "Attacks" Attacks).show
 
--- every verdict as expected, and exactly 22 assertions (a truncated file changes the count)
+-- every verdict as expected, and exactly 26 assertions (a truncated file changes the count)
 #guard (run "Attacks" Attacks).allAsExpected
-#guard (run "Attacks" Attacks).count == 22
+#guard (run "Attacks" Attacks).count == 26
