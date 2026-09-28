@@ -72,6 +72,19 @@ def syntacticKind? : Term → Option Kind
   | .ref _ => some .ref
   | t => (isPropTerm? t).map fun b => if b then .prop else .data
 
+/-- Is this term literally the sort `Prop`? -/
+def isPropSort : Term → Bool
+  | .sort 0 | .val (.sort 0) => true
+  | _ => false
+
+/-- v1.7 (D35): what a parameter's declared type says about the parameter, for reading
+erasure classes off syntax: 1 = it is a proposition (declared `: Prop`), 2 = it is a
+function into propositions (declared `: Π(…). Prop`), 0 = neither (or not known). -/
+def declOfDom : Term → Nat
+  | .sort 0 | .val (.sort 0) => 1
+  | .pi _ _ c => if isPropSort c then 2 else 0
+  | _ => 0
+
 /-- Does `self` (tested by `isSelf depth term`) occur in `t` only as the head of a
 call? (Fix L1 of this checker; see notes/lean-checker.md.) -/
 partial def headOnly (isSelf : Nat → Place → Bool) (c : Nat) : Term → Bool
@@ -592,44 +605,126 @@ partial def eval (typed : Bool) (t : Term) : M (Value × Option Value) := do
   -- classes, never from a normal form. Calls: the callee's class (set by `callFn`);
   -- sequencing forms inherit their tail's; proof formers are erased; an ascription is
   -- erased when its declared type is a proposition.
-  let erased ← if (← get).cfg.erasureByDecl then
+  -- A place, constant, value or λ that holds a proof is erased (finding P1): with the
+  -- tail rule above, a sequencing form whose type has sort Prop is then erased on every
+  -- path, as the block path requires (v1.7: a block of sort Prop is erased).
+  -- v1.7 (D35): a sequencing form is erased iff it is a proof, i.e. its tail is one (a
+  -- tail returning types is erased itself but does not make its context a proof).
+  let cfg := (← get).cfg
+  let (erased, proof) ← if cfg.erasureByDecl then
       match t with
-      | .seq _ _ | .letIn _ _ _ | .matchNat _ _ _ | .matchInd _ _ _ | .call _ _ _ => pure (← get).lastErased
-      | .refl | .andI _ _ | .cong _ _ | .prim "trans" _ | .prim "symm" _ => pure true
-      | .prim "J" [_, _, _, P, _, _] => jErased P
-      | .ascribe _ _ => pure ((← get).lastErased || (r.2.isSome && (← typeClass r.2.get!) == 2))
-      | _ => pure false
-    else erasedValue r.1     -- the v1.4 reading: decided on the value (breaker-fresh F1)
+      | .call _ _ _ => getFlags      -- set by `callFn` from the callee's class
+      | .seq _ _ | .letIn _ _ _ | .matchNat _ _ _ | .matchInd _ _ _ =>
+        let (e, p) ← getFlags
+        pure (if cfg.seqByProof then (p, p) else (e, p))
+      | .refl | .andI _ _ | .cong _ _ | .prim "trans" _ | .prim "symm" _ => pure (true, true)
+      | .prim "J" [_, _, _, P, _, _] =>
+        let p := (← jErased P) || (cfg.proofLeaves && (← getFlags).2)
+        pure (p, p)
+      | .ascribe _ A =>
+        if cfg.seqByProof then
+          -- a proof if the ascribed term is, or if the annotation's declared sort is Prop
+          let top := (← get).env.size - 1
+          let sc ← ((← get).env[top]!.binds.toList.reverse).mapM fun b => declOfVal b.val
+          let p := (← getFlags).2 || (← propDecl sc A)
+          pure (p, p)
+        else
+          let e := (← get).lastErased || (r.2.isSome && (← typeClass r.2.get!) == 2)
+          pure (e, e)
+      | .place _ | .const _ | .val _ | .fix .. =>
+        let p := cfg.proofLeaves && r.1 == .proof
+        pure (p, p)
+      | _ => pure (false, false)
+    else do let e ← erasedValue r.1; pure (e, e)   -- the v1.4 reading: decided on the value (breaker-fresh F1)
   if erased && (← get).cfg.eraseOnCopy then
     modify fun s => { s with env := before }
-  modify fun s => { s with lastErased := erased }
+  setFlags (erased, proof)
   pure r
 
-/-- The erasure class of a function type, decided once from its declared codomain at
-the generic call (D28): 1 = it returns types (the codomain is a sort), 2 = it returns
-proofs (the codomain has sort Prop), 0 = it returns data. Cached per Π-type. -/
+/-- The erasure class of a function type (D28, D35): 1 = it returns types, 2 = it
+returns proofs, 0 = it returns data. v1.7: read off the codomain *term*, for top-level
+and local functions alike: types if it is syntactically a sort, proofs if its declared
+sort is `Prop` (`propDecl`), never by evaluating it (formal-appendix BoomL). The
+function of a stuck block (codomain `.val B`, the match's type) returns proofs if `B`
+has sort `Prop` and data otherwise, so the block is erased exactly when its match is
+(BoomB). Cached per Π-type. -/
 partial def fnClass (piTy : Value) : M Nat := do
   match (← get).classCache.lookup piTy with
   | some k => return k
   | none => pure ()
+  let cfg := (← get).cfg
   let k ← match piTy with
     | .tPi cs (.pi hs ds c) =>
       match c with
-      | .sort _ | .val (.sort _) => pure 1
-      | .val T => typeClass T
-      | _ => match isPropTerm? c with
-        | some true => pure 2
-        | some false => pure 0
-        | none => onCopy do
-          pushFrame
-          for v in cs do pushBind ⟨"κ"⟩ none v
-          for (d, h) in ds.zip hs do
-            let A ← evalType d
-            pushBind h (some A) (← genericValue A)
-          typeClass (← evalType c)
+      | .sort _ => pure 1
+      | .val B => match cfg.blockRule with   -- a stuck block's function (`closeOffMatch`)
+        | 0 => typeClass B                     -- v1.6: the call rule on its computed codomain
+        | 1 => pure (if (← typeClass B) == 2 then 2 else 0)
+        | _ => pure 0                          -- the class is given at the block's call
+      | _ =>
+        if cfg.classBySyntax then
+          let sc := (ds.map declOfDom).reverse ++ (← cs.reverse.mapM declOfVal)
+          pure (if ← propDecl sc c then 2 else 0)
+        else match isPropTerm? c with   -- v1.6: evaluate the codomain at the generic call
+          | some true => pure 2
+          | some false => pure 0
+          | none => onCopy do
+            pushFrame
+            for v in cs do pushBind ⟨"κ"⟩ none v
+            for (d, h) in ds.zip hs do
+              let A ← evalType d
+              pushBind h (some A) (← genericValue A)
+            typeClass (← evalType c)
     | _ => pure 0
   modify fun s => { s with classCache := (piTy, k) :: s.classCache }
   pure k
+
+/-- What a captured value says about the variable holding it (see `declOfDom`): 1 = it
+is a proposition, 2 = it is a function whose declared codomain is `Prop`. Read off the
+value's constructor or its declared type, never by normalising. -/
+partial def declOfVal (v : Value) : M Nat := do
+  if (← typeClass v) == 2 then return 1
+  let T? ← match v with
+    | .gfn n => pure (some (← lookupGlobal n).ty)
+    | .clo cs (.fix _ hs ds c _ _) => pure (some (Value.tPi cs (.pi hs ds c)))
+    | .abs σ => some <$> absType σ
+    | _ => pure none
+  match T? with
+  | some (.tPi _ (.pi _ _ c)) => pure (if isPropSort c then 2 else 0)
+  | _ => pure 0
+
+/-- v1.7 (D35): does the codomain term `c` have declared sort `Prop`, i.e. is its type
+`Prop` when it is typed from the declared types of its heads, without normalising it?
+`sc` gives, per de Bruijn index, what the variable's declared type says (`declOfDom`). -/
+partial def propDecl (sc : List Nat) (c : Term) : M Bool := do
+  match c with
+  | .id .. | .eq .. | .top | .and .. => pure true
+  | .pi _ ds c' => propDecl ((ds.map declOfDom).reverse ++ sc) c'   -- impredicative
+  | .place (.var i) => pure (sc.getD i 0 == 1)
+  | .const n => pure ((← lookupGlobal n).ty == .sort 0)
+  | .call f _ _ => pure ((← headDecl sc f) == 2)
+  | .letIn _ u w => propDecl ((← localDecl sc u) :: sc) w
+  | .seq _ w => propDecl sc w
+  | .matchNat _ z s => pure ((← propDecl sc z) || (← propDecl sc s))
+  | .matchInd _ _ arms => arms.anyM fun (_, a) => propDecl sc a
+  | .ascribe u A => pure (isPropSort A || (← propDecl sc u))
+  | .val v => pure ((← typeClass v) == 2)
+  | _ => pure false
+
+/-- What the declared type of a function term (a call's head) says (`declOfDom`). -/
+partial def headDecl (sc : List Nat) (f : Term) : M Nat := do
+  match f with
+  | .place (.var i) => pure (sc.getD i 0)
+  | .const n => declOfVal (.gfn n)
+  | .fix _ _ _ c _ _ => pure (if isPropSort c then 2 else 0)
+  | .val v => declOfVal v
+  | .ascribe _ A => pure (declOfDom A)
+  | _ => pure 0
+
+/-- What the declared type of `let x = u` says about `x`. -/
+partial def localDecl (sc : List Nat) (u : Term) : M Nat := do
+  if ← propDecl sc u then return 1
+  headDecl sc u
 
 /-- The class of a declared type: a sort (its inhabitants are types), a proposition
 (its inhabitants are proofs), or data. Read off the type's constructor or, for a
@@ -685,8 +780,10 @@ partial def evalCore (typed : Bool) (t : Term) : M (Value × Option Value) := do
     let (v, T) ← eval typed u
     pushBind h T v
     let (r, R) ← eval typed w
+    let fl ← getFlags     -- the body's erasure flags (dropping may normalise)
     pushTemp r
     dropTopBind
+    setFlags fl
     pure (← popTemp, R)
   | .seq u w =>
     let (v, _) ← eval typed u
@@ -805,9 +902,11 @@ partial def evalCore (typed : Bool) (t : Term) : M (Value × Option Value) := do
     let (_, Th) ← eval true h
     expectTy "J's equation" Th (← mkEqM A' av bv)
     let (v, Tu) ← eval true u
+    let fl ← getFlags
     let (Pa, _) ← callFn true Pv PT #[av] #[some A'] false
     expectTy "the transported term" Tu Pa
     let (Pb, _) ← callFn true Pv PT #[bv] #[some A'] false
+    setFlags fl    -- t's flags (J is t)
     pure (v, some Pb)
   | .prim "symm" [h] =>
     let (_, Th) ← eval typed h
@@ -833,13 +932,15 @@ partial def evalCore (typed : Bool) (t : Term) : M (Value × Option Value) := do
       | .matchNat p z s => evalMatch true p z s (some A')
       | .matchInd p ty arms => evalMatchInd true p ty arms (some A')
       | _ => eval true u
+    let fl ← getFlags
     expectTy "the ascribed term" T A'
+    setFlags fl
     pure (v, some A')
 
 -- ### Calls: [Call], P5, [Call-type], [Close], [Rec]
 
-partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool) :
-    M (Value × Option Value) := do
+partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
+    (cls? : Option Nat := none) : M (Value × Option Value) := do
   let (fv, fT) ← eval typed f
   pushTemp fv
   let mut tys := #[]
@@ -849,7 +950,7 @@ partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool) :
     tys := tys.push T
   let ws ← popTemps as.length
   let fv ← popTemp
-  callFn typed fv fT ws tys head
+  callFn typed fv fT ws tys head cls?
 
 /-- The Π-type of a function value. -/
 partial def funType (fv : Value) (fT : Option Value) : M Value := do
@@ -877,6 +978,17 @@ partial def resultKind (piTy : Value) (ws : Array Value) : M Kind := do
     | _ => match syntacticKind? c with
       | some k => pure k
       | none => kindOf (← callType piTy ws (ws.map fun _ => none))
+  | _ => err s!"not a function type: {piTy}"
+
+/-- [Close]'s row read from the declared codomain `B` (v1.7, D35): syntactically `Unit`,
+`&T`, or anything else. A stuck block's codomain is the match's type. -/
+partial def declKind (piTy : Value) : M Kind := do
+  match piTy with
+  | .tPi _ (.pi _ _ c) => match c with
+    | .unit => pure .unit
+    | .ref _ => pure .ref
+    | .val B => do let k ← kindOf B; pure (if k == .prop then .data else k)
+    | _ => pure .data
   | _ => err s!"not a function type: {piTy}"
 
 /-- [Call-type]: the result type is `B` evaluated at the call point (after the
@@ -928,7 +1040,8 @@ partial def runBody (fv : Value) (cs : List Value) (t : Term) (ws : Array Value)
   popTemp
 
 partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array Value)
-    (tys : Array (Option Value)) (head : Bool) : M (Value × Option Value) := do
+    (tys : Array (Option Value)) (head : Bool) (cls? : Option Nat := none) :
+    M (Value × Option Value) := do
   if (← get).cfg.argNotBot then
     if let some i := ws.findIdx? (· == .bot) then
       err s!"[Call] argument {i + 1} is ⊥ at the call point (a later argument ended its borrow): an argument not of the parameter's type"
@@ -936,23 +1049,28 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
   if fv == .proof then
     let B ← if typed then some <$> callType (← funType fv fT) ws tys else pure none
     endBorrowArgs ws
-    modify fun s => { s with lastErased := true }
+    setFlags (true, true)
     return (.proof, B)
   let piTy ← funType fv fT
   let B ← if typed then some <$> callType piTy ws tys else pure none
   if typed then
     trace fun _ => s!"[Call-type] {fv}({", ".intercalate (ws.toList.map toString)}) : {B.getD .bot}"
     recCheck fv ws
-  let kind ← match B with
+  -- [Close]'s row: v1.7 (D35) from the declared codomain; v1.6 from the computed type
+  let byDecl := (← get).cfg.erasureByDecl
+  let kind ← if byDecl && (← get).cfg.rowByDecl then declKind piTy else
+    match B with
     | some B => kindOf B
     | none => resultKind piTy ws
-  -- D28: the callee's class, decided from its declared codomain at its generic call
-  let byDecl := (← get).cfg.erasureByDecl
-  let cls ← if byDecl then fnClass piTy else pure (if kind == .prop then 2 else 0)
+  -- D28, D35: the callee's class, read off its declared codomain (a stuck block's is
+  -- given by `closeOffMatch`)
+  let cls ← match cls? with
+    | some k => pure k
+    | none => if byDecl then fnClass piTy else pure (if kind == .prop then 2 else 0)
   let kind := if byDecl && kind == .prop then Kind.data else kind
   if cls == 2 && (← get).cfg.p5 then
     endBorrowArgs ws
-    modify fun s => { s with lastErased := true }
+    setFlags (true, true)
     return (.proof, B)
   let r ← match fv with
     | .abs _ | .sealed _ => closeCall fv ws kind   -- a neutral head closes off at once (v1.3)
@@ -968,7 +1086,7 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
         | .error m => throw (.error m)
     | _ => err s!"call of {fv}, which is not a function"
   let r := if cls == 2 then Value.proof else r
-  modify fun s => { s with lastErased := byDecl && cls != 0 }
+  setFlags (byDecl && cls != 0, byDecl && cls == 2)
   pure (r, B)
 
 /-- [Close]: the call `f(w̄)` has a stuck body; the partial run has been discarded (the
@@ -1162,10 +1280,12 @@ partial def splitArmsThenClose (mt : Term) (σ : Nat) (arms : List (M Value × T
   let saved ← get
   let mut tys : Array Value := #[]
   let mut moved : List Nat := []
+  let mut allProof := true
   for (mk, arm) in arms do
     let r ← mk
     refine σ r
     let (_, T) ← eval true arm
+    allProof := allProof && (← getFlags).2
     let some T := T | err "internal: untyped arm"
     if let some E := expected then
       let E' ← substV (.abs σ) r E
@@ -1184,7 +1304,7 @@ partial def splitArmsThenClose (mt : Term) (σ : Nat) (arms : List (M Value × T
         unless ← conv T T0 do
           err s!"the arms of a non-tail match have different types ({T0} and {T}); annotate it (let x : T = match …)"
       pure T0
-  closeOffMatch mt B moved
+  closeOffMatch mt B moved allProof
 
 /-- The refinement of `σ` to constructor `c` of an inductive type: fresh abstract values
 for its fields. -/
@@ -1233,7 +1353,7 @@ prefixes: a place some arm moves out of is moved in; otherwise a place written o
 borrowed (under `&_` or left of `:=`) in some arm is passed as `&`; otherwise a place
 read is copied. A borrow variable read as a whole is a move (reading a borrow moves it);
 assigning a borrow variable as a whole moves it too (passing `&x` would be `&&T`). -/
-partial def closeOffMatch (mt : Term) (B : Value) (moved : List Nat) :
+partial def closeOffMatch (mt : Term) (B : Value) (moved : List Nat) (allProof : Bool) :
     M (Value × Option Value) := do
   let f ← topIdx
   let nb := (← get).env[f]!.binds.size
@@ -1299,7 +1419,15 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Nat) :
     | none => p) 0
   let anon := Value.clo [] (.fix ⟨"_"⟩ hints.toList (doms.toList.map .val) (.val B) none body)
   trace fun _ => s!"[Stuck block] {anon}({", ".intercalate (args.toList.map (·.pp []))})"
-  let (v, _) ← evalCall false (.val anon) args.toList false
+  -- v1.7 (D35): the block is erased exactly when its match would be, i.e. at every
+  -- instance: when every arm is a proof (finding P2: not read off the computed type B)
+  let cfg := (← get).cfg
+  let cls? := if cfg.erasureByDecl && cfg.blockRule == 2 then some (if allProof then 2 else 0) else none
+  let (v, _) ← evalCall false (.val anon) args.toList false cls?
+  -- counterfactual v1.6: a block erased by the call rule (returning types) erases its match
+  if cfg.blockRule == 0 then
+    let (e, _) ← getFlags
+    setFlags (e, e)
   pure (v, some B)
 
 -- ### Observation and `Id` (RULES §4)

@@ -1,6 +1,7 @@
-# lean-checker: an executable checker for RULES v1.5, and what running it found
+# lean-checker: an executable checker for RULES v1.7, and what running it found
 
-**Verdict:** RULES v1.5 is implemented, extended to user-declared inductive types (lists, binary trees), and 185 verdict assertions all hold. Every §7 example (E1–E5) is accepted. Every must-fail program and every attack from rounds 1–2 is rejected: e346 `Bad`, `Oops2`, `Loop`/`Bot'`; meta-model C1, C2; breaker-close A1–A4 (and A5 terminates); breaker-close-v1 N1 and meta-model-v1 R1 (the closed proofs of false built from `T` and `Q`); breaker-frame attack 1; E5's three rejections. Each is caught by the rule meant to catch it: switching that one rule off flips exactly the verdicts it guards (§5).
+**v1.7 (round 3, §10):** D35 implemented; the formal appendix's BoomL/BoomB are regressions, and two more closed proofs of false were found and fixed on the way (P1 against the v1.6 checker, P2 against a first v1.7 reading); 205 verdicts, all as expected.
+**Verdict (as of v1.5, phase 2):** RULES v1.5 is implemented, extended to user-declared inductive types (lists, binary trees), and 185 verdict assertions all hold. Every §7 example (E1–E5) is accepted. Every must-fail program and every attack from rounds 1–2 is rejected: e346 `Bad`, `Oops2`, `Loop`/`Bot'`; meta-model C1, C2; breaker-close A1–A4 (and A5 terminates); breaker-close-v1 N1 and meta-model-v1 R1 (the closed proofs of false built from `T` and `Q`); breaker-frame attack 1; E5's three rejections. Each is caught by the rule meant to catch it: switching that one rule off flips exactly the verdicts it guards (§5).
 **Most important finding:** **D18 (owners are sets) is load-bearing in v1.4.** An uncurried version of meta-model C2 (§4) uses v1.2's annotated block, which forms a type while a returned borrow's hole is in two owners and checks each arm against it after the split. Single-owner observation accepts it and yields the closed proof `ClosedD18 : Eq Nat 0 1`. Round 1's L1 (`f` escaping as a value) is fixed in v1.1 by exactly the rule this checker used.
 **RULES.md must change:** nothing unsound remains that I can find. §3 lists what is still underspecified: a static reading of "moves out of in any arm", the sort of a sealed type, Unit η, universes, and J's motive sort. D18 should stay, with §4's program as its motivating example rather than the curried C2.
 **Confidence:** high that the verdicts are what the implementation computes (all asserted in a green build; traces reproduce the round-1/2 hand derivations, including deriver-e5's rejection reasons symbol for symbol); medium that every clarification matches the intended reading.
@@ -17,6 +18,8 @@ Code: `ochr/core/lean/` on branch `ochr-core-lean` (README: build, syntax, rule 
 | L3 | v1 (this checker's first version) | A recursive call inside a nested λ, checked at the λ's own generic call, escaped [Rec]: `KnotL x := let g = (λ(y : Nat) : ⊥ => KnotL(y)); g(x)`. | Fixed in v1.3 ([Rec] covers nested functions and block arms). The checker keeps a stack of [Rec] contexts. Regression: `Attacks.KnotL`, `KnotLBoom`; a structural call through a closure (`AddZeroC`) is still accepted. |
 | **L4** | **v1.2–v1.4** | **Single-owner observation is exploitable without currying**, through the annotated block (§4). | D18 already requires all owners. This is its first first-order regression test: `D18.BadD18`, `D18.ClosedD18`. |
 | L5 | v1.4 (this checker's first v1.4 version) | P2 erases *types* as well as proofs. My first v1.4 version restored Ω only after proofs and in type positions, so a type-valued call in program position (`let T = F5(&*x)` with `F5 : … → Prop` writing `*x`) kept its write. | Fixed: Ω is restored after any term whose value is a proof or a type. v1.4 is right here. Regression: `Probes.TypeErased`. |
+| **P1** | **this checker at v1.6** | A place holding a proof did not make a sequence erased, while a block of type `⊤` was: `BoomP : Eq Nat 1 0` accepted (§10). | Fixed: a place, constant or λ holding `⋆` is a proof. Regression: `V17.LieP`, `BoomP`. |
+| **P2** | **v1.7 read as "a block of computed sort Prop is erased"** | The block's computed type (`V(Z) = ⊤`) disagrees with the arms' syntactic classes: `BoomG : Eq Nat 1 0` accepted by my first v1.7 version (§10). | Fixed: a block is erased iff every arm is a proof. RULES wording suggested. Regression: `V17.LieG`, `BoomG`, `TruthG`. |
 
 ## 2. Verdicts (expected vs actual: all 139 as expected)
 
@@ -195,6 +198,44 @@ It is sound: a sealed program is a closed, deterministic computation, so every d
 
 **Timings** (compiled, median of 21 runs): all 185 declarations check in about 9 ms. Inductives take 2.6 ms, of which `SizeInsert` is 0.8 ms, `InsertMEq` 0.3 ms and `AppendMEq` 0.16 ms. **Size:** about 3,900 lines in all; `Machine.lean` is 1,480.
 
-## 10. Not done
+## 10. Rules v1.7 (D35): erasure is purely syntactic
+
+**Implemented**, each part with a `Config` switch whose ledger row is asserted in `Registry.lean`. Regressions are in `Ochr/Examples/V17.lean` (20 assertions).
+
+| Rule | Implementation | Switch off → flips |
+|---|---|---|
+| A function's class is read from its codomain *term*, top-level and local alike | `fnClass` no longer evaluates anything. A codomain that is syntactically a sort returns types. `propDecl` decides "declared sort Prop": `Id`, `Eq`, `⊤`, `∧`; a Π into one of these; a variable declared `: Prop`; a call whose head is declared `→ Prop` (a global, a parameter of Π-type, a `λ`); the tail of `let`, `;` and `match`; an ascription at `Prop`. Anything else returns data. Parameters are read from their domain terms (`declOfDom`), captured values from their constructor or declared type (`declOfVal`). | `classBySyntax`: V17.BoomL → accepted (note 1); V17.TruthG → rejected |
+| A stuck block is erased exactly when its match would be | The block is erased iff **every arm is a proof**: `splitArmsThenClose` collects each arm's flag as it checks the arm, and `closeOffMatch` hands the class to the block's call (see P2 for why the block's computed type cannot be used) | `blockRule := 0` (the v1.6 call rule on the computed codomain): V17.LieB, BoomB (note 2), LieG, BoomG → accepted; TruthB, TruthG → rejected |
+| `let`, `;` and `match` are erased iff they are proofs | `eval` keeps two flags, *erased* and *proof*. A call returning types is erased itself (it runs on a private copy) but does not make its context a proof, so `let T = (c := S Z; F(&c)); …` keeps the write, as clause 4 of the appendix does. This removes the appendix's deviation (b). | `seqByProof`: V17.SeqT → rejected (v1.6 discarded the write) |
+| [Close]'s row is read from the declared codomain | `declKind`: syntactically `Unit`, `&T`, or anything else; a block's codomain is its match's type | `rowByDecl`: V17.RowI → accepted |
+
+**Finding P1 (against the v1.6 checker): a closed proof of false through a proof-typed tail.**
+```
+LieP(n : Nat) : Id Nat (let c = Z; let h : ⊤ = refl; let T = match n { Z => (c := S Z; h) | S _ => (c := S Z; h) }; c) Z := refl
+BoomP : Eq Nat (S Z) Z := LieP(Z)
+```
+The checker at 6e8e05bc accepts `BoomP` (checked in a scratch worktree, along with BoomL and BoomB). At the generic call, the block has type `⊤` and is erased, so `c` stays `Z`. At `n = Z` the match runs directly. The checker erased a sequence only when its tail was erased, and a place holding a proof (`h`) was not, so the write happened. RULES is right (the sequence's declared type `⊤` has sort Prop); the checker's tail reading was not. The appendix's note 3 says that reading "is stable too", which holds only if every proof-typed tail is erased. **Fix:** a place, constant, value or `λ` whose value is `⋆` is a proof (`proofLeaves`). With the P2 block rule, `BoomP` is rejected even without P1's fix. P1 is then a completeness fix: without it `LieP` is rejected, where RULES erases the write. The combined ledger row (`blockRule := 1, proofLeaves := false`) shows `BoomP` accepted again.
+
+**Finding P2 (against my first v1.7 reading): a block must not be erased by its computed type.** My first implementation erased a block when its computed type has sort Prop. That is a normal form, and it disagrees with the arms, whose calls are classed by syntax:
+```
+LieG(m : Nat) (g : Π(y : Nat). V(Z)) : Id Nat (let c = Z; let f = (λ(x : &Nat) : V(Z) => (*x := S Z; g(0))); let T = match m { Z => f(&c) | S _ => f(&c) }; c) Z := refl
+BoomG : Eq Nat (S Z) Z := LieG(Z, (λ(y : Nat) : V(Z) => refl))
+```
+`f`'s codomain `V(Z)` has declared type `U(Z)`, which is not syntactically `Prop`, so `f` returns data, and `f(&c)` runs on the direct path at `m = Z`. But the block's type, inferred from the arms, is the computed `V(Z) = ⊤`, of sort Prop, so the block was erased at the generic call. Result: `BoomG` accepted. **Fix:** a block is erased iff each arm, as checked by [Split], is a proof by the same syntactic judgement. So it is erased at the generic call only when it would be erased whichever arm runs at an instance. A block that is not erased is always safe, because its sealed programs re-run the arms, which decide for themselves (the appendix's argument). With this rule, `LieG` is rejected and the true statement (`c` becomes `S Z`) is proved by splitting on `m` (`TruthG`). **For RULES:** "erased exactly when the match would be" needs the match's *declared* type, i.e. its arms' declared types. §3 says a block's "result type is the match's type (… inferred from the arms)", and that inferred type is computed. Suggested wording: *a stuck block is erased exactly when each of its arms would be.* An annotation `let x : T = match …` with `T` of declared sort Prop erases the whole annotated term on both paths, since the ascription is outside the block.
+
+**Observation: the declared row costs Unit results.** `G(x : &Nat, n : Nat) : UU(n)`, with `UU(Z) = Unit`, gets the data row even at `n = Z`. So `RowI : Id Unit (let c = *x; G(&c, Z)) ()` is no longer provable by `refl`: `⌈let c1 = σ; G(&c1, 0)⌉` is not `()`, since there is no η for Unit. It is provable by induction on `*x` (`RowIInd`). v1.6 accepted `RowI` at this instance but took the data row at the generic `n`, which is the instability D35 removes.
+
+**Residuals.**
+- `declOfVal` reads a captured value, not the captured variable's declared type *term*, which a Π-closure no longer has. The two differ only for a captured variable whose declared type becomes a sort at an instance but is not one at the generic call (`A : U(n)`). Such a variable cannot be used as a type at the generic call (`evalType` rejects it), so it cannot appear as a codomain.
+- `propDecl` is incomplete. For example, a codomain `q.1` (a projection of a captured pair holding a proposition) is classed as data. Since P2 this is consistent on both paths, because blocks follow the arms. It is not the appendix's reading, where such a function returns proofs.
+- The appendix (lead-owned; not edited here) is now behind in four places:
+  - "Recursion requires the declared decreasing parameter to have type `Nat` or `&Nat`": since phase 2 it may have any inductive type, or be a borrow of one.
+  - Note 3 and deviation (b): the tail reading is gone for types, and for proofs it now agrees with clause 4.
+  - The top-level class: the appendix reads "the goal of its [Def]" (the codomain evaluated), while RULES v1.7 and the checker read the codomain term.
+  - Clause 4 for a block should say "each arm" (P2).
+
+**Timings and size.** 205 verdicts, all as expected, in about 9.5 ms (V17: 0.8 ms). A clean build takes about 22 s: each of the 23 ledger rows re-runs the suite twice in the interpreter. `Machine.lean` is 1,608 lines; the checker is about 3,180 lines and the examples 973.
+
+## 11. Not done
 
 A proof that the implementation matches the rules (the traces and the ledger are the evidence); universe checking beyond C15; `Bool` (Nat stands in); loops, shared borrows, borrows in data (D8); the separate meta-lean development (`ochr/core/meta-lean/`, another agent's).
