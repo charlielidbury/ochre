@@ -65,6 +65,8 @@ structure Config where
   blockMoves : Bool := true      -- clarification C5: a stuck block moves in a borrow variable that an arm moves
   inferRecPos : Bool := false    -- v1 behaviour: infer the decreasing parameter instead of reading `by xⱼ`
   eraseOnCopy : Bool := true     -- v1.3 P2 (D26): a term whose type is a proposition runs on a private copy
+  proofParamsStar : Bool := true -- v1.4 D27: a proof parameter is ⋆ at the generic call (not an abstract σ)
+  recNested : Bool := true       -- v1.3 (L3): [Rec] also checks recursive calls inside nested functions
   trace : Bool := false          -- record goals, splits and call types (for inspection)
 deriving Inhabited, Repr
 

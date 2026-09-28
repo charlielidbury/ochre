@@ -38,6 +38,9 @@ ochr Probes {
   def W5 (x : &Nat) : Unit := *x := 5
   reject def EffArg (x : &Nat) : Id Unit (Lemma(W5(&*x)); ()) (*x := 5) := refl
   def EffArgErased (x : &Nat) : Id Unit (Lemma(W5(&*x)); ()) () := refl
+  -- types are erased too: a type-valued call in program position leaves no trace (P2)
+  def F5 (x : &Nat) : Prop := *x := 5; ⊤
+  def TypeErased (x : &Nat) : Id Nat (let T = F5(&*x); *x) (*x) := refl
 
   -- stuck blocks: a written owned variable is passed as &c, and a split later
   -- re-runs the block to each arm's value
@@ -59,6 +62,6 @@ ochr Probes {
 
 #eval IO.println (run "Probes" Probes).show
 
--- every verdict as expected, and exactly 20 assertions (a truncated file changes the count)
+-- every verdict as expected, and exactly 22 assertions (a truncated file changes the count)
 #guard (run "Probes" Probes).allAsExpected
-#guard (run "Probes" Probes).count == 20
+#guard (run "Probes" Probes).count == 22

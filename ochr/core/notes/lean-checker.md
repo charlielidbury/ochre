@@ -1,10 +1,10 @@
 # lean-checker: an executable checker for RULES v1.4, and what running it found
 
-**Verdict:** RULES v1.4 is implemented, and 135 verdict assertions all hold. Every §7 example (E1–E5) is accepted. Every must-fail program and every attack from rounds 1–2 is rejected: e346 `Bad`, `Oops2`, `Loop`/`Bot'`; meta-model C1, C2; breaker-close A1–A4 (and A5 terminates); breaker-close-v1 N1; breaker-frame attack 1; E5's three rejections. Each is caught by the rule meant to catch it: switching that one rule off flips exactly the verdicts it guards (§5).
+**Verdict:** RULES v1.4 is implemented, and 139 verdict assertions all hold. Every §7 example (E1–E5) is accepted. Every must-fail program and every attack from rounds 1–2 is rejected: e346 `Bad`, `Oops2`, `Loop`/`Bot'`; meta-model C1, C2; breaker-close A1–A4 (and A5 terminates); breaker-close-v1 N1 and meta-model-v1 R1 (the closed proofs of false built from `T` and `Q`); breaker-frame attack 1; E5's three rejections. Each is caught by the rule meant to catch it: switching that one rule off flips exactly the verdicts it guards (§5).
 **Most important finding:** **D18 (owners are sets) is load-bearing in v1.4.** An uncurried version of meta-model C2 (§4) uses v1.2's annotated block, which forms a type while a returned borrow's hole is in two owners and checks each arm against it after the split. Single-owner observation accepts it and yields the closed proof `ClosedD18 : Eq Nat 0 1`. Round 1's L1 (`f` escaping as a value) is fixed in v1.1 by exactly the rule this checker used.
 **RULES.md must change:** nothing unsound remains that I can find. §3 lists what is still underspecified: a static reading of "moves out of in any arm", the sort of a sealed type, Unit η, universes, and J's motive sort. D18 should stay, with §4's program as its motivating example rather than the curried C2.
 **Confidence:** high that the verdicts are what the implementation computes (all asserted in a green build; traces reproduce the round-1/2 hand derivations, including deriver-e5's rejection reasons symbol for symbol); medium that every clarification matches the intended reading.
-**Not checked:** metatheory; universe levels beyond `Type_i : Type_{i+1}`; completeness beyond the examples; performance beyond the examples (a clean build takes about 10 s, and `lake exe tests` about 20 s including compilation).
+**Not checked:** metatheory; universe levels beyond `Type_i : Type_{i+1}`; completeness beyond the examples. **Performance:** the compiled checker checks all 139 declarations in about 5 ms (median of 21 runs; the heaviest declaration, `BadD18`, takes about 0.2 ms). A clean build takes about 11 s, and `lake exe tests` about 20 s including compilation.
 
 Code: `ochr/core/lean/` on branch `ochr-core-lean` (README: build, syntax, rule → function table). `lake build` checks every assertion. `lake exe tests` prints the verdict tables and the ledger. Trace any definition: `(run "E1" E1 { trace := true }).showTrace "AddMZero"`.
 
@@ -16,8 +16,9 @@ Code: `ochr/core/lean/` on branch `ochr-core-lean` (README: build, syntax, rule 
 | L2 | v1 | `f(&x, x)`: reading `x` ends the borrow already evaluated as argument 1, so the callee receives `⊥`. Without a check, `Dead(W7, 0)` is accepted and its concrete run writes through `⊥`. | v1.2 puts arguments in temporaries and moves them into the frame, so moving `⊥` is a [Read] error. The checker's value-level argument check is that consequence. Regression: `More.Dead`, `DeadTwice`. |
 | L3 | v1 (this checker's first version) | A recursive call inside a nested λ, checked at the λ's own generic call, escaped [Rec]: `KnotL x := let g = (λ(y : Nat) : ⊥ => KnotL(y)); g(x)`. | Fixed in v1.3 ([Rec] covers nested functions and block arms). The checker keeps a stack of [Rec] contexts. Regression: `Attacks.KnotL`, `KnotLBoom`; a structural call through a closure (`AddZeroC`) is still accepted. |
 | **L4** | **v1.2–v1.4** | **Single-owner observation is exploitable without currying**, through the annotated block (§4). | D18 already requires all owners. This is its first first-order regression test: `D18.BadD18`, `D18.ClosedD18`. |
+| L5 | v1.4 (this checker's first v1.4 version) | P2 erases *types* as well as proofs. My first v1.4 version restored Ω only after proofs and in type positions, so a type-valued call in program position (`let T = F5(&*x)` with `F5 : … → Prop` writing `*x`) kept its write. | Fixed: Ω is restored after any term whose value is a proof or a type. v1.4 is right here. Regression: `Probes.TypeErased`. |
 
-## 2. Verdicts (expected vs actual: all 135 as expected)
+## 2. Verdicts (expected vs actual: all 139 as expected)
 
 | Program | Declarations (A = accept expected, R = reject expected) | Result |
 |---|---|---|
@@ -27,9 +28,9 @@ Code: `ochr/core/lean/` on branch `ochr-core-lean` (README: build, syntax, rule 
 | E4 | AddM, AddMZero, Twice, TwiceNoop, TwiceM, TwiceMMove, TwiceMZero, Add, **TwiceMZero'** (modular, with `J(A, a, b, P, h, t)`): all A | as expected |
 | E5 | AddM, Add, Le, LeAdd, SubM, AddSub, **AddSubId**, LeId, ProofIrr (deriver-e5 Q1), ExFalso, LeZero, TwoPhase (Q6): A; AddSubStale, AddSubWrong, AddSubIdReborrow, TwoPhaseMoved: R | as expected |
 | E6 | UseMoved R, UseReborrowed A, **LemmaMoves A** (v1.3: a lemma's arguments run on a private copy; R under v1), WriteThenRefl R, WriteThenRefl' R, ZeroIsOne R, Add01 R, NotAdd01 A, Snapshot A, SnapshotLie R, DanglingLocal R, DanglingTail R, DanglingReborrow R (+ AddM, AddMZero, TailM A) | as expected |
-| Attacks | e346 Bad R, Oops2 R, Loop R, Bot' R; breaker-close A3 Loop2 R, Spin R, A1 BadA1 R, A2 Boom R / BoomIsTrue A / Boom' R, seal variant TA2 A / TA2Z R; C1 FP2 A; C2 G R, BadC2 R; A4/L1 Knot R, KnotBoom R; L3 KnotL R, KnotLBoom R, AddZeroC A; **breaker-close-v1 N1: N1T A, N1Closed R** (+ helpers A) | as expected |
+| Attacks | e346 Bad R, Oops2 R, Loop R, Bot' R; breaker-close A3 Loop2 R, Spin R, A1 BadA1 R, A2 Boom R / BoomIsTrue A / Boom' R, seal variant TA2 A / TA2Z R; C1 FP2 A; C2 G R, BadC2 R; A4/L1 Knot R, KnotBoom R; L3 KnotL R, KnotLBoom R, AddZeroC A; **breaker-close-v1 N1: N1T A, N1Closed R; meta-model-v1 R1: Q A, QBoom R** (+ helpers A) | as expected |
 | More | MatchAfterOpaque A, Dead R, DeadTwice R, NotDead A, g A, attack R, attack' R, NonTailRec A, StuckGoal A, StuckGoalSplit A, StuckGoalWrong R, AddMZeroLet A | as expected |
-| Probes | T, UseT0, UseT, DepMatch A; DepMatchWrong R; Outer A; OuterBad R; Cap, CapMut, AliasRead A; AliasDangling R; Lemma, W5 A; **EffArg R** (v1.3); EffArgErased A; WriteInBlock A; AliasAfterBlock R; MovedByBlock R; ReborrowInBlock A (+ AddM) | as expected |
+| Probes | T, UseT0, UseT, DepMatch A; DepMatchWrong R; Outer A; OuterBad R; Cap, CapMut, AliasRead A; AliasDangling R; Lemma, W5 A; **EffArg R** (v1.3); EffArgErased A; F5, **TypeErased** A; WriteInBlock A; AliasAfterBlock R; MovedByBlock R; ReborrowInBlock A (+ AddM) | as expected |
 | D18 | Pick, Probe A, Use R (its expected parameter type has one conjunct per owner); Pick3, K A; **BadD18 R, ClosedD18 R** | as expected |
 
 The rejection reasons are the intended ones (`lake exe tests` prints every reason). E5's rejections reproduce deriver-e5 §E5.6 exactly. For example, `AddSubStale` fails with "argument 3 (h) has type ⌈Le(σ0, ⌈let c1 = σ0; AddM(&c1, σ1); c1⌉)⌉, expected ⌈Le(σ0, 0)⌉", and `AddSubIdReborrow`'s IH carries the `S` that its goal lacks (Q5). E5.4's central claim holds: `LeAdd(old, y)`, a proof about the pure `Add` of a snapshot, is accepted where `SubM` requires `Le(y, *x)` about the mutated `*x`, because the in-place `AddM(&*x, y)` and the pure `Add(old, y)` close off into the same sealed program.
@@ -85,7 +86,7 @@ Each `Config` switch turns off one rule. `Registry.lean` asserts that exactly th
 
 | Switched off | Verdicts that flip |
 |---|---|
-| P2 (v1.3 D26): proofs run on a private copy | Attacks.N1Closed → accepted (breaker-close-v1 N1's closed `Id Nat 1 0`); Probes.EffArg → accepted; E6.LemmaMoves, E5.TwoPhase, Probes.EffArgErased → rejected |
+| P2 (v1.3 D26): erased terms (proofs and types) run on a private copy, so v1's call-keyed P5 is what remains | Attacks.N1Closed, Attacks.QBoom → accepted (the closed proofs of false from breaker-close-v1 N1 and meta-model-v1 R1); Probes.EffArg → accepted; E6.LemmaMoves, E5.TwoPhase, Probes.EffArgErased, Probes.TypeErased → rejected |
 | D18: owners are sets | D18.BadD18, D18.ClosedD18 → accepted (§4) |
 | D17: [Rec] entry-value guard | Loop, Bot', Loop2, Spin, KnotL, KnotLBoom, Probes.OuterBad → accepted |
 | D19: [Access] ends loans inside the content | Attacks.BadA1 (breaker-close A1) → accepted |
@@ -93,10 +94,50 @@ Each `Config` switch turns off one rule. `Registry.lean` asserts that exactly th
 | L2 (v1.2 temporaries): no `⊥` argument | More.Dead, More.DeadTwice → accepted (and `Dead`'s concrete instance writes through `⊥`) |
 | C8 (v1.2): generalise before splitting on a sealed program | More.MatchAfterOpaque → rejected |
 | C5 (v1.3): a stuck block moves in what an arm moves | Probes.MovedByBlock → accepted (and its concrete run reads `⊥`) |
+| D27 (v1.4): proof parameters are `⋆` at the generic call | E5.ProofIrr (deriver-e5 §E5.7) → rejected |
+| L3 (v1.3): [Rec] covers nested functions | Attacks.KnotL, KnotLBoom → accepted |
 
 v1's P5 switch (`p5 := false`: run proof calls instead of skipping them) is no longer in the ledger. Since v1.3, skipping is an optimisation of P2. In this checker, switching it off also switches off the `⋆` representation of proofs, because a run proof that gets stuck closes off into a sealed program rather than `⋆`. So its row would not isolate one rule. The [Close] precondition (v1.1) is asserted on every call that closes off and never fired on the suite. It is skipped only in the D19-off run, which models the rules without the invariant it states.
 
-## 6. Other observations
+**On what "must be rejected" means for N1 and R1.** Under v1.3's P2, breaker-close-v1's `T` and meta-model-v1's `Q` are *true* statements: the write inside the proof-typed block is erased, so the observed place does not change. The checker accepts them. What must be rejected is the closed proof of false that v1.1 derived from them. `N1Closed : Id Nat 1 0 := N1T(0)` is rejected because `N1T(0) : ⊤`. `QBoom := J(Nat, S Z, Z, …, Q(0, 0), refl)` is rejected because `Q(0, 0) : ⊤`, not `Eq Nat 1 0`. Both flip to accepted with the P2 switch off (v1's call-keyed P5), which is the evidence the paper needs.
+
+## 6. Timings and size
+
+Median of 21 runs of the compiled checker (`lake exe tests`), per program:
+
+| Program | Declarations | Check time |
+|---|---|---|
+| E1 | 5 | 0.2 ms |
+| E2 | 7 | 0.5 ms |
+| E3 | 9 | 0.8 ms |
+| E4 | 9 | 0.5 ms |
+| E5 | 16 | 0.9 ms |
+| E6 | 16 | 0.4 ms |
+| Attacks | 35 | 0.8 ms |
+| More | 13 | 0.3 ms |
+| Probes | 22 | 0.5 ms |
+| D18 | 7 | 0.3 ms |
+| **total** | **139** | **about 5 ms** |
+
+The heaviest declarations take about 0.14–0.22 ms each: `BadD18`, `AddToOneZero''`, `TwiceMZero'`, `AddSubId`. Per-declaration times are printed by `lake exe tests`.
+
+Lines per module (`wc -l`, including comments):
+
+| Module | Lines | Contents |
+|---|---|---|
+| `Ochr/Syntax.lean` | 133 | terms, places, values, structural equality |
+| `Ochr/Basic.lean` | 209 | `Eq`/`∧` smart constructors, traversals |
+| `Ochr/Pretty.lean` | 133 | printer |
+| `Ochr/Env.lean` | 210 | Ω, machine state, configuration |
+| `Ochr/Obs.lean` | 127 | paths, owners, footprint |
+| `Ochr/Machine.lean` | 1090 | machine, [Seal], [Close], stuck blocks, `Id`, [Call-type], [Rec], [Def] (one mutual block of about 960 lines) |
+| `Ochr/Check.lean` | 98 | programs |
+| `Ochr/Surface.lean`, `Ochr/Notation.lean` | 180 + 138 | surface syntax and the `ochr` command |
+| `Ochr/Test.lean`, `Tests.lean` | 65 + 73 | runner |
+| **checker total** | **about 2,450** | |
+| `Ochr/Examples/*.lean` | 674 | the 139 assertions, unit tests, ledger |
+
+## 7. Other observations
 
 - **Normal forms need no α-renaming step.** With de Bruijn terms whose binder names `==` ignores, and [Close] building `⌈L; C…⌉` in one fixed shape, the goal's and the IH's sealed programs are structurally equal whenever the round-1/2 derivations say they are "equal up to renaming" (e1 F7).
 - **"Discard the partial run" is exception semantics.** `stuck` is an exception carrying only the fuel spent. The innermost call catches it with the state it had at the call point, which is exactly [Close]'s restore. [Seal]'s head call rethrows instead.
@@ -106,6 +147,6 @@ v1's P5 switch (`p5 := false`: run proof calls instead of skipping them) is no l
 - **Dependent types through mutation work as deriver-e5 derived them**, including large elimination into `Prop` (`Le`), stored parameter types refined twice by [Split] (`SubM`'s `h`), and proof irrelevance at the value level (`ProofIrr`).
 - **Paper syntax.** The `ochr { … }` block reads as RULES §7 does, with `by x`, calls `f(a, …)`, and `J(A, a, b, P, h, t)`.
 
-## 7. Not done
+## 8. Not done
 
 A proof that the implementation matches the rules (the traces and the ledger are the evidence); universe checking beyond C15; `Bool` (Nat stands in); loops, shared borrows, borrows in data (D8); the separate meta-lean development (`ochr/core/meta-lean/`, another agent's).

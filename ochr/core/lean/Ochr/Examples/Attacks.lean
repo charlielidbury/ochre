@@ -66,6 +66,14 @@ ochr Attacks {
   def N1T (n : Nat) : Id Nat (let a = 0; let h = match n { Z => (a := S Z; refl) | S _ => refl }; a) 0 := refl
   reject def N1Closed : Id Nat 1 0 := N1T(0)
 
+  -- meta-model-v1 R1 (= breaker-close-v1 N1, deriver-e346-v1 N12): a Prop-typed block
+  -- that writes. Under v1.3's P2 the writes of a proof are erased, so Q is true and
+  -- Q(0, 0) : ⊤; the closed proof of false below is rejected. Under v1's call-keyed P5,
+  -- Q(0, 0) : Eq Nat 1 0 and QBoom is accepted (ledger row P2).
+  def Q (b : Nat) (a : Nat) : Id ⊤ (match b { Z => (a := S Z; refl) | S _ => (a := S Z; refl) }) refl := refl
+  reject def QBoom : (Π(P : Prop). P) :=
+    J(Nat, S Z, Z, λ(n : Nat) : Prop => match n { Z => (Π(P : Prop). P) | S _ => ⊤ }, Q(0, 0), refl)
+
   reject def Boom' : Eq Nat 0 1 :=
     (λ(k : Π(h : Π(x : &Nat). ⊤). Nat) : Eq Nat (k(P1)) (k(P2)) => refl)(λ(h : Π(x : &Nat). ⊤) : Nat => let a = 0; h(&a); a)
 
@@ -109,6 +117,6 @@ ochr Attacks {
 
 #eval IO.println (run "Attacks" Attacks).show
 
--- every verdict as expected, and exactly 33 assertions (a truncated file changes the count)
+-- every verdict as expected, and exactly 35 assertions (a truncated file changes the count)
 #guard (run "Attacks" Attacks).allAsExpected
-#guard (run "Attacks" Attacks).count == 33
+#guard (run "Attacks" Attacks).count == 35

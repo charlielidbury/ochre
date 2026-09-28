@@ -10,7 +10,7 @@ lake build          # checks every example; a failing verdict or a wrong asserti
 lake exe tests      # prints every verdict table and the counterfactual ledger; exit 1 on any unexpected verdict
 ```
 
-Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A clean build takes about ten seconds and prints every verdict table; `lake exe tests` compiles the runner first (about 20 s).
+Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A clean build takes about ten seconds and prints every verdict table; `lake exe tests` compiles the runner first (about 20 s) and prints per-declaration check times (all 139 declarations check in about 5 ms).
 
 ## Writing programs
 
@@ -35,7 +35,7 @@ ochr E1 {
 
 `def` expects acceptance and `reject def` expects rejection. `by x` names the decreasing parameter; a definition without `by` may not call itself. Calls are saturated and written `f(a, …)` with no space before the parenthesis. `S t`, `Id A t u` and `Eq A t u` are written by juxtaposition, and transport by `J(A, a, b, P, h, t)`. Other syntax: `&p`, `*p`, `p.1`, `p := t`, `let x = t; u`, `let x : T = t; u` (for a match, `T` is the block's type), `t; u`, `match p { Z => t | S y => u }` (and `S _`), `Π(x : A) (y : B). C`, `A → B`, `λ(x : A) : B => t`, `fix f (x : A) : B by x := t`, `(t : A)`, `()`, `(t, u)`, `⟨h, k⟩`, `refl`, `⊤`, `P ∧ Q`, `A × B`, `Nat`, `Unit`, `Prop`, `Type`, and numerals. `cong f h`, `trans h k` and `symm h` exist as derivable conveniences outside the core. A `λ` or `Π` in the bound position of a `let`, or a `Π` as a result type, needs parentheses.
 
-`Config` switches each turn off one rule, for counterfactual runs: `eraseOnCopy` (P2, v1.3), `multiOwner` (D18), `recGuard` (D17), `accessInside` (D19), `selfHeadOnly` (v1.1 head-only), `argNotBot` (v1.2 temporaries), `generalize` (v1.2 generalise-then-split), `blockMoves` (v1.3 captures), `p5` (v1's call skipping), `inferRecPos` (v1's inferred decreasing parameter), and `trace`.
+`Config` switches each turn off one rule, for counterfactual runs: `eraseOnCopy` (P2, v1.3), `multiOwner` (D18), `recGuard` (D17), `accessInside` (D19), `selfHeadOnly` (v1.1 head-only), `argNotBot` (v1.2 temporaries), `generalize` (v1.2 generalise-then-split), `blockMoves` (v1.3 captures), `proofParamsStar` (v1.4 D27), `recNested` ([Rec] inside nested functions), `p5` (v1's call skipping), `inferRecPos` (v1's inferred decreasing parameter), and `trace`.
 
 ## Layout
 
@@ -78,7 +78,7 @@ ochr E1 {
 | §5 [Rec] | `recCheck` (a stack of contexts, one per enclosing function), `headOnly` (f only as a call head) |
 | §5 errors | the `err` calls in the functions above |
 | P1 conversion | `==` on normal forms (`Value.beq`, which ignores binder names) |
-| P2 erased terms | `eval` (a term whose value is `⋆` leaves Ω unchanged), `evalType` (types on a private copy), `capture` (Π-types and closures close over values, never borrows) |
+| P2 erased terms | `eval`/`erasedValue` (a term whose value is a proof `⋆` or a type leaves Ω unchanged), `evalType` (types on a private copy), `capture` (Π-types and closures close over values, never borrows) |
 
 ## Where the rules left a choice
 

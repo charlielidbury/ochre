@@ -452,9 +452,23 @@ discarded. Every value of a proposition is `⋆` (C7) and only such terms evalua
 partial def eval (typed : Bool) (t : Term) : M (Value × Option Value) := do
   let before := (← get).env
   let r ← evalCore typed t
-  if r.1 == .proof && (← get).cfg.eraseOnCopy then
-    modify fun s => { s with env := before }
+  if (← get).cfg.eraseOnCopy then
+    if ← erasedValue r.1 then
+      modify fun s => { s with env := before }
   pure r
+
+/-- Is this the value of an erased term: a proof (`⋆`) or a type? Types are values of
+terms whose type is a sort (P2 erases them too): the type formers, sorts, a sealed
+program whose sort is known, and an abstract value whose type is a sort. -/
+partial def erasedValue (v : Value) : M Bool := do
+  match v with
+  | .proof | .tNat | .tUnit | .tProd .. | .tEq .. | .tTop | .tAnd .. | .tRef _ | .tPi .. | .sort _ =>
+    pure true
+  | .sealed t => pure (← sealedSort? t).isSome
+  | .abs σ => match ← absType σ with
+    | .sort _ => pure true
+    | _ => pure false
+  | _ => pure false
 
 partial def evalCore (typed : Bool) (t : Term) : M (Value × Option Value) := do
   tick
@@ -1043,7 +1057,7 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
       pushBind h (some A) (.borrow l (.abs σ))
       entries := entries.push (if T == .tNat then some σ else none)
     | _ =>
-      if (← get).cfg.p5 && (← isPropV A) then
+      if (← get).cfg.p5 && (← get).cfg.proofParamsStar && (← isPropV A) then
         pushBind h (some A) .proof
         entries := entries.push none
       else
@@ -1068,8 +1082,11 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
           err s!"`by {(hs.getD j ⟨"?"⟩).name}`: the decreasing parameter must have type Nat or &Nat"
         pure [j]
       | none => pure []
-  modify fun s => { s with goal := some goal, recStack := ⟨fv, entries⟩ :: s.recStack,
-                            recCands := cands :: s.recCands }
+  if (← get).cfg.recNested then
+    modify fun s => { s with goal := some goal, recStack := ⟨fv, entries⟩ :: s.recStack,
+                              recCands := cands :: s.recCands }
+  else  -- counterfactual L3: a nested function's check starts with a fresh [Rec] context
+    modify fun s => { s with goal := some goal, recStack := [⟨fv, entries⟩], recCands := [cands] }
   checkTail body fun v T => do
     pushTempAt ((← topIdx) - 1) v
     popFrame
@@ -1079,6 +1096,8 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
     unless T == g do
       err s!"the body of {self.name} has type {T}, but the goal is {g}"
   restoreKeep saved
+  unless (← get).cfg.recNested do
+    modify fun s => { s with recCands := saved.recCands }
 
 end
 

@@ -33,12 +33,14 @@ def switches : List (String × Config) :=
    ("L1: self only as a call head", { selfHeadOnly := false }),
    ("L2: no ⊥ argument", { argNotBot := false }),
    ("C8: generalise before splitting on a sealed program", { generalize := false }),
-   ("C5: a stuck block moves in a borrow variable an arm moves", { blockMoves := false })]
+   ("C5: a stuck block moves in a borrow variable an arm moves", { blockMoves := false }),
+   ("D27 (v1.4): proof parameters are ⋆ at the generic call", { proofParamsStar := false }),
+   ("L3 (v1.3): [Rec] covers nested functions", { recNested := false })]
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 135
+def Ochr.Registry.expectedTotal : Nat := 139
 
 open Ochr.Registry in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
@@ -54,8 +56,8 @@ representation of proofs, so its row would not isolate one rule.) -/
 
 open Ochr.Registry in
 #guard flips { eraseOnCopy := false } ==
-  ["E5.TwoPhase:rejected", "E6.LemmaMoves:rejected", "Attacks.N1Closed:accepted",
-   "Probes.EffArg:accepted", "Probes.EffArgErased:rejected"]
+  ["E5.TwoPhase:rejected", "E6.LemmaMoves:rejected", "Attacks.N1Closed:accepted", "Attacks.QBoom:accepted",
+   "Probes.EffArg:accepted", "Probes.EffArgErased:rejected", "Probes.TypeErased:rejected"]
 open Ochr.Registry in
 #guard flips { multiOwner := false } == ["D18.BadD18:accepted", "D18.ClosedD18:accepted"]
 open Ochr.Registry in
@@ -72,3 +74,7 @@ open Ochr.Registry in
 #guard flips { generalize := false } == ["More.MatchAfterOpaque:rejected"]
 open Ochr.Registry in
 #guard flips { blockMoves := false } == ["Probes.MovedByBlock:accepted"]
+open Ochr.Registry in
+#guard flips { proofParamsStar := false } == ["E5.ProofIrr:rejected"]
+open Ochr.Registry in
+#guard flips { recNested := false } == ["Attacks.KnotL:accepted", "Attacks.KnotLBoom:accepted"]
