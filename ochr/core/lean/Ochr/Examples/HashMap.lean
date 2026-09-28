@@ -109,10 +109,106 @@ ochr HashMap {
        match m { HM(n, len, s) => len })
       (let m = New(1); Insert(&m, 1, 10); Insert(&m, 2, 20); Insert(&m, 3, 30); Insert(&m, 7, 70); Remove(&m, 2);
        match m { HM(n, len, s) => Count(s) }) := refl
+  -- ## Phase 2: bucket-level theorems
+
+  -- ex falso into Prop (E5's ExFalso, and its Bool forms) and facts about EqB
+  def ExFalso (G : Prop) (h : Eq Nat Z (S Z)) : G :=
+    J(Nat, Z, S Z, λ(n : Nat) : Prop => match n { Z => ⊤ | S _ => G }, h, refl)
+  def ExFalsoFT (G : Prop) (h : Eq Bool False True) : G :=
+    J(Bool, False, True, λ(z : Bool) : Prop => match z { False => ⊤ | True => G }, h, refl)
+  def BoolAbsurd (x : Bool) (h1 : Id Bool x False) (h2 : Id Bool x True) : Eq Bool False True :=
+    J(Bool, x, False, λ(z : Bool) : Prop => Id Bool z True, h1, h2)
+  def EqBRefl (k : Nat) : Id Bool (EqB(k, k)) True by k := match k { Z => refl | S k' => EqBRefl(k') }
+  def EqBSound (a : Nat) (b : Nat) (h : Id Bool (EqB(a, b)) True) : Id Nat a b by a :=
+    match a {
+      Z => match b { Z => refl | S _ => ExFalsoFT(Id Nat a b, h) }
+    | S a' => match b {
+        Z => ExFalsoFT(Id Nat a b, h)
+      | S b' => J(Nat, a', b', λ(z : Nat) : Prop => Id Nat (S a') (S z), EqBSound(a', b', h), refl) } }
+  def EqBTrans (a : Nat) (b : Nat) (c : Nat) (h1 : Id Bool (EqB(a, b)) True) (h2 : Id Bool (EqB(a, c)) True) :
+      Id Bool (EqB(b, c)) True :=
+    J(Nat, a, b, λ(z : Nat) : Prop => Id Bool (EqB(z, c)) True, EqBSound(a, b, h1), h2)
+
+  -- H1: after inserting k, looking k up gives the inserted value
+  def BInsertGet (b : &Bucket) (k : Nat) (v : Nat) :
+      Id Opt (BInsertM(&*b, k, v); BGet(&*b, k)) (BInsertM(&*b, k, v); Some(v)) by b :=
+    match *b {
+      BNil => let e = EqB(k, k); match e {
+          False => ExFalsoFT(Id Opt (BInsertM(&*b, k, v); BGet(&*b, k)) (BInsertM(&*b, k, v); Some(v)), EqBRefl(k))
+        | True => refl }
+    | BCons(k', v', t) => let e = EqB(k', k); match e { False => BInsertGet(&t, k, v) | True => refl } }
+
+  -- H2: inserting k does not change the lookup of another key k2
+  def BInsertGetOther (b : &Bucket) (k : Nat) (v : Nat) (k2 : Nat) (h : Id Bool (EqB(k, k2)) False) :
+      Id Opt (BInsertM(&*b, k, v); BGet(&*b, k2)) (let r = BGet(&*b, k2); BInsertM(&*b, k, v); r) by b :=
+    match *b {
+      BNil => let e = EqB(k, k2); match e {
+          False => refl
+        | True => ExFalsoFT(Id Opt (BInsertM(&*b, k, v); BGet(&*b, k2)) (let r = BGet(&*b, k2); BInsertM(&*b, k, v); r),
+                    BoolAbsurd(EqB(k, k2), h, refl)) }
+    | BCons(k', v', t) => let e = EqB(k', k); match e {
+        False => let e2 = EqB(k', k2); match e2 { False => BInsertGetOther(&t, k, v, k2, h) | True => refl }
+      | True => let e2 = EqB(k', k2); match e2 {
+          False => refl
+        | True => ExFalsoFT(Id Opt (BInsertM(&*b, k, v); BGet(&*b, k2)) (let r = BGet(&*b, k2); BInsertM(&*b, k, v); r),
+                    BoolAbsurd(EqB(k, k2), h, EqBTrans(k', k, k2, refl, refl))) } } }
+  -- without the EqB lemma the fresh-bucket case does not check (EqB(k, k) is stuck on an abstract k)
+  reject def BInsertGetNoLemma (b : &Bucket) (k : Nat) (v : Nat) :
+      Id Opt (BInsertM(&*b, k, v); BGet(&*b, k)) (BInsertM(&*b, k, v); Some(v)) by b :=
+    match *b { BNil => refl | BCons(k', v', t) => let e = EqB(k', k); match e { False => BInsertGetNoLemma(&t, k, v) | True => refl } }
+  reject def BInsertGetWrongValue (b : &Bucket) (k : Nat) (v : Nat) :
+      Id Opt (BInsertM(&*b, k, v); BGet(&*b, k)) (BInsertM(&*b, k, v); Some(k)) by b :=
+    match *b {
+      BNil => let e = EqB(k, k); match e {
+          False => ExFalsoFT(Id Opt (BInsertM(&*b, k, v); BGet(&*b, k)) (BInsertM(&*b, k, v); Some(k)), EqBRefl(k))
+        | True => refl }
+    | BCons(k', v', t) => let e = EqB(k', k); match e { False => BInsertGetWrongValue(&t, k, v) | True => refl } }
+  -- without k ≠ k2 the lookup of k2 can change
+  reject def BInsertGetOtherNoHyp (b : &Bucket) (k : Nat) (v : Nat) (k2 : Nat) :
+      Id Opt (BInsertM(&*b, k, v); BGet(&*b, k2)) (let r = BGet(&*b, k2); BInsertM(&*b, k, v); r) by b :=
+    match *b {
+      BNil => let e = EqB(k, k2); match e { False => refl | True => refl }
+    | BCons(k', v', t) => let e = EqB(k', k); match e {
+        False => let e2 = EqB(k', k2); match e2 { False => BInsertGetOtherNoHyp(&t, k, v, k2) | True => refl }
+      | True => let e2 = EqB(k', k2); match e2 { False => refl | True => refl } } }
+
+  -- remove. Buckets may hold a key twice in general (only insert keeps them duplicate-free),
+  -- so "remove k, then k is gone" needs k to occur at most once
+  def BAbsent (b : Bucket) (k : Nat) : Prop by b :=
+    match b { BNil => ⊤ | BCons(k', v', t) => let e = EqB(k', k); match e { False => BAbsent(t, k) | True => Eq Nat Z (S Z) } }
+  def AtMostOnce (b : Bucket) (k : Nat) : Prop by b :=
+    match b { BNil => ⊤ | BCons(k', v', t) => let e = EqB(k', k); match e { False => AtMostOnce(t, k) | True => BAbsent(t, k) } }
+  def BGetAbsent (b : &Bucket) (k : Nat) (h : BAbsent(*b, k)) : Id Opt (BGet(&*b, k)) None by b :=
+    match *b {
+      BNil => refl
+    | BCons(k', v', t) => let e = EqB(k', k); match e { False => BGetAbsent(&t, k, h) | True => ExFalso(Id Opt (BGet(&*b, k)) None, h) } }
+  -- H1': after removing k, looking k up gives None. The found case uses the lemma on a copy of
+  -- the tail (a place the proof owns), so that its footprint is the tail, not the whole cell
+  def BRemoveGet (b : &Bucket) (k : Nat) (h : AtMostOnce(*b, k)) :
+      Id Opt (BRemoveM(&*b, k); BGet(&*b, k)) (BRemoveM(&*b, k); None) by b :=
+    match *b {
+      BNil => refl
+    | BCons(k', v', t) => let e = EqB(k', k); match e { False => BRemoveGet(&t, k, h) | True => let c = t; BGetAbsent(&c, k, h) } }
+  reject def BRemoveGetNoHyp (b : &Bucket) (k : Nat) :
+      Id Opt (BRemoveM(&*b, k); BGet(&*b, k)) (BRemoveM(&*b, k); None) by b :=
+    match *b {
+      BNil => refl
+    | BCons(k', v', t) => let e = EqB(k', k); match e { False => BRemoveGetNoHyp(&t, k) | True => refl } }
+  -- H2': removing k does not change the lookup of another key k2
+  def BRemoveGetOther (b : &Bucket) (k : Nat) (k2 : Nat) (h : Id Bool (EqB(k, k2)) False) :
+      Id Opt (BRemoveM(&*b, k); BGet(&*b, k2)) (let r = BGet(&*b, k2); BRemoveM(&*b, k); r) by b :=
+    match *b {
+      BNil => refl
+    | BCons(k', v', t) => let e = EqB(k', k); match e {
+        False => let e2 = EqB(k', k2); match e2 { False => BRemoveGetOther(&t, k, k2, h) | True => refl }
+      | True => let e2 = EqB(k', k2); match e2 {
+          False => refl
+        | True => ExFalsoFT(Id Opt (BRemoveM(&*b, k); BGet(&*b, k2)) (let r = BGet(&*b, k2); BRemoveM(&*b, k); r),
+                    BoolAbsurd(EqB(k, k2), h, EqBTrans(k', k, k2, refl, refl))) } } }
 }
 
 #eval IO.println (run "HashMap" HashMap).show
 
--- every verdict as expected, and exactly 40 assertions (a truncated file changes the count)
+-- every verdict as expected, and exactly 57 assertions (a truncated file changes the count)
 #guard (run "HashMap" HashMap).allAsExpected
-#guard (run "HashMap" HashMap).count == 40
+#guard (run "HashMap" HashMap).count == 57

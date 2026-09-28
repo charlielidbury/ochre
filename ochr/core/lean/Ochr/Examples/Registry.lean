@@ -64,7 +64,7 @@ def switches : List (String × Config) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 279
+def Ochr.Registry.expectedTotal : Nat := 296
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
@@ -104,7 +104,10 @@ def hashMapGeneralize : List String :=
    "HashMap.MoveBucket:rejected", "HashMap.MoveSlots:rejected", "HashMap.Resize:rejected", "HashMap.Insert:rejected",
    "HashMap.RunLayout:rejected", "HashMap.RunGet1:rejected", "HashMap.RunGet2:rejected", "HashMap.RunGet3:rejected",
    "HashMap.RunGetAbsent:rejected", "HashMap.RunOverwrite:rejected", "HashMap.RunOverwriteGet:rejected",
-   "HashMap.RunCollide:rejected", "HashMap.RunRemove:rejected", "HashMap.RunRemoveGet:rejected", "HashMap.RunCount:rejected"]
+   "HashMap.RunCollide:rejected", "HashMap.RunRemove:rejected", "HashMap.RunRemoveGet:rejected",
+   "HashMap.RunCount:rejected", "HashMap.BInsertGet:rejected", "HashMap.BInsertGetOther:rejected",
+   "HashMap.BAbsent:rejected", "HashMap.AtMostOnce:rejected", "HashMap.BGetAbsent:rejected",
+   "HashMap.BRemoveGet:rejected", "HashMap.BRemoveGetOther:rejected"]
 open Ochr.Registry in
 #guard flips { generalize := false } ==
   ["More.MatchAfterOpaque:rejected", "GenTy.GenL:rejected", "Inductives.InsertM:rejected", "Inductives.Insert:rejected",
@@ -128,8 +131,13 @@ open Ochr.Registry in
 #guard flips { unboundWithoutBy := false } == ["V15.Loop:accepted", "V15.Boom4:accepted"]
 open Ochr.Registry in
 #guard flips { patternWritesVisible := false } == ["V15.Clear:accepted", "V15.Boom5:accepted"]
+/-- The hashmap theorems split on an `EqB` comparison that the goal's sealed programs
+re-derive inside `BInsertM`/`BGet`/`BRemoveM` (finding G1's situation). -/
+def hashMapG1 : List String :=
+  ["HashMap.BInsertGet:rejected", "HashMap.BInsertGetOther:rejected", "HashMap.BGetAbsent:rejected",
+   "HashMap.BRemoveGet:rejected", "HashMap.BRemoveGetOther:rejected"]
 open Ochr.Registry in
-#guard flips { genConsistent := false } == ["Inductives.InsertMEq:rejected", "Inductives.SizeInsert:rejected"]
+#guard flips { genConsistent := false } == ["Inductives.InsertMEq:rejected", "Inductives.SizeInsert:rejected"] ++ hashMapG1
 open Ochr.Registry in
 #guard flips { classBySyntax := false } ==
   ["V17.BoomL:accepted", "V17.TruthG:rejected", "V18.Boom8:accepted", "V18.Direct8:accepted", "V18.LieH:rejected"]
