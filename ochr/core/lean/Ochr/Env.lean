@@ -67,6 +67,11 @@ structure Config where
   eraseOnCopy : Bool := true     -- v1.3 P2 (D26): a term whose type is a proposition runs on a private copy
   proofParamsStar : Bool := true -- v1.4 D27: a proof parameter is ⋆ at the generic call (not an abstract σ)
   recNested : Bool := true       -- v1.3 (L3): [Rec] also checks recursive calls inside nested functions
+  erasureByDecl : Bool := true   -- v1.5 D28: erasure decided per definition / syntactically, not from values
+  matchEndsInside : Bool := true -- v1.5 D29: matching ends loans anywhere inside a neutral head
+  closureConv : Nat := 0         -- v1.5 D30: 0 = generic-call observation, 1 = syntactic, 2 = result only
+  unboundWithoutBy : Bool := true -- v1.5 D31: without `by`, f is not in scope in its body
+  patternWritesVisible : Bool := true -- v1.5 D32: writes through pattern variables are writes to the scrutinee
   trace : Bool := false          -- record goals, splits and call types (for inspection)
 deriving Inhabited, Repr
 
@@ -83,6 +88,9 @@ structure MState where
                                       -- accumulators, they survive branch restores
   fuel : Nat := 2000000
   cfg : Config := {}
+  lastErased : Bool := false          -- set by `eval`: was the term just evaluated erased (D28)?
+  classCache : List (Value × Nat) := []   -- erasure class of function types (D28), a pure cache
+  convStack : List (Value × Value) := []  -- function pairs being compared observationally (D30)
 deriving Inhabited
 
 inductive Fail where
@@ -107,7 +115,7 @@ def tick : M Unit := do
 
 /-- Restore a saved state, keeping the fuel spent and the [Rec] accumulators. -/
 def restoreKeep (saved : MState) : M Unit :=
-  modify fun cur => { saved with fuel := cur.fuel,
+  modify fun cur => { saved with fuel := cur.fuel, classCache := cur.classCache,
                                  recCands := cur.recCands.drop (cur.recCands.length - saved.recCands.length) }
 
 /-- Run `x` on a private copy of the state (P2, P6): its effects are discarded. -/

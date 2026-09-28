@@ -1,5 +1,6 @@
 import Ochr.Examples.Units
 import Ochr.Examples.E5
+import Ochr.Examples.V15
 import Ochr.Examples.Probes
 
 /-! # Every example program, for the test runner and the counterfactual ledger -/
@@ -9,7 +10,7 @@ open Ochr Ochr.Test Ochr.Surface
 namespace Ochr.Registry
 
 def programs : List (String × Program) :=
-  [("E1", E1), ("E2", E2), ("E3", E3), ("E4", E4), ("E5", E5), ("E6", E6), ("Attacks", Attacks), ("More", More), ("Probes", Probes),
+  [("E1", E1), ("E2", E2), ("E3", E3), ("E4", E4), ("E5", E5), ("E6", E6), ("Attacks", Attacks), ("More", More), ("Probes", Probes), ("V15", V15),
    ("D18", Ochr.Units.D18)]
 
 def reports (cfg : Config := {}) : List Report := programs.map fun (n, p) => run n p cfg
@@ -35,16 +36,21 @@ def switches : List (String × Config) :=
    ("C8: generalise before splitting on a sealed program", { generalize := false }),
    ("C5: a stuck block moves in a borrow variable an arm moves", { blockMoves := false }),
    ("D27 (v1.4): proof parameters are ⋆ at the generic call", { proofParamsStar := false }),
-   ("L3 (v1.3): [Rec] covers nested functions", { recNested := false })]
+   ("L3 (v1.3): [Rec] covers nested functions", { recNested := false }),
+   ("D28 (v1.5): erasure by declared class, not by value", { erasureByDecl := false }),
+   ("D29 (v1.5): matching ends loans inside a neutral head", { matchEndsInside := false }),
+   ("D30 (v1.5): closures compared by generic-call observation (vs result only)", { closureConv := 2 }),
+   ("D31 (v1.5): without `by`, f is not in scope", { unboundWithoutBy := false }),
+   ("D32 (v1.5): writes through pattern variables are writes to the scrutinee", { patternWritesVisible := false })]
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 139
+def Ochr.Registry.expectedTotal : Nat := 161
 
-open Ochr.Registry in
+open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
-open Ochr.Registry in
+open Ochr.Registry Ochr.Test in
 #guard (reports {}).all Report.allAsExpected
 
 /-! ## The counterfactual ledger (asserted)
@@ -59,7 +65,8 @@ open Ochr.Registry in
   ["E5.TwoPhase:rejected", "E6.LemmaMoves:rejected", "Attacks.N1Closed:accepted", "Attacks.QBoom:accepted",
    "Probes.EffArg:accepted", "Probes.EffArgErased:rejected", "Probes.TypeErased:rejected"]
 open Ochr.Registry in
-#guard flips { multiOwner := false } == ["D18.BadD18:accepted", "D18.ClosedD18:accepted"]
+#guard flips { multiOwner := false } ==
+  ["D18.BadD18:accepted", "D18.ClosedD18:accepted", "D18.GR:accepted", "D18.BadR:accepted"]
 open Ochr.Registry in
 #guard flips { recGuard := false } ==
   ["Attacks.Loop:accepted", "Attacks.Bot':accepted", "Attacks.Loop2:accepted", "Attacks.Spin:accepted",
@@ -78,3 +85,13 @@ open Ochr.Registry in
 #guard flips { proofParamsStar := false } == ["E5.ProofIrr:rejected"]
 open Ochr.Registry in
 #guard flips { recNested := false } == ["Attacks.KnotL:accepted", "Attacks.KnotLBoom:accepted"]
+open Ochr.Registry in
+#guard flips { erasureByDecl := false } == ["V15.Boom:accepted", "V15.MainW0:rejected"]
+open Ochr.Registry in
+#guard flips { matchEndsInside := false } == ["V15.Bad:accepted", "V15.Main:accepted"]
+open Ochr.Registry in
+#guard flips { closureConv := 2 } == ["V15.Boom3:accepted"]
+open Ochr.Registry in
+#guard flips { unboundWithoutBy := false } == ["V15.Loop:accepted", "V15.Boom4:accepted"]
+open Ochr.Registry in
+#guard flips { patternWritesVisible := false } == ["V15.Clear:accepted", "V15.Boom5:accepted"]

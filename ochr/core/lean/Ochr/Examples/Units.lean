@@ -70,6 +70,16 @@ ochr D18 {
     let e : Id Unit (*r := 0) (*r := 1) = match s { Z => hs | S _ => refl };
     K(r, e)
   reject def ClosedD18 : Eq Nat 0 1 := BadD18(1, refl, 0, 0)
+
+  -- reviewer-1 C1: the same without an annotated block, expressible already in v1. The
+  -- hypothesis h recomputes, with local copies, exactly the sealed program that a1 holds
+  -- after Pick; single-owner observation makes Neq's parameter type that one equation.
+  def Neq (y : &Nat) (h : Id Unit (*y := Z) (*y := S Z)) : Eq Nat Z (S Z) := h
+  reject def GR (a1 : Nat) (a2 : Nat) (b : Nat)
+      (h : Eq Nat (let c1 = a1; let c2 = a2; let r = Pick(b, &c1, &c2); *r := Z; c1)
+                  (let c1 = a1; let c2 = a2; let r = Pick(b, &c1, &c2); *r := S Z; c1)) : Eq Nat Z (S Z) :=
+    let r = Pick(b, &a1, &a2); Neq(r, h)
+  reject def BadR : Eq Nat Z (S Z) := GR(0, 0, 1, refl)
 }
 
 def useMessage (cfg : Config) : String :=
