@@ -1,6 +1,7 @@
 import OchrMeta.Rename
 import OchrMeta.Interp
 import OchrMeta.Mono
+import OchrMeta.Canon
 
 /-! # The [Close] equations: sealed programs are the call's backward functions
 
@@ -1067,5 +1068,575 @@ theorem close_fin (Pr : Prog) {n : Nat} {f : String} {d : FunDef} {b : Term}
   obtain ⟨P', hs', hPP⟩ := env_single_of_rename hse
   have hv' : v'.names = [] := Val.names_nil_of_rename (u := v) (by rw [hve, Val.rename_of_names_nil hv]) hv
   exact sealRun_fin Pr m hf hb hnp hsa has hj hr' hs' hv' (port_of_rename hPP hφ hφn) hφn hφm
+
+end OchrMeta
+
+namespace OchrMeta
+
+/-- The common prefix of every sealed program: its head call, run to completion. -/
+theorem seal_head_run (Pr : Prog) (m : Nat) {f : String} {d : FunDef} {b : Term}
+    (hf : Pr.find f = some d) (hb : d.body = some b) (hnp : d.ret ≠ .prop)
+    {as : List Val} (hlen : d.params.length = as.length)
+    (has : ∀ a ∈ as, a.loans = [] ∧ a ≠ .moved ∧ a.nb = 0) {w : Val} {N₀ : Nat}
+    (hw : ∀ l ∈ w.names, l < N₀) (hwnb : w.nb = 0) {s' : St} {v' : Val}
+    (hrun : callRun Pr (m + 1) d b (sealWs N₀ (d.params.map Prod.snd) as) (N₀ + nRefs (d.params.map Prod.snd)) = .ok s' v') :
+    exec Pr (m + 2) ⟨[argFrame 0 as ++ [(.hole, w)]], N₀⟩ (sealHead f d) =
+      .ok (frameMap (Env.portKeys [paramFrame d (sealWs N₀ (d.params.map Prod.snd) as)])
+        [argFrameAfter 0 N₀ (d.params.map Prod.snd) as ++ [(.hole, w)]] s') v' := by
+  rw [exec_sealHead Pr m hf hnp as w N₀ hlen has, seal_call_effect Pr (m + 1) f hb as w N₀ hlen has hw hwnb, hrun]
+
+/-- **[Close] equation, row `res`** (`⌈L; C⌉`, the result of a call with a borrow-free result). -/
+theorem close_res (Pr : Prog) {n : Nat} {f : String} {d : FunDef} {b : Term}
+    (hf : Pr.find f = some d) (hb : d.body = some b) (hnp : d.ret ≠ .prop)
+    {ws as : List Val} {ls : List (Nat × Nat)} (hsa : sealArgs 0 d.params ws = some (as, ls))
+    (has : ∀ a ∈ as, a.loans = [] ∧ a ≠ .moved ∧ a.nb = 0)
+    (hnd : (ls.map Prod.snd).Nodup) {N : Nat} (hN : ∀ l ∈ ls.map Prod.snd, l < N)
+    {s : St} {v : Val} (hrun : callRun Pr n d b ws N = .ok s v) (hv : v.names = []) :
+    ∀ m, n ≤ m + 1 → ∃ s'', sealRun Pr (m + 2) f (Val.ofList as) .res .unit = .ok s'' v := by
+  intro m hm
+  have hasn : ∀ a ∈ as, a.names = [] := fun a h => Val.names_nil (has a h).1 (has a h).2.2
+  obtain ⟨hk, hlen⟩ := sealArgs_ls_length 0 d.params ws as ls hsa
+  have hrun' : callRun Pr (m + 1) d b ws N = .ok s v := by
+    rw [callRun_mono Pr hm (by rw [hrun]; simp)]; exact hrun
+  obtain ⟨ρ₁, ρ₂, s', v', hr', _, hve⟩ :=
+    callRun_seal_ok Pr (m + 1) d b hsa hasn hnd hN (Val.pair (Val.ofList as) .unit).freshAbove hrun'
+  rw [hk] at hr'
+  have hv' : v'.names = [] := Val.names_nil_of_rename (u := v) (by rw [hve, Val.rename_of_names_nil hv]) hv
+  have hvv : v' = v := by
+    have := hve; rw [Val.rename_of_names_nil hv, Val.rename_of_names_nil hv'] at this; exact this
+  unfold sealRun
+  rw [hf]
+  simp only [sealFrame, Val.toList_ofList, sealTerm]
+  rw [seal_head_run Pr m hf hb hnp hlen.symm has (by simp [Val.names]) rfl hr', hvv]
+  exact ⟨_, rfl⟩
+
+/-- The frame of the sealed program after its head call. -/
+theorem seal_after_head {K : List Nat} {F : Frame} {s' : St} {P' : Frame} (hs' : s'.env = [P']) :
+    frameMap K [F] s' = ⟨[F.mapVals (Val.substSim (portSub K P'))], s'.next⟩ := by
+  simp [frameMap, hs', Env.substPorts, Env.mapVals]
+
+/-- Reading through a returned borrow whose content has no loans. -/
+theorem exec_read_rb (Pr : Prog) (k : Nat) (F : Frame) (nx q : Nat) (c : Val)
+    (hc : c.loans = []) (hcm : c ≠ .moved) (hcb : c.nb = 0) :
+    exec Pr (k + 1) ⟨[(.rb, .borrow q c) :: F], nx⟩ (.read (.deref (.var .rb))) =
+      .ok ⟨[(.rb, .borrow q c) :: F], nx⟩ c := by
+  have hw : ∀ f : Nat → Bool, walk f true (.borrow q c) [.deref] = .done c := by
+    intro f
+    rw [walk]
+    simp only [headLoan, Proj.step]
+    exact walk_noloans hc
+  have hacc : access true .rb [.deref] ⟨[(.rb, .borrow q c) :: F], nx⟩ = .ok ⟨[(.rb, .borrow q c) :: F], nx⟩ c := by
+    rw [access]
+    simp only [St.lookup, List.head?_cons, Option.bind_some, List.lookup_cons, BEq.rfl, if_true, hw]
+  simp only [exec, Place.root, Place.path, List.nil_append, hacc, Res.bind_ok]
+  cases c with
+  | moved => exact absurd rfl hcm
+  | borrow l w => simp [Val.nb] at hcb
+  | _ => rfl
+
+/-- **[Close] equation, row `cur`** (`⌈L; let r = C; *r⌉`, the current content of a returned
+borrow). -/
+theorem close_cur (Pr : Prog) {n : Nat} {f : String} {d : FunDef} {b : Term}
+    (hf : Pr.find f = some d) (hb : d.body = some b) (hnp : d.ret ≠ .prop)
+    {ws as : List Val} {ls : List (Nat × Nat)} (hsa : sealArgs 0 d.params ws = some (as, ls))
+    (has : ∀ a ∈ as, a.loans = [] ∧ a ≠ .moved ∧ a.nb = 0)
+    (hnd : (ls.map Prod.snd).Nodup) {N : Nat} (hN : ∀ l ∈ ls.map Prod.snd, l < N)
+    {s : St} {P : Frame} {q : Nat} {c : Val} (hrun : callRun Pr n d b ws N = .ok s (.borrow q c))
+    (hs : s.env = [P]) (hc : c.names = []) (hcm : c ≠ .moved) :
+    ∀ m, n ≤ m + 1 → ∃ s'', sealRun Pr (m + 3) f (Val.ofList as) .cur .unit = .ok s'' c := by
+  intro m hm
+  have hasn : ∀ a ∈ as, a.names = [] := fun a h => Val.names_nil (has a h).1 (has a h).2.2
+  obtain ⟨hk, hlen⟩ := sealArgs_ls_length 0 d.params ws as ls hsa
+  have hrun' : callRun Pr (m + 1) d b ws N = .ok s (.borrow q c) := by
+    rw [callRun_mono Pr hm (by rw [hrun]; simp)]; exact hrun
+  obtain ⟨ρ₁, ρ₂, s', v', hr', hse, hve⟩ :=
+    callRun_seal_ok Pr (m + 1) d b hsa hasn hnd hN (Val.pair (Val.ofList as) .unit).freshAbove hrun'
+  rw [hk] at hr'
+  rw [hs] at hse
+  obtain ⟨P', hs', _⟩ := env_single_of_rename hse
+  obtain ⟨q', hvq⟩ : ∃ q', v' = .borrow q' c := by
+    cases v' with
+    | borrow q' c' =>
+      simp only [Val.rename, Val.borrow.injEq] at hve
+      rw [Val.rename_of_names_nil hc] at hve
+      have := Val.names_nil_of_rename hve.2 hc
+      rw [Val.rename_of_names_nil this] at hve
+      exact ⟨q', by rw [hve.2]⟩
+    | _ => simp [Val.rename] at hve
+  subst hvq
+  unfold sealRun
+  rw [hf]
+  simp only [sealFrame, Val.toList_ofList, sealTerm]
+  rw [exec, seal_head_run Pr m hf hb hnp hlen.symm has (by simp [Val.names]) rfl hr', Res.bind_ok,
+    seal_after_head hs']
+  simp only [St.bind, St.modTop]
+  rw [exec_read_rb Pr (m + 1) _ _ q' c (Val.loans_nil_of_names hc) hcm (Val.nb_of_names_nil hc), Res.bind_ok]
+  simp [St.unbind, Frame.remove, dropVal, endWith, Val.nb_of_names_nil hc]
+
+end OchrMeta
+
+namespace OchrMeta
+
+theorem Val.substSim_id_on {σ : Nat → Option Val} : ∀ {v : Val}, (∀ l ∈ v.loans, σ l = none) → v.substSim σ = v := by
+  intro v h
+  induction v with
+  | loan m => simp [Val.substSim, h m (by simp [Val.loans])]
+  | _ => simp_all [Val.substSim, Val.loans]
+
+theorem portSub_range_below {N₀ k : Nat} {P : Frame} {l : Nat} (hl : l < N₀) : portSub (List.range' N₀ k) P l = none := by
+  have : l ∉ List.range' N₀ k := by simp [List.mem_range']; omega
+  simp [portSub, List.idxOf?_eq_none_iff.mpr this]
+
+theorem Val.firstLive_nolive {f : Nat → Bool} : ∀ {v : Val}, (∀ l ∈ v.loans, f l = false) → v.firstLive f = none := by
+  intro v h
+  induction v with
+  | loan m => simp [Val.firstLive, h m (by simp [Val.loans])]
+  | _ => simp_all [Val.firstLive, Val.loans]
+
+theorem walk_nolive {f : Nat → Bool} {v : Val} (h : ∀ l ∈ v.loans, f l = false) : walk f true v [] = .done v := by
+  have hh : headLoan f v = none := by
+    cases v with
+    | loan m => simp [headLoan, h m (by simp [Val.loans])]
+    | _ => rfl
+  simp [walk, hh, Val.firstLive_nolive h]
+
+/-- A value whose only live loan is `q` reports `q`. -/
+theorem walk_only {f : Nat → Bool} {v : Val} {q : Nat} (hq : q ∈ v.loans) (hall : ∀ l ∈ v.loans, l = q)
+    (hf : f q = true) : walk f true v [] = .found q := by
+  have hfl : v.firstLive f = some q := by
+    induction v with
+    | loan m => simp [Val.loans] at hq; subst hq; simp [Val.firstLive, hf]
+    | succ v ih => exact ih (by simpa [Val.loans] using hq) (by simpa [Val.loans] using hall)
+    | borrow m v ih => exact ih (by simpa [Val.loans] using hq) (by simpa [Val.loans] using hall)
+    | pair a b iha ihb =>
+      simp only [Val.firstLive]
+      by_cases ha : q ∈ a.loans
+      · rw [iha ha (fun l hl => hall l (by simp [Val.loans, hl]))]; rfl
+      · have hb : q ∈ b.loans := by
+          simp only [Val.loans, List.mem_append] at hq; rcases hq with h | h; exact absurd h ha; exact h
+        rw [Val.firstLive_nolive (v := a) (fun l hl => absurd ((hall l (by simp [Val.loans, hl])) ▸ hl) ha),
+          ihb hb (fun l hl => hall l (by simp [Val.loans, hl]))]; rfl
+    | sealed g a k x iha ihx =>
+      simp only [Val.firstLive]
+      by_cases ha : q ∈ a.loans
+      · rw [iha ha (fun l hl => hall l (by simp [Val.loans, hl]))]; rfl
+      · have hb : q ∈ x.loans := by
+          simp only [Val.loans, List.mem_append] at hq; rcases hq with h | h; exact absurd h ha; exact h
+        rw [Val.firstLive_nolive (v := a) (fun l hl => absurd ((hall l (by simp [Val.loans, hl])) ▸ hl) ha),
+          ihx hb (fun l hl => hall l (by simp [Val.loans, hl]))]; rfl
+    | _ => simp [Val.loans] at hq
+  cases v with
+  | loan m => simp [Val.loans] at hq; subst hq; simp [walk, headLoan, hf]
+  | _ => simp [walk, headLoan, hfl]
+
+theorem Frame.nb_zero_of {F : Frame} (h : ∀ b ∈ F, b.2.nb = 0) : F.nb = 0 := by
+  induction F with
+  | nil => rfl
+  | cons b F ih =>
+    obtain ⟨x, v⟩ := b
+    simp only [Frame.nb]
+    rw [h (x, v) (by simp), ih (fun b hb => h b (List.mem_cons_of_mem _ hb))]
+
+/-- Reading a variable whose content has no live loan and no borrow copies it. -/
+theorem exec_read_nolive (Pr : Prog) (k : Nat) {S : St} {x : Var} {v : Val}
+    (hl : S.lookup x = some v) (hv : ∀ l ∈ v.loans, S.live l = false) (hm : v ≠ .moved) (hnb : v.nb = 0) :
+    exec Pr (k + 1) S (.read (.var x)) = .ok S v := by
+  have hacc : access true x [] S = .ok S v := by
+    rw [access]; simp only [hl, walk_nolive hv]
+  simp only [exec, Place.root, Place.path, hacc, Res.bind_ok]
+  cases v with
+  | moved => exact absurd rfl hm
+  | borrow l w => simp [Val.nb] at hnb
+  | _ => rfl
+
+theorem live_rb {q : Nat} {c : Val} {F : Frame} {nx : Nat} (hF : ∀ l, Frame.holds l F = false) (l : Nat) :
+    St.live ⟨[(.rb, .borrow q c) :: F], nx⟩ l = (q == l) := by
+  have h1 : Frame.holds l ((.rb, .borrow q c) :: F) = ((q == l) || Frame.holds l F) := by
+    simp [Frame.holds, Val.isBorrowOf]
+  simp only [St.live, Env.holds, List.any_cons, List.any_nil, Bool.or_false, h1, hF l]
+
+theorem substLoan_eq_moved {q : Nat} {w φ : Val} (hw : w ≠ .moved) (hφ : φ ≠ .moved) : Val.substLoan q w φ ≠ .moved := by
+  cases φ with
+  | loan m => simp only [Val.substLoan]; split <;> simp_all
+  | moved => exact absurd rfl hφ
+  | _ => simp [Val.substLoan]
+
+/-- The tail `*r := h; cᵢ` of a returned-borrow fill, run from the cells after the head call:
+the value written back replaces the returned borrow's loan in the cell. -/
+theorem exec_back_tail (Pr : Prog) (k : Nat) (F : Frame) (nx q : Nat) (c w φ : Val) (i : Nat)
+    (hFnb : ∀ b ∈ F, b.2.nb = 0) (hFh : F.lookup .hole = some w) (hFi : F.lookup (.arg i) = some φ)
+    (hc : c.loans = []) (hcb : c.nb = 0)
+    (hw : ∀ l ∈ w.loans, l ≠ q) (hwb : w.nb = 0) (hwm : w ≠ .moved)
+    (hφ : ∀ l ∈ φ.loans, l = q) (hφb : φ.nb = 0) (hφm : φ ≠ .moved) :
+    ∃ s'', (exec Pr (k + 3) ⟨[(.rb, .borrow q c) :: F], nx⟩
+        (.seq (.assign (.deref (.var .rb)) (.read (.var .hole))) (.read (.var (.arg i))))).bind
+      (fun s v => match s.unbind .rb with
+        | none => .err
+        | some (c, s) => match dropVal v c s with
+          | none => .err
+          | some s => .ok s v) = .ok s'' (Val.substLoan q w φ) := by
+  have hFn : ∀ l, Frame.holds l F = false := fun l => Frame.holds_of_nb (Frame.nb_zero_of hFnb) l
+  -- 1. the write-back `*r := h`
+  have hlh : St.lookup ⟨[(.rb, .borrow q c) :: F], nx⟩ .hole = some w := by
+    have : (Var.hole == Var.rb) = false := by decide
+    simp [St.lookup, List.lookup_cons, hFh, this]
+  have hrh := exec_read_nolive Pr k hlh (fun l hl => by rw [live_rb hFn]; simpa using (hw l hl).symm) hwm hwb
+  have hwk : ∀ f : Nat → Bool, walk f true (.borrow q c) [.deref] = .done c := by
+    intro f; rw [walk]; simp only [headLoan, Proj.step]; exact walk_noloans hc
+  have hacc : ∀ x : Val, access true .rb [.deref] ⟨[(.rb, .borrow q x) :: F], nx⟩ =
+      .ok ⟨[(.rb, .borrow q x) :: F], nx⟩ x ∨ x ≠ c := by
+    intro x; by_cases hx : x = c
+    · subst hx; left; rw [access]
+      simp only [St.lookup, List.head?_cons, Option.bind_some, List.lookup_cons, BEq.rfl, if_true, hwk]
+    · right; exact hx
+  have hacc' : access true .rb [.deref] ⟨[(.rb, .borrow q c) :: F], nx⟩ = .ok ⟨[(.rb, .borrow q c) :: F], nx⟩ c := by
+    rcases hacc c with h | h
+    · exact h
+    · exact absurd rfl h
+  have hset : St.setPlace .rb [.deref] w ⟨[(.rb, .borrow q c) :: F], nx⟩ = some ⟨[(.rb, .borrow q w) :: F], nx⟩ := by
+    simp [St.setPlace, St.lookup, Val.set, Proj.step, Proj.put, St.setVar, St.modTop, Frame.set]
+  have hdc : dropVal .unit c ⟨[(.rb, .borrow q w) :: F], nx⟩ = some ⟨[(.rb, .borrow q w) :: F], nx⟩ := by
+    cases c with
+    | borrow l u => simp [Val.nb] at hcb
+    | _ => simp [dropVal, hasLive, Val.firstLive_noloans hc]
+  have hasg : exec Pr (k + 2) ⟨[(.rb, .borrow q c) :: F], nx⟩ (.assign (.deref (.var .rb)) (.read (.var .hole))) =
+      .ok ⟨[(.rb, .borrow q w) :: F], nx⟩ .unit := by
+    rw [exec]
+    simp only [Place.root, Place.path, List.nil_append]
+    rw [hrh, Res.bind_ok, hacc', Res.bind_ok]
+    simp only [hwb, ne_eq, not_true_eq_false, and_false, ↓reduceIte]
+    rw [hset]
+    simp only [hdc]
+  rw [exec]
+  rw [hasg, Res.bind_ok]
+  have hdu : dropVal .unit .unit ⟨[(.rb, .borrow q w) :: F], nx⟩ = some ⟨[(.rb, .borrow q w) :: F], nx⟩ := by
+    simp [dropVal, hasLive, Val.firstLive]
+  rw [hdu]
+  simp only
+  have hi_rb : (Var.arg i == Var.rb) = false := by simp
+  have hlk2 : St.lookup ⟨[(.rb, .borrow q w) :: F], nx⟩ (.arg i) = some φ := by
+    simp [St.lookup, List.lookup_cons, hi_rb, hFi]
+  by_cases hq : q ∈ φ.loans
+  · -- the read ends the returned borrow: its loan in the cell becomes the written value
+    have hFe : F.mapVals (endMap q w) = F.mapVals (Val.substLoan q w) := by
+      apply Frame.mapVals_congr
+      intro b hb
+      simp only [endMap]
+      rw [Val.clearB_eq_self (Val.not_isBorrowOf_of_nb (hFnb b hb) q)]
+    have hend : endBorrow q ⟨[(.rb, .borrow q w) :: F], nx⟩ =
+        some ⟨[(.rb, .moved) :: F.mapVals (Val.substLoan q w)], nx⟩ := by
+      have hhc : Env.holderContent q [(.rb, .borrow q w) :: F] = some w := by
+        simp [Env.holderContent, Frame.holderContent]
+      rw [endBorrow_eq hhc, if_pos hwb]
+      simp only [Env.mapVals, List.map_cons, List.map_nil, Frame.mapVals]
+      have e1 : endMap q w (Val.borrow q w) = .moved := by
+        simp [endMap, Val.clearB, Val.isBorrowOf, Val.substLoan]
+      have e2 := hFe
+      simp only [Frame.mapVals] at e2
+      simp only [e1, e2]
+    have hFn3 : ∀ l, Frame.holds l (F.mapVals (Val.substLoan q w)) = false := by
+      intro l
+      apply Frame.holds_of_nb
+      rw [Frame.nb_mapVals_substLoan q w hwb]; exact Frame.nb_zero_of hFnb
+    have hlk3 : St.lookup ⟨[(.rb, .moved) :: F.mapVals (Val.substLoan q w)], nx⟩ (.arg i) =
+        some (Val.substLoan q w φ) := by
+      simp [St.lookup, List.lookup_cons, hi_rb, Frame.lookup_mapVals, hFi]
+    have hlive3 : ∀ l, St.live ⟨[(.rb, .moved) :: F.mapVals (Val.substLoan q w)], nx⟩ l = false := by
+      intro l
+      have h1 : Frame.holds l ((.rb, .moved) :: F.mapVals (Val.substLoan q w)) =
+          Frame.holds l (F.mapVals (Val.substLoan q w)) := by simp [Frame.holds, Val.isBorrowOf]
+      simp only [St.live, Env.holds, List.any_cons, List.any_nil, Bool.or_false, h1, hFn3 l]
+    have hacc2 : access true (.arg i) [] ⟨[(.rb, .borrow q w) :: F], nx⟩ =
+        .ok ⟨[(.rb, .moved) :: F.mapVals (Val.substLoan q w)], nx⟩ (Val.substLoan q w φ) := by
+      rw [access]
+      have hwf : walk (St.live ⟨[(.rb, .borrow q w) :: F], nx⟩) true φ [] = .found q :=
+        walk_only hq hφ (by rw [live_rb hFn]; simp)
+      simp only [hlk2, hwf]
+      split
+      · rename_i h; rw [hend] at h; cases h
+      · rename_i s' h
+        rw [hend] at h; cases h
+        rw [access]
+        simp only [hlk3, walk_nolive (fun l _ => hlive3 l)]
+    have hsm := substLoan_eq_moved (q := q) hwm hφm
+    have hsb : (Val.substLoan q w φ).nb = 0 := by rw [Val.nb_substLoan q w hwb]; exact hφb
+    refine ⟨⟨[F.mapVals (Val.substLoan q w)], nx⟩, ?_⟩
+    rw [exec]
+    simp only [Place.root, Place.path, hacc2, Res.bind_ok]
+    generalize Val.substLoan q w φ = x at hsm hsb ⊢
+    cases x with
+    | moved => exact absurd rfl hsm
+    | borrow l u => simp [Val.nb] at hsb
+    | _ => simp [St.unbind, Frame.remove, dropVal, hasLive, Val.firstLive]
+  · -- the cell does not mention the returned borrow
+    have hφl : φ.loans = [] := by
+      cases h : φ.loans with
+      | nil => rfl
+      | cons x xs =>
+        have hx : x ∈ φ.loans := by rw [h]; simp
+        rw [hφ x hx] at hx; exact absurd hx hq
+    rw [exec_read_nolive Pr (k + 1) hlk2 (by rw [hφl]; simp) hφm hφb, Res.bind_ok,
+      Val.substLoan_of_not_mem φ hq]
+    exact ⟨⟨Env.substLoan q w [F], nx⟩, by simp [St.unbind, Frame.remove, dropVal, endWith, hwb]⟩
+
+end OchrMeta
+
+namespace OchrMeta
+
+/-- `callRun_seal_ok` with the two renamings exposed through the facts `close_back` needs. -/
+theorem callRun_seal_ok' (Pr : Prog) (n : Nat) (d : FunDef) (b : Term) {ws as : List Val}
+    {ls : List (Nat × Nat)} (hsa : sealArgs 0 d.params ws = some (as, ls)) (has : ∀ a ∈ as, a.names = [])
+    (hnd : (ls.map Prod.snd).Nodup) {N : Nat} (hN : ∀ l ∈ ls.map Prod.snd, l < N) (N₀ : Nat)
+    {s : St} {v : Val} (hrun : callRun Pr n d b ws N = .ok s v) :
+    ∃ ρ₁ ρ₂ : Nat → Nat, Function.Injective ρ₂ ∧ (∀ l, l < N₀ → ρ₂ l = l) ∧
+      (∀ q, (q ∈ ls.map Prod.snd ∨ N ≤ q) → N₀ ≤ ρ₁ q) ∧
+      ∃ s' v', callRun Pr n d b (sealWs N₀ (d.params.map Prod.snd) as) (N₀ + ls.length) = .ok s' v' ∧
+        s'.env.rename ρ₂ = s.env.rename ρ₁ ∧ v'.rename ρ₂ = v.rename ρ₁ := by
+  have h := callRun_seal_canon Pr n d b hsa has hnd hN N₀
+  rw [hrun] at h
+  simp only [Res.rename_ok] at h
+  have hCN : N ≤ max N (N₀ + ls.length) := Nat.le_max_left _ _
+  have hC0 : N₀ + ls.length ≤ max N (N₀ + ls.length) := Nat.le_max_right _ _
+  refine ⟨relabel (ls.map Prod.snd) (max N (N₀ + ls.length)) N (max N (N₀ + ls.length) + ls.length - N),
+    relabel (List.range' N₀ ls.length) (max N (N₀ + ls.length)) (N₀ + ls.length)
+      (max N (N₀ + ls.length) + ls.length - (N₀ + ls.length)),
+    relabel_inj hC0 (by simp; omega), ?_, ?_, ?_⟩
+  · intro l hl
+    have : l ∉ List.range' N₀ ls.length := by simp [List.mem_range']; omega
+    simp [relabel, List.idxOf?_eq_none_iff.mpr this]; omega
+  · intro q hq
+    unfold relabel
+    cases hi : (ls.map Prod.snd).idxOf? q with
+    | some j => simp; omega
+    | none =>
+      rcases hq with hq | hq
+      · exact absurd (List.isSome_idxOf?.mpr hq) (by rw [hi]; simp)
+      · simp [hq]; omega
+  · revert h
+    cases callRun Pr n d b (sealWs N₀ (d.params.map Prod.snd) as) (N₀ + ls.length) with
+    | ok s' v' =>
+      intro h
+      simp only [Res.rename_ok, Res.ok.injEq] at h
+      exact ⟨s', v', rfl, (congrArg St.env h.1).symm, h.2.symm⟩
+    | stuck => intro h; cases h
+    | err => intro h; cases h
+    | oof => intro h; cases h
+
+theorem Val.nb_substSim {σ : Nat → Option Val} (hσ : ∀ l u, σ l = some u → u.nb = 0) :
+    ∀ v : Val, (v.substSim σ).nb = v.nb := by
+  intro v
+  induction v with
+  | loan m =>
+    simp only [Val.substSim]
+    cases h : σ m with
+    | none => rfl
+    | some u => simp [hσ m u h, Val.nb]
+  | _ => simp_all [Val.substSim, Val.nb]
+
+theorem Val.loans_rename (ρ : Nat → Nat) (v : Val) : (v.rename ρ).loans = v.loans.map ρ := by
+  induction v <;> simp_all [Val.rename, Val.loans]
+
+end OchrMeta
+
+namespace OchrMeta
+
+/-- Two values equal up to renaming, each with a single loan name (and no borrows), have the same
+instance once that loan is replaced by the same value. -/
+theorem subst_rename_eq {ρ₁ ρ₂ : Nat → Nat} {x y : Nat} (hxy : ρ₂ x = ρ₁ y) (w : Val) :
+    ∀ (a b : Val), a.rename ρ₂ = b.rename ρ₁ → a.nb = 0 → (∀ l ∈ a.loans, l = x) → (∀ l ∈ b.loans, l = y) →
+      Val.substLoan x w a = Val.substLoan y w b := by
+  intro a
+  induction a with
+  | zero => intro b h _ _ _; cases b <;> simp_all [Val.rename, Val.substLoan]
+  | unit => intro b h _ _ _; cases b <;> simp_all [Val.rename, Val.substLoan]
+  | star => intro b h _ _ _; cases b <;> simp_all [Val.rename, Val.substLoan]
+  | moved => intro b h _ _ _; cases b <;> simp_all [Val.rename, Val.substLoan]
+  | abs k => intro b h _ _ _; cases b <;> simp_all [Val.rename, Val.substLoan]
+  | loan m =>
+    intro b h _ ha hb
+    have hm := ha m (by simp [Val.loans]); subst hm
+    cases b with
+    | loan m' =>
+      have hm' := hb m' (by simp [Val.loans]); subst hm'
+      simp [Val.substLoan]
+    | _ => simp [Val.rename] at h
+  | borrow m u ih => intro b h hn; simp [Val.nb] at hn
+  | succ u ih =>
+    intro b h hn ha hb
+    cases b with
+    | succ u' =>
+      simp only [Val.rename, Val.succ.injEq] at h
+      simp only [Val.substLoan]
+      rw [ih u' h (by simpa [Val.nb] using hn) (by simpa [Val.loans] using ha) (by simpa [Val.loans] using hb)]
+    | _ => simp [Val.rename] at h
+  | pair a1 a2 ih1 ih2 =>
+    intro b h hn ha hb
+    cases b with
+    | pair b1 b2 =>
+      simp only [Val.rename, Val.pair.injEq] at h
+      simp only [Val.nb] at hn
+      simp only [Val.substLoan]
+      rw [ih1 b1 h.1 (by omega) (fun l hl => ha l (by simp [Val.loans, hl])) (fun l hl => hb l (by simp [Val.loans, hl])),
+        ih2 b2 h.2 (by omega) (fun l hl => ha l (by simp [Val.loans, hl])) (fun l hl => hb l (by simp [Val.loans, hl]))]
+    | _ => simp [Val.rename] at h
+  | sealed g a1 k a2 ih1 ih2 =>
+    intro b h hn ha hb
+    cases b with
+    | sealed g' b1 k' b2 =>
+      simp only [Val.rename, Val.sealed.injEq] at h
+      obtain ⟨rfl, h1, rfl, h2⟩ := h
+      simp only [Val.nb] at hn
+      simp only [Val.substLoan]
+      rw [ih1 b1 h1 (by omega) (fun l hl => ha l (by simp [Val.loans, hl])) (fun l hl => hb l (by simp [Val.loans, hl])),
+        ih2 b2 h2 (by omega) (fun l hl => ha l (by simp [Val.loans, hl])) (fun l hl => hb l (by simp [Val.loans, hl]))]
+    | _ => simp [Val.rename] at h
+
+theorem le_foldr_max {L : List Nat} {l : Nat} (h : l ∈ L) : l ≤ L.foldr max 0 := by
+  induction L with
+  | nil => simp at h
+  | cons a L ih =>
+    simp only [List.foldr_cons]
+    rcases List.mem_cons.mp h with rfl | h
+    · exact Nat.le_max_left _ _
+    · exact Nat.le_trans (ih h) (Nat.le_max_right _ _)
+
+theorem lt_freshAbove {v : Val} {l : Nat} (h : l ∈ v.loans) : l < v.freshAbove := by
+  unfold Val.freshAbove; have := le_foldr_max h; omega
+
+end OchrMeta
+
+namespace OchrMeta
+
+theorem Frame.mem_of_lookup {F : Frame} {x : Var} {v : Val} (h : F.lookup x = some v) : (x, v) ∈ F := by
+  induction F with
+  | nil => simp at h
+  | cons b F ih =>
+    obtain ⟨y, u⟩ := b
+    simp only [List.lookup_cons] at h
+    split at h
+    · rename_i hxy; cases h; simp at hxy; subst hxy; simp
+    · exact List.mem_cons_of_mem _ (ih h)
+
+/-- **[Close] equation, row `back i`** (`⌈L; let r = C; *r := w; cᵢ⌉`: the backward function of a
+call returning a borrow, applied to the value `w` finally written through that borrow).  If the
+isolated run returns `borrow_q c` and the `j`-th borrowed place ends as `φ` (whose only loan is
+`q`: the place depends on the returned borrow's final value), then the fill normalises to
+`φ[q := w]`. -/
+theorem close_back (Pr : Prog) {n : Nat} {f : String} {d : FunDef} {b : Term}
+    (hf : Pr.find f = some d) (hb : d.body = some b) (hnp : d.ret ≠ .prop)
+    {ws as : List Val} {ls : List (Nat × Nat)} (hsa : sealArgs 0 d.params ws = some (as, ls))
+    (has : ∀ a ∈ as, a.loans = [] ∧ a ≠ .moved ∧ a.nb = 0)
+    (hnd : (ls.map Prod.snd).Nodup) {N : Nat} (hN : ∀ l ∈ ls.map Prod.snd, l < N)
+    {s : St} {P : Frame} {q : Nat} {c : Val} (hrun : callRun Pr n d b ws N = .ok s (.borrow q c))
+    (hs : s.env = [P]) (hPnb : ∀ x ∈ P, x.2.nb = 0) (hc : c.names = [])
+    (hq : q ∈ ls.map Prod.snd ∨ N ≤ q)
+    {j i ℓ : Nat} (hj : ls[j]? = some (i, ℓ)) {φ : Val} (hφ : P.lookup (.port j) = some φ)
+    (hφl : ∀ l ∈ φ.loans, l = q) (hφm : φ ≠ .moved)
+    {w : Val} (hwb : w.nb = 0) (hwm : w ≠ .moved) :
+    ∀ m, n ≤ m + 2 → ∃ s'', sealRun Pr (m + 4) f (Val.ofList as) (.back i) w = .ok s'' (Val.substLoan q w φ) := by
+  intro m hm
+  have hasn : ∀ a ∈ as, a.names = [] := fun a h => Val.names_nil (has a h).1 (has a h).2.2
+  obtain ⟨hk, hlen⟩ := sealArgs_ls_length 0 d.params ws as ls hsa
+  have hrun' : callRun Pr (m + 2) d b ws N = .ok s (.borrow q c) := by
+    rw [callRun_mono Pr hm (by rw [hrun]; simp)]; exact hrun
+  generalize hN₀ : (Val.pair (Val.ofList as) w).freshAbove = N₀
+  obtain ⟨ρ₁, ρ₂, hρ₂, hρ₂id, hρ₁ge, s', v', hr', hse, hve⟩ :=
+    callRun_seal_ok' Pr (m + 2) d b hsa hasn hnd hN N₀ hrun'
+  rw [hk] at hr'
+  rw [hs] at hse
+  obtain ⟨P', hs', hPP⟩ := env_single_of_rename hse
+  -- the sealed call returns a borrow of the same content, under a name above N₀
+  obtain ⟨q', hvq, hqq⟩ : ∃ q', v' = .borrow q' c ∧ ρ₂ q' = ρ₁ q := by
+    cases v' with
+    | borrow q' c' =>
+      simp only [Val.rename, Val.borrow.injEq] at hve
+      rw [Val.rename_of_names_nil hc] at hve
+      have := Val.names_nil_of_rename hve.2 hc
+      rw [Val.rename_of_names_nil this] at hve
+      exact ⟨q', by rw [hve.2], hve.1⟩
+    | _ => simp [Val.rename] at hve
+  subst hvq
+  have hq' : N₀ ≤ q' := by
+    rcases Nat.lt_or_ge q' N₀ with h | h
+    · have := hρ₁ge q hq; rw [← hqq, hρ₂id q' h] at this; omega
+    · exact h
+  -- the sealed call's final cell content
+  have h1 := congrArg (fun F : Frame => F.lookup (.port j)) hPP
+  simp only [Frame.lookup_mapVals, hφ, Option.map_some] at h1
+  obtain ⟨φ', hφ', hφφ⟩ : ∃ φ', P'.lookup (.port j) = some φ' ∧ φ'.rename ρ₂ = φ.rename ρ₁ := by
+    cases hp : P'.lookup (.port j) with
+    | none => rw [hp] at h1; cases h1
+    | some φ' => rw [hp] at h1; exact ⟨φ', rfl, by simpa using h1⟩
+  have hφb : φ.nb = 0 := hPnb (.port j, φ) (Frame.mem_of_lookup hφ)
+  have hφ'b : φ'.nb = 0 := by
+    have := congrArg Val.nb hφφ; simp only [Val.nb_rename] at this; rw [this, hφb]
+  have hφ'm : φ' ≠ .moved := by
+    intro h; subst h; simp [Val.rename] at hφφ; exact hφm ((Val.rename_eq_moved φ).mp hφφ.symm)
+  have hφ'l : ∀ l ∈ φ'.loans, l = q' := by
+    intro l hl
+    have h2 := congrArg Val.loans hφφ
+    simp only [Val.loans_rename] at h2
+    have : ρ₂ l ∈ φ.loans.map ρ₁ := by rw [← h2]; exact List.mem_map_of_mem hl
+    obtain ⟨l₀, hl₀, he⟩ := List.mem_map.mp this
+    rw [hφl l₀ hl₀, ← hqq] at he
+    exact hρ₂ he.symm
+  have hP'nb : ∀ x ∈ P', x.2.nb = 0 := by
+    intro x hx
+    have hx' : (x.1, x.2.rename ρ₂) ∈ P.mapVals (Val.rename ρ₁) := by
+      rw [← hPP]; exact List.mem_map_of_mem (f := fun b => (b.1, Val.rename ρ₂ b.2)) hx
+    obtain ⟨y, hy, he⟩ := List.mem_map.mp hx'
+    have := congrArg (fun p : Var × Val => p.2.nb) he
+    simp only [Val.nb_rename] at this
+    rw [← this]; exact hPnb y hy
+  -- the written value's loans are below N₀
+  have hwl : ∀ l ∈ w.loans, l < N₀ := by
+    intro l hl; rw [← hN₀]; exact lt_freshAbove (by simp [Val.loans, hl])
+  have hwn : ∀ l ∈ w.names, l < N₀ := by
+    intro l hl
+    rcases Val.names_cases hl with h | h
+    · exact hwl l h
+    · rw [Val.borrows_nil_of_nb hwb] at h; cases h
+  have hjk : j < nRefs (d.params.map Prod.snd) := by
+    rw [← hk]; exact (List.getElem?_eq_some_iff.mp hj).1
+  have hK : Env.portKeys [paramFrame d (sealWs N₀ (d.params.map Prod.snd) as)] =
+      List.range' N₀ (nRefs (d.params.map Prod.snd)) := by
+    rw [sealWs_eq_L]; exact portKeys_sealWsL d _ as hasn (by simp) hlen.symm
+  unfold sealRun
+  rw [hf]
+  simp only [sealFrame, Val.toList_ofList, sealTerm, hN₀]
+  rw [exec, seal_head_run Pr (m + 1) hf hb hnp hlen.symm has hwn hwb hr', Res.bind_ok, seal_after_head hs', hK]
+  simp only [St.bind, St.modTop]
+  -- the cells after the head call
+  generalize hσ : Val.substSim (portSub (List.range' N₀ (nRefs (d.params.map Prod.snd))) P') = σ
+  have hσnb : ∀ v : Val, (σ v).nb = v.nb := by
+    rw [← hσ]
+    apply Val.nb_substSim
+    intro l u hu
+    simp only [portSub, Option.bind_eq_some_iff] at hu
+    obtain ⟨_, _, hu⟩ := hu
+    exact hP'nb _ (Frame.mem_of_lookup hu)
+  have hFnb : ∀ x ∈ (argFrameAfter 0 N₀ (d.params.map Prod.snd) as ++ [(Var.hole, w)]).mapVals σ, x.2.nb = 0 := by
+    intro x hx
+    simp only [Frame.mapVals, List.mem_map] at hx
+    obtain ⟨y, hy, rfl⟩ := hx
+    simp only [hσnb]
+    rcases List.mem_append.mp hy with hy | hy
+    · rcases argFrameAfter_vals _ _ _ _ y hy with ⟨l, _, _, h⟩ | h
+      · rw [h]; rfl
+      · exact (has _ h).2.2
+    · simp at hy; rw [hy]; exact hwb
+  have hFh : ((argFrameAfter 0 N₀ (d.params.map Prod.snd) as ++ [(Var.hole, w)]).mapVals σ).lookup .hole = some w := by
+    rw [Frame.lookup_mapVals, lookup_append_of_not (fun b hb => by
+      obtain ⟨j', hj'⟩ := argFrameAfter_keys _ _ _ _ b hb; rw [hj']; simp)]
+    simp only [List.lookup_cons, BEq.rfl, if_true, Option.map_some, ← hσ]
+    rw [Val.substSim_id_on (fun l hl => portSub_range_below (hwl l hl))]
+  have hFi : ((argFrameAfter 0 N₀ (d.params.map Prod.snd) as ++ [(Var.hole, w)]).mapVals σ).lookup (.arg i) = some φ' := by
+    rw [← hσ]
+    exact cell_after_call (lookup_append_of_some (sealArgs_cell 0 d.params ws as ls N₀ hsa j i ℓ hj)) hjk hφ'
+  obtain ⟨s'', hs''⟩ := exec_back_tail Pr m _ _ q' c w φ' i hFnb hFh hFi (Val.loans_nil_of_names hc)
+    (Val.nb_of_names_nil hc) (fun l hl => by have := hwl l hl; omega) hwb hwm hφ'l hφ'b hφ'm
+  refine ⟨s'', ?_⟩
+  rw [← subst_rename_eq hqq w φ' φ hφφ hφ'b hφ'l hφl]
+  exact hs''
 
 end OchrMeta
