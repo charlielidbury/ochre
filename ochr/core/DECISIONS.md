@@ -119,3 +119,14 @@ Writing the formal appendix exposed two more "two paths" inconsistencies, both a
 
 ## D36. Inductive declarations are strictly positive (first-order fields)
 formal-appendix: v1.6 checked only that field types were borrow-free, so `inductive Bad := Mk(f : Π(x : Bad). Empty)` was accepted, and with `L(b) := match b {Mk(f) => f(b)}` a proof `K(bad) : Eq Nat Z (S Z)` was typed by [Call-type] alone while the diverging `L(bad)` never ran (proofs are not run). Fix: fields are first-order data only. This is the standard positivity condition in its simplest form; lists, trees and Bool satisfy it.
+
+## Round 5 → v1.8 (breaker-fresh-v16: X1–X5 against the v1.6 checker; X1/X2 = formal-appendix BoomL/BoomB, already fixed in v1.7's rules)
+
+## D37. Generalisation records are global; fresh names are never reused (X3)
+A generalisation made while forming a type on a private copy (D33 × D34) left its σ_g in the formed type but discarded the record with the copy, and the checker's restore also rewound the fresh-name counter, so a later split reissued the same σ_g for a different sealed program: a closed false proof. Records name closed computations, so they are global; abstract values are never reused.
+
+## D38. Observing a borrow-typed result writes a fresh abstract value through it (X4)
+D30 compares functions by their generic-call observation; for a function returning `&T`, the observation ended the returned borrow with its current content, so `PickX(x, y) := x` and `PickY(x, y) := y` observed identically when nothing was written, became convertible, and transport proved `Eq Nat 0 1 ∧ Eq Nat 1 0`. Fix: observe a borrow result `borrow_k u` as `u` together with the owners' contents after writing a fresh abstract value through it, which reveals where it points. This is the model's reading of `&T` results (a current value and a backward function of the final value).
+
+## D39. [Seal]'s head guard covers neutral-headed calls (X5)
+RULES said both "a neutral-headed call closes off at once" and "[Seal]'s head call is not eligible for [Close]"; the checker applied the former at the head, re-creating D9's loop for a neutral head with an `&T` codomain (stack overflow). The guard wins: a sealed program whose head is a neutral-headed call stays as it is.
