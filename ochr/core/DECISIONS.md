@@ -80,3 +80,8 @@ breaker-close-v1 N8: v1 said only `Id`'s sides ran on copies; a type formed else
 
 ## D25. The pure theorem is proved by the in-place lemma
 deriver-e1-v1 G4: `AddZero := match x { Z => refl | S p => AddMZero(&p) }` checks with no `cong` and no Nat rule, because borrowing the predecessor field of the owned `x` makes the environment do the congruence even for the pure statement. §7 now uses it; `cong` is not in the core.
+
+## Round 2 (cont.) → v1.3 (reports: deriver-e346-v1, breaker-frame-v1, meta-model-v1; no unsoundness against v1.2's text found; breaker-frame-v1: "v1 is the first version I could not break")
+
+## D26. One principle for erased terms: they run on a private copy
+Supersedes D20's static [Proof] check. meta-model-v1 (R1, §1.5) proposes the simpler fix for the Prop-typed stuck-block bug: whatever the runtime erases (types and proofs) the machine runs on a private copy of the environment, argument evaluation included. Then running and skipping a proof agree by construction, naturality holds (a Prop-typed block has no effect whether its scrutinee is abstract or refined), proofs may use local mutation freely, and deriver-e1-v1 G2 (runtime erasure of proof-call arguments) disappears because the checker also discards them. P2 and P5 become one principle. Also: a call with a neutral head closes off at once (meta-model-v1, deriver-e346-v1 N7); [Rec] applies inside nested functions (deriver-e346-v1 N1 residual); Π-types capture no borrows (breaker-frame-v1); stuck-block captures on maximal prefixes, any-arm, only for checked arms (deriver-e346-v1 N2–N6, meta-model-v1 R4).

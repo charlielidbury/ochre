@@ -1,18 +1,24 @@
-# meta-model v1: RULES v1 in the model, the metatheory section, and a Lean work plan
+# meta-model v1: RULES v1/v1.1 in the model, the metatheory section, and a Lean work plan
 
 ## 5-line summary
 
-1. **Verdict:** v1 closes the five round-1 findings in the model (C1 at function types, C2, C3's entry-value guard, C4, C5), and it makes the metatheory *simpler*. With loans as variables and [End] as plain substitution, T1(a) is just commutation of substitutions, and T5 holds on the nose (equal environments up to renaming of loans), not merely "up to resolution" as in v0. But v1 is still unsound in two places, and both exploit P5.
-2. **Most important finding:** (R1) P5 is keyed on *calls*, while D15 and the observation rule turn a stuck Prop-typed *block* into a call. So a Prop-typed match that writes has no effect while its scrutinee is abstract, and its full effect once the scrutinee is refined. That is a failure of naturality, and it gives a closed proof of `Eq Nat (S Z) Z` (§1.1). (R2) [Rec] constrains recursive *calls* only, so `fix f (n) := Apply(f, n)` passes. Because P5 means Prop-valued calls are never run, the checker now accepts `Boom(Z) : Eq Nat Z (S Z)` without diverging. This is breaker-close A4, which P5 turns from a divergence into a closed proof (§1.2).
-3. **RULES must change:** P5 becomes "a *term* whose type is a proposition, argument evaluation included, runs on a private copy". Merged with P2, this is one rule: whatever the runtime erases (types and proofs), the machine runs on a private copy. [Rec] adds "`f` occurs in its own body only as the head of such a call". P2 must get back v0's "on a private copy", or a type that writes breaks adequacy (§1.3). RULES should also say that a call with a neutral head is stuck at once.
-4. **Confidence:** high for R1 and R2 (the derivations use only v1's text). High for the validations of [End], [Access], the [Close] table, [Seal]'s guard, D16 and D18. Medium-high for the on-the-nose form of T5: I checked it by hand on `TailM`, `Pick` and a partially refined `TailM`, but did not prove it. §2 states what I believe is provable, and argues the hardest case of each theorem.
+1. **Verdict:** v1 closes the five round-1 findings in the model (C1 at function types, C2, C3's entry-value guard, C4, C5), and it makes the metatheory *simpler*. With loans as variables and [End] as plain substitution, T1(a) is just commutation of substitutions, and T5 holds on the nose (equal environments up to renaming of loans), not merely "up to resolution" as in v0. v1 as issued was unsound in two places, both exploiting P5. v1.1, which landed mid-round, fixes R2. **R1 is still open in v1.1.** A third hole (R4) opens under one reading of the stuck-block rule.
+2. **Most important finding:** (R1) P5 is keyed on *calls*, while D15 and the observation rule turn a stuck Prop-typed *block* into a call. So a Prop-typed match that writes has no effect while its scrutinee is abstract, and its full effect once the scrutinee is refined. That is a failure of naturality, and it gives a closed proof of `Eq Nat (S Z) Z` (§1.1). (R2) [Rec] constrains recursive *calls* only, so `fix f (n) := Apply(f, n)` passes. Because P5 means Prop-valued calls are never run, the checker now accepts `Boom(Z) : Eq Nat Z (S Z)` without diverging. This is breaker-close A4, which P5 turns from a divergence into a closed proof; v1.1's escape clause fixes it (§1.2). R1 was found independently by breaker-close-v1 (N1) and deriver-e346-v1 (N12). (R4) Closing off a stuck match on a *sealed program*, whose arms [Split] never checked, has no model; it gives deriver-e346-v1's `Knot3` (§1.4).
+3. **RULES must change (v1.1):**
+   - P5 becomes "a *term* whose type is a proposition, argument evaluation included, runs on a private copy". Merged with P2 this is one rule: whatever the runtime erases (types and proofs), the machine runs on a private copy.
+   - P2 must get back v0's "on a private copy", or a type that writes breaks adequacy (§1.3).
+   - The stuck-block rule must be lambda lifting done right: capture modes at least as strong as any arm's use, a stated codomain, and only for arms already checked; a match on a non-σ neutral generalises first.
+   - A call with a neutral head is stuck at once.
+   - `J` carries its endpoints.
+   - [Call-type] evaluates at the call point.
+4. **Confidence:** high for R1 and R2 (the derivations use only v1's text, and two other agents reproduced both independently). High for the validations of [End], [Access], the [Close] table, [Seal]'s guard, D16 and D18. Medium-high for the on-the-nose form of T5: I checked it by hand on `TailM`, `Pick` and a partially refined `TailM`, but did not prove it. §2 states what I believe is provable, and argues the hardest case of each theorem.
 5. **Not checked:** E1–E4 re-derived under v1 (that is the derivers' job); completeness of D15 (I checked only its soundness and naturality); the dependent layer beyond its key cases; nothing is mechanised yet (§3 is the plan).
 
 **Correction to my round-1 report.** meta-model.md §3.1 recommended fix (d) as "a call whose result type is a proposition runs on a private copy". Phrased for calls, it has exactly R1's flaw. The correct fix is term-keyed (§1.1). v1's P5 inherited my wording.
 
 ## 0. How to read this
 
-§1 checks every rule that is new in v1 against the model of meta-model.md (§1 there), and gives the three rules the model rejects, each with a bad derivation and a minimal fix. §2 is the metatheory section in paper form (prose and mathematics, self-contained), with T0–T5 restated for v1. §3 is a work plan for one Lean 4.33 agent.
+§1 checks every rule that is new in v1 against the model of meta-model.md (§1 there), and gives the rules the model rejects (R1–R4; R2 is already fixed in v1.1), each with a bad derivation and a minimal fix. §2 is the metatheory section in paper form (prose and mathematics, self-contained), with T0–T5 restated for v1.1. §3 is a work plan for one Lean 4.33 agent.
 
 Notation as in v1. v1 has no `⊥` in its syntax, so "a closed proof of false" below means a closed inhabitant of `Eq Nat Z (S Z)`, or equivalently of `Π(P : Prop). P` (from one you get the other with `J` and a large-elimination motive).
 
@@ -31,7 +37,9 @@ Notation as in v1. v1 has no `⊥` in its syntax, so "a closed proof of false" b
 | P5, proofs not run (D14) | avoids C1 cleanly **at function types**: a Prop-valued Π over borrows is a CIC `Prop`. But call-keyed P5 is **not natural** (R1) | §1.1 |
 | trimmed Eq rules, `refl : ⊤` (D16) | **validated** (`propext` instances) | §1.4 |
 | owner sets (D18) | **validated**: exactly the hypothesis of Lemma Inj | T2c |
-| [Rec] on entry values (D17) | **incomplete**: the guard is right, but `f` may escape (R2) | §1.2 |
+| [Rec] on entry values (D17) | v1: **incomplete** (R2: `f` may escape). **v1.1: validated** (escape clause); say explicitly that it applies to calls of `f` inside nested functions and block arms | §1.2 |
+| stuck-block close-off as lambda lifting (D15, the details) | natural **only if** capture modes are at least as strong as any arm's use, the codomain is stated, and the arms were checked; closing off unchecked arms (a match on a sealed program) is unsound (R4) | §1.4 |
+| `J(A, P, h, t)`, [Call-type] "at Ω" | the model needs `J`'s endpoints (normal forms erase them) and the call point (after the arguments) | §1.4 |
 | P2 wording ("evaluated … against the current environment") | **adequacy gap**: v0's "private copy" was lost (R3) | §1.3 |
 
 ### 1.1 R1: P5 is keyed on calls, but stuck blocks become calls (new; soundness)
@@ -67,7 +75,14 @@ The same happens in a checked program: a non-tail Prop-typed block that writes (
 
 **Minimal fix:** *P5: a term whose type is a proposition runs on a private copy of Ω. Nothing it does, argument evaluation included, persists, and the runtime erases it.* Stuck Prop-typed blocks then need no close-off (they are not run for effect), and the observation of a Prop-typed `t` leaves its owners unchanged. With P2 fixed as in §1.3 this becomes one principle: **what the runtime erases, the machine runs hypothetically.**
 
-### 1.2 R2: [Rec] lets `f` escape, and P5 removes the divergence that hid it (breaker-close A4; soundness)
+Two other agents found R1 independently and proposed repairs; the model accepts any repair under which checker, runtime and naturality agree:
+- (i) *Term-keyed private copy* (above; deriver-e346-v1 recommends the same). In the model, `⟦t⟧ = λs. (•, s)` holds by definition.
+- (ii) *A static restriction* (breaker-close-v1): a Prop-typed term may not write, borrow or move a place from outside itself, except as an argument to a Prop-valued call. Skipping and running then coincide, so P5 becomes a theorem, and `⟦t⟧ = λs. (•, s)` is a lemma rather than a definition.
+- (iii) *Erase the body but keep the arguments at runtime* (deriver-e1-v1 G2). This addresses only the arguments of calls, and must be combined with (i) or (ii) for blocks.
+
+I recommend (i): it is one sentence, needs no new check, and merges with P2. (ii) rejects more programs, but no write ever silently vanishes, which may read better to a programmer.
+
+### 1.2 R2: [Rec] lets `f` escape, and P5 removes the divergence that hid it (breaker-close A4; soundness; fixed in v1.1)
 
 [Rec] constrains the *recursive calls* in the body of `fix f`. It says nothing about occurrences of `f` that are not calls, such as passing `f` to another function or binding it to a variable. In v0 such a definition was caught, by accident, by divergence: the checker ran the call and never returned. Under P5 a call whose result type is a proposition is not run, so nothing diverges and the definition is accepted.
 
@@ -104,19 +119,29 @@ The checker computes `H(σ) ⇓ Z`, so it proves `Π(x : Nat). Id Nat (H(x)) Z` 
 - **[Access] (D19).** Supplies invariant W4: every value that is read, moved, borrowed or passed is loan-free. T2's locality and [Close]'s claim that `L = let cᵢ = uᵢ` is closed both need it. Eager ending on value arguments of a closed-off block can make the checker end a borrow that a concrete run of the chosen arm would not have ended. That changes *definedness* only (a later use of that borrow errors), never a value (T1), so it costs completeness, not soundness.
 - **[Close] port table.** Each row is the model's call clause: `()` / `⌈L; C⌉` / `borrow_k ⌈L; let r = C; *r⌉` denote the forward result, `⌈L; C; cᵢ⌉` denotes `f_backᵢ ū w̄`, and `⌈L; let r = C; *r := loan_k; cᵢ⌉` denotes `f_backᵢ ū w̄ h_k`, by δβζ only. The Unit row is η on `Unit`. There is no Prop row, correctly: with P5, Prop-typed computations never reach [Close]. One implicit gap: [Call] is stated for `f = fix …`; a call whose head is a neutral (`σ_f`, or a sealed program of function type) must be declared stuck at once, so that [Close] applies.
 - **[Seal]'s head-call guard (D9).** The head call unfolds and is not re-closed; inner calls may close. This is exactly what makes re-normalisation after a refinement do the same work as running the refined program directly (T5's [Close] case). It is also CIC's fixpoint guard, as D9 says.
-- **D15, stuck non-tail matches closed off.** A stuck block `m` with free places `p̄` becomes a call `g(ā)` to the anonymous definable function `g(x̄) := m[p̄ ↦ x̄]`, so it is natural because [Close] is (T5), the model denotes the fills by `g`'s backward functions (a `natCase` on the scrutinee, precisely), and BackInj covers `g` (for `AddToOne`'s block, `back = natCase σ_b (λw. (w, σ₂)) (λw. (σ₁, w))`, jointly injective). The two exceptions are R1 (fixed by term-keyed P5) and the eager-[Access] incompleteness above. Compared with [Join]: no generalisation, no information loss, no non-natural rule left anywhere in v1.
-- **[Def] at the generic call and [Call-type] (D12, D13).** The generic call environment `{cᵢ ↦ σᵢ}` with arguments `&cᵢ` is, in the model, the entry environment `E(d̄)` of meta-model §1.3 with the owners `cᵢ` in place of v0's ghosts; the goal is `⟦B⟧(d̄)` by definition. [Call-type] at a real call site is T2c: the caller's `Id` observations are the generic ones under the owners' resolution contexts, which are jointly injective by Lemma Inj (needs D18) and BackInj (needs the injective subset for *abstract* returned-borrow functions: v1 still proves meta-model's `Q`, so the model still needs the subset).
+- **D15, stuck non-tail matches closed off.** A stuck block `m` with free places `p̄` becomes a call `g(ā)` to the anonymous definable function `g(x̄) := m[p̄ ↦ x̄]`, so it is natural because [Close] is (T5), the model denotes the fills by `g`'s backward functions (a `natCase` on the scrutinee, precisely), and BackInj covers `g` (for `AddToOne`'s block, `back = natCase σ_b (λw. (w, σ₂)) (λw. (σ₁, w))`, jointly injective). The two exceptions are R1 (fixed by term-keyed P5) and the eager-[Access] incompleteness above. Compared with [Join]: no generalisation, no information loss, no non-natural rule left anywhere in v1. The argument, though, is that the closed-off call *is* the block, and that holds only if the one-line rule is real lambda lifting.
+  - **Capture modes.** The lifted call must be at least as strong as every arm's use of each free place: move a borrow variable if some arm moves or assigns it, reborrow if some arm writes or borrows through it, copy otherwise (deriver-e346-v1 N2 and breaker-close-v1 N2–N4, found independently). The model is indifferent to over-strong capture, which only adds errors (T5 is one-directional: symbolic success implies refined success). It forbids under-strong capture: reborrowing a borrow that one arm moves lets the symbolic run succeed where a refined run reads a moved place, which fails T5 and adequacy.
+  - **Codomain.** The lifted function's codomain must be stated, because P5 and [Close]'s table both read it (breaker-close-v1 N5).
+  - **R4: the arms must have been checked.** T3's non-tail [Split] case builds `⟦g⟧` from the arms' typing derivations; an unchecked arm has none. v1.1's [Split] is defined only for an abstract `σ`, so a non-tail match on a *sealed program* (after an opaque call, say) is "a stuck match that is not the body of a call" with unchecked arms. Closing it off skips [Rec] and the borrow checker inside them, and deriver-e346-v1's `Knot3` is then a closed proof of `Eq Nat Z (S Z)`. **Fix:** a checked program that matches on a neutral other than an abstract value first generalises it (fresh `σ` in Ω, the goal and the stored types) and then [Split]s. The model validates this (dependent elimination on a generalised variable; completeness is lost, soundness is not); it is my round-1 §3.5 recommendation, now load-bearing.
+- **[Def] at the generic call and [Call-type] (D12, D13).** The generic call environment `{cᵢ ↦ σᵢ}` with arguments `&cᵢ` is, in the model, the entry environment `E(d̄)` of meta-model §1.3 with the owners `cᵢ` in place of v0's ghosts; the goal is `⟦B⟧(d̄)` by definition. [Call-type] at a real call site is T2c: the caller's `Id` observations are the generic ones under the owners' resolution contexts, which are jointly injective by Lemma Inj (needs D18) and BackInj (needs the injective subset for *abstract* returned-borrow functions: v1 still proves meta-model's `Q`, so the model still needs the subset). "`B` evaluated at Ω" must mean at the *call point*, after the arguments are evaluated (deriver-e1-v1 G1). The model's `⟦B⟧(ū)` is indexed by the argument contents, and before the arguments are evaluated their loans do not exist, so the footprint would be empty.
 - **P5 and C1.** Under P5, `Out(d̄) = ⟦B⟧(d̄)` when `B : Prop`: a Prop-valued Π over borrows translates to the CIC `Prop` `Π(d̄ : D̄). ⟦B⟧(d̄)`, both `P₁` and `P₂` of C1 denote `λd. •`, and definitional proof irrelevance identifies things that are equal. So C1 is avoided cleanly *at function types*; R1 is the same phenomenon at the level of terms, and term-keyed P5 closes it.
-- **D16 (`Eq` on pairs, `Eq A a b ≡ ⊤` when `a ≡ b`, ⊤ a unit for ∧, `refl : ⊤`).** Each is a `propext` instance: `((a, b) = (a', b')) = (a = a' ∧ b = b')`, `(a = a) = True`, `(True ∧ P) = P`; `refl` translates to `True.intro`, cast along `(a = a) = True` where needed. `Eq A a b ≡ ⊤ when a ≡ b` is natural: after a refinement makes `a ≡ b`, re-normalising the stored type yields `⊤`, as computing it afresh would. Dropping the `Nat` injectivity and `⊥` rules changes nothing in the model (they were `propext` instances too).
+- **D16 (`Eq` on pairs, `Eq A a b ≡ ⊤` when `a ≡ b`, ⊤ a unit for ∧, `refl : ⊤`).** Each is a `propext` instance: `((a, b) = (a', b')) = (a = a' ∧ b = b')`, `(a = a) = True`, `(True ∧ P) = P`; `refl` translates to `True.intro`, cast along `(a = a) = True` where needed. `Eq A a b ≡ ⊤ when a ≡ b` is natural: after a refinement makes `a ≡ b`, re-normalising the stored type yields `⊤`, as computing it afresh would. Dropping the `Nat` injectivity and `⊥` rules changes nothing in the model (they were `propext` instances too). One consequence to fix: since `Eq A a b` normalises to `⊤` when `a ≡ b`, a normal-form type no longer records `J`'s endpoints, and the translation of `J` to `Eq.rec` needs them. So write `J(A, a, b, P, h, t)` (deriver-e1-v1 G3).
 - **D18 (owner sets).** Exactly the hypothesis of Lemma Inj: jointly, the owners' contexts are injective, because in each concrete run the returned borrow lands in exactly one parameter. C2's `Bad` is now rejected (`h : Π(e : ⊤ ∧ Eq Nat Z (S Z)). …` in the `S` arm, and `refl` does not inhabit the domain).
 
 ### 1.5 Summary of the model's demands on the rule set
 
-Everything in v1 is validated once three sentences change: P5 and P2 merge into "what the runtime erases (types and proofs) the machine runs on a private copy"; [Rec] adds "and `f` occurs only as the head of such a call"; [Call] adds "a call whose head is a neutral is stuck". §2 assumes these three sentences.
+Everything in v1.1 is validated once the following change:
+- P5 and P2 merge into "what the runtime erases (types and proofs) the machine runs on a private copy" (R1, R3).
+- [Call] adds "a call whose head is a neutral is stuck".
+- The stuck-block rule is stated as lambda lifting (capture modes, codomain), applied only to checked arms, with a match on a non-σ neutral generalised first (R4).
+- `J` carries its endpoints.
+- [Call-type] is evaluated at the call point.
+
+v1.1's [Rec] escape clause (R2) is already in. §2 assumes all of this.
 
 ## 2. Metatheory (paper text)
 
-*This section is written to be adapted directly into the paper. It assumes RULES v1 with the three amendments of §1.5.*
+*This section is written to be adapted directly into the paper. It assumes RULES v1.1 with the amendments of §1.5.*
 
 ### 2.1 Setting
 
@@ -193,7 +218,7 @@ The theorem says that a sealed program is not an approximation of a backward fun
 **Theorem 2 (frame).**
 (a) *Locality.* Let `Ω = Ω₁ ⊎ Ω₂` be well formed, with every free variable of `t` bound in `Ω₁` and every loan occurring in `Ω₁` held in `Ω₁` (`Ω₁` is *loan-closed*; a borrow held in `Ω₁` may have its loan in `Ω₂`). Then `Ω ⊢ t ⇓ v ⊣ Ω'` iff `Ω₁ ⊢ t ⇓ v ⊣ Ω₁'` and `Ω' = Ω₁' ⊎ Ω₂θ`, where `θ = [loan_ℓ := v_ℓ]` ranges over the borrows held in `Ω₁` that the run ended, with their contents at ending. The same holds for stuck runs, with identical sealed programs.
 (b) *Call effect.* At a call `f(ā)` from `Ω` with borrow arguments `borrow_ℓᵢ uᵢ`, the run of the call from `Ω` is the run from the callee's frame alone, followed by `loan_ℓᵢ := (the final content of the callee's i-th borrow)`. In the model, the caller's view after the call is the call clause with `F = ⟦f⟧`.
-(c) *Call typing.* Let `f : Π(x̄ : Ā). B` be called at `Ω` with borrow arguments of loans `ℓ̄`, and `O = ⋃ᵢ owners(ℓᵢ)`. For every `Id`-atom `Id A t u` of `B`, the caller-side observation is the generic-call observation mapped through `Ctx(v, φ̄, r̄) = (v, (C_o(φ̄))_{o ∈ O}, r̄)`, where `C_o` is the resolution context of `o` around the final contents `φ̄` of `ℓ̄`. If `Ctx` is jointly injective, then `⟦B@Ω⟧ = ⟦B⟧(ū)` (by `propext`).
+(c) *Call typing.* Let `f : Π(x̄ : Ā). B` be called at the call point `Ω` (after the arguments are evaluated) with borrow arguments of loans `ℓ̄`, and `O = ⋃ᵢ owners(ℓᵢ)`. For every `Id`-atom `Id A t u` of `B`, the caller-side observation is the generic-call observation mapped through `Ctx(v, φ̄, r̄) = (v, (C_o(φ̄))_{o ∈ O}, r̄)`, where `C_o` is the resolution context of `o` around the final contents `φ̄` of `ℓ̄`. If `Ctx` is jointly injective, then `⟦B@Ω⟧ = ⟦B⟧(ū)` (by `propext`).
 
 **Lemma 3 (injectivity).** At a well-formed call site, `Ctx` is jointly injective, provided `O` contains *every* owner of the loans. *Proof.* `Ctx` is a composition of constructors (injective), of backward functions of returned-borrow calls applied at their hole argument (jointly injective: abstract ones by the restriction built into `⟦Π⟧`, definable ones by Lemma 4), and of components constant in the hole, for owners that do not contain it. Constant components preserve joint injectivity only if the component that does carry the hole is kept. Hence the footprint must observe every owner (D18); observing one lets [Call-type] prove `Id Nat (S Z) Z` (meta-model C2). ∎
 
@@ -400,8 +425,11 @@ theorem natural (hα : Refines α Ω) (h : Eval P Ω t (.ok Ω' v)) :
 | `C3_grow`, `C3_loop` (e346 F6) | reject | [Rec]: argument not a strict subterm of the entry value |
 | `C4_oops2` (e346 F5) | reject | `h()`'s type is captured at formation |
 | `C5_A1` (breaker-close A1) | reject | [Access] ends `r` before the move; the later write reads `⊥` |
-| `R1_Q` | reject the final `J` | term-keyed P5: `Q(Z, Z) : ⊤`. *Accepted by v1 as written: the test documents the bug.* |
-| `R2_apply`, `R2_letf` | reject | [Rec] escape clause. *Accepted by v1 as written.* |
+| `R1_Q` (= breaker-close-v1 N1, deriver-e346-v1 N12) | reject the final `J` | term-keyed P5: `Q(Z, Z) : ⊤`. *Accepted by v1.1 as written: the test documents the bug.* |
+| `R2_apply`, `R2_letf`, `R2_nested` (`Apply(fix _ (y) := f(y), x)`) | reject | [Rec] escape clause (v1.1); the nested case, because [Rec] also applies inside nested functions |
+| `R4_knot3` (deriver-e346-v1 §E6.8) | reject | the match on a sealed program generalises and [Split]s; [Rec] then rejects both recursive calls |
+| `N2_capture` (deriver-e346-v1 N2): `let r = match b {Z ⇒ x1 | S _ ⇒ x2}; AddM(r, y); AddM(x1, 0)` | reject | `x1` is moved by one arm, so the lifted call moves it |
+| `G1_callpoint` (deriver-e1-v1 G1): `refl : Π(x : &Nat). Id Unit (AddM(x, S Z)) ()` | reject | [Call-type] at the call point: `W = {c}` |
 | `R3_typewrite` | reject `Π(x). Id Nat (H(x)) Z` | types run on a private copy, so `H(σ) ⇓ σ` |
 | E1, E2 (all eight definitions), E3 `AddToOne` (now accepted by D15), E4 `Twice`, `TwiceM`, `TwiceMZero` | accept | |
 

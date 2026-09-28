@@ -16,16 +16,16 @@
 #include "sections/overview.typ"
 
 = The calculus <sec-calculus>
-_Draft pending rule set v1._
+#include "sections/calculus.typ"
 
 = Evaluation and closing off <sec-eval>
-_Draft pending rule set v1._
+#include "sections/eval.typ"
 
 = Observational equality <sec-obs>
-_Draft pending rule set v1._
+#include "sections/obs.typ"
 
-= Typing
-_Draft pending rule set v1._
+= Typing <sec-typing>
+#include "sections/typing.typ"
 
 = Metatheory <sec-meta>
 _Draft pending the model._
@@ -35,6 +35,9 @@ _Draft pending the Lean checker._
 
 = Related work <sec-related>
 #include "sections/related.typ"
+
+= Discussion <sec-discussion>
+_Draft._
 
 = Conclusion
 _Draft._

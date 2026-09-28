@@ -35,3 +35,20 @@
 // Notation helpers.
 #let seal(t) = $lr(⌈ #t ⌉)$
 #let obs(t) = $lr(⟦ #t ⟧)$
+
+// Inference rule: premises (any number) over a conclusion, optional name on the right.
+#let infer(name: none, ..args) = {
+  let a = args.pos()
+  let concl = a.last()
+  let prems = a.slice(0, a.len() - 1)
+  let tree = grid(
+    columns: 1, align: center, row-gutter: 3pt,
+    if prems.len() == 0 { [] } else { prems.join(h(1.6em)) },
+    grid.hline(y: 1, stroke: 0.5pt),
+    concl,
+  )
+  box(inset: (x: 4pt, y: 5pt), grid(columns: 2, column-gutter: 4pt, align: (center + bottom, left + horizon),
+    tree, if name != none { text(size: 7.5pt, smallcaps(name)) } else { [] }))
+}
+#let rules(..rs) = align(center, rs.pos().join(h(1.2em, weak: true)))
+#let cfg(o, t) = $chevron.l #o, #t chevron.r$
