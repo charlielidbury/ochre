@@ -63,14 +63,16 @@ ochr Attacks {
   -- breaker-close-v1 N1: a proposition-typed block that writes. Under v1.1 sealing then
   -- refining gave 0 and running directly gave 1, so N1Closed : Id Nat 1 0. Under v1.3's
   -- P2 the inline arm (a := S Z; refl) is a proof, runs on a private copy, and both give 0.
-  def N1T (n : Nat) : Id Nat (let a = 0; let h = match n { Z => (a := S Z; refl) | S _ => refl }; a) 0 := refl
+  -- Under v1.9 (D41) a proof that writes a place outliving it is a type error.
+  reject def N1T (n : Nat) : Id Nat (let a = 0; let h = match n { Z => (a := S Z; refl) | S _ => refl }; a) 0 := refl
   reject def N1Closed : Id Nat 1 0 := N1T(0)
 
   -- meta-model-v1 R1 (= breaker-close-v1 N1, deriver-e346-v1 N12): a Prop-typed block
   -- that writes. Under v1.3's P2 the writes of a proof are erased, so Q is true and
   -- Q(0, 0) : ⊤; the closed proof of false below is rejected. Under v1's call-keyed P5,
-  -- Q(0, 0) : Eq Nat 1 0 and QBoom is accepted (ledger row P2).
-  def Q (b : Nat) (a : Nat) : Id ⊤ (match b { Z => (a := S Z; refl) | S _ => (a := S Z; refl) }) refl := refl
+  -- Q(0, 0) : Eq Nat 1 0 and QBoom is accepted (ledger row P2). Under v1.9 (D41) the
+  -- arms, proofs that assign the parameter a, are type errors.
+  reject def Q (b : Nat) (a : Nat) : Id ⊤ (match b { Z => (a := S Z; refl) | S _ => (a := S Z; refl) }) refl := refl
   reject def QBoom : (Π(P : Prop). P) :=
     J(Nat, S Z, Z, λ(n : Nat) : Prop => match n { Z => (Π(P : Prop). P) | S _ => ⊤ }, Q(0, 0), refl)
 

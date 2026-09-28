@@ -1,5 +1,6 @@
-# lean-checker: an executable checker for RULES v1.8, and what running it found
+# lean-checker: an executable checker for RULES v1.9, and what running it found
 
+**v1.9 (§12):** D41 (confinement) is implemented and checked. The fail-safe experiment finds that D41 as written catches misclassified inline terms but not misclassified calls or blocks: the erased-call exception lets their bodies' writes through. 247 verdicts, all as expected.
 **v1.7–v1.8 (round 3, §10–§11):** D35–D39 implemented. The formal appendix's BoomL/BoomB, its positivity attack, and breaker-fresh-v16 X1–X5 are regressions. Three more closed proofs of false were found and fixed on the way: P1 against the v1.6 checker, P2 against a first v1.7 reading, and P3 against P1's first fix. 239 verdicts, all as expected. §11 lists where the checker, RULES and the appendix still differ.
 **Verdict (as of v1.5, phase 2):** RULES v1.5 is implemented, extended to user-declared inductive types (lists, binary trees), and 185 verdict assertions all hold. Every §7 example (E1–E5) is accepted. Every must-fail program and every attack from rounds 1–2 is rejected: e346 `Bad`, `Oops2`, `Loop`/`Bot'`; meta-model C1, C2; breaker-close A1–A4 (and A5 terminates); breaker-close-v1 N1 and meta-model-v1 R1 (the closed proofs of false built from `T` and `Q`); breaker-frame attack 1; E5's three rejections. Each is caught by the rule meant to catch it: switching that one rule off flips exactly the verdicts it guards (§5).
 **Most important finding:** **D18 (owners are sets) is load-bearing in v1.4.** An uncurried version of meta-model C2 (§4) uses v1.2's annotated block, which forms a type while a returned borrow's hole is in two owners and checks each arm against it after the split. Single-owner observation accepts it and yields the closed proof `ClosedD18 : Eq Nat 0 1`. Round 1's L1 (`f` escaping as a value) is fixed in v1.1 by exactly the rule this checker used.
@@ -298,6 +299,76 @@ Fix: a binding carries a flag, set from syntax: a `let` from its right-hand side
 - 239 verdicts, all as expected, in about 10.5 ms. V18 takes 0.7 ms, Positivity and GenTy under 0.1 ms.
 - A clean build takes about 27 s, most of it the 30 ledger rows, each of which re-runs the suite twice.
 
-## 12. Not done
+## 12. Rules v1.9 (D41): erased terms are confined, and whether that is a fail-safe
+
+**Implemented**, with the switch `confine`.
+- **The effect log.** Every assignment, borrow and move is logged by the position of its place's root (`logEffect` in `assignPlace`, `borrowPlace`, `readPlace`).
+- **Settling an erased run.** When an erased occurrence ends, `settleErased` looks at each step it logged:
+  - a step on a place created inside the run is local, and is dropped;
+  - a step on a place of the run's start state is marked *pending*.
+- **Who resolves a pending step.** An enclosing erased term in which the place is local resolves it. Any other context rejects it (`flushPending`). The contexts that reject are: a non-erased term, the tail judgement (`checkTail`), a side of `Id`, and the context of a stuck block (whose arms' pending steps are carried past the split).
+- **The exception.** The borrows and moves that evaluate the arguments of an erased call are exempt (`evalCall`).
+- **Type positions** are confined runs on a private copy (`confinedCopy`: `evalType`, and `J`'s endpoints).
+- **Regressions:** `Ochr/Examples/V19.lean` (8):
+  - a proof mutating its own locals (`Local`) and handing an outer place to another proof (`Pass`) are accepted;
+  - `Write`, `Borrow` and `Move` are rejected;
+  - a proof whose steps are in tail position (`TailSteps`) is accepted.
+- **Four earlier tests are now type errors**, as D41 intends. Each relied on P2 silently discarding a proof's outer write: `Attacks.N1T`, `Attacks.Q`, `Probes.EffArgErased` and `V17.LieP`.
+- **Nothing else changed**: E1–E6 (including `AddMZero`'s `&p` into a proof call, `LemmaMoves`, `TwoPhase` and all of E5), the inductives and the v1.5–v1.8 regressions keep their verdicts.
+- **Ledger:** `confine` off flips those 4 plus `Write`, `Borrow` and `Move`.
+
+**One reading differs from the appendix's letter.** The appendix says that "steps inside an erased subterm are judged by that subterm's own confinement", and also that "a proof may still mutate its own locals". The two conflict. In `let h : ⊤ = (let y = 0; y := 1; refl); …`, the sequence `y := 1; refl` is itself erased (a proof), and `y` is in its start state, so under the letter that write is a violation. The checker instead judges each step against the *outermost* erased term containing it: steps on places local to that term are fine. Suggested wording: *a step inside an erased occurrence is judged by the outermost erased occurrence containing it.* The fail-safe argument only needs that one: an inner misclassification whose effects stay inside a consistently erased outer term cannot desynchronise anything.
+
+**The experiment.** The question: with D41 on, switch off each classification rule in turn. Do the erasure attacks become *rejections*? The comparison is D41 off, D41 on, and D41 on plus the extension described below (switch `confineBodies`). The script was run on the whole suite; each column lists the closed false proofs and false statements accepted.
+
+| Rule switched off | D41 off | D41 on | D41 + extension |
+|---|---|---|---|
+| D28 (value-based erasure) | F1 `V15.Boom`, `BoomL`, X1 `Boom8`/`Direct8`, X2 `Lie7`, `LieB`, `LieG` | **none** (`LieG` is accepted, but `BoomG` is rejected) | none |
+| `classBySyntax` (evaluated class) | `BoomL`, X1 `Boom8`/`Direct8` | `BoomL`, `Boom8`, `Direct8` | `Boom8`, `Direct8` |
+| `blockRule 0` (v1.6 block rule) | `LieB`/`BoomB`, `LieG`/`BoomG`, X2 `Lie7`/`Boom7` | the same | **none** |
+| `blockRule 1` (computed block type) | `LieG`/`BoomG` | the same | **none** |
+| `blockRule 1` + `leafRule 0` | `LieP`/`BoomP`, `LieG`/`BoomG` | the same | **none** |
+| `leafRule 1` (P3's value reading) | `BoomH` | **none** | none |
+| P2 (the private copy) | `N1Closed`, `QBoom`, `EffArg`, `BoomP` | **none** | none |
+| `seqByProof`, `leafRule 0` | none | none | none |
+
+**Where D41 as written is a fail-safe:** misclassified *inline* terms, that is, sequencing forms, leaves and the private copy itself. In each case the outer write is a step of the erased run. With D41 on, the ledger rows `leafRule 0` and `leafRule 1` flip nothing. The P2 row shrinks to completeness: `TwoPhase`, `LemmaMoves` and `TypeErased` are rejected without the copy, and the four closed proofs of false it used to guard are rejected by D41 alone. The ledger asserts the rows "P1 without D41", "P3 without D41" and "P2 without D41" to keep those attacks documented.
+
+**Where it is not: misclassified calls and blocks.** Their outer writes happen inside a callee's body, through borrows that were passed as arguments, which is exactly D41's exception. D41 relies on the callee's body having been checked confined when it was defined. But neither RULES nor the appendix confines a *body*: a function body is checked in tail position, which is not an erased occurrence (this is how `E4.TwiceMZero'` and `V19.TailSteps` stay legal). A block's arms are confined only when they are erased themselves, and under D40 that is exactly when the block is.
+
+**The extension (`confineBodies`, off by default, not in RULES)** closes most of the gap:
+- **The two checks.** The body of a function whose calls are erased is confined through its borrow parameters. A by-value parameter, a capture or a local counts as the body's own, which keeps `E6.Snapshot` legal. And every arm of an erased block is confined.
+- **What it catches.** Every block attack, and `BoomL`, whose λ is formed again, and checked again, at the instance.
+- **What it misses.** It cannot catch X1 (`Boom8`, `Direct8`). There, `Mk(0)` builds its closure in untyped code at the instance, so the closure is never checked again, and its evaluated class differs from the one at `Mk`'s [Def]. With `classBySyntax` on, the class is syntactic and cannot differ.
+- **Closing X1 too.** D41 would have to judge the steps of an erased call's body *when it runs*, by ownership rather than by root: a write through a borrow whose loan is owned by a place of the call's start state. That is possible because calls returning types do run (on the private copy). Calls returning proofs are skipped, so they cannot be judged at run time. But their class reads a sort, and sorts are stable (§10), so it cannot differ between paths.
+- **What it costs.** It rejects proofs and type-valued functions that write through their borrow parameters:
+  - `E4.TwiceMZero'`, the modular proof that runs `AddM(&*x, 0)` between two lemma citations;
+  - `Attacks.P2`, `FP2`, `BoomIsTrue`, `p2`, `TA2` (`P2 (x : &Nat) : ⊤ := *x := 7; refl`);
+  - `Probes.F5`, `TypeErased` and `V17.F`, `SeqT` (`F (x : &Nat) : Prop := *x := S Z; ⊤`);
+  - `V19.TailSteps`.
+
+**Timings.**
+- 247 verdicts in about 12.4 ms. It was 10.5 ms before this round; the effect log and V19 account for most of the difference.
+- A clean build takes about 42 s, most of it the 36 ledger rows, each of which re-runs the suite twice in the interpreter.
+- `Machine.lean` is 1,790 lines. The checker is about 3,410 lines and the examples about 1,150.
+
+**Where the checker, RULES v1.9 and the appendix still differ (final; this supersedes §11's list).**
+- **Resolved since §11.** The appendix's clause 4 is now the syntactic proof judgement, and the checker agrees with it. That includes `J`, which is now a proof only when its motive is syntactically a function into `Prop`; the checker no longer also counts it a proof when `t` is.
+- **Differences in substance:**
+  1. **Confinement of nested erased terms:** the outermost-term reading above, against the appendix's "own confinement".
+  2. **Captured values have no type in either.** The appendix's `typeof` has no case for `⋆` or a sealed program, and neither does the checker's `valType`. So a closure or Π-type that reads a captured proof or captured neutral data in a typed position cannot be checked, and captured variables are never proofs in the checker.
+  3. **`propDecl` is incomplete** (appendix (a); consistent on both paths).
+  4. **D41's erased-call exception** is not a fail-safe for calls and blocks (the experiment above). This is a property of RULES that the appendix states the same way, not a disagreement between them.
+- **Appendix sentences about the checker that are now out of date:**
+  - "implements v1.7 with D40 … not yet D36–D39 or D41";
+  - "does not yet implement [Obs-borrow]";
+  - (b) "a Π-type in a term position captures in the real environment": it now captures on a copy;
+  - "the checker gives σ the head call's declared codomain … and `Nat` otherwise": it now uses the matched place's type;
+  - "requires only that field types be borrow-free … and accepts that proof", and note 3's "still accepts `Bad`": D36 is implemented;
+  - "does not yet check confinement";
+  - "still closes off a neutral-headed call": D39 is implemented;
+  - "[T-And] … the checker omits that premise": the premise is now checked.
+
+## 13. Not done
 
 A proof that the implementation matches the rules (the traces and the ledger are the evidence); universe checking beyond C15; `Bool` (Nat stands in); loops, shared borrows, borrows in data (D8); the separate meta-lean development (`ochr/core/meta-lean/`, another agent's).

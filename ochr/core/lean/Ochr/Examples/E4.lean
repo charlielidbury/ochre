@@ -28,6 +28,8 @@ ochr E4 {
   -- alone (proofs run on a private copy), and J with explicit endpoints composes the two
   -- lemma instances. Add(s, 0) closes off into the same sealed program as AddM(&*x, 0).
   def Add (x : Nat) (y : Nat) : Nat := AddM(&x, y); x
+  -- (v1.9, D41: the body's steps are in tail position, not inside an erased occurrence,
+  -- so AddM(&*x, 0) is allowed; the extension `confineBodies` rejects it)
   def TwiceMZero' (x : &Nat) : Id Unit (TwiceM(λ(z : &Nat) : Unit => AddM(z, 0), x)) () :=
     let s = *x; let h1 = AddMZero(&*x); AddM(&*x, 0); let h2 = AddMZero(&*x);
     J(Nat, Add(s, 0), s, λ(z : Nat) : Prop => Id Nat (Add(Add(s, 0), 0)) z, h1, h2)

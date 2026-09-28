@@ -32,7 +32,8 @@ ochr V17 {
   -- Prop), but the checker erased a sequence only when its tail is erased, and a place
   -- holding a proof was not, so at n = Z the match ran for real. A place, constant or λ
   -- holding a proof is now erased, so a proof-typed tail is erased on every path.
-  def LieP (n : Nat) : Id Nat (let c = Z; let h : ⊤ = refl; let T = match n { Z => (c := S Z; h) | S _ => (c := S Z; h) }; c) Z := refl
+  -- (v1.9, D41: the arms are proofs that assign c, which outlives them: a type error)
+  reject def LieP (n : Nat) : Id Nat (let c = Z; let h : ⊤ = refl; let T = match n { Z => (c := S Z; h) | S _ => (c := S Z; h) }; c) Z := refl
   reject def BoomP : Eq Nat (S Z) Z := LieP(Z)
 
   -- P2 (this checker, found implementing v1.7): a block erased when its *computed* type
