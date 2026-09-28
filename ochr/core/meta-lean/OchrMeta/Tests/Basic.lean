@@ -151,4 +151,19 @@ def pick2 : Res :=
 #guard match pick2 with | .ok s _ => (heldNames s).length == 2 && allSame s | _ => false
 end Sched
 
+/-! ## `back_inj_small` (Lemma 4) and `ctx_needs_all_owners` (C2), on the sealed programs -/
+namespace Inj
+def back (f : String) (as : List Val) (is : List Nat) (w : Nat) : List Val :=
+  is.map fun i => nrm (sl f as (.back i) (nat w))
+def injOn (g : Nat → List Val) (n : Nat) : Bool :=
+  (List.range n).all fun a => (List.range n).all fun b => a == b || g a != g b
+-- TailM's backward function (one borrowed place) is injective
+#guard (List.range 4).all fun a => injOn (back "TailM" [nat a] [0]) 7
+-- Pick's, jointly over both borrowed places, in both branches
+#guard injOn (back "Pick" [nat 0, nat 3, nat 5] [1, 2]) 7
+#guard injOn (back "Pick" [nat 1, nat 3, nat 5] [1, 2]) 7
+-- observing only the owner `a` (place 1) is not injective in the `S` branch: C2
+#guard !injOn (back "Pick" [nat 1, nat 3, nat 5] [1]) 7
+end Inj
+
 end OchrMeta.Tests
