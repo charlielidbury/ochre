@@ -594,7 +594,10 @@ partial def eval (typed : Bool) (t : Term) : M (Value × Option Value) := do
   -- erased when its declared type is a proposition.
   let erased ← if (← get).cfg.erasureByDecl then
       match t with
-      | .seq _ _ | .letIn _ _ _ | .matchNat _ _ _ | .matchInd _ _ _ | .call _ _ _ => pure (← get).lastErased
+      | .seq _ _ | .letIn _ _ _ | .matchNat _ _ _ | .matchInd _ _ _ =>
+        -- (fuzzer hook, D35 clause 4) a sequencing form is erased only when it is a proof
+        pure ((← get).lastErased && (!(← get).cfg.syntacticClass || r.1 == .proof))
+      | .call _ _ _ => pure (← get).lastErased
       | .refl | .andI _ _ | .cong _ _ | .prim "trans" _ | .prim "symm" _ => pure true
       | .prim "J" [_, _, _, P, _, _] => jErased P
       | .ascribe _ _ => pure ((← get).lastErased || (r.2.isSome && (← typeClass r.2.get!) == 2))
@@ -612,15 +615,17 @@ partial def fnClass (piTy : Value) : M Nat := do
   match (← get).classCache.lookup piTy with
   | some k => return k
   | none => pure ()
+  let syn := (← get).cfg.syntacticClass
   let k ← match piTy with
     | .tPi cs (.pi hs ds c) =>
       match c with
-      | .sort _ | .val (.sort _) => pure 1
-      | .val T => typeClass T
+      | .sort _ => pure 1
+      -- a `.val` codomain is a stuck block's; (fuzzer hook, D35) erased only when its match would be, i.e. when it is a proof
+      | .val T => if syn then (do pure (if (← typeClass T) == 2 then 2 else 0)) else typeClass T
       | _ => match isPropTerm? c with
         | some true => pure 2
         | some false => pure 0
-        | none => onCopy do
+        | none => if syn && !cs.isEmpty then syntacticClassOf c else onCopy do
           pushFrame
           for v in cs do pushBind ⟨"κ"⟩ none v
           for (d, h) in ds.zip hs do
@@ -630,6 +635,17 @@ partial def fnClass (piTy : Value) : M Nat := do
     | _ => pure 0
   modify fun s => { s with classCache := (piTy, k) :: s.classCache }
   pure k
+
+/-- (Fuzzer hook, D35.) The class of a closure read from its codomain term's declared
+sort, without evaluating it: a call of a global whose declared codomain is `Prop`
+returns proofs; anything else not syntactically a sort returns data. -/
+partial def syntacticClassOf (c : Term) : M Nat := do
+  match c with
+  | .call (.const g) _ _ =>
+    match (← lookupGlobal g).ty with
+    | .tPi _ (.pi _ _ (.sort 0)) => pure 2
+    | _ => pure 0
+  | _ => pure 0
 
 /-- The class of a declared type: a sort (its inhabitants are types), a proposition
 (its inhabitants are proofs), or data. Read off the type's constructor or, for a

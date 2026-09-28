@@ -48,8 +48,40 @@ partial def shrinkT (t : STerm) : List STerm :=
   | .ascribe a A => (shrinkT a).map (.ascribe · A)
   | _ => []
 
+/-- Are all identifiers bound (by a binder, a pattern, a declaration, a constructor or a
+builtin)? The shrinker keeps only well-scoped candidates, so counterexamples print as
+valid programs. -/
+partial def scopedT (names : List String) (bound : List String) : STerm → Bool
+  | .ident x => bound.contains x || names.contains x ||
+      ["Nat", "Unit", "Z", "refl", "S", "F", "T", "Nil", "Cons", "Mk", "B2", "L", "Box"].contains x
+  | .num _ | .unitLit | .top | .sort _ => true
+  | .app _ as => as.all (scopedT names bound)
+  | .call f as => scopedT names bound f && as.all (scopedT names bound)
+  | .deref t | .proj _ t | .amp t => scopedT names bound t
+  | .assign p t => scopedT names bound p && scopedT names bound t
+  | .letIn x A t u => (A.map (scopedT names bound)).getD true && scopedT names bound t && scopedT names (x :: bound) u
+  | .seq a b | .pair a b | .andI a b | .and a b | .prod a b | .ascribe a b | .arrow a b =>
+      scopedT names bound a && scopedT names bound b
+  | .matchGen sc arms => scopedT names bound sc && arms.all fun (_, vs, b) => scopedT names (vs ++ bound) b
+  | .pi bs c => scopedBs names bound bs c
+  | .fix f bs r _ b => scopedBs names bound bs r && scopedT names ((bs.map (·.1)).reverse ++ f :: bound) b
+where
+  scopedBs (names bound : List String) : List (String × STerm) → STerm → Bool
+    | [], c => scopedT names bound c
+    | (x, A) :: bs, c => scopedT names bound A && scopedBs names (x :: bound) bs c
+
+def Case.wellScoped (c : Case) : Bool :=
+  let names := c.decls.map (·.name)
+  let ps := c.params.map (·.1)
+  scopedT names ps c.lhs && scopedT names ps c.rhs &&
+    c.extra.all (fun d => scopedT names (d.name :: d.params.map (·.1)) d.body) &&
+    (match c.conv with
+      | some (_, f, g) => scopedT names [] f && scopedT names [] g
+      | none => true)
+
 /-- Every one-step shrink of a case. -/
-def shrinkCase (c : Case) : List Case :=
+def shrinkCase (c : Case) : List Case := (shrinkCase' c).filter Case.wellScoped
+where shrinkCase' (c : Case) : List Case :=
   (c.lib.map fun n => { c with lib := c.lib.erase n }) ++
   ((List.range c.extra.length).map fun i => { c with extra := c.extra.eraseIdx i }) ++
   ((List.range c.params.length).map fun i => { c with params := c.params.eraseIdx i }) ++
@@ -57,19 +89,23 @@ def shrinkCase (c : Case) : List Case :=
   ((shrinkT c.lhs).map fun l => { c with lhs := l }) ++
   ((List.range c.extra.length).flatMap fun i =>
     let d := c.extra[i]!
-    (shrinkT d.body).map fun b => { c with extra := c.extra.set i { d with body := b } })
+    (shrinkT d.body).map fun b => { c with extra := c.extra.set i { d with body := b } }) ++
+  (match c.conv with
+    | some (T, f, g) => [{ c with conv := none }] ++ (shrinkT f).map (fun f' => { c with conv := some (T, f', g) })
+        ++ (shrinkT g).map (fun g' => { c with conv := some (T, f, g') })
+    | none => [])
 
 /-- Does the case still show a finding of this kind (and, with a baseline, is it absent
 under the baseline rules)? -/
-def stillFails (o : Opts) (r : Rng) (k : Kind) (c : Case) : Option Finding :=
-  match (checkCase o c r).findings.find? (·.kind == k) with
+def stillFails (o : Opts) (r : Rng) (key : String) (c : Case) : Option Finding :=
+  match (checkCase o c r).findings.find? (·.key == key) with
   | none => none
   | some f => match o.base with
-    | some b => if ((checkCase { o with cfg := b, base := none } c r).findings.any (·.kind == k)) then none else some f
+    | some b => if ((checkCase { o with cfg := b, base := none } c r).findings.any (·.key == key)) then none else some f
     | none => some f
 
 /-- Shrink greedily; returns the smallest failing case found and its finding. -/
-partial def shrink (o : Opts) (r : Rng) (k : Kind) (c : Case) (f : Finding) (budget : Nat := 4000) :
+partial def shrink (o : Opts) (r : Rng) (k : String) (c : Case) (f : Finding) (budget : Nat := 4000) :
     Case × Finding × Nat := Id.run do
   let mut cur := c
   let mut fcur := f

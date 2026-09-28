@@ -44,13 +44,27 @@ def shapes (T : Value) : M (List Value) := do
     (List.range d.ctors.length).mapM (ctorRefinement d)
   | _ => pure []
 
+/-- The global functions of a function type: the instances of an abstract function. -/
+def fnInstances (T : Value) : M (List Value) := do
+  let mut out := []
+  for g in (← get).globals do
+    if g.fn?.isSome && (← conv g.ty T) then out := out ++ [g.val]
+  pure out
+
 /-- Every partial refinement of one parameter, and `nGround` instances (the first two
-take every parameter's smallest, then second-smallest, value). -/
+take every parameter's smallest, then second-smallest, value). An abstract function is
+refined to each global function of its type. -/
 def buildRefinements (ps : Array PInfo) (nGround : Nat) (r : Rng) : M (List Refinement × Rng) := do
   let inds := (← get).inds
   let mut out : Array Refinement := #[]
+  let mut fns : List (Nat × List Value) := []
   for p in ps do
     if p.kind == .proof then continue
+    if p.ty matches .tPi .. then
+      let is ← fnInstances p.ty
+      fns := fns ++ [(p.σ, is)]
+      for v in is do out := out.push ⟨s!"{p.name} := {v}", [(p.σ, v)], false⟩
+      continue
     for v in ← shapes p.ty do
       out := out.push ⟨s!"{p.name} := {v}", [(p.σ, v)], false⟩
   let ds := ps.toList.filter (·.kind != .proof)
@@ -58,7 +72,7 @@ def buildRefinements (ps : Array PInfo) (nGround : Nat) (r : Rng) : M (List Refi
   for i in [0:nGround] do
     let mut sub := #[]
     for p in ds do
-      let vs := groundVals inds p.ty 2
+      let vs := (fns.lookup p.σ).getD (groundVals inds p.ty 2)
       if vs.isEmpty then continue
       let (x, r') := rng.next
       rng := r'

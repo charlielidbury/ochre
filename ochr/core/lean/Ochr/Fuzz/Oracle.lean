@@ -38,10 +38,20 @@ structure Finding where
   where_ : String
   symbolic : String
   direct : String
+  reason : String := ""     -- for errors: the message with numbers and names stripped
 deriving Inhabited
 
+/-- An error message as a class: digits and the words after "value"/"place"/"of" dropped. -/
+def errKey (e : String) : String :=
+  let e := String.ofList (e.toList.filter fun c => !c.isDigit)
+  let ws := (e.splitOn " ").take 7
+  " ".intercalate ws
+
+def Finding.key (f : Finding) : String :=
+  if f.reason == "" then f.kind.name else s!"{f.kind.name}: {f.reason}"
+
 def Finding.show (f : Finding) : String :=
-  s!"[{f.kind.name}] {f.comp} at {f.where_}\n    symbolic path: {f.symbolic}\n    direct path:   {f.direct}"
+  s!"[{f.key}] {f.comp} at {f.where_}\n    symbolic path: {f.symbolic}\n    direct path:   {f.direct}"
 
 structure CaseResult where
   status : String
@@ -83,7 +93,7 @@ def compareVals (sR sD : MState) (pinned : List Nat) (r d : Value) (rng : Rng) :
       if canon pinned r' != canon pinned d' then
         return (some (.nat, s!"{r.pp}  ⟶[{lbl}]  {r'.pp}", s!"{d.pp}  ⟶[{lbl}]  {d'.pp}"), false)
     | .ok r', .error e => if !isResource e then
-        return (some (.renorm, s!"{r.pp} ⟶[{lbl}] {r'.pp}", s!"{d.pp} ⟶[{lbl}] error: {e}"), false)
+        return (some (.verdict, s!"{r.pp} ⟶[{lbl}] {r'.pp}", s!"{d.pp} ⟶[{lbl}] error: {e}"), false)
     | .error e, .ok d' => if !isResource e then
         return (some (.renorm, s!"{r.pp} ⟶[{lbl}] error: {e}", s!"{d.pp} ⟶[{lbl}] {d'.pp}"), false)
     | _, _ => pure ()

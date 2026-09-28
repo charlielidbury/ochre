@@ -81,6 +81,7 @@ structure Config where
   genConsistent : Bool := true   -- finding G1: a generalised neutral stays generalised when normalisation re-derives it
   trace : Bool := false          -- record goals, splits and call types (for inspection)
   genGlobal : Bool := false      -- fuzzer hook, emulates v1.8 D37: generalisation records and fresh-name counters survive restores
+  syntacticClass : Bool := false -- fuzzer hook, emulates v1.7 D35: a closure's class is read from its codomain term, a stuck block's from its match
 deriving Inhabited, Repr
 
 structure MState where

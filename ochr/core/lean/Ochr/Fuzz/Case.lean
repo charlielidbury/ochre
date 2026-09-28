@@ -20,14 +20,24 @@ structure Case where
   ty : STerm := .ident "Nat"
   lhs : STerm := .num 0
   rhs : STerm := .num 0
+  conv : Option (STerm × STerm × STerm) := none   -- a function type and two functions: conversion oracle
 deriving Inhabited
 
 def Case.stmtDecl (c : Case) : SDecl :=
   { name := "Stmt", params := c.params, ret := .sort 0, body := .app "Id" [c.ty, c.lhs, c.rhs],
     expectAccept := true }
 
+/-- `ConvF`, `ConvG` and the claim `ConvEq : Eq T ConvF ConvG := refl`, which the checker
+accepts iff it finds the two functions convertible. -/
+def convDecls : Option (STerm × STerm × STerm) → List SDecl
+  | none => []
+  | some (T, f, g) =>
+    [{ name := "ConvF", ret := T, body := f, expectAccept := true },
+     { name := "ConvG", ret := T, body := g, expectAccept := true },
+     { name := "ConvEq", ret := .app "Eq" [T, .ident "ConvF", .ident "ConvG"], body := .ident "refl", expectAccept := true }]
+
 def Case.decls (c : Case) : List SDecl :=
-  c.lib.filterMap libDecl ++ c.extra ++ [c.stmtDecl]
+  c.lib.filterMap libDecl ++ c.extra ++ convDecls c.conv ++ [c.stmtDecl]
 
 def Case.show (c : Case) (name : String := "Cex") : String := ppProgram name c.decls
 
@@ -92,12 +102,23 @@ def genStmt (lib : List LibFn) (inds : List String) : Gen (List (String × STerm
   let ind (n : String) : Nat := if inds.contains n then 1 else 0
   let mut vars : List GVar := []
   let mut ps : Array (String × STerm) := #[]
+  -- abstract functions: the types of library functions, so that instances exist
+  let simple (t : GTy) : Bool := match t with
+    | .nat | .unit | .ind _ | .prop => true
+    | .ref .nat | .ref (.ind _) => true
+    | _ => false
+  let fnTys := (lib.filter fun f => f.famArg.isNone && simple f.ret && f.ps.all simple).map fun f => GTy.fn f.ps f.ret
   for j in [0:np] do
     let T ← weighted [(4, pure GTy.nat), (4, pure (GTy.ref .nat)), (ind "B2", pure (GTy.ind "B2")),
-      (ind "L", pure (GTy.ind "L")), (ind "L", pure (GTy.ref (.ind "L"))), (ind "Box", pure (GTy.ind "Box"))]
-    let x := (match T with | .ref _ => "x" | .ind "L" => "l" | .ind "B2" => "b" | .ind _ => "m" | _ => "n") ++ toString j
+      (ind "L", pure (GTy.ind "L")), (ind "L", pure (GTy.ref (.ind "L"))), (ind "Box", pure (GTy.ind "Box")),
+      (if fnTys.isEmpty then 0 else 2, pick fnTys)]
+    let x := (match T with | .ref _ => "x" | .ind "L" => "l" | .ind "B2" => "b" | .ind _ => "m" | .fn .. => "h" | _ => "n") ++ toString j
     ps := ps.push (x, T.surface)
-    vars := { name := x, ty := T, kind := (if T matches .ref _ then .bvar else .owned), root := x, param := true } :: vars
+    let kind := match T with
+      | .ref _ => VKind.bvar
+      | .fn .. => .fnv
+      | _ => .owned
+    vars := { name := x, ty := T, kind := kind, root := x, param := true } :: vars
   let Γ : Ctx := { vars := vars, lib := lib, inds := inds }
   let A ← weighted [(3, pure GTy.nat), (3, pure GTy.unit), (ind "B2", pure (GTy.ind "B2")),
     (ind "L", pure (GTy.ind "L")), (2, pure GTy.prop)]
@@ -106,5 +127,29 @@ def genStmt (lib : List LibFn) (inds : List String) : Gen (List (String × STerm
   setDead d0
   let rhs ← gen Γ A (← rand 3)
   pure (ps.toList, A.surface, lhs, rhs)
+
+/-- A conversion pair: two functions of one type, the second often a small mutation of
+the first (so that conversion has a chance to identify them). -/
+def genConvPair (lib : List LibFn) (inds : List String) (mutate : STerm → List STerm) :
+    Gen (Option (STerm × STerm × STerm)) := do
+  let simple (t : GTy) : Bool := match t with
+    | .nat | .unit | .ind _ | .ref .nat | .ref (.ind _) => true
+    | _ => false
+  let fixed : List (List GTy × GTy) := [([.ref .nat], .unit), ([.ref .nat], .nat),
+    ([.ref .nat, .ref .nat], .ref .nat), ([.nat], .nat), ([.ref .nat, .nat], .unit)]
+  let sigs := fixed ++ (lib.filter fun f => f.famArg.isNone && simple f.ret && f.ps.all simple).map fun f => (f.ps, f.ret)
+  let (ps, r) ← pick sigs
+  let named := (lib.filter fun f => f.famArg.isNone && GTy.fn f.ps f.ret == GTy.fn ps r).map fun f => STerm.ident f.name
+  let Γ : Ctx := { lib := lib, inds := inds }
+  let mkOne : Gen STerm := do
+    weighted [(if named.isEmpty then 0 else 2, pick named), (3, genLambda Γ ps r (1 + (← rand 4)))]
+  let f ← mkOne
+  let g ← weighted [(3, mkOne), (3, do
+      match f with
+      | .fix x bs rt d b =>
+        let ms := mutate b
+        if ms.isEmpty then mkOne else pure (STerm.fix x bs rt d (← pick ms))
+      | _ => mkOne)]
+  pure (some ((GTy.fn ps r).surface, f, g))
 
 end Ochr.Fuzz

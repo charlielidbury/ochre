@@ -19,7 +19,8 @@ partial def gen (Γ : Ctx) (T : GTy) (f : Nat) : Gen STerm := do
                 (1, do pure (.app "Id" [.ident "Unit", ← gen Γ .unit h, ← gen Γ .unit (f / 3)])),
                 (2, do pure (.app "Eq" [.ident "Nat", ← gen Γ .nat h, ← gen Γ .nat h])),
                 (3, do pure (.seq (← gen Γ .unit h) (← gen Γ .prop h))),
-                (1, do pure (.and (← gen Γ .prop h) (← gen Γ .prop h)))]
+                (1, do pure (.and (← gen Γ .prop h) (← gen Γ .prop h))),
+                (2, genIdEff Γ h)]
     | .proof => [(3, do pure (.seq (← gen Γ .unit h) (← gen Γ .proof h)))]
     | .fam _ => [(3, do pure (.seq (← gen Γ .unit h) (← gen Γ T h)))]
     | .fn ps r => [(4, genLambda Γ ps r h)]
@@ -109,12 +110,24 @@ partial def genLambda (Γ : Ctx) (ps : List GTy) (r : GTy) (f : Nat) : Gen STerm
   setDead d
   pure (.fix "_" (names.zip (ps.map GTy.surface)) r.surface none body)
 
+/-- `Id Unit (p := a) (p := b)`: an effect equation about one place (for a returned
+borrow `*r`, the footprint is every owner of its hole: D18). -/
+partial def genIdEff (Γ : Ctx) (f : Nat) : Gen STerm := do
+  let all ← placesOf Γ .nat
+  let ps := all.filter (·.kind == .bvar)
+  let ps := if ps.isEmpty then all else ps
+  if ps.isEmpty then return .top
+  let v ← pick ps
+  let a ← gen Γ .nat (f / 2)
+  let b ← gen Γ .nat (f / 2)
+  pure (.app "Id" [.ident "Unit", .assign v.place a, .assign v.place b])
+
 partial def genLet (Γ : Ctx) (T : GTy) (f : Nat) : Gen STerm := do
   let h := f / 2
   let x ← freshName "a"
   let fam := Γ.lib.any (·.name == "V")
   let ind (n : String) : Nat := if Γ.inds.contains n then 1 else 0
-  let fr ← pick ([GTy.unit, .nat, .prop, .proof] ++ (if fam then [GTy.fam (.num 0), .fam (.num 0)] else []))
+  let fr ← pick ([GTy.unit, .nat, .prop, .proof, .ref .nat] ++ (if fam then [GTy.fam (.num 0), .fam (.num 0)] else []))
   let T' ← weighted [(4, pure GTy.nat), (if ← hasPlace Γ .nat then 4 else 0, pure (GTy.ref .nat)),
     (ind "L", pure (GTy.ind "L")), (ind "B2", pure (GTy.ind "B2")), (ind "Box", pure (GTy.ind "Box")),
     (if (← hasPlace Γ (.ind "L")) then 1 else 0, pure (GTy.ref (.ind "L"))),

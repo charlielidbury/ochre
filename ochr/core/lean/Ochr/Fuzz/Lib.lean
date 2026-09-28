@@ -71,6 +71,9 @@ ochr FuzzLib {
   def Add (x : Nat) (y : Nat) : Nat := AddM(&x, y); x
   def TailM (x : &Nat) : &Nat by x := match *x { Z => x | S p => TailM(&p) }
   def Pick (n : Nat) (x : &Nat) (y : &Nat) : &Nat := match n { Z => x | S _ => y }
+  def PickX (x : &Nat) (y : &Nat) : &Nat := x
+  def PickY (x : &Nat) (y : &Nat) : &Nat := y
+  def Keep (x : &Nat) : Unit := ()
   def Double (n : Nat) : Nat by n := match n { Z => Z | S p => S (S (Double(p))) }
   def IsZ (n : Nat) : B2 := match n { Z => T | S _ => F }
   def G1 (x : &Nat) (n : Nat) : Unit := match n { Z => () | S _ => *x := 0 }
@@ -93,6 +96,9 @@ def libFns : List LibFn :=
     { name := "Add", ps := [.nat, .nat], ret := .nat, deps := ["AddM"] },
     { name := "TailM", ps := [.ref .nat], ret := .ref .nat },
     { name := "Pick", ps := [.nat, .ref .nat, .ref .nat], ret := .ref .nat },
+    { name := "PickX", ps := [.ref .nat, .ref .nat], ret := .ref .nat },
+    { name := "PickY", ps := [.ref .nat, .ref .nat], ret := .ref .nat },
+    { name := "Keep", ps := [.ref .nat], ret := .unit },
     { name := "Double", ps := [.nat], ret := .nat },
     { name := "IsZ", ps := [.nat], ret := .ind "B2", deps := ["B2"] },
     { name := "G1", ps := [.ref .nat, .nat], ret := .unit },

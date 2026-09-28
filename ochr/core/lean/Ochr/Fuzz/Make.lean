@@ -1,4 +1,4 @@
-import Ochr.Fuzz.Run
+import Ochr.Fuzz.Shrink
 
 /-!
 # Fuzzer: making case `i` of a run
@@ -44,6 +44,10 @@ def mkCase (seed i : Nat) (fuel : Nat := 200000) : Case × Rng := Id.run do
   let extras := extras.filter fun (d, _) => ok.contains d.name
   let fns := libFns.filter (fun f => ok.contains f.name) ++ extras.map (·.2)
   let ((ps, A, lhs, rhs), g2) := (genStmt fns (indsOf lib)).run g1
-  ({ lib := lib, extra := extras.map (·.1), params := ps, ty := A, lhs := lhs, rhs := rhs }, g2.rng)
+  -- a quarter of the cases also carry a conversion pair
+  let mutate (b : STerm) : List STerm := [.seq .unitLit b, .letIn "z9" none (.num 0) b] ++ shrinkT b
+  let ((conv, _), g3) := (do
+      if ← chance 25 then pure (← genConvPair fns (indsOf lib) mutate, ()) else pure (none, ())).run g2
+  ({ lib := lib, extra := extras.map (·.1), params := ps, ty := A, lhs := lhs, rhs := rhs, conv := conv }, g3.rng)
 
 end Ochr.Fuzz

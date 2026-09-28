@@ -62,8 +62,11 @@ def GVar.place (v : GVar) : STerm :=
 its scrutinee's). Accessing the place is an access to this variable. -/
 def GVar.proot (v : GVar) : String := if v.kind == .alias then v.root else v.name
 
+/-- Live, or (rarely) dead anyway: a use after a move or after the borrow ended is how
+C5- and D29-style bugs show, so the generator sometimes makes one on purpose. -/
 def usable (v : GVar) : Gen Bool := do
-  pure (!(← isDead v.name) && !(v.kind == .alias && (← isDead v.root)))
+  if !(← isDead v.name) && !(v.kind == .alias && (← isDead v.root)) then return true
+  chance 6
 
 /-- Usable places of content type `T`, parameters listed twice (they are abstract on
 the symbolic path, which is where closing off happens). -/
@@ -90,13 +93,7 @@ def readPlace? (Γ : Ctx) (T : GTy) : Gen (Option STerm) := do
 `&*x`, a move of a borrow variable `x`, or (rarely) a borrow of a sub-place `&(p).1`.
 `avoid` are roots already borrowed by the same call. Returns the term and its root. -/
 def borrowOf? (Γ : Ctx) (T : GTy) (avoid : List String) : Gen (Option (STerm × String)) := do
-  if Γ.inLam then
-    -- only owned places are in scope inside a λ
-    let ps := (← placesOf Γ T).filter fun v => v.kind != .bvar && !avoid.contains v.proot
-    if ps.isEmpty then return none
-    let v ← pick ps
-    touch Γ v.proot false
-    return some (.amp v.place, v.proot)
+  -- (inside a λ the context has no captured borrows already: `lamCtx`)
   let ps := (← placesOf Γ T).filter fun v => !avoid.contains v.proot
   if ps.isEmpty then return none
   let v ← pick ps
