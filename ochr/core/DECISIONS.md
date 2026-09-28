@@ -88,3 +88,25 @@ Supersedes D20's static [Proof] check. meta-model-v1 (R1, §1.5) proposes the si
 
 ## D27. Proof parameters are ⋆ at the generic call (deriver-e5 Q1); small clarifications
 E5 (a precondition proof about the current, mutated `*x` passed to `SubM`) derives under v1.3 with no new rule: in-place `AddM` and pure `Add` close off into the same sealed program, so a proof about `Add` of a snapshot is accepted where a proof about `*x` is required. One incompleteness: [Def] bound a proof parameter to an abstract σ_h while every other proof value is ⋆, so sealed programs embedding different proofs failed to compare. Fix: proof parameters are ⋆. Also: parameter types evaluated left to right and stored where [Split] refines them (Q4); a sealed program of sort Prop is a type (Q3); reading `p.1` needs a known `S` head (breaker-close A3/G2, deriver-e346-v1 N9). `False` is not needed: `Eq Nat Z (S Z)` is closed, irreducible and empty (Q2).
+
+## Round 3 → v1.5 (reports: breaker-fresh, reviewer-1, lean-checker v1.4 139/139)
+
+## D28. Erasure is decided per definition and per syntactic position, never from a normal form; universes are not cumulative
+breaker-fresh F1: with `U(n) : Type_0 := match n {Z => Prop | S _ => Prop}` and `W(x : &Nat, n) : U(n) := *x := S Z; V(n)`, the call `W(&c, n)` ran for real at the generic `n` (its type `⌈U(σ)⌉` is not recognisably a sort) but was erased at `n = Z` (its type is `Prop`), so `Lie(n) : Id Nat (let c = Z; W(&c, n); c) (S Z) := refl` gave `Lie(Z) : Eq Nat Z (S Z)`. This is exactly the fire triangle's "desynchronisation between effects performed in the term and in the type". Fix: a call is erased iff the callee's declared codomain, at its generic call, is a sort or has sort Prop (decided once at [Def]); other terms by syntactic position or declared sort. Non-cumulativity is load-bearing (with `Prop ≤ Type_0` a Type-valued family could return a proposition).
+
+## D29. Matching ends loans anywhere inside a neutral head; normalisation errors are type errors
+breaker-fresh F2: a hole inside a sealed program at the head of a matched place was not ended, [Split] generalised the sealed program away with the only occurrence of the hole, and an accepted program wrote through an ended borrow at runtime. The paper already said "inside its content"; RULES had narrowed it.
+
+## D30. A function value's normal form is the observation of its generic call
+breaker-fresh F3: comparing closures by result only made `λx.(*x := S Z)` and `λx.()` convertible, and transport gave `Eq Nat (S Z) Z`. One notion of "what a computation is" for [Def], `Id` and conversion.
+
+## D31. Without `by`, `f` is not in scope in its body; `f` is never in scope in its own signature
+breaker-fresh F4.
+
+## D32. Pattern variables are resolved to sub-places before captures and footprints
+breaker-fresh F5: `p := Z` in a stuck block was not seen as a write to the scrutinee, so the block captured `*x` by copy and `Clear(&c) : Eq Nat (S Z) (S (S Z))`.
+
+## D33. Type-level matches are type-checked like any other term
+reviewer-1: whether the arms of a stuck match inside a type were checked was unspecified (v1.3 exempted them); unchecked arms can fail after refinement and break naturality. Types are terms; typing a type splits and checks its arms. A match's result type must agree across arms after refinement, or be annotated.
+
+Common root of D28 and D32 (breaker-fresh): a statement is evaluated along two paths — through closing off at the generic call, and directly at each instance — and [Call-type] equates them. Any lossy or reclassifying step on the closing-off path is an inconsistency. The metatheory's "refinement commutes with closing off" must cover instantiation, stuck blocks, captures and the erasure decision.
