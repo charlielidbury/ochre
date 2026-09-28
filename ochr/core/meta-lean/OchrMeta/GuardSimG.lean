@@ -371,7 +371,7 @@ theorem assignTail_sim {θ : Nat → Val} {N N' : Nat} {F G : Frame} {Ω Ω' : E
   | ok s3 c =>
     rw [ha, Res.bind_ok] at h
     obtain ⟨rfl, hc⟩ := access_bf hF ha
-    obtain ⟨c', ha', hcc⟩ := access_sim (k' := k') hF hG hFG ha
+    obtain ⟨c', ha', hcc⟩ := gaccess_sim (k' := k') hF hG hFG ha
     obtain ⟨-, hc'⟩ := access_bf hG ha'
     rw [ha', Res.bind_ok]
     rw [if_neg (fun hh => hh.2 hv.1)] at h
@@ -379,7 +379,7 @@ theorem assignTail_sim {θ : Nat → Val} {N N' : Nat} {F G : Frame} {Ω Ω' : E
     split at h
     · cases h
     · rename_i s4 hs4
-      obtain ⟨F4, G4, rfl, hs4', hFG4⟩ := setPlace_sim (Ω' := Ω') (k' := k') hFG hvw hs4
+      obtain ⟨F4, G4, rfl, hs4', hFG4⟩ := gsetPlace_sim (Ω' := Ω') (k' := k') hFG hvw hs4
       obtain ⟨F4', he4, hF4⟩ := setPlace_bf hF hv hs4
       simp only [St.mk.injEq, List.cons.injEq] at he4; obtain ⟨⟨rfl, -⟩, -⟩ := he4
       obtain ⟨G4', he4', hG4⟩ := setPlace_bf hG hw hs4'
@@ -691,7 +691,7 @@ theorem sim_gexec {P : Prog} {f : String} {d : FunDef} {j : Nat} {E : Val} (hy :
       obtain ⟨F, Ω, hs, hF, hFG⟩ := hrel.st_eq
       rw [hs] at ha
       obtain ⟨rfl, hc₀⟩ := access_bf hF ha
-      obtain ⟨c', ha', hcc⟩ := access_sim (k' := k') hF hrel.conc hFG ha
+      obtain ⟨c', ha', hcc⟩ := gaccess_sim (k' := k') hF hrel.conc hFG ha
       simp only [ha', Res.bind_ok]
       rw [← hs, GSt.withSt_self] at hk1
       simp only at hk1

@@ -11,3 +11,4 @@ import OchrMeta.Mono
 import OchrMeta.Canon
 import OchrMeta.Close
 import OchrMeta.Tests.Basic
+import OchrMeta.Tests.Guard

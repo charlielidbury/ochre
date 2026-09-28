@@ -120,7 +120,7 @@ theorem VR.set {θ : Nat → Val} : ∀ {v w : Val} {π : List Proj} {new new' v
       exact ⟨w', by simp only [hw₁, Option.bind_some]; exact hw', h'⟩
     all_goals cases hs
 
-theorem access_sim {θ : Nat → Val} {N N' : Nat} {F G : Frame} {Ω Ω' : Env} {k k' : Nat} (hF : BFSt N F Ω)
+theorem gaccess_sim {θ : Nat → Val} {N N' : Nat} {F G : Frame} {Ω Ω' : Env} {k k' : Nat} (hF : BFSt N F Ω)
     (hG : BFSt N' G Ω') (hFG : FR θ F G) {deep : Bool} {x : Var} {π : List Proj} {s' : St} {c : Val}
     (h : access deep x π ⟨F :: Ω, k⟩ = .ok s' c) :
     ∃ c', access deep x π ⟨G :: Ω', k'⟩ = .ok ⟨G :: Ω', k'⟩ c' ∧ VR θ c c' := by
@@ -140,7 +140,7 @@ theorem access_sim {θ : Nat → Val} {N N' : Nat} {F G : Frame} {Ω Ω' : Env} 
       exact ⟨c', rfl, h'⟩
     all_goals cases h
 
-theorem setPlace_sim {θ : Nat → Val} {F G : Frame} {Ω Ω' : Env} {k k' : Nat} (hFG : FR θ F G)
+theorem gsetPlace_sim {θ : Nat → Val} {F G : Frame} {Ω Ω' : Env} {k k' : Nat} (hFG : FR θ F G)
     {x : Var} {π : List Proj} {v w : Val} (hvw : VR θ v w) {s' : St}
     (h : St.setPlace x π v ⟨F :: Ω, k⟩ = some s') :
     ∃ F' G', s' = ⟨F' :: Ω, k⟩ ∧ St.setPlace x π w ⟨G :: Ω', k'⟩ = some ⟨G' :: Ω', k'⟩ ∧ FR θ F' G' := by
@@ -359,7 +359,7 @@ theorem sim_exec {P : Prog} (hP : P.BF) (θ : Nat → Val) : ∀ n, SimEv θ (ex
       | ok s1 c =>
         rw [ha, Res.bind_ok] at h
         obtain ⟨rfl, hc⟩ := access_bf hF ha
-        obtain ⟨c', ha', hcc⟩ := access_sim (k' := k') hF hG hFG ha
+        obtain ⟨c', ha', hcc⟩ := gaccess_sim (k' := k') hF hG hFG ha
         obtain ⟨-, hc'⟩ := access_bf hG ha'
         rw [ha', Res.bind_ok]
         split at h
@@ -388,7 +388,7 @@ theorem sim_exec {P : Prog} (hP : P.BF) (θ : Nat → Val) : ∀ n, SimEv θ (ex
         | ok s3 c =>
           rw [ha, Res.bind_ok] at h
           obtain ⟨rfl, hc⟩ := access_bf hF2 ha
-          obtain ⟨c', ha', hcc⟩ := access_sim (k' := k') hF2 hG2 hFG2 ha
+          obtain ⟨c', ha', hcc⟩ := gaccess_sim (k' := k') hF2 hG2 hFG2 ha
           obtain ⟨-, hc'⟩ := access_bf hG2 ha'
           rw [ha', Res.bind_ok]
           rw [if_neg (fun hh => hh.2 hv1.1)] at h
@@ -396,7 +396,7 @@ theorem sim_exec {P : Prog} (hP : P.BF) (θ : Nat → Val) : ∀ n, SimEv θ (ex
           split at h
           · cases h
           · rename_i s4 hs4
-            obtain ⟨F4, G4, rfl, hs4', hFG4⟩ := setPlace_sim (Ω' := Ω') (k' := k') hFG2 hvw hs4
+            obtain ⟨F4, G4, rfl, hs4', hFG4⟩ := gsetPlace_sim (Ω' := Ω') (k' := k') hFG2 hvw hs4
             obtain ⟨F4', he4, hF4⟩ := setPlace_bf hF2 hv1 hs4
             simp only [St.mk.injEq, List.cons.injEq] at he4; obtain ⟨⟨rfl, -⟩, -⟩ := he4
             obtain ⟨G4', he4', hG4⟩ := setPlace_bf hG2 hw1 hs4'
@@ -526,7 +526,7 @@ theorem sim_exec {P : Prog} (hP : P.BF) (θ : Nat → Val) : ∀ n, SimEv θ (ex
       | ok s1 c =>
         rw [ha, Res.bind_ok] at h
         obtain ⟨rfl, hc⟩ := access_bf hF ha
-        obtain ⟨c', ha', hcc⟩ := access_sim (k' := k') hF hG hFG ha
+        obtain ⟨c', ha', hcc⟩ := gaccess_sim (k' := k') hF hG hFG ha
         rw [ha', Res.bind_ok]
         cases c with
         | zero =>

@@ -65,7 +65,7 @@ def Prog.BF (P : Prog) : Prop := ∀ f d, P.find f = some d → d.BF
 
 /-! ## No borrow, no live loan -/
 
-theorem Frame.holds_of_nb {F : Frame} (h : F.nb = 0) (l : Nat) : F.holds l = false := by
+theorem Frame.holds_of_nb_g {F : Frame} (h : F.nb = 0) (l : Nat) : F.holds l = false := by
   induction F with
   | nil => rfl
   | cons b F ih =>
@@ -81,7 +81,7 @@ theorem Env.holds_of_nb {Ω : Env} (h : Ω.nb = 0) (l : Nat) : Ω.holds l = fals
   | cons F Ω ih =>
     simp only [Env.nb] at h
     simp only [Env.holds, List.any_cons] at ih ⊢
-    rw [ih (by omega), Frame.holds_of_nb (by omega)]
+    rw [ih (by omega), Frame.holds_of_nb_g (by omega)]
     rfl
 
 theorem St.live_of_nb {s : St} (h : s.env.nb = 0) : s.live = fun _ => false := by
