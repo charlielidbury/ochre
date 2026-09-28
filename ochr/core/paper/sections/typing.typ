@@ -35,15 +35,26 @@ Types and proofs are erased at runtime. The machine mirrors this exactly: it eva
 
 This is one principle, not a restriction on proofs. `AddMZero`'s successor case borrows the field `p` to pass it to the induction hypothesis; the borrow happens on the private copy, and the real environment is untouched. Nothing in a program is marked pure, and any program may appear in a statement.
 
-== Why each condition is there
+== Why each condition is there <sec-why>
 
-Each side condition above was added in response to a concrete false proof or run-time error found while designing the calculus. We list them because together they delimit the design, and because each is a regression test for the implementation (@sec-impl).
+Each side condition was added in response to a concrete closed proof of false, or an accepted program that goes wrong, found while designing the calculus; each is a regression test in the implementation, and switching it off lets its counterexamples back in (@sec-impl). Most of them guard one invariant: a statement is evaluated once through closing off, at a definition's generic call, and again directly at each instance, and [Call-type] and [Split] equate the two, so every decision the two paths must agree on is made from syntax (@lem-stable).
 
-- *Π-types capture values.* If the codomain of a hypothesis `h : Π(_ : Unit). Id Nat x Z` were re-evaluated at each call, then `x := S x; h(())` would produce a proof of `Id Nat (S Z) Z` from `h`, which was proved when `x` was `Z`.
-- *Recursion on entry values.* A syntactic structural check accepts `f(x : &Nat) := *x := S *x; match *x { S p => f(&p) }`, whose recursive argument is the parameter's original value, and with it a proof of `Π(n : Nat). ⊥`. The recursive function must also never escape as a value, or the check can be bypassed through a higher-order call.
-- *Erased terms run on a private copy.* Proof irrelevance at a Π-type over a borrow identifies `λx. ⋆` with `λx. (*x := 7; ⋆)`; if calls to these could affect the caller, transport along that identification proves `⊥`. Stipulating only that proof _calls_ are skipped is not enough: a proof block that writes, closed off after a split and then refined, would be skipped, but run directly it would not, and a closed proof of `Id Nat (S Z) Z` results. Running every erased term on a private copy makes skipping a consequence rather than a stipulation, and makes it commute with refinement. For the same reason a type must be formed on a private copy: a type that writes would otherwise make the checker and the compiled program disagree.
-- *Erasure is decided from syntax.* Whether a term is erased is read from its syntactic position and from declared types, never from a normal form: a function, top-level or local, is classified by its codomain _term_, and a stuck block is erased exactly when the match it closes off would be. Otherwise a type family such as `U(n) := match n { Z => Prop | S _ => Prop }` makes a writing call `W(&c, n) : U(n)` run for real at the generic `n`, where `U(σ)` is stuck, but be erased at `n = Z`, where `U(Z)` is `Prop`, and a lemma proved generically as `S Z = S Z` reads `Z = S Z` at the instance. Universes are not cumulative for the same reason. Two subtler instances of the same failure, a local function whose codomain was evaluated with its captured values and a type-valued match erased only when closed off, were found while writing the formal definition (@sec-appendix).
-- *Functions are compared by what they do.* Two closures are convertible only if their generic calls have the same observation, effects included; comparing results alone identifies `λx. (*x := S Z)` with `λx. ()`, and transport between them proves `Eq Nat (S Z) Z`.
-- *Pattern variables are places.* A write through a pattern variable is a write to the matched place; a stuck block that captured the scrutinee by copy because the write went through `p` rather than `*x` would prove `Eq Nat (S Z) (S (S Z))`.
-- *All owners are observed.* A function returning a borrow into one of two arguments leaves its hole in both. A footprint that observed only one owner lets [Call-type] prove `Id Nat (S Z) Z`.
-- *Access is exclusive and closing off needs loan-free arguments.* Moving a borrow whose content still holds a live loan into a call, and closing that call off, copies the loan into a sealed program; after refinement the sealed program disagrees with running the call, and the compiled program writes through an ended borrow.
+#figure(kind: image, supplement: [Figure],
+  table(columns: (auto, 1fr), stroke: none, inset: (x: 4pt, y: 3pt), align: (left, left),
+    table.hline(stroke: 0.5pt),
+    [*Condition*], [*What goes wrong without it*],
+    table.hline(stroke: 0.4pt),
+    [Π-types capture values], [`h : Π(_ : Unit). Id Nat x Z` proved when `x` was `Z` is re-read after `x := S x`, proving `Id Nat (S Z) Z`.],
+    [Recursion on entry values; `f` only as a call head; no `f` without `by`], [`*x := S *x; match *x { S p => f(&p) }` recurses on the original value; passing `f` to a helper or calling it in a `by`-less body avoids the check; each proves `Eq Nat 0 1`.],
+    [Erased terms run on a private copy], [Proof irrelevance identifies `λx. ⋆` with `λx. (*x := 7; ⋆)`; skipping only proof _calls_ lets a closed-off proof block and the same block run inline disagree.],
+    [Erasure read from syntax, never from normal forms; universes not cumulative], [A call `W(&c, n) : U(n)` with `U(n) := match n {Z => Prop | …}` runs at the generic `n` but is erased at `n = Z`; the same for a local function whose codomain mentions captured values, and for a type-valued match erased only when closed off.],
+    [Functions compared by their observation], [Comparing results alone identifies `λx. (*x := S Z)` with `λx. ()`; comparing borrow-returning functions without writing through the result identifies `λ(x, y). x` with `λ(x, y). y`.],
+    [Pattern variables are places], [A stuck block that writes through `p` in `match *x { S p => p := Z }` captures `*x` by copy.],
+    [All owners observed], [A borrow returned into one of two arguments leaves its hole in both; observing one proves `Eq Nat 0 1`.],
+    [Exclusive access; loan-free closing off; matches end loans in neutral heads], [A live loan copied into a sealed program, or a hole generalised away by a split, lets an accepted program write through an ended borrow.],
+    [Generalisations are global; fresh names never reused], [A generalisation made while forming a type is lost with its private copy, and its name is reissued for a different computation.],
+    [Strict positivity], [`inductive Bad := Mk(f : Π(x : Bad). Empty)` proves `Eq Nat 0 1` through a proof that is never run.],
+    table.hline(stroke: 0.5pt),
+  ),
+  caption: [The side conditions of Ochr and the counterexamples that forced them.],
+) <fig-why>
