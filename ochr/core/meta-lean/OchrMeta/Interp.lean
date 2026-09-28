@@ -81,7 +81,6 @@ end OchrMeta
 namespace OchrMeta
 
 def Env.substAbs (a : Nat) (w : Val) (Ω : Env) : Env := Ω.mapVals (Val.substAbs a w)
-def Env.names (Ω : Env) : List Nat := Ω.flatten.flatMap fun b => b.2.names
 
 /-- Canonical renaming of loans, in order of first occurrence: `≈` is equality after `canon`. -/
 def Env.canonMap (Ω : Env) (extra : List Nat := []) : Nat → Nat :=

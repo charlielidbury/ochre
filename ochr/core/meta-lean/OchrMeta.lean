@@ -5,4 +5,5 @@ import OchrMeta.Measure
 import OchrMeta.Machine
 import OchrMeta.Interp
 import OchrMeta.Examples
+import OchrMeta.Frame
 import OchrMeta.Tests.Basic

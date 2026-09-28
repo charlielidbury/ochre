@@ -96,6 +96,8 @@ def loans : Env → List Nat
 def borrows : Env → List Nat
   | [] => []
   | F :: Ω => F.borrows ++ borrows Ω
+/-- All loan and borrow names occurring. -/
+def names (Ω : Env) : List Nat := Ω.flatten.flatMap fun b => b.2.names
 end Env
 
 namespace St

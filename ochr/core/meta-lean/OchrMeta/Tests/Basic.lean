@@ -86,4 +86,34 @@ def eraseBlock : Term :=
 #guard get (go [("a", nat 0), ("b", nat 0)] eraseBlock) "a" == some (nat 0)
 #guard get (go [("a", .abs 1), ("b", .abs 0)] eraseBlock) "a" == some (.abs 1)
 
+/-! ## `t5_nose_counterexample`: meta-model-v1 Theorem 5 "on the nose" is false
+
+`r := Pick(n, &a, &b); z := b` with `n ↦ σ`: symbolically, `b`'s content is a sealed program
+containing the hole `loan_k` of the returned borrow `r`, so reading `b` ends `r` ([Access]).
+Concretely at `n = 0`, `r` borrows `a`, `b` contains no loan, and `r` stays live.  The refined,
+normalised symbolic state has `r ↦ ⊥, a ↦ 1`; the concrete state has `r ↦ borrow_q 1, a ↦ loan_q`.
+They are not equal up to renaming of loans; they agree after resolution (ending `r`). -/
+namespace T5
+def prog : Term :=
+  .seq (.assign (V "r") (cl "Pick" [rd (V "n"), bw (V "a"), bw (V "b")])) (.assign (V "z") (rd (V "b")))
+def init (n : Val) : List (String × Val) := [("n", n), ("a", nat 1), ("b", nat 2), ("r", .unit), ("z", .unit)]
+def symb := go (init (.abs 0)) prog
+def conc := go (init (nat 0)) prog
+def refined : Option Env := match symb with
+  | .ok s _ => some ((s.env.substAbs 0 (nat 0)).norm P fuel)
+  | _ => none
+-- the symbolic run ended `r`; the concrete run did not
+#guard get symb "r" == some .moved
+#guard get conc "r" == some (.borrow 0 (nat 1)) && get conc "a" == some (.loan 0)
+#guard refined == some [[(.nm "n", nat 0), (.nm "a", nat 1), (.nm "b", nat 2), (.nm "r", .moved), (.nm "z", nat 2)]]
+-- so the refined symbolic state is not the concrete one up to loan renaming ...
+#guard match conc, refined with
+  | .ok s _, some Ω => Env.canon s.env != Env.canon Ω
+  | _, _ => false
+-- ... but they agree after resolution (ending every borrow)
+#guard match conc, refined with
+  | .ok s _, some Ω => ((endAll s).map (·.env)) == some Ω
+  | _, _ => false
+end T5
+
 end OchrMeta.Tests
