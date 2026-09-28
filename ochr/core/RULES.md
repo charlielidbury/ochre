@@ -1,6 +1,6 @@
-# Ochr core, rule set v1.3
+# Ochr core, rule set v1.4
 
-History: v1.3 (D26): P2 and P5 merge into one principle, *erased terms run on a private copy*, replacing v1.2's static [Proof] check (meta-model-v1 R1/§1.5); a call with a neutral head closes off at once; [Rec] covers calls inside nested functions; Π-types capture no borrows. v0 → `RULES-v0.md`. v1 after round 1 (DECISIONS D9–D19). v1.1: [Close] precondition, [Rec] head-only (breaker-close A1, A4). v1.2 after round 2 (D20–D24): proofs may not write outside themselves (P5 becomes a theorem), [Call-type] after arguments, arguments in temporaries, stuck blocks capture like closures, generalise-then-split, explicit `J` endpoints, declared decreasing parameter, all types formed on a private copy, wording fixes (deriver-e1-v1 G1–G10, deriver-e2-v1 H1–H9, breaker-close-v1 N1–N8).
+History: v1.4 (D27, from deriver-e5): proof parameters are bound to ⋆ at the generic call; parameter types are evaluated left to right and stored with their bindings; a neutral of sort Prop is a type; reading `p.1` needs a known `S` head. v1.3 (D26): P2 and P5 merge into one principle, *erased terms run on a private copy*, replacing v1.2's static [Proof] check (meta-model-v1 R1/§1.5); a call with a neutral head closes off at once; [Rec] covers calls inside nested functions; Π-types capture no borrows. v0 → `RULES-v0.md`. v1 after round 1 (DECISIONS D9–D19). v1.1: [Close] precondition, [Rec] head-only (breaker-close A1, A4). v1.2 after round 2 (D20–D24): proofs may not write outside themselves (P5 becomes a theorem), [Call-type] after arguments, arguments in temporaries, stuck blocks capture like closures, generalise-then-split, explicit `J` endpoints, declared decreasing parameter, all types formed on a private copy, wording fixes (deriver-e1-v1 G1–G10, deriver-e2-v1 H1–H9, breaker-close-v1 N1–N8).
 
 Universes: `Prop : Type_0 : Type_1 …`, never `Type : Type`. `Prop` has definitional proof irrelevance and is erased at runtime. The model (notes/meta-model.md) needs `propext`.
 
@@ -40,7 +40,7 @@ environment Ω  ::= a stack of frames of bindings  x : A ↦ v
 ```
 
 - `borrow_ℓ v`: a borrow; the borrowed content lives in the borrow (LLBC). `loan_ℓ`: the placeholder at the borrowed place. **A loan is a variable bound by its borrow**: it may occur anywhere inside a value, and more than once inside sealed programs.
-- `σ`: an abstract value (Lean's fvar). `⌈t⌉`: a *sealed program*, a closed program whose run is stuck. `⋆`: the (irrelevant) value of a proof, e.g. of `refl`.
+- `σ`: an abstract value (Lean's fvar). `⌈t⌉`: a *sealed program*, a closed program whose run is stuck; a sealed program of sort `Prop` (e.g. a stuck call of a Prop-valued function such as `Le(σ, σ')`) is a type. `⋆`: the (irrelevant) value of a proof, e.g. of `refl`.
 - `⊥`: a place that has been moved out of.
 - A value is *borrow-free* if it contains no `borrow_ℓ` and no live `loan_ℓ` (inert loans, see [Seal], count as borrow-free).
 
@@ -48,7 +48,7 @@ environment Ω  ::= a stack of frames of bindings  x : A ↦ v
 
 - **[End ℓ]** Replace `borrow_ℓ v` by `⊥` and substitute `v` for every occurrence of `loan_ℓ`. No side condition: loans inside `v` travel with it.
 - **[Access]** Before reading, borrowing, assigning or matching a place `p`: end every borrow whose loan occurs on the path to `p` or as the head of `content(p)`; before reading, borrowing or assigning `p`, also end every borrow whose loan occurs anywhere inside `content(p)`. This is the borrow checker: an ended borrower becomes `⊥`, and any later use of it is an error.
-- **[Read]** `p`: content borrow-free → copy; content a borrow → move (`p ↦ ⊥`). Reading `⊥` is an error.
+- **[Read]** `p`: content borrow-free → copy; content a borrow → move (`p ↦ ⊥`). Reading `⊥` is an error, and so is reading `p.1` when the head of `content(p)` is not `S` (e.g. after the parent was reassigned).
 - **[Borrow]** `&p` ⇓ `borrow_ℓ v`, with `p ↦ loan_ℓ`, ℓ fresh.
 - **[Assign]** `p := t`: evaluate `t` to `v`; drop the old content of `p` ([Drop]); `p ↦ v`; result `()`.
 - **[Let]** `let x = t; u`: evaluate `t` to `v`, bind `x ↦ v`, run `u`, [Drop] `x`.
@@ -86,7 +86,7 @@ environment Ω  ::= a stack of frames of bindings  x : A ↦ v
 Typing is the machine on symbolic inputs, plus case splitting. The typing rules for the basic forms (read, borrow, assign, constructors, pairs, `refl`, `J`, `Eq`, `Id`, Π, universes) are the evident ones and are listed in the paper; the rules below are the non-standard ones.
 
 - **[Call-type]** At the point where the arguments of `f(ā)` have been evaluated (the point [Close] restores to), with `f : Π(x̄:Ā). B`: push a frame binding each `xᵢ` to `aᵢ`'s value (a borrow argument moved into `xᵢ`), evaluate `B` there on a private copy, and pop. That is the call's type. Each `aᵢ` must have type `Aᵢ`, evaluated with the earlier parameters bound. The free variables of `B` other than `x̄` were captured when the Π-type was formed (P2).
-- **[Def]** `fix f (x̄:Ā):B … := b` is checked at its *generic call*: an environment with a fresh owned place `cᵢ ↦ σᵢ` for each borrow parameter `xᵢ : &Tᵢ`, and the call `f(ā)` with `aᵢ = &cᵢ` or `σᵢ`. The goal is the [Call-type] of that call. The body runs in the pushed frame, which is then popped with [Drop]; the result's type must convert to the goal (as refined by splits).
+- **[Def]** `fix f (x̄:Ā):B … := b` is checked at its *generic call*: an environment with a fresh owned place `cᵢ ↦ σᵢ` for each borrow parameter `xᵢ : &Tᵢ`, and the call `f(ā)` with `aᵢ = &cᵢ` for borrow parameters, `aᵢ = ⋆` for parameters whose type is a proposition (proof irrelevance: every proof value is ⋆, so sealed programs embedding proofs compare equal), and `aᵢ = σᵢ` otherwise. Parameter types are evaluated left to right with the earlier parameters bound, and stored with their bindings, where [Split] refines them. The goal is the [Call-type] of that call. The body runs in the pushed frame, which is then popped with [Drop]; the result's type must convert to the goal (as refined by splits).
 - **[Split]** When the checked program matches on a place whose content head is an abstract `σ`: check each arm with the refinement `σ := Z` (resp. `S σ'`, σ' fresh) applied to Ω, the goal and all stored types. If the head is a neutral that is not an abstract value (a sealed program), first generalise it: replace every occurrence of it in Ω, the goal and all stored types by a fresh `σ`, then split. If the match is not in tail position (trailing drops do not count), the rest of the program is checked once, from the state in which the match is closed off as a stuck block (§3).
 - **[Rec]** In the body of `fix f … by xⱼ`, including inside nested functions and block arms, `f` occurs only as the head of a call, and every recursive call passes, in position `j`, a value (or a borrow whose content is a value) that is a *strict subterm of `xⱼ`'s entry value* `σⱼ`, as refined so far.
 - **Errors (the borrow checker):** reading `⊥`, a live loan in a dropped owned value, an argument not of the parameter's type.
@@ -107,5 +107,13 @@ TailM(x : &Nat) : &Nat by x := match *x { Z => x | S p => TailM(&p) }
 AddM'(x : &Nat, y : Nat) : Unit := let t = TailM(x); *t := y
 AddMEq(x : &Nat, y : Nat) : Id Unit (AddM(x, y)) (AddM'(x, y)) by x := match *x { Z => refl | S p => AddMEq(&p, y) }
 AddMEqOwned(x : Nat) : Id Unit (AddM(&x, 0)) (AddM'(&x, 0)) := AddMEq(&x, 0)
+```
+E5 (dependent types through mutation; notes/deriver-e5.md):
+```
+Le(a : Nat, b : Nat) : Prop by a := match a { Z => ⊤ | S a' => match b { Z => Eq Nat Z (S Z) | S b' => Le(a', b') } }
+LeAdd(n : Nat, m : Nat) : Le(n, Add(n, m)) by n := match n { Z => refl | S n' => LeAdd(n', m) }
+SubM(x : &Nat, y : Nat, h : Le(y, *x)) : Unit by y := match y { Z => () | S q => match *x { Z => () | S p => *x := p; SubM(x, q, h) } }
+AddSub(x : &Nat, y : Nat) : Unit := let old = *x; AddM(&*x, y); SubM(x, old, LeAdd(old, y))
+AddSubId(x : &Nat, y : Nat) : Id Unit (AddSub(x, y)) (*x := y) by x := match *x { Z => refl | S p => let c = p; AddSubId(&c, y) }
 ```
 Plus E3 (`AddToOne`, now accepted), E4 (`Twice`, `TwiceM`, `TwiceMZero`), E6 (must be rejected), and the regression attacks in `notes/`.

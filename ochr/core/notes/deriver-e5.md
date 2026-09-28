@@ -202,3 +202,177 @@ nf K(S σ', w) = K(σ', w)                                         // K3
       ⟨c₀ ↦ ⌈let c₁ = σp; SubM(&c₁, σq, σh); c₁⌉ ‖ x ↦ ⊥, …, ()⟩   // [Close] Unit row; loan₀ := the sealed program (it embeds σh, Q1)
       Unit ✓;  pop: x is ⊥, y, h owned ✓
 ```
+
+## E5.4 AddSub (a proof about the snapshot, accepted about the mutated state)
+
+```
+⊢ AddSub : Π(x : &Nat, y : Nat). Unit                              // [Def]; non-recursive
+  generic caller c₀ ↦ σ; call AddSub(&c₀, σy); goal Unit
+  Ω₀ := c₀ ↦ loan₀ ‖ x ↦ borrow₀ σ, y ↦ σy
+  ⟨Ω₀, let old = *x; AddM(&*x, y); SubM(x, old, LeAdd(old, y))⟩
+  ⟨c₀ ↦ loan₀ ‖ x ↦ borrow₀ σ, y ↦ σy, old ↦ σ, AddM(&*x, y); …⟩  // [Let] [Read] *x through the borrow: copy σ (the snapshot)
+  ⟨c₀ ↦ loan₀ ‖ x ↦ borrow₀ loan₁, …, t₁ ↦ borrow₁ σ, AddM(t₁, σy); …⟩   // [Borrow] &*x, ℓ = 1; [Read] y; call point
+  type: Unit; args &Nat, Nat ✓                                    // [Call-type]
+  ⟨… ‖ x₁ ↦ borrow₁ σ, y₁ ↦ σy, match *x₁ {…}⟩                     // [Call] push (codomain Unit: runs)
+  stuck                                                           // [Match] σ
+  ⟨c₀ ↦ loan₀ ‖ x ↦ borrow₀ N(σ,σy), y ↦ σy, old ↦ σ, (); SubM(…)⟩ // [Close] L = let c₁ = σ, C = AddM(&c₁, σy); Unit row; loan₁ := N(σ,σy)
+                                                                  // *x has been MUTATED: it now holds a sealed program on symbolic input
+  SubM(x, old, LeAdd(old, y)):
+    ⟨c₀ ↦ loan₀ ‖ x ↦ ⊥, t₁ ↦ borrow₀ N(σ,σy), …⟩                  // [Read] x: a borrow, moved into t₁
+    t₂ ↦ σ                                                        // [Read] old copy
+    LeAdd(old, y): a proof, run and typed on a private copy; t₃ ↦ ⋆  // P2, [Call]
+      its type: Le(n̂, Add(n̂, m̂)) at … ‖ n̂ ↦ σ, m̂ ↦ σy               // [Call-type] (as E5.2's G₀, with σ, σy)
+        Add(σ, σy) ⇓ N(σ, σy)                                     // the PURE Add on the snapshot: [Close] in Add's local x₁
+        Le(σ, N(σ,σy)) ⇓ Λ(σ, N(σ,σy))                            // Le3
+    call point: SubM(t₁, σ, ⋆)
+    [Call-type] frame x̂ ↦ borrow₀ N(σ,σy), ŷ ↦ σ, ĥ ↦ ⋆:
+      A₁ = &Nat ✓   A₂ = Nat ✓
+      A₃ = Le(ŷ, *x̂) ⇓ Le(σ, N(σ,σy)) ⇓ Λ(σ, N(σ,σy))            // [Read] *x̂ copies the CURRENT content N(σ,σy); Le3
+      argument 3 : Λ(σ, N(σ,σy)) ≡ A₃ ✓                            // conversion 1: the pure Add on the snapshot = the in-place AddM on *x
+      type of the call: Unit
+    ⟨… ‖ x₂ ↦ borrow₀ N(σ,σy), y₂ ↦ σ, h₂ ↦ ⋆, match y₂ {…}⟩        // [Call] push
+    stuck                                                         // [Match] σ
+    ⟨c₀ ↦ K(σ, σy) ‖ x ↦ ⊥, …, ()⟩                                  // [Close] L = let c₁ = N(σ,σy), C = SubM(&c₁, σ, ⋆); Unit row; loan₀ := K(σ,σy)
+  Unit ✓;  pop: x is ⊥; y, old owned, loan-free ✓
+```
+
+Both sides of conversion 1 are literally `⌈let c₁ = σ; AddM(&c₁, σy); c₁⌉`. On the left, [Close] ran on `Add`'s local `x₁ ↦ σ`, borrowed as `&x₁`. On the right, it ran on `AddSub`'s reborrow `&*x` of the caller's place. [Close] writes both as the same canonical program because it abstracts the borrowed place into a fresh owned `c₁`.
+
+## E5.5 AddSubId (the theorem)
+
+```
+⊢ AddSubId : Π(x : &Nat, y : Nat). Id Unit (AddSub(x, y)) (*x := y)   // [Def]
+  generic caller c₀ ↦ σ; call point c₀ ↦ loan₀, x̂ ↦ borrow₀ σ, ŷ ↦ σy
+  G₀:  W(AddSub(x̂, ŷ), *x̂ := ŷ) = owners(0) = {c₀}                  // x̂ is borrow-typed, and *x̂ is left of :=; loan₀ occurs in the owned c₀
+    ⟦AddSub(x̂, ŷ)⟧ = ((), K(σ, σy))                                // [Read] x̂ moves; [Call] AddSub runs exactly as in E5.4 with c₀ the owner; nothing left to end
+    ⟦*x̂ := ŷ⟧ = ((), σy)                                           // [Assign] x̂ ↦ borrow₀ σy; end every borrow: [End 0], c₀ ↦ σy
+    G₀ = Eq (Unit × Nat) ((), K(σ,σy)) ((), σy) ≡ Eq Nat K(σ,σy) σy // [Eq ×]; [Eq ≡⊤] on () ≡ (); [⊤ ∧]; K1: K(σ,σy) is normal, so stuck
+  Ω₀ := c₀ ↦ loan₀ ‖ x ↦ borrow₀ σ, y ↦ σy;  entry value of x for [Rec]: σ
+  match *x                                                         // [Split] head σ
+  arm Z (σ := Z):
+    G_Z = Eq Nat K(Z, σy) σy = Eq Nat σy σy ≡ ⊤                     // K2; [Eq ≡⊤]
+    refl : ⊤ ✓;  pop: [End 0], c₀ ↦ Z
+  arm S (σ := S σ'), p := (*x).1:
+    G_S = Eq Nat K(S σ', σy) σy = Eq Nat K(σ', σy) σy               // K3
+    ⟨c₀ ↦ loan₀ ‖ x ↦ borrow₀ (S σ'), y ↦ σy, c ↦ σ', AddSubId(&c, y)⟩   // [Let] c: [Read] p copies σ'
+    AddSubId(&c, y): a proof, typed on a private copy, value ⋆, real environment unchanged   // P2
+      private copy: ⟨… c ↦ loan₂, t₁ ↦ borrow₂ σ', …⟩                // [Borrow] &c; [Read] y; call point
+      [Rec] by x: the argument's content σ' is a strict subterm of the entry value σ = S σ' ✓
+      [Call-type] frame x̂ ↦ borrow₂ σ', ŷ ↦ σy:
+        W = owners(2) = {c}                                         // loan₂ occurs in the owned local c
+        ⟦AddSub(x̂, ŷ)⟧ = ((), K(σ', σy))                            // as E5.4 with σ' and owner c: c ↦ K(σ',σy)
+        ⟦*x̂ := ŷ⟧ = ((), σy)                                        // c ↦ σy
+        IH = Eq Nat K(σ', σy) σy                                   // [Eq ×], [Eq ≡⊤], [⊤ ∧]
+    IH ≡ G_S ✓                                                     // identical, including the embedded ⋆ and the fixed name c₁
+    ⟨c₀ ↦ loan₀ ‖ x ↦ borrow₀ (S σ'), y ↦ σy, ⋆⟩                     // [Let] [Drop] c: σ', no loans
+    pop: [End 0], c₀ ↦ S σ'
+```
+
+K3 is where the program's behaviour turns into the induction. Refining `σ := S σ'` re-runs the sealed `K`, whose head call now takes one step (SubM peels the `S` that AddM left on top) and closes off into `K(σ', σy)`, which is exactly the IH's program on the copy.
+
+## E5.6 Rejections (the requirement really is about the current state)
+
+**Stale proof.** `AddSubBad(x, y) := let old = *x; AddM(&*x, y); *x := Z; SubM(x, old, LeAdd(old, y))`:
+```
+after AddM: x ↦ borrow₀ N(σ,σy); after *x := Z: x ↦ borrow₀ Z          // as E5.4; then [Assign]
+SubM's call point: x̂ ↦ borrow₀ Z, ŷ ↦ σ, ĥ ↦ ⋆
+  A₃ = Le(σ, Z) ⇓ Λ(σ, Z)                                                // Le3: stuck on a = σ
+  argument 3 : Λ(σ, N(σ,σy))                                             // unchanged: formed about the snapshot
+  Λ(σ, N(σ,σy)) ≢ Λ(σ, Z)  →  "an argument not of the parameter's type"   // rejected (right: old ≤ 0 is false for old > 0)
+```
+**Wrong subtrahend.** `SubM(x, S old, LeAdd(old, y))`: `A₃ = Le(S σ, N(σ,σy)) ⇓ Λ(S σ, N(σ,σy))` (Le3': `b` is a sealed program), which is not `Λ(σ, N(σ,σy))`. Rejected.
+
+**Reborrow IH (Q5).** `AddSubId`'s S arm written `AddSubId(&p, y)`:
+```
+call point (private copy): c₀ ↦ loan₀ ‖ x ↦ borrow₀ (S loan₁), y ↦ σy ‖ x̂ ↦ borrow₁ σ', ŷ ↦ σy
+W = owners(1) = owners(0) = {c₀}                                          // loan₁ sits inside x's borrow content
+⟦AddSub(x̂, ŷ)⟧: loan₁ := K(σ', σy); end borrows: c₀ ↦ S K(σ', σy)        // as E5.4 with σ'
+⟦*x̂ := ŷ⟧: x̂ ↦ borrow₁ σy; end borrows: c₀ ↦ S σy
+IH = Eq Nat (S K(σ',σy)) (S σy)  ≢  G_S = Eq Nat K(σ',σy) σy               // no injectivity rule since D16: rejected
+```
+The borrow structure supplies the head `S` on both sides of the IH. That is what made AddMZero bare recursion, and here it is unwanted, because AddSub on `S σ'` is not `S` of AddSub on `σ'`: SubM peels the head `S`. Copying the tail into a fresh owner `c` gives the IH without the context. Both IHs are available and neither needs a rule; the programmer picks the one that matches the goal.
+
+## E5.7 The Q1 counterexample
+
+```
+LeId(a : Nat, b : Nat, h : Le(a, b)) : Le(a, b) := h                         // [Def]: goal Λ(σa,σb); h's stored type Λ(σa,σb) ✓
+T(x : &Nat, y : Nat, h : Le(y, *x)) : Id Unit (SubM(x, y, h)) (let h2 = LeId(y, *x, h); SubM(x, y, h2)) := refl
+
+⊢ T                                                                         // [Def], current rule: ĥ ↦ σh
+  call point: c₀ ↦ loan₀ ‖ x̂ ↦ borrow₀ σ, ŷ ↦ σy, ĥ ↦ σh;  W = owners(0) = {c₀}
+  ⟦SubM(x̂, ŷ, ĥ)⟧: args borrow₀ σ, σy, σh; [Match] σy stuck; [Close] → c₀ ↦ ⌈let c₁ = σ; SubM(&c₁, σy, σh); c₁⌉
+  ⟦let h2 = LeId(ŷ, *x̂, ĥ); SubM(x̂, ŷ, h2)⟧: LeId(…) is a proof, h2 ↦ ⋆; then as before → c₀ ↦ ⌈let c₁ = σ; SubM(&c₁, σy, ⋆); c₁⌉
+  goal ≡ Eq Nat ⌈…σh…⌉ ⌈…⋆…⌉: the sides differ only in the embedded proof, so no rule fires; stuck, not ⊤
+  refl : ⊤ is rejected
+```
+In the model both sides are the same function of `σ, σy` (the proof argument is erased), so the statement is true, and by definitional proof irrelevance it should hold by `refl`. With the fix (`ĥ ↦ ⋆`) both sealed programs are `⌈let c₁ = σ; SubM(&c₁, σy, ⋆); c₁⌉` and `refl` checks. I don't see an alternative proof under the current rule: any recursion re-closes the two SubM calls with `σh` and `⋆` respectively. So this is a completeness failure and a gap between the rules and their stated proof irrelevance, not an unsoundness. The fix makes `⋆` the only proof value anywhere, so sealed programs never differ by a proof.
+
+## E5.8 Q2: `False` and ex falso, without new machinery
+
+```
+ExFalso(G : Prop, h : Eq Nat Z (S Z)) : G := J(Nat, Z, S Z, fix P (n : Nat) : Prop := match n { Z => ⊤ | S m => G }, h, refl)
+
+⊢ ExFalso                                                                   // [Def]: G : Prop is a TYPE parameter (σG); h's type has sort Prop, so it is a proof parameter (⋆ under Q1)
+  goal: σG                                                                  // [Call-type]
+  P := closure of fix P (n : Nat) : Prop := …, capturing G = σG               // P2: a closure over a borrow-free value; its own [Def] splits n: ⊤ : Prop, σG : Prop ✓
+  J(Nat, Z, S Z, P, h, refl):                                               // §4: h : Eq A a b and t : P(a) give P(b)
+    h : Eq Nat Z (S Z) ✓                                                    // exactly the declared endpoints
+    P(Z) ⇓ ⊤ and refl : ⊤ ✓                                                 // [Call] P (codomain Prop is a sort: runs); [Match] Z arm
+    P(S Z) ⇓ σG ≡ goal ✓                                                    // [Match] S arm
+```
+So the empty proposition and its elimination into Prop come for free from `Eq`, the large elimination `Le` already uses, and J. Elimination into a `Type` would need a `Type`-valued motive, and §4 does not say whether J allows one or what J computes to when `h` is `⋆`. E5 never needs it: the core's `Type`-sorted types (`Nat`, `Unit`, pairs, Π over them, `&T` given a borrow in scope) are all inhabited, so a dead arm can return a default value, as SubM's does.
+
+## E5.9 Q6: a proof argument that reads the state an earlier argument borrowed
+
+```
+SubM(x, old, P(*x))                                                         // x moved first
+  ⟨…, x ↦ ⊥, t₁ ↦ borrow₀ v, …⟩                                             // [Read] x moves
+  P(*x) on the private copy: [Access] *x: the path goes through x ↦ ⊥  →  reading ⊥: error
+SubM(&*x, old, P(*x))                                                       // reborrow instead
+  ⟨…, x ↦ borrow₀ loan_k, t₁ ↦ borrow_k v, …⟩                               // [Borrow] &*x
+  P(*x) on the private copy: [Access] *x: loan_k is the head of content(*x): [End k] IN THE COPY; *x = v; P(v) typed
+  the real environment still has t₁ ↦ borrow_k v                           // P2: the copy is discarded
+  [Call-type]: x̂ ↦ borrow_k v, so A₃ = Le(ŷ, *x̂) reads v, the value P's proof was about ✓
+```
+A proof argument may thus mention the state that an earlier argument reserved, much like Rust's two-phase borrows (`v.push(v.len())`). This is a consequence of P2, not a new rule. It deserves a sentence in the paper, and the error message for the moved form should suggest the reborrow.
+
+## Findings in detail
+
+Format: (a) where in RULES.md, (b) what I assumed, (c) the simplest fix, (d) the decision it bears on.
+
+**Q1. Proof parameters must be `⋆`, not `σ`.**
+(a) §5 [Def] "the call `f(ā)` with `aᵢ = &cᵢ` or `σᵢ`"; §2 "`⋆`: the (irrelevant) value of a proof"; the preamble's "`Prop` has definitional proof irrelevance".
+(b) Read literally, a parameter whose type is a proposition gets a fresh `σ` like any other. Proof calls return `⋆` (§3 [Call]), and [Close] copies non-borrow arguments into the sealed program (`aᵢ = wᵢ`), so sealed programs carry proof values.
+(c) §E5.7: two runs that differ only in the proof they pass (`σh` vs `⋆`) close off into different sealed programs, and `refl` is rejected for a true, proof-irrelevant equation. Fix, one clause in [Def]: "`aᵢ = ⋆` when `Aᵢ` is a proposition". Then `⋆` is the only proof value, and sealed programs can never differ by a proof. (Alternatively, have nf replace every proof-typed value by `⋆`. That needs types in nf, so it is worse.)
+(d) Completes D26 (the erased terms principle): an erased value should be `⋆` everywhere, including at the generic call.
+
+**Q2. `False` is not needed as a primitive; J's motive sort is unstated.**
+(a) The lead's brief ("the core has no `False`; add `False : Prop`"); §4 `J(A, a, b, P, h, t) : P(b)`.
+(b) Used `Eq Nat Z (S Z)`: closed, irreducible (`Z ≢ S Z`, and D16 removed disjointness), empty in the model. Ex falso into Prop is §E5.8.
+(c) Add nothing. If a name is wanted, `False` is an abbreviation. State that J's motive is Prop-valued (`P : Π(y:A). Prop`), which is all E5 and ex falso need. A `Type`-valued motive would force J to compute on an erased `h`, a design question E5 does not raise.
+(d) D16: dropping disjointness made `Eq Nat Z (S Z)` an irreducible empty proposition, which is exactly what `False` needs to be. So D16 is not undermined.
+
+**Q3. Neutral types.**
+(a) §2 values "`types`", neutrals "`σ | ⌈t⌉`"; §5 typing of variables.
+(b) `h : Λ(σy, σx)` where `Λ(σy, σx) = ⌈Le(σy, σx)⌉` is a sealed program of sort Prop. Assumed a neutral whose type is a sort is a type, as `Nat.le n m` is a type in Lean when `n` is a variable.
+(c) One sentence in §2: "a neutral whose type is a sort is a type".
+(d) None; D4's sealed programs simply reach types for the first time here.
+
+**Q4. [Def]'s parameter types.**
+(a) §5 [Def]; §5 [Call-type] "each `aᵢ` must have type `Aᵢ`, evaluated with the earlier parameters bound"; §5 [Split] "applied to Ω, the goal and all stored types".
+(b) At the generic call, each parameter's type is evaluated left to right with the earlier parameters bound (`h : Le(y, *x)` reads `*x` through `x ↦ borrow₀ σx`) and stored with the binding in the pushed frame. [Split] then refines it: SubM's `h : Λ(σy, σx)` becomes `⊤`, `Λ(S σq, σx)`, `False` or `Λ(σq, σp)` depending on the arm. SubM's correctness depends on this.
+(c) One sentence in [Def]: "the parameter types are evaluated as in [Call-type] and stored with the bindings".
+(d) None.
+
+**Q5 (data for D16/D25).** When the program's effect on `S σ'` is not `S` of its effect on `σ'` (SubM peels the head), the reborrow IH carries the wrong context. A copy (`let c = p; …(&c)`) gives the context-free IH. No injectivity is needed either way. D25's point, that the borrow structure supplies the congruence, has a converse: copying withholds it. Both are one line of source.
+
+**Q6 (ergonomics).** §E5.9. Nothing to change in the rules; the paper and the error messages should mention it.
+
+**Q7 (positive, for the simplifier).** E5 adds no rule. The pieces it relies on are:
+- `fix` with codomain `Prop`;
+- [Close]'s borrow-free row producing a sealed type;
+- [Seal] re-normalising a sealed type on refinement, including a stored hypothesis type;
+- [Call-type] reading `*x̂` through a moved borrow on a private copy;
+- P2 skipping proof calls.
+
+Everything E5 needs was already there for E1/E2, which is evidence that v1.3's rule set is closed under this kind of example. The one fix (Q1) removes a special case (a non-`⋆` proof value) rather than adding one.
