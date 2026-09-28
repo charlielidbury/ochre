@@ -79,6 +79,14 @@ structure Config where
   unboundWithoutBy : Bool := true -- v1.5 D31: without `by`, f is not in scope in its body
   patternWritesVisible : Bool := true -- v1.5 D32: writes through pattern variables are writes to the scrutinee
   genConsistent : Bool := true   -- finding G1: a generalised neutral stays generalised when normalisation re-derives it
+  classBySyntax : Bool := true   -- v1.7 D35: a function's class is read from its codomain term, never evaluated
+  blockRule : Nat := 2           -- v1.7 D35, a stuck block is erased: 2 = when every arm is a proof (its match would
+                                 -- be, finding P2); 1 = when its computed type has sort Prop; 0 = v1.6, by the
+                                 -- call rule on its computed codomain (a sort: erased as returning types)
+  seqByProof : Bool := true      -- v1.7 D35: a let, sequence or match is erased iff it is a proof (its tail is);
+                                 -- v1.6: iff its tail is erased, so also when the tail returns types
+  rowByDecl : Bool := true       -- v1.7 D35: [Close]'s row is read from the declared codomain
+  proofLeaves : Bool := true     -- finding P1: a place, constant or λ holding a proof is erased (so a proof-typed tail is)
   trace : Bool := false          -- record goals, splits and call types (for inspection)
 deriving Inhabited, Repr
 
@@ -97,6 +105,7 @@ structure MState where
   fuel : Nat := 2000000
   cfg : Config := {}
   lastErased : Bool := false          -- set by `eval`: was the term just evaluated erased (D28)?
+  lastProof : Bool := false           -- ... and is it a proof (its declared type has sort Prop, D35)?
   classCache : List (Value × Nat) := []   -- erasure class of function types (D28), a pure cache
   convStack : List (Value × Value) := []  -- function pairs being compared observationally (D30)
   neutrals : List (Value × Nat) := []     -- [Split] generalisations: sealed program ↦ its σ (finding G1)
@@ -147,6 +156,14 @@ def freshAbs (ty : Value) : M Nat := do
   let s ← get
   set { s with nextAbs := s.nextAbs + 1, absTy := s.absTy.push ty }
   pure s.nextAbs
+
+/-- The erasure flags of the term just evaluated (`lastErased`, `lastProof`). -/
+def getFlags : M (Bool × Bool) := do
+  let s ← get
+  pure (s.lastErased, s.lastProof)
+
+def setFlags (f : Bool × Bool) : M Unit :=
+  modify fun s => { s with lastErased := f.1, lastProof := f.2 }
 
 def absType (σ : Nat) : M Value := do
   match (← get).absTy[σ]? with

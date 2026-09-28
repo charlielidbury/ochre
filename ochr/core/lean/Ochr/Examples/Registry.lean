@@ -1,6 +1,7 @@
 import Ochr.Examples.Units
 import Ochr.Examples.E5
 import Ochr.Examples.V15
+import Ochr.Examples.V17
 import Ochr.Examples.Inductives
 import Ochr.Examples.Probes
 
@@ -11,7 +12,7 @@ open Ochr Ochr.Test Ochr.Surface
 namespace Ochr.Registry
 
 def programs : List (String × Program) :=
-  [("E1", E1), ("E2", E2), ("E3", E3), ("E4", E4), ("E5", E5), ("E6", E6), ("Attacks", Attacks), ("More", More), ("Probes", Probes), ("V15", V15), ("Inductives", Inductives),
+  [("E1", E1), ("E2", E2), ("E3", E3), ("E4", E4), ("E5", E5), ("E6", E6), ("Attacks", Attacks), ("More", More), ("Probes", Probes), ("V15", V15), ("V17", V17), ("Inductives", Inductives),
    ("D18", Ochr.Units.D18)]
 
 def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
@@ -45,12 +46,19 @@ def switches : List (String × Config) :=
    ("D30 (v1.5): closures compared by generic-call observation (vs result only)", { closureConv := 2 }),
    ("D31 (v1.5): without `by`, f is not in scope", { unboundWithoutBy := false }),
    ("D32 (v1.5): writes through pattern variables are writes to the scrutinee", { patternWritesVisible := false }),
-   ("G1 (finding): a generalised neutral stays generalised under normalisation", { genConsistent := false })]
+   ("G1 (finding): a generalised neutral stays generalised under normalisation", { genConsistent := false }),
+   ("D35 (v1.7): a function's class is read from its codomain term", { classBySyntax := false }),
+   ("D35 (v1.7): a stuck block is erased exactly when its match is, not by the call rule", { blockRule := 0 }),
+   ("P2 (finding): ... i.e. when every arm is a proof, not when its computed type has sort Prop", { blockRule := 1 }),
+   ("D35 (v1.7): a let, sequence or match is erased iff it is a proof", { seqByProof := false }),
+   ("D35 (v1.7): [Close]'s row is read from the declared codomain", { rowByDecl := false }),
+   ("P1 (finding): a place, constant or λ holding a proof is erased", { proofLeaves := false }),
+   ("P1 together with the computed-type block rule of P2", { blockRule := 1, proofLeaves := false })]
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 185
+def Ochr.Registry.expectedTotal : Nat := 205
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
@@ -67,7 +75,7 @@ representation of proofs, so its row would not isolate one rule.) -/
 open Ochr.Registry in
 #guard flips { eraseOnCopy := false } ==
   ["E5.TwoPhase:rejected", "E6.LemmaMoves:rejected", "Attacks.N1Closed:accepted", "Attacks.QBoom:accepted",
-   "Probes.EffArg:accepted", "Probes.EffArgErased:rejected", "Probes.TypeErased:rejected"]
+   "Probes.EffArg:accepted", "Probes.EffArgErased:rejected", "Probes.TypeErased:rejected", "V17.BoomP:accepted"]
 open Ochr.Registry in
 #guard flips { multiOwner := false } ==
   ["D18.BadD18:accepted", "D18.ClosedD18:accepted", "D18.GR:accepted", "D18.BadR:accepted"]
@@ -92,7 +100,9 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard flips { recNested := false } == ["Attacks.KnotL:accepted", "Attacks.KnotLBoom:accepted"]
 open Ochr.Registry in
-#guard flips { erasureByDecl := false } == ["V15.Boom:accepted", "V15.MainW0:rejected"]
+#guard flips { erasureByDecl := false } ==
+  ["V15.Boom:accepted", "V15.MainW0:rejected", "V17.BoomL:accepted", "V17.LieB:accepted", "V17.TruthB:rejected",
+   "V17.LieG:accepted", "V17.TruthG:rejected", "V17.SeqT:rejected", "V17.RowI:accepted"]
 open Ochr.Registry in
 #guard flips { matchEndsInside := false } == ["V15.Bad:accepted", "V15.Main:accepted"]
 open Ochr.Registry in
@@ -103,3 +113,20 @@ open Ochr.Registry in
 #guard flips { patternWritesVisible := false } == ["V15.Clear:accepted", "V15.Boom5:accepted"]
 open Ochr.Registry in
 #guard flips { genConsistent := false } == ["Inductives.InsertMEq:rejected", "Inductives.SizeInsert:rejected"]
+open Ochr.Registry in
+#guard flips { classBySyntax := false } == ["V17.BoomL:accepted", "V17.TruthG:rejected"]
+open Ochr.Registry in
+#guard flips { blockRule := 0 } ==
+  ["V17.LieB:accepted", "V17.BoomB:accepted", "V17.TruthB:rejected", "V17.LieG:accepted", "V17.BoomG:accepted",
+   "V17.TruthG:rejected"]
+open Ochr.Registry in
+#guard flips { blockRule := 1 } == ["V17.LieG:accepted", "V17.BoomG:accepted", "V17.TruthG:rejected"]
+open Ochr.Registry in
+#guard flips { seqByProof := false } == ["V17.SeqT:rejected"]
+open Ochr.Registry in
+#guard flips { rowByDecl := false } == ["V17.RowI:accepted"]
+open Ochr.Registry in
+#guard flips { proofLeaves := false } == ["V17.LieP:rejected"]
+open Ochr.Registry in
+#guard flips { blockRule := 1, proofLeaves := false } ==
+  ["V17.BoomP:accepted", "V17.LieG:accepted", "V17.BoomG:accepted", "V17.TruthG:rejected"]

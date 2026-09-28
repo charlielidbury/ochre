@@ -1,6 +1,6 @@
-# Ochr core: an executable reference checker for RULES v1.5
+# Ochr core: an executable reference checker for RULES v1.7
 
-A Lean 4 implementation of the calculus in `ochr/core/RULES.md` (rule set v1.5), extended to user-declared inductive types: the machine of §3, observation and `Id` of §4, and the typing of §5, with the examples of §7 and the round-1 attacks as tests. It exists to run the examples, and to find every place where the rules are ambiguous or wrong. Findings are in `ochr/core/notes/lean-checker.md`.
+A Lean 4 implementation of the calculus in `ochr/core/RULES.md` (rule set v1.7), extended to user-declared inductive types: the machine of §3, observation and `Id` of §4, and the typing of §5, with the examples of §7 and the round-1 attacks as tests. It exists to run the examples, and to find every place where the rules are ambiguous or wrong. Findings are in `ochr/core/notes/lean-checker.md`.
 
 ## Build and run
 
@@ -10,7 +10,7 @@ lake build          # checks every example; a failing verdict or a wrong asserti
 lake exe tests      # prints every verdict table and the counterfactual ledger; exit 1 on any unexpected verdict
 ```
 
-Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A clean build takes about ten seconds and prints every verdict table; `lake exe tests` compiles the runner first (about 20 s) and prints per-declaration check times (all 185 declarations check in about 9 ms).
+Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A clean build takes about 22 seconds (most of it the counterfactual ledger) and prints every verdict table; `lake exe tests` compiles the runner first and prints per-declaration check times (all 205 declarations check in about 9.5 ms).
 
 ## Writing programs
 
@@ -35,7 +35,7 @@ ochr E1 {
 
 `def` expects acceptance and `reject def` expects rejection. `inductive List := Nil | Cons(h : Nat, t : List)` declares an inductive type; its constructors are applied like calls (`Cons(1, Nil)`), and `match xs { Nil => … | Cons(h, t) => … }` binds `h`, `t` as the field places `xs.h`, `xs.t`. `by x` names the decreasing parameter; a definition without `by` may not call itself. Calls are saturated and written `f(a, …)` with no space before the parenthesis. `S t`, `Id A t u` and `Eq A t u` are written by juxtaposition, and transport by `J(A, a, b, P, h, t)`. Other syntax: `&p`, `*p`, `p.1`, `p := t`, `let x = t; u`, `let x : T = t; u` (for a match, `T` is the block's type), `t; u`, `match p { Z => t | S y => u }` (and `S _`), `Π(x : A) (y : B). C`, `A → B`, `λ(x : A) : B => t`, `fix f (x : A) : B by x := t`, `(t : A)`, `()`, `(t, u)`, `⟨h, k⟩`, `refl`, `⊤`, `P ∧ Q`, `A × B`, `Nat`, `Unit`, `Prop`, `Type`, and numerals. `cong f h`, `trans h k` and `symm h` exist as derivable conveniences outside the core. A `λ` or `Π` in the bound position of a `let`, or a `Π` as a result type, needs parentheses.
 
-`Config` switches each turn off one rule, for counterfactual runs: `eraseOnCopy` (P2, v1.3), `multiOwner` (D18), `recGuard` (D17), `accessInside` (D19), `selfHeadOnly` (v1.1 head-only), `argNotBot` (v1.2 temporaries), `generalize` (v1.2 generalise-then-split), `blockMoves` (v1.3 captures), `proofParamsStar` (v1.4 D27), `recNested` ([Rec] inside nested functions), `erasureByDecl` (D28), `matchEndsInside` (D29), `closureConv` (D30), `unboundWithoutBy` (D31), `patternWritesVisible` (D32), `genConsistent` (finding G1), `p5` (v1's call skipping), `inferRecPos` (v1's inferred decreasing parameter), and `trace`.
+`Config` switches each turn off one rule, for counterfactual runs: `eraseOnCopy` (P2, v1.3), `multiOwner` (D18), `recGuard` (D17), `accessInside` (D19), `selfHeadOnly` (v1.1 head-only), `argNotBot` (v1.2 temporaries), `generalize` (v1.2 generalise-then-split), `blockMoves` (v1.3 captures), `proofParamsStar` (v1.4 D27), `recNested` ([Rec] inside nested functions), `erasureByDecl` (D28), `matchEndsInside` (D29), `closureConv` (D30), `unboundWithoutBy` (D31), `patternWritesVisible` (D32), `genConsistent` (finding G1), `classBySyntax`, `blockRule`, `seqByProof`, `rowByDecl` (D35), `proofLeaves` (finding P1), `p5` (v1's call skipping), `inferRecPos` (v1's inferred decreasing parameter), and `trace`.
 
 ## Layout
 
@@ -50,7 +50,7 @@ ochr E1 {
 | `Ochr/Check.lean` | programs as sequences of top-level definitions |
 | `Ochr/Surface.lean`, `Ochr/Notation.lean` | named surface terms, their resolution, the `ochr` command |
 | `Ochr/Test.lean` | running programs, verdict tables, traces |
-| `Ochr/Examples/*.lean` | E1–E6, the attacks (rounds 1–3), v1.5 regressions, inductive types (lists, BSTs), unit tests (incl. D18), the registry, total count and counterfactual ledger |
+| `Ochr/Examples/*.lean` | E1–E6, the attacks (rounds 1–3), v1.5 and v1.7 regressions, inductive types (lists, BSTs), unit tests (incl. D18), the registry, total count and counterfactual ledger |
 | `Tests.lean` | `lake exe tests` |
 
 ## Rule → function
@@ -66,9 +66,9 @@ ochr E1 {
 | §3 [Drop] | `dropTopBind`, `dropValue`, `popFrame` |
 | §3 [Call] | `evalCall`, `callFn`, `runBody`, `endBorrowArgs` |
 | §3 [Match] | `evalMatch` |
-| §3 [Close] | `closeCall` (asserts the precondition), `resultKind`/`kindOf` (the table's row) |
+| §3 [Close] | `closeCall` (asserts the precondition), `declKind` (the table's row, from the declared codomain, v1.7) |
 | §3 [Seal] | `nfSealed` (the head call is `Term.call _ _ true` and is not eligible for [Close]); `substV` re-normalises after refinement or [End] |
-| §3 stuck blocks | `splitThenClose` (arms, annotation), `closeOffMatch` (Rust-style captures on maximal place prefixes) |
+| §3 stuck blocks | `splitArmsThenClose` (arms, annotation, whether every arm is a proof), `closeOffMatch` (Rust-style captures on maximal place prefixes; erased iff every arm is a proof, v1.7) |
 | §4 owners, footprint | `owners`, `footprint` (`Ochr/Obs.lean`) |
 | §4 observation, `Id` | `observe`, `idType` |
 | §4 `Eq` computes | `mkEq`, `mkAnd` (`Ochr/Basic.lean`), re-applied by `substV` |
@@ -78,7 +78,7 @@ ochr E1 {
 | §5 [Rec] | `recCheck` (a stack of contexts, one per enclosing function), `headOnly` (f only as a call head) |
 | §5 errors | the `err` calls in the functions above |
 | P1 conversion | `==` on normal forms (`Value.beq`, which ignores binder names) |
-| P2 erased terms | `eval`/`erasedValue` (a term whose value is a proof `⋆` or a type leaves Ω unchanged), `evalType` (types on a private copy), `capture` (Π-types and closures close over values, never borrows) |
+| P2 erased terms | `eval` (flags *erased* and *proof*: a call by its callee's class; `let`/`;`/`match` iff their tail is a proof; proof formers; a place, constant or λ holding `⋆`; an ascription at a declared proposition), `fnClass`/`propDecl`/`declOfDom`/`declOfVal` (a function's class from its codomain term, v1.7), `evalType` (types on a private copy), `capture` (Π-types and closures close over values, never borrows) |
 
 ## Where the rules left a choice
 
@@ -90,4 +90,4 @@ ochr E1 {
 - J's motive sort (C12);
 - calls of sealed function values in untyped code (C18).
 
-Rule bugs found by running the rules (L1–L4, including the uncurried D18 attack) are in §1 and §4 there.
+Rule bugs found by running the rules (L1–L4, including the uncurried D18 attack; P1, P2 in round 3) are in §1, §4 and §10 there. One reading remains this checker's own: a function's class is "data" when `propDecl` cannot read a codomain's declared sort (e.g. `q.1`), which is consistent on both paths because blocks follow their arms (§10).
