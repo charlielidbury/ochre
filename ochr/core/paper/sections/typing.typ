@@ -33,7 +33,7 @@ A `match` in the checked program on an abstract value cannot pick an arm, so eac
 
 Types and proofs are erased at runtime. The machine mirrors this exactly: it evaluates an erased term on a private copy of the environment, argument evaluation included, and discards the copy. A term is erased when it stands in a type position, when its declared type has sort `Prop`, or when it is a call to a function whose codomain term is a sort or has declared sort `Prop`; the decision never looks at a normal form. Two things follow. A formed type is a closed statement about values, as described above. And a proof can have no effect on the program around it: it may mutate places freely, but only on its own copy. Running a proof and skipping it are therefore indistinguishable, and the machine skips proofs, which is what the compiled program does too.
 
-This is one principle, not a restriction on proofs. `AddMZero`'s successor case borrows the field `p` to pass it to the induction hypothesis; the borrow happens on the private copy, and the real environment is untouched. Nothing in a program is marked pure, and any program may appear in a statement.
+Erased terms are also checked not to write, borrow or move a place that outlives them, except by handing it to another erased call. With the private copy this is redundant for a correctly classified term, and it is there as a fail-safe: if the two evaluation paths ever disagreed about whether a term is erased, the path that erases it would reject it rather than silently discard its effects. This is one principle, not a restriction on programs. `AddMZero`'s successor case borrows the field `p` to pass it to the induction hypothesis; the borrow happens on the private copy, and the real environment is untouched. Nothing in a program is marked pure, and any program may appear in a statement.
 
 == Why each condition is there <sec-why>
 
@@ -46,7 +46,7 @@ Each side condition was added in response to a concrete closed proof of false, o
     table.hline(stroke: 0.4pt),
     [Π-types capture values], [`h : Π(_ : Unit). Id Nat x Z` proved when `x` was `Z` is re-read after `x := S x`, proving `Id Nat (S Z) Z`.],
     [Recursion on entry values; `f` only as a call head; no `f` without `by`], [`*x := S *x; match *x { S p => f(&p) }` recurses on the original value; passing `f` to a helper or calling it in a `by`-less body avoids the check; each proves `Eq Nat 0 1`.],
-    [Erased terms run on a private copy], [Proof irrelevance identifies `λx. ⋆` with `λx. (*x := 7; ⋆)`; skipping only proof _calls_ lets a closed-off proof block and the same block run inline disagree.],
+    [Erased terms run on a private copy, and may not affect outside places], [Proof irrelevance identifies `λx. ⋆` with `λx. (*x := 7; ⋆)`; skipping only proof _calls_ lets a closed-off proof block and the same block run inline disagree.],
     [Erasure read from syntax, never from normal forms; universes not cumulative], [A call `W(&c, n) : U(n)` with `U(n) := match n {Z => Prop | …}` runs at the generic `n` but is erased at `n = Z`; the same for a local function whose codomain mentions captured values, and for a type-valued match erased only when closed off.],
     [Functions compared by their observation], [Comparing results alone identifies `λx. (*x := S Z)` with `λx. ()`; comparing borrow-returning functions without writing through the result identifies `λ(x, y). x` with `λ(x, y). y`.],
     [Pattern variables are places], [A stuck block that writes through `p` in `match *x { S p => p := Z }` captures `*x` by copy.],
