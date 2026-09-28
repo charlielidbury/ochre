@@ -60,3 +60,23 @@ A returned borrow from a two-borrow call leaves its hole in both owners; observi
 
 ## D19. [Access] ends loans on the path and inside the content; the two sides of `Id` run on independent copies
 Makes the exclusivity invariant that [Call-type]'s frame soundness rests on explicit, and closes a dangling-borrow adequacy bug (breaker-frame 1, 2, 10; meta-model C5).
+
+## Round 2 → v1.2 (reports: deriver-e1-v1, deriver-e2-v1, breaker-close-v1; E1 and E2 derive under v1, all round-1 ⊥ attacks blocked)
+
+## D20. P5 becomes a theorem: proofs have no effect outside themselves
+breaker-close-v1 N1: v1's P5 was a stipulation about *calls*, and closing off a stuck block turns a non-call into a call, so a proposition-typed block that writes gave different answers sealed-and-refined vs run directly: a closed proof of `Id Nat (S Z) Z`. Fix: a term whose type is a proposition may not write, borrow or move a place that outlives it except by passing it to a call whose result type is a proposition. Skipping proofs is then a consequence (running and skipping agree), inlining vs outlining a proof cannot matter, and runtime erasure is justified. Runtime erasure keeps a proof call's argument evaluation (deriver-e1-v1 G2). This is a restriction on proofs, which are erased, not on programs: it introduces no pure/impure divide for the programmer.
+
+## D21. [Call-type] is evaluated after the arguments, in a frame pushed on the caller's environment; arguments live in temporaries
+deriver-e1-v1 G1: read literally, v1 evaluated the codomain before the argument's loan existed, making every effect goal `⊤` (end goal 3 emptied). deriver-e2-v1 H5: the IH's owner chain needs the caller's frames visible. breaker-close-v1 N7/G5: arguments in flight (`f(&x, &x)`) must be visible to [Access], so each is evaluated into a temporary.
+
+## D22. Stuck blocks capture like Rust closures; generalise-then-split on sealed scrutinees
+breaker-close-v1 N2–N5: a closed-off block moves a place it moves in any arm, passes by `&` a place it writes or borrows, copies a place it only reads; its codomain is the match's type. deriver-e2-v1 H7 / F10, breaker-close-v1 G4: [Split] on a sealed-program head first replaces every occurrence of it by a fresh σ (Lean's `generalize`), then splits.
+
+## D23. `J` takes explicit endpoints; recursion declares its decreasing parameter
+deriver-e1-v1 G3 (`Eq A a a ≡ ⊤` erases endpoints), G6 / deriver-e2-v1 H4 (several shrinking arguments).
+
+## D24. All types are formed on a private copy of the environment
+breaker-close-v1 N8: v1 said only `Id`'s sides ran on copies; a type formed elsewhere could run effectfully in the real environment. P2 now says every type is evaluated on a private copy.
+
+## D25. The pure theorem is proved by the in-place lemma
+deriver-e1-v1 G4: `AddZero := match x { Z => refl | S p => AddMZero(&p) }` checks with no `cong` and no Nat rule, because borrowing the predecessor field of the owned `x` makes the environment do the congruence even for the pure statement. §7 now uses it; `cong` is not in the core.
