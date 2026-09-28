@@ -63,7 +63,7 @@ def pre : Term :=
 theorem s0_reachable : exec [] 3 init pre = .ok s0 .unit := by decide +kernel
 
 theorem wf_s0 : WF s0 := by
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro l hl
     simp [s0, Env.names, Val.names] at hl
     simp [s0]; omega
@@ -80,6 +80,10 @@ theorem wf_s0 : WF s0 := by
   · decide
   · simp
   · decide
+  · intro F hF b hb ⟨i, hi⟩
+    simp [s0] at hF; subst hF
+    simp at hb
+    rcases hb with rfl | rfl | rfl <;> simp [y, x, a] at hi
 
 theorem holds_s0 : s0.env.holds 0 = true := by decide
 theorem end_s0 : endBorrow 0 s0 = some s0' := by decide +kernel
@@ -125,7 +129,7 @@ def mLazy : St := ⟨[[(z, .borrow 2 .zero), (b, .loan 2), (y, .moved), (x, .zer
 def mJoin : St := ⟨[[(z, .moved), (b, .zero), (y, .moved), (x, .zero), (a, .pair .zero .zero)]], 3⟩
 
 theorem wf_m0 : WF m0 := by
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro l hl
     simp [m0, Env.names, Val.names] at hl
     simp [m0]; omega
@@ -144,6 +148,10 @@ theorem wf_m0 : WF m0 := by
   · decide
   · simp
   · decide
+  · intro F hF b hb ⟨i, hi⟩
+    simp [m0] at hF; subst hF
+    simp at hb
+    rcases hb with rfl | rfl | rfl | rfl | rfl <;> simp [z, b, y, x, a] at hi
 
 theorem m0_ends : (endBorrow 0 m0).bind (endBorrow 2) = some m0' := by decide +kernel
 theorem m_eager_run : exec [] 2 m0' t = .ok mEager .unit := by decide +kernel
