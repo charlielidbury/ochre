@@ -2,7 +2,7 @@
 
 Reviewer 2. Expertise: dependent type theory (Lean/Coq kernels, OTT, effects in type theory, NbE) and Rust verification (Aeneas, RustHorn/Creusot, Verus, RustBelt).
 
-I read the whole paper (body, 24 pp.) and the whole formal appendix (A.1–A.7, 17 pp.). To check the paper's claims about them I also read, in full, four cited papers: Aeneas (Ho & Protzenko, ICFP'22), the Fire Triangle (Pédrot & Tabareau, POPL'20), Carneiro's *The Type Theory of Lean*, and Atkey's QTT (LICS'18).
+I read the whole paper (body, 24 pp.) and the whole formal appendix (A.1–A.6, 17 pp.). To check the paper's claims about them I also read, in full, four cited papers: Aeneas (Ho & Protzenko, ICFP'22), the Fire Triangle (Pédrot & Tabareau, POPL'20), Carneiro's *The Type Theory of Lean*, and Atkey's QTT (LICS'18).
 
 ## 1. Summary
 
@@ -93,7 +93,7 @@ Hence `Q` is accepted. Ochr proves ¬(Π(n : Nat). &Nat).
 
 This is *consistent* with the model, because R at that type is empty: back : Nat → 1 is not injective. But it has two consequences the paper does not state.
 
-1. An opaque declaration `leak : Π(n : Nat). &Nat` gives a closed proof `P(leak(5), refl) : Empty`, and via `J` a closed proof of `Eq Nat Z (S Z)`. The same holds for `Π(x : &Bool). &Nat` and many similar types. Safe Rust inhabits `fn(u32) -> &'static mut u32` (`Box::leak`). Yet §10.1 presents opaque definitions as the way Ochr "recovers the modularity of Aeneas", with no side condition.
+1. An opaque declaration `leak : Π(n : Nat). &Nat` gives a closed proof `P(leak(5), refl) : Empty`, and via `J` a closed proof of `Eq Nat Z (S Z)`. Types such as `Π(x : &Bool). &Nat` are also empty in the model (there is no injection Nat → Bool). I expect them to be refutable too, by a pigeonhole case analysis on back(0), back(1) and back(2). Safe Rust inhabits `fn(u32) -> &'static mut u32` (`Box::leak`). Yet §10.1 presents opaque definitions as the way Ochr "recovers the modularity of Aeneas", with no side condition.
 2. Cor. 11 (consistency) is stated with no hypothesis on opaque definitions. Lemma 6 and §7.1 do say that an opaque borrow-returning definition is "an injectivity assumption". But membership in R is semantic, the paper gives no syntactic check, and the corollary does not carry the assumption.
 
 There is also a presentational inconsistency. Opaque declarations are not in the appendix grammar of programs, yet they appear in the Discussion, in Lemma 6 and Cor. 9, and in the mechanisation.
@@ -109,7 +109,7 @@ I would like the authors to:
 
 §4.4: "a stuck block is erased exactly when its match would be". Proof of Lemma 7(1): "a stuck block is erased exactly when its match is".
 
-Appendix §A.5 (erasure, D40) says instead: "A stuck block is erased exactly when *each* of its arms … is a declared proof". Note 2 then states: "v1.7 first erased a block when its match would be erased; but … [this admits] `BoomG`. Hence D40."
+Appendix §A.4.1 (Erasure, D40) says instead: "A stuck block is erased exactly when *each* of its arms … is a declared proof". Note 2 then states: "v1.7 first erased a block when its match would be erased; but … [this admits] `BoomG`. Hence D40."
 
 So the body, including the proof sketch of the key stability lemma, describes the rule the appendix identifies as admitting a closed proof of false. Even if the body's phrase is meant loosely, a reader who implements the body's rule gets an unsound system. Given the paper's own history, this is exactly the class of mismatch that matters. Every such phrase in the body needs to be brought in line with the appendix, and Lemma 7's argument for (1) needs to be redone under D40. Under D40 the block and the directly-run match are *not* erased "exactly" together; they agree only because the block's sealed programs re-run the arms. That is a different, and more delicate, argument.
 
@@ -129,18 +129,18 @@ This is harmless in an extensional set model. But the paper's framing is "every 
 
 [Split-gen] records n := σ, globally and surviving private copies (D34, D37). *Every later derivation* of the sealed program n then normalises to ρ*(σ), including derivations after the split, in the continuation, and in later-formed types.
 
-This is not Lean's `generalize`. There the new variable is universally quantified and later occurrences of `n` are unrelated to it. Here σ is definitionally equal to Run(n) from then on, and simultaneously treated as a variable that splits may refine. In the model σ must therefore denote Run(n), not a free variable. Otherwise the conversion "n ≡ σ", used for later derivations, fails under valuations where σ ≠ Run(n). Thm. 10 says "every valuation of the abstract values". That must be restricted to *coherent* valuations, and the [Split] case must be argued for splits on such dependent σ.
+This is not Lean's `generalize`. There the new variable is universally quantified and later occurrences of `n` are unrelated to it. Here σ is definitionally equal to Run(n) from then on, and simultaneously treated as a variable that splits may refine. In the model σ must therefore denote Run(n), not a free variable. Otherwise the conversion "n ≡ σ", used for later derivations, fails under valuations where σ ≠ Run(n). Thm. 10 says "every valuation of the abstract values". That must be restricted to *coherent* valuations, and the [Split] case must be argued for splits on such dependent σ. Conversely, once an abstract value embedded in n is itself refined, the refined program no longer matches the recorded key. σ then loses its link to n: sound, but a further source of incompleteness.
 
-I believe this can be made to work. But it is a genuinely new definitional principle, and the paper mentions it only as an implementation detail ("Lean's `generalize`", §A.5).
+I believe this can be made to work. But it is a genuinely new definitional principle, and the paper mentions it only as an implementation detail ("Lean's `generalize`", §A.4.5).
 
 ### C6. Conversion is weaker than claimed, and Π-type conversion is syntactic
 
 The abstract says definitional equality "unfolds in-place code exactly as Lean unfolds pure code". But:
 
-- Conv-cong compares Π-closures by "captured values and code", *syntactically* (Note 19). So `Π(n:Nat). P((λy.y)(n))` and `Π(n:Nat). P(n)` are not convertible. Neither are the Π-types of two definitions whose statements differ only by a β-step.
-- Conv-fun requires the two functions' Π-types to be convertible (hence syntactically equal), and their captured values pairwise convertible.
+- Conv-cong compares Π-closures by "captured values and code", *syntactically* (Note 18). So `Π(n:Nat). P((λy.y)(n))` and `Π(n:Nat). P(n)` are not convertible. Neither are the Π-types of two definitions whose statements differ only by a β-step.
+- Conv-fun requires the two functions' Π-types to be convertible (hence syntactically equal up to captured values), and their captured values pairwise convertible.
 - There is no η for functions or for `Unit`.
-- A sealed program whose head call is stuck is convertible only to a syntactically identical one (Conv-fun under the least-fixpoint reading, §A.6).
+- Sealed programs are compared by Conv-cong, i.e. syntactically up to their embedded values. So two functions whose bodies are stuck at their generic call are convertible only if they are identical (least-fixpoint reading of Conv-fun, §A.3).
 
 For a Lean-style theory these are substantial incompletenesses. They will bite in higher-order code, where [Call-type] checks A′ᵢ ≡ Tᵢ at function types. Please either justify them or normalise Π-codomains at the generic arguments, as Conv-fun already does for function values.
 
@@ -152,3 +152,92 @@ For a Lean-style theory these are substantial incompletenesses. They will bite i
 - *Closures cannot capture neutral data or proofs* (Note 21). After `AddM(&*x, 1)`, the program `let n = *x; λ(y : Nat) : Nat => n` is *rejected*. For a dependent type theory this is a severe restriction: any local lemma or Π-type mentioning a closed-off value is affected. It contradicts "any program may appear in a statement". It belongs in the body, not in the last appendix note.
 - *Discussion, "Nothing in a goal mentions loans"*. Sealed programs for returned borrows contain `loan_k`. I believe observations always resolve these holes before a goal is formed, but this is exactly the kind of invariant that should be stated and proved, not asserted as a design aspiration.
 - *Carneiro and unique typing.* §7.1 argues that reflection is unavailable because "Carneiro's set model relies on unique typing, which reflection breaks". Carneiro §1.2 points out that Barras's Aczel-encoding trick removes the dependency on unique typing for soundness ("if our only goal was proving soundness we could skip section 4 entirely"). A translation of Ochr into an extensional type theory with impredicative proof-irrelevant `Prop`, followed by the standard Aczel-encoded set model, therefore looks viable. It would be more modular and more checkable than a bespoke interpretation "by recursion on derivations". The authors should address this route.
+
+## 4. Status of the metatheory versus the claims
+
+| Result | Status according to the paper | What the abstract and introduction say |
+|---|---|---|
+| Model / consistency (Thm. 10, Cor. 11) | set-theoretic interpretation "exists on paper only"; one paragraph of proof sketch naming "the hardest case" | abstract: "a model in Lean's type theory … which establishes consistency" |
+| Simulation (Thm. 3) | one equation at machine level, assuming loan-freeness; others "in progress"; CIC_L translation "not started" | abstract: "a model in Lean's type theory in which Aeneas's backward functions reappear" |
+| Frame (Thm. 4) | parts (1), (2) mechanised for a first-order fragment of an *earlier* rule set; part (3), the one [Call-type] needs, not mechanised | contributions: "the first-order fragment of the metatheory is mechanised" |
+| Stability (Lemma 7), injectivity (Lemmas 5, 6), naturality (Thm. 8 beyond one commuting lemma) | "not started" | intro: "an adequacy theorem relating the symbolic machine to concrete evaluation" |
+| Invariance (Lemma 2) | stated, proof is `sorry` | — |
+
+The claims in the abstract and introduction do not match this.
+
+1. The model is *not* "in Lean's type theory". §7.1 explicitly says no translation into intensional CIC preserves conversion, and that types are interpreted in ZFC sets.
+2. Consistency is not "established". It is argued by a sketch.
+3. "The first-order fragment of the metatheory is mechanised" overstates what is done. What is mechanised is a few operational lemmas of an earlier rule set. None of them concerns `Id`, [Call-type], erasure, stuck blocks or generalisation. Yet *every* row of the paper's own Fig. 7 (the side conditions and the proofs of false that forced them) concerns exactly those features.
+
+The mechanisation therefore gives almost no assurance about the part of the design that has historically been unsound.
+
+For a calculus whose own paper reports some ten distinct counterexamples against earlier versions, most of them closed proofs of false and the rest accepted programs that go wrong (Fig. 7, Notes 1–5, "two attacks from a separate review"), and whose rule set is at "v1.9" with open items (D41), I cannot accept "consistent" on the strength of a proof sketch. The authors are admirably candid about the status in §7.6. The abstract and introduction must be equally candid.
+
+## 5. Clarity and organisation
+
+The overview (§2) is excellent: concrete, well-paced, and the running examples are well chosen. The trace of `AddMZero`'s induction hypothesis is the clearest explanation I have seen of why a backward-function translation needs a congruence step, and of how an environment can supply it.
+
+The rest of the body is less successful.
+
+- §§3–6 describe the calculus mostly in prose. The typing section gives four prose "rules" and says "the rules for the basic forms are the evident ones … we omit them". Footprints, owners, [Access], erasure and closing off of stuck blocks are all prose. A reader cannot check the metatheory claims against the body and must use the 17-page appendix. Given the page budget (the body ends at p. 23 of 25), I would move a compact figure of the core typing judgement and of `W`/owners into the body, and shorten §9–§10.
+- §7 states its theorems at a level of informality ("on that run's shapes", "up to ≈", "ends some borrows early") that makes them hard to evaluate or falsify. The per-run translation, in particular, needs a definition.
+- The appendix is precise but is written as internal design documentation. It refers to decision numbers (D4 … D42, P1 … P6), checker issue labels (C12, C15, C19), rule-set versions (v1.5 … v1.9), internal attack names (`breaker-fresh-v16 X3`, `lean-checker P2`, `BoomG`, `BoomH`, `BoomL`, `BoomB`) and Lean function names. None of these can be resolved by a reader. They also communicate, not unfairly, that the calculus is still moving. The notes that record earlier unsound readings are valuable, but they should be rewritten as self-contained counterexamples with derivations.
+- Fig. 7 ("Why each condition is there") is a good idea and I would keep it. But presenting design as "each side condition was added in response to a concrete closed proof of false" is, for a type-theory paper, a signal of fragility rather than of robustness. What is missing is the *invariant* that the conditions jointly establish, stated once and proved. Lemma 7 is meant to be this, but it is only sketched, and (see C2) its sketch uses the superseded rule.
+- Terminology. "Observational" collides with OTT. The "Id" name suggests an identity type, but `Id` has no introduction or elimination of its own. "Sealed program", "closing off", "footprint", "owner", "hole", "inert" and "generalisation record" are all introduced informally, some only in the appendix.
+- The title promises "the program you run". But there is no compiler. The run-time story (erasure plus an affine discipline that turns copies into moves) is informal and outside the core, so "allocates nothing" (§1) is not a property of the calculus.
+
+## 6. Evaluation
+
+- **Examples.** All examples are on unary naturals, plus small user-declared lists and binary trees: addition, subtraction, a tail borrow, BST insertion, list append. There are no machine integers, arrays or vectors, loops, shared borrows, borrows stored in data, or closures capturing borrows. All of these are acknowledged as future work. There is no example drawn from real Rust code. Aeneas's evaluation already verifies a resizable hash table, and Creusot and Verus handle far larger code. I do not expect scale from a core-calculus paper. But claims about proof *effort* ("frequently shorter", "no bridging lemma", "no congruence step") require at least a side-by-side comparison with Aeneas + Lean on the paper's own examples. None is given.
+- **Implementation.** A 3 kLoC Lean checker with 185 expected verdicts, a build-time "counterfactual ledger" (switching off each rule flips exactly its tests), and a 9 ms suite. The ledger is a genuinely good engineering practice and I would like to see it adopted more widely. However: (i) the checker does not implement confinement (D41); (ii) it inherits the known incompleteness of Note 21; (iii) "every row of the counterfactual ledger flips at least one test" shows that each rule is *necessary* against known attacks, not that the rules are *sufficient*. The suite is regression evidence, not a soundness argument. No artifact is described (acceptable for double-blind, but it should be promised).
+- **Mechanisation.** As discussed in §4, it covers little of what matters for the headline claims.
+- **Completeness.** The paper honestly reports several ways the checker is incomplete, and I found two more:
+  - the `Pick` program that runs on every concrete input but is rejected (Thm. 8 discussion);
+  - no η for `Unit`, and the [Close] row keyed on the declared codomain (Note 10);
+  - closures unable to capture neutrals (Note 21);
+  - syntactic Π-conversion (C6, mine);
+  - generalisations that lose their link to later-refined inputs (C5, mine).
+
+  The combined effect on usability is not assessed.
+
+## 7. Questions for the authors
+
+1. Does your checker accept `Q(g : Π(n : Nat). &Nat) : Empty := P(g(5), refl)` from C1, and hence a closed proof of `Empty` from an opaque `leak : Π(n : Nat). &Nat`? What syntactic condition on opaque declarations guarantees membership in R? Does Cor. 11 assume there are no opaque declarations?
+2. Which stuck-block erasure rule do Lemma 7 and its proof use: the body's ("exactly when its match is") or D40 ("when each arm is a declared proof")? Please redo the argument for Lemma 7(1) under D40.
+3. In Thm. 10, abstract function values range over R, i.e. arbitrary set functions. Thm. 8 and Cor. 9 cover only definable instantiations. How is the [Call-type] case discharged for a definition with a function-typed parameter?
+4. How does the model interpret an abstract value introduced by [Split-gen], given that later derivations of the generalised sealed program are *definitionally* replaced by it (C5)? Is the valuation in Thm. 10 restricted to coherent valuations?
+5. What CIC_L term does `J` translate to, such that the [J] machine step is a CIC_L conversion when the endpoints are not convertible? More generally, what exactly is the denotation of a definition, given that the translation is "per run"?
+6. What is the termination argument for concrete runs in the presence of first-class closures, closures inside pairs, and large elimination?
+7. §5 says that ignoring owned locals in the footprint would let "transport along that equation prove `Eq Nat 6 5`". Which rule transports an `Id` into a program context? Please give the derivation.
+8. Why is Π-type conversion syntactic (Note 18), when function values are compared by generic observation? Do you have examples where higher-order code fails to check because of it?
+9. How often does Note 21 (closures cannot capture neutral data or proofs) block natural programs? Is it a gap in the checker or in the rules?
+10. Can you give Aeneas + Lean proofs of `AddMZero`, `AddMEq`, `InsertMEq` and a `SubM` client, for comparison? The claim that in-place proofs are "frequently shorter" rests on this.
+11. How does `Id` compare with relational verification by `reify` in F\* (Grimm et al., CPP'18)?
+12. Which version of the rules does the Lean mechanisation follow? What is the plan for `Id`, [Call-type] and erasure, which is where Fig. 7's counterexamples live?
+13. Is the affine discipline that justifies "AddM allocates nothing" defined anywhere, and is the copy-to-move optimisation proved to preserve the machine's semantics?
+14. Is it intended that R makes function types such as `Π(n : Nat). &Nat` provably empty, and `Π(x : &Bool). &Nat` empty in the model? (This is arguably right for safe Rust without `'static`, but it should be stated, together with its consequences for modelling library functions.)
+
+## 8. Score
+
+**Weak reject.** Confidence: **high** (4/5). I work in both areas, read the whole submission including the appendix, and checked the cited papers.
+
+The core ideas are original and would interest the POPL audience. Closing off into sealed source programs is one. The [Call-type] rule, with the induction hypothesis arriving in the caller's context, is another. The discovery that consistency forces injective backward functions is a third. The examples are clear, and the appendix is precise enough to calculate with.
+
+But the paper's headline claim is a consistent dependent type theory, and that claim is not established. The model is a sketch on paper, it contains the gaps listed in C3–C5, and its mechanisation does not touch the features that the paper itself shows have been repeatedly unsound. The body contradicts the appendix on a rule (C2) that the appendix identifies as the source of a proof of false. And a feature advertised for modularity, opaque declarations, is inconsistent at innocuous types (C1). The evaluation does not substantiate the usability claims.
+
+## 9. What would move my score up one step (to weak accept)
+
+A *complete, checkable* soundness proof for a clearly delimited fragment that includes `Id`, [Call-type], closing off with returned borrows, erasure and [Split-gen]. It may exclude universes beyond `Type₀`, stuck blocks, and opaque declarations if necessary. It should be either:
+
+- a full paper proof in the supplementary material, with every case of Thm. 10, the frame and naturality lemmas, and the treatment of function-typed valuations and generalised abstract values; or
+- a mechanisation of the model for that fragment.
+
+It must be accompanied by:
+
+- abstract, introduction and contributions rewritten to match exactly what is proved and mechanised;
+- the C1 hypothesis added to the consistency corollary, with a checkable condition on opaque declarations;
+- the body/appendix erasure mismatch (C2) fixed.
+
+A side-by-side comparison with Aeneas + Lean on the running examples would strengthen the significance case, but it is secondary.
+
+**The single change that would most improve the paper:** replace the sketched §7 with a complete proof of consistency for an explicitly delimited core, and align every claim in the abstract and introduction with it. As submitted, the paper's own evidence (a counterexample-driven rule history, and a mechanisation that excludes the type-level features) argues *against* taking consistency on trust.
