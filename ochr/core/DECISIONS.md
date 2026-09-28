@@ -25,3 +25,38 @@ The programmer duplicates the continuation when precision is needed; errors land
 
 ## D8. Scope: no borrows inside data, no shared borrows, no loops, closures capture only borrow-free values
 Why: keep the first core small. These are the known frontiers (see the three motivating examples in 00-idea follow-ups: returned borrows are IN scope, borrows in data and branch-dependent live borrows are OUT).
+
+## Round 1 → v1 (reports in notes/: deriver-e1, deriver-e2, deriver-e346, breaker-frame, simplifier, meta-model)
+
+## D9. [Seal] never closes off its own head call
+v0's [Seal] re-ran the sealed call, which got stuck again and re-closed into itself (loop), or, if [Close] was disabled inside [Seal], never produced the `S` the successor arms need. Fix: the head call of a sealed program unfolds once and is not eligible for [Close]; calls inside its body are. This is exactly CIC's fixpoint guard (a fixpoint unfolds only when it can make progress). Found independently by deriver-e1 (F1), deriver-e2 (F1), deriver-e346 (F9).
+
+## D10. Saturated n-ary calls; λ is a non-recursive `fix`
+Curried application let `AddM(x)` build a closure capturing a borrow, which the scope forbids. (deriver-e1 F2, simplifier 8.)
+
+## D11. Loans are variables bound by their borrow; ending substitutes, with no side condition
+Supersedes v0's anonymous pending bindings and Aeneas's End-Mut side condition. A hole for a returned borrow is the same thing as a loan, may occur several times inside sealed programs, and is filled by substitution. Inside a [Seal] run, a loan whose borrow lives outside is inert. (deriver-e2 F2–F4, simplifier 3, meta-model C5.) Cost: accepts some programs Rust rejects once data has several fields; this is more permissive, not unsound.
+
+## D12. No ghost owners: a definition is checked at its generic call site
+Checking `f` = running `f(&c₁,…)` from `{cᵢ ↦ σᵢ}`. The goal is the [Call-type] of that call, the same rule that types an induction hypothesis. One rule instead of [Lam]'s snapshot plus [App]'s call-site evaluation plus ghosts. (simplifier 2.)
+
+## D13. Π-types are closures over formation-time values; [Call-type] rebinds only the parameters
+v0 re-read a Π-type's free variables at the call site: `Oops2 x h := x := S x; h()` with `h : Π(_:Unit). Id Nat x Z` proves ⊥. (deriver-e346 F5, meta-model C4.) This is D2 applied to Π-types, not a new principle.
+
+## D14. Proofs are not run (P5) **[new principle]**
+A call whose result type is a proposition is erased at runtime; the machine must therefore not run it either (borrow arguments come back unchanged). Without this: checker/runtime disagreement (deriver-e1 N2), lemma calls overwrite the borrowed place with an opaque sealed program (deriver-e1 N1, deriver-e2 F8, deriver-e346 F8), and proof irrelevance at a Π over a borrow parameter identifies `λx.⋆` with `λx.(*x := 7; ⋆)`, giving a closed proof of ⊥ (meta-model C1).
+
+## D15. Stuck non-tail matches are closed off like calls; [Join] deleted **[overturns user's D7: imprecise join]**
+deriver-e346 showed [Join] is a strictly weaker copy of [Close]: moving AddToOne's match into a helper function made it accepted, with exactly the right backward function in the loans. Closing off the stuck match instead (the arms are still checked by [Split]; the continuation runs once from the closed-off state) removes anti-unification and all of [Join]'s underspecification (F1–F4), and is precise. It keeps what the user wanted from the imprecise join: the continuation is checked once, so errors land on a line without "in the case where…" qualifiers. meta-model T5: [Join] is not natural (does not commute with refinement), closing off is. Consequence: branch-dependent live borrows (E3's AddToOne) are now accepted, so D8's exclusion of them is lifted.
+
+## D16. `Eq` computation trimmed to pairs, reflexivity, and ⊤ units
+Kept: `Eq (A×B)` splits, `Eq A a b ≡ ⊤` when `a ≡ b`, ⊤ is a unit for ∧; `refl : ⊤`. Dropped: Nat constructor injectivity and the ⊥ rule (only served the pure `AddZero`, which now uses `cong S`; the borrow examples are bare recursion without them: simplifier 1). Kept rather than deleting D6 wholesale because (a) Prop is needed anyway for D14, (b) the reflexivity rule removes `refl` padding for untouched owners in multi-borrow footprints (deriver-e346 F12), and (c) it makes `Id Unit (AddM x 0) ()` compute to the single interesting equation. The model needs `propext` (meta-model).
+
+## D17. Recursion is structural on entry values
+The recursive argument's content must be a σ' obtained by refining the parameter's entry σ. The v0 syntactic check accepted `*x := S *x; match *x {S p => f(&p)}` and so a proof of `Π(n:Nat). ⊥` (deriver-e346 F6, meta-model C3).
+
+## D18. Owners are sets; the footprint observes all owners of a hole
+A returned borrow from a two-borrow call leaves its hole in both owners; observing one lets [Call-type] prove `Id Nat (S Z) Z` (meta-model C2).
+
+## D19. [Access] ends loans on the path and inside the content; the two sides of `Id` run on independent copies
+Makes the exclusivity invariant that [Call-type]'s frame soundness rests on explicit, and closes a dangling-borrow adequacy bug (breaker-frame 1, 2, 10; meta-model C5).
