@@ -221,6 +221,9 @@ theorem closeCall_frame (f : String) (d : FunDef) {ws : List Val} {c : St} {P : 
     cases hret : d.ret with
     | ref T =>
       simp only
+      by_cases hls : ls = []
+      · rw [if_pos hls, if_pos hls]; exact ⟨rfl, trivial⟩
+      rw [if_neg hls, if_neg hls]
       have hk : Good Ω₂ K c.next := hc.fresh _ (Nat.le_refl _)
       have hback : ∀ p ∈ ls.map (fun (q : Nat × Nat) =>
           (q.2, Val.sealed f (Val.ofList as) (.back q.1) (.loan c.next))),

@@ -91,6 +91,8 @@ def closeCall (f : String) (d : FunDef) (ws : List Val) (s : St) : Res :=
     if args.nb ≠ 0 then .err else
     match d.ret with
     | .ref _ =>
+      -- a returned borrow must point into a borrow argument (else its loan occurs nowhere)
+      if ls = [] then .err else
       let k := s.next
       let s1 := { s with next := s.next + 1 }
       match fillLoans (ls.map fun (i, l) => (l, .sealed f args (.back i) (.loan k))) s1 with

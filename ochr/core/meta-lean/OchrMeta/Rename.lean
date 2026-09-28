@@ -660,6 +660,10 @@ theorem closeCall_rename (hρ : Function.Injective ρ) (f : String) (fd : FunDef
     cases fd.ret with
     | ref T =>
       dsimp only
+      by_cases hls : ls = []
+      · subst hls; exact RSim.err
+      have hls' : List.map (fun q => (q.fst, ρ q.snd)) ls ≠ [] := by simpa using hls
+      rw [if_neg hls, if_neg hls']
       refine fillLoans_sim hρ ?_ (s := ⟨s.env, s.next + 1⟩) ?_ (hc.mono (Nat.le_succ _)) ?_
       · simp [List.map_map, Function.comp_def, Val.rename, hk]
       · simp only [St.rename]; congr 1; omega
