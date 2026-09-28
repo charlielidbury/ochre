@@ -142,7 +142,7 @@ partial def substV (x r : Value) (v : Value) : M Value := do
   | .tPi cs t => return .tPi (← cs.mapM (substV x r)) (← substT x r t)
   | .sealed t => nfSealed (← substT x r t)
   | .tProd A B => return .tProd (← substV x r A) (← substV x r B)
-  | .tEq A a b => return mkEq (← substV x r A) (← substV x r a) (← substV x r b)
+  | .tEq A a b => mkEqM (← substV x r A) (← substV x r a) (← substV x r b)
   | .tAnd P Q => return mkAnd (← substV x r P) (← substV x r Q)
   | .tRef A => return .tRef (← substV x r A)
   | _ => return v
@@ -247,6 +247,19 @@ partial def accessInside (p : Place) : M Unit := do
   match liveLoansIn (← get).env v with
   | l :: _ => endBorrow l; accessInside p
   | [] => pure ()
+
+/-- [Access] for matching (v1.5, D29): a loan anywhere inside a neutral at the head of
+`content(p)` counts as being at the head (its position inside the neutral is unknown),
+so its borrow ends. -/
+partial def accessNeutralHead (p : Place) : M Unit := do
+  if !(← get).cfg.matchEndsInside then return
+  let v ← content p
+  match v with
+  | .sealed _ | .abs _ =>
+    match liveLoansIn (← get).env v with
+    | l :: _ => endBorrow l; accessNeutralHead p
+    | [] => pure ()
+  | _ => pure ()
 
 /-- [Read]: borrow-free content is copied; a borrow is moved out (`p ↦ ⊥`). -/
 partial def readPlace (p : Place) : M Value := do
@@ -376,9 +389,7 @@ partial def isPropV (T : Value) : M Bool := do
   match T with
   | .tEq .. | .tTop | .tAnd .. => pure true
   | .tNat | .tUnit | .tRef _ | .tProd .. | .sort _ => pure false
-  | .tPi _ (.pi _ _ c) => match isPropTerm? c with
-    | some b => pure b
-    | none => pure ((← sortOf T) == 0)
+  | .tPi _ _ => pure ((← fnClass T) == 2)
   | .abs σ => pure ((← absType σ) == .sort 0)
   | .sealed t => pure ((← sealedSort? t) == some 0)
   | _ => pure false
@@ -439,11 +450,112 @@ partial def capture (t : Term) : M (List Value × Term) := do
   let t' := t.mapFree (fun c o => .var (c + m - 1 - idx o)) 0
   pure (vals.toList, t')
 
+-- ### Conversion (P1, v1.5 D30)
+
+/-- Conversion: same normal form, where the normal form of a function value is the
+observation of its generic call (its result and the final contents of the generic
+owned places) plus its captured values (D30). Structural everywhere else. -/
+partial def conv (v w : Value) : M Bool := do
+  if v == w then return true
+  match v, w with
+  | .succ a, .succ b | .tRef a, .tRef b => conv a b
+  | .pair a b, .pair c d | .tProd a b, .tProd c d | .tAnd a b, .tAnd c d =>
+    pure ((← conv a c) && (← conv b d))
+  | .tEq A a b, .tEq B c d => pure ((← conv A B) && (← conv a c) && (← conv b d))
+  | .borrow l a, .borrow m b => pure (l == m && (← conv a b))
+  | .sealed t, .sealed u => convT t u
+  | .tPi cs t, .tPi ds u => pure ((← convList cs ds) && (← convT t u))
+  | f, g =>
+    let isFn : Value → Bool := fun | .gfn _ | .clo _ _ => true | _ => false
+    if isFn f && isFn g then convFn f g else pure false
+
+partial def convList : List Value → List Value → M Bool
+  | [], [] => pure true
+  | a :: as, b :: bs => do pure ((← conv a b) && (← convList as bs))
+  | _, _ => pure false
+
+partial def convTList : List Term → List Term → M Bool
+  | [], [] => pure true
+  | a :: as, b :: bs => do pure ((← convT a b) && (← convTList as bs))
+  | _, _ => pure false
+
+/-- Structural comparison of terms (inside sealed programs, closures and Π-types),
+comparing embedded values by `conv`. -/
+partial def convT (t u : Term) : M Bool := do
+  if t == u then return true
+  match t, u with
+  | .val v, .val w => conv v w
+  | .letIn _ a b, .letIn _ c d | .seq a b, .seq c d | .prod a b, .prod c d
+  | .pair a b, .pair c d | .and a b, .and c d | .andI a b, .andI c d
+  | .cong a b, .cong c d | .ascribe a b, .ascribe c d =>
+    pure ((← convT a c) && (← convT b d))
+  | .assign p a, .assign q b => pure (p == q && (← convT a b))
+  | .matchNat p z s, .matchNat q z' s' => pure (p == q && (← convT z z') && (← convT s s'))
+  | .call f as h, .call g bs h' => pure (h == h' && (← convT f g) && (← convTList as bs))
+  | .succ a, .succ b | .fst a, .fst b | .snd a, .snd b | .ref a, .ref b => convT a b
+  | .eq a b c, .eq d e f | .id a b c, .id d e f =>
+    pure ((← convT a d) && (← convT b e) && (← convT c f))
+  | .pi _ ds c, .pi _ ds' c' => pure ((← convTList ds ds') && (← convT c c'))
+  | .fix _ _ ds c d b, .fix _ _ ds' c' d' b' =>
+    pure (d == d' && (← convTList ds ds') && (← convT c c') && (← convT b b'))
+  | .prim n as, .prim m bs => pure (n == m && (← convTList as bs))
+  | _, _ => pure false
+
+/-- Two function values: compare their Π-types, their captured values, and the
+observations of their generic calls, run from one shared generic environment. A
+comparison that needs itself again (a recursive function stuck at its own generic
+call observes only a sealed call of itself) answers "not convertible": sound, and
+incomplete only for functions whose observation mentions themselves. -/
+partial def convFn (f g : Value) : M Bool := do
+  let mode := (← get).cfg.closureConv
+  if mode == 1 then return false
+  if (← get).convStack.contains (f, g) then return false
+  let pf ← funType f none
+  let pg ← funType g none
+  unless ← conv pf pg do return false
+  let caps : Value → List Value := fun | .clo cs _ => cs | _ => []
+  if mode == 0 then
+    unless ← convList (caps f) (caps g) do return false
+  let .tPi cs (.pi hs ds _) := pf | return false
+  onCopy do
+    modify fun s => { s with env := #[{}], convStack := (f, g) :: s.convStack }
+    pushFrame
+    for v in cs do pushBind ⟨"κ"⟩ none v
+    let mut args := #[]
+    for (d, h) in ds.zip hs do
+      let A ← evalType d
+      let w ← match A with
+        | .tRef T =>
+          let σ ← freshAbs T
+          let l ← freshLoan
+          modifyFrame 0 fun fr => { fr with binds := fr.binds.push ⟨⟨s!"{h.name}°"⟩, some T, .loan l⟩ }
+          pure (Value.borrow l (.abs σ))
+        | _ => if ← isPropV A then pure Value.proof else pure (Value.abs (← freshAbs A))
+      pushBind h (some A) w
+      args := args.push w
+    discard popFrameRaw
+    let obs (fv : Value) : M (Value × List Value) := onCopy do
+      let (r, _) ← callFn false fv none args (args.map fun _ => none) false
+      pushTemp r
+      endAll
+      let r ← popTemp
+      pure (r, (← get).env[0]!.binds.toList.map (·.val))
+    let (rf, cf) ← obs f
+    let (rg, cg) ← obs g
+    if mode == 2 then conv rf rg      -- counterfactual: compare the result only (breaker-fresh F3)
+    else pure ((← conv rf rg) && (← convList cf cg))
+
+/-- `Eq` computes (§4), with reflexivity decided by conversion. -/
+partial def mkEqM (A a b : Value) : M Value := do
+  match A, a, b with
+  | .tProd A₁ A₂, .pair a₁ a₂, .pair b₁ b₂ => pure (mkAnd (← mkEqM A₁ a₁ b₁) (← mkEqM A₂ a₂ b₂))
+  | _, _, _ => if ← conv a b then pure .tTop else pure (.tEq A a b)
+
 -- ### Evaluation
 
 partial def expectTy (what : String) (T : Option Value) (A : Value) : M Unit := do
   if let some T := T then
-    unless T == A do err s!"{what} has type {T}, expected {A}"
+    unless ← conv T A do err s!"{what} has type {T}, expected {A}"
 
 /-- P2 (v1.3, D26): erased terms leave no trace. A term whose type is a proposition is
 evaluated on a private copy of Ω, argument evaluation included, and the copy is
@@ -452,10 +564,68 @@ discarded. Every value of a proposition is `⋆` (C7) and only such terms evalua
 partial def eval (typed : Bool) (t : Term) : M (Value × Option Value) := do
   let before := (← get).env
   let r ← evalCore typed t
-  if (← get).cfg.eraseOnCopy then
-    if ← erasedValue r.1 then
-      modify fun s => { s with env := before }
+  -- D28 (v1.5): whether this term is erased is decided syntactically and by declared
+  -- classes, never from a normal form. Calls: the callee's class (set by `callFn`);
+  -- sequencing forms inherit their tail's; proof formers are erased; an ascription is
+  -- erased when its declared type is a proposition.
+  let erased ← if (← get).cfg.erasureByDecl then
+      match t with
+      | .seq _ _ | .letIn _ _ _ | .matchNat _ _ _ | .call _ _ _ => pure (← get).lastErased
+      | .refl | .andI _ _ | .cong _ _ | .prim "trans" _ | .prim "symm" _ => pure true
+      | .prim "J" [_, _, _, P, _, _] => jErased P
+      | .ascribe _ _ => pure ((← get).lastErased || (r.2.isSome && (← typeClass r.2.get!) == 2))
+      | _ => pure false
+    else erasedValue r.1     -- the v1.4 reading: decided on the value (breaker-fresh F1)
+  if erased && (← get).cfg.eraseOnCopy then
+    modify fun s => { s with env := before }
+  modify fun s => { s with lastErased := erased }
   pure r
+
+/-- The erasure class of a function type, decided once from its declared codomain at
+the generic call (D28): 1 = it returns types (the codomain is a sort), 2 = it returns
+proofs (the codomain has sort Prop), 0 = it returns data. Cached per Π-type. -/
+partial def fnClass (piTy : Value) : M Nat := do
+  match (← get).classCache.lookup piTy with
+  | some k => return k
+  | none => pure ()
+  let k ← match piTy with
+    | .tPi cs (.pi hs ds c) =>
+      match c with
+      | .sort _ | .val (.sort _) => pure 1
+      | .val T => typeClass T
+      | _ => match isPropTerm? c with
+        | some true => pure 2
+        | some false => pure 0
+        | none => onCopy do
+          pushFrame
+          for v in cs do pushBind ⟨"κ"⟩ none v
+          for (d, h) in ds.zip hs do
+            let A ← evalType d
+            pushBind h (some A) (← genericValue A)
+          typeClass (← evalType c)
+    | _ => pure 0
+  modify fun s => { s with classCache := (piTy, k) :: s.classCache }
+  pure k
+
+/-- The class of a declared type: a sort (its inhabitants are types), a proposition
+(its inhabitants are proofs), or data. Read off the type's constructor or, for a
+sealed type, off its head call's declared codomain; never by normalising further. -/
+partial def typeClass (T : Value) : M Nat := do
+  match T with
+  | .sort _ => pure 1
+  | .tEq .. | .tTop | .tAnd .. => pure 2
+  | .tPi _ _ => pure (if (← fnClass T) == 2 then 2 else 0)
+  | .sealed t => pure (if (← sealedSort? t) == some 0 then 2 else 0)
+  | .abs σ => match ← absType σ with
+    | .sort 0 => pure 2
+    | _ => pure 0
+  | _ => pure 0
+
+/-- `J(A, a, b, P, h, t)` is a proof when the motive returns propositions. -/
+partial def jErased (P : Term) : M Bool := do
+  match P with
+  | .fix _ _ _ c _ _ => pure (c matches .sort 0)
+  | _ => pure false
 
 /-- Is this the value of an erased term: a proof (`⋆`) or a type? Types are values of
 terms whose type is a sort (P2 erases them too): the type formers, sorts, a sealed
@@ -558,7 +728,7 @@ partial def evalCore (typed : Bool) (t : Term) : M (Value × Option Value) := do
     let (vb, Tb) ← eval typed b
     expectTy "the left side of Eq" Ta A'
     expectTy "the right side of Eq" Tb A'
-    pure (mkEq A' va vb, some (.sort 0))
+    pure (← mkEqM A' va vb, some (.sort 0))
   | .refl => pure (.proof, ty .tTop)
   | .and P Q => onCopy do
     let P' ← evalType P
@@ -577,7 +747,7 @@ partial def evalCore (typed : Bool) (t : Term) : M (Value × Option Value) := do
     | some (.tEq A a b) =>
       let (fa, B) ← callFn true fv fT #[a] #[some A] false
       let (fb, _) ← callFn true fv fT #[b] #[some A] false
-      pure (.proof, some (mkEq B.get! fa fb))
+      pure (.proof, some (← mkEqM B.get! fa fb))
     | some T => err s!"cong: the proof has type {T}, which is not an equation"
     | none => err "cong: untyped proof"
   | .ref A =>
@@ -595,7 +765,7 @@ partial def evalCore (typed : Bool) (t : Term) : M (Value × Option Value) := do
     expectTy "J's second endpoint" Tb A'
     let (Pv, PT) ← eval true P
     let (_, Th) ← eval true h
-    expectTy "J's equation" Th (mkEq A' av bv)
+    expectTy "J's equation" Th (← mkEqM A' av bv)
     let (v, Tu) ← eval true u
     let (Pa, _) ← callFn true Pv PT #[av] #[some A'] false
     expectTy "the transported term" Tu Pa
@@ -604,7 +774,7 @@ partial def evalCore (typed : Bool) (t : Term) : M (Value × Option Value) := do
   | .prim "symm" [h] =>
     let (_, Th) ← eval typed h
     match Th with
-    | some (.tEq A a b) => pure (.proof, some (mkEq A b a))
+    | some (.tEq A a b) => pure (.proof, some (← mkEqM A b a))
     | some .tTop => pure (.proof, some .tTop)
     | _ => if typed then err "symm: not an equation" else pure (.proof, none)
   | .prim "trans" [h, k] =>
@@ -614,8 +784,8 @@ partial def evalCore (typed : Bool) (t : Term) : M (Value × Option Value) := do
     match Th, Tk with
     | some .tTop, some T | some T, some .tTop => pure (.proof, some T)
     | some (.tEq A a b), some (.tEq A' b' c) =>
-      unless A == A' && b == b' do err s!"trans: {Th.get!} and {Tk.get!} do not compose"
-      pure (.proof, some (mkEq A a c))
+      unless (← conv A A') && (← conv b b') do err s!"trans: {Th.get!} and {Tk.get!} do not compose"
+      pure (.proof, some (← mkEqM A a c))
     | _, _ => err "trans: not equations"
   | .prim n _ => err s!"unknown primitive {n}"
   | .ascribe u A =>
@@ -723,6 +893,7 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
   if fv == .proof then
     let B ← if typed then some <$> callType (← funType fv fT) ws tys else pure none
     endBorrowArgs ws
+    modify fun s => { s with lastErased := true }
     return (.proof, B)
   let piTy ← funType fv fT
   let B ← if typed then some <$> callType piTy ws tys else pure none
@@ -732,23 +903,30 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
   let kind ← match B with
     | some B => kindOf B
     | none => resultKind piTy ws
-  if kind == .prop && (← get).cfg.p5 then
+  -- D28: the callee's class, decided from its declared codomain at its generic call
+  let byDecl := (← get).cfg.erasureByDecl
+  let cls ← if byDecl then fnClass piTy else pure (if kind == .prop then 2 else 0)
+  let kind := if byDecl && kind == .prop then Kind.data else kind
+  if cls == 2 && (← get).cfg.p5 then
     endBorrowArgs ws
+    modify fun s => { s with lastErased := true }
     return (.proof, B)
-  match fv with
-  | .abs _ | .sealed _ => pure (← closeCall fv ws kind, B)   -- a neutral head closes off at once (v1.3)
-  | .gfn _ | .clo _ _ =>
-    let (cs, t) ← fixOf fv
-    let r ← tryCatch (runBody fv cs t ws) fun e =>
-      match e with
-      | .stuck fu =>
-        if head then throw e
-        else do
-          modify fun s => { s with fuel := fu }
-          closeCall fv ws kind
-      | .error m => throw (.error m)
-    pure (r, B)
-  | _ => err s!"call of {fv}, which is not a function"
+  let r ← match fv with
+    | .abs _ | .sealed _ => closeCall fv ws kind   -- a neutral head closes off at once (v1.3)
+    | .gfn _ | .clo _ _ =>
+      let (cs, t) ← fixOf fv
+      tryCatch (runBody fv cs t ws) fun e =>
+        match e with
+        | .stuck fu =>
+          if head then throw e
+          else do
+            modify fun s => { s with fuel := fu }
+            closeCall fv ws kind
+        | .error m => throw (.error m)
+    | _ => err s!"call of {fv}, which is not a function"
+  let r := if cls == 2 then Value.proof else r
+  modify fun s => { s with lastErased := byDecl && cls != 0 }
+  pure (r, B)
 
 /-- [Close]: the call `f(w̄)` has a stuck body; the partial run has been discarded (the
 state is back at the call point). `L := let cᵢ = uᵢ`, `C := f(ā)` with `aᵢ = &cᵢ` for
@@ -823,6 +1001,7 @@ partial def refine (σ : Nat) (r : Value) : M Unit := do
 partial def evalMatch (typed : Bool) (p : Place) (z s : Term) (expected : Option Value := none) :
     M (Value × Option Value) := do
   accessPath p
+  accessNeutralHead p
   let v ← content p
   match v with
   | .zero => eval typed z
@@ -864,7 +1043,7 @@ partial def splitThenClose (p : Place) (z s : Term) (σ : Nat) (expected : Optio
     let some T := T | err "internal: untyped arm"
     if let some E := expected then
       let E' ← substV (.abs σ) r E
-      unless T == E' do
+      unless ← conv T E' do
         err s!"an arm of the annotated match has type {T}, but the annotation refined to this arm is {E'}"
     let mut moved := []
     for (o, b) in fvs.zip before do
@@ -878,7 +1057,7 @@ partial def splitThenClose (p : Place) (z s : Term) (σ : Nat) (expected : Optio
   let B ← match expected with
     | some E => pure E
     | none =>
-      unless Ts == Tz do
+      unless ← conv Ts Tz do
         err s!"the arms of a non-tail match have different types ({Tz} and {Ts}); annotate it (let x : T = match …)"
       pure Tz
   closeOffMatch mt B (mz ++ ms)
@@ -901,9 +1080,17 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Nat) :
   let nb := (← get).env[f]!.binds.size
   -- the free places used, re-rooted at the frame index, with their capture mode
   -- (0 = copy, 1 = &, 2 = move)
+  let scrut : Option Place := match mt with
+    | .matchNat sp _ _ => some sp
+    | _ => none
   let mut uses : Array (Place × Nat) := #[]
   for (o, p, k) in mt.freeOccs do
     let q := p.mapRoot fun _ => .var o
+    -- counterfactual D32: a write through a pattern variable (a strict extension of the
+    -- block's scrutinee by `.1`) is not seen as a use of the scrutinee's place
+    if !(← get).cfg.patternWritesVisible && (k == .borrow || k == .assign) then
+      if let some sp := scrut then
+        if placePrefix sp q && !(sp == q) then continue
     let b := (← get).env[f]!.binds[nb - 1 - o]!
     let whole := q matches .var _
     let isBorrowVar := b.val.isBorrow || (b.ty matches some (.tRef _))
@@ -981,7 +1168,7 @@ partial def idType (typed : Bool) (A t u : Term) : M Value := do
     | none => valType (← getAt p)
   let a ← observe typed t A' W
   let b ← observe typed u A' W
-  pure (mkEq (tupleType A' Ts) a b)
+  mkEqM (tupleType A' Ts) a b
 
 -- ### Typing: [Def], [Split] in tail position
 
@@ -1003,6 +1190,7 @@ partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
     checkTail w k
   | .matchNat p z s =>
     accessPath p
+    accessNeutralHead p
     match ← content p with
     | .zero => checkTail z k
     | .succ _ => checkTail s k
@@ -1037,6 +1225,9 @@ splits. Afterwards the whole state is restored. -/
 partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
   let .fix self hs ds c dec body := t | err "internal: not a fix"
   let saved ← get
+  -- D31 (v1.5): without `by`, f is not in scope in its body (a λ)
+  if dec.isNone && (← get).cfg.unboundWithoutBy && (body.freeOccs.any (·.1 == ds.length)) then
+    err s!"{self.name} is not in scope in its own body: it declares no decreasing parameter (`by x`), so it is not recursive (D31)"
   if (← get).cfg.selfHeadOnly then
     let n := ds.length
     unless headOnly (fun d p => p.root == d + n) 0 body do
@@ -1082,7 +1273,10 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
           err s!"`by {(hs.getD j ⟨"?"⟩).name}`: the decreasing parameter must have type Nat or &Nat"
         pure [j]
       | none => pure []
-  if (← get).cfg.recNested then
+  if dec.isNone && !(← get).cfg.unboundWithoutBy then
+    -- counterfactual D31 (the v1.3 literal reading): [Rec] constrains only `fix … by x`
+    modify fun s => { s with goal := some goal }
+  else if (← get).cfg.recNested then
     modify fun s => { s with goal := some goal, recStack := ⟨fv, entries⟩ :: s.recStack,
                               recCands := cands :: s.recCands }
   else  -- counterfactual L3: a nested function's check starts with a fresh [Rec] context
@@ -1093,7 +1287,7 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
     discard popTemp
     let g := (← get).goal.getD .bot
     trace fun _ => s!"[Def] {self.name}: path ends with type {T} against goal {g}"
-    unless T == g do
+    unless ← conv T g do
       err s!"the body of {self.name} has type {T}, but the goal is {g}"
   restoreKeep saved
   unless (← get).cfg.recNested do

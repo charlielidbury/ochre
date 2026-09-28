@@ -1,4 +1,4 @@
-# lean-checker: an executable checker for RULES v1.4, and what running it found
+# lean-checker: an executable checker for RULES v1.5, and what running it found
 
 **Verdict:** RULES v1.4 is implemented, and 139 verdict assertions all hold. Every §7 example (E1–E5) is accepted. Every must-fail program and every attack from rounds 1–2 is rejected: e346 `Bad`, `Oops2`, `Loop`/`Bot'`; meta-model C1, C2; breaker-close A1–A4 (and A5 terminates); breaker-close-v1 N1 and meta-model-v1 R1 (the closed proofs of false built from `T` and `Q`); breaker-frame attack 1; E5's three rejections. Each is caught by the rule meant to catch it: switching that one rule off flips exactly the verdicts it guards (§5).
 **Most important finding:** **D18 (owners are sets) is load-bearing in v1.4.** An uncurried version of meta-model C2 (§4) uses v1.2's annotated block, which forms a type while a returned borrow's hole is in two owners and checks each arm against it after the split. Single-owner observation accepts it and yields the closed proof `ClosedD18 : Eq Nat 0 1`. Round 1's L1 (`f` escaping as a value) is fixed in v1.1 by exactly the rule this checker used.
@@ -147,6 +147,21 @@ Lines per module (`wc -l`, including comments):
 - **Dependent types through mutation work as deriver-e5 derived them**, including large elimination into `Prop` (`Le`), stored parameter types refined twice by [Split] (`SubM`'s `h`), and proof irrelevance at the value level (`ProofIrr`).
 - **Paper syntax.** The `ochr { … }` block reads as RULES §7 does, with `by x`, calls `f(a, …)`, and `J(A, a, b, P, h, t)`.
 
-## 8. Not done
+## 8. Rules v1.5 (D28–D33): breaker-fresh F1–F5 and reviewer-1
+
+Implemented, each with a `Config` switch. The ledger (asserted in `Registry.lean`) shows that switching each one off lets exactly its attack through:
+
+| Rule | Implementation | Switch off → flips |
+|---|---|---|
+| D28 erasure by declared class | `fnClass` gives a function's class once from its declared codomain at the generic call (a sort: returns types; sort Prop: returns proofs; else data), cached per Π-type. `eval` erases a term by syntax: calls by the callee's class; `;`/`let`/`match` by their tail; proof formers; ascriptions at a proposition. Never by the value. | V15.Boom (F1's closed `Eq Nat 0 1`) → accepted; V15.MainW0 (`MainW(0) = 1`, what compiled code computes) → rejected |
+| D29 matching ends loans inside a neutral head | `accessNeutralHead` before every match | V15.Bad, V15.Main → accepted (and the concrete `Main0` reads ⊥) |
+| D30 closures by generic-call observation | `conv`/`convFn`: structural except at function values, which are compared by Π-type, captures, and the result plus final cell contents of one shared generic call. A comparison that needs itself (a recursive function stuck at its own generic call) answers "no", which is sound and incomplete. Also gives completeness: `Conv`, `ConvW` (same effects, different code) are convertible. | V15.Boom3 (F3) → accepted under "result only" |
+| D31 no `f` without `by` | An occurrence of the self variable in a `by`-less body is an error. | V15.Loop, Boom4 (F4) → accepted under the v1.3 literal reading |
+| D32 pattern variables as sub-places | Already so: the resolver substitutes `p ↦ (*x).1`. The switch emulates the literal capture rule. | V15.Clear, Boom5 (F5) → accepted |
+| D33 type-level matches checked | Already so: type-level stuck matches are split and their arms checked (C6). | (no switch) |
+
+**Correction to §4 and to round 1.** Round 1 said D18 protects nothing v1 lets you write. That was wrong. Reviewer-1's C1 (`D18.GR`/`BadR`) needs no annotated block and no currying. A hypothesis parameter's type recomputes, with local copies, the very sealed program that owner `a1` holds after `Pick`, and single-owner observation turns `Neq`'s parameter type into that one equation. It is expressible in v1. The missing ingredient in my round-1 search was a parameter type that *writes* (`*r := Z` in a local program), not only one that reads. D18's ledger row now lists both `BadD18`/`ClosedD18` and `GR`/`BadR`.
+
+## 9. Not done
 
 A proof that the implementation matches the rules (the traces and the ledger are the evidence); universe checking beyond C15; `Bool` (Nat stands in); loops, shared borrows, borrows in data (D8); the separate meta-lean development (`ochr/core/meta-lean/`, another agent's).
