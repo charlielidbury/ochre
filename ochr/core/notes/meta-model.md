@@ -1,5 +1,7 @@
 # meta-model: a CIC model of the Ochr core, the soundness theorems, and what the model refuses
 
+> **Superseded in part (lead note):** §3.1 fix (d) is phrased for *calls*, which is exactly the flaw found as R1 in `meta-model-v1.md` §1.1; the correct, term-keyed fix is there and is adopted in RULES v1.3 (D26).
+
 ## 5-line summary
 
 1. **Verdict:** Ochr has a clean model: an Aeneas-style state-passing translation into Lean's type theory (CIC + definitional proof irrelevance + `propext`), in which a sealed program is literally an application of a backward function, a loan hole is the argument of a backward function, and `Id` is `Eq` on tuples. [Close] (both forms), [Seal], refinement, D6, [Lam], [Split] and (read as generalisation) [Join] are validated. RULES v0 is nonetheless unsound in four places; C1 is new here and C2's closed proof of ⊥ is new here (e346 F11 found the duplicated hole but not the bug).
