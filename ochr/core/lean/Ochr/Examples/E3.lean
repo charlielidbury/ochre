@@ -7,10 +7,10 @@ import Ochr.Examples.E2
 open Ochr.Test
 
 ochr E3 {
-  def AddM (x : &Nat) (y : Nat) : Unit :=
+  def AddM (x : &Nat) (y : Nat) : Unit by x :=
     match *x { Z => *x := y | S p => AddM(&p, y) }
 
-  def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () :=
+  def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x :=
     match *x { Z => refl | S p => AddMZero(&p) }
 
   -- the match is not in tail position: its arms are checked, then it is closed off

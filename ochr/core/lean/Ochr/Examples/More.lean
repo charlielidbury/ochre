@@ -5,7 +5,7 @@ import Ochr.Examples.Attacks
 open Ochr.Test
 
 ochr More {
-  def AddM (x : &Nat) (y : Nat) : Unit :=
+  def AddM (x : &Nat) (y : Nat) : Unit by x :=
     match *x { Z => *x := y | S p => AddM(&p, y) }
 
   -- deriver-e346 §E4.3: matching after an opaque call. v1's [Split] covers only σ;
@@ -28,7 +28,7 @@ ochr More {
 
   -- a recursive call inside a non-tail match: checked in the arm, then the match is
   -- closed off with the function itself as a value argument
-  def NonTailRec (x : &Nat) : Unit := (match *x { Z => () | S p => NonTailRec(&p) }); ()
+  def NonTailRec (x : &Nat) : Unit by x := (match *x { Z => () | S p => NonTailRec(&p) }); ()
 
   -- stuck matches in a goal are closed off the same way on both sides
   def StuckGoal (b : Nat) : Id Nat (match b { Z => 0 | S _ => 1 }) (match b { Z => 0 | S _ => 1 }) := refl
@@ -40,7 +40,7 @@ ochr More {
 
   -- the paper's example shape with a let before the match (D5: the footprint
   -- does not depend on unrelated locals)
-  def AddMZeroLet (x : &Nat) : Id Unit (let n = 0; AddM(x, n)) () :=
+  def AddMZeroLet (x : &Nat) : Id Unit (let n = 0; AddM(x, n)) () by x :=
     match *x { Z => refl | S p => AddMZeroLet(&p) }
 }
 

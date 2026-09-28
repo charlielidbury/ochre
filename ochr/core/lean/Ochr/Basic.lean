@@ -56,8 +56,8 @@ partial def Term.mapFree (f : Nat → Nat → Place) (c : Nat) : Term → Term
   | .matchNat p z s => .matchNat (mp f c p) (z.mapFree f c) (s.mapFree f c)
   | .pi hs ds cod =>
       .pi hs (mapDoms f c ds) (cod.mapFree f (c + ds.length))
-  | .fix h hs ds cod b =>
-      .fix h hs (mapDoms f c ds) (cod.mapFree f (c + ds.length)) (b.mapFree f (c + ds.length + 1))
+  | .fix h hs ds cod d b =>
+      .fix h hs (mapDoms f c ds) (cod.mapFree f (c + ds.length)) d (b.mapFree f (c + ds.length + 1))
   | .call g as hd => .call (g.mapFree f c) (as.map (·.mapFree f c)) hd
   | .succ t => .succ (t.mapFree f c)
   | .fst t => .fst (t.mapFree f c)
@@ -81,6 +81,40 @@ partial def mp (f : Nat → Nat → Place) (c : Nat) (p : Place) : Place :=
   p.mapRoot fun j => if j < c then .var j else f c (j - c)
 end
 
+/-- Rewrite every place with a free root: at depth `c`, a place whose root `j ≥ c` is
+replaced by `f c p'`, where `p'` is the place re-rooted at the enclosing frame's index
+`j - c`. -/
+partial def Term.mapFreePlace (f : Nat → Place → Place) (c : Nat) : Term → Term
+  | .place p => .place (fp f c p)
+  | .borrow p => .borrow (fp f c p)
+  | .assign p t => .assign (fp f c p) (t.mapFreePlace f c)
+  | .letIn h t u => .letIn h (t.mapFreePlace f c) (u.mapFreePlace f (c + 1))
+  | .seq t u => .seq (t.mapFreePlace f c) (u.mapFreePlace f c)
+  | .matchNat p z s => .matchNat (fp f c p) (z.mapFreePlace f c) (s.mapFreePlace f c)
+  | .pi hs ds cod =>
+      .pi hs ((ds.zipIdx).map fun (d, i) => d.mapFreePlace f (c + i)) (cod.mapFreePlace f (c + ds.length))
+  | .fix h hs ds cod d b =>
+      .fix h hs ((ds.zipIdx).map fun (d, i) => d.mapFreePlace f (c + i)) (cod.mapFreePlace f (c + ds.length)) d
+        (b.mapFreePlace f (c + ds.length + 1))
+  | .call g as hd => .call (g.mapFreePlace f c) (as.map (·.mapFreePlace f c)) hd
+  | .succ t => .succ (t.mapFreePlace f c)
+  | .fst t => .fst (t.mapFreePlace f c)
+  | .snd t => .snd (t.mapFreePlace f c)
+  | .ref t => .ref (t.mapFreePlace f c)
+  | .prod a b => .prod (a.mapFreePlace f c) (b.mapFreePlace f c)
+  | .pair a b => .pair (a.mapFreePlace f c) (b.mapFreePlace f c)
+  | .and a b => .and (a.mapFreePlace f c) (b.mapFreePlace f c)
+  | .andI a b => .andI (a.mapFreePlace f c) (b.mapFreePlace f c)
+  | .cong a b => .cong (a.mapFreePlace f c) (b.mapFreePlace f c)
+  | .ascribe a b => .ascribe (a.mapFreePlace f c) (b.mapFreePlace f c)
+  | .eq a b d => .eq (a.mapFreePlace f c) (b.mapFreePlace f c) (d.mapFreePlace f c)
+  | .id a b d => .id (a.mapFreePlace f c) (b.mapFreePlace f c) (d.mapFreePlace f c)
+  | .prim n as => .prim n (as.map (·.mapFreePlace f c))
+  | t => t
+where
+  fp (f : Nat → Place → Place) (c : Nat) (p : Place) : Place :=
+    if p.root < c then p else f c (p.mapRoot fun j => .var (j - c))
+
 /-- Every place occurrence `(depth, place, kind)`, in evaluation order. -/
 partial def Term.placeOccs (c : Nat) : Term → List (Nat × Place × PKind)
   | .place p => [(c, p, .read)]
@@ -91,7 +125,7 @@ partial def Term.placeOccs (c : Nat) : Term → List (Nat × Place × PKind)
   | .matchNat p z s => (c, p, .scrut) :: (z.placeOccs c ++ s.placeOccs c)
   | .pi _ ds cod =>
       (ds.zipIdx.flatMap fun (d, i) => d.placeOccs (c + i)) ++ cod.placeOccs (c + ds.length)
-  | .fix _ _ ds cod b =>
+  | .fix _ _ ds cod _ b =>
       (ds.zipIdx.flatMap fun (d, i) => d.placeOccs (c + i)) ++ cod.placeOccs (c + ds.length)
         ++ b.placeOccs (c + ds.length + 1)
   | .call g as _ => g.placeOccs c ++ as.flatMap (·.placeOccs c)
@@ -130,7 +164,7 @@ partial def Term.anyAtom (P : Value → Bool) : Term → Bool
   | .cong t u | .ascribe t u => t.anyAtom P || u.anyAtom P
   | .matchNat _ z s => z.anyAtom P || s.anyAtom P
   | .pi _ ds c => ds.any (·.anyAtom P) || c.anyAtom P
-  | .fix _ _ ds c b => ds.any (·.anyAtom P) || c.anyAtom P || b.anyAtom P
+  | .fix _ _ ds c _ b => ds.any (·.anyAtom P) || c.anyAtom P || b.anyAtom P
   | .call f as _ => f.anyAtom P || as.any (·.anyAtom P)
   | .eq a b c | .id a b c => a.anyAtom P || b.anyAtom P || c.anyAtom P
   | .prim _ as => as.any (·.anyAtom P)
@@ -155,7 +189,7 @@ partial def Term.loans : Term → List Nat
   | .cong t u | .ascribe t u => t.loans ++ u.loans
   | .matchNat _ z s => z.loans ++ s.loans
   | .pi _ ds c => ds.flatMap Term.loans ++ c.loans
-  | .fix _ _ ds c b => ds.flatMap Term.loans ++ c.loans ++ b.loans
+  | .fix _ _ ds c _ b => ds.flatMap Term.loans ++ c.loans ++ b.loans
   | .call f as _ => f.loans ++ as.flatMap Term.loans
   | .eq a b c | .id a b c => a.loans ++ b.loans ++ c.loans
   | .prim _ as => as.flatMap Term.loans

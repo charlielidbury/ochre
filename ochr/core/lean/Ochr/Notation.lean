@@ -5,7 +5,7 @@ import Ochr.Surface
 
 ```
 ochr E1 {
-  def AddM (x : &Nat) (y : Nat) : Unit :=
+  def AddM (x : &Nat) (y : Nat) : Unit by x :=
     match *x { Z => *x := y | S p => AddM(&p, y) }
   reject def Bad (x : &Nat) : Id Nat (*x) 5 := *x := 5; refl
 }
@@ -52,14 +52,19 @@ syntax:max "match " ochr_term " { " ident " => " ochr_term:10 " | " ident ident 
 syntax:max "match " ochr_term " { " ident " => " ochr_term:10 " | " ident "_" " => " ochr_term:10 " }" : ochr_term
 syntax:10 "Π" ochr_binder+ ". " ochr_term:10 : ochr_term
 syntax:10 "λ" ochr_binder+ " : " ochr_term:21 " => " ochr_term:10 : ochr_term
-syntax:10 "fix " ident ochr_binder+ " : " ochr_term:21 " := " ochr_term:10 : ochr_term
+syntax:10 "fix " ident ochr_binder+ " : " ochr_term:21 (" by " ident)? " := " ochr_term:10 : ochr_term
 
-syntax "def " ident ochr_binder* " : " ochr_term:21 " := " ochr_term : ochr_decl
-syntax "reject " "def " ident ochr_binder* " : " ochr_term:21 " := " ochr_term : ochr_decl
+syntax "def " ident ochr_binder* " : " ochr_term:21 (" by " ident)? " := " ochr_term : ochr_decl
+syntax "reject " "def " ident ochr_binder* " : " ochr_term:21 (" by " ident)? " := " ochr_term : ochr_decl
 
 syntax (name := ochrProgram) "ochr " ident " { " ochr_decl* " }" : command
 
 def strLit (s : String) : TSyntax `term := quote s
+
+def decOf (d? : Option (TSyntax `ident)) : TSyntax `term :=
+  match d? with
+  | some d => Syntax.mkApp (mkIdent ``Option.some) #[strLit d.getId.toString]
+  | none => mkIdent ``Option.none
 
 mutual
 partial def elabTerm (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := do
@@ -103,9 +108,9 @@ partial def elabTerm (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := do
     `(STerm.matchNat $(← elabTerm p) $(← elabTerm tz) "_" $(← elabTerm ts))
   | `(ochr_term| Π $bs*. $c) => do `(STerm.pi [$(← bs.mapM elabBinder),*] $(← elabTerm c))
   | `(ochr_term| λ $bs* : $r => $b) => do
-    `(STerm.fix "_" [$(← bs.mapM elabBinder),*] $(← elabTerm r) $(← elabTerm b))
-  | `(ochr_term| fix $f:ident $bs* : $r := $b) => do
-    `(STerm.fix $(strLit f.getId.toString) [$(← bs.mapM elabBinder),*] $(← elabTerm r) $(← elabTerm b))
+    `(STerm.fix "_" [$(← bs.mapM elabBinder),*] $(← elabTerm r) none $(← elabTerm b))
+  | `(ochr_term| fix $f:ident $bs* : $r $[by $d?]? := $b) => do
+    `(STerm.fix $(strLit f.getId.toString) [$(← bs.mapM elabBinder),*] $(← elabTerm r) $(decOf d?) $(← elabTerm b))
   | _ => Macro.throwErrorAt stx "unsupported ochr term"
 
 partial def elabBinder (stx : TSyntax `ochr_binder) : MacroM (TSyntax `term) := do
@@ -117,12 +122,12 @@ end
 
 def elabDecl (stx : TSyntax `ochr_decl) : MacroM (TSyntax `term) := do
   match stx with
-  | `(ochr_decl| def $f:ident $bs* : $r := $b) => do
+  | `(ochr_decl| def $f:ident $bs* : $r $[by $d?]? := $b) => do
     `(({ name := $(strLit f.getId.toString), params := [$(← bs.mapM elabBinder),*],
-         ret := $(← elabTerm r), body := $(← elabTerm b), expectAccept := true } : SDecl))
-  | `(ochr_decl| reject def $f:ident $bs* : $r := $b) => do
+         ret := $(← elabTerm r), dec := $(decOf d?), body := $(← elabTerm b), expectAccept := true } : SDecl))
+  | `(ochr_decl| reject def $f:ident $bs* : $r $[by $d?]? := $b) => do
     `(({ name := $(strLit f.getId.toString), params := [$(← bs.mapM elabBinder),*],
-         ret := $(← elabTerm r), body := $(← elabTerm b), expectAccept := false } : SDecl))
+         ret := $(← elabTerm r), dec := $(decOf d?), body := $(← elabTerm b), expectAccept := false } : SDecl))
   | _ => Macro.throwErrorAt stx "unsupported declaration"
 
 macro_rules
