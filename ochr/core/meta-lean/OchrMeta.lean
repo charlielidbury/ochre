@@ -8,4 +8,5 @@ import OchrMeta.Examples
 import OchrMeta.Frame
 import OchrMeta.Rename
 import OchrMeta.Mono
+import OchrMeta.Canon
 import OchrMeta.Tests.Basic

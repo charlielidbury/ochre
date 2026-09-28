@@ -116,4 +116,39 @@ def refined : Option Env := match symb with
   | _, _ => false
 end T5
 
+/-! ## `canon_sched` (T1): every order of [End] steps gives the same final environment -/
+namespace Sched
+open OchrMeta.Ex
+
+/-- all permutations of a small list (fuel = its length) -/
+def permsN : Nat → List Nat → List (List Nat)
+  | 0, _ => [[]]
+  | n + 1, l => if l = [] then [[]] else l.flatMap fun x => (permsN n (l.erase x)).map (x :: ·)
+def perms (l : List Nat) : List (List Nat) := permsN l.length l
+
+def heldNames (s : St) : List Nat := s.env.flatten.filterMap fun b =>
+  match b.2 with | .borrow l _ => some l | _ => none
+
+def endIn (s : St) : List Nat → Option St
+  | [] => some s
+  | l :: ls => (endBorrow l s).bind (endIn · ls)
+
+def allSame (s : St) : Bool :=
+  match (perms (heldNames s)).map (fun o => (endIn s o).map (·.env)) with
+  | [] => true
+  | x :: xs => xs.all (· == x) && x.isSome
+
+-- three borrows: b = &a, r = &(*b).1, q = &(*r).1 (a chain), then stop with all alive
+def chain : Res :=
+  go [("a", nat 3), ("b", .unit), ("r", .unit), ("q", .unit)]
+    (.seq (.assign (V "b") (bw (V "a"))) (.seq (.assign (V "r") (bw (.fst (dr (V "b")))))
+      (.assign (V "q") (bw (.fst (dr (V "r")))))))
+#guard match chain with | .ok s _ => (heldNames s).length == 3 && allSame s | _ => false
+-- Pick's result with a symbolic scrutinee, plus a second borrow alive
+def pick2 : Res :=
+  go [("n", .abs 0), ("a", nat 1), ("b", nat 2), ("c", nat 5), ("r", .unit), ("k", .unit)]
+    (.seq (.assign (V "r") (cl "Pick" [rd (V "n"), bw (V "a"), bw (V "b")])) (.assign (V "k") (bw (V "c"))))
+#guard match pick2 with | .ok s _ => (heldNames s).length == 2 && allSame s | _ => false
+end Sched
+
 end OchrMeta.Tests
