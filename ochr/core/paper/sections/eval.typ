@@ -18,7 +18,7 @@ The judgement is big-step: `⟨Ω, t⟩ ⇓ ⟨Ω', v⟩` runs `t` from environm
       infer(name: "Assign", $cfg(Omega, t) arrow.b.double cfg(Omega_1, v)$, $Omega_2 = "drop"(Omega_1, "content"(Omega_1, p))$, $cfg(Omega, p := t) arrow.b.double cfg(Omega_2[p |-> v], ())$),
     )
   ],
-  caption: [Borrows. Every rule that accesses a place `p` is preceded by [Access]: end every borrow whose loan lies on the path to `p` or inside its content. `drop` ends the borrows inside a dropped value and fails on a live loan in a dropped owned value.],
+  caption: [Borrows. Every rule that accesses a place `p` is preceded by [Access]: end every borrow whose loan lies on the path to `p` or inside its content (for a match, which inspects only the head: on the path, at the head, or anywhere inside a neutral head). `drop` ends the borrows inside a dropped value and fails on a live loan in a dropped owned value.],
 ) <fig-borrows>
 
 @fig-borrows gives the rules for borrows. They are Aeneas's, simplified by treating loans as variables.
