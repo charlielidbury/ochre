@@ -1,6 +1,6 @@
 #import "../style.typ": *
 
-Ochr is a dependent type theory in the style of Lean's kernel @theory-of-lean, extended with places, mutable borrows and sequencing. This section gives its syntax and the runtime structures of its evaluator. We keep the core small: the only inductive types are natural numbers and the unit type, plus pairs and the propositional connectives needed by equality. @sec-discussion discusses what generalises directly and what does not.
+Ochr is a dependent type theory in the style of Lean's kernel @theory-of-lean, extended with places, mutable borrows and sequencing. This section gives its syntax and the runtime structures of its evaluator. We present the rules for natural numbers and the unit type, plus pairs and the propositional connectives needed by equality; user-declared inductive types with several constructors and fields change only the grammar of patterns and places, and @sec-appendix gives the general definition.
 
 == Syntax
 
@@ -10,7 +10,7 @@ Ochr is a dependent type theory in the style of Lean's kernel @theory-of-lean, e
     ([], $Pi(x_1 : A_1 ... x_n : A_n). B | kw("fix") f (x_1 : A_1 ... x_n : A_n) : B space kw("by") x_j := t | t(u_1, ..., u_n)$, [functions, calls]),
     ([], $ty("Nat") | ty("Z") | ty("S") t | ty("Unit") | () | A times B | (t, u) | t.1 | t.2$, [data]),
     ([], $ty("Eq") A space t space u | kw("refl") | ty("J")(A, a, b, P, h, t) | top | P and Q | chevron.l h, k chevron.r$, [propositions]),
-    ([], $\&A | p | \&p | p := t | kw("let") x = t; u | t; u$, [places and borrows]),
+    ([], $\&A | p | \&p | p := t | kw("let") x = t; u | kw("let") x : A = t; u | t; u$, [places and borrows]),
     ([], $kw("match") p space {ty("Z") => t | ty("S") y => u}$, [case analysis]),
     ([], $ty("Id") A space t space u$, [computation equality]),
     ($p$, $x | *p | p.1$, [places]),

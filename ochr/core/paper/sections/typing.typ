@@ -6,11 +6,11 @@ Typing is the machine run on abstract inputs, with case splitting where the chec
   block(width: 100%)[
     *[Call-type]* At the point where the arguments of `f(ā)` have been evaluated, with `f : Π(x̄ : Ā). B`: push a frame binding each `xᵢ` to `aᵢ`'s value, evaluate `B` there on a private copy of the environment, and pop. The result is the type of the call. Each `aᵢ` must have type `Aᵢ`, evaluated with the earlier parameters bound.
 
-    *[Def]* `fix f (x̄ : Ā) : B by xⱼ := b` is checked at its _generic call_: from an environment with a fresh owned place `cᵢ ↦ σᵢ` for each borrow parameter `xᵢ : &Tᵢ`, the call `f(ā)` with `aᵢ = &cᵢ` for borrow parameters and `aᵢ = σᵢ` otherwise. The goal is the [Call-type] of this call. The body runs in the pushed frame, which is then dropped; its result's type must be convertible to the goal, as refined by the splits on the way.
+    *[Def]* `fix f (x̄ : Ā) : B by xⱼ := b` is checked at its _generic call_: from an environment with a fresh owned place `cᵢ ↦ σᵢ` for each borrow parameter `xᵢ : &Tᵢ`, the call `f(ā)` with `aᵢ = &cᵢ` for borrow parameters, `aᵢ = ⋆` for proof parameters, and `aᵢ = σᵢ` otherwise; parameter types are evaluated left to right, with the earlier parameters bound, and stored with their bindings. The goal is the [Call-type] of this call. The body runs in the pushed frame, which is then dropped; its result's type must be convertible to the goal, as refined by the splits on the way.
 
     *[Split]* When the checked program matches on a place whose content has an abstract head `σ`, each arm is checked with the refinement `σ := Z`, respectively `σ := S σ'` for fresh `σ'`, applied to the environment, the goal and every stored type. If the head is a sealed program, every occurrence of it is first replaced by a fresh `σ`. If the match is followed by more code, that code is checked once, from the state in which the match has been closed off as a stuck block.
 
-    *[Rec]* In the body of `fix f … by xⱼ`, `f` occurs only as the head of a call, and each recursive call passes in position `j` a value, or a borrow of a value, that is a strict subterm of `xⱼ`'s entry value `σⱼ` as refined so far.
+    *[Rec]* In the body of `fix f … by xⱼ`, including inside nested functions and block arms, `f` occurs only as the head of a call, and each recursive call passes in position `j` a value, or a borrow of a value, that is a strict subterm of `xⱼ`'s entry value `σⱼ` as refined so far.
   ],
   caption: [The typing rules particular to Ochr.],
 ) <fig-typing>
@@ -31,19 +31,30 @@ A `match` in the checked program on an abstract value cannot pick an arm, so eac
 
 == Erased terms leave no trace
 
-Types and proofs are erased at runtime. The machine mirrors this exactly: it evaluates a type, or a term whose type is a proposition, on a private copy of the environment, argument evaluation included, and discards the copy. Two things follow. A formed type is a closed statement about values, as described above. And a proof can have no effect on the program around it: it may mutate places freely, but only on its own copy. Running a proof and skipping it are therefore indistinguishable, and the machine skips proofs, which is what the compiled program does too.
+Types and proofs are erased at runtime. The machine mirrors this exactly: it evaluates an erased term on a private copy of the environment, argument evaluation included, and discards the copy. A term is erased when it stands in a type position, when its declared type has sort `Prop`, or when it is a call to a function whose codomain term is a sort or has declared sort `Prop`; the decision never looks at a normal form. Two things follow. A formed type is a closed statement about values, as described above. And a proof can have no effect on the program around it: it may mutate places freely, but only on its own copy. Running a proof and skipping it are therefore indistinguishable, and the machine skips proofs, which is what the compiled program does too.
 
 This is one principle, not a restriction on proofs. `AddMZero`'s successor case borrows the field `p` to pass it to the induction hypothesis; the borrow happens on the private copy, and the real environment is untouched. Nothing in a program is marked pure, and any program may appear in a statement.
 
-== Why each condition is there
+== Why each condition is there <sec-why>
 
-Each side condition above was added in response to a concrete false proof or run-time error found while designing the calculus. We list them because together they delimit the design, and because each is a regression test for the implementation (@sec-impl).
+Each side condition was added in response to a concrete closed proof of false, or an accepted program that goes wrong, found while designing the calculus; each is a regression test in the implementation, and switching it off lets its counterexamples back in (@sec-impl). Most of them guard one invariant: a statement is evaluated once through closing off, at a definition's generic call, and again directly at each instance, and [Call-type] and [Split] equate the two, so every decision the two paths must agree on is made from syntax (@lem-stable).
 
-- *Π-types capture values.* If the codomain of a hypothesis `h : Π(_ : Unit). Id Nat x Z` were re-evaluated at each call, then `x := S x; h(())` would produce a proof of `Id Nat (S Z) Z` from `h`, which was proved when `x` was `Z`.
-- *Recursion on entry values.* A syntactic structural check accepts `f(x : &Nat) := *x := S *x; match *x { S p => f(&p) }`, whose recursive argument is the parameter's original value, and with it a proof of `Π(n : Nat). ⊥`. The recursive function must also never escape as a value, or the check can be bypassed through a higher-order call.
-- *Erased terms run on a private copy.* Proof irrelevance at a Π-type over a borrow identifies `λx. ⋆` with `λx. (*x := 7; ⋆)`; if calls to these could affect the caller, transport along that identification proves `⊥`. Stipulating only that proof _calls_ are skipped is not enough: a proof block that writes, closed off after a split and then refined, would be skipped, but run directly it would not, and a closed proof of `Id Nat (S Z) Z` results. Running every erased term on a private copy makes skipping a consequence rather than a stipulation, and makes it commute with refinement. For the same reason a type must be formed on a private copy: a type that writes would otherwise make the checker and the compiled program disagree.
-- *Erasure is decided from syntax.* Whether a call is erased is decided once, from the callee's declared type at its generic call, and never from a normal form. Otherwise a type family such as `U(n) := match n { Z => Prop | S _ => Prop }` makes a writing call `W(&c, n) : U(n)` run for real at the generic `n`, where `U(σ)` is stuck, but be erased at `n = Z`, where `U(Z)` is `Prop`, and a lemma proved generically as `S Z = S Z` reads `Z = S Z` at the instance. Universes are not cumulative for the same reason.
-- *Functions are compared by what they do.* Two closures are convertible only if their generic calls have the same observation, effects included; comparing results alone identifies `λx. (*x := S Z)` with `λx. ()`, and transport between them proves `Eq Nat (S Z) Z`.
-- *Pattern variables are places.* A write through a pattern variable is a write to the matched place; a stuck block that captured the scrutinee by copy because the write went through `p` rather than `*x` would prove `Eq Nat (S Z) (S (S Z))`.
-- *All owners are observed.* A function returning a borrow into one of two arguments leaves its hole in both. A footprint that observed only one owner lets [Call-type] prove `Id Nat (S Z) Z`.
-- *Access is exclusive and closing off needs loan-free arguments.* Moving a borrow whose content still holds a live loan into a call, and closing that call off, copies the loan into a sealed program; after refinement the sealed program disagrees with running the call, and the compiled program writes through an ended borrow.
+#figure(kind: image, supplement: [Figure],
+  table(columns: (auto, 1fr), stroke: none, inset: (x: 4pt, y: 3pt), align: (left, left),
+    table.hline(stroke: 0.5pt),
+    [*Condition*], [*What goes wrong without it*],
+    table.hline(stroke: 0.4pt),
+    [Π-types capture values], [`h : Π(_ : Unit). Id Nat x Z` proved when `x` was `Z` is re-read after `x := S x`, proving `Id Nat (S Z) Z`.],
+    [Recursion on entry values; `f` only as a call head; no `f` without `by`], [`*x := S *x; match *x { S p => f(&p) }` recurses on the original value; passing `f` to a helper or calling it in a `by`-less body avoids the check; each proves `Eq Nat 0 1`.],
+    [Erased terms run on a private copy], [Proof irrelevance identifies `λx. ⋆` with `λx. (*x := 7; ⋆)`; skipping only proof _calls_ lets a closed-off proof block and the same block run inline disagree.],
+    [Erasure read from syntax, never from normal forms; universes not cumulative], [A call `W(&c, n) : U(n)` with `U(n) := match n {Z => Prop | …}` runs at the generic `n` but is erased at `n = Z`; the same for a local function whose codomain mentions captured values, and for a type-valued match erased only when closed off.],
+    [Functions compared by their observation], [Comparing results alone identifies `λx. (*x := S Z)` with `λx. ()`; comparing borrow-returning functions without writing through the result identifies `λ(x, y). x` with `λ(x, y). y`.],
+    [Pattern variables are places], [A stuck block that writes through `p` in `match *x { S p => p := Z }` captures `*x` by copy.],
+    [All owners observed], [A borrow returned into one of two arguments leaves its hole in both; observing one proves `Eq Nat 0 1`.],
+    [Exclusive access; loan-free closing off; matches end loans in neutral heads], [A live loan copied into a sealed program, or a hole generalised away by a split, lets an accepted program write through an ended borrow.],
+    [Generalisations are global; fresh names never reused], [A generalisation made while forming a type is lost with its private copy, and its name is reissued for a different computation.],
+    [Strict positivity], [`inductive Bad := Mk(f : Π(x : Bad). Empty)` proves `Eq Nat 0 1` through a proof that is never run.],
+    table.hline(stroke: 0.5pt),
+  ),
+  caption: [The side conditions of Ochr and the counterexamples that forced them.],
+) <fig-why>
