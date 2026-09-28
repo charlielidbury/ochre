@@ -4,6 +4,7 @@ import Ochr.Examples.V15
 import Ochr.Examples.V18
 import Ochr.Examples.Inductives
 import Ochr.Examples.Probes
+import Ochr.Examples.HashMap
 
 /-! # Every example program, for the test runner and the counterfactual ledger -/
 
@@ -13,7 +14,7 @@ namespace Ochr.Registry
 
 def programs : List (String × Program) :=
   [("E1", E1), ("E2", E2), ("E3", E3), ("E4", E4), ("E5", E5), ("E6", E6), ("Attacks", Attacks), ("More", More), ("Probes", Probes), ("V15", V15), ("V17", V17), ("V18", V18), ("Positivity", Positivity), ("GenTy", GenTy), ("Inductives", Inductives),
-   ("D18", Ochr.Units.D18)]
+   ("D18", Ochr.Units.D18), ("HashMap", HashMap)]
 
 def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
   programs.map fun (n, p) => run n p cfg fuel
@@ -63,7 +64,7 @@ def switches : List (String × Config) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 239
+def Ochr.Registry.expectedTotal : Nat := 279
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
@@ -94,10 +95,20 @@ open Ochr.Registry in
 #guard flips { selfHeadOnly := false } == ["Attacks.Knot:accepted", "Attacks.KnotBoom:accepted"]
 open Ochr.Registry in
 #guard flips { argNotBot := false } == ["More.Dead:accepted", "More.DeadTwice:accepted"]
+/-- The hashmap (`HashMap.lean`) dispatches on `EqB`/`Lt`, whose results are sealed at the
+generic call: every function doing so, and every run and theorem built on them, needs
+generalise-then-split. -/
+def hashMapGeneralize : List String :=
+  ["HashMap.ModGo:rejected", "HashMap.Idx:rejected", "HashMap.BGet:rejected", "HashMap.BInsertM:rejected",
+   "HashMap.BRemoveM:rejected", "HashMap.InsertNoResize:rejected", "HashMap.Get:rejected", "HashMap.Remove:rejected",
+   "HashMap.MoveBucket:rejected", "HashMap.MoveSlots:rejected", "HashMap.Resize:rejected", "HashMap.Insert:rejected",
+   "HashMap.RunLayout:rejected", "HashMap.RunGet1:rejected", "HashMap.RunGet2:rejected", "HashMap.RunGet3:rejected",
+   "HashMap.RunGetAbsent:rejected", "HashMap.RunOverwrite:rejected", "HashMap.RunOverwriteGet:rejected",
+   "HashMap.RunCollide:rejected", "HashMap.RunRemove:rejected", "HashMap.RunRemoveGet:rejected", "HashMap.RunCount:rejected"]
 open Ochr.Registry in
 #guard flips { generalize := false } ==
   ["More.MatchAfterOpaque:rejected", "GenTy.GenL:rejected", "Inductives.InsertM:rejected", "Inductives.Insert:rejected",
-   "Inductives.InsertMEq:rejected", "Inductives.InsertMSwap:rejected", "Inductives.SizeInsert:rejected"]
+   "Inductives.InsertMEq:rejected", "Inductives.InsertMSwap:rejected", "Inductives.SizeInsert:rejected"] ++ hashMapGeneralize
 open Ochr.Registry in
 #guard flips { blockMoves := false } == ["Probes.MovedByBlock:accepted"]
 open Ochr.Registry in
