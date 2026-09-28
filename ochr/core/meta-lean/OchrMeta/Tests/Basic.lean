@@ -151,6 +151,43 @@ def pick2 : Res :=
 #guard match pick2 with | .ok s _ => (heldNames s).length == 2 && allSame s | _ => false
 end Sched
 
+/-! ## `natural_prop` (T5): refine-then-run vs run-then-refine-and-normalise
+
+For each term, run it symbolically with `x ↦ σ`, refine the final state (`σ := α`) and normalise
+the sealed programs; run it concretely from the refined initial state; compare the final
+environments on the nose (up to renaming of loans: `Env.canon`) and after resolution. -/
+namespace Nat5
+def init (x : Val) : List (String × Val) := [("x", x), ("y", nat 2), ("z", .unit), ("r", .unit), ("n", .abs 7)]
+def terms : List Term :=
+  [ .assign (V "z") (cl "Add" [rd (V "x"), num 0]),
+    cl "AddM'" [bw (V "x"), rd (V "y")],
+    .assign (V "r") (cl "TailM" [bw (V "x")]),                       -- r stays live: hole in x
+    .letIn "q" (cl "TailM" [bw (V "x")]) (.assign (dr (V "q")) (num 3)),
+    cl "AddM" [bw (V "x"), num 0] ]
+def alphas : List Val := [nat 0, .succ (.abs 5), nat 1, nat 2, nat 3, nat 4]
+def symbFinal (t : Term) : Option Env := match go (init (.abs 0)) t with
+  | .ok s _ => some s.env | _ => none
+def concFinal (t : Term) (a : Val) : Option Env := match go (init a) t 0 with
+  | .ok s _ => some s.env | _ => none
+def refineNorm (Ω : Env) (a : Val) : Env := (Ω.substAbs 0 a).norm P fuel
+def nose (t : Term) (a : Val) : Bool :=
+  match symbFinal t, concFinal t a with
+  | some S, some C => Env.canon (refineNorm S a) == Env.canon C
+  | _, _ => false
+def resolved (Ω : Env) : Option Env := (endAll ⟨Ω, 1000⟩).map (·.env)
+def upto (t : Term) (a : Val) : Bool :=
+  match symbFinal t, concFinal t a with
+  | some S, some C => (resolved (refineNorm S a)).map Env.canon == (resolved C).map Env.canon
+  | _, _ => false
+-- on the nose, for all five terms and all refinements (including the partial σ := S σ')
+#guard terms.all fun t => alphas.all fun a => nose t a
+#guard terms.all fun t => alphas.all fun a => upto t a
+-- F3's term (the returned borrow's hole in two owners): not on the nose, but up to resolution
+def pickT : Term := .seq (.assign (V "r") (cl "Pick" [rd (V "x"), bw (V "y"), bw (V "z")])) (.assign (V "n") (rd (V "z")))
+#guard !(nose pickT (nat 0)) && upto pickT (nat 0)
+#guard (alphas.all fun a => upto pickT a)
+end Nat5
+
 /-! ## `back_inj_small` (Lemma 4) and `ctx_needs_all_owners` (C2), on the sealed programs -/
 namespace Inj
 def back (f : String) (as : List Val) (is : List Nat) (w : Nat) : List Val :=
