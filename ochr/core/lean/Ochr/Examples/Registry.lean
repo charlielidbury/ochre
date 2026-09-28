@@ -1,6 +1,7 @@
 import Ochr.Examples.Units
 import Ochr.Examples.E5
 import Ochr.Examples.V15
+import Ochr.Examples.Inductives
 import Ochr.Examples.Probes
 
 /-! # Every example program, for the test runner and the counterfactual ledger -/
@@ -10,16 +11,18 @@ open Ochr Ochr.Test Ochr.Surface
 namespace Ochr.Registry
 
 def programs : List (String × Program) :=
-  [("E1", E1), ("E2", E2), ("E3", E3), ("E4", E4), ("E5", E5), ("E6", E6), ("Attacks", Attacks), ("More", More), ("Probes", Probes), ("V15", V15),
+  [("E1", E1), ("E2", E2), ("E3", E3), ("E4", E4), ("E5", E5), ("E6", E6), ("Attacks", Attacks), ("More", More), ("Probes", Probes), ("V15", V15), ("Inductives", Inductives),
    ("D18", Ochr.Units.D18)]
 
-def reports (cfg : Config := {}) : List Report := programs.map fun (n, p) => run n p cfg
+def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
+  programs.map fun (n, p) => run n p cfg fuel
 
 /-- The declarations whose verdict under `cfg` differs from the default, as
 `program.name:verdict`. -/
 def flips (cfg : Config) : List String := Id.run do
   let mut out := []
-  for (base, alt) in (reports {}).zip (reports cfg) do
+  -- counterfactual runs may not terminate (e.g. without [Rec]); a smaller fuel bounds them
+  for (base, alt) in (reports {} 300000).zip (reports cfg 300000) do
     for (r, r') in base.rows.zip alt.rows do
       if r.verdict.ok != r'.verdict.ok then
         out := out ++ [s!"{base.program}.{r.name}:{if r'.verdict.ok then "accepted" else "rejected"}"]
@@ -41,12 +44,13 @@ def switches : List (String × Config) :=
    ("D29 (v1.5): matching ends loans inside a neutral head", { matchEndsInside := false }),
    ("D30 (v1.5): closures compared by generic-call observation (vs result only)", { closureConv := 2 }),
    ("D31 (v1.5): without `by`, f is not in scope", { unboundWithoutBy := false }),
-   ("D32 (v1.5): writes through pattern variables are writes to the scrutinee", { patternWritesVisible := false })]
+   ("D32 (v1.5): writes through pattern variables are writes to the scrutinee", { patternWritesVisible := false }),
+   ("G1 (finding): a generalised neutral stays generalised under normalisation", { genConsistent := false })]
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 161
+def Ochr.Registry.expectedTotal : Nat := 185
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
@@ -78,7 +82,9 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard flips { argNotBot := false } == ["More.Dead:accepted", "More.DeadTwice:accepted"]
 open Ochr.Registry in
-#guard flips { generalize := false } == ["More.MatchAfterOpaque:rejected"]
+#guard flips { generalize := false } ==
+  ["More.MatchAfterOpaque:rejected", "Inductives.InsertM:rejected", "Inductives.Insert:rejected",
+   "Inductives.InsertMEq:rejected", "Inductives.InsertMSwap:rejected", "Inductives.SizeInsert:rejected"]
 open Ochr.Registry in
 #guard flips { blockMoves := false } == ["Probes.MovedByBlock:accepted"]
 open Ochr.Registry in
@@ -95,3 +101,5 @@ open Ochr.Registry in
 #guard flips { unboundWithoutBy := false } == ["V15.Loop:accepted", "V15.Boom4:accepted"]
 open Ochr.Registry in
 #guard flips { patternWritesVisible := false } == ["V15.Clear:accepted", "V15.Boom5:accepted"]
+open Ochr.Registry in
+#guard flips { genConsistent := false } == ["Inductives.InsertMEq:rejected", "Inductives.SizeInsert:rejected"]

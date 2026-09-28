@@ -24,6 +24,8 @@ def Place.pp (ns : List String) : Place → String
   | .fst p => s!"{p.pp ns}.1"
   | .snd (.deref p) => s!"(*{p.pp ns}).2"
   | .snd p => s!"{p.pp ns}.2"
+  | .field _ h (.deref p) => s!"(*{p.pp ns}).{h.name}"
+  | .field _ h p => s!"{p.pp ns}.{h.name}"
 
 mutual
 partial def Term.pp (ns : List String) : Term → String
@@ -62,11 +64,15 @@ partial def Term.pp (ns : List String) : Term → String
   | .ref a => s!"&{a.ppArg ns}"
   | .ascribe t a => s!"({t.pp ns} : {a.pp ns})"
   | .prim n as => " ".intercalate (n :: as.map (·.ppArg ns))
+  | .tind n => n
+  | .ctor _ _ h as => if as.isEmpty then h.name else s!"{h.name}({", ".intercalate (as.map (·.pp ns))})"
+  | .matchInd p _ as =>
+    s!"match {p.pp ns} \{ {" | ".intercalate (as.map fun (h, a) => s!"{h.name} => {a.pp ns}")} }"
 
 partial def Term.ppArg (ns : List String) (t : Term) : String :=
   match t with
   | .place _ | .const _ | .nat | .unit | .tt | .refl | .top | .zero | .sort _ | .pair _ _
-  | .andI _ _ | .ascribe _ _ | .call _ _ _ => t.pp ns
+  | .andI _ _ | .ascribe _ _ | .call _ _ _ | .tind _ | .ctor _ _ _ _ => t.pp ns
   | .val v => v.ppArg
   | .succ _ => if (natLitT? t).isSome then t.pp ns else s!"({t.pp ns})"
   | _ => s!"({t.pp ns})"
@@ -110,11 +116,13 @@ partial def Value.pp : Value → String
   | .tPi cs t => ppClosure "" cs t
   | .sort 0 => "Prop"
   | .sort (l + 1) => if l == 0 then "Type" else s!"Type_{l}"
+  | .ind _ _ h fs => if fs.isEmpty then h.name else s!"{h.name}({", ".intercalate (fs.map Value.pp)})"
+  | .tInd n => n
 
 partial def Value.ppArg (v : Value) : String :=
   match v with
   | .zero | .unit | .gfn _ | .loan _ | .bot | .abs _ | .sealed _ | .proof | .tNat | .tUnit
-  | .tTop | .sort _ | .pair _ _ => v.pp
+  | .tTop | .sort _ | .pair _ _ | .ind _ _ _ _ | .tInd _ => v.pp
   | .succ _ => if (natLit? v).isSome then v.pp else s!"({v.pp})"
   | _ => s!"({v.pp})"
 

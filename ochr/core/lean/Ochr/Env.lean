@@ -46,6 +46,12 @@ structure GDef where
   fn? : Option Term     -- the closed `fix` term of a function
   val : Value           -- `gfn name` for functions, the value otherwise
 
+/-- A declared inductive type: constructors with named fields and their (closed) types. -/
+structure IndDecl where
+  name : String
+  ctors : List (String × List (String × Value))
+deriving Inhabited
+
 /-- The function whose body is being checked, for [Rec]. -/
 structure RecCtx where
   fn : Value
@@ -72,12 +78,14 @@ structure Config where
   closureConv : Nat := 0         -- v1.5 D30: 0 = generic-call observation, 1 = syntactic, 2 = result only
   unboundWithoutBy : Bool := true -- v1.5 D31: without `by`, f is not in scope in its body
   patternWritesVisible : Bool := true -- v1.5 D32: writes through pattern variables are writes to the scrutinee
+  genConsistent : Bool := true   -- finding G1: a generalised neutral stays generalised when normalisation re-derives it
   trace : Bool := false          -- record goals, splits and call types (for inspection)
 deriving Inhabited, Repr
 
 structure MState where
   env : Env := #[{}]
   globals : List GDef := []
+  inds : List IndDecl := []
   nextLoan : Nat := 0
   nextAbs : Nat := 0
   absTy : Array Value := #[]
@@ -91,6 +99,8 @@ structure MState where
   lastErased : Bool := false          -- set by `eval`: was the term just evaluated erased (D28)?
   classCache : List (Value × Nat) := []   -- erasure class of function types (D28), a pure cache
   convStack : List (Value × Value) := []  -- function pairs being compared observationally (D30)
+  neutrals : List (Value × Nat) := []     -- [Split] generalisations: sealed program ↦ its σ (finding G1)
+  depth : Nat := 0                        -- call depth (bounded, like fuel: the checker must terminate)
 deriving Inhabited
 
 inductive Fail where
@@ -142,6 +152,11 @@ def absType (σ : Nat) : M Value := do
   match (← get).absTy[σ]? with
   | some T => pure T
   | none => err s!"unknown abstract value σ{σ}"
+
+def lookupInd (n : String) : M IndDecl := do
+  match (← get).inds.find? (·.name == n) with
+  | some d => pure d
+  | none => err s!"unknown inductive type {n}"
 
 def lookupGlobal (n : String) : M GDef := do
   match (← get).globals.find? (·.name == n) with

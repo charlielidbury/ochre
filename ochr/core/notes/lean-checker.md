@@ -1,6 +1,6 @@
 # lean-checker: an executable checker for RULES v1.5, and what running it found
 
-**Verdict:** RULES v1.4 is implemented, and 139 verdict assertions all hold. Every §7 example (E1–E5) is accepted. Every must-fail program and every attack from rounds 1–2 is rejected: e346 `Bad`, `Oops2`, `Loop`/`Bot'`; meta-model C1, C2; breaker-close A1–A4 (and A5 terminates); breaker-close-v1 N1 and meta-model-v1 R1 (the closed proofs of false built from `T` and `Q`); breaker-frame attack 1; E5's three rejections. Each is caught by the rule meant to catch it: switching that one rule off flips exactly the verdicts it guards (§5).
+**Verdict:** RULES v1.5 is implemented, extended to user-declared inductive types (lists, binary trees), and 185 verdict assertions all hold. Every §7 example (E1–E5) is accepted. Every must-fail program and every attack from rounds 1–2 is rejected: e346 `Bad`, `Oops2`, `Loop`/`Bot'`; meta-model C1, C2; breaker-close A1–A4 (and A5 terminates); breaker-close-v1 N1 and meta-model-v1 R1 (the closed proofs of false built from `T` and `Q`); breaker-frame attack 1; E5's three rejections. Each is caught by the rule meant to catch it: switching that one rule off flips exactly the verdicts it guards (§5).
 **Most important finding:** **D18 (owners are sets) is load-bearing in v1.4.** An uncurried version of meta-model C2 (§4) uses v1.2's annotated block, which forms a type while a returned borrow's hole is in two owners and checks each arm against it after the split. Single-owner observation accepts it and yields the closed proof `ClosedD18 : Eq Nat 0 1`. Round 1's L1 (`f` escaping as a value) is fixed in v1.1 by exactly the rule this checker used.
 **RULES.md must change:** nothing unsound remains that I can find. §3 lists what is still underspecified: a static reading of "moves out of in any arm", the sort of a sealed type, Unit η, universes, and J's motive sort. D18 should stay, with §4's program as its motivating example rather than the curried C2.
 **Confidence:** high that the verdicts are what the implementation computes (all asserted in a green build; traces reproduce the round-1/2 hand derivations, including deriver-e5's rejection reasons symbol for symbol); medium that every clarification matches the intended reading.
@@ -162,6 +162,39 @@ Implemented, each with a `Config` switch. The ledger (asserted in `Registry.lean
 
 **Correction to §4 and to round 1.** Round 1 said D18 protects nothing v1 lets you write. That was wrong. Reviewer-1's C1 (`D18.GR`/`BadR`) needs no annotated block and no currying. A hypothesis parameter's type recomputes, with local copies, the very sealed program that owner `a1` holds after `Pick`, and single-owner observation turns `Neq`'s parameter type into that one equation. It is expressible in v1. The missing ingredient in my round-1 search was a parameter type that *writes* (`*r := Z` in a local program), not only one that reads. D18's ledger row now lists both `BadD18`/`ClosedD18` and `GR`/`BadR`.
 
-## 9. Not done
+**D30's normal form is circular for recursive functions.** A recursive function stuck at its own generic call observes only a sealed call of itself (`⌈…f(…)…⌉`). Comparing two such functions therefore needs the comparison itself. Assuming the pair equal (coinductively) would equate *any* two recursive functions of the same type, which is unsound. The checker answers "not convertible" instead, which is sound and incomplete. RULES should say which.
+
+## 9. Phase 2: general inductive types
+
+**What was added.** User-declared inductive types with several constructors and several fields: `inductive List := Nil | Cons(h : Nat, t : List)`, `inductive Tree := Leaf | Node(l : Tree, v : Nat, r : Tree)`, `inductive Bool := False | True`.
+- Constructor values are `C(v₁ … vₖ)`, and field places are `p.f`.
+- In `match p { C₁(x̄) => … | … }` the pattern variables are the field places (D32).
+- [Split] refines `σ` to `C(σ₁ … σₖ)` with fresh `σᵢ` of the field types. [Rec]'s strict subterms range over all fields, and the decreasing parameter may have any inductive type.
+- Every rule of §3–§5 applies unchanged: [Access], [Close], stuck blocks (captures on maximal prefixes through field places), owners and footprints.
+- `Nat` stays builtin, not rebuilt on the general mechanism. That is a non-uniformity in the implementation, not in the rules.
+
+**Examples** (`Ochr/Examples/Inductives.lean`, 24 assertions, all as expected):
+- **(a)** `AppendM(xs : &List, ys)` in place, and `AppendMNil : Id Unit (AppendM(xs, Nil)) ()` by bare recursion. The trace shows the environment doing a two-field congruence: goal and IH are both `Eq List Cons(σ1, ⌈AppendM on σ2⌉) Cons(σ1, σ2)`, with the untouched `h` carried. `AppendMOne` (appending `Cons(0, Nil)`) is rejected.
+- **(b)** `LastM(xs) : &List` (a borrow of the final `Nil`), `AppendM'` through it, and `AppendMEq` by bare recursion, as `AddMEq` was.
+- **(c)** Binary search trees. `Lt(a, b) : Bool`; in-place `InsertM(t : &Tree, k) by t`, which recurses into `&l` or `&r` depending on `Lt(k, v)`; the pure `Insert`; and **`InsertMEq : Id Unit (InsertM(t, k)) (*t := Insert(*t, k))` by bare recursion**. Its arms' goals and IHs are `Eq Tree Node(σl, σv, ⌈InsertM on σr⌉) Node(σl, σv, ⌈Insert(σr, k)⌉)` (False: the right field is rewritten) and the mirror image (True: the left field). The environment carries the other two fields. A variant that inserts on the wrong side (`InsertMSwapEq`) and a recursion on the node itself (`InsertLoop`) are rejected.
+- **The measure: inserting grows the size by one**, `SizeInsert : Id Nat (S (Size(t))) (Size(Insert(t, k)))` with `Size(Node(l, v, r)) = S (Add(Size(l), Size(r)))`. Accepted. The proof needs:
+  - `J(A, a, b, P, h, t)` to rewrite with the IH under the context `S (Add(…, □))`;
+  - in the True arm, nothing else: `Add` recurses on its first argument, so `Add(S a, b) ≡ S (Add(a, b))`;
+  - in the False arm, the lemma `x + S y = S (x + y)`. It is proved in place by bare recursion (`AddMS(x : &Nat, y) : Id Unit (AddM(x, S y)) (AddM(&*x, y); *x := S *x)`) and transferred to the pure `Add` by one call (`AddS := AddMS(&x, y)`), exactly as `AddZero` comes from `AddMZero`.
+  - Without the lemma the arm is rejected with the precise missing step (`SizeInsertNoLemma`: `S (S (x + y))` against `S (x + S y)`). `SizeInsertTwo` (grows by two) is rejected.
+- (d) In-place reverse is skipped: it needs a loop or an accumulator that moves nodes out of a borrowed list. The by-value reverse is an ordinary pure function.
+
+**Finding G1 (rule change needed): [Split]'s generalisation must be consistent under later normalisation.** In `InsertMEq` the proof splits on `b = Lt(k, v)`, whose value is the sealed `⌈Lt(σk, σv)⌉`. v1.5 generalises "every occurrence" to a fresh `σg` and splits. But the goal holds `⌈let c1 = Node(σl, σv, σr); InsertM(&c1, σk); c1⌉`, whose *re-run* derives `⌈Lt(σk, σv)⌉` again inside `InsertM`'s own body. It is not an occurrence at the time of the split, so it stays stuck, the goal never meets the IH, and `InsertMEq` is rejected. (This is the first example whose stuck point is a computed neutral inside a function's own body rather than a parameter.) The fix implemented (`Config.genConsistent`) is:
+- remember each generalisation `⌈n⌉ ↦ σg`;
+- whenever normalisation derives `⌈n⌉` again (a [Close] result or fill, or a stuck [Seal] run), replace it by `σg`'s current refinement;
+- after refining a generalised `σg`, re-normalise every sealed program in Ω, the goal and the stored types.
+
+It is sound: a sealed program is a closed, deterministic computation, so every derivation of it denotes the same value, and the split is case analysis on that one value (in Lean terms, `split` together with rewriting by `h : Lt k v = b`). RULES should say it: *generalising a sealed program replaces it wherever it occurs or is later derived*. The ledger row G1 shows `InsertMEq` and `SizeInsert` rejected without it. The generalise-then-split row shows the whole BST group rejected without generalisation at all.
+
+**Also:** a call-depth bound (2000) now complements fuel. Switching [Rec] off makes a node-recursion run until fuel runs out, and the threaded environment then copies quadratically (9.7 GB).
+
+**Timings** (compiled, median of 21 runs): all 185 declarations check in about 9 ms. Inductives take 2.6 ms, of which `SizeInsert` is 0.8 ms, `InsertMEq` 0.3 ms and `AppendMEq` 0.16 ms. **Size:** about 3,900 lines in all; `Machine.lean` is 1,480.
+
+## 10. Not done
 
 A proof that the implementation matches the rules (the traces and the ledger are the evidence); universe checking beyond C15; `Bool` (Nat stands in); loops, shared borrows, borrows in data (D8); the separate meta-lean development (`ochr/core/meta-lean/`, another agent's).
