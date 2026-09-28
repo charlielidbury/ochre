@@ -15,6 +15,7 @@ structure Binding where
   hint : Hint
   ty : Option Value     -- `none` for bindings pushed by the untyped machine
   val : Value
+  proof : Bool := false -- v1.7 (D35): its declared type has declared sort Prop (read off syntax)
 deriving Inhabited
 
 structure Frame where
@@ -86,7 +87,14 @@ structure Config where
   seqByProof : Bool := true      -- v1.7 D35: a let, sequence or match is erased iff it is a proof (its tail is);
                                  -- v1.6: iff its tail is erased, so also when the tail returns types
   rowByDecl : Bool := true       -- v1.7 D35: [Close]'s row is read from the declared codomain
-  proofLeaves : Bool := true     -- finding P1: a place, constant or λ holding a proof is erased (so a proof-typed tail is)
+  leafRule : Nat := 2            -- a place, constant or λ is a proof (erased): 2 = when declared of sort Prop (a
+                                 -- variable's flag, finding P3); 1 = when its value is ⋆ (finding P1, unstable);
+                                 -- 0 = never (v1.6)
+  positivity : Bool := true      -- v1.7 D36: constructor fields are first-order data
+  globalRecords : Bool := true   -- v1.8 D37: generalisation records and fresh names survive private copies
+  obsBorrow : Bool := true       -- v1.8 D38: a borrow result is observed through a fresh value written into it
+  headGuardNeutral : Bool := true -- v1.8 D39: [Seal]'s head guard covers neutral-headed calls
+  genPlaceType : Bool := true    -- v1.8: a generalised σ has the matched place's type
   trace : Bool := false          -- record goals, splits and call types (for inspection)
 deriving Inhabited, Repr
 
@@ -134,8 +142,13 @@ def tick : M Unit := do
 
 /-- Restore a saved state, keeping the fuel spent and the [Rec] accumulators. -/
 def restoreKeep (saved : MState) : M Unit :=
-  modify fun cur => { saved with fuel := cur.fuel, classCache := cur.classCache,
-                                 recCands := cur.recCands.drop (cur.recCands.length - saved.recCands.length) }
+  modify fun cur =>
+    let s := { saved with fuel := cur.fuel, classCache := cur.classCache,
+                          recCands := cur.recCands.drop (cur.recCands.length - saved.recCands.length) }
+    -- D37 (v1.8): fresh names are never reused, and generalisation records are global
+    if cur.cfg.globalRecords then
+      { s with nextAbs := cur.nextAbs, absTy := cur.absTy, nextLoan := cur.nextLoan, neutrals := cur.neutrals }
+    else s
 
 /-- Run `x` on a private copy of the state (P2, P6): its effects are discarded. -/
 def onCopy {α : Type} (x : M α) : M α := do
@@ -195,8 +208,8 @@ def popFrameRaw : M Frame := do
   | some fr => set { s with env := s.env.pop }; pure fr
   | none => err "internal: pop of empty environment"
 
-def pushBind (h : Hint) (ty : Option Value) (v : Value) : M Unit := do
-  modifyFrame (← topIdx) fun fr => { fr with binds := fr.binds.push ⟨h, ty, v⟩ }
+def pushBind (h : Hint) (ty : Option Value) (v : Value) (proof : Bool := false) : M Unit := do
+  modifyFrame (← topIdx) fun fr => { fr with binds := fr.binds.push ⟨h, ty, v, proof⟩ }
 
 def pushTemp (v : Value) : M Unit := do
   modifyFrame (← topIdx) fun fr => { fr with temps := fr.temps.push v }

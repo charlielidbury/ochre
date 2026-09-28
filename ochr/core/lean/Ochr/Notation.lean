@@ -68,6 +68,7 @@ syntax:10 "fix " ident ochr_binder+ " : " ochr_term:21 (" by " ident)? " := " oc
 syntax "def " ident ochr_binder* " : " ochr_term:21 (" by " ident)? " := " ochr_term : ochr_decl
 syntax "reject " "def " ident ochr_binder* " : " ochr_term:21 (" by " ident)? " := " ochr_term : ochr_decl
 syntax "inductive " ident " := " sepBy1(ochr_ctor, " | ") : ochr_decl
+syntax "reject " "inductive " ident " := " sepBy1(ochr_ctor, " | ") : ochr_decl
 
 syntax (name := ochrProgram) "ochr " ident " { " ochr_decl* " }" : command
 
@@ -168,6 +169,9 @@ def elabDecl (stx : TSyntax `ochr_decl) : MacroM (TSyntax `term) := do
   | `(ochr_decl| inductive $n:ident := $cs|*) => do
     let cs' ← cs.getElems.mapM elabCtor
     `(({ name := $(strLit n.getId.toString), ind? := some [$cs',*], expectAccept := true } : SDecl))
+  | `(ochr_decl| reject inductive $n:ident := $cs|*) => do
+    let cs' ← cs.getElems.mapM elabCtor
+    `(({ name := $(strLit n.getId.toString), ind? := some [$cs',*], expectAccept := false } : SDecl))
   | _ => Macro.throwErrorAt stx "unsupported declaration"
 
 macro_rules

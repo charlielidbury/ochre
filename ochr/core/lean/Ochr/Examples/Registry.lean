@@ -1,7 +1,7 @@
 import Ochr.Examples.Units
 import Ochr.Examples.E5
 import Ochr.Examples.V15
-import Ochr.Examples.V17
+import Ochr.Examples.V18
 import Ochr.Examples.Inductives
 import Ochr.Examples.Probes
 
@@ -12,7 +12,7 @@ open Ochr Ochr.Test Ochr.Surface
 namespace Ochr.Registry
 
 def programs : List (String × Program) :=
-  [("E1", E1), ("E2", E2), ("E3", E3), ("E4", E4), ("E5", E5), ("E6", E6), ("Attacks", Attacks), ("More", More), ("Probes", Probes), ("V15", V15), ("V17", V17), ("Inductives", Inductives),
+  [("E1", E1), ("E2", E2), ("E3", E3), ("E4", E4), ("E5", E5), ("E6", E6), ("Attacks", Attacks), ("More", More), ("Probes", Probes), ("V15", V15), ("V17", V17), ("V18", V18), ("Positivity", Positivity), ("GenTy", GenTy), ("Inductives", Inductives),
    ("D18", Ochr.Units.D18)]
 
 def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
@@ -52,13 +52,18 @@ def switches : List (String × Config) :=
    ("P2 (finding): ... i.e. when every arm is a proof, not when its computed type has sort Prop", { blockRule := 1 }),
    ("D35 (v1.7): a let, sequence or match is erased iff it is a proof", { seqByProof := false }),
    ("D35 (v1.7): [Close]'s row is read from the declared codomain", { rowByDecl := false }),
-   ("P1 (finding): a place, constant or λ holding a proof is erased", { proofLeaves := false }),
-   ("P1 together with the computed-type block rule of P2", { blockRule := 1, proofLeaves := false })]
+   ("P1 (finding): a variable, constant or λ declared of sort Prop is a proof", { leafRule := 0 }),
+   ("P3 (finding): ... read off its declaration, not off its value ⋆", { leafRule := 1 }),
+   ("P1 together with the computed-type block rule of P2", { blockRule := 1, leafRule := 0 }),
+   ("D36 (v1.7): constructor fields are first-order data", { positivity := false }),
+   ("D37 (v1.8): generalisation records and fresh names survive private copies", { globalRecords := false }),
+   ("D38 (v1.8): a borrow result is observed through a fresh value written into it", { obsBorrow := false }),
+   ("D39 (v1.8): [Seal]'s head guard covers neutral-headed calls", { headGuardNeutral := false })]
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 205
+def Ochr.Registry.expectedTotal : Nat := 239
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
@@ -91,7 +96,7 @@ open Ochr.Registry in
 #guard flips { argNotBot := false } == ["More.Dead:accepted", "More.DeadTwice:accepted"]
 open Ochr.Registry in
 #guard flips { generalize := false } ==
-  ["More.MatchAfterOpaque:rejected", "Inductives.InsertM:rejected", "Inductives.Insert:rejected",
+  ["More.MatchAfterOpaque:rejected", "GenTy.GenL:rejected", "Inductives.InsertM:rejected", "Inductives.Insert:rejected",
    "Inductives.InsertMEq:rejected", "Inductives.InsertMSwap:rejected", "Inductives.SizeInsert:rejected"]
 open Ochr.Registry in
 #guard flips { blockMoves := false } == ["Probes.MovedByBlock:accepted"]
@@ -102,7 +107,8 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard flips { erasureByDecl := false } ==
   ["V15.Boom:accepted", "V15.MainW0:rejected", "V17.BoomL:accepted", "V17.LieB:accepted", "V17.TruthB:rejected",
-   "V17.LieG:accepted", "V17.TruthG:rejected", "V17.SeqT:rejected", "V17.RowI:accepted"]
+   "V17.LieG:accepted", "V17.TruthG:rejected", "V17.SeqT:rejected", "V17.RowI:accepted", "V18.Boom8:accepted",
+   "V18.Direct8:accepted", "V18.Lie7:accepted", "V18.LieH:rejected"]
 open Ochr.Registry in
 #guard flips { matchEndsInside := false } == ["V15.Bad:accepted", "V15.Main:accepted"]
 open Ochr.Registry in
@@ -114,11 +120,12 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard flips { genConsistent := false } == ["Inductives.InsertMEq:rejected", "Inductives.SizeInsert:rejected"]
 open Ochr.Registry in
-#guard flips { classBySyntax := false } == ["V17.BoomL:accepted", "V17.TruthG:rejected"]
+#guard flips { classBySyntax := false } ==
+  ["V17.BoomL:accepted", "V17.TruthG:rejected", "V18.Boom8:accepted", "V18.Direct8:accepted", "V18.LieH:rejected"]
 open Ochr.Registry in
 #guard flips { blockRule := 0 } ==
   ["V17.LieB:accepted", "V17.BoomB:accepted", "V17.TruthB:rejected", "V17.LieG:accepted", "V17.BoomG:accepted",
-   "V17.TruthG:rejected"]
+   "V17.TruthG:rejected", "V18.Lie7:accepted", "V18.Boom7:accepted"]
 open Ochr.Registry in
 #guard flips { blockRule := 1 } == ["V17.LieG:accepted", "V17.BoomG:accepted", "V17.TruthG:rejected"]
 open Ochr.Registry in
@@ -126,7 +133,19 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard flips { rowByDecl := false } == ["V17.RowI:accepted"]
 open Ochr.Registry in
-#guard flips { proofLeaves := false } == ["V17.LieP:rejected"]
+#guard flips { leafRule := 0 } == ["V17.LieP:rejected"]
 open Ochr.Registry in
-#guard flips { blockRule := 1, proofLeaves := false } ==
+#guard flips { leafRule := 1 } == ["V18.BoomH:accepted"]
+open Ochr.Registry in
+#guard flips { blockRule := 1, leafRule := 0 } ==
   ["V17.BoomP:accepted", "V17.LieG:accepted", "V17.BoomG:accepted", "V17.TruthG:rejected"]
+open Ochr.Registry in
+#guard flips { positivity := false } ==
+  ["Positivity.Bad:accepted", "Positivity.L:accepted", "Positivity.K:accepted", "Positivity.bad:accepted", "Positivity.Boom:accepted"]
+open Ochr.Registry in
+#guard flips { globalRecords := false } == ["V18.Esc:accepted", "V18.BoomE:accepted"]
+open Ochr.Registry in
+#guard flips { obsBorrow := false } == ["V18.ConvPick:accepted", "V18.TY:accepted", "V18.BoomX4:accepted"]
+open Ochr.Registry in
+#guard flips { headGuardNeutral := false } == ["V18.P1:rejected"]
+-- `genPlaceType` changes no verdict; V18.lean asserts its effect on the generalised σ's type
