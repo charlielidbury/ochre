@@ -5,7 +5,7 @@ import Ochr.Surface
 
 ```
 ochr E1 {
-  def AddM (x : &Nat) (y : Nat) : Unit :=
+  def AddM (x : &Nat) (y : Nat) : Unit by x :=
     match *x { Z => *x := y | S p => AddM(&p, y) }
   reject def Bad (x : &Nat) : Id Nat (*x) 5 := *x := 5; refl
 }
