@@ -1,34 +1,42 @@
 #import "../style.typ": *
 
-// Numbered statements (theorems, lemmas, corollaries) sharing one counter, referable by label.
+// Numbered statements (definitions, theorems, lemmas, corollaries) sharing one counter, referable by label.
 #let thm(kind, name, body) = figure(kind: "ochr-thm", supplement: kind, numbering: "1", caption: name, body)
 #show figure.where(kind: "ochr-thm"): it => block(width: 100%, above: 0.9em, below: 0.9em, breakable: true, align(left)[
   *#it.supplement #context it.counter.display(it.numbering) (#it.caption.body).* #it.body
 ])
 #let dg(x) = $#x^dagger$
 
-We show that Ochr is consistent and that its symbolic evaluator computes what programs actually do, using a model in Lean's type theory. The model reads a program that mutates what it borrows as a pure function from the current contents of its borrows to its result and their final contents. This is Aeneas's functional translation @aeneas; its backward functions appear here and only here. The results below say that sealed programs _are_ backward functions (@thm-sim). They say that a call affects only what it is passed (@thm-frame), that borrows may end in any order (@thm-canon), and that symbolic evaluation commutes with instantiation on everything a type can observe (@thm-natural). And they say that typing and conversion are preserved, so no false proposition has a closed proof (@thm-sound, @cor-consistent).
+We show that Ochr is consistent and that its symbolic evaluator computes what programs actually do. Following Aeneas @aeneas, we read a computation as a pure function, in Lean's type theory, from the current contents of its borrows to its result and their final contents; backward functions appear here and only here. Types get a set-theoretic interpretation in the style of Carneiro's model of Lean @theory-of-lean. Sealed programs are backward functions (@thm-sim), a call affects only what it is passed (@thm-frame), borrows may end in any order (@thm-canon), the checker's decisions and its evaluation are stable under refinement (@lem-stable, @thm-natural), and the model validates typing and conversion (@thm-sound), so no false proposition has a closed proof (@cor-consistent). @sec-meta-mech says which of these are mechanised.
 
 == The model <sec-meta-model>
 
-*Target.* We translate into $"CIC"_L$, the type theory of Lean 4 @lean4 as axiomatised by Carneiro @theory-of-lean. It has universes `Prop : Type₀ : Type₁ …`, an impredicative `Prop` with definitional proof irrelevance, inductive types, and the axiom `propext`, which says that logically equivalent propositions are equal. Computations need nothing extensional: each machine step becomes an intensional conversion (@thm-sim). Propositions, however, need `propext`, because Ochr's conversion identifies propositions that CIC only proves equivalent: the rules for `Eq` (@sec-obs) and, above all, a codomain computed at a call site with the codomain proved at the generic call (@thm-frame). Conversion is therefore preserved into $"ECIC"_L$, which adds equality reflection, or into $"CIC"_L$ up to transports along `propext` equalities, as in the elimination of reflection @reflection-elim. Both have Carneiro's set model. In it propositions with the same truth value are equal sets, and an inhabited equation forces its two sides equal.
+*What consistency is relative to.* The model has two parts. _Computations_ translate into $"CIC"_L$, the intensional type theory of Lean 4 @lean4: universes `Prop : Type₀ : Type₁ …`, an impredicative `Prop` with definitional proof irrelevance, inductive types, and the axiom `propext`. Every machine step becomes a conversion of $"CIC"_L$ (@thm-sim), so nothing extensional is needed, and this is the translation the Lean development targets.
 
-*Types.* Data and propositions translate homomorphically, $dg(sans("Nat")) = NN$, $dg((sans("Eq") A space a space b)) = (dg(a) = dg(b))$, and so on. Consider a function type with borrow parameters `xᵢ : &Tᵢ` at the positions $I$. Let $D_i = dg(T_i)$ for $i in I$ and $D_j = dg(A_j)$ otherwise, and let $"Fin" = product_(i in I) dg(T_i)$, the final contents of the borrowed places. It translates to forward and backward functions:
+_Types_ need more, because Ochr's conversion identifies propositions that CIC only proves equivalent: the `Eq` rules (@sec-obs), and the type [Call-type] computes at a call site, which Ochr identifies with the one proved at the generic call (@thm-frame). No translation into intensional CIC keeps these as conversions. Equality reflection would, but Carneiro's set model does not cover the resulting extensional theory: it relies on unique typing, which reflection breaks. Eliminating reflection @reflection-elim does not help either, since it is established only for sources without an impredicative, definitionally proof-irrelevant `Prop`.
 
-$ dg((Pi(overline(x) : overline(A)). B)) = Pi(overline(d) : overline(D)). "Out"_B (overline(d)), quad
+We therefore interpret Ochr's types _directly_ in set theory, following Carneiro's construction. Given values for the abstract values, a type denotes a set, a proposition a subset of ${•}$, a term an element of its type's denotation, and a function type a set of forward and backward functions (below); on computations this is Carneiro's interpretation of their $"CIC"_L$ translation. Carneiro needs unique typing to decide whether a `λ` or `Π` denotes a proof, `•`, or a set-theoretic function or product. In Ochr that decision is syntactic: every definition declares its codomain, erasure is decided from declared sorts and syntactic positions, never from normal forms, and universes are not cumulative (@sec-typing). So the interpretation is defined by recursion on typing derivations, and consistency is relative to ZFC with one inaccessible cardinal per universe level used. Unlike the translation of computations, this interpretation exists on paper only.
+
+*Types.* Data and propositions denote themselves: $dg(sans("Nat")) = NN$, $dg((sans("Eq") A space a space b)) = (dg(a) = dg(b))$, and so on. Consider a function type whose borrow parameters are `xᵢ : &Tᵢ` at the positions $I$. Let $D_i = dg(T_i)$ for $i in I$ and $D_j = dg(A_j)$ otherwise, and let $"Fin" = product_(i in I) dg(T_i)$ be the final contents of the borrowed places. The function type denotes forward and backward functions, restricted by the relation $R$ of @def-inj:
+
+$ dg((Pi(overline(x) : overline(A)). B)) = R_(Pi(overline(x) : overline(A)). B) subset.eq Pi(overline(d) : overline(D)). "Out"_B (overline(d)), quad
   "Out"_B (overline(d)) = cases(
     dg(B)(overline(d)) & "if" B "is a proposition,",
     dg(B)(overline(d)) times "Fin" & "if" B "is borrow-free data,",
-    dg(T) times (dg(T) -> "Fin") quad & "if" B = \&T\, "with" dg(T) -> "Fin" "injective".
+    dg(T) times (dg(T) -> "Fin") quad & "if" B = \&T.
   ) $
 
-Here $dg(B)(overline(d))$ translates $B$'s normal form at the generic call of [Def], with the borrowed places holding $overline(d)$. We write $"fwd"_f$ and $"back"_f^i$ for the result and the $i$-th final content of $dg(f)$; in the third case $"back"_f^i$ is a function of the returned borrow's final value. Three features carry weight.
+Here $dg(B)(overline(d))$ denotes $B$ at the generic call of [Def], with the borrowed places holding $overline(d)$. We write $"fwd"_F (overline(d))$ for the first component of $F(overline(d))$ and $"back"_F (overline(d))$ for the tuple of final contents. In the third case $"back"_F (overline(d))$ is a function of the value the caller eventually leaves in the returned borrow: Aeneas's backward function, whose region abstraction is here just a $lambda$. A proposition-valued function has no $"Fin"$ component, because proofs run on a private copy (@sec-typing); so a proof is not a state transformer, and proof irrelevance at its type is sound. Were proofs effectful, irrelevance would identify `λx. ⋆` with `λx. (*x := 7; ⋆)` at `Π(x : &Nat). ⊤`.
 
-- _A proof is not a state transformer._ Erased terms run on a private copy (@sec-typing), so a proposition-valued function has no $"Fin"$ component, and proof irrelevance at its type is sound. If proofs had effects, proof irrelevance would identify `λx. ⋆` with `λx. (*x := 7; ⋆)` at `Π(x : &Nat). ⊤`, although they are different functions into $NN$, and transport would prove `⊥`.
-- _Backward functions await the final value_ of the returned borrow, which the caller supplies later. Aeneas's region abstraction is here just a $lambda$.
-- _Injectivity_ is where the model is a logical relation rather than a translation, and it is forced. By [Call-type], Ochr refutes `Id Unit (let r = h(&a); *r := Z) (let r = h(&a); *r := S Z)` for every _abstract_ `h : Π(x : &Nat). &Nat`, which says that `h`'s backward function is injective. That fails for arbitrary CIC functions but holds for definable ones (@lem-backinj), much as thunkability @fire-triangle and parametricity @bowman-cps hold only on the definable part of a function space.
+#thm([Definition], [injectivity relation], [
+  For each type $A$ define $R_A subset.eq dg(A)$ by induction on $A$. For base types, propositions and universes, $R_A = dg(A)$; $R$ is taken componentwise on pairs, and $R_(\&T) = R_T$. For a function type, $F in R_(Pi(overline(x) : overline(A)). B)$ iff, for all $overline(d)$ with $d_i in R_(T_i)$ for $i in I$ and $d_j in R_(A_j)$ otherwise, $"fwd"_F (overline(d)) in R_B$ and, if $B = \&T$, $"back"_F (overline(d))$ is injective. Injectivity is joint: equal tuples of final contents come only from equal final values of the returned borrow.
+]) <def-inj>
 
-*Environments and terms.* Abstract values become CIC variables, listed in $Gamma_Omega$. A loan name $ell$ becomes a variable $h_ell$, a _hole_ for the final content of borrow $ell$, wherever the loan sits. The _view_ $dg(Omega)$ is the tuple of translated contents, with $dg(("borrow"_ell v)) = dg(v)$ (a borrow is seen as its current content) and $dg("loan"_ell) = h_ell$. The _resolution_ $rho_Omega$, the substitution $h_ell := dg(v_ell)[rho_Omega]$ for each $"borrow"_ell v_ell$ in Ω, means "end every borrow". A run fixes the _shape_ of its environments (where bindings, borrows and loans sit) independently of the abstract values; that is what the borrow checker guarantees. On fixed shapes a term becomes a state-passing function on views (@fig-model). A sealed program means what it computes, $dg(seal(t)) = "Run"(t)$, the result of $dg(t)$ run from the empty view. A definition becomes strong recursion on its decreasing parameter's entry value. An observation becomes the tuple of its result and resolved footprint, and `Id` becomes the CIC equation between two such tuples.
+This is the one place where the model is a logical relation rather than a translation, and it is forced. By [Call-type], Ochr refutes `Id Unit (let r = h(&a); *r := Z) (let r = h(&a); *r := S Z)` for every _abstract_ `h : Π(x : &Nat). &Nat`, which says that `h`'s backward function is injective. That is false of arbitrary set-theoretic functions and true of definable ones (@lem-backinj); thunkability @fire-triangle and parametricity @bowman-cps are modelled the same way, by cutting a function space down to its definable part. The principle is internal, so an opaque definition of a borrow-returning type is an injectivity _assumption_, and binding it to an arbitrary external function is unsound.
+
+*Environments and terms.* Abstract values become variables, listed in $Gamma_Omega$. A loan name $ell$ becomes a variable $h_ell$, a _hole_ for the final content of borrow $ell$, wherever the loan sits. The _view_ $dg(Omega)$ is the tuple of translated contents: a borrow is read as its current content, $dg(("borrow"_ell v)) = dg(v)$, and a loan as its hole, $dg("loan"_ell) = h_ell$. The _resolution_ $rho_Omega$ substitutes $h_ell := dg(v_ell)[rho_Omega]$ for each $"borrow"_ell v_ell$ in Ω; it means "end every borrow".
+
+A run determines the _shapes_ of the environments it passes through: which bindings exist, and where borrows and loans sit. On one run's shapes a term translates to a state-passing function on views (@fig-model). A symbolic run and a concrete run of the same term can pass through different shapes (the remark in @sec-meta-nat gives one), so the translation is defined per run, and @thm-natural relates runs through their resolutions. A sealed program means what it computes: $dg(seal(t)) = "Run"(t)$, the result of $dg(t)$ run from the empty view. A definition becomes a strong recursion on the entry value of its decreasing parameter. An observation becomes the tuple of its result and resolved footprint, and `Id` the equation between two such tuples.
 
 #figure(kind: image, supplement: [Figure],
   block(width: 100%)[
@@ -38,53 +46,61 @@ Here $dg(B)(overline(d))$ translates $B$'s normal form at the generic call of [D
       f(overline(a)), space B = \&T & : quad s |-> "let" (c, beta) = dg(f)(overline(u), overline(w)) "in" (c, (s without overline(a))[h_(ell_i) := beta_i (h_k)]) \
       t "a type or a proof" & : quad s |-> (dg(v), s) $
   ],
-  caption: [Key state-passing clauses; $overline(u)$ are the current contents of the borrow arguments, with loans $ell_i$, $overline(w)$ the other arguments, $k$ fresh. Ending a borrow is a substitution; a call is one CIC application, Aeneas's forward and backward translations fused, with the region abstraction as the substitution $h_(ell_i) := beta_i (h_k)$; an erased term leaves the view unchanged.],
+  caption: [Key state-passing clauses. $overline(u)$ are the current contents of the borrow arguments, whose loans are $ell_i$, and $overline(w)$ are the other arguments; $k$ is fresh. $s without x$ removes $x$'s binding, and $"holder"(ell)$ is the binding that holds $"borrow"_ell$. Ending a borrow is a substitution. A call is one application: Aeneas's forward and backward translations fused, with the region abstraction as the substitution $h_(ell_i) := beta_i (h_k)$. An erased term leaves the view unchanged.],
 ) <fig-model>
 
-*Well-formedness.* An environment is _well formed_ when four conditions hold. Each borrow is held once. Every loan is bound by a borrow it holds, or lies inside a sealed program, and only there may a loan occur twice. The relation "loan $ell$ occurs in the content of borrow $m$" is acyclic. And every value read, moved, borrowed or passed is loan-free, as [Access] enforces.
+*Well-formedness.* An environment is _well formed_ when each borrow is held once; every loan is bound by a borrow the environment holds, or lies inside a sealed program, and only there may it occur twice; the relation "loan $ell$ occurs in the content of borrow $m$" is acyclic; and every value that is read, moved, borrowed or passed is loan-free, which [Access] enforces.
 
-#thm([Lemma], [invariance and termination], [
-  Machine steps preserve well-formedness. For programs accepted by [Rec], every run terminates in a value, a borrow error, or a stuck state.
+#thm([Lemma], [invariance; termination of concrete runs], [
+  Machine steps preserve well-formedness. For programs accepted by [Rec], every concrete run terminates in a value or a borrow error.
 ]) <lem-wf>
 
-_Proof sketch._ Acyclicity is preserved because a loan enters a borrow's content only through a reborrow of a sub-place, and [Access] stops reads from copying loans. Termination is a reducibility argument over the simple structure of runtime values. It reduces to well-founded recursion, which is exactly [Rec]: every recursive call is strictly below the entry value, and $f$ occurs nowhere else. ∎
+_Proof sketch._ Acyclicity holds because a loan enters a borrow's content only through a reborrow of a sub-place, and [Access] stops reads from copying loans. A concrete run never runs types or proofs, which are erased, so a reducibility argument over the simple structure of runtime data and closures reduces termination to the well-founded recursion that [Rec] enforces. ∎
+
+We do not know whether type checking is decidable. The checker normalises types, which may use large elimination, `J` with type-valued motives, and an impredicative, proof-irrelevant `Prop`, and Abel and Coquand show that these ingredients can defeat normalisation @abel-coquand. Ochr never normalises proofs, which may avoid their counterexample, but we have no proof. Nothing below depends on decidability, because the model interprets derivations, which are finite.
 
 == Sealed programs are backward functions
 
 #thm([Theorem], [simulation], [
-  If Ω is well formed and $cfg(Omega, t) arrow.b.double cfg(Omega', v)$ by the symbolic machine, then $dg(t)(dg(Omega)) equiv (dg(v), dg(Omega'))$ in $"CIC"_L$, in context $Gamma_Omega$ and the holes of Ω. In particular, the sealed programs that [Close] produces at a call $f(overline(a))$ with borrow contents $overline(u)$ and other arguments $overline(w)$ satisfy
-  $ dg(seal("L; C")) equiv "fwd"_f (overline(u), overline(w)), quad dg(seal("L; C; " c_i)) equiv "back"_f^i (overline(u), overline(w)), quad dg(seal("L; let r = C; *r := " "loan"_k "; " c_i)) equiv "back"_f^i (overline(u), overline(w))(h_k). $
-  The same holds for the concrete machine.
+  Let Ω be well formed and $cfg(Omega, t) arrow.b.double cfg(Omega', v)$ by the symbolic machine. Then, on that run's shapes, $dg(t)(dg(Omega)) equiv (dg(v), dg(Omega'))$ in $"CIC"_L$, with $Gamma_Omega$ and the holes of Ω free. The sealed programs that [Close] produces at a call $f(overline(a))$ with borrow contents $overline(u)$ and other arguments $overline(w)$ satisfy
+  $ dg(seal("L; C")) equiv "fwd"_f (overline(u), overline(w)), quad dg(seal("L; C; " c_i)) equiv "back"_f (overline(u), overline(w))_i, quad dg(seal("L; let r = C; *r := " "loan"_k "; " c_i)) equiv "back"_f (overline(u), overline(w))(h_k)_i. $
+  The same holds for every concrete run, on its own shapes.
 ]) <thm-sim>
 
-These equations are definitional. A sealed program is not an approximation of a backward function; it is a name for one, written in the source language.
+The equations are definitional. A sealed program is not an approximation of a backward function: it is a name, in source syntax, for an application of one.
 
-_Proof sketch._ By induction on the derivation. Reads, borrows and assignments project and update the view, [End] is the substitution of @fig-model, a match on a constructor is ι-reduction, and an unfolding call is δβ followed by the induction hypothesis. For [Close], the equations hold by unfolding $"Run"$. The call clause yields these projections whether or not $dg(f)(overline(u), overline(w))$ reduces further, which is why discarding the partial run is harmless. [Seal] runs $t$, and the induction hypothesis on that run gives the normal form. Translation commutes with refinement because abstract values and loans are variables.
+_Proof sketch._ By induction on the derivation. Reads, borrows and assignments project and update the view. [End] is the substitution of @fig-model. A match on a constructor is ι-reduction, and an unfolding call is δβ followed by the induction hypothesis. For [Close], the equations hold by unfolding $"Run"$; the call clause yields these projections whether or not $dg(f)(overline(u), overline(w))$ reduces further, so the partial run can safely be discarded. [Seal] runs $t$, and the induction hypothesis on that run gives the normal form. ∎
 
-The hardest case ends a borrow $k$ whose loan is a hole inside sealed programs. The model substitutes $h_k := dg(w)$ into $"Run"(t)$; the machine substitutes $w$ into $t$ and runs it again. The two agree, $"Run"(t)[h_k := dg(w)] equiv "Run"(t[w slash "loan"_k])$, only because the hole is inert _during_ the run of $t$: [Seal] treats a loan whose borrow is outside the run like an abstract value. A run able to end $k$ would reach outside the sealed program, and $"Run"(t)$ would not be a function of $t$. ∎
+The hardest case ends a borrow $k$ whose loan is a hole inside sealed programs. The model substitutes $h_k := dg(w)$ into $"Run"(t)$; the machine substitutes $w$ into $t$ and runs it again. These agree, $"Run"(t)[h_k := dg(w)] equiv "Run"(t[w slash "loan"_k])$, only because [Seal] treats a loan whose borrow lies outside the run as inert. A run that could end $k$ would reach outside the sealed program, and $"Run"(t)$ would not be a function of $t$.
 
 == A call affects only what it is passed
 
+Consider a call at Ω whose borrow arguments hold the loans $overline(ell)$, and a set $O$ of owners of those loans. The tuple of the owners' resolved contents, once the final contents $overline(phi)$ of the borrowed places are known, is
+$ "Ctx"_O (overline(phi)) = (rho_Omega (o)[h_(overline(ell)) := overline(phi)])_(o in O). $
+Because loans are variables, this is an ordinary function of $overline(phi)$.
+
 #thm([Theorem], [frame], [
   Let Ω be well formed.
-  + _Locality._ Suppose $Omega = Omega_1 union.plus Omega_2$, $t$'s free variables are bound in $Omega_1$, and every loan occurring in $Omega_1$ has its borrow in $Omega_1$. Then $cfg(Omega, t) arrow.b.double cfg(Omega', v)$ iff $cfg(Omega_1, t) arrow.b.double cfg(Omega_1', v)$ with $Omega' = Omega_1' union.plus Omega_2 theta$. Here $theta$ fills the loans in $Omega_2$ of the borrows the run ended.
-  + _Call effect._ A call runs as its body from its own frame alone, then substitutes each borrow argument's final content for its loan: the call clause of @fig-model.
-  + _Call typing._ For $f : Pi(overline(x) : overline(A)). B$ called at Ω, once its arguments are evaluated, every `Id`-atom of $B$ observed at Ω equals the atom observed at the generic call, mapped through the context $"Ctx"$. $"Ctx"$ resolves _all_ owners of the arguments' loans around their final contents. So, if $"Ctx"$ is injective, $dg(B"@"Omega) = dg(B)(overline(u))$ by `propext`.
+  + _Locality._ Let $Omega = Omega_1 union.plus Omega_2$, with the free variables of $t$ bound in $Omega_1$ and every loan occurring in $Omega_1$ having its borrow in $Omega_1$. Then $cfg(Omega, t) arrow.b.double cfg(Omega', v)$ iff $cfg(Omega_1, t) arrow.b.double cfg(Omega_1', v)$ with $Omega' = Omega_1' union.plus Omega_2 theta$, where $theta$ fills the loans in $Omega_2$ of the borrows the run ended.
+  + _Call effect._ A call runs as its body from its own frame alone, then substitutes each borrow argument's final content for its loan (the call clause of @fig-model).
+  + _Call typing._ Let $f : Pi(overline(x) : overline(A)). B$ be called at Ω, after its arguments are evaluated, and let $O$ be the set of _all_ owners of their loans. Each `Id`-atom of $B$ observed at Ω is the one observed at the generic call, mapped through $"Ctx"_O$ on the footprint components. So when $"Ctx"_O$ is injective, the type computed at Ω and the type proved at the generic call denote the same set.
 ]) <thm-frame>
 
 #thm([Lemma], [owners and injectivity], [
-  $"Ctx"$ is jointly injective when it resolves every owner of every hole it carries, and in general only then.
+  If every function value in Ω lies in $R$ and $O$ contains every owner of every occurrence of $overline(ell)$, then $"Ctx"_O$ is injective. The condition on $O$ is necessary: for `Pick(n, &a, &b)` closed off on an abstract `n`, $"Ctx"_({a})$ is constant in the branch where the result points into `b`.
 ]) <lem-inj>
 
 #thm([Lemma], [backward functions are injective], [
-  For every definable $f : Pi(overline(x) : overline(A)). \&T$ and all $overline(d)$, the backward map of $dg(f)(overline(d))$ is jointly injective.
+  If every opaque definition denotes an element of $R$, then so does every definition accepted by [Def] and [Rec]. In particular the backward map of every definable $f : Pi(overline(x) : overline(A)). \&T$ is injective.
 ]) <lem-backinj>
 
-Part (3) is what [Call-type] relies on. It is why an induction hypothesis arrives wrapped in its caller's context, which in `AddMZero` is $((), S space square)$.
+Part (3) is what [Call-type] relies on, and it is why an induction hypothesis arrives wrapped in its caller's context: in `AddMZero`, $((), S space square)$.
 
-_Proof sketch._ (1) By induction on the run: with no globals and no closure capturing a borrow, a rule touches only places reachable from $t$. (2) is (1) for the callee's frame, which is loan-closed because arguments are loan-free. (3) Both observations run on private copies and, by (1), change nothing outside the arguments. With @lem-inj the two `Eq`-atoms are equivalent, and congruence does the rest. For @lem-inj, $"Ctx"$ composes constructors, backward functions at their hole (@lem-backinj, or the model's restriction), and components constant in the hole. Those keep joint injectivity only if the owner holding the hole is kept, hence owner sets (@sec-obs). With one owner of a two-argument returned borrow observed, [Call-type] proves `Id Nat (S Z) Z`. @lem-backinj is the fundamental lemma of the relation, by induction on typing. A returned borrow's hole sits under constructors or at an injective backward function, and no rule discards its final value ([Access] ends inner loans before overwriting or dropping). ∎
+_Proof sketch._ Part (1) is by induction on the run: there are no globals and closures capture no borrows, so a rule touches only places reachable from $t$. Part (2) is part (1) applied to the callee's frame, which is loan-closed because arguments are loan-free. For part (3), both observations run on private copies and so, by part (1), change nothing outside the arguments; resolving at the end plugs the arguments' final contents into their owners, which is $"Ctx"_O$. Two equations mapped through an injective function are equivalent, and propositions with the same truth value denote the same set.
 
-The hardest case is (2) when $f$ returns a borrow. As the frame pops, the parameter's borrow still holds the returned borrow's loan. [End] moves that content, loan included, into the caller's owner, which ends up holding $K["loan"_r]$, a value that depends on something the caller has not yet produced. In the model this is $beta_i (h_r) = K[h_r]$. Its injectivity ranges over every future of $r$, so it takes an induction over definitions (@lem-backinj) rather than an inspection of Ω.
+For @lem-inj, $"Ctx"_O$ is built from constructors, from backward maps applied at a hole, which are injective because function values lie in $R$, and from components constant in the hole; the last kind keeps injectivity only if an owner carrying the hole is kept. @lem-backinj is the fundamental lemma of $R$, proved by induction on derivations together with @thm-sound: interpreting a body needs $R$ for the functions it calls and for its function-typed parameters, which range over $R$ by definition. A returned borrow's hole sits either under constructors (a reborrow of a sub-place of a parameter) or at an injective backward map (an inner call or block), and no rule discards its final value: [Access] ends the loans in a content before overwriting or dropping it, and [End] substitutes into every occurrence. ∎
+
+The hardest case is part (2) when $f$ returns a borrow. As the frame pops, the parameter's borrow still holds the returned borrow's loan, and [End] moves that content, loan included, into the caller's owner. The owner then holds $K["loan"_r]$, which depends on something the caller has not yet produced; in the model this is $beta_i (h_r) = K[h_r]$. Its injectivity has to hold for every future of $r$, so it needs an induction over definitions and cannot be read off Ω.
 
 == Borrows may end in any order
 
@@ -92,90 +108,88 @@ The hardest case is (2) when $f$ returns a borrow. As the frame pops, the parame
   Let Ω be well formed.
   + Ending two borrows in either order and re-normalising gives environments with the same resolution.
   + If a run of $t$ from Ω succeeds while ending some borrows earlier than the lazy strategy would, then the lazy run succeeds too, with the same borrow-free result and the same resolution.
-  Hence the observation $⟦t⟧_Omega^W$ does not depend on when borrows end, and `Id` is well defined.
+  Hence $⟦t⟧_Omega^W$ does not depend on when borrows end, and `Id` is well defined.
 ]) <thm-canon>
 
-_Proof sketch._ (1) Up to re-normalisation, ending $ell$ is the substitution $h_ell := dg(v_ell)$, and two such substitutions commute by acyclicity. (2) Suppose the first run ends $ell$ at a point $A$, while the lazy run ends it later, at a demand, at a drop, or at the final resolution. After $A$ the first run cannot use $ell$, since it would read $bot$. Nor can it reach the positions of $ell$'s loan: any access to their container would make the lazy run end $ell$ there too. So every step of the first run is available to the lazy run, and both substitute the same content for $ell$'s loan. ∎
+_Proof sketch._ (1) Ending $ell$ is the substitution $h_ell := dg(v_ell)$, and two such substitutions commute because loans are contained in borrows acyclically. (2) Suppose a run ends $ell$ earlier than the lazy run does. After that point it cannot use $ell$, which now holds $bot$, nor reach the positions of $ell$'s loan, since any access to their container would make the lazy run end $ell$ there too. So both runs substitute the same content. ∎
 
-For (1), the hardest case is a hole inside a sealed program. Ending its borrow re-runs the sealed program, and the order of two such re-runs must not matter. It does not: a completed sealed run ends its own borrows before reading its result, so its normal form is a resolved value, and $"Run"$ is compositional (@thm-sim). Either order therefore computes $"Run"$ of the fully substituted program. Part (2) is the part the rest of the metatheory leans on: it absorbs the extra borrow endings of the symbolic machine in @thm-natural.
+The hardest case of (1) ends a hole inside a sealed program, which re-runs it; a completed sealed run ends its own borrows before reading its result, and $"Run"$ is compositional (@thm-sim), so the order of two re-runs does not matter. Part (2) absorbs the extra borrow endings of the symbolic machine in @thm-natural.
 
-== Symbolic evaluation commutes with instantiation
+== The two paths agree <sec-meta-nat>
 
-A _refinement_ α of Ω substitutes constructor patterns or closed values for abstract values, closed definable functions for abstract functions, and values for holes in sealed programs. $Omega arrow.b$ is Ω with its sealed programs re-normalised, and $approx$ is equality up to renaming of loans.
+A statement is evaluated along two paths: once at a definition's generic call, where calls and matches on abstract values close off, and again at each instance, where they run. [Call-type] identifies the two results, and so does [Split] for a stored type refined by a case split. So any decision taken differently on the two paths is an inconsistency. We write α for a _refinement_, which substitutes values for abstract values, definable closures for abstract functions, and values for holes; it covers both a case split and the instantiation of a statement at a call site. $Omega arrow.b$ is Ω with its sealed programs re-normalised, and $approx$ is equality up to renaming of loans.
+
+#thm([Lemma], [closing off commutes with refinement], [
+  For a term $t$ at Ω and a refinement α, the following agree between $t$ at Ω and $t alpha$ at $Omega alpha$:
+  + which subterms are erased;
+  + which places each closed-off stuck block captures, and in which modes, and the places of each footprint;
+  + whether the arms of each match are well typed;
+  + the [Close] row of each call.
+]) <lem-stable>
+
+_Proof sketch._ Each decision is read from syntax or declarations, never from a normal form, and a refinement changes only normal forms.
++ A call is erased iff its callee's declared codomain, at the callee's generic call, is a sort or has sort `Prop`. Any other term is erased iff it stands in a type position or its declared type has sort `Prop`. Universes are not cumulative, so these sorts are fixed.
++ Pattern variables are resolved to the sub-places they denote before captures and footprints are computed, so a write through `p` in `match *x { S p => … }` counts as a write to `*x` on both paths.
++ [Split] checks the arms under every refinement of the scrutinee, including for matches inside types, and a match whose scrutinee is still neutral after α stays closed off.
++ The row is read from the declared result type, and `&A` occurs only syntactically. ∎
+
+Each clause is needed: deciding any of them from a normal form admits a closed proof of `Eq Nat Z (S Z)` or a program that goes wrong at runtime (@sec-typing lists the attacks).
 
 #thm([Theorem], [naturality], [
   Let Ω be well formed, $cfg(Omega, t) arrow.b.double cfg(Omega', v)$ by the symbolic machine, and α a refinement of Ω.
-  + _Operationally_, $((Omega' alpha) arrow.b, (v alpha) arrow.b)$ is, up to $approx$, the result of a run of $t alpha$ from $(Omega alpha) arrow.b$ that ends some borrows earlier than the lazy strategy. So the lazy run $cfg((Omega alpha) arrow.b, t alpha) arrow.b.double cfg(Omega'', v'')$ exists. It has the same resolution, and when $v$ is borrow-free it has the same result.
-  + _Observationally_, for every footprint $W$, re-normalising the instantiated observation gives the observation of the instantiated term: $(⟦t⟧_Omega^W alpha) arrow.b = ⟦t alpha⟧_(Omega alpha)^W$.
+  + _Operationally_, $((Omega' alpha) arrow.b, (v alpha) arrow.b)$ is, up to $approx$, the result of a run of $t alpha$ from $(Omega alpha) arrow.b$ that ends some borrows earlier than the lazy strategy would. Hence the lazy run $cfg((Omega alpha) arrow.b, t alpha) arrow.b.double cfg(Omega'', v'')$ exists. It has the same resolution, and the same result when $v$ is borrow-free.
+  + _Observationally_, for every footprint $W$ fixed on both sides, $(⟦t⟧_Omega^W alpha) arrow.b = ⟦t alpha⟧_(Omega alpha)^W$.
 ]) <thm-natural>
 
 #thm([Corollary], [adequacy], [
-  If α is ground, the lazy run of $t alpha$ closes nothing off: it is a concrete run, it terminates, and it computes the instantiated symbolic observation. Every observation, and hence every `Id`, that the checker computes on abstract inputs is therefore the observation the program makes on every concrete input. The checker is sound in this sense, but it is not complete (see the remark below).
+  Let α be ground, instantiating every opaque definition with a definable function. Then the lazy run of $t alpha$ closes nothing off: it is a concrete run, it terminates, and it computes the instantiated symbolic observation. So every `Id` the checker computes on abstract inputs holds of the program on every concrete input. The checker is sound in this sense, but not complete.
 ]) <cor-adequacy>
 
-_Proof sketch._ Part (1) is by induction on the symbolic derivation. Every step except closing off commutes with α on the nose. α substitutes atoms, and [Match], the only rule that is not uniform in atoms, takes an arm only on a constructor, which α preserves. At a [Close] of a call $C$ with argument contents $overline(u)$, the refined run reaches $C$ with $overline(u) alpha$ and runs $f$'s body alone (@thm-frame). Re-normalising the sealed programs runs the same body on the same values. [Seal] unfolds the head call exactly once, and closes off inner calls exactly where the direct run does. By determinism, both stop at the same stuck match or complete with the same results. They can differ in one place only: where a returned borrow's loan lives. The concrete run puts it into the one owner the borrow actually points into. The symbolic hole sits in the fill of every borrow argument the borrow _might_ point into, and an [Access] to any of those places ends the borrow. So the symbolic run can end a returned borrow at an access that the concrete run performs without ending it. That is an extra [End] step, and nothing else changes. Part (2) follows from (1) and @thm-canon (2), since an observation resolves every borrow. ∎
+_Proof sketch._ Part (1) is by induction on the symbolic derivation. Every step except closing off commutes with α on the nose: α substitutes atoms, [Match] takes an arm only on a constructor, which α preserves, and by @lem-stable the same terms are erased and the same blocks captured on both paths. At a [Close] of a call $C$ with argument contents $overline(u)$, the refined run reaches $C$ with $overline(u) alpha$ and runs its body alone (@thm-frame). Re-normalising the sealed programs runs the same body on the same values, since [Seal] unfolds the head call once and lets inner calls close off exactly where the direct run does. By determinism, the two runs stop at the same stuck match or complete alike.
 
-The hardest case is again a returned borrow, and it has two sub-cases.
+They differ only in where a returned borrow's loan lives: concretely in the one owner the borrow points into, symbolically as a hole in the fill of every borrow argument it might point into. So the symbolic run can end a returned borrow at an access that the concrete run performs without ending it: an extra [End], and nothing else. Part (2) follows from (1) and @thm-canon (2), since an observation resolves every borrow. The footprint must be fixed on both sides, because its places are syntactic but their owners are not: when α removes a hole from a sealed program, the owner that loses it contributes a component neither side changes, and the ⊤ rules strip it. ∎
 
-_No non-target owner accessed._ Suppose no possible owner other than the target was accessed before α. Then re-normalising reproduces the concrete state up to renaming. The concrete run pops $f$'s frame while its parameter's borrow holds the returned loan $"loan"_q$, so the target owner receives $K["loan"_q]$. On the symbolic side, re-normalising $seal("L; let r = C; *r := " "loan"_k "; " c_i)$ runs $C$, leaving $c_i$ holding $K["loan"_(q')]$. It then writes the inert $"loan"_k$ through $r$ and reads $c_i$, where [Access] ends the run's own $q'$. The result is $K["loan"_k]$, which matches $K["loan"_q]$ under $k <-> q$. This rests on loans being variables, on [Access] ending only the run's own loans, and on [Seal] not closing off its head call.
+The hardest case is a returned borrow when no possible owner but the target was accessed before α. Concretely, the callee's frame pops while its parameter's borrow still holds the returned loan, so the target owner receives $K["loan"_q]$. Symbolically, re-normalising $seal("L; let r = C; *r := " "loan"_k "; " c_i)$ runs $C$, leaving $c_i$ holding $K["loan"_(q')]$, writes the inert $"loan"_k$ through $r$, and reads $c_i$, where [Access] ends $q'$; the result $K["loan"_k]$ matches up to renaming. If another possible owner was accessed, the symbolic run has already ended the borrow, and only the resolutions agree.
 
-_A non-target owner accessed._ Suppose the symbolic run accessed a possible owner that α reveals is not the target. Then it has already ended the borrow, and only the resolutions of the two states agree.
+*Remark (holes over-approximate returned borrows).* This counterexample to naturality up to renaming alone is machine-checked (@sec-meta-mech). Take `Pick(n, x, y) := match n { Z => x | S _ => y }`, $Omega = {n |-> sigma, a |-> 1, b |-> 2, r |-> (), z |-> ()}$, `t = r := Pick(n, &a, &b); z := b` and $alpha = (sigma := sans("Z"))$. Symbolically, `Pick` closes off with its hole in the fills of both `a` and `b`, so reading `b` ends the returned borrow, and after refinement the state is ${a |-> 1, b |-> 2, r |-> bot, z |-> 2}$. Concretely `r` borrows `a` and stays live: ${a |-> "loan"_q, b |-> 2, r |-> "borrow"_q 1, z |-> 2}$. No renaming relates the two, but they resolve alike. The cost is completeness: `r := Pick(n, &a, &b); z := b; match n { Z => *r := 5 | S _ => () }` runs for every concrete `n` but is rejected, because `r` is already $bot$ in the `Z` arm. Rust draws the same line, treating `r` as borrowing both `a` and `b` for as long as `r` is live.
 
-*Remark (holes over-approximate the target of a returned borrow).* This example is machine-checked in the Lean development.
+*Naturality and thunkability.* In a pure type theory, stability of normal forms under substitution is the standard requirement behind normalisation by evaluation and dependent matching. In Ochr the terms inside types have effects, so it can fail in a new way. Suppose erasure were decided from normal forms, and take the family `U(n)` of @sec-typing, which is `Prop` for every `n`, with `W(x : &Nat, n : Nat) : U(n) := *x := S Z; V(n)`. At the generic `n`, `U(σ)` is stuck, so the call `W(&c, n)` runs and writes `c`; at `n = Z` it has type `Prop`, so it is erased and `c` is untouched. A lemma `Id Nat (let c = Z; W(&c, n); c) (S Z)`, proved by `refl` at the generic call, then states `Eq Nat Z (S Z)` at `Z`. This is precisely the "desynchronisation between effects performed in the term and effects performed in the type" from which Pédrot and Tabareau derive the fire triangle @fire-triangle, and each clause of @lem-stable closes one route to it. They also show that, in their forcing model, a computation is thunkable exactly when it is natural: running then restricting equals restricting then running @fire-triangle[Prop. 18]. @lem-stable and @thm-natural (2) are the naturality Ochr needs: on everything a type can see the two paths agree, and operationally they differ only by borrow endings, which no type can see. We claim a correspondence of invariants, not an embedding into their calculus.
 
-The setup:
-- `Pick(n, x, y) := match n { Z => x | S _ => y }`;
-- $Omega = {n |-> sigma, a |-> 1, b |-> 2, r |-> (), z |-> ()}$;
-- `t = r := Pick(n, &a, &b); z := b`;
-- $alpha = (sigma := sans("Z"))$.
+== The model validates typing and conversion
 
-The symbolic run:
-- `Pick` is stuck on σ and is closed off.
-- The hole of its returned borrow sits in the fills of both `a` and `b`, since either may be the target.
-- Reading `b` therefore ends the returned borrow, and `r ↦ ⊥`.
-- After refinement, the state is ${a |-> 1, b |-> 2, r |-> bot, z |-> 2}$.
-
-The concrete run of $t alpha$:
-- `Pick` returns a borrow of `a`, so `b` holds no loan and `r` stays live.
-- The final state is ${a |-> "loan"_q, b |-> 2, r |-> "borrow"_q 1, z |-> 2}$.
-
-No renaming of loans relates these two states, though they resolve to the same contents. That is why @thm-natural is stated up to resolution.
-
-The cost is completeness, not soundness. The program `r := Pick(n, &a, &b); z := b; match n { Z => *r := 5 | S _ => () }` runs for every concrete `n`. But the checker rejects it: `r` is already $bot$ when the `Z` arm uses it. The error lands on that use. It goes away if the program uses `r` before reading `b`, or splits on `n` before the call. Recovering the program as written would need holes that record under which refinement they belong to which owner. Rust's borrow checker draws the same line: after `let r = if n == 0 { &mut a } else { &mut b }`, it treats `r` as borrowing from both `a` and `b` for as long as `r` is live, and rejects reading `b` in between. The checker is as conservative as Rust here, and the concrete machine is more permissive than both.
-
-*Thunkability is naturality.* In Pédrot and Tabareau's forcing model of dependent call-by-push-value, a computation is a family over forcing conditions. It is _thunkable_ (it behaves like a value) exactly when it is _natural_: running then restricting equals restricting then running @fire-triangle[Prop. 18]. Ochr's type-level evaluation has this shape. The normaliser runs at a condition Ω, which records which abstract values exist and what is known of them, and refinements are the restriction maps. [Split] refines stored types in lockstep with the term, and so plays the role of their dependent `let`.
-
-A type contains only observations, and observations are resolved. So part (2) of @thm-natural, the naturality square for everything a type can see, commutes on the nose. That is the precise sense in which types are free of effects although they run effectful programs. Operational states commute only up to extra borrow endings, by part (1). The difference is invisible to types and costs only the completeness just described.
-
-This is a correspondence of invariants, not an embedding into their calculus, but it is a usable design test: a rule may act in type-level evaluation only if it is natural on observations. Three candidate rules failed it:
-- joining a stuck match's results into fresh abstract values forgets what refinement would recover;
-- skipping proposition-valued _calls_, but not the same code outside a call, made a block observe differently sealed and unsealed;
-- non-structural recursion closes off on abstract arguments but diverges once they are instantiated.
-
-== Typing and conversion are preserved
-
-#thm([Theorem], [preservation], [
-  For a program accepted by [Def] and [Rec]:
-  + a type $A$ of sort $s$ at Ω translates to $Gamma_Omega tack.r dg(A) : dg(s)$;
-  + if $Omega tack.r A equiv B$, then $dg(A) = dg(B)$ is provable in $"CIC"_L$ (definitionally in $"ECIC"_L$);
-  + if $Omega tack.r t arrow.b.double v : A tack.l Omega'$, then $dg(t)$ maps views of Ω's shape to $dg(A)$ and views of $Omega'$'s shape;
-  + a definition $f : Pi(overline(x) : overline(A)). B$ translates to an inhabitant of $dg((Pi(overline(x) : overline(A)). B))$, in the injective part when $B$ is a borrow type.
+#thm([Theorem], [soundness of the model], [
+  Let the program be accepted by [Def] and [Rec]. For every valuation of the abstract values:
+  + a type of sort $s$ at Ω denotes an element of the universe $s$ denotes;
+  + convertible types denote the same set;
+  + if $Omega tack.r t arrow.b.double v : A tack.l Omega'$, then on that run's shapes $t$ denotes a function from views of Ω to elements of $A$'s denotation and views of $Omega'$;
+  + every definition denotes an element of its type's denotation, and so lies in $R$.
 ]) <thm-sound>
 
-_Proof sketch._ By induction on derivations. [Def]'s goal is the [Call-type] of the generic call, which is $dg(B)(overline(d))$ by definition. [Split] on an abstract value is dependent elimination on a CIC variable, and applying the refinement to the environment, the goal and every stored type _is_ its motive; generalising a sealed program first is CIC's generalisation. After a non-tail split, the checked arms define the closed-off block's function, and the continuation starts from its application (@thm-sim), so nothing is lost. [Rec] makes the translation a strong recursion, and erased terms leave the view unchanged. For conversion, equal normal forms translate equally (@thm-sim), and the `Eq` rules are `propext` instances: $((a, b) = (a', b')) = (a = a' and b = b')$, $(a = a) = top$, $(top and P) = P$. `J` becomes Lean's eliminator, which needs the endpoints `J` carries. Proof irrelevance is sound because Ochr propositions translate to CIC propositions. ∎
+_Proof sketch._ By induction on derivations, together with @lem-backinj.
+- *[Def].* The goal is the [Call-type] of the generic call, which is $dg(B)(overline(d))$ by definition.
+- *[Split] on an abstract value* is dependent elimination on a variable; applying the refinement to the environment, the goal and every stored type _is_ its motive.
+- *[Split] on a sealed program* first generalises the program. This is well typed because stored types are kept in normal form, so every dependency on the program is a syntactic occurrence. It is sound only because matching first ends every loan inside a neutral head; otherwise generalising would take a loan out of its borrow's scope.
+- *A non-tail [Split].* The checked arms define the closed-off block's function, and the rest of the program starts from its application (@thm-sim).
+- *[Rec]* makes the interpretation a well-founded recursion on data read from the environment, never on a proof, so no subterm check passes through a cast along a `propext` equality, the route by which Coq's guard condition was found to clash with `propext`.
+- *Erased terms* leave the view unchanged, and by @lem-stable they are the same terms at every instance.
+- *Conversion.* Equal normal forms denote equally (@thm-sim). Closures are compared by the observation of their generic call, which is what determines their denotation; comparing results alone would identify `λx. (*x := S Z)` with `λx. ()`. The `Eq` rules hold because propositions with the same truth value denote the same set, and convertible terms denote equal elements, so a reflexive `Eq` denotes ${•}$. `J` denotes transport, which needs the endpoints `J` carries. All proofs denote `•`. ∎
 
-The hardest case is [Call-type]. It uses @thm-frame, and @lem-inj and @lem-backinj, and so owner sets and the injective restriction. It also needs `propext`, [Rec] for the induction hypotheses, and the capture of a Π-type's free variables at formation, without which a call site's type is no instance of the type proved.
-
-== Consistency
+The hardest case is [Call-type], which uses everything above, and also the capture of a Π-type's free variables at formation, without which a call site's type is not an instance of the proved statement.
 
 #thm([Corollary], [consistency], [
-  No closed term has type `Eq Nat Z (S Z)` or `Π(P : Prop). P`. More generally, if $tack.r t : P$ for a closed proposition $P$, then $dg(P)$ holds in the set model.
+  No closed term has type `Eq Nat Z (S Z)` or `Π(P : Prop). P`. More generally, if $tack.r t : P$ for a closed proposition $P$, then $P$ holds in the set model. Both claims are relative to ZFC with one inaccessible cardinal per universe level used.
 ]) <cor-consistent>
 
-_Proof._ A closed term has an empty view, so by @thm-sound it translates to an inhabitant of $dg(P)$ in $"ECIC"_L$. Carneiro's model interprets $"ECIC"_L$ in ZFC with one inaccessible cardinal per universe level used, and in that model $dg((sans("Eq Nat") space sans("Z") space (sans("S") space sans("Z")))) = emptyset$. ∎
+_Proof._ By @thm-sound, a closed proof denotes an element of its proposition's denotation, and `Eq Nat Z (S Z)` denotes $[0 = 1] = emptyset$. ∎
 
-The strong form matters: proofs are never run, so consistency cannot lean on the checker diverging.
+Proofs are never run, so consistency cannot lean on the checker diverging; it rests on @thm-sound alone.
 
-== What is mechanised
+== What is mechanised <sec-meta-mech>
 
-Mechanised in the accompanying Lean development: _[to be filled in: the theorems proved in `ochr/core/meta-lean/`, e.g. @thm-frame (1)–(2), the equations of @thm-sim, @cor-adequacy, @thm-canon, @lem-backinj, for the first-order fragment]_. The fragment has natural numbers, unit, pairs, places, borrows, matching, recursive definitions (including ones returning borrows), opaque definitions for abstract functions, and erased proofs. A computation means its concrete run on Lean data, so the target is Lean itself, and `Id` is Lean's equality on observation tuples. On paper only: the dependent layer (parts (1), (2) and (4) of @thm-sound for Π-types over `Id`, universes and [Split]'s motive), @cor-consistent, termination of higher-order programs, @thm-natural for non-ground refinements, and the forcing-model correspondence. The dependent layer is standard given Carneiro's model. The new part is the effectful layer, and that is where the mechanisation goes.
+The accompanying Lean 4 development mechanises the effectful layer for a first-order fragment of Ochr, following an earlier version of the rules: natural numbers, unit and pairs; places, borrows and matching; recursive definitions, including ones that return borrows; opaque definitions standing for abstract functions; and erased proofs, with erasure a per-definition flag. There are no closures, types or stuck blocks, so the later rule changes concerning those do not arise. The machine is a clocked big-step interpreter over Lean data. Proved with no `sorry`, using only Lean's three standard axioms:
+- parts (1) and (2) of @thm-frame, as equations at every amount of fuel, so stuck runs and errors coincide too;
+- that the sealed program [Close] writes into a borrowed place normalises to the content the call itself leaves there, the machine-level form of the second equation of @thm-sim, assuming the call's result and final contents contain no loans (which should follow from @lem-wf);
+- that two borrow endings commute, which is @thm-canon (1) without re-normalisation of sealed programs;
+- that the machine is deterministic, monotone in fuel, computed by its interpreter, and equivariant under injective renamings of loans (the $approx$ of @thm-natural).
+
+Executable tests check the other [Close] equations on small ground inputs, owner sets, [Access], erasure, and the counterexample in the remark of @sec-meta-nat. The invariance part of @lem-wf is stated, but its proof is still a `sorry`, and the remaining [Close] equations are in progress. The translation into $"CIC"_L$ itself, and with it the rest of @thm-sim, is not started, nor are @thm-canon (2), @lem-stable, @thm-natural, @cor-adequacy, @lem-inj and @lem-backinj. The set-theoretic interpretation, and so @thm-sound and @cor-consistent, exists on paper only, as do termination for higher-order programs and the correspondence with the forcing model.
