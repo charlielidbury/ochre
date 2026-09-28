@@ -1,0 +1,5 @@
+#import "../style.typ": *
+
+The usual way to verify an efficient imperative program is to write it twice. We have shown that, for programs whose mutation is disciplined by Rust-style ownership, the second copy can be generated on demand, inside the type checker, as source code: when definitional equality meets a call it cannot run, it closes the call off into sealed programs that own their state, and a later case split runs them again. Combined with an observational equality that compares computations by their results and their writes, this lets theorems about in-place code be stated about that code and proved by the same structural recursion one would use for pure code. Often the in-place proof is the simpler one, because the borrow structure of the environment performs the congruence steps a pure proof must spell out.
+
+The core calculus is small, and every side condition in it is there because a smaller one admitted a proof of false. The main open direction is borrows stored inside data, where the neutral form of a stuck call must describe a whole structure of final values rather than a fixed set of places.

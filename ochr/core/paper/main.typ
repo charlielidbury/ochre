@@ -37,8 +37,8 @@ _Draft pending the Lean checker._
 #include "sections/related.typ"
 
 = Discussion <sec-discussion>
-_Draft._
+#include "sections/discussion.typ"
 
 = Conclusion
-_Draft._
+#include "sections/conclusion.typ"
 #bibliography("refs.bib", style: "association-for-computing-machinery")
