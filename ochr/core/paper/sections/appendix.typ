@@ -22,63 +22,62 @@
 // A group of rules, with the checker functions that implement them.
 #let lean(..names) = align(right, text(size: 7.5pt, fill: luma(35%), [checker: ] + names.pos().map(n => raw(n)).join[, ]))
 #let dr = $class("normal", *)$
-#let ev = sym.arrow.b.double
+#let ev = math.scripts(sym.arrow.b.double)
 #let err = $sans("err")$
 #let stk = $sans("stuck")$
 #let acc = $"acc"$
 #let cont = $"content"$
 
-This appendix defines Ochr completely: its syntax and runtime structures (@app-syntax), the machine (@app-machine), observation, `Id` and conversion (@app-conv), typing (@app-typing) and well-formed environments (@app-wf). Every derivation in the paper can be checked against it. It follows rule set v1.5. The reference checker (@sec-impl) implements v1.4; each group of rules names the checker functions that implement it (in `Machine.lean` unless noted), and says where the checker differs. @app-notes lists the points where the prose rules left a choice and which reading is taken here.
+This appendix defines Ochr completely: its syntax and runtime structures (@app-syntax), the machine (@app-machine), observation, `Id` and conversion (@app-conv), typing (@app-typing) and well-formed environments (@app-wf). Every derivation in the paper can be checked against it. It follows rule set v1.5, which the reference checker (@sec-impl) also implements. Each group of rules names the checker functions that implement it (in `Machine.lean` unless noted), and says where the checker differs. @app-notes lists the points where the prose rules left a choice and the reading taken here.
 
 == Syntax and runtime structures <app-syntax>
 
 === Terms
 
 #figure(kind: image, supplement: [Figure],
-  ```
-  t, u, a, b, h, k, A, B, P, Q ::=
-        x                                        variable
-      | Prop | Typeᵢ                              sorts, i ≥ 0
-      | Π(x₁:A₁ … xₙ:Aₙ). B                       dependent function type, n ≥ 1
-      | fix f (x₁:A₁ … xₙ:Aₙ) : B by xⱼ := t      function, recursive on xⱼ
-      | fix f (x₁:A₁ … xₙ:Aₙ) : B := t            function, not recursive (λ)
-      | t(u₁, …, uₙ)                              saturated call
-      | Nat | Z | S t | Unit | () | A × B | (t, u) | t.1 | t.2
-      | Eq A t u | refl | J(A, a, b, P, h, t) | ⊤ | P ∧ Q | ⟨h, k⟩
-      | &A                                        borrow type
-      | p | &p | p := t                           read, borrow, assign a place
-      | let x = t; u | let x : A = t; u | t; u
-      | match p { Z => t | S y => u }
-      | Id A t u                                  equality of computations
-      | v                                         an embedded value (A.1.2)
-  p, q ::= x | *p | p.1                           places
-  ```,
+  block(width: 100%, inset: (y: 4pt), grammar(
+    ($t, u, A, B$, $x | ty("Prop") | ty("Type")_i$, [variable, sorts ($i >= 0$)]),
+    ([], $Pi(x_1 : A_1 ... x_n : A_n). B$, [dependent function type ($n >= 1$)]),
+    ([], $kw("fix") f (x_1 : A_1 ... x_n : A_n) : B space kw("by") x_j := t$, [function, recursive on $x_j$]),
+    ([], $kw("fix") f (x_1 : A_1 ... x_n : A_n) : B := t$, [function, not recursive ($lambda$)]),
+    ([], $t(u_1, ..., u_n)$, [saturated call]),
+    ([], $ty("Nat") | ty("Z") | ty("S") t | ty("Unit") | () | A times B | (t, u) | t.1 | t.2$, [data]),
+    ([], $ty("Eq") A space t space u | kw("refl") | ty("J")(A, a, b, P, h, t) | top | P and Q | chevron.l h, k chevron.r$, [propositions]),
+    ([], $\&A | p | \&p | p := t$, [borrow type; read, borrow, assign]),
+    ([], $kw("let") x = t; u | kw("let") x : A = t; u | t; u$, [sequencing]),
+    ([], $kw("match") p space {ty("Z") => t | ty("S") y => u}$, [case analysis]),
+    ([], $ty("Id") A space t space u$, [equality of computations]),
+    ([], $v$, [embedded value]),
+    ($p, q$, $x | dr p | p.1$, [places]),
+  )),
   caption: [Terms. Embedded values occur only in sealed programs and in the code of closures, never in source programs.],
 ) <fig-app-terms>
 
 *Binding.* In `Π(x̄:Ā). B` and `fix f (x̄:Ā) : B … := t`, each `xᵢ` is bound in `Aᵢ₊₁ … Aₙ`, in `B` and in `t`. With `by xⱼ`, `f` is bound in `t` and nowhere else; without `by`, `f` is not bound at all, and in no case is `f` bound in `Ā` or `B` (D31). `let x = t; u` binds `x` in `u`. Terms are identified up to renaming of bound variables; the checker uses de Bruijn indices, so this is structural equality (`Syntax.lean`).
 
-*Pattern variables are places* (D32). The `y` of `match p { Z => t | S y => u }` is not a binder. We identify `u` with $u[p.1 slash y]$, which replaces the root `y` of every place in `u` by `p.1` (so `y` becomes `p.1`, and `y.1` becomes `p.1.1`), and write the match $"match" p {"Z" => t | "S" => u}$ when the distinction matters. Every definition below (free places, footprints, captures) is on such resolved terms. The checker resolves pattern variables when it parses (`Surface.resolve`).
+*Pattern variables are places* (D32). The `y` of `match p { Z => t | S y => u }` is not a binder. We identify `u` with $u[p.1 slash y]$, which replaces the root `y` of every place in `u` by `p.1` (so `y` becomes `p.1`, and `y.1` becomes `p.1.1`), and write the match $kw("match") p {ty("Z") => t | ty("S") => u}$ when the distinction matters. Every definition below (free places, footprints, captures) is on such resolved terms. The checker resolves pattern variables when it parses (`Surface.resolve`).
 
 *Borrow types.* `&A` occurs only as the whole declared type of a variable, a parameter or a function's result, and `A` contains no `&`: there are no borrows inside data and no borrows of borrows. The machine also checks this where values are built ([Pair], [Borrow], closure capture).
 
-*Type positions* (P2). The following positions of a term are _type positions_: the annotation `A` of `let x : A = t; u`; the parameter types and the codomain of `Π` and of `fix`; the first argument of `Eq` and of `Id`; the arguments `A`, `a`, `b` and `P` of `J`; both arguments of `×` and `∧`; the argument of `&`. What stands in a type position is erased (@app-erasure).
+*Type positions* (P2, D24). The following positions of a term are _type positions_: the annotation `A` of `let x : A = t; u`; the parameter types and the codomain of `Π` and of `fix`; every argument of `×`, `&`, `∧` and `Eq`; the first argument of `Id` (whose two sides run on private copies anyway, @app-conv); and the arguments `A`, `a`, `b` and `P` of `J`. What stands in a type position is erased (@app-erasure).
 
 === Values, neutrals and types
 
 #figure(kind: image, supplement: [Figure],
-  ```
-  v, w, κ ::= Z | S v | () | (v, w)             data
-            | ⋆                                 the value of every proof
-            | borrow_ℓ v | loan_ℓ | ⊥            a borrow, a loan, a moved-out place
-            | n | F | T                         neutrals, function values, types
-  n       ::= σ | ⌈t⌉                           abstract value, sealed program
-  F       ::= f | ⟨κ̄ ⊢ fix f (x̄:Ā) : B … := t⟩  top-level function, closure
-  T       ::= s | Nat | Unit | T × T | &T | Eq T v w | ⊤ | T ∧ T
-            | ⟨κ̄ ⊢ Π(x̄:Ā). B⟩ | n              Π-closure, neutral type
-  s       ::= Prop | Typeᵢ                      sorts
-  ```,
-  caption: [Values. `ℓ` ranges over loan labels and `σ` over abstract values.],
+  block(width: 100%, inset: (y: 4pt), grammar(
+    ($v, w, kappa$, $ty("Z") | ty("S") v | () | (v, w)$, [data]),
+    ([], $star$, [the value of every proof]),
+    ([], $"borrow"_ell v | "loan"_ell | bot$, [borrow, loan, moved-out place]),
+    ([], $n | F | T$, [neutrals, function values, types]),
+    ($n$, $sigma | seal(t)$, [abstract value, sealed program]),
+    ($F$, $f | chevron.l overline(kappa) tack.r kw("fix") f (overline(x) : overline(A)) : B ... := t chevron.r$, [top-level function, closure]),
+    ($T$, $s | ty("Nat") | ty("Unit") | T times T | \&T | ty("Eq") T space v space w | top | T and T$, [types]),
+    ([], $chevron.l overline(kappa) tack.r Pi(overline(x) : overline(A)). B chevron.r | n$, [Π-closure, neutral type]),
+    ($s$, $ty("Prop") | ty("Type")_i$, [sorts]),
+    ($Omega$, $phi_1; ...; phi_k$, [frames, oldest first]),
+    ($phi$, $(x : A |-> v)^* thick v^*$, [bindings, then temporaries]),
+  )),
+  caption: [Values and environments. $ell$ ranges over loan labels and $sigma$ over abstract values.],
 ) <fig-app-values>
 
 A _closure_ $chevron.l overline(kappa) tack.r t chevron.r$ is code `t` whose free variables are bound, in order, to the captured values $overline(kappa)$; a _Π-closure_ is the same for a Π-type. They are the paper's "closures" and "Π-types are closures over values" (D13). A top-level function `f` is a value by itself; its code is in the signature Σ. A neutral is a type exactly when its type is a sort; for instance the sealed program ⌈`Le(σ, σ')`⌉ is a proposition.
@@ -95,7 +94,7 @@ A _state_ is an environment together with: Δ, the type of every abstract value;
 
 === Auxiliary definitions <app-aux>
 
-+ *Content and update.* $cont_Omega (x) = Omega(x)$; $cont_Omega (dr p) = w$ if $cont_Omega (p) = "borrow"_ell w$; $cont_Omega (p.1) = w$ if $cont_Omega (p) = "S" w$; otherwise $cont_Omega (p)$ is undefined (so reading `p.1` needs a known `S` head, and `*p` a borrow). $Omega[p |-> v]$ replaces that sub-value. The _prefixes_ of a place are $"pre"(x) = {x}$, $"pre"(dr p) = "pre"(p) union {dr p}$, $"pre"(p.1) = "pre"(p) union {p.1}$; $q subset.eq.sq p$ means $q in "pre"(p)$. #lean("content", "setPlace")
++ *Content and update.* $cont_Omega (x) = Omega(x)$; $cont_Omega (dr p) = w$ if $cont_Omega (p) = "borrow"_ell w$; $cont_Omega (p.1) = w$ if $cont_Omega (p) = ty("S") w$; otherwise $cont_Omega (p)$ is undefined (so reading `p.1` needs a known `S` head, and `*p` a borrow). $Omega[p |-> v]$ replaces that sub-value. The _prefixes_ of a place are $"pre"(x) = {x}$, $"pre"(dr p) = "pre"(p) union {dr p}$, $"pre"(p.1) = "pre"(p) union {p.1}$; $q subset.eq.sq p$ means $q in "pre"(p)$. #lean("content", "setPlace")
 
 + *Loans an access must end* ([Access]). For reading, borrowing and assigning,
   $ L^R_Omega (p) = {ell mid(|) cont_Omega (q) = "loan"_ell, q in "pre"(p)} union "loans"(cont_Omega (p)), $
@@ -105,7 +104,7 @@ A _state_ is an environment together with: Δ, the type of every abstract value;
   $ "owners"_Omega (ell) = union.big_(pi : thin ell in "loans"(Omega(pi))) cases("owners"_Omega (m) & "if" Omega(pi) = "borrow"_m w, {pi} & "otherwise,") $
   a set of positions of Ω (well-defined by acyclicity, @app-wf). The owners of a variable are $"own"_Omega (x) = "owners"_Omega (ell)$ if $Omega(x) = "borrow"_ell w$, $emptyset$ if $Omega(x) = bot$, and ${x}$ otherwise. #lean("owners (Obs.lean)")
 
-+ *Place occurrences.* $"occ"(t)$ is the set of free place occurrences of a resolved term `t`, each with its kind: read (rd), borrowed (bw), assigned (as) or matched (sc). $"occ"(p) = {(p, "rd")}$, $"occ"(\&p) = {(p, "bw")}$, $"occ"(p := t) = {(p, "as")} union "occ"(t)$, $"occ"("match" p {"Z" => t | "S" => u}) = {(p, "sc")} union "occ"(t) union "occ"(u)$; a binder removes the places rooted at the variable it binds; every other form takes the union over its subterms, including the types and the code of `Π` and `fix`. A variable `x` is a _borrow variable_ in Ω if its stored type is `&T` or $Omega(x)$ is a borrow. #lean("Term.placeOccs", "Term.freeOccs (Basic.lean)")
++ *Place occurrences.* $"occ"(t)$ is the set of free place occurrences of a resolved term `t`, each with its kind: read (rd), borrowed (bw), assigned (as) or matched (sc). $"occ"(p) = {(p, "rd")}$, $"occ"(\&p) = {(p, "bw")}$, $"occ"(p := t) = {(p, "as")} union "occ"(t)$, $"occ"(kw("match") p {ty("Z") => t | ty("S") => u}) = {(p, "sc")} union "occ"(t) union "occ"(u)$; a binder removes the places rooted at the variable it binds; every other form takes the union over its subterms, including the types and the code of `Π` and `fix`. A variable `x` is a _borrow variable_ in Ω if its stored type is `&T` or $Omega(x)$ is a borrow. #lean("Term.placeOccs", "Term.freeOccs (Basic.lean)")
 
 + *Footprint* (D5, D18, D32).
   $ W_Omega (t, u) = union.big {"own"_Omega ("root"(p)) mid(|) (p, k) in "occ"(t) union "occ"(u), thick k in {"bw", "as"} "or root"(p) "is a borrow variable"}, $
@@ -113,11 +112,11 @@ A _state_ is an environment together with: Δ, the type of every abstract value;
 
 + *Substitution and normal form.* For an atom $a in {sigma, "loan"_ell}$, or a neutral `n` (for generalisation), $v[w slash a]$ replaces every occurrence of `a` in `v`, including inside sealed programs, closures and types, and then restores normal form: every sealed program that changed is replaced by its normal form ([Seal]), and every `Eq` and `∧` is rebuilt by the smart constructors $"eq"$ and $"and"$ of @app-conv. $Omega[w slash a]$ does this to every value of Ω; $Omega[w slash a]^+$ also to the stored types, to Δ and to the goal. #lean("substV", "substT", "substEnv")
 
-+ *Refinement and generalisation* ([Split]). A refinement is $sigma := "Z"$ or $sigma := "S" sigma'$ with σ' fresh and $Delta(sigma') = "Nat"$; $Omega[sigma := r]$ is $Omega[r slash sigma]^+$, and ρ records it. The _refined entry value_ is $rho^*(sigma) = rho^*(r)$ if ρ records $sigma := r$ and σ otherwise, extended through `S`; its _strict subterms_ are $"sub"("S" v) = {v} union "sub"(v)$ and $"sub"(v) = emptyset$ otherwise. Generalising a neutral `n` is $Omega[sigma slash n]^+$ with σ fresh, $Delta(sigma) = "Nat"$. #lean("refine", "expandRefs", "strictSubterms", "generalizeNeutral")
++ *Refinement and generalisation* ([Split]). A refinement is $sigma := ty("Z")$ or $sigma := ty("S") sigma'$ with σ' fresh and $Delta(sigma') = ty("Nat")$; $Omega[sigma := r]$ is $Omega[r slash sigma]^+$, and ρ records it. The _refined entry value_ is $rho^*(sigma) = rho^*(r)$ if ρ records $sigma := r$ and σ otherwise, extended through `S`; its _strict subterms_ are $"sub"(ty("S") v) = {v} union "sub"(v)$ and $"sub"(v) = emptyset$ otherwise. Generalising a neutral `n` is $Omega[sigma slash n]^+$ with σ fresh, $Delta(sigma) = ty("Nat")$. #lean("refine", "expandRefs", "strictSubterms", "generalizeNeutral")
 
 + *Drop.* $"drop"(Omega, v) = Omega'$ where $Omega dot v arrow.squiggly_ell Omega' dot bot$ ([End]) if $v = "borrow"_ell w$; $"drop"(Omega, v) = Omega$ if `v` is loan-free; otherwise $"drop"(Omega, v) = err$ (something still borrows a dying value). Popping a frame drops its bindings, newest first, with the call's result held as a temporary of the caller's frame: $"pop"(Omega";" phi, v)$. #lean("dropTopBind", "dropValue", "popFrame")
 
-+ *Types of places and values.* $"type"_Omega (x)$ is the stored type of `x`, or $"typeof"(Omega(x))$ if it has none; $"type"_Omega (dr p) = T$ if $"type"_Omega (p) = \&T$; $"type"_Omega (p.1) = "Nat"$ if $"type"_Omega (p) = "Nat"$. For values: `Z`, `S v` have type `Nat`; `()` has `Unit`; $(v, w)$ has $"typeof"(v) times "typeof"(w)$; σ has $Delta(sigma)$; `f` has its type in Σ; a closure $chevron.l overline(kappa) tack.r "fix" f (overline(x) : overline(A)) : B dots chevron.r$ has the Π-closure $chevron.l overline(kappa) tack.r Pi(overline(x) : overline(A)). B chevron.r$; $"borrow"_ell w$ has $\&"typeof"(w)$; a type has its sort (@app-typing). #lean("placeType", "valType")
++ *Types of places and values.* $"type"_Omega (x)$ is the stored type of `x`, or $"typeof"(Omega(x))$ if it has none; $"type"_Omega (dr p) = T$ if $"type"_Omega (p) = \&T$; $"type"_Omega (p.1) = ty("Nat")$ if $"type"_Omega (p) = ty("Nat")$. For values: `Z`, `S v` have type `Nat`; `()` has `Unit`; $(v, w)$ has $"typeof"(v) times "typeof"(w)$; σ has $Delta(sigma)$; `f` has its type in Σ; a closure $chevron.l overline(kappa) tack.r kw("fix") f (overline(x) : overline(A)) : B dots chevron.r$ has the Π-closure $chevron.l overline(kappa) tack.r Pi(overline(x) : overline(A)). B chevron.r$; $"borrow"_ell w$ has $\&"typeof"(w)$; a type has its sort (@app-typing). #lean("placeType", "valType")
 
 + *The generic call* (D12, D27). For a Π-closure $Pi = chevron.l overline(kappa) tack.r Pi(x_1 : A_1 dots x_n : A_n). B chevron.r$, the _generic arguments_ $overline(a)$ are built left to right. In the frame $overline(kappa), x_1 : T_1 |-> a_1, dots, x_(i-1) : T_(i-1) |-> a_(i-1)$, evaluate $A_i$ in a type position to $T_i$ (@app-typing). If $T_i = \&T$, add an owned place $c_i : T |-> "loan"_(ell_i)$ to a bottom frame and let $a_i = "borrow"_(ell_i) sigma_i$ with $sigma_i : T$ and $ell_i$ fresh (this is the argument $\&c_i$ after [Borrow]); if $T_i$ has sort Prop, let $a_i = star$ (D27); otherwise $a_i = sigma_i$ with $sigma_i : T_i$ fresh. The _generic state_ is the frame of owned places $Gamma(Pi) = (c_i : T |-> "loan"_(ell_i))_(i : T_i = \&T)$, and the _parameter frame_ is $phi(Pi) = (overline(kappa), overline(x) : overline(T) |-> overline(a))$, each type stored with its binding. The generic call is $F(overline(a))$ at $Gamma(Pi)$. #lean("checkFix")
 
@@ -135,7 +134,7 @@ Ending a borrow (D11) replaces it by ⊥ and substitutes its content for its loa
 
 *[Access]* (D19, D29). $acc^R_p (Omega)$ and $acc^M_p (Omega)$ end, one at a time and in the order of item 2 of @app-aux, the borrow of the first label of $L^R_Omega (p)$, respectively $L^M_Omega (p)$, until that set is empty:
 $ acc^X_p (Omega) = cases(Omega & "if" L^X_Omega (p) = emptyset, acc^X_p (Omega') & "if" ell "is the first label of" L^X_Omega (p) "and" Omega arrow.squiggly_ell Omega') quad (X in {R, M}). $
-Every rule that reads, borrows or assigns a place `p` first computes $acc^R_p$, and a match on `p` computes $acc^M_p$. This is the borrow checker: an ended borrower holds ⊥, and every later use of it is an error. #lean("endBorrow", "accessPath", "accessInside")
+Every rule that reads, borrows or assigns a place `p` first computes $acc^R_p$, and a match on `p` computes $acc^M_p$. This is the borrow checker: an ended borrower holds ⊥, and every later use of it is an error. #lean("endBorrow", "accessPath", "accessInside", "accessNeutralHead")
 
 #rules(
   ir(name: "Read", $acc^R_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = v in.not {bot, "borrow"_ell w}$, $cfg(Omega, p) ev cfg(Omega_1, v)$),
@@ -150,15 +149,15 @@ In [Assign] the new value travels as a temporary while `p` is accessed, so that 
 === Sequencing and data
 
 #rules(
-  ir(name: "Let", pv($cfg(Omega, t) ev cfg(Omega_1, v) quad cfg(Omega_1 + (x |-> v), u) ev cfg(Omega_2 + (x |-> v'), w)$, $"drop"(Omega_2 dot w, v') = Omega_3 dot w'$), $cfg(Omega, "let" x = t";" u) ev cfg(Omega_3, w')$),
+  ir(name: "Let", pv($cfg(Omega, t) ev cfg(Omega_1, v) quad cfg(Omega_1 + (x |-> v), u) ev cfg(Omega_2 + (x |-> v'), w)$, $"drop"(Omega_2 dot w, v') = Omega_3 dot w'$), $cfg(Omega, kw("let") x = t";" u) ev cfg(Omega_3, w')$),
   ir(name: "Seq", $cfg(Omega, t) ev cfg(Omega_1, v)$, $"drop"(Omega_1, v) = Omega_2$, $cfg(Omega_2, u) ev r$, $cfg(Omega, t";" u) ev r$),
 )
 The annotated `let x : A = t; u` runs as `let x = t; u`: its annotation is a type position. A discarded value (`t; u`) is dropped like a binding: a borrow ends, and a live loan is an error. #lean("eval (.letIn, .seq)", "dropTopBind", "dropValue")
 
 #rules(
-  ir(name: "Z", $cfg(Omega, "Z") ev cfg(Omega, "Z")$),
+  ir(name: "Z", $cfg(Omega, ty("Z")) ev cfg(Omega, ty("Z"))$),
   ir(name: "Unit", $cfg(Omega, ()) ev cfg(Omega, ())$),
-  ir(name: "S", $cfg(Omega, t) ev cfg(Omega', v)$, $cfg(Omega, "S" t) ev cfg(Omega', "S" v)$),
+  ir(name: "S", $cfg(Omega, t) ev cfg(Omega', v)$, $cfg(Omega, ty("S") t) ev cfg(Omega', ty("S") v)$),
   ir(name: "Pair", $cfg(Omega, t) ev cfg(Omega_1, v)$, $cfg(Omega_1 dot v, u) ev cfg(Omega_2 dot v', w)$, $v', w "borrow-free"$, $cfg(Omega, (t, u)) ev cfg(Omega_2, (v', w))$),
   ir(name: "Proj", $cfg(Omega, t) ev cfg(Omega', (v_1, v_2))$, $cfg(Omega, t.i) ev cfg(Omega', v_i)$),
   ir(name: "Proj-stuck", $cfg(Omega, t) ev cfg(Omega', n)$, $cfg(Omega, t.i) ev stk$),
@@ -171,17 +170,17 @@ A closure or Π-type captures, when it is formed, the current contents of its fr
 
 #rules(
   ir(name: "Global", $f in Sigma$, $cfg(Omega, f) ev cfg(Omega, f)$),
-  ir(name: "Fix", $overline(kappa) "captured," Omega_m$, $cfg(Omega, "fix" f (overline(x) : overline(A)) : B dots := t) ev cfg(Omega_m, chevron.l overline(kappa) tack.r "fix" f (overline(x) : overline(A)) : B dots := t chevron.r)$),
+  ir(name: "Fix", $overline(kappa) "captured," Omega_m$, $cfg(Omega, kw("fix") f (overline(x) : overline(A)) : B dots := t) ev cfg(Omega_m, chevron.l overline(kappa) tack.r kw("fix") f (overline(x) : overline(A)) : B dots := t chevron.r)$),
   ir(name: "Pi", $overline(kappa) "captured," Omega_m$, $cfg(Omega, Pi(overline(x) : overline(A)). B) ev cfg(Omega_m, chevron.l overline(kappa) tack.r Pi(overline(x) : overline(A)). B chevron.r)$),
   ir(name: "Sort", $cfg(Omega, s) ev cfg(Omega, s)$),
-  ir(name: "Base", $T in {"Nat", "Unit", top}$, $cfg(Omega, T) ev cfg(Omega, T)$),
+  ir(name: "Base", $T in {ty("Nat"), ty("Unit"), top}$, $cfg(Omega, T) ev cfg(Omega, T)$),
   ir(name: "Prod", $cfg(Omega, A) ev cfg(Omega_1, T)$, $cfg(Omega_1, B) ev cfg(Omega_2, T')$, $cfg(Omega, A times B) ev cfg(Omega_2, T times T')$),
   ir(name: "Ref", $cfg(Omega, A) ev cfg(Omega', T)$, $cfg(Omega, \&A) ev cfg(Omega', \&T)$),
-  ir(name: "Eq", $cfg(Omega, A) ev cfg(Omega_1, T)$, $cfg(Omega_1, a) ev cfg(Omega_2, v)$, $cfg(Omega_2, b) ev cfg(Omega_3, w)$, $cfg(Omega, "Eq" A thin a thin b) ev cfg(Omega_3, "eq"(T, v, w))$),
+  ir(name: "Eq", $cfg(Omega, A) ev cfg(Omega_1, T)$, $cfg(Omega_1, a) ev cfg(Omega_2, v)$, $cfg(Omega_2, b) ev cfg(Omega_3, w)$, $cfg(Omega, ty("Eq") A thin a thin b) ev cfg(Omega_3, "eq"(T, v, w))$),
   ir(name: "And", $cfg(Omega, P) ev cfg(Omega_1, T)$, $cfg(Omega_1, Q) ev cfg(Omega_2, T')$, $cfg(Omega, P and Q) ev cfg(Omega_2, "and"(T, T'))$),
-  ir(name: "Refl", $cfg(Omega, "refl") ev cfg(Omega, star)$),
+  ir(name: "Refl", $cfg(Omega, kw("refl")) ev cfg(Omega, star)$),
   ir(name: "AndI", $cfg(Omega, chevron.l h"," k chevron.r) ev cfg(Omega, star)$),
-  ir(name: "J", $cfg(Omega, t) ev r$, $cfg(Omega, "J"(A, a, b, P, h, t)) ev r$),
+  ir(name: "J", $cfg(Omega, t) ev r$, $cfg(Omega, ty("J")(A, a, b, P, h, t)) ev r$),
 )
 `Id A t u` is a type former too; its value is given in @app-conv. `J` returns the value of `t` unchanged: its other arguments are in type positions or are the proof `h`, so the machine never runs them (the typing judgement checks them, on private copies). A top-level constant `c : A := t` evaluates to the value stored in Σ, which is ⋆ when `A` is a proposition. #lean("capture", "evalCore (.pi, .fix, .sort, .prod, .ref, .eq, .and, .refl, .andI, .prim \"J\", .const)")
 
@@ -191,7 +190,7 @@ A closure or Π-type captures, when it is formed, the current contents of its fr
   ir(name: "Erase-proof", $t "erased," "of sort Prop"$, $cfg(Omega, t) ev cfg(Omega, star)$),
   ir(name: "Erase-type", $t "erased, a type"$, $cfg(Omega, t) ev_0 cfg(Omega', T)$, $cfg(Omega, t) ev cfg(Omega, T)$),
 )
-Here $ev_0$ is the judgement in which the rule for `t`'s own form is applied at the root instead of [Erase-type]. #lean("eval", "erasedValue", "callFn (kind .prop)", "onCopy (Env.lean)")
+Here $ev_0$ is the judgement in which the rule for `t`'s own form is applied at the root instead of [Erase-type]. #lean("eval", "callFn", "fnClass", "onCopy (Env.lean)")
 
 === Calls
 
@@ -205,7 +204,7 @@ Arguments are evaluated left to right, each into a temporary of the caller's top
   ir(name: "Call", pv($cfg(Omega, t_0) ev cfg(Omega_0, F) quad cfg(Omega_0 dot F, overline(u)) ev^* cfg(Omega_1 dot F', overline(w))$, $"no" w_i "is" bot quad cfg(Omega_1, F'(overline(w))) ev_"app" r$), $cfg(Omega, t_0(overline(u))) ev r$),
   ir(name: "Call-err", $cfg(Omega_0 dot F, overline(u)) ev^* cfg(Omega_1 dot F', overline(w))$, $"some" w_i = bot$, $cfg(Omega, t_0(overline(u))) ev err$),
 )
-An argument is ⊥ when a later argument ended its borrow, as in `f(&x, &x)`: it is not of its parameter's type. The judgement $cfg(Omega, F(overline(w))) ev_"app" r$ applies a function value at its _call point_, the state after the arguments have been evaluated. Let `F` have code $"fix" f (overline(x) : overline(A)) : B [["by" x_j]] := b$ and captured values $overline(kappa)$ (none for a top-level `f`), and let φ be the frame $overline(kappa), [f |-> F], overline(x) |-> overline(w)$, where `f` is bound only with `by` (D31).
+An argument is ⊥ when a later argument ended its borrow, as in `f(&x, &x)`: it is not of its parameter's type. The judgement $cfg(Omega, F(overline(w))) ev_"app" r$ applies a function value at its _call point_, the state after the arguments have been evaluated. Let `F` have code $kw("fix") f (overline(x) : overline(A)) : B space [kw("by") x_j] := b$ and captured values $overline(kappa)$ (none for a top-level `f`), and let φ be the frame $overline(kappa), [f |-> F], overline(x) |-> overline(w)$, where `f` is bound only with `by` (D31).
 
 #rules(
   ir(name: "App", $cfg(Omega";" phi, b) ev cfg(Omega'";" phi', v)$, $"pop"(Omega'";" phi', v) = cfg(Omega'', v')$, $cfg(Omega, F(overline(w))) ev_"app" cfg(Omega'', v')$),
@@ -218,7 +217,7 @@ An argument is ⊥ when a later argument ended its borrow, as in `f(&x, &x)`: it
 === Closing off <app-close>
 
 $"close"(Omega, F, overline(w))$ closes off the call $F(overline(w))$ at its call point Ω (P4, D4, D11). Its precondition is that every argument is loan-free or is $"borrow"_ell u$ with `u` loan-free; [Access] guarantees it (the checker asserts it). Let $I = {i mid(|) w_i = "borrow"_(ell_i) u_i}$, let $c_i$ ($i in I$) be fixed names, and let
-$ L := ("let" c_i = u_i";")_(i in I) quad quad C := F(a_1, dots, a_n)^h quad "with" a_i = cases(\&c_i & "if" i in I, w_i & "otherwise.") $
+$ L := (kw("let") c_i = u_i";")_(i in I) quad quad C := F(a_1, dots, a_n)^h quad "with" a_i = cases(\&c_i & "if" i in I, w_i & "otherwise.") $
 The row is chosen by the _declared_ codomain `B` of `F`'s type: the codomain term of `f`'s definition, of the closure's code, of $Delta(sigma)$ for an abstract function, or the type of a stuck block.
 
 #figure(kind: image, supplement: [Figure],
@@ -239,12 +238,12 @@ The row is chosen by the _declared_ codomain `B` of `F`'s type: the codomain ter
 === Matching
 
 #rules(
-  ir(name: "Match-Z", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = "Z"$, $cfg(Omega_1, t) ev r$, $cfg(Omega, "match" p {"Z" => t | "S" => u}) ev r$),
-  ir(name: "Match-S", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = "S" v$, $cfg(Omega_1, u) ev r$, $cfg(Omega, "match" p {"Z" => t | "S" => u}) ev r$),
-  ir(name: "Match-stuck", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) "is a neutral or an inert loan"$, $cfg(Omega, "match" p {dots}) ev stk$),
-  ir(name: "Match-err", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) "is undefined or" bot$, $cfg(Omega, "match" p {dots}) ev err$),
+  ir(name: "Match-Z", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = ty("Z")$, $cfg(Omega_1, t) ev r$, $cfg(Omega, kw("match") p {ty("Z") => t | ty("S") => u}) ev r$),
+  ir(name: "Match-S", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = ty("S") v$, $cfg(Omega_1, u) ev r$, $cfg(Omega, kw("match") p {ty("Z") => t | ty("S") => u}) ev r$),
+  ir(name: "Match-stuck", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) "is a neutral or an inert loan"$, $cfg(Omega, kw("match") p {dots}) ev stk$),
+  ir(name: "Match-err", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) "is undefined or" bot$, $cfg(Omega, kw("match") p {dots}) ev err$),
 )
-In the successor arm the pattern variable is the sub-place `p.1`, so `&y` reborrows the predecessor field in place. #lean("evalMatch")
+In the successor arm the pattern variable is the sub-place `p.1`, so `&y` reborrows the predecessor field in place. #lean("evalMatch", "accessNeutralHead")
 
 === Sealed programs <app-seal>
 
@@ -261,10 +260,10 @@ Every loan in `t` whose borrow lives outside the run is inert in it: [Access] do
 
 A stuck match that is not the body of a call is closed off as a call of an anonymous function of its free places (D15, D22), captured as Rust captures closure variables. This happens only in the typing judgement ([Split], @app-typing), after the match's arms have been checked, which gives its type `B` and the set `M` of variables that some arm leaves ⊥ (moves out of).
 
-Let $m = "match" p {"Z" => t | "S" => u}$ be stuck in Ω, and give each occurrence $(q, k) in "occ"(m)$ a _mode_: `mv` (moved) if `q` is a whole variable `x` and either `x` is a borrow variable and $k in {"rd", "as"}$, or $x in M$; otherwise `ref` (borrowed) if $k in {"bw", "as"}$; otherwise `cp` (copied). The _captures_ $q_1, dots, q_m$ are the maximal places of $"occ"(m)$, those with no strict prefix among its places (D26: maximal prefixes). Each takes the largest mode of the occurrences at or below it ($"cp" < "ref" < "mv"$), and they are ordered by the position of their root, then by length. Capture $q_i$ becomes a parameter $z_i$ with argument $a_i$:
+Let $m = kw("match") p {ty("Z") => t | ty("S") => u}$ be stuck in Ω, and give each occurrence $(q, k) in "occ"(m)$ a _mode_: `mv` (moved) if `q` is a whole variable `x` and either `x` is a borrow variable and $k in {"rd", "as"}$, or $x in M$; otherwise `ref` (borrowed) if $k in {"bw", "as"}$; otherwise `cp` (copied). The _captures_ $q_1, dots, q_m$ are the maximal places of $"occ"(m)$, those with no strict prefix among its places (D26: maximal prefixes). Each takes the largest mode of the occurrences at or below it ($"cp" < "ref" < "mv"$), and they are ordered by the position of their root, then by length. Capture $q_i$ becomes a parameter $z_i$ with argument $a_i$:
 $ (z_i : D_i, a_i) = cases((z_i : \&"type"_Omega (q_i), thick \&q_i) & "if" q_i "is" "ref,", (z_i : "type"_Omega (q_i), thick q_i) & "otherwise (a move if its content is a borrow, a copy if not)".) $
 The body $m'$ is `m` with each place $q_i pi$ renamed to $(dr z_i) pi$ if $q_i$ is `ref`, and to $z_i pi$ otherwise. Then
-$ "block"(Omega, m, B, M) := F_m (a_1, dots, a_m) quad "where" F_m = chevron.l thin tack.r "fix" \_ (z_1 : D_1 dots z_m : D_m) : B := m' chevron.r, $
+$ "block"(Omega, m, B, M) := F_m (a_1, dots, a_m) quad "where" F_m = chevron.l thin tack.r kw("fix") \_ (z_1 : D_1 dots z_m : D_m) : B := m' chevron.r, $
 a non-recursive closure with no captured values. Evaluating the block by [Call] gets stuck on the head of `m` inside $F_m$'s body and closes off by [App-close], with [Close]'s row chosen by `B`. #lean("closeOffMatch", "splitThenClose")
 
 == Observation, `Id` and conversion <app-conv>
@@ -272,9 +271,9 @@ a non-recursive closure with no captured values. Evaluating the block by [Call] 
 *`Eq` and `∧` compute* (D16). Every `Eq` and `∧` value is built by the smart constructors
 $ "eq"(T_1 times T_2, (v_1, v_2), (w_1, w_2)) & = "and"("eq"(T_1, v_1, w_1), "eq"(T_2, v_2, w_2)) \
   "eq"(T, v, w) & = top quad "if" v equiv w "(and the first clause does not apply)" \
-  "eq"(T, v, w) & = "Eq" T thin v thin w quad "otherwise" \
+  "eq"(T, v, w) & = ty("Eq") T thin v thin w quad "otherwise" \
   "and"(top, P) = P quad quad "and"(P, top) & = P quad quad "and"(P, Q) = P and Q quad "otherwise" $
-which realise the three conversion rules of @fig-id. The first clause applies only when both sides are pairs; a neutral of product type is not split. `refl` has type `⊤`, so by conversion it proves every reflexive equation. #lean("mkEq", "mkAnd (Basic.lean)")
+which realise the three conversion rules of @fig-id. The first clause applies only when both sides are pairs; a neutral of product type is not split. `refl` has type `⊤`, so by conversion it proves every reflexive equation. #lean("mkEqM", "mkAnd (Basic.lean)")
 
 *Observation* (P6, D5). Let $W = pi_1 < dots < pi_k$ be positions of Ω. The observation of `t` at Ω on `W` runs `t` on a private copy of Ω, ends every remaining borrow, and reads off the result and the footprint:
 #rules(
@@ -284,59 +283,58 @@ where $arrow.squiggly^*$ repeatedly ends the first borrow in the order of Ω, $"
 
 *`Id` computes* (D5, D18). Both sides run from the same Ω, on independent copies:
 #rules(
-  ir(name: "Id", pv($Omega tack.r A ev T "type," T "contains no" \& quad W = W_Omega (t, u) = pi_1 < dots < pi_k$, $obs(t)^W_Omega "with" t : A_t equiv T quad obs(u)^W_Omega "with" u : A_u equiv T quad T_W = "type"_Omega (pi_1) times dots times "type"_Omega (pi_k)$), $Omega tack.r "Id" A thin t thin u ev "eq"(T times T_W, obs(t)^W_Omega, obs(u)^W_Omega) : "Prop" tack.l Omega$),
+  ir(name: "Id", pv($Omega tack.r A ev T "type," T "contains no" \& quad W = W_Omega (t, u) = pi_1 < dots < pi_k$, $obs(t)^W_Omega "with" t : A_t equiv T quad obs(u)^W_Omega "with" u : A_u equiv T quad T_W = "type"_Omega (pi_1) times dots times "type"_Omega (pi_k)$), $Omega tack.r ty("Id") A thin t thin u ev "eq"(T times T_W, obs(t)^W_Omega, obs(u)^W_Omega) : ty("Prop") tack.l Omega$),
 )
 When `W` is empty, $T times T_W$ is just `T` and the observations are just results. #lean("idType", "footprint", "tupleType (Obs.lean)")
 
 *Conversion* (P1, D30). Definitional equality is equality of normal forms, and values are always kept in normal form, so conversion $v equiv w$ is the least relation closed under the following rules. It is the relation of every "≡" premise in @app-typing and of the reflexive clause of $"eq"$.
 
 - [Conv-refl] $v equiv v$, where values are identified up to renaming of bound variables (binder names are ignored).
-- [Conv-cong] Two values with the same outermost former (`S`, pair, borrow, `×`, `&`, `Eq`, `∧`, a sealed program, a closure, a Π-closure) are convertible if their immediate components are pairwise convertible (terms component by component, embedded values by ≡).
+- [Conv-cong] Two values with the same outermost former (`S`, pair, borrow, `×`, `&`, `Eq`, `∧`, a sealed program, a closure, a Π-closure) are convertible if their immediate components are pairwise convertible: terms (the code of closures and Π-closures, the programs inside sealed programs) component by component, with embedded values compared by ≡. So Π-types are compared under binders by their captured values and their code.
 - [Conv-fun] Two function values `F`, `G` are convertible if their Π-types are, their captured values are pairwise convertible (none, for a top-level function), and at the generic call of their Π-type (@app-aux, item 10), with the same generic state Γ, arguments $overline(a)$ and owned places $overline(c)$, their observations agree: $obs(F(overline(a)))^(overline(c))_Gamma equiv obs(G(overline(a)))^(overline(c))_Gamma$. So a function value's normal form is its captured values together with the observation of its generic call, and two functions with different effects are never convertible.
-- [Conv-Π] Two Π-closures with `n` parameters are convertible if evaluating their parameter types left to right at the same generic arguments gives pairwise convertible types, and their codomains at that generic call are convertible. This is conversion under binders, by evaluation at fresh abstract values.
+There is no η rule and no η for `Unit` (an abstract `σ : Unit` is not `()`). Proof irrelevance needs no rule: every proof value is ⋆. The relation is _least_: a function value that occurs in its own generic observation, as the head of a sealed program when its body is stuck at its generic call, is compared there by [Conv-refl] and [Conv-cong]. Read coinductively, [Conv-fun] would identify any two closures whose bodies are stuck at the generic call, such as `λ(x:&Nat). match *x { Z => () | S _ => *x := Z }` and `λ(x:&Nat). match *x { Z => *x := S Z | S _ => () }`, and `J` along that identification proves `Eq Nat (S Z) Z`. #lean("conv", "convT", "convFn", "mkEqM")
 
-There is no η rule and no η for `Unit` (an abstract `σ : Unit` is not `()`). Proof irrelevance needs no rule: every proof value is ⋆. The relation is _least_: a function value that occurs in its own generic observation, as the head of a sealed program when its body is stuck at its generic call, is compared there by [Conv-refl] and [Conv-cong]. Read coinductively, [Conv-fun] would identify any two closures whose bodies are stuck at the generic call, such as `λ(x:&Nat). match *x { Z => () | S _ => *x := Z }` and `λ(x:&Nat). match *x { Z => *x := S Z | S _ => () }`, and `J` along that identification proves `Eq Nat (S Z) Z`. #lean("Value.beq (Syntax.lean)")
-
-The checker's conversion is `==` on normal forms, which compares closures and Π-closures by their captured values and code and top-level functions by name: [Conv-refl] and [Conv-cong] only. This is sound and suffices for every example, but it does not implement [Conv-fun] (v1.5) or [Conv-Π].
+The checker implements this relation (`conv`, `convT`, `convFn`). It compares function values by their generic observations, and answers "not convertible" when a comparison needs itself again (`convStack`), which is the least-relation reading (RULES P1).
 
 == Typing <app-typing>
 
 The typing judgement $Omega tack.r t ev v : A tack.l Omega'$ says that from Ω the term `t` runs to the value `v`, of type `A`, leaving Ω'; its only other outcome is $err$, a type error. It is the machine with types: each rule below performs the step of the machine rule of the same name and also computes a type. Where the machine would be stuck on the checked program, typing splits instead ([Split]), so the typing judgement is never stuck. Callee bodies run in the machine, where stuck calls close off ([App-close]). We write $Omega tack.r A ev T "type"$ for $Omega tack.r A ev T : s tack.l Omega'$ with `s` a sort and Ω' discarded (a type position). The checker's typing judgement is `eval true`.
 
-*Sorts.* Sorts are ordered $"Prop" < "Type"_0 < "Type"_1 < dots$, and $s union.sq s'$ is the larger. Universes are _not cumulative_ (D28): a type has exactly one sort, and no rule converts between sorts. The sort of a type value is: `Type₀` for `Nat`, `Unit` and `&T`; $"Type"_0 union.sq "sort"(T) union.sq "sort"(T')$ for $T times T'$; `Prop` for `Eq`, `⊤` and `∧`; $"Type"_0$ for `Prop` and $"Type"_(i+1)$ for $"Type"_i$; for a Π-closure, `Prop` if its codomain at the generic call has sort `Prop` (impredicativity), and otherwise the largest sort of its parameter types and codomain there; $Delta(sigma)$ for an abstract σ whose type is a sort; and for a sealed program `⌈L; C⌉` whose head call's function has a declared codomain that is literally a sort `s`, the sort `s`. #lean("sortOf", "sealedSort?", "isPropV")
+*Sorts.* Sorts are ordered $ty("Prop") < ty("Type")_0 < ty("Type")_1 < dots$, and $s union.sq s'$ is the larger. Universes are _not cumulative_ (D28): a type has exactly one sort, and no rule converts between sorts. The sort of a type value is: `Type₀` for `Nat`, `Unit` and `&T`; $ty("Type")_0 union.sq "sort"(T) union.sq "sort"(T')$ for $T times T'$; `Prop` for `Eq`, `⊤` and `∧`; $ty("Type")_0$ for `Prop` and $ty("Type")_(i+1)$ for $ty("Type")_i$; for a Π-closure, `Prop` if its codomain at the generic call has sort `Prop` (impredicativity), and otherwise the largest sort of its parameter types and codomain there; $Delta(sigma)$ for an abstract σ whose type is a sort; and for a sealed program `⌈L; C⌉` whose head call's function has a declared codomain that is literally a sort `s`, the sort `s`. #lean("sortOf", "sealedSort?", "isPropV")
 
 === Erasure <app-erasure>
 
-An occurrence of a term is _erased_ (P2, D26, D28) when:
+An occurrence of a term is _erased_ (P2, D24, D26, D28) when:
 + it stands in a type position (@app-syntax), or inside one; or
-+ it is a call whose head has its erasure flag set; or
-+ it is not a call, and either its type has sort `Prop` (it is a proof), or it is a type former (a sort, `Π`, `Nat`, `Unit`, `×`, `&`, `Eq`, `⊤`, `∧`, `Id`), or it is a variable, a constant or an annotated `let` whose declared type is syntactically a sort.
++ it is a type former (a sort, `Π`, `Nat`, `Unit`, `×`, `&`, `Eq`, `⊤`, `∧`, `Id`), since every type is formed on a private copy (D24); or
++ it is a call whose callee _returns types_ or _returns proofs_; or
++ it is any other term whose type has sort `Prop`: a proof.
 
-The _erasure flag_ of a top-level function `f` is set when the goal of its [Def] (its codomain evaluated at its generic call) is a sort, or has sort `Prop`; it is recorded in Σ at [Def] and reused at every call. The flag of any other function value (a closure, a parameter or abstract function of Π-type, a stuck block's function) is set when the codomain _term_ of its Π-type is syntactically a sort, or has sort `Prop`. Erasure is decided by the check of the enclosing top-level definition and never from a normal form: each clause looks at syntax or at a sort, and sorts do not change under refinement or instantiation, because universes are not cumulative. (Note 1 of @app-notes explains why the flag of a local function must not be recomputed from its codomain's value.)
+The class of a function value is decided once, from declarations. A top-level `f` returns types if the goal of its [Def] (its codomain evaluated at its generic call) is a sort, and returns proofs if that goal has sort `Prop`; the class is recorded in Σ and reused at every call (D28). Any other function value (a closure, or a parameter or abstract function of Π-type) returns types if the codomain _term_ of its Π-type is syntactically a sort, and returns proofs if that term has sort `Prop`. The function of a stuck block returns proofs if the block's type has sort `Prop`, and data otherwise, so that the block is erased exactly when the match it closes off is (clause 4). Every clause reads syntax, a declaration or a sort, and sorts do not change under refinement or instantiation because universes are not cumulative; so no clause reads a normal form, and the two paths of @lem-stable take the same decisions. Notes 1 and 2 of @app-notes show that the last two sentences cannot be relaxed.
 
 #rules(
-  ir(name: "T-Erase", $t "erased"$, $Omega tack.r_0 t ev v : A tack.l Omega'$, $Omega tack.r t ev v^bullet : A tack.l Omega$),
+  ir(name: "T-Erase", $t "erased"$, $Omega scripts(tack.r)_0 t ev v : A tack.l Omega'$, $Omega tack.r t ev v^bullet : A tack.l Omega$),
 )
-Here $v^bullet = star$ if `A` has sort `Prop` and $v^bullet = v$ otherwise, and $tack.r_0$ applies the rule for `t`'s own form at the root. So an erased term is typed like any other term, on a private copy of the environment, and leaves no trace. #lean("eval", "erasedValue", "evalType", "onCopy (Env.lean)")
+Here $v^bullet = star$ if `A` has sort `Prop` and $v^bullet = v$ otherwise, and $scripts(tack.r)_0$ applies the rule for `t`'s own form at the root. So an erased term is typed like any other term, on a private copy of the environment, and leaves no trace. #lean("eval", "fnClass", "typeClass", "jErased", "evalType", "onCopy (Env.lean)")
 
-The checker (v1.4) decides erasure from the value instead: a term whose value is ⋆ or a type leaves Ω unchanged. That is the pre-D28 reading. It happens to run breaker-fresh's top-level `W(&c, Z)` for real, as D28 requires, but it decides a local function's calls afresh at every formation of the function, and accepts the closed proof of `Eq Nat Z (S Z)` in note 1 of @app-notes.
+The checker takes clauses 1 and 3 as stated for top-level functions, and differs elsewhere. (a) It computes the class of every other function value from its codomain evaluated at the generic call with the function's captured values (`fnClass`, cached per Π-closure), and gives a stuck block's function the class "returns types" when the block's type is a sort; notes 1 and 2 are closed proofs of false that it accepts because of this. (b) A `let`, sequence or match is erased when its tail (the body, the second part, or the arm taken) is, so `let T = (c := S Z; F(&c)); …`, with `F` returning types, discards the write to `c`, which clause 4 keeps. (c) Type formers are not erased as a whole, but evaluate their parts on private copies (`onCopy`), except that a Π-type in a term position captures in the real environment.
 
 === Places, sequencing and data
 
 #rules(
   ir(name: "T-Read", $cfg(Omega, p) ev cfg(Omega', v)$, $Omega tack.r p ev v : "type"_Omega (p) tack.l Omega'$),
   ir(name: "T-Borrow", $cfg(Omega, \&p) ev cfg(Omega', v)$, $"type"_Omega (p) = T "contains no" \&$, $Omega tack.r \&p ev v : \&T tack.l Omega'$),
-  ir(name: "T-Assign", pv($Omega tack.r t ev v : A tack.l Omega_1 quad A equiv "type"_(Omega_1)(p)$, $acc^R_p (Omega_1 dot v) = Omega_2 dot v' quad "drop"(Omega_2, cont_(Omega_2)(p)) = Omega_3$), $Omega tack.r p := t ev () : "Unit" tack.l Omega_3 [p |-> v']$),
-  ir(name: "T-Let", pv($Omega tack.r t ev v : A tack.l Omega_1 quad Omega_1 + (x : A |-> v) tack.r u ev w : B tack.l Omega_2 + (x : A' |-> v')$, $"drop"(Omega_2 dot w, v') = Omega_3 dot w'$), $Omega tack.r "let" x = t";" u ev w' : B tack.l Omega_3$),
-  ir(name: "T-Let-ann", pv($Omega tack.r A ev T "type" quad Omega tack.r^T t ev v : T' tack.l Omega_1 quad T' equiv T$, $Omega_1 + (x : T |-> v) tack.r u ev w : B tack.l Omega_2 + (x : T'' |-> v') quad "drop"(Omega_2 dot w, v') = Omega_3 dot w'$), $Omega tack.r "let" x : A = t";" u ev w' : B tack.l Omega_3$),
+  ir(name: "T-Assign", pv($Omega tack.r t ev v : A tack.l Omega_1 quad A equiv "type"_(Omega_1)(p)$, $acc^R_p (Omega_1 dot v) = Omega_2 dot v' quad "drop"(Omega_2, cont_(Omega_2)(p)) = Omega_3$), $Omega tack.r p := t ev () : ty("Unit") tack.l Omega_3 [p |-> v']$),
+  ir(name: "T-Let", pv($Omega tack.r t ev v : A tack.l Omega_1 quad Omega_1 + (x : A |-> v) tack.r u ev w : B tack.l Omega_2 + (x : A' |-> v')$, $"drop"(Omega_2 dot w, v') = Omega_3 dot w'$), $Omega tack.r kw("let") x = t";" u ev w' : B tack.l Omega_3$),
+  ir(name: "T-Let-ann", pv($Omega tack.r A ev T "type" quad Omega scripts(tack.r)^T t ev v : T' tack.l Omega_1 quad T' equiv T$, $Omega_1 + (x : T |-> v) tack.r u ev w : B tack.l Omega_2 + (x : T'' |-> v') quad "drop"(Omega_2 dot w, v') = Omega_3 dot w'$), $Omega tack.r kw("let") x : A = t";" u ev w' : B tack.l Omega_3$),
   ir(name: "T-Seq", $Omega tack.r t ev v : A tack.l Omega_1$, $"drop"(Omega_1, v) = Omega_2$, $Omega_2 tack.r u ev w : B tack.l Omega_3$, $Omega tack.r t";" u ev w : B tack.l Omega_3$),
 )
-A binding stores the type of its value, and [Split] refines stored types, so `A'` in [T-Let] is `A` as refined. In [T-Let-ann], $tack.r^T$ checks `t` against `T`: if `t` is a match, it is [Split] with annotation `T`. #lean("placeType", "evalCore (.place, .borrow, .assign, .letIn, .seq, .ascribe)")
+A binding stores the type of its value, and [Split] refines stored types, so `A'` in [T-Let] is `A` as refined. In [T-Let-ann], $scripts(tack.r)^T$ checks `t` against `T`: if `t` is a match, it is [Split] with annotation `T`. #lean("placeType", "evalCore (.place, .borrow, .assign, .letIn, .seq, .ascribe)")
 
 #rules(
-  ir(name: "T-Z", $Omega tack.r "Z" ev "Z" : "Nat" tack.l Omega$),
-  ir(name: "T-Unit", $Omega tack.r () ev () : "Unit" tack.l Omega$),
-  ir(name: "T-S", $Omega tack.r t ev v : A tack.l Omega'$, $A equiv "Nat"$, $Omega tack.r "S" t ev "S" v : "Nat" tack.l Omega'$),
+  ir(name: "T-Z", $Omega tack.r ty("Z") ev ty("Z") : ty("Nat") tack.l Omega$),
+  ir(name: "T-Unit", $Omega tack.r () ev () : ty("Unit") tack.l Omega$),
+  ir(name: "T-S", $Omega tack.r t ev v : A tack.l Omega'$, $A equiv ty("Nat")$, $Omega tack.r ty("S") t ev ty("S") v : ty("Nat") tack.l Omega'$),
   ir(name: "T-Pair", pv($Omega tack.r t ev v : A tack.l Omega_1 quad Omega_1 dot v tack.r u ev w : B tack.l Omega_2 dot v'$, $A, B "contain no" \&$), $Omega tack.r (t, u) ev (v', w) : A times B tack.l Omega_2$),
   ir(name: "T-Proj", $Omega tack.r t ev (v_1, v_2) : A_1 times A_2 tack.l Omega'$, $Omega tack.r t.i ev v_i : A_i tack.l Omega'$),
 )
@@ -347,21 +345,21 @@ A projection of a neutral pair is a type error in the typing judgement (there ar
 All type formers are erased, so each of these rules runs on a private copy ([T-Erase]).
 
 #rules(
-  ir(name: "T-Sort", $Omega tack.r "Prop" ev "Prop" : "Type"_0 tack.l Omega$),
-  ir(name: "T-Type", $Omega tack.r "Type"_i ev "Type"_i : "Type"_(i+1) tack.l Omega$),
-  ir(name: "T-Base", $(T, s) in {("Nat", "Type"_0), ("Unit", "Type"_0), (top, "Prop")}$, $Omega tack.r T ev T : s tack.l Omega$),
-  ir(name: "T-Prod", $Omega tack.r A ev T : s$, $Omega tack.r B ev T' : s'$, $Omega tack.r A times B ev T times T' : "Type"_0 union.sq s union.sq s'$),
-  ir(name: "T-Ref", $Omega tack.r A ev T "type"$, $T "contains no" \&$, $Omega tack.r \&A ev \&T : "Type"_0$),
-  ir(name: "T-And", $Omega tack.r P ev T : "Prop"$, $Omega tack.r Q ev T' : "Prop"$, $Omega tack.r P and Q ev "and"(T, T') : "Prop"$),
-  ir(name: "T-Eq", $Omega tack.r A ev T "type"$, $Omega tack.r a ev v : T_a equiv T$, $Omega tack.r b ev w : T_b equiv T$, $Omega tack.r "Eq" A thin a thin b ev "eq"(T, v, w) : "Prop"$),
+  ir(name: "T-Sort", $Omega tack.r ty("Prop") ev ty("Prop") : ty("Type")_0 tack.l Omega$),
+  ir(name: "T-Type", $Omega tack.r ty("Type")_i ev ty("Type")_i : ty("Type")_(i+1) tack.l Omega$),
+  ir(name: "T-Base", $(T, s) in {(ty("Nat"), ty("Type")_0), (ty("Unit"), ty("Type")_0), (top, ty("Prop"))}$, $Omega tack.r T ev T : s tack.l Omega$),
+  ir(name: "T-Prod", $Omega tack.r A ev T : s$, $Omega tack.r B ev T' : s'$, $Omega tack.r A times B ev T times T' : ty("Type")_0 union.sq s union.sq s'$),
+  ir(name: "T-Ref", $Omega tack.r A ev T "type"$, $T "contains no" \&$, $Omega tack.r \&A ev \&T : ty("Type")_0$),
+  ir(name: "T-And", $Omega tack.r P ev T : ty("Prop")$, $Omega tack.r Q ev T' : ty("Prop")$, $Omega tack.r P and Q ev "and"(T, T') : ty("Prop")$),
+  ir(name: "T-Eq", $Omega tack.r A ev T "type"$, $Omega tack.r a ev v : T_a equiv T$, $Omega tack.r b ev w : T_b equiv T$, $Omega tack.r ty("Eq") A thin a thin b ev "eq"(T, v, w) : ty("Prop")$),
   ir(name: "T-Pi", $cfg(Omega, Pi(overline(x) : overline(A)). B) ev cfg(Omega', Pi)$, $"sort"(Pi) = s$, $Omega tack.r Pi(overline(x) : overline(A)). B ev Pi : s tack.l Omega'$),
 )
 In [T-Eq] the sides are typed one after the other on the same private copy (the whole `Eq` is a type); in [T-Pi] the sort is computed at the generic arguments. The rule for `Id` is [Id] of @app-conv. #lean("evalCore (.sort, .nat, .unit, .top, .prod, .ref, .and, .eq, .pi, .id)", "sortOf")
 
 #rules(
-  ir(name: "T-Refl", $Omega tack.r "refl" ev star : top tack.l Omega$),
+  ir(name: "T-Refl", $Omega tack.r kw("refl") ev star : top tack.l Omega$),
   ir(name: "T-AndI", $Omega tack.r h ev star : P tack.l Omega_1$, $Omega_1 tack.r k ev star : Q tack.l Omega_2$, $Omega tack.r chevron.l h"," k chevron.r ev star : "and"(P, Q) tack.l Omega_2$),
-  ir(name: "T-J", pv($Omega tack.r A ev T "type" quad Omega tack.r a ev v_a : T_a equiv T quad Omega tack.r b ev v_b : T_b equiv T quad Omega tack.r P ev F : Pi$, $Omega tack.r h ev star : H equiv "eq"(T, v_a, v_b) quad Omega tack.r F(v_a) ev P_a : s quad Omega tack.r F(v_b) ev P_b : s quad Omega tack.r t ev v : T_t tack.l Omega' quad T_t equiv P_a$), $Omega tack.r "J"(A, a, b, P, h, t) ev v : P_b tack.l Omega'$),
+  ir(name: "T-J", pv($Omega tack.r A ev T "type" quad Omega tack.r a ev v_a : T_a equiv T quad Omega tack.r b ev v_b : T_b equiv T quad Omega tack.r P ev F : Pi$, $Omega tack.r h ev star : H equiv "eq"(T, v_a, v_b) quad Omega tack.r F(v_a) ev P_a : s quad Omega tack.r F(v_b) ev P_b : s quad Omega tack.r t ev v : T_t tack.l Omega' quad T_t equiv P_a$), $Omega tack.r ty("J")(A, a, b, P, h, t) ev v : P_b tack.l Omega'$),
 )
 `refl` proves `⊤`, and so by conversion every reflexive equation (D16). `J` takes its endpoints explicitly (D23), because `Eq A a a` computes to `⊤` and no longer records them. Its motive may have any sort; with a motive into `Prop`, `J` is a proof and is erased. `A`, `a`, `b` and `P` are in type positions and `h` is a proof, so all five are typed on private copies, and the motive's calls $F(v_a)$, $F(v_b)$ are erased calls. #lean("evalCore (.refl, .andI, .prim \"J\")")
 
@@ -370,7 +368,7 @@ In [T-Eq] the sides are typed one after the other on the same private copy (the 
 #rules(
   ir(name: "T-Global", $f in Sigma$, $Omega tack.r f ev f : Sigma(f)."type" tack.l Omega$),
   ir(name: "T-Const", $c in Sigma$, $Omega tack.r c ev Sigma(c)."value" : Sigma(c)."type" tack.l Omega$),
-  ir(name: "T-Fix", $cfg(Omega, "fix" dots) ev cfg(Omega', F)$, $tack.r F "ok"$, $Omega tack.r "fix" dots ev F : "typeof"(F) tack.l Omega'$),
+  ir(name: "T-Fix", $cfg(Omega, kw("fix") dots) ev cfg(Omega', F)$, $tack.r F "ok"$, $Omega tack.r kw("fix") dots ev F : "typeof"(F) tack.l Omega'$),
 )
 A `fix` is checked where it is formed, by [Def] at its own generic call, with its captured values; its value is ⋆ if its type is a proposition. #lean("evalCore (.const, .fix)", "checkFix")
 
@@ -383,31 +381,31 @@ The free variables of `B` other than $overline(x)$ were captured when Π was for
 Typed arguments are evaluated like [Args], each into a temporary, collecting their types: $Omega tack.r overline(u) ev^* overline(w) : overline(A') tack.l Omega'$.
 #rules(
   ir(name: "T-Call", pv($Omega tack.r t_0 ev F : Pi tack.l Omega_0 quad Omega_0 dot F tack.r overline(u) ev^* overline(w) : overline(A') tack.l Omega_1 dot F' quad "no" w_i "is" bot$, $"callty"_(Omega_1)(Pi, overline(w) : overline(A')) = B' quad "rec"_(Omega_1)(F', overline(w)) quad cfg(Omega_1, F'(overline(w))) ev_"app" cfg(Omega', v)$), $Omega tack.r t_0(overline(u)) ev v : B' tack.l Omega'$),
-  ir(name: "T-Call-proof", pv($Omega tack.r t_0 ev F : Pi tack.l Omega_0 quad Omega_0 dot F tack.r overline(u) ev^* overline(w) : overline(A') tack.l Omega_1 dot F' quad "no" w_i "is" bot$, $"callty"_(Omega_1)(Pi, overline(w) : overline(A')) = B' quad "sort"(B') = "Prop" quad "rec"_(Omega_1)(F', overline(w))$), $Omega tack.r t_0(overline(u)) ev star : B' tack.l Omega_1$),
+  ir(name: "T-Call-proof", pv($Omega tack.r t_0 ev F : Pi tack.l Omega_0 quad Omega_0 dot F tack.r overline(u) ev^* overline(w) : overline(A') tack.l Omega_1 dot F' quad "no" w_i "is" bot$, $"callty"_(Omega_1)(Pi, overline(w) : overline(A')) = B' quad F' "returns proofs" quad "rec"_(Omega_1)(F', overline(w))$), $Omega tack.r t_0(overline(u)) ev star : B' tack.l Omega_1$),
 )
-[T-Call-proof] applies to an erased call whose type is a proposition, and [T-Erase] then discards $Omega_1$: a proof call's arguments are evaluated and checked, and its body is not run. In [T-Call] the callee's body runs in the machine ($ev_"app"$), since the callee was checked by its own [Def]; a call with a neutral head closes off at once. #lean("evalCall", "callFn", "callType")
+[T-Call-proof] applies to a call whose callee returns proofs (@app-erasure), and [T-Erase] then discards $Omega_1$: a proof call's arguments are evaluated and checked, and its body is not run. In [T-Call] the callee's body runs in the machine ($ev_"app"$), since the callee was checked by its own [Def]; a call with a neutral head closes off at once. #lean("evalCall", "callFn", "callType")
 
 *[Rec]* (D17, D23, D26). The [Rec] stack holds an entry $(F, j, sigma_j)$ for every enclosing function being checked that declares `by xⱼ`, where $sigma_j$ is the entry value of $x_j$ at its generic call (through the borrow, for `&Nat`). $"rec"_Omega (F, overline(w))$ holds when, for every entry $(F, j, sigma_j)$ of the stack for this `F`, the argument $w_j$, or its content if $w_j = "borrow"_ell u$, is in $"sub"(rho^*(sigma_j))$: a strict subterm of the entry value as refined so far. Entries stay on the stack while nested functions and block arms are checked, so recursive calls there are checked too. #lean("recCheck", "headOnly")
 
 === Matches and case splitting
 
-Let $m = "match" p {"Z" => t | "S" => u}$. On a constructor the typing judgement takes the arm, as the machine does, and checks only that arm. On an abstract value it splits ([Split], D15, D22): each arm is checked under its refinement, and the match is then closed off as a stuck block, from which the rest of the program is checked once.
+Let $m = kw("match") p {ty("Z") => t | ty("S") => u}$. On a constructor the typing judgement takes the arm, as the machine does, and checks only that arm. On an abstract value it splits ([Split], D15, D22): each arm is checked under its refinement, and the match is then closed off as a stuck block, from which the rest of the program is checked once.
 
 #rules(
-  ir(name: "T-Match-Z", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = "Z"$, $Omega_1 tack.r t ev v : A tack.l Omega'$, $Omega tack.r m ev v : A tack.l Omega'$),
-  ir(name: "T-Match-S", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = "S" w$, $Omega_1 tack.r u ev v : A tack.l Omega'$, $Omega tack.r m ev v : A tack.l Omega'$),
-  ir(name: "Split", pv($acc^M_p (Omega) = Omega_1 quad cont_(Omega_1)(p) = sigma quad sigma' "fresh"$, $Omega_1 [sigma := "Z"] tack.r t ev v_Z : A_Z tack.l Omega_Z quad Omega_1 [sigma := "S" sigma'] tack.r u ev v_S : A_S tack.l Omega_S$, $B = T "with" A_Z equiv T["Z" slash sigma], A_S equiv T["S" sigma' slash sigma] quad "or, without annotation," B = A_Z equiv A_S$, $M = {x mid(|) Omega_1 (x) != bot, thick Omega_Z (x) = bot "or" Omega_S (x) = bot} quad cfg(Omega_1, "block"(Omega_1, m, B, M)) ev cfg(Omega', v)$), $Omega tack.r m ev v : B tack.l Omega'$),
+  ir(name: "T-Match-Z", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = ty("Z")$, $Omega_1 tack.r t ev v : A tack.l Omega'$, $Omega tack.r m ev v : A tack.l Omega'$),
+  ir(name: "T-Match-S", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = ty("S") w$, $Omega_1 tack.r u ev v : A tack.l Omega'$, $Omega tack.r m ev v : A tack.l Omega'$),
+  ir(name: "Split", pv($acc^M_p (Omega) = Omega_1 quad cont_(Omega_1)(p) = sigma quad sigma' "fresh"$, $Omega_1 [sigma := ty("Z")] tack.r t ev v_Z : A_Z tack.l Omega_Z quad Omega_1 [sigma := ty("S") sigma'] tack.r u ev v_S : A_S tack.l Omega_S$, $B = T "with" A_Z equiv T[ty("Z") slash sigma], A_S equiv T[ty("S") sigma' slash sigma] quad "or, without annotation," B = A_Z equiv A_S$, $M = {x mid(|) Omega_1 (x) != bot, thick Omega_Z (x) = bot "or" Omega_S (x) = bot} quad cfg(Omega_1, "block"(Omega_1, m, B, M)) ev cfg(Omega', v)$), $Omega tack.r m ev v : B tack.l Omega'$),
   ir(name: "Split-gen", pv($acc^M_p (Omega) = Omega_1 quad cont_(Omega_1)(p) = n "a sealed program or an inert loan"$, $sigma "fresh" quad Omega_1 [sigma slash n]^+ tack.r m ev v : B tack.l Omega'$), $Omega tack.r m ev v : B tack.l Omega'$),
 )
-In [Split] both arms are checked from $Omega_1$ and their states and values are discarded; the refinements are applied to the environment, the goal and every stored type. `T` is the annotation of an enclosing `let x : T = m` (checking mode, $tack.r^T$), whose type is then `T`; without one, the arms' types must be convertible. The block is run by the machine, from the unrefined $Omega_1$. [Split-gen] generalises a neutral head first, replacing it everywhere in Ω, the goal, the stored types and the annotation (Lean's `generalize`). Types are terms, so a match inside a type is checked in the same way (D33). #lean("evalMatch", "splitThenClose", "generalizeNeutral", "refine")
+In [Split] both arms are checked from $Omega_1$ and their states and values are discarded; the refinements are applied to the environment, the goal and every stored type. `T` is the annotation of an enclosing `let x : T = m` (checking mode, $scripts(tack.r)^T$), whose type is then `T`; without one, the arms' types must be convertible. The block is run by the machine, from the unrefined $Omega_1$. [Split-gen] generalises a neutral head first, replacing it everywhere in Ω, the goal, the stored types and the annotation (Lean's `generalize`). Types are terms, so a match inside a type is checked in the same way (D33). #lean("evalMatch", "splitThenClose", "generalizeNeutral", "refine")
 
 *Tail position.* The body of a definition is checked by a judgement $Omega tack.r t arrow.squiggly cal(L)$ whose result is the finite set $cal(L)$ of the _leaves_ of its case tree: triples $(Omega', v, A)$, each in the state of its own path, with the goal refined along that path. A match is in tail position when only trailing drops follow it.
 
 #rules(
-  ir(name: "Tail-split", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = sigma$, $Omega_1 [sigma := "Z"] tack.r t arrow.squiggly cal(L)_1$, $Omega_1 [sigma := "S" sigma'] tack.r u arrow.squiggly cal(L)_2$, $Omega tack.r m arrow.squiggly cal(L)_1 union cal(L)_2$),
+  ir(name: "Tail-split", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = sigma$, $Omega_1 [sigma := ty("Z")] tack.r t arrow.squiggly cal(L)_1$, $Omega_1 [sigma := ty("S") sigma'] tack.r u arrow.squiggly cal(L)_2$, $Omega tack.r m arrow.squiggly cal(L)_1 union cal(L)_2$),
   ir(name: "Tail-gen", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = n$, $Omega_1 [sigma slash n]^+ tack.r m arrow.squiggly cal(L)$, $Omega tack.r m arrow.squiggly cal(L)$),
-  ir(name: "Tail-match", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = "Z" "(resp." "S" w")"$, $Omega_1 tack.r t "(resp." u")" arrow.squiggly cal(L)$, $Omega tack.r m arrow.squiggly cal(L)$),
-  ir(name: "Tail-let", $Omega tack.r t ev v : A tack.l Omega_1$, $Omega_1 + (x : A |-> v) tack.r u arrow.squiggly cal(L)$, $Omega tack.r "let" x = t";" u arrow.squiggly {"pop"_x (ell) mid(|) ell in cal(L)}$),
+  ir(name: "Tail-match", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = ty("Z") "(resp." ty("S") w")"$, $Omega_1 tack.r t "(resp." u")" arrow.squiggly cal(L)$, $Omega tack.r m arrow.squiggly cal(L)$),
+  ir(name: "Tail-let", $Omega tack.r t ev v : A tack.l Omega_1$, $Omega_1 + (x : A |-> v) tack.r u arrow.squiggly cal(L)$, $Omega tack.r kw("let") x = t";" u arrow.squiggly {"pop"_x (ell) mid(|) ell in cal(L)}$),
   ir(name: "Tail-seq", $Omega tack.r t ev v : A tack.l Omega_1$, $"drop"(Omega_1, v) = Omega_2$, $Omega_2 tack.r u arrow.squiggly cal(L)$, $Omega tack.r t";" u arrow.squiggly cal(L)$),
   ir(name: "Tail-end", $Omega tack.r t ev v : A tack.l Omega'$, $t "is not a match, let or sequence"$, $Omega tack.r t arrow.squiggly {(Omega', v, A)}$),
 )
@@ -415,12 +413,12 @@ Here $"pop"_x (Omega_2 + (x : A' |-> v'), w, B) = (Omega_3, w', B)$ with $"drop"
 
 === Definitions
 
-*[Def]* (D12, D27). Let `F` be a top-level function or a closure with captured values $overline(kappa)$ and code $"fix" f (x_1 : A_1 dots x_n : A_n) : B [["by" x_j]] := b$, and let $Pi = "typeof"(F)$, with generic state $Gamma = Gamma(Pi)$, parameter frame $phi = phi(Pi)$ and parameter types $overline(T)$ (@app-aux, item 10). Let $phi^+$ be φ with $f : Pi |-> F$ added when `F` declares `by`.
+*[Def]* (D12, D27). Let `F` be a top-level function or a closure with captured values $overline(kappa)$ and code $kw("fix") f (x_1 : A_1 dots x_n : A_n) : B space [kw("by") x_j] := b$, and let $Pi = "typeof"(F)$, with generic state $Gamma = Gamma(Pi)$, parameter frame $phi = phi(Pi)$ and parameter types $overline(T)$ (@app-aux, item 10). Let $phi^+$ be φ with $f : Pi |-> F$ added when `F` declares `by`.
 
 #rules(
-  ir(name: "Def", pv($f "occurs in" b "only as the head of a call (in nested functions and block arms too)" quad ["by" x_j]: T_j in {"Nat", \&"Nat"}$, $Gamma";" phi tack.r B ev G "type" quad Gamma";" phi^+ tack.r b arrow.squiggly cal(L) quad "with goal" G "and the [Rec] entry" (F, j, sigma_j) "pushed"$, $"for every" (Omega', v, A) in cal(L) "with refined goal" G': quad "pop"(Omega', v) "succeeds and" A equiv G'$), $tack.r F "ok"$),
+  ir(name: "Def", pv($f "occurs in" b "only as the head of a call" quad [kw("by") x_j]: T_j in {ty("Nat"), \&ty("Nat")}$, $Gamma";" phi tack.r B ev G "type" quad Gamma";" phi^+ tack.r b arrow.squiggly cal(L) quad "with goal" G "and the [Rec] entry" (F, j, sigma_j) "pushed"$, $"for every" (Omega', v, A) in cal(L) "with refined goal" G': quad "pop"(Omega', v) "succeeds and" A equiv G'$), $tack.r F "ok"$),
 )
-The goal `G` is the [Call-type] of the generic call $F(overline(a))$: `B` evaluated with each parameter bound to its generic argument, borrow parameters to borrows of the fresh owned places $c_i$, proof parameters to ⋆. Parameter types are evaluated left to right and stored with their bindings, where [Split] refines them. Popping the body's frame drops its bindings, so each borrow parameter ends and its owned place receives the final content; the result's type must then convert to the goal as refined on that path. A top-level `f` is added to Σ, with its type, code and erasure flag, before its body is checked, so that its recursive calls resolve; it is kept only if the check succeeds. #lean("checkFix", "checkDef (Check.lean)")
+In the first premise, `f` must also occur only as a call head inside nested functions and block arms. The goal `G` is the [Call-type] of the generic call $F(overline(a))$: `B` evaluated with each parameter bound to its generic argument, borrow parameters to borrows of the fresh owned places $c_i$, proof parameters to ⋆. Parameter types are evaluated left to right and stored with their bindings, where [Split] refines them. Popping the body's frame drops its bindings, so each borrow parameter ends and its owned place receives the final content; the result's type must then convert to the goal as refined on that path. A top-level `f` is added to Σ, with its type, code and erasure flag, before its body is checked, so that its recursive calls resolve; it is kept only if the check succeeds. #lean("checkFix", "checkDef (Check.lean)")
 
 #rules(
   ir(name: "Const", $epsilon tack.r A ev T "type"$, $epsilon tack.r t ev v : T' tack.l Omega'$, $T' equiv T$, $Sigma(c) = (T, v^bullet)$, $tack.r (c : A := t) "ok"$),
@@ -442,28 +440,34 @@ A state (Ω, Δ, Σ) is _well formed_ when the following hold. They are the four
 
 == Notes on the definition <app-notes>
 
-The prose rules (RULES v1.5) leave the following points open, or state them in a way that admits more than one reading. Each note gives the reading taken above, which is the checker's unless the note says otherwise.
+The prose rules (RULES v1.5) leave the following points open, or state them in a way that admits more than one reading. Each note gives the reading taken above, which is the checker's unless the note says otherwise. Notes 1 and 2 are readings under which the rules, and the checker, are unsound.
 
-+ *The erasure flag of a local function.* D28 records a function's flag "at [Def]", from its codomain at its generic call. For a top-level function this is decided once, since its codomain is closed. A local `fix`, however, is checked by [Def] every time it is formed, including at each instance of a statement that contains it, and its codomain can depend on captured values. Recomputing the flag there is unsound:
++ *The class of a local function.* D28 records a function's erasure class "at [Def]", from its codomain at its generic call. For a top-level function this happens once, since its codomain is closed. A local `fix`, however, is checked by [Def] each time it is formed, including at each instance of a statement that contains it, and its codomain may depend on captured values:
   ```
   U(n : Nat) : Type₀ := match n { Z => Prop | S _ => Prop }
   V(n : Nat) : U(n) := match n { Z => ⊤ | S _ => ⊤ }
   LieL(n : Nat) : Id Nat (let h = λ(x : &Nat) : U(n) => (*x := S Z; V(n)); let c = Z; h(&c); c) (S Z) := refl
   BoomL : Eq Nat Z (S Z) := LieL(Z)
   ```
-  At `LieL`'s generic call, `h`'s codomain is ⌈`U(σ)`⌉, which is not a sort, so `h(&c)` runs, `c` ends as `S Z` and the statement is `⊤`. At the instance `n = Z`, `h` is formed again with codomain `U(Z) = Prop`, a sort; if the flag is recomputed, `h(&c)` is erased, `c` stays `Z`, and `LieL(Z) : Eq Nat Z (S Z)`. We therefore decide the flag of every function other than a top-level one from its codomain _term_ (@app-erasure): `U(n)` is not syntactically a sort and has sort `Type₀`, so `h(&c)` runs at both, and `BoomL` is rejected. The merged checker, which decides erasure from values, accepts `BoomL`.
-+ *Erasure of terms other than calls.* D28 erases a non-call term in a type position or of sort `Prop`, and a call that returns types. We also erase type formers, and variables, constants and annotated `let`s whose declared type is syntactically a sort (@app-erasure, clause 3), which is what the checker does by value. We do not erase a term merely because its _inferred_ type evaluates to a sort, because that type can be a stuck family at the generic call and a sort at an instance, as in note 1.
-+ *Proofs are not run.* A proof call's arguments are evaluated and its [Call-type] and [Rec] are checked, on a private copy; its body is never run ([T-Call-proof]), and the machine skips proofs altogether ([Erase-proof]). By P2 running and skipping agree.
-+ *The order of [Access].* Loans are ended from the root of the place outward, then left to right inside its content. RULES does not fix an order; @thm-canon says the resolution does not depend on it.
+  At `LieL`'s generic call, `h`'s codomain is ⌈`U(σ)`⌉, which is not a sort, so `h(&c)` runs, `c` ends as `S Z`, and the statement is `⊤`. At the instance `n = Z`, `h` is formed again with codomain `U(Z) = Prop`, a sort, so `h(&c)` is erased, `c` stays `Z`, and `LieL(Z) : Eq Nat Z (S Z)`. The v1.5 checker accepts `BoomL`. Here the class of a function other than a top-level one is read from its codomain _term_: `U(n)` is not syntactically a sort and has sort `Type₀`, so `h(&c)` runs on both paths and `BoomL` is rejected.
++ *A stuck block of a type-valued match.* A stuck block is a call, and its function's codomain is the match's type, so the call rule of D28 erases a block whose type is a sort; the direct path does not erase the same match, since it is not a call and its type does not have sort `Prop`:
+  ```
+  LieB(n : Nat) : Id Nat (let c = Z; let T = match n { Z => (c := S Z; ⊤) | S _ => (c := S Z; ⊤) }; c) Z := refl
+  BoomB : Eq Nat (S Z) Z := LieB(Z)
+  ```
+  At the generic call the block (of type `Prop`) is erased, `c` stays `Z`, and the statement is `⊤`; at `n = Z` the match runs, `c` becomes `S Z`, and `LieB(Z) : Eq Nat (S Z) Z`. The v1.5 checker accepts `BoomB`. Here a block is erased exactly when its match is: only when its type has sort `Prop`. A block that is not erased is always safe, because its sealed programs re-run the arms, which make their own erasure decisions.
++ *Erasure of sequencing forms.* By D28 a `let`, sequence or match is erased only if it is in a type position or is a proof. The checker also erases one whose tail is erased (@app-erasure, (b)); that reading is stable too, but for a match it disagrees with the block path (note 2).
++ *Proofs are not run.* A proof call's arguments are evaluated and its [Call-type] and [Rec] checked, on a private copy; its body is never run ([T-Call-proof]), and the machine skips proofs altogether ([Erase-proof]). By P2 running and skipping agree.
++ *The order of [Access].* Loans are ended from the root of the place outward, then left to right inside its content. RULES fixes no order; by @thm-natural (1) the resolution does not depend on it.
 + *A match on a constructor checks only the arm taken*, in typing as in the machine ([T-Match-Z], [T-Match-S]).
-+ *[Close]'s row is chosen by the declared codomain term* (`Unit`, `&T`, anything else); `&T` is syntactic anyway, because borrow types occur only at the top of declared types. RULES says "according to the result type". The checker uses the codomain term when it is literally `Unit` or `&T`, and otherwise the type computed at the call; the two differ only for a codomain that computes to `Unit`, where the checker picks the `Unit` row at an instance and the data row at the generic call.
++ *[Close]'s row is chosen by the declared codomain* (`Unit`, `&T`, anything else), as @lem-stable (4) requires; `&T` is syntactic anyway, because borrow types occur only at the top of declared types. RULES says "according to the result type". The checker uses the codomain term when it is literally `Unit` or `&T`, and otherwise, in the typing judgement, the type computed at the call; the two differ only for a codomain that computes to `Unit`, where the checker picks the `Unit` row at an instance and the data row at the generic call.
 + *A discarded value* (`t; u`) holding a live loan is an error, like a dying owned binding.
-+ *A call with a neutral head closes off even as the head call of a sealed program* ([App-neutral]). This yields the same sealed program again, so normalisation reaches a fixed point, as it does when the head call is simply left stuck.
++ *A call with a neutral head closes off even as the head call of a sealed program* ([App-neutral]). This yields the same sealed program again, so normalisation reaches a fixed point, as it would if the head call were left stuck.
 + *Stuck-block moves.* A whole variable is moved into a block if some arm, when checked, leaves it ⊥, or if it is a borrow variable read or assigned as a whole (the checker's C19). Captures are ordered by the position of their root, then by length, and their arguments are evaluated in that order (breaker-fresh B10).
-+ *Footprint.* A place rooted at a borrow variable contributes its owners even when it is only read, and a variable holding ⊥ contributes nothing. Owners are positions, so a temporary can be an owner (when a type is formed while arguments are in flight).
-+ *`J`.* `A`, `a`, `b` and `P` are type positions and `h` is a proof, so none of them runs in the machine (breaker-fresh's point 12); `J`'s value is `t`'s. The motive may have any sort (the checker's C12).
-+ *Universes.* $A times B$ lives in $"Type"_0 union.sq s_A union.sq s_B$, `&A` in `Type₀`, and `Π` is impredicative in `Prop` (the checker's C15). [T-And] requires both conjuncts to be propositions; the checker omits that premise.
-+ *Recursion* requires the declared decreasing parameter to have type `Nat` or `&Nat`. Without `by`, `f` is not in scope (D31); the checker binds it but rejects every use of it ([Rec] finds no decreasing parameter, and `headOnly` rejects non-call uses), so it accepts the same programs.
-+ *Conversion* is the least relation of @app-conv. [Conv-Π] extends D30 to Π-types. There is no η rule, and no η for `Unit`.
++ *Footprint.* A place rooted at a borrow variable contributes its owners even when it is only read, and a variable holding ⊥ contributes nothing. Owners are positions, so a temporary can be an owner, when a type is formed while arguments are in flight.
++ *`J`.* `A`, `a`, `b` and `P` are type positions and `h` is a proof, so none of them runs in the machine; `J`'s value is `t`'s. The motive may have any sort (the checker's C12). The checker erases `J` when its motive is syntactically a function into `Prop`.
++ *Universes.* $A times B$ lives in $ty("Type")_0 union.sq s_A union.sq s_B$, `&A` in `Type₀`, and `Π` is impredicative in `Prop` (the checker's C15). [T-And] requires both conjuncts to be propositions; the checker omits that premise.
++ *Recursion* requires the declared decreasing parameter to have type `Nat` or `&Nat`.
++ *Conversion* is the least relation of @app-conv (RULES P1). Π-types are compared under binders by their captured values and code, not by evaluating them at generic arguments. There is no η rule, and no η for `Unit`.
 + *An unannotated non-tail match* needs its arms' types, each computed in its own refined state, to be convertible; an annotated one checks each arm against the annotation refined for that arm.
-+ *Syntax.* Places are `x | *p | p.1` as in RULES. The checker also has pair sub-places (`p.1`, `p.2` of a pair), and conveniences outside the core (`cong`, `trans`, `symm`, the ascription `(t : A)`, `λ` and `→`).
++ *Syntax.* Places are `x | *p | p.1` as in RULES. The checker also has pair sub-places (`p.1`, `p.2` of a pair) and conveniences outside the core (`cong`, `trans`, `symm`, the ascription `(t : A)`, `λ` and `→`).
