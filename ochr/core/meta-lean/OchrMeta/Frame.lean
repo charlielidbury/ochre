@@ -159,6 +159,9 @@ theorem exec_frame (Pr : Prog) : ∀ n, EvF Ω₂ K (exec Pr n) := by
       intro c1 P1 v hc1 hlen1 hv
       apply Sim.bind (access_sim true _ _ hc1)
       intro c2 P2 w hc2 hlen2 hw
+      by_cases hnb : p.path ≠ [] ∧ v.nb ≠ 0
+      · rw [if_pos hnb, if_pos hnb]; exact Sim.err
+      rw [if_neg hnb, if_neg hnb]
       obtain ⟨h1, h2⟩ := setPlace_sim hc2 p.root p.path hv
       rw [h1]
       cases hop : St.setPlace p.root p.path v (c2.app [P2]) with
@@ -223,7 +226,9 @@ theorem exec_frame (Pr : Prog) : ∀ n, EvF Ω₂ K (exec Pr n) := by
       simp only [exec]
       apply Sim.bind (ih c P t hc)
       intro c1 P1 v hc1 hlen1 hv
-      exact Sim.ok' hc1 hlen1 (by simpa [Val.names] using hv)
+      by_cases hnb : v.nb = 0
+      · rw [if_pos hnb, if_pos hnb]; exact Sim.ok' hc1 hlen1 (by simpa [Val.names] using hv)
+      · rw [if_neg hnb, if_neg hnb]; exact Sim.err
     | pair t u =>
       simp only [exec]
       apply Sim.bind (ih c P t hc)
@@ -232,6 +237,10 @@ theorem exec_frame (Pr : Prog) : ∀ n, EvF Ω₂ K (exec Pr n) := by
       rw [hlen1] at this
       apply Sim.bind this
       intro c2 P2 w hc2 hlen2 hw
+      by_cases hnb : v.nb = 0 ∧ w.nb = 0
+      rotate_left
+      · rw [if_neg hnb, if_neg hnb]; exact Sim.err
+      rw [if_pos hnb, if_pos hnb]
       refine Sim.ok' hc2 hlen2 ?_
       intro l hl
       simp only [Val.names, List.mem_append] at hl

@@ -203,6 +203,9 @@ theorem closeCall_frame (f : String) (d : FunDef) {ws : List Val} {c : St} {P : 
     have hl : ∀ p ∈ ls, Good Ω₂ K p.2 := by
       intro p hp; obtain ⟨w, hw, hx⟩ := hls p hp; exact hws w hw p.2 hx
     simp only
+    by_cases hnb : (Val.ofList as).nb ≠ 0
+    · rw [if_pos hnb, if_pos hnb]; exact ⟨rfl, trivial⟩
+    rw [if_neg hnb, if_neg hnb]
     -- the fills for the borrow-free rows
     have hfin : ∀ p ∈ ls.map (fun (q : Nat × Nat) => (q.2, Val.sealed f (Val.ofList as) (.fin q.1) .unit)),
         Good Ω₂ K p.1 ∧ ∀ x ∈ p.2.names, Good Ω₂ K x := by

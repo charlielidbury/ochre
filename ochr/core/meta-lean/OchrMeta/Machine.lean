@@ -87,6 +87,8 @@ def closeCall (f : String) (d : FunDef) (ws : List Val) (s : St) : Res :=
   | none => .err
   | some (as, ls) =>
     let args := Val.ofList as
+    -- no borrows inside data: a sealed program's `L` binds borrow-free values
+    if args.nb ≠ 0 then .err else
     match d.ret with
     | .ref _ =>
       let k := s.next
@@ -145,6 +147,8 @@ def exec (P : Prog) : Nat → St → Term → Res
     -- [Assign]: evaluate, access, overwrite, drop the old content
     | .assign p t => (exec P n s t).bind fun s v =>
         (access true p.root p.path s).bind fun s c =>
+          -- no borrows inside data: only a variable may receive a borrow
+          if p.path ≠ [] ∧ v.nb ≠ 0 then .err else
           match s.setPlace p.root p.path v with
           | none => .err
           | some s => match dropVal .unit c s with
@@ -164,8 +168,10 @@ def exec (P : Prog) : Nat → St → Term → Res
         | some s => exec P n s u
     | .zero => .ok s .zero
     | .unit => .ok s .unit
-    | .succ t => (exec P n s t).bind fun s v => .ok s (.succ v)
-    | .pair t u => (exec P n s t).bind fun s v => (exec P n s u).bind fun s w => .ok s (.pair v w)
+    -- constructors: no borrows inside data (RULES §1 scope), checked dynamically
+    | .succ t => (exec P n s t).bind fun s v => if v.nb = 0 then .ok s (.succ v) else .err
+    | .pair t u => (exec P n s t).bind fun s v => (exec P n s u).bind fun s w =>
+        if v.nb = 0 ∧ w.nb = 0 then .ok s (.pair v w) else .err
     -- [Match]: `Z` → first arm; `S _` → second arm with `y := p.1`; a neutral → stuck
     | .mtch p tz y ts => (access false p.root p.path s).bind fun s c =>
         match c with

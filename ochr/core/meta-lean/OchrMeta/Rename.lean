@@ -646,6 +646,10 @@ theorem closeCall_rename (hρ : Function.Injective ρ) (f : String) (fd : FunDef
     obtain ⟨as, ls⟩ := q
     simp only [Option.map_some]
     rw [Val.ofList_rename]
+    simp only [Val.nb_rename]
+    by_cases hnb : (Val.ofList as).nb ≠ 0
+    · rw [if_pos hnb, if_pos hnb]; exact RSim.err
+    rw [if_neg hnb, if_neg hnb]
     have hk : ρ s.next = s.next + d := hc s.next (Nat.le_refl _)
     have hfin : ∀ g : Nat → SealK,
         List.map (fun x => (x.snd, Val.sealed f (Val.rename ρ (Val.ofList as)) (g x.fst) Val.unit))
@@ -754,6 +758,10 @@ theorem exec_rsim (P : Prog) (hρ : Function.Injective ρ) : ∀ n, EvR ρ d (ex
       intro s1 v hc1
       apply RSim.bind (access_rename hρ true _ _ _ s1 rfl hc1)
       intro s2 c hc2
+      simp only [Val.nb_rename]
+      by_cases hnb : p.path ≠ [] ∧ v.nb ≠ 0
+      · rw [if_pos hnb, if_pos hnb]; exact RSim.err
+      rw [if_neg hnb, if_neg hnb]
       rw [St.setPlace_rename]
       cases hop : s2.setPlace p.root p.path v with
       | none => exact RSim.err
@@ -799,14 +807,20 @@ theorem exec_rsim (P : Prog) (hρ : Function.Injective ρ) : ∀ n, EvR ρ d (ex
       simp only [exec]
       apply RSim.bind (ih s t hc)
       intro s1 v hc1
-      exact RSim.ok hc1 (.succ v)
+      simp only [Val.nb_rename]
+      by_cases hnb : v.nb = 0
+      · rw [if_pos hnb, if_pos hnb]; exact RSim.ok hc1 (.succ v)
+      · rw [if_neg hnb, if_neg hnb]; exact RSim.err
     | pair t u =>
       simp only [exec]
       apply RSim.bind (ih s t hc)
       intro s1 v hc1
       apply RSim.bind (ih s1 u hc1)
       intro s2 w hc2
-      exact RSim.ok hc2 (.pair v w)
+      simp only [Val.nb_rename]
+      by_cases hnb : v.nb = 0 ∧ w.nb = 0
+      · rw [if_pos hnb, if_pos hnb]; exact RSim.ok hc2 (.pair v w)
+      · rw [if_neg hnb, if_neg hnb]; exact RSim.err
     | mtch p tz y ts =>
       simp only [exec]
       apply RSim.bind (access_rename hρ false _ _ _ s rfl hc)
