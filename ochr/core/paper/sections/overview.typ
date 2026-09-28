@@ -99,7 +99,8 @@ AddM'(x : &Nat, y : Nat) : Unit := let t = TailM(x); *t := y
 
 ```
 { c ↦ loan₀ } ⊢ TailM(borrow₀ σ)
-   ⟶  { c ↦ ⌈let c = σ; let r = TailM(&c); *r := loan_k; c⌉ } ⊢ borrow_k ⌈let c = σ; let r = TailM(&c); *r⌉
+   ⟶  { c ↦ ⌈let c = σ; let r = TailM(&c); *r := loan_k; c⌉ }
+      ⊢ borrow_k ⌈let c = σ; let r = TailM(&c); *r⌉
 ```
 
 In `AddM'`, the caller writes `y` through `t` and drops it; ending `borrow_k` substitutes the final content `y` for the hole. What remains in `c` is #seal(`let c = σ; let r = TailM(&c); *r := y; c`): the effect of `AddM'`, as a program. The hole is the neutral form of an Aeneas region abstraction, and of a RustHorn prophecy @rusthorn: it records only the _final_ value written through the returned borrow.
@@ -153,11 +154,13 @@ Nothing above is specific to numbers. With several constructors and several fiel
 ```
 InsertM(t : &Tree, k : Nat) : Unit by t :=
   match *t { Leaf          => *t := Node(Leaf, k, Leaf)
-           | Node(l, v, r) => let b = Lt(k, v); match b { True => InsertM(&l, k) | False => InsertM(&r, k) } }
+           | Node(l, v, r) => let b = Lt(k, v);
+                              match b { True => InsertM(&l, k) | False => InsertM(&r, k) } }
 
 InsertMEq(t : &Tree, k : Nat) : Id Unit (InsertM(t, k)) (*t := Insert(*t, k)) by t :=
   match *t { Leaf          => refl
-           | Node(l, v, r) => let b = Lt(k, v); match b { True => InsertMEq(&l, k) | False => InsertMEq(&r, k) } }
+           | Node(l, v, r) => let b = Lt(k, v);
+                              match b { True => InsertMEq(&l, k) | False => InsertMEq(&r, k) } }
 ```
 
 `Insert` is the pure insertion that rebuilds the path. In the `False` case, both the goal and the induction hypothesis, evaluated at the call site, observe the whole tree as `Node(σ_l, σ_v, ⌈…⌉)`: the fields `l` and `v` are carried by the environment, and only the right subtree differs, as in-place insertion on one side and pure insertion on the other. The proof is bare recursion again. The comparison `Lt(σ_k, σ_v)` is itself stuck, so the split on `b` is a split on a sealed program: the checker names its value by a fresh abstract value and replaces every derivation of the same closed program by it, including those produced later when the goal's sealed programs run again. A theorem about a measure mixes the two styles: `Size(Insert(t, k))` is `S(Size(t))` given one arithmetic lemma, `x + S y = S (x + y)`, which is proved in place by bare recursion and transferred to the pure `Add` by lending, as `AddZero` was.
@@ -171,4 +174,11 @@ AddToOne(b : Nat, x₁ : &Nat, x₂ : &Nat, y : Nat) : Unit :=
   let r = match b { Z => x₁ | S _ => x₂ }; AddM(r, y)
 ```
 
-The closed-off match returns a borrow with a hole that appears in the sealed programs for both `x₁`'s and `x₂`'s places; whichever the match would have chosen receives the final content. A proof about `AddToOne` splits on `b`, after which the sealed programs run and the goal becomes a statement about `AddM` alone.
+The closed-off match returns a borrow with a hole that appears in the sealed programs for both `x₁`'s and `x₂`'s places; whichever the match would have chosen receives the final content. A proof about `AddToOne` splits on `b`, after which the sealed programs run and the goal becomes a statement about `AddM` alone:
+
+```
+AddToOneZero(b : Nat, x₁ : &Nat, x₂ : &Nat) : Id Unit (AddToOne(b, x₁, x₂, 0)) () :=
+  match b { Z => AddMZero(x₁) | S _ => AddMZero(x₂) }
+```
+
+The footprint contains the owners of both borrows. In the `Z` arm the observation of `x₂`'s owner is unchanged on both sides, so its equation is reflexive and computes to `⊤`, and what remains is exactly `AddMZero(x₁)`'s statement.
