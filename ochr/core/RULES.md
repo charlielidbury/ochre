@@ -1,4 +1,6 @@
-# Ochr core, rule set v1
+# Ochr core, rule set v1.1
+
+v1.1 (from breaker-close A1, A4): [Close] states its precondition (argument contents are loan-free, which [Access] guarantees); [Rec] requires `f` to occur only as the head of a call.
 
 Supersedes v0 (kept as `RULES-v0.md`). Changes are driven by round-1 reports in `notes/` and logged in `DECISIONS.md` (D9 onwards). Universes: `Prop : Type_0 : Type_1 …`, never `Type : Type`. The model (notes/meta-model.md) needs `propext`, which Lean has.
 
@@ -53,7 +55,7 @@ environment Ω  ::= a stack of frames of bindings  x : A ↦ v
 - **[Drop]** Dropping a value: each borrow in it ends ([End]); a loan in a dropped *owned* value is an error (something borrows a dying place).
 - **[Call]** `f(w₁,…,wₙ)` with `f = fix f (x̄:Ā):B := b`: push a frame `x̄ ↦ w̄`, run `b`, pop the frame ([Drop] its bindings), return the result. If `B` is a proposition, do not run `b`: return `⋆` and end every borrow argument unchanged (P5). If `b` gets stuck on a neutral, use [Close].
 - **[Match]** `match p {…}`: head of `content(p)` is `Z` → first arm; `S v` → second arm with `y := p.1`; a neutral → stuck.
-- **[Close]** The call `f(w̄)`, after its arguments are evaluated, has a stuck body. Discard the partial run. Let `I` be the positions holding borrows, `wᵢ = borrow_ℓᵢ uᵢ`. Write `L := let cᵢ = uᵢ (i ∈ I)` and `C := f(ā)` with `aᵢ = &cᵢ` for i ∈ I, `aᵢ = wᵢ` otherwise. Then the call returns, and each `loan_ℓᵢ` is substituted (the borrow having been consumed), according to the result type `B`:
+- **[Close]** The call `f(w̄)`, after its arguments are evaluated, has a stuck body. Precondition: every argument's content is loan-free (guaranteed by [Access], which ended those loans when the argument was read or borrowed; without it a live loan would be copied into a sealed program, breaker-close A1). Discard the partial run. Let `I` be the positions holding borrows, `wᵢ = borrow_ℓᵢ uᵢ`. Write `L := let cᵢ = uᵢ (i ∈ I)` and `C := f(ā)` with `aᵢ = &cᵢ` for i ∈ I, `aᵢ = wᵢ` otherwise. Then the call returns, and each `loan_ℓᵢ` is substituted (the borrow having been consumed), according to the result type `B`:
 
   | `B` | result | each `loan_ℓᵢ` becomes |
   |---|---|---|
@@ -85,7 +87,7 @@ Typing is the machine on symbolic inputs, plus case splitting.
 - **[Call-type]** At Ω, the type of `f(ā)` with `f : Π(x̄:Ā). B` is `B` evaluated at Ω with each `xᵢ` bound to `aᵢ`'s value (a borrow argument moved into `xᵢ`). Each `aᵢ` must have type `Aᵢ`. The free variables of `B` other than `x̄` were captured when the Π-type was formed (P2).
 - **[Def]** `fix f (x̄:Ā):B := b` is checked at its *generic call*: an environment with a fresh owned place `cᵢ ↦ σᵢ` for each borrow parameter `xᵢ : &Tᵢ`, and the call `f(ā)` with `aᵢ = &cᵢ` or `σᵢ`. The goal is the [Call-type] of that call. The body runs in a pushed frame; its result's type must convert to the goal (as refined by splits).
 - **[Split]** When the checked program matches on a place whose content head is an abstract `σ`: check each arm with the refinement `σ := Z` (resp. `S σ'`) applied to Ω, the goal and all stored types. If the match is not in tail position, the rest of the program is checked once, from the state in which the match is closed off as a stuck block (§3). No anti-unification.
-- **[Rec]** In the body of `fix f`, each recursive call must pass, in the recursive position, a value (or a borrow whose content is a value) that is a *strict subterm of that parameter's entry value* `σ`, as refined so far.
+- **[Rec]** In the body of `fix f`, `f` occurs only as the head of a call (it never escapes as a value; breaker-close A4), and each recursive call must pass, in the recursive position, a value (or a borrow whose content is a value) that is a *strict subterm of that parameter's entry value* `σ`, as refined so far.
 - **Errors (the borrow checker):** reading `⊥`, a loan in a dropped owned value, an argument not of the parameter's type.
 
 ## 6. Metatheory to establish

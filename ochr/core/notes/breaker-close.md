@@ -197,3 +197,214 @@ The same shape works through a borrow (`match *x { S y => (*x := S (S Z); Spin &
 **Underlying cause (flag, not fixed here).** Alias pattern variables with no loan. Aeneas states outright (§4.1) that soundness requires forbidding a change of variant while a field is borrowed. Ochr's alias `y` has no loan, so `match x { S y => (x := n; y) }` reads `x.1` through whatever `n` is. v0 has no rule for following `.1` through an abstract value: it is neither [Match] nor stuck. Treating it as stuck (and closing off) would turn it into a seal that crashes at `n = Z`. Either make pattern variables into reborrows, which is Aeneas's choice and gives the loan, or say that a write to a prefix of `y`'s path invalidates `y`. With either, (b) is also rejected syntactically.
 
 **Decision implicated.** §6, plus the "pattern variables are sub-places" design in §1.
+
+---
+
+## A4. §6 does not stop `f` escaping unapplied (BUG, closed `⊥`)
+
+§6 constrains "every recursive call". It says nothing about `f` occurring anywhere else.
+
+```
+Apply : Π(h : Π(_ : Nat). ⊥) (n : Nat). ⊥
+Apply h n := h n
+
+Knot : Π(x : Nat). ⊥
+Knot := fix f (x : Nat) : ⊥ := Apply f x
+```
+
+```
+{} ⊢ Knot : Π(x : Nat). ⊥                     // [Lam] for fix: x ↦ σ, f : Π(x:Nat). ⊥ in scope
+  §6: the body contains no call with head f      ✓ (vacuously)
+  Apply f x : ⊥                                  // [App]: result type ⊥[h := f, n := x]
+Knot Z : ⊥                                       // closed
+```
+
+Evaluation: [App] unfolds a `fix` on *any* argument, unlike CIC, which needs a constructor. v0 relies on every recursive call being preceded by a match on the parameter, so that a symbolic argument gets stuck. `Knot Z` → `Apply f Z` → `f Z` → `Apply f Z` → … never reaches a match, so it is never stuck, and neither the machine nor the normaliser terminates. v0 also does not say what *value* `f` has while its own body is checked. If it is the fix-closure, checking `Knot` itself loops. If it is an abstract `σ_f` (the right answer; say so), checking succeeds and the `⊥` above goes through.
+
+**Minimal fix (accidental omission).** The CIC guard. `f` may occur only as the head of a call that passes A3's semantic check. While checking the body, `f` is bound to an abstract function. Decision implicated: §6 only.
+
+---
+
+## A5. [Seal] re-closes its own call, so `nf` diverges (BUG, wording, bites E1)
+
+[Seal]: "run `t` from the empty environment; if it completes with `v`, the result is `nf(v)`; otherwise `⌈t'⌉`". A seal has the shape `L; C; …`, where `L` only binds values, so the only place its run can get stuck is inside the call `C`. But a stuck call does not leave the run stuck: [App] hands it to [Close], which returns a seal, and the run *completes*. The "otherwise" branch is unreachable. For a genuinely stuck seal, `v` is the same seal again (up to `α`), and `nf(v)` recurses forever.
+
+This fires on E1's first refinement. `AddMZero`'s entry goal holds the fill `x° ↦ ⌈let c = σ; AddM &c 0; c⌉`, and the S arm substitutes `σ := S σ'`:
+
+```
+nf(⌈let c = S σ'; AddM &c 0; c⌉)                                            // Refinement re-normalises
+  ⟨{}, let c = S σ'; AddM &c 0; c⟩ ⇓ ⟨{}, S ⌈let c₁ = σ'; AddM &c₁ 0; c₁⌉⟩   // [Let] [Borrow] [App] [Match] S arm; inner call stuck: [Close]; [Pop] [Read]
+  = S nf(⌈let c₁ = σ'; AddM &c₁ 0; c₁⌉)                                     // [Seal]: completed with v, so nf(v)
+    ⟨{}, let c₁ = σ'; AddM &c₁ 0; c₁⟩ ⇓ ⟨{}, ⌈let c₂ = σ'; AddM &c₂ 0; c₂⌉⟩  // AddM stuck at once: [Close]; the run completes
+    = nf(⌈let c₂ = σ'; AddM &c₂ 0; c₂⌉)                                     // α-equal to the input: loops
+```
+
+**Minimal fix (accidental).** A seal is normal when unfolding its canonical call `C` once gets stuck in `C`'s own body. That is the same condition [Close] uses, so [Close] is never applied to the seal's own call. Otherwise run it, and seals created *inside* that run (by other calls) are normal by the same rule. Also, "at type `Unit` every value normalises to `()`" needs the seal to carry its type (`⌈t⌉ : T`), since values are untyped.
+
+---
+
+## A6. Loan holes break under refinement (GAP; D4's revisit trigger fires early)
+
+A returned borrow leaves `loan_k` inside each fill `⌈L; let r = C; *r := loan_k; cᵢ⌉`, written with the same syntax as a real loan. A refinement re-runs every seal that mentions the refined `σ`, including seals that still have an unfilled hole. Inside that re-run, the hole behaves as a real loan.
+
+```
+G2 : Π(x : &Nat) (n : Nat). &Nat
+G2 x n := match n { Z => x | S _ => x }
+
+P : Π(x : &Nat) (n : Nat). Unit                  // the Rust analogue compiles
+P x n := let t = G2 x n; match n { Z => () | S _ => () }; *t := Z
+```
+
+```
+{x° ↦ loan₀ | x ↦ borrow₀ σ, n ↦ σₙ}                                           // [Lam]
+⟨{x° ↦ ⌈let c = σ; let r = G2 &c σₙ; *r := loan_k; c⌉ | x ↦ ⊥, t ↦ borrow_k ⌈let c = σ; let r = G2 &c σₙ; *r⌉}, match n {…}; *t := Z⟩
+                                                                                // [Close], result &Nat, k fresh
+  arm Z: [Split] σₙ := Z, and Refinement re-normalises x°'s fill:
+    ⟨{}, let c = σ; let r = G2 &c Z; *r := loan_k; c⟩
+    ⟨{c ↦ loan_j, r ↦ borrow_j σ}, *r := loan_k; c⟩                             // G2 returns its argument
+    ⟨{c ↦ loan_j, r ↦ borrow_j loan_k}, c⟩                                      // [Assign] writes the embedded value loan_k
+    [Reorg] on c: end borrow_j; its content is loan_k, so end borrow_k first;
+    borrow_k is t, which is in the outer Ω, not in this run                      // no rule applies
+```
+
+Every reading fails:
+- **(i) Error.** `P` is rejected. So is any proof that case-splits while a returned borrow is live, which is the E2 pattern plus one match.
+- **(ii) Search the outer Ω for `borrow_k`.** A hypothetical normalisation then ends `t` in the *real* environment, contrary to P2, and `*t := Z` becomes a [Ref] error. The result also depends on whether a refinement happened.
+- **(iii) Treat the hole as inert inside seal runs.** Then the same syntax means two things: at top level it must still count as a loan (reading the owner must end `k`, or a type can snapshot a value that the returned borrow later changes), while inside seal runs it must not. An inert hole that reaches a type is a prophecy variable, which D4 rejected.
+
+**Principled fix: deferred fill (Aeneas region abstractions).** On [Close] with result `&T`, leave each `loan_ℓᵢ` in place. The consumed borrows `ℓᵢ` go into a region node `A_k{ ℓᵢ ↦ λw. ⌈L; let r = C; *r := w; cᵢ⌉ }` which owns `loan_k`. When `borrow_k` ends with content `w`, the node ends and each `loan_ℓᵢ` receives its seal applied to `w`. This is End-Abstract-Mut followed by End-Abstraction, with backward functions written as sealed `λw`, which is exactly 01 §9's `λfinal. (last_mut♯ σ).back final`. Accessing `x` (content `loan_ℓᵢ`) forces `ℓᵢ` to end, which forces `A_k`, which forces `k`. That is the right borrow-checking behaviour, with no new rule.
+
+What this buys:
+- Seals never contain loans, so A1's premise holds by construction.
+- Refinement only ever re-runs closed programs. In `P`'s arms the fills become `λw. w` in both, and the join goes through.
+- A loan never appears twice (A7).
+- No hole names reach conversion (A9c).
+
+It costs one runtime structure (the region node) and removes the hole syntax, so the value grammar gets no bigger.
+
+**Decision implicated.** D4 ("Revisit if the loan-hole form breaks down for borrows stored in data"). It breaks down earlier than that: under refinement, with no data involved.
+
+---
+
+## A7. Returned borrow into one of two arguments, chosen by a value (sound; one wording fix)
+
+```
+Choose : Π(b : Nat) (x : &Nat) (y : &Nat). &Nat
+Choose b x y := match b { Z => x | S _ => y }
+```
+
+```
+⟨{p ↦ 1, q ↦ 2, b ↦ σ}, let z = Choose b &p &q; *z := 5; (p, q)⟩
+⟨{p ↦ loan₁, q ↦ loan₂, …}, Choose σ (borrow₁ 1) (borrow₂ 2)⟩                    // [Borrow] ×2
+⟨{p ↦ ⌈L; let r = C; *r := loan_k; c₁⌉, q ↦ ⌈L; let r = C; *r := loan_k; c₂⌉,
+  z ↦ borrow_k ⌈L; let r = C; *r⌉}, *z := 5; (p, q)⟩                             // [Close]: L = let c₁ = 1; let c₂ = 2, C = Choose σ &c₁ &c₂
+⟨{…, z ↦ borrow_k 5}, (p, q)⟩                                                    // [Assign]
+⟨{p ↦ ⌈…; *r := 5; c₁⌉, q ↦ ⌈…; *r := 5; c₂⌉, z ↦ ⊥}, (p, q)⟩                    // reading p ends k (A1's [Reorg]); loan_k occurs TWICE
+```
+
+At `σ := Z` this gives `(5, 2)`, and at `σ := S _` it gives `(1, 5)`, both correct. The only problem is textual. [Reorg] says "find the unique `borrow_ℓ`… replace `loan_ℓ` by `w`", and LLBC's invariant is one loan per borrow. [Close] with two borrow arguments and a borrow result duplicates `loan_k`. A reading that fills only one occurrence leaves `q` holding a hole whose borrow no longer exists. Fix: "replace every occurrence", or better, A6's deferred fill, where one region node owns both `ℓ₁` and `ℓ₂` and nothing is duplicated.
+
+Imprecision, not unsoundness: once `σ := Z`, `z` points only into `p`, but reading `q` has already killed `z`. Aeneas's region abstraction makes the same trade.
+
+---
+
+## A8. The cases [Close] was designed for: all sound
+
+- **Write before getting stuck.** `WB x n := *x := S Z; match n { Z => () | S _ => () }`, with `a ↦ Z` and `n ↦ σ`. The partial run's write is discarded, and `a ↦ ⌈let c = Z; WB &c σ; c⌉`. After either refinement this reruns the whole call from its entry state and gives `S Z`. Sound because the seal is a function of the argument values and the machine is deterministic. The cost is completeness: `Id Nat (WB &a n; a) (S Z)` needs a split on `n`, not `refl`.
+- **Stuck on a by-value argument** (the same `WB`, or `G` in A1). This is no different from being stuck on the borrow: `σ` sits in `C`'s argument list, and refinement reaches it.
+- **Two borrow arguments and write order.** `Sw a b n := *a := *b; *b := n; match n { Z => () | S _ => *a := *b }`. Each fill `⌈L; C; cᵢ⌉` is a complete rerun, so the order of writes inside `C` is reproduced exactly.
+- **Result depends on both content and write order.** `⌈L; C⌉` is also a complete rerun. The link between result and fill ("the result equals the final content") is lost symbolically and comes back under refinement. Completeness cost only.
+- **Lemma calls rewrite their borrow arguments.** A call to a proof with a borrow parameter gets its *value* from the machine, so in `AddMZero`'s S arm, `p`'s loan is filled with `⌈let c = σ'; AddMZero &c; c⌉`. This is sound, and after A2's fix it is necessary. But a proof that calls a borrow lemma and then keeps using the place (`L₁ &p; L₂ &p`) finds `L₂`'s induction hypothesis stated over `L₁`'s seal. Worth knowing before writing E-examples that chain lemmas.
+
+The blocking rule is principled: discarding the partial run is exactly what makes the seal a function of its arguments (P5).
+
+---
+
+## A9. Canonicity (no unsoundness beyond A2's variant)
+
+*Can two syntactically equal seals mean different things?* Only if a seal is not closed. That happens through a loan inside `L` (A1), a hole (A6) or a free place (A10). With those fixed, a seal is a closed, deterministic program over closed values, and syntactic equality implies semantic equality. *Can conversion identify two seals whose embedded values differ?* Yes, through proof irrelevance (A2's variant), and that is a bug in the sorts, not in [Seal].
+
+Sources of "one stuck call, two different seals" (completeness only):
+- **(a) Head: name vs closure.** `let g = AddM; g x 0`. [App] sees only the closure value, and [Close] uses "the function's name if it is a top-level definition, else its closure". The value has lost its name, so the seal is `⌈…; (fix …) &c 0⌉`, not `⌈…; AddM &c 0⌉`. Fix: pick one uniformly. Top-level constants are values that unfold only in [App], so the head is always the value.
+- **(b) Currying.** The core has only unary `λ` and application, so `AddM x y = (AddM x) y`. Evaluating `AddM x` pushes a frame holding the borrow and returns `λy. …`, a closure capturing a borrow, which §1 forbids. [Pop] would end the borrow in any case. So `AddM` itself has no v0 semantics, and [Close]'s `f w₁ … wₙ` quietly assumes saturated n-ary calls. Fix: n-ary `λ` and calls in the core. Without it, a partial application capturing a borrow would sit inside a seal, which is an A1-type breach of closedness.
+- **(c) Binders.** `cᵢ` and `r` need `α`-equivalence. Hole names `k` differ between two runs of the same program (04's "N up to renaming of l"). A6's deferred fill turns holes into a `λw` binder, and `α` covers that.
+
+---
+
+## A10. Nullary close-off (GAP; one reading gives `⊥`)
+
+§4: "if `t` itself gets stuck outside any call, close it off as if it were the body of a nullary call". A nullary call's body can name no places, but `t` can: `match n {…}`, or writes through a free `x : &Nat`.
+
+- **Literal reading** ([Seal] runs "from the empty environment"). `⌈match n { Z => Z | S _ => Z }⌉` has `n` unbound. It never normalises, and refinement "re-normalises every sealed program that mentions σ", but this one mentions the place `n`, not `σ`. So `Π(n:Nat). Id Nat (match n { Z => Z | S _ => Z }) Z` is unprovable even by splitting on `n`. Incomplete.
+- **"Resolve free places against the current Ω" reading.** Unsound:
+
+```
+Liar : Π(n : Nat). Id Nat (match n { Z => Z | S _ => S Z }) (S Z)
+Liar n := n := S Z; refl
+  // entry goal: Eq Nat ⌈match n {…}⌉ (S Z) (the stuck match is closed off; the seal names the place n)
+  // after n := S Z, conversion normalises the seal in the current Ω: S Z; so refl : Eq Nat (S Z) (S Z) checks
+Liar Z : Eq Nat Z (S Z) ≡ ⊥
+```
+
+This is E6's "proof formed after a mutation", with the mutation hidden behind a seal that captured a *place* instead of a value (it breaks D2).
+
+**Fix (uniform, no special case).** Close `t` over its free variables as an ordinary call: `C := (λ(x₁:A₁)…(xₘ:Aₘ). t) a₁ … aₘ`, where `aᵢ = &cᵢ` for borrow-typed variables and for places `t` writes, and the current value otherwise. Then apply [Close] as usual. This is 01 §5's "the unit of closing off is any subterm whose footprint is known", stated as a rule.
+
+---
+
+## A11. [Reorg] "at any other time": is the ending order observable?
+
+- **Only through definedness, within one run.** In `let r = &x; *r := 5; x`, ending `r` before `*r := 5` makes the write go through `⊥`. So the machine, read as a relation, has an erroring run and a succeeding run from the same state. The sentence should say that other orders are a proof device, and that the machine (and the checker) is lazy.
+- **Resolution (the observation).** No writes happen during resolution. Each End moves loan-free content into the matching loan, which is a tree contraction. Independent Ends touch disjoint positions and commute, and dependent ones are forced into order. I found no order-dependence. The two places where the argument needs care are A7's duplicated holes (fill all, or defer) and [Pop]'s eager ending of anonymous pending borrows (unobservable, because nothing can access them).
+- **The real counterexample is between runs, not within one: A1.** The lazy strategy ends `borrow₂` inside `G` in the concrete run, and never in the symbolic run, because `G`'s run was discarded. So "the lazy strategy is canonical" is false for v0. With the loan-free premise, both runs end it at the call boundary.
+
+Suggested restatement of the §7 conjecture: (1) for runs that do not error, the resolved observation does not depend on the ending order; (2) the concrete and symbolic runs agree on it. Part (2) is Adequacy, and A1 refutes it for v0.
+
+---
+
+## A12. [Join] by anti-unification (no unsound join found; v0 must name the goal)
+
+**Why it is sound when done jointly.** Suppose the joined state generalises *everything the continuation reads*: Ω including binding types (types are values, so v0's "output environments" already covers stored types), the goal, and the match's result value and type. Then each arm's state is an instance of the joined state, obtained by substituting only for the fresh variables. The continuation's derivation is parametric in those variables, so it specialises to each arm. Plotkin's lgg gives this, *including* "same disagreement pair ⇒ same variable". That sharing is sound because every equality it records holds in every arm. I tried stored proofs (`h : Eq Nat x Z`), stored type values (`T ↦ Eq Nat x Z`), seals that share an `L`, closures, and positions coinciding by accident. All are instances.
+
+**The gap: the goal.** v0 joins "output environments". After a non-tail match the arms' goals are refined differently, and v0 does not say which goal the continuation is checked against. One natural implementation (keep "the current refinement" as mutable state) is unsound:
+
+```
+Wrong : Π(n : Nat). Id Nat n Z
+Wrong n := let u = match n { Z => () | S _ => () }; refl
+  // arm Z: goal Eq Nat Z Z ≡ ⊤;  arm S: goal Eq Nat (S σ') Z ≡ ⊥;  [Join]: n ↦ σ_j, u ↦ ()
+  // continuation checked against arm Z's goal: refl : ⊤  ✓
+Wrong (S Z) : ⊥
+```
+
+The unrefined goal `G(σ)` is sound but leaves `σ` orphaned: every occurrence in Ω was substituted in both arms, so Ω's `σ_j` is unrelated to it, and proofs that do a non-tail match first become impossible. **Right rule:** anti-unify the goal jointly with Ω. With one more step it loses nothing. When the pair is exactly a split's `(Z, S σ')`, return `σ` itself ("split restoration"). That is sound because in each arm every such position equals `σ`.
+
+**Uniqueness.** On normal forms, first-order lgg is unique up to renaming. Binders inside closures and seals are handled by `α`, and loan-id renaming is fixed by the positions of the borrow holders. The one choice point, whether to descend into seals and closures, gives two different results, but both are sound. It should be fixed for the canonicity of the checker's output, not for soundness. Arms that mint fresh `σ`s from the same counter can produce a shared name for unrelated values. That is still sound (the name is unconstrained outside each arm), but it is confusing, so mint names local to each arm.
+
+**Interaction with A6.** Under refinement, a hole-bearing seal can normalise to a plain `loan_k` in one arm and stay a seal in the other. "Loan structure identical" then fails and valid code is rejected. Deferred fill keeps each loan at its place in both arms.
+
+---
+
+## A13. Termination of normalisation
+
+Beyond A4 and A5, nothing. With A3's semantic guard and A4's occurrence rule, every seal's canonical call terminates on every instance. `nf`'s recursion into embedded values is structural. A seal can never contain itself, because that would need a recursive call on the same argument values, which the guard forbids. The risk comes back only if §6 stays syntactic.
+
+---
+
+## Smaller gaps found on the way
+
+- **G1.** [Read]/[Borrow] of a value that *contains* a loan (as opposed to *being* one): v0 has no rule. Subsumed by A1's fix.
+- **G2.** Following `p.1` through an abstract value: neither [Match] nor stuck (A3b). It must be an error, or a split in the style of Aeneas's symbolic expansion.
+- **G3.** [Close] chooses its borrow-free or `&T` form from the result type. A computed result type (a large elimination that becomes `&Nat` after refinement) breaks the choice. Require `&` to appear syntactically in the codomain.
+- **G4.** A match in the checked term on a seal (not on a `σ`) is not covered by [Split]. Lean generalises the neutral; v0 needs to say something.
+- **G5.** Evaluated-but-unbound arguments are not in Ω, so in `f (&x) (&x.1)`, [Reorg] cannot find `borrow_x` to end it. That should be an error, and the rules should say so.
+
+## Proposed changes, in priority order
+
+1. The `loan ∉ v` premise on move, copy and borrow, lazily discharged and looking inside seals; a loan-free `uᵢ` as a precondition of [Close]. (A1, G1)
+2. `Π(x : &T). B : Type`. (A2)
+3. §6 → semantic guard on entry values, plus the CIC occurrence rule, plus `f` abstract while its body is checked. Separately, give pattern variables a loan, or invalidate them when their parent is written. (A3, A4, G2)
+4. [Seal]: a seal is normal when its own call is stuck; seals carry their type. (A5)
+5. Replace loan holes by deferred fills, i.e. region nodes whose fills are sealed `λw`. (A6, A7, A9c)
+6. Nullary close-off = [Close] on the λ-lift of `t` over its free variables. (A10)
+7. [Join] anti-unifies the goal jointly, with split restoration. (A12)
+8. n-ary calls in the core. (A9b)
