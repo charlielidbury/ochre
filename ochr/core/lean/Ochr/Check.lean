@@ -72,6 +72,14 @@ def Item.name : Item → String
   | .defn d => d.name
   | .ind n _ => n
 
+/-- D36 (v1.7): a field type is first-order data: declared inductive types (the one
+being declared among them), `Nat`, `Unit` and `×` of these; no `Π`, no `&`, no sort, no
+proposition. This is strict positivity in its simplest form. -/
+def firstOrder : Value → Bool
+  | .tNat | .tUnit | .tInd _ => true
+  | .tProd A B => firstOrder A && firstOrder B
+  | _ => false
+
 /-- Declare an inductive type: constructors with named fields of closed, borrow-free
 types; fields may mention the type itself (recursive) or earlier types. -/
 def checkInd (n : String) (ctors : List (String × List (String × Term))) : M Unit := do
@@ -84,6 +92,8 @@ def checkInd (n : String) (ctors : List (String × List (String × Term))) : M U
       let T ← evalType FT
       if T.typeHasRef then err s!"field {fname} of {cn}: no borrows inside data"
       if (← sortOf T) != 1 then err s!"field {fname} of {cn}: its type must be a data type in Type"
+      if (← get).cfg.positivity && !firstOrder T then
+        err s!"field {fname} of {cn} : {T}: fields are first-order data (inductive types, Nat, Unit, ×), D36"
       fs := fs.push (fname, T)
     cs := cs.push (cn, fs.toList)
   modify fun s => { s with inds := s.inds.map fun d => if d.name == n then ⟨n, cs.toList⟩ else d }

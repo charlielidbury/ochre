@@ -220,7 +220,10 @@ the run are inert (they have no borrow in the run's Ω). If the run completes, t
 result is its value; if it is stuck, `⌈t⌉` (its embedded values are already normal). -/
 partial def nfSealed (t : Term) : M Value := do
   let saved ← get
-  modify fun s => { s with env := #[{}] }
+  -- bounded like calls, so that a normalisation loop (breaker-fresh-v16 X5 without D39)
+  -- is an error rather than a stack overflow
+  if saved.depth ≥ 2000 then err "normalisation depth exceeded (a sealed program that re-closes itself)"
+  modify fun s => { s with env := #[{}], depth := s.depth + 1 }
   let r ← tryCatch (do let (v, _) ← eval false t; pure (some v)) fun e =>
     match e with
     | .stuck f => do modify (fun s => { s with fuel := f }); pure none
@@ -565,18 +568,37 @@ partial def convFn (f g : Value) : M Bool := do
         | .tRef T =>
           let σ ← freshAbs T
           let l ← freshLoan
-          modifyFrame 0 fun fr => { fr with binds := fr.binds.push ⟨⟨s!"{h.name}°"⟩, some T, .loan l⟩ }
+          modifyFrame 0 fun fr => { fr with binds := fr.binds.push ⟨⟨s!"{h.name}°"⟩, some T, .loan l, false⟩ }
           pure (Value.borrow l (.abs σ))
         | _ => if ← isPropV A then pure Value.proof else pure (Value.abs (← freshAbs A))
       pushBind h (some A) w
       args := args.push w
     discard popFrameRaw
+    -- D38 (v1.8): a borrow result is observed as its content, after one shared fresh
+    -- value is written through it, so the owners show where it points
+    let σw? ← match pf with
+      | .tPi _ (.pi _ _ (.ref _)) =>
+        if (← get).cfg.obsBorrow then
+          match ← callType pf args (args.map fun _ => none) with
+          | .tRef T => some <$> freshAbs T
+          | _ => pure none
+        else pure none
+      | _ => pure none
     let obs (fv : Value) : M (Value × List Value) := onCopy do
       let (r, _) ← callFn false fv none args (args.map fun _ => none) false
-      pushTemp r
-      endAll
-      let r ← popTemp
-      pure (r, (← get).env[0]!.binds.toList.map (·.val))
+      match r, σw? with
+      | .borrow k u, some σw =>
+        pushTemp u
+        pushTemp (.borrow k (.abs σw))
+        endAll
+        discard popTemp
+        let u' ← popTemp
+        pure (u', (← get).env[0]!.binds.toList.map (·.val))
+      | _, _ =>
+        pushTemp r
+        endAll
+        let r ← popTemp
+        pure (r, (← get).env[0]!.binds.toList.map (·.val))
     let (rf, cf) ← obs f
     let (rg, cg) ← obs g
     if mode == 2 then conv rf rg      -- counterfactual: compare the result only (breaker-fresh F3)
@@ -619,7 +641,7 @@ partial def eval (typed : Bool) (t : Term) : M (Value × Option Value) := do
         pure (if cfg.seqByProof then (p, p) else (e, p))
       | .refl | .andI _ _ | .cong _ _ | .prim "trans" _ | .prim "symm" _ => pure (true, true)
       | .prim "J" [_, _, _, P, _, _] =>
-        let p := (← jErased P) || (cfg.proofLeaves && (← getFlags).2)
+        let p := (← jErased P) || (cfg.leafRule != 0 && (← getFlags).2)
         pure (p, p)
       | .ascribe _ A =>
         if cfg.seqByProof then
@@ -632,7 +654,10 @@ partial def eval (typed : Bool) (t : Term) : M (Value × Option Value) := do
           let e := (← get).lastErased || (r.2.isSome && (← typeClass r.2.get!) == 2)
           pure (e, e)
       | .place _ | .const _ | .val _ | .fix .. =>
-        let p := cfg.proofLeaves && r.1 == .proof
+        let p ← match cfg.leafRule with
+          | 0 => pure false
+          | 1 => pure (r.1 == .proof)     -- finding P1's first fix: unstable (finding P3)
+          | _ => leafProof t r.1
         pure (p, p)
       | _ => pure (false, false)
     else do let e ← erasedValue r.1; pure (e, e)   -- the v1.4 reading: decided on the value (breaker-fresh F1)
@@ -708,7 +733,38 @@ partial def propDecl (sc : List Nat) (c : Term) : M Bool := do
   | .matchNat _ z s => pure ((← propDecl sc z) || (← propDecl sc s))
   | .matchInd _ _ arms => arms.anyM fun (_, a) => propDecl sc a
   | .ascribe u A => pure (isPropSort A || (← propDecl sc u))
-  | .val v => pure ((← typeClass v) == 2)
+  | _ => pure false      -- an embedded value is not declared (a stuck block's parameter types)
+
+/-- v1.7 (D35): which parameters are proofs, i.e. declared of sort Prop (`propDecl` on
+the domain term, in the scope of the captured values and the earlier parameters). The
+same flags wherever parameters are bound: the body, [Def] and [Call-type]. -/
+partial def paramFlags (cs : List Value) (ds : List Term) : M (List Bool) := do
+  if (← get).cfg.leafRule != 2 then return ds.map fun _ => false
+  let quick : Term → Bool := fun
+    | .nat | .unit | .ref _ | .tind _ | .sort _ | .prod .. => true
+    | _ => false
+  if ds.all quick then return ds.map fun _ => false
+  let capSc ← cs.reverse.mapM declOfVal
+  let mut out := #[]
+  let mut pre : List Nat := []     -- the earlier parameters, newest first
+  for d in ds do
+    out := out.push (← if quick d then pure false else propDecl (pre ++ capSc) d)
+    pre := declOfDom d :: pre
+  pure out.toList
+
+/-- Is this leaf (a place, constant or `λ`) a proof, i.e. declared of sort Prop? A
+variable by its binding's flag (`letIn`, `paramFlags`); captured values and sub-places
+never are (fields are first-order data, D36). -/
+partial def leafProof (t : Term) (v : Value) : M Bool := do
+  match t with
+  | .place (.var i) => match ← varPos i with
+    | .bind f j => pure (← get).env[f]!.binds[j]!.proof
+    | _ => pure false
+  | .const n => pure ((← typeClass (← lookupGlobal n).ty) == 2)
+  | .fix .. => match v with
+    | .proof => pure true
+    | .clo cs (.fix _ hs ds c _ _) => pure ((← fnClass (.tPi cs (.pi hs ds c))) == 2)
+    | _ => pure false
   | _ => pure false
 
 /-- What the declared type of a function term (a call's head) says (`declOfDom`). -/
@@ -778,7 +834,7 @@ partial def evalCore (typed : Bool) (t : Term) : M (Value × Option Value) := do
     pure (.unit, ty .tUnit)
   | .letIn h u w =>
     let (v, T) ← eval typed u
-    pushBind h T v
+    pushBind h T v (← getFlags).2     -- `h` is a proof iff `u` is
     let (r, R) ← eval typed w
     let fl ← getFlags     -- the body's erasure flags (dropping may normalise)
     pushTemp r
@@ -812,7 +868,8 @@ partial def evalCore (typed : Bool) (t : Term) : M (Value × Option Value) := do
     if typed then pure (v, some (← valType v)) else pure (v, none)
   | .sort l => pure (.sort l, some (.sort (l + 1)))
   | .pi .. =>
-    let (cs, t') ← capture t
+    -- a type former is erased: even its captures (which access places) run on a copy
+    let (cs, t') ← onCopy (capture t)
     let T := Value.tPi cs t'
     if typed then pure (T, some (.sort (← sortOf T))) else pure (T, none)
   | .fix _ hs ds c _ _ =>
@@ -868,6 +925,8 @@ partial def evalCore (typed : Bool) (t : Term) : M (Value × Option Value) := do
   | .and P Q => onCopy do
     let P' ← evalType P
     let Q' ← evalType Q
+    unless (← sortOf P') == 0 && (← sortOf Q') == 0 do
+      err s!"{P'} ∧ {Q'}: both conjuncts must be propositions ([T-And])"
     pure (mkAnd P' Q', some (.sort 0))
   | .andI h k =>
     let (_, Th) ← eval typed h
@@ -998,13 +1057,14 @@ argument moved into it). The other free variables of `B` were captured when the
 partial def callType (piTy : Value) (ws : Array Value) (tys : Array (Option Value)) : M Value := do
   let .tPi cs (.pi hs ds c) := piTy | err s!"not a function type: {piTy}"
   if ds.length != ws.size then err s!"arity: {ds.length} parameters, {ws.size} arguments"
+  let pf ← paramFlags cs ds
   onCopy do
     pushFrame
     for v in cs do pushBind ⟨"κ"⟩ none v
     for ((d, h), i) in (ds.zip hs).zipIdx do
       let A ← evalType d
       expectTy s!"argument {i + 1} ({h.name})" tys[i]! A
-      pushBind h (some A) ws[i]!
+      pushBind h (some A) ws[i]! (pf.getD i false)
     evalType c
 
 /-- P5: the borrow arguments of a call that is not run end unchanged. -/
@@ -1025,14 +1085,15 @@ partial def fixOf (fv : Value) : M (List Value × Term) := do
 
 /-- [Call]: push a frame `[caps, self, x̄ ↦ w̄]`, run the body, pop the frame. -/
 partial def runBody (fv : Value) (cs : List Value) (t : Term) (ws : Array Value) : M Value := do
-  let .fix self hs _ _ _ body := t | err "internal: not a fix"
+  let .fix self hs ds _ _ body := t | err "internal: not a fix"
   let d := (← get).depth
   if d ≥ 2000 then err "call depth exceeded (a non-terminating recursion)"
   modify fun s => { s with depth := d + 1 }
+  let pf ← paramFlags cs ds
   pushFrame
   for v in cs do pushBind ⟨"κ"⟩ none v
   pushBind self none fv
-  for (h, w) in hs.zip ws.toList do pushBind h none w
+  for ((h, w), p) in (hs.zip ws.toList).zip pf do pushBind h none w p
   let (v, _) ← eval false body
   pushTempAt ((← topIdx) - 1) v
   popFrame
@@ -1073,7 +1134,9 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
     setFlags (true, true)
     return (.proof, B)
   let r ← match fv with
-    | .abs _ | .sealed _ => closeCall fv ws kind   -- a neutral head closes off at once (v1.3)
+    | .abs _ | .sealed _ =>
+      -- a neutral head closes off at once (v1.3), except as [Seal]'s head call (D39)
+      if head && (← get).cfg.headGuardNeutral then stuckNow else closeCall fv ws kind
     | .gfn _ | .clo _ _ =>
       let (cs, t) ← fixOf fv
       tryCatch (runBody fv cs t ws) fun e =>
@@ -1184,13 +1247,14 @@ opaque call, deriver-e346 §E4.3): generalise first, i.e. replace every occurren
 partial def generalizeNeutral (p : Place) (n : Value) : M Nat := do
   unless (← get).cfg.generalize do
     err s!"[Split] on {← ppPlace p}, whose content {n} is a neutral but not an abstract value (RULES §5 splits only on σ)"
-  let T ← match n with
+  -- v1.8: σ has the matched place's type (v1.6: the head's closed codomain, else Nat)
+  let T ← if (← get).cfg.genPlaceType then placeType p else match n with
     | .sealed t => match ← sealedResultType? t with
       | some T => pure T
       | none => pure .tNat
     | _ => pure .tNat
   let σ ← freshAbs T
-  trace fun _ => s!"[Split] generalise {n} to σ{σ}"
+  trace fun _ => s!"[Split] generalise {n} to σ{σ} : {T}"
   substEnv n (.abs σ) true
   if (← get).cfg.genConsistent then
     modify fun s => { s with neutrals := (n, σ) :: s.neutrals }
@@ -1392,8 +1456,15 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Nat) (allProof :
   let mut hints := #[]
   let mut doms := #[]
   let mut args := #[]
+  let mut pflags := #[]
   for (q, mode) in capsS do
     let T ← placeType q
+    -- a captured proof variable stays a proof in the block: its parameter is declared
+    -- `: T` with `T : Prop` (v1.7: the same flag on the direct and the block path)
+    let env := (← get).env
+    pflags := pflags.push (match q with
+      | .var o => mode != 1 && env[f]!.binds[nb - 1 - o]!.proof
+      | _ => false)
     hints := hints.push (Hint.mk ((← ppPlace q).replace "*" "" |>.replace "(" "" |>.replace ")" "" |>.replace "." "_"))
     match mode with
     | 2 =>
@@ -1417,7 +1488,9 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Nat) (allProof :
         | .deref => .deref acc | .fst => .fst acc | .snd => .snd acc
         | .field i h => .field i h acc) base
     | none => p) 0
-  let anon := Value.clo [] (.fix ⟨"_"⟩ hints.toList (doms.toList.map .val) (.val B) none body)
+  let domTs := (doms.zip pflags).toList.map fun (T, p) =>
+    if p then Term.ascribe (.val T) (.sort 0) else .val T
+  let anon := Value.clo [] (.fix ⟨"_"⟩ hints.toList domTs (.val B) none body)
   trace fun _ => s!"[Stuck block] {anon}({", ".intercalate (args.toList.map (·.pp []))})"
   -- v1.7 (D35): the block is erased exactly when its match would be, i.e. at every
   -- instance: when every arm is a proof (finding P2: not read off the computed type B)
@@ -1545,25 +1618,26 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
   -- keep `refs` (refinements made on the way to a nested fix still hold) and the
   -- enclosing functions' [Rec] contexts
   modify fun s => { s with env := #[{}], goal := none }
+  let pf ← paramFlags cs ds
   pushFrame
   for v in cs do pushBind ⟨"κ"⟩ none v
   let mut entries := #[]
-  for (d, h) in ds.zip hs do
+  for ((d, h), p) in (ds.zip hs).zip pf do
     let A ← evalType d
     match A with
     | .tRef T =>
       let σ ← freshAbs T
       let l ← freshLoan
-      modifyFrame 0 fun fr => { fr with binds := fr.binds.push ⟨⟨s!"{h.name}°"⟩, some T, .loan l⟩ }
-      pushBind h (some A) (.borrow l (.abs σ))
+      modifyFrame 0 fun fr => { fr with binds := fr.binds.push ⟨⟨s!"{h.name}°"⟩, some T, .loan l, false⟩ }
+      pushBind h (some A) (.borrow l (.abs σ)) p
       entries := entries.push (if T == .tNat || (T matches .tInd _) then some σ else none)
     | _ =>
       if (← get).cfg.p5 && (← get).cfg.proofParamsStar && (← isPropV A) then
-        pushBind h (some A) .proof
+        pushBind h (some A) .proof p
         entries := entries.push none
       else
         let σ ← freshAbs A
-        pushBind h (some A) (.abs σ)
+        pushBind h (some A) (.abs σ) p
         entries := entries.push (if A == .tNat || (A matches .tInd _) then some σ else none)
   let goal ← evalType c
   trace fun _ => s!"[Def] {self.name}: goal {goal}"
@@ -1572,7 +1646,7 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
   pushFrame
   for v in cs do pushBind ⟨"κ"⟩ none v
   pushBind self (some piTy) fv
-  for b in F1.binds.extract cs.length F1.binds.size do pushBind b.hint b.ty b.val
+  for b in F1.binds.extract cs.length F1.binds.size do pushBind b.hint b.ty b.val b.proof
   -- [Rec]: the decreasing parameter is the one named by `by xⱼ` (v1.2, D23); without
   -- `by` the function is not recursive (no candidate survives a recursive call)
   let cands ← if (← get).cfg.inferRecPos then
