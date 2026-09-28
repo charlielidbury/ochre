@@ -63,6 +63,8 @@ structure Config where
   argNotBot : Bool := true       -- this checker's fix L2: an argument must not be ⊥ at the call point
   generalize : Bool := true      -- clarification C8: [Split] on a sealed program generalises it to a fresh σ first
   blockMoves : Bool := true      -- clarification C5: a stuck block moves in a borrow variable that an arm moves
+  inferRecPos : Bool := false    -- v1 behaviour: infer the decreasing parameter instead of reading `by xⱼ`
+  eraseOnCopy : Bool := true     -- v1.3 P2 (D26): a term whose type is a proposition runs on a private copy
   trace : Bool := false          -- record goals, splits and call types (for inspection)
 deriving Inhabited, Repr
 

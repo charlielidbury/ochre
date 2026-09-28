@@ -44,7 +44,8 @@ inductive Term where
   | val (v : Value)                           -- an embedded value (inside sealed programs, closures)
   | sort (l : Nat)                            -- `sort 0 = Prop`, `sort (i+1) = Type_i`
   | pi (hs : List Hint) (doms : List Term) (cod : Term)
-  | fix (self : Hint) (hs : List Hint) (doms : List Term) (cod : Term) (body : Term)
+  | fix (self : Hint) (hs : List Hint) (doms : List Term) (cod : Term) (dec : Option Nat) (body : Term)
+                                              -- `dec`: the parameter named by `by xⱼ` (none: non-recursive)
   | call (f : Term) (args : List Term) (head : Bool)   -- `head`: the head call of a sealed program ([Seal])
   | nat | zero | succ (t : Term) | unit | tt
   | prod (A B : Term) | pair (t u : Term) | fst (t : Term) | snd (t : Term)
@@ -93,7 +94,7 @@ partial def Term.beq : Term → Term → Bool
   | .val v, .val w => v.beq w
   | .sort l, .sort m => l == m
   | .pi _ ds c, .pi _ ds' c' => Term.beqList ds ds' && c.beq c'
-  | .fix _ _ ds c b, .fix _ _ ds' c' b' => Term.beqList ds ds' && c.beq c' && b.beq b'
+  | .fix _ _ ds c d b, .fix _ _ ds' c' d' b' => Term.beqList ds ds' && c.beq c' && d == d' && b.beq b'
   | .call f as h, .call g bs h' => f.beq g && Term.beqList as bs && h == h'
   | .nat, .nat | .zero, .zero | .unit, .unit | .tt, .tt | .refl, .refl | .top, .top => true
   | .succ t, .succ u | .fst t, .fst u | .snd t, .snd u | .ref t, .ref u => t.beq u

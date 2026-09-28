@@ -83,7 +83,7 @@ partial def headOnly (isSelf : Nat → Place → Bool) (c : Nat) : Term → Bool
   | .matchNat p z s => !isSelf c p && headOnly isSelf c z && headOnly isSelf c s
   | .pi _ ds cod => (ds.zipIdx.all fun (d, i) => headOnly isSelf (c + i) d)
       && headOnly isSelf (c + ds.length) cod
-  | .fix _ _ ds cod b => (ds.zipIdx.all fun (d, i) => headOnly isSelf (c + i) d)
+  | .fix _ _ ds cod _ b => (ds.zipIdx.all fun (d, i) => headOnly isSelf (c + i) d)
       && headOnly isSelf (c + ds.length) cod && headOnly isSelf (c + ds.length + 1) b
   | .call f as _ => headOnly isSelf c f && as.all (headOnly isSelf c)
   | .seq t u | .prod t u | .pair t u | .and t u | .andI t u | .cong t u | .ascribe t u =>
@@ -102,7 +102,7 @@ partial def constHeadOnly (n : String) : Term → Bool
   | .ascribe t u => constHeadOnly n t && constHeadOnly n u
   | .matchNat _ z s => constHeadOnly n z && constHeadOnly n s
   | .pi _ ds c => ds.all (constHeadOnly n) && constHeadOnly n c
-  | .fix _ _ ds c b => ds.all (constHeadOnly n) && constHeadOnly n c && constHeadOnly n b
+  | .fix _ _ ds c _ b => ds.all (constHeadOnly n) && constHeadOnly n c && constHeadOnly n b
   | .call f as _ => constHeadOnly n f && as.all (constHeadOnly n)
   | .eq a b d | .id a b d => constHeadOnly n a && constHeadOnly n b && constHeadOnly n d
   | .prim _ as => as.all (constHeadOnly n)
@@ -157,7 +157,7 @@ partial def substT (x r : Value) (t : Term) : M Term := do
   | .seq u w => return .seq (← go u) (← go w)
   | .matchNat p z s => return .matchNat p (← go z) (← go s)
   | .pi hs ds c => return .pi hs (← ds.mapM go) (← go c)
-  | .fix h hs ds c b => return .fix h hs (← ds.mapM go) (← go c) (← go b)
+  | .fix h hs ds c d b => return .fix h hs (← ds.mapM go) (← go c) d (← go b)
   | .call f as hd => return .call (← go f) (← as.mapM go) hd
   | .succ u => return .succ (← go u)
   | .fst u => return .fst (← go u)
@@ -340,7 +340,7 @@ partial def valType (v : Value) : M Value := do
   | .pair a b => pure (.tProd (← valType a) (← valType b))
   | .abs σ => absType σ
   | .gfn n => pure (← lookupGlobal n).ty
-  | .clo cs (.fix _ hs ds c _) => pure (.tPi cs (.pi hs ds c))
+  | .clo cs (.fix _ hs ds c _ _) => pure (.tPi cs (.pi hs ds c))
   | .borrow _ w => pure (.tRef (← valType w))
   | .tNat | .tUnit | .tProd .. | .tEq .. | .tTop | .tAnd .. | .tRef _ | .tPi .. | .sort _ =>
     pure (.sort (← sortOf v))
@@ -356,6 +356,9 @@ partial def sortOf (T : Value) : M Nat := do
   | .abs σ => match ← absType σ with
     | .sort l => pure l
     | S => err s!"σ{σ} : {S} is not a type"
+  | .sealed t => match ← sealedSort? t with
+    | some l => pure l
+    | none => err s!"{T} is not known to be a type"
   | .tPi cs (.pi hs ds c) => onCopy do
     pushFrame
     for v in cs do pushBind ⟨"κ"⟩ none v
@@ -377,7 +380,28 @@ partial def isPropV (T : Value) : M Bool := do
     | some b => pure b
     | none => pure ((← sortOf T) == 0)
   | .abs σ => pure ((← absType σ) == .sort 0)
+  | .sealed t => pure ((← sealedSort? t) == some 0)
   | _ => pure false
+
+/-- The sort of a sealed program that is a type (v1.4: "a sealed program of sort Prop is
+a type"), read off its head call: in result form `L; C`, when the callee's codomain is a
+sort. -/
+partial def sealedSort? (t : Term) : M (Option Nat) := do
+  let rec body : Term → Term
+    | .letIn _ _ u => body u
+    | u => u
+  match body t with
+  | .call (.val f) _ true =>
+    let piTy ← match f with
+      | .gfn n => pure (some (← lookupGlobal n).ty)
+      | .clo cs (.fix _ hs ds c _ _) => pure (some (Value.tPi cs (.pi hs ds c)))
+      | .abs σ => pure (some (← absType σ))
+      | _ => pure none
+    match piTy with
+    | some (.tPi _ (.pi _ _ (.sort l))) => pure (some l)
+    | some (.tPi _ (.pi _ _ (.val (.sort l)))) => pure (some l)
+    | _ => pure none
+  | _ => pure none
 
 /-- A value standing for an arbitrary inhabitant of `A`, used only to compute sorts. -/
 partial def genericValue (A : Value) : M Value := do
@@ -421,7 +445,18 @@ partial def expectTy (what : String) (T : Option Value) (A : Value) : M Unit := 
   if let some T := T then
     unless T == A do err s!"{what} has type {T}, expected {A}"
 
+/-- P2 (v1.3, D26): erased terms leave no trace. A term whose type is a proposition is
+evaluated on a private copy of Ω, argument evaluation included, and the copy is
+discarded. Every value of a proposition is `⋆` (C7) and only such terms evaluate to
+`⋆`, so this is decided on the value, in both modes. -/
 partial def eval (typed : Bool) (t : Term) : M (Value × Option Value) := do
+  let before := (← get).env
+  let r ← evalCore typed t
+  if r.1 == .proof && (← get).cfg.eraseOnCopy then
+    modify fun s => { s with env := before }
+  pure r
+
+partial def evalCore (typed : Bool) (t : Term) : M (Value × Option Value) := do
   tick
   let ty (T : Value) : Option Value := if typed then some T else none
   match t with
@@ -461,11 +496,11 @@ partial def eval (typed : Bool) (t : Term) : M (Value × Option Value) := do
     let (cs, t') ← capture t
     let T := Value.tPi cs t'
     if typed then pure (T, some (.sort (← sortOf T))) else pure (T, none)
-  | .fix _ hs ds c _ =>
+  | .fix _ hs ds c _ _ =>
     let (cs, t') ← capture t
     let v := Value.clo cs t'
     let T := match t' with
-      | .fix _ _ ds' c' _ => Value.tPi cs (.pi hs ds' c')
+      | .fix _ _ ds' c' _ _ => Value.tPi cs (.pi hs ds' c')
       | _ => Value.tPi cs (.pi hs ds c)
     if typed then checkFix v cs t'
     let v ← if (← get).cfg.p5 && (← isPropV T) then pure .proof else pure v
@@ -536,20 +571,22 @@ partial def eval (typed : Bool) (t : Term) : M (Value × Option Value) := do
     if A'.typeHasRef then err "&A needs A borrow-free (RULES §1)"
     pure (.tRef A', some (.sort 1))
   | .id A a b => pure (← idType typed A a b, some (.sort 0))
-  | .prim "J" [_, P, h, u] =>
-    -- transport: the value is unchanged; the type moves from `P a` to `P b`
-    let (Pv, PT) ← eval typed P
-    let (_, Th) ← eval typed h
-    let (v, Tu) ← eval typed u
-    if !typed then return (v, none)
-    match Th with
-    | some .tTop => pure (v, Tu)
-    | some (.tEq A a b) =>
-      let (Pa, _) ← callFn true Pv PT #[a] #[some A] false
-      expectTy "the transported term" Tu Pa
-      let (Pb, _) ← callFn true Pv PT #[b] #[some A] false
-      pure (v, some Pb)
-    | _ => err s!"J: the proof has type {Th.getD .bot}, which is not an equation"
+  | .prim "J" [A, a, b, P, h, u] =>
+    -- J(A, a, b, P, h, t) : P(b) for h : Eq A a b and t : P(a) (endpoints explicit, D23)
+    if !typed then return (← eval false u)
+    let A' ← evalType A
+    let (av, Ta) ← onCopy (eval true a)
+    let (bv, Tb) ← onCopy (eval true b)
+    expectTy "J's first endpoint" Ta A'
+    expectTy "J's second endpoint" Tb A'
+    let (Pv, PT) ← eval true P
+    let (_, Th) ← eval true h
+    expectTy "J's equation" Th (mkEq A' av bv)
+    let (v, Tu) ← eval true u
+    let (Pa, _) ← callFn true Pv PT #[av] #[some A'] false
+    expectTy "the transported term" Tu Pa
+    let (Pb, _) ← callFn true Pv PT #[bv] #[some A'] false
+    pure (v, some Pb)
   | .prim "symm" [h] =>
     let (_, Th) ← eval typed h
     match Th with
@@ -570,7 +607,9 @@ partial def eval (typed : Bool) (t : Term) : M (Value × Option Value) := do
   | .ascribe u A =>
     if !typed then return (← eval false u)
     let A' ← evalType A
-    let (v, T) ← eval true u
+    let (v, T) ← match u with
+      | .matchNat p z s => evalMatch true p z s (some A')
+      | _ => eval true u
     expectTy "the ascribed term" T A'
     pure (v, some A')
 
@@ -594,8 +633,9 @@ partial def funType (fv : Value) (fT : Option Value) : M Value := do
   if let some T := fT then return T
   match fv with
   | .gfn n => pure (← lookupGlobal n).ty
-  | .clo cs (.fix _ hs ds c _) => pure (.tPi cs (.pi hs ds c))
+  | .clo cs (.fix _ hs ds c _ _) => pure (.tPi cs (.pi hs ds c))
   | .abs σ => absType σ
+  | .sealed _ => err s!"the type of the sealed function {fv} is not known here (a call of a sealed function in untyped code)"
   | _ => err s!"{fv} is not a function"
 
 partial def kindOf (B : Value) : M Kind := do
@@ -650,7 +690,7 @@ partial def fixOf (fv : Value) : M (List Value × Term) := do
 
 /-- [Call]: push a frame `[caps, self, x̄ ↦ w̄]`, run the body, pop the frame. -/
 partial def runBody (fv : Value) (cs : List Value) (t : Term) (ws : Array Value) : M Value := do
-  let .fix self hs _ _ body := t | err "internal: not a fix"
+  let .fix self hs _ _ _ body := t | err "internal: not a fix"
   pushFrame
   for v in cs do pushBind ⟨"κ"⟩ none v
   pushBind self none fv
@@ -682,7 +722,7 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
     endBorrowArgs ws
     return (.proof, B)
   match fv with
-  | .abs _ => pure (← closeCall fv ws kind, B)
+  | .abs _ | .sealed _ => pure (← closeCall fv ws kind, B)   -- a neutral head closes off at once (v1.3)
   | .gfn _ | .clo _ _ =>
     let (cs, t) ← fixOf fv
     let r ← tryCatch (runBody fv cs t ws) fun e =>
@@ -700,6 +740,14 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
 state is back at the call point). `L := let cᵢ = uᵢ`, `C := f(ā)` with `aᵢ = &cᵢ` for
 the borrow arguments `wᵢ = borrow_ℓᵢ uᵢ`; the result and the loans follow the table. -/
 partial def closeCall (fv : Value) (ws : Array Value) (kind : Kind) : M Value := do
+  -- Precondition (v1.1): every argument's content is loan-free (guaranteed by [Access]).
+  -- An assertion: a violation is a bug of the rules or of this checker, never a user error.
+  -- (Skipped in the counterfactual run without D19, which models the rules without it.)
+  if (← get).cfg.accessInside then
+   for w in ws do
+     let u := match w with | .borrow _ u => u | u => u
+     unless (liveLoansIn (← get).env u).isEmpty do
+      err s!"INTERNAL [Close] precondition violated: the argument {w} holds a live loan (please report)"
   let bs : List (Nat × Nat × Value) := (ws.toList.zipIdx).filterMap fun (w, i) =>
     match w with
     | .borrow l u => some (i, l, u)
@@ -743,8 +791,10 @@ partial def recCheck (fv : Value) (ws : Array Value) : M Unit := do
           (strictSubterms (expandRefs st.refs (.abs σ))).contains u
         | _, _ => false
       -- fail at the offending call, before it is run (running it may not terminate)
+      if cands.isEmpty then
+        err s!"[Rec] {fv} calls itself but declares no decreasing parameter (`by x`)"
       if cands'.isEmpty then
-        err s!"[Rec] no parameter decreases structurally in every recursive call (at {fv}({", ".intercalate (ws.toList.map toString)}): each recursive argument must be a strict subterm of that parameter's entry value as refined so far)"
+        err s!"[Rec] at {fv}({", ".intercalate (ws.toList.map toString)}): the argument in the decreasing position is not a strict subterm of that parameter's entry value as refined so far"
       candss := candss.push cands'
     else candss := candss.push cands
   set { st with recCands := candss.toList }
@@ -756,26 +806,26 @@ partial def refine (σ : Nat) (r : Value) : M Unit := do
   substEnv (.abs σ) r true
   modify fun s => { s with refs := (σ, r) :: s.refs }
 
-partial def evalMatch (typed : Bool) (p : Place) (z s : Term) : M (Value × Option Value) := do
+partial def evalMatch (typed : Bool) (p : Place) (z s : Term) (expected : Option Value := none) :
+    M (Value × Option Value) := do
   accessPath p
   let v ← content p
   match v with
   | .zero => eval typed z
   | .succ _ => eval typed s
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
-  | .abs σ => if typed then splitThenClose p z s σ else stuckNow
+  | .abs σ => if typed then splitThenClose p z s σ expected else stuckNow
   | .sealed _ | .loan _ =>
     if !typed then stuckNow
     else
       let σ ← generalizeNeutral p v
-      splitThenClose p z s σ
+      let expected ← expected.mapM (substV v (.abs σ))
+      splitThenClose p z s σ expected
   | _ => err s!"[Match] on a non-Nat value {v}"
 
-/-- A match in the checked program on a neutral that is not an abstract value (e.g. a
-sealed program left by an opaque call, deriver-e346 §E4.3): v1's [Split] covers only
-`σ`. Clarification: generalise first, i.e. replace that neutral everywhere (Ω, stored
-types, goal) by a fresh `σ`, then split on it. This is dependent elimination with a
-generalised motive, sound in the model (meta-model §3.5); it may lose completeness. -/
+/-- [Split] on a neutral that is not an abstract value (a sealed program left by an
+opaque call, deriver-e346 §E4.3): generalise first, i.e. replace every occurrence of it
+(Ω, stored types, goal) by a fresh `σ`, then split on it (v1.2, D22). -/
 partial def generalizeNeutral (p : Place) (n : Value) : M Nat := do
   unless (← get).cfg.generalize do
     err s!"[Split] on {← ppPlace p}, whose content {n} is a neutral but not an abstract value (RULES §5 splits only on σ)"
@@ -784,74 +834,110 @@ partial def generalizeNeutral (p : Place) (n : Value) : M Nat := do
   substEnv n (.abs σ) true
   pure σ
 
-/-- The free variables of a match that were moved out (became `⊥`) in an arm. -/
-partial def movedIn (fvs : List Nat) (before : List Value) : M (List Nat) := do
-  let mut out := []
-  for (o, b) in fvs.zip before do
-    let v ← getAt (← varPos o)
-    if v == .bot && b != .bot then out := out ++ [o]
-  pure out
-
 /-- [Split] for a non-tail match: check each arm under its refinement, then close the
-match off as a stuck block and continue once from the unrefined state (D15). -/
-partial def splitThenClose (p : Place) (z s : Term) (σ : Nat) : M (Value × Option Value) := do
+match off as a stuck block and continue once from the unrefined state (D15). The
+block's type is the arms' common type, or the annotation `let x : T = match …`
+(each arm is then checked against `T` refined, v1.2 D22). -/
+partial def splitThenClose (p : Place) (z s : Term) (σ : Nat) (expected : Option Value) :
+    M (Value × Option Value) := do
   let mt := Term.matchNat p z s
   let fvs := mt.freeVars
   let before ← fvs.mapM fun o => do getAt (← varPos o)
   let saved ← get
-  refine σ .zero
-  let (_, Tz) ← eval true z
-  let mz ← movedIn fvs before
-  restoreKeep saved
+  let armType (arm : Term) (r : Value) : M (Value × List Nat) := do
+    refine σ r
+    let (_, T) ← eval true arm
+    let some T := T | err "internal: untyped arm"
+    if let some E := expected then
+      let E' ← substV (.abs σ) r E
+      unless T == E' do
+        err s!"an arm of the annotated match has type {T}, but the annotation refined to this arm is {E'}"
+    let mut moved := []
+    for (o, b) in fvs.zip before do
+      let v ← getAt (← varPos o)
+      if v == .bot && b != .bot then moved := moved ++ [o]
+    restoreKeep saved
+    pure (T, moved)
+  let (Tz, mz) ← armType z .zero
   let σ' ← freshAbs .tNat
-  refine σ (.succ (.abs σ'))
-  let (_, Ts) ← eval true s
-  let ms ← movedIn fvs before
-  restoreKeep saved
-  let some Tz := Tz | err "internal: untyped arm"
-  unless Ts == some Tz do
-    err s!"the arms of a non-tail match have different types ({Tz} and {Ts.getD .bot}); v1 does not say what the closed-off match's result type is"
-  closeOffMatch mt Tz (mz ++ ms)
+  let (Ts, ms) ← armType s (.succ (.abs σ'))
+  let B ← match expected with
+    | some E => pure E
+    | none =>
+      unless Ts == Tz do
+        err s!"the arms of a non-tail match have different types ({Tz} and {Ts}); annotate it (let x : T = match …)"
+      pure Tz
+  closeOffMatch mt B (mz ++ ms)
 
-/-- Stuck blocks (RULES §3): close a stuck match off as the body of a call to an
-anonymous function of its free places. Borrow variables it uses become borrow
-arguments (moved in if an arm moves them, reborrowed `&*x` otherwise); owned places it
-writes become borrow arguments `&x`; places it only reads become value arguments. -/
+/-- Place `q` is a prefix of place `p` (both rooted in the same frame). -/
+partial def placePrefix (q p : Place) : Bool :=
+  let (i, qs) := q.steps
+  let (j, ps) := p.steps
+  i == j && qs.length ≤ ps.length && ps.take qs.length == qs
+
+/-- Stuck blocks (RULES §3, v1.3): close a stuck match off as a call to an anonymous
+function of its free places, captured as Rust infers closure captures, on maximal place
+prefixes: a place some arm moves out of is moved in; otherwise a place written or
+borrowed (under `&_` or left of `:=`) in some arm is passed as `&`; otherwise a place
+read is copied. A borrow variable read as a whole is a move (reading a borrow moves it);
+assigning a borrow variable as a whole moves it too (passing `&x` would be `&&T`). -/
 partial def closeOffMatch (mt : Term) (B : Value) (moved : List Nat) :
     M (Value × Option Value) := do
-  let occs := mt.freeOccs
-  let fvs := (mt.freeVars.toArray.qsort (· > ·)).toList   -- oldest binding first
-  let n := fvs.length
   let f ← topIdx
   let nb := (← get).env[f]!.binds.size
+  -- the free places used, re-rooted at the frame index, with their capture mode
+  -- (0 = copy, 1 = &, 2 = move)
+  let mut uses : Array (Place × Nat) := #[]
+  for (o, p, k) in mt.freeOccs do
+    let q := p.mapRoot fun _ => .var o
+    let b := (← get).env[f]!.binds[nb - 1 - o]!
+    let whole := q matches .var _
+    let isBorrowVar := b.val.isBorrow || (b.ty matches some (.tRef _))
+    let mode :=
+      if whole && isBorrowVar && (k == .read || k == .assign) then 2
+      else if whole && moved.contains o then 2
+      else if k == .borrow || k == .assign then 1
+      else 0
+    uses := uses.push (q, mode)
+  -- maximal prefixes: places with no strict prefix among the used places
+  let mut caps : Array (Place × Nat) := #[]
+  for (q, _) in uses do
+    let hasPrefix := uses.any fun (q', _) => placePrefix q' q && !(q' == q)
+    if !hasPrefix && !(caps.any fun (c, _) => c == q) then
+      let mode := (uses.filter fun (p, _) => placePrefix q p).foldl (fun m (_, k) => max m k) 0
+      caps := caps.push (q, mode)
+  -- order the captures by frame position (oldest binding first), then by path
+  let capsS := caps.qsort fun (a, _) (b, _) => a.root > b.root || (a.root == b.root && (a.steps.2.length < b.steps.2.length))
+  let n := capsS.size
   let mut hints := #[]
   let mut doms := #[]
   let mut args := #[]
-  let mut derefd : List Nat := []
-  for o in fvs do
-    let b := (← get).env[f]!.binds[nb - 1 - o]!
-    let T ← match b.ty with
-      | some T => pure T
-      | none => valType b.val
-    let isBorrowVar := b.val.isBorrow || (T matches .tRef _)
-    let written := occs.any fun (o', _, k) => o' == o && (k == .borrow || k == .assign)
-    hints := hints.push b.hint
-    if isBorrowVar then
-      doms := doms.push T
-      let move := moved.contains o && (← get).cfg.blockMoves
-      args := args.push (if move then Term.place (.var o) else .borrow (.deref (.var o)))
-    else if written then
-      doms := doms.push (.tRef T)
-      args := args.push (.borrow (.var o))
-      derefd := o :: derefd
-    else
-      doms := doms.push T
-      args := args.push (.place (.var o))
-  let idx (o : Nat) : Nat := (fvs.findIdx? (· == o)).getD 0
-  let body := mt.mapFree (fun c o =>
-    let v := Place.var (c + n - 1 - idx o)
-    if derefd.contains o then .deref v else v) 0
-  let anon := Value.clo [] (.fix ⟨"_"⟩ hints.toList (doms.toList.map .val) (.val B) body)
+  for (q, mode) in capsS do
+    let T ← placeType q
+    hints := hints.push (Hint.mk ((← ppPlace q).replace "*" "" |>.replace "(" "" |>.replace ")" "" |>.replace "." "_"))
+    match mode with
+    | 2 =>
+      if !((← get).cfg.blockMoves) && (T matches .tRef _) then
+        -- counterfactual C5: reborrow instead of moving
+        doms := doms.push T; args := args.push (Term.borrow (.deref q))
+      else
+        doms := doms.push T; args := args.push (Term.place q)
+    | 1 => doms := doms.push (.tRef T); args := args.push (Term.borrow q)
+    | _ => doms := doms.push T; args := args.push (Term.place q)
+  let capsL := capsS.toList
+  let body := mt.mapFreePlace (fun c p =>
+    match capsL.zipIdx.find? fun ((q, _), _) => placePrefix q p with
+    | some ((q, mode), k) =>
+      let param := Place.var (c + n - 1 - k)
+      let base := if mode == 1 then Place.deref param else param
+      -- counterfactual C5: the moved-in borrow was reborrowed, so the parameter is the reborrow
+      let (_, qs) := q.steps
+      let (_, ps) := p.steps
+      (ps.drop qs.length).foldl (fun acc st => match st with
+        | .deref => .deref acc | .fst => .fst acc | .snd => .snd acc) base
+    | none => p) 0
+  let anon := Value.clo [] (.fix ⟨"_"⟩ hints.toList (doms.toList.map .val) (.val B) none body)
+  trace fun _ => s!"[Stuck block] {anon}({", ".intercalate (args.toList.map (·.pp []))})"
   let (v, _) ← evalCall false (.val anon) args.toList false
   pure (v, some B)
 
@@ -935,7 +1021,7 @@ place `cᵢ ↦ σᵢ` for each borrow parameter `xᵢ : &Tᵢ` (frame 0); the c
 runs in a pushed frame and its result's type must convert to the goal as refined by
 splits. Afterwards the whole state is restored. -/
 partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
-  let .fix self hs ds c body := t | err "internal: not a fix"
+  let .fix self hs ds c dec body := t | err "internal: not a fix"
   let saved ← get
   if (← get).cfg.selfHeadOnly then
     let n := ds.length
@@ -972,7 +1058,16 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
   for v in cs do pushBind ⟨"κ"⟩ none v
   pushBind self (some piTy) fv
   for b in F1.binds.extract cs.length F1.binds.size do pushBind b.hint b.ty b.val
-  let cands := (entries.toList.zipIdx).filterMap fun (e, i) => e.map fun _ => i
+  -- [Rec]: the decreasing parameter is the one named by `by xⱼ` (v1.2, D23); without
+  -- `by` the function is not recursive (no candidate survives a recursive call)
+  let cands ← if (← get).cfg.inferRecPos then
+      pure ((entries.toList.zipIdx).filterMap fun (e, i) => e.map fun _ => i)
+    else match dec with
+      | some j =>
+        if (entries[j]?.join).isNone then
+          err s!"`by {(hs.getD j ⟨"?"⟩).name}`: the decreasing parameter must have type Nat or &Nat"
+        pure [j]
+      | none => pure []
   modify fun s => { s with goal := some goal, recStack := ⟨fv, entries⟩ :: s.recStack,
                             recCands := cands :: s.recCands }
   checkTail body fun v T => do

@@ -58,6 +58,18 @@ ochr D18 {
   def Pick (n : Nat) (x : &Nat) (y : &Nat) : &Nat := match n { Z => x | S _ => y }
   def Probe (z : &Nat) (e : Id Unit (*z := 0) (*z := 1)) : Unit := ()
   reject def Use (n : Nat) (a : Nat) (b : Nat) : Unit := let r = Pick(n, &a, &b); Probe(r, refl)
+
+  -- meta-model C2 without currying (lean-checker, v1.4): the annotated block forms its
+  -- type while the hole is in both a and b, and checks each arm against it refined. With
+  -- owner sets the S arm must prove the b-conjunct Eq Nat 0 1 and fails; observing only
+  -- the first owner accepts BadD18, and ClosedD18 is a closed proof of Eq Nat 0 1.
+  def Pick3 (x : &Nat) (y : &Nat) (s : Nat) : &Nat := match s { Z => x | S _ => y }
+  def K (z : &Nat) (e : Id Unit (*z := 0) (*z := 1)) : Eq Nat 0 1 := e
+  reject def BadD18 (s : Nat) (hs : Eq Nat s 1) (a : Nat) (b : Nat) : Eq Nat 0 1 :=
+    let r = Pick3(&a, &b, s);
+    let e : Id Unit (*r := 0) (*r := 1) = match s { Z => hs | S _ => refl };
+    K(r, e)
+  reject def ClosedD18 : Eq Nat 0 1 := BadD18(1, refl, 0, 0)
 }
 
 def useMessage (cfg : Config) : String :=

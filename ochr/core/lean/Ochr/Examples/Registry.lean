@@ -1,4 +1,5 @@
 import Ochr.Examples.Units
+import Ochr.Examples.E5
 import Ochr.Examples.Probes
 
 /-! # Every example program, for the test runner and the counterfactual ledger -/
@@ -8,7 +9,7 @@ open Ochr Ochr.Test Ochr.Surface
 namespace Ochr.Registry
 
 def programs : List (String × Program) :=
-  [("E1", E1), ("E2", E2), ("E3", E3), ("E4", E4), ("E6", E6), ("Attacks", Attacks), ("More", More), ("Probes", Probes),
+  [("E1", E1), ("E2", E2), ("E3", E3), ("E4", E4), ("E5", E5), ("E6", E6), ("Attacks", Attacks), ("More", More), ("Probes", Probes),
    ("D18", Ochr.Units.D18)]
 
 def reports (cfg : Config := {}) : List Report := programs.map fun (n, p) => run n p cfg
@@ -25,7 +26,7 @@ def flips (cfg : Config) : List String := Id.run do
 
 /-- Each switch disables one rule; the ledger records what it was guarding. -/
 def switches : List (String × Config) :=
-  [("P5 (D14): calls at a proposition are not run", { p5 := false }),
+  [("P2 (v1.3, D26): proofs run on a private copy", { eraseOnCopy := false }),
    ("D18: owners are sets", { multiOwner := false }),
    ("D17: [Rec] entry-value guard", { recGuard := false }),
    ("D19: [Access] ends loans inside the content", { accessInside := false }),
@@ -36,16 +37,27 @@ def switches : List (String × Config) :=
 
 end Ochr.Registry
 
+/-- The total number of verdict assertions; a truncated example file changes it. -/
+def Ochr.Registry.expectedTotal : Nat := 135
+
+open Ochr.Registry in
+#guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
+open Ochr.Registry in
+#guard (reports {}).all Report.allAsExpected
+
 /-! ## The counterfactual ledger (asserted)
 
-Switching one rule off flips exactly the verdicts below and nothing else. An empty
-entry means no example depends on the rule (D18: see notes/lean-checker.md §4; its
-effect is asserted directly in `Units.lean`). -/
+Switching one rule off flips exactly the verdicts below and nothing else. (v1's P5
+switch, `p5 := false`, is not in the ledger: since v1.3 skipping a proof is an
+optimisation of P2, and in this checker switching it off also switches off the `⋆`
+representation of proofs, so its row would not isolate one rule.) -/
 
 open Ochr.Registry in
-#guard flips { p5 := false } == ["E4.TwiceMZero':rejected", "Attacks.FP2:rejected", "Attacks.BoomIsTrue:rejected"]
+#guard flips { eraseOnCopy := false } ==
+  ["E5.TwoPhase:rejected", "E6.LemmaMoves:rejected", "Attacks.N1Closed:accepted",
+   "Probes.EffArg:accepted", "Probes.EffArgErased:rejected"]
 open Ochr.Registry in
-#guard flips { multiOwner := false } == []
+#guard flips { multiOwner := false } == ["D18.BadD18:accepted", "D18.ClosedD18:accepted"]
 open Ochr.Registry in
 #guard flips { recGuard := false } ==
   ["Attacks.Loop:accepted", "Attacks.Bot':accepted", "Attacks.Loop2:accepted", "Attacks.Spin:accepted",

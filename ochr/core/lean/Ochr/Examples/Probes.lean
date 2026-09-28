@@ -7,7 +7,7 @@ and how stuck blocks pass borrow variables. -/
 open Ochr.Test
 
 ochr Probes {
-  def AddM (x : &Nat) (y : Nat) : Unit :=
+  def AddM (x : &Nat) (y : Nat) : Unit by x :=
     match *x { Z => *x := y | S p => AddM(&p, y) }
 
   -- a type computed by a program, and dependent pattern matching through it: the
@@ -19,8 +19,8 @@ ochr Probes {
   reject def DepMatchWrong (b : Nat) (x : T(b)) : Nat := match b { Z => 0 | S _ => x }
 
   -- a local recursive fix, checked by [Def] at its own generic call
-  def Outer (x : &Nat) : Unit := (fix go (y : &Nat) : Unit := match *y { Z => () | S p => go(&p) })(x)
-  reject def OuterBad (x : Nat) : Eq Nat 0 1 := (fix go (y : Nat) : Eq Nat 0 1 := go(y))(x)
+  def Outer (x : &Nat) : Unit := (fix go (y : &Nat) : Unit by y := match *y { Z => () | S p => go(&p) })(x)
+  reject def OuterBad (x : Nat) : Eq Nat 0 1 := (fix go (y : Nat) : Eq Nat 0 1 by y := go(y))(x)
 
   -- closures capture values when formed (P2, D13)
   def Cap (n : Nat) : Id Nat ((λ(u : Unit) : Nat => S n)(())) (S n) := refl
@@ -32,10 +32,12 @@ ochr Probes {
     match x { Z => refl | S _ => refl }
   reject def AliasDangling (x : Nat) : Nat := match x { Z => 0 | S y => x := 0; y }
 
-  -- P5 erases the call, not its arguments: W5's write happens (C10)
+  -- v1.3 P2: a proof call's argument evaluation runs on the private copy too, so
+  -- W5's write inside the proof's argument leaves no trace (under v1 it persisted)
   def Lemma (u : Unit) : ⊤ := refl
   def W5 (x : &Nat) : Unit := *x := 5
-  def EffArg (x : &Nat) : Id Unit (Lemma(W5(&*x)); ()) (*x := 5) := refl
+  reject def EffArg (x : &Nat) : Id Unit (Lemma(W5(&*x)); ()) (*x := 5) := refl
+  def EffArgErased (x : &Nat) : Id Unit (Lemma(W5(&*x)); ()) () := refl
 
   -- stuck blocks: a written owned variable is passed as &c, and a split later
   -- re-runs the block to each arm's value
@@ -57,6 +59,6 @@ ochr Probes {
 
 #eval IO.println (run "Probes" Probes).show
 
--- every verdict as expected, and exactly 19 assertions (a truncated file changes the count)
+-- every verdict as expected, and exactly 20 assertions (a truncated file changes the count)
 #guard (run "Probes" Probes).allAsExpected
-#guard (run "Probes" Probes).count == 19
+#guard (run "Probes" Probes).count == 20

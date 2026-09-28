@@ -30,7 +30,7 @@ inductive STerm where
   | matchNat (scrut z : STerm) (y : String) (s : STerm)
   | pi (bs : List (String × STerm)) (cod : STerm)
   | arrow (A B : STerm)
-  | fix (f : String) (bs : List (String × STerm)) (ret body : STerm)
+  | fix (f : String) (bs : List (String × STerm)) (ret : STerm) (dec : Option String) (body : STerm)
   | unitLit
   | pair (a b : STerm)
   | andI (a b : STerm)
@@ -45,6 +45,7 @@ structure SDecl where
   name : String
   params : List (String × STerm)
   ret : STerm
+  dec : Option String := none
   body : STerm
   expectAccept : Bool
 deriving Inhabited, Repr
@@ -83,8 +84,15 @@ partial def toPlace (ctx : Ctx) : STerm → R Place
 
 def isPlace (ctx : Ctx) (t : STerm) : Bool := (toPlace ctx t).toOption.isSome
 
+/-- The position of the parameter named by `by x`. -/
+def decIndex (bs : List (String × STerm)) : Option String → R (Option Nat)
+  | none => pure none
+  | some x => match bs.findIdx? (·.1 == x) with
+    | some j => pure (some j)
+    | none => throw s!"`by {x}`: {x} is not a parameter"
+
 def succFn : Term :=
-  .fix ⟨"_"⟩ [⟨"n"⟩] [.nat] .nat (.succ (.place (.var 0)))
+  .fix ⟨"_"⟩ [⟨"n"⟩] [.nat] .nat none (.succ (.place (.var 0)))
 
 mutual
 partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
@@ -104,11 +112,14 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
   | .app "Id" [A, a, b] => return .id (← resolve ctx true A) (← resolve ctx false a) (← resolve ctx false b)
   | .app "Eq" [A, a, b] => return .eq (← resolve ctx true A) (← resolve ctx false a) (← resolve ctx false b)
   | .app "cong" [f, h] => return .cong (← resolve ctx false f) (← resolve ctx false h)
-  | .app "J" [A, P, h, u] =>
-    return .prim "J" [← resolve ctx true A, ← resolve ctx false P, ← resolve ctx false h, ← resolve ctx false u]
+
   | .app "trans" [h, k] => return .prim "trans" [← resolve ctx false h, ← resolve ctx false k]
   | .app "symm" [h] => return .prim "symm" [← resolve ctx false h]
   | .app f as => throw s!"{f} applied by juxtaposition to {as.length} arguments (calls are written f(a, …))"
+  | .call (.ident "J") [A, a, b, P, h, u] =>
+    if (lookup ctx "J").isSome then return .call (← resolve ctx false (.ident "J")) (← [A, a, b, P, h, u].mapM (resolve ctx false)) false
+    return .prim "J" [← resolve ctx true A, ← resolve ctx false a, ← resolve ctx false b,
+                      ← resolve ctx false P, ← resolve ctx false h, ← resolve ctx false u]
   | .call f as => return .call (← resolve ctx false f) (← as.mapM (resolve ctx false)) false
   | .deref _ => return .place (← toPlace ctx t)
   | .proj i a =>
@@ -133,11 +144,11 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
     let (ctx', hs, ds) ← binders ctx bs
     return .pi hs ds (← resolve ctx' true cod)
   | .arrow A B => return .pi [⟨"_"⟩] [← resolve ctx true A] (← resolve (.bound "_" :: ctx) true B)
-  | .fix f bs ret body =>
+  | .fix f bs ret dec body =>
     let (ctx', hs, ds) ← binders ctx bs
     let ret' ← resolve ctx' true ret
     let bodyCtx := (bs.reverse.map fun (x, _) => Entry.bound x) ++ (.bound f :: ctx)
-    return .fix ⟨f⟩ hs ds ret' (← resolve bodyCtx false body)
+    return .fix ⟨f⟩ hs ds ret' (← decIndex bs dec) (← resolve bodyCtx false body)
   | .unitLit => pure .tt
   | .pair a b => return .pair (← resolve ctx false a) (← resolve ctx false b)
   | .andI a b => return .andI (← resolve ctx false a) (← resolve ctx false b)
@@ -164,6 +175,6 @@ def resolveDecl (d : SDecl) : R Def := do
   let body ←
     if d.params.isEmpty then resolve [] false d.body
     else resolve ((d.params.reverse.map fun (x, _) => Entry.bound x) ++ [.bound d.name]) false d.body
-  pure { name := d.name, hs := hs, doms := ds, cod := cod, body := body }
+  pure { name := d.name, hs := hs, doms := ds, cod := cod, dec := ← decIndex d.params d.dec, body := body }
 
 end Ochr.Surface

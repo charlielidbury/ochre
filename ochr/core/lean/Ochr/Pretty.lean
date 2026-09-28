@@ -38,9 +38,12 @@ partial def Term.pp (ns : List String) : Term → String
   | .sort 0 => "Prop"
   | .sort (l + 1) => if l == 0 then "Type" else s!"Type_{l}"
   | .pi hs ds c => ppPi ns hs ds c
-  | .fix h hs ds c b =>
+  | .fix h hs ds c d b =>
       let (ns', bs) := domsPP ns hs ds
-      s!"fix {h.name} {bs} : {c.pp ns'} := {b.pp (ns'.insertIdx hs.length h.name)}"
+      let byS := match d with
+        | some j => s!" by {(hs.getD j ⟨"?"⟩).name}"
+        | none => ""
+      s!"fix {h.name} {bs} : {c.pp ns'}{byS} := {b.pp (ns'.insertIdx hs.length h.name)}"
   | .call f as _ => s!"{f.ppHead ns}({", ".intercalate (as.map (·.pp ns))})"
   | .nat => "Nat" | .unit => "Unit" | .tt => "()" | .refl => "refl" | .top => "⊤"
   | .zero => "0"

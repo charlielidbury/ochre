@@ -16,6 +16,7 @@ structure Def where
   hs : List Hint
   doms : List Term
   cod : Term
+  dec : Option Nat := none     -- `by xⱼ`: the decreasing parameter
   body : Term
 deriving Inhabited
 
@@ -35,7 +36,7 @@ partial def Term.mentionsConst (n : String) : Term → Bool
   | .ascribe t u => t.mentionsConst n || u.mentionsConst n
   | .matchNat _ z s => z.mentionsConst n || s.mentionsConst n
   | .pi _ ds c => ds.any (·.mentionsConst n) || c.mentionsConst n
-  | .fix _ _ ds c b => ds.any (·.mentionsConst n) || c.mentionsConst n || b.mentionsConst n
+  | .fix _ _ ds c _ b => ds.any (·.mentionsConst n) || c.mentionsConst n || b.mentionsConst n
   | .call f as _ => f.mentionsConst n || as.any (·.mentionsConst n)
   | .eq a b c | .id a b c => a.mentionsConst n || b.mentionsConst n || c.mentionsConst n
   | .prim _ as => as.any (·.mentionsConst n)
@@ -55,7 +56,7 @@ def checkDef (d : Def) : M Unit := do
     let v ← if (← get).cfg.p5 && (← isPropV goal) then pure .proof else pure v
     modify fun s => { s with env := #[{}], globals := s.globals ++ [⟨d.name, goal, none, v⟩] }
   else
-    let fixT := Term.fix ⟨d.name⟩ d.hs d.doms d.cod d.body
+    let fixT := Term.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body
     let ty := Value.tPi [] (.pi d.hs d.doms d.cod)
     modify fun s => { s with globals := s.globals ++ [⟨d.name, ty, some fixT, .gfn d.name⟩] }
     checkFix (.gfn d.name) [] fixT
