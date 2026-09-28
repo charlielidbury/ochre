@@ -10,7 +10,7 @@ $ "owners"(ell) = union.big_("occurrences of" "loan"_ell) cases("owners"(m) & "i
 
 Following loans outward through enclosing borrows is what connects a reborrow with the place it ultimately writes. In the successor case of `AddMZero`, the argument `borrow₁ σ'` has its loan inside the content of `x`'s `borrow₀`, whose loan is in the generic caller's `c`; so the owner of the recursive call's argument is `c`, the same place the goal observes. The owners form a set because a hole left by a returned borrow can occur in several sealed programs at once. Observing only one of them would be unsound: a call that returns a borrow into one of two arguments could then be proved to leave the other unchanged whichever it picked.
 
-The _footprint_ `W(t, u)` is the union of the owners of the places `t` or `u` may write. It is syntactic, so it does not change when a later case split refines an abstract value, and it does not depend on unrelated places in the environment.
+The _footprint_ `W(t, u)` is the union of the owners of the places `t` or `u` may write. The places are read off the syntax, after resolving pattern variables to the sub-places they denote, so the footprint does not depend on unrelated places in the environment; their owners are found by following loans, so a later refinement can shrink an owner set when it decides where a hole points, and the component it removes is one both sides agree on.
 
 The _observation_ of `t` at `Ω` on footprint `W` runs `t` on a private copy of `Ω`, ends every borrow that remains, and reads off the result and the contents of the footprint:
 
