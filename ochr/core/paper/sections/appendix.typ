@@ -28,7 +28,7 @@
 #let acc = $"acc"$
 #let cont = $"content"$
 
-This appendix defines Ochr completely: its syntax and runtime structures (@app-syntax), the machine (@app-machine), observation, `Id` and conversion (@app-conv), typing (@app-typing) and well-formed environments (@app-wf). Every derivation in the paper can be checked against it. It follows rule set v1.8. The reference checker (@sec-impl) implements v1.6: general inductive types and persistent generalisation (D34), with the erasure rule of v1.5; where it differs from v1.8 the text says so. Each group of rules names the checker functions that implement it (in `Machine.lean` unless noted), and says where the checker differs. @app-notes lists the points where the prose rules left a choice and the reading taken here.
+This appendix defines Ochr completely: its syntax and runtime structures (@app-syntax), the machine (@app-machine), observation, `Id` and conversion (@app-conv), typing (@app-typing) and well-formed environments (@app-wf). Every derivation in the paper can be checked against it. It follows rule set v1.9. The reference checker (@sec-impl) implements v1.7 with D40: general inductive types, persistent generalisation (D34) and syntactic erasure (D35, D40), but not yet D36–D39 or D41; where it differs from v1.9 the text says so. Each group of rules names the checker functions that implement it (in `Machine.lean` unless noted), and says where the checker differs. @app-notes lists the points where the prose rules left a choice and the reading taken here.
 
 == Syntax and runtime structures <app-syntax>
 
@@ -190,9 +190,10 @@ A closure or Π-type captures, when it is formed, the current contents of its fr
 
 #rules(
   ir(name: "Erase-proof", $t "erased," "of sort Prop"$, $cfg(Omega, t) ev cfg(Omega, star)$),
-  ir(name: "Erase-type", $t "erased, a type"$, $cfg(Omega, t) ev_0 cfg(Omega', T)$, $cfg(Omega, t) ev cfg(Omega, T)$),
+  ir(name: "Erase-type", $t "erased, a type"$, $cfg(Omega, t) ev_0 cfg(Omega', T) "confined"$, $cfg(Omega, t) ev cfg(Omega, T)$),
+  ir(name: "Erase-err", $t "erased"$, $cfg(Omega, t) ev_0 cfg(Omega', v) "not confined"$, $cfg(Omega, t) ev err$),
 )
-Here $ev_0$ is the judgement in which the rule for `t`'s own form is applied at the root instead of [Erase-type]. #lean("eval", "callFn", "fnClass", "onCopy (Env.lean)")
+Here $ev_0$ is the judgement in which the rule for `t`'s own form is applied at the root instead of [Erase-type]. A run of `t` from Ω is _confined_ (D41) if none of its steps assigns, borrows or moves out of a place rooted at a position of Ω, except a borrow or move that evaluates an argument of an erased call; steps inside an erased subterm are judged by that subterm's own confinement. A proof that the machine skips ([Erase-proof]) was checked to be confined by [T-Erase] when its enclosing definition was checked. #lean("eval", "callFn", "fnClass", "onCopy (Env.lean)")
 
 === Calls
 
@@ -236,7 +237,7 @@ The row is chosen by the _declared_ codomain `B` of `F`'s type: the codomain ter
   ),
   caption: [[Close]: $"close"(Omega, F, overline(w)) = cfg(Omega[f_i slash "loan"_(ell_i)]_(i in I), r)$. The borrows $"borrow"_(ell_i)$ are consumed: at the call point they are no longer in Ω.],
 ) <fig-app-close>
-#lean("closeCall", "resultKind", "kindOf")
+#lean("closeCall", "declKind", "resultKind", "kindOf")
 
 === Matching
 
@@ -307,20 +308,20 @@ The typing judgement $Omega tack.r t ev v : A tack.l Omega'$ says that from Ω t
 
 === Erasure <app-erasure>
 
-An occurrence of a term is _erased_ (P2, D24, D26, D28, D35) when:
+An occurrence of a term is _erased_ (P2, D24, D26, D28, D35, D40) when:
 + it stands in a type position (@app-syntax), or inside one; or
 + it is a type former (a sort, `Π`, an inductive type, `Unit`, `×`, `&`, `Eq`, `⊤`, `∧`, `Id`), since every type is formed on a private copy (D24); or
 + it is a call whose callee _returns types_ or _returns proofs_; or
-+ it is any other term whose type has sort `Prop`: a proof.
++ it is a _proof_, judged syntactically: `refl`; $chevron.l h, k chevron.r$; a `J` whose motive is syntactically a function into `Prop`; a call whose callee returns proofs; a variable or constant declared of a proposition (its value is ⋆); a `fix` whose Π-type returns proofs; `let x = t; u` or `t; u` when `u` is a proof; a match when the arm it takes is a proof; or the bound term `t` of `let x : A = t; u` when `A` has declared sort `Prop`.
 
-A function value, top-level or local, _returns types_ if the codomain term of its Π-type is syntactically a sort, and _returns proofs_ if that term's _declared sort_ is `Prop`: the sort obtained by typing the codomain term from the declared types of its heads, without normalising it (so `U(n)` with `U : Π(n : Nat). Type₀` has declared sort `Type₀`, whatever `U(n)` computes to). A stuck block is erased exactly when the match it closes off is, by clause 4, and not by clause 3 applied to its computed codomain. Every clause reads syntax, a declaration or a sort, and sorts do not change under refinement or instantiation because universes are not cumulative; so the two paths of @lem-stable take the same decisions. Notes 1 and 2 of @app-notes show what goes wrong otherwise.
+A function value, top-level or local, _returns types_ if the codomain term of its Π-type is syntactically a sort, and _returns proofs_ if that term's _declared sort_ is `Prop`: the sort obtained by typing the term from the declared types of its heads, without normalising it (so `U(n)` with `U : Π(n : Nat). Type₀` has declared sort `Type₀`, whatever `U(n)` computes to). A stuck block is erased exactly when _each_ of its arms, as checked by [Split], is a proof by clause 4 (D40); it is never erased by clause 3 applied to its codomain, nor by its type inferred from the arms, since both are computed. A block that is not erased is always safe: its sealed programs re-run the arms, which make their own decisions. Every clause reads syntax, a declaration or a sort, so the two paths of @lem-stable take the same decisions. Notes 1 and 2 of @app-notes show what goes wrong otherwise.
 
 #rules(
-  ir(name: "T-Erase", $t "erased"$, $Omega scripts(tack.r)_0 t ev v : A tack.l Omega'$, $Omega tack.r t ev v^bullet : A tack.l Omega$),
+  ir(name: "T-Erase", $t "erased"$, $Omega scripts(tack.r)_0 t ev v : A tack.l Omega' "by a confined run"$, $Omega tack.r t ev v^bullet : A tack.l Omega$),
 )
-Here $v^bullet = star$ if `A` has sort `Prop` and $v^bullet = v$ otherwise, and $scripts(tack.r)_0$ applies the rule for `t`'s own form at the root. So an erased term is typed like any other term, on a private copy of the environment, and leaves no trace. #lean("eval", "fnClass", "typeClass", "jErased", "evalType", "onCopy (Env.lean)")
+Here $v^bullet = star$ if `A` has sort `Prop` and $v^bullet = v$ otherwise, $scripts(tack.r)_0$ applies the rule for `t`'s own form at the root, and a run that is not confined (@app-machine, [Erase-err]) is a type error. So an erased term is typed like any other term, on a private copy of the environment, and leaves no trace. Confinement is redundant for a correctly classified term, since the private copy already discards its effects; it is a fail-safe (D41): if the two evaluation paths ever disagreed about whether a term is erased, the path that erases a term with outside effects would reject it, instead of silently discarding effects that the other path keeps. A proof may still mutate its own locals, and may hand outer places to other erased calls, as `AddMZero`'s recursive call `AddMZero(&p)` does. #lean("eval", "fnClass", "propDecl", "typeClass", "jErased", "evalType", "onCopy (Env.lean)")
 
-The checker still decides erasure as v1.5 did, and differs from these clauses in three ways. (a) When a codomain term is neither syntactically a sort nor syntactically a proposition, `fnClass` evaluates it at the generic call, with the function's captured values, and classifies the result (cached per Π-closure); and it gives a stuck block's function the class "returns types" when the block's type is a sort. Notes 1 and 2 are closed proofs of false that it accepts because of this. (b) A `let`, sequence or match is erased when its tail (the body, the second part, or the arm taken) is, so `let T = (c := S Z; F(&c)); …`, with `F` returning types, discards the write to `c`, which clause 4 keeps. (c) Type formers are not erased as a whole, but evaluate their parts on private copies (`onCopy`), except that a Π-type in a term position captures in the real environment.
+The checker implements these clauses (`fnClass`, `propDecl`, and a _proof_ flag kept by `eval`), with two differences. (a) `propDecl` is incomplete: for instance a codomain `q.1` projecting a proposition out of a captured pair is classed as data. The classification is still the same on both paths, since blocks follow their arms. (b) Type formers are not erased as a whole but evaluate their parts on private copies (`onCopy`), except that a Π-type in a term position captures in the real environment, which can only end borrows early.
 
 === Places, sequencing and data
 
@@ -442,7 +443,7 @@ A state (Ω, Δ, Σ) is _well formed_ when the following hold. They are the four
 
 == Notes on the definition <app-notes>
 
-The prose rules (RULES v1.8) leave the following points open, or state them in a way that admits more than one reading. Each note gives the reading taken above, which is the checker's unless the note says otherwise. Notes 1–3 record readings under which earlier rule sets, and the v1.6 checker, are unsound; v1.7 adopts the readings of notes 1 and 2 (D35) and of note 3 (D36).
+The prose rules (RULES v1.9) leave the following points open, or state them in a way that admits more than one reading. Each note gives the reading taken above, which is the checker's unless the note says otherwise. Notes 1–3 record readings under which earlier rule sets, and the v1.6 checker, are unsound; v1.7 adopts the readings of notes 1 and 2 (D35, refined by D40) and of note 3 (D36). The current checker rejects notes 1 and 2 and still accepts note 3.
 
 + *The class of a local function.* v1.5 recorded a function's erasure class "at [Def]", from its codomain evaluated at its generic call. A local `fix` is checked by [Def] each time it is formed, including at each instance of a statement that contains it, and its codomain may depend on captured values:
   ```
@@ -457,16 +458,17 @@ The prose rules (RULES v1.8) leave the following points open, or state them in a
   LieB(n : Nat) : Id Nat (let c = Z; let T = match n { Z => (c := S Z; ⊤) | S _ => (c := S Z; ⊤) }; c) Z := refl
   BoomB : Eq Nat (S Z) Z := LieB(Z)
   ```
-  At the generic call the block (of type `Prop`) is erased, `c` stays `Z`, and the statement is `⊤`; at `n = Z` the match runs, `c` becomes `S Z`, and `LieB(Z) : Eq Nat (S Z) Z`. The v1.6 checker accepts `BoomB`. A block that is not erased is always safe, because its sealed programs re-run the arms, which make their own erasure decisions; so a block is erased only when its match is.
-+ *Positivity* (D36). v1.6 put no condition on field types; [Ind] requires first-order data (inductive types, `Unit`, `×`). The v1.6 checker accepts `inductive Bad := Mk(f : Π(x : Bad). Empty)` (with `Empty := E(e : Empty)`, whose eliminator into `Eq Nat Z (S Z)` is structural), then `L(b : Bad) : Empty := match b { Mk(f) => f(b) }`, the proof `K(b : Bad) : Eq Nat Z (S Z) := absurd(L(b))`, and `K(Mk(λ(x : Bad) : Empty => L(x))) : Eq Nat Z (S Z)`, a closed proof never run.
-+ *Erasure of sequencing forms.* A `let`, sequence or match is erased only if it is in a type position or is a proof (clause 4). The checker also erases one whose tail is erased (@app-erasure, (b)); that reading is stable too, but for a match it disagrees with the block path (note 2).
-+ *Persistent generalisation* (D34, D37). A generalised sealed program is recorded in ρ, globally, so [Seal-stuck] replaces every later derivation of it, and the state is re-normalised whenever ρ grows. Matching up to ≡ uses conversion, so a re-derivation that differs only in bound names is recognised. The generalised σ has the type of the matched place. The v1.6 checker discards a record made on a private copy and rewinds its fresh-name counter with the copy, so a later split reissues the same σ for a different sealed program (breaker-fresh-v16 X3, a closed proof of `Eq Nat 1 0`).
+  At the generic call the block (of type `Prop`) is erased, `c` stays `Z`, and the statement is `⊤`; at `n = Z` the match runs, `c` becomes `S Z`, and `LieB(Z) : Eq Nat (S Z) Z`. The v1.6 checker accepts `BoomB`. v1.7 first erased a block when its match would be erased; but the match's type, inferred from the arms, is computed, and with arms `f(&c)` where `f` returns data and has codomain `V(Z)` (which computes to `⊤`) the block was erased at the generic call while the match ran at the instance (lean-checker P2, `BoomG`). Hence D40: a block is erased only when each arm is.
++ *Positivity* (D36). v1.6 put no condition on field types; [Ind] requires first-order data (inductive types, `Unit`, `×`). The checker still accepts `inductive Bad := Mk(f : Π(x : Bad). Empty)` (with `Empty := E(e : Empty)`, whose eliminator into `Eq Nat Z (S Z)` is structural), then `L(b : Bad) : Empty := match b { Mk(f) => f(b) }`, the proof `K(b : Bad) : Eq Nat Z (S Z) := absurd(L(b))`, and `K(Mk(λ(x : Bad) : Empty => L(x))) : Eq Nat Z (S Z)`, a closed proof never run.
++ *Erasure of sequencing forms.* A `let` or sequence is a proof when its tail is, and a match when the arm it takes is (clause 4); a type-valued tail does not make its context erased, so `let T = (c := S Z; F(&c)); …` with `F` returning types keeps the write to `c`. The checker agrees, counting a place, constant or `λ` whose value is ⋆ as a proof (lean-checker P1: without that, a proof-typed tail held in a variable was not erased).
++ *Persistent generalisation* (D34, D37). A generalised sealed program is recorded in ρ, globally, so [Seal-stuck] replaces every later derivation of it, and the state is re-normalised whenever ρ grows. Matching up to ≡ uses conversion, so a re-derivation that differs only in bound names is recognised. The generalised σ has the type of the matched place. The checker still discards a record made on a private copy and rewinds its fresh-name counter with the copy, so a later split reissues the same σ for a different sealed program (breaker-fresh-v16 X3, a closed proof of `Eq Nat 1 0`).
++ *Confinement* (D41). A place _outlives_ an erased term when its root is a position of the environment the term starts from; the exception for erased calls covers the borrows and moves that evaluate the call's arguments, and nothing else. The checker does not yet check confinement.
 + *Proofs are not run.* A proof call's arguments are evaluated and its [Call-type] and [Rec] checked, on a private copy; its body is never run ([T-Call-proof]), and the machine skips proofs altogether ([Erase-proof]). By P2 running and skipping agree.
 + *The order of [Access].* Loans are ended from the root of the place outward, then left to right inside its content. RULES fixes no order; by @thm-natural (1) the resolution does not depend on it.
 + *A match on a constructor checks only the arm taken*, in typing as in the machine ([T-Match]).
-+ *[Close]'s row is chosen by the declared codomain* (`Unit`, `&T`, anything else), as v1.7 and @lem-stable (4) say. The checker uses the codomain term when it is literally `Unit` or `&T`, and otherwise, in the typing judgement, the type computed at the call; the two differ only for a codomain that computes to `Unit`.
++ *[Close]'s row is chosen by the declared codomain* (`Unit`, `&T`, anything else), as v1.7 and @lem-stable (4) say, and so does the checker. A codomain that computes to `Unit` without being syntactically `Unit` gets the data row, and there is no η for `Unit`, so a statement such as `Id Unit (let c = *x; G(&c, Z)) ()`, with `G`'s codomain `UU(n)` and `UU(Z) = Unit`, needs induction on `*x` rather than `refl` (the checker's `RowI`, `RowIInd`).
 + *A discarded value* (`t; u`) holding a live loan is an error, like a dying owned binding.
-+ *The head guard covers neutral heads* (D39). The v1.6 checker closes off a neutral-headed call even as the head call of a sealed program; for a codomain `&T` with two or more borrow arguments this re-closes forever (breaker-fresh-v16 X5, a stack overflow).
++ *The head guard covers neutral heads* (D39). The checker still closes off a neutral-headed call even as the head call of a sealed program; for a codomain `&T` with two or more borrow arguments this re-closes forever (breaker-fresh-v16 X5, a stack overflow).
 + *Stuck-block moves.* A whole variable is moved into a block if some arm, when checked, leaves it ⊥, or if it is a borrow variable read or assigned as a whole (the checker's C19). Captures are ordered by the position of their root, then by length, and their arguments are evaluated in that order (breaker-fresh B10).
 + *Footprint.* A place rooted at a borrow variable contributes its owners even when it is only read, and a variable holding ⊥ contributes nothing. Owners are positions, so a temporary can be an owner, when a type is formed while arguments are in flight.
 + *`J`.* `A`, `a`, `b` and `P` are type positions and `h` is a proof, so none of them runs in the machine; `J`'s value is `t`'s. The motive may have any sort (the checker's C12). The checker erases `J` when its motive is syntactically a function into `Prop`.
