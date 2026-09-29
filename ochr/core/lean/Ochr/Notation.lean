@@ -6,14 +6,16 @@ import Ochr.Surface
 ```
 ochr E1 {
   def AddM (x : &Nat) (y : Nat) : Unit by x :=
-    match *x { Z => *x := y | S p => AddM(&p, y) }
+    match *x { Z => *x := y, S p => AddM(&p, y) }
   reject def Bad (x : &Nat) : Id Nat (*x) 5 := *x := 5; refl
 }
 ```
 defines `E1 : Ochr.Surface.Program`. `def` expects the checker to accept the
 definition, `reject def` expects it to be rejected. Calls are saturated and written
 `f(a, …)` with no space before the parenthesis; `S t`, `Id A t u`, `Eq A t u` and
-`cong f h` are written by juxtaposition.
+`cong f h` are written by juxtaposition. Match arms are separated by commas, and a trailing
+comma after the last arm is allowed. No term form contains a comma outside brackets, so an
+arm's body (`ochr_term:10`) ends at the next top-level comma.
 -/
 
 namespace Ochr.Notation
@@ -59,7 +61,8 @@ syntax "_" : ochr_patvar
 syntax ident " => " ochr_term:10 : ochr_arm
 syntax ident ochr_patvar " => " ochr_term:10 : ochr_arm
 syntax ident "(" ochr_patvar,* ")" " => " ochr_term:10 : ochr_arm
-syntax:max "match " ochr_term " { " sepBy1(ochr_arm, " | ") " }" : ochr_term
+-- arms are separated by commas, with an optional trailing comma (as in Rust)
+syntax:max (name := ochrMatch) "match " ochr_term " { " ochr_arm,+,? " }" : ochr_term
 syntax:max "match " ochr_term " {" "}" : ochr_term      -- no arms (v2.0: on a type with no constructors)
 syntax ident " : " ochr_term : ochr_field
 syntax ident : ochr_ctor
@@ -95,6 +98,11 @@ partial def elabTerm (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := do
     let as ← if stx.raw.getKind == ``ochrCtorP0 then pure #[] else
       (stx.raw[5].getSepArgs.map (⟨·⟩ : Syntax → TSyntax `ochr_term)).mapM elabTerm
     return ← `(STerm.ctorP $(strLit c) [$ps,*] [$as,*])
+  if stx.raw.getKind == ``ochrMatch then
+    let p : TSyntax `ochr_term := ⟨stx.raw[1]⟩
+    let arms := stx.raw[3].getSepArgs.map (⟨·⟩ : Syntax → TSyntax `ochr_arm)
+    let as ← arms.mapM elabArm
+    return ← `(STerm.matchGen $(← elabTerm p) [$as,*])
   if stx.raw.getKind == ``ochrProj then
     let t : TSyntax `ochr_term := ⟨stx.raw[0]⟩
     let i := stx.raw[2].isNatLit?.getD 0
@@ -124,9 +132,6 @@ partial def elabTerm (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := do
     `(STerm.letIn $(strLit x.getId.toString) none $(← elabTerm t) $(← elabTerm u))
   | `(ochr_term| let $x:ident : $A = $t; $u) => do
     `(STerm.letIn $(strLit x.getId.toString) (some $(← elabTerm A)) $(← elabTerm t) $(← elabTerm u))
-  | `(ochr_term| match $p { $arms|* }) => do
-    let as ← arms.getElems.mapM elabArm
-    `(STerm.matchGen $(← elabTerm p) [$as,*])
   | `(ochr_term| match $p {}) => do `(STerm.matchGen $(← elabTerm p) [])
   | `(ochr_term| Π $bs*. $c) => do `(STerm.pi [$(← bs.mapM elabBinder),*] $(← elabTerm c))
   | `(ochr_term| λ $bs* : $r => $b) => do

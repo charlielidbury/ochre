@@ -84,9 +84,9 @@ A statement is evaluated along two paths: at a definition's generic call, where 
 
 The argument we expect is that each decision is read from syntax or declarations, and α changes only normal forms. (1) A call is erased iff its callee's codomain _term_ is a sort or has declared sort `Prop`, a stuck block iff each of its arms is, universes are not cumulative, and a match on a proof needs its scrutinee's type to have an inductive head declared in `Prop`, which α cannot change. (2) Pattern variables are resolved to sub-places before captures and footprints are computed. (3) Arms are checked under every refinement of the scrutinee, inside types too. (4) The row is read from the declared codomain, and `&` occurs only at the top of a declared type. Most of these were once decided from a normal form, with a closed proof of `False` or an accepted program that goes wrong as the result (@fig-why). The argument is an enumeration of the decisions we know of; the last round of review found one we had missed, a codomain that computes to a borrow type, which is why (4) now forbids it. The failure it rules out resembles what Pédrot and Tabareau, discussing call-by-name, call a desynchronisation between the effects performed in a term and in its type @fire-triangle; we claim only the resemblance.
 
-Naturality holds only up to resolution, which costs completeness. With `Pick(n, x, y) := match n { Z => x | S _ => y }` and `n` abstract,
+Naturality holds only up to resolution, which costs completeness. With `Pick(n, x, y) := match n { Z => x, S _ => y }` and `n` abstract,
 ```
-let r = Pick(n, &a, &b); let z = b; match n { Z => *r := 5 | S _ => () }
+let r = Pick(n, &a, &b); let z = b; match n { Z => *r := 5, S _ => () }
 ```
 runs for every concrete `n` but is rejected: `Pick`'s hole sits in the fills of both `a` and `b`, so reading `b` ends `r` symbolically, and `r` is dead in the `Z` arm. The refined symbolic state and the concrete one agree only after every borrow is ended (a mechanised counterexample to the stronger form), which is why property 9 is stated up to resolution; Rust likewise treats `r` as borrowing both places while it is live.
 

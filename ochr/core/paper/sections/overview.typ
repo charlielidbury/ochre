@@ -4,7 +4,7 @@ This section introduces Ochr through its running examples. Everything is informa
 
 == Imperative code is evaluated inside types
 
-Ochr programs are made of definitions with parameters and a body. Borrow types `&T` are Rust's mutable references; places are variables `x`, dereferences `*p` and the predecessor field `p.1` of a number. A `match` on a place binds its pattern variable to a _sub-place_, not a copy, so in `match *x { Z => … | S p => … }` the name `p` stands for the field `(*x).1` and `&p` reborrows it.
+Ochr programs are made of definitions with parameters and a body. Borrow types `&T` are Rust's mutable references; places are variables `x`, dereferences `*p` and the predecessor field `p.1` of a number. A `match` on a place binds its pattern variable to a _sub-place_, not a copy, so in `match *x { Z => …, S p => … }` the name `p` stands for the field `(*x).1` and `&p` reborrows it.
 
 `Add` wraps `AddM` behind a pure interface. It owns its first argument, lends it to `AddM`, and returns it:
 
@@ -56,7 +56,7 @@ Now the proof:
 
 ```
 AddMZero(x : &Nat) : Id Unit (AddM(x, 0)) () by x :=
-  match *x { Z => refl | S p => AddMZero(&p) }
+  match *x { Z => refl, S p => AddMZero(&p) }
 ```
 
 The match on `*x` splits on `σ`. In the `Z` branch the goal is `Eq Nat N(Z) Z`; `N(Z)` runs to `Z`, the equation is reflexive and so `⊤`, and `refl` proves it. In the `S` branch the goal is `Eq Nat N(S σ') (S σ')`, which normalises to `Eq Nat (S N(σ')) (S σ')`.
@@ -81,7 +81,7 @@ For comparison, here is the same theorem about the pure wrapper:
 
 ```
 AddZero(x : Nat) : Id Nat (Add(x, 0)) x :=
-  match x { Z => refl | S p => AddMZero(&p) }
+  match x { Z => refl, S p => AddMZero(&p) }
 ```
 
 `Add(x, 0)` writes nothing outside itself, so its observation is just its result, and the goal is again `Eq Nat N(σ) σ`, the very proposition `AddMZero`'s statement computed to; in the successor case it is `Eq Nat (S N(σ')) (S σ')`. The proof borrows the predecessor field of the _owned_ number `x` and appeals to the in-place lemma. The environment again supplies the successor, so even the theorem about the pure function needs no congruence step. An induction hypothesis about a _copy_ of the predecessor, `AddZero(p)`, would have type `Eq Nat N(σ') σ'`, and the successor would have to be added by hand with a congruence lemma derived from `J`. The two theorems are interchangeable: `AddZero(x) := AddMZero(&x)` type-checks, because both statements normalise to the same proposition.
@@ -91,7 +91,7 @@ AddZero(x : Nat) : Id Nat (Add(x, 0)) x :=
 A more idiomatic in-place addition first finds the final node and then writes through it:
 
 ```
-TailM(x : &Nat) : &Nat by x := match *x { Z => x | S p => TailM(&p) }
+TailM(x : &Nat) : &Nat by x := match *x { Z => x, S p => TailM(&p) }
 AddM'(x : &Nat, y : Nat) : Unit := let t = TailM(x); *t := y
 ```
 
@@ -109,7 +109,7 @@ The equivalence of the two additions is proved by the same bare recursion:
 
 ```
 AddMEq(x : &Nat, y : Nat) : Id Unit (AddM(x, y)) (AddM'(x, y)) by x :=
-  match *x { Z => refl | S p => AddMEq(&p, y) }
+  match *x { Z => refl, S p => AddMEq(&p, y) }
 ```
 
 In the successor branch, re-running `AddM'`'s sealed program on `S σ'` unfolds `TailM` once, closes off its inner call with a fresh hole, and the pending write `*r := y` then fills that hole; on the other side the recursive call's statement, evaluated at the call site, performs the same steps through the caller's borrow. Both sides arrive at `Eq Nat (S A(σ', y)) (S B(σ', y))`, where `A` and `B` are the sealed programs for the two additions on the predecessor. The theorem for an owned number follows by lending it: `AddMEqOwned(x : Nat) : Id Unit (AddM(&x, 0)) (AddM'(&x, 0)) := AddMEq(&x, 0)`.
@@ -120,10 +120,10 @@ Dependent types are not only for stating theorems after the fact. A function can
 
 ```
 Le(a : Nat, b : Nat) : Prop by a :=
-  match a { Z => True | S a' => match b { Z => False | S b' => Le(a', b') } }
+  match a { Z => True, S a' => match b { Z => False, S b' => Le(a', b') } }
 
 SubM(x : &Nat, y : Nat, h : Le(y, *x)) : Unit by y :=
-  match y { Z => () | S q => match *x { Z => match h {} | S p => *x := p; SubM(x, q, h) } }
+  match y { Z => (), S q => match *x { Z => match h {}, S p => *x := p; SubM(x, q, h) } }
 ```
 
 The type of `h` mentions `*x`, the content of the borrow at the moment of the call. Where `*x` is `Z` but `y` is not, `h` has type `Le(S q, Z)`, which computes to `False`: the case cannot arise, and the match with no arms, `match h {}`, says so. Inside `SubM`, after `*x := p` has overwritten that content, the recursive call needs a proof of `Le(q, *x)` about the _new_ content; the old hypothesis `h`, of type `Le(S q, S p)`, provides it, because that type was formed when `h` was bound and normalises to `Le(q, p)`.
@@ -131,7 +131,7 @@ The type of `h` mentions `*x`, the content of the borrow at the moment of the ca
 Now a caller that first adds and then subtracts:
 
 ```
-LeAdd(n : Nat, m : Nat) : Le(n, Add(n, m)) by n := match n { Z => refl | S n' => LeAdd(n', m) }
+LeAdd(n : Nat, m : Nat) : Le(n, Add(n, m)) by n := match n { Z => refl, S n' => LeAdd(n', m) }
 
 AddSub(x : &Nat, y : Nat) : Unit := let old = *x; AddM(&*x, y); SubM(x, old, LeAdd(old, y))
 ```
@@ -142,7 +142,7 @@ Finally, a theorem about the whole: adding `y` and then subtracting the old valu
 
 ```
 AddSubId(x : &Nat, y : Nat) : Id Unit (AddSub(x, y)) (*x := y) by x :=
-  match *x { Z => refl | S p => let c = p; AddSubId(&c, y) }
+  match *x { Z => refl, S p => let c = p; AddSubId(&c, y) }
 ```
 
 Here the successor case copies the predecessor into a fresh place `c` instead of borrowing it in place. Borrowing would supply the surrounding `S` to the induction hypothesis, as in `AddMZero`, and the goal has no `S` to match: `AddSub` peels the successor off. Borrowing supplies the congruence and copying withholds it, and the programmer chooses.
@@ -153,14 +153,14 @@ Nothing above is specific to numbers. With several constructors and several fiel
 
 ```
 InsertM(t : &Tree, k : Nat) : Unit by t :=
-  match *t { Leaf          => *t := Node(Leaf, k, Leaf)
-           | Node(l, v, r) => let b = Lt(k, v);
-                              match b { true => InsertM(&l, k) | false => InsertM(&r, k) } }
+  match *t { Leaf          => *t := Node(Leaf, k, Leaf),
+             Node(l, v, r) => let b = Lt(k, v);
+                              match b { true => InsertM(&l, k), false => InsertM(&r, k) } }
 
 InsertMEq(t : &Tree, k : Nat) : Id Unit (InsertM(t, k)) (*t := Insert(*t, k)) by t :=
-  match *t { Leaf          => refl
-           | Node(l, v, r) => let b = Lt(k, v);
-                              match b { true => InsertMEq(&l, k) | false => InsertMEq(&r, k) } }
+  match *t { Leaf          => refl,
+             Node(l, v, r) => let b = Lt(k, v);
+                              match b { true => InsertMEq(&l, k), false => InsertMEq(&r, k) } }
 ```
 
 `Insert` is the pure insertion that rebuilds the path, and `Lt` returns a `Bool`, whose constructors are `true` and `false`. In the `false` case, both the goal and the induction hypothesis, evaluated at the call site, observe the whole tree as `Node(σ_l, σ_v, ⌈…⌉)`: the fields `l` and `v` are carried by the environment, and only the right subtree differs, as in-place insertion on one side and pure insertion on the other. The proof is bare recursion again. The comparison `Lt(σ_k, σ_v)` is itself stuck, so the split on `b` is a split on a sealed program: the checker names its value by a fresh abstract value and replaces every derivation of the same closed program by it, including those produced later when the goal's sealed programs run again. A theorem about a measure is not bare recursion: the proof that `Size(Insert(t, k))` is `S(Size(t))` rewrites with the induction hypothesis by `J`, with hand-written motives, in both arms, and one arm needs an arithmetic lemma, `x + S y = S (x + y)`, which is proved in place by bare recursion and transferred to the pure `Add` by lending, as `AddZero` was.
@@ -171,14 +171,14 @@ A `match` on an abstract value in the middle of a function cannot pick an arm. E
 
 ```
 AddToOne(b : Nat, x₁ : &Nat, x₂ : &Nat, y : Nat) : Unit :=
-  let r = match b { Z => x₁ | S _ => x₂ }; AddM(r, y)
+  let r = match b { Z => x₁, S _ => x₂ }; AddM(r, y)
 ```
 
 The closed-off match returns a borrow with a hole that appears in the sealed programs for both `x₁`'s and `x₂`'s places; whichever the match would have chosen receives the final content. A proof about `AddToOne` splits on `b`, after which the sealed programs run and the goal becomes a statement about `AddM` alone:
 
 ```
 AddToOneZero(b : Nat, x₁ : &Nat, x₂ : &Nat) : Id Unit (AddToOne(b, x₁, x₂, 0)) () :=
-  match b { Z => AddMZero(x₁) | S _ => AddMZero(x₂) }
+  match b { Z => AddMZero(x₁), S _ => AddMZero(x₂) }
 ```
 
 The footprint contains the owners of both borrows. In the `Z` arm the observation of `x₂`'s owner is unchanged on both sides, so its equation is reflexive and computes to `⊤`, and what remains is exactly `AddMZero(x₁)`'s statement.

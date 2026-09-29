@@ -1,22 +1,40 @@
+import Ochr.Examples.«01Numbers»
+import Ochr.Examples.«02Borrows»
+import Ochr.Examples.«03ReturnedBorrows»
+import Ochr.Examples.«04ClosingOff»
+import Ochr.Examples.«05Equality»
+import Ochr.Examples.«06Snapshots»
+import Ochr.Examples.«07Recursion»
+import Ochr.Examples.«08CaseSplits»
+import Ochr.Examples.«09Functions»
+import Ochr.Examples.«10Inductives»
+import Ochr.Examples.«11Propositions»
+import Ochr.Examples.«12CurrentState»
+import Ochr.Examples.«13Erasure»
+import Ochr.Examples.«14Universes»
+import Ochr.Examples.«15BorrowTypes»
 import Ochr.Examples.Units
-import Ochr.Examples.E5
-import Ochr.Examples.V15
-import Ochr.Examples.Paper
-import Ochr.Examples.Inductives
-import Ochr.Examples.Probes
 
-/-! # Every example program, for the test runner and the counterfactual ledger -/
+/-! # Every example program, for the test runner and the counterfactual ledger
+
+The programs of the tour, in reading order (the numbered files, then the blocks of each
+file in order). The counterfactual ledger (`Ledger.lean`) switches one rule off at a time
+and lists the verdicts that flip, in this order. -/
 
 open Ochr Ochr.Test Ochr.Surface
 
 namespace Ochr.Registry
 
 def programs : List (String × Program) :=
-  [("E1", E1), ("E2", E2), ("E3", E3), ("E4", E4), ("E5", E5), ("E6", E6), ("Attacks", Attacks), ("More", More), ("Probes", Probes), ("V15", V15), ("V17", V17), ("V18", V18), ("Positivity", Positivity), ("GenTy", GenTy), ("V19", V19), ("D44", D44), ("Inductives", Inductives),
-   ("Logic", Logic), ("ByType", ByType), ("OrAttack", OrAttack), ("PList", PList), ("PosParam", PosParam), ("Scrut", Scrut),
-   ("D48", D48), ("D49", D49), ("PiConv", PiConv), ("AndElim", AndElim),
-   ("Paper", Paper), ("Note4", Note4), ("Note5", Note5),
-   ("D18", Ochr.Units.D18)]
+  [("Numbers", Numbers), ("Borrows", Borrows), ("ReturnedBorrows", ReturnedBorrows),
+   ("ClosingOff", ClosingOff), ("Naturality", Naturality), ("Equality", Equality),
+   ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion),
+   ("CaseSplits", CaseSplits), ("GenType", GenType), ("ScrutineeTypes", ScrutineeTypes),
+   ("GlobalRecords", GlobalRecords), ("Functions", Functions), ("Lists", Lists), ("Trees", Trees),
+   ("PolyLists", PolyLists), ("Positivity", Positivity), ("PositivityParams", PositivityParams),
+   ("PositivityPaper", PositivityPaper), ("Propositions", Propositions),
+   ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
+   ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("BorrowTypes", BorrowTypes)]
 
 def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
   programs.map fun (n, p) => run n p cfg fuel
@@ -95,47 +113,47 @@ def switches : List (String × Config) :=
 * `completeness`: it only rejects good programs. -/
 def rowClass : List (String × List String) :=
   [("completeness", []),
-   ("soundness", ["Attacks.N1Closed", "Attacks.QBoom", "V17.BoomP"]),
-   ("soundness", ["D18.ClosedD18", "D18.BadR"]),
-   ("soundness", ["Attacks.KnotLBoom"]),
-   ("soundness", ["Attacks.BadA1"]),
-   ("soundness", ["Attacks.KnotBoom"]),
-   ("soundness", ["More.Dead"]),
+   ("soundness", ["Erasure.N1Closed", "Erasure.QBoom", "ErasureBySyntax.BoomP"]),
+   ("soundness", ["Owners.ClosedD18", "Owners.BadR"]),
+   ("soundness", ["Recursion.KnotLBoom"]),
+   ("soundness", ["Borrows.BadA1"]),
+   ("soundness", ["Recursion.KnotBoom"]),
+   ("soundness", ["Borrows.Dead"]),
    ("completeness", []),
-   ("soundness", ["Probes.MovedByBlock"]),
+   ("soundness", ["ClosingOff.MovedByBlock"]),
    ("completeness", []),
-   ("soundness", ["Attacks.KnotLBoom"]),
-   ("false lemma", ["V17.LieG"]),
-   ("soundness", ["V15.Main"]),
-   ("soundness", ["V15.Boom3"]),
-   ("soundness", ["V15.Boom4"]),
-   ("soundness", ["V15.Boom5"]),
+   ("soundness", ["Recursion.KnotLBoom"]),
+   ("false lemma", ["ErasureBySyntax.LieG"]),
+   ("soundness", ["ReturnedBorrows.Main"]),
+   ("soundness", ["Functions.Boom3"]),
+   ("soundness", ["Recursion.LoopNoByBoom"]),
+   ("soundness", ["ClosingOff.Boom5"]),
    ("completeness", []),
-   ("soundness", ["V17.BoomL", "V18.Boom8"]),
-   ("soundness", ["V17.BoomB", "V17.BoomG", "V18.Boom7"]),
-   ("soundness", ["V17.BoomG"]),
+   ("soundness", ["ErasureBySyntax.BoomL", "ErasureBySyntax.Boom8"]),
+   ("soundness", ["ErasureBySyntax.BoomB", "ErasureBySyntax.BoomG", "ErasureBySyntax.Boom7"]),
+   ("soundness", ["ErasureBySyntax.BoomG"]),
    ("completeness", []),
-   ("policy", ["V17.RowI"]),
+   ("policy", ["ClosingOff.RowI"]),
    ("completeness", []),
-   ("policy", ["V19.Write"]),
+   ("policy", ["Erasure.Write"]),
    ("completeness", []),
-   ("soundness", ["V18.BoomH"]),
-   ("soundness", ["V17.BoomP", "V17.BoomG"]),
-   ("soundness", ["Positivity.Boom", "PosParam.Boom"]),
-   ("soundness", ["V18.BoomE"]),
-   ("soundness", ["V18.BoomX4"]),
+   ("soundness", ["ErasureBySyntax.BoomH"]),
+   ("soundness", ["ErasureBySyntax.BoomP", "ErasureBySyntax.BoomG"]),
+   ("soundness", ["Positivity.Boom", "PositivityParams.Boom"]),
+   ("soundness", ["GlobalRecords.Bad5"]),
+   ("soundness", ["Functions.BoomX4"]),
    ("completeness", []),
-   ("policy", ["V19.Write"]),
-   ("model", ["D44.Boom"]),
+   ("policy", ["Erasure.Write"]),
+   ("model", ["ReturnedBorrows.Boom"]),
    ("completeness", []),
    ("completeness", []),
-   ("model", ["OrAttack.IsL", "OrAttack.Get"]),
+   ("model", ["Subsingletons.IsL", "Subsingletons.Get"]),
    ("completeness", []),
-   ("soundness", ["OrAttack.Boom", "OrAttack.SqBoom"]),
+   ("soundness", ["Subsingletons.Boom", "Subsingletons.SqBoom"]),
    ("completeness", []),
-   ("soundness", ["Scrut.g"]),
-   ("model", ["D48.Impred", "D48.SelfApp"]),
-   ("soundness", ["D48.G"]),
+   ("soundness", ["ScrutineeTypes.g"]),
+   ("model", ["Universes.Impred", "Universes.SelfApp"]),
+   ("soundness", ["BorrowTypes.G"]),
    ("completeness", []),
    ("completeness", []),
    ("completeness", []),
@@ -144,7 +162,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 459
+def Ochr.Registry.expectedTotal : Nat := 464
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

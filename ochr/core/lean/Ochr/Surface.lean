@@ -8,7 +8,7 @@ named `STerm` below; `resolve` turns them into core `Term`s. Resolution decides:
 * `&t` is the borrow type in a *type position* (binder and result types, the type
   argument of `Id`/`Eq`, Π domains and codomain, `×`, `→`, ascriptions) and a borrow
   `&p` elsewhere;
-* a pattern variable `y` in `match p { … | S y => u }` is the sub-place `p.1`
+* a pattern variable `y` in `match p { …, S y => u }` is the sub-place `p.1`
   (RULES §1), so it is substituted rather than bound;
 * the name of the definition being checked, inside its own body, is its `self` binder;
 * numerals are `S … Z`; `cong S h` takes `S` as the function `λ(n : Nat) : Nat => S n`.
@@ -191,7 +191,7 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
     | (c0, _, _) :: _ =>
       let tb ← read
       let some (_, tyName, _, _) := tb.ctors.find? (·.1 == c0)
-        | throw s!"{c0} is not a constructor (Nat's are written Z => … | S y => …, in that order)"
+        | throw s!"{c0} is not a constructor (Nat's are written Z => …, S y => …, in that order)"
       let cs := tb.ctors.filter (·.2.1 == tyName)
       let mut out := #[]
       for (cn, _, i, fs) in cs do

@@ -53,7 +53,7 @@ inductive Term where
   | assign (p : Place) (t : Term)             -- `p := t` ([Assign])
   | letIn (h : Hint) (t u : Term)             -- `let x = t; u` ([Let])
   | seq (t u : Term)                          -- `t; u`
-  | matchNat (p : Place) (z s : Term)         -- `match p { Z => z | S y => s }`, y ≡ p.1
+  | matchNat (p : Place) (z s : Term)         -- `match p { Z => z, S y => s }`, y ≡ p.1
   | const (n : String)                        -- a top-level definition
   | val (v : Value)                           -- an embedded value (inside sealed programs, closures)
   | sort (l : Nat)                            -- `sort 0 = Prop`, `sort (i+1) = Type_i`

@@ -4,14 +4,14 @@ Here is an in-place addition on Peano numerals. It walks down the successors of 
 
 ```
 AddM(x : &Nat, y : Nat) : Unit by x :=
-  match *x { Z => *x := y | S p => AddM(&p, y) }
+  match *x { Z => *x := y, S p => AddM(&p, y) }
 ```
 
 `&Nat` is a mutable borrow in the sense of Rust: a unique, temporary right to read and write a `Nat` owned by someone else. In the successor case the pattern variable `p` names the predecessor field in place, and `&p` reborrows it for the recursive call. Here is a theorem about `AddM`, stated and proved in the same language:
 
 ```
 AddMZero(x : &Nat) : Id Unit (AddM(x, 0)) () by x :=
-  match *x { Z => refl | S p => AddMZero(&p) }
+  match *x { Z => refl, S p => AddMZero(&p) }
 ```
 
 The statement says that running `AddM(x, 0)` is indistinguishable from doing nothing: both return `()`, and both leave the number behind `x` as it was. The proof is structural recursion and nothing else. There is no pure model of `AddM`, no refinement relation, no loop invariant, no separation-logic assertion and no translation into another language. The checker accepts the recursive call as a proof of the successor case by running both sides of the equation on a symbolic input and comparing what they leave behind.

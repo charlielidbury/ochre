@@ -1,6 +1,6 @@
 # Ochr core: an executable reference checker for RULES v2.0
 
-A Lean 4 implementation of the calculus in `ochr/core/RULES.md` (rule set v2.0): the machine of §3, observation and `Id` of §4, the typing of §5, and the inductive definitions of §8 (sorts `Prop`/`Type₀`, zero or more constructors, uniform parameters; `False`, `True` and `And` are library declarations), with the examples of §7 and every attack found so far as tests. It exists to run the examples, and to find every place where the rules are ambiguous or wrong. Findings are in `ochr/core/notes/lean-checker.md`.
+A Lean 4 implementation of the calculus in `ochr/core/RULES.md` (rule set v2.0): the machine of §3, observation and `Id` of §4, the typing of §5, and the inductive definitions of §8 (sorts `Prop`/`Type₀`, zero or more constructors, uniform parameters; `False`, `True` and `And` are library declarations), with the examples of §7 and every attack found so far as tests, arranged as a tour of the language (`Ochr/Examples/01Numbers.lean` … `15BorrowTypes.lean`, below). It exists to run the examples, and to find every place where the rules are ambiguous or wrong. Findings are in `ochr/core/notes/lean-checker.md`.
 
 ## Build and run
 
@@ -10,7 +10,7 @@ lake build          # checks every example; a failing verdict or a wrong asserti
 lake exe tests      # prints every verdict table and the counterfactual ledger; exit 1 on any unexpected verdict
 ```
 
-Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A clean build takes about 40 seconds (most of it the counterfactual ledger: 46 rows, each re-running the suite twice in the interpreter) and prints every verdict table; `lake exe tests` compiles the runner first and prints per-declaration check times (all 459 declarations check in about 19 ms) and the ledger with each row's class.
+Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A clean build takes about 40 seconds (most of it the counterfactual ledger: 46 rows, each re-running the suite twice in the interpreter) and prints every verdict table; `lake exe tests` compiles the runner first and prints per-declaration check times (all 464 declarations check in about 18 ms) and the ledger with each row's class.
 
 ## Writing programs
 
@@ -18,22 +18,33 @@ Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A 
 import Ochr.Test
 open Ochr.Test
 
-ochr E1 {
-  def AddM (x : &Nat) (y : Nat) : Unit by x :=
-    match *x { Z => *x := y | S p => AddM(&p, y) }
+ochr Numbers {
+  def AddM (x : &Nat) (y : Nat) : Unit by x := (
+    match *x {
+      Z => *x := y,
+      S p => AddM(&p, y),
+    }
+  )
 
-  def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x :=
-    match *x { Z => refl | S p => AddMZero(&p) }
+  def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x := (
+    match *x {
+      Z => refl,
+      S p => AddMZero(&p),
+    }
+  )
 
-  reject def WriteThenRefl (x : &Nat) : Id Nat (*x) 5 := *x := 5; refl
+  reject def WriteThenRefl (x : &Nat) : Id Nat (*x) 5 := (
+    *x := 5;
+    refl
+  )
 }
 
-#eval IO.println (run "E1" E1).show                       -- the verdict table
-#eval IO.println ((run "E1" E1 { trace := true }).showTrace "AddMZero")   -- goals, splits, call types
-#guard (run "E1" E1).allAsExpected
+#eval IO.println (run "Numbers" Numbers).show                      -- the verdict table
+#eval IO.println ((run "Numbers" Numbers { trace := true }).showTrace "AddMZero")   -- goals, splits, call types
+#guard (run "Numbers" Numbers).allAsExpected
 ```
 
-`def` expects acceptance and `reject def` expects rejection. `inductive List (A : Type) := Nil | Cons(h : A, t : List(A))` declares an inductive type with a parameter; `inductive And (P : Prop) (Q : Prop) : Prop := Intro(l : P, r : Q)` one in `Prop`; `inductive Void : Type` one with no constructors (the sort defaults to `Type`). A type is applied like a call (`List(Nat)`). A constructor takes its type's parameters first (core `C(ā; t̄)`, D49), written `Cons[Nat](1, Nil[Nat])`, or omitted, `Cons(1, Nil)`: omitted parameters are inferred from the fields' types, and those no field determines (`Nil`'s `A`) from the type the context requires (an annotation `(Nil : List(Nat))` or `let x : T = …`, the goal of a tail, a parameter type at a call, a field type in an enclosing constructor, the type of an `Id`). Constructor values record their parameters when known (always in checked code; in an untyped run only when written). `match xs { Nil => … | Cons(h, t) => … }` binds `h`, `t` as the field places `xs.h`, `xs.t`; `match h {}` has no arms. A match whose constructors are a `Prop` inductive's is by the scrutinee's type (RULES §8). Constructor names are unique across a program. `&A` is allowed only for a data type `A` (`Nat`, `Unit`, `×`, an inductive type in `Type`; not a universe, a Π-type, a proposition or a type variable) and only as the whole declared type of a parameter, a result or an annotated term (D48). The library declares `False`, `True := I` and `And`; `⊤`, `P ∧ Q`, `⟨h, k⟩` and `refl` are notation for `True`, `And(P, Q)`, `Intro(h, k)` and `I`. `by x` names the decreasing parameter; a definition without `by` may not call itself. Calls are saturated and written `f(a, …)` with no space before the parenthesis. `S t`, `Id A t u` and `Eq A t u` are written by juxtaposition, and transport by `J(A, a, b, P, h, t)`. Other syntax: `&p`, `*p`, `p.1`, `p := t`, `let x = t; u`, `let x : T = t; u` (for a match, `T` is the block's type), `t; u`, `match p { Z => t | S y => u }` (and `S _`), `Π(x : A) (y : B). C`, `A → B`, `λ(x : A) : B => t`, `fix f (x : A) : B by x := t`, `(t : A)`, `()`, `(t, u)`, `⟨h, k⟩`, `refl`, `⊤`, `P ∧ Q`, `False`, `A × B`, `Nat`, `Unit`, `Prop`, `Type`, and numerals. `Nat` and `Unit` remain builtin (not rebuilt as declarations). `cong f h`, `trans h k` and `symm h` exist as derivable conveniences outside the core. A `λ` or `Π` in the bound position of a `let`, or a `Π` as a result type, needs parentheses.
+`def` expects acceptance and `reject def` expects rejection. Match arms are separated by commas, and a trailing comma after the last arm is allowed (`match p { Z => t, S y => u, }`); `|` separates only the constructors of an `inductive` declaration. Line breaks are whitespace. The examples wrap a multi-line body in parentheses under the signature (`:= ( … )`, ordinary grouping), put one arm per line with a trailing comma, wrap an arm of several statements in `( … ),`, put one statement per line (`;` at the end of the line), indent a nested match one step further, align nothing, and keep matches inside types and argument lists on one line without a trailing comma. `inductive List (A : Type) := Nil | Cons(h : A, t : List(A))` declares an inductive type with a parameter; `inductive And (P : Prop) (Q : Prop) : Prop := Intro(l : P, r : Q)` one in `Prop`; `inductive Void : Type` one with no constructors (the sort defaults to `Type`). A type is applied like a call (`List(Nat)`). A constructor takes its type's parameters first (core `C(ā; t̄)`, D49), written `Cons[Nat](1, Nil[Nat])`, or omitted, `Cons(1, Nil)`: omitted parameters are inferred from the fields' types, and those no field determines (`Nil`'s `A`) from the type the context requires (an annotation `(Nil : List(Nat))` or `let x : T = …`, the goal of a tail, a parameter type at a call, a field type in an enclosing constructor, the type of an `Id`). Constructor values record their parameters when known (always in checked code; in an untyped run only when written). `match xs { Nil => …, Cons(h, t) => … }` binds `h`, `t` as the field places `xs.h`, `xs.t`; `match h {}` has no arms. A match whose constructors are a `Prop` inductive's is by the scrutinee's type (RULES §8). Constructor names are unique across a program. `&A` is allowed only for a data type `A` (`Nat`, `Unit`, `×`, an inductive type in `Type`; not a universe, a Π-type, a proposition or a type variable) and only as the whole declared type of a parameter, a result or an annotated term (D48). The library declares `False`, `True := I` and `And`; `⊤`, `P ∧ Q`, `⟨h, k⟩` and `refl` are notation for `True`, `And(P, Q)`, `Intro(h, k)` and `I`. `by x` names the decreasing parameter; a definition without `by` may not call itself. Calls are saturated and written `f(a, …)` with no space before the parenthesis. `S t`, `Id A t u` and `Eq A t u` are written by juxtaposition, and transport by `J(A, a, b, P, h, t)`. Other syntax: `&p`, `*p`, `p.1`, `p := t`, `let x = t; u`, `let x : T = t; u` (for a match, `T` is the block's type), `t; u`, `match p { Z => t, S y => u }` (and `S _`), `Π(x : A) (y : B). C`, `A → B`, `λ(x : A) : B => t`, `fix f (x : A) : B by x := t`, `(t : A)`, `()`, `(t, u)`, `⟨h, k⟩`, `refl`, `⊤`, `P ∧ Q`, `False`, `A × B`, `Nat`, `Unit`, `Prop`, `Type`, and numerals. `Nat` and `Unit` remain builtin (not rebuilt as declarations). `cong f h`, `trans h k` and `symm h` exist as derivable conveniences outside the core. A `λ` or `Π` in the bound position of a `let`, or a `Π` as a result type, needs parentheses.
 
 `Config` switches each turn off one rule, for counterfactual runs: `eraseOnCopy` (P2, v1.3), `multiOwner` (D18), `recGuard` (D17), `accessInside` (D19), `selfHeadOnly` (v1.1 head-only), `argNotBot` (v1.2 temporaries), `generalize` (v1.2 generalise-then-split), `blockMoves` (v1.3 captures), `proofParamsStar` (v1.4 D27), `recNested` ([Rec] inside nested functions), `erasureByDecl` (D28), `matchEndsInside` (D29), `closureConv` (D30), `unboundWithoutBy` (D31), `patternWritesVisible` (D32), `genConsistent` (finding G1), `classBySyntax`, `blockRule`, `seqByProof`, `rowByDecl` (D35), `leafRule` (findings P1, P3), `positivity` (D36), `globalRecords` (D37), `obsBorrow` (D38), `headGuardNeutral` (D39), `genPlaceType` ([Split-gen]'s type), `confine` (D41), `borrowParam` (D44), `capTypes` (captured values keep their types), `byType` (D45: matching on a proof by its type), `subsingleton` (D45), `propValues` (D42 for constructors of `Prop` inductives), `disjoint` (D47), `scrutTyped` (a match's scrutinee has its constructors' type), `refData`, `refTop`, `piUnder` (D48 (1)–(3)), `proofDataFields` (D49 (3)), `unitNorm` (on: D50's counterfactual), `confineBodies` (an extension of D41, off by default), `p5` (v1's call skipping), `inferRecPos` (v1's inferred decreasing parameter), and `trace`.
 
@@ -50,8 +61,35 @@ ochr E1 {
 | `Ochr/Check.lean` | programs as sequences of top-level definitions and inductive declarations; the library (`prelude`: `False`, `True`, `And`) |
 | `Ochr/Surface.lean`, `Ochr/Notation.lean` | named surface terms, their resolution, the `ochr` command |
 | `Ochr/Test.lean` | running programs, verdict tables, traces |
-| `Ochr/Examples/*.lean` | E1–E6, the attacks (rounds 1–3), v1.5, v1.7, v1.8 and v1.9 regressions (breaker-fresh-v16 X1–X5, positivity, confinement, `D44.lean`), inductive types (lists, BSTs), v2.0 (`Logic.lean`: ex falso, disjointness, matching on proofs, the `Or` attack, a polymorphic list, positivity with parameters, scrutinee types), reviewer-3 (`Review3.lean`: D48 borrows, D49, Π conversion under binders, ∧-elimination), the paper's printed programs not stated verbatim elsewhere (`Paper.lean`; notes §16 maps every printed program to its test), unit tests (incl. D18), the registry, total count and row classes (`Registry.lean`), the counterfactual ledger (`Ledger.lean`) |
+| `Ochr/Examples/01Numbers.lean` … `15BorrowTypes.lean` | the example programs, as a tour of the language (next section) |
+| `Ochr/Examples/Units.lean` | unit tests of machine functions ([Seal], owners, footprint) on hand-built values |
+| `Ochr/Examples/Registry.lean` | every program, in reading order, for the runner and the ledger; the total count; the ledger's switches and row classes |
+| `Ochr/Examples/Ledger.lean` | the counterfactual ledger, asserted |
 | `Tests.lean` | `lake exe tests` |
+
+## The examples: a tour of the language
+
+Read in order, the numbered files teach the whole language; the order follows RULES (§3 the machine, §4 observation, §5 typing, §8 inductive definitions), starting from the paper's first example. Lean module names cannot start with a digit, so they are imported as `Ochr.Examples.«01Numbers»`. Each file opens with what it covers and where RULES defines it; every program or small group has a comment, and a rejected program says which rule rejects it and why. Each regression (a closed false proof, or an accepted program that went wrong, found while designing the rules) sits with the feature whose rule rejects it, under "What goes wrong without these rules", with the ledger switch that lets it back in. A file holds one `ochr` program or a few (programs are checked independently: names, constructors and helpers such as `AddM` are per program). Every program asserts its exact number of declarations.
+
+| File | Covers | RULES | Declarations |
+|---|---|---|---|
+| `01Numbers` | in-place and pure addition, the first proofs by `refl` and recursion; matching on numbers; pairs; calls | §1, §3, §7 | 22 |
+| `02Borrows` | moving, copying and reborrowing; argument order; the borrow checker ([Access], [Drop]) | §3 | 16 |
+| `03ReturnedBorrows` | functions returning a borrow (`TailM`); a returned borrow must come from a borrow argument (D44) | §1, §3 [Close] | 23 |
+| `04ClosingOff` | stuck calls and matches, sealed programs, a borrow chosen by a branch, what a stuck match captures, [Close]'s rows; naturality up to resolution | §3 | 33 |
+| `05Equality` | `Id` and `Eq`: observation, footprints, disjointness, no injectivity, `J`; all owners of a returned borrow are observed (D18) | §4 | 32 |
+| `06Snapshots` | types and closures are formed once; what a closure or Π-type captures (values, never borrows; capturing ends a live borrow) | P2, §1, §5 | 22 |
+| `07Recursion` | `by x`, entry-value recursion, induction hypotheses in the caller's environment | §5 [Def], [Rec] | 18 |
+| `08CaseSplits` | [Split], dependent matching on a computed type, generalising sealed programs, scrutinee types, global generalisation records | §5 [Split] | 18 |
+| `09Functions` | opaque functions, closures, Π-types, comparing functions by observation (D30, D38, D48 (3)) | P1, §1, §4 | 39 |
+| `10Inductives` | lists, binary search trees, parameters, strict positivity | §8 | 73 |
+| `11Propositions` | `False`, `True`, `And`, matching on proofs by type, subsingleton elimination | §1, §8 | 66 |
+| `12CurrentState` | proofs about the current, mutated state (E5) | §7 | 16 |
+| `13Erasure` | erased terms run on a private copy, confinement, erasure decided by syntax | P2 | 59 |
+| `14Universes` | `Prop : Type`, no `Type : Type`, no cumulativity, why `&Type` is refused | preamble, P2 | 8 |
+| `15BorrowTypes` | what may be borrowed and where `&` may appear (D48) | §1 | 19 |
+
+464 declarations in all. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 
