@@ -1,6 +1,6 @@
 import Ochr.Examples.V19
 
-/-! # Rules v1.9: D44 (reviewer-2), and captured values that keep their types
+/-! # Rules v1.9: D44 (reviewer-2), and captured values that keep their types (program `D44`)
 
 reviewer-2: a function type returning a borrow with no borrow parameter closes off into a
 borrow whose hole is in no owner, so an `Id` about it observes nothing and computes to
@@ -10,7 +10,7 @@ inhabits. D44 makes such function types ill-formed. The second group checks clos
 
 open Ochr.Test
 
-ochr V20 {
+ochr D44 {
   inductive Empty := E(e : Empty)
   def M (n : Nat) : Type := match n { Z => Unit | S _ => Empty }
   def P (x : &Nat) (e : Id Unit (*x := 0) (*x := 1)) : Empty := J(Nat, 0, 1, M, e, ())
@@ -30,8 +30,8 @@ ochr V20 {
   def CapP2 (h : Eq Nat Z Z) : Eq Nat Z Z := let f = (λ(x : Nat) : Eq Nat Z Z => h); f(0)
 }
 
-#eval IO.println (run "V20" V20).show
+#eval IO.println (run "D44" D44).show
 
 -- every verdict as expected, and exactly 14 assertions (a truncated file changes the count)
-#guard (run "V20" V20).allAsExpected
-#guard (run "V20" V20).count == 14
+#guard (run "D44" D44).allAsExpected
+#guard (run "D44" D44).count == 14

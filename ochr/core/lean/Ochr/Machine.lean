@@ -549,12 +549,14 @@ partial def capture (t : Term) : M (List Value × Term) := do
   let idx (o : Nat) : Nat := (fvs.findIdx? (· == o)).getD 0
   let mut t' := t.mapFree (fun c o => .var (c + m - 1 - idx o)) 0
   -- a captured proof keeps its type: its reads are inlined as `(⋆ : T)` (a proof's value
-  -- is ⋆, so the type is all there is to record)
+  -- is ⋆, so the type is all there is to record). "A proof" is the binding's declared
+  -- flag, never its value (finding P3: `g(0)` may be ⋆ at an instance only)
   if (← get).cfg.capTypes then
     let top := (← get).env.back!
     for (o, k) in fvs.zipIdx do
-      if vals[k]! == .proof then
-        if let some T := top.binds[top.binds.size - 1 - o]!.ty then
+      let b := top.binds[top.binds.size - 1 - o]!
+      if b.proof then
+        if let some T := b.ty then
           t' := t'.inlineReads (m - 1 - k) (.ascribe (.val .proof) (.val T)) 0
   pure (vals.toList, t')
 
