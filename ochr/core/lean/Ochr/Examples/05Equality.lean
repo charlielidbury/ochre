@@ -103,13 +103,43 @@ ochr Equality uses Std {
       Id Nat (Add(a, 0)) a := (
     J(Nat, a, b, λ(z : Nat) : Prop => Id Nat (Add(z, 0)) z, h, t)
   )
+
+  -- `J` computes only when its endpoints are convertible (D56, Lean's rule for `Eq.rec`) ...
+  def CastRefl (n : Nat) : Id Nat (J(Nat, n, n, λ(z : Nat) : Type => Nat, refl, 5)) 5 := refl
+
+  -- ... and is otherwise a stuck cast. Under the false hypotheses that `Nat → Nat` and
+  -- `(Nat → Nat) → Nat` are equal, `Om` applies a stuck cast instead of running forever, and
+  -- `CastMatch` splits on the stuck cast of `5` instead of matching `5` against `Bool`'s
+  -- constructors. Returning `t` whatever the endpoints (switch `jStuck`) is equality
+  -- reflection: checking `Om` would not terminate (the checker's depth bound stops it), and
+  -- `CastMatch` would meet a number where a `Bool` is due.
+  def C1 (h : Eq Type (Nat → Nat) ((Nat → Nat) → Nat)) (x : Nat → Nat) : ((Nat → Nat) → Nat) := (
+    J(Type, Nat → Nat, (Nat → Nat) → Nat, λ(X : Type) : Type => X, h, x)
+  )
+
+  def C2 (h : Eq Type ((Nat → Nat) → Nat) (Nat → Nat)) (f : (Nat → Nat) → Nat) : (Nat → Nat) := (
+    J(Type, (Nat → Nat) → Nat, Nat → Nat, λ(X : Type) : Type => X, h, f)
+  )
+
+  def Om (h1 : Eq Type (Nat → Nat) ((Nat → Nat) → Nat)) (h2 : Eq Type ((Nat → Nat) → Nat) (Nat → Nat)) : Nat := (
+    let f = (λ(x : Nat → Nat) : Nat => (C1(h1, x))(x));
+    f(C2(h2, f))
+  )
+
+  def CastMatch (h : Eq Type Nat Bool) : Nat := (
+    let b = J(Type, Nat, Bool, λ(X : Type) : Type => X, h, 5);
+    match b {
+      false => 0,
+      true => 1,
+    }
+  )
 }
 
 #eval IO.println (run "Equality" Equality).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Equality" Equality).allAsExpected
-#guard (run "Equality" Equality).count == 24
+#guard (run "Equality" Equality).count == 29
 
 /-! ## All the owners of a returned borrow are observed
 
