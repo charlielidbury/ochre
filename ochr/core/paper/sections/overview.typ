@@ -77,7 +77,7 @@ AddMZero(&p) : Eq Nat (S N(σ')) (S σ')  ≡  Eq Nat N(σ') σ'
 
 This is the goal. The callee's statement is about the place it borrowed; evaluated at the call site, it is about the caller's number, successor included. Relating the two is the frame argument that a proof about a translated program makes by hand, and here it was done by evaluation. The recursive call is a proof, and proofs are erased at runtime, so the checker does not run it: its borrow argument is returned unchanged.
 
-The same theorem about the pure wrapper, `AddZero(x : Nat) : Id Nat (Add(x, 0)) x`, has the same goal, since `Add(x, 0)` writes nothing outside itself. It is proved by lending the predecessor field of the owned `x` to the in-place lemma, or by recursion on a copy of it; indeed `AddZero(x) := AddMZero(&x)` type-checks, because both statements normalise to the same proposition. Neither proof mentions a model of `AddM`: the statement is about the program itself.
+The same theorem about the pure wrapper, `AddZero(x : Nat) : Id Nat (Add(x, 0)) x`, has the same goal, since `Add(x, 0)` writes nothing outside itself. It is proved by lending the owned `x` to the in-place lemma: `AddZero(x) := AddMZero(&x)` type-checks, because both statements normalise to the same proposition. Neither proof mentions a model of `AddM`: the statement is about the program itself.
 
 == Returning a borrow
 
