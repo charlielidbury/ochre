@@ -11,7 +11,13 @@ Places `p[i | h]` and `p[i..j | h]` carry erased bounds proofs. Borrowing `&a[0.
 
 The machine never *decides* arithmetic. It compares boundaries by syntactic equality and by the structural order [Rec] already uses. Where those cannot tell, it ends borrows (fail-safe) or leaves a stuck projection (incomplete, never wrong). It does *name* three library functions (`Le`, `Sub`, `Add`), as it already names `True` and `And`.
 
-Frames are free. Gluing lemmas and pointwise facts at unrelated symbolic indices stay lemmas. One of them, read-after-write at a different index, is an axiom unless the optional ordering hints (§1.9) are added. Verdict (§6): worth a staged implementation.
+Frames are free. Gluing lemmas and pointwise facts at unrelated symbolic indices stay lemmas. One of them, read-after-write at a different index, is an axiom unless the optional ordering hints (§1.9) are added.
+
+Two user decisions (2026-09-29) are folded in:
+- **The length lives only in the type** and is never stored at runtime, as in `[T; N]` or C. There is no `len`, and code that needs a length at runtime holds it as an ordinary `Nat`. Growable arrays are therefore user-defined Σs, `Vec(T) := Mk(n : Nat, items : Array(T, n))`. That needs dependent fields and a reallocation primitive (§1.10).
+- **Recursion is over indices, never over arrays**, so [Rec] is unchanged. Quicksort's recursion on its range size is not structural; it needs `<`-recursion with erased decrease proofs (§1.11).
+
+Verdict (§6): worth a staged implementation.
 
 ## 0. What the primitive is for
 
@@ -26,7 +32,7 @@ The primitive's job is to make ranges into places. Its design stance, the user's
 ### 1.1 The type
 
 - **The former.** `Array(T, n)` holds exactly `n` elements of type `T`, where `T` is a data type (D48) and `n : Nat` stands in a type position (erased). It is a data type in `Type₀`, so `&Array(T, n)` is well formed. It is not an inductive declaration: there are no indices, and its values are flat.
-- **The length lives only in types, and nothing recomputes it.** The owner's stored type keeps `n`. A borrowed range's type is fixed when the borrow is taken, and [End] is substitution, so nothing re-types the array when a range comes back. DLLBC's exit audit did re-type it, which is why its extents had to add up definitionally, and why it refined length indices at cuts (C8, T2, R12). Ochr never solves or refines a length.
+- **The length lives only in types (user decision): it is never stored at runtime, and nothing recomputes it.** Code that needs a length at runtime holds it as an ordinary `Nat`, a parameter or a field (§1.8, §1.10). The owner's stored type keeps `n`. A borrowed range's type is fixed when the borrow is taken, and [End] is substitution, so nothing re-types the array when a range comes back. DLLBC's exit audit did re-type it, which is why its extents had to add up definitionally, and why it refined length indices at cuts (C8, T2, R12). Ochr never solves or refines a length.
 - **Not a copy type** (D53): reading a whole array at runtime moves it.
 
 ### 1.2 Values
@@ -131,14 +137,16 @@ When a slice at `i ≠ Z` is borrowed, its segment list is rebased by subtractin
   - Arrays are never matched: positions are reached by places.
   - Matching an element whose content is the neutral `A[i]` generalises it ([Split-gen], D34).
   - Matching the length refines the stored type, and rigidifies nothing, so a body may match its length and still cut at symbolic points (unlike DLLBC, T2 and R12).
-- **[Rec]** A range `V[a..b]` is a strict subterm of `V` when `Z ≼ a` and `b ≼ n`, one of them strictly. So recursion on `a[1..n]` is structural, and recursion on `a[0..k]` for a computed `k` is not (quicksort needs fuel). Recursion on the length needs no extension.
+- **[Rec]** is unchanged (user decision: recursion is over indices, never over arrays or slices). An array function takes its length, or a range size, as a `Nat` and recurses on that, passing a borrow of a sub-range along. [Rec] never needs a notion of a smaller array. For quicksort's non-structural case, see §1.11.
 
-### 1.8 Construction, `len`, `clone`
+### 1.8 Construction, no `len`, `clone`
 
-- **Construction.** Literals `[t₁, …, t_k] : Array(T, k)`, and `Init(n, f)` for `f : Π(i : Nat). T`, whose value is the atom `init(f, n)`, with `init(f, n)[i] ⟶ f(i)`. The calls have no effects: `f` takes no borrows and closures capture none.
+- **Construction.** Literals `[t₁, …, t_k] : Array(T, k)`, and `Init(n, f)` for `f : Π(i : Nat). T`, whose value is the atom `init(f, n)`, with `init(f, n)[i] ⟶ f(i)`. `n` is a runtime argument, because `Init` allocates. The calls have no effects: `f` takes no borrows and closures capture none.
 - **`clone`.** `clone(p)` and `clone(p[i..j])` (D53) copy the canonical value; a clone of a slice is the same slice.
-- **`Len`** is unnecessary. Lengths are explicit parameters, which at runtime are the fat pointer's length word. A `Len(a)` returning the type index would read an erased value and gain nothing.
-- **Deallocation** is [Drop].
+- **No `len`** (user decision). The length is not stored at runtime, as for Rust's `[T; N]` or a C array. It lives in the type. Code that needs it at runtime holds it as an ordinary `Nat`: a parameter, or a field as in `Vec` (§1.10).
+  - A borrow `&Array(T, n)` or `&a[i..j]` compiles to a thin pointer. What would be the length word of a Rust slice is whatever `Nat` the program passes alongside, typically `Sub(j, i)`.
+  - The machine's segment boundaries are bookkeeping, erased like loan labels. No runtime step reads them: they decide only which borrows end and which reads are errors.
+- **Deallocation.** In the machine, [Drop] needs nothing. A *compiled* drop of an owned array whose elements need dropping does need `n`, and must evaluate it from the length term of the place's stored type. That term's runtime inputs must still be live at the drop point, which interacts with D53 (§6).
 
 ### 1.9 Several borrows, ordering hints, `Vec`
 
@@ -146,7 +154,52 @@ When a slice at `i ≠ Z` is borrowed, its segment list is rebased by subtractin
 - **A function returning both** (`split_at_mut`) needs the ROADMAP's multi-result signature `(&A₁, &A₂)`: bound at once, with one [Close] hole per result. A transparent `SplitAtMut` only cuts and never gets stuck, so its calls simply run.
 - **Two live element borrows at unrelated symbolic indices** are rejected: the second request cannot be placed, so the first loan ends. This is DLLBC's R13 wall, which ruled out Lomuto scans. What remains possible: clone-swaps for copy types, and accesses at the zero of a range the program cut.
 - **Ordering hints** (optional, not in stage 1). A place `p[j | h, d]` takes `d : Le(b, j)` or `d : Le(S j, b)` for an existing boundary `b`. [Locate] reads `d`'s *stored type* as one more `≼` fact. The decision is read from a declaration-shaped type, and it fails safe: a neutral type gives no hint.
-- **`Vec(T)`** is out of scope. It is `(cap, len, Array(T, cap), len ≤ cap)`, which needs dependent fields (the ROADMAP's subset types) and uninitialised capacity. Nothing here blocks it.
+- **`Vec(T)`** is user code over dependent fields (§1.10).
+
+### 1.10 Growable arrays: dependent fields, and reallocation
+
+**The user's definition.** A growable array is user code: `inductive Vec (T : Type₀) := Mk(n : Nat, items : Array(T, n))`. The type of `items` mentions the earlier field `n`, and D36 forbids that today: a field type may mention only parameters and declared types. The extension needed is **telescopic fields**. Field types are evaluated left to right, with the earlier fields bound, exactly as [Def] evaluates parameter types (D27).
+
+**What it costs, rule by rule.**
+- **[Ind].** Each field type is checked in a frame holding the parameters and fresh abstract values for the earlier fields. It must still be first-order data, which now includes `Array(B, e)`, with `e` a `Nat` term over earlier fields and parameters. A recursive occurrence inside `Array(D, e)` (a nested inductive, such as rose trees) is excluded in stage 1.
+- **[Split].** The refinement becomes `σ := Mk(σ₁, σ₂)` with `Δ(σ₂) = Array(T, σ₁)`: the types of the fresh field values are instantiated left to right. This is a one-line change.
+- **Index fields are read-only.** The type of a sub-place now depends on a sibling's content: `type(p.items) = Array(T, content(p.n))`. So an *index field*, one that a later field's type mentions, may be read but never assigned or borrowed on its own; it changes only when the whole constructor is assigned. Otherwise `v.n := 5` would silently re-type `v.items`. Which fields are index fields is read from the declaration, so the rule is syntactic.
+- **Injectivity (D52) is restricted.** On `Mk(n, a)` against `Mk(n', a')`, the field equation `Eq (Array(T, n)) a a'` is ill-typed unless `n ≡ n'`. So injectivity fires only when the index fields are convertible, and otherwise `Eq` stays neutral: incomplete, not wrong. The complete answer is OTT's heterogeneous equality (`Σ p : n = n'. transport p a = a'`), which is not proposed. So `Id` over a `Vec` owner computes well only when the length is the same normal form on both sides.
+- **Runtime layout.** `items` has a size known only at runtime, so a compiled `Vec` keeps it behind an owning pointer, like Rust's `Box<[T]>`. This is invisible in the model. A realistic `Vec` also separates capacity from length, `Mk(len, cap, buf : Array(Slot(T), cap), h : Le(len, cap))`. That uses both kinds of dependent field, plus an uninitialised-slot type `Slot(T)` (a `MaybeUninit` primitive); `Opt(T)` would be safe, but costs a tag per slot.
+
+**Is it the ROADMAP's "subset types / proof fields" item?** The mechanism is the same (telescopic fields), but the consequences differ:
+
+| | Proof field (`h : Len(items) = n`) | Data index field (`items : Array(T, n)`) |
+|---|---|---|
+| Field value | `⋆`, erased | data, present at runtime |
+| `Eq` and injectivity | the proof's equation is `True`: no heterogeneity | heterogeneous: restricted to convertible index fields |
+| Runtime layout | nothing | size known only at runtime (behind a pointer) |
+| Which field becomes read-only | the payload `items`, which programs mutate constantly | the length `n`, which is rarely written on its own |
+| In-place mutation of the payload | blocked, because `&v.items` could invalidate `h`: DLLBC's packed-invariant walls (`14-`) return | free: `&v.items` keeps its type `Array(T, n)`, because a range cannot change length |
+
+One extension serves both. The `Vec` half is the easier one, so build data index fields first and proof fields second.
+
+**Reallocation.** Because the length is not stored, every reallocating primitive is told the old length as data.
+- **`Realloc(n : Nat, a : Array(T, n), m : Nat, h : Le(n, m), f : Π(i : Nat). T) : Array(T, m)`.** It allocates `m` slots, moves the `n` elements across, frees the old buffer, and fills positions `n..m` with `f(i)`. Its machine value is `⟨Z | a | n | init(f, m)[n..m] | m⟩`. The old contents stay one segment, so "growing keeps the elements" holds by definition, with no arithmetic.
+- **`Append(n, a, x) : Array(T, S n)`** is the one-element case, `⟨Z | a | n | x | S n⟩`. It avoids a closure that would have to move `x`.
+- **`Pop(n, a : Array(T, S n)) : Array(T, n) × T`** and **`Shrink(n, a, m, h : Le(m, n)) : Array(T, m)`** return a whole, smaller buffer. They do not move a sub-array out of a live parent, so they respect "no owned sub-arrays".
+- **`Push`** is then user code: `Push(v : &Vec(T), x : T) := match *v { Mk(n, items) => *v := Mk(S(n), Append(n, items, x)) }`. The match moves `items` out through the borrow and the whole assignment puts a value back (D53), and the index field `n` is only read.
+
+### 1.11 Recursion over indices, and quicksort
+
+**The rule.** By the user's decision, recursion is over an index, a `Nat`, and never over an array or a slice. Scans, `Partition`'s split, `Sorted` and `Count` recurse from `S m` to `m`, which is structural and needs nothing new.
+
+**Quicksort's case.** Quicksort recurses on its range size `m`, calling itself at `K` and at `Sub(m, S K)`. Both are smaller than `m`, but neither is a subterm of it. What it needs is **`<`-recursion on one `Nat` parameter, with erased decrease proofs**. Three principles would do:
+- **Fuel** needs no new rule: an extra `f` with `Le(m, f)`, and structural recursion on `f`. The costs:
+  - a parameter in the program and in every statement (`QSSorted` is stated for all `f ≥ m`, or through the wrapper `QS(m, m, …)`);
+  - two fuel lemmas per recursive call;
+  - fuel inside every sealed program (`⌈…QS(f', K, …)…⌉`), so two sorts of the same slice with different fuel are different neutrals, related only by a lemma.
+- **A proof-carrying decrease** (recommended). The signature says `by m <`, and each recursive call carries an erased proof of `Lt(arg, m)`, written `QS(k, … ; hk)`. The proof is checked by conversion against the entry value `σ_m` as refined. This is [Rec] with "a strict subterm" replaced by "a proof of `Lt`".
+  - **The model is unchanged:** recursion on `<` over ℕ is definable from structural recursion (by `Acc`, or course-of-values).
+  - **The machine needs one guard.** It unfolds a `<`-recursive call only if the argument is structurally below the caller's entry value (`arg ≺ entry` by `≼`, which on numerals is the real `<`). Otherwise the call is closed off as a sealed program, exactly as if it were stuck.
+  - **Why the guard.** Without it, conversion diverges in an inconsistent context. `F(n : Nat, h : False) : Nat by n < := F(n, h ; Absurd(h))` checks, and forming any type that mentions `F(3, h)` under `h : False` unfolds forever. Lean avoids this by making well-founded definitions irreducible, but that would stop programs from running in types, against P1.
+  - **With the guard,** every unfolding strictly decreases a numeral, calls on symbolic arguments seal, and the head guard of [Seal] (D9) returns `⌈F(3, ⋆)⌉` unchanged.
+- **Measure recursion** (`by μ(x̄) <`) is the same rule with an arbitrary function `μ`. Quicksort does not need it.
 
 ## 2. What the primitive brings into the kernel and the trusted base
 
@@ -166,12 +219,15 @@ When a slice at `i ≠ Z` is borrowed, its segment list is rebased by subtractin
 | 12 | Axiom `ProjProj` (sub-of-sub) | Only under nesting; flattening removes it |
 | 13 | Array extensionality | None of B1–B4 needs it |
 | 14 | [Eq-Arr] | Yes, but the headline goes with it: every frame component would then need a lemma |
-| 15 | [Rec] extension (strict sub-range) | Yes: recurse on the length, or on fuel |
+| 15 | [Rec] extension (strict sub-range) | **Avoided by user decision 2** (recursion is over indices only) |
 | 16 | `Init` and literals | No |
 | 17 | `clone` for arrays and slices (D53's built-in, extended) | No: runtime range reads are forbidden, so copying needs it |
-| 18 | `Len` | Avoided: lengths are explicit parameters |
+| 18 | `Len` | **Avoided by user decision 1** (the length is not stored at runtime; programs hold it as a `Nat`) |
 | 19 | Well-formedness condition 7: segments partition `[0, n)`, each body has the type of its width, and a loan in an array is a whole segment | No; the preservation proof needs it |
 | 20 | Unary `Nat` indices | Out of scope. A `usize` primitive would need kernel-*evaluated* arithmetic (as Lean's GMP `Nat` is), still with no decision procedure. That is where modelling a systems language will eventually bring real arithmetic into the kernel |
+| 21 | Telescopic (dependent) fields | Not part of arrays themselves; needed only for user-defined growable arrays. Costs are in §1.10: fields typed left to right, index fields read-only, injectivity only at convertible index fields |
+| 22 | Reallocation primitives `Realloc`, `Append`, `Pop`, `Shrink` | Needed for growth. Each takes the old length as data, and each value keeps the old contents as one segment |
+| 23 | `<`-recursion with erased decrease proofs, and its unfolding guard (§1.11) | Needed by quicksort, not by arrays. Fuel avoids it, at the costs listed in §1.11 |
 
 ### The arithmetic question, settled
 
@@ -188,10 +244,11 @@ The brief's strategy had three parts. Splits form a tree, so siblings are identi
 2. Lengths passed in the exact form the kernel builds, such as `Sub(n, S k)`.
 3. Statements that cut where the program cut (`X[0..k]`, `X[k]`, `X[S k..n]`), rather than pointwise statements, which need item 11.
 4. Staging: a lemma about a call's result is taken before the call consumes its argument, because Ochr has no dependent results.
+5. Lengths needed at runtime are held as ordinary `Nat`s (parameters or `Vec`'s `n`), and passed explicitly to `Init` and the reallocation primitives.
 
 ## 3. Benchmarks
 
-The surface syntax is the current one, plus `Array(T, n)`, `p[i | h]`, `p[i..j | h]` and `clone`. The benchmarks assume a library of `Le`, `LeB : Bool`, `Sub`, `Add`, `EqB` and `Mod`, with the lemmas `LeRefl`, `LeTrans`, `LtLe`, `LeBSound`, `EqBSound`, `ModLt` and `SubFuel`. All of it is Ochr code proved by recursion, and none of it is kernel.
+The surface syntax is the current one, plus `Array(T, n)`, `p[i | h]`, `p[i..j | h]` and `clone`. The benchmarks assume a library of `Le`, `LeB : Bool`, `Sub`, `Add`, `EqB` and `Mod`, with the lemmas `LeRefl`, `LtLe`, `SubLt`, `LeBSound`, `EqBSound` and `ModLt`. All of it is Ochr code proved by recursion, and none of it is kernel.
 
 ### B1: borrow a prefix, call an arbitrary `f`, and the rest is unchanged
 
@@ -220,36 +277,34 @@ At the generic call (`a ↦ σ`, `f ↦ σ_f`):
 ### B2: quicksort
 
 ```
-def QS (f : Nat) (n : Nat) (a : &Array(Nat, n)) (hf : Le(n, f)) : Unit by f := (
-  match f {
+// Recursion is on the range size m, with an erased decrease proof after `;` at each call (§1.11).
+def QS (m : Nat) (a : &Array(Nat, m)) : Unit by m < := (
+  match m {
     Z => (),
-    S f' => match n {
-      Z => (),
-      S _ => (
-        let hk = PartLt(n, *a, refl);         // hk : Lt(K, n) for the K below; staged before *a is consumed
-        let k = Partition(n, &*a, refl);      // the pivot is now at k
-        QS(f', k, &(*a)[0..k | LtLe(k, n, hk)], LeTrans(S(k), n, f, hk, hf));
-        QS(f', Sub(n, S(k)), &(*a)[S(k)..n | ⟨hk, LeRefl(n)⟩], SubFuel(n, k, f', hf))
-      ),
-    },
+    S _ => (
+      let hk = PartLt(m, *a, refl);           // hk : Lt(K, m) for the K below; staged before *a is consumed
+      let k = Partition(m, &*a, refl);        // the pivot is now at k
+      QS(k, &(*a)[0..k | LtLe(k, m, hk)] ; hk);
+      QS(Sub(m, S(k)), &(*a)[S(k)..m | ⟨hk, LeRefl(m)⟩] ; SubLt(m, k, hk))
+    ),
   }
 )
 ```
 
 **Partition.** It has DLLBC's shape:
 - clone the head `x`;
-- split the tail `&(*a)[1..n]` recursively, recursing on the length (structural);
+- split the tail `&(*a)[1..m]` recursively, recursing on the length from `S m'` to `m'` (structural, over an index);
 - then `match k { Z => 0, S _ => (swap a[0] and a[k] with clone reads; k) }`.
 
 Matching `k` puts the swap position at `S k'`, structurally after the boundary `1`, so both writes cut exactly.
 
-`PartLt(n, x, hne) : Lt((let b = x; Partition(n, &b, hne)), n)` is a statement about `Partition` itself, as `AddMZero` is about `AddM`. Its type at the call site mentions the sealed program that `k` holds.
+`PartLt(m, x, hne) : Lt((let b = x; Partition(m, &b, hne)), m)` is a statement about `Partition` itself, as `AddMZero` is about `AddM`. Its type at the call site mentions the sealed program that `k` holds.
 
-**Trace** (arm `S f'`, `S m`):
+**Trace** (arm `S m'`):
 - `Partition` closes off, leaving `*a ↦ P` and `k ↦ K`.
-- `&(*a)[0..K]` cuts. The recursive call closes off on the fuel and fills the loan with `F_L = ⌈let c = P[0..K]; QS(f', K, &c, ⋆); c⌉`.
-- `&(*a)[S K..n]` is placed by `K ≼ S K`.
-- The final array is `⟨Z | F_L | K | P[K] | S K | F_R | n⟩`.
+- `&(*a)[0..K]` cuts. `K` is not structurally below `m`, so the unfolding guard seals the recursive call, and the loan is filled with `F_L = ⌈let c = P[0..K]; QS(K, &c ; ⋆); c⌉`.
+- `&(*a)[S K..m]` is placed by `K ≼ S K`.
+- The final array is `⟨Z | F_L | K | P[K] | S K | F_R | m⟩`.
 
 **Specs, by recursion on the length.** The match refines `a`'s stored type, so every obligation at a numeral index computes to `True`, and `Sub(S m, 1)` computes to `m`.
 
@@ -269,28 +324,28 @@ def Count (x : Nat) (n : Nat) (a : &Array(Nat, n)) : Nat by n := (
     S m => Add(EqN(x, clone((*a)[0])), Count(x, m, &(*a)[1..n | ⟨refl, LeRefl(n)⟩])),
   }
 )
-def QSSorted (f : Nat) (n : Nat) (a : Array(Nat, n)) (hf : Le(n, f)) :
-    Sorted(n, (let b = a; QS(f, n, &b, hf); b)) by f := …
-def QSPerm (f : Nat) (n : Nat) (a : Array(Nat, n)) (hf : Le(n, f)) (x : Nat) :
-    Id Nat (let b = a; QS(f, n, &b, hf); Count(x, n, &b)) (let b = a; Count(x, n, &b)) by f := …
+def QSSorted (m : Nat) (a : Array(Nat, m)) :
+    Sorted(m, (let b = a; QS(m, &b); b)) by m < := …
+def QSPerm (m : Nat) (a : Array(Nat, m)) (x : Nat) :
+    Id Nat (let b = a; QS(m, &b); Count(x, m, &b)) (let b = a; Count(x, m, &b)) by m < := …
 ```
 
 **The proof.** `QSSorted`'s proof runs `QS`'s steps on a local, then applies the glue lemma `SortedCut(n, x, k, hk, hl : Sorted(k, x[0..k]), hr : Sorted(Sub(n, S k), x[S k..n]), hu : Ub(x[k], k, x[0..k]), hb : Lb(x[k], …, x[S k..n])) : Sorted(n, x)` to the final array.
-- `x[0..K]`, `x[K]` and `x[S K..n]` reduce, through exact windows, to `F_L`, `P[K]` and `F_R`.
-- The induction hypotheses `QSSorted(f', K, P[0..K], …)` and `QSSorted(f', Sub(n, S K), P[S K..n], …)` have exactly `F_L` and `F_R` in their types, since they are the same closed programs.
+- `x[0..K]`, `x[K]` and `x[S K..m]` reduce, through exact windows, to `F_L`, `P[K]` and `F_R`.
+- The induction hypotheses `QSSorted(K, P[0..K] ; hk)` and `QSSorted(Sub(m, S K), P[S K..m] ; SubLt(…))` have exactly `F_L` and `F_R` in their types, since they are the same closed programs. They use the same decrease proofs as the program.
 - `hu` and `hb` come from `PartOk` together with `UbPerm`/`LbPerm`.
 
 | Fact | Status |
 |---|---|
 | Neither call moves the pivot, and each half is untouched by the other call | **Free** (visible in the value) |
-| The halves have lengths `K` and `Sub(n, S K)`, and keep them | **Free** (fixed by the borrow types) |
+| The halves have lengths `K` and `Sub(m, S K)`, and keep them | **Free** (fixed by the borrow types) |
 | The induction hypotheses are about the goal's exact pieces | **Free** (the same sealed programs) |
 | `SortedCut` and `CountCut` | Lemmas, by induction over the cons view. Flattening with numeral offsets is needed; under nesting, `ProjProj` is needed too |
 | `UbPerm`, `LbPerm` | Lemmas about `Count` and `Le` |
 | `PartLt`, `PartOk` | Lemmas: the invented stratum, as in DLLBC (R15). In the shape above no axiom is needed; a Lomuto partition needs hints or `SetGetOther` |
-| Fuel arithmetic | `Nat` lemmas |
+| The decrease proofs (`SubLt`, `LtLe`, `LeRefl`) | `Nat` lemmas |
 
-**The recursion is not structural.** `K` is a sealed program, and `≼` cannot show `K ≺ n`, so `QS` and `QSSorted` recurse on fuel instead (measure recursion is a ROADMAP item). **[vs DLLBC]** There is no wall from matching the length and then cutting at a symbolic index (T2, R12), and no citation at cuts (C8), because no length is ever refined.
+**The recursion is not structural.** It goes from the range size `m` to `K` and to `Sub(m, S K)`: both are smaller, neither is a subterm, and `K` is a sealed program that `≼` cannot compare with `m`. So `QS` and `QSSorted` need `<`-recursion with erased decrease proofs, plus the unfolding guard (§1.11). With fuel instead, every call gains `f`, a proof of `Le(m, f)`, and two fuel lemmas. **[vs DLLBC]** There is no wall from matching the length and then cutting at a symbolic index (T2, R12), and no citation at cuts (C8), because no length is ever refined.
 
 ### B3: insert into a computed bucket
 
@@ -320,7 +375,7 @@ def Insert (cap : Nat) (hc : Lt(0, cap)) (slots : &Array(Bucket, cap)) (k : Nat)
 - **The pointwise `Find` spec.** It splits on `EqB(Mod(q, cap), Mod(k, cap))`, which D34 generalises.
   - The `true` arm transports the index to `I` (by `EqBSound` and `J`), and then the read is definitional.
   - In the `false` arm, `J ≠ I` cannot be placed, so the read is `cat(…)[J]`, and the arm needs `SetGetOther`: an **axiom**, or a lemma once hints exist.
-- **[vs DLLBC]** DLLBC's packed-invariant walls (`14-packed-borrows.md`) do not arise, because Ochr has no dependent fields, so the invariant is an ordinary lemma. They will return with subset types.
+- **[vs DLLBC]** DLLBC's packed-invariant walls (`14-packed-borrows.md`) do not arise, because Ochr has no dependent fields, so the invariant is an ordinary lemma. They will return with proof fields, though not with `Vec`'s data index fields (§1.10).
 
 ### B4: a bounds proof from a runtime comparison
 
@@ -351,6 +406,9 @@ def LeBSound (x : Nat) (y : Nat) (e : Id Bool (LeB(x, y)) true) : Le(x, y) by x 
 | A window that may contain `⊥` | The same | An error |
 | [Close]'s row, a function's class, owners | Unchanged | — |
 | Hints (optional) | A proof's stored type | A neutral type is no hint |
+| Unfolding a `<`-recursive call (§1.11) | `≼` between the argument and the entry value | Yes. Undecided means sealed, which is a stuck form |
+| Index fields are read-only (§1.10) | The declaration: which fields later field types mention | Syntactic |
+| Injectivity on a dependent constructor | Convertibility of the index fields | Yes. Otherwise `Eq` stays neutral |
 
 Substitution preserves `≡` and `≼`, so a more refined path decides a superset of what a less refined path decides. No path ever picks a *different* segment.
 
@@ -361,6 +419,8 @@ Substitution preserves `≡` and `≼`, so a more refined path decides a superse
 3. **Coordinates.** At the generic call `σ'[0]`; at an instance `σ[i..j][0]`. Flattening sends both to `σ[i]` by the same rule.
 4. **`⊥`.** A read of a window that may hold `⊥` is rejected on the generic path, even if an instance would accept it. That is rejection only.
 5. **Length zero.** The zero-length clause of [Eq-Arr] fires once `σₙ := Z`, and commutes with substitution.
+6. **The `<` guard.** The generic call may seal a recursive call that an instance unfolds. Once refinement makes the argument a smaller numeral, the sealed program re-normalises to the unfolded result, as any stuck call does. Monotone.
+7. **Index fields.** An index field's content changes only through refinement or through assignment of the whole constructor, never on its own. So `type(p.items)` changes only when `Array(T, σ₁)` is refined consistently, and both paths compute it from the same stored types.
 
 DLLBC's C9 (a normalisation justified on symbolic values and wrong on concrete ones) would live in merge and zero-width dropping here. So loaned zero-width segments are kept, and the differential must run arrays at both concrete and symbolic lengths.
 
@@ -373,6 +433,8 @@ DLLBC's C9 (a normalisation justified on symbolic values and wrong on concrete o
 - **[Eq-Arr].** It identifies propositions with equal truth values: concatenation is injective at equal cuts, and `⟦T⟧⁰` is a singleton. So it needs `propext`, as D47 and D52 do.
 - **Axioms.** The axioms (`SetGetOther`, and `ProjProj` under nesting) are theorems of the model.
 - **Well-formedness.** Preservation needs condition 7 (§2, item 19).
+- **`Vec`.** `⟦Vec(T)⟧ = Σ n : ℕ. ⟦T⟧^n`. Telescopic fields are Σ-types in the model, and restricted injectivity is a `propext` instance.
+- **`<`-recursion** is definable by strong induction on ℕ, so it needs no new axiom. The unfolding guard belongs to the machine and is invisible to the model.
 
 ## 5. Paper cost
 
@@ -383,14 +445,16 @@ DLLBC's C9 (a normalisation justified on symbolic values and wrong on concrete o
 | Syntax and value figures | `Array(T, n)`, the two places, segments and projections | 3 lines |
 | §4 | [Locate], [Cut], the extended [Access], merge, and B1's trace | ≈0.5 page |
 | §5 | [Eq-Arr] | ≈0.1 page |
-| §6 | obligations from stored types; [Rec] | ≈0.1 page |
+| §6 | obligations from stored types | ≈0.1 page |
+| §6, if quicksort is in the paper | `<`-recursion and its unfolding guard | ≈0.15 page |
+| §3 and §9, if `Vec` is in the paper | telescopic fields, read-only index fields, restricted injectivity | ≈0.25 page |
 | §9 | `Le`/`Sub`/`Add` as the second non-uniform point; R13; no `Vec` | ≈0.2 page |
 | Related work | DLLBC's carve, VST `split3seg`, Aeneas (one range at a time), RefinedRust (one hole) | ≈0.15 page |
 
-The total is about **1.1 to 1.3 pages**. That means cutting about a page elsewhere, or moving B1's trace to the appendix, which leaves about 0.7 page.
+Arrays alone total about **1.1 to 1.3 pages**, or about 1.5 with quicksort's recursion rule. `Vec` is better presented as future work in one sentence. That means cutting about a page elsewhere, or moving B1's trace to the appendix, which leaves about 0.7 page.
 
 **Appendix**, about **2 to 2.5 pages**:
-- the full rules: values, content through segments, [Locate], [Cut], merge, flattening, the place rules, [Eq-Arr], the obligations in [T-Read], [T-Borrow] and [T-Assign], [Rec], and well-formedness condition 7;
+- the full rules: values, content through segments, [Locate], [Cut], merge, flattening, the place rules, [Eq-Arr], the obligations in [T-Read], [T-Borrow] and [T-Assign], `<`-recursion, and well-formedness condition 7;
 - notes with a counterexample for each fail-safe choice: a zero-width loan, a refused overlap, and a read meeting `⊥`.
 
 **Meta section:** one more conjectured property (item 2 of §4.2).
@@ -406,13 +470,17 @@ The total is about **1.1 to 1.3 pages**. That means cutting about a page elsewhe
 6. **Unary indices.** They cost checker time: DLLBC's hashmap differential shrank from capacity 32 to 8. And they are not `usize`.
 7. **The first axiom.** `SetGetOther` (without hints) would be Ochr's first axiom. It is standard and true in the model, but it changes the calculus's character.
 8. **Paper space.** About one more page in a full body.
+9. **The `<` unfolding guard is new machine behaviour** alongside [Seal]'s head guard (D9, D39). An error there diverges or seals wrongly; it should get its own regression attacks, starting with the `F(n, h : False)` loop.
+10. **Compiled drop needs lengths.** No length is stored, so dropping an owned array whose elements need dropping requires evaluating the length term of its type at the drop point. D53 makes `Nat` reads moves, so `def F(n : Nat, a : Array(T, n)) := G(n); ()` has consumed `n` by the time `a` is dropped. Either the program clones `n`, or the index type is a copy type: one more argument for a machine-word `usize`.
 
 **Open questions.**
 - Ranges by endpoints or by offset and count? (`Sub`, or `Add` only.)
 - Should `Le(x, x) ≡ True` be a conversion rule? It would remove every `LeRefl` in §3.
 - Should hints go in stage 1? They lift R13, and they turn `SetGetOther` into a lemma.
 - Are flattening, the `Add` rules and merge confluent together? This is a completeness question, not a soundness one.
-- How do `Vec` (which needs dependent fields) and shared slices (which need no disjointness) layer on top?
+- For telescopic fields: stay with restricted injectivity, or adopt OTT's heterogeneous equality for dependent constructors?
+- Must the compiler be able to evaluate every owned array's length at its drop point? That needs a rule (for example, the length term's variables stay live) or a copy index type.
+- How do shared slices, which need no disjointness at all, layer on top?
 
 **Verdict: worth implementing, staged.** This assumes the library probe confirms it cannot make B1's frame definitional. I expect it cannot: right-nested values have no prefix sub-places, so there the frame is a provable lemma, not a definition.
 
@@ -429,9 +497,9 @@ What it does not make free is index algebra. Gluing, read-after-write at unrelat
 - flattening with the `Add` rules, and [Eq-Arr];
 - `Le`/`Sub` obligations;
 - `Init`, literals and `clone`;
-- fuel or length recursion, with no hints;
-- `SetGetOther` as a declared axiom.
+- recursion over indices only, with `<`-recursion and its guard for quicksort (fuel if that lane lags);
+- no hints, and `SetGetOther` as a declared axiom.
 
-Measure it on B1–B4 and the two case studies before adding hints or the [Rec] extension.
+Measure it on B1–B4 and the two case studies before adding hints. Telescopic fields with data index fields (`Vec`) and the reallocation primitives come in stage 2; proof fields come after, because they bring back the packed-borrow problem.
 
 **Confidence.** This design has not met a checker, and DLLBC's desk design reversed twice on contact. I expect it to break in three places: moves out of elements inside windows that were never cut; zero-width segments at concrete lengths; and callees losing exactness where a caller cut at unrelated symbolic points.
