@@ -105,7 +105,7 @@ AddMEq(x : &Nat, y : Nat) : Id Unit (AddM(x, y)) (AddM'(x, y)) by x :=
   match *x { Z => refl, S p => AddMEq(&p, y) }
 ```
 
-In the successor branch, re-running `AddM'`'s sealed program on `S σ'` unfolds `TailM` once, closes off its inner call with a fresh hole, and the pending write `*r := y` fills that hole; the recursive call's statement, evaluated at the call site, performs the same steps through the caller's borrow. The theorem for an owned number follows by lending it, as for `AddZero`.
+In the successor branch, re-running `AddM'`’s sealed program on `S σ'` unfolds `TailM` once, closes off its inner call with a fresh hole, and the pending write `*r := y` fills that hole; the recursive call's statement, evaluated at the call site, performs the same steps through the caller's borrow. The theorem for an owned number follows by lending it, as for `AddZero`.
 
 == Proofs about the current state
 
