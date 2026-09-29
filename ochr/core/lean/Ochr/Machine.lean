@@ -2208,7 +2208,10 @@ where
 /-- D61 `split f`: find the neutral to split. Walk the goal's sealed programs in pre-order,
 left to right; from each, follow the chain of scrutinees its run is stuck on (each link
 the content of the scrutinee of the match the previous one stopped at) while they are
-sealed programs; the first sealed scrutinee whose head call is `f` is the one. -/
+sealed programs; the first sealed scrutinee whose head call is `f` is the one. A link may
+also be an abstract value that stands for a sealed program generalised earlier (a D34
+record, which re-derivations of the program are replaced by): if that program's head
+call is `f`, it is the one, already generalised. -/
 partial def findSplit (f : String) (G : Value) : M (Option Value) := do
   for t in sealedIn G do
     let mut cur := t
@@ -2217,6 +2220,11 @@ partial def findSplit (f : String) (G : Value) : M (Option Value) := do
       | some n@(.sealed t') =>
         if sealedHead t' == some f then return some n
         cur := t'
+      | some a@(.abs σ) =>
+        match (← get).neutrals.find? (·.2 == σ) with
+        | some (.sealed t', _) => if sealedHead t' == some f then return some a
+        | _ => pure ()
+        break
       | _ => break
   pure none
 
@@ -2237,6 +2245,7 @@ partial def splitTarget (f : String) : M (Nat × Value) := do
   let some G := (← get).goal | err "split: no goal"
   let some n := ← findSplit f G
     | err s!"split {f}: the goal {G} is not stuck on the result of a call of {f}"
+  if let .abs σ := n then return (σ, ← absType σ)     -- generalised already
   let .sealed t := n | err "internal: split target"
   let some T := ← sealedResultType? t
     | err s!"split {f}: the type of {n} is not known (its head's result type depends on the arguments)"

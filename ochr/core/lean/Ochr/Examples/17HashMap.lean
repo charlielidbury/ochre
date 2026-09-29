@@ -556,30 +556,14 @@ ochr HashMapLookup uses Std, HashMap {
   def InsertFind (hm : &HashMap) (k : Nat) (v : Nat) :
       Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k)) (InsertNoResize(&*hm, k, v); Some(v)) := (
     match *hm {
-      HM(n, len, slots) => (
-        let c = slots;
-        let b = Slot(&c, Idx(k, n));
-        let added = BInsert(b, k, v);
-        match added {
-          false => SlotInsertFind(&slots, Idx(k, n), k, v),
-          true => SlotInsertFind(&slots, Idx(k, n), k, v),
-        }
-      ),
+      HM(n, len, slots) => split BInsert in SlotInsertFind(&slots, Idx(k, n), k, v),
     }
   )
 
   def InsertFindOther (hm : &HashMap) (k : Nat) (v : Nat) (k2 : Nat) (h : Eq Bool (EqB(k, k2)) false) :
       Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k2)) (let r = Find(*hm, k2); InsertNoResize(&*hm, k, v); r) := (
     match *hm {
-      HM(n, len, slots) => (
-        let c = slots;
-        let b = Slot(&c, Idx(k, n));
-        let added = BInsert(b, k, v);
-        match added {
-          false => SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h),
-          true => SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h),
-        }
-      ),
+      HM(n, len, slots) => split BInsert in SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h),
     }
   )
   -- Without the split the goal is stuck on the sealed `InsertNoResize` and does not meet
@@ -765,45 +749,21 @@ ochr HashMapLookup uses Std, HashMap {
   def RemoveResult (hm : &HashMap) (k : Nat) :
       Id Opt (Remove(&*hm, k)) (let r = Find(*hm, k); Remove(&*hm, k); r) := (
     match *hm {
-      HM(n, len, slots) => (
-        let c = slots;
-        let b = Slot(&c, Idx(k, n));
-        let x = BRemove(b, k);
-        match x {
-          None => SlotRemoveResult(&slots, Idx(k, n), k),
-          Some(_) => SlotRemoveResult(&slots, Idx(k, n), k),
-        }
-      ),
+      HM(n, len, slots) => split BRemove in SlotRemoveResult(&slots, Idx(k, n), k),
     }
   )
 
   def RemoveFind (hm : &HashMap) (k : Nat) (h : AllUnique(Buckets(*hm))) :
       Id Opt (Remove(&*hm, k); Find(*hm, k)) (Remove(&*hm, k); None) := (
     match *hm {
-      HM(n, len, slots) => (
-        let c = slots;
-        let b = Slot(&c, Idx(k, n));
-        let x = BRemove(b, k);
-        match x {
-          None => SlotRemoveFind(&slots, Idx(k, n), k, h),
-          Some(_) => SlotRemoveFind(&slots, Idx(k, n), k, h),
-        }
-      ),
+      HM(n, len, slots) => split BRemove in SlotRemoveFind(&slots, Idx(k, n), k, h),
     }
   )
 
   def RemoveFindOther (hm : &HashMap) (k : Nat) (k2 : Nat) (h : Eq Bool (EqB(k, k2)) false) :
       Id Opt (Remove(&*hm, k); Find(*hm, k2)) (let r = Find(*hm, k2); Remove(&*hm, k); r) := (
     match *hm {
-      HM(n, len, slots) => (
-        let c = slots;
-        let b = Slot(&c, Idx(k, n));
-        let x = BRemove(b, k);
-        match x {
-          None => SlotRemoveFindOther(&slots, Idx(k, n), Idx(k2, n), k, k2, h),
-          Some(_) => SlotRemoveFindOther(&slots, Idx(k, n), Idx(k2, n), k, k2, h),
-        }
-      ),
+      HM(n, len, slots) => split BRemove in SlotRemoveFindOther(&slots, Idx(k, n), Idx(k2, n), k, k2, h),
     }
   )
   -- ## GetMut
@@ -882,12 +842,9 @@ ochr HashMapLookup uses Std, HashMap {
       Id Unit (let q = GetMut(&*hm, k, h); *q := w) (InsertNoResize(&*hm, k, w)) := (
     match *hm {
       HM(n, len, slots) => (
-        let c = slots;
-        let b = Slot(&c, Idx(k, n));
-        let added = BInsert(b, k, w);
-        let r = BFind(Nth(slots, Idx(k, n)), k);
         let p = SlotInsertAdded(&slots, Idx(k, n), k, w);
-        match added {
+        let r = BFind(Nth(slots, Idx(k, n)), k);
+        split BInsert {
           false => SlotGetMutIsInsert(&slots, Idx(k, n), k, w, h),
           true => match r {
             None => match h {},
@@ -1059,16 +1016,12 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
     match *hm {
       HM(n, len, slots) => (
         let p = SlotInsertAdded(&slots, Idx(k, n), k, v);
-        let c = slots;
-        let b = Slot(&c, Idx(k, n));
-        let added = BInsert(b, k, v);
-        let r = BFind(Nth(slots, Idx(k, n)), k);
-        match added {
-          false => match r {
+        split BInsert {
+          false => split BGet {
             None => match p {},
             Some(_) => refl,
           },
-          true => match r {
+          true => split BGet {
             None => refl,
             Some(_) => match p {},
           },
@@ -1098,13 +1051,7 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
       BCons(k', v', t) => (
         let e = EqB(k', k);
         match e {
-          false => (
-            let r = BFind(t, k);
-            match r {
-              None => BInsertCount(&t, k, v),
-              Some(_) => BInsertCount(&t, k, v),
-            }
-          ),
+          false => split BGet in BInsertCount(&t, k, v),
           true => refl,
         }
       ),
@@ -1119,20 +1066,11 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
     match *s {
       SOne(b) => BInsertCount(&b, k, v),
       SCons(b, t) => match i {
-        Z => (
-          let r = BFind(b, k);
-          match r {
-            None => rewrite BInsertCount(&b, k, v) in refl,
-            Some(_) => rewrite BInsertCount(&b, k, v) in refl,
-          }
-        ),
-        S i' => (
-          let r = BFind(Nth(t, i'), k);
-          match r {
-            None => rewrite SlotInsertCount(&t, i', k, v) in rewrite AddS(BLen(b), Count(t)) in refl,
-            Some(_) => rewrite SlotInsertCount(&t, i', k, v) in refl,
-          }
-        ),
+        Z => split BGet in rewrite BInsertCount(&b, k, v) in refl,
+        S i' => split BGet {
+          None => rewrite SlotInsertCount(&t, i', k, v) in rewrite AddS(BLen(b), Count(t)) in refl,
+          Some(_) => rewrite SlotInsertCount(&t, i', k, v) in refl,
+        },
       },
     }
   )
@@ -1144,12 +1082,9 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
       Id Nat (InsertNoResize(&*hm, k, v); Len(*hm)) (InsertNoResize(&*hm, k, v); Count(Buckets(*hm))) := (
     match *hm {
       HM(n, len, slots) => (
-        let c = slots;
-        let b = Slot(&c, Idx(k, n));
-        let added = BInsert(b, k, v);
-        let r = BFind(Nth(slots, Idx(k, n)), k);
         let p = SlotInsertAdded(&slots, Idx(k, n), k, v);
-        match added {
+        let r = BFind(Nth(slots, Idx(k, n)), k);
+        split BInsert {
           false => match r {
             None => match p {},
             Some(_) => rewrite SlotInsertCount(&slots, Idx(k, n), k, v) in h,
@@ -1185,16 +1120,12 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
     match *hm {
       HM(n, len, slots) => (
         let p = SlotRemoveResult(&slots, Idx(k, n), k);
-        let c = slots;
-        let b = Slot(&c, Idx(k, n));
-        let x = BRemove(b, k);
-        let r = BFind(Nth(slots, Idx(k, n)), k);
-        match x {
-          None => match r {
+        split BRemove {
+          None => split BGet {
             None => refl,
             Some(_) => match p {},
           },
-          Some(_) => match r {
+          Some(_) => split BGet {
             None => match p {},
             Some(_) => refl,
           },
@@ -1211,13 +1142,7 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
       BCons(k', v', t) => (
         let e = EqB(k', k);
         match e {
-          false => (
-            let r = BFind(t, k);
-            match r {
-              None => BRemoveCount(&t, k),
-              Some(_) => BRemoveCount(&t, k),
-            }
-          ),
+          false => split BGet in BRemoveCount(&t, k),
           true => refl,
         }
       ),
@@ -1230,25 +1155,19 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
     match *s {
       SOne(b) => BRemoveCount(&b, k),
       SCons(b, t) => match i {
-        Z => (
-          let r = BFind(b, k);
-          match r {
-            None => rewrite BRemoveCount(&b, k) in refl,
-            Some(_) => rewrite ← BRemoveCount(&b, k) in refl,
-          }
-        ),
-        S i' => (
-          let r = BFind(Nth(t, i'), k);
-          match r {
-            None => rewrite SlotRemoveCount(&t, i', k) in refl,
-            Some(_) => (
-              let ct = t;
-              let rb = Slot(&ct, i');
-              BRemove(rb, k);
-              rewrite ← SlotRemoveCount(&t, i', k) in AddS(BLen(b), Count(ct))
-            ),
-          }
-        ),
+        Z => split BGet {
+          None => rewrite BRemoveCount(&b, k) in refl,
+          Some(_) => rewrite ← BRemoveCount(&b, k) in refl,
+        },
+        S i' => split BGet {
+          None => rewrite SlotRemoveCount(&t, i', k) in refl,
+          Some(_) => (
+            let ct = t;
+            let rb = Slot(&ct, i');
+            BRemove(rb, k);
+            rewrite ← SlotRemoveCount(&t, i', k) in AddS(BLen(b), Count(ct))
+          ),
+        },
       },
     }
   )
@@ -1258,12 +1177,9 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
       Id Nat (Remove(&*hm, k); Len(*hm)) (Remove(&*hm, k); Count(Buckets(*hm))) := (
     match *hm {
       HM(n, len, slots) => (
-        let c = slots;
-        let b = Slot(&c, Idx(k, n));
-        let x = BRemove(b, k);
-        let r = BFind(Nth(slots, Idx(k, n)), k);
         let p = SlotRemoveResult(&slots, Idx(k, n), k);
-        match x {
+        let r = BFind(Nth(slots, Idx(k, n)), k);
+        split BRemove {
           None => match r {
             None => rewrite SlotRemoveCount(&slots, Idx(k, n), k) in h,
             Some(_) => match p {},
@@ -1605,13 +1521,7 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       HM(n, len, s) => (
         let ⟨hl, hu, hp⟩ = h;
         let mc = m;
-        let cs = s;
-        let b = Slot(&cs, Idx(k, n));
-        let added = BInsert(b, k, v);
-        match added {
-          false => ⟨InsertCount(&mc, k, v, hl), ⟨SlotInsertUnique(s, Idx(k, n), k, v, hu), SlotInsertPlaced(s, n, k, v, hp)⟩⟩,
-          true => ⟨InsertCount(&mc, k, v, hl), ⟨SlotInsertUnique(s, Idx(k, n), k, v, hu), SlotInsertPlaced(s, n, k, v, hp)⟩⟩,
-        }
+        split BInsert in ⟨InsertCount(&mc, k, v, hl), ⟨SlotInsertUnique(s, Idx(k, n), k, v, hu), SlotInsertPlaced(s, n, k, v, hp)⟩⟩
       ),
     }
   )
@@ -1622,13 +1532,7 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       HM(n, len, s) => (
         let ⟨hl, hu, hp⟩ = h;
         let mc = m;
-        let cs = s;
-        let b = Slot(&cs, Idx(k, n));
-        let x = BRemove(b, k);
-        match x {
-          None => ⟨RemoveCount(&mc, k, hl), ⟨SlotRemoveUnique(s, Idx(k, n), k, hu), SlotRemovePlaced(s, n, k, hp)⟩⟩,
-          Some(_) => ⟨RemoveCount(&mc, k, hl), ⟨SlotRemoveUnique(s, Idx(k, n), k, hu), SlotRemovePlaced(s, n, k, hp)⟩⟩,
-        }
+        split BRemove in ⟨RemoveCount(&mc, k, hl), ⟨SlotRemoveUnique(s, Idx(k, n), k, hu), SlotRemovePlaced(s, n, k, hp)⟩⟩
       ),
     }
   )
@@ -1726,8 +1630,7 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
           false => rewrite InsertFindOther(&mc, k', v', k, refl) in MoveBucketFind(t, m2, k),
           true => (
             let found : Eq Opt (Find(m2, k)) (Some(v')) = (rewrite EqBSound(k', k, refl) in InsertFind(&mc, k', v'));
-            let r = BFindLast(t, k);
-            match r {
+            split BFindLast {
               None => rewrite found in MoveBucketFind(t, m2, k),
               Some(_) => MoveBucketFind(t, m2, k),
             }
@@ -1744,8 +1647,7 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       SCons(b, t) => (
         let mb = m;
         MoveBucket(b, &mb);
-        let r = SFindLast(t, k);
-        match r {
+        split SFindLast {
           None => rewrite MoveBucketFind(b, m, k) in MoveSlotsFind(t, mb, k),
           Some(_) => MoveSlotsFind(t, mb, k),
         }
@@ -1777,8 +1679,7 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
           false => BFindLastUnique(t, k, rest),
           true => (
             let none = BFindLastNone(t, k, rewrite EqBSound(k', k, refl) in absent);
-            let r = BFindLast(t, k);
-            match r {
+            split BFindLast {
               None => refl,
               Some(_) => match none {},
             }
@@ -1795,8 +1696,7 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       SCons(b, t) => (
         let ⟨hb, ht⟩ = h;
         let none = NowhereLast(t, k, ht);
-        let r = SFindLast(t, k);
-        match r {
+        split SFindLast {
           None => BFindLastNone(b, k, hb),
           Some(_) => match none {},
         }
@@ -1814,16 +1714,14 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
         match d {
           Z => (
             let none = NowhereLast(t, k, h);
-            let r = SFindLast(t, k);
-            match r {
+            split SFindLast {
               None => BFindLastUnique(b, k, ub),
               Some(_) => match none {},
             }
           ),
           S d' => (
             let ⟨hb, ht⟩ = h;
-            let r = SFindLast(t, k);
-            match r {
+            split SFindLast {
               None => rewrite ← BFindLastNone(b, k, hb) in OnlyInLast(t, d', k, ht, ut),
               Some(_) => OnlyInLast(t, d', k, ht, ut),
             }
@@ -2134,24 +2032,9 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
         let mc = m;
         let m2 = m;
         InsertNoResize(&m2, k, v);
-        let cs = s;
-        let b = Slot(&cs, Idx(k, n));
-        let added = BInsert(b, k, v);
-        match added {
-          false => (
-            let full = Lt(n, len);
-            match full {
-              false => InsertFind(&mc, k, v),
-              true => rewrite ← ResizeFind(m2, k, InsertInv(m, k, v, h)) in InsertFind(&mc, k, v),
-            }
-          ),
-          true => (
-            let full = Lt(n, S len);
-            match full {
-              false => InsertFind(&mc, k, v),
-              true => rewrite ← ResizeFind(m2, k, InsertInv(m, k, v, h)) in InsertFind(&mc, k, v),
-            }
-          ),
+        split BInsert in split Lt {
+          false => InsertFind(&mc, k, v),
+          true => rewrite ← ResizeFind(m2, k, InsertInv(m, k, v, h)) in InsertFind(&mc, k, v),
         }
       ),
     }
@@ -2165,24 +2048,9 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
         let mc = m;
         let m2 = m;
         InsertNoResize(&m2, k, v);
-        let cs = s;
-        let b = Slot(&cs, Idx(k, n));
-        let added = BInsert(b, k, v);
-        match added {
-          false => (
-            let full = Lt(n, len);
-            match full {
-              false => InsertFindOther(&mc, k, v, k2, ne),
-              true => rewrite ← ResizeFind(m2, k2, InsertInv(m, k, v, h)) in InsertFindOther(&mc, k, v, k2, ne),
-            }
-          ),
-          true => (
-            let full = Lt(n, S len);
-            match full {
-              false => InsertFindOther(&mc, k, v, k2, ne),
-              true => rewrite ← ResizeFind(m2, k2, InsertInv(m, k, v, h)) in InsertFindOther(&mc, k, v, k2, ne),
-            }
-          ),
+        split BInsert in split Lt {
+          false => InsertFindOther(&mc, k, v, k2, ne),
+          true => rewrite ← ResizeFind(m2, k2, InsertInv(m, k, v, h)) in InsertFindOther(&mc, k, v, k2, ne),
         }
       ),
     }
@@ -2193,26 +2061,11 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
   def InsertInvR (m : HashMap) (k : Nat) (v : Nat) (h : Inv(m)) : (let c = m; Insert(&c, k, v); Inv(c)) := (
     match m {
       HM(n, len, s) => (
-        let cs = s;
-        let b = Slot(&cs, Idx(k, n));
-        let added = BInsert(b, k, v);
         let m2 = m;
         InsertNoResize(&m2, k, v);
-        match added {
-          false => (
-            let full = Lt(n, len);
-            match full {
-              false => InsertInv(m, k, v, h),
-              true => ResizeInv(m2),
-            }
-          ),
-          true => (
-            let full = Lt(n, S len);
-            match full {
-              false => InsertInv(m, k, v, h),
-              true => ResizeInv(m2),
-            }
-          ),
+        split BInsert in split Lt {
+          false => InsertInv(m, k, v, h),
+          true => ResizeInv(m2),
         }
       ),
     }
@@ -2226,24 +2079,9 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
         let mc = m;
         let m2 = m;
         InsertNoResize(&m2, k, v);
-        let cs = s;
-        let b = Slot(&cs, Idx(k, n));
-        let added = BInsert(b, k, v);
-        match added {
-          false => (
-            let full = Lt(n, len);
-            match full {
-              false => InsertLen(&mc, k, v),
-              true => rewrite ← ResizeLen(m2, InsertInv(m, k, v, h)) in InsertLen(&mc, k, v),
-            }
-          ),
-          true => (
-            let full = Lt(n, S len);
-            match full {
-              false => InsertLen(&mc, k, v),
-              true => rewrite ← ResizeLen(m2, InsertInv(m, k, v, h)) in InsertLen(&mc, k, v),
-            }
-          ),
+        split BInsert in split Lt {
+          false => InsertLen(&mc, k, v),
+          true => rewrite ← ResizeLen(m2, InsertInv(m, k, v, h)) in InsertLen(&mc, k, v),
         }
       ),
     }
@@ -2305,15 +2143,7 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
   -- Inserting and moving entries does not change the number of buckets; resizing sets it.
   def InsertN (m : HashMap) (k : Nat) (v : Nat) : Id Nat (let c = m; InsertNoResize(&c, k, v); NOf(c)) (NOf(m)) := (
     match m {
-      HM(n, len, s) => (
-        let cs = s;
-        let b = Slot(&cs, Idx(k, n));
-        let added = BInsert(b, k, v);
-        match added {
-          false => refl,
-          true => refl,
-        }
-      ),
+      HM(n, len, s) => split BInsert in refl,
     }
   )
 
@@ -2355,24 +2185,15 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       HM(n, len, s) => (
         let m2 = m;
         InsertNoResize(&m2, k, v);
-        let cs = s;
-        let b = Slot(&cs, Idx(k, n));
-        let added = BInsert(b, k, v);
-        match added {
-          false => (
-            let full = Lt(n, len);
-            match full {
-              false => refl,
-              true => match ho {},
-            }
-          ),
-          true => (
-            let full = Lt(n, S len);
-            match full {
-              false => refl,
-              true => rewrite ← ResizeN(m2) in rewrite ← ResizeLen(m2, InsertInv(m, k, v, h)) in LtAdd(n, len, n, ho),
-            }
-          ),
+        split BInsert {
+          false => split Lt {
+            false => refl,
+            true => match ho {},
+          },
+          true => split Lt {
+            false => refl,
+            true => rewrite ← ResizeN(m2) in rewrite ← ResizeLen(m2, InsertInv(m, k, v, h)) in LtAdd(n, len, n, ho),
+          },
         }
       ),
     }
@@ -2388,15 +2209,10 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
 
   def RemoveNotOver (m : HashMap) (k : Nat) (ho : NotOver(m)) : (let c = m; Remove(&c, k); NotOver(c)) := (
     match m {
-      HM(n, len, s) => (
-        let cs = s;
-        let b = Slot(&cs, Idx(k, n));
-        let x = BRemove(b, k);
-        match x {
-          None => ho,
-          Some(_) => LtPred(n, len, ho),
-        }
-      ),
+      HM(n, len, s) => split BRemove {
+        None => ho,
+        Some(_) => LtPred(n, len, ho),
+      },
     }
   )
   def GetMutNotOver (m : HashMap) (k : Nat) (w : Nat) (h : IsSome(Find(m, k))) (ho : NotOver(m)) :
