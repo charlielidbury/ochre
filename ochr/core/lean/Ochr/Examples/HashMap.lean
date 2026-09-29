@@ -454,10 +454,48 @@ ochr HashMap {
       match a {
         False => TransN(l0, Count(s0), C, h, SymmN(C, Count(s0), p))
       | True => CongPred(l0, S C, TransN(l0, Count(s0), S C, h, SymmN(S C, Count(s0), p))) } }
+  -- ## GetMut (phase 2 of the spec): a borrow of the value, given that the key is present
+
+  def BPresent (b : Bucket) (k : Nat) : Prop by b :=
+    match b { BNil => Eq Nat Z (S Z) | BCons(k', v', t) => let e = EqB(k', k); match e { False => BPresent(t, k) | True => ⊤ } }
+  -- the BNil arm is impossible (h : Eq Nat Z (S Z)) but must still return a &Nat: ex falso
+  -- into a borrow type, by J with a Type-valued motive that transports the bucket borrow
+  def BGetMut (b : &Bucket) (k : Nat) (h : BPresent(*b, k)) : &Nat by b :=
+    match *b {
+      BNil => J(Nat, Z, S Z, λ(n : Nat) : Type => match n { Z => &Bucket | S _ => &Nat }, h, b)
+    | BCons(k', v', t) => let e = EqB(k', k); match e { False => BGetMut(&t, k, h) | True => &v' } }
+  def Present (m : HashMap) (k : Nat) : Prop :=
+    match m { HM(n, len, s) => let c = s; let r = NthM(&c, Idx(k, n)); BPresent(*r, k) }
+  def GetMut (hm : &HashMap) (k : Nat) (h : Present(*hm, k)) : &Nat :=
+    match *hm { HM(n, len, slots) => let r = NthM(&slots, Idx(k, n)); BGetMut(r, k, h) }
+  -- writing through the returned borrow, then looking the key up, gives the written value
+  def BGetMutSet (b : &Bucket) (k : Nat) (w : Nat) (h : BPresent(*b, k)) :
+      Id Opt (let q = BGetMut(&*b, k, h); *q := w; BGet(&*b, k)) (let q = BGetMut(&*b, k, h); *q := w; Some(w)) by b :=
+    match *b {
+      BNil => ExFalso(Id Opt (let q = BGetMut(&*b, k, h); *q := w; BGet(&*b, k)) (let q = BGetMut(&*b, k, h); *q := w; Some(w)), h)
+    | BCons(k', v', t) => let e = EqB(k', k); match e { False => BGetMutSet(&t, k, w, h) | True => refl } }
+  def NthGetMutSet (s : &Slots) (i : Nat) (k : Nat) (w : Nat) (h : (let c = *s; let r = NthM(&c, i); BPresent(*r, k))) :
+      Id Opt (let r = NthM(&*s, i); let q = BGetMut(r, k, h); *q := w; let r2 = NthM(&*s, i); BGet(r2, k))
+             (let r = NthM(&*s, i); let q = BGetMut(r, k, h); *q := w; Some(w)) by s :=
+    match *s {
+      SOne(b) => BGetMutSet(&b, k, w, h)
+    | SCons(b, t) => match i { Z => BGetMutSet(&b, k, w, h) | S i' => NthGetMutSet(&t, i', k, w, h) } }
+  def GetMutSet (hm : &HashMap) (k : Nat) (w : Nat) (h : Present(*hm, k)) :
+      Id Opt (let q = GetMut(&*hm, k, h); *q := w; Get(&*hm, k)) (let q = GetMut(&*hm, k, h); *q := w; Some(w)) :=
+    match *hm { HM(n, len, slots) => NthGetMutSet(&slots, Idx(k, n), k, w, h) }
+  -- a concrete run: present key, write through the borrow, read it back
+  def RunGetMut : Id Opt (let m = New(3); Insert(&m, 1, 10); Insert(&m, 5, 50); let q = GetMut(&m, 5, refl); *q := 55; Get(&m, 5)) (Some(55)) := refl
+  reject def RunGetMutAbsent : Id Opt (let m = New(3); Insert(&m, 1, 10); let q = GetMut(&m, 5, refl); *q := 55; Get(&m, 5)) (Some(55)) := refl
+  -- the same theorem at a literal value
+  def BGetMutSetZero (b : &Bucket) (k : Nat) (h : BPresent(*b, k)) :
+      Id Opt (let q = BGetMut(&*b, k, h); *q := 0; BGet(&*b, k)) (let q = BGetMut(&*b, k, h); *q := 0; Some(0)) by b :=
+    match *b {
+      BNil => ExFalso(Id Opt (let q = BGetMut(&*b, k, h); *q := 0; BGet(&*b, k)) (let q = BGetMut(&*b, k, h); *q := 0; Some(0)), h)
+    | BCons(k', v', t) => let e = EqB(k', k); match e { False => BGetMutSetZero(&t, k, h) | True => refl } }
 }
 
 #eval IO.println (run "HashMap" HashMap).show
 
--- every verdict as expected, and exactly 95 assertions (a truncated file changes the count)
+-- every verdict as expected, and exactly 105 assertions (a truncated file changes the count)
 #guard (run "HashMap" HashMap).allAsExpected
-#guard (run "HashMap" HashMap).count == 95
+#guard (run "HashMap" HashMap).count == 105

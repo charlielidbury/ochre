@@ -105,6 +105,14 @@ def decIndex (bs : List (String × STerm)) : Option String → R (Option Nat)
     | some j => pure (some j)
     | none => throw s!"`by {x}`: {x} is not a parameter"
 
+/-- A function whose declared codomain is a sort returns types (RULES P2), so the tail of
+its body is a type position: `&T` there is the borrow type, not a borrow of a place `T`
+(hashmap-impl: `λ(n : Nat) : Type => match n { Z => &Bucket | S _ => &Nat }`, the motive of
+ex falso into a borrow type, did not resolve). Non-tail subterms keep their own positions. -/
+def returnsTypes : STerm → Bool
+  | .sort _ => true
+  | _ => false
+
 def succFn : Term :=
   .fix ⟨"_"⟩ [⟨"n"⟩] [.nat] .nat none (.succ (.place (.var 0)))
 
@@ -194,7 +202,7 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
     let (ctx', hs, ds) ← binders ctx bs
     let ret' ← resolve ctx' true ret
     let bodyCtx := (bs.reverse.map fun (x, _) => Entry.bound x) ++ (.bound f :: ctx)
-    return .fix ⟨f⟩ hs ds ret' (← decIndex bs dec) (← resolve bodyCtx false body)
+    return .fix ⟨f⟩ hs ds ret' (← decIndex bs dec) (← resolve bodyCtx (returnsTypes ret) body)
   | .unitLit => pure .tt
   | .pair a b => return .pair (← resolve ctx false a) (← resolve ctx false b)
   | .andI a b => return .andI (← resolve ctx false a) (← resolve ctx false b)
@@ -223,8 +231,8 @@ def resolveDecl (d : SDecl) : R Item := do
   let (ctx', hs, ds) ← binders [] d.params
   let cod ← resolve ctx' true d.ret
   let body ←
-    if d.params.isEmpty then resolve [] false d.body
-    else resolve ((d.params.reverse.map fun (x, _) => Entry.bound x) ++ [.bound d.name]) false d.body
+    if d.params.isEmpty then resolve [] (returnsTypes d.ret) d.body
+    else resolve ((d.params.reverse.map fun (x, _) => Entry.bound x) ++ [.bound d.name]) (returnsTypes d.ret) d.body
   pure (.defn { name := d.name, hs := hs, doms := ds, cod := cod, dec := ← decIndex d.params d.dec, body := body })
 
 /-- Resolve a whole program's declarations with its constructor table. -/
