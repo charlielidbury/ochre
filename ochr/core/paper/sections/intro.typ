@@ -42,7 +42,7 @@ Pédrot and Tabareau's fire triangle @fire-triangle shows that a type theory can
 
 == Contributions
 
-- A core calculus, Ochr, combining mutable borrows with a dependent type theory with a universe of proof-irrelevant propositions, whose definitional equality unfolds imperative code (@sec-calculus, @sec-eval).
+- A core calculus, Ochr, combining mutable borrows with a dependent type theory with inductive definitions and a universe of proof-irrelevant propositions, whose logical connectives are themselves inductive definitions and whose definitional equality unfolds imperative code (@sec-calculus, @sec-eval).
 - _Closing off_, which gives every stuck effectful call a neutral form made of sealed source programs, including calls that return borrows (@sec-eval).
 - An observational equality between computations that is derived rather than primitive (@sec-obs).
 - Worked examples, among them the equivalence of `AddM` with a version that first obtains a borrow of the final node and then writes through it, each proved by bare structural recursion (@sec-overview).

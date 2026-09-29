@@ -48,7 +48,7 @@ The type `Id Unit (AddM(x, 0)) ()` compares two computations. It is evaluated at
 Id Unit (AddM(x, 0)) ()  ≡  Eq (Unit × Nat) ((), N(σ)) ((), σ)  ≡  Eq Nat N(σ) σ
 ```
 
-The last step uses the observational computation rules for equality @ott: equality of pairs is a conjunction, reflexive equations are `⊤`, and `⊤` is a unit for `∧`. The statement "running `AddM(x, 0)` has no effect" has become the ordinary proposition that `N(σ)` equals `σ`.
+The last step uses the observational computation rules for equality @ott: equality of pairs is a conjunction, reflexive equations are `⊤`, and `⊤` is a unit for `∧`. Here `⊤` and `∧` are not primitives: they are `True` and `And`, ordinary inductive declarations in `Prop`, and `refl` is `True`'s constructor. The statement "running `AddM(x, 0)` has no effect" has become the ordinary proposition that `N(σ)` equals `σ`.
 
 == The environment performs the congruence
 
@@ -120,13 +120,13 @@ Dependent types are not only for stating theorems after the fact. A function can
 
 ```
 Le(a : Nat, b : Nat) : Prop by a :=
-  match a { Z => ⊤ | S a' => match b { Z => Eq Nat Z (S Z) | S b' => Le(a', b') } }
+  match a { Z => True | S a' => match b { Z => False | S b' => Le(a', b') } }
 
 SubM(x : &Nat, y : Nat, h : Le(y, *x)) : Unit by y :=
-  match y { Z => () | S q => match *x { Z => () | S p => *x := p; SubM(x, q, h) } }
+  match y { Z => () | S q => match *x { Z => match h {} | S p => *x := p; SubM(x, q, h) } }
 ```
 
-The type of `h` mentions `*x`, the content of the borrow at the moment of the call. Inside `SubM`, after `*x := p` has overwritten that content, the recursive call needs a proof of `Le(q, *x)` about the _new_ content; the old hypothesis `h`, of type `Le(S q, S p)`, provides it, because that type was formed when `h` was bound and normalises to `Le(q, p)`.
+The type of `h` mentions `*x`, the content of the borrow at the moment of the call. Where `*x` is `Z` but `y` is not, `h` has type `Le(S q, Z)`, which computes to `False`: the case cannot arise, and the match with no arms, `match h {}`, says so. Inside `SubM`, after `*x := p` has overwritten that content, the recursive call needs a proof of `Le(q, *x)` about the _new_ content; the old hypothesis `h`, of type `Le(S q, S p)`, provides it, because that type was formed when `h` was bound and normalises to `Le(q, p)`.
 
 Now a caller that first adds and then subtracts:
 
@@ -155,15 +155,15 @@ Nothing above is specific to numbers. With several constructors and several fiel
 InsertM(t : &Tree, k : Nat) : Unit by t :=
   match *t { Leaf          => *t := Node(Leaf, k, Leaf)
            | Node(l, v, r) => let b = Lt(k, v);
-                              match b { True => InsertM(&l, k) | False => InsertM(&r, k) } }
+                              match b { true => InsertM(&l, k) | false => InsertM(&r, k) } }
 
 InsertMEq(t : &Tree, k : Nat) : Id Unit (InsertM(t, k)) (*t := Insert(*t, k)) by t :=
   match *t { Leaf          => refl
            | Node(l, v, r) => let b = Lt(k, v);
-                              match b { True => InsertMEq(&l, k) | False => InsertMEq(&r, k) } }
+                              match b { true => InsertMEq(&l, k) | false => InsertMEq(&r, k) } }
 ```
 
-`Insert` is the pure insertion that rebuilds the path. In the `False` case, both the goal and the induction hypothesis, evaluated at the call site, observe the whole tree as `Node(σ_l, σ_v, ⌈…⌉)`: the fields `l` and `v` are carried by the environment, and only the right subtree differs, as in-place insertion on one side and pure insertion on the other. The proof is bare recursion again. The comparison `Lt(σ_k, σ_v)` is itself stuck, so the split on `b` is a split on a sealed program: the checker names its value by a fresh abstract value and replaces every derivation of the same closed program by it, including those produced later when the goal's sealed programs run again. A theorem about a measure mixes the two styles: `Size(Insert(t, k))` is `S(Size(t))` given one arithmetic lemma, `x + S y = S (x + y)`, which is proved in place by bare recursion and transferred to the pure `Add` by lending, as `AddZero` was.
+`Insert` is the pure insertion that rebuilds the path, and `Lt` returns a `Bool`, whose constructors are `true` and `false`. In the `false` case, both the goal and the induction hypothesis, evaluated at the call site, observe the whole tree as `Node(σ_l, σ_v, ⌈…⌉)`: the fields `l` and `v` are carried by the environment, and only the right subtree differs, as in-place insertion on one side and pure insertion on the other. The proof is bare recursion again. The comparison `Lt(σ_k, σ_v)` is itself stuck, so the split on `b` is a split on a sealed program: the checker names its value by a fresh abstract value and replaces every derivation of the same closed program by it, including those produced later when the goal's sealed programs run again. A theorem about a measure mixes the two styles: `Size(Insert(t, k))` is `S(Size(t))` given one arithmetic lemma, `x + S y = S (x + y)`, which is proved in place by bare recursion and transferred to the pure `Add` by lending, as `AddZero` was.
 
 == Branching
 

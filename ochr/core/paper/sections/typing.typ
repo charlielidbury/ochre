@@ -8,7 +8,7 @@ Typing is the machine run on abstract inputs, with case splitting where the chec
 
     *[Def]* `fix f (x̄ : Ā) : B by xⱼ := b` is checked at its _generic call_: from an environment with a fresh owned place `cᵢ ↦ σᵢ` for each borrow parameter `xᵢ : &Tᵢ`, the call `f(ā)` with `aᵢ = &cᵢ` for borrow parameters, `aᵢ = ⋆` for proof parameters, and `aᵢ = σᵢ` otherwise; parameter types are evaluated left to right, with the earlier parameters bound, and stored with their bindings. The goal is the [Call-type] of this call. The body runs in the pushed frame, which is then dropped; its result's type must be convertible to the goal, as refined by the splits on the way.
 
-    *[Split]* When the checked program matches on a place whose content has an abstract head `σ`, each arm is checked with the refinement `σ := Z`, respectively `σ := S σ'` for fresh `σ'`, applied to the environment, the goal and every stored type. If the head is a sealed program, every occurrence of it is first replaced by a fresh `σ`. If the match is followed by more code, that code is checked once, from the state in which the match has been closed off as a stuck block.
+    *[Split]* When the checked program matches on a place whose content has an abstract head `σ`, each arm is checked with the refinement `σ := Z`, respectively `σ := S σ'` for fresh `σ'`, applied to the environment, the goal and every stored type. If the head is a sealed program, every occurrence of it is first replaced by a fresh `σ`. If the match is followed by more code, that code is checked once, from the state in which the match has been closed off as a stuck block. A match on a proof is decided by the proof's type instead, with no refinement (@sec-typing-prop).
 
     *[Rec]* In the body of `fix f … by xⱼ`, including inside nested functions and block arms, `f` occurs only as the head of a call, and each recursive call passes in position `j` a value, or a borrow of a value, that is a strict subterm of `xⱼ`'s entry value `σⱼ` as refined so far.
   ],
@@ -35,17 +35,26 @@ Types and proofs are erased at runtime. The machine mirrors this exactly: it eva
 
 Erased terms are also checked not to write, borrow or move a place that outlives them, except by handing it to another erased call. With the private copy this is redundant for a correctly classified term, and it is there as a partial fail-safe: if the two evaluation paths disagreed about whether an inline term is erased, the path that erases it would reject it rather than silently discard its effects. For calls and stuck blocks the fail-safe does not reach inside the callee's body, and soundness rests on the classification being syntactic (@sec-impl). This is one principle, not a restriction on programs. `AddMZero`'s successor case borrows the field `p` to pass it to the induction hypothesis; the borrow happens on the private copy, and the real environment is untouched. Nothing in a program is marked pure, and any program may appear in a statement.
 
+== Proofs are matched by their type <sec-typing-prop>
+
+`False`, `True` and `And` are inductive declarations, and a proof of one of them is matched like any other constructor value, with one difference: a proof cannot be inspected. Its value is `⋆`, whether it is a parameter (bound to `⋆` at the generic call) or the result of an erased call, so there is no constructor to select an arm and no abstract value to refine. A match on a place whose type is an inductive `D(ā)` of sort `Prop` is therefore decided by that type alone, never by the content. `False` has no constructors, so `match h {}` has no arms, and it is well typed at any result type: this is ex falso. `True` and `And` have one constructor, so the match has one arm, whose fields are places holding `⋆`, of the field types (`l : P` and `r : Q` for `h : And(P, Q)`). A declaration with several constructors, such as a user's `Or`, gets one arm per constructor, each checked with `⋆` fields; by the rule below every arm is then a proof, so the match is erased and never runs. The machine, which has no types, recognises a match on a proof from the constructors its arms name, which is a fact about declarations.
+
+This keeps the two evaluation paths in agreement. The decision depends only on the scrutinee's type being an inductive declared in `Prop`, and refinement never changes that: substituting for abstract values can change a type's parameters, never its head. A type that is still a neutral, such as `Le(σ, σ')` before a split, does not license a match on a proof at all, so a match accepted at the generic call is decided the same way at every instance. A match with no arms is unreachable when run, and is erased: vacuously, every one of its arms is a proof.
+
+*Subsingleton elimination.* A match on a proof may produce data or a type only if the inductive has no constructors, or one constructor whose fields are all proofs. `False`, `True` and `And` qualify. This is Lean's rule @theory-of-lean, and proof irrelevance forces it. With `inductive Or (P Q : Prop) : Prop := Inl(h : P) | Inr(h : Q)`, and `Pick(h : Or(True, True)) : Nat := match h { Inl(_) => 0 | Inr(_) => 1 }`, the calls `Pick(Inl(refl))` and `Pick(Inr(refl))` are convertible, since both arguments are `⋆`, yet one should compute to `0` and the other to `1`: a proof of `Eq Nat 0 1`, which is `False`. For the inductives that qualify there is nothing to tell apart: the type determines the arm, and the fields are `⋆`.
+
 == Why each condition is there <sec-why>
 
-Each side condition was added in response to a concrete closed proof of false, or an accepted program that goes wrong, found while designing the calculus; each is a regression test in the implementation, and switching it off lets its counterexamples back in (@sec-impl). Most of them guard one invariant: a statement is evaluated once through closing off, at a definition's generic call, and again directly at each instance, and [Call-type] and [Split] equate the two, so every decision the two paths must agree on is made from syntax (@lem-stable).
+// TODO(v2.0, lead): confirm the v2.0 checker has the Or(True, True) regression test (last row of the table).
+Each side condition but the last, which is Lean's, was added in response to a concrete closed proof of false, or an accepted program that goes wrong, found while designing the calculus; each is a regression test in the implementation, and switching it off lets its counterexamples back in (@sec-impl). Most of them guard one invariant: a statement is evaluated once through closing off, at a definition's generic call, and again directly at each instance, and [Call-type] and [Split] equate the two, so every decision the two paths must agree on is made from syntax (@lem-stable).
 
-#figure(kind: image, supplement: [Figure],
+#figure(kind: image, supplement: [Figure], placement: auto,
   block(breakable: false, { set text(size: 8.5pt); table(columns: (32%, 68%), stroke: none, inset: (x: 4pt, y: 3pt), align: (left, left),
     table.hline(stroke: 0.5pt),
     [*Condition*], [*What goes wrong without it*],
     table.hline(stroke: 0.4pt),
     [Π-types capture values], [`h : Π(_ : Unit). Id Nat x Z` proved when `x` was `Z` is re-read after `x := S x`, proving `Id Nat (S Z) Z`.],
-    [Recursion on entry values; `f` only as a call head; no `f` without `by`], [`*x := S *x; match *x { S p => f(&p) }` recurses on the original value; passing `f` to a helper or calling it in a `by`-less body avoids the check; each proves `Eq Nat 0 1`.],
+    [Recursion on entry values; `f` only as a call head; no `f` without `by`], [`*x := S *x; match *x { S p => f(&p) }` recurses on the original value; passing `f` to a helper or calling it in a `by`-less body avoids the check; each proves `False`.],
     [Erased terms run on a private copy, and may not affect outside places], [Proof irrelevance identifies `λx. ⋆` with `λx. (*x := 7; ⋆)`; skipping only proof _calls_ lets a closed-off proof block and the same block run inline disagree.],
     [Erasure read from syntax, never from normal forms; universes not cumulative], [A call `W(&c, n) : U(n)` with `U(n) := match n {Z => Prop | …}` runs at the generic `n` but is erased at `n = Z`; the same for a local function whose codomain mentions captured values, and for a type-valued match erased only when closed off.],
     [Functions compared by their observation], [Comparing results alone identifies `λx. (*x := S Z)` with `λx. ()`; comparing borrow-returning functions without writing through the result identifies `λ(x, y). x` with `λ(x, y). y`.],
@@ -53,7 +62,8 @@ Each side condition was added in response to a concrete closed proof of false, o
     [All owners observed], [A borrow returned into one of two arguments leaves its hole in both; observing one proves `Eq Nat 0 1`.],
     [Exclusive access; loan-free closing off; matches end loans in neutral heads], [A live loan copied into a sealed program, or a hole generalised away by a split, lets an accepted program write through an ended borrow.],
     [Generalisations are global; fresh names never reused], [A generalisation made while forming a type is lost with its private copy, and its name is reissued for a different computation.],
-    [Strict positivity], [`inductive Bad := Mk(f : Π(x : Bad). Empty)` proves `Eq Nat 0 1` through a proof that is never run.],
+    [Strict positivity], [`inductive Bad := Mk(f : Π(x : Bad). False)` gives a closed proof of `False` that is never run.],
+    [Subsingleton elimination], [`match h { Inl(_) => 0 | Inr(_) => 1 }` on `h : Or(True, True)` tells apart two proofs that proof irrelevance identifies, proving `Eq Nat 0 1`.],
     table.hline(stroke: 0.5pt),
   )}),
   caption: [The side conditions of Ochr and the counterexamples that forced them.],

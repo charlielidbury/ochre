@@ -1,26 +1,41 @@
 #import "../style.typ": *
 
-Ochr is a dependent type theory in the style of Lean's kernel @theory-of-lean, extended with places, mutable borrows and sequencing. This section gives its syntax and the runtime structures of its evaluator. We present the rules for natural numbers and the unit type, plus pairs and the propositional connectives needed by equality; user-declared inductive types with several constructors and fields change only the grammar of patterns and places, and @sec-appendix gives the general definition.
+Ochr is a dependent type theory in the style of Lean's kernel @theory-of-lean, extended with places, mutable borrows and sequencing. This section gives its syntax and the runtime structures of its evaluator. Data and the logical connectives are introduced alike, by inductive declarations; the rules in the body are illustrated on natural numbers, and @sec-appendix gives the general definition.
 
 == Syntax
 
-#figure(kind: image, supplement: [Figure],
-  block(width: 100%, inset: (y: 4pt), grammar(
-    ($t, u, A, B$, $x | ty("Prop") | ty("Type")_i$, [variables, universes]),
-    ([], $Pi(x_1 : A_1 ... x_n : A_n). B | kw("fix") f (x_1 : A_1 ... x_n : A_n) : B space kw("by") x_j := t | t(u_1, ..., u_n)$, [functions, calls]),
-    ([], $ty("Nat") | ty("Z") | ty("S") t | ty("Unit") | () | A times B | (t, u) | t.1 | t.2$, [data]),
-    ([], $ty("Eq") A space t space u | kw("refl") | ty("J")(A, a, b, P, h, t) | top | P and Q | chevron.l h, k chevron.r$, [propositions]),
-    ([], $\&A | p | \&p | p := t | kw("let") x = t; u | kw("let") x : A = t; u | t; u$, [places and borrows]),
-    ([], $kw("match") p space {ty("Z") => t | ty("S") y => u}$, [case analysis]),
-    ([], $ty("Id") A space t space u$, [computation equality]),
-    ($p$, $x | *p | p.1$, [places]),
-  )),
-  caption: [Syntax of Ochr. $ty("Eq")$, $top$ and $and$ live in $ty("Prop")$. A $kw("fix")$ without $kw("by")$ is an ordinary $lambda$.],
+#figure(kind: image, supplement: [Figure], placement: auto,
+  block(width: 100%, inset: (y: 4pt), {
+    grammar(
+      ($t, u, A, B$, $x | ty("Prop") | ty("Type")_i$, [variables, universes]),
+      ([], $Pi(x_1 : A_1 ... x_n : A_n). B | kw("fix") f (x_1 : A_1 ... x_n : A_n) : B space kw("by") x_j := t | t(u_1, ..., u_n)$, [functions, calls]),
+      ([], $ty("D")(a_1, ..., a_m) | ty("C")(t_1, ..., t_k) | A times B | (t, u) | t.1 | t.2$, [inductives, pairs]),
+      ([], $ty("Eq") A space t space u | ty("J")(A, a, b, P, h, t)$, [equality]),
+      ([], $\&A | p | \&p | p := t | kw("let") x = t; u | kw("let") x : A = t; u | t; u$, [places and borrows]),
+      ([], $kw("match") p space {ty("C")_1 (overline(y)_1) => t_1 | ... | ty("C")_n (overline(y)_n) => t_n} quad (n >= 0)$, [case analysis]),
+      ([], $ty("Id") A space t space u$, [computation equality]),
+      ($p$, $x | *p | p.g$, [places ($g$ a field)]),
+      ($d$, $kw("inductive") ty("D") (x_1 : A_1 ... x_m : A_m) : s := ty("C")_1 (overline(g_1 : B_1)) | ... | ty("C")_n (overline(g_n : B_n))$, [declarations]),
+    )
+    v(6pt)
+    align(center, grid(columns: 2, column-gutter: 2.4em, row-gutter: 6pt, align: left,
+      $kw("inductive") ty("Nat") : ty("Type")_0 := ty("Z") | ty("S")(1 : ty("Nat"))$,
+      $kw("inductive") ty("Unit") : ty("Type")_0 := ()$,
+      $kw("inductive") ty("False") : ty("Prop")$,
+      $kw("inductive") ty("True") : ty("Prop") := ty("I")$,
+      grid.cell(colspan: 2, align: center, $kw("inductive") ty("And") (P : ty("Prop")) (Q : ty("Prop")) : ty("Prop") := ty("Intro")(l : P, r : Q)$),
+    ))
+  }),
+  caption: [Syntax of Ochr, and the library declarations. A declaration has sort $s in {ty("Type")_0, ty("Prop")}$ and $n >= 0$ constructors. $ty("S") t$ abbreviates $ty("S")(t)$; $top$, $kw("refl")$, $P and Q$ and $chevron.l h, k chevron.r$ are notation for $ty("True")$, $ty("I")$, $ty("And")(P, Q)$ and $ty("Intro")(h, k)$. $ty("Eq")$ is the one primitive proposition. A $kw("fix")$ without $kw("by")$ is an ordinary $lambda$.],
 ) <fig-syntax>
 
 @fig-syntax gives the syntax. Types and terms share one grammar, as in any pure type system. Functions are n-ary and calls are saturated: a partial application would be a closure capturing its arguments, and a closure capturing a borrow is outside the core. A recursive function names the parameter it recurses on.
 
-The imperative fragment is small. A _place_ `p` is a variable, a dereference `*p`, or the predecessor field `p.1` of a number. A place used as a term reads it; `&p` borrows it; `p := t` assigns it; `let x = t; u` introduces a new place `x`. The pattern variable of a `match` is a _sub-place_: in `match p { S y => u }`, `y` stands for `p.1`, and nothing is copied.
+*Inductive definitions.* Every type of data and every logical connective is an inductive declaration: a name, uniform parameters, a sort (`Type₀` for data, `Prop` for propositions) and any number of constructors with named fields. Natural numbers and the unit type are declarations, and so are `False`, the proposition with no constructors, `True`, with one constructor and no fields, and `And(P, Q)`, with one constructor whose two fields are proofs of `P` and of `Q`. `⊤`, `P ∧ Q`, `⟨h, k⟩` and `refl` are notation for them, and ex falso is the match with no arms, `match h {}`. There is one mechanism for all of them, and it is the one Lean, Coq and Agda use. Fields are first-order: they may mention the type being declared, other declared types and the parameters, but not `Π` or `&`, which is strict positivity in its simplest form.
+
+`Eq` is the one primitive proposition. It is not an inductive family, for two reasons: it computes by the structure of the values it compares, as in observational type theory (@sec-obs), and the core has no indexed families.
+
+The imperative fragment is small. A _place_ `p` is a variable, a dereference `*p`, or a field `p.g` of a constructor value, such as the predecessor field `p.1` of a number. A place used as a term reads it; `&p` borrows it; `p := t` assigns it; `let x = t; u` introduces a new place `x`. The pattern variables of a `match` are _sub-places_: in `match p { S y => u }`, `y` stands for `p.1`, and nothing is copied.
 
 `&A` is the type of a mutable borrow of an `A`. In the core, borrow types occur only as the types of variables, parameters and results, never inside another type: there are no borrows stored in data structures and no borrows of borrows. There are no shared borrows and no loops. Recursion is structural.
 
@@ -30,7 +45,7 @@ The propositional fragment is Lean's: `Prop` is an impredicative universe with d
 
 #figure(kind: image, supplement: [Figure],
   block(width: 100%, inset: (y: 4pt), grammar(
-    ($v, w$, $ty("Z") | ty("S") v | () | (v, w) | star | "closures" | "types"$, [data, proofs, closures, types]),
+    ($v, w$, $ty("C")(v_1, ..., v_k) | (v, w) | star | "closures" | "types"$, [data, proofs, closures, types]),
     ([], $"borrow"_ell v | "loan"_ell | bot$, [borrows, loans, moved-out]),
     ([], $n$, [neutrals]),
     ($n$, $sigma | seal(t)$, [abstract values, sealed programs]),
@@ -43,4 +58,4 @@ The evaluator manipulates the values of @fig-values. Following the low-level bor
 
 Neutral values are stuck computations. An _abstract value_ `σ` is an unknown value of a known type, playing the role of a free variable in Lean's kernel: the checker introduces one for every parameter of a definition it checks, and nowhere else. A _sealed program_ `⌈t⌉` is a closed program whose run is stuck on an abstract value. Sealed programs are produced by closing off stuck calls (@sec-eval) and are the only neutral form besides abstract values. A value is _borrow-free_ if it contains no borrow and no live loan.
 
-An environment Ω is a stack of frames, one per active call, each binding variables to values. `content(Ω, p)` follows a place through variables, borrows (`*p` looks inside `borrow_ℓ v` at `v`) and successors (`p.1` looks inside `S v` at `v`). We write `Ω[p ↦ v]` for the environment with the content of `p` replaced.
+An environment Ω is a stack of frames, one per active call, each binding variables to values. `content(Ω, p)` follows a place through variables, borrows (`*p` looks inside `borrow_ℓ v` at `v`) and fields (`p.1` looks inside `S v` at `v`). We write `Ω[p ↦ v]` for the environment with the content of `p` replaced.

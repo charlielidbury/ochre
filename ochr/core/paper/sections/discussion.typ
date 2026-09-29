@@ -2,7 +2,8 @@
 
 == What generalises directly
 
-*Inductive types.* The rules are stated for natural numbers, but nothing in them is specific to numbers, and the implementation supports user-declared inductive types (@sec-overview, @sec-impl): a constructor with several fields gives several sub-places, [Split] refines an abstract value to a constructor applied to fresh abstract values, and [Rec] asks for a strict subterm of the entry value. Indexed families are future work.
+// TODO(v2.0, lead): confirm the v2.0 checker supports Prop declarations and parameters (claimed below).
+*Inductive types.* The body illustrates the rules on natural numbers, but nothing in them is specific to numbers: data and the logical connectives are declared the same way (@sec-calculus), and the implementation supports user-declared inductive types (@sec-overview, @sec-impl). A constructor with several fields gives several sub-places, [Split] refines an abstract value to a constructor applied to fresh abstract values, and [Rec] asks for a strict subterm of the entry value. Indexed families are future work; with them, `Eq` could be declared rather than built in, provided its observational computation rules survive the change.
 
 *Opaque definitions.* A definition may be declared with a type and no body, or used through an abstract function value. A call to it is stuck at once and closed off, so its effects are recorded as sealed programs mentioning it, and every theorem about its callers remains available. This is how Ochr recovers the modularity of Aeneas's symbolic execution @aeneas, which never unfolds a callee: the programmer chooses, per definition, whether conversion may look inside. One caveat carries over from the model (@sec-meta): an opaque definition that returns a borrow is an _assumption_ that its backward function is injective, so binding it to an arbitrary external function is unsound in general.
 
@@ -18,6 +19,7 @@
 
 == Costs
 
+// TODO(v2.0, lead): re-measure the 9 ms below with the v2.0 checker (the implementation section says 11 ms for the whole suite).
 *Checking cost.* Type checking runs programs. On concrete data this is the cost of running them; on symbolic data each stuck call is closed off once, and each refinement re-runs the sealed programs that mention the refined value. Sealed programs are closed and canonical, so their normal forms can be cached and shared, and a refinement only re-runs what mentions it. Our implementation does no caching and decides every example of this paper in about 9 ms in total; we have not measured large programs.
 
 *Copying.* The calculus copies borrow-free data on reads. A compiled program should move instead, and an affine usage discipline on runtime code, outside the core, licenses implementing each last-use copy as a move. Types are exempt from that discipline, which is what lets `x + x = 2 · x` be stated for a type without a copy operation; this is the same separation between runtime usage and erased usage as quantitative type theory @qtt.

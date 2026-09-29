@@ -24,18 +24,21 @@ If `t` is itself stuck outside any call, it is first closed off as a stuck block
   block[
     $ "Id" A space t space u quad equiv quad "Eq" (A times T_W) space ⟦t⟧_Omega^W space ⟦u⟧_Omega^W quad quad W = W(t, u), "both sides run from" Omega "on independent copies" $
     #v(4pt)
-    $ "Eq" (A times B) (a, b) (a', b') equiv "Eq" A space a space a' and "Eq" B space b space b' quad quad "Eq" A space a space b equiv top "  if " a equiv b quad quad top and P equiv P equiv P and top $
+    $ "Eq" (A times B) (a, b) (a', b') equiv "Eq" A space a space a' and "Eq" B space b space b' quad quad "Eq" A space a space b equiv top "  if " a equiv b $
+    $ "Eq" ty("D") space ty("C")(overline(a)) space ty("C")'(overline(b)) equiv ty("False") "  if " ty("C") != ty("C")' "are constructors of" ty("D") quad quad top and P equiv P equiv P and top $
   ],
-  caption: [`Id` computes to `Eq` between observations (`T_W` is the product of the types of the places in `W`; for empty `W` the pair is just `A`), and `Eq` computes on pairs and on reflexive instances. `refl : ⊤`.],
+  caption: [`Id` computes to `Eq` between observations (`T_W` is the product of the types of the places in `W`; for empty `W` the pair is just `A`), and `Eq` computes on pairs, on reflexive instances and on distinct constructors. `⊤`, `∧` and `False` are the library inductives of @fig-syntax, and `refl : ⊤`.],
 ) <fig-id>
 
 @fig-id is the whole of `Id`. Both sides run from the same environment, each on its own copy; sharing one copy and running the sides in sequence would let the first side's effects change what the second observes. The result type `A` must be borrow-free: a borrow has no meaning once the computation that produced it has finished.
 
-The equality `Eq` on the right is Lean's, living in the proof-irrelevant universe `Prop`. We add three conversion rules in the style of observational type theory @ott @ott-now-for-good: equality at a product is a conjunction, a reflexive equation is `⊤`, and `⊤` is a unit for `∧`. Their only role is to strip away the parts of an observation that no side changed, so that `Id Unit (AddM(x, 0)) ()` computes to the single interesting equation
+The equality `Eq` on the right is Lean's, living in the proof-irrelevant universe `Prop`. We add four conversion rules in the style of observational type theory @ott @ott-now-for-good: equality at a product is a conjunction, a reflexive equation is `⊤`, an equation between distinct constructors is `False`, and `⊤` is a unit for `∧`. The rules produce the library inductives `And`, `True` and `False`, so these three are known to the conversion checker; nothing else about them is. Three of the rules strip away the parts of an observation that no side changed, so that `Id Unit (AddM(x, 0)) ()` computes to the single interesting equation
 
 $ "Eq" (sans("Unit") times sans("Nat")) ((), N(sigma)) ((), sigma) equiv top and "Eq" sans("Nat") space N(sigma) space sigma equiv "Eq" sans("Nat") space N(sigma) space sigma. $
 
-Each rule identifies two propositions with the same truth value, so all three hold in the proof-irrelevant set model of Lean's type theory @theory-of-lean. Accordingly `refl` proves `⊤`, and by conversion every reflexive equation. Transport `J(A, a, b, P, h, t)` takes its endpoints explicitly, since a reflexive `Eq A a a` computes to `⊤` and no longer records them.
+The fourth, disjointness, lets an observation that differs in a constructor reach `False` directly: at a definition taking `x : &Nat`, the statement `Id Unit (*x := 0) (*x := 1)` computes to `Eq Nat 0 1` and then to `False`, so a hypothesis of that type is eliminated by `match e {}`. Each rule identifies two propositions with the same truth value, so all four hold in the proof-irrelevant set model of Lean's type theory @theory-of-lean. Accordingly `refl` proves `⊤`, and by conversion every reflexive equation. Transport `J(A, a, b, P, h, t)` takes its endpoints explicitly, since a reflexive `Eq A a a` computes to `⊤` and no longer records them.
+
+The converse of disjointness, injectivity (`Eq Nat (S a) (S b) ≡ Eq Nat a b`), is equally sound in the model but deliberately not added. For in-place proofs, the congruence step it would supply is already performed by the borrow structure of the environment (@sec-overview); it would only shorten pure proofs that recurse on a copy, such as `AddZero` with the induction hypothesis `AddZero(p)`. It is a separate, optional extension.
 
 Three consequences are worth drawing out.
 
