@@ -120,6 +120,46 @@ where
   fp (f : Nat → Place → Place) (c : Nat) (p : Place) : Place :=
     if p.root < c then p else f c (p.mapRoot fun j => .var (j - c))
 
+/-- Replace every read of the whole free variable `o` (at depth `c`, the variable
+`o + c`) by the closed term `u`; other occurrences stay. Used to inline a captured proof
+with its type (a proof's value is ⋆, so only its type needs keeping). -/
+partial def Term.inlineReads (t : Term) (o : Nat) (u : Term) (c : Nat) : Term :=
+  match t with
+  | .place (.var j) => if j == o + c then u else .place (.var j)
+  | .assign p t => .assign p (t.inlineReads o u c)
+  | .letIn h t w => .letIn h (t.inlineReads o u c) (w.inlineReads o u (c + 1))
+  | .seq t w => .seq (t.inlineReads o u c) (w.inlineReads o u c)
+  | .matchNat p z s => .matchNat p (z.inlineReads o u c) (s.inlineReads o u c)
+  | .pi hs ds cod =>
+      .pi hs ((ds.zipIdx).map fun (d, i) => d.inlineReads o u (c + i)) (cod.inlineReads o u (c + ds.length))
+  | .fix h hs ds cod d b =>
+      .fix h hs ((ds.zipIdx).map fun (d, i) => d.inlineReads o u (c + i)) (cod.inlineReads o u (c + ds.length)) d
+        (b.inlineReads o u (c + ds.length + 1))
+  | .call g as hd => .call (g.inlineReads o u c) (as.map (·.inlineReads o u c)) hd
+  | .succ t => .succ (t.inlineReads o u c)
+  | .fst t => .fst (t.inlineReads o u c)
+  | .snd t => .snd (t.inlineReads o u c)
+  | .ref t => .ref (t.inlineReads o u c)
+  | .prod a b => .prod (a.inlineReads o u c) (b.inlineReads o u c)
+  | .pair a b => .pair (a.inlineReads o u c) (b.inlineReads o u c)
+  | .and a b => .and (a.inlineReads o u c) (b.inlineReads o u c)
+  | .andI a b => .andI (a.inlineReads o u c) (b.inlineReads o u c)
+  | .cong a b => .cong (a.inlineReads o u c) (b.inlineReads o u c)
+  | .ascribe a b => .ascribe (a.inlineReads o u c) (b.inlineReads o u c)
+  | .eq a b d => .eq (a.inlineReads o u c) (b.inlineReads o u c) (d.inlineReads o u c)
+  | .id a b d => .id (a.inlineReads o u c) (b.inlineReads o u c) (d.inlineReads o u c)
+  | .prim n as => .prim n (as.map (·.inlineReads o u c))
+  | .ctor t k h as => .ctor t k h (as.map (·.inlineReads o u c))
+  | .matchInd p t as => .matchInd p t (as.map fun (h, a) => (h, a.inlineReads o u c))
+  | t => t
+
+/-- Clear the head marks of a sealed program's calls (to type it as an ordinary term). -/
+partial def Term.unHead : Term → Term
+  | .call f as _ => .call f as false
+  | .letIn h t u => .letIn h t.unHead u.unHead
+  | .seq t u => .seq t.unHead u.unHead
+  | t => t
+
 /-- Every place occurrence `(depth, place, kind)`, in evaluation order. -/
 partial def Term.placeOccs (c : Nat) : Term → List (Nat × Place × PKind)
   | .place p => [(c, p, .read)]

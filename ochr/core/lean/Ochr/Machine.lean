@@ -444,7 +444,20 @@ partial def valType (v : Value) : M Value := do
   | .tInd _ => pure (.sort 1)
   | .tNat | .tUnit | .tProd .. | .tEq .. | .tTop | .tAnd .. | .tRef _ | .tPi .. | .sort _ =>
     pure (.sort (← sortOf v))
+  | .sealed t =>
+    if (← get).cfg.capTypes then sealedType t
+    else err s!"cannot infer the type of the value {v}"
   | _ => err s!"cannot infer the type of the value {v}"
+
+/-- The type of a sealed program (neutral data, e.g. a captured one): its term typed as
+an ordinary term on a private copy, from the empty environment. Its head call is not
+marked, so a stuck body closes off; its [Call-type] is what gives the type. -/
+partial def sealedType (t : Term) : M Value := onCopy do
+  modify fun s => { s with env := #[{}], recStack := [], recCands := [], goal := none }
+  let (_, T) ← eval true t.unHead
+  match T with
+  | some T => pure T
+  | none => err s!"cannot infer the type of the sealed program ⌈{t.pp []}⌉"
 
 /-- The universe level of a type value: `0` is `Prop`. -/
 partial def sortOf (T : Value) : M Nat := do
@@ -534,8 +547,22 @@ partial def capture (t : Term) : M (List Value × Term) := do
     | .bot => err "a closure or Π-type captures a moved place"
     | _ => vals := vals.push v
   let idx (o : Nat) : Nat := (fvs.findIdx? (· == o)).getD 0
-  let t' := t.mapFree (fun c o => .var (c + m - 1 - idx o)) 0
+  let mut t' := t.mapFree (fun c o => .var (c + m - 1 - idx o)) 0
+  -- a captured proof keeps its type: its reads are inlined as `(⋆ : T)` (a proof's value
+  -- is ⋆, so the type is all there is to record)
+  if (← get).cfg.capTypes then
+    let top := (← get).env.back!
+    for (o, k) in fvs.zipIdx do
+      if vals[k]! == .proof then
+        if let some T := top.binds[top.binds.size - 1 - o]!.ty then
+          t' := t'.inlineReads (m - 1 - k) (.ascribe (.val .proof) (.val T)) 0
   pure (vals.toList, t')
+
+/-- D44 (v1.9): a function type returning a borrow must take a borrow (no `'static`
+borrows: a returned borrow derives from a borrow argument). -/
+partial def borrowParamCheck (ds : List Term) (c : Term) : M Unit := do
+  if (← get).cfg.borrowParam && (c matches .ref _) && !(ds.any (· matches .ref _)) then
+    err s!"[D44] a function type returning a borrow ({c.pp []}) must have a borrow parameter"
 
 -- ### Conversion (P1, v1.5 D30)
 
@@ -697,6 +724,7 @@ partial def eval (typed : Bool) (t : Term) : M (Value × Option Value) := do
       | .prim "J" [_, _, _, P, _, _] =>
         let p ← jErased P      -- the appendix's clause 4: the motive is syntactically into Prop
         pure (p, p)
+      | .ascribe (.val .proof) _ => pure (true, true)
       | .ascribe _ A =>
         if cfg.seqByProof then
           -- a proof if the ascribed term is, or if the annotation's declared sort is Prop
@@ -925,12 +953,14 @@ partial def evalCore (typed : Bool) (t : Term) : M (Value × Option Value) := do
   | .val v =>
     if typed then pure (v, some (← valType v)) else pure (v, none)
   | .sort l => pure (.sort l, some (.sort (l + 1)))
-  | .pi .. =>
+  | .pi _ ds c =>
+    borrowParamCheck ds c
     -- a type former is erased: even its captures (which access places) run on a copy
     let (cs, t') ← onCopy (capture t)
     let T := Value.tPi cs t'
     if typed then pure (T, some (.sort (← sortOf T))) else pure (T, none)
   | .fix _ hs ds c _ _ =>
+    borrowParamCheck ds c
     let (cs, t') ← capture t
     let v := Value.clo cs t'
     let T := match t' with
@@ -1042,6 +1072,8 @@ partial def evalCore (typed : Bool) (t : Term) : M (Value × Option Value) := do
       pure (.proof, some (← mkEqM A a c))
     | _, _ => err "trans: not equations"
   | .prim n _ => err s!"unknown primitive {n}"
+  | .ascribe (.val .proof) A =>     -- a captured proof, inlined with its type (`capture`)
+    if typed then pure (.proof, some (← evalType A)) else pure (.proof, none)
   | .ascribe u A =>
     if !typed then return (← eval false u)
     let A' ← evalType A
@@ -1697,6 +1729,7 @@ runs in a pushed frame and its result's type must convert to the goal as refined
 splits. Afterwards the whole state is restored. -/
 partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
   let .fix self hs ds c dec body := t | err "internal: not a fix"
+  borrowParamCheck ds c
   let saved ← get
   -- D31 (v1.5): without `by`, f is not in scope in its body (a λ)
   if dec.isNone && (← get).cfg.unboundWithoutBy && (body.freeOccs.any (·.1 == ds.length)) then

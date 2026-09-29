@@ -1,7 +1,7 @@
 import Ochr.Examples.Units
 import Ochr.Examples.E5
 import Ochr.Examples.V15
-import Ochr.Examples.V19
+import Ochr.Examples.V20
 import Ochr.Examples.Inductives
 import Ochr.Examples.Probes
 
@@ -12,7 +12,7 @@ open Ochr Ochr.Test Ochr.Surface
 namespace Ochr.Registry
 
 def programs : List (String × Program) :=
-  [("E1", E1), ("E2", E2), ("E3", E3), ("E4", E4), ("E5", E5), ("E6", E6), ("Attacks", Attacks), ("More", More), ("Probes", Probes), ("V15", V15), ("V17", V17), ("V18", V18), ("Positivity", Positivity), ("GenTy", GenTy), ("V19", V19), ("Inductives", Inductives),
+  [("E1", E1), ("E2", E2), ("E3", E3), ("E4", E4), ("E5", E5), ("E6", E6), ("Attacks", Attacks), ("More", More), ("Probes", Probes), ("V15", V15), ("V17", V17), ("V18", V18), ("Positivity", Positivity), ("GenTy", GenTy), ("V19", V19), ("V20", V20), ("Inductives", Inductives),
    ("D18", Ochr.Units.D18)]
 
 def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
@@ -63,12 +63,14 @@ def switches : List (String × Config) :=
    ("D38 (v1.8): a borrow result is observed through a fresh value written into it", { obsBorrow := false }),
    ("D39 (v1.8): [Seal]'s head guard covers neutral-headed calls", { headGuardNeutral := false }),
    ("D41 (v1.9): erased terms are confined", { confine := false }),
+   ("D44 (v1.9): a function type returning a borrow has a borrow parameter", { borrowParam := false }),
+   ("captured neutral data and proofs keep their types", { capTypes := false }),
    ("extension (switched ON): bodies of erased-class functions and arms of erased blocks are confined", { confineBodies := true })]
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 247
+def Ochr.Registry.expectedTotal : Nat := 261
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
@@ -134,7 +136,7 @@ open Ochr.Registry in
   ["Inductives.InsertMEq:rejected", "Inductives.SizeInsert:rejected"]
 open Ochr.Registry in
 #guard flips { classBySyntax := false } ==
-  ["V17.BoomL:accepted", "V17.TruthG:rejected", "V18.Boom8:accepted", "V18.Direct8:accepted", "V18.LieH:rejected"]
+  ["V17.BoomL:accepted", "V17.LieG:accepted", "V17.TruthG:rejected", "V18.Boom8:accepted", "V18.Direct8:accepted", "V18.LieH:rejected"]
 open Ochr.Registry in
 #guard flips { blockRule := 0 } ==
   ["V17.LieB:accepted", "V17.BoomB:accepted", "V17.TruthB:rejected", "V17.LieG:accepted", "V17.BoomG:accepted", "V17.TruthG:rejected", "V18.Lie7:accepted", "V18.Boom7:accepted"]
@@ -179,5 +181,10 @@ open Ochr.Registry in
   ["Attacks.N1T:accepted", "Attacks.Q:accepted", "Probes.EffArgErased:accepted", "V17.LieP:accepted", "V19.Write:accepted", "V19.Borrow:accepted", "V19.Move:accepted"]
 open Ochr.Registry in
 #guard flips { confineBodies := true } ==
-  ["E4.TwiceMZero':rejected", "Attacks.P2:rejected", "Attacks.FP2:rejected", "Attacks.BoomIsTrue:rejected", "Attacks.p2:rejected", "Attacks.TA2:rejected", "Probes.F5:rejected", "Probes.TypeErased:rejected", "V17.F:rejected", "V17.SeqT:rejected", "V19.TailSteps:rejected"]
+  ["E4.TwiceMZero':rejected", "Attacks.P2:rejected", "Attacks.FP2:rejected", "Attacks.BoomIsTrue:rejected", "Attacks.p2:rejected", "Attacks.TA2:rejected", "Probes.F5:rejected", "Probes.TypeErased:rejected", "V17.F:rejected", "V17.SeqT:rejected", "V19.TailSteps:rejected", "V20.CapPi:rejected"]
+open Ochr.Registry in
+#guard flips { borrowParam := false } == ["V20.Q:accepted", "V20.Boom:accepted", "V20.LeakT:accepted"]
+open Ochr.Registry in
+#guard flips { capTypes := false } ==
+  ["V20.CapS:rejected", "V20.CapSId:rejected", "V20.CapPi:rejected", "V20.CapP:rejected", "V20.CapP2:rejected"]
 -- `genPlaceType` changes no verdict; V18.lean asserts its effect on the generalised σ's type

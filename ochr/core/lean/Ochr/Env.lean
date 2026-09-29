@@ -96,6 +96,8 @@ structure Config where
   headGuardNeutral : Bool := true -- v1.8 D39: [Seal]'s head guard covers neutral-headed calls
   genPlaceType : Bool := true    -- v1.8: a generalised σ has the matched place's type
   confine : Bool := true         -- v1.9 D41: an erased term may not assign, borrow or move a place that outlives it
+  borrowParam : Bool := true     -- v1.9 D44: a function type returning `&T` has a borrow parameter
+  capTypes : Bool := true        -- captured neutral data and proofs keep their types (reviewer-2, lean-checker)
   confineBodies : Bool := false  -- an extension of D41, not in RULES: the body of a function whose calls are
                                  -- erased, and each arm of an erased stuck block, are confined too
   trace : Bool := false          -- record goals, splits and call types (for inspection)
