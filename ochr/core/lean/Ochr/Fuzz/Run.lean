@@ -36,7 +36,7 @@ def callObs (fv T : Value) (inputs : List Value) : M Value := do
     let w ← match A with
       | .tRef T =>
         let l ← freshLoan
-        modifyFrame 0 fun fr => { fr with binds := fr.binds.push ⟨⟨"c"⟩, some T, .loan l, false⟩ }
+        modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨"c"⟩, ty := some T, val := .loan l } }
         pure (Value.borrow l v)
       | _ => pure v
     pushBind h (some A) w

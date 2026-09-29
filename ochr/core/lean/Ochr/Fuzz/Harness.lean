@@ -58,7 +58,7 @@ def prepare (cfg : Config) (fuel : Nat) (decls : List SDecl) : Except String Pre
       if (d.cod :: d.doms).any (Term.mentionsConst d.name) then err s!"{d.name} occurs in its own type"
       if (← get).cfg.refTop && !((d.cod :: d.doms).all Term.refTopOk && d.body.refsOk) then
         err s!"[D48] & inside a declared type"
-      discard (declOf [] [] (.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body))
+      discard (declOf true [] [] (.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body))
     match runSt static { globals := globals, inds := inds, cfg := cfg, fuel := fuel } with
     | .ok _ => pure { globals := globals, inds := inds, stmt := d, rejected := rej }
     | .error e => throw s!"rejected: {e}"
@@ -84,26 +84,27 @@ it: parameter types evaluated left to right, each binding carrying its declared 
 def setupParams (d : Def) : M (Array PInfo) := do
   modify fun s => { s with env := #[{}], goal := none }
   let pf ← paramFlags [] d.doms
+  let (pds, _) ← paramDecls [] d.hs d.doms d.cod     -- the erasure pre-pass's reading of each parameter
   pushFrame
   let mut out := #[]
-  for ((dom, h), p) in (d.doms.zip d.hs).zip pf do
+  for (((dom, h), p), pd) in ((d.doms.zip d.hs).zip pf).zip pds do
     let A ← evalType dom
     match A with
     | .tRef T =>
       let σ ← freshAbs T
       let l ← freshLoan
       let cell := (← get).env[0]!.binds.size
-      modifyFrame 0 fun fr => { fr with binds := fr.binds.push ⟨⟨s!"{h.name}°"⟩, some T, .loan l, false⟩ }
-      pushBind h (some A) (.borrow l (.abs σ)) p
+      modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
+      pushBind h (some A) (.borrow l (.abs σ)) p pd (dom matches .val (.tRef _))
       out := out.push ⟨h.name, .borrow cell, σ, T⟩
     | _ =>
       let cfg := (← get).cfg
       if cfg.p5 && cfg.proofParamsStar && (← isPropV A) then
-        pushBind h (some A) .proof p
+        pushBind h (some A) .proof p (← refineDecl pd (some A) .proof)
         out := out.push ⟨h.name, .proof, 0, A⟩
       else
         let σ ← freshAbs A
-        pushBind h (some A) (.abs σ) p
+        pushBind h (some A) (.abs σ) p (← refineDecl pd (some A) (.abs σ))
         out := out.push ⟨h.name, .data, σ, A⟩
   pure out
 
