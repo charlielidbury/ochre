@@ -234,12 +234,12 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
         | .ok (rv, sr), .ok (dv, sd) =>
           let (res, syn) := compareVals sr sd pinned rv dv rng fns
           if syn then synOnly := synOnly + 1
-          if let some (kd, sv, dvs) := res then
+          if let some (kd, sv, dvs, why) := res then
             -- a closed proof of a false proposition: the generic `Id` is ⊤, the instance's is
             -- not, and the instance's hypotheses (proof parameters) hold
             let isF := match dres with | .ok (dv, _) => isFalseV dv | _ => false
             let kd := if k == 2 && unitTop (canon [] g) == vTrue && α.ground && hypsHold stα ps && isF then Kind.falseProof else kd
-            fs := push fs kd (compName k) α.label s!"{g.pp}  ⟶  {sv}" dvs (vacK vac "")
+            fs := push fs kd (compName k) α.label s!"{g.pp}  ⟶  {sv}" dvs (vacK vac why)
         | .ok (rv, _), .error e =>
           if !isResource e then fs := push fs .verdict (compName k) α.label s!"{g.pp}  ⟶  {rv.pp}" s!"error: {e}" (vacK vac (errKey e))
         | .error e, .ok (dv, _) =>
@@ -285,7 +285,7 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
           let (r0, ws) := obsParts g
           let pred := obsVal r0 (ws.set cell (K (ws[cell]?.getD .bot)))
           let (res, _) := compareVals sg sd pinned pred d rng fns
-          if let some (_, sv, dvs) := res then
+          if let some (_, sv, dvs, _) := res then
             fs := push fs .frame (compName k) lbl s!"generic plugged: {sv}" dvs
         | .ok (g, _), .error e =>
           if !isResource e then fs := push fs .frame (compName k) lbl s!"generic: {g.pp}" s!"error: {e}" (errKey e)

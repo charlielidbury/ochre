@@ -79,29 +79,30 @@ def obsRun (st : MState) (A t u : Term) (W : List Pos) (typed : Bool) (k : Nat) 
   runSt act st
 
 /-- Compare the symbolic path's value `r` (from state `sR`) with the direct path's `d`
-(from `sD`). Returns a finding kind with the two values printed, or `none`; the Bool
-says the two differ syntactically but agree on every ground completion. -/
+(from `sD`). Returns a finding kind with the two values printed and, for an error on
+one side, the error's class, or `none`; the Bool says the two differ syntactically but
+agree on every ground completion. -/
 def compareVals (sR sD : MState) (pinned : List Nat) (r d : Value) (rng : Rng)
-    (fns : List (Nat × List Value) := []) : Option (Kind × String × String) × Bool := Id.run do
+    (fns : List (Nat × List Value) := []) : Option (Kind × String × String × String) × Bool := Id.run do
   if canon pinned r == canon pinned d then return (none, false)
   -- abstract values recorded as generalisations (by re-normalisation) are names, not escapes
   let recR := sR.neutrals.map (·.2)
   let recD := sD.neutrals.map (·.2)
   if (absIn r).any (fun σ => !pinned.contains σ && !recR.contains σ) ||
      (absIn d).any (fun σ => !pinned.contains σ && !recD.contains σ) then
-    return (some (.escape, r.pp, d.pp), false)
-  if groundV r && groundV d then return (some (.nat, r.pp, d.pp), false)
+    return (some (.escape, r.pp, d.pp, ""), false)
+  if groundV r && groundV d then return (some (.nat, r.pp, d.pp, ""), false)
   let recVals := sR.neutrals.map (·.1) ++ sD.neutrals.map (·.1)
   for γ in completions sR pinned ([r, d] ++ recVals) 4 rng fns do
     let lbl := ", ".intercalate (γ.map fun (σ, v) => s!"σ{σ} := {v}")
     match refineVal sR sR.neutrals γ r, refineVal sD sD.neutrals γ d with
     | .ok r', .ok d' =>
       if canon pinned r' != canon pinned d' then
-        return (some (.nat, s!"{r.pp}  ⟶[{lbl}]  {r'.pp}", s!"{d.pp}  ⟶[{lbl}]  {d'.pp}"), false)
+        return (some (.nat, s!"{r.pp}  ⟶[{lbl}]  {r'.pp}", s!"{d.pp}  ⟶[{lbl}]  {d'.pp}", ""), false)
     | .ok r', .error e => if !isResource e then
-        return (some (.verdict, s!"{r.pp} ⟶[{lbl}] {r'.pp}", s!"{d.pp} ⟶[{lbl}] error: {e}"), false)
+        return (some (.verdict, s!"{r.pp} ⟶[{lbl}] {r'.pp}", s!"{d.pp} ⟶[{lbl}] error: {e}", errKey e), false)
     | .error e, .ok d' => if !isResource e then
-        return (some (.renorm, s!"{r.pp} ⟶[{lbl}] error: {e}", s!"{d.pp} ⟶[{lbl}] {d'.pp}"), false)
+        return (some (.renorm, s!"{r.pp} ⟶[{lbl}] error: {e}", s!"{d.pp} ⟶[{lbl}] {d'.pp}", errKey e), false)
     | _, _ => pure ()
   pure (none, true)
 
