@@ -60,6 +60,7 @@ def switchCfg (c : Config) : String → Option Config
   | "D55" | "sortsSyntactic" => some { c with sortsSyntactic := false }
   | "D56" | "jStuck" => some { c with jStuck := false }
   | "D58" | "zeroArmStuck" => some { c with zeroArmStuck := false }
+  | "D59" | "unitEta" => some { c with unitEta := false }
   | "D50on" | "unitNorm" => some { c with unitNorm := true }          -- switched ON (a counterfactual)
   | "confineBodies" => some { c with confineBodies := true }          -- switched ON (an extension)
   | "C8" | "generalize" => some { c with generalize := false }
