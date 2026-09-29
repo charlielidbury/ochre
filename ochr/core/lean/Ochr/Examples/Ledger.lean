@@ -58,7 +58,9 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { generalize := false }
   ["ClosingOff.UseDec:rejected", "Equality.CastMatch:rejected", "CaseSplits.MatchAfterOpaque:rejected",
-   "GenType.GenL:rejected", "Trees.InsertM:rejected", "Trees.Insert:rejected", "Trees.InsertMEq:rejected",
+   "GenType.GenL:rejected", "Splitting.Pick:rejected", "Splitting.PickNotZero:rejected",
+   "Splitting.PickNotZeroCopy:rejected", "Splitting.PickTwo:rejected", "Splitting.DoubleVal:rejected",
+   "Trees.InsertM:rejected", "Trees.Insert:rejected", "Trees.InsertMEq:rejected",
    "Trees.InsertMSwap:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.InsertM:rejected",
    "InPlaceTrees.Insert:rejected", "InPlaceTrees.InsertMIsInsert:rejected",
    "InPlaceTrees.SizeInsert:rejected"]
@@ -97,7 +99,8 @@ open Ochr.Registry in
   ["ClosingOff.Clear:accepted", "ClosingOff.Boom5:accepted"]
 open Ochr.Registry in
 #guard rowOk { genConsistent := false }
-  ["Trees.InsertMEq:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.SizeInsert:rejected"]
+  ["Splitting.PickNotZero:rejected", "Splitting.PickNotZeroCopy:rejected", "Splitting.PickTwo:rejected",
+   "Trees.InsertMEq:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.SizeInsert:rejected"]
 open Ochr.Registry in
 #guard rowOk { classBySyntax := false }
   ["ErasureBySyntax.BoomL:accepted", "ErasureBySyntax.Boom8:accepted", "ErasureBySyntax.Direct8:accepted"]
@@ -202,7 +205,7 @@ open Ochr.Registry in
   ["ReturnedBorrows.L:rejected", "ReturnedBorrows.Inj:rejected", "ReturnedBorrows.PF:rejected",
    "Equality.NotAdd01:rejected", "Equality.WriteNeq:rejected", "Equality.WriteDisj:rejected",
    "Equality.NoConf:rejected", "Equality.NoConfS:rejected", "Equality.NoConfMatch:rejected",
-   "Equality.NoConfBack:rejected", "Equality.BoolDisj:rejected"]
+   "Equality.NoConfBack:rejected", "Equality.BoolDisj:rejected", "Splitting.PickTwo:rejected"]
 -- v2.1 D52 switched off: equal constructors are not taken apart in Eq, so programs that
 -- need an equation between successors or pairs taken apart are rejected (completeness)
 open Ochr.Registry in
