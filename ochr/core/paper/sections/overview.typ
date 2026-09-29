@@ -12,7 +12,7 @@ Ochr programs are made of definitions with parameters and a body. Borrow types `
 Add(x : Nat, y : Nat) : Nat := AddM(&x, y); x
 ```
 
-Because definitional equality is evaluation, `Id Nat (Add(2, 3)) 5` holds by `refl`: the checker runs `Add(2, 3)`, which runs `AddM` in place on a local copy, and compares the result with `5`. There is nothing special about imperative code here, and nothing special about `Add` being "pure": it is simply a program whose observable output is its result.
+Because definitional equality is evaluation, `Id Nat (Add(2, 3)) 5` holds by `refl`: the checker runs `Add(2, 3)`, which runs `AddM` in place on a local copy, and compares the result with `5`.
 
 The machine that does this is the symbolic semantics of Aeneas's low-level borrow calculus @aeneas. An environment Ω maps variables to values; borrowing `x` moves its content into the borrow and leaves a _loan_ behind; ending the borrow moves the content back. Running `Add(2, 3)` passes through these states:
 
@@ -75,7 +75,7 @@ because matching `S p` through the borrow and taking `&p` leaves the successor i
 AddMZero(&p) : Eq Nat (S N(σ')) (S σ')  ≡  Eq Nat N(σ') σ'
 ```
 
-This is the goal. The callee's statement is about the place it borrowed; evaluated at the call site, it is about the caller's number, successor included. Relating the two is the frame argument that a proof about a translated program makes by hand, and here it was done by evaluation. The recursive call is a proof, and proofs are erased at runtime, so the checker does not run it: its borrow argument is returned unchanged.
+This is the goal: evaluated at the call site, the callee's statement about the place it borrowed is about the caller's number, successor included, which is the frame argument that a proof about a translated program makes by hand. The recursive call is a proof, and proofs are erased at runtime, so the checker does not run it: its borrow argument is returned unchanged.
 
 The same theorem about the pure wrapper, `AddZero(x : Nat) : Id Nat (Add(x, 0)) x`, has the same goal, since `Add(x, 0)` writes nothing outside itself. It is proved by lending the owned `x` to the in-place lemma: `AddZero(x) := AddMZero(&x)` type-checks, because both statements normalise to the same proposition. Neither proof mentions a model of `AddM`: the statement is about the program itself.
 
@@ -105,7 +105,7 @@ AddMEq(x : &Nat, y : Nat) : Id Unit (AddM(x, y)) (AddM'(x, y)) by x :=
   match *x { Z => refl, S p => AddMEq(&p, y) }
 ```
 
-In the successor branch, re-running `AddM'`'s sealed program on `S σ'` unfolds `TailM` once, closes off its inner call with a fresh hole, and the pending write `*r := y` then fills that hole; on the other side the recursive call's statement, evaluated at the call site, performs the same steps through the caller's borrow. Both sides arrive at `Eq Nat (S A(σ', y)) (S B(σ', y))`, where `A` and `B` are the sealed programs for the two additions on the predecessor. The theorem for an owned number follows by lending it: `AddMEqOwned(x : Nat) : Id Unit (AddM(&x, 0)) (AddM'(&x, 0)) := AddMEq(&x, 0)`.
+In the successor branch, re-running `AddM'`'s sealed program on `S σ'` unfolds `TailM` once, closes off its inner call with a fresh hole, and the pending write `*r := y` fills that hole; the recursive call's statement, evaluated at the call site, performs the same steps through the caller's borrow. The theorem for an owned number follows by lending it, as for `AddZero`.
 
 == Proofs about the current state
 

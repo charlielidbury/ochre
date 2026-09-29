@@ -47,9 +47,9 @@ Pédrot and Tabareau's fire triangle @fire-triangle shows that a type theory wit
 - A core calculus, Ochr, combining mutable borrows with a dependent type theory with inductive definitions and a universe of proof-irrelevant propositions, whose logical connectives are themselves inductive definitions and whose definitional equality unfolds imperative code (@sec-calculus, @sec-eval).
 - _Closing off_, which gives every stuck effectful call a neutral form made of sealed source programs, including calls that return borrows (@sec-eval).
 - An observational equality between computations, a derived proposition that computes to ordinary equations (@sec-obs).
-- Worked examples: equivalences of in-place programs, among them `AddM` and a version that first obtains a borrow of the final node and then writes through it, proved by structural recursion, and a property of in-place tree insertion stated about the in-place code (@sec-overview).
+- Worked examples: equivalences of in-place programs, including one that returns a borrow, proved by structural recursion, and a property of in-place tree insertion stated about the in-place code (@sec-overview).
 - The properties Ochr is designed to have, each with its evidence (@sec-meta). Mechanised, for a first-order fragment of an earlier version of the rules (version 1.3, without types, erasure, closures or stuck blocks): the machine preserves well-formedness, a call affects only what it is passed, and sealed programs compute the call's results and backward function. Conjectured, with sketches: consistency in a set-theoretic model in the style of Carneiro's model of Lean, and the agreement of the checker's two evaluation paths. Whether type checking terminates is open.
-- An executable implementation of the checker in Lean 4 that checks every example in the paper, with a regression test for every false proof found while designing the calculus and a ledger of which rule each depends on (@sec-impl).
+- An executable checker in Lean 4 that checks every example in the paper, with a regression test for every false proof found while designing the calculus and a ledger of which rule each depends on (@sec-impl).
 
 == Scope <sec-intro-scope>
 
