@@ -16,8 +16,7 @@ and the hash is the identity, as in Aeneas; `k mod (n + 1)` picks the bucket.
 
 The file has four programs: `HashMap`, the implementation with concrete runs; `HashMapLookup`,
 lookups after each operation; `HashMapLength`, the length field and the count of entries;
-`HashMapResize`, the invariant, resizing, `Insert` with its resize, and the load factor. The
-theorems about `GetMut` are written but rejected (a gap in the rules, see the note). -/
+`HashMapResize`, the invariant, resizing, `Insert` with its resize, and the load factor. -/
 
 open Ochr.Test
 
@@ -844,6 +843,72 @@ ochr HashMapLookup uses Std, HashMap {
       ),
     }
   )
+  -- Lifted through the index borrow, and stated for the map. `GetMut` branches on no
+  -- sealed result, so the map theorems are the slot theorems at the key's index.
+  def SlotGetMutRead (s : &Slots) (i : Nat) (k : Nat) (w : Nat) (h : IsSome(BFind(Nth(*s, i), k))) :
+      Id Opt (let b = Slot(&*s, i); let q = BGetMut(b, k, h); let x = *q; *q := w; Some(x))
+             (let r = BFind(Nth(*s, i), k); let b = Slot(&*s, i); let q = BGetMut(b, k, h); *q := w; r) by s := (
+    match *s {
+      SOne(b) => BGetMutRead(&b, k, w, h),
+      SCons(b, t) => match i {
+        Z => BGetMutRead(&b, k, w, h),
+        S i' => SlotGetMutRead(&t, i', k, w, h),
+      },
+    }
+  )
+
+  def SlotGetMutFind (s : &Slots) (i : Nat) (k : Nat) (w : Nat) (h : IsSome(BFind(Nth(*s, i), k))) :
+      Id Opt (let b = Slot(&*s, i); let q = BGetMut(b, k, h); *q := w; BFind(Nth(*s, i), k))
+             (let b = Slot(&*s, i); let q = BGetMut(b, k, h); *q := w; Some(w)) by s := (
+    match *s {
+      SOne(b) => BGetMutFind(&b, k, w, h),
+      SCons(b, t) => match i {
+        Z => BGetMutFind(&b, k, w, h),
+        S i' => SlotGetMutFind(&t, i', k, w, h),
+      },
+    }
+  )
+
+  def SlotGetMutFindOther (s : &Slots) (i : Nat) (j : Nat) (k : Nat) (w : Nat) (h : IsSome(BFind(Nth(*s, i), k))) (k2 : Nat)
+      (ne : Eq Bool (EqB(k, k2)) false) :
+      Id Opt (let b = Slot(&*s, i); let q = BGetMut(b, k, h); *q := w; BFind(Nth(*s, j), k2))
+             (let r = BFind(Nth(*s, j), k2); let b = Slot(&*s, i); let q = BGetMut(b, k, h); *q := w; r) by s := (
+    match *s {
+      SOne(b) => BGetMutFindOther(&b, k, w, h, k2, ne),
+      SCons(b, t) => match i {
+        Z => match j {
+          Z => BGetMutFindOther(&b, k, w, h, k2, ne),
+          S _ => refl,
+        },
+        S i' => match j {
+          Z => refl,
+          S j' => SlotGetMutFindOther(&t, i', j', k, w, h, k2, ne),
+        },
+      },
+    }
+  )
+
+  def GetMutRead (hm : &HashMap) (k : Nat) (w : Nat) (h : IsSome(Find(*hm, k))) :
+      Id Opt (let q = GetMut(&*hm, k, h); let x = *q; *q := w; Some(x)) (let r = Find(*hm, k); let q = GetMut(&*hm, k, h); *q := w; r) := (
+    match *hm {
+      HM(n, len, slots) => SlotGetMutRead(&slots, Idx(k, n), k, w, h),
+    }
+  )
+
+  def GetMutFind (hm : &HashMap) (k : Nat) (w : Nat) (h : IsSome(Find(*hm, k))) :
+      Id Opt (let q = GetMut(&*hm, k, h); *q := w; Find(*hm, k)) (let q = GetMut(&*hm, k, h); *q := w; Some(w)) := (
+    match *hm {
+      HM(n, len, slots) => SlotGetMutFind(&slots, Idx(k, n), k, w, h),
+    }
+  )
+
+  def GetMutFindOther (hm : &HashMap) (k : Nat) (w : Nat) (h : IsSome(Find(*hm, k))) (k2 : Nat) (ne : Eq Bool (EqB(k, k2)) false) :
+      Id Opt (let q = GetMut(&*hm, k, h); *q := w; Find(*hm, k2)) (let r = Find(*hm, k2); let q = GetMut(&*hm, k, h); *q := w; r) := (
+    match *hm {
+      HM(n, len, slots) => SlotGetMutFindOther(&slots, Idx(k, n), Idx(k2, n), k, w, h, k2, ne),
+    }
+  )
+
   -- ## Get, through the borrow
   -- `Get` reads through a mutable borrow (Ochr has no shared borrows). When the lookup
   -- is stuck on an abstract bucket, closing it off leaves a sealed program in the bucket
@@ -944,7 +1009,7 @@ ochr HashMapLookup uses Std, HashMap {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "HashMapLookup" HashMapLookup).allAsExpected
-#guard (run "HashMapLookup" HashMapLookup).count == 38
+#guard (run "HashMapLookup" HashMapLookup).count == 44
 
 /-! ## The length
 
@@ -1280,12 +1345,51 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
     }
   )
   -- ## GetMut
-  -- Writing through the borrow leaves the length as it was. (The count is unchanged too,
-  -- but its bucket-level proof hits the GetMut wall of `HashMapLookup`.)
+  -- Writing through the borrow leaves the length as it was.
   def GetMutLen (hm : &HashMap) (k : Nat) (w : Nat) (h : IsSome(Find(*hm, k))) :
       Id Nat (let q = GetMut(&*hm, k, h); *q := w; Len(*hm)) (let l = Len(*hm); let q = GetMut(&*hm, k, h); *q := w; l) := (
     match *hm {
       HM(n, len, slots) => refl,
+    }
+  )
+  -- The count is unchanged too: writing a value changes no bucket's length.
+  def BGetMutCount (b : &Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(*b, k))) :
+      Id Nat (let l = BLen(*b); let q = BGetMut(&*b, k, h); *q := w; l) (let q = BGetMut(&*b, k, h); *q := w; BLen(*b)) by b := (
+    match *b {
+      BNil => match h {},
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        match e {
+          false => BGetMutCount(&t, k, w, h),
+          true => refl,
+        }
+      ),
+    }
+  )
+  def SlotGetMutCount (s : &Slots) (i : Nat) (k : Nat) (w : Nat) (h : IsSome(BFind(Nth(*s, i), k))) :
+      Id Nat (let c = Count(*s); let b = Slot(&*s, i); let q = BGetMut(b, k, h); *q := w; c)
+             (let b = Slot(&*s, i); let q = BGetMut(b, k, h); *q := w; Count(*s)) by s := (
+    match *s {
+      SOne(b) => BGetMutCount(&b, k, w, h),
+      SCons(b, t) => (
+        let bl = BLen(b);
+        let c = Count(t);
+        match i {
+          Z => (
+            let cb = b;
+            let q = BGetMut(&cb, k, h);
+            *q := w;
+            J(Nat, bl, BLen(cb), λ(z : Nat) : Prop => Eq Nat (Add(bl, c)) (Add(z, c)), BGetMutCount(&b, k, w, h), refl)
+          ),
+          S i' => (
+            let ct = t;
+            let rb = Slot(&ct, i');
+            let q = BGetMut(rb, k, h);
+            *q := w;
+            J(Nat, c, Count(ct), λ(z : Nat) : Prop => Eq Nat (Add(bl, c)) (Add(bl, z)), SlotGetMutCount(&t, i', k, w, h), refl)
+          ),
+        }
+      ),
     }
   )
 }
@@ -1294,7 +1398,7 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "HashMapLength" HashMapLength).allAsExpected
-#guard (run "HashMapLength" HashMapLength).count == 24
+#guard (run "HashMapLength" HashMapLength).count == 26
 
 /-! ## The invariant, and resizing
 
@@ -1625,6 +1729,117 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
   def ClearInv (m : HashMap) : (let c = m; Clear(&c); Inv(c)) := (
     match m {
       HM(n, len, s) => NewInv(n),
+    }
+  )
+  -- `GetMut` changes a value, never a key: the keys stay distinct and in their bucket,
+  -- and the count is unchanged.
+  def BGetMutUnique (b : Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(b, k))) (hu : Unique(b)) :
+      (let c = b; let q = BGetMut(&c, k, h); *q := w; Unique(c)) by b := (
+    match b {
+      BNil => match h {},
+      BCons(k', v', t) => match hu {
+        Intro(absent, rest) => (
+          let e = EqB(k', k);
+          match e {
+            false => (
+              let before = t;
+              let after = t;
+              let q = BGetMut(&after, k, h);
+              *q := w;
+              ⟨TransO(BFind(after, k'), BFind(t, k'), None, BGetMutFindOther(&before, k, w, h, k', NeqFlip(k', k, refl)), absent),
+               BGetMutUnique(t, k, w, h, rest)⟩
+            ),
+            true => hu,
+          }
+        ),
+      },
+    }
+  )
+  def SlotGetMutUnique (s : Slots) (i : Nat) (k : Nat) (w : Nat) (h : IsSome(BFind(Nth(s, i), k))) (hu : AllUnique(s)) :
+      (let c = s; let b = Slot(&c, i); let q = BGetMut(b, k, h); *q := w; AllUnique(c)) by s := (
+    match s {
+      SOne(b) => BGetMutUnique(b, k, w, h, hu),
+      SCons(b, t) => match hu {
+        Intro(hb, ht) => match i {
+          Z => ⟨BGetMutUnique(b, k, w, h, hb), ht⟩,
+          S i' => ⟨hb, SlotGetMutUnique(t, i', k, w, h, ht)⟩,
+        },
+      },
+    }
+  )
+  def BGetMutAbsent (b : Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(b, k))) (k2 : Nat) (a : Eq Opt (BFind(b, k2)) None) :
+      (let c = b; let q = BGetMut(&c, k, h); *q := w; Eq Opt (BFind(c, k2)) None) by b := (
+    match b {
+      BNil => match h {},
+      BCons(k', v', t) => (
+        let e2 = EqB(k', k2);
+        match e2 {
+          false => (
+            let e = EqB(k', k);
+            match e {
+              false => BGetMutAbsent(t, k, w, h, k2, a),
+              true => a,
+            }
+          ),
+          true => match a {},
+        }
+      ),
+    }
+  )
+  def NowhereGetMut (s : Slots) (i : Nat) (k : Nat) (w : Nat) (h : IsSome(BFind(Nth(s, i), k))) (k2 : Nat) (hn : Nowhere(s, k2)) :
+      (let c = s; let b = Slot(&c, i); let q = BGetMut(b, k, h); *q := w; Nowhere(c, k2)) by s := (
+    match s {
+      SOne(b) => BGetMutAbsent(b, k, w, h, k2, hn),
+      SCons(b, t) => match hn {
+        Intro(hb, ht) => match i {
+          Z => ⟨BGetMutAbsent(b, k, w, h, k2, hb), ht⟩,
+          S i' => ⟨hb, NowhereGetMut(t, i', k, w, h, k2, ht)⟩,
+        },
+      },
+    }
+  )
+  def OnlyInGetMut (s : Slots) (i : Nat) (d : Nat) (k : Nat) (w : Nat) (h : IsSome(BFind(Nth(s, i), k))) (k2 : Nat)
+      (ho : OnlyIn(s, d, k2)) : (let c = s; let b = Slot(&c, i); let q = BGetMut(b, k, h); *q := w; OnlyIn(c, d, k2)) by s := (
+    match s {
+      SOne(b) => refl,
+      SCons(b, t) => match d {
+        Z => match i {
+          Z => ho,
+          S i' => NowhereGetMut(t, i', k, w, h, k2, ho),
+        },
+        S d' => match ho {
+          Intro(hb, ht) => match i {
+            Z => ⟨BGetMutAbsent(b, k, w, h, k2, hb), ht⟩,
+            S i' => ⟨hb, OnlyInGetMut(t, i', d', k, w, h, k2, ht)⟩,
+          },
+        },
+      },
+    }
+  )
+  def SlotGetMutPlaced (s : Slots) (n : Nat) (k : Nat) (w : Nat) (h : IsSome(BFind(Nth(s, Idx(k, n)), k))) (hp : Placed(s, n)) :
+      (let c = s; let b = Slot(&c, Idx(k, n)); let q = BGetMut(b, k, h); *q := w; Placed(c, n)) := (
+    let c = s;
+    let b = Slot(&c, Idx(k, n));
+    let q = BGetMut(b, k, h);
+    *q := w;
+    λ(k2 : Nat) : OnlyIn(c, Idx(k2, n), k2) => OnlyInGetMut(s, Idx(k, n), Idx(k2, n), k, w, h, k2, hp(k2))
+  )
+  def GetMutInv (m : HashMap) (k : Nat) (w : Nat) (h : IsSome(Find(m, k))) (hi : Inv(m)) :
+      (let c = m; let q = GetMut(&c, k, h); *q := w; Inv(c)) := (
+    match m {
+      HM(n, len, s) => match hi {
+        Intro(hl, hr) => match hr {
+          Intro(hu, hp) => (
+            let cs = s;
+            let b = Slot(&cs, Idx(k, n));
+            let q = BGetMut(b, k, h);
+            *q := w;
+            let sc = s;
+            ⟨J(Nat, Count(s), Count(cs), λ(z : Nat) : Prop => Eq Nat len z, SlotGetMutCount(&sc, Idx(k, n), k, w, h), hl),
+             ⟨SlotGetMutUnique(s, Idx(k, n), k, w, h, hu), SlotGetMutPlaced(s, n, k, w, h, hp)⟩⟩
+          ),
+        },
+      },
     }
   )
   -- ## Resizing keeps the invariant
@@ -2412,6 +2627,12 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       ),
     }
   )
+  def GetMutNotOver (m : HashMap) (k : Nat) (w : Nat) (h : IsSome(Find(m, k))) (ho : NotOver(m)) :
+      (let c = m; let q = GetMut(&c, k, h); *q := w; NotOver(c)) := (
+    match m {
+      HM(n, len, s) => ho,
+    }
+  )
 
   def ClearNotOver (m : HashMap) : (let c = m; Clear(&c); NotOver(c)) := (
     match m {
@@ -2424,4 +2645,4 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "HashMapResize" HashMapResize).allAsExpected
-#guard (run "HashMapResize" HashMapResize).count == 79
+#guard (run "HashMapResize" HashMapResize).count == 87
