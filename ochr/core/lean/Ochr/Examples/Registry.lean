@@ -14,7 +14,7 @@ import Ochr.Examples.«12CurrentState»
 import Ochr.Examples.«13Erasure»
 import Ochr.Examples.«14Universes»
 import Ochr.Examples.«15BorrowTypes»
-import Ochr.Examples.«16HashMap»
+import Ochr.Examples.«17HashMap»
 import Ochr.Examples.Units
 
 /-! # Every example program, for the test runner and the counterfactual ledger
@@ -39,7 +39,7 @@ def programs : List (String × Block) :=
    ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
    ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("BorrowTypes", BorrowTypes)]
 
-/-- Case studies (`16HashMap`): checked and counted with the tour, and timed by `lake exe
+/-- Case studies (`17HashMap`): checked and counted with the tour, and timed by `lake exe
 tests`, but not re-run by the counterfactual ledger, which is about the rules. A case study's
 programs are large and chained (each block re-checks the blocks it uses), so each ledger row
 would re-check them twice; their flips are measured once instead, by

@@ -1,6 +1,6 @@
 import Ochr.Examples.«00Std»
 
-/-! # 16. A verified hash map
+/-! # 17. A verified hash map
 
 The case study of `notes/hashmap-case-study.md`: the resizing hash map that Aeneas verifies
 (ICFP 2022, §6), written once, in place, with its theorems stated and proved about that

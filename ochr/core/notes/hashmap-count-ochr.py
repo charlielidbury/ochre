@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """The Ochr side of the hashmap case study's table (notes/hashmap-case-study.md).
 
-Splits Ochr/Examples/16HashMap.lean into its declarations (a declaration runs from its
+Splits Ochr/Examples/17HashMap.lean into its declarations (a declaration runs from its
 `def`/`inductive` line to the line before the next one, or the end of its `ochr` block),
 assigns each to a category by name, and counts code lines and tokens per category with
 the same comment stripping and tokenizer as hashmap-count.py.
 
-usage: hashmap-count-ochr.py [path/to/16HashMap.lean]
+usage: hashmap-count-ochr.py [path/to/17HashMap.lean]
 """
 import importlib.util
 import os
@@ -60,7 +60,7 @@ DECL = re.compile(r"^  (?:reject )?(?:def|inductive) ([A-Za-z_][A-Za-z0-9_']*)")
 
 
 def main():
-    path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, "..", "lean", "Ochr", "Examples", "16HashMap.lean")
+    path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, "..", "lean", "Ochr", "Examples", "17HashMap.lean")
     raw = open(path).read()
     stripped = hc.strip_comments(raw, "ochr").split("\n")
     rawlines = raw.split("\n")
