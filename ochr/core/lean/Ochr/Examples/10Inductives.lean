@@ -1,4 +1,4 @@
-import Ochr.Test
+import Ochr.Examples.«00Std»
 
 /-! # 10. Inductive types: lists, trees, and parameters
 
@@ -85,8 +85,7 @@ That the in-place insert is the pure insert is then bare recursion, provided the
 replacement also reaches the copies of the comparison that the goal computes later (D34,
 switch `genConsistent`). The size theorem needs one arithmetic lemma, proved in place. -/
 
-ochr Trees {
-  inductive Bool := false | true
+ochr Trees uses Std {
   inductive Tree := Leaf | Node(l : Tree, v : Nat, r : Tree)
 
   def Lt (a : Nat) (b : Nat) : Bool by a := (
@@ -183,18 +182,6 @@ ochr Trees {
   -- hypothesis, since `Add` recurses on its first argument. The `false` arm needs
   -- `x + S y = S (x + y)`, itself proved in place by bare recursion. Both arms rewrite
   -- with `J`.
-  def AddM (x : &Nat) (y : Nat) : Unit by x := (
-    match *x {
-      Z => *x := y,
-      S p => AddM(&p, y),
-    }
-  )
-
-  def Add (x : Nat) (y : Nat) : Nat := (
-    AddM(&x, y);
-    x
-  )
-
   def AddMS (x : &Nat) (y : Nat) : Id Unit (AddM(x, S y)) (AddM(&*x, y); *x := S *x) by x := (
     match *x {
       Z => refl,
@@ -290,13 +277,13 @@ ochr Trees {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Trees" Trees).allAsExpected
-#guard (run "Trees" Trees).count == 17
+#guard (run "Trees" Trees).count == 14
 
-/-! ## Parameters: a polymorphic list -/
+/-! ## Parameters: a polymorphic list
 
-ochr PolyLists {
-  inductive List (A : Type) := Nil | Cons(h : A, t : List(A))
+`List(A)` is `Std`'s. -/
 
+ochr PolyLists uses Std {
   -- In-place append on `List(A)`, and appending `Nil` does nothing; `Nil`'s parameter comes
   -- from `AppendM`'s parameter type.
   def AppendM (A : Type) (xs : &List(A)) (ys : List(A)) : Unit by xs := (
@@ -389,18 +376,16 @@ ochr PolyLists {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "PolyLists" PolyLists).allAsExpected
-#guard (run "PolyLists" PolyLists).count == 20
+#guard (run "PolyLists" PolyLists).count == 19
 
 /-! ## What goes wrong without strict positivity
 
 A field of function type can mention the type being declared negatively. Then `L(b)`
 applies `b`'s own field to `b`, which never terminates, but `K` is typed by [Call-type]
 alone and proofs are not run, so `Boom` is a closed proof of `False` (D36, switch
-`positivity`). Fields of first-order data are fine. -/
+`positivity`). Fields of first-order data are fine. `Empty` is `Std`'s. -/
 
-ochr Positivity {
-  inductive Empty := E(e : Empty)
-
+ochr Positivity uses Std {
   def absurd (e : Empty) : False by e := (
     match e {
       E(e') => absurd(e'),
@@ -425,15 +410,14 @@ ochr Positivity {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Positivity" Positivity).allAsExpected
-#guard (run "Positivity" Positivity).count == 8
+#guard (run "Positivity" Positivity).count == 7
 
 /-! The same, with the function type hidden inside a parameter: a field's parameter
 arguments must be first-order too. Positive uses of parameters are fine: a list of the
-type itself, and a proof field. -/
+type itself, and a proof field. `Box(A)` and `List(A)` are `Std`'s. -/
 
-ochr PositivityParams {
+ochr PositivityParams uses Std {
   inductive Void : Type
-  inductive Box (A : Type) := MkBox(x : A)
 
   def unbox (A : Type) (b : Box(A)) : A := (
     match b {
@@ -456,7 +440,6 @@ ochr PositivityParams {
   reject def bad : Bad := Mk(MkBox(λ(x : Bad) : Void => L(x)))
   reject def Boom : False := K(bad)
   reject inductive Neg (A : Type) := MkNeg(f : Π(x : A). Nat)
-  inductive List (A : Type) := Nil | Cons(h : A, t : List(A))
   inductive Rose (A : Type) := Node(v : A, kids : List(Rose(A)))
   inductive Sig (P : Prop) := MkSig(n : Nat, h : P)
 
@@ -476,7 +459,7 @@ ochr PositivityParams {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "PositivityParams" PositivityParams).allAsExpected
-#guard (run "PositivityParams" PositivityParams).count == 16
+#guard (run "PositivityParams" PositivityParams).count == 14
 
 /-! The paper's version (appendix note 4), with `False` directly. -/
 

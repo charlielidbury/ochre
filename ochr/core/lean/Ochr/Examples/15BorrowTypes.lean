@@ -1,4 +1,4 @@
-import Ochr.Test
+import Ochr.Examples.«00Std»
 
 /-! # 15. Borrow types: what may be borrowed, and where `&` may appear
 
@@ -13,24 +13,16 @@ Defined in RULES §1 (the scope paragraph) and D48. -/
 
 open Ochr.Test
 
-ochr BorrowTypes {
-  -- Data may be borrowed: an inductive type at any parameter, a pair ...
-  inductive List (A : Type) := Nil | Cons(h : A, t : List(A))
+ochr BorrowTypes uses Std {
+  -- Data may be borrowed: an inductive type at any parameter (`Std`'s `List(A)`), a pair ...
   def RefList (A : Type) (xs : &List(A)) : Unit := ()
   def RefPair (p : &(Nat × Unit)) : Unit := *p := (0, ())
 
-  -- ... including a box of propositions, which is data even though what it holds is a type.
-  inductive Box (A : Type) := MkBox(x : A)
+  -- ... including a box of propositions (`Std`'s `Box`), which is data even though what it
+  -- holds is a type.
   def RefBoxProp (x : &Box(Prop)) : Unit := ()
 
-  -- `&` at the top of a result, an annotation, and the parts of a Π-type.
-  def TailM (x : &Nat) : &Nat by x := (
-    match *x {
-      Z => x,
-      S p => TailM(&p),
-    }
-  )
-
+  -- `&` at the top of a result (`Std`'s `TailM`), an annotation, and the parts of a Π-type.
   def Ann (x : &Nat) : Unit := (
     let r : &Nat = TailM(x);
     *r := 1
@@ -80,4 +72,4 @@ ochr BorrowTypes {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "BorrowTypes" BorrowTypes).allAsExpected
-#guard (run "BorrowTypes" BorrowTypes).count == 19
+#guard (run "BorrowTypes" BorrowTypes).count == 16

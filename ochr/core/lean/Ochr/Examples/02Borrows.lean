@@ -1,4 +1,4 @@
-import Ochr.Test
+import Ochr.Examples.«00Std»
 
 /-! # 2. Borrows: moving, copying, reborrowing, and the borrow checker
 
@@ -13,19 +13,7 @@ Defined in RULES §3: [Read], [Borrow], [Assign], [Access], [End], [Drop], [Call
 
 open Ochr.Test
 
-ochr Borrows {
-  def AddM (x : &Nat) (y : Nat) : Unit by x := (
-    match *x {
-      Z => *x := y,
-      S p => AddM(&p, y),
-    }
-  )
-
-  def Add (x : Nat) (y : Nat) : Nat := (
-    AddM(&x, y);
-    x
-  )
-
+ochr Borrows uses Std {
   -- Passing `x` moves the borrow into the call, so the second call reads a dead place.
   reject def UseMoved (x : &Nat) : Unit := (
     AddM(x, 0);
@@ -113,4 +101,4 @@ ochr Borrows {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Borrows" Borrows).allAsExpected
-#guard (run "Borrows" Borrows).count == 16
+#guard (run "Borrows" Borrows).count == 14

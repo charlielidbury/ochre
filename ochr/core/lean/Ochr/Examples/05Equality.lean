@@ -1,4 +1,4 @@
-import Ochr.Test
+import Ochr.Examples.«00Std»
 
 /-! # 5. Observational equality: `Id` and `Eq`
 
@@ -17,19 +17,7 @@ Defined in RULES §4. -/
 
 open Ochr.Test
 
-ochr Equality {
-  def AddM (x : &Nat) (y : Nat) : Unit by x := (
-    match *x {
-      Z => *x := y,
-      S p => AddM(&p, y),
-    }
-  )
-
-  def Add (x : Nat) (y : Nat) : Nat := (
-    AddM(&x, y);
-    x
-  )
-
+ochr Equality uses Std {
   -- The footprint is read from the syntax, so an unrelated `let` does not change what is
   -- compared, and the proof is the same as `AddMZero`'s.
   def AddMZeroLet (x : &Nat) : Id Unit (let n = 0; AddM(x, n)) () by x := (
@@ -77,7 +65,6 @@ ochr Equality {
   def NoConfS (n : Nat) (h : Eq Nat Z (S n)) : False := h
   def NoConfMatch (n : Nat) (h : Eq Nat (S n) Z) : Nat := match h {}
   def NoConfBack (h : False) : Eq Nat 0 1 := h
-  inductive Bool := false | true
   def BoolDisj (h : Eq Bool false true) : False := h
 
   -- Equal constructors are not taken apart: `Eq Nat (S a) (S b)` does not compute to
@@ -100,7 +87,7 @@ ochr Equality {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Equality" Equality).allAsExpected
-#guard (run "Equality" Equality).count == 20
+#guard (run "Equality" Equality).count == 17
 
 /-! ## All the owners of a returned borrow are observed
 
@@ -108,14 +95,7 @@ ochr Equality {
 the hole for its contents is in both `a` and `b`, so an `Id` about writes through it
 observes both: it is a conjunction with one equation per owner (D18). -/
 
-ochr Owners {
-  def Pick (n : Nat) (x : &Nat) (y : &Nat) : &Nat := (
-    match n {
-      Z => x,
-      S _ => y,
-    }
-  )
-
+ochr Owners uses Std {
   def Probe (z : &Nat) (e : Id Unit (*z := 0) (*z := 1)) : Unit := ()
 
   -- `Probe`'s second parameter, at `z = r`, is a conjunction over `a` and `b`, which `refl`
@@ -186,7 +166,7 @@ ochr Owners {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Owners" Owners).allAsExpected
-#guard (run "Owners" Owners).count == 12
+#guard (run "Owners" Owners).count == 11
 
 /-- The message rejecting `Owners.Use` under `cfg`: it states `Probe`'s parameter type. -/
 def useMessage (cfg : Ochr.Config) : String :=

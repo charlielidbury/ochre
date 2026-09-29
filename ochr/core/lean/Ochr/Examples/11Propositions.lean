@@ -1,4 +1,4 @@
-import Ochr.Test
+import Ochr.Examples.«00Std»
 
 /-! # 11. Propositions: `False`, `True`, `And`, and matching on proofs
 
@@ -14,21 +14,7 @@ Defined in RULES §1 (the library) and §8. -/
 
 open Ochr.Test
 
-ochr Propositions {
-  def AddM (x : &Nat) (y : Nat) : Unit by x := (
-    match *x {
-      Z => *x := y,
-      S p => AddM(&p, y),
-    }
-  )
-
-  def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x := (
-    match *x {
-      Z => refl,
-      S p => AddMZero(&p),
-    }
-  )
-
+ochr Propositions uses Std {
   -- ## False
   -- `False` has no constructors, so a match on a proof of it has no arms and fits any
   -- result type: data, a proposition, a statement about effects.
@@ -218,7 +204,7 @@ ochr Propositions {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Propositions" Propositions).allAsExpected
-#guard (run "Propositions" Propositions).count == 44
+#guard (run "Propositions" Propositions).count == 42
 
 /-! ## Subsingleton elimination
 
@@ -226,8 +212,7 @@ ochr Propositions {
 produce a proof, and is itself a proof, erased wherever it runs. The same holds for a
 single constructor with a data field (`Sq`). -/
 
-ochr Subsingletons {
-  inductive Bool := false | true
+ochr Subsingletons uses Std {
   inductive Or (P : Prop) (Q : Prop) : Prop := Inl(p : P) | Inr(q : Q)
 
   -- Elimination into propositions: every arm is a proof, so the match is one.
@@ -282,20 +267,6 @@ ochr Subsingletons {
   -- A match that cannot pick an arm is a proof, erased wherever it runs (RULES P2). `EffL`'s
   -- body is such a match, so its calls write nothing. (Its own check runs each arm's write
   -- in tail position, where confinement does not apply: see `Erasure`.)
-  def U (n : Nat) : Type := (
-    match n {
-      Z => Prop,
-      S _ => Prop,
-    }
-  )
-
-  def V (n : Nat) : U(n) := (
-    match n {
-      Z => ⊤,
-      S _ => ⊤,
-    }
-  )
-
   def EffL (x : &Nat) (h : Or(⊤, ⊤)) : V(Z) := (
     match h {
       Inl(p) => (
@@ -361,4 +332,4 @@ ochr Subsingletons {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Subsingletons" Subsingletons).allAsExpected
-#guard (run "Subsingletons" Subsingletons).count == 22
+#guard (run "Subsingletons" Subsingletons).count == 19

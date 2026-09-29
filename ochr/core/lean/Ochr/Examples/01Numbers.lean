@@ -1,4 +1,4 @@
-import Ochr.Test
+import Ochr.Examples.«00Std»
 
 /-! # 1. Numbers, in-place mutation, and the first proofs
 
@@ -8,43 +8,19 @@ running programs: `Id A t u` states that the computations `t` and `u` return the
 and leave the same contents in every place they may write, and `refl` proves it when the
 two runs agree.
 
-This file is the paper's first example: in-place addition `AddM`, pure addition `Add`
-defined by running `AddM` on a copy, and two proofs that adding zero does nothing. It also
-shows how a match names the parts of a number and of a pair.
+This file continues the paper's first example, whose definitions are in `Std`: in-place
+addition `AddM`, pure addition `Add` defined by running `AddM` on a copy, and the in-place
+lemma `AddMZero`. Here are a type that runs a program, the pure theorem that adding zero does
+nothing, and how a match names the parts of a number and of a pair.
 
 Defined in RULES §1 (syntax), §3 (the machine: [Read], [Assign], [Match], [Call]) and §7
 (examples). -/
 
 open Ochr.Test
 
-ochr Numbers {
-  -- In-place addition: walk down to the `Z` at the bottom of `*x` and replace it with `y`.
-  -- `by x` says that `x` gets smaller at each recursive call.
-  def AddM (x : &Nat) (y : Nat) : Unit by x := (
-    match *x {
-      Z => *x := y,
-      S p => AddM(&p, y),
-    }
-  )
-
-  -- Pure addition, by running the in-place version on the local `x`.
-  def Add (x : Nat) (y : Nat) : Nat := (
-    AddM(&x, y);
-    x
-  )
-
+ochr Numbers uses Std {
   -- A type can run a program: `Add(2, 3)` evaluates to `5`, so `refl` proves the equation.
   def Add23 : Id Nat (Add(2, 3)) 5 := refl
-
-  -- An effect as a statement: adding zero in place leaves `*x` as it was. The proof is by
-  -- recursion on `*x`: in the `S p` arm, the recursive call about `&p` proves the goal about
-  -- the whole of `*x`, because the borrow of `p` sits inside `*x`.
-  def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x := (
-    match *x {
-      Z => refl,
-      S p => AddMZero(&p),
-    }
-  )
 
   -- The pure theorem follows from the in-place one, applied to the predecessor field of `x`.
   -- No congruence step is written: the environment puts the `S` back around `p`.
@@ -149,4 +125,4 @@ ochr Numbers {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Numbers" Numbers).allAsExpected
-#guard (run "Numbers" Numbers).count == 22
+#guard (run "Numbers" Numbers).count == 19

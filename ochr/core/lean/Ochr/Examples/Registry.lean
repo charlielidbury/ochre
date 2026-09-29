@@ -1,3 +1,4 @@
+import Ochr.Examples.«00Std»
 import Ochr.Examples.«01Numbers»
 import Ochr.Examples.«02Borrows»
 import Ochr.Examples.«03ReturnedBorrows»
@@ -18,15 +19,16 @@ import Ochr.Examples.Units
 /-! # Every example program, for the test runner and the counterfactual ledger
 
 The programs of the tour, in reading order (the numbered files, then the blocks of each
-file in order). The counterfactual ledger (`Ledger.lean`) switches one rule off at a time
-and lists the verdicts that flip, in this order. -/
+file in order), starting with `Std`, which most of them use. The counterfactual ledger
+(`Ledger.lean`) switches one rule off at a time and lists the verdicts that flip, in this
+order. -/
 
 open Ochr Ochr.Test Ochr.Surface
 
 namespace Ochr.Registry
 
 def programs : List (String × Block) :=
-  [("Numbers", Numbers), ("Borrows", Borrows), ("ReturnedBorrows", ReturnedBorrows),
+  [("Std", Std), ("Numbers", Numbers), ("Borrows", Borrows), ("ReturnedBorrows", ReturnedBorrows),
    ("ClosingOff", ClosingOff), ("Naturality", Naturality), ("Equality", Equality),
    ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion),
    ("CaseSplits", CaseSplits), ("GenType", GenType), ("ScrutineeTypes", ScrutineeTypes),
@@ -165,7 +167,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 464
+def Ochr.Registry.expectedTotal : Nat := 432
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

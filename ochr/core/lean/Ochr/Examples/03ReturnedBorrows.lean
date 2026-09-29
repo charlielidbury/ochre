@@ -1,4 +1,4 @@
-import Ochr.Test
+import Ochr.Examples.«00Std»
 
 /-! # 3. Functions that return a borrow
 
@@ -16,23 +16,9 @@ Defined in RULES §1 (D44), §3 [Close] and §7. -/
 
 open Ochr.Test
 
-ochr ReturnedBorrows {
-  def AddM (x : &Nat) (y : Nat) : Unit by x := (
-    match *x {
-      Z => *x := y,
-      S p => AddM(&p, y),
-    }
-  )
-
-  -- A borrow of the final `Z` of `*x`.
-  def TailM (x : &Nat) : &Nat by x := (
-    match *x {
-      Z => x,
-      S p => TailM(&p),
-    }
-  )
-
-  -- Addition by writing through the returned borrow ...
+ochr ReturnedBorrows uses Std {
+  -- `Std`'s `TailM(x)` returns a borrow of the final `Z` of `*x`. Addition by writing
+  -- through it ...
   def AddM' (x : &Nat) (y : Nat) : Unit := (
     let t = TailM(x);
     *t := y
@@ -91,8 +77,6 @@ ochr ReturnedBorrows {
   -- through it would observe nothing and be trivially true. `Q` would then refute
   -- `Π(n : Nat). &Nat`, which Rust inhabits with `Box::leak`: given such a function as an
   -- opaque `leak`, `Boom` is a closed proof of `Empty` (switch `borrowParam`).
-  inductive Empty := E(e : Empty)
-
   def M (n : Nat) : Type := (
     match n {
       Z => Unit,
@@ -137,4 +121,4 @@ ochr ReturnedBorrows {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ReturnedBorrows" ReturnedBorrows).allAsExpected
-#guard (run "ReturnedBorrows" ReturnedBorrows).count == 23
+#guard (run "ReturnedBorrows" ReturnedBorrows).count == 20

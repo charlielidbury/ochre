@@ -1,4 +1,4 @@
-import Ochr.Test
+import Ochr.Examples.«00Std»
 
 /-! # 6. Types and closures are formed once
 
@@ -18,14 +18,7 @@ Defined in RULES P2, §1 (closures capture no borrows) and §5 [Call-type]; the 
 
 open Ochr.Test
 
-ochr Snapshots {
-  def AddM (x : &Nat) (y : Nat) : Unit by x := (
-    match *x {
-      Z => *x := y,
-      S p => AddM(&p, y),
-    }
-  )
-
+ochr Snapshots uses Std {
   -- ## Types are formed once
   -- The result type is formed on entry, so writing `5` first does not prove it; ascribing
   -- the type again after the write does not help, since the goal is still the entry one.
@@ -160,4 +153,4 @@ ochr Snapshots {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Snapshots" Snapshots).allAsExpected
-#guard (run "Snapshots" Snapshots).count == 22
+#guard (run "Snapshots" Snapshots).count == 21

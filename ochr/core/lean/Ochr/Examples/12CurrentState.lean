@@ -1,4 +1,4 @@
-import Ochr.Test
+import Ochr.Examples.«00Std»
 
 /-! # 12. Proofs about the current state
 
@@ -12,19 +12,7 @@ Defined in RULES §7 (the E5 example); `match h {}` on a refined type is RULES �
 
 open Ochr.Test
 
-ochr CurrentState {
-  def AddM (x : &Nat) (y : Nat) : Unit by x := (
-    match *x {
-      Z => *x := y,
-      S p => AddM(&p, y),
-    }
-  )
-
-  def Add (x : Nat) (y : Nat) : Nat := (
-    AddM(&x, y);
-    x
-  )
-
+ochr CurrentState uses Std {
   -- A function that returns a proposition.
   def Le (a : Nat) (b : Nat) : Prop by a := (
     match a {
@@ -129,4 +117,4 @@ ochr CurrentState {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "CurrentState" CurrentState).allAsExpected
-#guard (run "CurrentState" CurrentState).count == 16
+#guard (run "CurrentState" CurrentState).count == 14

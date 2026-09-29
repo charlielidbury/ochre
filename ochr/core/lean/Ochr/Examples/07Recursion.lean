@@ -1,4 +1,4 @@
-import Ochr.Test
+import Ochr.Examples.«00Std»
 
 /-! # 7. Recursion and induction hypotheses
 
@@ -15,19 +15,7 @@ Defined in RULES §5: [Def], [Call-type], [Rec]. -/
 
 open Ochr.Test
 
-ochr Recursion {
-  def AddM (x : &Nat) (y : Nat) : Unit by x := (
-    match *x {
-      Z => *x := y,
-      S p => AddM(&p, y),
-    }
-  )
-
-  def Add (x : Nat) (y : Nat) : Nat := (
-    AddM(&x, y);
-    x
-  )
-
+ochr Recursion uses Std {
   -- An induction hypothesis about a copy of the predecessor says nothing about `x` itself:
   -- it lacks the `S`, and the core has no congruence rule to put it back. (`AddZero` in
   -- `Numbers` lends the predecessor field instead.)
@@ -154,4 +142,4 @@ ochr Recursion {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Recursion" Recursion).allAsExpected
-#guard (run "Recursion" Recursion).count == 18
+#guard (run "Recursion" Recursion).count == 16

@@ -1,4 +1,4 @@
-import Ochr.Test
+import Ochr.Examples.«00Std»
 
 /-! # 13. Erasure: proofs and types leave no trace
 
@@ -23,21 +23,7 @@ Defined in RULES P2. -/
 
 open Ochr.Test
 
-ochr Erasure {
-  def AddM (x : &Nat) (y : Nat) : Unit by x := (
-    match *x {
-      Z => *x := y,
-      S p => AddM(&p, y),
-    }
-  )
-
-  def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x := (
-    match *x {
-      Z => refl,
-      S p => AddMZero(&p),
-    }
-  )
-
+ochr Erasure uses Std {
   -- ## Erased terms run on a private copy
   -- Citing a lemma about `x`, argument included, does not move `x` (switch `eraseOnCopy`).
   def LemmaMoves (x : &Nat) : Unit := (
@@ -178,12 +164,12 @@ ochr Erasure {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Erasure" Erasure).allAsExpected
-#guard (run "Erasure" Erasure).count == 31
+#guard (run "Erasure" Erasure).count == 29
 
 /-! ## What goes wrong when erasure is decided from values
 
 Each program below makes the two ways of computing a statement disagree about whether some
-term is erased, if that is decided from a computed value instead of the syntax. `U(n)` is
+term is erased, if that is decided from a computed value instead of the syntax. `Std`'s `U(n)` is
 `Prop` for every `n`, but only after computing it: at an abstract `n` it is the stuck
 `⌈U(σ)⌉`. `V(n)` is a proof of `U(n)`. Each `Lie…` is a statement about whether a write to
 `c` happens, and each `Boom…` its instance at `Z`. If the generic call and the instance
@@ -191,21 +177,7 @@ disagreed about whether the write is erased, some `Boom…` would be a closed pr
 false equation. Under the rules the write happens on both paths, so each `Lie…` is either
 true, with a true instance, or rejected. The ledger names the switch each one depends on. -/
 
-ochr ErasureBySyntax {
-  def U (n : Nat) : Type := (
-    match n {
-      Z => Prop,
-      S _ => Prop,
-    }
-  )
-
-  def V (n : Nat) : U(n) := (
-    match n {
-      Z => ⊤,
-      S _ => ⊤,
-    }
-  )
-
+ochr ErasureBySyntax uses Std {
   -- A top-level function whose result type computes to a sort (D28, switch `erasureByDecl`).
   -- `W` returns data, by its declared result type `U(n)`, so its write runs at every
   -- instance; `MainW(0)` really is `1`, as compiled code computes.
@@ -343,4 +315,4 @@ ochr ErasureBySyntax {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ErasureBySyntax" ErasureBySyntax).allAsExpected
-#guard (run "ErasureBySyntax" ErasureBySyntax).count == 28
+#guard (run "ErasureBySyntax" ErasureBySyntax).count == 26

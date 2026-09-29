@@ -1,4 +1,4 @@
-import Ochr.Test
+import Ochr.Examples.«00Std»
 
 /-! # 9. Functions as values: opaque functions, closures and Π-types
 
@@ -17,26 +17,7 @@ Defined in RULES P1, §1 (Π, `fix`, calls), §3 [Call] and §4. -/
 
 open Ochr.Test
 
-ochr Functions {
-  def AddM (x : &Nat) (y : Nat) : Unit by x := (
-    match *x {
-      Z => *x := y,
-      S p => AddM(&p, y),
-    }
-  )
-
-  def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x := (
-    match *x {
-      Z => refl,
-      S p => AddMZero(&p),
-    }
-  )
-
-  def Add (x : Nat) (y : Nat) : Nat := (
-    AddM(&x, y);
-    x
-  )
-
+ochr Functions uses Std {
   -- ## Opaque functions
   -- `f` has no borrow argument, so it cannot write anything: its calls return `()` and
   -- `Twice(f)` does nothing.
@@ -166,4 +147,4 @@ ochr Functions {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Functions" Functions).allAsExpected
-#guard (run "Functions" Functions).count == 39
+#guard (run "Functions" Functions).count == 36

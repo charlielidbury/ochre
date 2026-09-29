@@ -1,4 +1,4 @@
-import Ochr.Test
+import Ochr.Examples.«00Std»
 
 /-! # 4. Closing off: what a stuck computation leaves behind
 
@@ -18,21 +18,7 @@ Defined in RULES §3: [Close], [Seal], stuck blocks; [Split] in §5 checks the a
 
 open Ochr.Test
 
-ochr ClosingOff {
-  def AddM (x : &Nat) (y : Nat) : Unit by x := (
-    match *x {
-      Z => *x := y,
-      S p => AddM(&p, y),
-    }
-  )
-
-  def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x := (
-    match *x {
-      Z => refl,
-      S p => AddMZero(&p),
-    }
-  )
-
+ochr ClosingOff uses Std {
   -- ## A borrow chosen by a branch
   -- The match is not in tail position: its arms are checked, then it is closed off, and the
   -- rest of the body runs once, on the borrow the closed-off block returns.
@@ -52,14 +38,7 @@ ochr ClosingOff {
     }
   )
 
-  -- ... and with the match moved into a function.
-  def Pick (b : Nat) (x1 : &Nat) (x2 : &Nat) : &Nat := (
-    match b {
-      Z => x1,
-      S _ => x2,
-    }
-  )
-
+  -- ... and with the match moved into a function, `Std`'s `Pick`.
   def AddToOne'' (b : Nat) (x1 : &Nat) (x2 : &Nat) (y : Nat) : Unit := (
     let r = Pick(b, x1, x2);
     AddM(r, y)
@@ -252,24 +231,17 @@ ochr ClosingOff {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ClosingOff" ClosingOff).allAsExpected
-#guard (run "ClosingOff" ClosingOff).count == 29
+#guard (run "ClosingOff" ClosingOff).count == 26
 
 /-! ## Symbolic checking is not the same as checking every instance
 
-At an abstract `n`, `Pick` returns a borrow that may point into `a` or into `b`, so its
+At an abstract `n`, `Std`'s `Pick` returns a borrow that may point into `a` or into `b`, so its
 hole is in both. Reading `b` then ends it, and the write through `r` in arm `Z` fails. At
 each concrete `n` the program is fine. The checker is sound but rejects `PickEarly`: the
 symbolic run agrees with the concrete ones only up to which borrows have ended (the
 paper's §7, "naturality up to resolution"). -/
 
-ochr Naturality {
-  def Pick (n : Nat) (x : &Nat) (y : &Nat) : &Nat := (
-    match n {
-      Z => x,
-      S _ => y,
-    }
-  )
-
+ochr Naturality uses Std {
   reject def PickEarly (n : Nat) (a : Nat) (b : Nat) : Unit := (
     let r = Pick(n, &a, &b);
     let z = b;
@@ -304,4 +276,4 @@ ochr Naturality {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Naturality" Naturality).allAsExpected
-#guard (run "Naturality" Naturality).count == 4
+#guard (run "Naturality" Naturality).count == 3
