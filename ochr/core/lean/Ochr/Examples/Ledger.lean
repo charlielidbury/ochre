@@ -59,7 +59,8 @@ open Ochr.Registry in
 #guard rowOk { generalize := false }
   ["ClosingOff.UseDec:rejected", "Equality.CastMatch:rejected", "CaseSplits.MatchAfterOpaque:rejected",
    "GenType.GenL:rejected", "Splitting.Pick:rejected", "Splitting.PickNotZero:rejected",
-   "Splitting.PickNotZeroCopy:rejected", "Splitting.PickTwo:rejected", "Splitting.DoubleVal:rejected",
+   "Splitting.PickNotZeroCopy:rejected", "Splitting.Pick22:rejected", "Splitting.Pick22NotZero:rejected",
+   "Splitting.PickTwo:rejected", "Splitting.DoubleVal:rejected",
    "Trees.InsertM:rejected", "Trees.Insert:rejected", "Trees.InsertMEq:rejected",
    "Trees.InsertMSwap:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.InsertM:rejected",
    "InPlaceTrees.Insert:rejected", "InPlaceTrees.InsertMIsInsert:rejected",
@@ -99,7 +100,8 @@ open Ochr.Registry in
   ["ClosingOff.Clear:accepted", "ClosingOff.Boom5:accepted"]
 open Ochr.Registry in
 #guard rowOk { genConsistent := false }
-  ["Splitting.PickNotZero:rejected", "Splitting.PickNotZeroCopy:rejected", "Splitting.PickTwo:rejected",
+  ["Splitting.PickNotZero:rejected", "Splitting.PickNotZeroCopy:rejected", "Splitting.Pick22NotZero:rejected",
+   "Splitting.PickTwo:rejected",
    "Trees.InsertMEq:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.SizeInsert:rejected"]
 open Ochr.Registry in
 #guard rowOk { classBySyntax := false }

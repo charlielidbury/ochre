@@ -97,8 +97,9 @@ def genTrace (cfg : Ochr.Config) : String := (run "GenType" GenType { cfg with t
 call of `f`, generalises that result as a match on a place holding it would (D34), and
 checks `t` in every arm; `split f { C(x̄) => t, … }` gives each arm. "Finds" is fixed: the
 goal's sealed programs in order, left to right, each followed down the chain of results its
-run is stuck on, and the first result whose head call is `f` (D61). It saves computing the
-result again into a place just to match on it. -/
+run is stuck on, and the first result whose head call is `f`, or which stands for one that
+an earlier split generalised (D61). It saves computing the result again into a place just
+to match on it. -/
 
 ochr Splitting uses Std {
   def IsZ (n : Nat) : Bool := (
@@ -131,6 +132,25 @@ ochr Splitting uses Std {
 
   -- Without a split the goal stays stuck.
   reject def PickNotZeroNoSplit (n : Nat) : Eq Bool (IsZ(Pick(n))) false := refl
+
+  -- Nested: in the second arm of the outer split, `IsZ(m)` has already been generalised
+  -- (in the first arm's inner split), and the record says so; `split` finds it all the same.
+  def Pick22 (n : Nat) (m : Nat) : Nat := (
+    let a = IsZ(n);
+    let b = IsZ(m);
+    match a {
+      false => match b {
+        false => 1,
+        true => 2,
+      },
+      true => match b {
+        false => 3,
+        true => 4,
+      },
+    }
+  )
+
+  def Pick22NotZero (n : Nat) (m : Nat) : Eq Bool (IsZ(Pick22(n, m))) false := split IsZ in split IsZ in refl
 
   -- With arms, when they differ; a hypothesis about the split result is refined too.
   def PickTwo (n : Nat) (h : Eq Bool (IsZ(n)) true) : Eq Nat (Pick(n)) 2 := (
@@ -199,7 +219,7 @@ ochr Splitting uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Splitting" Splitting).allAsExpected
-#guard (run "Splitting" Splitting).count == 17
+#guard (run "Splitting" Splitting).count == 19
 
 /-! ## What goes wrong without these rules
 
