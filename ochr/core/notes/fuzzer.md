@@ -11,8 +11,8 @@
 1. **F-v2-1, a closed proof of `False`.** [Rec] stopped checking after a sealed program was typed. It was common: 351 cases in 10⁵ on 96d788a1. Fixed by 3ff0e1e2.
 2. **P2 is soundness-relevant, not just completeness.** With P2 alone switched off (D41 on), there is a closed proof of `False`. The ledger lists P2 as completeness.
 3. **The D53 prototype breaks naturality in three ways**, two of them in the unsound direction. It is off by default, and these results became D53's acceptance criterion.
-5. **R8, a regression in the erasure pre-pass (ff6b634a).** Its own INTERNAL assertion fires when a closed-off block calls a captured proof-function parameter. Fail-safe; reported with a two-line reproduction (`Scratch/R8PrePass.lean`).
 4. **R1 (untyped `Id` owners holding a loan), an incompleteness.** Fixed by ef1195ff, apart from one residual shape (1 case in 10⁶): an owner reached through a returned borrow.
+5. **R8, a regression in the erasure pre-pass (ff6b634a).** Its own INTERNAL assertion fires when a closed-off block calls a captured proof-function parameter. Fail-safe; reported with a two-line reproduction (`Scratch/R8PrePass.lean`).
 
 The extended generator also re-finds the cold reviewers' attacks when their switch is off: reviewer-5's D54 `Boom` (as a `false` and a `truth` finding), and reviewer-4's `TT` (as `irrel`). §v2.3 counts which attack shapes it reaches.
 
