@@ -238,7 +238,7 @@ partial def nfSealed (t : Term) : M Value := do
   -- source was checked where it was written), so its reads copy
   let r ← tryCatch (do let (v, _) ← withErased (eval false t); pure (some v)) fun e =>
     match e with
-    | .stuck f => do modify (fun s => { s with fuel := f }); pure none
+    | .stuck f _ => do modify (fun s => { s with fuel := f }); pure none
     | .error m => throw (.error m)
   restoreKeep saved
   match r with
@@ -1365,6 +1365,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     let (_, Tu) ← eval true u (some G')
     expectTy "the rewritten term" Tu G'
     pure (.proof, some G)
+  | .prim "split" _ | .prim "splitArms" _ => err "split: only in tail position (where the goal is known)"
   | .prim "clone" [t] => withErased (eval typed t hint)   -- D53 prototype: reads copy
   | .prim n _ => err s!"unknown primitive {n}"
   | .ascribe (.val .proof) A =>     -- a captured proof, inlined with its type (`capture`)
@@ -1648,7 +1649,7 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
       let (cs, t) ← fixOf fv
       tryCatch (runBody fv cs t ws) fun e =>
         match e with
-        | .stuck fu =>
+        | .stuck fu _ =>
           if head then throw e
           else do
             modify fun s => { s with fuel := fu }
@@ -1740,9 +1741,9 @@ partial def evalMatch (typed : Bool) (p : Place) (z s : Term) (expected : Option
   | .zero => eval typed z
   | .succ _ => eval typed s
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
-  | .abs σ => if typed then splitThenClose p z s σ expected else stuckNow
+  | .abs σ => if typed then splitThenClose p z s σ expected else stuckOn v
   | .sealed _ | .loan _ =>
-    if !typed then stuckNow
+    if !typed then stuckOn v
     else
       let σ ← generalizeNeutral p v
       let expected ← expected.mapM (substV v (.abs σ))
@@ -2014,13 +2015,13 @@ partial def evalMatchInd (typed : Bool) (p : Place) (ty : String) (arms : List (
     | none => err s!"[Match] no arm for constructor {c}"
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
   | .abs σ =>
-    if !typed then stuckNow
+    if !typed then stuckOn v
     else
       let (d, ps) ← scrutType p ty
       splitArmsThenClose (.matchInd p ty arms) σ
         ((List.range d.ctors.length).zip (arms.map (·.2)) |>.map fun (c, a) => (ctorRefinement d ps c, a)) expected
   | .sealed _ | .loan _ =>
-    if !typed then stuckNow
+    if !typed then stuckOn v
     else
       let (d, ps) ← scrutType p ty
       let σ ← generalizeNeutral p v
@@ -2164,11 +2165,132 @@ partial def idType (typed : Bool) (A t u : Term) : M Value := do
 
 -- ### Typing: [Def], [Split] in tail position
 
+/-- D61 `split`: the name of a sealed program's head call (the call [Seal] marks as the
+head; one per sealed program), if it is a top-level function. -/
+partial def sealedHead : Term → Option String
+  | .call (.val (.gfn n)) _ true => some n
+  | .call f as _ => (f :: as).findSome? sealedHead
+  | .letIn _ a b | .seq a b => sealedHead a <|> sealedHead b
+  | .assign _ a => sealedHead a
+  | _ => none
+
+/-- D61: the neutral that a run of the sealed program `t` is stuck on: re-run `t` as [Seal]
+does and report the content of the scrutinee of the match it stopped at, if any. -/
+partial def stuckScrutinee (t : Term) : M (Option Value) := do
+  let saved ← get
+  modify fun s => { s with env := #[{}], depth := s.depth + 1 }
+  let r ← tryCatch (do discard (withErased (eval false t)); pure none) fun e =>
+    match e with
+    | .stuck f on => do modify (fun s => { s with fuel := f }); pure on
+    | .error _ => pure none
+  restoreKeep saved
+  pure r
+
+/-- D61: the sealed programs of a value, in pre-order, left to right. -/
+partial def sealedIn (v : Value) : List Term :=
+  match v with
+  | .sealed t => t :: termVals t
+  | .succ w | .borrow _ w | .tRef w => sealedIn w
+  | .tEq A a b => sealedIn A ++ sealedIn a ++ sealedIn b
+  | .clo cs _ | .tPi cs _ => cs.flatMap sealedIn
+  | .ind _ _ _ ps fs => ps.flatMap sealedIn ++ fs.flatMap sealedIn
+  | .tInd _ as => as.flatMap sealedIn
+  | _ => []
+where
+  termVals : Term → List Term
+    | .val w => sealedIn w
+    | .call f as _ => termVals f ++ as.flatMap termVals
+    | .letIn _ a b | .seq a b => termVals a ++ termVals b
+    | .assign _ a => termVals a
+    | .prim _ as => as.flatMap termVals
+    | _ => []
+
+/-- D61 `split f`: find the neutral to split. Walk the goal's sealed programs in pre-order,
+left to right; from each, follow the chain of scrutinees its run is stuck on (each link
+the content of the scrutinee of the match the previous one stopped at) while they are
+sealed programs; the first sealed scrutinee whose head call is `f` is the one. A link may
+also be an abstract value that stands for a sealed program generalised earlier (a D34
+record, which re-derivations of the program are replaced by): if that program's head
+call is `f`, it is the one, already generalised. -/
+partial def findSplit (f : String) (G : Value) : M (Option Value) := do
+  for t in sealedIn G do
+    let mut cur := t
+    for _ in [0:64] do
+      match ← stuckScrutinee cur with
+      | some n@(.sealed t') =>
+        if sealedHead t' == some f then return some n
+        cur := t'
+      | some a@(.abs σ) =>
+        match (← get).neutrals.find? (·.2 == σ) with
+        | some (.sealed t', _) => if sealedHead t' == some f then return some a
+        | _ => pure ()
+        break
+      | _ => break
+  pure none
+
+/-- D61: generalise a neutral found in the goal to a fresh `σ` of type `T`, as [Split] does
+for a sealed scrutinee (D34, D37), and return `σ`. -/
+partial def generalizeFound (n : Value) (T : Value) : M Nat := do
+  let σ ← freshAbs T
+  trace fun _ => s!"[Split] generalise {n} to σ{σ} : {T}"
+  substEnv n (.abs σ) true
+  if (← get).cfg.genConsistent then
+    modify fun s => { s with neutrals := (n, σ) :: s.neutrals }
+  pure σ
+
+/-- D61: the neutral `split f` splits and its type, or an error. -/
+partial def splitTarget (f : String) : M (Nat × Value) := do
+  unless (← get).cfg.generalize do
+    err s!"split {f}: it generalises a sealed program, which is switched off (RULES §5 splits only on σ)"
+  let some G := (← get).goal | err "split: no goal"
+  let some n := ← findSplit f G
+    | err s!"split {f}: the goal {G} is not stuck on the result of a call of {f}"
+  if let .abs σ := n then return (σ, ← absType σ)     -- generalised already
+  let .sealed t := n | err "internal: split target"
+  let some T := ← sealedResultType? t
+    | err s!"split {f}: the type of {n} is not known (its head's result type depends on the arguments)"
+  pure (← generalizeFound n T, T)
+
 /-- Check a term in tail position. At the end of every path, `k` gets the result and
 its type (in that path's refined state). A match on an abstract `σ` here is split:
 each arm is checked to the end under its refinement ([Split]). -/
 partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
   match t with
+  | .prim "split" [.const f, u] =>
+    -- D61: `split f in u`: split the goal's stuck result of `f`, `u` in every arm
+    let (σ, T) ← splitTarget f
+    let saved ← get
+    match T with
+    | .tNat =>
+      refine σ .zero
+      trace fun _ => s!"[Split] σ{σ} := 0"
+      checkTail u k
+      restoreKeep saved
+      let σ' ← freshAbs .tNat
+      refine σ (.succ (.abs σ'))
+      trace fun _ => s!"[Split] σ{σ} := S σ{σ'}"
+      checkTail u k
+      restoreKeep saved
+    | .tInd n ps =>
+      let d ← lookupInd n
+      for c in List.range d.ctors.length do
+        let r ← ctorRefinement d ps c
+        refine σ r
+        trace fun _ => s!"[Split] σ{σ} := {r}"
+        checkTail u k
+        restoreKeep saved
+    | _ => err s!"split {f}: its result type {T} is not an inductive type"
+  | .prim "splitArms" [.const f, .letIn h _ w] =>
+    -- D61: `split f { C(x̄) => u, … }`: the split value is bound to a hidden variable, and
+    -- the arms are an ordinary match on it
+    let (σ, T) ← splitTarget f
+    pushBind h (some T) (.abs σ) false
+    checkTail w fun r R => do
+      let fl ← getFlags
+      pushTemp r
+      dropTopBind
+      setFlags fl
+      k (← popTemp) R
   | .prim "rewrite" [h, u] | .prim "rewriteR" [h, u] =>
     -- D60: in tail position the rewritten goal becomes the path's goal, so `u` may split
     let some G := (← get).goal | err "rewrite: no goal"
