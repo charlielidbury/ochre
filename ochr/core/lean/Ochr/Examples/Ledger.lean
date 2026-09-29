@@ -114,20 +114,6 @@ open Ochr.Registry in
    "Trees.InsertMEq:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.SizeInsert:rejected",
    "InPlaceTrees.SizeInsertRw:rejected"]
 open Ochr.Registry in
-#guard rowOk { classBySyntax := false }
-  []
-open Ochr.Registry in
-#guard rowOk { blockRule := 0 }
-  []
-open Ochr.Registry in
-#guard rowOk { seqByProof := false }
-  []
--- D35's [Close]-row clause switched off flips nothing since η for `Unit` (D59): the only
--- rows left are a borrow's, which is read off a declared `&T` anyway (D48 (2)), and data's
-open Ochr.Registry in
-#guard rowOk { rowByDecl := false }
-  []
-open Ochr.Registry in
 #guard rowOk { leafRule := 0 }
   ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected"]
 open Ochr.Registry in
@@ -143,9 +129,6 @@ open Ochr.Registry in
   ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected",
    "Erasure.EffArgErased:accepted", "Erasure.Write:accepted", "Erasure.Borrow:accepted",
    "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted", "ErasureBySyntax.LieP:accepted"]
-open Ochr.Registry in
-#guard rowOk { blockRule := 1, leafRule := 0 }
-  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected"]
 open Ochr.Registry in
 #guard rowOk { positivity := false }
   ["Positivity.Bad:accepted", "Positivity.L:accepted", "Positivity.K:accepted", "Positivity.bad:accepted",

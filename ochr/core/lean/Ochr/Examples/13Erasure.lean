@@ -191,7 +191,10 @@ term is erased, if that is decided from a computed value instead of the syntax. 
 `c` happens, and each `Boom…` its instance at `Z`. If the generic call and the instance
 disagreed about whether the write is erased, some `Boom…` would be a closed proof of a
 false equation. Under the rules the write happens on both paths, so each `Lie…` is either
-true, with a true instance, or rejected. The ledger names the switch each one depends on. -/
+true, with a true instance, or rejected. The ledger names the switch each one depends on;
+since the erasure pre-pass decides erasure from declared types before a term runs, D35's
+after-the-fact clauses have no switches (they flipped nothing), and their witnesses stay as
+regressions. -/
 
 ochr ErasureBySyntax uses Fixtures {
   -- A top-level function whose result type computes to a sort (D28, switch `erasureByDecl`).
@@ -214,8 +217,9 @@ ochr ErasureBySyntax uses Fixtures {
   def MainW0 : Id Nat (MainW(0)) 1 := refl
 
   -- A local function whose result type computes to a sort: its class is read from the
-  -- result type as written, `U(n)`, so `h(&c)` runs on both paths (D35, switch
-  -- `classBySyntax`; appendix note 1).
+  -- result type as written, `U(n)`, so `h(&c)` runs on both paths (D35; appendix note 1).
+  -- The erasure pre-pass reads it before the call runs, so the old after-the-fact switch is
+  -- gone.
   def LieL (n : Nat) :
       Id Nat (let h = (λ(x : &Nat) : U(n) => (*x := S Z; V(n))); let c = Z; h(&c); c) (S Z) := refl
 
@@ -229,8 +233,8 @@ ochr ErasureBySyntax uses Fixtures {
 
   -- A match whose value is a type. Closed off, it looked like a call returning types and
   -- was erased; run directly, it was not. A closed-off match is erased only when each of
-  -- its arms is (D35, D40, switch `blockRule`; appendix note 2). The true statement is
-  -- proved by splitting on `n`.
+  -- its arms is (D35, D40; appendix note 2; the pre-pass, no switch since). The true
+  -- statement is proved by splitting on `n`.
   reject def LieB (n : Nat) :
       Id Nat (let c = Z; let T = match n { Z => (c := S Z; ⊤), S _ => (c := S Z; ⊤) }; c) Z := refl
 
@@ -303,7 +307,7 @@ ochr ErasureBySyntax uses Fixtures {
   )
 
   -- A sequence whose tail returns a type is not erased; only the call `F(&c)` runs on a
-  -- private copy (switch `seqByProof`).
+  -- private copy (D35; the pre-pass, no switch since).
   def F (x : &Nat) : Prop := (
     *x := S Z;
     ⊤

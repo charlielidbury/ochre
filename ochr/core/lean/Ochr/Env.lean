@@ -115,13 +115,6 @@ structure Config where
   unboundWithoutBy : Bool := true -- v1.5 D31: without `by`, f is not in scope in its body
   patternWritesVisible : Bool := true -- v1.5 D32: writes through pattern variables are writes to the scrutinee
   genConsistent : Bool := true   -- finding G1: a generalised neutral stays generalised when normalisation re-derives it
-  classBySyntax : Bool := true   -- v1.7 D35: a function's class is read from its codomain term, never evaluated
-  blockRule : Nat := 2           -- v1.7 D35, a stuck block is erased: 2 = when every arm is a proof (its match would
-                                 -- be, finding P2); 1 = when its computed type has sort Prop; 0 = v1.6, by the
-                                 -- call rule on its computed codomain (a sort: erased as returning types)
-  seqByProof : Bool := true      -- v1.7 D35: a let, sequence or match is erased iff it is a proof (its tail is);
-                                 -- v1.6: iff its tail is erased, so also when the tail returns types
-  rowByDecl : Bool := true       -- v1.7 D35: [Close]'s row is read from the declared codomain
   leafRule : Nat := 2            -- a place, constant or λ is a proof (erased): 2 = when declared of sort Prop (a
                                  -- variable's flag, finding P3); 1 = when its value is ⋆ (finding P1, unstable);
                                  -- 0 = never (v1.6)

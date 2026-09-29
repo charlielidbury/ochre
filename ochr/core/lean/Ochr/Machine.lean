@@ -1307,8 +1307,8 @@ partial def eval (typed : Bool) (t : Term) (hint : Option Value := none) : M (Va
       match t with
       | .call _ _ _ => getFlags      -- set by `callFn` from the callee's class
       | .seq _ _ | .letIn _ _ _ | .matchNat _ _ _ | .matchInd _ _ _ =>
-        let (e, p) ← getFlags
-        pure (if cfg.seqByProof then (p, p) else (e, p))
+        let (_, p) ← getFlags
+        pure (p, p)
       | .cong _ _ | .prim "trans" _ | .prim "symm" _ => pure (true, true)
       | .prim "rewrite" _ | .prim "rewriteR" _ => pure (true, true)   -- D60: `J`, a proof
       | .ctor ty _ _ _ _ => let p ← ctorIsProof ty; pure (p, p)   -- D42: a Prop inductive's value is a proof
@@ -1317,15 +1317,11 @@ partial def eval (typed : Bool) (t : Term) (hint : Option Value := none) : M (Va
         pure (p, p)
       | .ascribe (.val .proof) _ => pure (true, true)
       | .ascribe _ A =>
-        if cfg.seqByProof then
-          -- a proof if the ascribed term is, or if the annotation's declared sort is Prop
-          let top := (← get).env.size - 1
-          let sc ← ((← get).env[top]!.binds.toList.reverse).mapM fun b => declOfVal b.val
-          let p := (← getFlags).2 || (← propDecl sc A)
-          pure (p, p)
-        else
-          let e := (← get).lastErased || (r.2.isSome && (← typeClass r.2.get!) == 2)
-          pure (e, e)
+        -- a proof if the ascribed term is, or if the annotation's declared sort is Prop
+        let top := (← get).env.size - 1
+        let sc ← ((← get).env[top]!.binds.toList.reverse).mapM fun b => declOfVal b.val
+        let p := (← getFlags).2 || (← propDecl sc A)
+        pure (p, p)
       | .place _ | .const _ | .val _ | .fix .. =>
         let p ← match cfg.leafRule with
           | 0 => pure false
@@ -1373,27 +1369,11 @@ partial def fnClass (piTy : Value) : M Nat := do
     | .tPi cs (.pi hs ds c) =>
       match c with
       | .sort _ => pure 1
-      | .val B => match cfg.blockRule with   -- a stuck block's function (`closeOffMatch`)
-        | 0 => typeClass B                     -- v1.6: the call rule on its computed codomain
-        | 1 => pure (if (← typeClass B) == 2 then 2 else 0)
-        | _ => pure 0                          -- the class is given at the block's call
+      | .val _ => pure 0     -- a stuck block's function (`closeOffMatch`): its class is given at its call
       | _ =>
-        if cfg.classBySyntax then
-          let sc := (ds.map declOfDom).reverse ++ (← cs.reverse.mapM declOfVal)
-          pure (if ← propDecl sc c then 2 else 0)
-        else match isPropTerm? c with   -- v1.6: evaluate the codomain at the generic call
-          | some true => pure 2
-          | some false => pure 0
-          | none => onCopy do
-            pushFrame
-            pushCaps cs
-            let (pds, _) ← paramDecls cs hs ds c
-            for ((d, h), pd) in (ds.zip hs).zip pds do
-              let A ← evalType d
-              let gv ← genericValue A
-              let pd' ← refineDecl pd (some A) gv
-              pushBind h (some A) gv pd'.isProof pd'
-            typeClass (← evalType c)
+        -- read from the codomain term, never evaluated (D35)
+        let sc := (ds.map declOfDom).reverse ++ (← cs.reverse.mapM declOfVal)
+        pure (if ← propDecl sc c then 2 else 0)
     | _ => pure 0
   modify fun s => { s with classCache := (piTy, k) :: s.classCache }
   pure k
@@ -1987,7 +1967,7 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
     else pure piTy
   -- [Close]'s row: v1.7 (D35) from the declared codomain; v1.6 from the computed type
   let byDecl := (← get).cfg.erasureByDecl
-  let kind ← if byDecl && (← get).cfg.rowByDecl then declKind clsTy else
+  let kind ← if byDecl then declKind clsTy else
     match B with
     | some B => kindOf B
     | none => resultKind piTy ws
@@ -2528,12 +2508,8 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
   -- v1.7 (D35): the block is erased exactly when its match would be, i.e. at every
   -- instance: when every arm is a proof (finding P2: not read off the computed type B)
   let cfg := (← get).cfg
-  let cls? := if cfg.erasureByDecl && cfg.blockRule == 2 then some (if allProof then 2 else 0) else none
+  let cls? := if cfg.erasureByDecl then some (if allProof then 2 else 0) else none
   let (v, _) ← evalCall false (.val anon) args.toList false cls?
-  -- counterfactual v1.6: a block erased by the call rule (returning types) erases its match
-  if cfg.blockRule == 0 then
-    let (e, _) ← getFlags
-    setFlags (e, e)
   pure (v, some B)
 
 -- ### Observation and `Id` (RULES §4)

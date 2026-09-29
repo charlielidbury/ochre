@@ -929,3 +929,28 @@ None needs changing.
 *Regressions (08CaseSplits).* `ArmLocal` is arrays-library's repro; `Leak` there is a true lemma the stale type rejected, now accepted. `ArmLocalBoom` has `T6`, `T7` and `BoomLeak`, now rejected: `T6`'s closure body says `Eq (Slice(0)) r …` with `r : Slice(S m)`. The fix has no switch: it is the implementation of [Split] as RULES states it (each arm from the same Ω, stored types included), not a new rule.
 
 978 verdicts.
+
+## 30. D35's four after-the-fact switches deleted
+
+These are the lead's decision on §23, and I extended it to the fourth clause. D35's clauses were:
+- a function's class read from its codomain term (`classBySyntax`);
+- a stuck block erased iff each arm is (`blockRule`);
+- `let`, `;` and `match` erased iff they are proofs (`seqByProof`);
+- [Close]'s row read from the declared codomain (`rowByDecl`).
+Each flipped nothing: the first three since the erasure pre-pass, and the fourth since D59. Their switches and ledger rows are gone.
+
+The row "P1 together with the computed-type block rule of P2" (`blockRule := 1, leafRule := 0`) is gone too. It flipped exactly what P1 alone flips, so without `blockRule` it would be P1's row twice.
+
+The code keeps each clause's default reading:
+- `fnClass` reads the codomain term;
+- a stuck block's class is given at its call;
+- the old classification reads a sequencing form as a proof iff it is one;
+- `callFn` reads [Close]'s row off the declared codomain.
+
+The witnesses (BoomL, Boom8, Direct8, LieB, BoomB, Lie7, Boom7, TruthB, SeqT) stay as regressions. The panic under `seqByProof := false` (arrays-library's note, item 6) went with the switch.
+
+*Rows that still flip nothing (class `subsumed`, pending decisions):*
+- D19: its witness falls to [Drop] since D59;
+- D54: the D54 Pow test (§31) decides it.
+
+49 rows: soundness 18, false lemma 1, model 4, policy 2, subsumed 2, cost 1, completeness 21.

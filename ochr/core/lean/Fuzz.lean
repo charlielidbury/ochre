@@ -29,11 +29,6 @@ def switchCfg (c : Config) : String → Option Config
   | "D31" | "unboundWithoutBy" => some { c with unboundWithoutBy := false }
   | "D32" | "patternWritesVisible" => some { c with patternWritesVisible := false }
   | "G1" | "genConsistent" => some { c with genConsistent := false }
-  | "D35" | "classBySyntax" => some { c with classBySyntax := false }
-  | "D35/D40" | "blockRule0" => some { c with blockRule := 0 }
-  | "D40" | "blockRule1" => some { c with blockRule := 1 }
-  | "D35s" | "seqByProof" => some { c with seqByProof := false }
-  | "D35r" | "rowByDecl" => some { c with rowByDecl := false }
   | "P1" | "leafRule0" => some { c with leafRule := 0 }
   | "P3" | "leafRule1" => some { c with leafRule := 1 }
   | "D36" | "positivity" => some { c with positivity := false }

@@ -87,15 +87,10 @@ def switches : List (String × Config) :=
    ("D31 (v1.5): without `by`, f is not in scope", { unboundWithoutBy := false }),
    ("D32 (v1.5): writes through pattern variables are writes to the scrutinee", { patternWritesVisible := false }),
    ("G1 (finding): a generalised neutral stays generalised under normalisation", { genConsistent := false }),
-   ("D35 (v1.7): a function's class is read from its codomain term", { classBySyntax := false }),
-   ("D35/D40: a stuck block is erased iff each arm is, not by the call rule", { blockRule := 0 }),
-   ("D35 (v1.7): a let, sequence or match is erased iff it is a proof", { seqByProof := false }),
-   ("D35 (v1.7): [Close]'s row is read from the declared codomain", { rowByDecl := false }),
    ("P1 (finding): a variable declared of sort Prop is a proof (redundant under D41)", { leafRule := 0 }),
    ("P1 without D41", { leafRule := 0, confine := false }),
    ("P3 (finding): ... by its declaration, not its value ⋆ (redundant under D41)", { leafRule := 1 }),
    ("P3 without D41", { leafRule := 1, confine := false }),
-   ("P1 together with the computed-type block rule of P2", { blockRule := 1, leafRule := 0 }),
    ("D36 (v1.7): constructor fields are first-order data", { positivity := false }),
    ("D37 (v1.8): generalisation records and fresh names survive private copies", { globalRecords := false }),
    ("D38 (v1.8): a borrow result is observed through a fresh value written into it", { obsBorrow := false }),
@@ -137,10 +132,11 @@ def switches : List (String × Config) :=
 * `policy`: it accepts only programs that are true under the other rules (a fail-safe or
   a stability condition, with no witness here);
 * `completeness`: it only rejects good programs;
-* `subsumed`: it flips nothing, because a later rule decides what it decided: the erasure
-  pre-pass (a term is erased by its declared type, before it runs), or η for `Unit` (D59:
-  [Close] has no `Unit` row left to read; and a stuck `Unit` call's result now carries its
-  arguments, so D19's witness falls to [Drop]);
+* `subsumed`: it flips nothing on this suite, pending a decision (a rule that flips nothing
+  and is not needed is deleted, as D35's after-the-fact clauses were once the erasure
+  pre-pass decided erasure before a term runs): D19, whose witness falls to [Drop] since η
+  for `Unit` (D59: a stuck `Unit` call's result carries its arguments), and D54, which
+  makes the value's class the declared one on every path;
 * `cost`: it accepts programs that copy data whose type is not a copy type without saying
   so (`clone`), or leave a borrowed place partly moved out: the cost model's rule (D53),
   not the logic's. -/
@@ -162,15 +158,10 @@ def rowClass : List (String × List String) :=
    ("soundness", ["Recursion.LoopNoByBoom"]),
    ("soundness", ["ClosingOff.Boom5"]),
    ("completeness", []),
-   ("subsumed", []),
-   ("subsumed", []),
-   ("subsumed", []),
-   ("subsumed", []),
    ("completeness", []),
    ("policy", ["Erasure.Write"]),
    ("completeness", []),
    ("false lemma", ["ErasureBySyntax.LieP"]),
-   ("completeness", []),
    ("soundness", ["Positivity.Boom", "PositivityParams.Boom"]),
    ("soundness", ["GlobalRecords.Bad5"]),
    ("soundness", ["Functions.BoomX4"]),
