@@ -513,7 +513,7 @@ def EffL (x : &Nat) (h : Or(⊤, ⊤)) : V(Z) := match h { Inl(p) => (*x := 1; r
 
 ## 16. Every program the paper prints, and its test
 
-Checked against the paper at e7aff5f9: the body sections and the appendix notes. "=" means the same program up to surface syntax: `λ` and `Π` in a `let` or as a result type need parentheses, `Type₀` is written `Type`, subscripts are digits, and `(x, y : &Nat)` is written with separate binders. The test names are those of the examples as reorganised into a tour of the language (§17 maps the old names; the programs that no earlier test stated verbatim were in `Examples/Paper.lean`, programs `Paper`, `Note4`, `Note5`, and now sit with the feature they illustrate, or in `Std`). 432 verdicts, all as expected.
+Checked against the paper at e7aff5f9: the body sections and the appendix notes. "=" means the same program up to surface syntax: `λ` and `Π` in a `let` or as a result type need parentheses, `Type₀` is written `Type`, subscripts are digits, and `(x, y : &Nat)` is written with separate binders. The test names are those of the examples as reorganised into a tour of the language (§17 maps the old names; the programs that no earlier test stated verbatim were in `Examples/Paper.lean`, programs `Paper`, `Note4`, `Note5`, and now sit with the feature they illustrate, or in `Std`/`Fixtures`). 440 verdicts since D52 (§19), all as expected.
 
 | Paper location | Program | Test | Verdict |
 |---|---|---|---|
@@ -522,7 +522,7 @@ Checked against the paper at e7aff5f9: the body sections and the appendix notes.
 | §2 | `Add` | Std.Add | accepted |
 | §2 | `Id Nat (Add(2, 3)) 5` by `refl` | Numbers.Add23 | accepted |
 | §2 | `AddZero`; `AddZero(x) := AddMZero(&x)` | Numbers.AddZero, AddZero' | accepted |
-| §2 | IH about a copy, `AddZero(p)`, lacks the `S` | Recursion.AddZeroCopy | rejected |
+| §2 | IH about a copy, `AddZero(p)`, lacks the `S` | Recursion.AddZeroCopy | rejected until D52; accepted since (injectivity takes the `S` off both sides) |
 | §2 | `TailM`, `AddM'` | Std.TailM, ReturnedBorrows.AddM' | accepted |
 | §2 | `AddMEq`, `AddMEqOwned` | ReturnedBorrows.AddMEq, AddMEqOwned | accepted |
 | §2 | `Le` (base case `False`) | CurrentState.Le | accepted |
@@ -542,7 +542,7 @@ Checked against the paper at e7aff5f9: the body sections and the appendix notes.
 | §5 | owned locals observed: `x := 6` vs `()` | Equality.OwnedLocal / OwnedLocalNeq | rejected / accepted |
 | §5 | `Id Unit (*x := 0) (*x := 1)` is `False`, `match e {}` | Equality.WriteNeq, WriteDisj | accepted |
 | §5 | multi-place `Id` taken apart by a match | Propositions.TwoOwners, TwoOwnersR, ThreeOwners | accepted |
-| §5 | no injectivity | Equality.Inj | rejected |
+| §5 | no injectivity | Equality.Inj | rejected until D52; accepted since (with InjWrong rejected, and PairInj / PairInjWrong for pairs) |
 | §6 | `let z = (let y = &x; *y := 2; x)`, then `Id Nat z 2` by `refl` | Borrows.LetZ | accepted |
 | §6 | `λ(x : &Nat). (*x := 5; refl)` is not a `Π(x : &Nat). Id Nat (*x) 5` | Snapshots.LamWrite | rejected |
 | §6 | `Or`, `IsL` | Subsingletons.Or, IsL | accepted, rejected |
@@ -558,9 +558,9 @@ Checked against the paper at e7aff5f9: the body sections and the appendix notes.
 | Fig. 7 | generalisations global | GlobalRecords.Esc, Bad5 | rejected |
 | Fig. 7, note 11 | borrows only of data; `&` only at the top | Universes.Impred, PolyId, SelfApp, SelfAppEq; BorrowTypes.F, G, UseG, SwapT | rejected |
 | Fig. 7, note 7 | `P(x : &Nat, e : Id Unit (*x := 0) (*x := 1)) : False := e`; `Q(g : Π(n : Nat). &Nat) : False := P(g(5), refl)` | ReturnedBorrows.PF / QF | accepted / rejected |
-| Fig. 7, note 4 | `inductive Bad := Mk(f : Π(x : Bad). False)`; `L`; `Bad4` | PositivityPaper.Bad, L, Bad4 (Positivity.* is the `Empty` version) | rejected |
+| Fig. 7, note 4 | `inductive Bad := Mk(f : Π(x : Bad). False)`; `L`; `Bad4` | PositivityPaper.Bad, L, Bad4, with the constructor named `MkBad` since D52 (`Mk` is `Pair`'s) (Positivity.* is the `Empty` version) | rejected |
 | Fig. 7, note 10 | `Or`, `IsL`, `Irr`, `Boom` | Subsingletons.Or, IsL, Irr, Boom | accepted, rejected ×3 |
-| §7 | `Pick`; `r := Pick(n, &a, &b); z := b; match n {…}` rejected, runs at each `n` | Std.Pick, Naturality.PickEarly / PickEarly0, PickEarly1 | rejected / accepted |
+| §7 | `Pick`; `r := Pick(n, &a, &b); z := b; match n {…}` rejected, runs at each `n` | Fixtures.Pick, Naturality.PickEarly / PickEarly0, PickEarly1 | rejected / accepted |
 | §9 | `IterM : &(List Nat) → List(&Nat)` is outside the core | BorrowTypes.IterM | rejected |
 | §9 | every `Π(x : &Nat). &Nat` has an injective backward function | ReturnedBorrows.L, Inj | accepted |
 | §9 | no generic `&A` (`SwapT`) | BorrowTypes.SwapT | rejected |
@@ -568,7 +568,7 @@ Checked against the paper at e7aff5f9: the body sections and the appendix notes.
 | note 1 | `U`, `V`, `Lie1`, `Bad1` | ErasureBySyntax.U, V, LieL, BoomL | accepted ×3, rejected |
 | note 2 | `Lie2`, `Bad2`; the `g`/`f` block | ErasureBySyntax.LieB, BoomB; LieG, BoomG (TruthB, TruthG true) | rejected |
 | note 3 | `Lie3`, `Bad3` | ErasureBySyntax.LieH, BoomH | accepted, rejected |
-| note 5 | `Box`, `Double`, `Esc`, `Bad5` | GlobalRecords.* (as printed) | accepted ×2, rejected ×2 |
+| note 5 | `Box`, `Double`, `Esc`, `Bad5` | GlobalRecords.* (as printed, except the constructor, `MkBox` since D52) | accepted ×2, rejected ×2 |
 | note 6 | `PickX`, `PickY`, transport | Functions.PickX, PickY, ConvPick, TX, TY, BoomX4 | accepted ×2, rejected, accepted, rejected ×2 |
 | note 8 | head guard (no program printed) | ClosingOff.P1 | accepted |
 | note 18 | `Id Unit (let c = *x; G(&c, Z)) ()` needs induction | ClosingOff.RowI / RowIInd | rejected / accepted |
@@ -641,3 +641,22 @@ An `ochr` block may use other blocks: `ochr Numbers uses Std { … }` (`uses A, 
 - *Ledger attribution.* When a rule is switched off and a library declaration flips, the flip is counted once, in its home block's rows. A declaration of a using block that flips and mentions a library declaration whose visibility changed (or another such declaration of its block) is reported as "<Block>.<decl> blocked by <Home>.<decl>" instead of as a flip. `rowOk` asserts the blocked list of every row; it is empty in all 46, since no declaration of `Std` flips under any switch, and the flip lists are exactly those of the tour before `Std`. `Units.lean` tests the attribution on two small blocks (`AttrLib.Swap` flips under `byType := false`; `AttrUser.UseSwap` is blocked by it), the clash check and the closure.
 
 `Std` (`Ochr/Examples/00Std.lean`) holds `AddM`, `Add`, `AddMZero`, `TailM`, `Pick`, `Bool`, `List(A)`, `Box(A)`, `Empty`, `U`, `V`: every definition the tour repeated. `Le` and `Lt` stay where they are, each used by one block. Twenty blocks use `Std`; `Lists`, `GenType` and `GlobalRecords` do not, since they declare a different `List` or `Box` of their own, and four others need nothing from it. The built-in prelude (`False`, `True`, `And`) is still part of the checker. Checked as before: every declaration's verdict and rejection message unchanged (against the original suite and against the tour), every declaration in `Std` equal to the copies it replaces (up to bound names for E3's `Pick`), the ledger's flip lists byte-identical, and 432 declarations (464 − 43 copies + 11 in `Std`).
+
+## 19. D52 in the checker: pairs are the library's `Pair`, `Eq` is injective, the library is Ochr code
+
+RULES v2.1 / DECISIONS D52, as built:
+- *The library is an Ochr block.* `Ochr/Prelude.lean` declares `Prelude { Pair (A B : Type) := Mk(fst : A, snd : B); False : Prop; True : Prop := I; And (P Q : Prop) : Prop := Intro(l : P, r : Q) }`, checked like any block and asserted in `00Std.lean`. Every block uses it implicitly (`libOf` puts its accepted declarations first; the clash check counts its names), replacing the hard-coded `Check.prelude`. The kernel knows these names: `Pair`/`Mk` for the notation `A × B`, `(a, b)`, `t.1`, `t.2` (resolution, the places `.1`/`.2`, printing, and the syntactic "a codomain `A × B` is data"), `True`/`I` for `refl` and `⊤`, `False`, `True` and `And` because `Eq` computes to them, and `True`/`And` for the unit laws (D50). The file's doc comment lists each function.
+- *Pairs.* The checker's pair type, value and term forms (`prod`, `pair`, `tProd`, the pair value) are gone. `A × B` resolves to `Pair(A, B)` and `(a, b)` to `Mk(a, b)`; `t.1`/`t.2` stay, as places (`.fst`/`.snd`) or terms, and denote field 1 or 2 of a `Pair` value (field 1 of `S v` for `.1` on a number, as before). A pair parameter is taken apart by `match p { Mk(a, b) => … }` via ordinary [Split]; projecting an abstract pair fails as reading a field of any abstract inductive value does ("no such place p.2: its path does not exist in σ0"); there is no η rule.
+- *Injectivity.* `mkEqM`: after reflexivity, two values built by the same constructor give `And` of the equations between their fields at the field types instantiated at the parameters (from the equation's type `D(ā)`, else the values' recorded parameters; `S` counts as `Nat`'s constructor with one field), right-nested, with the unit laws: no fields is `True`, one field the one equation. D47's disjointness is unchanged. The switch is `injective`.
+- *`Id`.* `observe` returns the result and the owners' contents; `idType` builds `And(Eq A r r', And(Eq T₁ w₁ w'₁, …))` directly (`andList`), no longer an `Eq` at a pair type. The shape is the old one exactly (the old pair rule produced the same nesting), so every message printing an `Id` is unchanged.
+- *Names.* `Prelude`'s names are in every block's namespace, and `Mk` is `Pair`'s constructor, so the tests that used `Mk` were renamed: `Sq := MkSq(n)` (Subsingletons), `Bad := MkBad(f)` (Positivity, PositivityParams, PositivityPaper), `Box := MkBox(x)` (GlobalRecords, as V18 had it), `A := Make(x)`, `B := Make(y)` (Lists), the function `Mk` of ErasureBySyntax → `MkClosure`, and Propositions' `Pair` (a proof of `P ∧ Q`) → `AndPair`.
+- *Fixtures.* `Std` keeps the library definitions (`AddM`, `Add`, `AddMZero`, `TailM`, `Bool`, `List`, `Box`); `Pick`, `Empty`, `U`, `V`, which only tests need, moved to a block `Fixtures` in the same file.
+- *Not done.* `Nat` and `Unit` stay built in. `Nat` is deep: numerals and `S t` are its syntax, `S y` in a match is the sub-place `p.1` (the same place as a written `x.1`), the machine has its own [Match] (arms `Z` then `S`, with its own surface error), [Split] and [Rec] paths for it, and every message prints numbers as numerals; rebuilding it as `Z | S(pred : Nat)` would change every one of those and most messages. `Unit` is shallower but touches [Close]: its `Unit` row is read from a codomain written `Unit` and returns `()`, and the machine makes `()` in several places ([Assign], [Close], drops). Both are left for a separate change.
+
+Checked mechanically against the suite before D52 (0127f58b, 432 declarations):
+- *Verdicts.* Exactly three flip, all rejected → accepted, all by injectivity, and their expectations changed: `Equality.Inj` (`Eq Nat (S a) (S b)` is `Eq Nat a b`), `Recursion.AddZeroCopy` (the pure `AddZero` recursing on a copy, no `cong`: the goal `Eq Nat (S ⌈Add(σ, 0)⌉) (S σ)` computes to the induction hypothesis's `Eq Nat ⌈Add(σ, 0)⌉ σ`) and `CurrentState.AddSubIdReborrow` (the induction hypothesis about the predecessor in place is an equation between successors, which now computes to the goal). None flips for pair-as-inductive.
+- *Messages.* Ten rejection messages change, none because of pairs (pairs print as before, `A × B` and `(a, b)`). Six by injectivity, an equation between constructor values now computed: StuckGoalWrong (`Eq Nat 1 (S σ2)` → `Eq Nat 0 σ2`), InsertMSwapEq (`Eq Tree Node(…) Node(…)` → the conjunction of the field equations), SizeInsertNoLemma (one `S` fewer on each side), SizeInsertTwo (`Eq Nat 2 1` → `False`), WriteIfAtLie (`Eq Nat 7 8` → `False`), TwoAtLie (`Eq Nat 2 3` → `False`). Four by the constructor renames: Lists.B ("the constructor name Make is already used"), Positivity.Bad, PositivityParams.Bad and PositivityPaper.Bad ("field f of MkBad : …").
+- *Parsed programs.* Identical except the renames above and SwapPair (see additions).
+- *Ledger.* 47 rows. The 46 old rows keep their classes and their flipped programs, except D48 (2), which no longer flips `BorrowTypes.InPair`: `Nat × &Nat` is now `Pair(Nat, &Nat)`, whose parameters may not be borrow types whatever the switch says (the row keeps its class, soundness, witness `BorrowTypes.G`). New row "D52 (v2.1): Eq is injective on constructors", class completeness: switching injectivity off rejects Equality.Inj, Equality.PairInj, Recursion.AddZeroCopy and CurrentState.AddSubIdReborrow. No blocked declarations in any row.
+- *Additions* (8, all as expected): `Prelude`'s 4 declarations; `Numbers.SwapPair` (a pair parameter taken apart by `match p { Mk(a, b) => (b, a) }`, accepted; the projection version, `(p.2, p.1)`, is kept as `SwapPairProj`, still rejected: "no such place p.2: its path does not exist in σ0"); `Equality.InjWrong` (rejected); `Equality.PairInj` (`Eq (Nat × Nat) (a, b) (1, 2)` is `Eq Nat a 1 ∧ Eq Nat b 2`, accepted) and `PairInjWrong` (the swapped conjunction, rejected). The pure `AddZero` without `cong` is `Recursion.AddZeroCopy`, now accepted.
+- 440 declarations = 432 + 4 (`Prelude`) + 4 (SwapPair, InjWrong, PairInj, PairInjWrong).
