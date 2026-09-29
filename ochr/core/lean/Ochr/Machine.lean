@@ -788,9 +788,11 @@ partial def convPi (P Q : Value) : M Bool := do
   let .tPi cs (.pi hs ds c) := P | return false
   let .tPi cs' (.pi _ ds' c') := Q | return false
   if ds.length != ds'.length then return false
-  -- D54: the erasure class and [Close] row are part of the Π-type
+  -- D54: the erasure class, and whether it returns a borrow, are part of the Π-type (the
+  -- `Unit` and data rows of [Close] may differ: `Unit` has one value, D54 refined)
   if (← get).cfg.classInType then
-    unless (← fnClass P) == (← fnClass Q) && (← declKind P) == (← declKind Q) do return false
+    unless (← fnClass P) == (← fnClass Q) && ((← declKind P) == .ref) == ((← declKind Q) == .ref) do
+      return false
   if (← get).convStack.contains (P, Q) then return false
   tryCatch (onCopy do
       modify fun s => { s with env := #[{}], convStack := (P, Q) :: s.convStack }

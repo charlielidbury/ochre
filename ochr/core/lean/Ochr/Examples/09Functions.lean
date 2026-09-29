@@ -17,7 +17,7 @@ Defined in RULES P1, §1 (Π, `fix`, calls), §3 [Call] and §4. -/
 
 open Ochr.Test
 
-ochr Functions uses Std {
+ochr Functions uses Std, Fixtures {
   -- ## Opaque functions
   -- `f` has no borrow argument, so it cannot write anything: its calls return `()` and
   -- `Twice(f)` does nothing.
@@ -177,9 +177,24 @@ ochr Functions uses Std {
   def RunIGen (f : Π(x : &Nat). Prop) : Id Nat (RunI(f)) Z := refl
   reject def BoomI : False := RunIGen(H)
 
-  -- The same for [Close]'s row: `UU(n)` is `Unit` only by computation, so `H2`'s row is not
-  -- `Unit`'s, and at a `Unit` parameter the two paths would give one statement two types
-  -- (harmlessly, since `Unit` has one value).
+  -- The same for the class "returns proofs", with a codomain `V(Z)` that computes to `⊤`.
+  -- D54 alone rejects `BoomP` at the argument; since D55 the codomain cannot even be written
+  -- (`V(Z)`'s declared type `U(Z)` is not a sort).
+  def RunP (f : Π(x : &Nat). ⊤) : Nat := (
+    let c = Z;
+    let g = f;
+    g(&c);
+    c
+  )
+
+  def RunPGen (f : Π(x : &Nat). ⊤) : Id Nat (RunP(f)) Z := refl
+  reject def WV (u : Unit) : V(Z) := refl
+  reject def BoomP : False := RunPGen(λ(x : &Nat) : V(Z) => (*x := S Z; WV(())))
+
+  -- [Close]'s `Unit` row is not part of the type: `UU(n)` is `Unit` only by computation, so
+  -- `H2`'s stuck calls return a sealed program where a `Π(x : &Nat). Unit`'s return `()`. The
+  -- two paths give `RunUH`'s statement different types, both true, since `Unit` has one
+  -- value (D54 compares only whether a function returns a borrow).
   def UU (n : Nat) : Type := (
     match n {
       Z => Unit,
@@ -193,11 +208,11 @@ ochr Functions uses Std {
   )
 
   def RunU (f : Π(x : &Nat). Unit) (n : Nat) : Id Unit (let c = n; f(&c)) () := refl
-  reject def RunUH (n : Nat) : ⊤ := RunU(H2, n)
+  def RunUH (n : Nat) : ⊤ := RunU(H2, n)
 }
 
 #eval IO.println (run "Functions" Functions).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Functions" Functions).allAsExpected
-#guard (run "Functions" Functions).count == 50
+#guard (run "Functions" Functions).count == 54

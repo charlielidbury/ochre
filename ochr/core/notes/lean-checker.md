@@ -733,3 +733,22 @@ The ledger's rows are unchanged apart from rejections of the new tests:
 - D48 (3): `UseApply`.
 
 480 declarations.
+
+### 21.1 D55 on; D54 refined; D40 deleted (merged with ochr-core at 384f4762, 498 → 519 verdicts)
+
+- *D54 refined* (lead, 2026-09-29): `convPi` compares the class and whether the codomain is a borrow (`&T`). The `Unit` and data rows of [Close] stay convertible, since `Unit` has one value; η for `Unit` (D59, planned) would delete the `Unit` row altogether. The strict version rejected every higher-order function that is polymorphic in its continuation's result type and instantiated at `Unit`: the arrays library's `WithSplit(E, R, …, f : Π(…). R)` at `R := Unit`, taking out ArrayBench's B1Join, B1, SplitNoop and ZeroFirst2, and Quicksort.Recurse, with 6 dependents. All 11 are accepted again on this head; arrays' `GetMutSet` (expected rejected there) is now accepted, by §22. `Functions.RunUH` is accepted, and the D54 row keeps its witnesses `Boom` and `BoomI`.
+- *D55 on by default.* The V(Z) programs:
+  - The attacks are kept verbatim and now rejected by D55, each with a one-line comment: `ErasureBySyntax.LieG`, `BoomG`, `LieH`, `BoomH`, `Subsingletons.EffInline`. Their point, the seam between declared and computed sorts, can no longer be written.
+  - `EffL`, `EffLNoop` and `TruthG` only made sense across that seam, so they are rejected by D55 too. `EffLOne` is still rejected, now because it uses `EffL`.
+  - D54's proof-class variant (`Functions.RunP`, `RunPGen`, `WV`, `BoomP`) is in, with `WV` and `BoomP` rejected by D55. D54 alone rejects `BoomP` at the argument.
+  - reviewer-4's programs are block `Sorts` in `14Universes`, verbatim (17 declarations).
+  - The D55 row is class model, witnesses `Sorts.K1`, `Sorts.K2`: `TT` would be a proposition with two inhabitants a data function tells apart. With D54 on, the closed proofs of W1 are still caught at their arguments.
+  - The new `InPlaceTrees` and `SizeInsert` tests are unaffected.
+- *D40 deleted.* With D55 on its row flipped nothing: its witnesses all wrote `V(Z)` as a type. "A stuck block is erased iff each arm is" follows from "a term is erased iff its type is a proposition", since a match's type is its arms' type. Its switch and row are gone. `blockRule` stays in `Config` for the D35/D40 row (`blockRule := 0`) and the P1-with-computed-block row.
+- *Rows whose witnesses D55 removed* are reclassified by what they flip now:
+  - D28 (erasure by declared class): false lemma [LieG] → policy [ClosingOff.RowI], the true `Unit` statement.
+  - D35/D40: soundness [BoomB, BoomG, Boom7] → [BoomB, Boom7].
+  - P3 without D41: soundness [BoomH] → false lemma [LieP].
+  - P1 with the computed block rule: [BoomP, BoomG] → [BoomP].
+- *Ledger with D55 on*: 50 rows, and every row flips something. Soundness 22 (16 with a closed proof of `False`), false lemma 1, model 4, policy 4, completeness 19.
+- *Rows that no longer guard anything of their own.* Among the "without D41" combination rows, P1 and P3 add over D41 alone only rejections of good programs (`Om`, `CapP`, `CapP2`, and `OrLet` for P1): their accepting flips are all D41's.
