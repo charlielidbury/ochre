@@ -62,8 +62,14 @@ open Ochr.Registry in
    "ArrayLemmas.CountSwap:rejected", "ArrayBench.GetOr:rejected", "ArrayBench.GetOrIn:rejected",
    "ArrayBench.GetOrOut:rejected", "ArrayBench.ModS:rejected", "ArrayBench.ModLt:rejected",
    "ArrayBench.InsertB:rejected", "ArrayBench.Insert:rejected", "ArrayBench.InsertRun:rejected",
-   "ArrayBench.InsertRunBucket:rejected"]
-  ["ArrayBench.PushPop blocked by Arrays.ArrPop"]
+   "ArrayBench.InsertRunBucket:rejected", "Quicksort.Scan:rejected", "Quicksort.Partition:rejected",
+   "Quicksort.Recurse:rejected", "Quicksort.QS:rejected", "Quicksort.SortArray:rejected",
+   "Quicksort.SortRun:rejected"]
+  ["ArrayBench.PushPop blocked by Arrays.ArrPop", "Quicksort.CountCong blocked by ArrayLemmas.Count",
+   "Quicksort.ScanPerm blocked by ArrayLemmas.Count",
+   "Quicksort.PartitionPerm blocked by ArrayLemmas.Count",
+   "Quicksort.RecursePerm blocked by ArrayLemmas.Count",
+   "Quicksort.QSPerm blocked by ArrayLemmas.Count"]
 open Ochr.Registry in
 #guard rowOk { blockMoves := false }
   ["ClosingOff.MovedByBlock:accepted"]
@@ -100,6 +106,10 @@ open Ochr.Registry in
    "ArrayLemmas.CountSet:rejected", "ArrayLemmas.CountSwapHead:rejected",
    "ArrayLemmas.CountSwap:rejected", "ArrayBench.ModLt:rejected", "ArrayBench.Insert:rejected",
    "ArrayBench.InsertRun:rejected", "ArrayBench.InsertRunBucket:rejected"]
+  ["Quicksort.ScanPerm blocked by ArrayLemmas.CountSwap",
+   "Quicksort.PartitionPerm blocked by ArrayLemmas.CountSwap",
+   "Quicksort.RecursePerm blocked by ArrayLemmas.CountJoin",
+   "Quicksort.QSPerm blocked by ArrayLemmas.CountJoin"]
 open Ochr.Registry in
 #guard rowOk { classBySyntax := false }
   ["ErasureBySyntax.BoomL:accepted", "ErasureBySyntax.Boom8:accepted", "ErasureBySyntax.Direct8:accepted",
@@ -198,7 +208,14 @@ open Ochr.Registry in
    "ArrayBench.GetOr blocked by Arrays.Read", "ArrayBench.GetOrIn blocked by Arrays.Replicate",
    "ArrayBench.GetOrOut blocked by Arrays.Replicate", "ArrayBench.PushPop blocked by Arrays.ArrPush",
    "ArrayBench.Insert blocked by Arrays.AsSlice", "ArrayBench.InsertRun blocked by Arrays.Replicate",
-   "ArrayBench.InsertRunBucket blocked by Arrays.Replicate"]
+   "ArrayBench.InsertRunBucket blocked by Arrays.Replicate", "Quicksort.Scan blocked by Arrays.Swap",
+   "Quicksort.Partition blocked by Arrays.Read", "Quicksort.Recurse blocked by Arrays.WithSplit",
+   "Quicksort.QS blocked by Arrays.Read", "Quicksort.SortArray blocked by Arrays.Read",
+   "Quicksort.SortRun blocked by Arrays.Read", "Quicksort.CountCong blocked by ArrayLemmas.Count",
+   "Quicksort.ScanPerm blocked by ArrayLemmas.Count",
+   "Quicksort.PartitionPerm blocked by ArrayLemmas.Count",
+   "Quicksort.RecursePerm blocked by ArrayLemmas.Count",
+   "Quicksort.QSPerm blocked by ArrayLemmas.Count"]
 -- `genPlaceType` changes no verdict; 08CaseSplits.lean asserts its effect on the generalised σ's type
 -- v2.0 D45 by type, switched off: a match on a proof inspects its content (⋆) like data: completeness only
 open Ochr.Registry in
@@ -252,7 +269,13 @@ open Ochr.Registry in
    "ArrayBench.SplitNoop blocked by ArrayLemmas.JoinTakeDrop",
    "ArrayBench.ZeroFirst2 blocked by Arrays.Fill", "ArrayBench.ZeroFirst2Run blocked by Arrays.Fill",
    "ArrayBench.ZeroFirst2Rest blocked by Arrays.Fill",
-   "ArrayBench.ReadAfterSetOther blocked by ArrayLemmas.NthSetOther"]
+   "ArrayBench.ReadAfterSetOther blocked by ArrayLemmas.NthSetOther",
+   "Quicksort.Scan blocked by Index.AddRS", "Quicksort.Partition blocked by Index.AddRS",
+   "Quicksort.QS blocked by Index.AddRS", "Quicksort.SortArray blocked by Index.AddRS",
+   "Quicksort.SortRun blocked by Index.AddRS", "Quicksort.ScanPerm blocked by Index.AddRS",
+   "Quicksort.PartitionPerm blocked by Index.AddRS",
+   "Quicksort.RecursePerm blocked by ArrayLemmas.CountJoin",
+   "Quicksort.QSPerm blocked by Index.AddRS"]
 -- finding (v2.0 round): v1.9 assumed a data match's scrutinee type from its arms
 open Ochr.Registry in
 #guard rowOk { scrutTyped := false }
@@ -276,7 +299,9 @@ open Ochr.Registry in
    "Functions.PassZeroAdd:rejected", "Functions.PassA:rejected", "ArrayLemmas.NthSetOther:rejected",
    "ArrayBench.B1Join:rejected", "ArrayBench.B1:rejected", "ArrayBench.SplitNoop:rejected",
    "ArrayBench.ZeroFirst2:rejected", "ArrayBench.ZeroFirst2Run:rejected",
-   "ArrayBench.ZeroFirst2Rest:rejected"]
+   "ArrayBench.ZeroFirst2Rest:rejected", "Quicksort.Recurse:rejected", "Quicksort.QS:rejected",
+   "Quicksort.SortArray:rejected", "Quicksort.SortRun:rejected", "Quicksort.RecursePerm:rejected",
+   "Quicksort.RecWith:rejected", "Quicksort.QSPerm:rejected"]
   ["ArrayBench.ReadAfterSetOther blocked by ArrayLemmas.NthSetOther"]
 -- D49 (3) switched off: a data field of a matched proof is ⋆, and cannot be split
 open Ochr.Registry in

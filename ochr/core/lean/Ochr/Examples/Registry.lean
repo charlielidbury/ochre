@@ -38,7 +38,8 @@ def programs : List (String × Block) :=
    ("PositivityPaper", PositivityPaper), ("Propositions", Propositions),
    ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
    ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("BorrowTypes", BorrowTypes),
-   ("Index", Index), ("Arrays", Arrays), ("ArrayLemmas", ArrayLemmas), ("ArrayBench", ArrayBench)]
+   ("Index", Index), ("Arrays", Arrays), ("ArrayLemmas", ArrayLemmas), ("ArrayBench", ArrayBench),
+   ("Quicksort", Quicksort)]
 
 def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
   programs.map fun (n, p) => run n p cfg fuel
@@ -171,7 +172,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 532
+def Ochr.Registry.expectedTotal : Nat := 547
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

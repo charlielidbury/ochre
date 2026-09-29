@@ -949,3 +949,219 @@ ochr ArrayBench uses ArrayLemmas {
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ArrayBench" ArrayBench).allAsExpected
 #guard (run "ArrayBench" ArrayBench).count == 33
+
+/-! ## B2: quicksort
+
+In place, over a view, recursing over indices only. The partition is Lomuto's scan with index
+bounds proved from its invariant; the recursive calls get the two sides of the pivot as
+borrowed pieces. What is proved: quicksort permutes its view (every count is unchanged), for
+any fuel. -/
+
+ochr Quicksort uses ArrayLemmas {
+  -- Lomuto's partition around the pivot `p`, which sits at index 0. Elements `1 … i` are at
+  -- most `p` and `i + 1 … j - 1` are greater; `rem` elements are still to scan (`rem + j = n`).
+  -- The recursion is on `rem`, never on the view. Every bound is a lemma about indices.
+  def Scan (n : Nat) (s : &Slice(Nat, n)) (p : Nat) (i : Nat) (j : Nat) (rem : Nat)
+      (hij : Lt(i, j)) (hr : Eq Nat (Add(rem, j)) n) : Nat by rem := (
+    match rem {
+      Z => (
+        let hin : Lt(i, n) = J(Nat, j, n, λ(z : Nat) : Prop => Lt(i, z), hr, hij);
+        Swap(Nat, n, s, 0, i, LeTrans(1, S i, n, refl, hin), hin);
+        i
+      ),
+      S r => (
+        let hjn : Lt(j, n) = J(Nat, S (Add(r, j)), n, λ(z : Nat) : Prop => Lt(j, z), hr, LeAddL(r, j));
+        let hr2 : Eq Nat (Add(r, S j)) n = J(Nat, S (Add(r, j)), Add(r, S j), λ(z : Nat) : Prop => Eq Nat z n, AddRS(r, j), hr);
+        let x = Read(Nat, n, &*s, j, hjn);
+        let b = Leb(x, p);
+        match b {
+          true => (
+            Swap(Nat, n, &*s, S i, j, LeTrans(S (S i), S j, n, hij, hjn), hjn);
+            Scan(n, s, p, S i, S j, r, hij, hr2)
+          ),
+          false => Scan(n, s, p, i, S j, r, LeStep(S i, j, hij), hr2),
+        }
+      ),
+    }
+  )
+
+  -- The pivot's final index.
+  def Partition (m : Nat) (s : &Slice(Nat, S m)) : Nat := (
+    let p = Read(Nat, S m, &*s, 0, refl);
+    Scan(S m, s, p, 0, 1, m, refl, AddOneR(m))
+  )
+
+  -- Sort both sides of the pivot at `k`, with `rec`. The pieces are borrowed by continuations
+  -- (`WithSplit`), so each recursive call sees only its own piece. Written once for any `rec`,
+  -- which is also what its lemmas are about.
+  def Recurse (rec : Π(n : Nat) (s : &Slice(Nat, n)). Unit) (m : Nat) (k : Nat) (s : &Slice(Nat, S m)) : Unit := (
+    let d = LeDec(k, m);
+    match d {
+      Yes(hk) => WithSplit(Nat, Unit, S m, k, s, LeStep(k, m, hk),
+        λ(l : &Slice(Nat, k)) (r : &Slice(Nat, Sub(S m, k))) : Unit => (
+          rec(k, l);
+          WithSplit(Nat, Unit, Sub(S m, k), 1, r, SubPos(m, k, hk),
+            λ(p : &Slice(Nat, 1)) (rr : &Slice(Nat, Sub(Sub(S m, k), 1))) : Unit => rec(Sub(Sub(S m, k), 1), rr))
+        )),
+      No(nk) => (),
+    }
+  )
+
+  -- [K6] The recursion is on the length, but the lengths `k` and `m - k` of the pieces are not
+  -- structural subterms of `S m`; until recursion on a measure exists, fuel bounds the depth
+  -- (`QS(n, n, s)` sorts).
+  def QS (fuel : Nat) (n : Nat) (s : &Slice(Nat, n)) : Unit by fuel := (
+    match fuel {
+      Z => (),
+      S f => match n {
+        Z => (),
+        S m => (
+          let k = Partition(m, &*s);
+          Recurse(λ(n' : Nat) (s' : &Slice(Nat, n')) : Unit => QS(f, n', s'), m, k, s)
+        ),
+      },
+    }
+  )
+
+  def SortArray (n : Nat) (a : &Array(Nat, n)) : Unit := QS(n, n, AsSlice(Nat, n, a))
+
+  def SortRun : Id (Array(Nat, 5))
+      (let a = MkArray(MkSlice(MkC(3, MkSlice(MkC(1, MkSlice(MkC(4, MkSlice(MkC(1, MkSlice(MkC(2, MkSlice(End)))))))))))); SortArray(5, &a); a)
+      (MkArray(MkSlice(MkC(1, MkSlice(MkC(1, MkSlice(MkC(2, MkSlice(MkC(3, MkSlice(MkC(4, MkSlice(End))))))))))))) := refl
+
+  reject def SortRunWrong : Id (Array(Nat, 5))
+      (let a = MkArray(MkSlice(MkC(3, MkSlice(MkC(1, MkSlice(MkC(4, MkSlice(MkC(1, MkSlice(MkC(2, MkSlice(End)))))))))))); SortArray(5, &a); a)
+      (MkArray(MkSlice(MkC(1, MkSlice(MkC(1, MkSlice(MkC(2, MkSlice(MkC(4, MkSlice(MkC(3, MkSlice(End))))))))))))) := refl
+
+  -- ## Quicksort permutes: every count is unchanged
+  -- Rewriting under `Add` and `Count` is transport.
+  def AddCongL (a : Nat) (a2 : Nat) (b : Nat) (e : Eq Nat a a2) : Eq Nat (Add(a, b)) (Add(a2, b)) := (
+    J(Nat, a, a2, λ(z : Nat) : Prop => Eq Nat (Add(a, b)) (Add(z, b)), e, refl)
+  )
+
+  def AddCongR (a : Nat) (b : Nat) (b2 : Nat) (e : Eq Nat b b2) : Eq Nat (Add(a, b)) (Add(a, b2)) := (
+    J(Nat, b, b2, λ(z : Nat) : Prop => Eq Nat (Add(a, b)) (Add(a, z)), e, refl)
+  )
+
+  def CountCong (q : Nat) (n : Nat) (s : Slice(Nat, n)) (s2 : Slice(Nat, n)) (e : Eq (Slice(Nat, n)) s s2) :
+      Eq Nat (Count(q, n, s)) (Count(q, n, s2)) := (
+    J(Slice(Nat, n), s, s2, λ(z : Slice(Nat, n)) : Prop => Eq Nat (Count(q, n, s)) (Count(q, n, z)), e, refl)
+  )
+
+  -- The scan only swaps.
+  def ScanPerm (n : Nat) (s : &Slice(Nat, n)) (p : Nat) (i : Nat) (j : Nat) (rem : Nat)
+      (hij : Lt(i, j)) (hr : Eq Nat (Add(rem, j)) n) (q : Nat) :
+      (let old = *s; Eq Nat (Count(q, n, (Scan(n, &*s, p, i, j, rem, hij, hr); *s))) (Count(q, n, old))) by rem := (
+    match rem {
+      Z => (
+        let hin : Lt(i, n) = J(Nat, j, n, λ(z : Nat) : Prop => Lt(i, z), hr, hij);
+        CountSwap(q, n, *s, 0, i, LeTrans(1, S i, n, refl, hin), hin)
+      ),
+      S r => (
+        let hjn : Lt(j, n) = J(Nat, S (Add(r, j)), n, λ(z : Nat) : Prop => Lt(j, z), hr, LeAddL(r, j));
+        let hr2 : Eq Nat (Add(r, S j)) n = J(Nat, S (Add(r, j)), Add(r, S j), λ(z : Nat) : Prop => Eq Nat z n, AddRS(r, j), hr);
+        let x = Nth(Nat, n, *s, j, hjn);
+        let b = Leb(x, p);
+        match b {
+          true => (
+            let c = SwapS(Nat, n, *s, S i, j, LeTrans(S (S i), S j, n, hij, hjn), hjn);
+            let e1 = ScanPerm(n, &c, p, S i, S j, r, hij, hr2, q);
+            let e2 = CountSwap(q, n, *s, S i, j, LeTrans(S (S i), S j, n, hij, hjn), hjn);
+            EqTrans(Count(q, n, (let d = c; Scan(n, &d, p, S i, S j, r, hij, hr2); d)), Count(q, n, c), Count(q, n, *s), e1, e2)
+          ),
+          false => ScanPerm(n, s, p, i, S j, r, LeStep(S i, j, hij), hr2, q),
+        }
+      ),
+    }
+  )
+  def PartitionPerm (m : Nat) (s : &Slice(Nat, S m)) (q : Nat) :
+      (let old = *s; Eq Nat (Count(q, S m, (Partition(m, &*s); *s))) (Count(q, S m, old))) := (
+    let p = Nth(Nat, S m, *s, 0, refl);
+    ScanPerm(S m, s, p, 0, 1, m, refl, AddOneR(m), q)
+  )
+
+  -- The recursive step permutes, for any `rec` that does.
+  def RecursePerm (rec : Π(n : Nat) (s : &Slice(Nat, n)). Unit)
+      (ih : Π(n : Nat) (s : &Slice(Nat, n)) (q : Nat). (let old = *s; Eq Nat (Count(q, n, (rec(n, &*s); *s))) (Count(q, n, old))))
+      (m : Nat) (k : Nat) (s : &Slice(Nat, S m)) (q : Nat) :
+      (let old = *s; Eq Nat (Count(q, S m, (Recurse(rec, m, k, &*s); *s))) (Count(q, S m, old))) := (
+    let d = LeDec(k, m);
+    match d {
+      Yes(hk) => (
+        let hk2 = LeStep(k, m, hk);
+        let h1 = SubPos(m, k, hk);
+        -- the pieces before, and after the two recursive calls
+        let tk = TakeS(Nat, S m, k, *s, hk2);
+        let r0 = DropS(Nat, S m, k, *s, hk2);
+        let pv = TakeS(Nat, Sub(S m, k), 1, r0, h1);
+        let rr = DropS(Nat, Sub(S m, k), 1, r0, h1);
+        let l2 = (let c = tk; rec(k, &c); c);
+        let rr2 = (let c = rr; rec(Sub(Sub(S m, k), 1), &c); c);
+        let x2 = JoinS(Nat, Sub(S m, k), 1, pv, rr2, h1);
+        -- their counts
+        let cf = Count(q, S m, JoinS(Nat, S m, k, l2, x2, hk2));
+        let cl2 = Count(q, k, l2);
+        let ctk = Count(q, k, tk);
+        let cx2 = Count(q, Sub(S m, k), x2);
+        let cpv = Count(q, 1, pv);
+        let crr2 = Count(q, Sub(Sub(S m, k), 1), rr2);
+        let crr = Count(q, Sub(Sub(S m, k), 1), rr);
+        let cj = Count(q, Sub(S m, k), JoinS(Nat, Sub(S m, k), 1, pv, rr, h1));
+        let cr0 = Count(q, Sub(S m, k), r0);
+        let cj0 = Count(q, S m, JoinS(Nat, S m, k, tk, r0, hk2));
+        let cs = Count(q, S m, *s);
+        -- the left part: the recursive call permutes it
+        let s1 : Eq Nat cf (Add(ctk, cx2)) = EqTrans(cf, Add(cl2, cx2), Add(ctk, cx2),
+          CountJoin(q, S m, k, l2, x2, hk2), AddCongL(cl2, ctk, cx2, (let c = tk; ih(k, &c, q))));
+        -- the right part: the pivot is untouched and the recursive call permutes the rest
+        let s2 : Eq Nat cx2 cr0 = EqTrans(cx2, Add(cpv, crr2), cr0, CountJoin(q, Sub(S m, k), 1, pv, rr2, h1),
+          EqTrans(Add(cpv, crr2), Add(cpv, crr), cr0, AddCongR(cpv, crr2, crr, (let c = rr; ih(Sub(Sub(S m, k), 1), &c, q))),
+            EqTrans(Add(cpv, crr), cj, cr0, EqSym(cj, Add(cpv, crr), CountJoin(q, Sub(S m, k), 1, pv, rr, h1)),
+              CountCong(q, Sub(S m, k), JoinS(Nat, Sub(S m, k), 1, pv, rr, h1), r0, JoinTakeDrop(Nat, Sub(S m, k), 1, r0, h1)))));
+        -- and the two parts are the view, split
+        let s3 : Eq Nat (Add(ctk, cr0)) cs = EqTrans(Add(ctk, cr0), cj0, cs, EqSym(cj0, Add(ctk, cr0), CountJoin(q, S m, k, tk, r0, hk2)),
+          CountCong(q, S m, JoinS(Nat, S m, k, tk, r0, hk2), *s, JoinTakeDrop(Nat, S m, k, *s, hk2)));
+        EqTrans(cf, Add(ctk, cx2), cs, s1, EqTrans(Add(ctk, cx2), Add(ctk, cr0), cs, AddCongR(ctk, cx2, cr0, s2), s3))
+      ),
+      No(nk) => refl,
+    }
+  )
+
+  -- The closure `QS` passes to `Recurse`, built outside `QS`: it captures the sort and the fuel,
+  -- as the one inside `QS` captures `QS` itself and its fuel, so the two are the same value.
+  def RecWith (qs : Π(fuel : Nat) (n : Nat) (s : &Slice(Nat, n)). Unit) (fuel : Nat) : (Π(n : Nat) (s : &Slice(Nat, n)). Unit) := (
+    match fuel {
+      Z => (λ(n : Nat) (s : &Slice(Nat, n)) : Unit => ()),
+      S f => (λ(n : Nat) (s : &Slice(Nat, n)) : Unit => qs(f, n, s)),
+    }
+  )
+
+  -- Quicksort permutes its view: every count is unchanged.
+  def QSPerm (fuel : Nat) (n : Nat) (s : &Slice(Nat, n)) (q : Nat) :
+      (let old = *s; Eq Nat (Count(q, n, (QS(fuel, n, &*s); *s))) (Count(q, n, old))) by fuel := (
+    match fuel {
+      Z => refl,
+      S f => match n {
+        Z => refl,
+        S m => (
+          let rec = RecWith(QS, fuel);
+          let c = *s;
+          let k = Partition(m, &c);
+          let e1 = RecursePerm(rec,
+            λ(n2 : Nat) (s2 : &Slice(Nat, n2)) (q2 : Nat) :
+                (let old = *s2; Eq Nat (Count(q2, n2, (QS(f, n2, &*s2); *s2))) (Count(q2, n2, old))) =>
+              QSPerm(f, n2, s2, q2),
+            m, k, &c, q);
+          EqTrans(Count(q, S m, (let d = c; Recurse(rec, m, k, &d); d)), Count(q, S m, c), Count(q, S m, *s),
+            e1, PartitionPerm(m, s, q))
+        ),
+      },
+    }
+  )
+}
+
+#eval IO.println (run "Quicksort" Quicksort).show
+
+-- every verdict as expected, and the exact number of declarations (a truncated file changes it)
+#guard (run "Quicksort" Quicksort).allAsExpected
+#guard (run "Quicksort" Quicksort).count == 15
