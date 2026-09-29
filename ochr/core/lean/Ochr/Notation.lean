@@ -42,6 +42,8 @@ syntax:max "Prop" : ochr_term
 syntax:max "Type" : ochr_term
 syntax:max (name := ochrCall) ochr_term:max noWs "(" ochr_term,* ")" : ochr_term
 syntax:max (name := ochrProj) ochr_term:max noWs "." noWs num : ochr_term
+syntax:max (name := ochrCtorP0) ident noWs "[" ochr_term,* "]" : ochr_term
+syntax:max (name := ochrCtorP) ident noWs "[" ochr_term,* "]" noWs "(" ochr_term,* ")" : ochr_term
 syntax:max "*" ochr_term:max : ochr_term
 syntax:max "&" ochr_term:max : ochr_term
 syntax:60 ident (ws ochr_term:max)+ : ochr_term
@@ -87,6 +89,12 @@ partial def elabTerm (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := do
     let args := stx.raw[2].getSepArgs.map (⟨·⟩ : Syntax → TSyntax `ochr_term)
     let as ← args.mapM elabTerm
     return ← `(STerm.call $(← elabTerm f) [$as,*])
+  if stx.raw.getKind == ``ochrCtorP || stx.raw.getKind == ``ochrCtorP0 then
+    let c := stx.raw[0].getId.toString
+    let ps ← (stx.raw[2].getSepArgs.map (⟨·⟩ : Syntax → TSyntax `ochr_term)).mapM elabTerm
+    let as ← if stx.raw.getKind == ``ochrCtorP0 then pure #[] else
+      (stx.raw[5].getSepArgs.map (⟨·⟩ : Syntax → TSyntax `ochr_term)).mapM elabTerm
+    return ← `(STerm.ctorP $(strLit c) [$ps,*] [$as,*])
   if stx.raw.getKind == ``ochrProj then
     let t : TSyntax `ochr_term := ⟨stx.raw[0]⟩
     let i := stx.raw[2].isNatLit?.getD 0

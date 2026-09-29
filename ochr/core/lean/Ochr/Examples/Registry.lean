@@ -1,7 +1,7 @@
 import Ochr.Examples.Units
 import Ochr.Examples.E5
 import Ochr.Examples.V15
-import Ochr.Examples.Logic
+import Ochr.Examples.Review3
 import Ochr.Examples.Inductives
 import Ochr.Examples.Probes
 
@@ -14,6 +14,7 @@ namespace Ochr.Registry
 def programs : List (String × Program) :=
   [("E1", E1), ("E2", E2), ("E3", E3), ("E4", E4), ("E5", E5), ("E6", E6), ("Attacks", Attacks), ("More", More), ("Probes", Probes), ("V15", V15), ("V17", V17), ("V18", V18), ("Positivity", Positivity), ("GenTy", GenTy), ("V19", V19), ("D44", D44), ("Inductives", Inductives),
    ("Logic", Logic), ("ByType", ByType), ("OrAttack", OrAttack), ("PList", PList), ("PosParam", PosParam), ("Scrut", Scrut),
+   ("D48", D48), ("D49", D49), ("PiConv", PiConv), ("AndElim", AndElim),
    ("D18", Ochr.Units.D18)]
 
 def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
@@ -72,12 +73,77 @@ def switches : List (String × Config) :=
    ("D45 + D42 (v2.0): subsingleton elimination and erased Prop values, both off", { subsingleton := false, propValues := false }),
    ("D47 (v2.0): distinct constructors are disjoint in Eq", { disjoint := false }),
    ("finding (v2.0 round): a match's scrutinee has its constructors' type (read, not assumed)", { scrutTyped := false }),
+   ("D48 (1): only data types are borrowed", { refData := false }),
+   ("D48 (2): & only at the top of a declared type", { refTop := false }),
+   ("D48 (3): Π-types are compared under their binders", { piUnder := false }),
+   ("D49 (3): a data field of a matched proof is a fresh abstract value", { proofDataFields := false }),
+   ("D50 (switched ON): the unit laws normalise stored types instead of converting", { unitNorm := true }),
    ("extension (switched ON): bodies of erased-class functions and arms of erased blocks are confined", { confineBodies := true })]
+
+
+/-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
+* `soundness`: switching the rule off accepts a closed proof of a false proposition, or a
+  program that goes wrong when run (a use of `⊥`); the witnesses are named;
+* `false lemma`: it accepts a false open lemma, whose closed instances another rule
+  (D41) still rejects;
+* `model`: it accepts definitions with no set-theoretic model (an impredicative `Type₀`,
+  a large elimination from a non-subsingleton, a refutation of a type Rust inhabits), but
+  the suite has no closed false proof;
+* `policy`: it accepts only programs that are true under the other rules (a fail-safe or
+  a stability condition, with no witness here);
+* `completeness`: it only rejects good programs. -/
+def rowClass : List (String × List String) :=
+  [("completeness", []),
+   ("soundness", ["Attacks.N1Closed", "Attacks.QBoom", "V17.BoomP"]),
+   ("soundness", ["D18.ClosedD18", "D18.BadR"]),
+   ("soundness", ["Attacks.KnotLBoom"]),
+   ("soundness", ["Attacks.BadA1"]),
+   ("soundness", ["Attacks.KnotBoom"]),
+   ("soundness", ["More.Dead"]),
+   ("completeness", []),
+   ("soundness", ["Probes.MovedByBlock"]),
+   ("completeness", []),
+   ("soundness", ["Attacks.KnotLBoom"]),
+   ("false lemma", ["V17.LieG"]),
+   ("soundness", ["V15.Main"]),
+   ("soundness", ["V15.Boom3"]),
+   ("soundness", ["V15.Boom4"]),
+   ("soundness", ["V15.Boom5"]),
+   ("completeness", []),
+   ("soundness", ["V17.BoomL", "V18.Boom8"]),
+   ("soundness", ["V17.BoomB", "V17.BoomG", "V18.Boom7"]),
+   ("soundness", ["V17.BoomG"]),
+   ("completeness", []),
+   ("policy", ["V17.RowI"]),
+   ("completeness", []),
+   ("policy", ["V19.Write"]),
+   ("completeness", []),
+   ("soundness", ["V18.BoomH"]),
+   ("soundness", ["V17.BoomP", "V17.BoomG"]),
+   ("soundness", ["Positivity.Boom", "PosParam.Boom"]),
+   ("soundness", ["V18.BoomE"]),
+   ("soundness", ["V18.BoomX4"]),
+   ("completeness", []),
+   ("policy", ["V19.Write"]),
+   ("model", ["D44.Boom"]),
+   ("completeness", []),
+   ("completeness", []),
+   ("model", ["OrAttack.IsL", "OrAttack.Get"]),
+   ("completeness", []),
+   ("soundness", ["OrAttack.Boom", "OrAttack.SqBoom"]),
+   ("completeness", []),
+   ("soundness", ["Scrut.g"]),
+   ("model", ["D48.Impred", "D48.SelfApp"]),
+   ("soundness", ["D48.G"]),
+   ("completeness", []),
+   ("completeness", []),
+   ("completeness", []),
+   ("completeness", [])]
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 364
+def Ochr.Registry.expectedTotal : Nat := 425
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

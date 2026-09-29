@@ -28,42 +28,42 @@ ochr Inductives {
     match *xs { Nil => refl | Cons(h, t) => AppendMEq(&t, ys) }
 
   -- (c) binary search trees
-  inductive Bool := ff | tt      -- (v2.0: `False`, `True` are the library propositions)
+  inductive Bool := false | true      -- (v2.0: `False`, `True` are the library propositions)
   inductive Tree := Leaf | Node(l : Tree, v : Nat, r : Tree)
   def Lt (a : Nat) (b : Nat) : Bool by a :=
-    match a { Z => match b { Z => ff | S _ => tt } | S a' => match b { Z => ff | S b' => Lt(a', b') } }
+    match a { Z => match b { Z => false | S _ => true } | S a' => match b { Z => false | S b' => Lt(a', b') } }
 
   -- in-place insert: the comparison decides which sub-place is mutated
   def InsertM (t : &Tree) (k : Nat) : Unit by t :=
     match *t {
       Leaf => *t := Node(Leaf, k, Leaf)
-    | Node(l, v, r) => let b = Lt(k, v); match b { ff => InsertM(&r, k) | tt => InsertM(&l, k) } }
+    | Node(l, v, r) => let b = Lt(k, v); match b { false => InsertM(&r, k) | true => InsertM(&l, k) } }
   -- the pure insert
   def Insert (t : Tree) (k : Nat) : Tree by t :=
     match t {
       Leaf => Node(Leaf, k, Leaf)
-    | Node(l, v, r) => let b = Lt(k, v); match b { ff => Node(l, v, Insert(r, k)) | tt => Node(Insert(l, k), v, r) } }
+    | Node(l, v, r) => let b = Lt(k, v); match b { false => Node(l, v, Insert(r, k)) | true => Node(Insert(l, k), v, r) } }
   -- the in-place insert is the pure insert, by bare recursion (needs finding G1: the
   -- split on Lt(k, v) must reach the copies of that comparison inside the goal)
   def InsertMEq (t : &Tree) (k : Nat) : Id Unit (InsertM(t, k)) (*t := Insert(*t, k)) by t :=
     match *t {
       Leaf => refl
-    | Node(l, v, r) => let b = Lt(k, v); match b { ff => InsertMEq(&r, k) | tt => InsertMEq(&l, k) } }
+    | Node(l, v, r) => let b = Lt(k, v); match b { false => InsertMEq(&r, k) | true => InsertMEq(&l, k) } }
   -- an insert that goes the wrong way is not the pure insert
   def InsertMSwap (t : &Tree) (k : Nat) : Unit by t :=
     match *t {
       Leaf => *t := Node(Leaf, k, Leaf)
-    | Node(l, v, r) => let b = Lt(k, v); match b { ff => InsertMSwap(&l, k) | tt => InsertMSwap(&r, k) } }
+    | Node(l, v, r) => let b = Lt(k, v); match b { false => InsertMSwap(&l, k) | true => InsertMSwap(&r, k) } }
   reject def InsertMSwapEq (t : &Tree) (k : Nat) : Id Unit (InsertMSwap(t, k)) (*t := Insert(*t, k)) by t :=
     match *t {
       Leaf => refl
-    | Node(l, v, r) => let b = Lt(k, v); match b { ff => InsertMSwapEq(&l, k) | tt => InsertMSwapEq(&r, k) } }
+    | Node(l, v, r) => let b = Lt(k, v); match b { false => InsertMSwapEq(&l, k) | true => InsertMSwapEq(&r, k) } }
   -- recursing on the node itself, not a sub-tree
   reject def InsertLoop (t : &Tree) (k : Nat) : Unit by t :=
     match *t { Leaf => () | Node(l, v, r) => InsertLoop(t, k) }
 
-  -- a measure: inserting grows the size by one. The tt arm is definitional after the
-  -- IH (Add recurses on its first argument); the ff arm needs x + S y = S (x + y),
+  -- a measure: inserting grows the size by one. The true arm is definitional after the
+  -- IH (Add recurses on its first argument); the false arm needs x + S y = S (x + y),
   -- itself proved in place by bare recursion. Both arms rewrite with J.
   def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y | S p => AddM(&p, y) }
   def Add (x : Nat) (y : Nat) : Nat := AddM(&x, y); x
@@ -75,27 +75,27 @@ ochr Inductives {
     match t {
       Leaf => refl
     | Node(l, v, r) => let b = Lt(k, v); match b {
-        ff =>
+        false =>
           J(Nat, Add(Size(l), S (Size(r))), S (Add(Size(l), Size(r))),
             λ(z : Nat) : Prop => Id Nat (S z) (S (Add(Size(l), Size(Insert(r, k))))),
             AddS(Size(l), Size(r)),
             J(Nat, S (Size(r)), Size(Insert(r, k)),
               λ(z : Nat) : Prop => Id Nat (S (Add(Size(l), S (Size(r))))) (S (Add(Size(l), z))),
               SizeInsert(r, k), refl))
-      | tt =>
+      | true =>
           J(Nat, S (Size(l)), Size(Insert(l, k)),
             λ(z : Nat) : Prop => Id Nat (S (S (Add(Size(l), Size(r))))) (S (Add(z, Size(r)))),
             SizeInsert(l, k), refl) } }
-  -- without the arithmetic lemma the ff arm does not check
+  -- without the arithmetic lemma the false arm does not check
   reject def SizeInsertNoLemma (t : Tree) (k : Nat) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t :=
     match t {
       Leaf => refl
     | Node(l, v, r) => let b = Lt(k, v); match b {
-        ff =>
+        false =>
           J(Nat, S (Size(r)), Size(Insert(r, k)),
             λ(z : Nat) : Prop => Id Nat (S (S (Add(Size(l), Size(r))))) (S (Add(Size(l), z))),
             SizeInsertNoLemma(r, k), refl)
-      | tt =>
+      | true =>
           J(Nat, S (Size(l)), Size(Insert(l, k)),
             λ(z : Nat) : Prop => Id Nat (S (S (Add(Size(l), Size(r))))) (S (Add(z, Size(r)))),
             SizeInsertNoLemma(l, k), refl) } }

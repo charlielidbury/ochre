@@ -109,6 +109,11 @@ structure Config where
   propValues : Bool := true      -- v2.0 D42: a constructor application of a Prop inductive is a proof (⋆, erased)
   disjoint : Bool := true        -- v2.0 D47: `Eq D (C ā) (C' b̄) ≡ False` for distinct constructors C ≠ C'
   scrutTyped : Bool := true      -- finding (v2.0 round): a match's scrutinee must have the constructors' type
+  refData : Bool := true         -- D48 (1): `&A` only for a data type A (never a universe, Π-type or proposition)
+  refTop : Bool := true          -- D48 (2): `&` only at the top of a declared type, never produced by computation
+  unitNorm : Bool := false       -- counterfactual D50: the unit laws normalise stored types (v2.0 as first built)
+  piUnder : Bool := true         -- D48 (3): Π-types are compared under their binders, at generic values
+  proofDataFields : Bool := true -- D49 (3): a data field of a matched proof is a fresh abstract value (not ⋆)
   confineBodies : Bool := false  -- an extension of D41, not in RULES: the body of a function whose calls are
                                  -- erased, and each arm of an erased stuck block, are confined too
   trace : Bool := false          -- record goals, splits and call types (for inspection)

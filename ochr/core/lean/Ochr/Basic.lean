@@ -20,23 +20,31 @@ declarations (`Check.lean`'s prelude); `⊤`, `P ∧ Q`, `⟨h, k⟩` and `refl`
 def vTrue : Value := .tInd "True" []
 def vFalse : Value := .tInd "False" []
 
-/-- `And(True, P) ≡ P ≡ And(P, True)` (RULES §4), as a smart constructor. -/
+/-- `And(True, P) ≡ P ≡ And(P, True)` (RULES §4), as a smart constructor. Since D50 the
+unit laws are conversion: `mkAnd` builds only the conjunctions `Eq` computes (so `Id`'s
+observation is the single interesting equation), and `unitTop` applies the laws when two
+types are compared; a stored type written `True ∧ P` keeps its `And`. -/
 def mkAnd : Value → Value → Value
   | .tInd "True" [], q => q
   | p, .tInd "True" [] => p
   | p, q => .tInd "And" [p, q]
 
-/-- `D(ā)` in normal form: `And` through `mkAnd`. -/
-def mkTInd (n : String) (as : List Value) : Value :=
-  match n, as with
-  | "And", [p, q] => mkAnd p q
-  | _, _ => .tInd n as
+/-- The unit laws at the head of a type (D50: applied by conversion only). -/
+partial def unitTop : Value → Value
+  | .tInd "And" [p, q] => mkAnd (unitTop p) (unitTop q)
+  | v => v
+
+/-- `D(ā)`, kept as written (D50); `norm` is the counterfactual normalising reading. -/
+def mkTInd (n : String) (as : List Value) (norm : Bool := false) : Value :=
+  match n, as, norm with
+  | "And", [p, q], true => mkAnd p q
+  | _, _, _ => .tInd n as
 
 /-- D47: two values headed by distinct constructors of the same type (`Z` and `S _`, or
 `C(…)` and `C'(…)` with `C ≠ C'`). Values of a proposition are `⋆`, never distinct. -/
 def distinctCtors : Value → Value → Bool
   | .zero, .succ _ | .succ _, .zero => true
-  | .ind t c _ _, .ind u d _ _ => t == u && c != d
+  | .ind t c _ _ _, .ind u d _ _ _ => t == u && c != d
   | _, _ => false
 
 def Place.root : Place → Nat
@@ -82,7 +90,7 @@ partial def Term.mapFree (f : Nat → Nat → Place) (c : Nat) : Term → Term
   | .eq a b d => .eq (a.mapFree f c) (b.mapFree f c) (d.mapFree f c)
   | .id a b d => .id (a.mapFree f c) (b.mapFree f c) (d.mapFree f c)
   | .prim n as => .prim n (as.map (·.mapFree f c))
-  | .ctor t k h as => .ctor t k h (as.map (·.mapFree f c))
+  | .ctor t k h ps as => .ctor t k h (ps.map (·.mapFree f c)) (as.map (·.mapFree f c))
   | .tind n as => .tind n (as.map (·.mapFree f c))
   | .matchInd p t as => .matchInd (mp f c p) t (as.map fun (h, a) => (h, a.mapFree f c))
   | t => t
@@ -121,7 +129,7 @@ partial def Term.mapFreePlace (f : Nat → Place → Place) (c : Nat) : Term →
   | .eq a b d => .eq (a.mapFreePlace f c) (b.mapFreePlace f c) (d.mapFreePlace f c)
   | .id a b d => .id (a.mapFreePlace f c) (b.mapFreePlace f c) (d.mapFreePlace f c)
   | .prim n as => .prim n (as.map (·.mapFreePlace f c))
-  | .ctor t k h as => .ctor t k h (as.map (·.mapFreePlace f c))
+  | .ctor t k h ps as => .ctor t k h (ps.map (·.mapFreePlace f c)) (as.map (·.mapFreePlace f c))
   | .tind n as => .tind n (as.map (·.mapFreePlace f c))
   | .matchInd p t as => .matchInd (fp f c p) t (as.map fun (h, a) => (h, a.mapFreePlace f c))
   | t => t
@@ -156,7 +164,7 @@ partial def Term.inlineReads (t : Term) (o : Nat) (u : Term) (c : Nat) : Term :=
   | .eq a b d => .eq (a.inlineReads o u c) (b.inlineReads o u c) (d.inlineReads o u c)
   | .id a b d => .id (a.inlineReads o u c) (b.inlineReads o u c) (d.inlineReads o u c)
   | .prim n as => .prim n (as.map (·.inlineReads o u c))
-  | .ctor t k h as => .ctor t k h (as.map (·.inlineReads o u c))
+  | .ctor t k h ps as => .ctor t k h (ps.map (·.inlineReads o u c)) (as.map (·.inlineReads o u c))
   | .tind n as => .tind n (as.map (·.inlineReads o u c))
   | .matchInd p t as => .matchInd p t (as.map fun (h, a) => (h, a.inlineReads o u c))
   | t => t
@@ -186,7 +194,8 @@ partial def Term.placeOccs (c : Nat) : Term → List (Nat × Place × PKind)
   | .prod a b | .pair a b | .cong a b | .ascribe a b =>
       a.placeOccs c ++ b.placeOccs c
   | .eq a b d | .id a b d => a.placeOccs c ++ b.placeOccs c ++ d.placeOccs c
-  | .prim _ as | .ctor _ _ _ as | .tind _ as => as.flatMap (·.placeOccs c)
+  | .ctor _ _ _ ps as => (ps ++ as).flatMap (·.placeOccs c)
+  | .prim _ as | .tind _ as => as.flatMap (·.placeOccs c)
   | .matchInd p _ as => (c, p, .scrut) :: as.flatMap (·.2.placeOccs c)
   | _ => []
 
@@ -209,7 +218,8 @@ partial def Value.anyAtom (P : Value → Bool) (v : Value) : Bool :=
   | .tEq A a b => A.anyAtom P || a.anyAtom P || b.anyAtom P
   | .clo cs t | .tPi cs t => cs.any (·.anyAtom P) || t.anyAtom P
   | .sealed t => t.anyAtom P
-  | .ind _ _ _ fs | .tInd _ fs => fs.any (·.anyAtom P)
+  | .ind _ _ _ ps fs => ps.any (·.anyAtom P) || fs.any (·.anyAtom P)
+  | .tInd _ fs => fs.any (·.anyAtom P)
   | _ => false
 
 partial def Term.anyAtom (P : Value → Bool) : Term → Bool
@@ -222,7 +232,8 @@ partial def Term.anyAtom (P : Value → Bool) : Term → Bool
   | .fix _ _ ds c _ b => ds.any (·.anyAtom P) || c.anyAtom P || b.anyAtom P
   | .call f as _ => f.anyAtom P || as.any (·.anyAtom P)
   | .eq a b c | .id a b c => a.anyAtom P || b.anyAtom P || c.anyAtom P
-  | .prim _ as | .ctor _ _ _ as | .tind _ as => as.any (·.anyAtom P)
+  | .ctor _ _ _ ps as => ps.any (·.anyAtom P) || as.any (·.anyAtom P)
+  | .prim _ as | .tind _ as => as.any (·.anyAtom P)
   | .matchInd _ _ as => as.any (·.2.anyAtom P)
   | _ => false
 end
@@ -236,7 +247,8 @@ partial def Value.loans : Value → List Nat
   | .tEq A a b => A.loans ++ a.loans ++ b.loans
   | .clo cs t | .tPi cs t => cs.flatMap Value.loans ++ t.loans
   | .sealed t => t.loans
-  | .ind _ _ _ fs | .tInd _ fs => fs.flatMap Value.loans
+  | .ind _ _ _ ps fs => ps.flatMap Value.loans ++ fs.flatMap Value.loans
+  | .tInd _ fs => fs.flatMap Value.loans
   | _ => []
 
 partial def Term.loans : Term → List Nat
@@ -249,7 +261,8 @@ partial def Term.loans : Term → List Nat
   | .fix _ _ ds c _ b => ds.flatMap Term.loans ++ c.loans ++ b.loans
   | .call f as _ => f.loans ++ as.flatMap Term.loans
   | .eq a b c | .id a b c => a.loans ++ b.loans ++ c.loans
-  | .prim _ as | .ctor _ _ _ as | .tind _ as => as.flatMap Term.loans
+  | .ctor _ _ _ ps as => (ps ++ as).flatMap Term.loans
+  | .prim _ as | .tind _ as => as.flatMap Term.loans
   | .matchInd _ _ as => as.flatMap (·.2.loans)
   | _ => []
 end
@@ -263,5 +276,35 @@ def Value.isBorrow : Value → Bool
 
 /-- A type is borrow-free when no `&` occurs in it (RULES §1: `&A` needs `A` borrow-free). -/
 def Value.typeHasRef (T : Value) : Bool := T.anyAtom fun | .tRef _ => true | _ => false
+
+end Ochr
+
+namespace Ochr
+
+mutual
+/-- D48 (2): every `&A` in `t` stands at the top of a declared type (a parameter's
+domain, a declared result, an annotation), never inside another type, so no computation
+produces a borrow type. -/
+partial def Term.refsOk : Term → Bool
+  | .ref _ => false
+  | .pi _ ds c => ds.all Term.refTopOk && c.refTopOk
+  | .fix _ _ ds c _ b => ds.all Term.refTopOk && c.refTopOk && b.refsOk
+  | .ascribe t A => t.refsOk && A.refTopOk
+  | .assign _ t | .succ t | .fst t | .snd t => t.refsOk
+  | .letIn _ t u | .seq t u | .prod t u | .pair t u | .cong t u => t.refsOk && u.refsOk
+  | .matchNat _ z s => z.refsOk && s.refsOk
+  | .call f as _ => f.refsOk && as.all Term.refsOk
+  | .eq a b c | .id a b c => a.refsOk && b.refsOk && c.refsOk
+  | .ctor _ _ _ ps as => (ps ++ as).all Term.refsOk
+  | .prim _ as | .tind _ as => as.all Term.refsOk
+  | .matchInd _ _ as => as.all (·.2.refsOk)
+  | _ => true
+
+/-- A declared type: `&A` at its top (with no `&` inside `A`), or a type with `&` only
+in allowed positions. -/
+partial def Term.refTopOk : Term → Bool
+  | .ref A => A.refsOk
+  | t => t.refsOk
+end
 
 end Ochr

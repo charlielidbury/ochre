@@ -65,16 +65,18 @@ partial def Term.pp (ns : List String) : Term → String
   | .tind "True" [] => "⊤"
   | .tind "And" [a, b] => s!"{a.ppArg ns} ∧ {b.ppArg ns}"
   | .tind n as => if as.isEmpty then n else s!"{n}({", ".intercalate (as.map (·.pp ns))})"
-  | .ctor "True" _ _ [] => "refl"
-  | .ctor "And" _ _ [a, b] => s!"⟨{a.pp ns}, {b.pp ns}⟩"
-  | .ctor _ _ h as => if as.isEmpty then h.name else s!"{h.name}({", ".intercalate (as.map (·.pp ns))})"
+  | .ctor "True" _ _ _ [] => "refl"
+  | .ctor "And" _ _ [] [a, b] => s!"⟨{a.pp ns}, {b.pp ns}⟩"
+  | .ctor _ _ h ps as =>
+    let pre := if ps.isEmpty then "" else s!"[{", ".intercalate (ps.map (·.pp ns))}]"
+    if as.isEmpty then h.name ++ pre else s!"{h.name}{pre}({", ".intercalate (as.map (·.pp ns))})"
   | .matchInd p _ as =>
     s!"match {p.pp ns} \{ {" | ".intercalate (as.map fun (h, a) => s!"{h.name} => {a.pp ns}")} }"
 
 partial def Term.ppArg (ns : List String) (t : Term) : String :=
   match t with
   | .place _ | .const _ | .nat | .unit | .tt | .zero | .sort _ | .pair _ _
-  | .ascribe _ _ | .call _ _ _ | .ctor _ _ _ _ => t.pp ns
+  | .ascribe _ _ | .call _ _ _ | .ctor _ _ _ _ _ => t.pp ns
   | .tind "And" [_, _] => s!"({t.pp ns})"
   | .tind _ _ => t.pp ns
   | .val v => v.ppArg
@@ -119,7 +121,7 @@ partial def Value.pp : Value → String
   | .tPi cs t => ppClosure "" cs t
   | .sort 0 => "Prop"
   | .sort (l + 1) => if l == 0 then "Type" else s!"Type_{l}"
-  | .ind _ _ h fs => if fs.isEmpty then h.name else s!"{h.name}({", ".intercalate (fs.map Value.pp)})"
+  | .ind _ _ h _ fs => if fs.isEmpty then h.name else s!"{h.name}({", ".intercalate (fs.map Value.pp)})"
   | .tInd "True" [] => "⊤"
   | .tInd "And" [p, q] => s!"{p.ppArg} ∧ {q.ppArg}"
   | .tInd n as => if as.isEmpty then n else s!"{n}({", ".intercalate (as.map Value.pp)})"
@@ -127,7 +129,7 @@ partial def Value.pp : Value → String
 partial def Value.ppArg (v : Value) : String :=
   match v with
   | .zero | .unit | .gfn _ | .loan _ | .bot | .abs _ | .sealed _ | .proof | .tNat | .tUnit
-  | .sort _ | .pair _ _ | .ind _ _ _ _ => v.pp
+  | .sort _ | .pair _ _ | .ind _ _ _ _ _ => v.pp
   | .tInd "And" [_, _] => s!"({v.pp})"
   | .tInd _ _ => v.pp
   | .succ _ => if (natLit? v).isSome then v.pp else s!"({v.pp})"

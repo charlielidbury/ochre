@@ -21,6 +21,7 @@ inductive STerm where
   | num (n : Nat)
   | app (f : String) (args : List STerm)        -- juxtaposition, builtins only: S t, Id A t u, Eq A t u, cong f h
   | call (f : STerm) (args : List STerm)        -- f(a₁, …, aₙ)
+  | ctorP (c : String) (ps : List STerm) (args : List STerm)   -- C[ā](t̄): parameters written (core C(ā; t̄))
   | deref (t : STerm)
   | proj (i : Nat) (t : STerm)                   -- t.1, t.2
   | amp (t : STerm)
@@ -128,13 +129,13 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
       let tb ← read
       if tb.types.contains x then return .tind x []
       if let some (_, ty, i, fs) := tb.ctors.find? (·.1 == x) then
-        if fs.isEmpty then return .ctor ty i ⟨x⟩ []
+        if fs.isEmpty then return .ctor ty i ⟨x⟩ [] []
         throw s!"constructor {x} takes {fs.length} fields"
       match x with
       | "Nat" => pure .nat
       | "Unit" => pure .unit
       | "Z" => pure .zero
-      | "refl" => pure (.ctor "True" 0 ⟨"I"⟩ [])      -- notation for True's constructor (v2.0)
+      | "refl" => pure (.ctor "True" 0 ⟨"I"⟩ [] [])      -- notation for True's constructor (v2.0)
       | "S" => pure succFn
       | _ => pure (.const x)
   | .num n => pure (Term.ofNat n)
@@ -157,9 +158,14 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
     match (if (lookup ctx c).isSome then none else tb.ctors.find? (·.1 == c)) with
     | some (_, ty, i, fs) =>
       if fs.length != as.length then throw s!"constructor {c} takes {fs.length} fields, given {as.length}"
-      return .ctor ty i ⟨c⟩ (← as.mapM (resolve ctx false))
+      return .ctor ty i ⟨c⟩ [] (← as.mapM (resolve ctx false))
     | none => return .call (← resolve ctx false (.ident c)) (← as.mapM (resolve ctx false)) false
   | .call f as => return .call (← resolve ctx false f) (← as.mapM (resolve ctx false)) false
+  | .ctorP c ps as =>
+    let tb ← read
+    let some (_, ty, i, fs) := tb.ctors.find? (·.1 == c) | throw s!"{c} is not a constructor"
+    if fs.length != as.length then throw s!"constructor {c} takes {fs.length} fields, given {as.length}"
+    return .ctor ty i ⟨c⟩ (← ps.mapM (resolve ctx true)) (← as.mapM (resolve ctx false))
   | .deref _ => return .place (← toPlace ctx t)
   | .proj i a =>
     if isPlace ctx t then return .place (← toPlace ctx t)
@@ -208,7 +214,7 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
     return .fix ⟨f⟩ hs ds ret' (← decIndex bs dec) (← resolve bodyCtx false body)
   | .unitLit => pure .tt
   | .pair a b => return .pair (← resolve ctx false a) (← resolve ctx false b)
-  | .andI a b => return .ctor "And" 0 ⟨"Intro"⟩ [← resolve ctx false a, ← resolve ctx false b]
+  | .andI a b => return .ctor "And" 0 ⟨"Intro"⟩ [] [← resolve ctx false a, ← resolve ctx false b]
   | .top => pure (.tind "True" [])
   | .and P Q => return .tind "And" [← resolve ctx true P, ← resolve ctx true Q]
   | .prod A B => return .prod (← resolve ctx true A) (← resolve ctx true B)

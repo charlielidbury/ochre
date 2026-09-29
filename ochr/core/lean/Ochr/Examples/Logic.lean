@@ -34,8 +34,8 @@ ochr Logic {
   -- no injectivity (D47): Eq Nat (S a) (S b) does not compute to Eq Nat a b
   reject def Inj (a : Nat) (b : Nat) (h : Eq Nat (S a) (S b)) : Eq Nat a b := h
   -- at a user inductive, and after a write (the observation of Id is disjoint)
-  inductive Bool := ff | tt
-  def BoolDisj (h : Eq Bool ff tt) : False := h
+  inductive Bool := false | true
+  def BoolDisj (h : Eq Bool false true) : False := h
   def WriteDisj (x : &Nat) (h : Id Unit (*x := 0) (*x := 1)) : False := h
   reject def WriteSame (x : &Nat) (h : Id Unit (*x := 0) (*x := 0)) : False := h
   -- the notation is the library: ⟨h, k⟩ is Intro(h, k), ⊤ is True, refl is I
@@ -91,18 +91,19 @@ ochr ByType {
   -- Id over two owners computes to the library's And, which a match takes apart
   def SplitId (x : &Nat) (y : &Nat) (h : Id Unit (*x := 1; *y := 2) (*x := 3; *y := 4)) : Eq Nat 1 3 :=
     match h { Intro(a, b) => a }
-  -- finding: And(True, P) ≡ P is normalisation, so h's type is P and there is no And to match
-  reject def AndTrue (P : Prop) (h : ⊤ ∧ P) : P := match h { Intro(a, b) => b }
+  -- finding F2 → D50: And(True, P) ≡ P is conversion, not normalisation, so h keeps its And
+  def AndTrue (P : Prop) (h : ⊤ ∧ P) : P := match h { Intro(a, b) => b }
+  def AndTrueConv (P : Prop) (h : ⊤ ∧ P) : P := h
 }
 
 #eval IO.println (run "ByType" ByType).show
 
--- every verdict as expected, and exactly 19 assertions (a truncated file changes the count)
+-- every verdict as expected, and exactly 20 assertions (a truncated file changes the count)
 #guard (run "ByType" ByType).allAsExpected
-#guard (run "ByType" ByType).count == 19
+#guard (run "ByType" ByType).count == 20
 
 ochr OrAttack {
-  inductive Bool := ff | tt
+  inductive Bool := false | true
   inductive Or (P : Prop) (Q : Prop) : Prop := Inl(p : P) | Inr(q : Q)
   -- elimination into propositions: every arm is a proof, so the match is one (⋆)
   def OrComm (P : Prop) (Q : Prop) (h : Or(P, Q)) : Or(Q, P) := match h { Inl(p) => Inr(p) | Inr(q) => Inl(q) }
@@ -111,13 +112,13 @@ ochr OrAttack {
   def OrLet (P : Prop) (h : Or(P, P)) : P := let k : P = match h { Inl(p) => p | Inr(q) => q }; k
   -- large elimination would tell Inl from Inr, which proof irrelevance identifies: with
   -- IsL, Irr holds at the generic call (h = k = ⋆), and Irr(Inl(refl), Inr(refl)) would
-  -- be Eq Bool tt ff, which is False (D47). D45 rejects IsL.
-  reject def IsL (h : Or(True, True)) : Bool := match h { Inl(p) => tt | Inr(q) => ff }
+  -- be Eq Bool true false, which is False (D47). D45 rejects IsL.
+  reject def IsL (h : Or(True, True)) : Bool := match h { Inl(p) => true | Inr(q) => false }
   reject def Irr (h : Or(True, True)) (k : Or(True, True)) : Eq Bool (IsL(h)) (IsL(k)) := refl
   reject def Boom : False := Irr(Inl(refl), Inr(refl))
   -- without D45 but with D42 the machine cannot see Inl or Inr (a proof is ⋆), so no
   -- closed False follows; but it proves OrLie, whose model reading (IsL defined by its
-  -- two cases) is Eq Bool tt ff: IsL has no model once proofs are irrelevant
+  -- two cases) is Eq Bool true false: IsL has no model once proofs are irrelevant
   reject def OrLie : Eq Bool (IsL(Inl(refl))) (IsL(Inr(refl))) := refl
   -- one constructor with a data field is not a subsingleton either (the field is ⋆)
   inductive Sq : Prop := Mk(n : Nat)

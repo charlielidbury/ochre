@@ -31,7 +31,7 @@ def stepV : Step → Value → Option Value
   | .fst, .succ w => some w
   | .fst, .pair a _ => some a
   | .snd, .pair _ b => some b
-  | .field g, .ind t c _ fs => if t == g.ty && c == g.ctor then fs[g.idx]? else none
+  | .field g, .ind t c _ _ fs => if t == g.ty && c == g.ctor then fs[g.idx]? else none
   | .field _, .proof => some .proof
   | _, _ => none
 
@@ -46,9 +46,9 @@ def Value.updAt (f : Value → Value) : List Step → Value → Option Value
   | .fst :: ss, .succ w => (Value.updAt f ss w).map .succ
   | .fst :: ss, .pair a b => (Value.updAt f ss a).map (.pair · b)
   | .snd :: ss, .pair a b => (Value.updAt f ss b).map (.pair a ·)
-  | .field g :: ss, .ind t c h fs =>
+  | .field g :: ss, .ind t c h ps fs =>
     match (if t == g.ty && c == g.ctor then fs[g.idx]? else none) with
-    | some v => (Value.updAt f ss v).map fun v' => .ind t c h (fs.set g.idx v')
+    | some v => (Value.updAt f ss v).map fun v' => .ind t c h ps (fs.set g.idx v')
     | none => none
   | _, _ => none
 

@@ -103,7 +103,8 @@ partial def headOnly (isSelf : Nat → Place → Bool) (c : Nat) : Term → Bool
       headOnly isSelf c t && headOnly isSelf c u
   | .succ t | .fst t | .snd t | .ref t => headOnly isSelf c t
   | .eq a b d | .id a b d => headOnly isSelf c a && headOnly isSelf c b && headOnly isSelf c d
-  | .prim _ as | .ctor _ _ _ as | .tind _ as => as.all (headOnly isSelf c)
+  | .ctor _ _ _ ps as => (ps ++ as).all (headOnly isSelf c)
+  | .prim _ as | .tind _ as => as.all (headOnly isSelf c)
   | .matchInd p _ as => !isSelf c p && as.all (headOnly isSelf c ·.2)
   | _ => true
 
@@ -119,7 +120,8 @@ partial def constHeadOnly (n : String) : Term → Bool
   | .fix _ _ ds c _ b => ds.all (constHeadOnly n) && constHeadOnly n c && constHeadOnly n b
   | .call f as _ => constHeadOnly n f && as.all (constHeadOnly n)
   | .eq a b d | .id a b d => constHeadOnly n a && constHeadOnly n b && constHeadOnly n d
-  | .prim _ as | .ctor _ _ _ as | .tind _ as => as.all (constHeadOnly n)
+  | .ctor _ _ _ ps as => (ps ++ as).all (constHeadOnly n)
+  | .prim _ as | .tind _ as => as.all (constHeadOnly n)
   | .matchInd _ _ as => as.all (constHeadOnly n ·.2)
   | _ => true
 
@@ -130,7 +132,7 @@ partial def expandRefs (refs : List (Nat × Value)) : Value → Value
       | some r => expandRefs refs r
       | none => .abs σ
   | .succ v => .succ (expandRefs refs v)
-  | .ind t c h fs => .ind t c h (fs.map (expandRefs refs))
+  | .ind t c h ps fs => .ind t c h ps (fs.map (expandRefs refs))
   | v => v
 
 /-- v2.0 (D46): infer an inductive's parameters by matching a field's declared type
@@ -151,7 +153,7 @@ partial def unifyParams (np : Nat) (FT : Term) (T : Value) (sol : Array (Option 
 /-- The strict subterms of a value built from `S`. -/
 partial def strictSubterms : Value → List Value
   | .succ v => v :: strictSubterms v
-  | .ind _ _ _ fs => fs.flatMap fun f => f :: strictSubterms f
+  | .ind _ _ _ _ fs => fs.flatMap fun f => f :: strictSubterms f
   | _ => []
 
 mutual
@@ -175,9 +177,9 @@ partial def substV (x r : Value) (v : Value) : M Value := do
   | .sealed t => nfSealed (← substT x r t)
   | .tProd A B => return .tProd (← substV x r A) (← substV x r B)
   | .tEq A a b => mkEqM (← substV x r A) (← substV x r a) (← substV x r b)
-  | .tInd n as => return mkTInd n (← as.mapM (substV x r))
+  | .tInd n as => return mkTInd n (← as.mapM (substV x r)) (← get).cfg.unitNorm
   | .tRef A => return .tRef (← substV x r A)
-  | .ind t c h fs => return .ind t c h (← fs.mapM (substV x r))
+  | .ind t c h ps fs => return .ind t c h (← ps.mapM (substV x r)) (← fs.mapM (substV x r))
   | _ => return v
 
 partial def substT (x r : Value) (t : Term) : M Term := do
@@ -203,7 +205,7 @@ partial def substT (x r : Value) (t : Term) : M Term := do
   | .eq a b c => return .eq (← go a) (← go b) (← go c)
   | .id a b c => return .id (← go a) (← go b) (← go c)
   | .prim n as => return .prim n (← as.mapM go)
-  | .ctor ty c h as => return .ctor ty c h (← as.mapM go)
+  | .ctor ty c h ps as => return .ctor ty c h (← ps.mapM go) (← as.mapM go)
   | .tind n as => return .tind n (← as.mapM go)
   | .matchInd p ty as => return .matchInd p ty (← as.mapM fun (h, a) => do pure (h, ← go a))
   | _ => return t
@@ -451,7 +453,7 @@ partial def valType (v : Value) : M Value := do
   | .gfn n => pure (← lookupGlobal n).ty
   | .clo cs (.fix _ hs ds c _ _) => pure (.tPi cs (.pi hs ds c))
   | .borrow _ w => pure (.tRef (← valType w))
-  | .ind t c _ fs => indValType t c fs
+  | .ind t c _ ps fs => if ps.isEmpty then indValType t c fs else pure (.tInd t ps)   -- D49 (4)
   | .tNat | .tUnit | .tProd .. | .tEq .. | .tRef _ | .tPi .. | .sort _ | .tInd .. =>
     pure (.sort (← sortOf v))
   | .sealed t =>
@@ -503,7 +505,7 @@ partial def indValType (t : String) (c : Nat) (fs : List Value) : M Value := do
   for (v, (_, FT)) in fs.zip fields do
     sol := unifyParams d.params.length FT (← valType v) sol
   match sol.toList.mapM id with
-  | some ps => pure (mkTInd t ps)
+  | some ps => pure (mkTInd t ps (← get).cfg.unitNorm)
   | none => err s!"cannot infer the parameters of the value {cn}(…) of {t}"
 
 /-- D42 (v2.0): a constructor application of a Prop inductive is a proof, erased. -/
@@ -535,11 +537,49 @@ partial def largeElim (d : IndDecl) : M Bool := do
   | [(_, fields)] => fields.allM fun (_, FT) => fieldTermIsProp d FT
   | _ => pure false
 
+/-- D49 (3): in an arm of a match on a proof, a data field is bound to a fresh abstract
+value (as [Def] binds a parameter) and a proof field stays a place holding `⋆`. The arm
+becomes `let g = σ; …; arm'`, with the field's place (and places under it) replaced by
+the local and every other free place shifted past the new bindings. -/
+partial def bindDataFields (p : Place) (d : IndDecl) (ps : List Value) (c : Nat) (arm : Term) : M Term := do
+  let some (_, fields) := d.ctors[c]? | return arm
+  if !(← get).cfg.proofDataFields then return arm      -- counterfactual: every field is ⋆
+  let fts ← fieldTypes d ps c
+  let mut datas : Array (Nat × String × Value) := #[]
+  for (((fname, FT), (_, T)), i) in (fields.zip fts).zipIdx do
+    unless ← fieldTermIsProp d FT do datas := datas.push (i, fname, T)
+  if datas.isEmpty then return arm
+  let k := datas.size
+  let fieldPlace (i : Nat) : Place := .field ⟨d.name, c, i, ""⟩ p
+  let body := arm.mapFreePlace (fun dep q =>
+    match datas.toList.zipIdx.find? fun ((i, _, _), _) => placePrefix (fieldPlace i) q with
+    | some ((i, _, _), j) =>
+      let (_, qs) := q.steps
+      let (_, fs) := (fieldPlace i).steps
+      (qs.drop fs.length).foldl (fun acc st => match st with
+        | .deref => .deref acc | .fst => .fst acc | .snd => .snd acc
+        | .field g => .field g acc) (Place.var (dep + k - 1 - j))
+    | none => q.mapRoot fun r => .var (r + dep + k)) 0
+  let mut t := body
+  for (_, fname, T) in datas.toList.reverse do
+    t := .letIn ⟨fname⟩ (.val (← genericValue T)) t
+  pure t
+
 /-- The error of a large elimination from a proof of a non-subsingleton (D45). -/
 partial def subsingletonMsg (d : IndDecl) : String :=
   let why := if d.ctors.length ≥ 2 then s!"it has {d.ctors.length} constructors"
     else "its constructor has a field that is not a proposition"
   s!"[D45] a match on a proof of {d.name} returns a non-proof, but {d.name} is not a subsingleton ({why}): large elimination would tell apart proofs that proof irrelevance identifies"
+
+/-- D48 (1): a data type, the only kind of type that may be borrowed: `Nat`, `Unit`, `×`
+of data types, or an inductive type in `Type₀` (at any parameters, which are themselves
+in `Type₀`, D46). Read off the type's head: a neutral type is not known to be data. -/
+partial def isDataType (T : Value) : M Bool := do
+  match T with
+  | .tNat | .tUnit => pure true
+  | .tProd A B => pure ((← isDataType A) && (← isDataType B))
+  | .tInd n _ => pure ((← lookupInd n).sort == 1)
+  | _ => pure false
 
 /-- D45: the match `match p { … }` on constructors of `ty` (or with no arms) is by type. -/
 partial def byTypeMatch (ty : String) (arms : List (Hint × Term)) : M Bool := do
@@ -662,6 +702,10 @@ observation of its generic call (its result and the final contents of the generi
 owned places) plus its captured values (D30). Structural everywhere else. -/
 partial def conv (v w : Value) : M Bool := do
   if v == w then return true
+  -- D50: the unit laws And(True, P) ≡ P ≡ And(P, True) are conversion rules
+  let v := unitTop v
+  let w := unitTop w
+  if v == w then return true
   match v, w with
   | .succ a, .succ b | .tRef a, .tRef b => conv a b
   | .pair a b, .pair c d | .tProd a b, .tProd c d =>
@@ -669,9 +713,11 @@ partial def conv (v w : Value) : M Bool := do
   | .tInd n as, .tInd m bs => pure (n == m && (← convList as bs))
   | .tEq A a b, .tEq B c d => pure ((← conv A B) && (← conv a c) && (← conv b d))
   | .borrow l a, .borrow m b => pure (l == m && (← conv a b))
-  | .ind t c _ fs, .ind u d _ gs => pure (t == u && c == d && (← convList fs gs))
+  | .ind t c _ _ fs, .ind u d _ _ gs => pure (t == u && c == d && (← convList fs gs))
   | .sealed t, .sealed u => convT t u
-  | .tPi cs t, .tPi ds u => pure ((← convList cs ds) && (← convT t u))
+  | .tPi cs t, .tPi ds u =>
+    if (← convList cs ds) && (← convT t u) then return true   -- same captures and code
+    if (← get).cfg.piUnder then convPi v w else pure false
   | f, g =>
     let isFn : Value → Bool := fun | .gfn _ | .clo _ _ => true | _ => false
     if isFn f && isFn g then convFn f g else pure false
@@ -685,6 +731,45 @@ partial def convTList : List Term → List Term → M Bool
   | [], [] => pure true
   | a :: as, b :: bs => do pure ((← convT a b) && (← convTList as bs))
   | _, _ => pure false
+
+/-- D48 (3): two Π-types are convertible when, their binders instantiated with the same
+fresh generic values (a fresh owned place behind each borrow parameter, `⋆` for a proof,
+as at [Def]), their domains and their codomains have the same normal forms. Captures
+and code are not compared: `Π(n : Nat). Nat where κ1 = σ0` is `Π(n : Nat). Nat`, and a
+lemma's statement is compared by what it computes to, as D30 compares functions. A
+comparison that errors, gets stuck, or needs itself answers "not convertible". -/
+partial def convPi (P Q : Value) : M Bool := do
+  let .tPi cs (.pi hs ds c) := P | return false
+  let .tPi cs' (.pi _ ds' c') := Q | return false
+  if ds.length != ds'.length then return false
+  if (← get).convStack.contains (P, Q) then return false
+  tryCatch (onCopy do
+      modify fun s => { s with env := #[{}], convStack := (P, Q) :: s.convStack }
+      pushFrame
+      for v in cs do pushBind ⟨"κ"⟩ none v
+      let mut ws : Array (Value × Value) := #[]
+      for (d, h) in ds.zip hs do
+        let A ← evalType d
+        let w ← match A with
+          | .tRef T =>
+            let σ ← freshAbs T
+            let l ← freshLoan
+            modifyFrame 0 fun fr => { fr with binds := fr.binds.push ⟨⟨s!"{h.name}°"⟩, some T, .loan l, false⟩ }
+            pure (Value.borrow l (.abs σ))
+          | _ => genericValue A
+        pushBind h (some A) w
+        ws := ws.push (w, A)
+      let C ← evalType c
+      discard popFrameRaw
+      pushFrame
+      for v in cs' do pushBind ⟨"κ"⟩ none v
+      for ((d', h), (w, A)) in (ds'.zip hs).zip ws.toList do
+        let A' ← evalType d'
+        unless ← conv A A' do return false
+        pushBind h (some A') w
+      let C' ← evalType c'
+      conv C C')
+    fun _ => pure false
 
 /-- Structural comparison of terms (inside sealed programs, closures and Π-types),
 comparing embedded values by `conv`. -/
@@ -706,7 +791,7 @@ partial def convT (t u : Term) : M Bool := do
   | .fix _ _ ds c d b, .fix _ _ ds' c' d' b' =>
     pure (d == d' && (← convTList ds ds') && (← convT c c') && (← convT b b'))
   | .prim n as, .prim m bs => pure (n == m && (← convTList as bs))
-  | .ctor t c _ as, .ctor u d _ bs => pure (t == u && c == d && (← convTList as bs))
+  | .ctor t c _ ps as, .ctor u d _ qs bs => pure (t == u && c == d && (← convTList ps qs) && (← convTList as bs))
   | .tind n as, .tind m bs => pure (n == m && (← convTList as bs))
   | .matchInd p t as, .matchInd q u bs =>
     pure (p == q && t == u && (← convTList (as.map (·.2)) (bs.map (·.2))))
@@ -819,7 +904,7 @@ partial def eval (typed : Bool) (t : Term) (hint : Option Value := none) : M (Va
         let (e, p) ← getFlags
         pure (if cfg.seqByProof then (p, p) else (e, p))
       | .cong _ _ | .prim "trans" _ | .prim "symm" _ => pure (true, true)
-      | .ctor ty _ _ _ => let p ← ctorIsProof ty; pure (p, p)   -- D42: a Prop inductive's value is a proof
+      | .ctor ty _ _ _ _ => let p ← ctorIsProof ty; pure (p, p)   -- D42: a Prop inductive's value is a proof
       | .prim "J" [_, _, _, P, _, _] =>
         let p ← jErased P      -- the appendix's clause 4: the motive is syntactically into Prop
         pure (p, p)
@@ -1039,7 +1124,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
   | .matchNat p z s => evalMatch typed p z s
   | .matchInd p ty arms => evalMatchInd typed p ty arms
   | .tind n as => evalTInd typed n as
-  | .ctor ty c h as => evalCtor typed ty c h as hint
+  | .ctor ty c h ps as => evalCtor typed ty c h ps as hint
   | .const n =>
     let g ← lookupGlobal n
     let v ← if (← get).cfg.p5 && (← isPropV g.ty) then pure .proof else pure g.val
@@ -1106,7 +1191,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     let (fv, fT) ← eval typed f
     let (_, Th) ← eval typed h
     if !typed then return (.proof, none)
-    match Th with
+    match Th.map unitTop with
     | some (.tInd "True" []) => pure (.proof, some vTrue)
     | some (.tEq A a b) =>
       let (fa, B) ← callFn true fv fT #[a] #[some A] false
@@ -1117,6 +1202,9 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
   | .ref A =>
     let A' ← evalType A
     if A'.typeHasRef then err "&A needs A borrow-free (RULES §1)"
+    -- D48 (1): only data is borrowed, so `&A : Type₀` cannot make Type₀ impredicative
+    if (← get).cfg.refData && !(← isDataType A') then
+      err s!"[D48] &{A'}: only data types are borrowed (Nat, Unit, ×, an inductive type in Type), never a universe, a Π-type or a proposition"
     pure (.tRef A', some (.sort 1))
   | .id A a b => pure (← idType typed A a b, some (.sort 0))
   | .prim "J" [A, a, b, P, h, u] =>
@@ -1139,7 +1227,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     pure (v, some Pb)
   | .prim "symm" [h] =>
     let (_, Th) ← eval typed h
-    match Th with
+    match Th.map unitTop with
     | some (.tEq A a b) => pure (.proof, some (← mkEqM A b a))
     | some (.tInd "True" []) => pure (.proof, some vTrue)
     | _ => if typed then err "symm: not an equation" else pure (.proof, none)
@@ -1147,7 +1235,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     let (_, Th) ← eval typed h
     let (_, Tk) ← eval typed k
     if !typed then return (.proof, none)
-    match Th, Tk with
+    match Th.map unitTop, Tk.map unitTop with
     | some (.tInd "True" []), some T | some T, some (.tInd "True" []) => pure (.proof, some T)
     | some (.tEq A a b), some (.tEq A' b' c) =>
       unless (← conv A A') && (← conv b b') do err s!"trans: {Th.get!} and {Tk.get!} do not compose"
@@ -1175,37 +1263,52 @@ partial def evalTInd (typed : Bool) (n : String) (as : List Term) : M (Value × 
   let d ← lookupInd n
   if as.length != d.params.length then
     err s!"{n} takes {d.params.length} parameters, given {as.length}"
+  let (vs, tys) ← evalParams n as typed
+  if typed then checkParams d n vs tys
+  pure (mkTInd n vs.toList (← get).cfg.unitNorm, if typed then some (.sort d.sort) else none)
+
+/-- Parameters are type positions: each on a private copy, confined (P2). -/
+partial def evalParams (n : String) (as : List Term) (typed : Bool) :
+    M (Array Value × Array (Option Value)) := do
   let mut vs := #[]
   let mut tys := #[]
   for a in as do
     let (v, T) ← confinedCopy s!"a parameter of {n}" (eval typed a)
     vs := vs.push v
     tys := tys.push T
-  if typed then
-    onCopy do
-      pushFrame
-      for (((h, PT), v), T) in (d.params.zip vs.toList).zip tys.toList do
-        let A ← evalType PT
-        expectTy s!"the parameter {h.name} of {n}" T A
-        noBorrowParam n v
-        pushBind h (some A) v
-  pure (mkTInd n vs.toList, if typed then some (.sort d.sort) else none)
+  pure (vs, tys)
+
+/-- Each parameter against its declared type, evaluated with the earlier ones bound; no
+borrow types (no borrows inside data). -/
+partial def checkParams (d : IndDecl) (n : String) (vs : Array Value) (tys : Array (Option Value)) : M Unit :=
+  onCopy do
+    pushFrame
+    for (((h, PT), v), T) in (d.params.zip vs.toList).zip tys.toList do
+      let A ← evalType PT
+      expectTy s!"the parameter {h.name} of {n}" T A
+      noBorrowParam n v
+      pushBind h (some A) v
 
 /-- No borrows inside data (RULES §1), also through a parameter: `List(&Nat)` is not a type. -/
 partial def noBorrowParam (n : String) (v : Value) : M Unit := do
   if v.typeHasRef then err s!"{n} at {v}: no borrows inside data (a parameter may not be a borrow type)"
 
-/-- A constructor application `C(t₁, …, tₖ)` of `D` (v2.0). Its value is `C(v̄)`, or `⋆`
-when `D` is a Prop inductive (D42). When typed, the parameters `ā` of its type `D(ā)` are
-inferred from the fields' types, and those no field determines from `hint` (the type
-the context requires: an annotation, the goal, a parameter or field type). -/
-partial def evalCtor (typed : Bool) (ty : String) (c : Nat) (h : Hint) (as : List Term)
+/-- A constructor application `C(ā; t₁, …, tₖ)` of `D` (v2.0, D49 (4): the parameters `ā`
+lead, surface `C[ā](t̄)`, and may be omitted). Its value is `C(ā; v̄)`, recording the
+parameters when known, or `⋆` when `D` is a Prop inductive (D42). When typed, omitted
+parameters are inferred from the fields' types, and those no field determines from
+`hint` (the type the context requires: an annotation, the goal, a parameter or field
+type). An untyped run records the parameters only when they are written. -/
+partial def evalCtor (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts : List Term) (as : List Term)
     (hint : Option Value) : M (Value × Option Value) := do
   let d ← lookupInd ty
   let some (_, fields) := d.ctors[c]? | err s!"{ty} has no constructor {c}"
   if fields.length != as.length then err s!"{h.name} takes {fields.length} fields, given {as.length}"
   let np := d.params.length
-  let mut sol : Array (Option Value) := match hint with
+  if !pts.isEmpty && pts.length != np then err s!"{h.name} takes {np} parameters, given {pts.length}"
+  let (evs, etys) ← evalParams ty pts typed
+  if typed && !pts.isEmpty then checkParams d ty evs etys
+  let mut sol : Array (Option Value) := if !pts.isEmpty then evs.map some else match hint with
     | some (.tInd m ps) => if m == ty && ps.length == np then (ps.map some).toArray else Array.replicate np none
     | _ => Array.replicate np none
   let mut tys := #[]
@@ -1216,16 +1319,18 @@ partial def evalCtor (typed : Bool) (ty : String) (c : Nat) (h : Hint) (as : Lis
     tys := tys.push T
     pushTemp w
   let ws ← popTemps as.length
-  let v := if ← ctorIsProof ty then Value.proof else .ind ty c h ws.toList
-  if !typed then return (v, none)
+  let proof ← ctorIsProof ty
+  if !typed then
+    return (if proof then .proof else .ind ty c h evs.toList ws.toList, none)
   let mut ps := #[]
   for (s, (ph, _)) in sol.toList.zip d.params do
     match s with
     | some p => noBorrowParam ty p; ps := ps.push p
-    | none => err s!"cannot infer the parameter {ph.name} of {h.name}: annotate it, ({h.name}(…) : {ty}(…))"
+    | none => err s!"cannot infer the parameter {ph.name} of {h.name}: write it, {h.name}[…](…), or annotate, ({h.name}(…) : {ty}(…))"
   for (T, (fname, FT)) in tys.toList.zip (← fieldTypes d ps.toList c) do
     expectTy s!"field {fname} of {h.name}" T FT
-  pure (v, some (mkTInd ty ps.toList))
+  let v := if proof then Value.proof else .ind ty c h ps.toList ws.toList
+  pure (v, some (mkTInd ty ps.toList (← get).cfg.unitNorm))
 
 -- ### Calls: [Call], P5, [Call-type], [Close], [Rec]
 
@@ -1570,9 +1675,9 @@ partial def renormV (v : Value) : M Value := do
   | .succ w => return .succ (← renormV w)
   | .pair a b => return .pair (← renormV a) (← renormV b)
   | .borrow l w => return .borrow l (← renormV w)
-  | .ind ty c h fs => return .ind ty c h (← fs.mapM renormV)
+  | .ind ty c h ps fs => return .ind ty c h ps (← fs.mapM renormV)
   | .tEq A a b => mkEqM (← renormV A) (← renormV a) (← renormV b)
-  | .tInd n as => return mkTInd n (← as.mapM renormV)
+  | .tInd n as => return mkTInd n (← as.mapM renormV) (← get).cfg.unitNorm
   | .tProd A B => return .tProd (← renormV A) (← renormV B)
   | _ => return v
 
@@ -1650,7 +1755,7 @@ partial def ctorRefinement (d : IndDecl) (ps : List Value) (c : Nat) : M Value :
   let (cn, _) := d.ctors[c]!
   let mut fs := #[]
   for (_, T) in ← fieldTypes d ps c do fs := fs.push (← genericValue T)
-  pure (.ind d.name c ⟨cn⟩ fs.toList)
+  pure (.ind d.name c ⟨cn⟩ ps fs.toList)
 
 /-- The inductive type of a matched place and its parameters, from the place's type (the
 arms' constructors name `ty`; `""` for a match with no arms). The type is read, not
@@ -1687,31 +1792,40 @@ partial def evalMatchByType (typed : Bool) (p : Place) (ty : String) (arms : Lis
     setFlags (true, true)
     return (.proof, expected)
   let d ← lookupInd ty
-  if typed then discard (scrutType p ty)
-  let needProof := typed && (← get).cfg.subsingleton && !(← largeElim d)
+  let ps ← if typed then (·.2) <$> scrutType p ty else pure []
+  let large ← largeElim d
+  let needProof := typed && (← get).cfg.subsingleton && !large
   let subErr : M Unit := err (subsingletonMsg d)
   -- a constructor value is seen only when Prop values are not erased (counterfactual D42)
-  if let .ind _ c _ _ := v then
+  if let .ind _ c _ _ _ := v then
     match arms[c]? with
     | some (_, a) => return ← eval typed a
     | none => err s!"[Match] no arm for constructor {c}"
+  -- D49 (2): a match on a proof of a non-subsingleton is erased (its checked arms are all
+  -- proofs), so a run does not run it: its value is ⋆ (read from the declaration)
+  if !typed && !large && (← get).cfg.subsingleton then
+    setFlags (true, true)
+    return (.proof, none)
   if let [(_, a)] := arms then
+    let a ← if typed then bindDataFields p d ps 0 a else pure a
     let r ← eval typed a
     if needProof && !(← getFlags).2 then subErr
     return r
   if !typed then
-    -- checked: every arm is a proof, so the match is erased; one arm tells which case
+    -- counterfactual (no subsingleton elimination): an erased match is ⋆, otherwise no
+    -- arm can be chosen and the match is stuck
     let saved ← get
     discard (eval false arms[0]!.2)
     let pf := (← getFlags).2
     restoreKeep saved
     if pf then setFlags (true, true); return (.proof, none)
-    stuckNow       -- counterfactual (no subsingleton elimination): no arm can be chosen
+    stuckNow
   let saved ← get
   let mut tys := #[]
   let mut allProof := true
   let mut pending : Array Effect := #[]
-  for (_, a) in arms do
+  for ((_, a0), c) in arms.zipIdx do
+    let a ← bindDataFields p d ps c a0
     let es := (← get).effects.size
     let (_, T) ← eval true a
     allProof := allProof && (← getFlags).2
@@ -1744,7 +1858,7 @@ partial def evalMatchInd (typed : Bool) (p : Place) (ty : String) (arms : List (
   accessNeutralHead p
   let v ← content p
   match v with
-  | .ind t c _ _ =>
+  | .ind t c _ _ _ =>
     if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
     match arms[c]? with
     | some (_, a) => eval typed a
@@ -1949,7 +2063,7 @@ partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
       accessPath p
       let v ← content p
       if v == .bot then err s!"[Match] on {← ppPlace p}, which was moved out"
-      let (d, _) ← scrutType p ty
+      let (d, ps) ← scrutType p ty
       if arms.isEmpty && !d.ctors.isEmpty then
         err s!"a match with no arms on {← ppPlace p} : {d.name}, which has constructors"
       let needProof := (← get).cfg.subsingleton && !(← largeElim d)
@@ -1957,17 +2071,17 @@ partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
         if needProof && !(← getFlags).2 then err (subsingletonMsg d)
         k r R
       match v with
-      | .ind _ c _ _ => checkTail (arms[c]!).2 k'     -- counterfactual D42: a constructor value
+      | .ind _ c _ _ _ => checkTail (arms[c]!).2 k'     -- counterfactual D42: a constructor value
       | _ =>
         let saved ← get
-        for (_, a) in arms do
-          checkTail a k'
+        for ((_, a), c) in arms.zipIdx do
+          checkTail (← bindDataFields p d ps c a) k'     -- D49 (3)
           restoreKeep saved
       return
     accessPath p
     accessNeutralHead p
     match ← content p with
-    | .ind t c _ _ =>
+    | .ind t c _ _ _ =>
       if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
       match arms[c]? with
       | some (_, a) => checkTail a k

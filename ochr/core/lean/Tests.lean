@@ -71,7 +71,8 @@ def main : IO UInt32 := do
   IO.println "reasons: see the tables printed by `lake build`, or (run name program).show"
   IO.println ""
   IO.println "counterfactual ledger (one rule switched off → verdicts that flip):"
-  for (n, c) in switches do
+  for ((n, c), (k, ws)) in switches.zip rowClass do
     let fs := flips c
-    IO.println s!"  {n}: {if fs.isEmpty then "nothing" else ", ".intercalate fs}"
+    let wit := if ws.isEmpty then "" else s!" (witness: {", ".intercalate ws})"
+    IO.println s!"  [{k}{wit}] {n}: {if fs.isEmpty then "nothing" else ", ".intercalate fs}"
   return if passed == total && total == expectedTotal then 0 else 1

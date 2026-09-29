@@ -39,7 +39,8 @@ partial def Term.mentionsConst (n : String) : Term → Bool
   | .fix _ _ ds c _ b => ds.any (·.mentionsConst n) || c.mentionsConst n || b.mentionsConst n
   | .call f as _ => f.mentionsConst n || as.any (·.mentionsConst n)
   | .eq a b c | .id a b c => a.mentionsConst n || b.mentionsConst n || c.mentionsConst n
-  | .prim _ as | .ctor _ _ _ as | .tind _ as => as.any (·.mentionsConst n)
+  | .ctor _ _ _ ps as => ps.any (·.mentionsConst n) || as.any (·.mentionsConst n)
+  | .prim _ as | .tind _ as => as.any (·.mentionsConst n)
   | .matchInd _ _ as => as.any (·.2.mentionsConst n)
   | _ => false
 
@@ -47,6 +48,9 @@ partial def Term.mentionsConst (n : String) : Term → Bool
 def checkDef (d : Def) : M Unit := do
   if (d.cod :: d.doms).any (Term.mentionsConst d.name) then
     err s!"{d.name} occurs in its own type"
+  -- D48 (2): & only at the top of a declared type, never produced by computation
+  if (← get).cfg.refTop && !((d.cod :: d.doms).all Term.refTopOk && d.body.refsOk) then
+    err s!"[D48] {d.name}: & appears only as the whole declared type of a parameter, result or annotated term, never inside a type or produced by computation"
   if d.doms.isEmpty then
     -- a constant
     modify fun s => { s with env := #[{}], goal := none, recStack := [], recCands := [], refs := [] }
