@@ -778,8 +778,10 @@ partial def declOf (chk : Bool) (sc : List DeclInfo) (ns : List String) (t : Ter
     match ← declOf chk sc ns P with
     | .pi (.sort 0) => pure .prop
     | _ => pure .other
-  | .prim "trans" as | .prim "symm" as => for a in as do sub a
-                                          pure .prop
+  | .prim "trans" as | .prim "symm" as | .prim "rewrite" as | .prim "rewriteR" as =>
+    for a in as do sub a
+    pure .prop   -- D60: `rewrite h in u` is `J`, a proof
+  | .prim "split" [_, u] | .prim "splitArms" [_, u] => declOf chk sc ns u   -- D61: its body's
   | .prim "clone" [u] => declOf chk sc ns u
   | .prim _ as => for a in as do sub a
                   pure .other

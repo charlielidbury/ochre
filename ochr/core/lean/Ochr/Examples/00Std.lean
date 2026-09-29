@@ -70,27 +70,13 @@ ochr Std {
   -- reading one copies it, while reading a `Nat`, the structure in-place code walks and
   -- changes, moves it (D53).
   copy inductive Word := Zero | Succ(pred : Word)
-
-  -- The order on words, as a boolean (the trees' keys).
-  def Lt (a : Word) (b : Word) : Bool by a := (
-    match a {
-      Zero => match b {
-        Zero => false,
-        Succ _ => true,
-      },
-      Succ a' => match b {
-        Zero => false,
-        Succ b' => Lt(a', b'),
-      },
-    }
-  )
 }
 
 #eval IO.println (run "Std" Std).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Std" Std).allAsExpected
-#guard (run "Std" Std).count == 9
+#guard (run "Std" Std).count == 8
 
 /-! ## Fixtures
 

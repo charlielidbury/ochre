@@ -88,6 +88,20 @@ switch `genConsistent`). The size theorem needs one arithmetic lemma, proved in 
 ochr Trees uses Std {
   inductive Tree := Leaf | Node(l : Tree, v : Word, r : Tree)
 
+  -- The order on keys: words, which every read copies (D53).
+  def Lt (a : Word) (b : Word) : Bool by a := (
+    match a {
+      Zero => match b {
+        Zero => false,
+        Succ _ => true,
+      },
+      Succ a' => match b {
+        Zero => false,
+        Succ b' => Lt(a', b'),
+      },
+    }
+  )
+
   -- In-place insert.
   def InsertM (t : &Tree) (k : Word) : Unit by t := (
     match *t {
@@ -264,20 +278,27 @@ ochr Trees uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Trees" Trees).allAsExpected
-#guard (run "Trees" Trees).count == 13
+#guard (run "Trees" Trees).count == 14
 
 /-! ## The paper's trees: the pure insert runs the in-place one
 
 The paper (§2, Trees) defines the pure insert as `Add` is defined, by running the in-place
 one on a copy, and proves the size theorem about it. `InsertM`, `Insert` and `SizeInsert`
 are the paper's text, in its layout, with `Word` keys (D53: a key is only compared, so it is a
-copy); `Size` is the one it assumes, `Lt` is `Std`'s order on words, and `AddS`
+copy); `Lt` and `Size` are the ones it assumes, and `AddS`
 (`x + S y = S (x + y)`) is proved in place by bare recursion (`AddMS`) and transferred to
 `Add` by lending, as the prose says. The in-place insert is the pure one by definition
 (`InsertMIsInsert`, by `refl`). -/
 
 ochr InPlaceTrees uses Std {
   inductive Tree := Leaf | Node(l : Tree, v : Word, r : Tree)
+
+  def Lt (a : Word) (b : Word) : Bool by a := (
+    match a {
+      Zero => match b { Zero => false, Succ _ => true },
+      Succ a' => match b { Zero => false, Succ b' => Lt(a', b') },
+    }
+  )
 
   def InsertM (t : &Tree) (k : Word) : Unit by t :=
     match *t { Leaf          => *t := Node(Leaf, k, Leaf),
@@ -329,7 +350,7 @@ ochr InPlaceTrees uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "InPlaceTrees" InPlaceTrees).allAsExpected
-#guard (run "InPlaceTrees" InPlaceTrees).count == 9
+#guard (run "InPlaceTrees" InPlaceTrees).count == 10
 
 /-! ## Parameters: a polymorphic list
 

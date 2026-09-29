@@ -850,7 +850,7 @@ This follows DECISIONS D53, its amendments (a)–(h), the second amendment (`Wor
   - A place a block only reads is read in place (`inplace`), not consumed.
   - A part that some arm moves out is moved in on its own, at the move's granularity (`newHoles`: `q1.1`, not `q1`), while the rest of the place is still read in place.
 - **`clone(p)`** is built in: an erased read of a place, so the clone of `σ` is `σ`.
-- **`Word`.** `copy inductive Word := Zero | Succ(pred : Word)` and its boolean order `Lt` are in `Std`. The names avoid `Nat`'s `Z`/`S`, which are syntax; there are no `Word` numerals. The trees' keys are words. `ClosingOff`'s local order on `Nat` is renamed `LtN`.
+- **`Word`.** `copy inductive Word := Zero | Succ(pred : Word)` is in `Std`. The names avoid `Nat`'s `Z`/`S`, which are syntax; there are no `Word` numerals. The trees' keys are words, with each tree block's own `Lt` on words. `Std` does not export an order, because the arrays library's and the hash map's blocks already declare `Lt` as a proposition about indices.
 
 *Clones.* The suite's existing programs use 25 `clone`s, down from the study's 24 plus 8 new ones for the Fn rule, since `Word` removes the trees' six and `NotDead`'s one. They fall into three groups:
 - data used twice (7): `(clone(n), n)` twice, `UseDec`, `PickEarly` ×3, `Om`'s function value;
@@ -869,4 +869,4 @@ This follows DECISIONS D53, its amendments (a)–(h), the second amendment (`Wor
 - (c): completeness (`GhostRead`, `AddSub`…).
 - (e): completeness (`CallTwice`, `Twice`…, `Size`).
 
-53 rows: soundness 19, false lemma 1, model 4, policy 4, subsumed 4, cost 1, completeness 20. 547 verdicts.
+53 rows: soundness 19, false lemma 1, model 4, policy 4, subsumed 4, cost 1, completeness 20. 548 verdicts.

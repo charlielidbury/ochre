@@ -74,7 +74,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 
 | File | Covers | RULES | Declarations |
 |---|---|---|---|
-| `00Std` | `Std`: in-place and pure addition, adding zero does nothing, `TailM`, `Bool`, `List(A)`, `Box(A)`, the copy type `Word` and its order `Lt`; `Fixtures`: `Pick`, `Empty`, `U`/`V`; and the assertions for `Prelude` | §1, §3, §7 | 13 (+4) |
+| `00Std` | `Std`: in-place and pure addition, adding zero does nothing, `TailM`, `Bool`, `List(A)`, `Box(A)`, the copy type `Word`; `Fixtures`: `Pick`, `Empty`, `U`/`V`; and the assertions for `Prelude` | §1, §3, §7 | 12 (+4) |
 | `01Numbers` | evaluation in types, the pure theorem by the in-place lemma; matching on numbers; pairs; calls | §1, §3, §7 | 20 |
 | `02Borrows` | moving, copying and reborrowing; D53's moves, copy types, `clone`, ghosts, the Fn rule; argument order; the borrow checker ([Access], [Drop]) | §3 | 32 |
 | `03ReturnedBorrows` | functions returning a borrow (`TailM`); a returned borrow must come from a borrow argument (D44) | §1, §3 [Close] | 20 |
@@ -84,14 +84,14 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `07Recursion` | `by x`, entry-value recursion, induction hypotheses in the caller's environment; typing a sealed program keeps the [Rec] state | §5 [Def], [Rec] | 29 |
 | `08CaseSplits` | [Split], dependent matching on a computed type, generalising sealed programs, scrutinee types, global generalisation records | §5 [Split] | 18 |
 | `09Functions` | opaque functions, closures, Π-types, comparing functions by observation (D30, D38, D48 (3)); a function type's class and row (D54) | P1, §1, §4 | 55 |
-| `10Inductives` | lists, binary search trees (keys are `Word`s) (and the paper's trees, whose pure insert runs the in-place one), parameters, strict positivity | §8 | 74 |
+| `10Inductives` | lists, binary search trees (keys are `Word`s) (and the paper's trees, whose pure insert runs the in-place one), parameters, strict positivity | §8 | 76 |
 | `11Propositions` | `False`, `True`, `And`, matching on proofs by type, a stuck zero-arm match (D58), subsingleton elimination | §1, §8 | 64 |
 | `12CurrentState` | proofs about the current, mutated state (E5) | §7 | 14 |
 | `13Erasure` | erased terms run on a private copy, confinement, erasure decided by syntax | P2 | 58 |
 | `14Universes` | `Prop : Type`, no `Type : Type`, no cumulativity, why `&Type` is refused; sorts are syntactic (D55, reviewer-4's programs) | preamble, P2 | 25 |
 | `15BorrowTypes` | what may be borrowed and where `&` may appear (D48) | §1 | 16 |
 
-547 declarations in all, the `Prelude`'s 4 included. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+548 declarations in all, the `Prelude`'s 4 included. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 

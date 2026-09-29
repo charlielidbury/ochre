@@ -268,11 +268,11 @@ ochr ClosingOff uses Std, Fixtures {
     }
   )
 
-  def LtN (a : Nat) (b : Nat) : Prop := Le(S a, b)
+  def Lt (a : Nat) (b : Nat) : Prop := Le(S a, b)
 
   inductive Dec (P : Prop) (Q : Prop) := Yes(h : P) | No(k : Q)
 
-  def LeDec (a : Nat) (b : Nat) : Dec(Le(a, b), LtN(b, a)) by a := (
+  def LeDec (a : Nat) (b : Nat) : Dec(Le(a, b), Lt(b, a)) by a := (
     match a {
       Z => Yes(refl),
       S a' => match b {
