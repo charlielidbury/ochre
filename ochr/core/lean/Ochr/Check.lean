@@ -44,6 +44,133 @@ partial def Term.mentionsConst (n : String) : Term → Bool
   | .matchInd _ _ as => as.any (·.2.mentionsConst n)
   | _ => false
 
+/-! ### D55: sorts are syntactic
+
+Every term written where a type is expected must have a *declared* type (read from the
+declared types of its heads, without normalising: the D35 notion) that is syntactically a
+sort. `DeclInfo` is what a declared type says, read off its term: a sort, a Π-type (with
+what its codomain says), or anything else. -/
+
+inductive DeclInfo where
+  | sort (l : Nat)        -- the declared type is the sort `l` (`0` = `Prop`): the term is a type
+  | pi (cod : DeclInfo)   -- the declared type is a Π-type whose codomain says `cod`
+  | ref (A : DeclInfo)    -- the declared type is `&A`
+  | other
+deriving BEq, Inhabited
+
+/-- What a type term says, read syntactically. -/
+partial def Term.asDecl : Term → DeclInfo
+  | .sort l | .val (.sort l) => .sort l
+  | .pi _ _ c => .pi c.asDecl
+  | .val (.tPi _ (.pi _ _ c)) => .pi c.asDecl
+  | .ref A => .ref A.asDecl
+  | _ => .other
+
+/-- What a type value says (a global's stored declared type). -/
+def Value.asDecl : Value → DeclInfo
+  | .sort l => .sort l
+  | .tPi _ (.pi _ _ c) => .pi c.asDecl
+  | .tRef (.sort l) => .ref (.sort l)
+  | _ => .other
+
+/-- The declared type of a place: a variable's, or through a borrow the borrowed type's. -/
+def placeDecl (sc : List DeclInfo) : Place → DeclInfo
+  | .var i => sc.getD i .other
+  | .deref q => match placeDecl sc q with
+    | .ref d => d
+    | _ => .other
+  | _ => .other
+
+mutual
+/-- The declared type of `t` in a scope giving each variable's (`sc`, de Bruijn order; `ns`
+its name, for messages), checking every type position inside `t` (D55). -/
+partial def declOf (sc : List DeclInfo) (ns : List String) (t : Term) : M DeclInfo := do
+  let sub (u : Term) : M Unit := discard (declOf sc ns u)
+  match t with
+  | .place p => pure (placeDecl sc p)
+  | .borrow _ | .zero | .tt => pure .other
+  | .assign _ u | .succ u | .fst u | .snd u => sub u; pure .other
+  | .letIn h u w => do let d ← declOf sc ns u; declOf (d :: sc) (h.name :: ns) w
+  | .seq u w => sub u; declOf sc ns w
+  | .matchNat _ z s => do
+    let a ← declOf sc ns z
+    let b ← declOf sc ns s
+    pure (if a == b then a else .other)
+  | .matchInd _ _ arms => do
+    let ds ← arms.mapM fun (_, a) => declOf sc ns a
+    pure (match ds with
+      | d :: rest => if rest.all (· == d) then d else .other
+      | [] => .other)
+  | .const n =>     -- an unknown name is the machine's error, reported where it is met
+    tryCatch (do pure (← lookupGlobal n).ty.asDecl) fun _ => pure (.sort 1)
+  | .val v => match v with
+    | .sort l => pure (.sort (l + 1))
+    | .tNat | .tUnit | .tRef _ | .tInd .. | .tEq .. | .tPi .. => pure (.sort (← sortOf v))
+    | .gfn n => pure (← lookupGlobal n).ty.asDecl
+    | .clo _ (.fix _ _ _ c _ _) => pure (.pi c.asDecl)
+    | _ => pure .other
+  | .sort l => pure (.sort (l + 1))
+  | .nat | .unit => pure (.sort 1)
+  | .ref A => discard (typePos sc ns A); pure (.sort 1)
+  | .pi hs ds c => do
+    let (sc', ns', l) ← telescope sc ns hs ds
+    let lc ← typePos sc' ns' c
+    pure (.sort (if lc == 0 then 0 else max l lc))
+  | .fix self hs ds c _ body => do
+    let (sc', ns', _) ← telescope sc ns hs ds
+    discard (typePos sc' ns' c)
+    -- the body sees the parameters, then `self`, then the enclosing scope
+    let scB := (ds.map Term.asDecl).reverse ++ (DeclInfo.pi c.asDecl :: sc)
+    let nsB := (hs.map (fun (h : Hint) => h.name)).reverse ++ (self.name :: ns)
+    discard (declOf scB nsB body)
+    pure (DeclInfo.pi c.asDecl)
+  | .call f as _ => do
+    let df ← declOf sc ns f
+    for a in as do sub a
+    pure (match df with | .pi r => r | _ => .other)
+  | .eq A a b | .id A a b => do
+    discard (typePos sc ns A); sub a; sub b; pure (.sort 0)
+  | .cong f h => sub f; sub h; pure .other
+  | .ascribe u A => do discard (typePos sc ns A); sub u; pure A.asDecl
+  | .prim "J" [A, a, b, P, h, u] => do
+    discard (typePos sc ns A)
+    for x in [a, b, h, u] do sub x
+    let dP ← declOf sc ns P
+    pure (match dP with | .pi r => r | _ => .other)
+  | .prim _ as => for a in as do sub a
+                  pure .other
+  | .tind n as => do
+    for a in as do discard (typePos sc ns a)
+    tryCatch (do pure (.sort (← lookupInd n).sort)) fun _ => pure (.sort 1)
+  | .ctor _ _ _ ps as => do
+    for p in ps do discard (typePos sc ns p)
+    for a in as do sub a
+    pure .other
+
+/-- A term written where a type is expected: its declared type must be a sort (D55);
+returns the sort. -/
+partial def typePos (sc : List DeclInfo) (ns : List String) (T : Term) : M Nat := do
+  match ← declOf sc ns T with
+  | .sort l => pure l
+  | _ =>
+    if (← get).cfg.sortsSyntactic then
+      err s!"[D55] {T.pp ns} is written where a type is expected, but its declared type is not a sort (it is a type only by computation)"
+    else pure 1
+
+/-- A telescope of binder types, each in the scope of the earlier ones: the extended
+scope, and the largest of their sorts. -/
+partial def telescope (sc : List DeclInfo) (ns : List String) (hs : List Hint) (ds : List Term) :
+    M (List DeclInfo × List String × Nat) := do
+  let mut sc := sc
+  let mut ns := ns
+  let mut l := 0
+  for (h, d) in hs.zip ds do
+    l := max l (← typePos sc ns d)
+    sc := d.asDecl :: sc
+    ns := h.name :: ns
+  pure (sc, ns, l)
+end
+
 /-- Check one definition and add it to the globals. -/
 def checkDef (d : Def) : M Unit := do
   if (d.cod :: d.doms).any (Term.mentionsConst d.name) then
@@ -51,9 +178,11 @@ def checkDef (d : Def) : M Unit := do
   -- D48 (2): & only at the top of a declared type, never produced by computation
   if (← get).cfg.refTop && !((d.cod :: d.doms).all Term.refTopOk && d.body.refsOk) then
     err s!"[D48] {d.name}: & appears only as the whole declared type of a parameter, result or annotated term, never inside a type or produced by computation"
+  -- D55: every type position, in the types and in the body
+  discard (declOf [] [] (.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body))
   if d.doms.isEmpty then
     -- a constant
-    modify fun s => { s with env := #[{}], goal := none, recStack := [], recCands := [], refs := [] }
+    modify fun s => { s with env := #[{}], goal := none, recStack := [], refs := [] }
     let goal ← evalType d.cod
     let (v, T) ← eval true d.body goal     -- the goal: a hint for a constructor's parameters
     unless (← match T with | some T => conv T goal | none => pure false) do
@@ -102,6 +231,10 @@ def checkInd (d : IndDecl) : M Unit := do
       err s!"{n}: the constructor name {cn} is already used (constructors are resolved by name)"
   if d.sort > 1 then err s!"{n}: an inductive type is in Prop or Type"
   modify fun s => { s with env := #[{}], inds := s.inds ++ [{ d with ctors := [] }] }
+  -- D55: parameter and field types are type positions
+  let (sc, ns, _) ← telescope [] [] (d.params.map (·.1)) (d.params.map (·.2))
+  for (_, fields) in d.ctors do
+    for (_, FT) in fields do discard (typePos sc ns FT)
   for (h, PT) in d.params do
     let A ← evalType PT
     pushBind h (some A) (← genericValue A)

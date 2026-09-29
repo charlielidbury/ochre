@@ -21,9 +21,11 @@ remove:
 * `[K2]` `SliceOf` should be unsized: runtime code could only borrow it.
 * `[K3]` `SliceOf`, `ArrayOf` and `Cell` should be abstract: runtime code could not match on
   them, and the `[native]` functions would be linked to native code.
+* `[K4]` A struct cannot yet have a field of type `Array(E, cap)` (a type function applied to a
+  parameter, D36), so the hashmap takes the model type as a parameter.
 * `[K6]` Quicksort recurses on fuel; with recursion on a measure it recurses on the length.
-* `[⋆]` A checker incompleteness ("cannot infer the type of the value ⋆") is avoided by passing
-  a value through a parameter.
+* `[checker]` Two proofs name a conjunction's parts (`AndI`) where `⟨p, q⟩` would do: in
+  `AllGeJoin` and `SortedJoin` the inferred conjuncts are typed with a dead arm's refinement.
 
 Defined in D57 and notes/arrays-library.md. -/
 
@@ -679,12 +681,8 @@ ochr ArrayLemmas uses Arrays {
 
   -- ## Element borrows
   -- Writing through a borrow of element `i` is `Set` (in place is functional), by the same
-  -- bare recursion as `AddMEq`. [checker] This should be accepted, and is rejected by a
-  -- checker incompleteness: `GetMut`'s unreachable arm `Z => match h {}` yields ⋆ for the
-  -- borrow, and refining `n := Z` (a dead branch: `h : False`) re-runs the goal into that arm,
-  -- which then writes through ⋆ ("no such place *r"). The branch is dead, so the error should
-  -- not be. When the checker is fixed this verdict flips and the guard below says so.
-  reject def GetMutSet (n : Nat) (s : &Slice(Nat, n)) (i : Nat) (w : Nat) (h : Lt(i, n)) :
+  -- bare recursion as `AddMEq`.
+  def GetMutSet (n : Nat) (s : &Slice(Nat, n)) (i : Nat) (w : Nat) (h : Lt(i, n)) :
       Id Unit (let r = GetMut(n, s, i, h); *r := w) (Set(Nat, n, s, i, w, h)) by i := (
     match n {
       Z => match h {},
@@ -1212,15 +1210,16 @@ ochr Quicksort uses ArrayLemmas {
     }
   )
 
-  -- Taking a conjunction apart, and building one with its conjuncts named. [⋆] `⟨p, q⟩`,
-  -- whose conjuncts are inferred from the expected type, trips the checker incompleteness in
-  -- `AllGeJoin` and `SortedJoin`; naming them avoids it.
+  -- Taking a conjunction apart.
   def AndL (P : Prop) (Q : Prop) (h : P ∧ Q) : P := match h { Intro(p, q) => p }
   def AndR (P : Prop) (Q : Prop) (h : P ∧ Q) : Q := match h { Intro(p, q) => q }
 
+  -- [checker] A conjunction built with its conjuncts named. `⟨p, q⟩` infers them from the
+  -- expected type, and in `AllGeJoin` and `SortedJoin` (after the dead arm `n := Z`) that
+  -- inference sees a type from the dead arm (`SliceOf(CellsEnd)`); naming them avoids it.
   def AndI (P : Prop) (Q : Prop) (p : P) (q : Q) : P ∧ Q := ⟨p, q⟩
 
-  -- variant A: no annotation, explicit And parameters via AndI
+
   def AllGeJoin (n : Nat) (k : Nat) (l : Slice(Nat, k)) (r : Slice(Nat, Sub(n, k))) (h : Le(k, n)) (a : Nat)
       (hl : AllGe(k, l, a)) (hr : AllGe(Sub(n, k), r, a)) : AllGe(n, JoinS(Nat, n, k, l, r), a) by k := (
     match k {
@@ -1362,8 +1361,7 @@ ochr Quicksort uses ArrayLemmas {
           MkC(x, t) => (
             let d = LeDec(x, p);
             match d {
-              Yes(hle) => AndI(Le(x, p), AllLe(m, t, p), hle,
-                AllLeOfCounts(m, t, p, λ(q : Nat) (hq : Lt(p, q)) : Eq Nat (Count(q, m, t)) 0 => CountTailZero(q, m, x, t, hz(q, hq)))),
+              Yes(hle) => ⟨hle, AllLeOfCounts(m, t, p, λ(q : Nat) (hq : Lt(p, q)) : Eq Nat (Count(q, m, t)) 0 => CountTailZero(q, m, x, t, hz(q, hq)))⟩,
               No(nk) => (
                 let e1 = hz(x, nk);
                 let r1 = EqbRefl(x);
@@ -1389,8 +1387,7 @@ ochr Quicksort uses ArrayLemmas {
           MkC(x, t) => (
             let d = LeDec(p, x);
             match d {
-              Yes(hle) => AndI(Le(p, x), AllGe(m, t, p), hle,
-                AllGeOfCounts(m, t, p, λ(q : Nat) (hq : Lt(q, p)) : Eq Nat (Count(q, m, t)) 0 => CountTailZero(q, m, x, t, hz(q, hq)))),
+              Yes(hle) => ⟨hle, AllGeOfCounts(m, t, p, λ(q : Nat) (hq : Lt(q, p)) : Eq Nat (Count(q, m, t)) 0 => CountTailZero(q, m, x, t, hz(q, hq)))⟩,
               No(nk) => (
                 let e1 = hz(x, nk);
                 let r1 = EqbRefl(x);
@@ -1427,27 +1424,6 @@ ochr Quicksort uses ArrayLemmas {
     }
   )
 
-  -- [⋆] `rec` permutes a piece, as a function of `q`. A helper, so that the λ captures a
-  -- parameter rather than a piece that embeds a bounds proof.
-  def PermOf (n : Nat) (rec : Π(n : Nat) (s : &Slice(Nat, n)). Unit)
-      (ihP : Π(n : Nat) (s : &Slice(Nat, n)) (q : Nat). (let old = *s; Eq Nat (Count(q, n, (rec(n, &*s); *s))) (Count(q, n, old))))
-      (t : Slice(Nat, n)) : (Π(q : Nat). Eq Nat (Count(q, n, (let c = t; rec(n, &c); c))) (Count(q, n, t))) := (
-    λ(q : Nat) : Eq Nat (Count(q, n, (let c = t; rec(n, &c); c))) (Count(q, n, t)) => (let c = t; ihP(n, &c, q))
-  )
-
-  -- [⋆] The bounds on a piece survive `rec`, stated for a piece given as a parameter.
-  def AllLeRec (n : Nat) (rec : Π(n : Nat) (s : &Slice(Nat, n)). Unit)
-      (ihP : Π(n : Nat) (s : &Slice(Nat, n)) (q : Nat). (let old = *s; Eq Nat (Count(q, n, (rec(n, &*s); *s))) (Count(q, n, old))))
-      (t : Slice(Nat, n)) (p : Nat) (h : AllLe(n, t, p)) : AllLe(n, (let c = t; rec(n, &c); c), p) := (
-    AllLePerm(n, t, (let c = t; rec(n, &c); c), p, h, PermOf(n, rec, ihP, t))
-  )
-
-  def AllGeRec (n : Nat) (rec : Π(n : Nat) (s : &Slice(Nat, n)). Unit)
-      (ihP : Π(n : Nat) (s : &Slice(Nat, n)) (q : Nat). (let old = *s; Eq Nat (Count(q, n, (rec(n, &*s); *s))) (Count(q, n, old))))
-      (t : Slice(Nat, n)) (p : Nat) (h : AllGe(n, t, p)) : AllGe(n, (let c = t; rec(n, &c); c), p) := (
-    AllGePerm(n, t, (let c = t; rec(n, &c); c), p, h, PermOf(n, rec, ihP, t))
-  )
-
   -- ## Sorting
   -- The recursive step sorts the view, given the partition's facts about it (the pivot `x`
   -- ends at `k`; everything before is at most `x`, everything after at least `x`) and a
@@ -1475,16 +1451,19 @@ ochr Quicksort uses ArrayLemmas {
         let one = MkSlice(MkC(x, MkSlice(End)));
         -- the left part: sorted by `rec`, and still at most `x` because `rec` permutes
         let sl2 : Sorted(k, l2) = (let c = tk; ihS(k, &c, hk));
-        let bl2 : AllLe(k, l2, x) = AllLeRec(k, rec, ihP, tk, x, hL);
+        let bl2 : AllLe(k, l2, x) = AllLePerm(k, tk, l2, x, hL,
+          λ(q : Nat) : Eq Nat (Count(q, k, l2)) (Count(q, k, tk)) => (let c = tk; ihP(k, &c, q)));
         -- the right part: likewise, at least `x`
         let srr2 : Sorted(Sub(Sub(S m, k), 1), rr2) = (let c = rr; ihS(Sub(Sub(S m, k), 1), &c, SubOneLe(m, k)));
-        let brr2 : AllGe(Sub(Sub(S m, k), 1), rr2, x) = AllGeRec(Sub(Sub(S m, k), 1), rec, ihP, rr, x, hR);
+        let brr2 : AllGe(Sub(Sub(S m, k), 1), rr2, x) = AllGePerm(Sub(Sub(S m, k), 1), rr, rr2, x, hR,
+          λ(q : Nat) : Eq Nat (Count(q, Sub(Sub(S m, k), 1), rr2)) (Count(q, Sub(Sub(S m, k), 1), rr)) =>
+            (let c = rr; ihP(Sub(Sub(S m, k), 1), &c, q)));
         -- the pivot piece is `[x]`
         let spv : Sorted(1, pv) = J(Slice(Nat, 1), one, pv, λ(z : Slice(Nat, 1)) : Prop => Sorted(1, z), hP, refl);
         let lpv : AllLe(1, pv, x) = J(Slice(Nat, 1), one, pv, λ(z : Slice(Nat, 1)) : Prop => AllLe(1, z, x), hP,
-          AndI(Le(x, x), ⊤, LeRefl(x), refl));
+          ⟨LeRefl(x), refl⟩);
         let gpv : AllGe(1, pv, x) = J(Slice(Nat, 1), one, pv, λ(z : Slice(Nat, 1)) : Prop => AllGe(1, z, x), hP,
-          AndI(Le(x, x), ⊤, LeRefl(x), refl));
+          ⟨LeRefl(x), refl⟩);
         -- glue: pivot and right part, then left part and the rest
         let sx2 : Sorted(Sub(S m, k), x2) = SortedJoin(Sub(S m, k), 1, pv, rr2, h1, x, spv, lpv, srr2, brr2);
         let gx2 : AllGe(Sub(S m, k), x2, x) = AllGeJoin(Sub(S m, k), 1, pv, rr2, h1, x, gpv, brr2);
@@ -1571,4 +1550,4 @@ ochr Quicksort uses ArrayLemmas {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Quicksort" Quicksort).allAsExpected
-#guard (run "Quicksort" Quicksort).count == 49
+#guard (run "Quicksort" Quicksort).count == 46

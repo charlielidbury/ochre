@@ -254,6 +254,7 @@ ochr ErasureBySyntax uses Fixtures {
   -- A closed-off match erased because its computed type is a proposition disagrees with the
   -- direct path, where `f`'s calls are classed by syntax: `V(Z)` computes to `⊤` but is not
   -- declared a proposition, so `f(&c)` runs.
+  -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
   reject def LieG (m : Nat) (g : Π(y : Nat). V(Z)) :
       Id Nat
         (
@@ -266,9 +267,11 @@ ochr ErasureBySyntax uses Fixtures {
     refl
   )
 
+  -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
   reject def BoomG : Eq Nat (S Z) Z := LieG(Z, λ(y : Nat) : V(Z) => refl)
 
-  def TruthG (m : Nat) (g : Π(y : Nat). V(Z)) :
+  -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
+  reject def TruthG (m : Nat) (g : Π(y : Nat). V(Z)) :
       Id Nat
         (
           let c = Z;
@@ -307,7 +310,9 @@ ochr ErasureBySyntax uses Fixtures {
   -- Whether a variable is a proof is read from its declaration, not from its value: `g(0)`
   -- is `⋆` at an instance but a sealed program at the generic call (D42, switch `leafRule`;
   -- appendix note 3).
-  def LieH (g : Π(y : Nat). V(Z)) : Id Nat (let c = Z; let h = g(0); (c := S Z; h); c) (S Z) := refl
+  -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
+  reject def LieH (g : Π(y : Nat). V(Z)) : Id Nat (let c = Z; let h = g(0); (c := S Z; h); c) (S Z) := refl
+  -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
   reject def BoomH : Eq Nat Z (S Z) := LieH(λ(y : Nat) : V(Z) => refl)
 }
 

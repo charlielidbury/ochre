@@ -460,5 +460,11 @@ For after the soundness batch (D54–D56). Each rule is read from syntax and dec
 - **K6: [Rec-<].**
   - `fix f (x̄ : Ā) : B by xⱼ < := t` with `Aⱼ = Nat`. Every recursive call is written `f(ū) by h`, where `h` is an erased proof whose type converts to `Lt(uⱼ, σⱼ)`, and `σⱼ` is `xⱼ`'s entry value as refined.
   - `Lt` is the library's, pinned as `True` and `And` are.
-  - It is sound by translation to structural recursion on a bound, and machine unfolding strictly decreases a `Nat`.
+  - **Machine guard** (from arrays-primitive §1.10). A `<`-recursive call is unfolded only when its argument in position `j` is structurally below the caller's entry value, i.e. a concrete `Nat` smaller than it. Otherwise it is sealed, as a stuck call. The decrease proof is erased and never checked at run time. Without the guard, `F(n, h : False) := F(n, h) by Absurd(h)` would unfold forever during conversion. With it, unfolding is monotone and fail-safe: a call the guard seals is merely left stuck.
+  - It is sound by translation to structural recursion on a bound.
   - Removes `QS`'s fuel: `QS(n, s) by n <` recurses at `k` by `hk` and at `m - k` by `SubOneLe`, so `RecWith` and the fuel bound in `QSSorted` go too.
+- **K7: dependent fields, in two halves** (from arrays-primitive §1.11).
+  1. **Data index fields first.** In `Vec(T) := Mk(n : Nat, items : Array(T, n))`, the earlier field `n` is an index of a later field's type. [Frozen] freezes only `n`; `&v.items` stays free, because nothing reached through it can change the length.
+  2. **Proof fields later, if ever.** A proof field (`h : Sorted(xs)`) freezes the payload it talks about. That brings back DLLBC's packed-borrow walls.
+
+  Injectivity (D52) decomposes a constructor equation only while the index fields on both sides are convertible.

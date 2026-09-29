@@ -198,13 +198,39 @@ ochr Propositions uses Std {
   reject def TwoAtLie (y : &Nat) : Eq Nat (Two(Id Unit (AddM(y, 0)) (), ⊤, ⟨AddMZero(y), refl⟩)) 3 := (
     TwoIs(Id Unit (AddM(y, 0)) (), ⊤, ⟨AddMZero(y), refl⟩)
   )
+
+  -- A match with no arms is unreachable in a closed run, but an open one reaches it when a
+  -- refinement makes a hypothesis false: `GetZIs` splits `*x`, and in its `S` arm the sealed
+  -- `GetZ(&*x, h)` is re-run with `*x` a successor. Outside a proof position such a match is
+  -- stuck, not `⋆` (D58), so `*q` stays a sealed program and the arm, `match h {}`, checks.
+  -- As `⋆` (switch `zeroArmStuck`), `*q` would read through a `⋆`, a type error.
+  def IsZ (n : Nat) : Prop := (
+    match n {
+      Z => ⊤,
+      S _ => False,
+    }
+  )
+
+  def GetZ (x : &Nat) (h : IsZ(*x)) : &Nat := (
+    match *x {
+      Z => x,
+      S _ => match h {},
+    }
+  )
+
+  def GetZIs (x : &Nat) (h : IsZ(*x)) : Id Nat (let q = GetZ(&*x, h); *q) 0 := (
+    match *x {
+      Z => refl,
+      S _ => match h {},
+    }
+  )
 }
 
 #eval IO.println (run "Propositions" Propositions).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Propositions" Propositions).allAsExpected
-#guard (run "Propositions" Propositions).count == 42
+#guard (run "Propositions" Propositions).count == 45
 
 /-! ## Subsingleton elimination
 
@@ -267,7 +293,8 @@ ochr Subsingletons uses Std, Fixtures {
   -- A match that cannot pick an arm is a proof, erased wherever it runs (RULES P2). `EffL`'s
   -- body is such a match, so its calls write nothing. (Its own check runs each arm's write
   -- in tail position, where confinement does not apply: see `Erasure`.)
-  def EffL (x : &Nat) (h : Or(⊤, ⊤)) : V(Z) := (
+  -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
+  reject def EffL (x : &Nat) (h : Or(⊤, ⊤)) : V(Z) := (
     match h {
       Inl(p) => (
         *x := 1;
@@ -280,11 +307,13 @@ ochr Subsingletons uses Std, Fixtures {
     }
   )
 
-  def EffLNoop (x : &Nat) (h : Or(⊤, ⊤)) : Id Unit (let t = EffL(x, h); ()) () := refl
+  -- Rejected since D55, with `EffL`.
+  reject def EffLNoop (x : &Nat) (h : Or(⊤, ⊤)) : Id Unit (let t = EffL(x, h); ()) () := refl
   reject def EffLOne (x : &Nat) (h : Or(⊤, ⊤)) : Id Unit (let t = EffL(x, h); ()) (*x := 1) := refl
 
   -- Inline, outside tail position, the arms are erased terms, and writing a place that
   -- outlives them is an error (D41).
+  -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
   reject def EffInline (x : &Nat) (h : Or(⊤, ⊤)) : Nat := (
     let t : V(Z) = match h {
       Inl(p) => (

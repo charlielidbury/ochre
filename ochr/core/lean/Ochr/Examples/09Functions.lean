@@ -17,7 +17,7 @@ Defined in RULES P1, §1 (Π, `fix`, calls), §3 [Call] and §4. -/
 
 open Ochr.Test
 
-ochr Functions uses Std {
+ochr Functions uses Std, Fixtures {
   -- ## Opaque functions
   -- `f` has no borrow argument, so it cannot write anything: its calls return `()` and
   -- `Twice(f)` does nothing.
@@ -141,10 +141,78 @@ ochr Functions uses Std {
     let d = Z;
     TY(&c, &d)
   )
+
+  -- A function's erasure class and [Close] row are part of its type (D54). `H` returns a
+  -- `P0`, which is `Prop` but not written as a sort, so `H` returns data and its calls run,
+  -- while calls of a `Π(x : &Nat). Prop` return types and are erased. Were the two types
+  -- convertible (switch `classInType`), `RunGGen`'s generic call would erase `g(&c)` and its
+  -- instance at `H` would run it, and `Boom` would be a closed proof of `False`, as would
+  -- `BoomI` through an identity function.
+  def P0 : Type := Prop
+
+  def H (x : &Nat) : P0 := (
+    *x := S Z;
+    ⊤
+  )
+
+  def RunG (f : Π(x : &Nat). Prop) : Nat := (
+    let c = Z;
+    let g = f;
+    g(&c);
+    c
+  )
+
+  def RunGGen (f : Π(x : &Nat). Prop) : Id Nat (RunG(f)) Z := refl
+  reject def Boom : False := RunGGen(H)
+  reject def RunGH : Id Nat (RunG(H)) 1 := refl
+
+  def IdF (f : Π(x : &Nat). Prop) : (Π(x : &Nat). Prop) := f
+
+  def RunI (f : Π(x : &Nat). Prop) : Nat := (
+    let c = Z;
+    IdF(f)(&c);
+    c
+  )
+
+  def RunIGen (f : Π(x : &Nat). Prop) : Id Nat (RunI(f)) Z := refl
+  reject def BoomI : False := RunIGen(H)
+
+  -- The same for the class "returns proofs", with a codomain `V(Z)` that computes to `⊤`.
+  -- D54 alone rejects `BoomP` at the argument; since D55 the codomain cannot even be written
+  -- (`V(Z)`'s declared type `U(Z)` is not a sort).
+  def RunP (f : Π(x : &Nat). ⊤) : Nat := (
+    let c = Z;
+    let g = f;
+    g(&c);
+    c
+  )
+
+  def RunPGen (f : Π(x : &Nat). ⊤) : Id Nat (RunP(f)) Z := refl
+  reject def WV (u : Unit) : V(Z) := refl
+  reject def BoomP : False := RunPGen(λ(x : &Nat) : V(Z) => (*x := S Z; WV(())))
+
+  -- [Close]'s `Unit` row is not part of the type: `UU(n)` is `Unit` only by computation, so
+  -- `H2`'s stuck calls return a sealed program where a `Π(x : &Nat). Unit`'s return `()`. The
+  -- two paths give `RunUH`'s statement different types, both true, since `Unit` has one
+  -- value (D54 compares only whether a function returns a borrow).
+  def UU (n : Nat) : Type := (
+    match n {
+      Z => Unit,
+      S _ => Unit,
+    }
+  )
+
+  def H2 (x : &Nat) : UU(Z) := (
+    *x := S Z;
+    ()
+  )
+
+  def RunU (f : Π(x : &Nat). Unit) (n : Nat) : Id Unit (let c = n; f(&c)) () := refl
+  def RunUH (n : Nat) : ⊤ := RunU(H2, n)
 }
 
 #eval IO.println (run "Functions" Functions).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Functions" Functions).allAsExpected
-#guard (run "Functions" Functions).count == 36
+#guard (run "Functions" Functions).count == 54
