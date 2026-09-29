@@ -42,7 +42,8 @@ def mkCase (seed i : Nat) (fuel : Nat := 200000) : Case × Rng := Id.run do
   let ((lib, extras), g1) := phase1.run { rng := caseRng seed i }
   let ok := acceptedNames {} fuel ((Block.decls Prelude) ++ lib.filterMap libDecl ++ extras.map (·.1))
   let extras := extras.filter fun (d, _) => ok.contains d.name
-  let fns := libFns.filter (fun f => ok.contains f.name) ++ extras.map (·.2)
+  -- attack templates are offered even when the default rules reject them (live with a switch off)
+  let fns := libFns.filter (fun f => ok.contains f.name || (f.attack && lib.contains f.name)) ++ extras.map (·.2)
   let ((ps, A, lhs, rhs), g2) := (genStmt fns (indsOf lib)).run g1
   -- a quarter of the cases also carry a conversion pair
   let mutate (b : STerm) : List STerm := [.seq .unitLit b, .letIn "z9" none (.num 0) b] ++ shrinkT b

@@ -58,6 +58,8 @@ inductive GTy where
   | pf (P : PT)
   | fam (a : STerm)
   | fn (ps : List GTy) (r : GTy)
+  | alias (s : STerm) (key : String) (as : GTy)  -- a type written `s` that evaluates to `as` (D54/D55:
+                                                 -- `P0` for `Prop`, `UU(Z)` for `Unit`, `V(Z)` for `⊤`)
 deriving Inhabited
 
 /-- A proof of `⊤` (the v1 generator's only proof type). -/
@@ -70,9 +72,18 @@ partial def GTy.beq : GTy → GTy → Bool
   | .ref a, .ref b => a.beq b
   | .fam _, .fam _ => true
   | .fn ps r, .fn qs s => ps.length == qs.length && (ps.zip qs).all (fun (a, b) => a.beq b) && r.beq s
+  | .alias _ k _, .alias _ k' _ => k == k'
   | _, _ => false
 
 instance : BEq GTy := ⟨GTy.beq⟩
+
+/-- A type up to evaluation: an alias is the type it evaluates to (D54/D55: `P0` and `Prop`,
+`UU(Z)` and `Unit`, `V(Z)` and `⊤` denote the same thing but may differ in class). -/
+partial def GTy.evalKey : GTy → GTy
+  | .alias _ _ a => a.evalKey
+  | .fn ps r => .fn (ps.map GTy.evalKey) r.evalKey
+  | .ref t => .ref t.evalKey
+  | t => t
 
 /-- The surface type of a generator type. -/
 partial def GTy.surface : GTy → STerm
@@ -85,6 +96,7 @@ partial def GTy.surface : GTy → STerm
   | .pf P => P.surface
   | .fam a => .call (.ident "U") [a]
   | .fn ps r => .pi ((ps.zipIdx).map fun (p, i) => (s!"z{i}", p.surface)) r.surface
+  | .alias s _ _ => s
 
 /-- Data types (borrow-free, first-order): what can be matched, borrowed and observed. -/
 def GTy.isData : GTy → Bool
@@ -103,6 +115,10 @@ structure LibFn where
   ret : GTy
   famArg : Option Nat := none
   deps : List String := []
+  attack : Bool := false   -- offered to the generator even when the default rules reject it
+                           -- (a reviewer's attack shape, live only with a rule switched off)
+  wrapper : Bool := false  -- an identity on functions (`IdFP(f)(&c)`: D54's wrapper variant)
+deriving Inhabited
 
 ochr FuzzLib {
   inductive B2 := F | T
@@ -137,11 +153,33 @@ ochr FuzzLib {
   def WriteIf (x : &Nat) (h : ⊤ ∧ ⊤) : Unit := match h { Intro(a, b) => *x := 1 }
   def OrProof (h : Or(⊤, ⊤)) : ⊤ := match h { Inl(p) => p, Inr(q) => q }
   def ExProof (h : ExN) : ⊤ := match h { Wit(n, e) => match n { Z => refl, S m => e } }
-  def EffL (x : &Nat) (h : Or(⊤, ⊤)) : V(Z) := match h { Inl(p) => (*x := 1; refl), Inr(q) => (*x := 2; refl) }
+  def EffL (x : &Nat) (h : Or(⊤, ⊤)) : ⊤ := match h { Inl(p) => (*x := 1; refl), Inr(q) => (*x := 2; refl) }
   def Clo (n : Nat) (y : Nat) : Nat := let f = (λ(z : Nat) : Nat => Add(n, z)); f(y)
   def CapN (x : &Nat) : Nat := let n = *x; let f = (λ(z : Nat) : Nat => n); AddM(&*x, 1); f(0)
   def PropIf (n : Nat) : Prop := match n { Z => ⊤, S _ => False }
+  def P0 : Type := Prop
+  def H (x : &Nat) : P0 := (*x := S Z; ⊤)
+  def HP (x : &Nat) : Prop := (*x := S Z; ⊤)
+  def UU (n : Nat) : Type := match n { Z => Unit, S _ => Unit }
+  def HU (x : &Nat) : UU(Z) := *x := S Z
+  def HW (x : &Nat) : Unit := *x := S Z
+  def HTop (x : &Nat) : ⊤ := refl
+  def HTopW (x : &Nat) : ⊤ := (*x := S Z; refl)
+  def IdFP (f : Π(x : &Nat). Prop) : (Π(x : &Nat). Prop) := f
+  def IdFT (f : Π(x : &Nat). ⊤) : (Π(x : &Nat). ⊤) := f
+  def IdFU (f : Π(x : &Nat). Unit) : (Π(x : &Nat). Unit) := f
+  def RunG (f : Π(x : &Nat). Prop) : Nat := (let c = Z; let g = f; g(&c); c)
+  def RunK (k : Π(x : &Nat). ⊤) (x : &Nat) : Unit := (k(x); ())
+  def WV (u : Unit) : V(Z) := refl
+  def FV (x : &Nat) : V(Z) := (*x := S Z; WV(()))
+  def GV (x : &Nat) : V(Z) := WV(())
+  def TT : Prop := (Π(x : &Nat). V(Z))
 }
+
+/-- The codomain types written differently from what they evaluate to (D54, D55). -/
+def tyP0 : GTy := .alias (.ident "P0") "P0" .prop
+def tyUUZ : GTy := .alias (.call (.ident "UU") [.num 0]) "UU(Z)" .unit
+def tyVZ : GTy := .alias (.call (.ident "V") [.num 0]) "V(Z)" .proof
 
 def libFns : List LibFn :=
   [ { name := "AddM", ps := [.ref .nat, .nat], ret := .unit },
@@ -173,7 +211,25 @@ def libFns : List LibFn :=
     { name := "EffL", ps := [.ref .nat, .pf .or], ret := .fam (.num 0), deps := ["Or", "U", "V"] },
     { name := "Clo", ps := [.nat, .nat], ret := .nat, deps := ["Add"] },
     { name := "CapN", ps := [.ref .nat], ret := .nat, deps := ["AddM"] },
-    { name := "PropIf", ps := [.nat], ret := .prop } ]
+    { name := "PropIf", ps := [.nat], ret := .prop },
+    -- D54 (reviewer-5): writing functions whose codomain terms differ from their values' class
+    { name := "H", ps := [.ref .nat], ret := tyP0, deps := ["P0"] },
+    { name := "HP", ps := [.ref .nat], ret := .prop },
+    { name := "HU", ps := [.ref .nat], ret := tyUUZ, deps := ["UU"] },
+    { name := "HW", ps := [.ref .nat], ret := .unit },
+    { name := "HTop", ps := [.ref .nat], ret := .proof },
+    { name := "HTopW", ps := [.ref .nat], ret := .proof },
+    { name := "IdFP", ps := [.fn [.ref .nat] .prop], ret := .fn [.ref .nat] .prop, wrapper := true },
+    { name := "IdFT", ps := [.fn [.ref .nat] .proof], ret := .fn [.ref .nat] .proof, wrapper := true },
+    { name := "IdFU", ps := [.fn [.ref .nat] .unit], ret := .fn [.ref .nat] .unit, wrapper := true },
+    { name := "RunG", ps := [.fn [.ref .nat] .prop], ret := .nat },
+    { name := "RunK", ps := [.fn [.ref .nat] .proof, .ref .nat], ret := .unit },
+    -- D55 (reviewer-4): a type-level family whose value is a proposition but whose declared
+    -- sort is not Prop; rejected by the default rules (D55), live with `sortsSyntactic` off
+    { name := "WV", ps := [.unit], ret := tyVZ, deps := ["U", "V"], attack := true },
+    { name := "FV", ps := [.ref .nat], ret := tyVZ, deps := ["WV"], attack := true },
+    { name := "GV", ps := [.ref .nat], ret := tyVZ, deps := ["WV"], attack := true },
+    { name := "TT", ps := [], ret := .prop, deps := ["U", "V"], attack := true } ]
 
 /-- The declaration of a template by name. -/
 def libDecl (n : String) : Option SDecl := (Block.decls FuzzLib).find? (·.name == n)

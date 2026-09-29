@@ -182,7 +182,7 @@ def acceptedProof (o : Opts) (c : Case) (prep : Prepared) : Option String := Id.
 def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
   let prep ← match prepare o.cfg o.fuel c.decls with
     | .ok p => pure p
-    | .error e => return { status := s!"invalid: {e}" }
+    | .error e => return { status := if e.startsWith "rejected" then "rejected" else s!"invalid: {e}" }
   let convF := (convOracle o prep).toList
   let .id A t u := prep.stmt.body | return { status := "invalid: not an Id statement", findings := convF }
   let st0 : MState := { globals := prep.globals, inds := prep.inds, cfg := o.cfg, fuel := o.fuel }
@@ -200,6 +200,16 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
   let mut synOnly := 0
   let mut incomplete := 0
   let mut falseAt : Option (String × String) := none
+  -- proof irrelevance (D55, reviewer-4 W2): a function parameter whose type is a proposition
+  -- by computation but is bound as data; its instances must not be told apart
+  let irrelPs : List (Nat × Nat) := Id.run do    -- (σ, position of its binding in W)
+    let mut out := []
+    for (p, j) in ps.toList.zipIdx do
+      if p.kind == .data && (p.ty matches .tPi ..) then
+        if let .ok (0, _) := runSt (sortOf p.ty) st2 then
+          if let some w := W.findIdx? (· == Pos.bind 1 j) then out := out ++ [(p.σ, w)]
+    pure out
+  let mut irrelObs : Array (Nat × String × List Value) := #[]
   -- the generic values, with generalisations undone: nothing but parameters may remain
   let mut Gx : Array (Except String (Value × MState)) := #[]
   for (g, k) in G.zipIdx do
@@ -245,6 +255,16 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
         | .error e, .ok (dv, _) =>
           if !isResource e then fs := push fs .renorm (compName k) α.label s!"{g.pp}  ⟶  error: {e}" dv.pp (vacK vac (errKey e))
         | .error _, .error _ => pure ()
+    -- the observations at an instance of one proof-irrelevance parameter alone
+    if let [(σ, _)] := α.subst then
+      if let some w := irrelPs.lookup σ then
+        let drop (v : Value) : Value :=
+          let (r, ws) := obsParts v
+          obsVal r (ws.eraseIdx w)
+        let obs := [0, 1].filterMap fun k => match D[k]! with
+          | .ok (v, _) => some (canon pinned (drop v))
+          | .error _ => none
+        if obs.length == 2 then irrelObs := irrelObs.push (σ, α.label, obs)
     -- a false ground instance of the statement: remember it for the truth oracle
     if α.ground && hypsHold stα ps then
       if let .ok (dv, _) := D[2]! then
@@ -260,6 +280,10 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
           | .error e =>
             if !isResource e then
               fs := push fs .adequacy (compName k) α.label s!"typed run: {dv.pp}" s!"machine: error: {e}" (vacK vac (errKey e))
+  for (σ, l1, o1) in irrelObs do
+    for (σ', l2, o2) in irrelObs do
+      if σ == σ' && l1 < l2 && o1 != o2 then
+        fs := push fs .irrel "lhs, rhs" s!"{l1} and {l2}" s!"{l1}: {(o1.map (·.pp))}" s!"{l2}: {(o2.map (·.pp))}"
   -- truth: a statement false at a ground instance must have no proof
   if let some (lbl, v) := falseAt then
     if fs.any (·.kind == .falseProof) then pure () else
@@ -294,7 +318,9 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
 
 /-- The generic observations, printed (for `--show`). -/
 def debugCase (o : Opts) (c : Case) : List String := Id.run do
-  let .ok prep := prepare o.cfg o.fuel c.decls | return ["prepare failed"]
+  let prep ← match prepare o.cfg o.fuel c.decls with
+    | .ok p => pure p
+    | .error e => return [s!"prepare failed: {e}"]
   let mut out := prep.rejected.map fun (n, e) => s!"library {n} rejected: {e}"
   let .id A t u := prep.stmt.body | return out
   let st0 : MState := { globals := prep.globals, inds := prep.inds, cfg := o.cfg, fuel := o.fuel }

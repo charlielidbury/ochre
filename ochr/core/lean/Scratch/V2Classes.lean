@@ -7,9 +7,10 @@ its refinement errors). The `reject def`s are true statements rejected today: th
 incompleteness, and would flip to accepted when a class is fixed. -/
 ochr V2Classes {
   -- R1: re-normalising a sealed program that forms an `Id` about a cell it has lent out
-  -- (the untyped machine types footprint owners from their current value, a loan)
+  -- (the untyped machine typed footprint owners from their current value, a loan).
+  -- Fixed by ef1195ff (a live loan is typed by its borrow's content): R1s is accepted now.
   def R1 (x0 : &Nat) : Prop := Id Prop (match *x0 { Z => Id Unit () (*x0 := 0), S _ => ⊤ }) ⊤
-  reject def R1s (x0 : &Nat) : Id Prop (match *x0 { Z => Id Unit () (*x0 := 0), S _ => ⊤ }) ⊤ := (
+  def R1s (x0 : &Nat) : Id Prop (match *x0 { Z => Id Unit () (*x0 := 0), S _ => ⊤ }) ⊤ := (
     match *x0 { Z => refl, S _ => refl }
   )
   -- R2: a stuck block counts a nested λ's write to its own copy as the block's, passes the

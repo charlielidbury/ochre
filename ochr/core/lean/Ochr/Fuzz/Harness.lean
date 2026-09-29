@@ -51,7 +51,17 @@ def prepare (cfg : Config) (fuel : Nat) (decls : List SDecl) : Except String Pre
       | .ok ((), st') => globals := st'.globals; inds := st'.inds
       | .error e => rej := rej ++ [(d.name, e)]
   match resolveProgram decls sd with
-  | .ok (.defn d) => pure { globals := globals, inds := inds, stmt := d, rejected := rej }
+  | .ok (.defn d) =>
+    -- the statement's declared types pass `checkDef`'s static checks (its own name not in its
+    -- type, D48 (2), D55 in every type position), as a definition of it would
+    let static : M Unit := do
+      if (d.cod :: d.doms).any (Term.mentionsConst d.name) then err s!"{d.name} occurs in its own type"
+      if (← get).cfg.refTop && !((d.cod :: d.doms).all Term.refTopOk && d.body.refsOk) then
+        err s!"[D48] & inside a declared type"
+      discard (declOf [] [] (.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body))
+    match runSt static { globals := globals, inds := inds, cfg := cfg, fuel := fuel } with
+    | .ok _ => pure { globals := globals, inds := inds, stmt := d, rejected := rej }
+    | .error e => throw s!"rejected: {e}"
   | .ok _ => throw "the statement is not a definition"
   | .error e => throw s!"(surface) {e}"
 

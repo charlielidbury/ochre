@@ -23,14 +23,15 @@ namespace Ochr.Fuzz
 open Ochr
 
 inductive Kind where
-  | nat | falseProof | verdict | renorm | escape | adequacy | frame | conv | truth
+  | nat | falseProof | verdict | renorm | escape | adequacy | frame | conv | truth | irrel
 deriving BEq, Inhabited, Repr
 
 def Kind.name : Kind → String
   | .nat => "nat" | .falseProof => "false" | .verdict => "verdict" | .renorm => "renorm"
   | .escape => "escape" | .adequacy => "adequacy" | .frame => "frame" | .conv => "conv" | .truth => "truth"
+  | .irrel => "irrel"
 
-def Kind.all : List Kind := [.nat, .falseProof, .verdict, .renorm, .escape, .adequacy, .frame, .conv, .truth]
+def Kind.all : List Kind := [.nat, .falseProof, .verdict, .renorm, .escape, .adequacy, .frame, .conv, .truth, .irrel]
 
 structure Finding where
   kind : Kind
@@ -97,7 +98,9 @@ def compareVals (sR sD : MState) (pinned : List Nat) (r d : Value) (rng : Rng)
     let lbl := ", ".intercalate (γ.map fun (σ, v) => s!"σ{σ} := {v}")
     match refineVal sR sR.neutrals γ r, refineVal sD sD.neutrals γ d with
     | .ok r', .ok d' =>
-      if canon pinned r' != canon pinned d' then
+      -- a completion that leaves an abstract value (a function parameter with no instance in
+      -- the library) can only compare normal forms, which may differ in where they are stuck
+      if canon pinned r' != canon pinned d' && groundV r' && groundV d' then
         return (some (.nat, s!"{r.pp}  ⟶[{lbl}]  {r'.pp}", s!"{d.pp}  ⟶[{lbl}]  {d'.pp}", ""), false)
     | .ok r', .error e => if !isResource e then
         return (some (.verdict, s!"{r.pp} ⟶[{lbl}] {r'.pp}", s!"{d.pp} ⟶[{lbl}] error: {e}", errKey e), false)

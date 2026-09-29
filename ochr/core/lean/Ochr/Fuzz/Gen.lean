@@ -92,6 +92,27 @@ partial def borrowRoot (Γ : Ctx) (x : String) : STerm → String
     | _ => borrowRoot Γ x (.call (.ident "_") as)
   | _ => x
 
+/-- (D54/D55) The function values that take one `&Nat`, with their result types: function
+parameters and library functions (not the identity wrappers). -/
+def fnHeads (Γ : Ctx) : Gen (List (STerm × GTy)) := do
+  let mut out := []
+  for v in Γ.vars do
+    if v.kind == .fnv && !(← isDead v.name) then
+      if let .fn [.ref .nat] r := v.ty then out := out ++ [(STerm.ident v.name, r), (.ident v.name, r)]
+  for f in Γ.lib do
+    if f.ps == [.ref .nat] && !f.wrapper && f.famArg.isNone then out := out ++ [(.ident f.name, f.ret)]
+  pure out
+
+/-- The surface types that evaluate to a given result type: `Prop`/`P0`, `Unit`/`UU(Z)`,
+`⊤`/`V(Z)` (the latter of each when the library declares it). -/
+def variantsOf (Γ : Ctx) (r : GTy) : List STerm :=
+  let has (n : String) := Γ.lib.any (·.name == n)
+  match r.evalKey with
+  | .prop => [.sort 0] ++ (if has "H" then [.ident "P0"] else [])
+  | .unit => [.ident "Unit"] ++ (if has "HU" then [.call (.ident "UU") [.num 0]] else [])
+  | .pf .top => [.top] ++ (if has "WV" then [.call (.ident "V") [.num 0]] else [])
+  | t => [t.surface]
+
 def saveDead : Gen (List String) := do pure (← get).dead
 def setDead (d : List String) : Gen Unit := modify fun s => { s with dead := d }
 

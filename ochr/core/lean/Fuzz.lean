@@ -54,6 +54,10 @@ def switchCfg (c : Config) : String → Option Config
   | "D49.3" | "proofDataFields" => some { c with proofDataFields := false }
   | "D52" | "injective" => some { c with injective := false }
   | "D53on" | "movingReads" => some { c with movingReads := true }   -- switched ON: the D53 prototype
+  | "D54" | "classInType" => some { c with classInType := false }
+  | "D55" | "sortsSyntactic" => some { c with sortsSyntactic := false }
+  | "D56" | "jStuck" => some { c with jStuck := false }
+  | "D58" | "zeroArmStuck" => some { c with zeroArmStuck := false }
   | "D50on" | "unitNorm" => some { c with unitNorm := true }          -- switched ON (a counterfactual)
   | "confineBodies" => some { c with confineBodies := true }          -- switched ON (an extension)
   | "C8" | "generalize" => some { c with generalize := false }

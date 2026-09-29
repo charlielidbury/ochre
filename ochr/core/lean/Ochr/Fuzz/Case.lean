@@ -52,7 +52,11 @@ def indsOf (lib : List String) : List String := ["B2", "L", "Box", "Or", "ExN"].
 def genTemplates : Gen (List String) := do
   let mut chosen := []
   for f in libFns do
-    if ← chance 30 then chosen := chosen ++ [f.name]
+    if !f.attack && (← chance 25) then chosen := chosen ++ [f.name]
+  -- the reviewers' attack families together (D54: writing functions at codomains written
+  -- differently, wrappers, RunG/RunK; D55: the `V(Z)` family and `TT`)
+  if ← chance 15 then chosen := chosen ++ ["H", "HP", "HU", "HW", "HTop", "HTopW", "IdFP", "IdFT", "IdFU", "RunG", "RunK"]
+  if ← chance 10 then chosen := chosen ++ ["WV", "FV", "GV", "TT", "HTop", "HTopW", "IdFT", "RunK"]
   for (n, p) in [("L", 25), ("B2", 15), ("Box", 15), ("Or", 20), ("ExN", 20)] do
     if ← chance p then chosen := chosen ++ [n]
   pure (closeDeps chosen)
@@ -140,13 +144,23 @@ def genStmt (lib : List LibFn) (inds : List String) : Gen (List (String × STerm
     | .ref .nat | .ref (.ind _) => true
     | _ => false
   let fnTys := (lib.filter fun f => f.famArg.isNone && simple f.ret && f.ps.all simple).map fun f => GTy.fn f.ps f.ret
+  -- D54/D55: function parameters on one borrow, whose codomain is a sort, a proposition,
+  -- `Unit` or `&Nat`, or is written differently from what it evaluates to (`P0`, `UU(Z)`,
+  -- `V(Z)`); their instances are the library's functions of a convertible type
+  let has (n : String) : Bool := lib.any (·.name == n)
+  let hoTys : List GTy := [.fn [.ref .nat] .prop, .fn [.ref .nat] .proof, .fn [.ref .nat] .unit,
+    .fn [.ref .nat] (.ref .nat)] ++ (if has "H" then [.fn [.ref .nat] tyP0] else [])
+    ++ (if has "HU" then [.fn [.ref .nat] tyUUZ] else []) ++ (if has "WV" then [.fn [.ref .nat] tyVZ] else [])
   for j in [0:np] do
     let T ← weighted [(4, pure GTy.nat), (4, pure (GTy.ref .nat)), (ind "B2", pure (GTy.ind "B2")),
       (ind "L", pure (GTy.ind "L")), (ind "L", pure (GTy.ref (.ind "L"))), (ind "Box", pure (GTy.ind "Box")),
       (2, pure (GTy.ind "Pair")), (2, pure (GTy.ref (.ind "Pair"))),
-      (if fnTys.isEmpty then 0 else 2, pick fnTys)]
+      (if fnTys.isEmpty then 0 else 2, pick fnTys), (3, pick hoTys),
+      (if has "WV" then 3 else 0, pure (GTy.fn [.ref .nat] tyVZ))]
     let x := (match T with | .ref _ => "x" | .ind "L" => "l" | .ind "B2" => "b" | .ind "Pair" => "q" | .ind _ => "m" | .fn .. => "h" | _ => "n") ++ toString j
-    ps := ps.push (x, T.surface)
+    -- D55 (reviewer-4 W2): the proposition `TT := Π(x : &Nat). V(Z)` as a parameter type
+    let surf := if T == .fn [.ref .nat] tyVZ && has "TT" && (← chance 50) then STerm.ident "TT" else T.surface
+    ps := ps.push (x, surf)
     let kind := match T with
       | .ref _ => VKind.bvar
       | .fn .. => .fnv
@@ -156,7 +170,9 @@ def genStmt (lib : List LibFn) (inds : List String) : Gen (List (String × STerm
   -- them statements about the earlier parameters, whose truth refinement decides
   let np' ← weighted [(5, pure 0), (3, pure 1), (1, pure 2)]
   for j in [0:np'] do
-    let P ← genHyp lib inds vars
+    -- D55: a parameter whose type `V(Z)` is a proposition by computation only
+    let P ← if has "WV" && (← chance 15) then pure (PT.opq (.call (.ident "V") [.num 0]) "V(Z)")
+      else genHyp lib inds vars
     let x := s!"h{np + j}"
     ps := ps.push (x, P.surface)
     vars := { name := x, ty := .pf P, kind := .owned, root := x, param := true } :: vars

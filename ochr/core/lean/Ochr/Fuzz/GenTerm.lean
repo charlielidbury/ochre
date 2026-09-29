@@ -12,6 +12,7 @@ partial def gen (Γ : Ctx) (T : GTy) (f : Nat) : Gen STerm := do
   let ms ← matchPlaces Γ T
   let fls := (← proofVars Γ).filter fun (_, P) => P matches .fls
   let h := f / 2
+  let h' := f / 3
   let specific : List (Nat × Gen STerm) := match T with
     | .nat => [(1, do pure (.app "S" [← gen Γ .nat (f - 1)]))]
     | .unit => [(4, genAssign Γ f)]
@@ -25,10 +26,22 @@ partial def gen (Γ : Ctx) (T : GTy) (f : Nat) : Gen STerm := do
     | .pf _ => [(3, do pure (.seq (← gen Γ .unit h) (← gen Γ T h)))]
     | .fam _ => [(3, do pure (.seq (← gen Γ .unit h) (← gen Γ T h)))]
     | .fn ps r => [(4, genLambda Γ ps r h)]
-    | .ref _ => []
+    | .ref _ | .alias .. => []
+  let heads ← fnHeads Γ
+  let eqHyps := (← proofVars Γ).filterMap fun (v, P) => match P with
+    | .opq (.app "Eq" [_, a, b]) _ => some (v, a, b)
+    | _ => none
   weighted ([(2, leaf Γ T), (3, genLet Γ T f), (3, genSeq Γ T f),
              (if ms.isEmpty then 0 else 5, genMatch Γ T f ms),
              (if cs.isEmpty then 0 else 4, genCall Γ f cs),
+             -- D54/D55: an effect through a function value (alias, wrapper, annotated let)
+             (if heads.isEmpty || (T matches .ref _) then 0 else 3, genFnEffect Γ T f heads),
+             -- D56: a data-level `J` cast along a hypothesis `h : Eq Nat a b`
+             (if eqHyps.isEmpty || T != .nat then 0 else 2, do
+                let (v, a, b) ← pick eqHyps
+                let mot ← pick [STerm.ident "Nat", .matchGen (.ident "z") [("Z", [], .ident "Nat"), ("S", ["_"], .ident "Nat")]]
+                let (a, b, h) ← pick [(a, b, v.place), (b, a, STerm.app "symm" [v.place])]
+                pure (.call (.ident "J") [.ident "Nat", a, b, .fix "_" [("z", .ident "Nat")] (.sort 1) none mot, h, ← gen Γ .nat h'])),
              -- v2.x: a match with no arms on a proof of False, at any type (annotated)
              (if fls.isEmpty then 0 else 2, do
                 let (v, _) ← pick fls
@@ -60,7 +73,16 @@ partial def leaf (Γ : Ctx) (T : GTy) : Gen STerm := do
       return v.place
     leafPf Γ P
   | .fam a => pure (.call (.ident "V") [a])
-  | .fn ps r => genLambda Γ ps r 0
+  | .fn ps r => do
+    -- D54: a function value whose type evaluates to `T` (a parameter or a library function,
+    -- possibly with a codomain written differently), or a λ
+    let vals := ((← fnHeads Γ).filter fun (_, r') => GTy.evalKey (.fn [.ref .nat] r') == T.evalKey).map (·.1)
+    let libs := (Γ.lib.filter fun g => !g.wrapper && g.famArg.isNone && (GTy.fn g.ps g.ret).evalKey == T.evalKey
+      && g.ps != [.ref .nat]).map fun g => STerm.ident g.name
+    let all := vals ++ libs
+    if !all.isEmpty && (← chance 50) then return ← pick all
+    genLambda Γ ps r 0
+  | .alias _ _ a => leaf Γ a
 
 /-- A proof of `P` built from constructors (v2.x: `refl` is `I`, `⟨h, k⟩` is `Intro`, and a
 constructor of a Prop inductive is a proof, D42); `False` and an opaque statement only from
@@ -87,6 +109,33 @@ partial def genCtor (Γ : Ctx) (n : String) (f : Nat) : Gen STerm := do
   if n == "Pair" && (← chance 70) then
     if let [a, b] := args then return .pair a b      -- the notation `(a, b)` (D52)
   pure (.call (.ident c) args)
+
+/-- (D54/D55) An effect through a function value `F` taking one `&Nat`: `F(b); rest`, `let g = F;
+g(b); rest`, `W(F)(b); rest` with an identity wrapper `W`, or `let q : A = F; q(b); rest` with
+`A` a function type whose codomain is written differently from `F`'s (reviewer-4's Boom4);
+at `Nat`, often on a fresh local, `let c = 0; …; c` (reviewer-5's RunG). -/
+partial def genFnEffect (Γ : Ctx) (T : GTy) (f : Nat) (heads : List (STerm × GTy)) : Gen STerm := do
+  let (F, r) ← pick heads
+  let wrappers := Γ.lib.filter fun w => w.wrapper && w.ps.map GTy.evalKey == [GTy.evalKey (.fn [.ref .nat] r)]
+  let form ← weighted [(3, pure 0), (3, pure 1), (if wrappers.isEmpty then 0 else 2, pure 2), (3, pure 3)]
+  let q ← freshName "g"
+  let annot ← pick (variantsOf Γ r)
+  let wrap (arg : STerm) (rest : STerm) : Gen STerm := do
+    match form with
+    | 1 => pure (.letIn q none F (.seq (.call (.ident q) [arg]) rest))
+    | 2 => do
+      let w ← pick wrappers
+      pure (.seq (.call (.call (.ident w.name) [F]) [arg]) rest)
+    | 3 => pure (.letIn q (some (.pi [("x", .amp (.ident "Nat"))] annot)) F (.seq (.call (.ident q) [arg]) rest))
+    | _ => pure (.seq (.call F [arg]) rest)
+  if T == .nat && (← chance 50) then
+    let c ← freshName "c"
+    return .letIn c none (natLit 0) (← wrap (.amp (.ident c)) (.ident c))
+  match ← borrowOf? Γ .nat [] with
+  | some (b, _) => wrap b (← gen Γ T (f / 2))
+  | none =>
+    let c ← freshName "c"
+    pure (.letIn c none (natLit 0) (← wrap (.amp (.ident c)) (← gen Γ T (f / 2))))
 
 /-- `p := t`, the right-hand side first (it is evaluated first). -/
 partial def genAssign (Γ : Ctx) (f : Nat) : Gen STerm := do
