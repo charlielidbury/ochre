@@ -15,6 +15,8 @@
 
 The extended generator also re-finds the cold reviewers' attacks when their switch is off: reviewer-5's D54 `Boom` (as a `false` and a `truth` finding), and reviewer-4's `TT` (as `irrel`). §v2.3 counts which attack shapes it reaches.
 
+6. **The absTy arm-leak (found by arrays-library, checked by the fuzzer; a false rejection).** Refinements leak across match arms through `absTy` (the types of abstract values), which `restoreKeep` keeps under D37 while restoring the environment. With a parameter `r : Slice(Sub(n, k))`, the `n := Z` arm rewrites `absTy[σ_r]` to the `Z`-form, and because that replaces `σ_n` by `Z`, the `n := S m` arm cannot undo it: a use-site that types `r` through `valType` sees `Slice(Sub(0, k))` (`Scratch/LeakSweep.lean`). This is a false rejection. It is not exploitable as a false acceptance within the current rules: the over-refinement only makes a consuming check stricter, and eliminating `r` as the leaked type needs it to compute to a concrete inductive, which the leak's precondition (a second parameter left abstract) denies — `Sub(0, k)` with `k` abstract stays stuck (`Scratch/LeakBoom.lean`). Under D55 these families are all `Type`-valued, so the leak cannot flip a sort. The binding type of a parameter is restored correctly, so most type reads are unaffected.
+
 **Validation.** Every ledger rule was switched off in turn (§v2.4). The fuzzer rediscovers 17 of the ledger's 22 soundness rows and 2 of its 4 model rows. Three of the soundness misses need constructs it never generates: inductive declarations, `&` of a non-data type, and a scrutinee of computed type. The other two, D18 and D35, are rare shapes: each was found once in 10⁵ cases by an earlier generator version.
 
 **Confidence.**
@@ -141,12 +143,11 @@ With the default rules (D54, D55, D56 on), none of these shapes produces a findi
 | D45 + D42 | 88 | `nat` 2, `adequacy`, D41 verdicts |
 | D54 class and borrow row in Π-types | 17 | `adequacy` 203, `nat` 89, `false` 2, `truth` 1 (reviewer-5) |
 
-**Soundness rows not rediscovered:**
-- **D18** (owners are sets): `nat` 1 in 10⁵ with an earlier generator (658cc108, seed 2); 0 in 1.2·10⁵ now.
-- **D35** (a function's class from its codomain term): only R2 errors in 2·10⁴. It was `nat` 1 in 10⁵ on 658cc108.
-- **D36** (positivity): inductive declarations are not generated.
-- **scrutTyped**: a scrutinee of computed type is not generated.
-- **D48(2)** (`&` only at the top): `&` of a non-data type is not generated.
+**Tally: 18 of 23 soundness rows reached** (the 17 above, plus P2-alone below, which is a soundness finding the ledger mislabels as completeness).
+
+**Soundness rows not rediscovered (5):**
+- **D18** (owners are sets) and **D35** (a function's class from its codomain term) are rare shapes, not out of reach: each was found once in 10⁵ cases by an earlier generator version (658cc108). On the batch head with the current generator they did not recur.
+- **D36** (positivity), **D48(2)** (`&` only at the top) and **scrutTyped** (a scrutinee's constructors from its type) are declaration- and elaboration-level rules, not the two-path property the naturality oracles test. D36 rejects a malformed `inductive`; D48(2) rejects a codomain computing to `&T`; scrutTyped rejects a match whose scrutinee's type is a computed family. Reaching them differentially would need the generator to synthesise inductive declarations and dependent parameter types, which it does not. Their soundness is validated by the ledger's curated counterfactual witnesses (`Positivity.Boom`, `BorrowTypes.G`, `ScrutineeTypes.g`) rather than by the fuzzer.
 
 **Model rows: 2 of 4.**
 - D55 (syntactic sorts): `irrel` 27, first case 23 (reviewer-4 W2).
