@@ -397,47 +397,36 @@ Scratch files, not committed and deleted, run through the checker at the D52 bui
 
 ## 10. Phase A: what was built (D57)
 
-Branch `ochr-arrays`, tour file `lean/Ochr/Examples/16Arrays.lean`, five blocks and 141 declarations, all as expected. No kernel changes; every workaround is marked in the code.
+Branch `ochr-arrays`, tour file `lean/Ochr/Examples/16Arrays.lean`, merged with the soundness batch (ochr-core 84470253). Five blocks, 175 declarations, all as expected. No kernel changes; every workaround is marked in the code.
 
-- **`Index`** (19): `Le`, `Lt`, `Sub`, `Leb`, `Eqb`, `Dec` with `LeDec`/`LtDec`, and index lemmas (`LeRefl`, `LeStep`, `LeTrans`, `LeAddL`, `AddRS`, `AddZeroR`, `AddOneR`, `SubPos`, `SubOneLe`, `EqSym`, `EqTrans`).
+- **`Index`** (19): `Le`, `Lt`, `Sub`, `Leb`, `Eqb`, `Dec` with `LeDec`/`LtDec`, and index lemmas. It uses one number type throughout, so D53's `Word` will be a rename.
 - **`Arrays`** (26):
-  - the model: `Cells(E, n)` (`CellsEnd` at zero, not `Unit`, since an unknown `Unit` cannot be taken apart), `Slice(E, n)` and `Array(E, n)`;
-  - model functions: `Nth`, `SetS`, `TakeS`, `DropS`, `JoinS`, `SnocS`, `PopS`. `SetS`, `DropS` and `JoinS` are total and take no bounds proof; only `TakeS` and `Nth` need one;
+  - the model: `Cells(E, n)` (`CellsEnd` at zero), `Slice(E, n)` and `Array(E, n)`;
+  - model functions: `Nth`, `SetS`, `TakeS`, `DropS`, `JoinS`, `SnocS`, `PopS`. `SetS`, `DropS` and `JoinS` are total and take no bounds proof; the `[native]` API still demands one;
   - the `[native]` functions: `AsSlice`, `Read`, `Set`, `GetMut`, `WithSplit`, `ArrEmpty`, `ArrPush`, `ArrPop`;
   - user code: `Swap`, `Replicate`, `Fill`.
-- **`ArrayLemmas`** (14): `NthSetSame`, `NthSetOther`, `JoinTakeDrop`, `TakeJoin`, `DropJoin`, `Count`, `CountJoin`, `CountSet`, `SwapS` (with `SwapIsSwapS` by `refl`), `CountSwap`. `GetMutSet` is a marked `reject` (checker finding 2 below).
-- **`ArrayBench`** (33):
-  - B1 (`B1Join` by `refl`; `B1` by `DropJoin`; the `refl` twins rejected);
-  - reads and writes (`ReadNoop` by `refl`, get-after-set by lemma, `SetTwice` reusing one bound);
-  - B4 (`GetOr`);
-  - growth;
-  - B3: a fixed-capacity hashmap whose slot `ModS(k, cap)` is bounded by `ModLt`, with no runtime check, and whose bucket is inserted into in place. Runs check the size and the bucket.
-- **`Quicksort`** (49):
-  - `Scan` (Lomuto, recursing on a countdown, every bound by index lemmas), `Partition`, `Recurse` (the step, for any `rec`), and `QS` (`[K6]`, fuel). It sorts [3,1,4,1,2] inside the checker;
-  - **proved: `QSPerm`**. For every fuel, quicksort leaves every count unchanged;
-  - **proved: `QSSorted`**. For fuel at least the length, quicksort's result is `Sorted`, given the partition's contract: four Prop-valued functions of its input, `PartLe`, `PartLeft`, `PartPivot` and `PartRight`. The pivot, the first element, ends at `k <= m`; everything before it is at most the pivot; everything after it at least. The contract is checked on two concrete inputs and refuted for a wrong pivot index.
+- **`ArrayLemmas`** (14): get-after-set (`NthSetSame`, `NthSetOther`), split-then-join (`JoinTakeDrop`), `TakeJoin`, `DropJoin`, counting (`CountJoin`, `CountSet`, `CountSwap`), and `GetMutSet` (writing through an element borrow is `Set`; accepted since the ⋆ fix).
+- **`ArrayBench`** (33): B1 (by `refl` in the joined form; by `DropJoin` otherwise), reads and writes, B4 (`GetOr`), growth, and B3 (a fixed-capacity hashmap: the slot bound `ModLt` is proved, and the bucket is inserted into in place).
+- **`Quicksort`** (83): **`QSCorrect`, proved.** Quicksort's result is `Sorted` and a permutation of its input (every count is unchanged), for fuel equal to the length. The layers:
+  - the program: `Scan` (Lomuto, recursing on a countdown), `Partition`, `Recurse` (the step, for any `rec`), `QS` on fuel `[K6]`;
+  - `QSPerm`, for any fuel: `ScanPerm`, `RecursePerm`, counting through joins and swaps;
+  - `QSSorted`, given the partition's contract: the glue (`SortedJoin`), bounds surviving a permutation by counting (`AllLePerm`/`AllGePerm`, DLLBC's keystone), `RecurseSorted`;
+  - the contract (`PartLeProof` … `PartRightProof`), which is Lomuto's positional invariant, the stratum DLLBC's R15 found:
+    - `ScanLt`, `ScanPivot`, `ScanLeft`, `ScanRight`, by recursion on the countdown, each step through `StepJ0`/`StepJ1`/`StepJ2`/`StepJ2F`;
+    - reads of a swapped view (`NthSwapA`, `NthSwapB`, `NthSwapOther`, `NthIdx`);
+    - bridges from positions to pieces (`AllLeTakeOf`, `TakeOneDrop`, `AllGeDropOf`).
 
-**Where the proof walls.** It walls at the partition's contract for all inputs: Lomuto's positional invariant. After `Scan` from `(i, j, rem)`, cells `1…i` are at most `p` and cells `i+1…j-1` are greater. The final swap then turns that into `AllLe` of `TakeS(k)` and `AllGe` of the part after the pivot. This is DLLBC's R15 stratum, found in the same place: range predicates over `Nth`, bridged to `TakeS`/`DropS`. I estimate 150–250 lines. Everything above the partition is proved:
-- `SortedJoin` and `AllGeJoin` (glue);
-- `AllLePerm` and `AllGePerm`: bounds survive a permutation, by counting, which is DLLBC's keystone;
-- `RecurseSorted`, for any `rec` that sorts and permutes shorter views.
+Size of B2 in the file, comments included (measured): the program 76 lines, the permutation proof 125, the sortedness proof above the partition 385 (with the contract's statement and its example runs), the partition's contract 501, total 1,087, on top of the shared `Index`, `Arrays` and `ArrayLemmas` blocks. Each proof step is ordinary Ochr recursion; rewriting is `J` with an explicit motive, which accounts for much of the length.
 
-**Checker findings, for the checker lane.**
-1. **The ⋆ incompleteness has more forms than first reported.** "cannot infer the type of the value ⋆" fires whenever a constructor's parameters, a captured value, or a Π-type's captured values mention a sealed program that embeds a proof argument:
-   - a match on `Dec(Le(k, m), …)` with `k` such a program;
-   - a λ capturing one;
-   - an `And` proof ⟨p, q⟩ whose conjunct mentions `JoinS(…, ⋆)`;
-   - a Π-typed argument (`perm : Π(q). Eq …`) whose type mentions one.
+**Checker findings** (for the checker lane; status after the batch):
+1. **⋆ incompleteness: mostly fixed.** Captured values, `Dec`/`And` parameters and Π-typed arguments that embed proofs now work; `PermOf`/`AllLeRec`/`AllGeRec` are gone. **One form remains:** a Π-type whose body uses a proof captured from outside the Π, e.g. `LeftOf(…, hk) := Π(t)(ht : Lt(t, k)). Le(Nth(…, LtTrans(t, k, n, ht, hk)), p)`. Calling such a hypothesis fails. A proof bound by the Π itself is fine. Workaround: add the needed bound as an extra Π binder.
+2. **Dead arms in borrow-returning functions: fixed** by the batch (`GetMutSet` accepted).
+3. **A type from a sibling arm: still present.** In `AllGeJoin`/`SortedJoin`, an inferred `⟨p, q⟩` after the dead arm `n := Z` is typed with that arm's refinement (`SliceOf(CellsEnd)`). Workaround: `AndI` names the conjuncts. The repro is `AllGeJoin` with `⟨…⟩` in place of `AndI`.
+4. **Π-closures are not re-normalised (new).** `renormV` handles sealed programs, constructors and inductive types but returns closures and Π-closures unchanged. So a goal like `Lt(k, n) ∧ Π(hk : …). …`, holding a sealed program `k` inside a Π, stays stale after a case split generalises something that program depends on. The first attempt at the scan's invariant walled here. Workaround: state facts pointwise, one lemma per fact, with the quantified variables as parameters (`ScanPivot`, `ScanLeft`, `ScanRight`).
+5. **D41 in a type-returning call's argument.** `Sorted(n, (QS(…, &*s); *s))` is rejected, while the same shape inside `Eq` is accepted. Statements use a local copy (`let c = *s; QS(…, &c); Sorted(n, c)`). Related: Π-types in a signature that mention `*s` for a borrow parameter `s` capture the borrow, so the scan lemmas take the view by value.
+6. Under the counterfactual `seqByProof := false`, `ArrayBench` panics 16 times (`Option.get!`) without changing any verdict.
 
-   The workarounds are marked `[⋆]`: pass the value through a parameter (`Recurse`, `PermOf`, `AllLeRec`), drop unneeded bounds proofs from model functions, and name `And`'s conjuncts (`AndI`).
-2. **Dead arms in borrow-returning functions.** `GetMut`'s unreachable arm `Z => match h {}` yields ⋆ for the borrow. A proof that refines `n := Z` (a dead branch, since `h : False`) re-runs the goal into that arm, and it fails with "no such place *r in ⋆". `GetMutSet` (writing through `GetMut` is `Set`) walls on this.
-3. **A type from a sibling arm.** Inside `AllGeJoin`, after the dead arm `n := Z`, an anonymous `⟨p, q⟩` in the live arm is checked with an argument typed as `SliceOf(CellsEnd)`, the dead arm's refinement. Naming the conjuncts (`AndI`) avoids it. Likely cause: `substEnv` applies each arm's refinement to `absTy` (the types of abstract values), and `restoreKeep` keeps `absTy` for D37, so an arm's refinement survives into its siblings for values typed through `absTy`. A direct repro did not reproduce it (argument types there come from bindings), so this is unconfirmed; worth a look alongside the soundness batch.
-4. **A panic.** Under the counterfactual `seqByProof := false`, checking `ArrayBench` panics 16 times (`Option.get!` on none) without changing any verdict.
-5. **D41 in a type.** `Sorted(n, (QS(…, &*s); *s))` is rejected: the type borrows an outer place inside the argument of a type-returning call. The same shape inside `Eq` is accepted. Statements are therefore written on a local copy (`let c = *s; QS(…, &c); Sorted(n, c)`).
-
-**Also learned.** A closure built inside `QS` captures `QS` itself as a frame value, and closures compare by pairwise captured values. So the proofs build the recursion closure with `RecWith(QS, fuel)`, whose frame captures the same values in the same order.
-
-**Cost.** A full build went from about 80 s to about 14 min, almost all of it the ledger: every counterfactual switch re-checks the five-block array chain, each block re-checking its library transitively (nothing is cached). Memoising a block's exports per switch within one ledger run would remove most of it; that is harness code in `Test.lean`, left to the checker lane.
+**Also learned.** A closure built inside `QS` captures `QS` itself as a frame value, so proofs build the recursion closure with `RecWith(QS, fuel)`. And the ledger dominates build time: a full build takes about 13–15 min, because every switch re-checks the array chain with nothing cached.
 
 ## 11. Phase B: RULES draft (not applied)
 

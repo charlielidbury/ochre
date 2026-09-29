@@ -951,12 +951,17 @@ ochr ArrayBench uses ArrayLemmas {
 
 In place, over a view, recursing over indices only. The partition is Lomuto's scan with index
 bounds proved from its invariant; the recursive calls get the two sides of the pivot as
-borrowed pieces. What is proved:
-* quicksort permutes its view (every count is unchanged), for any fuel (`QSPerm`);
-* quicksort sorts its view, for fuel at least the length, given the partition's contract
-  (`QSSorted`): four facts about `Partition`, each checked on examples (`ContractRun1`,
-  `ContractRun2`) but not yet proved for all inputs. Proving them is Lomuto's positional
-  invariant, the one piece of the development still open. -/
+borrowed pieces. What is proved (`QSCorrect`): quicksort's result is sorted and is a permutation
+of its input, with fuel equal to the length.
+* `QSPerm`: quicksort permutes its view (every count is unchanged), for any fuel.
+* `QSSorted`: quicksort sorts its view, for fuel at least the length, given the partition's
+  contract: four facts about `Partition` (`PartLe`, `PartLeft`, `PartPivot`, `PartRight`).
+* `PartLeProof` … `PartRightProof`: the partition meets that contract, for every input. This is
+  Lomuto's invariant: the pivot stays at 0, cells `1 … i` are at most it, cells
+  `i + 1 … j - 1` are greater (`ScanLt`, `ScanPivot`, `ScanLeft`, `ScanRight`, by recursion on
+  the countdown). It is bridged to the contract's pieces by `AllLeTakeOf`, `TakeOneDrop` and
+  `AllGeDropOf`.
+-/
 
 ochr Quicksort uses ArrayLemmas {
   -- Lomuto's partition around the pivot `p`, which sits at index 0. Elements `1 … i` are at
@@ -1539,15 +1544,514 @@ ochr Quicksort uses ArrayLemmas {
     }
   )
 
-  -- The contract holds on examples (it is what remains to prove about `Scan`).
+  -- The contract on examples (proved for every input below).
   def ContractRun1 : PartLe(4, MkSlice(MkC(3, MkSlice(MkC(1, MkSlice(MkC(4, MkSlice(MkC(1, MkSlice(MkC(2, MkSlice(End)))))))))))) ∧ PartLeft(4, MkSlice(MkC(3, MkSlice(MkC(1, MkSlice(MkC(4, MkSlice(MkC(1, MkSlice(MkC(2, MkSlice(End))))))))))), refl) ∧ PartPivot(4, MkSlice(MkC(3, MkSlice(MkC(1, MkSlice(MkC(4, MkSlice(MkC(1, MkSlice(MkC(2, MkSlice(End))))))))))), refl) ∧ PartRight(4, MkSlice(MkC(3, MkSlice(MkC(1, MkSlice(MkC(4, MkSlice(MkC(1, MkSlice(MkC(2, MkSlice(End))))))))))), refl) := refl
   def ContractRun2 : PartLe(5, MkSlice(MkC(2, MkSlice(MkC(5, MkSlice(MkC(1, MkSlice(MkC(5, MkSlice(MkC(0, MkSlice(MkC(2, MkSlice(End)))))))))))))) ∧ PartLeft(5, MkSlice(MkC(2, MkSlice(MkC(5, MkSlice(MkC(1, MkSlice(MkC(5, MkSlice(MkC(0, MkSlice(MkC(2, MkSlice(End))))))))))))), refl) ∧ PartPivot(5, MkSlice(MkC(2, MkSlice(MkC(5, MkSlice(MkC(1, MkSlice(MkC(5, MkSlice(MkC(0, MkSlice(MkC(2, MkSlice(End))))))))))))), refl) ∧ PartRight(5, MkSlice(MkC(2, MkSlice(MkC(5, MkSlice(MkC(1, MkSlice(MkC(5, MkSlice(MkC(0, MkSlice(MkC(2, MkSlice(End))))))))))))), refl) := refl
   -- A wrong pivot position is not.
   reject def ContractWrong : PartPivot(4, MkSlice(MkC(3, MkSlice(MkC(1, MkSlice(MkC(4, MkSlice(MkC(1, MkSlice(MkC(2, MkSlice(End))))))))))), refl) ∧ Eq Nat (PartK(4, MkSlice(MkC(3, MkSlice(MkC(1, MkSlice(MkC(4, MkSlice(MkC(1, MkSlice(MkC(2, MkSlice(End))))))))))))) 2 := refl
+  -- ## The partition meets its contract: Lomuto's invariant
+  -- More order facts.
+  def LeOfLt (a : Nat) (b : Nat) (h : Lt(a, b)) : Le(a, b) by a := (
+    match a {
+      Z => refl,
+      S a' => match b {
+        Z => match h {},
+        S b' => LeOfLt(a', b', h),
+      },
+    }
+  )
+
+  def LtTrans (a : Nat) (b : Nat) (c : Nat) (h1 : Lt(a, b)) (h2 : Lt(b, c)) : Lt(a, c) := (
+    LeTrans(S a, b, c, h1, LeOfLt(b, c, h2))
+  )
+
+  def LtLeTrans (a : Nat) (b : Nat) (c : Nat) (h1 : Lt(a, b)) (h2 : Le(b, c)) : Lt(a, c) := LeTrans(S a, b, c, h1, h2)
+
+  -- a < b gives a ≠ b
+  def LtNe (a : Nat) (b : Nat) (h : Lt(a, b)) (e : Eq Nat a b) : False := (
+    LeSuccFalse(a, J(Nat, b, a, λ(z : Nat) : Prop => Lt(a, z), EqSym(a, b, e), h))
+  )
+
+  def LeAntisym (a : Nat) (b : Nat) (h1 : Le(a, b)) (h2 : Le(b, a)) : Eq Nat a b by a := (
+    match a {
+      Z => match b {
+        Z => refl,
+        S _ => match h2 {},
+      },
+      S a' => match b {
+        Z => match h1 {},
+        S b' => LeAntisym(a', b', h1, h2),
+      },
+    }
+  )
+
+  -- What a comparison said, as a proof.
+  def LebLe (a : Nat) (b : Nat) (e : Eq Bool (Leb(a, b)) true) : Le(a, b) by a := (
+    match a {
+      Z => refl,
+      S a' => match b {
+        Z => match e {},
+        S b' => LebLe(a', b', e),
+      },
+    }
+  )
+
+  def LebGt (a : Nat) (b : Nat) (e : Eq Bool (Leb(a, b)) false) : Lt(b, a) by a := (
+    match a {
+      Z => match e {},
+      S a' => match b {
+        Z => refl,
+        S b' => LebGt(a', b', e),
+      },
+    }
+  )
+
+  -- ## Reading a swapped view
+  def NthSwapB (n : Nat) (c : Slice(Nat, n)) (a : Nat) (b : Nat) (ha : Lt(a, n)) (hb : Lt(b, n)) :
+      Eq Nat (Nth(Nat, n, SwapS(Nat, n, c, a, b, ha, hb), b, hb)) (Nth(Nat, n, c, a, ha)) := (
+    NthSetSame(Nat, n, SetS(Nat, n, c, a, Nth(Nat, n, c, b, hb)), b, Nth(Nat, n, c, a, ha), hb)
+  )
+
+  def NthSwapA (n : Nat) (c : Slice(Nat, n)) (a : Nat) (b : Nat) (ha : Lt(a, n)) (hb : Lt(b, n)) :
+      Eq Nat (Nth(Nat, n, SwapS(Nat, n, c, a, b, ha, hb), a, ha)) (Nth(Nat, n, c, b, hb)) by a := (
+    match n {
+      Z => match ha {},
+      S m => match c {
+        MkSlice(cc) => match cc {
+          MkC(y, t) => match a {
+            Z => match b {
+              Z => refl,
+              S b' => refl,
+            },
+            S a' => match b {
+              Z => NthSetSame(Nat, m, t, a', y, ha),
+              S b' => NthSwapA(m, t, a', b', ha, hb),
+            },
+          },
+        },
+      },
+    }
+  )
+
+  def NthSwapOther (n : Nat) (c : Slice(Nat, n)) (a : Nat) (b : Nat) (t : Nat) (ha : Lt(a, n)) (hb : Lt(b, n))
+      (ht : Lt(t, n)) (na : Π(e : Eq Nat a t). False) (nb : Π(e : Eq Nat b t). False) :
+      Eq Nat (Nth(Nat, n, SwapS(Nat, n, c, a, b, ha, hb), t, ht)) (Nth(Nat, n, c, t, ht)) := (
+    EqTrans(Nth(Nat, n, SwapS(Nat, n, c, a, b, ha, hb), t, ht), Nth(Nat, n, SetS(Nat, n, c, a, Nth(Nat, n, c, b, hb)), t, ht),
+      Nth(Nat, n, c, t, ht),
+      NthSetOther(Nat, n, SetS(Nat, n, c, a, Nth(Nat, n, c, b, hb)), b, t, Nth(Nat, n, c, a, ha), hb, ht, nb),
+      NthSetOther(Nat, n, c, a, t, Nth(Nat, n, c, b, hb), ha, ht, na))
+  )
+
+  -- ## From facts about positions to facts about pieces
+  def AllLeTakeOf (n : Nat) (k : Nat) (c : Slice(Nat, n)) (p : Nat) (hk : Le(k, n))
+      (h : Π(t : Nat) (ht : Lt(t, k)) (htn : Lt(t, n)). Le(Nth(Nat, n, c, t, htn), p)) :
+      AllLe(k, TakeS(Nat, n, k, c, hk), p) by k := (
+    match k {
+      Z => refl,
+      S k' => match n {
+        Z => match hk {},
+        S m => match c {
+          MkSlice(cc) => match cc {
+            MkC(x, t0) => AndI(Le(x, p), AllLe(k', TakeS(Nat, m, k', t0, hk), p), h(0, refl, refl),
+              AllLeTakeOf(m, k', t0, p, hk,
+                λ(t : Nat) (ht : Lt(t, k')) (htn : Lt(t, m)) : Le(Nth(Nat, m, t0, t, htn), p) => h(S t, ht, htn))),
+          },
+        },
+      },
+    }
+  )
+
+  def AllGeAllOf (n : Nat) (c : Slice(Nat, n)) (p : Nat)
+      (h : Π(t : Nat) (ht : Lt(t, n)). Le(p, Nth(Nat, n, c, t, ht))) : AllGe(n, c, p) by n := (
+    match n {
+      Z => refl,
+      S m => match c {
+        MkSlice(cc) => match cc {
+          MkC(x, t0) => AndI(Le(p, x), AllGe(m, t0, p), h(0, refl),
+            AllGeAllOf(m, t0, p, λ(t : Nat) (ht : Lt(t, m)) : Le(p, Nth(Nat, m, t0, t, ht)) => h(S t, ht))),
+        },
+      },
+    }
+  )
+
+  def AllGeDropOf (n : Nat) (k : Nat) (c : Slice(Nat, n)) (p : Nat)
+      (h : Π(t : Nat) (ht : Lt(t, n)) (hkt : Lt(k, t)). Le(p, Nth(Nat, n, c, t, ht))) :
+      AllGe(Sub(Sub(n, k), 1), DropS(Nat, Sub(n, k), 1, DropS(Nat, n, k, c)), p) by k := (
+    match k {
+      Z => match n {
+        Z => refl,
+        S m => match c {
+          MkSlice(cc) => match cc {
+            MkC(x, t0) => AllGeAllOf(m, t0, p, λ(t : Nat) (ht : Lt(t, m)) : Le(p, Nth(Nat, m, t0, t, ht)) => h(S t, ht, refl)),
+          },
+        },
+      },
+      S k' => match n {
+        Z => refl,
+        S m => match c {
+          MkSlice(cc) => match cc {
+            MkC(x, t0) => AllGeDropOf(m, k', t0, p,
+              λ(t : Nat) (ht : Lt(t, m)) (hkt : Lt(k', t)) : Le(p, Nth(Nat, m, t0, t, ht)) => h(S t, ht, hkt)),
+          },
+        },
+      },
+    }
+  )
+
+  def SubPosLt (n : Nat) (k : Nat) (h : Lt(k, n)) : Le(1, Sub(n, k)) by k := (
+    match k {
+      Z => match n {
+        Z => match h {},
+        S _ => refl,
+      },
+      S k' => match n {
+        Z => match h {},
+        S m => SubPosLt(m, k', h),
+      },
+    }
+  )
+
+  def TakeOneDrop (n : Nat) (k : Nat) (c : Slice(Nat, n)) (hk : Lt(k, n)) :
+      Eq (Slice(Nat, 1)) (MkSlice(MkC(Nth(Nat, n, c, k, hk), MkSlice(End))))
+        (TakeS(Nat, Sub(n, k), 1, DropS(Nat, n, k, c), SubPosLt(n, k, hk))) by k := (
+    match k {
+      Z => match n {
+        Z => match hk {},
+        S m => match c {
+          MkSlice(cc) => match cc {
+            MkC(x, t0) => refl,
+          },
+        },
+      },
+      S k' => match n {
+        Z => match hk {},
+        S m => match c {
+          MkSlice(cc) => match cc {
+            MkC(x, t0) => TakeOneDrop(m, k', t0, hk),
+          },
+        },
+      },
+    }
+  )
+
+  -- Equal indices read equal elements (whatever their bounds proofs).
+  def NthIdx (n : Nat) (c : Slice(Nat, n)) (a : Nat) (b : Nat) (e : Eq Nat a b) (ha : Lt(a, n)) (hb : Lt(b, n)) :
+      Eq Nat (Nth(Nat, n, c, a, ha)) (Nth(Nat, n, c, b, hb)) by a := (
+    match n {
+      Z => match ha {},
+      S m => match c {
+        MkSlice(cc) => match cc {
+          MkC(x, t0) => match a {
+            Z => match b {
+              Z => refl,
+              S _ => match e {},
+            },
+            S a' => match b {
+              Z => match e {},
+              S b' => NthIdx(m, t0, a', b', e, ha, hb),
+            },
+          },
+        },
+      },
+    }
+  )
+
+  -- ## The scan's last step: the pivot is swapped to `i`
+  def EndLeft (n : Nat) (s0 : Slice(Nat, n)) (p : Nat) (i : Nat) (hin : Lt(i, n)) (h0 : Lt(0, n))
+      (j1 : Π(t : Nat) (ht : Lt(t, n)) (a : Lt(0, t)) (b : Le(t, i)). Le(Nth(Nat, n, s0, t, ht), p))
+      (t : Nat) (ht : Lt(t, i)) (htn : Lt(t, n)) : Le(Nth(Nat, n, SwapS(Nat, n, s0, 0, i, h0, hin), t, htn), p) := (
+    match t {
+      Z => J(Nat, Nth(Nat, n, s0, i, hin), Nth(Nat, n, SwapS(Nat, n, s0, 0, i, h0, hin), 0, htn), λ(z : Nat) : Prop => Le(z, p),
+        EqSym(Nth(Nat, n, SwapS(Nat, n, s0, 0, i, h0, hin), 0, htn), Nth(Nat, n, s0, i, hin), NthSwapA(n, s0, 0, i, h0, hin)),
+        j1(i, hin, ht, LeRefl(i))),
+      S t' => J(Nat, Nth(Nat, n, s0, S t', htn), Nth(Nat, n, SwapS(Nat, n, s0, 0, i, h0, hin), S t', htn), λ(z : Nat) : Prop => Le(z, p),
+        EqSym(Nth(Nat, n, SwapS(Nat, n, s0, 0, i, h0, hin), S t', htn), Nth(Nat, n, s0, S t', htn),
+          NthSwapOther(n, s0, 0, i, S t', h0, hin, htn, λ(e : Eq Nat 0 (S t')) : False => match e {},
+            λ(e : Eq Nat i (S t')) : False => LtNe(S t', i, ht, EqSym(i, S t', e)))),
+        j1(S t', htn, refl, LeOfLt(S t', i, ht))),
+    }
+  )
+
+  def EndRight (n : Nat) (s0 : Slice(Nat, n)) (p : Nat) (i : Nat) (j : Nat) (hin : Lt(i, n)) (h0 : Lt(0, n))
+      (hjn : Eq Nat j n)
+      (j2 : Π(t : Nat) (ht : Lt(t, n)) (a : Lt(i, t)) (b : Lt(t, j)). Lt(p, Nth(Nat, n, s0, t, ht)))
+      (t : Nat) (ht : Lt(t, n)) (hkt : Lt(i, t)) : Lt(p, Nth(Nat, n, SwapS(Nat, n, s0, 0, i, h0, hin), t, ht)) := (
+    J(Nat, Nth(Nat, n, s0, t, ht), Nth(Nat, n, SwapS(Nat, n, s0, 0, i, h0, hin), t, ht), λ(z : Nat) : Prop => Lt(p, z),
+      EqSym(Nth(Nat, n, SwapS(Nat, n, s0, 0, i, h0, hin), t, ht), Nth(Nat, n, s0, t, ht),
+        NthSwapOther(n, s0, 0, i, t, h0, hin, ht, λ(e : Eq Nat 0 t) : False => LtNe(0, t, LeTrans(1, S i, t, refl, hkt), e),
+          λ(e : Eq Nat i t) : False => LtNe(i, t, hkt, e))),
+      j2(t, ht, hkt, J(Nat, n, j, λ(z : Nat) : Prop => Lt(t, z), EqSym(j, n, hjn), ht)))
+  )
+
+  -- ## One step of the scan keeps the invariant
+  -- After swapping `i + 1` with `j` (the element at `j` was at most `p`): the pivot is still at
+  -- 0, cells `1 … i + 1` are at most `p`, cells `i + 2 … j` are greater.
+  def StepJ0 (n : Nat) (s0 : Slice(Nat, n)) (p : Nat) (i : Nat) (j : Nat) (hsi : Lt(S i, n)) (hjn : Lt(j, n))
+      (hij : Lt(i, j)) (j0 : Π(h0 : Lt(0, n)). Eq Nat (Nth(Nat, n, s0, 0, h0)) p) (h0 : Lt(0, n)) :
+      Eq Nat (Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), 0, h0)) p := (
+    EqTrans(Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), 0, h0), Nth(Nat, n, s0, 0, h0), p,
+      NthSwapOther(n, s0, S i, j, 0, hsi, hjn, h0, λ(e : Eq Nat (S i) 0) : False => match e {},
+        λ(e : Eq Nat j 0) : False => LtNe(0, j, LeTrans(1, S i, j, refl, hij), EqSym(j, 0, e))),
+      j0(h0))
+  )
+
+  def StepJ1 (n : Nat) (s0 : Slice(Nat, n)) (p : Nat) (i : Nat) (j : Nat) (hsi : Lt(S i, n)) (hjn : Lt(j, n))
+      (hij : Lt(i, j)) (j1 : Π(t : Nat) (ht : Lt(t, n)) (a : Lt(0, t)) (b : Le(t, i)). Le(Nth(Nat, n, s0, t, ht), p))
+      (hx : Le(Nth(Nat, n, s0, j, hjn), p)) (t : Nat) (ht : Lt(t, n)) (a : Lt(0, t)) (b : Le(t, S i)) :
+      Le(Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), p) := (
+    let d = LeDec(t, i);
+    match d {
+      Yes(hti) => J(Nat, Nth(Nat, n, s0, t, ht), Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), λ(z : Nat) : Prop => Le(z, p),
+        EqSym(Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), Nth(Nat, n, s0, t, ht),
+          NthSwapOther(n, s0, S i, j, t, hsi, hjn, ht, λ(e : Eq Nat (S i) t) : False => LtNe(t, S i, hti, EqSym(S i, t, e)),
+            λ(e : Eq Nat j t) : False => LtNe(t, j, LeTrans(S t, S i, j, hti, hij), EqSym(j, t, e)))),
+        j1(t, ht, a, hti)),
+      No(nti) => (
+        let e = LeAntisym(t, S i, b, nti);
+        J(Nat, Nth(Nat, n, s0, j, hjn), Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), λ(z : Nat) : Prop => Le(z, p),
+          EqSym(Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), Nth(Nat, n, s0, j, hjn),
+            EqTrans(Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), S i, hsi), Nth(Nat, n, s0, j, hjn),
+              NthIdx(n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, S i, e, ht, hsi), NthSwapA(n, s0, S i, j, hsi, hjn))),
+          hx)
+      ),
+    }
+  )
+
+  def StepJ2 (n : Nat) (s0 : Slice(Nat, n)) (p : Nat) (i : Nat) (j : Nat) (hsi : Lt(S i, n)) (hjn : Lt(j, n))
+      (hij : Lt(i, j)) (j2 : Π(t : Nat) (ht : Lt(t, n)) (a : Lt(i, t)) (b : Lt(t, j)). Lt(p, Nth(Nat, n, s0, t, ht)))
+      (t : Nat) (ht : Lt(t, n)) (a : Lt(S i, t)) (b : Lt(t, S j)) : Lt(p, Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht)) := (
+    let d = LeDec(S t, j);
+    match d {
+      Yes(htj) => J(Nat, Nth(Nat, n, s0, t, ht), Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), λ(z : Nat) : Prop => Lt(p, z),
+        EqSym(Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), Nth(Nat, n, s0, t, ht),
+          NthSwapOther(n, s0, S i, j, t, hsi, hjn, ht, λ(e : Eq Nat (S i) t) : False => LtNe(S i, t, a, e),
+            λ(e : Eq Nat j t) : False => LtNe(t, j, htj, EqSym(j, t, e)))),
+        j2(t, ht, LtTrans(i, S i, t, LeRefl(S i), a), htj)),
+      No(ntj) => (
+        let e = LeAntisym(t, j, b, ntj);
+        J(Nat, Nth(Nat, n, s0, S i, hsi), Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), λ(z : Nat) : Prop => Lt(p, z),
+          EqSym(Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), Nth(Nat, n, s0, S i, hsi),
+            EqTrans(Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), j, hjn), Nth(Nat, n, s0, S i, hsi),
+              NthIdx(n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, j, e, ht, hjn), NthSwapB(n, s0, S i, j, hsi, hjn))),
+          j2(S i, hsi, LeRefl(S i), J(Nat, t, j, λ(z : Nat) : Prop => Lt(S i, z), e, a)))
+      ),
+    }
+  )
+
+  -- Without a swap (the element at `j` was greater than `p`): cells `i + 1 … j` are greater.
+  def StepJ2F (n : Nat) (s0 : Slice(Nat, n)) (p : Nat) (i : Nat) (j : Nat) (hjn : Lt(j, n))
+      (j2 : Π(t : Nat) (ht : Lt(t, n)) (a : Lt(i, t)) (b : Lt(t, j)). Lt(p, Nth(Nat, n, s0, t, ht)))
+      (hx : Lt(p, Nth(Nat, n, s0, j, hjn))) (t : Nat) (ht : Lt(t, n)) (a : Lt(i, t)) (b : Lt(t, S j)) :
+      Lt(p, Nth(Nat, n, s0, t, ht)) := (
+    let d = LeDec(S t, j);
+    match d {
+      Yes(htj) => j2(t, ht, a, htj),
+      No(ntj) => (
+        let e = LeAntisym(t, j, b, ntj);
+        J(Nat, Nth(Nat, n, s0, j, hjn), Nth(Nat, n, s0, t, ht), λ(z : Nat) : Prop => Lt(p, z),
+          NthIdx(n, s0, j, t, EqSym(t, j, e), hjn, ht), hx)
+      ),
+    }
+  )
+
+  -- ## What the scan leaves, fact by fact
+  -- [checker] Stated pointwise, one lemma per fact, rather than as one proposition with
+  -- `Π`s inside: a `Π`-type's captured values are not re-normalised after a case split, so a
+  -- goal holding the scan's result inside a `Π` stays stale.
+  -- The scan's result and final view, run on a copy of `v`.
+  def ScanK (n : Nat) (v : Slice(Nat, n)) (p : Nat) (i : Nat) (j : Nat) (rem : Nat) (hij : Lt(i, j))
+      (hr : Eq Nat (Add(rem, j)) n) : Nat := (
+    let c = v;
+    Scan(n, &c, p, i, j, rem, hij, hr)
+  )
+
+  def ScanV (n : Nat) (v : Slice(Nat, n)) (p : Nat) (i : Nat) (j : Nat) (rem : Nat) (hij : Lt(i, j))
+      (hr : Eq Nat (Add(rem, j)) n) : Slice(Nat, n) := (
+    let c = v;
+    Scan(n, &c, p, i, j, rem, hij, hr);
+    c
+  )
+
+  def ScanLt (n : Nat) (v : Slice(Nat, n)) (p : Nat) (i : Nat) (j : Nat) (rem : Nat) (hij : Lt(i, j))
+      (hr : Eq Nat (Add(rem, j)) n) : Lt(ScanK(n, v, p, i, j, rem, hij, hr), n) by rem := (
+    match rem {
+      Z => J(Nat, j, n, λ(z : Nat) : Prop => Lt(i, z), hr, hij),
+      S r => (
+        let hjn : Lt(j, n) = J(Nat, S (Add(r, j)), n, λ(z : Nat) : Prop => Lt(j, z), hr, LeAddL(r, j));
+        let hr2 : Eq Nat (Add(r, S j)) n = J(Nat, S (Add(r, j)), Add(r, S j), λ(z : Nat) : Prop => Eq Nat z n, AddRS(r, j), hr);
+        let x = Nth(Nat, n, v, j, hjn);
+        let b = Leb(x, p);
+        match b {
+          true => ScanLt(n, SwapS(Nat, n, v, S i, j, LeTrans(S (S i), S j, n, hij, hjn), hjn), p, S i, S j, r, hij, hr2),
+          false => ScanLt(n, v, p, i, S j, r, LeStep(S i, j, hij), hr2),
+        }
+      ),
+    }
+  )
+
+  def ScanPivot (n : Nat) (v : Slice(Nat, n)) (p : Nat) (i : Nat) (j : Nat) (rem : Nat) (hij : Lt(i, j))
+      (hr : Eq Nat (Add(rem, j)) n) (j0 : Π(h0 : Lt(0, n)). Eq Nat (Nth(Nat, n, v, 0, h0)) p)
+      (hk : Lt(ScanK(n, v, p, i, j, rem, hij, hr), n)) :
+      Eq Nat (Nth(Nat, n, ScanV(n, v, p, i, j, rem, hij, hr), ScanK(n, v, p, i, j, rem, hij, hr), hk)) p by rem := (
+    match rem {
+      Z => (
+        let hin : Lt(i, n) = J(Nat, j, n, λ(z : Nat) : Prop => Lt(i, z), hr, hij);
+        let h0 : Lt(0, n) = LeTrans(1, S i, n, refl, hin);
+        EqTrans(Nth(Nat, n, SwapS(Nat, n, v, 0, i, h0, hin), i, hk), Nth(Nat, n, v, 0, h0), p, NthSwapB(n, v, 0, i, h0, hk), j0(h0))
+      ),
+      S r => (
+        let hjn : Lt(j, n) = J(Nat, S (Add(r, j)), n, λ(z : Nat) : Prop => Lt(j, z), hr, LeAddL(r, j));
+        let hr2 : Eq Nat (Add(r, S j)) n = J(Nat, S (Add(r, j)), Add(r, S j), λ(z : Nat) : Prop => Eq Nat z n, AddRS(r, j), hr);
+        let x = Nth(Nat, n, v, j, hjn);
+        let b = Leb(x, p);
+        match b {
+          true => (
+            let hsi : Lt(S i, n) = LeTrans(S (S i), S j, n, hij, hjn);
+            let c2 = SwapS(Nat, n, v, S i, j, hsi, hjn);
+            ScanPivot(n, c2, p, S i, S j, r, hij, hr2,
+              λ(h0 : Lt(0, n)) : Eq Nat (Nth(Nat, n, c2, 0, h0)) p => StepJ0(n, v, p, i, j, hsi, hjn, hij, j0, h0), hk)
+          ),
+          false => ScanPivot(n, v, p, i, S j, r, LeStep(S i, j, hij), hr2, j0, hk),
+        }
+      ),
+    }
+  )
+
+  def ScanLeft (n : Nat) (v : Slice(Nat, n)) (p : Nat) (i : Nat) (j : Nat) (rem : Nat) (hij : Lt(i, j))
+      (hr : Eq Nat (Add(rem, j)) n)
+      (j1 : Π(t : Nat) (ht : Lt(t, n)) (a : Lt(0, t)) (b : Le(t, i)). Le(Nth(Nat, n, v, t, ht), p))
+      (t : Nat) (ht : Lt(t, ScanK(n, v, p, i, j, rem, hij, hr))) (htn : Lt(t, n)) :
+      Le(Nth(Nat, n, ScanV(n, v, p, i, j, rem, hij, hr), t, htn), p) by rem := (
+    match rem {
+      Z => (
+        let hin : Lt(i, n) = J(Nat, j, n, λ(z : Nat) : Prop => Lt(i, z), hr, hij);
+        let h0 : Lt(0, n) = LeTrans(1, S i, n, refl, hin);
+        EndLeft(n, v, p, i, hin, h0, j1, t, ht, htn)
+      ),
+      S r => (
+        let hjn : Lt(j, n) = J(Nat, S (Add(r, j)), n, λ(z : Nat) : Prop => Lt(j, z), hr, LeAddL(r, j));
+        let hr2 : Eq Nat (Add(r, S j)) n = J(Nat, S (Add(r, j)), Add(r, S j), λ(z : Nat) : Prop => Eq Nat z n, AddRS(r, j), hr);
+        let x = Nth(Nat, n, v, j, hjn);
+        let b = Leb(x, p);
+        match b {
+          true => (
+            let hsi : Lt(S i, n) = LeTrans(S (S i), S j, n, hij, hjn);
+            let hx : Le(x, p) = LebLe(x, p, refl);
+            let c2 = SwapS(Nat, n, v, S i, j, hsi, hjn);
+            ScanLeft(n, c2, p, S i, S j, r, hij, hr2,
+              λ(t2 : Nat) (ht2 : Lt(t2, n)) (a : Lt(0, t2)) (b2 : Le(t2, S i)) : Le(Nth(Nat, n, c2, t2, ht2), p) =>
+                StepJ1(n, v, p, i, j, hsi, hjn, hij, j1, hx, t2, ht2, a, b2),
+              t, ht, htn)
+          ),
+          false => ScanLeft(n, v, p, i, S j, r, LeStep(S i, j, hij), hr2, j1, t, ht, htn),
+        }
+      ),
+    }
+  )
+
+  def ScanRight (n : Nat) (v : Slice(Nat, n)) (p : Nat) (i : Nat) (j : Nat) (rem : Nat) (hij : Lt(i, j))
+      (hr : Eq Nat (Add(rem, j)) n)
+      (j2 : Π(t : Nat) (ht : Lt(t, n)) (a : Lt(i, t)) (b : Lt(t, j)). Lt(p, Nth(Nat, n, v, t, ht)))
+      (t : Nat) (ht : Lt(t, n)) (hkt : Lt(ScanK(n, v, p, i, j, rem, hij, hr), t)) :
+      Lt(p, Nth(Nat, n, ScanV(n, v, p, i, j, rem, hij, hr), t, ht)) by rem := (
+    match rem {
+      Z => (
+        let hin : Lt(i, n) = J(Nat, j, n, λ(z : Nat) : Prop => Lt(i, z), hr, hij);
+        let h0 : Lt(0, n) = LeTrans(1, S i, n, refl, hin);
+        EndRight(n, v, p, i, j, hin, h0, hr, j2, t, ht, hkt)
+      ),
+      S r => (
+        let hjn : Lt(j, n) = J(Nat, S (Add(r, j)), n, λ(z : Nat) : Prop => Lt(j, z), hr, LeAddL(r, j));
+        let hr2 : Eq Nat (Add(r, S j)) n = J(Nat, S (Add(r, j)), Add(r, S j), λ(z : Nat) : Prop => Eq Nat z n, AddRS(r, j), hr);
+        let x = Nth(Nat, n, v, j, hjn);
+        let b = Leb(x, p);
+        match b {
+          true => (
+            let hsi : Lt(S i, n) = LeTrans(S (S i), S j, n, hij, hjn);
+            let c2 = SwapS(Nat, n, v, S i, j, hsi, hjn);
+            ScanRight(n, c2, p, S i, S j, r, hij, hr2,
+              λ(t2 : Nat) (ht2 : Lt(t2, n)) (a : Lt(S i, t2)) (b2 : Lt(t2, S j)) : Lt(p, Nth(Nat, n, c2, t2, ht2)) =>
+                StepJ2(n, v, p, i, j, hsi, hjn, hij, j2, t2, ht2, a, b2),
+              t, ht, hkt)
+          ),
+          false => (
+            let hx : Lt(p, x) = LebGt(x, p, refl);
+            ScanRight(n, v, p, i, S j, r, LeStep(S i, j, hij), hr2,
+              λ(t2 : Nat) (ht2 : Lt(t2, n)) (a : Lt(i, t2)) (b2 : Lt(t2, S j)) : Lt(p, Nth(Nat, n, v, t2, ht2)) =>
+                StepJ2F(n, v, p, i, j, hjn, j2, hx, t2, ht2, a, b2),
+              t, ht, hkt)
+          ),
+        }
+      ),
+    }
+  )
+
+  -- ## The partition meets its contract
+  -- At the start (`i = 0`, `j = 1`) the invariant holds trivially: the pivot is the first
+  -- element, and the two ranges are empty.
+  def Start0 (m : Nat) (v : Slice(Nat, S m)) (h0 : Lt(0, S m)) :
+      Eq Nat (Nth(Nat, S m, v, 0, h0)) (Nth(Nat, S m, v, 0, refl)) := refl
+
+  def Start1 (m : Nat) (v : Slice(Nat, S m)) (t : Nat) (ht : Lt(t, S m)) (a : Lt(0, t)) (b : Le(t, 0)) :
+      Le(Nth(Nat, S m, v, t, ht), Nth(Nat, S m, v, 0, refl)) := (
+    let no = LeSuccFalse(0, LeTrans(1, t, 0, a, b));
+    match no {}
+  )
+
+  def Start2 (m : Nat) (v : Slice(Nat, S m)) (t : Nat) (ht : Lt(t, S m)) (a : Lt(0, t)) (b : Lt(t, 1)) :
+      Lt(Nth(Nat, S m, v, 0, refl), Nth(Nat, S m, v, t, ht)) := (
+    let no = LeSuccFalse(0, LeTrans(1, t, 0, a, b));
+    match no {}
+  )
+
+  def PartLeProof (m : Nat) (v : Slice(Nat, S m)) : PartLe(m, v) := (
+    ScanLt(S m, v, Nth(Nat, S m, v, 0, refl), 0, 1, m, refl, AddOneR(m))
+  )
+
+  def PartLeftProof (m : Nat) (v : Slice(Nat, S m)) (hk : PartLe(m, v)) : PartLeft(m, v, hk) := (
+    AllLeTakeOf(S m, PartK(m, v), PartV(m, v), Nth(Nat, S m, v, 0, refl), LeStep(PartK(m, v), m, hk),
+      λ(t : Nat) (ht : Lt(t, PartK(m, v))) (htn : Lt(t, S m)) : Le(Nth(Nat, S m, PartV(m, v), t, htn), Nth(Nat, S m, v, 0, refl)) =>
+        ScanLeft(S m, v, Nth(Nat, S m, v, 0, refl), 0, 1, m, refl, AddOneR(m),
+          λ(t2 : Nat) (ht2 : Lt(t2, S m)) (a : Lt(0, t2)) (b : Le(t2, 0)) : Le(Nth(Nat, S m, v, t2, ht2), Nth(Nat, S m, v, 0, refl)) =>
+            Start1(m, v, t2, ht2, a, b),
+          t, ht, htn))
+  )
+
+  def PartPivotProof (m : Nat) (v : Slice(Nat, S m)) (hk : PartLe(m, v)) : PartPivot(m, v, hk) := (
+    J(Nat, Nth(Nat, S m, PartV(m, v), PartK(m, v), hk), Nth(Nat, S m, v, 0, refl),
+      λ(z : Nat) : Prop => Eq (Slice(Nat, 1)) (MkSlice(MkC(z, MkSlice(End))))
+        (TakeS(Nat, Sub(S m, PartK(m, v)), 1, DropS(Nat, S m, PartK(m, v), PartV(m, v)), SubPos(m, PartK(m, v), hk))),
+      ScanPivot(S m, v, Nth(Nat, S m, v, 0, refl), 0, 1, m, refl, AddOneR(m),
+        λ(h0 : Lt(0, S m)) : Eq Nat (Nth(Nat, S m, v, 0, h0)) (Nth(Nat, S m, v, 0, refl)) => Start0(m, v, h0), hk),
+      TakeOneDrop(S m, PartK(m, v), PartV(m, v), hk))
+  )
+
+  def PartRightProof (m : Nat) (v : Slice(Nat, S m)) (hk : PartLe(m, v)) : PartRight(m, v, hk) := (
+    AllGeDropOf(S m, PartK(m, v), PartV(m, v), Nth(Nat, S m, v, 0, refl),
+      λ(t : Nat) (ht : Lt(t, S m)) (hkt : Lt(PartK(m, v), t)) : Le(Nth(Nat, S m, v, 0, refl), Nth(Nat, S m, PartV(m, v), t, ht)) =>
+        LeOfLt(Nth(Nat, S m, v, 0, refl), Nth(Nat, S m, PartV(m, v), t, ht),
+          ScanRight(S m, v, Nth(Nat, S m, v, 0, refl), 0, 1, m, refl, AddOneR(m),
+            λ(t2 : Nat) (ht2 : Lt(t2, S m)) (a : Lt(0, t2)) (b : Lt(t2, 1)) : Lt(Nth(Nat, S m, v, 0, refl), Nth(Nat, S m, v, t2, ht2)) =>
+              Start2(m, v, t2, ht2, a, b),
+            t, ht, hkt)))
+  )
+
+  -- Quicksort sorts, for fuel at least the length, with no hypotheses.
+  def QSSortedFull (fuel : Nat) (n : Nat) (s : &Slice(Nat, n)) (hf : Le(n, fuel)) :
+      (let c = *s; QS(fuel, n, &c); Sorted(n, c)) := (
+    QSSorted(PartLeProof, PartLeftProof, PartPivotProof, PartRightProof, fuel, n, s, hf)
+  )
+
+  -- Quicksort is correct: its result is sorted and a permutation of its input.
+  def QSCorrect (n : Nat) (s : &Slice(Nat, n)) (q : Nat) :
+      (let c = *s; QS(n, n, &c); Sorted(n, c)) ∧
+        (let old = *s; Eq Nat (Count(q, n, (QS(n, n, &*s); *s))) (Count(q, n, old))) := (
+    ⟨QSSortedFull(n, n, s, LeRefl(n)), QSPerm(n, n, s, q)⟩
+  )
 }
 
 #eval IO.println (run "Quicksort" Quicksort).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Quicksort" Quicksort).allAsExpected
-#guard (run "Quicksort" Quicksort).count == 46
+#guard (run "Quicksort" Quicksort).count == 83
