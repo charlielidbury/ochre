@@ -464,20 +464,20 @@ Notes 1–11 explain the side conditions of @fig-why that are finest-grained in 
   ```
   U(n : Nat) : Type₀ := match n { Z => Prop | S _ => Prop }
   V(n : Nat) : U(n) := match n { Z => ⊤ | S _ => ⊤ }
-  Lie1(n : Nat) : Id Nat (let h = λ(x : &Nat) : U(n) => (*x := S Z; V(n)); let c = Z; h(&c); c) (S Z) := refl
-  Bad1 : Eq Nat Z (S Z) := Lie1(Z)
+  LieL(n : Nat) : Id Nat (let h = λ(x : &Nat) : U(n) => (*x := S Z; V(n)); let c = Z; h(&c); c) (S Z) := refl
+  BoomL : Eq Nat Z (S Z) := LieL(Z)
   ```
-  At the generic `n` the codomain is ⌈`U(σ)`⌉, not a sort, so `h(&c)` runs and the statement is `⊤`. At `n = Z` the codomain is `U(Z) = Prop`, a sort, so `h(&c)` would be erased, `c` would stay `Z`, and `Lie1(Z) : Eq Nat Z (S Z)`. Read from the term, `U(n)` is not syntactically a sort and has declared sort `Type₀`, so `h(&c)` runs on both paths.
+  At the generic `n` the codomain is ⌈`U(σ)`⌉, not a sort, so `h(&c)` runs and the statement is `⊤`. At `n = Z` the codomain is `U(Z) = Prop`, a sort, so `h(&c)` would be erased, `c` would stay `Z`, and `LieL(Z) : Eq Nat Z (S Z)`. Read from the term, `U(n)` is not syntactically a sort and has declared sort `Type₀`, so `h(&c)` runs on both paths.
 + *A stuck block is erased only when every arm is a declared proof.* Treating the block as a call, whose codomain is the match's type, erases a block whose type is a sort, while the same match run directly is not a call and is not erased:
   ```
-  Lie2(n : Nat) : Id Nat (let c = Z; let T = match n { Z => (c := S Z; ⊤) | S _ => (c := S Z; ⊤) }; c) Z := refl
-  Bad2 : Eq Nat (S Z) Z := Lie2(Z)
+  LieB(n : Nat) : Id Nat (let c = Z; let T = match n { Z => (c := S Z; ⊤) | S _ => (c := S Z; ⊤) }; c) Z := refl
+  BoomB : Eq Nat (S Z) Z := LieB(Z)
   ```
   Nor may the block be erased by its type inferred from the arms, which is computed. With `g : Π(y : Nat). V(Z)` and `f := λ(x : &Nat) : V(Z) => (*x := S Z; g(0))`, the block `match m { Z => f(&c) | S _ => f(&c) }` has inferred type `V(Z)`, which computes to `⊤`, of sort `Prop`; but `f` returns data (the declared sort of `V(Z)` is not `Prop`), so at `m = Z` the match runs `f(&c)` and writes `c`, while the block erased at the generic call would not. A block that is not erased is always safe, because its sealed programs re-run the arms, which decide for themselves.
 + *A proof is declared, not computed.* Classifying a variable as a proof because its value is ⋆ differs between the paths:
   ```
-  Lie3(g : Π(y : Nat). V(Z)) : Id Nat (let c = Z; let h = g(0); (c := S Z; h); c) (S Z) := refl
-  Bad3 : Eq Nat Z (S Z) := Lie3((λ(y : Nat) : V(Z) => refl))
+  LieH(g : Π(y : Nat). V(Z)) : Id Nat (let c = Z; let h = g(0); (c := S Z; h); c) (S Z) := refl
+  BoomH : Eq Nat Z (S Z) := LieH((λ(y : Nat) : V(Z) => refl))
   ```
   At the generic call `h` holds a sealed program, so `(c := S Z; h)` runs and the statement is `⊤`; at the instance `g(0)` returns ⋆, a value-based reading erases the sequence, `c` stays `Z`, and the statement is `Eq Nat Z (S Z)`. Reading clause 4 of @app-erasure by the type the typing judgement computes would be stable on its own, but combined with the syntactic class of calls it is the block example of note 2; so every clause is read from declarations.
 + *Inductive declarations are strictly positive.* A negative field gives a closed proof of `False` that is never run:
@@ -497,7 +497,7 @@ Notes 1–11 explain the side conditions of @fig-why that are finest-grained in 
   ```
   If the record `⌈Double(σ)⌉ := σ_g` were discarded with the copy, and σ_g's name reissued to the field `x` when the body splits `m`, the goal would equate the two and `Esc` would check; its instance is `Eq Nat 1 0`.
 + *A borrow-typed result is observed through a written value* ([Obs-borrow]). Ending a returned borrow with its current content forgets where it points, so `PickX(x, y : &Nat) : &Nat := x` and `PickY(x, y : &Nat) : &Nat := y` would be convertible; transport from `Π(x y : &Nat). Id Unit (let r = h(x, y); *r := S Z) (*x := S Z)`, true of `PickX`, then proves it of `PickY`, whose instance at two zeros is `Eq Nat 0 1 ∧ Eq Nat 1 0`, which is `False`.
-+ *A borrow-returning function type needs a borrow parameter* ([T-Pi], [Def]). Closing off a call `g(5)` with `g : Π(n : Nat). &Nat` would return a borrow whose hole lies in no owner, so writes through it are unobservable. The function `P(x : &Nat, e : Id Unit (*x := 0) (*x := 1)) : False := e` checks, since at its generic call the statement observes the owner of `x` and computes to `Eq Nat 0 1`, which is `False`. Then `Q(g : Π(n : Nat). &Nat) : False := P(g(5), refl)` checks too, because at this call site the statement observes nothing and computes to `⊤`: it proves that `Π(n : Nat). &Nat` is empty, although safe Rust inhabits it with a leaked `'static` borrow, and any such opaque inhabitant gives a closed proof of `False`.
++ *A borrow-returning function type needs a borrow parameter* ([T-Pi], [Def]). Closing off a call `g(5)` with `g : Π(n : Nat). &Nat` would return a borrow whose hole lies in no owner, so writes through it are unobservable. The function `PF(x : &Nat, e : Id Unit (*x := 0) (*x := 1)) : False := e` checks, since at its generic call the statement observes the owner of `x` and computes to `Eq Nat 0 1`, which is `False`. Then `QF(g : Π(n : Nat). &Nat) : False := PF(g(5), refl)` checks too, because at this call site the statement observes nothing and computes to `⊤`: it proves that `Π(n : Nat). &Nat` is empty, although safe Rust inhabits it with a leaked `'static` borrow, and any such opaque inhabitant gives a closed proof of `False`.
 + *The head guard covers neutral-headed calls* ([App-neutral-head]). Closing off a sealed program's head call when its head is an abstract function with codomain `&T` and two or more borrow arguments creates a new hole; reading an owner ends it, re-normalises a sealed program of the same shape, and so on for ever.
 + *Confinement is a fail-safe.* For a correctly classified term the private copy already discards its effects. If the two paths ever disagreed about whether a term is erased, the path that erases a term with outside effects rejects it rather than silently discarding effects the other path keeps. A place _outlives_ an erased term when its root is a position of the environment the term starts from; the exception for erased calls covers exactly the borrows and moves that evaluate their arguments.
 + *Subsingleton elimination* (@app-match-prop). A match on a proof of an inductive with two constructors cannot produce data. With `inductive Bool := false | true`:

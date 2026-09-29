@@ -86,7 +86,7 @@ The argument we expect is that each decision is read from syntax or declarations
 
 Naturality holds only up to resolution, which costs completeness. With `Pick(n, x, y) := match n { Z => x | S _ => y }` and `n` abstract,
 ```
-r := Pick(n, &a, &b); z := b; match n { Z => *r := 5 | S _ => () }
+let r = Pick(n, &a, &b); let z = b; match n { Z => *r := 5 | S _ => () }
 ```
 runs for every concrete `n` but is rejected: `Pick`'s hole sits in the fills of both `a` and `b`, so reading `b` ends `r` symbolically, and `r` is dead in the `Z` arm. The refined symbolic state and the concrete one agree only after every borrow is ended (a mechanised counterexample to the stronger form), which is why property 9 is stated up to resolution; Rust likewise treats `r` as borrowing both places while it is live.
 
