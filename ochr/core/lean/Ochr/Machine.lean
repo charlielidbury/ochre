@@ -2574,12 +2574,17 @@ partial def idType (typed : Bool) (A t u : Term) : M Value := do
   if A'.typeHasRef then err s!"Id at {A'}: A must be borrow-free (RULES §4)"
   let st ← get
   let W := footprint st.env [t, u] st.cfg.multiOwner
-  let Ts ← W.mapM fun p => do
-    match ← tyAt p with
-    | some T => pure T
-    | none => valType (← getAt p)
   let (a, as) ← observe typed t A' W
   let (b, bs) ← observe typed u A' W
+  -- an owner's type: its binding's, else its content's. An untyped owner that is lent out
+  -- now (a sealed program's re-run binding a cell that a returned borrow still holds: R1's
+  -- residual) is typed by what the observation read from it, once every borrow had ended
+  let Ts ← W.zipIdx.mapM fun (p, i) => do
+    match ← tyAt p with
+    | some T => pure T
+    | none =>
+      tryCatch (valType (← getAt p)) fun e =>
+        tryCatch (valType as[i]!) fun _ => tryCatch (valType bs[i]!) fun _ => throw e
   let eqs ← ((A', (a, b)) :: Ts.zip (as.zip bs)).mapM fun (T, (x, y)) => mkEqM T x y
   pure (andList eqs)
 

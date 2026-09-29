@@ -1008,3 +1008,18 @@ Fix: `renormV` re-normalises the captures and embedded values of closures and Π
 Both fixes were confirmed by reverting them: `UseCapOf` and `InPi` are rejected without them.
 
 994 verdicts.
+
+## 34. R1's residual: an `Id` owner reached through a returned borrow
+
+This was fuzz-port's last R1 case (1 in 10⁶; `Scratch/R1Residual.lean`). A sealed program's re-run forms `Id Unit (*x0 := *a6) ()`, where `a6 = RetSub(x1)` is a borrow returned by a stuck call. The owner of `*a6` is the re-run's cell `c2`, bound by an untyped `let`, which at that point holds `loan_ℓ`. The loan's borrow sits inside the stuck call's sealed arguments, where `findBorrow` does not look, so `valType` could not type the cell.
+
+`idType` now observes first, then types each owner:
+1. by its binding's type;
+2. else by its content;
+3. else by what the observation read from it, after every borrow had ended.
+
+A place keeps its type across writes, so any of the three readings is the owner's type.
+
+Regression: `Owners.RetSub` and `IdThroughRet`, the true statement once rejected.
+
+996 verdicts.

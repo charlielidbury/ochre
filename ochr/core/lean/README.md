@@ -81,7 +81,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `02Borrows` | moving, copying and reborrowing; D53's moves, copy types, `clone`, ghosts, the Fn rule; argument order; the borrow checker ([Access], [Drop]) | §3 | 32 |
 | `03ReturnedBorrows` | functions returning a borrow (`TailM`); a returned borrow must come from a borrow argument (D44) | §1, §3 [Close] | 20 |
 | `04ClosingOff` | stuck calls and matches, sealed programs, a borrow chosen by a branch, what a stuck match captures, [Close]'s rows, typing a sealed program; closures inside a stuck block; naturality up to resolution | §3 | 43 |
-| `05Equality` | `Id` and `Eq`: observation, footprints, disjointness, injectivity (pairs included), `J` and its stuck casts (D56); `rewrite h in t` (D60); all owners of a returned borrow are observed (D18), in the order the sides reach them | §4 | 62 |
+| `05Equality` | `Id` and `Eq`: observation, footprints, disjointness, injectivity (pairs included), `J` and its stuck casts (D56); `rewrite h in t` (D60); all owners of a returned borrow are observed (D18), in the order the sides reach them | §4 | 64 |
 | `06Snapshots` | types and closures are formed once; what a closure or Π-type captures (values, never borrows; capturing ends a live borrow; a Π-type formed by a call keeps its captured proofs' types) | P2, §1, §5 | 24 |
 | `07Recursion` | `by x`, entry-value recursion, induction hypotheses in the caller's environment; typing a sealed program keeps the [Rec] state | §5 [Def], [Rec] | 29 |
 | `08CaseSplits` | [Split], dependent matching on a computed type, generalising sealed programs, `split f` on a result the goal is stuck on (D61), scrutinee types, global generalisation records, a refinement belongs to its arm, re-normalising inside Π-types | §5 [Split] | 63 |
@@ -95,7 +95,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `16Arrays` | case study: arrays as a library (slices, indices), its lemmas and benchmarks, and in-place quicksort proved sorted and a permutation (`notes/arrays-library.md`) | all | 167 |
 | `17HashMap` | case study: Aeneas's resizing hash map, its lookups, length, invariant, resizing and load factor, proved about the in-place code (`notes/hashmap-case-study.md`) | all | 186 |
 
-994 declarations in all, the `Prelude`'s 4 and the case studies' 353 included. The case studies were written before D53 and are checked with its moves off (reads copy) until they are adapted: `Ochr.Test.preD53` lists their blocks. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+996 declarations in all, the `Prelude`'s 4 and the case studies' 353 included. The case studies were written before D53 and are checked with its moves off (reads copy) until they are adapted: `Ochr.Test.preD53` lists their blocks. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 

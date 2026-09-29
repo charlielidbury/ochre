@@ -313,13 +313,23 @@ ochr Owners uses Fixtures {
         (match n1 { Z => ⊤, S p => Eq (Nat × Nat) (1, n1) *x0 ∧ Eq Nat n1 0 }) := (
     match n1 { Z => refl, S _ => refl }
   )
+
+  -- An owner reached through a returned borrow, in a sealed program's re-run, where its cell
+  -- is untyped and still lent out: it is typed by what the observation reads from it
+  -- (fuzz-port's R1 residual, once rejected with "cannot infer the type of the value loan").
+  def RetSub (x0 : &Nat) : &Nat := match *x0 { Z => &*x0, S p3 => &p3 }
+  def IdThroughRet (x0 : &Nat) (x1 : &Nat) :
+      Id Prop (match *x0 { Z => let a6 = RetSub(x1); Id Unit (*x0 := *a6) (), S p7 => ⊤ })
+        (match *x0 { Z => let a6 = RetSub(x1); Id Unit (*x0 := *a6) (), S p7 => ⊤ ∧ ⊤ }) := (
+    match *x0 { Z => refl, S _ => refl }
+  )
 }
 
 #eval IO.println (run "Owners" Owners).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Owners" Owners).allAsExpected
-#guard (run "Owners" Owners).count == 15
+#guard (run "Owners" Owners).count == 17
 
 /-- The message rejecting `Owners.Use` under `cfg`: it states `Probe`'s parameter type. -/
 def useMessage (cfg : Ochr.Config) : String :=

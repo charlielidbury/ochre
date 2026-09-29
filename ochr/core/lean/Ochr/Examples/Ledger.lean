@@ -167,10 +167,10 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { capTypes := false }
   ["ClosingOff.UseDec:rejected", "ClosingOff.UseApply:rejected", "Equality.Om:rejected",
-   "Snapshots.CapS:rejected", "Snapshots.CapSId:rejected", "Snapshots.CapPi:rejected",
-   "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected",
-   "Snapshots.UseCapOf:rejected", "RenormPi.InPi:rejected", "RenormPi.InConj:rejected",
-   "ArmLocal.JoinS:rejected", "ArmLocal.AllGe:rejected", "ArmLocal.Leak:rejected"]
+   "Owners.IdThroughRet:rejected", "Snapshots.CapS:rejected", "Snapshots.CapSId:rejected",
+   "Snapshots.CapPi:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected",
+   "Snapshots.CapOf:rejected", "Snapshots.UseCapOf:rejected", "RenormPi.InPi:rejected",
+   "RenormPi.InConj:rejected", "ArmLocal.JoinS:rejected", "ArmLocal.AllGe:rejected", "ArmLocal.Leak:rejected"]
 -- `genPlaceType` changes no verdict; 08CaseSplits.lean asserts its effect on the generalised σ's type
 -- v2.0 D45 by type, switched off: a match on a proof inspects its content (⋆) like data: completeness only
 open Ochr.Registry in
