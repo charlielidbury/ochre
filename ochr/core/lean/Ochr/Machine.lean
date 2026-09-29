@@ -535,6 +535,12 @@ partial def largeElim (d : IndDecl) : M Bool := do
   | [(_, fields)] => fields.allM fun (_, FT) => fieldTermIsProp d FT
   | _ => pure false
 
+/-- The error of a large elimination from a proof of a non-subsingleton (D45). -/
+partial def subsingletonMsg (d : IndDecl) : String :=
+  let why := if d.ctors.length ≥ 2 then s!"it has {d.ctors.length} constructors"
+    else "its constructor has a field that is not a proposition"
+  s!"[D45] a match on a proof of {d.name} returns a non-proof, but {d.name} is not a subsingleton ({why}): large elimination would tell apart proofs that proof irrelevance identifies"
+
 /-- D45: the match `match p { … }` on constructors of `ty` (or with no arms) is by type. -/
 partial def byTypeMatch (ty : String) (arms : List (Hint × Term)) : M Bool := do
   if arms.isEmpty then return true
@@ -1181,8 +1187,13 @@ partial def evalTInd (typed : Bool) (n : String) (as : List Term) : M (Value × 
       for (((h, PT), v), T) in (d.params.zip vs.toList).zip tys.toList do
         let A ← evalType PT
         expectTy s!"the parameter {h.name} of {n}" T A
+        noBorrowParam n v
         pushBind h (some A) v
   pure (mkTInd n vs.toList, if typed then some (.sort d.sort) else none)
+
+/-- No borrows inside data (RULES §1), also through a parameter: `List(&Nat)` is not a type. -/
+partial def noBorrowParam (n : String) (v : Value) : M Unit := do
+  if v.typeHasRef then err s!"{n} at {v}: no borrows inside data (a parameter may not be a borrow type)"
 
 /-- A constructor application `C(t₁, …, tₖ)` of `D` (v2.0). Its value is `C(v̄)`, or `⋆`
 when `D` is a Prop inductive (D42). When typed, the parameters `ā` of its type `D(ā)` are
@@ -1210,7 +1221,7 @@ partial def evalCtor (typed : Bool) (ty : String) (c : Nat) (h : Hint) (as : Lis
   let mut ps := #[]
   for (s, (ph, _)) in sol.toList.zip d.params do
     match s with
-    | some p => ps := ps.push p
+    | some p => noBorrowParam ty p; ps := ps.push p
     | none => err s!"cannot infer the parameter {ph.name} of {h.name}: annotate it, ({h.name}(…) : {ty}(…))"
   for (T, (fname, FT)) in tys.toList.zip (← fieldTypes d ps.toList c) do
     expectTy s!"field {fname} of {h.name}" T FT
@@ -1633,11 +1644,12 @@ partial def splitArmsThenClose (mt : Term) (σ : Nat) (arms : List (M Value × T
   pure r
 
 /-- The refinement of `σ` to constructor `c` of an inductive type at parameters `ps`:
-fresh abstract values for its fields, of the fields' types. -/
+fresh abstract values for its fields, of the fields' types; a field that is a proof
+gets `⋆` (as a proof parameter does, D27). -/
 partial def ctorRefinement (d : IndDecl) (ps : List Value) (c : Nat) : M Value := do
   let (cn, _) := d.ctors[c]!
   let mut fs := #[]
-  for (_, T) in ← fieldTypes d ps c do fs := fs.push (Value.abs (← freshAbs T))
+  for (_, T) in ← fieldTypes d ps c do fs := fs.push (← genericValue T)
   pure (.ind d.name c ⟨cn⟩ fs.toList)
 
 /-- The inductive type of a matched place and its parameters, from the place's type (the
@@ -1675,7 +1687,7 @@ partial def evalMatchByType (typed : Bool) (p : Place) (ty : String) (arms : Lis
   let d ← lookupInd ty
   if typed then discard (scrutType p ty)
   let needProof := typed && (← get).cfg.subsingleton && !(← largeElim d)
-  let subErr : M Unit := err s!"[D45] a match on a proof of {ty} returns a non-proof, but {ty} is not a subsingleton (it has {d.ctors.length} constructors, or a field that is not a proposition): large elimination would tell apart proofs that proof irrelevance identifies"
+  let subErr : M Unit := err (subsingletonMsg d)
   -- a constructor value is seen only when Prop values are not erased (counterfactual D42)
   if let .ind _ c _ _ := v then
     match arms[c]? with
@@ -1855,7 +1867,7 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Nat) (allProof :
 paired with the final contents of the owners in `W`. -/
 partial def observe (typed : Bool) (t : Term) (A : Value) (W : List Pos) : M Value := onCopy do
   let es := (← get).effects.size
-  let (v, T) ← eval typed t
+  let (v, T) ← eval typed t A      -- A: a hint for a constructor's parameters
   if (← get).cfg.confine then flushPending es   -- D41: a side of Id is not an erased context
   expectTy "a side of Id" T A
   pushTemp v
@@ -1938,8 +1950,7 @@ partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
         err s!"a match with no arms on {← ppPlace p} : {d.name}, which has constructors"
       let needProof := (← get).cfg.subsingleton && !(← largeElim d)
       let k' : Value → Value → M Unit := fun r R => do
-        if needProof && !(← getFlags).2 then
-          err s!"[D45] a match on a proof of {d.name} returns a non-proof, but {d.name} is not a subsingleton (it has {d.ctors.length} constructors, or a field that is not a proposition): large elimination would tell apart proofs that proof irrelevance identifies"
+        if needProof && !(← getFlags).2 then err (subsingletonMsg d)
         k r R
       match v with
       | .ind _ c _ _ => checkTail (arms[c]!).2 k'     -- counterfactual D42: a constructor value

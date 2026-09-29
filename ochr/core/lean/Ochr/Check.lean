@@ -51,7 +51,7 @@ def checkDef (d : Def) : M Unit := do
     -- a constant
     modify fun s => { s with env := #[{}], goal := none, recStack := [], recCands := [], refs := [] }
     let goal ← evalType d.cod
-    let (v, T) ← eval true d.body
+    let (v, T) ← eval true d.body goal     -- the goal: a hint for a constructor's parameters
     unless (← match T with | some T => conv T goal | none => pure false) do
       err s!"the body of {d.name} has type {T.getD .bot}, but the goal is {goal}"
     let v ← if (← get).cfg.p5 && (← isPropV goal) then pure .proof else pure v

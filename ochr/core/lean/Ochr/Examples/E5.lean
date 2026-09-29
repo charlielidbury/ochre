@@ -11,9 +11,9 @@ ochr E5 {
   def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y | S p => AddM(&p, y) }
   def Add (x : Nat) (y : Nat) : Nat := AddM(&x, y); x
 
-  -- a Prop-valued function ("False" is Eq Nat Z (S Z))
+  -- a Prop-valued function (v2.0: False is the library's empty inductive; before, Eq Nat Z (S Z))
   def Le (a : Nat) (b : Nat) : Prop by a :=
-    match a { Z => ⊤ | S a' => match b { Z => Eq Nat Z (S Z) | S b' => Le(a', b') } }
+    match a { Z => ⊤ | S a' => match b { Z => False | S b' => Le(a', b') } }
 
   -- a lemma about the pure Add
   def LeAdd (n : Nat) (m : Nat) : Le(n, Add(n, m)) by n :=
@@ -45,7 +45,8 @@ ochr E5 {
   def ProofIrr (x : &Nat) (y : Nat) (h : Le(y, *x)) :
       Id Unit (SubM(x, y, h)) (let h2 = LeId(y, *x, h); SubM(x, y, h2)) := refl
 
-  -- deriver-e5 §E5.8: ex falso into Prop with J (explicit endpoints) and a Prop-valued motive
+  -- deriver-e5 §E5.8: ex falso into Prop with J (explicit endpoints) and a Prop-valued motive.
+  -- (v2.0: h's type computes to False by D47, and `match h {}` does the same job, Logic.absurdP.)
   def ExFalso (G : Prop) (h : Eq Nat Z (S Z)) : G :=
     J(Nat, Z, S Z, λ(n : Nat) : Prop => match n { Z => ⊤ | S _ => G }, h, refl)
 

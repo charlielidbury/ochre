@@ -1,7 +1,7 @@
 import Ochr.Examples.Units
 import Ochr.Examples.E5
 import Ochr.Examples.V15
-import Ochr.Examples.D44
+import Ochr.Examples.Logic
 import Ochr.Examples.Inductives
 import Ochr.Examples.Probes
 
@@ -13,6 +13,7 @@ namespace Ochr.Registry
 
 def programs : List (String × Program) :=
   [("E1", E1), ("E2", E2), ("E3", E3), ("E4", E4), ("E5", E5), ("E6", E6), ("Attacks", Attacks), ("More", More), ("Probes", Probes), ("V15", V15), ("V17", V17), ("V18", V18), ("Positivity", Positivity), ("GenTy", GenTy), ("V19", V19), ("D44", D44), ("Inductives", Inductives),
+   ("Logic", Logic), ("ByType", ByType), ("OrAttack", OrAttack), ("PList", PList), ("PosParam", PosParam),
    ("D18", Ochr.Units.D18)]
 
 def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
@@ -65,12 +66,17 @@ def switches : List (String × Config) :=
    ("D41 (v1.9): erased terms are confined", { confine := false }),
    ("D44 (v1.9): a function type returning a borrow has a borrow parameter", { borrowParam := false }),
    ("captured neutral data and proofs keep their types", { capTypes := false }),
+   ("D45 (v2.0): a match on a proof is by its type, not its content", { byType := false }),
+   ("D45 (v2.0): subsingleton elimination", { subsingleton := false }),
+   ("D42 (v2.0): a constructor application of a Prop inductive is a proof (⋆, erased)", { propValues := false }),
+   ("D45 + D42 (v2.0): subsingleton elimination and erased Prop values, both off", { subsingleton := false, propValues := false }),
+   ("D47 (v2.0): distinct constructors are disjoint in Eq", { disjoint := false }),
    ("extension (switched ON): bodies of erased-class functions and arms of erased blocks are confined", { confineBodies := true })]
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 261
+def Ochr.Registry.expectedTotal : Nat := 350
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
