@@ -126,11 +126,18 @@ def runRange (a : Args) (o : Opts) : IO Unit := do
     let res := checkCase o c r
     let st := if res.status.startsWith "invalid" then "invalid" else res.status
     stats := bump stats st
-    let fs := match o.base with
-      | some b =>
-        let bk := (checkCase { o with cfg := b, base := none } c r).findings.map (Finding.key)
-        res.findings.filter fun (f : Finding) => !bk.contains f.key
-      | none => res.findings
+    let fs ← match o.base with
+      | some b => do
+        let bres := checkCase { o with cfg := b, base := none } c r
+        -- a verdict the switch changes (e.g. a program the switch-off accepts), for `--list`
+        let bst := if bres.status.startsWith "invalid" then "invalid" else bres.status
+        if a.list && bst != st then out.putStrLn s!"@FLIP {i} {bst}>{st}"
+        -- the statement's sides as data functions (the execution oracle): how many are accepted
+        if a.list && bres.execAccepted != res.execAccepted then
+          out.putStrLn s!"@XFLIP {i} {bres.execAccepted}>{res.execAccepted}"
+        let bk := bres.findings.map (Finding.key)
+        pure (res.findings.filter fun (f : Finding) => !bk.contains f.key)
+      | none => pure res.findings
     let mut done : List String := []
     for f in fs do
       if done.contains f.key then continue

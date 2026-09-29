@@ -23,15 +23,15 @@ namespace Ochr.Fuzz
 open Ochr
 
 inductive Kind where
-  | nat | falseProof | verdict | renorm | escape | adequacy | frame | conv | truth | irrel
+  | nat | falseProof | verdict | renorm | escape | adequacy | frame | conv | truth | irrel | exec
 deriving BEq, Inhabited, Repr
 
 def Kind.name : Kind → String
   | .nat => "nat" | .falseProof => "false" | .verdict => "verdict" | .renorm => "renorm"
   | .escape => "escape" | .adequacy => "adequacy" | .frame => "frame" | .conv => "conv" | .truth => "truth"
-  | .irrel => "irrel"
+  | .irrel => "irrel" | .exec => "exec"
 
-def Kind.all : List Kind := [.nat, .falseProof, .verdict, .renorm, .escape, .adequacy, .frame, .conv, .truth, .irrel]
+def Kind.all : List Kind := [.nat, .falseProof, .verdict, .renorm, .escape, .adequacy, .frame, .conv, .truth, .irrel, .exec]
 
 structure Finding where
   kind : Kind
@@ -60,6 +60,7 @@ structure CaseResult where
   findings : List Finding := []
   synOnly : Nat := 0       -- syntactically different, equal on every ground completion
   incomplete : Nat := 0    -- the generic path errs where a direct path succeeds
+  execAccepted : Nat := 0  -- how many of the statement's sides the checker accepts as data functions
 deriving Inhabited
 
 def Except.isOk {ε α : Type} : Except ε α → Bool
