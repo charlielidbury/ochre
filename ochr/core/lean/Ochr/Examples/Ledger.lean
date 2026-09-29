@@ -2,10 +2,11 @@ import Ochr.Examples.Registry
 
 namespace Ochr.Registry
 
-/-- A row's class is checked with its flips: a completeness row flips only to rejected,
-any other row flips its named witnesses to accepted. -/
+/-- A row's class is checked with its flips: a completeness row flips only to rejected, a
+subsumed row flips nothing, any other row flips its named witnesses to accepted. -/
 def classOk (k : String) (ws fs : List String) : Bool :=
   if k == "completeness" then !fs.isEmpty && fs.all (·.endsWith ":rejected")
+  else if k == "subsumed" then fs.isEmpty
   else ws.all fun w => fs.contains s!"{w}:accepted"
 
 /-- One ledger row: switching `c` off flips exactly `e`, blocks exactly `bl` (declarations
@@ -77,9 +78,8 @@ open Ochr.Registry in
   ["Recursion.KnotL:accepted", "Recursion.KnotLBoom:accepted"]
 open Ochr.Registry in
 #guard rowOk { erasureByDecl := false }
-  ["ClosingOff.RowI:accepted", "ClosingOff.IdInBlock:rejected", "Functions.RunG:rejected",
-   "Functions.RunGGen:rejected", "Functions.RunI:rejected", "Functions.RunIGen:rejected",
-   "Erasure.TypeErased:rejected", "ErasureBySyntax.MainW0:rejected", "ErasureBySyntax.TruthB:rejected",
+  ["ClosingOff.RowI:accepted", "Functions.RunG:rejected", "Functions.RunGGen:rejected",
+   "Functions.RunI:rejected", "Functions.RunIGen:rejected", "Erasure.TypeErased:rejected",
    "ErasureBySyntax.SeqT:rejected"]
 open Ochr.Registry in
 #guard rowOk { matchEndsInside := false }
@@ -96,28 +96,30 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { genConsistent := false }
   ["Trees.InsertMEq:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.SizeInsert:rejected"]
+-- D35's three clauses switched off flip nothing since the erasure pre-pass: a function's
+-- class, a stuck block's, and a sequence's are all read before the term runs, from its
+-- declared type (`preFlags`), and the old after-the-fact rules no longer decide
+-- (their witnesses BoomL, Boom8, BoomB, Boom7, SeqT keep their verdicts)
 open Ochr.Registry in
 #guard rowOk { classBySyntax := false }
-  ["ErasureBySyntax.BoomL:accepted", "ErasureBySyntax.Boom8:accepted", "ErasureBySyntax.Direct8:accepted"]
+  []
 open Ochr.Registry in
 #guard rowOk { blockRule := 0 }
-  ["ErasureBySyntax.LieB:accepted", "ErasureBySyntax.BoomB:accepted", "ErasureBySyntax.TruthB:rejected",
-   "ErasureBySyntax.Lie7:accepted", "ErasureBySyntax.Boom7:accepted"]
+  []
 open Ochr.Registry in
 #guard rowOk { seqByProof := false }
-  ["ErasureBySyntax.SeqT:rejected"]
+  []
 open Ochr.Registry in
 #guard rowOk { rowByDecl := false }
   ["ClosingOff.RowI:accepted"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 0 }
-  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected",
-   "Subsingletons.OrLet:rejected"]
+  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 0, confine := false }
   ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected",
-   "Subsingletons.OrLet:rejected", "Erasure.EffArgErased:accepted", "Erasure.Write:accepted",
-   "Erasure.Borrow:accepted", "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted"]
+   "Erasure.EffArgErased:accepted", "Erasure.Write:accepted", "Erasure.Borrow:accepted",
+   "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted", "ErasureBySyntax.LieP:accepted"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 1 }
   ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected"]
@@ -128,8 +130,7 @@ open Ochr.Registry in
    "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted", "ErasureBySyntax.LieP:accepted"]
 open Ochr.Registry in
 #guard rowOk { blockRule := 1, leafRule := 0 }
-  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected",
-   "Subsingletons.OrLet:rejected", "ErasureBySyntax.LieP:accepted", "ErasureBySyntax.BoomP:accepted"]
+  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected"]
 open Ochr.Registry in
 #guard rowOk { positivity := false }
   ["Positivity.Bad:accepted", "Positivity.L:accepted", "Positivity.K:accepted", "Positivity.bad:accepted",
@@ -236,11 +237,12 @@ open Ochr.Registry in
 #guard rowOk { unitNorm := true }
   ["Propositions.AndTrue:rejected"]
 -- v2.1 D54 switched off: a function type's class is not part of it, so `H`, which returns
--- data, passes where a function returning types is expected; `Boom` and `BoomI` are closed
--- proofs of False (reviewer-5)
+-- data, passes where a function returning types is expected. Before the erasure pre-pass,
+-- `Boom` and `BoomI` were closed proofs of False (reviewer-5); with it, `g(&c)` is erased by
+-- its declared type on both paths, and confinement (D41) rejects `H`'s write there
 open Ochr.Registry in
 #guard rowOk { classInType := false }
-  ["Functions.Boom:accepted", "Functions.RunGH:accepted", "Functions.BoomI:accepted"]
+  []
 -- v2.1 D56 switched off: J returns t whatever its endpoints (equality reflection): `Om`
 -- exceeds the depth bound, and `CastMatch` matches 5 against Bool's constructors (reviewer-4 W4)
 open Ochr.Registry in
@@ -258,9 +260,8 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { sortsSyntactic := false }
   ["Functions.WV:accepted", "Subsingletons.EffL:accepted", "Subsingletons.EffLNoop:accepted",
-   "ErasureBySyntax.TruthG:accepted", "ErasureBySyntax.LieH:accepted", "Sorts.W:accepted",
-   "Sorts.f:accepted", "Sorts.TT:accepted", "Sorts.g2:accepted", "Sorts.k:accepted", "Sorts.K1:accepted",
-   "Sorts.K2:accepted"]
+   "ErasureBySyntax.LieH:accepted", "Sorts.W:accepted", "Sorts.f:accepted", "Sorts.TT:accepted",
+   "Sorts.g2:accepted", "Sorts.k:accepted", "Sorts.K1:accepted", "Sorts.K2:accepted"]
 
 -- every row of `switches` has a class
 open Ochr.Registry in

@@ -752,3 +752,48 @@ The ledger's rows are unchanged apart from rejections of the new tests:
   - P1 with the computed block rule: [BoomP, BoomG] → [BoomP].
 - *Ledger with D55 on*: 50 rows, and every row flips something. Soundness 22 (16 with a closed proof of `False`), false lemma 1, model 4, policy 4, completeness 19.
 - *Rows that no longer guard anything of their own.* Among the "without D41" combination rows, P1 and P3 add over D41 alone only rejections of good programs (`Om`, `CapP`, `CapP2`, and `OrLet` for P1): their accepting flips are all D41's.
+
+## 23. The erasure pre-pass: erasure is decided before a term runs, from declared types
+
+*What changed.*
+- `eval` asks `preFlags` whether a term is erased and whether it is a proof before it runs, and uses the answer. `preFlags` reads the term's declared type with `declOf`, the same reading as D55's static pass (moved into the machine).
+  - A term is a proof iff its declared type is a proposition, or a Π-type into propositions.
+  - It is erased iff it is a proof, or it is a call returning types, other than a stuck block's call.
+  - A stuck block's call is a match, and a sequence, `let` or match is erased iff it is a proof (D35).
+  - The declared-type readings live in `DeclInfo`: a sort, a proposition, a Π with its codomain, `&A`, other, and `any` (a zero-arm match).
+- Every binding in Ω now records what its declared type says:
+  - parameters from their domain terms (`paramDecls`, in the scope of the captures and the earlier parameters);
+  - a `let` from its bound term;
+  - captures from their values (`valueDecl`: ⋆ is a proof, a type has its sort, a function has its own Π-type's codomain);
+  - `self` as its Π-type.
+- A binding whose declared type is a Π-type only after computing it, such as `p : Pow(Nat)`, or which holds a function value, takes the value's own declared Π-type (`refineDecl`). D54 makes that the static one.
+
+*The assertion.* The after-the-fact classification (D28/D35/D42, the leaf and block rules) still runs, as an assertion. Under the default rules, a disagreement is an INTERNAL error.
+- Across the whole suite (519 verdicts, every sealed-program re-run and conversion) the two agree, once three things are in place:
+  - `self`, read as a call's head, is not classified: a call's flags are its own, and the after-the-fact rule deliberately does not treat `self` as a proof, so that a closure never inlines it as `⋆`, which would escape [Rec];
+  - a stuck block's call is classified as a match;
+  - a function-valued binding takes its value's declared Π-type.
+- A counterfactual run, with one rule switched off, does not assert, so the ledger measures the rule alone.
+
+*The ledger with the pre-pass deciding.* Verdicts and messages are unchanged. Rows that now flip nothing, with the new class `subsumed` (asserted to flip nothing):
+- *D35: a function's class is read from its codomain term* (classBySyntax). Its witnesses BoomL, Boom8 and Direct8 stay rejected with the v1.6 rule switched on. The class that decides erasure is read from the declared type whatever that switch says.
+- *D35/D40: a stuck block is erased iff each arm is* (blockRule := 0): LieB, BoomB, Lie7, Boom7 and TruthB keep their verdicts.
+- *D35: a let, sequence or match is erased iff it is a proof* (seqByProof): SeqT keeps its verdict.
+- *D54: the class and borrow row in the Π-type* (classInType).
+  - Boom, BoomI and RunGH are now rejected with D54 off, by confinement (D41): "[D41] an erased term borrows c". `g(&c)` is erased by its declared type on both paths, so `H`'s write is an erased term's effect on an outer place.
+  - D54 still makes a function value's class, which `callFn` uses to decide whether a call runs, equal to its static type's. But in the suite nothing depends on it once erasure is static and D55 holds.
+
+Rows that shrink:
+- D28 (erasure by declared class): 10 → 7 flips. It keeps RowI accepted, because `erasureByDecl` also sets [Close]'s row.
+- P1: 4 → 3, all rejections. P1 without D41: its accepted flips are all D41's.
+- P1 with the computed block rule: 6 → 3, all rejections, so completeness now; BoomP is no longer accepted.
+- D55: loses TruthG.
+
+Nothing else changes. Ledger classes now: soundness 18 (12 with a closed proof of `False`), false lemma 1, model 4, policy 4, subsumed 4, completeness 19.
+
+*Cost.* A full suite run takes about 0.8–1.1 s with the pre-pass and about 0.7 s without it; the machine was under load. Three things keep it cheap:
+- the frame's bindings are read in place (`withLive`);
+- a sequence or `let` hands its reading to its tail;
+- globals' readings are cached.
+
+A first version formatted `Config` to decide whether to assert, and was 4× slower; perf showed it.
