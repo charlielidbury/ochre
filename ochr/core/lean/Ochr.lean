@@ -8,14 +8,5 @@ import Ochr.Check
 import Ochr.Surface
 import Ochr.Notation
 import Ochr.Test
-import Ochr.Examples.E1
-import Ochr.Examples.E2
-import Ochr.Examples.E3
-import Ochr.Examples.E4
-import Ochr.Examples.E5
-import Ochr.Examples.E6
-import Ochr.Examples.Attacks
-import Ochr.Examples.More
-import Ochr.Examples.Units
 import Ochr.Examples.Registry
 import Ochr.Examples.Ledger
