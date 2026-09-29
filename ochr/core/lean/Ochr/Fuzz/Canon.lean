@@ -95,6 +95,25 @@ def obsParts : Value → Value × List Value
 
 def canon (pinned : List Nat) (v : Value) : Value := (canonV v |>.run { pinned := pinned }).1
 
+/-- Conjunctions up to associativity and commutativity: every `And` is flattened into its
+conjuncts, which are sorted and right-nested again (for classifying a disagreement that is only
+the order of `Id`'s conjuncts, finding class R6; not used for the comparison itself). -/
+partial def acNorm (v : Value) : Value :=
+  let rec conj : Value → List Value
+    | .tInd "And" [a, b] => conj a ++ conj b
+    | w => [acNorm w]
+  match v with
+  | .tInd "And" [_, _] =>
+    let cs := (conj v).toArray.qsort (fun a b => a.pp < b.pp) |>.toList
+    match cs.reverse with
+    | [] => v
+    | last :: rest => rest.foldl (fun acc c => .tInd "And" [c, acc]) last
+  | .tEq A a b => .tEq (acNorm A) (acNorm a) (acNorm b)
+  | .ind t c h ps fs => .ind t c h ps (fs.map acNorm)
+  | .tInd n as => .tInd n (as.map acNorm)
+  | .succ w => .succ (acNorm w)
+  | w => w
+
 /-- The abstract values occurring in a value (with repetition). -/
 def absIn (v : Value) : List Nat := Id.run do
   let mut out := []

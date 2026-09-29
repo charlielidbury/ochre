@@ -92,7 +92,9 @@ def compareVals (sR sD : MState) (pinned : List Nat) (r d : Value) (rng : Rng)
   if (absIn r).any (fun σ => !pinned.contains σ && !recR.contains σ) ||
      (absIn d).any (fun σ => !pinned.contains σ && !recD.contains σ) then
     return (some (.escape, r.pp, d.pp, ""), false)
-  if groundV r && groundV d then return (some (.nat, r.pp, d.pp, ""), false)
+  if groundV r && groundV d then
+    let why := if acNorm (canon pinned r) == acNorm (canon pinned d) then "conjunction order" else ""
+    return (some (.nat, r.pp, d.pp, why), false)
   let recVals := sR.neutrals.map (·.1) ++ sD.neutrals.map (·.1)
   for γ in completions sR pinned ([r, d] ++ recVals) 4 rng fns do
     let lbl := ", ".intercalate (γ.map fun (σ, v) => s!"σ{σ} := {v}")
@@ -101,7 +103,9 @@ def compareVals (sR sD : MState) (pinned : List Nat) (r d : Value) (rng : Rng)
       -- a completion that leaves an abstract value (a function parameter with no instance in
       -- the library) can only compare normal forms, which may differ in where they are stuck
       if canon pinned r' != canon pinned d' && groundV r' && groundV d' then
-        return (some (.nat, s!"{r.pp}  ⟶[{lbl}]  {r'.pp}", s!"{d.pp}  ⟶[{lbl}]  {d'.pp}", ""), false)
+        -- the same conjuncts in another order (`Id` lists owners in the order of Ω): class R6
+        let why := if acNorm (canon pinned r') == acNorm (canon pinned d') then "conjunction order" else ""
+        return (some (.nat, s!"{r.pp}  ⟶[{lbl}]  {r'.pp}", s!"{d.pp}  ⟶[{lbl}]  {d'.pp}", why), false)
     | .ok r', .error e => if !isResource e then
         return (some (.verdict, s!"{r.pp} ⟶[{lbl}] {r'.pp}", s!"{d.pp} ⟶[{lbl}] error: {e}", errKey e), false)
     | .error e, .ok d' => if !isResource e then
