@@ -110,10 +110,11 @@ def SDecl.mentions (d : SDecl) : List String :=
 /-- Name clashes in `b`'s flat namespace: a name `b` declares that a block it uses (other
 than by `reject`) also declares, or one name declared by two of the blocks it uses. The
 `ochr` command reports these as an error when the block is elaborated. -/
-def Block.clashes (b : Block) : List String := Id.run do
+def Block.clashes (b : Block) (implicit : List Block := []) : List String := Id.run do
   let mut seen : List (String × String) := []     -- name ↦ the block declaring it
   let mut out := []
-  for u in b.closure do
+  let used := implicit ++ b.closure.filter fun u => !implicit.any (·.name == u.name)
+  for u in used do
     for d in u.decls.filter (·.expectAccept) do
       for n in d.introduces do
         match seen.lookup n with
@@ -153,20 +154,15 @@ structure Tables where
 
 abbrev R := ReaderT Tables (Except String)
 
-/-- The library's names (`Check.prelude`: `False`, `True`, `And`, `I`, `Intro`). -/
-def Tables.prelude : Tables :=
-  Ochr.prelude.foldl (fun t it => match it with
-    | .ind d =>
-      { ctors := t.ctors ++ (d.ctors.zipIdx.map fun ((cn, fs), i) => (cn, d.name, i, fs.map (·.1))),
-        types := t.types ++ [d.name] }
-    | .defn _ => t) {}
-
+/-- The constructors and types a program declares. The library's (`Pair`, `False`,
+`True`, `And`) are among them: the `Prelude` block's declarations come first in every
+program (v2.1). -/
 def Tables.ofProgram (p : List SDecl) : Tables :=
   p.foldl (fun t d => match d.ind? with
     | some cs =>
       { ctors := t.ctors ++ (cs.zipIdx.map fun ((cn, fs), i) => (cn, d.name, i, fs.map (·.1))),
         types := t.types ++ [d.name] }
-    | none => t) Tables.prelude
+    | none => t) {}
 
 def builtinNames : List String := ["Nat", "Unit", "Z", "refl", "S", "Id", "Eq", "cong"]
 
@@ -285,11 +281,12 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
     let bodyCtx := (bs.reverse.map fun (x, _) => Entry.bound x) ++ (.bound f :: ctx)
     return .fix ⟨f⟩ hs ds ret' (← decIndex bs dec) (← resolve bodyCtx false body)
   | .unitLit => pure .tt
-  | .pair a b => return .pair (← resolve ctx false a) (← resolve ctx false b)
+  | .pair a b =>      -- `(a, b)`: notation for the library's `Mk(a, b)` of `Pair` (D52)
+    return .ctor "Pair" 0 ⟨"Mk"⟩ [] [← resolve ctx false a, ← resolve ctx false b]
   | .andI a b => return .ctor "And" 0 ⟨"Intro"⟩ [] [← resolve ctx false a, ← resolve ctx false b]
   | .top => pure (.tind "True" [])
   | .and P Q => return .tind "And" [← resolve ctx true P, ← resolve ctx true Q]
-  | .prod A B => return .prod (← resolve ctx true A) (← resolve ctx true B)
+  | .prod A B => return .tind "Pair" [← resolve ctx true A, ← resolve ctx true B]   -- `A × B` (D52)
   | .ascribe a A => return .ascribe (← resolve ctx false a) (← resolve ctx true A)
   | .sort l => pure (.sort l)
 

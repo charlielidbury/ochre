@@ -32,7 +32,7 @@ def Verdict.ok : Verdict → Bool
 partial def Term.mentionsConst (n : String) : Term → Bool
   | .const m => m == n
   | .assign _ t | .succ t | .fst t | .snd t | .ref t => t.mentionsConst n
-  | .letIn _ t u | .seq t u | .prod t u | .pair t u | .cong t u
+  | .letIn _ t u | .seq t u | .cong t u
   | .ascribe t u => t.mentionsConst n || u.mentionsConst n
   | .matchNat _ z s => z.mentionsConst n || s.mentionsConst n
   | .pi _ ds c => ds.any (·.mentionsConst n) || c.mentionsConst n
@@ -84,7 +84,6 @@ only at first-order types in a field, so a negative occurrence cannot hide behin
 (`Box(Π(x : Bad). Void)` is rejected). -/
 partial def firstOrderTerm (np : Nat) : Term → M Bool
   | .nat | .unit => pure true
-  | .prod A B => do pure ((← firstOrderTerm np A) && (← firstOrderTerm np B))
   | .place (.var j) => pure (j < np)
   | .tind m as => do
     discard (lookupInd m)
@@ -119,15 +118,6 @@ def checkItem : Item → M Unit
   | .defn d => checkDef d
   | .ind d => checkInd d
 
-/-- The library (RULES §1, v2.0): `False`, `True` and `And` are ordinary inductive
-declarations, checked like any other; `⊤`, `P ∧ Q`, `⟨h, k⟩` and `refl` are notation for
-`True`, `And(P, Q)`, `Intro(h, k)` and `I` (`Surface.lean`). `Eq` stays primitive. -/
-def prelude : List Item :=
-  [.ind { name := "False", sort := 0 },
-   .ind { name := "True", sort := 0, ctors := [("I", [])] },
-   .ind { name := "And", params := [(⟨"P"⟩, .sort 0), (⟨"Q"⟩, .sort 0)], sort := 0,
-          ctors := [("Intro", [("l", .place (.var 1)), ("r", .place (.var 0))])] }]
-
 /-- The globals and inductive types after checking a list of items, from a start. -/
 def globalsAfterFrom (cfg : Config) (start : List GDef × List IndDecl) (ds : List Item) :
     List GDef × List IndDecl := Id.run do
@@ -141,16 +131,14 @@ def globalsAfterFrom (cfg : Config) (start : List GDef × List IndDecl) (ds : Li
     | .error _ => pure ()
   pure (globals, inds)
 
-/-- The state every program starts from: the library declarations. -/
-def preludeState (cfg : Config) : List GDef × List IndDecl := globalsAfterFrom cfg ([], []) prelude
-
 /-- Check a list of items in order, with a fresh state per item apart from the
-globals and inductive types accepted so far. -/
+globals and inductive types accepted so far. The library (`Pair`, `False`, `True`, `And`)
+is not built in (v2.1): it is the `Prelude` block (`Ochr/Prelude.lean`), whose
+declarations come first in every program (`Ochr.Test.libOf`). -/
 def checkDefs (cfg : Config) (ds : List Item) (fuel : Nat := 2000000) :
     List (String × Verdict × Array String) := Id.run do
-  let (g0, i0) := preludeState cfg
-  let mut globals : List GDef := g0
-  let mut inds : List IndDecl := i0
+  let mut globals : List GDef := []
+  let mut inds : List IndDecl := []
   let mut out := #[]
   for d in ds do
     let st : MState := { globals := globals, inds := inds, cfg := cfg, fuel := fuel }
@@ -164,9 +152,10 @@ def checkDefs (cfg : Config) (ds : List Item) (fuel : Nat := 2000000) :
     | .error (.stuck _) => out := out.push (d.name, .rejected "internal: stuck escaped to the top", tr)
   pure out.toList
 
-/-- The globals and inductive types after checking a list of items (after the library). -/
+/-- The globals and inductive types after checking a list of items (the library among
+them, first: `Ochr.Test.libOf`). -/
 def globalsAfter (cfg : Config) (ds : List Item) : List GDef × List IndDecl :=
-  globalsAfterFrom cfg (preludeState cfg) ds
+  globalsAfterFrom cfg ([], []) ds
 
 /-- Run a machine computation from a given state (for unit tests). -/
 def runM {α : Type} (x : M α) (st : MState) : Except String α :=

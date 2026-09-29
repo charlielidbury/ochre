@@ -140,7 +140,7 @@ when `x` is, for every `n` and `x`, and its instance `Bad5` is a closed proof of
 (switch `globalRecords`). This is note 5 of the paper's appendix, as printed. -/
 
 ochr GlobalRecords {
-  inductive Box := Mk(x : Nat)
+  inductive Box := MkBox(x : Nat)
 
   def Double (n : Nat) : Nat by n := (
     match n {
@@ -152,16 +152,16 @@ ochr GlobalRecords {
   reject def Esc (n : Nat) (m : Box) :
       Id Nat
         (let b = Double(n); match b { Z => 0, S _ => 1 })
-        (match m { Mk(x) => match x { Z => 0, S _ => 1 } }) := (
+        (match m { MkBox(x) => match x { Z => 0, S _ => 1 } }) := (
     match m {
-      Mk(x) => match x {
+      MkBox(x) => match x {
         Z => refl,
         S _ => refl,
       },
     }
   )
 
-  reject def Bad5 : Eq Nat 1 0 := Esc(1, Mk(0))
+  reject def Bad5 : Eq Nat 1 0 := Esc(1, MkBox(0))
 }
 
 #eval IO.println (run "GlobalRecords" GlobalRecords).show

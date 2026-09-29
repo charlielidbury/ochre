@@ -16,7 +16,7 @@ Defined in RULES §1 (D44), §3 [Close] and §7. -/
 
 open Ochr.Test
 
-ochr ReturnedBorrows uses Std {
+ochr ReturnedBorrows uses Std, Fixtures {
   -- `Std`'s `TailM(x)` returns a borrow of the final `Z` of `*x`. Addition by writing
   -- through it ...
   def AddM' (x : &Nat) (y : Nat) : Unit := (

@@ -81,7 +81,8 @@ ochr Numbers uses Std {
   reject def PredOfAbstract (x : Nat) : Nat := x.1
 
   -- ## Pairs
-  -- A pair is data too, and each component is a place: it can be read, assigned and borrowed.
+  -- A pair is data too, and each component is a place: it can be read, assigned and borrowed
+  -- (`p.1` and `p.2` are its fields).
   def PairLocal (n : Nat) : Nat := (
     let p = (n, ());
     p.1
@@ -109,9 +110,17 @@ ochr Numbers uses Std {
   -- A number has no second component.
   reject def ProjNat (x : Nat) : Nat := x.2
 
-  -- Not yet expressible: a pair parameter is an abstract value, whose components are not
-  -- known, and the rules have neither a match on pairs nor an η rule that would split it.
-  reject def SwapPair (p : Nat × Unit) : Unit × Nat := (p.2, p.1)
+  -- A pair is the library inductive `Pair`, whose constructor is `Mk` (D52), so a pair
+  -- parameter is taken apart by a match, which splits it like any inductive value ...
+  def SwapPair (p : Nat × Unit) : Unit × Nat := (
+    match p {
+      Mk(a, b) => (b, a),
+    }
+  )
+
+  -- ... and not by projection: until it is split, an abstract pair's components are not
+  -- known (there is no η rule), as for a field of any inductive value.
+  reject def SwapPairProj (p : Nat × Unit) : Unit × Nat := (p.2, p.1)
 
   -- ## Calls and ascriptions
   -- Calls are saturated: every parameter gets an argument.
@@ -125,4 +134,4 @@ ochr Numbers uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Numbers" Numbers).allAsExpected
-#guard (run "Numbers" Numbers).count == 19
+#guard (run "Numbers" Numbers).count == 20

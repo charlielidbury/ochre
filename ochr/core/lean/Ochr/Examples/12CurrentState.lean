@@ -83,10 +83,10 @@ ochr CurrentState uses Std {
     SubM(x, S old, LeAdd(old, y))
   )
 
-  -- ... and the induction hypothesis must be about a copy of the predecessor. About the
-  -- predecessor in place (a borrow into `*x`), it would be an equation between two
-  -- successors, while `SubM` has already removed the `S` from the goal.
-  reject def AddSubIdReborrow (x : &Nat) (y : Nat) : Id Unit (AddSub(x, y)) (*x := y) by x := (
+  -- The induction hypothesis may also be about the predecessor in place (a borrow into
+  -- `*x`): it is then an equation between two successors, while `SubM` has already removed
+  -- the `S` from the goal, and `Eq` takes the successors apart (injectivity, D52).
+  def AddSubIdReborrow (x : &Nat) (y : Nat) : Id Unit (AddSub(x, y)) (*x := y) by x := (
     match *x {
       Z => refl,
       S p => AddSubId(&p, y),

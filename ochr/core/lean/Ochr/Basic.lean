@@ -34,6 +34,13 @@ partial def unitTop : Value → Value
   | .tInd "And" [p, q] => mkAnd (unitTop p) (unitTop q)
   | v => v
 
+/-- `And(P₁, And(P₂, … Pₖ))` with the unit laws (`[]`: `True`), for `Eq` on constructor
+values and for `Id` (D52). -/
+def andList : List Value → Value
+  | [] => .tInd "True" []
+  | [p] => p
+  | p :: ps => mkAnd p (andList ps)
+
 /-- `D(ā)`, kept as written (D50); `norm` is the counterfactual normalising reading. -/
 def mkTInd (n : String) (as : List Value) (norm : Bool := false) : Value :=
   match n, as, norm with
@@ -83,8 +90,6 @@ partial def Term.mapFree (f : Nat → Nat → Place) (c : Nat) : Term → Term
   | .fst t => .fst (t.mapFree f c)
   | .snd t => .snd (t.mapFree f c)
   | .ref t => .ref (t.mapFree f c)
-  | .prod a b => .prod (a.mapFree f c) (b.mapFree f c)
-  | .pair a b => .pair (a.mapFree f c) (b.mapFree f c)
   | .cong a b => .cong (a.mapFree f c) (b.mapFree f c)
   | .ascribe a b => .ascribe (a.mapFree f c) (b.mapFree f c)
   | .eq a b d => .eq (a.mapFree f c) (b.mapFree f c) (d.mapFree f c)
@@ -122,8 +127,6 @@ partial def Term.mapFreePlace (f : Nat → Place → Place) (c : Nat) : Term →
   | .fst t => .fst (t.mapFreePlace f c)
   | .snd t => .snd (t.mapFreePlace f c)
   | .ref t => .ref (t.mapFreePlace f c)
-  | .prod a b => .prod (a.mapFreePlace f c) (b.mapFreePlace f c)
-  | .pair a b => .pair (a.mapFreePlace f c) (b.mapFreePlace f c)
   | .cong a b => .cong (a.mapFreePlace f c) (b.mapFreePlace f c)
   | .ascribe a b => .ascribe (a.mapFreePlace f c) (b.mapFreePlace f c)
   | .eq a b d => .eq (a.mapFreePlace f c) (b.mapFreePlace f c) (d.mapFreePlace f c)
@@ -157,8 +160,6 @@ partial def Term.inlineReads (t : Term) (o : Nat) (u : Term) (c : Nat) : Term :=
   | .fst t => .fst (t.inlineReads o u c)
   | .snd t => .snd (t.inlineReads o u c)
   | .ref t => .ref (t.inlineReads o u c)
-  | .prod a b => .prod (a.inlineReads o u c) (b.inlineReads o u c)
-  | .pair a b => .pair (a.inlineReads o u c) (b.inlineReads o u c)
   | .cong a b => .cong (a.inlineReads o u c) (b.inlineReads o u c)
   | .ascribe a b => .ascribe (a.inlineReads o u c) (b.inlineReads o u c)
   | .eq a b d => .eq (a.inlineReads o u c) (b.inlineReads o u c) (d.inlineReads o u c)
@@ -191,7 +192,7 @@ partial def Term.placeOccs (c : Nat) : Term → List (Nat × Place × PKind)
         ++ b.placeOccs (c + ds.length + 1)
   | .call g as _ => g.placeOccs c ++ as.flatMap (·.placeOccs c)
   | .succ t | .fst t | .snd t | .ref t => t.placeOccs c
-  | .prod a b | .pair a b | .cong a b | .ascribe a b =>
+  | .cong a b | .ascribe a b =>
       a.placeOccs c ++ b.placeOccs c
   | .eq a b d | .id a b d => a.placeOccs c ++ b.placeOccs c ++ d.placeOccs c
   | .ctor _ _ _ ps as => (ps ++ as).flatMap (·.placeOccs c)
@@ -214,7 +215,6 @@ programs, closures and Π-types too (loans may occur there: RULES §2). -/
 partial def Value.anyAtom (P : Value → Bool) (v : Value) : Bool :=
   P v || match v with
   | .succ w | .tRef w | .borrow _ w => w.anyAtom P
-  | .pair a b | .tProd a b => a.anyAtom P || b.anyAtom P
   | .tEq A a b => A.anyAtom P || a.anyAtom P || b.anyAtom P
   | .clo cs t | .tPi cs t => cs.any (·.anyAtom P) || t.anyAtom P
   | .sealed t => t.anyAtom P
@@ -225,7 +225,7 @@ partial def Value.anyAtom (P : Value → Bool) (v : Value) : Bool :=
 partial def Term.anyAtom (P : Value → Bool) : Term → Bool
   | .val v => v.anyAtom P
   | .assign _ t | .succ t | .fst t | .snd t | .ref t => t.anyAtom P
-  | .letIn _ t u | .seq t u | .prod t u | .pair t u
+  | .letIn _ t u | .seq t u
   | .cong t u | .ascribe t u => t.anyAtom P || u.anyAtom P
   | .matchNat _ z s => z.anyAtom P || s.anyAtom P
   | .pi _ ds c => ds.any (·.anyAtom P) || c.anyAtom P
@@ -243,7 +243,6 @@ mutual
 partial def Value.loans : Value → List Nat
   | .loan l => [l]
   | .succ w | .tRef w | .borrow _ w => w.loans
-  | .pair a b | .tProd a b => a.loans ++ b.loans
   | .tEq A a b => A.loans ++ a.loans ++ b.loans
   | .clo cs t | .tPi cs t => cs.flatMap Value.loans ++ t.loans
   | .sealed t => t.loans
@@ -254,7 +253,7 @@ partial def Value.loans : Value → List Nat
 partial def Term.loans : Term → List Nat
   | .val v => v.loans
   | .assign _ t | .succ t | .fst t | .snd t | .ref t => t.loans
-  | .letIn _ t u | .seq t u | .prod t u | .pair t u
+  | .letIn _ t u | .seq t u
   | .cong t u | .ascribe t u => t.loans ++ u.loans
   | .matchNat _ z s => z.loans ++ s.loans
   | .pi _ ds c => ds.flatMap Term.loans ++ c.loans
@@ -291,7 +290,7 @@ partial def Term.refsOk : Term → Bool
   | .fix _ _ ds c _ b => ds.all Term.refTopOk && c.refTopOk && b.refsOk
   | .ascribe t A => t.refsOk && A.refTopOk
   | .assign _ t | .succ t | .fst t | .snd t => t.refsOk
-  | .letIn _ t u | .seq t u | .prod t u | .pair t u | .cong t u => t.refsOk && u.refsOk
+  | .letIn _ t u | .seq t u | .cong t u => t.refsOk && u.refsOk
   | .matchNat _ z s => z.refsOk && s.refsOk
   | .call f as _ => f.refsOk && as.all Term.refsOk
   | .eq a b c | .id a b c => a.refsOk && b.refsOk && c.refsOk

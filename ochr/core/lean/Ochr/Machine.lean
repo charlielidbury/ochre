@@ -52,7 +52,6 @@ def firstLiveLoanOnPath (env : Env) : Value → List Step → Option Nat
 def firstBorrowLabel : Value → Option Nat
   | .borrow l _ => some l
   | .succ w => firstBorrowLabel w
-  | .pair a b => (firstBorrowLabel a).orElse fun _ => firstBorrowLabel b
   | _ => none
 
 /-- What a call's result type is, for [Close]'s table and for P5. -/
@@ -63,7 +62,7 @@ deriving BEq, Inhabited
 /-- A syntactic guess at whether a type term denotes a proposition. -/
 partial def isPropTerm? : Term → Option Bool
   | .id .. | .eq .. => some true
-  | .nat | .unit | .ref _ | .prod .. | .sort _ => some false
+  | .nat | .unit | .ref _ | .tind "Pair" _ | .sort _ => some false
   | .pi _ _ c => isPropTerm? c
   | _ => none
 
@@ -99,7 +98,7 @@ partial def headOnly (isSelf : Nat → Place → Bool) (c : Nat) : Term → Bool
   | .fix _ _ ds cod _ b => (ds.zipIdx.all fun (d, i) => headOnly isSelf (c + i) d)
       && headOnly isSelf (c + ds.length) cod && headOnly isSelf (c + ds.length + 1) b
   | .call f as _ => headOnly isSelf c f && as.all (headOnly isSelf c)
-  | .seq t u | .prod t u | .pair t u | .cong t u | .ascribe t u =>
+  | .seq t u | .cong t u | .ascribe t u =>
       headOnly isSelf c t && headOnly isSelf c u
   | .succ t | .fst t | .snd t | .ref t => headOnly isSelf c t
   | .eq a b d | .id a b d => headOnly isSelf c a && headOnly isSelf c b && headOnly isSelf c d
@@ -113,7 +112,7 @@ partial def constHeadOnly (n : String) : Term → Bool
   | .call (.const _) as _ => as.all (constHeadOnly n)
   | .const m => m != n
   | .assign _ t | .succ t | .fst t | .snd t | .ref t => constHeadOnly n t
-  | .letIn _ t u | .seq t u | .prod t u | .pair t u | .cong t u
+  | .letIn _ t u | .seq t u | .cong t u
   | .ascribe t u => constHeadOnly n t && constHeadOnly n u
   | .matchNat _ z s => constHeadOnly n z && constHeadOnly n s
   | .pi _ ds c => ds.all (constHeadOnly n) && constHeadOnly n c
@@ -147,7 +146,6 @@ partial def unifyParams (np : Nat) (FT : Term) (T : Value) (sol : Array (Option 
     if m == m' && as.length == vs.length then
       (as.zip vs).foldl (fun s (a, v) => unifyParams np a v s) sol
     else sol
-  | .prod A B, .tProd A' B' => unifyParams np B B' (unifyParams np A A' sol)
   | _, _ => sol
 
 /-- The strict subterms of a value built from `S`. -/
@@ -170,12 +168,10 @@ partial def substV (x r : Value) (v : Value) : M Value := do
   match v with
   | .abs _ | .loan _ => return (if v == x then r else v)
   | .succ w => return .succ (← substV x r w)
-  | .pair a b => return .pair (← substV x r a) (← substV x r b)
   | .borrow l w => return .borrow l (← substV x r w)
   | .clo cs t => return .clo (← cs.mapM (substV x r)) (← substT x r t)
   | .tPi cs t => return .tPi (← cs.mapM (substV x r)) (← substT x r t)
   | .sealed t => nfSealed (← substT x r t)
-  | .tProd A B => return .tProd (← substV x r A) (← substV x r B)
   | .tEq A a b => mkEqM (← substV x r A) (← substV x r a) (← substV x r b)
   | .tInd n as => return mkTInd n (← as.mapM (substV x r)) (← get).cfg.unitNorm
   | .tRef A => return .tRef (← substV x r A)
@@ -198,8 +194,6 @@ partial def substT (x r : Value) (t : Term) : M Term := do
   | .fst u => return .fst (← go u)
   | .snd u => return .snd (← go u)
   | .ref u => return .ref (← go u)
-  | .prod a b => return .prod (← go a) (← go b)
-  | .pair a b => return .pair (← go a) (← go b)
   | .cong a b => return .cong (← go a) (← go b)
   | .ascribe a b => return .ascribe (← go a) (← go b)
   | .eq a b c => return .eq (← go a) (← go b) (← go c)
@@ -429,10 +423,10 @@ partial def placeType (p : Place) : M Value := do
     | T => err s!"*{← ppPlace q}: not a borrow (type {T})"
   | .fst q => match ← placeType q with
     | .tNat => pure .tNat
-    | .tProd A _ => pure A
+    | .tInd "Pair" [A, _] => pure A           -- field 1 of the library's Pair (D52)
     | T => err s!"{← ppPlace q}.1: no sub-place at type {T}"
   | .snd q => match ← placeType q with
-    | .tProd _ B => pure B
+    | .tInd "Pair" [_, B] => pure B
     | T => err s!"{← ppPlace q}.2: no sub-place at type {T}"
   | .field g q => match ← placeType q with
     | .tInd n ps =>
@@ -448,13 +442,12 @@ partial def valType (v : Value) : M Value := do
   match v with
   | .zero | .succ _ => pure .tNat
   | .unit => pure .tUnit
-  | .pair a b => pure (.tProd (← valType a) (← valType b))
   | .abs σ => absType σ
   | .gfn n => pure (← lookupGlobal n).ty
   | .clo cs (.fix _ hs ds c _ _) => pure (.tPi cs (.pi hs ds c))
   | .borrow _ w => pure (.tRef (← valType w))
   | .ind t c _ ps fs => if ps.isEmpty then indValType t c fs else pure (.tInd t ps)   -- D49 (4)
-  | .tNat | .tUnit | .tProd .. | .tEq .. | .tRef _ | .tPi .. | .sort _ | .tInd .. =>
+  | .tNat | .tUnit | .tEq .. | .tRef _ | .tPi .. | .sort _ | .tInd .. =>
     pure (.sort (← sortOf v))
   | .sealed t =>
     if (← get).cfg.capTypes then sealedType t
@@ -571,13 +564,13 @@ partial def subsingletonMsg (d : IndDecl) : String :=
     else "its constructor has a field that is not a proposition"
   s!"[D45] a match on a proof of {d.name} returns a non-proof, but {d.name} is not a subsingleton ({why}): large elimination would tell apart proofs that proof irrelevance identifies"
 
-/-- D48 (1): a data type, the only kind of type that may be borrowed: `Nat`, `Unit`, `×`
-of data types, or an inductive type in `Type₀` (at any parameters, which are themselves
-in `Type₀`, D46). Read off the type's head: a neutral type is not known to be data. -/
+/-- D48 (1): a data type, the only kind of type that may be borrowed: `Nat`, `Unit`, or
+an inductive type in `Type₀` (at any parameters, which are themselves in `Type₀`, D46;
+pairs are the library's `Pair`, D52). Read off the type's head: a neutral type is not
+known to be data. -/
 partial def isDataType (T : Value) : M Bool := do
   match T with
   | .tNat | .tUnit => pure true
-  | .tProd A B => pure ((← isDataType A) && (← isDataType B))
   | .tInd n _ => pure ((← lookupInd n).sort == 1)
   | _ => pure false
 
@@ -591,7 +584,6 @@ partial def sortOf (T : Value) : M Nat := do
   match T with
   | .tNat | .tUnit | .tRef _ => pure 1
   | .tInd n _ => pure (← lookupInd n).sort
-  | .tProd A B => pure (max 1 (max (← sortOf A) (← sortOf B)))
   | .tEq .. => pure 0
   | .sort l => pure (l + 1)
   | .abs σ => match ← absType σ with
@@ -617,7 +609,7 @@ partial def isPropV (T : Value) : M Bool := do
   match T with
   | .tEq .. => pure true
   | .tInd n _ => pure ((← lookupInd n).sort == 0)
-  | .tNat | .tUnit | .tRef _ | .tProd .. | .sort _ => pure false
+  | .tNat | .tUnit | .tRef _ | .sort _ => pure false
   | .tPi _ _ => pure ((← fnClass T) == 2)
   | .abs σ => pure ((← absType σ) == .sort 0)
   | .sealed t => pure ((← sealedSort? t) == some 0)
@@ -708,8 +700,6 @@ partial def conv (v w : Value) : M Bool := do
   if v == w then return true
   match v, w with
   | .succ a, .succ b | .tRef a, .tRef b => conv a b
-  | .pair a b, .pair c d | .tProd a b, .tProd c d =>
-    pure ((← conv a c) && (← conv b d))
   | .tInd n as, .tInd m bs => pure (n == m && (← convList as bs))
   | .tEq A a b, .tEq B c d => pure ((← conv A B) && (← conv a c) && (← conv b d))
   | .borrow l a, .borrow m b => pure (l == m && (← conv a b))
@@ -777,8 +767,7 @@ partial def convT (t u : Term) : M Bool := do
   if t == u then return true
   match t, u with
   | .val v, .val w => conv v w
-  | .letIn _ a b, .letIn _ c d | .seq a b, .seq c d | .prod a b, .prod c d
-  | .pair a b, .pair c d
+  | .letIn _ a b, .letIn _ c d | .seq a b, .seq c d
   | .cong a b, .cong c d | .ascribe a b, .ascribe c d =>
     pure ((← convT a c) && (← convT b d))
   | .assign p a, .assign q b => pure (p == q && (← convT a b))
@@ -860,16 +849,32 @@ partial def convFn (f g : Value) : M Bool := do
     if mode == 2 then conv rf rg      -- counterfactual: compare the result only (breaker-fresh F3)
     else pure ((← conv rf rg) && (← convList cf cg))
 
-/-- `Eq` computes (§4): pairs split into `And`, reflexivity (decided by conversion) is
-`True`, and distinct constructors of one type are `False` (v2.0, D47; no injectivity).
-Proofs are all `⋆`, so an equation between proofs is reflexive. -/
+/-- `Eq` computes (§4): reflexivity (decided by conversion) is `True`; two values built by
+the same constructor give the conjunction of the equations between their fields, at the
+field types instantiated at the parameters (v2.1, D52: injectivity; `S` is `Nat`'s
+constructor with one field; no fields: `True`); distinct constructors of one type are
+`False` (v2.0, D47). Proofs are all `⋆`, so an equation between proofs is reflexive. -/
 partial def mkEqM (A a b : Value) : M Value := do
-  match A, a, b with
-  | .tProd A₁ A₂, .pair a₁ a₂, .pair b₁ b₂ => pure (mkAnd (← mkEqM A₁ a₁ b₁) (← mkEqM A₂ a₂ b₂))
-  | _, _, _ =>
-    if ← conv a b then pure vTrue
-    else if (← get).cfg.disjoint && distinctCtors a b then pure vFalse
-    else pure (.tEq A a b)
+  if ← conv a b then return vTrue
+  let cfg := (← get).cfg
+  match a, b with
+  | .succ a', .succ b' => if cfg.injective then return ← mkEqM .tNat a' b'
+  | .ind t c _ ps fs, .ind u d _ qs gs =>
+    if cfg.injective && t == u && c == d && fs.length == gs.length then
+      -- the field types at the parameters: the equation's type `D(ā)`, else the values' own
+      let args? := match A with
+        | .tInd n as => if n == t then some as else none
+        | _ => none
+      let args? := args?.orElse fun _ =>
+        if !ps.isEmpty then some ps else if !qs.isEmpty then some qs else none
+      if let some args := args? then
+        let Ts ← fieldTypes (← lookupInd t) args c
+        if Ts.length == fs.length then
+          let eqs ← ((Ts.map (·.2)).zip (fs.zip gs)).mapM fun (T, (v, w)) => mkEqM T v w
+          return andList eqs
+  | _, _ => pure ()
+  if cfg.disjoint && distinctCtors a b then pure vFalse
+  else pure (.tEq A a b)
 
 -- ### Evaluation
 
@@ -1012,7 +1017,7 @@ same flags wherever parameters are bound: the body, [Def] and [Call-type]. -/
 partial def paramFlags (cs : List Value) (ds : List Term) : M (List Bool) := do
   if (← get).cfg.leafRule != 2 then return ds.map fun _ => false
   let quick : Term → Bool := fun
-    | .nat | .unit | .ref _ | .sort _ | .prod .. => true
+    | .nat | .unit | .ref _ | .sort _ | .tind "Pair" _ => true
     | _ => false
   if ds.all quick then return ds.map fun _ => false
   let capSc ← cs.reverse.mapM declOfVal
@@ -1081,7 +1086,7 @@ terms whose type is a sort (P2 erases them too): the type formers, sorts, a seal
 program whose sort is known, and an abstract value whose type is a sort. -/
 partial def erasedValue (v : Value) : M Bool := do
   match v with
-  | .proof | .tNat | .tUnit | .tProd .. | .tEq .. | .tInd .. | .tRef _ | .tPi .. | .sort _ =>
+  | .proof | .tNat | .tUnit | .tEq .. | .tInd .. | .tRef _ | .tPi .. | .sort _ =>
     pure true
   | .sealed t => pure (← sealedSort? t).isSome
   | .abs σ => match ← absType σ with
@@ -1157,27 +1162,16 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     let (v, T) ← eval typed u
     expectTy "the argument of S" T .tNat
     pure (.succ v, ty .tNat)
-  | .prod a b => onCopy do
-    let A ← evalType a
-    let B ← evalType b
-    pure (.tProd A B, some (.sort (← sortOf (.tProd A B))))
-  | .pair a b =>
-    let (v, A) ← eval typed a
-    pushTemp v
-    let (w, B) ← eval typed b
-    let v ← popTemp
-    if let (some A, some B) := (A, B) then
-      if A.typeHasRef || B.typeHasRef then err "a pair holding a borrow (no borrows inside data, RULES §1)"
-    pure (.pair v w, match A, B with | some A, some B => some (.tProd A B) | _, _ => none)
   | .fst u | .snd u =>
+    -- `t.1`, `t.2` of a term that is not a place: field 1 or 2 of a pair (D52)
     let (v, T) ← eval typed u
     let first := t matches .fst _
     let r ← match v with
-      | .pair a b => pure (if first then a else b)
+      | .ind "Pair" 0 _ _ [a, b] => pure (if first then a else b)
       | .abs _ | .sealed _ => if typed then err "projection of a neutral pair (no neutral projections in v1)" else stuckNow
       | _ => err s!"projection of a non-pair {v}"
     let R := match T with
-      | some (.tProd A B) => some (if first then A else B)
+      | some (.tInd "Pair" [A, B]) => some (if first then A else B)
       | _ => none
     pure (r, R)
   | .eq A a b => onCopy do
@@ -1673,12 +1667,10 @@ partial def renormV (v : Value) : M Value := do
     let t' ← renormT t
     canonNeutral (← nfSealed t')
   | .succ w => return .succ (← renormV w)
-  | .pair a b => return .pair (← renormV a) (← renormV b)
   | .borrow l w => return .borrow l (← renormV w)
   | .ind ty c h ps fs => return .ind ty c h ps (← fs.mapM renormV)
   | .tEq A a b => mkEqM (← renormV A) (← renormV a) (← renormV b)
   | .tInd n as => return mkTInd n (← as.mapM renormV) (← get).cfg.unitNorm
-  | .tProd A B => return .tProd (← renormV A) (← renormV B)
   | _ => return v
 
 partial def renormT (t : Term) : M Term := do
@@ -1982,8 +1974,9 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Nat) (allProof :
 -- ### Observation and `Id` (RULES §4)
 
 /-- `⟦t⟧^W`: on a private copy of Ω, run `t`, end every borrow, and return the result
-paired with the final contents of the owners in `W`. -/
-partial def observe (typed : Bool) (t : Term) (A : Value) (W : List Pos) : M Value := onCopy do
+and the final contents of the owners in `W` (a tuple of the machine, not a `Pair` value,
+D52). -/
+partial def observe (typed : Bool) (t : Term) (A : Value) (W : List Pos) : M (Value × List Value) := onCopy do
   let es := (← get).effects.size
   let (v, T) ← eval typed t A      -- A: a hint for a constructor's parameters
   if (← get).cfg.confine then flushPending es   -- D41: a side of Id is not an erased context
@@ -1992,10 +1985,12 @@ partial def observe (typed : Bool) (t : Term) (A : Value) (W : List Pos) : M Val
   endAll
   let v ← popTemp
   let ws ← W.mapM getAt
-  pure (tupleVal v ws)
+  pure (v, ws)
 
-/-- `Id A t u ≡ Eq (A × T_W) ⟦t⟧^W ⟦u⟧^W`, both sides from the same Ω on independent
-copies. -/
+/-- `Id A t u ≡ And(Eq A r r', And(Eq T₁ w₁ w'₁, …))` over the result and the owners in
+`W = W(t, u)` (just `Eq A r r'` when `W` is empty), both sides from the same Ω on
+independent copies (v2.1, D52: directly, not through a pair, so `A` may be any borrow-free
+type, a proposition or a universe included). -/
 partial def idType (typed : Bool) (A t u : Term) : M Value := do
   let A' ← evalType A
   if A'.typeHasRef then err s!"Id at {A'}: A must be borrow-free (RULES §4)"
@@ -2005,9 +2000,10 @@ partial def idType (typed : Bool) (A t u : Term) : M Value := do
     match ← tyAt p with
     | some T => pure T
     | none => valType (← getAt p)
-  let a ← observe typed t A' W
-  let b ← observe typed u A' W
-  mkEqM (tupleType A' Ts) a b
+  let (a, as) ← observe typed t A' W
+  let (b, bs) ← observe typed u A' W
+  let eqs ← ((A', (a, b)) :: Ts.zip (as.zip bs)).mapM fun (T, (x, y)) => mkEqM T x y
+  pure (andList eqs)
 
 -- ### Typing: [Def], [Split] in tail position
 

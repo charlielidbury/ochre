@@ -67,8 +67,8 @@ ochr Lists {
   )
 
   -- Constructors are resolved by name, so a name is declared once in a program.
-  inductive A := Mk(x : Nat)
-  reject inductive B := Mk(y : Unit)
+  inductive A := Make(x : Nat)
+  reject inductive B := Make(y : Unit)
 }
 
 #eval IO.println (run "Lists" Lists).show
@@ -383,25 +383,25 @@ ochr PolyLists uses Std {
 A field of function type can mention the type being declared negatively. Then `L(b)`
 applies `b`'s own field to `b`, which never terminates, but `K` is typed by [Call-type]
 alone and proofs are not run, so `Boom` is a closed proof of `False` (D36, switch
-`positivity`). Fields of first-order data are fine. `Empty` is `Std`'s. -/
+`positivity`). Fields of first-order data are fine. `Empty` is in `Fixtures`. -/
 
-ochr Positivity uses Std {
+ochr Positivity uses Fixtures {
   def absurd (e : Empty) : False by e := (
     match e {
       E(e') => absurd(e'),
     }
   )
 
-  reject inductive Bad := Mk(f : Π(x : Bad). Empty)
+  reject inductive Bad := MkBad(f : Π(x : Bad). Empty)
 
   reject def L (b : Bad) : Empty := (
     match b {
-      Mk(f) => f(b),
+      MkBad(f) => f(b),
     }
   )
 
   reject def K (b : Bad) : False := absurd(L(b))
-  reject def bad : Bad := Mk(λ(x : Bad) : Empty => L(x))
+  reject def bad : Bad := MkBad(λ(x : Bad) : Empty => L(x))
   reject def Boom : False := K(bad)
   inductive Pairs := PNil | PCons(hd : Nat × Unit, tl : Pairs)
 }
@@ -426,18 +426,18 @@ ochr PositivityParams uses Std {
   )
 
   def absurdV (v : Void) : False := match v {}
-  reject inductive Bad := Mk(f : Box(Π(x : Bad). Void))
+  reject inductive Bad := MkBad(f : Box(Π(x : Bad). Void))
 
   reject def L (b : Bad) : Void := (
     match b {
-      Mk(f) => match f {
+      MkBad(f) => match f {
         MkBox(g) => g(b),
       },
     }
   )
 
   reject def K (b : Bad) : False := absurdV(L(b))
-  reject def bad : Bad := Mk(MkBox(λ(x : Bad) : Void => L(x)))
+  reject def bad : Bad := MkBad(MkBox(λ(x : Bad) : Void => L(x)))
   reject def Boom : False := K(bad)
   reject inductive Neg (A : Type) := MkNeg(f : Π(x : A). Nat)
   inductive Rose (A : Type) := Node(v : A, kids : List(Rose(A)))
@@ -464,15 +464,15 @@ ochr PositivityParams uses Std {
 /-! The paper's version (appendix note 4), with `False` directly. -/
 
 ochr PositivityPaper {
-  reject inductive Bad := Mk(f : Π(x : Bad). False)
+  reject inductive Bad := MkBad(f : Π(x : Bad). False)
 
   reject def L (b : Bad) : False := (
     match b {
-      Mk(f) => f(b),
+      MkBad(f) => f(b),
     }
   )
 
-  reject def Bad4 : False := L(Mk(λ(x : Bad) : False => L(x)))
+  reject def Bad4 : False := L(MkBad(λ(x : Bad) : False => L(x)))
 }
 
 #eval IO.println (run "PositivityPaper" PositivityPaper).show

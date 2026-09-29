@@ -202,6 +202,12 @@ open Ochr.Registry in
    "Equality.NotAdd01:rejected", "Equality.WriteNeq:rejected", "Equality.WriteDisj:rejected",
    "Equality.NoConf:rejected", "Equality.NoConfS:rejected", "Equality.NoConfMatch:rejected",
    "Equality.NoConfBack:rejected", "Equality.BoolDisj:rejected"]
+-- v2.1 D52 switched off: equal constructors are not taken apart in Eq, so programs that
+-- need an equation between successors or pairs taken apart are rejected (completeness)
+open Ochr.Registry in
+#guard rowOk { injective := false }
+  ["Equality.Inj:rejected", "Equality.PairInj:rejected", "Recursion.AddZeroCopy:rejected",
+   "CurrentState.AddSubIdReborrow:rejected"]
 -- finding (v2.0 round): v1.9 assumed a data match's scrutinee type from its arms
 open Ochr.Registry in
 #guard rowOk { scrutTyped := false }
@@ -213,9 +219,11 @@ open Ochr.Registry in
    "Universes.SelfAppEq:accepted", "Universes.PolyTy:accepted", "BorrowTypes.PIref:accepted",
    "BorrowTypes.RefTrue:accepted", "BorrowTypes.RefFun:accepted", "BorrowTypes.SwapT:accepted"]
 -- D48 (2) switched off: a codomain computing to &Nat; the accepted G reads ⊥ at n = 0
+-- (InPair, `Nat × &Nat`, no longer flips: since D52 a pair type is the library's Pair, whose
+-- parameters may not be borrow types whatever this switch says)
 open Ochr.Registry in
 #guard rowOk { refTop := false }
-  ["BorrowTypes.InPair:accepted", "BorrowTypes.F:accepted", "BorrowTypes.G:accepted"]
+  ["BorrowTypes.F:accepted", "BorrowTypes.G:accepted"]
 -- D48 (3) switched off: Π-types compared by captures and code (reviewer-3 C3)
 open Ochr.Registry in
 #guard rowOk { piUnder := false }

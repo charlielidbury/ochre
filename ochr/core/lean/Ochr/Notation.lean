@@ -32,7 +32,8 @@ transitively and each block once: their own declarations that are `def`s (not `r
 are accepted, checked afresh under the same configuration (`Ochr.Test.libOf`). A block's
 report and its assertions cover its own declarations only. The names of a block and of the
 blocks it uses form one namespace: a clash is an error when the block is elaborated
-(`#ochr_check`, which the command expands to, using `Block.clashes`).
+(`#ochr_check`, which the command expands to, using `Block.clashes`). Every block also
+uses the library block `Prelude` (`Ochr/Prelude.lean`) implicitly.
 -/
 
 namespace Ochr.Notation
@@ -242,7 +243,10 @@ open Lean.Elab.Command in
 elab_rules : command
   | `(#ochr_check $n:ident) => do
     let b ← evalBlock (← liftCoreM (realizeGlobalConstNoOverload n))
-    let cs := b.clashes
+    -- every block implicitly uses the library, `Prelude` (v2.1), once it is declared
+    let pre ← if b.name == "Prelude" then pure [] else
+      try pure [← evalBlock `Prelude] catch _ => pure []
+    let cs := b.clashes pre
     unless cs.isEmpty do
       throwErrorAt n m!"ochr {b.name}: {"; ".intercalate cs}"
 

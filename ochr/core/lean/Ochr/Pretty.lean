@@ -52,8 +52,6 @@ partial def Term.pp (ns : List String) : Term → String
   | .succ t => match natLitT? (.succ t) with
       | some n => toString n
       | none => s!"S {t.ppArg ns}"
-  | .prod a b => s!"{a.ppArg ns} × {b.ppArg ns}"
-  | .pair a b => s!"({a.pp ns}, {b.pp ns})"
   | .fst t => s!"{t.ppArg ns}.1"
   | .snd t => s!"{t.ppArg ns}.2"
   | .eq a b c => s!"Eq {a.ppArg ns} {b.ppArg ns} {c.ppArg ns}"
@@ -64,9 +62,11 @@ partial def Term.pp (ns : List String) : Term → String
   | .prim n as => " ".intercalate (n :: as.map (·.ppArg ns))
   | .tind "True" [] => "⊤"
   | .tind "And" [a, b] => s!"{a.ppArg ns} ∧ {b.ppArg ns}"
+  | .tind "Pair" [a, b] => s!"{a.ppArg ns} × {b.ppArg ns}"      -- the library's notation (D52)
   | .tind n as => if as.isEmpty then n else s!"{n}({", ".intercalate (as.map (·.pp ns))})"
   | .ctor "True" _ _ _ [] => "refl"
   | .ctor "And" _ _ [] [a, b] => s!"⟨{a.pp ns}, {b.pp ns}⟩"
+  | .ctor "Pair" _ _ [] [a, b] => s!"({a.pp ns}, {b.pp ns})"
   | .ctor _ _ h ps as =>
     let pre := if ps.isEmpty then "" else s!"[{", ".intercalate (ps.map (·.pp ns))}]"
     if as.isEmpty then h.name ++ pre else s!"{h.name}{pre}({", ".intercalate (as.map (·.pp ns))})"
@@ -75,9 +75,9 @@ partial def Term.pp (ns : List String) : Term → String
 
 partial def Term.ppArg (ns : List String) (t : Term) : String :=
   match t with
-  | .place _ | .const _ | .nat | .unit | .tt | .zero | .sort _ | .pair _ _
+  | .place _ | .const _ | .nat | .unit | .tt | .zero | .sort _
   | .ascribe _ _ | .call _ _ _ | .ctor _ _ _ _ _ => t.pp ns
-  | .tind "And" [_, _] => s!"({t.pp ns})"
+  | .tind "And" [_, _] | .tind "Pair" [_, _] => s!"({t.pp ns})"
   | .tind _ _ => t.pp ns
   | .val v => v.ppArg
   | .succ _ => if (natLitT? t).isSome then t.pp ns else s!"({t.pp ns})"
@@ -105,7 +105,6 @@ partial def Value.pp : Value → String
       | some n => toString n
       | none => s!"S {v.ppArg}"
   | .unit => "()"
-  | .pair a b => s!"({a.pp}, {b.pp})"
   | .gfn n => n
   | .clo cs t => ppClosure "" cs t
   | .borrow l v => s!"borrow_{l} {v.ppArg}"
@@ -115,22 +114,23 @@ partial def Value.pp : Value → String
   | .sealed t => s!"⌈{t.pp []}⌉"
   | .proof => "⋆"
   | .tNat => "Nat" | .tUnit => "Unit"
-  | .tProd a b => s!"{a.ppArg} × {b.ppArg}"
   | .tEq A a b => s!"Eq {A.ppArg} {a.ppArg} {b.ppArg}"
   | .tRef A => s!"&{A.ppArg}"
   | .tPi cs t => ppClosure "" cs t
   | .sort 0 => "Prop"
   | .sort (l + 1) => if l == 0 then "Type" else s!"Type_{l}"
+  | .ind "Pair" 0 _ _ [a, b] => s!"({a.pp}, {b.pp})"
   | .ind _ _ h _ fs => if fs.isEmpty then h.name else s!"{h.name}({", ".intercalate (fs.map Value.pp)})"
   | .tInd "True" [] => "⊤"
   | .tInd "And" [p, q] => s!"{p.ppArg} ∧ {q.ppArg}"
+  | .tInd "Pair" [a, b] => s!"{a.ppArg} × {b.ppArg}"
   | .tInd n as => if as.isEmpty then n else s!"{n}({", ".intercalate (as.map Value.pp)})"
 
 partial def Value.ppArg (v : Value) : String :=
   match v with
   | .zero | .unit | .gfn _ | .loan _ | .bot | .abs _ | .sealed _ | .proof | .tNat | .tUnit
-  | .sort _ | .pair _ _ | .ind _ _ _ _ _ => v.pp
-  | .tInd "And" [_, _] => s!"({v.pp})"
+  | .sort _ | .ind _ _ _ _ _ => v.pp
+  | .tInd "And" [_, _] | .tInd "Pair" [_, _] => s!"({v.pp})"
   | .tInd _ _ => v.pp
   | .succ _ => if (natLit? v).isSome then v.pp else s!"({v.pp})"
   | _ => s!"({v.pp})"

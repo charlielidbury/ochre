@@ -38,8 +38,9 @@ deriving Inhabited, Repr
 instance : BEq FieldRef := ⟨fun a b => a.ty == b.ty && a.ctor == b.ctor && a.idx == b.idx⟩
 
 mutual
-/-- Places `p ::= x | *p | p.1 | p.2 | p.g` (`.1` is the predecessor of `S v` or the first
-component of a pair; `p.g` a constructor field). -/
+/-- Places `p ::= x | *p | p.1 | p.2 | p.g` (`.1` is the predecessor of `S v` or field 1 of
+a pair, `.2` field 2 of a pair: v2.1, D52, pairs are the library inductive `Pair`; `p.g`
+a constructor field). -/
 inductive Place where
   | var (i : Nat)
   | deref (p : Place)
@@ -62,7 +63,7 @@ inductive Term where
                                               -- `dec`: the parameter named by `by xⱼ` (none: non-recursive)
   | call (f : Term) (args : List Term) (head : Bool)   -- `head`: the head call of a sealed program ([Seal])
   | nat | zero | succ (t : Term) | unit | tt
-  | prod (A B : Term) | pair (t u : Term) | fst (t : Term) | snd (t : Term)
+  | fst (t : Term) | snd (t : Term)          -- `t.1`, `t.2`: field 1 or 2 of a pair (D52)
   | eq (A t u : Term)                         -- `Eq A t u` (primitive, in Prop, §4)
   | cong (f h : Term)
   | ref (A : Term)                            -- the borrow type `&A`
@@ -77,7 +78,7 @@ inductive Term where
 
 /-- Runtime values (RULES §2). Types are values too. -/
 inductive Value where
-  | zero | succ (v : Value) | unit | pair (v w : Value)
+  | zero | succ (v : Value) | unit
   | gfn (n : String)                          -- a top-level function
   | clo (caps : List Value) (t : Term)        -- closure: a `fix` term closed over captured values
   | borrow (l : Nat) (v : Value)              -- `borrow_ℓ v`: the borrowed content lives in the borrow
@@ -86,7 +87,7 @@ inductive Value where
   | abs (s : Nat)                             -- `σ`: an abstract value (Lean's fvar)
   | sealed (t : Term)                         -- `⌈t⌉`: a closed program whose run is stuck
   | proof                                     -- `⋆`: every value of a proposition (proof irrelevance)
-  | tNat | tUnit | tProd (A B : Value) | tEq (A a b : Value)
+  | tNat | tUnit | tEq (A a b : Value)
   | tRef (A : Value)
   | tPi (caps : List Value) (t : Term)        -- Π-type: a closure over formation-time values (P2)
   | sort (l : Nat)
@@ -123,7 +124,6 @@ partial def Term.beq : Term → Term → Bool
   | .call f as h, .call g bs h' => f.beq g && Term.beqList as bs && h == h'
   | .nat, .nat | .zero, .zero | .unit, .unit | .tt, .tt => true
   | .succ t, .succ u | .fst t, .fst u | .snd t, .snd u | .ref t, .ref u => t.beq u
-  | .prod a b, .prod c d | .pair a b, .pair c d
   | .cong a b, .cong c d | .ascribe a b, .ascribe c d => a.beq c && b.beq d
   | .eq a b c, .eq d e f | .id a b c, .id d e f => a.beq d && b.beq e && c.beq f
   | .prim n as, .prim m bs => n == m && Term.beqList as bs
@@ -141,7 +141,6 @@ partial def Value.beq : Value → Value → Bool
   | .zero, .zero | .unit, .unit | .bot, .bot | .proof, .proof
   | .tNat, .tNat | .tUnit, .tUnit => true
   | .succ v, .succ w | .tRef v, .tRef w => v.beq w
-  | .pair a b, .pair c d | .tProd a b, .tProd c d => a.beq c && b.beq d
   | .gfn n, .gfn m => n == m
   | .clo cs t, .clo ds u | .tPi cs t, .tPi ds u => Value.beqList cs ds && t.beq u
   | .borrow l v, .borrow m w => l == m && v.beq w

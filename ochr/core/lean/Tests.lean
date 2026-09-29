@@ -10,12 +10,12 @@ open Ochr Ochr.Test Ochr.Surface Ochr.Registry
 is read from a reference after the clock starts, so the (pure) check cannot be
 computed ahead of it, and its verdict is stored before the clock stops. -/
 def timedRun (cfgRef : IO.Ref Config) (b : Block) : IO (List (String × Bool × Bool × Nat)) := do
-  let (g0, i0) := preludeState (← cfgRef.get)     -- the library (False, True, And)
-  let mut globals : List GDef := g0
-  let mut inds : List IndDecl := i0
+  let mut globals : List GDef := []
+  let mut inds : List IndDecl := []
   let mut out := #[]
   let sink ← IO.mkRef (0 : Nat)
-  -- the block's library (what the blocks it `uses` export), checked first but not timed
+  -- the block's library (`Prelude`, then what the blocks it `uses` export), checked first
+  -- but not timed
   let lib := libOf (← cfgRef.get) 2000000 b
   let p := lib ++ b.decls
   for (d, i) in p.zipIdx do

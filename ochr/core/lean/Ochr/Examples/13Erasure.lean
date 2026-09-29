@@ -169,7 +169,7 @@ ochr Erasure uses Std {
 /-! ## What goes wrong when erasure is decided from values
 
 Each program below makes the two ways of computing a statement disagree about whether some
-term is erased, if that is decided from a computed value instead of the syntax. `Std`'s `U(n)` is
+term is erased, if that is decided from a computed value instead of the syntax. `Fixtures`' `U(n)` is
 `Prop` for every `n`, but only after computing it: at an abstract `n` it is the stuck
 `⌈U(σ)⌉`. `V(n)` is a proof of `U(n)`. Each `Lie…` is a statement about whether a write to
 `c` happens, and each `Boom…` its instance at `Z`. If the generic call and the instance
@@ -177,7 +177,7 @@ disagreed about whether the write is erased, some `Boom…` would be a closed pr
 false equation. Under the rules the write happens on both paths, so each `Lie…` is either
 true, with a true instance, or rejected. The ledger names the switch each one depends on. -/
 
-ochr ErasureBySyntax uses Std {
+ochr ErasureBySyntax uses Fixtures {
   -- A top-level function whose result type computes to a sort (D28, switch `erasureByDecl`).
   -- `W` returns data, by its declared result type `U(n)`, so its write runs at every
   -- instance; `MainW(0)` really is `1`, as compiled code computes.
@@ -206,10 +206,10 @@ ochr ErasureBySyntax uses Std {
   reject def BoomL : Eq Nat Z (S Z) := LieL(Z)
 
   -- The same, with the closure made by a top-level function.
-  def Mk (n : Nat) : (Π(x : &Nat). U(n)) := λ(x : &Nat) : U(n) => (*x := S Z; V(n))
-  def Lie8 (n : Nat) : Id Nat (let c = Z; let g = Mk(n); g(&c); c) (S Z) := refl
+  def MkClosure (n : Nat) : (Π(x : &Nat). U(n)) := λ(x : &Nat) : U(n) => (*x := S Z; V(n))
+  def Lie8 (n : Nat) : Id Nat (let c = Z; let g = MkClosure(n); g(&c); c) (S Z) := refl
   reject def Boom8 : Eq Nat Z (S Z) := Lie8(Z)
-  reject def Direct8 : Id Nat (let c = Z; let g = Mk(0); g(&c); c) Z := refl
+  reject def Direct8 : Id Nat (let c = Z; let g = MkClosure(0); g(&c); c) Z := refl
 
   -- A match whose value is a type. Closed off, it looked like a call returning types and
   -- was erased; run directly, it was not. A closed-off match is erased only when each of

@@ -50,7 +50,7 @@ ochr Propositions uses Std {
 
   -- ## True and And
   -- The notation is the library: `⟨h, k⟩` is `Intro(h, k)`, `⊤` is `True`, `refl` is `I`.
-  def Pair (P : Prop) (Q : Prop) (h : P) (k : Q) : P ∧ Q := ⟨h, k⟩
+  def AndPair (P : Prop) (Q : Prop) (h : P) (k : Q) : P ∧ Q := ⟨h, k⟩
   def PairI (P : Prop) (Q : Prop) (h : P) (k : Q) : And(P, Q) := Intro(h, k)
   def ReflI : True := I
   reject def AndWrong (P : Prop) (Q : Prop) (h : P) (k : Q) : Q ∧ P := ⟨h, k⟩
@@ -212,7 +212,7 @@ ochr Propositions uses Std {
 produce a proof, and is itself a proof, erased wherever it runs. The same holds for a
 single constructor with a data field (`Sq`). -/
 
-ochr Subsingletons uses Std {
+ochr Subsingletons uses Std, Fixtures {
   inductive Or (P : Prop) (Q : Prop) : Prop := Inl(p : P) | Inr(q : Q)
 
   -- Elimination into propositions: every arm is a proof, so the match is one.
@@ -240,17 +240,17 @@ ochr Subsingletons uses Std {
 
   -- `Sq` has one constructor with a data field. Elimination into propositions is fine, and
   -- the data field is bound to a fresh abstract value, which can be split on (D49) ...
-  inductive Sq : Prop := Mk(n : Nat)
+  inductive Sq : Prop := MkSq(n : Nat)
 
   def SqTrue (h : Sq) : True := (
     match h {
-      Mk(n) => refl,
+      MkSq(n) => refl,
     }
   )
 
   def SqSplit (h : Sq) : True := (
     match h {
-      Mk(n) => match n {
+      MkSq(n) => match n {
         Z => refl,
         S m => refl,
       },
@@ -260,7 +260,7 @@ ochr Subsingletons uses Std {
   -- ... but nothing is known about it.
   reject def SqZero (h : Sq) : Id Nat 0 0 := (
     match h {
-      Mk(n) => (refl : Id Nat n 0),
+      MkSq(n) => (refl : Id Nat n 0),
     }
   )
 
@@ -320,12 +320,12 @@ ochr Subsingletons uses Std {
   -- One constructor with a data field is not a subsingleton either: the field is not known.
   reject def Get (h : Sq) : Nat := (
     match h {
-      Mk(n) => n,
+      MkSq(n) => n,
     }
   )
 
   reject def SqIrr (h : Sq) (k : Sq) : Eq Nat (Get(h)) (Get(k)) := refl
-  reject def SqBoom : False := SqIrr(Mk(0), Mk(1))
+  reject def SqBoom : False := SqIrr(MkSq(0), MkSq(1))
 }
 
 #eval IO.println (run "Subsingletons" Subsingletons).show

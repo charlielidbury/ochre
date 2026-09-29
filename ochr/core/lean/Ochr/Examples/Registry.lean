@@ -28,7 +28,7 @@ open Ochr Ochr.Test Ochr.Surface
 namespace Ochr.Registry
 
 def programs : List (String × Block) :=
-  [("Std", Std), ("Numbers", Numbers), ("Borrows", Borrows), ("ReturnedBorrows", ReturnedBorrows),
+  [("Prelude", Prelude), ("Std", Std), ("Fixtures", Fixtures), ("Numbers", Numbers), ("Borrows", Borrows), ("ReturnedBorrows", ReturnedBorrows),
    ("ClosingOff", ClosingOff), ("Naturality", Naturality), ("Equality", Equality),
    ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion),
    ("CaseSplits", CaseSplits), ("GenType", GenType), ("ScrutineeTypes", ScrutineeTypes),
@@ -96,6 +96,7 @@ def switches : List (String × Config) :=
    ("D42 (v2.0): a constructor application of a Prop inductive is a proof (⋆, erased)", { propValues := false }),
    ("D45 + D42 (v2.0): subsingleton elimination and erased Prop values, both off", { subsingleton := false, propValues := false }),
    ("D47 (v2.0): distinct constructors are disjoint in Eq", { disjoint := false }),
+   ("D52 (v2.1): Eq is injective on constructors", { injective := false }),
    ("finding (v2.0 round): a match's scrutinee has its constructors' type (read, not assumed)", { scrutTyped := false }),
    ("D48 (1): only data types are borrowed", { refData := false }),
    ("D48 (2): & only at the top of a declared type", { refTop := false }),
@@ -156,6 +157,7 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("soundness", ["Subsingletons.Boom", "Subsingletons.SqBoom"]),
    ("completeness", []),
+   ("completeness", []),
    ("soundness", ["ScrutineeTypes.g"]),
    ("model", ["Universes.Impred", "Universes.SelfApp"]),
    ("soundness", ["BorrowTypes.G"]),
@@ -167,7 +169,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 432
+def Ochr.Registry.expectedTotal : Nat := 440
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

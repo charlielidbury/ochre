@@ -23,14 +23,15 @@ def Place.steps : Place → Nat × List Step
   | .field g p => let (i, s) := p.steps; (i, s ++ [.field g])
 
 /-- One step of a path: `*` goes into the content of a borrow, `.1` into the
-predecessor of `S v` or the first component of a pair, `.2` into the second, `.g` into a
-field of a value built by the field's constructor. Every field of a proof `⋆` is `⋆`
-(v2.0, D45: a match on a proof binds its fields as places holding `⋆`). -/
+predecessor of `S v` or field 1 of a pair, `.2` into field 2 of a pair (D52: a pair is
+the library inductive `Pair`, so `.1`/`.2` are its fields by position), `.g` into a field
+of a value built by the field's constructor. Every field of a proof `⋆` is `⋆` (v2.0,
+D45: a match on a proof binds its fields as places holding `⋆`). -/
 def stepV : Step → Value → Option Value
   | .deref, .borrow _ w => some w
   | .fst, .succ w => some w
-  | .fst, .pair a _ => some a
-  | .snd, .pair _ b => some b
+  | .fst, .ind "Pair" 0 _ _ [a, _] => some a
+  | .snd, .ind "Pair" 0 _ _ [_, b] => some b
   | .field g, .ind t c _ _ fs => if t == g.ty && c == g.ctor then fs[g.idx]? else none
   | .field _, .proof => some .proof
   | _, _ => none
@@ -44,8 +45,8 @@ def Value.updAt (f : Value → Value) : List Step → Value → Option Value
   | [], v => some (f v)
   | .deref :: ss, .borrow l w => (Value.updAt f ss w).map (.borrow l)
   | .fst :: ss, .succ w => (Value.updAt f ss w).map .succ
-  | .fst :: ss, .pair a b => (Value.updAt f ss a).map (.pair · b)
-  | .snd :: ss, .pair a b => (Value.updAt f ss b).map (.pair a ·)
+  | .fst :: ss, .ind "Pair" 0 h ps [a, b] => (Value.updAt f ss a).map fun a' => .ind "Pair" 0 h ps [a', b]
+  | .snd :: ss, .ind "Pair" 0 h ps [a, b] => (Value.updAt f ss b).map fun b' => .ind "Pair" 0 h ps [a, b']
   | .field g :: ss, .ind t c h ps fs =>
     match (if t == g.ty && c == g.ctor then fs[g.idx]? else none) with
     | some v => (Value.updAt f ss v).map fun v' => .ind t c h ps (fs.set g.idx v')
@@ -57,7 +58,6 @@ sealed programs: only their loans are). -/
 partial def Value.holdsBorrow (l : Nat) : Value → Bool
   | .borrow m w => m == l || w.holdsBorrow l
   | .succ w => w.holdsBorrow l
-  | .pair a b => a.holdsBorrow l || b.holdsBorrow l
   | _ => false
 
 /-- Take `borrow_ℓ v` out of a value: returns `v` and the value with `⊥` in its place. -/
@@ -65,10 +65,6 @@ partial def Value.takeBorrow (l : Nat) : Value → Option (Value × Value)
   | .borrow m w =>
       if m == l then some (w, .bot) else (w.takeBorrow l).map fun (c, w') => (c, .borrow m w')
   | .succ w => (w.takeBorrow l).map fun (c, w') => (c, .succ w')
-  | .pair a b =>
-      match a.takeBorrow l with
-      | some (c, a') => some (c, .pair a' b)
-      | none => (b.takeBorrow l).map fun (c, b') => (c, .pair a b')
   | _ => none
 
 def findBorrow (env : Env) (l : Nat) : Option Pos :=
@@ -124,14 +120,5 @@ def footprint (env : Env) (ts : List Term) (multi : Bool := true) : List Pos := 
         else if isRefTy || b.val.isBorrow then
           out := out ++ ownersOfRoot
   pure (sortPos out)
-
-/-- `A × T_W` (RULES §4; just `A` when `W` is empty). -/
-def tupleType (A : Value) : List Value → Value
-  | [] => A
-  | Ts => .tProd A (Ts.dropLast.foldr .tProd Ts.getLast!)
-
-def tupleVal (v : Value) : List Value → Value
-  | [] => v
-  | ws => .pair v (ws.dropLast.foldr .pair ws.getLast!)
 
 end Ochr

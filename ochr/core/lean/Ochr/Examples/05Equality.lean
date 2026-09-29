@@ -8,10 +8,13 @@ Those places are the *footprint*: every place either side assigns or borrows, an
 places a borrow variable points into (its *owners*). `Id` is not a new primitive: it
 computes to `Eq` between the two observations (RULES P6, §4).
 
-`Eq` computes too: an equation between pairs is a conjunction, an equation between equal
-normal forms is `True` (proved by `refl`), and an equation between different constructors
-is `False` (D47). There is no injectivity rule. `J(A, a, b, P, h, t)` transports `t : P(a)`
-along `h : Eq A a b` to `P(b)`.
+`Eq` computes too: an equation between equal normal forms is `True` (proved by `refl`),
+one between two values built by the same constructor is the conjunction of the equations
+between their fields (injectivity, D52: `S a = S b` is `a = b`, and pairs compare component
+by component), and one between different constructors is `False` (D47). An `Id` is the
+conjunction of the equations over its result and each observed place, built directly (not
+through a pair, D52). `J(A, a, b, P, h, t)` transports `t : P(a)` along `h : Eq A a b` to
+`P(b)`.
 
 Defined in RULES §4. -/
 
@@ -45,7 +48,7 @@ ochr Equality uses Std {
   )
 
   -- ... and their difference is provable by the same induction. The borrow of `p` inside
-  -- `*x` puts the `S` back around both sides, so no injectivity is needed.
+  -- `*x` puts the `S` back around both sides, so it does not need injectivity (see `Inj`).
   def NotAdd01 (x : &Nat) (h : Id Unit (AddM(x, 0)) (AddM(x, 1))) : False by x := (
     match *x {
       Z => h,
@@ -67,9 +70,19 @@ ochr Equality uses Std {
   def NoConfBack (h : False) : Eq Nat 0 1 := h
   def BoolDisj (h : Eq Bool false true) : False := h
 
-  -- Equal constructors are not taken apart: `Eq Nat (S a) (S b)` does not compute to
-  -- `Eq Nat a b`.
-  reject def Inj (a : Nat) (b : Nat) (h : Eq Nat (S a) (S b)) : Eq Nat a b := h
+  -- Equal constructors are taken apart (injectivity, D52): `Eq Nat (S a) (S b)` computes to
+  -- `Eq Nat a b` ...
+  def Inj (a : Nat) (b : Nat) (h : Eq Nat (S a) (S b)) : Eq Nat a b := h
+
+  -- ... and not to anything else.
+  reject def InjWrong (a : Nat) (b : Nat) (h : Eq Nat (S a) (S b)) : Eq Nat a 0 := h
+
+  -- On pairs: an equation between two pairs is the conjunction of the equations between
+  -- their components ...
+  def PairInj (a : Nat) (b : Nat) (h : Eq (Nat × Nat) (a, b) (1, 2)) : Eq Nat a 1 ∧ Eq Nat b 2 := h
+
+  -- ... and not the other way round.
+  reject def PairInjWrong (a : Nat) (b : Nat) (h : Eq (Nat × Nat) (a, b) (1, 2)) : Eq Nat a 2 ∧ Eq Nat b 1 := h
 
   -- `J` names both endpoints, because `Eq A a a` computes to `True` and would forget them.
   def Transport (a : Nat) (b : Nat) (h : Eq Nat a b) (t : Id Nat (Add(a, 0)) a) : Id Nat (Add(b, 0)) b := (
@@ -87,7 +100,7 @@ ochr Equality uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Equality" Equality).allAsExpected
-#guard (run "Equality" Equality).count == 17
+#guard (run "Equality" Equality).count == 20
 
 /-! ## All the owners of a returned borrow are observed
 
@@ -95,7 +108,7 @@ ochr Equality uses Std {
 the hole for its contents is in both `a` and `b`, so an `Id` about writes through it
 observes both: it is a conjunction with one equation per owner (D18). -/
 
-ochr Owners uses Std {
+ochr Owners uses Fixtures {
   def Probe (z : &Nat) (e : Id Unit (*z := 0) (*z := 1)) : Unit := ()
 
   -- `Probe`'s second parameter, at `z = r`, is a conjunction over `a` and `b`, which `refl`

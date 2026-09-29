@@ -2,12 +2,13 @@ import Ochr.Examples.«00Std»
 
 /-! # 15. Borrow types: what may be borrowed, and where `&` may appear
 
-`&A` is a type only when `A` is data: `Nat`, `Unit`, a pair of data, or an inductive type in
-`Type` at any parameters (D48 (1)). It is never a borrow of a universe, a proposition, a
-function type or a type variable. And `&A` may appear only as the whole declared type of a
-parameter, a result or an annotated term: never inside another type, so there are no
-borrows inside data, and never as the value of a type-level computation (D48 (2)). These
-are the core's limits; Rust's iterators of borrows (`IterM`) are outside it.
+`&A` is a type only when `A` is data: `Nat`, `Unit`, or an inductive type in `Type` at any
+parameters, pairs included (D48 (1); a pair is the library's `Pair`, D52). It is never a
+borrow of a universe, a proposition, a function type or a type variable. And `&A` may appear
+only as the whole declared type of a parameter, a result or an annotated term: never inside
+another type, so there are no borrows inside data, and never as the value of a type-level
+computation (D48 (2)). These are the core's limits; Rust's iterators of borrows (`IterM`)
+are outside it.
 
 Defined in RULES §1 (the scope paragraph) and D48. -/
 

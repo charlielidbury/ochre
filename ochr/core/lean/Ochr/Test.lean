@@ -1,4 +1,4 @@
-import Ochr.Notation
+import Ochr.Prelude
 
 /-!
 # Running example programs and asserting their verdicts
@@ -58,7 +58,10 @@ once, a block after the blocks it uses. It is checked again, under `cfg`, ahead 
 block's own declarations: nothing is cached, so switching a rule off re-decides the library
 too. -/
 partial def libOf (cfg : Config) (fuel : Nat) (b : Block) : Program :=
-  b.closure.flatMap (exportsOf cfg fuel)
+  if b.name == "Prelude" then [] else
+  -- the library, `Prelude`, is used by every block, first (v2.1)
+  exportsOf cfg fuel Prelude ++
+    (b.closure.filter (·.name != "Prelude")).flatMap (exportsOf cfg fuel)
 end
 
 /-- Check a block: its library, then its own declarations. The report has a row for each of
@@ -73,7 +76,7 @@ def run (name : String) (b : Block) (cfg : Config := {}) (fuel : Nat := 2000000)
 /-- The library declarations of `b` whose visibility under `cfg` differs from the default
 (a library declaration flipped by the switched-off rule), as `(name, home block)`. -/
 def libChanges (b : Block) (cfg : Config) (fuel : Nat) : List (String × String) :=
-  b.closure.flatMap fun u =>
+  (Prelude :: b.closure.filter (·.name != "Prelude")).flatMap fun u =>
     let e0 := (exportsOf {} fuel u).map (·.name)
     let e1 := (exportsOf cfg fuel u).map (·.name)
     ((e0.filter (!e1.contains ·)) ++ (e1.filter (!e0.contains ·))).map (·, u.name)
@@ -108,7 +111,7 @@ def blockFlips (name : String) (b : Block) (cfg : Config) (fuel : Nat := 300000)
   let alt := run name b cfg fuel
   let flipped := (base.rows.zip alt.rows).filterMap fun (r, r') =>
     if r.verdict.ok != r'.verdict.ok then some (r.name, r'.verdict.ok) else none
-  let bl := if b.uses.isEmpty || flipped.isEmpty then [] else
+  let bl := if flipped.isEmpty || b.name == "Prelude" then [] else
     blockedBy b (libChanges b cfg fuel) (flipped.map (·.1))
   let mut out := []
   let mut blocked := []

@@ -18,7 +18,7 @@ Defined in RULES §3: [Close], [Seal], stuck blocks; [Split] in §5 checks the a
 
 open Ochr.Test
 
-ochr ClosingOff uses Std {
+ochr ClosingOff uses Std, Fixtures {
   -- ## A borrow chosen by a branch
   -- The match is not in tail position: its arms are checked, then it is closed off, and the
   -- rest of the body runs once, on the borrow the closed-off block returns.
@@ -38,7 +38,7 @@ ochr ClosingOff uses Std {
     }
   )
 
-  -- ... and with the match moved into a function, `Std`'s `Pick`.
+  -- ... and with the match moved into a function, `Fixtures`' `Pick`.
   def AddToOne'' (b : Nat) (x1 : &Nat) (x2 : &Nat) (y : Nat) : Unit := (
     let r = Pick(b, x1, x2);
     AddM(r, y)
@@ -235,13 +235,13 @@ ochr ClosingOff uses Std {
 
 /-! ## Symbolic checking is not the same as checking every instance
 
-At an abstract `n`, `Std`'s `Pick` returns a borrow that may point into `a` or into `b`, so its
+At an abstract `n`, `Fixtures`' `Pick` returns a borrow that may point into `a` or into `b`, so its
 hole is in both. Reading `b` then ends it, and the write through `r` in arm `Z` fails. At
 each concrete `n` the program is fine. The checker is sound but rejects `PickEarly`: the
 symbolic run agrees with the concrete ones only up to which borrows have ended (the
 paper's §7, "naturality up to resolution"). -/
 
-ochr Naturality uses Std {
+ochr Naturality uses Fixtures {
   reject def PickEarly (n : Nat) (a : Nat) (b : Nat) : Unit := (
     let r = Pick(n, &a, &b);
     let z = b;

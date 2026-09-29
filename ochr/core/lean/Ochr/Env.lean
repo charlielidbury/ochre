@@ -110,6 +110,7 @@ structure Config where
   disjoint : Bool := true        -- v2.0 D47: `Eq D (C ā) (C' b̄) ≡ False` for distinct constructors C ≠ C'
   scrutTyped : Bool := true      -- finding (v2.0 round): a match's scrutinee must have the constructors' type
   refData : Bool := true         -- D48 (1): `&A` only for a data type A (never a universe, Π-type or proposition)
+  injective : Bool := true      -- D52: Eq on two values of one constructor is the conjunction over its fields
   refTop : Bool := true          -- D48 (2): `&` only at the top of a declared type, never produced by computation
   unitNorm : Bool := false       -- counterfactual D50: the unit laws normalise stored types (v2.0 as first built)
   piUnder : Bool := true         -- D48 (3): Π-types are compared under their binders, at generic values
