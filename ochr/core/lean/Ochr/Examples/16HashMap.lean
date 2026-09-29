@@ -80,8 +80,8 @@ ochr HashMap uses Std {
   )
 
   -- ## Buckets
-  -- Look a key up, insert or overwrite it (`true` if a new entry was added), remove it
-  -- (returning the removed value), and borrow its value.
+  -- Look a key up, test for it, insert or overwrite it (`true` if a new entry was added),
+  -- remove it (returning the removed value), and borrow its value.
   def BGet (b : &Bucket) (k : Nat) : Opt by b := (
     match *b {
       BNil => None,
@@ -90,6 +90,19 @@ ochr HashMap uses Std {
         match e {
           false => BGet(&t, k),
           true => Some(v'),
+        }
+      ),
+    }
+  )
+
+  def BContains (b : &Bucket) (k : Nat) : Bool by b := (
+    match *b {
+      BNil => false,
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        match e {
+          false => BContains(&t, k),
+          true => true,
         }
       ),
     }
@@ -183,6 +196,15 @@ ochr HashMap uses Std {
       HM(n, len, slots) => (
         let b = Slot(&slots, Idx(k, n));
         BGet(b, k)
+      ),
+    }
+  )
+
+  def ContainsKey (hm : &HashMap) (k : Nat) : Bool := (
+    match *hm {
+      HM(n, len, slots) => (
+        let b = Slot(&slots, Idx(k, n));
+        BContains(b, k)
       ),
     }
   )
@@ -313,6 +335,13 @@ ochr HashMap uses Std {
     Get(&m, 1)
   ) (Some(20)) := refl
 
+  def RunContains : Id (Bool × Bool) (
+    let m = New(1);
+    Insert(&m, 1, 10);
+    Insert(&m, 2, 20);
+    (ContainsKey(&m, 2), ContainsKey(&m, 3))
+  ) (true, false) := refl
+
   -- Overwriting keeps the length; `5` collides with `1` in a map with four buckets.
   def RunOverwrite : Id (Nat × Opt) (
     let m = New(1);
@@ -371,7 +400,7 @@ ochr HashMap uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "HashMap" HashMap).allAsExpected
-#guard (run "HashMap" HashMap).count == 38
+#guard (run "HashMap" HashMap).count == 41
 
 /-! ## Lookups after each operation
 
@@ -851,6 +880,44 @@ ochr HashMapLookup uses Std, HashMap {
     }
   )
 
+  -- `ContainsKey` also reads through the borrow: it says whether `Find` finds the key.
+  def Has (o : Opt) : Bool := (
+    match o {
+      None => false,
+      Some(_) => true,
+    }
+  )
+
+  def BContainsFind (b : &Bucket) (k : Nat) : Id Bool (BContains(&*b, k)) (Has(BFind(*b, k))) by b := (
+    match *b {
+      BNil => refl,
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        match e {
+          false => BContainsFind(&t, k),
+          true => refl,
+        }
+      ),
+    }
+  )
+
+  def SlotContainsFind (s : &Slots) (i : Nat) (k : Nat) :
+      Id Bool (let b = Slot(&*s, i); BContains(b, k)) (Has(BFind(Nth(*s, i), k))) by s := (
+    match *s {
+      SOne(b) => BContainsFind(&b, k),
+      SCons(b, t) => match i {
+        Z => BContainsFind(&b, k),
+        S i' => SlotContainsFind(&t, i', k),
+      },
+    }
+  )
+
+  def ContainsFind (hm : &HashMap) (k : Nat) : Id Bool (ContainsKey(&*hm, k)) (Has(Find(*hm, k))) := (
+    match *hm {
+      HM(n, len, slots) => SlotContainsFind(&slots, Idx(k, n), k),
+    }
+  )
+
   -- ## New and Clear
   -- Every bucket of a fresh table is empty, so no key is found.
   def NthEmpty (n : Nat) (i : Nat) : Id Bucket BNil (Nth(EmptySlots(n), i)) by n := (
@@ -878,7 +945,7 @@ ochr HashMapLookup uses Std, HashMap {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "HashMapLookup" HashMapLookup).allAsExpected
-#guard (run "HashMapLookup" HashMapLookup).count == 34
+#guard (run "HashMapLookup" HashMapLookup).count == 38
 
 /-! ## The length
 
@@ -2063,7 +2130,8 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
   -- ## Insert, with the resize
   -- Split on whether the entry was added and on whether the table is then full. When it
   -- is, the resize keeps the invariant, every lookup and the length, the last two under
-  -- the invariant, which `InsertInv` gives for the map before the resize.
+  -- the invariant, which `InsertInv` gives for the map before the resize. The load factor is
+  -- last.
   def InsertFindR (m : HashMap) (k : Nat) (v : Nat) (h : Inv(m)) :
       Id Opt (let c = m; Insert(&c, k, v); Find(c, k)) (Some(v)) := (
     match m {
@@ -2189,10 +2257,172 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       ),
     }
   )
+
+  -- ## The load factor
+  -- The entries do not outnumber the buckets: `len ≤ n`, with `n + 1` buckets. `Insert`
+  -- keeps it by resizing (as Aeneas's `hash_map_not_overloaded_lem`, with a load factor
+  -- of 1 rather than a configurable fraction).
+  def NOf (m : HashMap) : Nat := (
+    match m {
+      HM(n, len, s) => n,
+    }
+  )
+
+  def NotOver (m : HashMap) : Prop := Eq Bool (Lt(NOf(m), Len(m))) false
+
+  -- `a ≥ y` gives `a + 1 ≥ y`, `a + z ≥ y`, and `a ≥ y - 1`.
+  def LtS (a : Nat) (y : Nat) (h : Eq Bool (Lt(a, y)) false) : Eq Bool (Lt(S a, y)) false by a := (
+    match a {
+      Z => match y {
+        Z => refl,
+        S _ => match h {},
+      },
+      S a' => match y {
+        Z => refl,
+        S y' => LtS(a', y', h),
+      },
+    }
+  )
+
+  def LtAdd (x : Nat) (y : Nat) (z : Nat) (h : Eq Bool (Lt(x, y)) false) : Eq Bool (Lt(Add(x, z), y)) false by x := (
+    match x {
+      Z => match y {
+        Z => match z {
+          Z => refl,
+          S _ => refl,
+        },
+        S _ => match h {},
+      },
+      S x' => match y {
+        Z => refl,
+        S y' => LtAdd(x', y', z, h),
+      },
+    }
+  )
+
+  def LtPred (a : Nat) (y : Nat) (h : Eq Bool (Lt(a, y)) false) : Eq Bool (Lt(a, Pred(y))) false := (
+    match y {
+      Z => h,
+      S y' => match a {
+        Z => match h {},
+        S a' => LtS(a', y', h),
+      },
+    }
+  )
+
+  -- Inserting and moving entries does not change the number of buckets; resizing sets it.
+  def InsertN (m : HashMap) (k : Nat) (v : Nat) : Id Nat (let c = m; InsertNoResize(&c, k, v); NOf(c)) (NOf(m)) := (
+    match m {
+      HM(n, len, s) => (
+        let cs = s;
+        let b = Slot(&cs, Idx(k, n));
+        let added = BInsert(b, k, v);
+        match added {
+          false => refl,
+          true => refl,
+        }
+      ),
+    }
+  )
+
+  def MoveBucketN (b : Bucket) (m : HashMap) : Id Nat (let c = m; MoveBucket(b, &c); NOf(c)) (NOf(m)) by b := (
+    match b {
+      BNil => refl,
+      BCons(k, v, t) => (
+        let m2 = m;
+        InsertNoResize(&m2, k, v);
+        let mb = m;
+        MoveBucket(b, &mb);
+        TransN(NOf(mb), NOf(m2), NOf(m), MoveBucketN(t, m2), InsertN(m, k, v))
+      ),
+    }
+  )
+
+  def MoveSlotsN (s : Slots) (m : HashMap) : Id Nat (let c = m; MoveSlots(s, &c); NOf(c)) (NOf(m)) by s := (
+    match s {
+      SOne(b) => MoveBucketN(b, m),
+      SCons(b, t) => (
+        let mb = m;
+        MoveBucket(b, &mb);
+        let ms = m;
+        MoveSlots(s, &ms);
+        TransN(NOf(ms), NOf(mb), NOf(m), MoveSlotsN(t, mb), MoveBucketN(b, m))
+      ),
+    }
+  )
+
+  def ResizeN (m : HashMap) : Id Nat (let c = m; Resize(&c); NOf(c)) (S (Add(NOf(m), NOf(m)))) := (
+    match m {
+      HM(n, len, s) => MoveSlotsN(s, New(S (Add(n, n)))),
+    }
+  )
+
+  -- After a resize the bucket count is `2n + 2` and the length is unchanged, so the
+  -- entries (at most `n + 1`) do not outnumber the buckets.
+  def InsertNotOver (m : HashMap) (k : Nat) (v : Nat) (h : Inv(m)) (ho : NotOver(m)) :
+      (let c = m; Insert(&c, k, v); NotOver(c)) := (
+    match m {
+      HM(n, len, s) => (
+        let m2 = m;
+        InsertNoResize(&m2, k, v);
+        let m3 = m2;
+        Resize(&m3);
+        let cs = s;
+        let b = Slot(&cs, Idx(k, n));
+        let added = BInsert(b, k, v);
+        match added {
+          false => (
+            let full = Lt(n, len);
+            match full {
+              false => refl,
+              true => match ho {},
+            }
+          ),
+          true => (
+            let full = Lt(n, S len);
+            match full {
+              false => refl,
+              true => J(Nat, Len(m2), Len(m3), λ(z : Nat) : Prop => Eq Bool (Lt(NOf(m3), z)) false,
+                        SymmN(Len(m3), Len(m2), ResizeLen(m2, InsertInv(m, k, v, h))),
+                        J(Nat, S (Add(n, n)), NOf(m3), λ(z : Nat) : Prop => Eq Bool (Lt(z, S len)) false,
+                          SymmN(NOf(m3), S (Add(n, n)), ResizeN(m2)), LtAdd(n, len, n, ho))),
+            }
+          ),
+        }
+      ),
+    }
+  )
+
+  def NewNotOver (n : Nat) : NotOver(New(n)) := (
+    match n {
+      Z => refl,
+      S _ => refl,
+    }
+  )
+
+  def RemoveNotOver (m : HashMap) (k : Nat) (ho : NotOver(m)) : (let c = m; Remove(&c, k); NotOver(c)) := (
+    match m {
+      HM(n, len, s) => (
+        let cs = s;
+        let b = Slot(&cs, Idx(k, n));
+        let x = BRemove(b, k);
+        match x {
+          None => ho,
+          Some(_) => LtPred(n, len, ho),
+        }
+      ),
+    }
+  )
+
+  def ClearNotOver (m : HashMap) : (let c = m; Clear(&c); NotOver(c)) := (
+    match m {
+      HM(n, len, s) => NewNotOver(n),
+    }
+  )
 }
 
 #eval IO.println (run "HashMapResize" HashMapResize).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "HashMapResize" HashMapResize).allAsExpected
-#guard (run "HashMapResize" HashMapResize).count == 66
+#guard (run "HashMapResize" HashMapResize).count == 79
