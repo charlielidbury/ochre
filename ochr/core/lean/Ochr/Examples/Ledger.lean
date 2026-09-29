@@ -56,7 +56,7 @@ open Ochr.Registry in
 #guard rowOk { generalize := false }
   ["CaseSplits.MatchAfterOpaque:rejected", "GenType.GenL:rejected", "Trees.InsertM:rejected",
    "Trees.Insert:rejected", "Trees.InsertMEq:rejected", "Trees.InsertMSwap:rejected",
-   "Trees.SizeInsert:rejected"]
+   "Trees.SizeInsert:rejected", "Arrays.PopS:rejected", "Arrays.ArrPop:rejected"]
 open Ochr.Registry in
 #guard rowOk { blockMoves := false }
   ["ClosingOff.MovedByBlock:accepted"]
@@ -164,7 +164,13 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { capTypes := false }
   ["Snapshots.CapS:rejected", "Snapshots.CapSId:rejected", "Snapshots.CapPi:rejected",
-   "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected"]
+   "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Arrays.Nth:rejected",
+   "Arrays.SetS:rejected", "Arrays.TakeS:rejected", "Arrays.DropS:rejected", "Arrays.JoinS:rejected",
+   "Arrays.SnocS:rejected", "Arrays.PopS:rejected", "Arrays.AsSlice:rejected",
+   "Arrays.Read:rejected", "Arrays.Set:rejected", "Arrays.GetMut:rejected",
+   "Arrays.WithSplit:rejected", "Arrays.ArrPush:rejected", "Arrays.ArrPop:rejected",
+   "Arrays.Swap:rejected", "Arrays.Replicate:rejected", "Arrays.FillFrom:rejected",
+   "Arrays.Fill:rejected"]
 -- `genPlaceType` changes no verdict; 08CaseSplits.lean asserts its effect on the generalised σ's type
 -- v2.0 D45 by type, switched off: a match on a proof inspects its content (⋆) like data: completeness only
 open Ochr.Registry in
@@ -207,7 +213,9 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { injective := false }
   ["Equality.Inj:rejected", "Equality.PairInj:rejected", "Recursion.AddZeroCopy:rejected",
-   "CurrentState.AddSubIdReborrow:rejected"]
+   "CurrentState.AddSubIdReborrow:rejected", "Index.AddRS:rejected", "Index.AddZeroR:rejected",
+   "Index.AddOneR:rejected"]
+  ["Arrays.FillFrom blocked by Index.AddRS", "Arrays.Fill blocked by Index.AddRS"]
 -- finding (v2.0 round): v1.9 assumed a data match's scrutinee type from its arms
 open Ochr.Registry in
 #guard rowOk { scrutTyped := false }
