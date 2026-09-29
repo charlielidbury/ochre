@@ -53,7 +53,7 @@ def checkDef (d : Def) : M Unit := do
     err s!"[D48] {d.name}: & appears only as the whole declared type of a parameter, result or annotated term, never inside a type or produced by computation"
   if d.doms.isEmpty then
     -- a constant
-    modify fun s => { s with env := #[{}], goal := none, recStack := [], recCands := [], refs := [] }
+    modify fun s => { s with env := #[{}], goal := none, recStack := [], refs := [] }
     let goal ← evalType d.cod
     let (v, T) ← eval true d.body goal     -- the goal: a hint for a constructor's parameters
     unless (← match T with | some T => conv T goal | none => pure false) do

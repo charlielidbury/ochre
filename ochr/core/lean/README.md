@@ -81,7 +81,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `04ClosingOff` | stuck calls and matches, sealed programs, a borrow chosen by a branch, what a stuck match captures, [Close]'s rows; naturality up to resolution | §3 | 29 |
 | `05Equality` | `Id` and `Eq`: observation, footprints, disjointness, injectivity (pairs included), `J`; all owners of a returned borrow are observed (D18) | §4 | 31 |
 | `06Snapshots` | types and closures are formed once; what a closure or Π-type captures (values, never borrows; capturing ends a live borrow) | P2, §1, §5 | 21 |
-| `07Recursion` | `by x`, entry-value recursion, induction hypotheses in the caller's environment | §5 [Def], [Rec] | 16 |
+| `07Recursion` | `by x`, entry-value recursion, induction hypotheses in the caller's environment; typing a sealed program keeps the [Rec] state | §5 [Def], [Rec] | 25 |
 | `08CaseSplits` | [Split], dependent matching on a computed type, generalising sealed programs, scrutinee types, global generalisation records | §5 [Split] | 18 |
 | `09Functions` | opaque functions, closures, Π-types, comparing functions by observation (D30, D38, D48 (3)) | P1, §1, §4 | 36 |
 | `10Inductives` | lists, binary search trees, parameters, strict positivity | §8 | 66 |
@@ -91,7 +91,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `14Universes` | `Prop : Type`, no `Type : Type`, no cumulativity, why `&Type` is refused | preamble, P2 | 8 |
 | `15BorrowTypes` | what may be borrowed and where `&` may appear (D48) | §1 | 16 |
 
-440 declarations in all, the `Prelude`'s 4 included. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+449 declarations in all, the `Prelude`'s 4 included. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 
