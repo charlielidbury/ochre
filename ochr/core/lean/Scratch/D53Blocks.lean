@@ -19,6 +19,19 @@ ochr D53Blocks {
   def B2Run : Nat := let m = 0; B2((0, 0), &m)
   def B3 (x0 : &Nat) (x1 : &Nat) : &Nat := match *x1 { Z => (), S _ => *x1 := *x0 }; x0
   def B3Run : Nat := let m = 0; let k = 1; let r = B3(&m, &k); *r
+  -- M2b: one arm moves the borrow itself in (a whole read of x0), another moves out
+  -- through it; the block owns the borrow, and nothing checks its content when it ends
+  def B4 (x0 : &Nat) : Nat := S (match *x0 { Z => x0; 0, S _ => *x0 })
+  def B4Run : Nat := let m = 1; B4(&m)
+  -- M3: erased code in a run reads or writes a place moved at runtime. The definition is
+  -- checked by the typed path, where it is erased; a call runs the body untyped:
+  -- (i) the untyped J evaluates its endpoints under `onCopy` at runtime depth, not
+  -- `confinedCopy`, so a moved endpoint is a runtime read
+  def J1 (n : Nat) (h : Eq Nat n 1) : Nat := let m = n; J(Nat, n, 1, λ (z : Nat) : Type => Nat, h, m)
+  def J1Run : Nat := J1(1, refl)
+  -- (ii) an `Id` side writing a moved place fails to type the place's owner
+  def I1 (n1 : Nat) : Nat := let m = n1; let a0 = Id Unit () (n1 := 0); 0
+  def I1Run : Nat := I1(0)
   -- control: the same moves outside a stuck block are rejected at the definition
   reject def C1 (q0 : Nat × Nat) : Nat × Nat := match q0 { Mk(p, _) => let a = p; q0 }
   reject def C2 (x0 : &Nat) : Nat := *x0
