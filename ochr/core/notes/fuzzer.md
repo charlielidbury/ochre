@@ -2,8 +2,8 @@
 
 ## v2 (rules v2.1 with D52–D58, branch ochr-fuzz-v2, 2026-09-29)
 
-**Verdict.** On the checker with the soundness batch (ochr-core 84470253: recCands fix, D54, D55, D56, D58, the ⋆/loan typing fix), 10⁶ cases on the default rules produced no refinement that disagreed with the direct path on a value. There were no `false`, `truth`, `irrel`, `frame` or `adequacy` value disagreements. The only `nat` findings are 14 where both sides are the same conjunction of equations in a different order (R6). Every remaining finding is one of:
-- **fail-safe**: one path gets a type error where the other succeeds, so the checker rejects rather than accepts. Classes R1–R7 in §v2.6: 3,614 cases in 10⁶, of which R2 is 3,405.
+**Verdict.** On the checker with the soundness batch (ochr-core 84470253: recCands fix, D54, D55, D56, D58, the ⋆/loan typing fix), and again on ochr-core-lean ff6b634a (which fixes R2, R3 and R7), 10⁶ cases each on the default rules produced no refinement that disagreed with the direct path on a value. There were no `false`, `truth`, `irrel`, `frame` or `adequacy` value disagreements. The only `nat` findings are 14 where both sides are the same conjunction of equations in a different order (R6). Every remaining finding is one of:
+- **fail-safe**: one path gets a type error where the other succeeds, so the checker rejects rather than accepts. Classes R1–R8 in §v2.6. On 84470253: 3,614 cases in 10⁶, of which R2 is 3,405. On ff6b634a, which fixes R2, R3 and R7: 2,250, of which 2,235 are R8, a new regression in the erasure pre-pass.
 - **scoping imprecision**: E, which cannot change a value.
 - **vacuous**: some hypothesis is `False` at that refinement.
 
@@ -11,6 +11,7 @@
 1. **F-v2-1, a closed proof of `False`.** [Rec] stopped checking after a sealed program was typed. It was common: 351 cases in 10⁵ on 96d788a1. Fixed by 3ff0e1e2.
 2. **P2 is soundness-relevant, not just completeness.** With P2 alone switched off (D41 on), there is a closed proof of `False`. The ledger lists P2 as completeness.
 3. **The D53 prototype breaks naturality in three ways**, two of them in the unsound direction. It is off by default, and these results became D53's acceptance criterion.
+5. **R8, a regression in the erasure pre-pass (ff6b634a).** Its own INTERNAL assertion fires when a closed-off block calls a captured proof-function parameter. Fail-safe; reported with a two-line reproduction (`Scratch/R8PrePass.lean`).
 4. **R1 (untyped `Id` owners holding a loan), an incompleteness.** Fixed by ef1195ff, apart from one residual shape (1 case in 10⁶): an owner reached through a returned borrow.
 
 The extended generator also re-finds the cold reviewers' attacks when their switch is off: reviewer-5's D54 `Boom` (as a `false` and a `truth` finding), and reviewer-4's `TT` (as `irrel`). §v2.3 counts which attack shapes it reaches.
@@ -180,6 +181,7 @@ With the default rules (D54, D55, D56 on), none of these shapes produces a findi
 
 | checker | seeds | cases | time | value disagreements | notes |
 |---|---|---|---|---|---|
+| ff6b634a (R2, R3, R7 fixed; erasure pre-pass), default rules | 1–10 | 1,000,000 | 788 s, 12 workers | **0** (plus 14 conjunct-order differences, R6) | R2/R3/R7 gone; a new fail-safe class R8 from the pre-pass |
 | 84470253 (the batch), default rules | 1–10 | 1,000,000 | 661 s, 8 workers | **0** (plus 14 conjunct-order differences, R6) | fail-safe classes only, table below |
 | 658cc108 (recCands fixed) | 1–10 | 1,000,000 | 491 s, 16 workers | 0 | before the reviewer shapes were added to the generator |
 | 96d788a1 with the fix as an opt-in hook | 1–10 | 1,000,000 | 536 s, 16 workers | 0 | the same counts as the row above |
@@ -187,33 +189,35 @@ With the default rules (D54, D55, D56 on), none of these shapes produces a findi
 
 **Main run statuses (84470253).** 936,320 cases were checked. In 49,375, the default rules reject the generic statement; in a sample of 400 cases, 12 of the 16 rejected or unresolved ones were the reviewers' attack shapes, which only a switch-off makes live. In 14,305, the case does not resolve, mostly an attack template that the default rules left out. No crashes.
 
-| class | findings in 10⁶ (non-vacuous; vacuous in parentheses) |
+| class | findings in 10⁶ on 84470253, non-vacuous (vacuous) | on ff6b634a |
 |---|---|
-| R2 a λ in a block's arm captures a borrow | 3,405 (500) |
-| R3 conversion runs a block's function generically | 160 (8) |
-| R7 `symm` in an unreachable branch | 34 (1,850) |
-| R6 conjunction order | 14 (1) |
-| E arm-local value in a block's inferred type | 92 (2) |
-| R1 residual (an owner reached through a returned borrow) | 1 (0) |
-| R4, R5 | 0 |
-| vacuous: `adequacy: stuck (escaped to the top)` (a `J` cast or zero-arm match stuck under a `False` hypothesis, run by the untyped machine) | 0 (27,938) |
+| R2 a λ in a block's arm captures a borrow | 3,405 (500) | 0 (fixed) |
+| R3 conversion runs a block's function generically | 160 (8) | 0 (fixed) |
+| R7 `symm` in an unreachable branch | 34 (1,850) | 0 (fixed) |
+| R6 conjunction order | 14 (1) | 14 (1) |
+| E arm-local value in a block's inferred type | 92 (2) | 65 (1) |
+| R1 residual (an owner reached through a returned borrow) | 1 (0) | 1 (0) |
+| R4, R5 | 0 | 0 |
+| R8 the erasure pre-pass's INTERNAL assertion (new) | – | 2,235 (339) |
+| vacuous: `adequacy: stuck (escaped to the top)` (a `J` cast or zero-arm match stuck under a `False` hypothesis, run by the untyped machine) | 0 (27,938) | 0 (28,039) |
 
 ### v2.6 The fail-safe classes, one sentence each
 
 Each class has a true statement the checker rejects today, in `lean/Scratch/` (`lake env lean Scratch/X.lean`, all "as expected").
 
 - **R1: an untyped `Id` owner holding a loan (mostly fixed by ef1195ff).** Re-normalising a sealed program that forms an `Id` about a cell it has lent out failed to type the cell (16,551 cases in 10⁶ on 658cc108; `V2Classes.R1s` is accepted now). One residual case in 10⁶ on 84470253 remains, where the owner is reached through a returned borrow: `R1Residual.Split` is a true statement, proved by splitting, that is rejected with "cannot infer the type of the value loan_ℓ".
-- **R2: a λ in a stuck block's arm captures a borrow on re-normalisation.** A block takes a place by `&` when an arm writes it. Two things go wrong:
+- **R2 (fixed by ff6b634a): a λ in a stuck block's arm captures a borrow on re-normalisation.** A block takes a place by `&` when an arm writes it. Two things go wrong:
   - (i) The capture analysis counts a nested λ's write to its own copy as a write by the block (`V2Classes.R2s`: `Id Nat (match n0 { Z => n0, S p2 => let a5 = (λ(y6 : &Nat) : Unit => n0 := 0); n0 }) n0`).
   - (ii) A λ that only reads the place captures the block's borrow parameter rather than the value it reads (`EV.ClassE4`: `match q2 { Mk(p5, p6) => let f = (λ(y7 : Nat) : Nat => p5); q2 := (1, 1); f }`).
 
   Fix: occurrences inside a nested function count as reads of the block, and `capture` captures the place a λ reads (`(*q2).fst`, by value), not the root variable.
-- **R3: conversion runs a block's function at a generic call.** A block formed inside an arm reads pattern sub-places (`x0.1`, `(*q0).fst`) that exist only under that arm's refinement. D30's conversion observes such a function at a fresh generic argument, where the sub-place does not exist, and `convFn` lets the error escape instead of answering "not convertible" as `convPi` does (`V2Classes.R3s`).
-- **R4: a call of a sealed function in untyped code.** A block whose arms return λs closes off to a sealed function. Calling it during re-normalisation needs its Π-type for [Close]'s row, which is not recorded (`V2Classes.R4s`, still rejected). It was 23 cases in 10⁶ on 658cc108 and 0 on 84470253.
+- **R3 (fixed by ff6b634a): conversion runs a block's function at a generic call.** A block formed inside an arm reads pattern sub-places (`x0.1`, `(*q0).fst`) that exist only under that arm's refinement. D30's conversion observes such a function at a fresh generic argument, where the sub-place does not exist, and `convFn` lets the error escape instead of answering "not convertible" as `convPi` does (`V2Classes.R3s`).
+- **R4 (fixed by 84470253/ff6b634a): a call of a sealed function in untyped code.** A block whose arms return λs closes off to a sealed function. Calling it during re-normalisation needs its Π-type for [Close]'s row, which is not recorded It was 23 cases in 10⁶ on 658cc108 and 0 since.
 - **R5: arm types formed under different refinements** (1 case in 10⁶, 658cc108). Two arms' Π-types capture a place holding a sealed program that the arms' refinements made different, so D48(3)'s comparison finds `U(⌈…0…⌉) ≠ U(⌈…S σ⌉)` although both are `Prop`.
 - **R6: `Id`'s conjunction order is not stable under closing off.** `Id` lists the observed owners in the order of Ω, and a closed-off block orders them by its captures. `And` is not commutative by conversion, so a true statement proved by splitting is rejected (`R6Order.Direct`). With pairs, `Eq` at `Nat × Nat` splits by injectivity, so this shows even at ground instances (`False ∧ (False ∧ False)` against `(False ∧ False) ∧ False`). Fix: order the footprint canonically (by first occurrence in the statement, or by parameter position), not by Ω.
-- **R7: `symm` in an unreachable branch.** `symm h` (and `trans`) needs `h`'s type to be an equation or `True`. In a branch whose refinement makes the hypothesis `False`, the branch is unreachable, but `symm h` is a type error (`R7Symm.Split`), while the plain `J` along `h` is accepted there.
-- **E: an arm-local abstract value in a block's inferred type (not unsound).** A block's result type is read off the first arm, under that arm's refinement. When it is a Π-type that captured the scrutinee, arm-local values (`Mk(σ3, σ4)`) sit in its `where κ` captures (`EV.ClassE`, `ClassE4`). Untyped runs never read a block function's codomain. A stale type mentions only fresh σs that nothing else shares, so it can make a conversion fail, never succeed wrongly. It always arrives with R2 (ii), since the block must take the place by `&` for its sealed program to reach an observation.
+- **R7 (fixed by ff6b634a): `symm` in an unreachable branch.** `symm h` (and `trans`) needs `h`'s type to be an equation or `True`. In a branch whose refinement makes the hypothesis `False`, the branch is unreachable, but `symm h` is a type error (`R7Symm.Split`), while the plain `J` along `h` is accepted there.
+- **E: an arm-local abstract value in a block's inferred type (not unsound).** A block's result type is read off the first arm, under that arm's refinement. When it is a Π-type that captured the scrutinee, arm-local values (`Mk(σ3, σ4)`) sit in its `where κ` captures (`EV.ClassE`, `ClassE4`). Untyped runs never read a block function's codomain. A stale type mentions only fresh σs that nothing else shares, so it can make a conversion fail, never succeed wrongly. It needs the block to take the place by `&` (some arm writes it) for its sealed program to reach an observation. On 84470253 it arrived with R2 (ii); since R2 is fixed it stands alone (65 cases in 10⁶ on ff6b634a, `EV.ClassE4`).
+- **R8 (new on ff6b634a, the erasure pre-pass): the pre-pass misreads a closed-off block's proof parameter.** When a stuck block captures a proof-function parameter, the block function declares that parameter in the captured form `(Π(z0 : &Nat). ⊤ : Prop)`. The pre-pass does not read that ascription as a proof, so it classifies a call through it as data while the machine (correctly) erases it, and the pre-pass's own assertion fires: "INTERNAL [pre-pass] …: erased/proof = (false, false) by its declared type, (true, true) after running". `R8PrePass.OnNat` is a true statement rejected by it: `(n : Nat) (h2 : Π(z0 : &Nat). ⊤) : Id Nat (match n { Z => 0, S p => h2(&p); 0 }) 0`, proved by splitting `n`. Variants: a captured λ returning a proof; and a proof `h : ExN` whose data field an arm writes, which makes the block capture the proof by borrow (`h3 : &ExN`, a borrow of a proposition) and the two readings disagree the other way. Fail-safe; 2,235 cases in 10⁶.
 - **V (gone with D58): `⋆` against `()` under `h : False`.** A zero-arm match yielded `⋆` at any type, so a `Unit`-typed term was `⋆` on the direct path and `()` from a block's row. With D58 the match is stuck outside proof positions. `--switch D58` brings the vacuous findings back.
 
 ### v2.7 What the fuzzer does not cover
