@@ -3,14 +3,17 @@ import Ochr.Examples.«00Std»
 /-! # 16. Arrays: a library over a type-level model
 
 Arrays are not built into Ochr (D57). An array of `n` elements is modelled by `Cells(E, n)`,
-a type computed by recursion on `n`: `Unit` at zero, and a cell holding an element and the
-rest at `S m`. So the length lives only in the type, and a value of `Cells(E, n)` has exactly
+a type computed by recursion on `n`: `CellsEnd` at zero, and a cell holding an element and
+the rest at `S m`. So the length lives only in the type, and a value of `Cells(E, n)` has exactly
 `n` elements. Proofs reason about this model directly; compiled code will use a flat buffer
 instead, through a small set of native functions (marked `[native]` below) whose models are
 the Ochr bodies given here.
 
 The rules (D57): nothing recurses over an array, only over an index; runtime code never owns
 part of an array; a borrow of part of an array is scoped by a continuation (`WithSplit`).
+
+Proofs rewrite with `rewrite h in t` and take conjunctions apart with a destructuring `let`
+(D60); no proof here writes `J` or a motive.
 
 Phase A uses today's checker, so these workarounds are marked where they occur, for phase B to
 remove:
@@ -97,13 +100,6 @@ ochr Index uses Std {
   )
 
   def LtDec (i : Nat) (n : Nat) : Dec(Lt(i, n), Le(n, i)) := LeDec(S i, n)
-
-  -- Equations between numbers are symmetric and transitive, by transport.
-  def EqSym (a : Nat) (b : Nat) (h : Eq Nat a b) : Eq Nat b a := J(Nat, a, b, λ(z : Nat) : Prop => Eq Nat z a, h, refl)
-
-  def EqTrans (a : Nat) (b : Nat) (c : Nat) (h1 : Eq Nat a b) (h2 : Eq Nat b c) : Eq Nat a c := (
-    J(Nat, b, c, λ(z : Nat) : Prop => Eq Nat a z, h2, h1)
-  )
 
   -- Facts about the order, each by recursion on a number.
   def LeRefl (a : Nat) : Le(a, a) by a := (
@@ -193,7 +189,7 @@ ochr Index uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Index" Index).allAsExpected
-#guard (run "Index" Index).count == 19
+#guard (run "Index" Index).count == 17
 
 /-! ## The model
 
@@ -417,9 +413,8 @@ ochr Arrays uses Index {
     match rem {
       Z => (),
       S r => (
-        let hi : Lt(i, n) = J(Nat, S (Add(r, i)), n, λ(z : Nat) : Prop => Lt(i, z), hr, LeAddL(r, i));
-        let hr2 : Eq Nat (Add(r, S i)) n =
-          J(Nat, S (Add(r, i)), Add(r, S i), λ(z : Nat) : Prop => Eq Nat z n, AddRS(r, i), hr);
+        let hi : Lt(i, n) = (rewrite hr in LeAddL(r, i));
+        let hr2 : Eq Nat (Add(r, S i)) n = (rewrite AddRS(r, i) in hr);
         Set(E, n, &*s, i, x, hi);
         FillFrom(E, n, s, x, S i, r, hr2)
       ),
@@ -587,8 +582,8 @@ ochr ArrayLemmas uses Arrays {
 
   -- Writing `x` over element `i` trades one occurrence of the old element for one of `x`.
   def CountSet (q : Nat) (n : Nat) (s : Slice(Nat, n)) (i : Nat) (x : Nat) (h : Lt(i, n)) :
-      Eq Nat (Add(Count(q, n, SetS(Nat, n, s, i, x)), Ind(q, Nth(Nat, n, s, i, h))))
-        (Add(Count(q, n, s), Ind(q, x))) by i := (
+      Eq Nat (Add(Ind(q, Nth(Nat, n, s, i, h)), Count(q, n, SetS(Nat, n, s, i, x))))
+        (Add(Ind(q, x), Count(q, n, s))) by i := (
     match n {
       Z => match h {},
       S m => match s {
@@ -600,19 +595,21 @@ ochr ArrayLemmas uses Arrays {
               match ex {
                 true => match ey {
                   true => refl,
-                  false => AddRS(Count(q, m, t), 0),
+                  false => refl,
                 },
                 false => match ey {
-                  true => EqSym(S (Add(Count(q, m, t), 0)), Add(Count(q, m, t), 1), AddRS(Count(q, m, t), 0)),
+                  true => refl,
                   false => refl,
                 },
               }
             ),
             S i' => (
+              let ih = CountSet(q, m, t, i', x, h);
               let ey = Eqb(q, y);
               match ey {
-                true => CountSet(q, m, t, i', x, h),
-                false => CountSet(q, m, t, i', x, h),
+                true => rewrite AddRS(Ind(q, Nth(Nat, m, t, i', h)), Count(q, m, SetS(Nat, m, t, i', x))) in
+                  rewrite AddRS(Ind(q, x), Count(q, m, t)) in ih,
+                false => ih,
               }
             ),
           },
@@ -634,19 +631,17 @@ ochr ArrayLemmas uses Arrays {
   def CountSwapHead (q : Nat) (m : Nat) (y : Nat) (t : Slice(Nat, m)) (i : Nat) (h : Lt(i, m)) :
       Eq Nat (Count(q, S m, MkSlice(MkC(Nth(Nat, m, t, i, h), SetS(Nat, m, t, i, y)))))
         (Count(q, S m, MkSlice(MkC(y, t)))) := (
-    let a = Count(q, m, SetS(Nat, m, t, i, y));
-    let b = Count(q, m, t);
     let hs = CountSet(q, m, t, i, y, h);
     let eb = Eqb(q, Nth(Nat, m, t, i, h));
     let ey = Eqb(q, y);
     match eb {
       true => match ey {
-        true => EqTrans(S a, Add(a, 1), S b, EqSym(Add(a, 1), S a, AddOneR(a)), EqTrans(Add(a, 1), Add(b, 1), S b, hs, AddOneR(b))),
-        false => EqTrans(S a, Add(a, 1), b, EqSym(Add(a, 1), S a, AddOneR(a)), EqTrans(Add(a, 1), Add(b, 0), b, hs, AddZeroR(b))),
+        true => hs,
+        false => hs,
       },
       false => match ey {
-        true => EqTrans(a, Add(a, 0), S b, EqSym(Add(a, 0), a, AddZeroR(a)), EqTrans(Add(a, 0), Add(b, 1), S b, hs, AddOneR(b))),
-        false => EqTrans(a, Add(a, 0), b, EqSym(Add(a, 0), a, AddZeroR(a)), EqTrans(Add(a, 0), Add(b, 0), b, hs, AddZeroR(b))),
+        true => hs,
+        false => hs,
       },
     }
   )
@@ -971,13 +966,13 @@ ochr Quicksort uses ArrayLemmas {
       (hij : Lt(i, j)) (hr : Eq Nat (Add(rem, j)) n) : Nat by rem := (
     match rem {
       Z => (
-        let hin : Lt(i, n) = J(Nat, j, n, λ(z : Nat) : Prop => Lt(i, z), hr, hij);
+        let hin : Lt(i, n) = (rewrite hr in hij);
         Swap(Nat, n, s, 0, i, LeTrans(1, S i, n, refl, hin), hin);
         i
       ),
       S r => (
-        let hjn : Lt(j, n) = J(Nat, S (Add(r, j)), n, λ(z : Nat) : Prop => Lt(j, z), hr, LeAddL(r, j));
-        let hr2 : Eq Nat (Add(r, S j)) n = J(Nat, S (Add(r, j)), Add(r, S j), λ(z : Nat) : Prop => Eq Nat z n, AddRS(r, j), hr);
+        let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
+        let hr2 : Eq Nat (Add(r, S j)) n = (rewrite AddRS(r, j) in hr);
         let x = Read(Nat, n, &*s, j, hjn);
         let b = Leb(x, p);
         match b {
@@ -1040,40 +1035,25 @@ ochr Quicksort uses ArrayLemmas {
       (MkArray(MkSlice(MkC(1, MkSlice(MkC(1, MkSlice(MkC(2, MkSlice(MkC(4, MkSlice(MkC(3, MkSlice(End))))))))))))) := refl
 
   -- ## Quicksort permutes: every count is unchanged
-  -- Rewriting under `Add` and `Count` is transport.
-  def AddCongL (a : Nat) (a2 : Nat) (b : Nat) (e : Eq Nat a a2) : Eq Nat (Add(a, b)) (Add(a2, b)) := (
-    J(Nat, a, a2, λ(z : Nat) : Prop => Eq Nat (Add(a, b)) (Add(z, b)), e, refl)
-  )
-
-  def AddCongR (a : Nat) (b : Nat) (b2 : Nat) (e : Eq Nat b b2) : Eq Nat (Add(a, b)) (Add(a, b2)) := (
-    J(Nat, b, b2, λ(z : Nat) : Prop => Eq Nat (Add(a, b)) (Add(a, z)), e, refl)
-  )
-
-  def CountCong (q : Nat) (n : Nat) (s : Slice(Nat, n)) (s2 : Slice(Nat, n)) (e : Eq (Slice(Nat, n)) s s2) :
-      Eq Nat (Count(q, n, s)) (Count(q, n, s2)) := (
-    J(Slice(Nat, n), s, s2, λ(z : Slice(Nat, n)) : Prop => Eq Nat (Count(q, n, s)) (Count(q, n, z)), e, refl)
-  )
-
   -- The scan only swaps.
   def ScanPerm (n : Nat) (s : &Slice(Nat, n)) (p : Nat) (i : Nat) (j : Nat) (rem : Nat)
       (hij : Lt(i, j)) (hr : Eq Nat (Add(rem, j)) n) (q : Nat) :
       (let old = *s; Eq Nat (Count(q, n, (Scan(n, &*s, p, i, j, rem, hij, hr); *s))) (Count(q, n, old))) by rem := (
     match rem {
       Z => (
-        let hin : Lt(i, n) = J(Nat, j, n, λ(z : Nat) : Prop => Lt(i, z), hr, hij);
+        let hin : Lt(i, n) = (rewrite hr in hij);
         CountSwap(q, n, *s, 0, i, LeTrans(1, S i, n, refl, hin), hin)
       ),
       S r => (
-        let hjn : Lt(j, n) = J(Nat, S (Add(r, j)), n, λ(z : Nat) : Prop => Lt(j, z), hr, LeAddL(r, j));
-        let hr2 : Eq Nat (Add(r, S j)) n = J(Nat, S (Add(r, j)), Add(r, S j), λ(z : Nat) : Prop => Eq Nat z n, AddRS(r, j), hr);
+        let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
+        let hr2 : Eq Nat (Add(r, S j)) n = (rewrite AddRS(r, j) in hr);
         let x = Nth(Nat, n, *s, j, hjn);
         let b = Leb(x, p);
         match b {
           true => (
             let c = SwapS(Nat, n, *s, S i, j, LeTrans(S (S i), S j, n, hij, hjn), hjn);
-            let e1 = ScanPerm(n, &c, p, S i, S j, r, hij, hr2, q);
-            let e2 = CountSwap(q, n, *s, S i, j, LeTrans(S (S i), S j, n, hij, hjn), hjn);
-            EqTrans(Count(q, n, (let d = c; Scan(n, &d, p, S i, S j, r, hij, hr2); d)), Count(q, n, c), Count(q, n, *s), e1, e2)
+            rewrite CountSwap(q, n, *s, S i, j, LeTrans(S (S i), S j, n, hij, hjn), hjn) in
+              ScanPerm(n, &c, p, S i, S j, r, hij, hr2, q)
           ),
           false => ScanPerm(n, s, p, i, S j, r, LeStep(S i, j, hij), hr2, q),
         }
@@ -1104,30 +1084,17 @@ ochr Quicksort uses ArrayLemmas {
         let l2 = (let c = tk; rec(k, &c); c);
         let rr2 = (let c = rr; rec(Sub(Sub(S m, k), 1), &c); c);
         let x2 = JoinS(Nat, Sub(S m, k), 1, pv, rr2);
-        -- their counts
-        let cf = Count(q, S m, JoinS(Nat, S m, k, l2, x2));
-        let cl2 = Count(q, k, l2);
-        let ctk = Count(q, k, tk);
-        let cx2 = Count(q, Sub(S m, k), x2);
-        let cpv = Count(q, 1, pv);
-        let crr2 = Count(q, Sub(Sub(S m, k), 1), rr2);
-        let crr = Count(q, Sub(Sub(S m, k), 1), rr);
-        let cj = Count(q, Sub(S m, k), JoinS(Nat, Sub(S m, k), 1, pv, rr));
-        let cr0 = Count(q, Sub(S m, k), r0);
-        let cj0 = Count(q, S m, JoinS(Nat, S m, k, tk, r0));
-        let cs = Count(q, S m, *s);
         -- the left part: the recursive call permutes it
-        let s1 : Eq Nat cf (Add(ctk, cx2)) = EqTrans(cf, Add(cl2, cx2), Add(ctk, cx2),
-          CountJoin(q, S m, k, l2, x2, hk2), AddCongL(cl2, ctk, cx2, (let c = tk; ih(k, &c, q))));
+        rewrite ← CountJoin(q, S m, k, l2, x2, hk2) in
+        rewrite ← (let c = tk; ih(k, &c, q)) in
         -- the right part: the pivot is untouched and the recursive call permutes the rest
-        let s2 : Eq Nat cx2 cr0 = EqTrans(cx2, Add(cpv, crr2), cr0, CountJoin(q, Sub(S m, k), 1, pv, rr2, h1),
-          EqTrans(Add(cpv, crr2), Add(cpv, crr), cr0, AddCongR(cpv, crr2, crr, (let c = rr; ih(Sub(Sub(S m, k), 1), &c, q))),
-            EqTrans(Add(cpv, crr), cj, cr0, EqSym(cj, Add(cpv, crr), CountJoin(q, Sub(S m, k), 1, pv, rr, h1)),
-              CountCong(q, Sub(S m, k), JoinS(Nat, Sub(S m, k), 1, pv, rr), r0, JoinTakeDrop(Nat, Sub(S m, k), 1, r0, h1)))));
+        rewrite ← CountJoin(q, Sub(S m, k), 1, pv, rr2, h1) in
+        rewrite ← (let c = rr; ih(Sub(Sub(S m, k), 1), &c, q)) in
+        rewrite CountJoin(q, Sub(S m, k), 1, pv, rr, h1) in
+        rewrite ← JoinTakeDrop(Nat, Sub(S m, k), 1, r0, h1) in
         -- and the two parts are the view, split
-        let s3 : Eq Nat (Add(ctk, cr0)) cs = EqTrans(Add(ctk, cr0), cj0, cs, EqSym(cj0, Add(ctk, cr0), CountJoin(q, S m, k, tk, r0, hk2)),
-          CountCong(q, S m, JoinS(Nat, S m, k, tk, r0), *s, JoinTakeDrop(Nat, S m, k, *s, hk2)));
-        EqTrans(cf, Add(ctk, cx2), cs, s1, EqTrans(Add(ctk, cx2), Add(ctk, cr0), cs, AddCongR(ctk, cx2, cr0, s2), s3))
+        rewrite CountJoin(q, S m, k, tk, r0, hk2) in
+        rewrite ← JoinTakeDrop(Nat, S m, k, *s, hk2) in refl
       ),
       No(nk) => refl,
     }
@@ -1158,8 +1125,7 @@ ochr Quicksort uses ArrayLemmas {
                 (let old = *s2; Eq Nat (Count(q2, n2, (QS(f, n2, &*s2); *s2))) (Count(q2, n2, old))) =>
               QSPerm(f, n2, s2, q2),
             m, k, &c, q);
-          EqTrans(Count(q, S m, (let d = c; Recurse(rec, m, k, &d); d)), Count(q, S m, c), Count(q, S m, *s),
-            e1, PartitionPerm(m, s, q))
+          rewrite PartitionPerm(m, s, q) in e1
         ),
       },
     }
@@ -1207,17 +1173,14 @@ ochr Quicksort uses ArrayLemmas {
       Z => refl,
       S m => match s {
         MkSlice(c) => match c {
-          MkC(y, t) => match h {
-            Intro(hy, ht) => ⟨LeTrans(a, x, y, hax, hy), AllGeWeaken(m, t, x, a, ht, hax)⟩,
-          },
+          MkC(y, t) => (
+            let ⟨hy, ht⟩ = h;
+            ⟨LeTrans(a, x, y, hax, hy), AllGeWeaken(m, t, x, a, ht, hax)⟩
+          ),
         },
       },
     }
   )
-
-  -- Taking a conjunction apart.
-  def AndL (P : Prop) (Q : Prop) (h : P ∧ Q) : P := match h { Intro(p, q) => p }
-  def AndR (P : Prop) (Q : Prop) (h : P ∧ Q) : Q := match h { Intro(p, q) => q }
 
   -- [checker] A conjunction built with its conjuncts named. `⟨p, q⟩` infers them from the
   -- expected type, and in `AllGeJoin` and `SortedJoin` (after the dead arm `n := Z`) that
@@ -1233,8 +1196,10 @@ ochr Quicksort uses ArrayLemmas {
         Z => match h {},
         S m => match l {
           MkSlice(c) => match c {
-            MkC(y, t) => AndI(Le(a, y), AllGe(m, JoinS(Nat, m, k', t, r), a), AndL(Le(a, y), AllGe(k', t, a), hl),
-              AllGeJoin(m, k', t, r, h, a, AndR(Le(a, y), AllGe(k', t, a), hl), hr)),
+            MkC(y, t) => (
+              let ⟨hy, ht⟩ = hl;
+              AndI(Le(a, y), AllGe(m, JoinS(Nat, m, k', t, r), a), hy, AllGeJoin(m, k', t, r, h, a, ht, hr))
+            ),
           },
         },
       },
@@ -1252,10 +1217,13 @@ ochr Quicksort uses ArrayLemmas {
         Z => match h {},
         S m => match l {
           MkSlice(c) => match c {
-            MkC(a, t) => AndI(AllGe(m, JoinS(Nat, m, k', t, r), a), Sorted(m, JoinS(Nat, m, k', t, r)),
-              AllGeJoin(m, k', t, r, h, a, AndL(AllGe(k', t, a), Sorted(k', t), hl),
-                AllGeWeaken(Sub(m, k'), r, x, a, hrx, AndL(Le(a, x), AllLe(k', t, x), hlx))),
-              SortedJoin(m, k', t, r, h, x, AndR(AllGe(k', t, a), Sorted(k', t), hl), AndR(Le(a, x), AllLe(k', t, x), hlx), hr, hrx)),
+            MkC(a, t) => (
+              let ⟨hla, hlt⟩ = hl;
+              let ⟨hax, htx⟩ = hlx;
+              AndI(AllGe(m, JoinS(Nat, m, k', t, r), a), Sorted(m, JoinS(Nat, m, k', t, r)),
+                AllGeJoin(m, k', t, r, h, a, hla, AllGeWeaken(Sub(m, k'), r, x, a, hrx, hax)),
+                SortedJoin(m, k', t, r, h, x, hlt, htx, hr, hrx))
+            ),
           },
         },
       },
@@ -1311,13 +1279,14 @@ ochr Quicksort uses ArrayLemmas {
       S m => match s {
         MkSlice(c) => match c {
           MkC(x, t) => (
+            let ⟨hx, ht⟩ = h;
             let e = Eqb(q, x);
             match e {
               true => (
-                let no = EqbLeLt(q, x, p, refl, AndL(Le(x, p), AllLe(m, t, p), h), hq);
+                let no = EqbLeLt(q, x, p, refl, hx, hq);
                 match no {}
               ),
-              false => CountAboveZero(m, t, p, AndR(Le(x, p), AllLe(m, t, p), h), q, hq),
+              false => CountAboveZero(m, t, p, ht, q, hq),
             }
           ),
         },
@@ -1332,13 +1301,14 @@ ochr Quicksort uses ArrayLemmas {
       S m => match s {
         MkSlice(c) => match c {
           MkC(x, t) => (
+            let ⟨hx, ht⟩ = h;
             let e = Eqb(q, x);
             match e {
               true => (
-                let no = EqbGeLt(q, x, p, refl, AndL(Le(p, x), AllGe(m, t, p), h), hq);
+                let no = EqbGeLt(q, x, p, refl, hx, hq);
                 match no {}
               ),
-              false => CountBelowZero(m, t, p, AndR(Le(p, x), AllGe(m, t, p), h), q, hq),
+              false => CountBelowZero(m, t, p, ht, q, hq),
             }
           ),
         },
@@ -1413,13 +1383,13 @@ ochr Quicksort uses ArrayLemmas {
   def AllLePerm (n : Nat) (s : Slice(Nat, n)) (s2 : Slice(Nat, n)) (p : Nat) (h : AllLe(n, s, p))
       (perm : Π(q : Nat). Eq Nat (Count(q, n, s2)) (Count(q, n, s))) : AllLe(n, s2, p) := (
     AllLeOfCounts(n, s2, p, λ(q : Nat) (hq : Lt(p, q)) : Eq Nat (Count(q, n, s2)) 0 =>
-      EqTrans(Count(q, n, s2), Count(q, n, s), 0, perm(q), CountAboveZero(n, s, p, h, q, hq)))
+      rewrite ← perm(q) in CountAboveZero(n, s, p, h, q, hq))
   )
 
   def AllGePerm (n : Nat) (s : Slice(Nat, n)) (s2 : Slice(Nat, n)) (p : Nat) (h : AllGe(n, s, p))
       (perm : Π(q : Nat). Eq Nat (Count(q, n, s2)) (Count(q, n, s))) : AllGe(n, s2, p) := (
     AllGeOfCounts(n, s2, p, λ(q : Nat) (hq : Lt(q, p)) : Eq Nat (Count(q, n, s2)) 0 =>
-      EqTrans(Count(q, n, s2), Count(q, n, s), 0, perm(q), CountBelowZero(n, s, p, h, q, hq)))
+      rewrite ← perm(q) in CountBelowZero(n, s, p, h, q, hq))
   )
 
   def LeSuccFalse (m : Nat) (h : Le(S m, m)) : False by m := (
@@ -1453,7 +1423,6 @@ ochr Quicksort uses ArrayLemmas {
         let l2 = (let c = tk; rec(k, &c); c);
         let rr2 = (let c = rr; rec(Sub(Sub(S m, k), 1), &c); c);
         let x2 = JoinS(Nat, Sub(S m, k), 1, pv, rr2);
-        let one = MkSlice(MkC(x, MkSlice(End)));
         -- the left part: sorted by `rec`, and still at most `x` because `rec` permutes
         let sl2 : Sorted(k, l2) = (let c = tk; ihS(k, &c, hk));
         let bl2 : AllLe(k, l2, x) = AllLePerm(k, tk, l2, x, hL,
@@ -1464,11 +1433,9 @@ ochr Quicksort uses ArrayLemmas {
           λ(q : Nat) : Eq Nat (Count(q, Sub(Sub(S m, k), 1), rr2)) (Count(q, Sub(Sub(S m, k), 1), rr)) =>
             (let c = rr; ihP(Sub(Sub(S m, k), 1), &c, q)));
         -- the pivot piece is `[x]`
-        let spv : Sorted(1, pv) = J(Slice(Nat, 1), one, pv, λ(z : Slice(Nat, 1)) : Prop => Sorted(1, z), hP, refl);
-        let lpv : AllLe(1, pv, x) = J(Slice(Nat, 1), one, pv, λ(z : Slice(Nat, 1)) : Prop => AllLe(1, z, x), hP,
-          ⟨LeRefl(x), refl⟩);
-        let gpv : AllGe(1, pv, x) = J(Slice(Nat, 1), one, pv, λ(z : Slice(Nat, 1)) : Prop => AllGe(1, z, x), hP,
-          ⟨LeRefl(x), refl⟩);
+        let spv : Sorted(1, pv) = (rewrite hP in refl);
+        let lpv : AllLe(1, pv, x) = (rewrite hP in ⟨LeRefl(x), refl⟩);
+        let gpv : AllGe(1, pv, x) = (rewrite hP in ⟨LeRefl(x), refl⟩);
         -- glue: pivot and right part, then left part and the rest
         let sx2 : Sorted(Sub(S m, k), x2) = SortedJoin(Sub(S m, k), 1, pv, rr2, h1, x, spv, lpv, srr2, brr2);
         let gx2 : AllGe(Sub(S m, k), x2, x) = AllGeJoin(Sub(S m, k), 1, pv, rr2, h1, x, gpv, brr2);
@@ -1568,8 +1535,17 @@ ochr Quicksort uses ArrayLemmas {
   def LtLeTrans (a : Nat) (b : Nat) (c : Nat) (h1 : Lt(a, b)) (h2 : Le(b, c)) : Lt(a, c) := LeTrans(S a, b, c, h1, h2)
 
   -- a < b gives a ≠ b
-  def LtNe (a : Nat) (b : Nat) (h : Lt(a, b)) (e : Eq Nat a b) : False := (
-    LeSuccFalse(a, J(Nat, b, a, λ(z : Nat) : Prop => Lt(a, z), EqSym(a, b, e), h))
+  def LtNe (a : Nat) (b : Nat) (h : Lt(a, b)) (e : Eq Nat a b) : False by a := (
+    match a {
+      Z => match b {
+        Z => match h {},
+        S _ => match e {},
+      },
+      S a' => match b {
+        Z => match e {},
+        S b' => LtNe(a', b', h, e),
+      },
+    }
   )
 
   def LeAntisym (a : Nat) (b : Nat) (h1 : Le(a, b)) (h2 : Le(b, a)) : Eq Nat a b by a := (
@@ -1636,10 +1612,8 @@ ochr Quicksort uses ArrayLemmas {
   def NthSwapOther (n : Nat) (c : Slice(Nat, n)) (a : Nat) (b : Nat) (t : Nat) (ha : Lt(a, n)) (hb : Lt(b, n))
       (ht : Lt(t, n)) (na : Π(e : Eq Nat a t). False) (nb : Π(e : Eq Nat b t). False) :
       Eq Nat (Nth(Nat, n, SwapS(Nat, n, c, a, b, ha, hb), t, ht)) (Nth(Nat, n, c, t, ht)) := (
-    EqTrans(Nth(Nat, n, SwapS(Nat, n, c, a, b, ha, hb), t, ht), Nth(Nat, n, SetS(Nat, n, c, a, Nth(Nat, n, c, b, hb)), t, ht),
-      Nth(Nat, n, c, t, ht),
-      NthSetOther(Nat, n, SetS(Nat, n, c, a, Nth(Nat, n, c, b, hb)), b, t, Nth(Nat, n, c, a, ha), hb, ht, nb),
-      NthSetOther(Nat, n, c, a, t, Nth(Nat, n, c, b, hb), ha, ht, na))
+    rewrite ← NthSetOther(Nat, n, SetS(Nat, n, c, a, Nth(Nat, n, c, b, hb)), b, t, Nth(Nat, n, c, a, ha), hb, ht, nb) in
+      NthSetOther(Nat, n, c, a, t, Nth(Nat, n, c, b, hb), ha, ht, na)
   )
 
   -- ## From facts about positions to facts about pieces
@@ -1652,9 +1626,9 @@ ochr Quicksort uses ArrayLemmas {
         Z => match hk {},
         S m => match c {
           MkSlice(cc) => match cc {
-            MkC(x, t0) => AndI(Le(x, p), AllLe(k', TakeS(Nat, m, k', t0, hk), p), h(0, refl, refl),
+            MkC(x, t0) => ⟨h(0, refl, refl),
               AllLeTakeOf(m, k', t0, p, hk,
-                λ(t : Nat) (ht : Lt(t, k')) (htn : Lt(t, m)) : Le(Nth(Nat, m, t0, t, htn), p) => h(S t, ht, htn))),
+                λ(t : Nat) (ht : Lt(t, k')) (htn : Lt(t, m)) : Le(Nth(Nat, m, t0, t, htn), p) => h(S t, ht, htn))⟩,
           },
         },
       },
@@ -1667,8 +1641,8 @@ ochr Quicksort uses ArrayLemmas {
       Z => refl,
       S m => match c {
         MkSlice(cc) => match cc {
-          MkC(x, t0) => AndI(Le(p, x), AllGe(m, t0, p), h(0, refl),
-            AllGeAllOf(m, t0, p, λ(t : Nat) (ht : Lt(t, m)) : Le(p, Nth(Nat, m, t0, t, ht)) => h(S t, ht))),
+          MkC(x, t0) => ⟨h(0, refl),
+            AllGeAllOf(m, t0, p, λ(t : Nat) (ht : Lt(t, m)) : Le(p, Nth(Nat, m, t0, t, ht)) => h(S t, ht))⟩,
         },
       },
     }
@@ -1734,41 +1708,15 @@ ochr Quicksort uses ArrayLemmas {
     }
   )
 
-  -- Equal indices read equal elements (whatever their bounds proofs).
-  def NthIdx (n : Nat) (c : Slice(Nat, n)) (a : Nat) (b : Nat) (e : Eq Nat a b) (ha : Lt(a, n)) (hb : Lt(b, n)) :
-      Eq Nat (Nth(Nat, n, c, a, ha)) (Nth(Nat, n, c, b, hb)) by a := (
-    match n {
-      Z => match ha {},
-      S m => match c {
-        MkSlice(cc) => match cc {
-          MkC(x, t0) => match a {
-            Z => match b {
-              Z => refl,
-              S _ => match e {},
-            },
-            S a' => match b {
-              Z => match e {},
-              S b' => NthIdx(m, t0, a', b', e, ha, hb),
-            },
-          },
-        },
-      },
-    }
-  )
-
   -- ## The scan's last step: the pivot is swapped to `i`
   def EndLeft (n : Nat) (s0 : Slice(Nat, n)) (p : Nat) (i : Nat) (hin : Lt(i, n)) (h0 : Lt(0, n))
       (j1 : Π(t : Nat) (ht : Lt(t, n)) (a : Lt(0, t)) (b : Le(t, i)). Le(Nth(Nat, n, s0, t, ht), p))
       (t : Nat) (ht : Lt(t, i)) (htn : Lt(t, n)) : Le(Nth(Nat, n, SwapS(Nat, n, s0, 0, i, h0, hin), t, htn), p) := (
     match t {
-      Z => J(Nat, Nth(Nat, n, s0, i, hin), Nth(Nat, n, SwapS(Nat, n, s0, 0, i, h0, hin), 0, htn), λ(z : Nat) : Prop => Le(z, p),
-        EqSym(Nth(Nat, n, SwapS(Nat, n, s0, 0, i, h0, hin), 0, htn), Nth(Nat, n, s0, i, hin), NthSwapA(n, s0, 0, i, h0, hin)),
-        j1(i, hin, ht, LeRefl(i))),
-      S t' => J(Nat, Nth(Nat, n, s0, S t', htn), Nth(Nat, n, SwapS(Nat, n, s0, 0, i, h0, hin), S t', htn), λ(z : Nat) : Prop => Le(z, p),
-        EqSym(Nth(Nat, n, SwapS(Nat, n, s0, 0, i, h0, hin), S t', htn), Nth(Nat, n, s0, S t', htn),
-          NthSwapOther(n, s0, 0, i, S t', h0, hin, htn, λ(e : Eq Nat 0 (S t')) : False => match e {},
-            λ(e : Eq Nat i (S t')) : False => LtNe(S t', i, ht, EqSym(i, S t', e)))),
-        j1(S t', htn, refl, LeOfLt(S t', i, ht))),
+      Z => rewrite ← NthSwapA(n, s0, 0, i, h0, hin) in j1(i, hin, ht, LeRefl(i)),
+      S t' => rewrite ← NthSwapOther(n, s0, 0, i, S t', h0, hin, htn, λ(e : Eq Nat 0 (S t')) : False => match e {},
+          λ(e : Eq Nat i (S t')) : False => LtNe(S t', i, ht, rewrite e in refl)) in
+        j1(S t', htn, refl, LeOfLt(S t', i, ht)),
     }
   )
 
@@ -1776,11 +1724,9 @@ ochr Quicksort uses ArrayLemmas {
       (hjn : Eq Nat j n)
       (j2 : Π(t : Nat) (ht : Lt(t, n)) (a : Lt(i, t)) (b : Lt(t, j)). Lt(p, Nth(Nat, n, s0, t, ht)))
       (t : Nat) (ht : Lt(t, n)) (hkt : Lt(i, t)) : Lt(p, Nth(Nat, n, SwapS(Nat, n, s0, 0, i, h0, hin), t, ht)) := (
-    J(Nat, Nth(Nat, n, s0, t, ht), Nth(Nat, n, SwapS(Nat, n, s0, 0, i, h0, hin), t, ht), λ(z : Nat) : Prop => Lt(p, z),
-      EqSym(Nth(Nat, n, SwapS(Nat, n, s0, 0, i, h0, hin), t, ht), Nth(Nat, n, s0, t, ht),
-        NthSwapOther(n, s0, 0, i, t, h0, hin, ht, λ(e : Eq Nat 0 t) : False => LtNe(0, t, LeTrans(1, S i, t, refl, hkt), e),
-          λ(e : Eq Nat i t) : False => LtNe(i, t, hkt, e))),
-      j2(t, ht, hkt, J(Nat, n, j, λ(z : Nat) : Prop => Lt(t, z), EqSym(j, n, hjn), ht)))
+    rewrite ← NthSwapOther(n, s0, 0, i, t, h0, hin, ht, λ(e : Eq Nat 0 t) : False => LtNe(0, t, LeTrans(1, S i, t, refl, hkt), e),
+        λ(e : Eq Nat i t) : False => LtNe(i, t, hkt, e)) in
+      j2(t, ht, hkt, rewrite ← hjn in ht)
   )
 
   -- ## One step of the scan keeps the invariant
@@ -1789,10 +1735,9 @@ ochr Quicksort uses ArrayLemmas {
   def StepJ0 (n : Nat) (s0 : Slice(Nat, n)) (p : Nat) (i : Nat) (j : Nat) (hsi : Lt(S i, n)) (hjn : Lt(j, n))
       (hij : Lt(i, j)) (j0 : Π(h0 : Lt(0, n)). Eq Nat (Nth(Nat, n, s0, 0, h0)) p) (h0 : Lt(0, n)) :
       Eq Nat (Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), 0, h0)) p := (
-    EqTrans(Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), 0, h0), Nth(Nat, n, s0, 0, h0), p,
-      NthSwapOther(n, s0, S i, j, 0, hsi, hjn, h0, λ(e : Eq Nat (S i) 0) : False => match e {},
-        λ(e : Eq Nat j 0) : False => LtNe(0, j, LeTrans(1, S i, j, refl, hij), EqSym(j, 0, e))),
-      j0(h0))
+    rewrite ← NthSwapOther(n, s0, S i, j, 0, hsi, hjn, h0, λ(e : Eq Nat (S i) 0) : False => match e {},
+        λ(e : Eq Nat j 0) : False => LtNe(0, j, LeTrans(1, S i, j, refl, hij), rewrite e in refl)) in
+      j0(h0)
   )
 
   def StepJ1 (n : Nat) (s0 : Slice(Nat, n)) (p : Nat) (i : Nat) (j : Nat) (hsi : Lt(S i, n)) (hjn : Lt(j, n))
@@ -1801,19 +1746,11 @@ ochr Quicksort uses ArrayLemmas {
       Le(Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), p) := (
     let d = LeDec(t, i);
     match d {
-      Yes(hti) => J(Nat, Nth(Nat, n, s0, t, ht), Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), λ(z : Nat) : Prop => Le(z, p),
-        EqSym(Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), Nth(Nat, n, s0, t, ht),
-          NthSwapOther(n, s0, S i, j, t, hsi, hjn, ht, λ(e : Eq Nat (S i) t) : False => LtNe(t, S i, hti, EqSym(S i, t, e)),
-            λ(e : Eq Nat j t) : False => LtNe(t, j, LeTrans(S t, S i, j, hti, hij), EqSym(j, t, e)))),
-        j1(t, ht, a, hti)),
-      No(nti) => (
-        let e = LeAntisym(t, S i, b, nti);
-        J(Nat, Nth(Nat, n, s0, j, hjn), Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), λ(z : Nat) : Prop => Le(z, p),
-          EqSym(Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), Nth(Nat, n, s0, j, hjn),
-            EqTrans(Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), S i, hsi), Nth(Nat, n, s0, j, hjn),
-              NthIdx(n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, S i, e, ht, hsi), NthSwapA(n, s0, S i, j, hsi, hjn))),
-          hx)
-      ),
+      Yes(hti) => rewrite ← NthSwapOther(n, s0, S i, j, t, hsi, hjn, ht,
+          λ(e : Eq Nat (S i) t) : False => LtNe(t, S i, hti, rewrite e in refl),
+          λ(e : Eq Nat j t) : False => LtNe(t, j, LeTrans(S t, S i, j, hti, hij), rewrite e in refl)) in
+        j1(t, ht, a, hti),
+      No(nti) => rewrite ← LeAntisym(t, S i, b, nti) in rewrite ← NthSwapA(n, s0, S i, j, hsi, hjn) in hx,
     }
   )
 
@@ -1822,18 +1759,12 @@ ochr Quicksort uses ArrayLemmas {
       (t : Nat) (ht : Lt(t, n)) (a : Lt(S i, t)) (b : Lt(t, S j)) : Lt(p, Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht)) := (
     let d = LeDec(S t, j);
     match d {
-      Yes(htj) => J(Nat, Nth(Nat, n, s0, t, ht), Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), λ(z : Nat) : Prop => Lt(p, z),
-        EqSym(Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), Nth(Nat, n, s0, t, ht),
-          NthSwapOther(n, s0, S i, j, t, hsi, hjn, ht, λ(e : Eq Nat (S i) t) : False => LtNe(S i, t, a, e),
-            λ(e : Eq Nat j t) : False => LtNe(t, j, htj, EqSym(j, t, e)))),
-        j2(t, ht, LtTrans(i, S i, t, LeRefl(S i), a), htj)),
+      Yes(htj) => rewrite ← NthSwapOther(n, s0, S i, j, t, hsi, hjn, ht, λ(e : Eq Nat (S i) t) : False => LtNe(S i, t, a, e),
+          λ(e : Eq Nat j t) : False => LtNe(t, j, htj, rewrite e in refl)) in
+        j2(t, ht, LtTrans(i, S i, t, LeRefl(S i), a), htj),
       No(ntj) => (
         let e = LeAntisym(t, j, b, ntj);
-        J(Nat, Nth(Nat, n, s0, S i, hsi), Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), λ(z : Nat) : Prop => Lt(p, z),
-          EqSym(Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), Nth(Nat, n, s0, S i, hsi),
-            EqTrans(Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, ht), Nth(Nat, n, SwapS(Nat, n, s0, S i, j, hsi, hjn), j, hjn), Nth(Nat, n, s0, S i, hsi),
-              NthIdx(n, SwapS(Nat, n, s0, S i, j, hsi, hjn), t, j, e, ht, hjn), NthSwapB(n, s0, S i, j, hsi, hjn))),
-          j2(S i, hsi, LeRefl(S i), J(Nat, t, j, λ(z : Nat) : Prop => Lt(S i, z), e, a)))
+        rewrite ← e in rewrite ← NthSwapB(n, s0, S i, j, hsi, hjn) in j2(S i, hsi, LeRefl(S i), rewrite e in a)
       ),
     }
   )
@@ -1846,11 +1777,7 @@ ochr Quicksort uses ArrayLemmas {
     let d = LeDec(S t, j);
     match d {
       Yes(htj) => j2(t, ht, a, htj),
-      No(ntj) => (
-        let e = LeAntisym(t, j, b, ntj);
-        J(Nat, Nth(Nat, n, s0, j, hjn), Nth(Nat, n, s0, t, ht), λ(z : Nat) : Prop => Lt(p, z),
-          NthIdx(n, s0, j, t, EqSym(t, j, e), hjn, ht), hx)
-      ),
+      No(ntj) => rewrite ← LeAntisym(t, j, b, ntj) in hx,
     }
   )
 
@@ -1875,10 +1802,10 @@ ochr Quicksort uses ArrayLemmas {
   def ScanLt (n : Nat) (v : Slice(Nat, n)) (p : Nat) (i : Nat) (j : Nat) (rem : Nat) (hij : Lt(i, j))
       (hr : Eq Nat (Add(rem, j)) n) : Lt(ScanK(n, v, p, i, j, rem, hij, hr), n) by rem := (
     match rem {
-      Z => J(Nat, j, n, λ(z : Nat) : Prop => Lt(i, z), hr, hij),
+      Z => rewrite hr in hij,
       S r => (
-        let hjn : Lt(j, n) = J(Nat, S (Add(r, j)), n, λ(z : Nat) : Prop => Lt(j, z), hr, LeAddL(r, j));
-        let hr2 : Eq Nat (Add(r, S j)) n = J(Nat, S (Add(r, j)), Add(r, S j), λ(z : Nat) : Prop => Eq Nat z n, AddRS(r, j), hr);
+        let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
+        let hr2 : Eq Nat (Add(r, S j)) n = (rewrite AddRS(r, j) in hr);
         let x = Nth(Nat, n, v, j, hjn);
         let b = Leb(x, p);
         match b {
@@ -1895,13 +1822,13 @@ ochr Quicksort uses ArrayLemmas {
       Eq Nat (Nth(Nat, n, ScanV(n, v, p, i, j, rem, hij, hr), ScanK(n, v, p, i, j, rem, hij, hr), hk)) p by rem := (
     match rem {
       Z => (
-        let hin : Lt(i, n) = J(Nat, j, n, λ(z : Nat) : Prop => Lt(i, z), hr, hij);
+        let hin : Lt(i, n) = (rewrite hr in hij);
         let h0 : Lt(0, n) = LeTrans(1, S i, n, refl, hin);
-        EqTrans(Nth(Nat, n, SwapS(Nat, n, v, 0, i, h0, hin), i, hk), Nth(Nat, n, v, 0, h0), p, NthSwapB(n, v, 0, i, h0, hk), j0(h0))
+        rewrite ← NthSwapB(n, v, 0, i, h0, hk) in j0(h0)
       ),
       S r => (
-        let hjn : Lt(j, n) = J(Nat, S (Add(r, j)), n, λ(z : Nat) : Prop => Lt(j, z), hr, LeAddL(r, j));
-        let hr2 : Eq Nat (Add(r, S j)) n = J(Nat, S (Add(r, j)), Add(r, S j), λ(z : Nat) : Prop => Eq Nat z n, AddRS(r, j), hr);
+        let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
+        let hr2 : Eq Nat (Add(r, S j)) n = (rewrite AddRS(r, j) in hr);
         let x = Nth(Nat, n, v, j, hjn);
         let b = Leb(x, p);
         match b {
@@ -1924,13 +1851,13 @@ ochr Quicksort uses ArrayLemmas {
       Le(Nth(Nat, n, ScanV(n, v, p, i, j, rem, hij, hr), t, htn), p) by rem := (
     match rem {
       Z => (
-        let hin : Lt(i, n) = J(Nat, j, n, λ(z : Nat) : Prop => Lt(i, z), hr, hij);
+        let hin : Lt(i, n) = (rewrite hr in hij);
         let h0 : Lt(0, n) = LeTrans(1, S i, n, refl, hin);
         EndLeft(n, v, p, i, hin, h0, j1, t, ht, htn)
       ),
       S r => (
-        let hjn : Lt(j, n) = J(Nat, S (Add(r, j)), n, λ(z : Nat) : Prop => Lt(j, z), hr, LeAddL(r, j));
-        let hr2 : Eq Nat (Add(r, S j)) n = J(Nat, S (Add(r, j)), Add(r, S j), λ(z : Nat) : Prop => Eq Nat z n, AddRS(r, j), hr);
+        let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
+        let hr2 : Eq Nat (Add(r, S j)) n = (rewrite AddRS(r, j) in hr);
         let x = Nth(Nat, n, v, j, hjn);
         let b = Leb(x, p);
         match b {
@@ -1956,13 +1883,13 @@ ochr Quicksort uses ArrayLemmas {
       Lt(p, Nth(Nat, n, ScanV(n, v, p, i, j, rem, hij, hr), t, ht)) by rem := (
     match rem {
       Z => (
-        let hin : Lt(i, n) = J(Nat, j, n, λ(z : Nat) : Prop => Lt(i, z), hr, hij);
+        let hin : Lt(i, n) = (rewrite hr in hij);
         let h0 : Lt(0, n) = LeTrans(1, S i, n, refl, hin);
         EndRight(n, v, p, i, j, hin, h0, hr, j2, t, ht, hkt)
       ),
       S r => (
-        let hjn : Lt(j, n) = J(Nat, S (Add(r, j)), n, λ(z : Nat) : Prop => Lt(j, z), hr, LeAddL(r, j));
-        let hr2 : Eq Nat (Add(r, S j)) n = J(Nat, S (Add(r, j)), Add(r, S j), λ(z : Nat) : Prop => Eq Nat z n, AddRS(r, j), hr);
+        let hjn : Lt(j, n) = (rewrite hr in LeAddL(r, j));
+        let hr2 : Eq Nat (Add(r, S j)) n = (rewrite AddRS(r, j) in hr);
         let x = Nth(Nat, n, v, j, hjn);
         let b = Leb(x, p);
         match b {
@@ -2018,12 +1945,10 @@ ochr Quicksort uses ArrayLemmas {
   )
 
   def PartPivotProof (m : Nat) (v : Slice(Nat, S m)) (hk : PartLe(m, v)) : PartPivot(m, v, hk) := (
-    J(Nat, Nth(Nat, S m, PartV(m, v), PartK(m, v), hk), Nth(Nat, S m, v, 0, refl),
-      λ(z : Nat) : Prop => Eq (Slice(Nat, 1)) (MkSlice(MkC(z, MkSlice(End))))
-        (TakeS(Nat, Sub(S m, PartK(m, v)), 1, DropS(Nat, S m, PartK(m, v), PartV(m, v)), SubPos(m, PartK(m, v), hk))),
-      ScanPivot(S m, v, Nth(Nat, S m, v, 0, refl), 0, 1, m, refl, AddOneR(m),
-        λ(h0 : Lt(0, S m)) : Eq Nat (Nth(Nat, S m, v, 0, h0)) (Nth(Nat, S m, v, 0, refl)) => Start0(m, v, h0), hk),
-      TakeOneDrop(S m, PartK(m, v), PartV(m, v), hk))
+    rewrite TakeOneDrop(S m, PartK(m, v), PartV(m, v), hk) in
+    rewrite ← ScanPivot(S m, v, Nth(Nat, S m, v, 0, refl), 0, 1, m, refl, AddOneR(m),
+        λ(h0 : Lt(0, S m)) : Eq Nat (Nth(Nat, S m, v, 0, h0)) (Nth(Nat, S m, v, 0, refl)) => Start0(m, v, h0), hk) in
+      refl
   )
 
   def PartRightProof (m : Nat) (v : Slice(Nat, S m)) (hk : PartLe(m, v)) : PartRight(m, v, hk) := (
@@ -2054,4 +1979,4 @@ ochr Quicksort uses ArrayLemmas {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Quicksort" Quicksort).allAsExpected
-#guard (run "Quicksort" Quicksort).count == 83
+#guard (run "Quicksort" Quicksort).count == 77
