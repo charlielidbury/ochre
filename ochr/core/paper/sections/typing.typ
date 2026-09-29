@@ -63,7 +63,7 @@ Each side condition was added in response to a concrete counterexample: a closed
     [Generalisations are global; fresh names never reused], [A generalisation made while forming a type is lost with its private copy, and its name is reissued for a different computation.],
     [Borrows only of data, and `&` only at the top of a declared type], [`Π(x : &Type₀)(a : *x). *x : Type₀` makes `Type₀` impredicative, embedding System U⁻; a codomain that computes to `&Nat` is closed off as data at the generic call but returns a live borrow at an instance, and an accepted program reads a moved borrow.],
     [A borrow-returning function type takes a borrow], [A call of `g : Π(n : Nat). &Nat` returns a borrow observed by no owner, so Ochr refutes a type that safe Rust inhabits with a leaked `'static` borrow, and any opaque inhabitant proves `False`.],
-    [Strict positivity], [`inductive Bad := Mk(f : Π(x : Bad). False)` gives a closed proof of `False` that is never run.],
+    [Strict positivity], [`inductive Bad := MkBad(f : Π(x : Bad). False)` gives a closed proof of `False` that is never run.],
     [Subsingleton elimination], [`match h { Inl(p) => true, Inr(q) => false }` on `h : Or(True, True)` has no set-theoretic meaning and leaves `IsL(Inl(refl))` a closed `Bool` stuck for ever; if proofs also kept their constructors, it would prove `False`.],
     table.hline(stroke: 0.5pt),
   )}),

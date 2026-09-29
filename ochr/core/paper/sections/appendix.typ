@@ -477,18 +477,18 @@ Notes 1–11 explain the side conditions of @fig-why that are finest-grained in 
   At the generic call `h` holds a sealed program, so `(c := S Z; h)` runs and the statement is `⊤`; at the instance `g(0)` returns ⋆, a value-based reading erases the sequence, `c` stays `Z`, and the statement is `Eq Nat Z (S Z)`. Reading clause 4 of @app-erasure by the type the typing judgement computes would be stable on its own, but combined with the syntactic class of calls it is the block example of note 2; so every clause is read from declarations.
 + *Inductive declarations are strictly positive.* A negative field gives a closed proof of `False` that is never run:
   ```
-  inductive Bad : Type₀ := Mk(f : Π(x : Bad). False)
-  L(b : Bad) : False := match b { Mk(f) => f(b) }
-  Bad4 : False := L(Mk(λ(x : Bad) : False => L(x)))
+  inductive Bad : Type₀ := MkBad(f : Π(x : Bad). False)
+  L(b : Bad) : False := match b { MkBad(f) => f(b) }
+  Bad4 : False := L(MkBad(λ(x : Bad) : False => L(x)))
   ```
   `L(…)` is a proof call, so it is typed by [Call-type] alone and its diverging body never runs. [Ind]'s first-order fields exclude `Bad`.
 + *Generalisation records are global, and fresh names are never reused.* A match inside a type whose scrutinee is a sealed program is generalised on the type's private copy, and the formed type mentions the new σ:
   ```
-  inductive Box := Mk(x : Nat)
+  inductive Box := MkBox(x : Nat)
   Double(n : Nat) : Nat by n := match n { Z => Z, S p => S (S (Double(p))) }
-  Esc(n : Nat, m : Box) : Id Nat (let b = Double(n); match b { Z => 0, S _ => 1 }) (match m { Mk(x) => match x { Z => 0, S _ => 1 } }) :=
-    match m { Mk(x) => match x { Z => refl, S _ => refl } }
-  Bad5 : Eq Nat 1 0 := Esc(1, Mk(0))
+  Esc(n : Nat, m : Box) : Id Nat (let b = Double(n); match b { Z => 0, S _ => 1 }) (match m { MkBox(x) => match x { Z => 0, S _ => 1 } }) :=
+    match m { MkBox(x) => match x { Z => refl, S _ => refl } }
+  Bad5 : Eq Nat 1 0 := Esc(1, MkBox(0))
   ```
   If the record `⌈Double(σ)⌉ := σ_g` were discarded with the copy, and σ_g's name reissued to the field `x` when the body splits `m`, the goal would equate the two and `Esc` would check; its instance is `Eq Nat 1 0`.
 + *A borrow-typed result is observed through a written value* ([Obs-borrow]). Ending a returned borrow with its current content forgets where it points, so `PickX(x, y : &Nat) : &Nat := x` and `PickY(x, y : &Nat) : &Nat := y` would be convertible; transport from `Π(x y : &Nat). Id Unit (let r = h(x, y); *r := S Z) (*x := S Z)`, true of `PickX`, then proves it of `PickY`, whose instance at two zeros is `Eq Nat 0 1 ∧ Eq Nat 1 0`, which is `False`.
