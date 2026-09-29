@@ -723,6 +723,7 @@ partial def declOf (chk : Bool) (sc : List DeclInfo) (ns : List String) (t : Ter
     for a in as do sub a
     pure (match df with
       | .pi r => r
+      | .prop => .prop      -- a proof field whose type is a Π into proofs, applied
       | .any => .any
       | _ => .other)
   | .eq A a b | .id A a b => do

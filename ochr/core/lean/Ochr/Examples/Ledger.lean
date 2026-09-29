@@ -81,7 +81,7 @@ open Ochr.Registry in
    "Propositions.Twice:rejected", "Propositions.SplitId:rejected", "Propositions.TwoOwners:rejected",
    "Propositions.TwoOwnersR:rejected", "Propositions.ThreeOwners:rejected",
    "Destructuring.DAnd:rejected", "Destructuring.DAnd3:rejected", "Destructuring.DNested:rejected",
-   "Destructuring.DWild:rejected", "Subsingletons.OrComm:rejected",
+   "Destructuring.DWild:rejected", "Destructuring.DCallField:rejected", "Subsingletons.OrComm:rejected",
    "Subsingletons.OrElim:rejected", "Subsingletons.OrLet:rejected", "CurrentState.ProofIrr:rejected"]
 open Ochr.Registry in
 #guard rowOk { recNested := false }
@@ -189,7 +189,7 @@ open Ochr.Registry in
    "Propositions.FromTrueIs:rejected", "Propositions.Two:rejected", "Propositions.TwoIs:rejected",
    "Propositions.WriteIf:rejected", "Propositions.WriteIfId:rejected", "Propositions.WriteIfAt:rejected",
    "Propositions.TwoAt:rejected", "Destructuring.DAnd:rejected", "Destructuring.DAnd3:rejected",
-   "Destructuring.DNested:rejected", "Destructuring.DWild:rejected", "Destructuring.DTerm:rejected",
+   "Destructuring.DNested:rejected", "Destructuring.DWild:rejected", "Destructuring.DCallField:rejected", "Destructuring.DTerm:rejected",
    "Subsingletons.OrComm:rejected", "Subsingletons.OrElim:rejected",
    "Subsingletons.OrLet:rejected", "Subsingletons.SqTrue:rejected", "Subsingletons.SqSplit:rejected"]
 -- v2.0 D45 subsingleton elimination, switched off: large elimination from Or and Sq is accepted (IsL, Get have no

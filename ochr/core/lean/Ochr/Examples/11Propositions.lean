@@ -262,6 +262,12 @@ ochr Destructuring uses Std {
     b
   )
 
+  -- A field that is a function into proofs is called like any function, and the call is a proof.
+  def DCallField (P : Prop) (h : P ∧ (Π(k : Nat). Eq Nat k k)) : Eq Nat 0 0 := (
+    let ⟨_, f⟩ = h;
+    f(0)
+  )
+
   -- On a term: a temporary holds it.
   def DTerm (P : Prop) (Q : Prop) (h : P) (k : Q) : Q := (
     let ⟨a, b⟩ = AndPair(P, Q, h, k);
@@ -299,7 +305,7 @@ ochr Destructuring uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Destructuring" Destructuring).allAsExpected
-#guard (run "Destructuring" Destructuring).count == 11
+#guard (run "Destructuring" Destructuring).count == 12
 
 /-! ## Subsingleton elimination
 

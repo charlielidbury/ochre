@@ -87,14 +87,14 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `08CaseSplits` | [Split], dependent matching on a computed type, generalising sealed programs, `split f` on a result the goal is stuck on (D61), scrutinee types, global generalisation records | §5 [Split] | 37 |
 | `09Functions` | opaque functions, closures, Π-types, comparing functions by observation (D30, D38, D48 (3)); a function type's class and row (D54) | P1, §1, §4 | 54 |
 | `10Inductives` | lists, binary search trees (and the paper's trees, whose pure insert runs the in-place one), parameters, strict positivity | §8 | 76 |
-| `11Propositions` | `False`, `True`, `And`, matching on proofs by type, a stuck zero-arm match (D58), destructuring `let` (D60), subsingleton elimination | §1, §8 | 75 |
+| `11Propositions` | `False`, `True`, `And`, matching on proofs by type, a stuck zero-arm match (D58), destructuring `let` (D60), subsingleton elimination | §1, §8 | 76 |
 | `12CurrentState` | proofs about the current, mutated state (E5) | §7 | 14 |
 | `13Erasure` | erased terms run on a private copy, confinement, erasure decided by syntax | P2 | 58 |
 | `14Universes` | `Prop : Type`, no `Type : Type`, no cumulativity, why `&Type` is refused; sorts are syntactic (D55, reviewer-4's programs) | preamble, P2 | 25 |
 | `15BorrowTypes` | what may be borrowed and where `&` may appear (D48) | §1 | 16 |
 | `17HashMap` | case study: Aeneas's resizing hash map, its lookups, length, invariant, resizing and load factor, proved about the in-place code (`notes/hashmap-case-study.md`) | all | 186 |
 
-759 declarations in all, the `Prelude`'s 4 and the case study's 186 included. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+760 declarations in all, the `Prelude`'s 4 and the case study's 186 included. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 
