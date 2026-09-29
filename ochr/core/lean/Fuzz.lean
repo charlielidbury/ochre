@@ -52,8 +52,8 @@ def switchCfg (c : Config) : String → Option Config
   | "D48.2" | "refTop" => some { c with refTop := false }
   | "D48.3" | "piUnder" => some { c with piUnder := false }
   | "D49.3" | "proofDataFields" => some { c with proofDataFields := false }
-  | "+F1" | "keepRecCands" => some { c with keepRecCands := true }   -- look past finding F-v2-1 (not a rule)
   | "D52" | "injective" => some { c with injective := false }
+  | "D53on" | "movingReads" => some { c with movingReads := true }   -- switched ON: the D53 prototype
   | "D50on" | "unitNorm" => some { c with unitNorm := true }          -- switched ON (a counterfactual)
   | "confineBodies" => some { c with confineBodies := true }          -- switched ON (an extension)
   | "C8" | "generalize" => some { c with generalize := false }

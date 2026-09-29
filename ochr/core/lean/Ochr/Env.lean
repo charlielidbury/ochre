@@ -58,10 +58,15 @@ structure IndDecl where
   ctors : List (String × List (String × Term)) := []
 deriving Inhabited
 
-/-- The function whose body is being checked, for [Rec]. -/
+/-- A function whose body is being checked, for [Rec]: its entry values and the
+recursive positions that have survived its recursive calls so far. The candidates are
+an accumulator: a state restore (a branch, a private copy) keeps them, matched to the
+frame by `uid`, so no nested computation can reset or shift them (the recCands fix). -/
 structure RecCtx where
   fn : Value
   entries : Array (Option Nat)   -- entry abstract value of each parameter (through the borrow)
+  cands : List Nat               -- the positions that survive every recursive call so far
+  uid : Nat                      -- identifies the frame across state restores
 deriving Inhabited
 
 /-- Switches for counterfactual runs: each disables one rule of v1 (or one fix of
@@ -112,14 +117,15 @@ structure Config where
   refData : Bool := true         -- D48 (1): `&A` only for a data type A (never a universe, Π-type or proposition)
   injective : Bool := true      -- D52: Eq on two values of one constructor is the conjunction over its fields
   refTop : Bool := true          -- D48 (2): `&` only at the top of a declared type, never produced by computation
+  movingReads : Bool := false   -- D53 prototype (off): runtime reads of non-copy data move; erased reads copy
+  movingReadsFnCopy : Bool := false   -- D53 prototype variant: function values are copy types
+  movingReadsGhost : Bool := false    -- D53 prototype variant: erased terms still read a moved value
   unitNorm : Bool := false       -- counterfactual D50: the unit laws normalise stored types (v2.0 as first built)
   piUnder : Bool := true         -- D48 (3): Π-types are compared under their binders, at generic values
   proofDataFields : Bool := true -- D49 (3): a data field of a matched proof is a fresh abstract value (not ⋆)
   confineBodies : Bool := false  -- an extension of D41, not in RULES: the body of a function whose calls are
                                  -- erased, and each arm of an erased stuck block, are confined too
   trace : Bool := false          -- record goals, splits and call types (for inspection)
-  keepRecCands : Bool := false   -- fuzzer hook (notes/fuzzer.md F-v2-1), off by default: the [Rec]
-                                 -- accumulators survive a copy that emptied them (`sealedType`)
 deriving Inhabited, Repr
 
 /-- D41: one assignment, borrow or move, by the position of its place's root. It is
@@ -146,9 +152,8 @@ structure MState where
   absTy : Array Value := #[]
   refs : List (Nat × Value) := []     -- [Split] refinements made so far: σ ↦ Z | S σ'
   goal : Option Value := none
-  recStack : List RecCtx := []        -- the functions whose bodies enclose the current point
-  recCands : List (List Nat) := []    -- per function (top first): surviving recursive positions;
-                                      -- accumulators, they survive branch restores
+  recStack : List RecCtx := []        -- the functions whose bodies enclose the current point (top first)
+  nextRecUid : Nat := 0               -- fresh `RecCtx.uid`s (never reused)
   fuel : Nat := 2000000
   cfg : Config := {}
   lastErased : Bool := false          -- set by `eval`: was the term just evaluated erased (D28)?
@@ -158,6 +163,8 @@ structure MState where
   neutrals : List (Value × Nat) := []     -- [Split] generalisations: sealed program ↦ its σ (finding G1)
   depth : Nat := 0                        -- call depth (bounded, like fuel: the checker must terminate)
   effects : Array Effect := #[]           -- D41: assigns, borrows and moves so far (restored with the state)
+  erasedDepth : Nat := 0                  -- D53 prototype: > 0 while evaluating a term known to be erased
+  ghosts : List (Pos × Place × Value) := []   -- D53 prototype: values moved out, for erased reads
 deriving Inhabited
 
 inductive Fail where
@@ -180,18 +187,31 @@ def tick : M Unit := do
   if s.fuel == 0 then err "out of fuel"
   set { s with fuel := s.fuel - 1 }
 
-/-- Restore a saved state, keeping the fuel spent and the [Rec] accumulators. -/
+/-- Restore a saved state, keeping the fuel spent and the [Rec] accumulators: each saved
+[Rec] frame takes the candidates of the current frame with the same `uid`, if there is
+one (a computation that replaced the stack, e.g. `sealedType`, cannot wipe them). -/
 def restoreKeep (saved : MState) : M Unit :=
   modify fun cur =>
-    -- (fuzzer hook F-v2-1: a copy that emptied the accumulators, `sealedType`, leaves the
-    -- outer ones as they were; without it `[].drop 0` keeps none, and [Rec] stops checking)
-    let rc := if cur.cfg.keepRecCands && cur.recCands.length < saved.recCands.length then saved.recCands
-      else cur.recCands.drop (cur.recCands.length - saved.recCands.length)
-    let s := { saved with fuel := cur.fuel, classCache := cur.classCache, recCands := rc }
+    let keepCands (fr : RecCtx) : RecCtx :=
+      match cur.recStack.find? (·.uid == fr.uid) with
+      | some c => { fr with cands := c.cands }
+      | none => fr
+    let s := { saved with fuel := cur.fuel, classCache := cur.classCache,
+                          recStack := saved.recStack.map keepCands, nextRecUid := cur.nextRecUid }
     -- D37 (v1.8): fresh names are never reused, and generalisation records are global
     if cur.cfg.globalRecords then
       { s with nextAbs := cur.nextAbs, absTy := cur.absTy, nextLoan := cur.nextLoan, neutrals := cur.neutrals }
     else s
+
+/-- D53 prototype: run `x` as an erased term, whose reads copy. -/
+def withErased {α : Type} (x : M α) : M α := do
+  modify fun s => { s with erasedDepth := s.erasedDepth + 1 }
+  let r ← tryCatch x (fun e => do modify (fun s => { s with erasedDepth := s.erasedDepth - 1 }); throw e)
+  modify fun s => { s with erasedDepth := s.erasedDepth - 1 }
+  pure r
+
+/-- D53 prototype: `withErased x` if `b`, else `x`. -/
+def withErasedIf {α : Type} (b : Bool) (x : M α) : M α := if b then withErased x else x
 
 /-- Run `x` on a private copy of the state (P2, P6): its effects are discarded. -/
 def onCopy {α : Type} (x : M α) : M α := do
