@@ -51,6 +51,7 @@ structure SDecl where
   ind? : Option (List (String × List (String × STerm))) := none   -- an inductive declaration
   indParams : List (String × STerm) := []                         -- its uniform parameters (v2.0)
   indSort : Option STerm := none                                  -- its sort (default Type₀)
+  indCopy : Bool := false                                         -- declared `copy` (D53)
   expectAccept : Bool
 deriving Inhabited, Repr
 
@@ -219,9 +220,11 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
     if (lookup ctx "J").isSome then return .call (← resolve ctx false (.ident "J")) (← [A, a, b, P, h, u].mapM (resolve ctx false)) false
     return .prim "J" [← resolve ctx true A, ← resolve ctx false a, ← resolve ctx false b,
                       ← resolve ctx false P, ← resolve ctx false h, ← resolve ctx false u]
-  | .call (.ident "clone") [p] =>      -- D53 prototype: a built-in copy of a place
+  | .call (.ident "clone") [p] =>      -- D53: the built-in copy of a place
     if (lookup ctx "clone").isSome then return .call (← resolve ctx false (.ident "clone")) [← resolve ctx false p] false
-    return .prim "clone" [← resolve ctx false p]
+    match ← resolve ctx false p with
+    | t@(.place _) => return .prim "clone" [t]
+    | _ => throw "clone takes a place: clone(p)"
   | .call (.ident c) as =>
     let tb ← read
     if (lookup ctx c).isNone && tb.types.contains c then
@@ -314,7 +317,7 @@ def resolveDecl (d : SDecl) : R Item := do
       | none | some (.sort 1) => pure 1
       | some (.sort 0) => pure 0
       | some _ => throw s!"{d.name}: an inductive type is in Prop or Type"
-    return .ind { name := d.name, params := hs.zip ps, sort := sort, ctors := cs' }
+    return .ind { name := d.name, params := hs.zip ps, sort := sort, ctors := cs', copy := d.indCopy }
   let (ctx', hs, ds) ← binders [] d.params
   let cod ← resolve ctx' true d.ret
   let body ←

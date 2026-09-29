@@ -23,14 +23,15 @@ def ok? {α : Type} : Except String α → Option α
   | .ok a => some a
   | .error _ => none
 
-/-- `N(v, w) := ⌈let c1 = v; AddM(&c1, w); c1⌉`, what [Close] leaves in `AddM`'s borrowed place. -/
+/-- `N(v, w) := ⌈let c1 = v; AddM(&c1, w); c1⌉`, what [Close] leaves in `AddM`'s borrowed place
+(the final read of `c1` is an observation, `peek`: it copies, D53). -/
 def N (v w : Value) : Value :=
-  .sealed (.letIn ⟨"c1"⟩ (.val v) (.seq (.call (.val (.gfn "AddM")) [.borrow (.var 0), .val w] true) (.place (.var 0))))
+  .sealed (.letIn ⟨"c1"⟩ (.val v) (.seq (.call (.val (.gfn "AddM")) [.borrow (.var 0), .val w] true) (.prim "peek" [.place (.var 0)])))
 
 /-- `B(v)[h] := ⌈let c1 = v; let r = TailM(&c1); *r := h; c1⌉`, `TailM`'s effect with its hole. -/
 def B (v h : Value) : Value :=
   .sealed (.letIn ⟨"c1"⟩ (.val v) (.letIn ⟨"r"⟩ (.call (.val (.gfn "TailM")) [.borrow (.var 0)] true)
-    (.seq (.assign (.deref (.var 0)) (.val h)) (.place (.var 1)))))
+    (.seq (.assign (.deref (.var 0)) (.val h)) (.prim "peek" [.place (.var 1)]))))
 
 -- [Seal] (D9): refining σ0 := S σ1 re-runs N(σ0, 0); the inner call closes off, the
 -- head call does not, so the S surfaces (deriver-e1 lemma S2)
@@ -47,17 +48,17 @@ def B (v h : Value) : Value :=
 #guard ok? (runM (substV (.loan 9) (.abs 2) (B .zero (.loan 9))) (st Std 3)) == some (.abs 2)
 
 -- D18: owners(ℓ) is a set. Ω = [a ↦ S loan_5, b ↦ ⌈… loan_5 …⌉, r ↦ borrow_5 0]
-def envD18 : Env := #[{ binds := #[⟨⟨"a"⟩, some .tNat, .succ (.loan 5), false, .other, false⟩,
-                                  ⟨⟨"b"⟩, some .tNat, .sealed (.val (.loan 5)), false, .other, false⟩,
-                                  ⟨⟨"r"⟩, some (.tRef .tNat), .borrow 5 .zero, false, .other, false⟩] }]
+def envD18 : Env := #[{ binds := #[{ hint := ⟨"a"⟩, ty := some .tNat, val := .succ (.loan 5) },
+                                  { hint := ⟨"b"⟩, ty := some .tNat, val := .sealed (.val (.loan 5)) },
+                                  { hint := ⟨"r"⟩, ty := some (.tRef .tNat), val := .borrow 5 .zero }] }]
 #guard owners envD18 5 == [.bind 0 0, .bind 0 1]
 -- W(*r := 0, *r := 1) observes both owners; the single-owner reading keeps one
 #guard footprint envD18 [.assign (.deref (.var 0)) .zero, .assign (.deref (.var 0)) (.succ .zero)] == [.bind 0 0, .bind 0 1]
 #guard footprint envD18 [.assign (.deref (.var 0)) .zero] false == [.bind 0 0]
 -- an occurrence inside another borrow's content contributes that borrow's owners
-def envChain : Env := #[{ binds := #[⟨⟨"c"⟩, some .tNat, .loan 0, false, .other, false⟩] },
-                        { binds := #[⟨⟨"x"⟩, some (.tRef .tNat), .borrow 0 (.succ (.loan 1)), false, .other, false⟩,
-                                     ⟨⟨"x'"⟩, some (.tRef .tNat), .borrow 1 (.abs 0), false, .other, false⟩] }]
+def envChain : Env := #[{ binds := #[{ hint := ⟨"c"⟩, ty := some .tNat, val := .loan 0 }] },
+                        { binds := #[{ hint := ⟨"x"⟩, ty := some (.tRef .tNat), val := .borrow 0 (.succ (.loan 1)) },
+                                     { hint := ⟨"x'"⟩, ty := some (.tRef .tNat), val := .borrow 1 (.abs 0) }] }]
 #guard owners envChain 1 == [.bind 0 0]
 
 end Ochr.Units

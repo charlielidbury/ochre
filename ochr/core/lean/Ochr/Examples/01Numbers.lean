@@ -91,7 +91,7 @@ ochr Numbers uses Std {
   def PairLocalIs (n : Nat) : Id Nat (PairLocal(n)) n := refl
 
   def PairWrite (n : Nat) : Nat × Nat := (
-    let p = (n, n);
+    let p = (clone(n), n);
     p.2 := 5;
     p
   )
@@ -99,7 +99,7 @@ ochr Numbers uses Std {
   def PairWriteIs (n : Nat) : Id (Nat × Nat) (PairWrite(n)) (n, 5) := refl
 
   def PairBorrow (n : Nat) : Nat := (
-    let p = (n, n);
+    let p = (clone(n), n);
     let r = &p.2;
     *r := 7;
     p.2

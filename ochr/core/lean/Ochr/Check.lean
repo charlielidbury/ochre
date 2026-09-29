@@ -118,6 +118,10 @@ def checkInd (d : IndDecl) : M Unit := do
       if (← sortOf T) > 1 then err s!"field {fname} of {cn}: its type must be in Prop or Type"
       if (← get).cfg.positivity && !(← firstOrderTerm d.params.length FT) then
         err s!"field {fname} of {cn} : {FT.pp ((d.params.map (·.1.name)).reverse)}: fields are first-order data (inductive types, Nat, Unit, ×) or parameters, D36"
+      -- D53: a type declared `copy` has copy fields (the type itself counts as one)
+      let isSelf := match T with | .tInd m _ => m == n | _ => false
+      if d.copy && !isSelf && !(← isCopyType T) then
+        err s!"[D53] {n} is declared copy, but the field {fname} of {cn} has the type {T}, which is not a copy type"
   modify fun s => { s with env := #[{}], inds := s.inds.map fun e => if e.name == n then d else e }
 
 def checkItem : Item → M Unit

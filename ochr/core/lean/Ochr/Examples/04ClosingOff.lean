@@ -180,6 +180,27 @@ ochr ClosingOff uses Std, Fixtures {
     }
   )
 
+  -- A stuck match reads its scrutinee in place, so closing it off does not move a `Nat` it
+  -- only reads (D53) ...
+  def BlockReads (n0 : Nat) : Nat := (
+    let l = match n0 {
+      Z => 0,
+      S _ => 1,
+    };
+    n0
+  )
+
+  -- ... and moves in only the part an arm moves out, `q1.1`, so `q1.2` is still there
+  -- (fuzz-port shape (a)).
+  def BlockMovesField (q1 : Nat × Nat) : Nat := (
+    let a = match q1 {
+      Mk(p7, p8) => p7,
+    };
+    match q1 {
+      Mk(p9, p10) => p10,
+    }
+  )
+
   -- Comparing two blocks' functions observes them at a generic argument, where a pattern's
   -- sub-place their arms read may not exist; that answers "not convertible", it is not an
   -- error (fuzz-port R3).
@@ -269,7 +290,7 @@ ochr ClosingOff uses Std, Fixtures {
   )
 
   def UseDec (x : Nat) : Nat := (
-    let y = H(x, refl);
+    let y = H(clone(x), refl);
     let d = LeDec(y, x);
     match d {
       Yes(h) => 0,
@@ -281,7 +302,7 @@ ochr ClosingOff uses Std, Fixtures {
 
   def UseApply (x : Nat) : Nat := (
     let y = H(x, refl);
-    Apply(λ(u : Unit) : Nat => y)
+    Apply(λ(u : Unit) : Nat => clone(y))
   )
 
   -- ... and the `Id` in the stuck match's `Z` arm observes the match's cell for `*x0`, which
@@ -329,7 +350,7 @@ ochr ClosingOff uses Std, Fixtures {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ClosingOff" ClosingOff).allAsExpected
-#guard (run "ClosingOff" ClosingOff).count == 38
+#guard (run "ClosingOff" ClosingOff).count == 40
 
 /-! ## Symbolic checking is not the same as checking every instance
 
@@ -341,7 +362,7 @@ paper's §7, "naturality up to resolution"). -/
 
 ochr Naturality uses Fixtures {
   reject def PickEarly (n : Nat) (a : Nat) (b : Nat) : Unit := (
-    let r = Pick(n, &a, &b);
+    let r = Pick(clone(n), &a, &b);
     let z = b;
     match n {
       Z => *r := 5,
@@ -351,7 +372,7 @@ ochr Naturality uses Fixtures {
 
   def PickEarly0 (a : Nat) (b : Nat) : Unit := (
     let n = 0;
-    let r = Pick(n, &a, &b);
+    let r = Pick(clone(n), &a, &b);
     let z = b;
     match n {
       Z => *r := 5,
@@ -361,7 +382,7 @@ ochr Naturality uses Fixtures {
 
   def PickEarly1 (a : Nat) (b : Nat) : Unit := (
     let n = 1;
-    let r = Pick(n, &a, &b);
+    let r = Pick(clone(n), &a, &b);
     let z = b;
     match n {
       Z => *r := 5,

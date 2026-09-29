@@ -64,13 +64,19 @@ ochr Std {
   inductive Bool := false | true
   inductive List (A : Type) := Nil | Cons(h : A, t : List(A))
   inductive Box (A : Type) := MkBox(x : A)
+
+  -- A number that code only computes with (a key, an index, a length, a counter) is a
+  -- `Word`: unary in the logic, a machine word in the cost model. It is declared `copy`, so
+  -- reading one copies it, while reading a `Nat`, the structure in-place code walks and
+  -- changes, moves it (D53).
+  copy inductive Word := Zero | Succ(pred : Word)
 }
 
 #eval IO.println (run "Std" Std).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Std" Std).allAsExpected
-#guard (run "Std" Std).count == 7
+#guard (run "Std" Std).count == 8
 
 /-! ## Fixtures
 

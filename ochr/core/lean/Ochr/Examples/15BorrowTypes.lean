@@ -50,8 +50,11 @@ ochr BorrowTypes uses Std {
   -- ## What goes wrong without this rule
   -- A result type that computes to `&Nat` at `n = 0` but is not written `&A`. [Close] reads
   -- the row from the declared result type, so at the generic call `F` returns data, while at
-  -- `n = 0` it returns a live borrow. `G` reads `r` twice, which copies data but moves a
-  -- borrow, so `UseG` reads a dead borrow when run (switch `refTop`).
+  -- `n = 0` it returns a live borrow of `a`. `G` then reads `a`: at the generic call that is
+  -- fine, but at `n = 0` it ends the borrow `r`, so `G`'s read of `r` after it is of a dead
+  -- borrow, and `UseG` reads `⊥` when run (switch `refTop`). (Until D53, `G` read `r` twice,
+  -- which copied data but moved a borrow; reads of data move now too, so that witness was
+  -- caught by D53 itself.)
   reject def F (n : Nat) (x : &Nat) : match n { Z => &Nat, S _ => Nat } := (
     match n {
       Z => x,
@@ -59,14 +62,14 @@ ochr BorrowTypes uses Std {
     }
   )
 
-  reject def G (n : Nat) (a : Nat) : Nat := (
+  reject def G (n : Nat) (a : Nat) : Unit := (
     let r = F(n, &a);
+    let b = a;
     let r2 = r;
-    let r3 = r;
-    a
+    ()
   )
 
-  reject def UseG : Nat := G(0, 5)
+  reject def UseG : Unit := G(0, 5)
 }
 
 #eval IO.println (run "BorrowTypes" BorrowTypes).show

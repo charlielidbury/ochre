@@ -84,6 +84,7 @@ inductive Value where
   | borrow (l : Nat) (v : Value)              -- `borrow_ℓ v`: the borrowed content lives in the borrow
   | loan (l : Nat)                            -- `loan_ℓ`: a variable bound by borrow ℓ
   | bot                                       -- `⊥`: moved out / ended
+  | ghost (v : Value)                         -- D53: data moved out; erased terms still read `v`
   | abs (s : Nat)                             -- `σ`: an abstract value (Lean's fvar)
   | sealed (t : Term)                         -- `⌈t⌉`: a closed program whose run is stuck
   | proof                                     -- `⋆`: every value of a proposition (proof irrelevance)
@@ -144,6 +145,7 @@ partial def Value.beq : Value → Value → Bool
   | .gfn n, .gfn m => n == m
   | .clo cs t, .clo ds u | .tPi cs t, .tPi ds u => Value.beqList cs ds && t.beq u
   | .borrow l v, .borrow m w => l == m && v.beq w
+  | .ghost v, .ghost w => v.beq w
   | .loan l, .loan m | .abs l, .abs m | .sort l, .sort m => l == m
   | .sealed t, .sealed u => t.beq u
   | .tEq a b c, .tEq d e f => a.beq d && b.beq e && c.beq f
