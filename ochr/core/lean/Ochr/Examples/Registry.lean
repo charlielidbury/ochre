@@ -121,7 +121,7 @@ def switches : List (String × Config) :=
   a stability condition, with no witness here);
 * `completeness`: it only rejects good programs. -/
 def rowClass : List (String × List String) :=
-  [("completeness", []),
+  [("soundness", ["Erasure.BoomP2"]),
    ("soundness", ["Erasure.N1Closed", "Erasure.QBoom", "ErasureBySyntax.BoomP"]),
    ("soundness", ["Owners.ClosedD18", "Owners.BadR"]),
    ("soundness", ["Recursion.KnotLBoom"]),
@@ -138,15 +138,15 @@ def rowClass : List (String × List String) :=
    ("soundness", ["Recursion.LoopNoByBoom"]),
    ("soundness", ["ClosingOff.Boom5"]),
    ("completeness", []),
-   ("soundness", ["ErasureBySyntax.BoomL", "ErasureBySyntax.Boom8"]),
-   ("soundness", ["ErasureBySyntax.BoomB", "ErasureBySyntax.Boom7"]),
-   ("completeness", []),
+   ("subsumed", []),
+   ("subsumed", []),
+   ("subsumed", []),
    ("policy", ["ClosingOff.RowI"]),
    ("completeness", []),
    ("policy", ["Erasure.Write"]),
    ("completeness", []),
    ("false lemma", ["ErasureBySyntax.LieP"]),
-   ("soundness", ["ErasureBySyntax.BoomP"]),
+   ("completeness", []),
    ("soundness", ["Positivity.Boom", "PositivityParams.Boom"]),
    ("soundness", ["GlobalRecords.Bad5"]),
    ("soundness", ["Functions.BoomX4"]),
@@ -167,7 +167,7 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("completeness", []),
    ("completeness", []),
-   ("soundness", ["Functions.Boom", "Functions.BoomI"]),
+   ("subsumed", []),
    ("completeness", []),
    ("completeness", []),
    ("model", ["Sorts.K1", "Sorts.K2"])]
@@ -175,7 +175,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 519
+def Ochr.Registry.expectedTotal : Nat := 526
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

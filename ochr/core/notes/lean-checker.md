@@ -752,3 +752,77 @@ The ledger's rows are unchanged apart from rejections of the new tests:
   - P1 with the computed block rule: [BoomP, BoomG] → [BoomP].
 - *Ledger with D55 on*: 50 rows, and every row flips something. Soundness 22 (16 with a closed proof of `False`), false lemma 1, model 4, policy 4, completeness 19.
 - *Rows that no longer guard anything of their own.* Among the "without D41" combination rows, P1 and P3 add over D41 alone only rejections of good programs (`Om`, `CapP`, `CapP2`, and `OrLet` for P1): their accepting flips are all D41's.
+
+## 23. The erasure pre-pass: erasure is decided before a term runs, from declared types
+
+*What changed.*
+- `eval` asks `preFlags` whether a term is erased and whether it is a proof before it runs, and uses the answer. `preFlags` reads the term's declared type with `declOf`, the same reading as D55's static pass (moved into the machine).
+  - A term is a proof iff its declared type is a proposition, or a Π-type into propositions.
+  - It is erased iff it is a proof, or it is a call returning types, other than a stuck block's call.
+  - A stuck block's call is a match, and a sequence, `let` or match is erased iff it is a proof (D35).
+  - The declared-type readings live in `DeclInfo`: a sort, a proposition, a Π with its codomain, `&A`, other, and `any` (a zero-arm match).
+- Every binding in Ω now records what its declared type says:
+  - parameters from their domain terms (`paramDecls`, in the scope of the captures and the earlier parameters);
+  - a `let` from its bound term;
+  - captures from their values (`valueDecl`: ⋆ is a proof, a type has its sort, a function has its own Π-type's codomain);
+  - `self` as its Π-type.
+- A binding whose declared type is a Π-type only after computing it, such as `p : Pow(Nat)`, or which holds a function value, takes the value's own declared Π-type (`refineDecl`). D54 makes that the static one.
+
+*The assertion.* The after-the-fact classification (D28/D35/D42, the leaf and block rules) still runs, as an assertion. Under the default rules, a disagreement is an INTERNAL error.
+- Across the whole suite (519 verdicts, every sealed-program re-run and conversion) the two agree, once three things are in place:
+  - `self`, read as a call's head, is not classified: a call's flags are its own, and the after-the-fact rule deliberately does not treat `self` as a proof, so that a closure never inlines it as `⋆`, which would escape [Rec];
+  - a stuck block's call is classified as a match;
+  - a function-valued binding takes its value's declared Π-type.
+- A counterfactual run, with one rule switched off, does not assert, so the ledger measures the rule alone.
+
+*The ledger with the pre-pass deciding.* Verdicts and messages are unchanged. Rows that now flip nothing, with the new class `subsumed` (asserted to flip nothing):
+- *D35: a function's class is read from its codomain term* (classBySyntax). Its witnesses BoomL, Boom8 and Direct8 stay rejected with the v1.6 rule switched on. The class that decides erasure is read from the declared type whatever that switch says.
+- *D35/D40: a stuck block is erased iff each arm is* (blockRule := 0): LieB, BoomB, Lie7, Boom7 and TruthB keep their verdicts.
+- *D35: a let, sequence or match is erased iff it is a proof* (seqByProof): SeqT keeps its verdict.
+- *D54: the class and borrow row in the Π-type* (classInType).
+  - Boom, BoomI and RunGH are now rejected with D54 off, by confinement (D41): "[D41] an erased term borrows c". `g(&c)` is erased by its declared type on both paths, so `H`'s write is an erased term's effect on an outer place.
+  - D54 still makes a function value's class, which `callFn` uses to decide whether a call runs, equal to its static type's. But in the suite nothing depends on it once erasure is static and D55 holds.
+
+Rows that shrink:
+- D28 (erasure by declared class): 10 → 7 flips. It keeps RowI accepted, because `erasureByDecl` also sets [Close]'s row.
+- P1: 4 → 3, all rejections. P1 without D41: its accepted flips are all D41's.
+- P1 with the computed block rule: 6 → 3, all rejections, so completeness now; BoomP is no longer accepted.
+- D55: loses TruthG.
+
+Nothing else changes. Ledger classes now: soundness 18 (12 with a closed proof of `False`), false lemma 1, model 4, policy 4, subsumed 4, completeness 19.
+
+*Cost.* A full suite run takes about 0.8–1.1 s with the pre-pass and about 0.7 s without it; the machine was under load. Three things keep it cheap:
+- the frame's bindings are read in place (`withLive`);
+- a sequence or `let` hands its reading to its tail;
+- globals' readings are cached.
+
+A first version formatted `Config` to decide whether to assert, and was 4× slower; perf showed it.
+
+## 24. P2 is a soundness row (fuzz-port)
+
+With P2 off (`eraseOnCopy := false`) and D41 on, a closed proof of `False` is accepted. Confinement lets an erased term pass an outer place to an erased call. Without the private copy, that call's writes persist on the direct path, while the closed-off block, being erased, skips them. fuzz-port's `P2Alone` is in `Erasure`, in a new section "What goes wrong without the private copy": `LieP2` (accepted), and `BoomP2Pair` and `BoomP2` (rejected). The P2 row is now class soundness with witness `BoomP2`; it was completeness. `LieP2` also shows up as a rejection in the D28, D42, D45 + D42 and confined-bodies rows. Classes: soundness 19 (13 with a closed proof of `False`), false lemma 1, model 4, policy 4, subsumed 4, completeness 18. 522 verdicts.
+
+## 25. fuzz-port's fail-safe classes R2, R3, R4, R7
+
+Each is a true statement that the checker rejected. Each is now accepted, and each has a regression: `ClosingOff.LamWriteInBlock`, `LamReadInWrittenBlock` and `ConvBlocks`, and `Equality.SymmUnreachable`. All four were rejected on 6d90f016.
+
+- **R2 (i): a closure's write inside a stuck block.** The block's capture analysis counted a nested λ's write to its own captured copy as a write by the block. So it took the place by `&`, and when the block re-ran, the λ captured a borrow. The fix: occurrences inside a nested function or Π-type count as reads (`Term.blockOccs`).
+- **R2 (ii): a closure reading a place the block writes.** When an arm really writes a place, the block takes it by `&`. A λ in that arm that only reads the place then captured the block's borrow parameter. The fix:
+  - A stuck block's borrow parameter is marked on its binding (`blockRef`; its declared type is the block's `.val (&T)`).
+  - `capture` captures the value behind such a parameter, `(*c).1` by value, when the λ only reads through it. This is how the λ captures the place itself on the direct path.
+  - A user's `&` parameter is unaffected: `CapBorrow` is still rejected.
+- **E** (an arm-local σ in a block's inferred type) came only with R2 (ii); it no longer shows up in the regressions.
+- **R3: an error while comparing two blocks' functions.** `convFn` observed the functions at a generic argument where a pattern's sub-place does not exist, and the error escaped. It now answers "not convertible", as `convPi` does.
+- **R4: a call of a sealed function in untyped code.** Fixed since 4b8bdbd2: `funType` on a sealed head types its program. fuzz-port saw it drop from 23 cases in 10⁶ to 0. `V2Classes.R4s` is still rejected, but only for want of η for `Unit`: its goal is `Eq Unit ⌈…⌉ ()`, which D59 will close.
+- **R7: `symm` in an unreachable branch.** `symm` (and `trans`) of a proof of `False` is a proof of `False`. An equation that a refinement made impossible computes to `False`, and so does its symmetric one.
+
+Not taken up here:
+- **R5**, one case in 10⁶. Two arms' Π-types capture a place holding a sealed program that the arms' refinements made different. It is the same root as E: types read under arm refinements.
+- **R6.** `Id`'s conjunction order is not stable under closing off; it needs a canonical footprint order.
+- **R1's residual**, one case in 10⁶. An `Id` owner reached through a returned borrow is an inert loan in a re-run. It needs the cells a closed-off call creates to carry their declared types.
+
+Draft RULES wording for the stuck-block capture rule (§3 "Stuck blocks"), after "otherwise a place it reads is passed by value (copied)":
+
+> An occurrence inside a nested `λ` or Π-type counts as a read, whatever that function does with it: a closure captures a copy, so its writes and borrows are to that copy. A closure formed inside the block that reads, through one of the block's `&` parameters, a place the block writes captures the value behind that parameter, as it captures the place itself when the match is not closed off.
+
+526 declarations.
