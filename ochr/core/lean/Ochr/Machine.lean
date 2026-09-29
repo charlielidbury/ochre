@@ -939,6 +939,30 @@ partial def mkEqM (A a b : Value) : M Value := do
 
 -- ### Evaluation
 
+/-- D60 [Rewrite]: the goal `G` of `rewrite h in t` after the rewrite, i.e. the type `t`
+must have. With `h : Eq A a b`, every occurrence of `b`'s normal form in `G` is generalised
+to a fresh `σ` (the replacement [Split] uses to generalise a sealed program, D34, here local
+to the goal and not recorded), and `a` is substituted for `σ`, re-normalising what changed.
+`rev` (`rewrite ← h in t`) swaps `a` and `b`. The term is `J(A, a, b, λz. G[z/b], h, t)`
+with the motive read off the goal. A rewrite that finds nothing to rewrite is an error (a
+wrong direction, usually); an `h` whose type computes to `True` rewrites nothing and is
+allowed (its two sides are already equal). -/
+partial def rewriteGoal (rev : Bool) (h : Term) (G : Value) : M Value := do
+  unless (← typeClass G) == 2 do err s!"rewrite: the goal {G} is not a proposition"
+  let (_, Th) ← eval true h
+  match Th.map unitTop with
+  | some (.tInd "True" []) => pure G
+  | some (.tEq A a b) =>
+    let (src, dst) := if rev then (a, b) else (b, a)
+    let σ ← freshAbs A
+    let G1 ← substV src (.abs σ) G
+    if G1 == G then err s!"rewrite: the goal {G} does not mention {src}"
+    let G' ← substV (.abs σ) dst G1
+    trace fun _ => s!"[Rewrite] {src} ↦ {dst}: goal {G'}"
+    pure G'
+  | some T => err s!"rewrite: the proof has type {T}, which is not an equation"
+  | none => err "rewrite: untyped proof"
+
 partial def expectTy (what : String) (T : Option Value) (A : Value) : M Unit := do
   if let some T := T then
     unless ← conv T A do err s!"{what} has type {T}, expected {A}"
@@ -970,6 +994,7 @@ partial def eval (typed : Bool) (t : Term) (hint : Option Value := none) : M (Va
         let (e, p) ← getFlags
         pure (if cfg.seqByProof then (p, p) else (e, p))
       | .cong _ _ | .prim "trans" _ | .prim "symm" _ => pure (true, true)
+      | .prim "rewrite" _ | .prim "rewriteR" _ => pure (true, true)   -- D60: `J`, a proof
       | .ctor ty _ _ _ _ => let p ← ctorIsProof ty; pure (p, p)   -- D42: a Prop inductive's value is a proof
       | .prim "J" [_, _, _, P, _, _] =>
         let p ← jErased P      -- the appendix's clause 4: the motive is syntactically into Prop
@@ -1331,6 +1356,15 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
       unless (← conv A A') && (← conv b b') do err s!"trans: {Th.get!} and {Tk.get!} do not compose"
       pure (.proof, some (← mkEqM A a c))
     | _, _ => err "trans: not equations"
+  | .prim "rewrite" [h, u] | .prim "rewriteR" [h, u] =>
+    -- D60 [Rewrite]: checked against the type the context requires (`hint`)
+    if !typed then return (.proof, none)
+    let some G := hint
+      | err "rewrite: the goal is not known here (use it in tail position, as a call's argument, or under an annotation `let x : T = …`)"
+    let G' ← rewriteGoal (t matches .prim "rewriteR" _) h G
+    let (_, Tu) ← eval true u (some G')
+    expectTy "the rewritten term" Tu G'
+    pure (.proof, some G)
   | .prim "clone" [t] => withErased (eval typed t hint)   -- D53 prototype: reads copy
   | .prim n _ => err s!"unknown primitive {n}"
   | .ascribe (.val .proof) A =>     -- a captured proof, inlined with its type (`capture`)
@@ -1445,7 +1479,7 @@ partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
   for a in as do
     let s := (← get).effects.size
     -- v2.0: a constructor argument's parameters may come from the parameter's type
-    let hint ← if typed && (a matches .ctor .. | .val _) then argHint fv fT ws0 else pure none
+    let hint ← if typed && (a matches .ctor .. | .val _ | .prim "rewrite" _ | .prim "rewriteR" _) then argHint fv fT ws0 else pure none
     let (w, T) ← eval typed a hint
     if a matches .borrow _ | .place _ then argSteps := argSteps.push (s, (← get).effects.size)
     pushTemp w
@@ -2135,6 +2169,12 @@ its type (in that path's refined state). A match on an abstract `σ` here is spl
 each arm is checked to the end under its refinement ([Split]). -/
 partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
   match t with
+  | .prim "rewrite" [h, u] | .prim "rewriteR" [h, u] =>
+    -- D60: in tail position the rewritten goal becomes the path's goal, so `u` may split
+    let some G := (← get).goal | err "rewrite: no goal"
+    let G' ← rewriteGoal (t matches .prim "rewriteR" _) h G
+    modify fun s => { s with goal := some G' }
+    checkTail u k
   | .letIn h u w =>
     let es := (← get).effects.size
     let (v, T) ← eval true u

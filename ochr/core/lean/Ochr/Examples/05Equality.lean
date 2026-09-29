@@ -141,6 +141,70 @@ ochr Equality uses Std {
 #guard (run "Equality" Equality).allAsExpected
 #guard (run "Equality" Equality).count == 29
 
+/-! ## Rewriting
+
+`rewrite h in t`, for `h : Eq A a b`, proves the goal `G` from `t : G'`, where `G'` is `G`
+with every occurrence of `b`'s normal form replaced by `a` (the replacement a case split
+uses to generalise a sealed program, D34, here local to the goal). `rewrite ← h in t`
+replaces `a` by `b`. It is `J(A, a, b, λz. G[z/b], h, t)` with the motive read off the goal,
+so it needs a known goal: tail position, a call's argument, or an annotated `let` (D60). -/
+
+ochr Rewriting uses Std {
+  -- Symmetry and transitivity, and congruence without a motive.
+  def RwSymm (x : Nat) (y : Nat) (h : Eq Nat x y) : Eq Nat y x := rewrite h in refl
+  def RwTrans (x : Nat) (y : Nat) (z : Nat) (h1 : Eq Nat x y) (h2 : Eq Nat y z) : Eq Nat x z := rewrite h2 in h1
+  def RwCong (x : Nat) (y : Nat) (h : Eq Nat x y) : Eq Nat (Add(x, 2)) (Add(y, 2)) := rewrite h in refl
+  def RwBack (x : Nat) (y : Nat) (h : Eq Nat x y) : Eq Nat (Add(x, 2)) (Add(y, 2)) := rewrite ← h in refl
+
+  -- A sealed program is rewritten like any value: `Add(x, 0)` becomes `x`.
+  def RwSealed (x : Nat) (h : Eq Nat (Add(x, 0)) x) : Eq Nat (Add(Add(x, 0), 1)) (Add(x, 1)) := rewrite ← h in refl
+
+  -- The goal comes from the context: a parameter's type, or an annotation. In tail
+  -- position the rewritten goal is the path's goal, so the rest may split.
+  def UseEq (a : Nat) (b : Nat) (p : Eq Nat a b) : Eq Nat a b := p
+  def RwArg (x : Nat) (y : Nat) (h : Eq Nat x y) : Eq Nat y x := UseEq(y, x, rewrite h in refl)
+
+  def RwLet (x : Nat) (y : Nat) (h : Eq Nat x y) : Eq Nat y x := (
+    let p : Eq Nat y x = (rewrite h in refl);
+    p
+  )
+
+  def RwSplit (x : Nat) (y : Nat) (h : Eq Nat x y) : Id Nat (Add(y, 0)) x := (
+    rewrite h in match x {
+      Z => refl,
+      S p => AddMZero(&p),
+    }
+  )
+
+  -- The direction matters: `h : x = y` rewrites `y` to `x`, and a goal about `x` needs
+  -- `rewrite ← h`. A rewrite that finds nothing is an error.
+  def RwRightDir (x : Nat) (y : Nat) (h : Eq Nat x y) (k : Eq Nat y 3) : Eq Nat x 3 := rewrite ← h in k
+  reject def RwWrongDir (x : Nat) (y : Nat) (h : Eq Nat x y) (k : Eq Nat y 3) : Eq Nat x 3 := rewrite h in k
+
+  -- Here the wrong direction finds `x` inside `Add(x, 0)` too, and leaves a goal `refl`
+  -- does not prove.
+  reject def RwSealedWrongDir (x : Nat) (h : Eq Nat (Add(x, 0)) x) : Eq Nat (Add(Add(x, 0), 1)) (Add(x, 1)) := rewrite h in refl
+
+  -- The rewritten goal must be what `t` proves; `h` must be an equation; the goal must be
+  -- known and a proposition; and an equation between equal sides rewrites nothing.
+  reject def RwMismatch (x : Nat) (y : Nat) (h : Eq Nat x y) : Eq Nat (Add(y, 1)) 7 := rewrite h in refl
+  reject def RwNotEq (P : Prop) (p : P) : P := rewrite p in p
+
+  reject def RwNoGoal (x : Nat) (y : Nat) (h : Eq Nat x y) : Nat := (
+    let p = (rewrite h in refl);
+    0
+  )
+
+  reject def RwData (x : Nat) (y : Nat) (h : Eq Nat x y) : Nat := rewrite h in x
+  reject def RwFalse (x : Nat) (h : Eq Nat x x) : Eq Nat x (S x) := rewrite h in refl
+}
+
+#eval IO.println (run "Rewriting" Rewriting).show
+
+-- every verdict as expected, and the exact number of declarations (a truncated file changes it)
+#guard (run "Rewriting" Rewriting).allAsExpected
+#guard (run "Rewriting" Rewriting).count == 17
+
 /-! ## All the owners of a returned borrow are observed
 
 `Pick(n, &a, &b)` returns a borrow into `a` or `b`, depending on `n`. At an abstract `n`,
