@@ -56,7 +56,14 @@ open Ochr.Registry in
 #guard rowOk { generalize := false }
   ["CaseSplits.MatchAfterOpaque:rejected", "GenType.GenL:rejected", "Trees.InsertM:rejected",
    "Trees.Insert:rejected", "Trees.InsertMEq:rejected", "Trees.InsertMSwap:rejected",
-   "Trees.SizeInsert:rejected", "Arrays.PopS:rejected", "Arrays.ArrPop:rejected"]
+   "Trees.SizeInsert:rejected", "Arrays.PopS:rejected", "Arrays.ArrPop:rejected",
+   "ArrayLemmas.Count:rejected", "ArrayLemmas.Ind:rejected", "ArrayLemmas.CountJoin:rejected",
+   "ArrayLemmas.CountSet:rejected", "ArrayLemmas.CountSwapHead:rejected",
+   "ArrayLemmas.CountSwap:rejected", "ArrayBench.GetOr:rejected", "ArrayBench.GetOrIn:rejected",
+   "ArrayBench.GetOrOut:rejected", "ArrayBench.ModS:rejected", "ArrayBench.ModLt:rejected",
+   "ArrayBench.InsertB:rejected", "ArrayBench.Insert:rejected", "ArrayBench.InsertRun:rejected",
+   "ArrayBench.InsertRunBucket:rejected"]
+  ["ArrayBench.PushPop blocked by Arrays.ArrPop"]
 open Ochr.Registry in
 #guard rowOk { blockMoves := false }
   ["ClosingOff.MovedByBlock:accepted"]
@@ -89,7 +96,10 @@ open Ochr.Registry in
   ["ClosingOff.Clear:accepted", "ClosingOff.Boom5:accepted"]
 open Ochr.Registry in
 #guard rowOk { genConsistent := false }
-  ["Trees.InsertMEq:rejected", "Trees.SizeInsert:rejected"]
+  ["Trees.InsertMEq:rejected", "Trees.SizeInsert:rejected", "ArrayLemmas.CountJoin:rejected",
+   "ArrayLemmas.CountSet:rejected", "ArrayLemmas.CountSwapHead:rejected",
+   "ArrayLemmas.CountSwap:rejected", "ArrayBench.ModLt:rejected", "ArrayBench.Insert:rejected",
+   "ArrayBench.InsertRun:rejected", "ArrayBench.InsertRunBucket:rejected"]
 open Ochr.Registry in
 #guard rowOk { classBySyntax := false }
   ["ErasureBySyntax.BoomL:accepted", "ErasureBySyntax.Boom8:accepted", "ErasureBySyntax.Direct8:accepted",
@@ -170,7 +180,25 @@ open Ochr.Registry in
    "Arrays.Read:rejected", "Arrays.Set:rejected", "Arrays.GetMut:rejected",
    "Arrays.WithSplit:rejected", "Arrays.ArrPush:rejected", "Arrays.ArrPop:rejected",
    "Arrays.Swap:rejected", "Arrays.Replicate:rejected", "Arrays.FillFrom:rejected",
-   "Arrays.Fill:rejected"]
+   "Arrays.Fill:rejected", "ArrayLemmas.Count:rejected", "ArrayBench.GetMutB:rejected",
+   "ArrayBench.Size:rejected"]
+  ["ArrayLemmas.NthSetSame blocked by Arrays.Nth", "ArrayLemmas.NthSetOther blocked by Arrays.Nth",
+   "ArrayLemmas.JoinTakeDrop blocked by Arrays.JoinS",
+   "ArrayLemmas.TakeJoin blocked by Arrays.TakeS", "ArrayLemmas.DropJoin blocked by Arrays.DropS",
+   "ArrayLemmas.CountJoin blocked by Arrays.JoinS", "ArrayLemmas.CountSet blocked by Arrays.SetS",
+   "ArrayLemmas.SwapS blocked by Arrays.SetS", "ArrayLemmas.SwapIsSwapS blocked by Arrays.Swap",
+   "ArrayLemmas.CountSwapHead blocked by Arrays.Nth", "ArrayLemmas.CountSwap blocked by Arrays.SetS",
+   "ArrayBench.B1Join blocked by Arrays.WithSplit", "ArrayBench.B1 blocked by Arrays.WithSplit",
+   "ArrayBench.SplitNoop blocked by Arrays.WithSplit",
+   "ArrayBench.ZeroFirst2 blocked by Arrays.WithSplit",
+   "ArrayBench.ZeroFirst2Run blocked by Arrays.Replicate",
+   "ArrayBench.ZeroFirst2Rest blocked by Arrays.Replicate",
+   "ArrayBench.ReadNoop blocked by Arrays.Read", "ArrayBench.ReadAfterSet blocked by Arrays.Set",
+   "ArrayBench.ReadAfterSetOther blocked by Arrays.Set", "ArrayBench.SetTwice blocked by Arrays.Set",
+   "ArrayBench.GetOr blocked by Arrays.Read", "ArrayBench.GetOrIn blocked by Arrays.Replicate",
+   "ArrayBench.GetOrOut blocked by Arrays.Replicate", "ArrayBench.PushPop blocked by Arrays.ArrPush",
+   "ArrayBench.Insert blocked by Arrays.AsSlice", "ArrayBench.InsertRun blocked by Arrays.Replicate",
+   "ArrayBench.InsertRunBucket blocked by Arrays.Replicate"]
 -- `genPlaceType` changes no verdict; 08CaseSplits.lean asserts its effect on the generalised σ's type
 -- v2.0 D45 by type, switched off: a match on a proof inspects its content (⋆) like data: completeness only
 open Ochr.Registry in
@@ -207,15 +235,24 @@ open Ochr.Registry in
   ["ReturnedBorrows.L:rejected", "ReturnedBorrows.Inj:rejected", "ReturnedBorrows.PF:rejected",
    "Equality.NotAdd01:rejected", "Equality.WriteNeq:rejected", "Equality.WriteDisj:rejected",
    "Equality.NoConf:rejected", "Equality.NoConfS:rejected", "Equality.NoConfMatch:rejected",
-   "Equality.NoConfBack:rejected", "Equality.BoolDisj:rejected"]
+   "Equality.NoConfBack:rejected", "Equality.BoolDisj:rejected", "ArrayBench.LeNext:rejected",
+   "ArrayBench.ModLt:rejected", "ArrayBench.Insert:rejected", "ArrayBench.InsertRun:rejected",
+   "ArrayBench.InsertRunBucket:rejected"]
 -- v2.1 D52 switched off: equal constructors are not taken apart in Eq, so programs that
 -- need an equation between successors or pairs taken apart are rejected (completeness)
 open Ochr.Registry in
 #guard rowOk { injective := false }
   ["Equality.Inj:rejected", "Equality.PairInj:rejected", "Recursion.AddZeroCopy:rejected",
    "CurrentState.AddSubIdReborrow:rejected", "Index.AddRS:rejected", "Index.AddZeroR:rejected",
-   "Index.AddOneR:rejected"]
-  ["Arrays.FillFrom blocked by Index.AddRS", "Arrays.Fill blocked by Index.AddRS"]
+   "Index.AddOneR:rejected", "ArrayLemmas.NthSetOther:rejected", "ArrayLemmas.JoinTakeDrop:rejected",
+   "ArrayLemmas.TakeJoin:rejected", "ArrayLemmas.CountJoin:rejected"]
+  ["Arrays.FillFrom blocked by Index.AddRS", "Arrays.Fill blocked by Index.AddRS",
+   "ArrayLemmas.CountSet blocked by Index.AddRS", "ArrayLemmas.CountSwapHead blocked by Index.AddRS",
+   "ArrayLemmas.CountSwap blocked by Index.AddRS",
+   "ArrayBench.SplitNoop blocked by ArrayLemmas.JoinTakeDrop",
+   "ArrayBench.ZeroFirst2 blocked by Arrays.Fill", "ArrayBench.ZeroFirst2Run blocked by Arrays.Fill",
+   "ArrayBench.ZeroFirst2Rest blocked by Arrays.Fill",
+   "ArrayBench.ReadAfterSetOther blocked by ArrayLemmas.NthSetOther"]
 -- finding (v2.0 round): v1.9 assumed a data match's scrutinee type from its arms
 open Ochr.Registry in
 #guard rowOk { scrutTyped := false }
@@ -236,7 +273,11 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { piUnder := false }
   ["Functions.Cap:rejected", "Functions.CapEq:rejected", "Functions.P1:rejected", "Functions.P3:rejected",
-   "Functions.PassZeroAdd:rejected", "Functions.PassA:rejected"]
+   "Functions.PassZeroAdd:rejected", "Functions.PassA:rejected", "ArrayLemmas.NthSetOther:rejected",
+   "ArrayBench.B1Join:rejected", "ArrayBench.B1:rejected", "ArrayBench.SplitNoop:rejected",
+   "ArrayBench.ZeroFirst2:rejected", "ArrayBench.ZeroFirst2Run:rejected",
+   "ArrayBench.ZeroFirst2Rest:rejected"]
+  ["ArrayBench.ReadAfterSetOther blocked by ArrayLemmas.NthSetOther"]
 -- D49 (3) switched off: a data field of a matched proof is ⋆, and cannot be split
 open Ochr.Registry in
 #guard rowOk { proofDataFields := false }
