@@ -34,6 +34,12 @@ partial def unitTop : Value → Value
   | .tInd "And" [p, q] => mkAnd (unitTop p) (unitTop q)
   | v => v
 
+/-- Does a (first-order) field type term mention the inductive `n`? (D53 prototype: a copy
+type is not recursive.) -/
+partial def Term.mentionsTInd (n : String) : Term → Bool
+  | .tind m as => m == n || as.any (Term.mentionsTInd n)
+  | _ => false
+
 /-- `And(P₁, And(P₂, … Pₖ))` with the unit laws (`[]`: `True`), for `Eq` on constructor
 values and for `Id` (D52). -/
 def andList : List Value → Value

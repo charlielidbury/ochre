@@ -219,6 +219,9 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
     if (lookup ctx "J").isSome then return .call (← resolve ctx false (.ident "J")) (← [A, a, b, P, h, u].mapM (resolve ctx false)) false
     return .prim "J" [← resolve ctx true A, ← resolve ctx false a, ← resolve ctx false b,
                       ← resolve ctx false P, ← resolve ctx false h, ← resolve ctx false u]
+  | .call (.ident "clone") [p] =>      -- D53 prototype: a built-in copy of a place
+    if (lookup ctx "clone").isSome then return .call (← resolve ctx false (.ident "clone")) [← resolve ctx false p] false
+    return .prim "clone" [← resolve ctx false p]
   | .call (.ident c) as =>
     let tb ← read
     if (lookup ctx c).isNone && tb.types.contains c then

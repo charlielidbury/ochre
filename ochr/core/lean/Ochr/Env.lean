@@ -112,6 +112,9 @@ structure Config where
   refData : Bool := true         -- D48 (1): `&A` only for a data type A (never a universe, Π-type or proposition)
   injective : Bool := true      -- D52: Eq on two values of one constructor is the conjunction over its fields
   refTop : Bool := true          -- D48 (2): `&` only at the top of a declared type, never produced by computation
+  movingReads : Bool := false   -- D53 prototype (off): runtime reads of non-copy data move; erased reads copy
+  movingReadsFnCopy : Bool := false   -- D53 prototype variant: function values are copy types
+  movingReadsGhost : Bool := false    -- D53 prototype variant: erased terms still read a moved value
   unitNorm : Bool := false       -- counterfactual D50: the unit laws normalise stored types (v2.0 as first built)
   piUnder : Bool := true         -- D48 (3): Π-types are compared under their binders, at generic values
   proofDataFields : Bool := true -- D49 (3): a data field of a matched proof is a fresh abstract value (not ⋆)
@@ -156,6 +159,8 @@ structure MState where
   neutrals : List (Value × Nat) := []     -- [Split] generalisations: sealed program ↦ its σ (finding G1)
   depth : Nat := 0                        -- call depth (bounded, like fuel: the checker must terminate)
   effects : Array Effect := #[]           -- D41: assigns, borrows and moves so far (restored with the state)
+  erasedDepth : Nat := 0                  -- D53 prototype: > 0 while evaluating a term known to be erased
+  ghosts : List (Pos × Place × Value) := []   -- D53 prototype: values moved out, for erased reads
 deriving Inhabited
 
 inductive Fail where
@@ -187,6 +192,16 @@ def restoreKeep (saved : MState) : M Unit :=
     if cur.cfg.globalRecords then
       { s with nextAbs := cur.nextAbs, absTy := cur.absTy, nextLoan := cur.nextLoan, neutrals := cur.neutrals }
     else s
+
+/-- D53 prototype: run `x` as an erased term, whose reads copy. -/
+def withErased {α : Type} (x : M α) : M α := do
+  modify fun s => { s with erasedDepth := s.erasedDepth + 1 }
+  let r ← tryCatch x (fun e => do modify (fun s => { s with erasedDepth := s.erasedDepth - 1 }); throw e)
+  modify fun s => { s with erasedDepth := s.erasedDepth - 1 }
+  pure r
+
+/-- D53 prototype: `withErased x` if `b`, else `x`. -/
+def withErasedIf {α : Type} (b : Bool) (x : M α) : M α := if b then withErased x else x
 
 /-- Run `x` on a private copy of the state (P2, P6): its effects are discarded. -/
 def onCopy {α : Type} (x : M α) : M α := do
