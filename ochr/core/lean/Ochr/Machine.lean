@@ -1438,8 +1438,8 @@ partial def evalCtor (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts : Li
     | _ => Array.replicate np none
   let mut tys := #[]
   for (a, (_, FT)) in as.zip fields do
-    let fh ← if typed && ((np > 0 && (a matches .ctor ..)) || (a matches .val _)) then fieldTypeAt d sol FT
-      else pure none
+    let fh ← if typed && ((np > 0 && (a matches .ctor .. | .prim "rewrite" _ | .prim "rewriteR" _)) || (a matches .val _))
+      then fieldTypeAt d sol FT else pure none
     let (w, T) ← eval typed a fh
     if let some T := T then sol := unifyParams np FT T sol
     tys := tys.push T

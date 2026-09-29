@@ -92,9 +92,9 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `13Erasure` | erased terms run on a private copy, confinement, erasure decided by syntax | P2 | 55 |
 | `14Universes` | `Prop : Type`, no `Type : Type`, no cumulativity, why `&Type` is refused; sorts are syntactic (D55, reviewer-4's programs) | preamble, P2 | 25 |
 | `15BorrowTypes` | what may be borrowed and where `&` may appear (D48) | §1 | 16 |
-| `16HashMap` | case study: Aeneas's resizing hash map, its lookups, length, invariant, resizing and load factor, proved about the in-place code (`notes/hashmap-case-study.md`) | all | 198 |
+| `16HashMap` | case study: Aeneas's resizing hash map, its lookups, length, invariant, resizing and load factor, proved about the in-place code (`notes/hashmap-case-study.md`) | all | 195 |
 
-745 declarations in all, the `Prelude`'s 4 and the case study's 198 included. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+742 declarations in all, the `Prelude`'s 4 and the case study's 195 included. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 

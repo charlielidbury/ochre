@@ -29,7 +29,7 @@ SPEC = W("Buckets BLen Count IfNew Shrink Has Unique AllUnique Nowhere OnlyIn Pl
 # definitions used only inside proofs (lemma statements)
 INTERNAL = W("Nth IsNone IfFound OrElse BFindLast SFindLast Fresh FreshS AbsentFrom Apart GUnique")
 NEGATIVE = W("InsertFindNoSplit BRemoveFindDup InsertCountNoHyp")
-WALLED = W("BGetMutRead BGetMutFind BGetMutFindOther")
+WALLED = W("")   # the three GetMut theorems were walled until D58; now proofs: get_mut
 GROUPS = {
     "helpers (keys, arithmetic, equality)": W("""EqBRefl EqBSound EqBTrans EqBContra EqBSymm NeqFlip
         TransO AddMS AddS SymmN AddZero AddAssoc TransN LtS LtAdd LtPred"""),
@@ -48,7 +48,9 @@ GROUPS = {
     "remove": W("""BRemoveResult BRemoveFind BRemoveFindOther SlotRemoveResult SlotRemoveFind SlotRemoveFindOther
         RemoveResult RemoveFind RemoveFindOther RemoveLen BRemoveCount SlotRemoveCount RemoveCount
         BRemoveUnique SlotRemoveUnique BRemoveAbsent NowhereRemove OnlyInRemove SlotRemovePlaced RemoveInv"""),
-    "get_mut": W("GetMutLen"),
+    "get_mut": W("""GetMutLen BGetMutRead BGetMutFind BGetMutFindOther SlotGetMutRead SlotGetMutFind
+        SlotGetMutFindOther GetMutRead GetMutFind GetMutFindOther BGetMutCount SlotGetMutCount BGetMutUnique
+        SlotGetMutUnique BGetMutAbsent NowhereGetMut OnlyInGetMut SlotGetMutPlaced GetMutInv GetMutNotOver"""),
 }
 DECL = re.compile(r"^  (?:reject )?(?:def|inductive) ([A-Za-z_][A-Za-z0-9_']*)")
 
