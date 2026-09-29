@@ -40,6 +40,7 @@ inductive STerm where
   | prod (A B : STerm)
   | ascribe (t A : STerm)
   | sort (l : Nat)
+  | rewrite (rev : Bool) (h t : STerm)           -- `rewrite h in t`, `rewrite ← h in t` (D60)
 deriving Inhabited, Repr
 
 structure SDecl where
@@ -95,6 +96,7 @@ partial def STerm.idents : STerm → List String
   | .ctorP c ps as => c :: (ps ++ as).flatMap STerm.idents
   | .deref t | .proj _ t | .amp t => t.idents
   | .assign a b | .seq a b | .pair a b | .andI a b | .and a b | .prod a b | .ascribe a b
+  | .rewrite _ a b
   | .arrow a b => a.idents ++ b.idents
   | .letIn _ T t u => (T.map STerm.idents).getD [] ++ t.idents ++ u.idents
   | .matchGen p arms => p.idents ++ arms.flatMap fun (c, _, t) => c :: t.idents
@@ -287,6 +289,8 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
   | .pair a b =>      -- `(a, b)`: notation for the library's `Mk(a, b)` of `Pair` (D52)
     return .ctor "Pair" 0 ⟨"Mk"⟩ [] [← resolve ctx false a, ← resolve ctx false b]
   | .andI a b => return .ctor "And" 0 ⟨"Intro"⟩ [] [← resolve ctx false a, ← resolve ctx false b]
+  | .rewrite rev h u =>     -- D60: a typing rule, `J` with the motive read off the goal
+    return .prim (if rev then "rewriteR" else "rewrite") [← resolve ctx false h, ← resolve ctx false u]
   | .top => pure (.tind "True" [])
   | .and P Q => return .tind "And" [← resolve ctx true P, ← resolve ctx true Q]
   | .prod A B => return .tind "Pair" [← resolve ctx true A, ← resolve ctx true B]   -- `A × B` (D52)

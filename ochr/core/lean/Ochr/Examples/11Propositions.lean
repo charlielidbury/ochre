@@ -232,6 +232,75 @@ ochr Propositions uses Std {
 #guard (run "Propositions" Propositions).allAsExpected
 #guard (run "Propositions" Propositions).count == 45
 
+/-! ## Destructuring `let`
+
+`let ⟨x, y⟩ = p; u` is `match p { Intro(x, y) => u }`, and `let (x, y) = p; u` is
+`match p { Mk(x, y) => u }`: surface sugar for a one-arm match (D60). `⟨a, b, c⟩` is
+`⟨a, ⟨b, c⟩⟩`, patterns nest, and `_` ignores a field. On a place the names are its
+sub-places, as in any match; any other term is bound to a temporary first. -/
+
+ochr Destructuring uses Std {
+  def AndPair (P : Prop) (Q : Prop) (h : P) (k : Q) : P ∧ Q := ⟨h, k⟩
+
+  def DAnd (P : Prop) (Q : Prop) (h : P ∧ Q) : Q ∧ P := (
+    let ⟨a, b⟩ = h;
+    ⟨b, a⟩
+  )
+
+  def DAnd3 (P : Prop) (Q : Prop) (R : Prop) (h : P ∧ (Q ∧ R)) : R := (
+    let ⟨a, b, c⟩ = h;
+    c
+  )
+
+  def DNested (P : Prop) (Q : Prop) (R : Prop) (h : (P ∧ Q) ∧ R) : Q := (
+    let ⟨⟨a, b⟩, c⟩ = h;
+    b
+  )
+
+  def DWild (P : Prop) (Q : Prop) (h : P ∧ Q) : Q := (
+    let ⟨_, b⟩ = h;
+    b
+  )
+
+  -- On a term: a temporary holds it.
+  def DTerm (P : Prop) (Q : Prop) (h : P) (k : Q) : Q := (
+    let ⟨a, b⟩ = AndPair(P, Q, h, k);
+    b
+  )
+
+  -- Pairs; on `*p` the names are places inside `*p`, so writing them writes `*p`.
+  def DPair (p : Nat × Nat) : Nat := (
+    let (a, b) = p;
+    Add(a, b)
+  )
+
+  def DPairSwap (p : &(Nat × Nat)) : Unit := (
+    let (a, b) = *p;
+    let t = a;
+    a := b;
+    b := t
+  )
+
+  def DPairSwapIs : Id (Nat × Nat) (let p = (1, 2); DPairSwap(&p); p) (2, 1) := refl
+
+  -- The fields have their own types, and the pattern must fit the scrutinee's type.
+  reject def DWrongField (P : Prop) (Q : Prop) (h : P ∧ Q) : P := (
+    let ⟨a, b⟩ = h;
+    b
+  )
+
+  reject def DNotPair (n : Nat) : Nat := (
+    let (a, b) = n;
+    a
+  )
+}
+
+#eval IO.println (run "Destructuring" Destructuring).show
+
+-- every verdict as expected, and the exact number of declarations (a truncated file changes it)
+#guard (run "Destructuring" Destructuring).allAsExpected
+#guard (run "Destructuring" Destructuring).count == 11
+
 /-! ## Subsingleton elimination
 
 `Or` has two constructors, so it is not a subsingleton: a match on a proof of `Or` may only
