@@ -14,15 +14,7 @@ Add(x : Nat, y : Nat) : Nat := AddM(&x, y); x
 
 Because definitional equality is evaluation, `Id Nat (Add(2, 3)) 5` holds by `refl`: the checker runs `Add(2, 3)`, which runs `AddM` in place on a local copy, and compares the result with `5`.
 
-The machine that does this is the symbolic semantics of Aeneas's low-level borrow calculus @aeneas. An environment Ω maps variables to values; borrowing `x` moves its content into the borrow and leaves a _loan_ behind; ending the borrow moves the content back. Running `Add(2, 3)` passes through these states:
-
-```
-{ x ↦ 2 }                                     // enter Add
-{ x ↦ loan₀ } ⊢ AddM(borrow₀ 2, 3)            // &x: the content moves into the borrow
-{ x ↦ loan₀ | x' ↦ borrow₀ (S loan₁), … }     // AddM matched S and reborrowed the field
-…
-{ x ↦ 5 }                                     // borrows ended, contents returned
-```
+The machine that does this is the symbolic semantics of Aeneas's low-level borrow calculus @aeneas. An environment Ω maps variables to values; borrowing `x` moves its content `v` into the borrow, written `borrow₀ v`, and leaves a _loan_ `loan₀` behind; ending the borrow moves the content back.
 
 == Symbolic inputs, and what a stuck call leaves behind
 

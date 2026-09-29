@@ -449,6 +449,21 @@ A state (Ω, Δ, Σ) is _well formed_ when the following hold. They are the four
 
 That the machine preserves conditions 1 to 5 is property 2 of @fig-claims, mechanised for the first-order fragment of @sec-meta-mech.
 
+== The model's translation <app-model>
+
+#let dg(x) = $#x^dagger$
+The model sketch of @sec-meta-model translates terms by the clauses of @fig-model.
+
+#figure(kind: image, supplement: [Figure],
+  block(width: 100%)[
+    $ "End"_ell & : quad s |-> (s without "holder"(ell))[h_ell := s."holder"(ell)] \
+      "match" p {dots} & : quad s |-> "natCase" (s.p) space (dg(t_Z)(s[p := 0])) space (lambda sigma'. space dg(t_S)(s[p := "succ" sigma'])) \
+      f(overline(a)), space B "data" & : quad s |-> "let" (r, overline(phi)) = dg(f)(overline(u), overline(w)) "in" (r, (s without overline(a))[h_(ell_i) := phi_i]) \
+      f(overline(a)), space B = \&T & : quad s |-> "let" (c, beta) = dg(f)(overline(u), overline(w)) "in" (c, (s without overline(a))[h_(ell_i) := beta_i (h_k)]) $
+  ],
+  caption: [Key clauses of the translation. $overline(u)$ are the contents of the borrow arguments, whose loans are $ell_i$, and $overline(w)$ the other arguments; $k$ is fresh. Ending a borrow is a substitution, and a call is one application, with Aeneas's region abstraction as the substitution $h_(ell_i) := beta_i (h_k)$. An erased term leaves the view unchanged.],
+) <fig-model>
+
 == Notes on the definition <app-notes>
 
 Notes 1–11 explain the side conditions of @fig-why that are finest-grained in this appendix: each gives a program that, without the condition, is a closed proof of a false equation (or, for note 8, makes normalisation diverge; note 3's program also needs [Type-pos] off); by the disjointness rule of @app-conv, an equation between distinct constructors, such as `Eq Nat Z (S Z)`, is `False` itself. Notes 12–27 record choices where the definition could have gone either way.

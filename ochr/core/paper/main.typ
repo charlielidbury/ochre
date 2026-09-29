@@ -30,7 +30,7 @@
 = Metatheory <sec-meta>
 #include "sections/meta.typ"
 
-= Implementation <sec-impl>
+= Implementation and evaluation <sec-impl>
 #include "sections/impl.typ"
 
 = Related work <sec-related>
