@@ -966,3 +966,23 @@ With D54 off, `H` is accepted at `RefPred(0)`, and `RunPowGen(H)` has type `Id N
 *Why not read the stored type in untyped runs instead?* That would erase `H`'s write whenever it is called through a `RefPred(0)`. Compiled code runs it, so the checker's value of `RunPow(H)` (0) would differ from the program's (1). The class belongs to the value's type, and D54 makes conversion respect it. That is the right fix, not a different reading.
 
 `subsumed` is now only D19's row. 49 rows: soundness 19, false lemma 1, model 4, policy 2, subsumed 1, cost 1, completeness 21. 982 verdicts.
+
+## 32. R6: `Id`'s owners in a canonical order
+
+`footprint` sorted the owners by their position in Ω. Closing off a match changes that order in two ways:
+- a sealed program binds its captures in its own order, and a borrow parameter's cell is not where the caller's is;
+- a captured place that an arm writes becomes a borrow parameter, so its plain reads become reads through a borrow, which the footprint counts.
+
+The same `Id` then computed to conjunctions in different orders on the two paths, and `And` is not commutative by conversion.
+
+The order is now canonical, by syntax: first the owners of the places the two sides write or borrow, in the order they first occur; then those reached only through a borrow-typed variable. Duplicates are dropped.
+
+- *Regressions* (`Owners`):
+  - `IdOrder`, fuzz-port's `R6Order.Direct`, a true statement that was rejected; it is now accepted;
+  - `OrderSwapped`, the opposite order, which was accepted and is now rejected;
+  - `OrderAtZero`;
+  - `IdOrderRead`, the fuzzer's shape where a read of a written place came first once closed off.
+- *Fuzzer:* 3 × 10⁵ cases with moves off show no conjunction-order finding. Before, there were 2 in 10⁵.
+- `Scratch/R6Order.lean` still carries its old expectations: `Direct` is marked as a rejection and `Swapped` as an acceptance.
+
+986 verdicts.

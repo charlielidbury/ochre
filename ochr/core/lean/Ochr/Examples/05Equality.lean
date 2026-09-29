@@ -289,13 +289,37 @@ ochr Owners uses Fixtures {
       S m => h(refl),
     }
   )
+
+  -- The owners are observed in the order the two sides first reach them, not in Ω's order:
+  -- closed off, the match below binds `n0` before `x2`'s content, and the conjunction must
+  -- still come out as written (fuzz-port's R6: the order was Ω's, and the true statement
+  -- `IdOrder` was rejected at the generic call, where `OrderSwapped` was accepted).
+  def IdOrder (n0 : Nat) (x2 : &Nat) :
+      Id Prop (match n0 { Z => Id Unit (*x2 := 1) (n0 := *x2), S p2 => ⊤ })
+        (match n0 { Z => Eq Nat 1 *x2 ∧ Eq Nat 0 *x2, S p2 => ⊤ }) := (
+    match n0 { Z => refl, S _ => refl }
+  )
+  reject def OrderSwapped (n0 : Nat) (x2 : &Nat) :
+      Id Prop (match n0 { Z => Id Unit (*x2 := 1) (n0 := *x2), S p2 => ⊤ })
+        (match n0 { Z => Eq Nat 0 *x2 ∧ Eq Nat 1 *x2, S p2 => ⊤ }) := (
+    match n0 { Z => refl, S _ => refl }
+  )
+  def OrderAtZero (x2 : &Nat) :
+      Id Prop (let n0 = 0; Id Unit (*x2 := 1) (n0 := *x2)) (Eq Nat 1 *x2 ∧ Eq Nat 0 *x2) := refl
+  -- Written places come first, then places only read through a borrow: closed off, `n1`
+  -- becomes a borrow parameter, and its read in `(1, n1)` must not put it first.
+  def IdOrderRead (x0 : &(Nat × Nat)) (n1 : Nat) :
+      Id Prop (match n1 { Z => ⊤, S p => Id Unit (*x0 := (1, n1)) (n1 := 0) })
+        (match n1 { Z => ⊤, S p => Eq (Nat × Nat) (1, n1) *x0 ∧ Eq Nat n1 0 }) := (
+    match n1 { Z => refl, S _ => refl }
+  )
 }
 
 #eval IO.println (run "Owners" Owners).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Owners" Owners).allAsExpected
-#guard (run "Owners" Owners).count == 11
+#guard (run "Owners" Owners).count == 15
 
 /-- The message rejecting `Owners.Use` under `cfg`: it states `Probe`'s parameter type. -/
 def useMessage (cfg : Ochr.Config) : String :=

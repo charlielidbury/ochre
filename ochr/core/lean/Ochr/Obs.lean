@@ -101,25 +101,32 @@ partial def owners (env : Env) (l : Nat) (seen : List Nat := []) : List Pos :=
 assigned, or rooted at a borrow-typed variable contribute their owners: `{x}` for a
 place rooted at an owned `x`, `owners(ℓ)` for one rooted at a variable holding
 `borrow_ℓ`. With `multi = false` only the first owner of a hole is kept (the
-single-owner reading refuted by meta-model C2; counterfactual runs only). -/
+single-owner reading refuted by meta-model C2; counterfactual runs only).
+
+The owners are listed in the order the terms first write or borrow them, then those only
+reached through a borrow-typed variable, not in Ω's order: closing off a match re-orders Ω (a
+sealed program binds its captures in its own order, and a borrow parameter's cell is not where
+the caller's is) and turns a captured place's reads into reads through a borrow, and `Id`'s
+conjunction must come out the same on every path (fuzz-port's R6). -/
 def footprint (env : Env) (ts : List Term) (multi : Bool := true) : List Pos := Id.run do
   let f := env.size - 1
   let n := env[f]!.binds.size
   let mut out : List Pos := []
-  for t in ts do
-    for (o, _, k) in t.freeOccs do
-      if o < n then
-        let pos := Pos.bind f (n - 1 - o)
-        let b := env[f]!.binds[n - 1 - o]!
-        let isRefTy := match b.ty with | some (.tRef _) => true | _ => false
-        let ownersOfRoot : List Pos := match b.val with
-          | .borrow m _ => let os := owners env m; if multi then os else os.take 1
-          | .bot => []
-          | _ => [pos]
-        if k == .borrow || k == .assign then
-          out := out ++ ownersOfRoot
-        else if isRefTy || b.val.isBorrow then
-          out := out ++ ownersOfRoot
-  pure (sortPos out)
+  for writes in [true, false] do
+    for t in ts do
+      for (o, _, k) in t.freeOccs do
+        if o < n then
+          let pos := Pos.bind f (n - 1 - o)
+          let b := env[f]!.binds[n - 1 - o]!
+          let isRefTy := match b.ty with | some (.tRef _) => true | _ => false
+          let ownersOfRoot : List Pos := match b.val with
+            | .borrow m _ => let os := owners env m; if multi then os else os.take 1
+            | .bot => []
+            | _ => [pos]
+          let counts := if writes then k == .borrow || k == .assign else isRefTy || b.val.isBorrow
+          if counts then
+            for q in ownersOfRoot do
+              unless out.contains q do out := out ++ [q]
+  pure out
 
 end Ochr
