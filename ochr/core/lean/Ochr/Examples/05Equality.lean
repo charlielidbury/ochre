@@ -30,6 +30,15 @@ ochr Equality uses Std {
     }
   )
 
+  -- The paper's first `Id` (§2): at a definition taking `x : &Nat`, `Id Unit (AddM(x, 0)) ()`
+  -- is `Eq Unit () () ∧ Eq Nat N(σ) σ`, where `N(σ)`, the sealed program the stuck call leaves
+  -- in `x`'s owner, is also what `Add(*x, 0)` computes; the first conjunct is reflexive, so
+  -- the whole is the single equation `Eq Nat N(σ) σ`, in both directions.
+  def IdIsConj (x : &Nat) (h : Id Unit (AddM(x, 0)) ()) : Eq Unit () () ∧ Eq Nat (Add(*x, 0)) (*x) := h
+  def IdIsEq (x : &Nat) (h : Id Unit (AddM(x, 0)) ()) : Eq Nat (Add(*x, 0)) (*x) := h
+  def EqIsId (x : &Nat) (h : Eq Nat (Add(*x, 0)) (*x)) : Id Unit (AddM(x, 0)) () := h
+  reject def IdIsWrong (x : &Nat) (h : Id Unit (AddM(x, 0)) ()) : Eq Nat (Add(*x, 1)) (*x) := h
+
   -- Owned locals are observed too: `x := 6` and `()` differ in what they leave in `x` ...
   reject def OwnedLocal (x : Nat) : Id Unit (x := 6) () := refl
 
@@ -100,7 +109,7 @@ ochr Equality uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Equality" Equality).allAsExpected
-#guard (run "Equality" Equality).count == 20
+#guard (run "Equality" Equality).count == 24
 
 /-! ## All the owners of a returned borrow are observed
 
