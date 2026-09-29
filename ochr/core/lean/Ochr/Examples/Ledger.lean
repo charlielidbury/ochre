@@ -57,8 +57,9 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { generalize := false }
   ["CaseSplits.MatchAfterOpaque:rejected", "GenType.GenL:rejected", "Trees.InsertM:rejected",
-   "Trees.Insert:rejected", "Trees.InsertMEq:rejected", "Trees.InsertMSwap:rejected",
-   "Trees.SizeInsert:rejected"]
+   "Trees.Insert:rejected", "Trees.InsertMEq:rejected", "Trees.InsertMSwap:rejected", "Trees.SizeInsert:rejected",
+   "InPlaceTrees.InsertM:rejected", "InPlaceTrees.Insert:rejected", "InPlaceTrees.InsertMIsInsert:rejected",
+   "InPlaceTrees.SizeInsert:rejected"]
 open Ochr.Registry in
 #guard rowOk { blockMoves := false }
   ["ClosingOff.MovedByBlock:accepted"]
@@ -91,7 +92,7 @@ open Ochr.Registry in
   ["ClosingOff.Clear:accepted", "ClosingOff.Boom5:accepted"]
 open Ochr.Registry in
 #guard rowOk { genConsistent := false }
-  ["Trees.InsertMEq:rejected", "Trees.SizeInsert:rejected"]
+  ["Trees.InsertMEq:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.SizeInsert:rejected"]
 open Ochr.Registry in
 #guard rowOk { classBySyntax := false }
   ["ErasureBySyntax.BoomL:accepted", "ErasureBySyntax.Boom8:accepted", "ErasureBySyntax.Direct8:accepted",
@@ -209,7 +210,7 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { injective := false }
   ["Equality.Inj:rejected", "Equality.PairInj:rejected", "Recursion.AddZeroCopy:rejected",
-   "CurrentState.AddSubIdReborrow:rejected"]
+   "Recursion.InjStep:rejected", "CurrentState.AddSubIdReborrow:rejected"]
 -- finding (v2.0 round): v1.9 assumed a data match's scrutinee type from its arms
 open Ochr.Registry in
 #guard rowOk { scrutTyped := false }

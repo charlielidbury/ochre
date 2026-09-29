@@ -279,6 +279,77 @@ ochr Trees uses Std {
 #guard (run "Trees" Trees).allAsExpected
 #guard (run "Trees" Trees).count == 14
 
+/-! ## The paper's trees: the pure insert runs the in-place one
+
+The paper (§2, Trees) defines the pure insert as `Add` is defined, by running the in-place
+one on a copy, and proves the size theorem about it. `InsertM`, `Insert` and `SizeInsert`
+are the paper's text, in its layout; `Lt` and `Size` are the ones it assumes, and `AddS`
+(`x + S y = S (x + y)`) is proved in place by bare recursion (`AddMS`) and transferred to
+`Add` by lending, as the prose says. The in-place insert is the pure one by definition
+(`InsertMIsInsert`, by `refl`). -/
+
+ochr InPlaceTrees uses Std {
+  inductive Tree := Leaf | Node(l : Tree, v : Nat, r : Tree)
+
+  def Lt (a : Nat) (b : Nat) : Bool by a := (
+    match a {
+      Z => match b { Z => false, S _ => true },
+      S a' => match b { Z => false, S b' => Lt(a', b') },
+    }
+  )
+
+  def InsertM (t : &Tree) (k : Nat) : Unit by t :=
+    match *t { Leaf          => *t := Node(Leaf, k, Leaf),
+               Node(l, v, r) => let b = Lt(k, v);
+                                match b { true => InsertM(&l, k), false => InsertM(&r, k) } }
+  def Insert (t : Tree) (k : Nat) : Tree := InsertM(&t, k); t
+
+  def InsertMIsInsert (t : &Tree) (k : Nat) : Id Unit (InsertM(t, k)) (*t := Insert(*t, k)) := refl
+
+  def AddMS (x : &Nat) (y : Nat) : Id Unit (AddM(x, S y)) (AddM(&*x, y); *x := S *x) by x := (
+    match *x {
+      Z => refl,
+      S p => AddMS(&p, y),
+    }
+  )
+
+  def AddS (x : Nat) (y : Nat) : Id Nat (Add(x, S y)) (S (Add(x, y))) := AddMS(&x, y)
+
+  def Size (t : Tree) : Nat by t := (
+    match t {
+      Leaf => 0,
+      Node(l, v, r) => S (Add(Size(l), Size(r))),
+    }
+  )
+
+  def SizeInsert (t : Tree) (k : Nat) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t :=
+    match t { Leaf => refl,
+              Node(l, v, r) => let b = Lt(k, v); match b {
+                true  => J(Nat, S (Size(l)), Size(Insert(l, k)),
+                           λ(z : Nat) : Prop => Id Nat (S (S (Add(Size(l), Size(r))))) (S (Add(z, Size(r)))),
+                           SizeInsert(l, k), refl),
+                false => J(Nat, Add(Size(l), S (Size(r))), S (Add(Size(l), Size(r))),
+                           λ(z : Nat) : Prop => Id Nat (S z) (S (Add(Size(l), Size(Insert(r, k))))),
+                           AddS(Size(l), Size(r)),
+                           J(Nat, S (Size(r)), Size(Insert(r, k)),
+                             λ(z : Nat) : Prop => Id Nat (S (Add(Size(l), S (Size(r))))) (S (Add(Size(l), z))),
+                             SizeInsert(r, k), refl)) } }
+
+  -- Inserting does not grow the size by two.
+  reject def SizeInsertTwo (t : Tree) (k : Nat) : Id Nat (S (S (Size(t)))) (Size(Insert(t, k))) by t := (
+    match t {
+      Leaf => refl,
+      Node(l, v, r) => SizeInsertTwo(l, k),
+    }
+  )
+}
+
+#eval IO.println (run "InPlaceTrees" InPlaceTrees).show
+
+-- every verdict as expected, and the exact number of declarations (a truncated file changes it)
+#guard (run "InPlaceTrees" InPlaceTrees).allAsExpected
+#guard (run "InPlaceTrees" InPlaceTrees).count == 10
+
 /-! ## Parameters: a polymorphic list
 
 `List(A)` is `Std`'s. -/
