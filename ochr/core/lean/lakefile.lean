@@ -14,3 +14,7 @@ lean_lib «Ochr» where
 -- the verdict table; it exits non-zero if any verdict is not the expected one.
 lean_exe tests where
   root := `Tests
+
+-- `lake exe fuzz`: the differential naturality fuzzer (Ochr/Fuzz/, notes/fuzzer.md).
+lean_exe fuzz where
+  root := `Fuzz
