@@ -240,3 +240,13 @@ Two time-boxed probes designed each route against the same four benchmarks: B1, 
   - Its paper cost is about 0.5 page of body and 0.5 page of appendix.
 
 The library route is chosen. Its costs are three facts that become one-induction lemmas (split-then-join, suffix-of-join, get-after-set), and continuation-scoped sub-range borrows. The primitive route would add a normaliser, arithmetic knowledge and an axiom to the part of the system that the reviews found most fragile. Both routes need strong recursion on Nat for quicksort ([Rec-<], K6, with `Lt` pinned like `True`/`And`); it is decided separately.
+
+## D58. An impossible branch is stuck, never an ill-typed value (hashmap-port)
+D49 (5) made a zero-arm match yield `⋆` "at any type", because it is unreachable. It is unreachable in closed runs, but it is reached in open ones. When a refinement makes a hypothesis false, re-normalising a sealed program runs into the `match h {}` arm and returns `⋆` at a data or borrow type. The next step (`*r` on a `⋆`) then errors, and D29 turns that into a type error, before the proof's own `match h {}` arm is even checked. Minimal (checker 96d788a1):
+```
+def IsZ (n : Nat) : Prop := match n { Z => ⊤, S _ => False }
+def G (x : &Nat) (h : IsZ(*x)) : &Nat := match *x { Z => x, S _ => match h {} }
+def T (x : &Nat) (h : IsZ(*x)) : Id Nat (let q = G(&*x, h); *q) 0 := match *x { Z => refl, S _ => match h {} }   -- true, but rejected
+```
+This blocks every theorem about a function with a precondition-guarded impossible arm, such as the hashmap's `GetMut`. `GetMut` must take a presence proof, because `Option<&mut V>` is a borrow inside data (D48).
+The fix follows the principle behind D56: an unreachable or unconvertible situation must stay *stuck* (a neutral) and never produce a value of the wrong type. That keeps well-formedness condition 6 ("values have their types") in open contexts. A zero-arm match in a proof position is erased as before (value `⋆`). Anywhere else, reaching it is stuck and the enclosing computation closes off. Sound: closed runs never reach it, and stuck terms are neutrals. D49 (5)'s "a zero-arm match is a declared proof, vacuously" now applies only where the match's own position is a proof.
