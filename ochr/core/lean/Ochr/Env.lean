@@ -117,6 +117,10 @@ structure Config where
   refData : Bool := true         -- D48 (1): `&A` only for a data type A (never a universe, Π-type or proposition)
   injective : Bool := true      -- D52: Eq on two values of one constructor is the conjunction over its fields
   refTop : Bool := true          -- D48 (2): `&` only at the top of a declared type, never produced by computation
+  sortsSyntactic : Bool := false -- D55: a term written where a type is expected has a declared type that is syntactically a sort
+  classInType : Bool := true     -- D54: a Π-type's erasure class and [Close] row are part of it (conversion compares them)
+  jStuck : Bool := true          -- D56: J computes only when its endpoints are convertible, otherwise it is stuck
+  zeroArmStuck : Bool := true    -- D58: a zero-arm match outside a proof position is stuck, not ⋆
   movingReads : Bool := false   -- D53 prototype (off): runtime reads of non-copy data move; erased reads copy
   movingReadsFnCopy : Bool := false   -- D53 prototype variant: function values are copy types
   movingReadsGhost : Bool := false    -- D53 prototype variant: erased terms still read a moved value

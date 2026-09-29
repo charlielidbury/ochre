@@ -27,14 +27,15 @@ optimisation of P2, and in this checker switching it off also switches off the `
 representation of proofs, so its row would not isolate one rule.) -/
 open Ochr.Registry in
 #guard rowOk { eraseOnCopy := false }
-  ["CurrentState.TwoPhase:rejected", "Erasure.LemmaMoves:rejected", "Erasure.TypeErased:rejected"]
+  ["Functions.RunGGen:rejected", "Functions.RunIGen:rejected", "CurrentState.TwoPhase:rejected",
+   "Erasure.LemmaMoves:rejected", "Erasure.TypeErased:rejected"]
 open Ochr.Registry in
 #guard rowOk { eraseOnCopy := false, confine := false }
-  ["Subsingletons.EffInline:accepted", "CurrentState.TwoPhase:rejected", "Erasure.LemmaMoves:rejected",
-   "Erasure.TypeErased:rejected", "Erasure.EffArg:accepted", "Erasure.Write:accepted",
-   "Erasure.Borrow:accepted", "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.N1Closed:accepted",
-   "Erasure.Q:accepted", "Erasure.QBoom:accepted", "ErasureBySyntax.LieP:accepted",
-   "ErasureBySyntax.BoomP:accepted"]
+  ["Functions.RunGGen:rejected", "Functions.RunIGen:rejected", "Subsingletons.EffInline:accepted",
+   "CurrentState.TwoPhase:rejected", "Erasure.LemmaMoves:rejected", "Erasure.TypeErased:rejected",
+   "Erasure.EffArg:accepted", "Erasure.Write:accepted", "Erasure.Borrow:accepted", "Erasure.Move:accepted",
+   "Erasure.N1T:accepted", "Erasure.N1Closed:accepted", "Erasure.Q:accepted", "Erasure.QBoom:accepted",
+   "ErasureBySyntax.LieP:accepted", "ErasureBySyntax.BoomP:accepted"]
 open Ochr.Registry in
 #guard rowOk { multiOwner := false }
   ["Owners.BadD18:accepted", "Owners.ClosedD18:accepted", "Owners.GR:accepted", "Owners.BadR:accepted"]
@@ -56,9 +57,9 @@ open Ochr.Registry in
   ["Borrows.Dead:accepted", "Borrows.DeadTwice:accepted"]
 open Ochr.Registry in
 #guard rowOk { generalize := false }
-  ["CaseSplits.MatchAfterOpaque:rejected", "GenType.GenL:rejected", "Trees.InsertM:rejected",
-   "Trees.Insert:rejected", "Trees.InsertMEq:rejected", "Trees.InsertMSwap:rejected",
-   "Trees.SizeInsert:rejected"]
+  ["Equality.CastMatch:rejected", "CaseSplits.MatchAfterOpaque:rejected", "GenType.GenL:rejected",
+   "Trees.InsertM:rejected", "Trees.Insert:rejected", "Trees.InsertMEq:rejected",
+   "Trees.InsertMSwap:rejected", "Trees.SizeInsert:rejected"]
 open Ochr.Registry in
 #guard rowOk { blockMoves := false }
   ["ClosingOff.MovedByBlock:accepted"]
@@ -74,9 +75,10 @@ open Ochr.Registry in
   ["Recursion.KnotL:accepted", "Recursion.KnotLBoom:accepted"]
 open Ochr.Registry in
 #guard rowOk { erasureByDecl := false }
-  ["ClosingOff.RowI:accepted", "Erasure.TypeErased:rejected", "ErasureBySyntax.MainW0:rejected",
-   "ErasureBySyntax.TruthB:rejected", "ErasureBySyntax.LieG:accepted", "ErasureBySyntax.TruthG:rejected",
-   "ErasureBySyntax.SeqT:rejected", "ErasureBySyntax.LieH:rejected"]
+  ["ClosingOff.RowI:accepted", "Functions.RunG:rejected", "Functions.RunGGen:rejected",
+   "Functions.RunI:rejected", "Functions.RunIGen:rejected", "Erasure.TypeErased:rejected",
+   "ErasureBySyntax.MainW0:rejected", "ErasureBySyntax.TruthB:rejected", "ErasureBySyntax.LieG:accepted",
+   "ErasureBySyntax.TruthG:rejected", "ErasureBySyntax.SeqT:rejected", "ErasureBySyntax.LieH:rejected"]
 open Ochr.Registry in
 #guard rowOk { matchEndsInside := false }
   ["ReturnedBorrows.Bad:accepted", "ReturnedBorrows.Main:accepted"]
@@ -112,26 +114,28 @@ open Ochr.Registry in
   ["ClosingOff.RowI:accepted"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 0 }
-  ["Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Subsingletons.OrLet:rejected"]
+  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected",
+   "Subsingletons.OrLet:rejected"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 0, confine := false }
-  ["Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Subsingletons.OrLet:rejected",
-   "Subsingletons.EffInline:accepted", "Erasure.EffArgErased:accepted", "Erasure.Write:accepted",
-   "Erasure.Borrow:accepted", "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted"]
+  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected",
+   "Subsingletons.OrLet:rejected", "Subsingletons.EffInline:accepted", "Erasure.EffArgErased:accepted",
+   "Erasure.Write:accepted", "Erasure.Borrow:accepted", "Erasure.Move:accepted", "Erasure.N1T:accepted",
+   "Erasure.Q:accepted"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 1 }
-  ["Snapshots.CapP:rejected", "Snapshots.CapP2:rejected"]
+  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 1, confine := false }
-  ["Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Subsingletons.EffInline:accepted",
-   "Erasure.EffArgErased:accepted", "Erasure.Write:accepted", "Erasure.Borrow:accepted",
-   "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted", "ErasureBySyntax.LieP:accepted",
-   "ErasureBySyntax.BoomH:accepted"]
+  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected",
+   "Subsingletons.EffInline:accepted", "Erasure.EffArgErased:accepted", "Erasure.Write:accepted",
+   "Erasure.Borrow:accepted", "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted",
+   "ErasureBySyntax.LieP:accepted", "ErasureBySyntax.BoomH:accepted"]
 open Ochr.Registry in
 #guard rowOk { blockRule := 1, leafRule := 0 }
-  ["Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Subsingletons.OrLet:rejected",
-   "ErasureBySyntax.LieG:accepted", "ErasureBySyntax.BoomG:accepted", "ErasureBySyntax.TruthG:rejected",
-   "ErasureBySyntax.LieP:accepted", "ErasureBySyntax.BoomP:accepted"]
+  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected",
+   "Subsingletons.OrLet:rejected", "ErasureBySyntax.LieG:accepted", "ErasureBySyntax.BoomG:accepted",
+   "ErasureBySyntax.TruthG:rejected", "ErasureBySyntax.LieP:accepted", "ErasureBySyntax.BoomP:accepted"]
 open Ochr.Registry in
 #guard rowOk { positivity := false }
   ["Positivity.Bad:accepted", "Positivity.L:accepted", "Positivity.K:accepted", "Positivity.bad:accepted",
@@ -165,8 +169,8 @@ open Ochr.Registry in
    "ReturnedBorrows.QF:accepted"]
 open Ochr.Registry in
 #guard rowOk { capTypes := false }
-  ["Snapshots.CapS:rejected", "Snapshots.CapSId:rejected", "Snapshots.CapPi:rejected",
-   "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected"]
+  ["Equality.Om:rejected", "Snapshots.CapS:rejected", "Snapshots.CapSId:rejected",
+   "Snapshots.CapPi:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected"]
 -- `genPlaceType` changes no verdict; 08CaseSplits.lean asserts its effect on the generalised σ's type
 -- v2.0 D45 by type, switched off: a match on a proof inspects its content (⋆) like data: completeness only
 open Ochr.Registry in
@@ -229,8 +233,8 @@ open Ochr.Registry in
 -- D48 (3) switched off: Π-types compared by captures and code (reviewer-3 C3)
 open Ochr.Registry in
 #guard rowOk { piUnder := false }
-  ["Functions.Cap:rejected", "Functions.CapEq:rejected", "Functions.P1:rejected", "Functions.P3:rejected",
-   "Functions.PassZeroAdd:rejected", "Functions.PassA:rejected"]
+  ["Equality.Om:rejected", "Functions.Cap:rejected", "Functions.CapEq:rejected", "Functions.P1:rejected",
+   "Functions.P3:rejected", "Functions.PassZeroAdd:rejected", "Functions.PassA:rejected"]
 -- D49 (3) switched off: a data field of a matched proof is ⋆, and cannot be split
 open Ochr.Registry in
 #guard rowOk { proofDataFields := false }
@@ -239,6 +243,23 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { unitNorm := true }
   ["Propositions.AndTrue:rejected"]
+-- v2.1 D54 switched off: a function type's class and row are not part of it, so `H`, which
+-- returns data, passes where a function returning types is expected; `Boom` and `BoomI` are
+-- closed proofs of False (reviewer-5), `RunUH` the harmless [Close]-row disagreement
+open Ochr.Registry in
+#guard rowOk { classInType := false }
+  ["Functions.Boom:accepted", "Functions.RunGH:accepted", "Functions.BoomI:accepted",
+   "Functions.RunUH:accepted"]
+-- v2.1 D56 switched off: J returns t whatever its endpoints (equality reflection): `Om`
+-- exceeds the depth bound, and `CastMatch` matches 5 against Bool's constructors (reviewer-4 W4)
+open Ochr.Registry in
+#guard rowOk { jStuck := false }
+  ["Equality.Om:rejected", "Equality.CastMatch:rejected"]
+-- v2.1 D58 switched off: a zero-arm match yields ⋆ at any type, so re-running `GetZ` under a
+-- false hypothesis returns ⋆ for a borrow, and `*q` fails before the proof's own arm (hashmap-port)
+open Ochr.Registry in
+#guard rowOk { zeroArmStuck := false }
+  ["Propositions.GetZIs:rejected"]
 
 -- every row of `switches` has a class
 open Ochr.Registry in

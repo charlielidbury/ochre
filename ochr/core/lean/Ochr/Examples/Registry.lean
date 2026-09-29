@@ -103,7 +103,10 @@ def switches : List (String × Config) :=
    ("D48 (3): Π-types are compared under their binders", { piUnder := false }),
    ("D49 (3): a data field of a matched proof is a fresh abstract value", { proofDataFields := false }),
    ("D50 (switched ON): the unit laws normalise stored types instead of converting", { unitNorm := true }),
-   ("extension (switched ON): bodies of erased-class functions and arms of erased blocks are confined", { confineBodies := true })]
+   ("extension (switched ON): bodies of erased-class functions and arms of erased blocks are confined", { confineBodies := true }),
+   ("D54 (v2.1): a Π-type's erasure class and [Close] row are part of it", { classInType := false }),
+   ("D56 (v2.1): J computes only when its endpoints are convertible", { jStuck := false }),
+   ("D58 (v2.1): a zero-arm match outside a proof position is stuck, not ⋆", { zeroArmStuck := false })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -164,12 +167,15 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("completeness", []),
    ("completeness", []),
+   ("completeness", []),
+   ("soundness", ["Functions.Boom", "Functions.BoomI"]),
+   ("completeness", []),
    ("completeness", [])]
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 449
+def Ochr.Registry.expectedTotal : Nat := 471
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

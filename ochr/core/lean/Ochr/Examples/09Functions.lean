@@ -141,10 +141,63 @@ ochr Functions uses Std {
     let d = Z;
     TY(&c, &d)
   )
+
+  -- A function's erasure class and [Close] row are part of its type (D54). `H` returns a
+  -- `P0`, which is `Prop` but not written as a sort, so `H` returns data and its calls run,
+  -- while calls of a `Π(x : &Nat). Prop` return types and are erased. Were the two types
+  -- convertible (switch `classInType`), `RunGGen`'s generic call would erase `g(&c)` and its
+  -- instance at `H` would run it, and `Boom` would be a closed proof of `False`, as would
+  -- `BoomI` through an identity function.
+  def P0 : Type := Prop
+
+  def H (x : &Nat) : P0 := (
+    *x := S Z;
+    ⊤
+  )
+
+  def RunG (f : Π(x : &Nat). Prop) : Nat := (
+    let c = Z;
+    let g = f;
+    g(&c);
+    c
+  )
+
+  def RunGGen (f : Π(x : &Nat). Prop) : Id Nat (RunG(f)) Z := refl
+  reject def Boom : False := RunGGen(H)
+  reject def RunGH : Id Nat (RunG(H)) 1 := refl
+
+  def IdF (f : Π(x : &Nat). Prop) : (Π(x : &Nat). Prop) := f
+
+  def RunI (f : Π(x : &Nat). Prop) : Nat := (
+    let c = Z;
+    IdF(f)(&c);
+    c
+  )
+
+  def RunIGen (f : Π(x : &Nat). Prop) : Id Nat (RunI(f)) Z := refl
+  reject def BoomI : False := RunIGen(H)
+
+  -- The same for [Close]'s row: `UU(n)` is `Unit` only by computation, so `H2`'s row is not
+  -- `Unit`'s, and at a `Unit` parameter the two paths would give one statement two types
+  -- (harmlessly, since `Unit` has one value).
+  def UU (n : Nat) : Type := (
+    match n {
+      Z => Unit,
+      S _ => Unit,
+    }
+  )
+
+  def H2 (x : &Nat) : UU(Z) := (
+    *x := S Z;
+    ()
+  )
+
+  def RunU (f : Π(x : &Nat). Unit) (n : Nat) : Id Unit (let c = n; f(&c)) () := refl
+  reject def RunUH (n : Nat) : ⊤ := RunU(H2, n)
 }
 
 #eval IO.println (run "Functions" Functions).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Functions" Functions).allAsExpected
-#guard (run "Functions" Functions).count == 36
+#guard (run "Functions" Functions).count == 50
