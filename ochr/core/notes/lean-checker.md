@@ -1,5 +1,7 @@
 # lean-checker: an executable checker for RULES v2.0, and what running it found
 
+**reviewer-3 round (§15):** D48 (borrows of data only, only at the top of declared types; Π-types compared under their binders), D49 and D50 are implemented with regression tests and switches, ∧-elimination is tested, and every ledger row is classified (23 soundness with named witnesses, 1 false lemma, 3 model, 3 policy, 16 completeness; none flips nothing). 425 verdicts, all as expected.
+
 **v2.0 (§14):** False/True/And are library inductive declarations and the checker's primitives for them are gone; Prop inductives, zero constructors, uniform parameters, by-type matching on proofs, subsingleton elimination and D47 are implemented with switches and asserted ledger rows. 364 verdicts, all as expected. Findings: in this machine D42 (proofs are ⋆), not D45's subsingleton restriction, is what blocks the `Or` attack's closed `False` (D45 is still needed for the model and for canonicity); `And(True, P) ≡ P` as normalisation hides an `And` from a match; a v1.9 checker bug (a match's scrutinee type was assumed from its arms, a type-safety hole) is fixed. No closed proof of False found against v2.0.
 
 **v1.9 (§12):** D41 (confinement) is implemented and checked. The fail-safe experiment finds that D41 as written catches misclassified inline terms but not misclassified calls or blocks: the erased-call exception lets their bodies' writes through. 247 verdicts, all as expected.
@@ -471,3 +473,40 @@ def EffL (x : &Nat) (h : Or(⊤, ⊤)) : V(Z) := match h { Inl(p) => (*x := 1; r
 - 364 verdicts, all as expected, in about 16 ms (compiled, median of 21 runs; it was 12.4 ms at v1.9 with 247). The v2.0 programs take about 3 ms, mostly `ByType` (1.3 ms) and `PList` (0.9 ms).
 - A clean build takes about 35 s. `lake exe tests` takes about 38 s, including compilation.
 - `Machine.lean` is 2,096 lines (1,823 before). The checker is about 3,860 lines and the examples about 1,460.
+
+## 15. reviewer-3 (D48–D50) and the ledger's classes
+
+**Probes.** The reviewer's S1–S10 now give the following. S1's `Q(g : Π(n : Nat). &Nat) : Empty := P(g(5), refl)` is rejected by D44 (the rescued v1.9 work; the reviewer ran d7e0be31, before it). S2/S8's impredicative `Type₀` is rejected, and so are S10's `&Prop` and S7's `F`/`G` (D48 (1), (2)). S3's and S9's programs are accepted (D48 (3)). S6's `h.1` stays rejected: there is no projection from a proof, and ∧-elimination is a `match` on `And` (`AndElim`). S5's `LetZ` is rejected correctly: its `Id` borrows `x`, so `x` is in the footprint and the write is observed; `let z = …; (refl : Id Nat z 2)` is accepted.
+
+| Item | Implementation | Switch → row class |
+|---|---|---|
+| D48 (1) `&A` only for data | `isDataType` when `&A` is formed: `Nat`, `Unit`, `×` of data, an inductive in `Type₀` at any parameters. A neutral type or a type variable is not known to be data, so the generic path rejects (fail-safe). | `refData`, model: `Impred`, `PolyId`, `SelfApp`, `SelfAppEq` (System U⁻ inside the rules), `PIref`, `RefTrue`, `RefFun`, `SwapT` |
+| D48 (2) `&` only at the top | `Term.refsOk`/`refTopOk` over the whole definition in `checkDef`: a parameter's domain, a declared result, an annotation, a Π's parts | `refTop`, soundness: `D48.G` (reads `⊥` at `n = 0`) |
+| D48 (3) Π under binders | `convPi`: the binders get shared fresh generic values (an owned place behind a borrow, `⋆` for a proof); domains and codomains are compared by normal form. Captures and code are no longer compared; they remain a fast path. | `piUnder`, completeness: S3's `Cap`, `P1`, `P3`, S9's `PassZeroAdd`, `PassA` |
+| D49 (1) | already so (`scrutType`); `SubM`'s `Z => match h {}` with `h : Le(S q, Z) ≡ False` is accepted; a neutral type is an error (`Neutral`) | — |
+| D49 (2) | an untyped run of a non-subsingleton match is `⋆`, decided from the declaration (replaces §14's probe of one arm) | — |
+| D49 (3) | `bindDataFields`: a data field of a matched proof is a fresh abstract value, bound by a `let` that replaces the field's place in the arm | `proofDataFields`, completeness: `SqSplit` |
+| D49 (4) | `Term.ctor`/`Value.ind` carry parameters; surface `C[ā](t̄)` (core `C(ā; t̄)`); inferred parameters are recorded when typed; `==` ignores them | — (a representation) |
+| D50 | the unit laws in `conv` (`unitTop`); `mkEqM` still builds the single equation; stored types keep `And(True, P)` | `unitNorm` (on), completeness: `AndTrue` |
+| ∧-elimination | `match h { Intro(l, r) => … }` on `Id` over two and three owners (`AndElim`) | — |
+
+**What D48 costs.** There is no generic borrow `&A` for a type variable `A : Type` (`SwapT` is rejected), because `A` may be instantiated at `Prop` or at a Π-type. A `Data` kind (`Type₀` restricted to data types) would bring it back. Borrows of data holding propositions (`&Box(Prop)`) stay legal: quantifying over `Prop` in `Type₀` is predicative.
+
+**What D49 (4) does not do.** The checker has no elaborator, and the resolver has no types. So an omitted parameter that no field determines (`Nil`'s `A`) is known only when the constructor is evaluated in checked code, from a hint. A value built by an untyped run from `Nil` does not record `A`, and its `typeof` is unknown unless the parameter was written (`Nil[A]`). Conversion ignores recorded parameters (a type determines them), so typed-built and untyped-built values agree.
+
+**The ledger's classes** (`Registry.rowClass`, checked in `Ledger.lean` together with each row, printed by `lake exe tests`):
+
+| Class | Rows |
+|---|---|
+| soundness (closed false proof, or an accepted program that goes wrong when run; witness in brackets) | P2 without D41 [N1Closed, QBoom, BoomP], D18 [ClosedD18, BadR], D17 [KnotLBoom], D19 [BadA1], L1 [KnotBoom], L2 [Dead], C5 [MovedByBlock], L3 [KnotLBoom], D29 [V15.Main], D30 [Boom3], D31 [Boom4], D32 [Boom5], D35 class [BoomL, Boom8], D35/D40 block [BoomB, BoomG, Boom7], D40 [BoomG], P3 without D41 [BoomH], P1 + computed block type [BoomP, BoomG], D36 [Positivity.Boom, PosParam.Boom], D37 [BoomE], D38 [BoomX4], D45 + D42 [OrAttack.Boom, SqBoom], scrutinee type [Scrut.g], D48 (2) [D48.G] |
+| false lemma | D28 [LieG; its closed instance BoomG is caught by D41 since v1.9] |
+| model | D44 [Boom: refutes a type Rust inhabits], D45 alone [IsL, Get], D48 (1) [Impred, SelfApp] |
+| policy | D35's [Close] row [RowI, a true statement: stability, no witness], D41 and P1 without D41 [programs true under P2, which D41 forbids] |
+| completeness | P2, C8, D27, G1, D35 sequencing, P1, P3, D39, captured types, D45 by type, D42, D47, D48 (3), D49 (3), D50, the confineBodies extension |
+
+- **No row flips nothing.** The reviewer's P1 and P3, which were empty at 247 verdicts, now flip completeness tests (captured proofs, `OrLet`). Their soundness witnesses appear only with D41 off.
+- **D41 backs up three rules.** The witnesses of P2 (the private copy: N1Closed, QBoom, BoomP) and of P3 (BoomH) appear only with D41 off as well. P1 without D41 flips only programs D41 forbids by policy; its original witness, BoomP, also needs the computed-type block rule.
+- **D28's closed witness (V15.Boom) is now rejected by D41** even with D28 off, so D28 is a *false lemma* row.
+- **Rows whose witness is an open program that goes wrong when run** (adequacy, not a closed proof): D19, L2, C5, D29, the scrutinee type, and D48 (2).
+
+**Timings.** 425 verdicts in about 18 ms. A clean build takes about 40 s: 46 ledger rows, each re-running the suite twice in the interpreter, with each row's class checked in the same guard. `Machine.lean` is 2,210 lines, the checker about 4,050, and the examples about 1,690.
