@@ -58,10 +58,15 @@ structure IndDecl where
   ctors : List (String × List (String × Term)) := []
 deriving Inhabited
 
-/-- The function whose body is being checked, for [Rec]. -/
+/-- A function whose body is being checked, for [Rec]: its entry values and the
+recursive positions that have survived its recursive calls so far. The candidates are
+an accumulator: a state restore (a branch, a private copy) keeps them, matched to the
+frame by `uid`, so no nested computation can reset or shift them (the recCands fix). -/
 structure RecCtx where
   fn : Value
   entries : Array (Option Nat)   -- entry abstract value of each parameter (through the borrow)
+  cands : List Nat               -- the positions that survive every recursive call so far
+  uid : Nat                      -- identifies the frame across state restores
 deriving Inhabited
 
 /-- Switches for counterfactual runs: each disables one rule of v1 (or one fix of
@@ -147,9 +152,8 @@ structure MState where
   absTy : Array Value := #[]
   refs : List (Nat × Value) := []     -- [Split] refinements made so far: σ ↦ Z | S σ'
   goal : Option Value := none
-  recStack : List RecCtx := []        -- the functions whose bodies enclose the current point
-  recCands : List (List Nat) := []    -- per function (top first): surviving recursive positions;
-                                      -- accumulators, they survive branch restores
+  recStack : List RecCtx := []        -- the functions whose bodies enclose the current point (top first)
+  nextRecUid : Nat := 0               -- fresh `RecCtx.uid`s (never reused)
   fuel : Nat := 2000000
   cfg : Config := {}
   lastErased : Bool := false          -- set by `eval`: was the term just evaluated erased (D28)?
@@ -183,11 +187,17 @@ def tick : M Unit := do
   if s.fuel == 0 then err "out of fuel"
   set { s with fuel := s.fuel - 1 }
 
-/-- Restore a saved state, keeping the fuel spent and the [Rec] accumulators. -/
+/-- Restore a saved state, keeping the fuel spent and the [Rec] accumulators: each saved
+[Rec] frame takes the candidates of the current frame with the same `uid`, if there is
+one (a computation that replaced the stack, e.g. `sealedType`, cannot wipe them). -/
 def restoreKeep (saved : MState) : M Unit :=
   modify fun cur =>
+    let keepCands (fr : RecCtx) : RecCtx :=
+      match cur.recStack.find? (·.uid == fr.uid) with
+      | some c => { fr with cands := c.cands }
+      | none => fr
     let s := { saved with fuel := cur.fuel, classCache := cur.classCache,
-                          recCands := cur.recCands.drop (cur.recCands.length - saved.recCands.length) }
+                          recStack := saved.recStack.map keepCands, nextRecUid := cur.nextRecUid }
     -- D37 (v1.8): fresh names are never reused, and generalisation records are global
     if cur.cfg.globalRecords then
       { s with nextAbs := cur.nextAbs, absTy := cur.absTy, nextLoan := cur.nextLoan, neutrals := cur.neutrals }

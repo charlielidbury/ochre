@@ -482,7 +482,7 @@ partial def valType (v : Value) : M Value := do
 an ordinary term on a private copy, from the empty environment. Its head call is not
 marked, so a stuck body closes off; its [Call-type] is what gives the type. -/
 partial def sealedType (t : Term) : M Value := onCopy do
-  modify fun s => { s with env := #[{}], recStack := [], recCands := [], goal := none }
+  modify fun s => { s with env := #[{}], recStack := [], goal := none }
   let (_, T) ← eval true t.unHead
   match T with
   | some T => pure T
@@ -1625,9 +1625,10 @@ nested closure is checked against the outer function's entry values (fix L3). -/
 partial def recCheck (fv : Value) (ws : Array Value) : M Unit := do
   let st ← get
   if !st.cfg.recGuard then return
-  let mut candss := #[]
-  for (ctx, cands) in st.recStack.zip st.recCands do
+  let mut frames := #[]
+  for ctx in st.recStack do
     if ctx.fn == fv then
+      let cands := ctx.cands
       let cands' := cands.filter fun j =>
         match ctx.entries[j]?.join, ws[j]? with
         | some σ, some w =>
@@ -1639,9 +1640,9 @@ partial def recCheck (fv : Value) (ws : Array Value) : M Unit := do
         err s!"[Rec] {fv} calls itself but declares no decreasing parameter (`by x`)"
       if cands'.isEmpty then
         err s!"[Rec] at {fv}({", ".intercalate (ws.toList.map toString)}): the argument in the decreasing position is not a strict subterm of that parameter's entry value as refined so far"
-      candss := candss.push cands'
-    else candss := candss.push cands
-  set { st with recCands := candss.toList }
+      frames := frames.push { ctx with cands := cands' }
+    else frames := frames.push ctx
+  set { st with recStack := frames.toList }
 
 -- ### Match: [Match], [Split], stuck blocks
 
@@ -2236,11 +2237,13 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
   if dec.isNone && !(← get).cfg.unboundWithoutBy then
     -- counterfactual D31 (the v1.3 literal reading): [Rec] constrains only `fix … by x`
     modify fun s => { s with goal := some goal }
-  else if (← get).cfg.recNested then
-    modify fun s => { s with goal := some goal, recStack := ⟨fv, entries⟩ :: s.recStack,
-                              recCands := cands :: s.recCands }
-  else  -- counterfactual L3: a nested function's check starts with a fresh [Rec] context
-    modify fun s => { s with goal := some goal, recStack := [⟨fv, entries⟩], recCands := [cands] }
+  else
+    let fr : RecCtx := { fn := fv, entries, cands, uid := (← get).nextRecUid }
+    modify fun s => { s with nextRecUid := s.nextRecUid + 1 }
+    if (← get).cfg.recNested then
+      modify fun s => { s with goal := some goal, recStack := fr :: s.recStack }
+    else  -- counterfactual L3: a nested function's check starts with a fresh [Rec] context
+      modify fun s => { s with goal := some goal, recStack := [fr] }
   -- D41: the body of a function whose calls are erased must be confined
   let bodyErased? ← if (← get).cfg.confine && (← get).cfg.confineBodies then
       if (← get).cfg.erasureByDecl then pure (some ((← fnClass piTy) != 0)) else pure none
@@ -2270,8 +2273,6 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
     unless ← conv T g do
       err s!"the body of {self.name} has type {T}, but the goal is {g}"
   restoreKeep saved
-  unless (← get).cfg.recNested do
-    modify fun s => { s with recCands := saved.recCands }
 
 end
 
