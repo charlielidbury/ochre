@@ -183,3 +183,70 @@ Overturns D3, restoring the user's original "everything moves". D3's reason (a t
 - `clone(p)` is a built-in term: [Access] as for a read, then copy `content(p)` and leave `p` unchanged. Copying an abstract value gives the same abstract value, so every clone of `x ↦ σ` is `σ` (definitionally equal), which a user-defined recursive clone could not give (it would close off to a sealed program and leave a backward function in `x`).
 - Captures are reads: a runtime closure moves the non-copy variables it captures; a Π-type, being a type, copies.
 Copy/move is decided from syntax and declared types, so the generic call and every instance agree (the D28/D35 discipline).
+
+## D54. The erasure class and [Close] row are part of the Π-type (reviewer-5)
+A cold review (notes/reviewer-5.md) found a closed proof of False, accepted at 96d788a1:
+```
+def P0 : Type := Prop
+def H (x : &Nat) : P0 := (*x := S Z; ⊤)
+def RunG (f : Π(x : &Nat). Prop) : Nat := (let c = Z; let g = f; g(&c); c)
+def RunGGen (f : Π(x : &Nat). Prop) : Id Nat (RunG(f)) Z := refl
+def Boom : False := RunGGen(H)
+```
+D35 reads a call's class from the *callee value's* codomain term. At the generic call `g` is the abstract `f`, whose type's codomain is syntactically `Prop`, so `g(&c)` is erased and `c` stays `Z`. At the instance `g` is `H`, whose own codomain term `P0` is not syntactically a sort, so the call runs and writes. [Conv-pi] compares codomains by evaluation, so it lets `H : Π(x : &Nat). P0` stand where `Π(x : &Nat). Prop` is expected. Variants: through an identity function (`IdF(f)(&c)`), and the proof version (`f : Π(x : &Nat). ⊤` instantiated by a writing function whose codomain `V(Z)` computes to `⊤` but whose declared sort is not `Prop`). The same gap in [Close]'s row (`Unit` against `UU(Z)`, which computes to `Unit`) makes the paths disagree harmlessly, since `Unit` has one value. A direct call through the parameter was already safe, because the checker used the parameter's declared type there, which the rules did not say.
+This is the two-path failure again, one level up. D35 made the class a property of a function's syntax, but conversion could still identify two function types whose functions the machine treats differently. The fix makes the class a property of the *type*, not only of the value. A Π-type records the class (returns types / returns proofs / other) and the [Close] row (`Unit` / `&T` / other) that its codomain term determines when it is formed. A function value's class and row are those of its declared type. [Conv-pi] additionally requires equal class and row. Every function value is then used only at a type of its own class, so the class the untyped machine reads from the value at a call equals the one the static type promised, whichever path runs.
+Soundness of conversion is unaffected: D54 only removes identifications (types that denote the same set but differ in class stop being convertible), so the set model validates every remaining conversion. Cost: a program must write a function type's codomain in the same class as the functions it will hold, e.g. `Prop`, not a constant that evaluates to `Prop`; `RunGGen(H)` is rejected at the argument. The reviewer's suggestion was to "make the erasure class and the [Close] row part of the Π-type, respected by conversion, and prove stability rather than enumerate cases". The first half is this decision. The second half is the stability conjecture of the paper's §7, now tested by the v2 fuzzer (notes/fuzzer.md).
+
+## D55. Sorts are syntactic: one notion of proposition (reviewer-4)
+A second cold review (notes/reviewer-4.md, W1–W2) found closed proofs of False through the same seam as D54, approached from the proof side:
+```
+def P (n : Nat) : Type := match n { Z => Prop, S _ => Prop }
+def T (n : Nat) : P(n) := match n { Z => ⊤, S _ => ⊤ }
+def W (u : Unit) : T(Z) := refl
+def f (x : &Nat) : T(Z) := (*x := S Z; W(()))
+def RunK (k : Π(x : &Nat). ⊤) (x : &Nat) : Unit := (k(x); ())
+def Stmt (k : Π(x : &Nat). ⊤) (x : &Nat) : Id Unit (RunK(k, x)) () := refl
+def Boom : False := (let c = 0; Stmt(f, &c))
+```
+There are variants through a generic statement (`Boom2`) and through an annotated `let` in a stuck match (`Boom4`, core syntax only). Its W2 is worse: `TT := Π(x : &Nat). T(Z)` is accepted as a `Prop`, yet `k(f) = 1` and `k(g2) = 0` are both provable for a data function `k`. So a proposition has two distinguishable inhabitants, which contradicts the model sketch ("Prop denotes subsingletons").
+The diagnosis, in the reviewer's words: Ochr had two notions of "is a proposition". The *declared* sort (D28/D35) decided erasure, proof flags and [Close]'s row. The *computed* sort decided conversion, the sort of a Π-type, and the generic call's `⋆` binding. They disagree exactly on types whose sort is only known by computation, like `T(Z) : P(Z)`, and conversion moved values between the two readings. D54 puts the class into Π-types, which blocks `f` at a proof-class Π-type, but it does not remove the disagreement: `TT` is still a `Prop` with relevant inhabitants, and `Boom4`'s annotated `let` still reads the declared sort.
+The fix removes the second notion instead of reconciling it at each use. Every term written where a type is expected must have a declared type that is syntactically a sort. Evaluation preserves declared types, and universes are not cumulative, so a well-formed type's declared sort then equals its computed sort. "Is a proof" has one meaning, every value of a proposition is `⋆`, and the sort of a Π-type is `Prop` exactly when its class is "returns proofs". `T(Z)` as an annotation is rejected, and with it `f`, `TT`, `Boom`, `Boom2` and `Boom4`. The types that remain allowed are all those in the suite so far: `U(n) : Type`, `V(n) : Prop`, `P0 : Type := Prop` used as a codomain (whose class is then "other", D54), and large eliminations like `Cells(T, n) : Type`. Only sort-polymorphic type families are excluded.
+This is the uniform endpoint the earlier erasure decisions (D28, D35, D40, D42, D49) were approaching one case at a time. With one notion of proposition, erasure is "the term's type is a proposition or a sort", and several of those clauses may be subsumed. The implementer should measure that with the ledger rather than assume it.
+
+## D56. `J` computes only when its endpoints are convertible (reviewer-4 W4)
+`J(A, a, b, P, h, t)` returned `t` unconditionally. That is equality reflection for open terms: under an absurd hypothesis, casts between `Nat → Nat` and `(Nat → Nat) → Nat` gave untyped λ-calculus inside the checker (`Om` diverged, "call depth exceeded"), and `J`-casting `5` to `Bool` put a `Nat` at type `Bool` ("[Match] on 5, which is not a value of Bool"), breaking well-formedness condition 6 in open contexts. Now `J` evaluates to `t` only when `a ≡ b`, as Lean's `Eq.rec` does, and is otherwise stuck. A `J` into a proposition is a proof and is never run, so proofs are unaffected. Data transport under a hypothesis becomes a stuck cast. The paper's decidability remark changes accordingly: equality reflection is gone, and what remains open is termination of normalisation.
+
+## D57. Arrays are a library over a type-level model with a native runtime, not a kernel primitive (lead, after two design probes)
+User constraints (2026-09-29):
+- the length lives only in the type, and nothing stores it at runtime;
+- growable arrays are a user-defined Σ;
+- nothing recurses over an array, only over an index;
+- runtime code never owns a sub-array (the objection to an earlier `SplitOff` sketch).
+
+Two time-boxed probes designed each route against the same four benchmarks: B1, borrow a prefix, call anything, and the rest is unchanged; B2, quicksort; B3, a hashmap bucket insert; B4, a bounds proof from a runtime comparison.
+- **Primitive route** (notes/arrays-primitive.md). Needs:
+  - array values made of segments, with index places `p[i | h]` and `p[i..j | h]`;
+  - a boundary normaliser;
+  - `Le`, `Sub` and `Add` known to the kernel, with S-peeling rules;
+  - an equality rule for arrays, a new well-formedness condition, and Ochr's first axiom (`SetGetOther`).
+
+  Its benchmarks were not run. Its paper cost is about 1.2 pages of body and 2–2.5 pages of appendix.
+- **Library route** (notes/arrays-library.md).
+  - The model is `Cells(T, n) := match n { Z => Unit, S m => T × Cells(T, m) }`: exactly `n` elements by construction, with no dependent fields. `Array(T, n)` is owned and moves as a pointer; `Slice(T, n)` is borrow-only.
+  - Sub-range borrows are scoped continuations (`WithSplit`).
+  - Seven native functions plus drop glue are trusted, each with a simulation obligation that can be tested differentially. Everything else, including every lemma, is user code.
+  - The kernel changes are static only: K1 a `Data` universe (D48's open item), K2 `unsized`, K3 `abstract` plus `implemented by`. No machine rule changes.
+  - Its benchmarks were checked in today's checker (112 scratch declarations, all as expected; B1 holds by `refl` in its "joined back" form).
+  - Its paper cost is about 0.5 page of body and 0.5 page of appendix.
+
+The library route is chosen. Its costs are three facts that become one-induction lemmas (split-then-join, suffix-of-join, get-after-set), and continuation-scoped sub-range borrows. The primitive route would add a normaliser, arithmetic knowledge and an axiom to the part of the system that the reviews found most fragile. Both routes need strong recursion on Nat for quicksort ([Rec-<], K6, with `Lt` pinned like `True`/`And`); it is decided separately.
+
+## D58. An impossible branch is stuck, never an ill-typed value (hashmap-port)
+D49 (5) made a zero-arm match yield `⋆` "at any type", because it is unreachable. It is unreachable in closed runs, but it is reached in open ones. When a refinement makes a hypothesis false, re-normalising a sealed program runs into the `match h {}` arm and returns `⋆` at a data or borrow type. The next step (`*r` on a `⋆`) then errors, and D29 turns that into a type error, before the proof's own `match h {}` arm is even checked. Minimal (checker 96d788a1):
+```
+def IsZ (n : Nat) : Prop := match n { Z => ⊤, S _ => False }
+def G (x : &Nat) (h : IsZ(*x)) : &Nat := match *x { Z => x, S _ => match h {} }
+def T (x : &Nat) (h : IsZ(*x)) : Id Nat (let q = G(&*x, h); *q) 0 := match *x { Z => refl, S _ => match h {} }   -- true, but rejected
+```
+This blocks every theorem about a function with a precondition-guarded impossible arm, such as the hashmap's `GetMut`. `GetMut` must take a presence proof, because `Option<&mut V>` is a borrow inside data (D48).
+The fix follows the principle behind D56: an unreachable or unconvertible situation must stay *stuck* (a neutral) and never produce a value of the wrong type. That keeps well-formedness condition 6 ("values have their types") in open contexts. A zero-arm match in a proof position is erased as before (value `⋆`). Anywhere else, reaching it is stuck and the enclosing computation closes off. Sound: closed runs never reach it, and stuck terms are neutrals. D49 (5)'s "a zero-arm match is a declared proof, vacuously" now applies only where the match's own position is a proof.
