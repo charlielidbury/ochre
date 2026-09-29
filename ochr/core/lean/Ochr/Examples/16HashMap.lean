@@ -1229,3 +1229,647 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "HashMapLength" HashMapLength).allAsExpected
 #guard (run "HashMapLength" HashMapLength).count == 24
+
+/-! ## The invariant, and resizing
+
+The invariant (Aeneas's `hash_map_t_inv`, less its load-factor and overflow clauses): the
+length counts the entries, the keys of each bucket are distinct, and every key lies only in
+its own bucket. The last is a statement about every key, `Π(k : Nat). OnlyIn(…)`, proved
+for each key by a function of `k`. Every operation keeps the invariant, stated as "run the
+operation on a copy, then the invariant holds of the copy". Resizing moves every entry with
+`InsertNoResize`, so it keeps every lookup; with the invariant, the insert with resizing
+behaves like the insert without. -/
+
+ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
+  -- ## Helpers
+  def TransO (x : Opt) (y : Opt) (z : Opt) (h1 : Eq Opt x y) (h2 : Eq Opt y z) : Eq Opt x z := (
+    J(Opt, y, z, λ(w : Opt) : Prop => Eq Opt x w, h2, h1)
+  )
+
+  def EqBSymm (a : Nat) (b : Nat) (h : Eq Bool (EqB(a, b)) true) : Eq Bool (EqB(b, a)) true := (
+    J(Nat, a, b, λ(z : Nat) : Prop => Eq Bool (EqB(z, a)) true, EqBSound(a, b, h), EqBRefl(a))
+  )
+
+  def NeqFlip (a : Nat) (b : Nat) (h : Eq Bool (EqB(a, b)) false) : Eq Bool (EqB(b, a)) false := (
+    let e = EqB(b, a);
+    match e {
+      false => refl,
+      true => (
+        let f = J(Bool, EqB(a, b), true, λ(z : Bool) : Prop => Eq Bool z false, EqBSymm(b, a, refl), h);
+        match f {}
+      ),
+    }
+  )
+
+  -- ## Keys stay distinct
+  def BInsertUnique (b : Bucket) (k : Nat) (v : Nat) (h : Unique(b)) : (let c = b; BInsert(&c, k, v); Unique(c)) by b := (
+    match b {
+      BNil => ⟨refl, refl⟩,
+      BCons(k', v', t) => match h {
+        Intro(absent, rest) => (
+          let e = EqB(k', k);
+          match e {
+            false => (
+              let before = t;
+              let after = t;
+              BInsert(&after, k, v);
+              ⟨TransO(BFind(after, k'), BFind(t, k'), None, BInsertFindOther(&before, k, v, k', NeqFlip(k', k, refl)), absent),
+               BInsertUnique(t, k, v, rest)⟩
+            ),
+            true => ⟨absent, rest⟩,
+          }
+        ),
+      },
+    }
+  )
+  def SlotInsertUnique (s : Slots) (i : Nat) (k : Nat) (v : Nat) (h : AllUnique(s)) :
+      (let c = s; let b = Slot(&c, i); BInsert(b, k, v); AllUnique(c)) by s := (
+    match s {
+      SOne(b) => BInsertUnique(b, k, v, h),
+      SCons(b, t) => match h {
+        Intro(hb, ht) => match i {
+          Z => ⟨BInsertUnique(b, k, v, hb), ht⟩,
+          S i' => ⟨hb, SlotInsertUnique(t, i', k, v, ht)⟩,
+        },
+      },
+    }
+  )
+
+  def BRemoveUnique (b : Bucket) (k : Nat) (h : Unique(b)) : (let c = b; BRemove(&c, k); Unique(c)) by b := (
+    match b {
+      BNil => refl,
+      BCons(k', v', t) => match h {
+        Intro(absent, rest) => (
+          let e = EqB(k', k);
+          match e {
+            false => (
+              let before = t;
+              let after = t;
+              BRemove(&after, k);
+              ⟨TransO(BFind(after, k'), BFind(t, k'), None, BRemoveFindOther(&before, k, k', NeqFlip(k', k, refl)), absent),
+               BRemoveUnique(t, k, rest)⟩
+            ),
+            true => rest,
+          }
+        ),
+      },
+    }
+  )
+
+  def SlotRemoveUnique (s : Slots) (i : Nat) (k : Nat) (h : AllUnique(s)) :
+      (let c = s; let b = Slot(&c, i); BRemove(b, k); AllUnique(c)) by s := (
+    match s {
+      SOne(b) => BRemoveUnique(b, k, h),
+      SCons(b, t) => match h {
+        Intro(hb, ht) => match i {
+          Z => ⟨BRemoveUnique(b, k, hb), ht⟩,
+          S i' => ⟨hb, SlotRemoveUnique(t, i', k, ht)⟩,
+        },
+      },
+    }
+  )
+
+  -- ## Keys stay in their bucket
+  def Nowhere (s : Slots) (k : Nat) : Prop by s := (
+    match s {
+      SOne(b) => Eq Opt (BFind(b, k)) None,
+      SCons(b, t) => Eq Opt (BFind(b, k)) None ∧ Nowhere(t, k),
+    }
+  )
+
+  def OnlyIn (s : Slots) (d : Nat) (k : Nat) : Prop by s := (
+    match s {
+      SOne(b) => ⊤,
+      SCons(b, t) => match d {
+        Z => Nowhere(t, k),
+        S d' => Eq Opt (BFind(b, k)) None ∧ OnlyIn(t, d', k),
+      },
+    }
+  )
+
+  def Placed (s : Slots) (n : Nat) : Prop := Π(k : Nat). OnlyIn(s, Idx(k, n), k)
+
+  -- Inserting `k` keeps another key absent where it was absent.
+  def BInsertAbsent (b : Bucket) (k : Nat) (v : Nat) (k2 : Nat) (ne : Eq Bool (EqB(k, k2)) false)
+      (h : Eq Opt (BFind(b, k2)) None) : (let c = b; BInsert(&c, k, v); Eq Opt (BFind(c, k2)) None) := (
+    let before = b;
+    let after = b;
+    BInsert(&after, k, v);
+    TransO(BFind(after, k2), BFind(b, k2), None, BInsertFindOther(&before, k, v, k2, ne), h)
+  )
+
+  def NowhereInsert (s : Slots) (i : Nat) (k : Nat) (v : Nat) (k2 : Nat) (ne : Eq Bool (EqB(k, k2)) false)
+      (h : Nowhere(s, k2)) : (let c = s; let b = Slot(&c, i); BInsert(b, k, v); Nowhere(c, k2)) by s := (
+    match s {
+      SOne(b) => BInsertAbsent(b, k, v, k2, ne, h),
+      SCons(b, t) => match h {
+        Intro(hb, ht) => match i {
+          Z => ⟨BInsertAbsent(b, k, v, k2, ne, hb), ht⟩,
+          S i' => ⟨hb, NowhereInsert(t, i', k, v, k2, ne, ht)⟩,
+        },
+      },
+    }
+  )
+
+  def OnlyInOther (s : Slots) (i : Nat) (d : Nat) (k : Nat) (v : Nat) (k2 : Nat) (ne : Eq Bool (EqB(k, k2)) false)
+      (h : OnlyIn(s, d, k2)) : (let c = s; let b = Slot(&c, i); BInsert(b, k, v); OnlyIn(c, d, k2)) by s := (
+    match s {
+      SOne(b) => refl,
+      SCons(b, t) => match d {
+        Z => match i {
+          Z => h,
+          S i' => NowhereInsert(t, i', k, v, k2, ne, h),
+        },
+        S d' => match h {
+          Intro(hb, ht) => match i {
+            Z => ⟨BInsertAbsent(b, k, v, k2, ne, hb), ht⟩,
+            S i' => ⟨hb, OnlyInOther(t, i', d', k, v, k2, ne, ht)⟩,
+          },
+        },
+      },
+    }
+  )
+
+  def OnlyInSame (s : Slots) (i : Nat) (k : Nat) (v : Nat) (h : OnlyIn(s, i, k)) :
+      (let c = s; let b = Slot(&c, i); BInsert(b, k, v); OnlyIn(c, i, k)) by s := (
+    match s {
+      SOne(b) => refl,
+      SCons(b, t) => match i {
+        Z => h,
+        S i' => match h {
+          Intro(hb, ht) => ⟨hb, OnlyInSame(t, i', k, v, ht)⟩,
+        },
+      },
+    }
+  )
+
+  -- For every key `k2`: if it is `k`, it went into its own bucket; if not, it did not move.
+  def SlotInsertPlaced (s : Slots) (n : Nat) (k : Nat) (v : Nat) (h : Placed(s, n)) :
+      (let c = s; let b = Slot(&c, Idx(k, n)); BInsert(b, k, v); Placed(c, n)) := (
+    let c = s;
+    let b = Slot(&c, Idx(k, n));
+    BInsert(b, k, v);
+    λ(k2 : Nat) : OnlyIn(c, Idx(k2, n), k2) => (
+      let e = EqB(k, k2);
+      match e {
+        false => OnlyInOther(s, Idx(k, n), Idx(k2, n), k, v, k2, refl, h(k2)),
+        true => J(Nat, k, k2, λ(z : Nat) : Prop => OnlyIn(c, Idx(z, n), z), EqBSound(k, k2, refl), OnlyInSame(s, Idx(k, n), k, v, h(k))),
+      }
+    )
+  )
+  -- Removing never makes a key present.
+  def BRemoveAbsent (b : Bucket) (k : Nat) (k2 : Nat) (h : Eq Opt (BFind(b, k2)) None) :
+      (let c = b; BRemove(&c, k); Eq Opt (BFind(c, k2)) None) by b := (
+    match b {
+      BNil => refl,
+      BCons(k', v', t) => (
+        let e2 = EqB(k', k2);
+        match e2 {
+          false => (
+            let e = EqB(k', k);
+            match e {
+              false => BRemoveAbsent(t, k, k2, h),
+              true => h,
+            }
+          ),
+          true => match h {},
+        }
+      ),
+    }
+  )
+
+  def NowhereRemove (s : Slots) (i : Nat) (k : Nat) (k2 : Nat) (h : Nowhere(s, k2)) :
+      (let c = s; let b = Slot(&c, i); BRemove(b, k); Nowhere(c, k2)) by s := (
+    match s {
+      SOne(b) => BRemoveAbsent(b, k, k2, h),
+      SCons(b, t) => match h {
+        Intro(hb, ht) => match i {
+          Z => ⟨BRemoveAbsent(b, k, k2, hb), ht⟩,
+          S i' => ⟨hb, NowhereRemove(t, i', k, k2, ht)⟩,
+        },
+      },
+    }
+  )
+
+  def OnlyInRemove (s : Slots) (i : Nat) (d : Nat) (k : Nat) (k2 : Nat) (h : OnlyIn(s, d, k2)) :
+      (let c = s; let b = Slot(&c, i); BRemove(b, k); OnlyIn(c, d, k2)) by s := (
+    match s {
+      SOne(b) => refl,
+      SCons(b, t) => match d {
+        Z => match i {
+          Z => h,
+          S i' => NowhereRemove(t, i', k, k2, h),
+        },
+        S d' => match h {
+          Intro(hb, ht) => match i {
+            Z => ⟨BRemoveAbsent(b, k, k2, hb), ht⟩,
+            S i' => ⟨hb, OnlyInRemove(t, i', d', k, k2, ht)⟩,
+          },
+        },
+      },
+    }
+  )
+
+  def SlotRemovePlaced (s : Slots) (n : Nat) (k : Nat) (h : Placed(s, n)) :
+      (let c = s; let b = Slot(&c, Idx(k, n)); BRemove(b, k); Placed(c, n)) := (
+    let c = s;
+    let b = Slot(&c, Idx(k, n));
+    BRemove(b, k);
+    λ(k2 : Nat) : OnlyIn(c, Idx(k2, n), k2) => OnlyInRemove(s, Idx(k, n), Idx(k2, n), k, k2, h(k2))
+  )
+
+  -- ## The invariant
+  -- The length counts the entries, the keys of each bucket are distinct, and every key
+  -- lies only in its own bucket (all three are Aeneas's `hash_map_t_inv`, less its load
+  -- factor and overflow clauses).
+  def Inv (m : HashMap) : Prop := (
+    match m {
+      HM(n, len, s) => Eq Nat len (Count(s)) ∧ (AllUnique(s) ∧ Placed(s, n)),
+    }
+  )
+
+  def NowhereEmpty (n : Nat) (k : Nat) : Nowhere(EmptySlots(n), k) by n := (
+    match n {
+      Z => refl,
+      S m => ⟨refl, NowhereEmpty(m, k)⟩,
+    }
+  )
+
+  def OnlyInEmpty (n : Nat) (d : Nat) (k : Nat) : OnlyIn(EmptySlots(n), d, k) by n := (
+    match n {
+      Z => refl,
+      S m => match d {
+        Z => NowhereEmpty(m, k),
+        S d' => ⟨refl, OnlyInEmpty(m, d', k)⟩,
+      },
+    }
+  )
+
+  def UniqueEmpty (n : Nat) : AllUnique(EmptySlots(n)) by n := (
+    match n {
+      Z => refl,
+      S m => ⟨refl, UniqueEmpty(m)⟩,
+    }
+  )
+
+  def NewInv (n : Nat) : Inv(New(n)) := (
+    ⟨NewCount(n), ⟨UniqueEmpty(n), λ(k : Nat) : OnlyIn(EmptySlots(n), Idx(k, n), k) => OnlyInEmpty(n, Idx(k, n), k)⟩⟩
+  )
+
+  -- Each operation keeps it. Split on whether the bucket changed its size, as for the
+  -- length theorems; the three parts are the lemmas above.
+  def InsertInv (m : HashMap) (k : Nat) (v : Nat) (h : Inv(m)) : (let c = m; InsertNoResize(&c, k, v); Inv(c)) := (
+    match m {
+      HM(n, len, s) => match h {
+        Intro(hl, hr) => match hr {
+          Intro(hu, hp) => (
+            let mc = m;
+            let cs = s;
+            let b = Slot(&cs, Idx(k, n));
+            let added = BInsert(b, k, v);
+            match added {
+              false => ⟨InsertCount(&mc, k, v, hl), ⟨SlotInsertUnique(s, Idx(k, n), k, v, hu), SlotInsertPlaced(s, n, k, v, hp)⟩⟩,
+              true => ⟨InsertCount(&mc, k, v, hl), ⟨SlotInsertUnique(s, Idx(k, n), k, v, hu), SlotInsertPlaced(s, n, k, v, hp)⟩⟩,
+            }
+          ),
+        },
+      },
+    }
+  )
+
+  def RemoveInv (m : HashMap) (k : Nat) (h : Inv(m)) : (let c = m; Remove(&c, k); Inv(c)) := (
+    match m {
+      HM(n, len, s) => match h {
+        Intro(hl, hr) => match hr {
+          Intro(hu, hp) => (
+            let mc = m;
+            let cs = s;
+            let b = Slot(&cs, Idx(k, n));
+            let x = BRemove(b, k);
+            match x {
+              None => ⟨RemoveCount(&mc, k, hl), ⟨SlotRemoveUnique(s, Idx(k, n), k, hu), SlotRemovePlaced(s, n, k, hp)⟩⟩,
+              Some(_) => ⟨RemoveCount(&mc, k, hl), ⟨SlotRemoveUnique(s, Idx(k, n), k, hu), SlotRemovePlaced(s, n, k, hp)⟩⟩,
+            }
+          ),
+        },
+      },
+    }
+  )
+
+  def ClearInv (m : HashMap) : (let c = m; Clear(&c); Inv(c)) := (
+    match m {
+      HM(n, len, s) => NewInv(n),
+    }
+  )
+  -- ## Resizing keeps the invariant
+  -- Every entry is moved by `InsertNoResize`, which keeps the invariant, into a fresh
+  -- table, which has it: so the result has it, whatever the old map was.
+  def MoveBucketInv (b : Bucket) (m : HashMap) (h : Inv(m)) : (let c = m; MoveBucket(b, &c); Inv(c)) by b := (
+    match b {
+      BNil => h,
+      BCons(k, v, t) => (
+        let m2 = m;
+        InsertNoResize(&m2, k, v);
+        MoveBucketInv(t, m2, InsertInv(m, k, v, h))
+      ),
+    }
+  )
+
+  def MoveSlotsInv (s : Slots) (m : HashMap) (h : Inv(m)) : (let c = m; MoveSlots(s, &c); Inv(c)) by s := (
+    match s {
+      SOne(b) => MoveBucketInv(b, m, h),
+      SCons(b, t) => (
+        let m2 = m;
+        MoveBucket(b, &m2);
+        MoveSlotsInv(t, m2, MoveBucketInv(b, m, h))
+      ),
+    }
+  )
+
+  def ResizeInv (m : HashMap) : (let c = m; Resize(&c); Inv(c)) := (
+    match m {
+      HM(n, len, s) => MoveSlotsInv(s, New(S (Add(n, n))), NewInv(S (Add(n, n)))),
+    }
+  )
+
+  -- `Insert`, with the resize.
+  def InsertInvR (m : HashMap) (k : Nat) (v : Nat) (h : Inv(m)) : (let c = m; Insert(&c, k, v); Inv(c)) := (
+    match m {
+      HM(n, len, s) => (
+        let cs = s;
+        let b = Slot(&cs, Idx(k, n));
+        let added = BInsert(b, k, v);
+        let m2 = m;
+        InsertNoResize(&m2, k, v);
+        match added {
+          false => (
+            let full = Lt(n, len);
+            match full {
+              false => InsertInv(m, k, v, h),
+              true => ResizeInv(m2),
+            }
+          ),
+          true => (
+            let full = Lt(n, S len);
+            match full {
+              false => InsertInv(m, k, v, h),
+              true => ResizeInv(m2),
+            }
+          ),
+        }
+      ),
+    }
+  )
+  -- ## Resizing keeps every lookup
+  -- Re-inserting overwrites, so after moving a bucket (or all the slots) into a map, a
+  -- key's lookup is its last occurrence in what was moved, or else what it was before.
+  -- That needs no hypothesis. The invariant then says the last occurrence of `k` in the
+  -- old slots is the one `Find` sees: `k` is only in its own bucket, and at most once.
+  def OrElse (a : Opt) (b : Opt) : Opt := (
+    match a {
+      None => b,
+      Some(x) => Some(x),
+    }
+  )
+
+  def BFindLast (b : Bucket) (k : Nat) : Opt by b := (
+    match b {
+      BNil => None,
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        match e {
+          false => BFindLast(t, k),
+          true => OrElse(BFindLast(t, k), Some(v')),
+        }
+      ),
+    }
+  )
+
+  def SFindLast (s : Slots) (k : Nat) : Opt by s := (
+    match s {
+      SOne(b) => BFindLast(b, k),
+      SCons(b, t) => OrElse(SFindLast(t, k), BFindLast(b, k)),
+    }
+  )
+
+  def MoveBucketFind (b : Bucket) (m : HashMap) (k : Nat) :
+      Id Opt (let c = m; MoveBucket(b, &c); Find(c, k)) (OrElse(BFindLast(b, k), Find(m, k))) by b := (
+    match b {
+      BNil => refl,
+      BCons(k', v', t) => (
+        let mc = m;
+        let m2 = m;
+        InsertNoResize(&m2, k', v');
+        let mb = m;
+        MoveBucket(b, &mb);
+        let e = EqB(k', k);
+        match e {
+          false => J(Opt, Find(m2, k), Find(m, k), λ(z : Opt) : Prop => Eq Opt (Find(mb, k)) (OrElse(BFindLast(t, k), z)),
+                     InsertFindOther(&mc, k', v', k, refl), MoveBucketFind(t, m2, k)),
+          true => (
+            let r = BFindLast(t, k);
+            let found = J(Nat, k', k, λ(z : Nat) : Prop => Eq Opt (Find(m2, z)) (Some(v')), EqBSound(k', k, refl), InsertFind(&mc, k', v'));
+            match r {
+              None => J(Opt, Find(m2, k), Some(v'), λ(z : Opt) : Prop => Eq Opt (Find(mb, k)) (OrElse(BFindLast(t, k), z)),
+                        found, MoveBucketFind(t, m2, k)),
+              Some(_) => J(Opt, Find(m2, k), Some(v'), λ(z : Opt) : Prop => Eq Opt (Find(mb, k)) (OrElse(BFindLast(t, k), z)),
+                           found, MoveBucketFind(t, m2, k)),
+            }
+          ),
+        }
+      ),
+    }
+  )
+  def MoveSlotsFind (s : Slots) (m : HashMap) (k : Nat) :
+      Id Opt (let c = m; MoveSlots(s, &c); Find(c, k)) (OrElse(SFindLast(s, k), Find(m, k))) by s := (
+    match s {
+      SOne(b) => MoveBucketFind(b, m, k),
+      SCons(b, t) => (
+        let mb = m;
+        MoveBucket(b, &mb);
+        let ms = m;
+        MoveSlots(s, &ms);
+        let r = SFindLast(t, k);
+        match r {
+          None => J(Opt, Find(mb, k), OrElse(BFindLast(b, k), Find(m, k)), λ(z : Opt) : Prop => Eq Opt (Find(ms, k)) (OrElse(SFindLast(t, k), z)),
+                    MoveBucketFind(b, m, k), MoveSlotsFind(t, mb, k)),
+          Some(_) => J(Opt, Find(mb, k), OrElse(BFindLast(b, k), Find(m, k)), λ(z : Opt) : Prop => Eq Opt (Find(ms, k)) (OrElse(SFindLast(t, k), z)),
+                       MoveBucketFind(b, m, k), MoveSlotsFind(t, mb, k)),
+        }
+      ),
+    }
+  )
+
+  def BFindLastNone (b : Bucket) (k : Nat) (h : Eq Opt (BFind(b, k)) None) : Eq Opt (BFindLast(b, k)) None by b := (
+    match b {
+      BNil => refl,
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        match e {
+          false => BFindLastNone(t, k, h),
+          true => match h {},
+        }
+      ),
+    }
+  )
+
+  def BFindLastUnique (b : Bucket) (k : Nat) (h : Unique(b)) : Eq Opt (BFindLast(b, k)) (BFind(b, k)) by b := (
+    match b {
+      BNil => refl,
+      BCons(k', v', t) => match h {
+        Intro(absent, rest) => (
+          let e = EqB(k', k);
+          match e {
+            false => BFindLastUnique(t, k, rest),
+            true => (
+              let none = BFindLastNone(t, k, J(Nat, k', k, λ(z : Nat) : Prop => Eq Opt (BFind(t, z)) None, EqBSound(k', k, refl), absent));
+              let r = BFindLast(t, k);
+              match r {
+                None => refl,
+                Some(_) => match none {},
+              }
+            ),
+          }
+        ),
+      },
+    }
+  )
+
+  def NowhereLast (s : Slots) (k : Nat) (h : Nowhere(s, k)) : Eq Opt (SFindLast(s, k)) None by s := (
+    match s {
+      SOne(b) => BFindLastNone(b, k, h),
+      SCons(b, t) => match h {
+        Intro(hb, ht) => (
+          let none = NowhereLast(t, k, ht);
+          let r = SFindLast(t, k);
+          match r {
+            None => BFindLastNone(b, k, hb),
+            Some(_) => match none {},
+          }
+        ),
+      },
+    }
+  )
+
+  def OnlyInLast (s : Slots) (d : Nat) (k : Nat) (h : OnlyIn(s, d, k)) (hu : AllUnique(s)) :
+      Eq Opt (SFindLast(s, k)) (BFind(Nth(s, d), k)) by s := (
+    match s {
+      SOne(b) => BFindLastUnique(b, k, hu),
+      SCons(b, t) => match hu {
+        Intro(ub, ut) => match d {
+          Z => (
+            let none = NowhereLast(t, k, h);
+            let r = SFindLast(t, k);
+            match r {
+              None => BFindLastUnique(b, k, ub),
+              Some(_) => match none {},
+            }
+          ),
+          S d' => match h {
+            Intro(hb, ht) => (
+              let ih = OnlyInLast(t, d', k, ht, ut);
+              let r = SFindLast(t, k);
+              match r {
+                None => TransO(BFindLast(b, k), None, BFind(Nth(t, d'), k), BFindLastNone(b, k, hb), ih),
+                Some(_) => ih,
+              }
+            ),
+          },
+        },
+      },
+    }
+  )
+
+  -- Resizing keeps every lookup, given the invariant.
+  def ResizeFind (m : HashMap) (k : Nat) (h : Inv(m)) : Id Opt (let c = m; Resize(&c); Find(c, k)) (Find(m, k)) := (
+    match m {
+      HM(n, len, s) => match h {
+        Intro(hl, hr) => match hr {
+          Intro(hu, hp) => (
+            let mc = m;
+            Resize(&mc);
+            let moved = J(Opt, Find(New(S (Add(n, n))), k), None, λ(z : Opt) : Prop => Eq Opt (Find(mc, k)) (OrElse(SFindLast(s, k), z)),
+                          NewFind(S (Add(n, n)), k), MoveSlotsFind(s, New(S (Add(n, n))), k));
+            let r = SFindLast(s, k);
+            match r {
+              None => TransO(Find(mc, k), None, BFind(Nth(s, Idx(k, n)), k), moved, OnlyInLast(s, Idx(k, n), k, hp(k), hu)),
+              Some(x) => TransO(Find(mc, k), Some(x), BFind(Nth(s, Idx(k, n)), k), moved, OnlyInLast(s, Idx(k, n), k, hp(k), hu)),
+            }
+          ),
+        },
+      },
+    }
+  )
+  -- ## Insert, with the resize
+  -- Split on whether the entry was added and on whether the table is then full; when it
+  -- is, the resize keeps the lookup (`ResizeFind`, under the invariant `InsertInv` gives).
+  def InsertFindR (m : HashMap) (k : Nat) (v : Nat) (h : Inv(m)) :
+      Id Opt (let c = m; Insert(&c, k, v); Find(c, k)) (Some(v)) := (
+    match m {
+      HM(n, len, s) => (
+        let mc = m;
+        let m2 = m;
+        InsertNoResize(&m2, k, v);
+        let m3 = m2;
+        Resize(&m3);
+        let cs = s;
+        let b = Slot(&cs, Idx(k, n));
+        let added = BInsert(b, k, v);
+        match added {
+          false => (
+            let full = Lt(n, len);
+            match full {
+              false => InsertFind(&mc, k, v),
+              true => TransO(Find(m3, k), Find(m2, k), Some(v), ResizeFind(m2, k, InsertInv(m, k, v, h)), InsertFind(&mc, k, v)),
+            }
+          ),
+          true => (
+            let full = Lt(n, S len);
+            match full {
+              false => InsertFind(&mc, k, v),
+              true => TransO(Find(m3, k), Find(m2, k), Some(v), ResizeFind(m2, k, InsertInv(m, k, v, h)), InsertFind(&mc, k, v)),
+            }
+          ),
+        }
+      ),
+    }
+  )
+
+  def InsertFindOtherR (m : HashMap) (k : Nat) (v : Nat) (k2 : Nat) (ne : Eq Bool (EqB(k, k2)) false) (h : Inv(m)) :
+      Id Opt (let c = m; Insert(&c, k, v); Find(c, k2)) (Find(m, k2)) := (
+    match m {
+      HM(n, len, s) => (
+        let mc = m;
+        let m2 = m;
+        InsertNoResize(&m2, k, v);
+        let m3 = m2;
+        Resize(&m3);
+        let cs = s;
+        let b = Slot(&cs, Idx(k, n));
+        let added = BInsert(b, k, v);
+        match added {
+          false => (
+            let full = Lt(n, len);
+            match full {
+              false => InsertFindOther(&mc, k, v, k2, ne),
+              true => TransO(Find(m3, k2), Find(m2, k2), Find(m, k2), ResizeFind(m2, k2, InsertInv(m, k, v, h)), InsertFindOther(&mc, k, v, k2, ne)),
+            }
+          ),
+          true => (
+            let full = Lt(n, S len);
+            match full {
+              false => InsertFindOther(&mc, k, v, k2, ne),
+              true => TransO(Find(m3, k2), Find(m2, k2), Find(m, k2), ResizeFind(m2, k2, InsertInv(m, k, v, h)), InsertFindOther(&mc, k, v, k2, ne)),
+            }
+          ),
+        }
+      ),
+    }
+  )
+}
+
+#eval IO.println (run "HashMapResize" HashMapResize).show
+
+-- every verdict as expected, and the exact number of declarations (a truncated file changes it)
+#guard (run "HashMapResize" HashMapResize).allAsExpected
+#guard (run "HashMapResize" HashMapResize).count == 43
