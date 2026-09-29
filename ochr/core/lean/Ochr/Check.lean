@@ -159,7 +159,7 @@ def checkDefs (cfg : Config) (ds : List Item) (fuel : Nat := 2000000) :
       inds := st'.inds
       out := out.push (d.name, .accepted, tr)
     | .error (.error m) => out := out.push (d.name, .rejected m, tr)
-    | .error (.stuck _) => out := out.push (d.name, .rejected "internal: stuck escaped to the top", tr)
+    | .error (.stuck _ _) => out := out.push (d.name, .rejected "internal: stuck escaped to the top", tr)
   pure out.toList
 
 /-- The globals and inductive types after checking a list of items (the library among
@@ -172,6 +172,6 @@ def runM {α : Type} (x : M α) (st : MState) : Except String α :=
   match ((x.run st).run.run #[]).1 with
   | .ok (a, _) => .ok a
   | .error (.error m) => .error m
-  | .error (.stuck _) => .error "stuck"
+  | .error (.stuck _ _) => .error "stuck"
 
 end Ochr

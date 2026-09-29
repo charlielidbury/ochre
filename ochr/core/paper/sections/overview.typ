@@ -4,7 +4,7 @@ This section introduces Ochr through its running examples. Everything is informa
 
 == Imperative code is evaluated inside types
 
-Ochr programs are made of definitions with parameters and a body. Borrow types `&T` are Rust's mutable references; places are variables `x`, dereferences `*p` and the predecessor field `p.1` of a number. A `match` on a place binds its pattern variable to a _sub-place_, not a copy, so in `match *x { Z => …, S p => … }` the name `p` stands for the field `(*x).1` and `&p` reborrows it.
+Places are variables `x`, dereferences `*p` and fields such as the predecessor field `p.1` of a number. A `match` on a place binds its pattern variable to a _sub-place_, not a copy: in `match *x { Z => …, S p => … }`, `p` is `(*x).1`.
 
 `Add` wraps `AddM` behind a pure interface. It owns its first argument, lends it to `AddM`, and returns it:
 
@@ -14,15 +14,7 @@ Add(x : Nat, y : Nat) : Nat := AddM(&x, y); x
 
 Because definitional equality is evaluation, `Id Nat (Add(2, 3)) 5` holds by `refl`: the checker runs `Add(2, 3)`, which runs `AddM` in place on a local copy, and compares the result with `5`.
 
-The machine that does this is the symbolic semantics of Aeneas's low-level borrow calculus @aeneas. An environment Ω maps variables to values; borrowing `x` moves its content into the borrow and leaves a _loan_ behind; ending the borrow moves the content back. Running `Add(2, 3)` passes through these states:
-
-```
-{ x ↦ 2 }                                     // enter Add
-{ x ↦ loan₀ } ⊢ AddM(borrow₀ 2, 3)            // &x: the content moves into the borrow
-{ x ↦ loan₀ | x' ↦ borrow₀ (S loan₁), … }     // AddM matched S and reborrowed the field
-…
-{ x ↦ 5 }                                     // borrows ended, contents returned
-```
+The machine that does this is the symbolic semantics of Aeneas's low-level borrow calculus @aeneas. An environment Ω maps variables to values; borrowing `x` moves its content `v` into the borrow, written `borrow₀ v`, and leaves a _loan_ `loan₀` behind; ending the borrow moves the content back.
 
 == Symbolic inputs, and what a stuck call leaves behind
 
@@ -105,7 +97,7 @@ AddMEq(x : &Nat, y : Nat) : Id Unit (AddM(x, y)) (AddM'(x, y)) by x :=
   match *x { Z => refl, S p => AddMEq(&p, y) }
 ```
 
-In the successor branch, re-running `AddM'`'s sealed program on `S σ'` unfolds `TailM` once, closes off its inner call with a fresh hole, and the pending write `*r := y` fills that hole; the recursive call's statement, evaluated at the call site, performs the same steps through the caller's borrow. The theorem for an owned number follows by lending it, as for `AddZero`.
+In the successor branch, re-running `AddM'`’s sealed program on `S σ'` unfolds `TailM` once, closes off its inner call with a fresh hole, and the pending write `*r := y` fills that hole; the recursive call's statement, evaluated at the call site, performs the same steps through the caller's borrow. The theorem for an owned number follows by lending it, as for `AddZero`.
 
 == Proofs about the current state
 
@@ -149,18 +141,11 @@ A property of the in-place code is then stated and proved directly: insertion ad
 SizeInsert(t : Tree, k : Nat) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t :=
   match t { Leaf => refl,
             Node(l, v, r) => let b = Lt(k, v); match b {
-              true  => J(Nat, S (Size(l)), Size(Insert(l, k)),
-                         λ(z : Nat) : Prop => Id Nat (S (S (Add(Size(l), Size(r))))) (S (Add(z, Size(r)))),
-                         SizeInsert(l, k), refl),
-              false => J(Nat, Add(Size(l), S (Size(r))), S (Add(Size(l), Size(r))),
-                         λ(z : Nat) : Prop => Id Nat (S z) (S (Add(Size(l), Size(Insert(r, k))))),
-                         AddS(Size(l), Size(r)),
-                         J(Nat, S (Size(r)), Size(Insert(r, k)),
-                           λ(z : Nat) : Prop => Id Nat (S (Add(Size(l), S (Size(r))))) (S (Add(Size(l), z))),
-                           SizeInsert(r, k), refl)) } }
+              true  => rewrite SizeInsert(l, k) in refl,
+              false => rewrite SizeInsert(r, k) in rewrite AddS(Size(l), Size(r)) in refl } }
 ```
 
-The comparison `Lt(σ_k, σ_v)` is stuck, so the split on `b` is a split on a sealed program: the checker names its value by a fresh abstract value, and replaces every derivation of the same closed program by it, including those produced later when the goal's sealed programs run again. In each arm, `Insert`'s sealed program runs one step and leaves the other subtree and the key in place, carried by the environment. The proof is not bare recursion: without rewriting tactics, each arm rewrites with the induction hypothesis by `J` with a hand-written motive, and the `false` arm needs an arithmetic lemma, `AddS : x + S y = S (x + y)`, proved in place by bare recursion and transferred to `Add` by lending, as `AddZero` was. This is the honest cost of a property that is not an equation between two recursions of the same shape.
+The comparison `Lt(σ_k, σ_v)` is stuck, so the split on `b` generalises the sealed program to a fresh abstract value, everywhere it occurs and wherever it is derived again. In each arm, `Insert`'s sealed program runs one step and leaves the other subtree and the key in place. The proof is not bare recursion. Each arm rewrites the goal with the induction hypothesis: `rewrite h in t`, for `h : Eq A a b`, replaces every occurrence of `b` in the goal by `a` and checks `t` against the result. It is `J` with its motive read off the goal, a proof that never runs, so it adds nothing to the model. The `false` arm also needs an arithmetic lemma, `AddS : x + S y = S (x + y)`, proved in place by bare recursion and transferred to `Add` by lending, as `AddZero` was. This is the cost of a property that is not an equation between two recursions of the same shape.
 
 == Branching
 

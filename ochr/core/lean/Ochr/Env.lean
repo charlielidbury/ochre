@@ -160,9 +160,10 @@ structure Config where
 deriving Inhabited, Repr, BEq
 
 /-- The pre-pass is checked against the after-the-fact classification under the rules as
-they stand; a counterfactual run switches a rule off and measures that alone. -/
+they stand; a counterfactual run switches a rule off and measures that alone. D53's switches
+do not change what is erased, so a block checked with moves off (`preD53`) is checked too. -/
 def Config.prePassAssert (c : Config) : Bool :=
-  c.prePass && { c with trace := false } == ({} : Config)
+  c.prePass && { c with trace := false, moves := true, ghosts := true, fnRule := true } == ({} : Config)
 
 /-- D41: one assignment, borrow or move, by the position of its place's root. It is
 `pending` once an erased run it belongs to has affected a place outliving that run: an
@@ -210,7 +211,9 @@ structure MState where
 deriving Inhabited
 
 inductive Fail where
-  | stuck (fuel : Nat)
+  -- `on`: the neutral a match was stuck on, if any. A diagnostic only (D61): no handler but
+  -- `split`'s search (`stuckScrutinee`) reads it, so it changes no result
+  | stuck (fuel : Nat) (on : Option Value)
   | error (msg : String)
 
 instance : Inhabited Fail := ⟨.error "?"⟩
@@ -222,7 +225,11 @@ abbrev M := StateT MState (ExceptT Fail (StateM (Array String)))
 def err {α : Type} (msg : String) : M α := throw (.error msg)
 
 /-- Stuck on a neutral (RULES §3 [Match]); the innermost enclosing call closes off. -/
-def stuckNow {α : Type} : M α := do throw (.stuck (← get).fuel)
+def stuckNow {α : Type} : M α := do throw (.stuck (← get).fuel none)
+
+/-- Stuck on a match whose scrutinee's content is the neutral `v` (D61: `split` follows
+these to find what to split on). -/
+def stuckOn {α : Type} (v : Value) : M α := do throw (.stuck (← get).fuel (some v))
 
 def tick : M Unit := do
   let s ← get

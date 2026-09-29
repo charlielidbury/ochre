@@ -64,9 +64,21 @@ partial def libOf (cfg : Config) (fuel : Nat) (b : Block) : Program :=
     (b.closure.filter (·.name != "Prelude")).flatMap (exportsOf cfg fuel)
 end
 
+/-- The blocks checked with D53's moves off (reads copy, as before D53) until their lanes
+adapt them with `clone` and `Word`: the case studies, written before D53. A block's name goes
+once it checks with moves on. -/
+def preD53 : List String :=
+  ["Arrays", "ArrayLemmas", "ArrayBench", "Quicksort",
+   "HashMap", "HashMapLookup", "HashMapLength", "HashMapResize"]
+
+/-- The configuration a block is checked under: `cfg`, with moves off for a `preD53` block. -/
+def blockCfg (b : Block) (cfg : Config) : Config :=
+  if preD53.contains b.name then { cfg with moves := false } else cfg
+
 /-- Check a block: its library, then its own declarations. The report has a row for each of
 its own declarations only; a library declaration is asserted in its home block. -/
 def run (name : String) (b : Block) (cfg : Config := {}) (fuel : Nat := 2000000) : Report :=
+  let cfg := blockCfg b cfg
   let vs := checkProgram (libOf cfg fuel b ++ b.decls) cfg fuel
   let rows := b.decls.map fun d =>
     let (v, tr) := (vs.lookup d.name).getD (.rejected "not checked", #[])

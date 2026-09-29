@@ -330,10 +330,33 @@ ochr ErasureBySyntax uses Fixtures {
   reject def LieH (g : Π(y : Nat). V(Z)) : Id Nat (let c = Z; let h = g(0); (c := S Z; h); c) (S Z) := refl
   -- Rejected since D55: `V(Z)` is a type only by computation (its declared type `U(Z)` is not a sort).
   reject def BoomH : Eq Nat Z (S Z) := LieH(λ(y : Nat) : V(Z) => refl)
+
+  -- The pre-pass reads a stuck block's captured proofs as proofs (fuzz-port's R8, true
+  -- statements it once rejected with its INTERNAL check): a proof-function parameter, called
+  -- on a sub-place; a captured λ into proofs; and a proof whose data field an arm writes
+  -- inside a proof, which the block takes by value, never by `&` (D48 (1)).
+  def R8Param (n : Nat) (h2 : Π(z0 : &Nat). ⊤) : Id Nat (match n { Z => 0, S p => h2(&p); 0 }) 0 := (
+    match n { Z => refl, S _ => refl }
+  )
+  def R8Lam (n : Nat) :
+      Id Nat (let a5 = (λ(y6 : Nat) (y7 : ⊤ ∧ ⊤) : ⊤ ∧ ⊤ => y7); match n { Z => 0, S p => a5(p, ⟨refl, refl⟩); 0 }) 0 := (
+    match n { Z => refl, S _ => refl }
+  )
+  inductive ExN : Prop := Wit(n : Nat, e : ⊤)
+  def R8Field (n : Nat) (h3 : ExN) :
+      Id Nat (match n { Z => 0, S p => (match h3 { Wit(k, e) => k := 0; refl } : ⊤); 0 }) 0 := (
+    match n { Z => refl, S _ => refl }
+  )
+  -- Arms that are proofs of different shapes (a proof variable, a λ into proofs) agree on a proof.
+  def RunP (k : Π(x : &Nat). ⊤) (x : &Nat) : Unit := (k(x); ())
+  def R8Arms (n : Nat) (h0 : Π(z0 : &Nat). ⊤) (m : Nat) :
+      Id Unit (match n { Z => RunP(match m { Z => h0, S _ => (λ(y2 : &Nat) : ⊤ => refl) }, &m), S _ => () }) () := (
+    match n { Z => match m { Z => refl, S _ => refl }, S _ => refl }
+  )
 }
 
 #eval IO.println (run "ErasureBySyntax" ErasureBySyntax).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ErasureBySyntax" ErasureBySyntax).allAsExpected
-#guard (run "ErasureBySyntax" ErasureBySyntax).count == 26
+#guard (run "ErasureBySyntax" ErasureBySyntax).count == 32

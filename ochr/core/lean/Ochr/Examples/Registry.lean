@@ -14,6 +14,8 @@ import Ochr.Examples.«12CurrentState»
 import Ochr.Examples.«13Erasure»
 import Ochr.Examples.«14Universes»
 import Ochr.Examples.«15BorrowTypes»
+import Ochr.Examples.«16Arrays»
+import Ochr.Examples.«17HashMap»
 import Ochr.Examples.Units
 
 /-! # Every example program, for the test runner and the counterfactual ledger
@@ -29,17 +31,28 @@ namespace Ochr.Registry
 
 def programs : List (String × Block) :=
   [("Prelude", Prelude), ("Std", Std), ("Fixtures", Fixtures), ("Numbers", Numbers), ("Borrows", Borrows), ("ReturnedBorrows", ReturnedBorrows),
-   ("ClosingOff", ClosingOff), ("Naturality", Naturality), ("Equality", Equality),
+   ("ClosingOff", ClosingOff), ("Naturality", Naturality), ("Equality", Equality), ("Rewriting", Rewriting),
    ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion),
-   ("CaseSplits", CaseSplits), ("GenType", GenType), ("ScrutineeTypes", ScrutineeTypes),
+   ("CaseSplits", CaseSplits), ("GenType", GenType), ("Splitting", Splitting), ("ScrutineeTypes", ScrutineeTypes),
    ("GlobalRecords", GlobalRecords), ("Functions", Functions), ("Lists", Lists), ("Trees", Trees), ("InPlaceTrees", InPlaceTrees),
    ("PolyLists", PolyLists), ("Positivity", Positivity), ("PositivityParams", PositivityParams),
-   ("PositivityPaper", PositivityPaper), ("Propositions", Propositions),
+   ("PositivityPaper", PositivityPaper), ("Propositions", Propositions), ("Destructuring", Destructuring),
    ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
    ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("BorrowTypes", BorrowTypes)]
 
+/-- Case studies (`16Arrays`, `17HashMap`): checked and counted with the tour, and timed by `lake exe
+tests`, but not re-run by the counterfactual ledger, which is about the rules. A case study's
+programs are large and chained (each block re-checks the blocks it uses), so each ledger row
+would re-check them twice; their flips are measured once instead, by
+`Ochr/Examples/CaseStudyLedger.lean` (run it with `lake env lean`), and reported in
+`notes/arrays-library.md` and `notes/hashmap-case-study.md`. -/
+def caseStudies : List (String × Block) :=
+  [("Index", Index), ("Arrays", Arrays), ("ArrayLemmas", ArrayLemmas), ("ArrayBench", ArrayBench),
+   ("Quicksort", Quicksort),
+   ("HashMap", HashMap), ("HashMapLookup", HashMapLookup), ("HashMapLength", HashMapLength), ("HashMapResize", HashMapResize)]
+
 def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
-  programs.map fun (n, p) => run n p cfg fuel
+  (programs ++ caseStudies).map fun (n, p) => run n p cfg fuel
 
 /-- The declarations whose verdict under `cfg` differs from the default, as
 `program.name:verdict`, and the declarations that flip only because a library declaration
@@ -190,7 +203,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 548
+def Ochr.Registry.expectedTotal : Nat := 957
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

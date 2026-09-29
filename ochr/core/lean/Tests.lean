@@ -16,11 +16,11 @@ def timedRun (cfgRef : IO.Ref Config) (b : Block) : IO (List (String × Bool × 
   let sink ← IO.mkRef (0 : Nat)
   -- the block's library (`Prelude`, then what the blocks it `uses` export), checked first
   -- but not timed
-  let lib := libOf (← cfgRef.get) 2000000 b
+  let lib := libOf (blockCfg b (← cfgRef.get)) 2000000 b
   let p := lib ++ b.decls
   for (d, i) in p.zipIdx do
     let t0 ← IO.monoNanosNow
-    let cfg ← cfgRef.get
+    let cfg := blockCfg b (← cfgRef.get)
     let ok : Bool := match resolveProgram p d with
       | .error _ => false
       | .ok df =>
@@ -55,7 +55,7 @@ def main : IO UInt32 := do
   let mut passed := 0
   let mut totalUs := 0
   IO.println s!"(check times: median of {runs} runs of the compiled checker, per declaration)"
-  for (name, p) in programs do
+  for (name, p) in programs ++ caseStudies do
     let mut samples : Array (List (String × Bool × Bool × Nat)) := #[]
     for _ in [0:runs] do samples := samples.push (← timedRun cfgRef p)
     let rows := samples[0]!

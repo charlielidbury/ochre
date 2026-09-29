@@ -240,7 +240,7 @@ partial def nfSealed (t : Term) : M Value := do
   -- read of a cell (`peek`, closeCall's `K`) is an observation, and copies
   let r ← tryCatch (do let (v, _) ← eval false t; pure (some v)) fun e =>
     match e with
-    | .stuck f => do modify (fun s => { s with fuel := f }); pure none
+    | .stuck f _ => do modify (fun s => { s with fuel := f }); pure none
     | .error m => throw (.error m)
   restoreKeep saved
   match r with
@@ -546,7 +546,9 @@ partial def fieldTypes (d : IndDecl) (ps : List Value) (c : Nat) : M (List (Stri
     err s!"{d.name} takes {d.params.length} parameters, given {ps.length}"
   onCopy do
     pushFrame
-    for ((h, PT), v) in d.params.zip ps do pushBind h none v false (← withLive true (typeDecl false [] [] PT))
+    for ((h, PT), v) in d.params.zip ps do
+      let pd' ← withLive true (typeDecl false [] [] PT)
+      pushBind h none v pd'.isProof pd'
     fields.mapM fun (f, FT) => do pure (f, ← evalType FT)
 
 /-- D53: a copy type, read off a type; a type not fully known is not one: `Unit`, a sort
@@ -693,7 +695,8 @@ partial def sortOf (T : Value) : M Nat := do
       let A ← evalType d
       l := max l (← sortOf A)
       let gv ← genericValue A
-      pushBind h (some A) gv false (← refineDecl pd (some A) gv)
+      let pd' ← refineDecl pd (some A) gv
+      pushBind h (some A) gv pd'.isProof pd'
     let lb ← sortOf (← evalType c)
     pure (if lb == 0 then 0 else max l lb)
   | _ => err s!"{T} is not a type"
@@ -713,11 +716,16 @@ partial def placeDecl (sc : List DeclInfo) : Place → M DeclInfo
   | .field g _ => do pure (if ← tryCatch (fieldIsProof g) (fun _ => pure false) then .prop else .other)
   | _ => pure .other
 
-/-- Arms agree on what their declared type says (`any`, a zero-arm match, agrees with all). -/
+/-- Arms agree on what their declared type says (`any`, a zero-arm match, agrees with all).
+Arms that are all proofs agree on a proof, whatever their shapes (a proof variable in one
+arm, a function into proofs in another: applied, either is a proof). -/
 partial def agreeDecl (ds : List DeclInfo) : DeclInfo :=
   match ds.filter (· != .any) with
   | [] => .any
-  | d :: rest => if rest.all (· == d) then d else .other
+  | d :: rest =>
+    if rest.all (· == d) then d
+    else if (d :: rest).all DeclInfo.isProof then .prop
+    else .other
 
 /-- The declared type of a term, read from the declared types of its heads without
 normalising (the D35 notion), in a scope saying what each variable's declared type says
@@ -765,6 +773,7 @@ partial def declOf (chk : Bool) (sc : List DeclInfo) (ns : List String) (t : Ter
     for a in as do sub a
     pure (match df with
       | .pi r => r
+      | .prop => .prop      -- a proof applied is a proof (its type is a Π into a proposition)
       | .any => .any
       | _ => .other)
   | .eq A a b | .id A a b => do
@@ -1079,7 +1088,8 @@ partial def convPi (P Q : Value) : M Bool := do
             modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
             pure (Value.borrow l (.abs σ))
           | _ => genericValue A
-        pushBind h (some A) w false (← refineDecl pd (some A) w)
+        let pd' ← refineDecl pd (some A) w
+        pushBind h (some A) w pd'.isProof pd'
         ws := ws.push (w, A)
       let C ← evalType c
       discard popFrameRaw
@@ -1089,7 +1099,8 @@ partial def convPi (P Q : Value) : M Bool := do
       for (((d', h), (w, A)), pd) in ((ds'.zip hs).zip ws.toList).zip pds' do
         let A' ← evalType d'
         unless ← conv A A' do return false
-        pushBind h (some A') w false (← refineDecl pd (some A') w)
+        let pd' ← refineDecl pd (some A') w
+        pushBind h (some A') w pd'.isProof pd'
       let C' ← evalType c'
       conv C C')
     fun _ => pure false
@@ -1158,7 +1169,8 @@ partial def convFnRun (f g pf : Value) (cs : List Value) (hs : List Hint) (ds : 
           modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
           pure (Value.borrow l (.abs σ))
         | _ => if ← isPropV A then pure Value.proof else pure (Value.abs (← freshAbs A))
-      pushBind h (some A) w false (← refineDecl pd (some A) w)
+      let pd' ← refineDecl pd (some A) w
+      pushBind h (some A) w pd'.isProof pd'
       args := args.push w
     discard popFrameRaw
     -- D38 (v1.8): a borrow result is observed as its content, after one shared fresh
@@ -1228,6 +1240,30 @@ partial def mkEqM (A a b : Value) : M Value := do
 
 -- ### Evaluation
 
+/-- D60 [Rewrite]: the goal `G` of `rewrite h in t` after the rewrite, i.e. the type `t`
+must have. With `h : Eq A a b`, every occurrence of `b`'s normal form in `G` is generalised
+to a fresh `σ` (the replacement [Split] uses to generalise a sealed program, D34, here local
+to the goal and not recorded), and `a` is substituted for `σ`, re-normalising what changed.
+`rev` (`rewrite ← h in t`) swaps `a` and `b`. The term is `J(A, a, b, λz. G[z/b], h, t)`
+with the motive read off the goal. A rewrite that finds nothing to rewrite is an error (a
+wrong direction, usually); an `h` whose type computes to `True` rewrites nothing and is
+allowed (its two sides are already equal). -/
+partial def rewriteGoal (rev : Bool) (h : Term) (G : Value) : M Value := do
+  unless (← typeClass G) == 2 do err s!"rewrite: the goal {G} is not a proposition"
+  let (_, Th) ← eval true h
+  match Th.map unitTop with
+  | some (.tInd "True" []) => pure G
+  | some (.tEq A a b) =>
+    let (src, dst) := if rev then (a, b) else (b, a)
+    let σ ← freshAbs A
+    let G1 ← substV src (.abs σ) G
+    if G1 == G then err s!"rewrite: the goal {G} does not mention {src}"
+    let G' ← substV (.abs σ) dst G1
+    trace fun _ => s!"[Rewrite] {src} ↦ {dst}: goal {G'}"
+    pure G'
+  | some T => err s!"rewrite: the proof has type {T}, which is not an equation"
+  | none => err "rewrite: untyped proof"
+
 partial def expectTy (what : String) (T : Option Value) (A : Value) : M Unit := do
   if let some T := T then
     unless ← conv T A do err s!"{what} has type {T}, expected {A}"
@@ -1274,6 +1310,7 @@ partial def eval (typed : Bool) (t : Term) (hint : Option Value := none) : M (Va
         let (e, p) ← getFlags
         pure (if cfg.seqByProof then (p, p) else (e, p))
       | .cong _ _ | .prim "trans" _ | .prim "symm" _ => pure (true, true)
+      | .prim "rewrite" _ | .prim "rewriteR" _ => pure (true, true)   -- D60: `J`, a proof
       | .ctor ty _ _ _ _ => let p ← ctorIsProof ty; pure (p, p)   -- D42: a Prop inductive's value is a proof
       | .prim "J" [_, _, _, P, _, _] =>
         let p ← jErased P      -- the appendix's clause 4: the motive is syntactically into Prop
@@ -1354,7 +1391,8 @@ partial def fnClass (piTy : Value) : M Nat := do
             for ((d, h), pd) in (ds.zip hs).zip pds do
               let A ← evalType d
               let gv ← genericValue A
-              pushBind h (some A) gv false (← refineDecl pd (some A) gv)
+              let pd' ← refineDecl pd (some A) gv
+              pushBind h (some A) gv pd'.isProof pd'
             typeClass (← evalType c)
     | _ => pure 0
   modify fun s => { s with classCache := (piTy, k) :: s.classCache }
@@ -1390,7 +1428,9 @@ partial def propDecl (sc : List Nat) (c : Term) : M Bool := do
   | .matchNat _ z s => pure ((← propDecl sc z) || (← propDecl sc s))
   | .matchInd _ _ arms => arms.anyM fun (_, a) => propDecl sc a
   | .ascribe u A => pure (isPropSort A || (← propDecl sc u))
-  | _ => pure false      -- an embedded value is not declared (a stuck block's parameter types)
+  | .val T => isPropV T  -- a stuck block's parameter: the type of the place it captured, whose
+                        -- sort was syntactic there (D55)
+  | _ => pure false
 
 /-- v1.7 (D35): which parameters are proofs, i.e. declared of sort Prop (`propDecl` on
 the domain term, in the scope of the captured values and the earlier parameters). The
@@ -1509,7 +1549,10 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     let du ← if (← get).cfg.prePass then withLive true (declOf false [] [] u) else pure .other
     let (v, T) ← eval typed u
     let du' ← refineDecl du T v
-    pushBind h T v (← getFlags).2 du'     -- `h` is a proof iff `u` is
+    -- `h` is a proof iff `u` is, or its declared type is a proposition (P1; `u` may be an
+    -- embedded value, `⋆` in a sealed program's bindings, which the pre-pass does not read)
+    let p := (← getFlags).2 || ((← get).cfg.leafRule == 2 && du'.isProof)
+    pushBind h T v p du'
     -- the tail's reading is this let's (read with `h`'s declared type, unless refined)
     if du' == du then modify fun s => { s with tailDecl := myD }
     let (r, R) ← eval typed w
@@ -1653,6 +1696,16 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
       unless (← conv A A') && (← conv b b') do err s!"trans: {Th.get!} and {Tk.get!} do not compose"
       pure (.proof, some (← mkEqM A a c))
     | _, _ => err "trans: not equations"
+  | .prim "rewrite" [h, u] | .prim "rewriteR" [h, u] =>
+    -- D60 [Rewrite]: checked against the type the context requires (`hint`)
+    if !typed then return (.proof, none)
+    let some G := hint
+      | err "rewrite: the goal is not known here (use it in tail position, as a call's argument, or under an annotation `let x : T = …`)"
+    let G' ← rewriteGoal (t matches .prim "rewriteR" _) h G
+    let (_, Tu) ← eval true u (some G')
+    expectTy "the rewritten term" Tu G'
+    pure (.proof, some G)
+  | .prim "split" _ | .prim "splitArms" _ => err "split: only in tail position (where the goal is known)"
   -- D53: `clone(p)` copies `p` (an erased read); `peek` is an observation's final read
   | .prim "clone" [t] | .prim "peek" [t] => withErased (eval typed t hint)
   | .prim "inplace" [t] =>
@@ -1706,7 +1759,8 @@ partial def checkParams (d : IndDecl) (n : String) (vs : Array Value) (tys : Arr
       let A ← evalType PT
       expectTy s!"the parameter {h.name} of {n}" T A
       noBorrowParam n v
-      pushBind h (some A) v false (← withLive true (typeDecl false [] [] PT))
+      let pd' ← withLive true (typeDecl false [] [] PT)
+      pushBind h (some A) v pd'.isProof pd'
 
 /-- No borrows inside data (RULES §1), also through a parameter: `List(&Nat)` is not a type. -/
 partial def noBorrowParam (n : String) (v : Value) : M Unit := do
@@ -1732,8 +1786,8 @@ partial def evalCtor (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts : Li
     | _ => Array.replicate np none
   let mut tys := #[]
   for (a, (_, FT)) in as.zip fields do
-    let fh ← if typed && ((np > 0 && (a matches .ctor ..)) || (a matches .val _)) then fieldTypeAt d sol FT
-      else pure none
+    let fh ← if typed && ((np > 0 && (a matches .ctor .. | .prim "rewrite" _ | .prim "rewriteR" _)) || (a matches .val _))
+      then fieldTypeAt d sol FT else pure none
     let (w, T) ← eval typed a fh
     if let some T := T then sol := unifyParams np FT T sol
     tys := tys.push T
@@ -1768,7 +1822,7 @@ partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
   for a in as do
     let s := (← get).effects.size
     -- v2.0: a constructor argument's parameters may come from the parameter's type
-    let hint ← if typed && (a matches .ctor .. | .val _) then argHint fv fT ws0 else pure none
+    let hint ← if typed && (a matches .ctor .. | .val _ | .prim "rewrite" _ | .prim "rewriteR" _) then argHint fv fT ws0 else pure none
     let (w, T) ← eval typed a hint
     if a matches .borrow _ | .place _ then argSteps := argSteps.push (s, (← get).effects.size)
     pushTemp w
@@ -1795,7 +1849,8 @@ partial def argHint (fv : Value) (fT : Option Value) (ws : Array Value) : M (Opt
         let (pds, _) ← paramDecls cs hs ds c
         for (((d', h), w), pd) in ((ds.zip hs).zip ws.toList).zip pds do
           let A ← evalType d'
-          pushBind h (some A) w false (← refineDecl pd (some A) w)
+          let pd' ← refineDecl pd (some A) w
+          pushBind h (some A) w pd'.isProof pd'
         some <$> evalType d)
     fun _ => pure none
 
@@ -1954,7 +2009,7 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
       let (cs, t) ← fixOf fv
       tryCatch (runBody fv cs t ws) fun e =>
         match e with
-        | .stuck fu =>
+        | .stuck fu _ =>
           if head then throw e
           else do
             modify fun s => { s with fuel := fu }
@@ -2051,9 +2106,9 @@ partial def evalMatch (typed : Bool) (p : Place) (z s : Term) (expected : Option
   | .zero => eval typed z
   | .succ _ => eval typed s
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
-  | .abs σ => if typed then splitThenClose p z s σ expected else stuckNow
+  | .abs σ => if typed then splitThenClose p z s σ expected else stuckOn v
   | .sealed _ | .loan _ =>
-    if !typed then stuckNow
+    if !typed then stuckOn v
     else
       let σ ← generalizeNeutral p v
       let expected ← expected.mapM (substV v (.abs σ))
@@ -2330,13 +2385,13 @@ partial def evalMatchInd (typed : Bool) (p : Place) (ty : String) (arms : List (
     | none => err s!"[Match] no arm for constructor {c}"
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
   | .abs σ =>
-    if !typed then stuckNow
+    if !typed then stuckOn v
     else
       let (d, ps) ← scrutType p ty
       splitArmsThenClose (.matchInd p ty arms) σ
         ((List.range d.ctors.length).zip (arms.map (·.2)) |>.map fun (c, a) => (ctorRefinement d ps c, a)) expected
   | .sealed _ | .loan _ =>
-    if !typed then stuckNow
+    if !typed then stuckOn v
     else
       let (d, ps) ← scrutType p ty
       let σ ← generalizeNeutral p v
@@ -2410,6 +2465,11 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
     if !hasPrefix && !(caps.any fun (c, _) => c == q) then
       let mode := (uses.filter fun (p, _) => placePrefix q p).foldl (fun m (_, k) => max m k) 0
       caps := caps.push (q, mode)
+  -- a proof is never taken by `&` (D48 (1): only data is borrowed): its value is `⋆`, so an
+  -- arm's write through a pattern variable of a matched proof (a field, a fresh value by
+  -- D49 (3), in a proof position by D45) is local to the block's own copy (R8, fuzz-port)
+  caps ← caps.mapM fun (q, k) => do
+    if k == 1 && (← tryCatch (do isPropV (← placeType q)) (fun _ => pure false)) then pure (q, 0) else pure (q, k)
   -- D53 (fuzz-port shape (a)): the block's captures mirror the direct path's effects. A
   -- place it only reads is copied without being consumed (a match inspects in place); a
   -- part that some arm moves out is moved in on its own, at that granularity (`q1.1`), and
@@ -2512,11 +2572,138 @@ partial def idType (typed : Bool) (A t u : Term) : M Value := do
 
 -- ### Typing: [Def], [Split] in tail position
 
+/-- D61 `split`: the name of a sealed program's head call (the call [Seal] marks as the
+head; one per sealed program), if it is a top-level function. -/
+partial def sealedHead : Term → Option String
+  | .call (.val (.gfn n)) _ true => some n
+  | .call f as _ => (f :: as).findSome? sealedHead
+  | .letIn _ a b | .seq a b => sealedHead a <|> sealedHead b
+  | .assign _ a => sealedHead a
+  | _ => none
+
+/-- D61: the neutral that a run of the sealed program `t` is stuck on: re-run `t` as [Seal]
+does and report the content of the scrutinee of the match it stopped at, if any. -/
+partial def stuckScrutinee (t : Term) : M (Option Value) := do
+  let saved ← get
+  modify fun s => { s with env := #[{}], depth := s.depth + 1 }
+  let r ← tryCatch (do discard (withErased (eval false t)); pure none) fun e =>
+    match e with
+    | .stuck f on => do modify (fun s => { s with fuel := f }); pure on
+    | .error _ => pure none
+  restoreKeep saved
+  pure r
+
+/-- D61: the sealed programs of a value, in pre-order, left to right. -/
+partial def sealedIn (v : Value) : List Term :=
+  match v with
+  | .sealed t => t :: termVals t
+  | .succ w | .borrow _ w | .tRef w => sealedIn w
+  | .tEq A a b => sealedIn A ++ sealedIn a ++ sealedIn b
+  | .clo cs _ | .tPi cs _ => cs.flatMap sealedIn
+  | .ind _ _ _ ps fs => ps.flatMap sealedIn ++ fs.flatMap sealedIn
+  | .tInd _ as => as.flatMap sealedIn
+  | _ => []
+where
+  termVals : Term → List Term
+    | .val w => sealedIn w
+    | .call f as _ => termVals f ++ as.flatMap termVals
+    | .letIn _ a b | .seq a b => termVals a ++ termVals b
+    | .assign _ a => termVals a
+    | .prim _ as => as.flatMap termVals
+    | _ => []
+
+/-- D61 `split f`: find the neutral to split. Walk the goal's sealed programs in pre-order,
+left to right; from each, follow the chain of scrutinees its run is stuck on (each link
+the content of the scrutinee of the match the previous one stopped at) while they are
+sealed programs; the first sealed scrutinee whose head call is `f` is the one. A link may
+also be an abstract value that stands for a sealed program generalised earlier (a D34
+record, which re-derivations of the program are replaced by): if that program's head
+call is `f`, it is the one, already generalised. -/
+partial def findSplit (f : String) (G : Value) : M (Option Value) := do
+  for t in sealedIn G do
+    let mut cur := t
+    for _ in [0:64] do
+      match ← stuckScrutinee cur with
+      | some n@(.sealed t') =>
+        if sealedHead t' == some f then return some n
+        cur := t'
+      | some a@(.abs σ) =>
+        match (← get).neutrals.find? (·.2 == σ) with
+        | some (.sealed t', _) => if sealedHead t' == some f then return some a
+        | _ => pure ()
+        break
+      | _ => break
+  pure none
+
+/-- D61: generalise a neutral found in the goal to a fresh `σ` of type `T`, as [Split] does
+for a sealed scrutinee (D34, D37), and return `σ`. -/
+partial def generalizeFound (n : Value) (T : Value) : M Nat := do
+  let σ ← freshAbs T
+  trace fun _ => s!"[Split] generalise {n} to σ{σ} : {T}"
+  substEnv n (.abs σ) true
+  if (← get).cfg.genConsistent then
+    modify fun s => { s with neutrals := (n, σ) :: s.neutrals }
+  pure σ
+
+/-- D61: the neutral `split f` splits and its type, or an error. -/
+partial def splitTarget (f : String) : M (Nat × Value) := do
+  unless (← get).cfg.generalize do
+    err s!"split {f}: it generalises a sealed program, which is switched off (RULES §5 splits only on σ)"
+  let some G := (← get).goal | err "split: no goal"
+  let some n := ← findSplit f G
+    | err s!"split {f}: the goal {G} is not stuck on the result of a call of {f}"
+  if let .abs σ := n then return (σ, ← absType σ)     -- generalised already
+  let .sealed t := n | err "internal: split target"
+  let some T := ← sealedResultType? t
+    | err s!"split {f}: the type of {n} is not known (its head's result type depends on the arguments)"
+  pure (← generalizeFound n T, T)
+
 /-- Check a term in tail position. At the end of every path, `k` gets the result and
 its type (in that path's refined state). A match on an abstract `σ` here is split:
 each arm is checked to the end under its refinement ([Split]). -/
 partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
   match t with
+  | .prim "split" [.const f, u] =>
+    -- D61: `split f in u`: split the goal's stuck result of `f`, `u` in every arm
+    let (σ, T) ← splitTarget f
+    let saved ← get
+    match T with
+    | .tNat =>
+      refine σ .zero
+      trace fun _ => s!"[Split] σ{σ} := 0"
+      checkTail u k
+      restoreKeep saved
+      let σ' ← freshAbs .tNat
+      refine σ (.succ (.abs σ'))
+      trace fun _ => s!"[Split] σ{σ} := S σ{σ'}"
+      checkTail u k
+      restoreKeep saved
+    | .tInd n ps =>
+      let d ← lookupInd n
+      for c in List.range d.ctors.length do
+        let r ← ctorRefinement d ps c
+        refine σ r
+        trace fun _ => s!"[Split] σ{σ} := {r}"
+        checkTail u k
+        restoreKeep saved
+    | _ => err s!"split {f}: its result type {T} is not an inductive type"
+  | .prim "splitArms" [.const f, .letIn h _ w] =>
+    -- D61: `split f { C(x̄) => u, … }`: the split value is bound to a hidden variable, and
+    -- the arms are an ordinary match on it
+    let (σ, T) ← splitTarget f
+    pushBind h (some T) (.abs σ) false
+    checkTail w fun r R => do
+      let fl ← getFlags
+      pushTemp r
+      dropTopBind
+      setFlags fl
+      k (← popTemp) R
+  | .prim "rewrite" [h, u] | .prim "rewriteR" [h, u] =>
+    -- D60: in tail position the rewritten goal becomes the path's goal, so `u` may split
+    let some G := (← get).goal | err "rewrite: no goal"
+    let G' ← rewriteGoal (t matches .prim "rewriteR" _) h G
+    modify fun s => { s with goal := some G' }
+    checkTail u k
   | .letIn h u w =>
     let es := (← get).effects.size
     let du ← if (← get).cfg.prePass then withLive true (declOf false [] [] u) else pure .other

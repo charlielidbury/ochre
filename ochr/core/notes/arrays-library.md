@@ -394,3 +394,112 @@ Scratch files, not committed and deleted, run through the checker at the D52 bui
 - **v1, cells (32).** Checked: `GetMut`, Take/Drop/Join, `DropJoin`, `B1Proj` (opaque g, one lemma), `B1JoinC` (`refl`), `ZeroAll`, `Swap`, and a peel-the-head partition with `QS`, which runs to the sorted array.
 - **v2 (44).** Checked: `Array`/`Slice` over `Cells` with no length field; `AsSlice`; the index lemmas; `Scan` and `Partition` (Lomuto, structural on a countdown, bounds by lemma); `QS` over views (fuel, `LeDec` bound); `SortA` on an owned `Array(4)` ([3,1,4,2] to [1,2,3,4]); `HMOf`/`HMSlot`. Rejected as expected: `LArr` (proof field), `Vec` (Σ field), `HM0`/`HM1` (D36), `SortRunWrong`.
 - **A repro file:** the ⋆ finding.
+
+## 10. Phase A: what was built (D57)
+
+Branch `ochr-arrays`, tour file `lean/Ochr/Examples/16Arrays.lean`, merged with ochr-core 7f3a2642 (the soundness batch, D60, the hashmap case study). Five blocks, 167 declarations, all as expected; the proofs use D60's `rewrite` and destructuring `let` and write no `J`. No kernel changes; every workaround is marked in the code.
+
+- **`Index`** (17): `Le`, `Lt`, `Sub`, `Leb`, `Eqb`, `Dec` with `LeDec`/`LtDec`, and index lemmas. It uses one number type throughout, so D53's `Word` will be a rename.
+- **`Arrays`** (26):
+  - the model: `Cells(E, n)` (`CellsEnd` at zero), `Slice(E, n)` and `Array(E, n)`;
+  - model functions: `Nth`, `SetS`, `TakeS`, `DropS`, `JoinS`, `SnocS`, `PopS`. `SetS`, `DropS` and `JoinS` are total and take no bounds proof; the `[native]` API still demands one;
+  - the `[native]` functions: `AsSlice`, `Read`, `Set`, `GetMut`, `WithSplit`, `ArrEmpty`, `ArrPush`, `ArrPop`;
+  - user code: `Swap`, `Replicate`, `Fill`.
+- **`ArrayLemmas`** (14): get-after-set (`NthSetSame`, `NthSetOther`), split-then-join (`JoinTakeDrop`), `TakeJoin`, `DropJoin`, counting (`CountJoin`, `CountSet`, `CountSwap`), and `GetMutSet` (writing through an element borrow is `Set`; accepted since the ⋆ fix).
+- **`ArrayBench`** (33): B1 (by `refl` in the joined form; by `DropJoin` otherwise), reads and writes, B4 (`GetOr`), growth, and B3 (a fixed-capacity hashmap: the slot bound `ModLt` is proved, and the bucket is inserted into in place).
+- **`Quicksort`** (77): **`QSCorrect`, proved.** Quicksort's result is `Sorted` and a permutation of its input (every count is unchanged), for fuel equal to the length. The layers:
+  - the program: `Scan` (Lomuto, recursing on a countdown), `Partition`, `Recurse` (the step, for any `rec`), `QS` on fuel `[K6]`;
+  - `QSPerm`, for any fuel: `ScanPerm`, `RecursePerm`, counting through joins and swaps;
+  - `QSSorted`, given the partition's contract: the glue (`SortedJoin`), bounds surviving a permutation by counting (`AllLePerm`/`AllGePerm`, DLLBC's keystone), `RecurseSorted`;
+  - the contract (`PartLeProof` … `PartRightProof`), which is Lomuto's positional invariant, the stratum DLLBC's R15 found:
+    - `ScanLt`, `ScanPivot`, `ScanLeft`, `ScanRight`, by recursion on the countdown, each step through `StepJ0`/`StepJ1`/`StepJ2`/`StepJ2F`;
+    - reads of a swapped view (`NthSwapA`, `NthSwapB`, `NthSwapOther`, `NthIdx`);
+    - bridges from positions to pieces (`AllLeTakeOf`, `TakeOneDrop`, `AllGeDropOf`).
+
+**Sizes, before and after D60** (`notes/arrays-count.py`: code lines and tokens per declaration, comments and blanks stripped, with the hashmap study's tokenizer; "before" is 9b9b0073):
+
+| | before D60 | after D60 | tokens |
+|---|---|---|---|
+| B2 program (`Scan`, `Partition`, `Recurse`, `QS`, `SortArray`) | 52 / 825 | 52 / 739 | −10% |
+| B2 spec (`AllLe`, `AllGe`, `Sorted`) | 30 / 229 | 30 / 229 | |
+| B2 proof: permutation | 107 / 2,400 | 83 / 1,424 | −41% |
+| B2 proof: sortedness glue (incl. the contract's statement) | 293 / 4,620 | 296 / 4,252 | −8% |
+| B2 proof: the partition's contract | 432 / 9,168 | 392 / 7,205 | −21% |
+| B2 proof: `QSSortedFull`, `QSCorrect` | 9 / 201 | 9 / 201 | |
+| **B2 proofs, total** | **841 / 16,389** | **780 / 13,082** | **−20%** |
+| `Index` / `ArrayLemmas` (the lemma library) | 127 / 1,066; 224 / 2,568 | 123 / 947; 224 / 2,301 | −11%; −10% |
+| whole file (167 declarations after; 175 before) | 1,629 / 26,618 | 1,563 / 22,775 | −14% |
+
+(lines / tokens.) The runs and negative tests (9 lines, 815 tokens) are unchanged. The program shrinks because its erased index proofs were `J`s. What went:
+- all 40 `J`s with motives (two of them inside `EqSym`/`EqTrans`), the combinators that only oriented them (`EqSym`, `EqTrans`: 46 uses) and the congruence lemmas (`AddCongL`, `AddCongR`, `CountCong`), for 61 `rewrite`s. The permutation step (`RecursePerm`) is now a chain of eight `rewrite`s ending in `refl`, where it was 22 lines of named counts and `EqTrans`;
+- `AndL`/`AndR` (10 uses) and the `Intro` matches, for 6 destructuring `let`s;
+- `NthIdx` (equal indices read equal elements): rewriting the index in the goal does it;
+- `LtNe` is now by recursion (`Eq` is injective and disjoint, D52), not by `J`.
+
+Two changes are not D60 and are reported separately: `CountSet` now puts the indicator first (`Ind(q, x) + Count(…)`, the textbook order), so `CountSwapHead`'s four arms are each just the lemma; and `AndI` stays in `AllGeJoin`/`SortedJoin` (finding 3).
+
+**A D60 finding: a rewrite cannot see through injectivity.** `rewrite` works on normal forms, and an equation between two successors is already stored in its injectivity-reduced form (D52): the goal `Eq Nat (S a) (S b)` is `Eq Nat a b`. So in `CountSwapHead`'s arm where both elements match, `rewrite AddOneR(a) in …` finds no `S a` and fails, while the old `EqTrans(S a, Add(a, 1), S b, …)` was accepted, because conversion compares normal forms at the end rather than searching the goal. An annotated `let` does not help, since its annotation is normalised the same way. The same holds for any constructor, not only `S`. Restating the lemma avoided it here (`CountSet` with the indicator first, so both sides reduce to the same shape); in general, a proof that must rewrite under a pair of equal constructors goes through a lemma whose statement is not such a pair.
+
+**Case study, build time.** The five blocks are registered in `Registry.caseStudies`, out of the per-build ledger, as the hashmap is: `lake exe tests` still checks and counts them (900/900 after D60), and `CaseStudyLedger.lean` measures their flips once. A full `lake build` after a checker change takes 2 min 15 s (it was 13–15 min with the arrays in the ledger); after an edit to `16Arrays.lean`, 1 min 19 s. `Quicksort` checks in 0.2 s.
+
+**Checker findings** (for the checker lane; status after the batch):
+1. **⋆ incompleteness: mostly fixed.** Captured values, `Dec`/`And` parameters and Π-typed arguments that embed proofs now work; `PermOf`/`AllLeRec`/`AllGeRec` are gone. **One form remains:** a Π-type whose body uses a proof captured from outside the Π, e.g. `LeftOf(…, hk) := Π(t)(ht : Lt(t, k)). Le(Nth(…, LtTrans(t, k, n, ht, hk)), p)`. Calling such a hypothesis fails. A proof bound by the Π itself is fine. Workaround: add the needed bound as an extra Π binder.
+2. **Dead arms in borrow-returning functions: fixed** by the batch (`GetMutSet` accepted).
+3. **A type from a sibling arm: still present, a false rejection only.** In `AllGeJoin`/`SortedJoin`, an inferred `⟨p, q⟩` after the dead arm `n := Z` is typed with that arm's refinement (`SliceOf(CellsEnd)`). Workaround: `AndI` names the conjuncts.
+   - **Minimal repro** (standalone, `uses Std`, 55 lines with its own `Le`/`Sub`/`Cells`/`JoinS`/`AllGe`):
+     ```
+     def Leak (n : Nat) (k : Nat) (l : Slice(k)) (r : Slice(Sub(n, k))) (a : Nat) (hl : AllGe(k, l, a))
+         (ih : Π(m : Nat) (k' : Nat) (t : Slice(k')) (r2 : Slice(Sub(m, k'))). AllGe(m, JoinS(m, k', t, r2), a)) :
+         AllGe(n, JoinS(n, k, l, r), a) := (
+       match k {
+         Z => ih(n, 0, l, r),
+         S k' => match n {
+           Z => ih(Z, S k', l, r),
+           S m => match l {
+             MkSlice(c) => match c {
+               MkC(y, t) => ⟨AndL(Le(a, y), AllGe(k', t, a), hl), ih(m, k', t, r)⟩,
+             },
+           },
+         },
+       }
+     )
+     ```
+     Rejected with "argument 4 (r) has type SliceOf(CellsEnd), expected SliceOf(⌈Cells(⌈Sub(σ10, σ9)⌉)⌉)". The same arm as its own function is accepted, and so is the program with `AndI(…)` in place of `⟨…⟩`. A variant with no dead arm (the `n := Z` arm live) fails the same way, so it is not about dead arms.
+   - **Mechanism.** A case split's `substEnv … (types := true)` substitutes into the types of *all* abstract values (`absTy`), not only the goal and Ω (Machine.lean `substEnv`). After the arm, `restoreKeep` restores Ω and the goal but, under D37's `globalRecords`, keeps the current `absTy` wholesale (Env.lean `restoreKeep`). So the `n := Z` arm's refinement of `r`'s type (`Slice(Sub(Z, S k'))` ⇒ `SliceOf(CellsEnd)`) survives into the sibling `S m` arm for every abstract value that existed before the split. It is visible only where a type is read from a value rather than from a binding: here, [T-Ctor]'s inference of `And`'s parameters instantiates `ih`'s codomain, whose `r2` then gets `r`'s stale type.
+   - **Exploit attempts, all correctly handled:** a direct argument (the binding's type is used, not `absTy`), constructor inference into an `Eq` whose sides differ only by the leaked type, a function parameter called in a sibling arm, a let-bound copy of it, and a Π codomain instantiated with that function as a value. In each, the stale type either is not consulted or makes the check fail. So it is a completeness bug: it rejects good programs and I found no way to accept a bad one. It is still a soundness hazard, since a leaked refinement is a false fact about a value outside its arm; any future rule that trusts `absTy` for a positive answer would turn it into a proof of `False`.
+   - **Suggested fix:** in `restoreKeep`, keep only the suffix of `absTy` for the abstract values minted during the arm (`saved.absTy ++ cur.absTy.extract saved.absTy.size …`), or have [Split] not write refinements into `absTy` at all and apply them when a type is read. D37 needs the *names* to stay fresh (`nextAbs`), not the arm's refinements of old names.
+4. **Π-closures are not re-normalised (new).** `renormV` handles sealed programs, constructors and inductive types but returns closures and Π-closures unchanged. So a goal like `Lt(k, n) ∧ Π(hk : …). …`, holding a sealed program `k` inside a Π, stays stale after a case split generalises something that program depends on. The first attempt at the scan's invariant walled here. Workaround: state facts pointwise, one lemma per fact, with the quantified variables as parameters (`ScanPivot`, `ScanLeft`, `ScanRight`).
+5. **D41 in a type-returning call's argument.** `Sorted(n, (QS(…, &*s); *s))` is rejected, while the same shape inside `Eq` is accepted. Statements use a local copy (`let c = *s; QS(…, &c); Sorted(n, c)`). Related: Π-types in a signature that mention `*s` for a borrow parameter `s` capture the borrow, so the scan lemmas take the view by value.
+6. Under the counterfactual `seqByProof := false`, `ArrayBench` panics 16 times (`Option.get!`) without changing any verdict.
+
+**Also learned.** A closure built inside `QS` captures `QS` itself as a frame value, so proofs build the recursion closure with `RecWith(QS, fuel)`.
+
+## 11. Phase B: RULES draft (not applied)
+
+For after the soundness batch (D54–D56). Each rule is read from syntax and declarations.
+
+- **K1: `Data`.**
+  - `Data : Type₁` is the sort of first-order data types. Inductives declared `: Data` have fields that are data, or parameters of sort `Data`. `Nat`, `Unit` and `Pair(A, B)` (for `A, B : Data`) are data, and so is a call of a type function whose declared codomain is `Data` (`Cells : Π(E : Data)(n : Nat). Data`).
+  - [T-Ref] becomes: `&A` is well formed iff `A`'s declared sort is `Data`, or `A` is headed by an `unsized` declaration. This is a syntactic reading (D55), so `&T` for a variable `T : Data` and `&Cells(E, n)` at a symbolic `n` are well formed.
+  - Universes stay non-cumulative. Existing `Type₀` data declarations would move to `Data`, and `Type₀` keeps function types, borrow types and `Prop`. The alternative, a single inclusion `Data ≤ Type₀`, needs a check against D28's reasons for non-cumulativity.
+  - Removes the `[K1]` workarounds: `GetMut(E, …) : &E` becomes generic, and tails need no view wrapper.
+- **K2: [Unsized].**
+  - An inductive may be declared `unsized`. Its types are not in `Data`, so they never instantiate a `T : Data`, and `&A` is well formed for them.
+  - In a runtime position outside an `implemented by` body, a place whose declared type is headed by an unsized declaration occurs only as `&p`: it is never read, moved, assigned or matched.
+  - `SliceOf` is unsized.
+- **K3: [Abstract] and `implemented by`.**
+  - Constructors of an `abstract` declaration, and matches whose arms name them, may occur in a runtime position (not erased, P2) only inside the body of an `implemented by "sym"` declaration of the same block. In erased positions they are unrestricted.
+  - `def f … := b implemented by "sym"`: the checker checks `b` and runs `b` everywhere, and never runs `sym`; the compiler calls `sym`.
+  - A declaration whose body uses an abstract constructor at a runtime position must be `implemented by`.
+  - `SliceOf`, `ArrayOf`, `Cell` and `CellsEnd` are abstract. The `[native]` functions get `implemented by`.
+- **K6: [Rec-<].**
+  - `fix f (x̄ : Ā) : B by xⱼ < := t` with `Aⱼ = Nat`. Every recursive call is written `f(ū) by h`, where `h` is an erased proof whose type converts to `Lt(uⱼ, σⱼ)`, and `σⱼ` is `xⱼ`'s entry value as refined.
+  - `Lt` is the library's, pinned as `True` and `And` are.
+  - **Machine guard** (from arrays-primitive §1.10). A `<`-recursive call is unfolded only when its argument in position `j` is structurally below the caller's entry value, i.e. a concrete `Nat` smaller than it. Otherwise it is sealed, as a stuck call. The decrease proof is erased and never checked at run time. Without the guard, `F(n, h : False) := F(n, h) by Absurd(h)` would unfold forever during conversion. With it, unfolding is monotone and fail-safe: a call the guard seals is merely left stuck.
+  - It is sound by translation to structural recursion on a bound.
+  - Removes `QS`'s fuel: `QS(n, s) by n <` recurses at `k` by `hk` and at `m - k` by `SubOneLe`, so `RecWith` and the fuel bound in `QSSorted` go too.
+- **K7: dependent fields, in two halves** (from arrays-primitive §1.11).
+  1. **Data index fields first.** In `Vec(T) := Mk(n : Nat, items : Array(T, n))`, the earlier field `n` is an index of a later field's type. [Frozen] freezes only `n`; `&v.items` stays free, because nothing reached through it can change the length.
+  2. **Proof fields later, if ever.** A proof field (`h : Sorted(xs)`) freezes the payload it talks about. That brings back DLLBC's packed-borrow walls.
+
+  Injectivity (D52) decomposes a constructor equation only while the index fields on both sides are convertible.

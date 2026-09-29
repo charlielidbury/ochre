@@ -67,10 +67,13 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { generalize := false }
   ["ClosingOff.UseDec:rejected", "Equality.CastMatch:rejected", "CaseSplits.MatchAfterOpaque:rejected",
-   "GenType.GenL:rejected", "Trees.InsertM:rejected", "Trees.Insert:rejected", "Trees.InsertMEq:rejected",
+   "GenType.GenL:rejected", "Splitting.Pick:rejected", "Splitting.PickNotZero:rejected",
+   "Splitting.PickNotZeroCopy:rejected", "Splitting.Pick22:rejected", "Splitting.Pick22NotZero:rejected",
+   "Splitting.PickTwo:rejected", "Splitting.DoubleVal:rejected",
+   "Trees.InsertM:rejected", "Trees.Insert:rejected", "Trees.InsertMEq:rejected",
    "Trees.InsertMSwap:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.InsertM:rejected",
-   "InPlaceTrees.Insert:rejected", "InPlaceTrees.InsertMIsInsert:rejected",
-   "InPlaceTrees.SizeInsert:rejected"]
+   "InPlaceTrees.Insert:rejected", "InPlaceTrees.InsertMIsInsert:rejected", "InPlaceTrees.SizeInsert:rejected",
+   "InPlaceTrees.SizeInsertRw:rejected"]
 open Ochr.Registry in
 #guard rowOk { blockMoves := false }
   ["ClosingOff.MovedByBlock:accepted"]
@@ -79,8 +82,10 @@ open Ochr.Registry in
   ["Propositions.AndTrue:rejected", "Propositions.Swap:rejected", "Propositions.Fst:rejected",
    "Propositions.FstSwap:rejected", "Propositions.AndL2:rejected", "Propositions.Snd:rejected",
    "Propositions.Twice:rejected", "Propositions.SplitId:rejected", "Propositions.TwoOwners:rejected",
-   "Propositions.TwoOwnersR:rejected", "Propositions.ThreeOwners:rejected", "Subsingletons.OrComm:rejected",
-   "Subsingletons.OrElim:rejected", "Subsingletons.OrLet:rejected", "CurrentState.ProofIrr:rejected"]
+   "Propositions.TwoOwnersR:rejected", "Propositions.ThreeOwners:rejected", "Destructuring.DAnd:rejected",
+   "Destructuring.DAnd3:rejected", "Destructuring.DNested:rejected", "Destructuring.DWild:rejected",
+   "Destructuring.DCallField:rejected", "Subsingletons.OrComm:rejected", "Subsingletons.OrElim:rejected",
+   "Subsingletons.OrLet:rejected", "CurrentState.ProofIrr:rejected"]
 open Ochr.Registry in
 #guard rowOk { recNested := false }
   ["Recursion.KnotL:accepted", "Recursion.KnotLBoom:accepted"]
@@ -103,11 +108,10 @@ open Ochr.Registry in
   ["ClosingOff.Clear:accepted", "ClosingOff.Boom5:accepted"]
 open Ochr.Registry in
 #guard rowOk { genConsistent := false }
-  ["Trees.InsertMEq:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.SizeInsert:rejected"]
--- D35's three clauses switched off flip nothing since the erasure pre-pass: a function's
--- class, a stuck block's, and a sequence's are all read before the term runs, from its
--- declared type (`preFlags`), and the old after-the-fact rules no longer decide
--- (their witnesses BoomL, Boom8, BoomB, Boom7, SeqT keep their verdicts)
+  ["Splitting.PickNotZero:rejected", "Splitting.PickNotZeroCopy:rejected", "Splitting.Pick22NotZero:rejected",
+   "Splitting.PickTwo:rejected",
+   "Trees.InsertMEq:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.SizeInsert:rejected",
+   "InPlaceTrees.SizeInsertRw:rejected"]
 open Ochr.Registry in
 #guard rowOk { classBySyntax := false }
   []
@@ -186,32 +190,35 @@ open Ochr.Registry in
    "Propositions.TwoOwnersR:rejected", "Propositions.ThreeOwners:rejected", "Propositions.FromTrue:rejected",
    "Propositions.FromTrueIs:rejected", "Propositions.Two:rejected", "Propositions.TwoIs:rejected",
    "Propositions.WriteIf:rejected", "Propositions.WriteIfId:rejected", "Propositions.WriteIfAt:rejected",
-   "Propositions.TwoAt:rejected", "Subsingletons.OrComm:rejected", "Subsingletons.OrElim:rejected",
-   "Subsingletons.OrLet:rejected", "Subsingletons.SqTrue:rejected", "Subsingletons.SqSplit:rejected"]
+   "Propositions.TwoAt:rejected", "Destructuring.DAnd:rejected", "Destructuring.DAnd3:rejected",
+   "Destructuring.DNested:rejected", "Destructuring.DWild:rejected", "Destructuring.DCallField:rejected",
+   "Destructuring.DTerm:rejected", "Subsingletons.OrComm:rejected", "Subsingletons.OrElim:rejected",
+   "Subsingletons.OrLet:rejected", "Subsingletons.SqTrue:rejected", "Subsingletons.SqSplit:rejected",
+   "ErasureBySyntax.R8Field:rejected"]
 -- v2.0 D45 subsingleton elimination, switched off: large elimination from Or and Sq is accepted (IsL, Get have no
 -- model; OrLie is Eq Bool tt ff in the model), but no closed False: D42 erases the constructor it would inspect
 open Ochr.Registry in
 #guard rowOk { subsingleton := false }
   ["Subsingletons.IsL:accepted", "Subsingletons.Irr:accepted", "Subsingletons.OrLie:accepted",
-   "Subsingletons.Get:accepted", "Subsingletons.SqIrr:accepted"]
+   "Subsingletons.Get:accepted", "Subsingletons.SqIrr:accepted", "ErasureBySyntax.R8Field:rejected"]
 -- v2.0 D42 for constructors, switched off: Prop constructor applications are data values, not proofs (completeness)
 open Ochr.Registry in
 #guard rowOk { propValues := false }
   ["Subsingletons.OrComm:rejected", "Subsingletons.SqTrue:rejected", "Subsingletons.SqSplit:rejected",
-   "Erasure.LieP2:rejected"]
+   "Erasure.LieP2:rejected", "ErasureBySyntax.R8Field:rejected"]
 -- both off: the closed proofs of False (Subsingletons.Boom, SqBoom) go through
 open Ochr.Registry in
 #guard rowOk { subsingleton := false, propValues := false }
   ["Subsingletons.IsL:accepted", "Subsingletons.Irr:accepted", "Subsingletons.Boom:accepted",
    "Subsingletons.Get:accepted", "Subsingletons.SqIrr:accepted", "Subsingletons.SqBoom:accepted",
-   "Erasure.LieP2:rejected"]
+   "Erasure.LieP2:rejected", "ErasureBySyntax.R8Field:rejected"]
 -- v2.0 D47 switched off: Eq Nat Z (S Z) is irreducible again, so False and Eq Nat 0 1 part ways
 open Ochr.Registry in
 #guard rowOk { disjoint := false }
   ["ReturnedBorrows.L:rejected", "ReturnedBorrows.Inj:rejected", "ReturnedBorrows.PF:rejected",
    "Equality.NotAdd01:rejected", "Equality.WriteNeq:rejected", "Equality.WriteDisj:rejected",
    "Equality.NoConf:rejected", "Equality.NoConfS:rejected", "Equality.NoConfMatch:rejected",
-   "Equality.NoConfBack:rejected", "Equality.BoolDisj:rejected"]
+   "Equality.NoConfBack:rejected", "Equality.BoolDisj:rejected", "Splitting.PickTwo:rejected"]
 -- v2.1 D52 switched off: equal constructors are not taken apart in Eq, so programs that
 -- need an equation between successors or pairs taken apart are rejected (completeness)
 open Ochr.Registry in
@@ -243,7 +250,7 @@ open Ochr.Registry in
 -- D49 (3) switched off: a data field of a matched proof is ⋆, and cannot be split
 open Ochr.Registry in
 #guard rowOk { proofDataFields := false }
-  ["Subsingletons.SqSplit:rejected"]
+  ["Subsingletons.SqSplit:rejected", "ErasureBySyntax.R8Field:rejected"]
 -- D50 switched off (normalising unit laws, as v2.0 was first built): True ∧ P loses its And
 open Ochr.Registry in
 #guard rowOk { unitNorm := true }
@@ -294,7 +301,7 @@ open Ochr.Registry in
    "Equality.Om:rejected", "Functions.Twice:rejected", "Functions.TwiceNoop:rejected",
    "Functions.TwiceM:rejected", "Functions.TwiceMMove:rejected", "Functions.TwiceMZero:rejected",
    "Functions.TwiceMZero':rejected", "Trees.Size:rejected", "Trees.SizeInsert:rejected",
-   "InPlaceTrees.Size:rejected", "InPlaceTrees.SizeInsert:rejected"]
+   "InPlaceTrees.Size:rejected", "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected"]
 -- D59 switched off: a call written to return `Unit` returns `()` and one that only computes
 -- to `Unit` a sealed program, and two values of `Unit` need not be equal
 open Ochr.Registry in
