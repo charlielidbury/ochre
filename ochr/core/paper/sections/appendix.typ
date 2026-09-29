@@ -43,6 +43,7 @@ This appendix defines Ochr completely: its syntax and runtime structures (@app-s
     ([], $t(u_1, ..., u_n)$, [saturated call]),
     ([], $ty("D")(a_1, ..., a_l) | ty("C")(a_1, ..., a_l; t_1, ..., t_k)$, [inductive type, constructor]),
     ([], $ty("Eq") A space t space u | ty("J")(A, a, b, P, h, t)$, [equality (primitive), transport]),
+    ([], $kw("rewrite") h space kw("in") t | kw("rewrite") arrow.l h space kw("in") t$, [rewriting, a proof ([T-Rewrite])]),
     ([], $\&A | p | \&p | p := t$, [borrow type; read, borrow, assign]),
     ([], $kw("let") x = t; u | kw("let") x : A = t; u | t; u$, [sequencing]),
     ([], $kw("match") p space {ty("C")_1 (overline(y)_1) => t_1, ..., ty("C")_m (overline(y)_m) => t_m}$, [case analysis, one arm per constructor ($m >= 0$)]),
@@ -314,7 +315,7 @@ The typing judgement $Omega tack.r t ev v : A tack.l Omega'$ says that from Ω t
 === Erasure <app-erasure>
 
 A term's _declared type_ is read from the declared types of its heads, without normalising: a variable's is the type declared with its binding (a parameter's type, a `let`'s annotation or the declared type of its right-hand side; a captured value keeps its binding's); a call's is its callee's codomain term; a constructor's is its inductive type; a type former's is its sort; an annotated term's is its annotation; a `let`, sequence or match has its tail's, or each arm's; and the declared type of `J(A, a, b, P, h, t)` is `P(b)`. A type term has _declared sort_ `Prop` when it is `Eq`, `Id`, an inductive type $ty("D")(overline(a))$ with `D` declared in `Prop` (such as `False`, `⊤` or `P ∧ Q`), a `Π` into such a term, a variable declared `: Prop`, a call whose head's codomain term is syntactically `Prop`, or a `let`, sequence or match whose tail or arms have declared sort `Prop`. A Π-type _returns types_ if its codomain term is syntactically a sort, _returns proofs_ if the codomain's declared sort is `Prop`, and is _other_ otherwise; this is its _class_, recorded when it is formed ([T-Pi]), and a function value has the class of its declared Π-type. An occurrence of a term is _erased_ when:
-+ it is a _proof_ (a _declared proof_): its declared type has declared sort `Prop`, or it is a match with no arms in a proof position, or a match on a proof whose inductive has several constructors (@app-match-prop requires every arm to be a proof); or
++ it is a _proof_ (a _declared proof_): its declared type has declared sort `Prop`, or it is a `rewrite`, or a match with no arms in a proof position, or a match on a proof whose inductive has several constructors (@app-match-prop requires every arm to be a proof); or
 + it _forms a type_: it is a type former (a sort, `Π`, an inductive type $ty("D")(overline(a))$, `&`, `Eq`, `Id`), a call whose callee returns types, or it stands in a type position (@app-syntax) or inside one.
 
 A `let`, sequence or match that computes a type is not erased as a whole: its parts decide, so `let T = (c := S Z; F(&c)); …` writes `c` and erases only the call `F(&c)` if `F` returns types. Nothing is normalised: `U(n)` with `U : Π(n : Nat). Type₀` has declared sort `Type₀`, whatever `U(n)` computes to. By [Type-pos] a type's declared sort is its computed sort, so a term is a proof exactly when its type is a proposition. Every clause reads syntax, a declaration or a sort, so the two paths of @lem-stable take the same decisions; notes 1–3 of @app-notes show what goes wrong otherwise.
@@ -361,6 +362,11 @@ A Π-closure records its class and whether its codomain is a borrow type, both r
   ir(name: "T-J", pv($Omega tack.r A ev T "type" quad Omega tack.r a ev v_a : T_a equiv T quad Omega tack.r b ev v_b : T_b equiv T quad Omega tack.r P ev F : Pi$, $Omega tack.r h ev star : H equiv "eq"(T, v_a, v_b) quad Omega tack.r F(v_a) ev P_a : s quad Omega tack.r F(v_b) ev P_b : s quad Omega tack.r t ev v : T_t tack.l Omega' quad T_t equiv P_a$), $Omega tack.r ty("J")(A, a, b, P, h, t) ev v : P_b tack.l Omega'$),
 )
 `refl` proves `⊤` ([T-Ctor]), and so by conversion every reflexive equation. `J` takes its endpoints explicitly, because `Eq A a a` computes to `⊤` and no longer records them. Its motive may have any sort; with a motive into `Prop`, `J` is a proof and is erased. `A`, `a`, `b` and `P` are in type positions and `h` is a proof, so all five are typed on private copies, and the motive's calls $F(v_a)$, $F(v_b)$ are erased calls. #lean("evalCore (.prim \"J\")", "evalCtor", "unifyParams")
+
+#rules(
+  ir(name: "T-Rewrite", pv($Omega tack.r h ev star : H equiv "eq"(T, v_a, v_b) quad G "a proposition"$, $G' = G[sigma slash v_b]^+ [v_a slash sigma], thick sigma "fresh" quad Omega scripts(tack.r)^(G') t ev star : T_t tack.l Omega' quad T_t equiv G'$), $Omega scripts(tack.r)^G kw("rewrite") h space kw("in") t ev star : G tack.l Omega$),
+)
+`rewrite h in t` needs a known goal `G`: it is checked in checking mode, in tail position, as a call's argument or under an annotated `let`. It replaces every occurrence of `b`'s normal form in `G` by `a`, using the replacement of [Split-gen] locally to the goal, and checks `t` against the result; `rewrite ← h in t` swaps `a` and `b`. It is `J(A, a, b, λz. G[z slash b], h, t)` with the motive read off the goal, a proof, and never runs, so [J]'s condition on the endpoints does not arise. #lean("evalCore (.prim \"rewrite\")", "Surface.resolve (.rewrite)")
 
 === Functions and calls
 

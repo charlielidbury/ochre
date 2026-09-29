@@ -141,18 +141,11 @@ A property of the in-place code is then stated and proved directly: insertion ad
 SizeInsert(t : Tree, k : Nat) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t :=
   match t { Leaf => refl,
             Node(l, v, r) => let b = Lt(k, v); match b {
-              true  => J(Nat, S (Size(l)), Size(Insert(l, k)),
-                         λ(z : Nat) : Prop => Id Nat (S (S (Add(Size(l), Size(r))))) (S (Add(z, Size(r)))),
-                         SizeInsert(l, k), refl),
-              false => J(Nat, Add(Size(l), S (Size(r))), S (Add(Size(l), Size(r))),
-                         λ(z : Nat) : Prop => Id Nat (S z) (S (Add(Size(l), Size(Insert(r, k))))),
-                         AddS(Size(l), Size(r)),
-                         J(Nat, S (Size(r)), Size(Insert(r, k)),
-                           λ(z : Nat) : Prop => Id Nat (S (Add(Size(l), S (Size(r))))) (S (Add(Size(l), z))),
-                           SizeInsert(r, k), refl)) } }
+              true  => rewrite SizeInsert(l, k) in refl,
+              false => rewrite SizeInsert(r, k) in rewrite AddS(Size(l), Size(r)) in refl } }
 ```
 
-The comparison `Lt(σ_k, σ_v)` is stuck, so the split on `b` generalises the sealed program to a fresh abstract value, everywhere it occurs and wherever it is derived again. In each arm, `Insert`'s sealed program runs one step and leaves the other subtree and the key in place. The proof is not bare recursion: without rewriting tactics, each arm rewrites with the induction hypothesis by `J` with a hand-written motive, and the `false` arm needs an arithmetic lemma, `AddS : x + S y = S (x + y)`, proved in place by bare recursion and transferred to `Add` by lending, as `AddZero` was. This is the honest cost of a property that is not an equation between two recursions of the same shape.
+The comparison `Lt(σ_k, σ_v)` is stuck, so the split on `b` generalises the sealed program to a fresh abstract value, everywhere it occurs and wherever it is derived again. In each arm, `Insert`'s sealed program runs one step and leaves the other subtree and the key in place. The proof is not bare recursion. Each arm rewrites the goal with the induction hypothesis: `rewrite h in t`, for `h : Eq A a b`, replaces every occurrence of `b` in the goal by `a` and checks `t` against the result. It is `J` with its motive read off the goal, a proof that never runs, so it adds nothing to the model. The `false` arm also needs an arithmetic lemma, `AddS : x + S y = S (x + y)`, proved in place by bare recursion and transferred to `Add` by lending, as `AddZero` was. This is the cost of a property that is not an equation between two recursions of the same shape.
 
 == Branching
 

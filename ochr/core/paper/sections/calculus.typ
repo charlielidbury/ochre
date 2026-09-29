@@ -10,7 +10,7 @@ Ochr is a dependent type theory in the style of Lean's kernel @theory-of-lean, e
       ($t, u, A, B$, $x | ty("Prop") | ty("Type")_i$, [variables, universes]),
       ([], $Pi(x_1 : A_1 ... x_n : A_n). B | kw("fix") f (x_1 : A_1 ... x_n : A_n) : B space kw("by") x_j := t | t(u_1, ..., u_n)$, [functions, calls]),
       ([], $ty("D")(a_1, ..., a_m) | ty("C")(t_1, ..., t_k)$, [inductive types, constructors]),
-      ([], $ty("Eq") A space t space u | ty("J")(A, a, b, P, h, t)$, [equality]),
+      ([], $ty("Eq") A space t space u | ty("J")(A, a, b, P, h, t) | kw("rewrite") h space kw("in") t$, [equality]),
       ([], $\&A | p | \&p | p := t | kw("let") x = t; u | kw("let") x : A = t; u | t; u$, [places and borrows]),
       ([], $kw("match") p space {ty("C")_1 (overline(y)_1) => t_1, ..., ty("C")_n (overline(y)_n) => t_n} quad (n >= 0)$, [case analysis]),
       ([], $ty("Id") A space t space u$, [computation equality]),
