@@ -335,6 +335,21 @@ ochr InPlaceTrees uses Std {
                              λ(z : Nat) : Prop => Id Nat (S (Add(Size(l), S (Size(r))))) (S (Add(Size(l), z))),
                              SizeInsert(r, k), refl)) } }
 
+  -- The same theorem with D60's `rewrite` instead of `J`, in the paper's layout.
+  def SizeInsertRw (t : Tree) (k : Nat) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t :=
+    match t { Leaf => refl,
+              Node(l, v, r) => let b = Lt(k, v); match b {
+                true  => rewrite SizeInsertRw(l, k) in refl,
+                false => rewrite SizeInsertRw(r, k) in rewrite AddS(Size(l), Size(r)) in refl } }
+
+  -- Without `AddS` the `false` arm does not check: rewriting with the induction hypothesis
+  -- alone leaves `S (Add(Size(l), Size(r)))` against `Add(Size(l), S (Size(r)))`.
+  reject def SizeInsertRwNoLemma (t : Tree) (k : Nat) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t :=
+    match t { Leaf => refl,
+              Node(l, v, r) => let b = Lt(k, v); match b {
+                true  => rewrite SizeInsertRwNoLemma(l, k) in refl,
+                false => rewrite SizeInsertRwNoLemma(r, k) in refl } }
+
   -- Inserting does not grow the size by two.
   reject def SizeInsertTwo (t : Tree) (k : Nat) : Id Nat (S (S (Size(t)))) (Size(Insert(t, k))) by t := (
     match t {
@@ -348,7 +363,7 @@ ochr InPlaceTrees uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "InPlaceTrees" InPlaceTrees).allAsExpected
-#guard (run "InPlaceTrees" InPlaceTrees).count == 10
+#guard (run "InPlaceTrees" InPlaceTrees).count == 12
 
 /-! ## Parameters: a polymorphic list
 

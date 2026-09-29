@@ -539,6 +539,7 @@ The body's programs were also run verbatim, one-line layout and subscripts inclu
 | §2 | `InsertM`; `Insert(t, k) := InsertM(&t, k); t` | InPlaceTrees.InsertM, Insert (the paper's text and layout); InsertMIsInsert (in-place is pure, by `refl`) | accepted |
 | §2 | `SizeInsert` with its three `J` steps; `Size(Node(l, v, r)) = S(Add(Size(l), Size(r)))` | InPlaceTrees.SizeInsert (verbatim), Size; SizeInsertTwo | accepted; rejected |
 | §2 | `AddS : x + S y = S (x + y)`, in place by bare recursion, transferred by lending | InPlaceTrees.AddMS, AddS | accepted |
+| §2 (proposed) | `SizeInsert` with D60's `rewrite`: `true => rewrite SizeInsert(l, k) in refl`, `false => rewrite SizeInsert(r, k) in rewrite AddS(Size(l), Size(r)) in refl` | InPlaceTrees.SizeInsertRw (the recursive calls name `SizeInsertRw`); control SizeInsertRwNoLemma (no `AddS`) | accepted; rejected |
 | §2 | `AddToOne(b, x₁, x₂, y) := let r = match b { Z => x₁, S _ => x₂ }; AddM(r, y)` | ClosingOff.AddToOne | accepted |
 | §3 | `Nat`, `Unit` (built in), `False`, `True`, `Pair`, `And` | Prelude (checked by `checkInd`) | accepted |
 | §3, §5 | `match h {}`; `match h { Intro(l, r) => … }` on a multi-place `Id` | Propositions.absurd…; Propositions.TwoOwners, TwoOwnersR, ThreeOwners | accepted |
