@@ -122,6 +122,8 @@ partial def renameT (x y : String) : STerm → STerm
   | .prod a b => .prod (renameT x y a) (renameT x y b)
   | .ascribe a b => .ascribe (renameT x y a) (renameT x y b)
   | .rewrite rev h t => .rewrite rev (renameT x y h) (renameT x y t)
+  | .split f t => .split f (renameT x y t)
+  | .splitArms f arms => .splitArms f (arms.map fun (c, vs, b) => (c, vs, renameT x y b))
   | t => t
 
 /-- Candidate proofs of the statement: `refl`, a one-level split of each parameter, and

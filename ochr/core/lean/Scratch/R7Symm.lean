@@ -1,6 +1,6 @@
 import Ochr.Test
 open Ochr Ochr.Test
-/-! Expectations are for ochr-core a0f40123: Split is rejected here and accepted on ochr-core-lean ff6b634a, which fixes R7.
+/-! Expectations are for ochr-core (checked at a0f40123 and 5ad1c2b0): Split is rejected here and accepted on ochr-core-lean ff6b634a, which fixes R7.
 
  R7: `symm h` (and `trans`) need `h`'s type to be an equation (or `True`); in a branch whose
 refinement makes the hypothesis `False` (an unreachable branch), `symm h` is a type error. The

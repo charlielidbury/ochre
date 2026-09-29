@@ -1,7 +1,7 @@
 import Ochr.Test
 open Ochr Ochr.Test
 
-/-! Expectations are for ochr-core a0f40123: R2s and R3s are rejected here and accepted on ochr-core-lean ff6b634a, which fixes R2 and R3.
+/-! Expectations are for ochr-core (checked at a0f40123 and 5ad1c2b0): R2s and R3s are rejected here and accepted on ochr-core-lean ff6b634a, which fixes R2 and R3.
 
  The fail-safe finding classes of the v2 fuzzer on the default rules, each as a true
 statement whose proof by case split the checker rejects (the generic statement is accepted,

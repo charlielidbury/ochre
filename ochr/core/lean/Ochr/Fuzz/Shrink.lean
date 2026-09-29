@@ -27,7 +27,8 @@ def rootCands : STerm → List STerm
   | .num n => if n == 0 then [] else [.num 0, .num (n - 1)]
   | .fix _ _ _ _ b => [b]
   | .ascribe a _ => [a]
-  | .rewrite _ _ t => [t]
+  | .rewrite _ _ t | .split _ t => [t]
+  | .splitArms _ arms => arms.map (·.2.2)
   | .andI _ _ => [.ident "refl", .num 0]
   | .ident _ | .unitLit | .top | .sort _ => []
   | _ => [.num 0, .unitLit]
@@ -51,6 +52,11 @@ partial def shrinkT (t : STerm) : List STerm :=
   | .fix f bs r d b => (shrinkT b).map (.fix f bs r d ·)
   | .ascribe a A => (shrinkT a).map (.ascribe · A)
   | .rewrite rev h t => (shrinkT t).map (.rewrite rev h ·)
+  | .split f t => (shrinkT t).map (.split f ·)
+  | .splitArms f arms =>
+      (List.range arms.length).flatMap fun i =>
+        let (c, vs, b) := arms[i]!
+        (shrinkT b).map fun b' => .splitArms f (arms.set i (c, vs, b'))
   | _ => []
 
 /-- Are all identifiers bound (by a binder, a pattern, a declaration, a constructor or a
@@ -67,6 +73,8 @@ partial def scopedT (names : List String) (bound : List String) : STerm → Bool
   | .deref t | .proj _ t | .amp t => scopedT names bound t
   | .assign p t => scopedT names bound p && scopedT names bound t
   | .letIn x A t u => (A.map (scopedT names bound)).getD true && scopedT names bound t && scopedT names (x :: bound) u
+  | .split _ t => scopedT names bound t
+  | .splitArms _ arms => arms.all fun (_, vs, b) => scopedT names (vs ++ bound) b
   | .rewrite _ a b
   | .seq a b | .pair a b | .andI a b | .and a b | .prod a b | .ascribe a b | .arrow a b =>
       scopedT names bound a && scopedT names bound b

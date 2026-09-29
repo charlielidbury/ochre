@@ -22,7 +22,7 @@ def runSt {α : Type} (x : M α) (st : MState) : Except String (α × MState) :=
   match ((x.run st).run.run #[]).1 with
   | .ok r => .ok r
   | .error (.error m) => .error m
-  | .error (.stuck _) => .error "stuck (escaped to the top)"
+  | .error (.stuck _ _) => .error "stuck (escaped to the top)"
 
 /-- Errors that only say the checker ran out of resources: never a disagreement. -/
 def isResource (e : String) : Bool :=

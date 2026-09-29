@@ -49,6 +49,8 @@ partial def pp (p : Nat) : STerm → String
   | .prod a b => paren (p > 35) s!"{pp 36 a} × {pp 35 b}"
   | .ascribe a b => s!"({pp 0 a} : {pp 0 b})"
   | .rewrite rev h t => paren (p > 10) s!"rewrite {if rev then "← " else ""}{pp 0 h} in {pp 10 t}"
+  | .split f t => paren (p > 10) s!"split {f} in {pp 10 t}"                  -- D61
+  | .splitArms f arms => s!"split {f} \{ {", ".intercalate (arms.map ppArm)} }"
   | .sort 0 => "Prop"
   | .sort _ => "Type"
 
