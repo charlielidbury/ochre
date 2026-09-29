@@ -14,6 +14,7 @@ import Ochr.Examples.«12CurrentState»
 import Ochr.Examples.«13Erasure»
 import Ochr.Examples.«14Universes»
 import Ochr.Examples.«15BorrowTypes»
+import Ochr.Examples.«16Arrays»
 import Ochr.Examples.«17HashMap»
 import Ochr.Examples.Units
 
@@ -39,14 +40,16 @@ def programs : List (String × Block) :=
    ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
    ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("BorrowTypes", BorrowTypes)]
 
-/-- Case studies (`17HashMap`): checked and counted with the tour, and timed by `lake exe
+/-- Case studies (`16Arrays`, `17HashMap`): checked and counted with the tour, and timed by `lake exe
 tests`, but not re-run by the counterfactual ledger, which is about the rules. A case study's
 programs are large and chained (each block re-checks the blocks it uses), so each ledger row
 would re-check them twice; their flips are measured once instead, by
 `Ochr/Examples/CaseStudyLedger.lean` (run it with `lake env lean`), and reported in
-`notes/hashmap-case-study.md`. -/
+`notes/arrays-library.md` and `notes/hashmap-case-study.md`. -/
 def caseStudies : List (String × Block) :=
-  [("HashMap", HashMap), ("HashMapLookup", HashMapLookup), ("HashMapLength", HashMapLength), ("HashMapResize", HashMapResize)]
+  [("Index", Index), ("Arrays", Arrays), ("ArrayLemmas", ArrayLemmas), ("ArrayBench", ArrayBench),
+   ("Quicksort", Quicksort),
+   ("HashMap", HashMap), ("HashMapLookup", HashMapLookup), ("HashMapLength", HashMapLength), ("HashMapResize", HashMapResize)]
 
 def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
   (programs ++ caseStudies).map fun (n, p) => run n p cfg fuel
@@ -185,7 +188,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 733
+def Ochr.Registry.expectedTotal : Nat := 900
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
