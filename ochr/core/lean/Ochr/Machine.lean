@@ -261,7 +261,7 @@ partial def endBorrow (l : Nat) : M Unit := do
     | some (c, rest) =>
       -- D53 (h): moving out through a borrow is allowed if the content is whole again when
       -- the borrow ends
-      if (← get).cfg.moves && c.hasHole then
+      if (← get).cfg.movesOn && c.hasHole then
         err s!"[D53] a borrow ends while its content is partly moved out ({c})"
       setAt p rest
       substEnv (.loan l) c false
@@ -316,11 +316,11 @@ partial def readPlace (p : Place) : M Value := do
   match v with
   | .bot => err s!"[Read] {← ppPlace p} was moved out or its borrow ended (reading ⊥)"
   | .ghost w =>
-    if erased && cfg.ghosts then return w.unghost
+    if erased && cfg.ghostsOn then return w.unghost
     err s!"[Read] {← ppPlace p} was moved out (D53)"
   | .borrow _ _ => logEffect p "moves"; setPlace p .bot; pure v
   | _ =>
-    if !cfg.moves || v == .proof then return v
+    if !cfg.movesOn || v == .proof then return v
     if erased then return v.unghost
     -- read in place: not consumed, but it must be there (D53: a call's head, the Fn rule;
     -- a stuck block's read-only capture, as the match inspects its place)
@@ -329,10 +329,10 @@ partial def readPlace (p : Place) : M Value := do
       return v
     if v.hasHole then err s!"[Read] {← ppPlace p} was partly moved out (D53)"
     if ← copyRead p v then return v
-    if cfg.fnRule && (← isCapture p) then
+    if cfg.fnRuleOn && (← isCapture p) then
       err s!"[D53] a closure's body moves a captured value out ({← ppPlace p}); a closure may run again: clone it"
     logEffect p "moves"
-    setPlace p (if cfg.ghosts then .ghost v else .bot)
+    setPlace p (if cfg.ghostsOn then .ghost v else .bot)
     pure v
 
 /-- D53: reading `p` (holding `v`) copies: its type is a copy type, or it holds a function
@@ -343,9 +343,9 @@ partial def copyRead (p : Place) (v : Value) : M Bool := do
 
 partial def isCopyValue (T : Value) (v : Value) : M Bool := do
   match T, v with
-  | .tPi .., .gfn _ => pure (← get).cfg.fnRule
+  | .tPi .., .gfn _ => pure (← get).cfg.fnRuleOn
   | .tPi .., .clo cs _ =>
-    if !(← get).cfg.fnRule then return false
+    if !(← get).cfg.fnRuleOn then return false
     cs.allM fun c => do
       match c with
       | .proof | .tNat | .tUnit | .tRef _ | .tInd .. | .tEq .. | .tPi .. | .sort _ => pure true
@@ -363,7 +363,7 @@ partial def isCapture (p : Place) : M Bool := do
 partial def matchContent (p : Place) : M Value := do
   match ← content p with
   | .ghost w =>
-    if (← get).erasedDepth > 0 && (← get).cfg.ghosts then pure w
+    if (← get).erasedDepth > 0 && (← get).cfg.ghostsOn then pure w
     else err s!"[Match] on {← ppPlace p}, which was moved out"
   | v => pure v
 
@@ -424,7 +424,7 @@ partial def borrowPlace (p : Place) : M Value := do
   | .bot | .ghost _ => err s!"[Borrow] {← ppPlace p} was moved out (borrowing ⊥)"
   | .borrow _ _ => err "[Borrow] a borrow of a borrow (&&T is outside the core)"
   | _ =>
-    if (← get).cfg.moves && v.hasHole then
+    if (← get).cfg.movesOn && v.hasHole then
       err s!"[Borrow] {← ppPlace p} was partly moved out (D53)"
     logEffect p "borrows"
     let l ← freshLoan
@@ -986,20 +986,20 @@ partial def capture (t : Term) : M (List Value × Term) := do
     | .bot => err "a closure or Π-type captures a moved place"
     | .ghost w =>
       -- D53: an erased closure or Π-type reads a moved value's ghost
-      if (← get).erasedDepth > 0 && (← get).cfg.ghosts then vals := vals.push w.unghost
+      if (← get).erasedDepth > 0 && (← get).cfg.ghostsOn then vals := vals.push w.unghost
       else err "a closure or Π-type captures a moved place"
     | _ =>
-      if (← get).cfg.moves && (← get).erasedDepth > 0 then vals := vals.push v.unghost
+      if (← get).cfg.movesOn && (← get).erasedDepth > 0 then vals := vals.push v.unghost
       else
         vals := vals.push v
         -- D53: a runtime closure moves the variables it captures whose types are not copies
-        if (← get).cfg.moves && !(v matches .proof) then
+        if (← get).cfg.movesOn && !(v matches .proof) then
           if v.hasHole then err "[D53] a closure captures a place that was partly moved out"
           unless ← copyRead p v do
-            if (← get).cfg.fnRule && (← isCapture p) then
+            if (← get).cfg.fnRuleOn && (← isCapture p) then
               err s!"[D53] a closure's body moves a captured value ({← ppPlace p}) into a closure; clone it"
             logEffect p "moves"
-            setPlace p (if (← get).cfg.ghosts then .ghost v else .bot)
+            setPlace p (if (← get).cfg.ghostsOn then .ghost v else .bot)
   let idx (o : Nat) : Nat := (fvs.findIdx? (· == o)).getD 0
   let t0 := if through.isEmpty then t else
     t.mapFreePlace (fun c q => (if through.contains q.root then q.stripDeref else q).mapRoot fun j => .var (j + c)) 0
@@ -1292,7 +1292,7 @@ partial def eval (typed : Bool) (t : Term) (hint : Option Value := none) : M (Va
     | some d => preFlags t d
     | none => pure none
   -- D53: an erased term's reads copy, decided before it runs
-  let r ← withErasedIf ((← get).cfg.moves && (pre matches some (true, _))) (evalCore typed t hint)
+  let r ← withErasedIf ((← get).cfg.movesOn && (pre matches some (true, _))) (evalCore typed t hint)
   -- D28 (v1.5): whether this term is erased is decided syntactically and by declared
   -- classes, never from a normal form. Calls: the callee's class (set by `callFn`);
   -- sequencing forms inherit their tail's; proof formers are erased; an ascription is
@@ -1792,7 +1792,7 @@ partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
     (cls? : Option Nat := none) : M (Value × Option Value) := do
   modify fun s => { s with headEval := true }
   -- D53 (e): a call does not consume the function it calls (read in place)
-  if (← get).cfg.fnRule && (f matches .place _) then modify fun s => { s with inPlace := true }
+  if (← get).cfg.fnRuleOn && (f matches .place _) then modify fun s => { s with inPlace := true }
   let (fv, fT) ← eval typed f
   modify fun s => { s with inPlace := false }
   pushTemp fv
@@ -1938,7 +1938,7 @@ partial def runBody (fv : Value) (cs : List Value) (t : Term) (ws : Array Value)
     pushBind h (ptys[i]?.getD none) w p (← refineDecl pd none w) (d matches .val (.tRef _))
   let es := (← get).effects.size
   -- D53: a body is code; a function whose calls are erased has an erased body (b)
-  let erasedFn ← if (← get).cfg.moves then
+  let erasedFn ← if (← get).cfg.movesOn then
       tryCatch (do pure ((← fnClass (← funType fv none)) != 0)) (fun _ => pure false)
     else pure false
   let (v, _) ← withErasedIf erasedFn (eval false body)
@@ -1953,7 +1953,7 @@ partial def runBody (fv : Value) (cs : List Value) (t : Term) (ws : Array Value)
 ends: a function may not hand back a borrow of a place it moved out of. -/
 partial def wholeReturned (v : Value) : M Unit := do
   if let .borrow _ c := v then
-    if (← get).cfg.moves && c.hasHole then
+    if (← get).cfg.movesOn && c.hasHole then
       err s!"[D53] a returned borrow's content is partly moved out ({c})"
 
 partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array Value)
@@ -2041,7 +2041,7 @@ partial def closeCall (fv : Value) (ws : Array Value) (kind : Kind) : M Value :=
   let cell (d j : Nat) : Term := .place (.var (d + m - 1 - j))
   -- D53: the final read of a sealed program (its `K`) is an observation: it copies, while
   -- the program before it runs with runtime semantics
-  let peek (t : Term) : Term := if cfg.moves then .prim "peek" [t] else t
+  let peek (t : Term) : Term := if cfg.movesOn then .prim "peek" [t] else t
   match kind with
   | .ref =>
     let k ← freshLoan
@@ -2491,7 +2491,7 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
   -- place it only reads is copied without being consumed (a match inspects in place); a
   -- part that some arm moves out is moved in on its own, at that granularity (`q1.1`), and
   -- the rest of its place is still copied
-  if (← get).cfg.moves then
+  if (← get).cfg.movesOn then
     for q in moved do
       unless q matches .var _ do
         if caps.any (fun (c, k) => placePrefix c q && k == 0) && !(caps.any fun (c, _) => c == q) then
@@ -2524,7 +2524,7 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
     | _ =>
       -- D53: a place the block only reads is read in place, not consumed
       doms := doms.push T
-      args := args.push (if (← get).cfg.moves then .prim "inplace" [Term.place q] else Term.place q)
+      args := args.push (if (← get).cfg.movesOn then .prim "inplace" [Term.place q] else Term.place q)
   let capsL := capsS.toList
   let body := mt.mapFreePlace (fun c p =>
     match capsL.zipIdx.find? fun ((q, _), _) => placePrefix q p with
@@ -2896,7 +2896,7 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
   let outer : List Nat := ((← get).env[bf]!.binds.toList.zipIdx.filter fun (b, _) =>
     b.ty matches some (.tRef _)).map (·.2)
   -- D53 (b): the body of a function whose calls are erased is an erased term
-  let bodyCopies ← if (← get).cfg.moves then pure ((← fnClass piTy) != 0) else pure false
+  let bodyCopies ← if (← get).cfg.movesOn then pure ((← fnClass piTy) != 0) else pure false
   withErasedIf bodyCopies <| checkTail body fun v T => do
     wholeReturned v
     let erasedBody ← match bodyErased? with

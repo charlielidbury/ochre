@@ -61,7 +61,59 @@ ochr Borrows uses Std {
   -- borrowed. A `Nat` is moved by the first argument, so it needs `clone(x)` there.
   def NotDead (f : Π(a : Word) (b : &Word). Unit) (x : Word) : Unit := f(x, &x)
 
-  -- ## Moves and copies (D53)
+  -- A statement about two separate borrows ...
+  def g (x : &Nat) (y : &Nat) : Id Nat (*x := 0; *y := 1; *x) (*x := 0; *y := 1; 0) := refl
+
+  -- ... cannot be used on two borrows of the same place: passing `z` ends the reborrow `a`,
+  -- in whichever order the two are passed (D19).
+  reject def attack (z : &Nat) : Id Nat 1 0 := (
+    let a = &*z;
+    g(z, a)
+  )
+
+  reject def attack' (z : &Nat) : Id Nat 1 0 := (
+    let a = &*z;
+    g(a, z)
+  )
+
+  -- ## What goes wrong without these rules
+  -- Without the check that no argument is dead (switch `argNotBot`), `Dead` is accepted: an
+  -- opaque callee receives a dead borrow, and a concrete run goes wrong as soon as it writes
+  -- through it.
+
+  -- [Access] ends every borrow of a place inside the content being passed, not only borrows
+  -- of the place itself (D19). Here `r` borrows the predecessor inside `*b`; passing `b` to
+  -- `G1` must end `r` first. Without that (switch `accessInside`), the call's stuck result
+  -- would keep `r`'s loan inside `a`, and the later write through `r` would go to a place
+  -- that no longer exists. (Since η for `Unit`, D59, the stuck call's result is its sealed
+  -- program, which carries the loan too, and discarding it is a [Drop] error: `BadA1` is
+  -- rejected even with the switch off.)
+  def G1 (x : &Nat) (n : Nat) : Unit := (
+    match n {
+      Z => (),
+      S _ => *x := 0,
+    }
+  )
+
+  reject def BadA1 (n : Nat) : Nat := (
+    let a = S Z;
+    (let b = &a; let r = &(*b).1; G1(b, n); *r := S Z);
+    a
+  )
+}
+
+#eval IO.println (run "Borrows" Borrows).show
+
+-- every verdict as expected, and the exact number of declarations (a truncated file changes it)
+#guard (run "Borrows" Borrows).allAsExpected
+#guard (run "Borrows" Borrows).count == 14
+
+/-! ## Moves and copies (D53)
+
+D53 is checked in this block only, until its acceptance run passes (`Ochr.Test.d53Blocks`);
+the rest of the tour reads by copying, as before D53, and its `clone`s are harmless there. -/
+
+ochr Moves uses Std {
   -- Reading a `Nat` moves it: after `let m = n`, `n` is gone ...
   def MoveNat (n : Nat) : Nat := (
     let m = n;
@@ -146,49 +198,36 @@ ochr Borrows uses Std {
     }
   )
 
-  -- A statement about two separate borrows ...
-  def g (x : &Nat) (y : &Nat) : Id Nat (*x := 0; *y := 1; *x) (*x := 0; *y := 1; 0) := refl
-
-  -- ... cannot be used on two borrows of the same place: passing `z` ends the reborrow `a`,
-  -- in whichever order the two are passed (D19).
-  reject def attack (z : &Nat) : Id Nat 1 0 := (
-    let a = &*z;
-    g(z, a)
+  -- A stuck match reads its scrutinee in place, so closing it off does not move a `Nat` it
+  -- only reads ...
+  def BlockReads (n0 : Nat) : Nat := (
+    let l = match n0 {
+      Z => 0,
+      S _ => 1,
+    };
+    n0
   )
 
-  reject def attack' (z : &Nat) : Id Nat 1 0 := (
-    let a = &*z;
-    g(a, z)
-  )
-
-  -- ## What goes wrong without these rules
-  -- Without the check that no argument is dead (switch `argNotBot`), `Dead` is accepted: an
-  -- opaque callee receives a dead borrow, and a concrete run goes wrong as soon as it writes
-  -- through it.
-
-  -- [Access] ends every borrow of a place inside the content being passed, not only borrows
-  -- of the place itself (D19). Here `r` borrows the predecessor inside `*b`; passing `b` to
-  -- `G1` must end `r` first. Without that (switch `accessInside`), the call's stuck result
-  -- would keep `r`'s loan inside `a`, and the later write through `r` would go to a place
-  -- that no longer exists. (Since η for `Unit`, D59, the stuck call's result is its sealed
-  -- program, which carries the loan too, and discarding it is a [Drop] error: `BadA1` is
-  -- rejected even with the switch off.)
-  def G1 (x : &Nat) (n : Nat) : Unit := (
-    match n {
-      Z => (),
-      S _ => *x := 0,
+  -- ... and moves in only the part an arm moves out, `q1.1`, so `q1.2` is still there
+  -- (fuzz-port shape (a)).
+  def BlockMovesField (q1 : Nat × Nat) : Nat := (
+    let a = match q1 {
+      Mk(p7, p8) => p7,
+    };
+    match q1 {
+      Mk(p9, p10) => p10,
     }
   )
 
-  reject def BadA1 (n : Nat) : Nat := (
-    let a = S Z;
-    (let b = &a; let r = &(*b).1; G1(b, n); *r := S Z);
-    a
-  )
+  -- A function that moves out of `*y10` and returns `y10` hands back a borrow of a moved
+  -- place, an error as when a borrow ends partly moved. Compared by their results only
+  -- through a fresh value written into them (D38), it looked equal to the one that just
+  -- returns `y10` (fuzz-port shape (c)).
+  reject def RetMoved : Eq (Π(y9 : &Nat) (y10 : &Nat). &Nat)
+      (λ(y9 : &Nat) (y10 : &Nat) : &Nat => (*y10; y10)) (λ(y9 : &Nat) (y10 : &Nat) : &Nat => y10) := refl
 }
 
-#eval IO.println (run "Borrows" Borrows).show
+#eval IO.println (run "Moves" Moves).show
 
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Borrows" Borrows).allAsExpected
-#guard (run "Borrows" Borrows).count == 32
+#guard (run "Moves" Moves).allAsExpected
+#guard (run "Moves" Moves).count == 21

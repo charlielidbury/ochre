@@ -180,26 +180,6 @@ ochr ClosingOff uses Std, Fixtures {
     }
   )
 
-  -- A stuck match reads its scrutinee in place, so closing it off does not move a `Nat` it
-  -- only reads (D53) ...
-  def BlockReads (n0 : Nat) : Nat := (
-    let l = match n0 {
-      Z => 0,
-      S _ => 1,
-    };
-    n0
-  )
-
-  -- ... and moves in only the part an arm moves out, `q1.1`, so `q1.2` is still there
-  -- (fuzz-port shape (a)).
-  def BlockMovesField (q1 : Nat × Nat) : Nat := (
-    let a = match q1 {
-      Mk(p7, p8) => p7,
-    };
-    match q1 {
-      Mk(p9, p10) => p10,
-    }
-  )
 
   -- Comparing two blocks' functions observes them at a generic argument, where a pattern's
   -- sub-place their arms read may not exist; that answers "not convertible", it is not an
@@ -352,7 +332,7 @@ ochr ClosingOff uses Std, Fixtures {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ClosingOff" ClosingOff).allAsExpected
-#guard (run "ClosingOff" ClosingOff).count == 40
+#guard (run "ClosingOff" ClosingOff).count == 38
 
 /-! ## Symbolic checking is not the same as checking every instance
 

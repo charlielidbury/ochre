@@ -1023,3 +1023,26 @@ A place keeps its type across writes, so any of the three readings is the owner'
 Regression: `Owners.RetSub` and `IdThroughRet`, the true statement once rejected.
 
 996 verdicts.
+
+## 35. D53 off by default until acceptance (the lead's inversion)
+
+fuzz-port's execution oracle runs accepted data functions at ground inputs, with reads moving. It found programs that the checker accepts with D53 on and that go wrong when run: 15,567 in 10⁶ on 55977f8e. The causes are M1, M2 and M2b (stuck blocks hide their arms' moves) and M3 (erased code read at runtime depth). So ochr-core's default must not have D53 on.
+
+`Config.d53` (default false) gates D53: `movesOn`, `ghostsOn` and `fnRuleOn` are `d53 && …`. `moves`, `ghosts` and `fnRule` still switch its parts, for the ledger. `Ochr.Test.d53Blocks = ["Moves"]` is checked with `d53 := true`.
+
+`Moves` is the Borrows file's D53 section, split into its own block. It also holds `Functions.RetMoved` (shape (c)) and `ClosingOff.BlockReads`/`BlockMovesField` (shape (a)), since those regressions mean nothing with D53 off.
+
+Everything else, the case studies included, reads by copying. The tour's `clone`s and `Word`s are harmless there. With D53 off, no verdict outside `Moves` changes.
+
+The D53 rows are measured on `Moves`:
+- `moves`: the same 8 programs, now `Moves.*`;
+- `ghosts`: `GhostRead` only (the `CurrentState` programs are no longer checked with D53);
+- `fnRule`: `CallTwice`, `ClosureClones`, `ClosureCopy`.
+
+The unit tests' expected sealed programs no longer end in `peek`.
+
+The fuzzer defaults to D53 off, and `--switch +D53` turns it on.
+
+When M1, M2, M2b, M3 and RN are fixed and the execution oracle shows no findings in at least 10⁵ cases, `d53` becomes true by default. The tour flips first, then the case studies as their lanes adapt.
+
+`preD53` is gone.

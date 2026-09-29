@@ -141,6 +141,8 @@ structure Config where
   jStuck : Bool := true          -- D56: J computes only when its endpoints are convertible, otherwise it is stuck
   zeroArmStuck : Bool := true    -- D58: a zero-arm match outside a proof position is stuck, not ⋆
   unitEta : Bool := true         -- D59: η for Unit: `Eq Unit a b ≡ True`, and [Close] has no Unit row
+  d53 : Bool := false            -- D53 applies: off by default until its acceptance run passes; on for the tour's
+                                 -- D53 blocks (`Test.d53Blocks`). `moves`, `ghosts`, `fnRule` switch its parts
   moves : Bool := true           -- D53: a runtime read of data whose type is not a copy type moves it; erased reads copy
   ghosts : Bool := true          -- D53 (c): a move leaves a ghost of the value, which erased terms still read
   fnRule : Bool := true          -- D53 (e): a call does not consume its function; a closure is copy iff its captures are, and its body may not move them out
@@ -152,11 +154,16 @@ structure Config where
   trace : Bool := false          -- record goals, splits and call types (for inspection)
 deriving Inhabited, Repr, BEq
 
+/-- D53's parts, where D53 applies (`d53`). -/
+def Config.movesOn (c : Config) : Bool := c.d53 && c.moves
+def Config.ghostsOn (c : Config) : Bool := c.d53 && c.ghosts
+def Config.fnRuleOn (c : Config) : Bool := c.d53 && c.fnRule
+
 /-- The pre-pass is checked against the after-the-fact classification under the rules as
 they stand; a counterfactual run switches a rule off and measures that alone. D53's switches
-do not change what is erased, so a block checked with moves off (`preD53`) is checked too. -/
+do not change what is erased, so the D53 blocks (`d53Blocks`) are checked too. -/
 def Config.prePassAssert (c : Config) : Bool :=
-  c.prePass && { c with trace := false, moves := true, ghosts := true, fnRule := true } == ({} : Config)
+  c.prePass && { c with trace := false, d53 := false, moves := true, ghosts := true, fnRule := true } == ({} : Config)
 
 /-- D41: one assignment, borrow or move, by the position of its place's root. It is
 `pending` once an erased run it belongs to has affected a place outliving that run: an

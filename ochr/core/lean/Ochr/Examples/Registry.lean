@@ -30,7 +30,7 @@ open Ochr Ochr.Test Ochr.Surface
 namespace Ochr.Registry
 
 def programs : List (String × Block) :=
-  [("Prelude", Prelude), ("Std", Std), ("Fixtures", Fixtures), ("Numbers", Numbers), ("Borrows", Borrows), ("ReturnedBorrows", ReturnedBorrows),
+  [("Prelude", Prelude), ("Std", Std), ("Fixtures", Fixtures), ("Numbers", Numbers), ("Borrows", Borrows), ("Moves", Moves), ("ReturnedBorrows", ReturnedBorrows),
    ("ClosingOff", ClosingOff), ("Naturality", Naturality), ("Equality", Equality), ("Rewriting", Rewriting),
    ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion),
    ("CaseSplits", CaseSplits), ("GenType", GenType), ("RenormPi", RenormPi), ("Splitting", Splitting), ("ScrutineeTypes", ScrutineeTypes),
@@ -185,7 +185,7 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("completeness", []),
    ("model", ["Sorts.K1", "Sorts.K2"]),
-   ("cost", ["Borrows.TwiceNat", "Borrows.ClosureMovesCapture"]),
+   ("cost", ["Moves.TwiceNat", "Moves.ClosureMovesCapture"]),
    ("completeness", []),
    ("completeness", []),
    ("completeness", [])]

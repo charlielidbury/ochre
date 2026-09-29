@@ -276,27 +276,24 @@ open Ochr.Registry in
   ["Functions.WV:accepted", "Subsingletons.EffL:accepted", "Subsingletons.EffLNoop:accepted",
    "ErasureBySyntax.LieH:accepted", "Sorts.W:accepted", "Sorts.f:accepted", "Sorts.TT:accepted",
    "Sorts.g2:accepted", "Sorts.k:accepted", "Sorts.K1:accepted", "Sorts.K2:accepted"]
--- D53 switched off: reads copy everything, so data is duplicated without `clone`, and a place
--- moved out through a borrow is not caught (the cost model's rule, not the logic's)
+-- D53's rows are measured on the D53 blocks (`Test.d53Blocks`, the `Moves` block), the only
+-- ones D53 applies to until its acceptance run passes. D53 switched off: reads copy
+-- everything, so data is duplicated without `clone`, and a place moved out through a borrow
+-- is not caught (the cost model's rule, not the logic's)
 open Ochr.Registry in
 #guard rowOk { moves := false }
-  ["Borrows.UseAfterMove:accepted", "Borrows.TwiceNat:accepted", "Borrows.TakeFromBorrow:accepted",
-   "Borrows.ReturnMovedBorrow:accepted", "Borrows.ClosureMovesCapture:accepted",
-   "Borrows.ClosureMoved:accepted", "Borrows.MoveInArm:accepted", "Functions.RetMoved:accepted"]
+  ["Moves.UseAfterMove:accepted", "Moves.TwiceNat:accepted", "Moves.TakeFromBorrow:accepted",
+   "Moves.ReturnMovedBorrow:accepted", "Moves.ClosureMovesCapture:accepted", "Moves.ClosureMoved:accepted",
+   "Moves.MoveInArm:accepted", "Moves.RetMoved:accepted"]
 -- D53 (c) switched off: a move leaves `⊥`, so a proof that mentions a moved value fails
 open Ochr.Registry in
 #guard rowOk { ghosts := false }
-  ["Borrows.GhostRead:rejected", "CurrentState.AddSub:rejected", "CurrentState.AddSubId:rejected",
-   "CurrentState.AddSubIdReborrow:rejected"]
+  ["Moves.GhostRead:rejected"]
 -- D53 (e) switched off: calls consume their function and a closure is never a copy, so a
 -- function cannot be called twice
 open Ochr.Registry in
 #guard rowOk { fnRule := false }
-  ["Borrows.CallTwice:rejected", "Borrows.ClosureClones:rejected", "Borrows.ClosureCopy:rejected",
-   "Equality.Om:rejected", "Functions.Twice:rejected", "Functions.TwiceNoop:rejected",
-   "Functions.TwiceM:rejected", "Functions.TwiceMMove:rejected", "Functions.TwiceMZero:rejected",
-   "Functions.TwiceMZero':rejected", "Trees.Size:rejected", "Trees.SizeInsert:rejected",
-   "InPlaceTrees.Size:rejected", "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected"]
+  ["Moves.CallTwice:rejected", "Moves.ClosureClones:rejected", "Moves.ClosureCopy:rejected"]
 -- D59 switched off: a call written to return `Unit` returns `()` and one that only computes
 -- to `Unit` a sealed program, and two values of `Unit` need not be equal
 open Ochr.Registry in
