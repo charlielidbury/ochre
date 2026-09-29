@@ -238,14 +238,14 @@ ochr Arrays uses Index {
   )
 
   -- The view with element `i` replaced by `x`.
-  def SetS (E : Type) (n : Nat) (s : Slice(E, n)) (i : Nat) (x : E) (h : Lt(i, n)) : Slice(E, n) by i := (
+  def SetS (E : Type) (n : Nat) (s : Slice(E, n)) (i : Nat) (x : E) : Slice(E, n) by i := (
     match n {
-      Z => match h {},
+      Z => s,
       S m => match s {
         MkSlice(c) => match c {
           MkC(y, t) => match i {
             Z => MkSlice(MkC(x, t)),
-            S i' => MkSlice(MkC(y, SetS(E, m, t, i', x, h))),
+            S i' => MkSlice(MkC(y, SetS(E, m, t, i', x))),
           },
         },
       },
@@ -267,29 +267,28 @@ ochr Arrays uses Index {
     }
   )
 
-  def DropS (E : Type) (n : Nat) (k : Nat) (s : Slice(E, n)) (h : Le(k, n)) : Slice(E, Sub(n, k)) by k := (
+  def DropS (E : Type) (n : Nat) (k : Nat) (s : Slice(E, n)) : Slice(E, Sub(n, k)) by k := (
     match k {
       Z => s,
       S k' => match n {
-        Z => match h {},
+        Z => MkSlice(End),
         S m => match s {
           MkSlice(c) => match c {
-            MkC(x, t) => DropS(E, m, k', t, h),
+            MkC(x, t) => DropS(E, m, k', t),
           },
         },
       },
     }
   )
 
-  def JoinS (E : Type) (n : Nat) (k : Nat) (l : Slice(E, k)) (r : Slice(E, Sub(n, k))) (h : Le(k, n)) :
-      Slice(E, n) by k := (
+  def JoinS (E : Type) (n : Nat) (k : Nat) (l : Slice(E, k)) (r : Slice(E, Sub(n, k))) : Slice(E, n) by k := (
     match k {
       Z => r,
       S k' => match n {
-        Z => match h {},
+        Z => MkSlice(End),
         S m => match l {
           MkSlice(c) => match c {
-            MkC(x, t) => MkSlice(MkC(x, JoinS(E, m, k', t, r, h))),
+            MkC(x, t) => MkSlice(MkC(x, JoinS(E, m, k', t, r))),
           },
         },
       },
@@ -341,7 +340,7 @@ ochr Arrays uses Index {
 
   -- [native] Write element `i`.
   def Set (E : Type) (n : Nat) (s : &Slice(E, n)) (i : Nat) (x : E) (h : Lt(i, n)) : Unit := (
-    *s := SetS(E, n, *s, i, x, h)
+    *s := SetS(E, n, *s, i, x)
   )
 
   -- [native] [K1] A borrow of element `i`, for `Nat` elements until `&E` is well formed.
@@ -366,9 +365,9 @@ ochr Arrays uses Index {
       (f : Π(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))). R) : R := (
     let v = *s;
     let l = TakeS(E, n, k, v, h);
-    let r = DropS(E, n, k, v, h);
+    let r = DropS(E, n, k, v);
     let res = f(&l, &r);
-    *s := JoinS(E, n, k, l, r, h);
+    *s := JoinS(E, n, k, l, r);
     res
   )
 
@@ -446,7 +445,7 @@ together gives the original view (`JoinTakeDrop`), the halves of a join are what
 
 ochr ArrayLemmas uses Arrays {
   def NthSetSame (E : Type) (n : Nat) (s : Slice(E, n)) (i : Nat) (x : E) (h : Lt(i, n)) :
-      Eq E (Nth(E, n, SetS(E, n, s, i, x, h), i, h)) x by i := (
+      Eq E (Nth(E, n, SetS(E, n, s, i, x), i, h)) x by i := (
     match n {
       Z => match h {},
       S m => match s {
@@ -462,7 +461,7 @@ ochr ArrayLemmas uses Arrays {
 
   def NthSetOther (E : Type) (n : Nat) (s : Slice(E, n)) (i : Nat) (j : Nat) (x : E) (hi : Lt(i, n))
       (hj : Lt(j, n)) (ne : Π(e : Eq Nat i j). False) :
-      Eq E (Nth(E, n, SetS(E, n, s, i, x, hi), j, hj)) (Nth(E, n, s, j, hj)) by i := (
+      Eq E (Nth(E, n, SetS(E, n, s, i, x), j, hj)) (Nth(E, n, s, j, hj)) by i := (
     match n {
       Z => match hi {},
       S m => match s {
@@ -486,7 +485,7 @@ ochr ArrayLemmas uses Arrays {
   )
 
   def JoinTakeDrop (E : Type) (n : Nat) (k : Nat) (s : Slice(E, n)) (h : Le(k, n)) :
-      Eq (Slice(E, n)) (JoinS(E, n, k, TakeS(E, n, k, s, h), DropS(E, n, k, s, h), h)) s by k := (
+      Eq (Slice(E, n)) (JoinS(E, n, k, TakeS(E, n, k, s, h), DropS(E, n, k, s))) s by k := (
     match k {
       Z => refl,
       S k' => match n {
@@ -501,7 +500,7 @@ ochr ArrayLemmas uses Arrays {
   )
 
   def TakeJoin (E : Type) (n : Nat) (k : Nat) (l : Slice(E, k)) (r : Slice(E, Sub(n, k))) (h : Le(k, n)) :
-      Eq (Slice(E, k)) (TakeS(E, n, k, JoinS(E, n, k, l, r, h), h)) l by k := (
+      Eq (Slice(E, k)) (TakeS(E, n, k, JoinS(E, n, k, l, r), h)) l by k := (
     match k {
       Z => match l {
         MkSlice(c) => match c {
@@ -520,7 +519,7 @@ ochr ArrayLemmas uses Arrays {
   )
 
   def DropJoin (E : Type) (n : Nat) (k : Nat) (l : Slice(E, k)) (r : Slice(E, Sub(n, k))) (h : Le(k, n)) :
-      Eq (Slice(E, Sub(n, k))) (DropS(E, n, k, JoinS(E, n, k, l, r, h), h)) r by k := (
+      Eq (Slice(E, Sub(n, k))) (DropS(E, n, k, JoinS(E, n, k, l, r))) r by k := (
     match k {
       Z => refl,
       S k' => match n {
@@ -564,7 +563,7 @@ ochr ArrayLemmas uses Arrays {
   )
 
   def CountJoin (q : Nat) (n : Nat) (k : Nat) (l : Slice(Nat, k)) (r : Slice(Nat, Sub(n, k))) (h : Le(k, n)) :
-      Eq Nat (Count(q, n, JoinS(Nat, n, k, l, r, h))) (Add(Count(q, k, l), Count(q, Sub(n, k), r))) by k := (
+      Eq Nat (Count(q, n, JoinS(Nat, n, k, l, r))) (Add(Count(q, k, l), Count(q, Sub(n, k), r))) by k := (
     match k {
       Z => refl,
       S k' => match n {
@@ -586,7 +585,7 @@ ochr ArrayLemmas uses Arrays {
 
   -- Writing `x` over element `i` trades one occurrence of the old element for one of `x`.
   def CountSet (q : Nat) (n : Nat) (s : Slice(Nat, n)) (i : Nat) (x : Nat) (h : Lt(i, n)) :
-      Eq Nat (Add(Count(q, n, SetS(Nat, n, s, i, x, h)), Ind(q, Nth(Nat, n, s, i, h))))
+      Eq Nat (Add(Count(q, n, SetS(Nat, n, s, i, x)), Ind(q, Nth(Nat, n, s, i, h))))
         (Add(Count(q, n, s), Ind(q, x))) by i := (
     match n {
       Z => match h {},
@@ -623,7 +622,7 @@ ochr ArrayLemmas uses Arrays {
   -- ## Swapping
   -- The model of `Swap`: `Swap` is, by definition, this write to its view.
   def SwapS (E : Type) (n : Nat) (s : Slice(E, n)) (i : Nat) (j : Nat) (hi : Lt(i, n)) (hj : Lt(j, n)) :
-      Slice(E, n) := SetS(E, n, SetS(E, n, s, i, Nth(E, n, s, j, hj), hi), j, Nth(E, n, s, i, hi), hj)
+      Slice(E, n) := SetS(E, n, SetS(E, n, s, i, Nth(E, n, s, j, hj)), j, Nth(E, n, s, i, hi))
 
   def SwapIsSwapS (E : Type) (n : Nat) (s : &Slice(E, n)) (i : Nat) (j : Nat) (hi : Lt(i, n)) (hj : Lt(j, n)) :
       Id Unit (Swap(E, n, s, i, j, hi, hj)) (*s := SwapS(E, n, *s, i, j, hi, hj)) := refl
@@ -631,9 +630,9 @@ ochr ArrayLemmas uses Arrays {
   -- A swap with the head: the head moves to position `i + 1` of the rest, whose old element
   -- becomes the head. Counts are unchanged, by `CountSet` on the rest.
   def CountSwapHead (q : Nat) (m : Nat) (y : Nat) (t : Slice(Nat, m)) (i : Nat) (h : Lt(i, m)) :
-      Eq Nat (Count(q, S m, MkSlice(MkC(Nth(Nat, m, t, i, h), SetS(Nat, m, t, i, y, h)))))
+      Eq Nat (Count(q, S m, MkSlice(MkC(Nth(Nat, m, t, i, h), SetS(Nat, m, t, i, y)))))
         (Count(q, S m, MkSlice(MkC(y, t)))) := (
-    let a = Count(q, m, SetS(Nat, m, t, i, y, h));
+    let a = Count(q, m, SetS(Nat, m, t, i, y));
     let b = Count(q, m, t);
     let hs = CountSet(q, m, t, i, y, h);
     let eb = Eqb(q, Nth(Nat, m, t, i, h));
@@ -719,22 +718,22 @@ ochr ArrayBench uses ArrayLemmas {
   -- `k` elements, joined to the old rest.
   def B1Join (E : Type) (n : Nat) (k : Nat) (g : Π(x : &Slice(E, k)). Unit) (s : &Slice(E, n)) (h : Le(k, n)) :
       Id Unit (WithSplit(E, Unit, n, k, s, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => g(l)))
-        (*s := JoinS(E, n, k, (let c = TakeS(E, n, k, *s, h); g(&c); c), DropS(E, n, k, *s, h), h)) := refl
+        (*s := JoinS(E, n, k, (let c = TakeS(E, n, k, *s, h); g(&c); c), DropS(E, n, k, *s))) := refl
 
   -- Stated about the rest alone, it takes one lemma, for any `g`: `g`'s result has length `k`
   -- by its type, so the rest starts where it did.
   def B1 (E : Type) (n : Nat) (k : Nat) (g : Π(x : &Slice(E, k)). Unit) (s : &Slice(E, n)) (h : Le(k, n)) :
       Eq (Slice(E, Sub(n, k)))
-        (let c = *s; WithSplit(E, Unit, n, k, &c, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => g(l)); DropS(E, n, k, c, h))
-        (DropS(E, n, k, *s, h)) := (
-    DropJoin(E, n, k, (let c = TakeS(E, n, k, *s, h); g(&c); c), DropS(E, n, k, *s, h), h)
+        (let c = *s; WithSplit(E, Unit, n, k, &c, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => g(l)); DropS(E, n, k, c))
+        (DropS(E, n, k, *s)) := (
+    DropJoin(E, n, k, (let c = TakeS(E, n, k, *s, h); g(&c); c), DropS(E, n, k, *s), h)
   )
 
   -- A primitive array would give that by definition; here it is not.
   reject def B1Refl (E : Type) (n : Nat) (k : Nat) (g : Π(x : &Slice(E, k)). Unit) (s : &Slice(E, n)) (h : Le(k, n)) :
       Eq (Slice(E, Sub(n, k)))
-        (let c = *s; WithSplit(E, Unit, n, k, &c, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => g(l)); DropS(E, n, k, c, h))
-        (DropS(E, n, k, *s, h)) := refl
+        (let c = *s; WithSplit(E, Unit, n, k, &c, h, λ(l : &Slice(E, k)) (r : &Slice(E, Sub(n, k))) : Unit => g(l)); DropS(E, n, k, c))
+        (DropS(E, n, k, *s)) := refl
 
   -- Nor is splitting and doing nothing the identity by definition; it is `JoinTakeDrop`.
   reject def SplitNoopRefl (E : Type) (n : Nat) (k : Nat) (s : &Slice(E, n)) (h : Le(k, n)) :
@@ -954,8 +953,12 @@ ochr ArrayBench uses ArrayLemmas {
 
 In place, over a view, recursing over indices only. The partition is Lomuto's scan with index
 bounds proved from its invariant; the recursive calls get the two sides of the pivot as
-borrowed pieces. What is proved: quicksort permutes its view (every count is unchanged), for
-any fuel. -/
+borrowed pieces. What is proved:
+* quicksort permutes its view (every count is unchanged), for any fuel (`QSPerm`);
+* quicksort sorts its view, for fuel at least the length, given the partition's contract
+  (`QSSorted`): four facts about `Partition`, each checked on examples (`ContractRun1`,
+  `ContractRun2`) but not yet proved for all inputs. Proving them is Lomuto's positional
+  invariant, the one piece of the development still open. -/
 
 ochr Quicksort uses ArrayLemmas {
   -- Lomuto's partition around the pivot `p`, which sits at index 0. Elements `1 … i` are at
@@ -1092,23 +1095,23 @@ ochr Quicksort uses ArrayLemmas {
         let h1 = SubPos(m, k, hk);
         -- the pieces before, and after the two recursive calls
         let tk = TakeS(Nat, S m, k, *s, hk2);
-        let r0 = DropS(Nat, S m, k, *s, hk2);
+        let r0 = DropS(Nat, S m, k, *s);
         let pv = TakeS(Nat, Sub(S m, k), 1, r0, h1);
-        let rr = DropS(Nat, Sub(S m, k), 1, r0, h1);
+        let rr = DropS(Nat, Sub(S m, k), 1, r0);
         let l2 = (let c = tk; rec(k, &c); c);
         let rr2 = (let c = rr; rec(Sub(Sub(S m, k), 1), &c); c);
-        let x2 = JoinS(Nat, Sub(S m, k), 1, pv, rr2, h1);
+        let x2 = JoinS(Nat, Sub(S m, k), 1, pv, rr2);
         -- their counts
-        let cf = Count(q, S m, JoinS(Nat, S m, k, l2, x2, hk2));
+        let cf = Count(q, S m, JoinS(Nat, S m, k, l2, x2));
         let cl2 = Count(q, k, l2);
         let ctk = Count(q, k, tk);
         let cx2 = Count(q, Sub(S m, k), x2);
         let cpv = Count(q, 1, pv);
         let crr2 = Count(q, Sub(Sub(S m, k), 1), rr2);
         let crr = Count(q, Sub(Sub(S m, k), 1), rr);
-        let cj = Count(q, Sub(S m, k), JoinS(Nat, Sub(S m, k), 1, pv, rr, h1));
+        let cj = Count(q, Sub(S m, k), JoinS(Nat, Sub(S m, k), 1, pv, rr));
         let cr0 = Count(q, Sub(S m, k), r0);
-        let cj0 = Count(q, S m, JoinS(Nat, S m, k, tk, r0, hk2));
+        let cj0 = Count(q, S m, JoinS(Nat, S m, k, tk, r0));
         let cs = Count(q, S m, *s);
         -- the left part: the recursive call permutes it
         let s1 : Eq Nat cf (Add(ctk, cx2)) = EqTrans(cf, Add(cl2, cx2), Add(ctk, cx2),
@@ -1117,10 +1120,10 @@ ochr Quicksort uses ArrayLemmas {
         let s2 : Eq Nat cx2 cr0 = EqTrans(cx2, Add(cpv, crr2), cr0, CountJoin(q, Sub(S m, k), 1, pv, rr2, h1),
           EqTrans(Add(cpv, crr2), Add(cpv, crr), cr0, AddCongR(cpv, crr2, crr, (let c = rr; ih(Sub(Sub(S m, k), 1), &c, q))),
             EqTrans(Add(cpv, crr), cj, cr0, EqSym(cj, Add(cpv, crr), CountJoin(q, Sub(S m, k), 1, pv, rr, h1)),
-              CountCong(q, Sub(S m, k), JoinS(Nat, Sub(S m, k), 1, pv, rr, h1), r0, JoinTakeDrop(Nat, Sub(S m, k), 1, r0, h1)))));
+              CountCong(q, Sub(S m, k), JoinS(Nat, Sub(S m, k), 1, pv, rr), r0, JoinTakeDrop(Nat, Sub(S m, k), 1, r0, h1)))));
         -- and the two parts are the view, split
         let s3 : Eq Nat (Add(ctk, cr0)) cs = EqTrans(Add(ctk, cr0), cj0, cs, EqSym(cj0, Add(ctk, cr0), CountJoin(q, S m, k, tk, r0, hk2)),
-          CountCong(q, S m, JoinS(Nat, S m, k, tk, r0, hk2), *s, JoinTakeDrop(Nat, S m, k, *s, hk2)));
+          CountCong(q, S m, JoinS(Nat, S m, k, tk, r0), *s, JoinTakeDrop(Nat, S m, k, *s, hk2)));
         EqTrans(cf, Add(ctk, cx2), cs, s1, EqTrans(Add(ctk, cx2), Add(ctk, cr0), cs, AddCongR(ctk, cx2, cr0, s2), s3))
       ),
       No(nk) => refl,
@@ -1158,10 +1161,414 @@ ochr Quicksort uses ArrayLemmas {
       },
     }
   )
+  -- ## Quicksort sorts, given the partition's contract
+  -- Every element is at most `p`; at least `p`; and the view is sorted. Each is a
+  -- proposition computed by recursion on the length.
+  def AllLe (n : Nat) (s : Slice(Nat, n)) (p : Nat) : Prop by n := (
+    match n {
+      Z => ⊤,
+      S m => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => Le(x, p) ∧ AllLe(m, t, p),
+        },
+      },
+    }
+  )
+
+  def AllGe (n : Nat) (s : Slice(Nat, n)) (p : Nat) : Prop by n := (
+    match n {
+      Z => ⊤,
+      S m => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => Le(p, x) ∧ AllGe(m, t, p),
+        },
+      },
+    }
+  )
+
+  def Sorted (n : Nat) (s : Slice(Nat, n)) : Prop by n := (
+    match n {
+      Z => ⊤,
+      S m => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => AllGe(m, t, x) ∧ Sorted(m, t),
+        },
+      },
+    }
+  )
+
+  -- A lower bound can be lowered.
+  def AllGeWeaken (n : Nat) (s : Slice(Nat, n)) (x : Nat) (a : Nat) (h : AllGe(n, s, x)) (hax : Le(a, x)) :
+      AllGe(n, s, a) by n := (
+    match n {
+      Z => refl,
+      S m => match s {
+        MkSlice(c) => match c {
+          MkC(y, t) => match h {
+            Intro(hy, ht) => ⟨LeTrans(a, x, y, hax, hy), AllGeWeaken(m, t, x, a, ht, hax)⟩,
+          },
+        },
+      },
+    }
+  )
+
+  -- Taking a conjunction apart, and building one with its conjuncts named. [⋆] `⟨p, q⟩`,
+  -- whose conjuncts are inferred from the expected type, trips the checker incompleteness in
+  -- `AllGeJoin` and `SortedJoin`; naming them avoids it.
+  def AndL (P : Prop) (Q : Prop) (h : P ∧ Q) : P := match h { Intro(p, q) => p }
+  def AndR (P : Prop) (Q : Prop) (h : P ∧ Q) : Q := match h { Intro(p, q) => q }
+
+  def AndI (P : Prop) (Q : Prop) (p : P) (q : Q) : P ∧ Q := ⟨p, q⟩
+
+  -- variant A: no annotation, explicit And parameters via AndI
+  def AllGeJoin (n : Nat) (k : Nat) (l : Slice(Nat, k)) (r : Slice(Nat, Sub(n, k))) (h : Le(k, n)) (a : Nat)
+      (hl : AllGe(k, l, a)) (hr : AllGe(Sub(n, k), r, a)) : AllGe(n, JoinS(Nat, n, k, l, r), a) by k := (
+    match k {
+      Z => hr,
+      S k' => match n {
+        Z => match h {},
+        S m => match l {
+          MkSlice(c) => match c {
+            MkC(y, t) => AndI(Le(a, y), AllGe(m, JoinS(Nat, m, k', t, r), a), AndL(Le(a, y), AllGe(k', t, a), hl),
+              AllGeJoin(m, k', t, r, h, a, AndR(Le(a, y), AllGe(k', t, a), hl), hr)),
+          },
+        },
+      },
+    }
+  )
+
+  -- Two sorted views joined, everything on the left at most `x` and on the right at least
+  -- `x`, are sorted.
+  def SortedJoin (n : Nat) (k : Nat) (l : Slice(Nat, k)) (r : Slice(Nat, Sub(n, k))) (h : Le(k, n)) (x : Nat)
+      (hl : Sorted(k, l)) (hlx : AllLe(k, l, x)) (hr : Sorted(Sub(n, k), r)) (hrx : AllGe(Sub(n, k), r, x)) :
+      Sorted(n, JoinS(Nat, n, k, l, r)) by k := (
+    match k {
+      Z => hr,
+      S k' => match n {
+        Z => match h {},
+        S m => match l {
+          MkSlice(c) => match c {
+            MkC(a, t) => AndI(AllGe(m, JoinS(Nat, m, k', t, r), a), Sorted(m, JoinS(Nat, m, k', t, r)),
+              AllGeJoin(m, k', t, r, h, a, AndL(AllGe(k', t, a), Sorted(k', t), hl),
+                AllGeWeaken(Sub(m, k'), r, x, a, hrx, AndL(Le(a, x), AllLe(k', t, x), hlx))),
+              SortedJoin(m, k', t, r, h, x, AndR(AllGe(k', t, a), Sorted(k', t), hl), AndR(Le(a, x), AllLe(k', t, x), hlx), hr, hrx)),
+          },
+        },
+      },
+    }
+  )
+
+  -- ## Bounds survive a permutation, by counting
+  def EqbRefl (x : Nat) : Eq Bool (Eqb(x, x)) true by x := (
+    match x {
+      Z => refl,
+      S x' => EqbRefl(x'),
+    }
+  )
+
+  -- If q = x (by Eqb), x <= p and p < q is impossible; and the mirror image.
+  def EqbLeLt (q : Nat) (x : Nat) (p : Nat) (e : Eq Bool (Eqb(q, x)) true) (h1 : Le(x, p)) (h2 : Lt(p, q)) : False by q := (
+    match q {
+      Z => match h2 {},
+      S q' => match x {
+        Z => match e {},
+        S x' => match p {
+          Z => match h1 {},
+          S p' => EqbLeLt(q', x', p', e, h1, h2),
+        },
+      },
+    }
+  )
+
+  def EqbGeLt (q : Nat) (x : Nat) (p : Nat) (e : Eq Bool (Eqb(q, x)) true) (h1 : Le(p, x)) (h2 : Lt(q, p)) : False by q := (
+    match q {
+      Z => match x {
+        Z => match p {
+          Z => match h2 {},
+          S p' => match h1 {},
+        },
+        S x' => match e {},
+      },
+      S q' => match x {
+        Z => match e {},
+        S x' => match p {
+          Z => match h2 {},
+          S p' => EqbGeLt(q', x', p', e, h1, h2),
+        },
+      },
+    }
+  )
+
+  -- Every element at most `p`: no value above `p` occurs.
+  def CountAboveZero (n : Nat) (s : Slice(Nat, n)) (p : Nat) (h : AllLe(n, s, p)) (q : Nat) (hq : Lt(p, q)) :
+      Eq Nat (Count(q, n, s)) 0 by n := (
+    match n {
+      Z => refl,
+      S m => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => (
+            let e = Eqb(q, x);
+            match e {
+              true => (
+                let no = EqbLeLt(q, x, p, refl, AndL(Le(x, p), AllLe(m, t, p), h), hq);
+                match no {}
+              ),
+              false => CountAboveZero(m, t, p, AndR(Le(x, p), AllLe(m, t, p), h), q, hq),
+            }
+          ),
+        },
+      },
+    }
+  )
+
+  def CountBelowZero (n : Nat) (s : Slice(Nat, n)) (p : Nat) (h : AllGe(n, s, p)) (q : Nat) (hq : Lt(q, p)) :
+      Eq Nat (Count(q, n, s)) 0 by n := (
+    match n {
+      Z => refl,
+      S m => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => (
+            let e = Eqb(q, x);
+            match e {
+              true => (
+                let no = EqbGeLt(q, x, p, refl, AndL(Le(p, x), AllGe(m, t, p), h), hq);
+                match no {}
+              ),
+              false => CountBelowZero(m, t, p, AndR(Le(p, x), AllGe(m, t, p), h), q, hq),
+            }
+          ),
+        },
+      },
+    }
+  )
+
+  -- A count of zero for the whole is a count of zero for the rest.
+  def CountTailZero (q : Nat) (m : Nat) (x : Nat) (t : Slice(Nat, m)) (e0 : Eq Nat (Count(q, S m, MkSlice(MkC(x, t)))) 0) :
+      Eq Nat (Count(q, m, t)) 0 := (
+    let e = Eqb(q, x);
+    match e {
+      true => match e0 {},
+      false => e0,
+    }
+  )
+
+  -- Conversely: if no value above `p` occurs, every element is at most `p`.
+  def AllLeOfCounts (n : Nat) (s : Slice(Nat, n)) (p : Nat)
+      (hz : Π(q : Nat) (hq : Lt(p, q)). Eq Nat (Count(q, n, s)) 0) : AllLe(n, s, p) by n := (
+    match n {
+      Z => refl,
+      S m => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => (
+            let d = LeDec(x, p);
+            match d {
+              Yes(hle) => AndI(Le(x, p), AllLe(m, t, p), hle,
+                AllLeOfCounts(m, t, p, λ(q : Nat) (hq : Lt(p, q)) : Eq Nat (Count(q, m, t)) 0 => CountTailZero(q, m, x, t, hz(q, hq)))),
+              No(nk) => (
+                let e1 = hz(x, nk);
+                let r1 = EqbRefl(x);
+                let e = Eqb(x, x);
+                match e {
+                  true => match e1 {},
+                  false => match r1 {},
+                }
+              ),
+            }
+          ),
+        },
+      },
+    }
+  )
+
+  def AllGeOfCounts (n : Nat) (s : Slice(Nat, n)) (p : Nat)
+      (hz : Π(q : Nat) (hq : Lt(q, p)). Eq Nat (Count(q, n, s)) 0) : AllGe(n, s, p) by n := (
+    match n {
+      Z => refl,
+      S m => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => (
+            let d = LeDec(p, x);
+            match d {
+              Yes(hle) => AndI(Le(p, x), AllGe(m, t, p), hle,
+                AllGeOfCounts(m, t, p, λ(q : Nat) (hq : Lt(q, p)) : Eq Nat (Count(q, m, t)) 0 => CountTailZero(q, m, x, t, hz(q, hq)))),
+              No(nk) => (
+                let e1 = hz(x, nk);
+                let r1 = EqbRefl(x);
+                let e = Eqb(x, x);
+                match e {
+                  true => match e1 {},
+                  false => match r1 {},
+                }
+              ),
+            }
+          ),
+        },
+      },
+    }
+  )
+
+  -- So a bound on every element survives any permutation.
+  def AllLePerm (n : Nat) (s : Slice(Nat, n)) (s2 : Slice(Nat, n)) (p : Nat) (h : AllLe(n, s, p))
+      (perm : Π(q : Nat). Eq Nat (Count(q, n, s2)) (Count(q, n, s))) : AllLe(n, s2, p) := (
+    AllLeOfCounts(n, s2, p, λ(q : Nat) (hq : Lt(p, q)) : Eq Nat (Count(q, n, s2)) 0 =>
+      EqTrans(Count(q, n, s2), Count(q, n, s), 0, perm(q), CountAboveZero(n, s, p, h, q, hq)))
+  )
+
+  def AllGePerm (n : Nat) (s : Slice(Nat, n)) (s2 : Slice(Nat, n)) (p : Nat) (h : AllGe(n, s, p))
+      (perm : Π(q : Nat). Eq Nat (Count(q, n, s2)) (Count(q, n, s))) : AllGe(n, s2, p) := (
+    AllGeOfCounts(n, s2, p, λ(q : Nat) (hq : Lt(q, p)) : Eq Nat (Count(q, n, s2)) 0 =>
+      EqTrans(Count(q, n, s2), Count(q, n, s), 0, perm(q), CountBelowZero(n, s, p, h, q, hq)))
+  )
+
+  def LeSuccFalse (m : Nat) (h : Le(S m, m)) : False by m := (
+    match m {
+      Z => match h {},
+      S m' => LeSuccFalse(m', h),
+    }
+  )
+
+  -- [⋆] `rec` permutes a piece, as a function of `q`. A helper, so that the λ captures a
+  -- parameter rather than a piece that embeds a bounds proof.
+  def PermOf (n : Nat) (rec : Π(n : Nat) (s : &Slice(Nat, n)). Unit)
+      (ihP : Π(n : Nat) (s : &Slice(Nat, n)) (q : Nat). (let old = *s; Eq Nat (Count(q, n, (rec(n, &*s); *s))) (Count(q, n, old))))
+      (t : Slice(Nat, n)) : (Π(q : Nat). Eq Nat (Count(q, n, (let c = t; rec(n, &c); c))) (Count(q, n, t))) := (
+    λ(q : Nat) : Eq Nat (Count(q, n, (let c = t; rec(n, &c); c))) (Count(q, n, t)) => (let c = t; ihP(n, &c, q))
+  )
+
+  -- [⋆] The bounds on a piece survive `rec`, stated for a piece given as a parameter.
+  def AllLeRec (n : Nat) (rec : Π(n : Nat) (s : &Slice(Nat, n)). Unit)
+      (ihP : Π(n : Nat) (s : &Slice(Nat, n)) (q : Nat). (let old = *s; Eq Nat (Count(q, n, (rec(n, &*s); *s))) (Count(q, n, old))))
+      (t : Slice(Nat, n)) (p : Nat) (h : AllLe(n, t, p)) : AllLe(n, (let c = t; rec(n, &c); c), p) := (
+    AllLePerm(n, t, (let c = t; rec(n, &c); c), p, h, PermOf(n, rec, ihP, t))
+  )
+
+  def AllGeRec (n : Nat) (rec : Π(n : Nat) (s : &Slice(Nat, n)). Unit)
+      (ihP : Π(n : Nat) (s : &Slice(Nat, n)) (q : Nat). (let old = *s; Eq Nat (Count(q, n, (rec(n, &*s); *s))) (Count(q, n, old))))
+      (t : Slice(Nat, n)) (p : Nat) (h : AllGe(n, t, p)) : AllGe(n, (let c = t; rec(n, &c); c), p) := (
+    AllGePerm(n, t, (let c = t; rec(n, &c); c), p, h, PermOf(n, rec, ihP, t))
+  )
+
+  -- ## Sorting
+  -- The recursive step sorts the view, given the partition's facts about it (the pivot `x`
+  -- ends at `k`; everything before is at most `x`, everything after at least `x`) and a
+  -- `rec` that sorts and permutes views no longer than `m`.
+  def RecurseSorted (m : Nat) (rec : Π(n : Nat) (s : &Slice(Nat, n)). Unit)
+      (ihS : Π(n : Nat) (s : &Slice(Nat, n)) (hn : Le(n, m)). (let c = *s; rec(n, &c); Sorted(n, c)))
+      (ihP : Π(n : Nat) (s : &Slice(Nat, n)) (q : Nat). (let old = *s; Eq Nat (Count(q, n, (rec(n, &*s); *s))) (Count(q, n, old))))
+      (k : Nat) (hk : Le(k, m)) (x : Nat) (s : &Slice(Nat, S m))
+      (hL : AllLe(k, TakeS(Nat, S m, k, *s, LeStep(k, m, hk)), x))
+      (hP : Eq (Slice(Nat, 1)) (MkSlice(MkC(x, MkSlice(End)))) (TakeS(Nat, Sub(S m, k), 1, DropS(Nat, S m, k, *s), SubPos(m, k, hk))))
+      (hR : AllGe(Sub(Sub(S m, k), 1), DropS(Nat, Sub(S m, k), 1, DropS(Nat, S m, k, *s)), x)) :
+      (let c = *s; Recurse(rec, m, k, &c); Sorted(S m, c)) := (
+    let d = LeDec(k, m);
+    match d {
+      Yes(hk3) => (
+        let hk2 = LeStep(k, m, hk);
+        let h1 = SubPos(m, k, hk);
+        let tk = TakeS(Nat, S m, k, *s, hk2);
+        let r0 = DropS(Nat, S m, k, *s);
+        let pv = TakeS(Nat, Sub(S m, k), 1, r0, h1);
+        let rr = DropS(Nat, Sub(S m, k), 1, r0);
+        let l2 = (let c = tk; rec(k, &c); c);
+        let rr2 = (let c = rr; rec(Sub(Sub(S m, k), 1), &c); c);
+        let x2 = JoinS(Nat, Sub(S m, k), 1, pv, rr2);
+        let one = MkSlice(MkC(x, MkSlice(End)));
+        -- the left part: sorted by `rec`, and still at most `x` because `rec` permutes
+        let sl2 : Sorted(k, l2) = (let c = tk; ihS(k, &c, hk));
+        let bl2 : AllLe(k, l2, x) = AllLeRec(k, rec, ihP, tk, x, hL);
+        -- the right part: likewise, at least `x`
+        let srr2 : Sorted(Sub(Sub(S m, k), 1), rr2) = (let c = rr; ihS(Sub(Sub(S m, k), 1), &c, SubOneLe(m, k)));
+        let brr2 : AllGe(Sub(Sub(S m, k), 1), rr2, x) = AllGeRec(Sub(Sub(S m, k), 1), rec, ihP, rr, x, hR);
+        -- the pivot piece is `[x]`
+        let spv : Sorted(1, pv) = J(Slice(Nat, 1), one, pv, λ(z : Slice(Nat, 1)) : Prop => Sorted(1, z), hP, refl);
+        let lpv : AllLe(1, pv, x) = J(Slice(Nat, 1), one, pv, λ(z : Slice(Nat, 1)) : Prop => AllLe(1, z, x), hP,
+          AndI(Le(x, x), ⊤, LeRefl(x), refl));
+        let gpv : AllGe(1, pv, x) = J(Slice(Nat, 1), one, pv, λ(z : Slice(Nat, 1)) : Prop => AllGe(1, z, x), hP,
+          AndI(Le(x, x), ⊤, LeRefl(x), refl));
+        -- glue: pivot and right part, then left part and the rest
+        let sx2 : Sorted(Sub(S m, k), x2) = SortedJoin(Sub(S m, k), 1, pv, rr2, h1, x, spv, lpv, srr2, brr2);
+        let gx2 : AllGe(Sub(S m, k), x2, x) = AllGeJoin(Sub(S m, k), 1, pv, rr2, h1, x, gpv, brr2);
+        SortedJoin(S m, k, l2, x2, hk2, x, sl2, bl2, sx2, gx2)
+      ),
+      No(nk) => (
+        let no = LeSuccFalse(m, LeTrans(S m, k, m, nk, hk));
+        match no {}
+      ),
+    }
+  )
+
+  -- ## The partition's contract
+  -- Run on a copy of its input `v`, the partition returns `k` and leaves `PartV(m, v)`. Its
+  -- contract: the pivot `x` (the first element of `v`) ends at `k <= m`, everything before
+  -- it is at most `x`, and everything after it at least `x`.
+  def PartK (m : Nat) (v : Slice(Nat, S m)) : Nat := (
+    let c = v;
+    Partition(m, &c)
+  )
+
+  def PartV (m : Nat) (v : Slice(Nat, S m)) : Slice(Nat, S m) := (
+    let c = v;
+    Partition(m, &c);
+    c
+  )
+
+  def PartLe (m : Nat) (v : Slice(Nat, S m)) : Prop := Le(PartK(m, v), m)
+
+  def PartLeft (m : Nat) (v : Slice(Nat, S m)) (hk : PartLe(m, v)) : Prop := (
+    AllLe(PartK(m, v), TakeS(Nat, S m, PartK(m, v), PartV(m, v), LeStep(PartK(m, v), m, hk)), Nth(Nat, S m, v, 0, refl))
+  )
+
+  def PartPivot (m : Nat) (v : Slice(Nat, S m)) (hk : PartLe(m, v)) : Prop := (
+    Eq (Slice(Nat, 1)) (MkSlice(MkC(Nth(Nat, S m, v, 0, refl), MkSlice(End))))
+      (TakeS(Nat, Sub(S m, PartK(m, v)), 1, DropS(Nat, S m, PartK(m, v), PartV(m, v)), SubPos(m, PartK(m, v), hk)))
+  )
+
+  def PartRight (m : Nat) (v : Slice(Nat, S m)) (hk : PartLe(m, v)) : Prop := (
+    AllGe(Sub(Sub(S m, PartK(m, v)), 1), DropS(Nat, Sub(S m, PartK(m, v)), 1, DropS(Nat, S m, PartK(m, v), PartV(m, v))),
+      Nth(Nat, S m, v, 0, refl))
+  )
+
+  -- Quicksort sorts, for fuel at least the length, given the partition's contract.
+  def QSSorted (specLe : Π(m : Nat) (v : Slice(Nat, S m)). PartLe(m, v))
+      (specL : Π(m : Nat) (v : Slice(Nat, S m)) (hk : PartLe(m, v)). PartLeft(m, v, hk))
+      (specP : Π(m : Nat) (v : Slice(Nat, S m)) (hk : PartLe(m, v)). PartPivot(m, v, hk))
+      (specR : Π(m : Nat) (v : Slice(Nat, S m)) (hk : PartLe(m, v)). PartRight(m, v, hk))
+      (fuel : Nat) (n : Nat) (s : &Slice(Nat, n)) (hf : Le(n, fuel)) :
+      (let c = *s; QS(fuel, n, &c); Sorted(n, c)) by fuel := (
+    match fuel {
+      Z => match n {
+        Z => refl,
+        S m => match hf {},
+      },
+      S f => match n {
+        Z => refl,
+        S m => (
+          let rec = RecWith(QS, fuel);
+          let v = *s;
+          let hk = specLe(m, v);
+          let c = *s;
+          let k = Partition(m, &c);
+          RecurseSorted(m, rec,
+            λ(n2 : Nat) (s2 : &Slice(Nat, n2)) (hn : Le(n2, m)) : (let c2 = *s2; QS(f, n2, &c2); Sorted(n2, c2)) =>
+              QSSorted(specLe, specL, specP, specR, f, n2, s2, LeTrans(n2, m, f, hn, hf)),
+            λ(n2 : Nat) (s2 : &Slice(Nat, n2)) (q2 : Nat) :
+                (let old = *s2; Eq Nat (Count(q2, n2, (QS(f, n2, &*s2); *s2))) (Count(q2, n2, old))) =>
+              QSPerm(f, n2, s2, q2),
+            k, hk, Nth(Nat, S m, v, 0, refl), &c, specL(m, v, hk), specP(m, v, hk), specR(m, v, hk))
+        ),
+      },
+    }
+  )
+
+  -- The contract holds on examples (it is what remains to prove about `Scan`).
+  def ContractRun1 : PartLe(4, MkSlice(MkC(3, MkSlice(MkC(1, MkSlice(MkC(4, MkSlice(MkC(1, MkSlice(MkC(2, MkSlice(End)))))))))))) ∧ PartLeft(4, MkSlice(MkC(3, MkSlice(MkC(1, MkSlice(MkC(4, MkSlice(MkC(1, MkSlice(MkC(2, MkSlice(End))))))))))), refl) ∧ PartPivot(4, MkSlice(MkC(3, MkSlice(MkC(1, MkSlice(MkC(4, MkSlice(MkC(1, MkSlice(MkC(2, MkSlice(End))))))))))), refl) ∧ PartRight(4, MkSlice(MkC(3, MkSlice(MkC(1, MkSlice(MkC(4, MkSlice(MkC(1, MkSlice(MkC(2, MkSlice(End))))))))))), refl) := refl
+  def ContractRun2 : PartLe(5, MkSlice(MkC(2, MkSlice(MkC(5, MkSlice(MkC(1, MkSlice(MkC(5, MkSlice(MkC(0, MkSlice(MkC(2, MkSlice(End)))))))))))))) ∧ PartLeft(5, MkSlice(MkC(2, MkSlice(MkC(5, MkSlice(MkC(1, MkSlice(MkC(5, MkSlice(MkC(0, MkSlice(MkC(2, MkSlice(End))))))))))))), refl) ∧ PartPivot(5, MkSlice(MkC(2, MkSlice(MkC(5, MkSlice(MkC(1, MkSlice(MkC(5, MkSlice(MkC(0, MkSlice(MkC(2, MkSlice(End))))))))))))), refl) ∧ PartRight(5, MkSlice(MkC(2, MkSlice(MkC(5, MkSlice(MkC(1, MkSlice(MkC(5, MkSlice(MkC(0, MkSlice(MkC(2, MkSlice(End))))))))))))), refl) := refl
+  -- A wrong pivot position is not.
+  reject def ContractWrong : PartPivot(4, MkSlice(MkC(3, MkSlice(MkC(1, MkSlice(MkC(4, MkSlice(MkC(1, MkSlice(MkC(2, MkSlice(End))))))))))), refl) ∧ Eq Nat (PartK(4, MkSlice(MkC(3, MkSlice(MkC(1, MkSlice(MkC(4, MkSlice(MkC(1, MkSlice(MkC(2, MkSlice(End))))))))))))) 2 := refl
 }
 
 #eval IO.println (run "Quicksort" Quicksort).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Quicksort" Quicksort).allAsExpected
-#guard (run "Quicksort" Quicksort).count == 15
+#guard (run "Quicksort" Quicksort).count == 49

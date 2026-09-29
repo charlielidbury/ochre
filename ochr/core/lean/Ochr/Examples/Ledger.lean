@@ -64,12 +64,27 @@ open Ochr.Registry in
    "ArrayBench.InsertB:rejected", "ArrayBench.Insert:rejected", "ArrayBench.InsertRun:rejected",
    "ArrayBench.InsertRunBucket:rejected", "Quicksort.Scan:rejected", "Quicksort.Partition:rejected",
    "Quicksort.Recurse:rejected", "Quicksort.QS:rejected", "Quicksort.SortArray:rejected",
-   "Quicksort.SortRun:rejected"]
+   "Quicksort.SortRun:rejected", "Quicksort.PartK:rejected", "Quicksort.PartV:rejected",
+   "Quicksort.PartLe:rejected", "Quicksort.PartLeft:rejected", "Quicksort.PartPivot:rejected",
+   "Quicksort.PartRight:rejected", "Quicksort.ContractRun1:rejected",
+   "Quicksort.ContractRun2:rejected"]
   ["ArrayBench.PushPop blocked by Arrays.ArrPop", "Quicksort.CountCong blocked by ArrayLemmas.Count",
    "Quicksort.ScanPerm blocked by ArrayLemmas.Count",
    "Quicksort.PartitionPerm blocked by ArrayLemmas.Count",
    "Quicksort.RecursePerm blocked by ArrayLemmas.Count",
-   "Quicksort.QSPerm blocked by ArrayLemmas.Count"]
+   "Quicksort.QSPerm blocked by ArrayLemmas.Count",
+   "Quicksort.CountAboveZero blocked by ArrayLemmas.Count",
+   "Quicksort.CountBelowZero blocked by ArrayLemmas.Count",
+   "Quicksort.CountTailZero blocked by ArrayLemmas.Count",
+   "Quicksort.AllLeOfCounts blocked by ArrayLemmas.Count",
+   "Quicksort.AllGeOfCounts blocked by ArrayLemmas.Count",
+   "Quicksort.AllLePerm blocked by ArrayLemmas.Count",
+   "Quicksort.AllGePerm blocked by ArrayLemmas.Count",
+   "Quicksort.PermOf blocked by ArrayLemmas.Count",
+   "Quicksort.AllLeRec blocked by ArrayLemmas.Count",
+   "Quicksort.AllGeRec blocked by ArrayLemmas.Count",
+   "Quicksort.RecurseSorted blocked by ArrayLemmas.Count",
+   "Quicksort.QSSorted blocked by ArrayLemmas.Count"]
 open Ochr.Registry in
 #guard rowOk { blockMoves := false }
   ["ClosingOff.MovedByBlock:accepted"]
@@ -79,7 +94,12 @@ open Ochr.Registry in
    "Propositions.FstSwap:rejected", "Propositions.AndL2:rejected", "Propositions.Snd:rejected",
    "Propositions.Twice:rejected", "Propositions.SplitId:rejected", "Propositions.TwoOwners:rejected",
    "Propositions.TwoOwnersR:rejected", "Propositions.ThreeOwners:rejected", "Subsingletons.OrComm:rejected",
-   "Subsingletons.OrElim:rejected", "Subsingletons.OrLet:rejected", "CurrentState.ProofIrr:rejected"]
+   "Subsingletons.OrElim:rejected", "Subsingletons.OrLet:rejected", "CurrentState.ProofIrr:rejected",
+   "Quicksort.AllGeWeaken:rejected", "Quicksort.AndL:rejected", "Quicksort.AndR:rejected",
+   "Quicksort.AllGeJoin:rejected", "Quicksort.SortedJoin:rejected",
+   "Quicksort.CountAboveZero:rejected", "Quicksort.CountBelowZero:rejected",
+   "Quicksort.AllLePerm:rejected", "Quicksort.AllGePerm:rejected", "Quicksort.AllLeRec:rejected",
+   "Quicksort.AllGeRec:rejected", "Quicksort.RecurseSorted:rejected", "Quicksort.QSSorted:rejected"]
 open Ochr.Registry in
 #guard rowOk { recNested := false }
   ["Recursion.KnotL:accepted", "Recursion.KnotLBoom:accepted"]
@@ -105,11 +125,17 @@ open Ochr.Registry in
   ["Trees.InsertMEq:rejected", "Trees.SizeInsert:rejected", "ArrayLemmas.CountJoin:rejected",
    "ArrayLemmas.CountSet:rejected", "ArrayLemmas.CountSwapHead:rejected",
    "ArrayLemmas.CountSwap:rejected", "ArrayBench.ModLt:rejected", "ArrayBench.Insert:rejected",
-   "ArrayBench.InsertRun:rejected", "ArrayBench.InsertRunBucket:rejected"]
+   "ArrayBench.InsertRun:rejected", "ArrayBench.InsertRunBucket:rejected",
+   "Quicksort.CountAboveZero:rejected", "Quicksort.CountBelowZero:rejected",
+   "Quicksort.CountTailZero:rejected", "Quicksort.AllLeOfCounts:rejected",
+   "Quicksort.AllGeOfCounts:rejected", "Quicksort.AllLePerm:rejected",
+   "Quicksort.AllGePerm:rejected", "Quicksort.AllLeRec:rejected", "Quicksort.AllGeRec:rejected",
+   "Quicksort.RecurseSorted:rejected"]
   ["Quicksort.ScanPerm blocked by ArrayLemmas.CountSwap",
    "Quicksort.PartitionPerm blocked by ArrayLemmas.CountSwap",
    "Quicksort.RecursePerm blocked by ArrayLemmas.CountJoin",
-   "Quicksort.QSPerm blocked by ArrayLemmas.CountJoin"]
+   "Quicksort.QSPerm blocked by ArrayLemmas.CountJoin",
+   "Quicksort.QSSorted blocked by ArrayLemmas.CountJoin"]
 open Ochr.Registry in
 #guard rowOk { classBySyntax := false }
   ["ErasureBySyntax.BoomL:accepted", "ErasureBySyntax.Boom8:accepted", "ErasureBySyntax.Direct8:accepted",
@@ -130,26 +156,44 @@ open Ochr.Registry in
   ["ClosingOff.RowI:accepted"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 0 }
-  ["Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Subsingletons.OrLet:rejected"]
+  ["Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Subsingletons.OrLet:rejected",
+   "Quicksort.AllLeOfCounts:rejected", "Quicksort.AllGeOfCounts:rejected",
+   "Quicksort.AllLePerm:rejected", "Quicksort.AllGePerm:rejected", "Quicksort.PermOf:rejected",
+   "Quicksort.AllLeRec:rejected", "Quicksort.AllGeRec:rejected", "Quicksort.RecurseSorted:rejected",
+   "Quicksort.QSSorted:rejected"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 0, confine := false }
   ["Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Subsingletons.OrLet:rejected",
    "Subsingletons.EffInline:accepted", "Erasure.EffArgErased:accepted", "Erasure.Write:accepted",
-   "Erasure.Borrow:accepted", "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted"]
+   "Erasure.Borrow:accepted", "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted",
+   "Quicksort.AllLeOfCounts:rejected", "Quicksort.AllGeOfCounts:rejected",
+   "Quicksort.AllLePerm:rejected", "Quicksort.AllGePerm:rejected", "Quicksort.PermOf:rejected",
+   "Quicksort.AllLeRec:rejected", "Quicksort.AllGeRec:rejected", "Quicksort.RecurseSorted:rejected",
+   "Quicksort.QSSorted:rejected"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 1 }
-  ["Snapshots.CapP:rejected", "Snapshots.CapP2:rejected"]
+  ["Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Quicksort.AllLeOfCounts:rejected",
+   "Quicksort.AllGeOfCounts:rejected", "Quicksort.AllLePerm:rejected",
+   "Quicksort.AllGePerm:rejected", "Quicksort.PermOf:rejected", "Quicksort.AllLeRec:rejected",
+   "Quicksort.AllGeRec:rejected", "Quicksort.RecurseSorted:rejected", "Quicksort.QSSorted:rejected"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 1, confine := false }
   ["Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Subsingletons.EffInline:accepted",
    "Erasure.EffArgErased:accepted", "Erasure.Write:accepted", "Erasure.Borrow:accepted",
    "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted", "ErasureBySyntax.LieP:accepted",
-   "ErasureBySyntax.BoomH:accepted"]
+   "ErasureBySyntax.BoomH:accepted", "Quicksort.AllLeOfCounts:rejected",
+   "Quicksort.AllGeOfCounts:rejected", "Quicksort.AllLePerm:rejected",
+   "Quicksort.AllGePerm:rejected", "Quicksort.PermOf:rejected", "Quicksort.AllLeRec:rejected",
+   "Quicksort.AllGeRec:rejected", "Quicksort.RecurseSorted:rejected", "Quicksort.QSSorted:rejected"]
 open Ochr.Registry in
 #guard rowOk { blockRule := 1, leafRule := 0 }
   ["Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Subsingletons.OrLet:rejected",
    "ErasureBySyntax.LieG:accepted", "ErasureBySyntax.BoomG:accepted", "ErasureBySyntax.TruthG:rejected",
-   "ErasureBySyntax.LieP:accepted", "ErasureBySyntax.BoomP:accepted"]
+   "ErasureBySyntax.LieP:accepted", "ErasureBySyntax.BoomP:accepted",
+   "Quicksort.AllLeOfCounts:rejected", "Quicksort.AllGeOfCounts:rejected",
+   "Quicksort.AllLePerm:rejected", "Quicksort.AllGePerm:rejected", "Quicksort.PermOf:rejected",
+   "Quicksort.AllLeRec:rejected", "Quicksort.AllGeRec:rejected", "Quicksort.RecurseSorted:rejected",
+   "Quicksort.QSSorted:rejected"]
 open Ochr.Registry in
 #guard rowOk { positivity := false }
   ["Positivity.Bad:accepted", "Positivity.L:accepted", "Positivity.K:accepted", "Positivity.bad:accepted",
@@ -191,7 +235,8 @@ open Ochr.Registry in
    "Arrays.WithSplit:rejected", "Arrays.ArrPush:rejected", "Arrays.ArrPop:rejected",
    "Arrays.Swap:rejected", "Arrays.Replicate:rejected", "Arrays.FillFrom:rejected",
    "Arrays.Fill:rejected", "ArrayLemmas.Count:rejected", "ArrayBench.GetMutB:rejected",
-   "ArrayBench.Size:rejected"]
+   "ArrayBench.Size:rejected", "Quicksort.AllLe:rejected", "Quicksort.AllGe:rejected",
+   "Quicksort.Sorted:rejected", "Quicksort.AllGeWeaken:rejected"]
   ["ArrayLemmas.NthSetSame blocked by Arrays.Nth", "ArrayLemmas.NthSetOther blocked by Arrays.Nth",
    "ArrayLemmas.JoinTakeDrop blocked by Arrays.JoinS",
    "ArrayLemmas.TakeJoin blocked by Arrays.TakeS", "ArrayLemmas.DropJoin blocked by Arrays.DropS",
@@ -215,7 +260,23 @@ open Ochr.Registry in
    "Quicksort.ScanPerm blocked by ArrayLemmas.Count",
    "Quicksort.PartitionPerm blocked by ArrayLemmas.Count",
    "Quicksort.RecursePerm blocked by ArrayLemmas.Count",
-   "Quicksort.QSPerm blocked by ArrayLemmas.Count"]
+   "Quicksort.QSPerm blocked by ArrayLemmas.Count", "Quicksort.AllGeJoin blocked by Arrays.JoinS",
+   "Quicksort.SortedJoin blocked by Arrays.JoinS",
+   "Quicksort.CountAboveZero blocked by ArrayLemmas.Count",
+   "Quicksort.CountBelowZero blocked by ArrayLemmas.Count",
+   "Quicksort.CountTailZero blocked by ArrayLemmas.Count",
+   "Quicksort.AllLeOfCounts blocked by ArrayLemmas.Count",
+   "Quicksort.AllGeOfCounts blocked by ArrayLemmas.Count",
+   "Quicksort.AllLePerm blocked by ArrayLemmas.Count",
+   "Quicksort.AllGePerm blocked by ArrayLemmas.Count",
+   "Quicksort.PermOf blocked by ArrayLemmas.Count",
+   "Quicksort.AllLeRec blocked by ArrayLemmas.Count",
+   "Quicksort.AllGeRec blocked by ArrayLemmas.Count",
+   "Quicksort.RecurseSorted blocked by ArrayLemmas.Count", "Quicksort.PartK blocked by Arrays.Read",
+   "Quicksort.PartV blocked by Arrays.Read", "Quicksort.PartLe blocked by Arrays.Read",
+   "Quicksort.PartLeft blocked by Arrays.Read", "Quicksort.PartPivot blocked by Arrays.Read",
+   "Quicksort.PartRight blocked by Arrays.Read", "Quicksort.QSSorted blocked by Arrays.Read",
+   "Quicksort.ContractRun1 blocked by Arrays.Read", "Quicksort.ContractRun2 blocked by Arrays.Read"]
 -- `genPlaceType` changes no verdict; 08CaseSplits.lean asserts its effect on the generalised σ's type
 -- v2.0 D45 by type, switched off: a match on a proof inspects its content (⋆) like data: completeness only
 open Ochr.Registry in
@@ -228,7 +289,12 @@ open Ochr.Registry in
    "Propositions.WriteIf:rejected", "Propositions.WriteIfId:rejected", "Propositions.WriteIfAt:rejected",
    "Propositions.TwoAt:rejected", "Subsingletons.OrComm:rejected", "Subsingletons.OrElim:rejected",
    "Subsingletons.OrLet:rejected", "Subsingletons.SqTrue:rejected", "Subsingletons.SqSplit:rejected",
-   "Subsingletons.EffL:rejected", "Subsingletons.EffLNoop:rejected"]
+   "Subsingletons.EffL:rejected", "Subsingletons.EffLNoop:rejected",
+   "Quicksort.AllGeWeaken:rejected", "Quicksort.AndL:rejected", "Quicksort.AndR:rejected",
+   "Quicksort.AllGeJoin:rejected", "Quicksort.SortedJoin:rejected",
+   "Quicksort.CountAboveZero:rejected", "Quicksort.CountBelowZero:rejected",
+   "Quicksort.AllLePerm:rejected", "Quicksort.AllGePerm:rejected", "Quicksort.AllLeRec:rejected",
+   "Quicksort.AllGeRec:rejected", "Quicksort.RecurseSorted:rejected", "Quicksort.QSSorted:rejected"]
 -- v2.0 D45 subsingleton elimination, switched off: large elimination from Or and Sq is accepted (IsL, Get have no
 -- model; OrLie is Eq Bool tt ff in the model), but no closed False: D42 erases the constructor it would inspect
 open Ochr.Registry in
@@ -254,7 +320,12 @@ open Ochr.Registry in
    "Equality.NoConf:rejected", "Equality.NoConfS:rejected", "Equality.NoConfMatch:rejected",
    "Equality.NoConfBack:rejected", "Equality.BoolDisj:rejected", "ArrayBench.LeNext:rejected",
    "ArrayBench.ModLt:rejected", "ArrayBench.Insert:rejected", "ArrayBench.InsertRun:rejected",
-   "ArrayBench.InsertRunBucket:rejected"]
+   "ArrayBench.InsertRunBucket:rejected", "Quicksort.EqbLeLt:rejected", "Quicksort.EqbGeLt:rejected",
+   "Quicksort.CountAboveZero:rejected", "Quicksort.CountBelowZero:rejected",
+   "Quicksort.CountTailZero:rejected", "Quicksort.AllLeOfCounts:rejected",
+   "Quicksort.AllGeOfCounts:rejected", "Quicksort.AllLePerm:rejected",
+   "Quicksort.AllGePerm:rejected", "Quicksort.AllLeRec:rejected", "Quicksort.AllGeRec:rejected",
+   "Quicksort.RecurseSorted:rejected", "Quicksort.QSSorted:rejected"]
 -- v2.1 D52 switched off: equal constructors are not taken apart in Eq, so programs that
 -- need an equation between successors or pairs taken apart are rejected (completeness)
 open Ochr.Registry in
@@ -275,7 +346,11 @@ open Ochr.Registry in
    "Quicksort.SortRun blocked by Index.AddRS", "Quicksort.ScanPerm blocked by Index.AddRS",
    "Quicksort.PartitionPerm blocked by Index.AddRS",
    "Quicksort.RecursePerm blocked by ArrayLemmas.CountJoin",
-   "Quicksort.QSPerm blocked by Index.AddRS"]
+   "Quicksort.QSPerm blocked by Index.AddRS", "Quicksort.PartK blocked by Index.AddRS",
+   "Quicksort.PartV blocked by Index.AddRS", "Quicksort.PartLe blocked by Index.AddRS",
+   "Quicksort.PartLeft blocked by Index.AddRS", "Quicksort.PartPivot blocked by Index.AddRS",
+   "Quicksort.PartRight blocked by Index.AddRS", "Quicksort.QSSorted blocked by Index.AddRS",
+   "Quicksort.ContractRun1 blocked by Index.AddRS", "Quicksort.ContractRun2 blocked by Index.AddRS"]
 -- finding (v2.0 round): v1.9 assumed a data match's scrutinee type from its arms
 open Ochr.Registry in
 #guard rowOk { scrutTyped := false }
@@ -301,7 +376,10 @@ open Ochr.Registry in
    "ArrayBench.ZeroFirst2:rejected", "ArrayBench.ZeroFirst2Run:rejected",
    "ArrayBench.ZeroFirst2Rest:rejected", "Quicksort.Recurse:rejected", "Quicksort.QS:rejected",
    "Quicksort.SortArray:rejected", "Quicksort.SortRun:rejected", "Quicksort.RecursePerm:rejected",
-   "Quicksort.RecWith:rejected", "Quicksort.QSPerm:rejected"]
+   "Quicksort.RecWith:rejected", "Quicksort.QSPerm:rejected", "Quicksort.AllLeOfCounts:rejected",
+   "Quicksort.AllGeOfCounts:rejected", "Quicksort.AllLePerm:rejected",
+   "Quicksort.AllGePerm:rejected", "Quicksort.PermOf:rejected", "Quicksort.AllLeRec:rejected",
+   "Quicksort.AllGeRec:rejected", "Quicksort.RecurseSorted:rejected", "Quicksort.QSSorted:rejected"]
   ["ArrayBench.ReadAfterSetOther blocked by ArrayLemmas.NthSetOther"]
 -- D49 (3) switched off: a data field of a matched proof is ⋆, and cannot be split
 open Ochr.Registry in

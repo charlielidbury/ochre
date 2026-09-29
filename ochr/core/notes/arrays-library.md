@@ -394,3 +394,71 @@ Scratch files, not committed and deleted, run through the checker at the D52 bui
 - **v1, cells (32).** Checked: `GetMut`, Take/Drop/Join, `DropJoin`, `B1Proj` (opaque g, one lemma), `B1JoinC` (`refl`), `ZeroAll`, `Swap`, and a peel-the-head partition with `QS`, which runs to the sorted array.
 - **v2 (44).** Checked: `Array`/`Slice` over `Cells` with no length field; `AsSlice`; the index lemmas; `Scan` and `Partition` (Lomuto, structural on a countdown, bounds by lemma); `QS` over views (fuel, `LeDec` bound); `SortA` on an owned `Array(4)` ([3,1,4,2] to [1,2,3,4]); `HMOf`/`HMSlot`. Rejected as expected: `LArr` (proof field), `Vec` (Σ field), `HM0`/`HM1` (D36), `SortRunWrong`.
 - **A repro file:** the ⋆ finding.
+
+## 10. Phase A: what was built (D57)
+
+Branch `ochr-arrays`, tour file `lean/Ochr/Examples/16Arrays.lean`, five blocks and 141 declarations, all as expected. No kernel changes; every workaround is marked in the code.
+
+- **`Index`** (19): `Le`, `Lt`, `Sub`, `Leb`, `Eqb`, `Dec` with `LeDec`/`LtDec`, and index lemmas (`LeRefl`, `LeStep`, `LeTrans`, `LeAddL`, `AddRS`, `AddZeroR`, `AddOneR`, `SubPos`, `SubOneLe`, `EqSym`, `EqTrans`).
+- **`Arrays`** (26):
+  - the model: `Cells(E, n)` (`CellsEnd` at zero, not `Unit`, since an unknown `Unit` cannot be taken apart), `Slice(E, n)` and `Array(E, n)`;
+  - model functions: `Nth`, `SetS`, `TakeS`, `DropS`, `JoinS`, `SnocS`, `PopS`. `SetS`, `DropS` and `JoinS` are total and take no bounds proof; only `TakeS` and `Nth` need one;
+  - the `[native]` functions: `AsSlice`, `Read`, `Set`, `GetMut`, `WithSplit`, `ArrEmpty`, `ArrPush`, `ArrPop`;
+  - user code: `Swap`, `Replicate`, `Fill`.
+- **`ArrayLemmas`** (14): `NthSetSame`, `NthSetOther`, `JoinTakeDrop`, `TakeJoin`, `DropJoin`, `Count`, `CountJoin`, `CountSet`, `SwapS` (with `SwapIsSwapS` by `refl`), `CountSwap`. `GetMutSet` is a marked `reject` (checker finding 2 below).
+- **`ArrayBench`** (33):
+  - B1 (`B1Join` by `refl`; `B1` by `DropJoin`; the `refl` twins rejected);
+  - reads and writes (`ReadNoop` by `refl`, get-after-set by lemma, `SetTwice` reusing one bound);
+  - B4 (`GetOr`);
+  - growth;
+  - B3: a fixed-capacity hashmap whose slot `ModS(k, cap)` is bounded by `ModLt`, with no runtime check, and whose bucket is inserted into in place. Runs check the size and the bucket.
+- **`Quicksort`** (49):
+  - `Scan` (Lomuto, recursing on a countdown, every bound by index lemmas), `Partition`, `Recurse` (the step, for any `rec`), and `QS` (`[K6]`, fuel). It sorts [3,1,4,1,2] inside the checker;
+  - **proved: `QSPerm`**. For every fuel, quicksort leaves every count unchanged;
+  - **proved: `QSSorted`**. For fuel at least the length, quicksort's result is `Sorted`, given the partition's contract: four Prop-valued functions of its input, `PartLe`, `PartLeft`, `PartPivot` and `PartRight`. The pivot, the first element, ends at `k <= m`; everything before it is at most the pivot; everything after it at least. The contract is checked on two concrete inputs and refuted for a wrong pivot index.
+
+**Where the proof walls.** It walls at the partition's contract for all inputs: Lomuto's positional invariant. After `Scan` from `(i, j, rem)`, cells `1…i` are at most `p` and cells `i+1…j-1` are greater. The final swap then turns that into `AllLe` of `TakeS(k)` and `AllGe` of the part after the pivot. This is DLLBC's R15 stratum, found in the same place: range predicates over `Nth`, bridged to `TakeS`/`DropS`. I estimate 150–250 lines. Everything above the partition is proved:
+- `SortedJoin` and `AllGeJoin` (glue);
+- `AllLePerm` and `AllGePerm`: bounds survive a permutation, by counting, which is DLLBC's keystone;
+- `RecurseSorted`, for any `rec` that sorts and permutes shorter views.
+
+**Checker findings, for the checker lane.**
+1. **The ⋆ incompleteness has more forms than first reported.** "cannot infer the type of the value ⋆" fires whenever a constructor's parameters, a captured value, or a Π-type's captured values mention a sealed program that embeds a proof argument:
+   - a match on `Dec(Le(k, m), …)` with `k` such a program;
+   - a λ capturing one;
+   - an `And` proof ⟨p, q⟩ whose conjunct mentions `JoinS(…, ⋆)`;
+   - a Π-typed argument (`perm : Π(q). Eq …`) whose type mentions one.
+
+   The workarounds are marked `[⋆]`: pass the value through a parameter (`Recurse`, `PermOf`, `AllLeRec`), drop unneeded bounds proofs from model functions, and name `And`'s conjuncts (`AndI`).
+2. **Dead arms in borrow-returning functions.** `GetMut`'s unreachable arm `Z => match h {}` yields ⋆ for the borrow. A proof that refines `n := Z` (a dead branch, since `h : False`) re-runs the goal into that arm, and it fails with "no such place *r in ⋆". `GetMutSet` (writing through `GetMut` is `Set`) walls on this.
+3. **A type from a sibling arm.** Inside `AllGeJoin`, after the dead arm `n := Z`, an anonymous `⟨p, q⟩` in the live arm is checked with an argument typed as `SliceOf(CellsEnd)`, the dead arm's refinement. Naming the conjuncts (`AndI`) avoids it. Likely cause: `substEnv` applies each arm's refinement to `absTy` (the types of abstract values), and `restoreKeep` keeps `absTy` for D37, so an arm's refinement survives into its siblings for values typed through `absTy`. A direct repro did not reproduce it (argument types there come from bindings), so this is unconfirmed; worth a look alongside the soundness batch.
+4. **A panic.** Under the counterfactual `seqByProof := false`, checking `ArrayBench` panics 16 times (`Option.get!` on none) without changing any verdict.
+5. **D41 in a type.** `Sorted(n, (QS(…, &*s); *s))` is rejected: the type borrows an outer place inside the argument of a type-returning call. The same shape inside `Eq` is accepted. Statements are therefore written on a local copy (`let c = *s; QS(…, &c); Sorted(n, c)`).
+
+**Also learned.** A closure built inside `QS` captures `QS` itself as a frame value, and closures compare by pairwise captured values. So the proofs build the recursion closure with `RecWith(QS, fuel)`, whose frame captures the same values in the same order.
+
+**Cost.** A full build went from about 80 s to about 14 min, almost all of it the ledger: every counterfactual switch re-checks the five-block array chain, each block re-checking its library transitively (nothing is cached). Memoising a block's exports per switch within one ledger run would remove most of it; that is harness code in `Test.lean`, left to the checker lane.
+
+## 11. Phase B: RULES draft (not applied)
+
+For after the soundness batch (D54–D56). Each rule is read from syntax and declarations.
+
+- **K1: `Data`.**
+  - `Data : Type₁` is the sort of first-order data types. Inductives declared `: Data` have fields that are data, or parameters of sort `Data`. `Nat`, `Unit` and `Pair(A, B)` (for `A, B : Data`) are data, and so is a call of a type function whose declared codomain is `Data` (`Cells : Π(E : Data)(n : Nat). Data`).
+  - [T-Ref] becomes: `&A` is well formed iff `A`'s declared sort is `Data`, or `A` is headed by an `unsized` declaration. This is a syntactic reading (D55), so `&T` for a variable `T : Data` and `&Cells(E, n)` at a symbolic `n` are well formed.
+  - Universes stay non-cumulative. Existing `Type₀` data declarations would move to `Data`, and `Type₀` keeps function types, borrow types and `Prop`. The alternative, a single inclusion `Data ≤ Type₀`, needs a check against D28's reasons for non-cumulativity.
+  - Removes the `[K1]` workarounds: `GetMut(E, …) : &E` becomes generic, and tails need no view wrapper.
+- **K2: [Unsized].**
+  - An inductive may be declared `unsized`. Its types are not in `Data`, so they never instantiate a `T : Data`, and `&A` is well formed for them.
+  - In a runtime position outside an `implemented by` body, a place whose declared type is headed by an unsized declaration occurs only as `&p`: it is never read, moved, assigned or matched.
+  - `SliceOf` is unsized.
+- **K3: [Abstract] and `implemented by`.**
+  - Constructors of an `abstract` declaration, and matches whose arms name them, may occur in a runtime position (not erased, P2) only inside the body of an `implemented by "sym"` declaration of the same block. In erased positions they are unrestricted.
+  - `def f … := b implemented by "sym"`: the checker checks `b` and runs `b` everywhere, and never runs `sym`; the compiler calls `sym`.
+  - A declaration whose body uses an abstract constructor at a runtime position must be `implemented by`.
+  - `SliceOf`, `ArrayOf`, `Cell` and `CellsEnd` are abstract. The `[native]` functions get `implemented by`.
+- **K6: [Rec-<].**
+  - `fix f (x̄ : Ā) : B by xⱼ < := t` with `Aⱼ = Nat`. Every recursive call is written `f(ū) by h`, where `h` is an erased proof whose type converts to `Lt(uⱼ, σⱼ)`, and `σⱼ` is `xⱼ`'s entry value as refined.
+  - `Lt` is the library's, pinned as `True` and `And` are.
+  - It is sound by translation to structural recursion on a bound, and machine unfolding strictly decreases a `Nat`.
+  - Removes `QS`'s fuel: `QS(n, s) by n <` recurses at `k` by `hk` and at `m - k` by `SubOneLe`, so `RecWith` and the fuel bound in `QSSorted` go too.

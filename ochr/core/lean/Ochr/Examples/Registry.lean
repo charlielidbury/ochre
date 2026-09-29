@@ -172,7 +172,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 547
+def Ochr.Registry.expectedTotal : Nat := 581
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
