@@ -8,10 +8,12 @@ def classOk (k : String) (ws fs : List String) : Bool :=
   if k == "completeness" then !fs.isEmpty && fs.all (·.endsWith ":rejected")
   else ws.all fun w => fs.contains s!"{w}:accepted"
 
-/-- One ledger row: switching `c` off flips exactly `e`, and `e` fits the row's class. -/
-def rowOk (c : Config) (e : List String) : Bool :=
-  let fs := flips c
-  fs == e && match (switches.zip rowClass).find? (fun ((_, c'), _) => reprStr c' == reprStr c) with
+/-- One ledger row: switching `c` off flips exactly `e`, blocks exactly `bl` (declarations
+that fail only because a library declaration they use flipped; none so far), and `e` fits
+the row's class. -/
+def rowOk (c : Config) (e : List String) (bl : List String := []) : Bool :=
+  let (fs, bs) := flipsDetail c
+  fs == e && bs == bl && match (switches.zip rowClass).find? (fun ((_, c'), _) => reprStr c' == reprStr c) with
     | some (_, (k, ws)) => classOk k ws fs
     | none => false
 

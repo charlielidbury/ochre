@@ -1,21 +1,38 @@
 import Ochr.Surface
+import Lean.Elab.Command
 
 /-!
 # The `ochr` command: paper-style programs inside Lean files
 
 ```
-ochr E1 {
-  def AddM (x : &Nat) (y : Nat) : Unit by x :=
-    match *x { Z => *x := y, S p => AddM(&p, y) }
+ochr Std {
+  def AddM (x : &Nat) (y : Nat) : Unit by x := (
+    match *x {
+      Z => *x := y,
+      S p => AddM(&p, y),
+    }
+  )
+}
+
+ochr Numbers uses Std {
+  def Add23 : Id Nat (Add(2, 3)) 5 := refl
   reject def Bad (x : &Nat) : Id Nat (*x) 5 := *x := 5; refl
 }
 ```
-defines `E1 : Ochr.Surface.Program`. `def` expects the checker to accept the
+defines `Std Numbers : Ochr.Surface.Block`. `def` expects the checker to accept the
 definition, `reject def` expects it to be rejected. Calls are saturated and written
 `f(a, …)` with no space before the parenthesis; `S t`, `Id A t u`, `Eq A t u` and
 `cong f h` are written by juxtaposition. Match arms are separated by commas, and a trailing
 comma after the last arm is allowed. No term form contains a comma outside brackets, so an
-arm's body (`ochr_term:10`) ends at the next top-level comma.
+arm's body (`ochr_term:10`) ends at the next top-level comma. Line breaks are whitespace.
+
+`uses A, B` (optional) names blocks, Lean constants made by earlier `ochr` commands (in this
+file or an imported one). A block is checked after the declarations its used blocks export,
+transitively and each block once: their own declarations that are `def`s (not `reject`) and
+are accepted, checked afresh under the same configuration (`Ochr.Test.libOf`). A block's
+report and its assertions cover its own declarations only. The names of a block and of the
+blocks it uses form one namespace: a clash is an error when the block is elaborated
+(`#ochr_check`, which the command expands to, using `Block.clashes`).
 -/
 
 namespace Ochr.Notation
@@ -76,7 +93,9 @@ syntax "reject " "def " ident ochr_binder* " : " ochr_term:21 (" by " ident)? " 
 syntax "inductive " ident ochr_binder* (" : " ochr_term:21)? (" := " sepBy1(ochr_ctor, " | "))? : ochr_decl
 syntax "reject " "inductive " ident ochr_binder* (" : " ochr_term:21)? (" := " sepBy1(ochr_ctor, " | "))? : ochr_decl
 
-syntax (name := ochrProgram) "ochr " ident " { " ochr_decl* " }" : command
+syntax (name := ochrProgram) "ochr " ident (&" uses " ident,+)? " { " ochr_decl* " }" : command
+/-- Report a clash in an `ochr` block's flat namespace (the command `ochr` expands to this). -/
+syntax (name := ochrCheck) "#ochr_check " ident : command
 
 def strLit (s : String) : TSyntax `term := quote s
 
@@ -199,8 +218,32 @@ def elabDecl (stx : TSyntax `ochr_decl) : MacroM (TSyntax `term) := do
   | _ => Macro.throwErrorAt stx "unsupported declaration"
 
 macro_rules
-  | `(ochr $name:ident { $ds* }) => do
+  | `(ochr $name:ident $[uses $us,*]? { $ds* }) => do
     let decls ← ds.mapM elabDecl
-    `(def $name : Ochr.Surface.Program := [$decls,*])
+    let us : Array (TSyntax `term) := match us with
+      | some us => us.getElems.map fun u => ⟨u.raw⟩
+      | none => #[]
+    let defn ← `(def $name : Ochr.Surface.Block :=
+      Ochr.Surface.Block.mk $(strLit name.getId.toString) [$us,*] [$decls,*])
+    let check ← `(#ochr_check $name)
+    return mkNullNode #[defn, check]
+
+open Lean.Elab.Command in
+unsafe def evalBlockUnsafe (n : Name) : CommandElabM Block := do
+  match (← getEnv).evalConst Block (← getOptions) n with
+  | .ok b => pure b
+  | .error e => throwError e
+
+open Lean.Elab.Command in
+@[implemented_by evalBlockUnsafe]
+opaque evalBlock (n : Name) : CommandElabM Block
+
+open Lean.Elab.Command in
+elab_rules : command
+  | `(#ochr_check $n:ident) => do
+    let b ← evalBlock (← liftCoreM (realizeGlobalConstNoOverload n))
+    let cs := b.clashes
+    unless cs.isEmpty do
+      throwErrorAt n m!"ochr {b.name}: {"; ".intercalate cs}"
 
 end Ochr.Notation

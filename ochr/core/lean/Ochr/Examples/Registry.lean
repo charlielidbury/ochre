@@ -25,7 +25,7 @@ open Ochr Ochr.Test Ochr.Surface
 
 namespace Ochr.Registry
 
-def programs : List (String × Program) :=
+def programs : List (String × Block) :=
   [("Numbers", Numbers), ("Borrows", Borrows), ("ReturnedBorrows", ReturnedBorrows),
    ("ClosingOff", ClosingOff), ("Naturality", Naturality), ("Equality", Equality),
    ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion),
@@ -40,15 +40,18 @@ def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
   programs.map fun (n, p) => run n p cfg fuel
 
 /-- The declarations whose verdict under `cfg` differs from the default, as
-`program.name:verdict`. -/
-def flips (cfg : Config) : List String := Id.run do
-  let mut out := []
+`program.name:verdict`, and the declarations that flip only because a library declaration
+they use flipped, as `program.name blocked by Home.decl`. A library declaration that flips is
+attributed once, to its home block; a block that uses it and then fails because of it is
+"blocked", not a further flip (`Ochr.Test.blockedBy`). -/
+def flipsDetail (cfg : Config) : List String × List String :=
   -- counterfactual runs may not terminate (e.g. without [Rec]); a smaller fuel bounds them
-  for (base, alt) in (reports {} 300000).zip (reports cfg 300000) do
-    for (r, r') in base.rows.zip alt.rows do
-      if r.verdict.ok != r'.verdict.ok then
-        out := out ++ [s!"{base.program}.{r.name}:{if r'.verdict.ok then "accepted" else "rejected"}"]
-  pure out
+  programs.foldl (fun (fs, bl) (n, b) =>
+    let (f, g) := blockFlips n b cfg 300000
+    (fs ++ f, bl ++ g)) ([], [])
+
+/-- The ledger's flips under `cfg` (blocked declarations excluded). -/
+def flips (cfg : Config) : List String := (flipsDetail cfg).1
 
 /-- Each switch disables one rule; the ledger records what it was guarding. -/
 def switches : List (String × Config) :=

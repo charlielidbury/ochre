@@ -56,6 +56,78 @@ deriving Inhabited, Repr
 
 abbrev Program := List SDecl
 
+/-- An `ochr` block: a name, the blocks it `uses`, and its own declarations. A block's
+program, when checked, is the declarations its used blocks export (`Ochr.Test.libOf`)
+followed by its own; each block is checked afresh wherever it is used (no caching). -/
+inductive Block where
+  | mk (name : String) (uses : List Block) (decls : Program)
+deriving Inhabited
+
+def Block.name : Block → String
+  | .mk n _ _ => n
+def Block.uses : Block → List Block
+  | .mk _ us _ => us
+def Block.decls : Block → Program
+  | .mk _ _ ds => ds
+
+/-- The blocks `b` uses, transitively, each once (by name), a block after the blocks it
+uses. `b` itself is not included. -/
+partial def Block.closure (b : Block) : List Block :=
+  b.uses.foldl (fun acc u => add acc u) []
+where
+  add (acc : List Block) (u : Block) : List Block :=
+    if acc.any (·.name == u.name) then acc
+    else
+      let acc := u.uses.foldl add acc
+      if acc.any (·.name == u.name) then acc else acc ++ [u]
+
+/-- The names a declaration introduces into a block's flat namespace: its own name and, for
+an inductive type, its constructors'. -/
+def SDecl.introduces (d : SDecl) : List String :=
+  d.name :: (d.ind?.getD []).map (·.1)
+
+/-- Every identifier a surface term mentions (constants, types, constructors, variables). -/
+partial def STerm.idents : STerm → List String
+  | .ident x => [x]
+  | .num _ | .unitLit | .top | .sort _ => []
+  | .app _ as => as.flatMap STerm.idents
+  | .call f as => f.idents ++ as.flatMap STerm.idents
+  | .ctorP c ps as => c :: (ps ++ as).flatMap STerm.idents
+  | .deref t | .proj _ t | .amp t => t.idents
+  | .assign a b | .seq a b | .pair a b | .andI a b | .and a b | .prod a b | .ascribe a b
+  | .arrow a b => a.idents ++ b.idents
+  | .letIn _ T t u => (T.map STerm.idents).getD [] ++ t.idents ++ u.idents
+  | .matchGen p arms => p.idents ++ arms.flatMap fun (c, _, t) => c :: t.idents
+  | .pi bs c => bs.flatMap (·.2.idents) ++ c.idents
+  | .fix _ bs r _ b => bs.flatMap (·.2.idents) ++ r.idents ++ b.idents
+
+/-- The names a declaration mentions (a superset of the constants it depends on). -/
+def SDecl.mentions (d : SDecl) : List String :=
+  d.params.flatMap (·.2.idents) ++ d.ret.idents ++ d.body.idents ++
+    d.indParams.flatMap (·.2.idents) ++ (d.indSort.map STerm.idents).getD [] ++
+    (d.ind?.getD []).flatMap fun (_, fs) => fs.flatMap (·.2.idents)
+
+/-- Name clashes in `b`'s flat namespace: a name `b` declares that a block it uses (other
+than by `reject`) also declares, or one name declared by two of the blocks it uses. The
+`ochr` command reports these as an error when the block is elaborated. -/
+def Block.clashes (b : Block) : List String := Id.run do
+  let mut seen : List (String × String) := []     -- name ↦ the block declaring it
+  let mut out := []
+  for u in b.closure do
+    for d in u.decls.filter (·.expectAccept) do
+      for n in d.introduces do
+        match seen.lookup n with
+        | some home => if home != u.name then out := out ++ [s!"{n} is declared by both {home} and {u.name}, which {b.name} uses"]
+        | none => seen := seen ++ [(n, u.name)]
+  let own := b.decls.map (·.name)
+  for n in own.eraseDups do
+    if own.count n > 1 then out := out ++ [s!"{b.name} declares {n} more than once"]
+  for d in b.decls do
+    for n in d.introduces do
+      if let some home := seen.lookup n then
+        out := out ++ [s!"{b.name} declares {n}, which {home} (used by {b.name}) already declares; the declarations of a block and the blocks it uses share one namespace"]
+  pure out
+
 /-- Resolution context: innermost first. Aliases (pattern variables) do not count as
 binders; their place is shifted by the binders pushed since. -/
 inductive Entry where

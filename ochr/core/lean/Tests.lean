@@ -9,13 +9,16 @@ open Ochr Ochr.Test Ochr.Surface Ochr.Registry
 /-- Check a program declaration by declaration, timing each check. The configuration
 is read from a reference after the clock starts, so the (pure) check cannot be
 computed ahead of it, and its verdict is stored before the clock stops. -/
-def timedRun (cfgRef : IO.Ref Config) (p : Program) : IO (List (String × Bool × Bool × Nat)) := do
+def timedRun (cfgRef : IO.Ref Config) (b : Block) : IO (List (String × Bool × Bool × Nat)) := do
   let (g0, i0) := preludeState (← cfgRef.get)     -- the library (False, True, And)
   let mut globals : List GDef := g0
   let mut inds : List IndDecl := i0
   let mut out := #[]
   let sink ← IO.mkRef (0 : Nat)
-  for d in p do
+  -- the block's library (what the blocks it `uses` export), checked first but not timed
+  let lib := libOf (← cfgRef.get) 2000000 b
+  let p := lib ++ b.decls
+  for (d, i) in p.zipIdx do
     let t0 ← IO.monoNanosNow
     let cfg ← cfgRef.get
     let ok : Bool := match resolveProgram p d with
@@ -33,7 +36,8 @@ def timedRun (cfgRef : IO.Ref Config) (p : Program) : IO (List (String × Bool �
         if let .ok ((), st') := (((checkItem df).run st).run.run #[]).1 then
           globals := st'.globals
           inds := st'.inds
-    out := out.push (d.name, d.expectAccept, ok, (t1 - t0) / 1000)
+    if i ≥ lib.length then
+      out := out.push (d.name, d.expectAccept, ok, (t1 - t0) / 1000)
   pure out.toList
 
 /-- Median of a non-empty list. -/
@@ -72,7 +76,8 @@ def main : IO UInt32 := do
   IO.println ""
   IO.println "counterfactual ledger (one rule switched off → verdicts that flip):"
   for ((n, c), (k, ws)) in switches.zip rowClass do
-    let fs := flips c
+    let (fs, bl) := flipsDetail c
     let wit := if ws.isEmpty then "" else s!" (witness: {", ".intercalate ws})"
-    IO.println s!"  [{k}{wit}] {n}: {if fs.isEmpty then "nothing" else ", ".intercalate fs}"
+    let blk := if bl.isEmpty then "" else s!"; {", ".intercalate bl}"
+    IO.println s!"  [{k}{wit}] {n}: {if fs.isEmpty then "nothing" else ", ".intercalate fs}{blk}"
   return if passed == total && total == expectedTotal then 0 else 1

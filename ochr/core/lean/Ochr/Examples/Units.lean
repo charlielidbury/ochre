@@ -11,10 +11,13 @@ open Ochr Ochr.Test Ochr.Surface
 
 namespace Ochr.Units
 
-def globalsOf (p : Program) : List GDef := (globalsAfter {} (p.filterMap fun d => (resolveProgram p d).toOption)).1
+/-- The globals after checking a block (its library first). -/
+def globalsOf (b : Block) : List GDef :=
+  let p := Ochr.Test.libOf {} 2000000 b ++ b.decls
+  (globalsAfter {} (p.filterMap fun d => (resolveProgram p d).toOption)).1
 
-def st (p : Program) (nAbs : Nat) : MState :=
-  { globals := globalsOf p, nextAbs := nAbs, absTy := (List.replicate nAbs Value.tNat).toArray }
+def st (b : Block) (nAbs : Nat) : MState :=
+  { globals := globalsOf b, nextAbs := nAbs, absTy := (List.replicate nAbs Value.tNat).toArray }
 
 def ok? {α : Type} : Except String α → Option α
   | .ok a => some a
@@ -58,3 +61,43 @@ def envChain : Env := #[{ binds := #[⟨⟨"c"⟩, some .tNat, .loan 0, false⟩
 #guard owners envChain 1 == [.bind 0 0]
 
 end Ochr.Units
+
+/-! ## Blocks that use other blocks
+
+`AttrUser` uses `AttrLib`. Only `AttrLib`'s accepted, non-`reject` declarations are visible
+to it; they are checked again in `AttrUser` under the same configuration. When a rule is
+switched off (here D45's matching by type) and `Swap` flips, the flip is attributed to its
+home block, and `UseSwap`, which fails only because `Swap` is gone, is reported as blocked. -/
+
+ochr AttrLib {
+  def Swap (P : Prop) (Q : Prop) (h : P ∧ Q) : Q ∧ P := match h { Intro(a, b) => ⟨b, a⟩ }
+  reject def Hidden : Nat := ()
+}
+
+ochr AttrUser uses AttrLib {
+  def UseSwap (P : Prop) (Q : Prop) (h : P ∧ Q) : Q ∧ P := Swap(P, Q, h)
+  def Alone : Nat := 0
+  -- a `reject` declaration of a used block is not visible
+  reject def SeesHidden : Nat := Hidden
+}
+
+open Ochr.Test in
+#guard (run "AttrLib" AttrLib).allAsExpected && (run "AttrLib" AttrLib).count == 2
+-- a block's report has rows for its own declarations only
+open Ochr.Test in
+#guard (run "AttrUser" AttrUser).allAsExpected && (run "AttrUser" AttrUser).count == 3
+open Ochr.Test in
+#guard blockFlips "AttrLib" AttrLib { byType := false } == (["AttrLib.Swap:rejected"], [])
+open Ochr.Test in
+#guard blockFlips "AttrUser" AttrUser { byType := false } == ([], ["AttrUser.UseSwap blocked by AttrLib.Swap"])
+
+-- one flat namespace: redeclaring a name a used block declares is a clash (the `ochr` command
+-- reports it when the block is elaborated), but a `reject` declaration of the used block is
+-- not in the namespace
+open Ochr.Surface in
+#guard (Block.mk "Clashy" [AttrLib] [{ name := "Swap", expectAccept := true }]).clashes ==
+  ["Clashy declares Swap, which AttrLib (used by Clashy) already declares; the declarations of a block and the blocks it uses share one namespace"]
+open Ochr.Surface in
+#guard (Block.mk "NoClash" [AttrLib] [{ name := "Hidden", expectAccept := true }]).clashes == []
+open Ochr.Surface in
+#guard (Block.mk "Twice" [AttrLib, AttrUser] []).closure.map (·.name) == ["AttrLib", "AttrUser"]
