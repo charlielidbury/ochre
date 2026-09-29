@@ -215,3 +215,28 @@ This is the uniform endpoint the earlier erasure decisions (D28, D35, D40, D42, 
 
 ## D56. `J` computes only when its endpoints are convertible (reviewer-4 W4)
 `J(A, a, b, P, h, t)` returned `t` unconditionally. That is equality reflection for open terms: under an absurd hypothesis, casts between `Nat → Nat` and `(Nat → Nat) → Nat` gave untyped λ-calculus inside the checker (`Om` diverged, "call depth exceeded"), and `J`-casting `5` to `Bool` put a `Nat` at type `Bool` ("[Match] on 5, which is not a value of Bool"), breaking well-formedness condition 6 in open contexts. Now `J` evaluates to `t` only when `a ≡ b`, as Lean's `Eq.rec` does, and is otherwise stuck. A `J` into a proposition is a proof and is never run, so proofs are unaffected. Data transport under a hypothesis becomes a stuck cast. The paper's decidability remark changes accordingly: equality reflection is gone, and what remains open is termination of normalisation.
+
+## D57. Arrays are a library over a type-level model with a native runtime, not a kernel primitive (lead, after two design probes)
+User constraints (2026-09-29):
+- the length lives only in the type, and nothing stores it at runtime;
+- growable arrays are a user-defined Σ;
+- nothing recurses over an array, only over an index;
+- runtime code never owns a sub-array (the objection to an earlier `SplitOff` sketch).
+
+Two time-boxed probes designed each route against the same four benchmarks: B1, borrow a prefix, call anything, and the rest is unchanged; B2, quicksort; B3, a hashmap bucket insert; B4, a bounds proof from a runtime comparison.
+- **Primitive route** (notes/arrays-primitive.md). Needs:
+  - array values made of segments, with index places `p[i | h]` and `p[i..j | h]`;
+  - a boundary normaliser;
+  - `Le`, `Sub` and `Add` known to the kernel, with S-peeling rules;
+  - an equality rule for arrays, a new well-formedness condition, and Ochr's first axiom (`SetGetOther`).
+
+  Its benchmarks were not run. Its paper cost is about 1.2 pages of body and 2–2.5 pages of appendix.
+- **Library route** (notes/arrays-library.md).
+  - The model is `Cells(T, n) := match n { Z => Unit, S m => T × Cells(T, m) }`: exactly `n` elements by construction, with no dependent fields. `Array(T, n)` is owned and moves as a pointer; `Slice(T, n)` is borrow-only.
+  - Sub-range borrows are scoped continuations (`WithSplit`).
+  - Seven native functions plus drop glue are trusted, each with a simulation obligation that can be tested differentially. Everything else, including every lemma, is user code.
+  - The kernel changes are static only: K1 a `Data` universe (D48's open item), K2 `unsized`, K3 `abstract` plus `implemented by`. No machine rule changes.
+  - Its benchmarks were checked in today's checker (112 scratch declarations, all as expected; B1 holds by `refl` in its "joined back" form).
+  - Its paper cost is about 0.5 page of body and 0.5 page of appendix.
+
+The library route is chosen. Its costs are three facts that become one-induction lemmas (split-then-join, suffix-of-join, get-after-set), and continuation-scoped sub-range borrows. The primitive route would add a normaliser, arithmetic knowledge and an axiom to the part of the system that the reviews found most fragile. Both routes need strong recursion on Nat for quicksort ([Rec-<], K6, with `Lt` pinned like `True`/`And`); it is decided separately.
