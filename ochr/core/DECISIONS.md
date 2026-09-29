@@ -250,3 +250,20 @@ def T (x : &Nat) (h : IsZ(*x)) : Id Nat (let q = G(&*x, h); *q) 0 := match *x { 
 ```
 This blocks every theorem about a function with a precondition-guarded impossible arm, such as the hashmap's `GetMut`. `GetMut` must take a presence proof, because `Option<&mut V>` is a borrow inside data (D48).
 The fix follows the principle behind D56: an unreachable or unconvertible situation must stay *stuck* (a neutral) and never produce a value of the wrong type. That keeps well-formedness condition 6 ("values have their types") in open contexts. A zero-arm match in a proof position is erased as before (value `⋆`). Anywhere else, reaching it is stuck and the enclosing computation closes off. Sound: closed runs never reach it, and stuck terms are neutrals. D49 (5)'s "a zero-arm match is a declared proof, vacuously" now applies only where the match's own position is a proof.
+
+## D53 amended after the viability study (checker lane, prototype at ochr-core-lean 5bfafa0a)
+The literal rule caused 29 verdict flips across the suite. With the amendments below, 24 `clone`s in 21 declarations leave every verdict and message as before. Amendments:
+(a) Re-runs of sealed programs, the two sides of `Id`, type formers and `clone`'s argument are erased and copy. A re-run is a computation of a value, not an execution.
+(b) The body of a function whose declared result is a proposition or a sort is erased, since its calls always are (D28).
+(c) A move leaves a *ghost* of the moved value that erased terms can still read. Erased uses do not count (quantitative-type-theory style), whatever the order of evaluation, so `SubM(x, old, LeAdd(old, y))` needs no runtime clone to feed its proof.
+(d) Propositions are copy types. Borrows move even in erased reads.
+(e) Function values follow Rust's `Fn` rule. A call does not consume the function it calls. A closure body may not move out of its captures, so a runtime read of a non-copy capture needs `clone`. A closure is a copy type exactly when its captures are.
+(f) C5 extends: a stuck block moves in every variable that some arm moves.
+(g) D48 (2) needs a new witness, because D53 now catches its old one (`BorrowTypes.G`) by itself.
+(h) New ⊥ checks:
+- reading or borrowing a place with ⊥ anywhere inside it;
+- capturing a partly moved place;
+- ending a borrow whose content holds ⊥ (the "whole again" rule).
+
+The study also found that the checker decides several erasure classifications *after* evaluating the term: sequencing forms by their tail, calls by the class set after the arguments ran, ascriptions, λs, and leaves by their value. The rules say these are syntactic. D53 needs the answer before a read, and the two-path discipline needs it anyway, so erasure becomes a syntactic pre-pass, with the after-the-fact flags kept as an assertion that the two agree. This is done with D55, which makes the pre-pass simple ("the term's type is a proposition or a sort, by declared sort").
+Ergonomic cost to watch: comparisons on `Nat` consume both sides (`Lt(clone(k), clone(v))`) until there are shared borrows or a copy index type.
