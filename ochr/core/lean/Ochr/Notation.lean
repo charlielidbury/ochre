@@ -58,6 +58,7 @@ syntax ident " => " ochr_term:10 : ochr_arm
 syntax ident ochr_patvar " => " ochr_term:10 : ochr_arm
 syntax ident "(" ochr_patvar,* ")" " => " ochr_term:10 : ochr_arm
 syntax:max "match " ochr_term " { " sepBy1(ochr_arm, " | ") " }" : ochr_term
+syntax:max "match " ochr_term " {" "}" : ochr_term      -- no arms (v2.0: on a type with no constructors)
 syntax ident " : " ochr_term : ochr_field
 syntax ident : ochr_ctor
 syntax ident "(" ochr_field,* ")" : ochr_ctor
@@ -67,8 +68,8 @@ syntax:10 "fix " ident ochr_binder+ " : " ochr_term:21 (" by " ident)? " := " oc
 
 syntax "def " ident ochr_binder* " : " ochr_term:21 (" by " ident)? " := " ochr_term : ochr_decl
 syntax "reject " "def " ident ochr_binder* " : " ochr_term:21 (" by " ident)? " := " ochr_term : ochr_decl
-syntax "inductive " ident " := " sepBy1(ochr_ctor, " | ") : ochr_decl
-syntax "reject " "inductive " ident " := " sepBy1(ochr_ctor, " | ") : ochr_decl
+syntax "inductive " ident ochr_binder* (" : " ochr_term:21)? (" := " sepBy1(ochr_ctor, " | "))? : ochr_decl
+syntax "reject " "inductive " ident ochr_binder* (" : " ochr_term:21)? (" := " sepBy1(ochr_ctor, " | "))? : ochr_decl
 
 syntax (name := ochrProgram) "ochr " ident " { " ochr_decl* " }" : command
 
@@ -118,6 +119,7 @@ partial def elabTerm (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := do
   | `(ochr_term| match $p { $arms|* }) => do
     let as ← arms.getElems.mapM elabArm
     `(STerm.matchGen $(← elabTerm p) [$as,*])
+  | `(ochr_term| match $p {}) => do `(STerm.matchGen $(← elabTerm p) [])
   | `(ochr_term| Π $bs*. $c) => do `(STerm.pi [$(← bs.mapM elabBinder),*] $(← elabTerm c))
   | `(ochr_term| λ $bs* : $r => $b) => do
     `(STerm.fix "_" [$(← bs.mapM elabBinder),*] $(← elabTerm r) none $(← elabTerm b))
@@ -158,6 +160,19 @@ def elabCtor (stx : TSyntax `ochr_ctor) : MacroM (TSyntax `term) := do
     `(($(strLit c.getId.toString), [$fs',*]))
   | _ => Macro.throwErrorAt stx "unsupported constructor"
 
+/-- `inductive D (a : A) … : s := C₁(…) | …` (v2.0): parameters, a sort (default `Type`),
+zero or more constructors. -/
+def elabInd (n : TSyntax `ident) (bs : Array (TSyntax `ochr_binder)) (s? : Option (TSyntax `ochr_term))
+    (cs? : Option (Syntax.TSepArray `ochr_ctor " | ")) (accept : Bool) : MacroM (TSyntax `term) := do
+  let cs' ← match cs? with
+    | some cs => cs.getElems.mapM elabCtor
+    | none => pure #[]
+  let sort ← match s? with
+    | some s => do `(some $(← elabTerm s))
+    | none => `(none)
+  `(({ name := $(strLit n.getId.toString), params := [], indParams := [$(← bs.mapM elabBinder),*],
+       indSort := $sort, ind? := some [$cs',*], expectAccept := $(quote accept) } : SDecl))
+
 def elabDecl (stx : TSyntax `ochr_decl) : MacroM (TSyntax `term) := do
   match stx with
   | `(ochr_decl| def $f:ident $bs* : $r $[by $d?]? := $b) => do
@@ -166,12 +181,8 @@ def elabDecl (stx : TSyntax `ochr_decl) : MacroM (TSyntax `term) := do
   | `(ochr_decl| reject def $f:ident $bs* : $r $[by $d?]? := $b) => do
     `(({ name := $(strLit f.getId.toString), params := [$(← bs.mapM elabBinder),*],
          ret := $(← elabTerm r), dec := $(decOf d?), body := $(← elabTerm b), expectAccept := false } : SDecl))
-  | `(ochr_decl| inductive $n:ident := $cs|*) => do
-    let cs' ← cs.getElems.mapM elabCtor
-    `(({ name := $(strLit n.getId.toString), ind? := some [$cs',*], expectAccept := true } : SDecl))
-  | `(ochr_decl| reject inductive $n:ident := $cs|*) => do
-    let cs' ← cs.getElems.mapM elabCtor
-    `(({ name := $(strLit n.getId.toString), ind? := some [$cs',*], expectAccept := false } : SDecl))
+  | `(ochr_decl| inductive $n:ident $bs* $[: $s?]? $[:= $cs?|*]?) => elabInd n bs s? cs? true
+  | `(ochr_decl| reject inductive $n:ident $bs* $[: $s?]? $[:= $cs?|*]?) => elabInd n bs s? cs? false
   | _ => Macro.throwErrorAt stx "unsupported declaration"
 
 macro_rules

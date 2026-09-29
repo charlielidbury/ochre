@@ -32,14 +32,14 @@ def Verdict.ok : Verdict → Bool
 partial def Term.mentionsConst (n : String) : Term → Bool
   | .const m => m == n
   | .assign _ t | .succ t | .fst t | .snd t | .ref t => t.mentionsConst n
-  | .letIn _ t u | .seq t u | .prod t u | .pair t u | .and t u | .andI t u | .cong t u
+  | .letIn _ t u | .seq t u | .prod t u | .pair t u | .cong t u
   | .ascribe t u => t.mentionsConst n || u.mentionsConst n
   | .matchNat _ z s => z.mentionsConst n || s.mentionsConst n
   | .pi _ ds c => ds.any (·.mentionsConst n) || c.mentionsConst n
   | .fix _ _ ds c _ b => ds.any (·.mentionsConst n) || c.mentionsConst n || b.mentionsConst n
   | .call f as _ => f.mentionsConst n || as.any (·.mentionsConst n)
   | .eq a b c | .id a b c => a.mentionsConst n || b.mentionsConst n || c.mentionsConst n
-  | .prim _ as | .ctor _ _ _ as => as.any (·.mentionsConst n)
+  | .prim _ as | .ctor _ _ _ as | .tind _ as => as.any (·.mentionsConst n)
   | .matchInd _ _ as => as.any (·.2.mentionsConst n)
   | _ => false
 
@@ -65,49 +65,85 @@ def checkDef (d : Def) : M Unit := do
 /-- A program item: a definition, or an inductive type declaration. -/
 inductive Item where
   | defn (d : Def)
-  | ind (name : String) (ctors : List (String × List (String × Term)))
+  | ind (d : IndDecl)
 deriving Inhabited
 
 def Item.name : Item → String
   | .defn d => d.name
-  | .ind n _ => n
+  | .ind d => d.name
 
-/-- D36 (v1.7): a field type is first-order data: declared inductive types (the one
-being declared among them), `Nat`, `Unit` and `×` of these; no `Π`, no `&`, no sort, no
-proposition. This is strict positivity in its simplest form. -/
-def firstOrder : Value → Bool
-  | .tNat | .tUnit | .tInd _ => true
-  | .tProd A B => firstOrder A && firstOrder B
-  | _ => false
+/-- D36 (v1.7), with parameters (v2.0, D46): a field type is first-order data, read off
+its term: `Nat`, `Unit`, `×` of first-order types, a parameter, or a declared inductive
+type (the one being declared among them) applied to first-order types. No `Π`, no `&`,
+no sort, no `Eq`: strict positivity in its simplest form. A parameter is instantiated
+only at first-order types in a field, so a negative occurrence cannot hide behind one
+(`Box(Π(x : Bad). Void)` is rejected). -/
+partial def firstOrderTerm (np : Nat) : Term → M Bool
+  | .nat | .unit => pure true
+  | .prod A B => do pure ((← firstOrderTerm np A) && (← firstOrderTerm np B))
+  | .place (.var j) => pure (j < np)
+  | .tind m as => do
+    discard (lookupInd m)
+    as.allM (firstOrderTerm np)
+  | _ => pure false
 
-/-- Declare an inductive type: constructors with named fields of closed, borrow-free
-types; fields may mention the type itself (recursive) or earlier types. -/
-def checkInd (n : String) (ctors : List (String × List (String × Term))) : M Unit := do
+/-- Declare an inductive type (v2.0, D45/D46): a sort (`Prop` or `Type₀`), uniform
+parameters, and zero or more constructors whose fields are first-order data or
+parameters; fields may mention the type itself (recursive) or earlier types. The field
+types are checked at generic parameters, in a frame of their own. -/
+def checkInd (d : IndDecl) : M Unit := do
+  let n := d.name
   if (← get).inds.any (·.name == n) then err s!"{n} is already declared"
-  modify fun s => { s with env := #[{}], inds := s.inds ++ [⟨n, []⟩] }
-  let mut cs := #[]
-  for (cn, fields) in ctors do
-    let mut fs := #[]
+  if d.sort > 1 then err s!"{n}: an inductive type is in Prop or Type"
+  modify fun s => { s with env := #[{}], inds := s.inds ++ [{ d with ctors := [] }] }
+  for (h, PT) in d.params do
+    let A ← evalType PT
+    pushBind h (some A) (← genericValue A)
+  for (cn, fields) in d.ctors do
     for (fname, FT) in fields do
       let T ← evalType FT
       if T.typeHasRef then err s!"field {fname} of {cn}: no borrows inside data"
-      if (← sortOf T) != 1 then err s!"field {fname} of {cn}: its type must be a data type in Type"
-      if (← get).cfg.positivity && !firstOrder T then
-        err s!"field {fname} of {cn} : {T}: fields are first-order data (inductive types, Nat, Unit, ×), D36"
-      fs := fs.push (fname, T)
-    cs := cs.push (cn, fs.toList)
-  modify fun s => { s with inds := s.inds.map fun d => if d.name == n then ⟨n, cs.toList⟩ else d }
+      if (← sortOf T) > 1 then err s!"field {fname} of {cn}: its type must be in Prop or Type"
+      if (← get).cfg.positivity && !(← firstOrderTerm d.params.length FT) then
+        err s!"field {fname} of {cn} : {FT.pp ((d.params.map (·.1.name)).reverse)}: fields are first-order data (inductive types, Nat, Unit, ×) or parameters, D36"
+  modify fun s => { s with env := #[{}], inds := s.inds.map fun e => if e.name == n then d else e }
 
 def checkItem : Item → M Unit
   | .defn d => checkDef d
-  | .ind n cs => checkInd n cs
+  | .ind d => checkInd d
+
+/-- The library (RULES §1, v2.0): `False`, `True` and `And` are ordinary inductive
+declarations, checked like any other; `⊤`, `P ∧ Q`, `⟨h, k⟩` and `refl` are notation for
+`True`, `And(P, Q)`, `Intro(h, k)` and `I` (`Surface.lean`). `Eq` stays primitive. -/
+def prelude : List Item :=
+  [.ind { name := "False", sort := 0 },
+   .ind { name := "True", sort := 0, ctors := [("I", [])] },
+   .ind { name := "And", params := [(⟨"P"⟩, .sort 0), (⟨"Q"⟩, .sort 0)], sort := 0,
+          ctors := [("Intro", [("l", .place (.var 1)), ("r", .place (.var 0))])] }]
+
+/-- The globals and inductive types after checking a list of items, from a start. -/
+def globalsAfterFrom (cfg : Config) (start : List GDef × List IndDecl) (ds : List Item) :
+    List GDef × List IndDecl := Id.run do
+  let (g0, i0) := start
+  let mut globals := g0
+  let mut inds := i0
+  for d in ds do
+    let st : MState := { globals := globals, inds := inds, cfg := cfg }
+    match (((checkItem d).run st).run.run #[]).1 with
+    | .ok ((), st') => globals := st'.globals; inds := st'.inds
+    | .error _ => pure ()
+  pure (globals, inds)
+
+/-- The state every program starts from: the library declarations. -/
+def preludeState (cfg : Config) : List GDef × List IndDecl := globalsAfterFrom cfg ([], []) prelude
 
 /-- Check a list of items in order, with a fresh state per item apart from the
 globals and inductive types accepted so far. -/
 def checkDefs (cfg : Config) (ds : List Item) (fuel : Nat := 2000000) :
     List (String × Verdict × Array String) := Id.run do
-  let mut globals : List GDef := []
-  let mut inds : List IndDecl := []
+  let (g0, i0) := preludeState cfg
+  let mut globals : List GDef := g0
+  let mut inds : List IndDecl := i0
   let mut out := #[]
   for d in ds do
     let st : MState := { globals := globals, inds := inds, cfg := cfg, fuel := fuel }
@@ -121,16 +157,9 @@ def checkDefs (cfg : Config) (ds : List Item) (fuel : Nat := 2000000) :
     | .error (.stuck _) => out := out.push (d.name, .rejected "internal: stuck escaped to the top", tr)
   pure out.toList
 
-/-- The globals and inductive types after checking a list of items. -/
-def globalsAfter (cfg : Config) (ds : List Item) : List GDef × List IndDecl := Id.run do
-  let mut globals : List GDef := []
-  let mut inds : List IndDecl := []
-  for d in ds do
-    let st : MState := { globals := globals, inds := inds, cfg := cfg }
-    match (((checkItem d).run st).run.run #[]).1 with
-    | .ok ((), st') => globals := st'.globals; inds := st'.inds
-    | .error _ => pure ()
-  pure (globals, inds)
+/-- The globals and inductive types after checking a list of items (after the library). -/
+def globalsAfter (cfg : Config) (ds : List Item) : List GDef × List IndDecl :=
+  globalsAfterFrom cfg (preludeState cfg) ds
 
 /-- Run a machine computation from a given state (for unit tests). -/
 def runM {α : Type} (x : M α) (st : MState) : Except String α :=

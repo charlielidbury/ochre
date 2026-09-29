@@ -47,10 +47,15 @@ structure GDef where
   fn? : Option Term     -- the closed `fix` term of a function
   val : Value           -- `gfn name` for functions, the value otherwise
 
-/-- A declared inductive type: constructors with named fields and their (closed) types. -/
+/-- A declared inductive type (v2.0, D45/D46): uniform parameters (a telescope of type
+terms, each in the scope of the earlier parameters), a sort (`0` = `Prop`, `1` = `Type₀`),
+and zero or more constructors with named fields, whose types are terms in the scope of
+the parameters (de Bruijn: the last parameter is `var 0`). -/
 structure IndDecl where
   name : String
-  ctors : List (String × List (String × Value))
+  params : List (Hint × Term) := []
+  sort : Nat := 1
+  ctors : List (String × List (String × Term)) := []
 deriving Inhabited
 
 /-- The function whose body is being checked, for [Rec]. -/
@@ -98,6 +103,11 @@ structure Config where
   confine : Bool := true         -- v1.9 D41: an erased term may not assign, borrow or move a place that outlives it
   borrowParam : Bool := true     -- v1.9 D44: a function type returning `&T` has a borrow parameter
   capTypes : Bool := true        -- captured neutral data and proofs keep their types (reviewer-2, lean-checker)
+  byType : Bool := true          -- v2.0 D45: a match on a proof (a Prop inductive) is by its type, not its content
+  subsingleton : Bool := true    -- v2.0 D45: a match on a proof returns a non-proof only from a subsingleton
+                                 -- (zero constructors, or one whose fields are all proofs)
+  propValues : Bool := true      -- v2.0 D42: a constructor application of a Prop inductive is a proof (⋆, erased)
+  disjoint : Bool := true        -- v2.0 D47: `Eq D (C ā) (C' b̄) ≡ False` for distinct constructors C ≠ C'
   confineBodies : Bool := false  -- an extension of D41, not in RULES: the body of a function whose calls are
                                  -- erased, and each arm of an erased stuck block, are confined too
   trace : Bool := false          -- record goals, splits and call types (for inspection)
