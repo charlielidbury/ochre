@@ -41,6 +41,8 @@ inductive STerm where
   | ascribe (t A : STerm)
   | sort (l : Nat)
   | rewrite (rev : Bool) (h t : STerm)           -- `rewrite h in t`, `rewrite ← h in t` (D60)
+  | split (f : String) (t : STerm)                -- `split f in t` (D61)
+  | splitArms (f : String) (arms : List (String × List String × STerm))   -- `split f { C(x̄) => t, … }` (D61)
 deriving Inhabited, Repr
 
 structure SDecl where
@@ -100,6 +102,8 @@ partial def STerm.idents : STerm → List String
   | .arrow a b => a.idents ++ b.idents
   | .letIn _ T t u => (T.map STerm.idents).getD [] ++ t.idents ++ u.idents
   | .matchGen p arms => p.idents ++ arms.flatMap fun (c, _, t) => c :: t.idents
+  | .split f t => f :: t.idents
+  | .splitArms f arms => f :: arms.flatMap fun (c, _, t) => c :: t.idents
   | .pi bs c => bs.flatMap (·.2.idents) ++ c.idents
   | .fix _ bs r _ b => bs.flatMap (·.2.idents) ++ r.idents ++ b.idents
 
@@ -291,6 +295,10 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
   | .andI a b => return .ctor "And" 0 ⟨"Intro"⟩ [] [← resolve ctx false a, ← resolve ctx false b]
   | .rewrite rev h u =>     -- D60: a typing rule, `J` with the motive read off the goal
     return .prim (if rev then "rewriteR" else "rewrite") [← resolve ctx false h, ← resolve ctx false u]
+  | .split f u =>           -- D61: [Split] on the goal's stuck result of `f`
+    return .prim "split" [.const f, ← resolve ctx false u]
+  | .splitArms f arms =>    -- D61: the split value is bound to a hidden variable, matched on
+    return .prim "splitArms" [.const f, ← resolve ctx false (.letIn "⋄split" none .unitLit (.matchGen (.ident "⋄split") arms))]
   | .top => pure (.tind "True" [])
   | .and P Q => return .tind "And" [← resolve ctx true P, ← resolve ctx true Q]
   | .prod A B => return .tind "Pair" [← resolve ctx true A, ← resolve ctx true B]   -- `A × B` (D52)

@@ -85,6 +85,9 @@ syntax:10 (name := ochrLetAnd) "let " "⟨" ochr_pat,+ "⟩" " = " ochr_term:11 
 syntax:10 (name := ochrLetPair) "let " "(" ochr_pat ", " ochr_pat ")" " = " ochr_term:11 "; " ochr_term:10 : ochr_term
 syntax:10 "rewrite " ochr_term:11 " in " ochr_term:10 : ochr_term
 syntax:10 "rewrite " "← " ochr_term:11 " in " ochr_term:10 : ochr_term
+-- D61: `split f in t`, `split f { C(x̄) => t, … }`: [Split] on the goal's stuck result of `f`
+syntax:10 "split " ident " in " ochr_term:10 : ochr_term
+syntax:max (name := ochrSplitArms) "split " ident " { " ochr_arm,+,? " }" : ochr_term
 syntax ident : ochr_patvar
 syntax "_" : ochr_patvar
 syntax ident " => " ochr_term:10 : ochr_arm
@@ -150,6 +153,11 @@ partial def elabTerm (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := do
     let (m, _) ← destructure sc top b 1
     if isPlace then return m
     return ← `(STerm.letIn "⋄0" none $(← elabTerm scrut) $m)
+  if stx.raw.getKind == ``ochrSplitArms then
+    let f := stx.raw[1].getId.toString
+    let arms := stx.raw[3].getSepArgs.map (⟨·⟩ : Syntax → TSyntax `ochr_arm)
+    let as ← arms.mapM elabArm
+    return ← `(STerm.splitArms $(strLit f) [$as,*])
   if stx.raw.getKind == ``ochrProj then
     let t : TSyntax `ochr_term := ⟨stx.raw[0]⟩
     let i := stx.raw[2].isNatLit?.getD 0
@@ -181,6 +189,7 @@ partial def elabTerm (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := do
     `(STerm.letIn $(strLit x.getId.toString) (some $(← elabTerm A)) $(← elabTerm t) $(← elabTerm u))
   | `(ochr_term| match $p {}) => do `(STerm.matchGen $(← elabTerm p) [])
   | `(ochr_term| rewrite $h in $t) => do `(STerm.rewrite false $(← elabTerm h) $(← elabTerm t))
+  | `(ochr_term| split $f:ident in $t) => do `(STerm.split $(strLit f.getId.toString) $(← elabTerm t))
   | `(ochr_term| rewrite ← $h in $t) => do `(STerm.rewrite true $(← elabTerm h) $(← elabTerm t))
   | `(ochr_term| Π $bs*. $c) => do `(STerm.pi [$(← bs.mapM elabBinder),*] $(← elabTerm c))
   | `(ochr_term| λ $bs* : $r => $b) => do

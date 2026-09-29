@@ -172,7 +172,7 @@ structure MState where
 deriving Inhabited
 
 inductive Fail where
-  | stuck (fuel : Nat)
+  | stuck (fuel : Nat) (on : Option Value)   -- `on`: the neutral a match was stuck on, if any (D61)
   | error (msg : String)
 
 instance : Inhabited Fail := ⟨.error "?"⟩
@@ -184,7 +184,11 @@ abbrev M := StateT MState (ExceptT Fail (StateM (Array String)))
 def err {α : Type} (msg : String) : M α := throw (.error msg)
 
 /-- Stuck on a neutral (RULES §3 [Match]); the innermost enclosing call closes off. -/
-def stuckNow {α : Type} : M α := do throw (.stuck (← get).fuel)
+def stuckNow {α : Type} : M α := do throw (.stuck (← get).fuel none)
+
+/-- Stuck on a match whose scrutinee's content is the neutral `v` (D61: `split` follows
+these to find what to split on). -/
+def stuckOn {α : Type} (v : Value) : M α := do throw (.stuck (← get).fuel (some v))
 
 def tick : M Unit := do
   let s ← get
