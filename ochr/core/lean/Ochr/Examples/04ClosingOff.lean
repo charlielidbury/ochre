@@ -156,6 +156,42 @@ ochr ClosingOff uses Std, Fixtures {
     AddM(x1, 2)
   )
 
+  -- A closure in an arm captures a copy, so its write `n0 := 0` is to that copy, not a
+  -- write by the block: the block copies `n0` in, and the closure can capture it again when
+  -- the block re-runs (fuzz-port R2 (i); counted as the block's write, `n0` went in by `&`,
+  -- and the re-run closure captured a borrow).
+  def LamWriteInBlock (n0 : Nat) :
+      Id Nat (match n0 { Z => n0, S p2 => (let a5 = (λ(y6 : &Nat) : Unit => n0 := 0); n0) }) n0 := (
+    match n0 {
+      Z => refl,
+      S p => refl,
+    }
+  )
+
+  -- When an arm really writes a place, the block takes it by `&`. A closure in that arm that
+  -- reads the place captures the value behind the block's parameter, as it captures the place
+  -- itself on the direct path (fuzz-port R2 (ii)).
+  def LamReadInWrittenBlock (q2 : Nat × Nat) :
+      Id Nat
+        (let c = q2; let a0 = match c { Mk(p5, p6) => (let f = (λ(y7 : Nat) : Nat => p5); c := (1, 1); f) }; a0(0))
+        (match q2 { Mk(p5, p6) => p5 }) := (
+    match q2 {
+      Mk(a, b) => refl,
+    }
+  )
+
+  -- Comparing two blocks' functions observes them at a generic argument, where a pattern's
+  -- sub-place their arms read may not exist; that answers "not convertible", it is not an
+  -- error (fuzz-port R3).
+  def ConvBlocks (q0 : Nat × Nat) : Prop := (
+    match q0 {
+      Mk(a, b) =>
+        Id (Nat × Nat)
+          (match q0 { Mk(p0, p1) => match p0 { Z => q0, S p7 => (q0 := Mk(p1, p1); q0) } })
+          (match q0 { Mk(p15, p16) => match p16 { Z => (p16 := 0; (1, 0)), S _ => q0 } }),
+    }
+  )
+
   -- ## How a stuck call returns: the row of [Close]
   -- What a stuck call returns depends on its declared result type, read from the syntax: a
   -- call returning `Unit` returns `()`, any other data a sealed program. `UU(n)` computes to
@@ -293,7 +329,7 @@ ochr ClosingOff uses Std, Fixtures {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ClosingOff" ClosingOff).allAsExpected
-#guard (run "ClosingOff" ClosingOff).count == 35
+#guard (run "ClosingOff" ClosingOff).count == 38
 
 /-! ## Symbolic checking is not the same as checking every instance
 

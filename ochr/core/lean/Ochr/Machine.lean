@@ -912,8 +912,15 @@ partial def capture (t : Term) : M (List Value × Term) := do
   let fvs := (t.freeVars.toArray.qsort (· > ·)).toList   -- oldest binding first
   let m := fvs.length
   let mut vals := #[]
+  let mut through : List Nat := []   -- stuck-block borrow parameters, captured by their content
+  let top0 := (← get).env.back!
   for o in fvs do
-    let p := Place.var o
+    -- a stuck block's borrow parameter stands for an owned place of the direct path, which a
+    -- closure there captures by value: capture its content (R2), if it is only read through
+    let b0 := top0.binds[top0.binds.size - 1 - o]!
+    let viaRef := b0.blockRef && (t.freeOccs.filter (·.1 == o)).all fun (_, q, _) => q.derefsRoot
+    if viaRef then through := o :: through
+    let p := if viaRef then Place.deref (.var o) else Place.var o
     accessPath p; accessInside p
     let v ← content p
     match v with
@@ -930,7 +937,9 @@ partial def capture (t : Term) : M (List Value × Term) := do
         unless ← isCopyType T do
           logEffect p "moves"; setPlace p .bot
   let idx (o : Nat) : Nat := (fvs.findIdx? (· == o)).getD 0
-  let mut t' := t.mapFree (fun c o => .var (c + m - 1 - idx o)) 0
+  let t0 := if through.isEmpty then t else
+    t.mapFreePlace (fun c q => (if through.contains q.root then q.stripDeref else q).mapRoot fun j => .var (j + c)) 0
+  let mut t' := t0.mapFree (fun c o => .var (c + m - 1 - idx o)) 0
   -- a captured proof keeps its type: its reads are inlined as `(⋆ : T)` (a proof's value
   -- is ⋆, so the type is all there is to record). "A proof" is the binding's declared
   -- flag, never its value (finding P3: `g(0)` may be ⋆ at an instance only)
@@ -938,7 +947,7 @@ partial def capture (t : Term) : M (List Value × Term) := do
     let top := (← get).env.back!
     for (o, k) in fvs.zipIdx do
       let b := top.binds[top.binds.size - 1 - o]!
-      if b.proof then
+      if b.proof && !through.contains o then
         if let some T := b.ty then
           t' := t'.inlineReads (m - 1 - k) (.ascribe (.val .proof) (.val T)) 0
   pure (vals.toList, t')
@@ -1071,6 +1080,14 @@ partial def convFn (f g : Value) : M Bool := do
   if mode == 0 then
     unless ← convList (caps f) (caps g) do return false
   let .tPi cs (.pi hs ds c) := pf | return false
+  -- a comparison that errors (e.g. a stuck block's function run at a generic argument where
+  -- a pattern's sub-place does not exist, fuzz-port R3) answers "not convertible", as `convPi`
+  tryCatch (convFnRun f g pf cs hs ds c) fun _ => pure false
+
+/-- `convFn`'s observation of both functions' generic calls. -/
+partial def convFnRun (f g pf : Value) (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term) :
+    M Bool := do
+  let mode := (← get).cfg.closureConv
   onCopy do
     modify fun s => { s with env := #[{}], convStack := (f, g) :: s.convStack }
     pushFrame
@@ -1566,6 +1583,9 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     match Th.map unitTop with
     | some (.tEq A a b) => pure (.proof, some (← mkEqM A b a))
     | some (.tInd "True" []) => pure (.proof, some vTrue)
+    -- an equation that computes to `False` (a refinement made it impossible) is symmetric
+    -- to one that does too (fuzz-port R7)
+    | some (.tInd "False" []) => pure (.proof, some (.tInd "False" []))
     | _ => if typed then err "symm: not an equation" else pure (.proof, none)
   | .prim "trans" [h, k] =>
     let (_, Th) ← eval typed h
@@ -1573,6 +1593,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     if !typed then return (.proof, none)
     match Th.map unitTop, Tk.map unitTop with
     | some (.tInd "True" []), some T | some T, some (.tInd "True" []) => pure (.proof, some T)
+    | some (.tInd "False" []), _ | _, some (.tInd "False" []) => pure (.proof, some (.tInd "False" []))
     | some (.tEq A a b), some (.tEq A' b' c) =>
       unless (← conv A A') && (← conv b b') do err s!"trans: {Th.get!} and {Tk.get!} do not compose"
       pure (.proof, some (← mkEqM A a c))
@@ -1780,7 +1801,7 @@ partial def callType (piTy : Value) (ws : Array Value) (tys : Array (Option Valu
     for (((d, h), i), pd) in ((ds.zip hs).zipIdx).zip pds do
       let A ← evalType d
       expectTy s!"argument {i + 1} ({h.name})" tys[i]! A
-      pushBind h (some A) ws[i]! (pf.getD i false) (← refineDecl pd (some A) ws[i]!)
+      pushBind h (some A) ws[i]! (pf.getD i false) (← refineDecl pd (some A) ws[i]!) (d matches .val (.tRef _))
     evalType c
 
 /-- P5: the borrow arguments of a call that is not run end unchanged. -/
@@ -1810,8 +1831,8 @@ partial def runBody (fv : Value) (cs : List Value) (t : Term) (ws : Array Value)
   pushFrame
   pushCaps cs
   pushBind self none fv false (.pi cd)
-  for (((h, w), p), pd) in ((hs.zip ws.toList).zip pf).zip pds do
-    pushBind h none w p (← refineDecl pd none w)
+  for ((((h, w), p), pd), d) in (((hs.zip ws.toList).zip pf).zip pds).zip ds do
+    pushBind h none w p (← refineDecl pd none w) (d matches .val (.tRef _))
   let es := (← get).effects.size
   let (v, _) ← eval false body
   pushTempAt ((← topIdx) - 1) v
@@ -2269,7 +2290,7 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Nat) (allProof :
     | .matchNat sp _ _ | .matchInd sp _ _ => some sp
     | _ => none
   let mut uses : Array (Place × Nat) := #[]
-  for (o, p, k) in mt.freeOccs do
+  for (o, p, k) in mt.freeOccsBlock do
     let q := p.mapRoot fun _ => .var o
     -- counterfactual D32: a write through a pattern variable (a strict extension of the
     -- block's scrutinee by `.1`) is not seen as a use of the scrutinee's place
@@ -2512,7 +2533,7 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
       let σ ← freshAbs T
       let l ← freshLoan
       modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
-      pushBind h (some A) (.borrow l (.abs σ)) p pd
+      pushBind h (some A) (.borrow l (.abs σ)) p pd (d matches .val (.tRef _))
       entries := entries.push (if T == .tNat || (T matches .tInd ..) then some σ else none)
     | _ =>
       if (← get).cfg.p5 && (← get).cfg.proofParamsStar && (← isPropV A) then
@@ -2529,7 +2550,7 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
   pushFrame
   pushCaps cs
   pushBind self (some piTy) fv false (.pi cd)
-  for b in F1.binds.extract cs.length F1.binds.size do pushBind b.hint b.ty b.val b.proof b.decl
+  for b in F1.binds.extract cs.length F1.binds.size do pushBind b.hint b.ty b.val b.proof b.decl b.blockRef
   -- [Rec]: the decreasing parameter is the one named by `by xⱼ` (v1.2, D23); without
   -- `by` the function is not recursive (no candidate survives a recursive call)
   let cands ← if (← get).cfg.inferRecPos then

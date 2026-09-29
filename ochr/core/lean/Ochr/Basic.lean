@@ -206,9 +206,53 @@ partial def Term.placeOccs (c : Nat) : Term → List (Nat × Place × PKind)
   | .matchInd p _ as => (c, p, .scrut) :: as.flatMap (·.2.placeOccs c)
   | _ => []
 
+/-- The occurrences a stuck block's capture analysis sees: as `placeOccs`, except that an
+occurrence inside a nested function or Π-type is a read, whatever it does there (a
+closure captures a copy, and its writes are to that copy: fuzz-port R2). -/
+partial def Term.blockOccs (inFn : Bool) (c : Nat) : Term → List (Nat × Place × PKind)
+  | .place p => [(c, p, .read)]
+  | .borrow p => [(c, p, if inFn then .read else .borrow)]
+  | .assign p t => t.blockOccs inFn c ++ [(c, p, if inFn then .read else .assign)]
+  | .letIn _ t u => t.blockOccs inFn c ++ u.blockOccs inFn (c + 1)
+  | .seq t u => t.blockOccs inFn c ++ u.blockOccs inFn c
+  | .matchNat p z s => (c, p, .scrut) :: (z.blockOccs inFn c ++ s.blockOccs inFn c)
+  | .pi _ ds cod =>
+      (ds.zipIdx.flatMap fun (d, i) => d.blockOccs true (c + i)) ++ cod.blockOccs true (c + ds.length)
+  | .fix _ _ ds cod _ b =>
+      (ds.zipIdx.flatMap fun (d, i) => d.blockOccs true (c + i)) ++ cod.blockOccs true (c + ds.length)
+        ++ b.blockOccs true (c + ds.length + 1)
+  | .call g as _ => g.blockOccs inFn c ++ as.flatMap (·.blockOccs inFn c)
+  | .succ t | .fst t | .snd t | .ref t => t.blockOccs inFn c
+  | .cong a b | .ascribe a b => a.blockOccs inFn c ++ b.blockOccs inFn c
+  | .eq a b d | .id a b d => a.blockOccs inFn c ++ b.blockOccs inFn c ++ d.blockOccs inFn c
+  | .ctor _ _ _ ps as => (ps ++ as).flatMap (·.blockOccs inFn c)
+  | .prim _ as | .tind _ as => as.flatMap (·.blockOccs inFn c)
+  | .matchInd p _ as => (c, p, .scrut) :: as.flatMap (·.2.blockOccs inFn c)
+  | _ => []
+
+/-- A place whose first step from its root goes through a borrow (`*x…`). -/
+def Place.derefsRoot : Place → Bool
+  | .deref (.var _) => true
+  | .deref p | .fst p | .snd p | .field _ p => p.derefsRoot
+  | .var _ => false
+
+/-- The same place with that first `*` removed. -/
+def Place.stripDeref : Place → Place
+  | .deref (.var i) => .var i
+  | .deref p => .deref p.stripDeref
+  | .fst p => .fst p.stripDeref
+  | .snd p => .snd p.stripDeref
+  | .field g p => .field g p.stripDeref
+  | .var i => .var i
+
 /-- Free occurrences, with the root expressed as an index into the enclosing frame. -/
 def Term.freeOccs (t : Term) : List (Nat × Place × PKind) :=
   (t.placeOccs 0).filterMap fun (c, p, k) =>
+    if p.root ≥ c then some (p.root - c, p, k) else none
+
+/-- Free occurrences for a stuck block's capture analysis (`blockOccs`). -/
+def Term.freeOccsBlock (t : Term) : List (Nat × Place × PKind) :=
+  (t.blockOccs false 0).filterMap fun (c, p, k) =>
     if p.root ≥ c then some (p.root - c, p, k) else none
 
 /-- The free variables (enclosing-frame indices) of a term, without duplicates. -/

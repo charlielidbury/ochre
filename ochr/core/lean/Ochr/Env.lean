@@ -37,6 +37,8 @@ structure Binding where
   val : Value
   proof : Bool := false -- v1.7 (D35): its declared type has declared sort Prop (read off syntax)
   decl : DeclInfo := .other   -- what its declared type says (the erasure pre-pass)
+  blockRef : Bool := false    -- a stuck block's borrow parameter for a place it writes (a
+                              -- checker device: a closure in the block captures through it)
 deriving Inhabited
 
 structure Frame where
@@ -309,8 +311,9 @@ def popFrameRaw : M Frame := do
   | none => err "internal: pop of empty environment"
 
 def pushBind (h : Hint) (ty : Option Value) (v : Value) (proof : Bool := false)
-    (decl : DeclInfo := .other) : M Unit := do
-  modifyFrame (← topIdx) fun fr => { fr with binds := fr.binds.push { hint := h, ty, val := v, proof, decl } }
+    (decl : DeclInfo := .other) (blockRef : Bool := false) : M Unit := do
+  modifyFrame (← topIdx) fun fr =>
+    { fr with binds := fr.binds.push { hint := h, ty, val := v, proof, decl, blockRef } }
 
 /-- Run a declared-type reading whose free variables beyond its local scope are the
 current frame's bindings (read in place, not copied into a list). -/

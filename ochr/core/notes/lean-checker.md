@@ -801,3 +801,28 @@ A first version formatted `Config` to decide whether to assert, and was 4× slow
 ## 24. P2 is a soundness row (fuzz-port)
 
 With P2 off (`eraseOnCopy := false`) and D41 on, a closed proof of `False` is accepted. Confinement lets an erased term pass an outer place to an erased call. Without the private copy, that call's writes persist on the direct path, while the closed-off block, being erased, skips them. fuzz-port's `P2Alone` is in `Erasure`, in a new section "What goes wrong without the private copy": `LieP2` (accepted), and `BoomP2Pair` and `BoomP2` (rejected). The P2 row is now class soundness with witness `BoomP2`; it was completeness. `LieP2` also shows up as a rejection in the D28, D42, D45 + D42 and confined-bodies rows. Classes: soundness 19 (13 with a closed proof of `False`), false lemma 1, model 4, policy 4, subsumed 4, completeness 18. 522 verdicts.
+
+## 25. fuzz-port's fail-safe classes R2, R3, R4, R7
+
+Each is a true statement that the checker rejected. Each is now accepted, and each has a regression: `ClosingOff.LamWriteInBlock`, `LamReadInWrittenBlock` and `ConvBlocks`, and `Equality.SymmUnreachable`. All four were rejected on 6d90f016.
+
+- **R2 (i): a closure's write inside a stuck block.** The block's capture analysis counted a nested λ's write to its own captured copy as a write by the block. So it took the place by `&`, and when the block re-ran, the λ captured a borrow. The fix: occurrences inside a nested function or Π-type count as reads (`Term.blockOccs`).
+- **R2 (ii): a closure reading a place the block writes.** When an arm really writes a place, the block takes it by `&`. A λ in that arm that only reads the place then captured the block's borrow parameter. The fix:
+  - A stuck block's borrow parameter is marked on its binding (`blockRef`; its declared type is the block's `.val (&T)`).
+  - `capture` captures the value behind such a parameter, `(*c).1` by value, when the λ only reads through it. This is how the λ captures the place itself on the direct path.
+  - A user's `&` parameter is unaffected: `CapBorrow` is still rejected.
+- **E** (an arm-local σ in a block's inferred type) came only with R2 (ii); it no longer shows up in the regressions.
+- **R3: an error while comparing two blocks' functions.** `convFn` observed the functions at a generic argument where a pattern's sub-place does not exist, and the error escaped. It now answers "not convertible", as `convPi` does.
+- **R4: a call of a sealed function in untyped code.** Fixed since 4b8bdbd2: `funType` on a sealed head types its program. fuzz-port saw it drop from 23 cases in 10⁶ to 0. `V2Classes.R4s` is still rejected, but only for want of η for `Unit`: its goal is `Eq Unit ⌈…⌉ ()`, which D59 will close.
+- **R7: `symm` in an unreachable branch.** `symm` (and `trans`) of a proof of `False` is a proof of `False`. An equation that a refinement made impossible computes to `False`, and so does its symmetric one.
+
+Not taken up here:
+- **R5**, one case in 10⁶. Two arms' Π-types capture a place holding a sealed program that the arms' refinements made different. It is the same root as E: types read under arm refinements.
+- **R6.** `Id`'s conjunction order is not stable under closing off; it needs a canonical footprint order.
+- **R1's residual**, one case in 10⁶. An `Id` owner reached through a returned borrow is an inert loan in a re-run. It needs the cells a closed-off call creates to carry their declared types.
+
+Draft RULES wording for the stuck-block capture rule (§3 "Stuck blocks"), after "otherwise a place it reads is passed by value (copied)":
+
+> An occurrence inside a nested `λ` or Π-type counts as a read, whatever that function does with it: a closure captures a copy, so its writes and borrows are to that copy. A closure formed inside the block that reads, through one of the block's `&` parameters, a place the block writes captures the value behind that parameter, as it captures the place itself when the match is not closed off.
+
+526 declarations.
