@@ -813,7 +813,7 @@ Each is a true statement that the checker rejected. Each is now accepted, and ea
   - A user's `&` parameter is unaffected: `CapBorrow` is still rejected.
 - **E** (an arm-local σ in a block's inferred type) came only with R2 (ii); it no longer shows up in the regressions.
 - **R3: an error while comparing two blocks' functions.** `convFn` observed the functions at a generic argument where a pattern's sub-place does not exist, and the error escaped. It now answers "not convertible", as `convPi` does.
-- **R4: a call of a sealed function in untyped code.** Fixed since 4b8bdbd2: `funType` on a sealed head types its program. fuzz-port saw it drop from 23 cases in 10⁶ to 0. `V2Classes.R4s` is still rejected, but only for want of η for `Unit`: its goal is `Eq Unit ⌈…⌉ ()`, which D59 will close.
+- **R4: a call of a sealed function in untyped code.** Fixed since 4b8bdbd2: `funType` on a sealed head types its program. fuzz-port saw it drop from 23 cases in 10⁶ to 0. `V2Classes.R4s` is still rejected, because the proof splits the wrong place (§27).
 - **R7: `symm` in an unreachable branch.** `symm` (and `trans`) of a proof of `False` is a proof of `False`. An equation that a refinement made impossible computes to `False`, and so does its symmetric one.
 
 Not taken up here:
@@ -870,3 +870,16 @@ This follows DECISIONS D53, its amendments (a)–(h), the second amendment (`Wor
 - (e): completeness (`CallTwice`, `Twice`…, `Size`).
 
 53 rows: soundness 19, false lemma 1, model 4, policy 4, subsumed 4, cost 1, completeness 20. 548 verdicts.
+
+## 27. D59: η for `Unit`
+
+`mkEqM` makes `Eq Unit a b` equal to `True` for any two values (switch `unitEta`). [Close] loses its `Unit` row: a stuck call whose declared result is `Unit` returns its sealed program, like any other data. `convFn` treats two functions' results at a codomain written `Unit` as equal.
+
+- *Verdicts:* `ClosingOff.RowI` (a call through `UU(Z)`, which is `Unit` only by computation) goes from rejected to accepted, by `refl`. Nothing else changes.
+- *Ledger, new row:* D59, completeness (`RowI`).
+- *Ledger, rows that change:*
+  - The D35 row "[Close]'s row is read from the declared codomain" flips nothing: the only rows left are a borrow's, read off a declared `&T` anyway (D48 (2)), and data's. It is now `subsumed`.
+  - D28 loses `RowI` and is now completeness.
+  - D19 flips nothing. Its witness `BadA1` passes a live loan into a stuck `Unit` call (with D19 off, [Close]'s precondition is unchecked). The call's result is now its sealed program, not `()`, so it carries the loan, and discarding it is a [Drop] error. `BadA1` is rejected with or without D19, so the row is `subsumed` too. D19 is still what establishes [Close]'s precondition, which the checker asserts; it has no witness in the suite now. This is worth a new witness if one exists.
+- *Classes, 54 rows:* soundness 18 (13 with a closed proof of `False`, 5 going wrong when run), false lemma 1, model 4, policy 2, subsumed 6, cost 1, completeness 22.
+- `V2Classes.R4s` (fuzz-port's R4) is still rejected. Its remaining goal is about `x1`'s content, `Eq Nat ⌈…(&c1); c1⌉ 0`, because the called function is stuck on `*x0`. The proof splits `*x1` instead of `*x0`, so that proof cannot close it, with or without η. Earlier notes called this a matter of η; that was wrong.

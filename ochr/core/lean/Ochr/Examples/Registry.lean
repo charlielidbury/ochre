@@ -109,7 +109,8 @@ def switches : List (String × Config) :=
    ("D55 (v2.1): sorts are syntactic (one notion of proposition)", { sortsSyntactic := false }),
    ("D53: a runtime read of data whose type is not a copy type moves it", { moves := false }),
    ("D53 (c): a move leaves a ghost that erased terms still read", { ghosts := false }),
-   ("D53 (e): the Fn rule (a call does not consume its function; closure bodies do not move their captures)", { fnRule := false })]
+   ("D53 (e): the Fn rule (a call does not consume its function; closure bodies do not move their captures)", { fnRule := false }),
+   ("D59: η for Unit (any two values of Unit are equal; [Close] has no Unit row)", { unitEta := false })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -123,8 +124,10 @@ def switches : List (String × Config) :=
 * `policy`: it accepts only programs that are true under the other rules (a fail-safe or
   a stability condition, with no witness here);
 * `completeness`: it only rejects good programs;
-* `subsumed`: it flips nothing, because the erasure pre-pass decides what it decided
-  (a term is erased by its declared type, before it runs);
+* `subsumed`: it flips nothing, because a later rule decides what it decided: the erasure
+  pre-pass (a term is erased by its declared type, before it runs), or η for `Unit` (D59:
+  [Close] has no `Unit` row left to read; and a stuck `Unit` call's result now carries its
+  arguments, so D19's witness falls to [Drop]);
 * `cost`: it accepts programs that copy data whose type is not a copy type without saying
   so (`clone`), or leave a borrowed place partly moved out: the cost model's rule (D53),
   not the logic's. -/
@@ -133,14 +136,14 @@ def rowClass : List (String × List String) :=
    ("soundness", ["Erasure.N1Closed", "Erasure.QBoom", "ErasureBySyntax.BoomP"]),
    ("soundness", ["Owners.ClosedD18", "Owners.BadR"]),
    ("soundness", ["Recursion.KnotLBoom"]),
-   ("soundness", ["Borrows.BadA1"]),
+   ("subsumed", []),
    ("soundness", ["Recursion.KnotBoom"]),
    ("soundness", ["Borrows.Dead"]),
    ("completeness", []),
    ("soundness", ["ClosingOff.MovedByBlock"]),
    ("completeness", []),
    ("soundness", ["Recursion.KnotLBoom"]),
-   ("policy", ["ClosingOff.RowI"]),
+   ("completeness", []),
    ("soundness", ["ReturnedBorrows.Main"]),
    ("soundness", ["Functions.Boom3"]),
    ("soundness", ["Recursion.LoopNoByBoom"]),
@@ -149,7 +152,7 @@ def rowClass : List (String × List String) :=
    ("subsumed", []),
    ("subsumed", []),
    ("subsumed", []),
-   ("policy", ["ClosingOff.RowI"]),
+   ("subsumed", []),
    ("completeness", []),
    ("policy", ["Erasure.Write"]),
    ("completeness", []),
@@ -180,6 +183,7 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("model", ["Sorts.K1", "Sorts.K2"]),
    ("cost", ["Borrows.TwiceNat", "Borrows.ClosureMovesCapture"]),
+   ("completeness", []),
    ("completeness", []),
    ("completeness", [])]
 

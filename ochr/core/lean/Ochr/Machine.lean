@@ -1191,8 +1191,11 @@ partial def convFnRun (f g pf : Value) (cs : List Value) (hs : List Hint) (ds : 
     -- the comparison is asked (a statement's is erased)
     let (rf, cf) ← withRuntime (obs f)
     let (rg, cg) ← withRuntime (obs g)
-    if mode == 2 then conv rf rg      -- counterfactual: compare the result only (breaker-fresh F3)
-    else pure ((← conv rf rg) && (← convList cf cg))
+    -- D59: results at `Unit` are equal (η)
+    let unitRes := (← get).cfg.unitEta && (pf matches .tPi _ (.pi _ _ .unit))
+    let sameRes ← if unitRes then pure true else conv rf rg
+    if mode == 2 then pure sameRes      -- counterfactual: compare the result only (breaker-fresh F3)
+    else pure (sameRes && (← convList cf cg))
 
 /-- `Eq` computes (§4): reflexivity (decided by conversion) is `True`; two values built by
 the same constructor give the conjunction of the equations between their fields, at the
@@ -1202,6 +1205,8 @@ constructor with one field; no fields: `True`); distinct constructors of one typ
 partial def mkEqM (A a b : Value) : M Value := do
   if ← conv a b then return vTrue
   let cfg := (← get).cfg
+  -- D59: η for `Unit`: every value of `Unit` is `()` in the model
+  if cfg.unitEta && A == .tUnit then return vTrue
   match a, b with
   | .succ a', .succ b' => if cfg.injective then return ← mkEqM .tNat a' b'
   | .ind t c _ ps fs, .ind u d _ qs gs =>
@@ -1999,7 +2004,8 @@ partial def closeCall (fv : Value) (ws : Array Value) (kind : Kind) : M Value :=
   | _ =>
     for ((_, l, _), j) in bs.zipIdx do
       substEnv (.loan l) (← canonNeutral (.sealed (wrapL (.seq (C 0) (peek (cell 0 j)))))) false
-    if kind == .unit then pure .unit else canonNeutral (.sealed (wrapL (C 0)))
+    -- D59: with η for `Unit`, [Close] has no `Unit` row: the result is its sealed program
+    if kind == .unit && !cfg.unitEta then pure .unit else canonNeutral (.sealed (wrapL (C 0)))
 
 /-- [Rec]: at a recursive call, a parameter position survives if its argument (the
 content, through a borrow) is a strict subterm of that parameter's entry value as

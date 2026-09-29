@@ -214,10 +214,12 @@ ochr ClosingOff uses Std, Fixtures {
   )
 
   -- ## How a stuck call returns: the row of [Close]
-  -- What a stuck call returns depends on its declared result type, read from the syntax: a
-  -- call returning `Unit` returns `()`, any other data a sealed program. `UU(n)` computes to
-  -- `Unit` for every `n`, but is not written `Unit`, so `G`'s stuck calls return a sealed
-  -- program, and `RowI` needs induction (`RowIInd`).
+  -- A stuck call returns a borrow with a hole when its declared result type is written
+  -- `&T` (`ReturnedBorrows`), and otherwise its sealed program, `Unit` included: any two
+  -- values of `Unit` are equal (η for `Unit`, D59). So `RowUnit` and `RowI` both hold by
+  -- `refl`, though `UU(n)` is `Unit` only by computation, and the induction of `RowIInd` is
+  -- no longer needed. Without η (switch `unitEta`), a call written to return `Unit` returned
+  -- `()`, `G`'s returned a sealed program, and `RowI` failed.
   def UU (n : Nat) : Type := (
     match n {
       Z => Unit,
@@ -243,7 +245,7 @@ ochr ClosingOff uses Std, Fixtures {
   )
 
   def RowUnit (x : &Nat) : Id Unit (let c = *x; AddU(&c)) () := refl
-  reject def RowI (x : &Nat) : Id Unit (let c = *x; G(&c, Z)) () := refl
+  def RowI (x : &Nat) : Id Unit (let c = *x; G(&c, Z)) () := refl
 
   def RowIInd (x : &Nat) : Id Unit (let c = *x; G(&c, Z)) () by x := (
     match *x {

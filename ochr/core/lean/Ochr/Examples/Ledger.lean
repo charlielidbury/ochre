@@ -52,9 +52,12 @@ open Ochr.Registry in
    "Recursion.KnotLBoom:accepted", "Recursion.Lie:accepted", "Recursion.Boom:accepted",
    "Recursion.LieCap:accepted", "Recursion.BoomCap:accepted", "Recursion.LieRead:accepted",
    "Recursion.BoomRead:accepted", "Recursion.LieId:accepted", "Recursion.BoomId:accepted"]
+-- D19 switched off flips nothing since η for `Unit` (D59): its witness `BadA1` passes a live
+-- loan into a stuck `Unit` call, whose result, a sealed program now rather than `()`, carries
+-- the loan, and discarding it is a [Drop] error (the [Close] precondition is unchecked)
 open Ochr.Registry in
 #guard rowOk { accessInside := false }
-  ["Borrows.BadA1:accepted"]
+  []
 open Ochr.Registry in
 #guard rowOk { selfHeadOnly := false }
   ["Recursion.Knot:accepted", "Recursion.KnotBoom:accepted"]
@@ -83,9 +86,9 @@ open Ochr.Registry in
   ["Recursion.KnotL:accepted", "Recursion.KnotLBoom:accepted"]
 open Ochr.Registry in
 #guard rowOk { erasureByDecl := false }
-  ["ClosingOff.RowI:accepted", "Functions.RunG:rejected", "Functions.RunGGen:rejected",
-   "Functions.RunI:rejected", "Functions.RunIGen:rejected", "Erasure.TypeErased:rejected",
-   "Erasure.LieP2:rejected", "ErasureBySyntax.SeqT:rejected"]
+  ["Functions.RunG:rejected", "Functions.RunGGen:rejected", "Functions.RunI:rejected",
+   "Functions.RunIGen:rejected", "Erasure.TypeErased:rejected", "Erasure.LieP2:rejected",
+   "ErasureBySyntax.SeqT:rejected"]
 open Ochr.Registry in
 #guard rowOk { matchEndsInside := false }
   ["ReturnedBorrows.Bad:accepted", "ReturnedBorrows.Main:accepted"]
@@ -114,9 +117,11 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { seqByProof := false }
   []
+-- D35's [Close]-row clause switched off flips nothing since η for `Unit` (D59): the only
+-- rows left are a borrow's, which is read off a declared `&T` anyway (D48 (2)), and data's
 open Ochr.Registry in
 #guard rowOk { rowByDecl := false }
-  ["ClosingOff.RowI:accepted"]
+  []
 open Ochr.Registry in
 #guard rowOk { leafRule := 0 }
   ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected"]
@@ -290,6 +295,11 @@ open Ochr.Registry in
    "Functions.TwiceM:rejected", "Functions.TwiceMMove:rejected", "Functions.TwiceMZero:rejected",
    "Functions.TwiceMZero':rejected", "Trees.Size:rejected", "Trees.SizeInsert:rejected",
    "InPlaceTrees.Size:rejected", "InPlaceTrees.SizeInsert:rejected"]
+-- D59 switched off: a call written to return `Unit` returns `()` and one that only computes
+-- to `Unit` a sealed program, and two values of `Unit` need not be equal
+open Ochr.Registry in
+#guard rowOk { unitEta := false }
+  ["ClosingOff.RowI:rejected"]
 
 -- every row of `switches` has a class
 open Ochr.Registry in
