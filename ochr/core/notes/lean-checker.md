@@ -986,3 +986,25 @@ The order is now canonical, by syntax: first the owners of the places the two si
 - `Scratch/R6Order.lean` still carries its old expectations: `Direct` is marked as a rejection and `Swapped` as an acceptance.
 
 986 verdicts.
+
+## 33. arrays-library's two completeness findings
+
+These are items 1 and 4 of `notes/arrays-library.md` §10's list of checker findings.
+
+*A Π-type whose body uses a proof captured from outside it.* The case is a Π formed by a function's body, e.g. `CapOf(n, h) := Π(u : Nat). Eq Nat (Get(n, h)) n`. At a use `c : CapOf(n, h)`, the type is computed by running `CapOf`'s body untyped (`runBody`). There `h` is `⋆` with no stored type, so `capture` could not record it (D51 inlines a captured proof as `(⋆ : T)` only when it knows `T`). Calling `c(0)` evaluates `Get(n, h)` in the codomain, typed, and failed with "cannot infer the type of the value ⋆". A Π written in a signature was fine, since its captures come from typed bindings.
+
+Fix: when a body forms a function or Π-type (`Term.formsFn`), `runBody` evaluates the declared types of its proof parameters, at the arguments, on a private copy, and binds them with those types. The types are evaluated when the parameters are bound, as types are formed once (P2). Only proof parameters are typed, and only when something may capture them, so the case studies' check times are unchanged (Quicksort 283 ms against 271 ms).
+
+A `let`-bound proof in an untyped run is still untyped. No program here needs it.
+
+*Re-normalisation inside Π-types.* `renormV` handles sealed programs, constructors and inductive types, but it returned closures and Π-types unchanged, while `substV` reaches into both. After a split generalises a sealed program, another sealed program that re-derives it (`⌈G(σ)⌉`, where `G` computes `F(n)` inside) is re-normalised (G1). As a capture of a Π in the goal, it stayed stale: `RenormPi.InPi`'s goal kept `κ1 = ⌈G(σ0)⌉` after `F(n) := 0`.
+
+Fix: `renormV` re-normalises the captures and embedded values of closures and Π-types, and also `&T` and inductive values' parameters. `renormT` walks every term form, as `substT` does. RULES already says re-normalisation reaches inside closures and types; the checker now matches it.
+
+*Regressions:*
+- `Snapshots.Get`, `CapOf`, `UseCapOf`;
+- a new block `RenormPi` (08CaseSplits): `F`, `G`, `Plain`, `InPi`, `InConj`. `Plain` was already accepted.
+
+Both fixes were confirmed by reverting them: `UseCapOf` and `InPi` are rejected without them.
+
+994 verdicts.

@@ -1918,11 +1918,24 @@ partial def runBody (fv : Value) (cs : List Value) (t : Term) (ws : Array Value)
   modify fun s => { s with depth := d + 1 }
   let pf ← paramFlags cs ds
   let (pds, cd) ← paramDecls cs hs ds c
+  -- a proof parameter that a function or Π-type in the body may capture needs its type,
+  -- which is all a captured proof records (`capture`): read it off the declared domain,
+  -- at the arguments (arrays-library: a Π whose body uses a proof captured from outside it)
+  let ptys ← if body.formsFn && (pf.any id || pds.any (·.isProof)) then onCopy do
+      pushFrame
+      pushCaps cs
+      let mut out := #[]
+      for ((((h, w), p), pd), d) in (((hs.zip ws.toList).zip pf).zip pds).zip ds do
+        let A? ← if p || pd.isProof then tryCatch (some <$> evalType d) (fun _ => pure none) else pure none
+        out := out.push A?
+        pushBind h A? w p pd
+      pure out
+    else pure #[]
   pushFrame
   pushCaps cs
   pushBind self none fv false (.pi cd)
-  for ((((h, w), p), pd), d) in (((hs.zip ws.toList).zip pf).zip pds).zip ds do
-    pushBind h none w p (← refineDecl pd none w) (d matches .val (.tRef _))
+  for (((((h, w), p), pd), d), i) in ((((hs.zip ws.toList).zip pf).zip pds).zip ds).zipIdx do
+    pushBind h (ptys[i]?.getD none) w p (← refineDecl pd none w) (d matches .val (.tRef _))
   let es := (← get).effects.size
   -- D53: a body is code; a function whose calls are erased has an erased body (b)
   let erasedFn ← if (← get).cfg.moves then
@@ -2165,18 +2178,42 @@ partial def renormV (v : Value) : M Value := do
   | .succ w => return .succ (← renormV w)
   | .ghost w => return .ghost (← renormV w)
   | .borrow l w => return .borrow l (← renormV w)
-  | .ind ty c h ps fs => return .ind ty c h ps (← fs.mapM renormV)
+  | .ind ty c h ps fs => return .ind ty c h (← ps.mapM renormV) (← fs.mapM renormV)
   | .tEq A a b => mkEqM (← renormV A) (← renormV a) (← renormV b)
   | .tInd n as => return mkTInd n (← as.mapM renormV) (← get).cfg.unitNorm
+  | .tRef A => return .tRef (← renormV A)
+  -- closures and Π-types too: their captures and embedded values (arrays-library: a goal
+  -- `… ∧ Π(…). …` whose Π captured a sealed program stayed stale after a split)
+  | .clo cs t => return .clo (← cs.mapM renormV) (← renormT t)
+  | .tPi cs t => return .tPi (← cs.mapM renormV) (← renormT t)
   | _ => return v
 
+/-- Re-normalise the values embedded in a term (the sealed programs among them), everywhere
+`substT` substitutes. -/
 partial def renormT (t : Term) : M Term := do
+  if !(t.anyAtom fun | .sealed _ => true | _ => false) then return t
+  let go := renormT
   match t with
   | .val v => return .val (← renormV v)
-  | .letIn h a b => return .letIn h (← renormT a) (← renormT b)
-  | .seq a b => return .seq (← renormT a) (← renormT b)
-  | .assign p a => return .assign p (← renormT a)
-  | .call f as hd => return .call (← renormT f) (← as.mapM renormT) hd
+  | .assign p u => return .assign p (← go u)
+  | .letIn h u w => return .letIn h (← go u) (← go w)
+  | .seq u w => return .seq (← go u) (← go w)
+  | .matchNat p z s => return .matchNat p (← go z) (← go s)
+  | .pi hs ds c => return .pi hs (← ds.mapM go) (← go c)
+  | .fix h hs ds c d b => return .fix h hs (← ds.mapM go) (← go c) d (← go b)
+  | .call f as hd => return .call (← go f) (← as.mapM go) hd
+  | .succ u => return .succ (← go u)
+  | .fst u => return .fst (← go u)
+  | .snd u => return .snd (← go u)
+  | .ref u => return .ref (← go u)
+  | .cong a b => return .cong (← go a) (← go b)
+  | .ascribe a b => return .ascribe (← go a) (← go b)
+  | .eq a b c => return .eq (← go a) (← go b) (← go c)
+  | .id a b c => return .id (← go a) (← go b) (← go c)
+  | .prim n as => return .prim n (← as.mapM go)
+  | .ctor ty c h ps as => return .ctor ty c h (← ps.mapM go) (← as.mapM go)
+  | .tind n as => return .tind n (← as.mapM go)
+  | .matchInd p ty as => return .matchInd p ty (← as.mapM fun (h, a) => do pure (h, ← go a))
   | _ => return t
 
 /-- [Split] for a non-tail match: check each arm under its refinement, then close the

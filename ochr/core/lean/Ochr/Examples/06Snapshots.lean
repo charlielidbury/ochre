@@ -147,10 +147,18 @@ ochr Snapshots uses Std {
     x := S x;
     h(())
   )
+
+  -- A Π-type formed by a called function keeps the types of the proofs it captures, as
+  -- one written in a signature does: `CapOf(n, h)` is computed by running `CapOf`'s body,
+  -- where `h` is `⋆`, and calling the hypothesis evaluates `Get(n, h)` in its codomain,
+  -- which needs `h`'s type (arrays-library: "cannot infer the type of ⋆").
+  def Get (n : Nat) (h : Eq Nat n 0) : Nat := n
+  def CapOf (n : Nat) (h : Eq Nat n 0) : Prop := Π(u : Nat). Eq Nat (Get(n, h)) n
+  def UseCapOf (n : Nat) (h : Eq Nat n 0) (c : CapOf(n, h)) : Eq Nat (Get(n, h)) n := c(0)
 }
 
 #eval IO.println (run "Snapshots" Snapshots).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Snapshots" Snapshots).allAsExpected
-#guard (run "Snapshots" Snapshots).count == 21
+#guard (run "Snapshots" Snapshots).count == 24

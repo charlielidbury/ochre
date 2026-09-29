@@ -91,6 +91,27 @@ def genTrace (cfg : Ochr.Config) : String := (run "GenType" GenType { cfg with t
 #guard ((genTrace {}).splitOn "c1⌉ to σ1 : List").length == 2
 #guard ((genTrace { genPlaceType := false }).splitOn "c1⌉ to σ1 : Nat").length == 2
 
+/-! A generalisation re-derived inside a Π-type. After splitting on `F(n)`'s result, a sealed
+program that computes `F(n)` inside, `⌈G(σ)⌉`, is re-normalised to use the split value
+(finding G1). That reaches the captures of closures and Π-types too: `InPi`'s goal holds
+`⌈G(σ)⌉` as a capture of its Π, and was left stale (arrays-library). -/
+
+ochr RenormPi uses Std {
+  def F (n : Nat) : Nat by n := match n { Z => 0, S m => F(m) }
+  def G (n : Nat) : Nat := (let x = F(n); match x { Z => 1, S _ => 2 })
+  def Plain (n : Nat) (h : Eq Nat (F(n)) 0) : (let k = G(n); Eq Nat k 1) := (
+    let r = F(n); match r { Z => refl, S j => match h {} })
+  def InPi (n : Nat) (h : Eq Nat (F(n)) 0) : (let k = G(n); Π(u : Nat). Eq Nat k 1) := (
+    let r = F(n); match r { Z => λ(u : Nat) : Eq Nat 1 1 => refl, S j => match h {} })
+  def InConj (n : Nat) (h : Eq Nat (F(n)) 0) : (let k = G(n); Eq Nat k 1 ∧ (Π(u : Nat). Eq Nat k 1)) := (
+    let r = F(n); match r { Z => ⟨refl, λ(u : Nat) : Eq Nat 1 1 => refl⟩, S j => match h {} })
+}
+
+#eval IO.println (run "RenormPi" RenormPi).show
+
+#guard (run "RenormPi" RenormPi).allAsExpected
+#guard (run "RenormPi" RenormPi).count == 5
+
 /-! ## Splitting on a result the goal is stuck on
 
 `split f in t` finds, in the goal, a sealed program whose run is stuck on the result of a

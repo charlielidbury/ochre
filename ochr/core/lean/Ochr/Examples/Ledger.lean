@@ -67,12 +67,13 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { generalize := false }
   ["ClosingOff.UseDec:rejected", "Equality.CastMatch:rejected", "CaseSplits.MatchAfterOpaque:rejected",
-   "GenType.GenL:rejected", "Splitting.Pick:rejected", "Splitting.PickNotZero:rejected",
+   "GenType.GenL:rejected", "RenormPi.G:rejected", "RenormPi.Plain:rejected", "RenormPi.InPi:rejected",
+   "RenormPi.InConj:rejected", "Splitting.Pick:rejected", "Splitting.PickNotZero:rejected",
    "Splitting.PickNotZeroCopy:rejected", "Splitting.Pick22:rejected", "Splitting.Pick22NotZero:rejected",
-   "Splitting.PickTwo:rejected", "Splitting.DoubleVal:rejected",
-   "Trees.InsertM:rejected", "Trees.Insert:rejected", "Trees.InsertMEq:rejected",
-   "Trees.InsertMSwap:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.InsertM:rejected",
-   "InPlaceTrees.Insert:rejected", "InPlaceTrees.InsertMIsInsert:rejected", "InPlaceTrees.SizeInsert:rejected",
+   "Splitting.PickTwo:rejected", "Splitting.DoubleVal:rejected", "Trees.InsertM:rejected",
+   "Trees.Insert:rejected", "Trees.InsertMEq:rejected", "Trees.InsertMSwap:rejected",
+   "Trees.SizeInsert:rejected", "InPlaceTrees.InsertM:rejected", "InPlaceTrees.Insert:rejected",
+   "InPlaceTrees.InsertMIsInsert:rejected", "InPlaceTrees.SizeInsert:rejected",
    "InPlaceTrees.SizeInsertRw:rejected"]
 open Ochr.Registry in
 #guard rowOk { blockMoves := false }
@@ -109,26 +110,30 @@ open Ochr.Registry in
   ["ClosingOff.Clear:accepted", "ClosingOff.Boom5:accepted"]
 open Ochr.Registry in
 #guard rowOk { genConsistent := false }
-  ["Splitting.PickNotZero:rejected", "Splitting.PickNotZeroCopy:rejected", "Splitting.Pick22NotZero:rejected",
-   "Splitting.PickTwo:rejected",
-   "Trees.InsertMEq:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.SizeInsert:rejected",
-   "InPlaceTrees.SizeInsertRw:rejected"]
+  ["RenormPi.Plain:rejected", "RenormPi.InPi:rejected", "RenormPi.InConj:rejected",
+   "Splitting.PickNotZero:rejected", "Splitting.PickNotZeroCopy:rejected",
+   "Splitting.Pick22NotZero:rejected", "Splitting.PickTwo:rejected", "Trees.InsertMEq:rejected",
+   "Trees.SizeInsert:rejected", "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 0 }
-  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected"]
+  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected",
+   "Snapshots.UseCapOf:rejected"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 0, confine := false }
-  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected",
-   "Erasure.EffArgErased:accepted", "Erasure.Write:accepted", "Erasure.Borrow:accepted",
-   "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted", "ErasureBySyntax.LieP:accepted"]
+  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected",
+   "Snapshots.UseCapOf:rejected", "Erasure.EffArgErased:accepted", "Erasure.Write:accepted",
+   "Erasure.Borrow:accepted", "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted",
+   "ErasureBySyntax.LieP:accepted"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 1 }
-  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected"]
+  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected",
+   "Snapshots.UseCapOf:rejected"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 1, confine := false }
-  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected",
-   "Erasure.EffArgErased:accepted", "Erasure.Write:accepted", "Erasure.Borrow:accepted",
-   "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted", "ErasureBySyntax.LieP:accepted"]
+  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected",
+   "Snapshots.UseCapOf:rejected", "Erasure.EffArgErased:accepted", "Erasure.Write:accepted",
+   "Erasure.Borrow:accepted", "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted",
+   "ErasureBySyntax.LieP:accepted"]
 open Ochr.Registry in
 #guard rowOk { positivity := false }
   ["Positivity.Bad:accepted", "Positivity.L:accepted", "Positivity.K:accepted", "Positivity.bad:accepted",
@@ -163,8 +168,9 @@ open Ochr.Registry in
 #guard rowOk { capTypes := false }
   ["ClosingOff.UseDec:rejected", "ClosingOff.UseApply:rejected", "Equality.Om:rejected",
    "Snapshots.CapS:rejected", "Snapshots.CapSId:rejected", "Snapshots.CapPi:rejected",
-   "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "ArmLocal.JoinS:rejected",
-   "ArmLocal.AllGe:rejected", "ArmLocal.Leak:rejected"]
+   "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected",
+   "Snapshots.UseCapOf:rejected", "RenormPi.InPi:rejected", "RenormPi.InConj:rejected",
+   "ArmLocal.JoinS:rejected", "ArmLocal.AllGe:rejected", "ArmLocal.Leak:rejected"]
 -- `genPlaceType` changes no verdict; 08CaseSplits.lean asserts its effect on the generalised σ's type
 -- v2.0 D45 by type, switched off: a match on a proof inspects its content (⋆) like data: completeness only
 open Ochr.Registry in
@@ -203,7 +209,8 @@ open Ochr.Registry in
   ["ReturnedBorrows.L:rejected", "ReturnedBorrows.Inj:rejected", "ReturnedBorrows.PF:rejected",
    "Equality.NotAdd01:rejected", "Equality.WriteNeq:rejected", "Equality.WriteDisj:rejected",
    "Equality.NoConf:rejected", "Equality.NoConfS:rejected", "Equality.NoConfMatch:rejected",
-   "Equality.NoConfBack:rejected", "Equality.BoolDisj:rejected", "Splitting.PickTwo:rejected"]
+   "Equality.NoConfBack:rejected", "Equality.BoolDisj:rejected", "RenormPi.Plain:rejected",
+   "RenormPi.InPi:rejected", "RenormPi.InConj:rejected", "Splitting.PickTwo:rejected"]
 -- v2.1 D52 switched off: equal constructors are not taken apart in Eq, so programs that
 -- need an equation between successors or pairs taken apart are rejected (completeness)
 open Ochr.Registry in
@@ -229,9 +236,10 @@ open Ochr.Registry in
 -- D48 (3) switched off: Π-types compared by captures and code (reviewer-3 C3)
 open Ochr.Registry in
 #guard rowOk { piUnder := false }
-  ["ClosingOff.UseApply:rejected", "Equality.Om:rejected", "Functions.Cap:rejected",
-   "Functions.CapEq:rejected", "Functions.P1:rejected", "Functions.P3:rejected",
-   "Functions.PassZeroAdd:rejected", "Functions.PassA:rejected", "Functions.RunUH:rejected"]
+  ["ClosingOff.UseApply:rejected", "Equality.Om:rejected", "RenormPi.InPi:rejected",
+   "RenormPi.InConj:rejected", "Functions.Cap:rejected", "Functions.CapEq:rejected", "Functions.P1:rejected",
+   "Functions.P3:rejected", "Functions.PassZeroAdd:rejected", "Functions.PassA:rejected",
+   "Functions.RunUH:rejected"]
 -- D49 (3) switched off: a data field of a matched proof is ⋆, and cannot be split
 open Ochr.Registry in
 #guard rowOk { proofDataFields := false }

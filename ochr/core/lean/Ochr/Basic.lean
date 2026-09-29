@@ -230,6 +230,19 @@ partial def Term.blockOccs (inFn : Bool) (c : Nat) : Term → List (Nat × Place
   | .matchInd p _ as => (c, p, .scrut) :: as.flatMap (·.2.blockOccs inFn c)
   | _ => []
 
+/-- The term forms a function or Π-type somewhere (which may capture its free variables). -/
+partial def Term.formsFn : Term → Bool
+  | .pi .. | .fix .. => true
+  | .assign _ t | .succ t | .fst t | .snd t | .ref t => t.formsFn
+  | .letIn _ t u | .seq t u | .cong t u | .ascribe t u => t.formsFn || u.formsFn
+  | .matchNat _ z s => z.formsFn || s.formsFn
+  | .call f as _ => f.formsFn || as.any (·.formsFn)
+  | .eq a b c | .id a b c => a.formsFn || b.formsFn || c.formsFn
+  | .ctor _ _ _ ps as => ps.any (·.formsFn) || as.any (·.formsFn)
+  | .prim _ as | .tind _ as => as.any (·.formsFn)
+  | .matchInd _ _ as => as.any (·.2.formsFn)
+  | _ => false
+
 /-- A place whose first step from its root goes through a borrow (`*x…`). -/
 def Place.derefsRoot : Place → Bool
   | .deref (.var _) => true
