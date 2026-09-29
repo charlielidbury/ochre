@@ -1,4 +1,6 @@
-# lean-checker: an executable checker for RULES v1.9, and what running it found
+# lean-checker: an executable checker for RULES v2.0, and what running it found
+
+**v2.0 (§14):** False/True/And are library inductive declarations and the checker's primitives for them are gone; Prop inductives, zero constructors, uniform parameters, by-type matching on proofs, subsingleton elimination and D47 are implemented with switches and asserted ledger rows. 364 verdicts, all as expected. Findings: in this machine D42 (proofs are ⋆), not D45's subsingleton restriction, is what blocks the `Or` attack's closed `False` (D45 is still needed for the model and for canonicity); `And(True, P) ≡ P` as normalisation hides an `And` from a match; a v1.9 checker bug (a match's scrutinee type was assumed from its arms, a type-safety hole) is fixed. No closed proof of False found against v2.0.
 
 **v1.9 (§12):** D41 (confinement) is implemented and checked. The fail-safe experiment finds that D41 as written catches misclassified inline terms but not misclassified calls or blocks: the erased-call exception lets their bodies' writes through. 247 verdicts, all as expected.
 **v1.7–v1.8 (round 3, §10–§11):** D35–D39 implemented. The formal appendix's BoomL/BoomB, its positivity attack, and breaker-fresh-v16 X1–X5 are regressions. Three more closed proofs of false were found and fixed on the way: P1 against the v1.6 checker, P2 against a first v1.7 reading, and P3 against P1's first fix. 239 verdicts, all as expected. §11 lists where the checker, RULES and the appendix still differ.
@@ -371,4 +373,101 @@ Fix: a binding carries a flag, set from syntax: a `let` from its right-hand side
 
 ## 13. Not done
 
-A proof that the implementation matches the rules (the traces and the ledger are the evidence); universe checking beyond C15; `Bool` (Nat stands in); loops, shared borrows, borrows in data (D8); the separate meta-lean development (`ochr/core/meta-lean/`, another agent's).
+A proof that the implementation matches the rules (the traces and the ledger are the evidence); universe checking beyond C15; `Nat` and `Unit` as ordinary declarations (they stay builtin); indexed families (`Eq` stays primitive); loops, shared borrows, borrows in data (D8); the separate meta-lean development (`ochr/core/meta-lean/`, another agent's).
+
+## 14. Rules v2.0 (D45–D47): the connectives are inductive definitions
+
+### 14.1 Rescued v1.9 work (D44, captured-value types)
+
+The previous checker agent's uncommitted work was verified (261/261, green) and committed as 3c887eb3: D44 (a Π-type or `fix` whose codomain is syntactically `&T` needs a borrow parameter; `borrowParam`, ledger row D44.Q/Boom/LeakT) and captured values that keep their types (`capTypes`: a captured sealed program is typed by running its term on a private copy; a read of a captured proof is inlined as `(⋆ : T)`). One fix on top (2071ac58): capture decided "a captured proof" by the value `⋆`, the reading finding P3 removed; it now uses the binding's declared flag. The examples moved to `Examples/D44.lean` (program `D44`), and the asserted ledger rows to `Examples/Ledger.lean`.
+
+### 14.2 What changed in the checker
+
+- **No primitive connectives.** `Term.top/and/andI/refl` and `Value.tTop/tAnd` are deleted. `Check.prelude` declares `inductive False : Prop`, `inductive True : Prop := I`, `inductive And (P : Prop) (Q : Prop) : Prop := Intro(l : P, r : Q)`, checked by the same `checkInd` as user declarations; every program starts from it. `⊤`, `P ∧ Q`, `⟨h, k⟩`, `refl` are resolved to `True`, `And(P, Q)`, `Intro(h, k)`, `I` (`Surface.lean`), and printed back as notation. No internal alias remains. The `Eq` rules still name the library's `True`, `False` and `And` (`mkEqM`, `mkAnd`), as RULES §4 does. `Nat` and `Unit` stay builtin, as before.
+- **`D(ā)`.** `Term.tind n args`, `Value.tInd n args`. A declaration stores its parameters (a telescope of type terms), its sort and its field types as *terms* in the scope of the parameters; `fieldTypes` instantiates them. Runtime values do not carry parameters, and neither does a constructor term (`C(t̄)`, as in RULES §1).
+- **Field places know their constructor** (`Place.field` carries a `FieldRef`: type, constructor, index). A proof's field is typed without inspecting its content (`⋆`), and reading a field of a value built by another constructor or type is an error.
+
+| Rule | Implementation | Switch → ledger row |
+|---|---|---|
+| D42 for constructors: a `Prop` inductive's constructor application is a proof, `⋆`, erased | `ctorIsProof` (flags), `evalCtor` | `propValues`: OrComm, SqTrue, EffL, EffLNoop rejected (completeness) |
+| D45 by type | `byTypeMatch` (syntactic), `evalMatchByType`, `checkTail`'s by-type branch; `⋆`'s fields are `⋆` (`stepV`) | `byType`: 20 completeness losses (Logic, ByType, OrAttack) |
+| D45 subsingleton elimination | `largeElim`, `fieldTermIsProp`; the check is on the arms' declared proof flags | `subsingleton`: OrAttack.IsL, Irr, OrLie, Get, SqIrr accepted (no closed False: finding F1) |
+| D45 + D42 both off | | adds OrAttack.Boom : False and SqBoom : False (the closed proofs) |
+| D46 parameters | `evalTInd`, `evalCtor` (`unifyParams`, the `hint` argument of `eval`), `fieldTypes`, `ctorRefinement`, `scrutType` | no switch (a representation) |
+| D47 disjointness | `mkEqM`, `distinctCtors` | `disjoint`: E6.NotAdd01 and six Logic tests rejected |
+| D36 with parameters | `firstOrderTerm` on field type terms | `positivity` gains PosParam.Bad, L, K, bad, Boom, Neg |
+| scrutinee typing (finding F3) | `scrutType` reads the place's type | `scrutTyped`: Scrut.f, Scrut.g accepted |
+
+Existing rows only gain entries from the new programs: D27 off loses the by-type tests (a proof parameter is `σ`, whose fields do not exist); D28 off and P3's value reading (`leafRule 1`) accept Get/SqIrr (a `⋆` read from Sq's data field passes as a proof by its value), so the subsingleton check depends on the declared proof judgement; P1's `leafRule 0` rejects OrLet; D41 off and its combinations accept EffInline. Every v1.9 verdict is unchanged, and so is every v1.9 ledger entry.
+
+### 14.3 Readings where RULES v2.0 left a choice
+
+All decisions are read from syntax and declarations, never from normal forms, so both evaluation paths make them the same way.
+
+- **R1. When a match is by type.** When the arms' constructors (resolved by name: names are now unique per program) belong to a `Prop` inductive, or there are no arms. The scrutinee's type is still *checked* to be `D(ā)`; that is typing, not an erasure decision.
+- **R2. Several constructors (`Or`).** §8 says what happens with zero and one. Implemented: every arm is checked with its fields as `⋆` places and no refinement, every arm must be a proof, and the match is a proof, `⋆`, erased. An untyped run does not run it (it cannot pick an arm); it runs one arm on a discarded copy to read its proof flag.
+- **R3. "A result whose type is not a proposition"** is read as "an arm that is not a proof by the declared judgement" (D42's flags), the reading consistent with D28/D35/D42. The computed-type reading would disagree across paths; the ledger's D28 and P3 rows show the value reading letting `Get` through.
+- **R4. No arms.** Any inductive with no constructors (`False`, or a data `Void`). The match is erased (vacuously a proof), its value is `⋆`; outside tail position it needs an annotation; in tail position it has no paths.
+- **R5. Parameters.** Inferred from the fields' types, else from a *hint*: the type the context requires (an ascription or `let x : T`, the goal at a tail, a parameter type at a call argument, a field type in an enclosing constructor, `Id`'s type). A hint only chooses parameters no field fixes, and the result is checked in context, so it cannot make anything typecheck that should not. `D(ā)`'s arguments are type positions (confined private copies), checked against the parameter telescope; a parameter may not be a borrow type (`List(&Nat)`, no borrows in data); universes are not cumulative (`Box(Eq Nat 0 1)` is rejected).
+- **R6. Proof fields in data** (`Sig(P) := MkSig(n : Nat, h : P)`): a field declared of a proposition (a parameter declared `: Prop`, or a `Prop` inductive) is a proof by declaration (`leafProof`), [Split] gives it `⋆`, and a stuck block that captures it keeps the flag.
+- **R7. [Close] rows, footprints, stuck-block captures.** Unchanged. A codomain `D(ā)` takes the data row; a codomain that is a `Prop` inductive makes the function return proofs (erased, never closed off). A by-type match is never stuck, so it is never closed off as a block.
+
+### 14.4 Tests (`Ochr/Examples/Logic.lean`, 104 assertions; existing examples restated)
+
+| Program | What it checks |
+|---|---|
+| `Logic` (26) | ex falso (`absurd(h : False) : Nat := match h {}`, into any `P`, into an effect-sensitive `Id`, annotated in a `let`); `False` is empty (four closed attempts rejected); no arms need a type with no constructors; D47 (`Eq Nat Z (S Z) ≡ False`, with an abstract predecessor, at a user `Bool`, and for `Id Unit (*x := 0) (*x := 1)`); no injectivity (`Inj` rejected); the notation is the library; large elimination from `True` |
+| `ByType` (19) | `Swap`/`Fst` on `And`; `Two` (data from a proof) and `WriteIf` (a data function that matches a proof, then writes); the two-path tests `WriteIfAt`/`TwoAt` instantiate lemmas checked at `h = ⋆` with propositions about a mutated place, and their false instances `WriteIfAtLie`/`TwoAtLie` are rejected; a by-type match outside tail position; `Id` over two owners taken apart as the library's `And` (`SplitId`); `AndTrue` (finding F2) |
+| `OrAttack` (20) | `Or` into `Prop` accepted; `IsL` rejected, so `Irr` and the closed `Boom : False` are; `OrLie`; the one-constructor variant `Sq` with a `Nat` field; `EffL` (finding F4) |
+| `PList` (15) | `inductive List (A : Type)`; in-place `AppendM` and `AppendMNil` by bare recursion; `AppendMOne` rejected; the pure `AppendNil` from the in-place lemma; instances at `List(Nat)` and `List(List(Nat))`; parameter inference and its errors; `List(&Nat)` rejected |
+| `PosParam` (16) | D36 through a parameter (`Mk(f : Box(Π(x : Bad). Void))` rejected; without D36 its closed `False` goes through); a `Π` field of a parameterised type rejected; nested (`Rose(A)` with `List(Rose(A))`) and proof fields (`Sig(P)`) accepted; `Box(Eq Nat 0 1)` rejected (non-cumulative) |
+| `Scrut` (7) | finding F3; unique constructor names |
+
+Existing examples: E5's `Le` has `False` as its base case; E6's `NotAdd01` and `SnapshotLie`, most `Attacks` targets and `Positivity`'s are restated as `False`; `TA2Z` and `Boom'` keep `Eq Nat 0 1` (convertible with `False` by D47), as do the v1.5–v1.8 regressions. `Inductives`' `Bool` constructors are renamed `ff | tt`. No verdict changed.
+
+### 14.5 Findings
+
+**F1. In this machine D42, not the subsingleton restriction, blocks the `Or` attack's closed `False`.**
+```
+inductive Or (P : Prop) (Q : Prop) : Prop := Inl(p : P) | Inr(q : Q)
+def IsL (h : Or(True, True)) : Bool := match h { Inl(p) => tt | Inr(q) => ff }
+def Irr (h : Or(True, True)) (k : Or(True, True)) : Eq Bool (IsL(h)) (IsL(k)) := refl
+def Boom : False := Irr(Inl(refl), Inr(refl))
+```
+With D45's restriction switched off, `IsL` and `Irr` are accepted (at the generic call `h = k = ⋆`, so both sides are the stuck `⌈IsL(⋆)⌉`), but `Boom` is still rejected: `Inl(refl)` is a proof, so its value is `⋆`, and `Irr(Inl(refl), Inr(refl))` has type `Eq Bool ⌈IsL(⋆)⌉ ⌈IsL(⋆)⌉ ≡ True`. No match can see which constructor built a proof. `Boom` (and the `Sq` variant `SqBoom`) is accepted only when constructor applications of `Prop` inductives also keep their constructor (`propValues` off). What D45 is still needed for:
+- **the model:** `IsL` and `Get(h : Sq) : Nat := match h { Mk(n) => n }` have no interpretation once proofs are irrelevant, and `OrLie : Eq Bool (IsL(Inl(refl))) (IsL(Inr(refl))) := refl`, accepted without D45, reads `Eq Bool tt ff` in the model;
+- **canonicity and adequacy:** `IsL(Inl(refl))` is a closed `Bool` that is stuck forever, and `Get(Mk(0))` returns `⋆` as a `Nat`;
+- **making D45's by-type rule total:** with two constructors there is no arm to pick, and only "every arm is a proof" makes the match's value `⋆`.
+
+For the paper: subsingleton elimination is a requirement of the model and of canonicity. The machine's own consistency comes from D42. The ledger has both rows.
+
+**F2. `And(True, P) ≡ P`, implemented as normalisation, hides an `And` from a match.**
+```
+def AndTrue (P : Prop) (h : ⊤ ∧ P) : P := match h { Intro(a, b) => b }     -- rejected
+```
+`h`'s stored type is the normal form `P`, so the by-type match has no `And(ā)` to read its field types from. Since `mkAnd` has done this since v1.x, `⊤ ∧ P` and `P` are the same value and the lost information cannot be recovered. Options: implement the unit laws as a conversion rule (`conv` identifies `And(True, P)` with `P`; stored types keep the `And`), or accept it (match on the conjunct directly). Matching on `Id` over two owners works when no conjunct is `True` (`SplitId`). **For RULES §4:** say whether the unit laws are normalisation or conversion.
+
+**F3. v1.9 checker bug: a match's scrutinee type was assumed from its arms.** Reproduced against 2071ac58:
+```
+inductive L := LNil | LCons(h : Nat, t : L)
+def T (n : Nat) : Type := match n { Z => L | S _ => Nat }
+def f (n : Nat) (x : T(n)) : Nat := match x { LNil => 0 | LCons(h, t) => 0 }
+def g (x : Nat) : Nat := f(1, x)
+```
+Both `f` and `g` were accepted. [Split] refined the abstract `x : ⌈T(σ)⌉` with `L`'s constructors, and `g`'s generic call closed `f(1, σ)` off, so at run time `g(5)` runs `L`'s arms on the number 5. This is a type-safety hole, not a closed `False`. RULES is right (the match typing rule needs the scrutinee's type to be `D`); the checker had never checked it for data. It is now read by `scrutType`, which v2.0 needs anyway for the parameters. Constructor names are also required to be unique: the resolver picks the first declaration with a name. Switch `scrutTyped`.
+
+**F4. A by-type match that cannot pick an arm is erased wherever it runs: `EffL`.**
+```
+def EffL (x : &Nat) (h : Or(⊤, ⊤)) : V(Z) := match h { Inl(p) => (*x := 1; refl) | Inr(q) => (*x := 2; refl) }
+```
+`V(Z)` computes to `⊤` but is not declared of sort `Prop`, so `EffL`'s calls run its body. The body is a proof, so each run erases it: `EffLNoop` (a call writes nothing) is accepted and `EffLOne` rejected. The typed check of `EffL` runs each arm's write in tail position, which is §12's tail-position gap of D41; outside tail position `EffInline` is rejected by D41. No claim depends on the typed run's effects: a goal is a snapshot formed before the body. But an effect that depends on the constructor (1 or 2) is exactly what subsingleton elimination forbids for results. So if the tail-position gap were ever closed by *running* erased tails rather than confining them, D45 would have to cover effects as well as results. With the machine as it is, erasing is what keeps it consistent.
+
+**F5. Disjointness is head-only.** Without injectivity, `Eq Nat 7 8` stays irreducible (`WriteIfAtLie`'s goal): empty in the model, not `False` by conversion. That is D47 as decided.
+
+**No closed proof of `False` found against v2.0.** Checked: the `Or` and `Sq` attacks; D36 through a parameter; borrows through a parameter; non-cumulativity at a parameter; ex falso never reaching a closed term; and the by-type decision on both paths (`WriteIfAt`, `TwoAt`).
+
+### 14.6 Timings and size
+
+- 364 verdicts, all as expected, in about 16 ms (compiled, median of 21 runs; it was 12.4 ms at v1.9 with 247). The v2.0 programs take about 3 ms, mostly `ByType` (1.3 ms) and `PList` (0.9 ms).
+- A clean build takes about 35 s. `lake exe tests` takes about 38 s, including compilation.
+- `Machine.lean` is 2,096 lines (1,823 before). The checker is about 3,860 lines and the examples about 1,460.

@@ -18,3 +18,4 @@ import Ochr.Examples.Attacks
 import Ochr.Examples.More
 import Ochr.Examples.Units
 import Ochr.Examples.Registry
+import Ochr.Examples.Ledger

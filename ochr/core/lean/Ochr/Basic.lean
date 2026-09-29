@@ -1,7 +1,7 @@
 import Ochr.Syntax
 
 /-!
-# Pure helpers: numerals, the `Eq`/`∧` smart constructors (§4 "`Eq` computes"),
+# Pure helpers: numerals, the `∧` smart constructor and constructor disjointness (§4 "`Eq` computes"),
 and syntactic traversals (free places, loans and abstract values inside values).
 -/
 
@@ -15,22 +15,33 @@ def Term.ofNat : Nat → Term
   | 0 => .zero
   | n + 1 => .succ (Term.ofNat n)
 
-/-- `⊤ ∧ P ≡ P ≡ P ∧ ⊤` (RULES §4). -/
-def mkAnd : Value → Value → Value
-  | .tTop, q => q
-  | p, .tTop => p
-  | p, q => .tAnd p q
+/-- The library propositions (v2.0, D45): `False`, `True` and `And` are inductive
+declarations (`Check.lean`'s prelude); `⊤`, `P ∧ Q`, `⟨h, k⟩` and `refl` are notation. -/
+def vTrue : Value := .tInd "True" []
+def vFalse : Value := .tInd "False" []
 
-/-- `Eq` computes (RULES §4): pairs split, reflexive equations are `⊤`.
-Proofs are all `⋆`, so an equation between proofs is reflexive. -/
-partial def mkEq (A a b : Value) : Value :=
-  match A, a, b with
-  | .tProd A₁ A₂, .pair a₁ a₂, .pair b₁ b₂ => mkAnd (mkEq A₁ a₁ b₁) (mkEq A₂ a₂ b₂)
-  | _, _, _ => if a == b then .tTop else .tEq A a b
+/-- `And(True, P) ≡ P ≡ And(P, True)` (RULES §4), as a smart constructor. -/
+def mkAnd : Value → Value → Value
+  | .tInd "True" [], q => q
+  | p, .tInd "True" [] => p
+  | p, q => .tInd "And" [p, q]
+
+/-- `D(ā)` in normal form: `And` through `mkAnd`. -/
+def mkTInd (n : String) (as : List Value) : Value :=
+  match n, as with
+  | "And", [p, q] => mkAnd p q
+  | _, _ => .tInd n as
+
+/-- D47: two values headed by distinct constructors of the same type (`Z` and `S _`, or
+`C(…)` and `C'(…)` with `C ≠ C'`). Values of a proposition are `⋆`, never distinct. -/
+def distinctCtors : Value → Value → Bool
+  | .zero, .succ _ | .succ _, .zero => true
+  | .ind t c _ _, .ind u d _ _ => t == u && c != d
+  | _, _ => false
 
 def Place.root : Place → Nat
   | .var i => i
-  | .deref p | .fst p | .snd p | .field _ _ p => p.root
+  | .deref p | .fst p | .snd p | .field _ p => p.root
 
 /-- Replace the root variable of a place by a place. -/
 def Place.mapRoot (f : Nat → Place) : Place → Place
@@ -38,7 +49,7 @@ def Place.mapRoot (f : Nat → Place) : Place → Place
   | .deref p => .deref (p.mapRoot f)
   | .fst p => .fst (p.mapRoot f)
   | .snd p => .snd (p.mapRoot f)
-  | .field i h p => .field i h (p.mapRoot f)
+  | .field g p => .field g (p.mapRoot f)
 
 /-- How a place occurs in a term. -/
 inductive PKind where
@@ -66,14 +77,13 @@ partial def Term.mapFree (f : Nat → Nat → Place) (c : Nat) : Term → Term
   | .ref t => .ref (t.mapFree f c)
   | .prod a b => .prod (a.mapFree f c) (b.mapFree f c)
   | .pair a b => .pair (a.mapFree f c) (b.mapFree f c)
-  | .and a b => .and (a.mapFree f c) (b.mapFree f c)
-  | .andI a b => .andI (a.mapFree f c) (b.mapFree f c)
   | .cong a b => .cong (a.mapFree f c) (b.mapFree f c)
   | .ascribe a b => .ascribe (a.mapFree f c) (b.mapFree f c)
   | .eq a b d => .eq (a.mapFree f c) (b.mapFree f c) (d.mapFree f c)
   | .id a b d => .id (a.mapFree f c) (b.mapFree f c) (d.mapFree f c)
   | .prim n as => .prim n (as.map (·.mapFree f c))
   | .ctor t k h as => .ctor t k h (as.map (·.mapFree f c))
+  | .tind n as => .tind n (as.map (·.mapFree f c))
   | .matchInd p t as => .matchInd (mp f c p) t (as.map fun (h, a) => (h, a.mapFree f c))
   | t => t
 
@@ -106,19 +116,57 @@ partial def Term.mapFreePlace (f : Nat → Place → Place) (c : Nat) : Term →
   | .ref t => .ref (t.mapFreePlace f c)
   | .prod a b => .prod (a.mapFreePlace f c) (b.mapFreePlace f c)
   | .pair a b => .pair (a.mapFreePlace f c) (b.mapFreePlace f c)
-  | .and a b => .and (a.mapFreePlace f c) (b.mapFreePlace f c)
-  | .andI a b => .andI (a.mapFreePlace f c) (b.mapFreePlace f c)
   | .cong a b => .cong (a.mapFreePlace f c) (b.mapFreePlace f c)
   | .ascribe a b => .ascribe (a.mapFreePlace f c) (b.mapFreePlace f c)
   | .eq a b d => .eq (a.mapFreePlace f c) (b.mapFreePlace f c) (d.mapFreePlace f c)
   | .id a b d => .id (a.mapFreePlace f c) (b.mapFreePlace f c) (d.mapFreePlace f c)
   | .prim n as => .prim n (as.map (·.mapFreePlace f c))
   | .ctor t k h as => .ctor t k h (as.map (·.mapFreePlace f c))
+  | .tind n as => .tind n (as.map (·.mapFreePlace f c))
   | .matchInd p t as => .matchInd (fp f c p) t (as.map fun (h, a) => (h, a.mapFreePlace f c))
   | t => t
 where
   fp (f : Nat → Place → Place) (c : Nat) (p : Place) : Place :=
     if p.root < c then p else f c (p.mapRoot fun j => .var (j - c))
+
+/-- Replace every read of the whole free variable `o` (at depth `c`, the variable
+`o + c`) by the closed term `u`; other occurrences stay. Used to inline a captured proof
+with its type (a proof's value is ⋆, so only its type needs keeping). -/
+partial def Term.inlineReads (t : Term) (o : Nat) (u : Term) (c : Nat) : Term :=
+  match t with
+  | .place (.var j) => if j == o + c then u else .place (.var j)
+  | .assign p t => .assign p (t.inlineReads o u c)
+  | .letIn h t w => .letIn h (t.inlineReads o u c) (w.inlineReads o u (c + 1))
+  | .seq t w => .seq (t.inlineReads o u c) (w.inlineReads o u c)
+  | .matchNat p z s => .matchNat p (z.inlineReads o u c) (s.inlineReads o u c)
+  | .pi hs ds cod =>
+      .pi hs ((ds.zipIdx).map fun (d, i) => d.inlineReads o u (c + i)) (cod.inlineReads o u (c + ds.length))
+  | .fix h hs ds cod d b =>
+      .fix h hs ((ds.zipIdx).map fun (d, i) => d.inlineReads o u (c + i)) (cod.inlineReads o u (c + ds.length)) d
+        (b.inlineReads o u (c + ds.length + 1))
+  | .call g as hd => .call (g.inlineReads o u c) (as.map (·.inlineReads o u c)) hd
+  | .succ t => .succ (t.inlineReads o u c)
+  | .fst t => .fst (t.inlineReads o u c)
+  | .snd t => .snd (t.inlineReads o u c)
+  | .ref t => .ref (t.inlineReads o u c)
+  | .prod a b => .prod (a.inlineReads o u c) (b.inlineReads o u c)
+  | .pair a b => .pair (a.inlineReads o u c) (b.inlineReads o u c)
+  | .cong a b => .cong (a.inlineReads o u c) (b.inlineReads o u c)
+  | .ascribe a b => .ascribe (a.inlineReads o u c) (b.inlineReads o u c)
+  | .eq a b d => .eq (a.inlineReads o u c) (b.inlineReads o u c) (d.inlineReads o u c)
+  | .id a b d => .id (a.inlineReads o u c) (b.inlineReads o u c) (d.inlineReads o u c)
+  | .prim n as => .prim n (as.map (·.inlineReads o u c))
+  | .ctor t k h as => .ctor t k h (as.map (·.inlineReads o u c))
+  | .tind n as => .tind n (as.map (·.inlineReads o u c))
+  | .matchInd p t as => .matchInd p t (as.map fun (h, a) => (h, a.inlineReads o u c))
+  | t => t
+
+/-- Clear the head marks of a sealed program's calls (to type it as an ordinary term). -/
+partial def Term.unHead : Term → Term
+  | .call f as _ => .call f as false
+  | .letIn h t u => .letIn h t.unHead u.unHead
+  | .seq t u => .seq t.unHead u.unHead
+  | t => t
 
 /-- Every place occurrence `(depth, place, kind)`, in evaluation order. -/
 partial def Term.placeOccs (c : Nat) : Term → List (Nat × Place × PKind)
@@ -135,10 +183,10 @@ partial def Term.placeOccs (c : Nat) : Term → List (Nat × Place × PKind)
         ++ b.placeOccs (c + ds.length + 1)
   | .call g as _ => g.placeOccs c ++ as.flatMap (·.placeOccs c)
   | .succ t | .fst t | .snd t | .ref t => t.placeOccs c
-  | .prod a b | .pair a b | .and a b | .andI a b | .cong a b | .ascribe a b =>
+  | .prod a b | .pair a b | .cong a b | .ascribe a b =>
       a.placeOccs c ++ b.placeOccs c
   | .eq a b d | .id a b d => a.placeOccs c ++ b.placeOccs c ++ d.placeOccs c
-  | .prim _ as | .ctor _ _ _ as => as.flatMap (·.placeOccs c)
+  | .prim _ as | .ctor _ _ _ as | .tind _ as => as.flatMap (·.placeOccs c)
   | .matchInd p _ as => (c, p, .scrut) :: as.flatMap (·.2.placeOccs c)
   | _ => []
 
@@ -157,24 +205,24 @@ programs, closures and Π-types too (loans may occur there: RULES §2). -/
 partial def Value.anyAtom (P : Value → Bool) (v : Value) : Bool :=
   P v || match v with
   | .succ w | .tRef w | .borrow _ w => w.anyAtom P
-  | .pair a b | .tProd a b | .tAnd a b => a.anyAtom P || b.anyAtom P
+  | .pair a b | .tProd a b => a.anyAtom P || b.anyAtom P
   | .tEq A a b => A.anyAtom P || a.anyAtom P || b.anyAtom P
   | .clo cs t | .tPi cs t => cs.any (·.anyAtom P) || t.anyAtom P
   | .sealed t => t.anyAtom P
-  | .ind _ _ _ fs => fs.any (·.anyAtom P)
+  | .ind _ _ _ fs | .tInd _ fs => fs.any (·.anyAtom P)
   | _ => false
 
 partial def Term.anyAtom (P : Value → Bool) : Term → Bool
   | .val v => v.anyAtom P
   | .assign _ t | .succ t | .fst t | .snd t | .ref t => t.anyAtom P
-  | .letIn _ t u | .seq t u | .prod t u | .pair t u | .and t u | .andI t u
+  | .letIn _ t u | .seq t u | .prod t u | .pair t u
   | .cong t u | .ascribe t u => t.anyAtom P || u.anyAtom P
   | .matchNat _ z s => z.anyAtom P || s.anyAtom P
   | .pi _ ds c => ds.any (·.anyAtom P) || c.anyAtom P
   | .fix _ _ ds c _ b => ds.any (·.anyAtom P) || c.anyAtom P || b.anyAtom P
   | .call f as _ => f.anyAtom P || as.any (·.anyAtom P)
   | .eq a b c | .id a b c => a.anyAtom P || b.anyAtom P || c.anyAtom P
-  | .prim _ as | .ctor _ _ _ as => as.any (·.anyAtom P)
+  | .prim _ as | .ctor _ _ _ as | .tind _ as => as.any (·.anyAtom P)
   | .matchInd _ _ as => as.any (·.2.anyAtom P)
   | _ => false
 end
@@ -184,24 +232,24 @@ mutual
 partial def Value.loans : Value → List Nat
   | .loan l => [l]
   | .succ w | .tRef w | .borrow _ w => w.loans
-  | .pair a b | .tProd a b | .tAnd a b => a.loans ++ b.loans
+  | .pair a b | .tProd a b => a.loans ++ b.loans
   | .tEq A a b => A.loans ++ a.loans ++ b.loans
   | .clo cs t | .tPi cs t => cs.flatMap Value.loans ++ t.loans
   | .sealed t => t.loans
-  | .ind _ _ _ fs => fs.flatMap Value.loans
+  | .ind _ _ _ fs | .tInd _ fs => fs.flatMap Value.loans
   | _ => []
 
 partial def Term.loans : Term → List Nat
   | .val v => v.loans
   | .assign _ t | .succ t | .fst t | .snd t | .ref t => t.loans
-  | .letIn _ t u | .seq t u | .prod t u | .pair t u | .and t u | .andI t u
+  | .letIn _ t u | .seq t u | .prod t u | .pair t u
   | .cong t u | .ascribe t u => t.loans ++ u.loans
   | .matchNat _ z s => z.loans ++ s.loans
   | .pi _ ds c => ds.flatMap Term.loans ++ c.loans
   | .fix _ _ ds c _ b => ds.flatMap Term.loans ++ c.loans ++ b.loans
   | .call f as _ => f.loans ++ as.flatMap Term.loans
   | .eq a b c | .id a b c => a.loans ++ b.loans ++ c.loans
-  | .prim _ as | .ctor _ _ _ as => as.flatMap Term.loans
+  | .prim _ as | .ctor _ _ _ as | .tind _ as => as.flatMap Term.loans
   | .matchInd _ _ as => as.flatMap (·.2.loans)
   | _ => []
 end

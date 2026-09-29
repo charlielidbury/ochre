@@ -33,9 +33,9 @@ inductive STerm where
   | fix (f : String) (bs : List (String × STerm)) (ret : STerm) (dec : Option String) (body : STerm)
   | unitLit
   | pair (a b : STerm)
-  | andI (a b : STerm)
-  | top
-  | and (P Q : STerm)
+  | andI (a b : STerm)                             -- ⟨h, k⟩: notation for And's Intro(h, k)
+  | top                                          -- ⊤: notation for True
+  | and (P Q : STerm)                            -- P ∧ Q: notation for And(P, Q)
   | prod (A B : STerm)
   | ascribe (t A : STerm)
   | sort (l : Nat)
@@ -48,6 +48,8 @@ structure SDecl where
   body : STerm := .unitLit
   dec : Option String := none
   ind? : Option (List (String × List (String × STerm))) := none   -- an inductive declaration
+  indParams : List (String × STerm) := []                         -- its uniform parameters (v2.0)
+  indSort : Option STerm := none                                  -- its sort (default Type₀)
   expectAccept : Bool
 deriving Inhabited, Repr
 
@@ -78,12 +80,20 @@ structure Tables where
 
 abbrev R := ReaderT Tables (Except String)
 
+/-- The library's names (`Check.prelude`: `False`, `True`, `And`, `I`, `Intro`). -/
+def Tables.prelude : Tables :=
+  Ochr.prelude.foldl (fun t it => match it with
+    | .ind d =>
+      { ctors := t.ctors ++ (d.ctors.zipIdx.map fun ((cn, fs), i) => (cn, d.name, i, fs.map (·.1))),
+        types := t.types ++ [d.name] }
+    | .defn _ => t) {}
+
 def Tables.ofProgram (p : List SDecl) : Tables :=
   p.foldl (fun t d => match d.ind? with
     | some cs =>
       { ctors := t.ctors ++ (cs.zipIdx.map fun ((cn, fs), i) => (cn, d.name, i, fs.map (·.1))),
         types := t.types ++ [d.name] }
-    | none => t) {}
+    | none => t) Tables.prelude
 
 def builtinNames : List String := ["Nat", "Unit", "Z", "refl", "S", "Id", "Eq", "cong"]
 
@@ -116,7 +126,7 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
     | some p => pure (.place p)
     | none =>
       let tb ← read
-      if tb.types.contains x then return .tind x
+      if tb.types.contains x then return .tind x []
       if let some (_, ty, i, fs) := tb.ctors.find? (·.1 == x) then
         if fs.isEmpty then return .ctor ty i ⟨x⟩ []
         throw s!"constructor {x} takes {fs.length} fields"
@@ -124,7 +134,7 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
       | "Nat" => pure .nat
       | "Unit" => pure .unit
       | "Z" => pure .zero
-      | "refl" => pure .refl
+      | "refl" => pure (.ctor "True" 0 ⟨"I"⟩ [])      -- notation for True's constructor (v2.0)
       | "S" => pure succFn
       | _ => pure (.const x)
   | .num n => pure (Term.ofNat n)
@@ -142,6 +152,8 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
                       ← resolve ctx false P, ← resolve ctx false h, ← resolve ctx false u]
   | .call (.ident c) as =>
     let tb ← read
+    if (lookup ctx c).isNone && tb.types.contains c then
+      return .tind c (← as.mapM (resolve ctx true))       -- D(ā): the parameters are types
     match (if (lookup ctx c).isSome then none else tb.ctors.find? (·.1 == c)) with
     | some (_, ty, i, fs) =>
       if fs.length != as.length then throw s!"constructor {c} takes {fs.length} fields, given {as.length}"
@@ -169,7 +181,7 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
     | [("Z", [], z), ("S", [y], s)] =>
       let ctxS := if y == "_" then ctx else .alias y (.fst p) :: ctx
       return .matchNat p (← resolve ctx ty z) (← resolve ctxS ty s)
-    | [] => throw "a match with no arms"
+    | [] => return .matchInd p "" []      -- no arms (v2.0): the scrutinee's type has no constructors
     | (c0, _, _) :: _ =>
       let tb ← read
       let some (_, tyName, _, _) := tb.ctors.find? (·.1 == c0)
@@ -179,11 +191,10 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
       for (cn, _, i, fs) in cs do
         let some (_, vars, body) := arms.find? (·.1 == cn) | throw s!"match on {tyName}: no arm for {cn}"
         if vars.length != fs.length then throw s!"pattern {cn} needs {fs.length} variables"
-        -- pattern variables are the sub-places p.fᵢ (RULES §1, D32)
+        -- pattern variables are the sub-places p.fᵢ (RULES §1, D32), naming their constructor
         let ctxA := (vars.zip (fs.zipIdx)).foldl (fun acc (v, (fname, j)) =>
-          if v == "_" then acc else .alias v (.field j ⟨fname⟩ p) :: acc) ctx
+          if v == "_" then acc else .alias v (.field ⟨tyName, i, j, fname⟩ p) :: acc) ctx
         out := out.push (Hint.mk cn, ← resolve ctxA ty body)
-        let _ := i
       if arms.length != cs.length then throw s!"match on {tyName}: {arms.length} arms for {cs.length} constructors"
       return .matchInd p tyName out.toList
   | .pi bs cod =>
@@ -197,9 +208,9 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
     return .fix ⟨f⟩ hs ds ret' (← decIndex bs dec) (← resolve bodyCtx false body)
   | .unitLit => pure .tt
   | .pair a b => return .pair (← resolve ctx false a) (← resolve ctx false b)
-  | .andI a b => return .andI (← resolve ctx false a) (← resolve ctx false b)
-  | .top => pure .top
-  | .and P Q => return .and (← resolve ctx true P) (← resolve ctx true Q)
+  | .andI a b => return .ctor "And" 0 ⟨"Intro"⟩ [← resolve ctx false a, ← resolve ctx false b]
+  | .top => pure (.tind "True" [])
+  | .and P Q => return .tind "And" [← resolve ctx true P, ← resolve ctx true Q]
   | .prod A B => return .prod (← resolve ctx true A) (← resolve ctx true B)
   | .ascribe a A => return .ascribe (← resolve ctx false a) (← resolve ctx true A)
   | .sort l => pure (.sort l)
@@ -217,9 +228,15 @@ end
 is its `self` binder (whose value is the global function). -/
 def resolveDecl (d : SDecl) : R Item := do
   if let some cs := d.ind? then
+    -- the parameters are a telescope; the field types are in their scope (v2.0, D46)
+    let (ctx', hs, ps) ← binders [] d.indParams
     let cs' ← cs.mapM fun (cn, fs) => do
-      pure (cn, ← fs.mapM fun (fname, FT) => do pure (fname, ← resolve [] true FT))
-    return .ind d.name cs'
+      pure (cn, ← fs.mapM fun (fname, FT) => do pure (fname, ← resolve ctx' true FT))
+    let sort ← match d.indSort with
+      | none | some (.sort 1) => pure 1
+      | some (.sort 0) => pure 0
+      | some _ => throw s!"{d.name}: an inductive type is in Prop or Type"
+    return .ind { name := d.name, params := hs.zip ps, sort := sort, ctors := cs' }
   let (ctx', hs, ds) ← binders [] d.params
   let cod ← resolve ctx' true d.ret
   let body ←

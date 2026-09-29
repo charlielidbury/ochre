@@ -24,15 +24,28 @@ deriving Inhabited, Repr
 
 instance : BEq Hint := ⟨fun _ _ => true⟩
 
+/-- A constructor field, as a pattern variable denotes it: field `idx` of constructor
+`ctor` of the inductive type `ty` (v2.0: the place knows its constructor, so its type
+is known without inspecting the content, which for a proof is `⋆`). `name` is for
+printing only. -/
+structure FieldRef where
+  ty : String
+  ctor : Nat
+  idx : Nat
+  name : String
+deriving Inhabited, Repr
+
+instance : BEq FieldRef := ⟨fun a b => a.ty == b.ty && a.ctor == b.ctor && a.idx == b.idx⟩
+
 mutual
-/-- Places `p ::= x | *p | p.1 | p.2` (`.1` is the predecessor of `S v` or the first
-component of a pair). -/
+/-- Places `p ::= x | *p | p.1 | p.2 | p.g` (`.1` is the predecessor of `S v` or the first
+component of a pair; `p.g` a constructor field). -/
 inductive Place where
   | var (i : Nat)
   | deref (p : Place)
   | fst (p : Place)
   | snd (p : Place)
-  | field (i : Nat) (h : Hint) (p : Place)   -- the i-th field of a constructor value (a pattern variable)
+  | field (f : FieldRef) (p : Place)         -- a field of a constructor value (a pattern variable)
 
 inductive Term where
   | place (p : Place)                         -- read `p` ([Read])
@@ -50,14 +63,15 @@ inductive Term where
   | call (f : Term) (args : List Term) (head : Bool)   -- `head`: the head call of a sealed program ([Seal])
   | nat | zero | succ (t : Term) | unit | tt
   | prod (A B : Term) | pair (t u : Term) | fst (t : Term) | snd (t : Term)
-  | eq (A t u : Term) | refl | top | and (P Q : Term) | andI (h k : Term)
+  | eq (A t u : Term)                         -- `Eq A t u` (primitive, in Prop, §4)
   | cong (f h : Term)
   | ref (A : Term)                            -- the borrow type `&A`
   | id (A t u : Term)                         -- `Id A t u` (§4)
   | ascribe (t A : Term)                      -- `(t : A)`
   | prim (n : String) (args : List Term)      -- `J A P h t`, `trans h k`, `symm h` (derivable from J)
-  | tind (n : String)                         -- a declared inductive type
-  | ctor (ty : String) (c : Nat) (h : Hint) (args : List Term)   -- constructor application
+  | tind (n : String) (args : List Term)      -- a declared inductive type applied to its parameters, `D(ā)`
+  | ctor (ty : String) (c : Nat) (h : Hint) (args : List Term)   -- constructor application (fields only;
+                                              -- the parameters are inferred when typed, v2.0)
   | matchInd (p : Place) (ty : String) (arms : List (Hint × Term))  -- one arm per constructor, in order
 
 /-- Runtime values (RULES §2). Types are values too. -/
@@ -71,19 +85,20 @@ inductive Value where
   | abs (s : Nat)                             -- `σ`: an abstract value (Lean's fvar)
   | sealed (t : Term)                         -- `⌈t⌉`: a closed program whose run is stuck
   | proof                                     -- `⋆`: every value of a proposition (proof irrelevance)
-  | tNat | tUnit | tProd (A B : Value) | tEq (A a b : Value) | tTop | tAnd (P Q : Value)
+  | tNat | tUnit | tProd (A B : Value) | tEq (A a b : Value)
   | tRef (A : Value)
   | tPi (caps : List Value) (t : Term)        -- Π-type: a closure over formation-time values (P2)
   | sort (l : Nat)
-  | ind (ty : String) (c : Nat) (h : Hint) (fs : List Value)   -- a constructor value
-  | tInd (n : String)
+  | ind (ty : String) (c : Nat) (h : Hint) (fs : List Value)   -- a constructor value (of a data type:
+                                              -- a value of a Prop inductive is ⋆, D42)
+  | tInd (n : String) (args : List Value)     -- `D(ā)`; `True`, `False`, `And(P, Q)` are library inductives
 end
 
 mutual
 partial def Place.beq : Place → Place → Bool
   | .var i, .var j => i == j
   | .deref p, .deref q | .fst p, .fst q | .snd p, .snd q => p.beq q
-  | .field i _ p, .field j _ q => i == j && p.beq q
+  | .field f p, .field g q => f == g && p.beq q
   | _, _ => false
 
 partial def Term.beqList : List Term → List Term → Bool
@@ -103,13 +118,13 @@ partial def Term.beq : Term → Term → Bool
   | .pi _ ds c, .pi _ ds' c' => Term.beqList ds ds' && c.beq c'
   | .fix _ _ ds c d b, .fix _ _ ds' c' d' b' => Term.beqList ds ds' && c.beq c' && d == d' && b.beq b'
   | .call f as h, .call g bs h' => f.beq g && Term.beqList as bs && h == h'
-  | .nat, .nat | .zero, .zero | .unit, .unit | .tt, .tt | .refl, .refl | .top, .top => true
+  | .nat, .nat | .zero, .zero | .unit, .unit | .tt, .tt => true
   | .succ t, .succ u | .fst t, .fst u | .snd t, .snd u | .ref t, .ref u => t.beq u
-  | .prod a b, .prod c d | .pair a b, .pair c d | .and a b, .and c d
-  | .andI a b, .andI c d | .cong a b, .cong c d | .ascribe a b, .ascribe c d => a.beq c && b.beq d
+  | .prod a b, .prod c d | .pair a b, .pair c d
+  | .cong a b, .cong c d | .ascribe a b, .ascribe c d => a.beq c && b.beq d
   | .eq a b c, .eq d e f | .id a b c, .id d e f => a.beq d && b.beq e && c.beq f
   | .prim n as, .prim m bs => n == m && Term.beqList as bs
-  | .tind n, .tind m => n == m
+  | .tind n as, .tind m bs => n == m && Term.beqList as bs
   | .ctor t c _ as, .ctor u d _ bs => t == u && c == d && Term.beqList as bs
   | .matchInd p t as, .matchInd q u bs => p.beq q && t == u && Term.beqList (as.map (·.2)) (bs.map (·.2))
   | _, _ => false
@@ -121,9 +136,9 @@ partial def Value.beqList : List Value → List Value → Bool
 
 partial def Value.beq : Value → Value → Bool
   | .zero, .zero | .unit, .unit | .bot, .bot | .proof, .proof
-  | .tNat, .tNat | .tUnit, .tUnit | .tTop, .tTop => true
+  | .tNat, .tNat | .tUnit, .tUnit => true
   | .succ v, .succ w | .tRef v, .tRef w => v.beq w
-  | .pair a b, .pair c d | .tProd a b, .tProd c d | .tAnd a b, .tAnd c d => a.beq c && b.beq d
+  | .pair a b, .pair c d | .tProd a b, .tProd c d => a.beq c && b.beq d
   | .gfn n, .gfn m => n == m
   | .clo cs t, .clo ds u | .tPi cs t, .tPi ds u => Value.beqList cs ds && t.beq u
   | .borrow l v, .borrow m w => l == m && v.beq w
@@ -131,7 +146,7 @@ partial def Value.beq : Value → Value → Bool
   | .sealed t, .sealed u => t.beq u
   | .tEq a b c, .tEq d e f => a.beq d && b.beq e && c.beq f
   | .ind t c _ fs, .ind u d _ gs => t == u && c == d && Value.beqList fs gs
-  | .tInd n, .tInd m => n == m
+  | .tInd n as, .tInd m bs => n == m && Value.beqList as bs
   | _, _ => false
 end
 

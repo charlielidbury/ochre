@@ -57,12 +57,12 @@ ochr V18 {
 -- D36: strict positivity (formal appendix note 3)
 ochr Positivity {
   inductive Empty := E(e : Empty)
-  def absurd (e : Empty) : Eq Nat Z (S Z) by e := match e { E(e') => absurd(e') }
+  def absurd (e : Empty) : False by e := match e { E(e') => absurd(e') }
   reject inductive Bad := Mk(f : Π(x : Bad). Empty)
   reject def L (b : Bad) : Empty := match b { Mk(f) => f(b) }
-  reject def K (b : Bad) : Eq Nat Z (S Z) := absurd(L(b))
+  reject def K (b : Bad) : False := absurd(L(b))
   reject def bad : Bad := Mk(λ(x : Bad) : Empty => L(x))
-  reject def Boom : Eq Nat Z (S Z) := K(bad)
+  reject def Boom : False := K(bad)
   -- first-order fields are fine
   inductive Pairs := PNil | PCons(hd : Nat × Unit, tl : Pairs)
 }

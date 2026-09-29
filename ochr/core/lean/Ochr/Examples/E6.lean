@@ -2,8 +2,9 @@ import Ochr.Examples.E4
 
 /-! # E6: programs and proofs that must be rejected (RULES-v0 §8), with their accepted repairs
 
-`Eq Nat 0 1` plays the role of `⊥` (v1 has no empty proposition; a closed proof of
-it is what an unsoundness looks like). -/
+A closed proof of `False` is what an unsoundness looks like. (Before v2.0, which made
+`False` the library's empty inductive, `Eq Nat 0 1` stood in for it; D47 makes the two
+convertible.) -/
 
 open Ochr.Test
 
@@ -34,12 +35,12 @@ ochr E6 {
   -- the negation is provable, by the same induction (deriver-e346 §E6.4); the S arm
   -- needs Nat injectivity, which v1 dropped (D16), so we state it on the successor
   -- and use a borrow so that the environment does the congruence
-  def NotAdd01 (x : &Nat) (h : Id Unit (AddM(x, 0)) (AddM(x, 1))) : Eq Nat 0 1 by x :=
+  def NotAdd01 (x : &Nat) (h : Id Unit (AddM(x, 0)) (AddM(x, 1))) : False by x :=
     match *x { Z => h | S p => NotAdd01(&p, h) }
 
   -- a type formed before a mutation is still about the value it saw (E6.5, D2)
   def Snapshot (x : Nat) : Id Nat x x := let h = (refl : Id Nat x x); x := S x; h
-  reject def SnapshotLie (x : Nat) : Eq Nat 0 1 :=
+  reject def SnapshotLie (x : Nat) : False :=
     match x { Z => let h = (refl : Id Nat x 0); x := S x; (h : Id Nat x 0) | S _ => Snapshot(0) }
 
   -- (E6.6) returning a borrow of a local
