@@ -126,13 +126,23 @@ ochr OrAttack {
   reject def SqBoom : False := SqIrr(Mk(0), Mk(1))
   -- elimination of Sq into propositions is fine
   def SqTrue (h : Sq) : True := match h { Mk(n) => refl }
+  -- a match that cannot pick an arm is a proof, erased wherever it runs (P2): EffL's calls
+  -- run its body, which is such a match, so they write nothing. (Its typed check runs each
+  -- arm's write in tail position, D41's tail-position gap: notes/lean-checker.md §12, §13.)
+  def U (n : Nat) : Type := match n { Z => Prop | S _ => Prop }
+  def V (n : Nat) : U(n) := match n { Z => ⊤ | S _ => ⊤ }
+  def EffL (x : &Nat) (h : Or(⊤, ⊤)) : V(Z) := match h { Inl(p) => (*x := 1; refl) | Inr(q) => (*x := 2; refl) }
+  def EffLNoop (x : &Nat) (h : Or(⊤, ⊤)) : Id Unit (let t = EffL(x, h); ()) () := refl
+  reject def EffLOne (x : &Nat) (h : Or(⊤, ⊤)) : Id Unit (let t = EffL(x, h); ()) (*x := 1) := refl
+  -- inline, outside tail position, the arms are erased occurrences and D41 rejects the writes
+  reject def EffInline (x : &Nat) (h : Or(⊤, ⊤)) : Nat := let t : V(Z) = match h { Inl(p) => (*x := 1; refl) | Inr(q) => (*x := 2; refl) }; 0
 }
 
 #eval IO.println (run "OrAttack" OrAttack).show
 
--- every verdict as expected, and exactly 14 assertions (a truncated file changes the count)
+-- every verdict as expected, and exactly 20 assertions (a truncated file changes the count)
 #guard (run "OrAttack" OrAttack).allAsExpected
-#guard (run "OrAttack" OrAttack).count == 14
+#guard (run "OrAttack" OrAttack).count == 20
 
 ochr PList {
   inductive List (A : Type) := Nil | Cons(h : A, t : List(A))

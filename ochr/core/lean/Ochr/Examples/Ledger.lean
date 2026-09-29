@@ -11,7 +11,7 @@ open Ochr.Registry in
   ["E5.TwoPhase:rejected", "E6.LemmaMoves:rejected", "Probes.TypeErased:rejected"]
 open Ochr.Registry in
 #guard flips { eraseOnCopy := false, confine := false } ==
-  ["E5.TwoPhase:rejected", "E6.LemmaMoves:rejected", "Attacks.N1T:accepted", "Attacks.N1Closed:accepted", "Attacks.Q:accepted", "Attacks.QBoom:accepted", "Probes.EffArg:accepted", "Probes.TypeErased:rejected", "V17.LieP:accepted", "V17.BoomP:accepted", "V19.Write:accepted", "V19.Borrow:accepted", "V19.Move:accepted"]
+  ["E5.TwoPhase:rejected", "E6.LemmaMoves:rejected", "Attacks.N1T:accepted", "Attacks.N1Closed:accepted", "Attacks.Q:accepted", "Attacks.QBoom:accepted", "Probes.EffArg:accepted", "Probes.TypeErased:rejected", "V17.LieP:accepted", "V17.BoomP:accepted", "V19.Write:accepted", "V19.Borrow:accepted", "V19.Move:accepted", "OrAttack.EffInline:accepted"]
 open Ochr.Registry in
 #guard flips { multiOwner := false } ==
   ["D18.BadD18:accepted", "D18.ClosedD18:accepted", "D18.GR:accepted", "D18.BadR:accepted"]
@@ -77,13 +77,13 @@ open Ochr.Registry in
   ["D44.CapP:rejected", "D44.CapP2:rejected", "OrAttack.OrLet:rejected"]
 open Ochr.Registry in
 #guard flips { leafRule := 0, confine := false } ==
-  ["Attacks.N1T:accepted", "Attacks.Q:accepted", "Probes.EffArgErased:accepted", "V19.Write:accepted", "V19.Borrow:accepted", "V19.Move:accepted", "D44.CapP:rejected", "D44.CapP2:rejected", "OrAttack.OrLet:rejected"]
+  ["Attacks.N1T:accepted", "Attacks.Q:accepted", "Probes.EffArgErased:accepted", "V19.Write:accepted", "V19.Borrow:accepted", "V19.Move:accepted", "D44.CapP:rejected", "D44.CapP2:rejected", "OrAttack.OrLet:rejected", "OrAttack.EffInline:accepted"]
 open Ochr.Registry in
 #guard flips { leafRule := 1 } ==
   ["D44.CapP:rejected", "D44.CapP2:rejected", "OrAttack.Get:accepted", "OrAttack.SqIrr:accepted"]
 open Ochr.Registry in
 #guard flips { leafRule := 1, confine := false } ==
-  ["Attacks.N1T:accepted", "Attacks.Q:accepted", "Probes.EffArgErased:accepted", "V17.LieP:accepted", "V18.BoomH:accepted", "V19.Write:accepted", "V19.Borrow:accepted", "V19.Move:accepted", "D44.CapP:rejected", "D44.CapP2:rejected", "OrAttack.Get:accepted", "OrAttack.SqIrr:accepted"]
+  ["Attacks.N1T:accepted", "Attacks.Q:accepted", "Probes.EffArgErased:accepted", "V17.LieP:accepted", "V18.BoomH:accepted", "V19.Write:accepted", "V19.Borrow:accepted", "V19.Move:accepted", "D44.CapP:rejected", "D44.CapP2:rejected", "OrAttack.Get:accepted", "OrAttack.SqIrr:accepted", "OrAttack.EffInline:accepted"]
 open Ochr.Registry in
 #guard flips { blockRule := 1, leafRule := 0 } ==
   ["V17.LieP:accepted", "V17.BoomP:accepted", "V17.LieG:accepted", "V17.BoomG:accepted", "V17.TruthG:rejected", "D44.CapP:rejected", "D44.CapP2:rejected", "OrAttack.OrLet:rejected"]
@@ -101,7 +101,7 @@ open Ochr.Registry in
   ["V18.P1:rejected"]
 open Ochr.Registry in
 #guard flips { confine := false } ==
-  ["Attacks.N1T:accepted", "Attacks.Q:accepted", "Probes.EffArgErased:accepted", "V17.LieP:accepted", "V19.Write:accepted", "V19.Borrow:accepted", "V19.Move:accepted"]
+  ["Attacks.N1T:accepted", "Attacks.Q:accepted", "Probes.EffArgErased:accepted", "V17.LieP:accepted", "V19.Write:accepted", "V19.Borrow:accepted", "V19.Move:accepted", "OrAttack.EffInline:accepted"]
 open Ochr.Registry in
 #guard flips { confineBodies := true } ==
   ["E4.TwiceMZero':rejected", "Attacks.P2:rejected", "Attacks.FP2:rejected", "Attacks.BoomIsTrue:rejected", "Attacks.p2:rejected", "Attacks.TA2:rejected", "Probes.F5:rejected", "Probes.TypeErased:rejected", "V17.F:rejected", "V17.SeqT:rejected", "V19.TailSteps:rejected", "D44.CapPi:rejected"]
@@ -114,7 +114,7 @@ open Ochr.Registry in
 -- v2.0 D45 by type, switched off: a match on a proof inspects its content (⋆) like data: completeness only
 open Ochr.Registry in
 #guard flips { byType := false } ==
-  ["Logic.FromTrue:rejected", "Logic.FromTrueIs:rejected", "ByType.Swap:rejected", "ByType.Fst:rejected", "ByType.FstSwap:rejected", "ByType.Two:rejected", "ByType.TwoIs:rejected", "ByType.WriteIf:rejected", "ByType.WriteIfId:rejected", "ByType.WriteIfAt:rejected", "ByType.TwoAt:rejected", "ByType.Snd:rejected", "ByType.Twice:rejected", "ByType.SplitId:rejected", "OrAttack.OrComm:rejected", "OrAttack.OrElim:rejected", "OrAttack.OrLet:rejected", "OrAttack.SqTrue:rejected"]
+  ["Logic.FromTrue:rejected", "Logic.FromTrueIs:rejected", "ByType.Swap:rejected", "ByType.Fst:rejected", "ByType.FstSwap:rejected", "ByType.Two:rejected", "ByType.TwoIs:rejected", "ByType.WriteIf:rejected", "ByType.WriteIfId:rejected", "ByType.WriteIfAt:rejected", "ByType.TwoAt:rejected", "ByType.Snd:rejected", "ByType.Twice:rejected", "ByType.SplitId:rejected", "OrAttack.OrComm:rejected", "OrAttack.OrElim:rejected", "OrAttack.OrLet:rejected", "OrAttack.SqTrue:rejected", "OrAttack.EffL:rejected", "OrAttack.EffLNoop:rejected"]
 -- v2.0 D45 subsingleton elimination, switched off: large elimination from Or and Sq is accepted (IsL, Get have no
 -- model; OrLie is Eq Bool tt ff in the model), but no closed False: D42 erases the constructor it would inspect
 open Ochr.Registry in
@@ -123,11 +123,11 @@ open Ochr.Registry in
 -- v2.0 D42 for constructors, switched off: Prop constructor applications are data values, not proofs (completeness)
 open Ochr.Registry in
 #guard flips { propValues := false } ==
-  ["OrAttack.OrComm:rejected", "OrAttack.SqTrue:rejected"]
+  ["OrAttack.OrComm:rejected", "OrAttack.SqTrue:rejected", "OrAttack.EffL:rejected", "OrAttack.EffLNoop:rejected"]
 -- both off: the closed proofs of False (OrAttack.Boom, SqBoom) go through
 open Ochr.Registry in
 #guard flips { subsingleton := false, propValues := false } ==
-  ["OrAttack.IsL:accepted", "OrAttack.Irr:accepted", "OrAttack.Boom:accepted", "OrAttack.Get:accepted", "OrAttack.SqIrr:accepted", "OrAttack.SqBoom:accepted"]
+  ["OrAttack.IsL:accepted", "OrAttack.Irr:accepted", "OrAttack.Boom:accepted", "OrAttack.Get:accepted", "OrAttack.SqIrr:accepted", "OrAttack.SqBoom:accepted", "OrAttack.EffLNoop:rejected", "OrAttack.EffInline:accepted"]
 -- v2.0 D47 switched off: Eq Nat Z (S Z) is irreducible again, so False and Eq Nat 0 1 part ways
 open Ochr.Registry in
 #guard flips { disjoint := false } ==
