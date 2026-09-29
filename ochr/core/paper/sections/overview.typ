@@ -4,7 +4,7 @@ This section introduces Ochr through its running examples. Everything is informa
 
 == Imperative code is evaluated inside types
 
-Ochr programs are made of definitions with parameters and a body. Borrow types `&T` are Rust's mutable references; places are variables `x`, dereferences `*p` and the predecessor field `p.1` of a number. A `match` on a place binds its pattern variable to a _sub-place_, not a copy, so in `match *x { Z => …, S p => … }` the name `p` stands for the field `(*x).1` and `&p` reborrows it.
+Places are variables `x`, dereferences `*p` and fields such as the predecessor field `p.1` of a number. A `match` on a place binds its pattern variable to a _sub-place_, not a copy: in `match *x { Z => …, S p => … }`, `p` is `(*x).1`.
 
 `Add` wraps `AddM` behind a pure interface. It owns its first argument, lends it to `AddM`, and returns it:
 
@@ -160,7 +160,7 @@ SizeInsert(t : Tree, k : Nat) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t :
                            SizeInsert(r, k), refl)) } }
 ```
 
-The comparison `Lt(σ_k, σ_v)` is stuck, so the split on `b` is a split on a sealed program: the checker names its value by a fresh abstract value, and replaces every derivation of the same closed program by it, including those produced later when the goal's sealed programs run again. In each arm, `Insert`'s sealed program runs one step and leaves the other subtree and the key in place, carried by the environment. The proof is not bare recursion: without rewriting tactics, each arm rewrites with the induction hypothesis by `J` with a hand-written motive, and the `false` arm needs an arithmetic lemma, `AddS : x + S y = S (x + y)`, proved in place by bare recursion and transferred to `Add` by lending, as `AddZero` was. This is the honest cost of a property that is not an equation between two recursions of the same shape.
+The comparison `Lt(σ_k, σ_v)` is stuck, so the split on `b` generalises the sealed program to a fresh abstract value, everywhere it occurs and wherever it is derived again. In each arm, `Insert`'s sealed program runs one step and leaves the other subtree and the key in place. The proof is not bare recursion: without rewriting tactics, each arm rewrites with the induction hypothesis by `J` with a hand-written motive, and the `false` arm needs an arithmetic lemma, `AddS : x + S y = S (x + y)`, proved in place by bare recursion and transferred to `Add` by lending, as `AddZero` was. This is the honest cost of a property that is not an equation between two recursions of the same shape.
 
 == Branching
 
