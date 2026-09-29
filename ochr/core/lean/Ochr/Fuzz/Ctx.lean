@@ -26,6 +26,7 @@ structure GVar where
   kind : VKind
   root : String       -- the variable whose accesses end this one (itself for owned)
   param : Bool := false
+  proj : Option Nat := none   -- D52: the component `.1`/`.2` of this pair-typed variable's place
 deriving Inhabited
 
 structure Ctx where
@@ -50,13 +51,17 @@ def touch (Γ : Ctx) (r : String) (write : Bool) : Gen Unit := do
 
 /-- The content type of a variable seen as a place. -/
 def GVar.placeTy (v : GVar) : Option GTy :=
+  if v.proj.isSome then some .nat else
   match v.kind, v.ty with
   | .bvar, .ref t => some t
   | .owned, t | .alias, t => if t.isData || (t matches .prop) || t.isProof then some t else none
   | _, _ => none
 
 def GVar.place (v : GVar) : STerm :=
-  if v.kind == .bvar then .deref (.ident v.name) else .ident v.name
+  let base := if v.kind == .bvar then STerm.deref (.ident v.name) else .ident v.name
+  match v.proj with
+  | some i => .proj i base
+  | none => base
 
 /-- The variable at the root of the variable's place (a pattern variable's `root` is
 its scrutinee's). Accessing the place is an access to this variable. -/
@@ -77,6 +82,11 @@ def placesOf (Γ : Ctx) (T : GTy) : Gen (List GVar) := do
     if let some t := v.placeTy then
       if t == T then
         out := out ++ (if v.param then [v, v] else [v])
+      -- D52: a component of a pair is a Nat place (`p.1`, `p.2`), readable only when the
+      -- pair is a known `Mk(…)` (a local built by `(a, b)`; a parameter is taken apart by
+      -- `match`, there is no η rule)
+      if T == .nat && t == .ind "Pair" && v.kind == .owned && !v.param then
+        out := out ++ [{ v with proj := some 1 }, { v with proj := some 2 }]
   pure out
 
 def natLit (k : Nat) : STerm := .num k
@@ -98,6 +108,7 @@ def borrowOf? (Γ : Ctx) (T : GTy) (avoid : List String) : Gen (Option (STerm ×
   if ps.isEmpty then return none
   let v ← pick ps
   touch Γ v.proot false
+  if v.proj.isSome then return some (.amp v.place, v.proot)     -- `&(p).1`, a pair component
   if v.kind == .bvar then
     if ← chance 30 then
       kill v.name
@@ -112,6 +123,7 @@ def ctorsOf : String → List (String × List (String × GTy))
   | "B2" => [("F", []), ("T", [])]
   | "L" => [("Nil", []), ("Cons", [("h", .nat), ("t", .ind "L")])]
   | "Box" => [("MkB", [("v", .nat)])]
+  | "Pair" => [("Mk", [("fst", .nat), ("snd", .nat)])]   -- D52: the Prelude's Pair, at Nat × Nat
   | "Or" => [("Inl", [("l", .proof)]), ("Inr", [("r", .proof)])]
   | "ExN" => [("Wit", [("n", .nat), ("e", .proof)])]
   | _ => []

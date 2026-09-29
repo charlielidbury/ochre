@@ -37,7 +37,7 @@ matched only into proofs; an opaque statement only rarely (`match h {}`, which c
 where the statement computes to `False`: a fail-safe path, D49 (1)). -/
 def matchPlaces (Γ : Ctx) (T : GTy) : Gen (List GVar) := do
   let mut out := []
-  for D in [GTy.nat, .ind "B2", .ind "L", .ind "Box"] do
+  for D in [GTy.nat, .ind "B2", .ind "L", .ind "Box", .ind "Pair"] do
     out := out ++ (← placesOf Γ D)
   for (v, P) in ← proofVars Γ do
     if P.large || T.isProof then

@@ -36,6 +36,10 @@ partial def groundVals (inds : List IndDecl) (T : Value) (depth : Nat) : List Va
   match T with
   | .tNat => (List.range (if depth == 0 then 2 else 4)).map Value.ofNat
   | .tUnit => [.unit]
+  | .tInd "Pair" [A, B] =>      -- D52: the Prelude's pair, at its parameters
+    if depth == 0 then [] else
+    (combos [(groundVals inds A (depth - 1)).take 2, (groundVals inds B (depth - 1)).take 2]).map
+      (Value.ind "Pair" 0 ⟨"Mk"⟩ [A, B])
   | .tInd n [] => match inds.find? (·.name == n) with
     | none => []
     | some d =>

@@ -46,7 +46,7 @@ def Case.decls (c : Case) : List SDecl := (Block.decls Prelude) ++ c.own
 
 def Case.show (c : Case) (name : String := "Cex") : String := ppProgram name c.own
 
-def indsOf (lib : List String) : List String := ["B2", "L", "Box", "Or", "ExN"].filter lib.contains
+def indsOf (lib : List String) : List String := ["B2", "L", "Box", "Or", "ExN"].filter lib.contains ++ ["Pair"]
 
 /-- Phase 1: the template subset. -/
 def genTemplates : Gen (List String) := do
@@ -143,8 +143,9 @@ def genStmt (lib : List LibFn) (inds : List String) : Gen (List (String × STerm
   for j in [0:np] do
     let T ← weighted [(4, pure GTy.nat), (4, pure (GTy.ref .nat)), (ind "B2", pure (GTy.ind "B2")),
       (ind "L", pure (GTy.ind "L")), (ind "L", pure (GTy.ref (.ind "L"))), (ind "Box", pure (GTy.ind "Box")),
+      (2, pure (GTy.ind "Pair")), (2, pure (GTy.ref (.ind "Pair"))),
       (if fnTys.isEmpty then 0 else 2, pick fnTys)]
-    let x := (match T with | .ref _ => "x" | .ind "L" => "l" | .ind "B2" => "b" | .ind _ => "m" | .fn .. => "h" | _ => "n") ++ toString j
+    let x := (match T with | .ref _ => "x" | .ind "L" => "l" | .ind "B2" => "b" | .ind "Pair" => "q" | .ind _ => "m" | .fn .. => "h" | _ => "n") ++ toString j
     ps := ps.push (x, T.surface)
     let kind := match T with
       | .ref _ => VKind.bvar
@@ -161,7 +162,7 @@ def genStmt (lib : List LibFn) (inds : List String) : Gen (List (String × STerm
     vars := { name := x, ty := .pf P, kind := .owned, root := x, param := true } :: vars
   let Γ : Ctx := { vars := vars, lib := lib, inds := inds }
   let A ← weighted [(3, pure GTy.nat), (3, pure GTy.unit), (ind "B2", pure (GTy.ind "B2")),
-    (ind "L", pure (GTy.ind "L")), (2, pure GTy.prop), (1, pure GTy.proof)]
+    (ind "L", pure (GTy.ind "L")), (2, pure GTy.prop), (1, pure GTy.proof), (2, pure (GTy.ind "Pair"))]
   let d0 ← saveDead
   let lhs ← gen Γ A (3 + (← rand 7))
   setDead d0

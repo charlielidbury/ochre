@@ -78,6 +78,7 @@ instance : BEq GTy := ⟨GTy.beq⟩
 partial def GTy.surface : GTy → STerm
   | .nat => .ident "Nat"
   | .unit => .ident "Unit"
+  | .ind "Pair" => .prod (.ident "Nat") (.ident "Nat")   -- D52: the generator's pairs are Nat × Nat
   | .ind n => .ident n
   | .ref t => .amp t.surface
   | .prop => .sort 0

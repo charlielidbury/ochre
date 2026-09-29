@@ -84,12 +84,14 @@ partial def genCtor (Γ : Ctx) (n : String) (f : Nat) : Gen STerm := do
   let (c, fs) ← pick cs
   if fs.isEmpty then return .ident c
   let args ← fs.mapM fun (_, T) => if f == 0 then leaf Γ T else gen Γ T (f / 2)
+  if n == "Pair" && (← chance 70) then
+    if let [a, b] := args then return .pair a b      -- the notation `(a, b)` (D52)
   pure (.call (.ident c) args)
 
 /-- `p := t`, the right-hand side first (it is evaluated first). -/
 partial def genAssign (Γ : Ctx) (f : Nat) : Gen STerm := do
   let mut ts := []
-  for T in [GTy.nat, .ind "L", .ind "Box", .ind "B2"] do
+  for T in [GTy.nat, .ind "L", .ind "Box", .ind "B2", .ind "Pair"] do
     if ← hasPlace Γ T then ts := ts ++ [T]
   if ts.isEmpty then return .unitLit
   let T ← pick ts
@@ -160,6 +162,7 @@ partial def genLet (Γ : Ctx) (T : GTy) (f : Nat) : Gen STerm := do
   let fr ← pick ([GTy.unit, .nat, .prop, .proof, .pf (.and .top .top), .ref .nat] ++ (if fam then [GTy.fam (.num 0), .fam (.num 0)] else []))
   let T' ← weighted [(4, pure GTy.nat), (if ← hasPlace Γ .nat then 4 else 0, pure (GTy.ref .nat)),
     (ind "L", pure (GTy.ind "L")), (ind "B2", pure (GTy.ind "B2")), (ind "Box", pure (GTy.ind "Box")),
+    (2, pure (GTy.ind "Pair")), (if (← hasPlace Γ (.ind "Pair")) then 1 else 0, pure (GTy.ref (.ind "Pair"))),
     (if (← hasPlace Γ (.ind "L")) then 1 else 0, pure (GTy.ref (.ind "L"))),
     (2, pure GTy.prop), (2, pure GTy.proof), (2, pure (GTy.fn [.ref .nat] fr)),
     (1, pure (GTy.fn [.nat, .pf (.and .top .top)] fr)), (2, pure (GTy.pf (.and .top .top))),

@@ -12,6 +12,11 @@ structure Opts where
   nGround : Nat := 6
 deriving Inhabited
 
+/-- A finding's reason at a refinement where some hypothesis is `False` (vacuous: no
+instance satisfies the hypotheses, so the two paths may differ without harm). -/
+def vacK (vac : Bool) (reason : String) : String :=
+  if !vac then reason else if reason == "" then "vacuous" else s!"vacuous {reason}"
+
 def push (fs : Array Finding) (k : Kind) (comp w s d : String) (reason : String := "") : Array Finding :=
   -- one finding per (kind, reason, component) is enough to report and shrink
   if fs.any (fun f => f.kind == k && f.comp == comp && f.reason == reason) then fs
@@ -50,7 +55,8 @@ def contexts (inds : List IndDecl) (T : Value) : List ((Value → Value) × Valu
   let hasL := inds.any (·.name == "L")
   let hasBox := inds.any (·.name == "Box")
   match T with
-  | .tNat => [(Value.succ, Value.tNat)] ++
+  | .tNat => [(Value.succ, Value.tNat),
+      (fun h => Value.ind "Pair" 0 ⟨"Mk"⟩ [.tNat, .tNat] [h, .zero], Value.tInd "Pair" [.tNat, .tNat])] ++
       (if hasBox then [(fun h => Value.ind "Box" 0 ⟨"MkB"⟩ [] [h], Value.tInd "Box" [])] else []) ++
       (if hasL then [(fun h => Value.ind "L" 1 ⟨"Cons"⟩ [] [h, .ind "L" 0 ⟨"Nil"⟩ [] []], Value.tInd "L" [])] else [])
   | .tInd "L" [] => [(fun h => Value.ind "L" 1 ⟨"Cons"⟩ [] [.zero, h], Value.tInd "L" [])]
@@ -93,9 +99,33 @@ def convOracle (o : Opts) (prep : Prepared) : Option Finding := Id.run do
     | _, _ => pure ()
   pure none
 
+/-- Rename the variable `x` to `y` in a generated term (generated binders never reuse a
+parameter's name, so no shadowing is possible). -/
+partial def renameT (x y : String) : STerm → STerm
+  | .ident z => .ident (if z == x then y else z)
+  | .app f as => .app f (as.map (renameT x y))
+  | .call f as => .call (renameT x y f) (as.map (renameT x y))
+  | .ctorP c ps as => .ctorP c (ps.map (renameT x y)) (as.map (renameT x y))
+  | .deref t => .deref (renameT x y t)
+  | .proj i t => .proj i (renameT x y t)
+  | .amp t => .amp (renameT x y t)
+  | .assign a b => .assign (renameT x y a) (renameT x y b)
+  | .letIn z A t u => .letIn z (A.map (renameT x y)) (renameT x y t) (renameT x y u)
+  | .seq a b => .seq (renameT x y a) (renameT x y b)
+  | .matchGen sc arms => .matchGen (renameT x y sc) (arms.map fun (c, vs, b) => (c, vs, renameT x y b))
+  | .pi bs c => .pi (bs.map fun (z, A) => (z, renameT x y A)) (renameT x y c)
+  | .arrow a b => .arrow (renameT x y a) (renameT x y b)
+  | .fix f bs r d b => .fix f (bs.map fun (z, A) => (z, renameT x y A)) (renameT x y r) d (renameT x y b)
+  | .pair a b => .pair (renameT x y a) (renameT x y b)
+  | .andI a b => .andI (renameT x y a) (renameT x y b)
+  | .and a b => .and (renameT x y a) (renameT x y b)
+  | .prod a b => .prod (renameT x y a) (renameT x y b)
+  | .ascribe a b => .ascribe (renameT x y a) (renameT x y b)
+  | t => t
+
 /-- Candidate proofs of the statement: `refl`, a one-level split of each parameter, and
-recursion on each Nat / list parameter (structural, and, to catch [Rec]/D31/L1 regressions,
-non-decreasing with and without `by`). -/
+recursion on each Nat / list parameter (structural, and, to catch [Rec]/D31/L1/L3
+regressions, non-decreasing with and without `by`, through a local, or inside a λ). -/
 def proofCands (c : Case) : List (STerm × Option String) := Id.run do
   let names := c.params.map (·.1)
   let arg (x y : String) (rep : STerm) : STerm :=
@@ -112,6 +142,14 @@ def proofCands (c : Case) : List (STerm × Option String) := Id.run do
       out := out.push (.matchGen (.ident x) [("Z", [], .ident "refl"), ("S", ["q"], call x (.ident "q"))], some x)
       out := out.push (call x (.ident x), some x)
       out := out.push (call x (.ident x), none)
+      -- L1: the function as a value, called through a local (no [Rec] check at `g(…)`)
+      out := out.push (.letIn "g" none (.ident "Lie") (.call (.ident "g") (names.map .ident)), some x)
+      -- L3: the recursive call inside a nested λ, on the λ's own argument (KnotL's shape);
+      -- only when no parameter is a borrow (closures capture no borrows)
+      if c.params.all (fun (_, T) => !(T matches .amp _)) then
+        let T := STerm.app "Id" [c.ty, renameT x "yy" c.lhs, renameT x "yy" c.rhs]
+        out := out.push (.letIn "g" none (.fix "_" [("yy", .ident "Nat")] T none (call x (.ident "yy")))
+          (.call (.ident "g") [.ident x]), some x)
     | .amp (.ident "Nat") =>
       out := out.push (.matchGen (.deref (.ident x)) [("Z", [], .ident "refl"), ("S", ["_"], .ident "refl")], none)
       out := out.push (.matchGen (.deref (.ident x)) [("Z", [], .ident "refl"), ("S", ["q"], call x (.amp (.ident "q")))], some x)
@@ -167,7 +205,7 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
         let bad := (absIn v').filter fun σ => !pinned.contains σ && !rec'.contains σ
         if !bad.isEmpty || !(loansIn v').isEmpty then
           fs := push fs .escape (compName k) "the generic call"
-            s!"{v'.pp}  (not parameters: {bad.map (s!"σ{·}")}, loans: {loansIn v'})" ""
+            s!"{v'.pp}  (not parameters: {bad.map (s!"σ{·}")}, loans: {loansIn v'})" (vacK (hypsFalse st2 ps) "")
         Gx := Gx.push (.ok (v', s'))
       | .error e => Gx := Gx.push (.error e)
     | .error e => Gx := Gx.push (.error e)
@@ -175,6 +213,8 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
     let stα ← match runSt (α.subst.forM fun (σ, v) => refine σ v) st2 with
       | .ok (_, s) => pure s
       | .error _ => continue
+    -- a refinement at which some hypothesis is `False`: what it finds is vacuous
+    let vac := hypsFalse stα ps
     -- the direct path's values, with its own generalisations undone
     let D := [0, 1, 2].map fun k => (obsRun stα A t u W true k).bind fun (v, s) =>
       refineValS s s.neutrals [] v
@@ -193,11 +233,11 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
             -- not, and the instance's hypotheses (proof parameters) hold
             let isF := match dres with | .ok (dv, _) => isFalseV dv | _ => false
             let kd := if k == 2 && unitTop (canon [] g) == vTrue && α.ground && hypsHold stα ps && isF then Kind.falseProof else kd
-            fs := push fs kd (compName k) α.label s!"{g.pp}  ⟶  {sv}" dvs
+            fs := push fs kd (compName k) α.label s!"{g.pp}  ⟶  {sv}" dvs (vacK vac "")
         | .ok (rv, _), .error e =>
-          if !isResource e then fs := push fs .verdict (compName k) α.label s!"{g.pp}  ⟶  {rv.pp}" s!"error: {e}" (errKey e)
+          if !isResource e then fs := push fs .verdict (compName k) α.label s!"{g.pp}  ⟶  {rv.pp}" s!"error: {e}" (vacK vac (errKey e))
         | .error e, .ok (dv, _) =>
-          if !isResource e then fs := push fs .renorm (compName k) α.label s!"{g.pp}  ⟶  error: {e}" dv.pp (errKey e)
+          if !isResource e then fs := push fs .renorm (compName k) α.label s!"{g.pp}  ⟶  error: {e}" dv.pp (vacK vac (errKey e))
         | .error _, .error _ => pure ()
     -- a false ground instance of the statement: remember it for the truth oracle
     if α.ground && hypsHold stα ps then
@@ -210,10 +250,10 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
           match obsRun stα A t u W false k with
           | .ok (uv, _) =>
             if canon [] dv != canon [] uv then
-              fs := push fs .adequacy (compName k) α.label s!"typed run: {dv.pp}" s!"machine: {uv.pp}"
+              fs := push fs .adequacy (compName k) α.label s!"typed run: {dv.pp}" s!"machine: {uv.pp}" (vacK vac "")
           | .error e =>
             if !isResource e then
-              fs := push fs .adequacy (compName k) α.label s!"typed run: {dv.pp}" s!"machine: error: {e}" (errKey e)
+              fs := push fs .adequacy (compName k) α.label s!"typed run: {dv.pp}" s!"machine: error: {e}" (vacK vac (errKey e))
   -- truth: a statement false at a ground instance must have no proof
   if let some (lbl, v) := falseAt then
     if fs.any (·.kind == .falseProof) then pure () else

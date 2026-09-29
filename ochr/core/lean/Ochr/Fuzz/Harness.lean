@@ -105,6 +105,18 @@ partial def isFalseV : Value → Bool
   | .tInd "And" [a, b] => isFalseV a || isFalseV b
   | _ => false
 
+/-- Some proof parameter's type is `False` in this state (a refinement or instance that
+satisfies no hypothesis): whatever the two paths compute there is vacuous. -/
+def hypsFalse (st : MState) (ps : Array PInfo) : Bool := Id.run do
+  let some fr := st.env[1]? | return false
+  let mut i := 0
+  for p in ps do
+    if p.kind == .proof then
+      if let some T := (fr.binds[i]?).bind (·.ty) then
+        if isFalseV (unitTop T) then return true
+    i := i + 1
+  pure false
+
 /-- The stored types of the proof parameters (frame 1), as refined in a state: an instance
 is vacuous unless each is `⊤` there (its hypotheses hold). -/
 def hypsHold (st : MState) (ps : Array PInfo) : Bool := Id.run do
