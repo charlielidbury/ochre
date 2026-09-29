@@ -207,7 +207,9 @@ structure MState where
 deriving Inhabited
 
 inductive Fail where
-  | stuck (fuel : Nat) (on : Option Value)   -- `on`: the neutral a match was stuck on, if any (D61)
+  -- `on`: the neutral a match was stuck on, if any. A diagnostic only (D61): no handler but
+  -- `split`'s search (`stuckScrutinee`) reads it, so it changes no result
+  | stuck (fuel : Nat) (on : Option Value)
   | error (msg : String)
 
 instance : Inhabited Fail := ⟨.error "?"⟩

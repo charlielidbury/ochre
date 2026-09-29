@@ -305,7 +305,7 @@ After D60, Ochr's property proofs were 1.38 times Aeneas's in tokens. The remain
 **`split f in t` / `split f { C₁ => t₁, … }` (D61), implemented** (checker `findSplit`/`splitTarget`; tests: block `Splitting` in `08CaseSplits.lean`).
 - **Find.** Walk the goal's sealed programs in pre-order, left to right. From each, follow the chain of scrutinees its run is stuck on; each link is the content of the scrutinee of the match the previous run stopped at. Take the first link that is a sealed program whose head call is `f`. A link may also be an abstract value standing for a sealed program generalised earlier (a split in a sibling arm), and then it is split directly.
 - **Split.** Generalise the neutral as [Split] does (D34) and split it over its type's constructors.
-- **What the machine gained.** A stuck untyped match reports the neutral it was stuck on.
+- **What the machine gained.** A stuck untyped match reports the neutral it was stuck on. This is a pure diagnostic and changes no result: the neutral rides on the machine's existing "stuck" signal (`Fail.stuck`), every other handler ignores it, and only `split`'s search (`stuckScrutinee`) reads it. When `split` landed (e87bece1), the 733 existing verdicts kept their results and the ledger rows changed only by gaining the new `Splitting` tests.
 - **Why `f` must be named.** The design first proposed "the first stuck sealed scrutinee", but that picks the wrong neutral here. InsertFind's goal is stuck on the sealed map, the map on the `added` flag, and the flag on the bucket. The proof needs the middle link, and the lookup splits need the outermost. So `split` names the head function of the neutral to split.
 
 **Result.**
