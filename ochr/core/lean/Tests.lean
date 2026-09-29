@@ -55,7 +55,7 @@ def main : IO UInt32 := do
   let mut passed := 0
   let mut totalUs := 0
   IO.println s!"(check times: median of {runs} runs of the compiled checker, per declaration)"
-  for (name, p) in programs do
+  for (name, p) in programs ++ caseStudies do
     let mut samples : Array (List (String × Bool × Bool × Nat)) := #[]
     for _ in [0:runs] do samples := samples.push (← timedRun cfgRef p)
     let rows := samples[0]!
