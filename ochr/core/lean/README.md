@@ -10,7 +10,7 @@ lake build          # checks every example; a failing verdict or a wrong asserti
 lake exe tests      # prints every verdict table and the counterfactual ledger; exit 1 on any unexpected verdict
 ```
 
-Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A clean build takes about 40 seconds (most of it the counterfactual ledger: 46 rows, each re-running the suite twice in the interpreter) and prints every verdict table; `lake exe tests` compiles the runner first and prints per-declaration check times (all 425 declarations check in about 18 ms) and the ledger with each row's class.
+Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A clean build takes about 40 seconds (most of it the counterfactual ledger: 46 rows, each re-running the suite twice in the interpreter) and prints every verdict table; `lake exe tests` compiles the runner first and prints per-declaration check times (all 427 declarations check in about 18 ms) and the ledger with each row's class.
 
 ## Writing programs
 

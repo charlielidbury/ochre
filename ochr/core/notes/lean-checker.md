@@ -1,6 +1,6 @@
 # lean-checker: an executable checker for RULES v2.0, and what running it found
 
-**reviewer-3 round (§15):** D48 (borrows of data only, only at the top of declared types; Π-types compared under their binders), D49 and D50 are implemented with regression tests and switches, ∧-elimination is tested, and every ledger row is classified (23 soundness with named witnesses, 1 false lemma, 3 model, 3 policy, 16 completeness; none flips nothing). 425 verdicts, all as expected.
+**reviewer-3 round (§15):** D48 (borrows of data only, only at the top of declared types; Π-types compared under their binders), D49 and D50 are implemented with regression tests and switches, ∧-elimination is tested, and every ledger row is classified (23 soundness with named witnesses, 1 false lemma, 3 model, 3 policy, 16 completeness; none flips nothing). 427 verdicts, all as expected.
 
 **v2.0 (§14):** False/True/And are library inductive declarations and the checker's primitives for them are gone; Prop inductives, zero constructors, uniform parameters, by-type matching on proofs, subsingleton elimination and D47 are implemented with switches and asserted ledger rows. 364 verdicts, all as expected. Findings: in this machine D42 (proofs are ⋆), not D45's subsingleton restriction, is what blocks the `Or` attack's closed `False` (D45 is still needed for the model and for canonicity); `And(True, P) ≡ P` as normalisation hides an `And` from a match; a v1.9 checker bug (a match's scrutinee type was assumed from its arms, a type-safety hole) is fixed. No closed proof of False found against v2.0.
 
@@ -476,7 +476,7 @@ def EffL (x : &Nat) (h : Or(⊤, ⊤)) : V(Z) := match h { Inl(p) => (*x := 1; r
 
 ## 15. reviewer-3 (D48–D50) and the ledger's classes
 
-**Probes.** The reviewer's S1–S10 now give the following. S1's `Q(g : Π(n : Nat). &Nat) : Empty := P(g(5), refl)` is rejected by D44 (the rescued v1.9 work; the reviewer ran d7e0be31, before it). S2/S8's impredicative `Type₀` is rejected, and so are S10's `&Prop` and S7's `F`/`G` (D48 (1), (2)). S3's and S9's programs are accepted (D48 (3)). S6's `h.1` stays rejected: there is no projection from a proof, and ∧-elimination is a `match` on `And` (`AndElim`). S5's `LetZ` is rejected correctly: its `Id` borrows `x`, so `x` is in the footprint and the write is observed; `let z = …; (refl : Id Nat z 2)` is accepted.
+**Probes.** The reviewer's S1–S10 now give the following. S1's `Q(g : Π(n : Nat). &Nat) : Empty := P(g(5), refl)` is rejected by D44, and so is its v2.0 form `QF … : False := PF(g(5), refl)`, where `PF(x : &Nat, e : Id Unit (*x := 0) (*x := 1)) : False := e` holds by D47 (the rescued v1.9 work; the reviewer ran d7e0be31, before it). S2/S8's impredicative `Type₀` is rejected, and so are S10's `&Prop` and S7's `F`/`G` (D48 (1), (2)). S3's and S9's programs are accepted (D48 (3)). S6's `h.1` stays rejected: there is no projection from a proof, and ∧-elimination is a `match` on `And` (`AndElim`). S5's `LetZ` is rejected correctly: its `Id` borrows `x`, so `x` is in the footprint and the write is observed; `let z = …; (refl : Id Nat z 2)` is accepted.
 
 | Item | Implementation | Switch → row class |
 |---|---|---|
@@ -509,4 +509,4 @@ def EffL (x : &Nat) (h : Or(⊤, ⊤)) : V(Z) := match h { Inl(p) => (*x := 1; r
 - **D28's closed witness (V15.Boom) is now rejected by D41** even with D28 off, so D28 is a *false lemma* row.
 - **Rows whose witness is an open program that goes wrong when run** (adequacy, not a closed proof): D19, L2, C5, D29, the scrutinee type, and D48 (2).
 
-**Timings.** 425 verdicts in about 18 ms. A clean build takes about 40 s: 46 ledger rows, each re-running the suite twice in the interpreter, with each row's class checked in the same guard. `Machine.lean` is 2,210 lines, the checker about 4,050, and the examples about 1,690.
+**Timings.** 427 verdicts in about 18 ms. A clean build takes about 40 s: 46 ledger rows, each re-running the suite twice in the interpreter, with each row's class checked in the same guard. `Machine.lean` is 2,210 lines, the checker about 4,050, and the examples about 1,690.
