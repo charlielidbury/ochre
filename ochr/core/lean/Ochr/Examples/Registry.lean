@@ -1,7 +1,7 @@
 import Ochr.Examples.Units
 import Ochr.Examples.E5
 import Ochr.Examples.V15
-import Ochr.Examples.Review3
+import Ochr.Examples.Paper
 import Ochr.Examples.Inductives
 import Ochr.Examples.Probes
 
@@ -15,6 +15,7 @@ def programs : List (String × Program) :=
   [("E1", E1), ("E2", E2), ("E3", E3), ("E4", E4), ("E5", E5), ("E6", E6), ("Attacks", Attacks), ("More", More), ("Probes", Probes), ("V15", V15), ("V17", V17), ("V18", V18), ("Positivity", Positivity), ("GenTy", GenTy), ("V19", V19), ("D44", D44), ("Inductives", Inductives),
    ("Logic", Logic), ("ByType", ByType), ("OrAttack", OrAttack), ("PList", PList), ("PosParam", PosParam), ("Scrut", Scrut),
    ("D48", D48), ("D49", D49), ("PiConv", PiConv), ("AndElim", AndElim),
+   ("Paper", Paper), ("Note4", Note4), ("Note5", Note5),
    ("D18", Ochr.Units.D18)]
 
 def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
@@ -143,7 +144,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 427
+def Ochr.Registry.expectedTotal : Nat := 459
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

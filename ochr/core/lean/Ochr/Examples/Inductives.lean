@@ -37,7 +37,7 @@ ochr Inductives {
   def InsertM (t : &Tree) (k : Nat) : Unit by t :=
     match *t {
       Leaf => *t := Node(Leaf, k, Leaf)
-    | Node(l, v, r) => let b = Lt(k, v); match b { false => InsertM(&r, k) | true => InsertM(&l, k) } }
+    | Node(l, v, r) => let b = Lt(k, v); match b { true => InsertM(&l, k) | false => InsertM(&r, k) } }
   -- the pure insert
   def Insert (t : Tree) (k : Nat) : Tree by t :=
     match t {
@@ -48,7 +48,7 @@ ochr Inductives {
   def InsertMEq (t : &Tree) (k : Nat) : Id Unit (InsertM(t, k)) (*t := Insert(*t, k)) by t :=
     match *t {
       Leaf => refl
-    | Node(l, v, r) => let b = Lt(k, v); match b { false => InsertMEq(&r, k) | true => InsertMEq(&l, k) } }
+    | Node(l, v, r) => let b = Lt(k, v); match b { true => InsertMEq(&l, k) | false => InsertMEq(&r, k) } }
   -- an insert that goes the wrong way is not the pure insert
   def InsertMSwap (t : &Tree) (k : Nat) : Unit by t :=
     match *t {

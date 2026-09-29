@@ -10,7 +10,7 @@ lake build          # checks every example; a failing verdict or a wrong asserti
 lake exe tests      # prints every verdict table and the counterfactual ledger; exit 1 on any unexpected verdict
 ```
 
-Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A clean build takes about 40 seconds (most of it the counterfactual ledger: 46 rows, each re-running the suite twice in the interpreter) and prints every verdict table; `lake exe tests` compiles the runner first and prints per-declaration check times (all 427 declarations check in about 18 ms) and the ledger with each row's class.
+Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A clean build takes about 40 seconds (most of it the counterfactual ledger: 46 rows, each re-running the suite twice in the interpreter) and prints every verdict table; `lake exe tests` compiles the runner first and prints per-declaration check times (all 459 declarations check in about 19 ms) and the ledger with each row's class.
 
 ## Writing programs
 
@@ -50,7 +50,7 @@ ochr E1 {
 | `Ochr/Check.lean` | programs as sequences of top-level definitions and inductive declarations; the library (`prelude`: `False`, `True`, `And`) |
 | `Ochr/Surface.lean`, `Ochr/Notation.lean` | named surface terms, their resolution, the `ochr` command |
 | `Ochr/Test.lean` | running programs, verdict tables, traces |
-| `Ochr/Examples/*.lean` | E1–E6, the attacks (rounds 1–3), v1.5, v1.7, v1.8 and v1.9 regressions (breaker-fresh-v16 X1–X5, positivity, confinement, `D44.lean`), inductive types (lists, BSTs), v2.0 (`Logic.lean`: ex falso, disjointness, matching on proofs, the `Or` attack, a polymorphic list, positivity with parameters, scrutinee types), reviewer-3 (`Review3.lean`: D48 borrows, D49, Π conversion under binders, ∧-elimination), unit tests (incl. D18), the registry, total count and row classes (`Registry.lean`), the counterfactual ledger (`Ledger.lean`) |
+| `Ochr/Examples/*.lean` | E1–E6, the attacks (rounds 1–3), v1.5, v1.7, v1.8 and v1.9 regressions (breaker-fresh-v16 X1–X5, positivity, confinement, `D44.lean`), inductive types (lists, BSTs), v2.0 (`Logic.lean`: ex falso, disjointness, matching on proofs, the `Or` attack, a polymorphic list, positivity with parameters, scrutinee types), reviewer-3 (`Review3.lean`: D48 borrows, D49, Π conversion under binders, ∧-elimination), the paper's printed programs not stated verbatim elsewhere (`Paper.lean`; notes §16 maps every printed program to its test), unit tests (incl. D18), the registry, total count and row classes (`Registry.lean`), the counterfactual ledger (`Ledger.lean`) |
 | `Tests.lean` | `lake exe tests` |
 
 ## Rule → function

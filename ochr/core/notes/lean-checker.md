@@ -510,3 +510,75 @@ def EffL (x : &Nat) (h : Or(⊤, ⊤)) : V(Z) := match h { Inl(p) => (*x := 1; r
 - **Rows whose witness is an open program that goes wrong when run** (adequacy, not a closed proof): D19, L2, C5, D29, the scrutinee type, and D48 (2).
 
 **Timings.** 427 verdicts in about 18 ms. A clean build takes about 40 s: 46 ledger rows, each re-running the suite twice in the interpreter, with each row's class checked in the same guard. `Machine.lean` is 2,210 lines, the checker about 4,050, and the examples about 1,690.
+
+## 16. Every program the paper prints, and its test
+
+Checked against the paper at e7aff5f9: the body sections and the appendix notes. "=" means the same program up to surface syntax: `λ` and `Π` in a `let` or as a result type need parentheses, `Type₀` is written `Type`, subscripts are digits, and `(x, y : &Nat)` is written with separate binders. The programs that no earlier test stated verbatim are in `Examples/Paper.lean` (programs `Paper`, `Note4`, `Note5`). 459 verdicts, all as expected.
+
+| Paper location | Program | Test | Verdict |
+|---|---|---|---|
+| §1, §2 | `AddM` | E1.AddM (and in every program that uses it) | accepted |
+| §1, §2 | `AddMZero` | E1.AddMZero | accepted |
+| §2 | `Add` | E1.Add | accepted |
+| §2 | `Id Nat (Add(2, 3)) 5` by `refl` | Paper.Add23 | accepted |
+| §2 | `AddZero`; `AddZero(x) := AddMZero(&x)` | E1.AddZero, E1.AddZero' | accepted |
+| §2 | IH about a copy, `AddZero(p)`, lacks the `S` | Paper.AddZeroCopy | rejected |
+| §2 | `TailM`, `AddM'` | E2.TailM, E2.AddM' | accepted |
+| §2 | `AddMEq`, `AddMEqOwned` | E2.AddMEq, E2.AddMEqOwned | accepted |
+| §2 | `Le` (base case `False`) | E5.Le | accepted |
+| §2 | `SubM` with `Z => match h {}` | E5.SubM (now as printed), D49.SubM | accepted |
+| §2 | `LeAdd`, `AddSub` | E5.LeAdd, E5.AddSub | accepted |
+| §2 | `…; *x := Z; SubM(x, old, LeAdd(old, y))` | E5.AddSubStale | rejected |
+| §2 | `AddSubId` | E5.AddSubId | accepted |
+| §2 | `InsertM`, `InsertMEq` (arms `true` first) | Inductives.InsertM, InsertMEq (arms now in the printed order) | accepted |
+| §2 | `Insert`, `Lt`, `Size`, size theorem with `J` and `x + S y = S (x + y)` | Inductives.Insert, Lt, Size, SizeInsert, AddMS, AddS | accepted |
+| §2 | `AddToOne` | E3.AddToOne | accepted |
+| §2 | `AddToOneZero` (about the inline `AddToOne`) | E3.AddToOneZeroInline | accepted |
+| §3 | `False`, `True`, `And` declarations | `Check.prelude` (checked by `checkInd`) | accepted |
+| §3 | `Intro(P, Q; h, k)` | D49.PairP, written `Intro[P, Q](h, k)` | accepted |
+| §3 | `match h {}`, `match h { Intro(l, r) => … }` | Logic.absurd…, AndElim.* | accepted |
+| §4 | `f(&x, &x)` fails reading `⊥` | More.DeadTwice | rejected |
+| §4 | `Id Nat (Add(x, x)) x` is well formed | Paper.AddXX | accepted |
+| §5 | owned locals observed: `x := 6` vs `()` | Paper.OwnedLocal / OwnedLocalNeq | rejected / accepted |
+| §5 | `Id Unit (*x := 0) (*x := 1)` is `False`, `match e {}` | Paper.WriteNeq, Logic.WriteDisj | accepted |
+| §5 | multi-place `Id` taken apart by a match | AndElim.Two, TwoR, Three | accepted |
+| §5 | no injectivity | Logic.Inj | rejected |
+| §6 | `let z = (let y = &x; *y := 2; x)`, then `Id Nat z 2` by `refl` | Paper.LetZ | accepted |
+| §6 | `λ(x : &Nat). (*x := 5; refl)` is not a `Π(x : &Nat). Id Nat (*x) 5` | Paper.LamWrite | rejected |
+| §6 | `Or`, `IsL` | OrAttack.Or, IsL | accepted, rejected |
+| Fig. 7 | Π-types capture values (`h : Π(_ : Unit). Id Nat x Z`) | Attacks.Oops2 | rejected |
+| Fig. 7 | recursion on entry values; `f` as a value; `f` without `by` | Attacks.Loop, Bot'; Attacks.Knot, KnotBoom; V15.Loop, Boom4 | rejected |
+| Fig. 7 | `λx. ⋆` vs `λx. (*x := 7; ⋆)`; proof blocks inline vs closed off | Attacks.Boom (P1, P2); Attacks.N1T/N1Closed, Q/QBoom | rejected |
+| Fig. 7 | `W(&c, n) : U(n)`; local function; type-valued match | V15.Boom; V17.BoomL; V17.BoomB | rejected |
+| Fig. 7 | universes not cumulative | Paper.NonCumul / PropInType, PosParam.PropBox | rejected / accepted / rejected |
+| Fig. 7 | functions by observation; borrow results | V15.Boom3; V18.ConvPick, TY, BoomX4 | rejected |
+| Fig. 7 | pattern variables are places | V15.Clear, Boom5 | rejected |
+| Fig. 7 | all owners observed | D18.BadD18, ClosedD18, GR, BadR | rejected |
+| Fig. 7 | exclusive access; loan-free closing off; matches end loans in neutral heads | Attacks.BadA1; V15.Bad, Main | rejected |
+| Fig. 7 | generalisations global | V18.Esc, BoomE; Note5.Esc, Bad5 | rejected |
+| Fig. 7, note 11 | borrows only of data; `&` only at the top | D48.Impred, PolyId, SelfApp, SelfAppEq, F, G, UseG, SwapT | rejected |
+| Fig. 7, note 7 | `P(x : &Nat, e : Id Unit (*x := 0) (*x := 1)) : False := e`; `Q(g : Π(n : Nat). &Nat) : False := P(g(5), refl)` | D44.PF / D44.QF | accepted / rejected |
+| Fig. 7, note 4 | `inductive Bad := Mk(f : Π(x : Bad). False)`; `L`; `Bad4` | Note4.Bad, L, Bad4 (Positivity.* is the `Empty` version) | rejected |
+| Fig. 7, note 10 | `Or`, `IsL`, `Irr`, `Boom` | OrAttack.Or, IsL, Irr, Boom | accepted, rejected ×3 |
+| §7 | `Pick`; `r := Pick(n, &a, &b); z := b; match n {…}` rejected, runs at each `n` | Paper.Pick, PickEarly / PickEarly0, PickEarly1 | rejected / accepted |
+| §9 | `IterM : &(List Nat) → List(&Nat)` is outside the core | Paper.IterM | rejected |
+| §9 | every `Π(x : &Nat). &Nat` has an injective backward function | Paper.L, Inj | accepted |
+| §9 | no generic `&A` (`SwapT`) | D48.SwapT | rejected |
+| §10 | the `ochr E1 { … }` excerpt | E1.AddM, AddMZero, WriteThenRefl (added to E1) | accepted, accepted, rejected |
+| note 1 | `U`, `V`, `Lie1`, `Bad1` | V17.U, V, LieL, BoomL | accepted ×3, rejected |
+| note 2 | `Lie2`, `Bad2`; the `g`/`f` block | V17.LieB, BoomB; V17.LieG, BoomG (TruthB, TruthG true) | rejected |
+| note 3 | `Lie3`, `Bad3` | V18.LieH, BoomH | accepted, rejected |
+| note 5 | `Box`, `Double`, `Esc`, `Bad5` | Note5.* (as printed), V18.Esc, BoomE | accepted ×2, rejected ×2 |
+| note 6 | `PickX`, `PickY`, transport | V18.PickX, PickY, ConvPick, TX, TY, BoomX4 | accepted ×2, rejected, accepted, rejected ×2 |
+| note 8 | head guard (no program printed) | V18.P1 | accepted |
+| note 18 | `Id Unit (let c = *x; G(&c, Z)) ()` needs induction | V17.RowI / RowIInd | rejected / accepted |
+| note 25 | `SubM`'s `match h {}` by the stored type | E5.SubM, D49.SubM; D49.Neutral | accepted; rejected |
+| note 27 | `let n = *x` after `AddM(&*x, 1)`, then `λ(y : Nat) : Nat => n` | D44.CapS | accepted |
+| App. A [T-Ref] | `&Box(Prop)` is allowed | Paper.RefBoxProp | accepted |
+| App. D [Conv-fun] | the two stuck closures are not convertible | Paper.CoInd | rejected |
+
+**Gaps, not closed by a test** (for the paper):
+- §7 prints `r := Pick(n, &a, &b); z := b; match n { … }`. That is not Ochr syntax: `:=` assigns an existing place. The test uses `let r = …; let z = b; …`. Suggest printing the `let` form.
+- §4's `(λy. (x := 2; y))(x := 1)` illustrates why rewriting is not confluent. It is not an Ochr program: the `λ` is untyped, and an Ochr closure copies `x`, so the write would go to its own copy. Nothing to test; it is an illustration.
+- §3 writes constructor parameters as `Intro(P, Q; h, k)`, and the checker's surface writes `Intro[P, Q](h, k)`. The core term is the same.
+- Four programs are tested under different names or with a renamed constructor: notes 1–3 (`Lie1`… are LieL, LieB, LieH), note 7 (`P`, `Q` are PF, QF; the Empty versions are D44.P, Q), and §2's `AddToOneZero` (it is E3.AddToOneZeroInline, since E3.AddToOneZero is about the hand-duplicated `AddToOne'`).

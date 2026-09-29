@@ -19,10 +19,13 @@ ochr E1 {
     match x { Z => refl | S p => AddMZero(&p) }
 
   def AddZero' (x : Nat) : Id Nat (Add(x, 0)) x := AddMZero(&x)
+
+  -- the paper's §10 excerpt of this file: a type is formed before the body runs
+  reject def WriteThenRefl (x : &Nat) : Id Nat (*x) 5 := *x := 5; refl
 }
 
 #eval IO.println (run "E1" E1).show
 
--- every verdict as expected, and exactly 5 assertions (a truncated file changes the count)
+-- every verdict as expected, and exactly 6 assertions (a truncated file changes the count)
 #guard (run "E1" E1).allAsExpected
-#guard (run "E1" E1).count == 5
+#guard (run "E1" E1).count == 6
