@@ -1,5 +1,7 @@
 # lean-checker: an executable checker for RULES v2.0, and what running it found
 
+**recCands fix (§20):** a closed proof of `False` from the fuzzer: typing a sealed program wiped the [Rec] state. The [Rec] frames now carry their candidates and merge by identity on every restore; four trigger paths are regressions; the audit of the other state kept outside Ω found no other mis-merge. 449 verdicts, all as expected.
+
 **reviewer-3 round (§15):** D48 (borrows of data only, only at the top of declared types; Π-types compared under their binders), D49 and D50 are implemented with regression tests and switches, ∧-elimination is tested, and every ledger row is classified (23 soundness with named witnesses, 1 false lemma, 3 model, 3 policy, 16 completeness; none flips nothing). 427 verdicts, all as expected.
 
 **v2.0 (§14):** False/True/And are library inductive declarations and the checker's primitives for them are gone; Prop inductives, zero constructors, uniform parameters, by-type matching on proofs, subsingleton elimination and D47 are implemented with switches and asserted ledger rows. 364 verdicts, all as expected. Findings: in this machine D42 (proofs are ⋆), not D45's subsingleton restriction, is what blocks the `Or` attack's closed `False` (D45 is still needed for the model and for canonicity); `And(True, P) ≡ P` as normalisation hides an `And` from a match; a v1.9 checker bug (a match's scrutinee type was assumed from its arms, a type-safety hole) is fixed. No closed proof of False found against v2.0.
@@ -26,6 +28,7 @@ Code: `ochr/core/lean/` on branch `ochr-core-lean` (README: build, syntax, rule 
 | **P1** | **this checker at v1.6** | A place holding a proof did not make a sequence erased, while a block of type `⊤` was: `BoomP : Eq Nat 1 0` accepted (§10). | Fixed: a place, constant or λ holding `⋆` is a proof. Regression: `V17.LieP`, `BoomP`. |
 | **P3** | **P1's first fix** | A variable was a proof when its value was `⋆`. But `g(0)`, with `g : Π(y : Nat). V(Z)` data by syntax, is `⋆` at an instance and a sealed program at the generic call, so `BoomH : Eq Nat 0 1` was accepted (§11). | Fixed: a variable is a proof iff it is declared so (a flag on the binding, set from the syntax). Regression: `V18.LieH`, `BoomH`. |
 | **P2** | **v1.7 read as "a block of computed sort Prop is erased"** | The block's computed type (`V(Z) = ⊤`) disagrees with the arms' syntactic classes: `BoomG : Eq Nat 1 0` accepted by my first v1.7 version (§10). | Fixed: a block is erased iff every arm is a proof. RULES wording suggested. Regression: `V17.LieG`, `BoomG`, `TruthG`. |
+| **R1** | **this checker at 96d788a1 (fuzz-port)** | Typing a sealed program (`sealedType`, on a private copy outside the enclosing functions) wiped the [Rec] candidates: the restore merged them by position, so no later recursive call was checked. `Boom : False := Lie(0, ⟨refl, refl⟩)` accepted. | Fixed: the [Rec] frames carry their candidates and a `uid`, and restores merge by `uid` (§20). Regression: `Recursion.Lie`, `LieCap`, `LieRead`, `LieId` and their `Boom`s. |
 
 ## 2. Verdicts (expected vs actual: all 139 as expected)
 
@@ -97,7 +100,7 @@ Each `Config` switch turns off one rule. `Registry.lean` asserts that exactly th
 |---|---|
 | P2 (v1.3 D26): erased terms (proofs and types) run on a private copy, so v1's call-keyed P5 is what remains | Attacks.N1Closed, Attacks.QBoom → accepted (the closed proofs of false from breaker-close-v1 N1 and meta-model-v1 R1); Probes.EffArg → accepted; E6.LemmaMoves, E5.TwoPhase, Probes.EffArgErased, Probes.TypeErased → rejected |
 | D18: owners are sets | D18.BadD18, D18.ClosedD18 → accepted (§4) |
-| D17: [Rec] entry-value guard | Loop, Bot', Loop2, Spin, KnotL, KnotLBoom, Probes.OuterBad → accepted |
+| D17: [Rec] entry-value guard | Loop, Bot', Loop2, Spin, KnotL, KnotLBoom, Probes.OuterBad → accepted; since the recCands fix (§20) also Lie, LieCap, LieRead, LieId and their Booms |
 | D19: [Access] ends loans inside the content | Attacks.BadA1 (breaker-close A1) → accepted |
 | L1 (v1.1): self only as a call head | Knot, KnotBoom → accepted |
 | L2 (v1.2 temporaries): no `⊥` argument | More.Dead, More.DeadTwice → accepted (and `Dead`'s concrete instance writes through `⊥`) |
@@ -518,7 +521,7 @@ Checked against the paper at a0bca0fe (body sections and appendix). An "=" means
 - a `λ` in the bound position of a `let`, or a `Π` as a result type, needs parentheses;
 - `Type₀` is written `Type`.
 
-The body's programs were also run verbatim, one-line layout and subscripts included, and each gave the verdict in this table. 458 verdicts, all as expected.
+The body's programs were also run verbatim, one-line layout and subscripts included, and each gave the verdict in this table. 467 verdicts since the merge with the recCands fix, all as expected.
 
 | Paper location | Program | Test | Verdict |
 |---|---|---|---|
@@ -661,3 +664,19 @@ Checked mechanically against the suite before D52 (0127f58b, 432 declarations):
 - *Ledger.* 47 rows. The 46 old rows keep their classes and their flipped programs, except D48 (2), which no longer flips `BorrowTypes.InPair`: `Nat × &Nat` is now `Pair(Nat, &Nat)`, whose parameters may not be borrow types whatever the switch says (the row keeps its class, soundness, witness `BorrowTypes.G`). New row "D52 (v2.1): Eq is injective on constructors", class completeness: switching injectivity off rejects Equality.Inj, Equality.PairInj, Recursion.AddZeroCopy and CurrentState.AddSubIdReborrow. No blocked declarations in any row.
 - *Additions* (8, all as expected): `Prelude`'s 4 declarations; `Numbers.SwapPair` (a pair parameter taken apart by `match p { Mk(a, b) => (b, a) }`, accepted; the projection version, `(p.2, p.1)`, is kept as `SwapPairProj`, still rejected: "no such place p.2: its path does not exist in σ0"); `Equality.InjWrong` (rejected); `Equality.PairInj` (`Eq (Nat × Nat) (a, b) (1, 2)` is `Eq Nat a 1 ∧ Eq Nat b 2`, accepted) and `PairInjWrong` (the swapped conjunction, rejected). The pure `AddZero` without `cong` is `Recursion.AddZeroCopy`, now accepted.
 - 440 declarations = 432 + 4 (`Prelude`) + 4 (SwapPair, InjWrong, PairInj, PairInjWrong).
+
+## 20. The recCands fix: the [Rec] state survives every restore
+
+*The bug* (fuzz-port, 2026-09-29; accepted on 96d788a1): `Boom : False := Lie(0, ⟨refl, refl⟩)` with `Lie (n : Nat) (h : Le(n, 1) ∧ ⊤) : False by n := match h { Intro(a, b) => Lie(n, h) }`. `sealedType` types a sealed program by running it on a private copy outside the enclosing functions (`recStack := []`, `recCands := []`). `restoreKeep` restored `recStack` whole but merged `recCands` by position (`cur.recCands.drop (cur.len - saved.len)`), which from the emptied list kept `[]`; `recCheck` zipped the two lists, so no later recursive call of any enclosing function was checked.
+
+*The fix.* The two lists are one: a `RecCtx` frame carries its candidates and a `uid` (from `nextRecUid`, never reused, kept by every restore). `restoreKeep` gives each saved frame the candidates of the current frame with the same `uid`, if there is one, so a computation that replaces the stack (`sealedType`) or starts a fresh one (the L3 counterfactual, whose special case at the end of `checkFix` is gone) cannot wipe or shift them. `recCheck` narrows the frames of the called function in place. An implementation bug, not a rule: no switch and no ledger row.
+
+*Paths.* Found by tracing every `valType` call site; each program below was accepted before the fix (checked on 329482c6) and is rejected by [Rec] after it. The value typed is a sealed program, reached through `placeType` of a place with no stored type: a pattern variable (`Lie`: the conjunction's parameter `⌈Le(σ, 1)⌉`), or a closure's capture read in its codomain (`LieCap`) or in its body (`LieRead`); or through `Id`'s footprint over a capture (`LieId`). `indValType` and a borrow's content reach `valType` only below these; the `.val` case of `eval` meets a sealed program only inside `sealedType` itself, where the stack is already empty. Tests in `07Recursion`, each with its `Boom`. The ledger and every other verdict and message are unchanged.
+
+*Audit* of the state kept outside Ω (`MState`) and how restores treat it (all restores go through `restoreKeep`, including `onCopy`'s):
+- Scoped, restored whole: `env`, `refs` (refinements), `goal`, `depth`, `effects` (D41; a stuck block re-adds its arms' pending steps by hand), `convStack` (D30; a cycle answers false, never true), the flags `lastErased`/`lastProof` (re-derived for each term by `eval`).
+- Kept whole: `fuel` (also carried by `.stuck`), `classCache` (keyed by the Π value itself), `nextRecUid`; `nextAbs`/`absTy`/`nextLoan`/`neutrals` when `globalRecords` (D37; switching it off restores them, which is what the D37 row shows).
+- Merged: only the [Rec] candidates, now by `uid`.
+- Nested runs that replace per-definition state: `sealedType` (env, [Rec] stack, goal), `nfSealed` (env, depth; it keeps the [Rec] stack but runs untyped, so it never checks a recursive call), `checkFix` (env, goal; pushes a frame), function conversion (env, `convStack`), a constant's check. Only `sealedType` touched the [Rec] state.
+- Exceptions discard the state back to the handler's entry (`StateT` over `ExceptT`), except the fuel a `.stuck` carries. The handlers that recover are closing off a call (`runBody` runs untyped: no `recCheck` inside), `nfSealed` (untyped), the hints `fieldTypeAt` and `argHint` (recomputed where they matter), and conversion (answers false). None of them can lose a narrowing made by a typed recursive call that is not checked again elsewhere.
+- 449 declarations = 440 + 9 (`Le`, and `Lie`, `LieCap`, `LieRead`, `LieId` with their `Boom`s).

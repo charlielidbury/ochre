@@ -42,7 +42,9 @@ open Ochr.Registry in
 #guard rowOk { recGuard := false }
   ["Recursion.Loop:accepted", "Recursion.Bot':accepted", "Recursion.Loop2:accepted",
    "Recursion.Spin:accepted", "Recursion.OuterBad:accepted", "Recursion.KnotL:accepted",
-   "Recursion.KnotLBoom:accepted"]
+   "Recursion.KnotLBoom:accepted", "Recursion.Lie:accepted", "Recursion.Boom:accepted",
+   "Recursion.LieCap:accepted", "Recursion.BoomCap:accepted", "Recursion.LieRead:accepted",
+   "Recursion.BoomRead:accepted", "Recursion.LieId:accepted", "Recursion.BoomId:accepted"]
 open Ochr.Registry in
 #guard rowOk { accessInside := false }
   ["Borrows.BadA1:accepted"]

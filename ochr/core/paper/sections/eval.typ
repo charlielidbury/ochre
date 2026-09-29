@@ -25,7 +25,7 @@ The judgement is big-step: `⟨Ω, t⟩ ⇓ ⟨Ω', v⟩` runs `t` from environm
 
 *Ending* a borrow [End] replaces it by `⊥` and substitutes its content for its loan. There is no side condition: if the content itself contains loans (because something has reborrowed part of it), they travel with it, and the reborrows remain valid. Ending is allowed at any time; the machine does it lazily, when a place is accessed. [Access] makes every access exclusive: before a place is read, borrowed, assigned or matched on, every borrow whose loan lies on the path to it or inside its content is ended. A borrower that has been ended holds `⊥`, and any later use of it is an error. This is the whole of the borrow checker: exclusivity of mutable borrows is not a separate analysis but a consequence of running the program.
 
-*Reading* a place copies its content if the content is borrow-free [Read] and moves it out otherwise [Move]. Data is therefore copied, and borrows, which must stay unique, are moved; reborrowing is explicit (`&*x`). A compiled program should implement a last-use copy as a move, so that `AddM` performs no allocation; an affine usage discipline outside the core would license this, but we have not defined it, nor proved that the compiled program agrees with the machine (@sec-discussion). Inside types copying is essential: `Id Nat (Add(x, x)) x` must at least be a well-formed statement, and so must `x + x = 2 · x`.
+*Reading* a place copies its content if the content is borrow-free [Read] and moves it out otherwise [Move]. Data is therefore copied, and borrows, which must stay unique, are moved; reborrowing is explicit (`&*x`). A compiled program should move where the machine copies, which we have not justified (@sec-discussion). Inside types copying is essential: `Id Nat (Add(x, x)) x` must at least be a well-formed statement, and so must `x + x = 2 · x`.
 
 == Calls and matches
 
@@ -43,7 +43,7 @@ Captures are therefore snapshots, by the mechanism that forms a type once (@sec-
 
 == Closing off
 
-When the body of a call is stuck, the call itself is stuck, and so is everything waiting for it. A pure type theory would return the stuck call as a neutral term. An effectful call cannot simply be returned: part of what it produces is the final content of the places it borrowed, and the caller's environment needs those contents before it can continue. We _close off_ the call instead.
+When the body of a call is stuck, the call itself is stuck. A pure type theory would return it as a neutral term, but the caller also needs the final contents of the places the call borrowed, so we _close off_ the call instead.
 
 #figure(kind: image, supplement: [Figure],
   block[

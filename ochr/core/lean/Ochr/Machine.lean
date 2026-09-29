@@ -234,7 +234,9 @@ partial def nfSealed (t : Term) : M Value := do
   -- is an error rather than a stack overflow
   if saved.depth ≥ 2000 then err "normalisation depth exceeded (a sealed program that re-closes itself)"
   modify fun s => { s with env := #[{}], depth := s.depth + 1 }
-  let r ← tryCatch (do let (v, _) ← eval false t; pure (some v)) fun e =>
+  -- D53 prototype: a sealed program is re-run to compute a value, never to check it (its
+  -- source was checked where it was written), so its reads copy
+  let r ← tryCatch (do let (v, _) ← withErased (eval false t); pure (some v)) fun e =>
     match e with
     | .stuck f => do modify (fun s => { s with fuel := f }); pure none
     | .error m => throw (.error m)
@@ -255,6 +257,10 @@ partial def endBorrow (l : Nat) : M Unit := do
     match (valAt env p).takeBorrow l with
     | none => pure ()
     | some (c, rest) =>
+      -- D53 prototype: moving out through a borrow is allowed if the content is whole again
+      -- when the borrow ends
+      if (← get).cfg.movingReads && c.anyAtom (· == .bot) then
+        err s!"[D53] a borrow ends while its content is partly moved out ({c})"
       setAt p rest
       substEnv (.loan l) c false
 
@@ -294,14 +300,32 @@ partial def accessNeutralHead (p : Place) : M Unit := do
     | [] => pure ()
   | _ => pure ()
 
-/-- [Read]: borrow-free content is copied; a borrow is moved out (`p ↦ ⊥`). -/
+/-- [Read]: borrow-free content is copied; a borrow is moved out (`p ↦ ⊥`).
+D53 prototype (`movingReads`, off): outside an erased term, borrow-free content whose
+type is not a copy type is moved out too, and content partly moved out cannot be read. -/
 partial def readPlace (p : Place) : M Value := do
   accessPath p; accessInside p
   let v ← content p
   match v with
-  | .bot => err s!"[Read] {← ppPlace p} was moved out or its borrow ended (reading ⊥)"
+  | .bot =>
+    -- D53 prototype (`movingReadsGhost`): an erased term still reads a value moved out
+    if (← get).cfg.movingReadsGhost && (← get).erasedDepth > 0 then
+      let pos ← varPos p.root
+      let key := p.mapRoot (fun _ => .var 0)
+      if let some (_, _, g) := (← get).ghosts.find? (fun (q, k, _) => q == pos && k.beq key) then
+        return g
+    err s!"[Read] {← ppPlace p} was moved out or its borrow ended (reading ⊥)"
   | .borrow _ _ => logEffect p "moves"; setPlace p .bot; pure v
-  | _ => pure v
+  | _ =>
+    if (← get).cfg.movingReads && (← get).erasedDepth == 0 && !(v matches .proof) then
+      if v.anyAtom (· == .bot) then err s!"[D53] {← ppPlace p} was partly moved out (reading a value holding ⊥)"
+      let T ← tryCatch (placeType p) (fun _ => pure .bot)
+      unless ← isCopyType T do
+        logEffect p "moves"; setPlace p .bot
+        if (← get).cfg.movingReadsGhost then
+          let pos ← varPos p.root
+          modify fun s => { s with ghosts := (pos, p.mapRoot (fun _ => .var 0), v) :: s.ghosts }
+    pure v
 
 /-- D41: record an assignment, borrow or move of `p` by its root position. -/
 partial def logEffect (p : Place) (kind : String) : M Unit := do
@@ -334,7 +358,7 @@ partial def settleErased (start f0 n0 : Nat) : M Unit := do
     { s with effects := keep ++ outer }
 
 /-- D41: a type position is erased; run it on a private copy, confined. -/
-partial def confinedCopy {α : Type} (what : String) (x : M α) : M α := onCopy do
+partial def confinedCopy {α : Type} (what : String) (x : M α) : M α := onCopy <| withErased do
   let st ← get
   let start := st.effects.size
   let f0 := st.env.size - 1
@@ -458,7 +482,7 @@ partial def valType (v : Value) : M Value := do
 an ordinary term on a private copy, from the empty environment. Its head call is not
 marked, so a stuck body closes off; its [Call-type] is what gives the type. -/
 partial def sealedType (t : Term) : M Value := onCopy do
-  modify fun s => { s with env := #[{}], recStack := [], recCands := [], goal := none }
+  modify fun s => { s with env := #[{}], recStack := [], goal := none }
   let (_, T) ← eval true t.unHead
   match T with
   | some T => pure T
@@ -476,6 +500,25 @@ partial def fieldTypes (d : IndDecl) (ps : List Value) (c : Nat) : M (List (Stri
     pushFrame
     for ((h, _), v) in d.params.zip ps do pushBind h none v
     fields.mapM fun (f, FT) => do pure (f, ← evalType FT)
+
+/-- D53 prototype: a copy type, read off a type; a type not fully known is not one. `Unit`,
+a sort (a type is erased data), a proposition (its values are `⋆`), and an inductive in
+`Type₀` whose fields do not mention it and are copy types at the parameters; not `Nat`,
+not a function type (captures unknown), not a neutral. -/
+partial def isCopyType (T : Value) : M Bool := do
+  if ← tryCatch (isPropV T) (fun _ => pure false) then return true   -- a proposition
+  match T with
+  | .tUnit | .sort _ | .tEq .. => pure true
+  | .tPi .. => pure (← get).cfg.movingReadsFnCopy
+  | .tInd n args =>
+    let d ← lookupInd n
+    if d.sort == 0 then return true
+    if d.ctors.any (fun (_, fs) => fs.any fun (_, FT) => FT.mentionsTInd n) then return false
+    for i in [0:d.ctors.length] do
+      for (_, FT) in ← fieldTypes d args i do
+        unless ← isCopyType FT do return false
+    pure true
+  | _ => pure false
 
 /-- One declared field type at partially known parameters (for a hint; unknown
 parameters are bound to `⊥`, which a field type not mentioning them never reads). -/
@@ -666,7 +709,14 @@ partial def capture (t : Term) : M (List Value × Term) := do
       let n := ((← get).env.back!.binds[(← get).env.back!.binds.size - 1 - o]!).hint.name
       err s!"a closure or Π-type captures the borrow {n} (closures capture no borrows, RULES §1)"
     | .bot => err "a closure or Π-type captures a moved place"
-    | _ => vals := vals.push v
+    | _ =>
+      vals := vals.push v
+      -- D53 prototype: a runtime closure moves the non-copy variables it captures
+      if (← get).cfg.movingReads && (← get).erasedDepth == 0 && !(v matches .proof) then
+        if v.anyAtom (· == .bot) then err "[D53] a closure captures a place that was partly moved out"
+        let T ← tryCatch (placeType p) (fun _ => pure .bot)
+        unless ← isCopyType T do
+          logEffect p "moves"; setPlace p .bot
   let idx (o : Nat) : Nat := (fvs.findIdx? (· == o)).getD 0
   let mut t' := t.mapFree (fun c o => .var (c + m - 1 - idx o)) 0
   -- a captured proof keeps its type: its reads are inlined as `(⋆ : T)` (a proof's value
@@ -1140,12 +1190,22 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
   | .pi _ ds c =>
     borrowParamCheck ds c
     -- a type former is erased: even its captures (which access places) run on a copy
-    let (cs, t') ← onCopy (capture t)
+    let (cs, t') ← onCopy (withErased (capture t))
     let T := Value.tPi cs t'
     if typed then pure (T, some (.sort (← sortOf T))) else pure (T, none)
   | .fix _ hs ds c _ _ =>
     borrowParamCheck ds c
-    let (cs, t') ← capture t
+    -- D53 prototype: a closure whose calls are erased (returning proofs or types) is an
+    -- erased term, so its captures copy; its class is read off a trial capture
+    let erasedFn ← if (← get).cfg.movingReads && (← get).erasedDepth == 0 then
+        tryCatch (do
+          let (cs0, t0) ← onCopy (withErased (capture t))
+          let T0 := match t0 with
+            | .fix _ _ ds' c' _ _ => Value.tPi cs0 (.pi hs ds' c')
+            | _ => Value.tPi cs0 (.pi hs ds c)
+          pure ((← fnClass T0) != 0)) (fun _ => pure false)
+      else pure false
+    let (cs, t') ← withErasedIf erasedFn (capture t)
     let v := Value.clo cs t'
     let T := match t' with
       | .fix _ _ ds' c' _ _ => Value.tPi cs (.pi hs ds' c')
@@ -1174,7 +1234,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
       | some (.tInd "Pair" [A, B]) => some (if first then A else B)
       | _ => none
     pure (r, R)
-  | .eq A a b => onCopy do
+  | .eq A a b => onCopy <| withErased do
     let A' ← evalType A
     let (va, Ta) ← eval typed a
     let (vb, Tb) ← eval typed b
@@ -1200,7 +1260,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     if (← get).cfg.refData && !(← isDataType A') then
       err s!"[D48] &{A'}: only data types are borrowed (Nat, Unit, ×, an inductive type in Type), never a universe, a Π-type or a proposition"
     pure (.tRef A', some (.sort 1))
-  | .id A a b => pure (← idType typed A a b, some (.sort 0))
+  | .id A a b => pure (← withErased (idType typed A a b), some (.sort 0))
   | .prim "J" [A, a, b, P, h, u] =>
     -- J(A, a, b, P, h, t) : P(b) for h : Eq A a b and t : P(a) (endpoints explicit, D23)
     if !typed then return (← eval false u)
@@ -1235,6 +1295,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
       unless (← conv A A') && (← conv b b') do err s!"trans: {Th.get!} and {Tk.get!} do not compose"
       pure (.proof, some (← mkEqM A a c))
     | _, _ => err "trans: not equations"
+  | .prim "clone" [t] => withErased (eval typed t hint)   -- D53 prototype: reads copy
   | .prim n _ => err s!"unknown primitive {n}"
   | .ascribe (.val .proof) A =>     -- a captured proof, inlined with its type (`capture`)
     if typed then pure (.proof, some (← evalType A)) else pure (.proof, none)
@@ -1330,6 +1391,15 @@ partial def evalCtor (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts : Li
 
 partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
     (cls? : Option Nat := none) : M (Value × Option Value) := do
+  -- D53 prototype: an erased call (returning proofs or types) is an erased term, its
+  -- argument evaluation included, so its reads copy; its class is read before running it
+  if (← get).cfg.movingReads && (← get).erasedDepth == 0 then
+    let cls ← match cls? with
+      | some k => pure k
+      | none => tryCatch (do
+          let (fv, fT) ← onCopy (withErased (eval typed f))
+          fnClass (← funType fv fT)) (fun _ => pure 0)
+    if cls != 0 then return ← withErased (evalCall typed f as head cls?)
   let (fv, fT) ← eval typed f
   pushTemp fv
   let mut tys := #[]
@@ -1555,9 +1625,10 @@ nested closure is checked against the outer function's entry values (fix L3). -/
 partial def recCheck (fv : Value) (ws : Array Value) : M Unit := do
   let st ← get
   if !st.cfg.recGuard then return
-  let mut candss := #[]
-  for (ctx, cands) in st.recStack.zip st.recCands do
+  let mut frames := #[]
+  for ctx in st.recStack do
     if ctx.fn == fv then
+      let cands := ctx.cands
       let cands' := cands.filter fun j =>
         match ctx.entries[j]?.join, ws[j]? with
         | some σ, some w =>
@@ -1569,9 +1640,9 @@ partial def recCheck (fv : Value) (ws : Array Value) : M Unit := do
         err s!"[Rec] {fv} calls itself but declares no decreasing parameter (`by x`)"
       if cands'.isEmpty then
         err s!"[Rec] at {fv}({", ".intercalate (ws.toList.map toString)}): the argument in the decreasing position is not a strict subterm of that parameter's entry value as refined so far"
-      candss := candss.push cands'
-    else candss := candss.push cands
-  set { st with recCands := candss.toList }
+      frames := frames.push { ctx with cands := cands' }
+    else frames := frames.push ctx
+  set { st with recStack := frames.toList }
 
 -- ### Match: [Match], [Split], stuck blocks
 
@@ -2166,11 +2237,13 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
   if dec.isNone && !(← get).cfg.unboundWithoutBy then
     -- counterfactual D31 (the v1.3 literal reading): [Rec] constrains only `fix … by x`
     modify fun s => { s with goal := some goal }
-  else if (← get).cfg.recNested then
-    modify fun s => { s with goal := some goal, recStack := ⟨fv, entries⟩ :: s.recStack,
-                              recCands := cands :: s.recCands }
-  else  -- counterfactual L3: a nested function's check starts with a fresh [Rec] context
-    modify fun s => { s with goal := some goal, recStack := [⟨fv, entries⟩], recCands := [cands] }
+  else
+    let fr : RecCtx := { fn := fv, entries, cands, uid := (← get).nextRecUid }
+    modify fun s => { s with nextRecUid := s.nextRecUid + 1 }
+    if (← get).cfg.recNested then
+      modify fun s => { s with goal := some goal, recStack := fr :: s.recStack }
+    else  -- counterfactual L3: a nested function's check starts with a fresh [Rec] context
+      modify fun s => { s with goal := some goal, recStack := [fr] }
   -- D41: the body of a function whose calls are erased must be confined
   let bodyErased? ← if (← get).cfg.confine && (← get).cfg.confineBodies then
       if (← get).cfg.erasureByDecl then pure (some ((← fnClass piTy) != 0)) else pure none
@@ -2181,7 +2254,9 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
   -- (a by-value parameter, a capture or a local is the body's own)
   let outer : List Nat := ((← get).env[bf]!.binds.toList.zipIdx.filter fun (b, _) =>
     b.ty matches some (.tRef _)).map (·.2)
-  checkTail body fun v T => do
+  -- D53 prototype: the body of a function whose calls are erased is an erased term
+  let bodyCopies ← if (← get).cfg.movingReads then pure ((← fnClass piTy) != 0) else pure false
+  withErasedIf bodyCopies <| checkTail body fun v T => do
     let erasedBody ← match bodyErased? with
       | some b => pure b
       | none => erasedValue v          -- the v1.4 reading: by the value
@@ -2198,8 +2273,6 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
     unless ← conv T g do
       err s!"the body of {self.name} has type {T}, but the goal is {g}"
   restoreKeep saved
-  unless (← get).cfg.recNested do
-    modify fun s => { s with recCands := saved.recCands }
 
 end
 

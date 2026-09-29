@@ -10,7 +10,7 @@ lake build          # checks every example; a failing verdict or a wrong asserti
 lake exe tests      # prints every verdict table and the counterfactual ledger; exit 1 on any unexpected verdict
 ```
 
-Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A clean build takes about 55 seconds (most of it the counterfactual ledger: 47 rows, each re-running the suite twice in the interpreter) and prints every verdict table; `lake exe tests` compiles the runner first and prints per-declaration check times (all 458 declarations check in about 22 ms) and the ledger with each row's class.
+Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A clean build takes about 55 seconds (most of it the counterfactual ledger: 47 rows, each re-running the suite twice in the interpreter) and prints every verdict table; `lake exe tests` compiles the runner first and prints per-declaration check times (all 467 declarations check in about 22 ms) and the ledger with each row's class.
 
 ## Writing programs
 
@@ -81,7 +81,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `04ClosingOff` | stuck calls and matches, sealed programs, a borrow chosen by a branch, what a stuck match captures, [Close]'s rows; naturality up to resolution | §3 | 29 |
 | `05Equality` | `Id` and `Eq`: observation, footprints, disjointness, injectivity (pairs included), `J`; all owners of a returned borrow are observed (D18) | §4 | 35 |
 | `06Snapshots` | types and closures are formed once; what a closure or Π-type captures (values, never borrows; capturing ends a live borrow) | P2, §1, §5 | 21 |
-| `07Recursion` | `by x`, entry-value recursion, induction hypotheses in the caller's environment | §5 [Def], [Rec] | 20 |
+| `07Recursion` | `by x`, entry-value recursion, induction hypotheses in the caller's environment; typing a sealed program keeps the [Rec] state | §5 [Def], [Rec] | 29 |
 | `08CaseSplits` | [Split], dependent matching on a computed type, generalising sealed programs, scrutinee types, global generalisation records | §5 [Split] | 18 |
 | `09Functions` | opaque functions, closures, Π-types, comparing functions by observation (D30, D38, D48 (3)) | P1, §1, §4 | 36 |
 | `10Inductives` | lists, binary search trees (and the paper's trees, whose pure insert runs the in-place one), parameters, strict positivity | §8 | 76 |
@@ -91,7 +91,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `14Universes` | `Prop : Type`, no `Type : Type`, no cumulativity, why `&Type` is refused | preamble, P2 | 8 |
 | `15BorrowTypes` | what may be borrowed and where `&` may appear (D48) | §1 | 16 |
 
-440 declarations in all, the `Prelude`'s 4 included. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+449 declarations in all, the `Prelude`'s 4 included. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 
