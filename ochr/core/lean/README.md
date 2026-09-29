@@ -55,7 +55,7 @@ ochr E1 {
 
 ## Rule → function
 
-| Rule (RULES v1) | Function (`Ochr/Machine.lean` unless noted) |
+| Rule (RULES v2.0) | Function (`Ochr/Machine.lean` unless noted) |
 |---|---|
 | §3 [End ℓ] | `endBorrow` (substitution of every `loan_ℓ` by `substEnv`) |
 | §3 [Access] | `accessPath` (loans on the path, including the place itself), `accessInside` (loans inside the content) |

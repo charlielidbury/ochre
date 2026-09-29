@@ -119,7 +119,7 @@ E5 (dependent types through mutation; notes/deriver-e5.md):
 ```
 Le(a : Nat, b : Nat) : Prop by a := match a { Z => True | S a' => match b { Z => False | S b' => Le(a', b') } }
 LeAdd(n : Nat, m : Nat) : Le(n, Add(n, m)) by n := match n { Z => refl | S n' => LeAdd(n', m) }
-SubM(x : &Nat, y : Nat, h : Le(y, *x)) : Unit by y := match y { Z => () | S q => match *x { Z => () | S p => *x := p; SubM(x, q, h) } }
+SubM(x : &Nat, y : Nat, h : Le(y, *x)) : Unit by y := match y { Z => () | S q => match *x { Z => match h {} | S p => *x := p; SubM(x, q, h) } }
 AddSub(x : &Nat, y : Nat) : Unit := let old = *x; AddM(&*x, y); SubM(x, old, LeAdd(old, y))
 AddSubId(x : &Nat, y : Nat) : Id Unit (AddSub(x, y)) (*x := y) by x := match *x { Z => refl | S p => let c = p; AddSubId(&c, y) }
 ```
