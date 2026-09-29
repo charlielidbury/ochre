@@ -48,9 +48,13 @@ GROUPS = {
     "remove": W("""BRemoveResult BRemoveFind BRemoveFindOther SlotRemoveResult SlotRemoveFind SlotRemoveFindOther
         RemoveResult RemoveFind RemoveFindOther RemoveLen BRemoveCount SlotRemoveCount RemoveCount
         BRemoveUnique SlotRemoveUnique BRemoveAbsent NowhereRemove OnlyInRemove SlotRemovePlaced RemoveInv"""),
+    # the pre-D60 direct proofs (BGetMutFind … SlotGetMutPlaced) are listed too, so the
+    # script also counts older versions of the file; the current file proves get_mut
+    # through GetMutIsInsert
     "get_mut": W("""GetMutLen BGetMutRead BGetMutFind BGetMutFindOther SlotGetMutRead SlotGetMutFind
         SlotGetMutFindOther GetMutRead GetMutFind GetMutFindOther BGetMutCount SlotGetMutCount BGetMutUnique
-        SlotGetMutUnique BGetMutAbsent NowhereGetMut OnlyInGetMut SlotGetMutPlaced GetMutInv GetMutNotOver"""),
+        SlotGetMutUnique BGetMutAbsent NowhereGetMut OnlyInGetMut SlotGetMutPlaced GetMutInv GetMutNotOver
+        BGetMutIsInsert SlotGetMutIsInsert GetMutIsInsert"""),
 }
 DECL = re.compile(r"^  (?:reject )?(?:def|inductive) ([A-Za-z_][A-Za-z0-9_']*)")
 

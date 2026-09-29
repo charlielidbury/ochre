@@ -590,6 +590,37 @@ ochr HashMapLookup uses Std, HashMap {
       HM(n, len, slots) => SlotInsertFind(&slots, Idx(k, n), k, v),
     }
   )
+  -- The bucket insert adds an entry exactly when the key was absent.
+  def IsNone (r : Opt) : Bool := (
+    match r {
+      None => true,
+      Some(_) => false,
+    }
+  )
+  def BInsertAdded (b : &Bucket) (k : Nat) (v : Nat) :
+      Id Bool (BInsert(&*b, k, v)) (let r = BFind(*b, k); BInsert(&*b, k, v); IsNone(r)) by b := (
+    match *b {
+      BNil => refl,
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        match e {
+          false => BInsertAdded(&t, k, v),
+          true => refl,
+        }
+      ),
+    }
+  )
+  def SlotInsertAdded (s : &Slots) (i : Nat) (k : Nat) (v : Nat) :
+      Id Bool (let b = Slot(&*s, i); BInsert(b, k, v))
+              (let r = BFind(Nth(*s, i), k); let b = Slot(&*s, i); BInsert(b, k, v); IsNone(r)) by s := (
+    match *s {
+      SOne(b) => BInsertAdded(&b, k, v),
+      SCons(b, t) => match i {
+        Z => BInsertAdded(&b, k, v),
+        S i' => SlotInsertAdded(&t, i', k, v),
+      },
+    }
+  )
   -- ## Remove
   -- A bucket's keys are distinct (part of the invariant): each key is absent from the rest
   -- of the bucket, stated with the lookup itself. Across the whole table, every bucket.
@@ -776,12 +807,10 @@ ochr HashMapLookup uses Std, HashMap {
     }
   )
   -- ## GetMut
-  -- The borrow points at the value a lookup returns; after writing `w` through it, `k`
-  -- maps to `w`, and every other key is unchanged. Each statement writes through the
-  -- borrow on both sides, so that both leave the same map.
-  -- In the `BNil` arm the split re-normalises the goal, which runs `BGetMut` into its
-  -- unreachable `match h {}`: that match is stuck (D58), so the goal stays a sealed
-  -- program and the arm's own `match h {}` proves it.
+  -- The borrow points at the value a lookup returns. In the `BNil` arm the split
+  -- re-normalises the goal, which runs `BGetMut` into its unreachable `match h {}`: that
+  -- match is stuck (D58), so the goal stays a sealed program and the arm's own
+  -- `match h {}` proves it.
   def BGetMutRead (b : &Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(*b, k))) :
       Id Opt (let q = BGetMut(&*b, k, h); let x = *q; *q := w; Some(x))
              (let r = BFind(*b, k); let q = BGetMut(&*b, k, h); *q := w; r) by b := (
@@ -797,48 +826,10 @@ ochr HashMapLookup uses Std, HashMap {
     }
   )
 
-  def BGetMutFind (b : &Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(*b, k))) :
-      Id Opt (let q = BGetMut(&*b, k, h); *q := w; BFind(*b, k))
-             (let q = BGetMut(&*b, k, h); *q := w; Some(w)) by b := (
-    match *b {
-      BNil => match h {},
-      BCons(k', v', t) => (
-        let e = EqB(k', k);
-        match e {
-          false => BGetMutFind(&t, k, w, h),
-          true => refl,
-        }
-      ),
-    }
-  )
 
-  def BGetMutFindOther (b : &Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(*b, k))) (k2 : Nat)
-      (ne : Eq Bool (EqB(k, k2)) false) :
-      Id Opt (let q = BGetMut(&*b, k, h); *q := w; BFind(*b, k2))
-             (let r = BFind(*b, k2); let q = BGetMut(&*b, k, h); *q := w; r) by b := (
-    match *b {
-      BNil => match h {},
-      BCons(k', v', t) => (
-        let e = EqB(k', k);
-        let e2 = EqB(k', k2);
-        match e {
-          false => match e2 {
-            false => BGetMutFindOther(&t, k, w, h, k2, ne),
-            true => refl,
-          },
-          true => match e2 {
-            false => refl,
-            true => (
-              let f = EqBContra(k', k, k2, refl, refl, ne);
-              match f {}
-            ),
-          },
-        }
-      ),
-    }
-  )
+
   -- Lifted through the index borrow, and stated for the map. `GetMut` branches on no
-  -- sealed result, so the map theorems are the slot theorems at the key's index.
+  -- sealed result, so the map theorem is the slot theorem at the key's index.
   def SlotGetMutRead (s : &Slots) (i : Nat) (k : Nat) (w : Nat) (h : IsSome(BFind(Nth(*s, i), k))) :
       Id Opt (let b = Slot(&*s, i); let q = BGetMut(b, k, h); let x = *q; *q := w; Some(x))
              (let r = BFind(Nth(*s, i), k); let b = Slot(&*s, i); let q = BGetMut(b, k, h); *q := w; r) by s := (
@@ -851,36 +842,7 @@ ochr HashMapLookup uses Std, HashMap {
     }
   )
 
-  def SlotGetMutFind (s : &Slots) (i : Nat) (k : Nat) (w : Nat) (h : IsSome(BFind(Nth(*s, i), k))) :
-      Id Opt (let b = Slot(&*s, i); let q = BGetMut(b, k, h); *q := w; BFind(Nth(*s, i), k))
-             (let b = Slot(&*s, i); let q = BGetMut(b, k, h); *q := w; Some(w)) by s := (
-    match *s {
-      SOne(b) => BGetMutFind(&b, k, w, h),
-      SCons(b, t) => match i {
-        Z => BGetMutFind(&b, k, w, h),
-        S i' => SlotGetMutFind(&t, i', k, w, h),
-      },
-    }
-  )
 
-  def SlotGetMutFindOther (s : &Slots) (i : Nat) (j : Nat) (k : Nat) (w : Nat) (h : IsSome(BFind(Nth(*s, i), k))) (k2 : Nat)
-      (ne : Eq Bool (EqB(k, k2)) false) :
-      Id Opt (let b = Slot(&*s, i); let q = BGetMut(b, k, h); *q := w; BFind(Nth(*s, j), k2))
-             (let r = BFind(Nth(*s, j), k2); let b = Slot(&*s, i); let q = BGetMut(b, k, h); *q := w; r) by s := (
-    match *s {
-      SOne(b) => BGetMutFindOther(&b, k, w, h, k2, ne),
-      SCons(b, t) => match i {
-        Z => match j {
-          Z => BGetMutFindOther(&b, k, w, h, k2, ne),
-          S _ => refl,
-        },
-        S i' => match j {
-          Z => refl,
-          S j' => SlotGetMutFindOther(&t, i', j', k, w, h, k2, ne),
-        },
-      },
-    }
-  )
 
   def GetMutRead (hm : &HashMap) (k : Nat) (w : Nat) (h : IsSome(Find(*hm, k))) :
       Id Opt (let q = GetMut(&*hm, k, h); let x = *q; *q := w; Some(x)) (let r = Find(*hm, k); let q = GetMut(&*hm, k, h); *q := w; r) := (
@@ -888,20 +850,66 @@ ochr HashMapLookup uses Std, HashMap {
       HM(n, len, slots) => SlotGetMutRead(&slots, Idx(k, n), k, w, h),
     }
   )
+  -- Writing `w` through the borrow is inserting `k ↦ w`: the key is present, so the
+  -- insert overwrites and adds nothing. Every other theorem about `GetMut` follows from
+  -- the insert's.
+  def BGetMutIsInsert (b : &Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(*b, k))) :
+      Id Unit (let q = BGetMut(&*b, k, h); *q := w) (BInsert(&*b, k, w); ()) by b := (
+    match *b {
+      BNil => match h {},
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        match e {
+          false => BGetMutIsInsert(&t, k, w, h),
+          true => refl,
+        }
+      ),
+    }
+  )
+
+  def SlotGetMutIsInsert (s : &Slots) (i : Nat) (k : Nat) (w : Nat) (h : IsSome(BFind(Nth(*s, i), k))) :
+      Id Unit (let b = Slot(&*s, i); let q = BGetMut(b, k, h); *q := w) (let b = Slot(&*s, i); BInsert(b, k, w); ()) by s := (
+    match *s {
+      SOne(b) => BGetMutIsInsert(&b, k, w, h),
+      SCons(b, t) => match i {
+        Z => BGetMutIsInsert(&b, k, w, h),
+        S i' => SlotGetMutIsInsert(&t, i', k, w, h),
+      },
+    }
+  )
+
+  def GetMutIsInsert (hm : &HashMap) (k : Nat) (w : Nat) (h : IsSome(Find(*hm, k))) :
+      Id Unit (let q = GetMut(&*hm, k, h); *q := w) (InsertNoResize(&*hm, k, w)) := (
+    match *hm {
+      HM(n, len, slots) => (
+        let c = slots;
+        let b = Slot(&c, Idx(k, n));
+        let added = BInsert(b, k, w);
+        let r = BFind(Nth(slots, Idx(k, n)), k);
+        let p = SlotInsertAdded(&slots, Idx(k, n), k, w);
+        match added {
+          false => SlotGetMutIsInsert(&slots, Idx(k, n), k, w, h),
+          true => match r {
+            None => match h {},
+            Some(_) => match p {},
+          },
+        }
+      ),
+    }
+  )
 
   def GetMutFind (hm : &HashMap) (k : Nat) (w : Nat) (h : IsSome(Find(*hm, k))) :
       Id Opt (let q = GetMut(&*hm, k, h); *q := w; Find(*hm, k)) (let q = GetMut(&*hm, k, h); *q := w; Some(w)) := (
-    match *hm {
-      HM(n, len, slots) => SlotGetMutFind(&slots, Idx(k, n), k, w, h),
-    }
+    rewrite ← GetMutIsInsert(&*hm, k, w, h) in InsertFind(&*hm, k, w)
   )
 
   def GetMutFindOther (hm : &HashMap) (k : Nat) (w : Nat) (h : IsSome(Find(*hm, k))) (k2 : Nat) (ne : Eq Bool (EqB(k, k2)) false) :
       Id Opt (let q = GetMut(&*hm, k, h); *q := w; Find(*hm, k2)) (let r = Find(*hm, k2); let q = GetMut(&*hm, k, h); *q := w; r) := (
-    match *hm {
-      HM(n, len, slots) => SlotGetMutFindOther(&slots, Idx(k, n), Idx(k2, n), k, w, h, k2, ne),
-    }
+    rewrite ← GetMutIsInsert(&*hm, k, w, h) in InsertFindOther(&*hm, k, w, k2, ne)
   )
+
+
+
 
   -- ## Get, through the borrow
   -- `Get` reads through a mutable borrow (Ochr has no shared borrows). When the lookup
@@ -1001,7 +1009,7 @@ ochr HashMapLookup uses Std, HashMap {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "HashMapLookup" HashMapLookup).allAsExpected
-#guard (run "HashMapLookup" HashMapLookup).count == 44
+#guard (run "HashMapLookup" HashMapLookup).count == 46
 
 /-! ## The length
 
@@ -1040,39 +1048,8 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
   )
 
   -- ## The len field
-  -- The bucket insert adds an entry exactly when the key was absent.
-  def IsNone (r : Opt) : Bool := (
-    match r {
-      None => true,
-      Some(_) => false,
-    }
-  )
 
-  def BInsertAdded (b : &Bucket) (k : Nat) (v : Nat) :
-      Id Bool (BInsert(&*b, k, v)) (let r = BFind(*b, k); BInsert(&*b, k, v); IsNone(r)) by b := (
-    match *b {
-      BNil => refl,
-      BCons(k', v', t) => (
-        let e = EqB(k', k);
-        match e {
-          false => BInsertAdded(&t, k, v),
-          true => refl,
-        }
-      ),
-    }
-  )
 
-  def SlotInsertAdded (s : &Slots) (i : Nat) (k : Nat) (v : Nat) :
-      Id Bool (let b = Slot(&*s, i); BInsert(b, k, v))
-              (let r = BFind(Nth(*s, i), k); let b = Slot(&*s, i); BInsert(b, k, v); IsNone(r)) by s := (
-    match *s {
-      SOne(b) => BInsertAdded(&b, k, v),
-      SCons(b, t) => match i {
-        Z => BInsertAdded(&b, k, v),
-        S i' => SlotInsertAdded(&t, i', k, v),
-      },
-    }
-  )
 
   -- Split on whether the entry was added and on the earlier lookup; where they disagree,
   -- the lemma's type is `true = false` or `false = true`, which is `False`.
@@ -1324,31 +1301,6 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
       HM(n, len, slots) => refl,
     }
   )
-  -- The count is unchanged too: writing a value changes no bucket's length.
-  def BGetMutCount (b : &Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(*b, k))) :
-      Id Nat (let l = BLen(*b); let q = BGetMut(&*b, k, h); *q := w; l) (let q = BGetMut(&*b, k, h); *q := w; BLen(*b)) by b := (
-    match *b {
-      BNil => match h {},
-      BCons(k', v', t) => (
-        let e = EqB(k', k);
-        match e {
-          false => BGetMutCount(&t, k, w, h),
-          true => refl,
-        }
-      ),
-    }
-  )
-  def SlotGetMutCount (s : &Slots) (i : Nat) (k : Nat) (w : Nat) (h : IsSome(BFind(Nth(*s, i), k))) :
-      Id Nat (let c = Count(*s); let b = Slot(&*s, i); let q = BGetMut(b, k, h); *q := w; c)
-             (let b = Slot(&*s, i); let q = BGetMut(b, k, h); *q := w; Count(*s)) by s := (
-    match *s {
-      SOne(b) => BGetMutCount(&b, k, w, h),
-      SCons(b, t) => match i {
-        Z => rewrite BGetMutCount(&b, k, w, h) in refl,
-        S i' => rewrite SlotGetMutCount(&t, i', k, w, h) in refl,
-      },
-    }
-  )
 
 }
 
@@ -1356,7 +1308,7 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "HashMapLength" HashMapLength).allAsExpected
-#guard (run "HashMapLength" HashMapLength).count == 25
+#guard (run "HashMapLength" HashMapLength).count == 20
 
 /-! ## The invariant, and resizing
 
@@ -1687,108 +1639,16 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       HM(n, len, s) => NewInv(n),
     }
   )
-  -- `GetMut` changes a value, never a key: the keys stay distinct and in their bucket,
-  -- and the count is unchanged.
-  def BGetMutUnique (b : Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(b, k))) (hu : Unique(b)) :
-      (let c = b; let q = BGetMut(&c, k, h); *q := w; Unique(c)) by b := (
-    match b {
-      BNil => match h {},
-      BCons(k', v', t) => (
-        let ⟨absent, rest⟩ = hu;
-        let e = EqB(k', k);
-        match e {
-          false => ⟨rewrite ← BGetMutFindOther(&t, k, w, h, k', NeqFlip(k', k, refl)) in absent, BGetMutUnique(t, k, w, h, rest)⟩,
-          true => hu,
-        }
-      ),
-    }
-  )
+  -- `GetMut` keeps the invariant, because writing through it is an insert (`GetMutIsInsert`).
 
-  def SlotGetMutUnique (s : Slots) (i : Nat) (k : Nat) (w : Nat) (h : IsSome(BFind(Nth(s, i), k))) (hu : AllUnique(s)) :
-      (let c = s; let b = Slot(&c, i); let q = BGetMut(b, k, h); *q := w; AllUnique(c)) by s := (
-    match s {
-      SOne(b) => BGetMutUnique(b, k, w, h, hu),
-      SCons(b, t) => (
-        let ⟨hb, ht⟩ = hu;
-        match i {
-          Z => ⟨BGetMutUnique(b, k, w, h, hb), ht⟩,
-          S i' => ⟨hb, SlotGetMutUnique(t, i', k, w, h, ht)⟩,
-        }
-      ),
-    }
-  )
 
-  def BGetMutAbsent (b : Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(b, k))) (k2 : Nat) (a : Eq Opt (BFind(b, k2)) None) :
-      (let c = b; let q = BGetMut(&c, k, h); *q := w; Eq Opt (BFind(c, k2)) None) by b := (
-    match b {
-      BNil => match h {},
-      BCons(k', v', t) => (
-        let e2 = EqB(k', k2);
-        match e2 {
-          false => (
-            let e = EqB(k', k);
-            match e {
-              false => BGetMutAbsent(t, k, w, h, k2, a),
-              true => a,
-            }
-          ),
-          true => match a {},
-        }
-      ),
-    }
-  )
-  def NowhereGetMut (s : Slots) (i : Nat) (k : Nat) (w : Nat) (h : IsSome(BFind(Nth(s, i), k))) (k2 : Nat) (hn : Nowhere(s, k2)) :
-      (let c = s; let b = Slot(&c, i); let q = BGetMut(b, k, h); *q := w; Nowhere(c, k2)) by s := (
-    match s {
-      SOne(b) => BGetMutAbsent(b, k, w, h, k2, hn),
-      SCons(b, t) => (
-        let ⟨hb, ht⟩ = hn;
-        match i {
-          Z => ⟨BGetMutAbsent(b, k, w, h, k2, hb), ht⟩,
-          S i' => ⟨hb, NowhereGetMut(t, i', k, w, h, k2, ht)⟩,
-        }
-      ),
-    }
-  )
 
-  def OnlyInGetMut (s : Slots) (i : Nat) (d : Nat) (k : Nat) (w : Nat) (h : IsSome(BFind(Nth(s, i), k))) (k2 : Nat)
-      (ho : OnlyIn(s, d, k2)) : (let c = s; let b = Slot(&c, i); let q = BGetMut(b, k, h); *q := w; OnlyIn(c, d, k2)) by s := (
-    match s {
-      SOne(b) => refl,
-      SCons(b, t) => match d {
-        Z => match i {
-          Z => ho,
-          S i' => NowhereGetMut(t, i', k, w, h, k2, ho),
-        },
-        S d' => (
-          let ⟨hb, ht⟩ = ho;
-          match i {
-            Z => ⟨BGetMutAbsent(b, k, w, h, k2, hb), ht⟩,
-            S i' => ⟨hb, OnlyInGetMut(t, i', d', k, w, h, k2, ht)⟩,
-          }
-        ),
-      },
-    }
-  )
 
-  def SlotGetMutPlaced (s : Slots) (n : Nat) (k : Nat) (w : Nat) (h : IsSome(BFind(Nth(s, Idx(k, n)), k))) (hp : Placed(s, n)) :
-      (let c = s; let b = Slot(&c, Idx(k, n)); let q = BGetMut(b, k, h); *q := w; Placed(c, n)) := (
-    let c = s;
-    let b = Slot(&c, Idx(k, n));
-    let q = BGetMut(b, k, h);
-    *q := w;
-    λ(k2 : Nat) : OnlyIn(c, Idx(k2, n), k2) => OnlyInGetMut(s, Idx(k, n), Idx(k2, n), k, w, h, k2, hp(k2))
-  )
   def GetMutInv (m : HashMap) (k : Nat) (w : Nat) (h : IsSome(Find(m, k))) (hi : Inv(m)) :
       (let c = m; let q = GetMut(&c, k, h); *q := w; Inv(c)) := (
-    match m {
-      HM(n, len, s) => (
-        let ⟨hl, hu, hp⟩ = hi;
-        ⟨rewrite SlotGetMutCount(&s, Idx(k, n), k, w, h) in hl,
-         ⟨SlotGetMutUnique(s, Idx(k, n), k, w, h, hu), SlotGetMutPlaced(s, n, k, w, h, hp)⟩⟩
-      ),
-    }
+    rewrite ← GetMutIsInsert(&m, k, w, h) in InsertInv(m, k, w, hi)
   )
+
 
   -- ## Resizing keeps the invariant
   -- Every entry is moved by `InsertNoResize`, which keeps the invariant, into a fresh
@@ -2557,4 +2417,4 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "HashMapResize" HashMapResize).allAsExpected
-#guard (run "HashMapResize" HashMapResize).count == 85
+#guard (run "HashMapResize" HashMapResize).count == 79
