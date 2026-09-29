@@ -123,7 +123,7 @@ open Ochr.Registry in
 #guard rowOk { confineBodies := true }
   ["E4.TwiceMZero':rejected", "Attacks.P2:rejected", "Attacks.FP2:rejected", "Attacks.BoomIsTrue:rejected", "Attacks.p2:rejected", "Attacks.TA2:rejected", "Probes.F5:rejected", "Probes.TypeErased:rejected", "V17.F:rejected", "V17.SeqT:rejected", "V19.TailSteps:rejected", "D44.CapPi:rejected"]
 open Ochr.Registry in
-#guard rowOk { borrowParam := false } ["D44.Q:accepted", "D44.Boom:accepted", "D44.LeakT:accepted"]
+#guard rowOk { borrowParam := false } ["D44.Q:accepted", "D44.Boom:accepted", "D44.LeakT:accepted", "D44.QF:accepted"]
 open Ochr.Registry in
 #guard rowOk { capTypes := false }
   ["D44.CapS:rejected", "D44.CapSId:rejected", "D44.CapPi:rejected", "D44.CapP:rejected", "D44.CapP2:rejected"]
@@ -148,7 +148,7 @@ open Ochr.Registry in
 -- v2.0 D47 switched off: Eq Nat Z (S Z) is irreducible again, so False and Eq Nat 0 1 part ways
 open Ochr.Registry in
 #guard rowOk { disjoint := false }
-  ["E6.NotAdd01:rejected", "Logic.NoConf:rejected", "Logic.NoConfS:rejected", "Logic.NoConfMatch:rejected", "Logic.NoConfBack:rejected", "Logic.BoolDisj:rejected", "Logic.WriteDisj:rejected"]
+  ["E6.NotAdd01:rejected", "D44.PF:rejected", "Logic.NoConf:rejected", "Logic.NoConfS:rejected", "Logic.NoConfMatch:rejected", "Logic.NoConfBack:rejected", "Logic.BoolDisj:rejected", "Logic.WriteDisj:rejected"]
 -- finding (v2.0 round): v1.9 assumed a data match's scrutinee type from its arms
 open Ochr.Registry in
 #guard rowOk { scrutTyped := false }

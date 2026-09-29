@@ -17,6 +17,9 @@ ochr D44 {
   reject def Q (g : Π(n : Nat). &Nat) : Empty := P(g(5), refl)
   reject def Boom (leak : Π(n : Nat). &Nat) : Empty := Q(leak)
   reject def LeakT : Type := Π(n : Nat). &Nat
+  -- the same with v2.0's False: the observation's Eq Nat 0 1 is False by D47
+  def PF (x : &Nat) (e : Id Unit (*x := 0) (*x := 1)) : False := e
+  reject def QF (g : Π(n : Nat). &Nat) : False := PF(g(5), refl)
   -- a returned borrow derives from a borrow argument: fine
   def Keep (x : &Nat) (n : Nat) : &Nat := x
   def KeepT : Type := Π(x : &Nat) (n : Nat). &Nat
@@ -32,6 +35,6 @@ ochr D44 {
 
 #eval IO.println (run "D44" D44).show
 
--- every verdict as expected, and exactly 14 assertions (a truncated file changes the count)
+-- every verdict as expected, and exactly 16 assertions (a truncated file changes the count)
 #guard (run "D44" D44).allAsExpected
-#guard (run "D44" D44).count == 14
+#guard (run "D44" D44).count == 16
