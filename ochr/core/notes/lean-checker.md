@@ -33,7 +33,7 @@ Code: `ochr/core/lean/` on branch `ochr-core-lean` (README: build, syntax, rule 
 |---|---|---|
 | E1 | AddM, AddMZero, Add, **AddZero** (`S p => AddMZero(&p)`, no cong), AddZero' (`AddMZero(&x)`): all A | as expected |
 | E2 | AddM, TailM, AddM', AddMEq, AddMEqOwned, AddM1, TailNoop: all A | as expected |
-| E3 | AddM, AddMZero, **AddToOne** (inline, closed off), AddToOne', Pick, AddToOne'', AddToOneZero, AddToOneZero'', AddToOneZeroInline: all A | as expected |
+| E3 | AddM, AddMZero, **AddToOne** (inline, closed off), AddToOne', Pick, AddToOne'', AddToOneZero (about the inline AddToOne), AddToOneZero', AddToOneZero'': all A | as expected |
 | E4 | AddM, AddMZero, Twice, TwiceNoop, TwiceM, TwiceMMove, TwiceMZero, Add, **TwiceMZero'** (modular, with `J(A, a, b, P, h, t)`): all A | as expected |
 | E5 | AddM, Add, Le, LeAdd, SubM, AddSub, **AddSubId**, LeId, ProofIrr (deriver-e5 Q1), ExFalso, LeZero, TwoPhase (Q6): A; AddSubStale, AddSubWrong, AddSubIdReborrow, TwoPhaseMoved: R | as expected |
 | E6 | UseMoved R, UseReborrowed A, **LemmaMoves A** (v1.3: a lemma's arguments run on a private copy; R under v1), WriteThenRefl R, WriteThenRefl' R, ZeroIsOne R, Add01 R, NotAdd01 A, Snapshot A, SnapshotLie R, DanglingLocal R, DanglingTail R, DanglingReborrow R (+ AddM, AddMZero, TailM A) | as expected |
@@ -533,7 +533,7 @@ Checked against the paper at e7aff5f9: the body sections and the appendix notes.
 | §2 | `InsertM`, `InsertMEq` (arms `true` first) | Inductives.InsertM, InsertMEq (arms now in the printed order) | accepted |
 | §2 | `Insert`, `Lt`, `Size`, size theorem with `J` and `x + S y = S (x + y)` | Inductives.Insert, Lt, Size, SizeInsert, AddMS, AddS | accepted |
 | §2 | `AddToOne` | E3.AddToOne | accepted |
-| §2 | `AddToOneZero` (about the inline `AddToOne`) | E3.AddToOneZeroInline | accepted |
+| §2 | `AddToOneZero` (about the inline `AddToOne`) | E3.AddToOneZero | accepted |
 | §3 | `False`, `True`, `And` declarations | `Check.prelude` (checked by `checkInd`) | accepted |
 | §3 | `Intro(P, Q; h, k)` | D49.PairP, written `Intro[P, Q](h, k)` | accepted |
 | §3 | `match h {}`, `match h { Intro(l, r) => … }` | Logic.absurd…, AndElim.* | accepted |
@@ -581,4 +581,4 @@ Checked against the paper at e7aff5f9: the body sections and the appendix notes.
 - §7 prints `r := Pick(n, &a, &b); z := b; match n { … }`. That is not Ochr syntax: `:=` assigns an existing place. The test uses `let r = …; let z = b; …`. Suggest printing the `let` form.
 - §4's `(λy. (x := 2; y))(x := 1)` illustrates why rewriting is not confluent. It is not an Ochr program: the `λ` is untyped, and an Ochr closure copies `x`, so the write would go to its own copy. Nothing to test; it is an illustration.
 - §3 writes constructor parameters as `Intro(P, Q; h, k)`, and the checker's surface writes `Intro[P, Q](h, k)`. The core term is the same.
-- Four programs are tested under different names or with a renamed constructor: notes 1–3 (`Lie1`… are LieL, LieB, LieH), note 7 (`P`, `Q` are PF, QF; the Empty versions are D44.P, Q), and §2's `AddToOneZero` (it is E3.AddToOneZeroInline, since E3.AddToOneZero is about the hand-duplicated `AddToOne'`).
+- Three programs were tested under different names: notes 1–3 (`Lie1`… are LieL, LieB, LieH) and note 7 (`P`, `Q` are PF, QF; the Empty versions are D44.P, Q). The paper now uses the test names. §2's `AddToOneZero` was E3.AddToOneZeroInline; the tests were renamed so that E3.AddToOneZero is the paper's program and E3.AddToOneZero' is the one about the hand-duplicated `AddToOne'`.

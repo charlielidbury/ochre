@@ -29,14 +29,14 @@ ochr E3 {
     let r = Pick(b, x1, x2); AddM(r, y)
 
   -- deriver-e346 §E3.3, with the natural proof (Eq A a a ≡ ⊤ removes the refl padding)
-  def AddToOneZero (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id Unit (AddToOne'(b, x1, x2, 0)) () :=
+  def AddToOneZero' (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id Unit (AddToOne'(b, x1, x2, 0)) () :=
     match b { Z => AddMZero(x1) | S _ => AddMZero(x2) }
 
   def AddToOneZero'' (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id Unit (AddToOne''(b, x1, x2, 0)) () :=
     match b { Z => AddMZero(x1) | S _ => AddMZero(x2) }
 
   -- the inline version: its stuck match is closed off in the goal too
-  def AddToOneZeroInline (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id Unit (AddToOne(b, x1, x2, 0)) () :=
+  def AddToOneZero (b : Nat) (x1 : &Nat) (x2 : &Nat) : Id Unit (AddToOne(b, x1, x2, 0)) () :=
     match b { Z => AddMZero(x1) | S _ => AddMZero(x2) }
 }
 
