@@ -78,6 +78,7 @@ structure Args where
   jobs : Nat := 1               -- > 1: run worker processes in parallel (crash-isolated)
   worker : Bool := false
   printOnly : Bool := false
+  list : Bool := false          -- print `@FIND i key` for every finding (for a census of shapes)
   raw : List String := []       -- the arguments, for re-spawning workers
 
 partial def parseArgs (a : Args) : List String → Except String Args
@@ -92,6 +93,7 @@ partial def parseArgs (a : Args) : List String → Except String Args
   | "--jobs" :: n :: r => do parseArgs { a with jobs := n.toNat! } r
   | "--worker" :: r => do parseArgs { a with worker := true } r
   | "--print-only" :: r => do parseArgs { a with printOnly := true } r
+  | "--list" :: r => do parseArgs { a with list := true } r
   | "--switch" :: s :: r => do
     match switchCfg a.cfg s, switchCfg a.base s with
     | some c, some b =>
@@ -130,6 +132,7 @@ def runRange (a : Args) (o : Opts) : IO Unit := do
       if done.contains f.key then continue
       done := f.key :: done
       let key := f.key.replace " " "_"
+      if a.list then out.putStrLn s!"@FIND {i} {key}"
       kinds := bump kinds key
       if first.lookup key |>.isNone then first := first ++ [(key, i)]
       if !a.quiet && (shrunk.lookup key).getD 0 < a.maxShrink then
@@ -174,6 +177,7 @@ partial def superviseRange (exe : String) (a : Args) (start count : Nat) :
     | ["@KIND", k, n] => kinds := bump kinds k n.toNat!
     | ["@FIRST", k, n] => first := first ++ [(k, n.toNat!)]
     | ["@DONE"] => done := true
+    | ["@FIND", _, _] => text := text.push l
     | _ => if l != "" then text := text.push l
   if done then return (text.toList, stats, kinds, first, [])
   -- the worker died during case `last`

@@ -14,7 +14,8 @@ ochr V2Classes {
     match *x0 { Z => refl, S _ => refl }
   )
   -- R2: a stuck block counts a nested λ's write to its own copy as the block's, passes the
-  -- place by `&`, and its re-normalisation makes the λ capture a borrow
+  -- place by `&`, and its re-normalisation makes the λ capture a borrow (cause (i); for cause (ii),
+  -- a λ that only reads a place some arm writes, see ClassE4 in Scratch/EV.lean)
   def R2 (n0 : Nat) : Prop := Id Nat (match n0 { Z => n0, S p2 => let a5 = (λ(y6 : &Nat) : Unit => n0 := 0); n0 }) n0
   reject def R2s (n0 : Nat) : Id Nat (match n0 { Z => n0, S p2 => let a5 = (λ(y6 : &Nat) : Unit => n0 := 0); n0 }) n0 := (
     match n0 { Z => refl, S p => refl }
