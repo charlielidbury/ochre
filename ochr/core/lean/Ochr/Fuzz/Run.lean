@@ -142,8 +142,14 @@ def proofCands (c : Case) : List (STerm × Option String) := Id.run do
       out := out.push (.matchGen (.ident x) [("Z", [], .ident "refl"), ("S", ["q"], call x (.ident "q"))], some x)
       out := out.push (call x (.ident x), some x)
       out := out.push (call x (.ident x), none)
-      -- L1: the function as a value, called through a local (no [Rec] check at `g(…)`)
-      out := out.push (.letIn "g" none (.ident "Lie") (.call (.ident "g") (names.map .ident)), some x)
+      -- L1: the function passed as a value to a function that calls it (Knot's shape):
+      -- `(λ(f : Π(yy : Nat). T[yy]) (z : Nat) : T[z] => f(z))(Lie, x)`, for a statement over
+      -- `x` alone (the callee's body runs untyped, so its call of `f` meets no [Rec] check)
+      if c.params.length == 1 then
+        let T (v : String) := STerm.app "Id" [c.ty, renameT x v c.lhs, renameT x v c.rhs]
+        let app := STerm.fix "_" [("f", .pi [("yy", .ident "Nat")] (T "yy")), ("z", .ident "Nat")] (T "z") none
+          (.call (.ident "f") [.ident "z"])
+        out := out.push (.call app [.ident "Lie", .ident x], some x)
       -- L3: the recursive call inside a nested λ, on the λ's own argument (KnotL's shape);
       -- only when no parameter is a borrow (closures capture no borrows)
       if c.params.all (fun (_, T) => !(T matches .amp _)) then
