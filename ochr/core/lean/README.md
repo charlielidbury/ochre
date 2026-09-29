@@ -78,7 +78,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `01Numbers` | evaluation in types, the pure theorem by the in-place lemma; matching on numbers; pairs; calls | §1, §3, §7 | 20 |
 | `02Borrows` | moving, copying and reborrowing; argument order; the borrow checker ([Access], [Drop]) | §3 | 14 |
 | `03ReturnedBorrows` | functions returning a borrow (`TailM`); a returned borrow must come from a borrow argument (D44) | §1, §3 [Close] | 20 |
-| `04ClosingOff` | stuck calls and matches, sealed programs, a borrow chosen by a branch, what a stuck match captures, [Close]'s rows; naturality up to resolution | §3 | 29 |
+| `04ClosingOff` | stuck calls and matches, sealed programs, a borrow chosen by a branch, what a stuck match captures, [Close]'s rows, typing a sealed program; naturality up to resolution | §3 | 38 |
 | `05Equality` | `Id` and `Eq`: observation, footprints, disjointness, injectivity (pairs included), `J` and its stuck casts (D56); all owners of a returned borrow are observed (D18) | §4 | 36 |
 | `06Snapshots` | types and closures are formed once; what a closure or Π-type captures (values, never borrows; capturing ends a live borrow) | P2, §1, §5 | 21 |
 | `07Recursion` | `by x`, entry-value recursion, induction hypotheses in the caller's environment; typing a sealed program keeps the [Rec] state | §5 [Def], [Rec] | 25 |
@@ -91,7 +91,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `14Universes` | `Prop : Type`, no `Type : Type`, no cumulativity, why `&Type` is refused | preamble, P2 | 8 |
 | `15BorrowTypes` | what may be borrowed and where `&` may appear (D48) | §1 | 16 |
 
-471 declarations in all, the `Prelude`'s 4 included. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+480 declarations in all, the `Prelude`'s 4 included. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 

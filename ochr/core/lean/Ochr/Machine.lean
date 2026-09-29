@@ -476,6 +476,12 @@ partial def valType (v : Value) : M Value := do
   | .sealed t =>
     if (← get).cfg.capTypes then sealedType t
     else err s!"cannot infer the type of the value {v}"
+  | .loan l =>
+    -- a live loan's value is its borrow's content: a place lent out has that content's type
+    let env := (← get).env
+    match (findBorrow env l).bind fun p => (valAt env p).takeBorrow l with
+    | some (c, _) => valType c
+    | none => err s!"cannot infer the type of the value {v}"
   | _ => err s!"cannot infer the type of the value {v}"
 
 /-- The type of a sealed program (neutral data, e.g. a captured one): its term typed as
@@ -1198,7 +1204,13 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     let v ← if (← get).cfg.p5 && (← isPropV g.ty) then pure .proof else pure g.val
     pure (v, some g.ty)
   | .val v =>
-    if typed then pure (v, some (← valType v)) else pure (v, none)
+    if !typed then return (v, none)
+    -- an embedded value with no type of its own (a proof, an inert loan) has the type of the
+    -- position it was embedded at: a parameter's or a field's declared type (the hint)
+    match v, hint with
+    | .proof, some T => if ← isPropV T then pure (v, some T) else pure (v, some (← valType v))
+    | .loan _, some T => tryCatch (do pure (v, some (← valType v))) fun _ => pure (v, some T)
+    | _, _ => pure (v, some (← valType v))
   | .sort l => pure (.sort l, some (.sort (l + 1)))
   | .pi _ ds c =>
     borrowParamCheck ds c
@@ -1390,7 +1402,8 @@ partial def evalCtor (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts : Li
     | _ => Array.replicate np none
   let mut tys := #[]
   for (a, (_, FT)) in as.zip fields do
-    let fh ← if typed && np > 0 && (a matches .ctor ..) then fieldTypeAt d sol FT else pure none
+    let fh ← if typed && ((np > 0 && (a matches .ctor ..)) || (a matches .val _)) then fieldTypeAt d sol FT
+      else pure none
     let (w, T) ← eval typed a fh
     if let some T := T then sol := unifyParams np FT T sol
     tys := tys.push T
@@ -1430,7 +1443,7 @@ partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
   for a in as do
     let s := (← get).effects.size
     -- v2.0: a constructor argument's parameters may come from the parameter's type
-    let hint ← if typed && (a matches .ctor ..) then argHint fv fT ws0 else pure none
+    let hint ← if typed && (a matches .ctor .. | .val _) then argHint fv fT ws0 else pure none
     let (w, T) ← eval typed a hint
     if a matches .borrow _ | .place _ then argSteps := argSteps.push (s, (← get).effects.size)
     pushTemp w

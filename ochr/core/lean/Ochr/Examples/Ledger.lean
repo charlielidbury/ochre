@@ -57,8 +57,8 @@ open Ochr.Registry in
   ["Borrows.Dead:accepted", "Borrows.DeadTwice:accepted"]
 open Ochr.Registry in
 #guard rowOk { generalize := false }
-  ["Equality.CastMatch:rejected", "CaseSplits.MatchAfterOpaque:rejected", "GenType.GenL:rejected",
-   "Trees.InsertM:rejected", "Trees.Insert:rejected", "Trees.InsertMEq:rejected",
+  ["ClosingOff.UseDec:rejected", "Equality.CastMatch:rejected", "CaseSplits.MatchAfterOpaque:rejected",
+   "GenType.GenL:rejected", "Trees.InsertM:rejected", "Trees.Insert:rejected", "Trees.InsertMEq:rejected",
    "Trees.InsertMSwap:rejected", "Trees.SizeInsert:rejected"]
 open Ochr.Registry in
 #guard rowOk { blockMoves := false }
@@ -75,10 +75,11 @@ open Ochr.Registry in
   ["Recursion.KnotL:accepted", "Recursion.KnotLBoom:accepted"]
 open Ochr.Registry in
 #guard rowOk { erasureByDecl := false }
-  ["ClosingOff.RowI:accepted", "Functions.RunG:rejected", "Functions.RunGGen:rejected",
-   "Functions.RunI:rejected", "Functions.RunIGen:rejected", "Erasure.TypeErased:rejected",
-   "ErasureBySyntax.MainW0:rejected", "ErasureBySyntax.TruthB:rejected", "ErasureBySyntax.LieG:accepted",
-   "ErasureBySyntax.TruthG:rejected", "ErasureBySyntax.SeqT:rejected", "ErasureBySyntax.LieH:rejected"]
+  ["ClosingOff.RowI:accepted", "ClosingOff.IdInBlock:rejected", "Functions.RunG:rejected",
+   "Functions.RunGGen:rejected", "Functions.RunI:rejected", "Functions.RunIGen:rejected",
+   "Erasure.TypeErased:rejected", "ErasureBySyntax.MainW0:rejected", "ErasureBySyntax.TruthB:rejected",
+   "ErasureBySyntax.LieG:accepted", "ErasureBySyntax.TruthG:rejected", "ErasureBySyntax.SeqT:rejected",
+   "ErasureBySyntax.LieH:rejected"]
 open Ochr.Registry in
 #guard rowOk { matchEndsInside := false }
   ["ReturnedBorrows.Bad:accepted", "ReturnedBorrows.Main:accepted"]
@@ -169,8 +170,9 @@ open Ochr.Registry in
    "ReturnedBorrows.QF:accepted"]
 open Ochr.Registry in
 #guard rowOk { capTypes := false }
-  ["Equality.Om:rejected", "Snapshots.CapS:rejected", "Snapshots.CapSId:rejected",
-   "Snapshots.CapPi:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected"]
+  ["ClosingOff.UseDec:rejected", "ClosingOff.UseApply:rejected", "Equality.Om:rejected",
+   "Snapshots.CapS:rejected", "Snapshots.CapSId:rejected", "Snapshots.CapPi:rejected",
+   "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected"]
 -- `genPlaceType` changes no verdict; 08CaseSplits.lean asserts its effect on the generalised σ's type
 -- v2.0 D45 by type, switched off: a match on a proof inspects its content (⋆) like data: completeness only
 open Ochr.Registry in
@@ -233,8 +235,9 @@ open Ochr.Registry in
 -- D48 (3) switched off: Π-types compared by captures and code (reviewer-3 C3)
 open Ochr.Registry in
 #guard rowOk { piUnder := false }
-  ["Equality.Om:rejected", "Functions.Cap:rejected", "Functions.CapEq:rejected", "Functions.P1:rejected",
-   "Functions.P3:rejected", "Functions.PassZeroAdd:rejected", "Functions.PassA:rejected"]
+  ["ClosingOff.UseApply:rejected", "Equality.Om:rejected", "Functions.Cap:rejected",
+   "Functions.CapEq:rejected", "Functions.P1:rejected", "Functions.P3:rejected",
+   "Functions.PassZeroAdd:rejected", "Functions.PassA:rejected"]
 -- D49 (3) switched off: a data field of a matched proof is ⋆, and cannot be split
 open Ochr.Registry in
 #guard rowOk { proofDataFields := false }

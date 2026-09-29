@@ -712,3 +712,23 @@ Checked mechanically against the suite before D52 (0127f58b, 432 declarations):
   - Measured against the D55-on default: the D40 row flips nothing (its witnesses all write `V(Z)`), and ten rows lose witnesses but keep flips.
   - Reported to the lead; the fixture decision is pending.
 - 471 declarations = 449 + 14 (Functions) + 5 (Equality) + 3 (Propositions). Ledger: 50 rows.
+
+## 22. Typing a sealed program: embedded values are typed by their position
+
+Two incompleteness reports hit the same gap: `valType` had no type for a value that has none of its own.
+- *arrays-library:* "cannot infer the type of the value ⋆". `H (x : Nat) (h : ⊤) : Nat by x` is stuck at an abstract `x`, so `let y = H(x, refl)` holds the sealed `H(σ, ⋆)`. Typing that program (`sealedType`, reached from a split on `LeDec(y, x)` or from a closure capturing `y`) typed the argument `⋆` on its own.
+- *fuzz-port (49 cases):* "cannot infer the type of the value loan_ℓ". Re-running a stuck match's sealed block at `*x0 := 0` meets `Id Unit () (*x0 := 0)`, whose footprint owner is the block's cell for `*x0`. That cell has no stored type in the untyped re-run, and it is lent out.
+
+Neither value is ill-typed. It is typed by where it sits, as D51 already did for captured proofs:
+- *A proof argument, and an inert loan,* take the type of their position. `evalCall` and `evalCtor` now pass the parameter's or field's declared type as a hint for an embedded value (`.val`) too, not only for a constructor argument. `eval` types `.val ⋆` by that hint when it is a proposition, and an inert loan by the hint when its borrow is not in the run.
+- *A live loan* has the type of its borrow's content: `valType (.loan ℓ)` finds `borrow_ℓ c` in Ω and types `c`.
+
+Tests (ClosingOff, "Typing a sealed program"): `Le`, `Lt`, `Dec`, `LeDec`, `H`, `UseDec`, `Apply`, `UseApply` (arrays-library's repros), and `IdInBlock` (fuzz-port's shape, `Id Prop (match *x0 { Z => Id Unit () (*x0 := 0), S _ => ⊤ }) ⊤` proved by splitting). All accepted; all were rejected before. Every earlier verdict and message is unchanged.
+
+The ledger's rows are unchanged apart from rejections of the new tests:
+- C8: `UseDec`;
+- D28: `IdInBlock`;
+- captured types: `UseApply`, `UseDec`;
+- D48 (3): `UseApply`.
+
+480 declarations.
