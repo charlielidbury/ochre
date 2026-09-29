@@ -27,6 +27,35 @@ ochr Recursion uses Std, Fixtures {
     }
   )
 
+  -- The paper's displays for `AddMZero`'s successor arm (§2): the goal `Eq Nat N(S σ') (S σ')`
+  -- runs one step to `Eq Nat (S N(σ')) (S σ')`, which `Eq` takes apart to `Eq Nat N(σ') σ'`
+  -- (injectivity, D52); `Add(n, 0)` computes `N(σ')` for `n = σ'` ...
+  def SuccGoal (n : Nat) (h : Eq Nat (Add(S n, 0)) (S n)) : Eq Nat (S (Add(n, 0))) (S n) := h
+  def InjStep (n : Nat) (h : Eq Nat (S (Add(n, 0))) (S n)) : Eq Nat (Add(n, 0)) n := h
+
+  -- ... and the recursive call's statement, computed at the call site, is that proposition:
+  -- the borrow of `p` sits inside `*x`, so the call observes `*x` whole, successor included.
+  def CallSite (x : &Nat) : Nat := (
+    match *x {
+      Z => 0,
+      S p => (
+        let h : Eq Nat (S (Add(p, 0))) (S p) = AddMZero(&p);
+        0
+      ),
+    }
+  )
+
+  -- (It is not the statement about `p` alone with the successor added on one side.)
+  reject def CallSiteWrong (x : &Nat) : Nat := (
+    match *x {
+      Z => 0,
+      S p => (
+        let h : Eq Nat (Add(p, 0)) (S p) = AddMZero(&p);
+        0
+      ),
+    }
+  )
+
   -- With the congruence convenience `cong` (outside the core) the copy works. The
   -- recursive call is inside a closure, and is still checked against the outer entry
   -- value: `q` is its predecessor.
@@ -194,4 +223,4 @@ ochr Recursion uses Std, Fixtures {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Recursion" Recursion).allAsExpected
-#guard (run "Recursion" Recursion).count == 25
+#guard (run "Recursion" Recursion).count == 29

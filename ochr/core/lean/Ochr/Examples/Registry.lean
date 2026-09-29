@@ -32,7 +32,7 @@ def programs : List (String × Block) :=
    ("ClosingOff", ClosingOff), ("Naturality", Naturality), ("Equality", Equality),
    ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion),
    ("CaseSplits", CaseSplits), ("GenType", GenType), ("ScrutineeTypes", ScrutineeTypes),
-   ("GlobalRecords", GlobalRecords), ("Functions", Functions), ("Lists", Lists), ("Trees", Trees),
+   ("GlobalRecords", GlobalRecords), ("Functions", Functions), ("Lists", Lists), ("Trees", Trees), ("InPlaceTrees", InPlaceTrees),
    ("PolyLists", PolyLists), ("Positivity", Positivity), ("PositivityParams", PositivityParams),
    ("PositivityPaper", PositivityPaper), ("Propositions", Propositions),
    ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
@@ -175,7 +175,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 480
+def Ochr.Registry.expectedTotal : Nat := 498
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
