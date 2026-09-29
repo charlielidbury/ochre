@@ -4,22 +4,16 @@ import Ochr.Surface
 # The `ochr` command: paper-style programs inside Lean files
 
 ```
-ochr Numbers {
-  def AddM (x : &Nat) (y : Nat) : Unit by x := {
-    match *x {
-      | Z => *x := y
-      | S p => AddM(&p, y)
-    }
-  }
+ochr E1 {
+  def AddM (x : &Nat) (y : Nat) : Unit by x :=
+    match *x { Z => *x := y | S p => AddM(&p, y) }
   reject def Bad (x : &Nat) : Id Nat (*x) 5 := *x := 5; refl
 }
 ```
-defines `Numbers : Ochr.Surface.Program`. `def` expects the checker to accept the
+defines `E1 : Ochr.Surface.Program`. `def` expects the checker to accept the
 definition, `reject def` expects it to be rejected. Calls are saturated and written
 `f(a, …)` with no space before the parenthesis; `S t`, `Id A t u`, `Eq A t u` and
-`cong f h` are written by juxtaposition. Line breaks are whitespace. A definition's body
-may be wrapped in braces, and a match's first arm may be preceded by `|` like the others;
-both are layout only (the same `STerm`).
+`cong f h` are written by juxtaposition.
 -/
 
 namespace Ochr.Notation
@@ -32,7 +26,6 @@ declare_syntax_cat ochr_arm
 declare_syntax_cat ochr_patvar
 declare_syntax_cat ochr_ctor
 declare_syntax_cat ochr_field
-declare_syntax_cat ochr_body
 
 syntax "(" ident " : " ochr_term ")" : ochr_binder
 syntax "(" "_" " : " ochr_term ")" : ochr_binder
@@ -66,8 +59,7 @@ syntax "_" : ochr_patvar
 syntax ident " => " ochr_term:10 : ochr_arm
 syntax ident ochr_patvar " => " ochr_term:10 : ochr_arm
 syntax ident "(" ochr_patvar,* ")" " => " ochr_term:10 : ochr_arm
--- the first arm may also be preceded by `|`, so that arms written one per line all start with it
-syntax:max (name := ochrMatch) "match " ochr_term " { " ("| ")? sepBy1(ochr_arm, " | ") " }" : ochr_term
+syntax:max "match " ochr_term " { " sepBy1(ochr_arm, " | ") " }" : ochr_term
 syntax:max "match " ochr_term " {" "}" : ochr_term      -- no arms (v2.0: on a type with no constructors)
 syntax ident " : " ochr_term : ochr_field
 syntax ident : ochr_ctor
@@ -76,12 +68,8 @@ syntax:10 "Π" ochr_binder+ ". " ochr_term:10 : ochr_term
 syntax:10 "λ" ochr_binder+ " : " ochr_term:21 " => " ochr_term:10 : ochr_term
 syntax:10 "fix " ident ochr_binder+ " : " ochr_term:21 (" by " ident)? " := " ochr_term:10 : ochr_term
 
--- a definition's body, optionally wrapped in braces
-syntax ochr_term : ochr_body
-syntax "{ " ochr_term " }" : ochr_body
-
-syntax "def " ident ochr_binder* " : " ochr_term:21 (" by " ident)? " := " ochr_body : ochr_decl
-syntax "reject " "def " ident ochr_binder* " : " ochr_term:21 (" by " ident)? " := " ochr_body : ochr_decl
+syntax "def " ident ochr_binder* " : " ochr_term:21 (" by " ident)? " := " ochr_term : ochr_decl
+syntax "reject " "def " ident ochr_binder* " : " ochr_term:21 (" by " ident)? " := " ochr_term : ochr_decl
 syntax "inductive " ident ochr_binder* (" : " ochr_term:21)? (" := " sepBy1(ochr_ctor, " | "))? : ochr_decl
 syntax "reject " "inductive " ident ochr_binder* (" : " ochr_term:21)? (" := " sepBy1(ochr_ctor, " | "))? : ochr_decl
 
@@ -107,11 +95,6 @@ partial def elabTerm (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := do
     let as ← if stx.raw.getKind == ``ochrCtorP0 then pure #[] else
       (stx.raw[5].getSepArgs.map (⟨·⟩ : Syntax → TSyntax `ochr_term)).mapM elabTerm
     return ← `(STerm.ctorP $(strLit c) [$ps,*] [$as,*])
-  if stx.raw.getKind == ``ochrMatch then
-    let p : TSyntax `ochr_term := ⟨stx.raw[1]⟩
-    let arms := stx.raw[4].getSepArgs.map (⟨·⟩ : Syntax → TSyntax `ochr_arm)
-    let as ← arms.mapM elabArm
-    return ← `(STerm.matchGen $(← elabTerm p) [$as,*])
   if stx.raw.getKind == ``ochrProj then
     let t : TSyntax `ochr_term := ⟨stx.raw[0]⟩
     let i := stx.raw[2].isNatLit?.getD 0
@@ -141,6 +124,9 @@ partial def elabTerm (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := do
     `(STerm.letIn $(strLit x.getId.toString) none $(← elabTerm t) $(← elabTerm u))
   | `(ochr_term| let $x:ident : $A = $t; $u) => do
     `(STerm.letIn $(strLit x.getId.toString) (some $(← elabTerm A)) $(← elabTerm t) $(← elabTerm u))
+  | `(ochr_term| match $p { $arms|* }) => do
+    let as ← arms.getElems.mapM elabArm
+    `(STerm.matchGen $(← elabTerm p) [$as,*])
   | `(ochr_term| match $p {}) => do `(STerm.matchGen $(← elabTerm p) [])
   | `(ochr_term| Π $bs*. $c) => do `(STerm.pi [$(← bs.mapM elabBinder),*] $(← elabTerm c))
   | `(ochr_term| λ $bs* : $r => $b) => do
@@ -195,20 +181,14 @@ def elabInd (n : TSyntax `ident) (bs : Array (TSyntax `ochr_binder)) (s? : Optio
   `(({ name := $(strLit n.getId.toString), params := [], indParams := [$(← bs.mapM elabBinder),*],
        indSort := $sort, ind? := some [$cs',*], expectAccept := $(quote accept) } : SDecl))
 
-def elabBody (stx : TSyntax `ochr_body) : MacroM (TSyntax `term) := do
-  match stx with
-  | `(ochr_body| { $t }) => elabTerm t
-  | `(ochr_body| $t:ochr_term) => elabTerm t
-  | _ => Macro.throwErrorAt stx "unsupported body"
-
 def elabDecl (stx : TSyntax `ochr_decl) : MacroM (TSyntax `term) := do
   match stx with
   | `(ochr_decl| def $f:ident $bs* : $r $[by $d?]? := $b) => do
     `(({ name := $(strLit f.getId.toString), params := [$(← bs.mapM elabBinder),*],
-         ret := $(← elabTerm r), dec := $(decOf d?), body := $(← elabBody b), expectAccept := true } : SDecl))
+         ret := $(← elabTerm r), dec := $(decOf d?), body := $(← elabTerm b), expectAccept := true } : SDecl))
   | `(ochr_decl| reject def $f:ident $bs* : $r $[by $d?]? := $b) => do
     `(({ name := $(strLit f.getId.toString), params := [$(← bs.mapM elabBinder),*],
-         ret := $(← elabTerm r), dec := $(decOf d?), body := $(← elabBody b), expectAccept := false } : SDecl))
+         ret := $(← elabTerm r), dec := $(decOf d?), body := $(← elabTerm b), expectAccept := false } : SDecl))
   | `(ochr_decl| inductive $n:ident $bs* $[: $s?]? $[:= $cs?|*]?) => elabInd n bs s? cs? true
   | `(ochr_decl| reject inductive $n:ident $bs* $[: $s?]? $[:= $cs?|*]?) => elabInd n bs s? cs? false
   | _ => Macro.throwErrorAt stx "unsupported declaration"
