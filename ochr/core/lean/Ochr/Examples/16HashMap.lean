@@ -1592,34 +1592,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
     }
   )
 
-  -- `Insert`, with the resize.
-  def InsertInvR (m : HashMap) (k : Nat) (v : Nat) (h : Inv(m)) : (let c = m; Insert(&c, k, v); Inv(c)) := (
-    match m {
-      HM(n, len, s) => (
-        let cs = s;
-        let b = Slot(&cs, Idx(k, n));
-        let added = BInsert(b, k, v);
-        let m2 = m;
-        InsertNoResize(&m2, k, v);
-        match added {
-          false => (
-            let full = Lt(n, len);
-            match full {
-              false => InsertInv(m, k, v, h),
-              true => ResizeInv(m2),
-            }
-          ),
-          true => (
-            let full = Lt(n, S len);
-            match full {
-              false => InsertInv(m, k, v, h),
-              true => ResizeInv(m2),
-            }
-          ),
-        }
-      ),
-    }
-  )
   -- ## Resizing keeps every lookup
   -- Re-inserting overwrites, so after moving a bucket (or all the slots) into a map, a
   -- key's lookup is its last occurrence in what was moved, or else what it was before.
@@ -1800,9 +1772,298 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       },
     }
   )
+  -- ## Resizing keeps the length
+  -- Each entry moved is new to the target, so each insert adds one. That needs the keys
+  -- of the old table to be distinct across buckets, which follows from placement.
+  def AddZero (x : Nat) : Id Nat (Add(x, 0)) x := AddMZero(&x)
+
+  def AddAssoc (x : Nat) (y : Nat) (z : Nat) : Eq Nat (Add(Add(x, y), z)) (Add(x, Add(y, z))) by x := (
+    match x {
+      Z => refl,
+      S x' => AddAssoc(x', y, z),
+    }
+  )
+
+  def TransN (x : Nat) (y : Nat) (z : Nat) (h1 : Eq Nat x y) (h2 : Eq Nat y z) : Eq Nat x z := (
+    J(Nat, y, z, λ(w : Nat) : Prop => Eq Nat x w, h2, h1)
+  )
+
+  -- The keys of `b` are absent from the map `m`.
+  def Fresh (b : Bucket) (m : HashMap) : Prop by b := (
+    match b {
+      BNil => ⊤,
+      BCons(k, v, t) => Eq Opt (Find(m, k)) None ∧ Fresh(t, m),
+    }
+  )
+
+  def FreshInsert (t : Bucket) (m : HashMap) (k : Nat) (v : Nat) (h : Fresh(t, m)) (a : Eq Opt (BFind(t, k)) None) :
+      (let c = m; InsertNoResize(&c, k, v); Fresh(t, c)) by t := (
+    match t {
+      BNil => refl,
+      BCons(k2, v2, t2) => match h {
+        Intro(f, ft) => (
+          let e = EqB(k2, k);
+          match e {
+            false => (
+              let mc = m;
+              let m2 = m;
+              InsertNoResize(&m2, k, v);
+              ⟨TransO(Find(m2, k2), Find(m, k2), None, InsertFindOther(&mc, k, v, k2, NeqFlip(k2, k, refl)), f),
+               FreshInsert(t2, m, k, v, ft, a)⟩
+            ),
+            true => match a {},
+          }
+        ),
+      },
+    }
+  )
+
+  -- Moving a bucket of fresh, distinct keys adds its length.
+  def MoveBucketLen (b : Bucket) (m : HashMap) (hf : Fresh(b, m)) (hu : Unique(b)) :
+      Id Nat (let c = m; MoveBucket(b, &c); Len(c)) (Add(Len(m), BLen(b))) by b := (
+    match b {
+      BNil => SymmN(Add(Len(m), 0), Len(m), AddZero(Len(m))),
+      BCons(k, v, t) => match hf {
+        Intro(f, ft) => match hu {
+          Intro(a, ut) => (
+            let mc = m;
+            let m2 = m;
+            InsertNoResize(&m2, k, v);
+            let mb = m;
+            MoveBucket(b, &mb);
+            let grew = J(Opt, Find(m, k), None, λ(z : Opt) : Prop => Eq Nat (Len(m2)) (IfNew(z, Len(m))), f, InsertLen(&mc, k, v));
+            let ih = MoveBucketLen(t, m2, FreshInsert(t, m, k, v, ft, a), ut);
+            TransN(Len(mb), Add(S (Len(m)), BLen(t)), Add(Len(m), S (BLen(t))),
+                   J(Nat, Len(m2), S (Len(m)), λ(z : Nat) : Prop => Eq Nat (Len(mb)) (Add(z, BLen(t))), grew, ih),
+                   SymmN(Add(Len(m), S (BLen(t))), S (Add(Len(m), BLen(t))), AddS(Len(m), BLen(t))))
+          ),
+        },
+      },
+    }
+  )
+  -- Moving the slots.
+  -- The keys of the slots are absent from `m`; the keys of `b'` are not in `b`; the
+  -- buckets' keys are distinct, and apart from every later bucket's.
+  def FreshS (s : Slots) (m : HashMap) : Prop by s := (
+    match s {
+      SOne(b) => Fresh(b, m),
+      SCons(b, t) => Fresh(b, m) ∧ FreshS(t, m),
+    }
+  )
+
+  def AbsentFrom (b' : Bucket) (b : Bucket) : Prop by b' := (
+    match b' {
+      BNil => ⊤,
+      BCons(k, v, r) => Eq Opt (BFind(b, k)) None ∧ AbsentFrom(r, b),
+    }
+  )
+
+  def Apart (t : Slots) (b : Bucket) : Prop by t := (
+    match t {
+      SOne(b') => AbsentFrom(b', b),
+      SCons(b', t') => AbsentFrom(b', b) ∧ Apart(t', b),
+    }
+  )
+
+  def GUnique (s : Slots) : Prop by s := (
+    match s {
+      SOne(b) => Unique(b),
+      SCons(b, t) => Unique(b) ∧ (Apart(t, b) ∧ GUnique(t)),
+    }
+  )
+
+  -- After moving `b`, keys that are not in `b` are still absent.
+  def FreshMove (b' : Bucket) (b : Bucket) (m : HashMap) (hf : Fresh(b', m)) (ha : AbsentFrom(b', b)) :
+      (let c = m; MoveBucket(b, &c); Fresh(b', c)) by b' := (
+    match b' {
+      BNil => refl,
+      BCons(k, v, r) => match hf {
+        Intro(f, fr) => match ha {
+          Intro(a, ar) => (
+            let mb = m;
+            MoveBucket(b, &mb);
+            let none = BFindLastNone(b, k, a);
+            let r0 = BFindLast(b, k);
+            match r0 {
+              None => ⟨TransO(Find(mb, k), Find(m, k), None, MoveBucketFind(b, m, k), f), FreshMove(r, b, m, fr, ar)⟩,
+              Some(_) => match none {},
+            }
+          ),
+        },
+      },
+    }
+  )
+
+  def FreshSMove (t : Slots) (b : Bucket) (m : HashMap) (hf : FreshS(t, m)) (ha : Apart(t, b)) :
+      (let c = m; MoveBucket(b, &c); FreshS(t, c)) by t := (
+    match t {
+      SOne(b') => FreshMove(b', b, m, hf, ha),
+      SCons(b', t') => match hf {
+        Intro(fb, ft) => match ha {
+          Intro(ab, ap) => ⟨FreshMove(b', b, m, fb, ab), FreshSMove(t', b, m, ft, ap)⟩,
+        },
+      },
+    }
+  )
+
+  def MoveSlotsLen (s : Slots) (m : HashMap) (hf : FreshS(s, m)) (hg : GUnique(s)) :
+      Id Nat (let c = m; MoveSlots(s, &c); Len(c)) (Add(Len(m), Count(s))) by s := (
+    match s {
+      SOne(b) => MoveBucketLen(b, m, hf, hg),
+      SCons(b, t) => match hf {
+        Intro(fb, ft) => match hg {
+          Intro(ub, rest) => match rest {
+            Intro(ap, gt) => (
+              let mb = m;
+              MoveBucket(b, &mb);
+              let ms = m;
+              MoveSlots(s, &ms);
+              TransN(Len(ms), Add(Add(Len(m), BLen(b)), Count(t)), Add(Len(m), Add(BLen(b), Count(t))),
+                     J(Nat, Len(mb), Add(Len(m), BLen(b)), λ(z : Nat) : Prop => Eq Nat (Len(ms)) (Add(z, Count(t))),
+                       MoveBucketLen(b, m, fb, ub), MoveSlotsLen(t, mb, FreshSMove(t, b, m, ft, ap), gt)),
+                     AddAssoc(Len(m), BLen(b), Count(t)))
+            ),
+          },
+        },
+      },
+    }
+  )
+
+  -- A new map has no keys.
+  def FreshNew (b : Bucket) (n : Nat) : Fresh(b, New(n)) by b := (
+    match b {
+      BNil => refl,
+      BCons(k, v, t) => ⟨NewFind(n, k), FreshNew(t, n)⟩,
+    }
+  )
+
+  def FreshSNew (s : Slots) (n : Nat) : FreshS(s, New(n)) by s := (
+    match s {
+      SOne(b) => FreshNew(b, n),
+      SCons(b, t) => ⟨FreshNew(b, n), FreshSNew(t, n)⟩,
+    }
+  )
+  -- Placement gives global uniqueness.
+  -- If every key lies only in its own bucket (`D(k)` says which, relative to `s`), keys in
+  -- different buckets differ. For a key `k` of a later bucket: if `D(k)` points at the head
+  -- bucket, `k` would be nowhere in the rest, where it is; otherwise the head lacks it. The
+  -- rest's own `D` is one less.
+  def NowhereOnlyIn (t : Slots) (d : Nat) (k : Nat) (h : Nowhere(t, k)) : OnlyIn(t, d, k) by t := (
+    match t {
+      SOne(b) => refl,
+      SCons(b, t') => match h {
+        Intro(hb, ht) => match d {
+          Z => ht,
+          S d' => ⟨hb, NowhereOnlyIn(t', d', k, ht)⟩,
+        },
+      },
+    }
+  )
+
+  -- The head key `k` of a bucket of `t` is not in `b`.
+  def HeadApart (k : Nat) (v : Nat) (r : Bucket) (b : Bucket) (t : Slots) (D : Π(k : Nat). Nat)
+      (hp : Π(k : Nat). OnlyIn(SCons(b, t), D(k), k))
+      (hin : Π(k2 : Nat) (nw : Nowhere(t, k2)). Eq Opt (BFind(BCons(k, v, r), k2)) None) : Eq Opt (BFind(b, k)) None := (
+    let dk = D(k);
+    let p = hp(k);
+    match dk {
+      Z => (
+        let f = hin(k, p);
+        let e = EqB(k, k);
+        match e {
+          false => (
+            let q = EqBRefl(k);
+            match q {}
+          ),
+          true => match f {},
+        }
+      ),
+      S _ => match p {
+        Intro(a, rest) => a,
+      },
+    }
+  )
+
+  -- `cur` is (a suffix of) a bucket of `t`: a key nowhere in `t` is not in `cur`.
+  def AbsentFromOf (cur : Bucket) (b : Bucket) (t : Slots) (D : Π(k : Nat). Nat)
+      (hp : Π(k : Nat). OnlyIn(SCons(b, t), D(k), k))
+      (hin : Π(k : Nat) (nw : Nowhere(t, k)). Eq Opt (BFind(cur, k)) None) : AbsentFrom(cur, b) by cur := (
+    match cur {
+      BNil => refl,
+      BCons(k, v, r) => ⟨HeadApart(k, v, r, b, t, D, hp, hin),
+        AbsentFromOf(r, b, t, D, hp, λ(k2 : Nat) (nw : Nowhere(t, k2)) : Eq Opt (BFind(r, k2)) None => (
+          let f = hin(k2, nw);
+          let e = EqB(k, k2);
+          match e {
+            false => f,
+            true => match f {},
+          }
+        ))⟩,
+    }
+  )
+  -- `u` is a suffix of `t`: every bucket of it is apart from `b`.
+  def ApartOfGo (u : Slots) (b : Bucket) (t : Slots) (D : Π(k : Nat). Nat)
+      (hp : Π(k : Nat). OnlyIn(SCons(b, t), D(k), k))
+      (hu : Π(k : Nat) (nw : Nowhere(t, k)). Nowhere(u, k)) : Apart(u, b) by u := (
+    match u {
+      SOne(b') => AbsentFromOf(b', b, t, D, hp, hu),
+      SCons(b', u') => ⟨
+        AbsentFromOf(b', b, t, D, hp, λ(k : Nat) (nw : Nowhere(t, k)) : Eq Opt (BFind(b', k)) None => (
+          let p = hu(k, nw);
+          match p {
+            Intro(x, y) => x,
+          }
+        )),
+        ApartOfGo(u', b, t, D, hp, λ(k : Nat) (nw : Nowhere(t, k)) : Nowhere(u', k) => (
+          let p = hu(k, nw);
+          match p {
+            Intro(x, y) => y,
+          }
+        ))⟩,
+    }
+  )
+
+  def TailOnlyIn (b : Bucket) (t : Slots) (d : Nat) (k : Nat) (h : OnlyIn(SCons(b, t), d, k)) : OnlyIn(t, Pred(d), k) := (
+    match d {
+      Z => NowhereOnlyIn(t, 0, k, h),
+      S _ => match h {
+        Intro(x, y) => y,
+      },
+    }
+  )
+
+  def GUniqueOf (s : Slots) (D : Π(k : Nat). Nat) (hp : Π(k : Nat). OnlyIn(s, D(k), k)) (hu : AllUnique(s)) : GUnique(s) by s := (
+    match s {
+      SOne(b) => hu,
+      SCons(b, t) => match hu {
+        Intro(ub, ut) => ⟨ub, ⟨
+          ApartOfGo(t, b, t, D, hp, λ(k : Nat) (nw : Nowhere(t, k)) : Nowhere(t, k) => nw),
+          GUniqueOf(t, λ(k : Nat) : Nat => Pred(D(k)), λ(k : Nat) : OnlyIn(t, Pred(D(k)), k) => TailOnlyIn(b, t, D(k), k, hp(k)), ut)⟩⟩,
+      },
+    }
+  )
+
+  -- Resizing keeps the length, given the invariant.
+  def ResizeLen (m : HashMap) (h : Inv(m)) : Id Nat (let c = m; Resize(&c); Len(c)) (Len(m)) := (
+    match m {
+      HM(n, len, s) => match h {
+        Intro(hl, hr) => match hr {
+          Intro(hu, hp) => (
+            let mc = m;
+            Resize(&mc);
+            TransN(Len(mc), Count(s), len,
+                   MoveSlotsLen(s, New(S (Add(n, n))), FreshSNew(s, S (Add(n, n))), GUniqueOf(s, λ(k : Nat) : Nat => Idx(k, n), hp, hu)),
+                   SymmN(len, Count(s), hl))
+          ),
+        },
+      },
+    }
+  )
+
   -- ## Insert, with the resize
-  -- Split on whether the entry was added and on whether the table is then full; when it
-  -- is, the resize keeps the lookup (`ResizeFind`, under the invariant `InsertInv` gives).
+  -- Split on whether the entry was added and on whether the table is then full. When it
+  -- is, the resize keeps the invariant, every lookup and the length, the last two under
+  -- the invariant, which `InsertInv` gives for the map before the resize.
   def InsertFindR (m : HashMap) (k : Nat) (v : Nat) (h : Inv(m)) :
       Id Opt (let c = m; Insert(&c, k, v); Find(c, k)) (Some(v)) := (
     match m {
@@ -1866,10 +2127,72 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       ),
     }
   )
+
+  -- The invariant.
+  def InsertInvR (m : HashMap) (k : Nat) (v : Nat) (h : Inv(m)) : (let c = m; Insert(&c, k, v); Inv(c)) := (
+    match m {
+      HM(n, len, s) => (
+        let cs = s;
+        let b = Slot(&cs, Idx(k, n));
+        let added = BInsert(b, k, v);
+        let m2 = m;
+        InsertNoResize(&m2, k, v);
+        match added {
+          false => (
+            let full = Lt(n, len);
+            match full {
+              false => InsertInv(m, k, v, h),
+              true => ResizeInv(m2),
+            }
+          ),
+          true => (
+            let full = Lt(n, S len);
+            match full {
+              false => InsertInv(m, k, v, h),
+              true => ResizeInv(m2),
+            }
+          ),
+        }
+      ),
+    }
+  )
+
+  -- The length grows by one exactly when the key was absent.
+  def InsertLenR (m : HashMap) (k : Nat) (v : Nat) (h : Inv(m)) :
+      Id Nat (let c = m; Insert(&c, k, v); Len(c)) (IfNew(Find(m, k), Len(m))) := (
+    match m {
+      HM(n, len, s) => (
+        let mc = m;
+        let m2 = m;
+        InsertNoResize(&m2, k, v);
+        let m3 = m2;
+        Resize(&m3);
+        let cs = s;
+        let b = Slot(&cs, Idx(k, n));
+        let added = BInsert(b, k, v);
+        match added {
+          false => (
+            let full = Lt(n, len);
+            match full {
+              false => InsertLen(&mc, k, v),
+              true => TransN(Len(m3), Len(m2), IfNew(Find(m, k), len), ResizeLen(m2, InsertInv(m, k, v, h)), InsertLen(&mc, k, v)),
+            }
+          ),
+          true => (
+            let full = Lt(n, S len);
+            match full {
+              false => InsertLen(&mc, k, v),
+              true => TransN(Len(m3), Len(m2), IfNew(Find(m, k), len), ResizeLen(m2, InsertInv(m, k, v, h)), InsertLen(&mc, k, v)),
+            }
+          ),
+        }
+      ),
+    }
+  )
 }
 
 #eval IO.println (run "HashMapResize" HashMapResize).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "HashMapResize" HashMapResize).allAsExpected
-#guard (run "HashMapResize" HashMapResize).count == 43
+#guard (run "HashMapResize" HashMapResize).count == 66
