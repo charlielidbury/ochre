@@ -1,6 +1,6 @@
 #import "../style.typ": *
 
-Here is an addition on Peano numerals that allocates nothing. It walks down the successors of `*x` until it reaches the final `Z` and moves `y` into that spot:
+Here is an in-place addition on Peano numerals. It walks down the successors of `*x` until it reaches the final `Z` and moves `y` into that spot:
 
 ```
 AddM(x : &Nat, y : Nat) : Unit by x :=
@@ -18,7 +18,7 @@ The statement says that running `AddM(x, 0)` is indistinguishable from doing not
 
 This paper is about the type theory that makes that possible.
 
-== The two-language problem
+== The two-language problem <sec-intro-two>
 
 Verified software is usually built in one of two ways. In the first, everything is written in a pure proof assistant such as Lean or Coq, and performance comes from the compiler's ability to turn functional updates into in-place ones where it can prove the old value is dead. In the second, the efficient program is written in an imperative language, and a separate pure specification is related to it by a refinement proof: Verus @verus and Creusot @creusot check Rust against specifications discharged by SMT, VeriFast checks C against separation-logic contracts, and Aeneas @aeneas translates safe Rust into a pure Lean program about which the user then proves theorems.
 
@@ -38,7 +38,7 @@ We show that this translation can be performed *inside the type checker, lazily,
 
 == Why this is not impossible <sec-intro-why>
 
-Pédrot and Tabareau's fire triangle @fire-triangle shows that a type theory cannot combine substitution of arbitrary terms, dependent elimination and observable effects without becoming inconsistent. Their notion of an observable effect concerns closed terms, and ownership removes it: a closed Ochr program can mutate only places it created itself, so it always behaves like a value. The danger reappears for _open_ terms, whose effects on the environment are observable, and there it takes exactly the form they describe, a desynchronisation between the effects performed in a term and in its type. A statement is evaluated once through the stuck-computation machinery, at a definition's generic call, and again directly, at every instance, and any step on which the two paths disagree is a proof of false; we found several such steps while designing the calculus (@sec-typing). Ochr keeps the two paths synchronised by one discipline: a type contains only values, a computation mentioned in a type contributes only its observation, run on a private copy of the environment, and every decision the two paths must agree on (which terms are erased, what a stuck block captures, which loans a match ends) is made from syntax rather than from normal forms. Unlike the call-by-value corner of their analysis, this keeps dependent `let` and large elimination, because typing threads the values computed so far.
+Pédrot and Tabareau's fire triangle @fire-triangle shows that a type theory with substitution of arbitrary terms, dependent elimination and observable effects is inconsistent. Their notion of an observable effect concerns closed terms: a closed boolean that is observationally equivalent to neither `true` nor `false`. Ownership rules this out: a closed Ochr program can mutate only places it created itself, so it behaves like the value it computes. The danger reappears for _open_ terms, whose effects on the environment are observable. Ochr answers it as their call-by-value analysis does, by keeping dependent elimination and never substituting an arbitrary term into a type: a type contains only values, and a computation mentioned in a type contributes only its observation, run on a private copy of the environment. They show that the call-by-value type theory their translation yields has no dependent `let` and no large elimination; its types must be syntactic values. Ochr has both, because its typing judgement runs the term and substitutes the value it computes, which on symbolic inputs may be a neutral. The price is a disagreement of a new kind. A statement is evaluated once through the stuck-computation machinery, at a definition's generic call, and again directly, at every instance, and any step on which the two paths disagree is a proof of false; we found several such steps while designing the calculus (@sec-typing). This resembles what Pédrot and Tabareau, discussing call-by-name, call a desynchronisation between the effects performed in a term and in its type, but the mechanism differs. Ochr keeps its two paths synchronised by making every decision they must agree on (which terms are erased, what a stuck block captures, which loans a match ends) from syntax rather than from normal forms.
 
 == Contributions
 
