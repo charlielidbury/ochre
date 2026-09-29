@@ -47,6 +47,7 @@ This appendix defines Ochr completely: its syntax and runtime structures (@app-s
     ([], $\&A | p | \&p | p := t$, [borrow type; read, borrow, assign]),
     ([], $kw("let") x = t; u | kw("let") x : A = t; u | t; u$, [sequencing]),
     ([], $kw("match") p space {ty("C")_1 (overline(y)_1) => t_1, ..., ty("C")_m (overline(y)_m) => t_m}$, [case analysis, one arm per constructor ($m >= 0$)]),
+    ([], $kw("split") f space kw("in") t$, [case analysis on a stuck call found in the goal ([T-Split-goal])]),
     ([], $ty("Id") A space t space u$, [equality of computations]),
     ([], $v$, [embedded value]),
     ($p, q$, $x | dr p | p.g$, [places ($g$ a field name)]),
@@ -366,7 +367,7 @@ A Π-closure records its class and whether its codomain is a borrow type, both r
 #rules(
   ir(name: "T-Rewrite", pv($Omega tack.r h ev star : H equiv "eq"(T, v_a, v_b) quad G "a proposition"$, $G' = G[sigma slash v_b]^+ [v_a slash sigma], thick sigma "fresh" quad Omega scripts(tack.r)^(G') t ev star : T_t tack.l Omega' quad T_t equiv G'$), $Omega scripts(tack.r)^G kw("rewrite") h space kw("in") t ev star : G tack.l Omega$),
 )
-`rewrite h in t` needs a known goal `G`: it is checked in checking mode, in tail position, as a call's argument or under an annotated `let`. It replaces every occurrence of `b`'s normal form in `G` by `a`, using the replacement of [Split-gen] locally to the goal, and checks `t` against the result; `rewrite ← h in t` swaps `a` and `b`. It is `J(A, a, b, λz. G[z slash b], h, t)` with the motive read off the goal, a proof, and never runs, so [J]'s condition on the endpoints does not arise. #lean("evalCore (.prim \"rewrite\")", "Surface.resolve (.rewrite)")
+`rewrite h in t` needs a known goal `G`: it is checked in checking mode, in tail position, as a call's argument or under an annotated `let`. It replaces every occurrence of `b`'s normal form in `G` by `a`, using the replacement of [Split-gen] locally to the goal, and checks `t` against the result; `rewrite ← h in t` swaps `a` and `b`. It is `J(A, a, b, λz. G[z/b], h, t)` with the motive read off the goal, a proof, and never runs, so [J]’s condition on the endpoints does not arise. #lean("evalCore (.prim \"rewrite\")", "Surface.resolve (.rewrite)")
 
 === Functions and calls
 
@@ -402,6 +403,11 @@ Let $m = kw("match") p {ty("C")_1 => t_1, dots, ty("C")_m => t_m}$ match on a pl
   ir(name: "Split-gen", pv($acc^M_p (Omega) = Omega_1 quad cont_(Omega_1)(p) = n "a sealed program or an inert loan"$, $sigma "fresh," Delta(sigma) = "type"_(Omega_1)(p) quad Omega_1 [sigma slash n]^+ "with" n := sigma "recorded in" rho quad tack.r m ev v : B tack.l Omega'$), $Omega tack.r m ev v : B tack.l Omega'$),
 )
 In [Split] every arm is checked from $Omega_1$, and the arms' states and values are discarded; each refinement is applied to the environment, the goal and every stored type. `T` is the annotation of an enclosing `let x : T = m` (checking mode, $scripts(tack.r)^T$), whose type is then `T`; without one, the arms' types must be convertible. The block is run by the machine, from the unrefined $Omega_1$. [Split-gen] generalises a neutral head first (Lean's `generalize`): it replaces the neutral everywhere in Ω, the goal, the stored types and the annotation, and records it in ρ, so that the replacement persists when the neutral is derived again; the record is global, and survives a private copy in which it was made. Types are terms, so a match inside a type is checked in the same way. #lean("evalMatch", "evalMatchInd", "splitArmsThenClose", "ctorRefinement", "generalizeNeutral", "refine")
+
+#rules(
+  ir(name: "T-Split-goal", pv($n "is the first sealed program, among the goal's in order, each followed down the chain of neutrals its run is stuck on,"$, $"whose head call is a call of" f quad sigma "fresh," Delta(sigma) "the type of" n quad n := sigma "recorded in" rho quad Omega[sigma slash n]^+ tack.r kw("match") sigma {ty("C")_1 => t, dots, ty("C")_m => t} arrow.squiggly cal(L)$), $Omega tack.r kw("split") f space kw("in") t arrow.squiggly cal(L)$),
+)
+`split f in t` is [Split-gen] and [Tail-split] with the scrutinee found in the goal instead of written as a place, as Lean's `split` is: it generalises the first result of a call of `f` on which the goal's sealed programs are stuck, and checks `t` in every arm; `split f { C₁ => t₁, … }` gives each arm its own term. It never runs and adds nothing to the model. The head function is named because a goal's chain of stuck results usually has several sealed links, and different proofs need different ones.
 
 *Tail position.* The body of a definition is checked by a judgement $Omega tack.r t arrow.squiggly cal(L)$ whose result is the finite set $cal(L)$ of the _leaves_ of its case tree: triples $(Omega', v, A)$, each in the state of its own path, with the goal refined along that path. A match is in tail position when only trailing drops follow it.
 
