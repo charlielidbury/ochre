@@ -13,9 +13,8 @@ open Ochr Ochr.Surface
 
 /-- The names of the library declarations the checker accepts, in order. -/
 def acceptedNames (cfg : Config) (fuel : Nat) (decls : List SDecl) : List String := Id.run do
-  let (g0, i0) := preludeState cfg
-  let mut globals : List GDef := g0
-  let mut inds : List IndDecl := i0
+  let mut globals : List GDef := []
+  let mut inds : List IndDecl := []
   let mut ok : List String := []
   for d in decls do
     match resolveProgram decls d with
@@ -41,7 +40,7 @@ def mkCase (seed i : Nat) (fuel : Nat := 200000) : Case × Rng := Id.run do
     let lib ← genTemplates
     pure (lib, ← genExtras lib)
   let ((lib, extras), g1) := phase1.run { rng := caseRng seed i }
-  let ok := acceptedNames {} fuel (lib.filterMap libDecl ++ extras.map (·.1))
+  let ok := acceptedNames {} fuel ((Block.decls Prelude) ++ lib.filterMap libDecl ++ extras.map (·.1))
   let extras := extras.filter fun (d, _) => ok.contains d.name
   let fns := libFns.filter (fun f => ok.contains f.name) ++ extras.map (·.2)
   let ((ps, A, lhs, rhs), g2) := (genStmt fns (indsOf lib)).run g1

@@ -56,7 +56,7 @@ builtin)? The shrinker keeps only well-scoped candidates, so counterexamples pri
 valid programs. -/
 partial def scopedT (names : List String) (bound : List String) : STerm → Bool
   | .ident x => bound.contains x || names.contains x ||
-      ["Nat", "Unit", "Z", "refl", "S", "F", "T", "Nil", "Cons", "Mk", "B2", "L", "Box",
+      ["Nat", "Unit", "Z", "refl", "S", "F", "T", "Nil", "Cons", "MkB", "Mk", "Pair", "B2", "L", "Box",
        "False", "True", "I", "And", "Intro", "Or", "Inl", "Inr", "ExN", "Wit"].contains x
   | .num _ | .unitLit | .top | .sort _ => true
   | .app _ as => as.all (scopedT names bound)

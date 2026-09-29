@@ -43,20 +43,7 @@ def callObs (fv T : Value) (inputs : List Value) : M Value := do
     | r => do pushTemp r; pure r
   endAll
   discard popTemp
-  pure (tupleVal r ((← get).env[0]!.binds.toList.map (·.val)))
-
-/-- Split an observation tuple `(v, (w₀, (w₁, …)))` with `n` footprint components. -/
-def untuple (n : Nat) (v : Value) : Value × List Value :=
-  if n == 0 then (v, []) else
-  match v with
-  | .pair r rest =>
-    let rec go : Nat → Value → List Value
-      | 0, _ => []
-      | 1, w => [w]
-      | k + 1, .pair a b => a :: go k b
-      | _, w => [w]
-    (r, go n rest)
-  | _ => (v, [])
+  pure (obsVal r ((← get).env[0]!.binds.toList.map (·.val)))
 
 /-- One-hole contexts that put a borrowed `T` inside a larger owner: `(K, owner type)`. -/
 def contexts (inds : List IndDecl) (T : Value) : List ((Value → Value) × Value) :=
@@ -64,7 +51,7 @@ def contexts (inds : List IndDecl) (T : Value) : List ((Value → Value) × Valu
   let hasBox := inds.any (·.name == "Box")
   match T with
   | .tNat => [(Value.succ, Value.tNat)] ++
-      (if hasBox then [(fun h => Value.ind "Box" 0 ⟨"Mk"⟩ [] [h], Value.tInd "Box" [])] else []) ++
+      (if hasBox then [(fun h => Value.ind "Box" 0 ⟨"MkB"⟩ [] [h], Value.tInd "Box" [])] else []) ++
       (if hasL then [(fun h => Value.ind "L" 1 ⟨"Cons"⟩ [] [h, .ind "L" 0 ⟨"Nil"⟩ [] []], Value.tInd "L" [])] else [])
   | .tInd "L" [] => [(fun h => Value.ind "L" 1 ⟨"Cons"⟩ [] [.zero, h], Value.tInd "L" [])]
   | _ => []
@@ -249,8 +236,8 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
           let hasTy : Value → Bool := fun v => v.anyAtom fun
             | .tEq .. | .tInd .. | .sort _ | .tPi .. | .proof => true | _ => false
           if hasTy g || hasTy d then continue
-          let (r0, ws) := untuple W.length g
-          let pred := tupleVal r0 (ws.set cell (K (ws[cell]?.getD .bot)))
+          let (r0, ws) := obsParts g
+          let pred := obsVal r0 (ws.set cell (K (ws[cell]?.getD .bot)))
           let (res, _) := compareVals sg sd pinned pred d rng fns
           if let some (_, sv, dvs) := res then
             fs := push fs .frame (compName k) lbl s!"generic plugged: {sv}" dvs

@@ -1,4 +1,4 @@
-import Ochr.Notation
+import Ochr.Prelude
 import Ochr.Fuzz.Rand
 
 /-!
@@ -106,7 +106,7 @@ structure LibFn where
 ochr FuzzLib {
   inductive B2 := F | T
   inductive L := Nil | Cons(h : Nat, t : L)
-  inductive Box := Mk(v : Nat)
+  inductive Box := MkB(v : Nat)
   inductive Or (P : Prop) (Q : Prop) : Prop := Inl(l : P) | Inr(r : Q)
   inductive ExN : Prop := Wit(n : Nat, e : ⊤)
   def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y, S p => AddM(&p, y) }

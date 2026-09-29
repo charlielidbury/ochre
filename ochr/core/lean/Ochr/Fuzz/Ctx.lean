@@ -111,7 +111,7 @@ def borrowOf? (Γ : Ctx) (T : GTy) (avoid : List String) : Gen (Option (STerm ×
 def ctorsOf : String → List (String × List (String × GTy))
   | "B2" => [("F", []), ("T", [])]
   | "L" => [("Nil", []), ("Cons", [("h", .nat), ("t", .ind "L")])]
-  | "Box" => [("Mk", [("v", .nat)])]
+  | "Box" => [("MkB", [("v", .nat)])]
   | "Or" => [("Inl", [("l", .proof)]), ("Inr", [("r", .proof)])]
   | "ExN" => [("Wit", [("n", .nat), ("e", .proof)])]
   | _ => []

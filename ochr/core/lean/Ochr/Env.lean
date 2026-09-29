@@ -118,6 +118,8 @@ structure Config where
   confineBodies : Bool := false  -- an extension of D41, not in RULES: the body of a function whose calls are
                                  -- erased, and each arm of an erased stuck block, are confined too
   trace : Bool := false          -- record goals, splits and call types (for inspection)
+  keepRecCands : Bool := false   -- fuzzer hook (notes/fuzzer.md F-v2-1), off by default: the [Rec]
+                                 -- accumulators survive a copy that emptied them (`sealedType`)
 deriving Inhabited, Repr
 
 /-- D41: one assignment, borrow or move, by the position of its place's root. It is
@@ -181,8 +183,11 @@ def tick : M Unit := do
 /-- Restore a saved state, keeping the fuel spent and the [Rec] accumulators. -/
 def restoreKeep (saved : MState) : M Unit :=
   modify fun cur =>
-    let s := { saved with fuel := cur.fuel, classCache := cur.classCache,
-                          recCands := cur.recCands.drop (cur.recCands.length - saved.recCands.length) }
+    -- (fuzzer hook F-v2-1: a copy that emptied the accumulators, `sealedType`, leaves the
+    -- outer ones as they were; without it `[].drop 0` keeps none, and [Rec] stops checking)
+    let rc := if cur.cfg.keepRecCands && cur.recCands.length < saved.recCands.length then saved.recCands
+      else cur.recCands.drop (cur.recCands.length - saved.recCands.length)
+    let s := { saved with fuel := cur.fuel, classCache := cur.classCache, recCands := rc }
     -- D37 (v1.8): fresh names are never reused, and generalisation records are global
     if cur.cfg.globalRecords then
       { s with nextAbs := cur.nextAbs, absTy := cur.absTy, nextLoan := cur.nextLoan, neutrals := cur.neutrals }

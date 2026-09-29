@@ -36,10 +36,15 @@ def convDecls : Option (STerm × STerm × STerm) → List SDecl
      { name := "ConvG", ret := T, body := g, expectAccept := true },
      { name := "ConvEq", ret := .app "Eq" [T, .ident "ConvF", .ident "ConvG"], body := .ident "refl", expectAccept := true }]
 
-def Case.decls (c : Case) : List SDecl :=
+/-- The case's own declarations (what a counterexample prints). -/
+def Case.own (c : Case) : List SDecl :=
   c.lib.filterMap libDecl ++ c.extra ++ convDecls c.conv ++ [c.stmtDecl]
 
-def Case.show (c : Case) (name : String := "Cex") : String := ppProgram name c.decls
+/-- The program checked: the library block `Prelude` (D52: `Pair`, `False`, `True`, `And`),
+which every `ochr` block uses implicitly, then the case's own declarations. -/
+def Case.decls (c : Case) : List SDecl := (Block.decls Prelude) ++ c.own
+
+def Case.show (c : Case) (name : String := "Cex") : String := ppProgram name c.own
 
 def indsOf (lib : List String) : List String := ["B2", "L", "Box", "Or", "ExN"].filter lib.contains
 

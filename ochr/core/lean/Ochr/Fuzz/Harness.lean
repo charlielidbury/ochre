@@ -39,9 +39,8 @@ deriving Inhabited
 statement. -/
 def prepare (cfg : Config) (fuel : Nat) (decls : List SDecl) : Except String Prepared := do
   let some sd := decls.getLast? | throw "empty program"
-  let (g0, i0) := preludeState cfg     -- the library: False, True, And
-  let mut globals : List GDef := g0
-  let mut inds : List IndDecl := i0
+  let mut globals : List GDef := []
+  let mut inds : List IndDecl := []
   let mut rej : List (String × String) := []
   for d in decls.dropLast do
     match resolveProgram decls d with
@@ -122,18 +121,6 @@ def hypsHold (st : MState) (ps : Array PInfo) : Bool := Id.run do
 /-- Every binding of Ω (the resolution observes all of them). -/
 def obsPositions (env : Env) : List Pos :=
   (allPos env).filter fun | .bind .. => true | _ => false
-
-/-- One component of the observation: 0 = lhs, 1 = rhs, 2 = the `Id` type. Returns the
-value and the generalisation records the run left (sealed program ↦ σ). -/
-def obsComp (st : MState) (A t u : Term) (W : List Pos) (typed : Bool) (k : Nat) :
-    Except String (Value × List (Value × Nat)) :=
-  let act : M Value := match k with
-    | 0 => do let A' ← evalType A; observe typed t A' W
-    | 1 => do let A' ← evalType A; observe typed u A' W
-    | _ => do let (v, _) ← eval typed (.id A t u); pure v
-  match runSt act st with
-  | .ok (v, st') => .ok (v, st'.neutrals)
-  | .error e => .error e
 
 def compName : Nat → String
   | 0 => "lhs"

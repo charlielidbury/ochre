@@ -42,13 +42,11 @@ def canonLoan (l : Nat) : CanonM Nat := do
 mutual
 partial def canonV : Value → CanonM Value
   | .succ v => return .succ (← canonV v)
-  | .pair a b => return .pair (← canonV a) (← canonV b)
   | .clo cs t => return .clo (← cs.mapM canonV) (← canonT t)
   | .borrow l v => return .borrow (← canonLoan l) (← canonV v)
   | .loan l => return .loan (← canonLoan l)
   | .abs s => return .abs (← canonAbs s)
   | .sealed t => return .sealed (← canonT t)
-  | .tProd a b => return .tProd (← canonV a) (← canonV b)
   | .tEq A a b => return .tEq (← canonV A) (← canonV a) (← canonV b)
   | .tRef a => return .tRef (← canonV a)
   | .tPi cs t => return .tPi (← cs.mapM canonV) (← canonT t)
@@ -74,8 +72,6 @@ partial def canonT (t : Term) : CanonM Term := do
   | .fst u => return .fst (← go u)
   | .snd u => return .snd (← go u)
   | .ref u => return .ref (← go u)
-  | .prod a b => return .prod (← go a) (← go b)
-  | .pair a b => return .pair (← go a) (← go b)
   | .cong a b => return .cong (← go a) (← go b)
   | .ascribe a b => return .ascribe (← go a) (← go b)
   | .eq a b c => return .eq (← go a) (← go b) (← go c)
@@ -86,6 +82,16 @@ partial def canonT (t : Term) : CanonM Term := do
   | .matchInd p ty as => return .matchInd p ty (← as.mapM fun (h, a) => do pure (h, ← go a))
   | _ => pure t
 end
+
+/-- An observation as one value: the result and the final contents of the observed
+bindings, in a constructor of no declared type (D52: `observe` returns them as a tuple of
+the machine, not a `Pair`), so that it can be refined, renamed and compared whole. -/
+def obsVal (r : Value) (ws : List Value) : Value := .ind "⟦obs⟧" 0 ⟨"obs"⟩ [] (r :: ws)
+
+/-- The result and owner contents of an observation (`obsVal`). -/
+def obsParts : Value → Value × List Value
+  | .ind "⟦obs⟧" 0 _ _ (r :: ws) => (r, ws)
+  | v => (v, [])
 
 def canon (pinned : List Nat) (v : Value) : Value := (canonV v |>.run { pinned := pinned }).1
 

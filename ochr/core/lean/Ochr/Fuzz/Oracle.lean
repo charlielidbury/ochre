@@ -73,8 +73,8 @@ def showE : Except String Value → String
 def obsRun (st : MState) (A t u : Term) (W : List Pos) (typed : Bool) (k : Nat) :
     Except String (Value × MState) :=
   let act : M Value := match k with
-    | 0 => do let A' ← evalType A; observe typed t A' W
-    | 1 => do let A' ← evalType A; observe typed u A' W
+    | 0 => do let A' ← evalType A; let (r, ws) ← observe typed t A' W; pure (obsVal r ws)
+    | 1 => do let A' ← evalType A; let (r, ws) ← observe typed u A' W; pure (obsVal r ws)
     | _ => do let (v, _) ← eval typed (.id A t u); pure v
   runSt act st
 
