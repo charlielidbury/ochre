@@ -80,7 +80,8 @@ structure Args where
   jobs : Nat := 1               -- > 1: run worker processes in parallel (crash-isolated)
   worker : Bool := false
   printOnly : Bool := false
-  list : Bool := false          -- print `@FIND i key` for every finding (for a census of shapes)
+  list : Bool := false
+  runtimeRefine : Bool := false          -- print `@FIND i key` for every finding (for a census of shapes)
   raw : List String := []       -- the arguments, for re-spawning workers
 
 partial def parseArgs (a : Args) : List String → Except String Args
@@ -96,6 +97,7 @@ partial def parseArgs (a : Args) : List String → Except String Args
   | "--worker" :: r => do parseArgs { a with worker := true } r
   | "--print-only" :: r => do parseArgs { a with printOnly := true } r
   | "--list" :: r => do parseArgs { a with list := true } r
+  | "--runtime-refine" :: r => do parseArgs { a with runtimeRefine := true } r
   | "--switch" :: s :: r => do
     match switchCfg a.cfg s, switchCfg a.base s with
     | some c, some b =>
@@ -195,7 +197,7 @@ def main (argv : List String) : IO UInt32 := do
   let a ← match parseArgs {} argv with
     | .ok a => pure { a with raw := argv }
     | .error e => IO.eprintln e; return 2
-  let o : Opts := { cfg := a.cfg, base := if a.diff then some a.base else none }
+  let o : Opts := { cfg := a.cfg, base := if a.diff then some a.base else none, runtimeRefine := a.runtimeRefine }
   if let some i := a.show? then
     let (c, r) := mkCase a.seed i o.fuel
     IO.println (c.show s!"Case{i}")

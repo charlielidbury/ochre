@@ -10,6 +10,7 @@ structure Opts where
   base : Option Config := none   -- attribute findings: report only those absent under these rules
   fuel : Nat := 200000
   nGround : Nat := 6
+  runtimeRefine : Bool := false  -- refine at runtime depth (D53: sealed re-runs move), not erased
 deriving Inhabited
 
 /-- A finding's reason at a refinement where some hypothesis is `False` (vacuous: no
@@ -180,6 +181,7 @@ def acceptedProof (o : Opts) (c : Case) (prep : Prepared) : Option String := Id.
   pure none
 
 def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
+  let er := !o.runtimeRefine
   let prep ← match prepare o.cfg o.fuel c.decls with
     | .ok p => pure p
     | .error e => return { status := if e.startsWith "rejected" then "rejected" else s!"invalid: {e}" }
@@ -215,7 +217,7 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
   for (g, k) in G.zipIdx do
     match g with
     | .ok (v, s) =>
-      match refineValS s s.neutrals [] v with
+      match refineValS s s.neutrals [] v er with
       | .ok (v', s') =>
         let rec' := s'.neutrals.map (·.2)
         let bad := (absIn v').filter fun σ => !pinned.contains σ && !rec'.contains σ
@@ -233,16 +235,16 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
     let vac := hypsFalse stα ps
     -- the direct path's values, with its own generalisations undone
     let D := [0, 1, 2].map fun k => (obsRun stα A t u W true k).bind fun (v, s) =>
-      refineValS s s.neutrals [] v
+      refineValS s s.neutrals [] v er
     for k in [0:3] do
       match Gx[k]!, D[k]! with
       | .error _, .ok _ => incomplete := incomplete + 1
       | .error _, .error _ => pure ()
       | .ok (g, sg), dres =>
-        let R := refineValS sg sg.neutrals α.subst g
+        let R := refineValS sg sg.neutrals α.subst g er
         match R, dres with
         | .ok (rv, sr), .ok (dv, sd) =>
-          let (res, syn) := compareVals sr sd pinned rv dv rng fns
+          let (res, syn) := compareVals sr sd pinned rv dv rng fns er
           if syn then synOnly := synOnly + 1
           if let some (kd, sv, dvs, why) := res then
             -- a closed proof of a false proposition: the generic `Id` is ⊤, the instance's is
@@ -299,7 +301,7 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
         { fr with binds := fr.binds.modify cell fun b => { b with val := K (.loan l), ty := some oT } } }
       let lbl := s!"{p.name} := &(the hole of {(K (.abs 999)).pp.replace "σ999" "□"})"
       for k in [0:2] do
-        match Gx[k]!, (obsRun stK A t u W true k).bind fun (v, s) => refineValS s s.neutrals [] v with
+        match Gx[k]!, (obsRun stK A t u W true k).bind fun (v, s) => refineValS s s.neutrals [] v er with
         | .ok (g, sg), .ok (d, sd) =>
           -- propositions formed about the owner are related through Ctx_O, not equal (frame
           -- lemma (3)): only observations without types inside are compared
@@ -308,7 +310,7 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
           if hasTy g || hasTy d then continue
           let (r0, ws) := obsParts g
           let pred := obsVal r0 (ws.set cell (K (ws[cell]?.getD .bot)))
-          let (res, _) := compareVals sg sd pinned pred d rng fns
+          let (res, _) := compareVals sg sd pinned pred d rng fns er
           if let some (_, sv, dvs, _) := res then
             fs := push fs .frame (compName k) lbl s!"generic plugged: {sv}" dvs
         | .ok (g, _), .error e =>
