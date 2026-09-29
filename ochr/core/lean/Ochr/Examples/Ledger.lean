@@ -26,15 +26,20 @@ Switching one rule off flips exactly the verdicts below and nothing else. (v1's 
 switch, `p5 := false`, is not in the ledger: since v1.3 skipping a proof is an
 optimisation of P2, and in this checker switching it off also switches off the `⋆`
 representation of proofs, so its row would not isolate one rule.) -/
+-- P2 switched off: confinement lets an erased term pass an outer place to an erased call,
+-- whose writes then persist on the direct path but not on the closed-off one, so `BoomP2`
+-- is a closed proof of False (fuzz-port; the row was classed completeness until then)
 open Ochr.Registry in
 #guard rowOk { eraseOnCopy := false }
   ["Functions.RunGGen:rejected", "Functions.RunIGen:rejected", "CurrentState.TwoPhase:rejected",
-   "Erasure.LemmaMoves:rejected", "Erasure.TypeErased:rejected"]
+   "Erasure.LemmaMoves:rejected", "Erasure.TypeErased:rejected", "Erasure.BoomP2Pair:accepted",
+   "Erasure.BoomP2:accepted"]
 open Ochr.Registry in
 #guard rowOk { eraseOnCopy := false, confine := false }
   ["Functions.RunGGen:rejected", "Functions.RunIGen:rejected", "CurrentState.TwoPhase:rejected",
    "Erasure.LemmaMoves:rejected", "Erasure.TypeErased:rejected", "Erasure.EffArg:accepted",
-   "Erasure.Write:accepted", "Erasure.Borrow:accepted", "Erasure.Move:accepted", "Erasure.N1T:accepted",
+   "Erasure.Write:accepted", "Erasure.Borrow:accepted", "Erasure.Move:accepted",
+   "Erasure.BoomP2Pair:accepted", "Erasure.BoomP2:accepted", "Erasure.N1T:accepted",
    "Erasure.N1Closed:accepted", "Erasure.Q:accepted", "Erasure.QBoom:accepted",
    "ErasureBySyntax.LieP:accepted", "ErasureBySyntax.BoomP:accepted"]
 open Ochr.Registry in
@@ -80,7 +85,7 @@ open Ochr.Registry in
 #guard rowOk { erasureByDecl := false }
   ["ClosingOff.RowI:accepted", "Functions.RunG:rejected", "Functions.RunGGen:rejected",
    "Functions.RunI:rejected", "Functions.RunIGen:rejected", "Erasure.TypeErased:rejected",
-   "ErasureBySyntax.SeqT:rejected"]
+   "Erasure.LieP2:rejected", "ErasureBySyntax.SeqT:rejected"]
 open Ochr.Registry in
 #guard rowOk { matchEndsInside := false }
   ["ReturnedBorrows.Bad:accepted", "ReturnedBorrows.Main:accepted"]
@@ -156,7 +161,7 @@ open Ochr.Registry in
   ["ReturnedBorrows.Inj:rejected", "Snapshots.CapPi:rejected", "Functions.TwiceMZero':rejected",
    "Erasure.F5:rejected", "Erasure.TypeErased:rejected", "Erasure.TailSteps:rejected", "Erasure.P2:rejected",
    "Erasure.FP2:rejected", "Erasure.BoomIsTrue:rejected", "Erasure.p2:rejected", "Erasure.TA2:rejected",
-   "ErasureBySyntax.F:rejected", "ErasureBySyntax.SeqT:rejected"]
+   "Erasure.LieP2:rejected", "ErasureBySyntax.F:rejected", "ErasureBySyntax.SeqT:rejected"]
 open Ochr.Registry in
 #guard rowOk { borrowParam := false }
   ["ReturnedBorrows.LeakT:accepted", "ReturnedBorrows.Q:accepted", "ReturnedBorrows.Boom:accepted",
@@ -187,12 +192,14 @@ open Ochr.Registry in
 -- v2.0 D42 for constructors, switched off: Prop constructor applications are data values, not proofs (completeness)
 open Ochr.Registry in
 #guard rowOk { propValues := false }
-  ["Subsingletons.OrComm:rejected", "Subsingletons.SqTrue:rejected", "Subsingletons.SqSplit:rejected"]
+  ["Subsingletons.OrComm:rejected", "Subsingletons.SqTrue:rejected", "Subsingletons.SqSplit:rejected",
+   "Erasure.LieP2:rejected"]
 -- both off: the closed proofs of False (Subsingletons.Boom, SqBoom) go through
 open Ochr.Registry in
 #guard rowOk { subsingleton := false, propValues := false }
   ["Subsingletons.IsL:accepted", "Subsingletons.Irr:accepted", "Subsingletons.Boom:accepted",
-   "Subsingletons.Get:accepted", "Subsingletons.SqIrr:accepted", "Subsingletons.SqBoom:accepted"]
+   "Subsingletons.Get:accepted", "Subsingletons.SqIrr:accepted", "Subsingletons.SqBoom:accepted",
+   "Erasure.LieP2:rejected"]
 -- v2.0 D47 switched off: Eq Nat Z (S Z) is irreducible again, so False and Eq Nat 0 1 part ways
 open Ochr.Registry in
 #guard rowOk { disjoint := false }

@@ -87,11 +87,11 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `10Inductives` | lists, binary search trees (and the paper's trees, whose pure insert runs the in-place one), parameters, strict positivity | §8 | 76 |
 | `11Propositions` | `False`, `True`, `And`, matching on proofs by type, a stuck zero-arm match (D58), subsingleton elimination | §1, §8 | 64 |
 | `12CurrentState` | proofs about the current, mutated state (E5) | §7 | 14 |
-| `13Erasure` | erased terms run on a private copy, confinement, erasure decided by syntax | P2 | 55 |
+| `13Erasure` | erased terms run on a private copy, confinement, erasure decided by syntax | P2 | 58 |
 | `14Universes` | `Prop : Type`, no `Type : Type`, no cumulativity, why `&Type` is refused; sorts are syntactic (D55, reviewer-4's programs) | preamble, P2 | 25 |
 | `15BorrowTypes` | what may be borrowed and where `&` may appear (D48) | §1 | 16 |
 
-519 declarations in all, the `Prelude`'s 4 included. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+522 declarations in all, the `Prelude`'s 4 included. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 

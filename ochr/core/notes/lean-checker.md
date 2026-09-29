@@ -797,3 +797,7 @@ Nothing else changes. Ledger classes now: soundness 18 (12 with a closed proof o
 - globals' readings are cached.
 
 A first version formatted `Config` to decide whether to assert, and was 4× slower; perf showed it.
+
+## 24. P2 is a soundness row (fuzz-port)
+
+With P2 off (`eraseOnCopy := false`) and D41 on, a closed proof of `False` is accepted. Confinement lets an erased term pass an outer place to an erased call. Without the private copy, that call's writes persist on the direct path, while the closed-off block, being erased, skips them. fuzz-port's `P2Alone` is in `Erasure`, in a new section "What goes wrong without the private copy": `LieP2` (accepted), and `BoomP2Pair` and `BoomP2` (rejected). The P2 row is now class soundness with witness `BoomP2`; it was completeness. `LieP2` also shows up as a rejection in the D28, D42, D45 + D42 and confined-bodies rows. Classes: soundness 19 (13 with a closed proof of `False`), false lemma 1, model 4, policy 4, subsumed 4, completeness 18. 522 verdicts.
