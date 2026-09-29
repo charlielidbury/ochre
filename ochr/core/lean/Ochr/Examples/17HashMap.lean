@@ -560,10 +560,13 @@ ochr HashMapLookup uses Std, HashMap {
     }
   )
 
-  def InsertFindOther (hm : &HashMap) (k : Nat) (v : Nat) (k2 : Nat) (h : Eq Bool (EqB(k, k2)) false) :
-      Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k2)) (let r = Find(*hm, k2); InsertNoResize(&*hm, k, v); r) := (
+  def InsertFindOther (hm : &HashMap) (k : Nat) (v : Nat) (k2 : Nat)
+      (h : Eq Bool (EqB(k, k2)) false) :
+      Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k2))
+             (let r = Find(*hm, k2); InsertNoResize(&*hm, k, v); r) := (
     match *hm {
-      HM(n, len, slots) => split BInsert in SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h),
+      HM(n, len, slots) => split BInsert in
+        SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h),
     }
   )
   -- Without the split the goal is stuck on the sealed `InsertNoResize` and does not meet
