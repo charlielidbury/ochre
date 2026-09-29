@@ -8,21 +8,21 @@ pure `Add`: in-place `AddM` and pure `Add` close off into the same sealed progra
 open Ochr.Test
 
 ochr E5 {
-  def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y | S p => AddM(&p, y) }
+  def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y, S p => AddM(&p, y) }
   def Add (x : Nat) (y : Nat) : Nat := AddM(&x, y); x
 
   -- a Prop-valued function (v2.0: False is the library's empty inductive; before, Eq Nat Z (S Z))
   def Le (a : Nat) (b : Nat) : Prop by a :=
-    match a { Z => ⊤ | S a' => match b { Z => False | S b' => Le(a', b') } }
+    match a { Z => ⊤, S a' => match b { Z => False, S b' => Le(a', b') } }
 
   -- a lemma about the pure Add
   def LeAdd (n : Nat) (m : Nat) : Le(n, Add(n, m)) by n :=
-    match n { Z => refl | S n' => LeAdd(n', m) }
+    match n { Z => refl, S n' => LeAdd(n', m) }
 
   -- peel y successors off the top of *x; the precondition survives *x := p, and where *x
   -- is Z but y is not, h : Le(S q, Z) computes to False (v2.0: the paper's version)
   def SubM (x : &Nat) (y : Nat) (h : Le(y, *x)) : Unit by y :=
-    match y { Z => () | S q => match *x { Z => match h {} | S p => *x := p; SubM(x, q, h) } }
+    match y { Z => (), S q => match *x { Z => match h {}, S p => *x := p; SubM(x, q, h) } }
 
   -- a proof from the snapshot old, about the mutated *x
   def AddSub (x : &Nat) (y : Nat) : Unit :=
@@ -30,7 +30,7 @@ ochr E5 {
 
   -- the theorem; the IH is about a copy of the tail (deriver-e5 Q5)
   def AddSubId (x : &Nat) (y : Nat) : Id Unit (AddSub(x, y)) (*x := y) by x :=
-    match *x { Z => refl | S p => let c = p; AddSubId(&c, y) }
+    match *x { Z => refl, S p => let c = p; AddSubId(&c, y) }
 
   -- rejections (deriver-e5 §E5.6): the requirement really is about the current state
   reject def AddSubStale (x : &Nat) (y : Nat) : Unit :=
@@ -38,7 +38,7 @@ ochr E5 {
   reject def AddSubWrong (x : &Nat) (y : Nat) : Unit :=
     let old = *x; AddM(&*x, y); SubM(x, S old, LeAdd(old, y))
   reject def AddSubIdReborrow (x : &Nat) (y : Nat) : Id Unit (AddSub(x, y)) (*x := y) by x :=
-    match *x { Z => refl | S p => AddSubId(&p, y) }
+    match *x { Z => refl, S p => AddSubId(&p, y) }
 
   -- deriver-e5 §E5.7 (Q1): proofs are ⋆ at the generic call, so sealed programs that
   -- differ only in the proof they embed are equal (v1.4, D27)
@@ -49,7 +49,7 @@ ochr E5 {
   -- deriver-e5 §E5.8: ex falso into Prop with J (explicit endpoints) and a Prop-valued motive.
   -- (v2.0: h's type computes to False by D47, and `match h {}` does the same job, Logic.absurdP.)
   def ExFalso (G : Prop) (h : Eq Nat Z (S Z)) : G :=
-    J(Nat, Z, S Z, λ(n : Nat) : Prop => match n { Z => ⊤ | S _ => G }, h, refl)
+    J(Nat, Z, S Z, λ(n : Nat) : Prop => match n { Z => ⊤, S _ => G }, h, refl)
 
   -- deriver-e5 §E5.9 (Q6): a proof argument may read the state an earlier argument
   -- reserved, because it runs on a private copy (two-phase-borrow-like)

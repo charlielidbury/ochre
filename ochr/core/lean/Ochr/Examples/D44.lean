@@ -12,7 +12,7 @@ open Ochr.Test
 
 ochr D44 {
   inductive Empty := E(e : Empty)
-  def M (n : Nat) : Type := match n { Z => Unit | S _ => Empty }
+  def M (n : Nat) : Type := match n { Z => Unit, S _ => Empty }
   def P (x : &Nat) (e : Id Unit (*x := 0) (*x := 1)) : Empty := J(Nat, 0, 1, M, e, ())
   reject def Q (g : Π(n : Nat). &Nat) : Empty := P(g(5), refl)
   reject def Boom (leak : Π(n : Nat). &Nat) : Empty := Q(leak)
@@ -25,7 +25,7 @@ ochr D44 {
   def KeepT : Type := Π(x : &Nat) (n : Nat). &Nat
 
   -- captured neutral data (a sealed program) and captured proofs have types
-  def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y | S p => AddM(&p, y) }
+  def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y, S p => AddM(&p, y) }
   def CapS (x : &Nat) : Nat := AddM(&*x, 1); let n = *x; let f = (λ(y : Nat) : Nat => n); f(0)
   def CapSId (x : &Nat) : Nat := AddM(&*x, 1); let n = *x; let f = (λ(y : Nat) : Id Nat n n => refl); 0
   def CapPi (x : &Nat) : Prop := AddM(&*x, 1); let n = *x; Π(y : Nat). Id Nat n y

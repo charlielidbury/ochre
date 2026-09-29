@@ -45,7 +45,7 @@ This appendix defines Ochr completely: its syntax and runtime structures (@app-s
     ([], $ty("Eq") A space t space u | ty("J")(A, a, b, P, h, t)$, [equality (primitive), transport]),
     ([], $\&A | p | \&p | p := t$, [borrow type; read, borrow, assign]),
     ([], $kw("let") x = t; u | kw("let") x : A = t; u | t; u$, [sequencing]),
-    ([], $kw("match") p space {ty("C")_1 (overline(y)_1) => t_1 | ... | ty("C")_m (overline(y)_m) => t_m}$, [case analysis, one arm per constructor ($m >= 0$)]),
+    ([], $kw("match") p space {ty("C")_1 (overline(y)_1) => t_1, ..., ty("C")_m (overline(y)_m) => t_m}$, [case analysis, one arm per constructor ($m >= 0$)]),
     ([], $ty("Id") A space t space u$, [equality of computations]),
     ([], $v$, [embedded value]),
     ($p, q$, $x | dr p | p.g$, [places ($g$ a field name)]),
@@ -64,7 +64,7 @@ This appendix defines Ochr completely: its syntax and runtime structures (@app-s
 
 *Binding.* In `Π(x̄:Ā). B` and `fix f (x̄:Ā) : B … := t`, each `xᵢ` is bound in `Aᵢ₊₁ … Aₙ`, in `B` and in `t`. With `by xⱼ`, `f` is bound in `t` and nowhere else; without `by`, `f` is not bound at all, and in no case is `f` bound in `Ā` or `B`. `let x = t; u` binds `x` in `u`. In a declaration, each parameter $x_i$ is bound in $X_(i+1), dots, X_l$ and in the field types. Terms are identified up to renaming of bound variables.
 
-*Pattern variables are places*. The variables $overline(y)_i = y_1, dots, y_(k_i)$ of the arm for $ty("C")_i$ are not binders: we identify the arm $t_i$ with $t_i [p.g_(i 1) slash y_1, dots, p.g_(i k_i) slash y_(k_i)]$, which replaces the root $y_j$ of every place in $t_i$ by the field place $p.g_(i j)$ (for `Nat`, `y` becomes `p.1` and `y.1` becomes `p.1.1`), and write the resolved match $kw("match") p {ty("C")_1 => t_1 | dots | ty("C")_m => t_m}$, abbreviated $m$ below. Every definition below (free places, footprints, captures) is on such resolved terms.
+*Pattern variables are places*. The variables $overline(y)_i = y_1, dots, y_(k_i)$ of the arm for $ty("C")_i$ are not binders: we identify the arm $t_i$ with $t_i [p.g_(i 1) slash y_1, dots, p.g_(i k_i) slash y_(k_i)]$, which replaces the root $y_j$ of every place in $t_i$ by the field place $p.g_(i j)$ (for `Nat`, `y` becomes `p.1` and `y.1` becomes `p.1.1`), and write the resolved match $kw("match") p {ty("C")_1 => t_1, dots, ty("C")_m => t_m}$, abbreviated $m$ below. Every definition below (free places, footprints, captures) is on such resolved terms.
 
 *Borrow types.* `&A` is well formed only when `A` is a _data type_: its value, once evaluated, is headed by an inductive declared in `Type₀` (at any parameters, so `&Box(Prop)` is allowed) or is a product of data types; never a sort, a Π-type or a proposition ([T-Ref]). A type variable or a stuck type is not known to be data and is rejected; this fails safe, since a less refined path rejects rather than deciding differently, and it costs any generic `&A` for `A : Type₀` (note 11). And `&` occurs only syntactically at the top of a declared type, as the whole declared type of a variable, a parameter or a function's result: never inside another type, and never as the value of a type term that is not written `&A` (a codomain that computes to `&Nat` is an error), so that [Close]'s row, read from the declared codomain, always sees a borrow result. There are no borrows inside data and no borrows of borrows. The machine also checks this where values are built ([Pair], [Borrow], closure capture). #lean("isDataType", "Term.refsOk", "refTopOk (Basic.lean)")
 
@@ -113,7 +113,7 @@ A _state_ is an environment together with: Δ, the type of every abstract value;
   $ "owners"_Omega (ell) = union.big_(pi : thin ell in "loans"(Omega(pi))) cases("owners"_Omega (m) & "if" Omega(pi) = "borrow"_m w, {pi} & "otherwise,") $
   a set of positions of Ω (well-defined by acyclicity, @app-wf). The owners of a variable are $"own"_Omega (x) = "owners"_Omega (ell)$ if $Omega(x) = "borrow"_ell w$, $emptyset$ if $Omega(x) = bot$, and ${x}$ otherwise. #lean("owners (Obs.lean)")
 
-+ *Place occurrences.* $"occ"(t)$ is the set of free place occurrences of a resolved term `t`, each with its kind: read (rd), borrowed (bw), assigned (as) or matched (sc). $"occ"(p) = {(p, "rd")}$, $"occ"(\&p) = {(p, "bw")}$, $"occ"(p := t) = {(p, "as")} union "occ"(t)$, $"occ"(kw("match") p {ty("C")_1 => t_1 | dots | ty("C")_m => t_m}) = {(p, "sc")} union union.big_i "occ"(t_i)$; a binder removes the places rooted at the variable it binds; every other form takes the union over its subterms, including the types and the code of `Π` and `fix`. A variable `x` is a _borrow variable_ in Ω if its stored type is `&T` or $Omega(x)$ is a borrow. #lean("Term.placeOccs", "Term.freeOccs (Basic.lean)")
++ *Place occurrences.* $"occ"(t)$ is the set of free place occurrences of a resolved term `t`, each with its kind: read (rd), borrowed (bw), assigned (as) or matched (sc). $"occ"(p) = {(p, "rd")}$, $"occ"(\&p) = {(p, "bw")}$, $"occ"(p := t) = {(p, "as")} union "occ"(t)$, $"occ"(kw("match") p {ty("C")_1 => t_1, dots, ty("C")_m => t_m}) = {(p, "sc")} union union.big_i "occ"(t_i)$; a binder removes the places rooted at the variable it binds; every other form takes the union over its subterms, including the types and the code of `Π` and `fix`. A variable `x` is a _borrow variable_ in Ω if its stored type is `&T` or $Omega(x)$ is a borrow. #lean("Term.placeOccs", "Term.freeOccs (Basic.lean)")
 
 + *Footprint*.
   $ W_Omega (t, u) = union.big {"own"_Omega ("root"(p)) mid(|) (p, k) in "occ"(t) union "occ"(u), thick k in {"bw", "as"} "or root"(p) "is a borrow variable"}, $
@@ -245,7 +245,7 @@ The row is chosen by the _declared_ codomain `B` of `F`'s type: the codomain ter
 === Matching
 
 #rules(
-  ir(name: "Match", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = ty("C")_i (overline(v))$, $cfg(Omega_1, t_i) ev r$, $cfg(Omega, kw("match") p {ty("C")_1 => t_1 | dots | ty("C")_m => t_m}) ev r$),
+  ir(name: "Match", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = ty("C")_i (overline(v))$, $cfg(Omega_1, t_i) ev r$, $cfg(Omega, kw("match") p {ty("C")_1 => t_1, dots, ty("C")_m => t_m}) ev r$),
   ir(name: "Match-stuck", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) "is a neutral or an inert loan"$, $cfg(Omega, kw("match") p {dots}) ev stk$),
   ir(name: "Match-err", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) "is undefined or" bot$, $cfg(Omega, kw("match") p {dots}) ev err$),
   ir(name: "Match-prop", $acc^M_p (Omega) = Omega_1$, $ty("C")_1 "is the only constructor of a" ty("D") "declared in" ty("Prop")$, $cfg(Omega_1, t_1) ev r$, $cfg(Omega, kw("match") p {ty("C")_1 => t_1}) ev r$),
@@ -267,7 +267,7 @@ Every loan in `t` whose borrow lives outside the run is inert in it: [Access] do
 
 A stuck match that is not the body of a call is closed off as a call of an anonymous function of its free places, captured as Rust captures closure variables. This happens only in the typing judgement ([Split], @app-typing), after the match's arms have been checked, which gives its type `B` and the set `M` of variables that some arm leaves ⊥ (moves out of).
 
-Let $m = kw("match") p {ty("C")_1 => t_1 | dots | ty("C")_m => t_m}$ be stuck in Ω, and give each occurrence $(q, k) in "occ"(m)$ a _mode_: `mv` (moved) if `q` is a whole variable `x` and either `x` is a borrow variable and $k in {"rd", "as"}$, or $x in M$; otherwise `ref` (borrowed) if $k in {"bw", "as"}$; otherwise `cp` (copied). The _captures_ $q_1, dots, q_n$ are the maximal places of $"occ"(m)$, those with no strict prefix among its places. Each takes the largest mode of the occurrences at or below it ($"cp" < "ref" < "mv"$), and they are ordered by the position of their root, then by length. Capture $q_i$ becomes a parameter $z_i$ with argument $a_i$:
+Let $m = kw("match") p {ty("C")_1 => t_1, dots, ty("C")_m => t_m}$ be stuck in Ω, and give each occurrence $(q, k) in "occ"(m)$ a _mode_: `mv` (moved) if `q` is a whole variable `x` and either `x` is a borrow variable and $k in {"rd", "as"}$, or $x in M$; otherwise `ref` (borrowed) if $k in {"bw", "as"}$; otherwise `cp` (copied). The _captures_ $q_1, dots, q_n$ are the maximal places of $"occ"(m)$, those with no strict prefix among its places. Each takes the largest mode of the occurrences at or below it ($"cp" < "ref" < "mv"$), and they are ordered by the position of their root, then by length. Capture $q_i$ becomes a parameter $z_i$ with argument $a_i$:
 $ (z_i : U_i, a_i) = cases((z_i : \&"type"_Omega (q_i), thick \&q_i) & "if" q_i "is" "ref,", (z_i : "type"_Omega (q_i), thick q_i) & "otherwise (a move if its content is a borrow, a copy if not)".) $
 The body $m'$ is `m` with each place $q_i pi$ renamed to $(dr z_i) pi$ if $q_i$ is `ref`, and to $z_i pi$ otherwise. Then
 $ "block"(Omega, m, B, M) := F_m (a_1, dots, a_n) quad "where" F_m = chevron.l thin tack.r kw("fix") \_ (z_1 : U_1 dots z_n : U_n) : B := m' chevron.r, $
@@ -303,7 +303,7 @@ When `W` is empty, $T times T_W$ is just `T` and the observations are just resul
 - [Conv-unit] $ty("And")(ty("True"), P) equiv P equiv ty("And")(P, ty("True"))$: two types are convertible if they are after the unit laws are applied to each, through nested `And`s. This is the only way the unit laws act on a type written in a program; stored types keep their `And`.
 - [Conv-pi] Two Π-closures with the same number of parameters are convertible if, at the generic state Γ and generic arguments $overline(a)$ of the first (@app-aux, item 10), their parameter types, each evaluated with the earlier parameters bound to $overline(a)$, are pairwise convertible, and so are their codomains. So Π-types are compared under binders by instantiating the binders, as function values are ([Conv-fun]), and captured values matter only through the types they help compute: $chevron.l m |-> sigma tack.r Pi(n : ty("Nat")). ty("Nat") chevron.r equiv chevron.l thin tack.r Pi(n : ty("Nat")). ty("Nat") chevron.r$. Two Π-closures with convertible captured values and the same code are convertible by [Conv-cong]; the checker tries that first, as a fast path.
 - [Conv-fun] Two function values `F`, `G` are convertible if their Π-types are, their captured values are pairwise convertible (none, for a top-level function), and at the generic call of their Π-type (@app-aux, item 10), with the same generic state Γ, arguments $overline(a)$ and owned places $overline(c)$, their observations agree: $obs(F(overline(a)))^(overline(c))_Gamma equiv obs(G(overline(a)))^(overline(c))_Gamma$. For a codomain `&T` both observations use [Obs-borrow] with one shared fresh $sigma_w : T$, so `λ(x y : &Nat). x` and `λ(x y : &Nat). y` differ: one leaves $(sigma_w, sigma_y)$ in the owned places, the other $(sigma_x, sigma_w)$. So a function value's normal form is its captured values together with the observation of its generic call, and two functions with different effects are never convertible.
-There is no η rule and no η for `Unit` (an abstract `σ : Unit` is not `()`). Proof irrelevance needs no rule: every proof value is ⋆. The relation is _least_: a function value that occurs in its own generic observation, as the head of a sealed program when its body is stuck at its generic call, is compared there by [Conv-refl] and [Conv-cong]. Read coinductively, [Conv-fun] would identify any two closures whose bodies are stuck at the generic call, such as `λ(x:&Nat). match *x { Z => () | S _ => *x := Z }` and `λ(x:&Nat). match *x { Z => *x := S Z | S _ => () }`, and `J` along that identification proves `Eq Nat (S Z) Z`. #lean("conv", "convT", "convFn", "convPi", "mkEqM", "unitTop (Basic.lean)")
+There is no η rule and no η for `Unit` (an abstract `σ : Unit` is not `()`). Proof irrelevance needs no rule: every proof value is ⋆. The relation is _least_: a function value that occurs in its own generic observation, as the head of a sealed program when its body is stuck at its generic call, is compared there by [Conv-refl] and [Conv-cong]. Read coinductively, [Conv-fun] would identify any two closures whose bodies are stuck at the generic call, such as `λ(x:&Nat). match *x { Z => (), S _ => *x := Z }` and `λ(x:&Nat). match *x { Z => *x := S Z, S _ => () }`, and `J` along that identification proves `Eq Nat (S Z) Z`. #lean("conv", "convT", "convFn", "convPi", "mkEqM", "unitTop (Basic.lean)")
 
 
 
@@ -395,7 +395,7 @@ Typed arguments are evaluated like [Args], each into a temporary, collecting the
 
 === Matches and case splitting
 
-Let $m = kw("match") p {ty("C")_1 => t_1 | dots | ty("C")_m => t_m}$ match on a place of inductive type $ty("D")(overline(a))$, with `D` declared in `Type₀` and constructors $ty("C")_1, dots, ty("C")_m$ (the place's stored type must be $ty("D")(overline(a))$ for the `D` whose constructors the arms name: a match is never typed from its arms), and let $r_i = ty("C")_i (sigma_(i 1), dots, sigma_(i k_i))$ be the refinement to $ty("C")_i$ with fresh field values (@app-aux, item 7). On a constructor the typing judgement takes the arm, as the machine does, and checks only that arm. On an abstract value it splits ([Split]): each arm is checked under its refinement, and the match is then closed off as a stuck block, from which the rest of the program is checked once.
+Let $m = kw("match") p {ty("C")_1 => t_1, dots, ty("C")_m => t_m}$ match on a place of inductive type $ty("D")(overline(a))$, with `D` declared in `Type₀` and constructors $ty("C")_1, dots, ty("C")_m$ (the place's stored type must be $ty("D")(overline(a))$ for the `D` whose constructors the arms name: a match is never typed from its arms), and let $r_i = ty("C")_i (sigma_(i 1), dots, sigma_(i k_i))$ be the refinement to $ty("C")_i$ with fresh field values (@app-aux, item 7). On a constructor the typing judgement takes the arm, as the machine does, and checks only that arm. On an abstract value it splits ([Split]): each arm is checked under its refinement, and the match is then closed off as a stuck block, from which the rest of the program is checked once.
 
 #rules(
   ir(name: "T-Match", $acc^M_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = ty("C")_i (overline(w))$, $Omega_1 tack.r t_i ev v : A tack.l Omega'$, $Omega tack.r m ev v : A tack.l Omega'$),
@@ -462,18 +462,18 @@ Notes 1–11 explain the side conditions of @fig-why that are finest-grained in 
 
 + *A function's erasure class is read from its codomain term.* A local `fix` is formed, and so checked by [Def], each time the term containing it is evaluated, and its codomain may depend on captured values. Deciding its class from the codomain's _value_ would give different answers on the two paths:
   ```
-  U(n : Nat) : Type₀ := match n { Z => Prop | S _ => Prop }
-  V(n : Nat) : U(n) := match n { Z => ⊤ | S _ => ⊤ }
+  U(n : Nat) : Type₀ := match n { Z => Prop, S _ => Prop }
+  V(n : Nat) : U(n) := match n { Z => ⊤, S _ => ⊤ }
   LieL(n : Nat) : Id Nat (let h = λ(x : &Nat) : U(n) => (*x := S Z; V(n)); let c = Z; h(&c); c) (S Z) := refl
   BoomL : Eq Nat Z (S Z) := LieL(Z)
   ```
   At the generic `n` the codomain is ⌈`U(σ)`⌉, not a sort, so `h(&c)` runs and the statement is `⊤`. At `n = Z` the codomain is `U(Z) = Prop`, a sort, so `h(&c)` would be erased, `c` would stay `Z`, and `LieL(Z) : Eq Nat Z (S Z)`. Read from the term, `U(n)` is not syntactically a sort and has declared sort `Type₀`, so `h(&c)` runs on both paths.
 + *A stuck block is erased only when every arm is a declared proof.* Treating the block as a call, whose codomain is the match's type, erases a block whose type is a sort, while the same match run directly is not a call and is not erased:
   ```
-  LieB(n : Nat) : Id Nat (let c = Z; let T = match n { Z => (c := S Z; ⊤) | S _ => (c := S Z; ⊤) }; c) Z := refl
+  LieB(n : Nat) : Id Nat (let c = Z; let T = match n { Z => (c := S Z; ⊤), S _ => (c := S Z; ⊤) }; c) Z := refl
   BoomB : Eq Nat (S Z) Z := LieB(Z)
   ```
-  Nor may the block be erased by its type inferred from the arms, which is computed. With `g : Π(y : Nat). V(Z)` and `f := λ(x : &Nat) : V(Z) => (*x := S Z; g(0))`, the block `match m { Z => f(&c) | S _ => f(&c) }` has inferred type `V(Z)`, which computes to `⊤`, of sort `Prop`; but `f` returns data (the declared sort of `V(Z)` is not `Prop`), so at `m = Z` the match runs `f(&c)` and writes `c`, while the block erased at the generic call would not. A block that is not erased is always safe, because its sealed programs re-run the arms, which decide for themselves.
+  Nor may the block be erased by its type inferred from the arms, which is computed. With `g : Π(y : Nat). V(Z)` and `f := λ(x : &Nat) : V(Z) => (*x := S Z; g(0))`, the block `match m { Z => f(&c), S _ => f(&c) }` has inferred type `V(Z)`, which computes to `⊤`, of sort `Prop`; but `f` returns data (the declared sort of `V(Z)` is not `Prop`), so at `m = Z` the match runs `f(&c)` and writes `c`, while the block erased at the generic call would not. A block that is not erased is always safe, because its sealed programs re-run the arms, which decide for themselves.
 + *A proof is declared, not computed.* Classifying a variable as a proof because its value is ⋆ differs between the paths:
   ```
   LieH(g : Π(y : Nat). V(Z)) : Id Nat (let c = Z; let h = g(0); (c := S Z; h); c) (S Z) := refl
@@ -490,9 +490,9 @@ Notes 1–11 explain the side conditions of @fig-why that are finest-grained in 
 + *Generalisation records are global, and fresh names are never reused.* A match inside a type whose scrutinee is a sealed program is generalised on the type's private copy, and the formed type mentions the new σ:
   ```
   inductive Box := Mk(x : Nat)
-  Double(n : Nat) : Nat by n := match n { Z => Z | S p => S (S (Double(p))) }
-  Esc(n : Nat, m : Box) : Id Nat (let b = Double(n); match b { Z => 0 | S _ => 1 }) (match m { Mk(x) => match x { Z => 0 | S _ => 1 } }) :=
-    match m { Mk(x) => match x { Z => refl | S _ => refl } }
+  Double(n : Nat) : Nat by n := match n { Z => Z, S p => S (S (Double(p))) }
+  Esc(n : Nat, m : Box) : Id Nat (let b = Double(n); match b { Z => 0, S _ => 1 }) (match m { Mk(x) => match x { Z => 0, S _ => 1 } }) :=
+    match m { Mk(x) => match x { Z => refl, S _ => refl } }
   Bad5 : Eq Nat 1 0 := Esc(1, Mk(0))
   ```
   If the record `⌈Double(σ)⌉ := σ_g` were discarded with the copy, and σ_g's name reissued to the field `x` when the body splits `m`, the goal would equate the two and `Esc` would check; its instance is `Eq Nat 1 0`.
@@ -503,7 +503,7 @@ Notes 1–11 explain the side conditions of @fig-why that are finest-grained in 
 + *Subsingleton elimination* (@app-match-prop). A match on a proof of an inductive with two constructors cannot produce data. With `inductive Bool := false | true`:
   ```
   inductive Or (P : Prop) (Q : Prop) : Prop := Inl(p : P) | Inr(q : Q)
-  IsL(h : Or(True, True)) : Bool := match h { Inl(p) => true | Inr(q) => false }
+  IsL(h : Or(True, True)) : Bool := match h { Inl(p) => true, Inr(q) => false }
   Irr(h : Or(True, True), k : Or(True, True)) : Eq Bool (IsL(h)) (IsL(k)) := refl
   Boom : False := Irr(Inl(refl), Inr(refl))
   ```
@@ -514,7 +514,7 @@ Notes 1–11 explain the side conditions of @fig-why that are finest-grained in 
   PolyId(x : &Type₀, a : *x) : *x := a
   SelfApp(u : Unit) : Impred := let T = Impred; PolyId(&T, PolyId)
   ```
-  `Π(X : Type₀)(a : X). X` lives in `Type₁`, but through the borrow it would live in `Type₀`, which becomes impredicative: with the impredicative `Prop : Type₀` below it, the rules contain Girard's System U⁻, in which Hurkens' paradox is a closed term, and no set model exists. And if a codomain could compute to a borrow type, as in `F(n : Nat, x : &Nat) : (match n { Z => &Nat | S _ => Nat })`, [Close] would read the data row at the generic call, where the match is stuck, while `F(0, &a)` returns a live borrow at the instance; `G(n, a) := let r = F(n, &a); let r2 = r; let r3 = r; a` is accepted at the generic call and reads a moved borrow at `n = 0`. Because data is read from the evaluated head of `A`, a type variable is rejected too: `SwapT(A : Type₀, x : &A, y : &A)` is not well formed, since `A` could be `Type₀` itself.
+  `Π(X : Type₀)(a : X). X` lives in `Type₁`, but through the borrow it would live in `Type₀`, which becomes impredicative: with the impredicative `Prop : Type₀` below it, the rules contain Girard's System U⁻, in which Hurkens' paradox is a closed term, and no set model exists. And if a codomain could compute to a borrow type, as in `F(n : Nat, x : &Nat) : (match n { Z => &Nat, S _ => Nat })`, [Close] would read the data row at the generic call, where the match is stuck, while `F(0, &a)` returns a live borrow at the instance; `G(n, a) := let r = F(n, &a); let r2 = r; let r3 = r; a` is accepted at the generic call and reads a moved borrow at `n = 0`. Because data is read from the evaluated head of `A`, a type variable is rejected too: `SwapT(A : Type₀, x : &A, y : &A)` is not well formed, since `A` could be `Type₀` itself.
 + *Proofs are not run.* A proof call's arguments are evaluated and its [Call-type] and [Rec] checked, on a private copy; its body is never run ([T-Call-proof]), and the machine skips proofs altogether ([Erase-proof]). Running and skipping agree, since erased terms run on a private copy.
 + *The order of [Access].* Loans are ended from the root of the place outward, then left to right inside its content. The resolution should not depend on the order (property 7 of @fig-claims, proved for two endings).
 + *A match on a constructor checks only the arm taken*, in typing as in the machine ([T-Match]).

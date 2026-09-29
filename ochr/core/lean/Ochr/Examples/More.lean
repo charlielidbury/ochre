@@ -6,12 +6,12 @@ open Ochr.Test
 
 ochr More {
   def AddM (x : &Nat) (y : Nat) : Unit by x :=
-    match *x { Z => *x := y | S p => AddM(&p, y) }
+    match *x { Z => *x := y, S p => AddM(&p, y) }
 
   -- deriver-e346 §E4.3: matching after an opaque call. v1's [Split] covers only σ;
   -- the checker generalises the sealed program to a fresh σ, then splits (C8).
   def MatchAfterOpaque (f : Π(_ : &Nat). Unit) (x : &Nat) : Unit :=
-    f(&*x); match *x { Z => () | S _ => () }
+    f(&*x); match *x { Z => (), S _ => () }
 
   -- lean-checker L2: a later argument ends an earlier argument's borrow. Without the
   -- check the callee receives ⊥ for a borrow parameter; an opaque callee then gets a
@@ -28,20 +28,20 @@ ochr More {
 
   -- a recursive call inside a non-tail match: checked in the arm, then the match is
   -- closed off with the function itself as a value argument
-  def NonTailRec (x : &Nat) : Unit by x := (match *x { Z => () | S p => NonTailRec(&p) }); ()
+  def NonTailRec (x : &Nat) : Unit by x := (match *x { Z => (), S p => NonTailRec(&p) }); ()
 
   -- stuck matches in a goal are closed off the same way on both sides
-  def StuckGoal (b : Nat) : Id Nat (match b { Z => 0 | S _ => 1 }) (match b { Z => 0 | S _ => 1 }) := refl
+  def StuckGoal (b : Nat) : Id Nat (match b { Z => 0, S _ => 1 }) (match b { Z => 0, S _ => 1 }) := refl
   -- after a split the sealed stuck blocks re-run to the arm values
-  def StuckGoalSplit (b : Nat) : Id Nat (match b { Z => 0 | S m => S m }) b :=
-    match b { Z => refl | S _ => refl }
-  reject def StuckGoalWrong (b : Nat) : Id Nat (match b { Z => 0 | S _ => 1 }) b :=
-    match b { Z => refl | S _ => refl }
+  def StuckGoalSplit (b : Nat) : Id Nat (match b { Z => 0, S m => S m }) b :=
+    match b { Z => refl, S _ => refl }
+  reject def StuckGoalWrong (b : Nat) : Id Nat (match b { Z => 0, S _ => 1 }) b :=
+    match b { Z => refl, S _ => refl }
 
   -- the paper's example shape with a let before the match (D5: the footprint
   -- does not depend on unrelated locals)
   def AddMZeroLet (x : &Nat) : Id Unit (let n = 0; AddM(x, n)) () by x :=
-    match *x { Z => refl | S p => AddMZeroLet(&p) }
+    match *x { Z => refl, S p => AddMZeroLet(&p) }
 }
 
 #eval IO.println (run "More" More).show

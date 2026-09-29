@@ -10,13 +10,13 @@ names elsewhere; this file holds the rest, as printed, up to the surface syntax 
 open Ochr.Test
 
 ochr Paper {
-  def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y | S p => AddM(&p, y) }
-  def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x := match *x { Z => refl | S p => AddMZero(&p) }
+  def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y, S p => AddM(&p, y) }
+  def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x := match *x { Z => refl, S p => AddMZero(&p) }
   def Add (x : Nat) (y : Nat) : Nat := AddM(&x, y); x
   -- §2: `Id Nat (Add(2, 3)) 5` holds by refl
   def Add23 : Id Nat (Add(2, 3)) 5 := refl
   -- §2: an induction hypothesis about a copy of the predecessor lacks the successor
-  reject def AddZeroCopy (x : Nat) : Id Nat (Add(x, 0)) x by x := match x { Z => refl | S p => AddZeroCopy(p) }
+  reject def AddZeroCopy (x : Nat) : Id Nat (Add(x, 0)) x by x := match x { Z => refl, S p => AddZeroCopy(p) }
   -- §4: `Id Nat (Add(x, x)) x` must be a well-formed statement
   def AddXX (x : Nat) : Prop := Id Nat (Add(x, x)) x
   -- Fig. 7: universes are not cumulative (a proposition is not a type in Type₀; Prop is one)
@@ -32,13 +32,13 @@ ochr Paper {
   -- §5: `Id Unit (*x := 0) (*x := 1)` computes to False, and `match e {}` eliminates it
   def WriteNeq (x : &Nat) (e : Id Unit (*x := 0) (*x := 1)) : Nat := match e {}
   -- §7: naturality only up to resolution: rejected symbolically, accepted at each instance
-  def Pick (n : Nat) (x : &Nat) (y : &Nat) : &Nat := match n { Z => x | S _ => y }
+  def Pick (n : Nat) (x : &Nat) (y : &Nat) : &Nat := match n { Z => x, S _ => y }
   reject def PickEarly (n : Nat) (a : Nat) (b : Nat) : Unit :=
-    let r = Pick(n, &a, &b); let z = b; match n { Z => *r := 5 | S _ => () }
+    let r = Pick(n, &a, &b); let z = b; match n { Z => *r := 5, S _ => () }
   def PickEarly0 (a : Nat) (b : Nat) : Unit :=
-    let n = 0; let r = Pick(n, &a, &b); let z = b; match n { Z => *r := 5 | S _ => () }
+    let n = 0; let r = Pick(n, &a, &b); let z = b; match n { Z => *r := 5, S _ => () }
   def PickEarly1 (a : Nat) (b : Nat) : Unit :=
-    let n = 1; let r = Pick(n, &a, &b); let z = b; match n { Z => *r := 5 | S _ => () }
+    let n = 1; let r = Pick(n, &a, &b); let z = b; match n { Z => *r := 5, S _ => () }
   -- §9: borrows stored in data are outside the core
   inductive List (A : Type) := Nil | Cons(h : A, t : List(A))
   reject def IterM (xs : &List(Nat)) : List(&Nat) := Nil
@@ -51,8 +51,8 @@ ochr Paper {
   def RefBoxProp (x : &Box(Prop)) : Unit := ()
   -- App. D [Conv-fun]: conversion is least, so two closures stuck at their generic calls
   -- are not identified (coinductively they would be, and J would prove Eq Nat (S Z) Z)
-  reject def CoInd : Eq (Π(x : &Nat). Unit) (λ(x : &Nat) : Unit => match *x { Z => () | S _ => *x := Z })
-      (λ(x : &Nat) : Unit => match *x { Z => *x := S Z | S _ => () }) := refl
+  reject def CoInd : Eq (Π(x : &Nat). Unit) (λ(x : &Nat) : Unit => match *x { Z => (), S _ => *x := Z })
+      (λ(x : &Nat) : Unit => match *x { Z => *x := S Z, S _ => () }) := refl
 }
 
 #eval IO.println (run "Paper" Paper).show
@@ -77,10 +77,10 @@ ochr Note4 {
 -- Appendix note 5, as printed (V18.Esc is the same program with the constructor MkBox)
 ochr Note5 {
   inductive Box := Mk(x : Nat)
-  def Double (n : Nat) : Nat by n := match n { Z => Z | S p => S (S (Double(p))) }
+  def Double (n : Nat) : Nat by n := match n { Z => Z, S p => S (S (Double(p))) }
   reject def Esc (n : Nat) (m : Box) :
-    Id Nat (let b = Double(n); match b { Z => 0 | S _ => 1 }) (match m { Mk(x) => match x { Z => 0 | S _ => 1 } }) :=
-    match m { Mk(x) => match x { Z => refl | S _ => refl } }
+    Id Nat (let b = Double(n); match b { Z => 0, S _ => 1 }) (match m { Mk(x) => match x { Z => 0, S _ => 1 } }) :=
+    match m { Mk(x) => match x { Z => refl, S _ => refl } }
   reject def Bad5 : Eq Nat 1 0 := Esc(1, Mk(0))
 }
 

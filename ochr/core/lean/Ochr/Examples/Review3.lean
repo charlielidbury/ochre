@@ -11,7 +11,7 @@ the generic call but returned a live borrow at an instance, so an accepted `G` r
 open Ochr.Test
 
 ochr D48 {
-  def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y | S p => AddM(&p, y) }
+  def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y, S p => AddM(&p, y) }
   -- (1) only data is borrowed: not a universe (S8, S2) ...
   reject def Impred : Type := Π(x : &Type) (a : *x). *x
   reject def PolyId (x : &Type) (a : *x) : *x := a
@@ -28,14 +28,14 @@ ochr D48 {
   def RefList (A : Type) (xs : &List(A)) : Unit := ()
   def RefPair (p : &(Nat × Unit)) : Unit := *p := (0, ())
   -- (2) & only at the top of a declared type (S7): a codomain that computes to &Nat ...
-  reject def F (n : Nat) (x : &Nat) : (match n { Z => &Nat | S _ => Nat }) := match n { Z => x | S _ => 0 }
+  reject def F (n : Nat) (x : &Nat) : (match n { Z => &Nat, S _ => Nat }) := match n { Z => x, S _ => 0 }
   reject def G (n : Nat) (a : Nat) : Nat := let r = F(n, &a); let r2 = r; let r3 = r; a
   reject def UseG : Nat := G(0, 5)
   -- ... or & inside another type
   reject def InPair (p : Nat × &Nat) : Nat := 0
   reject def InId (x : &Nat) (h : Id (&Nat) x x) : Nat := 0
   -- at the top of a parameter, a result, an annotation, and a Π-type's parts: fine
-  def TailM (x : &Nat) : &Nat by x := match *x { Z => x | S p => TailM(&p) }
+  def TailM (x : &Nat) : &Nat by x := match *x { Z => x, S p => TailM(&p) }
   def Ann (x : &Nat) : Unit := let r : &Nat = TailM(x); *r := 1
   def HO (f : Π(x : &Nat). &Nat) (y : &Nat) : Unit := let r = f(y); *r := 2
 }
@@ -49,18 +49,18 @@ ochr D48 {
 /-! ## D49 (clarifications of v2.0's matching on proofs) and D50 -/
 
 ochr D49 {
-  def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y | S p => AddM(&p, y) }
-  def Le (a : Nat) (b : Nat) : Prop by a := match a { Z => ⊤ | S a' => match b { Z => False | S b' => Le(a', b') } }
+  def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y, S p => AddM(&p, y) }
+  def Le (a : Nat) (b : Nat) : Prop by a := match a { Z => ⊤, S a' => match b { Z => False, S b' => Le(a', b') } }
   -- (1) a proof scrutinee's type is its stored type as refined by [Split]: here Le(S q, 0),
   -- which normalises to False, so the impossible case is a match with no arms
   def SubM (x : &Nat) (y : Nat) (h : Le(y, *x)) : Unit by y :=
-    match y { Z => () | S q => match *x { Z => match h {} | S p => *x := p; SubM(x, q, h) } }
+    match y { Z => (), S q => match *x { Z => match h {}, S p => *x := p; SubM(x, q, h) } }
   -- ... and a type still neutral there is a type error (fail-safe)
   reject def Neutral (a : Nat) (b : Nat) (h : Le(a, b)) : Nat := match h {}
   -- (3) a data field of a proof is a fresh abstract value (so it can be split), a proof
   -- field is ⋆
   inductive Sq : Prop := Mk(n : Nat)
-  def SqSplit (h : Sq) : True := match h { Mk(n) => match n { Z => refl | S m => refl } }
+  def SqSplit (h : Sq) : True := match h { Mk(n) => match n { Z => refl, S m => refl } }
   reject def SqZero (h : Sq) : Id Nat 0 0 := match h { Mk(n) => (refl : Id Nat n 0) }
   -- (4) constructors take their parameters first (surface C[ā](t̄)), and values record them,
   -- so a captured value built from an argument-less constructor has a type
@@ -81,7 +81,7 @@ ochr D49 {
 /-! ## D48 (3): Π-types compared under their binders (reviewer-3 C3, probes S3, S9) -/
 
 ochr PiConv {
-  def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y | S p => AddM(&p, y) }
+  def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y, S p => AddM(&p, y) }
   def Add (x : Nat) (y : Nat) : Nat := AddM(&x, y); x
   -- a closure that captures a variable has a closed Π-type
   def Apply (f : Π(n : Nat). Nat) (n : Nat) : Nat := f(n)

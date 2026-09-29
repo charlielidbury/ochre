@@ -56,8 +56,8 @@ ochr Logic {
 #guard (run "Logic" Logic).count == 26
 
 ochr ByType {
-  def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y | S p => AddM(&p, y) }
-  def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x := match *x { Z => refl | S p => AddMZero(&p) }
+  def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y, S p => AddM(&p, y) }
+  def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x := match *x { Z => refl, S p => AddMZero(&p) }
   -- a match on a proof is by its type: the arm binds the fields as places holding ⋆
   def Swap (P : Prop) (Q : Prop) (h : P ∧ Q) : Q ∧ P := match h { Intro(a, b) => ⟨b, a⟩ }
   def Fst (P : Prop) (Q : Prop) (h : P ∧ Q) : P := match h { Intro(a, b) => a }
@@ -106,14 +106,14 @@ ochr OrAttack {
   inductive Bool := false | true
   inductive Or (P : Prop) (Q : Prop) : Prop := Inl(p : P) | Inr(q : Q)
   -- elimination into propositions: every arm is a proof, so the match is one (⋆)
-  def OrComm (P : Prop) (Q : Prop) (h : Or(P, Q)) : Or(Q, P) := match h { Inl(p) => Inr(p) | Inr(q) => Inl(q) }
+  def OrComm (P : Prop) (Q : Prop) (h : Or(P, Q)) : Or(Q, P) := match h { Inl(p) => Inr(p), Inr(q) => Inl(q) }
   def OrElim (P : Prop) (Q : Prop) (R : Prop) (h : Or(P, Q)) (f : Π(p : P). R) (g : Π(q : Q). R) : R :=
-    match h { Inl(p) => f(p) | Inr(q) => g(q) }
-  def OrLet (P : Prop) (h : Or(P, P)) : P := let k : P = match h { Inl(p) => p | Inr(q) => q }; k
+    match h { Inl(p) => f(p), Inr(q) => g(q) }
+  def OrLet (P : Prop) (h : Or(P, P)) : P := let k : P = match h { Inl(p) => p, Inr(q) => q }; k
   -- large elimination would tell Inl from Inr, which proof irrelevance identifies: with
   -- IsL, Irr holds at the generic call (h = k = ⋆), and Irr(Inl(refl), Inr(refl)) would
   -- be Eq Bool true false, which is False (D47). D45 rejects IsL.
-  reject def IsL (h : Or(True, True)) : Bool := match h { Inl(p) => true | Inr(q) => false }
+  reject def IsL (h : Or(True, True)) : Bool := match h { Inl(p) => true, Inr(q) => false }
   reject def Irr (h : Or(True, True)) (k : Or(True, True)) : Eq Bool (IsL(h)) (IsL(k)) := refl
   reject def Boom : False := Irr(Inl(refl), Inr(refl))
   -- without D45 but with D42 the machine cannot see Inl or Inr (a proof is ⋆), so no
@@ -130,13 +130,13 @@ ochr OrAttack {
   -- a match that cannot pick an arm is a proof, erased wherever it runs (P2): EffL's calls
   -- run its body, which is such a match, so they write nothing. (Its typed check runs each
   -- arm's write in tail position, D41's tail-position gap: notes/lean-checker.md §12, §13.)
-  def U (n : Nat) : Type := match n { Z => Prop | S _ => Prop }
-  def V (n : Nat) : U(n) := match n { Z => ⊤ | S _ => ⊤ }
-  def EffL (x : &Nat) (h : Or(⊤, ⊤)) : V(Z) := match h { Inl(p) => (*x := 1; refl) | Inr(q) => (*x := 2; refl) }
+  def U (n : Nat) : Type := match n { Z => Prop, S _ => Prop }
+  def V (n : Nat) : U(n) := match n { Z => ⊤, S _ => ⊤ }
+  def EffL (x : &Nat) (h : Or(⊤, ⊤)) : V(Z) := match h { Inl(p) => (*x := 1; refl), Inr(q) => (*x := 2; refl) }
   def EffLNoop (x : &Nat) (h : Or(⊤, ⊤)) : Id Unit (let t = EffL(x, h); ()) () := refl
   reject def EffLOne (x : &Nat) (h : Or(⊤, ⊤)) : Id Unit (let t = EffL(x, h); ()) (*x := 1) := refl
   -- inline, outside tail position, the arms are erased occurrences and D41 rejects the writes
-  reject def EffInline (x : &Nat) (h : Or(⊤, ⊤)) : Nat := let t : V(Z) = match h { Inl(p) => (*x := 1; refl) | Inr(q) => (*x := 2; refl) }; 0
+  reject def EffInline (x : &Nat) (h : Or(⊤, ⊤)) : Nat := let t : V(Z) = match h { Inl(p) => (*x := 1; refl), Inr(q) => (*x := 2; refl) }; 0
 }
 
 #eval IO.println (run "OrAttack" OrAttack).show
@@ -150,11 +150,11 @@ ochr PList {
   -- in-place append on a polymorphic list, and appending Nil has no effect, by bare
   -- recursion (the parameters of Nil come from AppendM's parameter type)
   def AppendM (A : Type) (xs : &List(A)) (ys : List(A)) : Unit by xs :=
-    match *xs { Nil => *xs := ys | Cons(h, t) => AppendM(A, &t, ys) }
+    match *xs { Nil => *xs := ys, Cons(h, t) => AppendM(A, &t, ys) }
   def AppendMNil (A : Type) (xs : &List(A)) : Id Unit (AppendM(A, xs, Nil)) () by xs :=
-    match *xs { Nil => refl | Cons(h, t) => AppendMNil(A, &t) }
+    match *xs { Nil => refl, Cons(h, t) => AppendMNil(A, &t) }
   reject def AppendMOne (A : Type) (a : A) (xs : &List(A)) : Id Unit (AppendM(A, xs, Cons(a, Nil))) () by xs :=
-    match *xs { Nil => refl | Cons(h, t) => AppendMOne(A, a, &t) }
+    match *xs { Nil => refl, Cons(h, t) => AppendMOne(A, a, &t) }
   -- the pure append and its theorem, by the in-place lemma (as AddZero' from AddMZero)
   def Append (A : Type) (xs : List(A)) (ys : List(A)) : List(A) := AppendM(A, &xs, ys); xs
   def AppendNil (A : Type) (xs : List(A)) : Id (List(A)) (Append(A, xs, Nil)) xs := AppendMNil(A, &xs)
@@ -213,10 +213,10 @@ ochr Scrut {
   -- checker assumed it from the arms: it split the T(n)-typed x with L's constructors and
   -- accepted f and g, and at run time g(5) runs L's arms on the number 5
   inductive L := LNil | LCons(h : Nat, t : L)
-  def T (n : Nat) : Type := match n { Z => L | S _ => Nat }
-  reject def f (n : Nat) (x : T(n)) : Nat := match x { LNil => 0 | LCons(h, t) => 0 }
+  def T (n : Nat) : Type := match n { Z => L, S _ => Nat }
+  reject def f (n : Nat) (x : T(n)) : Nat := match x { LNil => 0, LCons(h, t) => 0 }
   reject def g (x : Nat) : Nat := f(1, x)
-  def f0 (x : T(0)) : Nat := match x { LNil => 0 | LCons(h, t) => h }
+  def f0 (x : T(0)) : Nat := match x { LNil => 0, LCons(h, t) => h }
   -- constructors are resolved by name, so a name is declared once
   inductive A := Mk(x : Nat)
   reject inductive B := Mk(y : Unit)

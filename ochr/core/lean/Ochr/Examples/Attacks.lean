@@ -12,13 +12,13 @@ open Ochr.Test
 
 ochr Attacks {
   def AddM (x : &Nat) (y : Nat) : Unit by x :=
-    match *x { Z => *x := y | S p => AddM(&p, y) }
+    match *x { Z => *x := y, S p => AddM(&p, y) }
 
   -- deriver-e346 §E3.6 `Bad`: under [Join] reading J1 the stored type of h was taken
   -- from an arm. v1 closes the non-tail match off and continues from the unrefined
   -- state, so h keeps its pre-split type Eq Nat σ 0 (D15).
   reject def Bad (b : Nat) (h : Id Nat b 0) : False :=
-    (match b { Z => () | S _ => () }); h
+    (match b { Z => (), S _ => () }); h
 
   -- deriver-e346 §E6.3 / meta-model C4 `Oops2`: a Π-typed hypothesis re-read after a
   -- mutation. v1: the Π-type captured x's value when it was formed (D13).
@@ -29,19 +29,19 @@ ochr Attacks {
   -- recurse on the entry value. v1: [Rec] measures the entry value (D17).
   reject def Loop (x : &Nat) (y : Nat) : False by x :=
     match y {
-      Z => *x := S *x; match *x { Z => refl | S p => let q = p; Loop(&p, q) }
-    | S q => *x := S *x; match *x { Z => refl | S p => Loop(&p, q) } }
+      Z => *x := S *x; match *x { Z => refl, S p => let q = p; Loop(&p, q) },
+      S q => *x := S *x; match *x { Z => refl, S p => Loop(&p, q) } }
   reject def Bot' (n : Nat) : False := let a = n; Loop(&a, n)
 
   -- breaker-close A3(a): write before the match, owned version
   reject def Loop2 (x : Nat) : False by x :=
-    match x { Z => x := S Z; match x { Z => refl | S y => Loop2(y) }
-            | S p => x := S (S p); match x { Z => refl | S y => Loop2(y) } }
+    match x { Z => x := S Z; match x { Z => refl, S y => Loop2(y) },
+              S p => x := S (S p); match x { Z => refl, S y => Loop2(y) } }
 
   -- breaker-close A3(b): write after the match through the alias pattern variable
   reject def Spin (x : Nat) : False by x :=
-    match x { Z => x := S Z; match x { Z => refl | S y => Spin(y) }
-            | S y => x := S x; Spin(y) }
+    match x { Z => x := S Z; match x { Z => refl, S y => Spin(y) },
+              S y => x := S x; Spin(y) }
 
   -- meta-model C1 / breaker-close A2: an effectful and an effect-free inhabitant of
   -- the proposition Π(x : &Nat). ⊤. v1: calls at a proposition are not run (P5, D14),
@@ -58,7 +58,7 @@ ochr Attacks {
   -- is true and its closed instance is not a proof of ⊥
   def p1 (x : &Nat) : Eq Nat 0 0 := refl
   def p2 (x : &Nat) : Eq Nat 0 0 := *x := S Z; refl
-  def UseP (h : Π(x : &Nat). Eq Nat 0 0) (x : &Nat) (n : Nat) : Unit := match n { Z => h(x); () | S _ => h(x); () }
+  def UseP (h : Π(x : &Nat). Eq Nat 0 0) (x : &Nat) (n : Nat) : Unit := match n { Z => h(x); (), S _ => h(x); () }
   def TA2 (n : Nat) : Id Nat (let c = 0; UseP(p1, &c, n); c) (let c = 0; UseP(p2, &c, n); c) := refl
   reject def TA2Z : Eq Nat 0 1 := TA2(0)
 
@@ -66,7 +66,7 @@ ochr Attacks {
   -- refining gave 0 and running directly gave 1, so N1Closed : Id Nat 1 0. Under v1.3's
   -- P2 the inline arm (a := S Z; refl) is a proof, runs on a private copy, and both give 0.
   -- Under v1.9 (D41) a proof that writes a place outliving it is a type error.
-  reject def N1T (n : Nat) : Id Nat (let a = 0; let h = match n { Z => (a := S Z; refl) | S _ => refl }; a) 0 := refl
+  reject def N1T (n : Nat) : Id Nat (let a = 0; let h = match n { Z => (a := S Z; refl), S _ => refl }; a) 0 := refl
   reject def N1Closed : Id Nat 1 0 := N1T(0)
 
   -- meta-model-v1 R1 (= breaker-close-v1 N1, deriver-e346-v1 N12): a Prop-typed block
@@ -74,9 +74,9 @@ ochr Attacks {
   -- Q(0, 0) : ⊤; the closed proof of false below is rejected. Under v1's call-keyed P5,
   -- Q(0, 0) : Eq Nat 1 0 and QBoom is accepted (ledger row P2). Under v1.9 (D41) the
   -- arms, proofs that assign the parameter a, are type errors.
-  reject def Q (b : Nat) (a : Nat) : Id ⊤ (match b { Z => (a := S Z; refl) | S _ => (a := S Z; refl) }) refl := refl
+  reject def Q (b : Nat) (a : Nat) : Id ⊤ (match b { Z => (a := S Z; refl), S _ => (a := S Z; refl) }) refl := refl
   reject def QBoom : False :=
-    J(Nat, S Z, Z, λ(n : Nat) : Prop => match n { Z => False | S _ => ⊤ }, Q(0, 0), refl)
+    J(Nat, S Z, Z, λ(n : Nat) : Prop => match n { Z => False, S _ => ⊤ }, Q(0, 0), refl)
 
   reject def Boom' : Eq Nat 0 1 :=
     (λ(k : Π(h : Π(x : &Nat). ⊤). Nat) : Eq Nat (k(P1)) (k(P2)) => refl)(λ(h : Π(x : &Nat). ⊤) : Nat => let a = 0; h(&a); a)
@@ -86,15 +86,15 @@ ochr Attacks {
   -- Π(e : Id Unit (*z := 0) (*z := 1)). ⊥ is a closure that captures the borrow z,
   -- and closures capture no borrows (RULES §1). The owners-are-sets rule (D18) is
   -- tested directly in Ochr/Examples/Units.lean.
-  def Pick (n : Nat) (x : &Nat) (y : &Nat) : &Nat := match n { Z => x | S _ => y }
+  def Pick (n : Nat) (x : &Nat) (y : &Nat) : &Nat := match n { Z => x, S _ => y }
   reject def G (z : &Nat) : (Π(e : Id Unit (*z := 0) (*z := 1)). False) :=
     λ(e : Id Unit (*z := 0) (*z := 1)) : False => e
   reject def BadC2 (n : Nat) (a : Nat) (b : Nat) : Id Nat n 0 :=
-    let r = Pick(n, &a, &b); let h = G(r); match n { Z => refl | S m => h(refl) }
+    let r = Pick(n, &a, &b); let h = G(r); match n { Z => refl, S m => h(refl) }
 
   -- breaker-close A1: [Close] must not copy a live loan into a sealed program. v1:
   -- moving b ends the reborrow r first ([Access] looks inside the content, D19).
-  def G1 (x : &Nat) (n : Nat) : Unit := match n { Z => () | S _ => *x := 0 }
+  def G1 (x : &Nat) (n : Nat) : Unit := match n { Z => (), S _ => *x := 0 }
   reject def BadA1 (n : Nat) : Nat :=
     let a = S Z; (let b = &a; let r = &(*b).1; G1(b, n); *r := S Z); a
 
@@ -116,7 +116,7 @@ ochr Attacks {
   -- value's predecessor, and the call is checked against the outer entry value
   def Add (x : Nat) (y : Nat) : Nat := AddM(&x, y); x
   def AddZeroC (x : Nat) : Id Nat (Add(x, 0)) x by x :=
-    match x { Z => refl | S p => let q = p; cong S ((λ(u : Unit) : Id Nat (Add(q, 0)) q => AddZeroC(q))(())) }
+    match x { Z => refl, S p => let q = p; cong S ((λ(u : Unit) : Id Nat (Add(q, 0)) q => AddZeroC(q))(())) }
 }
 
 #eval IO.println (run "Attacks" Attacks).show

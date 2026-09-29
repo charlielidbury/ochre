@@ -25,8 +25,8 @@ terms  t, u, A, B ::= x | Prop | Type_i
                     | D(ā) | C(t₁, …, tₖ) | match p {}                                 inductive types (with parameters ā), constructors, zero-arm match
                     | &A                                      borrow type (A borrow-free)
                     | p | &p | p := t | let x = t; u | let x : A = t; u | t; u
-                    | match p { Z => t | S y => u }            y is the sub-place p.1, not a copy
-                    | C(t₁, …, tₖ) | match p { C₁(ȳ₁) => t₁ | … }   general inductives: constructors; one arm per constructor, ȳ the field places p.g
+                    | match p { Z => t, S y => u }            y is the sub-place p.1, not a copy
+                    | C(t₁, …, tₖ) | match p { C₁(ȳ₁) => t₁, … }   general inductives: constructors; one arm per constructor, ȳ the field places p.g
                     | Id A t u
 places p ::= x | *p | p.1 | p.g                              (p.g: field g of a constructor value)
 declarations  inductive D (a₁ : A₁ …) : s := C₁(g₁ : B₁, …) | …   s ∈ {Type₀, Prop}; zero or more constructors; uniform parameters ā (D45, D46); fields first-order data or parameters (D36)
@@ -105,23 +105,23 @@ Canonical observation (independence from loan-ending order); frame lemma; refine
 ## 7. Examples
 
 ```
-AddM(x : &Nat, y : Nat) : Unit by x := match *x { Z => *x := y | S p => AddM(&p, y) }
+AddM(x : &Nat, y : Nat) : Unit by x := match *x { Z => *x := y, S p => AddM(&p, y) }
 Add(x : Nat, y : Nat) : Nat := AddM(&x, y); x
-AddMZero(x : &Nat) : Id Unit (AddM(x, 0)) () by x := match *x { Z => refl | S p => AddMZero(&p) }
-AddZero(x : Nat) : Id Nat (Add(x, 0)) x := match x { Z => refl | S p => AddMZero(&p) }     // the pure theorem, by the in-place lemma on the predecessor field; no cong
+AddMZero(x : &Nat) : Id Unit (AddM(x, 0)) () by x := match *x { Z => refl, S p => AddMZero(&p) }
+AddZero(x : Nat) : Id Nat (Add(x, 0)) x := match x { Z => refl, S p => AddMZero(&p) }     // the pure theorem, by the in-place lemma on the predecessor field; no cong
 AddZero'(x : Nat) : Id Nat (Add(x, 0)) x := AddMZero(&x)
-TailM(x : &Nat) : &Nat by x := match *x { Z => x | S p => TailM(&p) }
+TailM(x : &Nat) : &Nat by x := match *x { Z => x, S p => TailM(&p) }
 AddM'(x : &Nat, y : Nat) : Unit := let t = TailM(x); *t := y
-AddMEq(x : &Nat, y : Nat) : Id Unit (AddM(x, y)) (AddM'(x, y)) by x := match *x { Z => refl | S p => AddMEq(&p, y) }
+AddMEq(x : &Nat, y : Nat) : Id Unit (AddM(x, y)) (AddM'(x, y)) by x := match *x { Z => refl, S p => AddMEq(&p, y) }
 AddMEqOwned(x : Nat) : Id Unit (AddM(&x, 0)) (AddM'(&x, 0)) := AddMEq(&x, 0)
 ```
 E5 (dependent types through mutation; notes/deriver-e5.md):
 ```
-Le(a : Nat, b : Nat) : Prop by a := match a { Z => True | S a' => match b { Z => False | S b' => Le(a', b') } }
-LeAdd(n : Nat, m : Nat) : Le(n, Add(n, m)) by n := match n { Z => refl | S n' => LeAdd(n', m) }
-SubM(x : &Nat, y : Nat, h : Le(y, *x)) : Unit by y := match y { Z => () | S q => match *x { Z => match h {} | S p => *x := p; SubM(x, q, h) } }
+Le(a : Nat, b : Nat) : Prop by a := match a { Z => True, S a' => match b { Z => False, S b' => Le(a', b') } }
+LeAdd(n : Nat, m : Nat) : Le(n, Add(n, m)) by n := match n { Z => refl, S n' => LeAdd(n', m) }
+SubM(x : &Nat, y : Nat, h : Le(y, *x)) : Unit by y := match y { Z => (), S q => match *x { Z => match h {}, S p => *x := p; SubM(x, q, h) } }
 AddSub(x : &Nat, y : Nat) : Unit := let old = *x; AddM(&*x, y); SubM(x, old, LeAdd(old, y))
-AddSubId(x : &Nat, y : Nat) : Id Unit (AddSub(x, y)) (*x := y) by x := match *x { Z => refl | S p => let c = p; AddSubId(&c, y) }
+AddSubId(x : &Nat, y : Nat) : Id Unit (AddSub(x, y)) (*x := y) by x := match *x { Z => refl, S p => let c = p; AddSubId(&c, y) }
 ```
 Plus E3 (`AddToOne`, now accepted), E4 (`Twice`, `TwiceM`, `TwiceMZero`), E6 (must be rejected), and the regression attacks in `notes/`.
 

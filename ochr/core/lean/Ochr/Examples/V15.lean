@@ -13,8 +13,8 @@ ochr V15 {
   -- ran for real generically and was erased at Z: Lie(Z) : Eq Nat 0 1. Under D28 W
   -- returns data (its declared codomain U(n) is neither a sort nor of sort Prop), so it
   -- runs at every instance, and MainW(0) really is 1, as compiled code computes.
-  def U (n : Nat) : Type := match n { Z => Prop | S _ => Prop }
-  def V (n : Nat) : U(n) := match n { Z => ⊤ | S _ => ⊤ }
+  def U (n : Nat) : Type := match n { Z => Prop, S _ => Prop }
+  def V (n : Nat) : U(n) := match n { Z => ⊤, S _ => ⊤ }
   def W (x : &Nat) (n : Nat) : U(n) := *x := S Z; V(n)
   def Lie (n : Nat) : Id Nat (let c = Z; W(&c, n); c) (S Z) := refl
   reject def Boom : Eq Nat Z (S Z) := Lie(Z)
@@ -23,9 +23,9 @@ ochr V15 {
 
   -- F2 (D29): a hole inside a sealed program at the head of a matched place. Matching
   -- ends it, so t is dead in arm Z, as in the concrete run.
-  def TailM (x : &Nat) : &Nat by x := match *x { Z => x | S p => TailM(&p) }
+  def TailM (x : &Nat) : &Nat by x := match *x { Z => x, S p => TailM(&p) }
   reject def Bad (x : &Nat) : Unit :=
-    let t = TailM(&*x); match *x { Z => (*t := S Z; let h : Id Nat (*x) Z = refl; ()) | S _ => () }
+    let t = TailM(&*x); match *x { Z => (*t := S Z; let h : Id Nat (*x) Z = refl; ()), S _ => () }
   reject def Main (n : Nat) : Nat := let c = n; Bad(&c); c
   reject def Main0 : Nat := Main(0)
 
@@ -42,7 +42,7 @@ ochr V15 {
   reject def Boom4 : Eq Nat Z (S Z) := Loop(Z)
 
   -- F5 (D32): a write through a pattern variable is a write to the scrutinee's place
-  reject def Clear (x : &Nat) : Id Unit (match *x { Z => () | S p => p := Z }) () := refl
+  reject def Clear (x : &Nat) : Id Unit (match *x { Z => (), S p => p := Z }) () := refl
   reject def Boom5 : Eq Nat (S Z) (S (S Z)) := let c = S (S Z); Clear(&c)
 }
 

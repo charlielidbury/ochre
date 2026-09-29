@@ -5,10 +5,10 @@ We implemented the calculus as an executable reference checker in Lean 4, about 
 ```lean
 ochr E1 {
   def AddM (x : &Nat) (y : Nat) : Unit by x :=
-    match *x { Z => *x := y | S p => AddM(&p, y) }
+    match *x { Z => *x := y, S p => AddM(&p, y) }
 
   def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x :=
-    match *x { Z => refl | S p => AddMZero(&p) }
+    match *x { Z => refl, S p => AddMZero(&p) }
 
   reject def WriteThenRefl (x : &Nat) : Id Nat (*x) 5 := *x := 5; refl
 }

@@ -9,8 +9,8 @@ formal appendix's positivity attack (D36). The ledger is in Registry.lean. -/
 open Ochr.Test
 
 ochr V18 {
-  def U (n : Nat) : Type := match n { Z => Prop | S _ => Prop }
-  def V (n : Nat) : U(n) := match n { Z => ⊤ | S _ => ⊤ }
+  def U (n : Nat) : Type := match n { Z => Prop, S _ => Prop }
+  def V (n : Nat) : U(n) := match n { Z => ⊤, S _ => ⊤ }
 
   -- X1: a closure made by a top-level function, with codomain U(n) over a captured n
   def Mk (n : Nat) : (Π(x : &Nat). U(n)) := λ(x : &Nat) : U(n) => (*x := S Z; V(n))
@@ -20,18 +20,18 @@ ochr V18 {
 
   -- X2: an annotated type-valued match; neither the block nor the inline match is a
   -- proof (its type Prop has sort Type₀), so the write is kept on both paths
-  reject def Lie7 (n : Nat) : Id Nat (let c = Z; let T : Prop = match n { Z => (c := S Z; ⊤) | S _ => (c := S Z; ⊤) }; c) Z := refl
+  reject def Lie7 (n : Nat) : Id Nat (let c = Z; let T : Prop = match n { Z => (c := S Z; ⊤), S _ => (c := S Z; ⊤) }; c) Z := refl
   reject def Boom7 : Eq Nat (S Z) Z := Lie7(Z)
   reject def P3d (n : Nat) : Nat :=
-    let c = Z; let T : Nat = match n { Z => (c := S Z; 0) | S _ => (c := S Z; 0) }; let h : Id Nat c Z = refl; c
+    let c = Z; let T : Nat = match n { Z => (c := S Z; 0), S _ => (c := S Z; 0) }; let h : Id Nat c Z = refl; c
 
   -- X3: a generalisation made while forming the goal (a private copy) names σ_g; the
   -- body's split must not be issued the same name (D37)
   inductive Box := MkBox(x : Nat)
-  def Double (n : Nat) : Nat by n := match n { Z => Z | S p => S (S (Double(p))) }
+  def Double (n : Nat) : Nat by n := match n { Z => Z, S p => S (S (Double(p))) }
   reject def Esc (n : Nat) (m : Box) :
-    Id Nat (let b = Double(n); match b { Z => 0 | S _ => 1 }) (match m { MkBox(x) => match x { Z => 0 | S _ => 1 } }) :=
-    match m { MkBox(x) => match x { Z => refl | S _ => refl } }
+    Id Nat (let b = Double(n); match b { Z => 0, S _ => 1 }) (match m { MkBox(x) => match x { Z => 0, S _ => 1 } }) :=
+    match m { MkBox(x) => match x { Z => refl, S _ => refl } }
   reject def BoomE : Eq Nat 1 0 := Esc(1, MkBox(0))
 
   -- X4: functions returning borrows into different arguments are not convertible (D38)
@@ -80,8 +80,8 @@ ochr Positivity {
 -- a loan fill ⌈let c1 = σ; AppendM(&c1, Nil); c1⌉, whose head gave no type (v1.6: Nat)
 ochr GenTy {
   inductive List := Nil | Cons(h : Nat, t : List)
-  def AppendM (xs : &List) (ys : List) : Unit by xs := match *xs { Nil => *xs := ys | Cons(h, t) => AppendM(&t, ys) }
-  def GenL (xs : List) : Nat := let l = xs; AppendM(&l, Nil); match l { Nil => 0 | Cons(h, t) => 1 }
+  def AppendM (xs : &List) (ys : List) : Unit by xs := match *xs { Nil => *xs := ys, Cons(h, t) => AppendM(&t, ys) }
+  def GenL (xs : List) : Nat := let l = xs; AppendM(&l, Nil); match l { Nil => 0, Cons(h, t) => 1 }
 }
 
 def genTrace (cfg : Ochr.Config) : String := (run "GenTy" GenTy { cfg with trace := true }).showTrace "GenL"

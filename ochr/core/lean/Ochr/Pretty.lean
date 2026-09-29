@@ -34,7 +34,7 @@ partial def Term.pp (ns : List String) : Term → String
   | .assign p t => s!"{p.pp ns} := {t.pp ns}"
   | .letIn h t u => s!"let {h.name} = {t.pp ns}; {u.pp (h.name :: ns)}"
   | .seq t u => s!"{t.pp ns}; {u.pp ns}"
-  | .matchNat p z s => s!"match {p.pp ns} \{ Z => {z.pp ns} | S _ => {s.pp ns} }"
+  | .matchNat p z s => s!"match {p.pp ns} \{ Z => {z.pp ns}, S _ => {s.pp ns} }"
   | .const n => n
   | .val v => v.pp
   | .sort 0 => "Prop"
@@ -71,7 +71,7 @@ partial def Term.pp (ns : List String) : Term → String
     let pre := if ps.isEmpty then "" else s!"[{", ".intercalate (ps.map (·.pp ns))}]"
     if as.isEmpty then h.name ++ pre else s!"{h.name}{pre}({", ".intercalate (as.map (·.pp ns))})"
   | .matchInd p _ as =>
-    s!"match {p.pp ns} \{ {" | ".intercalate (as.map fun (h, a) => s!"{h.name} => {a.pp ns}")} }"
+    s!"match {p.pp ns} \{ {", ".intercalate (as.map fun (h, a) => s!"{h.name} => {a.pp ns}")} }"
 
 partial def Term.ppArg (ns : List String) (t : Term) : String :=
   match t with

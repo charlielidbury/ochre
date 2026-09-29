@@ -6,10 +6,10 @@ open Ochr.Test
 
 ochr E4 {
   def AddM (x : &Nat) (y : Nat) : Unit by x :=
-    match *x { Z => *x := y | S p => AddM(&p, y) }
+    match *x { Z => *x := y, S p => AddM(&p, y) }
 
   def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x :=
-    match *x { Z => refl | S p => AddMZero(&p) }
+    match *x { Z => refl, S p => AddMZero(&p) }
 
   def Twice (f : Π(_ : Unit). Unit) : Unit := f(()); f(())
 
@@ -22,7 +22,7 @@ ochr E4 {
   def TwiceMMove (f : Π(_ : &Nat). Unit) (x : &Nat) : Id Unit (TwiceM(f, x)) (f(&*x); f(x)) := refl
 
   def TwiceMZero (x : &Nat) : Id Unit (TwiceM(λ(z : &Nat) : Unit => AddM(z, 0), x)) () by x :=
-    match *x { Z => refl | S p => TwiceMZero(&p) }
+    match *x { Z => refl, S p => TwiceMZero(&p) }
 
   -- the modular proof (deriver-e346 F8): citing a lemma leaves the borrowed place
   -- alone (proofs run on a private copy), and J with explicit endpoints composes the two

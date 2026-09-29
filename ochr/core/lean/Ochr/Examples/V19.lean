@@ -9,8 +9,8 @@ and N1T, Q, EffArgErased and LieP elsewhere, flip without it. -/
 open Ochr.Test
 
 ochr V19 {
-  def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y | S p => AddM(&p, y) }
-  def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x := match *x { Z => refl | S p => AddMZero(&p) }
+  def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y, S p => AddM(&p, y) }
+  def AddMZero (x : &Nat) : Id Unit (AddM(x, 0)) () by x := match *x { Z => refl, S p => AddMZero(&p) }
   -- a proof may mutate its own locals ...
   def Local (x : &Nat) : Nat := let h : ⊤ = (let y = 0; y := 1; refl); *x
   -- ... and hand an outer place to another proof (AddMZero's own recursion does this) ...
