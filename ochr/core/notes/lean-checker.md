@@ -909,3 +909,23 @@ This follows DECISIONS D53, its amendments (a)–(h), the second amendment (`Wor
 *Regressions.* `Destructuring.DCallField`, and in `ErasureBySyntax` the four programs `R8Param`, `R8Lam`, `R8Field` and `R8Arms` (plus `ExN` and `RunP`). The fuzzer, on 3 × 10⁵ cases with moves off and 10⁵ with them on, finds no INTERNAL case; what remains is E (arm-local values, about 6 in 10⁵) and R6 (conjunction order, 2 in 10⁵). The fuzz harness now records parameter declarations as `checkFix` does. Without that, the harness's own direct path tripped the assertion.
 
 957 verdicts: the tour 604, the case studies 353.
+
+## 29. The arm leak (arrays-library): a refinement belongs to its arm
+
+`restoreKeep` kept the whole table of abstract values' types (`absTy`) under D37. [Split] substitutes a refinement into every stored type, those included, so one arm's refinement of an OLDER value's type survived into its sibling arms. For example, after `n := Z`, a parameter `r : Slice(n)` had type `Slice(0)` in the arm `n := S m` wherever it was typed through its value: a closure capturing it (captures are typed by `valType`), or an inferred conjunct. Binding types were restored correctly, so a direct use of `r` saw the right type.
+
+*It was unsound.* `ArmLocalBoom.T7` states that every slice is the empty one. In the arm `n := S m` it applies a closure that captures `r` and sees `r : Slice(0)`, and `EmptyEq` proves any `Slice(0)` equal to `MkSlice(N0)`. At `T7(1, MkSlice(S0(9)))` the statement computes, by injectivity and disjointness, to `False`, and before the fix `BoomLeak : False` was accepted. fuzz-port's reading, that the leak could only reject, missed the closure route.
+
+*Fix.* `restoreKeep` keeps only the types of abstract values created by the nested run: `saved.absTy ++` the new suffix. D37 is about fresh names and generalisation records, not about refinements of existing types.
+
+*The re-audit of the rest of what `restoreKeep` keeps.* The question for each field: can a nested run refine an existing entry, not just add one?
+- `nextAbs`, `nextLoan`, `fuel`: counters.
+- `neutrals`: only grows, and no entry is rewritten in place (substitution does not reach it).
+- `recStack` candidates: merged by uid (§20); substitution does not reach them.
+- `classCache`: keyed by the Π-type value. Its reading is syntactic and depends on a captured abstract value only through whether its type is a sort, which no substitution changes.
+- `constDecls`: keyed by global name, over fixed declared types.
+None needs changing.
+
+*Regressions (08CaseSplits).* `ArmLocal` is arrays-library's repro; `Leak` there is a true lemma the stale type rejected, now accepted. `ArmLocalBoom` has `T6`, `T7` and `BoomLeak`, now rejected: `T6`'s closure body says `Eq (Slice(0)) r …` with `r : Slice(S m)`. The fix has no switch: it is the implementation of [Split] as RULES states it (each arm from the same Ω, stored types included), not a new rule.
+
+978 verdicts.

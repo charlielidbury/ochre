@@ -79,13 +79,14 @@ open Ochr.Registry in
   ["ClosingOff.MovedByBlock:accepted"]
 open Ochr.Registry in
 #guard rowOk { proofParamsStar := false }
-  ["Propositions.AndTrue:rejected", "Propositions.Swap:rejected", "Propositions.Fst:rejected",
-   "Propositions.FstSwap:rejected", "Propositions.AndL2:rejected", "Propositions.Snd:rejected",
-   "Propositions.Twice:rejected", "Propositions.SplitId:rejected", "Propositions.TwoOwners:rejected",
-   "Propositions.TwoOwnersR:rejected", "Propositions.ThreeOwners:rejected", "Destructuring.DAnd:rejected",
-   "Destructuring.DAnd3:rejected", "Destructuring.DNested:rejected", "Destructuring.DWild:rejected",
-   "Destructuring.DCallField:rejected", "Subsingletons.OrComm:rejected", "Subsingletons.OrElim:rejected",
-   "Subsingletons.OrLet:rejected", "CurrentState.ProofIrr:rejected"]
+  ["ArmLocal.AndL:rejected", "ArmLocal.Leak:rejected", "Propositions.AndTrue:rejected",
+   "Propositions.Swap:rejected", "Propositions.Fst:rejected", "Propositions.FstSwap:rejected",
+   "Propositions.AndL2:rejected", "Propositions.Snd:rejected", "Propositions.Twice:rejected",
+   "Propositions.SplitId:rejected", "Propositions.TwoOwners:rejected", "Propositions.TwoOwnersR:rejected",
+   "Propositions.ThreeOwners:rejected", "Destructuring.DAnd:rejected", "Destructuring.DAnd3:rejected",
+   "Destructuring.DNested:rejected", "Destructuring.DWild:rejected", "Destructuring.DCallField:rejected",
+   "Subsingletons.OrComm:rejected", "Subsingletons.OrElim:rejected", "Subsingletons.OrLet:rejected",
+   "CurrentState.ProofIrr:rejected"]
 open Ochr.Registry in
 #guard rowOk { recNested := false }
   ["Recursion.KnotL:accepted", "Recursion.KnotLBoom:accepted"]
@@ -179,22 +180,23 @@ open Ochr.Registry in
 #guard rowOk { capTypes := false }
   ["ClosingOff.UseDec:rejected", "ClosingOff.UseApply:rejected", "Equality.Om:rejected",
    "Snapshots.CapS:rejected", "Snapshots.CapSId:rejected", "Snapshots.CapPi:rejected",
-   "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected"]
+   "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "ArmLocal.JoinS:rejected",
+   "ArmLocal.AllGe:rejected", "ArmLocal.Leak:rejected"]
 -- `genPlaceType` changes no verdict; 08CaseSplits.lean asserts its effect on the generalised σ's type
 -- v2.0 D45 by type, switched off: a match on a proof inspects its content (⋆) like data: completeness only
 open Ochr.Registry in
 #guard rowOk { byType := false }
-  ["Propositions.AndTrue:rejected", "Propositions.Swap:rejected", "Propositions.Fst:rejected",
-   "Propositions.FstSwap:rejected", "Propositions.AndL2:rejected", "Propositions.Snd:rejected",
-   "Propositions.Twice:rejected", "Propositions.SplitId:rejected", "Propositions.TwoOwners:rejected",
-   "Propositions.TwoOwnersR:rejected", "Propositions.ThreeOwners:rejected", "Propositions.FromTrue:rejected",
-   "Propositions.FromTrueIs:rejected", "Propositions.Two:rejected", "Propositions.TwoIs:rejected",
-   "Propositions.WriteIf:rejected", "Propositions.WriteIfId:rejected", "Propositions.WriteIfAt:rejected",
-   "Propositions.TwoAt:rejected", "Destructuring.DAnd:rejected", "Destructuring.DAnd3:rejected",
-   "Destructuring.DNested:rejected", "Destructuring.DWild:rejected", "Destructuring.DCallField:rejected",
-   "Destructuring.DTerm:rejected", "Subsingletons.OrComm:rejected", "Subsingletons.OrElim:rejected",
-   "Subsingletons.OrLet:rejected", "Subsingletons.SqTrue:rejected", "Subsingletons.SqSplit:rejected",
-   "ErasureBySyntax.R8Field:rejected"]
+  ["ArmLocal.AndL:rejected", "ArmLocal.Leak:rejected", "Propositions.AndTrue:rejected",
+   "Propositions.Swap:rejected", "Propositions.Fst:rejected", "Propositions.FstSwap:rejected",
+   "Propositions.AndL2:rejected", "Propositions.Snd:rejected", "Propositions.Twice:rejected",
+   "Propositions.SplitId:rejected", "Propositions.TwoOwners:rejected", "Propositions.TwoOwnersR:rejected",
+   "Propositions.ThreeOwners:rejected", "Propositions.FromTrue:rejected", "Propositions.FromTrueIs:rejected",
+   "Propositions.Two:rejected", "Propositions.TwoIs:rejected", "Propositions.WriteIf:rejected",
+   "Propositions.WriteIfId:rejected", "Propositions.WriteIfAt:rejected", "Propositions.TwoAt:rejected",
+   "Destructuring.DAnd:rejected", "Destructuring.DAnd3:rejected", "Destructuring.DNested:rejected",
+   "Destructuring.DWild:rejected", "Destructuring.DCallField:rejected", "Destructuring.DTerm:rejected",
+   "Subsingletons.OrComm:rejected", "Subsingletons.OrElim:rejected", "Subsingletons.OrLet:rejected",
+   "Subsingletons.SqTrue:rejected", "Subsingletons.SqSplit:rejected", "ErasureBySyntax.R8Field:rejected"]
 -- v2.0 D45 subsingleton elimination, switched off: large elimination from Or and Sq is accepted (IsL, Get have no
 -- model; OrLie is Eq Bool tt ff in the model), but no closed False: D42 erases the constructor it would inspect
 open Ochr.Registry in

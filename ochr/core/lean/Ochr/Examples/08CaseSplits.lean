@@ -299,3 +299,114 @@ ochr GlobalRecords {
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "GlobalRecords" GlobalRecords).allAsExpected
 #guard (run "GlobalRecords" GlobalRecords).count == 4
+
+/-! A refinement belongs to its arm (arrays-library's arm leak). [Split] substitutes into
+every stored type, the types of abstract values included. Those types are kept across a
+private copy or an arm only for the abstract values that the copy or arm created (D37:
+fresh names are never reused). An older value's type is restored like the environment.
+Otherwise, after the arm `n := Z`, a parameter `r : Slice(n)` has type `Slice(0)` in the
+arm `n := S m` wherever it is typed through its value: in a closure that captures it, or
+in an inferred conjunct. `Leak` is a true lemma that the stale type rejected. `T7` states
+that a slice of any length is the empty one, by a closure in the second arm that sees
+`r : Slice(0)`, and its instance `BoomLeak` is a closed proof of `False`. -/
+
+ochr ArmLocal uses Std {
+  def Le (a : Nat) (b : Nat) : Prop by a := (
+    match a {
+      Z => ⊤,
+      S a' => match b {
+        Z => False,
+        S b' => Le(a', b'),
+      },
+    }
+  )
+  def Sub (a : Nat) (b : Nat) : Nat by b := (
+    match b {
+      Z => a,
+      S b' => match a {
+        Z => Z,
+        S a' => Sub(a', b'),
+      },
+    }
+  )
+  inductive SliceOf (R : Type) := MkSlice(c : R)
+  inductive Cell (R : Type) := MkC(h : Nat, t : SliceOf(R))
+  inductive CellsEnd := End
+  def Cells (n : Nat) : Type by n := (
+    match n {
+      Z => CellsEnd,
+      S m => Cell(Cells(m)),
+    }
+  )
+  def Slice (n : Nat) : Type := SliceOf(Cells(n))
+  def JoinS (n : Nat) (k : Nat) (l : Slice(k)) (r : Slice(Sub(n, k))) : Slice(n) by k := (
+    match k {
+      Z => r,
+      S k' => match n {
+        Z => MkSlice(End),
+        S m => match l {
+          MkSlice(c) => match c {
+            MkC(x, t) => MkSlice(MkC(x, JoinS(m, k', t, r))),
+          },
+        },
+      },
+    }
+  )
+  def AllGe (n : Nat) (s : Slice(n)) (p : Nat) : Prop by n := (
+    match n {
+      Z => ⊤,
+      S m => match s {
+        MkSlice(c) => match c {
+          MkC(x, t) => Le(p, x) ∧ AllGe(m, t, p),
+        },
+      },
+    }
+  )
+  def AndL (P : Prop) (Q : Prop) (h : P ∧ Q) : P := match h { Intro(p, q) => p }
+
+  -- The arm `n := Z` is checked before the arm `n := S m`; the conjuncts of `⟨…⟩` there
+  -- are typed through `r`'s value, whose type must not be the `Z` arm's `Slice(0)`.
+  def Leak (n : Nat) (k : Nat) (l : Slice(k)) (r : Slice(Sub(n, k))) (a : Nat) (hl : AllGe(k, l, a))
+      (ih : Π(m : Nat) (k' : Nat) (t : Slice(k')) (r2 : Slice(Sub(m, k'))). AllGe(m, JoinS(m, k', t, r2), a)) :
+      AllGe(n, JoinS(n, k, l, r), a) := (
+    match k {
+      Z => ih(n, 0, l, r),
+      S k' => match n {
+        Z => ih(Z, S k', l, r),
+        S m => match l {
+          MkSlice(c) => match c {
+            MkC(y, t) => ⟨AndL(Le(a, y), AllGe(k', t, a), hl), ih(m, k', t, r)⟩,
+          },
+        },
+      },
+    }
+  )
+}
+
+#eval IO.println (run "ArmLocal" ArmLocal).show
+
+#guard (run "ArmLocal" ArmLocal).allAsExpected
+#guard (run "ArmLocal" ArmLocal).count == 11
+
+ochr ArmLocalBoom {
+  inductive Emp := E(e : Emp)
+  def AbsurdEq (x : Emp) (A : Type) (a : A) (b : A) : Eq A a b by x := match x { E(e) => AbsurdEq(e, A, a, b) }
+  inductive Opt (R : Type) := N0 | S0(x : R)
+  inductive SliceOf (R : Type) := MkSlice(c : R)
+  def Cells (n : Nat) : Type by n := match n { Z => Opt(Emp), S m => Opt(Nat) }
+  def Slice (n : Nat) : Type := SliceOf(Cells(n))
+  -- every `Slice(0)` is the empty one
+  def EmptyEq (s : Slice(0)) : Eq (Slice(0)) s (MkSlice(N0[Emp])) := (
+    match s { MkSlice(c) => match c { N0 => refl, S0(x) => AbsurdEq(x, Slice(0), MkSlice(S0[Emp](x)), MkSlice(N0[Emp])) } })
+  -- `r : Slice(S m)` in the second arm, where `Eq (Slice(0)) r …` is ill-typed
+  reject def T6 (n : Nat) (r : Slice(n)) : Prop := (
+    match n { Z => ⊤, S m => (λ(u : Nat) : Prop => Eq (Slice(0)) r (MkSlice(N0[Emp])))(0) })
+  reject def T7 (n : Nat) (r : Slice(n)) : T6(n, r) := (
+    match n { Z => refl, S m => (λ(u : Nat) : Eq (Slice(0)) r (MkSlice(N0[Emp])) => EmptyEq(clone(r)))(0) })
+  reject def BoomLeak : False := T7(1, MkSlice(S0[Nat](9)))
+}
+
+#eval IO.println (run "ArmLocalBoom" ArmLocalBoom).show
+
+#guard (run "ArmLocalBoom" ArmLocalBoom).allAsExpected
+#guard (run "ArmLocalBoom" ArmLocalBoom).count == 10

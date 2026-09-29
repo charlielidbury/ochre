@@ -247,9 +247,13 @@ def restoreKeep (saved : MState) : M Unit :=
       | none => fr
     let s := { saved with fuel := cur.fuel, classCache := cur.classCache, constDecls := cur.constDecls,
                           recStack := saved.recStack.map keepCands, nextRecUid := cur.nextRecUid }
-    -- D37 (v1.8): fresh names are never reused, and generalisation records are global
+    -- D37 (v1.8): fresh names are never reused, and generalisation records are global. Only
+    -- the types of abstract values created by the nested run are kept: a refinement of an
+    -- older one's type ([Split] substitutes into every stored type) is that run's alone, and
+    -- must not reach a sibling arm (arrays-library's arm leak)
     if cur.cfg.globalRecords then
-      { s with nextAbs := cur.nextAbs, absTy := cur.absTy, nextLoan := cur.nextLoan, neutrals := cur.neutrals }
+      { s with nextAbs := cur.nextAbs, nextLoan := cur.nextLoan, neutrals := cur.neutrals,
+               absTy := saved.absTy ++ cur.absTy.extract saved.absTy.size cur.absTy.size }
     else s
 
 /-- D53: run `x` as an erased term, whose reads copy. -/
