@@ -19,7 +19,7 @@ This section states the properties Ochr is designed to have and the evidence for
     [3. Concrete runs of programs accepted by [Rec] terminate.], [partly mechanised], [for borrow-free and for non-recursive programs; in general `sorry`],
     [4. Frame: a call affects only what it is passed, and its effect is its isolated run, plugged back into the caller.], [mechanised], [`frame_local`, `call_effect`],
     [5. The sealed programs of [Close] compute the call's result, the final contents of its borrowed places and its backward function.], [mechanised, with hypotheses], [`close_res`, `close_fin`, `close_cur`, `close_back`; the hypotheses follow from 2, not yet in Lean],
-    [6. A backward function is injective, and so is the caller's context around it when every owner of the hole is observed; with fewer owners it can be constant.], [mechanised (machine form)], [`back_inj`, `ctx_inj`, `ctx_needs_all_owners`],
+    [6. Substituting a value for a returned borrow's hole is injective, and so is the caller's context around it when every owner of the hole is observed; with fewer owners it can be constant.], [mechanised (syntactic)], [`back_inj`, `ctx_inj`, `ctx_needs_all_owners`; injectivity of the backward function after [Seal] re-normalises is not proved],
     [7. The order in which borrows end does not change the resolved state.], [partly mechanised], [two endings commute (`end_comm`); tests of every order],
     [8. Stability: the two evaluation paths take the same decisions (@lem-stable).], [conjecture], [the counterexamples of @fig-why and the ledger (@sec-impl)],
     [9. Naturality and adequacy: refining and running commute up to resolution, so an `Id` computed on abstract inputs holds on every concrete input.], [conjecture], [tests; the form without resolution is false (mechanised counterexample)],
@@ -72,7 +72,7 @@ Four invariants of the machine make this well defined (@app-wf): each borrow is 
   Relative to ZFC with one inaccessible per universe level, no closed term has type `False` (nor, therefore, `Eq Nat Z (S Z)`, which computes to it).
 ]) <cor-consistent>
 
-Whether type checking is decidable is also open: types may combine large elimination, `J` with type-valued motives and an impredicative, proof-irrelevant `Prop`, which Abel and Coquand show can defeat normalisation @abel-coquand. The model interprets derivations, so consistency does not depend on it.
+Since `J` computes only on convertible endpoints, conversion has no equality reflection. Whether normalisation, and so type checking, terminates is open: types may combine large elimination, `J` with type-valued motives and an impredicative, proof-irrelevant `Prop`, which Abel and Coquand show can defeat normalisation @abel-coquand. The model interprets derivations, so consistency does not depend on it.
 
 == The two paths agree <sec-meta-nat>
 
