@@ -197,13 +197,15 @@ ochr PosParam {
   inductive Sig (P : Prop) := MkSig(n : Nat, h : P)
   def SigProof (P : Prop) (s : Sig(P)) : P := match s { MkSig(n, h) => h }
   def SigAt : Eq Nat 1 1 := SigProof(Eq Nat 1 1, MkSig(3, refl))
+  -- universes are not cumulative: a proposition is not a Type parameter
+  reject def PropBox : Type := Box(Eq Nat 0 1)
 }
 
 #eval IO.println (run "PosParam" PosParam).show
 
--- every verdict as expected, and exactly 15 assertions (a truncated file changes the count)
+-- every verdict as expected, and exactly 16 assertions (a truncated file changes the count)
 #guard (run "PosParam" PosParam).allAsExpected
-#guard (run "PosParam" PosParam).count == 15
+#guard (run "PosParam" PosParam).count == 16
 
 ochr Scrut {
   -- a match is on a place of its constructors' type, read from the place's type. v1.9's
