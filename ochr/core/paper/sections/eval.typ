@@ -35,6 +35,16 @@ Types and proofs are erased at runtime, and the machine treats them accordingly:
 
 `match p { Z => t, S y => u }` inspects the head of `p`'s content. `Z` selects the first arm, and `S v` selects the second with `y` standing for the sub-place `p.1`. Through a borrow, `match *x` leaves the successor in the borrowed content, so `&y` then reborrows the predecessor field in place: `x ↦ borrow₀ (S loan₁)` and the new borrow is `borrow₁ v`. If the head is a neutral, the run is stuck. A match on a proof never inspects it, since every proof is `⋆`: whether a match is on a proof is read from the declarations of the constructors its arms name, and such a match is decided by the proof's type (@sec-typing-prop).
 
+== Functions and closures <sec-eval-closures>
+
+A `fix` evaluates to a _closure_: its code together with the current values of its free variables, written $chevron.l overline(kappa) tack.r kw("fix") f (overline(x) : overline(A)) : B dots := t chevron.r$. The captured values $overline(kappa)$ are kept in the order of the bindings they were read from, each with that binding's declared type and whether it was declared a proof. A Π-type is formed the same way, as $chevron.l overline(kappa) tack.r Pi(overline(x) : overline(A)). B chevron.r$. A top-level function captures nothing and is just its name, its code being in the global signature.
+
+Capturing is reading. Each free variable is read when the closure is formed, as by [Read], so a borrow that lends it out is ended first, and the closure keeps a copy. What can be captured is what can be copied: data, proofs (`⋆`), types, other closures, abstract values and sealed programs. A borrow cannot be captured, nor a place that has been moved out, and forming a closure that would capture one is an error. So a `λ` inside a function that takes `x : &Nat` cannot mention `x`; it copies the number first, as in `let n = *x; let f = (λ(y : Nat) : Nat => n)`. A closure may still take borrows as parameters, as `λ(z : &Nat) : Unit => AddM(z, 0)` does.
+
+Three things follow. Captures are snapshots: later mutation of a variable does not change a closure that captured it, which is the mechanism by which a type is formed once (@sec-typing). There is no capture by reference and no closure that mutates its environment; Rust's `FnMut` has no counterpart. And a closure holds no borrow, so [Read] copies it like data; it cannot be a field of an inductive value, whose fields are first-order, nor be borrowed, since `&A` is only for data. A borrow inside a closure would be a borrow stored inside a value, which is the restriction on borrows in data (@sec-discussion).
+
+Calling a closure pushes one frame, holding its captured values, the closure itself if it is recursive, and the parameters, and runs `t` there. Two function values are convertible when their Π-types are, their captured values are pairwise, and their generic calls have the same observation (@app-conv). The only capture of places, in the style of Rust's closures, is that of a closed-off stuck match (@sec-eval-seal): its places become the arguments of a call, moved, borrowed or copied, never the contents of a stored value.
+
 == Closing off
 
 When the body of a call is stuck, the call itself is stuck, and so is everything waiting for it. A pure type theory would return the stuck call as a neutral term. An effectful call cannot simply be returned: part of what it produces is the final content of the places it borrowed, and the caller's environment needs those contents before it can continue. We _close off_ the call instead.
@@ -65,7 +75,7 @@ Sealed programs are the backward functions of Aeneas, written in the source lang
 
 The precondition that each `uᵢ` is loan-free is guaranteed by [Access], which ended those loans when the argument was read or borrowed. Without it, a live loan would be copied into a sealed program and survive the borrow that binds it.
 
-== Sealed programs and refinement
+== Sealed programs and refinement <sec-eval-seal>
 
 Values are kept in normal form. The normal form of a sealed program #seal(`L; C; K`) is obtained by running it from the empty environment, with one restriction: its _head call_ `C` may not itself be closed off (calls made inside `C`'s body may). This is the analogue of the guard on fixpoint unfolding in the calculus of inductive constructions. Without it, a sealed program would re-close into itself forever; with it, a sealed program either runs to a value or stays exactly as it is. A loan whose borrow lives outside the run (a hole whose returned borrow is still live) is _inert_: the run treats it like an abstract value. A borrow error during normalisation is a type error at the point that triggered it. When a case split has generalised a sealed program to an abstract value (@sec-typing), every later derivation of the same closed program normalises to that value.
 
