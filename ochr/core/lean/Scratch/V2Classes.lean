@@ -24,5 +24,12 @@ ochr V2Classes {
     Id (Nat × Nat) (match q0 { Mk(p0, p1) => match p0 { Z => q0, S p7 => q0 := Mk(p1, p1); q0 } }) (match q0 { Mk(p15, p16) => match p16 { Z => p16 := 0; (1, 0), S _ => q0 } })
   reject def R3s (q0 : Nat × Nat) : Prop :=
     match q0 { Mk(a, b) => Id (Nat × Nat) (match q0 { Mk(p0, p1) => match p0 { Z => q0, S p7 => q0 := Mk(p1, p1); q0 } }) (match q0 { Mk(p15, p16) => match p16 { Z => p16 := 0; (1, 0), S _ => q0 } }) }
+  -- R4: a stuck block returning a closure closes off to a sealed function; calling it in
+  -- untyped code (a sealed program's re-normalisation) needs its Π-type, which is not known
+  def R4 (x0 : &Nat) (x1 : &Nat) : Prop :=
+    Id Unit (let a2 = match *x0 { Z => λ(y4 : &Nat) : Unit => (), S p5 => λ(y6 : &Nat) : Unit => () }; a2(x1)) ()
+  reject def R4s (x0 : &Nat) (x1 : &Nat) : Id Unit (let a2 = match *x0 { Z => λ(y4 : &Nat) : Unit => (), S p5 => λ(y6 : &Nat) : Unit => () }; a2(x1)) () := (
+    match *x1 { Z => refl, S _ => refl }
+  )
 }
 #eval IO.println (run "V2Classes" V2Classes).show
