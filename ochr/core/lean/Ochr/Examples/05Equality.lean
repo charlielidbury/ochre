@@ -104,6 +104,19 @@ ochr Equality uses Std {
     J(Nat, a, b, λ(z : Nat) : Prop => Id Nat (Add(z, 0)) z, h, t)
   )
 
+  -- An equation a refinement made impossible computes to `False`, and so does its symmetric
+  -- one: `symm` of a proof of `False` is a proof of `False` (fuzz-port R7: here `n1 = S p`
+  -- and `n0 = 0` make both `False`, and the branch is unreachable).
+  def SymmUnreachable (n0 : Nat) (n1 : Nat) (h2 : Eq Nat n0 n1) : Nat := (
+    match n0 {
+      Z => match n1 {
+        Z => 0,
+        S p => J(Nat, n1, n0, λ(z : Nat) : Type => Nat, symm h2, p),
+      },
+      S _ => 0,
+    }
+  )
+
   -- `J` computes only when its endpoints are convertible (D56, Lean's rule for `Eq.rec`) ...
   def CastRefl (n : Nat) : Id Nat (J(Nat, n, n, λ(z : Nat) : Type => Nat, refl, 5)) 5 := refl
 
@@ -139,7 +152,7 @@ ochr Equality uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Equality" Equality).allAsExpected
-#guard (run "Equality" Equality).count == 29
+#guard (run "Equality" Equality).count == 30
 
 /-! ## Rewriting
 

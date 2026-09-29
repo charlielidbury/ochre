@@ -11,11 +11,34 @@ popped). Temporaries are part of Ω so that [End] can find and substitute into t
 
 namespace Ochr
 
+/-- What a declared type says, read off its term without normalising (D55, and the
+syntactic erasure pre-pass): the sort `l` itself (whatever has it is a type), a
+proposition (whatever has it is a proof), a Π-type with what its codomain says, a borrow
+type, or anything else (data). `any` is the type of a zero-arm match, which agrees with
+every other. -/
+inductive DeclInfo where
+  | sort (l : Nat)
+  | prop
+  | pi (cod : DeclInfo)
+  | ref (A : DeclInfo)
+  | other
+  | any
+deriving BEq, Inhabited, Repr
+
+/-- A proof: a value of a proposition, or a function into proofs (impredicative `Prop`). -/
+def DeclInfo.isProof : DeclInfo → Bool
+  | .prop => true
+  | .pi r => r.isProof
+  | _ => false
+
 structure Binding where
   hint : Hint
   ty : Option Value     -- `none` for bindings pushed by the untyped machine
   val : Value
   proof : Bool := false -- v1.7 (D35): its declared type has declared sort Prop (read off syntax)
+  decl : DeclInfo := .other   -- what its declared type says (the erasure pre-pass)
+  blockRef : Bool := false    -- a stuck block's borrow parameter for a place it writes (a
+                              -- checker device: a closure in the block captures through it)
 deriving Inhabited
 
 structure Frame where
@@ -119,6 +142,7 @@ structure Config where
   refTop : Bool := true          -- D48 (2): `&` only at the top of a declared type, never produced by computation
   sortsSyntactic : Bool := true  -- D55: a term written where a type is expected has a declared type that is syntactically a sort
   classInType : Bool := true     -- D54: a Π-type's erasure class and [Close] row are part of it (conversion compares them)
+  prePass : Bool := true         -- erasure is decided before evaluation, from declared types (the syntactic pre-pass)
   jStuck : Bool := true          -- D56: J computes only when its endpoints are convertible, otherwise it is stuck
   zeroArmStuck : Bool := true    -- D58: a zero-arm match outside a proof position is stuck, not ⋆
   movingReads : Bool := false   -- D53 prototype (off): runtime reads of non-copy data move; erased reads copy
@@ -130,7 +154,12 @@ structure Config where
   confineBodies : Bool := false  -- an extension of D41, not in RULES: the body of a function whose calls are
                                  -- erased, and each arm of an erased stuck block, are confined too
   trace : Bool := false          -- record goals, splits and call types (for inspection)
-deriving Inhabited, Repr
+deriving Inhabited, Repr, BEq
+
+/-- The pre-pass is checked against the after-the-fact classification under the rules as
+they stand; a counterfactual run switches a rule off and measures that alone. -/
+def Config.prePassAssert (c : Config) : Bool :=
+  c.prePass && { c with trace := false } == ({} : Config)
 
 /-- D41: one assignment, borrow or move, by the position of its place's root. It is
 `pending` once an erased run it belongs to has affected a place outliving that run: an
@@ -167,6 +196,12 @@ structure MState where
   neutrals : List (Value × Nat) := []     -- [Split] generalisations: sealed program ↦ its σ (finding G1)
   depth : Nat := 0                        -- call depth (bounded, like fuel: the checker must terminate)
   effects : Array Effect := #[]           -- D41: assigns, borrows and moves so far (restored with the state)
+  preAssert : Option Bool := none         -- `cfg.prePassAssert`, computed once
+  constDecls : List (String × DeclInfo) := []   -- what each global's declared type says (a pure cache)
+  curDecl : Option DeclInfo := none        -- the pre-pass's reading of the term being evaluated
+  tailDecl : Option DeclInfo := none       -- ... handed to its tail, whose reading it is (one-shot)
+  liveScope : Bool := false               -- declared-type reading: variables beyond the local scope are the top frame's
+  headEval : Bool := false                -- the next `eval` is of a call's head (not classified by the pre-pass)
   erasedDepth : Nat := 0                  -- D53 prototype: > 0 while evaluating a term known to be erased
   ghosts : List (Pos × Place × Value) := []   -- D53 prototype: values moved out, for erased reads
 deriving Inhabited
@@ -204,7 +239,7 @@ def restoreKeep (saved : MState) : M Unit :=
       match cur.recStack.find? (·.uid == fr.uid) with
       | some c => { fr with cands := c.cands }
       | none => fr
-    let s := { saved with fuel := cur.fuel, classCache := cur.classCache,
+    let s := { saved with fuel := cur.fuel, classCache := cur.classCache, constDecls := cur.constDecls,
                           recStack := saved.recStack.map keepCands, nextRecUid := cur.nextRecUid }
     -- D37 (v1.8): fresh names are never reused, and generalisation records are global
     if cur.cfg.globalRecords then
@@ -279,8 +314,25 @@ def popFrameRaw : M Frame := do
   | some fr => set { s with env := s.env.pop }; pure fr
   | none => err "internal: pop of empty environment"
 
-def pushBind (h : Hint) (ty : Option Value) (v : Value) (proof : Bool := false) : M Unit := do
-  modifyFrame (← topIdx) fun fr => { fr with binds := fr.binds.push ⟨h, ty, v, proof⟩ }
+def pushBind (h : Hint) (ty : Option Value) (v : Value) (proof : Bool := false)
+    (decl : DeclInfo := .other) (blockRef : Bool := false) : M Unit := do
+  modifyFrame (← topIdx) fun fr =>
+    { fr with binds := fr.binds.push { hint := h, ty, val := v, proof, decl, blockRef } }
+
+/-- Run a declared-type reading whose free variables beyond its local scope are the
+current frame's bindings (read in place, not copied into a list). -/
+def withLive {α : Type} (live : Bool) (x : M α) : M α := do
+  let old := (← get).liveScope
+  modify fun s => { s with liveScope := live }
+  let r ← tryCatch x (fun e => do modify (fun s => { s with liveScope := old }); throw e)
+  modify fun s => { s with liveScope := old }
+  pure r
+
+/-- What the declared type of the current frame's `i`-th variable (de Bruijn) says. -/
+def liveDecl (i : Nat) : M DeclInfo := do
+  let top := (← get).env.size - 1
+  let bs := (← get).env[top]!.binds
+  pure (if i < bs.size then bs[bs.size - 1 - i]!.decl else .other)
 
 def pushTemp (v : Value) : M Unit := do
   modifyFrame (← topIdx) fun fr => { fr with temps := fr.temps.push v }

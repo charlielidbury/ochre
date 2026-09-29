@@ -141,6 +141,22 @@ ochr Erasure uses Std {
   def TA2 (n : Nat) : Id Nat (let c = 0; UseP(p1, &c, n); c) (let c = 0; UseP(p2, &c, n); c) := refl
   reject def TA2Z : Eq Nat 0 1 := TA2(0)
 
+  -- ## What goes wrong without the private copy
+  -- Confinement lets an erased term pass an outer place to an erased call, as a proof passes
+  -- `x` to a lemma. Without the private copy (switch `eraseOnCopy`) that call's writes persist
+  -- on the direct path: in the `S` arm, `F5(&*x)` writes `*x := 5`, while the closed-off
+  -- block, being erased, skips it. So `LieP2`, true as checked, is false at `1`, and
+  -- `BoomP2` is a closed proof of `False` (fuzz-port).
+  def LieP2 (x : &Nat) : Id Nat (let a = match *x { Z => refl, S p => (F5(&*x); refl) }; *x) (*x) := refl
+  reject def BoomP2Pair : False ∧ False := (let c = 1; LieP2(&c))
+
+  reject def BoomP2 : False := (
+    let b = BoomP2Pair;
+    match b {
+      Intro(l, r) => l,
+    }
+  )
+
   -- ## What goes wrong without confinement
   -- A match whose arms are proofs that write `a`. An earlier version erased it when it was
   -- closed off but ran it when it ran directly, so sealing then refining gave `0` and running
@@ -164,7 +180,7 @@ ochr Erasure uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Erasure" Erasure).allAsExpected
-#guard (run "Erasure" Erasure).count == 29
+#guard (run "Erasure" Erasure).count == 32
 
 /-! ## What goes wrong when erasure is decided from values
 

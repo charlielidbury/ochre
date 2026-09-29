@@ -504,7 +504,7 @@ partial def fieldTypes (d : IndDecl) (ps : List Value) (c : Nat) : M (List (Stri
     err s!"{d.name} takes {d.params.length} parameters, given {ps.length}"
   onCopy do
     pushFrame
-    for ((h, _), v) in d.params.zip ps do pushBind h none v
+    for ((h, PT), v) in d.params.zip ps do pushBind h none v false (← withLive true (typeDecl false [] [] PT))
     fields.mapM fun (f, FT) => do pure (f, ← evalType FT)
 
 /-- D53 prototype: a copy type, read off a type; a type not fully known is not one. `Unit`,
@@ -533,7 +533,8 @@ partial def fieldTypeAt (d : IndDecl) (sol : Array (Option Value)) (FT : Term) :
   unless FT.freeVars.all fun j => j < np && (sol[np - 1 - j]!).isSome do return none
   tryCatch (onCopy do
       pushFrame
-      for ((h, _), v) in d.params.zip sol.toList do pushBind h none (v.getD .bot)
+      for ((h, PT), v) in d.params.zip sol.toList do
+        pushBind h none (v.getD .bot) false (← withLive true (typeDecl false [] [] PT))
       some <$> evalType FT)
     fun _ => pure none
 
@@ -643,15 +644,226 @@ partial def sortOf (T : Value) : M Nat := do
     | none => err s!"{T} is not known to be a type"
   | .tPi cs (.pi hs ds c) => onCopy do
     pushFrame
-    for v in cs do pushBind ⟨"κ"⟩ none v
+    pushCaps cs
+    let (pds, _) ← paramDecls cs hs ds c
     let mut l := 0
-    for (d, h) in ds.zip hs do
+    for ((d, h), pd) in (ds.zip hs).zip pds do
       let A ← evalType d
       l := max l (← sortOf A)
-      pushBind h (some A) (← genericValue A)
+      let gv ← genericValue A
+      pushBind h (some A) gv false (← refineDecl pd (some A) gv)
     let lb ← sortOf (← evalType c)
     pure (if lb == 0 then 0 else max l lb)
   | _ => err s!"{T} is not a type"
+
+-- ### Declared types (D55) and the erasure pre-pass
+
+/-- What the declared type of a place says: a variable's, through a borrow the borrowed
+type's, a constructor field's (a proof field is a proof). -/
+partial def placeDecl (sc : List DeclInfo) : Place → M DeclInfo
+  | .var i => do
+    if h : i < sc.length then return sc[i]
+    if (← get).liveScope then liveDecl (i - sc.length) else pure .other
+  | .deref q => do
+    match ← placeDecl sc q with
+    | .ref d => pure d
+    | _ => pure .other
+  | .field g _ => do pure (if ← tryCatch (fieldIsProof g) (fun _ => pure false) then .prop else .other)
+  | _ => pure .other
+
+/-- Arms agree on what their declared type says (`any`, a zero-arm match, agrees with all). -/
+partial def agreeDecl (ds : List DeclInfo) : DeclInfo :=
+  match ds.filter (· != .any) with
+  | [] => .any
+  | d :: rest => if rest.all (· == d) then d else .other
+
+/-- The declared type of a term, read from the declared types of its heads without
+normalising (the D35 notion), in a scope saying what each variable's declared type says
+(de Bruijn order; `ns` names them, for messages). With `chk`, every type position inside
+the term is checked to have a sort as its declared type (D55); without, only the spine
+that decides the result is read (the pre-pass at evaluation). -/
+partial def declOf (chk : Bool) (sc : List DeclInfo) (ns : List String) (t : Term) : M DeclInfo := do
+  let sub (u : Term) : M Unit := if chk then discard (declOf chk sc ns u) else pure ()
+  match t with
+  | .place p => placeDecl sc p
+  | .borrow p => pure (.ref (← placeDecl sc p))
+  | .zero | .tt => pure .other
+  | .assign _ u | .succ u | .fst u | .snd u => sub u; pure .other
+  | .letIn h u w => do
+    let d ← declOf chk sc ns u
+    declOf chk (d :: sc) (h.name :: ns) w
+  | .seq u w => sub u; declOf chk sc ns w
+  | .matchNat _ z s => pure (agreeDecl [← declOf chk sc ns z, ← declOf chk sc ns s])
+  | .matchInd _ _ arms => pure (agreeDecl (← arms.mapM fun (_, a) => declOf chk sc ns a))
+  | .const n =>     -- an unknown name is the machine's error, reported where it is met
+    if let some d := (← get).constDecls.lookup n then return d
+    tryCatch (do
+        let d ← valTypeDecl (← lookupGlobal n).ty
+        modify fun s => { s with constDecls := (n, d) :: s.constDecls }
+        pure d) fun _ => pure .any
+  | .val v => valueDecl v
+  | .sort l => pure (.sort (l + 1))
+  | .nat | .unit => pure (.sort 1)
+  | .ref A => discard (typePos chk sc ns A); pure (.sort 1)
+  | .pi hs ds c => do
+    let (sc', ns', l) ← telescope chk sc ns hs ds
+    let lc ← typePos chk sc' ns' c
+    pure (.sort (if lc == 0 then 0 else max l lc))
+  | .fix self hs ds c _ body => do
+    let (sc', ns', _) ← telescope chk sc ns hs ds
+    discard (typePos chk sc' ns' c)
+    let cd ← typeDecl chk sc' ns' c
+    if chk then
+      -- the body sees the parameters, then `self`, then the enclosing scope
+      let k := ds.length
+      discard (declOf chk (sc'.take k ++ (DeclInfo.pi cd :: sc)) (ns'.take k ++ (self.name :: ns)) body)
+    pure (.pi cd)
+  | .call f as _ => do
+    let df ← declOf chk sc ns f
+    for a in as do sub a
+    pure (match df with
+      | .pi r => r
+      | .any => .any
+      | _ => .other)
+  | .eq A a b | .id A a b => do
+    discard (typePos chk sc ns A); sub a; sub b; pure (.sort 0)
+  | .cong f h => sub f; sub h; pure .prop
+  | .ascribe u A => do discard (typePos chk sc ns A); sub u; typeDecl chk sc ns A
+  | .prim "J" [A, a, b, P, h, u] => do
+    discard (typePos chk sc ns A)
+    for x in [a, b, h, u] do sub x
+    -- `J(…) : P(b)`, a proposition when `P` returns propositions
+    match ← declOf chk sc ns P with
+    | .pi (.sort 0) => pure .prop
+    | _ => pure .other
+  | .prim "trans" as | .prim "symm" as => for a in as do sub a
+                                          pure .prop
+  | .prim "clone" [u] => declOf chk sc ns u
+  -- D60: `rewrite h in t` is `J` with the motive read off the goal, which is a proposition
+  | .prim "rewrite" as | .prim "rewriteR" as => do
+    for a in as do sub a
+    pure .prop
+  -- D61: `split f in t` / `split f { … }` has the class of what it checks in each arm
+  | .prim "split" [_, u] | .prim "splitArms" [_, u] => declOf chk sc ns u
+  | .prim _ as => for a in as do sub a
+                  pure .other
+  | .tind n as => do
+    for a in as do discard (typePos chk sc ns a)
+    tryCatch (do pure (.sort (← lookupInd n).sort)) fun _ => pure (.sort 1)
+  | .ctor ty _ _ ps as => do
+    for p in ps do discard (typePos chk sc ns p)
+    for a in as do sub a
+    pure (if ← tryCatch (ctorIsProof ty) (fun _ => pure false) then .prop else .other)
+
+/-- What a type term says as a declared type: a sort, a Π-type, a borrow type, or a
+proposition when its own declared type is `Prop`. -/
+partial def typeDecl (chk : Bool) (sc : List DeclInfo) (ns : List String) (T : Term) : M DeclInfo := do
+  match T with
+  | .sort l => pure (.sort l)
+  | .pi hs ds c => do
+    let (sc', ns', _) ← telescope false sc ns hs ds
+    pure (.pi (← typeDecl false sc' ns' c))
+  | .ref A => pure (.ref (← typeDecl false sc ns A))
+  | .val v => valTypeDecl v
+  | _ => match ← declOf false sc ns T with
+    | .sort 0 => pure .prop
+    | .any => pure .any
+    | _ => pure .other
+
+/-- A term written where a type is expected: with `chk`, its declared type must be a sort
+(D55). Returns the sort (`1` when not known). -/
+partial def typePos (chk : Bool) (sc : List DeclInfo) (ns : List String) (T : Term) : M Nat := do
+  if !chk then return 1
+  match ← declOf chk sc ns T with
+  | .sort l => pure l
+  | .any => pure 1
+  | _ =>
+    if (← get).cfg.sortsSyntactic then
+      err s!"[D55] {T.pp ns} is written where a type is expected, but its declared type is not a sort (it is a type only by computation)"
+    else pure 1
+
+/-- A telescope of binder types, each in the scope of the earlier ones: the extended
+scope, and the largest of their sorts. -/
+partial def telescope (chk : Bool) (sc : List DeclInfo) (ns : List String) (hs : List Hint)
+    (ds : List Term) : M (List DeclInfo × List String × Nat) := do
+  let mut sc := sc
+  let mut ns := ns
+  let mut l := 0
+  for (h, d) in hs.zip ds do
+    l := max l (← typePos chk sc ns d)
+    sc := (← typeDecl chk sc ns d) :: sc
+    ns := h.name :: ns
+  pure (sc, ns, l)
+
+/-- What a runtime value's declared type says (an embedded value, a capture). -/
+partial def valueDecl (v : Value) : M DeclInfo := withLive false do
+  match v with
+  | .proof => pure .prop
+  | .sort l => pure (.sort (l + 1))
+  | .tNat | .tUnit | .tRef _ | .tInd .. | .tEq .. | .tPi .. =>
+    pure (.sort (← tryCatch (sortOf v) (fun _ => pure 1)))
+  | .gfn n => tryCatch (do valTypeDecl (← lookupGlobal n).ty) fun _ => pure .other
+  | .clo cs (.fix _ hs ds c _ _) => do
+    let capSc ← cs.reverse.mapM valueDecl
+    let (sc', ns', _) ← telescope false capSc [] hs ds
+    pure (.pi (← typeDecl false sc' ns' c))
+  | .abs σ => tryCatch (do valTypeDecl (← absType σ)) fun _ => pure .other
+  | .sealed t => declOf false [] [] t
+  | .borrow _ _ => pure (.ref .other)
+  | _ => pure .other
+
+/-- What a type value says as a declared type (a stored or global type). -/
+partial def valTypeDecl (T : Value) : M DeclInfo := withLive false do
+  match T with
+  | .sort l => pure (.sort l)
+  | .tPi cs (.pi hs ds c) => do
+    let capSc ← cs.reverse.mapM valueDecl
+    let (sc', ns', _) ← telescope false capSc [] hs ds
+    pure (.pi (← typeDecl false sc' ns' c))
+  | .tRef A => pure (.ref (← valTypeDecl A))
+  | _ => pure (if ← tryCatch (isPropV T) (fun _ => pure false) then .prop else .other)
+
+/-- What each parameter's declared type says, each in the scope of the captured values
+and the earlier parameters, and what the codomain says. -/
+partial def paramDecls (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term) :
+    M (List DeclInfo × DeclInfo) := do
+  let capSc ← cs.reverse.mapM valueDecl
+  let (sc', ns', _) ← telescope false capSc [] hs ds
+  pure ((sc'.take ds.length).reverse, ← typeDecl false sc' ns' c)
+
+/-- A binding's declared reading, completed for a function: a declared type that is a
+Π-type only after computing it (`p : Pow(Nat)`) says what the Π-type value says, and a
+function value has the class of its own declared Π-type (D54 makes the two agree). -/
+partial def refineDecl (d : DeclInfo) (A? : Option Value) (v : Value) : M DeclInfo := do
+  if d != .other then return d
+  if let some A@(.tPi ..) := A? then return ← valTypeDecl A
+  match v with
+  | .gfn _ | .clo _ _ => valueDecl v
+  | .abs σ => match ← tryCatch (absType σ) (fun _ => pure .bot) with
+    | .tPi .. => valueDecl v
+    | _ => pure d
+  | _ => pure d
+
+/-- Push captured values as bindings, each with what its declared type says. -/
+partial def pushCaps (cs : List Value) : M Unit := do
+  for v in cs do pushBind ⟨"κ"⟩ none v false (← valueDecl v)
+
+/-- Push parameters with their declared-type readings (the earlier ones in scope). -/
+partial def paramDecl (d : Term) : M DeclInfo := withLive true (typeDecl false [] [] d)
+
+/-- The erasure pre-pass: whether a term is erased and whether it is a proof, decided
+before it runs, from declared types. A proof is a term whose declared type is a
+proposition; a call returning types is erased too (its context is not: D35). -/
+partial def preFlags (t : Term) (d : DeclInfo) : M (Option (Bool × Bool)) := do
+  if d == .any then return none
+  let p := d.isProof
+  -- a stuck block's function (codomain the match's type, `.val B`) is a match: erased iff
+  -- it is a proof, like any sequencing form (D35)
+  let block := match t with
+    | .call (.fix _ _ _ (.val _) _ _) _ _ | .call (.val (.clo _ (.fix _ _ _ (.val _) _ _))) _ _ => true
+    | _ => false
+  let e := p || (t matches .call ..) && !block && (d matches .sort _)
+  pure (some (e, p))
 
 /-- Is a type a proposition? (P5, and proof irrelevance: a value of a proposition is `⋆`.) -/
 partial def isPropV (T : Value) : M Bool := do
@@ -706,8 +918,15 @@ partial def capture (t : Term) : M (List Value × Term) := do
   let fvs := (t.freeVars.toArray.qsort (· > ·)).toList   -- oldest binding first
   let m := fvs.length
   let mut vals := #[]
+  let mut through : List Nat := []   -- stuck-block borrow parameters, captured by their content
+  let top0 := (← get).env.back!
   for o in fvs do
-    let p := Place.var o
+    -- a stuck block's borrow parameter stands for an owned place of the direct path, which a
+    -- closure there captures by value: capture its content (R2), if it is only read through
+    let b0 := top0.binds[top0.binds.size - 1 - o]!
+    let viaRef := b0.blockRef && (t.freeOccs.filter (·.1 == o)).all fun (_, q, _) => q.derefsRoot
+    if viaRef then through := o :: through
+    let p := if viaRef then Place.deref (.var o) else Place.var o
     accessPath p; accessInside p
     let v ← content p
     match v with
@@ -724,7 +943,9 @@ partial def capture (t : Term) : M (List Value × Term) := do
         unless ← isCopyType T do
           logEffect p "moves"; setPlace p .bot
   let idx (o : Nat) : Nat := (fvs.findIdx? (· == o)).getD 0
-  let mut t' := t.mapFree (fun c o => .var (c + m - 1 - idx o)) 0
+  let t0 := if through.isEmpty then t else
+    t.mapFreePlace (fun c q => (if through.contains q.root then q.stripDeref else q).mapRoot fun j => .var (j + c)) 0
+  let mut t' := t0.mapFree (fun c o => .var (c + m - 1 - idx o)) 0
   -- a captured proof keeps its type: its reads are inlined as `(⋆ : T)` (a proof's value
   -- is ⋆, so the type is all there is to record). "A proof" is the binding's declared
   -- flag, never its value (finding P3: `g(0)` may be ⋆ at an instance only)
@@ -732,7 +953,7 @@ partial def capture (t : Term) : M (List Value × Term) := do
     let top := (← get).env.back!
     for (o, k) in fvs.zipIdx do
       let b := top.binds[top.binds.size - 1 - o]!
-      if b.proof then
+      if b.proof && !through.contains o then
         if let some T := b.ty then
           t' := t'.inlineReads (m - 1 - k) (.ascribe (.val .proof) (.val T)) 0
   pure (vals.toList, t')
@@ -797,27 +1018,29 @@ partial def convPi (P Q : Value) : M Bool := do
   tryCatch (onCopy do
       modify fun s => { s with env := #[{}], convStack := (P, Q) :: s.convStack }
       pushFrame
-      for v in cs do pushBind ⟨"κ"⟩ none v
+      pushCaps cs
+      let (pds, _) ← paramDecls cs hs ds c
       let mut ws : Array (Value × Value) := #[]
-      for (d, h) in ds.zip hs do
+      for ((d, h), pd) in (ds.zip hs).zip pds do
         let A ← evalType d
         let w ← match A with
           | .tRef T =>
             let σ ← freshAbs T
             let l ← freshLoan
-            modifyFrame 0 fun fr => { fr with binds := fr.binds.push ⟨⟨s!"{h.name}°"⟩, some T, .loan l, false⟩ }
+            modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
             pure (Value.borrow l (.abs σ))
           | _ => genericValue A
-        pushBind h (some A) w
+        pushBind h (some A) w false (← refineDecl pd (some A) w)
         ws := ws.push (w, A)
       let C ← evalType c
       discard popFrameRaw
       pushFrame
-      for v in cs' do pushBind ⟨"κ"⟩ none v
-      for ((d', h), (w, A)) in (ds'.zip hs).zip ws.toList do
+      pushCaps cs'
+      let (pds', _) ← paramDecls cs' hs ds' c'
+      for (((d', h), (w, A)), pd) in ((ds'.zip hs).zip ws.toList).zip pds' do
         let A' ← evalType d'
         unless ← conv A A' do return false
-        pushBind h (some A') w
+        pushBind h (some A') w false (← refineDecl pd (some A') w)
       let C' ← evalType c'
       conv C C')
     fun _ => pure false
@@ -862,22 +1085,31 @@ partial def convFn (f g : Value) : M Bool := do
   let caps : Value → List Value := fun | .clo cs _ => cs | _ => []
   if mode == 0 then
     unless ← convList (caps f) (caps g) do return false
-  let .tPi cs (.pi hs ds _) := pf | return false
+  let .tPi cs (.pi hs ds c) := pf | return false
+  -- a comparison that errors (e.g. a stuck block's function run at a generic argument where
+  -- a pattern's sub-place does not exist, fuzz-port R3) answers "not convertible", as `convPi`
+  tryCatch (convFnRun f g pf cs hs ds c) fun _ => pure false
+
+/-- `convFn`'s observation of both functions' generic calls. -/
+partial def convFnRun (f g pf : Value) (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term) :
+    M Bool := do
+  let mode := (← get).cfg.closureConv
   onCopy do
     modify fun s => { s with env := #[{}], convStack := (f, g) :: s.convStack }
     pushFrame
-    for v in cs do pushBind ⟨"κ"⟩ none v
+    pushCaps cs
+    let (pds, _) ← paramDecls cs hs ds c
     let mut args := #[]
-    for (d, h) in ds.zip hs do
+    for ((d, h), pd) in (ds.zip hs).zip pds do
       let A ← evalType d
       let w ← match A with
         | .tRef T =>
           let σ ← freshAbs T
           let l ← freshLoan
-          modifyFrame 0 fun fr => { fr with binds := fr.binds.push ⟨⟨s!"{h.name}°"⟩, some T, .loan l, false⟩ }
+          modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
           pure (Value.borrow l (.abs σ))
         | _ => if ← isPropV A then pure Value.proof else pure (Value.abs (← freshAbs A))
-      pushBind h (some A) w
+      pushBind h (some A) w false (← refineDecl pd (some A) w)
       args := args.push w
     discard popFrameRaw
     -- D38 (v1.8): a borrow result is observed as its content, after one shared fresh
@@ -976,6 +1208,20 @@ partial def eval (typed : Bool) (t : Term) (hint : Option Value := none) : M (Va
   let start := (← get).effects.size
   let f0 := before.size - 1
   let n0 := before[f0]!.binds.size
+  -- the erasure pre-pass: decided before the term runs, from declared types (a call's
+  -- head is not classified: its flags are the call's)
+  let head := (← get).headEval
+  let hinted := (← get).tailDecl     -- a sequencing form hands its reading to its tail
+  modify fun s => { s with headEval := false, tailDecl := none }
+  let d? ← if (← get).cfg.prePass && !head && !(t matches .val _) then
+      match hinted with
+      | some d => pure (some d)
+      | none => some <$> withLive true (declOf false [] [] t)
+    else pure none
+  modify fun s => { s with curDecl := d? }
+  let pre ← match d? with
+    | some d => preFlags t d
+    | none => pure none
   let r ← evalCore typed t hint
   -- D28 (v1.5): whether this term is erased is decided syntactically and by declared
   -- classes, never from a normal form. Calls: the callee's class (set by `callFn`);
@@ -1018,6 +1264,20 @@ partial def eval (typed : Bool) (t : Term) (hint : Option Value := none) : M (Va
         pure (p, p)
       | _ => pure (false, false)
     else do let e ← erasedValue r.1; pure (e, e)   -- the v1.4 reading: decided on the value (breaker-fresh F1)
+  -- the after-the-fact classification is kept as an assertion that the two agree (under
+  -- the rules as they stand; a counterfactual switch changes the after-the-fact one)
+  let (erased, proof) ← match pre with
+    | some f =>
+      let pa ← match (← get).preAssert with
+        | some b => pure b
+        | none => do
+          let b := cfg.prePassAssert
+          modify fun s => { s with preAssert := some b }
+          pure b
+      if pa && f != (erased, proof) then
+        err s!"INTERNAL [pre-pass] {t.pp []}: erased/proof = {f} by its declared type, {(erased, proof)} after running (please report)"
+      pure f
+    | none => pure (erased, proof)
   -- D41 (v1.9): an erased run is confined, judged by the outermost erased term around
   -- it (a proof may mutate its own locals); a non-erased context rejects what is pending
   if cfg.confine then
@@ -1056,10 +1316,12 @@ partial def fnClass (piTy : Value) : M Nat := do
           | some false => pure 0
           | none => onCopy do
             pushFrame
-            for v in cs do pushBind ⟨"κ"⟩ none v
-            for (d, h) in ds.zip hs do
+            pushCaps cs
+            let (pds, _) ← paramDecls cs hs ds c
+            for ((d, h), pd) in (ds.zip hs).zip pds do
               let A ← evalType d
-              pushBind h (some A) (← genericValue A)
+              let gv ← genericValue A
+              pushBind h (some A) gv false (← refineDecl pd (some A) gv)
             typeClass (← evalType c)
     | _ => pure 0
   modify fun s => { s with classCache := (piTy, k) :: s.classCache }
@@ -1210,8 +1472,13 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     assignPlace p v
     pure (.unit, ty .tUnit)
   | .letIn h u w =>
+    let myD := (← get).curDecl
+    let du ← if (← get).cfg.prePass then withLive true (declOf false [] [] u) else pure .other
     let (v, T) ← eval typed u
-    pushBind h T v (← getFlags).2     -- `h` is a proof iff `u` is
+    let du' ← refineDecl du T v
+    pushBind h T v (← getFlags).2 du'     -- `h` is a proof iff `u` is
+    -- the tail's reading is this let's (read with `h`'s declared type, unless refined)
+    if du' == du then modify fun s => { s with tailDecl := myD }
     let (r, R) ← eval typed w
     let fl ← getFlags     -- the body's erasure flags (dropping may normalise)
     pushTemp r
@@ -1219,8 +1486,10 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     setFlags fl
     pure (← popTemp, R)
   | .seq u w =>
+    let myD := (← get).curDecl
     let (v, _) ← eval typed u
     dropValue v
+    modify fun s => { s with tailDecl := myD }     -- the tail's reading is this sequence's
     eval typed w
   | .matchNat p z s => evalMatch typed p z s
   | .matchInd p ty arms => evalMatchInd typed p ty arms
@@ -1345,6 +1614,9 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     match Th.map unitTop with
     | some (.tEq A a b) => pure (.proof, some (← mkEqM A b a))
     | some (.tInd "True" []) => pure (.proof, some vTrue)
+    -- an equation that computes to `False` (a refinement made it impossible) is symmetric
+    -- to one that does too (fuzz-port R7)
+    | some (.tInd "False" []) => pure (.proof, some (.tInd "False" []))
     | _ => if typed then err "symm: not an equation" else pure (.proof, none)
   | .prim "trans" [h, k] =>
     let (_, Th) ← eval typed h
@@ -1352,6 +1624,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     if !typed then return (.proof, none)
     match Th.map unitTop, Tk.map unitTop with
     | some (.tInd "True" []), some T | some T, some (.tInd "True" []) => pure (.proof, some T)
+    | some (.tInd "False" []), _ | _, some (.tInd "False" []) => pure (.proof, some (.tInd "False" []))
     | some (.tEq A a b), some (.tEq A' b' c) =>
       unless (← conv A A') && (← conv b b') do err s!"trans: {Th.get!} and {Tk.get!} do not compose"
       pure (.proof, some (← mkEqM A a c))
@@ -1413,7 +1686,7 @@ partial def checkParams (d : IndDecl) (n : String) (vs : Array Value) (tys : Arr
       let A ← evalType PT
       expectTy s!"the parameter {h.name} of {n}" T A
       noBorrowParam n v
-      pushBind h (some A) v
+      pushBind h (some A) v false (← withLive true (typeDecl false [] [] PT))
 
 /-- No borrows inside data (RULES §1), also through a parameter: `List(&Nat)` is not a type. -/
 partial def noBorrowParam (n : String) (v : Value) : M Unit := do
@@ -1472,6 +1745,7 @@ partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
           let (fv, fT) ← onCopy (withErased (eval typed f))
           fnClass (← funType fv fT)) (fun _ => pure 0)
     if cls != 0 then return ← withErased (evalCall typed f as head cls?)
+  modify fun s => { s with headEval := true }
   let (fv, fT) ← eval typed f
   pushTemp fv
   let mut tys := #[]
@@ -1499,13 +1773,15 @@ partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
 evaluated so far (a hint for a constructor argument's parameters; `none` if unknown). -/
 partial def argHint (fv : Value) (fT : Option Value) (ws : Array Value) : M (Option Value) :=
   tryCatch (do
-      let .tPi cs (.pi hs ds _) ← funType fv fT | return none
+      let .tPi cs (.pi hs ds c) ← funType fv fT | return none
       let some d := ds[ws.size]? | return none
       onCopy do
         pushFrame
-        for v in cs do pushBind ⟨"κ"⟩ none v
-        for ((d', h), w) in (ds.zip hs).zip ws.toList do
-          pushBind h (some (← evalType d')) w
+        pushCaps cs
+        let (pds, _) ← paramDecls cs hs ds c
+        for (((d', h), w), pd) in ((ds.zip hs).zip ws.toList).zip pds do
+          let A ← evalType d'
+          pushBind h (some A) w false (← refineDecl pd (some A) w)
         some <$> evalType d)
     fun _ => pure none
 
@@ -1561,11 +1837,12 @@ partial def callType (piTy : Value) (ws : Array Value) (tys : Array (Option Valu
   let pf ← paramFlags cs ds
   onCopy do
     pushFrame
-    for v in cs do pushBind ⟨"κ"⟩ none v
-    for ((d, h), i) in (ds.zip hs).zipIdx do
+    pushCaps cs
+    let (pds, _) ← paramDecls cs hs ds c
+    for (((d, h), i), pd) in ((ds.zip hs).zipIdx).zip pds do
       let A ← evalType d
       expectTy s!"argument {i + 1} ({h.name})" tys[i]! A
-      pushBind h (some A) ws[i]! (pf.getD i false)
+      pushBind h (some A) ws[i]! (pf.getD i false) (← refineDecl pd (some A) ws[i]!) (d matches .val (.tRef _))
     evalType c
 
 /-- P5: the borrow arguments of a call that is not run end unchanged. -/
@@ -1586,15 +1863,17 @@ partial def fixOf (fv : Value) : M (List Value × Term) := do
 
 /-- [Call]: push a frame `[caps, self, x̄ ↦ w̄]`, run the body, pop the frame. -/
 partial def runBody (fv : Value) (cs : List Value) (t : Term) (ws : Array Value) : M Value := do
-  let .fix self hs ds _ _ body := t | err "internal: not a fix"
+  let .fix self hs ds c _ body := t | err "internal: not a fix"
   let d := (← get).depth
   if d ≥ 2000 then err "call depth exceeded (a non-terminating recursion)"
   modify fun s => { s with depth := d + 1 }
   let pf ← paramFlags cs ds
+  let (pds, cd) ← paramDecls cs hs ds c
   pushFrame
-  for v in cs do pushBind ⟨"κ"⟩ none v
-  pushBind self none fv
-  for ((h, w), p) in (hs.zip ws.toList).zip pf do pushBind h none w p
+  pushCaps cs
+  pushBind self none fv false (.pi cd)
+  for ((((h, w), p), pd), d) in (((hs.zip ws.toList).zip pf).zip pds).zip ds do
+    pushBind h none w p (← refineDecl pd none w) (d matches .val (.tRef _))
   let es := (← get).effects.size
   let (v, _) ← eval false body
   pushTempAt ((← topIdx) - 1) v
@@ -2052,7 +2331,7 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Nat) (allProof :
     | .matchNat sp _ _ | .matchInd sp _ _ => some sp
     | _ => none
   let mut uses : Array (Place × Nat) := #[]
-  for (o, p, k) in mt.freeOccs do
+  for (o, p, k) in mt.freeOccsBlock do
     let q := p.mapRoot fun _ => .var o
     -- counterfactual D32: a write through a pattern variable (a strict extension of the
     -- block's scrutinee by `.1`) is not seen as a use of the scrutinee's place
@@ -2299,9 +2578,10 @@ partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
     checkTail u k
   | .letIn h u w =>
     let es := (← get).effects.size
+    let du ← if (← get).cfg.prePass then withLive true (declOf false [] [] u) else pure .other
     let (v, T) ← eval true u
     flushPending es     -- D41: the tail judgement is not an erased context
-    pushBind h T v (← getFlags).2
+    pushBind h T v (← getFlags).2 (← refineDecl du T v)
     checkTail w fun r R => do
       let fl ← getFlags      -- the path's tail flags (dropping may normalise)
       pushTemp r
@@ -2410,34 +2690,35 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
   -- enclosing functions' [Rec] contexts
   modify fun s => { s with env := #[{}], goal := none }
   let pf ← paramFlags cs ds
+  let (pds, cd) ← paramDecls cs hs ds c
   pushFrame
-  for v in cs do pushBind ⟨"κ"⟩ none v
+  pushCaps cs
   let mut entries := #[]
-  for ((d, h), p) in (ds.zip hs).zip pf do
+  for (((d, h), p), pd) in ((ds.zip hs).zip pf).zip pds do
     let A ← evalType d
     match A with
     | .tRef T =>
       let σ ← freshAbs T
       let l ← freshLoan
-      modifyFrame 0 fun fr => { fr with binds := fr.binds.push ⟨⟨s!"{h.name}°"⟩, some T, .loan l, false⟩ }
-      pushBind h (some A) (.borrow l (.abs σ)) p
+      modifyFrame 0 fun fr => { fr with binds := fr.binds.push { hint := ⟨s!"{h.name}°"⟩, ty := some T, val := .loan l } }
+      pushBind h (some A) (.borrow l (.abs σ)) p pd (d matches .val (.tRef _))
       entries := entries.push (if T == .tNat || (T matches .tInd ..) then some σ else none)
     | _ =>
       if (← get).cfg.p5 && (← get).cfg.proofParamsStar && (← isPropV A) then
-        pushBind h (some A) .proof p
+        pushBind h (some A) .proof p (← refineDecl pd (some A) .proof)
         entries := entries.push none
       else
         let σ ← freshAbs A
-        pushBind h (some A) (.abs σ) p
+        pushBind h (some A) (.abs σ) p (← refineDecl pd (some A) (.abs σ))
         entries := entries.push (if A == .tNat || (A matches .tInd ..) then some σ else none)
   let goal ← evalType c
   trace fun _ => s!"[Def] {self.name}: goal {goal}"
   let F1 ← popFrameRaw
   let piTy := Value.tPi cs (.pi hs ds c)
   pushFrame
-  for v in cs do pushBind ⟨"κ"⟩ none v
-  pushBind self (some piTy) fv
-  for b in F1.binds.extract cs.length F1.binds.size do pushBind b.hint b.ty b.val b.proof
+  pushCaps cs
+  pushBind self (some piTy) fv false (.pi cd)
+  for b in F1.binds.extract cs.length F1.binds.size do pushBind b.hint b.ty b.val b.proof b.decl b.blockRef
   -- [Rec]: the decreasing parameter is the one named by `by xⱼ` (v1.2, D23); without
   -- `by` the function is not recursive (no candidate survives a recursive call)
   let cands ← if (← get).cfg.inferRecPos then
