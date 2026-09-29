@@ -680,3 +680,75 @@ Checked mechanically against the suite before D52 (0127f58b, 432 declarations):
 - Nested runs that replace per-definition state: `sealedType` (env, [Rec] stack, goal), `nfSealed` (env, depth; it keeps the [Rec] stack but runs untyped, so it never checks a recursive call), `checkFix` (env, goal; pushes a frame), function conversion (env, `convStack`), a constant's check. Only `sealedType` touched the [Rec] state.
 - Exceptions discard the state back to the handler's entry (`StateT` over `ExceptT`), except the fuel a `.stuck` carries. The handlers that recover are closing off a call (`runBody` runs untyped: no `recCheck` inside), `nfSealed` (untyped), the hints `fieldTypeAt` and `argHint` (recomputed where they matter), and conversion (answers false). None of them can lose a narrowing made by a typed recursive call that is not checked again elsewhere.
 - 449 declarations = 440 + 9 (`Le`, and `Lie`, `LieCap`, `LieRead`, `LieId` with their `Boom`s).
+
+## 21. D54, D56, D58 in the checker; D55 built, switched off pending the fixture decision
+
+- *D54 (reviewer-5): a Π-type's erasure class and [Close] row are part of it.* `convPi` first requires equal `fnClass` and `declKind` (switch `classInType`). The class and row are those the D35 classification reads off the codomain term, as before. At a call, `callFn` reads the class and row from the function value's own declared Π-type (`funType fv none`), not from the static type. Conversion now guarantees that the two agree, so the typed and untyped paths use one source.
+  - *The partial mechanism it replaces:* `funType fv fT` preferred the static type `fT` whenever the call was typed. That is why a direct call through a parameter was safe and a call after `let g = f` or through `IdF(f)` was not. In untyped runs `fT` is absent and the value's own codomain decided.
+  - *Tests (Functions, 14 declarations):* reviewer-5's program verbatim (`P0`, `H`, `RunG`, `RunGGen`, `Boom`, and `RunGH`, now rejected at the argument); the identity-function variant (`IdF`, `RunI`, `RunIGen`, `BoomI`); and the [Close]-row variant (`UU`, `H2`, `RunU`, `RunUH`). The proof-class variant writes `V(Z)` as a codomain, so it waits for the D55 fixture decision.
+  - *Ledger row, soundness:* witnesses `Boom` and `BoomI`; it also flips `RunGH` and `RunUH`.
+  - *Completeness:* no existing verdict or message changes.
+- *D56 (reviewer-4 W4): `J` computes only on convertible endpoints* (switch `jStuck`). `t` always runs, so its effects happen once, as in a closed run. `jValue` then returns its value when `a ≡ b`, and otherwise the stuck cast `⌈J(A, a, b, P, (⋆ : Eq A a b), v)⌉`, which re-normalises to `v` once a refinement makes the endpoints convertible. A `J` whose motive returns `Prop` is unchanged.
+  - A call whose head is a stuck cast takes its type from the cast's program (`funType` on a sealed head now tries `valType`). This is needed for `Om`.
+  - *Tests (Equality):* `CastRefl` (computes); reviewer-4's `C1`, `C2`, `Om` (was "call depth exceeded", now accepted) and `CastMatch` (was "[Match] on 5, which is not a value of Bool", now accepted).
+  - *Ledger row, completeness:* `Om` and `CastMatch` are rejected without it.
+- *D58 (hashmap-port): a zero-arm match outside a proof position is stuck* (switch `zeroArmStuck`). An untyped run that reaches one is stuck, and the enclosing call closes off. A typed one at a type that is not a proposition is closed off like a stuck match (`closeOffMatch`). At a proposition it is `⋆`, as before.
+  - *Tests (Propositions):* `IsZ`, `GetZ`, `GetZIs` (hashmap-port's minimal program, renamed to fit the block's names).
+  - *Ledger row, completeness:* `GetZIs` is rejected without it.
+  - No existing test depended on `⋆` from a zero-arm match at a data type.
+- *Existing rows that also flip the new tests:*
+  - P2 and P2 without D41: `RunGGen`, `RunIGen`.
+  - C8: `CastMatch`.
+  - D28: `RunG`, `RunGGen`, `RunI`, `RunIGen`.
+  - P1, P1 without D41, P3, P3 without D41, P1 with the computed block rule, captured types, and D48 (3): `Om`, whose stuck casts exercise all of them.
+  - All of these are rejections. No row's class changes.
+- *D55 (reviewer-4 W1/W2), built but off.* `Check.declOf` is a static pass run over each definition, and over an inductive's parameter and field types (switch `sortsSyntactic`, default off for now).
+  - It computes each term's *declared* type as a `DeclInfo`: a sort, a Π with what its codomain says, `&A`, or other. It reads the heads' declarations without normalising.
+  - It requires a sort at every type position: binder types, codomains, `let` annotations and ascriptions, Π components, the type slots of `Eq`/`Id`/`J`/`&`, inductive and constructor parameters, and field types.
+  - Unknown names are left to the machine, so its messages keep their order.
+  - Switched on, it rejects every reviewer-4 program (W, f, TT, g2, k, and with them Boom, Boom2, RunIs, Lie4, Boom4, K1, K2).
+  - In the suite it rejects only programs that write `V(Z)` as a type, because `V (n : Nat) : U(n)` makes `V(Z)`'s declared type `U(Z)`, which is not a sort:
+    - accepted before, rejected now: `EffL`, `EffLNoop`, `TruthG`, `LieH`;
+    - rejected before, with a D55 message now: `EffInline`, `LieG`, `BoomG`, `BoomH`, `EffLOne`.
+  - Measured against the D55-on default: the D40 row flips nothing (its witnesses all write `V(Z)`), and ten rows lose witnesses but keep flips.
+  - Reported to the lead; the fixture decision is pending.
+- 471 declarations = 449 + 14 (Functions) + 5 (Equality) + 3 (Propositions). Ledger: 50 rows.
+
+## 22. Typing a sealed program: embedded values are typed by their position
+
+Two incompleteness reports hit the same gap: `valType` had no type for a value that has none of its own.
+- *arrays-library:* "cannot infer the type of the value ⋆". `H (x : Nat) (h : ⊤) : Nat by x` is stuck at an abstract `x`, so `let y = H(x, refl)` holds the sealed `H(σ, ⋆)`. Typing that program (`sealedType`, reached from a split on `LeDec(y, x)` or from a closure capturing `y`) typed the argument `⋆` on its own.
+- *fuzz-port (49 cases):* "cannot infer the type of the value loan_ℓ". Re-running a stuck match's sealed block at `*x0 := 0` meets `Id Unit () (*x0 := 0)`, whose footprint owner is the block's cell for `*x0`. That cell has no stored type in the untyped re-run, and it is lent out.
+
+Neither value is ill-typed. It is typed by where it sits, as D51 already did for captured proofs:
+- *A proof argument, and an inert loan,* take the type of their position. `evalCall` and `evalCtor` now pass the parameter's or field's declared type as a hint for an embedded value (`.val`) too, not only for a constructor argument. `eval` types `.val ⋆` by that hint when it is a proposition, and an inert loan by the hint when its borrow is not in the run.
+- *A live loan* has the type of its borrow's content: `valType (.loan ℓ)` finds `borrow_ℓ c` in Ω and types `c`.
+
+Tests (ClosingOff, "Typing a sealed program"): `Le`, `Lt`, `Dec`, `LeDec`, `H`, `UseDec`, `Apply`, `UseApply` (arrays-library's repros), and `IdInBlock` (fuzz-port's shape, `Id Prop (match *x0 { Z => Id Unit () (*x0 := 0), S _ => ⊤ }) ⊤` proved by splitting). All accepted; all were rejected before. Every earlier verdict and message is unchanged.
+
+The ledger's rows are unchanged apart from rejections of the new tests:
+- C8: `UseDec`;
+- D28: `IdInBlock`;
+- captured types: `UseApply`, `UseDec`;
+- D48 (3): `UseApply`.
+
+480 declarations.
+
+### 21.1 D55 on; D54 refined; D40 deleted (merged with ochr-core at 384f4762, 498 → 519 verdicts)
+
+- *D54 refined* (lead, 2026-09-29): `convPi` compares the class and whether the codomain is a borrow (`&T`). The `Unit` and data rows of [Close] stay convertible, since `Unit` has one value; η for `Unit` (D59, planned) would delete the `Unit` row altogether. The strict version rejected every higher-order function that is polymorphic in its continuation's result type and instantiated at `Unit`: the arrays library's `WithSplit(E, R, …, f : Π(…). R)` at `R := Unit`, taking out ArrayBench's B1Join, B1, SplitNoop and ZeroFirst2, and Quicksort.Recurse, with 6 dependents. All 11 are accepted again on this head; arrays' `GetMutSet` (expected rejected there) is now accepted, by §22. `Functions.RunUH` is accepted, and the D54 row keeps its witnesses `Boom` and `BoomI`.
+- *D55 on by default.* The V(Z) programs:
+  - The attacks are kept verbatim and now rejected by D55, each with a one-line comment: `ErasureBySyntax.LieG`, `BoomG`, `LieH`, `BoomH`, `Subsingletons.EffInline`. Their point, the seam between declared and computed sorts, can no longer be written.
+  - `EffL`, `EffLNoop` and `TruthG` only made sense across that seam, so they are rejected by D55 too. `EffLOne` is still rejected, now because it uses `EffL`.
+  - D54's proof-class variant (`Functions.RunP`, `RunPGen`, `WV`, `BoomP`) is in, with `WV` and `BoomP` rejected by D55. D54 alone rejects `BoomP` at the argument.
+  - reviewer-4's programs are block `Sorts` in `14Universes`, verbatim (17 declarations).
+  - The D55 row is class model, witnesses `Sorts.K1`, `Sorts.K2`: `TT` would be a proposition with two inhabitants a data function tells apart. With D54 on, the closed proofs of W1 are still caught at their arguments.
+  - The new `InPlaceTrees` and `SizeInsert` tests are unaffected.
+- *D40 deleted.* With D55 on its row flipped nothing: its witnesses all wrote `V(Z)` as a type. "A stuck block is erased iff each arm is" follows from "a term is erased iff its type is a proposition", since a match's type is its arms' type. Its switch and row are gone. `blockRule` stays in `Config` for the D35/D40 row (`blockRule := 0`) and the P1-with-computed-block row.
+- *Rows whose witnesses D55 removed* are reclassified by what they flip now:
+  - D28 (erasure by declared class): false lemma [LieG] → policy [ClosingOff.RowI], the true `Unit` statement.
+  - D35/D40: soundness [BoomB, BoomG, Boom7] → [BoomB, Boom7].
+  - P3 without D41: soundness [BoomH] → false lemma [LieP].
+  - P1 with the computed block rule: [BoomP, BoomG] → [BoomP].
+- *Ledger with D55 on*: 50 rows, and every row flips something. Soundness 22 (16 with a closed proof of `False`), false lemma 1, model 4, policy 4, completeness 19.
+- *Rows that no longer guard anything of their own.* Among the "without D41" combination rows, P1 and P3 add over D41 alone only rejections of good programs (`Om`, `CapP`, `CapP2`, and `OrLet` for P1): their accepting flips are all D41's.

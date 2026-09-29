@@ -476,6 +476,12 @@ partial def valType (v : Value) : M Value := do
   | .sealed t =>
     if (← get).cfg.capTypes then sealedType t
     else err s!"cannot infer the type of the value {v}"
+  | .loan l =>
+    -- a live loan's value is its borrow's content: a place lent out has that content's type
+    let env := (← get).env
+    match (findBorrow env l).bind fun p => (valAt env p).takeBorrow l with
+    | some (c, _) => valType c
+    | none => err s!"cannot infer the type of the value {v}"
   | _ => err s!"cannot infer the type of the value {v}"
 
 /-- The type of a sealed program (neutral data, e.g. a captured one): its term typed as
@@ -782,6 +788,11 @@ partial def convPi (P Q : Value) : M Bool := do
   let .tPi cs (.pi hs ds c) := P | return false
   let .tPi cs' (.pi _ ds' c') := Q | return false
   if ds.length != ds'.length then return false
+  -- D54: the erasure class, and whether it returns a borrow, are part of the Π-type (the
+  -- `Unit` and data rows of [Close] may differ: `Unit` has one value, D54 refined)
+  if (← get).cfg.classInType then
+    unless (← fnClass P) == (← fnClass Q) && ((← declKind P) == .ref) == ((← declKind Q) == .ref) do
+      return false
   if (← get).convStack.contains (P, Q) then return false
   tryCatch (onCopy do
       modify fun s => { s with env := #[{}], convStack := (P, Q) :: s.convStack }
@@ -1131,6 +1142,16 @@ partial def jErased (P : Term) : M Bool := do
   | .fix _ _ _ c _ _ => pure (c matches .sort 0)
   | _ => pure false
 
+/-- D56: the value of `J(A, a, b, P, h, t)` once `t` has run to `v`: `v` when the endpoints
+are convertible (Lean's rule for `Eq.rec`), otherwise the stuck cast, a sealed program
+that embeds `v` (so `t`'s effects happen once, as in a closed run, where `a ≡ b`) and
+re-normalises to `v` when a refinement makes the endpoints convertible. Never a value of
+`P(a)` at the type `P(b)`. -/
+partial def jValue (A a b P v : Value) : M Value := do
+  if ← conv a b then return v
+  let hT ← mkEqM A a b
+  canonNeutral (.sealed (.prim "J" [.val A, .val a, .val b, .val P, .ascribe (.val .proof) (.val hT), .val v]))
+
 /-- Is this the value of an erased term: a proof (`⋆`) or a type? Types are values of
 terms whose type is a sort (P2 erases them too): the type formers, sorts, a sealed
 program whose sort is known, and an abstract value whose type is a sort. -/
@@ -1185,7 +1206,13 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     let v ← if (← get).cfg.p5 && (← isPropV g.ty) then pure .proof else pure g.val
     pure (v, some g.ty)
   | .val v =>
-    if typed then pure (v, some (← valType v)) else pure (v, none)
+    if !typed then return (v, none)
+    -- an embedded value with no type of its own (a proof, an inert loan) has the type of the
+    -- position it was embedded at: a parameter's or a field's declared type (the hint)
+    match v, hint with
+    | .proof, some T => if ← isPropV T then pure (v, some T) else pure (v, some (← valType v))
+    | .loan _, some T => tryCatch (do pure (v, some (← valType v))) fun _ => pure (v, some T)
+    | _, _ => pure (v, some (← valType v))
   | .sort l => pure (.sort l, some (.sort (l + 1)))
   | .pi _ ds c =>
     borrowParamCheck ds c
@@ -1263,7 +1290,15 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
   | .id A a b => pure (← withErased (idType typed A a b), some (.sort 0))
   | .prim "J" [A, a, b, P, h, u] =>
     -- J(A, a, b, P, h, t) : P(b) for h : Eq A a b and t : P(a) (endpoints explicit, D23)
-    if !typed then return (← eval false u)
+    if !typed then
+      if (← get).cfg.jStuck && !(← jErased P) then
+        let A' ← onCopy (evalType A)
+        let (av, _) ← onCopy (eval false a)
+        let (bv, _) ← onCopy (eval false b)
+        let (Pv, _) ← onCopy (eval false P)
+        let (v, _) ← eval false u
+        return (← jValue A' av bv Pv v, none)
+      return (← eval false u)
     let A' ← evalType A
     let (av, Ta) ← confinedCopy "J's endpoint" (eval true a)
     let (bv, Tb) ← confinedCopy "J's endpoint" (eval true b)
@@ -1278,6 +1313,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     expectTy "the transported term" Tu Pa
     let (Pb, _) ← callFn true Pv PT #[bv] #[some A'] false
     setFlags fl    -- t's flags (J is t)
+    let v ← if (← get).cfg.jStuck && !(← jErased P) then jValue A' av bv Pv v else pure v
     pure (v, some Pb)
   | .prim "symm" [h] =>
     let (_, Th) ← eval typed h
@@ -1368,7 +1404,8 @@ partial def evalCtor (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts : Li
     | _ => Array.replicate np none
   let mut tys := #[]
   for (a, (_, FT)) in as.zip fields do
-    let fh ← if typed && np > 0 && (a matches .ctor ..) then fieldTypeAt d sol FT else pure none
+    let fh ← if typed && ((np > 0 && (a matches .ctor ..)) || (a matches .val _)) then fieldTypeAt d sol FT
+      else pure none
     let (w, T) ← eval typed a fh
     if let some T := T then sol := unifyParams np FT T sol
     tys := tys.push T
@@ -1408,7 +1445,7 @@ partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
   for a in as do
     let s := (← get).effects.size
     -- v2.0: a constructor argument's parameters may come from the parameter's type
-    let hint ← if typed && (a matches .ctor ..) then argHint fv fT ws0 else pure none
+    let hint ← if typed && (a matches .ctor .. | .val _) then argHint fv fT ws0 else pure none
     let (w, T) ← eval typed a hint
     if a matches .borrow _ | .place _ then argSteps := argSteps.push (s, (← get).effects.size)
     pushTemp w
@@ -1444,7 +1481,10 @@ partial def funType (fv : Value) (fT : Option Value) : M Value := do
   | .gfn n => pure (← lookupGlobal n).ty
   | .clo cs (.fix _ hs ds c _ _) => pure (.tPi cs (.pi hs ds c))
   | .abs σ => absType σ
-  | .sealed _ => err s!"the type of the sealed function {fv} is not known here (a call of a sealed function in untyped code)"
+  | .sealed _ =>
+    -- D56: a stuck cast can be a function; its type is its program's (`sealedType`)
+    tryCatch (valType fv) fun _ =>
+      err s!"the type of the sealed function {fv} is not known here (a call of a sealed function in untyped code)"
   | _ => err s!"{fv} is not a function"
 
 partial def kindOf (B : Value) : M Kind := do
@@ -1545,9 +1585,14 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
   if typed then
     trace fun _ => s!"[Call-type] {fv}({", ".intercalate (ws.toList.map toString)}) : {B.getD .bot}"
     recCheck fv ws
+  -- D54: the class and [Close] row are those of the function value's own declared Π-type,
+  -- on every path (conversion only lets a value stand at a Π-type of its class and row, so
+  -- this is also the static type's); without D54, the static type's where there is one
+  let clsTy ← if (← get).cfg.classInType then tryCatch (funType fv none) (fun _ => pure piTy)
+    else pure piTy
   -- [Close]'s row: v1.7 (D35) from the declared codomain; v1.6 from the computed type
   let byDecl := (← get).cfg.erasureByDecl
-  let kind ← if byDecl && (← get).cfg.rowByDecl then declKind piTy else
+  let kind ← if byDecl && (← get).cfg.rowByDecl then declKind clsTy else
     match B with
     | some B => kindOf B
     | none => resultKind piTy ws
@@ -1555,7 +1600,7 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
   -- given by `closeOffMatch`)
   let cls ← match cls? with
     | some k => pure k
-    | none => if byDecl then fnClass piTy else pure (if kind == .prop then 2 else 0)
+    | none => if byDecl then fnClass clsTy else pure (if kind == .prop then 2 else 0)
   let kind := if byDecl && kind == .prop then Kind.data else kind
   if cls == 2 && (← get).cfg.p5 then
     endBorrowArgs ws
@@ -1852,6 +1897,13 @@ partial def evalMatchByType (typed : Bool) (p : Place) (ty : String) (arms : Lis
       let (d, _) ← scrutType p ty
       unless d.ctors.isEmpty do err s!"a match with no arms on {← ppPlace p} : {d.name}, which has constructors"
       if expected.isNone then err "annotate a match with no arms outside tail position (let x : T = match p {})"
+    -- D58: reached, it is unreachable in a closed run. In a proof position it is erased
+    -- (⋆); anywhere else it is stuck, closed off like a match on an abstract value, never
+    -- a value of the wrong type
+    if (← get).cfg.zeroArmStuck then
+      if !typed then stuckNow
+      let B := expected.get!
+      unless ← isPropV B do return ← closeOffMatch (.matchInd p ty arms) B [] false
     setFlags (true, true)
     return (.proof, expected)
   let d ← lookupInd ty

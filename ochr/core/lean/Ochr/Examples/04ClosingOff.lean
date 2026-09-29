@@ -195,6 +195,68 @@ ochr ClosingOff uses Std, Fixtures {
     }
   )
 
+  -- ## Typing a sealed program
+  -- A sealed program is typed by running its program, typed. A value embedded in it with no
+  -- type of its own is typed by where it sits: a proof argument, `⋆`, by its parameter's
+  -- declared type, and a place lent out by its borrow's content. Here `y` is the sealed
+  -- `H(σ, ⋆)`, and both a split on a decision about it and a closure capturing it type it
+  -- (arrays-library) ...
+  def Le (a : Nat) (b : Nat) : Prop by a := (
+    match a {
+      Z => ⊤,
+      S a' => match b {
+        Z => False,
+        S b' => Le(a', b'),
+      },
+    }
+  )
+
+  def Lt (a : Nat) (b : Nat) : Prop := Le(S a, b)
+
+  inductive Dec (P : Prop) (Q : Prop) := Yes(h : P) | No(k : Q)
+
+  def LeDec (a : Nat) (b : Nat) : Dec(Le(a, b), Lt(b, a)) by a := (
+    match a {
+      Z => Yes(refl),
+      S a' => match b {
+        Z => No(refl),
+        S b' => LeDec(a', b'),
+      },
+    }
+  )
+
+  def H (x : Nat) (h : ⊤) : Nat by x := (
+    match x {
+      Z => Z,
+      S p => H(p, h),
+    }
+  )
+
+  def UseDec (x : Nat) : Nat := (
+    let y = H(x, refl);
+    let d = LeDec(y, x);
+    match d {
+      Yes(h) => 0,
+      No(k) => 1,
+    }
+  )
+
+  def Apply (f : Π(u : Unit). Nat) : Nat := f(())
+
+  def UseApply (x : Nat) : Nat := (
+    let y = H(x, refl);
+    Apply(λ(u : Unit) : Nat => y)
+  )
+
+  -- ... and the `Id` in the stuck match's `Z` arm observes the match's cell for `*x0`, which
+  -- the block's re-run at `*x0 := 0` has lent out (fuzz-port).
+  def IdInBlock (x0 : &Nat) : Id Prop (match *x0 { Z => Id Unit () (*x0 := 0), S _ => ⊤ }) ⊤ := (
+    match *x0 {
+      Z => refl,
+      S _ => refl,
+    }
+  )
+
   -- ## What goes wrong without these rules
   -- The closed-off block of `Clear` writes through the pattern variable `p`, which names
   -- `(*x).1`: a write to `*x` (D32). If the block did not see that write (switch
@@ -231,7 +293,7 @@ ochr ClosingOff uses Std, Fixtures {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ClosingOff" ClosingOff).allAsExpected
-#guard (run "ClosingOff" ClosingOff).count == 26
+#guard (run "ClosingOff" ClosingOff).count == 35
 
 /-! ## Symbolic checking is not the same as checking every instance
 
