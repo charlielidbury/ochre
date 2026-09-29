@@ -35,7 +35,7 @@ In a pure type theory a stuck term is its own normal form. Here the call has als
    ⟶  { x ↦ ⌈let c = σ; AddM(&c, 0); c⌉ } ⊢ ()
 ```
 
-Write `N(σ)` for #seal(`let c = σ; AddM(&c, 0); c`). It is a neutral value, like a stuck `Nat.rec` in Lean, and it is literally the body of `Add(σ, 0)`: the sealed program _is_ the pure wrapper, generated on demand. It is also exactly the value that Aeneas's backward function for `AddM` would compute @aeneas, written without leaving the source language. When a later case split refines `σ` to `S σ'`, `N(S σ')` runs again, now makes progress through one successor, closes off the inner recursive call, and normalises to `S N(σ')`.
+Write `N(σ)` for #seal(`let c = σ; AddM(&c, 0); c`). It is a neutral value, like a stuck `Nat.rec` in Lean, and it is literally the body of `Add(σ, 0)`: the sealed program _is_ the pure wrapper, generated on demand. It computes what Aeneas's backward function for `AddM` computes @aeneas, without leaving the source language (@sec-eval says for which fragment). When a later case split refines `σ` to `S σ'`, `N(S σ')` runs again, now makes progress through one successor, closes off the inner recursive call, and normalises to `S N(σ')`.
 
 == Equality between computations
 
@@ -45,12 +45,12 @@ The type `Id Unit (AddM(x, 0)) ()` compares two computations. It is evaluated at
 ⟦AddM(x, 0)⟧  =  ((), N(σ))          // the call is stuck, so c receives the sealed program
 ⟦()⟧          =  ((), σ)             // nothing happens; ending x's borrow returns σ to c
 
-Id Unit (AddM(x, 0)) ()  ≡  Eq (Unit × Nat) ((), N(σ)) ((), σ)  ≡  Eq Nat N(σ) σ
+Id Unit (AddM(x, 0)) ()  ≡  Eq Unit () () ∧ Eq Nat N(σ) σ  ≡  Eq Nat N(σ) σ
 ```
 
-The last step uses the observational computation rules for equality @ott: equality of pairs is a conjunction, reflexive equations are `⊤`, and `⊤` is a unit for `∧`. Here `⊤` and `∧` are not primitives: they are `True` and `And`, ordinary inductive declarations in `Prop`, and `refl` is `True`'s constructor. The statement "running `AddM(x, 0)` has no effect" has become the ordinary proposition that `N(σ)` equals `σ`.
+`Id` is a conjunction of equations, one between the results and one for each place written; a reflexive equation is `⊤`, and `⊤` is a unit for `∧`. Here `⊤` and `∧` are not primitives: they are `True` and `And`, ordinary inductive declarations in `Prop`, and `refl` is `True`'s constructor. The statement "running `AddM(x, 0)` has no effect" has become the ordinary proposition that `N(σ)` equals `σ`.
 
-== The environment performs the congruence
+== Induction hypotheses at the call site
 
 Now the proof:
 
@@ -59,7 +59,7 @@ AddMZero(x : &Nat) : Id Unit (AddM(x, 0)) () by x :=
   match *x { Z => refl, S p => AddMZero(&p) }
 ```
 
-The match on `*x` splits on `σ`. In the `Z` branch the goal is `Eq Nat N(Z) Z`; `N(Z)` runs to `Z`, the equation is reflexive and so `⊤`, and `refl` proves it. In the `S` branch the goal is `Eq Nat N(S σ') (S σ')`, which normalises to `Eq Nat (S N(σ')) (S σ')`.
+The match on `*x` splits on `σ`. In the `Z` branch the goal is `Eq Nat N(Z) Z`; `N(Z)` runs to `Z`, the equation is reflexive and so `⊤`, and `refl` proves it. In the `S` branch the goal is `Eq Nat N(S σ') (S σ')`, which normalises to `Eq Nat (S N(σ')) (S σ')`, and then, since `Eq` takes apart two successors, to `Eq Nat N(σ') σ'`.
 
 The recursive call is checked by the same rule that produced the goal: the callee's statement is evaluated at the call site, with its parameter bound to the argument. At the call site the environment is
 
@@ -72,19 +72,12 @@ because matching `S p` through the borrow and taking `&p` leaves the successor i
 ```
 ⟦AddM(x', 0)⟧ at the call site  =  ((), S N(σ'))
 ⟦()⟧          at the call site  =  ((), S σ')
-AddMZero(&p) : Eq Nat (S N(σ')) (S σ')
+AddMZero(&p) : Eq Nat (S N(σ')) (S σ')  ≡  Eq Nat N(σ') σ'
 ```
 
-This is the goal, symbol for symbol. The successor that a pure proof would add with `cong S` was supplied by the environment. The recursive call is a proof, and proofs are erased at runtime, so the checker does not run it: its borrow argument is returned unchanged.
+This is the goal. The callee's statement is about the place it borrowed; evaluated at the call site, it is about the caller's number, successor included. Relating the two is the frame argument that a proof about a translated program makes by hand, and here it was done by evaluation. The recursive call is a proof, and proofs are erased at runtime, so the checker does not run it: its borrow argument is returned unchanged.
 
-For comparison, here is the same theorem about the pure wrapper:
-
-```
-AddZero(x : Nat) : Id Nat (Add(x, 0)) x :=
-  match x { Z => refl, S p => AddMZero(&p) }
-```
-
-`Add(x, 0)` writes nothing outside itself, so its observation is just its result, and the goal is again `Eq Nat N(σ) σ`, the very proposition `AddMZero`'s statement computed to; in the successor case it is `Eq Nat (S N(σ')) (S σ')`. The proof borrows the predecessor field of the _owned_ number `x` and appeals to the in-place lemma. The environment again supplies the successor, so even the theorem about the pure function needs no congruence step. An induction hypothesis about a _copy_ of the predecessor, `AddZero(p)`, would have type `Eq Nat N(σ') σ'`, and the successor would have to be added by hand with a congruence lemma derived from `J`. The two theorems are interchangeable: `AddZero(x) := AddMZero(&x)` type-checks, because both statements normalise to the same proposition.
+The same theorem about the pure wrapper, `AddZero(x : Nat) : Id Nat (Add(x, 0)) x`, has the same goal, since `Add(x, 0)` writes nothing outside itself. It is proved by lending the predecessor field of the owned `x` to the in-place lemma, or by recursion on a copy of it; indeed `AddZero(x) := AddMZero(&x)` type-checks, because both statements normalise to the same proposition. Neither proof mentions a model of `AddM`: the statement is about the program itself.
 
 == Returning a borrow
 
@@ -103,7 +96,7 @@ AddM'(x : &Nat, y : Nat) : Unit := let t = TailM(x); *t := y
       ⊢ borrow_k ⌈let c = σ; let r = TailM(&c); *r⌉
 ```
 
-In `AddM'`, the caller writes `y` through `t` and drops it; ending `borrow_k` substitutes the final content `y` for the hole. What remains in `c` is #seal(`let c = σ; let r = TailM(&c); *r := y; c`): the effect of `AddM'`, as a program. The hole is the neutral form of an Aeneas region abstraction, and of a RustHorn prophecy @rusthorn: it records only the _final_ value written through the returned borrow.
+In `AddM'`, the caller writes `y` through `t` and drops it; ending `borrow_k` substitutes the final content `y` for the hole. What remains in `c` is #seal(`let c = σ; let r = TailM(&c); *r := y; c`): the effect of `AddM'`, as a program. The hole plays the role of Aeneas's region abstraction for this one call: it records only the _final_ value written through the returned borrow.
 
 The equivalence of the two additions is proved by the same bare recursion:
 
@@ -138,47 +131,37 @@ AddSub(x : &Nat, y : Nat) : Unit := let old = *x; AddM(&*x, y); SubM(x, old, LeA
 
 At the call to `SubM`, `*x` has just been mutated in place by `AddM`, so on symbolic input it holds the sealed program `N(σ, y) = ⌈let c = σ; AddM(&c, y); c⌉`, and `SubM` demands a proof of `Le(σ, N(σ, y))`. The lemma `LeAdd` is about the _pure_ `Add` of the snapshot `old`, and its type is `Le(σ, Add(σ, y))`. The two meet because `Add(σ, y)` normalises to the very same sealed program: the in-place computation and the pure one are the same program to the type checker. A proof about the pure function is accepted where a proof about the mutated state is required, with no bridging lemma. Using the snapshot after further mutation, `…; AddM(&*x, y); *x := Z; SubM(x, old, LeAdd(old, y))`, is rejected, since the requirement then mentions `Z`.
 
-Finally, a theorem about the whole: adding `y` and then subtracting the old value leaves exactly `y`.
-
-```
-AddSubId(x : &Nat, y : Nat) : Id Unit (AddSub(x, y)) (*x := y) by x :=
-  match *x { Z => refl, S p => let c = p; AddSubId(&c, y) }
-```
-
-Here the successor case copies the predecessor into a fresh place `c` instead of borrowing it in place. Borrowing would supply the surrounding `S` to the induction hypothesis, as in `AddMZero`, and the goal has no `S` to match: `AddSub` peels the successor off. Borrowing supplies the congruence and copying withholds it, and the programmer chooses.
-
 == Trees
 
-Nothing above is specific to numbers. With several constructors and several fields, a pattern variable names a field place, and the environment keeps every field that a recursive call does not touch. In-place insertion into a binary search tree recurses into the left or the right subtree according to a comparison, so which place is mutated depends on a value:
+Nothing above is specific to numbers. With several constructors and several fields, a pattern variable names a field place, and the environment keeps every field that a recursive call does not touch. In-place insertion into a binary search tree recurses into the left or the right subtree according to a comparison, so which place is mutated depends on a value. Its pure version is not written separately; like `Add`, it runs the in-place one on a copy:
 
 ```
 InsertM(t : &Tree, k : Nat) : Unit by t :=
   match *t { Leaf          => *t := Node(Leaf, k, Leaf),
              Node(l, v, r) => let b = Lt(k, v);
                               match b { true => InsertM(&l, k), false => InsertM(&r, k) } }
-
-InsertMEq(t : &Tree, k : Nat) : Id Unit (InsertM(t, k)) (*t := Insert(*t, k)) by t :=
-  match *t { Leaf          => refl,
-             Node(l, v, r) => let b = Lt(k, v);
-                              match b { true => InsertMEq(&l, k), false => InsertMEq(&r, k) } }
+Insert(t : Tree, k : Nat) : Tree := InsertM(&t, k); t
 ```
 
-`Insert` is the pure insertion that rebuilds the path, and `Lt` returns a `Bool`, whose constructors are `true` and `false`. In the `false` case, both the goal and the induction hypothesis, evaluated at the call site, observe the whole tree as `Node(σ_l, σ_v, ⌈…⌉)`: the fields `l` and `v` are carried by the environment, and only the right subtree differs, as in-place insertion on one side and pure insertion on the other. The proof is bare recursion again. The comparison `Lt(σ_k, σ_v)` is itself stuck, so the split on `b` is a split on a sealed program: the checker names its value by a fresh abstract value and replaces every derivation of the same closed program by it, including those produced later when the goal's sealed programs run again. A theorem about a measure is not bare recursion: the proof that `Size(Insert(t, k))` is `S(Size(t))` rewrites with the induction hypothesis by `J`, with hand-written motives, in both arms, and one arm needs an arithmetic lemma, `x + S y = S (x + y)`, which is proved in place by bare recursion and transferred to the pure `Add` by lending, as `AddZero` was.
+A property of the in-place code is then stated and proved directly: insertion adds one node.
+
+```
+SizeInsert(t : Tree, k : Nat) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t :=
+  match t { Leaf => refl,
+            Node(l, v, r) => let b = Lt(k, v); match b {
+              true  => J(Nat, S (Size(l)), Size(Insert(l, k)),
+                         λ(z : Nat) : Prop => Id Nat (S (S (Add(Size(l), Size(r))))) (S (Add(z, Size(r)))),
+                         SizeInsert(l, k), refl),
+              false => J(Nat, Add(Size(l), S (Size(r))), S (Add(Size(l), Size(r))),
+                         λ(z : Nat) : Prop => Id Nat (S z) (S (Add(Size(l), Size(Insert(r, k))))),
+                         AddS(Size(l), Size(r)),
+                         J(Nat, S (Size(r)), Size(Insert(r, k)),
+                           λ(z : Nat) : Prop => Id Nat (S (Add(Size(l), S (Size(r))))) (S (Add(Size(l), z))),
+                           SizeInsert(r, k), refl)) } }
+```
+
+The comparison `Lt(σ_k, σ_v)` is stuck, so the split on `b` is a split on a sealed program: the checker names its value by a fresh abstract value, and replaces every derivation of the same closed program by it, including those produced later when the goal's sealed programs run again. In each arm, `Insert`'s sealed program runs one step and leaves the other subtree and the key in place, carried by the environment. The proof is not bare recursion: without rewriting tactics, each arm rewrites with the induction hypothesis by `J` with a hand-written motive, and the `false` arm needs an arithmetic lemma, `AddS : x + S y = S (x + y)`, proved in place by bare recursion and transferred to `Add` by lending, as `AddZero` was. This is the honest cost of a property that is not an equation between two recursions of the same shape.
 
 == Branching
 
-A `match` on an abstract value in the middle of a function cannot pick an arm. Each arm is checked separately, and the rest of the function is then checked once, from the state in which the match itself has been closed off like a call. This covers borrows whose origin depends on the branch:
-
-```
-AddToOne(b : Nat, x₁ : &Nat, x₂ : &Nat, y : Nat) : Unit :=
-  let r = match b { Z => x₁, S _ => x₂ }; AddM(r, y)
-```
-
-The closed-off match returns a borrow with a hole that appears in the sealed programs for both `x₁`'s and `x₂`'s places; whichever the match would have chosen receives the final content. A proof about `AddToOne` splits on `b`, after which the sealed programs run and the goal becomes a statement about `AddM` alone:
-
-```
-AddToOneZero(b : Nat, x₁ : &Nat, x₂ : &Nat) : Id Unit (AddToOne(b, x₁, x₂, 0)) () :=
-  match b { Z => AddMZero(x₁), S _ => AddMZero(x₂) }
-```
-
-The footprint contains the owners of both borrows. In the `Z` arm the observation of `x₂`'s owner is unchanged on both sides, so its equation is reflexive and computes to `⊤`, and what remains is exactly `AddMZero(x₁)`'s statement.
+A `match` on an abstract value in the middle of a function is closed off like a call: each arm is checked separately, and the rest of the function once. This covers borrows whose origin depends on the branch, as in `AddToOne(b : Nat, x₁ : &Nat, x₂ : &Nat, y : Nat) : Unit := let r = match b { Z => x₁, S _ => x₂ }; AddM(r, y)`, whose closed-off match returns a borrow with a hole in the sealed programs of both `x₁`'s and `x₂`'s owners.

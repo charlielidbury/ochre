@@ -9,7 +9,7 @@ Ochr is a dependent type theory in the style of Lean's kernel @theory-of-lean, e
     grammar(
       ($t, u, A, B$, $x | ty("Prop") | ty("Type")_i$, [variables, universes]),
       ([], $Pi(x_1 : A_1 ... x_n : A_n). B | kw("fix") f (x_1 : A_1 ... x_n : A_n) : B space kw("by") x_j := t | t(u_1, ..., u_n)$, [functions, calls]),
-      ([], $ty("D")(a_1, ..., a_m) | ty("C")(t_1, ..., t_k) | A times B | (t, u) | t.1 | t.2$, [inductives, pairs]),
+      ([], $ty("D")(a_1, ..., a_m) | ty("C")(t_1, ..., t_k)$, [inductive types, constructors]),
       ([], $ty("Eq") A space t space u | ty("J")(A, a, b, P, h, t)$, [equality]),
       ([], $\&A | p | \&p | p := t | kw("let") x = t; u | kw("let") x : A = t; u | t; u$, [places and borrows]),
       ([], $kw("match") p space {ty("C")_1 (overline(y)_1) => t_1, ..., ty("C")_n (overline(y)_n) => t_n} quad (n >= 0)$, [case analysis]),
@@ -19,33 +19,34 @@ Ochr is a dependent type theory in the style of Lean's kernel @theory-of-lean, e
     )
     v(6pt)
     align(center, grid(columns: 2, column-gutter: 2.4em, row-gutter: 6pt, align: left,
-      $kw("inductive") ty("Nat") : ty("Type")_0 := ty("Z") | ty("S")(1 : ty("Nat"))$,
-      $kw("inductive") ty("Unit") : ty("Type")_0 := ()$,
+      $kw("inductive") ty("Nat") : ty("Type")_0 := ty("Z") | ty("S")("pred" : ty("Nat"))$,
+      $kw("inductive") ty("Unit") : ty("Type")_0 := ty("Tt")$,
       $kw("inductive") ty("False") : ty("Prop")$,
       $kw("inductive") ty("True") : ty("Prop") := ty("I")$,
+      grid.cell(colspan: 2, align: center, $kw("inductive") ty("Pair") (A : ty("Type")_0) (B : ty("Type")_0) : ty("Type")_0 := ty("Mk")("fst" : A, "snd" : B)$),
       grid.cell(colspan: 2, align: center, $kw("inductive") ty("And") (P : ty("Prop")) (Q : ty("Prop")) : ty("Prop") := ty("Intro")(l : P, r : Q)$),
     ))
   }),
-  caption: [Syntax of Ochr, and the library declarations. A declaration has sort $s in {ty("Type")_0, ty("Prop")}$ and $n >= 0$ constructors. $ty("S") t$ abbreviates $ty("S")(t)$; $top$, $kw("refl")$, $P and Q$ and $chevron.l h, k chevron.r$ are notation for $ty("True")$, $ty("I")$, $ty("And")(P, Q)$ and $ty("Intro")(h, k)$. $ty("Eq")$ is the one primitive proposition. A $kw("fix")$ without $kw("by")$ is an ordinary $lambda$.],
+  caption: [Syntax of Ochr, and the library declarations. A declaration has sort $s in {ty("Type")_0, ty("Prop")}$ and $n >= 0$ constructors. $ty("S") t$ abbreviates $ty("S")(t)$; $()$, $A times B$, $(a, b)$, $top$, $kw("refl")$, $P and Q$ and $chevron.l h, k chevron.r$ are notation for $ty("Tt")$, $ty("Pair")(A, B)$, $ty("Mk")(a, b)$, $ty("True")$, $ty("I")$, $ty("And")(P, Q)$ and $ty("Intro")(h, k)$, and $p.1$, $p.2$ name a place's first and second fields. $ty("Eq")$ is the one primitive proposition. A $kw("fix")$ without $kw("by")$ is an ordinary $lambda$.],
 ) <fig-syntax>
 
 @fig-syntax gives the syntax. Types and terms share one grammar, as in any pure type system. Functions are n-ary and calls are saturated: a partial application would be a closure capturing its arguments, and a closure capturing a borrow is outside the core (@sec-eval-closures). A recursive function names the parameter it recurses on.
 
-*Inductive definitions.* Every type of data and every logical connective is an inductive declaration: a name, uniform parameters, a sort (`Type₀` for data, `Prop` for propositions) and any number of constructors with named fields. Natural numbers and the unit type are declarations, and so are `False`, the proposition with no constructors, `True`, with one constructor and no fields, and `And(P, Q)`, with one constructor whose two fields are proofs of `P` and of `Q`. `⊤`, `P ∧ Q`, `⟨h, k⟩` and `refl` are notation for them. Their eliminations are matches: ex falso is the match with no arms, `match h {}`, and a proof of `P ∧ Q` is taken apart by `match h { Intro(l, r) => … }`. There is one mechanism for all of them, and it is the one Lean, Coq and Agda use. Constructors also take their declaration's parameters as leading arguments, `Intro(P, Q; h, k)`, which we omit when they can be inferred. Fields are first-order: they may mention the type being declared, other declared types and the parameters, but not `Π` or `&`, which is strict positivity in its simplest form.
+*Inductive definitions.* Every type of data and every logical connective is an inductive declaration: a name, uniform parameters, a sort (`Type₀` for data, `Prop` for propositions) and any number of constructors with named fields. Natural numbers, the unit type and pairs are declarations (the checker builds `Nat` and `Unit` in, with the same behaviour), and so are `False`, the proposition with no constructors, `True`, with one constructor and no fields, and `And(P, Q)`, with one constructor whose two fields are proofs of `P` and of `Q`. `⊤`, `P ∧ Q`, `⟨h, k⟩` and `refl` are notation for them. Their eliminations are matches: ex falso is the match with no arms, `match h {}`, and a proof of `P ∧ Q` is taken apart by `match h { Intro(l, r) => … }`. There is one mechanism for all of them, and it is the one Lean, Coq and Agda use. Constructors also take their declaration's parameters as leading arguments, `Intro(P, Q; h, k)`, which we omit when they can be inferred. Fields are first-order: they may mention the type being declared, other declared types and the parameters, but not `Π` or `&`, which is strict positivity in its simplest form.
 
 `Eq` is the one primitive proposition. It is not an inductive family, for two reasons: it computes by the structure of the values it compares, as in observational type theory (@sec-obs), and the core has no indexed families.
 
 The imperative fragment is small. A _place_ `p` is a variable, a dereference `*p`, or a field `p.g` of a constructor value, such as the predecessor field `p.1` of a number. A place used as a term reads it; `&p` borrows it; `p := t` assigns it; `let x = t; u` introduces a new place `x`. The pattern variables of a `match` are _sub-places_: in `match p { S y => u }`, `y` stands for `p.1`, and nothing is copied.
 
-`&A` is the type of a mutable borrow of an `A`, and `A` must be data: an inductive type in `Type₀` or a product of such, never a universe, a Π-type or a proposition. Whether `A` is data is read from its evaluated head, so a type variable is not known to be data and there is no generic `&A` for an arbitrary `A : Type₀` (@sec-discussion). `&` occurs only at the top of a type as written, as the type of a variable, parameter or result; never inside another type, and never as the result of computing one. So there are no borrows stored in data structures and no borrows of borrows. There are no shared borrows, no loops and no `'static` borrows: a borrow a function returns derives from one of its borrow arguments (@sec-discussion). Recursion is structural.
+`&A` is the type of a mutable borrow of an `A`, and `A` must be data: an inductive type in `Type₀`, never a universe, a Π-type or a proposition. Whether `A` is data is read from its evaluated head, so a type variable is not known to be data and there is no generic `&A` for an arbitrary `A : Type₀` (@sec-discussion). `&` occurs only at the top of a type as written, as the type of a variable, parameter or result; never inside another type, and never as the result of computing one. So there are no borrows stored in data structures and no borrows of borrows. There are no shared borrows, no loops and no `'static` borrows: a borrow a function returns derives from one of its borrow arguments (@sec-discussion). Recursion is structural.
 
-The propositional fragment is Lean's: `Prop` is an impredicative universe with definitional proof irrelevance, erased at runtime, and `Eq` is its equality. `Id A t u` compares two _computations_ `t` and `u` of type `A`; @sec-obs shows that it is not a new primitive.
+The propositional fragment is Lean's: `Prop` is an impredicative universe with definitional proof irrelevance, erased at runtime, and `Eq` is its equality. `Id A t u` compares two _computations_ `t` and `u` of type `A`; it is a derived proposition whose computation rule is observation (@sec-obs).
 
 == Values and environments
 
 #figure(kind: image, supplement: [Figure],
   block(width: 100%, inset: (y: 4pt), grammar(
-    ($v, w$, $ty("C")(v_1, ..., v_k) | (v, w) | star | f | chevron.l overline(kappa) tack.r kw("fix") f (overline(x) : overline(A)) : B dots := t chevron.r | "types"$, [data, proofs, functions, closures, types]),
+    ($v, w$, $ty("C")(v_1, ..., v_k) | star | f | chevron.l overline(kappa) tack.r kw("fix") f (overline(x) : overline(A)) : B dots := t chevron.r | "types"$, [data, proofs, functions, closures, types]),
     ([], $"borrow"_ell v | "loan"_ell | bot$, [borrows, loans, moved-out]),
     ([], $n$, [neutrals]),
     ($n$, $sigma | seal(t)$, [abstract values, sealed programs]),
