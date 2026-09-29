@@ -454,7 +454,7 @@ A state (Ω, Δ, Σ) is _well formed_ when the following hold. They are the four
 + *Arguments are exclusive.* At every call point, each argument is loan-free or is $"borrow"_ell u$ with `u` loan-free. This is [Close]'s precondition, and [Access] maintains it.
 + *Values have their types.* For each binding `x : A ↦ v`: $v = bot$ (moved out or ended), or $v = "loan"_ell$ and the content of $"borrow"_ell$ has type `A`, or `v` has type `A` (a neutral having the type recorded for it). Every σ occurring in Ω, in a stored type or in the goal has a type in Δ, and every top-level name has an entry in Σ.
 
-That the machine preserves conditions 1 to 5 is property 2 of @fig-claims, which is not yet proved.
+That the machine preserves conditions 1 to 5 is property 2 of @fig-claims, mechanised for the first-order fragment of @sec-meta-mech.
 
 == Notes on the definition <app-notes>
 
