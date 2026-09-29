@@ -304,7 +304,7 @@ theorem sealArgs_inv : ∀ (i : Nat) (ps : List (Var × Ty)) (ws as : List Val) 
               · exact Or.inl (List.mem_cons_of_mem _ h)
               · exact Or.inr ⟨q, hq, u', e⟩
 
-theorem Val.nb_ofList {as : List Val} (h : (Val.ofList as).nb = 0) : ∀ a ∈ as, a.nb = 0 := by
+theorem Val.nb_ofList_wf {as : List Val} (h : (Val.ofList as).nb = 0) : ∀ a ∈ as, a.nb = 0 := by
   induction as with
   | nil => simp
   | cons a as ih =>
@@ -363,7 +363,7 @@ theorem closeCall_inv (f : String) (d : FunDef) {ws : List Val} {s s' : St} {v :
     have hnb0 : (Val.ofList as).nb = 0 := by omega
     have has : ∀ a ∈ as, a.nb = 0 ∧ a.loans = [] := by
       intro a ha
-      refine ⟨Val.nb_ofList hnb0 a ha, ?_⟩
+      refine ⟨Val.nb_ofList_wf hnb0 a ha, ?_⟩
       rcases f1 a ha with h1 | ⟨l, h1⟩
       · exact hs.clean a h1
       · simpa [Val.loans] using hs.clean _ h1
@@ -371,7 +371,7 @@ theorem closeCall_inv (f : String) (d : FunDef) {ws : List Val} {s s' : St} {v :
       apply List.eq_nil_iff_forall_not_mem.mpr
       intro m hm
       obtain ⟨a, ha, hma⟩ := Val.names_ofList hm
-      rw [Val.names_nil (has a ha).1 (has a ha).2] at hma
+      rw [Val.names_nil_wf (has a ha).1 (has a ha).2] at hma
       simp at hma
     have hargsl : (Val.ofList as).loans = [] := List.eq_nil_iff_forall_not_mem.mpr fun m hm => by
       have := Val.loans_sub_names hm; simp [hargs] at this
@@ -380,7 +380,7 @@ theorem closeCall_inv (f : String) (d : FunDef) {ws : List Val} {s s' : St} {v :
       obtain ⟨w, hw, hlw⟩ := mem_HV.mp hl
       obtain ⟨u, rfl⟩ := Val.mem_hd.mp hlw
       rcases f3 _ hw with h1 | ⟨p, hp, u', e⟩
-      · have := Val.nb_ofList hnb0 _ h1; simp [Val.nb] at this
+      · have := Val.nb_ofList_wf hnb0 _ h1; simp [Val.nb] at this
       · cases e; exact List.mem_map_of_mem hp
     have hL2 : ∀ l ∈ ls.map Prod.snd, l ∈ HV ws := by
       intro l hl

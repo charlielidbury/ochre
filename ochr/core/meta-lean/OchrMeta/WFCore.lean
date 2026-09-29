@@ -63,7 +63,7 @@ theorem Val.hp_loans {v : Val} {p : Nat × Val} (h : p ∈ v.hp) : ∀ m ∈ p.2
 theorem Val.hp_fst_names {v : Val} {p : Nat × Val} (h : p ∈ v.hp) : p.1 ∈ v.names := by
   rw [Val.mem_hp h]; simp [Val.names]
 
-theorem Val.names_nil {v : Val} (h1 : v.nb = 0) (h2 : v.loans = []) : v.names = [] := by
+theorem Val.names_nil_wf {v : Val} (h1 : v.nb = 0) (h2 : v.loans = []) : v.names = [] := by
   induction v <;> simp_all [Val.nb, Val.loans, Val.names]
 
 theorem Val.isBorrowOf_iff {v : Val} {l : Nat} : v.isBorrowOf l = true ↔ l ∈ v.hd := by
@@ -304,7 +304,7 @@ theorem add_flight {v : Val} (h : Inv E V n) (hl : v.loans = []) (hn : v.nb = 0)
   fresh := h.fresh
   freshV v' hv' := by
     rcases List.mem_cons.mp hv' with rfl | hv'
-    · simp [Val.names_nil hn hl]
+    · simp [Val.names_nil_wf hn hl]
     · exact h.freshV v' hv'
   sh := h.sh
   shV v' hv' := by

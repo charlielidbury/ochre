@@ -168,7 +168,7 @@ theorem set_clean {x : Var} {b c new b' : Val} {π : List Proj} (h : Inv ((x, b)
     rcases List.mem_cons.mp hb0 with rfl | hb0
     · rcases Val.names_set _ b new b' hs m hm with h1 | h1
       · exact h.fresh _ List.mem_cons_self m h1
-      · simp [Val.names_nil hn hl] at h1
+      · simp [Val.names_nil_wf hn hl] at h1
     · exact h.fresh b0 (List.mem_cons_of_mem _ hb0) m hm
   · intro b0 hb0
     rcases List.mem_cons.mp hb0 with rfl | hb0
