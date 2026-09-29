@@ -15,7 +15,7 @@ Defined in RULES §5: [Def], [Call-type], [Rec]. -/
 
 open Ochr.Test
 
-ochr Recursion uses Std {
+ochr Recursion uses Std, Fixtures {
   -- The pure theorem by recursion on a copy of the predecessor: the induction hypothesis is
   -- about `p` and the goal about `S p`, an equation between two successors, which `Eq`
   -- takes apart (injectivity, D52), so no congruence step is written. (`AddZero` in
@@ -24,6 +24,35 @@ ochr Recursion uses Std {
     match x {
       Z => refl,
       S p => AddZeroCopy(p),
+    }
+  )
+
+  -- The paper's displays for `AddMZero`'s successor arm (§2): the goal `Eq Nat N(S σ') (S σ')`
+  -- runs one step to `Eq Nat (S N(σ')) (S σ')`, which `Eq` takes apart to `Eq Nat N(σ') σ'`
+  -- (injectivity, D52); `Add(n, 0)` computes `N(σ')` for `n = σ'` ...
+  def SuccGoal (n : Nat) (h : Eq Nat (Add(S n, 0)) (S n)) : Eq Nat (S (Add(n, 0))) (S n) := h
+  def InjStep (n : Nat) (h : Eq Nat (S (Add(n, 0))) (S n)) : Eq Nat (Add(n, 0)) n := h
+
+  -- ... and the recursive call's statement, computed at the call site, is that proposition:
+  -- the borrow of `p` sits inside `*x`, so the call observes `*x` whole, successor included.
+  def CallSite (x : &Nat) : Nat := (
+    match *x {
+      Z => 0,
+      S p => (
+        let h : Eq Nat (S (Add(p, 0))) (S p) = AddMZero(&p);
+        0
+      ),
+    }
+  )
+
+  -- (It is not the statement about `p` alone with the successor added on one side.)
+  reject def CallSiteWrong (x : &Nat) : Nat := (
+    match *x {
+      Z => 0,
+      S p => (
+        let h : Eq Nat (Add(p, 0)) (S p) = AddMZero(&p);
+        0
+      ),
     }
   )
 
@@ -137,10 +166,61 @@ ochr Recursion uses Std {
   -- Without `by`, the function is not in scope in its own body (D31).
   reject def LoopNoBy (x : Nat) : Eq Nat Z (S Z) := LoopNoBy(x)
   reject def LoopNoByBoom : Eq Nat Z (S Z) := LoopNoBy(Z)
+
+  -- ## Regressions: typing a sealed program keeps the [Rec] state
+  -- A place with no stored type (a pattern variable, a closure's capture) is typed from its
+  -- value, and a sealed program is typed by running it on a private copy, outside the
+  -- enclosing functions. That run once wiped the positions that had survived the recursive
+  -- calls so far, so no later recursive call was checked and each `Boom` below was a closed
+  -- proof of `False` (the recCands fix; an implementation bug, so no switch). Here the
+  -- sealed program is the parameter `Le(σ, 1)` of the conjunction matched on ...
+  def Le (a : Nat) (b : Nat) : Prop by a := (
+    match a {
+      Z => ⊤,
+      S a' => match b {
+        Z => False,
+        S b' => Le(a', b'),
+      },
+    }
+  )
+
+  reject def Lie (n : Nat) (h : Le(n, 1) ∧ ⊤) : False by n := (
+    match h {
+      Intro(a, b) => Lie(n, h),
+    }
+  )
+
+  reject def Boom : False := Lie(0, ⟨refl, refl⟩)
+
+  -- ... and in the rest `n`, which `TailM`'s borrow left sealed, is captured by a closure
+  -- that reads it in its type, in its body, or in an `Id`'s footprint.
+  reject def LieCap (n : Nat) : False by n := (
+    let r = TailM(&n);
+    let f = (λ(y : &Nat) : U(n) => V(n));
+    LieCap(n)
+  )
+
+  reject def BoomCap : False := LieCap(0)
+
+  reject def LieRead (n : Nat) : False by n := (
+    let r = TailM(&n);
+    let f = (λ(y : Nat) : Nat => (let c = n; c));
+    LieRead(n)
+  )
+
+  reject def BoomRead : False := LieRead(0)
+
+  reject def LieId (n : Nat) : False by n := (
+    let r = TailM(&n);
+    let f = (λ(y : Nat) : Unit => (let h : Id Unit (n := 0) (n := 0) = refl; ()));
+    LieId(n)
+  )
+
+  reject def BoomId : False := LieId(0)
 }
 
 #eval IO.println (run "Recursion" Recursion).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Recursion" Recursion).allAsExpected
-#guard (run "Recursion" Recursion).count == 16
+#guard (run "Recursion" Recursion).count == 29

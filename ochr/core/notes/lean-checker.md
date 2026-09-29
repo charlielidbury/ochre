@@ -1,5 +1,7 @@
 # lean-checker: an executable checker for RULES v2.0, and what running it found
 
+**recCands fix (§20):** a closed proof of `False` from the fuzzer: typing a sealed program wiped the [Rec] state. The [Rec] frames now carry their candidates and merge by identity on every restore; four trigger paths are regressions; the audit of the other state kept outside Ω found no other mis-merge. 449 verdicts, all as expected.
+
 **reviewer-3 round (§15):** D48 (borrows of data only, only at the top of declared types; Π-types compared under their binders), D49 and D50 are implemented with regression tests and switches, ∧-elimination is tested, and every ledger row is classified (23 soundness with named witnesses, 1 false lemma, 3 model, 3 policy, 16 completeness; none flips nothing). 427 verdicts, all as expected.
 
 **v2.0 (§14):** False/True/And are library inductive declarations and the checker's primitives for them are gone; Prop inductives, zero constructors, uniform parameters, by-type matching on proofs, subsingleton elimination and D47 are implemented with switches and asserted ledger rows. 364 verdicts, all as expected. Findings: in this machine D42 (proofs are ⋆), not D45's subsingleton restriction, is what blocks the `Or` attack's closed `False` (D45 is still needed for the model and for canonicity); `And(True, P) ≡ P` as normalisation hides an `And` from a match; a v1.9 checker bug (a match's scrutinee type was assumed from its arms, a type-safety hole) is fixed. No closed proof of False found against v2.0.
@@ -26,6 +28,7 @@ Code: `ochr/core/lean/` on branch `ochr-core-lean` (README: build, syntax, rule 
 | **P1** | **this checker at v1.6** | A place holding a proof did not make a sequence erased, while a block of type `⊤` was: `BoomP : Eq Nat 1 0` accepted (§10). | Fixed: a place, constant or λ holding `⋆` is a proof. Regression: `V17.LieP`, `BoomP`. |
 | **P3** | **P1's first fix** | A variable was a proof when its value was `⋆`. But `g(0)`, with `g : Π(y : Nat). V(Z)` data by syntax, is `⋆` at an instance and a sealed program at the generic call, so `BoomH : Eq Nat 0 1` was accepted (§11). | Fixed: a variable is a proof iff it is declared so (a flag on the binding, set from the syntax). Regression: `V18.LieH`, `BoomH`. |
 | **P2** | **v1.7 read as "a block of computed sort Prop is erased"** | The block's computed type (`V(Z) = ⊤`) disagrees with the arms' syntactic classes: `BoomG : Eq Nat 1 0` accepted by my first v1.7 version (§10). | Fixed: a block is erased iff every arm is a proof. RULES wording suggested. Regression: `V17.LieG`, `BoomG`, `TruthG`. |
+| **R1** | **this checker at 96d788a1 (fuzz-port)** | Typing a sealed program (`sealedType`, on a private copy outside the enclosing functions) wiped the [Rec] candidates: the restore merged them by position, so no later recursive call was checked. `Boom : False := Lie(0, ⟨refl, refl⟩)` accepted. | Fixed: the [Rec] frames carry their candidates and a `uid`, and restores merge by `uid` (§20). Regression: `Recursion.Lie`, `LieCap`, `LieRead`, `LieId` and their `Boom`s. |
 
 ## 2. Verdicts (expected vs actual: all 139 as expected)
 
@@ -97,7 +100,7 @@ Each `Config` switch turns off one rule. `Registry.lean` asserts that exactly th
 |---|---|
 | P2 (v1.3 D26): erased terms (proofs and types) run on a private copy, so v1's call-keyed P5 is what remains | Attacks.N1Closed, Attacks.QBoom → accepted (the closed proofs of false from breaker-close-v1 N1 and meta-model-v1 R1); Probes.EffArg → accepted; E6.LemmaMoves, E5.TwoPhase, Probes.EffArgErased, Probes.TypeErased → rejected |
 | D18: owners are sets | D18.BadD18, D18.ClosedD18 → accepted (§4) |
-| D17: [Rec] entry-value guard | Loop, Bot', Loop2, Spin, KnotL, KnotLBoom, Probes.OuterBad → accepted |
+| D17: [Rec] entry-value guard | Loop, Bot', Loop2, Spin, KnotL, KnotLBoom, Probes.OuterBad → accepted; since the recCands fix (§20) also Lie, LieCap, LieRead, LieId and their Booms |
 | D19: [Access] ends loans inside the content | Attacks.BadA1 (breaker-close A1) → accepted |
 | L1 (v1.1): self only as a call head | Knot, KnotBoom → accepted |
 | L2 (v1.2 temporaries): no `⊥` argument | More.Dead, More.DeadTwice → accepted (and `Dead`'s concrete instance writes through `⊥`) |
@@ -513,75 +516,76 @@ def EffL (x : &Nat) (h : Or(⊤, ⊤)) : V(Z) := match h { Inl(p) => (*x := 1; r
 
 ## 16. Every program the paper prints, and its test
 
-Checked against the paper at e7aff5f9: the body sections and the appendix notes. "=" means the same program up to surface syntax: `λ` and `Π` in a `let` or as a result type need parentheses, `Type₀` is written `Type`, subscripts are digits, and `(x, y : &Nat)` is written with separate binders. The test names are those of the examples as reorganised into a tour of the language (§17 maps the old names; the programs that no earlier test stated verbatim were in `Examples/Paper.lean`, programs `Paper`, `Note4`, `Note5`, and now sit with the feature they illustrate, or in `Std`/`Fixtures`). 440 verdicts since D52 (§19), all as expected.
+Checked against the paper at a0bca0fe (body sections and appendix). An "=" means the same program up to surface syntax:
+- the checker's examples use a multi-line layout with parenthesised bodies;
+- a `λ` in the bound position of a `let`, or a `Π` as a result type, needs parentheses;
+- `Type₀` is written `Type`.
+
+The body's programs were also run verbatim, one-line layout and subscripts included, and each gave the verdict in this table. 467 verdicts since the merge with the recCands fix, all as expected.
 
 | Paper location | Program | Test | Verdict |
 |---|---|---|---|
-| §1, §2 | `AddM` | Std.AddM (used by every program that needs it) | accepted |
-| §1, §2 | `AddMZero` | Std.AddMZero | accepted |
+| §1, §2 | `AddM`, `AddMZero` | Std.AddM, Std.AddMZero | accepted |
 | §2 | `Add` | Std.Add | accepted |
 | §2 | `Id Nat (Add(2, 3)) 5` by `refl` | Numbers.Add23 | accepted |
-| §2 | `AddZero`; `AddZero(x) := AddMZero(&x)` | Numbers.AddZero, AddZero' | accepted |
-| §2 | IH about a copy, `AddZero(p)`, lacks the `S` | Recursion.AddZeroCopy | rejected until D52; accepted since (injectivity takes the `S` off both sides) |
+| §2 | `Id Unit (AddM(x, 0)) () ≡ Eq Unit () () ∧ Eq Nat N(σ) σ ≡ Eq Nat N(σ) σ` | Equality.IdIsConj, IdIsEq, EqIsId (`N(σ)` is `Add(*x, 0)`); IdIsWrong | accepted ×3; rejected |
+| §2 | the `S` arm's goal `Eq Nat N(S σ') (S σ') ≡ Eq Nat (S N(σ')) (S σ') ≡ Eq Nat N(σ') σ'` | Recursion.SuccGoal, InjStep | accepted |
+| §2 | the recursive call at the call site: `AddMZero(&p) : Eq Nat (S N(σ')) (S σ') ≡ Eq Nat N(σ') σ'` | Recursion.CallSite; CallSiteWrong | accepted; rejected |
+| §2 | `AddZero(x : Nat) : Id Nat (Add(x, 0)) x := AddMZero(&x)` | Numbers.AddZero' (Numbers.AddZero is the older proof by a match) | accepted |
 | §2 | `TailM`, `AddM'` | Std.TailM, ReturnedBorrows.AddM' | accepted |
 | §2 | `AddMEq`, `AddMEqOwned` | ReturnedBorrows.AddMEq, AddMEqOwned | accepted |
-| §2 | `Le` (base case `False`) | CurrentState.Le | accepted |
-| §2 | `SubM` with `Z => match h {}` | CurrentState.SubM (as printed) | accepted |
-| §2 | `LeAdd`, `AddSub` | CurrentState.LeAdd, AddSub | accepted |
+| §2 | `Le`, `SubM` (`Z => match h {}`), `LeAdd`, `AddSub` | CurrentState.Le, SubM, LeAdd, AddSub | accepted |
 | §2 | `…; *x := Z; SubM(x, old, LeAdd(old, y))` | CurrentState.AddSubStale | rejected |
-| §2 | `AddSubId` | CurrentState.AddSubId | accepted |
-| §2 | `InsertM`, `InsertMEq` (arms `true` first) | Trees.InsertM, InsertMEq (arms in the printed order) | accepted |
-| §2 | `Insert`, `Lt`, `Size`, size theorem with `J` and `x + S y = S (x + y)` | Trees.Insert, Lt, Size, SizeInsert, AddMS, AddS | accepted |
-| §2 | `AddToOne` | ClosingOff.AddToOne | accepted |
-| §2 | `AddToOneZero` (about the inline `AddToOne`) | ClosingOff.AddToOneZero | accepted |
-| §3 | `False`, `True`, `And` declarations | `Check.prelude` (checked by `checkInd`) | accepted |
-| §3 | `Intro(P, Q; h, k)` | PolyLists.PairP, written `Intro[P, Q](h, k)` | accepted |
-| §3 | `match h {}`, `match h { Intro(l, r) => … }` | Propositions.absurd…, Swap, Fst, AndL2, TwoOwners… | accepted |
-| §4 | `f(&x, &x)` fails reading `⊥` | Borrows.DeadTwice | rejected |
-| §4 | `Id Nat (Add(x, x)) x` is well formed | Borrows.AddXX | accepted |
-| §5 | owned locals observed: `x := 6` vs `()` | Equality.OwnedLocal / OwnedLocalNeq | rejected / accepted |
-| §5 | `Id Unit (*x := 0) (*x := 1)` is `False`, `match e {}` | Equality.WriteNeq, WriteDisj | accepted |
-| §5 | multi-place `Id` taken apart by a match | Propositions.TwoOwners, TwoOwnersR, ThreeOwners | accepted |
-| §5 | no injectivity | Equality.Inj | rejected until D52; accepted since (with InjWrong rejected, and PairInj / PairInjWrong for pairs) |
+| §2 | `InsertM`; `Insert(t, k) := InsertM(&t, k); t` | InPlaceTrees.InsertM, Insert (the paper's text and layout); InsertMIsInsert (in-place is pure, by `refl`) | accepted |
+| §2 | `SizeInsert` with its three `J` steps; `Size(Node(l, v, r)) = S(Add(Size(l), Size(r)))` | InPlaceTrees.SizeInsert (verbatim), Size; SizeInsertTwo | accepted; rejected |
+| §2 | `AddS : x + S y = S (x + y)`, in place by bare recursion, transferred by lending | InPlaceTrees.AddMS, AddS | accepted |
+| §2 | `AddToOne(b, x₁, x₂, y) := let r = match b { Z => x₁, S _ => x₂ }; AddM(r, y)` | ClosingOff.AddToOne | accepted |
+| §3 | `Nat`, `Unit` (built in), `False`, `True`, `Pair`, `And` | Prelude (checked by `checkInd`) | accepted |
+| §3, §5 | `match h {}`; `match h { Intro(l, r) => … }` on a multi-place `Id` | Propositions.absurd…; Propositions.TwoOwners, TwoOwnersR, ThreeOwners | accepted |
+| §4 | `N(S σ') = S N(σ')` | Recursion.SuccGoal | accepted |
+| §5 | owned locals are observed: `x := 6` vs `()` | Equality.OwnedLocal / OwnedLocalNeq | rejected / accepted |
+| §5 | `Id Unit (*x := 0) (*x := 1)` is `False`, eliminated by `match e {}` | Equality.WriteNeq, WriteDisj | accepted |
 | §6 | `let z = (let y = &x; *y := 2; x)`, then `Id Nat z 2` by `refl` | Borrows.LetZ | accepted |
 | §6 | `λ(x : &Nat). (*x := 5; refl)` is not a `Π(x : &Nat). Id Nat (*x) 5` | Snapshots.LamWrite | rejected |
-| §6 | `Or`, `IsL` | Subsingletons.Or, IsL | accepted, rejected |
-| Fig. 7 | Π-types capture values (`h : Π(_ : Unit). Id Nat x Z`) | Snapshots.Oops2 | rejected |
+| §6, note 10 | `Or`; `IsL`, `Irr`, `Boom` | Subsingletons.Or; IsL, Irr, Boom | accepted; rejected ×3 |
+| Fig. 7 | Π-types capture values | Snapshots.Oops2 | rejected |
 | Fig. 7 | recursion on entry values; `f` as a value; `f` without `by` | Recursion.Loop, Bot'; Knot, KnotBoom; LoopNoBy, LoopNoByBoom | rejected |
-| Fig. 7 | `λx. ⋆` vs `λx. (*x := 7; ⋆)`; proof blocks inline vs closed off | Erasure.Boom (P1, P2); N1T/N1Closed, Q/QBoom | rejected |
-| Fig. 7 | `W(&c, n) : U(n)`; local function; type-valued match | ErasureBySyntax.Boom; BoomL; BoomB | rejected |
-| Fig. 7 | universes not cumulative | Universes.NonCumul / PropInType, PositivityParams.PropBox | rejected / accepted / rejected |
+| Fig. 7 | `λx. ⋆` vs `λx. (*x := 7; ⋆)`; proof blocks inline vs closed off | Erasure.Boom; N1T/N1Closed, Q/QBoom | rejected |
+| Fig. 7 | `W(&c, n) : U(n)`; local function; type-valued match; non-cumulativity | ErasureBySyntax.Boom, BoomL, BoomB; Universes.NonCumul, PositivityParams.PropBox | rejected |
 | Fig. 7 | functions by observation; borrow results | Functions.Boom3; ConvPick, TY, BoomX4 | rejected |
 | Fig. 7 | pattern variables are places | ClosingOff.Clear, Boom5 | rejected |
 | Fig. 7 | all owners observed | Owners.BadD18, ClosedD18, GR, BadR | rejected |
-| Fig. 7 | exclusive access; loan-free closing off; matches end loans in neutral heads | Borrows.BadA1; ReturnedBorrows.Bad, Main | rejected |
-| Fig. 7 | generalisations global | GlobalRecords.Esc, Bad5 | rejected |
-| Fig. 7, note 11 | borrows only of data; `&` only at the top | Universes.Impred, PolyId, SelfApp, SelfAppEq; BorrowTypes.F, G, UseG, SwapT | rejected |
-| Fig. 7, note 7 | `P(x : &Nat, e : Id Unit (*x := 0) (*x := 1)) : False := e`; `Q(g : Π(n : Nat). &Nat) : False := P(g(5), refl)` | ReturnedBorrows.PF / QF | accepted / rejected |
-| Fig. 7, note 4 | `inductive Bad := Mk(f : Π(x : Bad). False)`; `L`; `Bad4` | PositivityPaper.Bad, L, Bad4, with the constructor named `MkBad` since D52 (`Mk` is `Pair`'s) (Positivity.* is the `Empty` version) | rejected |
-| Fig. 7, note 10 | `Or`, `IsL`, `Irr`, `Boom` | Subsingletons.Or, IsL, Irr, Boom | accepted, rejected ×3 |
-| §7 | `Pick`; `r := Pick(n, &a, &b); z := b; match n {…}` rejected, runs at each `n` | Fixtures.Pick, Naturality.PickEarly / PickEarly0, PickEarly1 | rejected / accepted |
-| §9 | `IterM : &(List Nat) → List(&Nat)` is outside the core | BorrowTypes.IterM | rejected |
+| Fig. 7 | exclusive access; matches end loans in neutral heads | Borrows.BadA1; ReturnedBorrows.Bad, Main | rejected |
+| Fig. 7, note 5 | generalisations global: `Box`, `Double`, `Esc`, `Bad5` | GlobalRecords.* (constructor `MkBox`, see gaps) | accepted ×2, rejected ×2 |
+| Fig. 7, note 11 | `Impred`, `PolyId`, `SelfApp`; `F`, `G`; `SwapT` | Universes.Impred, PolyId, SelfApp; BorrowTypes.F, G, UseG, SwapT | rejected |
+| Fig. 7, note 7 | `PF`, `QF` | ReturnedBorrows.PF / QF | accepted / rejected |
+| Fig. 7, note 4 | `inductive Bad := Mk(…)`, `L`, `Bad4` | PositivityPaper.Bad, L, Bad4 (constructor `MkBad`, see gaps) | rejected |
+| §7 | `Pick`; `let r = Pick(n, &a, &b); let z = b; match n { … }` | Fixtures.Pick; Naturality.PickEarly / PickEarly0, PickEarly1 | rejected / accepted |
+| §8 | the `ochr Numbers { … }` excerpt | Std.AddM, Std.AddMZero, Numbers.WriteThenRefl | accepted, accepted, rejected |
 | §9 | every `Π(x : &Nat). &Nat` has an injective backward function | ReturnedBorrows.L, Inj | accepted |
-| §9 | no generic `&A` (`SwapT`) | BorrowTypes.SwapT | rejected |
-| §10 | the `ochr E1 { … }` excerpt | Std.AddM, Std.AddMZero, Numbers.WriteThenRefl (the excerpt reads `ochr Numbers { … }`, in the one-line layout the parser also accepts: the examples' multi-line layout would add a page) | accepted, accepted, rejected |
-| note 1 | `U`, `V`, `Lie1`, `Bad1` | ErasureBySyntax.U, V, LieL, BoomL | accepted ×3, rejected |
-| note 2 | `Lie2`, `Bad2`; the `g`/`f` block | ErasureBySyntax.LieB, BoomB; LieG, BoomG (TruthB, TruthG true) | rejected |
-| note 3 | `Lie3`, `Bad3` | ErasureBySyntax.LieH, BoomH | accepted, rejected |
-| note 5 | `Box`, `Double`, `Esc`, `Bad5` | GlobalRecords.* (as printed, except the constructor, `MkBox` since D52) | accepted ×2, rejected ×2 |
+| §9 | `IterM : &(List Nat) → List (&Nat)`; no generic in-place swap | BorrowTypes.IterM; SwapT | rejected |
+| §9 | `⌈let c = σ; AddM(&c, 0); c⌉` is `Add(x, 0)` | Equality.IdIsEq | accepted |
+| note 1 | `U`, `V`, `LieL`, `BoomL` | ErasureBySyntax.U, V, LieL, BoomL (Fixtures.U, V) | accepted ×3, rejected |
+| note 2 | `LieB`, `BoomB`; the `g`/`f` block | ErasureBySyntax.LieB, BoomB; LieG, BoomG | rejected |
+| note 3 | `LieH`, `BoomH` | ErasureBySyntax.LieH, BoomH | accepted, rejected |
 | note 6 | `PickX`, `PickY`, transport | Functions.PickX, PickY, ConvPick, TX, TY, BoomX4 | accepted ×2, rejected, accepted, rejected ×2 |
-| note 8 | head guard (no program printed) | ClosingOff.P1 | accepted |
 | note 18 | `Id Unit (let c = *x; G(&c, Z)) ()` needs induction | ClosingOff.RowI / RowIInd | rejected / accepted |
-| note 25 | `SubM`'s `match h {}` by the stored type | CurrentState.SubM; CurrentState.Neutral | accepted; rejected |
+| note 25 | `SubM`'s `match h {}` by the stored type; a neutral type rejected | CurrentState.SubM; Neutral | accepted; rejected |
+| note 26 | injectivity and disjointness | Equality.Inj, InjWrong, PairInj, NoConf… | as asserted |
 | note 27 | `let n = *x` after `AddM(&*x, 1)`, then `λ(y : Nat) : Nat => n` | Snapshots.CapS | accepted |
-| App. A [T-Ref] | `&Box(Prop)` is allowed | BorrowTypes.RefBoxProp | accepted |
+| App. A [T-Ref] | `&Box(Prop)` | BorrowTypes.RefBoxProp | accepted |
 | App. D [Conv-fun] | the two stuck closures are not convertible | Functions.CoInd | rejected |
 
-**Gaps, not closed by a test** (for the paper):
-- §7 prints `r := Pick(n, &a, &b); z := b; match n { … }`. That is not Ochr syntax: `:=` assigns an existing place. The test uses `let r = …; let z = b; …`. Suggest printing the `let` form.
-- §4's `(λy. (x := 2; y))(x := 1)` illustrates why rewriting is not confluent. It is not an Ochr program: the `λ` is untyped, and an Ochr closure copies `x`, so the write would go to its own copy. Nothing to test; it is an illustration.
-- §3 writes constructor parameters as `Intro(P, Q; h, k)`, and the checker's surface writes `Intro[P, Q](h, k)`. The core term is the same.
-- Three programs were tested under different names: notes 1–3 (`Lie1`… are LieL, LieB, LieH) and note 7 (`P`, `Q` are PF, QF; the Empty versions are D44.P, Q, now ReturnedBorrows.P, Q). The paper now uses the test names. §2's `AddToOneZero` was E3.AddToOneZeroInline; the tests were renamed so that E3.AddToOneZero is the paper's program and E3.AddToOneZero' is the one about the hand-duplicated `AddToOne'`.
+**Printed programs that fail as printed** (for the paper):
+- **Note 4 and Fig. 7 (strict positivity).** They print `inductive Bad : Type₀ := Mk(f : Π(x : Bad). False)`, with `L(b : Bad) : False := match b { Mk(f) => f(b) }` and `Bad4 : False := L(Mk(λ(x : Bad) : False => L(x)))`. Since D52, `Mk` is `Pair`'s constructor in the Prelude, so the block is an error before positivity is reached: "N4 declares Mk, which Prelude (used by N4) already declares", and per declaration "Bad: the constructor name Mk is already used"; `L`'s pattern and `Bad4`'s application are then read as `Pair`'s `Mk` ("pattern Mk needs 2 variables"). Corrected text: `inductive Bad : Type₀ := MkBad(f : Π(x : Bad). False)`, with `match b { MkBad(f) => f(b) }` and `L(MkBad(λ(x : Bad) : False => L(x)))`, as PositivityPaper tests.
+- **Note 5.** It prints `inductive Box := Mk(x : Nat)` and `Esc(… m : Box) … match m { Mk(x) => … }`, `Bad5 : Eq Nat 1 0 := Esc(1, Mk(0))`: the same clash, so `Box`, `Esc` and `Bad5` are rejected for the name, not for what the note explains. Corrected text: `MkBox` for `Mk` throughout, as GlobalRecords tests.
+
+**Gaps, not closed by a test:**
+- §4's `(λy. (x := 2; y))(x := 1)` illustrates why rewriting is not confluent. It is not an Ochr program: the `λ` is untyped, and an Ochr closure copies `x`.
+- Note 1 prints `let h = λ(x : &Nat) : U(n) => (…); …`. The checker's surface needs `let h = (λ(x : &Nat) : U(n) => (…)); …`, with the same verdict once parenthesised.
+- The `J` note describes D56 (`J` stuck unless its endpoints are convertible; the casts between `Nat → Nat` and `(Nat → Nat) → Nat`, and of `5` to `Bool`), and note 25 describes D58 (a zero-arm match is stuck outside proofs). Neither prints a program, and neither rule is in this checker branch yet (task #13), so there is no test.
+- §2 names the one-line proof `AddZero`; the test is Numbers.AddZero', because Numbers.AddZero is the match proof the paper no longer prints.
+- The `Trees` block still has the pure recursive `Insert`, with `InsertMEq` and its size theorem. The paper no longer prints these; InPlaceTrees is the printed version.
 
 ## 17. The examples as a tour of the language: old names → new names
 
@@ -660,3 +664,91 @@ Checked mechanically against the suite before D52 (0127f58b, 432 declarations):
 - *Ledger.* 47 rows. The 46 old rows keep their classes and their flipped programs, except D48 (2), which no longer flips `BorrowTypes.InPair`: `Nat × &Nat` is now `Pair(Nat, &Nat)`, whose parameters may not be borrow types whatever the switch says (the row keeps its class, soundness, witness `BorrowTypes.G`). New row "D52 (v2.1): Eq is injective on constructors", class completeness: switching injectivity off rejects Equality.Inj, Equality.PairInj, Recursion.AddZeroCopy and CurrentState.AddSubIdReborrow. No blocked declarations in any row.
 - *Additions* (8, all as expected): `Prelude`'s 4 declarations; `Numbers.SwapPair` (a pair parameter taken apart by `match p { Mk(a, b) => (b, a) }`, accepted; the projection version, `(p.2, p.1)`, is kept as `SwapPairProj`, still rejected: "no such place p.2: its path does not exist in σ0"); `Equality.InjWrong` (rejected); `Equality.PairInj` (`Eq (Nat × Nat) (a, b) (1, 2)` is `Eq Nat a 1 ∧ Eq Nat b 2`, accepted) and `PairInjWrong` (the swapped conjunction, rejected). The pure `AddZero` without `cong` is `Recursion.AddZeroCopy`, now accepted.
 - 440 declarations = 432 + 4 (`Prelude`) + 4 (SwapPair, InjWrong, PairInj, PairInjWrong).
+
+## 20. The recCands fix: the [Rec] state survives every restore
+
+*The bug* (fuzz-port, 2026-09-29; accepted on 96d788a1): `Boom : False := Lie(0, ⟨refl, refl⟩)` with `Lie (n : Nat) (h : Le(n, 1) ∧ ⊤) : False by n := match h { Intro(a, b) => Lie(n, h) }`. `sealedType` types a sealed program by running it on a private copy outside the enclosing functions (`recStack := []`, `recCands := []`). `restoreKeep` restored `recStack` whole but merged `recCands` by position (`cur.recCands.drop (cur.len - saved.len)`), which from the emptied list kept `[]`; `recCheck` zipped the two lists, so no later recursive call of any enclosing function was checked.
+
+*The fix.* The two lists are one: a `RecCtx` frame carries its candidates and a `uid` (from `nextRecUid`, never reused, kept by every restore). `restoreKeep` gives each saved frame the candidates of the current frame with the same `uid`, if there is one, so a computation that replaces the stack (`sealedType`) or starts a fresh one (the L3 counterfactual, whose special case at the end of `checkFix` is gone) cannot wipe or shift them. `recCheck` narrows the frames of the called function in place. An implementation bug, not a rule: no switch and no ledger row.
+
+*Paths.* Found by tracing every `valType` call site; each program below was accepted before the fix (checked on 329482c6) and is rejected by [Rec] after it. The value typed is a sealed program, reached through `placeType` of a place with no stored type: a pattern variable (`Lie`: the conjunction's parameter `⌈Le(σ, 1)⌉`), or a closure's capture read in its codomain (`LieCap`) or in its body (`LieRead`); or through `Id`'s footprint over a capture (`LieId`). `indValType` and a borrow's content reach `valType` only below these; the `.val` case of `eval` meets a sealed program only inside `sealedType` itself, where the stack is already empty. Tests in `07Recursion`, each with its `Boom`. The ledger and every other verdict and message are unchanged.
+
+*Audit* of the state kept outside Ω (`MState`) and how restores treat it (all restores go through `restoreKeep`, including `onCopy`'s):
+- Scoped, restored whole: `env`, `refs` (refinements), `goal`, `depth`, `effects` (D41; a stuck block re-adds its arms' pending steps by hand), `convStack` (D30; a cycle answers false, never true), the flags `lastErased`/`lastProof` (re-derived for each term by `eval`).
+- Kept whole: `fuel` (also carried by `.stuck`), `classCache` (keyed by the Π value itself), `nextRecUid`; `nextAbs`/`absTy`/`nextLoan`/`neutrals` when `globalRecords` (D37; switching it off restores them, which is what the D37 row shows).
+- Merged: only the [Rec] candidates, now by `uid`.
+- Nested runs that replace per-definition state: `sealedType` (env, [Rec] stack, goal), `nfSealed` (env, depth; it keeps the [Rec] stack but runs untyped, so it never checks a recursive call), `checkFix` (env, goal; pushes a frame), function conversion (env, `convStack`), a constant's check. Only `sealedType` touched the [Rec] state.
+- Exceptions discard the state back to the handler's entry (`StateT` over `ExceptT`), except the fuel a `.stuck` carries. The handlers that recover are closing off a call (`runBody` runs untyped: no `recCheck` inside), `nfSealed` (untyped), the hints `fieldTypeAt` and `argHint` (recomputed where they matter), and conversion (answers false). None of them can lose a narrowing made by a typed recursive call that is not checked again elsewhere.
+- 449 declarations = 440 + 9 (`Le`, and `Lie`, `LieCap`, `LieRead`, `LieId` with their `Boom`s).
+
+## 21. D54, D56, D58 in the checker; D55 built, switched off pending the fixture decision
+
+- *D54 (reviewer-5): a Π-type's erasure class and [Close] row are part of it.* `convPi` first requires equal `fnClass` and `declKind` (switch `classInType`). The class and row are those the D35 classification reads off the codomain term, as before. At a call, `callFn` reads the class and row from the function value's own declared Π-type (`funType fv none`), not from the static type. Conversion now guarantees that the two agree, so the typed and untyped paths use one source.
+  - *The partial mechanism it replaces:* `funType fv fT` preferred the static type `fT` whenever the call was typed. That is why a direct call through a parameter was safe and a call after `let g = f` or through `IdF(f)` was not. In untyped runs `fT` is absent and the value's own codomain decided.
+  - *Tests (Functions, 14 declarations):* reviewer-5's program verbatim (`P0`, `H`, `RunG`, `RunGGen`, `Boom`, and `RunGH`, now rejected at the argument); the identity-function variant (`IdF`, `RunI`, `RunIGen`, `BoomI`); and the [Close]-row variant (`UU`, `H2`, `RunU`, `RunUH`). The proof-class variant writes `V(Z)` as a codomain, so it waits for the D55 fixture decision.
+  - *Ledger row, soundness:* witnesses `Boom` and `BoomI`; it also flips `RunGH` and `RunUH`.
+  - *Completeness:* no existing verdict or message changes.
+- *D56 (reviewer-4 W4): `J` computes only on convertible endpoints* (switch `jStuck`). `t` always runs, so its effects happen once, as in a closed run. `jValue` then returns its value when `a ≡ b`, and otherwise the stuck cast `⌈J(A, a, b, P, (⋆ : Eq A a b), v)⌉`, which re-normalises to `v` once a refinement makes the endpoints convertible. A `J` whose motive returns `Prop` is unchanged.
+  - A call whose head is a stuck cast takes its type from the cast's program (`funType` on a sealed head now tries `valType`). This is needed for `Om`.
+  - *Tests (Equality):* `CastRefl` (computes); reviewer-4's `C1`, `C2`, `Om` (was "call depth exceeded", now accepted) and `CastMatch` (was "[Match] on 5, which is not a value of Bool", now accepted).
+  - *Ledger row, completeness:* `Om` and `CastMatch` are rejected without it.
+- *D58 (hashmap-port): a zero-arm match outside a proof position is stuck* (switch `zeroArmStuck`). An untyped run that reaches one is stuck, and the enclosing call closes off. A typed one at a type that is not a proposition is closed off like a stuck match (`closeOffMatch`). At a proposition it is `⋆`, as before.
+  - *Tests (Propositions):* `IsZ`, `GetZ`, `GetZIs` (hashmap-port's minimal program, renamed to fit the block's names).
+  - *Ledger row, completeness:* `GetZIs` is rejected without it.
+  - No existing test depended on `⋆` from a zero-arm match at a data type.
+- *Existing rows that also flip the new tests:*
+  - P2 and P2 without D41: `RunGGen`, `RunIGen`.
+  - C8: `CastMatch`.
+  - D28: `RunG`, `RunGGen`, `RunI`, `RunIGen`.
+  - P1, P1 without D41, P3, P3 without D41, P1 with the computed block rule, captured types, and D48 (3): `Om`, whose stuck casts exercise all of them.
+  - All of these are rejections. No row's class changes.
+- *D55 (reviewer-4 W1/W2), built but off.* `Check.declOf` is a static pass run over each definition, and over an inductive's parameter and field types (switch `sortsSyntactic`, default off for now).
+  - It computes each term's *declared* type as a `DeclInfo`: a sort, a Π with what its codomain says, `&A`, or other. It reads the heads' declarations without normalising.
+  - It requires a sort at every type position: binder types, codomains, `let` annotations and ascriptions, Π components, the type slots of `Eq`/`Id`/`J`/`&`, inductive and constructor parameters, and field types.
+  - Unknown names are left to the machine, so its messages keep their order.
+  - Switched on, it rejects every reviewer-4 program (W, f, TT, g2, k, and with them Boom, Boom2, RunIs, Lie4, Boom4, K1, K2).
+  - In the suite it rejects only programs that write `V(Z)` as a type, because `V (n : Nat) : U(n)` makes `V(Z)`'s declared type `U(Z)`, which is not a sort:
+    - accepted before, rejected now: `EffL`, `EffLNoop`, `TruthG`, `LieH`;
+    - rejected before, with a D55 message now: `EffInline`, `LieG`, `BoomG`, `BoomH`, `EffLOne`.
+  - Measured against the D55-on default: the D40 row flips nothing (its witnesses all write `V(Z)`), and ten rows lose witnesses but keep flips.
+  - Reported to the lead; the fixture decision is pending.
+- 471 declarations = 449 + 14 (Functions) + 5 (Equality) + 3 (Propositions). Ledger: 50 rows.
+
+## 22. Typing a sealed program: embedded values are typed by their position
+
+Two incompleteness reports hit the same gap: `valType` had no type for a value that has none of its own.
+- *arrays-library:* "cannot infer the type of the value ⋆". `H (x : Nat) (h : ⊤) : Nat by x` is stuck at an abstract `x`, so `let y = H(x, refl)` holds the sealed `H(σ, ⋆)`. Typing that program (`sealedType`, reached from a split on `LeDec(y, x)` or from a closure capturing `y`) typed the argument `⋆` on its own.
+- *fuzz-port (49 cases):* "cannot infer the type of the value loan_ℓ". Re-running a stuck match's sealed block at `*x0 := 0` meets `Id Unit () (*x0 := 0)`, whose footprint owner is the block's cell for `*x0`. That cell has no stored type in the untyped re-run, and it is lent out.
+
+Neither value is ill-typed. It is typed by where it sits, as D51 already did for captured proofs:
+- *A proof argument, and an inert loan,* take the type of their position. `evalCall` and `evalCtor` now pass the parameter's or field's declared type as a hint for an embedded value (`.val`) too, not only for a constructor argument. `eval` types `.val ⋆` by that hint when it is a proposition, and an inert loan by the hint when its borrow is not in the run.
+- *A live loan* has the type of its borrow's content: `valType (.loan ℓ)` finds `borrow_ℓ c` in Ω and types `c`.
+
+Tests (ClosingOff, "Typing a sealed program"): `Le`, `Lt`, `Dec`, `LeDec`, `H`, `UseDec`, `Apply`, `UseApply` (arrays-library's repros), and `IdInBlock` (fuzz-port's shape, `Id Prop (match *x0 { Z => Id Unit () (*x0 := 0), S _ => ⊤ }) ⊤` proved by splitting). All accepted; all were rejected before. Every earlier verdict and message is unchanged.
+
+The ledger's rows are unchanged apart from rejections of the new tests:
+- C8: `UseDec`;
+- D28: `IdInBlock`;
+- captured types: `UseApply`, `UseDec`;
+- D48 (3): `UseApply`.
+
+480 declarations.
+
+### 21.1 D55 on; D54 refined; D40 deleted (merged with ochr-core at 384f4762, 498 → 519 verdicts)
+
+- *D54 refined* (lead, 2026-09-29): `convPi` compares the class and whether the codomain is a borrow (`&T`). The `Unit` and data rows of [Close] stay convertible, since `Unit` has one value; η for `Unit` (D59, planned) would delete the `Unit` row altogether. The strict version rejected every higher-order function that is polymorphic in its continuation's result type and instantiated at `Unit`: the arrays library's `WithSplit(E, R, …, f : Π(…). R)` at `R := Unit`, taking out ArrayBench's B1Join, B1, SplitNoop and ZeroFirst2, and Quicksort.Recurse, with 6 dependents. All 11 are accepted again on this head; arrays' `GetMutSet` (expected rejected there) is now accepted, by §22. `Functions.RunUH` is accepted, and the D54 row keeps its witnesses `Boom` and `BoomI`.
+- *D55 on by default.* The V(Z) programs:
+  - The attacks are kept verbatim and now rejected by D55, each with a one-line comment: `ErasureBySyntax.LieG`, `BoomG`, `LieH`, `BoomH`, `Subsingletons.EffInline`. Their point, the seam between declared and computed sorts, can no longer be written.
+  - `EffL`, `EffLNoop` and `TruthG` only made sense across that seam, so they are rejected by D55 too. `EffLOne` is still rejected, now because it uses `EffL`.
+  - D54's proof-class variant (`Functions.RunP`, `RunPGen`, `WV`, `BoomP`) is in, with `WV` and `BoomP` rejected by D55. D54 alone rejects `BoomP` at the argument.
+  - reviewer-4's programs are block `Sorts` in `14Universes`, verbatim (17 declarations).
+  - The D55 row is class model, witnesses `Sorts.K1`, `Sorts.K2`: `TT` would be a proposition with two inhabitants a data function tells apart. With D54 on, the closed proofs of W1 are still caught at their arguments.
+  - The new `InPlaceTrees` and `SizeInsert` tests are unaffected.
+- *D40 deleted.* With D55 on its row flipped nothing: its witnesses all wrote `V(Z)` as a type. "A stuck block is erased iff each arm is" follows from "a term is erased iff its type is a proposition", since a match's type is its arms' type. Its switch and row are gone. `blockRule` stays in `Config` for the D35/D40 row (`blockRule := 0`) and the P1-with-computed-block row.
+- *Rows whose witnesses D55 removed* are reclassified by what they flip now:
+  - D28 (erasure by declared class): false lemma [LieG] → policy [ClosingOff.RowI], the true `Unit` statement.
+  - D35/D40: soundness [BoomB, BoomG, Boom7] → [BoomB, Boom7].
+  - P3 without D41: soundness [BoomH] → false lemma [LieP].
+  - P1 with the computed block rule: [BoomP, BoomG] → [BoomP].
+- *Ledger with D55 on*: 50 rows, and every row flips something. Soundness 22 (16 with a closed proof of `False`), false lemma 1, model 4, policy 4, completeness 19.
+- *Rows that no longer guard anything of their own.* Among the "without D41" combination rows, P1 and P3 add over D41 alone only rejections of good programs (`Om`, `CapP`, `CapP2`, and `OrLet` for P1): their accepting flips are all D41's.

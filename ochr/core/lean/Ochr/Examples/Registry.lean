@@ -33,11 +33,11 @@ def programs : List (String × Block) :=
    ("ClosingOff", ClosingOff), ("Naturality", Naturality), ("Equality", Equality),
    ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion),
    ("CaseSplits", CaseSplits), ("GenType", GenType), ("ScrutineeTypes", ScrutineeTypes),
-   ("GlobalRecords", GlobalRecords), ("Functions", Functions), ("Lists", Lists), ("Trees", Trees),
+   ("GlobalRecords", GlobalRecords), ("Functions", Functions), ("Lists", Lists), ("Trees", Trees), ("InPlaceTrees", InPlaceTrees),
    ("PolyLists", PolyLists), ("Positivity", Positivity), ("PositivityParams", PositivityParams),
    ("PositivityPaper", PositivityPaper), ("Propositions", Propositions),
    ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
-   ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("BorrowTypes", BorrowTypes)]
+   ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("BorrowTypes", BorrowTypes)]
 
 /-- Case studies (`16HashMap`): checked and counted with the tour, and timed by `lake exe
 tests`, but not re-run by the counterfactual ledger, which is about the rules. A case study's
@@ -86,7 +86,6 @@ def switches : List (String × Config) :=
    ("G1 (finding): a generalised neutral stays generalised under normalisation", { genConsistent := false }),
    ("D35 (v1.7): a function's class is read from its codomain term", { classBySyntax := false }),
    ("D35/D40: a stuck block is erased iff each arm is, not by the call rule", { blockRule := 0 }),
-   ("D40 (P2): ... and not when its computed type has sort Prop", { blockRule := 1 }),
    ("D35 (v1.7): a let, sequence or match is erased iff it is a proof", { seqByProof := false }),
    ("D35 (v1.7): [Close]'s row is read from the declared codomain", { rowByDecl := false }),
    ("P1 (finding): a variable declared of sort Prop is a proof (redundant under D41)", { leafRule := 0 }),
@@ -113,7 +112,11 @@ def switches : List (String × Config) :=
    ("D48 (3): Π-types are compared under their binders", { piUnder := false }),
    ("D49 (3): a data field of a matched proof is a fresh abstract value", { proofDataFields := false }),
    ("D50 (switched ON): the unit laws normalise stored types instead of converting", { unitNorm := true }),
-   ("extension (switched ON): bodies of erased-class functions and arms of erased blocks are confined", { confineBodies := true })]
+   ("extension (switched ON): bodies of erased-class functions and arms of erased blocks are confined", { confineBodies := true }),
+   ("D54 (v2.1): a Π-type's erasure class, and whether it returns a borrow, are part of it", { classInType := false }),
+   ("D56 (v2.1): J computes only when its endpoints are convertible", { jStuck := false }),
+   ("D58 (v2.1): a zero-arm match outside a proof position is stuck, not ⋆", { zeroArmStuck := false }),
+   ("D55 (v2.1): sorts are syntactic (one notion of proposition)", { sortsSyntactic := false })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -139,22 +142,21 @@ def rowClass : List (String × List String) :=
    ("soundness", ["ClosingOff.MovedByBlock"]),
    ("completeness", []),
    ("soundness", ["Recursion.KnotLBoom"]),
-   ("false lemma", ["ErasureBySyntax.LieG"]),
+   ("policy", ["ClosingOff.RowI"]),
    ("soundness", ["ReturnedBorrows.Main"]),
    ("soundness", ["Functions.Boom3"]),
    ("soundness", ["Recursion.LoopNoByBoom"]),
    ("soundness", ["ClosingOff.Boom5"]),
    ("completeness", []),
    ("soundness", ["ErasureBySyntax.BoomL", "ErasureBySyntax.Boom8"]),
-   ("soundness", ["ErasureBySyntax.BoomB", "ErasureBySyntax.BoomG", "ErasureBySyntax.Boom7"]),
-   ("soundness", ["ErasureBySyntax.BoomG"]),
+   ("soundness", ["ErasureBySyntax.BoomB", "ErasureBySyntax.Boom7"]),
    ("completeness", []),
    ("policy", ["ClosingOff.RowI"]),
    ("completeness", []),
    ("policy", ["Erasure.Write"]),
    ("completeness", []),
-   ("soundness", ["ErasureBySyntax.BoomH"]),
-   ("soundness", ["ErasureBySyntax.BoomP", "ErasureBySyntax.BoomG"]),
+   ("false lemma", ["ErasureBySyntax.LieP"]),
+   ("soundness", ["ErasureBySyntax.BoomP"]),
    ("soundness", ["Positivity.Boom", "PositivityParams.Boom"]),
    ("soundness", ["GlobalRecords.Bad5"]),
    ("soundness", ["Functions.BoomX4"]),
@@ -174,12 +176,16 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("completeness", []),
    ("completeness", []),
-   ("completeness", [])]
+   ("completeness", []),
+   ("soundness", ["Functions.Boom", "Functions.BoomI"]),
+   ("completeness", []),
+   ("completeness", []),
+   ("model", ["Sorts.K1", "Sorts.K2"])]
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 622
+def Ochr.Registry.expectedTotal : Nat := 701
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

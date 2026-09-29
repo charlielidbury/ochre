@@ -786,12 +786,10 @@ ochr HashMapLookup uses Std, HashMap {
   -- The borrow points at the value a lookup returns; after writing `w` through it, `k`
   -- maps to `w`, and every other key is unchanged. Each statement writes through the
   -- borrow on both sides, so that both leave the same map.
-  --
-  -- WALL (notes/hashmap-case-study.md, "GetMut"): these are true but rejected. In the
-  -- `BNil` arm the split re-normalises the goal, which runs `BGetMut` into its unreachable
-  -- `match h {}`; that yields `⋆`, and the goal's `*q` reads a path in `⋆`, a normalisation
-  -- error, before the arm's own `match h {}` is checked.
-  reject def BGetMutRead (b : &Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(*b, k))) :
+  -- In the `BNil` arm the split re-normalises the goal, which runs `BGetMut` into its
+  -- unreachable `match h {}`: that match is stuck (D58), so the goal stays a sealed
+  -- program and the arm's own `match h {}` proves it.
+  def BGetMutRead (b : &Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(*b, k))) :
       Id Opt (let q = BGetMut(&*b, k, h); let x = *q; *q := w; Some(x))
              (let r = BFind(*b, k); let q = BGetMut(&*b, k, h); *q := w; r) by b := (
     match *b {
@@ -806,7 +804,7 @@ ochr HashMapLookup uses Std, HashMap {
     }
   )
 
-  reject def BGetMutFind (b : &Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(*b, k))) :
+  def BGetMutFind (b : &Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(*b, k))) :
       Id Opt (let q = BGetMut(&*b, k, h); *q := w; BFind(*b, k))
              (let q = BGetMut(&*b, k, h); *q := w; Some(w)) by b := (
     match *b {
@@ -821,7 +819,7 @@ ochr HashMapLookup uses Std, HashMap {
     }
   )
 
-  reject def BGetMutFindOther (b : &Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(*b, k))) (k2 : Nat)
+  def BGetMutFindOther (b : &Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(*b, k))) (k2 : Nat)
       (ne : Eq Bool (EqB(k, k2)) false) :
       Id Opt (let q = BGetMut(&*b, k, h); *q := w; BFind(*b, k2))
              (let r = BFind(*b, k2); let q = BGetMut(&*b, k, h); *q := w; r) by b := (
