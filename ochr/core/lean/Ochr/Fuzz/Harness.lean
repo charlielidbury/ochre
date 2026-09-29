@@ -117,14 +117,21 @@ def compName : Nat → String
 /-- Refine a value: first undo the generalisations (`σ_g := ⌈n⌉`, newest first: a
 generalised σ names the closed program it replaced), then substitute; `substV`
 re-normalises every sealed program the substitution reaches. -/
-def refineVal (st : MState) (gens : List (Value × Nat)) (α : List (Nat × Value)) (v : Value) :
-    Except String Value :=
+def refineValS (st : MState) (gens : List (Value × Nat)) (α : List (Nat × Value)) (v : Value) :
+    Except String (Value × MState) :=
   let act : M Value := do
     modify fun s => { s with neutrals := [] }
     let mut v := v
     for (n, σ) in gens do v ← substV (.abs σ) n v
     for (σ, r) in α do v ← substV (.abs σ) r v
     pure v
-  (runSt act st).map (·.1)
+  runSt act st
+
+/-- `refineValS` without the final state. Its final state's `neutrals` are exactly the
+generalisations re-normalisation made (a type formed inside a sealed program may split
+on a sealed scrutinee), which a later completion must undo too. -/
+def refineVal (st : MState) (gens : List (Value × Nat)) (α : List (Nat × Value)) (v : Value) :
+    Except String Value :=
+  (refineValS st gens α v).map (·.1)
 
 end Ochr.Fuzz

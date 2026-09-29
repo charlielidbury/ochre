@@ -82,6 +82,7 @@ structure Config where
   trace : Bool := false          -- record goals, splits and call types (for inspection)
   genGlobal : Bool := false      -- fuzzer hook, emulates v1.8 D37: generalisation records and fresh-name counters survive restores
   syntacticClass : Bool := false -- fuzzer hook, emulates v1.7 D35: a closure's class is read from its codomain term, a stuck block's from its match
+  proofByValue : Bool := false   -- fuzzer hook, the proposed fix for fuzzer N1/N2: a non-call term whose value is ⋆ (a proof, C7) is erased, in both modes
 deriving Inhabited, Repr
 
 structure MState where

@@ -603,6 +603,9 @@ partial def eval (typed : Bool) (t : Term) : M (Value × Option Value) := do
       | .ascribe _ _ => pure ((← get).lastErased || (r.2.isSome && (← typeClass r.2.get!) == 2))
       | _ => pure false
     else erasedValue r.1     -- the v1.4 reading: decided on the value (breaker-fresh F1)
+  -- (fuzzer hook, proposed fix for N1/N2) every value of a proposition is ⋆ and only
+  -- proofs evaluate to ⋆ (C7), so a non-call term with value ⋆ is a proof: erased
+  let erased := erased || ((← get).cfg.proofByValue && r.1 == .proof && !(t matches .call ..))
   if erased && (← get).cfg.eraseOnCopy then
     modify fun s => { s with env := before }
   modify fun s => { s with lastErased := erased }

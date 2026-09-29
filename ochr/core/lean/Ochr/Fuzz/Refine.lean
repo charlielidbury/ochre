@@ -54,7 +54,8 @@ def fnInstances (T : Value) : M (List Value) := do
 /-- Every partial refinement of one parameter, and `nGround` instances (the first two
 take every parameter's smallest, then second-smallest, value). An abstract function is
 refined to each global function of its type. -/
-def buildRefinements (ps : Array PInfo) (nGround : Nat) (r : Rng) : M (List Refinement × Rng) := do
+def buildRefinements (ps : Array PInfo) (nGround : Nat) (r : Rng) :
+    M (List Refinement × Rng × List (Nat × List Value)) := do
   let inds := (← get).inds
   let mut out : Array Refinement := #[]
   let mut fns : List (Nat × List Value) := []
@@ -81,18 +82,19 @@ def buildRefinements (ps : Array PInfo) (nGround : Nat) (r : Rng) : M (List Refi
     let label := ", ".intercalate ((ds.zip sub.toList).map fun (p, (_, v)) => s!"{p.name} := {v}")
     if !(out.any fun a => a.label == label) then
       out := out.push ⟨label, sub.toList, sub.size == ds.length⟩
-  pure (out.toList, rng)
+  pure (out.toList, rng, fns)
 
-/-- Ground completions of the pinned abstract values occurring in some values. -/
-def completions (st : MState) (pinned : List Nat) (vs : List Value) (n : Nat) (r : Rng) :
-    List (List (Nat × Value)) := Id.run do
+/-- Ground completions of the pinned abstract values occurring in some values (an
+abstract function is completed by the global functions of its type, `fns`). -/
+def completions (st : MState) (pinned : List Nat) (vs : List Value) (n : Nat) (r : Rng)
+    (fns : List (Nat × List Value) := []) : List (List (Nat × Value)) := Id.run do
   let occ := (vs.flatMap absIn).eraseDups.filter pinned.contains
   let mut out := #[]
   let mut rng := r
   for i in [0:n] do
     let mut sub := #[]
     for σ in occ do
-      let vs := groundVals st.inds (st.absTy[σ]?.getD .tNat) 2
+      let vs := (fns.lookup σ).getD (groundVals st.inds (st.absTy[σ]?.getD .tNat) 2)
       if vs.isEmpty then continue
       let (x, r') := rng.next
       rng := r'

@@ -29,6 +29,42 @@ Usage: `lake exe fuzz --seed 1 --count 100000 --jobs 16 [--switch +D37 --switch 
 | D29 (match ends loans in neutral head) | F2 | 116 / 359 | returned borrow's hole orphaned; direct path reads ⊥ |
 | P2/D26 (erased terms on a private copy) | N1 | 203 | `let a = match n1 { Z => refl \| S p => n0 := n1; refl }` |
 | D19 (access ends loans inside) | BadA1-type | 1888 | verdict: the direct path errors where the generic path accepted |
+| C5 (blocks move moved borrows) | `MovedByBlock` | 815 | `match *x0 { Z => let a = x0; () \| S _ => () }; … *x0 …` at `x0 := 0`: use after move |
+| D18 (owners are sets) | meta-model C2 | 19587 | `let a = match *x0 { Z => &n1 \| S p => x0 }; Id Unit () (*a := 0)` |
+| D30 (closures by observation) | F3 | 8 (conv oracle); 191 (`false`) | closures equal on results only; block closures inside sealed programs too |
+| D17 ([Rec] entry values) | Loop/Bot' shape | 0 (truth oracle) | `def Lie (n0 : Nat) (x1 : &Nat) : Id Nat *x1 0 by n0 := Lie(n0, x1)` accepted |
+| D31 (no `f` without `by`) | F4 | 0 (truth oracle) | the same without `by` |
+| L1 (f only as a call head) | not reached | | the proof candidates never pass `Lie` as a value |
 | none (default v1.6 rules) | X2/BoomB (D35) | 56 | `Id Prop (match *x2 { Z => ⊤ \| S p => *x1 := 0; ⊤ }) ⊤` |
 | none (default v1.6 rules) | X3's root (D37) | 28 | a generalised σ escapes the private copy of `observe` |
-| C5, D18 | not yet (see §5) | | |
+| none (default v1.6 rules) | X4 (D38) | 4525 | `PickX ≡ PickY` accepted; they observe `(0,(7,0))` vs `(0,(0,7))` |
+| none | X5 (D39) | not reached | no crash in 900k cases: an abstract `Π(x y : &Nat). &Nat` called with two borrows and an owner read back never came up |
+
+The truth oracle (§1): when a statement is false at a ground instance, it tries `refl`, a one-level split of each parameter, structural recursion on each `Nat`/`&Nat`/list parameter, and non-decreasing recursion with and without `by`; an accepted one is a closed proof of false by instantiation.
+
+## 3. Findings on the current rules (v1.6 snapshot; labels say what already fixes them)
+
+Soundness first. Every program below was checked with the unmodified v1.6 checker (`Scratch/R2.lean`, `R3.lean` in the worktree; the `reject def` lines are the ones it rejects).
+
+**N1 (new, closed proof of false; rule at fault: the checker's reading of P2 clause "declared type has sort Prop", not fixed by D35/D37–D39).** A `Prop`-typed match whose arm writes and then ends in a proof that is not a syntactic proof former. At the generic call the match is stuck, closes off as a block whose codomain is a proposition, and the block is erased as a proof (class 2): the write is discarded. At `n = 0` the same match runs inline; `eval` marks a term erased only if it is `refl`, `⟨⟩`, `cong`, `trans`, `symm`, a `J` with a `Prop` motive or an ascription at a `Prop` type, and a `seq`/`let`/`match` inherits its tail's mark, so `(c := 1; λ…)` is not erased and the write persists.
+```
+def LieL (n : Nat) : Id Nat (let c = 0; let f = match n { Z => (c := 1; λ(y : &Nat) : ⊤ => refl) | S _ => λ(y : &Nat) : ⊤ => refl }; c) 0 := refl
+def BoomL : Eq Nat 1 0 := LieL(0)                                     -- accepted
+def LieV (n : Nat) (h : ⊤) : Id Nat (let c = 0; let f = match n { Z => (c := 1; h) | S _ => h }; c) 0 := refl
+def BoomV : Eq Nat 1 0 := LieV(0, refl)                               -- accepted
+def LieR (n : Nat) : Id Nat (let c = 0; let f = match n { Z => (c := 1; let e = refl; e) | S _ => refl }; c) 0 := refl
+def BoomR : Eq Nat 1 0 := LieR(0)                                     -- accepted
+def LieF (n : Nat) : Id Nat (let c = 0; let f = match n { Z => (c := 1; refl) | S _ => refl }; c) 0 := refl
+reject def BoomF : Eq Nat 1 0 := LieF(0)                              -- rejected: refl is a proof former
+```
+Found at case 354 of seed 1 (with `+D37 +D35`), shrunk to `Id Prop ⊤ (let a = match *x0 { Z => *x0 := 1; λ(y : &Nat) : ⊤ => refl | S _ => λ(y : &Nat) : ⊤ => refl }; ⊤)`.
+
+**N2 (new, closed proof of false; same root, in the untyped machine).** The untyped machine (callee bodies and every [Seal] re-normalisation) has no types, and `eval` decides an ascription's erasure from its declared type only in typed mode, so it runs an ascribed proof's write that the typed path erases. [Split] re-normalises the sealed block with the untyped machine; the instance evaluates the same match typed.
+```
+def LieA (n : Nat) : Id Nat (match n { Z => let c = 5; let a : ⊤ = (c := 0; let e = refl; e); c | S _ => 0 }) 0 :=
+  match n { Z => refl | S _ => refl }
+def BoomA : Eq Nat 5 0 := LieA(0)                                     -- accepted
+```
+Found as an `adequacy` disagreement (typed run vs machine) at case 6232 of seed 1: `Id Unit (n0 := (let a0 : ⊤ = (n0 := 0; let a6 = refl; a6); n0)) 0` at `n0 := 1` gives `n0 = 1` typed and `0` on the machine; the checker itself rejects `Main(1) = 1` for `Main(n) := let c = n; let a : ⊤ = (c := 0; let e = refl; e); c` because [Call-type] runs `Main`'s body untyped.
+
+*Fix for N1 and N2.* P2 is right as written ("any other term is erased iff … its declared type has sort Prop"), but the machine cannot see declared types. Every value of a proposition is ⋆ and only proofs evaluate to ⋆ (C7), and that is fixed by declared types, so "a non-call term is erased iff its value is ⋆" is the same condition, readable in both modes and stable under refinement. RULES should say so (one clause in P2); the checker's hook `proofByValue` implements it (below, §4, runs with it on).

@@ -33,6 +33,7 @@ def switchCfg (c : Config) : String → Option Config
   | "G1" | "genConsistent" => some { c with genConsistent := false }
   | "+D37" | "genGlobal" => some { c with genGlobal := true }   -- emulate v1.8's D37 (not a switch-off)
   | "+D35" | "syntacticClass" => some { c with syntacticClass := true }   -- emulate v1.7's D35
+  | "+N12" | "proofByValue" => some { c with proofByValue := true }   -- the proposed fix for fuzzer findings N1/N2
   | _ => none
 
 structure Args where

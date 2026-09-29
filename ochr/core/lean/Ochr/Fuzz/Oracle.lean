@@ -23,14 +23,14 @@ namespace Ochr.Fuzz
 open Ochr
 
 inductive Kind where
-  | nat | falseProof | verdict | renorm | escape | adequacy | frame | conv
+  | nat | falseProof | verdict | renorm | escape | adequacy | frame | conv | truth
 deriving BEq, Inhabited, Repr
 
 def Kind.name : Kind → String
   | .nat => "nat" | .falseProof => "false" | .verdict => "verdict" | .renorm => "renorm"
-  | .escape => "escape" | .adequacy => "adequacy" | .frame => "frame" | .conv => "conv"
+  | .escape => "escape" | .adequacy => "adequacy" | .frame => "frame" | .conv => "conv" | .truth => "truth"
 
-def Kind.all : List Kind := [.nat, .falseProof, .verdict, .renorm, .escape, .adequacy, .frame, .conv]
+def Kind.all : List Kind := [.nat, .falseProof, .verdict, .renorm, .escape, .adequacy, .frame, .conv, .truth]
 
 structure Finding where
   kind : Kind
@@ -41,11 +41,12 @@ structure Finding where
   reason : String := ""     -- for errors: the message with numbers and names stripped
 deriving Inhabited
 
-/-- An error message as a class: digits and the words after "value"/"place"/"of" dropped. -/
+/-- An error message as a class: digits, places and short names dropped. -/
 def errKey (e : String) : String :=
   let e := String.ofList (e.toList.filter fun c => !c.isDigit)
-  let ws := (e.splitOn " ").take 7
-  " ".intercalate ws
+  let ws := (e.splitOn " ").filter fun w =>
+    w.length > 2 && !(w.any fun c => c == '*' || c == '(' || c == '.' || c == '⌈' || c == '_')
+  " ".intercalate (ws.take 6)
 
 def Finding.key (f : Finding) : String :=
   if f.reason == "" then f.kind.name else s!"{f.kind.name}: {f.reason}"
@@ -80,15 +81,20 @@ def obsRun (st : MState) (A t u : Term) (W : List Pos) (typed : Bool) (k : Nat) 
 /-- Compare the symbolic path's value `r` (from state `sR`) with the direct path's `d`
 (from `sD`). Returns a finding kind with the two values printed, or `none`; the Bool
 says the two differ syntactically but agree on every ground completion. -/
-def compareVals (sR sD : MState) (pinned : List Nat) (r d : Value) (rng : Rng) :
-    Option (Kind × String × String) × Bool := Id.run do
+def compareVals (sR sD : MState) (pinned : List Nat) (r d : Value) (rng : Rng)
+    (fns : List (Nat × List Value) := []) : Option (Kind × String × String) × Bool := Id.run do
   if canon pinned r == canon pinned d then return (none, false)
-  if (absIn r ++ absIn d).any (!pinned.contains ·) then
+  -- abstract values recorded as generalisations (by re-normalisation) are names, not escapes
+  let recR := sR.neutrals.map (·.2)
+  let recD := sD.neutrals.map (·.2)
+  if (absIn r).any (fun σ => !pinned.contains σ && !recR.contains σ) ||
+     (absIn d).any (fun σ => !pinned.contains σ && !recD.contains σ) then
     return (some (.escape, r.pp, d.pp), false)
   if groundV r && groundV d then return (some (.nat, r.pp, d.pp), false)
-  for γ in completions sR pinned [r, d] 4 rng do
+  let recVals := sR.neutrals.map (·.1) ++ sD.neutrals.map (·.1)
+  for γ in completions sR pinned ([r, d] ++ recVals) 4 rng fns do
     let lbl := ", ".intercalate (γ.map fun (σ, v) => s!"σ{σ} := {v}")
-    match refineVal sR [] γ r, refineVal sD [] γ d with
+    match refineVal sR sR.neutrals γ r, refineVal sD sD.neutrals γ d with
     | .ok r', .ok d' =>
       if canon pinned r' != canon pinned d' then
         return (some (.nat, s!"{r.pp}  ⟶[{lbl}]  {r'.pp}", s!"{d.pp}  ⟶[{lbl}]  {d'.pp}"), false)
