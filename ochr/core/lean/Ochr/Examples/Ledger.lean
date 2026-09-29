@@ -132,3 +132,7 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard flips { disjoint := false } ==
   ["E6.NotAdd01:rejected", "Logic.NoConf:rejected", "Logic.NoConfS:rejected", "Logic.NoConfMatch:rejected", "Logic.NoConfBack:rejected", "Logic.BoolDisj:rejected", "Logic.WriteDisj:rejected"]
+-- finding (v2.0 round): v1.9 assumed a data match's scrutinee type from its arms
+open Ochr.Registry in
+#guard flips { scrutTyped := false } ==
+  ["Scrut.f:accepted", "Scrut.g:accepted"]

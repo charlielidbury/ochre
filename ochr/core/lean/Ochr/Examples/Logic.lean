@@ -204,3 +204,23 @@ ochr PosParam {
 -- every verdict as expected, and exactly 15 assertions (a truncated file changes the count)
 #guard (run "PosParam" PosParam).allAsExpected
 #guard (run "PosParam" PosParam).count == 15
+
+ochr Scrut {
+  -- a match is on a place of its constructors' type, read from the place's type. v1.9's
+  -- checker assumed it from the arms: it split the T(n)-typed x with L's constructors and
+  -- accepted f and g, and at run time g(5) runs L's arms on the number 5
+  inductive L := LNil | LCons(h : Nat, t : L)
+  def T (n : Nat) : Type := match n { Z => L | S _ => Nat }
+  reject def f (n : Nat) (x : T(n)) : Nat := match x { LNil => 0 | LCons(h, t) => 0 }
+  reject def g (x : Nat) : Nat := f(1, x)
+  def f0 (x : T(0)) : Nat := match x { LNil => 0 | LCons(h, t) => h }
+  -- constructors are resolved by name, so a name is declared once
+  inductive A := Mk(x : Nat)
+  reject inductive B := Mk(y : Unit)
+}
+
+#eval IO.println (run "Scrut" Scrut).show
+
+-- every verdict as expected, and exactly 7 assertions (a truncated file changes the count)
+#guard (run "Scrut" Scrut).allAsExpected
+#guard (run "Scrut" Scrut).count == 7

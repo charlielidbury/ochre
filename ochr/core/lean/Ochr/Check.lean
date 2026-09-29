@@ -94,6 +94,9 @@ types are checked at generic parameters, in a frame of their own. -/
 def checkInd (d : IndDecl) : M Unit := do
   let n := d.name
   if (← get).inds.any (·.name == n) then err s!"{n} is already declared"
+  for (cn, _) in d.ctors do
+    if (← get).inds.any (·.ctors.any (·.1 == cn)) || (d.ctors.filter (·.1 == cn)).length > 1 then
+      err s!"{n}: the constructor name {cn} is already used (constructors are resolved by name)"
   if d.sort > 1 then err s!"{n}: an inductive type is in Prop or Type"
   modify fun s => { s with env := #[{}], inds := s.inds ++ [{ d with ctors := [] }] }
   for (h, PT) in d.params do

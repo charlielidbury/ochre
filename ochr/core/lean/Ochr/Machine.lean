@@ -1653,11 +1653,13 @@ partial def ctorRefinement (d : IndDecl) (ps : List Value) (c : Nat) : M Value :
   pure (.ind d.name c ⟨cn⟩ fs.toList)
 
 /-- The inductive type of a matched place and its parameters, from the place's type (the
-arms' constructors name `ty`; `""` for a match with no arms). -/
+arms' constructors name `ty`; `""` for a match with no arms). The type is read, not
+assumed from the arms (finding: v1.9's checker split a `T(n)`-typed place with `L`'s
+constructors, so `f(1, x)`, with `T(1) = Nat`, ran `L`'s arms on a number). -/
 partial def scrutType (p : Place) (ty : String) : M (IndDecl × List Value) := do
-  if ty != "" then
+  if ty != "" && !(← get).cfg.scrutTyped then
     let d ← lookupInd ty
-    if d.params.isEmpty && d.sort == 1 then return (d, [])   -- no need to read the type
+    if d.params.isEmpty && d.sort == 1 then return (d, [])   -- counterfactual: v1.9 assumed it
   match ← placeType p with
   | .tInd n ps =>
     if ty != "" && n != ty then err s!"[Match] on {← ppPlace p} : {mkTInd n ps}, with the constructors of {ty}"
@@ -1742,7 +1744,9 @@ partial def evalMatchInd (typed : Bool) (p : Place) (ty : String) (arms : List (
   accessNeutralHead p
   let v ← content p
   match v with
-  | .ind _ c _ _ => match arms[c]? with
+  | .ind t c _ _ =>
+    if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
+    match arms[c]? with
     | some (_, a) => eval typed a
     | none => err s!"[Match] no arm for constructor {c}"
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
@@ -1963,7 +1967,9 @@ partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
     accessPath p
     accessNeutralHead p
     match ← content p with
-    | .ind _ c _ _ => match arms[c]? with
+    | .ind t c _ _ =>
+      if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
+      match arms[c]? with
       | some (_, a) => checkTail a k
       | none => err s!"[Match] no arm for constructor {c}"
     | .abs σ =>

@@ -108,6 +108,7 @@ structure Config where
                                  -- (zero constructors, or one whose fields are all proofs)
   propValues : Bool := true      -- v2.0 D42: a constructor application of a Prop inductive is a proof (⋆, erased)
   disjoint : Bool := true        -- v2.0 D47: `Eq D (C ā) (C' b̄) ≡ False` for distinct constructors C ≠ C'
+  scrutTyped : Bool := true      -- finding (v2.0 round): a match's scrutinee must have the constructors' type
   confineBodies : Bool := false  -- an extension of D41, not in RULES: the body of a function whose calls are
                                  -- erased, and each arm of an erased stuck block, are confined too
   trace : Bool := false          -- record goals, splits and call types (for inspection)
