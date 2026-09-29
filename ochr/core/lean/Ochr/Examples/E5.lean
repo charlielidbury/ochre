@@ -19,9 +19,10 @@ ochr E5 {
   def LeAdd (n : Nat) (m : Nat) : Le(n, Add(n, m)) by n :=
     match n { Z => refl | S n' => LeAdd(n', m) }
 
-  -- peel y successors off the top of *x; the precondition survives *x := p
+  -- peel y successors off the top of *x; the precondition survives *x := p, and where *x
+  -- is Z but y is not, h : Le(S q, Z) computes to False (v2.0: the paper's version)
   def SubM (x : &Nat) (y : Nat) (h : Le(y, *x)) : Unit by y :=
-    match y { Z => () | S q => match *x { Z => () | S p => *x := p; SubM(x, q, h) } }
+    match y { Z => () | S q => match *x { Z => match h {} | S p => *x := p; SubM(x, q, h) } }
 
   -- a proof from the snapshot old, about the mutated *x
   def AddSub (x : &Nat) (y : Nat) : Unit :=
