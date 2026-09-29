@@ -135,7 +135,7 @@ ochr Equality uses Std {
   )
 
   def Om (h1 : Eq Type (Nat → Nat) ((Nat → Nat) → Nat)) (h2 : Eq Type ((Nat → Nat) → Nat) (Nat → Nat)) : Nat := (
-    let f = (λ(x : Nat → Nat) : Nat => (C1(h1, x))(x));
+    let f = (λ(x : Nat → Nat) : Nat => (C1(h1, clone(x)))(x));
     f(C2(h2, f))
   )
 

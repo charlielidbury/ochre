@@ -53,24 +53,24 @@ ochr Erasure uses Std {
   -- A proof may change its own locals ...
   def Local (x : &Nat) : Nat := (
     let h : ⊤ = (let y = 0; y := 1; refl);
-    *x
+    clone(*x)
   )
 
   -- ... and hand an outer place to another proof (as `AddMZero`'s recursive call does) ...
   def Pass (x : &Nat) : Nat := (
     let h = AddMZero(&*x);
-    *x
+    clone(*x)
   )
 
   -- ... but may not write, borrow or move one itself.
   reject def Write (x : &Nat) : Nat := (
     let h : ⊤ = (*x := 5; refl);
-    *x
+    clone(*x)
   )
 
   reject def Borrow (x : &Nat) : Nat := (
     let h : ⊤ = (AddM(&*x, 0); refl);
-    *x
+    clone(*x)
   )
 
   reject def Move (x : &Nat) : Nat := (
@@ -222,7 +222,7 @@ ochr ErasureBySyntax uses Fixtures {
   reject def BoomL : Eq Nat Z (S Z) := LieL(Z)
 
   -- The same, with the closure made by a top-level function.
-  def MkClosure (n : Nat) : (Π(x : &Nat). U(n)) := λ(x : &Nat) : U(n) => (*x := S Z; V(n))
+  def MkClosure (n : Nat) : (Π(x : &Nat). U(n)) := λ(x : &Nat) : U(n) => (*x := S Z; V(clone(n)))
   def Lie8 (n : Nat) : Id Nat (let c = Z; let g = MkClosure(n); g(&c); c) (S Z) := refl
   reject def Boom8 : Eq Nat Z (S Z) := Lie8(Z)
   reject def Direct8 : Id Nat (let c = Z; let g = MkClosure(0); g(&c); c) Z := refl

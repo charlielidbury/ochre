@@ -106,7 +106,10 @@ def switches : List (String × Config) :=
    ("D54 (v2.1): a Π-type's erasure class, and whether it returns a borrow, are part of it", { classInType := false }),
    ("D56 (v2.1): J computes only when its endpoints are convertible", { jStuck := false }),
    ("D58 (v2.1): a zero-arm match outside a proof position is stuck, not ⋆", { zeroArmStuck := false }),
-   ("D55 (v2.1): sorts are syntactic (one notion of proposition)", { sortsSyntactic := false })]
+   ("D55 (v2.1): sorts are syntactic (one notion of proposition)", { sortsSyntactic := false }),
+   ("D53: a runtime read of data whose type is not a copy type moves it", { moves := false }),
+   ("D53 (c): a move leaves a ghost that erased terms still read", { ghosts := false }),
+   ("D53 (e): the Fn rule (a call does not consume its function; closure bodies do not move their captures)", { fnRule := false })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -119,7 +122,12 @@ def switches : List (String × Config) :=
   the suite has no closed false proof;
 * `policy`: it accepts only programs that are true under the other rules (a fail-safe or
   a stability condition, with no witness here);
-* `completeness`: it only rejects good programs. -/
+* `completeness`: it only rejects good programs;
+* `subsumed`: it flips nothing, because the erasure pre-pass decides what it decided
+  (a term is erased by its declared type, before it runs);
+* `cost`: it accepts programs that copy data whose type is not a copy type without saying
+  so (`clone`), or leave a borrowed place partly moved out: the cost model's rule (D53),
+  not the logic's. -/
 def rowClass : List (String × List String) :=
   [("soundness", ["Erasure.BoomP2"]),
    ("soundness", ["Erasure.N1Closed", "Erasure.QBoom", "ErasureBySyntax.BoomP"]),
@@ -170,12 +178,15 @@ def rowClass : List (String × List String) :=
    ("subsumed", []),
    ("completeness", []),
    ("completeness", []),
-   ("model", ["Sorts.K1", "Sorts.K2"])]
+   ("model", ["Sorts.K1", "Sorts.K2"]),
+   ("cost", ["Borrows.TwiceNat", "Borrows.ClosureMovesCapture"]),
+   ("completeness", []),
+   ("completeness", [])]
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 526
+def Ochr.Registry.expectedTotal : Nat := 547
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

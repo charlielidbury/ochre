@@ -86,23 +86,10 @@ replacement also reaches the copies of the comparison that the goal computes lat
 switch `genConsistent`). The size theorem needs one arithmetic lemma, proved in place. -/
 
 ochr Trees uses Std {
-  inductive Tree := Leaf | Node(l : Tree, v : Nat, r : Tree)
-
-  def Lt (a : Nat) (b : Nat) : Bool by a := (
-    match a {
-      Z => match b {
-        Z => false,
-        S _ => true,
-      },
-      S a' => match b {
-        Z => false,
-        S b' => Lt(a', b'),
-      },
-    }
-  )
+  inductive Tree := Leaf | Node(l : Tree, v : Word, r : Tree)
 
   -- In-place insert.
-  def InsertM (t : &Tree) (k : Nat) : Unit by t := (
+  def InsertM (t : &Tree) (k : Word) : Unit by t := (
     match *t {
       Leaf => *t := Node(Leaf, k, Leaf),
       Node(l, v, r) => (
@@ -116,7 +103,7 @@ ochr Trees uses Std {
   )
 
   -- Pure insert.
-  def Insert (t : Tree) (k : Nat) : Tree by t := (
+  def Insert (t : Tree) (k : Word) : Tree by t := (
     match t {
       Leaf => Node(Leaf, k, Leaf),
       Node(l, v, r) => (
@@ -130,7 +117,7 @@ ochr Trees uses Std {
   )
 
   -- The in-place insert is the pure insert.
-  def InsertMEq (t : &Tree) (k : Nat) : Id Unit (InsertM(t, k)) (*t := Insert(*t, k)) by t := (
+  def InsertMEq (t : &Tree) (k : Word) : Id Unit (InsertM(t, k)) (*t := Insert(*t, k)) by t := (
     match *t {
       Leaf => refl,
       Node(l, v, r) => (
@@ -144,7 +131,7 @@ ochr Trees uses Std {
   )
 
   -- An insert that goes the wrong way is not.
-  def InsertMSwap (t : &Tree) (k : Nat) : Unit by t := (
+  def InsertMSwap (t : &Tree) (k : Word) : Unit by t := (
     match *t {
       Leaf => *t := Node(Leaf, k, Leaf),
       Node(l, v, r) => (
@@ -157,7 +144,7 @@ ochr Trees uses Std {
     }
   )
 
-  reject def InsertMSwapEq (t : &Tree) (k : Nat) : Id Unit (InsertMSwap(t, k)) (*t := Insert(*t, k)) by t := (
+  reject def InsertMSwapEq (t : &Tree) (k : Word) : Id Unit (InsertMSwap(t, k)) (*t := Insert(*t, k)) by t := (
     match *t {
       Leaf => refl,
       Node(l, v, r) => (
@@ -171,7 +158,7 @@ ochr Trees uses Std {
   )
 
   -- Recursing on the node itself, not on a subtree, is not structural.
-  reject def InsertLoop (t : &Tree) (k : Nat) : Unit by t := (
+  reject def InsertLoop (t : &Tree) (k : Word) : Unit by t := (
     match *t {
       Leaf => (),
       Node(l, v, r) => InsertLoop(t, k),
@@ -198,7 +185,7 @@ ochr Trees uses Std {
     }
   )
 
-  def SizeInsert (t : Tree) (k : Nat) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t := (
+  def SizeInsert (t : Tree) (k : Word) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t := (
     match t {
       Leaf => refl,
       Node(l, v, r) => (
@@ -235,7 +222,7 @@ ochr Trees uses Std {
   )
 
   -- Without the arithmetic lemma the `false` arm does not check ...
-  reject def SizeInsertNoLemma (t : Tree) (k : Nat) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t := (
+  reject def SizeInsertNoLemma (t : Tree) (k : Word) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t := (
     match t {
       Leaf => refl,
       Node(l, v, r) => (
@@ -265,7 +252,7 @@ ochr Trees uses Std {
   )
 
   -- ... and inserting does not grow the size by two.
-  reject def SizeInsertTwo (t : Tree) (k : Nat) : Id Nat (S (S (Size(t)))) (Size(Insert(t, k))) by t := (
+  reject def SizeInsertTwo (t : Tree) (k : Word) : Id Nat (S (S (Size(t)))) (Size(Insert(t, k))) by t := (
     match t {
       Leaf => refl,
       Node(l, v, r) => SizeInsertTwo(l, k),
@@ -277,34 +264,28 @@ ochr Trees uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Trees" Trees).allAsExpected
-#guard (run "Trees" Trees).count == 14
+#guard (run "Trees" Trees).count == 13
 
 /-! ## The paper's trees: the pure insert runs the in-place one
 
 The paper (§2, Trees) defines the pure insert as `Add` is defined, by running the in-place
 one on a copy, and proves the size theorem about it. `InsertM`, `Insert` and `SizeInsert`
-are the paper's text, in its layout; `Lt` and `Size` are the ones it assumes, and `AddS`
+are the paper's text, in its layout, with `Word` keys (D53: a key is only compared, so it is a
+copy); `Size` is the one it assumes, `Lt` is `Std`'s order on words, and `AddS`
 (`x + S y = S (x + y)`) is proved in place by bare recursion (`AddMS`) and transferred to
 `Add` by lending, as the prose says. The in-place insert is the pure one by definition
 (`InsertMIsInsert`, by `refl`). -/
 
 ochr InPlaceTrees uses Std {
-  inductive Tree := Leaf | Node(l : Tree, v : Nat, r : Tree)
+  inductive Tree := Leaf | Node(l : Tree, v : Word, r : Tree)
 
-  def Lt (a : Nat) (b : Nat) : Bool by a := (
-    match a {
-      Z => match b { Z => false, S _ => true },
-      S a' => match b { Z => false, S b' => Lt(a', b') },
-    }
-  )
-
-  def InsertM (t : &Tree) (k : Nat) : Unit by t :=
+  def InsertM (t : &Tree) (k : Word) : Unit by t :=
     match *t { Leaf          => *t := Node(Leaf, k, Leaf),
                Node(l, v, r) => let b = Lt(k, v);
                                 match b { true => InsertM(&l, k), false => InsertM(&r, k) } }
-  def Insert (t : Tree) (k : Nat) : Tree := InsertM(&t, k); t
+  def Insert (t : Tree) (k : Word) : Tree := InsertM(&t, k); t
 
-  def InsertMIsInsert (t : &Tree) (k : Nat) : Id Unit (InsertM(t, k)) (*t := Insert(*t, k)) := refl
+  def InsertMIsInsert (t : &Tree) (k : Word) : Id Unit (InsertM(t, k)) (*t := Insert(*t, k)) := refl
 
   def AddMS (x : &Nat) (y : Nat) : Id Unit (AddM(x, S y)) (AddM(&*x, y); *x := S *x) by x := (
     match *x {
@@ -322,7 +303,7 @@ ochr InPlaceTrees uses Std {
     }
   )
 
-  def SizeInsert (t : Tree) (k : Nat) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t :=
+  def SizeInsert (t : Tree) (k : Word) : Id Nat (S (Size(t))) (Size(Insert(t, k))) by t :=
     match t { Leaf => refl,
               Node(l, v, r) => let b = Lt(k, v); match b {
                 true  => J(Nat, S (Size(l)), Size(Insert(l, k)),
@@ -336,7 +317,7 @@ ochr InPlaceTrees uses Std {
                              SizeInsert(r, k), refl)) } }
 
   -- Inserting does not grow the size by two.
-  reject def SizeInsertTwo (t : Tree) (k : Nat) : Id Nat (S (S (Size(t)))) (Size(Insert(t, k))) by t := (
+  reject def SizeInsertTwo (t : Tree) (k : Word) : Id Nat (S (S (Size(t)))) (Size(Insert(t, k))) by t := (
     match t {
       Leaf => refl,
       Node(l, v, r) => SizeInsertTwo(l, k),
@@ -348,7 +329,7 @@ ochr InPlaceTrees uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "InPlaceTrees" InPlaceTrees).allAsExpected
-#guard (run "InPlaceTrees" InPlaceTrees).count == 10
+#guard (run "InPlaceTrees" InPlaceTrees).count == 9
 
 /-! ## Parameters: a polymorphic list
 
@@ -421,13 +402,13 @@ ochr PolyLists uses Std {
   -- it a type.
   def CapNil (u : Unit) : Nat := (
     let xs = Nil[Nat];
-    let f = (λ(n : Nat) : List(Nat) => xs);
+    let f = (λ(n : Nat) : List(Nat) => clone(xs));
     0
   )
 
   def CapNilAnn (u : Unit) : Nat := (
     let xs : List(Nat) = Nil;
-    let f = (λ(n : Nat) : List(Nat) => xs);
+    let f = (λ(n : Nat) : List(Nat) => clone(xs));
     0
   )
 

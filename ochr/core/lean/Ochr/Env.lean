@@ -39,6 +39,7 @@ structure Binding where
   decl : DeclInfo := .other   -- what its declared type says (the erasure pre-pass)
   blockRef : Bool := false    -- a stuck block's borrow parameter for a place it writes (a
                               -- checker device: a closure in the block captures through it)
+  cap : Bool := false         -- a closure's captured value (D53 (e): its body may not move it out)
 deriving Inhabited
 
 structure Frame where
@@ -79,6 +80,7 @@ structure IndDecl where
   params : List (Hint × Term) := []
   sort : Nat := 1
   ctors : List (String × List (String × Term)) := []
+  copy : Bool := false    -- declared `copy` (D53): a cost-model statement, reads copy
 deriving Inhabited
 
 /-- A function whose body is being checked, for [Rec]: its entry values and the
@@ -145,9 +147,9 @@ structure Config where
   prePass : Bool := true         -- erasure is decided before evaluation, from declared types (the syntactic pre-pass)
   jStuck : Bool := true          -- D56: J computes only when its endpoints are convertible, otherwise it is stuck
   zeroArmStuck : Bool := true    -- D58: a zero-arm match outside a proof position is stuck, not ⋆
-  movingReads : Bool := false   -- D53 prototype (off): runtime reads of non-copy data move; erased reads copy
-  movingReadsFnCopy : Bool := false   -- D53 prototype variant: function values are copy types
-  movingReadsGhost : Bool := false    -- D53 prototype variant: erased terms still read a moved value
+  moves : Bool := true           -- D53: a runtime read of data whose type is not a copy type moves it; erased reads copy
+  ghosts : Bool := true          -- D53 (c): a move leaves a ghost of the value, which erased terms still read
+  fnRule : Bool := true          -- D53 (e): a call does not consume its function; a closure is copy iff its captures are, and its body may not move them out
   unitNorm : Bool := false       -- counterfactual D50: the unit laws normalise stored types (v2.0 as first built)
   piUnder : Bool := true         -- D48 (3): Π-types are compared under their binders, at generic values
   proofDataFields : Bool := true -- D49 (3): a data field of a matched proof is a fresh abstract value (not ⋆)
@@ -202,8 +204,8 @@ structure MState where
   tailDecl : Option DeclInfo := none       -- ... handed to its tail, whose reading it is (one-shot)
   liveScope : Bool := false               -- declared-type reading: variables beyond the local scope are the top frame's
   headEval : Bool := false                -- the next `eval` is of a call's head (not classified by the pre-pass)
-  erasedDepth : Nat := 0                  -- D53 prototype: > 0 while evaluating a term known to be erased
-  ghosts : List (Pos × Place × Value) := []   -- D53 prototype: values moved out, for erased reads
+  erasedDepth : Nat := 0                  -- D53: > 0 while evaluating an erased term, whose reads copy
+  inPlace : Bool := false                 -- D53: the next read is in place (a call's head, a block's read-only capture)
 deriving Inhabited
 
 inductive Fail where
@@ -242,14 +244,24 @@ def restoreKeep (saved : MState) : M Unit :=
       { s with nextAbs := cur.nextAbs, absTy := cur.absTy, nextLoan := cur.nextLoan, neutrals := cur.neutrals }
     else s
 
-/-- D53 prototype: run `x` as an erased term, whose reads copy. -/
+/-- D53: run `x` as an erased term, whose reads copy. -/
 def withErased {α : Type} (x : M α) : M α := do
   modify fun s => { s with erasedDepth := s.erasedDepth + 1 }
   let r ← tryCatch x (fun e => do modify (fun s => { s with erasedDepth := s.erasedDepth - 1 }); throw e)
   modify fun s => { s with erasedDepth := s.erasedDepth - 1 }
   pure r
 
-/-- D53 prototype: `withErased x` if `b`, else `x`. -/
+/-- D53: run `x` as code (a function's body, a sealed program's re-run), whose reads move,
+even where the term that started it is erased: erasure applies to the reads written in
+the erased term, not to the bodies of the functions it calls. -/
+def withRuntime {α : Type} (x : M α) : M α := do
+  let d := (← get).erasedDepth
+  modify fun s => { s with erasedDepth := 0 }
+  let r ← tryCatch x (fun e => do modify (fun s => { s with erasedDepth := d }); throw e)
+  modify fun s => { s with erasedDepth := d }
+  pure r
+
+/-- D53: `withErased x` if `b`, else `x`. -/
 def withErasedIf {α : Type} (b : Bool) (x : M α) : M α := if b then withErased x else x
 
 /-- Run `x` on a private copy of the state (P2, P6): its effects are discarded. -/

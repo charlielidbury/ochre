@@ -826,3 +826,47 @@ Draft RULES wording for the stuck-block capture rule (§3 "Stuck blocks"), after
 > An occurrence inside a nested `λ` or Π-type counts as a read, whatever that function does with it: a closure captures a copy, so its writes and borrows are to that copy. A closure formed inside the block that reads, through one of the block's `&` parameters, a place the block writes captures the value behind that parameter, as it captures the place itself when the match is not closed off.
 
 526 declarations.
+
+## 26. D53 in the checker: moves, copy types, `clone`, ghosts, the Fn rule
+
+This follows DECISIONS D53, its amendments (a)–(h), the second amendment (`Word`), and fuzz-port's shapes (a)–(c). Switches: `moves` (the rule), `ghosts` (c), `fnRule` (e).
+
+- **Reads.** A runtime read of data whose type is not a copy type moves it: the place holds a *ghost* (`Value.ghost v`, a real form in Ω) and is dead for runtime code. A borrow is always moved (`⊥`). Copy types (`isCopyType`) are:
+  - `Unit`, sorts and propositions;
+  - an inductive declared `copy` (its fields must be copies, checked in `checkInd`);
+  - a non-recursive `Type₀` inductive with copy fields.
+
+  A closure is a copy exactly when its captures are (`isCopyValue`). `Nat` is not a copy type.
+- **Erased reads copy (a).** An erased term's reads copy, and it sees a ghost's value (c: a proof may mention what runtime code moved, in any order). What is erased comes from the pre-pass (§23), decided before the term runs:
+  - types and statements;
+  - `Id`'s sides;
+  - `clone(p)`;
+  - a sealed program's final read (`peek`: the `K` of [Close]);
+  - the bodies of functions whose calls are erased (b).
+- **Sealed programs.** A sealed program's `L; C` re-runs as the code it came from, and only its final read is an observation (shape (b)). Function bodies and sealed re-runs inherit erasure from where they run: a closure written in a statement is not runtime code. Conversion compares functions as code (`convFn` observes under `withRuntime`), so a function that moves out through a borrow is not identified with one that does not (shape (c)).
+- **The ⊥ checks (h)** apply to a place partly moved out: reading it, borrowing it, capturing it, ending a borrow of it, and returning a borrow of it (shape (c): `wholeReturned`).
+- **The Fn rule (e).** A call's head is read in place and not consumed (`inPlace`). A runtime read of a non-copy captured value (`Binding.cap`) is an error, because a closure may run again: clone it. Forming a runtime closure moves the non-copy variables it captures.
+- **Stuck blocks mirror the direct path (shape (a), amendment (f)).**
+  - A place a block only reads is read in place (`inplace`), not consumed.
+  - A part that some arm moves out is moved in on its own, at the move's granularity (`newHoles`: `q1.1`, not `q1`), while the rest of the place is still read in place.
+- **`clone(p)`** is built in: an erased read of a place, so the clone of `σ` is `σ`.
+- **`Word`.** `copy inductive Word := Zero | Succ(pred : Word)` and its boolean order `Lt` are in `Std`. The names avoid `Nat`'s `Z`/`S`, which are syntax; there are no `Word` numerals. The trees' keys are words. `ClosingOff`'s local order on `Nat` is renamed `LtN`.
+
+*Clones.* The suite's existing programs use 25 `clone`s, down from the study's 24 plus 8 new ones for the Fn rule, since `Word` removes the trees' six and `NotDead`'s one. They fall into three groups:
+- data used twice (7): `(clone(n), n)` twice, `UseDec`, `PickEarly` ×3, `Om`'s function value;
+- a copy taken out of a borrow (10): `CapCopy`, `CapS`, `CapSId`, `Local`, `Pass`, `Write`, `Borrow`, `AddSub` ×3;
+- a closure body returning what it captured (8): `UseApply`, `CapCopy`, `CapS`, `CapEndsBorrow`, `Functions.Cap`, `CapNil`, `CapNilAnn`, `MkClosure`.
+
+`PickEarly`'s `n` is a selector that `Fixtures.Pick` takes as a `Nat`; as a `Word` it would need no clone.
+
+*Tests.*
+- `Borrows` gets a section "Moves and copies (D53)" (18 declarations): moves, `clone`, `Word`, `copy` declarations, the ghost, the borrow rules, the Fn rule, and shape (b) (`MoveInArm`).
+- `ClosingOff.BlockReads` and `BlockMovesField` cover shape (a); `Functions.RetMoved` covers shape (c).
+- D48 (2) has a new witness: `G` now reads `a` while `r` may borrow it, since D53 catches the old double read by itself.
+
+*Ledger.* Three new rows:
+- D53: class `cost` (new), witnesses `TwiceNat` and `ClosureMovesCapture`.
+- (c): completeness (`GhostRead`, `AddSub`…).
+- (e): completeness (`CallTwice`, `Twice`…, `Size`).
+
+53 rows: soundness 19, false lemma 1, model 4, policy 4, subsumed 4, cost 1, completeness 20. 547 verdicts.

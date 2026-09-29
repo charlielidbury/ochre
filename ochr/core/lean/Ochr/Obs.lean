@@ -34,6 +34,7 @@ def stepV : Step → Value → Option Value
   | .snd, .ind "Pair" 0 _ _ [_, b] => some b
   | .field g, .ind t c _ _ fs => if t == g.ty && c == g.ctor then fs[g.idx]? else none
   | .field _, .proof => some .proof
+  | s, .ghost w => (stepV s w).map .ghost     -- D53: every part of a moved value is moved
   | _, _ => none
 
 def Value.follow (v : Value) : List Step → Option Value

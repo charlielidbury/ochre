@@ -72,8 +72,8 @@ ochr Snapshots uses Std {
 
   -- Copying the number out first is fine ...
   def CapCopy (x : &Nat) : Nat := (
-    let n = *x;
-    let f = (λ(y : Nat) : Nat => n);
+    let n = clone(*x);
+    let f = (λ(y : Nat) : Nat => clone(n));
     f(0)
   )
 
@@ -81,14 +81,14 @@ ochr Snapshots uses Std {
   -- captured value keeps its type, so the closure can be typed.
   def CapS (x : &Nat) : Nat := (
     AddM(&*x, 1);
-    let n = *x;
-    let f = (λ(y : Nat) : Nat => n);
+    let n = clone(*x);
+    let f = (λ(y : Nat) : Nat => clone(n));
     f(0)
   )
 
   def CapSId (x : &Nat) : Nat := (
     AddM(&*x, 1);
-    let n = *x;
+    let n = clone(*x);
     let f = (λ(y : Nat) : Id Nat n n => refl);
     0
   )
@@ -111,7 +111,7 @@ ochr Snapshots uses Std {
   -- is a use of an ended borrow ...
   reject def CapEndsBorrow (a : Nat) : Nat := (
     let r = &a;
-    let f = (λ(y : Nat) : Nat => a);
+    let f = (λ(y : Nat) : Nat => clone(a));
     *r := 1;
     f(0)
   )

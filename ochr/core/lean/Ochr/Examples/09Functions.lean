@@ -72,7 +72,7 @@ ochr Functions uses Std, Fixtures {
 
   -- A closure that captures a variable has a closed Π-type ...
   def Apply (f : Π(n : Nat). Nat) (n : Nat) : Nat := f(n)
-  def Cap (m : Nat) : Nat := Apply(λ(n : Nat) : Nat => Add(n, m), 0)
+  def Cap (m : Nat) : Nat := Apply(λ(n : Nat) : Nat => Add(n, clone(m)), 0)
   def CapEq (m : Nat) : Id Nat (Apply(λ(n : Nat) : Nat => Add(n, m), 0)) (Add(0, m)) := refl
 
   -- ... type abbreviations unfold under binders ...
@@ -141,6 +141,13 @@ ochr Functions uses Std, Fixtures {
     let d = Z;
     TY(&c, &d)
   )
+
+  -- A function that moves out of `*y10` and returns `y10` hands back a borrow of a moved
+  -- place, an error as when a borrow ends partly moved (D53). Compared by their results
+  -- only through a fresh value written into them (D38), it looked equal to the one that just
+  -- returns `y10` (fuzz-port shape (c)).
+  reject def RetMoved : Eq (Π(y9 : &Nat) (y10 : &Nat). &Nat)
+      (λ(y9 : &Nat) (y10 : &Nat) : &Nat => (*y10; y10)) (λ(y9 : &Nat) (y10 : &Nat) : &Nat => y10) := refl
 
   -- A function's erasure class and [Close] row are part of its type (D54). `H` returns a
   -- `P0`, which is `Prop` but not written as a sort, so `H` returns data and its calls run,
@@ -215,4 +222,4 @@ ochr Functions uses Std, Fixtures {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Functions" Functions).allAsExpected
-#guard (run "Functions" Functions).count == 54
+#guard (run "Functions" Functions).count == 55

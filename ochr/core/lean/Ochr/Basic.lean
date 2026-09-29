@@ -264,7 +264,7 @@ mutual
 programs, closures and Π-types too (loans may occur there: RULES §2). -/
 partial def Value.anyAtom (P : Value → Bool) (v : Value) : Bool :=
   P v || match v with
-  | .succ w | .tRef w | .borrow _ w => w.anyAtom P
+  | .succ w | .tRef w | .borrow _ w | .ghost w => w.anyAtom P
   | .tEq A a b => A.anyAtom P || a.anyAtom P || b.anyAtom P
   | .clo cs t | .tPi cs t => cs.any (·.anyAtom P) || t.anyAtom P
   | .sealed t => t.anyAtom P
@@ -288,11 +288,23 @@ partial def Term.anyAtom (P : Value → Bool) : Term → Bool
   | _ => false
 end
 
+/-- D53: the value with every ghost replaced by the value it keeps (an erased read). -/
+partial def Value.unghost : Value → Value
+  | .ghost w => w.unghost
+  | .succ w => .succ w.unghost
+  | .ind t c h ps fs => .ind t c h ps (fs.map Value.unghost)
+  | .borrow l w => .borrow l w.unghost
+  | v => v
+
+/-- D53: part of the value was moved out (a ghost) or is gone (`⊥`). -/
+def Value.hasHole (v : Value) : Bool := v.anyAtom fun a => a == .bot || a matches .ghost _
+
+
 mutual
 /-- All loan labels occurring in a value (with repetition). -/
 partial def Value.loans : Value → List Nat
   | .loan l => [l]
-  | .succ w | .tRef w | .borrow _ w => w.loans
+  | .succ w | .tRef w | .borrow _ w | .ghost w => w.loans
   | .tEq A a b => A.loans ++ a.loans ++ b.loans
   | .clo cs t | .tPi cs t => cs.flatMap Value.loans ++ t.loans
   | .sealed t => t.loans

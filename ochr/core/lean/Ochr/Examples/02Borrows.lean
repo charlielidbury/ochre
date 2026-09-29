@@ -3,8 +3,10 @@ import Ochr.Examples.«00Std»
 /-! # 2. Borrows: moving, copying, reborrowing, and the borrow checker
 
 `&p` borrows the place `p`, and `*r` is the place a borrow `r` points to. Reading a place
-that holds data copies it; reading a place that holds a borrow moves the borrow out, and
-the place it was read from is dead (RULES P3). `&*x` reborrows: it lends `*x` for a while
+moves what it holds out, and the place is dead afterwards, unless its type is a copy type
+(`Unit`, `Bool`, a `Word`, a pair of copies; not `Nat`), which a read copies. `clone(p)`
+copies anything. A term that is erased (a type, a proof, a statement) reads without moving,
+and still sees what was moved (D53). A borrow is always moved (RULES P3). `&*x` reborrows: it lends `*x` for a while
 and leaves `x` usable afterwards. Before a place is used, every borrow that might still
 reach it is ended ([Access]); using an ended borrow is an error, and so is dropping a
 local that something still borrows ([Drop]). This is the whole borrow checker.
@@ -26,8 +28,8 @@ ochr Borrows uses Std {
     AddM(x, 0)
   )
 
-  -- Reading a number copies it, so `Add(x, x)` reads `x` twice, and `x + x = x` is a
-  -- well-formed statement (a false one).
+  -- A statement is erased, and its reads copy, so `Add(x, x)` reads `x` twice, and
+  -- `x + x = x` is a well-formed statement (a false one).
   def AddXX (x : Nat) : Prop := Id Nat (Add(x, x)) x
 
   -- A borrow of a local writes to the local: after `*y := 2` through `y = &x`, `x` is `2`.
@@ -55,8 +57,94 @@ ochr Borrows uses Std {
   reject def Dead (f : Π(a : &Nat) (b : Nat). Unit) (x : Nat) : Unit := f(&x, x)
   reject def DeadTwice (f : Π(a : &Nat) (b : &Nat). Unit) (x : Nat) : Unit := f(&x, &x)
 
-  -- The other way round is fine: `x` is copied first, then borrowed.
-  def NotDead (f : Π(a : Nat) (b : &Nat). Unit) (x : Nat) : Unit := f(x, &x)
+  -- The other way round is fine when `x` is a copy (a `Word`, D53): it is copied first, then
+  -- borrowed. A `Nat` is moved by the first argument, so it needs `clone(x)` there.
+  def NotDead (f : Π(a : Word) (b : &Word). Unit) (x : Word) : Unit := f(x, &x)
+
+  -- ## Moves and copies (D53)
+  -- Reading a `Nat` moves it: after `let m = n`, `n` is gone ...
+  def MoveNat (n : Nat) : Nat := (
+    let m = n;
+    m
+  )
+
+  reject def UseAfterMove (n : Nat) : Nat := (
+    let m = n;
+    n
+  )
+
+  -- ... unless it is cloned. A `Word` is declared `copy`, so every read copies it.
+  def CloneNat (n : Nat) : Nat × Nat := (clone(n), n)
+  reject def TwiceNat (n : Nat) : Nat × Nat := (n, n)
+  def TwiceWord (w : Word) : Word × Word := (w, w)
+
+  -- A type is a copy type when it is declared `copy` (its fields must be copies) or when it
+  -- is not recursive and its fields are copies.
+  copy inductive Pt := MkPt(x : Word, y : Word)
+  reject copy inductive NatBox := MkNatBox(n : Nat)
+  def TwicePt (p : Pt) : Pt × Pt := (p, p)
+
+  -- A statement reads without moving, and sees what was moved (its ghost), in any order.
+  def GhostRead (n : Nat) : Nat := (
+    let m = n;
+    let h : Id Nat n m = refl;
+    m
+  )
+
+  -- Moving out through a borrow is allowed when the place is whole again by the time the
+  -- borrow ends ...
+  def TakeAndRestore (x : &Nat) : Nat := (
+    let v = *x;
+    *x := Z;
+    v
+  )
+
+  -- ... and an error otherwise, as is returning a borrow of what was moved out.
+  reject def TakeFromBorrow (x : &Nat) : Nat := *x
+
+  reject def ReturnMovedBorrow (x : &Nat) (y : &Nat) : &Nat := (
+    let v = *y;
+    y
+  )
+
+  -- A call does not consume the function it calls, so a function can be called twice. A
+  -- closure may run again, so its body may not move out of what it captured: returning a
+  -- captured `Nat` needs `clone`. A closure whose captures are copies is a copy itself;
+  -- otherwise reading it moves it.
+  def CallTwice (f : Π(x : Nat). Nat) (x : Nat) : Nat := f(f(x))
+
+  reject def ClosureMovesCapture (n : Nat) : Nat × Nat := (
+    let f = (λ(u : Unit) : Nat => n);
+    (f(()), f(()))
+  )
+
+  def ClosureClones (n : Nat) : Nat × Nat := (
+    let f = (λ(u : Unit) : Nat => clone(n));
+    (f(()), f(()))
+  )
+
+  def ClosureCopy (w : Word) : Word × Word := (
+    let f = (λ(u : Unit) : Word => w);
+    let g = f;
+    (f(()), g(()))
+  )
+
+  reject def ClosureMoved (n : Nat) : Nat := (
+    let f = (λ(u : Unit) : Nat => clone(n));
+    let g = f;
+    f(())
+  )
+
+  -- A match that moves out of a borrowed place in one arm leaves the borrow partly moved
+  -- when it ends. Closed off, the same program is re-run for its result and for what it
+  -- leaves in `*x0`, and each re-run moves again: the re-runs have runtime semantics, and
+  -- only the final read of the result is an observation (fuzz-port shape (b)).
+  reject def MoveInArm (x0 : &Nat) : Nat := (
+    match *x0 {
+      Z => *x0,
+      S p3 => 0,
+    }
+  )
 
   -- A statement about two separate borrows ...
   def g (x : &Nat) (y : &Nat) : Id Nat (*x := 0; *y := 1; *x) (*x := 0; *y := 1; 0) := refl
@@ -101,4 +189,4 @@ ochr Borrows uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Borrows" Borrows).allAsExpected
-#guard (run "Borrows" Borrows).count == 14
+#guard (run "Borrows" Borrows).count == 32
