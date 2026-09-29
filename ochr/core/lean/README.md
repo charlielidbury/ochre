@@ -63,8 +63,10 @@ ochr Numbers {
 | `Ochr/Surface.lean`, `Ochr/Notation.lean` | named surface terms, their resolution, blocks (`Block`, `uses`, name clashes), the `ochr` command |
 | `Ochr/Test.lean` | running a block after its library (`libOf`), verdict tables, traces; attributing a counterfactual flip to a library declaration's home block (`blockFlips`) |
 | `Ochr/Examples/00Std.lean` … `15BorrowTypes.lean` | the example programs, as a tour of the language (next section); `00Std.lean` holds `Std`, the definitions the others use |
+| `Ochr/Examples/16HashMap.lean` | the case study: Aeneas's verified hash map as one in-place program with its theorems (`notes/hashmap-case-study.md`) |
+| `Ochr/Examples/CaseStudyLedger.lean` | the counterfactual ledger for the case study, run by hand (`lake env lean`), not part of `lake build` |
 | `Ochr/Examples/Units.lean` | unit tests of machine functions ([Seal], owners, footprint) on hand-built values |
-| `Ochr/Examples/Registry.lean` | every program, in reading order, for the runner and the ledger; the total count; the ledger's switches and row classes |
+| `Ochr/Examples/Registry.lean` | every program, in reading order, for the runner and the ledger; the case studies (`caseStudies`: checked, counted and timed, but not re-run by the ledger); the total count; the ledger's switches and row classes |
 | `Ochr/Examples/Ledger.lean` | the counterfactual ledger, asserted |
 | `Tests.lean` | `lake exe tests` |
 
@@ -90,8 +92,9 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `13Erasure` | erased terms run on a private copy, confinement, erasure decided by syntax | P2 | 55 |
 | `14Universes` | `Prop : Type`, no `Type : Type`, no cumulativity, why `&Type` is refused | preamble, P2 | 8 |
 | `15BorrowTypes` | what may be borrowed and where `&` may appear (D48) | §1 | 16 |
+| `16HashMap` | case study: Aeneas's resizing hash map, its lookups, length, invariant, resizing and load factor, proved about the in-place code (`notes/hashmap-case-study.md`) | all | 182 |
 
-440 declarations in all, the `Prelude`'s 4 included. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+622 declarations in all, the `Prelude`'s 4 and the case study's 182 included. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 

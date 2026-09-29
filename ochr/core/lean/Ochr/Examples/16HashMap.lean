@@ -15,8 +15,9 @@ and saturates at the last bucket, so it needs no bounds proof. Keys and values a
 and the hash is the identity, as in Aeneas; `k mod (n + 1)` picks the bucket.
 
 The file has four programs: `HashMap`, the implementation with concrete runs; `HashMapLookup`,
-lookups after each operation; `HashMapLength`, the length field counts the entries;
-`HashMapResize`, the invariant and resizing. -/
+lookups after each operation; `HashMapLength`, the length field and the count of entries;
+`HashMapResize`, the invariant, resizing, `Insert` with its resize, and the load factor. The
+theorems about `GetMut` are written but rejected (a gap in the rules, see the note). -/
 
 open Ochr.Test
 
