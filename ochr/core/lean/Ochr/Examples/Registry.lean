@@ -37,10 +37,19 @@ def programs : List (String × Block) :=
    ("PolyLists", PolyLists), ("Positivity", Positivity), ("PositivityParams", PositivityParams),
    ("PositivityPaper", PositivityPaper), ("Propositions", Propositions),
    ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
-   ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("BorrowTypes", BorrowTypes), ("HashMap", HashMap)]
+   ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("BorrowTypes", BorrowTypes)]
+
+/-- Case studies (`16HashMap`): checked and counted with the tour, and timed by `lake exe
+tests`, but not re-run by the counterfactual ledger, which is about the rules. A case study's
+programs are large and chained (each block re-checks the blocks it uses), so each ledger row
+would re-check them twice; their flips are measured once instead, by
+`Ochr/Examples/CaseStudyLedger.lean` (run it with `lake env lean`), and reported in
+`notes/hashmap-case-study.md`. -/
+def caseStudies : List (String × Block) :=
+  [("HashMap", HashMap), ("HashMapLookup", HashMapLookup), ("HashMapLength", HashMapLength)]
 
 def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
-  programs.map fun (n, p) => run n p cfg fuel
+  (programs ++ caseStudies).map fun (n, p) => run n p cfg fuel
 
 /-- The declarations whose verdict under `cfg` differs from the default, as
 `program.name:verdict`, and the declarations that flip only because a library declaration
@@ -170,7 +179,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 478
+def Ochr.Registry.expectedTotal : Nat := 536
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

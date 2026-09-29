@@ -17,22 +17,6 @@ def rowOk (c : Config) (e : List String) (bl : List String := []) : Bool :=
     | some (_, (k, ws)) => classOk k ws fs
     | none => false
 
-/-- The hash map's flips (`16HashMap.lean`), kept apart from the tour's: without
-generalise-then-split (C8) nothing that compares keys checks, since every key comparison is
-a sealed program; without G1 the proofs that split on a key comparison lose it when the goal
-re-derives it. -/
-def hashMapGeneralize : List String :=
-  ["HashMap.ModGo:rejected", "HashMap.Idx:rejected", "HashMap.BGet:rejected", "HashMap.BInsert:rejected",
-   "HashMap.BRemove:rejected", "HashMap.BFind:rejected", "HashMap.BGetMut:rejected", "HashMap.Get:rejected",
-   "HashMap.InsertNoResize:rejected", "HashMap.Remove:rejected", "HashMap.Find:rejected", "HashMap.GetMut:rejected",
-   "HashMap.MoveBucket:rejected", "HashMap.MoveSlots:rejected", "HashMap.Resize:rejected", "HashMap.Insert:rejected",
-   "HashMap.RunLayout:rejected", "HashMap.RunGet:rejected", "HashMap.RunOverwrite:rejected",
-   "HashMap.RunCollide:rejected", "HashMap.RunRemove:rejected", "HashMap.RunGetMut:rejected",
-   "HashMap.RunClear:rejected"]
-
-def hashMapG1 : List String :=
-  ["HashMap.BGetMut:rejected", "HashMap.GetMut:rejected", "HashMap.RunGetMut:rejected"]
-
 end Ochr.Registry
 
 /-! ## The counterfactual ledger (asserted)
@@ -70,9 +54,9 @@ open Ochr.Registry in
   ["Borrows.Dead:accepted", "Borrows.DeadTwice:accepted"]
 open Ochr.Registry in
 #guard rowOk { generalize := false }
-  (["CaseSplits.MatchAfterOpaque:rejected", "GenType.GenL:rejected", "Trees.InsertM:rejected",
+  ["CaseSplits.MatchAfterOpaque:rejected", "GenType.GenL:rejected", "Trees.InsertM:rejected",
    "Trees.Insert:rejected", "Trees.InsertMEq:rejected", "Trees.InsertMSwap:rejected",
-   "Trees.SizeInsert:rejected"] ++ hashMapGeneralize)
+   "Trees.SizeInsert:rejected"]
 open Ochr.Registry in
 #guard rowOk { blockMoves := false }
   ["ClosingOff.MovedByBlock:accepted"]
@@ -105,7 +89,7 @@ open Ochr.Registry in
   ["ClosingOff.Clear:accepted", "ClosingOff.Boom5:accepted"]
 open Ochr.Registry in
 #guard rowOk { genConsistent := false }
-  (["Trees.InsertMEq:rejected", "Trees.SizeInsert:rejected"] ++ hashMapG1)
+  ["Trees.InsertMEq:rejected", "Trees.SizeInsert:rejected"]
 open Ochr.Registry in
 #guard rowOk { classBySyntax := false }
   ["ErasureBySyntax.BoomL:accepted", "ErasureBySyntax.Boom8:accepted", "ErasureBySyntax.Direct8:accepted",

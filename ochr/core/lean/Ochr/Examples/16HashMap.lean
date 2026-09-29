@@ -372,3 +372,860 @@ ochr HashMap uses Std {
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "HashMap" HashMap).allAsExpected
 #guard (run "HashMap" HashMap).count == 38
+
+/-! ## Lookups after each operation
+
+Each theorem says what `Find` returns after an operation, for the key it touched and for
+any other key. The statements use the operations themselves: "after `InsertNoResize(hm, k,
+v)`, `Find(*hm, k)` is `Some(v)`" is `Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k))
+(InsertNoResize(&*hm, k, v); Some(v))`. Each is proved first for one bucket, by recursion on
+the bucket, then lifted through `Slot` by recursion on the slots, then stated for the map. -/
+
+ochr HashMapLookup uses Std, HashMap {
+  -- ## Key comparison
+  def EqBRefl (k : Nat) : Eq Bool (EqB(k, k)) true by k := (
+    match k {
+      Z => refl,
+      S k' => EqBRefl(k'),
+    }
+  )
+
+  -- Where the comparison says the keys are equal, they are. `S a = S b` is `a = b`
+  -- (injectivity), so the recursive call proves the `S` case as it stands.
+  def EqBSound (a : Nat) (b : Nat) (h : Eq Bool (EqB(a, b)) true) : Eq Nat a b by a := (
+    match a {
+      Z => match b {
+        Z => refl,
+        S _ => match h {},
+      },
+      S a' => match b {
+        Z => match h {},
+        S b' => EqBSound(a', b', h),
+      },
+    }
+  )
+
+  def EqBTrans (a : Nat) (b : Nat) (c : Nat) (h1 : Eq Bool (EqB(a, b)) true) (h2 : Eq Bool (EqB(a, c)) true) :
+      Eq Bool (EqB(b, c)) true := (
+    J(Nat, a, b, λ(z : Nat) : Prop => Eq Bool (EqB(z, c)) true, EqBSound(a, b, h1), h2)
+  )
+
+  -- A bucket key equal to both `k` and `k2` contradicts `k ≠ k2`.
+  def EqBContra (a : Nat) (b : Nat) (c : Nat) (h1 : Eq Bool (EqB(a, b)) true) (h2 : Eq Bool (EqB(a, c)) true)
+      (h : Eq Bool (EqB(b, c)) false) : False := (
+    let e = EqB(b, c);
+    match e {
+      false => (
+        let p = EqBTrans(a, b, c, h1, h2);
+        match p {}
+      ),
+      true => match h {},
+    }
+  )
+
+  -- ## Insert, in one bucket
+  -- After inserting `k`, looking `k` up gives the inserted value. In the `BNil` arm the
+  -- lookup compares `k` with itself, which the checker cannot compute for an abstract `k`:
+  -- split on it, and the `false` arm contradicts `EqBRefl`.
+  def BInsertFind (b : &Bucket) (k : Nat) (v : Nat) :
+      Id Opt (BInsert(&*b, k, v); BFind(*b, k)) (BInsert(&*b, k, v); Some(v)) by b := (
+    match *b {
+      BNil => (
+        let e = EqB(k, k);
+        match e {
+          false => (
+            let p = EqBRefl(k);
+            match p {}
+          ),
+          true => refl,
+        }
+      ),
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        match e {
+          false => BInsertFind(&t, k, v),
+          true => refl,
+        }
+      ),
+    }
+  )
+
+  -- Inserting `k` does not change the lookup of another key `k2`.
+  def BInsertFindOther (b : &Bucket) (k : Nat) (v : Nat) (k2 : Nat) (h : Eq Bool (EqB(k, k2)) false) :
+      Id Opt (BInsert(&*b, k, v); BFind(*b, k2)) (let r = BFind(*b, k2); BInsert(&*b, k, v); r) by b := (
+    match *b {
+      BNil => (
+        let e = EqB(k, k2);
+        match e {
+          false => refl,
+          true => match h {},
+        }
+      ),
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        let e2 = EqB(k', k2);
+        match e {
+          false => match e2 {
+            false => BInsertFindOther(&t, k, v, k2, h),
+            true => refl,
+          },
+          true => match e2 {
+            false => refl,
+            true => (
+              let f = EqBContra(k', k, k2, refl, refl, h);
+              match f {}
+            ),
+          },
+        }
+      ),
+    }
+  )
+  -- ## Insert, through the index borrow
+  -- `Nth(s, i)` reads bucket `i` of a copy of the slots. Each bucket theorem is lifted by
+  -- recursion on the slots, following `Slot`'s own recursion: the recursive call borrows
+  -- the tail, so the untouched buckets stay where they are and need no argument.
+  def Nth (s : Slots) (i : Nat) : Bucket := (
+    let r = Slot(&s, i);
+    *r
+  )
+
+  def SlotInsertFind (s : &Slots) (i : Nat) (k : Nat) (v : Nat) :
+      Id Opt (let b = Slot(&*s, i); BInsert(b, k, v); BFind(Nth(*s, i), k))
+             (let b = Slot(&*s, i); BInsert(b, k, v); Some(v)) by s := (
+    match *s {
+      SOne(b) => BInsertFind(&b, k, v),
+      SCons(b, t) => match i {
+        Z => BInsertFind(&b, k, v),
+        S i' => SlotInsertFind(&t, i', k, v),
+      },
+    }
+  )
+
+  -- Writing bucket `i` and reading bucket `j`: the same bucket is the bucket theorem,
+  -- different buckets do not interact.
+  def SlotInsertFindOther (s : &Slots) (i : Nat) (j : Nat) (k : Nat) (v : Nat) (k2 : Nat)
+      (h : Eq Bool (EqB(k, k2)) false) :
+      Id Opt (let b = Slot(&*s, i); BInsert(b, k, v); BFind(Nth(*s, j), k2))
+             (let r = BFind(Nth(*s, j), k2); let b = Slot(&*s, i); BInsert(b, k, v); r) by s := (
+    match *s {
+      SOne(b) => BInsertFindOther(&b, k, v, k2, h),
+      SCons(b, t) => match i {
+        Z => match j {
+          Z => BInsertFindOther(&b, k, v, k2, h),
+          S _ => refl,
+        },
+        S i' => match j {
+          Z => refl,
+          S j' => SlotInsertFindOther(&t, i', j', k, v, k2, h),
+        },
+      },
+    }
+  )
+
+  -- ## Insert, in the map
+  -- `InsertNoResize` updates the length according to whether the bucket insert added an
+  -- entry. That result is a sealed program, so the proof reproduces it on a copy of the
+  -- slots and splits on it; in each arm the map computes, and the slot theorem applies.
+  def InsertFind (hm : &HashMap) (k : Nat) (v : Nat) :
+      Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k)) (InsertNoResize(&*hm, k, v); Some(v)) := (
+    match *hm {
+      HM(n, len, slots) => (
+        let c = slots;
+        let b = Slot(&c, Idx(k, n));
+        let added = BInsert(b, k, v);
+        match added {
+          false => SlotInsertFind(&slots, Idx(k, n), k, v),
+          true => SlotInsertFind(&slots, Idx(k, n), k, v),
+        }
+      ),
+    }
+  )
+
+  def InsertFindOther (hm : &HashMap) (k : Nat) (v : Nat) (k2 : Nat) (h : Eq Bool (EqB(k, k2)) false) :
+      Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k2)) (let r = Find(*hm, k2); InsertNoResize(&*hm, k, v); r) := (
+    match *hm {
+      HM(n, len, slots) => (
+        let c = slots;
+        let b = Slot(&c, Idx(k, n));
+        let added = BInsert(b, k, v);
+        match added {
+          false => SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h),
+          true => SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h),
+        }
+      ),
+    }
+  )
+  -- Without the split the goal is stuck on the sealed `InsertNoResize` and does not meet
+  -- the slot theorem's statement.
+  reject def InsertFindNoSplit (hm : &HashMap) (k : Nat) (v : Nat) :
+      Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k)) (InsertNoResize(&*hm, k, v); Some(v)) := (
+    match *hm {
+      HM(n, len, slots) => SlotInsertFind(&slots, Idx(k, n), k, v),
+    }
+  )
+  -- ## Remove
+  -- A bucket's keys are distinct (part of the invariant): each key is absent from the rest
+  -- of the bucket, stated with the lookup itself. Across the whole table, every bucket.
+  def Unique (b : Bucket) : Prop by b := (
+    match b {
+      BNil => ⊤,
+      BCons(k, v, t) => Eq Opt (BFind(t, k)) None ∧ Unique(t),
+    }
+  )
+
+  def AllUnique (s : Slots) : Prop by s := (
+    match s {
+      SOne(b) => Unique(b),
+      SCons(b, t) => Unique(b) ∧ AllUnique(t),
+    }
+  )
+
+  -- Remove returns what a lookup would have returned.
+  def BRemoveResult (b : &Bucket) (k : Nat) :
+      Id Opt (BRemove(&*b, k)) (let r = BFind(*b, k); BRemove(&*b, k); r) by b := (
+    match *b {
+      BNil => refl,
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        match e {
+          false => BRemoveResult(&t, k),
+          true => refl,
+        }
+      ),
+    }
+  )
+
+  -- After removing `k`, looking `k` up gives `None`, if the keys are distinct. Where the
+  -- first `k` is removed, the rest of the bucket does not hold `k'`, which is `k`: `J`
+  -- carries that along `k' = k`. (Its motive is a type, which may not capture the borrow
+  -- `b` that `t` lies under, so it reads a copy of `t`.)
+  def BRemoveFind (b : &Bucket) (k : Nat) (h : Unique(*b)) :
+      Id Opt (BRemove(&*b, k); BFind(*b, k)) (BRemove(&*b, k); None) by b := (
+    match *b {
+      BNil => refl,
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        match h {
+          Intro(absent, rest) => match e {
+            false => BRemoveFind(&t, k, rest),
+            true => (
+              let c = t;
+              J(Nat, k', k, λ(z : Nat) : Prop => Eq Opt (BFind(c, z)) None, EqBSound(k', k, refl), absent)
+            ),
+          },
+        }
+      ),
+    }
+  )
+
+  reject def BRemoveFindDup (b : &Bucket) (k : Nat) :
+      Id Opt (BRemove(&*b, k); BFind(*b, k)) (BRemove(&*b, k); None) by b := (
+    match *b {
+      BNil => refl,
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        match e {
+          false => BRemoveFindDup(&t, k),
+          true => refl,
+        }
+      ),
+    }
+  )
+
+  def BRemoveFindOther (b : &Bucket) (k : Nat) (k2 : Nat) (h : Eq Bool (EqB(k, k2)) false) :
+      Id Opt (BRemove(&*b, k); BFind(*b, k2)) (let r = BFind(*b, k2); BRemove(&*b, k); r) by b := (
+    match *b {
+      BNil => refl,
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        let e2 = EqB(k', k2);
+        match e {
+          false => match e2 {
+            false => BRemoveFindOther(&t, k, k2, h),
+            true => refl,
+          },
+          true => match e2 {
+            false => refl,
+            true => (
+              let f = EqBContra(k', k, k2, refl, refl, h);
+              match f {}
+            ),
+          },
+        }
+      ),
+    }
+  )
+  -- Lifted through the index borrow, and stated for the map. The precondition of
+  -- `RemoveFind` is the part of the invariant it needs: the keys of each bucket are
+  -- distinct.
+  def SlotRemoveResult (s : &Slots) (i : Nat) (k : Nat) :
+      Id Opt (let b = Slot(&*s, i); BRemove(b, k))
+             (let r = BFind(Nth(*s, i), k); let b = Slot(&*s, i); BRemove(b, k); r) by s := (
+    match *s {
+      SOne(b) => BRemoveResult(&b, k),
+      SCons(b, t) => match i {
+        Z => BRemoveResult(&b, k),
+        S i' => SlotRemoveResult(&t, i', k),
+      },
+    }
+  )
+
+  def SlotRemoveFind (s : &Slots) (i : Nat) (k : Nat) (h : AllUnique(*s)) :
+      Id Opt (let b = Slot(&*s, i); BRemove(b, k); BFind(Nth(*s, i), k))
+             (let b = Slot(&*s, i); BRemove(b, k); None) by s := (
+    match *s {
+      SOne(b) => BRemoveFind(&b, k, h),
+      SCons(b, t) => match h {
+        Intro(hb, ht) => match i {
+          Z => BRemoveFind(&b, k, hb),
+          S i' => SlotRemoveFind(&t, i', k, ht),
+        },
+      },
+    }
+  )
+
+  def SlotRemoveFindOther (s : &Slots) (i : Nat) (j : Nat) (k : Nat) (k2 : Nat) (h : Eq Bool (EqB(k, k2)) false) :
+      Id Opt (let b = Slot(&*s, i); BRemove(b, k); BFind(Nth(*s, j), k2))
+             (let r = BFind(Nth(*s, j), k2); let b = Slot(&*s, i); BRemove(b, k); r) by s := (
+    match *s {
+      SOne(b) => BRemoveFindOther(&b, k, k2, h),
+      SCons(b, t) => match i {
+        Z => match j {
+          Z => BRemoveFindOther(&b, k, k2, h),
+          S _ => refl,
+        },
+        S i' => match j {
+          Z => refl,
+          S j' => SlotRemoveFindOther(&t, i', j', k, k2, h),
+        },
+      },
+    }
+  )
+
+  def Buckets (m : HashMap) : Slots := (
+    match m {
+      HM(n, len, s) => s,
+    }
+  )
+
+  def RemoveResult (hm : &HashMap) (k : Nat) :
+      Id Opt (Remove(&*hm, k)) (let r = Find(*hm, k); Remove(&*hm, k); r) := (
+    match *hm {
+      HM(n, len, slots) => (
+        let c = slots;
+        let b = Slot(&c, Idx(k, n));
+        let x = BRemove(b, k);
+        match x {
+          None => SlotRemoveResult(&slots, Idx(k, n), k),
+          Some(_) => SlotRemoveResult(&slots, Idx(k, n), k),
+        }
+      ),
+    }
+  )
+
+  def RemoveFind (hm : &HashMap) (k : Nat) (h : AllUnique(Buckets(*hm))) :
+      Id Opt (Remove(&*hm, k); Find(*hm, k)) (Remove(&*hm, k); None) := (
+    match *hm {
+      HM(n, len, slots) => (
+        let c = slots;
+        let b = Slot(&c, Idx(k, n));
+        let x = BRemove(b, k);
+        match x {
+          None => SlotRemoveFind(&slots, Idx(k, n), k, h),
+          Some(_) => SlotRemoveFind(&slots, Idx(k, n), k, h),
+        }
+      ),
+    }
+  )
+
+  def RemoveFindOther (hm : &HashMap) (k : Nat) (k2 : Nat) (h : Eq Bool (EqB(k, k2)) false) :
+      Id Opt (Remove(&*hm, k); Find(*hm, k2)) (let r = Find(*hm, k2); Remove(&*hm, k); r) := (
+    match *hm {
+      HM(n, len, slots) => (
+        let c = slots;
+        let b = Slot(&c, Idx(k, n));
+        let x = BRemove(b, k);
+        match x {
+          None => SlotRemoveFindOther(&slots, Idx(k, n), Idx(k2, n), k, k2, h),
+          Some(_) => SlotRemoveFindOther(&slots, Idx(k, n), Idx(k2, n), k, k2, h),
+        }
+      ),
+    }
+  )
+  -- ## GetMut
+  -- The borrow points at the value a lookup returns; after writing `w` through it, `k`
+  -- maps to `w`, and every other key is unchanged. Each statement writes through the
+  -- borrow on both sides, so that both leave the same map.
+  --
+  -- WALL (notes/hashmap-case-study.md, "GetMut"): these are true but rejected. In the
+  -- `BNil` arm the split re-normalises the goal, which runs `BGetMut` into its unreachable
+  -- `match h {}`; that yields `⋆`, and the goal's `*q` reads a path in `⋆`, a normalisation
+  -- error, before the arm's own `match h {}` is checked.
+  reject def BGetMutRead (b : &Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(*b, k))) :
+      Id Opt (let q = BGetMut(&*b, k, h); let x = *q; *q := w; Some(x))
+             (let r = BFind(*b, k); let q = BGetMut(&*b, k, h); *q := w; r) by b := (
+    match *b {
+      BNil => match h {},
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        match e {
+          false => BGetMutRead(&t, k, w, h),
+          true => refl,
+        }
+      ),
+    }
+  )
+
+  reject def BGetMutFind (b : &Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(*b, k))) :
+      Id Opt (let q = BGetMut(&*b, k, h); *q := w; BFind(*b, k))
+             (let q = BGetMut(&*b, k, h); *q := w; Some(w)) by b := (
+    match *b {
+      BNil => match h {},
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        match e {
+          false => BGetMutFind(&t, k, w, h),
+          true => refl,
+        }
+      ),
+    }
+  )
+
+  reject def BGetMutFindOther (b : &Bucket) (k : Nat) (w : Nat) (h : IsSome(BFind(*b, k))) (k2 : Nat)
+      (ne : Eq Bool (EqB(k, k2)) false) :
+      Id Opt (let q = BGetMut(&*b, k, h); *q := w; BFind(*b, k2))
+             (let r = BFind(*b, k2); let q = BGetMut(&*b, k, h); *q := w; r) by b := (
+    match *b {
+      BNil => match h {},
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        let e2 = EqB(k', k2);
+        match e {
+          false => match e2 {
+            false => BGetMutFindOther(&t, k, w, h, k2, ne),
+            true => refl,
+          },
+          true => match e2 {
+            false => refl,
+            true => (
+              let f = EqBContra(k', k, k2, refl, refl, ne);
+              match f {}
+            ),
+          },
+        }
+      ),
+    }
+  )
+  -- ## Get, through the borrow
+  -- `Get` reads through a mutable borrow (Ochr has no shared borrows). When the lookup
+  -- is stuck on an abstract bucket, closing it off leaves a sealed program in the bucket
+  -- ("look `k` up in `u`, then give `u` back"), which is `u` only by a proof. These three
+  -- lemmas are that proof: `Get` returns what `Find` returns, and leaves the map as it was.
+  def BGetFind (b : &Bucket) (k : Nat) : Id Opt (BGet(&*b, k)) (BFind(*b, k)) by b := (
+    match *b {
+      BNil => refl,
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        match e {
+          false => BGetFind(&t, k),
+          true => refl,
+        }
+      ),
+    }
+  )
+
+  def SlotGetFind (s : &Slots) (i : Nat) (k : Nat) :
+      Id Opt (let b = Slot(&*s, i); BGet(b, k)) (BFind(Nth(*s, i), k)) by s := (
+    match *s {
+      SOne(b) => BGetFind(&b, k),
+      SCons(b, t) => match i {
+        Z => BGetFind(&b, k),
+        S i' => SlotGetFind(&t, i', k),
+      },
+    }
+  )
+
+  def GetFind (hm : &HashMap) (k : Nat) : Id Opt (Get(&*hm, k)) (Find(*hm, k)) := (
+    match *hm {
+      HM(n, len, slots) => SlotGetFind(&slots, Idx(k, n), k),
+    }
+  )
+
+  -- ## New and Clear
+  -- Every bucket of a fresh table is empty, so no key is found.
+  def NthEmpty (n : Nat) (i : Nat) : Id Bucket BNil (Nth(EmptySlots(n), i)) by n := (
+    match n {
+      Z => refl,
+      S m => match i {
+        Z => refl,
+        S i' => NthEmpty(m, i'),
+      },
+    }
+  )
+
+  def NewFind (n : Nat) (k : Nat) : Id Opt (Find(New(n), k)) None := (
+    J(Bucket, BNil, Nth(EmptySlots(n), Idx(k, n)), λ(z : Bucket) : Prop => Eq Opt (BFind(z, k)) None, NthEmpty(n, Idx(k, n)), refl)
+  )
+
+  def ClearFind (hm : &HashMap) (k : Nat) : Id Opt (Clear(&*hm); Find(*hm, k)) (Clear(&*hm); None) := (
+    match *hm {
+      HM(n, len, slots) => NewFind(n, k),
+    }
+  )
+}
+
+#eval IO.println (run "HashMapLookup" HashMapLookup).show
+
+-- every verdict as expected, and the exact number of declarations (a truncated file changes it)
+#guard (run "HashMapLookup" HashMapLookup).allAsExpected
+#guard (run "HashMapLookup" HashMapLookup).count == 34
+
+/-! ## The length
+
+`Len` is the map's `len` field. After an insert it grows by one exactly when the key was
+absent, and after a remove it shrinks by one exactly when the key was present; with the
+invariant `len = Count(slots)` (the number of entries), each operation preserves it. -/
+
+ochr HashMapLength uses Std, HashMap, HashMapLookup {
+  -- Sizes, and the two ways a length changes.
+  def BLen (b : Bucket) : Nat by b := (
+    match b {
+      BNil => 0,
+      BCons(k, v, t) => S (BLen(t)),
+    }
+  )
+
+  def Count (s : Slots) : Nat by s := (
+    match s {
+      SOne(b) => BLen(b),
+      SCons(b, t) => Add(BLen(b), Count(t)),
+    }
+  )
+
+  def IfNew (r : Opt) (l : Nat) : Nat := (
+    match r {
+      None => S l,
+      Some(_) => l,
+    }
+  )
+
+  def IfFound (r : Opt) (l : Nat) : Nat := (
+    match r {
+      None => l,
+      Some(_) => S l,
+    }
+  )
+
+  -- ## The len field
+  -- The bucket insert adds an entry exactly when the key was absent.
+  def IsNone (r : Opt) : Bool := (
+    match r {
+      None => true,
+      Some(_) => false,
+    }
+  )
+
+  def BInsertAdded (b : &Bucket) (k : Nat) (v : Nat) :
+      Id Bool (BInsert(&*b, k, v)) (let r = BFind(*b, k); BInsert(&*b, k, v); IsNone(r)) by b := (
+    match *b {
+      BNil => refl,
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        match e {
+          false => BInsertAdded(&t, k, v),
+          true => refl,
+        }
+      ),
+    }
+  )
+
+  def SlotInsertAdded (s : &Slots) (i : Nat) (k : Nat) (v : Nat) :
+      Id Bool (let b = Slot(&*s, i); BInsert(b, k, v))
+              (let r = BFind(Nth(*s, i), k); let b = Slot(&*s, i); BInsert(b, k, v); IsNone(r)) by s := (
+    match *s {
+      SOne(b) => BInsertAdded(&b, k, v),
+      SCons(b, t) => match i {
+        Z => BInsertAdded(&b, k, v),
+        S i' => SlotInsertAdded(&t, i', k, v),
+      },
+    }
+  )
+
+  -- Split on whether the entry was added and on the earlier lookup; where they disagree,
+  -- the lemma's type is `true = false` or `false = true`, which is `False`.
+  def InsertLen (hm : &HashMap) (k : Nat) (v : Nat) :
+      Id Nat (InsertNoResize(&*hm, k, v); Len(*hm))
+             (let l = Len(*hm); let r = Find(*hm, k); InsertNoResize(&*hm, k, v); IfNew(r, l)) := (
+    match *hm {
+      HM(n, len, slots) => (
+        let p = SlotInsertAdded(&slots, Idx(k, n), k, v);
+        let c = slots;
+        let b = Slot(&c, Idx(k, n));
+        let added = BInsert(b, k, v);
+        let r = BFind(Nth(slots, Idx(k, n)), k);
+        match added {
+          false => match r {
+            None => match p {},
+            Some(_) => refl,
+          },
+          true => match r {
+            None => refl,
+            Some(_) => match p {},
+          },
+        }
+      ),
+    }
+  )
+  -- ## The invariant len = Count(slots), for insert
+  -- `x + S y = S (x + y)`, in place by recursion (as in `Trees`), and symmetry.
+  def AddMS (x : &Nat) (y : Nat) : Id Unit (AddM(x, S y)) (AddM(&*x, y); *x := S *x) by x := (
+    match *x {
+      Z => refl,
+      S p => AddMS(&p, y),
+    }
+  )
+
+  def AddS (x : Nat) (y : Nat) : Id Nat (Add(x, S y)) (S (Add(x, y))) := AddMS(&x, y)
+
+  def SymmN (x : Nat) (y : Nat) (h : Eq Nat x y) : Eq Nat y x := (
+    J(Nat, x, y, λ(z : Nat) : Prop => Eq Nat z x, h, refl)
+  )
+
+  -- A bucket grows by one exactly when the key was absent. `S a = S b` is `a = b`, so
+  -- each arm is the induction hypothesis as it stands.
+  def BInsertCount (b : &Bucket) (k : Nat) (v : Nat) :
+      Id Nat (let r = BFind(*b, k); let l = BLen(*b); BInsert(&*b, k, v); IfNew(r, l))
+             (BInsert(&*b, k, v); BLen(*b)) by b := (
+    match *b {
+      BNil => refl,
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        match e {
+          false => (
+            let r = BFind(t, k);
+            match r {
+              None => BInsertCount(&t, k, v),
+              Some(_) => BInsertCount(&t, k, v),
+            }
+          ),
+          true => refl,
+        }
+      ),
+    }
+  )
+
+  -- Lifted to the slots, where `Count` adds the bucket lengths: each arm rewrites once
+  -- under `Add`, with `J`.
+  def SlotInsertCount (s : &Slots) (i : Nat) (k : Nat) (v : Nat) :
+      Id Nat (let r = BFind(Nth(*s, i), k); let c = Count(*s); let b = Slot(&*s, i); BInsert(b, k, v); IfNew(r, c))
+             (let b = Slot(&*s, i); BInsert(b, k, v); Count(*s)) by s := (
+    match *s {
+      SOne(b) => BInsertCount(&b, k, v),
+      SCons(b, t) => (
+        let bl = BLen(b);
+        let c = Count(t);
+        match i {
+          Z => (
+            let cb = b;
+            BInsert(&cb, k, v);
+            let r = BFind(b, k);
+            match r {
+              None => J(Nat, S bl, BLen(cb), λ(z : Nat) : Prop => Eq Nat (S (Add(bl, c))) (Add(z, c)), BInsertCount(&b, k, v), refl),
+              Some(_) => J(Nat, bl, BLen(cb), λ(z : Nat) : Prop => Eq Nat (Add(bl, c)) (Add(z, c)), BInsertCount(&b, k, v), refl),
+            }
+          ),
+          S i' => (
+            let ct = t;
+            let rb = Slot(&ct, i');
+            BInsert(rb, k, v);
+            let r = BFind(Nth(t, i'), k);
+            match r {
+              None => J(Nat, S c, Count(ct), λ(z : Nat) : Prop => Eq Nat (S (Add(bl, c))) (Add(bl, z)),
+                        SlotInsertCount(&t, i', k, v), SymmN(Add(bl, S c), S (Add(bl, c)), AddS(bl, c))),
+              Some(_) => J(Nat, c, Count(ct), λ(z : Nat) : Prop => Eq Nat (Add(bl, c)) (Add(bl, z)), SlotInsertCount(&t, i', k, v), refl),
+            }
+          ),
+        }
+      ),
+    }
+  )
+
+  -- The map: split on the added flag and on the earlier lookup (the mixed arms contradict
+  -- `SlotInsertAdded`), then one `J` against the hypothesis.
+  def InsertCount (hm : &HashMap) (k : Nat) (v : Nat) (h : Eq Nat (Len(*hm)) (Count(Buckets(*hm)))) :
+      Id Nat (InsertNoResize(&*hm, k, v); Len(*hm)) (InsertNoResize(&*hm, k, v); Count(Buckets(*hm))) := (
+    match *hm {
+      HM(n, len, slots) => (
+        let l = len;
+        let p = SlotInsertAdded(&slots, Idx(k, n), k, v);
+        let q = SlotInsertCount(&slots, Idx(k, n), k, v);
+        let c = slots;
+        let b = Slot(&c, Idx(k, n));
+        let added = BInsert(b, k, v);
+        let r = BFind(Nth(slots, Idx(k, n)), k);
+        match added {
+          false => match r {
+            None => match p {},
+            Some(_) => J(Nat, Count(slots), Count(c), λ(z : Nat) : Prop => Eq Nat l z, q, h),
+          },
+          true => match r {
+            None => J(Nat, S (Count(slots)), Count(c), λ(z : Nat) : Prop => Eq Nat (S l) z, q, h),
+            Some(_) => match p {},
+          },
+        }
+      ),
+    }
+  )
+
+  -- The hypothesis is needed.
+  reject def InsertCountNoHyp (hm : &HashMap) (k : Nat) (v : Nat) :
+      Id Nat (InsertNoResize(&*hm, k, v); Len(*hm)) (InsertNoResize(&*hm, k, v); Count(Buckets(*hm))) := (
+    match *hm {
+      HM(n, len, slots) => SlotInsertCount(&slots, Idx(k, n), k, v),
+    }
+  )
+  -- ## Remove
+  -- The len field shrinks by one exactly when the key was found (the code's `Pred`).
+  def Shrink (r : Opt) (l : Nat) : Nat := (
+    match r {
+      None => l,
+      Some(_) => Pred(l),
+    }
+  )
+
+  def RemoveLen (hm : &HashMap) (k : Nat) :
+      Id Nat (Remove(&*hm, k); Len(*hm)) (let l = Len(*hm); let r = Find(*hm, k); Remove(&*hm, k); Shrink(r, l)) := (
+    match *hm {
+      HM(n, len, slots) => (
+        let p = SlotRemoveResult(&slots, Idx(k, n), k);
+        let c = slots;
+        let b = Slot(&c, Idx(k, n));
+        let x = BRemove(b, k);
+        let r = BFind(Nth(slots, Idx(k, n)), k);
+        match x {
+          None => match r {
+            None => refl,
+            Some(_) => match p {},
+          },
+          Some(_) => match r {
+            None => match p {},
+            Some(_) => refl,
+          },
+        }
+      ),
+    }
+  )
+
+  -- The count before a remove is the count after, plus one if the key was found.
+  def BRemoveCount (b : &Bucket) (k : Nat) :
+      Id Nat (let l = BLen(*b); BRemove(&*b, k); l) (let r = BFind(*b, k); BRemove(&*b, k); IfFound(r, BLen(*b))) by b := (
+    match *b {
+      BNil => refl,
+      BCons(k', v', t) => (
+        let e = EqB(k', k);
+        match e {
+          false => (
+            let r = BFind(t, k);
+            match r {
+              None => BRemoveCount(&t, k),
+              Some(_) => BRemoveCount(&t, k),
+            }
+          ),
+          true => refl,
+        }
+      ),
+    }
+  )
+
+  def SlotRemoveCount (s : &Slots) (i : Nat) (k : Nat) :
+      Id Nat (let c = Count(*s); let b = Slot(&*s, i); BRemove(b, k); c)
+             (let r = BFind(Nth(*s, i), k); let b = Slot(&*s, i); BRemove(b, k); IfFound(r, Count(*s))) by s := (
+    match *s {
+      SOne(b) => BRemoveCount(&b, k),
+      SCons(b, t) => (
+        let bl = BLen(b);
+        let c = Count(t);
+        match i {
+          Z => (
+            let cb = b;
+            BRemove(&cb, k);
+            let r = BFind(b, k);
+            match r {
+              None => J(Nat, bl, BLen(cb), λ(z : Nat) : Prop => Eq Nat (Add(bl, c)) (Add(z, c)), BRemoveCount(&b, k), refl),
+              Some(_) => J(Nat, bl, S (BLen(cb)), λ(z : Nat) : Prop => Eq Nat (Add(bl, c)) (Add(z, c)), BRemoveCount(&b, k), refl),
+            }
+          ),
+          S i' => (
+            let ct = t;
+            let rb = Slot(&ct, i');
+            BRemove(rb, k);
+            let ca = Count(ct);
+            let r = BFind(Nth(t, i'), k);
+            match r {
+              None => J(Nat, c, ca, λ(z : Nat) : Prop => Eq Nat (Add(bl, c)) (Add(bl, z)), SlotRemoveCount(&t, i', k), refl),
+              Some(_) => J(Nat, S ca, c, λ(z : Nat) : Prop => Eq Nat (Add(bl, z)) (S (Add(bl, ca))),
+                           SymmN(c, S ca, SlotRemoveCount(&t, i', k)), AddS(bl, ca)),
+            }
+          ),
+        }
+      ),
+    }
+  )
+
+  def RemoveCount (hm : &HashMap) (k : Nat) (h : Eq Nat (Len(*hm)) (Count(Buckets(*hm)))) :
+      Id Nat (Remove(&*hm, k); Len(*hm)) (Remove(&*hm, k); Count(Buckets(*hm))) := (
+    match *hm {
+      HM(n, len, slots) => (
+        let l = len;
+        let p = SlotRemoveResult(&slots, Idx(k, n), k);
+        let q = SlotRemoveCount(&slots, Idx(k, n), k);
+        let c = slots;
+        let b = Slot(&c, Idx(k, n));
+        let x = BRemove(b, k);
+        let r = BFind(Nth(slots, Idx(k, n)), k);
+        match x {
+          None => match r {
+            None => J(Nat, Count(slots), Count(c), λ(z : Nat) : Prop => Eq Nat l z, q, h),
+            Some(_) => match p {},
+          },
+          Some(_) => match r {
+            None => match p {},
+            Some(_) => J(Nat, Count(slots), S (Count(c)), λ(z : Nat) : Prop => Eq Nat (Pred(l)) (Pred(z)), q,
+                         J(Nat, l, Count(slots), λ(z : Nat) : Prop => Eq Nat (Pred(l)) (Pred(z)), h, refl)),
+          },
+        }
+      ),
+    }
+  )
+
+  -- ## New and Clear
+  def EmptyCount (n : Nat) : Eq Nat (Count(EmptySlots(n))) 0 by n := (
+    match n {
+      Z => refl,
+      S m => EmptyCount(m),
+    }
+  )
+
+  def NewCount (n : Nat) : Eq Nat (Len(New(n))) (Count(Buckets(New(n)))) := SymmN(Count(EmptySlots(n)), 0, EmptyCount(n))
+
+  def ClearCount (hm : &HashMap) : Id Nat (Clear(&*hm); Len(*hm)) (Clear(&*hm); Count(Buckets(*hm))) := (
+    match *hm {
+      HM(n, len, slots) => NewCount(n),
+    }
+  )
+  -- ## GetMut
+  -- Writing through the borrow leaves the length as it was. (The count is unchanged too,
+  -- but its bucket-level proof hits the GetMut wall of `HashMapLookup`.)
+  def GetMutLen (hm : &HashMap) (k : Nat) (w : Nat) (h : IsSome(Find(*hm, k))) :
+      Id Nat (let q = GetMut(&*hm, k, h); *q := w; Len(*hm)) (let l = Len(*hm); let q = GetMut(&*hm, k, h); *q := w; l) := (
+    match *hm {
+      HM(n, len, slots) => refl,
+    }
+  )
+}
+
+#eval IO.println (run "HashMapLength" HashMapLength).show
+
+-- every verdict as expected, and the exact number of declarations (a truncated file changes it)
+#guard (run "HashMapLength" HashMapLength).allAsExpected
+#guard (run "HashMapLength" HashMapLength).count == 24
