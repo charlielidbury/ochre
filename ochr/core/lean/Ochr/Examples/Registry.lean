@@ -135,8 +135,7 @@ def switches : List (String × Config) :=
 * `subsumed`: it flips nothing on this suite, pending a decision (a rule that flips nothing
   and is not needed is deleted, as D35's after-the-fact clauses were once the erasure
   pre-pass decided erasure before a term runs): D19, whose witness falls to [Drop] since η
-  for `Unit` (D59: a stuck `Unit` call's result carries its arguments), and D54, which
-  makes the value's class the declared one on every path;
+  for `Unit` (D59: a stuck `Unit` call's result carries its arguments);
 * `cost`: it accepts programs that copy data whose type is not a copy type without saying
   so (`clone`), or leave a borrowed place partly moved out: the cost model's rule (D53),
   not the logic's. -/
@@ -182,7 +181,7 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("completeness", []),
    ("completeness", []),
-   ("subsumed", []),
+   ("soundness", ["Functions.BoomPow"]),
    ("completeness", []),
    ("completeness", []),
    ("model", ["Sorts.K1", "Sorts.K2"]),
@@ -194,7 +193,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 978
+def Ochr.Registry.expectedTotal : Nat := 982
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

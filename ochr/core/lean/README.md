@@ -85,7 +85,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `06Snapshots` | types and closures are formed once; what a closure or Π-type captures (values, never borrows; capturing ends a live borrow) | P2, §1, §5 | 21 |
 | `07Recursion` | `by x`, entry-value recursion, induction hypotheses in the caller's environment; typing a sealed program keeps the [Rec] state | §5 [Def], [Rec] | 29 |
 | `08CaseSplits` | [Split], dependent matching on a computed type, generalising sealed programs, `split f` on a result the goal is stuck on (D61), scrutinee types, global generalisation records, a refinement belongs to its arm | §5 [Split] | 58 |
-| `09Functions` | opaque functions, closures, Π-types, comparing functions by observation (D30, D38, D48 (3)); a function type's class and row (D54) | P1, §1, §4 | 55 |
+| `09Functions` | opaque functions, closures, Π-types, comparing functions by observation (D30, D38, D48 (3)); a function type's class and row (D54) | P1, §1, §4 | 59 |
 | `10Inductives` | lists, binary search trees (keys are `Word`s) (and the paper's trees, whose pure insert runs the in-place one), parameters, strict positivity | §8 | 78 |
 | `11Propositions` | `False`, `True`, `And`, matching on proofs by type, a stuck zero-arm match (D58), destructuring `let` (D60), subsingleton elimination | §1, §8 | 76 |
 | `12CurrentState` | proofs about the current, mutated state (E5) | §7 | 14 |
@@ -95,7 +95,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `16Arrays` | case study: arrays as a library (slices, indices), its lemmas and benchmarks, and in-place quicksort proved sorted and a permutation (`notes/arrays-library.md`) | all | 167 |
 | `17HashMap` | case study: Aeneas's resizing hash map, its lookups, length, invariant, resizing and load factor, proved about the in-place code (`notes/hashmap-case-study.md`) | all | 186 |
 
-978 declarations in all, the `Prelude`'s 4 and the case studies' 353 included. The case studies were written before D53 and are checked with its moves off (reads copy) until they are adapted: `Ochr.Test.preD53` lists their blocks. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+982 declarations in all, the `Prelude`'s 4 and the case studies' 353 included. The case studies were written before D53 and are checked with its moves off (reads copy) until they are adapted: `Ochr.Test.preD53` lists their blocks. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 

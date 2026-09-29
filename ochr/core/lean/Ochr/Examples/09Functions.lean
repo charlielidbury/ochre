@@ -184,6 +184,25 @@ ochr Functions uses Std, Fixtures {
   def RunIGen (f : Π(x : &Nat). Prop) : Id Nat (RunI(f)) Z := refl
   reject def BoomI : False := RunIGen(H)
 
+  -- The pre-pass reads `f`'s class above from its declared type, which is a Π-type as
+  -- written, so the two paths agree even without D54. A parameter whose type is a Π-type
+  -- only by computation, `RefPred(0)`, is different: an untyped run (a body called to compute
+  -- a value) has no stored type to read, so the call through it takes the class of the
+  -- function the parameter holds. At the generic call that is an abstract value of type
+  -- `Π(x : &Nat). Prop`, which returns types, and `p(&c)` is erased; at the instance it is
+  -- `H`, which returns data, and runs. Without D54 `H` is accepted at `RefPred(0)`, and
+  -- `BoomPow` is a closed proof of `False`.
+  def RefPred (n : Nat) : Type := Π(x : &Nat). Prop
+
+  def RunPow (p : RefPred(0)) : Nat := (
+    let c = Z;
+    p(&c);
+    c
+  )
+
+  def RunPowGen (p : RefPred(0)) : Id Nat (RunPow(p)) Z := refl
+  reject def BoomPow : False := RunPowGen(H)
+
   -- The same for the class "returns proofs", with a codomain `V(Z)` that computes to `⊤`.
   -- D54 alone rejects `BoomP` at the argument; since D55 the codomain cannot even be written
   -- (`V(Z)`'s declared type `U(Z)` is not a sort).
@@ -222,4 +241,4 @@ ochr Functions uses Std, Fixtures {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Functions" Functions).allAsExpected
-#guard (run "Functions" Functions).count == 55
+#guard (run "Functions" Functions).count == 59

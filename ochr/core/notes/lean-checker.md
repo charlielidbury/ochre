@@ -954,3 +954,15 @@ The witnesses (BoomL, Boom8, Direct8, LieB, BoomB, Lie7, Boom7, TruthB, SeqT) st
 - D54: the D54 Pow test (§31) decides it.
 
 49 rows: soundness 18, false lemma 1, model 4, policy 2, subsumed 2, cost 1, completeness 21.
+
+## 31. D54 stays: the Pow test finds its witness
+
+The lead asked whether the pre-pass subsumes D54. The pre-pass reads a call's class from the declared type of its head. A variable whose declared type is a Π-type *as written* (`f : Π(x : &Nat). Prop`, reviewer-5's `Boom`/`BoomI`) reads the same on both paths, and that is why the row flipped nothing. A variable whose type is a Π-type *only by computation* is different. For `p : RefPred(0)` with `RefPred(n) := Π(x : &Nat). Prop` (the existing `Functions.Pow(X)` has the same shape without the borrow), the declared term says nothing. In a typed run the binding's stored, evaluated type is read (`refineDecl` on `A`), but an untyped run (a body called to compute a value: `runBody`) has no stored type. There the reading falls back to the value the variable holds:
+- at the generic call, an abstract value of type `Π(x : &Nat). Prop`, which returns types, so `p(&c)` is erased;
+- at the instance, `H`, which returns data (`P0`), so `p(&c)` runs.
+
+With D54 off, `H` is accepted at `RefPred(0)`, and `RunPowGen(H)` has type `Id Nat (RunPow(H)) 0`, which computes to `False`: `Functions.BoomPow : False` is accepted. D54 is soundness again, with witness `BoomPow`.
+
+*Why not read the stored type in untyped runs instead?* That would erase `H`'s write whenever it is called through a `RefPred(0)`. Compiled code runs it, so the checker's value of `RunPow(H)` (0) would differ from the program's (1). The class belongs to the value's type, and D54 makes conversion respect it. That is the right fix, not a different reading.
+
+`subsumed` is now only D19's row. 49 rows: soundness 19, false lemma 1, model 4, policy 2, subsumed 1, cost 1, completeness 21. 982 verdicts.

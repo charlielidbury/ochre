@@ -31,14 +31,14 @@ representation of proofs, so its row would not isolate one rule.) -/
 -- is a closed proof of False (fuzz-port; the row was classed completeness until then)
 open Ochr.Registry in
 #guard rowOk { eraseOnCopy := false }
-  ["Functions.RunGGen:rejected", "Functions.RunIGen:rejected", "CurrentState.TwoPhase:rejected",
-   "Erasure.LemmaMoves:rejected", "Erasure.TypeErased:rejected", "Erasure.BoomP2Pair:accepted",
-   "Erasure.BoomP2:accepted"]
+  ["Functions.RunGGen:rejected", "Functions.RunIGen:rejected", "Functions.RunPowGen:rejected",
+   "CurrentState.TwoPhase:rejected", "Erasure.LemmaMoves:rejected", "Erasure.TypeErased:rejected",
+   "Erasure.BoomP2Pair:accepted", "Erasure.BoomP2:accepted"]
 open Ochr.Registry in
 #guard rowOk { eraseOnCopy := false, confine := false }
-  ["Functions.RunGGen:rejected", "Functions.RunIGen:rejected", "CurrentState.TwoPhase:rejected",
-   "Erasure.LemmaMoves:rejected", "Erasure.TypeErased:rejected", "Erasure.EffArg:accepted",
-   "Erasure.Write:accepted", "Erasure.Borrow:accepted", "Erasure.Move:accepted",
+  ["Functions.RunGGen:rejected", "Functions.RunIGen:rejected", "Functions.RunPowGen:rejected",
+   "CurrentState.TwoPhase:rejected", "Erasure.LemmaMoves:rejected", "Erasure.TypeErased:rejected",
+   "Erasure.EffArg:accepted", "Erasure.Write:accepted", "Erasure.Borrow:accepted", "Erasure.Move:accepted",
    "Erasure.BoomP2Pair:accepted", "Erasure.BoomP2:accepted", "Erasure.N1T:accepted",
    "Erasure.N1Closed:accepted", "Erasure.Q:accepted", "Erasure.QBoom:accepted",
    "ErasureBySyntax.LieP:accepted", "ErasureBySyntax.BoomP:accepted"]
@@ -93,8 +93,8 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { erasureByDecl := false }
   ["Functions.RunG:rejected", "Functions.RunGGen:rejected", "Functions.RunI:rejected",
-   "Functions.RunIGen:rejected", "Erasure.TypeErased:rejected", "Erasure.LieP2:rejected",
-   "ErasureBySyntax.SeqT:rejected"]
+   "Functions.RunIGen:rejected", "Functions.RunPow:rejected", "Functions.RunPowGen:rejected",
+   "Erasure.TypeErased:rejected", "Erasure.LieP2:rejected", "ErasureBySyntax.SeqT:rejected"]
 open Ochr.Registry in
 #guard rowOk { matchEndsInside := false }
   ["ReturnedBorrows.Bad:accepted", "ReturnedBorrows.Main:accepted"]
@@ -243,10 +243,12 @@ open Ochr.Registry in
 -- v2.1 D54 switched off: a function type's class is not part of it, so `H`, which returns
 -- data, passes where a function returning types is expected. Before the erasure pre-pass,
 -- `Boom` and `BoomI` were closed proofs of False (reviewer-5); with it, `g(&c)` is erased by
--- its declared type on both paths, and confinement (D41) rejects `H`'s write there
+-- its declared type on both paths. A parameter whose type is a Π-type only by computation
+-- (`RefPred(0)`) has no declared Π to read in an untyped run, which reads the value's class,
+-- so `BoomPow` is a closed proof of False
 open Ochr.Registry in
 #guard rowOk { classInType := false }
-  []
+  ["Functions.BoomPow:accepted"]
 -- v2.1 D56 switched off: J returns t whatever its endpoints (equality reflection): `Om`
 -- exceeds the depth bound, and `CastMatch` matches 5 against Bool's constructors (reviewer-4 W4)
 open Ochr.Registry in
