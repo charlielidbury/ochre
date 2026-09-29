@@ -1,0 +1,69 @@
+# lean-meta: mechanised first-order metatheory of Ochr core v1.3 (running log)
+
+Package: `ochr/core/meta-lean/` (Lake package `OchrMeta`, Lean 4.33, no Mathlib). Build: `lake build` in that directory. Branch `ochr-core-meta`.
+
+## Status table (updated at each milestone)
+
+| Item | Status |
+|---|---|
+| FO syntax, values, environments | done (`Syntax`, `Val`, `Env`) |
+| the machine `exec` / `Eval`, fuelled interpreter `run`, `run_sound` | done (`Machine`, `Interp`) |
+| [Seal] normalisation `norm`, owners, canonical renaming | done (`Interp`) |
+| tests `e1e2_runs`, `close_eqs`, `owners_pick`, `access_inner`, `erase_natural` | pass (`Tests/Basic`) |
+| **T2a** `frame_local`, `frame_local_eval` (locality) | **proved**, no sorry (`Frame`) |
+| **T2b** `call_effect` (a call's effect is its isolated run `callRun`, plugged back) | **proved**, no sorry (`Frame`) |
+| `t5_nose_counterexample` (meta-model-v1 Theorem 5 is false as stated) | test passes: see Finding F3 |
+| renaming equivariance `exec_rename`, `eval_rename` | **proved** (`Rename`, by a sub-agent, reviewed) |
+| fuel monotonicity `exec_mono`, `eval_det`, `eval_iff_run` | **proved** (`Mono`, by a sub-agent, reviewed) |
+| **T1(a)** `end_comm` (two [End]s commute, on the nose, given acyclicity only) | **proved** (`Canon`) |
+| **[Close] equations** `close_res`, `close_fin`, `close_cur`, `close_back` | **proved** (`Close`), with Lemma 0 facts as explicit hypotheses (see below) |
+| Lemma 0 `exec_wf` | statement in `WF.lean` (**sorry**, proof in progress on branch `ochr-core-meta-wf`) |
+| tests `canon_sched` (all [End] orders agree) | pass |
+| **Lemma 4** `back_inj`, **Lemma 3** `ctx_inj`, C2 `ctx_needs_all_owners` (first-order form) | **proved** (`Inj`; `back_inj` uses only the `WFv` structure) |
+| tests `back_inj_small`, `ctx_needs_all_owners` | pass |
+| [Rec] guard check `Guard.checkDef`, `WellGuarded`, `wellGuardedB_sound` | done (`Guard`, sub-agent, reviewed) |
+| tests `guard_rejects` (Grow, Loop, f(n):=f(n), f(S m); accepts AddM, TailM, AddMZero) | pass (`Tests/Guard`) |
+| **Lemma 1** termination: borrow-free programs `termination_bf`, non-recursive `termination_nonrec` | **proved**; general `termination` is **sorry** (needs Lemma 0 + a loan-name correspondence; `GuardTerm.lean` docstring) |
+| tests `natural_prop` (T5 on the interpreter, incl. partial refinement σ := S σ') | pass on the nose, and after resolution; F3's term only after resolution |
+| **T1(b)** schedule independence | in progress (sub-agent); on-the-nose one-sided form refuted (F5), confluence form being proved |
+
+## Design decisions of the mechanisation (and why)
+
+1. **Clocked functional big-step semantics.** `exec P n s t : Res` (results `ok s v | stuck | err | oof`) is the machine; `Eval P s t r := r ≠ oof ∧ ∃ n, exec P n s t = r`. One clause per rule of RULES §3. `run_sound` is then immediate. Chosen over an inductive relation because every theorem below is a *commutation* of the machine with a state transformation, and the fuel induction makes those equations (not just simulations), with `stuck`/`err` propagation handled once by `Res.bind`.
+2. **Sealed programs are structural.** `Val.sealed f args k w` stands for `⌈L; C; K⌉`: `args` are the contents `uᵢ` (borrow positions) / values `wⱼ` (elsewhere), `k ∈ {res, fin i, cur, back i}` is the row of the [Close] table, `w` is the value written back through a returned borrow (`loan_k` at [Close] time). The term `L; C; K` is rebuilt by `sealTerm` when [Seal] re-runs it.
+3. **A global fresh-loan counter** lives in the state. Fresh names then do not depend on the part of the environment a run cannot see, which is what lets the frame lemma be an equation. The price: comparing runs that allocate different numbers of loans (a [Close] against the concrete run it stands for) needs an injective renaming (`≈`).
+4. **Borrows are held only at the top level of a binding** (RULES §1 scope: no borrows inside data). "Live loan" = its borrow is held by some binding. [End ℓ] clears the holder and substitutes, as RULES says; it refuses (error) if the borrowed content contains a borrow, which cannot happen in a well-formed state and makes [Access] terminate by a plain measure (number of `borrow` constructors).
+5. **Values in flight.** Arguments live in temporaries `tmp i` of the caller's frame (RULES [Call]). The value returned by a `let`/frame pop is passed to [Drop] as `extra`, so that dropping a place whose loan is held by the returned borrow is the error RULES [Drop] requires (`let a = Z; &a`). The right-hand side of `p := t` is *not* visible to [Access] of `p`: this is what lets `r := &(*r).1` (reborrow-and-replace) run; RULES does not say either way (see Findings, F1).
+6. **Erased terms are skipped.** `erase t` and calls whose result type is `prop` return `⋆` and leave the state unchanged, arguments included. Under v1.3 P2 (a private copy, discarded) this is exactly the run's effect on the state; the private run only matters for *typing* errors, which belong to the checker, not to this fragment.
+7. **Stuck results do not carry a state.** [Close] restores the call-point state, so "discard the partial run" is literal: the body's partial state is simply not in `Res.stuck`.
+8. **`match` arms use substitution** `ts[y := p.1]`; source programs are assumed to use distinct bound names (Barendregt), since substitution of a place for `y` is not capture-avoiding.
+9. **Stuck blocks** (a non-tail stuck match closed off as an anonymous function) are not a machine rule here: in FO the author lambda-lifts by hand, and the block becomes an ordinary [Close] of a named function. A top-level stuck match returns `stuck`.
+
+## T2 as proved (statements in plain words)
+
+- **The ports formulation.** "`Ω₁` runs alone" is made exact by a *ports* frame: `Env.portsOf Ω₁` has one binding `port i ↦ loan_ℓᵢ` per borrow `ℓᵢ` of `Ω₁` (keyed by position, so that forming the ports commutes with renaming loans). The run from `Ω₁ ++ [ports]` sees only `Ω₁`; whatever it substitutes for `loan_ℓ` lands in the port. `frameMap Ω₂` substitutes the ports' final values into `Ω₂` (this is the paper's θ). For a call, `Ω₁` is the parameter frame and the ports are exactly the owners `cᵢ` of the generic call environment `G(d̄)`: `callRun` *is* the meta-model's `CallRun`.
+- **T2a** (`frame_local`): `exec P n ⟨Ω₁ ++ Ω₂, k⟩ t = (exec P n ⟨Ω₁ ++ [portsOf Ω₁], k⟩ t).map (frameMap Ω₁.portKeys Ω₂)`, for every fuel `n` (so `stuck`/`err`/`oof` coincide and fuel is identical), given: `Ω₁ ≠ []`; no name of `Ω₁` is held in `Ω₂`; a loan occurring in both belongs to a borrow of `Ω₁`; the counter `k` is above every name of `Ω₂`. These are the meta-model's "loan-closed" + unique holders + fresh counter, stated minimally (inert loans in `Ω₁` are allowed). `frame_local_eval` is the `Eval` iff.
+- **T2b** (`call_effect`): after the arguments, `callWith (exec P n) … ws s` is `callRun P n d b ws s.next` (body from `G(d̄)` then pop), mapped through `frameMap s.env` on `ok`, [Close] from the call point on `stuck`. Hypotheses: as T2a for `Ω₁ = [paramFrame d ws]`.
+- Proof: one induction on fuel (`exec_frame`), with the invariant `PInv` (core non-empty, ports borrow-free, every name of the core is *good*: not held in `Ω₂` and, if a loan of `Ω₂`, ported; all names at or above the counter good). Every clause of `exec` is a composition of primitive commutations (`access_frame`, `endBorrow_frame`, `dropVal_frame`, `popFrame_frame`, `closeCall_frame`, `callWith_frame`, ...). ~1500 lines.
+
+## The [Close] equations as proved
+
+`sealRun P m f args k w` is RULES' [Seal] step: the source program `L; C; K` (`sealTerm`) run by the same machine from the empty environment, `L` supplied as the frame `cᵢ ↦ argsᵢ, h ↦ w`, the head call `C` not eligible for [Close] (`call … false`). For a call `f(w̄)` whose isolated run `callRun` (T2b) completes with result `v` and final contents `φⱼ` of the borrowed places (the ports), and all enough fuel:
+- `close_res`: `⌈L; C⌉` normalises to `v`;
+- `close_fin`: `⌈L; C; cᵢ⌉` normalises to `φⱼ` (the fill of the j-th borrowed place, at parameter position i);
+- `close_cur`: if `v = borrow_q c`, `⌈L; let r = C; *r⌉` normalises to `c`;
+- `close_back`: `⌈L; let r = C; *r := w; cᵢ⌉` normalises to `φⱼ[q := w]` for every `w` that is not a borrow or ⊥ (the backward function at `w`; `w = loan_k` gives the hole form).
+Proof: the head call of the sealed program evaluates its arguments to fresh borrows of the cells (`exec_sealHead`), T2b applies inside the program (`seal_call_effect`), a canonical relabelling identifies its isolated run with the original one (`callRun_seal_canon`, from `exec_rename` + positional ports + `exec_mono`), and the tails are computed exactly. Hypotheses that are Lemma 0 facts and will be discharged from `exec_wf`: the arguments are loan-free, borrow-free inside and not ⊥; the result and final contents are name-free (data rows); in the back row the final content's only loan is `q`, ports hold no borrows, and `q` is an argument's borrow or fresh.
+
+## Machine tightenings made during the proofs (each is RULES-faithful; see commits)
+
+- **No borrows inside data** (dynamic check): `S t`/`(t, u)` with a borrow component, `p.π := t` with a borrow and a non-empty path, and a [Close] whose sealed arguments contain a borrow, are errors. RULES §1 scope forbids them; an untyped FO program could otherwise copy or silently discard a nested borrow.
+- **[Close] of a call with a borrow result and no borrow argument is an error.** Its returned borrow's loan would occur nowhere; in the model its function type's injective subset is empty; concretely every such call errs at the pop.
+
+## Findings (rules / meta-model-v1 underspecified or wrong)
+
+- **F1 (underspecified): is the right-hand side of `p := t` visible to [Access]?** RULES [Call] puts arguments in temporaries so [Access] can see them; [Assign] is silent. If the value `v` of `t` is visible, `r := &(*r).1` ends the new borrow (its loan sits inside `content(r)`), so the traversal idiom is rejected; if it is invisible (my choice), it runs, and the old borrow of `r` ends into the owner with the new loan inside it. Soundness is unaffected either way (the frame lemma and the invariants below hold for both readings); it is a completeness choice the paper should state.
+- **F4 (statement needs a side condition): Lemma 0 over arbitrary terms is false** if terms may name the machine's argument temporaries: `f(Z, &tmp0)` with `f` opaque takes a loan into a sealed program with no borrow held for it (found by the Lemma 0 sub-agent). Fix: source terms and bodies do not mention `Var.tmp` (they cannot, in surface syntax); `exec_wf` carries that hypothesis.
+- **F5 (a stronger form of T1(b) is false; meta-model's form stands):** "ending a borrow early gives the lazy final state with that borrow ended" fails (sub-agent, machine-checked, `Sched.lean`): from `y ↦ borrow_1 0, x ↦ borrow_0 (loan_1, 0), a ↦ loan_0` (reachable by `x := &a; y := &(*x).1`), `x := 0` lazily ends the reborrow 1 (deep access into x's old content) and then 0; with 0 ended first, x is ⊥, the assignment ends nothing, and 1 stays live. Both succeed with `()`; the final states differ, each reaching a common state by ending borrows, and agree after resolution. So T1(b) holds in meta-model-v1's form (`ρ_Ω₁ = ρ_Ω₂`), and a proof must carry a two-sided "both reach a common state by [End]s" invariant. Fuzzing (2.3M pairs) found no disagreement after resolution.
+- **F2 (underspecified): [Drop] of a place whose loan is held by the value being returned.** RULES says a live loan in a dropped owned value is an error, but the only borrow that can be live at that moment is the returned value, which is not in Ω. The mechanisation treats the value in flight as live (so `let a = Z; &a` errors, as intended).
+- **F3 (FALSE statement): meta-model-v1 Theorem 5 ("naturality on the nose, up to renaming of loans") is false.** Counterexample (`Tests/Basic`, namespace `T5`, checked by `#guard`): `Ω = {n ↦ σ, a ↦ 1, b ↦ 2, r ↦ (), z ↦ ()}`, `t = r := Pick(n, &a, &b); z := b`, `α = σ := Z`. Symbolically `Pick` closes off; the hole `loan_k` of the returned borrow sits in the fills of *both* `a` and `b`; reading `b` ends `k` ([Access]: a loan inside the content, sealed programs included), so `r ↦ ⊥`. The refined run of `tα` returns a borrow of `a`, `b` holds no loan, and `r` stays live. Final states: refined symbolic `(Ω'α)↓ = {n ↦ 0, a ↦ 1, b ↦ 2, r ↦ ⊥, z ↦ 2}`; concrete `Ω'' = {n ↦ 0, a ↦ loan_q, b ↦ 2, r ↦ borrow_q 1, z ↦ 2}`. No renaming of loans relates them (one has a live borrow, the other none). They agree after resolution (end every borrow). **Why:** a hole in a sealed program over-approximates where the returned borrow points (it is in every owner's fill), so the symbolic machine ends a returned borrow whenever *any possible* owner is accessed, while the concrete machine ends it only when the actual owner is. **What survives:** the symbolic run is the concrete run under a schedule with *extra* [End] steps; with T1(b) (schedule independence) that gives agreement of every observation, i.e. v0's "up to resolution" form. (Also meta-model-v1's `sim` (T0-FO) cannot conclude `Ωc ≈ Ω'.inst` on the nose for the same reason, and cannot conclude that the concrete run is `ok` at all in FO: without a checker, an arm the symbolic run never explored may err concretely, e.g. `f(x) := match x {Z ⇒ Z | S _ ⇒ (read of ⊥)}` closes off on `σ` but errs on `1`.) Consequences: (i) §2.5's claim that T5 holds on the nose, and its use in §2.6 ("canonicity is a corollary of naturality"), must be restated: naturality holds up to resolution, and it is T1(b) that absorbs the extra ends; (ii) the checker is incomplete here (a program that later uses `r` is rejected symbolically but runs concretely at `n = 0`), not unsound. RULES need not change.
