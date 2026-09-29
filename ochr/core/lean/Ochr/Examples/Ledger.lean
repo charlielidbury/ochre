@@ -60,8 +60,8 @@ open Ochr.Registry in
   ["ClosingOff.UseDec:rejected", "Equality.CastMatch:rejected", "CaseSplits.MatchAfterOpaque:rejected",
    "GenType.GenL:rejected", "Trees.InsertM:rejected", "Trees.Insert:rejected", "Trees.InsertMEq:rejected",
    "Trees.InsertMSwap:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.InsertM:rejected",
-   "InPlaceTrees.Insert:rejected", "InPlaceTrees.InsertMIsInsert:rejected",
-   "InPlaceTrees.SizeInsert:rejected"]
+   "InPlaceTrees.Insert:rejected", "InPlaceTrees.InsertMIsInsert:rejected", "InPlaceTrees.SizeInsert:rejected",
+   "InPlaceTrees.SizeInsertRw:rejected"]
 open Ochr.Registry in
 #guard rowOk { blockMoves := false }
   ["ClosingOff.MovedByBlock:accepted"]
@@ -97,7 +97,8 @@ open Ochr.Registry in
   ["ClosingOff.Clear:accepted", "ClosingOff.Boom5:accepted"]
 open Ochr.Registry in
 #guard rowOk { genConsistent := false }
-  ["Trees.InsertMEq:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.SizeInsert:rejected"]
+  ["Trees.InsertMEq:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.SizeInsert:rejected",
+   "InPlaceTrees.SizeInsertRw:rejected"]
 open Ochr.Registry in
 #guard rowOk { classBySyntax := false }
   ["ErasureBySyntax.BoomL:accepted", "ErasureBySyntax.Boom8:accepted", "ErasureBySyntax.Direct8:accepted"]

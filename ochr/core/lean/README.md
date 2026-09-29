@@ -10,7 +10,7 @@ lake build          # checks every example; a failing verdict or a wrong asserti
 lake exe tests      # prints every verdict table and the counterfactual ledger; exit 1 on any unexpected verdict
 ```
 
-Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A clean build takes about 55 seconds (most of it the counterfactual ledger: 47 rows, each re-running the suite twice in the interpreter) and prints every verdict table; `lake exe tests` compiles the runner first and prints per-declaration check times (all 467 declarations check in about 22 ms) and the ledger with each row's class.
+Toolchain `leanprover/lean4:v4.33.0` (see `lean-toolchain`), no dependencies. A clean build takes about 55 seconds (most of it the counterfactual ledger: 47 rows, each re-running the suite twice in the interpreter) and prints every verdict table; `lake exe tests` compiles the runner first and prints per-declaration check times (all 902 declarations check in about half a second) and the ledger with each row's class.
 
 ## Writing programs
 
@@ -86,7 +86,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `07Recursion` | `by x`, entry-value recursion, induction hypotheses in the caller's environment; typing a sealed program keeps the [Rec] state | §5 [Def], [Rec] | 29 |
 | `08CaseSplits` | [Split], dependent matching on a computed type, generalising sealed programs, scrutinee types, global generalisation records | §5 [Split] | 18 |
 | `09Functions` | opaque functions, closures, Π-types, comparing functions by observation (D30, D38, D48 (3)); a function type's class and row (D54) | P1, §1, §4 | 54 |
-| `10Inductives` | lists, binary search trees (and the paper's trees, whose pure insert runs the in-place one), parameters, strict positivity | §8 | 76 |
+| `10Inductives` | lists, binary search trees (and the paper's trees, whose pure insert runs the in-place one), parameters, strict positivity | §8 | 78 |
 | `11Propositions` | `False`, `True`, `And`, matching on proofs by type, a stuck zero-arm match (D58), destructuring `let` (D60), subsingleton elimination | §1, §8 | 75 |
 | `12CurrentState` | proofs about the current, mutated state (E5) | §7 | 14 |
 | `13Erasure` | erased terms run on a private copy, confinement, erasure decided by syntax | P2 | 55 |
