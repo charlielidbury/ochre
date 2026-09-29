@@ -106,7 +106,7 @@ ochr Trees uses Std {
     match *t {
       Leaf => *t := Node(Leaf, k, Leaf),
       Node(l, v, r) => (
-        let b = Lt(k, v);
+        let b = Lt(clone(k), clone(v));
         match b {
           true => InsertM(&l, k),
           false => InsertM(&r, k),
@@ -120,7 +120,7 @@ ochr Trees uses Std {
     match t {
       Leaf => Node(Leaf, k, Leaf),
       Node(l, v, r) => (
-        let b = Lt(k, v);
+        let b = Lt(clone(k), clone(v));
         match b {
           false => Node(l, v, Insert(r, k)),
           true => Node(Insert(l, k), v, r),
@@ -148,7 +148,7 @@ ochr Trees uses Std {
     match *t {
       Leaf => *t := Node(Leaf, k, Leaf),
       Node(l, v, r) => (
-        let b = Lt(k, v);
+        let b = Lt(clone(k), clone(v));
         match b {
           false => InsertMSwap(&l, k),
           true => InsertMSwap(&r, k),

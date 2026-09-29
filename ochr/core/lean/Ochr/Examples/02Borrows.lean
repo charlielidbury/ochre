@@ -56,7 +56,7 @@ ochr Borrows uses Std {
   reject def DeadTwice (f : Π(a : &Nat) (b : &Nat). Unit) (x : Nat) : Unit := f(&x, &x)
 
   -- The other way round is fine: `x` is copied first, then borrowed.
-  def NotDead (f : Π(a : Nat) (b : &Nat). Unit) (x : Nat) : Unit := f(x, &x)
+  def NotDead (f : Π(a : Nat) (b : &Nat). Unit) (x : Nat) : Unit := f(clone(x), &x)
 
   -- A statement about two separate borrows ...
   def g (x : &Nat) (y : &Nat) : Id Nat (*x := 0; *y := 1; *x) (*x := 0; *y := 1; 0) := refl

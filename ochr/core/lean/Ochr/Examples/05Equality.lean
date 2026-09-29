@@ -134,7 +134,7 @@ ochr Owners uses Fixtures {
   def K (z : &Nat) (e : Id Unit (*z := 0) (*z := 1)) : Eq Nat 0 1 := e
 
   reject def BadD18 (s : Nat) (hs : Eq Nat s 1) (a : Nat) (b : Nat) : Eq Nat 0 1 := (
-    let r = Pick3(&a, &b, s);
+    let r = Pick3(&a, &b, clone(s));
     let e : Id Unit (*r := 0) (*r := 1) = match s {
       Z => hs,
       S _ => refl,

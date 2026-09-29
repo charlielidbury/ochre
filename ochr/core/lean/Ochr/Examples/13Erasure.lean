@@ -53,24 +53,24 @@ ochr Erasure uses Std {
   -- A proof may change its own locals ...
   def Local (x : &Nat) : Nat := (
     let h : ⊤ = (let y = 0; y := 1; refl);
-    *x
+    clone(*x)
   )
 
   -- ... and hand an outer place to another proof (as `AddMZero`'s recursive call does) ...
   def Pass (x : &Nat) : Nat := (
     let h = AddMZero(&*x);
-    *x
+    clone(*x)
   )
 
   -- ... but may not write, borrow or move one itself.
   reject def Write (x : &Nat) : Nat := (
     let h : ⊤ = (*x := 5; refl);
-    *x
+    clone(*x)
   )
 
   reject def Borrow (x : &Nat) : Nat := (
     let h : ⊤ = (AddM(&*x, 0); refl);
-    *x
+    clone(*x)
   )
 
   reject def Move (x : &Nat) : Nat := (

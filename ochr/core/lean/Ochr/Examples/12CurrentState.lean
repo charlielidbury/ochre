@@ -50,7 +50,7 @@ ochr CurrentState uses Std {
 
   -- A proof made from the copy `old`, about the changed `*x`.
   def AddSub (x : &Nat) (y : Nat) : Unit := (
-    let old = *x;
+    let old = clone(*x);
     AddM(&*x, y);
     SubM(x, old, LeAdd(old, y))
   )
@@ -70,7 +70,7 @@ ochr CurrentState uses Std {
   -- The precondition really is about the current state: after `*x := Z` it no longer holds
   -- ...
   reject def AddSubStale (x : &Nat) (y : Nat) : Unit := (
-    let old = *x;
+    let old = clone(*x);
     AddM(&*x, y);
     *x := Z;
     SubM(x, old, LeAdd(old, y))
@@ -78,7 +78,7 @@ ochr CurrentState uses Std {
 
   -- ... it is not about `S old` ...
   reject def AddSubWrong (x : &Nat) (y : Nat) : Unit := (
-    let old = *x;
+    let old = clone(*x);
     AddM(&*x, y);
     SubM(x, S old, LeAdd(old, y))
   )

@@ -243,7 +243,7 @@ paper's §7, "naturality up to resolution"). -/
 
 ochr Naturality uses Fixtures {
   reject def PickEarly (n : Nat) (a : Nat) (b : Nat) : Unit := (
-    let r = Pick(n, &a, &b);
+    let r = Pick(clone(n), &a, &b);
     let z = b;
     match n {
       Z => *r := 5,
@@ -253,7 +253,7 @@ ochr Naturality uses Fixtures {
 
   def PickEarly0 (a : Nat) (b : Nat) : Unit := (
     let n = 0;
-    let r = Pick(n, &a, &b);
+    let r = Pick(clone(n), &a, &b);
     let z = b;
     match n {
       Z => *r := 5,
@@ -263,7 +263,7 @@ ochr Naturality uses Fixtures {
 
   def PickEarly1 (a : Nat) (b : Nat) : Unit := (
     let n = 1;
-    let r = Pick(n, &a, &b);
+    let r = Pick(clone(n), &a, &b);
     let z = b;
     match n {
       Z => *r := 5,

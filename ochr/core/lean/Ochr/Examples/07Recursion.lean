@@ -57,7 +57,7 @@ ochr Recursion uses Std {
         match *x {
           Z => refl,
           S p => (
-            let q = p;
+            let q = clone(p);
             Loop(&p, q)
           ),
         }
