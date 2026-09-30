@@ -2,7 +2,7 @@ import OchrMeta.Canon
 import OchrMeta.Interp
 import OchrMeta.WF
 
-/-! # Property 7: the order in which borrows end does not change the resolved state
+/-! # The order in which borrows end does not change the resolved state (the paper's claims table, property 4)
 
 `end_comm` (T1(a)) is the two-step diamond, for two held borrows whose contents do not each
 contain the other's loan.  In a well-formed state that side condition always holds (W3: the
@@ -268,7 +268,7 @@ theorem endSeq_isSome : ∀ {L : List Nat} {s : St} {V : List Val}, WFv s V → 
     have : k ≠ l := fun h => (List.nodup_cons.mp hnd).1 (h ▸ hk)
     exact ⟨hL k (List.mem_cons_of_mem _ hk), by simpa using this⟩
 
-/-- **Property 7, in full.** From a well-formed state the resolved state exists, and ending
+/-- **Order-independence, in full** (claims table, property 4). From a well-formed state the resolved state exists, and ending
 the held borrows in any order (each once) reaches it. -/
 theorem end_order_indep {s : St} {V : List Val} (hs : WFv s V) :
     ∃ s', endAll s = some s' ∧ ∀ L : List Nat, L.Perm s.env.held → endSeq L s = some s' := by
@@ -317,7 +317,7 @@ theorem endSeq_spec : ∀ {L : List Nat} {s s' : St}, endSeq L s = some s' →
         intro k _
         by_cases hk : k = l <;> simp [hk]
 
-/-- **Property 7, as [Access] uses it.** From a well-formed state, whatever borrows have been
+/-- **Order-independence, as [Access] uses it.** From a well-formed state, whatever borrows have been
 ended first, and in whatever order, resolving afterwards gives the same resolved state. -/
 theorem endAll_endSeq {s s' : St} {V : List Val} (hs : WFv s V) {L : List Nat}
     (h : endSeq L s = some s') : endAll s' = endAll s := by
