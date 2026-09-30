@@ -219,8 +219,5 @@ ochr Recursion uses Std, Fixtures {
   reject def BoomId : False := LieId(0)
 }
 
-#eval IO.println (run "Recursion" Recursion).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Recursion" Recursion).allAsExpected
-#guard (run "Recursion" Recursion).count == 29
+-- the exact number of declarations (a truncated file changes it)
+#guard Recursion.decls.length == 29

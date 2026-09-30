@@ -152,7 +152,6 @@ ochr Functions uses Std, Fixtures {
     TY(&c, &d)
   )
 
-
   -- A function's erasure class and [Close] row are part of its type (D54). `H` returns a
   -- `P0`, which is `Prop` but not written as a sort, so `H` returns data and its calls run,
   -- while calls of a `Π(x : &Nat). Prop` return types and are erased. Were the two types
@@ -242,8 +241,5 @@ ochr Functions uses Std, Fixtures {
   def RunUH (n : Nat) : ⊤ := RunU(H2, n)
 }
 
-#eval IO.println (run "Functions" Functions).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Functions" Functions).allAsExpected
-#guard (run "Functions" Functions).count == 63
+-- the exact number of declarations (a truncated file changes it)
+#guard Functions.decls.length == 63

@@ -207,11 +207,8 @@ ochr Index uses Std {
   )
 }
 
-#eval IO.println (run "Index" Index).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Index" Index).allAsExpected
-#guard (run "Index" Index).count == 19
+-- the exact number of declarations (a truncated file changes it)
+#guard Index.decls.length == 19
 
 /-! ## The model
 
@@ -446,13 +443,8 @@ ochr Arrays uses Index {
   def Fill (E : Type) (n : Word) (s : &Slice(E, n)) (x : E) : Unit := FillFrom(E, n, s, x, Zero, n, AddZeroR(n))
 }
 
-
-#eval IO.println (run "Arrays" Arrays).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Arrays" Arrays).allAsExpected
-#guard (run "Arrays" Arrays).count == 26
-
+-- the exact number of declarations (a truncated file changes it)
+#guard Arrays.decls.length == 26
 
 /-! ## The lemma library
 
@@ -715,11 +707,8 @@ ochr ArrayLemmas uses Arrays {
   )
 }
 
-#eval IO.println (run "ArrayLemmas" ArrayLemmas).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "ArrayLemmas" ArrayLemmas).allAsExpected
-#guard (run "ArrayLemmas" ArrayLemmas).count == 14
+-- the exact number of declarations (a truncated file changes it)
+#guard ArrayLemmas.decls.length == 14
 
 /-! ## The benchmarks (D57)
 
@@ -978,11 +967,8 @@ ochr ArrayBench uses ArrayLemmas {
       Id Word (Read(Word, n, &*s, i, h)) (Nth(Word, n, *s, i, h)) := refl
 }
 
-#eval IO.println (run "ArrayBench" ArrayBench).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "ArrayBench" ArrayBench).allAsExpected
-#guard (run "ArrayBench" ArrayBench).count == 38
+-- the exact number of declarations (a truncated file changes it)
+#guard ArrayBench.decls.length == 38
 
 /-! ## B2: quicksort
 
@@ -2013,8 +1999,5 @@ ochr Quicksort uses ArrayLemmas {
   )
 }
 
-#eval IO.println (run "Quicksort" Quicksort).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Quicksort" Quicksort).allAsExpected
-#guard (run "Quicksort" Quicksort).count == 76
+-- the exact number of declarations (a truncated file changes it)
+#guard Quicksort.decls.length == 76

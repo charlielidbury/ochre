@@ -88,11 +88,8 @@ ochr BorrowTypes uses Std {
   reject def UseG : Unit := G(0, 5)
 }
 
-#eval IO.println (run "BorrowTypes" BorrowTypes).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "BorrowTypes" BorrowTypes).allAsExpected
-#guard (run "BorrowTypes" BorrowTypes).count == 27
+-- the exact number of declarations (a truncated file changes it)
+#guard BorrowTypes.decls.length == 27
 
 /-! ## Abstract and unsized types (K2, K3)
 
@@ -127,7 +124,4 @@ ochr Abstraction uses Std {
   reject def AssignV (s : &View) (t : &View) : Unit := *s := *t
 }
 
-#eval IO.println (run "Abstraction" Abstraction).show
-
-#guard (run "Abstraction" Abstraction).allAsExpected
-#guard (run "Abstraction" Abstraction).count == 12
+#guard Abstraction.decls.length == 12

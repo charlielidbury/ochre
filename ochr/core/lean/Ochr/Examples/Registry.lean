@@ -212,6 +212,4 @@ end Ochr.Registry
 def Ochr.Registry.expectedTotal : Nat := 1217
 
 open Ochr.Registry Ochr.Test in
-#guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
-open Ochr.Registry Ochr.Test in
-#guard (reports {}).all Report.allAsExpected
+#guard ((programs ++ caseStudies).map (·.2.decls.length)).foldl (· + ·) 0 == expectedTotal

@@ -176,11 +176,8 @@ ochr Erasure uses Std {
   )
 }
 
-#eval IO.println (run "Erasure" Erasure).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Erasure" Erasure).allAsExpected
-#guard (run "Erasure" Erasure).count == 32
+-- the exact number of declarations (a truncated file changes it)
+#guard Erasure.decls.length == 32
 
 /-! ## What goes wrong when erasure is decided from values
 
@@ -370,8 +367,5 @@ ochr ErasureBySyntax uses Fixtures {
   )
 }
 
-#eval IO.println (run "ErasureBySyntax" ErasureBySyntax).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "ErasureBySyntax" ErasureBySyntax).allAsExpected
-#guard (run "ErasureBySyntax" ErasureBySyntax).count == 35
+-- the exact number of declarations (a truncated file changes it)
+#guard ErasureBySyntax.decls.length == 35

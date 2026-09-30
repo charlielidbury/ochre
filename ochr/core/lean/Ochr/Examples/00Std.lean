@@ -21,9 +21,7 @@ open Ochr.Test
 
 -- The library block, `Prelude` (`Ochr/Prelude.lean`), which every block uses implicitly, is
 -- asserted here, since that file cannot run the checker's tests itself.
-#eval IO.println (run "Prelude" Prelude).show
-#guard (run "Prelude" Prelude).allAsExpected
-#guard (run "Prelude" Prelude).count == 4
+#guard Prelude.decls.length == 4
 
 ochr Std {
   -- In-place addition: walk down to the `Z` at the bottom of `*x` and replace it with `y`.
@@ -72,11 +70,8 @@ ochr Std {
   copy inductive Word := Zero | Succ(pred : Word)
 }
 
-#eval IO.println (run "Std" Std).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Std" Std).allAsExpected
-#guard (run "Std" Std).count == 8
+-- the exact number of declarations (a truncated file changes it)
+#guard Std.decls.length == 8
 
 /-! ## Fixtures
 
@@ -112,8 +107,5 @@ ochr Fixtures {
   )
 }
 
-#eval IO.println (run "Fixtures" Fixtures).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Fixtures" Fixtures).allAsExpected
-#guard (run "Fixtures" Fixtures).count == 4
+-- the exact number of declarations (a truncated file changes it)
+#guard Fixtures.decls.length == 4

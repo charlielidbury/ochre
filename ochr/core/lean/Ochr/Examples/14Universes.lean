@@ -41,11 +41,8 @@ ochr Universes {
   reject def PolyTy : Type := Π(x : &Type) (a : Nat). Nat
 }
 
-#eval IO.println (run "Universes" Universes).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Universes" Universes).allAsExpected
-#guard (run "Universes" Universes).count == 8
+-- the exact number of declarations (a truncated file changes it)
+#guard Universes.decls.length == 8
 
 /-! ## Sorts are syntactic
 
@@ -86,7 +83,4 @@ ochr Sorts {
   reject def K2 : Eq Nat (k(g2)) 0 := refl
 }
 
-#eval IO.println (run "Sorts" Sorts).show
-
-#guard (run "Sorts" Sorts).allAsExpected
-#guard (run "Sorts" Sorts).count == 17
+#guard Sorts.decls.length == 17

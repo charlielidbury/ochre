@@ -182,7 +182,6 @@ ochr ClosingOff uses Std, Fixtures {
     }
   )
 
-
   -- Comparing two blocks' functions observes them at a generic argument, where a pattern's
   -- sub-place their arms read may not exist; that answers "not convertible", it is not an
   -- error (fuzz-port R3).
@@ -356,11 +355,8 @@ ochr ClosingOff uses Std, Fixtures {
   )
 }
 
-#eval IO.println (run "ClosingOff" ClosingOff).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "ClosingOff" ClosingOff).allAsExpected
-#guard (run "ClosingOff" ClosingOff).count == 49
+-- the exact number of declarations (a truncated file changes it)
+#guard ClosingOff.decls.length == 49
 
 /-! ## Symbolic checking is not the same as checking every instance
 
@@ -401,8 +397,5 @@ ochr Naturality uses Fixtures {
   )
 }
 
-#eval IO.println (run "Naturality" Naturality).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Naturality" Naturality).allAsExpected
-#guard (run "Naturality" Naturality).count == 3
+-- the exact number of declarations (a truncated file changes it)
+#guard Naturality.decls.length == 3

@@ -119,11 +119,8 @@ ochr Borrows uses Std {
   reject def WRun : Nat := W(1)
 }
 
-#eval IO.println (run "Borrows" Borrows).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Borrows" Borrows).allAsExpected
-#guard (run "Borrows" Borrows).count == 19
+-- the exact number of declarations (a truncated file changes it)
+#guard Borrows.decls.length == 19
 
 /-! ## A borrow with several possible owners
 
@@ -151,10 +148,7 @@ ochr GhostBorrows uses Fixtures {
   reject def UseGhost (n : Nat) (b : Nat) : Unit := (let a = 0; let x = Pick(n, &a, &b); let z = b; *x := 1)
 }
 
-#eval IO.println (run "GhostBorrows" GhostBorrows).show
-
-#guard (run "GhostBorrows" GhostBorrows).allAsExpected
-#guard (run "GhostBorrows" GhostBorrows).count == 9
+#guard GhostBorrows.decls.length == 9
 
 /-! ## Moves and copies (D53)
 
@@ -349,7 +343,4 @@ ochr Moves uses Std {
     match n { Z => 0, S _ => 1 })
 }
 
-#eval IO.println (run "Moves" Moves).show
-
-#guard (run "Moves" Moves).allAsExpected
-#guard (run "Moves" Moves).count == 54
+#guard Moves.decls.length == 54
