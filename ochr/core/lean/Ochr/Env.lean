@@ -200,6 +200,8 @@ structure MState where
   neutrals : List (Value × Nat) := []     -- [Split] generalisations: sealed program ↦ its σ (finding G1)
   depth : Nat := 0                        -- call depth (bounded, like fuel: the checker must terminate)
   effects : Array Effect := #[]           -- D41: assigns, borrows and moves so far (restored with the state)
+  placeLog : Array (Nat × Nat × Place × Bool) := #[]  -- D53: every move (true) and assignment (false), at its
+                                          -- root binding's position (restored with the state)
   preAssert : Option Bool := none         -- `cfg.prePassAssert`, computed once
   constDecls : List (String × DeclInfo) := []   -- what each global's declared type says (a pure cache)
   curDecl : Option DeclInfo := none        -- the pre-pass's reading of the term being evaluated

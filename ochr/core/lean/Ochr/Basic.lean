@@ -146,6 +146,42 @@ where
   fp (f : Nat → Place → Place) (c : Nat) (p : Place) : Place :=
     if p.root < c then p else f c (p.mapRoot fun j => .var (j - c))
 
+/-- D53: take a match's arm when its scrutinee (a free place, re-rooted at the enclosing
+frame) is a place `sel` knows the constructor of (`some k` for an inductive's `k`, `none` for
+`S`): a stuck block's capture split into its fields (`closeOffMatch`). -/
+partial def Term.selectArms (sel : Place → Option (Option Nat)) (c : Nat) : Term → Term
+  | .matchInd p t as =>
+    match (if p.root < c then none else sel (p.mapRoot fun j => .var (j - c))) with
+    | some (some k) => match as[k]? with
+      | some (_, a) => a.selectArms sel c
+      | none => .matchInd p t (as.map fun (h, a) => (h, a.selectArms sel c))
+    | _ => .matchInd p t (as.map fun (h, a) => (h, a.selectArms sel c))
+  | .matchNat p z s =>
+    match (if p.root < c then none else sel (p.mapRoot fun j => .var (j - c))) with
+    | some none => s.selectArms sel c
+    | _ => .matchNat p (z.selectArms sel c) (s.selectArms sel c)
+  | .assign p t => .assign p (t.selectArms sel c)
+  | .letIn h t u => .letIn h (t.selectArms sel c) (u.selectArms sel (c + 1))
+  | .seq t u => .seq (t.selectArms sel c) (u.selectArms sel c)
+  | .pi hs ds cod =>
+      .pi hs ((ds.zipIdx).map fun (d, i) => d.selectArms sel (c + i)) (cod.selectArms sel (c + ds.length))
+  | .fix h hs ds cod d b =>
+      .fix h hs ((ds.zipIdx).map fun (d, i) => d.selectArms sel (c + i)) (cod.selectArms sel (c + ds.length)) d
+        (b.selectArms sel (c + ds.length + 1))
+  | .call g as hd => .call (g.selectArms sel c) (as.map (·.selectArms sel c)) hd
+  | .succ t => .succ (t.selectArms sel c)
+  | .fst t => .fst (t.selectArms sel c)
+  | .snd t => .snd (t.selectArms sel c)
+  | .ref t => .ref (t.selectArms sel c)
+  | .cong a b => .cong (a.selectArms sel c) (b.selectArms sel c)
+  | .ascribe a b => .ascribe (a.selectArms sel c) (b.selectArms sel c)
+  | .eq a b d => .eq (a.selectArms sel c) (b.selectArms sel c) (d.selectArms sel c)
+  | .id a b d => .id (a.selectArms sel c) (b.selectArms sel c) (d.selectArms sel c)
+  | .prim n as => .prim n (as.map (·.selectArms sel c))
+  | .ctor t k h ps as => .ctor t k h (ps.map (·.selectArms sel c)) (as.map (·.selectArms sel c))
+  | .tind n as => .tind n (as.map (·.selectArms sel c))
+  | t => t
+
 /-- Replace every read of the whole free variable `o` (at depth `c`, the variable
 `o + c`) by the closed term `u`; other occurrences stay. Used to inline a captured proof
 with its type (a proof's value is ⋆, so only its type needs keeping). -/
