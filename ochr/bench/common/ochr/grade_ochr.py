@@ -413,7 +413,7 @@ def main():
         print("  ok")
     holes_u = list(dict.fromkeys(hole_names))
     if holes_u:
-        print(f"  holes (TODO) remain in: {', '.join(holes_u)}")
+        print(f"  holes remain in: {', '.join(holes_u)}")
         reasons.append(f"holes remain in {', '.join(holes_u)}")
     if info.get("clone"):
         print(f"  note: {info['clone']} use(s) of clone(...) (allowed, but runtime code may not copy an array or a bucket)")
@@ -468,6 +468,11 @@ def main():
     b = subprocess.run(["lake", "-q", "build"] + libs, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     build_errors = [l for l in b.stdout.splitlines() if l.startswith("error:") and "Lean exited" not in l
                     and "build failed" not in l and not l.startswith("error: Some required")]
+    # a hole (`?`, `sorry`) is accepted with a warning that shows its goal; the scan above has
+    # already named them, and the build's warnings are counted as a second witness
+    hole_warnings = [l for l in b.stdout.splitlines() if re.match(r"warning: [^:]+:\d+:\d+: hole", l)]
+    if hole_warnings and not holes_u:
+        reasons.append(f"the build reports {len(hole_warnings)} hole(s)")
     # the declarations each error is about; a rejected declaration's error is `NAME: reason`
     decl_names = set()
     for f in files:

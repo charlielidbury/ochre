@@ -3,7 +3,7 @@ import Ochr.Examples.«16Arrays»
 
 /-! # Verified in-place quicksort (condition `ochr`)
 
-Read `ASSIGNMENT.md` first. Replace every `TODO` with a definition or a proof, and add any
+Read `ASSIGNMENT.md` first. Replace every hole `?` with a definition or a proof, and add any
 helper definitions and lemmas you need to the block `QuicksortSolution`, between its FIXED
 regions. Everything inside a FIXED region must stay exactly as it is.
 
@@ -46,19 +46,19 @@ ochr QuicksortSolution uses QuicksortSpec {
   -- quicksort(a : &mut Array(𝕎)): sort the `n` words of `*s` in place.
   def QuickSort (n : Word) (s : &Slice(Word, n)) : Unit :=
   -- FIXED-END quicksort
-    TODO
+    ?
 
   -- FIXED-BEGIN Q1
   -- Q1: sorted(a₁), where a₁ is the contents after `QuickSort`.
   def QuickSortSorted (n : Word) (s : &Slice(Word, n)) : (let c = *s; QuickSort(n, &c); Sorted(n, c)) :=
   -- FIXED-END Q1
-    TODO
+    ?
 
   -- FIXED-BEGIN Q2
   -- Q2: perm(a₁, a₀), where a₁ is the contents after `QuickSort` and a₀ = `*s` those before.
   def QuickSortPerm (n : Word) (s : &Slice(Word, n)) : (let c = *s; QuickSort(n, &c); Perm(n, c, *s)) :=
   -- FIXED-END Q2
-    TODO
+    ?
 -- FIXED-BEGIN tests
 }
 
