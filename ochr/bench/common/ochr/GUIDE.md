@@ -11,7 +11,8 @@ Checking is running. The checker is an evaluator (a machine) that runs programs 
 ## 2. Workflow
 
 - Your solution is the `.lean` file named in `SOLUTION_FILES`. It holds `ochr` blocks: `ochr Name uses A, B { declarations }`. A block sees the declarations of the blocks it uses (transitively) that were accepted, and the library `Prelude` (`Pair`, `False`, `True`, `And`) always.
-- `lake -q exe check` builds your file and prints the checker's verdict on every declaration: `ok` or `FAIL`, what was expected (`def`: accepted, `reject def`: rejected), and for a rejection the reason. It is compiled, so it is fast; the tests take a minute or two.
+- `lake -q build` elaborates your file. The checker runs as each `ochr` block is elaborated, and every declaration it rejects is reported as an error at the declaration's name, with the reason. (Use `-q`: without it, lake also replays the library's own verdict tables.)
+- `lake -q exe check` prints the checker's verdict on every declaration: `ok` or `FAIL`, what was expected (`def`: accepted, `reject def`: rejected), and for a rejection the reason. It reads your file itself, so it works while declarations are still rejected. The checker is compiled, so this is fast; the tests take a few seconds.
 - `lake -q exe check BlockName` checks only the named blocks (and what they use). Use it while you work on proofs, to skip the tests.
 - `lake -q exe check --trace Name` prints the checker's trace for one declaration: the goal after evaluation, the case splits, the types of calls. This is how you see what a stuck goal looks like.
 - `./grade.sh` is the grade. Its last line is `GRADE: PASS` or `GRADE: FAIL: <reasons>`.

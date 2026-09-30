@@ -51,6 +51,7 @@ Do not change the checker, the library, the build files or the grader: only `Qui
 
 ## Checking your work
 
+- `lake -q build` elaborates your file; the checker runs as each block is elaborated and reports every rejected declaration as an error, with the reason.
 - `lake -q exe check` prints the checker's verdict on every declaration, with the reason for each rejection. `lake -q exe check QuicksortSolution` skips the tests; `lake -q exe check --trace QuickSortSorted` shows the checker's view of that declaration's goal.
 - `./grade.sh` runs everything the grader checks. Its last line is `GRADE: PASS` or `GRADE: FAIL: <reasons>`, and it lists the remaining holes.
 
