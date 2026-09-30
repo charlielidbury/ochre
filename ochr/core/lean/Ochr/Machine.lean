@@ -275,7 +275,7 @@ partial def repackCheck (what : String) (v : Value) (T : Value) : M Unit := do
     | .borrow _ c, .tRef A => (c, A)
     | _, _ => (v, T)
   if !(← hasDependent v) then return
-  -- rule: [Repack]
+  fire .Repack fun _ => s!"{what}: {v} : {T}"
   if let some m ← packedErr v T then err s!"[Repack] {what}, but it is open: {m}"
 
 /-- D64 [Repack] at a whole use of the place `p` (of type `T`): read, moved, borrowed, passed
@@ -297,11 +297,12 @@ partial def openWrite (p : Place) : M Unit := do
   for (q, g) in prefixes p do
     let some d := (← get).inds.find? (·.name == g.ty) | continue
     unless (d.indexFields g.ctor).contains g.idx do continue
-    -- rule: [Open]
     for ((fname, FT), j) in ((d.ctors[g.ctor]!).2).zipIdx do
       if j != g.idx && (d.fieldRefs g.ctor FT).contains g.idx && (← fieldTermIsProp d FT) then
         let fp := Place.field ⟨g.ty, g.ctor, j, fname⟩ q
-        if ← tryCatch (do discard (content fp); pure true) (fun _ => pure false) then setPlace fp .bot
+        if ← tryCatch (do discard (content fp); pure true) (fun _ => pure false) then
+          fire .Open fun _ => s!"a write through {g.name} invalidates the proof field {fname}"
+          setPlace fp .bot
 
 /-- End every borrow in Ω (for observations, §4). -/
 partial def endAll : M Unit := do
@@ -687,15 +688,16 @@ partial def depFieldType (d : IndDecl) (ps : List Value) (g : FieldRef) (q : Pla
   let cv ← content q
   let some fs ← ctorFields cv g
     | err s!"{← ppPlace q}.{g.name}: its type depends on the earlier fields of {g.ty}, but {← ppPlace q} holds {cv}, not a value of its constructor (match on it first)"
-  -- rule: [Field] (D64: a field's type from the earlier fields' contents)
+  -- D64: a field's type from the earlier fields' contents
   let some (_, T) := (← fieldTypesOf d ps g.ctor fs (some (g.idx + 1)))[g.idx]?
     | err s!"{← ppPlace q}.{g.name}: no such field"
   if !d.fieldDependent g.ctor g.idx then return T
   let c := (fs.getD g.idx .bot).unghost
   if c == .bot || c == .proof then return T
   if (← packedErr c T).isNone then return T
-  -- rule: [Open] (an open value's dependent field has its content's type)
-  tryCatch (valType c) fun _ => pure T
+  let S ← tryCatch (valType c) fun _ => pure T
+  fire .Open fun _ => s!"{g.name} is open: typed by its content, {S}, not {T}"
+  pure S
 
 /-- D64 [Repack]: why `v` is not a value of `T` by the telescopes of the dependent
 constructors inside it, or `none`. A constructor value is checked field by field against its
@@ -1570,11 +1572,12 @@ partial def mkEqM (A a b : Value) : M Value := do
         -- fields are convertible on both sides, so that each field equation is at one type
         -- (the field types computed from either side's earlier fields agree). Otherwise the
         -- equation stays: fail-safe, incomplete (OTT's rule needs a dependent conjunction)
-        -- rule: [Eq-inj] (restricted for dependent constructors)
         let blocked ← if dd.dependent c && cfg.depInj then
             (dd.indexFields c).anyM fun j => do pure !(← conv (fs.getD j .bot) (gs.getD j .bot))
           else pure false
+        if blocked then fire .EqStuck fun _ => s!"{a} and {b}: index fields not convertible (D64)"
         if !blocked then
+          if dd.dependent c then fire .EqInj fun _ => s!"{a} and {b}: index fields convertible (D64)"
           let Ts ← fieldTypesOf dd args c fs
           if Ts.length == fs.length then
             let eqs ← ((Ts.map (·.2)).zip (fs.zip gs)).mapM fun (T, (v, w)) => mkEqM T v w
@@ -1823,7 +1826,8 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     let (v, Tv) ← eval typed u hint
     -- D64 [Open]: a field whose declared type mentions earlier fields takes any value (a strong
     -- update: while its value is open it is typed by what it holds); [Repack] checks it later
-    -- rule: [Open] (strong update)
+    -- [Open]: a strong update
+    if typed && (← strongUpdate p) then fire .Open fun _ => s!"a strong update of a dependent field, to a value of type {Tv.getD .bot}"
     if typed && !(← strongUpdate p) then expectTy "the assigned value" Tv (← placeType p)
     assignPlace p v
     openWrite p
@@ -2117,7 +2121,6 @@ partial def evalCtor (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts : Li
     | some p => noBorrowParam ty p; ps := ps.push p
     | none => err s!"cannot infer the parameter {ph.name} of {h.name}: write it, {h.name}[…](…), or annotate, ({h.name}(…) : {ty}(…))"
   -- [T-Ctor], D64: each field against its type computed from the earlier fields' values
-  -- rule: [T-Ctor] (with the telescope)
   for (T, (fname, FT)) in tys.toList.zip (← fieldTypesOf d ps.toList c ws.toList) do
     expectTy s!"field {fname} of {h.name}" T FT
   let v := if proof then Value.proof else .ind ty c h ps.toList ws.toList
@@ -2687,7 +2690,6 @@ gets `⋆` (as a proof parameter does, D27). -/
 partial def ctorRefinement (d : IndDecl) (ps : List Value) (c : Nat) : M Value := do
   let (cn, _) := d.ctors[c]!
   -- D64: each field's type from the earlier fields' fresh values (`σ₂ : T₂[σ₁]`)
-  -- rule: [Split] (with the telescope)
   let fs := (← fieldsGeneric d ps c).map (·.2.2)
   pure (.ind d.name c ⟨cn⟩ ps fs)
 

@@ -45,6 +45,8 @@ inductive Rule where
   | TMatch | Split | SplitGen | TSplitGoal
   | TailSplit | TailGen | TailMatch | TailLet | TailSeq | TailEnd
   | TMatchProp | TMatchErased | TMatchNone | TailProp
+  -- dependent fields (D64)
+  | Open | Repack
   -- definitions
   | Def | IndDecl | Const
 deriving BEq, Repr, Inhabited
@@ -68,6 +70,7 @@ def Rule.all : List Rule :=
    .TMatch, .Split, .SplitGen, .TSplitGoal,
    .TailSplit, .TailGen, .TailMatch, .TailLet, .TailSeq, .TailEnd,
    .TMatchProp, .TMatchErased, .TMatchNone, .TailProp,
+   .Open, .Repack,
    .Def, .IndDecl, .Const]
 
 /-- The rule's name as the paper prints it: in an inference rule, or as the label of a rule the
@@ -103,6 +106,7 @@ def Rule.name : Rule → String
   | .TailLet => "Tail-let" | .TailSeq => "Tail-seq" | .TailEnd => "Tail-end"
   | .TMatchProp => "T-Match-prop" | .TMatchErased => "T-Match-erased" | .TMatchNone => "T-Match-none"
   | .TailProp => "Tail-prop"
+  | .Open => "Open" | .Repack => "Repack"
   | .Def => "Def" | .IndDecl => "Ind-decl" | .Const => "Const"
 
 /-- The rules the plain trace (`cfg.trace`) has always shown: goals, splits, call types. -/

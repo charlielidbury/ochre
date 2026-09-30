@@ -47,12 +47,18 @@ is fixed; the build fails until the list matches. -/
 def expectedIssues : List String := [
   -- deleted by rule-audit's items 10 and 5 (fc5cacb6, 79570f2d); the paper's pointers follow
   "pointer `propDecl`: no declaration Ochr.propDecl",
-  "pointer `jValue`: no declaration Ochr.jValue"
+  "pointer `jValue`: no declaration Ochr.jValue",
+  -- D64 (dep-fields): the checker's rules, until prop-paper prints them in the appendix
+  "Rule [Open] is not printed by the paper",
+  "Rule [Repack] is not printed by the paper"
 ]
+
+/-- Rules already tagged with a `fire` call. -/
+def fired : List Rule := [.Open, .Repack, .IndDecl, .EqInj, .EqStuck]
 
 /-- Rules and extensions not yet tagged with a `fire` call (the tagging is in progress). -/
 def notYetFired : List String :=
-  Rule.all.map (·.name) ++
+  (Rule.all.filter (!fired.contains ·)).map (·.name) ++
   ["ErasedReadMovesBorrow", "CaptureTypeFromValue", "TypeOfSealed",
    "FieldTypeFromPattern", "EmbeddedDecl", "CapturedPropFromValue",
    "TermProjection", "TailRewrite", "ErasedCallWhole", "ErasedBodyCopies",

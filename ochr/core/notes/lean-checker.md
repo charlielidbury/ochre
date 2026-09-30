@@ -1324,9 +1324,10 @@ A field's type may mention the fields before it: `Vec(E) := MkVec(n : Word, item
   - `k4Nest`: soundness, `Boom2`.
   - Seven existing rows gain `DepFields` flips: D36, capTypes, D45 by type, D42, D47, D52, D49 (3).
 - *Also changed.* [Assign] passes the place's type as a hint to a constructor or embedded value. That is how an inert loan in a fill's `*r := loan_k` gets typed when a vector holding an element borrow's fill is repacked (`VGetMut`).
+- *Rule tags.* `Rule.Open` and `Rule.Repack` are new (`Ochr/Rules.lean`). Fire calls: `IndDecl` (checkInd), `Open` (an invalidated proof field, a strong update, an open field's type), `Repack` (each check), and `EqInj`/`EqStuck` (a dependent constructor's equation taken apart, or blocked). Until prop-paper prints [Open] and [Repack] in the appendix, RuleGuard lists them as not printed.
 - *Not done.*
   - The fuzzer family for index-field writes (docs/06 acceptance).
   - D62's on-demand one-arm split (rule-audit's lane). Until it lands, a bound is written against `VLen(Word, *v)` rather than `(*v).n`.
   - Proof fields that change in place beyond `Pos`/`Grow` (docs/06's second milestone).
 
-1198 verdicts.
+1209 verdicts.

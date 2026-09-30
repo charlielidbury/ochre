@@ -184,7 +184,7 @@ def checkInd (d : IndDecl) : M Unit := do
   let np := d.params.length
   let pnames := (d.params.map (·.1.name)).reverse
   -- D64 [Ind]: a field's type mentions only the parameters and the earlier fields
-  -- rule: [Ind] (the telescope)
+  fire .IndDecl fun _ => s!"{n}: {d.params.length} parameters, {d.ctors.length} constructors, fields a telescope"
   for ((cn, fields), c) in d.ctors.zipIdx do
     for ((fname, FT), i) in fields.zipIdx do
       let late := (d.fieldRefs c FT).filter (· ≥ i)
@@ -210,11 +210,11 @@ def checkInd (d : IndDecl) : M Unit := do
       let (fname, FT) := fields[j]!
       if T.typeHasRef then err s!"field {fname} of {cn}: no borrows inside data"
       if (← sortOf T) > 1 then err s!"field {fname} of {cn}: its type must be in Prop or Type"
-      -- rule: [Ind] (K4's nesting condition)
+      -- K4's nesting condition
       if (← get).cfg.positivity && (← get).cfg.k4Nest then
         if let some (m, a) ← nestViolation n FT then
           err s!"field {fname} of {cn} : {FT.pp names}: {n} occurs at the parameter {a} of {m}, which {m} passes to a type function (one may use its argument negatively): not strictly positive (K4, D36)"
-      -- rule: [Ind] (D36, K4)
+      -- D36, K4
       if (← get).cfg.positivity && !(← firstOrderTerm n np fields.length FT) then
         err s!"field {fname} of {cn} : {FT.pp names}: fields are first-order data (inductive types, Nat, Unit, ×, earlier type functions) or parameters, D36"
       -- K4: a type function's result is first-order data too (at the generic telescope)
