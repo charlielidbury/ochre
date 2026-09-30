@@ -116,6 +116,12 @@ The cold reviewers' attack shapes are included:
      - (i) The untyped `J` evaluates its endpoints under `onCopy` at runtime depth rather than under `confinedCopy`. So `def J1 (n : Nat) (h : Eq Nat n 1) : Nat := let m = n; J(Nat, n, 1, λ (z : Nat) : Type => Nat, h, m)` fails at `J1(1, refl)` with "n was moved out".
      - (ii) An `Id` whose side writes a moved place cannot type that place's owner: `def I1 (n1 : Nat) : Nat := let m = n1; let a0 = Id Unit () (n1 := 0); 0` fails at `I1(0)` with "cannot infer the type of the value ⊥".
 
+   **After the fixes (ochr-core 10a7861a, `--switch +D53`): 950 cases in 10⁶.** M1, M2, M2b and M3 are fixed in `Scratch/D53Blocks.lean`: the functions are rejected at the definition, and M3's run. RN is fixed too. Five shapes remain, reproduced in `Scratch/D53Residual.lean`:
+   - N1 and N2: a stuck block nested in an arm of another stuck block moves out of a place that the outer refinement did not expose. N2 is M2b one level down.
+   - N3: a block returns a borrow into an owner while an arm moves another part of that owner. [Close]'s sealed owner hides the partial move.
+   - N4: an arm moves a sibling field into the scrutinee's own sub-place.
+   - N5: a block's returned borrow, whose content an arm moved out. The same body returned from a function is rejected.
+
    Rates in 10⁶ cases on 55977f8e: 15,567 cases. To check that M1 and M2 account for them, a diagnostic patch was applied locally and never committed. It computes `before` per arm, after the refinement, and makes a capture a move whenever the capture itself is in `moved`. On seed 1 (10⁵ cases) it takes the exec findings from 1,608 to 111. All 111 are M2b. The statuses are unchanged (93,656 checked against 93,659). M3 is rare: 4 cases of (ii) in 10⁶. (i) is out of the generator's reach, because the execution oracle skips functions with an `Eq` hypothesis.
 6. **The cold reviewers' attacks**, re-found by the extended generator with their switch off (seeds 1 and 3, 2·10⁴ cases each):
 
@@ -197,6 +203,8 @@ Probe for the `fnRule` row: `def F (n : Nat) : Nat := let f = (λ (u : Unit) : N
 
 | checker | seeds | cases | time | value disagreements | notes |
 |---|---|---|---|---|---|
+| ochr-core 10a7861a (M1–M3/RN fixed), `--switch +D53`, execution oracle | 1–10 | 1,000,000 | 656 s, 12 workers | **0**; **950 `exec`** | D53 acceptance still fails, on five residual shapes N1–N5 (§v2.3 item 5); no fail-safe classes; E 59 |
+| ochr-core 10a7861a, default rules (D53 off), execution oracle | 1–10 | 1,000,000 | 820 s, 12 workers | **0**; **0 `exec`** | identical to c469da44 in every count |
 | **ochr-core c469da44 (D53 off by default), default rules, execution oracle** | 1–10 | 1,000,000 | 1,165 s, 12 workers | **0**; **0 `exec`** | no fail-safe findings: R1–R8 all fixed; E 65 (1 vacuous) |
 | 95da7c12 (D53 on, D59), default rules, execution oracle | 1–10 | 1,000,000 | 815 s, 12 workers | **0** (plus 15, R6); **15,567 `exec`** | the same counts as 55977f8e: D59 changes nothing the fuzzer observes |
 | 95da7c12 with `moves` off (the sanity baseline), execution oracle | 1–10 | 1,000,000 | 728 s, 12 workers | **0** (plus 15, R6); **0 `exec`** | no R8: the pre-pass assertion runs only under the default configuration (`prePassAssert`). What R8 hides with the assertion off is 12 `renorm: no such place` (2 vacuous) and 1 `[Read]` renorm |
