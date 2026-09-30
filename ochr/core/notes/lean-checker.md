@@ -1105,3 +1105,24 @@ The tour has no failures with D53 on.
 The ledger's D53 rows now range over the whole tour:
 - `ghosts` gains the three `CurrentState.AddSub*` proofs;
 - `fnRule` gains `Equality.Om`, the `Functions.Twice*` family, and the trees' `Size`/`SizeInsert`, which call a closure twice.
+## 39. A block's moves as effects by place (N1, N2, N3)
+
+After §37, fuzz-port's acceptance run on 10a7861a fell from 1,608 execution findings to 104 (seed 1). Three shapes remained, and they share one cause: a block's moves were recovered by diffing values before and after each arm, and that fails whenever the values are abstract or sealed.
+- **N1:** an inner block's move was invisible one level up, because the outer arm's `x0` was still abstract.
+- **N2:** a borrow moved in whole, but only by the syntax of a dead inner arm.
+- **N3:** the owner `q1` had mixed modes: `q1.1` moved and `q1.2` lent. [Close] sealed `q1` whole and hid the move.
+
+*The mechanism now (one, replacing the diff):*
+- **Every move and assignment is logged by place** (`placeLog`, at the root binding's position; `logEffect`), in any configuration. A step through a local borrow (`let r = &q0; *r…`) is logged as the owner's too (`throughLocalBorrow`); that is needed only with D53 on.
+- **An arm's effect on the block's captures** is its log replayed in order (`armMoves`). A move adds its place. An assignment restores every moved place it covers, so a move the arm undoes is not a move.
+- **Nested blocks compose** because an inner block's effect on its captures happens through its arguments, which the outer arm's log records like any other move.
+- **Captures take modes per sub-place.** A capture part of which some arm moves out is split into its fields. Each field is captured by its own mode: move, `&`, or read in place; fields the block never uses are left out. The block's matches on the split place take the arm of its constructor (`Term.selectArms`). If the place is used whole other than as a scrutinee, or its content is not a constructor value, it is moved in whole.
+- **M2b is read from the capture modes.** A borrow variable the block moves in whole is ended by the block's frame. If any arm moves out through it and does not restore it, that is an error. The capture's mode comes from syntax as well as from the log, which covers N2's dead inner arm.
+
+*Regressions (`Moves`):*
+- rejected: `N1`, `N2`, `N3`, `ThroughLocal`;
+- accepted: `N3Other` (the same block without reading `q1` afterwards) and `MoveRestore`.
+
+*Unchanged:* the suite's other verdicts, with D53 off by default and with it on everywhere. With D53 off the log costs nothing measurable: interleaved runs against 10a7861a give Quicksort 288 ms against 286 ms.
+
+1019 verdicts.
