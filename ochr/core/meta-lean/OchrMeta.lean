@@ -9,6 +9,7 @@ import OchrMeta.Frame
 import OchrMeta.Rename
 import OchrMeta.Mono
 import OchrMeta.Canon
+import OchrMeta.EndOrder
 import OchrMeta.Close
 import OchrMeta.Tests.Basic
 import OchrMeta.Tests.Guard

@@ -20,19 +20,19 @@ spec.loader.exec_module(hc)
 
 W = lambda s: s.split()
 
-IMPL = W("""Opt Bucket Slots HashMap EqB Lt ModGo Idx Pred BGet BContains BInsert BRemove BFind
+IMPL = W("""Opt Bucket Slots HashMap EqB Lt ModGo Idx Pred WAdd BGet BContains BInsert BRemove BFind
 IsSome BGetMut Slot EmptySlots New Get ContainsKey InsertNoResize Remove Clear Len Find GetMut
 MoveBucket MoveSlots Resize Insert""")
-RUNS = W("RunLayout RunGet RunGetWrong RunContains RunOverwrite RunCollide RunRemove RunGetMut RunGetMutAbsent RunClear")
+RUNS = W("W RunLayout RunGet RunGetWrong RunContains RunOverwrite RunCollide RunRemove RunGetMut RunGetMutAbsent RunClear")
 # statement vocabulary of the headline theorems: what a reader must trust
 SPEC = W("Buckets BLen Count IfNew Shrink Has Unique AllUnique Nowhere OnlyIn Placed Inv NOf NotOver")
 # definitions used only inside proofs (lemma statements)
 INTERNAL = W("Nth IsNone IfFound OrElse BFindLast SFindLast Fresh FreshS AbsentFrom Apart GUnique")
-NEGATIVE = W("InsertFindNoSplit BRemoveFindDup InsertCountNoHyp")
+NEGATIVE = W("InsertFindNoSplit BRemoveFindDup InsertCountNoHyp BGetMoves")
 WALLED = W("")   # the three GetMut theorems were walled until D58; now proofs: get_mut
 GROUPS = {
     "helpers (keys, arithmetic, equality)": W("""EqBRefl EqBSound EqBTrans EqBContra EqBSymm NeqFlip
-        TransO AddMS AddS SymmN AddZero AddAssoc TransN LtS LtAdd LtPred"""),
+        TransO AddMS AddS SymmN AddZero AddAssoc TransN LtS LtAdd LtPred WAddS WAddZero WAddAssoc"""),
     "new, clear": W("""NthEmpty NewFind ClearFind EmptyCount NewCount ClearCount NowhereEmpty OnlyInEmpty
         UniqueEmpty NewInv ClearInv"""),
     "get, contains_key (F1 bridges)": W("BGetFind SlotGetFind GetFind BContainsFind SlotContainsFind ContainsFind"),
@@ -112,6 +112,15 @@ def main():
     pl = sum(v[1] for k, v in totals.items() if k.startswith("proofs"))
     pt = sum(v[2] for k, v in totals.items() if k.startswith("proofs"))
     print(f"{'proofs: total':45} {pn:5} {pl:6} {pt:7}")
+    # a proof's statement is its declaration up to its `:=`: the share of proof tokens that
+    # are statements (each lemma is stated at three levels)
+    st = 0
+    for name, idx in decls:
+        if cat.get(name, "").startswith("proofs"):
+            text = "\n".join(stripped[i] for i in idx)
+            j = text.find(":=")
+            st += len(hc.TOKEN.findall(text[:j] if j >= 0 else text))
+    print(f"{'proofs: statements (tokens before :=)':45} {'':5} {'':6} {st:7}  ({100 * st / pt:.1f}% of proof tokens)")
     an = sum(v[0] for v in totals.values())
     al = sum(v[1] for v in totals.values())
     at = sum(v[2] for v in totals.values())

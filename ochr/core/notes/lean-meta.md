@@ -16,6 +16,7 @@ Package: `ochr/core/meta-lean/` (Lake package `OchrMeta`, Lean 4.33, no Mathlib)
 | renaming equivariance `exec_rename`, `eval_rename` | **proved** (`Rename`, by a sub-agent, reviewed) |
 | fuel monotonicity `exec_mono`, `eval_det`, `eval_iff_run` | **proved** (`Mono`, by a sub-agent, reviewed) |
 | **T1(a)** `end_comm` (two [End]s commute, on the nose, given acyclicity only) | **proved** (`Canon`) |
+| **Property 7** (paper Fig. 9): `end_comm_wf`, `endSeq_perm`, `end_order_indep`, `endAll_endSeq` — in a well-formed state any two orders of [End]s agree (permutation induction from `end_comm`, W3 discharging its side condition), the resolved state exists and every order of the held borrows reaches it, and ending any borrows first does not change it | **proved** (`EndOrder`) |
 | **[Close] equations** `close_res`, `close_fin`, `close_cur`, `close_back` | **proved** (`Close`), with Lemma 0 facts as explicit hypotheses (see below) |
 | Lemma 0 `exec_wf` | statement in `WF.lean` (**sorry**, proof in progress on branch `ochr-core-meta-wf`) |
 | tests `canon_sched` (all [End] orders agree) | pass |

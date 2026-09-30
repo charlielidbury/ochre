@@ -174,6 +174,13 @@ ochr FuzzLib {
   def FV (x : &Nat) : V(Z) := (*x := S Z; WV(()))
   def GV (x : &Nat) : V(Z) := WV(())
   def TT : Prop := (Π(x : &Nat). V(Z))
+  -- reviewer-6's A1/L1 family: a type family whose arms are different data types, and
+  -- type-level observers of a place of the second (their `Id` compares at the place's type)
+  inductive Bx (A : Type) := MkBx(v : A)
+  def TF (n : Nat) : Type := match n { Z => Bx(Unit), S _ => Bx(B2) }
+  def TG (n : Nat) : Type := match n { Z => Nat, S _ => B2 }
+  def CmpBx (b : Bx(B2)) : Prop := (let c = b; Id Unit (c := MkBx[B2](T)) (c := MkBx[B2](F)))
+  def CmpB2 (b : B2) : Prop := (let c = b; Id Unit (c := T) (c := F))
 }
 
 /-- The codomain types written differently from what they evaluate to (D54, D55). -/

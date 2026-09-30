@@ -220,7 +220,7 @@ def proofCands (c : Case) : List (STerm × Option String) := Id.run do
     | .ident "B2" =>
       out := out.push (.matchGen (.ident x) [("F", [], .ident "refl"), ("T", [], .ident "refl")], none)
     | _ => pure ()
-  pure out.toList
+  pure (out.toList ++ c.extraProofs.map (·, none))
 
 /-- The first candidate proof the checker accepts, if any. -/
 def acceptedProof (o : Opts) (c : Case) (prep : Prepared) : Option String := Id.run do
@@ -323,10 +323,15 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
           | .ok (v, _) => some (canon pinned (drop v))
           | .error _ => none
         if obs.length == 2 then irrelObs := irrelObs.push (σ, α.label, obs)
-    -- a false ground instance of the statement: remember it for the truth oracle
-    if α.ground && hypsHold stα ps then
+    -- a false instance of the statement: remember it for the truth oracle. A refinement that
+    -- is not ground counts when the `Id` computes to `False` itself (so at every completion)
+    if hypsHold stα ps then
       if let .ok (dv, _) := D[2]! then
-        if isFalseV dv && falseAt.isNone then falseAt := some (α.label, dv.pp)
+        -- `Eq Prop False ⊤` (either way round) is false too: a proof of it casts ⊤ to False
+        let propFalse := match unitTop dv with
+          | .tEq (.sort 0) a b => (isFalseV (unitTop a) && unitTop b == vTrue) || (unitTop a == vTrue && isFalseV (unitTop b))
+          | _ => false
+        if (isFalseV dv || propFalse) && falseAt.isNone then falseAt := some (α.label, dv.pp)
     -- adequacy: at a ground instance the typed run and the untyped machine agree
     if α.ground then
       for k in [0:2] do

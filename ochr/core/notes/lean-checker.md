@@ -523,6 +523,10 @@ Checked against the paper at a0bca0fe (body sections and appendix). An "=" means
 
 The body's programs were also run verbatim, one-line layout and subscripts included, and each gave the verdict in this table. 467 verdicts since the merge with the recCands fix, all as expected.
 
+**Sweep of the final-pass paper** (2026-09-30, paper at ochr-core 3a225ebd): `Scratch/paper_sweep.py` regenerates `Scratch/PaperSweep.lean` from the paper's fenced programs (plus the inline fragments, by hand), and every block is as expected, 61 verdicts: the seven moves-era texts are in the paper, `Clear` (§2) with `:= refl` is ClosingOff.Clear, and QSCorrect checks with D53 off, as its block does. Token for token against the tests, every printed program is its test except the known surface differences (`Le`'s `True` is the test's `⊤`, `SubM`'s arm is parenthesised in the test).
+
+**Moves re-check** (2026-09-30, paper and checker at ochr-core 305f1c77, D53 on by default, 1,045 verdicts: 690 in the examples, 355 in the case studies). Every printed program was run verbatim again (`Scratch/PaperVerbatimD53.lean`, self-checking). Seven printed texts fail under moves and have new texts, each token-for-token its test: `AddSub` (`let old = clone(*x)`); the tree's `InsertM`, `Insert`, `SizeInsert` (`k : Word`; the tree's keys are `Word`); §4.3's closure fragment and note 27 (`let n = clone(*x); let f = (λ(y : Nat) : Nat => clone(n))`; cloning only in the `let` is still rejected, since a closure body may not move a capture); §7.3's naturality program (`Pick(clone(n), &a, &b)`: as printed it is rejected at every `n`, for matching on the moved `n`); note 11's `G` (`let r = F(n, &a); let b = a; let r2 = r; ()`: as printed it reads the moved `r` twice and is rejected at the generic call already); and §8.2's `InsertFindOther` (`k, k2 : Word`). The printed `AddSubStale` fragment is unchanged (its `…` covers the `clone`), but as printed in full it would be rejected for the move, not for `Z`. Every other printed program keeps its printed verdict under moves, and the sealed-program displays are unchanged (a sealed program's final read is an observation, printed as the place). QSCorrect and the §8.3 fragments are still checked without D53 (`Test.preD53`).
+
 | Paper location | Program | Test | Verdict |
 |---|---|---|---|
 | §1, §2 | `AddM`, `AddMZero` | Std.AddM, Std.AddMZero | accepted |
@@ -535,13 +539,17 @@ The body's programs were also run verbatim, one-line layout and subscripts inclu
 | §2 | `AddZero(x : Nat) : Id Nat (Add(x, 0)) x := AddMZero(&x)` | Numbers.AddZero' (Numbers.AddZero is the older proof by a match) | accepted |
 | §2 | `TailM`, `AddM'` | Std.TailM, ReturnedBorrows.AddM' | accepted |
 | §2 | `AddMEq`, `AddMEqOwned` | ReturnedBorrows.AddMEq, AddMEqOwned | accepted |
-| §2 | `Le`, `SubM` (`Z => match h {}`), `LeAdd`, `AddSub` | CurrentState.Le, SubM, LeAdd, AddSub | accepted |
+| §2 | `Le`, `SubM` (`Z => match h {}`), `LeAdd`, `AddSub` (moves: `let old = clone(*x)`) | CurrentState.Le, SubM, LeAdd, AddSub | accepted |
 | §2 | `…; *x := Z; SubM(x, old, LeAdd(old, y))` | CurrentState.AddSubStale | rejected |
-| §2 | `InsertM`; `Insert(t, k) := InsertM(&t, k); t` | InPlaceTrees.InsertM, Insert (the paper's text and layout); InsertMIsInsert (in-place is pure, by `refl`) | accepted |
+| §2 | `InsertM`; `Insert(t, k) := InsertM(&t, k); t` (moves: `k : Word`, the tree's keys `Word`) | InPlaceTrees.InsertM, Insert (the paper's text and layout); InsertMIsInsert (in-place is pure, by `refl`) | accepted |
 | §2 | `SizeInsert` with its three `J` steps; `Size(Node(l, v, r)) = S(Add(Size(l), Size(r)))` | InPlaceTrees.SizeInsert (verbatim), Size; SizeInsertTwo | accepted; rejected |
 | §2 | `AddS : x + S y = S (x + y)`, in place by bare recursion, transferred by lending | InPlaceTrees.AddMS, AddS | accepted |
-| §2 (proposed) | `SizeInsert` with D60's `rewrite`: `true => rewrite SizeInsert(l, k) in refl`, `false => rewrite SizeInsert(r, k) in rewrite AddS(Size(l), Size(r)) in refl` | InPlaceTrees.SizeInsertRw (the recursive calls name `SizeInsertRw`); control SizeInsertRwNoLemma (no `AddS`) | accepted; rejected |
+| §2 (printed since a0f40123; moves: `k : Word`) | `SizeInsert` with D60's `rewrite`: `true => rewrite SizeInsert(l, k) in refl`, `false => rewrite SizeInsert(r, k) in rewrite AddS(Size(l), Size(r)) in refl` | InPlaceTrees.SizeInsertRw (the recursive calls name `SizeInsertRw`); control SizeInsertRwNoLemma (no `AddS`) | accepted; rejected |
 | §2 | `AddToOne(b, x₁, x₂, y) := let r = match b { Z => x₁, S _ => x₂ }; AddM(r, y)` | ClosingOff.AddToOne | accepted |
+| §2 (0942aedb) | "When the two paths could disagree": `Clear(x : &Nat) : Id Unit (match *x { Z => (), S p => p := Z }) ()`, provable by `refl` if the block copied `*x`, `Eq Nat 1 2` at `*x = 2` | ClosingOff.Clear (the printed statement with `:= refl`), Boom5 (`Eq Nat (S Z) (S (S Z))` from `Clear(&c)`, `c = 2`); both accepted with `patternWritesVisible` off | rejected |
+| §2 (0942aedb) | `LeAdd` as the postcondition idiom: a property of what an in-place function leaves is stated by running it on a copy inside the statement; a type formed before the body cannot see its writes | CurrentState.PostCopy (`Le(*x, (let c = *x; AddM(&c, y); c)) := LeAdd(*x, y)`); PostInBody | accepted; rejected |
+| §4.3 (0942aedb) | a closure that assigns its capture assigns its own copy afresh at each call; closures in data only through a type parameter, `Box(Π(n : Nat). Nat)` (and the model's `Box(Π(y : &Nat). &Nat)`) | Snapshots.CapAssign, CapAssignRun; CapAssignAcc; Functions.BoxFn, UseBoxFn, UseBoxFnIs, BoxBorrowFn; FnBox | accepted; rejected; accepted; rejected |
+| §3 (0942aedb) | a read of a pattern variable after its scrutinee is reassigned sees the new content | Numbers.AliasRead | accepted |
 | §3 | `Nat`, `Unit` (built in), `False`, `True`, `Pair`, `And` | Prelude (checked by `checkInd`) | accepted |
 | §3, §5 | `match h {}`; `match h { Intro(l, r) => … }` on a multi-place `Id` | Propositions.absurd…; Propositions.TwoOwners, TwoOwnersR, ThreeOwners | accepted |
 | §4 | `N(S σ') = S N(σ')` | Recursion.SuccGoal | accepted |
@@ -559,10 +567,11 @@ The body's programs were also run verbatim, one-line layout and subscripts inclu
 | Fig. 7 | all owners observed | Owners.BadD18, ClosedD18, GR, BadR | rejected |
 | Fig. 7 | exclusive access; matches end loans in neutral heads | Borrows.BadA1; ReturnedBorrows.Bad, Main | rejected |
 | Fig. 7, note 5 | generalisations global: `Box`, `Double`, `Esc`, `Bad5` | GlobalRecords.* (constructor `MkBox`, see gaps) | accepted ×2, rejected ×2 |
-| Fig. 7, note 11 | `Impred`, `PolyId`, `SelfApp`; `F`, `G`; `SwapT` | Universes.Impred, PolyId, SelfApp; BorrowTypes.F, G, UseG, SwapT | rejected |
+| Fig. 7, note 11 | `Impred`, `PolyId`, `SelfApp`; `F`, `G` (moves: `G(n, a) := let r = F(n, &a); let b = a; let r2 = r; ()`); `SwapT` | Universes.Impred, PolyId, SelfApp; BorrowTypes.F, G, UseG, SwapT | rejected |
 | Fig. 7, note 7 | `PF`, `QF` | ReturnedBorrows.PF / QF | accepted / rejected |
 | Fig. 7, note 4 | `inductive Bad := Mk(…)`, `L`, `Bad4` | PositivityPaper.Bad, L, Bad4 (constructor `MkBad`, see gaps) | rejected |
-| §7 | `Pick`; `let r = Pick(n, &a, &b); let z = b; match n { … }` | Fixtures.Pick; Naturality.PickEarly / PickEarly0, PickEarly1 | rejected / accepted |
+| §7 | `Pick`; `let r = Pick(n, &a, &b); let z = b; match n { … }` (moves: `Pick(clone(n), &a, &b)`) | Fixtures.Pick; Naturality.PickEarly / PickEarly0, PickEarly1 | rejected / accepted |
+| §4.3 | `let n = *x; let f = (λ(y : Nat) : Nat => n)` (moves: `let n = clone(*x); let f = (λ(y : Nat) : Nat => clone(n))`); `λ(z : &Nat) : Unit => AddM(z, 0)` | Snapshots.CapCopy; Functions.TwiceMZero | accepted |
 | §8 | the `ochr Numbers { … }` excerpt | Std.AddM, Std.AddMZero, Numbers.WriteThenRefl | accepted, accepted, rejected |
 | §9 | every `Π(x : &Nat). &Nat` has an injective backward function | ReturnedBorrows.L, Inj | accepted |
 | §9 | `IterM : &(List Nat) → List (&Nat)`; no generic in-place swap | BorrowTypes.IterM; SwapT | rejected |
@@ -575,14 +584,14 @@ The body's programs were also run verbatim, one-line layout and subscripts inclu
 | App. conversion (5a3e47c9) | "no η rule, except that `eq` identifies any two values of `Unit` and [Conv-fun] any two results at a codomain written `Unit` … an abstract `σ : Unit` is still not convertible with `()`"; "no η rule other than for `Unit`" | ClosingOff.UnitEta, UnitEtaUU (`eq` goes by the evaluated type), ConvUnitRes; UnitNotConv, ConvUnitWritten (codomain `UU(Z)`, not written `Unit`) | accepted ×3; rejected ×2 |
 | note 25 | `SubM`'s `match h {}` by the stored type; a neutral type rejected | CurrentState.SubM; Neutral | accepted; rejected |
 | note 26 | injectivity and disjointness | Equality.Inj, InjWrong, PairInj, NoConf… | as asserted |
-| note 27 | `let n = *x` after `AddM(&*x, 1)`, then `λ(y : Nat) : Nat => n` | Snapshots.CapS | accepted |
+| note 27 | `let n = *x` after `AddM(&*x, 1)`, then `λ(y : Nat) : Nat => n` (moves: `let n = clone(*x)`, `λ(y : Nat) : Nat => clone(n)`) | Snapshots.CapS | accepted |
 | App. A [T-Ref] | `&Box(Prop)` | BorrowTypes.RefBoxProp | accepted |
 | App. D [Conv-fun] | the two stuck closures are not convertible | Functions.CoInd | rejected |
 | §8.2 (0652e4bc) | `QSCorrect(n, s, q) : (let c = *s; QS(n, n, &c); Sorted(n, c)) ∧ (let old = *s; Eq Nat (Count(q, n, (QS(n, n, &*s); *s))) (Count(q, n, old))) := ⟨QSSortedFull(n, n, s, LeRefl(n)), QSPerm(n, n, s, q)⟩` | Quicksort.QSCorrect. The printed text, with `def` and curried binders put back, is token-for-token the test once the test's outer parentheses are dropped (120 tokens each), and the transliteration checks on its own | accepted |
 | §8.2 | the untouched rest, by definition: the view after `WithSplit` is `JoinS(E, n, k, (let c = TakeS(E, n, k, *s, h); g(&c); c), DropS(E, n, k, *s))`, by `refl` | ArrayBench.B1Join | accepted |
 | §8.2 | about the rest alone, one lemma (dropping `k` elements from a join) | ArrayBench.B1 (by DropJoin); B1Refl (by `refl`: what a built-in array would give) | accepted; rejected |
 | §8.2 | `Cells(E, n)`, `Slice(E, n)`, `Array(E, n)`; the eight functions primitive at runtime (the view of an array, `Read`, `Set`, `GetMut`, `WithSplit`, the empty array, push, pop); `l : &Slice(E, k)`, `r : &Slice(E, Sub(n, k))` | Arrays.Cells, Slice, Array; AsSlice, Read, Set, GetMut, WithSplit, ArrEmpty, ArrPush, ArrPop; `WithSplit`'s continuation parameters | accepted |
-| §8.2 (b62282c9) | `InsertFindOther(hm : &HashMap, k, v, k2 : Nat, h : Eq Bool (EqB(k, k2)) false) : Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k2)) (let r = Find(*hm, k2); InsertNoResize(&*hm, k, v); r) := match *hm { HM(n, len, slots) => split BInsert in SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h) }` | HashMapLookup.InsertFindOther (17HashMap.lean:563). The printed text, with `def` and curried binders put back, is token-for-token the test, apart from the test's optional trailing comma after the one arm, and it checks on its own | accepted |
+| §8.2 (b62282c9; moves: `k, k2 : Word`, `v : Nat`) | `InsertFindOther(hm : &HashMap, k, v, k2 : Nat, h : Eq Bool (EqB(k, k2)) false) : Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k2)) (let r = Find(*hm, k2); InsertNoResize(&*hm, k, v); r) := match *hm { HM(n, len, slots) => split BInsert in SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h) }` | HashMapLookup.InsertFindOther (17HashMap.lean:563). The printed text, with `def` and curried binders put back, is token-for-token the test, apart from the test's optional trailing comma after the one arm, and it checks on its own | accepted |
 | §8.2 | "`Find(m, k)` is `Get(&m, k)`, the in-place lookup run on a copy" | HashMap.Find, defined as exactly that (17HashMap.lean:255) | accepted |
 | App. [T-Split-goal] | `split f in t`, `split f { C₁ => t₁, … }` | Splitting.PickNotZero, PickNotZeroCopy, Pick22NotZero (a link that an earlier split generalised), PickTwo, DoubleVal (arms bind fields); rejected: PickNotZeroNoSplit, NothingToSplit, WrongHead, WrongArm, WrongCtors, SplitLie, NotTail; HashMapLookup.InsertFind, InsertFindOther, with InsertFindNoSplit rejected | as asserted |
 

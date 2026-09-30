@@ -75,6 +75,16 @@ ochr Functions uses Std, Fixtures {
   def Cap (m : Nat) : Nat := Apply(λ(n : Nat) : Nat => Add(n, clone(m)), 0)
   def CapEq (m : Nat) : Id Nat (Apply(λ(n : Nat) : Nat => Add(n, m), 0)) (Add(0, m)) := refl
 
+  -- A closure is stored in data only through a type parameter, as in `Box(Π(n : Nat). Nat)`
+  -- (paper §4.3), and one returning a borrow too (the model's `Box(Π(y : &Nat). &Nat)`) ...
+  def BoxFn : Box(Π(n : Nat). Nat) := MkBox(λ(n : Nat) : Nat => n)
+  def UseBoxFn (b : Box(Π(n : Nat). Nat)) : Nat := match b { MkBox(f) => f(0) }
+  def UseBoxFnIs : Id Nat (UseBoxFn(MkBox(λ(n : Nat) : Nat => S n))) 1 := refl
+  def BoxBorrowFn (b : Box(Π(y : &Nat). &Nat)) (x : &Nat) : Unit := match b { MkBox(g) => (let r = g(x); *r := 0) }
+
+  -- ... never as a field of its own (fields are first-order, D36).
+  reject inductive FnBox := MkFnBox(f : Π(n : Nat). Nat)
+
   -- ... type abbreviations unfold under binders ...
   def Pow (X : Type) : Type := Π(a : X). Prop
   def P1 : Pow(Nat) := λ(a : Nat) : Prop => ⊤
@@ -236,4 +246,4 @@ ochr Functions uses Std, Fixtures {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Functions" Functions).allAsExpected
-#guard (run "Functions" Functions).count == 58
+#guard (run "Functions" Functions).count == 63

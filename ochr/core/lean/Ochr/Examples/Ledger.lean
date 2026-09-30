@@ -138,11 +138,11 @@ open Ochr.Registry in
    "ErasureBySyntax.LieP:accepted"]
 open Ochr.Registry in
 #guard rowOk { positivity := false }
-  ["Positivity.Bad:accepted", "Positivity.L:accepted", "Positivity.K:accepted", "Positivity.bad:accepted",
-   "Positivity.Boom:accepted", "PositivityParams.Bad:accepted", "PositivityParams.L:accepted",
-   "PositivityParams.K:accepted", "PositivityParams.bad:accepted", "PositivityParams.Boom:accepted",
-   "PositivityParams.Neg:accepted", "PositivityPaper.Bad:accepted", "PositivityPaper.L:accepted",
-   "PositivityPaper.Bad4:accepted"]
+  ["Functions.FnBox:accepted", "Positivity.Bad:accepted", "Positivity.L:accepted", "Positivity.K:accepted",
+   "Positivity.bad:accepted", "Positivity.Boom:accepted", "PositivityParams.Bad:accepted",
+   "PositivityParams.L:accepted", "PositivityParams.K:accepted", "PositivityParams.bad:accepted",
+   "PositivityParams.Boom:accepted", "PositivityParams.Neg:accepted", "PositivityPaper.Bad:accepted",
+   "PositivityPaper.L:accepted", "PositivityPaper.Bad4:accepted"]
 open Ochr.Registry in
 #guard rowOk { globalRecords := false }
   ["GlobalRecords.Esc:accepted", "GlobalRecords.Bad5:accepted"]
@@ -151,7 +151,8 @@ open Ochr.Registry in
   ["Functions.ConvPick:accepted", "Functions.TY:accepted", "Functions.BoomX4:accepted"]
 open Ochr.Registry in
 #guard rowOk { headGuardNeutral := false }
-  ["ReturnedBorrows.Inj:rejected", "ClosingOff.P1:rejected", "BorrowTypes.HO:rejected"]
+  ["ReturnedBorrows.Inj:rejected", "ClosingOff.P1:rejected", "Functions.BoxBorrowFn:rejected",
+   "BorrowTypes.HO:rejected"]
 open Ochr.Registry in
 #guard rowOk { confine := false }
   ["Erasure.EffArgErased:accepted", "Erasure.Write:accepted", "Erasure.Borrow:accepted",
@@ -302,10 +303,11 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { fnRule := false }
   ["Moves.CallTwice:rejected", "Moves.ClosureClones:rejected", "Moves.ClosureCopy:rejected",
-   "Equality.Om:rejected", "Functions.Twice:rejected", "Functions.TwiceNoop:rejected",
-   "Functions.TwiceM:rejected", "Functions.TwiceMMove:rejected", "Functions.TwiceMZero:rejected",
-   "Functions.TwiceMZero':rejected", "Trees.Size:rejected", "Trees.SizeInsert:rejected",
-   "InPlaceTrees.Size:rejected", "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected"]
+   "Equality.Om:rejected", "Snapshots.CapAssignRun:rejected", "Functions.Twice:rejected",
+   "Functions.TwiceNoop:rejected", "Functions.TwiceM:rejected", "Functions.TwiceMMove:rejected",
+   "Functions.TwiceMZero:rejected", "Functions.TwiceMZero':rejected", "Trees.Size:rejected",
+   "Trees.SizeInsert:rejected", "InPlaceTrees.Size:rejected", "InPlaceTrees.SizeInsert:rejected",
+   "InPlaceTrees.SizeInsertRw:rejected"]
 -- D59 (refined) switched off: values are not η-normal at `Unit`. A call written to return
 -- `Unit` returns `()` (the old row), one that only computes to `Unit` its sealed program, and
 -- an abstract `u : Unit` is not `()`, so two values of `Unit`, or two functions' results at

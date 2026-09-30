@@ -16,7 +16,7 @@ The _observation_ of `t` at `Ω` on footprint `W` runs `t` on a private copy of 
 
 $ ⟦t⟧_Omega^W = (v, Omega'(k)_(k in W)) quad "where" cfg(Omega, t) arrow.b.double cfg(Omega'', v) "and" Omega'' arrow.squiggly^* Omega' "with no borrows left" $
 
-If `t` is itself stuck outside any call, it is first closed off as a stuck block, so an observation always exists. Ending every remaining borrow makes the observation independent of which borrows happened to be live when `t` finished; that the order in which they are ended does not matter is a conjecture, proved for two endings (@sec-meta).
+If `t` is itself stuck outside any call, it is first closed off as a stuck block, so an observation always exists. Ending every remaining borrow makes the observation independent of which borrows happened to be live when `t` finished; that the order in which they are ended does not matter is mechanised for the fragment of @sec-meta-mech (property 4).
 
 == `Id` is equality of observations
 
