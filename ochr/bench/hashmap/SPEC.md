@@ -133,54 +133,54 @@ Each package fills in its own table: for each property, the file and declaration
 
 | Id | File | Declaration | Notes |
 |---|---|---|---|
-| Representation, `idx` | | | |
-| new, len, get, insert, remove, get_mut | | | |
-| Inv | | | |
-| H1 | | | |
-| H2 | | | |
-| H3 | | | |
-| H4 | | | |
-| H5 | | | |
-| H6 | | | |
-| H7 | | | |
-| H8 | | | |
-| H9 | | | |
-| H10 | | | |
-| H11 | | | |
-| H12 | | | |
-| H13 | | | |
-| H14 | | | |
-| H15 | | | |
-| H16 | | | |
-| H17 | | | |
-| H18 | | | |
+| Representation, `idx` | `ochr/HashMap.lean` | `Bucket`, `MapOf`, `Map`, `Idx`, `IdxLt` (region `header`, block `HashMapSpec`) | `Map(cap) = MapOf(Cells(Bucket, cap))`, i.e. `MkMap(slots : Array(Bucket, cap), len : Word)`: the capacity is in the type (a field cannot yet be `Array(Bucket, cap)` directly, so `MapOf` takes the array's model type as a parameter). `Idx(cap, k)` is `k mod cap` by counting; `IdxLt` its bound. Also provided: `Opt`, `IsSome`, `Grow`, `Shrink`, `EqDec` (key comparison with evidence), and `SlotMut`, a native borrow of bucket `i` (the library's `GetMut` at element type `Bucket`, since `&E` is not yet well formed for a type variable). |
+| new, len, get, insert, remove, get_mut | `ochr/HashMap.lean` | `MapNew`, `MapLen`, `MapGet`, `MapInsert`, `MapRemove`, `MapGetMut` (regions `new` … `get_mut`) | `MapNew (cap) (h : Lt(Zero, cap))`; the others take `m : &Map(cap)`, `MapLen` and `MapGet` too (no shared borrows). `MapGetMut` requires `h : IsSome(GetOf(cap, *m, k))`. `GetOf`, `LenOf` (provided) run `MapGet`, `MapLen` on a copy of a map value; the properties observe through them. |
+| Inv | `ochr/HashMap.lean` | `Inv` (region `inv`) | A hole: `Inv (cap : Word) (m : Map(cap)) : Prop`. |
+| H1 | `ochr/HashMap.lean` | `InvNew` (region `H1`) | `Inv(cap, MapNew(cap, h))`. |
+| H2 | `ochr/HashMap.lean` | `InvInsert` (region `H2`) | `(let c = *m; MapInsert(cap, &c, k, v); Inv(cap, c))` under `hm : Inv(cap, *m)`: every mutating property runs the operation on a copy `c` of the map `*m` and observes `c`. |
+| H3 | `ochr/HashMap.lean` | `InvRemove` (region `H3`) | Likewise for `MapRemove`. |
+| H4 | `ochr/HashMap.lean` | `GetNew` (region `H4`) | `Eq Opt (GetOf(cap, MapNew(cap, h), k)) None`. |
+| H5 | `ochr/HashMap.lean` | `GetInsertSame` (region `H5`) | `Eq Opt (let c = *m; MapInsert(cap, &c, k, v); GetOf(cap, c, k)) (Some(v))`. |
+| H6 | `ochr/HashMap.lean` | `GetInsertOther` (region `H6`) | `k′ ≠ k` is `ne : Π(e : Eq Word k2 k). False`; the right side is `GetOf(cap, *m, k2)`, the map before. |
+| H7 | `ochr/HashMap.lean` | `InsertReturnsGet` (region `H7`) | `Eq Opt (let c = *m; MapInsert(cap, &c, k, v)) (GetOf(cap, *m, k))`. |
+| H8 | `ochr/HashMap.lean` | `GetRemoveSame` (region `H8`) | As H5, for `MapRemove`, `= None`. |
+| H9 | `ochr/HashMap.lean` | `GetRemoveOther` (region `H9`) | As H6, for `MapRemove`. |
+| H10 | `ochr/HashMap.lean` | `RemoveReturnsGet` (region `H10`) | As H7, for `MapRemove`. |
+| H11 | `ochr/HashMap.lean` | `LenNew` (region `H11`) | `Eq Word (LenOf(cap, MapNew(cap, h))) Zero`. |
+| H12 | `ochr/HashMap.lean` | `LenInsert` (region `H12`) | `Eq Word (let c = *m; MapInsert(cap, &c, k, v); LenOf(cap, c)) (Grow(GetOf(cap, *m, k), LenOf(cap, *m)))`, `Grow(g, l)` = `l + 1` if `g = None`, else `l`. No bound on `len`: `Word` is unbounded. |
+| H13 | `ochr/HashMap.lean` | `LenRemove` (region `H13`) | `Shrink(g, l)` = `l − 1` (the library's truncated `Sub`) if `g ≠ None`, else `l`. |
+| H14 | `ochr/HashMap.lean` | `GetMutGet` (region `H14`) | Compares `GetOf(cap, c, k2)` after `let r = MapGetMut(cap, &c, k, hk); *r := w` with `GetOf(cap, c, k2)` after `MapInsert(cap, &c, k, w)`, each on its own copy `c` of `*m`. |
+| H15 | `ochr/HashMap.lean` | `GetMutLen` (region `H15`) | Likewise with `LenOf`. |
+| H16 | `ochr/HashMap.lean` | `GetMutInv` (region `H16`) | `(let c = *m; let r = MapGetMut(cap, &c, k, hk); *r := w; Inv(cap, c))`, with `hk : IsSome(GetOf(cap, *m, k))`. |
+| H17 | `ochr/HashMap.lean` | `GetUnchanged` (region `H17`) | Stated, since `MapGet` takes `&`: `Eq (Map(cap)) (let c = *m; MapGet(cap, &c, k); c) (*m)`, for every map (no `Inv`). |
+| H18 | `ochr/HashMap.lean` | `LenUnchanged` (region `H18`) | Likewise with `MapLen`. |
 
 ### ochr-2p
 
 | Id | File | Declaration | Notes |
 |---|---|---|---|
-| Representation, `idx` | | | |
-| new, len, get, insert, remove, get_mut | | | |
-| Model and agreement | | | |
-| Inv | | | |
-| H1 | | | |
-| H2 | | | |
-| H3 | | | |
-| H4 | | | |
-| H5 | | | |
-| H6 | | | |
-| H7 | | | |
-| H8 | | | |
-| H9 | | | |
-| H10 | | | |
-| H11 | | | |
-| H12 | | | |
-| H13 | | | |
-| H14 | | | |
-| H15 | | | |
-| H16 | | | |
-| H17 | | | |
-| H18 | | | |
+| Representation, `idx` | `ochr-2p/HashMap.lean` | `Bucket`, `MapOf`, `Map`, `Idx`, `IdxLt` (region `header`, block `HashMapSpec`) | As `ochr`, plus `SlotsOf` and `LenField`, a map value's buckets (as a view) and length field, for the abstraction. |
+| new, len, get, insert, remove, get_mut | `ochr-2p/HashMap.lean` | `MapNew`, `MapLen`, `MapGet`, `MapInsert`, `MapRemove`, `MapGetMut` (regions `new` … `get_mut`) | As `ochr`. |
+| Model and agreement | `ochr-2p/HashMap.lean` | block `HashMapModel`: `MMap`, `MNew`, `MLen`, `MGet`, `MInsert`, `MRemove`, `MWrite`, `MInv`, `Abs`; `MGetNew` (M4), `MGetInsertSame` (M5), `MGetInsertOther` (M6), `MGetRemoveSame` (M8), `MGetRemoveOther` (M9), `MLenNew` (M11), `MLenInsert` (M12), `MLenRemove` (M13), `MWriteGet` (M14), `MWriteLen` (M15). Block `HashMapSolution`: `AbsInv`, `AbsNew`, `AgreeLen`, `AgreeGet`, `AgreeInsert`, `AgreeInsertResult`, `AgreeRemove`, `AgreeRemoveResult`, `AgreeWrite` | The model is the solver's pure finite map (no borrows, no assignment in its block; the grader checks), with a model invariant `MInv` (may be `⊤`); M4–M15 are H4–H15 about it (H7 and H10 have none: the agreement says `insert` and `remove` return `MGet` of the model before). `Abs(cap, s, len)` maps a map's buckets (a view) and length to the model; `AbsOf(cap, m)` applies it to a map value. The agreement holds under the concrete `Inv`, and `AbsInv : Inv(m) ⟹ MInv(AbsOf(m))`. H1–H3 and H16–H18 concern the in-place map only and remain the solver's, as in `ochr`. |
+| Inv | `ochr-2p/HashMap.lean` | `Inv` (region `inv`) | A hole, as `ochr`: the invariant on maps, needed by the agreement. |
+| H1 | `ochr-2p/HashMap.lean` | `InvNew` (region `H1`) | As `ochr`. |
+| H2 | `ochr-2p/HashMap.lean` | `InvInsert` (region `H2`) | As `ochr`. |
+| H3 | `ochr-2p/HashMap.lean` | `InvRemove` (region `H3`) | As `ochr`. |
+| H4 | `ochr-2p/HashMap.lean` | `GetNew` (region `H4`) | The `ochr` statement, character for character; its proof is provided, an instance of `GetNewFrom` (block `HashMapCompose`, generic in the operations and the model, checked). |
+| H5 | `ochr-2p/HashMap.lean` | `GetInsertSame` (region `H5`) | The `ochr` statement, character for character; its proof is provided, an instance of `GetInsertSameFrom` (block `HashMapCompose`, generic in the operations and the model, checked). |
+| H6 | `ochr-2p/HashMap.lean` | `GetInsertOther` (region `H6`) | The `ochr` statement, character for character; its proof is provided, an instance of `GetInsertOtherFrom` (block `HashMapCompose`, generic in the operations and the model, checked). |
+| H7 | `ochr-2p/HashMap.lean` | `InsertReturnsGet` (region `H7`) | The `ochr` statement, character for character; its proof is provided, an instance of `InsertReturnsGetFrom` (block `HashMapCompose`, generic in the operations and the model, checked). |
+| H8 | `ochr-2p/HashMap.lean` | `GetRemoveSame` (region `H8`) | The `ochr` statement, character for character; its proof is provided, an instance of `GetRemoveSameFrom` (block `HashMapCompose`, generic in the operations and the model, checked). |
+| H9 | `ochr-2p/HashMap.lean` | `GetRemoveOther` (region `H9`) | The `ochr` statement, character for character; its proof is provided, an instance of `GetRemoveOtherFrom` (block `HashMapCompose`, generic in the operations and the model, checked). |
+| H10 | `ochr-2p/HashMap.lean` | `RemoveReturnsGet` (region `H10`) | The `ochr` statement, character for character; its proof is provided, an instance of `RemoveReturnsGetFrom` (block `HashMapCompose`, generic in the operations and the model, checked). |
+| H11 | `ochr-2p/HashMap.lean` | `LenNew` (region `H11`) | The `ochr` statement, character for character; its proof is provided, an instance of `LenNewFrom` (block `HashMapCompose`, generic in the operations and the model, checked). |
+| H12 | `ochr-2p/HashMap.lean` | `LenInsert` (region `H12`) | The `ochr` statement, character for character; its proof is provided, an instance of `LenInsertFrom` (block `HashMapCompose`, generic in the operations and the model, checked). |
+| H13 | `ochr-2p/HashMap.lean` | `LenRemove` (region `H13`) | The `ochr` statement, character for character; its proof is provided, an instance of `LenRemoveFrom` (block `HashMapCompose`, generic in the operations and the model, checked). |
+| H14 | `ochr-2p/HashMap.lean` | `GetMutGet` (region `H14`) | The `ochr` statement, character for character; its proof is provided, an instance of `GetMutGetFrom` (block `HashMapCompose`, generic in the operations and the model, checked). |
+| H15 | `ochr-2p/HashMap.lean` | `GetMutLen` (region `H15`) | The `ochr` statement, character for character; its proof is provided, an instance of `GetMutLenFrom` (block `HashMapCompose`, generic in the operations and the model, checked). |
+| H16 | `ochr-2p/HashMap.lean` | `GetMutInv` (region `H16`) | As `ochr`. |
+| H17 | `ochr-2p/HashMap.lean` | `GetUnchanged` (region `H17`) | As `ochr`. |
+| H18 | `ochr-2p/HashMap.lean` | `LenUnchanged` (region `H18`) | As `ochr`. |
 
 ### aeneas
 
