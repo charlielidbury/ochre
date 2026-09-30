@@ -20,11 +20,11 @@ The machine that does this is the symbolic semantics of Aeneas's low-level borro
 
 To reason about all numbers at once, the checker runs programs on _abstract values_ `σ`, which play the role of Lean's free variables. Running `Add(σ, 0)` borrows `x ↦ σ` and calls `AddM(borrow₀ σ, 0)`, whose body immediately gets stuck: it must match on `σ`.
 
-In a pure type theory a stuck term is its own normal form. Here the call has also produced something that lives in the environment, namely the final content of the place it borrowed, and that content needs a name. We _close off_ the call: the call returns, and the loan it held is filled with a _sealed program_, a closed source program that owns its state and computes that content:
+In a pure type theory a stuck term is its own normal form. Here the call has also produced something that lives in the environment, namely the final content of the place it borrowed, and that content needs a name. We _close off_ the call: the call returns, and the loan it held is filled with a _sealed program_, a closed source program that owns its state and computes that content; the call's result, of type `Unit`, is a sealed program too:
 
 ```
 { x ↦ loan₀ } ⊢ AddM(borrow₀ σ, 0)
-   ⟶  { x ↦ ⌈let c = σ; AddM(&c, 0); c⌉ } ⊢ ()
+   ⟶  { x ↦ ⌈let c = σ; AddM(&c, 0); c⌉ } ⊢ ⌈let c = σ; AddM(&c, 0)⌉
 ```
 
 Write `N(σ)` for #seal(`let c = σ; AddM(&c, 0); c`). It is a neutral value, like a stuck `Nat.rec` in Lean, and it is literally the body of `Add(σ, 0)`: the sealed program _is_ the pure wrapper, generated on demand. It computes what Aeneas's backward function for `AddM` computes @aeneas, without leaving the source language (@sec-eval says for which fragment). When a later case split refines `σ` to `S σ'`, `N(S σ')` runs again, now makes progress through one successor, closes off the inner recursive call, and normalises to `S N(σ')`.
@@ -34,13 +34,13 @@ Write `N(σ)` for #seal(`let c = σ; AddM(&c, 0); c`). It is a neutral value, li
 The type `Id Unit (AddM(x, 0)) ()` compares two computations. It is evaluated at the environment where it is formed. Each side runs on its own copy of that environment; the result and the final contents of the places the side may write form its _observation_; and `Id` computes to ordinary equality between the two observations. For a definition taking `x : &Nat`, the checker works at the definition's _generic call_ `AddMZero(&c)` from `{ c ↦ σ }`, so the place that may be written is `c`, the owner of `x`'s loan:
 
 ```
-⟦AddM(x, 0)⟧  =  ((), N(σ))          // the call is stuck, so c receives the sealed program
-⟦()⟧          =  ((), σ)             // nothing happens; ending x's borrow returns σ to c
+⟦AddM(x, 0)⟧  =  (⌈…⌉, N(σ))        // the call is stuck, so c receives the sealed program
+⟦()⟧          =  ((), σ)            // nothing happens; ending x's borrow returns σ to c
 
-Id Unit (AddM(x, 0)) ()  ≡  Eq Unit () () ∧ Eq Nat N(σ) σ  ≡  Eq Nat N(σ) σ
+Id Unit (AddM(x, 0)) ()  ≡  Eq Unit ⌈…⌉ () ∧ Eq Nat N(σ) σ  ≡  Eq Nat N(σ) σ
 ```
 
-`Id` is a conjunction of equations, one between the results and one for each place written; a reflexive equation is `⊤`, and `⊤` is a unit for `∧`. Here `⊤` and `∧` are not primitives: they are `True` and `And`, ordinary inductive declarations in `Prop`, and `refl` is `True`'s constructor. The statement "running `AddM(x, 0)` has no effect" has become the ordinary proposition that `N(σ)` equals `σ`.
+`Id` is a conjunction of equations, one between the results and one for each place written; a reflexive equation is `⊤`, so is any equation at `Unit`, which has one value, and `⊤` is a unit for `∧`. Here `⊤` and `∧` are not primitives: they are `True` and `And`, ordinary inductive declarations in `Prop`, and `refl` is `True`'s constructor. The statement "running `AddM(x, 0)` has no effect" has become the ordinary proposition that `N(σ)` equals `σ`.
 
 == Induction hypotheses at the call site
 
@@ -62,7 +62,7 @@ The recursive call is checked by the same rule that produced the goal: the calle
 because matching `S p` through the borrow and taking `&p` leaves the successor in place, around a loan for the predecessor. The owner of the argument's loan is found by following it outwards: `loan₁` sits inside `x`'s borrow, whose loan sits in `c`. So the recursive call's statement observes `c`, and running `AddM` on the argument fills `loan₁` with `N(σ')`, after which `c` holds `S N(σ')`:
 
 ```
-⟦AddM(x', 0)⟧ at the call site  =  ((), S N(σ'))
+⟦AddM(x', 0)⟧ at the call site  =  (⌈…⌉, S N(σ'))
 ⟦()⟧          at the call site  =  ((), S σ')
 AddMZero(&p) : Eq Nat (S N(σ')) (S σ')  ≡  Eq Nat N(σ') σ'
 ```

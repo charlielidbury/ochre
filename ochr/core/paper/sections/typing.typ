@@ -30,11 +30,11 @@ A `match` on an abstract value cannot pick an arm, so each arm is checked with t
 
 Every statement is evaluated along two paths: at a definition's generic call, where calls and matches on abstract values close off, and directly at each instance, where they run. [Call-type] and [Split] identify the results, so if the paths take a decision differently, and the decision changes a result, a statement proved on one path is used on the other, where it may be false. Where the generic call sees abstract values and sealed programs, an instance sees constructors, so a decision read from a normal form can differ between the paths, and one read from syntax and declared types cannot. Most of Ochr's side conditions are this one principle, _no decision that changes a result is read from a normal form_, applied to each decision the machine makes:
 
-- _What is erased._ A term is erased exactly when it is a proof, that is, its declared type is a proposition, or when it forms a type: a type former, a call to a function whose declared codomain is a sort, or anything in a type position. A `let`, sequence or match that computes a type is not erased as a whole; its parts decide. A _declared type_ is read from the declared types of the term's heads, without normalising (@app-erasure).
+- _What is erased._ A term is erased exactly when it is a proof, that is, its declared type is a proposition, or when it forms a type: a type former, a call to a function whose declared codomain is a sort, or anything in a type position. A `let`, sequence or match that computes a type is not erased as a whole; its parts decide. A _declared type_ is read from the declared types of the term's heads, without normalising (@app-erasure), and the checker decides erasure exactly so, in a pass before it runs a term.
 - _What a stuck block captures, and how._ Pattern variables are resolved to places first; the block takes the maximal places its arms mention, moved if an arm moves them, borrowed if an arm writes or borrows them, and copied otherwise.
 - _Which places an observation reads._ The footprint is read off the syntax of the two sides, and every owner of each place is observed.
 - _Which calls recurse, and on what._ A recursive function occurs only as the head of a call, in nested functions too, and passes a strict subterm of its parameter's value on entry.
-- _How a call is closed off._ [Close]’s row (`Unit`, a borrow, or other) is read from the callee's declared codomain, and `&` occurs only at the top of a declared type.
+- _How a call is closed off._ Whether [Close] returns a borrow is read from the callee's declared codomain, and `&` occurs only at the top of a declared type.
 - _Whether a match is on a proof._ It is read from the declarations of the constructors the arms name, and the arm from the head of the scrutinee's type (@sec-typing-prop).
 
 Each of these was once read from a normal form, and each time the result was a closed proof of `False` or an accepted program that goes wrong (@fig-why).
@@ -79,7 +79,7 @@ A proof is matched like any constructor value, except that it cannot be inspecte
     [[Close]’s row and `&` read from the declared type], [A codomain that computes to `&Nat` is closed off as data at the generic call but returns a live borrow at an instance.],
     [Generalisations are global; names never reused], [A generalisation made while forming a type is lost with its private copy and its name reused, proving `False`.],
     grp[Types carry what the machine needs (@sec-typing-types)],
-    [Π-types record their class and whether they return a borrow], [`H(x : &Nat) : P0 := (*x := S Z; ⊤)`, with `P0 := Prop`, is passed as a `Π(x : &Nat). Prop`; a call through it is erased at the generic call and runs at the instance, proving `False`.],
+    [Π-types record their class and whether they return a borrow], [`H(x : &Nat) : P0 := (*x := S Z; ⊤)`, with `P0 := Prop`, is passed at `RefPred(0)`, which computes to `Π(x : &Nat). Prop`; a run that reads a call's class from the function value erases the call at the generic call and runs it at the instance, proving `False`.],
     [Sorts are syntactic; universes are not cumulative], [`Π(x : &Nat). T(Z)`, with `T(n) : P(n)` and `P(n)` computing to `Prop`, is a proposition whose inhabitants a data function tells apart.],
     [Functions compared by their observation], [Comparing results alone identifies `λx. (*x := S Z)` with `λx. ()`; without writing through a returned borrow, `λ(x, y). x` is identified with `λ(x, y). y`.],
     grp[Stuck, never ill-typed (@sec-typing-stuck)],
