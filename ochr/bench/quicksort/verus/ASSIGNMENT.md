@@ -53,7 +53,7 @@ A human reader checks these requirements; the grader does not.
 
 ## 6. The tests
 
-The FIXED `tests` region, after the `verus!` block, holds the tests. They are plain Rust (not verified), and they run in the binary that `./grade.sh` compiles. Each of the 29 cases sorts a fresh copy of an input and compares it with the expected output: empty, one element, two elements in each order, duplicates, already sorted, reverse-sorted, all equal, a short mixed array with repeated pivot values, and 20 pseudo-random arrays of lengths 0 to 64.
+The FIXED `tests` region, after the `verus!` block, holds the tests. They are plain Rust (not verified), and they run in the binary that `./grade.sh` compiles. Each of the 29 cases sorts a fresh copy of an input and compares it with the expected output: empty, one element, two elements in each order, duplicates, already sorted, reverse-sorted, all equal, a short mixed array with repeated pivot values, and 20 pseudo-random arrays of lengths 0 to 24.
 
 ## 7. Allowed and forbidden
 
