@@ -1,6 +1,12 @@
 # A proved theorem for a small typed fragment: viability assessment
 
-Assessment only, 2026-09-30 (agent meta-order, for team-lead). Written against `ochr-core` at cf55b4ef. The Lean facts below were checked against `ochr/core/meta-lean`, not taken from `notes/lean-meta.md`, which is stale in places (it still lists Lemma 0 as `sorry`, and it names a `Sched.lean` that exists only on the unmerged branch `ochr-core-meta-t1b`).
+Assessment only, 2026-09-30 (agent meta-order, for team-lead).
+
+**Updates, same day, after two probes in the checker:**
+- **R3 is confirmed and harmless.** `lean/Scratch/FootprintProbe.lean`: a footprint formed before a refinement has extra places, whose equations become `⊤` once the refinement is applied.
+- **Part 1 of Theorem A is false for the current rules.** `lean/Scratch/DropProbe.lean`: `Bad2(n, b, x : &Nat) := let a = 0; x := Pick(n, &a, &b); let z = b; ()` is accepted, but `Bad2(0, 5, &y)` fails with a [Drop] error. The symbolic path ends `x`'s borrow early, and that lets `a` be dropped. The paper proof (`typed-fragment-proof.typ`) therefore restricts F: a borrow is never assigned into an existing variable. Whether to fix the rules instead is team-lead's call.
+
+The original text follows. Written against `ochr-core` at cf55b4ef. The Lean facts below were checked against `ochr/core/meta-lean`, not taken from `notes/lean-meta.md`, which is stale in places (it still lists Lemma 0 as `sorry`, and it names a `Sched.lean` that exists only on the unmerged branch `ochr-core-meta-t1b`).
 
 Asked by reviewers 6, 7 and 8. Reviewer 8's fragment is Nat, Unit, True/False/And, Eq, Id, first-order top-level functions with borrow parameters (one returning a borrow), [Close], and [Split] with refinement. It leaves out closures, stuck blocks, universes above Type₀ and large elimination, and says "a paper proof in the appendix is enough". Reviewer 7 asks for less: mechanise "an `Id` computed on abstract inputs holds on every concrete input" for the untyped first-order fragment. Reviewer 6 asks for consistency through the set model, for a fragment with closing off, `Id` and `Prop` erasure.
 
