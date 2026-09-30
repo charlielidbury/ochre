@@ -365,7 +365,7 @@ Ending every borrower, including those in flight, would be unsound. A stuck bloc
 - If it is ⊥, the symbolic path ended it early while it was in flight. In F, a borrow is in flight during a call's argument evaluation, during an assignment's [Access], during a let-block's final drops, during a pop, and, as the discarded value of `t; u`, during its own drop. Constructor fields are data. Type formers and observations run on private copies, a callee's parameters are bindings once its frame is pushed, and [Close] consumes its borrow arguments, so none of these adds a case.
   - A call argument ended in flight is [Call-err] on the symbolic path.
   - During drops and pops, only borrowers held in bindings are ended, so a temporary is never ended there.
-  - An assignment's new value can be ended by the assignment's own [Access] on the symbolic path only: `x := Pick(n, &*x, &b)` ends the new borrow symbolically, while at `n = 1` the ground one survives. This is harmless for the drop clause. While the new value is in flight, the only drop is of the assigned place's old content. That content is a borrow, since the place has borrow type, so the drop ends it and never fails. After the assignment the value is a binding.
+  - An assignment's new value is never ended by the assignment's own [Access], on either path. That [Access] ends only the loans in the part of the place's content that the place owns. A place that receives a borrow has borrow type, and what it owns is its old borrow, not the data behind it. A place of data type receives loan-free data. While the new value is in flight, the only drop is of the old content, a borrow, so the drop ends it and never fails. After the assignment the value is a binding.
   - A discarded value of `t; u` that is a borrow is ended by its own drop, which never fails.
 
 So when the symbolic drop succeeds, the ground drop succeeds. The borrowers the ground drop ends are those held in bindings whose owners include the dying place. By (A4) their symbolic counterparts are ended by the symbolic drop too, or were already ⊥. So (A3) is kept, and (A2), (A4) and (A5) are unaffected, since ending borrows does not change the resolution.
@@ -375,11 +375,11 @@ So when the symbolic drop succeeds, the ground drop succeeds. The borrowers the 
 - Hole parametricity keeps the fill stuck: its run never inspects the hole. So those loans are still inside a neutral at the head of the place being accessed.
 - The same [Access] or [Drop] keeps ending loans until none remains there, so it ends the reborrows too.
 
-A [Match]'s [Access] ends only loans on the path and loans inside a neutral at the head, not loans deeper in a value. That is why the argument goes through the fill staying stuck. A program that reborrows through `Pick`'s result and then assigns `x := &c` is rejected on the symbolic path for this reason.
+A [Match]'s [Access] ends only loans on the path and loans inside a neutral at the head, not loans deeper in a value. An assignment's [Access] ends only the loans in the part of the place's content that the place owns, including loans inside neutrals in that part ($L^A$, @app-aux). A loan behind a borrow the place holds, even one inside a neutral, is left alone on both paths, and the drop of that borrow carries it back to its owner. In each case, an early end that the [Access] makes is made inside a neutral, so the argument goes through the fill staying stuck. A program that reborrows through `Pick`'s result and then assigns `x := &c` is rejected on the symbolic path for this reason.
 
 Pairs would break the argument: a shallow read of one field would leave a reborrow in the other field alive. F has none (F1). The argument is part of @tf-ass-n, as the preservation of (A3).
 
-The theorem does not cover the reborrow-and-replace idiom `x := &(*x).1`, because the rules reject it: the assignment's [Access] on `x` ends the new borrow, whose loan sits inside `x`'s content.
+The reborrow-and-replace idiom is in F, and it is accepted. `Trav(x : &Nat) : Unit := match *x { Z => (), S p => (x := &p; *x := 0) }`, the test `Trav` of the artifact's `Reborrows` block, satisfies F1–F6. The new borrow's loan sits behind the borrow that `x` held, which the assignment's [Access] leaves alone. The drop of the old borrow carries the loan back to its owner, where it stays live. So @tf-thm covers it.
 
 === What would remove the assumptions <tf-remains>
 

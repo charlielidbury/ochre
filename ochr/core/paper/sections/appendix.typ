@@ -108,9 +108,9 @@ A _state_ is an environment together with: Δ, the type of every abstract value;
 
 + *Content and update.* $cont_Omega (x) = Omega(x)$; $cont_Omega (dr p) = w$ if $cont_Omega (p) = "borrow"_ell w$; $cont_Omega (p.g) = v_j$ if $cont_Omega (p) = ty("C")(overline(a); v_1, dots, v_k)$ and $g$ is the $j$-th field of $ty("C")$, and $cont_Omega (p.g) = star$ if $cont_Omega (p) = star$ (a field of a proof is a proof, @app-match-prop); otherwise $cont_Omega (p)$ is undefined (so reading `p.g` needs a known constructor with field $g$, as reading `p.1` needs a known `S`, and `*p` needs a borrow). $Omega[p |-> v]$ replaces that sub-value. The _prefixes_ of a place are $"pre"(x) = {x}$, $"pre"(dr p) = "pre"(p) union {dr p}$, $"pre"(p.g) = "pre"(p) union {p.g}$; $q subset.eq.sq p$ means $q in "pre"(p)$. #lean("content", "setPlace")
 
-+ *Loans an access must end* ([Access]). For reading, borrowing and assigning,
++ *Loans an access must end* ([Access]). For reading and borrowing,
   $ L^R_Omega (p) = {ell mid(|) cont_Omega (q) = "loan"_ell, q in "pre"(p)} union "loans"(cont_Omega (p)), $
-  and for matching, $L^M_Omega (p) = {ell mid(|) cont_Omega (q) = "loan"_ell, q in "pre"(p)} union "hl"(cont_Omega (p))$, where $"hl"(seal(t)) = "loans"(t)$ (a loan's position inside a neutral is unknown, so it is treated as the head) and $"hl"(v) = emptyset$ for every other `v`. Both keep only live labels, ordered from the root of `p` outward and then left to right inside the content. #lean("accessPath", "accessInside")
+  for assigning, $L^A_Omega (p) = {ell mid(|) cont_Omega (q) = "loan"_ell, q in "pre"(p)} union "ol"(cont_Omega (p))$, where $"ol"$ is $"loans"$ except that it does not look inside a borrow, $"ol"("borrow"_m w) = emptyset$; and for matching, $L^M_Omega (p) = {ell mid(|) cont_Omega (q) = "loan"_ell, q in "pre"(p)} union "hl"(cont_Omega (p))$, where $"hl"(seal(t)) = "loans"(t)$ (a loan's position inside a neutral is unknown, so it is treated as the head) and $"hl"(v) = emptyset$ for every other `v`. Both keep only live labels, ordered from the root of `p` outward and then left to right inside the content. #lean("accessPath", "accessInside")
 
 + *Owners.* For a live label ℓ,
   $ "owners"_Omega (ell) = union.big_(pi : thin ell in "loans"(Omega(pi))) cases("owners"_Omega (m) & "if" Omega(pi) = "borrow"_m w, {pi} & "otherwise,") $
@@ -144,9 +144,9 @@ Ending a borrow replaces it by ⊥ and substitutes its content for its loan ever
   ir(name: "End", $Omega(pi) = "borrow"_ell w$, $Omega arrow.squiggly_ell (Omega[pi |-> bot])[w slash "loan"_ell]$),
 )
 
-*[Access]*. $acc^R_p (Omega)$ and $acc^M_p (Omega)$ end, one at a time and in the order of item 2 of @app-aux, the borrow of the first label of $L^R_Omega (p)$, respectively $L^M_Omega (p)$, until that set is empty:
-$ acc^X_p (Omega) = cases(Omega & "if" L^X_Omega (p) = emptyset, acc^X_p (Omega') & "if" ell "is the first label of" L^X_Omega (p) "and" Omega arrow.squiggly_ell Omega') quad (X in {R, M}). $
-Every rule that reads, borrows or assigns a place `p` first computes $acc^R_p$, and a match on `p` computes $acc^M_p$. This is the borrow checker: an ended borrower holds ⊥, and every later use of it is an error. #lean("endBorrow", "accessPath", "accessInside", "accessNeutralHead")
+*[Access]*. $acc^R_p (Omega)$, $acc^A_p (Omega)$ and $acc^M_p (Omega)$ end, one at a time and in the order of item 2 of @app-aux, the borrow of the first label of $L^R_Omega (p)$, $L^A_Omega (p)$ or $L^M_Omega (p)$, until that set is empty:
+$ acc^X_p (Omega) = cases(Omega & "if" L^X_Omega (p) = emptyset, acc^X_p (Omega') & "if" ell "is the first label of" L^X_Omega (p) "and" Omega arrow.squiggly_ell Omega') quad (X in {R, A, M}). $
+Every rule that reads or borrows a place `p` first computes $acc^R_p$, an assignment to `p` computes $acc^A_p$, and a match on `p` computes $acc^M_p$. Before assigning `p`, [Access] ends every borrow whose loan lies in the part of `content(p)` that `p` owns: on the path to `p`, in its owned content, or inside a neutral there, since a loan's position inside a neutral is unknown. A loan behind a borrow held in `content(p)`, including one inside a neutral behind that borrow, is not ended: the [Drop] of the old content ends that borrow ([End]), which carries the loan back to its owner, where it stays live. This is Rust's rule that a reborrow `&mut (*x).f` lasts as long as the reference `x` held, not the variable `x`. Reads, moves and borrows of `p` still end every loan inside `content(p)`. This is the borrow checker: an ended borrower holds ⊥, and every later use of it is an error. #lean("endBorrow", "accessPath", "accessInside", "accessNeutralHead", "Value.ownedLoans (Basic.lean)")
 
 #rules(
   ir(name: "Copy", $acc^R_p (Omega) = Omega_1$, pv($cont_(Omega_1)(p) = v in.not {bot, "borrow"_ell w}, thick v "whole"$, $"type"_(Omega_1)(p) "a copy type"$), $cfg(Omega, p) ev cfg(Omega_1, v)$),
@@ -156,7 +156,7 @@ Every rule that reads, borrows or assigns a place `p` first computes $acc^R_p$, 
   ir(name: "Borrow", pv($acc^R_p (Omega) = Omega_1 quad ell "fresh"$, $cont_(Omega_1)(p) = v in.not {bot, "borrow"_m w}, thick v "whole"$), $cfg(Omega, \&p) ev cfg(Omega_1 [p |-> "loan"_ell], "borrow"_ell v)$),
   ir(name: "Borrow-err", $acc^R_p (Omega) = Omega_1$, $cont_(Omega_1)(p) "undefined," bot ", a borrow, or not whole"$, $cfg(Omega, \&p) ev err$),
   ir(name: "Clone", $acc^R_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = v in.not {bot, "borrow"_m w}$, $cfg(Omega, kw("clone")(p)) ev cfg(Omega_1, v^circle)$),
-  ir(name: "Assign", pv($cfg(Omega, t) ev cfg(Omega_1, v) quad acc^R_p (Omega_1 dot v) = Omega_2 dot v'$, $cont_(Omega_2)(p) = w quad "drop"(Omega_2, w) = Omega_3$), $cfg(Omega, p := t) ev cfg(Omega_3 [p |-> v'], ())$),
+  ir(name: "Assign", pv($cfg(Omega, t) ev cfg(Omega_1, v) quad acc^A_p (Omega_1 dot v) = Omega_2 dot v'$, $cont_(Omega_2)(p) = w quad "drop"(Omega_2, w) = Omega_3$), $cfg(Omega, p := t) ev cfg(Omega_3 [p |-> v'], ())$),
 )
 Inside an erased term every read is [Copy] and sees through ghosts: $v^circle$ replaces each $"ghost"(w)$ in `v` by `w`, and [Clone] is such a read. A borrow cannot be cloned. [End] requires the content `w` to be whole, and so do a returned borrow and a borrow argument of a call that closes off: moving data out through a borrow is allowed only if the place is filled again before the borrow ends, as with `mem::replace` in Rust. In [Assign] the new value travels as a temporary while `p` is accessed, so that ending a borrow can substitute into it; $"drop"(Omega_2, w)$ ends the old content if it is a borrow, and fails if it still holds a live loan. #lean("readPlace", "borrowPlace", "assignPlace", "evalCore (.prim \"clone\")")
 
@@ -334,7 +334,7 @@ Here $v^bullet = star$ if `t` is a proof (clause 1) and $v^bullet = v$ otherwise
 #rules(
   ir(name: "T-Read", $cfg(Omega, p) ev cfg(Omega', v)$, $Omega tack.r p ev v : "type"_Omega (p) tack.l Omega'$),
   ir(name: "T-Borrow", $cfg(Omega, \&p) ev cfg(Omega', v)$, $"type"_Omega (p) = T : ty("Type")_0$, $Omega tack.r \&p ev v : \&T tack.l Omega'$),
-  ir(name: "T-Assign", pv($Omega tack.r t ev v : A tack.l Omega_1 quad A equiv "type"_(Omega_1)(p)$, $acc^R_p (Omega_1 dot v) = Omega_2 dot v' quad "drop"(Omega_2, cont_(Omega_2)(p)) = Omega_3$), $Omega tack.r p := t ev () : ty("Unit") tack.l Omega_3 [p |-> v']$),
+  ir(name: "T-Assign", pv($Omega tack.r t ev v : A tack.l Omega_1 quad A equiv "type"_(Omega_1)(p)$, $acc^A_p (Omega_1 dot v) = Omega_2 dot v' quad "drop"(Omega_2, cont_(Omega_2)(p)) = Omega_3$), $Omega tack.r p := t ev () : ty("Unit") tack.l Omega_3 [p |-> v']$),
   ir(name: "T-Let", pv($Omega tack.r t ev v : A tack.l Omega_1 quad Omega_1 + (x : A |-> v) tack.r u ev w : B tack.l Omega_2 + (x : A' |-> v')$, $"drop"(Omega_2 dot w, v') = Omega_3 dot w'$), $Omega tack.r kw("let") x = t";" u ev w' : B tack.l Omega_3$),
   ir(name: "T-Let-ann", pv($Omega tack.r A ev T "type" quad Omega scripts(tack.r)^T t ev v : T' tack.l Omega_1 quad T' equiv T$, $Omega_1 + (x : T |-> v) tack.r u ev w : B tack.l Omega_2 + (x : T'' |-> v') quad "drop"(Omega_2 dot w, v') = Omega_3 dot w'$), $Omega tack.r kw("let") x : A = t";" u ev w' : B tack.l Omega_3$),
   ir(name: "T-Seq", $Omega tack.r t ev v : A tack.l Omega_1$, $"drop"(Omega_1, v) = Omega_2$, $Omega_2 tack.r u ev w : B tack.l Omega_3$, $Omega tack.r t";" u ev w : B tack.l Omega_3$),
