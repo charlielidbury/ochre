@@ -333,3 +333,37 @@ What remains is small and listed at the end. The assumptions still hold almost a
 - *R2. (T2) is used, unlisted, to turn (i) into the hypothesis of "runs agree".* (i) is about a run from the ground instance $Gamma beta";" phi beta$. "Runs agree" needs the call from the caller's state to complete. Going from one to the other is the frame property. Cite (T2) in "Which calls the walk needs".
 - *R3. The resolution lemma claims order-independence at every state of F, symbolic ones included.* The ghost-as-atom argument covers ghosts. It does not cover [End]'s eager re-normalisation of sealed programs on symbolic states, where 1.3's machine is lazy. The proof needs order-independence only at ground states, where [End] is plain substitution (for (A2)), and inside (N4). Restrict the lemma to ground states, or move the symbolic case into (N4).
 - *R4.* The resolution discussion cites `Sched.lean` on an unmerged branch (`ochr-core-meta-t1b`). Either merge it or cite it as unmerged in the paper.
+
+### Addendum to the re-check: which borrows are in flight in F (meta-order's follow-up on 2.2)
+
+meta-order asked whether, in F, a borrow is in flight only during argument evaluation, during an assignment's [Access], and during let-block drops and frame pops.
+
+*Yes, with two additions that do not change the argument.*
+
+- *A discarded value of `t; u`.* It is in flight only during its own drop. If it is a borrow, that drop ends it; if it is data, it is loan-free (T1).
+- *Constructor fields* (`S(t)`). These are data, never a borrow.
+
+Values produced by type formers and by [Obs] are in flight only on private copies, and a data result is loan-free. I checked the other places where a temporary exists:
+
+- the function value of a call;
+- [Close]'s consumed arguments;
+- a callee's parameters, which are bindings once the frame is pushed;
+- [Seal] runs, where outer borrows are inert.
+
+None of them adds a case.
+
+*The assignment bullet should be replaced.* "An assignment's own new value is ended on both paths alike" is false (R1 above, probe `R9AS`). The reason the case is harmless is different:
+
+- while an assignment's new value is in flight, the only drop is of the assigned place's old content;
+- that content is a borrow, since the place has borrow type, and dropping a borrow ends it and never fails;
+- after the assignment the new value is a binding.
+
+So no ground drop can fail while an assignment's new value is in flight, whatever the symbolic path did to that value.
+
+*The adopted rule, as implemented.* The patch `lean/Scratch/Reviewer9D65Amended.patch` implements it, against `ochr-core` at d27c9fb2, for examples-tour to land. On a snapshot of that commit:
+
+- the full build changes no example or case-study verdict;
+- the only ledger row that changes is `accessInside`, which gains `Naturality.PickEarly:accepted`;
+- `DropProbe`'s `RunBad0` and `RunBad3`, and all four `DropVariants` runs, flip to accepted, as intended.
+
+In `Reviewer9Probe.lean`, only `R9Bad4`'s `RunBad4S` and `RunBad5S` flip, to accepted, which is the point of D65. Every other verdict in `Reviewer9Probe.lean` is unchanged. `E1`, `Blk`, `G`, `RetLocal` and `FR` stay rejected, now with "[Drop] … dies while a value in flight borrows it".
