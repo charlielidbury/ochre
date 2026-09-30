@@ -78,6 +78,7 @@ structure Args where
   worker : Bool := false
   printOnly : Bool := false
   list : Bool := false          -- print `@FIND i key` for every finding (for a census of shapes)
+  runtimeRefine : Bool := false -- refine at runtime depth, not erased (a diagnostic for RN)
   raw : List String := []       -- the arguments, for re-spawning workers
 
 partial def parseArgs (a : Args) : List String → Except String Args
@@ -93,6 +94,7 @@ partial def parseArgs (a : Args) : List String → Except String Args
   | "--worker" :: r => do parseArgs { a with worker := true } r
   | "--print-only" :: r => do parseArgs { a with printOnly := true } r
   | "--list" :: r => do parseArgs { a with list := true } r
+  | "--runtime-refine" :: r => do parseArgs { a with runtimeRefine := true } r
   | "--switch" :: s :: r => do
     match switchCfg a.cfg s, switchCfg a.base s with
     | some c, some b =>
@@ -121,11 +123,18 @@ def runRange (a : Args) (o : Opts) : IO Unit := do
     let res := checkCase o c r
     let st := if res.status.startsWith "invalid" then "invalid" else res.status
     stats := bump stats st
-    let fs := match o.base with
-      | some b =>
-        let bk := (checkCase { o with cfg := b, base := none } c r).findings.map (Finding.key)
-        res.findings.filter fun (f : Finding) => !bk.contains f.key
-      | none => res.findings
+    let fs ← match o.base with
+      | some b => do
+        let bres := checkCase { o with cfg := b, base := none } c r
+        -- a verdict the switch changes (e.g. a program the switch-off accepts), for `--list`
+        let bst := if bres.status.startsWith "invalid" then "invalid" else bres.status
+        if a.list && bst != st then out.putStrLn s!"@FLIP {i} {bst}>{st}"
+        -- the statement's sides as data functions (the execution oracle): how many are accepted
+        if a.list && bres.execAccepted != res.execAccepted then
+          out.putStrLn s!"@XFLIP {i} {bres.execAccepted}>{res.execAccepted}"
+        let bk := bres.findings.map (Finding.key)
+        pure (res.findings.filter fun (f : Finding) => !bk.contains f.key)
+      | none => pure res.findings
     let mut done : List String := []
     for f in fs do
       if done.contains f.key then continue
@@ -192,7 +201,7 @@ def main (argv : List String) : IO UInt32 := do
   let a ← match parseArgs {} argv with
     | .ok a => pure { a with raw := argv }
     | .error e => IO.eprintln e; return 2
-  let o : Opts := { cfg := a.cfg, base := if a.diff then some a.base else none }
+  let o : Opts := { cfg := a.cfg, base := if a.diff then some a.base else none, runtimeRefine := a.runtimeRefine }
   if let some i := a.show? then
     let (c, r) := mkCase a.seed i o.fuel
     IO.println (c.show s!"Case{i}")
