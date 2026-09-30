@@ -193,8 +193,8 @@ ochr R9Bad4 uses Std, Fixtures {
     }
   )
   -- at a = 1, TailM returns a borrow of a.1; the match on a (head S) ends nothing, and a is
-  -- dropped while x still borrows it
-  reject def RunBad4S : Unit := (
+  -- dropped while x still borrows it: under amended D65 the drop ends x, and the run completes
+  def RunBad4S : Unit := (
     let c = 0;
     Bad4(&c, 1)
   )
@@ -214,15 +214,16 @@ ochr R9Bad4 uses Std, Fixtures {
       S _ => (),
     }
   )
-  reject def RunBad5S : Unit := Bad5(1)
+  def RunBad5S : Unit := Bad5(1)
 }
 #eval IO.println (run "R9Bad4" R9Bad4).show
 #guard (run "R9Bad4" R9Bad4).allAsExpected
 #guard (run "R9Bad4" R9Bad4 {}).allAsExpected
 #guard (run "R9Bad4" R9Bad4).count == 5
 
-/-! ## D65 ([Drop] ends the borrows of a dying place; DECISIONS 37500b5b) is not implemented
-yet; these verdicts are today's, where the drop errs. Under D65 as written (a scratch
+/-! ## D65 ([Drop] ends the borrows of a dying place; DECISIONS 37500b5b). Amended D65 is
+implemented (d65-lane): all five stay rejected, now by "[Drop] … dies while a value in flight
+borrows it" (`UseG` because `G` is). Under D65 as written (a scratch
 implementation: a dying owned value ends every borrower of its live loans, repeating as
 [Access] does), `Blk`, `G` and `UseG` are accepted and each `Run…0` goes wrong: a stuck
 block's arm evaluates to an ended borrow (⊥ at `&Nat`), [Split] discards arm values, and

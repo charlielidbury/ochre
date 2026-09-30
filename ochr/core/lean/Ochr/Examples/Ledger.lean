@@ -3,11 +3,15 @@ import Ochr.Examples.Registry
 namespace Ochr.Registry
 
 /-- A row's class is checked with its flips: a completeness row flips only to rejected, any
-other row flips its named witnesses to accepted. Every row flips something: a rule that flips
+other row flips its named witnesses to accepted (or, for a witness `F@Run`, keeps `F` accepted
+while `F`'s ground run `Run` flips to rejected). Every row flips something: a rule that flips
 nothing is not needed, and is deleted. -/
 def classOk (k : String) (ws fs : List String) : Bool :=
   !fs.isEmpty && if k == "completeness" then fs.all (·.endsWith ":rejected")
-  else !ws.isEmpty && ws.all fun w => fs.contains s!"{w}:accepted"
+  else !ws.isEmpty && ws.all fun w => match w.splitOn "@" with
+    -- `F@Run`: `F` does not flip (it stays accepted), and its ground run flips to rejected
+    | [f, r] => fs.contains s!"{r}:rejected" && !fs.any (·.startsWith s!"{f}:")
+    | _ => fs.contains s!"{w}:accepted"
 
 /-- One ledger row: switching `c` off flips exactly `e`, blocks exactly `bl` (declarations
 that fail only because a library declaration they use flipped; none so far), and `e` fits
@@ -57,10 +61,14 @@ open Ochr.Registry in
 -- stuck block leaves a borrow's loan inside `n0`, and the later write through `a0` goes to
 -- nothing at `V(0)`; `W` passes `&a` holding `r`'s loan to a stuck call ([Close]'s
 -- precondition, unchecked). Both are accepted and go wrong when run (fuzz-port), as is the
--- original witness `BadA1` (a stuck `Unit` call's result is `()`, D59 refined)
+-- original witness `BadA1` (a stuck `Unit` call's result is `()`, D59 refined). Two flips to
+-- rejected: in Drops' `D2`, the write to `b` overwrites a content that holds `x`'s loan. And
+-- `PickEarly` (a good program) is accepted: reading `b` keeps `r`, and since D65 `z`'s drop
+-- ends it where it used to err
 open Ochr.Registry in
 #guard rowOk { accessInside := false }
-  ["Borrows.BadA1:accepted", "Borrows.V:accepted", "Borrows.W:accepted"]
+  ["Borrows.BadA1:accepted", "Borrows.V:accepted", "Borrows.W:accepted", "Drops.D2:rejected",
+   "Drops.D2Run:rejected", "Naturality.PickEarly:accepted"]
 open Ochr.Registry in
 #guard rowOk { selfHeadOnly := false }
   ["Recursion.Knot:accepted", "Recursion.KnotBoom:accepted"]
@@ -69,7 +77,8 @@ open Ochr.Registry in
   ["Borrows.Dead:accepted", "Borrows.DeadTwice:accepted"]
 open Ochr.Registry in
 #guard rowOk { generalize := false }
-  ["ClosingOff.UseDec:rejected", "Equality.CastMatch:rejected", "CaseSplits.MatchAfterOpaque:rejected",
+  ["Drops.Bad4:rejected", "Drops.RunBad4S:rejected", "Drops.RunBad4Z:rejected", "Drops.Bad5:rejected",
+   "Drops.RunBad5S:rejected", "ClosingOff.UseDec:rejected", "Equality.CastMatch:rejected", "CaseSplits.MatchAfterOpaque:rejected",
    "GenType.GenL:rejected", "RenormPi.G:rejected", "RenormPi.Plain:rejected", "RenormPi.InPi:rejected",
    "RenormPi.InConj:rejected", "Splitting.Pick:rejected", "Splitting.PickNotZero:rejected",
    "Splitting.PickNotZeroCopy:rejected", "Splitting.Pick22:rejected", "Splitting.Pick22NotZero:rejected",
@@ -345,6 +354,15 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { typedObs := false }
   ["Equality.Conv1:rejected"]
+
+-- D65 (amended) switched off: [Drop] errs on every lent local, as before D65. The symbolic
+-- path can end a borrow earlier than a ground instance (a hole in several owners' fills, a
+-- match on a fill), so each Drops function stays accepted while its ground run fails at the
+-- drop: meta-order's Bad2, accepted and wrong at n = 0 (the class's `F@Run` witnesses)
+open Ochr.Registry in
+#guard rowOk { dropEndsBound := false }
+  ["Drops.RunBad2Z:rejected", "Drops.RunBad3:rejected", "Drops.D1Run:rejected", "Drops.D2Run:rejected",
+   "Drops.D3Run:rejected", "Drops.D4Run:rejected", "Drops.RunBad4S:rejected", "Drops.RunBad5S:rejected"]
 
 -- every row of `switches` has a class
 open Ochr.Registry in

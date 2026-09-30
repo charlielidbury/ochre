@@ -30,7 +30,7 @@ open Ochr Ochr.Test Ochr.Surface
 namespace Ochr.Registry
 
 def programs : List (String × Block) :=
-  [("Prelude", Prelude), ("Std", Std), ("Fixtures", Fixtures), ("Numbers", Numbers), ("Borrows", Borrows), ("Moves", Moves), ("ReturnedBorrows", ReturnedBorrows),
+  [("Prelude", Prelude), ("Std", Std), ("Fixtures", Fixtures), ("Numbers", Numbers), ("Borrows", Borrows), ("Drops", Drops), ("Moves", Moves), ("ReturnedBorrows", ReturnedBorrows),
    ("ClosingOff", ClosingOff), ("Naturality", Naturality), ("Equality", Equality), ("Rewriting", Rewriting),
    ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion),
    ("CaseSplits", CaseSplits), ("GenType", GenType), ("RenormPi", RenormPi), ("Splitting", Splitting), ("ScrutineeTypes", ScrutineeTypes),
@@ -123,12 +123,15 @@ def switches : List (String × Config) :=
    ("K2: outside model code, a place of an unsized type is only borrowed at runtime", { unsizedTypes := false }),
    ("D63: a match whose arms disagree about being proofs has no declared type", { armsAgree := false }),
    ("D63 (switched ON): a closure in a stuck block captures through the block's borrow parameter (fuzz-port R2 (ii))", { blockRefCapture := true }),
-   ("D63: [Id] observes with the typing judgement in untyped runs too", { typedObs := false })]
+   ("D63: [Id] observes with the typing judgement in untyped runs too", { typedObs := false }),
+   ("D65 (amended): a dying local ends the borrowers held in bindings (a borrower in flight is still an error)", { dropEndsBound := false })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
 * `soundness`: switching the rule off accepts a closed proof of a false proposition, or a
-  program that goes wrong when run (a use of `⊥`); the witnesses are named;
+  program that goes wrong when run (a use of `⊥`); the witnesses are named. A witness
+  `F@Run` is a function `F` that stays accepted while its ground run `Run` flips to
+  rejected: `F` is accepted and goes wrong at that instance;
 * `false lemma`: it accepts a false open lemma, whose closed instances another rule
   (D41) still rejects;
 * `model`: it accepts definitions with no set-theoretic model (an impredicative `Type₀`,
@@ -191,13 +194,14 @@ def rowClass : List (String × List String) :=
    ("policy", ["Abstraction.Take"]),
    ("policy", ["ErasureBySyntax.MixPos"]),
    ("policy", ["ClosingOff.LamReadInWrittenBlock"]),
-   ("completeness", [])]
+   ("completeness", []),
+   ("soundness", ["Drops.Bad2@Drops.RunBad2Z", "Drops.Bad3@Drops.RunBad3", "Drops.Bad4@Drops.RunBad4S"])]
 
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1113
+def Ochr.Registry.expectedTotal : Nat := 1140
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

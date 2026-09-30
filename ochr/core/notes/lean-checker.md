@@ -1300,3 +1300,22 @@ Since both case studies check under D53 (`Test.preD53` was empty), the old copy-
 The pre-pass assertion normalises `trace`, `ghosts` and `fnRule` (`prePassAssert`), as before minus `d53` and `moves`.
 
 *Ledger:* 54 rows after merging ochr-core (the rule-audit lane added rows): soundness 21, false lemma 1, model 4, policy 7, completeness 21. 1122 verdicts, none changed by the deletion.
+
+## 48. Amended D65: a dying local ends its bound borrowers (ghost borrows reverted)
+
+The ghost borrows of §45 are reverted. They covered one channel of the early-end problem (a hole in several owners' fills), not the stuck block (`D1`) or the single owner behind a match on a fill (`Bad4`), and fuzz-port bisected new ground failures on ochr-core ad2bdd26 to them ("no such place", "[Borrow] (*x).1 was moved out", "[Call] argument 1 is ⊥"). D53's ghosts for moved-out places are untouched.
+
+Amended D65 (DECISIONS; reviewer-9 finding 16; the patch `Scratch/Reviewer9D65Amended.patch`, adapted): when [Drop] meets a live loan in a dropped owned value, it finds the borrow. If the borrow is held in a binding, it ends ([End]), repeating as [Access] does. If the borrow is in a temporary, a value in flight, the drop is an error: "[Drop] q dies while a value in flight borrows it". `dropTopBind` calls `endLoansOfTopBind`; `dropValue` calls `endLoansOfTopTemp`. `assignPlace` is unchanged: [Access] before an assignment has already ended every loan inside the old content.
+
+*Why the two paths now agree.* The symbolic path may end a borrow earlier than a ground instance does. Before, only [Drop] made an early end matter: it erred on a lent local, so a drop that succeeded symbolically could fail on the ground. Now a borrower held in a binding is ended on both paths, so no drop errs because of it. For a borrower in flight, the dying place is among its symbolic owners whenever it is among its ground owners (A4), so the symbolic drop errs whenever the ground one does. Ending an in-flight borrower instead (D65 as first written) would let a stuck block's arm return ⊥, which [Close]'s `&T` row revives as a live borrow (`Blk`).
+
+*Regressions,* in a new block `Drops` (02Borrows), 27 verdicts:
+- accepted, with ground runs that complete: `Bad2` (`RunBad2Z`, `RunBad2S`), `Bad3`, fuzz-port's `D1`–`D4`, reviewer-9's `Bad4` (`RunBad4S`, `RunBad4Z`) and `Bad5`, and `AssignBot`;
+- rejected: `UseEnded` (a write through a borrower ended by a drop);
+- rejected by the in-flight error, asserted by message: `RetLocal`, `E1`, `FR`, `Blk`, `G`; and `UseG`, because `G` is rejected ("unknown constant G").
+
+`Scratch/DropProbe.lean`, `DropVariants.lean` and `Reviewer9Probe.lean` now expect the ground runs to be accepted (`RunBad0`, `RunBad3`, `D1Run`–`D4Run`, `RunBad4S`, `RunBad5S`).
+
+*Ledger:* the `ghostBorrows` row is gone. A new row, `dropEndsBound`, class soundness: switched off, [Drop] errs on every lent local, and the eight ground runs flip to rejected while their functions stay accepted. Its witnesses have a new form, `F@Run` (`Drops.Bad2@Drops.RunBad2Z`, `Bad3@RunBad3`, `Bad4@RunBad4S`): `classOk` checks that `F` does not flip and `Run` flips to rejected. Every other witness is a program that flips to accepted, and no program flips to accepted here: switching the rule off only adds drop errors. The `accessInside` row (D19) gains `Naturality.PickEarly:accepted` (reading `b` keeps `r`, and `z`'s drop now ends it) and `Drops.D2:rejected`, `Drops.D2Run:rejected` (the write to `b` overwrites a content holding `x`'s loan). The `generalize` row (C8) gains `Drops.Bad4`, `Bad5` and their runs, rejected: without generalisation the match on `a`'s fill does not split. Fuzz.lean has the switch as `dropEndsBound` or `D65`.
+
+1140 verdicts.

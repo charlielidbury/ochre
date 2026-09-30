@@ -8,8 +8,10 @@ moves what it holds out, and the place is dead afterwards, unless its type is a 
 copies anything. A term that is erased (a type, a proof, a statement) reads without moving,
 and still sees what was moved (D53). A borrow is always moved (RULES P3). `&*x` reborrows: it lends `*x` for a while
 and leaves `x` usable afterwards. Before a place is used, every borrow that might still
-reach it is ended ([Access]); using an ended borrow is an error, and so is dropping a
-local that something still borrows ([Drop]). This is the whole borrow checker.
+reach it is ended ([Access]); using an ended borrow is an error. A local that dies while a
+variable still borrows it ends that borrow too, but one that dies while a value in flight
+borrows it (a block or a function returning a borrow of its own local) is an error ([Drop],
+D65). This is the whole borrow checker.
 
 Defined in RULES §3: [Read], [Borrow], [Assign], [Access], [End], [Drop], [Call]. -/
 
@@ -124,6 +126,95 @@ ochr Borrows uses Std {
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Borrows" Borrows).allAsExpected
 #guard (run "Borrows" Borrows).count == 19
+
+/-! ## A local dies while it is borrowed (D65 amended)
+
+What [Drop] does to a lent local depends on where its borrower is. A borrower held in a
+binding (a variable, or a place inside one) is ended, as [Access] would end it: it becomes
+`⊥`, and using it later is an error. This is Rust's non-lexical reading: `a` may die while
+`x` borrows it, if `x` is not used again. A borrower that is a value in flight (the result
+of the expression being evaluated, a temporary, an argument) makes the drop an error: a
+block or a function cannot return a borrow of its own local.
+
+The symbolic path can end a borrow earlier than a ground instance does. A stuck call's or
+block's hole sits in the fill of every place it may borrow (`Pick`), and a match on a fill
+ends every loan inside it (D29). When [Drop] erred on every lent local, that early end let
+the symbolic drop succeed where the ground one failed: each function below was accepted and
+its ground run was rejected (meta-order's `Bad2`, fuzz-port's Drop family, reviewer-9's
+`Bad4`). Now a drop never errs because of a borrower held in a binding, on either path, and
+each ground run completes (switch `dropEndsBound`). -/
+
+ochr Drops uses Std, Fixtures {
+  -- `Pick`'s hole sits in `a`'s fill and in `b`'s. Reading `b` ends `x` symbolically; at
+  -- `n = 0` it ends nothing, and `x` still borrows `a` when `a` dies, which now ends it.
+  def Bad2 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &a, &b); let z = b; ())
+  def RunBad2Z : Unit := (let y = 7; Bad2(0, 5, &y))
+  def RunBad2S : Unit := (let y = 7; Bad2(1, 5, &y))
+  -- the same with a local borrow declared before `a`
+  def Bad3 (n : Nat) (b : Nat) : Unit := (let c = 1; let x = &c; let a = 0; x := Pick(n, &a, &b); let z = b; ())
+  def RunBad3 : Unit := Bad3(0, 5)
+  -- fuzz-port's Drop family: a stuck match instead of a call; a write, or a borrow, of the
+  -- other owner; the owners the other way round
+  def D1 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := match n { Z => &a, S _ => &b }; let z = b; ())
+  def D1Run : Unit := (let y = 7; D1(0, 5, &y))
+  def D2 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &a, &b); b := 0)
+  def D2Run : Unit := (let y = 7; D2(0, 5, &y))
+  def D3 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &a, &b); let w = &b; ())
+  def D3Run : Unit := (let y = 7; D3(0, 5, &y))
+  def D4 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &b, &a); let z = b; ())
+  def D4Run : Unit := (let y = 7; D4(1, 5, &y))
+  -- one owner: the match on `a`, whose content is a fill, ends every loan inside it (D29);
+  -- at `a = 1`, `TailM` borrows `a.1` and the match on `a` ends nothing
+  def Bad4 (x : &Nat) (a : Nat) : Unit := (x := TailM(&a); match a { Z => (), S _ => () })
+  def RunBad4S : Unit := (let c = 0; Bad4(&c, 1))
+  def RunBad4Z : Unit := (let c = 0; Bad4(&c, 0))
+  def Bad5 (a : Nat) : Unit := (let c = 1; let x = &c; let b = a; x := TailM(&b); match b { Z => (), S _ => () })
+  def RunBad5S : Unit := Bad5(1)
+  -- a statement assigns a borrow variable that the symbolic path has ended (reviewer-9)
+  def AssignBot (n : Nat) (a : Nat) (b : Nat) (c : Nat) : Unit := (
+    let x = Pick(n, &a, &b);
+    let z = clone(b);
+    let h : Id Unit (x := &c; *x := 5) (x := &c; *x := 5) = refl;
+    ()
+  )
+  def AssignBotRun : Unit := AssignBot(0, 1, 2, 3)
+  -- `a`'s death ends `x`, so writing through `x` afterwards is an error
+  reject def UseEnded (c : Nat) : Unit := (let x = &c; (let a = 0; x := &a; ()); *x := 1)
+
+  -- A value in flight borrows the dying local: a function's result, a let-block's, a match
+  -- arm's. Ending it would give a ⊥ result, which [Close]'s `&T` row revives as a live borrow
+  -- when the block is stuck (`Blk`: its ground run at `n = 0` would write through ⊥), so the
+  -- drop is an error (reviewer-9's finding 16).
+  reject def RetLocal (x : &Nat) : &Nat := (let a = 0; &a)
+  reject def E1 (n : Nat) (b : Nat) : Unit := (let q = (let a = 0; Pick(n, &a, &b)); ())
+  reject def FR (n : Nat) (x : &Nat) : &Nat := (match n { Z => (let a = 0; &a), S _ => x })
+  reject def Blk (n : Nat) (b : Nat) : Unit := (
+    let r : &Nat = match n { Z => (let q = 0; &q), S _ => &b };
+    *r := 5
+  )
+  reject def G (n : Nat) (b : &Nat) : &Nat := (
+    let r : &Nat = match n { Z => (let q = 0; &q), S _ => &*b };
+    r
+  )
+  -- a caller of `G`, which is rejected, so `G` is not in scope here
+  reject def UseG (n : Nat) (c : Nat) : Unit := (let r = G(n, &c); *r := 7)
+}
+
+#eval IO.println (run "Drops" Drops).show
+
+#guard (run "Drops" Drops).allAsExpected
+#guard (run "Drops" Drops).count == 27
+
+/-- The message rejecting `Drops.name`. -/
+def dropsMessage (name : String) : String :=
+  match ((run "Drops" Drops).rows.find? (·.name == name)).map (·.verdict) with
+  | some (Ochr.Verdict.rejected m) => m
+  | _ => ""
+
+-- each value-in-flight witness is rejected by [Drop] itself, not by a later use of ⊥
+#guard ["RetLocal", "E1", "FR", "Blk", "G"].all fun n =>
+  ((dropsMessage n).splitOn "dies while a value in flight borrows it").length == 2
+#guard ((dropsMessage "UseG").splitOn "unknown constant G").length == 2
 
 /-! ## Moves and copies (D53)
 
