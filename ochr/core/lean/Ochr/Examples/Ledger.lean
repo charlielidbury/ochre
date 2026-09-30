@@ -231,7 +231,10 @@ open Ochr.Registry in
 #guard rowOk { refData := false }
   ["Universes.Impred:accepted", "Universes.PolyId:accepted", "Universes.SelfApp:accepted",
    "Universes.SelfAppEq:accepted", "Universes.PolyTy:accepted", "BorrowTypes.PIref:accepted",
-   "BorrowTypes.RefTrue:accepted", "BorrowTypes.RefFun:accepted", "BorrowTypes.SwapT:accepted"]
+   "BorrowTypes.RefTrue:accepted", "BorrowTypes.RefFun:accepted", "BorrowTypes.SwapT:accepted",
+   "BorrowTypes.BorrowProp:accepted", "BorrowTypes.BorrowVar:accepted", "BorrowTypes.BorrowType:accepted",
+   "BorrowTypes.BorrowTypeUse:accepted", "BorrowTypes.BorrowFn:accepted", "BorrowTypes.BorrowProof:accepted",
+   "BorrowTypes.BorrowStuck:accepted", "BorrowTypes.BlockBorrowStuck:accepted"]
 -- D48 (2) switched off: a codomain computing to &Nat; the accepted G reads ⊥ at n = 0
 -- (InPair, `Nat × &Nat`, no longer flips: since D52 a pair type is the library's Pair, whose
 -- parameters may not be borrow types whatever this switch says)

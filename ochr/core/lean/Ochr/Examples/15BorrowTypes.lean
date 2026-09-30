@@ -41,6 +41,22 @@ ochr BorrowTypes uses Std {
   reject def RefFun (f : &(Π(n : Nat). Nat)) : Nat := 0
   reject def SwapT (A : Type) (x : &A) (y : &A) : Unit := ()
 
+  -- ... and the same holds for the borrow term `&p`: the borrowed place's type is data
+  -- (reviewer-6's A12: the check was made only for the type former). A proposition, a
+  -- universe, a type variable, a function, a proof; and a place whose type is known only by
+  -- computation, which a stuck match would have to borrow.
+  reject def BorrowProp (x : Prop) : Unit := (let r = &x; ())
+  reject def BorrowVar (A : Type) (x : A) : Unit := (let r = &x; ())
+  reject def BorrowType (A : Type) : Unit := (let r = &A; *r := Nat)
+  reject def BorrowTypeUse (A : Type) (a : A) : Nat := (let r = &A; *r := Nat; let b : *r = 5; b)
+  reject def BorrowFn (f : Π(n : Nat). Nat) : Nat := (let r = &f; *r := (λ(n : Nat) : Nat => 0); f(3))
+  reject def BorrowProof (P : Prop) (h : P) : Unit := (let r = &h; ())
+  def TP (n : Nat) : Type := match n { Z => Prop, S _ => Nat }
+  reject def BorrowStuck (n : Nat) (x : TP(n)) : Nat := (match n { Z => (let r = &x; ()), S _ => () }; 0)
+  def TN (n : Nat) : Type := match n { Z => Nat, S _ => Nat }
+  reject def BlockBorrowStuck (n : Nat) (x : TN(n)) : Nat := (match n { Z => (x := 5), S _ => () }; 0)
+  def BorrowData (x : Nat × Nat) : Unit := (let r = &x; ())
+
   -- No `&` inside another type: not in a pair, in `Id`'s type, a list, or a field.
   reject def InPair (p : Nat × &Nat) : Nat := 0
   reject def InId (x : &Nat) (h : Id (&Nat) x x) : Nat := 0
@@ -76,7 +92,7 @@ ochr BorrowTypes uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "BorrowTypes" BorrowTypes).allAsExpected
-#guard (run "BorrowTypes" BorrowTypes).count == 16
+#guard (run "BorrowTypes" BorrowTypes).count == 27
 
 /-! ## Abstract and unsized types (K2, K3)
 

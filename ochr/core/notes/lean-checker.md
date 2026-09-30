@@ -1229,3 +1229,21 @@ Model functions are read from the declared types syntactically, through type fun
 `Poke` is caught by both.
 
 1059 verdicts: the case studies 358, the tour 701.
+
+## 44. A1 and A12 (reviewer-6)
+
+*A1: generalisation records belong to their arm.* This was a closed proof of `False` in the default checker, in three steps:
+1. In the arm `n := Z`, `match x` generalised `⌈g(())⌉` to σ3 with `Δ = T(0) = Box(Unit)`.
+2. The arm `n := S m` re-derived the same text, whose type there is `Box(Bool)`, and was handed σ3.
+3. η at `Unit` made `MkBox(true) = MkBox(false)` true.
+
+`restoreArm` now drops, at every [Split] arm's restore, the generalisation records the arm made. D37 still keeps records across private copies, which stay within one world. Checked on its own: with mkEqM's old `Eq Unit ≡ True` rule put back, `restoreKeep` accepts `F`, `Boom` and fuzz-port's `FuzzLie`/`FuzzBoom`, and `restoreArm` rejects all four. D59 refined (§42) also closes A1 on its own, since η at `Unit` is now a property of values. Regressions: `ArmRecords` (08CaseSplits). fuzz-port's `--a1 100` at 10⁵: no findings.
+
+*A12: D48 (1) for borrow terms.* [T-Borrow]'s premise, that the borrowed place's type is data, was checked only for the type former `&A`. `&x` was accepted for `x : Prop`, for `x : A` with `A` a type variable, for `&A` itself (`*r := Nat`), for a function, and for a proof.
+- `&p` now requires `isDataType (placeType p)`.
+- A stuck match that would capture a place by `&` requires the same of the place's type. A type known only by computation, `⌈T(σ)⌉`, may be a universe at some instance, so it is not known to be data (fail-safe).
+
+The impredicativity route (reviewer-3) needed a type `&Type₀` that a program can name. The term route produced such values, but never a nameable type, since the type former stayed checked. I found no closed `False`. Regressions in `BorrowTypes`:
+- rejected: `BorrowProp`, `BorrowVar`, `BorrowType`, `BorrowTypeUse`, `BorrowFn`, `BorrowProof`, `BorrowStuck`, `BlockBorrowStuck`;
+- accepted: `BorrowData`.
+The D48 (1) row (model) now flips them too.

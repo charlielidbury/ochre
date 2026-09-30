@@ -1623,6 +1623,10 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     let T ← if typed then some <$> placeType p else pure none
     if let some T := T then
       if T.typeHasRef then err s!"&{← ppPlace p}: a borrow of a borrow-typed place"
+      -- D48 (1) for terms ([T-Borrow]'s premise, reviewer-6's A12): the borrowed place's
+      -- type is data, as for the type former `&A`
+      if (← get).cfg.refData && !(← isDataType T) then
+        err s!"[D48] &{← ppPlace p}: its type {T} is not a data type (Nat, Unit, ×, an inductive type in Type); only data is borrowed"
     pure (← borrowPlace p, T.map .tRef)
   | .assign p u =>
     let (v, Tv) ← eval typed u
@@ -2755,7 +2759,12 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
         doms := doms.push T; args := args.push (Term.borrow (.deref q))
       else
         doms := doms.push T; args := args.push (Term.place q)
-    | 1 => doms := doms.push (.tRef T); args := args.push (Term.borrow q)
+    | 1 =>
+      -- D48 (1): the block borrows the place, so its type must be known to be data (a place
+      -- whose type is stuck, `⌈T(σ)⌉`, may be a universe at some instance: reviewer-6's A12)
+      if (← get).cfg.refData && !(← isDataType T) then
+        err s!"[D48] a stuck match would borrow {← ppPlace q}, whose type {T} is not known to be a data type"
+      doms := doms.push (.tRef T); args := args.push (Term.borrow q)
     | _ =>
       -- D53: a place the block only reads is read in place, not consumed
       doms := doms.push T
