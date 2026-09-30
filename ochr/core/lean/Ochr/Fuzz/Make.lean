@@ -137,49 +137,90 @@ def genEDep : Gen (List (String × STerm) × STerm × STerm × STerm × List STe
     let proofs := [.matchGen (.ident "n0") [("Z", [], zProof), ("S", ["_"], .ident "refl")]]
     pure (ps, .sort 0, lhs, rhs, proofs)
 
-/-- The rules family (reviewer-6 W5): a declaration that a rule of the calculus forbids, which
-the checker must reject. [T-Borrow]'s premise, that only places of a data type are
-borrowed, at the term level: a borrow of a proof, of a value of a type variable, of a type
-variable itself, of a function. And closures in data: an inductive parameter instantiated
-at a Π-type or a sort (`Bx(Π(n : Nat). Nat)`, `Bx(Prop)`). Returns (rule, declaration). -/
+/-- The rules family (reviewer-6 W5): a declaration whose verdict D66 (`Prop : Type₁`, `&A`
+iff `A : Type₀`) fixes. Rejected: a borrow of a proof, a proposition, a type, or a function
+over propositions, and `Bx(Prop)`/`Bx(Type)`. Accepted (`expectAccept`): a borrow of a value
+of a type variable, of a function in `Type₀`, and a Π-type inductive parameter. Returns
+(rule, declaration). -/
 def genRule : Gen (String × SDecl) := do
   let unitRet : STerm := .ident "Unit"
   let nat : STerm := .ident "Nat"
   let piNat : STerm := .pi [("n", nat)] nat
   let piRef : STerm := .pi [("y", .amp nat)] (.amp nat)
-  let mk (ps : List (String × STerm)) (ret body : STerm) : SDecl :=
-    { name := "RuleX", params := ps, ret := ret, body := body, expectAccept := false }
+  let piTop : STerm := .pi [("h", .top)] nat
+  let piProp : STerm := .pi [("P", .sort 0)] nat
+  let mk (ps : List (String × STerm)) (ret body : STerm) (acc : Bool := false) : SDecl :=
+    { name := "RuleX", params := ps, ret := ret, body := body, expectAccept := acc }
   let borrowThen (x : String) (after : STerm) : STerm := .letIn "r" none (.amp (.ident x)) after
   weighted [
-    -- a borrow of a proof
+    -- a borrow of a proof: rejected
     (3, do
       let P ← pick [STerm.top, .and .top .top, .app "Eq" [nat, .num 0, .num 0]]
       let after ← pick [STerm.unitLit, .seq (.deref (.ident "r")) .unitLit]
       pure ("borrow of a proof", mk [("h", P)] unitRet (borrowThen "h" after))),
-    -- a borrow of a value of a type variable
-    (2, do
-      let after ← pick [STerm.unitLit, .assign (.deref (.ident "r")) (.ident "x")]
-      pure ("borrow of a type variable's value", mk [("A", .sort 1), ("x", .ident "A")] unitRet (borrowThen "x" after))),
-    -- a borrow of a type variable, written through
+    -- a borrow of a proposition: rejected
+    (1, pure ("borrow of a proposition", mk [("P", .sort 0)] unitRet (borrowThen "P" .unitLit))),
+    -- a borrow of a value of a type variable `A : Type`: accepted (D66)
+    (2, pure ("borrow of a type variable's value (accepted)", mk [("A", .sort 1), ("x", .ident "A")] unitRet (borrowThen "x" .unitLit) true)),
+    -- a borrow of a type variable, written through or not: rejected
     (2, do
       let after ← pick [STerm.unitLit, .assign (.deref (.ident "r")) nat]
       pure ("borrow of a type", mk [("A", .sort 1)] unitRet (borrowThen "A" after))),
-    -- a borrow of a function
+    -- a borrow of a function in `Type₀`: accepted (D66)
     (2, do
-      let after ← pick [STerm.unitLit, .assign (.deref (.ident "r")) (.ident "f")]
-      pure ("borrow of a function", mk [("f", piNat)] unitRet (borrowThen "f" after))),
-    -- a closure in data: an inductive parameter at a Π-type
+      let T ← pick [piNat, piRef, piTop]
+      pure ("borrow of a function (accepted)", mk [("f", T)] unitRet (borrowThen "f" .unitLit) true)),
+    -- a borrow of a function over propositions (in `Type₁`): rejected
+    (1, pure ("borrow of a function over propositions", mk [("f", piProp)] unitRet (borrowThen "f" .unitLit))),
+    -- a Π-type as an inductive parameter: accepted (D66)
     (3, do
       let (T, body, ret) ← pick [
         (piNat, STerm.ctorP "MkBx" [piNat] [.ident "f"], STerm.call (.ident "Bx") [piNat]),
         (piNat, STerm.unitLit, unitRet),
         (piRef, STerm.unitLit, unitRet)]
       let ps := if body matches .unitLit then [("b", STerm.call (.ident "Bx") [T])] else [("f", T)]
-      pure ("Π-type as an inductive parameter", mk ps ret body)),
-    -- an inductive parameter at a sort
+      pure ("Π-type as an inductive parameter (accepted)", mk ps ret body true)),
+    -- a sort as an inductive parameter: rejected (a universe error)
     (1, do
       let so ← pick [STerm.sort 0, .sort 1]
       pure ("sort as an inductive parameter", mk [("b", .call (.ident "Bx") [so])] unitRet .unitLit)) ]
+
+/-- D66's function borrows at runtime (examples-tour's brief): library functions of two
+function types, and one or two data functions over a borrowed function that call through it,
+write another function through it, or call what it returns. The execution oracle runs them,
+the borrowed function ranging over the library functions of its type. -/
+def genRuleRun : Gen (List SDecl) := do
+  let nat : STerm := .ident "Nat"
+  let piNat : STerm := .pi [("n", nat)] nat
+  let piRef : STerm := .pi [("y", .amp nat)] (.amp nat)
+  let mk (n : String) (ps : List (String × STerm)) (ret body : STerm) : SDecl :=
+    { name := n, params := ps, ret := ret, body := body, expectAccept := true }
+  let x := STerm.ident "x"
+  let callX (a : STerm) : STerm := .call (.deref x) [a]
+  let insts := [mk "RuleInc" [("n", nat)] nat (.app "S" [.ident "n"]),
+    mk "RuleZer" [("n", nat)] nat (.num 0), mk "RuleIdR" [("y", .amp nat)] (.amp nat) (.ident "y")]
+  let shapes : List (Gen SDecl) := [
+    -- call through the borrow
+    pure (mk "RuleCall" [("x", .amp piNat), ("k", nat)] nat (callX (.ident "k"))),
+    -- write a function through it, then call
+    do let g ← pick ["RuleInc", "RuleZer"]
+       pure (mk "RuleWr" [("x", .amp piNat), ("k", nat)] nat (.seq (.assign (.deref x) (.ident g)) (callX (.ident "k")))),
+    -- call, then write
+    do let g ← pick ["RuleInc", "RuleZer"]
+       pure (mk "RuleWrThen" [("x", .amp piNat), ("k", nat)] nat
+         (.letIn "a" none (callX (.ident "k")) (.seq (.assign (.deref x) (.ident g)) (.ident "a")))),
+    -- a local function, borrowed and written through
+    pure (mk "RuleLoc" [("k", nat)] nat (.letIn "f" none (.ident "RuleZer") (.letIn "r" none (.amp (.ident "f"))
+      (.seq (.assign (.deref (.ident "r")) (.ident "RuleInc")) (.call (.ident "f") [.ident "k"]))))),
+    -- call a borrowed function that returns a borrow, then read or write through the result
+    pure (mk "RuleCallR" [("x", .amp piRef), ("k", nat)] nat (.letIn "c" none (.ident "k")
+      (.letIn "p" none (callX (.amp (.ident "c"))) (.call (.ident "clone") [.deref (.ident "p")])))),
+    pure (mk "RuleCallW" [("x", .amp piRef), ("w", .amp nat), ("k", nat)] (.ident "Unit")
+      (.letIn "p" none (callX (.ident "w")) (.seq (.assign (.deref (.ident "p")) (.ident "k")) .unitLit)))]
+  let a ← rand shapes.length
+  let b ← rand shapes.length
+  let runs ← (if a == b then [a] else [a, b]).mapM (shapes[·]!)
+  pure (insts ++ runs)
 
 /-- The Drop family (meta-order's `Bad2`, DropProbe): a data function that assigns a borrow
 returned by a stuck call, whose hole sits in several owners' fills, into a variable that
@@ -412,7 +453,9 @@ def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) (edep : Nat := 
   let (z, _) := (caseRng seed (i + 5000011)).next
   if rules > 0 && z.toNat % 100 < rules then
     let (rd, g6) := genRule.run { rng := caseRng seed (i + 6000013) }
-    return ({ c0 with lib := closeDeps (lib ++ ["Bx"]), ruleDecls := [rd] }, g6.rng)
+    -- half the rules cases also run D66's function borrows (their own stream)
+    let (runs, _) := (do if ← chance 50 then genRuleRun else pure []).run { rng := caseRng seed (i + 13000049) }
+    return ({ c0 with lib := closeDeps (lib ++ ["Bx"]), extra := c0.extra ++ runs, ruleDecls := [rd] }, g6.rng)
   let (y, _) := (caseRng seed (i + 3000017)).next
   if edep > 0 && y.toNat % 100 < edep then
     let ((ps, A, lhs, rhs, prf), g5) := genEDep.run { rng := caseRng seed (i + 4000037) }

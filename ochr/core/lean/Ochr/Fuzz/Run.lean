@@ -132,6 +132,8 @@ def execOracle (o : Opts) (c : Case) (prep : Prepared) : List Finding × Nat := 
           -- a function parameter's inputs are the library functions of its type
           let vs ← if ← isPropV A then pure (if unitTop A == vTrue then [Value.proof] else [])
             else if A matches .tPi .. then pure ((← fnInstances A).take 3)
+            -- D66: a borrowed function's inputs are the library functions of its type
+            else if let .tRef T@(.tPi ..) := A then pure ((← fnInstances T).take 3)
             else pure ((groundVals prep.inds (match A with | .tRef T => T | A => A) 1).take 3)
           out := out.push vs
           pushBind h (some A) (.abs 0)

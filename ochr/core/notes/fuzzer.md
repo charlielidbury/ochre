@@ -110,9 +110,11 @@ It also requires `EtaP`/`EtaCtl` to be decided alike: a read of one field of a p
 
 **The dependent-fields family (`--dep N`, D64).** It works over `DV := MkDV(n : Nat, x : Fin1(n))` and `Pos := MkPos(n, h : IsSucc(n))`. A mutator `LieX(v : &DV, k)` writes the index and the field in either order, possibly through borrows of the fields, crosses whole-again points and is sometimes repacked. `BoomX := AbsurdDV(BrokenX, refl)` must be rejected: it is a closed False. `Eq` taken apart at differing indices must be rejected. A data function that opens a local value and then relies on its invariant is run by the execution oracle.
 
-**The rules family (`--rules N`, reviewer-6 W5).** Its expectations follow the rules before D66. D66 changes them: function borrows, `&V` for `V : Type₀` and Π-type inductive parameters become accepted (§v2.3 item 10). It generates declarations that break two rules:
-- [T-Borrow]'s data premise, at the term level: a borrow of a proof, of a value of a type variable, of a type variable, or of a function, each with or without a write through it.
-- No closures in data: an inductive parameter instantiated at a Π-type or a sort (`Bx(Π(n : Nat). Nat)`, `Bx(Π(y : &Nat). &Nat)`, `Bx(Prop)`).
+**The rules family (`--rules N`, reviewer-6 W5; D66 expectations).** One declaration per case, whose verdict the rules fix:
+- rejected: a borrow of a proof, of a proposition, of a type variable (written through or not), or of a function over propositions (`Π(P : Prop). Nat`, in `Type₁`); a sort as an inductive parameter (`Bx(Prop)`, `Bx(Type)`), by the universe check.
+- accepted (the oracle reports a rejection): a borrow of a value of a type variable `A : Type`; a borrow of a function (`Π(n : Nat). Nat`, `Π(y : &Nat). &Nat`, `Π(h : ⊤). Nat`); a Π-type inductive parameter (`Bx(Π…)`, `MkBx[Π…](f)`).
+
+Half the rules cases also add data functions over a borrowed function (`RuleCall`, `RuleWr`, `RuleWrThen`, `RuleLoc`, `RuleCallR`, `RuleCallW`: call through it, write another function through it, call what it returns), with library instances `RuleInc`, `RuleZer`, `RuleIdR`. The execution oracle runs them with the borrowed function ranging over the library functions of its type.
 
 **More proof candidates for the truth oracle (reviewer-6 W10):**
 - the induction hypothesis at the call site through a borrowed list's tail (`Cons(_, q) => Lie(&q)`);
@@ -196,7 +198,7 @@ These are rejected:
 - a borrow of a proof, a proposition or a type;
 - `Bx(Prop)`, by the ordinary universe check (`Prop : Type₁`).
 
-When D66 lands, the rules family's expectations change to match.
+**D66 on ochr-core f0bed3db (checked at 8ff94c98).** With the expectations above, `--rules 100` (seed 1, 10⁵ cases, 6 workers) gives 0 `rule` and 0 `exec` findings; the borrowed-function data functions run on every drawn input.
 
     A combined hunt (seed 3, 10⁵ cases, `--a1 5 --edep 5 --rules 5`) found nothing outside these classes and A1: 603 `truth` (all A1), 486 `exec` (item 9), the rule kinds, and 189 E. There were no `nat`, `false` or `verdict` findings and no crashes.
 11. **DropProbe's `Bad2` class, at scale (the Drop family, ochr-core 20a764c3).** With `--drop 100` (seed 1, 10⁵ cases) there are 36,091 `exec` findings "[Drop] a goes out of scope while it is borrowed", 36% of the family's cases; with `--drop 5` (seed 2) there are 1,768. Every variant hits:
