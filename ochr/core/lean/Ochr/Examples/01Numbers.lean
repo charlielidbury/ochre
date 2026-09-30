@@ -128,10 +128,23 @@ ochr Numbers uses Std {
 
   -- An ascription `(t : A)` checks `t` against `A`.
   reject def AscribeWrong : Nat := (() : Nat)
+
+  -- ## Built-in names
+  -- `Nat`, `Unit`, `Z`, `S` and `refl` are built in, as are the forms `Id`, `Eq`, `cong`, `J`,
+  -- `clone`, `trans` and `symm`: no declaration or constructor may take one of these names,
+  -- which would shadow the built-in meaning at some uses and not others (reviewer-6's A3: a
+  -- `Unit` with two constructors was accepted, and then `Unit` meant it).
+  reject inductive Unit := A | B
+  reject inductive Nat := Nil0 | Succ0(p : Nat)
+  reject inductive Three := Z | One | Two
+  reject def refl : Nat := 0
+  reject def clone (x : Nat) : Nat := x
+  -- the built-in `Unit` is unaffected by the rejected one: `()` is its only value
+  def UnitStill (x : Unit) : Eq Unit x () := refl
 }
 
 #eval IO.println (run "Numbers" Numbers).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Numbers" Numbers).allAsExpected
-#guard (run "Numbers" Numbers).count == 20
+#guard (run "Numbers" Numbers).count == 26

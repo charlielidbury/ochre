@@ -350,8 +350,8 @@ open Ochr.Registry in
 -- `Unit`, need not be equal
 open Ochr.Registry in
 #guard rowOk { unitEta := false }
-  ["ClosingOff.RowI:rejected", "ClosingOff.UnitEta:rejected", "ClosingOff.UnitEtaUU:rejected",
-   "ClosingOff.UnitNotConv:rejected", "ClosingOff.ConvUnitRes:rejected",
+  ["Numbers.UnitStill:rejected", "ClosingOff.RowI:rejected", "ClosingOff.UnitEta:rejected",
+   "ClosingOff.UnitEtaUU:rejected", "ClosingOff.UnitNotConv:rejected", "ClosingOff.ConvUnitRes:rejected",
    "ClosingOff.ConvUnitWritten:rejected", "ClosingOff.ComputedUnit:rejected"]
 
 -- K3 switched off: runtime code may build and take apart an abstract type's representation

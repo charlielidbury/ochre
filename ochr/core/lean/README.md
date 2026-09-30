@@ -80,7 +80,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | File | Covers | RULES | Declarations |
 |---|---|---|---|
 | `00Std` | `Std`: in-place and pure addition, adding zero does nothing, `TailM`, `Bool`, `List(A)`, `Box(A)`, the copy type `Word`; `Fixtures`: `Pick`, `Empty`, `U`/`V`; and the assertions for `Prelude` | §1, §3, §7 | 12 (+4) |
-| `01Numbers` | evaluation in types, the pure theorem by the in-place lemma; matching on numbers; pairs; calls | §1, §3, §7 | 20 |
+| `01Numbers` | evaluation in types, the pure theorem by the in-place lemma; matching on numbers; pairs; calls; built-in names are reserved | §1, §3, §7 | 26 |
 | `02Borrows` | moving, copying and reborrowing; argument order; the borrow checker ([Access], [Drop]); `Moves`: D53's moves, copy types, `clone`, ghosts, the Fn rule, and a stuck block's captures | §3 | 82 |
 | `03ReturnedBorrows` | functions returning a borrow (`TailM`); a returned borrow must come from a borrow argument (D44) | §1, §3 [Close] | 20 |
 | `04ClosingOff` | stuck calls and matches, sealed programs, a borrow chosen by a branch, what a stuck match captures, [Close]'s rows and η for `Unit` (D59), typing a sealed program; closures inside a stuck block; naturality up to resolution | §3 | 52 |
@@ -99,7 +99,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `17HashMap` | case study: Aeneas's resizing hash map, its lookups, length, invariant, resizing and load factor, proved about the in-place code; keys and sizes are `Word`s (`notes/hashmap-case-study.md`) | all | 188 |
 | `18DependentFields` | dependent fields (D64): a field's type from the earlier fields, writing them in place (open, then repacked), proof fields, restricted injectivity, type functions in field types (K4) and its nesting condition; and a case study, `DepVec`: `Vec(E)` with push, pop, an element borrow and lemmas about pushing, and a hash table that stores its capacity and resizes | §8 | 43 (+44) |
 
-1254 declarations in all, the `Prelude`'s 4 and the case studies' 405 included. D53 (reads of non-copy data move) is the only read semantics: the old copy-on-read paths, `Config.d53`, `Test.preD53` and the `moves` switch are deleted (`notes/lean-checker.md` §47). `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+1260 declarations in all, the `Prelude`'s 4 and the case studies' 405 included. D53 (reads of non-copy data move) is the only read semantics: the old copy-on-read paths, `Config.d53`, `Test.preD53` and the `moves` switch are deleted (`notes/lean-checker.md` §47). `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 

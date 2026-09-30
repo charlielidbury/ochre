@@ -232,14 +232,28 @@ abbrev R := ReaderT Tables (ExceptT String (StateM RState))
 /-- The constructors and types a program declares. The library's (`Pair`, `False`,
 `True`, `And`) are among them: the `Prelude` block's declarations come first in every
 program (v2.1). -/
+def builtinNames : List String := ["Nat", "Unit", "Z", "refl", "S", "Id", "Eq", "cong"]
+
+/-- The names resolution reads itself: the built-in types `Nat` and `Unit`, their constructors,
+`refl`, and the built-in forms (`Id`, `Eq`, `cong`, `J`, `clone`, `trans`, `symm`). No
+declaration may take one: the built-in meaning would win at some uses and the declaration at
+others (reviewer-6's A3: a user `Unit` with two constructors was accepted, and `Unit` then
+meant it, not the built-in type with η). -/
+def reservedNames : List String := builtinNames ++ ["J", "clone", "trans", "symm"]
+
+/-- A declaration that takes a reserved name, or has a constructor that does. -/
+def SDecl.reservedName? (d : SDecl) : Option String :=
+  if reservedNames.contains d.name then some d.name
+  else (d.ind?.getD []).map (·.1) |>.find? reservedNames.contains
+
 def Tables.ofProgram (p : List SDecl) : Tables :=
   p.foldl (fun t d => match d.ind? with
     | some cs =>
+      -- a declaration taking a reserved name is rejected, and shadows nothing
+      if d.reservedName?.isSome then t else
       { ctors := t.ctors ++ (cs.zipIdx.map fun ((cn, fs), i) => (cn, d.name, i, fs.map (·.1))),
         types := t.types ++ [d.name] }
     | none => t) {}
-
-def builtinNames : List String := ["Nat", "Unit", "Z", "refl", "S", "Id", "Eq", "cong"]
 
 partial def toPlace (ctx : Ctx) : STerm → R Place
   | .loc _ _ t => toPlace ctx t
@@ -409,6 +423,8 @@ end
 /-- A top-level declaration becomes an `Item`. Inside a definition's body its own name
 is its `self` binder (whose value is the global function). -/
 def resolveDecl (d : SDecl) : R Item := do
+  if let some x := d.reservedName? then
+    throw s!"{x} is built in: a declaration may not redeclare it"
   if let some cs := d.ind? then
     -- the parameters are a telescope; the field types are in their scope (v2.0, D46), and in
     -- that of the constructor's fields (D64, dependent fields): the parameters are `var 0 …`

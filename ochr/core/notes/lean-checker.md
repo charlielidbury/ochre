@@ -1430,3 +1430,23 @@ Two more observations from the probe:
 - The stuck forms come from codomains whose agreement needs a proof (`G5`, by `AddMZero`) or whose sides disagree (`CP`).
 
 No checker change.
+
+## 52. Built-in names are reserved (reviewer-6's A3)
+
+`inductive Unit := A | B` was accepted. From then on `Unit` in the block meant it (the resolver looks up declared types before built-ins), so the built-in `Unit`'s η (D59) was out of reach, and `H2 (x y : Unit) : Eq Unit x y := refl` was rejected. The same held for `Nat`, and for a constructor named `Z` or `S`.
+
+`Surface.reservedNames` lists the names resolution reads itself:
+- the built-in types `Nat` and `Unit`;
+- the constructors `Z` and `S`;
+- `refl`;
+- the forms `Id`, `Eq`, `cong`, `J`, `clone`, `trans` and `symm`.
+
+`resolveDecl` rejects a declaration, or a constructor, that takes one ("`Unit` is built in: a declaration may not redeclare it"). `Tables.ofProgram` leaves such a declaration out, so the rejected one shadows nothing either (`UnitStill`).
+
+This is a scoping rule like the block namespace's clash check, so it has no ledger switch.
+
+Regressions, at the end of `Numbers`:
+- rejected: `Unit`, `Nat`, `Three` (a constructor `Z`), `refl` and `clone`;
+- accepted: `UnitStill`.
+
+The `unitEta` row (D59) gains `Numbers.UnitStill:rejected`. 1260 verdicts.
