@@ -158,10 +158,11 @@ open Ochr.Registry in
    "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted", "ErasureBySyntax.LieP:accepted"]
 open Ochr.Registry in
 #guard rowOk { confineBodies := true }
-  ["ReturnedBorrows.Inj:rejected", "Snapshots.CapPi:rejected", "Functions.TwiceMZero':rejected",
-   "Erasure.F5:rejected", "Erasure.TypeErased:rejected", "Erasure.TailSteps:rejected", "Erasure.P2:rejected",
-   "Erasure.FP2:rejected", "Erasure.BoomIsTrue:rejected", "Erasure.p2:rejected", "Erasure.TA2:rejected",
-   "Erasure.LieP2:rejected", "ErasureBySyntax.F:rejected", "ErasureBySyntax.SeqT:rejected"]
+  ["Moves.F5:rejected", "ReturnedBorrows.Inj:rejected", "Snapshots.CapPi:rejected",
+   "Functions.TwiceMZero':rejected", "Erasure.F5:rejected", "Erasure.TypeErased:rejected",
+   "Erasure.TailSteps:rejected", "Erasure.P2:rejected", "Erasure.FP2:rejected",
+   "Erasure.BoomIsTrue:rejected", "Erasure.p2:rejected", "Erasure.TA2:rejected", "Erasure.LieP2:rejected",
+   "ErasureBySyntax.F:rejected", "ErasureBySyntax.SeqT:rejected"]
 open Ochr.Registry in
 #guard rowOk { borrowParam := false }
   ["ReturnedBorrows.LeakT:accepted", "ReturnedBorrows.Q:accepted", "ReturnedBorrows.Boom:accepted",
@@ -278,25 +279,30 @@ open Ochr.Registry in
   ["Functions.WV:accepted", "Subsingletons.EffL:accepted", "Subsingletons.EffLNoop:accepted",
    "ErasureBySyntax.LieH:accepted", "Sorts.W:accepted", "Sorts.f:accepted", "Sorts.TT:accepted",
    "Sorts.g2:accepted", "Sorts.k:accepted", "Sorts.K1:accepted", "Sorts.K2:accepted"]
--- D53's rows are measured on the D53 blocks (`Test.d53Blocks`, the `Moves` block), the only
--- ones D53 applies to until its acceptance run passes. D53 switched off: reads copy
--- everything, so data is duplicated without `clone`, and a place moved out through a borrow
--- is not caught (the cost model's rule, not the logic's)
+-- D53 switched off: reads copy everything, so data is duplicated without `clone`, and a place
+-- moved out through a borrow is not caught (the cost model's rule, not the logic's)
 open Ochr.Registry in
 #guard rowOk { moves := false }
   ["Moves.UseAfterMove:accepted", "Moves.TwiceNat:accepted", "Moves.TakeFromBorrow:accepted",
    "Moves.ReturnMovedBorrow:accepted", "Moves.ClosureMovesCapture:accepted", "Moves.ClosureMoved:accepted",
    "Moves.MoveInArm:accepted", "Moves.RetMoved:accepted", "Moves.A1:accepted", "Moves.A2:accepted",
-   "Moves.B1:accepted", "Moves.B2:accepted", "Moves.B3:accepted", "Moves.B4:accepted"]
+   "Moves.B1:accepted", "Moves.B2:accepted", "Moves.B3:accepted", "Moves.B4:accepted", "Moves.N1:accepted",
+   "Moves.N2:accepted", "Moves.N3:accepted", "Moves.ThroughLocal:accepted", "Moves.P1:accepted",
+   "Moves.P2:accepted", "Moves.Q1:accepted", "Moves.K1:accepted"]
 -- D53 (c) switched off: a move leaves `⊥`, so a proof that mentions a moved value fails
 open Ochr.Registry in
 #guard rowOk { ghosts := false }
-  ["Moves.GhostRead:rejected", "Moves.J1:rejected", "Moves.J1Run:rejected"]
+  ["Moves.GhostRead:rejected", "Moves.J1:rejected", "Moves.J1Run:rejected", "CurrentState.AddSub:rejected",
+   "CurrentState.AddSubId:rejected", "CurrentState.AddSubIdReborrow:rejected"]
 -- D53 (e) switched off: calls consume their function and a closure is never a copy, so a
 -- function cannot be called twice
 open Ochr.Registry in
 #guard rowOk { fnRule := false }
-  ["Moves.CallTwice:rejected", "Moves.ClosureClones:rejected", "Moves.ClosureCopy:rejected"]
+  ["Moves.CallTwice:rejected", "Moves.ClosureClones:rejected", "Moves.ClosureCopy:rejected",
+   "Equality.Om:rejected", "Functions.Twice:rejected", "Functions.TwiceNoop:rejected",
+   "Functions.TwiceM:rejected", "Functions.TwiceMMove:rejected", "Functions.TwiceMZero:rejected",
+   "Functions.TwiceMZero':rejected", "Trees.Size:rejected", "Trees.SizeInsert:rejected",
+   "InPlaceTrees.Size:rejected", "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected"]
 -- D59 switched off: a call written to return `Unit` returns `()` and one that only computes
 -- to `Unit` a sealed program, and two values of `Unit` need not be equal
 open Ochr.Registry in

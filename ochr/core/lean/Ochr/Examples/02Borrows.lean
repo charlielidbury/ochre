@@ -127,8 +127,9 @@ ochr Borrows uses Std {
 
 /-! ## Moves and copies (D53)
 
-D53 is checked in this block only, until its acceptance run passes (`Ochr.Test.d53Blocks`);
-the rest of the tour reads by copying, as before D53, and its `clone`s are harmless there. -/
+Reading data whose type is not a copy type moves it; `clone` copies; a copy type is declared
+`copy` or is not recursive with copy fields; erased reads copy and see ghosts; the Fn rule;
+and a stuck match's effect on what it captures, moves included (RULES P3, D53). -/
 
 ochr Moves uses Std {
   -- Reading a `Nat` moves it: after `let m = n`, `n` is gone ...
@@ -264,6 +265,43 @@ ochr Moves uses Std {
   def J1Run : Nat := J1(1, refl)
   def I1 (n1 : Nat) : Nat := (let m = n1; let a0 = Id Unit () (n1 := 0); 0)
   def I1Run : Nat := I1(0)
+  -- A block's effect on its captures is read from its arms' moves and assignments, by place
+  -- (not by comparing values, which are abstract or sealed), so it composes through nested
+  -- blocks (N1), sees a borrow moved in whole by an inner block's capture (N2), and gives
+  -- each part of a captured place its own mode: `q1.1` moved, `q1.2` lent (N3). A move that
+  -- the arm restores, or that goes through a local borrow, counts as the owner's.
+  reject def N1 (x0 : &(Nat × Nat)) (n1 : Nat) : Nat := (
+    let a = match n1 { Z => match *x0 { Mk(p, _) => p }, S _ => 0 }; a)
+  reject def N2 (x0 : &Nat) : Nat := (
+    let a = match *x0 { Z => match *x0 { Z => 0, S _ => x0; 0 }, S _ => *x0 }; a)
+  reject def N3 (q1 : Nat × Nat) : Nat × Nat := (
+    let a = match q1 { Mk(p1, p2) => match p2 { Z => p1; &p2, S _ => &p2 } }; q1)
+  def N3Other (q1 : Nat × Nat) : Nat := (
+    let a = match q1 { Mk(p1, p2) => match p2 { Z => p1; &p2, S _ => &p2 } }; 0)
+  def MoveRestore (x0 : &Nat) (n1 : Nat) : Nat := (
+    let a = match n1 { Z => 0, S _ => (let v = *x0; *x0 := 0; v) }; a)
+  reject def ThroughLocal (q0 : Nat × Nat) (n1 : Nat) : Nat × Nat := (
+    let a = match n1 { Z => 0, S _ => (let r = &q0; match *r { Mk(u, _) => u }) }; q0)
+
+  -- A borrow passed to a call that closes off, or to an erased call, must be whole: [Close]
+  -- seals the borrowed content (hiding the hole), and an erased call's writes vanish at
+  -- runtime, so neither makes it whole before the borrow ends (fuzz-port P). A call that
+  -- runs may (`TakeRefill`).
+  def G1 (x : &Nat) (n : Nat) : Unit := match n { Z => (), S _ => *x := 0 }
+  def F5 (x : &Nat) : Prop := (*x := 5; ⊤)
+  def Refill (x : &Nat) (v : Nat) : Unit := *x := v
+  reject def P1 (x0 : &Nat) : Unit := (let a3 = *x0; G1(x0, a3))
+  reject def P2 (x1 : &Nat) : Unit := ((let a0 = *x1; match a0 { Z => (), S _ => F5(x1); () }); ())
+  def TakeRefill (x : &Nat) : Unit := (let v = *x; Refill(x, v))
+  -- A closure made in an arm that captures (moves) `q0` for its `q0.1` moves `q0` (Q); a
+  -- move of `a4.2` in one arm and an inspection of `a4` in another split `a4`, whichever way
+  -- the field is written (`.2` or a pattern's `snd`: K)
+  reject def Q1 (q0 : Nat × Nat) (n1 : Nat) : Nat × Nat := (
+    match q0 { Mk(p0, p1) => let a2 = match n1 { Z => (λ(y4 : Nat) : Unit => p0 := y4), S p6 => (λ(y8 : Nat) : Unit => ()) }; (p0, 0) })
+  inductive Sw := SwF | SwT
+  reject def K1 (b0 : Sw) : Nat × Nat := (
+    let a4 = (0, 0); let t = match b0 { SwF => match a4 { Mk(p, q) => 0 }, SwT => let s = a4.2; 0 }; a4)
+
   -- RN: a split in a data function re-normalises its hypotheses' types, as types (reads copy)
   def DataSplit (n : Nat) (h : Id (Nat × Nat) (match n { Z => (n, n), S p => (p, p) })
       (match n { Z => (0, 0), S p => (p, p) })) : Nat := (
@@ -273,4 +311,4 @@ ochr Moves uses Std {
 #eval IO.println (run "Moves" Moves).show
 
 #guard (run "Moves" Moves).allAsExpected
-#guard (run "Moves" Moves).count == 33
+#guard (run "Moves" Moves).count == 48

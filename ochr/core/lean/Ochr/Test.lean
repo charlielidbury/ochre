@@ -64,16 +64,16 @@ partial def libOf (cfg : Config) (fuel : Nat) (b : Block) : Program :=
     (b.closure.filter (·.name != "Prelude")).flatMap (exportsOf cfg fuel)
 end
 
-/-- The blocks checked with D53 on (reads of non-copy data move; `clone`; ghosts; the Fn
-rule), while D53 is off by default until its acceptance run passes: the tour's D53 section.
-Everything else reads by copying, as before D53; its `clone`s are harmless there. When D53
-becomes the default, this list goes. -/
-def d53Blocks : List String := ["Moves"]
+/-- The blocks checked without D53 (reads copy, as before D53) until their lanes adapt them
+with `clone` and `Word`: the case studies, written before D53. A block's name goes once it
+checks with D53. -/
+def preD53 : List String :=
+  ["Arrays", "ArrayLemmas", "ArrayBench", "Quicksort",
+   "HashMap", "HashMapLookup", "HashMapLength", "HashMapResize"]
 
-/-- The configuration a block is checked under: `cfg`, with D53 on for a `d53Blocks` block
-(its parts still switched by `moves`, `ghosts`, `fnRule`, for the ledger). -/
+/-- The configuration a block is checked under: `cfg`, without D53 for a `preD53` block. -/
 def blockCfg (b : Block) (cfg : Config) : Config :=
-  if d53Blocks.contains b.name then { cfg with d53 := true } else cfg
+  if preD53.contains b.name then { cfg with d53 := false } else cfg
 
 /-- Check a block: its library, then its own declarations. The report has a row for each of
 its own declarations only; a library declaration is asserted in its home block. -/

@@ -1092,3 +1092,66 @@ fuzz-port's execution oracle runs accepted data functions at ground inputs, with
 *With D53 on everywhere:* the tour has no failures. The case studies have 225, all of them missing clones or `Word`s, as before; Quicksort's count is 48, down from 52.
 
 1013 verdicts.
+
+## 38. The D53 flip (branch `ochr-d53-on`, pending acceptance)
+
+This branch is prepared to be merged once fuzz-port's acceptance run passes: the execution oracle with D53 on, zero findings over at least 10⁵ cases. It changes three things:
+- `Config.d53` defaults to true;
+- `Test.d53Blocks` is replaced by `Test.preD53`, the case-study blocks, which are checked with `d53 := false` until their lanes adapt them;
+- the unit tests' expected sealed programs end in `peek` again.
+
+The tour has no failures with D53 on.
+
+The ledger's D53 rows now range over the whole tour:
+- `ghosts` gains the three `CurrentState.AddSub*` proofs;
+- `fnRule` gains `Equality.Om`, the `Functions.Twice*` family, and the trees' `Size`/`SizeInsert`, which call a closure twice.
+## 39. A block's moves as effects by place (N1, N2, N3)
+
+After §37, fuzz-port's acceptance run on 10a7861a fell from 1,608 execution findings to 104 (seed 1). Three shapes remained, and they share one cause: a block's moves were recovered by diffing values before and after each arm, and that fails whenever the values are abstract or sealed.
+- **N1:** an inner block's move was invisible one level up, because the outer arm's `x0` was still abstract.
+- **N2:** a borrow moved in whole, but only by the syntax of a dead inner arm.
+- **N3:** the owner `q1` had mixed modes: `q1.1` moved and `q1.2` lent. [Close] sealed `q1` whole and hid the move.
+
+*The mechanism now (one, replacing the diff):*
+- **Every move and assignment is logged by place** (`placeLog`, at the root binding's position; `logEffect`), in any configuration. A step through a local borrow (`let r = &q0; *r…`) is logged as the owner's too (`throughLocalBorrow`); that is needed only with D53 on.
+- **An arm's effect on the block's captures** is its log replayed in order (`armMoves`). A move adds its place. An assignment restores every moved place it covers, so a move the arm undoes is not a move.
+- **Nested blocks compose** because an inner block's effect on its captures happens through its arguments, which the outer arm's log records like any other move.
+- **Captures take modes per sub-place.** A capture part of which some arm moves out is split into its fields. Each field is captured by its own mode: move, `&`, or read in place; fields the block never uses are left out. The block's matches on the split place take the arm of its constructor (`Term.selectArms`). If the place is used whole other than as a scrutinee, or its content is not a constructor value, it is moved in whole.
+- **M2b is read from the capture modes.** A borrow variable the block moves in whole is ended by the block's frame. If any arm moves out through it and does not restore it, that is an error. The capture's mode comes from syntax as well as from the log, which covers N2's dead inner arm.
+
+*Regressions (`Moves`):*
+- rejected: `N1`, `N2`, `N3`, `ThroughLocal`;
+- accepted: `N3Other` (the same block without reading `q1` afterwards) and `MoveRestore`.
+
+*Unchanged:* the suite's other verdicts, with D53 off by default and with it on everywhere. With D53 off the log costs nothing measurable: interleaved runs against 10a7861a give Quicksort 288 ms against 286 ms.
+
+1019 verdicts.
+
+## 40. The last residue at 10⁶ (P, Q, K)
+
+fuzz-port ran 10⁶ cases on 0b8a68f0 with D53 on. Ten cases remained, down from 950 on 10a7861a, with no value disagreements. They fall into three shapes (`Scratch/D53Residual2.lean` on ochr-fuzz-d53acc2).
+
+- **P (7 cases): a borrow whose content is already partly moved out, passed to a call that closes off or to an erased call.** [Close] seals the borrowed content, which hides the hole. An erased call's writes vanish at runtime. So neither kind of call can make the content whole before the borrow ends.
+  - [Close]'s precondition now includes it: a borrowed argument's content must be whole.
+  - A call of class ≠ 0 checks the same (`wholeBorrowArgs`), at runtime depth only.
+  - A call that runs may still refill the borrow (`TakeRefill`: `let v = *x; Refill(x, v)` is accepted).
+  - Regressions: `P1` (a stuck `G1`) and `P2` (an erased `F5` in an arm).
+- **Q (2 cases): a closure in an arm moves `q0` whole, to capture `q0`'s field `q0.1`.** Closures capture variables. The block had captured `q0.1` alone, so the move of `q0.2` was lost. A place that some arm moved out whole and that is a strict prefix of captures now replaces those captures, and is moved in. Regression: `Q1`.
+- **K (1 case): the same field written two ways.** One arm moves `a4.2`; another inspects `a4`, whose pattern fields are `fst`/`snd`. The split of `a4` into its fields did not recognise `.2` as `snd`. Places are now compared up to `stepEq` (`placePrefix`, `placeEq`): a pair's `.1`/`.2` are its constructor's fields. A Nat's `.1` is never a pair's field, so the two readings cannot meet. Regression: `K1`.
+
+1028 verdicts. With D53 on everywhere the tour still has no failures, and check times are unchanged (Quicksort 280 ms).
+
+## 41. The flip's pre-pass assertion; R9 (arms of different classes)
+
+*The assertion was off on `ochr-d53-on` (found by fuzz-port).* `Config.prePassAssert` normalised `d53 := false` and compared the result with `{}`. On the flip branch `{}` has `d53 = true`, so no configuration asserted. The normalisation now uses the default's own value (`d53 := ({} : Config).d53`), so the same code is right on both branches.
+
+*R9 (fuzz-port; it is also on `b2ce75b5`, with and without D53).* Take `match 0 { Z => refl, S _ => 0 }`: a match whose arms differ in class, a proof in one arm and data in another. `agreeDecl` read it as data, but the run took the proof arm, so the INTERNAL assertion fired. That is fail-safe. On the flip, with the assertion off, it surfaced as a D41 error on a refined generic path.
+- Such a match runs only on a known scrutinee. A stuck match's arms must have one type.
+- A known scrutinee is the same on every path, so the arm it takes is too.
+- Arms that disagree on being a proof therefore say nothing (`.any`), and the match's erasure is that of the arm it runs.
+
+I also tried rejecting such matches statically. That is a D55-style check that arms agree on being a proof. It rejected no program in the suite. But with D42 off, `refl` is not a proof, so every proof by recursion with a `refl` arm has arms that disagree, and the D42 rows would have gained dozens of flips that belong to the check, not to D42. So I chose deferral.
+
+*Regressions:* `ErasureBySyntax.R9Arms` and `R9Nested` are accepted. fuzz-port's `R9PrePassArms` (`B`, `B6`) is accepted with and without D53.
+
+1030 verdicts.
