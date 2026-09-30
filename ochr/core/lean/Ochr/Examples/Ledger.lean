@@ -343,7 +343,10 @@ open Ochr.Registry in
 #guard rowOk { repack := false }
   ["DepFields.LieV:accepted", "DepFields.ReadBroken:accepted", "DepFields.PassBroken:accepted",
    "DepFields.PassBrokenVar:accepted", "DepFields.IdBroken:accepted", "DepFields.IdMakesBroken:accepted",
-   "DepFields.Broken:accepted", "DepFields.Boom:accepted"]
+   "DepFields.Broken:accepted", "DepFields.Boom:accepted", "DepFields.LieZ:accepted",
+   "DepFields.LieZRev:accepted", "DepFields.LieParam:accepted", "DepFields.LieBorrow:accepted",
+   "DepFields.BoomZ:accepted", "DepFields.BoomZRev:accepted", "DepFields.BoomParam:accepted",
+   "DepFields.BoomBorrow:accepted"]
 -- D64's restriction of injectivity switched off: `Eq V (MkV(a, x)) (MkV(b, y))` decomposes into
 -- `Eq Word a b ∧ Eq (Fin1(a)) x y`, whose second equation is between values of two types (`y :
 -- Fin1(b)`). No closed proof of False found: the index equation is a conjunct, so in every closed

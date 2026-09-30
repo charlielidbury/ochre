@@ -1324,10 +1324,11 @@ A field's type may mention the fields before it: `Vec(E) := MkVec(n : Word, item
   - `k4Nest`: soundness, `Boom2`.
   - Seven existing rows gain `DepFields` flips: D36, capTypes, D45 by type, D42, D47, D52, D49 (3).
 - *Also changed.* [Assign] passes the place's type as a hint to a constructor or embedded value. That is how an inert loan in a fill's `*r := loan_k` gets typed when a vector holding an element borrow's fill is repacked (`VGetMut`).
+- *A closed False, found by fuzz-port's `--dep` family after landing (fixed forward).* `match *v { MkV(n, x) => (n := Zero; x := O) }`, in either order, repacked. So did the variants with the index set to a parameter or written through `let r = &n`. With `Absurd` that gave `Boom : False`: 2,165 findings per 10⁵ cases. The cause: when a constructor value's type name differed from the expected type's (`O : One` against `Fin1(0) = Empty0`), or the expected type was stuck (`⌈Fin1(σ)⌉`), `packedErr` fell back to the value's own recorded parameters, so it checked the value against its own type. It now requires the expected type to be that inductive applied to parameters, and otherwise compares the value's own type by conversion. The witnesses are in `DepFields` (`LieZ`, `LieZRev`, `LieParam`, `LieBorrow` and their `Boom`s), rejected with the repack message, which names the field and shows both types. The `repack` row now flips them too.
 - *Rule tags.* `Rule.Open` and `Rule.Repack` are new (`Ochr/Rules.lean`). Fire calls: `IndDecl` (checkInd), `Open` (an invalidated proof field, a strong update, an open field's type), `Repack` (each check), and `EqInj`/`EqStuck` (a dependent constructor's equation taken apart, or blocked). Until prop-paper prints [Open] and [Repack] in the appendix, RuleGuard lists them as not printed.
 - *Not done.*
   - The fuzzer family for index-field writes (docs/06 acceptance).
   - D62's on-demand one-arm split (rule-audit's lane). Until it lands, a bound is written against `VLen(Word, *v)` rather than `(*v).n`.
   - Proof fields that change in place beyond `Pos`/`Grow` (docs/06's second milestone).
 
-1209 verdicts.
+1217 verdicts.
