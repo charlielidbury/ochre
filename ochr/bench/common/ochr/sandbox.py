@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Build a sandbox for one Ochr benchmark package (conditions `ochr` and `ochr-2p`).
 
-    sandbox.py --package PKG --checker CHECKER --rules RULES.md DEST [--no-build]
+    sandbox.py --package PKG --checker CHECKER --rules RULES.md DEST [--no-build] [--rev REV | --worktree]
 
 PKG is the package directory (for example ochr/bench/quicksort/ochr), CHECKER the Ochr
 checker's Lean project (ochr/core/lean) and RULES.md the language's rule set
-(ochr/core/RULES.md). DEST must not exist, or be an empty directory.
+(ochr/core/RULES.md). DEST must not exist, or be an empty directory. Everything is taken from
+the git commit REV (default HEAD; recorded in DEST/SANDBOX_REV), not from the working tree,
+unless --worktree is given.
 
 The sandbox holds:
   - the package's own files (ASSIGNMENT.md, the skeleton, Check.lean, lakefile.lean,
@@ -30,6 +32,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 COMMON = os.path.dirname(HERE)
@@ -289,6 +292,12 @@ def main():
     ap.add_argument("--checker", required=True)
     ap.add_argument("--rules", required=True)
     ap.add_argument("--no-build", action="store_true")
+    ap.add_argument("--rev", default="HEAD",
+                    help="the git commit to take everything from (default HEAD), so that a sandbox is "
+                         "reproducible from the commit a trial records and never picks up uncommitted "
+                         "edits in a shared checkout")
+    ap.add_argument("--worktree", action="store_true",
+                    help="take the files from the working tree instead of a commit (for development)")
     ap.add_argument("dest")
     a = ap.parse_args()
 
@@ -296,6 +305,26 @@ def main():
     if os.path.exists(dest) and os.listdir(dest):
         die(f"{dest} exists and is not empty")
     os.makedirs(dest, exist_ok=True)
+
+    global HERE, COMMON
+    rev = "working tree"
+    if not a.worktree:
+        repo = subprocess.run(["git", "-C", pkg, "rev-parse", "--show-toplevel"], stdout=subprocess.PIPE,
+                              text=True, check=True).stdout.strip()
+        rev = subprocess.run(["git", "-C", repo, "rev-parse", a.rev], stdout=subprocess.PIPE,
+                             text=True, check=True).stdout.strip()
+        export = tempfile.mkdtemp(prefix="ochr-sandbox-src-")
+        rel = lambda p: os.path.relpath(os.path.realpath(p), os.path.realpath(repo))
+        paths = [rel(pkg), rel(a.checker), rel(a.rules), rel(COMMON)]
+        arch = subprocess.run(["git", "-C", repo, "archive", rev, "--"] + paths, stdout=subprocess.PIPE, check=True)
+        subprocess.run(["tar", "-x", "-C", export], input=arch.stdout, check=True)
+        pkg = os.path.join(export, paths[0])
+        a.checker = os.path.join(export, paths[1])
+        a.rules = os.path.join(export, paths[2])
+        COMMON = os.path.join(export, paths[3])
+        HERE = os.path.join(COMMON, "ochr")
+    with open(os.path.join(dest, "SANDBOX_REV"), "w") as h:
+        h.write(rev + "\n")
 
     files = skeleton_files(pkg)
     for f in sorted(os.listdir(pkg)):

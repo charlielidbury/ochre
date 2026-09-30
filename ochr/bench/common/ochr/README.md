@@ -2,7 +2,7 @@
 
 Used by `hashmap/ochr`, `hashmap/ochr-2p`, `quicksort/ochr` and `quicksort/ochr-2p`.
 
-- `sandbox.py`: what each package's `make-sandbox.sh` runs. It copies the package, the checker (`ochr/core/lean`: its sources, the examples tour `00`–`15`, and the arrays library blocks `Index`, `Arrays`, `ArrayLemmas` extracted from `16Arrays.lean` without the case studies), `RULES.md`, `GUIDE.md` and the grader's tools into a fresh directory, searches it for case-study names, and builds it once.
+- `sandbox.py`: what each package's `make-sandbox.sh` runs. It copies the package, the checker (`ochr/core/lean`: its sources, the examples tour `00`–`15`, and the arrays library blocks `Index`, `Arrays`, `ArrayLemmas` extracted from `16Arrays.lean` without the case studies), `RULES.md`, `GUIDE.md` and the grader's tools into a fresh directory, searches it for case-study names, and builds it once. Everything comes from a git commit (`--rev`, default `HEAD`, recorded in the sandbox's `SANDBOX_REV`), never from uncommitted edits in the shared checkout; `--worktree` takes the working files instead, for development.
 - `grade_ochr.py`: the grader, run by each package's `grade.sh` inside a sandbox (FIXED regions, the forbidden constructs outside them, the build, and the checker's verdict on every declaration).
 - `GUIDE.md`: the language guide every Ochr sandbox gets as `docs/GUIDE.md`.
 - `gen_tests.py SKELETON [--check]`: transcribes `../tests.json` into a skeleton's generated tests (`--check` verifies them).
