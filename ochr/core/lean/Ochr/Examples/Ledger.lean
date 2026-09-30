@@ -158,10 +158,11 @@ open Ochr.Registry in
    "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted", "ErasureBySyntax.LieP:accepted"]
 open Ochr.Registry in
 #guard rowOk { confineBodies := true }
-  ["ReturnedBorrows.Inj:rejected", "Snapshots.CapPi:rejected", "Functions.TwiceMZero':rejected",
-   "Erasure.F5:rejected", "Erasure.TypeErased:rejected", "Erasure.TailSteps:rejected", "Erasure.P2:rejected",
-   "Erasure.FP2:rejected", "Erasure.BoomIsTrue:rejected", "Erasure.p2:rejected", "Erasure.TA2:rejected",
-   "Erasure.LieP2:rejected", "ErasureBySyntax.F:rejected", "ErasureBySyntax.SeqT:rejected"]
+  ["Moves.F5:rejected", "ReturnedBorrows.Inj:rejected", "Snapshots.CapPi:rejected",
+   "Functions.TwiceMZero':rejected", "Erasure.F5:rejected", "Erasure.TypeErased:rejected",
+   "Erasure.TailSteps:rejected", "Erasure.P2:rejected", "Erasure.FP2:rejected",
+   "Erasure.BoomIsTrue:rejected", "Erasure.p2:rejected", "Erasure.TA2:rejected", "Erasure.LieP2:rejected",
+   "ErasureBySyntax.F:rejected", "ErasureBySyntax.SeqT:rejected"]
 open Ochr.Registry in
 #guard rowOk { borrowParam := false }
   ["ReturnedBorrows.LeakT:accepted", "ReturnedBorrows.Q:accepted", "ReturnedBorrows.Boom:accepted",
@@ -286,7 +287,8 @@ open Ochr.Registry in
    "Moves.ReturnMovedBorrow:accepted", "Moves.ClosureMovesCapture:accepted", "Moves.ClosureMoved:accepted",
    "Moves.MoveInArm:accepted", "Moves.RetMoved:accepted", "Moves.A1:accepted", "Moves.A2:accepted",
    "Moves.B1:accepted", "Moves.B2:accepted", "Moves.B3:accepted", "Moves.B4:accepted", "Moves.N1:accepted",
-   "Moves.N2:accepted", "Moves.N3:accepted", "Moves.ThroughLocal:accepted"]
+   "Moves.N2:accepted", "Moves.N3:accepted", "Moves.ThroughLocal:accepted", "Moves.P1:accepted",
+   "Moves.P2:accepted", "Moves.Q1:accepted", "Moves.K1:accepted"]
 -- D53 (c) switched off: a move leaves `⊥`, so a proof that mentions a moved value fails
 open Ochr.Registry in
 #guard rowOk { ghosts := false }
