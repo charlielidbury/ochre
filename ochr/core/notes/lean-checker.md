@@ -1324,15 +1324,54 @@ A field's type may mention the fields before it: `Vec(E) := MkVec(n : Word, item
   - `k4Nest`: soundness, `Boom2`.
   - Seven existing rows gain `DepFields` flips: D36, capTypes, D45 by type, D42, D47, D52, D49 (3).
 - *Also changed.* [Assign] passes the place's type as a hint to a constructor or embedded value. That is how an inert loan in a fill's `*r := loan_k` gets typed when a vector holding an element borrow's fill is repacked (`VGetMut`).
+- *A closed False, found by fuzz-port's `--dep` family after landing (fixed forward).* `match *v { MkV(n, x) => (n := Zero; x := O) }`, in either order, repacked. So did the variants with the index set to a parameter or written through `let r = &n`. With `Absurd` that gave `Boom : False`: 2,165 findings per 10⁵ cases. The cause: when a constructor value's type name differed from the expected type's (`O : One` against `Fin1(0) = Empty0`), or the expected type was stuck (`⌈Fin1(σ)⌉`), `packedErr` fell back to the value's own recorded parameters, so it checked the value against its own type. It now requires the expected type to be that inductive applied to parameters, and otherwise compares the value's own type by conversion. The witnesses are in `DepFields` (`LieZ`, `LieZRev`, `LieParam`, `LieBorrow` and their `Boom`s), rejected with the repack message, which names the field and shows both types. The `repack` row now flips them too.
 - *Rule tags.* `Rule.Open` and `Rule.Repack` are new (`Ochr/Rules.lean`). Fire calls: `IndDecl` (checkInd), `Open` (an invalidated proof field, a strong update, an open field's type), `Repack` (each check), and `EqInj`/`EqStuck` (a dependent constructor's equation taken apart, or blocked). Until prop-paper prints [Open] and [Repack] in the appendix, RuleGuard lists them as not printed.
 - *Not done.*
   - The fuzzer family for index-field writes (docs/06 acceptance).
   - D62's on-demand one-arm split (rule-audit's lane). Until it lands, a bound is written against `VLen(Word, *v)` rather than `(*v).n`.
   - Proof fields that change in place beyond `Pos`/`Grow` (docs/06's second milestone).
 
-1209 verdicts.
+1217 verdicts.
 
-## 48. D66: `Prop : Type₁`; `&A` iff `A : Type₀`
+## 49. Using the checker in the editor (docs/07)
+
+**Checking at elaboration.** The `ochr` command defines the block and checks it at once (`Notation.checkBlock`), after its library: `Prelude`, then the blocks it `uses`, re-checked as `run` does (`Run.libWith`, which takes the library block as a parameter, because `Prelude` is itself defined by the command). A green build therefore means every verdict is as expected, with no `#eval`/`#guard` lines.
+- An accepted `def` and a rejected `reject def` are silent. Hovering a declaration's name shows its verdict: "accepted", or "rejected, as expected: *reason*" (so a negative test still shows why it is rejected).
+- A rejected `def` is an error at its name, with the checker's reason. An accepted `reject def` is an error "expected rejection, but accepted".
+- Hovering `ochr` shows the block's count of verdicts as expected and its check time.
+- `#ochr_check B` checks a block defined earlier, reporting at `B`.
+
+**Native.** The library `Ochr` (every module but the examples) is precompiled (`precompileModules`), so the elaborator runs the compiled checker; the examples are a separate, non-precompiled library, `OchrExamples`, whose root `Ochr/Examples.lean` imports the registry and the ledger. Hovers are info-tree leaves (`DelabTermInfo` with a docstring, `Notation.addHover`): in Lean 4.33 that is the node whose hover shows custom text alone.
+
+**Located errors: how source positions reach error sites (design, phase 2).** The constraint is the smallest diff inside `Machine.lean` and `Check.lean`, which other lanes edit, and no edit at the error sites.
+1. *Surface.* The `ochr` command wraps every term in `STerm.loc start stop t` (byte offsets of its source). `resolve` strips it.
+2. *No location in core terms.* `Term` gets no wrapper constructor: some forty functions dispatch on a term's shape (the pre-pass, flags, `capture`, `checkTail`, …), and a wrapper would need a case in each, where a missed one silently changes a classification.
+3. *A side table keyed by node.* Resolving the checked declaration records, for each located surface term, the address of the `Term` node it resolved to ↦ its range (`Loc.termAddr`, pointer identity: terms have no identity of their own, and `==` ignores binder names). The table lives in `MState.locs` for the check of that one declaration; it is empty in every other run (tests, ledger, fuzzer), which therefore do not change. An address is stable while the node is alive, and the declaration's terms are alive for its whole check. Scalars (`Nat`, `Z`, `Unit`, `()`) are not heap objects and are never recorded: their errors go to the enclosing term.
+4. *The innermost located term is the Lean call stack.* `eval` and `checkTail` are entered through `located t`: if `t` is in the table and the call depth is 0, an error escaping its evaluation is tagged with `t`'s range, unless a term inside already tagged it. Depth 0 excludes a callee's body and a sealed program's re-run (both raise `depth`), whose errors belong to the call or the point that started them. The tag is a field of the error, `Fail.error msg (at? : Option Loc)`, carried to `Verdict.rejected msg at?`.
+5. *Two refinements where the term responsible is not the one being evaluated:* `callType` tags argument *i*'s check with argument *i*'s range (the call's arguments' ranges, recorded by resolution, are set by `located` for the call being evaluated), and evaluates the callee's parameter types unlocated (a recursive call must not report at its own signature); `capture`, which rebuilds a λ's body with its captures renamed, copies the ranges onto the rebuilt nodes (`relocate`).
+6. *Declaration-level errors* (a clash, "occurs in its own type", [D48], a name out of scope) have no location and go to the declaration's name, as in phase 1.
+
+*As built.* The machine's diff is the two wrappers, the two rethrows (`throw e`, so a location survives), `callType`'s three lines, `capture`'s one, and three lines in `evalCall` for [Call]'s "argument *i* is ⊥" error: `noteEnders` records which later argument's evaluation turned argument *i*'s borrow to `⊥`, and the error is reported there, at the access that broke exclusivity (`f(&x, x)` underlines the second `x`). `checkDef` locates a constant's goal mismatch at its body. Three things were needed that the design did not foresee:
+- A pattern `.error m` on `Fail` means `.error m none` (Lean fills the default argument in patterns), so every match on `Fail` says `.error ..` or binds the location.
+- Lean hoists closed terms: every `refl` resolved to one shared object, so two `refl`s in one declaration were ambiguous. `Surface.lean` sets `compiler.extract_closed false`, and a node recorded at two ranges (the one shared constant left, `S` as a function) is dropped rather than misreported.
+- The block's `def` nests twice as deep with the wrappers, past `maxRecDepth` for the case studies' longest sequences, so the command raises it for that `def`.
+The fuzzer inspects the shape of library terms, so it reads blocks through `SDecl.strip` (no locations), and its stats are unchanged (200 cases, same counts). Cost: the examples build about 20 s slower in all (the bigger `def`s), still far under phase 1's baseline.
+
+*Address reuse.* Lean frees a node when its last reference goes, and may reuse its address. The table therefore holds a reference to every node it records (`Locs.keep`: the resolved declaration's nodes, and the λ bodies `capture` rebuilds), so an address in the table always belongs to its own node, and a node built during evaluation can never be taken for one. As a last guard, `checkBlock` reports a location outside the declaration's own source at the declaration's name instead: a wrong underline is worse than none.
+
+*Tests* (`Ochr/Examples/Editor.lean`, built by `lake build`): `#ochr_error_at B D "before⟦t⟧after"` asserts that `D` is rejected at the source text `t` in that context. They cover an ill-typed argument, a moved borrow's read, a borrow ended by a later argument, a failed `refl` in one arm, an argument inside a λ body, a surface error, an error inside a callee's body (depth above 0: `Count(3000)` exceeds the call depth, and the call is underlined), and an error in a sealed program's re-run (`G(b, 3000)` is stuck on `b`; the split `b := true` re-runs it, and the split is underlined). A second block repeats three of them after re-checking the whole hash-map library, whose allocations would expose a stale address.
+
+*Checked on a broken copy of `02Borrows.lean`* (every `reject def` made a `def`, 39 errors): `AddM(x, 0); AddM(x, 0)` underlines the second `x`; `f(&x, x)` the second `x`; `g(a, z)` with `a = &*z` the `z`; a closure moving its capture the capture inside the λ body; a failed `refl` in a match arm that `refl`; an ill-typed argument the argument; a surface error (`&q`, no such place) the `&q`; an arity error the call.
+
+**Hovers: the content of Ω at a program point (phase 3).** Where the machine enters a located term at depth 0, it notes what the editor shows on hover over it, in the log (`LogEntry.note`: the inner state of `M`, which survives state restores and errors, so a rejected declaration keeps its notes up to the error; the trace lines are the log's other entries). Each note carries the path's [Split] refinements (`refs`), which label it. The elaborator groups the notes by source range and renders them only when hovered (`Notation.notesText`).
+- A term evaluated (`eval`, through `Located.noteValue`) notes its value and type; for a borrow, the places that lend it (`owners` of its loan, RULES §4). Hovering `&x` in `02Borrows.LetZ` shows `borrow_0 σ0 : &Nat, borrowing x`; the `x` after `*y := 2` shows `2 : Nat`.
+- A tail term (`checkTail`, through `Located.locatedTail`) notes the goal it is checked against, shown for proofs and splits (a data term shows its value instead). `refl` in `AddMZero`'s arm shows "where σ0 = 0: goal ⊤"; the recursive call `AddMZero(&p)` shows the induction hypothesis's type, which is the arm's goal.
+- A match's scrutinee (a place, not a term: resolution records its range with the match) notes its content before the split and in each arm: `*x` in `AddMZero` shows `σ0` before any split, `0` where σ0 = 0, `S σ1` where σ0 = S σ1. In `17HashMap.BGet`, `e` shows the sealed `⌈EqB(σ2, σ1)⌉`, its generalisation `σ5`, then `false` and `true` in the two arms.
+- An argument notes the type its parameter expects, shown when it differs from the type the argument has.
+- A `reject def` rejected at a located term shows why there too ("… is rejected here, as expected: …").
+- The rules the checker applied at a term, in the paper's names: `Rules.fire` (rule-audit's) also notes its rule at the innermost located term being evaluated (`Locs.here`, maintained by `located`), and the hover lists them per path ("rules [Call] [Close]"; an extension shows as "(checker) Name"). So far only dep-fields' rules fire (`[Ind-decl]`, `[Open]`, `[Repack]`, `[Eq-inj]`, `[Eq-stuck]`; rule-audit's tags for the rest are in progress), and every rule shows as soon as it fires: in `18DependentFields.Refill`, hovering `x := O` shows "rules [Open] [Repack]" (the write that makes the value whole again).
+
+## 50. D66: `Prop : Type₁`; `&A` iff `A : Type₀`
 
 Brief: ochr/docs/08-borrowable-universe.md.
 
@@ -1371,4 +1410,4 @@ A borrow type cannot instantiate `V`: `&Nat` is not a term (`Swap(&Nat, …)` do
   - `piUnder` gains the capturing closure;
   - `fnRule` gains the call through a borrow.
 
-60 rows: soundness 23, false lemma 1, model 4, policy 9, completeness 23. 1246 verdicts.
+60 rows: soundness 23, false lemma 1, model 4, policy 9, completeness 23. 1254 verdicts.

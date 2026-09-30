@@ -139,6 +139,46 @@ ochr DepFields uses Std {
     v
   )
   reject def Boom : False := Absurd(Broken, refl)
+  -- fuzz-port's --dep family: the dependent field assigned a value of another type (`O : One`,
+  -- not a `Fin1(0)`), with the index written first or last, set to a parameter (a stuck
+  -- `⌈Fin1(σ)⌉`), or written through a borrow of the index field
+  reject def LieZ (v : &V) : Unit := (
+    match *v {
+      MkV(n, x) => (
+        n := Zero;
+        x := O
+      ),
+    }
+  )
+  reject def LieZRev (v : &V) : Unit := (
+    match *v {
+      MkV(n, x) => (
+        x := O;
+        n := Zero
+      ),
+    }
+  )
+  reject def LieParam (v : &V) (k : Word) : Unit := (
+    match *v {
+      MkV(n, x) => (
+        n := k;
+        x := O
+      ),
+    }
+  )
+  reject def LieBorrow (v : &V) : Unit := (
+    match *v {
+      MkV(n, x) => (
+        x := O;
+        let r = &n;
+        *r := Zero
+      ),
+    }
+  )
+  reject def BoomZ : False := Absurd((let v = MkV(Succ(Zero), O); LieZ(&v); v), refl)
+  reject def BoomZRev : False := Absurd((let v = MkV(Succ(Zero), O); LieZRev(&v); v), refl)
+  reject def BoomParam : False := Absurd((let v = MkV(Succ(Zero), O); LieParam(&v, Zero); v), refl)
+  reject def BoomBorrow : False := Absurd((let v = MkV(Succ(Zero), O); LieBorrow(&v); v), refl)
 
   -- injectivity, restricted: equal lengths are taken apart; unequal ones are not, since
   -- `Eq (Fin1(a)) x y` would compare values of different types
@@ -233,7 +273,7 @@ ochr DepFields uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "DepFields" DepFields).allAsExpected
-#guard (run "DepFields" DepFields).count == 43
+#guard (run "DepFields" DepFields).count == 51
 -- each rejection for its reason
 #guard (run "DepFields" DepFields).rejectedWith [
   ("NoneAt0", "field x of MkV has type One, expected Empty0"),
@@ -246,6 +286,12 @@ ochr DepFields uses Std {
   ("IdMakesBroken", "[Repack] a borrow of it ends, but it is open"),
   ("Broken", "unknown constant LieV"),
   ("Boom", "unknown constant Broken"),
+  ("LieZ", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Empty0"),
+  ("LieZRev", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Empty0"),
+  ("LieParam", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is ⌈Fin1(σ1)⌉"),
+  ("LieBorrow", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Empty0"),
+  ("BoomZ", "unknown constant LieZ"),
+  ("BoomParam", "unknown constant LieParam"),
   ("InjLen", "[Match] on h, whose type Eq V MkV(σ0, σ2) MkV(σ1, σ3) is not an inductive type"),
   ("ToZero", "[Repack] a borrow of it ends, but it is open: field h of MkPos: it holds ⊥"),
   ("ToZeroProof", "the assigned value has type ⊤, expected False"),

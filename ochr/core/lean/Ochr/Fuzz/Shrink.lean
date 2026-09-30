@@ -67,6 +67,7 @@ partial def scopedT (names : List String) (bound : List String) : STerm → Bool
       ["Nat", "Unit", "Z", "refl", "S", "F", "T", "Nil", "Cons", "MkB", "Mk", "Pair", "B2", "L", "Box",
        "False", "True", "I", "And", "Intro", "Or", "Inl", "Inr", "ExN", "Wit"].contains x
   | .num _ | .unitLit | .top | .sort _ => true
+  | .loc _ _ t => scopedT names bound t
   | .app _ as => as.all (scopedT names bound)
   | .call f as => scopedT names bound f && as.all (scopedT names bound)
   | .ctorP _ ps as => (ps ++ as).all (scopedT names bound)

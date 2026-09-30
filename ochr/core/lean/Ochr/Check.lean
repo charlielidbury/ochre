@@ -23,12 +23,12 @@ deriving Inhabited
 
 inductive Verdict where
   | accepted
-  | rejected (msg : String)
+  | rejected (msg : String) (at? : Option Loc := none)   -- `at?`: where (the editor), if known
 deriving Inhabited
 
 def Verdict.ok : Verdict → Bool
   | .accepted => true
-  | .rejected _ => false
+  | .rejected .. => false
 
 partial def Term.mentionsConst (n : String) : Term → Bool
   | .const m => m == n
@@ -59,7 +59,7 @@ def checkDef (d : Def) : M Unit := do
     modify fun s => { s with env := #[{}], goal := none, recStack := [], refs := [] }
     let goal ← evalType d.cod
     let (v, T) ← eval true d.body goal     -- the goal: a hint for a constructor's parameters
-    unless (← match T with | some T => conv T goal | none => pure false) do
+    located d.body <| unless (← match T with | some T => conv T goal | none => pure false) do
       err s!"the body of {d.name} has type {T.getD .bot}, but the goal is {goal}"
     repackCheck s!"{d.name} is defined as it" v goal
     let v ← if (← get).cfg.p5 && (← isPropV goal) then pure .proof else pure v
@@ -248,20 +248,20 @@ def globalsAfterFrom (cfg : Config) (start : List GDef × List IndDecl) (ds : Li
 globals and inductive types accepted so far. The library (`Pair`, `False`, `True`, `And`)
 is not built in (v2.1): it is the `Prelude` block (`Ochr/Prelude.lean`), whose
 declarations come first in every program (`Ochr.Test.libOf`). -/
-def checkDefs (cfg : Config) (ds : List Item) (fuel : Nat := 2000000) :
-    List (String × Verdict × Array String) := Id.run do
+def checkDefs (cfg : Config) (ds : List Item) (fuel : Nat := 2000000)
+    (locsOf : String → Locs := fun _ => {}) : List (String × Verdict × Array LogEntry) := Id.run do
   let mut globals : List GDef := []
   let mut inds : List IndDecl := []
   let mut out := #[]
   for d in ds do
-    let st : MState := { globals := globals, inds := inds, cfg := cfg, fuel := fuel }
+    let st : MState := { globals := globals, inds := inds, cfg := cfg, fuel := fuel, locs := locsOf d.name }
     let (r, tr) := ((checkItem d).run st).run.run #[]
     match r with
     | .ok ((), st') =>
       globals := st'.globals
       inds := st'.inds
       out := out.push (d.name, .accepted, tr)
-    | .error (.error m) => out := out.push (d.name, .rejected m, tr)
+    | .error (.error m l) => out := out.push (d.name, .rejected m l, tr)
     | .error (.stuck _ _) => out := out.push (d.name, .rejected "internal: stuck escaped to the top", tr)
   pure out.toList
 
@@ -274,7 +274,7 @@ def globalsAfter (cfg : Config) (ds : List Item) : List GDef × List IndDecl :=
 def runM {α : Type} (x : M α) (st : MState) : Except String α :=
   match ((x.run st).run.run #[]).1 with
   | .ok (a, _) => .ok a
-  | .error (.error m) => .error m
+  | .error (.error m _) => .error m
   | .error (.stuck _ _) => .error "stuck"
 
 end Ochr

@@ -40,8 +40,10 @@ COMMON = os.path.dirname(HERE)
 # Package files that stay in the repository.
 PACKAGE_EXCLUDE = {"make-sandbox.sh", "gen_tests.py", "NOTES.md", ".lake", "lake-manifest.json", "result", "__pycache__"}
 
-# Top-level checker modules that are not part of the checker proper.
-CORE_EXCLUDE = set()
+# Top-level checker modules that are not part of the checker proper. RuleGuard is a
+# maintainers' build-time check of the checker's rule names against the paper, which is not
+# in a sandbox (it would only warn that the paper is missing).
+CORE_EXCLUDE = {"RuleGuard.lean"}
 # Directories of the checker that never go into a sandbox.
 # (Ochr/Fuzz is the fuzzer, Scratch holds probes; neither is needed to check a program.)
 
@@ -268,7 +270,10 @@ def copy_checker(checker, dest, wanted):
     # upstream's Ochr.lean, without any example imports (older revisions imported them)
     up_root = open(os.path.join(checker, "Ochr.lean"), encoding="utf-8").read().splitlines(keepends=True)
     with open(os.path.join(dest, "Ochr.lean"), "w") as h:
-        h.write("".join(l for l in up_root if not l.startswith("import Ochr.Examples")))
+        dropped = ["import Ochr.Examples"] + [f"import Ochr.{f[:-5]}" for f in CORE_EXCLUDE]
+        h.write("".join(l for l in up_root if not any(l.rstrip() == d or l.startswith(d + ".") or
+                                                       (d.endswith("Examples") and l.startswith(d))
+                                                       for d in dropped)))
     with open(os.path.join(core_dst, "Examples.lean"), "w") as h:
         h.write("-- The examples tour and the arrays library, as distributed with a benchmark sandbox.\n"
                 + "".join(f"import {m}\n" for m in examples))

@@ -9,8 +9,8 @@ Run by the sandbox's grade.sh. It passes (exit 0, last line `GRADE: PASS ...`) i
     (tools/check_fixed.py against tools/original/);
  2. the code outside the FIXED regions is well formed and allowed: it sits inside the
     skeleton's editable `ochr` block, does not close that block or open a comment or string
-    that runs into a FIXED region, and uses none of the forbidden constructs (the hole marker
-    TODO; `reject`; `implemented by`, `abstract`, `unsized` and `copy` declarations; Lean
+    that runs into a FIXED region, and uses none of the forbidden constructs (the hole markers
+    TODO, `?` and `sorry`; `reject`; `implemented by`, `abstract`, `unsized` and `copy` declarations; Lean
     commands, attributes or options; a new `ochr` block; declaring a built-in, library or FIXED
     name again, such as `Unit`, `Word`, `Lt` or `Sorted`); in a block whose name ends in `Model`
     (condition ochr-2p) it also has no borrows (`&`) and no assignment (`p := t`);
@@ -183,8 +183,13 @@ def block_at(toks, offset):
 LEAN_COMMANDS = {"import", "open", "set_option", "macro", "macro_rules", "syntax", "elab", "elab_rules",
                  "notation", "infix", "infixl", "infixr", "prefix", "postfix", "attribute", "axiom",
                  "theorem", "lemma", "instance", "namespace", "section", "end", "variable", "universe",
-                 "sorry", "admit", "example", "noncomputable", "unsafe", "partial", "private",
+                 "admit", "example", "noncomputable", "unsafe", "partial", "private",
                  "protected", "initialize", "builtin_initialize", "declare_syntax_cat"}
+
+
+# Hole markers: the skeletons' `TODO` (an unbound name the checker rejects), and the checker's
+# own holes `?` and `sorry`, which take the type their context requires and show its goal.
+HOLES = {"TODO", "?", "sorry"}
 
 
 # Names the checker knows without a declaration. A block may redeclare some of them (`Nat`,
@@ -308,7 +313,7 @@ def scan_gap(text, s, e, block, gap_name, problems, holes, info, reserved=frozen
                                 f"whole declarations, and may not close the ochr block")
                 return
             stack.pop()
-        if t == "TODO":
+        if t in HOLES:
             holes.append(o)
         elif t == "reject":
             problems.append(f"line {line_of(o)}: `reject` is forbidden (a reject def counts as correct when it fails)")
@@ -481,7 +486,15 @@ def main():
     else:
         print("  ok")
 
-    # 5. Every declaration's verdict, from the driver
+    # 5. Every declaration's verdict. A checker that checks each block when it is elaborated
+    # (lib `Ochr` with `Ochr/Run.lean`) has already reported every unexpected verdict as a
+    # build error, and the structure check has placed every FIXED declaration in its block,
+    # so a clean build is the verdict; otherwise the driver lists them all.
+    if b.returncode == 0 and os.path.exists(os.path.join("checker", "Ochr", "Run.lean")):
+        print("\n== Verdicts")
+        print("  every declaration was checked when its block was elaborated, and is as required")
+        verdict(reasons, line_counts)
+        return
     print("\n== Verdicts (lake exe check --machine)", flush=True)
     c = subprocess.run(["lake", "-q", "exe", "check", "--machine"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     rows = []

@@ -1,4 +1,4 @@
-import Ochr.Obs
+import Ochr.Located
 
 /-!
 # The machine (RULES §3), observation and `Id` (§4), and typing (§5)
@@ -237,7 +237,7 @@ partial def nfSealed (t : Term) : M Value := do
   let r ← tryCatch (do let (v, _) ← eval false t; pure (some v)) fun e =>
     match e with
     | .stuck f _ => do modify (fun s => { s with fuel := f }); pure none
-    | .error m => throw (.error m)
+    | e@(.error ..) => throw e
   restoreKeep saved
   match r with
   | some v => pure v
@@ -712,22 +712,25 @@ partial def packedErr (v : Value) (T : Value) : M (Option String) := do
   | .ind t c _ ps fs =>
     if !(← hasDependent v) && (← convVal v T) then return none
     let d ← lookupInd t
-    let as? := match T with
-      | .tInd n as => if n == t then some as else none
-      | _ => none
-    let as? := as?.orElse fun _ => if ps.length == d.params.length then some ps else none
-    let some as := as? | return some s!"{v} is not of type {T}"
+    -- `T` must be `t` applied to parameters: a value of another inductive, or one under a stuck
+    -- type, is not of `T` (never checked against its own type instead: `O : One` is not a
+    -- `Fin1(0)`, nor a `⌈Fin1(σ)⌉`, fuzz-port's --dep family)
+    let some as := (match T with
+        | .tInd n as => if n == t then some as else none
+        | _ => none)
+      | return some s!"{v} is not of type {T}"
     if !ps.isEmpty && !(← convList ps as) then return some s!"{v} is not of type {T}"
     let tel ← fieldTypesOf d as c fs
     let cn := (d.ctors[c]!).1
     for (((f, Tf), fv), j) in (tel.zip fs).zipIdx do
       if let some m ← packedErr fv Tf then
         let own ← tryCatch (valType fv) (fun _ => pure .bot)
+        -- name the field, and show both types: what it holds, and its type from the earlier fields
         return some (match fv with
-          | .ind .. => s!"in field {f} of {cn}, {m}"
           | .ghost _ | .bot => s!"field {f} of {cn}: {m}"
           | _ =>
-            if d.fieldDependent c j then
+            if m.startsWith "field " || m.startsWith "in field " then s!"in field {f} of {cn}, {m}"
+            else if d.fieldDependent c j then
               s!"field {f} of {cn} holds a value of type {own}, but its type from the earlier fields is {Tf}"
             else s!"field {f} of {cn}: {m}")
     pure none
@@ -1366,6 +1369,7 @@ partial def capture (t : Term) : M (List Value × Term) := do
       if b.proof && !through.contains o then
         if let some T := b.ty then
           t' := t'.inlineReads (m - 1 - k) (.ascribe (.val .proof) (.val T)) 0
+  relocate t t'     -- the editor: the rebuilt body keeps its source ranges
   pure (vals.toList, t')
 
 /-- D44 (v1.9): a function type returning a borrow must take a borrow (no `'static`
@@ -1632,7 +1636,11 @@ partial def expectTy (what : String) (T : Option Value) (A : Value) : M Unit := 
 evaluated on a private copy of Ω, argument evaluation included, and the copy is
 discarded. Every value of a proposition is `⋆` (C7) and only such terms evaluate to
 `⋆`, so this is decided on the value, in both modes. -/
-partial def eval (typed : Bool) (t : Term) (hint : Option Value := none) : M (Value × Option Value) := do
+partial def eval (typed : Bool) (t : Term) (hint : Option Value := none) : M (Value × Option Value) :=
+  -- the editor: an error here is reported at `t`, and hovering `t` shows its value
+  located t (noteValue t (evalAt typed t hint))
+
+partial def evalAt (typed : Bool) (t : Term) (hint : Option Value := none) : M (Value × Option Value) := do
   let before := (← get).env
   let start := (← get).effects.size
   let f0 := before.size - 1
@@ -2150,6 +2158,7 @@ partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
   let mut tys := #[]
   let mut argSteps : Array (Nat × Nat) := #[]   -- D41: the borrows and moves that evaluate arguments
   let mut ws0 := #[]
+  let mut ender := #[]     -- the editor: which argument ended each argument's borrow
   for a in as do
     let s := (← get).effects.size
     -- v2.0: a constructor argument's parameters may come from the parameter's type
@@ -2158,10 +2167,11 @@ partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
     if a matches .borrow _ | .place _ then argSteps := argSteps.push (s, (← get).effects.size)
     pushTemp w
     ws0 := ws0.push w
+    ender ← noteEnders ender ws0
     tys := tys.push T
   let ws ← popTemps as.length
   let fv ← popTemp
-  let r ← callFn typed fv fT ws tys head cls?
+  let r ← atLoc (← enderLoc ender ws) <| callFn typed fv fT ws tys head cls?
   -- D41: passing an outer place to an erased call is allowed
   if (← getFlags).1 && !argSteps.isEmpty then
     modify fun s => { s with effects := (s.effects.zipIdx.filter fun (_, k) =>
@@ -2235,13 +2245,15 @@ partial def callType (piTy : Value) (ws : Array Value) (tys : Array (Option Valu
   let .tPi cs (.pi hs ds c) := piTy | err s!"not a function type: {piTy}"
   if ds.length != ws.size then err s!"arity: {ds.length} parameters, {ws.size} arguments"
   let pf ← paramFlags cs ds
-  onCopy do
+  let argLocs := (← get).locs.callArgs     -- the editor: the arguments' ranges
+  onCopy <| unlocated do     -- the callee's parameter types are not this point's code
     pushFrame
     pushCaps cs
     let (pds, _) ← paramDecls cs hs ds c
     for (((d, h), i), pd) in ((ds.zip hs).zipIdx).zip pds do
       let A ← evalType d
-      expectTy s!"argument {i + 1} ({h.name})" tys[i]! A
+      noteLoc argLocs[i]?.join (.expected A)
+      atLoc argLocs[i]?.join <| expectTy s!"argument {i + 1} ({h.name})" tys[i]! A
       pushBind h (some A) ws[i]! (pf.getD i false) (← refineDecl pd (some A) ws[i]!) (d matches .val (.tRef _))
     evalType c
 
@@ -2371,7 +2383,7 @@ partial def callFn (typed : Bool) (fv : Value) (fT : Option Value) (ws : Array V
           else do
             modify fun s => { s with fuel := fu }
             closeCall fv ws kind B
-        | .error m => throw (.error m)
+        | e@(.error ..) => throw e
     | _ => err s!"call of {fv}, which is not a function"
   let r := if cls == 2 then Value.proof else r
   setFlags (byDecl && cls != 0, byDecl && cls == 2)
@@ -3062,7 +3074,7 @@ partial def observeTyping (typed : Bool) (t : Term) (A : Value) (W : List Pos) :
   if typed || !(← get).cfg.typedObs then return ← observe typed t A W
   tryCatch (observe false t A W) fun e => match e with
     | .stuck fu _ => do modify (fun s => { s with fuel := fu }); observe true t A W
-    | .error m => throw (.error m)
+    | e@(.error ..) => throw e
 
 /-- `Id A t u ≡ And(Eq A r r', And(Eq T₁ w₁ w'₁, …))` over the result and the owners in
 `W = W(t, u)` (just `Eq A r r'` when `W` is empty), both sides from the same Ω on
@@ -3111,7 +3123,7 @@ partial def stuckScrutinee (t : Term) : M (Option Value) := do
   let r ← tryCatch (do discard (withErased (eval false t)); pure none) fun e =>
     match e with
     | .stuck f on => do modify (fun s => { s with fuel := f }); pure on
-    | .error _ => pure none
+    | .error .. => pure none
   restoreKeep saved
   pure r
 
@@ -3183,7 +3195,11 @@ partial def splitTarget (f : String) : M (Nat × Value) := do
 /-- Check a term in tail position. At the end of every path, `k` gets the result and
 its type (in that path's refined state). A match on an abstract `σ` here is split:
 each arm is checked to the end under its refinement ([Split]). -/
-partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
+partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit :=
+  -- the editor: an error here (`k`'s included) is reported at `t`, and hovering `t` shows its goal
+  locatedTail t (checkTailAt t k)
+
+partial def checkTailAt (t : Term) (k : Value → Value → M Unit) : M Unit := do
   match t with
   | .prim "split" [.const f, u] =>
     -- D61: `split f in u`: split the goal's stuck result of `f`, `u` in every arm

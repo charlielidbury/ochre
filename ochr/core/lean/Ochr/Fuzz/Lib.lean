@@ -139,10 +139,13 @@ ochr FuzzLib {
   def G1 (x : &Nat) (n : Nat) : Unit := match n { Z => (), S _ => *x := 0 }
   def Clr (x : &Nat) : Unit := match *x { Z => (), S p => p := Z }
   def Inc (x : &Nat) : Unit := *x := S *x
-  def U (n : Nat) : Type := match n { Z => Prop, S _ => Prop }
+  def U (n : Nat) : Type₁ := match n { Z => Prop, S _ => Prop }
   def V (n : Nat) : U(n) := match n { Z => ⊤, S _ => ⊤ }
   def W (x : &Nat) (n : Nat) : U(n) := *x := S Z; V(n)
-  def MkF (n : Nat) : (Π(x : &Nat). U(n)) := λ(x : &Nat) : U(n) => (*x := S Z; V(n))
+  -- `reject def`: rejected by the checker since D53 (MkF, Clo, CapN: a closure moves out a
+  -- capture) and D55 (WV, FV, GV, TT: `V(Z)` is a type only by computation); the harness
+  -- leaves them out either way (`prepare`)
+  reject def MkF (n : Nat) : (Π(x : &Nat). U(n)) := λ(x : &Nat) : U(n) => (*x := S Z; V(n))
   def Le (a : Nat) (b : Nat) : Prop by a := match a { Z => ⊤, S a' => match b { Z => False, S b' => Le(a', b') } }
   def Lemma (u : Unit) : ⊤ := refl
   def F5 (x : &Nat) : Prop := *x := 5; ⊤
@@ -155,10 +158,10 @@ ochr FuzzLib {
   def OrProof (h : Or(⊤, ⊤)) : ⊤ := match h { Inl(p) => p, Inr(q) => q }
   def ExProof (h : ExN) : ⊤ := match h { Wit(n, e) => match n { Z => refl, S m => e } }
   def EffL (x : &Nat) (h : Or(⊤, ⊤)) : ⊤ := match h { Inl(p) => (*x := 1; refl), Inr(q) => (*x := 2; refl) }
-  def Clo (n : Nat) (y : Nat) : Nat := let f = (λ(z : Nat) : Nat => Add(n, z)); f(y)
-  def CapN (x : &Nat) : Nat := let n = *x; let f = (λ(z : Nat) : Nat => n); AddM(&*x, 1); f(0)
+  reject def Clo (n : Nat) (y : Nat) : Nat := let f = (λ(z : Nat) : Nat => Add(n, z)); f(y)
+  reject def CapN (x : &Nat) : Nat := let n = *x; let f = (λ(z : Nat) : Nat => n); AddM(&*x, 1); f(0)
   def PropIf (n : Nat) : Prop := match n { Z => ⊤, S _ => False }
-  def P0 : Type := Prop
+  def P0 : Type₁ := Prop
   def H (x : &Nat) : P0 := (*x := S Z; ⊤)
   def HP (x : &Nat) : Prop := (*x := S Z; ⊤)
   def UU (n : Nat) : Type := match n { Z => Unit, S _ => Unit }
@@ -171,10 +174,10 @@ ochr FuzzLib {
   def IdFU (f : Π(x : &Nat). Unit) : (Π(x : &Nat). Unit) := f
   def RunG (f : Π(x : &Nat). Prop) : Nat := (let c = Z; let g = f; g(&c); c)
   def RunK (k : Π(x : &Nat). ⊤) (x : &Nat) : Unit := (k(x); ())
-  def WV (u : Unit) : V(Z) := refl
-  def FV (x : &Nat) : V(Z) := (*x := S Z; WV(()))
-  def GV (x : &Nat) : V(Z) := WV(())
-  def TT : Prop := (Π(x : &Nat). V(Z))
+  reject def WV (u : Unit) : V(Z) := refl
+  reject def FV (x : &Nat) : V(Z) := (*x := S Z; WV(()))
+  reject def GV (x : &Nat) : V(Z) := WV(())
+  reject def TT : Prop := (Π(x : &Nat). V(Z))
   -- reviewer-6's A1/L1 family: a type family whose arms are different data types, and
   -- type-level observers of a place of the second (their `Id` compares at the place's type)
   inductive Bx (A : Type) := MkBx(v : A)
@@ -185,6 +188,19 @@ ochr FuzzLib {
   -- instances of the families' dependent function parameters (`h : Π(n : Nat). TG(n)`)
   def HG (n : Nat) : TG(n) := match n { Z => 0, S _ => F }
   def HF (n : Nat) : TF(n) := match n { Z => MkBx[Unit](()), S _ => MkBx[B2](T) }
+  -- dependent fields (D64): a length-like index and a field whose type it determines, and a
+  -- proof field; `AbsurdDV`/`AbsurdP` are true of every packed value
+  inductive Empty0 : Type
+  inductive One := O
+  def Fin1 (n : Nat) : Type := match n { Z => Empty0, S _ => One }
+  inductive DV := MkDV(n : Nat, x : Fin1(n))
+  def DVN (v : DV) : Nat := match v { MkDV(n, x) => n }
+  def NopDV (v : &DV) : Unit := ()
+  def AbsurdDV (v : DV) (h : Eq Nat (DVN(v)) 0) : False := match v { MkDV(n, x) => match n { Z => match x {}, S m => match h {} } }
+  def IsSucc (n : Nat) : Prop := match n { Z => False, S _ => ⊤ }
+  inductive Pos := MkPos(n : Nat, h : IsSucc(n))
+  def PN (p : Pos) : Nat := match p { MkPos(n, h) => n }
+  def AbsurdP (p : Pos) (h : Eq Nat (PN(p)) 0) : False := match p { MkPos(n, hh) => match n { Z => match hh {}, S m => match h {} } }
 }
 
 /-- The codomain types written differently from what they evaluate to (D54, D55). -/
@@ -243,7 +259,7 @@ def libFns : List LibFn :=
     { name := "TT", ps := [], ret := .prop, deps := ["U", "V"], attack := true } ]
 
 /-- The declaration of a template by name. -/
-def libDecl (n : String) : Option SDecl := (Block.decls FuzzLib).find? (·.name == n)
+def libDecl (n : String) : Option SDecl := ((Block.decls FuzzLib).find? (·.name == n)).map SDecl.strip
 
 /-- Close a set of template names under dependencies, in library order. -/
 partial def closeDeps (ns : List String) : List String :=
