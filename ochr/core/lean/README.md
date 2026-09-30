@@ -78,7 +78,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 |---|---|---|---|
 | `00Std` | `Std`: in-place and pure addition, adding zero does nothing, `TailM`, `Bool`, `List(A)`, `Box(A)`, the copy type `Word`; `Fixtures`: `Pick`, `Empty`, `U`/`V`; and the assertions for `Prelude` | §1, §3, §7 | 12 (+4) |
 | `01Numbers` | evaluation in types, the pure theorem by the in-place lemma; matching on numbers; pairs; calls | §1, §3, §7 | 20 |
-| `02Borrows` | moving, copying and reborrowing; argument order; the borrow checker ([Access], [Drop]); `Moves`: D53's moves, copy types, `clone`, ghosts, the Fn rule, and a stuck block's captures | §3 | 58 |
+| `02Borrows` | moving, copying and reborrowing; argument order; the borrow checker ([Access], [Drop]); `Moves`: D53's moves, copy types, `clone`, ghosts, the Fn rule, and a stuck block's captures | §3 | 67 |
 | `03ReturnedBorrows` | functions returning a borrow (`TailM`); a returned borrow must come from a borrow argument (D44) | §1, §3 [Close] | 20 |
 | `04ClosingOff` | stuck calls and matches, sealed programs, a borrow chosen by a branch, what a stuck match captures, [Close]'s rows, typing a sealed program; closures inside a stuck block; naturality up to resolution | §3 | 41 |
 | `05Equality` | `Id` and `Eq`: observation, footprints, disjointness, injectivity (pairs included), `J` and its stuck casts (D56); `rewrite h in t` (D60); all owners of a returned borrow are observed (D18), in the order the sides reach them | §4 | 64 |
@@ -95,7 +95,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `16Arrays` | case study: arrays as a library (slices, indices), its lemmas and benchmarks, and in-place quicksort proved sorted and a permutation (`notes/arrays-library.md`) | all | 167 |
 | `17HashMap` | case study: Aeneas's resizing hash map, its lookups, length, invariant, resizing and load factor, proved about the in-place code (`notes/hashmap-case-study.md`) | all | 186 |
 
-1019 declarations in all, the `Prelude`'s 4 and the case studies' 353 included. D53 (reads of non-copy data move) is off by default until its acceptance run passes, and on only for the `Moves` block (`Ochr.Test.d53Blocks`, `Config.d53`); elsewhere reads copy, and the `clone`s written for D53 are harmless. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+1028 declarations in all, the `Prelude`'s 4 and the case studies' 353 included. D53 (reads of non-copy data move) is off by default until its acceptance run passes, and on only for the `Moves` block (`Ochr.Test.d53Blocks`, `Config.d53`); elsewhere reads copy, and the `clone`s written for D53 are harmless. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 
