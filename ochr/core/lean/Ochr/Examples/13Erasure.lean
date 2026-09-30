@@ -351,6 +351,12 @@ ochr ErasureBySyntax uses Fixtures {
       Id Nat (match n { Z => 0, S p => (match h3 { Wit(k, e) => k := 0; refl } : ⊤); 0 }) 0 := (
     match n { Z => refl, S _ => refl }
   )
+  -- A match whose arms differ in class (a proof in one, data in another) runs only on a known
+  -- scrutinee, whose arm is the same on every path; its erasure is that arm's (fuzz-port R9:
+  -- the pre-pass read `R9Arms`' match as data, and the run took the proof arm).
+  def R9Arms : Nat := (let n = 0; let a = match n { Z => refl, S _ => 0 }; n)
+  def R9Nested (n1 : Nat) : Nat := (let a = match n1 { Z => match n1 { Z => refl, S p => 0 }, S p => refl }; n1)
+
   -- Arms that are proofs of different shapes (a proof variable, a λ into proofs) agree on a proof.
   def RunP (k : Π(x : &Nat). ⊤) (x : &Nat) : Unit := (k(x); ())
   def R8Arms (n : Nat) (h0 : Π(z0 : &Nat). ⊤) (m : Nat) :
@@ -363,4 +369,4 @@ ochr ErasureBySyntax uses Fixtures {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ErasureBySyntax" ErasureBySyntax).allAsExpected
-#guard (run "ErasureBySyntax" ErasureBySyntax).count == 32
+#guard (run "ErasureBySyntax" ErasureBySyntax).count == 34

@@ -761,13 +761,18 @@ partial def placeDecl (sc : List DeclInfo) : Place → M DeclInfo
 
 /-- Arms agree on what their declared type says (`any`, a zero-arm match, agrees with all).
 Arms that are all proofs agree on a proof, whatever their shapes (a proof variable in one
-arm, a function into proofs in another: applied, either is a proof). -/
+arm, a function into proofs in another: applied, either is a proof). Arms of which some are
+proofs and some not say nothing (`any`): the match's erasure is that of the arm it runs.
+Such a match runs only on a known scrutinee (stuck, its arms must have one type), which is
+the same on every path, so the arm is too (fuzz-port R9: `match 0 { Z => refl, S _ => 0 }`,
+read as data before it ran the proof arm). -/
 partial def agreeDecl (ds : List DeclInfo) : DeclInfo :=
   match ds.filter (· != .any) with
   | [] => .any
   | d :: rest =>
     if rest.all (· == d) then d
     else if (d :: rest).all DeclInfo.isProof then .prop
+    else if (d :: rest).any DeclInfo.isProof then .any
     else .other
 
 /-- The declared type of a term, read from the declared types of its heads without
