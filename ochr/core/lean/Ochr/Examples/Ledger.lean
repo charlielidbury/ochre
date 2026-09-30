@@ -304,10 +304,12 @@ open Ochr.Registry in
    "Functions.TwiceMZero':rejected", "Trees.Size:rejected", "Trees.SizeInsert:rejected",
    "InPlaceTrees.Size:rejected", "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected"]
 -- D59 switched off: a call written to return `Unit` returns `()` and one that only computes
--- to `Unit` a sealed program, and two values of `Unit` need not be equal
+-- to `Unit` a sealed program, and two values of `Unit` need not be equal, nor two functions'
+-- results at `Unit`
 open Ochr.Registry in
 #guard rowOk { unitEta := false }
-  ["ClosingOff.RowI:rejected"]
+  ["ClosingOff.RowI:rejected", "ClosingOff.UnitEta:rejected", "ClosingOff.UnitEtaUU:rejected",
+   "ClosingOff.ConvUnitRes:rejected"]
 
 -- every row of `switches` has a class
 open Ochr.Registry in

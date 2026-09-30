@@ -528,9 +528,10 @@ The body's programs were also run verbatim, one-line layout and subscripts inclu
 | §1, §2 | `AddM`, `AddMZero` | Std.AddM, Std.AddMZero | accepted |
 | §2 | `Add` | Std.Add | accepted |
 | §2 | `Id Nat (Add(2, 3)) 5` by `refl` | Numbers.Add23 | accepted |
-| §2 | `Id Unit (AddM(x, 0)) () ≡ Eq Unit () () ∧ Eq Nat N(σ) σ ≡ Eq Nat N(σ) σ` | Equality.IdIsConj, IdIsEq, EqIsId (`N(σ)` is `Add(*x, 0)`); IdIsWrong | accepted ×3; rejected |
+| §2.2 (5a3e47c9) | `{ x ↦ loan₀ } ⊢ AddM(borrow₀ σ, 0) ⟶ { x ↦ ⌈let c = σ; AddM(&c, 0); c⌉ } ⊢ ⌈let c = σ; AddM(&c, 0)⌉` | the fill: Std.AddMZero's traced goal is `Eq Nat ⌈let c1 = σ0; AddM(&c1, 0); c1⌉ σ0`. The result: ClosingOff.StuckResult (a stuck call's result is its sealed program, built from argument values; with D59 off it is `()`), and the rejection of `P(()) ⊢ P(let c = *x; AddM(&c, 0))` prints it: "the goal is ⌈σ2(⌈let c1 = σ0; AddM(&c1, 0)⌉)⌉" (Scratch/D59ConvGap.lean) | accepted |
+| §2.3 (5a3e47c9) | `⟦AddM(x, 0)⟧ = (⌈…⌉, N(σ))`; `Id Unit (AddM(x, 0)) () ≡ Eq Unit ⌈…⌉ () ∧ Eq Nat N(σ) σ ≡ Eq Nat N(σ) σ` | Equality.IdIsConjSealed (the Unit conjunct's left side written `let c = *x; AddM(&c, 0)`), IdIsConj (`Eq Unit () ()`, equal by η), IdIsEq, EqIsId (`N(σ)` is `Add(*x, 0)`); IdIsWrong | accepted ×4; rejected |
 | §2 | the `S` arm's goal `Eq Nat N(S σ') (S σ') ≡ Eq Nat (S N(σ')) (S σ') ≡ Eq Nat N(σ') σ'` | Recursion.SuccGoal, InjStep | accepted |
-| §2 | the recursive call at the call site: `AddMZero(&p) : Eq Nat (S N(σ')) (S σ') ≡ Eq Nat N(σ') σ'` | Recursion.CallSite; CallSiteWrong | accepted; rejected |
+| §2.4 (5a3e47c9) | the recursive call at the call site: `⟦AddM(x', 0)⟧ = (⌈…⌉, S N(σ'))`, `AddMZero(&p) : Eq Nat (S N(σ')) (S σ') ≡ Eq Nat N(σ') σ'` | Recursion.CallSite; CallSiteWrong; the trace line `[Call-type] AddMZero(borrow_4 σ1) : Eq Nat ⌈let c1 = σ1; AddM(&c1, 0); c1⌉ σ1` (the normal form, the Unit conjunct gone) | accepted; rejected |
 | §2 | `AddZero(x : Nat) : Id Nat (Add(x, 0)) x := AddMZero(&x)` | Numbers.AddZero' (Numbers.AddZero is the older proof by a match) | accepted |
 | §2 | `TailM`, `AddM'` | Std.TailM, ReturnedBorrows.AddM' | accepted |
 | §2 | `AddMEq`, `AddMEqOwned` | ReturnedBorrows.AddMEq, AddMEqOwned | accepted |
@@ -570,7 +571,8 @@ The body's programs were also run verbatim, one-line layout and subscripts inclu
 | note 2 | `LieB`, `BoomB`; the `g`/`f` block | ErasureBySyntax.LieB, BoomB; LieG, BoomG | rejected |
 | note 3 | `LieH`, `BoomH` | ErasureBySyntax.LieH, BoomH | accepted, rejected |
 | note 6 | `PickX`, `PickY`, transport | Functions.PickX, PickY, ConvPick, TX, TY, BoomX4 | accepted ×2, rejected, accepted, rejected ×2 |
-| note 18 | `Id Unit (let c = *x; G(&c, Z)) ()` needs induction | ClosingOff.RowI / RowIInd | rejected / accepted |
+| App. note on [Close]'s row (5a3e47c9) | with η for `Unit`, `Id Unit (let c = *x; G(&c, Z)) ()` holds by `refl` (it needed induction before D59) | ClosingOff.RowI / RowIInd; the D59 ledger row flips RowI | accepted / accepted |
+| App. conversion (5a3e47c9) | "no η rule, except that `eq` identifies any two values of `Unit` and [Conv-fun] any two results at a codomain written `Unit` … an abstract `σ : Unit` is still not convertible with `()`"; "no η rule other than for `Unit`" | ClosingOff.UnitEta, UnitEtaUU (`eq` goes by the evaluated type), ConvUnitRes; UnitNotConv, ConvUnitWritten (codomain `UU(Z)`, not written `Unit`) | accepted ×3; rejected ×2 |
 | note 25 | `SubM`'s `match h {}` by the stored type; a neutral type rejected | CurrentState.SubM; Neutral | accepted; rejected |
 | note 26 | injectivity and disjointness | Equality.Inj, InjWrong, PairInj, NoConf… | as asserted |
 | note 27 | `let n = *x` after `AddM(&*x, 1)`, then `λ(y : Nat) : Nat => n` | Snapshots.CapS | accepted |
@@ -593,6 +595,7 @@ The body's programs were also run verbatim, one-line layout and subscripts inclu
 - §4's `(λy. (x := 2; y))(x := 1)` illustrates why rewriting is not confluent. It is not an Ochr program: the `λ` is untyped, and an Ochr closure copies `x`.
 - Note 1 prints `let h = λ(x : &Nat) : U(n) => (…); …`. The checker's surface needs `let h = (λ(x : &Nat) : U(n) => (…)); …`, with the same verdict once parenthesised.
 - The `J` note describes D56 (`J` stuck unless its endpoints are convertible; the casts between `Nat → Nat` and `(Nat → Nat) → Nat`, and of `5` to `Bool`), and note 25 describes D58 (a zero-arm match is stuck outside proofs). Neither prints a program, and neither rule is in this checker branch yet (task #13), so there is no test.
+- **D59 is not only a gain in completeness.** Its ledger row is classed completeness (switching it off only rejects good programs), which holds of the suite. But conversion has no η for `Unit` (as the appendix says), and a stuck `Unit` call's result used to be `()` and is now a sealed program, so true statements that compare such a result by conversion are rejected with D59 and were accepted without it: `P(()) ⊢ P(let c = *x; AddM(&c, 0))`, `P(let c = *x; AddM(&c, 0)) ⊢ P(let c = *x; AddM(&c, 1))` for `P : Unit → Prop`, and `Eq (Π(x : &Nat). UU(Z)) (λ… => ()) (λ… => let c = *x; AddM(&c, 0))`. They are in Scratch/D59ConvGap.lean rather than the suite, because each would flip to accepted in the D59 row and break its class.
 - §2 names the one-line proof `AddZero`; the test is Numbers.AddZero', because Numbers.AddZero is the match proof the paper no longer prints.
 - The `Trees` block still has the pure recursive `Insert`, with `InsertMEq` and its size theorem. The paper no longer prints these; InPlaceTrees is the printed version.
 
