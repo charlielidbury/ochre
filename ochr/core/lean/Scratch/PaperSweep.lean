@@ -125,7 +125,9 @@ ochr SweepInline uses Std, Fixtures {
   def PF (x : &Nat) (e : Id Unit (*x := 0) (*x := 1)) : False := e
   reject def QF (g : Π(n : Nat). &Nat) : False := PF(g(5), refl)
   reject def F (n : Nat) (x : &Nat) : (match n { Z => &Nat, S _ => Nat }) := match n { Z => x, S _ => 0 }
-  reject def SwapT (A : Type) (x : &A) (y : &A) : Unit := ()
+  -- D66: `&A` for `A : Type₀` is well formed; a type variable in `Type₁` is not
+  def SwapT (A : Type) (x : &A) (y : &A) : Unit := ()
+  reject def SwapT1 (A : Type₁) (x : &A) (y : &A) : Unit := ()
 }
 #eval IO.println (run "SweepInline" SweepInline).show
 -- dependent fields (appendix, impl §8.3): the growable vector and the arm assigning its two
@@ -150,9 +152,10 @@ ochr SweepNest uses Std {
 #eval IO.println (run "SweepNest" SweepNest).show
 #guard ((run "SweepNest" SweepNest { k4Nest := false }).rows.map (fun r => r.verdict matches .accepted)) == [true, true, true, true, true, true, false]
 #eval IO.println (run "SweepDep" SweepDep).show
--- the typed-fragment appendix (tf.typ): Bad2 as printed and the claims around it. Trav and
--- ReborrowPick0 are rejected until D67 (overwriting a borrow keeps the reborrows behind it)
--- lands; then tf.typ's "the rules reject it" (Trav) changes, and ReborrowPick0 is accepted
+-- the typed-fragment appendix (tf.typ): Bad2 as printed and the claims around it. Since D67
+-- (overwriting a borrow keeps the reborrows behind it) an assignment's [Access] leaves a
+-- reborrow behind the old borrow alone, so the reborrow-and-replace idiom (Trav) and the
+-- Pick variants are accepted on both paths
 ochr SweepTF uses Std, Fixtures {
   def Bad2 (n : Nat) (b : Nat) (x : &Nat) : Unit := let a = 0; x := Pick(n, &a, &b); let z = b; ()
   def Bad2Run : Unit := (let y = 7; Bad2(0, 5, &y))
@@ -161,12 +164,12 @@ ochr SweepTF uses Std, Fixtures {
   reject def RetLocal (x : &Nat) : &Nat := (let a = 0; &a)
   def IdLet (a : Nat) : Id Nat (let z = a; a) a := refl
   reject def LetCode (a : Nat) : Nat := let z = a; a
-  reject def AssignPick (n : Nat) (b : Nat) (x : &Nat) : Unit := (x := Pick(n, &*x, &b); *x := 5)
+  def AssignPick (n : Nat) (b : Nat) (x : &Nat) : Unit := (x := Pick(n, &*x, &b); *x := 5)
   def AssignPick1 (b : Nat) (c : Nat) : Unit := (let x = &c; let n = 1; x := Pick(n, &*x, &b); *x := 5)
   def AssignPickDrop (n : Nat) (b : Nat) (x : &Nat) : Unit := (x := Pick(n, &*x, &b); ())
-  reject def ReborrowPick (n : Nat) (a : Nat) (b : Nat) (c : Nat) : Unit := (let x = Pick(n, &a, &b); let y = &*x; x := &c; *y := 0)
-  reject def ReborrowPick0 (a : Nat) (b : Nat) (c : Nat) : Unit := (let n = 0; let x = Pick(n, &a, &b); let y = &*x; x := &c; *y := 0)
-  reject def Trav (x : &Nat) : Unit := match *x { Z => (), S p => (x := &p; *x := 0) }
+  def ReborrowPick (n : Nat) (a : Nat) (b : Nat) (c : Nat) : Unit := (let x = Pick(n, &a, &b); let y = &*x; x := &c; *y := 0)
+  def ReborrowPick0 (a : Nat) (b : Nat) (c : Nat) : Unit := (let n = 0; let x = Pick(n, &a, &b); let y = &*x; x := &c; *y := 0)
+  def Trav (x : &Nat) : Unit := match *x { Z => (), S p => (x := &p; *x := 0) }
 }
 #eval IO.println (run "SweepTF" SweepTF).show
 -- appendix note 11's `G`. The ochr command checks under the default configuration, where
