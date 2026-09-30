@@ -30,7 +30,7 @@ open Ochr Ochr.Test Ochr.Surface
 namespace Ochr.Registry
 
 def programs : List (String × Block) :=
-  [("Prelude", Prelude), ("Std", Std), ("Fixtures", Fixtures), ("Numbers", Numbers), ("Borrows", Borrows), ("GhostBorrows", GhostBorrows), ("Moves", Moves), ("ReturnedBorrows", ReturnedBorrows),
+  [("Prelude", Prelude), ("Std", Std), ("Fixtures", Fixtures), ("Numbers", Numbers), ("Borrows", Borrows), ("Drops", Drops), ("Moves", Moves), ("ReturnedBorrows", ReturnedBorrows),
    ("ClosingOff", ClosingOff), ("Naturality", Naturality), ("Equality", Equality), ("Rewriting", Rewriting),
    ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion),
    ("CaseSplits", CaseSplits), ("GenType", GenType), ("RenormPi", RenormPi), ("Splitting", Splitting), ("ScrutineeTypes", ScrutineeTypes),
@@ -121,10 +121,10 @@ def switches : List (String × Config) :=
    ("D59 (refined): η-normal forms at Unit (the readback at Unit is (); [Close] has no Unit row)", { unitEta := false }),
    ("K3: an abstract type's constructors and matches only in erased positions and model code", { abstractTypes := false }),
    ("K2: outside model code, a place of an unsized type is only borrowed at runtime", { unsizedTypes := false }),
-   ("[Access] with several possible owners: release the accessed one only; the borrow becomes a ghost", { ghostBorrows := false }),
    ("D63: a match whose arms disagree about being proofs has no declared type", { armsAgree := false }),
    ("D63 (switched ON): a closure in a stuck block captures through the block's borrow parameter (fuzz-port R2 (ii))", { blockRefCapture := true }),
-   ("D63: [Id] observes with the typing judgement in untyped runs too", { typedObs := false })]
+   ("D63: [Id] observes with the typing judgement in untyped runs too", { typedObs := false }),
+   ("D65 amended: [Drop] of a lent place ends only borrowers held in bindings; one in flight is an error", { dropEndsBound := false })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -190,16 +190,16 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("policy", ["Abstraction.Peek"]),
    ("policy", ["Abstraction.Take"]),
-   ("soundness", ["GhostBorrows.Bad2", "GhostBorrows.Bad3"]),
    ("policy", ["ErasureBySyntax.MixPos"]),
    ("policy", ["ClosingOff.LamReadInWrittenBlock"]),
-   ("completeness", [])]
+   ("completeness", []),
+   ("soundness", ["Drops.Blk", "Drops.UseG"])]
 
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1122
+def Ochr.Registry.expectedTotal : Nat := 1134
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
