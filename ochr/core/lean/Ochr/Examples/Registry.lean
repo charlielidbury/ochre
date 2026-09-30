@@ -122,7 +122,9 @@ def switches : List (String × Config) :=
    ("D59 (refined): η-normal forms at Unit (the readback at Unit is (); [Close] has no Unit row)", { unitEta := false }),
    ("K3: an abstract type's constructors and matches only in erased positions and model code", { abstractTypes := false }),
    ("K2: outside model code, a place of an unsized type is only borrowed at runtime", { unsizedTypes := false }),
-   ("[Access] with several possible owners: release the accessed one only; the borrow becomes a ghost", { ghostBorrows := false })]
+   ("[Access] with several possible owners: release the accessed one only; the borrow becomes a ghost", { ghostBorrows := false }),
+   ("D63: a match whose arms disagree about being proofs has no declared type", { armsAgree := false }),
+   ("D63 (switched ON): a closure in a stuck block captures through the block's borrow parameter (fuzz-port R2 (ii))", { blockRefCapture := true })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -191,13 +193,15 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("policy", ["Abstraction.Peek"]),
    ("policy", ["Abstraction.Take"]),
-   ("soundness", ["GhostBorrows.Bad2", "GhostBorrows.Bad3"])]
+   ("soundness", ["GhostBorrows.Bad2", "GhostBorrows.Bad3"]),
+   ("policy", ["ErasureBySyntax.MixPos"]),
+   ("policy", ["ClosingOff.LamReadInWrittenBlock"])]
 
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1115
+def Ochr.Registry.expectedTotal : Nat := 1116
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

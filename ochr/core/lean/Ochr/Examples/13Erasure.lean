@@ -351,11 +351,16 @@ ochr ErasureBySyntax uses Fixtures {
       Id Nat (match n { Z => 0, S p => (match h3 { Wit(k, e) => k := 0; refl } : ⊤); 0 }) 0 := (
     match n { Z => refl, S _ => refl }
   )
-  -- A match whose arms differ in class (a proof in one, data in another) runs only on a known
-  -- scrutinee, whose arm is the same on every path; its erasure is that arm's (fuzz-port R9:
-  -- the pre-pass read `R9Arms`' match as data, and the run took the proof arm).
-  def R9Arms : Nat := (let n = 0; let a = match n { Z => refl, S _ => 0 }; n)
-  def R9Nested (n1 : Nat) : Nat := (let a = match n1 { Z => match n1 { Z => refl, S p => 0 }, S p => refl }; n1)
+  -- A match whose arms differ in class (a proof in one, data in another) has no declared type:
+  -- a match's is each arm's, and they disagree. It is rejected wherever its declared type is
+  -- read, in a type position ([Type-pos], `MixPos`) and by the erasure pre-pass (`R9Arms`,
+  -- `R9Nested`), D63. The earlier reading (fuzz-port R9, switch `armsAgree`) let the arm that
+  -- runs decide, which reads erasure off the scrutinee's value.
+  -- (the proof arm is a proof variable, so the conflict does not depend on D42's reading of
+  -- `refl`; fuzz-port R9's originals used `refl`)
+  reject def R9Arms (h : ⊤) : Nat := (let n = 0; let a = match n { Z => h, S _ => 0 }; n)
+  reject def R9Nested (n1 : Nat) (h : ⊤) : Nat := (let a = match n1 { Z => match n1 { Z => h, S p => 0 }, S p => h }; n1)
+  reject def MixPos (h : ⊤) : Nat := (let n = 0; let x : (match n { Z => Nat, S _ => h }) = 5; x)
 
   -- Arms that are proofs of different shapes (a proof variable, a λ into proofs) agree on a proof.
   def RunP (k : Π(x : &Nat). ⊤) (x : &Nat) : Unit := (k(x); ())
@@ -369,4 +374,4 @@ ochr ErasureBySyntax uses Fixtures {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ErasureBySyntax" ErasureBySyntax).allAsExpected
-#guard (run "ErasureBySyntax" ErasureBySyntax).count == 34
+#guard (run "ErasureBySyntax" ErasureBySyntax).count == 35
