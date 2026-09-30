@@ -259,7 +259,7 @@ def libFns : List LibFn :=
     { name := "TT", ps := [], ret := .prop, deps := ["U", "V"], attack := true } ]
 
 /-- The declaration of a template by name. -/
-def libDecl (n : String) : Option SDecl := (Block.decls FuzzLib).find? (·.name == n)
+def libDecl (n : String) : Option SDecl := ((Block.decls FuzzLib).find? (·.name == n)).map SDecl.strip
 
 /-- Close a set of template names under dependencies, in library order. -/
 partial def closeDeps (ns : List String) : List String :=

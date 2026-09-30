@@ -136,7 +136,16 @@ def decOf (d? : Option (TSyntax `ident)) : TSyntax `term :=
   | none => mkIdent ``Option.none
 
 mutual
+/-- A term, wrapped in its source range (`STerm.loc`: located errors and hovers, docs/07).
+Parentheses are not a term of their own: `(t)` is `t`, at `t`'s range. -/
 partial def elabTerm (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := do
+  let t ← elabTermCore stx
+  let paren := stx.raw.getNumArgs == 3 && stx.raw[0].isToken "(" && stx.raw[2].isToken ")"
+  match paren, stx.raw.getPos?, stx.raw.getTailPos? with
+  | false, some s, some e => `(STerm.loc $(quote s.byteIdx) $(quote e.byteIdx) $t)
+  | _, _, _ => pure t
+
+partial def elabTermCore (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := do
   if stx.raw.getKind == ``ochrCall then
     let f : TSyntax `ochr_term := ⟨stx.raw[0]⟩
     let args := stx.raw[2].getSepArgs.map (⟨·⟩ : Syntax → TSyntax `ochr_term)
@@ -346,6 +355,9 @@ def addHover (stx : Syntax) (text : String) : CommandElabM Unit :=
 /-- The name of a declaration of an `ochr` block (its first identifier). -/
 def declName (d : Syntax) : Syntax := (d.getArgs.find? (·.isIdent)).getD d
 
+/-- Syntax standing for a source range of the file (`Loc`), to report or hover at. -/
+def locStx (l : Loc) : Syntax := .atom (.synthetic ⟨l.start⟩ ⟨l.stop⟩ true) ""
+
 open Lean.Elab Lean.Elab.Command in
 /-- Check block `n` when it is elaborated: the name clashes of its namespace, then every
 declaration, with the checker, after the block's library (`Ochr.Test.runWith`, with the
@@ -365,7 +377,7 @@ def checkBlock (n : Name) (ref : Syntax) (decls : Array Syntax) (kw : Syntax := 
   -- the `ochr` keyword shows the block's summary
   let out ← IO.mkRef (none : Option Ochr.Test.Report)
   let t0 ← IO.monoNanosNow
-  let r := Ochr.Test.runWith pre b.name b
+  let r := Ochr.Test.runWith pre b.name b (located := true)
   out.set (some r)
   let t1 ← IO.monoNanosNow
   let ms := (t1 - t0) / 1000000
@@ -374,11 +386,14 @@ def checkBlock (n : Name) (ref : Syntax) (decls : Array Syntax) (kw : Syntax := 
     let at_ := match decls[i]? with
       | some d => declName d
       | none => ref
+    -- a rejection is reported at the innermost term being checked (phase 2), else at the name
     match row.verdict, row.expectAccept with
     | .accepted, true => addHover at_ s!"{row.name}: accepted"
     | .accepted, false => logErrorAt at_ m!"{row.name}: expected rejection, but accepted"
-    | .rejected m, true => logErrorAt at_ m!"{row.name}: {m}"
-    | .rejected m, false => addHover at_ s!"{row.name}: rejected, as expected: {m}"
+    | .rejected m l, true => logErrorAt ((l.map locStx).getD at_) m!"{row.name}: {m}"
+    | .rejected m l, false =>
+      addHover at_ s!"{row.name}: rejected, as expected: {m}"
+      if let some l := l then addHover (locStx l) s!"{row.name} is rejected here, as expected: {m}"
 
 open Lean.Elab Lean.Elab.Command in
 elab_rules : command
@@ -388,7 +403,9 @@ elab_rules : command
     let us : Array (TSyntax `term) := match us with
       | some us => us.getElems.map fun u => ⟨u.raw⟩
       | none => #[]
-    elabCommand (← `(def $name : Ochr.Surface.Block :=
+    -- a block's term nests as deep as its longest sequence, and every term is wrapped in its
+    -- location (`STerm.loc`), which doubles that
+    elabCommand (← `(set_option maxRecDepth 100000 in def $name : Ochr.Surface.Block :=
       Ochr.Surface.Block.mk $(strLit name.getId.toString) [$us,*] [$decls,*]))
     -- the definition failed (its error is logged): nothing to check
     unless (← getEnv).contains ((← getCurrNamespace) ++ name.getId) do return

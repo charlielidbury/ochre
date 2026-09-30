@@ -1,4 +1,5 @@
 import Ochr.Pretty
+import Ochr.Loc
 
 /-!
 # The environment Ω and the machine state
@@ -253,13 +254,15 @@ structure MState where
   modelDepth : Nat := 0                   -- K2/K3: > 0 inside model code, which never runs at runtime
   typing : Bool := false                  -- the term being evaluated is part of the checked program (`eval true`),
                                           -- where D64's [Repack] points are checked
+  locs : Locs := {}                       -- the editor: where the declaration's terms are (`located`)
 deriving Inhabited
 
 inductive Fail where
   -- `on`: the neutral a match was stuck on, if any. A diagnostic only (D61): no handler but
   -- `split`'s search (`stuckScrutinee`) reads it, so it changes no result
   | stuck (fuel : Nat) (on : Option Value)
-  | error (msg : String)
+  -- `at?`: where in the source (the editor, `located`); `none` everywhere else
+  | error (msg : String) (at? : Option Loc := none)
 
 instance : Inhabited Fail := ⟨.error "?"⟩
 

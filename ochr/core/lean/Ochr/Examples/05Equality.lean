@@ -360,7 +360,7 @@ ochr Owners uses Fixtures {
 /-- The message rejecting `Owners.Use` under `cfg`: it states `Probe`'s parameter type. -/
 def useMessage (cfg : Ochr.Config) : String :=
   match ((run "Owners" Owners cfg).rows.find? (·.name == "Use")).map (·.verdict) with
-  | some (Ochr.Verdict.rejected m) => m
+  | some (Ochr.Verdict.rejected m _) => m
   | _ => ""
 
 -- all owners: the expected parameter type is a conjunction over a and b

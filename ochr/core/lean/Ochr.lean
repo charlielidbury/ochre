@@ -1,9 +1,11 @@
 import Ochr.Syntax
 import Ochr.Basic
 import Ochr.Pretty
+import Ochr.Loc
 import Ochr.Env
 import Ochr.Rules
 import Ochr.Obs
+import Ochr.Located
 import Ochr.Machine
 import Ochr.Check
 import Ochr.Surface

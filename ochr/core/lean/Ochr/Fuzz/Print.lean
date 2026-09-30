@@ -53,9 +53,11 @@ partial def pp (p : Nat) : STerm → String
   | .splitArms f arms => s!"split {f} \{ {", ".intercalate (arms.map ppArm)} }"
   | .sort 0 => "Prop"
   | .sort _ => "Type"
+  | .loc _ _ t => pp p t
 
 partial def ppHead : STerm → String
   | .ident x => x
+  | .loc _ _ t => ppHead t
   | t => s!"({pp 0 t})"
 
 partial def ppArm : String × List String × STerm → String

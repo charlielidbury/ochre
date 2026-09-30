@@ -31,18 +31,23 @@ def Report.passed (r : Report) : Nat := (r.rows.filter Row.asExpected).length
 
 /-- Check a list of declarations as one program: each is resolved against the whole list
 (a resolution failure is a rejection of that declaration), then they are checked in order.
-The verdict and trace of each, by name. -/
-def checkProgram (p : Program) (cfg : Config) (fuel : Nat) : List (String × Verdict × Array String) :=
-  Id.run do
+The verdict and trace of each, by name. The declarations `located` names are resolved and
+checked with their source locations (the editor), so their rejections say where. -/
+def checkProgram (p : Program) (cfg : Config) (fuel : Nat) (located : String → Bool := fun _ => false) :
+    List (String × Verdict × Array String) := Id.run do
   let mut defs : List Item := []
-  let mut bad : List (String × String) := []
+  let mut bad : List (String × String × Option Loc) := []
+  let mut locs : List (String × Locs) := []
   for d in p do
-    match resolveProgram p d with
-    | .ok df => defs := defs ++ [df]
-    | .error e => bad := bad ++ [(d.name, e)]
-  let verdicts := checkDefs cfg defs fuel
+    let (r, st) := if located d.name then resolveLocated p d else (resolveProgram p d, {})
+    match r with
+    | .ok df =>
+      defs := defs ++ [df]
+      if located d.name then locs := (d.name, st.locs) :: locs
+    | .error e => bad := bad ++ [(d.name, e, st.failAt)]
+  let verdicts := checkDefs cfg defs fuel (fun n => (locs.lookup n).getD {})
   pure (p.map fun d => match bad.lookup d.name with
-    | some e => (d.name, Verdict.rejected s!"(surface) {e}", #[])
+    | some (e, l) => (d.name, Verdict.rejected s!"(surface) {e}" l, #[])
     | none => (d.name, (verdicts.lookup d.name).getD (.rejected "not checked", #[])))
 
 mutual
@@ -68,9 +73,12 @@ partial def libWith (pre : Option Block) (cfg : Config) (fuel : Nat) (b : Block)
 end
 
 /-- Check a block after its library (`libWith pre`). The report has a row for each of its
-own declarations only; a library declaration is asserted in its home block. -/
-def runWith (pre : Option Block) (name : String) (b : Block) (cfg : Config := {}) (fuel : Nat := 2000000) : Report :=
-  let vs := checkProgram (libWith pre cfg fuel b ++ b.decls) cfg fuel
+own declarations only; a library declaration is asserted in its home block. `located`: its
+own declarations' rejections say where (the editor). -/
+def runWith (pre : Option Block) (name : String) (b : Block) (cfg : Config := {}) (fuel : Nat := 2000000)
+    (located : Bool := false) : Report :=
+  let own := b.decls.map (·.name)
+  let vs := checkProgram (libWith pre cfg fuel b ++ b.decls) cfg fuel (fun n => located && own.contains n)
   let rows := b.decls.map fun d =>
     let (v, tr) := (vs.lookup d.name).getD (.rejected "not checked", #[])
     { name := d.name, expectAccept := d.expectAccept, verdict := v, trace := tr }

@@ -33,13 +33,13 @@ def Case.ofProgram (p : Program) : Case :=
 
 /-- Run every oracle on a printed counterexample; ground instances drawn from `seed`. -/
 def replay (b : Block) (cfg : Config := {}) (seed : Nat := 0) : String :=
-  let c := Case.ofProgram b.decls
+  let c := Case.ofProgram (b.decls.map SDecl.strip)
   let res := checkCase { cfg := cfg } c (caseRng seed 0)
   let fs := res.findings.map Finding.show
   s!"status: {res.status}; {res.findings.length} finding(s)\n" ++ "\n".intercalate fs
 
 /-- The finding kinds of a replayed counterexample (for `#guard` regression tests). -/
 def replayKeys (b : Block) (cfg : Config := {}) (seed : Nat := 0) : List String :=
-  ((checkCase { cfg := cfg } (Case.ofProgram b.decls) (caseRng seed 0)).findings.map Finding.key).eraseDups
+  ((checkCase { cfg := cfg } (Case.ofProgram (b.decls.map SDecl.strip)) (caseRng seed 0)).findings.map Finding.key).eraseDups
 
 end Ochr.Fuzz

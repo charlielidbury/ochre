@@ -26,7 +26,7 @@ def libOf (cfg : Config) (fuel : Nat) (b : Block) : Program := libWith (some Pre
 only the verdict). -/
 def Report.rejectedWith (r : Report) (exp : List (String × String)) : Bool :=
   exp.all fun (n, pre) => match r.rows.find? (·.name == n) with
-    | some { verdict := .rejected m, .. } => pre.isPrefixOf m
+    | some { verdict := .rejected m _, .. } => pre.isPrefixOf m
     | _ => false
 
 /-- Check a block: its library, then its own declarations (`runWith`). -/
@@ -85,7 +85,7 @@ def Row.show (r : Row) : String :=
   let exp := if r.expectAccept then "accept" else "reject"
   let got := match r.verdict with
     | .accepted => "accepted"
-    | .rejected m => s!"rejected: {m}"
+    | .rejected m _ => s!"rejected: {m}"
   let mark := if r.asExpected then "ok  " else "FAIL"
   s!"{mark} {r.name} (expect {exp}) {got}"
 

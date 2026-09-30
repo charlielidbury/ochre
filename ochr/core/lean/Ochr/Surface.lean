@@ -43,7 +43,18 @@ inductive STerm where
   | rewrite (rev : Bool) (h t : STerm)           -- `rewrite h in t`, `rewrite ← h in t` (D60)
   | split (f : String) (t : STerm)                -- `split f in t` (D61)
   | splitArms (f : String) (arms : List (String × List String × STerm))   -- `split f { C(x̄) => t, … }` (D61)
+  | loc (start stop : Nat) (t : STerm)           -- where `t` is written (byte offsets; the editor)
 deriving Inhabited, Repr
+
+/-- Where a surface term is written, if the `ochr` command recorded it. -/
+def STerm.loc? : STerm → Option Loc
+  | .loc s e _ => some ⟨s, e⟩
+  | _ => none
+
+/-- The term, without its location. -/
+def STerm.unloc : STerm → STerm
+  | .loc _ _ t => t.unloc
+  | t => t
 
 structure SDecl where
   name : String
@@ -110,6 +121,40 @@ partial def STerm.idents : STerm → List String
   | .splitArms f arms => f :: arms.flatMap fun (c, _, t) => c :: t.idents
   | .pi bs c => bs.flatMap (·.2.idents) ++ c.idents
   | .fix _ bs r _ b => bs.flatMap (·.2.idents) ++ r.idents ++ b.idents
+  | .loc _ _ t => t.idents
+
+/-- The term with every location removed (for code that inspects a term's shape and was
+written before terms had locations, such as the fuzzer's generators). -/
+partial def STerm.strip : STerm → STerm
+  | .loc _ _ t => t.strip
+  | .app f as => .app f (as.map strip)
+  | .call f as => .call f.strip (as.map strip)
+  | .ctorP c ps as => .ctorP c (ps.map strip) (as.map strip)
+  | .deref t => .deref t.strip
+  | .proj i t => .proj i t.strip
+  | .amp t => .amp t.strip
+  | .assign a b => .assign a.strip b.strip
+  | .letIn x T t u => .letIn x (T.map strip) t.strip u.strip
+  | .seq a b => .seq a.strip b.strip
+  | .matchGen p arms => .matchGen p.strip (arms.map fun (c, xs, t) => (c, xs, t.strip))
+  | .pi bs c => .pi (bs.map fun (x, A) => (x, A.strip)) c.strip
+  | .arrow a b => .arrow a.strip b.strip
+  | .fix f bs r d b => .fix f (bs.map fun (x, A) => (x, A.strip)) r.strip d b.strip
+  | .pair a b => .pair a.strip b.strip
+  | .andI a b => .andI a.strip b.strip
+  | .and a b => .and a.strip b.strip
+  | .prod a b => .prod a.strip b.strip
+  | .ascribe a b => .ascribe a.strip b.strip
+  | .rewrite r h t => .rewrite r h.strip t.strip
+  | .split f t => .split f t.strip
+  | .splitArms f arms => .splitArms f (arms.map fun (c, xs, t) => (c, xs, t.strip))
+  | t => t
+
+/-- The declaration with every location removed (`STerm.strip`). -/
+def SDecl.strip (d : SDecl) : SDecl :=
+  { d with params := d.params.map fun (x, A) => (x, A.strip), ret := d.ret.strip, body := d.body.strip,
+           ind? := d.ind?.map (·.map fun (c, fs) => (c, fs.map fun (x, A) => (x, A.strip))),
+           indParams := d.indParams.map fun (x, A) => (x, A.strip), indSort := d.indSort.map STerm.strip }
 
 /-- The names a declaration mentions (a superset of the constants it depends on). -/
 def SDecl.mentions (d : SDecl) : List String :=
@@ -162,7 +207,27 @@ structure Tables where
   ctors : List (String × String × Nat × List String) := []
   types : List String := []
 
-abbrev R := ReaderT Tables (Except String)
+/-- What resolving a declaration records for the editor (`resolveLocated`): where each
+resolved node is written (`Locs`, by the node's address), and where a resolution error is. -/
+structure RState where
+  record : Bool := false
+  locs : Locs := {}
+  ambiguous : Std.HashMap USize Unit := {}   -- a node written in two places (a shared constant)
+  failAt : Option Loc := none
+
+/-- Record that the resolved node `r` is written at `l` (a call with its arguments' ranges). -/
+def RState.recordLoc (st : RState) (r : Term) (l : Loc) (args : Array (Option Loc)) : RState :=
+  let a := termAddr r
+  if !st.record || !isNodeAddr a || st.ambiguous.contains a then st else
+  match st.locs.table.get? a with
+  | some l' => if l' == l then st else
+    { st with locs := { st.locs with table := st.locs.table.erase a, args := st.locs.args.erase a },
+              ambiguous := st.ambiguous.insert a () }
+  | none =>
+    let ls := { st.locs with table := st.locs.table.insert a l }
+    { st with locs := if args.isEmpty then ls else { ls with args := ls.args.insert a args } }
+
+abbrev R := ReaderT Tables (ExceptT String (StateM RState))
 
 /-- The constructors and types a program declares. The library's (`Pair`, `False`,
 `True`, `And`) are among them: the `Prelude` block's declarations come first in every
@@ -177,6 +242,7 @@ def Tables.ofProgram (p : List SDecl) : Tables :=
 def builtinNames : List String := ["Nat", "Unit", "Z", "refl", "S", "Id", "Eq", "cong"]
 
 partial def toPlace (ctx : Ctx) : STerm → R Place
+  | .loc _ _ t => toPlace ctx t
   | .ident x => match lookup ctx x with
     | some p => pure p
     | none => throw s!"{x} is not a place (not a local variable)"
@@ -185,7 +251,7 @@ partial def toPlace (ctx : Ctx) : STerm → R Place
   | .proj 2 t => return .snd (← toPlace ctx t)
   | t => throw s!"not a place: {repr t}"
 
-def isPlace (ctx : Ctx) (t : STerm) : Bool := ((toPlace ctx t).run {}).toOption.isSome
+def isPlace (ctx : Ctx) (t : STerm) : Bool := (((toPlace ctx t).run {}).run.run' {}).toOption.isSome
 
 /-- The position of the parameter named by `by x`. -/
 def decIndex (bs : List (String × STerm)) : Option String → R (Option Nat)
@@ -197,9 +263,24 @@ def decIndex (bs : List (String × STerm)) : Option String → R (Option Nat)
 def succFn : Term :=
   .fix ⟨"_"⟩ [⟨"n"⟩] [.nat] .nat none (.succ (.place (.var 0)))
 
+-- the editor: each resolved node is a fresh object, so its address identifies one place in
+-- the source (a closed term such as `refl`'s would otherwise be hoisted and shared)
+set_option compiler.extract_closed false
+
 mutual
 partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
   match t with
+  | .loc s e u =>
+    let r ← tryCatch (resolve ctx ty u) fun msg => do
+      modify fun st => if st.failAt.isNone then { st with failAt := some ⟨s, e⟩ } else st
+      throw msg
+    let args := match u with
+      | .call _ as => as.toArray.map STerm.loc?
+      | _ => #[]
+    modify (·.recordLoc r ⟨s, e⟩ args)
+    pure r
+  -- a call's head is matched on below (`J`, `clone`, a constructor, a type); its range is the call's
+  | .call (.loc _ _ f) as => resolve ctx ty (.call f as)
   | .ident x =>
     match lookup ctx x with
     | some p => pure (.place p)
@@ -333,7 +414,7 @@ def resolveDecl (d : SDecl) : R Item := do
     let cs' ← cs.mapM fun (cn, fs) => do
       let ctxF := ctx' ++ fs.reverse.map fun (fname, _) => Entry.bound fname
       pure (cn, ← fs.mapM fun (fname, FT) => do pure (fname, ← resolve ctxF true FT))
-    let sort ← match d.indSort with
+    let sort ← match d.indSort.map STerm.unloc with
       | none | some (.sort 1) => pure 1
       | some (.sort 0) => pure 0
       | some _ => throw s!"{d.name}: an inductive type is in Prop or Type"
@@ -349,6 +430,11 @@ def resolveDecl (d : SDecl) : R Item := do
 
 /-- Resolve a whole program's declarations with its constructor table. -/
 def resolveProgram (p : List SDecl) (d : SDecl) : Except String Item :=
-  (resolveDecl d).run (Tables.ofProgram p)
+  ((resolveDecl d).run (Tables.ofProgram p)).run.run' {}
+
+/-- The editor: `resolveProgram`, recording where `d`'s terms are written (`RState.locs`),
+and, on a failure, the innermost located term around it (`RState.failAt`). -/
+def resolveLocated (p : List SDecl) (d : SDecl) : Except String Item × RState :=
+  ((resolveDecl d).run (Tables.ofProgram p)).run.run { record := true }
 
 end Ochr.Surface

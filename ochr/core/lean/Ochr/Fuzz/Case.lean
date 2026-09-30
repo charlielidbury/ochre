@@ -46,7 +46,7 @@ def Case.own (c : Case) : List SDecl :=
 
 /-- The program checked: the library block `Prelude` (D52: `Pair`, `False`, `True`, `And`),
 which every `ochr` block uses implicitly, then the case's own declarations. -/
-def Case.decls (c : Case) : List SDecl := (Block.decls Prelude) ++ c.own
+def Case.decls (c : Case) : List SDecl := (Block.decls Prelude).map SDecl.strip ++ c.own
 
 def Case.show (c : Case) (name : String := "Cex") : String := ppProgram name c.own
 

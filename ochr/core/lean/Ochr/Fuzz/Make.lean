@@ -379,7 +379,7 @@ def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) (edep : Nat := 
     let lib ← genTemplates
     pure (lib, ← genExtras lib)
   let ((lib, extras), g1) := phase1.run { rng := caseRng seed i }
-  let ok := acceptedNames {} fuel ((Block.decls Prelude) ++ lib.filterMap libDecl ++ extras.map (·.1))
+  let ok := acceptedNames {} fuel ((Block.decls Prelude).map SDecl.strip ++ lib.filterMap libDecl ++ extras.map (·.1))
   let extras := extras.filter fun (d, _) => ok.contains d.name
   -- attack templates are offered even when the default rules reject them (live with a switch off)
   let fns := libFns.filter (fun f => ok.contains f.name || (f.attack && lib.contains f.name)) ++ extras.map (·.2)
