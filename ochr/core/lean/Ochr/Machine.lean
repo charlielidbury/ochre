@@ -1382,7 +1382,8 @@ partial def rewriteGoal (rev : Bool) (h : Term) (G : Value) : M Value := do
     let (src, dst) := if rev then (a, b) else (b, a)
     let σ ← freshAbs A
     let G1 ← substV src (.abs σ) G
-    if G1 == G then err s!"rewrite: the goal {G} does not mention {src}"
+    -- [T-Rewrite] has no premise that `b` occurs: a rewrite that finds nothing leaves the goal
+    -- as it is (G' = G), and `t` is checked against it (rule-audit C22)
     let G' ← substV (.abs σ) dst G1
     trace fun _ => s!"[Rewrite] {src} ↦ {dst}: goal {G'}"
     pure G'
