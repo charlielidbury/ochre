@@ -299,8 +299,14 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
     | .error e => return { status := if e.startsWith "rejected" then "rejected" else s!"invalid: {e}" }
   let (execF, execN) := execOracle o c prep
   -- rules oracle: a declaration a rule forbids must be rejected
+  -- a rule declaration expected accepted (`expectAccept`) is a finding when rejected
   let ruleF : List Finding := c.ruleDecls.filterMap fun (why, d) =>
-    if prep.rejected.any (·.1 == d.name) then none
+    let rej := prep.rejected.find? (·.1 == d.name)
+    if d.expectAccept then
+      match rej with
+      | some (_, e) => some ⟨.rule, d.name, "its declaration", s!"rejected: {e}\n  {ppDecl d}", s!"but the rules accept it: {why}", why⟩
+      | none => none
+    else if rej.isSome then none
     else some ⟨.rule, d.name, "its declaration", s!"accepted:\n  {ppDecl d}", s!"but it breaks the rule: {why}", why⟩
   let agreeF : List Finding := c.agreeDecls.filterMap fun (why, a, b) =>
     let ra := prep.rejected.any (·.1 == a.name)

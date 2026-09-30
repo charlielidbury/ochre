@@ -261,10 +261,12 @@ def genAudit : Gen (List (String × SDecl) × List SDecl × List (String × SDec
       let side := STerm.seq (.assign (.ident "x") (.num k)) (.num 0)
       let eqT := STerm.app "Eq" [nat, side, .num 0]
       let asProof ← chance 60
+      -- since rule-audit's C22 (ad2bdd26) `Eq`'s sides run on a private copy, unconfined, so
+      -- the assignment is discarded and the declaration is ACCEPTED (and `x` is unchanged)
       let d := if asProof then
-          mk "AuditX" [("x", nat)] (idS nat (.letIn "T" none eqT (.ident "x")) (.ident "x")) (.ident "refl")
-        else mk "AuditX" [("x", nat)] nat (.letIn "T" none eqT (.ident "x"))
-      pure ([("an erased Eq side assigns an outer place", d)], [], [])),
+          mk "AuditX" [("x", nat)] (idS nat (.letIn "T" none eqT (.ident "x")) (.ident "x")) (.ident "refl") true
+        else mk "AuditX" [("x", nat)] nat (.letIn "T" none eqT (.ident "x")) true
+      pure ([("an Eq side's assignment is discarded (accepted)", d)], [], [])),
     (2, do
       let jf := mk "JF" [("a", nat), ("b", nat), ("h", .app "Eq" [nat, .ident "a", .ident "b"]), ("x", .amp nat)] nat
         (.call (.ident "J") [nat, .ident "a", .ident "b", .fix "_" [("z", nat)] (.sort 1) none nat, .ident "h",
