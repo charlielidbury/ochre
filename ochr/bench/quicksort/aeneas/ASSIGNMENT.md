@@ -123,7 +123,7 @@ Forbidden in your Rust (outside comments and strings):
 Forbidden in your Lean (outside comments and strings):
 - `sorry` (holes), `admit`, `axiom`;
 - `native_decide`, `decide +native`, `ofReduceBool`, `implemented_by`, `extern`, `unsafe`, `opaque`, `partial`;
-- new syntax, notation, macros or elaborators (`macro`, `syntax`, `notation`, `infix`, `elab`, ...), `export`, instances (`instance`, `attribute [instance]`, `deriving instance`) and `unif_hint`, because they can change what a FIXED statement means;
+- new syntax, notation, macros or elaborators (`macro`, `syntax`, `notation`, `infix`, `elab`, ...), `export`, instances (`instance`, `attribute [instance]`, `deriving instance`; a `deriving` clause on a structure or inductive type of your own is fine) and `unif_hint`, because they can change what a FIXED statement means;
 - `#eval`, `#exit`, `run_cmd`, `run_tac`, `run_elab`, `run_meta`, `initialize`, and `debug.*` options;
 - meta-programming of any kind, which proofs do not need and which can bypass Lean's kernel: `import Lean`, `open Lean`, attributes that register elaborators, macros or initialisers (`command_elab`, `term_elab`, `tactic`, `macro`, `init`, ...), environment access (`getEnv`, `setEnv`, `modifyEnv`, `addDecl`), and meta-level types (`MetaM`, `CoreM`, `CommandElab`, `Environment`, `Declaration`, ...).
 
@@ -145,7 +145,7 @@ Run `./grade.sh` in this directory. It:
 4. runs the tests (`cargo test`);
 5. regenerates the Lean model from your Rust (Charon, then Aeneas);
 6. builds the Lean project (`lake build`);
-7. restates every FIXED theorem in a fresh file, checks that your proof proves exactly that statement, and checks the axioms it depends on; it also checks that your file declares no instance, axiom, opaque constant or meta-level code;
+7. restates every FIXED theorem in a fresh file, checks that your proof proves exactly that statement, and checks the axioms it depends on; it also checks that your file declares no axiom, opaque constant or meta-level code, and no instance except those Lean generates for your own structures and inductive types (their `SizeOf` instances, and `deriving` clauses);
 8. replays every declaration of the Lean library through Lean's kernel (`leanchecker`).
 
 Each problem is printed on its own line, with the hole or construct it found; logs are in `.grade/`. The last line is the verdict: `GRADE: PASS (...)` or `GRADE: FAIL (...)`, followed by your solution's size (non-blank lines outside the FIXED regions; a secondary measure, reported for information). The exit status is 0 exactly when the verdict is `GRADE: PASS`.
