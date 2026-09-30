@@ -331,6 +331,19 @@ open Ochr.Registry in
 #guard rowOk { unsizedTypes := false }
   ["Abstraction.Take:accepted"]
 
+-- D63 switched off (rule-audit item 10): a match whose arms disagree about being proofs says
+-- nothing (`any`) instead of having no declared type, so [Type-pos] accepts it as a type
+-- (`MixPos`) and the erasure pre-pass lets the arm that runs decide (fuzz-port R9's reading)
+open Ochr.Registry in
+#guard rowOk { armsAgree := false }
+  ["ErasureBySyntax.R9Arms:accepted", "ErasureBySyntax.R9Nested:accepted",
+   "ErasureBySyntax.MixPos:accepted"]
+-- D63 switched ON (rule-audit item 7): a closure in a stuck block captures through the block's
+-- borrow parameter (fuzz-port R2 (ii)), where [Fix] captures no borrow
+open Ochr.Registry in
+#guard rowOk { blockRefCapture := true }
+  ["ClosingOff.LamReadInWrittenBlock:accepted"]
+
 -- every row of `switches` has a class
 open Ochr.Registry in
 #guard rowClass.length == switches.length

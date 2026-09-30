@@ -76,14 +76,6 @@ def isPropSort : Term → Bool
   | .sort 0 | .val (.sort 0) => true
   | _ => false
 
-/-- v1.7 (D35): what a parameter's declared type says about the parameter, for reading
-erasure classes off syntax: 1 = it is a proposition (declared `: Prop`), 2 = it is a
-function into propositions (declared `: Π(…). Prop`), 0 = neither (or not known). -/
-def declOfDom : Term → Nat
-  | .sort 0 | .val (.sort 0) => 1
-  | .pi _ _ c => if isPropSort c then 2 else 0
-  | _ => 0
-
 /-- Does `self` (tested by `isSelf depth term`) occur in `t` only as the head of a
 call? (Fix L1 of this checker; see notes/lean-checker.md.) -/
 partial def headOnly (isSelf : Nat → Place → Bool) (c : Nat) : Term → Bool
@@ -816,18 +808,23 @@ partial def placeDecl (sc : List DeclInfo) : Place → M DeclInfo
 /-- Arms agree on what their declared type says (`any`, a zero-arm match, agrees with all).
 Arms that are all proofs agree on a proof, whatever their shapes (a proof variable in one
 arm, a function into proofs in another: applied, either is a proof). Arms of which some are
-proofs and some not say nothing (`any`): the match's erasure is that of the arm it runs.
-Such a match runs only on a known scrutinee (stuck, its arms must have one type), which is
-the same on every path, so the arm is too (fuzz-port R9: `match 0 { Z => refl, S _ => 0 }`,
-read as data before it ran the proof arm). -/
-partial def agreeDecl (ds : List DeclInfo) : DeclInfo :=
+proofs and some not have no common declared type (`conflict`, D63): the paper's "a match has
+each arm's" declared type is then undefined, and the match is rejected wherever its declared
+type is read ([Type-pos], the erasure pre-pass). With `armsAgree` off (the earlier reading,
+fuzz-port R9), such a match says nothing (`any`) and the arm that runs decides. -/
+partial def agreeDecl (armsAgree : Bool) (ds : List DeclInfo) : DeclInfo :=
+  if armsAgree && ds.contains .conflict then .conflict else
   match ds.filter (· != .any) with
   | [] => .any
   | d :: rest =>
     if rest.all (· == d) then d
     else if (d :: rest).all DeclInfo.isProof then .prop
-    else if (d :: rest).any DeclInfo.isProof then .any
+    else if (d :: rest).any DeclInfo.isProof then (if armsAgree then .conflict else .any)
     else .other
+
+/-- The error for a term with no declared type (D63). -/
+partial def conflictMsg (t : Term) (ns : List String) : String :=
+  s!"[D63] the arms of a match in {t.pp ns} disagree about being proofs (some are, some are not), so it has no declared type"
 
 /-- The declared type of a term, read from the declared types of its heads without
 normalising (the D35 notion), in a scope saying what each variable's declared type says
@@ -845,8 +842,8 @@ partial def declOf (chk : Bool) (sc : List DeclInfo) (ns : List String) (t : Ter
     let d ← declOf chk sc ns u
     declOf chk (d :: sc) (h.name :: ns) w
   | .seq u w => sub u; declOf chk sc ns w
-  | .matchNat _ z s => pure (agreeDecl [← declOf chk sc ns z, ← declOf chk sc ns s])
-  | .matchInd _ _ arms => pure (agreeDecl (← arms.mapM fun (_, a) => declOf chk sc ns a))
+  | .matchNat _ z s => pure (agreeDecl (← get).cfg.armsAgree [← declOf chk sc ns z, ← declOf chk sc ns s])
+  | .matchInd _ _ arms => pure (agreeDecl (← get).cfg.armsAgree (← arms.mapM fun (_, a) => declOf chk sc ns a))
   | .const n =>     -- an unknown name is the machine's error, reported where it is met
     if let some d := (← get).constDecls.lookup n then return d
     tryCatch (do
@@ -926,6 +923,7 @@ partial def typePos (chk : Bool) (sc : List DeclInfo) (ns : List String) (T : Te
   match ← declOf chk sc ns T with
   | .sort l => pure l
   | .any => pure 1
+  | .conflict => err (conflictMsg T ns)
   | _ =>
     if (← get).cfg.sortsSyntactic then
       err s!"[D55] {T.pp ns} is written where a type is expected, but its declared type is not a sort (it is a type only by computation)"
@@ -1007,6 +1005,7 @@ partial def paramDecl (d : Term) : M DeclInfo := withLive true (typeDecl false [
 before it runs, from declared types. A proof is a term whose declared type is a
 proposition; a call returning types is erased too (its context is not: D35). -/
 partial def preFlags (t : Term) (d : DeclInfo) : M (Option (Bool × Bool)) := do
+  if d == .conflict then err (conflictMsg t [])
   if d == .any then return none
   let p := d.isProof
   -- a stuck block's function (codomain the match's type, `.val B`) is a match: erased iff
@@ -1079,10 +1078,12 @@ partial def capture (t : Term) : M (List Value × Term) := do
   let mut through : List Nat := []   -- stuck-block borrow parameters, captured by their content
   let top0 := (← get).env.back!
   for o in fvs do
-    -- a stuck block's borrow parameter stands for an owned place of the direct path, which a
-    -- closure there captures by value: capture its content (R2), if it is only read through
+    -- [Fix] captures no borrow, a stuck block's borrow parameter included (D63, rule-audit
+    -- item 7). The earlier device (fuzz-port R2 (ii), switch `blockRefCapture`) captured the
+    -- content behind the parameter instead, which no printed rule does.
     let b0 := top0.binds[top0.binds.size - 1 - o]!
-    let viaRef := b0.blockRef && (t.freeOccs.filter (·.1 == o)).all fun (_, q, _) => q.derefsRoot
+    let viaRef := (← get).cfg.blockRefCapture && b0.blockRef &&
+      (t.freeOccs.filter (·.1 == o)).all fun (_, q, _) => q.derefsRoot
     if viaRef then through := o :: through
     let p := if viaRef then Place.deref (.var o) else Place.var o
     accessPath p; accessInside p
@@ -1423,9 +1424,7 @@ partial def eval (typed : Bool) (t : Term) (hint : Option Value := none) : M (Va
       | .ascribe (.val .proof) _ => pure (true, true)
       | .ascribe _ A =>
         -- a proof if the ascribed term is, or if the annotation's declared sort is Prop
-        let top := (← get).env.size - 1
-        let sc ← ((← get).env[top]!.binds.toList.reverse).mapM fun b => declOfVal b.val
-        let p := (← getFlags).2 || (← propDecl sc A)
+        let p := (← getFlags).2 || (← withLive true (typeDecl false [] [] A)).isProof
         pure (p, p)
       | .place _ | .const _ | .val _ | .fix .. =>
         let p ← match cfg.leafRule with
@@ -1461,7 +1460,7 @@ partial def eval (typed : Bool) (t : Term) (hint : Option Value := none) : M (Va
 /-- The erasure class of a function type (D28, D35): 1 = it returns types, 2 = it
 returns proofs, 0 = it returns data. v1.7: read off the codomain *term*, for top-level
 and local functions alike: types if it is syntactically a sort, proofs if its declared
-sort is `Prop` (`propDecl`), never by evaluating it (formal-appendix BoomL). The
+sort is `Prop` (`typeDecl`, D63), never by evaluating it (formal-appendix BoomL). The
 function of a stuck block (codomain `.val B`, the match's type) returns proofs if `B`
 has sort `Prop` and data otherwise, so the block is erased exactly when its match is
 (BoomB). Cached per Π-type. -/
@@ -1476,63 +1475,28 @@ partial def fnClass (piTy : Value) : M Nat := do
       | .sort _ => pure 1
       | .val _ => pure 0     -- a stuck block's function (`closeOffMatch`): its class is given at its call
       | _ =>
-        -- read from the codomain term, never evaluated (D35)
-        let sc := (ds.map declOfDom).reverse ++ (← cs.reverse.mapM declOfVal)
-        pure (if ← propDecl sc c then 2 else 0)
+        -- read from the codomain term, never evaluated (D35), by the one reader of declared
+        -- types (`typeDecl`, D63): proofs if the codomain's declared sort is `Prop`
+        let capSc ← cs.reverse.mapM valueDecl
+        let (sc', ns', _) ← telescope false capSc [] hs ds
+        pure (if (← typeDecl false sc' ns' c).isProof then 2 else 0)
     | _ => pure 0
   modify fun s => { s with classCache := (piTy, k) :: s.classCache }
   pure k
 
-/-- What a captured value says about the variable holding it (see `declOfDom`): 1 = it
-is a proposition, 2 = it is a function whose declared codomain is `Prop`. Read off the
-value's constructor or its declared type, never by normalising. -/
-partial def declOfVal (v : Value) : M Nat := do
-  if (← typeClass v) == 2 then return 1
-  let T? ← match v with
-    | .gfn n => pure (some (← lookupGlobal n).ty)
-    | .clo cs (.fix _ hs ds c _ _) => pure (some (Value.tPi cs (.pi hs ds c)))
-    | .abs σ => some <$> absType σ
-    | _ => pure none
-  match T? with
-  | some (.tPi _ (.pi _ _ c)) => pure (if isPropSort c then 2 else 0)
-  | _ => pure 0
-
-/-- v1.7 (D35): does the codomain term `c` have declared sort `Prop`, i.e. is its type
-`Prop` when it is typed from the declared types of its heads, without normalising it?
-`sc` gives, per de Bruijn index, what the variable's declared type says (`declOfDom`). -/
-partial def propDecl (sc : List Nat) (c : Term) : M Bool := do
-  match c with
-  | .id .. | .eq .. => pure true
-  | .tind n _ => pure (((← get).inds.find? (·.name == n)).map (·.sort) == some 0)   -- a Prop inductive (v2.0)
-  | .pi _ ds c' => propDecl ((ds.map declOfDom).reverse ++ sc) c'   -- impredicative
-  | .place (.var i) => pure (sc.getD i 0 == 1)
-  | .const n => pure ((← lookupGlobal n).ty == .sort 0)
-  | .call f _ _ => pure ((← headDecl sc f) == 2)
-  | .letIn _ u w => propDecl ((← localDecl sc u) :: sc) w
-  | .seq _ w => propDecl sc w
-  | .matchNat _ z s => pure ((← propDecl sc z) || (← propDecl sc s))
-  | .matchInd _ _ arms => arms.anyM fun (_, a) => propDecl sc a
-  | .ascribe u A => pure (isPropSort A || (← propDecl sc u))
-  | .val T => isPropV T  -- a stuck block's parameter: the type of the place it captured, whose
-                        -- sort was syntactic there (D55)
-  | _ => pure false
-
-/-- v1.7 (D35): which parameters are proofs, i.e. declared of sort Prop (`propDecl` on
-the domain term, in the scope of the captured values and the earlier parameters). The
-same flags wherever parameters are bound: the body, [Def] and [Call-type]. -/
+/-- v1.7 (D35): which parameters are proofs, i.e. declared of sort Prop, read by the one
+reader of declared types (`typeDecl` over the telescope, in the scope of the captured values and
+the earlier parameters, D63). The same flags wherever parameters are bound: the body, [Def]
+and [Call-type]. -/
 partial def paramFlags (cs : List Value) (ds : List Term) : M (List Bool) := do
   if (← get).cfg.leafRule != 2 then return ds.map fun _ => false
   let quick : Term → Bool := fun
     | .nat | .unit | .ref _ | .sort _ | .tind "Pair" _ => true
     | _ => false
   if ds.all quick then return ds.map fun _ => false
-  let capSc ← cs.reverse.mapM declOfVal
-  let mut out := #[]
-  let mut pre : List Nat := []     -- the earlier parameters, newest first
-  for d in ds do
-    out := out.push (← if quick d then pure false else propDecl (pre ++ capSc) d)
-    pre := declOfDom d :: pre
-  pure out.toList
+  let capSc ← cs.reverse.mapM valueDecl
+  let (sc', _, _) ← telescope false capSc [] (ds.map fun _ => ⟨"_"⟩) ds
+  pure ((sc'.take ds.length).reverse.map (·.isProof))
 
 /-- Is this leaf (a place, constant or `λ`) a proof, i.e. declared of sort Prop? A
 variable by its binding's flag (`letIn`, `paramFlags`); a constructor field by its
@@ -1544,27 +1508,12 @@ partial def leafProof (t : Term) (v : Value) : M Bool := do
     | .bind f j => pure (← get).env[f]!.binds[j]!.proof
     | _ => pure false
   | .place (.field g _) => fieldIsProof g      -- v2.0: a field declared of a proposition
-  | .const n => pure ((← typeClass (← lookupGlobal n).ty) == 2)
+  | .const n => pure (← valTypeDecl (← lookupGlobal n).ty).isProof
   | .fix .. => match v with
     | .proof => pure true
     | .clo cs (.fix _ hs ds c _ _) => pure ((← fnClass (.tPi cs (.pi hs ds c))) == 2)
     | _ => pure false
   | _ => pure false
-
-/-- What the declared type of a function term (a call's head) says (`declOfDom`). -/
-partial def headDecl (sc : List Nat) (f : Term) : M Nat := do
-  match f with
-  | .place (.var i) => pure (sc.getD i 0)
-  | .const n => declOfVal (.gfn n)
-  | .fix _ _ _ c _ _ => pure (if isPropSort c then 2 else 0)
-  | .val v => declOfVal v
-  | .ascribe _ A => pure (declOfDom A)
-  | _ => pure 0
-
-/-- What the declared type of `let x = u` says about `x`. -/
-partial def localDecl (sc : List Nat) (u : Term) : M Nat := do
-  if ← propDecl sc u then return 1
-  headDecl sc u
 
 /-- The class of a declared type: a sort (its inhabitants are types), a proposition
 (its inhabitants are proofs), or data. Read off the type's constructor or, for a
@@ -1583,9 +1532,7 @@ partial def typeClass (T : Value) : M Nat := do
 
 /-- `J(A, a, b, P, h, t)` is a proof when the motive returns propositions. -/
 partial def jErased (P : Term) : M Bool := do
-  match P with
-  | .fix _ _ _ c _ _ => pure (c matches .sort 0)
-  | _ => pure false
+  pure ((← withLive true (declOf false [] [] P)) matches .pi (.sort 0))
 
 /-- D56: the value of `J(A, a, b, P, h, t)` once `t` has run to `v`: `v` when the endpoints
 are convertible (Lean's rule for `Eq.rec`), otherwise the stuck cast, a sealed program

@@ -23,6 +23,7 @@ inductive DeclInfo where
   | ref (A : DeclInfo)
   | other
   | any
+  | conflict    -- a match whose arms disagree about being proofs: it has no declared type (D63)
 deriving BEq, Inhabited, Repr
 
 /-- A proof: a value of a proposition, or a function into proofs (impredicative `Prop`). -/
@@ -138,6 +139,9 @@ structure Config where
   propValues : Bool := true      -- v2.0 D42: a constructor application of a Prop inductive is a proof (⋆, erased)
   disjoint : Bool := true        -- v2.0 D47: `Eq D (C ā) (C' b̄) ≡ False` for distinct constructors C ≠ C'
   scrutTyped : Bool := true      -- finding (v2.0 round): a match's scrutinee must have the constructors' type
+  armsAgree : Bool := true       -- D63: a match whose arms disagree about being proofs has no declared type (off: the arm that runs decides)
+  blockRefCapture : Bool := false -- ON is the counterfactual: a closure in a stuck block captures through the block's
+                                  -- borrow parameter (fuzz-port R2 (ii)); D63 follows [Fix], which captures no borrow
   refData : Bool := true         -- D48 (1): `&A` only for a data type A (never a universe, Π-type or proposition)
   injective : Bool := true      -- D52: Eq on two values of one constructor is the conjunction over its fields
   refTop : Bool := true          -- D48 (2): `&` only at the top of a declared type, never produced by computation

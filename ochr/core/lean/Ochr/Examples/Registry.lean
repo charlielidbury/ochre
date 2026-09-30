@@ -121,7 +121,9 @@ def switches : List (String × Config) :=
    ("D53 (e): the Fn rule (a call does not consume its function; closure bodies do not move their captures)", { fnRule := false }),
    ("D59 (refined): η-normal forms at Unit (the readback at Unit is (); [Close] has no Unit row)", { unitEta := false }),
    ("K3: an abstract type's constructors and matches only in erased positions and model code", { abstractTypes := false }),
-   ("K2: outside model code, a place of an unsized type is only borrowed at runtime", { unsizedTypes := false })]
+   ("K2: outside model code, a place of an unsized type is only borrowed at runtime", { unsizedTypes := false }),
+   ("D63: a match whose arms disagree about being proofs has no declared type", { armsAgree := false }),
+   ("D63 (switched ON): a closure in a stuck block captures through the block's borrow parameter (fuzz-port R2 (ii))", { blockRefCapture := true })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -189,13 +191,15 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("completeness", []),
    ("policy", ["Abstraction.Peek"]),
-   ("policy", ["Abstraction.Take"])]
+   ("policy", ["Abstraction.Take"]),
+   ("policy", ["ErasureBySyntax.MixPos"]),
+   ("policy", ["ClosingOff.LamReadInWrittenBlock"])]
 
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1076
+def Ochr.Registry.expectedTotal : Nat := 1077
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
