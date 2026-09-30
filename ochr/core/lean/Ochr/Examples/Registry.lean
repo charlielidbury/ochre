@@ -39,7 +39,7 @@ def programs : List (String × Block) :=
    ("PolyLists", PolyLists), ("Positivity", Positivity), ("PositivityParams", PositivityParams),
    ("PositivityPaper", PositivityPaper), ("Propositions", Propositions), ("Destructuring", Destructuring),
    ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
-   ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("BorrowTypes", BorrowTypes),
+   ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("BorrowTypes", BorrowTypes), ("FnBorrows", FnBorrows),
    ("Abstraction", Abstraction), ("DepFields", DepFields)]
 
 /-- Case studies (`16Arrays`, `17HashMap`): checked and counted with the tour, and timed by `lake exe
@@ -108,7 +108,9 @@ def switches : List (String × Config) :=
    ("D47 (v2.0): distinct constructors are disjoint in Eq", { disjoint := false }),
    ("D52 (v2.1): Eq is injective on constructors", { injective := false }),
    ("finding (v2.0 round), D63: a match's scrutinee has its constructors' type (read, not assumed), Nat's included", { scrutTyped := false }),
-   ("D48 (1): only data types are borrowed", { refData := false }),
+   ("D48 (1), D66: only what is in Type₀ is borrowed", { refData := false }),
+   ("D66: the borrow test is A : Type₀ (off: D48 (1)'s data-only test)", { borrowUniverse := false }),
+   ("D66: Prop : Type₁, beside Type₀ (off: Prop : Type₀)", { propUp := false }),
    ("D48 (2): & only at the top of a declared type", { refTop := false }),
    ("D48 (3): Π-types are compared under their binders", { piUnder := false }),
    ("D49 (3): a data field of a matched proof is a fresh abstract value", { proofDataFields := false }),
@@ -182,6 +184,8 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("soundness", ["ScrutineeTypes.g", "ScrutineeTypes.NatTUse", "ScrutineeTypes.M2"]),
    ("model", ["Universes.Impred", "Universes.SelfApp"]),
+   ("completeness", []),
+   ("policy", ["FnBorrows.SwapProps"]),
    ("soundness", ["BorrowTypes.G"]),
    ("completeness", []),
    ("completeness", []),
@@ -209,7 +213,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1209
+def Ochr.Registry.expectedTotal : Nat := 1246
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

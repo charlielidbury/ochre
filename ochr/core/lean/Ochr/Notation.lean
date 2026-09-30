@@ -62,6 +62,8 @@ syntax:max "⟨" ochr_term ", " ochr_term "⟩" : ochr_term
 syntax:max "⊤" : ochr_term
 syntax:max "Prop" : ochr_term
 syntax:max "Type" : ochr_term
+syntax:max "Type₁" : ochr_term
+syntax:max "Type₂" : ochr_term
 syntax:max (name := ochrCall) ochr_term:max noWs "(" ochr_term,* ")" : ochr_term
 syntax:max (name := ochrProj) ochr_term:max noWs "." noWs num : ochr_term
 syntax:max (name := ochrCtorP0) ident noWs "[" ochr_term,* "]" : ochr_term
@@ -183,6 +185,8 @@ partial def elabTerm (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := do
   | `(ochr_term| ⊤) => `(STerm.top)
   | `(ochr_term| Prop) => `(STerm.sort 0)
   | `(ochr_term| Type) => `(STerm.sort 1)
+  | `(ochr_term| Type₁) => `(STerm.sort 2)
+  | `(ochr_term| Type₂) => `(STerm.sort 3)
   | `(ochr_term| *$t) => do `(STerm.deref $(← elabTerm t))
   | `(ochr_term| &$t) => do `(STerm.amp $(← elabTerm t))
   | `(ochr_term| $f:ident $args*) => do

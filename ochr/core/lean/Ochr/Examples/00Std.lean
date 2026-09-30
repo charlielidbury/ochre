@@ -97,7 +97,8 @@ ochr Fixtures {
 
   -- A type computed by a program: `U(n)` is `Prop` for every `n`, but only after computing
   -- it; at an abstract `n` it is stuck. `V(n)` proves it. The erasure examples use them.
-  def U (n : Nat) : Type := (
+  -- (`Prop` lives in `Type₁`, beside `Type`: D66.)
+  def U (n : Nat) : Type₁ := (
     match n {
       Z => Prop,
       S _ => Prop,

@@ -1331,3 +1331,44 @@ A field's type may mention the fields before it: `Vec(E) := MkVec(n : Word, item
   - Proof fields that change in place beyond `Pos`/`Grow` (docs/06's second milestone).
 
 1209 verdicts.
+
+## 48. D66: `Prop : Type₁`; `&A` iff `A : Type₀`
+
+Brief: ochr/docs/08-borrowable-universe.md.
+
+*Checker.*
+- `Config.sortSucc`: the universe a sort lives in, `Prop : Type₁` and `Type_l : Type_{l+1}`. It is used by `sortOf`, `declOf`, `valueDecl` and the typing of a sort term.
+- `isBorrowable` replaces `isDataType` at its three sites: the type former `&A`, the borrow term `&p`, and a stuck match that borrows a capture. It asks `sortOf A == 1`: a type whose sort cannot be read is not borrowable (fail-safe), and neither is a borrow type. A stuck type is read by its head's declared codomain (`sealedSort?`), which is stable under instantiation, since every instance of a `Type₀`-declared family is in `Type₀`.
+- The surface gains `Type₁` and `Type₂`, and the printer writes universes the same way.
+- A Π-type taking a `Prop` parameter is now in `Type₁`, as in Coq. The machine is unchanged: nothing needed changing for function-valued places.
+
+*Examples.*
+- `Fixtures.U`, `Functions.Pow`, `P0`, `RefPred` and `Sorts.P` return `Prop` or a Π into it, so they are declared `Type₁`.
+- Universes: `PropInType1` and `TypeInType1` accepted; `PropInType` rejected.
+- BorrowTypes:
+  - `RefFun`, `SwapT`, `BorrowVar`, `BorrowFn` and `BlockBorrowStuck` are now accepted;
+  - `RefType` and `RefBoxProp` are rejected (`Box(Prop)` is a universe error);
+  - `TP` is declared `Type₁` (`Prop | Type`), so A12's `BorrowStuck` is still rejected;
+  - `TPType` (a `Type` that is `Prop` at 0) is rejected.
+- A new block `FnBorrows`:
+  - closures written and called through borrows, one capturing;
+  - a stuck function with a function-typed borrow parameter (`SetIf`), whose instances compute (`UseSetIf0`, `UseSetIfS`) and whose abstract case is stuck (`UseSetIfWrong`, rejected);
+  - a generic `Swap`, at `Nat` and at functions;
+  - a bucket generic in its value type, with `GGetMut : &V`, used at a function value type;
+  - `SwapProps` and `SwapT1` rejected;
+  - instantiation respects the universes: `IdT(Prop, P)` for `IdT (A : Type)` is rejected, and `IdT1(Prop, P)` for `A : Type₁` is accepted;
+  - a Π over a proposition is in `Type₁`, so it is neither borrowed nor boxed (`RefPropFn`, `BoxPropFn`). A Π over a proof, or one returning a borrow, is in `Type` (`RefProofFn`, `RefRetFn`), and so is `Box(Π(n : Nat). Nat)` (§4.3).
+
+A borrow type cannot instantiate `V`: `&Nat` is not a term (`Swap(&Nat, …)` does not parse as a type argument), and D48 (2) keeps `&` out of type-level computation.
+
+*Ledger:*
+- `refData` (now "&A only for A : Type₀", off: no test) keeps class model. It loses the function and type-variable flips and gains `RefType` and `SwapT1`.
+- New row `borrowUniverse`, class completeness. Off, D48 (1)'s data-only test flips the function borrows, the swap and the generic bucket.
+- New row `propUp`, class policy, witness `FnBorrows.SwapProps`. Off (`Prop : Type₀`), generic code borrows propositions, which have no runtime representation. These are accepted again: `Box(Prop)`, `PropInType`, `PIref`, `BorrowProp`, `IdAtProp`, `RefPropFn` and `BoxPropFn`. The `Type₁` declarations are rejected.
+  - It is the first row with a *blocked* list: `Fixtures.U` flips, so the seven erasure examples that use it fail for that reason alone.
+- Rows that gain flips:
+  - `generalize` and `genConsistent` gain the generic bucket;
+  - `piUnder` gains the capturing closure;
+  - `fnRule` gains the call through a borrow.
+
+60 rows: soundness 23, false lemma 1, model 4, policy 9, completeness 23. 1246 verdicts.

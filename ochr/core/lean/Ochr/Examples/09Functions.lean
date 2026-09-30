@@ -86,7 +86,7 @@ ochr Functions uses Std, Fixtures {
   reject inductive FnBox := MkFnBox(f : Π(n : Nat). Nat)
 
   -- ... type abbreviations unfold under binders ...
-  def Pow (X : Type) : Type := Π(a : X). Prop
+  def Pow (X : Type) : Type₁ := Π(a : X). Prop
   def P1 : Pow(Nat) := λ(a : Nat) : Prop => ⊤
   def UseP (p : Pow(Nat)) : Prop := p(0)
   def P3 (u : Unit) : Prop := UseP(λ(a : Nat) : Prop => ⊤)
@@ -159,7 +159,7 @@ ochr Functions uses Std, Fixtures {
   -- convertible (switch `classInType`), `RunGGen`'s generic call would erase `g(&c)` and its
   -- instance at `H` would run it, and `Boom` would be a closed proof of `False`, as would
   -- `BoomI` through an identity function.
-  def P0 : Type := Prop
+  def P0 : Type₁ := Prop
 
   def H (x : &Nat) : P0 := (
     *x := S Z;
@@ -196,7 +196,7 @@ ochr Functions uses Std, Fixtures {
   -- `Π(x : &Nat). Prop`, which returns types, and `p(&c)` is erased; at the instance it is
   -- `H`, which returns data, and runs. Without D54 `H` is accepted at `RefPred(0)`, and
   -- `BoomPow` is a closed proof of `False`.
-  def RefPred (n : Nat) : Type := Π(x : &Nat). Prop
+  def RefPred (n : Nat) : Type₁ := Π(x : &Nat). Prop
 
   def RunPow (p : RefPred(0)) : Nat := (
     let c = Z;

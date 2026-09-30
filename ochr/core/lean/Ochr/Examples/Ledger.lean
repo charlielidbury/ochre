@@ -10,7 +10,7 @@ def classOk (k : String) (ws fs : List String) : Bool :=
   else !ws.isEmpty && ws.all fun w => fs.contains s!"{w}:accepted"
 
 /-- One ledger row: switching `c` off flips exactly `e`, blocks exactly `bl` (declarations
-that fail only because a library declaration they use flipped; none so far), and `e` fits
+that fail only because a library declaration they use flipped; only `propUp`'s so far), and `e` fits
 the row's class. -/
 def rowOk (c : Config) (e : List String) (bl : List String := []) : Bool :=
   let (fs, bs) := flipsDetail c
@@ -77,7 +77,9 @@ open Ochr.Registry in
    "Trees.InsertM:rejected", "Trees.Insert:rejected", "Trees.InsertMEq:rejected",
    "Trees.InsertMSwap:rejected", "Trees.SizeInsert:rejected", "InPlaceTrees.InsertM:rejected",
    "InPlaceTrees.Insert:rejected", "InPlaceTrees.InsertMIsInsert:rejected",
-   "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected"]
+   "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected", "FnBorrows.GContains:rejected",
+   "FnBorrows.GFind:rejected", "FnBorrows.GHas:rejected", "FnBorrows.GGetMut:rejected",
+   "FnBorrows.RunGGetMut:rejected"]
 open Ochr.Registry in
 #guard rowOk { blockMoves := false }
   ["ClosingOff.MovedByBlock:accepted"]
@@ -116,7 +118,8 @@ open Ochr.Registry in
   ["RenormPi.Plain:rejected", "RenormPi.InPi:rejected", "RenormPi.InConj:rejected",
    "Splitting.PickNotZero:rejected", "Splitting.PickNotZeroCopy:rejected",
    "Splitting.Pick22NotZero:rejected", "Splitting.PickTwo:rejected", "Trees.InsertMEq:rejected",
-   "Trees.SizeInsert:rejected", "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected"]
+   "Trees.SizeInsert:rejected", "InPlaceTrees.SizeInsert:rejected", "InPlaceTrees.SizeInsertRw:rejected",
+   "FnBorrows.GGetMut:rejected", "FnBorrows.RunGGetMut:rejected"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 0 }
   ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected",
@@ -156,7 +159,7 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { headGuardNeutral := false }
   ["ReturnedBorrows.Inj:rejected", "ClosingOff.P1:rejected", "Functions.BoxBorrowFn:rejected",
-   "BorrowTypes.HO:rejected"]
+   "BorrowTypes.HO:rejected", "FnBorrows.RefRetFn:rejected"]
 open Ochr.Registry in
 #guard rowOk { confine := false }
   ["Equality.JMotiveConf:accepted", "Erasure.EffArgErased:accepted", "Erasure.Write:accepted",
@@ -233,15 +236,46 @@ open Ochr.Registry in
 #guard rowOk { scrutTyped := false }
   ["ScrutineeTypes.f:accepted", "ScrutineeTypes.g:accepted", "ScrutineeTypes.NatT:accepted",
    "ScrutineeTypes.NatTUse:accepted", "ScrutineeTypes.NatTNT:accepted", "ScrutineeTypes.M2:accepted"]
--- D48 (1) switched off: &Type makes Type₀ impredicative (System U⁻), and &Prop, &True, &Π, &A pass
+-- D48 (1)/D66 switched off: &Type makes Type₀ impredicative (System U⁻), and &Prop, &True, a proof pass
 open Ochr.Registry in
 #guard rowOk { refData := false }
   ["Universes.Impred:accepted", "Universes.PolyId:accepted", "Universes.SelfApp:accepted",
    "Universes.SelfAppEq:accepted", "Universes.PolyTy:accepted", "BorrowTypes.PIref:accepted",
-   "BorrowTypes.RefTrue:accepted", "BorrowTypes.RefFun:accepted", "BorrowTypes.SwapT:accepted",
-   "BorrowTypes.BorrowProp:accepted", "BorrowTypes.BorrowVar:accepted", "BorrowTypes.BorrowType:accepted",
-   "BorrowTypes.BorrowTypeUse:accepted", "BorrowTypes.BorrowFn:accepted", "BorrowTypes.BorrowProof:accepted",
-   "BorrowTypes.BorrowStuck:accepted", "BorrowTypes.BlockBorrowStuck:accepted"]
+   "BorrowTypes.RefTrue:accepted", "BorrowTypes.RefType:accepted", "BorrowTypes.BorrowProp:accepted",
+   "BorrowTypes.BorrowType:accepted", "BorrowTypes.BorrowTypeUse:accepted",
+   "BorrowTypes.BorrowProof:accepted", "BorrowTypes.BorrowStuck:accepted", "FnBorrows.SwapT1:accepted",
+   "FnBorrows.RefPropFn:accepted"]
+-- D66's test switched back to D48 (1)'s (only data is borrowed): functions and type variables
+-- are not borrowed, so the function borrows and the generic swap and bucket are rejected
+open Ochr.Registry in
+#guard rowOk { borrowUniverse := false }
+  ["BorrowTypes.RefFun:rejected", "BorrowTypes.SwapT:rejected", "BorrowTypes.BorrowVar:rejected",
+   "BorrowTypes.BorrowFn:rejected", "BorrowTypes.BlockBorrowStuck:rejected", "FnBorrows.SetSucc:rejected",
+   "FnBorrows.SetAdder:rejected", "FnBorrows.CallThrough:rejected", "FnBorrows.RunSucc:rejected",
+   "FnBorrows.RunAdder:rejected", "FnBorrows.RunAdderGen:rejected", "FnBorrows.SetIf:rejected",
+   "FnBorrows.UseSetIf:rejected", "FnBorrows.UseSetIf0:rejected", "FnBorrows.UseSetIfS:rejected",
+   "FnBorrows.Swap:rejected", "FnBorrows.SwapNats:rejected", "FnBorrows.SwapFns:rejected",
+   "FnBorrows.GGetMut:rejected", "FnBorrows.RunGGetMut:rejected", "FnBorrows.RefProofFn:rejected",
+   "FnBorrows.RefRetFn:rejected"]
+-- D66's `Prop : Type₁` switched off (`Prop : Type₀`, as before): code generic over `V : Type`
+-- can be applied to `Prop` and borrow propositions, which have no runtime representation
+-- (`SwapProps`); `Box(Prop)` is data again; `Prop` is not in `Type₁`, so the definitions that
+-- return `Prop` at a declared `Type₁` are rejected
+open Ochr.Registry in
+#guard rowOk { propUp := false }
+  ["Fixtures.U:rejected", "Fixtures.V:rejected", "Functions.Pow:rejected", "Functions.P1:rejected",
+   "Functions.UseP:rejected", "Functions.P3:rejected", "Functions.P0:rejected", "Functions.H:rejected",
+   "Functions.RefPred:rejected", "Functions.RunPow:rejected", "Functions.RunPowGen:rejected",
+   "Universes.PropInType1:rejected", "Universes.PropInType:accepted", "Sorts.P:rejected", "Sorts.T:rejected",
+   "BorrowTypes.PIref:accepted", "BorrowTypes.RefBoxProp:accepted", "BorrowTypes.BorrowProp:accepted",
+   "BorrowTypes.TP:rejected", "BorrowTypes.TPType:accepted", "FnBorrows.SwapProps:accepted",
+   "FnBorrows.IdAtProp:accepted", "FnBorrows.IdAtProp1:rejected", "FnBorrows.RefPropFn:accepted",
+   "FnBorrows.BoxPropFn:accepted"]
+  -- blocked: the erasure examples that use `Fixtures.U`, which is declared in `Type₁`
+  ["ErasureBySyntax.W blocked by Fixtures.U", "ErasureBySyntax.Lie blocked by Fixtures.U",
+   "ErasureBySyntax.MainW blocked by Fixtures.U", "ErasureBySyntax.MainW0 blocked by Fixtures.U",
+   "ErasureBySyntax.LieL blocked by Fixtures.U", "ErasureBySyntax.MkClosure blocked by Fixtures.U",
+   "ErasureBySyntax.Lie8 blocked by Fixtures.U"]
 -- D48 (2) switched off: a codomain computing to &Nat; the accepted G reads ⊥ at n = 0
 -- (InPair, `Nat × &Nat`, no longer flips: since D52 a pair type is the library's Pair, whose
 -- parameters may not be borrow types whatever this switch says)
@@ -254,7 +288,8 @@ open Ochr.Registry in
   ["ClosingOff.UseApply:rejected", "Equality.Om:rejected", "RenormPi.InPi:rejected",
    "RenormPi.InConj:rejected", "Functions.Cap:rejected", "Functions.CapEq:rejected", "Functions.P1:rejected",
    "Functions.P3:rejected", "Functions.PassZeroAdd:rejected", "Functions.PassA:rejected",
-   "Functions.RunUH:rejected"]
+   "Functions.RunUH:rejected", "FnBorrows.SetAdder:rejected", "FnBorrows.RunAdder:rejected",
+   "FnBorrows.RunAdderGen:rejected"]
 -- D49 (3) switched off: a data field of a matched proof is ⋆, and cannot be split
 open Ochr.Registry in
 #guard rowOk { proofDataFields := false }
@@ -307,7 +342,8 @@ open Ochr.Registry in
    "Functions.TwiceNoop:rejected", "Functions.TwiceM:rejected", "Functions.TwiceMMove:rejected",
    "Functions.TwiceMZero:rejected", "Functions.TwiceMZero':rejected", "Trees.Size:rejected",
    "Trees.SizeInsert:rejected", "InPlaceTrees.Size:rejected", "InPlaceTrees.SizeInsert:rejected",
-   "InPlaceTrees.SizeInsertRw:rejected"]
+   "InPlaceTrees.SizeInsertRw:rejected", "FnBorrows.CallThrough:rejected", "FnBorrows.RunSucc:rejected",
+   "FnBorrows.RefRetFn:rejected"]
 -- D59 (refined) switched off: values are not η-normal at `Unit`. A call written to return
 -- `Unit` returns `()` (the old row), one that only computes to `Unit` its sealed program, and
 -- an abstract `u : Unit` is not `()`, so two values of `Unit`, or two functions' results at

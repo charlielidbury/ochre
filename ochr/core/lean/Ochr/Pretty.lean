@@ -27,6 +27,10 @@ def Place.pp (ns : List String) : Place → String
   | .field g (.deref p) => s!"(*{p.pp ns}).{g.name}"
   | .field g p => s!"{p.pp ns}.{g.name}"
 
+/-- A universe level in subscript digits, as the surface writes it (`Type₁`). -/
+def subscriptNat (l : Nat) : String :=
+  String.mk ((toString l).toList.map fun c => Char.ofNat (c.toNat - '0'.toNat + 0x2080))
+
 mutual
 partial def Term.pp (ns : List String) : Term → String
   | .place p => p.pp ns
@@ -38,7 +42,7 @@ partial def Term.pp (ns : List String) : Term → String
   | .const n => n
   | .val v => v.pp
   | .sort 0 => "Prop"
-  | .sort (l + 1) => if l == 0 then "Type" else s!"Type_{l}"
+  | .sort (l + 1) => if l == 0 then "Type" else "Type" ++ subscriptNat l
   | .pi hs ds c => ppPi ns hs ds c
   | .fix h hs ds c d b =>
       let (ns', bs) := domsPP ns hs ds
@@ -121,7 +125,7 @@ partial def Value.pp : Value → String
   | .tRef A => s!"&{A.ppArg}"
   | .tPi cs t => ppClosure "" cs t
   | .sort 0 => "Prop"
-  | .sort (l + 1) => if l == 0 then "Type" else s!"Type_{l}"
+  | .sort (l + 1) => if l == 0 then "Type" else "Type" ++ subscriptNat l
   | .ind "Pair" 0 _ _ [a, b] => s!"({a.pp}, {b.pp})"
   | .ind _ _ h _ fs => if fs.isEmpty then h.name else s!"{h.name}({", ".intercalate (fs.map Value.pp)})"
   | .tInd "True" [] => "⊤"

@@ -985,6 +985,17 @@ partial def isDataType (T : Value) : M Bool := do
   | .tInd n _ => pure ((← lookupInd n).sort == 1)
   | _ => pure false
 
+/-- D66: `&A` is well formed iff `A : Type₀`. With `Prop : Type₁`, everything in `Type₀` exists
+at runtime: data types, function types into data or functions, a type parameter declared in
+`Type₀`. Propositions (`P : Prop`), `Prop` and the universes are not in it. The sort is read off
+the type (a stuck type's by its head's declared codomain); a type whose sort cannot be read is
+not known to be in `Type₀` (fail-safe), and neither is a borrow type (no borrows of borrows).
+With `borrowUniverse` off, D48 (1)'s old test: only data. -/
+partial def isBorrowable (T : Value) : M Bool := do
+  if T.typeHasRef then return false
+  if !(← get).cfg.borrowUniverse then return ← isDataType T
+  tryCatch (do pure ((← sortOf T) == 1)) fun _ => pure false
+
 /-- D45: the match `match p { … }` on constructors of `ty` (or with no arms) is by type. -/
 partial def byTypeMatch (ty : String) (arms : List (Hint × Term)) : M Bool := do
   if arms.isEmpty then return true
@@ -996,7 +1007,7 @@ partial def sortOf (T : Value) : M Nat := do
   | .tNat | .tUnit | .tRef _ => pure 1
   | .tInd n _ => pure (← lookupInd n).sort
   | .tEq .. => pure 0
-  | .sort l => pure (l + 1)
+  | .sort l => pure ((← get).cfg.sortSucc l)
   | .abs σ => match ← absType σ with
     | .sort l => pure l
     | S => err s!"σ{σ} : {S} is not a type"
@@ -1079,7 +1090,7 @@ partial def declOf (chk : Bool) (sc : List DeclInfo) (ns : List String) (t : Ter
         modify fun s => { s with constDecls := (n, d) :: s.constDecls }
         pure d) fun _ => pure .any
   | .val v => valueDecl v
-  | .sort l => pure (.sort (l + 1))
+  | .sort l => pure (.sort ((← get).cfg.sortSucc l))
   | .nat | .unit => pure (.sort 1)
   | .ref A => discard (typePos chk sc ns A); pure (.sort 1)
   | .pi hs ds c => do
@@ -1174,7 +1185,7 @@ partial def telescope (chk : Bool) (sc : List DeclInfo) (ns : List String) (hs :
 partial def valueDecl (v : Value) : M DeclInfo := withLive false do
   match v with
   | .proof => pure .prop
-  | .sort l => pure (.sort (l + 1))
+  | .sort l => pure (.sort ((← get).cfg.sortSucc l))
   | .tNat | .tUnit | .tRef _ | .tInd .. | .tEq .. | .tPi .. =>
     pure (.sort (← tryCatch (sortOf v) (fun _ => pure 1)))
   | .gfn n => tryCatch (do valTypeDecl (← lookupGlobal n).ty) fun _ => pure .other
@@ -1809,10 +1820,10 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     let T ← if typed then some <$> placeType p else pure none
     if let some T := T then
       if T.typeHasRef then err s!"&{← ppPlace p}: a borrow of a borrow-typed place"
-      -- D48 (1) for terms ([T-Borrow]'s premise, reviewer-6's A12): the borrowed place's
-      -- type is data, as for the type former `&A`
-      if (← get).cfg.refData && !(← isDataType T) then
-        err s!"[D48] &{← ppPlace p}: its type {T} is not a data type (Nat, Unit, ×, an inductive type in Type); only data is borrowed"
+      -- D66 for terms ([T-Borrow]'s premise, reviewer-6's A12): the borrowed place's type
+      -- is in Type₀, as for the type former `&A`
+      if (← get).cfg.refData && !(← isBorrowable T) then
+        err s!"[D66] &{← ppPlace p}: its type {T} is not in Type₀ (only runtime types are borrowed: never a proposition, Prop, a universe, or a type not known to be in Type₀)"
       repackAt p T "borrowed whole"
     let b ← borrowPlace p
     openWrite p
@@ -1871,7 +1882,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     | .proof, some T => if ← isPropV T then pure (v, some T) else pure (v, some (← valType v))
     | .loan _, some T => tryCatch (do pure (v, some (← valType v))) fun _ => pure (v, some T)
     | _, _ => pure (v, some (← valType v))
-  | .sort l => pure (.sort l, some (.sort (l + 1)))
+  | .sort l => pure (.sort l, some (.sort ((← get).cfg.sortSucc l)))
   | .pi _ ds c =>
     borrowParamCheck ds c
     -- a type former is erased: even its captures (which access places) run on a copy
@@ -1932,9 +1943,9 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
   | .ref A =>
     let A' ← evalType A
     if A'.typeHasRef then err "&A needs A borrow-free (RULES §1)"
-    -- D48 (1): only data is borrowed, so `&A : Type₀` cannot make Type₀ impredicative
-    if (← get).cfg.refData && !(← isDataType A') then
-      err s!"[D48] &{A'}: only data types are borrowed (Nat, Unit, ×, an inductive type in Type), never a universe, a Π-type or a proposition"
+    -- D66: only `A : Type₀` is borrowed, so `&A : Type₀` cannot make Type₀ impredicative
+    if (← get).cfg.refData && !(← isBorrowable A') then
+      err s!"[D66] &{A'}: {A'} is not in Type₀ (only runtime types are borrowed: never a proposition, Prop, a universe, or a type not known to be in Type₀)"
     pure (.tRef A', some (.sort 1))
   | .id A a b => pure (← withErased (idType typed A a b), some (.sort 0))
   | .prim "J" [A, a, b, P, h, u] =>
@@ -2918,7 +2929,7 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
   -- D53 (fuzz-port M2): a capture that some arm moves out whole is moved in, whatever it is
   -- (`*x0`, `n1.1`), as the direct path moves it
   caps := caps.map fun (q, k) => if moved.any (placeEq · q) then (q, 2) else (q, k)
-  -- a proof is never taken by `&` (D48 (1): only data is borrowed): its value is `⋆`, so an
+  -- a proof is never taken by `&` (D66: its type is a proposition, not in Type₀): its value is `⋆`, so an
   -- arm's write through a pattern variable of a matched proof (a field, a fresh value by
   -- D49 (3), in a proof position by D45) is local to the block's own copy (R8, fuzz-port)
   caps ← caps.mapM fun (q, k) => do
@@ -2990,10 +3001,10 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
       else
         doms := doms.push T; args := args.push (Term.place q)
     | 1 =>
-      -- D48 (1): the block borrows the place, so its type must be known to be data (a place
-      -- whose type is stuck, `⌈T(σ)⌉`, may be a universe at some instance: reviewer-6's A12)
-      if (← get).cfg.refData && !(← isDataType T) then
-        err s!"[D48] a stuck match would borrow {← ppPlace q}, whose type {T} is not known to be a data type"
+      -- D66: the block borrows the place, so its type must be known to be in Type₀ (a stuck
+      -- type `⌈T(σ)⌉` by its head's declared codomain: reviewer-6's A12)
+      if (← get).cfg.refData && !(← isBorrowable T) then
+        err s!"[D66] a stuck match would borrow {← ppPlace q}, whose type {T} is not known to be in Type₀"
       doms := doms.push (.tRef T); args := args.push (Term.borrow q)
     | _ =>
       -- D53: a place the block only reads is read in place, not consumed

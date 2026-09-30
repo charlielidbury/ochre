@@ -167,7 +167,9 @@ structure Config where
   typedObs : Bool := true        -- D63: [Id] observes with the typing judgement in untyped runs too (off: a stuck side is stuck)
   blockRefCapture : Bool := false -- ON is the counterfactual: a closure in a stuck block captures through the block's
                                   -- borrow parameter (fuzz-port R2 (ii)); D63 follows [Fix], which captures no borrow
-  refData : Bool := true         -- D48 (1): `&A` only for a data type A (never a universe, Π-type or proposition)
+  refData : Bool := true         -- D48 (1), D66: `&A` only for `A : Type₀` (off: any A)
+  borrowUniverse : Bool := true  -- D66: that test is `A : Type₀` (off: D48 (1)'s old test, A is data)
+  propUp : Bool := true          -- D66: `Prop : Type₁`, beside `Type₀` (off: `Prop : Type₀`)
   injective : Bool := true      -- D52: Eq on two values of one constructor is the conjunction over its fields
   refTop : Bool := true          -- D48 (2): `&` only at the top of a declared type, never produced by computation
   sortsSyntactic : Bool := true  -- D55: a term written where a type is expected has a declared type that is syntactically a sort
@@ -198,6 +200,10 @@ structure Config where
   trace : Bool := false          -- record goals, splits and call types (for inspection)
   derivation : Bool := false     -- record every rule application, in the paper's names (`fire`, Rules.lean)
 deriving Inhabited, Repr, BEq
+
+/-- The universe a sort lives in: `Type_l : Type_{l+1}`, and `Prop : Type₁` beside `Type₀`
+(D66, Coq's arrangement: `Type₀` holds only runtime types). Level `0` is `Prop`, `1` is `Type₀`. -/
+def Config.sortSucc (c : Config) (l : Nat) : Nat := if l == 0 && c.propUp then 2 else l + 1
 
 /-- The pre-pass is checked against the after-the-fact classification under the rules as
 they stand; a counterfactual run switches a rule off and measures that alone. D53's switches
