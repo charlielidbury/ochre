@@ -253,6 +253,13 @@ ochr ClosingOff uses Std, Fixtures {
     refl
   )
 
+  -- The computed result type counts (`G(&c, Z)` has type `UU(Z) = Unit`), but a path on
+  -- which the type is still neutral (`UU(n)`) keeps the value as it is, the sealed program,
+  -- and is only more stuck (paper, appendix C).
+  def ComputedUnit (x : &Nat) (P : Unit → Prop) (h : P(())) : P(let c = *x; G(&c, Z)) := h
+  reject def NeutralKept (x : &Nat) (n : Nat) (P : UU(n) → Prop) (h : P(let c = *x; G(&c, n))) : P(let c = S (*x); G(&c, n)) := h
+  def NeutralKeptZ (x : &Nat) (P : UU(Z) → Prop) (h : P(let c = *x; G(&c, Z))) : P(let c = S (*x); G(&c, Z)) := h
+
   -- ## Typing a sealed program
   -- A sealed program is typed by running its program, typed. A value embedded in it with no
   -- type of its own is typed by where it sits: a proof argument, `⋆`, by its parameter's
@@ -351,7 +358,7 @@ ochr ClosingOff uses Std, Fixtures {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ClosingOff" ClosingOff).allAsExpected
-#guard (run "ClosingOff" ClosingOff).count == 46
+#guard (run "ClosingOff" ClosingOff).count == 49
 
 /-! ## Symbolic checking is not the same as checking every instance
 
