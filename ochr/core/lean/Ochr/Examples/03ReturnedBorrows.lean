@@ -122,3 +122,102 @@ ochr ReturnedBorrows uses Std, Fixtures {
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ReturnedBorrows" ReturnedBorrows).allAsExpected
 #guard (run "ReturnedBorrows" ReturnedBorrows).count == 20
+
+/-! ## Moving a borrow down: reborrow and replace (D67)
+
+`x := &(*x).f` moves the cursor `x` down into what it borrows. Before an assignment to `x`,
+[Access] ends only the loans in the part of `content(x)` that `x` owns. The new borrow's loan
+sits *behind* the borrow `x` held, so it survives: [Drop] of the old borrow carries it back to
+its owner, where it stays live. Rust allows the same, since a reborrow of `*x` lives as long
+as the reference `x` held, not the variable `x`. Reads, moves and borrows of `x` still end every
+loan inside, so a borrow passed to a call carries no live loan ([Close]'s precondition). -/
+
+ochr Reborrows uses Std, Fixtures {
+  -- meta-order's `Trav`: step down one `S`, then write there
+  def Trav (x : &Nat) : Unit := (
+    match *x {
+      Z => (),
+      S p => (
+        x := &p;
+        *x := 0
+      ),
+    }
+  )
+  def TravRun : Id Nat (let a = 5; Trav(&a); a) 1 := refl
+  reject def TravRunWrong : Id Nat (let a = 5; Trav(&a); a) 0 := refl
+
+  -- a list cursor walks to the last node and writes there
+  def WriteLast (x : &List(Word)) (v : Word) : Unit by x := (
+    match *x {
+      Nil => (),
+      Cons(h, t) => match t {
+        Nil => h := v,
+        Cons(h2, t2) => (
+          x := &t;
+          WriteLast(x, v)
+        ),
+      },
+    }
+  )
+  def WriteLastRun : Id (List(Word)) (
+      let l = Cons(Zero, Cons(Succ(Zero), Cons(Succ(Succ(Zero)), Nil)));
+      WriteLast(&l, Zero);
+      l) (Cons(Zero, Cons(Succ(Zero), Cons(Zero, Nil)))) := refl
+
+  -- Rust allows this: `y` reborrows behind `x`'s borrow, and `x` is then pointed elsewhere
+  def ReplaceKeep (x : &Nat) (other : &Nat) : Unit := (
+    match *x {
+      Z => (),
+      S p => (
+        let y = &p;
+        x := other;
+        *y := 0
+      ),
+    }
+  )
+  def ReplaceKeepRun : Id (Nat × Nat) (let a = 3; let b = 7; ReplaceKeep(&a, &b); (a, b)) (1, 7) := refl
+
+  -- a neutral behind the held borrow travels back with it: which of `*x` and `*b` the cursor
+  -- ends up at is not known at an abstract `n`
+  def PickMove (n : Nat) (x : &Nat) (b : &Nat) : Unit := (
+    x := Pick(n, &*x, &*b);
+    *x := 0
+  )
+  def PickMoveRun0 : Id (Nat × Nat) (let a = 3; let c = 7; PickMove(0, &a, &c); (a, c)) (0, 7) := refl
+  def PickMoveRun1 : Id (Nat × Nat) (let a = 3; let c = 7; PickMove(1, &a, &c); (a, c)) (3, 0) := refl
+
+  -- still rejected: `x` used after it was moved
+  reject def UseMoved (x : &Nat) : Unit := (
+    match *x {
+      Z => (),
+      S p => (
+        x := &p;
+        let z = x;
+        *x := 0
+      ),
+    }
+  )
+  -- still rejected: `x` passed to a call while a reborrow behind it is still wanted (reading
+  -- `x` ends every loan inside it, conservatively)
+  def Nop (x : &Nat) : Unit := ()
+  reject def PassWhileReborrowed (x : &Nat) : Unit := (
+    match *x {
+      Z => (),
+      S p => (
+        let y = &p;
+        Nop(x);
+        *y := 0
+      ),
+    }
+  )
+}
+
+#eval IO.println (run "Reborrows" Reborrows).show
+
+-- every verdict as expected, and the exact number of declarations (a truncated file changes it)
+#guard (run "Reborrows" Reborrows).allAsExpected
+#guard (run "Reborrows" Reborrows).count == 13
+#guard (run "Reborrows" Reborrows).rejectedWith [
+  ("TravRunWrong", "the body of TravRunWrong has type ⊤, but the goal is False"),
+  ("UseMoved", "no such place *x: its path does not exist in ⊥"),
+  ("PassWhileReborrowed", "no such place *y: its path does not exist in ⊥")]

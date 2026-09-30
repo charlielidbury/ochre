@@ -60,7 +60,7 @@ open Ochr.Registry in
 -- original witness `BadA1` (a stuck `Unit` call's result is `()`, D59 refined)
 open Ochr.Registry in
 #guard rowOk { accessInside := false }
-  ["Borrows.BadA1:accepted", "Borrows.V:accepted", "Borrows.W:accepted", "GhostBorrows.Ok1:rejected"]
+  ["Borrows.BadA1:accepted", "Borrows.V:accepted", "Borrows.W:accepted", "GhostBorrows.Ok1:rejected", "Reborrows.PassWhileReborrowed:accepted"]
 open Ochr.Registry in
 #guard rowOk { selfHeadOnly := false }
   ["Recursion.Knot:accepted", "Recursion.KnotBoom:accepted"]
@@ -336,6 +336,14 @@ open Ochr.Registry in
 #guard rowOk { ghostBorrows := false }
   ["GhostBorrows.Bad2:accepted", "GhostBorrows.Bad3:accepted", "GhostBorrows.D1:accepted",
    "GhostBorrows.D2:accepted", "GhostBorrows.D3:accepted", "GhostBorrows.D4:accepted"]
+-- D67 switched off: [Access] before an assignment ends every loan inside the old content, so a
+-- reborrow behind the borrow being replaced (`x := &(*x).f`, the cursor idiom) is ended before it
+-- is stored, and an earlier reborrow `y` behind it too (completeness)
+open Ochr.Registry in
+#guard rowOk { reborrowSurvives := false }
+  ["Reborrows.Trav:rejected", "Reborrows.TravRun:rejected", "Reborrows.WriteLast:rejected",
+   "Reborrows.WriteLastRun:rejected", "Reborrows.ReplaceKeep:rejected", "Reborrows.ReplaceKeepRun:rejected",
+   "Reborrows.PickMove:rejected", "Reborrows.PickMoveRun0:rejected", "Reborrows.PickMoveRun1:rejected"]
 -- D64 [Repack] switched off: a value left open (its length changed, its array not) is returned,
 -- read, passed and observed as if it were of its type; `Absurd`, true of every packed `V`, then
 -- proves `Boom : False` from the lie's result
