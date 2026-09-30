@@ -61,7 +61,8 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { accessInside := false }
   ["Borrows.BadA1:accepted", "Borrows.V:accepted", "Borrows.W:accepted", "Drops.D2:rejected",
-   "Drops.D2Run:rejected", "Naturality.PickEarly:accepted"]
+   "Drops.D2Run:rejected", "Reborrows.PassWhileReborrowed:accepted",
+   "Naturality.PickEarly:accepted"]
 open Ochr.Registry in
 #guard rowOk { selfHeadOnly := false }
   ["Recursion.Knot:accepted", "Recursion.KnotBoom:accepted"]
