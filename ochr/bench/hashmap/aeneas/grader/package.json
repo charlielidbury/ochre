@@ -1,0 +1,114 @@
+{
+  "about": "Configuration of grader/grade.py for this package. Patterns are Python regexes, matched line by line after comments and string literals are blanked out.",
+  "namespace": "hashmap",
+  "lean_root": "Hashmap",
+  "properties": "lean/Hashmap/Properties.lean",
+  "fixed_files": [
+    "rust/src/lib.rs",
+    "rust/tests/spec.rs",
+    "lean/Hashmap/Properties.lean"
+  ],
+  "check_defs": {
+    "Inv": "HashMap → Prop"
+  },
+  "rust_holes": [
+    [
+      "\\btodo\\s*!",
+      "todo!()"
+    ],
+    [
+      "\\bunimplemented\\s*!",
+      "unimplemented!()"
+    ]
+  ],
+  "rust_forbidden": [
+    [
+      "\\bunsafe\\b",
+      "unsafe code"
+    ],
+    [
+      "\\b(std|alloc|core)\\s*::\\s*collections\\b|\\b(BTreeMap|BTreeSet|HashSet|VecDeque|LinkedList|BinaryHeap)\\b",
+      "library collection (A3)"
+    ],
+    [
+      "\\.\\s*sort\\w*\\s*\\(|::\\s*sort\\w*\\s*\\(|\\bselect_nth\\w*",
+      "library sort or selection routine"
+    ],
+    [
+      "\\.clone\\s*\\(|\\bClone\\b|\\.cloned\\s*\\(|\\.to_vec\\s*\\(|\\.to_owned\\s*\\(|clone_from_slice|copy_from_slice",
+      "copying (A2: the table and buckets are changed in place)"
+    ],
+    [
+      "#\\s*!?\\s*\\[\\s*(charon|aeneas)\\b",
+      "Charon/Aeneas attribute (makes code opaque or changes the translation)"
+    ],
+    [
+      "#\\s*!\\s*\\[",
+      "crate-level attribute"
+    ],
+    [
+      "\\bcfg\\s*!|#\\s*\\[\\s*cfg",
+      "conditional compilation (the tested code must be the translated code)"
+    ],
+    [
+      "\\bextern\\b",
+      "extern"
+    ],
+    [
+      "\\binclude(_str|_bytes)?\\s*!",
+      "include! macro"
+    ],
+    [
+      "\\bmacro_rules\\s*!",
+      "macro definition"
+    ],
+    [
+      "\\btransmute\\b|\\bptr\\s*::|\\*\\s*(const|mut)\\s",
+      "raw memory access"
+    ]
+  ],
+  "lean_holes": [
+    [
+      "\\bsorry\\b",
+      "sorry"
+    ]
+  ],
+  "lean_forbidden": [
+    [
+      "\\badmit\\b",
+      "admit"
+    ],
+    [
+      "\\baxiom\\b",
+      "axiom"
+    ],
+    [
+      "native_decide|\\+\\s*native|native\\s*:=\\s*true|\\bofReduceBool\\b|\\bofReduceNat\\b",
+      "native evaluation in proofs"
+    ],
+    [
+      "\\bimplemented_by\\b|\\bextern\\b|\\bunsafe\\b|\\bopaque\\b|\\bpartial\\b",
+      "implemented_by / extern / unsafe / opaque / partial"
+    ],
+    [
+      "^\\s*(@\\[[^\\]]*\\]\\s*)?(local\\s+|scoped\\s+)?(macro|macro_rules|syntax|notation|infix|infixl|infixr|prefix|postfix|elab|elab_rules|declare_syntax_cat)\\b",
+      "new syntax, notation, macro or elaborator"
+    ],
+    [
+      "^\\s*(@\\[[^\\]]*\\]\\s*)?(private\\s+|protected\\s+|noncomputable\\s+|local\\s+|scoped\\s+)*instance\\b|@\\[[^\\]]*\\binstance\\b|\\battribute\\s*\\[[^\\]]*\\binstance\\b|\\bderiving\\s+instance\\b|\\bunif_hint\\b",
+      "instance or unification hint (they can change how a FIXED statement elaborates)"
+    ],
+    [
+      "^\\s*export\\b",
+      "export (aliases can change what a FIXED statement means)"
+    ],
+    [
+      "#exit|#eval|\\brun_cmd\\b|\\brun_elab\\b|\\brun_meta\\b|\\brun_tac\\b|\\binitialize\\b",
+      "commands that run code at elaboration time"
+    ],
+    [
+      "skipKernelTC|\\bdebug\\.",
+      "debug options"
+    ]
+  ]
+}

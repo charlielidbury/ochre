@@ -1,0 +1,1 @@
+import Quicksort.Properties
