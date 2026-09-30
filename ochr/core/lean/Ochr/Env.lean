@@ -182,6 +182,8 @@ structure Config where
                                  -- abstract values, stuck calls' results, fills), so `Eq Unit a b ≡ True`
   abstractTypes : Bool := true   -- K3: an abstract type's constructors and matches only in erased positions and model code
   unsizedTypes : Bool := true    -- K2: outside model code, a place of an unsized type is only borrowed at runtime
+  reborrowSurvives : Bool := true -- D67: [Access] before an assignment ends only the loans in the part of the
+                                 -- place's content it owns (a reborrow behind a held borrow survives)
   repack : Bool := true          -- D64 [Repack]: a value of a dependent type is of its telescope again at
                                  -- every whole-again point of the checked program
   depInj : Bool := true          -- D64: `Eq` decomposes a dependent constructor only while its index fields

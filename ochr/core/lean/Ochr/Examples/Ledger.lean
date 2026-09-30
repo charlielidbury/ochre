@@ -408,6 +408,14 @@ open Ochr.Registry in
 #guard rowOk { unsizedTypes := false }
   ["Abstraction.Take:accepted", "Abstraction.ReadV:accepted"]
 
+-- D67 switched off: [Access] before an assignment ends every loan inside the old content, so a
+-- reborrow behind the borrow being replaced (`x := &(*x).f`, the cursor idiom) is ended before it
+-- is stored, and an earlier reborrow `y` behind it too (completeness)
+open Ochr.Registry in
+#guard rowOk { reborrowSurvives := false }
+  ["Reborrows.Trav:rejected", "Reborrows.TravRun:rejected", "Reborrows.WriteLast:rejected",
+   "Reborrows.WriteLastRun:rejected", "Reborrows.ReplaceKeep:rejected", "Reborrows.ReplaceKeepRun:rejected",
+   "Reborrows.PickMove:rejected", "Reborrows.PickMoveRun0:rejected", "Reborrows.PickMoveRun1:rejected"]
 -- D64 [Repack] switched off: a value left open (its length changed, its array not) is returned,
 -- read, passed and observed as if it were of its type; `Absurd`, true of every packed `V`, then
 -- proves `Boom : False` from the lie's result

@@ -1484,3 +1484,23 @@ Regressions, at the end of `Numbers`:
 - accepted: `UnitStill`.
 
 The `unitEta` row (D59) gains `Numbers.UnitStill:rejected`. 1277 verdicts.
+## 53. D67: reborrow and replace (dep-fields)
+
+`x := &(*x).f`, moving a cursor down into what it borrows, was rejected. [Access] before an assignment ended every loan inside `content(x)`, and the new borrow's loan sits there, behind the borrow `x` held. So the new borrow ended before it was stored (lean-meta's F1).
+
+*The rule (D67, the user's call; Rust's reading).* Before an assignment to `p`, [Access] ends only the loans in the part of `content(p)` that `p` owns (`Value.ownedLoans`: not behind a borrow `p` holds; `accessInside p (owned := true)` in `assignPlace`). A loan behind the held borrow, a neutral's included (meta-order's clarification), is left alone. [Drop] of the old borrow ([End]) carries it back to its owner, where it stays live. Unchanged:
+- loans in the owned part, neutrals there included, still end;
+- reads, moves and borrows of `p` still end every loan inside, so a borrow passed to a call carries no live loan ([Close]'s precondition).
+
+*Tests* (`Reborrows`, 03ReturnedBorrows, 13):
+- accepted:
+  - meta-order's `Trav` (`match *x { S p => (x := &p; *x := 0) }`);
+  - `WriteLast`, a list cursor that walks to the last node and writes there;
+  - Rust's `let y = &(*x).1; x := other; *y := 0` (`ReplaceKeep`);
+  - `x := Pick(n, &*x, &*b); *x := 0` (`PickMove`), whose cursor is a neutral behind the held borrow;
+- each has a ground run by `refl` (`TravRun`, `WriteLastRun`, `ReplaceKeepRun`, `PickMoveRun0`/`1`), and `TravRunWrong` is rejected;
+- rejected: `UseMoved` (`x` used after it was moved) and `PassWhileReborrowed` (`x` passed to a call while a reborrow behind it is still wanted: the read ends it).
+
+*Ledger:* a new row, `reborrowSurvives`, class completeness. It flips the nine accepted declarations to rejected. The D19 row also flips `PassWhileReborrowed` to accepted: with D19 off, a read does not end the loans inside. `fire .Access` tags [Access], and RuleGuard's `fired` lists it.
+
+1290 verdicts.

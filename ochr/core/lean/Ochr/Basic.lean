@@ -377,6 +377,15 @@ partial def Term.loans : Term → List Nat
   | _ => []
 end
 
+/-- D67: the loans in the part of a value that its place owns, i.e. not behind a borrow it
+holds. A loan behind a held borrow (a reborrow `&(*x).f`, or a neutral's) travels back to the
+borrow's owner when that borrow ends, and stays live there. -/
+partial def Value.ownedLoans : Value → List Nat
+  | .borrow _ _ => []
+  | .succ w | .tRef w | .ghost w => w.ownedLoans
+  | .ind _ _ _ ps fs => ps.flatMap Value.ownedLoans ++ fs.flatMap Value.ownedLoans
+  | v => v.loans
+
 def Value.hasLoan (l : Nat) (v : Value) : Bool := v.anyAtom (· == .loan l)
 def Value.hasAbs (s : Nat) (v : Value) : Bool := v.anyAtom (· == .abs s)
 def Value.hasBorrow (v : Value) : Bool := v.anyAtom fun | .borrow _ _ => true | _ => false
