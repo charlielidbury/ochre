@@ -116,11 +116,23 @@ ochr SweepInline uses Std, Fixtures {
   reject def SwapT (A : Type) (x : &A) (y : &A) : Unit := ()
 }
 #eval IO.println (run "SweepInline" SweepInline).show
--- appendix note 11's `G`, with `&` read from the declared type switched off
+-- dependent fields (appendix, impl §8.3): the growable vector and the arm assigning its two
+-- fields in either order
+ochr SweepDep uses ArrayBench {
+  inductive Vec (E : Type) := MkVec(n : Word, items : Array(E, n))
+  def Two : Array(Word, W(2)) := ArrPush(Word, Succ(Zero), ArrPush(Word, Zero, ArrEmpty(Word), Zero), Succ(Zero))
+  def SetTwo (v : &Vec(Word)) : Unit := match *v { MkVec(n, items) => (n := W(2); items := Two) }
+  def SetTwoRev (v : &Vec(Word)) : Unit := match *v { MkVec(n, items) => (items := Two; n := W(2)) }
+}
+#eval IO.println (run "SweepDep" SweepDep).show
+-- appendix note 11's `G`. The ochr command checks under the default configuration, where
+-- `F` is rejected ([D48]); the note's point is with `&` read from the declared type switched
+-- off (`refTop`), where `F` and `G` are accepted and `UseG` is not
 ochr SweepG uses Std {
-  def F (n : Nat) (x : &Nat) : (match n { Z => &Nat, S _ => Nat }) := match n { Z => x, S _ => 0 }
-  def G (n : Nat) (a : Nat) : Unit := let r = F(n, &a); let b = a; let r2 = r; ()
+  reject def F (n : Nat) (x : &Nat) : (match n { Z => &Nat, S _ => Nat }) := match n { Z => x, S _ => 0 }
+  reject def G (n : Nat) (a : Nat) : Unit := let r = F(n, &a); let b = a; let r2 = r; ()
   reject def UseG : Unit := G(0, 5)
 }
-#eval IO.println (run "SweepG" SweepG { refTop := false }).show
+#eval IO.println (run "SweepG" SweepG).show
+#guard ((run "SweepG" SweepG { refTop := false }).rows.map (fun r => r.verdict matches .accepted)) == [true, true, false]
 ''')

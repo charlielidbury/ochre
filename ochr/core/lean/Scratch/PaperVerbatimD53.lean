@@ -101,13 +101,15 @@ ochr PaperMovesMeta uses Fixtures {
 -- Appendix note 11, with `&` read from the declared type switched off (`refTop`): the printed
 -- `G` reads the moved `r` a second time and is rejected at the generic call already; the new
 -- `G` is accepted there and reads `⊥` at `n = 0`, as BorrowTypes.G/UseG.
+-- (Checked at elaboration under the default configuration, where `F` is rejected, so every
+-- declaration is marked `reject`; the verdicts with `refTop` off are asserted below.)
 ochr PaperMovesG uses Std {
-  def F (n : Nat) (x : &Nat) : (match n { Z => &Nat, S _ => Nat }) := match n { Z => x, S _ => 0 }
+  reject def F (n : Nat) (x : &Nat) : (match n { Z => &Nat, S _ => Nat }) := match n { Z => x, S _ => 0 }
   reject def GPrinted (n : Nat) (a : Nat) : Nat := let r = F(n, &a); let r2 = r; let r3 = r; a
-  def GNew (n : Nat) (a : Nat) : Unit := let r = F(n, &a); let b = a; let r2 = r; ()
+  reject def GNew (n : Nat) (a : Nat) : Unit := let r = F(n, &a); let b = a; let r2 = r; ()
   reject def UseGNew : Unit := GNew(0, 5)
 }
-#guard (run "PaperMovesG" PaperMovesG { refTop := false }).allAsExpected
+#guard ((run "PaperMovesG" PaperMovesG { refTop := false }).rows.map (fun r => r.verdict matches .accepted)) == [true, false, true, false]
 
 -- §8.2: the keys are `Word`s.
 ochr PaperMovesHM uses Std, HashMap, HashMapLookup {
@@ -164,5 +166,5 @@ ochr PaperMovesNotes45 {
 #eval IO.println (run "PaperMovesS2" PaperMovesS2).show
 #eval IO.println (run "PaperMovesTreesNat" PaperMovesTreesNat).show
 #eval IO.println (run "PaperMovesMeta" PaperMovesMeta).show
-#eval IO.println (run "PaperMovesG" PaperMovesG { refTop := false }).show
+#eval IO.println (run "PaperMovesG" PaperMovesG).show
 #eval IO.println (run "PaperMovesHM" PaperMovesHM).show

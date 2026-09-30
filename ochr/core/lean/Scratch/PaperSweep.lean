@@ -55,52 +55,52 @@ ochr SweepQS uses Quicksort {
 }
 #eval IO.println (run "SweepQS" SweepQS).show
 ochr SweepApp1 {
-  -- appendix.typ:547
+  -- appendix.typ:558
   def U (n : Nat) : Type := match n { Z => Prop, S _ => Prop }
-  -- appendix.typ:547
+  -- appendix.typ:558
   def V (n : Nat) : U(n) := match n { Z => ⊤, S _ => ⊤ }
-  -- appendix.typ:547
+  -- appendix.typ:558
   def LieL (n : Nat) : Id Nat (let h = (λ(x : &Nat) : U(n) => (*x := S Z; V(n))); let c = Z; h(&c); c) (S Z) := refl
-  -- appendix.typ:547
+  -- appendix.typ:558
   reject def BoomL : Eq Nat Z (S Z) := LieL(Z)
-  -- appendix.typ:555
+  -- appendix.typ:566
   reject def LieB (n : Nat) : Id Nat (let c = Z; let T = match n { Z => (c := S Z; ⊤), S _ => (c := S Z; ⊤) }; c) Z := refl
-  -- appendix.typ:555
+  -- appendix.typ:566
   reject def BoomB : Eq Nat (S Z) Z := LieB(Z)
-  -- appendix.typ:561
+  -- appendix.typ:572
   reject def LieH (g : Π(y : Nat). V(Z)) : Id Nat (let c = Z; let h = g(0); (c := S Z; h); c) (S Z) := refl
-  -- appendix.typ:561
+  -- appendix.typ:572
   reject def BoomH : Eq Nat Z (S Z) := LieH((λ(y : Nat) : V(Z) => refl))
-  -- appendix.typ:567
+  -- appendix.typ:578
   reject inductive Bad : Type := MkBad(f : Π(x : Bad). False)
-  -- appendix.typ:567
+  -- appendix.typ:578
   reject def L (b : Bad) : False := match b { MkBad(f) => f(b) }
-  -- appendix.typ:567
+  -- appendix.typ:578
   reject def Bad4 : False := L(MkBad(λ(x : Bad) : False => L(x)))
-  -- appendix.typ:574
+  -- appendix.typ:585
   inductive Box := MkBox(x : Nat)
-  -- appendix.typ:574
+  -- appendix.typ:585
   def Double (n : Nat) : Nat by n := match n { Z => Z, S p => S (S (Double(p))) }
-  -- appendix.typ:574
+  -- appendix.typ:585
   reject def Esc (n : Nat) (m : Box) : Id Nat (let b = Double(n); match b { Z => 0, S _ => 1 }) (match m { MkBox(x) => match x { Z => 0, S _ => 1 } }) := match m { MkBox(x) => match x { Z => refl, S _ => refl } }
-  -- appendix.typ:574
+  -- appendix.typ:585
   reject def Bad5 : Eq Nat 1 0 := Esc(1, MkBox(0))
-  -- appendix.typ:595
+  -- appendix.typ:606
   reject def Impred : Type := Π(x : &Type) (a : *x). *x
-  -- appendix.typ:595
+  -- appendix.typ:606
   reject def PolyId (x : &Type) (a : *x) : *x := a
-  -- appendix.typ:595
+  -- appendix.typ:606
   reject def SelfApp (u : Unit) : Impred := let T = Impred; PolyId(&T, PolyId)
 }
 #eval IO.println (run "SweepApp1" SweepApp1).show
 ochr SweepApp2 uses Std {
-  -- appendix.typ:587
+  -- appendix.typ:598
   inductive Or (P : Prop) (Q : Prop) : Prop := Inl(p : P) | Inr(q : Q)
-  -- appendix.typ:587
+  -- appendix.typ:598
   reject def IsL (h : Or(True, True)) : Bool := match h { Inl(p) => true, Inr(q) => false }
-  -- appendix.typ:587
+  -- appendix.typ:598
   reject def Irr (h : Or(True, True)) (k : Or(True, True)) : Eq Bool (IsL(h)) (IsL(k)) := refl
-  -- appendix.typ:587
+  -- appendix.typ:598
   reject def Boom : False := Irr(Inl(refl), Inr(refl))
 }
 #eval IO.println (run "SweepApp2" SweepApp2).show
@@ -128,11 +128,23 @@ ochr SweepInline uses Std, Fixtures {
   reject def SwapT (A : Type) (x : &A) (y : &A) : Unit := ()
 }
 #eval IO.println (run "SweepInline" SweepInline).show
--- appendix note 11's `G`, with `&` read from the declared type switched off
+-- dependent fields (appendix, impl §8.3): the growable vector and the arm assigning its two
+-- fields in either order
+ochr SweepDep uses ArrayBench {
+  inductive Vec (E : Type) := MkVec(n : Word, items : Array(E, n))
+  def Two : Array(Word, W(2)) := ArrPush(Word, Succ(Zero), ArrPush(Word, Zero, ArrEmpty(Word), Zero), Succ(Zero))
+  def SetTwo (v : &Vec(Word)) : Unit := match *v { MkVec(n, items) => (n := W(2); items := Two) }
+  def SetTwoRev (v : &Vec(Word)) : Unit := match *v { MkVec(n, items) => (items := Two; n := W(2)) }
+}
+#eval IO.println (run "SweepDep" SweepDep).show
+-- appendix note 11's `G`. The ochr command checks under the default configuration, where
+-- `F` is rejected ([D48]); the note's point is with `&` read from the declared type switched
+-- off (`refTop`), where `F` and `G` are accepted and `UseG` is not
 ochr SweepG uses Std {
-  def F (n : Nat) (x : &Nat) : (match n { Z => &Nat, S _ => Nat }) := match n { Z => x, S _ => 0 }
-  def G (n : Nat) (a : Nat) : Unit := let r = F(n, &a); let b = a; let r2 = r; ()
+  reject def F (n : Nat) (x : &Nat) : (match n { Z => &Nat, S _ => Nat }) := match n { Z => x, S _ => 0 }
+  reject def G (n : Nat) (a : Nat) : Unit := let r = F(n, &a); let b = a; let r2 = r; ()
   reject def UseG : Unit := G(0, 5)
 }
-#eval IO.println (run "SweepG" SweepG { refTop := false }).show
+#eval IO.println (run "SweepG" SweepG).show
+#guard ((run "SweepG" SweepG { refTop := false }).rows.map (fun r => r.verdict matches .accepted)) == [true, true, false]
 
