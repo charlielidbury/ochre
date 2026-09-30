@@ -44,7 +44,9 @@ For every array `a`, let `a₀` be its contents before `quicksort(&mut a)` and `
 - **Q1.** `sorted(a₁)`.
 - **Q2.** `perm(a₁, a₀)`.
 
-Where the signature takes fuel (§2), both are stated for fuel `= |a₀|`.
+Where the signature takes fuel (§2), both are stated for fuel `= |a₀|`, so they include that this much fuel is enough.
+
+Both properties are total: `quicksort` returns normally, that is, it terminates, does not panic (no out-of-bounds index) and does not overflow. In a system where every function terminates and nothing can fail (Ochr, pure Lean) this is automatic. Where the system can express failure or divergence (Aeneas's `Result`, Verus's checks for panics, overflow and `decreases`), the FIXED statements include it, for example `quicksort a = ok a′` in Aeneas.
 
 ## 6. Tests
 

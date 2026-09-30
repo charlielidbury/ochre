@@ -66,6 +66,8 @@ The `lean` condition has no memory model: there, A2 means the table array is upd
 
 The solver defines a predicate `Inv(m)` on maps. It is a hole in every verified package, and may be any predicate that makes the properties below provable. Every property is universally quantified over capacities `c ≥ 1`, maps `m`, keys `k`, `k′`, and words `v`, `w`.
 
+Every property is total: the operations it runs return normally under their preconditions, that is, they terminate, do not panic and do not overflow. In a system where every function terminates and nothing can fail (Ochr, pure Lean) this is automatic. Where the system can express failure or divergence (Aeneas's `Result`, Verus's checks for panics, overflow and `decreases`), the FIXED statements include it, for example `insert m k v = ok (r, m′)` in Aeneas.
+
 Notation. For a mutating operation, `op(m, …) ⇝ (m′, r)` means: running `op` in place on `m` leaves the map `m′` and returns `r`. For `get_mut`, `m[k ≔ w]` is the map after running `*get_mut(&mut m, k) = w` (write `w` through the returned borrow) and letting the borrow end.
 
 **Invariant.**

@@ -1,0 +1,15 @@
+[package]
+name = "quicksort-reference"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "quicksort_reference"
+path = "src/lib.rs"
+
+[[bin]]
+name = "quicksort-reference"
+path = "src/main.rs"
+
+[dependencies]
