@@ -112,6 +112,15 @@ def main():
     pl = sum(v[1] for k, v in totals.items() if k.startswith("proofs"))
     pt = sum(v[2] for k, v in totals.items() if k.startswith("proofs"))
     print(f"{'proofs: total':45} {pn:5} {pl:6} {pt:7}")
+    # a proof's statement is its declaration up to its `:=`: the share of proof tokens that
+    # are statements (each lemma is stated at three levels)
+    st = 0
+    for name, idx in decls:
+        if cat.get(name, "").startswith("proofs"):
+            text = "\n".join(stripped[i] for i in idx)
+            j = text.find(":=")
+            st += len(hc.TOKEN.findall(text[:j] if j >= 0 else text))
+    print(f"{'proofs: statements (tokens before :=)':45} {'':5} {'':6} {st:7}  ({100 * st / pt:.1f}% of proof tokens)")
     an = sum(v[0] for v in totals.values())
     al = sum(v[1] for v in totals.values())
     at = sum(v[2] for v in totals.values())

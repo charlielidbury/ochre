@@ -2,7 +2,7 @@
 
 This note covers the paper's flagship case study. It reimplements the resizing hash map that Aeneas verifies (Ho and Protzenko, ICFP 2022, §6) as a single in-place Ochr program, and proves Aeneas's theorem suite about that program. It then measures both developments.
 
-- Branch `ochr-hashmap-v2`: cut from `ochr-core` @ 96d788a1 (RULES v2.1, checker with D52), then merged with `ochr-core` @ 84470253 (D54–D56, D58) and later. On this branch the checker also implements D60 (`rewrite`, destructuring `let`, merged into `ochr-core`) and D61 (`split f`).
+- Branch `ochr-hashmap-v2`: cut from `ochr-core` @ 96d788a1 (RULES v2.1, checker with D52), then merged with `ochr-core` @ 84470253 (D54–D56, D58) and later. On this branch the checker also implements D60 (`rewrite`, destructuring `let`) and D61 (`split f`), both merged into `ochr-core`. Last merged with `ochr-core` @ 8467317d, where D53 (runtime reads move) is on by default; the case study checks with it (§6, "What D53 changed").
 - The code is `ochr/core/lean/Ochr/Examples/17HashMap.lean` (it was `16HashMap.lean` until the arrays case study took number 16).
 - The counting scripts are `notes/hashmap-count.py`, used for both sides, and `notes/hashmap-count-ochr.py`, which assigns each Ochr declaration to a category.
 - `notes/hashmap-aeneas-categories.py` maps every line of Aeneas's `Hashmap.Properties.fst` to a category.
@@ -10,7 +10,7 @@ This note covers the paper's flagship case study. It reimplements the resizing h
 
 ## Summary
 
-**Status.** 186 declarations in four `ochr` blocks, all as expected. The whole suite is 752/752.
+**Status.** 188 declarations in four `ochr` blocks, all as expected, checked with D53 (runtime reads of non-copy data move). The whole suite is 1039/1039.
 
 **Implementation.** The implementation is Aeneas's, recursive as theirs is:
 - new, clear, len, contains_key;
@@ -33,39 +33,45 @@ This note covers the paper's flagship case study. It reimplements the resizing h
 | Ochr, before D60 | 2,157 / 23,525 | 1,771 / 20,807 |
 | Ochr, after D60 | 2,024 / 20,804 | 1,638 / 18,086 |
 | Ochr, after D60 with get_mut specified by insert | 1,878 / 18,888 | 1,492 / 16,170 |
-| Ochr, final: also with `split` (D61) | **1,694 / 17,441** | 1,308 / 14,723 |
+| Ochr, also with `split` (D61) | 1,694 / 17,441 | 1,308 / 14,723 |
+| Ochr, final: with D53 (`Word` keys and sizes, one `clone`) | **1,709 / 17,603** | 1,315 / 14,800 |
+
+The `split` row was measured at 18c53e81. Reformatting `InsertFindOther` for the paper excerpt later added 3 lines, so the file just before D53 counts 1,697 / 17,441 (proofs 1,311 / 14,723); the D53 row's differences below are against that.
 
 - **What Aeneas writes and Ochr does not.** Aeneas writes four things: a Rust program, a hand-written pure model, 459 lines of refinement lemmas linking its generated translation to that model, and the property proofs. The model and the refinement lemmas are a quarter of Aeneas's tokens (4.7k). Ochr writes one program and the property proofs, so those layers are gone, and so is the trusted translation.
 - **What Ochr spends instead.** Proofs without automation. Every case split is written out, and before D60 every rewrite was a `J` with an explicit motive. Each lemma is also stated three times, once per level (bucket, slots, map).
 - **D60** (`rewrite h in t` and destructuring `let`) removed 13% of the proof tokens: all 37 `J`s, the three combinators that only oriented `J`, and all 45 `Intro` matches.
 - **Specifying get_mut by insert** removed a further 11%. Writing through `GetMut` is `InsertNoResize` of the same key (`GetMutIsInsert`), so its theorems follow from insert's. That is a proof-structure change, which rewrite made a one-line step, and it is reported separately from D60.
 - **`split f`** (D61) removed a further 9%. It splits the goal on a result it is stuck on, instead of re-running part of the operation on a copy to name that result. All 32 re-run sites are gone.
-- **The final result** against Aeneas: 37% fewer lines and 11% fewer tokens, for full coverage. Ochr's property proofs are 1.25 times Aeneas's.
+- **D53** (runtime reads of non-copy data move) cost 12 lines and 162 tokens (+0.9%). Keys, the table size, the length and indices became `Word`s, which reading copies; the one value used twice, the one `Get` returns while it stays in the map, is a `clone` (§6).
+- **The final result** against Aeneas: 36% fewer lines and 11% fewer tokens, for full coverage. Ochr's property proofs are 1.26 times Aeneas's.
 
 ## 1. What was built
 
-`17HashMap.lean`, four blocks, each `uses` the previous ones. Verdicts: all 186 as expected.
+`17HashMap.lean`, four blocks, each `uses` the previous ones. Verdicts: all 188 as expected, with D53 on.
 
 | Block | Contents | Decls | Check time (compiled, median of 21) |
 |---|---|---|---|
-| `HashMap` | the data; the implementation (31 declarations); 10 concrete runs (2 rejected on purpose) | 41 | 12 ms |
-| `HashMapLookup` | what `Find` returns after insert, remove, get_mut, new and clear, for the touched key and any other key; `GetMut` is insert (`GetMutIsInsert`); `Get` and `ContainsKey` agree with `Find` and leave the map unchanged; 3 negative tests | 46 | 29 ms |
-| `HashMapLength` | the len field after insert, remove and get_mut; `len = Count(slots)` kept by insert, remove, new and clear; 1 negative test | 20 | 13 ms |
-| `HashMapResize` | the invariant and its preservation (get_mut's by insert's); resizing keeps the invariant, every lookup and the length; insert with resize (all four of Aeneas's insert clauses); the load factor | 79 | 69 ms |
+| `HashMap` | the data; the implementation (32 declarations); 10 concrete runs (2 rejected on purpose) and their helper `W`; 1 negative test (`BGetMoves`, the lookup without its `clone`) | 44 | 24 ms |
+| `HashMapLookup` | what `Find` returns after insert, remove, get_mut, new and clear, for the touched key and any other key; `GetMut` is insert (`GetMutIsInsert`); `Get` and `ContainsKey` agree with `Find` and leave the map unchanged; 3 negative tests | 46 | 55 ms |
+| `HashMapLength` | the len field after insert, remove and get_mut; `len = Count(slots)` kept by insert, remove, new and clear; 1 negative test | 19 | 25 ms |
+| `HashMapResize` | the invariant and its preservation (get_mut's by insert's); resizing keeps the invariant, every lookup and the length; insert with resize (all four of Aeneas's insert clauses); the load factor | 79 | 111 ms |
 
-The check times are from `lake exe tests`, per own declaration, on a machine loaded by other agents. The whole case study checks in about 0.12–0.3 s, depending on load.
+The check times are from `lake exe tests`, per own declaration, on a machine loaded by other agents (the D53 build, 2026-09-30; the pre-D53 build measured 12/29/13/69 ms on a quieter machine). The whole case study checks in about 0.12–0.3 s, depending on load.
 
 **Build time.**
 - `lake build` of the file takes about 30–40 s. It uses the interpreter, and each block re-checks the blocks it uses.
-- The case study is registered as `Registry.caseStudies`. It is checked and counted with the tour (expected total 752) and timed by `lake exe tests`.
+- The case study is registered as `Registry.caseStudies`. It is checked and counted with the tour (expected total 1039) and timed by `lake exe tests`.
 - It is kept out of the per-build counterfactual ledger: with it, each ledger row went from about 1.2 s to 5.8 s, and every row would also need its "blocked by" list asserted.
 - Its ledger flips are measured once, by `Ochr/Examples/CaseStudyLedger.lean` (§7).
 
 **The idiom.** A statement "after M, P equals Q" is `Id A (M; P) (M; Q)`. The key read in statements is `Find(m, k) := Get(&m, k)`, the in-place `Get` run on a copy, just as `Std`'s `Add` runs `AddM` on a copy. For example:
 
 ```
-def InsertFindOther (hm : &HashMap) (k : Nat) (v : Nat) (k2 : Nat) (h : Eq Bool (EqB(k, k2)) false) :
-    Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k2)) (let r = Find(*hm, k2); InsertNoResize(&*hm, k, v); r)
+def InsertFindOther (hm : &HashMap) (k : Word) (v : Nat) (k2 : Word)
+    (h : Eq Bool (EqB(k, k2)) false) :
+    Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k2))
+           (let r = Find(*hm, k2); InsertNoResize(&*hm, k, v); r)
 ```
 
 A proposition that holds after an operation is stated on a copy: `(let c = m; Insert(&c, k, v); Inv(c))`. The reason is D41: a type may not borrow the parameter itself (see §6).
@@ -78,13 +84,14 @@ Counted with `hashmap-count.py`, the same for both sides:
 
 For Ochr, only the text inside `ochr` blocks counts, split by declaration (`hashmap-count-ochr.py`). For Aeneas, `hashmap-aeneas-categories.py` assigns every line of `Hashmap.Properties.fst` to a category, and the categories were checked against a full reading of the file. `#push-options`/`#pop-options` lines are counted as boilerplate. Cells are lines / tokens.
 
-There are four Ochr measurements, all with full coverage (get_mut included):
+There are five Ochr measurements, all with full coverage (get_mut included):
 - **before D60**: the checker at ochr-core @ 84470253, where rewriting is `J` with a motive;
 - **after D60**: the same proofs with `rewrite` and destructuring `let`;
 - **get_mut by insert**: after D60, with get_mut specified by insert (`GetMutIsInsert`);
-- **final**: also with `split f` (D61).
+- **with `split`**: also with `split f` (D61);
+- **final, with D53**: checked with runtime reads moving (D53), so keys, sizes, lengths and indices are `Word`s and `Get` clones the value it returns.
 
-The implementation and the spec are the same in all three. The note's first version, with get_mut walled, had 1,506 / 17,144 of proofs.
+The implementation and the spec are the same in the first four. The note's first version, with get_mut walled, had 1,506 / 17,144 of proofs.
 
 | | Spec / model | Implementation | Agreement proof | Property proofs | Total, hand-written |
 |---|---|---|---|---|---|
@@ -92,7 +99,8 @@ The implementation and the spec are the same in all three. The note's first vers
 | **Ochr, before D60** | 74 / 586 statement vocabulary; + 70 / 539 proof-internal definitions | 242 / 1,593 | **0** | 1,771 / 20,807 | **2,157 / 23,525** |
 | **Ochr, after D60** | same | same | **0** | 1,638 / 18,086 | **2,024 / 20,804** |
 | **Ochr, get_mut by insert** | same | same | **0** | 1,492 / 16,170 | **1,878 / 18,888** |
-| **Ochr, final (with `split`)** | same | same | **0** | 1,308 / 14,723 | **1,694 / 17,441** |
+| **Ochr, with `split`** | same | same | **0** | 1,308 / 14,723 | **1,694 / 17,441** |
+| **Ochr, final (with D53)** | 74 / 590 statement vocabulary; + 72 / 551 proof-internal definitions | 248 / 1,662 | **0** | 1,315 / 14,800 | **1,709 / 17,603** |
 
 **Aeneas, in detail.**
 - *Spec/model* is the trusted part: `find_s`, `len_s`, `hash_map_t_inv` and what they use (77 / 858), plus the `.fsti`'s 5 declarations. The proof-internal models are the pure versions of insert, resize and remove that the proofs route through (`hash_map_insert_in_list_s`, `move_elements_s`, `remove_s`, …).
@@ -103,40 +111,43 @@ The implementation and the spec are the same in all three. The note's first vers
 - Aeneas's `test1` (28 Rust lines) is excluded, as the paper excludes it.
 
 **Ochr, in detail.**
-- *Implementation* is the 31 definitions of the `HashMap` block, including `IsSome`, `BFind` and `Find`, which `GetMut`'s precondition uses.
+- *Implementation* is the 32 definitions of the `HashMap` block, including `IsSome`, `BFind` and `Find`, which `GetMut`'s precondition uses, and `WAdd`, which `Resize` uses (31 before D53).
 - *Statement vocabulary* is what the headline theorems' statements mention: `Count`, `BLen`, `Buckets`, `IfNew`, `Shrink`, `Has`, `Unique`, `AllUnique`, `Nowhere`, `OnlyIn`, `Placed`, `Inv`, `NOf`, `NotOver`.
 - *Proof-internal definitions*: `Nth`, `IsNone`, `IfFound`, `OrElse`, `BFindLast`, `SFindLast`, `Fresh`, `FreshS`, `AbsentFrom`, `Apart`, `GUnique`.
-- Excluded from the Ochr totals: the 10 runs (68 / 712) and the 3 negative tests (25 / 289).
+- Excluded from the Ochr totals: the 10 runs with their helper `W` (74 / 916; 68 / 712 before D53) and the 4 negative tests (37 / 362; 3 tests, 25 / 289, before D53).
 
 **Property proofs by operation** (lines / tokens). The Aeneas column is property proofs as defined above: prop plus view-refinement. Its model-refinement agreement lemmas are shown separately in brackets.
 
-| | Aeneas | Ochr, before D60 | Ochr, after D60 | Ochr, get_mut by insert | Ochr, final |
-|---|---|---|---|---|---|
-| insert, bucket level and without resize | 300 / 2,358 [+ 151 / 887] | 344 / 4,075 | 323 / 3,657 | 323 / 3,657 | 279 / 3,276 |
-| resize, and insert with resize | 485 / 3,496 [+ 137 / 854] | 497 / 5,799 | 450 / 4,662 | 450 / 4,662 | 384 / 4,168 |
-| load factor | 33 / 318 | 99 / 969 | 90 / 792 | 90 / 792 | 68 / 658 |
-| remove | 139 / 847 [+ 109 / 572] | 343 / 3,777 | 324 / 3,388 | 324 / 3,388 | 275 / 2,983 |
-| get, contains_key | 104 / 548 | 54 / 547 | 54 / 547 | 54 / 547 | 54 / 547 |
-| get_mut | 78 / 439 [+ 62 / 386] | 271 / 3,774 | 243 / 3,481 | 97 / 1,565 | 94 / 1,532 |
-| new, clear, len | 150 / 977 | 58 / 647 | 56 / 594 | 56 / 594 | 56 / 594 |
-| helpers (lists, arithmetic, keys, equality) | 267 / 2,753 | 105 / 1,219 | 98 / 965 | 98 / 965 | 98 / 965 |
-| **total** | 1,556 / 11,736 [+ 459 / 2,699] | 1,771 / 20,807 | 1,638 / 18,086 | 1,492 / 16,170 | 1,308 / 14,723 |
+| | Aeneas | Ochr, before D60 | Ochr, after D60 | Ochr, get_mut by insert | Ochr, with `split` | Ochr, final (D53) |
+|---|---|---|---|---|---|---|
+| insert, bucket level and without resize | 300 / 2,358 [+ 151 / 887] | 344 / 4,075 | 323 / 3,657 | 323 / 3,657 | 279 / 3,276 | 282 / 3,300 |
+| resize, and insert with resize | 485 / 3,496 [+ 137 / 854] | 497 / 5,799 | 450 / 4,662 | 450 / 4,662 | 384 / 4,168 | 384 / 4,176 |
+| load factor | 33 / 318 | 99 / 969 | 90 / 792 | 90 / 792 | 68 / 658 | 68 / 660 |
+| remove | 139 / 847 [+ 109 / 572] | 343 / 3,777 | 324 / 3,388 | 324 / 3,388 | 275 / 2,983 | 275 / 3,005 |
+| get, contains_key | 104 / 548 | 54 / 547 | 54 / 547 | 54 / 547 | 54 / 547 | 54 / 551 |
+| get_mut | 78 / 439 [+ 62 / 386] | 271 / 3,774 | 243 / 3,481 | 97 / 1,565 | 94 / 1,532 | 94 / 1,536 |
+| new, clear, len | 150 / 977 | 58 / 647 | 56 / 594 | 56 / 594 | 56 / 594 | 56 / 608 |
+| helpers (lists, arithmetic, keys, equality) | 267 / 2,753 | 105 / 1,219 | 98 / 965 | 98 / 965 | 98 / 965 | 102 / 964 |
+| **total** | 1,556 / 11,736 [+ 459 / 2,699] | 1,771 / 20,807 | 1,638 / 18,086 | 1,492 / 16,170 | 1,308 / 14,723 | 1,315 / 14,800 |
+
+- The final column's insert row includes the 3 lines of the `InsertFindOther` reformat. Its other changes are the `Word` renaming (`Succ(x)` is two tokens more than `S x`, `Zero` the same as `0`) and the helpers: `WAddS` and `WAddZero` are proved by recursion on the `Word`, where `AddS` and `AddZero` went through `Std`'s in-place `AddM`.
 
 - Ochr's remove proves more than Aeneas's: the invariant after remove, including placement. Aeneas's statement does not claim it (§3).
 - Ochr's load factor needs the bucket count after a resize, which is a sealed program (`ResizeN`, via `InsertN`/`MoveBucketN`/`MoveSlotsN`).
 - Before the final measurement, Ochr's get_mut was proved directly: its own lookup, count, uniqueness and placement lemmas at three levels (12 lemmas). The final version proves `GetMutIsInsert` and reuses insert's theorems, which is the move Aeneas makes too (`get_mut_back_lem_refin` models get_mut's backward function as `insert_no_fail_s`).
 
 **Reading the table.**
-- **Totals.** In the final version, Ochr's development is 1,694 / 17,441 against Aeneas's 2,670 / 19,701: 37% fewer lines and 11% fewer tokens. The other versions:
+- **Totals.** In the final version, Ochr's development is 1,709 / 17,603 against Aeneas's 2,670 / 19,701: 36% fewer lines and 11% fewer tokens. The other versions:
   - before D60: 19% fewer lines but 19% *more* tokens;
   - after D60 with get_mut still direct: 24% fewer lines and 6% more tokens;
-  - with get_mut by insert, before `split`: 30% fewer lines and 4% fewer tokens.
+  - with get_mut by insert, before `split`: 30% fewer lines and 4% fewer tokens;
+  - with `split`, before D53: 37% fewer lines and 11% fewer tokens.
 
   Ochr's lines carry more tokens each, because statements with `Id` are long.
 - **What Ochr does not write.** It writes no model and no agreement proof. In Aeneas those are 698 / 4,738 (models plus model refinement), a quarter of the hand-written tokens. It is nearly a third if the read-operation lemmas are counted as agreement. Ochr also trusts no translation: Aeneas's 550 generated lines and its `Primitives` are trusted.
-- **What Ochr spends instead.** Its property proofs are still 1.25 times Aeneas's in tokens (14.7k against 11.7k), for two remaining reasons:
+- **What Ochr spends instead.** Its property proofs are still 1.26 times Aeneas's in tokens (14.8k against 11.7k; 1.25 times before D53), for two remaining reasons:
   - there is no automation, where Aeneas has Z3 with fuel and `rlimit` tuning: 56 `#push-options` and 183 `assert` lines;
-  - each lemma is stated at three levels. Statements are 44% of Ochr's proof tokens after D60.
+  - each lemma is stated at three levels. Statements (a proof declaration's tokens before its `:=`, printed by `hashmap-count-ochr.py`) are 45% of Ochr's proof tokens, before and after D53 (45.0% and 44.6%).
 
   Before `split`, every case split on a sealed result was also written out, including the copy of the program it is taken from (§6).
 
@@ -204,7 +215,7 @@ The case-study ledger (§7) shows what D58 is doing here: switching it off rejec
 
 ## 5. Divergences
 
-- **Numbers.** `Nat` is unbounded, so there are no overflow obligations, no `Fail` cases and no saturation.
+- **Numbers.** Keys, sizes and lengths are `Word`s, `Std`'s copy type of numbers, and values are `Nat`s; both are unbounded, so there are no overflow obligations, no `Fail` cases and no saturation.
   - Aeneas's `usize` arithmetic can fail. In their development, 88 generated lines are `Fail` arms and 115 proof lines handle them (69 of those are literally `| Fail -> ()`).
   - About 50–65 proof lines are overflow bounds, and the `try_resize` guard ("cannot double") is part of their invariant and their insert statement.
   - Ochr has none of this, which flatters it by roughly 3–5% of their proofs.
@@ -218,13 +229,12 @@ The case-study ledger (§7) shows what D58 is doing here: switching it off rejec
 - **Get and GetMut.** `Get` returns an `Opt` by value, not `&T`, because Ochr has no shared borrows and no `Option<&T>`. `GetMut` takes a presence proof instead of panicking.
 - **Remove.** `Remove` returns the removed value, as Aeneas's does.
 - **Clear.** `Clear` replaces the slots with `EmptySlots(n)`; Aeneas's `clear_slots` walks and empties them in place.
-- **Reads.** The current checker copies data on reads. Under D53 (runtime reads move, `clone` explicit), the implementation would need `clone` wherever a `Nat` is read and still needed:
-  - the key comparisons `EqB(k', k)` in the five bucket functions (the stored key, and the parameter `k`, which is reused in the recursive call);
-  - `Some(v')` in `BGet`;
-  - `Idx(k, n)` in the five map operations (`n` is a field; `k` is reused);
-  - `Lt(n, len)` in `Insert`.
+- **Reads.** The checker runs with D53: a runtime read of data that is not a copy type moves it. Keys, the table size, the length and bucket indices are `Word`s, which reading copies, as Rust's `usize` is `Copy`; values are `Nat`s, which move, as a non-`Copy` `V` does in Rust. Before D53 this bullet predicted a `clone` at every reuse of a key or size: in `EqB(k', k)` in the five bucket functions, `Idx(k, n)` in the five map operations and `Lt(n, len)` in `Insert`. `Word` removed all of them. What remains:
+  - one `clone`, in `BGet`: `Some(clone(v'))`. The value stays in the bucket and a copy is returned. Rust's `get` returns a shared borrow, which Ochr does not have. Without it the borrow of the bucket ends partly moved out (`BGetMoves`, rejected);
+  - `Nth`, a proof-internal definition, takes bucket `i` out through `Slot`'s borrow and puts `BNil` back (Rust's `mem::take`), instead of reading `*r` and ending the borrow partly moved;
+  - `let old = slots` in `Resize`, `*b := t` in `BRemove`, and `len := Succ(len)` / `len := Pred(len)` are moves that D53 accepts as written.
 
-  Rust needs none of these because `usize` is `Copy`. A fixed-width key type that is a copy type (D53) would remove them all. `let old = slots` in `Resize`, `*b := t` in `BRemove`, and `len := S len` / `len := Pred(len)` are moves that D53 accepts as written. The proofs are unaffected: they are erased, so their reads copy, and so are the statements' `Find(*hm, k)`.
+  The proofs are unaffected: they are erased, so their reads copy, and so are the statements' `Find(*hm, k)` and `Some(v)` after `v` was moved into the bucket.
 - **Tests.** Aeneas's `test1` is 28 Rust lines, excluded from their 201. Ochr's ten runs, 68 lines, are excluded from its implementation count.
 
 ## 6. Findings about the language
@@ -276,7 +286,7 @@ The case study was then rewritten with them:
 For example, `MoveBucketLen`'s cons arm was a `let grew = J(…)` with a motive, then `TransN` of a `J` and a `SymmN` of `AddS`, 7 lines. It is now one chain of rewrites that reads as the calculation:
 
 ```
-rewrite ← AddS(Len(m), BLen(t)) in
+rewrite ← WAddS(Len(m), BLen(t)) in
 rewrite ← MoveBucketLen(t, m2, FreshInsert(t, m, k, v, ft, a), ut) in
 rewrite ← InsertLen(&mc, k, v) in
 rewrite ← f in refl
@@ -325,6 +335,21 @@ split BInsert in split Lt {
   It was two copies, two re-run `let`s, two nested matches and four arms.
 - *Check time.* `split` re-runs the goal's sealed programs to follow their chains. The case study's compiled check time stays at about 0.15–0.25 s; the variance from machine load is larger than the difference.
 
+### What D53 changed
+
+D53 (runtime reads of non-copy data move) went on by default at `ochr-core` @ 8467317d, with the case studies held back in `Test.preD53`. Switching it on for the hash map as written changed 145 of its 186 verdicts: 9 declarations were rejected directly and 136 because they use one of those. The 9 are the functions that read a key or a size twice (`BGet`, `BContains`, `BInsert`, `BRemove` and `BFindLast` read `k` in `EqB(k', k)` and again in the recursive call; `ModGo` and `New` read `n` twice), `Clear`, whose `n` was moved into `EmptySlots(n)` and left the map partly moved, and `Nth`, which moved a bucket out through a borrow.
+
+The change, all in `17HashMap.lean` (7ec22e28):
+- **`Word` for numbers that are only computed with.** `Std` declares `copy inductive Word := Zero | Succ(pred : Word)`. Keys, `n`, `len`, bucket indices, counts and bucket lengths became `Word`s, with the case study's own `Word` versions of `EqB`, `Lt`, `ModGo`, `Idx`, `Pred` and `WAdd` (for `Resize`'s `2n + 2` and for `Count`). The rest is renaming: `Z`/`S` to `Zero`/`Succ`, and `Id Nat`/`Eq Nat` to `Id Word`/`Eq Word` for lengths and counts. Values stay `Nat` and are moved into buckets. The runs write `W(3)` for the `Word` 3.
+- **One `clone`**, where data is used twice: `BGet` returns `Some(clone(v'))`, leaving the value in the bucket. `BGetMoves`, the same function without it, is rejected: "a borrow ends while its content is partly moved out (`BCons(σ2, ⊥, σ4)`)".
+- **`Nth` takes and refills.** `Nth(s, i)` read `*r` through `r = Slot(&s, i)`, a move out of a borrow that ends partly moved. It now takes the bucket and puts `BNil` back. It must still go through `Slot`: at abstract slots its normal form is then the same sealed program as the bucket that the closed-off `Get` reads (`⌈let c1 = σ; let r = Slot(&c1, i); *r⌉`), and the lifting lemmas rely on that. A version by recursion on the slots, the obvious alternative, left `⌈Nth(σ, i)⌉` stuck as a different neutral: it rejected 13 theorems directly (`InsertFind`, `GetFind`, `NewFind`, `ResizeFind`, …) and 33 with the ones that use them.
+- **Arithmetic lemmas by recursion.** `WAddS` (`x + (y + 1) = (x + y) + 1`) and `WAddZero` are proved by recursion on the `Word`. Their `Nat` versions went through `Std`'s in-place `AddM` (`AddMS`, `AddMZero`), which has no `Word` counterpart; `AddMS` is gone.
+- **No proof changed beyond renaming.** Proofs and statements are erased, so their reads copy (P3), and the statements' reuse of a moved value (`BInsert(&*b, k, v); Some(v)`) is an erased read of a ghost.
+
+**Cost.** 1,697 / 17,441 before, 1,709 / 17,603 after (+12 lines, +162 tokens, +0.9%): implementation +6 / +69 (`WAdd`, the `clone`, `Succ(…)`), proof-internal definitions +2 / +12 (`Nth`), statement vocabulary +0 / +4, proofs +4 / +77. The `W` helper and `BGetMoves` are outside the totals, with the runs and the negative tests.
+
+**One `clone`.** The five bucket functions, the five map operations, `Insert`'s load test, `Resize` and every proof need none.
+
 ### Other awkward points
 
 - **Postconditions on a copy** (D41). A proposition about the state after an operation can only be a type that runs the operation on a local copy: `(let c = m; Insert(&c, k, v); Inv(c))`. D41 rejects `(BInsert(&*b, k, v); Unique(*b))`, because a type may not borrow a place that outlives it. `Id` is the exception.
@@ -340,9 +365,9 @@ split BInsert in split Lt {
 ### Quantifying over every key was not a wall
 
 The task named "anything needing ∀ over keys" as a candidate wall. It was not one.
-- Placement is `Placed(s, n) = Π(k : Nat). OnlyIn(s, Idx(k, n), k)`. It is proved by `λ(k2 : Nat) : OnlyIn(c, Idx(k2, n), k2) => …`, with a split on `EqB(k, k2)` inside the λ and a `J` along `k = k2`. It is used by applying it: `hp(k)`.
-- Deriving global key uniqueness from placement (`GUniqueOf`, for `ResizeLen`) takes the bucket-index function as a parameter, `D : Π(k : Nat). Nat`. The tail's hypothesis is then `Π(k). OnlyIn(t, Pred(D(k)), k)`.
-- It also passes a proof-valued function, `Π(k : Nat) (nw : Nowhere(t, k)). Eq Opt (BFind(cur, k)) None` ("this bucket is part of `t`").
+- Placement is `Placed(s, n) = Π(k : Word). OnlyIn(s, Idx(k, n), k)`. It is proved by `λ(k2 : Word) : OnlyIn(c, Idx(k2, n), k2) => …`, with a split on `EqB(k, k2)` inside the λ and a rewrite along `k = k2` (a `J` before D60). It is used by applying it: `hp(k)`.
+- Deriving global key uniqueness from placement (`GUniqueOf`, for `ResizeLen`) takes the bucket-index function as a parameter, `D : Π(k : Word). Word`. The tail's hypothesis is then `Π(k). OnlyIn(t, Pred(D(k)), k)`.
+- It also passes a proof-valued function, `Π(k : Word) (nw : Nowhere(t, k)). Eq Opt (BFind(cur, k)) None` ("this bucket is part of `t`").
 - Every one of these was accepted as first written.
 
 The task also named resize correctness as a candidate wall. `ResizeInv`, `ResizeFind` and `ResizeLen` hold, and the whole resize and insert-with-resize section is 497 lines. Aeneas spends 549 lines on the same ground.
@@ -377,7 +402,7 @@ The 15 rows that do flip declarations (final version; blocked = rejected only be
 
 **The claim tested.** In the two-program setups (Aeneas, and likewise ATS, Low*, VeriFast), a verified program is three artefacts: an efficient implementation, a pure specification or model, and a proof that the two agree. Properties are then proved about the model. In Ochr it is one artefact: the in-place program, with theorems stated and proved about that program.
 
-**The case study.** Aeneas's resizing hash map, the ICFP 2022 flagship, written once in Ochr: 31 definitions, 242 lines. It covers:
+**The case study.** Aeneas's resizing hash map, the ICFP 2022 flagship, written once in Ochr: 32 definitions, 248 lines, with keys and sizes of a copy type and one `clone`. It covers:
 - buckets as association lists;
 - an index borrow for the slots;
 - insert with a doubling resize that re-inserts every entry;
@@ -391,43 +416,50 @@ Aeneas's theorem suite is proved about that code:
 - the load factor.
 
 **Results.**
-- **Coverage.** Aeneas's whole interface is covered, in 186 declarations, all accepted except the negative tests, which are rejected as intended.
+- **Coverage.** Aeneas's whole interface is covered, in 188 declarations, all accepted except the negative tests, which are rejected as intended.
 - **Size, first measurement.** With rewriting done by `J` and explicit motives, Ochr's hand-written total was 2,157 lines / 23.5k tokens, against Aeneas's 2,670 lines / 19.7k tokens: 19% *more* tokens.
-- **Size, final.** With `rewrite` and destructuring `let` (D60), get_mut specified by insert, and `split` (D61), it is 1,694 lines / 17.4k tokens: 37% fewer lines and 11% fewer tokens than Aeneas.
-- **Where the size goes.** Aeneas's pure model and its refinement lemmas are a quarter of its hand-written tokens, and they have no counterpart in Ochr. What Ochr spends instead is proof text without automation, 1.25 times Aeneas's property proofs: statements restated at each level, and case analysis written out. Aeneas has Z3 for the case analysis.
+- **Size, final.** With `rewrite` and destructuring `let` (D60), get_mut specified by insert, and `split` (D61), it was 1,694 lines / 17.4k tokens; checked with reads that move (D53), with `Word` keys and sizes and one `clone`, it is 1,709 lines / 17.6k tokens: 36% fewer lines and 11% fewer tokens than Aeneas.
+- **Where the size goes.** Aeneas's pure model and its refinement lemmas are a quarter of its hand-written tokens, and they have no counterpart in Ochr. What Ochr spends instead is proof text without automation, 1.26 times Aeneas's property proofs: statements restated at each level, and case analysis written out. Aeneas has Z3 for the case analysis.
 - **Check time.** The case study checks in about 0.1–0.3 s.
 
 **One thing Ochr proves that Aeneas's interface does not.** Aeneas's `remove` lemma states the invariant of its *input* (a slip), so no Aeneas client can call an operation after a `remove`. Ochr's `RemoveInv` is about the result.
 
-**Suggested excerpts.**
+**Suggested excerpts.** Each is the declaration in `17HashMap.lean`, verbatim, de-indented.
 
 (a) *The program is its own specification.* In Aeneas, "other keys are unchanged" is stated about `find_s`, a hand-written model of lookup: `find_s hm k = slot_t_find_s k (index (hash_mod_key k (length slots)) slots)`, 77 trusted lines of such definitions. In Ochr it is stated with the lookup itself, run on a copy of the map:
 
 ```
-def InsertFindOther (hm : &HashMap) (k : Nat) (v : Nat) (k2 : Nat) (h : Eq Bool (EqB(k, k2)) false) :
-    Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k2)) (let r = Find(*hm, k2); InsertNoResize(&*hm, k, v); r)
+def InsertFindOther (hm : &HashMap) (k : Word) (v : Nat) (k2 : Word)
+    (h : Eq Bool (EqB(k, k2)) false) :
+    Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k2))
+           (let r = Find(*hm, k2); InsertNoResize(&*hm, k, v); r) := (
+  match *hm {
+    HM(n, len, slots) => split BInsert in
+      SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h),
+  }
+)
 ```
 
 The invariant is stated with the program's own index function and lookup too. "Every key lies only in the bucket that `Slot` returns for it" is:
 
 ```
-def OnlyIn (s : Slots) (d : Nat) (k : Nat) : Prop by s := (
+def OnlyIn (s : Slots) (d : Word) (k : Word) : Prop by s := (
   match s {
     SOne(b) => ⊤,
     SCons(b, t) => match d {
-      Z => Nowhere(t, k),
-      S d' => Eq Opt (BFind(b, k)) None ∧ OnlyIn(t, d', k),
+      Zero => Nowhere(t, k),
+      Succ(d') => Eq Opt (BFind(b, k)) None ∧ OnlyIn(t, d', k),
     },
   }
 )
 
-def Placed (s : Slots) (n : Nat) : Prop := Π(k : Nat). OnlyIn(s, Idx(k, n), k)
+def Placed (s : Slots) (n : Word) : Prop := Π(k : Word). OnlyIn(s, Idx(k, n), k)
 ```
 
 (b) *One theorem, bucket to map.* Insert, then look the key up, for one bucket: an induction on the bucket, with `match p {}` where the split has refined a hypothesis to `false = true`.
 
 ```
-def BInsertFind (b : &Bucket) (k : Nat) (v : Nat) :
+def BInsertFind (b : &Bucket) (k : Word) (v : Nat) :
     Id Opt (BInsert(&*b, k, v); BFind(*b, k)) (BInsert(&*b, k, v); Some(v)) by b := (
   match *b {
     BNil => (
@@ -454,18 +486,10 @@ def BInsertFind (b : &Bucket) (k : Nat) (v : Nat) :
 It is lifted to the slots by recursion that follows `Slot`'s own, with no congruence step (the borrow of the tail keeps the other buckets in place). It is then stated for the map, splitting on the one sealed result the operation branches on:
 
 ```
-def InsertFind (hm : &HashMap) (k : Nat) (v : Nat) :
+def InsertFind (hm : &HashMap) (k : Word) (v : Nat) :
     Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k)) (InsertNoResize(&*hm, k, v); Some(v)) := (
   match *hm {
-    HM(n, len, slots) => (
-      let c = slots;
-      let b = Slot(&c, Idx(k, n));
-      let added = BInsert(b, k, v);
-      match added {
-        false => SlotInsertFind(&slots, Idx(k, n), k, v),
-        true => SlotInsertFind(&slots, Idx(k, n), k, v),
-      }
-    ),
+    HM(n, len, slots) => split BInsert in SlotInsertFind(&slots, Idx(k, n), k, v),
   }
 )
 ```
@@ -473,7 +497,7 @@ def InsertFind (hm : &HashMap) (k : Nat) (v : Nat) :
 (c) *Dependent types in borrow-returning code.* `GetMut` returns a mutable borrow of a present key's value. The precondition is stated with the program's own lookup, and the impossible arm is ex falso:
 
 ```
-def BGetMut (b : &Bucket) (k : Nat) (h : IsSome(BFind(*b, k))) : &Nat by b := (
+def BGetMut (b : &Bucket) (k : Word) (h : IsSome(BFind(*b, k))) : &Nat by b := (
   match *b {
     BNil => match h {},
     BCons(k', v', t) => (
@@ -490,12 +514,29 @@ def BGetMut (b : &Bucket) (k : Nat) (h : IsSome(BFind(*b, k))) : &Nat by b := (
 (d) *One operation specified by another.* Writing through `GetMut` is inserting the same key. Its theorems follow from insert's, where Aeneas relates its generated get_mut to a hand-written model of insert instead:
 
 ```
-def GetMutIsInsert (hm : &HashMap) (k : Nat) (w : Nat) (h : IsSome(Find(*hm, k))) :
+def GetMutIsInsert (hm : &HashMap) (k : Word) (w : Nat) (h : IsSome(Find(*hm, k))) :
     Id Unit (let q = GetMut(&*hm, k, h); *q := w) (InsertNoResize(&*hm, k, w))
 
-def GetMutFind (hm : &HashMap) (k : Nat) (w : Nat) (h : IsSome(Find(*hm, k))) :
+def GetMutFind (hm : &HashMap) (k : Word) (w : Nat) (h : IsSome(Find(*hm, k))) :
     Id Opt (let q = GetMut(&*hm, k, h); *q := w; Find(*hm, k)) (let q = GetMut(&*hm, k, h); *q := w; Some(w)) := (
   rewrite ← GetMutIsInsert(&*hm, k, w, h) in InsertFind(&*hm, k, w)
+)
+```
+
+(e) *The one `clone`.* Keys are `Word`s, so comparing and reusing them copies; the value is a `Nat`, so returning it while it stays in the bucket needs a copy:
+
+```
+def BGet (b : &Bucket) (k : Word) : Opt by b := (
+  match *b {
+    BNil => None,
+    BCons(k', v', t) => (
+      let e = EqB(k', k);
+      match e {
+        false => BGet(&t, k),
+        true => Some(clone(v')),
+      }
+    ),
+  }
 )
 ```
 
@@ -504,7 +545,7 @@ def GetMutFind (hm : &HashMap) (k : Nat) (w : Nat) (h : IsSome(Find(*hm, k))) :
 - The slots are a list, not an array.
 - The values are `Nat`, not generic.
 - The load factor is fixed at 1.
-- The first measurement predates D60 and D61. Both ends should be reported. Specifying get_mut by insert is a proof-structure change, not a language change; it saved 1.9k tokens of the 6.1k between the two ends.
+- The first measurement predates D60 and D61, and the final one is checked with D53 (reads move), which the first was not. Both ends should be reported. Specifying get_mut by insert is a proof-structure change, not a language change; it saved 1.9k tokens of the 6.1k between the two ends.
 
 ## 9. Person-time
 
@@ -513,6 +554,7 @@ def GetMutFind (hm : &HashMap) (k : Nat) (w : Nat) (h : IsSome(Find(*hm, k))) :
   - The v1.8 port took about 30 minutes: implementation plus the H1–H6 theorems for insert without resize and remove.
   - The v2.1 port took about 60 minutes: the port, the invariant, resize, the load factor, contains_key.
   - The second round took about 3 hours of agent time: get_mut after D58; D60 in the checker with its tests; the rewrite of the case study; get_mut by insert. Most of that time went to the checker work and the re-measurement.
+  - The D53 round took about an hour: the probe, the `Word` conversion (mostly mechanical), `Nth`, the `clone` and its negative test, and the re-measurement. After the conversion, every proof was accepted unchanged.
   - Almost every theorem was accepted as first written. The exceptions are the motive capture, the nested zero-arm match, the `at` name, get_mut before D58, and one rewrite written in the wrong direction, all in §4 and §6.
 
 ## 10. Reproducing
@@ -520,9 +562,10 @@ def GetMutFind (hm : &HashMap) (k : Nat) (w : Nat) (h : IsSome(Find(*hm, k))) :
 ```
 cd ochr/core/lean
 lake build Ochr.Examples.«17HashMap»          # the four blocks, verdict tables, count guards
-lake exe tests                                  # all 752, with per-declaration check times
+lake exe tests                                  # all 1039, with per-declaration check times
 lake env lean Ochr/Examples/CaseStudyLedger.lean   # §7 (slow: every rule switch re-checks the case study)
-python3 ../notes/hashmap-count-ochr.py          # the Ochr column of §2 (final)
+python3 ../notes/hashmap-count-ochr.py          # the Ochr column of §2 (final), and the statement share
+# before D53: git show 0349532e:ochr/core/lean/Ochr/Examples/17HashMap.lean > /tmp/pre53.lean && python3 ../notes/hashmap-count-ochr.py /tmp/pre53.lean
 # the earlier measurements: before D60 (07771cb6) and after D60 with direct get_mut (e53d8560)
 git show 07771cb6:ochr/core/lean/Ochr/Examples/16HashMap.lean > /tmp/pre.lean && python3 ../notes/hashmap-count-ochr.py /tmp/pre.lean
 python3 ../notes/hashmap-count.py fstar <Aeneas file> <ranges>   # Aeneas, ranges from ../notes/hashmap-aeneas-categories.py
