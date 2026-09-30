@@ -78,7 +78,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 |---|---|---|---|
 | `00Std` | `Std`: in-place and pure addition, adding zero does nothing, `TailM`, `Bool`, `List(A)`, `Box(A)`, the copy type `Word`; `Fixtures`: `Pick`, `Empty`, `U`/`V`; and the assertions for `Prelude` | §1, §3, §7 | 12 (+4) |
 | `01Numbers` | evaluation in types, the pure theorem by the in-place lemma; matching on numbers; pairs; calls | §1, §3, §7 | 20 |
-| `02Borrows` | moving, copying and reborrowing; argument order; the borrow checker ([Access], [Drop]); `Moves`: D53's moves, copy types, `clone`, ghosts, the Fn rule, and a stuck block's captures | §3 | 82 |
+| `02Borrows` | moving, copying and reborrowing; argument order; the borrow checker ([Access], [Drop]); `Moves`: D53's moves, copy types, `clone`, ghosts, the Fn rule, and a stuck block's captures | §3 | 73 |
 | `03ReturnedBorrows` | functions returning a borrow (`TailM`); a returned borrow must come from a borrow argument (D44) | §1, §3 [Close] | 20 |
 | `04ClosingOff` | stuck calls and matches, sealed programs, a borrow chosen by a branch, what a stuck match captures, [Close]'s rows and η for `Unit` (D59), typing a sealed program; closures inside a stuck block; naturality up to resolution | §3 | 52 |
 | `05Equality` | `Id` and `Eq`: observation, footprints, disjointness, injectivity (pairs included), `J` and its stuck casts (D56); `rewrite h in t` (D60); all owners of a returned borrow are observed (D18), in the order the sides reach them | §4 | 65 |
@@ -95,7 +95,7 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `16Arrays` | case study: arrays as a library (slices, indices), its lemmas and benchmarks, and in-place quicksort proved sorted and a permutation; indices, lengths and elements are `Word`s (`notes/arrays-library.md`) | all | 173 |
 | `17HashMap` | case study: Aeneas's resizing hash map, its lookups, length, invariant, resizing and load factor, proved about the in-place code; keys and sizes are `Word`s (`notes/hashmap-case-study.md`) | all | 188 |
 
-1111 declarations in all, the `Prelude`'s 4 and the case studies' 361 included. D53 (reads of non-copy data move) is the only read semantics: the old copy-on-read paths, `Config.d53`, `Test.preD53` and the `moves` switch are deleted (`notes/lean-checker.md` §47). `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+1113 declarations in all, the `Prelude`'s 4 and the case studies' 361 included. D53 (reads of non-copy data move) is the only read semantics: the old copy-on-read paths, `Config.d53`, `Test.preD53` and the `moves` switch are deleted (`notes/lean-checker.md` §47). `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 

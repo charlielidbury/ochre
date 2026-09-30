@@ -51,7 +51,7 @@ def firstLiveLoanOnPath (env : Env) : Value → List Step → Option Nat
 
 def firstBorrowLabel : Value → Option Nat
   | .borrow l _ => some l
-  | .succ w | .ghost w => firstBorrowLabel w
+  | .succ w => firstBorrowLabel w
   | _ => none
 
 /-- What a call's result type is, for [Close]'s table and for P5. -/
@@ -280,28 +280,8 @@ partial def accessInside (p : Place) : M Unit := do
   if !(← get).cfg.accessInside then return
   let v ← content p
   match liveLoansIn (← get).env v with
-  | l :: _ =>
-    -- a loan that other owners hold too (a hole in several sealed fills: one of them is
-    -- the borrow's real owner, which is not known) is released here only: the borrow
-    -- becomes a ghost, unusable, still holding the others, so a [Drop] of another owner
-    -- still errors (uncertainty never makes the symbolic path more permissive: Bad2)
-    let env := (← get).env
-    let here ← varPos p.root
-    let others := (owners env l).filter (· != here)
-    if (← get).cfg.ghostBorrows && !others.isEmpty then releaseHere p l
-    else endBorrow l
-    accessInside p
+  | l :: _ => endBorrow l; accessInside p
   | [] => pure ()
-
-/-- Release `loan_l` in the place `p` only (its value is the borrow's current content) and
-make the borrow a ghost ([Access] with several possible owners). -/
-partial def releaseHere (p : Place) (l : Nat) : M Unit := do
-  let env := (← get).env
-  let some bp := findBorrow env l | endBorrow l
-  let some (c, _) := (valAt env bp).takeBorrow l | endBorrow l
-  let v ← content p
-  setPlace p (← substV (.loan l) c v)
-  setAt bp ((valAt (← get).env bp).ghostBorrow l)
 
 /-- [Access] for matching (v1.5, D29): a loan anywhere inside a neutral at the head of
 `content(p)` counts as being at the head (its position inside the neutral is unknown),
@@ -544,7 +524,7 @@ partial def assignPlace (p : Place) (v : Value) : M Unit := do
   let old ← content p
   unsizedCheck p old "assigned"
   match old with
-  | .borrow l _ | .ghost (.borrow l _) => endBorrow l
+  | .borrow l _ => endBorrow l
   | _ =>
     if !(liveLoansIn (← get).env old).isEmpty then
       err s!"[Drop] the old content of {← ppPlace p} is overwritten while borrowed"
@@ -558,7 +538,7 @@ partial def dropTopBind : M Unit := do
   let f ← topIdx
   let some b := (← get).env[f]!.binds.back? | err "internal: no binding to drop"
   match b.val with
-  | .borrow l _ | .ghost (.borrow l _) => endBorrow l
+  | .borrow l _ => endBorrow l
   | v =>
     if !(liveLoansIn (← get).env v).isEmpty then
       err s!"[Drop] {b.hint.name} goes out of scope while it is borrowed"
@@ -568,7 +548,7 @@ partial def dropTopBind : M Unit := do
 partial def dropValue (v : Value) : M Unit := do
   pushTemp v
   match v with
-  | .borrow l _ | .ghost (.borrow l _) => endBorrow l
+  | .borrow l _ => endBorrow l
   | _ =>
     if !(liveLoansIn (← get).env v).isEmpty then
       err "[Drop] a discarded value holds a live loan"

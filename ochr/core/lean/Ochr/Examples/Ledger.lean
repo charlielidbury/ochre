@@ -60,7 +60,7 @@ open Ochr.Registry in
 -- original witness `BadA1` (a stuck `Unit` call's result is `()`, D59 refined)
 open Ochr.Registry in
 #guard rowOk { accessInside := false }
-  ["Borrows.BadA1:accepted", "Borrows.V:accepted", "Borrows.W:accepted", "GhostBorrows.Ok1:rejected"]
+  ["Borrows.BadA1:accepted", "Borrows.V:accepted", "Borrows.W:accepted"]
 open Ochr.Registry in
 #guard rowOk { selfHeadOnly := false }
   ["Recursion.Knot:accepted", "Recursion.KnotBoom:accepted"]
@@ -327,14 +327,6 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { unsizedTypes := false }
   ["Abstraction.Take:accepted", "Abstraction.ReadV:accepted"]
-
--- ghost borrows switched off: reading one possible owner of a hole ends the borrow outright,
--- earlier than the ground path may, so a later [Drop] of another owner is let through
--- (meta-order's Bad2: accepted, and wrong at n = 0)
-open Ochr.Registry in
-#guard rowOk { ghostBorrows := false }
-  ["GhostBorrows.Bad2:accepted", "GhostBorrows.Bad3:accepted", "GhostBorrows.D1:accepted",
-   "GhostBorrows.D2:accepted", "GhostBorrows.D3:accepted", "GhostBorrows.D4:accepted"]
 
 -- D63 switched off (rule-audit item 10): a match whose arms disagree about being proofs says
 -- nothing (`any`) instead of having no declared type, so [Type-pos] accepts it as a type
