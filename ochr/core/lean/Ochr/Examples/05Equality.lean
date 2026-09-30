@@ -213,9 +213,12 @@ ochr Rewriting uses Std {
   )
 
   -- The direction matters: `h : x = y` rewrites `y` to `x`, and a goal about `x` needs
-  -- `rewrite ← h`. A rewrite that finds nothing is an error.
+  -- `rewrite ← h`. A rewrite that finds nothing leaves the goal as it is ([T-Rewrite] has no
+  -- premise that `b` occurs; rule-audit C22), so `k` does not prove it in `RwWrongDir`, and
+  -- `RwNothing`'s `refl` does.
   def RwRightDir (x : Nat) (y : Nat) (h : Eq Nat x y) (k : Eq Nat y 3) : Eq Nat x 3 := rewrite ← h in k
   reject def RwWrongDir (x : Nat) (y : Nat) (h : Eq Nat x y) (k : Eq Nat y 3) : Eq Nat x 3 := rewrite h in k
+  def RwNothing (a : Nat) (b : Nat) (h : Eq Nat a b) : ⊤ := rewrite h in refl
 
   -- Here the wrong direction finds `x` inside `Add(x, 0)` too, and leaves a goal `refl`
   -- does not prove.
@@ -239,7 +242,7 @@ ochr Rewriting uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Rewriting" Rewriting).allAsExpected
-#guard (run "Rewriting" Rewriting).count == 17
+#guard (run "Rewriting" Rewriting).count == 18
 
 /-! ## All the owners of a returned borrow are observed
 
