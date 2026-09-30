@@ -67,7 +67,7 @@ Ochr is a core calculus, and it covers a small part of Rust (@fig-scope). Its bo
     [Two-phase borrows], [No: an argument that reads a place an earlier argument borrows needs a temporary.],
     [Generic `&A`], [No: `A` must be known to be data, so there is no generic `swap` (@sec-discussion).],
     [`'static` borrows], [No: a returned borrow derives from a borrow argument (@sec-discussion).],
-    [Moves], [No: reads copy data; the compiled program is meant to move (@sec-discussion).],
+    [Moves, `Copy`, `clone`], [Yes: runtime reads of non-copy data move, `clone` copies, and closures follow `Fn` (@sec-eval).],
     [Integers, arrays], [Peano numbers only; arrays as a library, borrowed in parts only through a continuation (@sec-eval-qs).],
     [`unsafe`, interior mutability], [No.],
     table.hline(stroke: 0.5pt),

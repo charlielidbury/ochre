@@ -44,7 +44,7 @@ This appendix defines Ochr completely: its syntax and runtime structures (@app-s
     ([], $ty("D")(a_1, ..., a_l) | ty("C")(a_1, ..., a_l; t_1, ..., t_k)$, [inductive type, constructor]),
     ([], $ty("Eq") A space t space u | ty("J")(A, a, b, P, h, t)$, [equality (primitive), transport]),
     ([], $kw("rewrite") h space kw("in") t | kw("rewrite") arrow.l h space kw("in") t$, [rewriting, a proof ([T-Rewrite])]),
-    ([], $\&A | p | \&p | p := t$, [borrow type; read, borrow, assign]),
+    ([], $\&A | p | \&p | p := t | kw("clone")(p)$, [borrow type; read, borrow, assign, copy]),
     ([], $kw("let") x = t; u | kw("let") x : A = t; u | t; u$, [sequencing]),
     ([], $kw("match") p space {ty("C")_1 (overline(y)_1) => t_1, ..., ty("C")_m (overline(y)_m) => t_m}$, [case analysis, one arm per constructor ($m >= 0$)]),
     ([], $kw("split") f space kw("in") t$, [case analysis on a stuck call found in the goal ([T-Split-goal])]),
@@ -79,7 +79,7 @@ This appendix defines Ochr completely: its syntax and runtime structures (@app-s
   block(width: 100%, inset: (y: 4pt), grammar(
     ($v, w, kappa$, $ty("C")(overline(v); v_1, ..., v_k)$, [data (`Z`, `S v`, `()`, `(v, w)`, …)]),
     ([], $star$, [the value of every proof]),
-    ([], $"borrow"_ell v | "loan"_ell | bot$, [borrow, loan, moved-out place]),
+    ([], $"borrow"_ell v | "loan"_ell | bot | "ghost"(v)$, [borrow, loan, moved-out place, moved-out data]),
     ([], $n | F | T$, [neutrals, function values, types]),
     ($n$, $sigma | seal(t)$, [abstract value, sealed program]),
     ($F$, $f | chevron.l overline(kappa) tack.r kw("fix") f (overline(x) : overline(A)) : B ... := t chevron.r$, [top-level function, closure]),
@@ -96,7 +96,7 @@ A _closure_ $chevron.l overline(kappa) tack.r t chevron.r$ is code `t` whose fre
 
 A _sealed program_ ⌈`t`⌉ contains a closed term `t`: it has no free variables, though it may embed values, including abstract values and loans. [Close] produces sealed programs of the form ⌈`L; C; K`⌉ with a distinguished _head call_ `C`, which we mark $f(overline(a))^h$.
 
-*Loans.* $"loans"(v)$ is the set of labels ℓ such that $"loan"_ell$ occurs in `v`, looking inside sealed programs, closures and types. In an environment Ω, ℓ is _live_ if $"borrow"_ell$ occurs in Ω, and _inert_ otherwise; inert loans occur only inside the runs of [Seal]. A value is _loan-free_ if it contains no live loan, and _borrow-free_ if moreover it contains no $"borrow"_ell$.
+*Loans.* $"loans"(v)$ is the set of labels ℓ such that $"loan"_ell$ occurs in `v`, looking inside sealed programs, closures and types. In an environment Ω, ℓ is _live_ if $"borrow"_ell$ occurs in Ω, and _inert_ otherwise; inert loans occur only inside the runs of [Seal]. A value is _loan-free_ if it contains no live loan, and _borrow-free_ if moreover it contains no $"borrow"_ell$. It is _whole_ if it contains no ⊥ and no ghost. A _ghost_ $"ghost"(v)$ is what a runtime read leaves in a place whose data it moved out: runtime code may not use it, and an erased read sees `v`. A type is a _copy type_ if it is `Unit`, a sort, a proposition, an inductive type declared `copy` (the library's `Word`), or a non-recursive inductive type in `Type₀` whose field types are copy types; a closure is a copy exactly when its captured values are.
 
 === Environments and states
 
@@ -149,14 +149,16 @@ $ acc^X_p (Omega) = cases(Omega & "if" L^X_Omega (p) = emptyset, acc^X_p (Omega'
 Every rule that reads, borrows or assigns a place `p` first computes $acc^R_p$, and a match on `p` computes $acc^M_p$. This is the borrow checker: an ended borrower holds ⊥, and every later use of it is an error. #lean("endBorrow", "accessPath", "accessInside", "accessNeutralHead")
 
 #rules(
-  ir(name: "Read", $acc^R_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = v in.not {bot, "borrow"_ell w}$, $cfg(Omega, p) ev cfg(Omega_1, v)$),
+  ir(name: "Copy", $acc^R_p (Omega) = Omega_1$, pv($cont_(Omega_1)(p) = v in.not {bot, "borrow"_ell w}, thick v "whole"$, $"type"_(Omega_1)(p) "a copy type"$), $cfg(Omega, p) ev cfg(Omega_1, v)$),
+  ir(name: "Read", $acc^R_p (Omega) = Omega_1$, pv($cont_(Omega_1)(p) = v in.not {bot, "borrow"_ell w}, thick v "whole"$, $"type"_(Omega_1)(p) "not a copy type"$), $cfg(Omega, p) ev cfg(Omega_1 [p |-> "ghost"(v)], v)$),
   ir(name: "Move", $acc^R_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = "borrow"_ell w$, $cfg(Omega, p) ev cfg(Omega_1 [p |-> bot], "borrow"_ell w)$),
-  ir(name: "Read-err", $acc^R_p (Omega) = Omega_1$, $cont_(Omega_1)(p) "undefined or" bot$, $cfg(Omega, p) ev err$),
-  ir(name: "Borrow", pv($acc^R_p (Omega) = Omega_1 quad ell "fresh"$, $cont_(Omega_1)(p) = v in.not {bot, "borrow"_m w}$), $cfg(Omega, \&p) ev cfg(Omega_1 [p |-> "loan"_ell], "borrow"_ell v)$),
-  ir(name: "Borrow-err", $acc^R_p (Omega) = Omega_1$, $cont_(Omega_1)(p) "undefined," bot "or a borrow"$, $cfg(Omega, \&p) ev err$),
+  ir(name: "Read-err", $acc^R_p (Omega) = Omega_1$, $cont_(Omega_1)(p) "undefined, not whole, or" bot$, $cfg(Omega, p) ev err$),
+  ir(name: "Borrow", pv($acc^R_p (Omega) = Omega_1 quad ell "fresh"$, $cont_(Omega_1)(p) = v in.not {bot, "borrow"_m w}, thick v "whole"$), $cfg(Omega, \&p) ev cfg(Omega_1 [p |-> "loan"_ell], "borrow"_ell v)$),
+  ir(name: "Borrow-err", $acc^R_p (Omega) = Omega_1$, $cont_(Omega_1)(p) "undefined," bot ", a borrow, or not whole"$, $cfg(Omega, \&p) ev err$),
+  ir(name: "Clone", $acc^R_p (Omega) = Omega_1$, $cont_(Omega_1)(p) = v$, $cfg(Omega, kw("clone")(p)) ev cfg(Omega_1, v^circle)$),
   ir(name: "Assign", pv($cfg(Omega, t) ev cfg(Omega_1, v) quad acc^R_p (Omega_1 dot v) = Omega_2 dot v'$, $cont_(Omega_2)(p) = w quad "drop"(Omega_2, w) = Omega_3$), $cfg(Omega, p := t) ev cfg(Omega_3 [p |-> v'], ())$),
 )
-In [Assign] the new value travels as a temporary while `p` is accessed, so that ending a borrow can substitute into it; $"drop"(Omega_2, w)$ ends the old content if it is a borrow, and fails if it still holds a live loan. #lean("readPlace", "borrowPlace", "assignPlace")
+Inside an erased term every read is [Copy] and sees through ghosts: $v^circle$ replaces each $"ghost"(w)$ in `v` by `w`, and [Clone] is such a read. [End ℓ] requires the content `w` to be whole, and so do a returned borrow and a borrow argument of a call that closes off: moving data out through a borrow is allowed only if the place is filled again before the borrow ends, as with `mem::replace` in Rust. In [Assign] the new value travels as a temporary while `p` is accessed, so that ending a borrow can substitute into it; $"drop"(Omega_2, w)$ ends the old content if it is a borrow, and fails if it still holds a live loan. #lean("readPlace", "borrowPlace", "assignPlace")
 
 === Sequencing and data
 
@@ -173,7 +175,7 @@ A constructor evaluates its fields left to right, each into a temporary ([Args],
 
 === Functions, types and proofs
 
-A closure or Π-type captures, when it is formed, the current contents of its free variables $y_1, dots, y_m$ (in the order of Ω), each accessed as a read: $Omega_0 = Omega$, $Omega_i = acc^R_(y_i)(Omega_(i-1))$, $kappa_i = cont_(Omega_i)(y_i)$, each recorded with the declared type and proof flag of $y_i$'s binding (note 27). A captured value may be neither ⊥ nor a borrow (closures capture no borrows); otherwise the rule fails. The other type formers compute type values; `Eq` uses the smart constructor of @app-conv.
+A closure or Π-type captures, when it is formed, the current contents of its free variables $y_1, dots, y_m$ (in the order of Ω), each accessed as a read: $Omega_0 = Omega$, $Omega_i = acc^R_(y_i)(Omega_(i-1))$, $kappa_i = cont_(Omega_i)(y_i)$, each recorded with the declared type and proof flag of $y_i$'s binding (note 27). A captured value may be neither ⊥ nor a borrow (closures capture no borrows); otherwise the rule fails. At runtime, capturing a variable whose type is not a copy type moves it, as [Read] does; in an erased term it copies. A closure's body may not move a captured value out, since the closure may run again (Rust's `Fn`): a runtime read of a captured value that is not a copy is an error, and `clone` copies it. A call reads its head in place and does not consume it. The other type formers compute type values; `Eq` uses the smart constructor of @app-conv.
 
 #rules(
   ir(name: "Global", $f in Sigma$, $cfg(Omega, f) ev cfg(Omega, f)$),
@@ -535,7 +537,7 @@ Notes 1–11 explain the side conditions of @fig-why that are finest-grained in 
   ```
   `Π(X : Type₀)(a : X). X` lives in `Type₁`, but through the borrow it would live in `Type₀`, which becomes impredicative: with the impredicative `Prop : Type₀` below it, the rules contain Girard's System U⁻, in which Hurkens' paradox is a closed term, and no set model exists. And if a codomain could compute to a borrow type, as in `F(n : Nat, x : &Nat) : (match n { Z => &Nat, S _ => Nat })`, [Close] would read the data row at the generic call, where the match is stuck, while `F(0, &a)` returns a live borrow at the instance; `G(n, a) := let r = F(n, &a); let r2 = r; let r3 = r; a` is accepted at the generic call and reads a moved borrow at `n = 0`. Because data is read from the evaluated head of `A`, a type variable is rejected too: `SwapT(A : Type₀, x : &A, y : &A)` is not well formed, since `A` could be `Type₀` itself.
 + *Proofs are not run.* A proof call's arguments are evaluated and its [Call-type] and [Rec] checked, on a private copy; its body is never run ([T-Call-proof]), and the machine skips proofs altogether ([Erase-proof]). Running and skipping agree, since erased terms run on a private copy.
-+ *The order of [Access].* Loans are ended from the root of the place outward, then left to right inside its content. The resolution should not depend on the order (property 7 of @fig-claims, proved for two endings).
++ *The order of [Access].* Loans are ended from the root of the place outward, then left to right inside its content. The resolution does not depend on the order (property 7 of @fig-claims, mechanised for the first-order fragment).
 + *A match on a constructor checks only the arm taken*, in typing as in the machine ([T-Match]).
 + *[Close]’s row is chosen by the declared codomain* (`&T`, or anything else), as @lem-stable (4) requires. An earlier version had a third row, returning `()` for a codomain written `Unit`; a codomain that computed to `Unit` without being written so then got the data row, and a statement such as `Id Unit (let c = *x; G(&c, Z)) ()`, where `G`'s codomain `UU(n)` has `UU(Z) = Unit`, needed induction on `*x`. With η for `Unit` the row is unnecessary, and that statement holds by `refl`.
 + *A discarded value* (`t; u`) holding a live loan is an error, like a dying owned binding.
