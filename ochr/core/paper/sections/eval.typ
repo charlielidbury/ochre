@@ -54,7 +54,6 @@ When the body of a call is stuck, the call itself is stuck. A pure type theory w
       table.hline(stroke: 0.5pt),
       [result type], [result], [each $"loan"_(ell_i)$ becomes],
       table.hline(stroke: 0.4pt),
-      [`Unit`], [`()`], [$seal("L; C; " c_i)$],
       [borrow-free $D$], [$seal("L; C")$], [$seal("L; C; " c_i)$],
       [$\&T$], [$"borrow"_k seal("L; let r = C; *r")$], [$seal("L; let r = C; *r := " "loan"_k "; " c_i)$],
       table.hline(stroke: 0.5pt),
@@ -63,7 +62,7 @@ When the body of a call is stuck, the call itself is stuck. A pure type theory w
   caption: [[Close]. The partial run of the body is discarded; the borrows `borrow_ℓᵢ` are consumed; `k` is fresh.],
 ) <fig-close>
 
-@fig-close gives the rule. Take the call at the point where its arguments have been evaluated. For each borrow argument `borrow_ℓᵢ uᵢ`, the canonical program `L; C` recreates the situation the call was in, but with the borrowed contents owned by fresh local places `cᵢ`: it moves each `uᵢ` into `cᵢ` and calls `f` on `&cᵢ`. This program is closed. Running it and reading `cᵢ` afterwards computes exactly what the call would have left behind the borrow, so each loan is filled with the sealed program #seal(`L; C; cᵢ`). The call returns the sealed program #seal(`L; C`), or `()` if its result type is `Unit`.
+@fig-close gives the rule. Take the call at the point where its arguments have been evaluated. For each borrow argument `borrow_ℓᵢ uᵢ`, the canonical program `L; C` recreates the situation the call was in, but with the borrowed contents owned by fresh local places `cᵢ`: it moves each `uᵢ` into `cᵢ` and calls `f` on `&cᵢ`. This program is closed. Running it and reading `cᵢ` afterwards computes exactly what the call would have left behind the borrow, so each loan is filled with the sealed program #seal(`L; C; cᵢ`). The call returns the sealed program #seal(`L; C`), even when its result type is `Unit`, since `Eq` identifies any two values of `Unit` (@sec-obs).
 
 Sealed programs compute what Aeneas's backward functions compute, in the source language. For `AddM(borrow₀ σ, y)`, the loan receives #seal(`let c = σ; AddM(&c, y); c`), which is the body of `Add(σ, y)`, where Aeneas's translation would emit `add_m_back σ y`. This correspondence is proved for the first-order fragment of @sec-meta-mech (property 5), and it is narrower than Aeneas. A sealed program belongs to one call, not to a region of the callee's signature, so a borrow-returning call's hole goes into every borrowed argument (@sec-intro-scope). It is computed by unfolding the callee, where Aeneas reads the signature. And it has no counterpart for loops or for borrows stored in data. Nothing about the call is lost: when `σ` is later refined, the sealed program runs again.
 
