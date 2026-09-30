@@ -1126,3 +1126,17 @@ After §37, fuzz-port's acceptance run on 10a7861a fell from 1,608 execution fin
 *Unchanged:* the suite's other verdicts, with D53 off by default and with it on everywhere. With D53 off the log costs nothing measurable: interleaved runs against 10a7861a give Quicksort 288 ms against 286 ms.
 
 1019 verdicts.
+
+## 40. The last residue at 10⁶ (P, Q, K)
+
+fuzz-port ran 10⁶ cases on 0b8a68f0 with D53 on. Ten cases remained, down from 950 on 10a7861a, with no value disagreements. They fall into three shapes (`Scratch/D53Residual2.lean` on ochr-fuzz-d53acc2).
+
+- **P (7 cases): a borrow whose content is already partly moved out, passed to a call that closes off or to an erased call.** [Close] seals the borrowed content, which hides the hole. An erased call's writes vanish at runtime. So neither kind of call can make the content whole before the borrow ends.
+  - [Close]'s precondition now includes it: a borrowed argument's content must be whole.
+  - A call of class ≠ 0 checks the same (`wholeBorrowArgs`), at runtime depth only.
+  - A call that runs may still refill the borrow (`TakeRefill`: `let v = *x; Refill(x, v)` is accepted).
+  - Regressions: `P1` (a stuck `G1`) and `P2` (an erased `F5` in an arm).
+- **Q (2 cases): a closure in an arm moves `q0` whole, to capture `q0`'s field `q0.1`.** Closures capture variables. The block had captured `q0.1` alone, so the move of `q0.2` was lost. A place that some arm moved out whole and that is a strict prefix of captures now replaces those captures, and is moved in. Regression: `Q1`.
+- **K (1 case): the same field written two ways.** One arm moves `a4.2`; another inspects `a4`, whose pattern fields are `fst`/`snd`. The split of `a4` into its fields did not recognise `.2` as `snd`. Places are now compared up to `stepEq` (`placePrefix`, `placeEq`): a pair's `.1`/`.2` are its constructor's fields. A Nat's `.1` is never a pair's field, so the two readings cannot meet. Regression: `K1`.
+
+1028 verdicts. With D53 on everywhere the tour still has no failures, and check times are unchanged (Quicksort 280 ms).
