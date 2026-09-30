@@ -220,3 +220,54 @@ ochr R9Bad4 uses Std, Fixtures {
 #guard (run "R9Bad4" R9Bad4).allAsExpected
 #guard (run "R9Bad4" R9Bad4 { d53 := false }).allAsExpected
 #guard (run "R9Bad4" R9Bad4).count == 5
+
+/-! ## D65 ([Drop] ends the borrows of a dying place; DECISIONS 37500b5b) is not implemented
+yet; these verdicts are today's, where the drop errs. Under D65 as written (a scratch
+implementation: a dying owned value ends every borrower of its live loans, repeating as
+[Access] does), `Blk`, `G` and `UseG` are accepted and each `Run…0` goes wrong: a stuck
+block's arm evaluates to an ended borrow (⊥ at `&Nat`), [Split] discards arm values, and
+[Close]'s `&T` row gives the closed-off block a fresh live borrow. The ground run takes the
+arm directly and gets ⊥. [Def]'s result check does not see it (`G`'s generic result is the
+block's live borrow). `RetLocal` is accepted under D65 unless [Def] checks its result, and
+the suite has no such witness: its dangling returns have no borrow parameter, so D44 rejects
+them first. The variant that ends only borrowers held in bindings, and errs when the
+borrower is a value in flight, rejects all four and still runs `Bad2`–`Bad5` and
+`DropVariants` (reviewer-9.md, finding 16). -/
+ochr R9D65 uses Std, Fixtures {
+  -- under D65: accepted; `RunBlk0` fails ("no such place *r: its path does not exist in ⊥")
+  reject def Blk (n : Nat) (b : Nat) : Unit := (
+    let r : &Nat = match n {
+      Z => (
+        let q = 0;
+        &q
+      ),
+      S _ => &b,
+    };
+    *r := 5
+  )
+  -- under D65: accepted, though at n = 0 it returns an ended borrow
+  reject def G (n : Nat) (b : &Nat) : &Nat := (
+    let r : &Nat = match n {
+      Z => (
+        let q = 0;
+        &q
+      ),
+      S _ => &*b,
+    };
+    r
+  )
+  -- under D65 (with `G` accepted): accepted at the generic call, where `G` closes off to a
+  -- live borrow; `UseG(0, 1)` reads an ended borrow
+  reject def UseG (n : Nat) (c : Nat) : Unit := (
+    let r = G(n, &c);
+    *r := 7
+  )
+  -- under D65 without a result check in [Def]: accepted
+  reject def RetLocal (x : &Nat) : &Nat := (
+    let a = 0;
+    &a
+  )
+}
+#eval IO.println (run "R9D65" R9D65).show
+#guard (run "R9D65" R9D65).allAsExpected
+#guard (run "R9D65" R9D65).count == 4
