@@ -272,6 +272,7 @@ inductive Note where
   | goal (G : Value)                                               -- the goal a tail term is checked against
   | expected (A : Value)                                           -- the type an argument is checked against
   | rule (name : String)                                           -- a rule applied here (`Rules.fire`)
+  | hole (G : Value) (Ω : List (String × Option Value × Value))    -- a hole's goal, and Ω there
 
 /-- An entry of the log: a trace line (`Config.trace`), or a note for the editor, at a source
 range, with the [Split] refinements of the path it was made on. -/

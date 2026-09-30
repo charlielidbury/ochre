@@ -1370,3 +1370,13 @@ The fuzzer inspects the shape of library terms, so it reads blocks through `SDec
 - An argument notes the type its parameter expects, shown when it differs from the type the argument has.
 - A `reject def` rejected at a located term shows why there too ("… is rejected here, as expected: …").
 - The rules the checker applied at a term, in the paper's names: `Rules.fire` (rule-audit's) also notes its rule at the innermost located term being evaluated (`Locs.here`, maintained by `located`), and the hover lists them per path ("rules [Call] [Close]"; an extension shows as "(checker) Name"). So far only dep-fields' rules fire (`[Ind-decl]`, `[Open]`, `[Repack]`, `[Eq-inj]`, `[Eq-stuck]`; rule-audit's tags for the rest are in progress), and every rule shows as soon as it fires: in `18DependentFields.Refill`, hovering `x := O` shows "rules [Open] [Repack]" (the write that makes the value whole again).
+
+**Holes (phase 4).** `?` (or `sorry`) is a hole: resolved to `prim "hole"`, it evaluates, where the context says what type it must have (tail position: the goal; a call's argument: the parameter's type; an annotation), to a value of that type, a fresh abstract value or `⋆` for a proposition, so the rest of the declaration checks around it. Its class is its context's (`declOf` reads it as `.any`, and it is a proof iff its type is a proposition). The editor reports it as a warning with Lean's goal view: the borrow parameters' cells and the frame's bindings, each with its type and value, then `⊢` the goal, on each path that reaches it:
+```
+hole
+where σ0 = 0:
+x° : Nat ↦ loan_0
+x : &Nat ↦ borrow_0 0
+⊢ ⊤
+```
+(the `Z` arm of `AddMZero` with its `refl` replaced by `?`). A hole whose type the context does not fix is an error saying so; a run that reaches a hole (a call of a function with one) is stuck, so the call closes off. A declaration with a hole is accepted, as Lean accepts a `sorry` with a warning.

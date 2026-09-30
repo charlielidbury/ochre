@@ -68,6 +68,9 @@ syntax:max "⟨" ochr_term ", " ochr_term "⟩" : ochr_term
 syntax:max "⊤" : ochr_term
 syntax:max "Prop" : ochr_term
 syntax:max "Type" : ochr_term
+-- a hole (docs/07): a value of the type the context requires; the editor shows that goal
+syntax:max "?" : ochr_term
+syntax:max "sorry" : ochr_term
 syntax:max (name := ochrCall) ochr_term:max noWs "(" ochr_term,* ")" : ochr_term
 syntax:max (name := ochrProj) ochr_term:max noWs "." noWs num : ochr_term
 syntax:max (name := ochrCtorP0) ident noWs "[" ochr_term,* "]" : ochr_term
@@ -202,6 +205,8 @@ partial def elabTermCore (stx : TSyntax `ochr_term) : MacroM (TSyntax `term) := 
   | `(ochr_term| ⊤) => `(STerm.top)
   | `(ochr_term| Prop) => `(STerm.sort 0)
   | `(ochr_term| Type) => `(STerm.sort 1)
+  | `(ochr_term| ?) => `(STerm.ident "?")
+  | `(ochr_term| sorry) => `(STerm.ident "?")
   | `(ochr_term| *$t) => do `(STerm.deref $(← elabTerm t))
   | `(ochr_term| &$t) => do `(STerm.amp $(← elabTerm t))
   | `(ochr_term| $f:ident $args*) => do
@@ -372,6 +377,14 @@ def _root_.Ochr.Note.show : Note → String
   | .goal G => s!"goal `{G}`"
   | .expected A => s!"expected `{A}`"
   | .rule r => r
+  | .hole G _ => s!"a hole: goal `{G}`"
+
+/-- A hole's goal view, as Lean shows a `sorry`'s: Ω's bindings, then the goal. -/
+def holeView (G : Value) (Ω : List (String × Option Value × Value)) : String :=
+  let bs := Ω.map fun (x, T, v) => match T with
+    | some T => s!"{x} : {T} ↦ {v}"
+    | none => s!"{x} ↦ {v}"
+  "\n".intercalate (bs ++ [s!"⊢ {G}"])
 
 /-- What a hover over a located term shows: each distinct thing its checks noted (its value
 and type, the goal a proof or a split was checked against, the type expected of it as an
@@ -452,6 +465,14 @@ def checkBlock (n : Name) (ref : Syntax) (decls : Array Syntax) (kw : Syntax := 
   for ((a, z), ns) in notes do
     let head := heads.getD (a, z) ""
     addHoverLazy (locStx ⟨a, z⟩) fun _ => head ++ notesText ns
+    -- a hole (phase 4) is a warning showing its goal and Ω, on each path that reaches it
+    let holes := ns.filterMap fun (refs, n) => match n with
+      | .hole G Ω => some (refs, holeView G Ω)
+      | _ => none
+    unless holes.isEmpty do
+      let views := (holes.map fun (refs, v) =>
+        if refs.isEmpty then v else s!"where {pathLabel refs}:\n{v}").toList.eraseDups
+      logWarningAt (locStx ⟨a, z⟩) m!"hole\n{"\n\n".intercalate views}"
   for ((a, z), head) in heads do
     unless notes.contains (a, z) do addHover (locStx ⟨a, z⟩) head
   addHover kw s!"ochr block {b.name}: {r.passed}/{r.count} declarations as expected ({ms} ms)"

@@ -1117,6 +1117,7 @@ partial def declOf (chk : Bool) (sc : List DeclInfo) (ns : List String) (t : Ter
     match ← declOf chk sc ns P with
     | .pi (.sort 0) => pure .prop
     | _ => pure .other
+  | .prim "hole" _ => pure .any     -- a hole's type is its context's (docs/07)
   | .prim "trans" as | .prim "symm" as | .prim "rewrite" as | .prim "rewriteR" as =>
     for a in as do sub a
     pure .prop   -- D60: `rewrite h in u` is `J`, a proof
@@ -1672,6 +1673,7 @@ partial def evalAt (typed : Bool) (t : Term) (hint : Option Value := none) : M (
         let (_, p) ← getFlags
         pure (p, p)
       | .cong _ _ | .prim "trans" _ | .prim "symm" _ => pure (true, true)
+      | .prim "hole" _ => getFlags     -- set by `evalCore`: a proof iff its type is a proposition
       | .prim "rewrite" _ | .prim "rewriteR" _ => pure (true, true)   -- D60: `J`, a proof
       | .ctor ty _ _ _ _ => let p ← ctorIsProof ty; pure (p, p)   -- D42: a Prop inductive's value is a proof
       | .prim "J" [_, _, _, P, _, _] =>
@@ -2021,6 +2023,17 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     expectTy "the rewritten term" Tu G'
     pure (.proof, some G)
   | .prim "split" _ | .prim "splitArms" _ => err "split: only in tail position (where the goal is known)"
+  | .prim "hole" _ =>
+    -- a hole (`?`, docs/07): a value of the type the context requires (a fresh abstract value,
+    -- `⋆` for a proposition), so the rest checks around it; the editor shows its goal and Ω.
+    -- A run that reaches it is stuck
+    if !typed then stuckNow
+    let some G := hint
+      | err "?: the type expected here is not known (write the hole in tail position, as a call's argument, or under an annotation)"
+    noteHole t G
+    let p ← isPropV G
+    setFlags (p, p)
+    pure (← if p then pure Value.proof else absOf G, some G)
   -- D53: `clone(p)` copies `p` (an erased read); `peek` is an observation's final read
   | .prim "clone" [u] =>
     -- K2: cloning a view at runtime copies it
@@ -2151,7 +2164,7 @@ partial def evalCall (typed : Bool) (f : Term) (as : List Term) (head : Bool)
   for a in as do
     let s := (← get).effects.size
     -- v2.0: a constructor argument's parameters may come from the parameter's type
-    let hint ← if typed && (a matches .ctor .. | .val _ | .prim "rewrite" _ | .prim "rewriteR" _) then argHint fv fT ws0 else pure none
+    let hint ← if typed && (a matches .ctor .. | .val _ | .prim "rewrite" _ | .prim "rewriteR" _ | .prim "hole" _) then argHint fv fT ws0 else pure none
     let (w, T) ← eval typed a hint
     if a matches .borrow _ | .place _ then argSteps := argSteps.push (s, (← get).effects.size)
     pushTemp w
