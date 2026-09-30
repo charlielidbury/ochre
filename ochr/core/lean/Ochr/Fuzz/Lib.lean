@@ -142,10 +142,10 @@ ochr FuzzLib {
   def U (n : Nat) : Type₁ := match n { Z => Prop, S _ => Prop }
   def V (n : Nat) : U(n) := match n { Z => ⊤, S _ => ⊤ }
   def W (x : &Nat) (n : Nat) : U(n) := *x := S Z; V(n)
-  -- `reject def`: rejected by the checker since D53 (MkF, Clo, CapN: a closure moves out a
-  -- capture) and D55 (WV, FV, GV, TT: `V(Z)` is a type only by computation); the harness
-  -- leaves them out either way (`prepare`)
-  reject def MkF (n : Nat) : (Π(x : &Nat). U(n)) := λ(x : &Nat) : U(n) => (*x := S Z; V(n))
+  -- MkF, Clo, CapN: closures that copy their captures with `clone` (D53: a closure body may
+  -- not move a capture out). `reject def` below: rejected since D55 (WV, FV, GV, TT: `V(Z)` is
+  -- a type only by computation); the harness leaves them out (`prepare`)
+  def MkF (n : Nat) : (Π(x : &Nat). U(n)) := λ(x : &Nat) : U(n) => (*x := S Z; V(clone(n)))
   def Le (a : Nat) (b : Nat) : Prop by a := match a { Z => ⊤, S a' => match b { Z => False, S b' => Le(a', b') } }
   def Lemma (u : Unit) : ⊤ := refl
   def F5 (x : &Nat) : Prop := *x := 5; ⊤
@@ -158,8 +158,8 @@ ochr FuzzLib {
   def OrProof (h : Or(⊤, ⊤)) : ⊤ := match h { Inl(p) => p, Inr(q) => q }
   def ExProof (h : ExN) : ⊤ := match h { Wit(n, e) => match n { Z => refl, S m => e } }
   def EffL (x : &Nat) (h : Or(⊤, ⊤)) : ⊤ := match h { Inl(p) => (*x := 1; refl), Inr(q) => (*x := 2; refl) }
-  reject def Clo (n : Nat) (y : Nat) : Nat := let f = (λ(z : Nat) : Nat => Add(n, z)); f(y)
-  reject def CapN (x : &Nat) : Nat := let n = *x; let f = (λ(z : Nat) : Nat => n); AddM(&*x, 1); f(0)
+  def Clo (n : Nat) (y : Nat) : Nat := let f = (λ(z : Nat) : Nat => Add(clone(n), z)); f(y)
+  def CapN (x : &Nat) : Nat := let n = clone(*x); let f = (λ(z : Nat) : Nat => clone(n)); AddM(&*x, 1); f(0)
   def PropIf (n : Nat) : Prop := match n { Z => ⊤, S _ => False }
   def P0 : Type₁ := Prop
   def H (x : &Nat) : P0 := (*x := S Z; ⊤)
