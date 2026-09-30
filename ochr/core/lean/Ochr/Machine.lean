@@ -2797,6 +2797,19 @@ partial def observe (typed : Bool) (t : Term) (A : Value) (W : List Pos) : M (Va
   let ws ← W.mapM getAt
   pure (v, ws)
 
+/-- [Obs] is stated with the typing judgement wherever `Id` is evaluated (D63, rule-audit item
+9). In an untyped run (a callee's body, a sealed program's re-run) the side runs in the
+machine, which computes the same value as typing whenever it is not stuck; if it is stuck, it
+is observed again with the typing judgement, so its stuck match is split and closed off as a
+block, as when the same `Id` is formed directly. (Typing from the start would need the type of
+every value in an untyped frame, which `⋆` and `⊥` do not have.) Off (`typedObs`): a stuck
+side makes the `Id` stuck. -/
+partial def observeTyping (typed : Bool) (t : Term) (A : Value) (W : List Pos) : M (Value × List Value) := do
+  if typed || !(← get).cfg.typedObs then return ← observe typed t A W
+  tryCatch (observe false t A W) fun e => match e with
+    | .stuck fu _ => do modify (fun s => { s with fuel := fu }); observe true t A W
+    | .error m => throw (.error m)
+
 /-- `Id A t u ≡ And(Eq A r r', And(Eq T₁ w₁ w'₁, …))` over the result and the owners in
 `W = W(t, u)` (just `Eq A r r'` when `W` is empty), both sides from the same Ω on
 independent copies (v2.1, D52: directly, not through a pair, so `A` may be any borrow-free
@@ -2806,8 +2819,8 @@ partial def idType (typed : Bool) (A t u : Term) : M Value := do
   if A'.typeHasRef then err s!"Id at {A'}: A must be borrow-free (RULES §4)"
   let st ← get
   let W := footprint st.env [t, u] st.cfg.multiOwner
-  let (a, as) ← observe typed t A' W
-  let (b, bs) ← observe typed u A' W
+  let (a, as) ← observeTyping typed t A' W
+  let (b, bs) ← observeTyping typed u A' W
   -- an owner's type: its binding's, else its content's. An untyped owner that is lent out
   -- now (a sealed program's re-run binding a cell that a returned borrow still holds: R1's
   -- residual) is typed by what the observation read from it, once every borrow had ended

@@ -124,7 +124,8 @@ def switches : List (String × Config) :=
    ("K2: outside model code, a place of an unsized type is only borrowed at runtime", { unsizedTypes := false }),
    ("[Access] with several possible owners: release the accessed one only; the borrow becomes a ghost", { ghostBorrows := false }),
    ("D63: a match whose arms disagree about being proofs has no declared type", { armsAgree := false }),
-   ("D63 (switched ON): a closure in a stuck block captures through the block's borrow parameter (fuzz-port R2 (ii))", { blockRefCapture := true })]
+   ("D63 (switched ON): a closure in a stuck block captures through the block's borrow parameter (fuzz-port R2 (ii))", { blockRefCapture := true }),
+   ("D63: [Id] observes with the typing judgement in untyped runs too", { typedObs := false })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -195,13 +196,14 @@ def rowClass : List (String × List String) :=
    ("policy", ["Abstraction.Take"]),
    ("soundness", ["GhostBorrows.Bad2", "GhostBorrows.Bad3"]),
    ("policy", ["ErasureBySyntax.MixPos"]),
-   ("policy", ["ClosingOff.LamReadInWrittenBlock"])]
+   ("policy", ["ClosingOff.LamReadInWrittenBlock"]),
+   ("completeness", [])]
 
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1119
+def Ochr.Registry.expectedTotal : Nat := 1121
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

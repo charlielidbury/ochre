@@ -360,6 +360,11 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { blockRefCapture := true }
   ["ClosingOff.LamReadInWrittenBlock:accepted"]
+-- D63 switched off (rule-audit item 9): an `Id` evaluated by the machine observes its sides
+-- untyped, so a side's stuck match makes the whole `Id` stuck instead of being closed off
+open Ochr.Registry in
+#guard rowOk { typedObs := false }
+  ["Equality.Conv1:rejected"]
 
 -- every row of `switches` has a class
 open Ochr.Registry in
