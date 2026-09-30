@@ -212,27 +212,27 @@ Each package fills in its own table: for each property, the file and declaration
 
 | Id | File | Declaration | Notes |
 |---|---|---|---|
-| Representation, `idx` | | | |
-| new, len, get, insert, remove, get_mut | | | |
-| Inv | | | |
-| H1 | | | |
-| H2 | | | |
-| H3 | | | |
-| H4 | | | |
-| H5 | | | |
-| H6 | | | |
-| H7 | | | |
-| H8 | | | |
-| H9 | | | |
-| H10 | | | |
-| H11 | | | |
-| H12 | | | |
-| H13 | | | |
-| H14 | | | |
-| H15 | | | |
-| H16 | | | |
-| H17 | | | |
-| H18 | | | |
+| Representation, `idx` | `verus/src/hashmap.rs` | `List`, `HashMap`, `bucket_index` (region `types`) | `List ::= Cons(u64, u64, Box<List>) \| Nil`; `HashMap { slots: Vec<List>, len: u64 }`, capacity = `slots.len()`. `bucket_index(key, cap)` requires `cap > 0` and ensures `i == key % cap` (proved in the skeleton). |
+| new, len, get, insert, remove, get_mut | `verus/src/hashmap.rs` | `HashMap::new`, `len`, `get`, `insert`, `remove`, `get_mut` (regions of the same names) | `new(cap: usize)`, since a `Vec`'s length is a `usize`. `get` and `len` take `&self`. Every operation except `new` requires `inv()`: Verus proves that nothing panics, `key % cap` needs `cap > 0`, and only `Inv` supplies it; every property is stated under `Inv` anyway. A Verus specification cannot call an executable function, so the FIXED contracts of `get` and `len` say they return `spec_get(key)` and `spec_len()`, two spec functions whose bodies are holes like `Inv`; every property is stated through them, and so holds of what the executable `get` and `len` return. |
+| Inv | `verus/src/hashmap.rs` | `HashMap::inv` (region `inv`; body a hole) | `pub closed spec fn inv(&self) -> bool`. The holes `spec_get` and `spec_len` (regions `spec_get`, `spec_len`) are the solver's too. |
+| H1 | `verus/src/hashmap.rs` | `new`: `m.inv()` |  |
+| H2 | `verus/src/hashmap.rs` | `insert`: `final(self).inv()` | `insert` requires `old(self).spec_len() < u64::MAX` (the bounded-integer allowance), for all of H2, H5–H7 and H12. |
+| H3 | `verus/src/hashmap.rs` | `remove`: `final(self).inv()` |  |
+| H4 | `verus/src/hashmap.rs` | `new`: `forall\|k: u64\| m.spec_get(k) == None::<u64>` |  |
+| H5 | `verus/src/hashmap.rs` | `insert`: `final(self).spec_get(key) == Some(value)` | `old(self)` is m, `final(self)` is m′, `r` is r. |
+| H6 | `verus/src/hashmap.rs` | `insert`: `forall\|k2: u64\| k2 != key ==> final(self).spec_get(k2) == old(self).spec_get(k2)` |  |
+| H7 | `verus/src/hashmap.rs` | `insert`: `r == old(self).spec_get(key)` |  |
+| H8 | `verus/src/hashmap.rs` | `remove`: `final(self).spec_get(key) == None::<u64>` |  |
+| H9 | `verus/src/hashmap.rs` | `remove`: `forall\|k2: u64\| k2 != key ==> final(self).spec_get(k2) == old(self).spec_get(k2)` |  |
+| H10 | `verus/src/hashmap.rs` | `remove`: `r == old(self).spec_get(key)` |  |
+| H11 | `verus/src/hashmap.rs` | `new`: `m.spec_len() == 0` |  |
+| H12 | `verus/src/hashmap.rs` | `insert`: `final(self).spec_len() == if old(self).spec_get(key) is None { old(self).spec_len() + 1 } else { old(self).spec_len() }` | `spec_len` is a `nat`. |
+| H13 | `verus/src/hashmap.rs` | `remove`: `final(self).spec_len() == if old(self).spec_get(key) is Some { old(self).spec_len() - 1 } else { old(self).spec_len() as int }` | Compared in `int`. |
+| H14 | `verus/src/hashmap.rs` | `get_mut`: `final(self).spec_get(key) == Some(*final(r))` and `forall\|k2: u64\| k2 != key ==> final(self).spec_get(k2) == old(self).spec_get(k2)` | Stated in closed form with Verus's prophecy operator `final`: `*final(r)` is the w the caller leaves behind the borrow r, and `final(self)` is m[k ≔ w] once the borrow ends. The right-hand sides are what H5 and H6 give for insert(m, k, w). |
+| H15 | `verus/src/hashmap.rs` | `get_mut`: `final(self).spec_len() == old(self).spec_len()` | Closed form: len(m₂) = len(m) by H12, since `get_mut` requires `k` present (`old(self).spec_get(key) is Some`). |
+| H16 | `verus/src/hashmap.rs` | `get_mut`: `final(self).inv()` |  |
+| H17 |  |  | omitted: guaranteed by the type system (`get(&self, key)`). |
+| H18 |  |  | omitted: guaranteed by the type system (`len(&self)`). |
 
 ### lean
 

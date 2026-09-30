@@ -100,12 +100,12 @@ Each package fills in its own table: for each item, the file and declaration tha
 
 | Id | File | Declaration | Notes |
 |---|---|---|---|
-| quicksort (signature) | | | |
-| sorted | | | |
-| count, perm | | | |
-| Q1 | | | |
-| Q2 | | | |
-| Partition scheme | | | |
+| quicksort (signature) | `verus/src/quicksort.rs` | `quicksort(a: &mut [u64])` (region `quicksort`) | No fuel: termination is proved with Verus `decreases` clauses, which the solver adds (one may follow the FIXED signature). Loops are allowed; A2 asks for the two recursive calls. |
+| sorted | `verus/src/quicksort.rs` | `sorted(s: Seq<u64>)` (region `defs`) | `forall\|i: int, j: int\| 0 <= i < j < s.len() ==> s[i] <= s[j]`, the SPEC definition verbatim. |
+| count, perm | `verus/src/quicksort.rs` | `perm(a, b)` (region `defs`) | `a.to_multiset() == b.to_multiset()`, with vstd's multisets; no `count` is declared. Equivalent to SPEC's `perm`: `s.to_multiset().count(x)` is SPEC's `count(x, s)`, by induction on `s` with vstd's `to_multiset_ensures` (`s.push(a).to_multiset() =~= s.to_multiset().insert(a)`), and two multisets are equal iff every count agrees (`axiom_multiset_ext_equal`). Machine-checked in `verus/maint/perm_equiv.rs` (`perm_is_spec_perm`, not copied into sandboxes). Chosen over a hand-written `count` because it is how Verus users state permutation and vstd's multiset lemmas apply to it. |
+| Q1 | `verus/src/quicksort.rs` | `quicksort`: `sorted(final(a)@)` | `old(a)@` is a₀, `final(a)@` is a₁. |
+| Q2 | `verus/src/quicksort.rs` | `quicksort`: `perm(final(a)@, old(a)@)` |  |
+| Partition scheme |  |  | The solver's choice of Lomuto or Hoare, named in a comment at the partition function (A1, human-checked). |
 
 ### lean
 
