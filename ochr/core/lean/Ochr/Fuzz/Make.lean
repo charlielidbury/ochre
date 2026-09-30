@@ -181,10 +181,40 @@ def genRule : Gen (String × SDecl) := do
       let so ← pick [STerm.sort 0, .sort 1]
       pure ("sort as an inductive parameter", mk [("b", .call (.ident "Bx") [so])] unitRet .unitLit)) ]
 
+/-- The Drop family (meta-order's `Bad2`, DropProbe): a data function that assigns a borrow
+returned by a stuck call, whose hole sits in several owners' fills, into a variable that
+outlives one of the borrowed places, then accesses another owner. Symbolically the access
+ends the borrow; at a ground instance it may not, and the place goes out of scope while
+borrowed. The execution oracle runs it at ground inputs. -/
+def genDropFn : Gen SDecl := do
+  let xParam ← chance 60
+  let call ← weighted [
+    (3, pure (STerm.call (.ident "Pick") [.ident "n", .amp (.ident "a"), .amp (.ident "b")])),
+    (2, pure (STerm.call (.ident "Pick") [.ident "n", .amp (.ident "b"), .amp (.ident "a")])),
+    (2, pure (STerm.matchGen (.ident "n") [("Z", [], .amp (.ident "a")), ("S", ["_"], .amp (.ident "b"))])),
+    (1, pure (STerm.call (.ident "PickX") [.amp (.ident "a"), .amp (.ident "b")])) ]
+  let accesses : List STerm := [
+    .letIn "z" none (.ident "b") .unitLit, .assign (.ident "b") (.num 2),
+    .letIn "w" none (.amp (.ident "b")) .unitLit, .assign (.deref (.ident "x")) (.num 5),
+    .letIn "v" none (.deref (.ident "x")) .unitLit ]
+  let k ← weighted [(1, pure 0), (3, pure 1), (2, pure 2)]
+  let mut after : List STerm := []
+  for _ in [0:k] do after := after ++ [← pick accesses]
+  let seqAll (ts : List STerm) (last : STerm) : STerm := ts.foldr (fun t acc => .seq t acc) last
+  -- `a` in the function's scope, or in an inner block that ends before `x`'s scope
+  let inner ← chance 40
+  let core := STerm.letIn "a" none (.num 0) (seqAll (STerm.assign (.ident "x") call :: after) .unitLit)
+  let body := if inner then .seq core .unitLit else core
+  let body := if xParam then body
+    else .letIn "c" none (.num 1) (.letIn "x" none (.amp (.ident "c")) body)
+  let ps : List (String × STerm) := [("n", .ident "Nat"), ("b", .ident "Nat")] ++
+    (if xParam then [("x", .amp (.ident "Nat"))] else [])
+  pure { name := "RD", params := ps, ret := .ident "Unit", body := body, expectAccept := true }
+
 /-- The template names the A1 family needs. -/
 def a1Lib : List String := ["B2", "Bx", "TF", "TG", "CmpBx", "CmpB2", "HG", "HF"]
 
-def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) (edep : Nat := 0) (rules : Nat := 0) : Case × Rng := Id.run do
+def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) (edep : Nat := 0) (rules : Nat := 0) (drop : Nat := 0) : Case × Rng := Id.run do
   let phase1 : Gen (List String × List (SDecl × LibFn)) := do
     let lib ← genTemplates
     pure (lib, ← genExtras lib)
@@ -206,6 +236,10 @@ def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) (edep : Nat := 
     let ((ps, A, lhs, rhs, prf), g4) := genA1.run { rng := caseRng seed (i + 2000003) }
     return ({ c0 with lib := closeDeps (lib ++ a1Lib), params := ps, ty := A, lhs := lhs, rhs := rhs,
                       conv := none, extraProofs := prf }, g4.rng)
+  let (w, _) := (caseRng seed (i + 7000003)).next
+  if drop > 0 && w.toNat % 100 < drop then
+    let (rd, g7) := genDropFn.run { rng := caseRng seed (i + 8000009) }
+    return ({ c0 with lib := closeDeps (lib ++ ["Pick", "PickX"]), extra := c0.extra ++ [rd] }, g7.rng)
   let (z, _) := (caseRng seed (i + 5000011)).next
   if rules > 0 && z.toNat % 100 < rules then
     let (rd, g6) := genRule.run { rng := caseRng seed (i + 6000013) }
