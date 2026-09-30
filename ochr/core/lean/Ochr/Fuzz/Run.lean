@@ -183,6 +183,18 @@ partial def renameT (x y : String) : STerm → STerm
   | .splitArms f arms => .splitArms f (arms.map fun (c, vs, b) => (c, vs, renameT x y b))
   | t => t
 
+/-- The names of the functions a term calls (for `split f in …` candidates). -/
+partial def stermCalls : STerm → List String
+  | .call (.ident f) as => f :: as.flatMap stermCalls
+  | .call f as => stermCalls f ++ as.flatMap stermCalls
+  | .app _ as | .ctorP _ _ as => as.flatMap stermCalls
+  | .deref t | .proj _ t | .amp t | .ascribe t _ => stermCalls t
+  | .assign a b | .seq a b | .pair a b | .andI a b | .and a b => stermCalls a ++ stermCalls b
+  | .letIn _ _ t u => stermCalls t ++ stermCalls u
+  | .matchGen sc arms => stermCalls sc ++ arms.flatMap (fun (_, _, b) => stermCalls b)
+  | .fix _ _ _ _ b => stermCalls b
+  | _ => []
+
 /-- Candidate proofs of the statement: `refl`, a one-level split of each parameter, and
 recursion on each Nat / list parameter (structural, and, to catch [Rec]/D31/L1/L3
 regressions, non-decreasing with and without `by`, through a local, or inside a λ). -/
@@ -223,7 +235,20 @@ def proofCands (c : Case) : List (STerm × Option String) := Id.run do
       out := out.push (.matchGen (.ident x) [("Nil", [], .ident "refl"), ("Cons", ["_", "q"], call x (.ident "q"))], some x)
     | .ident "B2" =>
       out := out.push (.matchGen (.ident x) [("F", [], .ident "refl"), ("T", [], .ident "refl")], none)
+    -- the induction hypothesis at the call site through a borrowed list's tail (reviewer-6 W10)
+    | .amp (.ident "L") =>
+      out := out.push (.matchGen (.deref (.ident x)) [("Nil", [], .ident "refl"), ("Cons", ["_", "q"], call x (.amp (.ident "q")))], some x)
+      out := out.push (.matchGen (.deref (.ident x)) [("Nil", [], .ident "refl"), ("Cons", ["_", "q"], .letIn "ih" none (call x (.amp (.ident "q"))) (.ident "refl"))], some x)
+    -- D60: rewrite along a hypothesis
+    | .app "Eq" _ =>
+      out := out.push (.rewrite false (.ident x) (.ident "refl"), none)
+      out := out.push (.rewrite true (.ident x) (.ident "refl"), none)
     | _ => pure ()
+  -- D61: split on a call of each library function the statement uses
+  let lib := c.lib ++ c.extra.map (·.name)
+  for f in ((stermCalls c.lhs ++ stermCalls c.rhs).filter lib.contains).eraseDups do
+    out := out.push (.split f (.ident "refl"), none)
+    out := out.push (.split f (.split f (.ident "refl")), none)
   pure (out.toList ++ c.extraProofs.map (·, none))
 
 /-- The first candidate proof the checker accepts, if any. -/
@@ -245,7 +270,11 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
     | .ok p => pure p
     | .error e => return { status := if e.startsWith "rejected" then "rejected" else s!"invalid: {e}" }
   let (execF, execN) := execOracle o c prep
-  let convF := (convOracle o prep).toList ++ execF
+  -- rules oracle: a declaration a rule forbids must be rejected
+  let ruleF : List Finding := c.ruleDecls.filterMap fun (why, d) =>
+    if prep.rejected.any (·.1 == d.name) then none
+    else some ⟨.rule, d.name, "its declaration", s!"accepted:\n  {ppDecl d}", s!"but it breaks the rule: {why}", why⟩
+  let convF := (convOracle o prep).toList ++ execF ++ ruleF
   let .id A t u := prep.stmt.body | return { status := "invalid: not an Id statement", findings := convF, execAccepted := execN }
   let st0 : MState := { globals := prep.globals, inds := prep.inds, cfg := o.cfg, fuel := o.fuel }
   let (ps, st1) ← match runSt (setupParams prep.stmt) st0 with

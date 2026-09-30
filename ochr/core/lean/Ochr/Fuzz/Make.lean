@@ -137,10 +137,54 @@ def genEDep : Gen (List (String × STerm) × STerm × STerm × STerm × List STe
     let proofs := [.matchGen (.ident "n0") [("Z", [], zProof), ("S", ["_"], .ident "refl")]]
     pure (ps, .sort 0, lhs, rhs, proofs)
 
+/-- The rules family (reviewer-6 W5): a declaration that a rule of the calculus forbids, which
+the checker must reject. [T-Borrow]'s premise, that only places of a data type are
+borrowed, at the term level: a borrow of a proof, of a value of a type variable, of a type
+variable itself, of a function. And closures in data: an inductive parameter instantiated
+at a Π-type or a sort (`Bx(Π(n : Nat). Nat)`, `Bx(Prop)`). Returns (rule, declaration). -/
+def genRule : Gen (String × SDecl) := do
+  let unitRet : STerm := .ident "Unit"
+  let nat : STerm := .ident "Nat"
+  let piNat : STerm := .pi [("n", nat)] nat
+  let piRef : STerm := .pi [("y", .amp nat)] (.amp nat)
+  let mk (ps : List (String × STerm)) (ret body : STerm) : SDecl :=
+    { name := "RuleX", params := ps, ret := ret, body := body, expectAccept := false }
+  let borrowThen (x : String) (after : STerm) : STerm := .letIn "r" none (.amp (.ident x)) after
+  weighted [
+    -- a borrow of a proof
+    (3, do
+      let P ← pick [STerm.top, .and .top .top, .app "Eq" [nat, .num 0, .num 0]]
+      let after ← pick [STerm.unitLit, .seq (.deref (.ident "r")) .unitLit]
+      pure ("borrow of a proof", mk [("h", P)] unitRet (borrowThen "h" after))),
+    -- a borrow of a value of a type variable
+    (2, do
+      let after ← pick [STerm.unitLit, .assign (.deref (.ident "r")) (.ident "x")]
+      pure ("borrow of a type variable's value", mk [("A", .sort 1), ("x", .ident "A")] unitRet (borrowThen "x" after))),
+    -- a borrow of a type variable, written through
+    (2, do
+      let after ← pick [STerm.unitLit, .assign (.deref (.ident "r")) nat]
+      pure ("borrow of a type", mk [("A", .sort 1)] unitRet (borrowThen "A" after))),
+    -- a borrow of a function
+    (2, do
+      let after ← pick [STerm.unitLit, .assign (.deref (.ident "r")) (.ident "f")]
+      pure ("borrow of a function", mk [("f", piNat)] unitRet (borrowThen "f" after))),
+    -- a closure in data: an inductive parameter at a Π-type
+    (3, do
+      let (T, body, ret) ← pick [
+        (piNat, STerm.ctorP "MkBx" [piNat] [.ident "f"], STerm.call (.ident "Bx") [piNat]),
+        (piNat, STerm.unitLit, unitRet),
+        (piRef, STerm.unitLit, unitRet)]
+      let ps := if body matches .unitLit then [("b", STerm.call (.ident "Bx") [T])] else [("f", T)]
+      pure ("Π-type as an inductive parameter", mk ps ret body)),
+    -- an inductive parameter at a sort
+    (1, do
+      let so ← pick [STerm.sort 0, .sort 1]
+      pure ("sort as an inductive parameter", mk [("b", .call (.ident "Bx") [so])] unitRet .unitLit)) ]
+
 /-- The template names the A1 family needs. -/
 def a1Lib : List String := ["B2", "Bx", "TF", "TG", "CmpBx", "CmpB2", "HG", "HF"]
 
-def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) (edep : Nat := 0) : Case × Rng := Id.run do
+def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) (edep : Nat := 0) (rules : Nat := 0) : Case × Rng := Id.run do
   let phase1 : Gen (List String × List (SDecl × LibFn)) := do
     let lib ← genTemplates
     pure (lib, ← genExtras lib)
@@ -162,6 +206,10 @@ def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) (edep : Nat := 
     let ((ps, A, lhs, rhs, prf), g4) := genA1.run { rng := caseRng seed (i + 2000003) }
     return ({ c0 with lib := closeDeps (lib ++ a1Lib), params := ps, ty := A, lhs := lhs, rhs := rhs,
                       conv := none, extraProofs := prf }, g4.rng)
+  let (z, _) := (caseRng seed (i + 5000011)).next
+  if rules > 0 && z.toNat % 100 < rules then
+    let (rd, g6) := genRule.run { rng := caseRng seed (i + 6000013) }
+    return ({ c0 with lib := closeDeps (lib ++ ["Bx"]), ruleDecls := [rd] }, g6.rng)
   let (y, _) := (caseRng seed (i + 3000017)).next
   if edep > 0 && y.toNat % 100 < edep then
     let ((ps, A, lhs, rhs, prf), g5) := genEDep.run { rng := caseRng seed (i + 4000037) }
