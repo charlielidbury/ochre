@@ -128,6 +128,7 @@ ochr FuzzLib {
   inductive ExN : Prop := Wit(n : Nat, e : ⊤)
   def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y, S p => AddM(&p, y) }
   def Add (x : Nat) (y : Nat) : Nat := AddM(&x, y); x
+  def AddMZeroL (x : &Nat) : Id Unit (AddM(x, 0)) () by x := match *x { Z => refl, S p => AddMZeroL(&p) }
   def TailM (x : &Nat) : &Nat by x := match *x { Z => x, S p => TailM(&p) }
   def Pick (n : Nat) (x : &Nat) (y : &Nat) : &Nat := match n { Z => x, S _ => y }
   def PickX (x : &Nat) (y : &Nat) : &Nat := x
@@ -181,6 +182,9 @@ ochr FuzzLib {
   def TG (n : Nat) : Type := match n { Z => Nat, S _ => B2 }
   def CmpBx (b : Bx(B2)) : Prop := (let c = b; Id Unit (c := MkBx[B2](T)) (c := MkBx[B2](F)))
   def CmpB2 (b : B2) : Prop := (let c = b; Id Unit (c := T) (c := F))
+  -- instances of the families' dependent function parameters (`h : Π(n : Nat). TG(n)`)
+  def HG (n : Nat) : TG(n) := match n { Z => 0, S _ => F }
+  def HF (n : Nat) : TF(n) := match n { Z => MkBx[Unit](()), S _ => MkBx[B2](T) }
 }
 
 /-- The codomain types written differently from what they evaluate to (D54, D55). -/

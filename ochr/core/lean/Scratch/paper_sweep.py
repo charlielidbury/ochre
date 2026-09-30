@@ -67,7 +67,7 @@ def emit(name, uses, items, rename={}):
         print(f'  -- {loc}')
         print('  '+('reject ' if n in REJECT else '')+t)
     print('}')
-    if name!='SweepQS': print(f'#eval IO.println (run "{name}" {name}).show')
+    print(f'#eval IO.println (run "{name}" {name}).show')
 S2=[d for d in defs('intro.typ')+defs('overview.typ')]
 seen=set(); S2u=[]
 for d in S2:
@@ -89,8 +89,6 @@ print('}\n#eval IO.println (run "SweepTrees" SweepTrees).show')
 emit('SweepClear','Std',[d for d in S2u if d[0]=='Clear'])
 emit('SweepHM','Std, HashMap, HashMapLookup',defs('impl.typ')[:1],{'InsertFindOther':'InsertFindOtherP'})
 emit('SweepQS','Quicksort',defs('impl.typ')[1:],{'QSCorrect':'QSCorrectP'})
-print('-- the arrays library is checked without D53 (`Test.preD53`), so its user is too')
-print('#eval IO.println (run "SweepQS" SweepQS { d53 := false }).show')
 A=defs('appendix.typ')
 emit('SweepApp1','',[d for d in A if d[0] not in {'Or','IsL','Irr','Boom'}])
 emit('SweepApp2','Std',[d for d in A if d[0] in {'Or','IsL','Irr','Boom'}])

@@ -49,6 +49,7 @@ lake exe fuzz … --list                                             # also prin
 - Case `i` of seed `S` is a pure function of `(S, i)`.
 - `--switch X` names a ledger row: `D17`…`D59`, `P1`/`P2`/`P3`, `L1`–`L3`, `C5`, `C8`, `G1`, `capTypes`, `scrutTyped`, `confineBodies`, `D50on`, and D53's three: `moves`, `ghosts`, `fnRule`. D53 is on by default in ochr-core since the flip (728756a1); `--switch +D53`, which turned it on for the default and the `--diff` base alike while it was off, is kept for old command lines. D53's rows are `--switch moves`, `--switch ghosts` and `--switch fnRule`. The D35 rows were deleted with the erasure pre-pass.
 - `--diff` keeps only the findings a case shows with the switches on and not with the default rules. With `--list` it also prints `@FLIP i base>switched` when the switch changes the statement's verdict, and `@XFLIP i m>n` when it changes how many of the statement's two sides the checker accepts as data functions (the execution oracle's `ExecL`/`ExecR`). A row such as `moves` changes acceptance without changing any value, and this is how it is measured.
+- `--edep N` draws N percent of the cases from the E family with a dependent codomain. `--rules N` gives N percent of the cases one declaration that a rule forbids, `--drop N` gives them one Drop-family data function, and `--audit N` gives them one of rule-audit's witness shapes (§v2.2). Like `--a1`, each draws on its own stream, and the default is 0.
 - `--a1 N` draws N percent of the cases from reviewer-6's A1 family instead (§v2.2). Each case chooses on its own random stream, so every other case is the same as without the flag. The default is 0, so the headline numbers are unchanged.
 - `--runtime-refine` refines the generic observation at runtime depth instead of erased. It is a diagnostic for the RN class (§v2.6). The checker refines statements erased, so most of what it reports are artefacts.
 - `--jobs J` runs crash-isolated worker processes.
@@ -76,7 +77,8 @@ lake exe fuzz … --list                                             # also prin
 - **`adequacy`**: the typed run and the untyped machine differ at a ground instance.
 - **`frame`**: plugging a borrowed cell into a larger owner changes the observation other than as the frame lemma says.
 - **`conv`**: two functions the checker finds convertible observe differently on ground inputs.
-- **`exec`** (new, D53; always on, in every campaign): a data function the checker accepts is run at every ground input at runtime depth, where reads move. It must not err, and it must observe what its erased run observes. This covers the random library functions, and the statement's two sides declared as data functions `ExecL`/`ExecR` over its parameters, when the checker accepts them. A `⊤` hypothesis gets `⋆`. A function with any other hypothesis or a function parameter is not run, and neither is one that returns a proof or a type. The other oracles observe statements as types, which are erased, so without this oracle D53's runtime moves were reached only through `conv` (2 cases in 10⁶).
+- **`rule`** (with `--rules N`): a declaration that a rule of the calculus forbids must be rejected. A finding prints it as a `reject def`, ready to be used as a regression test.
+- **`exec`** (new, D53; always on, in every campaign; since the hunt it also runs functions with function-typed parameters, on the library functions of each parameter's type, and it reports a run that errs even when the erased run errs too): a data function the checker accepts is run at every ground input at runtime depth, where reads move. It must not err, and it must observe what its erased run observes. This covers the random library functions, and the statement's two sides declared as data functions `ExecL`/`ExecR` over its parameters, when the checker accepts them. A `⊤` hypothesis gets `⋆`. A function with any other hypothesis or a function parameter is not run, and neither is one that returns a proof or a type. The other oracles observe statements as types, which are erased, so without this oracle D53's runtime moves were reached only through `conv` (2 cases in 10⁶).
 
 A finding at a refinement where some proof parameter's type is `False` is marked `vacuous`.
 
@@ -87,6 +89,36 @@ A finding at a refinement where some proof parameter's type is `False` is marked
 - proof parameters (`⊤`, `⊤ ∧ ⊤`, `False`, `Or`, `ExN`, and hypotheses about data parameters);
 - matches on proofs by their type (D45), zero-arm matches, and proof constructors;
 - about 45 templates, plus 0–2 random, sometimes recursive, functions.
+
+**The E family with a dependent codomain (`--edep N`, reviewer-6 W10).** It tests whether E can change a value. A stuck block returns a closure whose codomain mentions a value refined in the arm: `match q0 { Mk(p1, p2) => λ(u : Unit) : TF(p1) => h(clone(p1)) }`, or, over `n0 : Nat`, `Fam(n0)`, annotated or not. A later match's arms split or observe the closure's result. The family has A1-style proof candidates, and a data variant that matches the result of `h : Π(n : Nat). Fam(n)` with one family type's patterns. The templates `HG`/`HF` provide instances of `h`.
+
+**The Drop family (`--drop N`, meta-order's `Bad2`, `Scratch/DropProbe.lean`).** It adds a data function RD, run by the execution oracle, which does three things in turn:
+- It assigns a borrow into a variable `x` that outlives one of the borrowed places (`x` is a borrow parameter, or a local borrow declared before `a`). The borrow comes from a stuck call or block whose hole sits in two owners' fills: `Pick(n, &a, &b)`, `Pick(n, &b, &a)`, or `match n { Z => &a, S _ => &b }`; `PickX` is the not-stuck control.
+- It then makes zero to two accesses: a read, write or borrow of `b`, or a write or read through `x`.
+- `a` lives in the function's scope or in an inner block.
+
+In 40% of the family's cases the function takes reviewer-9's Bad4 shape instead (`Scratch/Reviewer9Probe.lean`). It assigns a borrow into a single owner, `x := TailM(&a)`, which points at the owner itself or deep inside it. The owner is a parameter, or a local copy `let b = a`. It then matches on the owner, one or two levels deep, or reads or writes it.
+
+**The audit family (`--audit N`, rule-audit's witnesses, `notes/rule-audit.md`).** These are declarations where the checker and the printed rules disagree, with random constants and forms. The rules oracle requires rejection of:
+- `NatT`, a `Nat` match on a value whose stored type is not `Nat`, as data or as a proof by splitting ([Split]'s stored-type premise);
+- `EqConf`, an assignment to an outer place inside a side of `Eq` ([T-Erase], [Erase-err]);
+- `JT`, `J` with non-convertible endpoints running its body, through a helper `JF` ([J-stuck]);
+- `MixPos`, a type annotation whose arms disagree on being proofs ([Type-pos]);
+- `BlockRef`, a closure in a stuck block's arm capturing a written place ([Fix]).
+
+It also requires `EtaP`/`EtaCtl` to be decided alike: a read of one field of a pair after a block that moved the other, and the same read without the block. The read field is never the moved one. Both are rejected by the printed rules and both are accepted under D62.
+
+**The rules family (`--rules N`, reviewer-6 W5).** It generates declarations that break two rules:
+- [T-Borrow]'s data premise, at the term level: a borrow of a proof, of a value of a type variable, of a type variable, or of a function, each with or without a write through it.
+- No closures in data: an inductive parameter instantiated at a Π-type or a sort (`Bx(Π(n : Nat). Nat)`, `Bx(Π(y : &Nat). &Nat)`, `Bx(Prop)`).
+
+**More proof candidates for the truth oracle (reviewer-6 W10):**
+- the induction hypothesis at the call site through a borrowed list's tail (`Cons(_, q) => Lie(&q)`);
+- `rewrite h in refl` and `rewrite ← h in refl` along each `Eq` hypothesis (D60);
+- `split f in refl` and `split f in split f in refl` for each library function the statement calls (D61);
+- the paper's central mechanism, the in-place lemma `AddMZeroL (x : &Nat) : Id Unit (AddM(x, 0)) ()` (itself proved through the reborrow `&p`) applied at the call site: to a parameter, to its predecessor field (`match n { Z => refl, S p => AddMZeroL(&p) }`, AddZero's shape), or to a pair's field (`match q { Mk(a, b) => AddMZeroL(&a) }`). The lemma is checked only inside the truth oracle. When it was added to the case's library, it became an instance of function parameters of convertible type, which shifted the refinements drawn and changed other verdicts.
+
+On the ordinary generator none of these candidates finds anything: seeds 1–2 and 4–7, 10⁵ cases each, give the same findings as before.
 
 **The A1 family (`--a1 N`, reviewer-6 W10).** It has two parameters: `n0 : Nat`, and an abstract function `g1 : Π(u : Unit). Fam(n0)` (or over `&Nat`) whose codomain depends on `n0`. Two families are used:
 - `TF`: `Bx(Unit)` / `Bx(B2)`, one constructor at two parameters, as A1's `Box`.
@@ -141,6 +173,26 @@ The cold reviewers' attack shapes are included:
    def FuzzBoom : False := (let h = FuzzLie(1, λ(u : Unit) : TF(1) => MkBx[B2](T)); J(Prop, ⊤, False, λ(P : Prop) : Prop => P, symm h, refl))
    ```
    Both are accepted (`Scratch/A1Leak.lean`, which also has reviewer-6's A1). Switching off `unitEta` (D59), `globalRecords` (D37) or `genConsistent` (G1) removes the `truth` findings, as reviewer-6 reports for A1. The family's first version compared `BU`/`BB`, two different constructors. There the leak showed only as a stuck `Eq BU MkBB(T) MkBB(F)`, not a false proof: A1 needs one constructor at two parameters, so that injectivity reaches the `Unit` field and η makes it true.
+8. **E against A1, tested (`--edep 100`, 5,000 cases, ochr-core 1f07e619): fail-safe in the shapes generated.** There are no `false`, `truth`, `nat` or `verdict` findings, only E escapes. The stale capture turns the result's type into a stuck `⌈TF(σ3)⌉` whose σ3 is linked to nothing, so a use at a concrete type is a type error, a false rejection. This is evidence from a family, not a proof.
+9. **A match on a scrutinee of stuck type (found by the E family; type safety).** A match whose scrutinee's type is a stuck family application takes its constructors from the patterns: `def M2 (n : Nat) (h : Π(n : Nat). TG(n)) : Nat := (let x = h(n); match x { Z => 0, S _ => 1 })` is accepted, and `M2(1, HB)` fails with "[Match] on a non-Nat value F" (`Scratch/StuckScrutType.lean`). There were 575 `exec` findings in 5,000 cases. The scrutTyped rule reads the constructors off a computed type that evaluates, but not off one that is stuck. The proof form is rejected, so no `False` came of it.
+10. **Reviewer-6's A12 and W5.2 re-found by the rules family (`--rules 100`, 2,000 cases, 1f07e619).** Every kind is accepted today:
+    - a borrow of a proof (225)
+    - a borrow of a type variable's value (144)
+    - a borrow of a type, written through (305)
+    - a borrow of a function (137)
+    - a Π-type as an inductive parameter (467)
+    - a sort as an inductive parameter (72)
+
+    A combined hunt (seed 3, 10⁵ cases, `--a1 5 --edep 5 --rules 5`) found nothing outside these classes and A1: 603 `truth` (all A1), 486 `exec` (item 9), the rule kinds, and 189 E. There were no `nat`, `false` or `verdict` findings and no crashes.
+11. **DropProbe's `Bad2` class, at scale (the Drop family, ochr-core 20a764c3).** With `--drop 100` (seed 1, 10⁵ cases) there are 36,091 `exec` findings "[Drop] a goes out of scope while it is borrowed", 36% of the family's cases; with `--drop 5` (seed 2) there are 1,768. Every variant hits:
+    - `x` a parameter or a local
+    - both `Pick` orders, and the stuck block alone, with no call
+    - a read, a write or a borrow of the other owner
+
+    Symbolically, accessing one owner ends the returned borrow; at a ground instance it may not, and the place goes out of scope while borrowed. `Scratch/DropVariants.lean` has four variants.
+
+    With reviewer-9's Bad4 shape added (single owner, `x := TailM(&a); match a { … }`), `--drop 100` on seed 1 gives 42,782 `exec` findings. Among the shrunk examples, 17 have the TailM shape and 19 the Pick shape. There are also 5 `verdict` findings, the same failure reached through a statement: the family's function is the instance of a function parameter (`h0 := RD`). The fix is D65: [Drop] ends a dying place's loans instead of erring. Its acceptance check is `--drop 100` with zero `exec` and zero `verdict` findings. Any other finding kind there would be a new class, a borrow ended symbolically but used on the ground. The fix is being written by the checker lane: an uncertain [End] releases only the accessed owner, and the borrower becomes a ghost borrow. Its acceptance check is `--drop 100` with zero `exec` findings.
+12. **Rule-audit's witnesses, at scale (the audit family, ochr-core 54a4cff2).** With `--audit 100` (seed 1, 10⁵ cases), every generated witness of each reject kind is accepted: `NatT` 17,457, `EqConf` 17,308, `JT` 17,394, `MixPos` 8,747 and `BlockRef` 17,490. The `EtaP`/`EtaCtl` pair is decided differently in 8,908 cases, all those whose block moves a field. These divergences are deterministic, and each fix's acceptance check is zero findings of its kind under `--audit 100`.
 6. **The cold reviewers' attacks**, re-found by the extended generator with their switch off (seeds 1 and 3, 2·10⁴ cases each):
 
 | attack | switch | found? | as | first shrunk example |
@@ -265,7 +317,7 @@ Each class has a true statement that the checker rejected, in `lean/Scratch/` (`
 - **R5: arm types formed under different refinements** (1 case in 10⁶, 658cc108). Two arms' Π-types capture a place holding a sealed program that the arms' refinements made different, so D48(3)'s comparison finds `U(⌈…0…⌉) ≠ U(⌈…S σ⌉)` although both are `Prop`.
 - **R6 (fixed by 1678d2a2: owners in a canonical order, writes first, by first occurrence): `Id`'s conjunction order is not stable under closing off.** `Id` lists the observed owners in the order of Ω, and a closed-off block orders them by its captures. `And` is not commutative by conversion, so a true statement proved by splitting is rejected (`R6Order.Direct`). With pairs, `Eq` at `Nat × Nat` splits by injectivity, so this shows even at ground instances (`False ∧ (False ∧ False)` against `(False ∧ False) ∧ False`). Fix: order the footprint canonically (by first occurrence in the statement, or by parameter position), not by Ω.
 - **R7 (fixed by ff6b634a): `symm` in an unreachable branch.** `symm h` (and `trans`) needs `h`'s type to be an equation or `True`. In a branch whose refinement makes the hypothesis `False`, the branch is unreachable, but `symm h` is a type error (`R7Symm.Split`), while the plain `J` along `h` is accepted there.
-- **E: an arm-local abstract value in a block's inferred type (argued not unsound; under re-triage against reviewer-6's A1, which leaks arm-local type information by a related route).** A block's result type is read off the first arm, under that arm's refinement. When it is a Π-type that captured the scrutinee, arm-local values (`Mk(σ3, σ4)`) sit in its `where κ` captures (`EV.ClassE`, `ClassE4`). Untyped runs never read a block function's codomain. A stale type mentions only fresh σs that nothing else shares, so it can make a conversion fail, never succeed wrongly. It needs the block to take the place by `&` (some arm writes it) for its sealed program to reach an observation. On 84470253 it arrived with R2 (ii); since R2 is fixed it stands alone (65 cases in 10⁶ on ff6b634a, `EV.ClassE4`).
+- **E: an arm-local abstract value in a block's inferred type (tested against reviewer-6's A1 with the `--edep` family: fail-safe in the shapes generated, §v2.3 item 8).** A block's result type is read off the first arm, under that arm's refinement. When it is a Π-type that captured the scrutinee, arm-local values (`Mk(σ3, σ4)`) sit in its `where κ` captures (`EV.ClassE`, `ClassE4`). Untyped runs never read a block function's codomain. A stale type mentions only fresh σs that nothing else shares, so it can make a conversion fail, never succeed wrongly. It needs the block to take the place by `&` (some arm writes it) for its sealed program to reach an observation. On 84470253 it arrived with R2 (ii); since R2 is fixed it stands alone (65 cases in 10⁶ on ff6b634a, `EV.ClassE4`).
 - **R8 (new on ff6b634a, fixed by the pre-pass fixes merged in 9fb58523): the pre-pass misreads a closed-off block's proof parameter.** When a stuck block captures a proof-function parameter, the block function declares that parameter in the captured form `(Π(z0 : &Nat). ⊤ : Prop)`. The pre-pass does not read that ascription as a proof, so it classifies a call through it as data while the machine (correctly) erases it, and the pre-pass's own assertion fires: "INTERNAL [pre-pass] …: erased/proof = (false, false) by its declared type, (true, true) after running". `R8PrePass.OnNat` is a true statement rejected by it: `(n : Nat) (h2 : Π(z0 : &Nat). ⊤) : Id Nat (match n { Z => 0, S p => h2(&p); 0 }) 0`, proved by splitting `n`. Variants: a captured λ returning a proof; and a proof `h : ExN` whose data field an arm writes, which makes the block capture the proof by borrow (`h3 : &ExN`, a borrow of a proposition) and the two readings disagree the other way. Fail-safe; 2,235 cases in 10⁶.
 - **RN (D53): a data function's split re-runs a type's sealed program as code.** A proof's split refines its goal erased. A data function's split refines the stored types of its parameters at runtime depth, so a sealed program inside a hypothesis's type is re-run with reads that move. `D53Renorm3.DataSplit` is rejected with "n was moved out": `(n : Nat) (h : Id (Nat × Nat) (match n { Z => (n, n), S p => (p, p) }) (match n { Z => (0, 0), S p => (p, p) })) : Nat := match n { Z => 0, S _ => 1 }`. The same statement as a proof (`PrfSplit`) is accepted. Fail-safe. The fuzzer cannot measure its rate. Its statements are types, and `--runtime-refine` (refining them at runtime depth) reports about 15% of cases, which is mostly the artefact of re-running observations that the checker would refine erased.
 - **V (gone with D58): `⋆` against `()` under `h : False`.** A zero-arm match yielded `⋆` at any type, so a `Unit`-typed term was `⋆` on the direct path and `()` from a block's row. With D58 the match is stuck outside proof positions. `--switch D58` brings the vacuous findings back.
@@ -280,7 +332,11 @@ Each class has a true statement that the checker rejected, in `lean/Scratch/` (`
 - Borrows of non-data types (D48(1)/(2)).
 - Abstract functions returning borrows without borrow parameters (D44).
 - Recursive local functions.
-- Recursive proofs whose induction hypothesis is typed at the call site, `rewrite`/`split` forms, and user inductives with type parameters instantiated at Π-types, `Prop` or types (reviewer-6, W10). A1's shape, an abstract function parameter whose Π-type depends on an earlier parameter and is refined in several arms, is generated only by the A1 family (`--a1 N`), and only over `n0 : Nat` with the `TF`/`TG` families.
+- Reviewer-6's W10 gaps are now covered in part:
+  - Recursive proofs with the induction hypothesis at the call site are tried as truth-oracle candidates, through `&Nat` and a borrowed list's tail but not through reborrowed pair fields, since there are no recursive statements over pairs.
+  - `rewrite` and `split` appear only as proof candidates.
+  - Inductive parameters at Π-types and sorts, and borrows of non-data, appear only in the rules family, which checks rejection.
+  - A1's shape, an abstract function parameter whose Π-type depends on an earlier parameter and is refined in several arms, appears only in the A1 and E families, over `n0 : Nat` or a pair, with the `TF`/`TG` families.
 - Arrays (D57).
 - Runtime code, for D53, only through the execution oracle. That oracle never runs a function with a hypothesis other than `⊤` or with a function parameter, so the `J` casts, which all sit under an `Eq` hypothesis, are never run at runtime depth (M3 (i) was found by hand).
 

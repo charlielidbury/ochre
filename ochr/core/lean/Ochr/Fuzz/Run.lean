@@ -129,7 +129,9 @@ def execOracle (o : Opts) (c : Case) (prep : Prepared) : List Finding × Nat := 
         let mut out := #[]
         for (d, h) in ds.zip hs do
           let A ← evalType d
+          -- a function parameter's inputs are the library functions of its type
           let vs ← if ← isPropV A then pure (if unitTop A == vTrue then [Value.proof] else [])
+            else if A matches .tPi .. then pure ((← fnInstances A).take 3)
             else pure ((groundVals prep.inds (match A with | .tRef T => T | A => A) 1).take 3)
           out := out.push vs
           pushBind h (some A) (.abs 0)
@@ -149,7 +151,9 @@ def execOracle (o : Opts) (c : Case) (prep : Prepared) : List Finding × Nat := 
           fs := push fs .exec g.name lbl s!"runtime run observes {x.pp}" s!"erased run observes {y.pp}"
       | .ok x, .error e => if !isResource e then
           fs := push fs .exec g.name lbl s!"runtime run observes {x.pp}" s!"erased run errors: {e}" s!"erased {errKey e}"
-      | _, _ => pure ()
+      -- an accepted function that goes wrong on a well-typed input, however it is run
+      | .error e, .error e2 => if !isResource e && !isResource e2 then
+          fs := push fs .exec g.name lbl s!"runtime run errors: {e}" s!"erased run errors: {e2}" s!"both {errKey e}"
   pure (fs.toList, acc)
 
 /-- Rename the variable `x` to `y` in a generated term (generated binders never reuse a
@@ -178,6 +182,18 @@ partial def renameT (x y : String) : STerm → STerm
   | .split f t => .split f (renameT x y t)
   | .splitArms f arms => .splitArms f (arms.map fun (c, vs, b) => (c, vs, renameT x y b))
   | t => t
+
+/-- The names of the functions a term calls (for `split f in …` candidates). -/
+partial def stermCalls : STerm → List String
+  | .call (.ident f) as => f :: as.flatMap stermCalls
+  | .call f as => stermCalls f ++ as.flatMap stermCalls
+  | .app _ as | .ctorP _ _ as => as.flatMap stermCalls
+  | .deref t | .proj _ t | .amp t | .ascribe t _ => stermCalls t
+  | .assign a b | .seq a b | .pair a b | .andI a b | .and a b => stermCalls a ++ stermCalls b
+  | .letIn _ _ t u => stermCalls t ++ stermCalls u
+  | .matchGen sc arms => stermCalls sc ++ arms.flatMap (fun (_, _, b) => stermCalls b)
+  | .fix _ _ _ _ b => stermCalls b
+  | _ => []
 
 /-- Candidate proofs of the statement: `refl`, a one-level split of each parameter, and
 recursion on each Nat / list parameter (structural, and, to catch [Rec]/D31/L1/L3
@@ -219,17 +235,58 @@ def proofCands (c : Case) : List (STerm × Option String) := Id.run do
       out := out.push (.matchGen (.ident x) [("Nil", [], .ident "refl"), ("Cons", ["_", "q"], call x (.ident "q"))], some x)
     | .ident "B2" =>
       out := out.push (.matchGen (.ident x) [("F", [], .ident "refl"), ("T", [], .ident "refl")], none)
+    -- the induction hypothesis at the call site through a borrowed list's tail (reviewer-6 W10)
+    | .amp (.ident "L") =>
+      out := out.push (.matchGen (.deref (.ident x)) [("Nil", [], .ident "refl"), ("Cons", ["_", "q"], call x (.amp (.ident "q")))], some x)
+      out := out.push (.matchGen (.deref (.ident x)) [("Nil", [], .ident "refl"), ("Cons", ["_", "q"], .letIn "ih" none (call x (.amp (.ident "q"))) (.ident "refl"))], some x)
+    -- D60: rewrite along a hypothesis
+    | .app "Eq" _ =>
+      out := out.push (.rewrite false (.ident x) (.ident "refl"), none)
+      out := out.push (.rewrite true (.ident x) (.ident "refl"), none)
     | _ => pure ()
+  -- the paper's central mechanism: the in-place lemma applied at the call site, to a
+  -- parameter, to its predecessor field, or to a pair's field (a reborrowed field)
+  if c.lib.contains "AddM" then
+    let lem (p : STerm) : STerm := .call (.ident "AddMZeroL") [p]
+    for (x, T) in c.params do
+      match T with
+      | .ident "Nat" =>
+        out := out.push (lem (.amp (.ident x)), none)
+        out := out.push (.matchGen (.ident x) [("Z", [], .ident "refl"), ("S", ["p"], lem (.amp (.ident "p")))], none)
+      | .amp (.ident "Nat") =>
+        out := out.push (lem (.ident x), none)
+        out := out.push (.matchGen (.deref (.ident x)) [("Z", [], .ident "refl"), ("S", ["p"], lem (.amp (.ident "p")))], none)
+      | .prod _ _ =>
+        out := out.push (.matchGen (.ident x) [("Mk", ["a", "b"], lem (.amp (.ident "a")))], none)
+        out := out.push (.matchGen (.ident x) [("Mk", ["a", "b"], lem (.amp (.ident "b")))], none)
+      | .amp (.prod _ _) =>
+        out := out.push (.matchGen (.deref (.ident x)) [("Mk", ["a", "b"], lem (.amp (.ident "a")))], none)
+        out := out.push (.matchGen (.deref (.ident x)) [("Mk", ["a", "b"], lem (.amp (.ident "b")))], none)
+      | _ => pure ()
+  -- D61: split on a call of each library function the statement uses
+  let lib := c.lib ++ c.extra.map (·.name)
+  for f in ((stermCalls c.lhs ++ stermCalls c.rhs).filter lib.contains).eraseDups do
+    out := out.push (.split f (.ident "refl"), none)
+    out := out.push (.split f (.split f (.ident "refl")), none)
   pure (out.toList ++ c.extraProofs.map (·, none))
 
 /-- The first candidate proof the checker accepts, if any. -/
 def acceptedProof (o : Opts) (c : Case) (prep : Prepared) : Option String := Id.run do
+  -- the in-place lemma for the call-site candidates, checked here only, so that the case's
+  -- own checks (and their shared fuel) are the ones they were without it
+  let lemma : List SDecl := if c.lib.contains "AddM" then (libDecl "AddMZeroL").toList else []
+  let mut globals := prep.globals
+  let mut inds := prep.inds
+  for d in lemma do
+    if let .ok it := resolveProgram (c.decls ++ lemma) d then
+      if let .ok ((), st') := runSt (checkItem it) { globals := globals, inds := inds, cfg := o.cfg, fuel := o.fuel } then
+        globals := st'.globals; inds := st'.inds
   for (body, dec) in proofCands c do
     let d : SDecl := { name := "Lie", params := c.params, ret := .app "Id" [c.ty, c.lhs, c.rhs],
                        body := body, dec := dec, expectAccept := true }
-    match resolveProgram (c.decls ++ [d]) d with
+    match resolveProgram (c.decls ++ lemma ++ [d]) d with
     | .ok it =>
-      match runSt (checkItem it) { globals := prep.globals, inds := prep.inds, cfg := o.cfg, fuel := o.fuel } with
+      match runSt (checkItem it) { globals := globals, inds := inds, cfg := o.cfg, fuel := o.fuel } with
       | .ok _ => return some (ppDecl d)
       | .error _ => pure ()
     | .error _ => pure ()
@@ -241,7 +298,17 @@ def checkCase (o : Opts) (c : Case) (r : Rng) : CaseResult := Id.run do
     | .ok p => pure p
     | .error e => return { status := if e.startsWith "rejected" then "rejected" else s!"invalid: {e}" }
   let (execF, execN) := execOracle o c prep
-  let convF := (convOracle o prep).toList ++ execF
+  -- rules oracle: a declaration a rule forbids must be rejected
+  let ruleF : List Finding := c.ruleDecls.filterMap fun (why, d) =>
+    if prep.rejected.any (·.1 == d.name) then none
+    else some ⟨.rule, d.name, "its declaration", s!"accepted:\n  {ppDecl d}", s!"but it breaks the rule: {why}", why⟩
+  let agreeF : List Finding := c.agreeDecls.filterMap fun (why, a, b) =>
+    let ra := prep.rejected.any (·.1 == a.name)
+    let rb := prep.rejected.any (·.1 == b.name)
+    if ra == rb then none
+    else some ⟨.rule, a.name, "the pair", s!"{a.name} {if ra then "rejected" else "accepted"}:\n  {ppDecl a}",
+      s!"{b.name} {if rb then "rejected" else "accepted"}:\n  {ppDecl b}", s!"decided differently: {why}"⟩
+  let convF := (convOracle o prep).toList ++ execF ++ ruleF ++ agreeF
   let .id A t u := prep.stmt.body | return { status := "invalid: not an Id statement", findings := convF, execAccepted := execN }
   let st0 : MState := { globals := prep.globals, inds := prep.inds, cfg := o.cfg, fuel := o.fuel }
   let (ps, st1) ← match runSt (setupParams prep.stmt) st0 with

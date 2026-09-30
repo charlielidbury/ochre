@@ -23,15 +23,15 @@ namespace Ochr.Fuzz
 open Ochr
 
 inductive Kind where
-  | nat | falseProof | verdict | renorm | escape | adequacy | frame | conv | truth | irrel | exec
+  | nat | falseProof | verdict | renorm | escape | adequacy | frame | conv | truth | irrel | exec | rule
 deriving BEq, Inhabited, Repr
 
 def Kind.name : Kind → String
   | .nat => "nat" | .falseProof => "false" | .verdict => "verdict" | .renorm => "renorm"
   | .escape => "escape" | .adequacy => "adequacy" | .frame => "frame" | .conv => "conv" | .truth => "truth"
-  | .irrel => "irrel" | .exec => "exec"
+  | .irrel => "irrel" | .exec => "exec" | .rule => "rule"
 
-def Kind.all : List Kind := [.nat, .falseProof, .verdict, .renorm, .escape, .adequacy, .frame, .conv, .truth, .irrel, .exec]
+def Kind.all : List Kind := [.nat, .falseProof, .verdict, .renorm, .escape, .adequacy, .frame, .conv, .truth, .irrel, .exec, .rule]
 
 structure Finding where
   kind : Kind
