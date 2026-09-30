@@ -1554,16 +1554,6 @@ partial def typeClass (T : Value) : M Nat := do
 partial def jErased (P : Term) : M Bool := do
   pure ((← withLive true (declOf false [] [] P)) matches .pi (.sort 0))
 
-/-- D56: the value of `J(A, a, b, P, h, t)` once `t` has run to `v`: `v` when the endpoints
-are convertible (Lean's rule for `Eq.rec`), otherwise the stuck cast, a sealed program
-that embeds `v` (so `t`'s effects happen once, as in a closed run, where `a ≡ b`) and
-re-normalises to `v` when a refinement makes the endpoints convertible. Never a value of
-`P(a)` at the type `P(b)`. -/
-partial def jValue (A a b P v : Value) : M Value := do
-  if ← conv a b then return v
-  let hT ← mkEqM A a b
-  canonNeutral (.sealed (.prim "J" [.val A, .val a, .val b, .val P, .ascribe (.val .proof) (.val hT), .val v]))
-
 /-- Is this the value of an erased term: a proof (`⋆`) or a type? Types are values of
 terms whose type is a sort (P2 erases them too): the type formers, sorts, a sealed
 program whose sort is known, and an abstract value whose type is a sort. -/
@@ -1709,29 +1699,47 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     -- J(A, a, b, P, h, t) : P(b) for h : Eq A a b and t : P(a) (endpoints explicit, D23)
     if !typed then
       if (← get).cfg.jStuck && !(← jErased P) then
-        -- its endpoints and motive are type positions: erased, whatever path runs them (D53)
-        let A' ← onCopy (withErased (evalType A))
-        let (av, _) ← onCopy (withErased (eval false a))
-        let (bv, _) ← onCopy (withErased (eval false b))
-        let (Pv, _) ← onCopy (withErased (eval false P))
-        let (v, _) ← eval false u
-        return (← jValue A' av bv Pv v, none)
+        -- its endpoints are erased positions, on private copies, confined; `A`, `P` and `h`
+        -- are never run by the machine (A.191)
+        let (av, _) ← confinedCopy "J's endpoint" (eval false a)
+        let (bv, _) ← confinedCopy "J's endpoint" (eval false b)
+        -- [J]: the endpoints are convertible, `J` is `t`; [J-stuck]: otherwise the run is
+        -- stuck, and `t` does not run (D56, D63, rule-audit item 5)
+        if ← conv av bv then return ← eval false u
+        stuckNow
       return (← eval false u)
     let A' ← evalType A
     let (av, Ta) ← confinedCopy "J's endpoint" (eval true a)
     let (bv, Tb) ← confinedCopy "J's endpoint" (eval true b)
     expectTy "J's first endpoint" Ta A'
     expectTy "J's second endpoint" Tb A'
-    let (Pv, PT) ← withErased (eval true P)
+    let (Pv, PT) ← confinedCopy "J's motive" (eval true P)
     let (_, Th) ← eval true h
-    expectTy "J's equation" Th (← mkEqM A' av bv)
+    let hT ← mkEqM A' av bv
+    expectTy "J's equation" Th hT
+    let (Pa, _) ← callFn true Pv PT #[av] #[some A'] false
+    let (Pb, _) ← callFn true Pv PT #[bv] #[some A'] false
+    if (← get).cfg.jStuck && !(← jErased P) && !(← conv av bv) then
+      -- [T-J-stuck]: the machine would be stuck, so typing checks `t` against `P(a)` on a
+      -- private copy and closes the `J` off as a stuck block of type `P(b)`, as [Split] closes
+      -- off a stuck match; its sealed programs run `t` once a refinement makes the endpoints
+      -- convertible (D63, rule-audit item 5)
+      let saved ← get
+      let f0 := (← get).env.size - 1
+      let n0 := (← get).env[f0]!.binds.size
+      let ls := (← get).placeLog.size
+      let (_, Tu) ← eval true u (some Pa)
+      expectTy "the transported term" Tu Pa
+      let moved ← armMoves ((← get).placeLog.extract ls (← get).placeLog.size) f0 n0
+      restoreKeep saved
+      -- the endpoints, motive and equation are erased positions, formed once here: the block
+      -- embeds their values and captures only `t`'s places
+      let tJ := Term.prim "J" [.val A', .val av, .val bv, .val Pv, .ascribe (.val .proof) (.val hT), u]
+      return ← closeOffMatch tJ Pb moved false
     let (v, Tu) ← eval true u
     let fl ← getFlags
-    let (Pa, _) ← callFn true Pv PT #[av] #[some A'] false
     expectTy "the transported term" Tu Pa
-    let (Pb, _) ← callFn true Pv PT #[bv] #[some A'] false
     setFlags fl    -- t's flags (J is t)
-    let v ← if (← get).cfg.jStuck && !(← jErased P) then jValue A' av bv Pv v else pure v
     pure (v, some Pb)
   | .prim "symm" [h] =>
     let (_, Th) ← eval typed h

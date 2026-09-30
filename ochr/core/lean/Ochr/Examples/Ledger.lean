@@ -36,12 +36,13 @@ open Ochr.Registry in
    "Erasure.BoomP2Pair:accepted", "Erasure.BoomP2:accepted"]
 open Ochr.Registry in
 #guard rowOk { eraseOnCopy := false, confine := false }
-  ["Functions.RunGGen:rejected", "Functions.RunIGen:rejected", "Functions.RunPowGen:rejected",
-   "CurrentState.TwoPhase:rejected", "Erasure.LemmaMoves:rejected", "Erasure.TypeErased:rejected",
-   "Erasure.EffArg:accepted", "Erasure.Write:accepted", "Erasure.Borrow:accepted", "Erasure.Move:accepted",
-   "Erasure.BoomP2Pair:accepted", "Erasure.BoomP2:accepted", "Erasure.N1T:accepted",
-   "Erasure.N1Closed:accepted", "Erasure.Q:accepted", "Erasure.QBoom:accepted",
-   "ErasureBySyntax.LieP:accepted", "ErasureBySyntax.BoomP:accepted"]
+  ["Equality.JMotiveConf:accepted", "Functions.RunGGen:rejected", "Functions.RunIGen:rejected",
+   "Functions.RunPowGen:rejected", "CurrentState.TwoPhase:rejected", "Erasure.LemmaMoves:rejected",
+   "Erasure.TypeErased:rejected", "Erasure.EffArg:accepted", "Erasure.Write:accepted",
+   "Erasure.Borrow:accepted", "Erasure.Move:accepted", "Erasure.BoomP2Pair:accepted",
+   "Erasure.BoomP2:accepted", "Erasure.N1T:accepted", "Erasure.N1Closed:accepted",
+   "Erasure.Q:accepted", "Erasure.QBoom:accepted", "ErasureBySyntax.LieP:accepted",
+   "ErasureBySyntax.BoomP:accepted"]
 open Ochr.Registry in
 #guard rowOk { multiOwner := false }
   ["Owners.BadD18:accepted", "Owners.ClosedD18:accepted", "Owners.GR:accepted", "Owners.BadR:accepted"]
@@ -122,9 +123,10 @@ open Ochr.Registry in
    "Snapshots.UseCapOf:rejected"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 0, confine := false }
-  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected",
-   "Snapshots.UseCapOf:rejected", "Erasure.EffArgErased:accepted", "Erasure.Write:accepted",
-   "Erasure.Borrow:accepted", "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted",
+  ["Equality.Om:rejected", "Equality.JMotiveConf:accepted", "Snapshots.CapP:rejected",
+   "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected", "Snapshots.UseCapOf:rejected",
+   "Erasure.EffArgErased:accepted", "Erasure.Write:accepted", "Erasure.Borrow:accepted",
+   "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted",
    "ErasureBySyntax.LieP:accepted"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 1 }
@@ -132,9 +134,10 @@ open Ochr.Registry in
    "Snapshots.UseCapOf:rejected"]
 open Ochr.Registry in
 #guard rowOk { leafRule := 1, confine := false }
-  ["Equality.Om:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected",
-   "Snapshots.UseCapOf:rejected", "Erasure.EffArgErased:accepted", "Erasure.Write:accepted",
-   "Erasure.Borrow:accepted", "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted",
+  ["Equality.Om:rejected", "Equality.JMotiveConf:accepted", "Snapshots.CapP:rejected",
+   "Snapshots.CapP2:rejected", "Snapshots.CapOf:rejected", "Snapshots.UseCapOf:rejected",
+   "Erasure.EffArgErased:accepted", "Erasure.Write:accepted", "Erasure.Borrow:accepted",
+   "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted",
    "ErasureBySyntax.LieP:accepted"]
 open Ochr.Registry in
 #guard rowOk { positivity := false }
@@ -155,8 +158,9 @@ open Ochr.Registry in
    "BorrowTypes.HO:rejected"]
 open Ochr.Registry in
 #guard rowOk { confine := false }
-  ["Erasure.EffArgErased:accepted", "Erasure.Write:accepted", "Erasure.Borrow:accepted",
-   "Erasure.Move:accepted", "Erasure.N1T:accepted", "Erasure.Q:accepted", "ErasureBySyntax.LieP:accepted"]
+  ["Equality.JMotiveConf:accepted", "Erasure.EffArgErased:accepted", "Erasure.Write:accepted",
+   "Erasure.Borrow:accepted", "Erasure.Move:accepted", "Erasure.N1T:accepted",
+   "Erasure.Q:accepted", "ErasureBySyntax.LieP:accepted"]
 open Ochr.Registry in
 #guard rowOk { confineBodies := true }
   ["Moves.F5:rejected", "ReturnedBorrows.Inj:rejected", "Snapshots.CapPi:rejected",
@@ -268,10 +272,12 @@ open Ochr.Registry in
 #guard rowOk { classInType := false }
   ["Functions.BoomPow:accepted"]
 -- v2.1 D56 switched off: J returns t whatever its endpoints (equality reflection): `Om`
--- exceeds the depth bound, and `CastMatch` matches 5 against Bool's constructors (reviewer-4 W4)
+-- exceeds the depth bound, and `CastMatch` matches 5 against Bool's constructors (reviewer-4 W4);
+-- and since D63 [J-stuck] does not run t, `JT` flips to accepted (policy: it is true at every
+-- instance, where the hypothesis makes the endpoints equal)
 open Ochr.Registry in
 #guard rowOk { jStuck := false }
-  ["Equality.Om:rejected", "Equality.CastMatch:rejected"]
+  ["Equality.Om:rejected", "Equality.CastMatch:rejected", "Equality.JT:accepted"]
 -- v2.1 D58 switched off: a zero-arm match yields ⋆ at any type, so re-running `GetZ` under a
 -- false hypothesis returns ⋆ for a borrow, and `*q` fails before the proof's own arm (hashmap-port)
 open Ochr.Registry in

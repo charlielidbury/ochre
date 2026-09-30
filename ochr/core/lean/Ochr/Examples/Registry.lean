@@ -184,7 +184,7 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("completeness", []),
    ("soundness", ["Functions.BoomPow"]),
-   ("completeness", []),
+   ("policy", ["Equality.JT"]),
    ("completeness", []),
    ("model", ["Sorts.K1", "Sorts.K2"]),
    ("cost", ["Moves.TwiceNat", "Moves.ClosureMovesCapture"]),
@@ -201,7 +201,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1116
+def Ochr.Registry.expectedTotal : Nat := 1119
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
