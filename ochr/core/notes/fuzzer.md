@@ -320,6 +320,10 @@ Probe for the `fnRule` row: `def F (n : Nat) : Nat := let f = (λ (u : Unit) : N
 
 On 55977f8e the statuses were 936,239 checked, 47,833 rejected and 15,928 unresolved, with no crashes.
 
+**Open (deferred by the lead, 2026-09-30).** Two items were deferred to save tokens:
+- A 10⁶ baseline on the checker since D65–D67 and rule-audit's fixes. The last 10⁵ runs there (seed 1, ochr-core 8ff94c98) show only adequacy-vacuous 3,460, escape 3 and renorm-vacuous 7.
+- Restoring the closure templates `MkF`, `Clo` and `CapN`. They copy their captures with `clone` and are parked on branch `ochr-fuzz-clo` (549054f4, not run at scale). When resumed: record the baseline commit and seed first. A case that picks one of these templates now offers it to the statement generator, so those cases shift. Then run 10⁵ and report any new classes.
+
 ### v2.6 The fail-safe classes, one sentence each
 
 Each class has a true statement that the checker rejected, in `lean/Scratch/` (`lake env lean Scratch/X.lean`, all "as expected"). On c469da44 the fixed classes' statements are accepted.
