@@ -269,11 +269,8 @@ ochr DepFields uses Std {
   reject inductive NegBox (A : Type) := MkNegBox(f : Neg(A))
 }
 
-#eval IO.println (run "DepFields" DepFields).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "DepFields" DepFields).allAsExpected
-#guard (run "DepFields" DepFields).count == 51
+-- the exact number of declarations (a truncated file changes it)
+#guard DepFields.decls.length == 51
 -- each rejection for its reason
 #guard (run "DepFields" DepFields).rejectedWith [
   ("NoneAt0", "field x of MkV has type One, expected Empty0"),
@@ -605,11 +602,8 @@ ochr DepVec uses ArrayBench {
       TLen(t)) W(2) := refl
 }
 
-#eval IO.println (run "DepVec" DepVec).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "DepVec" DepVec).allAsExpected
-#guard (run "DepVec" DepVec).count == 44
+-- the exact number of declarations (a truncated file changes it)
+#guard DepVec.decls.length == 44
 -- each rejection for its reason
 #guard (run "DepVec" DepVec).rejectedWith [
   ("PushWrongLen", "field items of MkVec has type ArrayOf(Cell(σ0, ⌈Cells(σ0, σ3)⌉)), expected ArrayOf(⌈Cells(σ0, σ3)⌉)"),

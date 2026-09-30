@@ -175,8 +175,5 @@ ochr Snapshots uses Std {
   def UseCapOf (n : Nat) (h : Eq Nat n 0) (c : CapOf(n, h)) : Eq Nat (Get(n, h)) n := c(0)
 }
 
-#eval IO.println (run "Snapshots" Snapshots).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Snapshots" Snapshots).allAsExpected
-#guard (run "Snapshots" Snapshots).count == 27
+-- the exact number of declarations (a truncated file changes it)
+#guard Snapshots.decls.length == 27

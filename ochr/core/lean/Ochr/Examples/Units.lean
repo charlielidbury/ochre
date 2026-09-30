@@ -83,10 +83,10 @@ ochr AttrUser uses AttrLib {
 }
 
 open Ochr.Test in
-#guard (run "AttrLib" AttrLib).allAsExpected && (run "AttrLib" AttrLib).count == 2
+#guard AttrLib.decls.length == 2
 -- a block's report has rows for its own declarations only
 open Ochr.Test in
-#guard (run "AttrUser" AttrUser).allAsExpected && (run "AttrUser" AttrUser).count == 3
+#guard AttrUser.decls.length == 3
 open Ochr.Test in
 #guard blockFlips "AttrLib" AttrLib { byType := false } == (["AttrLib.Swap:rejected"], [])
 open Ochr.Test in

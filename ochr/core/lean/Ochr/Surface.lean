@@ -315,6 +315,7 @@ partial def resolve (ctx : Ctx) (ty : Bool) (t : STerm) : R Term := do
       | "Z" => pure .zero
       | "refl" => pure (.ctor "True" 0 ⟨"I"⟩ [] [])      -- notation for True's constructor (v2.0)
       | "S" => pure succFn
+      | "?" => pure (.prim "hole" [])     -- a hole, `?` or `sorry` (docs/07)
       | _ => pure (.const x)
   | .num n => pure (Term.ofNat n)
   | .app "S" [a] => return .succ (← resolve ctx false a)

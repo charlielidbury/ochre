@@ -4,7 +4,7 @@
 
 Implement a fixed-capacity hash map with separate chaining, operating in place, in the language Ochr, and prove that it behaves like a finite map, as observed through `get` and `len` (properties H1–H18), in the two-program style: write a pure functional model of a finite map, prove the map properties about the model, and prove that your in-place operations agree with the model. H4–H15 about the in-place operations then follow; that step is provided. H1–H3 and H16–H18 are about the in-place map itself and you prove them directly.
 
-You work in one file, `HashMap.lean`. It is a skeleton: the representation, the provided functions, the signatures, the statements and the tests are given (the FIXED regions, between `FIXED-BEGIN` and `FIXED-END` marker comments), and the holes, written `TODO`, are yours to fill. Add any helper definitions and lemmas you need to the blocks `HashMapModel` and `HashMapSolution`, between their FIXED regions.
+You work in one file, `HashMap.lean`. It is a skeleton: the representation, the provided functions, the signatures, the statements and the tests are given (the FIXED regions, between `FIXED-BEGIN` and `FIXED-END` marker comments), and the holes, written `?`, are yours to fill (the build shows each hole's goal as a warning: the bindings in scope, then `⊢ goal`). Add any helper definitions and lemmas you need to the blocks `HashMapModel` and `HashMapSolution`, between their FIXED regions.
 
 Ochr is a research language, so you will not have met it before. Read `docs/GUIDE.md` first: it teaches enough of the language to start, in about fifteen minutes. The reference is `docs/RULES.md`, the examples tour is `checker/Ochr/Examples/00Std.lean` to `15BorrowTypes.lean`, and the arrays library the map is built on is `checker/Ochr/Examples/16Arrays.lean`.
 
@@ -108,7 +108,7 @@ These are checked by a person reading your solution (SPEC §4), not by the grade
 
 The grader rejects, in `HashMap.lean` outside the FIXED regions:
 
-- `TODO` (the hole marker);
+- holes: `?` and `sorry` (a declaration with a hole is accepted with a warning, so the build alone does not show that it is unfinished);
 - `reject def` (a declaration the checker must reject counts as correct when it fails, so it would turn a failed proof into a pass);
 - new `implemented by` functions, and `abstract`, `unsized` or `copy` declarations;
 - declaring a name that already exists: a built-in (`Nat`, `Unit`, …), a library name (`Word`, `Lt`, `Count`, …) or a name declared in a FIXED region (the checker itself refuses most of these; `Nat` and `Unit` it would accept, and a FIXED statement could then change meaning);

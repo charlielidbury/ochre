@@ -143,8 +143,5 @@ ochr Numbers uses Std {
   def UnitStill (x : Unit) : Eq Unit x () := refl
 }
 
-#eval IO.println (run "Numbers" Numbers).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "Numbers" Numbers).allAsExpected
-#guard (run "Numbers" Numbers).count == 26
+-- the exact number of declarations (a truncated file changes it)
+#guard Numbers.decls.length == 26

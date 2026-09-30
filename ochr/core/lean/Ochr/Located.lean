@@ -121,6 +121,15 @@ def locatedTail (t : Term) (x : M Unit) : M Unit := located t do
     | _ => pure ()
   x
 
+/-- A hole `t` of the type `G` (docs/07): note its goal and Ω there, as Lean's goal view shows
+a `sorry`'s: the borrow parameters' cells (frame 0) and the current frame's bindings, each
+with its type and value (functions left out). -/
+def noteHole (t : Term) (G : Value) : M Unit := do
+  let env := (← get).env
+  let cells := if env.size > 1 then env[0]!.binds.toList else []
+  let bs := (cells ++ env.back!.binds.toList).filter fun b => !(b.val matches .gfn _) && b.hint.name != "_"
+  noteAt t (.hole G (bs.map fun b => (b.hint.name, b.ty, b.val)))
+
 /-- `new` is `old` rebuilt with the same shape: its nodes get `old`'s ranges. -/
 def relocate (old new : Term) : M Unit := do
   if !(← get).locs.table.isEmpty then modify fun s => { s with locs := s.locs.relocate old new }

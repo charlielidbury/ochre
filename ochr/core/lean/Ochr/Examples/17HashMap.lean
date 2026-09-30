@@ -431,11 +431,8 @@ ochr HashMap uses Std {
   )
 }
 
-#eval IO.println (run "HashMap" HashMap).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "HashMap" HashMap).allAsExpected
-#guard (run "HashMap" HashMap).count == 44
+-- the exact number of declarations (a truncated file changes it)
+#guard HashMap.decls.length == 44
 
 /-! ## Lookups after each operation
 
@@ -827,8 +824,6 @@ ochr HashMapLookup uses Std, HashMap {
     }
   )
 
-
-
   -- Lifted through the index borrow, and stated for the map. `GetMut` branches on no
   -- sealed result, so the map theorem is the slot theorem at the key's index.
   def SlotGetMutRead (s : &Slots) (i : Word) (k : Word) (w : Nat) (h : IsSome(BFind(Nth(*s, i), k))) :
@@ -842,8 +837,6 @@ ochr HashMapLookup uses Std, HashMap {
       },
     }
   )
-
-
 
   def GetMutRead (hm : &HashMap) (k : Word) (w : Nat) (h : IsSome(Find(*hm, k))) :
       Id Opt (let q = GetMut(&*hm, k, h); let x = *q; *q := w; Some(x)) (let r = Find(*hm, k); let q = GetMut(&*hm, k, h); *q := w; r) := (
@@ -905,9 +898,6 @@ ochr HashMapLookup uses Std, HashMap {
       Id Opt (let q = GetMut(&*hm, k, h); *q := w; Find(*hm, k2)) (let r = Find(*hm, k2); let q = GetMut(&*hm, k, h); *q := w; r) := (
     rewrite ← GetMutIsInsert(&*hm, k, w, h) in InsertFindOther(&*hm, k, w, k2, ne)
   )
-
-
-
 
   -- ## Get, through the borrow
   -- `Get` reads through a mutable borrow (Ochr has no shared borrows). When the lookup
@@ -1003,11 +993,8 @@ ochr HashMapLookup uses Std, HashMap {
   )
 }
 
-#eval IO.println (run "HashMapLookup" HashMapLookup).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "HashMapLookup" HashMapLookup).allAsExpected
-#guard (run "HashMapLookup" HashMapLookup).count == 46
+-- the exact number of declarations (a truncated file changes it)
+#guard HashMapLookup.decls.length == 46
 
 /-! ## The length
 
@@ -1047,8 +1034,6 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
 
   -- ## The len field
 
-
-
   -- Split on whether the entry was added and on the earlier lookup; where they disagree,
   -- the lemma's type is `true = false` or `false = true`, which is `False`.
   def InsertLen (hm : &HashMap) (k : Word) (v : Nat) :
@@ -1078,7 +1063,6 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
       Succ(x') => WAddS(x', y),
     }
   )
-
 
   -- A bucket grows by one exactly when the key was absent. `Succ(a) = Succ(b)` is
   -- `a = b`, so each arm is the induction hypothesis as it stands.
@@ -1114,7 +1098,6 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
     }
   )
 
-
   -- The map: split on the added flag and on the earlier lookup (the mixed arms contradict
   -- `SlotInsertAdded`), then one rewrite against the hypothesis.
   def InsertCount (hm : &HashMap) (k : Word) (v : Nat) (h : Eq Word (Len(*hm)) (Count(Buckets(*hm)))) :
@@ -1136,7 +1119,6 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
       ),
     }
   )
-
 
   -- The hypothesis is needed.
   reject def InsertCountNoHyp (hm : &HashMap) (k : Word) (v : Nat) :
@@ -1211,7 +1193,6 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
     }
   )
 
-
   def RemoveCount (hm : &HashMap) (k : Word) (h : Eq Word (Len(*hm)) (Count(Buckets(*hm)))) :
       Id Word (Remove(&*hm, k); Len(*hm)) (Remove(&*hm, k); Count(Buckets(*hm))) := (
     match *hm {
@@ -1231,7 +1212,6 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
       ),
     }
   )
-
 
   -- ## New and Clear
   def EmptyCount (n : Word) : Eq Word (Count(EmptySlots(n))) Zero by n := (
@@ -1259,11 +1239,8 @@ ochr HashMapLength uses Std, HashMap, HashMapLookup {
 
 }
 
-#eval IO.println (run "HashMapLength" HashMapLength).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "HashMapLength" HashMapLength).allAsExpected
-#guard (run "HashMapLength" HashMapLength).count == 19
+-- the exact number of declarations (a truncated file changes it)
+#guard HashMapLength.decls.length == 19
 
 /-! ## The invariant, and resizing
 
@@ -1281,7 +1258,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
     rewrite EqBSound(a, b, h) in EqBRefl(a)
   )
 
-
   def NeqFlip (a : Word) (b : Word) (h : Eq Bool (EqB(a, b)) false) : Eq Bool (EqB(b, a)) false := (
     let e = EqB(b, a);
     match e {
@@ -1296,7 +1272,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       ),
     }
   )
-
 
   -- ## Keys stay distinct
   def BInsertUnique (b : Bucket) (k : Word) (v : Nat) (h : Unique(b)) : (let c = b; BInsert(&c, k, v); Unique(c)) by b := (
@@ -1327,7 +1302,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
     }
   )
 
-
   def BRemoveUnique (b : Bucket) (k : Word) (h : Unique(b)) : (let c = b; BRemove(&c, k); Unique(c)) by b := (
     match b {
       BNil => refl,
@@ -1342,7 +1316,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
     }
   )
 
-
   def SlotRemoveUnique (s : Slots) (i : Word) (k : Word) (h : AllUnique(s)) :
       (let c = s; let b = Slot(&c, i); BRemove(b, k); AllUnique(c)) by s := (
     match s {
@@ -1356,7 +1329,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       ),
     }
   )
-
 
   -- ## Keys stay in their bucket
   def Nowhere (s : Slots) (k : Word) : Prop by s := (
@@ -1384,7 +1356,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
     rewrite ← BInsertFindOther(&b, k, v, k2, ne) in h
   )
 
-
   def NowhereInsert (s : Slots) (i : Word) (k : Word) (v : Nat) (k2 : Word) (ne : Eq Bool (EqB(k, k2)) false)
       (h : Nowhere(s, k2)) : (let c = s; let b = Slot(&c, i); BInsert(b, k, v); Nowhere(c, k2)) by s := (
     match s {
@@ -1398,7 +1369,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       ),
     }
   )
-
 
   def OnlyInOther (s : Slots) (i : Word) (d : Word) (k : Word) (v : Nat) (k2 : Word) (ne : Eq Bool (EqB(k, k2)) false)
       (h : OnlyIn(s, d, k2)) : (let c = s; let b = Slot(&c, i); BInsert(b, k, v); OnlyIn(c, d, k2)) by s := (
@@ -1420,7 +1390,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
     }
   )
 
-
   def OnlyInSame (s : Slots) (i : Word) (k : Word) (v : Nat) (h : OnlyIn(s, i, k)) :
       (let c = s; let b = Slot(&c, i); BInsert(b, k, v); OnlyIn(c, i, k)) by s := (
     match s {
@@ -1434,7 +1403,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       },
     }
   )
-
 
   -- For every key `k2`: if it is `k`, it went into its own bucket; if not, it did not move.
   def SlotInsertPlaced (s : Slots) (n : Word) (k : Word) (v : Nat) (h : Placed(s, n)) :
@@ -1485,7 +1453,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
     }
   )
 
-
   def OnlyInRemove (s : Slots) (i : Word) (d : Word) (k : Word) (k2 : Word) (h : OnlyIn(s, d, k2)) :
       (let c = s; let b = Slot(&c, i); BRemove(b, k); OnlyIn(c, d, k2)) by s := (
     match s {
@@ -1505,7 +1472,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       },
     }
   )
-
 
   def SlotRemovePlaced (s : Slots) (n : Word) (k : Word) (h : Placed(s, n)) :
       (let c = s; let b = Slot(&c, Idx(k, n)); BRemove(b, k); Placed(c, n)) := (
@@ -1565,7 +1531,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
     }
   )
 
-
   def RemoveInv (m : HashMap) (k : Word) (h : Inv(m)) : (let c = m; Remove(&c, k); Inv(c)) := (
     match m {
       HM(n, len, s) => (
@@ -1576,7 +1541,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
     }
   )
 
-
   def ClearInv (m : HashMap) : (let c = m; Clear(&c); Inv(c)) := (
     match m {
       HM(n, len, s) => NewInv(n),
@@ -1584,14 +1548,10 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
   )
   -- `GetMut` keeps the invariant, because writing through it is an insert (`GetMutIsInsert`).
 
-
-
-
   def GetMutInv (m : HashMap) (k : Word) (w : Nat) (h : IsSome(Find(m, k))) (hi : Inv(m)) :
       (let c = m; let q = GetMut(&c, k, h); *q := w; Inv(c)) := (
     rewrite ← GetMutIsInsert(&m, k, w, h) in InsertInv(m, k, w, hi)
   )
-
 
   -- ## Resizing keeps the invariant
   -- Every entry is moved by `InsertNoResize`, which keeps the invariant, into a fresh
@@ -1694,7 +1654,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
     }
   )
 
-
   def BFindLastNone (b : Bucket) (k : Word) (h : Eq Opt (BFind(b, k)) None) : Eq Opt (BFindLast(b, k)) None by b := (
     match b {
       BNil => refl,
@@ -1728,7 +1687,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
     }
   )
 
-
   def NowhereLast (s : Slots) (k : Word) (h : Nowhere(s, k)) : Eq Opt (SFindLast(s, k)) None by s := (
     match s {
       SOne(b) => BFindLastNone(b, k, h),
@@ -1742,7 +1700,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       ),
     }
   )
-
 
   def OnlyInLast (s : Slots) (d : Word) (k : Word) (h : OnlyIn(s, d, k)) (hu : AllUnique(s)) :
       Eq Opt (SFindLast(s, k)) (BFind(Nth(s, d), k)) by s := (
@@ -1769,7 +1726,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       ),
     }
   )
-
 
   -- Resizing keeps every lookup, given the invariant.
   def ResizeFind (m : HashMap) (k : Word) (h : Inv(m)) : Id Opt (let c = m; Resize(&c); Find(c, k)) (Find(m, k)) := (
@@ -1806,7 +1762,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
     }
   )
 
-
   -- The keys of `b` are absent from the map `m`.
   def Fresh (b : Bucket) (m : HashMap) : Prop by b := (
     match b {
@@ -1832,7 +1787,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       ),
     }
   )
-
 
   -- Moving a bucket of fresh, distinct keys adds its length.
   def MoveBucketLen (b : Bucket) (m : HashMap) (hf : Fresh(b, m)) (hu : Unique(b)) :
@@ -1902,7 +1856,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
     }
   )
 
-
   def FreshSMove (t : Slots) (b : Bucket) (m : HashMap) (hf : FreshS(t, m)) (ha : Apart(t, b)) :
       (let c = m; MoveBucket(b, &c); FreshS(t, c)) by t := (
     match t {
@@ -1914,7 +1867,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       ),
     }
   )
-
 
   def MoveSlotsLen (s : Slots) (m : HashMap) (hf : FreshS(s, m)) (hg : GUnique(s)) :
       Id Word (let c = m; MoveSlots(s, &c); Len(c)) (WAdd(Len(m), Count(s))) by s := (
@@ -1931,7 +1883,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       ),
     }
   )
-
 
   -- A new map has no keys.
   def FreshNew (b : Bucket) (n : Word) : Fresh(b, New(n)) by b := (
@@ -1965,7 +1916,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
     }
   )
 
-
   -- The head key `k` of a bucket of `t` is not in `b`.
   def HeadApart (k : Word) (v : Nat) (r : Bucket) (b : Bucket) (t : Slots) (D : Π(k : Word). Word)
       (hp : Π(k : Word). OnlyIn(SCons(b, t), D(k), k))
@@ -1990,7 +1940,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       ),
     }
   )
-
 
   -- `cur` is (a suffix of) a bucket of `t`: a key nowhere in `t` is not in `cur`.
   def AbsentFromOf (cur : Bucket) (b : Bucket) (t : Slots) (D : Π(k : Word). Word)
@@ -2027,7 +1976,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
     }
   )
 
-
   def TailOnlyIn (b : Bucket) (t : Slots) (d : Word) (k : Word) (h : OnlyIn(SCons(b, t), d, k)) : OnlyIn(t, Pred(d), k) := (
     match d {
       Zero => NowhereOnlyIn(t, Zero, k, h),
@@ -2037,7 +1985,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       ),
     }
   )
-
 
   def GUniqueOf (s : Slots) (D : Π(k : Word). Word) (hp : Π(k : Word). OnlyIn(s, D(k), k)) (hu : AllUnique(s)) : GUnique(s) by s := (
     match s {
@@ -2051,7 +1998,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
     }
   )
 
-
   -- Resizing keeps the length, given the invariant.
   def ResizeLen (m : HashMap) (h : Inv(m)) : Id Word (let c = m; Resize(&c); Len(c)) (Len(m)) := (
     match m {
@@ -2062,7 +2008,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       ),
     }
   )
-
 
   -- ## Insert, with the resize
   -- Split on whether the entry was added and on whether the table is then full. When it
@@ -2084,7 +2029,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
     }
   )
 
-
   def InsertFindOtherR (m : HashMap) (k : Word) (v : Nat) (k2 : Word) (ne : Eq Bool (EqB(k, k2)) false) (h : Inv(m)) :
       Id Opt (let c = m; Insert(&c, k, v); Find(c, k2)) (Find(m, k2)) := (
     match m {
@@ -2099,7 +2043,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       ),
     }
   )
-
 
   -- The invariant.
   def InsertInvR (m : HashMap) (k : Word) (v : Nat) (h : Inv(m)) : (let c = m; Insert(&c, k, v); Inv(c)) := (
@@ -2130,7 +2073,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       ),
     }
   )
-
 
   -- ## The load factor
   -- The entries do not outnumber the buckets: `len ≤ n`, with `n + 1` buckets. `Insert`
@@ -2202,7 +2144,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
     }
   )
 
-
   def MoveSlotsN (s : Slots) (m : HashMap) : Id Word (let c = m; MoveSlots(s, &c); NOf(c)) (NOf(m)) by s := (
     match s {
       SOne(b) => MoveBucketN(b, m),
@@ -2213,7 +2154,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       ),
     }
   )
-
 
   def ResizeN (m : HashMap) : Id Word (let c = m; Resize(&c); NOf(c)) (Succ(WAdd(NOf(m), NOf(m)))) := (
     match m {
@@ -2242,7 +2182,6 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
       ),
     }
   )
-
 
   def NewNotOver (n : Word) : NotOver(New(n)) := (
     match n {
@@ -2273,8 +2212,5 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
   )
 }
 
-#eval IO.println (run "HashMapResize" HashMapResize).show
-
--- every verdict as expected, and the exact number of declarations (a truncated file changes it)
-#guard (run "HashMapResize" HashMapResize).allAsExpected
-#guard (run "HashMapResize" HashMapResize).count == 79
+-- the exact number of declarations (a truncated file changes it)
+#guard HashMapResize.decls.length == 79

@@ -523,6 +523,8 @@ Checked against the paper at a0bca0fe (body sections and appendix). An "=" means
 
 The body's programs were also run verbatim, one-line layout and subscripts included, and each gave the verdict in this table. 467 verdicts since the merge with the recCands fix, all as expected.
 
+**At the D65 head** (2026-09-30, ochr-core 516ae015, 1,233 verdicts): the sweep is as expected, 65 verdicts. Then at 7fc27f1e (the typed-fragment appendix tf.typ, and 601c3ca9's mixed-arm rejection): 78 verdicts as expected, with SweepTF for tf.typ's printed `Bad2` (token for token Drops.Bad2) and its claims (`Id Nat (let z = a; a) a` by `refl` but `let z = a; a` rejected; `x := Pick(n, &*x, &b)` ending the new borrow symbolically but not at `n = 1`; reborrowing through `Pick`'s result then `x := &c` rejected; `x := &(*x).1` rejected). The last two are tripwires for D67: until it lands both are rejected on the ground path too. New since the last sweep: the dependent-field fragments, `Vec(E) := MkVec(n : Word, items : Array(E, n))` and the arm `MkVec(n, items) => (n := W(2); items := Two)` in either order (SweepDep; DepVec.SetTwo / SetTwoRev). The `ochr` command now checks each block at elaboration under the default configuration, so the blocks whose point needs `refTop` off (SweepG, PaperMovesG) declare the default's verdicts and assert the switched-off ones by a `#guard`. Finding: the appendix's positivity example `MkNBox(f : Neg(A))`, `Neg(A) := Π(x : A). Void`, is rejected by D36 already (the field computes to a Π at the generic fields), with the nesting condition on or off, so it does not show what the nesting condition is for; the test's example is DepFields.NBox, `MkNBox(n : Word, f : NegIf(n, A), h : IsSucc(n))`, which only the nesting condition rejects (k4Nest).
+
 **η-normal values, A1, abstraction** (2026-09-30, paper at f83b13a8, checker 58713505): the sweep regenerates identically and is as expected (61 verdicts). §2.2–§2.4's displays now print the stuck call's result as `()`: the checker agrees (a stuck `Unit` call is `()`: ClosingOff.StuckResultUnit; the traced goal is still `Eq Nat ⌈let c1 = σ0; AddM(&c1, 0); c1⌉ σ0`, the `Eq Unit () ()` conjunct being `⊤`). The appendix's "computed result type" and "a path on which a type is still neutral keeps the value unnormalised" are now ClosingOff.ComputedUnit and NeutralKept / NeutralKeptZ. §6.4's A1 account matches CaseSplits' ArmRecords block (F, Boom, FLie, FBoom rejected); arm-local records have no ledger switch. §8.3's "only ever borrowed, never read, moved, assigned, cloned or matched": Abstraction.Peek, Poke, Take, and new ReadV, PassV, AssignV. Counts: 1,097 = 736 + 361 after these 6 tests (on top of the arrays merge 7da2f216 and A12's 11 tests in 8dfa97d1: 1,091 = 730 + 361 before).
 
 **Arrays under moves** (2026-09-30, paper at 7f624567, checker at e4bb5d85): QSCorrect is printed over `Word` (arrays-library's text) and checks verbatim under the default checker; `Scratch/PaperSweep.lean` regenerated, every block as expected (61 verdicts). §8.1's 1,058 = 700 + 358 is right; no other printed program or fragment changed since d671309b.
@@ -1371,7 +1373,39 @@ The fuzzer inspects the shape of library terms, so it reads blocks through `SDec
 - A `reject def` rejected at a located term shows why there too ("… is rejected here, as expected: …").
 - The rules the checker applied at a term, in the paper's names: `Rules.fire` (rule-audit's) also notes its rule at the innermost located term being evaluated (`Locs.here`, maintained by `located`), and the hover lists them per path ("rules [Call] [Close]"; an extension shows as "(checker) Name"). So far only dep-fields' rules fire (`[Ind-decl]`, `[Open]`, `[Repack]`, `[Eq-inj]`, `[Eq-stuck]`; rule-audit's tags for the rest are in progress), and every rule shows as soon as it fires: in `18DependentFields.Refill`, hovering `x := O` shows "rules [Open] [Repack]" (the write that makes the value whole again).
 
-## 50. D66: `Prop : Type₁`; `&A` iff `A : Type₀`
+**Holes (phase 4).** `?` (or `sorry`) is a hole: resolved to `prim "hole"`, it evaluates, where the context says what type it must have (tail position: the goal; a call's argument: the parameter's type; an annotation), to a value of that type, a fresh abstract value or `⋆` for a proposition, so the rest of the declaration checks around it. Its class is its context's (`declOf` reads it as `.any`, and it is a proof iff its type is a proposition). The editor reports it as a warning with Lean's goal view: the borrow parameters' cells and the frame's bindings, each with its type and value, then `⊢` the goal, on each path that reaches it:
+```
+hole
+where σ0 = 0:
+x° : Nat ↦ loan_0
+x : &Nat ↦ borrow_0 0
+⊢ ⊤
+```
+(the `Z` arm of `AddMZero` with its `refl` replaced by `?`). A hole whose type the context does not fix is an error saying so; a run that reaches a hole (a call of a function with one) is stuck, so the call closes off. A declaration with a hole is accepted, as Lean accepts a `sorry` with a warning.
+
+## 50. Ghost borrows reverted; D65 amended ([Drop] ends bound borrowers)
+
+The ghost-borrow fix for Bad2 (§45, a632b90c) is reverted: reviewer-9 showed it covers only the several-owner channel, and a one-owner channel (`Bad4`: a match on a sealed fill ends every loan in it, while on the ground the loan sits deeper and survives) gives the same [Drop] failure. The `ghostBorrows` switch, `releaseHere`, `Value.ghostBorrow` and the `GhostBorrows` block are gone; §45's RULES draft is dead.
+
+In their place, D65 as amended (DECISIONS; reviewer-9's patch `Scratch/Reviewer9D65Amended.patch`, applied as is): at a [Drop] of an owned value holding a live loan (`dropTopBind` for a binding, `dropValue` for a discarded value), the loan's borrower is ended if it is held in a binding, repeating as [Access] does (`endLoansOfTopBind`, `endLoansOfTopTemp`). If the borrower is a value in flight (a temporary), the drop is an error. Assigning over a lent place is unchanged (an error). RULES [Drop] now says this.
+
+*Regressions,* the block `Drops` (02Borrows, 21 declarations):
+- accepted, each with a `…Run` at the instance that used to fail, also accepted: `Bad2`, `Bad3`, `Bad4`, `D1`–`D4`, `AssignBot`;
+- rejected: `RetLocal`, `FR`, `Blk`, `G`, `UseG`.
+
+*Ledger:* a new row, `dropEndsBound`, class soundness (going wrong when run), witnesses `Blk` and `UseG`. Switched off, it is pure D65: a borrower in flight is ended too, and `RetLocal`, `FR`, `Blk`, `G`, `UseG` are accepted (in a stuck block, [Split] discards the arm's ended borrow and [Close] gives the block a fresh live one, so `Blk` writes through ⊥ at `n = 0`). Other rows that changed:
+- `accessInside` gains `Naturality.PickEarly:accepted` (as reviewer-9 predicted) and `Drops.D2`, `D2Run` (rejected);
+- the `generalize` row gains `Drops.Bad4`, `Bad4Run` (rejected).
+
+The switch between D65 and the old error at [Drop] has no row. Its flips would be the `…Run` declarations, all rejections, so its class would be completeness, although what it prevents is a generic acceptance whose instance fails.
+
+At its base 042a06f7: 55 rows (soundness 22, false lemma 1, model 4, policy 7, completeness 21), 1134 verdicts.
+
+*Added by d65-lane* (the same job, reassigned): `Bad5`/`Bad5Run` (reviewer-9's local-borrow variant of `Bad4`); `UseEnded`, rejected (writing through a borrower that a drop ended); `E1`, rejected (a let-block's result borrows the block's local); a `-- a caller of G` note on `UseG`. Message assertions: `RetLocal`, `E1`, `FR`, `Blk` and `G` are rejected by "[Drop] … dies while a value in flight borrows it", and `UseG` by "unknown constant G" (it is rejected because `G` is). The `dropEndsBound` row gains `E1:accepted`; the `generalize` row gains `Bad5`, `Bad5Run`. The scratch probes `DropProbe`, `DropVariants` and `Reviewer9Probe` now record amended D65's verdicts: `RunBad0`, `RunBad3`, `D1`–`D4` with their runs, `RunBad4S` and `RunBad5S` accepted.
+
+25 `Drops` verdicts, 1233 in all.
+
+## 51. D66: `Prop : Type₁`; `&A` iff `A : Type₀`
 
 Brief: ochr/docs/08-borrowable-universe.md.
 
@@ -1410,9 +1444,9 @@ A borrow type cannot instantiate `V`: `&Nat` is not a term (`Swap(&Nat, …)` do
   - `piUnder` gains the capturing closure;
   - `fnRule` gains the call through a borrow.
 
-60 rows: soundness 23, false lemma 1, model 4, policy 9, completeness 23. 1254 verdicts.
+60 rows: soundness 23, false lemma 1, model 4, policy 9, completeness 23. 1271 verdicts (after D65 and the editor phases).
 
-## 51. A2: conversion under instantiation (reviewer-6), not exploitable
+## 52. A2: conversion under instantiation (reviewer-6), not exploitable
 
 reviewer-6's A2: `Π(x : &Nat). False` and `Π(x : &Nat). Id Unit (*x := 0) (*x := 1)` are convertible, since [Conv-pi] compares codomains at the generic call, where both are `False`. At `r = Pick(n, &a, &b)` the first gives `False`, and the second a conjunction of two equations between sealed programs, one per possible owner. So "convertible Π-types have convertible instances" fails.
 
@@ -1431,7 +1465,7 @@ Two more observations from the probe:
 
 No checker change.
 
-## 52. Built-in names are reserved (reviewer-6's A3)
+## 53. Built-in names are reserved (reviewer-6's A3)
 
 `inductive Unit := A | B` was accepted. From then on `Unit` in the block meant it (the resolver looks up declared types before built-ins), so the built-in `Unit`'s η (D59) was out of reach, and `H2 (x y : Unit) : Eq Unit x y := refl` was rejected. The same held for `Nat`, and for a constructor named `Z` or `S`.
 
@@ -1449,4 +1483,4 @@ Regressions, at the end of `Numbers`:
 - rejected: `Unit`, `Nat`, `Three` (a constructor `Z`), `refl` and `clone`;
 - accepted: `UnitStill`.
 
-The `unitEta` row (D59) gains `Numbers.UnitStill:rejected`. 1260 verdicts.
+The `unitEta` row (D59) gains `Numbers.UnitStill:rejected`. 1277 verdicts.

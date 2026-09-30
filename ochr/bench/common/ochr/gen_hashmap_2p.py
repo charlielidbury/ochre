@@ -47,7 +47,7 @@ def regions(text):
 
 
 def region(rid, body):
-    return f"  -- FIXED-BEGIN {rid}\n{body}  -- FIXED-END {rid}\n    TODO\n\n"
+    return f"  -- FIXED-BEGIN {rid}\n{body}  -- FIXED-END {rid}\n    ?\n\n"
 
 
 def provided(rid, body):
@@ -153,11 +153,11 @@ ochr HashMapSolution uses HashMapModel, HashMapCompose {
 
 """)
     for rid in ["new", "len", "get", "insert", "remove", "get_mut", "inv"]:
-        out.append(R[rid] + "    TODO\n\n")
+        out.append(R[rid] + "    ?\n\n")
     out.append(region("abs-inv", "  -- The invariant on maps gives the model's invariant.\n"
                       "  def AbsInv (cap : Word) (m : &Map(cap)) (hm : Inv(cap, *m)) : MInv(AbsOf(cap, *m)) :=\n"))
     for rid in ["H1", "H2", "H3"]:
-        out.append(R[rid] + "    TODO\n\n")
+        out.append(R[rid] + "    ?\n\n")
     A = [
       ("agree-new", "new(c) is the empty model", "AbsNew", "(cap : Word) (h : Lt(Zero, cap))", "Eq MMap (AbsOf(cap, MapNew(cap, h))) MNew"),
       ("agree-len", "len agrees with the model", "AgreeLen", "(cap : Word) (m : &Map(cap)) (hm : Inv(cap, *m))", "Eq Word (LenOf(cap, *m)) (MLen(AbsOf(cap, *m)))"),
@@ -171,7 +171,7 @@ ochr HashMapSolution uses HashMapModel, HashMapCompose {
     for rid, comment, name, params, goal in A:
         out.append(region(rid, f"  -- Agreement: {comment}.\n  def {name} {params} :\n      {goal} :=\n"))
     for rid in ["H16", "H17", "H18"]:
-        out.append(R[rid] + "    TODO\n\n")
+        out.append(R[rid] + "    ?\n\n")
     # H4–H15, provided
     args = {"H4": ["cap", "h", "k"], "H5": ["cap", "m", "k", "v", "hm"], "H6": ["cap", "m", "k", "k2", "v", "hm", "ne"],
             "H7": ["cap", "m", "k", "v", "hm"], "H8": ["cap", "m", "k", "hm"], "H9": ["cap", "m", "k", "k2", "hm", "ne"],

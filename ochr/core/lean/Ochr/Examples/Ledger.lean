@@ -60,7 +60,8 @@ open Ochr.Registry in
 -- original witness `BadA1` (a stuck `Unit` call's result is `()`, D59 refined)
 open Ochr.Registry in
 #guard rowOk { accessInside := false }
-  ["Borrows.BadA1:accepted", "Borrows.V:accepted", "Borrows.W:accepted", "GhostBorrows.Ok1:rejected"]
+  ["Borrows.BadA1:accepted", "Borrows.V:accepted", "Borrows.W:accepted", "Drops.D2:rejected",
+   "Drops.D2Run:rejected", "Naturality.PickEarly:accepted"]
 open Ochr.Registry in
 #guard rowOk { selfHeadOnly := false }
   ["Recursion.Knot:accepted", "Recursion.KnotBoom:accepted"]
@@ -69,7 +70,8 @@ open Ochr.Registry in
   ["Borrows.Dead:accepted", "Borrows.DeadTwice:accepted"]
 open Ochr.Registry in
 #guard rowOk { generalize := false }
-  ["ClosingOff.UseDec:rejected", "Equality.CastMatch:rejected", "CaseSplits.MatchAfterOpaque:rejected",
+  ["Drops.Bad4:rejected", "Drops.Bad4Run:rejected", "Drops.Bad5:rejected", "Drops.Bad5Run:rejected",
+   "ClosingOff.UseDec:rejected", "Equality.CastMatch:rejected", "CaseSplits.MatchAfterOpaque:rejected",
    "GenType.GenL:rejected", "RenormPi.G:rejected", "RenormPi.Plain:rejected", "RenormPi.InPi:rejected",
    "RenormPi.InConj:rejected", "Splitting.Pick:rejected", "Splitting.PickNotZero:rejected",
    "Splitting.PickNotZeroCopy:rejected", "Splitting.Pick22:rejected", "Splitting.Pick22NotZero:rejected",
@@ -204,17 +206,58 @@ open Ochr.Registry in
 #guard rowOk { subsingleton := false }
   ["Subsingletons.IsL:accepted", "Subsingletons.Irr:accepted", "Subsingletons.OrLie:accepted",
    "Subsingletons.Get:accepted", "Subsingletons.SqIrr:accepted", "ErasureBySyntax.R8Field:rejected"]
--- v2.0 D42 for constructors, switched off: Prop constructor applications are data values, not proofs (completeness)
+-- v2.0 D42 for constructors, switched off: Prop constructor applications are data values, not proofs (completeness).
+-- Most of the row is D63 checked at definition: a proof by cases with a constructor in one arm
+-- (now data) and a proof in another has arms that disagree (`Std.AddMZero`, `refl` against `cong`)
 open Ochr.Registry in
 #guard rowOk { propValues := false }
-  ["Subsingletons.OrComm:rejected", "Subsingletons.SqTrue:rejected", "Subsingletons.SqSplit:rejected",
-   "Erasure.LieP2:rejected", "ErasureBySyntax.R8Field:rejected", "DepFields.UseEx:rejected"]
+  ["Std.AddMZero:rejected", "ReturnedBorrows.AddMEq:rejected",
+   "ReturnedBorrows.AddMEqOwned:rejected", "ReturnedBorrows.AddM1:rejected",
+   "ReturnedBorrows.TailNoop:rejected", "ClosingOff.RowIInd:rejected",
+   "Equality.AddMZeroLet:rejected", "Recursion.AddZeroCopy:rejected", "Recursion.AddZeroC:rejected",
+   "ArmLocal.Leak:rejected", "ArmLocalBoom.EmptyEq:rejected", "Functions.TwiceMZero:rejected",
+   "Lists.AppendMNil:rejected", "Lists.AppendMEq:rejected", "Trees.InsertMEq:rejected",
+   "Trees.AddMS:rejected", "Trees.AddS:rejected", "Trees.SizeInsert:rejected",
+   "InPlaceTrees.AddMS:rejected", "InPlaceTrees.AddS:rejected", "InPlaceTrees.SizeInsert:rejected",
+   "InPlaceTrees.SizeInsertRw:rejected", "PolyLists.AppendMNil:rejected",
+   "PolyLists.AppendNil:rejected", "PolyLists.AppendNilL:rejected", "PolyLists.Closed:rejected",
+   "Subsingletons.OrComm:rejected", "Subsingletons.SqTrue:rejected",
+   "Subsingletons.SqSplit:rejected", "CurrentState.LeAdd:rejected", "CurrentState.AddSub:rejected",
+   "CurrentState.AddSubId:rejected", "CurrentState.PostCopy:rejected",
+   "CurrentState.AddSubIdReborrow:rejected", "Erasure.LieP2:rejected",
+   "ErasureBySyntax.R8Field:rejected", "DepFields.UseEx:rejected"]
+  ["Numbers.AddZero blocked by Std.AddMZero", "Numbers.AddZero' blocked by Std.AddMZero",
+   "ClosingOff.AddToOneZero blocked by Std.AddMZero",
+   "ClosingOff.AddToOneZero' blocked by Std.AddMZero",
+   "ClosingOff.AddToOneZero'' blocked by Std.AddMZero", "Rewriting.RwSplit blocked by Std.AddMZero",
+   "Recursion.CallSite blocked by Std.AddMZero", "Functions.TwiceMZero' blocked by Std.AddMZero",
+   "Propositions.TwoAt blocked by Std.AddMZero", "Erasure.LemmaMoves blocked by Std.AddMZero",
+   "Erasure.Pass blocked by Std.AddMZero"]
 -- both off: the closed proofs of False (Subsingletons.Boom, SqBoom) go through
 open Ochr.Registry in
 #guard rowOk { subsingleton := false, propValues := false }
-  ["Subsingletons.IsL:accepted", "Subsingletons.Irr:accepted", "Subsingletons.Boom:accepted",
+  ["Std.AddMZero:rejected", "ReturnedBorrows.AddMEq:rejected",
+   "ReturnedBorrows.AddMEqOwned:rejected", "ReturnedBorrows.AddM1:rejected",
+   "ReturnedBorrows.TailNoop:rejected", "ClosingOff.RowIInd:rejected",
+   "Equality.AddMZeroLet:rejected", "Recursion.AddZeroCopy:rejected", "Recursion.AddZeroC:rejected",
+   "ArmLocal.Leak:rejected", "ArmLocalBoom.EmptyEq:rejected", "Functions.TwiceMZero:rejected",
+   "Lists.AppendMNil:rejected", "Lists.AppendMEq:rejected", "Trees.InsertMEq:rejected",
+   "Trees.AddMS:rejected", "Trees.AddS:rejected", "Trees.SizeInsert:rejected",
+   "InPlaceTrees.AddMS:rejected", "InPlaceTrees.AddS:rejected", "InPlaceTrees.SizeInsert:rejected",
+   "InPlaceTrees.SizeInsertRw:rejected", "PolyLists.AppendMNil:rejected",
+   "PolyLists.AppendNil:rejected", "PolyLists.AppendNilL:rejected", "PolyLists.Closed:rejected",
+   "Subsingletons.IsL:accepted", "Subsingletons.Irr:accepted", "Subsingletons.Boom:accepted",
    "Subsingletons.Get:accepted", "Subsingletons.SqIrr:accepted", "Subsingletons.SqBoom:accepted",
+   "CurrentState.LeAdd:rejected", "CurrentState.AddSub:rejected", "CurrentState.AddSubId:rejected",
+   "CurrentState.PostCopy:rejected", "CurrentState.AddSubIdReborrow:rejected",
    "Erasure.LieP2:rejected", "ErasureBySyntax.R8Field:rejected"]
+  ["Numbers.AddZero blocked by Std.AddMZero", "Numbers.AddZero' blocked by Std.AddMZero",
+   "ClosingOff.AddToOneZero blocked by Std.AddMZero",
+   "ClosingOff.AddToOneZero' blocked by Std.AddMZero",
+   "ClosingOff.AddToOneZero'' blocked by Std.AddMZero", "Rewriting.RwSplit blocked by Std.AddMZero",
+   "Recursion.CallSite blocked by Std.AddMZero", "Functions.TwiceMZero' blocked by Std.AddMZero",
+   "Propositions.TwoAt blocked by Std.AddMZero", "Erasure.LemmaMoves blocked by Std.AddMZero",
+   "Erasure.Pass blocked by Std.AddMZero"]
 -- v2.0 D47 switched off: Eq Nat Z (S Z) is irreducible again, so False and Eq Nat 0 1 part ways
 open Ochr.Registry in
 #guard rowOk { disjoint := false }
@@ -365,13 +408,6 @@ open Ochr.Registry in
 #guard rowOk { unsizedTypes := false }
   ["Abstraction.Take:accepted", "Abstraction.ReadV:accepted"]
 
--- ghost borrows switched off: reading one possible owner of a hole ends the borrow outright,
--- earlier than the ground path may, so a later [Drop] of another owner is let through
--- (meta-order's Bad2: accepted, and wrong at n = 0)
-open Ochr.Registry in
-#guard rowOk { ghostBorrows := false }
-  ["GhostBorrows.Bad2:accepted", "GhostBorrows.Bad3:accepted", "GhostBorrows.D1:accepted",
-   "GhostBorrows.D2:accepted", "GhostBorrows.D3:accepted", "GhostBorrows.D4:accepted"]
 -- D64 [Repack] switched off: a value left open (its length changed, its array not) is returned,
 -- read, passed and observed as if it were of its type; `Absurd`, true of every packed `V`, then
 -- proves `Boom : False` from the lie's result
@@ -410,11 +446,12 @@ open Ochr.Registry in
 
 -- D63 switched off (rule-audit item 10): a match whose arms disagree about being proofs says
 -- nothing (`any`) instead of having no declared type, so [Type-pos] accepts it as a type
--- (`MixPos`) and the erasure pre-pass lets the arm that runs decide (fuzz-port R9's reading)
+-- (`MixPos`), a disagreement in an arm typing never takes is let through (`MixDead`), and the
+-- erasure pre-pass lets the arm that runs decide (fuzz-port R9's reading)
 open Ochr.Registry in
 #guard rowOk { armsAgree := false }
   ["ErasureBySyntax.R9Arms:accepted", "ErasureBySyntax.R9Nested:accepted",
-   "ErasureBySyntax.MixPos:accepted"]
+   "ErasureBySyntax.MixPos:accepted", "ErasureBySyntax.MixDead:accepted"]
 -- D63 switched ON (rule-audit item 7): a closure in a stuck block captures through the block's
 -- borrow parameter (fuzz-port R2 (ii)), where [Fix] captures no borrow
 open Ochr.Registry in
@@ -425,6 +462,14 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { typedObs := false }
   ["Equality.Conv1:rejected"]
+-- D65 amended switched off (pure D65): a dying place's borrower in flight is ended too, so a
+-- block or function returns an ended borrow of its own local; in a stuck block [Split]
+-- discards the arm's value and [Close] gives the block a fresh live borrow, so `Blk` and
+-- `UseG` pass generically and write through ⊥ at `n = 0` (reviewer-9 finding 16)
+open Ochr.Registry in
+#guard rowOk { dropEndsBound := false }
+  ["Drops.RetLocal:accepted", "Drops.E1:accepted", "Drops.FR:accepted", "Drops.Blk:accepted",
+   "Drops.G:accepted", "Drops.UseG:accepted"]
 
 -- every row of `switches` has a class
 open Ochr.Registry in

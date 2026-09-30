@@ -99,7 +99,8 @@ When a proof is rejected, `lake -q exe check --trace Name` shows the goal in eva
 
 ## 8. The checker's messages
 
-- `unknown constant X`: `X` is not defined, or was rejected (see its own verdict first). `unknown constant TODO` is a hole.
+- `unknown constant X`: `X` is not defined, or was rejected (see its own verdict first).
+- A hole, `?` (or `sorry`), is a value of whatever type its context requires: the goal in tail position, a parameter's type as a call's argument, or an annotation's type. The declaration is accepted, and the build warns at the hole with the goal: the bindings in scope, with their types and values, then `⊢ goal`. So a hole is how you see a goal: write `?` where a proof is needed and build. A hole whose type the context does not give (`let y = ?`) is an error. A finished solution has no holes.
 - `the body of X has type A, but the goal is B`: the proof proves `A`; the statement needs `B`. Compare the two normal forms.
 - `argument i (h) has type A, expected B`: a call's argument has the wrong type.
 - `[Read] x was moved out (D53)`: `x` was already moved; `clone` it, reborrow, or read it once.

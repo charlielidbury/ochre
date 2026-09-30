@@ -3,7 +3,7 @@ import Ochr.Examples.«16Arrays»
 
 /-! # Verified in-place hash map (condition `ochr`)
 
-Read `ASSIGNMENT.md` first. Replace every `TODO` with a definition or a proof, and add any
+Read `ASSIGNMENT.md` first. Replace every hole `?` with a definition or a proof, and add any
 helper definitions and lemmas you need to the block `HashMapSolution`, between its FIXED
 regions. Everything inside a FIXED region must stay exactly as it is.
 
@@ -137,31 +137,31 @@ ochr HashMapSolution uses HashMapSpec {
   -- new(c): an empty map, with `cap` empty buckets and length 0. `h` is the precondition c ≥ 1.
   def MapNew (cap : Word) (h : Lt(Zero, cap)) : Map(cap) :=
   -- FIXED-END new
-    TODO
+    ?
 
   -- FIXED-BEGIN len
   -- len(m): the number of keys in the map.
   def MapLen (cap : Word) (m : &Map(cap)) : Word :=
   -- FIXED-END len
-    TODO
+    ?
 
   -- FIXED-BEGIN get
   -- get(m, k): Some(v) if `k` is bound to `v`, None otherwise.
   def MapGet (cap : Word) (m : &Map(cap)) (k : Word) : Opt :=
   -- FIXED-END get
-    TODO
+    ?
 
   -- FIXED-BEGIN insert
   -- insert(m, k, v): bind `k` to `v`, in place; return what `k` was bound to before.
   def MapInsert (cap : Word) (m : &Map(cap)) (k : Word) (v : Word) : Opt :=
   -- FIXED-END insert
-    TODO
+    ?
 
   -- FIXED-BEGIN remove
   -- remove(m, k): unbind `k`, in place; return what it was bound to.
   def MapRemove (cap : Word) (m : &Map(cap)) (k : Word) : Opt :=
   -- FIXED-END remove
-    TODO
+    ?
 
   -- FIXED-BEGIN get_mut
   -- get(m, k) and len(m) of a map value, run on a copy of it: what the properties observe.
@@ -172,46 +172,46 @@ ochr HashMapSolution uses HashMapSpec {
   -- get_mut(m, k): a borrow of the value stored for `k`, which must be present.
   def MapGetMut (cap : Word) (m : &Map(cap)) (k : Word) (h : IsSome(GetOf(cap, *m, k))) : &Word :=
   -- FIXED-END get_mut
-    TODO
+    ?
 
   -- FIXED-BEGIN inv
   -- Inv(m): your invariant, any predicate that makes H1–H18 provable.
   def Inv (cap : Word) (m : Map(cap)) : Prop :=
   -- FIXED-END inv
-    TODO
+    ?
 
   -- FIXED-BEGIN H1
   -- H1: Inv(new(c)).
   def InvNew (cap : Word) (h : Lt(Zero, cap)) : Inv(cap, MapNew(cap, h)) :=
   -- FIXED-END H1
-    TODO
+    ?
 
   -- FIXED-BEGIN H2
   -- H2: insert preserves Inv.
   def InvInsert (cap : Word) (m : &Map(cap)) (k : Word) (v : Word) (hm : Inv(cap, *m)) :
       (let c = *m; MapInsert(cap, &c, k, v); Inv(cap, c)) :=
   -- FIXED-END H2
-    TODO
+    ?
 
   -- FIXED-BEGIN H3
   -- H3: remove preserves Inv.
   def InvRemove (cap : Word) (m : &Map(cap)) (k : Word) (hm : Inv(cap, *m)) :
       (let c = *m; MapRemove(cap, &c, k); Inv(cap, c)) :=
   -- FIXED-END H3
-    TODO
+    ?
 
   -- FIXED-BEGIN H4
   -- H4: get(new(c), k) = None.
   def GetNew (cap : Word) (h : Lt(Zero, cap)) (k : Word) : Eq Opt (GetOf(cap, MapNew(cap, h), k)) None :=
   -- FIXED-END H4
-    TODO
+    ?
 
   -- FIXED-BEGIN H5
   -- H5: after insert(m, k, v), get(m′, k) = Some(v).
   def GetInsertSame (cap : Word) (m : &Map(cap)) (k : Word) (v : Word) (hm : Inv(cap, *m)) :
       Eq Opt (let c = *m; MapInsert(cap, &c, k, v); GetOf(cap, c, k)) (Some(v)) :=
   -- FIXED-END H5
-    TODO
+    ?
 
   -- FIXED-BEGIN H6
   -- H6: after insert(m, k, v), get(m′, k′) = get(m, k′) for k′ ≠ k.
@@ -219,21 +219,21 @@ ochr HashMapSolution uses HashMapSpec {
       (ne : Π(e : Eq Word k2 k). False) :
       Eq Opt (let c = *m; MapInsert(cap, &c, k, v); GetOf(cap, c, k2)) (GetOf(cap, *m, k2)) :=
   -- FIXED-END H6
-    TODO
+    ?
 
   -- FIXED-BEGIN H7
   -- H7: insert returns get(m, k).
   def InsertReturnsGet (cap : Word) (m : &Map(cap)) (k : Word) (v : Word) (hm : Inv(cap, *m)) :
       Eq Opt (let c = *m; MapInsert(cap, &c, k, v)) (GetOf(cap, *m, k)) :=
   -- FIXED-END H7
-    TODO
+    ?
 
   -- FIXED-BEGIN H8
   -- H8: after remove(m, k), get(m′, k) = None.
   def GetRemoveSame (cap : Word) (m : &Map(cap)) (k : Word) (hm : Inv(cap, *m)) :
       Eq Opt (let c = *m; MapRemove(cap, &c, k); GetOf(cap, c, k)) None :=
   -- FIXED-END H8
-    TODO
+    ?
 
   -- FIXED-BEGIN H9
   -- H9: after remove(m, k), get(m′, k′) = get(m, k′) for k′ ≠ k.
@@ -241,34 +241,34 @@ ochr HashMapSolution uses HashMapSpec {
       (ne : Π(e : Eq Word k2 k). False) :
       Eq Opt (let c = *m; MapRemove(cap, &c, k); GetOf(cap, c, k2)) (GetOf(cap, *m, k2)) :=
   -- FIXED-END H9
-    TODO
+    ?
 
   -- FIXED-BEGIN H10
   -- H10: remove returns get(m, k).
   def RemoveReturnsGet (cap : Word) (m : &Map(cap)) (k : Word) (hm : Inv(cap, *m)) :
       Eq Opt (let c = *m; MapRemove(cap, &c, k)) (GetOf(cap, *m, k)) :=
   -- FIXED-END H10
-    TODO
+    ?
 
   -- FIXED-BEGIN H11
   -- H11: len(new(c)) = 0.
   def LenNew (cap : Word) (h : Lt(Zero, cap)) : Eq Word (LenOf(cap, MapNew(cap, h))) Zero :=
   -- FIXED-END H11
-    TODO
+    ?
 
   -- FIXED-BEGIN H12
   -- H12: insert adds one to len if get(m, k) = None, and leaves it otherwise.
   def LenInsert (cap : Word) (m : &Map(cap)) (k : Word) (v : Word) (hm : Inv(cap, *m)) :
       Eq Word (let c = *m; MapInsert(cap, &c, k, v); LenOf(cap, c)) (Grow(GetOf(cap, *m, k), LenOf(cap, *m))) :=
   -- FIXED-END H12
-    TODO
+    ?
 
   -- FIXED-BEGIN H13
   -- H13: remove takes one from len if get(m, k) ≠ None, and leaves it otherwise.
   def LenRemove (cap : Word) (m : &Map(cap)) (k : Word) (hm : Inv(cap, *m)) :
       Eq Word (let c = *m; MapRemove(cap, &c, k); LenOf(cap, c)) (Shrink(GetOf(cap, *m, k), LenOf(cap, *m))) :=
   -- FIXED-END H13
-    TODO
+    ?
 
   -- FIXED-BEGIN H14
   -- H14: writing `w` through get_mut(m, k) has the effect of insert(m, k, w) on every get.
@@ -277,7 +277,7 @@ ochr HashMapSolution uses HashMapSpec {
       Eq Opt (let c = *m; let r = MapGetMut(cap, &c, k, hk); *r := w; GetOf(cap, c, k2))
         (let c = *m; MapInsert(cap, &c, k, w); GetOf(cap, c, k2)) :=
   -- FIXED-END H14
-    TODO
+    ?
 
   -- FIXED-BEGIN H15
   -- H15: ... and on len.
@@ -286,7 +286,7 @@ ochr HashMapSolution uses HashMapSpec {
       Eq Word (let c = *m; let r = MapGetMut(cap, &c, k, hk); *r := w; LenOf(cap, c))
         (let c = *m; MapInsert(cap, &c, k, w); LenOf(cap, c)) :=
   -- FIXED-END H15
-    TODO
+    ?
 
   -- FIXED-BEGIN H16
   -- H16: ... and preserves Inv.
@@ -294,19 +294,19 @@ ochr HashMapSolution uses HashMapSpec {
       (hk : IsSome(GetOf(cap, *m, k))) :
       (let c = *m; let r = MapGetMut(cap, &c, k, hk); *r := w; Inv(cap, c)) :=
   -- FIXED-END H16
-    TODO
+    ?
 
   -- FIXED-BEGIN H17
   -- H17: get leaves the map unchanged (for every map, not only those with Inv).
   def GetUnchanged (cap : Word) (m : &Map(cap)) (k : Word) : Eq (Map(cap)) (let c = *m; MapGet(cap, &c, k); c) (*m) :=
   -- FIXED-END H17
-    TODO
+    ?
 
   -- FIXED-BEGIN H18
   -- H18: len leaves the map unchanged.
   def LenUnchanged (cap : Word) (m : &Map(cap)) : Eq (Map(cap)) (let c = *m; MapLen(cap, &c); c) (*m) :=
   -- FIXED-END H18
-    TODO
+    ?
 -- FIXED-BEGIN tests
 }
 
