@@ -28,7 +28,7 @@ Aeneas comes closest to closing the gap. Its insight is that Rust's ownership di
 
 We show that this translation can be performed *inside the type checker, lazily, as definitional equality, and in the source language itself*.
 
-Two lines of work already use one language. Low\* @lowstar writes low-level code in F\* against an explicit memory model and reasons about it with pre- and postconditions, and Cogent @cogent gives in-place code a purely functional semantics through linear types and generates that semantics for proofs. The claim behind Ochr is stronger: one system in which the in-place algorithm itself appears in types and is unfolded by conversion gives shorter developments than the three pieces of the usual approach, a specification, an implementation and a proof that they agree. This paper presents the calculus that makes such developments possible, and the evidence that it is sound.
+Two lines of work already use one language. Low\* @lowstar writes low-level code in F\* against an explicit memory model and reasons about it with pre- and postconditions, and Cogent @cogent gives in-place code a purely functional semantics through linear types and generates that semantics for proofs. The claim behind Ochr is stronger: in one system where the in-place algorithm itself appears in types and is unfolded by conversion, a development needs no model and no agreement proof, and so, even without automation, is of comparable size to the three pieces of the usual approach, a specification, an implementation and a proof that they agree (@sec-eval-hashmap). This paper presents the calculus that makes such developments possible, and the evidence that it is sound.
 
 == Three ideas
 
