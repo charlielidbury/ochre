@@ -102,3 +102,11 @@ The text below is the brief given verbatim to the five agents building `ochr/ben
 - Add a `.gitignore` in your package dirs for build outputs (`target/`, `.lake/`, `result`, generated Lean).
 - End each commit message with `Agent: <your name> (teammate of team-lead), <date>.` and a blank line, then `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>`.
 - Plain language, no hard line wrapping in prose. Report to team-lead when done: what you built, the pins, the validation results, and anything that made a condition unfair or impossible.
+
+## Amendments
+
+Approved by team-lead on 2026-09-30, after the brief was issued. `ochr/bench/README.md` is the authoritative protocol.
+
+- **Only a pristine copy's grade counts.** Each package lists the files the agent edits in `SOLUTION_FILES`. The authoritative grade copies only those files into a fresh sandbox made by `make-sandbox.sh` and runs that sandbox's `grade.sh`. Reason: inside its own sandbox the agent can edit `grade.sh`, `check_fixed.py`, the tests or a vendored checker, so the in-sandbox grade is only advisory.
+- **`grade.sh` ends with a machine-readable verdict.** Its last line starts with `GRADE: PASS` or `GRADE: FAIL`. Reason: a runner finds the first passing run in the transcript by that prefix, which is where the primary metric stops counting.
+- **The randomized hashmap tests are four 50-op sequences, at capacities 1, 3, 4 and 7, instead of one sequence of about 200 ops.** Reason: at capacity 1 every key collides, the other capacities give different bucket shapes, and each sequence is a separate, smaller concrete run for Ochr's checker.

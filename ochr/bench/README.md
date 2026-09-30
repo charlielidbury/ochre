@@ -4,7 +4,7 @@ This directory holds coursework-style assignments for measuring how much effort 
 
 Only the assignments are here. No assessed agent has been run, and no verified solution is in the repository. A solution would contaminate the experiment, and producing one is the experiment itself.
 
-The design brief the packages were built from is `../docs/05-agent-effort-benchmark.md`.
+The shared design the packages were built from is `ochr/docs/05-agent-effort-benchmark.md`. Its Amendments section records the changes to that design approved since, all of which this protocol includes.
 
 ## 1. What is being tested, and why tokens
 
