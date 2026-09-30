@@ -242,9 +242,35 @@ ochr Moves uses Std {
   -- returns `y10` (fuzz-port shape (c)).
   reject def RetMoved : Eq (Π(y9 : &Nat) (y10 : &Nat). &Nat)
       (λ(y9 : &Nat) (y10 : &Nat) : &Nat => (*y10; y10)) (λ(y9 : &Nat) (y10 : &Nat) : &Nat => y10) := refl
+
+  -- A stuck match's effect on what it captures is the direct path's, moves included, at
+  -- every granularity (fuzz-port's execution oracle: each of these was accepted and went
+  -- wrong when run). M1: an arm moves a field its pattern exposed, so `q0` (and `n0`) is
+  -- partly moved afterwards; a pair is refined to its one constructor to say which part.
+  reject def A1 (q0 : Nat × Nat) : Nat × Nat := (let a = match q0 { Mk(p, _) => p }; q0)
+  reject def A2 (n0 : Nat) : Nat := (let a = match n0 { Z => 0, S p => p }; n0)
+  def A3 (q0 : Nat × Nat) : Nat := (let a = match q0 { Mk(p, _) => p }; a)
+  -- M2: an arm moves a captured place that is not a whole variable (`*x0`, `*x1`), so the
+  -- block moves it in and the borrow ends partly moved
+  reject def B1 (x0 : &Nat) (n1 : Nat) : Nat := (let a = match n1 { Z => 0, S _ => *x0 }; a)
+  reject def B2 (q0 : Nat × Nat) (x1 : &Nat) : Nat := S (match q0 { Mk(_, _) => *x1 })
+  reject def B3 (x0 : &Nat) (x1 : &Nat) : &Nat := (match *x1 { Z => (), S _ => *x1 := *x0 }; x0)
+  -- M2b: one arm moves the borrow into the block, another moves out through it, and the
+  -- block's frame ends the borrow partly moved
+  reject def B4 (x0 : &Nat) : Nat := S (match *x0 { Z => x0; 0, S _ => *x0 })
+  -- M3: erased positions read without moving, whichever path runs them: `J`'s endpoints and
+  -- motive (as run by a call, untyped), and an `Id` side on its private copy
+  def J1 (n : Nat) (h : Eq Nat n 1) : Nat := (let m = n; J(Nat, n, 1, λ(z : Nat) : Type => Nat, h, m))
+  def J1Run : Nat := J1(1, refl)
+  def I1 (n1 : Nat) : Nat := (let m = n1; let a0 = Id Unit () (n1 := 0); 0)
+  def I1Run : Nat := I1(0)
+  -- RN: a split in a data function re-normalises its hypotheses' types, as types (reads copy)
+  def DataSplit (n : Nat) (h : Id (Nat × Nat) (match n { Z => (n, n), S p => (p, p) })
+      (match n { Z => (0, 0), S p => (p, p) })) : Nat := (
+    match n { Z => 0, S _ => 1 })
 }
 
 #eval IO.println (run "Moves" Moves).show
 
 #guard (run "Moves" Moves).allAsExpected
-#guard (run "Moves" Moves).count == 21
+#guard (run "Moves" Moves).count == 33

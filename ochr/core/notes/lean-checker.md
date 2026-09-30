@@ -1068,3 +1068,27 @@ With it, no row flips nothing, and the `subsumed` class is removed. `classOk` no
 1001 verdicts.
 
 *RULES numbering:* the D53 draft's "P3 Reads move…" replaces the old P3 ("Data is copied, borrows are moved"). D53 is that principle's change, so there is no collision. RULES states D53 as the rule; the checker applies it only in `Moves` until acceptance.
+
+## 37. The D53 acceptance mechanisms (fuzz-port's execution oracle)
+
+fuzz-port's execution oracle runs accepted data functions at ground inputs, with reads moving. It found 15,567 programs in 10⁶ that the checker accepts and that go wrong when run. The principle behind every fix below is that a closed-off block's effect on its captured places equals the direct path's, moves included, and that whether a computation is a runtime one depends on where it runs, never on the code path the machine takes to run it.
+
+- **M1: a move of a field the arm's pattern exposed was lost.** `splitArmsThenClose` took `before` from the unrefined `σ`, which has no fields, so `newHoles` found nothing.
+  - `before` is now taken per arm, after the refinement.
+  - A moved place that does not exist in the closed-off (unrefined) state is mapped into it (`movedPlace`). If it runs through an abstract value of a single-constructor type, that value is refined to its constructor, which is total, like a split with one arm. So `q0.1` is moved in and `q0.2` stays. Otherwise the longest existing prefix is moved in: `n0`, since its predecessor exists only in one arm.
+  - `A1` and `A2` are now rejected; `A3` stays accepted.
+- **M2: a moved capture that is not a whole variable** (`*x0`, `*x1`) stayed a read-in-place capture. A capture that some arm moves out whole is now moved in (mode 2). `B1`, `B2`, `B3` are rejected.
+- **M2b: one arm moves a borrow into the block whole and another moves out through it.** The block's frame ends that borrow partly moved. `splitArmsThenClose` records, per borrow variable, which arms moved it whole and which left it holed inside, and rejects the block if both happen. `B4` is rejected.
+- **M3 (i): the untyped `J` read its endpoints at runtime depth.** `J`'s type, endpoints and motive are now evaluated erased on both paths. `J1` and `J1Run` are accepted.
+- **M3 (ii): an `Id` side writing a moved place.** It was already fixed by §34 (owners are typed by what the observation reads). `I1` and `I1Run` are accepted.
+- **RN: a split in a data function re-ran a type's sealed program as code**, so the program's reads moved. `substEnv`'s stored types, `absTy` and goal, and `renormAll`'s goal and stored types, are now re-normalised erased. `DataSplit` is accepted.
+
+*Regressions.* All twelve are in `Moves`: `A1`, `A2`, `A3`, `B1`–`B4`, `J1`, `J1Run`, `I1`, `I1Run`, `DataSplit`.
+
+*Ledger.* The `moves` row gains `A1`, `A2` and `B1`–`B4`. The `ghosts` row gains `J1` and `J1Run`: without ghosts, the erased endpoint reads `⊥`.
+
+*Cost with D53 off.* The per-arm comparison of captured values runs in full only with D53 on. Without D53 only a whole move can happen, and `newHoles` returns early on a value with no hole. Check times match the previous head up to machine load: with a load average of 16, every block was about 1.4× slower, uniformly.
+
+*With D53 on everywhere:* the tour has no failures. The case studies have 225, all of them missing clones or `Word`s, as before; Quicksort's count is 48, down from 52.
+
+1013 verdicts.
