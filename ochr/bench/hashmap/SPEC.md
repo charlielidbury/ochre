@@ -222,17 +222,17 @@ Each package fills in its own table: for each property, the file and declaration
 
 | Id | File | Declaration | Notes |
 |---|---|---|---|
-| Representation, `idx` | `verus/src/hashmap.rs` | `List`, `HashMap`, `bucket_index` (region `types`) | `List ::= Cons(u64, u64, Box<List>) \| Nil`; `HashMap { slots: Vec<List>, len: u64 }`, capacity = `slots.len()`. `bucket_index(key, cap)` requires `cap > 0` and ensures `i == key % cap` (proved in the skeleton). |
-| new, len, get, insert, remove, get_mut | `verus/src/hashmap.rs` | `HashMap::new`, `len`, `get`, `insert`, `remove`, `get_mut` (regions of the same names) | `new(cap: usize)`, since a `Vec`'s length is a `usize`. `get` and `len` take `&self`. Every operation except `new` requires `inv()`: Verus proves that nothing panics, `key % cap` needs `cap > 0`, and only `Inv` supplies it; every property is stated under `Inv` anyway. A Verus specification cannot call an executable function, so the FIXED contracts of `get` and `len` say they return `spec_get(key)` and `spec_len()`, two spec functions whose bodies are holes like `Inv`; every property is stated through them, and so holds of what the executable `get` and `len` return. |
+| Representation, `idx` | `verus/src/hashmap.rs` | `List<V>`, `HashMap<V>`, `observe`, `bucket_index` (region `types`); `impl<V> HashMap<V>` (region `impl`) | `List<V> ::= Cons(u64, V, Box<List<V>>) \| Nil`; `HashMap<V> { slots: Vec<List<V>>, len: u64 }`, capacity = `slots.len()`. `V` has no trait bounds, and the `impl` header is FIXED so the solver cannot add any. `observe(r: Option<&V>) -> Option<V>` is `Some(*v)` / `None`, the observed value of §3. `bucket_index(key, cap)` requires `cap > 0` and ensures `i == key % cap` (proved in the skeleton). |
+| new, len, get, insert, remove, get_mut | `verus/src/hashmap.rs` | `HashMap::new`, `len`, `get`, `insert`, `remove`, `get_mut` (regions of the same names) | `new(cap: usize)`, since a `Vec`'s length is a `usize`. `get(&self, key) -> Option<&V>`, `insert(&mut self, key, value: V) -> Option<V>`, `remove(&mut self, key) -> Option<V>` (the old value moved out), `get_mut(&mut self, key) -> &mut V`. Every operation except `new` requires `inv()`: Verus proves that nothing panics, `key % cap` needs `cap > 0`, and only `Inv` supplies it; every property is stated under `Inv` anyway. A Verus specification cannot call an executable function, so the FIXED contracts tie the code to two spec functions whose bodies are holes like `Inv`: `get` ensures `observe(r) == self.spec_get(key)` and `len` ensures `n == self.spec_len()`. Every property is stated through them, and so holds of what the executable `get` and `len` return. Every contract is generic in `V`, so every property holds for every `V`; equality on `V` is Verus's spec equality. The grader's witness is generic in an unbounded `V`. |
 | Inv | `verus/src/hashmap.rs` | `HashMap::inv` (region `inv`; body a hole) | `pub closed spec fn inv(&self) -> bool`. The holes `spec_get` and `spec_len` (regions `spec_get`, `spec_len`) are the solver's too. |
 | H1 | `verus/src/hashmap.rs` | `new`: `m.inv()` |  |
 | H2 | `verus/src/hashmap.rs` | `insert`: `final(self).inv()` | `insert` requires `old(self).spec_len() < u64::MAX` (the bounded-integer allowance), for all of H2, H5–H7 and H12. |
 | H3 | `verus/src/hashmap.rs` | `remove`: `final(self).inv()` |  |
-| H4 | `verus/src/hashmap.rs` | `new`: `forall\|k: u64\| m.spec_get(k) == None::<u64>` |  |
+| H4 | `verus/src/hashmap.rs` | `new`: `forall\|k: u64\| m.spec_get(k) == None::<V>` |  |
 | H5 | `verus/src/hashmap.rs` | `insert`: `final(self).spec_get(key) == Some(value)` | `old(self)` is m, `final(self)` is m′, `r` is r. |
 | H6 | `verus/src/hashmap.rs` | `insert`: `forall\|k2: u64\| k2 != key ==> final(self).spec_get(k2) == old(self).spec_get(k2)` |  |
 | H7 | `verus/src/hashmap.rs` | `insert`: `r == old(self).spec_get(key)` |  |
-| H8 | `verus/src/hashmap.rs` | `remove`: `final(self).spec_get(key) == None::<u64>` |  |
+| H8 | `verus/src/hashmap.rs` | `remove`: `final(self).spec_get(key) == None::<V>` |  |
 | H9 | `verus/src/hashmap.rs` | `remove`: `forall\|k2: u64\| k2 != key ==> final(self).spec_get(k2) == old(self).spec_get(k2)` |  |
 | H10 | `verus/src/hashmap.rs` | `remove`: `r == old(self).spec_get(key)` |  |
 | H11 | `verus/src/hashmap.rs` | `new`: `m.spec_len() == 0` |  |
@@ -241,7 +241,7 @@ Each package fills in its own table: for each property, the file and declaration
 | H14 | `verus/src/hashmap.rs` | `get_mut`: `final(self).spec_get(key) == Some(*final(r))` and `forall\|k2: u64\| k2 != key ==> final(self).spec_get(k2) == old(self).spec_get(k2)` | Stated in closed form with Verus's prophecy operator `final`: `*final(r)` is the w the caller leaves behind the borrow r, and `final(self)` is m[k ≔ w] once the borrow ends. The right-hand sides are what H5 and H6 give for insert(m, k, w). |
 | H15 | `verus/src/hashmap.rs` | `get_mut`: `final(self).spec_len() == old(self).spec_len()` | Closed form: len(m₂) = len(m) by H12, since `get_mut` requires `k` present (`old(self).spec_get(key) is Some`). |
 | H16 | `verus/src/hashmap.rs` | `get_mut`: `final(self).inv()` |  |
-| H17 |  |  | omitted: guaranteed by the type system (`get(&self, key)`). |
+| H17 |  |  | omitted: guaranteed by the type system (`get(&self, key) -> Option<&V>`). |
 | H18 |  |  | omitted: guaranteed by the type system (`len(&self)`). |
 
 ### lean

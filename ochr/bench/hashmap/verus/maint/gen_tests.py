@@ -18,8 +18,9 @@ SRC = PKG / "src" / "hashmap.rs"
 HEADER = """\
 // The tests, transcribed mechanically from tests.json (SPEC section 6) by a script.
 // They run as ordinary Rust in the compiled binary: `./grade.sh` builds it with
-// `verus --compile` and runs it. Each sequence starts from `HashMap::new(cap)`; after
-// every op the result (if any) and then `len` are checked.
+// `verus --compile` and runs it. The value type is `V := u64`. Each sequence starts from
+// `HashMap::<u64>::new(cap)`; after every op the result (if any) and then `len` are
+// checked. `get`'s result is compared through the value it points to (`.copied()`).
 
 struct Tally {
     passed: u64,
@@ -58,12 +59,12 @@ def fn_name(name):
 
 def sequence(seq):
     name = seq["name"]
-    out = [f"fn {fn_name(name)}(t: &mut Tally) {{", f"    let mut m = HashMap::new({seq['cap']});"]
+    out = [f"fn {fn_name(name)}(t: &mut Tally) {{", f"    let mut m = HashMap::<u64>::new({seq['cap']});"]
     for i, o in enumerate(seq["ops"], 1):
         k = o["key"]
         tag = f"{name} op {i}"
         if o["op"] == "get":
-            call = f'let r = m.get({k}); t.opt("{tag}: get({k})", r, {opt(o["expect"])});'
+            call = f'let r = m.get({k}).copied(); t.opt("{tag}: get({k})", r, {opt(o["expect"])});'
         elif o["op"] == "insert":
             v = o["value"]
             call = f'let r = m.insert({k}, {v}); t.opt("{tag}: insert({k}, {v})", r, {opt(o["expect"])});'

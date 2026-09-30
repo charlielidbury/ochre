@@ -226,21 +226,35 @@ cat "$src" - >"$graded" <<'WITNESS'
 
 // Grader witness, appended by grade.sh (not part of the skeleton or the solution). It
 // restates every FIXED contract through calls, so it verifies only if the FIXED items
-// are in force exactly as written.
+// are in force exactly as written. It is generic in V with no bounds, so it also fails
+// if the solution constrains V.
 verus! {
 
-fn grader_witness_types(l: List, m: HashMap) {
+fn grader_witness_types<V>(l: List<V>, m: HashMap<V>) {
     match l {
         List::Cons(k, v, next) => {
             let _k: u64 = k;
-            let _v: u64 = v;
-            let _next: Box<List> = next;
+            let _v: V = v;
+            let _next: Box<List<V>> = next;
         },
         List::Nil => {},
     }
     let HashMap { slots, len } = m;
-    let _slots: Vec<List> = slots;
+    let _slots: Vec<List<V>> = slots;
     let _len: u64 = len;
+}
+
+spec fn grader_observe<V>(r: Option<&V>) -> Option<V> {
+    match r {
+        Some(v) => Some(*v),
+        None => None,
+    }
+}
+
+proof fn grader_witness_observe<V>(r: Option<&V>)
+    ensures
+        observe(r) == grader_observe(r),
+{
 }
 
 fn grader_witness_bucket_index(key: u64, cap: usize)
@@ -251,42 +265,43 @@ fn grader_witness_bucket_index(key: u64, cap: usize)
     assert(i == key as int % cap as int);
 }
 
-fn grader_witness_new(cap: usize, k: u64)
+fn grader_witness_new<V>(cap: usize, k: u64)
     requires
         cap > 0,
 {
-    let m = HashMap::new(cap);
+    let m = HashMap::<V>::new(cap);
     assert(m.inv());
-    assert(m.spec_get(k) == None::<u64>);
+    assert(m.spec_get(k) == None::<V>);
     assert(m.spec_len() == 0);
 }
 
-fn grader_witness_len_get(m: &HashMap, k: u64)
+fn grader_witness_len_get<V>(m: &HashMap<V>, k: u64)
     requires
         m.inv(),
 {
     let n = m.len();
     assert(n == m.spec_len());
     let r = m.get(k);
-    assert(r == m.spec_get(k));
+    assert(grader_observe(r) == m.spec_get(k));
 }
 
-fn grader_witness_insert(m: &mut HashMap, k: u64, v: u64, k2: u64)
+fn grader_witness_insert<V>(m: &mut HashMap<V>, k: u64, v: V, k2: u64)
     requires
         old(m).inv(),
         old(m).spec_len() < u64::MAX,
         k2 != k,
 {
     let ghost m0 = *m;
+    let ghost v0 = v;
     let r = m.insert(k, v);
     assert(m.inv());
-    assert(m.spec_get(k) == Some(v));
+    assert(m.spec_get(k) == Some(v0));
     assert(m.spec_get(k2) == m0.spec_get(k2));
     assert(r == m0.spec_get(k));
     assert(m.spec_len() == if m0.spec_get(k) is None { m0.spec_len() + 1 } else { m0.spec_len() });
 }
 
-fn grader_witness_remove(m: &mut HashMap, k: u64, k2: u64)
+fn grader_witness_remove<V>(m: &mut HashMap<V>, k: u64, k2: u64)
     requires
         old(m).inv(),
         k2 != k,
@@ -294,22 +309,23 @@ fn grader_witness_remove(m: &mut HashMap, k: u64, k2: u64)
     let ghost m0 = *m;
     let r = m.remove(k);
     assert(m.inv());
-    assert(m.spec_get(k) == None::<u64>);
+    assert(m.spec_get(k) == None::<V>);
     assert(m.spec_get(k2) == m0.spec_get(k2));
     assert(r == m0.spec_get(k));
     assert(m.spec_len() == if m0.spec_get(k) is Some { m0.spec_len() - 1 } else { m0.spec_len() as int });
 }
 
-fn grader_witness_get_mut(m: &mut HashMap, k: u64, w: u64, k2: u64)
+fn grader_witness_get_mut<V>(m: &mut HashMap<V>, k: u64, w: V, k2: u64)
     requires
         old(m).inv(),
         old(m).spec_get(k) is Some,
         k2 != k,
 {
     let ghost m0 = *m;
+    let ghost w0 = w;
     let r = m.get_mut(k);
     *r = w;
-    assert(m.spec_get(k) == Some(w));
+    assert(m.spec_get(k) == Some(w0));
     assert(m.spec_get(k2) == m0.spec_get(k2));
     assert(m.spec_len() == m0.spec_len());
     assert(m.inv());

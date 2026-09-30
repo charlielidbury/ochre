@@ -2,7 +2,7 @@
 
 ## 1. The task
 
-Implement a fixed-capacity hash map with separate chaining in Rust, and prove it correct with [Verus](docs/verus-guide/SUMMARY.md). The map stores `u64` values under `u64` keys. It has a fixed number of buckets, chosen when it is created, and each bucket is a singly linked list of entries. Every operation works in place.
+Implement a fixed-capacity hash map with separate chaining in Rust, and prove it correct with [Verus](docs/verus-guide/SUMMARY.md). The map is generic: it stores values of any type `V` under `u64` keys, and `V` has no trait bounds, so your code and proofs cannot compare, hash, order, clone or default values. It has a fixed number of buckets, chosen when it is created, and each bucket is a singly linked list of entries. Every operation works in place.
 
 All your work goes in one file, `src/hashmap.rs`. It already contains the skeleton: the types, the function signatures with their specifications, and the tests. Your job is to fill in the holes so that the file verifies, compiles and passes the tests.
 
@@ -12,7 +12,8 @@ You are done when `./grade.sh` prints a last line starting with `GRADE: PASS` (s
 
 The parts of `src/hashmap.rs` between a `// FIXED-BEGIN <id>` line and the matching `// FIXED-END <id>` line are FIXED. You must not change them in any way, not even whitespace. They are:
 
-- **The representation.** `List`, a bucket: `Nil`, or `Cons(key, value, next)` with the next node in a `Box`. `HashMap`, the map: `slots`, a `Vec<List>` of buckets, and `len`, a `u64` counter.
+- **The representation.** `List<V>`, a bucket: `Nil`, or `Cons(key, value, next)` with a `u64` key, a `V` value and the next node in a `Box`. `HashMap<V>`, the map: `slots`, a `Vec<List<V>>` of buckets, and `len`, a `u64` counter. The `impl<V> HashMap<V>` line is FIXED too, so `V` stays unbounded.
+- **`observe`**, a spec function: the value an `Option<&V>` points to (`Some(*v)` or `None`).
 - **The hash function.** `bucket_index(key, cap)` is `key % cap`, with its proof. The bucket of key `k` is `slots[bucket_index(k, slots.len())]`.
 - **The operations**, as signatures with their `requires`/`ensures` contracts (section 4): `new`, `len`, `get`, `insert`, `remove` and `get_mut`.
 - **The signatures of three spec functions** whose bodies you write: `inv`, `spec_get` and `spec_len` (section 3).
@@ -21,14 +22,14 @@ The parts of `src/hashmap.rs` between a `// FIXED-BEGIN <id>` line and the match
 ## 3. What you write (the holes)
 
 - The body of `inv(&self) -> bool`: the representation invariant `Inv`. You choose it; it can be anything that makes the contracts provable.
-- The body of `spec_get(&self, key) -> Option<u64>`: what `get` returns, as a spec function.
+- The body of `spec_get(&self, key) -> Option<V>`: the value `get` observes, as a spec function.
 - The body of `spec_len(&self) -> nat`: what `len` returns, as a spec function.
 - The bodies of the six executable functions `new`, `len`, `get`, `insert`, `remove` and `get_mut`.
 - Anything else you need: spec functions, proof functions (lemmas), private executable helpers, loop invariants, `decreases` clauses and `proof { ... }` blocks.
 
 Each spec-function hole is currently `arbitrary()` and each executable hole is `todo!()`. Verus reports every `todo!()` as `precondition not satisfied`, because a panic's precondition is `false`.
 
-Why `spec_get` and `spec_len` exist: a Verus specification cannot call an executable function, so the properties cannot mention `get` and `len` directly. Instead they mention `spec_get` and `spec_len`, and the FIXED contracts of `get` and `len` say that the executable functions return exactly `spec_get` and `spec_len`. So every property below is a property of what the real `get` and `len` return. You are free to define `spec_get` and `spec_len` however you like, directly on the buckets or through a model (a `Map<u64, u64>` view, say).
+Why `spec_get` and `spec_len` exist: a Verus specification cannot call an executable function, so the properties cannot mention `get` and `len` directly. Instead they mention `spec_get` and `spec_len`, and the FIXED contracts of `get` and `len` say that the executable functions return exactly `spec_get` and `spec_len`: `get` returns an `Option<&V>`, and the value it points to is `spec_get(key)`. So every property below is a property of what the real `get` and `len` return. You are free to define `spec_get` and `spec_len` however you like, directly on the buckets or through a model (a `Map<u64, V>` view, say).
 
 **Where you may add code.** Anywhere inside the `verus! { ... }` block that is outside the FIXED regions: new items before or after the FIXED ones, and attributes on a line directly before a `// FIXED-BEGIN` line (they then apply to that item, for example `#[verifier::rlimit(20)]`). A `decreases` clause may go between a `// FIXED-END` line and the function body. Do not put code outside the `verus!` block, and do not wrap FIXED items in modules or other items: the grader refers to them by name.
 
@@ -55,9 +56,10 @@ The properties are numbered as in the system-neutral specification of this assig
 | H15 | ... and leaves `len` unchanged (as `insert(k, w)` would, `k` being present) | `get_mut`: the `spec_len` clause |
 | H16 | ... and preserves `inv` | `get_mut`: `final(self).inv()` |
 
-The ties between the spec functions and the code are `len`: `n == self.spec_len()` and `get`: `r == self.spec_get(key)`.
+The ties between the spec functions and the code are `len`: `n == self.spec_len()` and `get`: `observe(r) == self.spec_get(key)`. Equality on `V` is Verus's own specification equality, and every property holds for every `V`.
 
 Points to note:
+- `get` returns a shared reference into the map, `Option<&V>`, not a copy: with no bounds on `V` there is no way to copy a value, and a user `Clone` could not be proved to return an equal value. `insert` and `remove` return the old value by moving it out of the map.
 - `get` and `len` take `&self`, so Rust's type system already guarantees that they leave the map unchanged. (In the neutral specification these are H17 and H18; here they need no proof.)
 - Every operation except `new` requires `inv`. Verus proves that code cannot panic, so `get` must know that the capacity is non-zero before it computes `key % cap`, and only the invariant can tell it. Every property above is stated for maps satisfying the invariant, so this loses nothing.
 - `insert` requires `spec_len() < u64::MAX`, so that the `u64` counter `len` cannot overflow. This is the one extra hypothesis the specification allows for bounded integers.
@@ -74,7 +76,7 @@ A human reader checks these requirements; the grader does not.
 
 ## 6. The tests
 
-The FIXED `tests` region, after the `verus!` block, holds the tests. They are plain Rust (not verified), and they run in the binary that `./grade.sh` compiles. There are five sequences of operations, each starting from `HashMap::new(cap)`:
+The FIXED `tests` region, after the `verus!` block, holds the tests. They are plain Rust (not verified), and they run in the binary that `./grade.sh` compiles. They instantiate `V := u64` and compare `get`'s result through the value it points to (`.copied()`). There are five sequences of operations, each starting from `HashMap::<u64>::new(cap)`:
 - `scripted`, on capacity 4: collisions (several keys in one bucket), overwriting with the previous value returned, removing a key at the head, middle and end of a bucket, removing an absent key, removing twice, writing through `get_mut` then reading with `get` (the same key and a neighbour in the same bucket), `insert` after `get_mut`, and re-inserting a removed key;
 - `random-cap1`, `random-cap3`, `random-cap4` and `random-cap7`: 50 pseudo-random operations each, on capacities 1, 3, 4 and 7.
 
@@ -90,10 +92,10 @@ You may use anything in `vstd` in specifications and proofs, including `Seq`, `M
 - any `#[verifier::...]` attribute other than these, none of which weakens checking: `opaque`, `rlimit`, `spinoff_prover`, `nonlinear`, `bit_vector`, `integer_ring`, `loop_isolation`, `auto_ext_equal`, `ext_equal`, `inline`, `memoize`, `truncate`, `type_invariant`, `when_used_as_spec`, `allow_in_spec`, `accept_recursive_types`, `reject_recursive_types`, `reject_recursive_types_in_ground_variants`, `no_auto_trigger`, `decreases_by`, `opaque_outside_module`, `prophetic`;
 - anything that could stop a FIXED item from being checked, or change what it means: code outside the `verus!` block, a second `verus!` block, `#[cfg(...)]`, `cfg!`, `#[cfg_attr(...)]`, `#[path]`, `#[verus...]` attributes, inner attributes (`#![...]`) other than the `#![trigger ...]` and `#![auto]` of quantifiers, `macro_rules!`, `include!`, `extern crate`, out-of-line modules (`mod m;`), block comments (`/* */`; use `//`), raw strings, and any string literal, macro argument or attribute argument that runs on into a FIXED region;
 - library maps and sets in any form: `std::collections` (`HashMap`, `HashSet`, `BTreeMap`, `BTreeSet`, `VecDeque`), `vstd::hash_map`, `vstd::hash_set`, `HashMapWithView` and the like, and `vstd::contrib::exec_spec`;
-- copying: `clone`, `Clone`, `to_vec`, `to_owned` (requirement A2);
+- copying: `clone`, `Clone`, `to_vec`, `to_owned` (requirement A2; `V` has no `Clone` bound anyway);
 - `std::process`.
 
-To make sure the FIXED contracts are the ones in force, `./grade.sh` appends a short *witness* to a copy of your file before verifying it: grader-owned functions that call each FIXED function and assert its FIXED postconditions. The witness verifies whenever the FIXED items are intact; you do not need to do anything for it.
+To make sure the FIXED contracts are the ones in force, `./grade.sh` appends a short *witness* to a copy of your file before verifying it: grader-owned functions, generic in an unbounded `V`, that call each FIXED function and assert its FIXED postconditions. The witness verifies whenever the FIXED items are intact; you do not need to do anything for it.
 
 ## 8. Checking your work
 
