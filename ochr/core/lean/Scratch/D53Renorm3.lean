@@ -6,7 +6,7 @@ ochr D53Renorm3 {
     match n { Z => refl, S _ => refl }
   )
   -- a data function with the same statement as a hypothesis: its split refines h's stored type
-  -- at runtime depth, where the sealed program's double read moves
+  -- at runtime depth, where the sealed program's double read moved (RN; accepted since 10a7861a)
   def DataSplit (n : Nat) (h : Id (Nat × Nat) (match n { Z => (n, n), S p => (p, p) }) (match n { Z => (0, 0), S p => (p, p) })) : Nat := (
     match n { Z => 0, S _ => 1 }
   )
