@@ -183,6 +183,8 @@ The cold reviewers' attack shapes are included:
     - a Π-type as an inductive parameter (467)
     - a sort as an inductive parameter (72)
 
+    **A12 fixed on ochr-core cbae1a30 (the data-only borrow check, [D48]).** On `--rules 100` (seed 1, 10⁵ cases, 6 workers), the four borrow kinds give 0 findings: a borrow of a proof, of a type variable's value, of a type, or of a function. The data-only inductive parameters are not fixed yet: a Π-type parameter gives 22,093 findings and a sort parameter 3,662. This is measured against today's data-only rule. D66 (Prop to Type₁, `&A` iff `A : Type₀`) will allow function borrows and `&V` for type parameters, and the family's expectations change when it lands.
+
     A combined hunt (seed 3, 10⁵ cases, `--a1 5 --edep 5 --rules 5`) found nothing outside these classes and A1: 603 `truth` (all A1), 486 `exec` (item 9), the rule kinds, and 189 E. There were no `nat`, `false` or `verdict` findings and no crashes.
 11. **DropProbe's `Bad2` class, at scale (the Drop family, ochr-core 20a764c3).** With `--drop 100` (seed 1, 10⁵ cases) there are 36,091 `exec` findings "[Drop] a goes out of scope while it is borrowed", 36% of the family's cases; with `--drop 5` (seed 2) there are 1,768. Every variant hits:
     - `x` a parameter or a local
