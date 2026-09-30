@@ -41,7 +41,7 @@ HAND = [
 
 SEED = 20260930
 N_RANDOM = 20
-MAX_LEN = 64
+MAX_LEN = 24  # the cap is set by Ochr checker speed (unary evaluation), not by the task
 
 
 def main():

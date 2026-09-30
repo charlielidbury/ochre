@@ -54,9 +54,9 @@ Both properties are total: `quicksort` returns normally, that is, it terminates,
 
 The file holds a list of `cases`, each `{"name", "input", "expected"}`: sorting `input` in place must leave exactly `expected`.
 - Hand-picked cases: empty, one element, two elements in each order, duplicates, already sorted, reverse-sorted, all equal, and a short mixed array with repeated pivot values.
-- 20 pseudo-random arrays from a fixed seed, of lengths from 0 to 64 (64 included), with values up to 99, some of them drawn from 0–3 so that duplicates are frequent.
+- 20 pseudo-random arrays from a fixed seed, of lengths from 0 to 24 (24 included), with values up to 99, some of them drawn from 0–3 so that duplicates are frequent.
 
-Values are at most 99 so that systems with unary numbers (Ochr) can run the tests. The expected outputs were computed by an independent oracle (Python's `sorted`, in `_reference/gen_tests.py`), and the unverified Rust reference in `_reference/` passes all of them.
+Arrays have at most 24 elements and values are at most 99 because Ochr's checker runs the tests by evaluating unary numbers, and at the original cap of 64 elements the whole set took about 100 s in it. The cap is set by Ochr's speed, not by the task, and every condition runs the same tests. The expected outputs were computed by an independent oracle (Python's `sorted`, in `_reference/gen_tests.py`), and the unverified Rust reference in `_reference/` passes all of them.
 
 ## 7. Correspondence table
 
