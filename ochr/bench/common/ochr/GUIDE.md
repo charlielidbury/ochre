@@ -11,9 +11,9 @@ Checking is running. The checker is an evaluator (a machine) that runs programs 
 ## 2. Workflow
 
 - Your solution is the `.lean` file named in `SOLUTION_FILES`. It holds `ochr` blocks: `ochr Name uses A, B { declarations }`. A block sees the declarations of the blocks it uses (transitively) that were accepted, and the library `Prelude` (`Pair`, `False`, `True`, `And`) always.
-- `lake exe check` builds your file and prints the checker's verdict on every declaration: `ok` or `FAIL`, what was expected (`def`: accepted, `reject def`: rejected), and for a rejection the reason. It is compiled, so it is fast; the tests take a minute or two.
-- `lake exe check BlockName` checks only the named blocks (and what they use). Use it while you work on proofs, to skip the tests.
-- `lake exe check --trace Name` prints the checker's trace for one declaration: the goal after evaluation, the case splits, the types of calls. This is how you see what a stuck goal looks like.
+- `lake -q exe check` builds your file and prints the checker's verdict on every declaration: `ok` or `FAIL`, what was expected (`def`: accepted, `reject def`: rejected), and for a rejection the reason. It is compiled, so it is fast; the tests take a minute or two.
+- `lake -q exe check BlockName` checks only the named blocks (and what they use). Use it while you work on proofs, to skip the tests.
+- `lake -q exe check --trace Name` prints the checker's trace for one declaration: the goal after evaluation, the case splits, the types of calls. This is how you see what a stuck goal looks like.
 - `./grade.sh` is the grade. Its last line is `GRADE: PASS` or `GRADE: FAIL: <reasons>`.
 - A declaration that is rejected is invisible to the declarations after it: if `QuickSort` is rejected, everything that mentions it fails with `unknown constant QuickSort`. Fix the first failure first.
 - Declarations are checked in order, so a helper must come before its first use. There is no mutual recursion between top-level declarations.
@@ -94,7 +94,7 @@ A proof is a program whose type is the statement; it is erased when the program 
 - **`split F in t`** splits the goal on the first stuck call of `F` it contains, as a `match` on that call's result would; `split F { C1 => t1, C2(x) => t2 }` gives each arm. Examples: `08CaseSplits.lean`.
 - **`J`** (transport) exists but `rewrite` is almost always easier.
 
-When a proof is rejected, `lake exe check --trace Name` shows the goal in evaluated form. A goal that is stuck on `⌈F(σ3, …)⌉` is waiting for a case split on something `F` matches on.
+When a proof is rejected, `lake -q exe check --trace Name` shows the goal in evaluated form. A goal that is stuck on `⌈F(σ3, …)⌉` is waiting for a case split on something `F` matches on.
 
 ## 8. The checker's messages
 
