@@ -2601,6 +2601,7 @@ partial def evalMatchInd (typed : Bool) (p : Place) (ty : String) (arms : List (
   match v with
   | .ind t c _ _ _ =>
     if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
+    if typed then discard (scrutType p ty)
     match arms[c]? with
     | some (_, a) => eval typed a
     | none => err s!"[Match] no arm for constructor {c}"
@@ -3068,6 +3069,7 @@ partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
     match ← matchContent p with
     | .ind t c _ _ _ =>
       if t != ty then err s!"[Match] on {← ppPlace p}, a value of {t}, with the constructors of {ty}"
+      discard (scrutType p ty)
       match arms[c]? with
       | some (_, a) => checkTail a k
       | none => err s!"[Match] no arm for constructor {c}"
