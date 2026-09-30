@@ -1294,11 +1294,14 @@ A field's type may mention the fields before it: `Vec(E) := MkVec(n : Word, item
 - *[Open]/[Repack].*
   - While a value is open, a dependent field is typed by what it holds.
   - Assigning such a data field is a strong update.
-  - A proof is `⋆` and carries no type, so it cannot be repacked by its content. A write or borrow through an index field therefore makes the proof fields whose types mention it `⊥`. Reading one is "[Open] … invalidated"; assigning one is checked at once.
+  - A proof is `⋆` and carries no type, so it cannot be repacked by its content. For the user the rule is: re-prove after you mutate, before the repack point. A write or borrow through an index field therefore makes the proof fields whose types mention it `⊥`. Reading one is "[Open] … invalidated"; assigning one is checked at once.
   - [Repack] walks every dependent constructor value inside a value at the whole-again points of the checked program. Untyped runs don't re-check (see the rule text).
   - The user's `*v.0 := 2; *v.1 := [0,1]` is accepted in both orders (`SetTwo`, `SetTwoRev`), and so is pushing in place with either field first.
 - *Injectivity.* `mkEqM` takes a dependent constructor apart only while its index fields are convertible on both sides.
 - *K4 (a finding).* docs/06's own acceptance programs need `Array(E, n)` as a field type, which is a call, and D36 rejected calls. arrays-library §3 said K4 leaves positivity unaffected. It does not: `NBox(A) := MkNBox(f : Neg(A))` then `Bad := MkBad(b : NBox(Bad))` is D36's attack, and a closed `Boom : False` goes through with only `NBox` admitted (`Scratch/K4Positivity.lean`). K4 is built with a nesting condition: a parameter that an inductive passes to a type function is not nestable. A call field that computes to a Π-type at the generic telescope is rejected too. A type function that is a Π only at some index (`NegIf(1, A)`) still passes that second check, and the nesting condition is what stops it (`DepFields.Bad`).
+- *K4's scope and limits (the lead's ruling: option A).*
+  - Known limitation, intended: a type function that computes to a Π-type only at some indices (`NegIf(1, Nat)`) makes a function-typed field at those instances. The generic-telescope check does not see it. It is not a hole: a Π that cannot mention the declared type is positive, and D66 makes function values ordinary runtime data anyway. D36's "no Π fields" no longer holds literally.
+  - Scope: `Rose := Node(kids : Vec(Rose))` is rejected, since `Vec` passes its parameter to `Array`, a type function. Accepting it would need positivity through type functions' bodies.
 - *Ledger.* Four new rows:
   - `repack`: soundness. The length lie `LieV` is accepted and `Boom : False` follows from `Absurd`, which is true of every packed `V`.
   - `depInj`: policy. `InjLen` is accepted. No closed False was found: the index equation is a conjunct, so the heterogeneous second equation only matters where it is already implied (John Major equality in the set model).
