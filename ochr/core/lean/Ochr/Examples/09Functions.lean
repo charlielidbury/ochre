@@ -211,10 +211,11 @@ ochr Functions uses Std, Fixtures {
   reject def WV (u : Unit) : V(Z) := refl
   reject def BoomP : False := RunPGen(λ(x : &Nat) : V(Z) => (*x := S Z; WV(())))
 
-  -- [Close]'s `Unit` row is not part of the type: `UU(n)` is `Unit` only by computation, so
-  -- `H2`'s stuck calls return a sealed program where a `Π(x : &Nat). Unit`'s return `()`. The
-  -- two paths give `RunUH`'s statement different types, both true, since `Unit` has one
-  -- value (D54 compares only whether a function returns a borrow).
+  -- `UU(n)` is `Unit` only by computation, yet `H2` passes where a `Π(x : &Nat). Unit` is
+  -- expected (D54 compares only whether a function returns a borrow). Before η for `Unit`
+  -- (D59), [Close] returned `()` for a codomain written `Unit` and a sealed program for
+  -- `UU(Z)`, so the two paths gave `RunUH`'s statement different types, both true. Now every
+  -- stuck call returns its sealed program and an equation at `Unit` is `⊤`, on both paths.
   def UU (n : Nat) : Type := (
     match n {
       Z => Unit,

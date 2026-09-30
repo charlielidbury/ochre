@@ -31,9 +31,12 @@ ochr Equality uses Std {
   )
 
   -- The paper's first `Id` (§2): at a definition taking `x : &Nat`, `Id Unit (AddM(x, 0)) ()`
-  -- is `Eq Unit () () ∧ Eq Nat N(σ) σ`, where `N(σ)`, the sealed program the stuck call leaves
-  -- in `x`'s owner, is also what `Add(*x, 0)` computes; the first conjunct is reflexive, so
-  -- the whole is the single equation `Eq Nat N(σ) σ`, in both directions.
+  -- is `Eq Unit ⌈…⌉ () ∧ Eq Nat N(σ) σ`. The stuck call returns its sealed program `⌈…⌉`,
+  -- which is also what `let c = *x; AddM(&c, 0)` returns, and leaves `N(σ)` in `x`'s owner,
+  -- which is also what `Add(*x, 0)` computes. An equation at `Unit` is `⊤` (η for `Unit`,
+  -- D59), whatever its sides, so the whole is the single equation `Eq Nat N(σ) σ`, in both
+  -- directions.
+  def IdIsConjSealed (x : &Nat) (h : Id Unit (AddM(x, 0)) ()) : Eq Unit (let c = *x; AddM(&c, 0)) () ∧ Eq Nat (Add(*x, 0)) (*x) := h
   def IdIsConj (x : &Nat) (h : Id Unit (AddM(x, 0)) ()) : Eq Unit () () ∧ Eq Nat (Add(*x, 0)) (*x) := h
   def IdIsEq (x : &Nat) (h : Id Unit (AddM(x, 0)) ()) : Eq Nat (Add(*x, 0)) (*x) := h
   def EqIsId (x : &Nat) (h : Eq Nat (Add(*x, 0)) (*x)) : Id Unit (AddM(x, 0)) () := h
@@ -152,7 +155,7 @@ ochr Equality uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Equality" Equality).allAsExpected
-#guard (run "Equality" Equality).count == 30
+#guard (run "Equality" Equality).count == 31
 
 /-! ## Rewriting
 

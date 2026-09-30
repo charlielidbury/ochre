@@ -234,6 +234,22 @@ ochr ClosingOff uses Std, Fixtures {
     }
   )
 
+  -- η for `Unit` acts in two places only: `Eq` at `Unit` (the evaluated type, so `UU(Z)`
+  -- counts) is `⊤`, and [Conv-fun] ignores the results of two functions whose codomain is
+  -- written `Unit`. Conversion does not otherwise identify values of `Unit`: an abstract
+  -- `u : Unit` is not convertible with `()`, and a stuck call's result is its own sealed
+  -- program (`⌈let c1 = σ0; AddM(&c1, 0)⌉` in `StuckResult`, the paper's §2 display), built
+  -- from the argument values.
+  def UnitEta (u : Unit) (v : Unit) : Eq Unit u v := refl
+  def UnitEtaUU (u : UU(Z)) (v : UU(Z)) : Eq (UU(Z)) u v := refl
+  reject def UnitNotConv (u : Unit) (P : Unit → Prop) (h : P(u)) : P(()) := h
+  def StuckResult (x : &Nat) (P : Unit → Prop) (h : P(let c = *x; AddM(&c, 0))) : P(let d = *x; AddM(&d, Add(0, 0))) := h
+  def ConvUnitRes : Eq (Π(x : &Nat). Unit) (λ(x : &Nat) : Unit => ()) (λ(x : &Nat) : Unit => (let c = *x; G(&c, Z))) := refl
+  reject def ConvUnitWritten :
+      Eq (Π(x : &Nat). UU(Z)) (λ(x : &Nat) : UU(Z) => ()) (λ(x : &Nat) : UU(Z) => (let c = *x; G(&c, Z))) := (
+    refl
+  )
+
   -- ## Typing a sealed program
   -- A sealed program is typed by running its program, typed. A value embedded in it with no
   -- type of its own is typed by where it sits: a proof argument, `⋆`, by its parameter's
@@ -332,7 +348,7 @@ ochr ClosingOff uses Std, Fixtures {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ClosingOff" ClosingOff).allAsExpected
-#guard (run "ClosingOff" ClosingOff).count == 38
+#guard (run "ClosingOff" ClosingOff).count == 44
 
 /-! ## Symbolic checking is not the same as checking every instance
 
