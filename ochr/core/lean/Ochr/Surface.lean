@@ -224,7 +224,7 @@ def RState.recordLoc (st : RState) (r : Term) (l : Loc) (args : Array (Option Lo
     { st with locs := { st.locs with table := st.locs.table.erase a, args := st.locs.args.erase a },
               ambiguous := st.ambiguous.insert a () }
   | none =>
-    let ls := { st.locs with table := st.locs.table.insert a l }
+    let ls := { st.locs with table := st.locs.table.insert a l, keep := st.locs.keep.push r }
     { st with locs := if args.isEmpty then ls else { ls with args := ls.args.insert a args } }
 
 abbrev R := ReaderT Tables (ExceptT String (StateM RState))

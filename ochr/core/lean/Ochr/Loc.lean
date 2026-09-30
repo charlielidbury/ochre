@@ -22,8 +22,9 @@ deriving Inhabited, BEq, Repr
 
 private unsafe def termAddrImpl (t : Term) : USize := ptrAddrUnsafe t
 
-/-- The address of a term node: its identity, stable while the node is alive (the declaration
-being checked keeps its nodes alive for the whole check). -/
+/-- The address of a term node: its identity, stable while the node is alive. Lean frees a node
+when its last reference goes and may reuse the address, so a table keyed by addresses holds a
+reference to every node it records (`Locs.keep`): an address in the table is always its node's. -/
 @[implemented_by termAddrImpl]
 opaque termAddr (t : Term) : USize
 
@@ -35,6 +36,8 @@ def isNodeAddr (a : USize) : Bool := a % 2 == 0
 structure Locs where
   /-- a node's address ↦ its range -/
   table : Std.HashMap USize Loc := {}
+  /-- every node recorded in `table`, kept alive so that its address is not reused -/
+  keep : Array Term := #[]
   /-- a call node's address ↦ its arguments' ranges -/
   args : Std.HashMap USize (Array (Option Loc)) := {}
   /-- the arguments' ranges of the call being evaluated (set by `located`, read by `callType`) -/
@@ -66,7 +69,8 @@ partial def Locs.relocate (ls : Locs) (old new : Term) : Locs :=
   let a := termAddr old
   let b := termAddr new
   if a == b then ls else     -- the same node: its subtree is recorded already
-  let ls := if !isNodeAddr b then ls else
+  let ls := if !isNodeAddr b || !(ls.table.contains a || ls.args.contains a) then ls else
+    let ls := { ls with keep := ls.keep.push new }
     let ls := match ls.table.get? a with
       | some l => { ls with table := ls.table.insert b l }
       | none => ls

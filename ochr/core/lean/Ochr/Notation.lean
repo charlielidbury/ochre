@@ -122,6 +122,10 @@ syntax "reject " ochr_indmod* "inductive " ident ochr_binder* (" : " ochr_term:2
 syntax (name := ochrProgram) "ochr " ident (&" uses " ident,+)? " { " ochr_decl* " }" : command
 /-- Check a block defined earlier, as the `ochr` command does, reporting at the name. -/
 syntax (name := ochrCheck) "#ochr_check " ident : command
+/-- A test of located errors: declaration `D` of block `B` (defined in this file) is rejected,
+and the error is reported at source text `"t"`, or, written `"before⟦t⟧after"`, at the `t`
+that is between that context (docs/07). -/
+syntax (name := ochrErrorAt) "#ochr_error_at " ident ident str : command
 
 def strLit (s : String) : TSyntax `term := quote s
 
@@ -386,8 +390,15 @@ def checkBlock (n : Name) (ref : Syntax) (decls : Array Syntax) (kw : Syntax := 
     let at_ := match decls[i]? with
       | some d => declName d
       | none => ref
-    -- a rejection is reported at the innermost term being checked (phase 2), else at the name
-    match row.verdict, row.expectAccept with
+    -- a rejection is reported at the innermost term being checked (phase 2), else at the name;
+    -- a location outside the declaration would be a wrong underline, so it falls back too
+    let inside (l : Loc) : Bool := match decls[i]? with
+      | some d => d.getPos?.any (·.byteIdx ≤ l.start) && d.getTailPos?.any (l.stop ≤ ·.byteIdx)
+      | none => false
+    let verdict := match row.verdict with
+      | .rejected m (some l) => if inside l then row.verdict else .rejected m none
+      | v => v
+    match verdict, row.expectAccept with
     | .accepted, true => addHover at_ s!"{row.name}: accepted"
     | .accepted, false => logErrorAt at_ m!"{row.name}: expected rejection, but accepted"
     | .rejected m l, true => logErrorAt ((l.map locStx).getD at_) m!"{row.name}: {m}"
@@ -415,5 +426,29 @@ open Lean.Elab Lean.Elab.Command in
 elab_rules : command
   | `(#ochr_check $n:ident) => do
     checkBlock (← liftCoreM (realizeGlobalConstNoOverload n)) n #[]
+
+open Lean.Elab Lean.Elab.Command in
+elab_rules : command
+  | `(#ochr_error_at $n:ident $d:ident $t:str) => do
+    let b ← evalBlock (← liftCoreM (realizeGlobalConstNoOverload n))
+    let pre ← if b.name == "Prelude" then pure none else
+      try pure (some (← evalBlock `Prelude)) catch _ => pure none
+    let r := Ochr.Test.runWith pre b.name b (located := true)
+    match ((r.rows.find? (·.name == d.getId.toString)).map (·.verdict) : Option Verdict) with
+    | some (.rejected m (some l)) =>
+      let exp := t.getString
+      let (pre, mid, post) := match exp.splitOn "⟦" with
+        | [a, rest] => match rest.splitOn "⟧" with
+          | [b, c] => (a, b, c)
+          | _ => ("", exp, "")
+        | _ => ("", exp, "")
+      let src := (← getFileMap).source
+      let got := String.Pos.Raw.extract src ⟨l.start⟩ ⟨l.stop⟩
+      let ctx := String.Pos.Raw.extract src ⟨l.start - pre.utf8ByteSize⟩ ⟨l.stop + post.utf8ByteSize⟩
+      unless got == mid && ctx == pre ++ mid ++ post do
+        throwErrorAt t m!"{d.getId} is rejected at `{got}` (in `{ctx}`), not as expected: {m}"
+    | some (.rejected m none) => throwErrorAt d m!"{d.getId} is rejected at no located term: {m}"
+    | some .accepted => throwErrorAt d m!"{d.getId} is accepted"
+    | none => throwErrorAt d m!"{b.name} has no declaration {d.getId}"
 
 end Ochr.Notation
