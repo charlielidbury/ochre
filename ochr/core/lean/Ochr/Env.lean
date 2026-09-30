@@ -163,7 +163,8 @@ def Config.fnRuleOn (c : Config) : Bool := c.d53 && c.fnRule
 they stand; a counterfactual run switches a rule off and measures that alone. D53's switches
 do not change what is erased, so the blocks checked without D53 (`preD53`) are checked too. -/
 def Config.prePassAssert (c : Config) : Bool :=
-  c.prePass && { c with trace := false, d53 := false, moves := true, ghosts := true, fnRule := true } == ({} : Config)
+  c.prePass && { c with trace := false, d53 := ({} : Config).d53, moves := true, ghosts := true, fnRule := true }
+    == ({} : Config)
 
 /-- D41: one assignment, borrow or move, by the position of its place's root. It is
 `pending` once an erased run it belongs to has affected a place outliving that run: an

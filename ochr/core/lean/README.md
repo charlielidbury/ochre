@@ -89,13 +89,13 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `10Inductives` | lists, binary search trees (keys are `Word`s) (and the paper's trees, whose pure insert runs the in-place one), parameters, strict positivity | §8 | 78 |
 | `11Propositions` | `False`, `True`, `And`, matching on proofs by type, a stuck zero-arm match (D58), destructuring `let` (D60), subsingleton elimination | §1, §8 | 76 |
 | `12CurrentState` | proofs about the current, mutated state (E5) | §7 | 14 |
-| `13Erasure` | erased terms run on a private copy, confinement, erasure decided by syntax (the pre-pass) | P2 | 64 |
+| `13Erasure` | erased terms run on a private copy, confinement, erasure decided by syntax (the pre-pass) | P2 | 66 |
 | `14Universes` | `Prop : Type`, no `Type : Type`, no cumulativity, why `&Type` is refused; sorts are syntactic (D55, reviewer-4's programs) | preamble, P2 | 25 |
 | `15BorrowTypes` | what may be borrowed and where `&` may appear (D48) | §1 | 16 |
 | `16Arrays` | case study: arrays as a library (slices, indices), its lemmas and benchmarks, and in-place quicksort proved sorted and a permutation (`notes/arrays-library.md`) | all | 167 |
 | `17HashMap` | case study: Aeneas's resizing hash map, its lookups, length, invariant, resizing and load factor, proved about the in-place code (`notes/hashmap-case-study.md`) | all | 186 |
 
-1028 declarations in all, the `Prelude`'s 4 and the case studies' 353 included. D53 (reads of non-copy data move) applies everywhere except the case studies, which were written before it and are checked without it (reads copy) until they are adapted: `Ochr.Test.preD53` lists their blocks. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+1030 declarations in all, the `Prelude`'s 4 and the case studies' 353 included. D53 (reads of non-copy data move) applies everywhere except the case studies, which were written before it and are checked without it (reads copy) until they are adapted: `Ochr.Test.preD53` lists their blocks. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 

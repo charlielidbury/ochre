@@ -1140,3 +1140,18 @@ fuzz-port ran 10⁶ cases on 0b8a68f0 with D53 on. Ten cases remained, down from
 - **K (1 case): the same field written two ways.** One arm moves `a4.2`; another inspects `a4`, whose pattern fields are `fst`/`snd`. The split of `a4` into its fields did not recognise `.2` as `snd`. Places are now compared up to `stepEq` (`placePrefix`, `placeEq`): a pair's `.1`/`.2` are its constructor's fields. A Nat's `.1` is never a pair's field, so the two readings cannot meet. Regression: `K1`.
 
 1028 verdicts. With D53 on everywhere the tour still has no failures, and check times are unchanged (Quicksort 280 ms).
+
+## 41. The flip's pre-pass assertion; R9 (arms of different classes)
+
+*The assertion was off on `ochr-d53-on` (found by fuzz-port).* `Config.prePassAssert` normalised `d53 := false` and compared the result with `{}`. On the flip branch `{}` has `d53 = true`, so no configuration asserted. The normalisation now uses the default's own value (`d53 := ({} : Config).d53`), so the same code is right on both branches.
+
+*R9 (fuzz-port; it is also on `b2ce75b5`, with and without D53).* Take `match 0 { Z => refl, S _ => 0 }`: a match whose arms differ in class, a proof in one arm and data in another. `agreeDecl` read it as data, but the run took the proof arm, so the INTERNAL assertion fired. That is fail-safe. On the flip, with the assertion off, it surfaced as a D41 error on a refined generic path.
+- Such a match runs only on a known scrutinee. A stuck match's arms must have one type.
+- A known scrutinee is the same on every path, so the arm it takes is too.
+- Arms that disagree on being a proof therefore say nothing (`.any`), and the match's erasure is that of the arm it runs.
+
+I also tried rejecting such matches statically. That is a D55-style check that arms agree on being a proof. It rejected no program in the suite. But with D42 off, `refl` is not a proof, so every proof by recursion with a `refl` arm has arms that disagree, and the D42 rows would have gained dozens of flips that belong to the check, not to D42. So I chose deferral.
+
+*Regressions:* `ErasureBySyntax.R9Arms` and `R9Nested` are accepted. fuzz-port's `R9PrePassArms` (`B`, `B6`) is accepted with and without D53.
+
+1030 verdicts.
