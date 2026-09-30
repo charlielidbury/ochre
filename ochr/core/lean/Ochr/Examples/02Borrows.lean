@@ -125,37 +125,6 @@ ochr Borrows uses Std {
 #guard (run "Borrows" Borrows).allAsExpected
 #guard (run "Borrows" Borrows).count == 19
 
-/-! ## A borrow with several possible owners
-
-A stuck call or match that returns a borrow into one of several places leaves its hole in
-each of their fills: the real owner is not known. Reading one of them cannot end the borrow
-outright, as the ground path may not: at `n = 0`, `Pick(n, &a, &b)` borrows `a`, and reading
-`b` ends nothing. So [Access] releases the loan in the accessed owner only, and the borrow
-becomes a ghost: unusable (as if ended), but still holding its loans in the other owners, so
-a [Drop] of one of them still sees it (meta-order's `Bad2`, fuzz-port's Drop family: each was
-accepted and went wrong at a ground instance). The ghost ends when its binding is dropped or
-reassigned (switch `ghostBorrows`). -/
-
-ochr GhostBorrows uses Fixtures {
-  reject def Bad2 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &a, &b); let z = b; ())
-  reject def Bad3 (n : Nat) (b : Nat) : Unit := (let c = 1; let x = &c; let a = 0; x := Pick(n, &a, &b); let z = b; ())
-  -- a stuck match instead of a call; a write, or a borrow, of the other owner; the owners the other way round
-  reject def D1 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := match n { Z => &a, S _ => &b }; let z = b; ())
-  reject def D2 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &a, &b); b := 0)
-  reject def D3 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &a, &b); let w = &b; ())
-  reject def D4 (n : Nat) (b : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &b, &a); let z = b; ())
-  -- the ghost is gone before `a` is: dropped first, or reassigned
-  def Ok1 (n : Nat) (b : Nat) : Unit := (let a = 0; (let x = Pick(n, &a, &b); let z = b; ()); ())
-  def Ok2 (n : Nat) (b : Nat) (c : Nat) (x : &Nat) : Unit := (let a = 0; x := Pick(n, &a, &b); let z = b; x := &c; ())
-  -- and it is not usable
-  reject def UseGhost (n : Nat) (b : Nat) : Unit := (let a = 0; let x = Pick(n, &a, &b); let z = b; *x := 1)
-}
-
-#eval IO.println (run "GhostBorrows" GhostBorrows).show
-
-#guard (run "GhostBorrows" GhostBorrows).allAsExpected
-#guard (run "GhostBorrows" GhostBorrows).count == 9
-
 /-! ## Moves and copies (D53)
 
 Reading data whose type is not a copy type moves it; `clone` copies; a copy type is declared

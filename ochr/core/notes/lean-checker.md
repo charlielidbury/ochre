@@ -1252,6 +1252,8 @@ The D48 (1) row (model) now flips them too.
 
 ## 45. Bad2: [Access] with several possible owners (ghost borrows)
 
+*Superseded (d65-lane): reverted, and replaced by amended D65 (§48). The ghost borrows covered one channel only (Bad2/Bad3) and let in new ground failures that fuzz-port bisected to them.*
+
 This is meta-order's DropProbe and fuzz-port's Drop family. A borrow returned by a stuck call or match leaves its hole in the fills of all its possible owners: `Pick(n, &a, &b)` at an abstract `n` puts `loan_k` in both `a` and `b`. Reading `b` ended `x`'s borrow outright (D19), so `a` was dropped as plain data, and `Bad2` was accepted. At `n = 0` the borrow is of `a`, reading `b` ends nothing, and `a`'s drop fails. The symbolic path ended the borrow earlier than an instance does, which made [Drop] more permissive.
 
 The lead chose option (b), on the principle that uncertainty never makes the symbolic path more permissive:

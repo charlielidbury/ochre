@@ -58,7 +58,7 @@ def Value.updAt (f : Value → Value) : List Step → Value → Option Value
 sealed programs: only their loans are). -/
 partial def Value.holdsBorrow (l : Nat) : Value → Bool
   | .borrow m w => m == l || w.holdsBorrow l
-  | .succ w | .ghost w => w.holdsBorrow l
+  | .succ w => w.holdsBorrow l
   | _ => false
 
 /-- Take `borrow_ℓ v` out of a value: returns `v` and the value with `⊥` in its place. -/
@@ -66,15 +66,7 @@ partial def Value.takeBorrow (l : Nat) : Value → Option (Value × Value)
   | .borrow m w =>
       if m == l then some (w, .bot) else (w.takeBorrow l).map fun (c, w') => (c, .borrow m w')
   | .succ w => (w.takeBorrow l).map fun (c, w') => (c, .succ w')
-  -- a ghost borrow (partly released, [Access]) ends like the borrow it was
-  | .ghost w => (w.takeBorrow l).map fun (c, w') => (c, if w' == .bot then .bot else .ghost w')
   | _ => none
-
-/-- Make `borrow_ℓ` inside a value a ghost: unusable, but still holding its loans. -/
-partial def Value.ghostBorrow (l : Nat) : Value → Value
-  | .borrow m w => if m == l then .ghost (.borrow m w) else .borrow m (w.ghostBorrow l)
-  | .succ w => .succ (w.ghostBorrow l)
-  | v => v
 
 def findBorrow (env : Env) (l : Nat) : Option Pos :=
   (allPos env).find? fun p => (valAt env p).holdsBorrow l
