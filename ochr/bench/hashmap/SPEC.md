@@ -2,26 +2,27 @@
 
 This is the one specification that every hashmap package transcribes. Each package's `ASSIGNMENT.md` restates it in the package's own notation and cites the property numbers used here (H1, H2, …). The only system-specific part of this file is the correspondence table at the end, where each package records which declaration states each property.
 
-The task: implement a fixed-capacity hash map with separate chaining, operating in place, and prove that it behaves like a finite map, as observed through `get` and `len`.
+The task: implement a fixed-capacity hash map from word keys to values of an arbitrary type `V`, with separate chaining, operating in place, and prove that it behaves like a finite map, as observed through `get` and `len`.
 
-## 1. Values
+## 1. Keys and values
 
-- 𝕎 = {0, 1, …, 2⁶⁴ − 1}, the unsigned machine words (Rust `u64`, Ochr `Word`). Keys and values are both words.
-- Opt(𝕎) = {None} ∪ {Some(w) | w ∈ 𝕎}.
+- 𝕎 = {0, 1, …, 2⁶⁴ − 1}, the unsigned machine words (Rust `u64`, Ochr `Word`). Keys are words.
+- Values have an arbitrary type `V`, a type parameter of the map. The implementation and the proofs must work for every `V`: nothing may assume that values can be compared, hashed, ordered, cloned or given a default. In Rust, Verus and Aeneas, `V` has no trait bounds.
+- Opt(X) = {None} ∪ {Some(x) | x ∈ X}.
 - Arithmetic inside the properties (`len(m) + 1`, `len(m) − 1`) is ordinary arithmetic on ℕ. The implementation's `len` counter is a word; see the bounded-integer allowance in §5.
 
 Ochr's `Word` is unbounded, so in Ochr 𝕎 is all of ℕ and no overflow can occur. This is a known difference and is recorded in the protocol (`../README.md`), not compensated for.
 
 ## 2. Representation (FIXED)
 
-A map `m` with capacity `c` (where `c ≥ 1`) is a record of two parts:
+A map `m : Map(V)` with capacity `c` (where `c ≥ 1`) is a record of two parts:
 
-- `slots`: an array of exactly `c` buckets. The capacity is chosen by `new` and never changes afterwards: there is no resize. A system may carry `c` in the type (for example `Array(Bucket, c)`) or read it back as the length of the array, but it is not a separate mutable field.
+- `slots`: an array of exactly `c` buckets. The capacity is chosen by `new` and never changes afterwards: there is no resize. A system may carry `c` in the type (for example `Array(Bucket(V), c)`) or read it back as the length of the array, but it is not a separate mutable field.
 - `len`: a word.
 
 A bucket is a singly linked list of entries, each node owned by the previous one (in Rust, `Box`):
 
-    Bucket ::= Nil | Cons(key : 𝕎, value : 𝕎, next : Bucket)
+    Bucket(V) ::= Nil | Cons(key : 𝕎, value : V, next : Bucket(V))
 
 The bucket of key `k` is `slots[idx(k)]`, where
 
@@ -31,40 +32,47 @@ The bucket of key `k` is `slots[idx(k)]`, where
 
 ## 3. Operations (FIXED signatures)
 
-`&mut` marks an argument that the operation changes in place.
+`&mut` marks an argument that the operation changes in place, and `&` a shared, read-only borrow.
 
 | Operation | Signature | Precondition |
 |---|---|---|
-| new | `new(c : 𝕎) → Map` | `c ≥ 1` |
-| len | `len(m : Map) → 𝕎` | |
-| get | `get(m : Map, k : 𝕎) → Opt(𝕎)` | |
-| insert | `insert(m : &mut Map, k : 𝕎, v : 𝕎) → Opt(𝕎)` | see §5 for bounded integers |
-| remove | `remove(m : &mut Map, k : 𝕎) → Opt(𝕎)` | |
-| get_mut | `get_mut(m : &mut Map, k : 𝕎) → &mut 𝕎` | `get(m, k) ≠ None` |
+| new | `new(c : 𝕎) → Map(V)` | `c ≥ 1` |
+| len | `len(m : &Map(V)) → 𝕎` | |
+| get | `get(m : &Map(V), k : 𝕎) → Opt(&V)`, or `→ Opt(V)` (see below) | |
+| insert | `insert(m : &mut Map(V), k : 𝕎, v : V) → Opt(V)` | see §5 for bounded integers |
+| remove | `remove(m : &mut Map(V), k : 𝕎) → Opt(V)` | |
+| get_mut | `get_mut(m : &mut Map(V), k : 𝕎) → &mut V` | `get(m, k) ≠ None` |
 
 What they mean, informally (§5 is the formal statement):
 - `new(c)` is an empty map with `c` empty buckets and `len = 0`.
 - `len(m)` is the number of keys in the map.
-- `get(m, k)` is `Some(v)` if `k` is bound to `v`, and `None` otherwise.
-- `insert(m, k, v)` binds `k` to `v` and returns the value `k` was bound to before, or `None`.
-- `remove(m, k)` unbinds `k` and returns the value it was bound to, or `None`.
+- `get(m, k)` gives the value `k` is bound to, or `None` if `k` is unbound.
+- `insert(m, k, v)` binds `k` to `v` and returns the value `k` was bound to before, moved out of the map, or `None`.
+- `remove(m, k)` unbinds `k` and returns the value it was bound to, moved out of the map, or `None`.
 - `get_mut(m, k)` returns a mutable borrow of the value stored for `k`. It requires `k` to be present because not every system can return a borrow inside an `Option` (Ochr cannot).
 
-In systems whose type system allows `get` and `len` to change the map (Ochr, which has only mutable borrows), `get` and `len` take the map by borrow. Properties H17 and H18 say they leave it unchanged.
+**The form of `get`.** `get` returns the value at `k` in each system's natural read-only form:
+- `rust`, `aeneas`, `verus`: a shared reference into the map, `get(m : &Map(V), k) → Option<&V>`. It is not `V: Clone` with a copy: Rust's `Clone` is an arbitrary user implementation, so nothing lets Aeneas or Verus prove that a generic `clone` returns an equal value, and `get`'s properties would become unprovable.
+- `ochr`: by value, `get(m : &Map(V), k) → Opt(V)`, returning a copy made with Ochr's built-in `clone`, which is a real copy and runs no user code. Ochr has only mutable borrows, so the map is passed by `&` and H17 says `get` leaves it unchanged; the same holds for `len` and H18.
+- `lean`: by value, as a pure function `get : Map V → 𝕎 → Option V`.
 
-A system without borrows (`lean`) expresses `get_mut` in its most direct functional form: a function that takes `m`, `k` and `w` and returns the map with `w` written into `k`'s entry, found by the same walk down `k`'s bucket that `get_mut` does. H14–H16 are then stated about that function, and the correspondence table says so.
+`get_mut` returns `&mut V` in Rust, Verus and Aeneas, and `&V` in Ochr, whose `&` is mutable. Ochr's `&V` for a type parameter `V` needs rule D66 (`&A` for every `A : Type₀`), which is not on `ochr-core` yet; until it lands, the Ochr packages keep their current form of `get_mut` and say so in their correspondence rows.
+
+**The observed value.** In the properties, `get(m, k)` stands for the value it observes, an element of Opt(V): where `get` returns `Option<&V>`, the value the reference points to (in Aeneas's translation and in Verus's specifications, a shared reference already is its value). Equality on `V` is the logic's own equality.
+
+A system without borrows (`lean`) expresses `get_mut` in its most direct functional form: a function that takes `m`, `k` and `w : V` and returns the map with `w` written into `k`'s entry, found by the same walk down `k`'s bucket that `get_mut` does. H14–H16 are then stated about that function, and the correspondence table says so.
 
 ## 4. Algorithm requirements (checked by a human reader, not by the grader)
 
 - **A1 (hashing).** Every operation on key `k` reads or changes only the bucket `slots[idx(k)]` and the `len` field. No operation scans other buckets.
-- **A2 (in place).** Operations change the map in place. No operation copies the table or a bucket, or rebuilds a bucket from a copy. A new entry may go at either end of its bucket, at the implementer's choice. `remove` unlinks the node.
+- **A2 (in place).** Operations change the map in place. No operation copies the table or a bucket, or rebuilds a bucket from a copy. A new entry may go at either end of its bucket, at the implementer's choice. `remove` unlinks the node. `get` copies nothing where it returns a reference; in Ochr it copies only the one value it returns.
 - **A3 (nothing extra).** No auxiliary structure (a second table, a list of keys, a cache), no resizing, and no library map, set or association list.
 
 The `lean` condition has no memory model: there, A2 means the table array is updated with the operations that are in place when the array is unshared (`Array.set`, `Array.modify` and similar), and buckets are immutable lists by nature.
 
 ## 5. Properties
 
-The solver defines a predicate `Inv(m)` on maps. It is a hole in every verified package, and may be any predicate that makes the properties below provable. Every property is universally quantified over capacities `c ≥ 1`, maps `m`, keys `k`, `k′`, and words `v`, `w`.
+The solver defines a predicate `Inv(m)` on maps. It is a hole in every verified package, and may be any predicate that makes the properties below provable. Every property is universally quantified over value types `V`, capacities `c ≥ 1`, maps `m : Map(V)`, keys `k`, `k′`, and values `v`, `w : V`. `get(m, k)` in a property is the observed value (§3).
 
 Every property is total: the operations it runs return normally under their preconditions, that is, they terminate, do not panic and do not overflow. In a system where every function terminates and nothing can fail (Ochr, pure Lean) this is automatic. Where the system can express failure or divergence (Aeneas's `Result`, Verus's checks for panics, overflow and `decreases`), the FIXED statements include it, for example `insert m k v = ok (r, m′)` in Aeneas.
 
@@ -100,13 +108,13 @@ Notation. For a mutating operation, `op(m, …) ⇝ (m′, r)` means: running `o
 - **H17.** `get(m, k) ⇝ (m′, r)  ⟹  m′ = m` (equality of the representation).
 - **H18.** `len(m) ⇝ (m′, r)  ⟹  m′ = m`.
 
-H17 and H18 are stated only where the type system does not already guarantee them. Where `get` and `len` take the map by shared reference (Rust `&self`: `rust`, `aeneas`, `verus`) or are pure functions (`lean`), the package omits them and says so in its correspondence table.
+H17 and H18 are stated only where the type system does not already guarantee them. Where `get` and `len` take the map by shared reference (Rust `&self`: `rust`, `aeneas`, `verus`) or are pure functions (`lean`), the package omits them and says so in its correspondence table. Ochr states them, since its `get` and `len` take the map by mutable borrow.
 
 **Bounded integers.** In a system whose `len` is a bounded machine word, the properties that run `insert` (H2, H5, H6, H7, H12, and H14–H16) may additionally assume `len(m) < 2⁶⁴ − 1`, and `insert` may require it. No other extra hypothesis is allowed.
 
 ## 6. Tests
 
-`tests.json` holds the test vectors. Every package runs all of them, transcribed mechanically from the JSON (by a script, where practical).
+`tests.json` holds the test vectors. Every package runs all of them, transcribed mechanically from the JSON (by a script, where practical). The tests instantiate the value type as words, `V := 𝕎` (`u64`, Ochr's `Word`), and compare the observed value of `get` (§3).
 
 The file holds a list of `sequences`. Each sequence starts from `new(cap)` and applies its `ops` in order to that one map. Each op is one object:
 
