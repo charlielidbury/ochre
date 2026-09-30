@@ -1,8 +1,14 @@
 # fuzzer: a differential naturality tester for the Ochr checker
 
-## v2 (rules v2.1 with D52–D58, branch ochr-fuzz-v2, 2026-09-29)
+## v2 (rules v2.1 with D52–D61, branches ochr-fuzz-v2 and ochr-fuzz-core, 2026-09-30)
 
-**Verdict.** On the checker with the soundness batch (ochr-core 84470253: recCands fix, D54, D55, D56, D58, the ⋆/loan typing fix), and again on ochr-core-lean ff6b634a (which fixes R2, R3 and R7), 10⁶ cases each on the default rules produced no refinement that disagreed with the direct path on a value. There were no `false`, `truth`, `irrel`, `frame` or `adequacy` value disagreements. The only `nat` findings are 14 where both sides are the same conjunction of equations in a different order (R6). Every remaining finding is one of:
+**Headline (ochr-core c469da44, the paper's numbers; D53 off by default there).**
+- **Validation: 17 of the ledger's 20 soundness rows are rediscovered by switching the rule off** (§v2.4). All three misses are declaration-level rules that the generator never exercises: D36 (positivity of inductive declarations), D48(2) (`&` only at the top of a declared type) and scrutTyped (a scrutinee's constructors are read from its type). D19 counts as found through its new call-free witness `V` (§v2.4).
+- **10⁶ cases on the default rules: 0 value disagreements, 0 `exec` findings (accepted functions that go wrong when run), and 0 fail-safe findings.** Classes R1–R8 are all at zero: R2, R3 and R7 fixed by ff6b634a, R1's residual by 06da7a2c, R6 by 1678d2a2, and R8 by the pre-pass fixes. What remains is 65 cases of E, a scoping imprecision that cannot change a value (plus 1 vacuous), and 28,039 vacuous `adequacy` findings under a `False` hypothesis. There were 936,787 cases checked, 47,419 rejected and 15,794 unresolved, with no crashes, in 1,165 s on 12 workers.
+
+**D53 acceptance (ochr-core-lean 55977f8e, and again on 95da7c12 with D59; D53 on by default there; tour suite only): fails.** Each run was 10⁶ cases on the default rules, and the two runs gave the same counts. The existing oracles observe statements as types, which are erased, and D53's erased reads copy. On those oracles there is no value disagreement besides R6 (15 cases), and R8 is still there (2,344 non-vacuous cases). The new execution oracle (§v2.2) runs every accepted data function at ground inputs at runtime depth. It finds 15,567 cases (1.6%) in which the checker accepts a function that goes wrong when it runs. In almost all of them a stuck block hides its arms' moves from the rest of the function (§v2.3 item 5, `Scratch/D53Blocks.lean`). Switching `moves` off exposes nothing, which fits its "cost" class. Switching `ghosts` or `fnRule` off only changes which programs are accepted (§v2.4).
+
+**Verdict on earlier heads.** On the checker with the soundness batch (ochr-core 84470253: recCands fix, D54, D55, D56, D58, the ⋆/loan typing fix), and again on ochr-core-lean ff6b634a (which fixes R2, R3 and R7), 10⁶ cases each on the default rules produced no refinement that disagreed with the direct path on a value. There were no `false`, `truth`, `irrel`, `frame` or `adequacy` value disagreements. The only `nat` findings are 14 where both sides are the same conjunction of equations in a different order (R6). Every remaining finding is one of:
 - **fail-safe**: one path gets a type error where the other succeeds, so the checker rejects rather than accepts. Classes R1–R8 in §v2.6. On 84470253: 3,614 cases in 10⁶, of which R2 is 3,405. On ff6b634a, which fixes R2, R3 and R7: 2,250, of which 2,235 are R8, a new regression in the erasure pre-pass.
 - **scoping imprecision**: E, which cannot change a value.
 - **vacuous**: some hypothesis is `False` at that refinement.
@@ -12,16 +18,18 @@
 2. **P2 is soundness-relevant, not just completeness.** With P2 alone switched off (D41 on), there is a closed proof of `False`. The ledger lists P2 as completeness.
 3. **The D53 prototype breaks naturality in three ways**, two of them in the unsound direction. It is off by default, and these results became D53's acceptance criterion.
 4. **R1 (untyped `Id` owners holding a loan), an incompleteness.** Fixed by ef1195ff, apart from one residual shape (1 case in 10⁶): an owner reached through a returned borrow.
-5. **R8, a regression in the erasure pre-pass (ff6b634a).** Its own INTERNAL assertion fires when a closed-off block calls a captured proof-function parameter. Fail-safe; reported with a two-line reproduction (`Scratch/R8PrePass.lean`).
+5. **R8, a regression in the erasure pre-pass (ff6b634a).** Its own INTERNAL assertion fires when a closed-off block calls a captured proof-function parameter. Fail-safe; reported with a two-line reproduction (`Scratch/R8PrePass.lean`). Still present on 55977f8e.
 
 The extended generator also re-finds the cold reviewers' attacks when their switch is off: reviewer-5's D54 `Boom` (as a `false` and a `truth` finding), and reviewer-4's `TT` (as `irrel`). §v2.3 counts which attack shapes it reaches.
 
 6. **The absTy arm-leak (found by arrays-library, checked by the fuzzer; a false rejection).** Refinements leak across match arms through `absTy` (the types of abstract values), which `restoreKeep` keeps under D37 while restoring the environment. With a parameter `r : Slice(Sub(n, k))`, the `n := Z` arm rewrites `absTy[σ_r]` to the `Z`-form, and because that replaces `σ_n` by `Z`, the `n := S m` arm cannot undo it: a use-site that types `r` through `valType` sees `Slice(Sub(0, k))` (`Scratch/LeakSweep.lean`). This is a false rejection. It is not exploitable as a false acceptance within the current rules: the over-refinement only makes a consuming check stricter, and eliminating `r` as the leaked type needs it to compute to a concrete inductive, which the leak's precondition (a second parameter left abstract) denies — `Sub(0, k)` with `k` abstract stays stuck (`Scratch/LeakBoom.lean`). Under D55 these families are all `Type`-valued, so the leak cannot flip a sort. The binding type of a parameter is restored correctly, so most type reads are unaffected.
+7. **D53: a stuck block hides its arms' moves (55977f8e).** The checker accepts functions that read moved data when run: 15,567 cases in 10⁶, all found by the execution oracle. See §v2.3 item 5.
 
-**Validation.** Every ledger rule was switched off in turn (§v2.4). The fuzzer rediscovers 17 of the ledger's 22 soundness rows and 2 of its 4 model rows. Three of the soundness misses need constructs it never generates: inductive declarations, `&` of a non-data type, and a scrutinee of computed type. The other two, D18 and D35, are rare shapes: each was found once in 10⁵ cases by an earlier generator version.
+**Validation.** Every ledger rule was switched off in turn (§v2.4). On c469da44 the fuzzer rediscovers 17 of the ledger's 20 soundness rows and 2 of its 4 model rows. The three soundness misses are declaration-level: inductive declarations, `&` inside a declared type, and a scrutinee of computed type. D18 is a rare shape (1 case in 6·10⁵). On D53's three rows the fuzzer agrees with the ledger's classes: `moves` is a cost row, and `ghosts` and `fnRule` are completeness rows. On 84470253 the tally was 18 of 23, before the D35 rows were deleted.
 
 **Confidence.**
 - F-v2-1 and the P2 finding are certain: each is a program the checker accepts. F-v2-1 on 96d788a1 (`Scratch/RecWipe.lean`); the P2 one with `eraseOnCopy := false` (`Scratch/P2Alone.lean`).
+- The D53 findings are certain. Each is a function the checker accepts, and the checker itself rejects a call of it on a ground input (`Scratch/D53Blocks.lean`).
 - "No value disagreement" holds only within the generator's coverage (§v2.7).
 
 ### v2.1 How to run
@@ -35,14 +43,13 @@ lake exe fuzz --seed 1 --show 1424                                 # one case, v
 lake exe fuzz … --list                                             # also print `@FIND case key` per finding
 ```
 - Case `i` of seed `S` is a pure function of `(S, i)`.
-- `--switch X` names a ledger row: `D17`…`D58`, `P1`/`P2`/`P3`, `L1`–`L3`, `C5`, `C8`, `G1`, `capTypes`, `scrutTyped`, `confineBodies`, `D50on`. It can also name `D53on`, which turns the D53 prototype on.
-- `--diff` keeps only the findings a case shows with the switches on and not with the default rules.
+- `--switch X` names a ledger row: `D17`…`D59`, `P1`/`P2`/`P3`, `L1`–`L3`, `C5`, `C8`, `G1`, `capTypes`, `scrutTyped`, `confineBodies`, `D50on`, and D53's three: `moves`, `ghosts`, `fnRule`. On ochr-core D53 is off by default. `--switch +D53` turns it on, for the default and the `--diff` base alike, so D53's rows are `--switch +D53 --switch moves` and so on. The D35 rows were deleted with the erasure pre-pass.
+- `--diff` keeps only the findings a case shows with the switches on and not with the default rules. With `--list` it also prints `@FLIP i base>switched` when the switch changes the statement's verdict, and `@XFLIP i m>n` when it changes how many of the statement's two sides the checker accepts as data functions (the execution oracle's `ExecL`/`ExecR`). A row such as `moves` changes acceptance without changing any value, and this is how it is measured.
+- `--runtime-refine` refines the generic observation at runtime depth instead of erased. It is a diagnostic for the RN class (§v2.6). The checker refines statements erased, so most of what it reports are artefacts.
 - `--jobs J` runs crash-isolated worker processes.
 - `--shrink K` shrinks and prints K findings per kind and worker. A printed counterexample is an `ochr` block. After `import Ochr.Fuzz.Replay`, `#eval IO.println (replay Cex)` re-runs the oracles on it.
 
-**Where the code lives.** The fuzzer is on branch `ochr-fuzz-core`, which is ochr-core plus the fuzzer only (`Fuzz.lean`, `Ochr/Fuzz/`, the `fuzz` exe, `Scratch/`, these notes). It builds against ochr-core's checker as is. The ff6b634a runs in §v2.5 used branch `ochr-fuzz-v2`, which also carries the checker lane's ochr-core-lean head. The `Scratch/` files' expectations are for ochr-core; each says how it changes on ff6b634a.
-
-**Checker hooks.** None. The fuzzer uses the checker unmodified, and `lake exe tests` reports 519/519 on this branch.
+**Checker hooks.** None. The fuzzer uses the checker unmodified, and `lake exe tests` reports 548/548 on this branch (merged with ochr-core-lean 55977f8e).
 
 ### v2.2 What it checks
 
@@ -64,6 +71,7 @@ lake exe fuzz … --list                                             # also prin
 - **`adequacy`**: the typed run and the untyped machine differ at a ground instance.
 - **`frame`**: plugging a borrowed cell into a larger owner changes the observation other than as the frame lemma says.
 - **`conv`**: two functions the checker finds convertible observe differently on ground inputs.
+- **`exec`** (new, D53; always on, in every campaign): a data function the checker accepts is run at every ground input at runtime depth, where reads move. It must not err, and it must observe what its erased run observes. This covers the random library functions, and the statement's two sides declared as data functions `ExecL`/`ExecR` over its parameters, when the checker accepts them. A `⊤` hypothesis gets `⋆`. A function with any other hypothesis or a function parameter is not run, and neither is one that returns a proof or a type. The other oracles observe statements as types, which are erased, so without this oracle D53's runtime moves were reached only through `conv` (2 cases in 10⁶).
 
 A finding at a refinement where some proof parameter's type is `False` is marked `vacuous`.
 
@@ -100,7 +108,16 @@ The cold reviewers' attack shapes are included:
    - **(b) [Close] turns a move out through a borrow into a copy.** `Id Nat 0 (match *x0 { Z => *x0, S p3 => … })` at `x0 := 0`: the direct path errors, the closed-off path sees `0` twice.
    - **(c) Conversion misses a move through a borrow.** `λ(y9 : &Nat) (y10 : &Nat) : &Nat => *y10; y10` is found convertible to `λ(y9 : &Nat) (y10 : &Nat) : &Nat => y10`, yet on ground inputs one returns a borrow of `⊥` and the other a borrow of `0`.
 4. **R1: untyped `Id` owners holding a loan (incompleteness).** Fixed by ef1195ff: a live loan is typed by its borrow's content. 16,551 cases in 10⁶ on 658cc108, none since.
-5. **The cold reviewers' attacks**, re-found by the extended generator with their switch off (seeds 1 and 3, 2·10⁴ cases each):
+5. **D53 acceptance: a stuck block hides its arms' moves (55977f8e; `Scratch/D53Blocks.lean`).** The fuzzer found D53 unsound before D53 was turned on in ochr-core. D53 stays off there by default until the execution oracle shows zero findings over at least 10⁵ cases. Each function below is accepted, and running it on the ground input shown is rejected. The same moves outside a block are rejected at the definition (`C1`, `C2`). All four are generic-accepts, instance-errors findings. In a compiled program they would be reads of moved data.
+   - **M1: an arm moves a field that its pattern exposed.** `def A1 (q0 : Nat × Nat) : Nat × Nat := let a = match q0 { Mk(p, _) => p }; q0`. At `(0, 0)` the result is "q0 was partly moved out". `def A2 (n0 : Nat) : Nat := let a = match n0 { Z => 0, S p => p }; n0` fails the same way at 1. Cause: `splitArmsThenClose` takes each free variable's `before` value once, before the arms' refinements. `newHoles(σ, S ⊥)` has no case for an abstract `before`, so the move of `n0.1` never reaches `moved`.
+   - **M2: an arm moves a whole captured place that is not a variable.** `def B1 (x0 : &Nat) (n1 : Nat) : Nat := let a = match n1 { Z => 0, S _ => *x0 }; a`. At `(&0, 1)` the borrow ends partly moved out. Here `moved` does contain `*x0`. But `closeOffMatch` makes a capture a move only when it is a whole variable (`whole && moved.any (· == .var o)`) or a strict sub-part of a copy capture. A moved place that is itself a maximal capture (`*x0`, `n1.1`, a pattern variable) stays an in-place copy. `B2` and `B3` are the same shape with a pair scrutinee and with a returned borrow.
+   - **M2b: the block takes the borrow itself.** `def B4 (x0 : &Nat) : Nat := S (match *x0 { Z => x0; 0, S _ => *x0 })`. One arm reads `x0` whole, so the block moves the borrow in. Another arm moves out through it. The block now owns the borrow, and nothing checks the borrow's content when it ends.
+   - **M3: erased code in a run.** A definition is checked on the typed path, but a call runs its body in the untyped machine, and there two erased terms are not treated as erased:
+     - (i) The untyped `J` evaluates its endpoints under `onCopy` at runtime depth rather than under `confinedCopy`. So `def J1 (n : Nat) (h : Eq Nat n 1) : Nat := let m = n; J(Nat, n, 1, λ (z : Nat) : Type => Nat, h, m)` fails at `J1(1, refl)` with "n was moved out".
+     - (ii) An `Id` whose side writes a moved place cannot type that place's owner: `def I1 (n1 : Nat) : Nat := let m = n1; let a0 = Id Unit () (n1 := 0); 0` fails at `I1(0)` with "cannot infer the type of the value ⊥".
+
+   Rates in 10⁶ cases on 55977f8e: 15,567 cases. To check that M1 and M2 account for them, a diagnostic patch was applied locally and never committed. It computes `before` per arm, after the refinement, and makes a capture a move whenever the capture itself is in `moved`. On seed 1 (10⁵ cases) it takes the exec findings from 1,608 to 111. All 111 are M2b. The statuses are unchanged (93,656 checked against 93,659). M3 is rare: 4 cases of (ii) in 10⁶. (i) is out of the generator's reach, because the execution oracle skips functions with an `Eq` hypothesis.
+6. **The cold reviewers' attacks**, re-found by the extended generator with their switch off (seeds 1 and 3, 2·10⁴ cases each):
 
 | attack | switch | found? | as | first shrunk example |
 |---|---|---|---|---|
@@ -117,72 +134,73 @@ With the default rules (D54, D55, D56 on), none of these shapes produces a findi
 
 ### v2.4 Validation: each ledger row switched off
 
-**Method.**
-- `--diff --switch X` on the batch head (branch commit 42a08017, ochr-core 84470253).
-- Pass 1 ran every row: seed 1, 20,000 cases, `--jobs 8`, 20–90 s per row.
-- Pass 2 re-ran the rows pass 1 missed: seed 2, 100,000 cases.
-- A row is *rediscovered* when a non-vacuous finding absent under the default rules is one of that rule's own failures. Findings of the fail-safe classes R2–R7 alone do not count.
-- Row kinds are the ledger's (`lake exe tests`).
+**Method (ochr-core c469da44, the ledger's 49 rows).**
+- Pass 1 ran every row with `--diff --switch X --list`: seed 1, 20,000 cases, 8 workers, with the execution oracle on.
+- Pass 2 re-ran the soundness rows that pass 1 missed: seed 2, 100,000 cases. D18 got four more seeds (3–7, 100,000 each).
+- A row is *rediscovered* when a non-vacuous finding that the default rules do not show is one of that rule's own failures. Verdicts from D41's confinement check (`[D] erased term borrows/assigns/moves a place`) are the fail-safe working and do not count.
+- Row kinds are the ledger's (`lake exe tests`, 996/996 on this head). D19 is listed as "subsumed" there until its new witnesses land; it is counted here as a soundness row.
 
-**Soundness rows: 17 of 22 rediscovered.**
+**Soundness rows: 17 of 20 rediscovered.**
 
-| switch off | first case | what it finds |
-|---|---|---|
-| P2 without D41 | 64 | `false` 106, `nat` 291, `truth` 5 (N1's shape) |
-| D17 [Rec] entry values | 0 | `truth` 2,558: non-decreasing recursion proves a false statement |
-| D31 no `f` without `by` | 0 | `truth` 2,558 |
-| L1 self only as a call head | 72 | `truth` 321, Knot's shape |
-| L3 [Rec] in nested functions | 34 | `truth` 1,011, KnotL's shape |
-| D19 [Access] ends loans inside | 1,923 | [Drop]-while-borrowed verdicts, `escape` |
-| L2 no ⊥ argument | 101 | verdicts, `G1(&n0, n0)` |
-| C5 blocks move moved borrows | 3,882 | use after move on the direct path |
-| D29 matching ends loans in a neutral | 175 | `escape` 16: a returned borrow's hole left in the observation |
-| D30 closures by observation | 68 | `conv` 914, `false` 28, `nat` 49 |
-| D32 pattern writes | 3 | `nat` 523, `false` 42, `truth` 5 |
-| D35/D40 block erased iff each arm | 93 | `nat` 168, `truth` 12, `false` 1 |
-| P1 with the computed-type block rule | 683 | `nat` 15, `false` 4 |
-| D37 global generalisation records | 3 | `escape` 407 (X3's root) |
-| D38 borrow results observed by a write | 59 | `conv` 55 (X4) |
-| D45 + D42 | 88 | `nat` 2, `adequacy`, D41 verdicts |
-| D54 class and borrow row in Π-types | 17 | `adequacy` 203, `nat` 89, `false` 2, `truth` 1 (reviewer-5) |
+| row switched off | what the fuzzer finds (pass 1 unless noted) |
+|---|---|
+| P2 (erased terms on a private copy) | `false` 3, `nat` 8: `BoomP2`'s shape |
+| P2 without D41 | `false` 106, `nat` 292, `truth` 5 (N1's shape) |
+| D18 owners are sets | `nat` 1 in 6·10⁵ (pass 2, seed 6, case 61772): `let a0 = match n0 { Z => x1, S p2 => &n0 }; Id Unit () (*a0 := 0)`, a returned borrow into one of two owners (meta-model C2's shape) |
+| D17 [Rec] entry values | `truth` 2,600: non-decreasing recursion proves a false statement |
+| D19 [Access] ends loans inside | verdicts 10, `escape` 2. The call-free witness `V` (case 17830, `Scratch/D19Witness.lean`): `let a0 = match n0 { Z => &n0, S _ => &n0 }; *a0 := n0` is accepted without D19, and `V(0)` has no place to write |
+| L1 self only as a call head | `truth` 331, Knot's shape |
+| L2 no ⊥ argument | verdicts 56 ("no such place"), `conv` 4 |
+| C5 blocks move moved borrows | verdicts 6: use after move on the direct path |
+| L3 [Rec] in nested functions | `truth` 1,041, KnotL's shape |
+| D29 matching ends loans in a neutral | `escape` 16: a returned borrow's hole left in the observation |
+| D30 closures by observation | `conv` 914, `nat` 2 |
+| D31 no `f` without `by` | `truth` 2,600 |
+| D32 pattern writes | `nat` 523, `false` 42, `truth` 5 |
+| D37 global generalisation records | `escape` 407 (X3's root) |
+| D38 borrow results observed by a write | `conv` 55 (X4) |
+| D45 + D42 | `adequacy` 7 (a proof's data field read by the typed run, `⋆` in the machine), `nat` 1 (`⋆` against `I`), besides D41 verdicts |
+| D54 class and borrow row in Π-types | `nat` 8: `h0 : Π(z0 : &Nat). P0` at `h0 := HP` observes `0` generically (the call is erased by its codomain) and `1` at the instance (`HP` writes). This is D54's own failure: a writing function passes where one returning types is expected |
 
-**Tally: 18 of 23 soundness rows reached** (the 17 above, plus P2-alone below, which is a soundness finding the ledger mislabels as completeness).
+**Soundness rows not rediscovered (3), all declaration-level:** D36 (positivity: rejects a malformed `inductive`), D48(2) (`&` only at the top of a declared type: rejects a codomain computing to `&T`) and scrutTyped (rejects a match whose scrutinee's type is a computed family). These check declarations and elaboration, not the two-path property that the naturality oracles test. Reaching them would need the generator to synthesise inductive declarations and dependent parameter types, which it does not. Their soundness rests on the ledger's curated witnesses (`Positivity.Boom`, `BorrowTypes.G`, `ScrutineeTypes.g`). None of the three appeared in 1.2·10⁵ cases (passes 1 and 2).
 
-**Soundness rows not rediscovered (5):**
-- **D18** (owners are sets) and **D35** (a function's class from its codomain term) are rare shapes, not out of reach: each was found once in 10⁵ cases by an earlier generator version (658cc108). On the batch head with the current generator they did not recur.
-- **D36** (positivity), **D48(2)** (`&` only at the top) and **scrutTyped** (a scrutinee's constructors from its type) are declaration- and elaboration-level rules, not the two-path property the naturality oracles test. D36 rejects a malformed `inductive`; D48(2) rejects a codomain computing to `&T`; scrutTyped rejects a match whose scrutinee's type is a computed family. Reaching them differentially would need the generator to synthesise inductive declarations and dependent parameter types, which it does not. Their soundness is validated by the ledger's curated counterfactual witnesses (`Positivity.Boom`, `BorrowTypes.G`, `ScrutineeTypes.g`) rather than by the fuzzer.
+**Model rows: 2 of 4.** D55 (syntactic sorts): `irrel` 15 (reviewer-4 W2). D45 (subsingleton elimination): `adequacy` 1, a proof's data field borrowed, which the machine cannot reach. Not reached: D44 (an abstract `Π(n : Nat). &Nat` is never generated) and D48(1).
 
-**Model rows: 2 of 4.**
-- D55 (syntactic sorts): `irrel` 27, first case 23 (reviewer-4 W2).
-- D45 (subsingleton elimination): `adequacy` 1.
-- Not reached: D44 (an abstract `Π(n : Nat). &Nat` is never generated) and D48(1).
+**Cost row, D53 (`--switch +D53 --switch moves`): confirmed as cost.** There are no new findings. 235 statements and 5,853 sides-as-data-functions are accepted only without moves. These are programs that duplicate non-copy data, which compiled code would have to clone.
 
-**False-lemma row.** P3 without D41: R2 only.
-
-**Policy rows:**
-- D28 is reached as D41 verdicts (27): D41 rejects the misclassified term on the path that erases it. This is the fail-safe working.
-- P1 without D41: `nat` 4.
-- D41: R2 only.
-- D35r: not reached.
+**False-lemma and policy rows** (P3 without D41; P1 without D41; D41): no findings. Each only changes verdicts (about 320 statements each way), because D41's confinement is what they remove.
 
 **Completeness rows:**
-- **P2 alone:** `false` 3. This is the soundness finding above.
-- **D27:** `irrel` 8 and `symm` verdicts, since proof parameters become `σ`.
+- **D27:** `irrel` 8, since proof parameters become `σ`.
 - **G1:** `escape` 407.
-- **D35 (sequencing), P1, D42:** D41 verdicts.
-- **capTypes:** renorm errors.
-- **D47:** `nat` 1, conjunction order (R6: without disjointness, ground equations between distinct constructors stay uncomputed), and R2.
-- **D52:** `nat` 2. Without injectivity, the two paths' `Id` differ in conjunct order (R6) or in granularity: a whole pair owner `Eq (Nat × Nat) (1, 3) (1, 1)` against its field `Eq Nat 3 1`. The truth values are equal, so this is an incompleteness. Injectivity is what reconciles the two paths, for open terms too.
-- **D39:** `renorm: normalisation depth exceeded` 3 in 10⁵ (X5's loop).
-- **D56, D58:** vacuous only.
-- **Not reached:** C8, P3 alone, D45 (match by type), D48(3), D49(3), D50 on, confineBodies.
+- **capTypes:** 3 renorm errors.
+- **D42:** D41 verdicts, and `nat` 1 (`⋆` against `I`).
+- **D47:** `adequacy` 1.
+- **D52:** `nat` 1 (granularity: a whole pair owner against its fields).
+- **D53 (c), `ghosts`:** 7 `exec` findings, which are M1/M2 relabelled ("reading ⊥").
+- **D53 (e), `fnRule`:** 18 `exec` findings. These are M1/M2, reached through closures that only the switch-off admits (a library `Clo` whose closure moves its capture).
+- **Verdicts only, no findings:** C8, D28, P1, P3, D39, D45 (match by type), D48(3), D49(3), D50 on, confineBodies, D56, D58, D59.
 
-**D53on (prototype).** `nat` 1,019 and about 400 verdicts in 2·10⁴ cases; see §v2.3.
+**Earlier tallies.** On 84470253 (before the pre-pass, with the D35 rows) it was 18 of 23. The five misses were D18 and D35, which are rare shapes, and the same three declaration-level rules. The D35 rows were deleted with the erasure pre-pass. P2 alone, which was then mislabelled as completeness, is now a soundness row with its own witness (`BoomP2`).
+
+**D53 rows on 55977f8e** (D53 on by default there; seed 1, 20,000 cases, `--diff --list`, execution oracle on):
+
+| switch off | new findings | statement verdicts changed | sides accepted as data functions (`@XFLIP`) | reading |
+|---|---|---|---|---|
+| `moves` (runtime reads copy) | none | 0 | 4,743 cases gain sides, 5,991 sides in all; none lose one | **cost**, as classed. Without moves the checker accepts code that duplicates non-copy data, which compiled code would have to clone. Every oracle still agrees, and the M1/M2 findings disappear with the moves themselves. |
+| `ghosts` (a move leaves ⊥) | the M1/M2 cases again, relabelled ("reading ⊥" for "moved out (D53)"), 10 | 0 | 10 cases lose a side; none gain one | **completeness**. An erased read of a moved place (a `J` endpoint, an `Id` side) is rejected. Nothing new is accepted. |
+| `fnRule` (a call consumes its function; closures may move captures out) | none | 0 | 26 cases gain a side, 24 lose one | **completeness**, both ways. Without the rule, functions are used once each (Rust's `FnOnce` reading). A function parameter called twice is rejected (`h(&n1); h(&n1)`). A closure whose body moves a capture out is accepted, but the call consumes it, so it cannot run twice. Both readings are consistent, and no oracle separates them. |
+
+Probe for the `fnRule` row: `def F (n : Nat) : Nat := let f = (λ (u : Unit) : Nat => n); let a = f(()); f(())`. With the default rules, the closure's body is rejected ("moves a captured value out … clone it"). With `fnRule` off, the second call is rejected ("f was moved out"). Either way the double move is refused, at a different point. This is a hand probe, not a fuzzer finding.
 
 ### v2.5 At-scale runs
 
 | checker | seeds | cases | time | value disagreements | notes |
 |---|---|---|---|---|---|
+| **ochr-core c469da44 (D53 off by default), default rules, execution oracle** | 1–10 | 1,000,000 | 1,165 s, 12 workers | **0**; **0 `exec`** | no fail-safe findings: R1–R8 all fixed; E 65 (1 vacuous) |
+| 95da7c12 (D53 on, D59), default rules, execution oracle | 1–10 | 1,000,000 | 815 s, 12 workers | **0** (plus 15, R6); **15,567 `exec`** | the same counts as 55977f8e: D59 changes nothing the fuzzer observes |
+| 95da7c12 with `moves` off (the sanity baseline), execution oracle | 1–10 | 1,000,000 | 728 s, 12 workers | **0** (plus 15, R6); **0 `exec`** | no R8: the pre-pass assertion runs only under the default configuration (`prePassAssert`). What R8 hides with the assertion off is 12 `renorm: no such place` (2 vacuous) and 1 `[Read]` renorm |
+| 55977f8e (D53 on), default rules, execution oracle | 1–10 | 1,000,000 | 1,002 s, 12 workers (machine load ≈ 18) | **0** (plus 15 conjunct-order differences, R6); **15,567 `exec`** | D53 acceptance fails: M1/M2/M2b/M3, §v2.3 item 5; R8 still present |
 | ff6b634a (R2, R3, R7 fixed; erasure pre-pass), default rules | 1–10 | 1,000,000 | 788 s, 12 workers | **0** (plus 14 conjunct-order differences, R6) | R2/R3/R7 gone; a new fail-safe class R8 from the pre-pass |
 | 84470253 (the batch), default rules | 1–10 | 1,000,000 | 661 s, 8 workers | **0** (plus 14 conjunct-order differences, R6) | fail-safe classes only, table below |
 | 658cc108 (recCands fixed) | 1–10 | 1,000,000 | 491 s, 16 workers | 0 | before the reviewer shapes were added to the generator |
@@ -191,23 +209,26 @@ With the default rules (D54, D55, D56 on), none of these shapes produces a findi
 
 **Main run statuses (84470253).** 936,320 cases were checked. In 49,375, the default rules reject the generic statement; in a sample of 400 cases, 12 of the 16 rejected or unresolved ones were the reviewers' attack shapes, which only a switch-off makes live. In 14,305, the case does not resolve, mostly an attack template that the default rules left out. No crashes.
 
-| class | findings in 10⁶ on 84470253, non-vacuous (vacuous) | on ff6b634a |
-|---|---|
-| R2 a λ in a block's arm captures a borrow | 3,405 (500) | 0 (fixed) |
-| R3 conversion runs a block's function generically | 160 (8) | 0 (fixed) |
-| R7 `symm` in an unreachable branch | 34 (1,850) | 0 (fixed) |
-| R6 conjunction order | 14 (1) | 14 (1) |
-| E arm-local value in a block's inferred type | 92 (2) | 65 (1) |
-| R1 residual (an owner reached through a returned borrow) | 1 (0) | 1 (0) |
-| R4, R5 | 0 | 0 |
-| R8 the erasure pre-pass's INTERNAL assertion (new) | – | 2,235 (339) |
-| vacuous: `adequacy: stuck (escaped to the top)` (a `J` cast or zero-arm match stuck under a `False` hypothesis, run by the untyped machine) | 0 (27,938) | 0 (28,039) |
+| class | findings in 10⁶ on 84470253, non-vacuous (vacuous) | on ff6b634a | on 55977f8e (D53) | on c469da44 (D53 off) |
+|---|---|---|---|---|
+| R2 a λ in a block's arm captures a borrow | 3,405 (500) | 0 (fixed) | 0 | 0 |
+| R3 conversion runs a block's function generically | 160 (8) | 0 (fixed) | 0 | 0 |
+| R7 `symm` in an unreachable branch | 34 (1,850) | 0 (fixed) | 0 | 0 |
+| R6 conjunction order | 14 (1) | 14 (1) | 15 (1) | 0 (fixed, 1678d2a2) |
+| E arm-local value in a block's inferred type | 92 (2) | 65 (1) | 68 (3) | 65 (1) |
+| R1 residual (an owner reached through a returned borrow) | 1 (0) | 1 (0) | 0 | 0 (fixed, 06da7a2c) |
+| R4, R5 | 0 | 0 | 0 | 0 |
+| R8 the erasure pre-pass's INTERNAL assertion (new) | – | 2,235 (339) | 2,344 (362) | 0 (fixed) |
+| vacuous: `adequacy: stuck (escaped to the top)` (a `J` cast or zero-arm match stuck under a `False` hypothesis, run by the untyped machine) | 0 (27,938) | 0 (28,039) | 0 (28,083) | 0 (28,039) |
+| D53 `exec`: an accepted function goes wrong when run (M1, M2, M2b, M3; §v2.3 item 5) | – | – | 15,567 cases (the two `conv: error` cases are among them) | 0 (D53 off) |
+
+On 55977f8e the statuses were 936,239 checked, 47,833 rejected and 15,928 unresolved, with no crashes.
 
 ### v2.6 The fail-safe classes, one sentence each
 
-Each class has a true statement the checker rejects today, in `lean/Scratch/` (`lake env lean Scratch/X.lean`, all "as expected").
+Each class has a true statement that the checker rejected, in `lean/Scratch/` (`lake env lean Scratch/X.lean`, all "as expected"). On c469da44 the fixed classes' statements are accepted.
 
-- **R1: an untyped `Id` owner holding a loan (mostly fixed by ef1195ff).** Re-normalising a sealed program that forms an `Id` about a cell it has lent out failed to type the cell (16,551 cases in 10⁶ on 658cc108; `V2Classes.R1s` is accepted now). One residual case in 10⁶ on 84470253 remains, where the owner is reached through a returned borrow: `R1Residual.Split` is a true statement, proved by splitting, that is rejected with "cannot infer the type of the value loan_ℓ".
+- **R1 (fixed: ef1195ff, and the residual by 06da7a2c): an untyped `Id` owner holding a loan.** Re-normalising a sealed program that forms an `Id` about a cell it has lent out failed to type the cell (16,551 cases in 10⁶ on 658cc108; `V2Classes.R1s` is accepted now). One residual case in 10⁶ on 84470253 remains, where the owner is reached through a returned borrow: `R1Residual.Split` is a true statement, proved by splitting, that was rejected with "cannot infer the type of the value loan_ℓ", and is accepted since 06da7a2c.
 - **R2 (fixed by ff6b634a): a λ in a stuck block's arm captures a borrow on re-normalisation.** A block takes a place by `&` when an arm writes it. Two things go wrong:
   - (i) The capture analysis counts a nested λ's write to its own copy as a write by the block (`V2Classes.R2s`: `Id Nat (match n0 { Z => n0, S p2 => let a5 = (λ(y6 : &Nat) : Unit => n0 := 0); n0 }) n0`).
   - (ii) A λ that only reads the place captures the block's borrow parameter rather than the value it reads (`EV.ClassE4`: `match q2 { Mk(p5, p6) => let f = (λ(y7 : Nat) : Nat => p5); q2 := (1, 1); f }`).
@@ -216,10 +237,11 @@ Each class has a true statement the checker rejects today, in `lean/Scratch/` (`
 - **R3 (fixed by ff6b634a): conversion runs a block's function at a generic call.** A block formed inside an arm reads pattern sub-places (`x0.1`, `(*q0).fst`) that exist only under that arm's refinement. D30's conversion observes such a function at a fresh generic argument, where the sub-place does not exist, and `convFn` lets the error escape instead of answering "not convertible" as `convPi` does (`V2Classes.R3s`).
 - **R4 (fixed by 84470253/ff6b634a): a call of a sealed function in untyped code.** A block whose arms return λs closes off to a sealed function. Calling it during re-normalisation needs its Π-type for [Close]'s row, which is not recorded It was 23 cases in 10⁶ on 658cc108 and 0 since.
 - **R5: arm types formed under different refinements** (1 case in 10⁶, 658cc108). Two arms' Π-types capture a place holding a sealed program that the arms' refinements made different, so D48(3)'s comparison finds `U(⌈…0…⌉) ≠ U(⌈…S σ⌉)` although both are `Prop`.
-- **R6: `Id`'s conjunction order is not stable under closing off.** `Id` lists the observed owners in the order of Ω, and a closed-off block orders them by its captures. `And` is not commutative by conversion, so a true statement proved by splitting is rejected (`R6Order.Direct`). With pairs, `Eq` at `Nat × Nat` splits by injectivity, so this shows even at ground instances (`False ∧ (False ∧ False)` against `(False ∧ False) ∧ False`). Fix: order the footprint canonically (by first occurrence in the statement, or by parameter position), not by Ω.
+- **R6 (fixed by 1678d2a2: owners in a canonical order, writes first, by first occurrence): `Id`'s conjunction order is not stable under closing off.** `Id` lists the observed owners in the order of Ω, and a closed-off block orders them by its captures. `And` is not commutative by conversion, so a true statement proved by splitting is rejected (`R6Order.Direct`). With pairs, `Eq` at `Nat × Nat` splits by injectivity, so this shows even at ground instances (`False ∧ (False ∧ False)` against `(False ∧ False) ∧ False`). Fix: order the footprint canonically (by first occurrence in the statement, or by parameter position), not by Ω.
 - **R7 (fixed by ff6b634a): `symm` in an unreachable branch.** `symm h` (and `trans`) needs `h`'s type to be an equation or `True`. In a branch whose refinement makes the hypothesis `False`, the branch is unreachable, but `symm h` is a type error (`R7Symm.Split`), while the plain `J` along `h` is accepted there.
 - **E: an arm-local abstract value in a block's inferred type (not unsound).** A block's result type is read off the first arm, under that arm's refinement. When it is a Π-type that captured the scrutinee, arm-local values (`Mk(σ3, σ4)`) sit in its `where κ` captures (`EV.ClassE`, `ClassE4`). Untyped runs never read a block function's codomain. A stale type mentions only fresh σs that nothing else shares, so it can make a conversion fail, never succeed wrongly. It needs the block to take the place by `&` (some arm writes it) for its sealed program to reach an observation. On 84470253 it arrived with R2 (ii); since R2 is fixed it stands alone (65 cases in 10⁶ on ff6b634a, `EV.ClassE4`).
-- **R8 (new on ff6b634a, the erasure pre-pass): the pre-pass misreads a closed-off block's proof parameter.** When a stuck block captures a proof-function parameter, the block function declares that parameter in the captured form `(Π(z0 : &Nat). ⊤ : Prop)`. The pre-pass does not read that ascription as a proof, so it classifies a call through it as data while the machine (correctly) erases it, and the pre-pass's own assertion fires: "INTERNAL [pre-pass] …: erased/proof = (false, false) by its declared type, (true, true) after running". `R8PrePass.OnNat` is a true statement rejected by it: `(n : Nat) (h2 : Π(z0 : &Nat). ⊤) : Id Nat (match n { Z => 0, S p => h2(&p); 0 }) 0`, proved by splitting `n`. Variants: a captured λ returning a proof; and a proof `h : ExN` whose data field an arm writes, which makes the block capture the proof by borrow (`h3 : &ExN`, a borrow of a proposition) and the two readings disagree the other way. Fail-safe; 2,235 cases in 10⁶.
+- **R8 (new on ff6b634a, fixed by the pre-pass fixes merged in 9fb58523): the pre-pass misreads a closed-off block's proof parameter.** When a stuck block captures a proof-function parameter, the block function declares that parameter in the captured form `(Π(z0 : &Nat). ⊤ : Prop)`. The pre-pass does not read that ascription as a proof, so it classifies a call through it as data while the machine (correctly) erases it, and the pre-pass's own assertion fires: "INTERNAL [pre-pass] …: erased/proof = (false, false) by its declared type, (true, true) after running". `R8PrePass.OnNat` is a true statement rejected by it: `(n : Nat) (h2 : Π(z0 : &Nat). ⊤) : Id Nat (match n { Z => 0, S p => h2(&p); 0 }) 0`, proved by splitting `n`. Variants: a captured λ returning a proof; and a proof `h : ExN` whose data field an arm writes, which makes the block capture the proof by borrow (`h3 : &ExN`, a borrow of a proposition) and the two readings disagree the other way. Fail-safe; 2,235 cases in 10⁶.
+- **RN (D53): a data function's split re-runs a type's sealed program as code.** A proof's split refines its goal erased. A data function's split refines the stored types of its parameters at runtime depth, so a sealed program inside a hypothesis's type is re-run with reads that move. `D53Renorm3.DataSplit` is rejected with "n was moved out": `(n : Nat) (h : Id (Nat × Nat) (match n { Z => (n, n), S p => (p, p) }) (match n { Z => (0, 0), S p => (p, p) })) : Nat := match n { Z => 0, S _ => 1 }`. The same statement as a proof (`PrfSplit`) is accepted. Fail-safe. The fuzzer cannot measure its rate. Its statements are types, and `--runtime-refine` (refining them at runtime depth) reports about 15% of cases, which is mostly the artefact of re-running observations that the checker would refine erased.
 - **V (gone with D58): `⋆` against `()` under `h : False`.** A zero-arm match yielded `⋆` at any type, so a `Unit`-typed term was `⋆` on the direct path and `()` from a block's row. With D58 the match is stuck outside proof positions. `--switch D58` brings the vacuous findings back.
 
 ### v2.7 What the fuzzer does not cover
@@ -233,7 +255,7 @@ Each class has a true statement the checker rejects today, in `lean/Scratch/` (`
 - Abstract functions returning borrows without borrow parameters (D44).
 - Recursive local functions.
 - Arrays (D57).
-- D53 (tested only as the prototype switch `D53on`).
+- Runtime code, for D53, only through the execution oracle. That oracle never runs a function with a hypothesis other than `⊤` or with a function parameter, so the `J` casts, which all sit under an `Eq` hypothesis, are never run at runtime depth (M3 (i) was found by hand).
 
 **Limits of the oracles:**
 - Refinements go one constructor deep, plus six ground instances from 0–3 and small lists or pairs.
