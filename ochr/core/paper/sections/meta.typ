@@ -26,7 +26,7 @@ This section states the properties Ochr is designed to have and the evidence for
     [7. Concrete runs of programs accepted by [Rec] terminate.], [partly mechanised], [for borrow-free and for non-recursive programs; in general `sorry`],
     [8. Stability: the two evaluation paths take the same decisions (@lem-stable), a substitution lemma for typing decisions.], [conjecture], [the counterexamples of @fig-why, the ledger (@sec-impl) and the differential fuzzer; a probe corrected item (6), footprints (`FootprintProbe`)],
     [9. Naturality and adequacy (@conj-nat): refining and running commute once every borrow is ended, so an `Id` computed on abstract inputs holds on every concrete input where it computes.], [conjecture], [the fuzzer; the form without resolution is false (mechanised counterexample)],
-    [10. Consistency: no closed term has type `False` (@cor-consistent).], [conjecture], [the model sketch below; the regression suite],
+    [10. Consistency: no closed term has type `False` (@cor-consistent).], [conjecture], [proved for a fragment, conditional on naturality and transfer (@sec-tf); the model sketch below; the regression suite],
     table.hline(stroke: 0.5pt),
   )}),
   caption: [What Ochr is meant to satisfy, and the evidence. "Mechanised" means proved in Lean without `sorry`, for the fragment of @sec-meta-mech.],
@@ -77,6 +77,12 @@ runs for every concrete `n` but is rejected: `Pick`'s hole sits in the fills of 
 The run of $t alpha$ can fail where the run of $t$ succeeds: ending a borrow early on the symbolic path can let a later [Drop] succeed that fails at the instance (`DropProbe`).
 // TODO(prop-paper): DropProbe fix decided (an [End] with an uncertain target releases only the accessed owner; the borrower becomes a ghost borrow holding its other loans until its binding dies). When it lands: restore 'it ends without error' and the adequacy sentence in the naturality conjecture, drop the DropProbe sentence, restore Fig. claims row 9 and the section 10 sentence.
 
+*A theorem for a fragment.* For a first-order fragment F (natural numbers, `Unit`, `True`, `False`, `And`, `Eq`, `Id`, top-level functions with borrow parameters and returned borrows, [Close] and [Split], but no closures, stuck blocks, user inductives or type families), @sec-tf proves on paper:
+
+#thm([Theorem], [soundness of F, conditional on naturality and transfer], [
+  If naturality holds step by step (@tf-ass-n) and the mechanised lemmas transfer to the current rules (@tf-ass-t), then for every accepted program of F and every concrete input, each data function runs without error and a borrow it returns is live, and each lemma whose hypotheses hold has a true conclusion. Consistency of F and adequacy of `Id` follow.
+]) <thm-f>
+
 == What is mechanised <sec-meta-mech>
 
-The directory `ochr/core/meta-lean` of the artifact (about 11,600 lines of Lean 4, no Mathlib, only Lean's standard axioms) mechanises the effectful layer of an earlier rule set, which predates the erasure and inductive-proposition rules of @sec-typing, for a first-order fragment: natural numbers, unit, pairs, places, borrows, matching, recursive and opaque definitions (including borrow-returning ones) and erased proofs, with no closures, types, inductive propositions or stuck blocks. The machine is a clocked big-step interpreter. The side condition of `exec_wf`, that the term does not name the machine's argument temporaries, holds of every surface program. One statement remains `sorry`: termination in general. Nothing about types, conversion, stability or the model is mechanised.
+The directory `ochr/core/meta-lean` of the artifact (about 11,600 lines of Lean 4, no Mathlib, only Lean's standard axioms) mechanises the effectful layer of an earlier rule set, which predates the erasure and inductive-proposition rules of @sec-typing, for a first-order fragment: natural numbers, unit, pairs, places, borrows, matching, recursive and opaque definitions (including borrow-returning ones) and erased proofs, with no closures, types, inductive propositions or stuck blocks. The machine is a clocked big-step interpreter. The side condition of `exec_wf`, that the term does not name the machine's argument temporaries, holds of every surface program. Only general termination is `sorry`. Nothing about types, conversion, stability or the model is mechanised.
