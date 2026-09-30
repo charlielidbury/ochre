@@ -263,10 +263,51 @@ partial def endBorrow (l : Nat) : M Unit := do
     | some (c, rest) =>
       -- D53 (h): moving out through a borrow is allowed if the content is whole again when
       -- the borrow ends
+      -- D64 [Repack]: in the checked program, a borrow of a value of a dependent type ends
+      -- with the value of its type again (a borrow parameter's, when the function returns)
+      if (← get).typing then
+        if let (.borrow _ _, some (.tRef A)) := (valAt env p, ← tyAt p) then
+          repackCheck "a borrow of it ends" c A
       if (← get).cfg.movesOn && c.hasHole then
         err s!"[D53] a borrow ends while its content is partly moved out ({c})"
       setAt p rest
       substEnv (.loan l) c false
+
+/-- D64 [Repack]: at a whole-again point, a value holding values of dependent types must be
+of its type `T` by their telescopes again (a borrow's content, for a borrow of `&A`). -/
+partial def repackCheck (what : String) (v : Value) (T : Value) : M Unit := do
+  if !(← get).cfg.repack then return
+  let (v, T) := match v, T with
+    | .borrow _ c, .tRef A => (c, A)
+    | _, _ => (v, T)
+  if !(← hasDependent v) then return
+  -- rule: [Repack]
+  if let some m ← packedErr v T then err s!"[Repack] {what}, but it is open: {m}"
+
+/-- D64 [Repack] at a whole use of the place `p` (of type `T`): read, moved, borrowed, passed
+or captured whole. A place moved out or ended is left to the machine's own error. -/
+partial def repackAt (p : Place) (T : Value) (what : String) : M Unit := do
+  let v ← tryCatch (content p) fun _ => pure .bot
+  if v matches .bot | .ghost _ then return
+  repackCheck s!"{← ppPlace p} is {what}" v T
+
+/-- D64 [Open]: a write or borrow through an index field of a dependent constructor value
+invalidates the proof fields whose types mention that field: they become `⊥` until assigned
+again (a proof is `⋆` and carries no type, so a stale one could not be told apart at the
+repack; an assigned proof is checked against the telescope at the current contents). -/
+partial def openWrite (p : Place) : M Unit := do
+  let rec prefixes : Place → List (Place × FieldRef)
+    | .field g q => (q, g) :: prefixes q
+    | .deref q | .fst q | .snd q => prefixes q
+    | .var _ => []
+  for (q, g) in prefixes p do
+    let some d := (← get).inds.find? (·.name == g.ty) | continue
+    unless (d.indexFields g.ctor).contains g.idx do continue
+    -- rule: [Open]
+    for ((fname, FT), j) in ((d.ctors[g.ctor]!).2).zipIdx do
+      if j != g.idx && (d.fieldRefs g.ctor FT).contains g.idx && (← fieldTermIsProp d FT) then
+        let fp := Place.field ⟨g.ty, g.ctor, j, fname⟩ q
+        if ← tryCatch (do discard (content fp); pure true) (fun _ => pure false) then setPlace fp .bot
 
 /-- End every borrow in Ω (for observations, §4). -/
 partial def endAll : M Unit := do
@@ -316,7 +357,11 @@ partial def readPlace (p : Place) : M Value := do
   let inPlace := (← get).inPlace
   if inPlace then modify fun s => { s with inPlace := false }
   match v with
-  | .bot => err s!"[Read] {← ppPlace p} was moved out or its borrow ended (reading ⊥)"
+  | .bot =>
+    if let .field g _ := p then
+      if (← lookupInd g.ty).dependent g.ctor && (← fieldIsProof g) then
+        err s!"[Open] {← ppPlace p} is a proof field invalidated by a write to a field its type mentions: assign it a new proof first"
+    err s!"[Read] {← ppPlace p} was moved out or its borrow ended (reading ⊥)"
   | .ghost w =>
     if erased && cfg.ghostsOn then return w.unghost
     err s!"[Read] {← ppPlace p} was moved out (D53)"
@@ -541,10 +586,106 @@ partial def placeType (p : Place) : M Value := do
     | .tInd n ps =>
       -- the place names its constructor (v2.0), so a proof's field has a type too
       if n != g.ty then err s!"{← ppPlace q}.{g.name}: a field of {g.ty}, at type {n}"
-      match (← fieldTypes (← lookupInd n) ps g.ctor)[g.idx]? with
+      let d ← lookupInd n
+      if d.dependent g.ctor then return ← depFieldType d ps g q
+      match (← fieldTypes d ps g.ctor)[g.idx]? with
       | some (_, T) => pure T
       | none => err s!"{← ppPlace q}.{g.name}: no such field"
     | T => err s!"{← ppPlace q}.{g.name}: no field at type {T}"
+
+/-- D64: the fields of the constructor value a place holds, as a constructor `g` names it:
+through a ghost (a moved value's fields are its ghosts) and through a loan (a place lent out
+has its borrow's content). -/
+partial def ctorFields (v : Value) (g : FieldRef) : M (Option (List Value)) := do
+  match v with
+  | .ind t c _ _ fs => pure (if t == g.ty && c == g.ctor then some fs else none)
+  | .ghost w => pure ((← ctorFields w g).map (·.map .ghost))
+  | .loan l =>
+    let env := (← get).env
+    match (findBorrow env l).bind fun p => (valAt env p).takeBorrow l with
+    | some (c, _) => ctorFields c g
+    | none => pure none
+  | _ => pure none
+
+/-- D64, rule 2 and [Open]: the type of field `g` of the value at `q`, of the dependent
+constructor `g.ctor` of `d` at parameters `ps`. Its type by the telescope is computed from
+the earlier fields' current contents. A field whose declared type mentions no earlier field
+has that type. Any other field has it while its content does (the value is packed);
+otherwise the value is *open*, and the field is typed by its content's own type (what was
+written into it, a stored type), until the value is repacked. -/
+partial def depFieldType (d : IndDecl) (ps : List Value) (g : FieldRef) (q : Place) : M Value := do
+  if !d.fieldDependent g.ctor g.idx then
+    match ← fieldTypeAt d ((ps.map some).toArray) g.ctor g.idx [] with
+    | some T => return T
+    | none => err s!"{← ppPlace q}.{g.name}: no such field"
+  let cv ← content q
+  let some fs ← ctorFields cv g
+    | err s!"{← ppPlace q}.{g.name}: its type depends on the earlier fields of {g.ty}, but {← ppPlace q} holds {cv}, not a value of its constructor (match on it first)"
+  let some (_, T) := (← fieldTypesOf d ps g.ctor fs (some (g.idx + 1)))[g.idx]?
+    | err s!"{← ppPlace q}.{g.name}: no such field"
+  if !d.fieldDependent g.ctor g.idx then return T
+  let c := (fs.getD g.idx .bot).unghost
+  if c == .bot || c == .proof then return T
+  if (← packedErr c T).isNone then return T
+  tryCatch (valType c) fun _ => pure T
+
+/-- D64 [Repack]: why `v` is not a value of `T` by the telescopes of the dependent
+constructors inside it, or `none`. A constructor value is checked field by field against its
+field types, computed from its own earlier fields and `T`'s parameters; a leaf by its own type
+(an abstract value's stored type, a sealed program's, a proof against a proposition). A hole
+(`⊥`, a ghost) is not packed. A constructor value with no dependent constructor inside whose
+type is `T` needs no walk. -/
+partial def packedErr (v : Value) (T : Value) : M (Option String) := do
+  match v with
+  | .ghost _ | .bot => pure (some s!"it holds {v} (moved out, or a proof invalidated by a write to a field its type mentions)")
+  | .proof => pure (if ← isPropV T then none else some s!"a proof where {T} is expected")
+  | .ind t c _ ps fs =>
+    if !(← hasDependent v) && (← convVal v T) then return none
+    let d ← lookupInd t
+    let as? := match T with
+      | .tInd n as => if n == t then some as else none
+      | _ => none
+    let as? := as?.orElse fun _ => if ps.length == d.params.length then some ps else none
+    let some as := as? | return some s!"{v} is not of type {T}"
+    if !ps.isEmpty && !(← convList ps as) then return some s!"{v} is not of type {T}"
+    let tel ← fieldTypesOf d as c fs
+    let cn := (d.ctors[c]!).1
+    for (((f, Tf), fv), j) in (tel.zip fs).zipIdx do
+      if let some m ← packedErr fv Tf then
+        let own ← tryCatch (valType fv) (fun _ => pure .bot)
+        return some (match fv with
+          | .ind .. => s!"in field {f} of {cn}, {m}"
+          | .ghost _ | .bot => s!"field {f} of {cn}: {m}"
+          | _ =>
+            if d.fieldDependent c j then
+              s!"field {f} of {cn} holds a value of type {own}, but its type from the earlier fields is {Tf}"
+            else s!"field {f} of {cn}: {m}")
+    pure none
+  | .abs σ =>
+    let A ← absType σ
+    pure (if ← conv A T then none else some s!"{v} : {A}, not {T}")
+  | _ => pure (if ← convVal v T then none else some s!"{v} is not of type {T}")
+
+/-- The type of a leaf value converts to `T` (a value whose type cannot be read does not). -/
+partial def convVal (v : Value) (T : Value) : M Bool :=
+  tryCatch (do conv (← valType v) T) fun _ => pure false
+
+/-- D64 [Open]: `p` is a data field whose declared type mentions earlier fields (its
+assignment is a strong update). -/
+partial def strongUpdate (p : Place) : M Bool := do
+  let .field g _ := p | return false
+  let some d := (← get).inds.find? (·.name == g.ty) | return false
+  pure (d.fieldDependent g.ctor g.idx && !(← fieldIsProof g))
+
+/-- D64: does a value hold a value of a dependent constructor (outside sealed programs and
+closures, which carry their types)? -/
+partial def hasDependent (v : Value) : M Bool := do
+  match v with
+  | .ind t c _ _ fs =>
+    if (← lookupInd t).dependent c then return true
+    fs.anyM hasDependent
+  | .ghost w | .borrow _ w | .succ w => hasDependent w
+  | _ => pure false
 
 /-- The type of a value, for untyped bindings (captured values) and embedded values. -/
 partial def valType (v : Value) : M Value := do
@@ -581,18 +722,58 @@ partial def sealedType (t : Term) : M Value := onCopy do
 
 -- ### Inductive declarations (v2.0: D45–D47)
 
-/-- The field types of constructor `c` of `d` at the parameters `ps` (D46): the declared
-field type terms, evaluated in a frame binding the parameters. -/
-partial def fieldTypes (d : IndDecl) (ps : List Value) (c : Nat) : M (List (String × Value)) := do
+/-- The field types of constructor `c` of `d` at the parameters `ps` (D46), as a telescope
+(D64, [Ind]): the declared field type terms are evaluated in order, in a frame binding the
+parameters and the fields, field `j` bound to `val j Tⱼ` once its type `Tⱼ` is known (its
+content, or a fresh generic value). A field not yet bound is `⊥`, which a well-formed
+telescope never reads (a field type mentions only earlier fields). Only the first `upto`
+fields are computed. Returns each field's name, type and bound value. The frame is pushed on
+the real state, not a copy, so that the values `val` creates (fresh σ) survive. -/
+partial def fieldTele (d : IndDecl) (ps : List Value) (c : Nat) (val : Nat → Value → M Value)
+    (upto : Option Nat := none) : M (List (String × Value × Value)) := do
   let some (_, fields) := d.ctors[c]? | err s!"{d.name} has no constructor {c}"
   if ps.length != d.params.length then
     err s!"{d.name} takes {d.params.length} parameters, given {ps.length}"
-  onCopy do
-    pushFrame
-    for ((h, PT), v) in d.params.zip ps do
-      let pd' ← withLive true (typeDecl false [] [] PT)
-      pushBind h none v pd'.isProof pd'
-    fields.mapM fun (f, FT) => do pure (f, ← evalType FT)
+  let fields := match upto with | some n => fields.take n | none => fields
+  let k := (d.ctors[c]!).2.length
+  pushFrame
+  let r ← tryCatch (do
+      -- the fields first (`var np …`), then the parameters (`var 0 …`), as resolved
+      for i in [0:k] do pushBind ⟨((d.ctors[c]!).2[i]!).1⟩ none .bot
+      for ((h, PT), v) in d.params.zip ps do
+        let pd' ← withLive true (typeDecl false [] [] PT)
+        pushBind h none v pd'.isProof pd'
+      let top ← topIdx
+      let mut out := #[]
+      for ((f, FT), j) in fields.zipIdx do
+        let T ← evalType FT
+        let v ← val j T
+        out := out.push (f, T, v)
+        let p ← fieldTermIsProp d FT
+        modifyFrame top fun fr => { fr with binds := fr.binds.modify j fun b =>
+          { b with val := v, ty := some T, proof := p, decl := if p then .prop else .other } }
+      pure out.toList) fun e => do discard popFrameRaw; throw e
+  discard popFrameRaw
+  pure r
+
+/-- The field types of constructor `c` at the parameters `ps`, for a constructor with no
+dependent field (D46); a dependent one needs its fields' values (`fieldTypesOf`). -/
+partial def fieldTypes (d : IndDecl) (ps : List Value) (c : Nat) : M (List (String × Value)) := do
+  if d.dependent c then err s!"internal: the field types of {d.name}'s constructor {c} depend on its fields"
+  pure ((← fieldTele d ps c (fun _ _ => pure .bot)).map fun (f, T, _) => (f, T))
+
+/-- D64: the field types of constructor `c` at the parameters `ps` and the field values
+`fs` (rule 2: a field's type is computed from the earlier fields' contents). -/
+partial def fieldTypesOf (d : IndDecl) (ps : List Value) (c : Nat) (fs : List Value)
+    (upto : Option Nat := none) : M (List (String × Value)) := do
+  pure ((← fieldTele d ps c (fun j _ => pure (fs.getD j .bot)) upto).map fun (f, T, _) => (f, T))
+
+/-- D64: fresh generic values for the fields of constructor `c`, each of its type computed
+from the earlier ones ([Ind] and [Split]: `σ := C(σ₁, σ₂)` with `σ₂ : T₂[σ₁]`); a proof
+field is `⋆`. Returns each field's name, type and value. -/
+partial def fieldsGeneric (d : IndDecl) (ps : List Value) (c : Nat) :
+    M (List (String × Value × Value)) :=
+  fieldTele d ps c fun _ T => genericValue T
 
 /-- D53: a copy type, read off a type; a type not fully known is not one: `Unit`, a sort
 (types are erased), a proposition (its values are `⋆`), an inductive declared `copy`
@@ -607,19 +788,29 @@ partial def isCopyType (T : Value) : M Bool := do
     let d ← lookupInd n
     if d.copy || d.sort == 0 then return true
     if d.ctors.any (fun (_, fs) => fs.any fun (_, FT) => FT.mentionsTInd n) then return false
+    -- D64: a type with a dependent field is a copy type only when declared `copy` (its field
+    -- types are not fixed by the parameters)
+    if (List.range d.ctors.length).any d.dependent then return false
     for i in [0:d.ctors.length] do
       for (_, FT) in ← fieldTypes d args i do
         unless ← isCopyType FT do return false
     pure true
   | _ => pure false
 
-/-- One declared field type at partially known parameters (for a hint; unknown
-parameters are bound to `⊥`, which a field type not mentioning them never reads). -/
-partial def fieldTypeAt (d : IndDecl) (sol : Array (Option Value)) (FT : Term) : M (Option Value) := do
+/-- One declared field type, field `i` of constructor `c`, at partially known parameters and
+the values of the fields before it (for a hint; unknown parameters and fields are bound to
+`⊥`, which a field type not mentioning them never reads). -/
+partial def fieldTypeAt (d : IndDecl) (sol : Array (Option Value)) (c i : Nat) (earlier : List Value) :
+    M (Option Value) := do
   let np := d.params.length
-  unless FT.freeVars.all fun j => j < np && (sol[np - 1 - j]!).isSome do return none
+  let some (_, fields) := d.ctors[c]? | return none
+  let some (_, FT) := fields[i]? | return none
+  let k := fields.length
+  unless FT.freeVars.all fun j => (j < np && (sol[np - 1 - j]!).isSome) ||
+      (np ≤ j && j < np + k && np + k - 1 - j < earlier.length) do return none
   tryCatch (onCopy do
       pushFrame
+      for jj in [0:k] do pushBind ⟨(fields[jj]!).1⟩ none (earlier.getD jj .bot)
       for ((h, PT), v) in d.params.zip sol.toList do
         pushBind h none (v.getD .bot) false (← withLive true (typeDecl false [] [] PT))
       some <$> evalType FT)
@@ -674,16 +865,25 @@ the local and every other free place shifted past the new bindings. -/
 partial def bindDataFields (p : Place) (d : IndDecl) (ps : List Value) (c : Nat) (arm : Term) : M Term := do
   let some (_, fields) := d.ctors[c]? | return arm
   if !(← get).cfg.proofDataFields then return arm      -- counterfactual: every field is ⋆
-  let fts ← fieldTypes d ps c
-  let mut datas : Array (Nat × String × Value) := #[]
-  for (((fname, FT), (_, T)), i) in (fields.zip fts).zipIdx do
-    unless ← fieldTermIsProp d FT do datas := datas.push (i, fname, T)
+  -- D64: a dependent constructor's fields are all bound, in order, each at its type from the
+  -- earlier ones: data to fresh values, proofs to `⋆` at their types (whose type a later
+  -- field's may read)
+  let dep := d.dependent c
+  let fts ← if dep then fieldsGeneric d ps c
+    else pure ((← fieldTypes d ps c).map fun (f, T) => (f, T, Value.bot))
+  let mut datas : Array (Nat × String × Value × Term) := #[]
+  for (((fname, FT), (_, T, v)), i) in (fields.zip fts).zipIdx do
+    if ← fieldTermIsProp d FT then
+      if dep then datas := datas.push (i, fname, T, .ascribe (.val .proof) (.val T))
+    else
+      let g ← if dep then pure v else genericValue T
+      datas := datas.push (i, fname, T, .val g)
   if datas.isEmpty then return arm
   let k := datas.size
   let fieldPlace (i : Nat) : Place := .field ⟨d.name, c, i, ""⟩ p
   let body := arm.mapFreePlace (fun dep q =>
-    match datas.toList.zipIdx.find? fun ((i, _, _), _) => placePrefix (fieldPlace i) q with
-    | some ((i, _, _), j) =>
+    match datas.toList.zipIdx.find? fun ((i, _, _, _), _) => placePrefix (fieldPlace i) q with
+    | some ((i, _, _, _), j) =>
       let (_, qs) := q.steps
       let (_, fs) := (fieldPlace i).steps
       (qs.drop fs.length).foldl (fun acc st => match st with
@@ -691,8 +891,8 @@ partial def bindDataFields (p : Place) (d : IndDecl) (ps : List Value) (c : Nat)
         | .field g => .field g acc) (Place.var (dep + k - 1 - j))
     | none => q.mapRoot fun r => .var (r + dep + k)) 0
   let mut t := body
-  for (_, fname, T) in datas.toList.reverse do
-    t := .letIn ⟨fname⟩ (.val (← genericValue T)) t
+  for (_, fname, _, u) in datas.toList.reverse do
+    t := .letIn ⟨fname⟩ u t
   pure t
 
 /-- The error of a large elimination from a proof of a non-subsingleton (D45). -/
@@ -1037,6 +1237,10 @@ partial def capture (t : Term) : M (List Value × Term) := do
       if (← get).erasedDepth > 0 && (← get).cfg.ghostsOn then vals := vals.push w.unghost
       else err "a closure or Π-type captures a moved place"
     | _ =>
+      -- D64 [Repack]: a closure or Π-type captures the value whole
+      if (← get).typing then
+        if let some T := b0.ty then
+          unless viaRef do repackCheck s!"a closure or Π-type captures {b0.hint.name}" v T
       if (← get).cfg.movesOn && (← get).erasedDepth > 0 then vals := vals.push v.unghost
       else
         vals := vals.push v
@@ -1278,10 +1482,19 @@ partial def mkEqM (A a b : Value) : M Value := do
       let args? := args?.orElse fun _ =>
         if !ps.isEmpty then some ps else if !qs.isEmpty then some qs else none
       if let some args := args? then
-        let Ts ← fieldTypes (← lookupInd t) args c
-        if Ts.length == fs.length then
-          let eqs ← ((Ts.map (·.2)).zip (fs.zip gs)).mapM fun (T, (v, w)) => mkEqM T v w
-          return andList eqs
+        let dd ← lookupInd t
+        -- D64 (D52 restricted): a dependent constructor is taken apart only while its index
+        -- fields are convertible on both sides, so that each field equation is at one type
+        -- (the field types computed from either side's earlier fields agree). Otherwise the
+        -- equation stays: fail-safe, incomplete (OTT's rule needs a dependent conjunction)
+        let blocked ← if dd.dependent c && cfg.depInj then
+            (dd.indexFields c).anyM fun j => do pure !(← conv (fs.getD j .bot) (gs.getD j .bot))
+          else pure false
+        if !blocked then
+          let Ts ← fieldTypesOf dd args c fs
+          if Ts.length == fs.length then
+            let eqs ← ((Ts.map (·.2)).zip (fs.zip gs)).mapM fun (T, (v, w)) => mkEqM T v w
+            return andList eqs
   | _, _ => pure ()
   if cfg.disjoint && distinctCtors a b then pure vFalse
   else pure (.tEq A a b)
@@ -1340,7 +1553,11 @@ partial def eval (typed : Bool) (t : Term) (hint : Option Value := none) : M (Va
     | some d => preFlags t d
     | none => pure none
   -- D53: an erased term's reads copy, decided before it runs
-  let r ← withErasedIf ((← get).cfg.movesOn && (pre matches some (true, _))) (evalCore typed t hint)
+  let typing0 := (← get).typing
+  modify fun s => { s with typing := typed }
+  let r ← tryCatch (withErasedIf ((← get).cfg.movesOn && (pre matches some (true, _))) (evalCore typed t hint))
+    fun e => do modify (fun s => { s with typing := typing0 }); throw e
+  modify fun s => { s with typing := typing0 }
   -- D28 (v1.5): whether this term is erased is decided syntactically and by declared
   -- classes, never from a normal form. Calls: the callee's class (set by `callFn`);
   -- sequencing forms inherit their tail's; proof formers are erased; an ascription is
@@ -1561,16 +1778,28 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
   match t with
   | .place p =>
     let T ← if typed then some <$> placeType p else pure none
+    if let some T := T then repackAt p T "read whole"
     pure (← readPlace p, T)
   | .borrow p =>
     let T ← if typed then some <$> placeType p else pure none
     if let some T := T then
       if T.typeHasRef then err s!"&{← ppPlace p}: a borrow of a borrow-typed place"
-    pure (← borrowPlace p, T.map .tRef)
+      repackAt p T "borrowed whole"
+    let b ← borrowPlace p
+    openWrite p
+    pure (b, T.map .tRef)
   | .assign p u =>
-    let (v, Tv) ← eval typed u
-    if typed then expectTy "the assigned value" Tv (← placeType p)
+    -- the place's type is the type the context requires of a constructor's parameters and of an
+    -- embedded value with no type of its own (an inert loan in a sealed program's `*r := loan`)
+    let hint ← if typed && (u matches .ctor .. | .val _) then
+        tryCatch (some <$> placeType p) fun _ => pure none
+      else pure none
+    let (v, Tv) ← eval typed u hint
+    -- D64 [Open]: a field whose declared type mentions earlier fields takes any value (a strong
+    -- update: while its value is open it is typed by what it holds); [Repack] checks it later
+    if typed && !(← strongUpdate p) then expectTy "the assigned value" Tv (← placeType p)
     assignPlace p v
+    openWrite p
     pure (.unit, ty .tUnit)
   | .letIn h u w =>
     let myD := (← get).curDecl
@@ -1814,13 +2043,18 @@ partial def evalCtor (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts : Li
     | some (.tInd m ps) => if m == ty && ps.length == np then (ps.map some).toArray else Array.replicate np none
     | _ => Array.replicate np none
   let mut tys := #[]
-  for (a, (_, FT)) in as.zip fields do
-    let fh ← if typed && ((np > 0 && (a matches .ctor .. | .prim "rewrite" _ | .prim "rewriteR" _)) || (a matches .val _))
-      then fieldTypeAt d sol FT else pure none
+  let mut ws0 : Array Value := #[]
+  -- D64: a dependent field's hint is its type at the fields evaluated so far
+  let dep := d.dependent c
+  for ((a, (_, FT)), i) in (as.zip fields).zipIdx do
+    let fh ← if typed && ((np > 0 && (a matches .ctor .. | .prim "rewrite" _ | .prim "rewriteR" _)) || (a matches .val _)
+        || (dep && d.fieldDependent c i))
+      then fieldTypeAt d sol c i ws0.toList else pure none
     let (w, T) ← eval typed a fh
     if let some T := T then sol := unifyParams np FT T sol
     tys := tys.push T
     pushTemp w
+    ws0 := ws0.push w
   let ws ← popTemps as.length
   let proof ← ctorIsProof ty
   if !typed then
@@ -1830,7 +2064,8 @@ partial def evalCtor (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts : Li
     match s with
     | some p => noBorrowParam ty p; ps := ps.push p
     | none => err s!"cannot infer the parameter {ph.name} of {h.name}: write it, {h.name}[…](…), or annotate, ({h.name}(…) : {ty}(…))"
-  for (T, (fname, FT)) in tys.toList.zip (← fieldTypes d ps.toList c) do
+  -- [T-Ctor], D64: each field against its type computed from the earlier fields' values
+  for (T, (fname, FT)) in tys.toList.zip (← fieldTypesOf d ps.toList c ws.toList) do
     expectTy s!"field {fname} of {h.name}" T FT
   let v := if proof then Value.proof else .ind ty c h ps.toList ws.toList
   pure (v, some (mkTInd ty ps.toList (← get).cfg.unitNorm))
@@ -2359,9 +2594,9 @@ fresh abstract values for its fields, of the fields' types; a field that is a pr
 gets `⋆` (as a proof parameter does, D27). -/
 partial def ctorRefinement (d : IndDecl) (ps : List Value) (c : Nat) : M Value := do
   let (cn, _) := d.ctors[c]!
-  let mut fs := #[]
-  for (_, T) in ← fieldTypes d ps c do fs := fs.push (← genericValue T)
-  pure (.ind d.name c ⟨cn⟩ ps fs.toList)
+  -- D64: each field's type from the earlier fields' fresh values (`σ₂ : T₂[σ₁]`)
+  let fs := (← fieldsGeneric d ps c).map (·.2.2)
+  pure (.ind d.name c ⟨cn⟩ ps fs)
 
 /-- The inductive type of a matched place and its parameters, from the place's type (the
 arms' constructors name `ty`; `""` for a match with no arms). The type is read, not
@@ -2647,6 +2882,7 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
   let mut pflags := #[]
   for (q, mode) in capsS do
     let T ← placeType q
+    repackAt q T "captured whole by a stuck match"
     -- a captured proof variable stays a proof in the block: its parameter is declared
     -- `: T` with `T : Prop` (v1.7: the same flag on the direct and the block path)
     let env := (← get).env
@@ -2728,6 +2964,11 @@ partial def idType (typed : Bool) (A t u : Term) : M Value := do
     | none =>
       tryCatch (valType (← getAt p)) fun e =>
         tryCatch (valType as[i]!) fun _ => tryCatch (valType bs[i]!) fun _ => throw e
+  -- D64 [Repack]: `Id` observes its result and owners whole
+  if typed then
+    for (T, (x, y)) in (A', (a, b)) :: Ts.zip (as.zip bs) do
+      repackCheck "Id observes it" x T
+      repackCheck "Id observes it" y T
   let eqs ← ((A', (a, b)) :: Ts.zip (as.zip bs)).mapM fun (T, (x, y)) => mkEqM T x y
   pure (andList eqs)
 
@@ -2968,6 +3209,9 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
   let .fix self hs ds c dec body := t | err "internal: not a fix"
   borrowParamCheck ds c
   let saved ← get
+  -- the body is the checked program (D64: its [Repack] points are checked, and the borrow
+  -- parameters' borrows end with their values repacked when the frame pops)
+  modify fun s => { s with typing := true }
   -- D31 (v1.5): without `by`, f is not in scope in its body (a λ)
   if dec.isNone && (← get).cfg.unboundWithoutBy && (body.freeOccs.any (·.1 == ds.length)) then
     err s!"{self.name} is not in scope in its own body: it declares no decreasing parameter (`by x`), so it is not recursive (D31)"
@@ -3042,6 +3286,7 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
   let bodyCopies ← if (← get).cfg.movesOn then pure ((← fnClass piTy) != 0) else pure false
   withErasedIf bodyCopies <| checkTail body fun v T => do
     wholeReturned v
+    repackCheck s!"{self.name} returns it" v T
     let erasedBody ← match bodyErased? with
       | some b => pure b
       | none => erasedValue v          -- the v1.4 reading: by the value

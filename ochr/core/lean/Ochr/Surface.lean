@@ -321,10 +321,15 @@ end
 is its `self` binder (whose value is the global function). -/
 def resolveDecl (d : SDecl) : R Item := do
   if let some cs := d.ind? then
-    -- the parameters are a telescope; the field types are in their scope (v2.0, D46)
+    -- the parameters are a telescope; the field types are in their scope (v2.0, D46), and in
+    -- that of the constructor's fields (D64, dependent fields): the parameters are `var 0 …`
+    -- as before, and field `j` of `k` is `var (np + k - 1 - j)`, so a field type that
+    -- mentions no field reads as it did. Which fields a field type may mention (the earlier
+    -- ones) is [Ind]'s check, not resolution's, so that it can say so
     let (ctx', hs, ps) ← binders [] d.indParams
     let cs' ← cs.mapM fun (cn, fs) => do
-      pure (cn, ← fs.mapM fun (fname, FT) => do pure (fname, ← resolve ctx' true FT))
+      let ctxF := ctx' ++ fs.reverse.map fun (fname, _) => Entry.bound fname
+      pure (cn, ← fs.mapM fun (fname, FT) => do pure (fname, ← resolve ctxF true FT))
     let sort ← match d.indSort with
       | none | some (.sort 1) => pure 1
       | some (.sort 0) => pure 0
