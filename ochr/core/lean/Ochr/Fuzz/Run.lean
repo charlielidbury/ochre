@@ -244,6 +244,25 @@ def proofCands (c : Case) : List (STerm × Option String) := Id.run do
       out := out.push (.rewrite false (.ident x) (.ident "refl"), none)
       out := out.push (.rewrite true (.ident x) (.ident "refl"), none)
     | _ => pure ()
+  -- the paper's central mechanism: the in-place lemma applied at the call site, to a
+  -- parameter, to its predecessor field, or to a pair's field (a reborrowed field)
+  if c.lib.contains "AddM" then
+    let lem (p : STerm) : STerm := .call (.ident "AddMZeroL") [p]
+    for (x, T) in c.params do
+      match T with
+      | .ident "Nat" =>
+        out := out.push (lem (.amp (.ident x)), none)
+        out := out.push (.matchGen (.ident x) [("Z", [], .ident "refl"), ("S", ["p"], lem (.amp (.ident "p")))], none)
+      | .amp (.ident "Nat") =>
+        out := out.push (lem (.ident x), none)
+        out := out.push (.matchGen (.deref (.ident x)) [("Z", [], .ident "refl"), ("S", ["p"], lem (.amp (.ident "p")))], none)
+      | .prod _ _ =>
+        out := out.push (.matchGen (.ident x) [("Mk", ["a", "b"], lem (.amp (.ident "a")))], none)
+        out := out.push (.matchGen (.ident x) [("Mk", ["a", "b"], lem (.amp (.ident "b")))], none)
+      | .amp (.prod _ _) =>
+        out := out.push (.matchGen (.deref (.ident x)) [("Mk", ["a", "b"], lem (.amp (.ident "a")))], none)
+        out := out.push (.matchGen (.deref (.ident x)) [("Mk", ["a", "b"], lem (.amp (.ident "b")))], none)
+      | _ => pure ()
   -- D61: split on a call of each library function the statement uses
   let lib := c.lib ++ c.extra.map (·.name)
   for f in ((stermCalls c.lhs ++ stermCalls c.rhs).filter lib.contains).eraseDups do
@@ -253,12 +272,21 @@ def proofCands (c : Case) : List (STerm × Option String) := Id.run do
 
 /-- The first candidate proof the checker accepts, if any. -/
 def acceptedProof (o : Opts) (c : Case) (prep : Prepared) : Option String := Id.run do
+  -- the in-place lemma for the call-site candidates, checked here only, so that the case's
+  -- own checks (and their shared fuel) are the ones they were without it
+  let lemma : List SDecl := if c.lib.contains "AddM" then (libDecl "AddMZeroL").toList else []
+  let mut globals := prep.globals
+  let mut inds := prep.inds
+  for d in lemma do
+    if let .ok it := resolveProgram (c.decls ++ lemma) d then
+      if let .ok ((), st') := runSt (checkItem it) { globals := globals, inds := inds, cfg := o.cfg, fuel := o.fuel } then
+        globals := st'.globals; inds := st'.inds
   for (body, dec) in proofCands c do
     let d : SDecl := { name := "Lie", params := c.params, ret := .app "Id" [c.ty, c.lhs, c.rhs],
                        body := body, dec := dec, expectAccept := true }
-    match resolveProgram (c.decls ++ [d]) d with
+    match resolveProgram (c.decls ++ lemma ++ [d]) d with
     | .ok it =>
-      match runSt (checkItem it) { globals := prep.globals, inds := prep.inds, cfg := o.cfg, fuel := o.fuel } with
+      match runSt (checkItem it) { globals := globals, inds := inds, cfg := o.cfg, fuel := o.fuel } with
       | .ok _ => return some (ppDecl d)
       | .error _ => pure ()
     | .error _ => pure ()

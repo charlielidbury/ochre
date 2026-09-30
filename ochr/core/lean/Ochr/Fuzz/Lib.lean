@@ -128,6 +128,7 @@ ochr FuzzLib {
   inductive ExN : Prop := Wit(n : Nat, e : ⊤)
   def AddM (x : &Nat) (y : Nat) : Unit by x := match *x { Z => *x := y, S p => AddM(&p, y) }
   def Add (x : Nat) (y : Nat) : Nat := AddM(&x, y); x
+  def AddMZeroL (x : &Nat) : Id Unit (AddM(x, 0)) () by x := match *x { Z => refl, S p => AddMZeroL(&p) }
   def TailM (x : &Nat) : &Nat by x := match *x { Z => x, S p => TailM(&p) }
   def Pick (n : Nat) (x : &Nat) (y : &Nat) : &Nat := match n { Z => x, S _ => y }
   def PickX (x : &Nat) (y : &Nat) : &Nat := x
