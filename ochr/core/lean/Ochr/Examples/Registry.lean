@@ -38,7 +38,8 @@ def programs : List (String × Block) :=
    ("PolyLists", PolyLists), ("Positivity", Positivity), ("PositivityParams", PositivityParams),
    ("PositivityPaper", PositivityPaper), ("Propositions", Propositions), ("Destructuring", Destructuring),
    ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
-   ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("BorrowTypes", BorrowTypes)]
+   ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("BorrowTypes", BorrowTypes),
+   ("Abstraction", Abstraction)]
 
 /-- Case studies (`16Arrays`, `17HashMap`): checked and counted with the tour, and timed by `lake exe
 tests`, but not re-run by the counterfactual ledger, which is about the rules. A case study's
@@ -118,7 +119,9 @@ def switches : List (String × Config) :=
    ("D53: a runtime read of data whose type is not a copy type moves it", { moves := false }),
    ("D53 (c): a move leaves a ghost that erased terms still read", { ghosts := false }),
    ("D53 (e): the Fn rule (a call does not consume its function; closure bodies do not move their captures)", { fnRule := false }),
-   ("D59 (refined): η-normal forms at Unit (the readback at Unit is (); [Close] has no Unit row)", { unitEta := false })]
+   ("D59 (refined): η-normal forms at Unit (the readback at Unit is (); [Close] has no Unit row)", { unitEta := false }),
+   ("K3: an abstract type's constructors and matches only in erased positions and model code", { abstractTypes := false }),
+   ("K2: outside model code, a place of an unsized type is only borrowed at runtime", { unsizedTypes := false })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -184,12 +187,15 @@ def rowClass : List (String × List String) :=
    ("cost", ["Moves.TwiceNat", "Moves.ClosureMovesCapture"]),
    ("completeness", []),
    ("completeness", []),
-   ("completeness", [])]
+   ("completeness", []),
+   ("policy", ["Abstraction.Peek"]),
+   ("policy", ["Abstraction.Take"])]
+
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1045
+def Ochr.Registry.expectedTotal : Nat := 1059
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

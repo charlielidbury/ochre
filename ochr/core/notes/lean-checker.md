@@ -1178,3 +1178,41 @@ prop-checker found that D59 lost completeness. A stuck call written to return `U
 *Ledger:* the D59 row (switch `unitEta`, completeness) flips `RowI`, `UnitEta`, `UnitEtaUU`, `UnitNotConv`, `ConvUnitRes` and `ConvUnitWritten`, all to rejected. With it off, values are not η-normal at `Unit`, and a call written to return `Unit` returns `()` (the old row). The D19 row gains `BadA1`.
 
 1045 verdicts.
+
+## 43. The array abstraction enforced (K2, K3)
+
+reviewer-7 showed that user code bypassed the array library's natives:
+- `Suffix` returns a borrow of a sub-view;
+- `TwoParts` holds two disjoint borrows without `WithSplit`;
+- `Rebuild` replaces the representation wholesale.
+The paper claims runtime code never owns a sub-array or sees the representation. This implements arrays-library's phase-B K2 and K3 (`notes/arrays-library.md` §11).
+
+*Declarations:*
+- `abstract inductive` (K3), `unsized inductive` (K2), and both together.
+- `def … := b implemented by "sym"`: the checker checks and runs `b`, and the compiler calls `sym`.
+- `copy` is now one of these modifiers too (the syntax takes any sequence of them).
+
+*Model code* never runs at runtime. It is:
+- the body of an `implemented by` function;
+- the body of a *model function*, one that takes or returns an unsized value by value. Runtime code can never hold such a value, so a model function never runs at runtime.
+
+Model functions are read from the declared types syntactically, through type functions' bodies (`Slice(E, n)` is `SliceOf(…)`). No evaluation is involved, so no fresh names are spent. `GDef.model` records it, and `modelDepth` is raised while checking or running model code.
+
+*The rules, at runtime* (not erased, and `modelDepth = 0`):
+- **K3:** an abstract type's constructor (`evalCtor`), or a match whose arms name its constructors (`evalMatchInd`, and `checkTail`'s split), is an error.
+- **K2:** a place whose content has an unsized type (a constructor value, or an abstract value's type) is only borrowed. Reading it (`readPlace`), assigning it (`assignPlace`) or cloning it is an error.
+- In erased positions (types, statements, proofs) the model is unrestricted. Statements go on seeing it (`ReadIsNth`, `GetIs`).
+- *Consequence:* the erasure depth is now tracked with or without D53: a term, a function body, or a proof function's body the pre-pass reads as erased. With moves off it changes nothing else.
+
+*The arrays:*
+- `SliceOf` is `unsized abstract`, and `Cell`, `CellsEnd` and `ArrayOf` are `abstract`.
+- The eight natives, and ArrayBench's `GetMutB`, are `implemented by "ochr_arr_…"`.
+- The case studies needed no other change: their runtime code already went through the natives, and their proofs are erased.
+- reviewer-7's `Suffix`, `TwoParts` and `Rebuild`, plus `ReadModel` (a model function called at runtime), are rejected in ArrayBench. `ReadIsNth` is accepted.
+
+*Tour and ledger:* a new block, `Abstraction` (15BorrowTypes), has a small unsized abstract `View`, a model function, two natives, and runtime code through them. There are two new rows, both class policy (programs true in the model, but not implementable by the compiled representation):
+- K3 (`abstractTypes`): witness `Peek`;
+- K2 (`unsizedTypes`): witness `Take`.
+`Poke` is caught by both.
+
+1059 verdicts: the case studies 358, the tour 701.

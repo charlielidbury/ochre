@@ -304,6 +304,58 @@ partial def accessNeutralHead (p : Place) : M Unit := do
     | [] => pure ()
   | _ => pure ()
 
+/-- K2/K3: this point runs at runtime: not in an erased term, and not in model code (an
+`implemented by` body or a model function's, which never runs at runtime). -/
+partial def atRuntime : M Bool := do
+  pure ((← get).erasedDepth == 0 && (← get).modelDepth == 0)
+
+/-- K3: a match whose arms name the constructors of an abstract (or unsized) type, at runtime
+outside model code. -/
+partial def abstractMatchCheck (p : Place) (ty : String) : M Unit := do
+  if ty == "" then return
+  let d ← lookupInd ty
+  if (d.abstract || d.unsized) && (← get).cfg.abstractTypes && (← atRuntime) then
+    err s!"[K3] a match on {← ppPlace p} with the constructors of the abstract type {ty} at runtime, outside model code"
+
+/-- A type headed by an `unsized` declaration (K2). -/
+partial def isUnsizedType (T : Value) : M Bool := do
+  match T with
+  | .tInd n _ => tryCatch (do pure (← lookupInd n).unsized) (fun _ => pure false)
+  | _ => pure false
+
+/-- K2: at runtime outside model code, a place whose content has an unsized type is only
+borrowed: never read, moved or assigned (matching it is K3's check). The type is read off
+the content (a constructor value, or an abstract value's type). -/
+partial def unsizedCheck (p : Place) (v : Value) (what : String) : M Unit := do
+  if !(← get).cfg.unsizedTypes || !(← atRuntime) then return
+  let T? ← match v with
+    | .ind t _ _ ps _ => pure (some (Value.tInd t ps))
+    | .abs σ => tryCatch (some <$> absType σ) (fun _ => pure none)
+    | _ => pure none
+  if let some T := T? then
+    if ← isUnsizedType T then
+      err s!"[K2] {← ppPlace p}, of the unsized type {T}, is {what} at runtime (outside model code a view is only borrowed)"
+
+/-- K2/K3: a function is model code when it is `implemented by` native code, or a parameter
+or its result has an unsized type by value (runtime code can never hold such a value). Read
+from the declared types, syntactically (as D55 reads sorts): a type term headed by an unsized
+declaration, directly or through type functions whose bodies are (`Slice(E, n)`). -/
+partial def modelSignature (_hs : List Hint) (ds : List Term) (c : Term) : M Bool := do
+  (c :: ds).anyM (unsizedTerm · 8)
+
+/-- A type term headed by an unsized declaration, read off syntax: an inductive type, or a
+call of a type function whose body is one (`fuel` bounds the unfolding). -/
+partial def unsizedTerm (T : Term) (fuel : Nat) : M Bool := do
+  match T with
+  | .tind n _ => tryCatch (do pure (← lookupInd n).unsized) (fun _ => pure false)
+  | .val v => isUnsizedType v
+  | .call (.const f) _ _ =>
+    if fuel == 0 then return false
+    match ← tryCatch (do pure (← lookupGlobal f).fn?) (fun _ => pure none) with
+    | some (.fix _ _ _ _ _ body) => unsizedTerm body (fuel - 1)
+    | _ => pure false
+  | _ => pure false
+
 /-- [Read]: a borrow is moved out (`p ↦ ⊥`), in any term. Borrow-free content is copied
 by an erased term (D53 (a)) and when its type is a copy type; otherwise a runtime read
 moves it out, leaving a ghost that erased terms still read (D53 (c)). A place partly
@@ -311,6 +363,7 @@ moved out cannot be read at runtime (D53 (h)). -/
 partial def readPlace (p : Place) : M Value := do
   accessPath p; accessInside p
   let v ← content p
+  unsizedCheck p v "read"
   let cfg := (← get).cfg
   let erased := (← get).erasedDepth > 0
   let inPlace := (← get).inPlace
@@ -479,6 +532,7 @@ partial def assignPlace (p : Place) (v : Value) : M Unit := do
   pushTemp v
   accessPath p; accessInside p
   let old ← content p
+  unsizedCheck p old "assigned"
   match old with
   | .borrow l _ => endBorrow l
   | _ =>
@@ -1342,7 +1396,8 @@ partial def eval (typed : Bool) (t : Term) (hint : Option Value := none) : M (Va
     | some d => preFlags t d
     | none => pure none
   -- D53: an erased term's reads copy, decided before it runs
-  let r ← withErasedIf ((← get).cfg.movesOn && (pre matches some (true, _))) (evalCore typed t hint)
+  -- (tracked with or without D53: K2/K3 read it too)
+  let r ← withErasedIf (pre matches some (true, _)) (evalCore typed t hint)
   -- D28 (v1.5): whether this term is erased is decided syntactically and by declared
   -- classes, never from a normal form. Calls: the callee's class (set by `callFn`);
   -- sequencing forms inherit their tail's; proof formers are erased; an ascription is
@@ -1738,7 +1793,12 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
     pure (.proof, some G)
   | .prim "split" _ | .prim "splitArms" _ => err "split: only in tail position (where the goal is known)"
   -- D53: `clone(p)` copies `p` (an erased read); `peek` is an observation's final read
-  | .prim "clone" [t] | .prim "peek" [t] => withErased (eval typed t hint)
+  | .prim "clone" [u] =>
+    -- K2: cloning a view at runtime copies it
+    if let .place p := u then
+      if let some v ← tryCatch (some <$> content p) (fun _ => pure none) then unsizedCheck p v "cloned"
+    withErased (eval typed u hint)
+  | .prim "peek" [u] => withErased (eval typed u hint)
   | .prim "inplace" [t] =>
     if t matches .place _ then modify fun s => { s with inPlace := true }
     let r ← eval typed t hint
@@ -1806,6 +1866,8 @@ type). An untyped run records the parameters only when they are written. -/
 partial def evalCtor (typed : Bool) (ty : String) (c : Nat) (h : Hint) (pts : List Term) (as : List Term)
     (hint : Option Value) : M (Value × Option Value) := do
   let d ← lookupInd ty
+  if d.abstract && (← get).cfg.abstractTypes && (← atRuntime) then
+    err s!"[K3] the constructor {h.name} of the abstract type {ty} at runtime, outside model code (an `implemented by` body, or a function taking or returning an unsized value)"
   let some (_, fields) := d.ctors[c]? | err s!"{ty} has no constructor {c}"
   if fields.length != as.length then err s!"{h.name} takes {fields.length} fields, given {as.length}"
   let np := d.params.length
@@ -1964,6 +2026,19 @@ partial def fixOf (fv : Value) : M (List Value × Term) := do
 /-- [Call]: push a frame `[caps, self, x̄ ↦ w̄]`, run the body, pop the frame. -/
 partial def runBody (fv : Value) (cs : List Value) (t : Term) (ws : Array Value) : M Value := do
   let .fix self hs ds c _ body := t | err "internal: not a fix"
+  -- K2/K3: a model function's body never runs at runtime
+  let model ← match fv with
+    | .gfn n => do pure (← lookupGlobal n).model
+    | _ => pure false
+  if model then modify fun s => { s with modelDepth := s.modelDepth + 1 }
+  let r ← tryCatch (runBodyCore fv cs t ws self hs ds c body) fun e => do
+    if model then modify fun s => { s with modelDepth := s.modelDepth - 1 }
+    throw e
+  if model then modify fun s => { s with modelDepth := s.modelDepth - 1 }
+  pure r
+
+partial def runBodyCore (fv : Value) (cs : List Value) (t : Term) (ws : Array Value) (self : Hint)
+    (hs : List Hint) (ds : List Term) (c : Term) (body : Term) : M Value := do
   let d := (← get).depth
   if d ≥ 2000 then err "call depth exceeded (a non-terminating recursion)"
   modify fun s => { s with depth := d + 1 }
@@ -1989,9 +2064,7 @@ partial def runBody (fv : Value) (cs : List Value) (t : Term) (ws : Array Value)
     pushBind h (ptys[i]?.getD none) w p (← refineDecl pd none w) (d matches .val (.tRef _))
   let es := (← get).effects.size
   -- D53: a body is code; a function whose calls are erased has an erased body (b)
-  let erasedFn ← if (← get).cfg.movesOn then
-      tryCatch (do pure ((← fnClass (← funType fv none)) != 0)) (fun _ => pure false)
-    else pure false
+  let erasedFn ← tryCatch (do pure ((← fnClass (← funType fv none)) != 0)) (fun _ => pure false)
   let (v, _) ← withErasedIf erasedFn (eval false body)
   wholeReturned v
   pushTempAt ((← topIdx) - 1) v
@@ -2485,6 +2558,7 @@ partial def evalMatchByType (typed : Bool) (p : Place) (ty : String) (arms : Lis
 /-- [Match] / [Split] on a declared inductive type. -/
 partial def evalMatchInd (typed : Bool) (p : Place) (ty : String) (arms : List (Hint × Term))
     (expected : Option Value := none) : M (Value × Option Value) := do
+  abstractMatchCheck p ty
   if ← byTypeMatch ty arms then return ← evalMatchByType typed p ty arms expected
   accessPath p
   accessNeutralHead p
@@ -2926,6 +3000,7 @@ partial def checkTail (t : Term) (k : Value → Value → M Unit) : M Unit := do
       let (v, T) ← eval true t
       k v T.get!
   | .matchInd p ty arms =>
+    abstractMatchCheck p ty
     if ← byTypeMatch ty arms then
       -- D45 (v2.0): [Split] on a proof is by its type: each arm is checked, with the fields
       -- as places holding ⋆ and no refinement; no arms, no paths
@@ -3062,7 +3137,8 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
   let outer : List Nat := ((← get).env[bf]!.binds.toList.zipIdx.filter fun (b, _) =>
     b.ty matches some (.tRef _)).map (·.2)
   -- D53 (b): the body of a function whose calls are erased is an erased term
-  let bodyCopies ← if (← get).cfg.movesOn then pure ((← fnClass piTy) != 0) else pure false
+  -- (tracked with or without D53: K2/K3 read it too)
+  let bodyCopies ← pure ((← fnClass piTy) != 0)
   withErasedIf bodyCopies <| checkTail body fun v T => do
     wholeReturned v
     let erasedBody ← match bodyErased? with

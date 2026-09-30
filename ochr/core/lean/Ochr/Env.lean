@@ -70,6 +70,8 @@ structure GDef where
   ty : Value            -- a `tPi [] (pi …)` for functions
   fn? : Option Term     -- the closed `fix` term of a function
   val : Value           -- `gfn name` for functions, the value otherwise
+  model : Bool := false -- model code (K2/K3): `implemented by` (native), or a parameter or result of an
+                        -- unsized type by value, so it never runs at runtime
 
 /-- A declared inductive type (v2.0, D45/D46): uniform parameters (a telescope of type
 terms, each in the scope of the earlier parameters), a sort (`0` = `Prop`, `1` = `Type₀`),
@@ -81,6 +83,10 @@ structure IndDecl where
   sort : Nat := 1
   ctors : List (String × List (String × Term)) := []
   copy : Bool := false    -- declared `copy` (D53): a cost-model statement, reads copy
+  abstract : Bool := false  -- declared `abstract` (K3): its constructors, and matches on them, only in erased
+                            -- positions and model code (`implemented by` bodies, model functions)
+  unsized : Bool := false   -- declared `unsized` (K2): at runtime, outside model code, a place of this type is
+                            -- only borrowed (never read, moved, assigned or matched)
 deriving Inhabited
 
 /-- A function whose body is being checked, for [Rec]: its entry values and the
@@ -142,6 +148,8 @@ structure Config where
   zeroArmStuck : Bool := true    -- D58: a zero-arm match outside a proof position is stuck, not ⋆
   unitEta : Bool := true         -- D59 (refined): values are η-normal at Unit (the readback at Unit is `()`:
                                  -- abstract values, stuck calls' results, fills), so `Eq Unit a b ≡ True`
+  abstractTypes : Bool := true   -- K3: an abstract type's constructors and matches only in erased positions and model code
+  unsizedTypes : Bool := true    -- K2: outside model code, a place of an unsized type is only borrowed at runtime
   d53 : Bool := true             -- D53 applies (off only for the case studies not yet adapted, `Test.preD53`);
                                  -- `moves`, `ghosts`, `fnRule` switch its parts
   moves : Bool := true           -- D53: a runtime read of data whose type is not a copy type moves it; erased reads copy
@@ -212,6 +220,7 @@ structure MState where
   headEval : Bool := false                -- the next `eval` is of a call's head (not classified by the pre-pass)
   erasedDepth : Nat := 0                  -- D53: > 0 while evaluating an erased term, whose reads copy
   inPlace : Bool := false                 -- D53: the next read is in place (a call's head, a block's read-only capture)
+  modelDepth : Nat := 0                   -- K2/K3: > 0 inside model code, which never runs at runtime
 deriving Inhabited
 
 inductive Fail where

@@ -315,6 +315,17 @@ open Ochr.Registry in
    "ClosingOff.UnitNotConv:rejected", "ClosingOff.ConvUnitRes:rejected",
    "ClosingOff.ConvUnitWritten:rejected"]
 
+-- K3 switched off: runtime code may build and take apart an abstract type's representation
+-- (the arrays' views, reviewer-7's Suffix/TwoParts/Rebuild); sound in the model, but no
+-- compiled representation implements it
+open Ochr.Registry in
+#guard rowOk { abstractTypes := false }
+  ["Abstraction.Peek:accepted"]
+-- K2 switched off: runtime code may copy a view out (`Take`)
+open Ochr.Registry in
+#guard rowOk { unsizedTypes := false }
+  ["Abstraction.Take:accepted"]
+
 -- every row of `switches` has a class
 open Ochr.Registry in
 #guard rowClass.length == switches.length

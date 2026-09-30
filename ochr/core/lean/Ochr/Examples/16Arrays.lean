@@ -199,13 +199,13 @@ length. The functions on the model take their arguments by value and recurse ove
 proofs use them, and they are the models of the native functions below. -/
 
 ochr Arrays uses Index {
-  -- [K2] [K3] A view: unsized and abstract in phase B.
-  inductive SliceOf (R : Type) := MkSlice(c : R)
+  -- [K2] [K3] A view: unsized and abstract (runtime code only borrows it).
+  unsized abstract inductive SliceOf (R : Type) := MkSlice(c : R)
   -- [K1] [K3] A cell: an element and the rest, which is a view so that it can be borrowed.
-  inductive Cell (E : Type) (R : Type) := MkC(h : E, t : SliceOf(R))
+  abstract inductive Cell (E : Type) (R : Type) := MkC(h : E, t : SliceOf(R))
   -- [K3] The end of the cells. (Not `Unit`: an unknown `Unit` cannot be taken apart, so a
   -- proof about an empty view could not see that it is the empty view.)
-  inductive CellsEnd := End
+  abstract inductive CellsEnd := End
 
   def Cells (E : Type) (n : Nat) : Type by n := (
     match n {
@@ -217,7 +217,7 @@ ochr Arrays uses Index {
   def Slice (E : Type) (n : Nat) : Type := SliceOf(Cells(E, n))
 
   -- [K3] An owned array: at runtime, a pointer to a block of `n` elements.
-  inductive ArrayOf (R : Type) := MkArray(s : SliceOf(R))
+  abstract inductive ArrayOf (R : Type) := MkArray(s : SliceOf(R))
   def Array (E : Type) (n : Nat) : Type := ArrayOf(Cells(E, n))
 
   -- Element `i`.
@@ -322,24 +322,24 @@ ochr Arrays uses Index {
   )
 
   -- ## The native functions
-  -- Each `[native]` body is the model the checker runs; compiled code calls a native
-  -- function instead (phase B, K3). Runtime code reaches arrays only through these.
+  -- Each `[native]` body is the model the checker runs; compiled code calls the native
+  -- function it is `implemented by` instead (K3). Runtime code reaches arrays only through these.
 
   -- [native] The view of an owned array: at runtime, the same pointer.
   def AsSlice (E : Type) (n : Nat) (a : &Array(E, n)) : &Slice(E, n) := (
     match *a {
       MkArray(s) => &s,
     }
-  )
+  ) implemented by "ochr_arr_as_slice"
 
   -- [native] Read element `i`. The model reads a copy of the view (with D53, `clone(*s)`),
   -- so the view itself is left exactly as it was.
-  def Read (E : Type) (n : Nat) (s : &Slice(E, n)) (i : Nat) (h : Lt(i, n)) : E := Nth(E, n, *s, i, h)
+  def Read (E : Type) (n : Nat) (s : &Slice(E, n)) (i : Nat) (h : Lt(i, n)) : E := Nth(E, n, *s, i, h) implemented by "ochr_arr_read"
 
   -- [native] Write element `i`.
   def Set (E : Type) (n : Nat) (s : &Slice(E, n)) (i : Nat) (x : E) (h : Lt(i, n)) : Unit := (
     *s := SetS(E, n, *s, i, x)
-  )
+  ) implemented by "ochr_arr_set"
 
   -- [native] [K1] A borrow of element `i`, for `Nat` elements until `&E` is well formed.
   def GetMut (n : Nat) (s : &Slice(Nat, n)) (i : Nat) (h : Lt(i, n)) : &Nat by i := (
@@ -354,7 +354,7 @@ ochr Arrays uses Index {
         },
       },
     }
-  )
+  ) implemented by "ochr_arr_get_mut"
 
   -- [native] Borrow the first `k` elements and the rest while `f` runs. The model takes the
   -- two pieces out as values and joins them again after `f` returns; at runtime `f` gets two
@@ -367,17 +367,17 @@ ochr Arrays uses Index {
     let res = f(&l, &r);
     *s := JoinS(E, n, k, l, r);
     res
-  )
+  ) implemented by "ochr_arr_with_split"
 
   -- [native] An empty array, and growing or shrinking at the end. `ArrPush` takes the array
   -- by value, so no borrow into its block is live when the block is reallocated.
-  def ArrEmpty (E : Type) : Array(E, 0) := MkArray(MkSlice(End))
+  def ArrEmpty (E : Type) : Array(E, 0) := MkArray(MkSlice(End)) implemented by "ochr_arr_empty"
 
   def ArrPush (E : Type) (n : Nat) (a : Array(E, n)) (x : E) : Array(E, S n) := (
     match a {
       MkArray(s) => MkArray(SnocS(E, n, s, x)),
     }
-  )
+  ) implemented by "ochr_arr_push"
 
   def ArrPop (E : Type) (n : Nat) (a : Array(E, S n)) : Array(E, n) × E := (
     match a {
@@ -388,7 +388,7 @@ ochr Arrays uses Index {
         }
       ),
     }
-  )
+  ) implemented by "ochr_arr_pop"
 
   -- ## Built from those, in Ochr
 
@@ -857,7 +857,7 @@ ochr ArrayBench uses ArrayLemmas {
         },
       },
     }
-  )
+  ) implemented by "ochr_arr_get_mut"
 
   -- [K4] A struct holding an array: the model type is a parameter until a field may be written
   -- `Array(E, cap)`. The capacity is a type parameter, so no dependent field is needed.
@@ -934,13 +934,32 @@ ochr ArrayBench uses ArrayLemmas {
       ),
     }
   )
+
+  -- ## The abstraction is enforced (K2, K3)
+  -- `SliceOf` is `unsized abstract`, `Cell`, `CellsEnd` and `ArrayOf` are `abstract`, and the
+  -- eight natives are `implemented by` native code. Outside model code (their bodies, and
+  -- the model functions, which take or return a view by value and so never run at runtime),
+  -- runtime code never reads, moves, assigns or matches a view, and never builds or takes
+  -- apart the representation. reviewer-7's three programs bypassed the natives: `Suffix`
+  -- returns a borrow of a sub-view, `TwoParts` holds two disjoint borrows without
+  -- `WithSplit`, and `Rebuild` replaces the representation wholesale.
+  reject def Suffix (m : Nat) (s : &Slice(Nat, S m)) : &Slice(Nat, m) := (
+    match *s { MkSlice(c) => match c { MkC(x, t) => &t } })
+  reject def TwoParts (m : Nat) (s : &Slice(Nat, S m)) : Unit := (
+    match *s { MkSlice(c) => match c { MkC(x, t) => (let a = &x; let b = &t; *a := 0; Fill(Nat, m, b, 1)) } })
+  reject def Rebuild (s : &Slice(Nat, 1)) : Unit := (*s := MkSlice(MkC(7, MkSlice(End))))
+  -- A model function at runtime would need a view by value.
+  reject def ReadModel (n : Nat) (s : &Slice(Nat, n)) (i : Nat) (h : Lt(i, n)) : Nat := Nth(Nat, n, *s, i, h)
+  -- In a statement, the model is unrestricted.
+  def ReadIsNth (n : Nat) (s : &Slice(Nat, n)) (i : Nat) (h : Lt(i, n)) :
+      Id Nat (Read(Nat, n, &*s, i, h)) (Nth(Nat, n, *s, i, h)) := refl
 }
 
 #eval IO.println (run "ArrayBench" ArrayBench).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "ArrayBench" ArrayBench).allAsExpected
-#guard (run "ArrayBench" ArrayBench).count == 33
+#guard (run "ArrayBench" ArrayBench).count == 38
 
 /-! ## B2: quicksort
 

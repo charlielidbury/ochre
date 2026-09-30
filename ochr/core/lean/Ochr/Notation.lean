@@ -47,6 +47,7 @@ declare_syntax_cat ochr_patvar
 declare_syntax_cat ochr_ctor
 declare_syntax_cat ochr_field
 declare_syntax_cat ochr_pat
+declare_syntax_cat ochr_indmod
 
 syntax "(" ident " : " ochr_term ")" : ochr_binder
 syntax "(" "_" " : " ochr_term ")" : ochr_binder
@@ -103,18 +104,25 @@ syntax:10 "Π" ochr_binder+ ". " ochr_term:10 : ochr_term
 syntax:10 "λ" ochr_binder+ " : " ochr_term:21 " => " ochr_term:10 : ochr_term
 syntax:10 "fix " ident ochr_binder+ " : " ochr_term:21 (" by " ident)? " := " ochr_term:10 : ochr_term
 
-syntax "def " ident ochr_binder* " : " ochr_term:21 (" by " ident)? " := " ochr_term : ochr_decl
-syntax "reject " "def " ident ochr_binder* " : " ochr_term:21 (" by " ident)? " := " ochr_term : ochr_decl
-syntax "inductive " ident ochr_binder* (" : " ochr_term:21)? (" := " sepBy1(ochr_ctor, " | "))? : ochr_decl
-syntax "reject " "inductive " ident ochr_binder* (" : " ochr_term:21)? (" := " sepBy1(ochr_ctor, " | "))? : ochr_decl
-syntax "copy " "inductive " ident ochr_binder* (" : " ochr_term:21)? (" := " sepBy1(ochr_ctor, " | "))? : ochr_decl
-syntax "reject " "copy " "inductive " ident ochr_binder* (" : " ochr_term:21)? (" := " sepBy1(ochr_ctor, " | "))? : ochr_decl
+syntax "def " ident ochr_binder* " : " ochr_term:21 (" by " ident)? " := " ochr_term (" implemented " "by " str)? : ochr_decl
+syntax "reject " "def " ident ochr_binder* " : " ochr_term:21 (" by " ident)? " := " ochr_term (" implemented " "by " str)? : ochr_decl
+-- modifiers of an inductive declaration: `copy` (D53), `abstract` (K3), `unsized` (K2)
+syntax "copy " : ochr_indmod
+syntax "abstract " : ochr_indmod
+syntax "unsized " : ochr_indmod
+syntax ochr_indmod* "inductive " ident ochr_binder* (" : " ochr_term:21)? (" := " sepBy1(ochr_ctor, " | "))? : ochr_decl
+syntax "reject " ochr_indmod* "inductive " ident ochr_binder* (" : " ochr_term:21)? (" := " sepBy1(ochr_ctor, " | "))? : ochr_decl
 
 syntax (name := ochrProgram) "ochr " ident (&" uses " ident,+)? " { " ochr_decl* " }" : command
 /-- Report a clash in an `ochr` block's flat namespace (the command `ochr` expands to this). -/
 syntax (name := ochrCheck) "#ochr_check " ident : command
 
 def strLit (s : String) : TSyntax `term := quote s
+
+def implOf (s? : Option (TSyntax `str)) : TSyntax `term :=
+  match s? with
+  | some s => Syntax.mkApp (mkIdent ``Option.some) #[s]
+  | none => mkIdent ``Option.none
 
 def decOf (d? : Option (TSyntax `ident)) : TSyntax `term :=
   match d? with
@@ -282,8 +290,12 @@ def elabCtor (stx : TSyntax `ochr_ctor) : MacroM (TSyntax `term) := do
 /-- `inductive D (a : A) … : s := C₁(…) | …` (v2.0): parameters, a sort (default `Type`),
 zero or more constructors. -/
 def elabInd (n : TSyntax `ident) (bs : Array (TSyntax `ochr_binder)) (s? : Option (TSyntax `ochr_term))
-    (cs? : Option (Syntax.TSepArray `ochr_ctor " | ")) (accept : Bool) (isCopy : Bool := false) :
+    (cs? : Option (Syntax.TSepArray `ochr_ctor " | ")) (accept : Bool) (mods : Array (TSyntax `ochr_indmod)) :
     MacroM (TSyntax `term) := do
+  let has (m : String) : Bool := mods.any fun x => x.raw[0].getAtomVal.trim == m
+  let isCopy := has "copy"
+  let isAbstract := has "abstract"
+  let isUnsized := has "unsized"
   let cs' ← match cs? with
     | some cs => cs.getElems.mapM elabCtor
     | none => pure #[]
@@ -291,20 +303,21 @@ def elabInd (n : TSyntax `ident) (bs : Array (TSyntax `ochr_binder)) (s? : Optio
     | some s => do `(some $(← elabTerm s))
     | none => `(none)
   `(({ name := $(strLit n.getId.toString), params := [], indParams := [$(← bs.mapM elabBinder),*],
-       indSort := $sort, ind? := some [$cs',*], indCopy := $(quote isCopy), expectAccept := $(quote accept) } : SDecl))
+       indSort := $sort, ind? := some [$cs',*], indCopy := $(quote isCopy), indAbstract := $(quote isAbstract),
+       indUnsized := $(quote isUnsized), expectAccept := $(quote accept) } : SDecl))
 
 def elabDecl (stx : TSyntax `ochr_decl) : MacroM (TSyntax `term) := do
   match stx with
-  | `(ochr_decl| def $f:ident $bs* : $r $[by $d?]? := $b) => do
+  | `(ochr_decl| def $f:ident $bs* : $r $[by $d?]? := $b $[implemented by $sym?]?) => do
     `(({ name := $(strLit f.getId.toString), params := [$(← bs.mapM elabBinder),*],
-         ret := $(← elabTerm r), dec := $(decOf d?), body := $(← elabTerm b), expectAccept := true } : SDecl))
-  | `(ochr_decl| reject def $f:ident $bs* : $r $[by $d?]? := $b) => do
+         ret := $(← elabTerm r), dec := $(decOf d?), body := $(← elabTerm b), implBy := $(implOf sym?),
+         expectAccept := true } : SDecl))
+  | `(ochr_decl| reject def $f:ident $bs* : $r $[by $d?]? := $b $[implemented by $sym?]?) => do
     `(({ name := $(strLit f.getId.toString), params := [$(← bs.mapM elabBinder),*],
-         ret := $(← elabTerm r), dec := $(decOf d?), body := $(← elabTerm b), expectAccept := false } : SDecl))
-  | `(ochr_decl| inductive $n:ident $bs* $[: $s?]? $[:= $cs?|*]?) => elabInd n bs s? cs? true
-  | `(ochr_decl| reject inductive $n:ident $bs* $[: $s?]? $[:= $cs?|*]?) => elabInd n bs s? cs? false
-  | `(ochr_decl| copy inductive $n:ident $bs* $[: $s?]? $[:= $cs?|*]?) => elabInd n bs s? cs? true true
-  | `(ochr_decl| reject copy inductive $n:ident $bs* $[: $s?]? $[:= $cs?|*]?) => elabInd n bs s? cs? false true
+         ret := $(← elabTerm r), dec := $(decOf d?), body := $(← elabTerm b), implBy := $(implOf sym?),
+         expectAccept := false } : SDecl))
+  | `(ochr_decl| $ms:ochr_indmod* inductive $n:ident $bs* $[: $s?]? $[:= $cs?|*]?) => elabInd n bs s? cs? true ms
+  | `(ochr_decl| reject $ms:ochr_indmod* inductive $n:ident $bs* $[: $s?]? $[:= $cs?|*]?) => elabInd n bs s? cs? false ms
   | _ => Macro.throwErrorAt stx "unsupported declaration"
 
 macro_rules
