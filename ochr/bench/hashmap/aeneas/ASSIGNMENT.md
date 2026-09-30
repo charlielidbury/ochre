@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-Implement a fixed-capacity hash map with separate chaining in Rust, operating in place, and prove that it behaves like a finite map, as observed through `get` and `len`.
+Implement a fixed-capacity hash map from `u64` keys to values of an arbitrary type `V`, with separate chaining, in Rust, operating in place, and prove that it behaves like a finite map, as observed through `get` and `len`.
 
 You verify your Rust with **Aeneas**. Charon compiles your crate to an intermediate language (LLBC), Aeneas translates that into a pure functional model in Lean 4, and you prove the properties in Lean about that model. The model is regenerated from your Rust every time you grade, so the proofs are always about the code you wrote.
 
@@ -52,13 +52,13 @@ The workflow is: edit `rust/src/lib.rs`; `./translate.sh`; `cd lean && lake buil
 ### 3.1 Representation (FIXED, in `rust/src/lib.rs`)
 
 ```rust
-pub enum List {
-    Cons(u64, u64, Box<List>),
+pub enum List<V> {
+    Cons(u64, V, Box<List<V>>),
     Nil,
 }
 
-pub struct HashMap {
-    slots: Vec<List>,
+pub struct HashMap<V> {
+    slots: Vec<List<V>>,
     len: u64,
 }
 
@@ -67,24 +67,26 @@ pub fn bucket_index(key: u64, cap: usize) -> usize {
 }
 ```
 
-A map with capacity `c` (where `c ≥ 1`) has `slots.len() == c` buckets. The capacity is chosen by `new` and never changes: there is no resize. Each bucket is a singly linked list of (key, value) entries, each node owned by the previous one. The entry for key `k` lives in bucket `slots[bucket_index(k, c)]`, that is `slots[k mod c]`; `bucket_index` is the only hash function. `len` is the number of entries. Keys and values are `u64`.
+A map with capacity `c` (where `c ≥ 1`) has `slots.len() == c` buckets. The capacity is chosen by `new` and never changes: there is no resize. Each bucket is a singly linked list of (key, value) entries, each node owned by the previous one. The entry for key `k` lives in bucket `slots[bucket_index(k, c)]`, that is `slots[k mod c]`; `bucket_index` is the only hash function. `len` is the number of entries. Keys are `u64`. Values have the type parameter `V`, which has no trait bounds: your code must work for every `V`, so it cannot compare, hash, order, clone or default a value.
 
 ### 3.2 Operations (FIXED signatures; you write the bodies)
 
 | Operation | Signature | Precondition |
 |---|---|---|
-| new | `pub fn new(cap: usize) -> HashMap` | `cap > 0` |
+| new | `pub fn new(cap: usize) -> HashMap<V>` | `cap > 0` |
 | len | `pub fn len(&self) -> u64` | |
-| get | `pub fn get(&self, key: u64) -> Option<u64>` | |
-| insert | `pub fn insert(&mut self, key: u64, value: u64) -> Option<u64>` | |
-| remove | `pub fn remove(&mut self, key: u64) -> Option<u64>` | |
-| get_mut | `pub fn get_mut(&mut self, key: u64) -> &mut u64` | `key` is present |
+| get | `pub fn get(&self, key: u64) -> Option<&V>` | |
+| insert | `pub fn insert(&mut self, key: u64, value: V) -> Option<V>` | |
+| remove | `pub fn remove(&mut self, key: u64) -> Option<V>` | |
+| get_mut | `pub fn get_mut(&mut self, key: u64) -> &mut V` | `key` is present |
+
+(All in `impl<V> HashMap<V>`.)
 
 - `new(c)` is an empty map with `c` empty buckets and `len = 0`.
 - `len(m)` is the number of keys in the map.
-- `get(m, k)` is `Some(v)` if `k` is bound to `v`, and `None` otherwise.
-- `insert(m, k, v)` binds `k` to `v` and returns the value `k` was bound to before, or `None`.
-- `remove(m, k)` unbinds `k` and returns the value it was bound to, or `None`.
+- `get(m, k)` is `Some(&v)`, a shared borrow of the value `k` is bound to, or `None` if `k` is unbound. It copies nothing.
+- `insert(m, k, v)` binds `k` to `v` and returns the value `k` was bound to before, moved out of the map, or `None`.
+- `remove(m, k)` unbinds `k` and returns the value it was bound to, moved out of the map, or `None`.
 - `get_mut(m, k)` returns a mutable borrow of the value stored for `k`. It requires `k` to be present, and may panic otherwise.
 
 You may add private helper functions, methods and types, anywhere outside the FIXED regions.
@@ -100,13 +102,15 @@ You may add private helper functions, methods and types, anywhere outside the FI
 The properties are in `lean/Hashmap/Properties.lean`, about the Aeneas model of your code: `HashMap.new`, `HashMap.impl.len`, `HashMap.get`, `HashMap.insert`, `HashMap.remove` and `HashMap.get_mut` in namespace `hashmap`. The statements are FIXED; you replace each `sorry`.
 
 How to read them:
-- `f x ⦃ (r : T) => P r ⦄` is Aeneas's total-correctness triple: `f x` terminates without panicking, and its result `r` satisfies `P r`. With two binders, `⦃ (r : T) (m' : HashMap) => ... ⦄` destructures a pair.
+- `f x ⦃ (r : T) => P r ⦄` is Aeneas's total-correctness triple: `f x` terminates without panicking, and its result `r` satisfies `P r`. With two binders, `⦃ (r : T) (m' : HashMap V) => ... ⦄` destructures a pair.
+- Every theorem is quantified over the value type `{V : Type}`. The model of `new` takes it explicitly: `HashMap.new V c`.
+- A shared borrow translates to its value, so the model of `get` is `HashMap.get : HashMap V → U64 → Result (Option V)`.
 - A Rust function taking `&mut self` returns the new map as the last component of its result: `HashMap.insert m k v` returns `(old, m')`.
 - `HashMap.get_mut m k` returns the current value `x` and a backward function `back`: `back w` is the map after `*m.get_mut(k) = w`, once the borrow ends. Below, `m[k ≔ w]` means `back w`.
 - The method `len` translates to `HashMap.impl.len`: Aeneas renames it because `HashMap.len` is already the projection of the field `len`.
-- Observations are `Result` values: `HashMap.get m k = ok (some v)` says `get` succeeds and returns `Some(v)`.
+- Observations are `Result` values: `HashMap.get m k = ok (some v)` says `get` succeeds and returns (a borrow of) `v`. Equality on `V` is Lean's own equality.
 
-**The invariant.** Define `Inv (m : HashMap) : Prop` (a hole in the FIXED region `Inv`). It may be any predicate that makes the theorems below provable.
+**The invariant.** Define `Inv {V : Type} (m : HashMap V) : Prop` (a hole in the FIXED region `Inv`). It may be any predicate that makes the theorems below provable.
 
 The properties, with the names of the theorems:
 
@@ -135,7 +139,7 @@ In `Properties.lean` you may add definitions and lemmas anywhere outside the FIX
 
 ## 5. Tests
 
-`rust/tests/spec.rs` (FIXED) holds the test vectors, transcribed mechanically. Each test starts from `HashMap::new(cap)` and applies a sequence of operations, checking each result and `len()` after each operation:
+`rust/tests/spec.rs` (FIXED) holds the test vectors, transcribed mechanically, with `V := u64`. Each test starts from `HashMap::<u64>::new(cap)` and applies a sequence of operations, checking each result and `len()` after each operation:
 - `scripted`: on `new(4)`, written by hand. It covers collisions (several keys in one bucket), overwriting with the previous value returned, removing a key at the head, middle and end of a bucket, removing an absent key, removing twice, writing through `get_mut` then reading with `get` (the same key and a neighbour in the same bucket), `insert` after `get_mut`, and re-inserting a removed key.
 - `random_cap1`, `random_cap3`, `random_cap4`, `random_cap7`: 50 pseudo-random operations each, over a key space about three times the capacity. With capacity 1 every key shares one bucket.
 
@@ -167,6 +171,7 @@ Also forbidden: any other way of making a FIXED statement mean something else, o
 
 - Machine arithmetic panics on overflow, in Rust and in the model (`fail`). `u64` addition is checked; so is `usize`.
 - `usize` in the model has a platform-dependent width (32 or 64 bits); `cap as u64` is exact, and `k % cap` is below `cap`, so `bucket_index` never truncates.
+- `V` is a type parameter of the model (`{V : Type}`); nothing about it is known, so values can only be moved, stored and returned.
 - Recursive functions and loops translate to definitions by `partial_fixpoint` and `loop`; a total-correctness triple about them needs a termination argument (induction on the list, or a loop measure; see `proof-strategies.md`).
 
 ## 8. How to check your work

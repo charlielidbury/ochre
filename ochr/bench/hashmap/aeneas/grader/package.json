@@ -9,7 +9,7 @@
     "lean/Hashmap/Properties.lean"
   ],
   "check_defs": {
-    "Inv": "HashMap → Prop"
+    "Inv": "{V : Type} → HashMap V → Prop"
   },
   "rust_holes": [
     [

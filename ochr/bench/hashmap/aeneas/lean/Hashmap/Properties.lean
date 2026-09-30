@@ -16,91 +16,96 @@ namespace hashmap
 
 /-! Notation. `f x ⦃ (r : T) => P r ⦄` says that `f x` terminates without
 panicking, with a result `r` satisfying `P r` (Aeneas's total-correctness
-triple). A function whose Rust version takes `&mut self` returns the new map
-as the last component of its result: `HashMap.insert m k v` returns
-`(old, m')`. `HashMap.get_mut m k` returns the current value `x` and a
-backward function `back`; `back w` is the map after `*get_mut(&mut m, k) = w`
-(ASSIGNMENT.md writes it `m[k ≔ w]`). The method `len` translates to
-`HashMap.impl.len`, because `HashMap.len` is the projection of the field `len`. -/
+triple). The map is generic in its value type `V`; `HashMap.new V c` takes it
+explicitly. `HashMap.get` returns `Option<&V>` in Rust, and a shared borrow
+translates to its value, so its model returns `Option V`. A function whose
+Rust version takes `&mut self` returns the new map as the last component of
+its result: `HashMap.insert m k v` returns `(old, m')`. `HashMap.get_mut m k`
+returns the current value `x` and a backward function `back`; `back w` is the
+map after `*get_mut(&mut m, k) = w` (ASSIGNMENT.md writes it `m[k ≔ w]`). The
+method `len` translates to `HashMap.impl.len`, because `HashMap.len` is the
+projection of the field `len`. -/
 -- FIXED-END header
 
 -- FIXED-BEGIN Inv
 /-- The representation invariant `Inv` of ASSIGNMENT.md. Yours to define: any
 predicate that makes the theorems below provable. -/
-def Inv (m : HashMap) : Prop :=
+def Inv {V : Type} (m : HashMap V) : Prop :=
 -- FIXED-END Inv
   sorry
 
 /-! ## Invariant -/
 
 -- FIXED-BEGIN H1
-theorem H1_inv_new (c : Usize) (hc : 0 < c.val) :
-    HashMap.new c ⦃ (m : HashMap) => Inv m ⦄ := by
+theorem H1_inv_new {V : Type} (c : Usize) (hc : 0 < c.val) :
+    HashMap.new V c ⦃ (m : HashMap V) => Inv m ⦄ := by
 -- FIXED-END H1
   sorry
 
 -- FIXED-BEGIN H2
-theorem H2_inv_insert (m : HashMap) (k v : U64) (hinv : Inv m)
+theorem H2_inv_insert {V : Type} (m : HashMap V) (k : U64) (v : V) (hinv : Inv m)
     (hlen : HashMap.impl.len m ⦃ (n : U64) => n.val < U64.max ⦄) :
-    HashMap.insert m k v ⦃ (r : Option U64) (m' : HashMap) => Inv m' ⦄ := by
+    HashMap.insert m k v ⦃ (r : Option V) (m' : HashMap V) => Inv m' ⦄ := by
 -- FIXED-END H2
   sorry
 
 -- FIXED-BEGIN H3
-theorem H3_inv_remove (m : HashMap) (k : U64) (hinv : Inv m) :
-    HashMap.remove m k ⦃ (r : Option U64) (m' : HashMap) => Inv m' ⦄ := by
+theorem H3_inv_remove {V : Type} (m : HashMap V) (k : U64) (hinv : Inv m) :
+    HashMap.remove m k ⦃ (r : Option V) (m' : HashMap V) => Inv m' ⦄ := by
 -- FIXED-END H3
   sorry
 
 /-! ## Lookup after each operation -/
 
 -- FIXED-BEGIN H4
-theorem H4_get_new (c : Usize) (hc : 0 < c.val) :
-    HashMap.new c ⦃ (m : HashMap) => ∀ k, HashMap.get m k = ok none ⦄ := by
+theorem H4_get_new {V : Type} (c : Usize) (hc : 0 < c.val) :
+    HashMap.new V c ⦃ (m : HashMap V) => ∀ k, HashMap.get m k = ok none ⦄ := by
 -- FIXED-END H4
   sorry
 
 -- FIXED-BEGIN H5
-theorem H5_get_insert_same (m : HashMap) (k v : U64) (hinv : Inv m)
+theorem H5_get_insert_same {V : Type} (m : HashMap V) (k : U64) (v : V) (hinv : Inv m)
     (hlen : HashMap.impl.len m ⦃ (n : U64) => n.val < U64.max ⦄) :
-    HashMap.insert m k v ⦃ (r : Option U64) (m' : HashMap) =>
+    HashMap.insert m k v ⦃ (r : Option V) (m' : HashMap V) =>
       HashMap.get m' k = ok (some v) ⦄ := by
 -- FIXED-END H5
   sorry
 
 -- FIXED-BEGIN H6
-theorem H6_get_insert_other (m : HashMap) (k k' v : U64) (hinv : Inv m) (hk : k' ≠ k)
+theorem H6_get_insert_other {V : Type} (m : HashMap V) (k k' : U64) (v : V) (hinv : Inv m)
+    (hk : k' ≠ k)
     (hlen : HashMap.impl.len m ⦃ (n : U64) => n.val < U64.max ⦄) :
-    HashMap.insert m k v ⦃ (r : Option U64) (m' : HashMap) =>
+    HashMap.insert m k v ⦃ (r : Option V) (m' : HashMap V) =>
       HashMap.get m' k' = HashMap.get m k' ⦄ := by
 -- FIXED-END H6
   sorry
 
 -- FIXED-BEGIN H7
-theorem H7_insert_returns_old (m : HashMap) (k v : U64) (hinv : Inv m)
+theorem H7_insert_returns_old {V : Type} (m : HashMap V) (k : U64) (v : V) (hinv : Inv m)
     (hlen : HashMap.impl.len m ⦃ (n : U64) => n.val < U64.max ⦄) :
-    HashMap.insert m k v ⦃ (r : Option U64) (m' : HashMap) =>
+    HashMap.insert m k v ⦃ (r : Option V) (m' : HashMap V) =>
       HashMap.get m k = ok r ⦄ := by
 -- FIXED-END H7
   sorry
 
 -- FIXED-BEGIN H8
-theorem H8_get_remove_same (m : HashMap) (k : U64) (hinv : Inv m) :
-    HashMap.remove m k ⦃ (r : Option U64) (m' : HashMap) =>
+theorem H8_get_remove_same {V : Type} (m : HashMap V) (k : U64) (hinv : Inv m) :
+    HashMap.remove m k ⦃ (r : Option V) (m' : HashMap V) =>
       HashMap.get m' k = ok none ⦄ := by
 -- FIXED-END H8
   sorry
 
 -- FIXED-BEGIN H9
-theorem H9_get_remove_other (m : HashMap) (k k' : U64) (hinv : Inv m) (hk : k' ≠ k) :
-    HashMap.remove m k ⦃ (r : Option U64) (m' : HashMap) =>
+theorem H9_get_remove_other {V : Type} (m : HashMap V) (k k' : U64) (hinv : Inv m)
+    (hk : k' ≠ k) :
+    HashMap.remove m k ⦃ (r : Option V) (m' : HashMap V) =>
       HashMap.get m' k' = HashMap.get m k' ⦄ := by
 -- FIXED-END H9
   sorry
 
 -- FIXED-BEGIN H10
-theorem H10_remove_returns_old (m : HashMap) (k : U64) (hinv : Inv m) :
-    HashMap.remove m k ⦃ (r : Option U64) (m' : HashMap) =>
+theorem H10_remove_returns_old {V : Type} (m : HashMap V) (k : U64) (hinv : Inv m) :
+    HashMap.remove m k ⦃ (r : Option V) (m' : HashMap V) =>
       HashMap.get m k = ok r ⦄ := by
 -- FIXED-END H10
   sorry
@@ -108,25 +113,25 @@ theorem H10_remove_returns_old (m : HashMap) (k : U64) (hinv : Inv m) :
 /-! ## Length after each operation -/
 
 -- FIXED-BEGIN H11
-theorem H11_len_new (c : Usize) (hc : 0 < c.val) :
-    HashMap.new c ⦃ (m : HashMap) => HashMap.impl.len m = ok 0#u64 ⦄ := by
+theorem H11_len_new {V : Type} (c : Usize) (hc : 0 < c.val) :
+    HashMap.new V c ⦃ (m : HashMap V) => HashMap.impl.len m = ok 0#u64 ⦄ := by
 -- FIXED-END H11
   sorry
 
 -- FIXED-BEGIN H12
-theorem H12_len_insert (m : HashMap) (k v : U64) (hinv : Inv m)
+theorem H12_len_insert {V : Type} (m : HashMap V) (k : U64) (v : V) (hinv : Inv m)
     (hlen : HashMap.impl.len m ⦃ (n : U64) => n.val < U64.max ⦄) :
-    HashMap.insert m k v ⦃ (r : Option U64) (m' : HashMap) =>
-      ∃ (n n' : U64) (g : Option U64),
+    HashMap.insert m k v ⦃ (r : Option V) (m' : HashMap V) =>
+      ∃ (n n' : U64) (g : Option V),
         HashMap.impl.len m = ok n ∧ HashMap.impl.len m' = ok n' ∧ HashMap.get m k = ok g ∧
         (if g = none then n'.val = n.val + 1 else n'.val = n.val) ⦄ := by
 -- FIXED-END H12
   sorry
 
 -- FIXED-BEGIN H13
-theorem H13_len_remove (m : HashMap) (k : U64) (hinv : Inv m) :
-    HashMap.remove m k ⦃ (r : Option U64) (m' : HashMap) =>
-      ∃ (n n' : U64) (g : Option U64),
+theorem H13_len_remove {V : Type} (m : HashMap V) (k : U64) (hinv : Inv m) :
+    HashMap.remove m k ⦃ (r : Option V) (m' : HashMap V) =>
+      ∃ (n n' : U64) (g : Option V),
         HashMap.impl.len m = ok n ∧ HashMap.impl.len m' = ok n' ∧ HashMap.get m k = ok g ∧
         (if g = none then n'.val = n.val else n'.val + 1 = n.val) ⦄ := by
 -- FIXED-END H13
@@ -135,29 +140,29 @@ theorem H13_len_remove (m : HashMap) (k : U64) (hinv : Inv m) :
 /-! ## Writing through `get_mut` is `insert` -/
 
 -- FIXED-BEGIN H14
-theorem H14_get_mut_get (m : HashMap) (k w : U64) (hinv : Inv m)
+theorem H14_get_mut_get {V : Type} (m : HashMap V) (k : U64) (w : V) (hinv : Inv m)
     (hk : ∃ v, HashMap.get m k = ok (some v))
     (hlen : HashMap.impl.len m ⦃ (n : U64) => n.val < U64.max ⦄) :
-    HashMap.get_mut m k ⦃ (x : U64) (back : U64 → HashMap) =>
-      HashMap.insert m k w ⦃ (r : Option U64) (m₂ : HashMap) =>
+    HashMap.get_mut m k ⦃ (x : V) (back : V → HashMap V) =>
+      HashMap.insert m k w ⦃ (r : Option V) (m₂ : HashMap V) =>
         ∀ k', HashMap.get (back w) k' = HashMap.get m₂ k' ⦄ ⦄ := by
 -- FIXED-END H14
   sorry
 
 -- FIXED-BEGIN H15
-theorem H15_get_mut_len (m : HashMap) (k w : U64) (hinv : Inv m)
+theorem H15_get_mut_len {V : Type} (m : HashMap V) (k : U64) (w : V) (hinv : Inv m)
     (hk : ∃ v, HashMap.get m k = ok (some v))
     (hlen : HashMap.impl.len m ⦃ (n : U64) => n.val < U64.max ⦄) :
-    HashMap.get_mut m k ⦃ (x : U64) (back : U64 → HashMap) =>
-      HashMap.insert m k w ⦃ (r : Option U64) (m₂ : HashMap) =>
+    HashMap.get_mut m k ⦃ (x : V) (back : V → HashMap V) =>
+      HashMap.insert m k w ⦃ (r : Option V) (m₂ : HashMap V) =>
         HashMap.impl.len (back w) = HashMap.impl.len m₂ ⦄ ⦄ := by
 -- FIXED-END H15
   sorry
 
 -- FIXED-BEGIN H16
-theorem H16_get_mut_inv (m : HashMap) (k w : U64) (hinv : Inv m)
+theorem H16_get_mut_inv {V : Type} (m : HashMap V) (k : U64) (w : V) (hinv : Inv m)
     (hk : ∃ v, HashMap.get m k = ok (some v)) :
-    HashMap.get_mut m k ⦃ (x : U64) (back : U64 → HashMap) => Inv (back w) ⦄ := by
+    HashMap.get_mut m k ⦃ (x : V) (back : V → HashMap V) => Inv (back w) ⦄ := by
 -- FIXED-END H16
   sorry
 

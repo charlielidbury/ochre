@@ -18,6 +18,10 @@ def opt(x):
     return "None" if x is None else f"Some({x})"
 
 
+def opt_ref(x):
+    return "None" if x is None else f"Some(&{x})"
+
+
 def ident(name):
     return name.replace("-", "_")
 
@@ -27,18 +31,18 @@ with open(src) as f:
 
 out = [
     "// FIXED-BEGIN tests",
-    "// Transcribed mechanically from the benchmark's test vectors (tests.json). Do not edit.",
+    "// Transcribed mechanically from the benchmark's test vectors (tests.json), with V := u64. Do not edit.",
     "use hashmap::HashMap;",
 ]
 for seq in data["sequences"]:
-    out += ["", "#[test]", f"fn {ident(seq['name'])}() {{", f"    let mut m = HashMap::new({seq['cap']});"]
+    out += ["", "#[test]", f"fn {ident(seq['name'])}() {{", f"    let mut m: HashMap<u64> = HashMap::new({seq['cap']});"]
     for i, op in enumerate(seq["ops"]):
         tag = f"{seq['name']} op {i}"
         k = op["key"]
         if op["op"] == "insert":
             out.append(f'    assert_eq!(m.insert({k}, {op["value"]}), {opt(op["expect"])}, "{tag}: insert({k}, {op["value"]})");')
         elif op["op"] == "get":
-            out.append(f'    assert_eq!(m.get({k}), {opt(op["expect"])}, "{tag}: get({k})");')
+            out.append(f'    assert_eq!(m.get({k}), {opt_ref(op["expect"])}, "{tag}: get({k})");')
         elif op["op"] == "remove":
             out.append(f'    assert_eq!(m.remove({k}), {opt(op["expect"])}, "{tag}: remove({k})");')
         elif op["op"] == "get_mut":

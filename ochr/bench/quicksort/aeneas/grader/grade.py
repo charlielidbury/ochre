@@ -286,7 +286,7 @@ def check_statements():
         "run_cmd do",
         "  let env ← getEnv",
         f"  let some idx := env.getModuleIdx? `{CFG['solution_module']} | logError \"grade-env: module {CFG['solution_module']} not loaded\"",
-        "  let metaPrefixes : List Name := [`Lean.Environment, `Lean.Elab, `Lean.Meta, `Lean.Syntax, `Lean.Macro, `Lean.MacroM,",
+        "  let metaPrefixes : _root_.List Name := [`Lean.Environment, `Lean.Elab, `Lean.Meta, `Lean.Syntax, `Lean.Macro, `Lean.MacroM,",
         "    `Lean.Core, `Lean.Declaration, `Lean.ConstantInfo, `Lean.Parser, `IO, `EIO, `BaseIO, `EStateM, `Lean.Compiler]",
         "  for n in env.header.moduleData[idx.toNat]!.constNames do",
         "    let some ci := env.find? n | continue",
