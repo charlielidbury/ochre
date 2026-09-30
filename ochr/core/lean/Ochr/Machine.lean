@@ -155,6 +155,8 @@ partial def strictSubterms : Value → List Value
   | .ind _ _ _ _ fs => fs.flatMap fun f => f :: strictSubterms f
   | _ => []
 
+-- the machine is one `mutual` block, and compiling it (LCNF) outgrew the default heartbeats
+set_option maxHeartbeats 1000000 in
 mutual
 
 -- ### Substitution and normal forms ([Seal], refinement, [End])
