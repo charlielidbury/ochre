@@ -16,6 +16,7 @@ import Ochr.Examples.«14Universes»
 import Ochr.Examples.«15BorrowTypes»
 import Ochr.Examples.«16Arrays»
 import Ochr.Examples.«17HashMap»
+import Ochr.Examples.«18DependentFields»
 import Ochr.Examples.Units
 
 /-! # Every example program, for the test runner and the counterfactual ledger
@@ -39,7 +40,7 @@ def programs : List (String × Block) :=
    ("PositivityPaper", PositivityPaper), ("Propositions", Propositions), ("Destructuring", Destructuring),
    ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
    ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("BorrowTypes", BorrowTypes),
-   ("Abstraction", Abstraction)]
+   ("Abstraction", Abstraction), ("DepFields", DepFields)]
 
 /-- Case studies (`16Arrays`, `17HashMap`): checked and counted with the tour, and timed by `lake exe
 tests`, but not re-run by the counterfactual ledger, which is about the rules. A case study's
@@ -50,7 +51,8 @@ would re-check them twice; their flips are measured once instead, by
 def caseStudies : List (String × Block) :=
   [("Index", Index), ("Arrays", Arrays), ("ArrayLemmas", ArrayLemmas), ("ArrayBench", ArrayBench),
    ("Quicksort", Quicksort),
-   ("HashMap", HashMap), ("HashMapLookup", HashMapLookup), ("HashMapLength", HashMapLength), ("HashMapResize", HashMapResize)]
+   ("HashMap", HashMap), ("HashMapLookup", HashMapLookup), ("HashMapLength", HashMapLength), ("HashMapResize", HashMapResize),
+   ("DepVec", DepVec)]
 
 def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
   (programs ++ caseStudies).map fun (n, p) => run n p cfg fuel
@@ -122,7 +124,11 @@ def switches : List (String × Config) :=
    ("D59 (refined): η-normal forms at Unit (the readback at Unit is (); [Close] has no Unit row)", { unitEta := false }),
    ("K3: an abstract type's constructors and matches only in erased positions and model code", { abstractTypes := false }),
    ("K2: outside model code, a place of an unsized type is only borrowed at runtime", { unsizedTypes := false }),
-   ("[Access] with several possible owners: release the accessed one only; the borrow becomes a ghost", { ghostBorrows := false })]
+   ("[Access] with several possible owners: release the accessed one only; the borrow becomes a ghost", { ghostBorrows := false }),
+   ("D64 [Repack]: a value of a dependent type is of its telescope again at every whole-again point", { repack := false }),
+   ("D64 (D52 restricted): Eq takes a dependent constructor apart only while its index fields are convertible", { depInj := false }),
+   ("K4: a field type may call an earlier type function", { k4 := false }),
+   ("K4's nesting condition: no nesting at a parameter passed to a type function", { k4Nest := false })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -191,13 +197,17 @@ def rowClass : List (String × List String) :=
    ("completeness", []),
    ("policy", ["Abstraction.Peek"]),
    ("policy", ["Abstraction.Take"]),
-   ("soundness", ["GhostBorrows.Bad2", "GhostBorrows.Bad3"])]
+   ("soundness", ["GhostBorrows.Bad2", "GhostBorrows.Bad3"]),
+   ("soundness", ["DepFields.Boom"]),
+   ("policy", ["DepFields.InjLen"]),
+   ("completeness", []),
+   ("soundness", ["DepFields.Boom2"])]
 
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1111
+def Ochr.Registry.expectedTotal : Nat := 1198
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
