@@ -149,13 +149,26 @@ ochr Equality uses Std {
       true => 1,
     }
   )
+
+  -- [J-stuck]: with endpoints that are not convertible, `J` does not run `t` at all. The run is
+  -- stuck, and the call containing it closes off (D63, rule-audit item 5); typing checks `t`
+  -- on a private copy and closes the `J` off as a stuck block. So at `JT`'s generic call `c`
+  -- holds a sealed program, and `refl` does not prove the equation. The earlier checker ran
+  -- `t` first and returned a stuck cast of its value, so `c` was already 5.
+  def JF (a : Nat) (b : Nat) (h : Eq Nat a b) (x : &Nat) : Nat := J(Nat, a, b, λ(z : Nat) : Type => Nat, h, (*x := 5; 0))
+  reject def JT (a : Nat) (b : Nat) (h : Eq Nat a b) : Id Nat (let c = 0; JF(a, b, h, &c); c) 5 := refl
+
+  -- `J`'s motive is erased: it runs on a private copy, confined, so a write to an outer place
+  -- there is an error ([Erase-err]; D63, rule-audit item 6). The earlier checker ran it in
+  -- place, with copying reads.
+  reject def JMotiveConf (x : Nat) : Nat := J(Nat, 0, 0, (x := 5; λ(z : Nat) : Type => Nat), refl, 7)
 }
 
 #eval IO.println (run "Equality" Equality).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Equality" Equality).allAsExpected
-#guard (run "Equality" Equality).count == 31
+#guard (run "Equality" Equality).count == 34
 
 /-! ## Rewriting
 
