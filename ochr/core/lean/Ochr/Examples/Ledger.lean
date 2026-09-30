@@ -107,7 +107,7 @@ open Ochr.Registry in
   ["ReturnedBorrows.Bad:accepted", "ReturnedBorrows.Main:accepted"]
 open Ochr.Registry in
 #guard rowOk { closureConv := 2 }
-  ["Functions.Boom3:accepted", "Functions.CoInd:accepted"]
+  ["ClosingOff.LamReadInWrittenBlockNat:accepted", "Functions.Boom3:accepted", "Functions.CoInd:accepted"]
 open Ochr.Registry in
 #guard rowOk { unboundWithoutBy := false }
   ["Recursion.LoopNoBy:accepted", "Recursion.LoopNoByBoom:accepted"]
@@ -152,7 +152,7 @@ open Ochr.Registry in
    "DepFields.Boom2:accepted", "DepFields.NegBox:accepted"]
 open Ochr.Registry in
 #guard rowOk { globalRecords := false }
-  ["GlobalRecords.Esc:accepted", "GlobalRecords.Bad5:accepted"]
+  ["GlobalRecords.Esc:accepted", "GlobalRecords.Bad5:accepted", "ArmLocal.Leak:rejected"]
 open Ochr.Registry in
 #guard rowOk { obsBorrow := false }
   ["Functions.ConvPick:accepted", "Functions.TY:accepted", "Functions.BoomX4:accepted"]
@@ -421,7 +421,7 @@ open Ochr.Registry in
 -- borrow parameter (fuzz-port R2 (ii)), where [Fix] captures no borrow
 open Ochr.Registry in
 #guard rowOk { blockRefCapture := true }
-  ["ClosingOff.LamReadInWrittenBlock:accepted"]
+  ["ClosingOff.LamReadInWrittenBlockNat:accepted"]
 -- D63 switched off (rule-audit item 9): an `Id` evaluated by the machine observes its sides
 -- untyped, so a side's stuck match makes the whole `Id` stuck instead of being closed off
 open Ochr.Registry in
@@ -435,6 +435,12 @@ open Ochr.Registry in
 #guard rowOk { dropEndsBound := false }
   ["Drops.RetLocal:accepted", "Drops.E1:accepted", "Drops.FR:accepted", "Drops.Blk:accepted",
    "Drops.G:accepted", "Drops.UseG:accepted"]
+-- D62 switched off (rule-audit item 3): no η for one-constructor data types; a sub-place of an
+-- abstract pair does not exist until it is split, and a match on it closes off as a block
+open Ochr.Registry in
+#guard rowOk { etaData := false }
+  ["Numbers.SwapPairProj:rejected", "ClosingOff.LamReadInWrittenBlock:rejected",
+   "Splitting.EtaCtl:rejected", "Splitting.EtaStmt:rejected"]
 
 -- every row of `switches` has a class
 open Ochr.Registry in

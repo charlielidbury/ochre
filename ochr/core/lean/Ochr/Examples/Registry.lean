@@ -130,7 +130,8 @@ def switches : List (String × Config) :=
    ("D64 (D52 restricted): Eq takes a dependent constructor apart only while its index fields are convertible", { depInj := false }),
    ("K4: a field type may call an earlier type function", { k4 := false }),
    ("K4's nesting condition: no nesting at a parameter passed to a type function", { k4Nest := false }),
-   ("D65 amended: [Drop] of a lent place ends only borrowers held in bindings; one in flight is an error", { dropEndsBound := false })]
+   ("D65 amended: [Drop] of a lent place ends only borrowers held in bindings; one in flight is an error", { dropEndsBound := false }),
+   ("D62: η on demand for one-constructor data types", { etaData := false })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -197,19 +198,20 @@ def rowClass : List (String × List String) :=
    ("policy", ["Abstraction.Peek"]),
    ("policy", ["Abstraction.Take"]),
    ("policy", ["ErasureBySyntax.MixPos"]),
-   ("policy", ["ClosingOff.LamReadInWrittenBlock"]),
+   ("policy", ["ClosingOff.LamReadInWrittenBlockNat"]),
    ("completeness", []),
    ("soundness", ["DepFields.Boom"]),
    ("policy", ["DepFields.InjLen"]),
    ("completeness", []),
    ("soundness", ["DepFields.Boom2"]),
-   ("soundness", ["Drops.Blk", "Drops.UseG"])]
+   ("soundness", ["Drops.Blk", "Drops.UseG"]),
+   ("completeness", [])]
 
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1234
+def Ochr.Registry.expectedTotal : Nat := 1238
 
 open Ochr.Registry Ochr.Test in
 #guard ((programs ++ caseStudies).map (·.2.decls.length)).foldl (· + ·) 0 == expectedTotal

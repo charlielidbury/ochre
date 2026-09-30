@@ -275,7 +275,7 @@ ochr DepFields uses Std {
 #guard (run "DepFields" DepFields).rejectedWith [
   ("NoneAt0", "field x of MkV has type One, expected Empty0"),
   ("BadTele", "[Ind] field x of MkBT: its type mentions n, which is not an earlier field"),
-  ("LieV", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type ⌈Fin1(σ1)⌉, but its type from the earlier fields is Empty0"),
+  ("LieV", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type ⌈Fin1(σ0)⌉, but its type from the earlier fields is Empty0"),
   ("ReadBroken", "[Repack] *v is read whole, but it is open"),
   ("PassBroken", "[Repack] *v is borrowed whole, but it is open"),
   ("PassBrokenVar", "[Repack] v is read whole, but it is open"),
@@ -285,7 +285,7 @@ ochr DepFields uses Std {
   ("Boom", "unknown constant Broken"),
   ("LieZ", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Empty0"),
   ("LieZRev", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Empty0"),
-  ("LieParam", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is ⌈Fin1(σ1)⌉"),
+  ("LieParam", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is ⌈Fin1(σ2)⌉"),
   ("LieBorrow", "[Repack] a borrow of it ends, but it is open: field x of MkV holds a value of type One, but its type from the earlier fields is Empty0"),
   ("BoomZ", "unknown constant LieZ"),
   ("BoomParam", "unknown constant LieParam"),
@@ -606,12 +606,12 @@ ochr DepVec uses ArrayBench {
 #guard DepVec.decls.length == 44
 -- each rejection for its reason
 #guard (run "DepVec" DepVec).rejectedWith [
-  ("PushWrongLen", "field items of MkVec has type ArrayOf(Cell(σ0, ⌈Cells(σ0, σ3)⌉)), expected ArrayOf(⌈Cells(σ0, σ3)⌉)"),
-  ("Lie", "[Repack] a borrow of it ends, but it is open: field items of MkVec holds a value of type ArrayOf(⌈Cells(σ0, σ2)⌉), but its type from the earlier fields is ArrayOf(Cell(σ0, ⌈Cells(σ0, σ2)⌉))"),
+  ("PushWrongLen", "field items of MkVec has type ArrayOf(Cell(σ0, ⌈Cells(σ0, σ1)⌉)), expected ArrayOf(⌈Cells(σ0, σ1)⌉)"),
+  ("Lie", "[Repack] a borrow of it ends, but it is open: field items of MkVec holds a value of type ArrayOf(⌈Cells(σ0, σ1)⌉), but its type from the earlier fields is ArrayOf(Cell(σ0, ⌈Cells(σ0, σ1)⌉))"),
   ("ReadBroken", "[Repack] *v is read whole, but it is open"),
   ("MoveBroken", "[Repack] *v is read whole, but it is open"),
   ("PassBroken", "[Repack] *v is borrowed whole, but it is open"),
   ("PushRunWrong", "the body of PushRunWrong has type ⊤, but the goal is False"),
-  ("PushedLenTwo", "the body of PushedLenTwo has type ⊤, but the goal is Eq Word σ3 Succ(σ3)"),
-  ("ResizeKeep", "[Repack] a borrow of it ends, but it is open: field slots of MkTable holds a value of type ArrayOf(⌈Cells(List(Entry), σ2)⌉), but its type from the earlier fields is ArrayOf(⌈Cells(List(Entry), σ1)⌉)"),
+  ("PushedLenTwo", "the body of PushedLenTwo has type ⊤, but the goal is Eq Word σ1 Succ(σ1)"),
+  ("ResizeKeep", "[Repack] a borrow of it ends, but it is open: field slots of MkTable holds a value of type ArrayOf(⌈Cells(List(Entry), σ0)⌉), but its type from the earlier fields is ArrayOf(⌈Cells(List(Entry), σ3)⌉)"),
   ("ResizeRunWrong", "the body of ResizeRunWrong has type ⊤, but the goal is False")]

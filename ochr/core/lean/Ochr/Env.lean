@@ -166,6 +166,7 @@ structure Config where
   scrutTyped : Bool := true      -- finding (v2.0 round): a match's scrutinee must have the constructors' type
   armsAgree : Bool := true       -- D63: a match whose arms disagree about being proofs has no declared type (off: the arm that runs decides)
   typedObs : Bool := true        -- D63: [Id] observes with the typing judgement in untyped runs too (off: a stuck side is stuck)
+  etaData : Bool := true         -- D62: η on demand for one-constructor data types (off: a sub-place of an abstract value does not exist)
   blockRefCapture : Bool := false -- ON is the counterfactual: a closure in a stuck block captures through the block's
                                   -- borrow parameter (fuzz-port R2 (ii)); D63 follows [Fix], which captures no borrow
   refData : Bool := true         -- D48 (1): `&A` only for a data type A (never a universe, Π-type or proposition)
@@ -238,6 +239,10 @@ structure MState where
   classCache : List (Value × Nat) := []   -- erasure class of function types (D28), a pure cache
   convStack : List (Value × Value) := []  -- function pairs being compared observationally (D30)
   neutrals : List (Value × Nat) := []     -- [Split] generalisations: sealed program ↦ its σ (finding G1)
+  etaBusy : List String := []            -- D62: inductives whose eager η expansion is in progress (no re-entry)
+  opaqueAbs : List Nat := []               -- abstract values η never expands: `rewrite`'s placeholder (D62)
+  etas : List (Nat × Value) := []         -- D62: η on demand, σ ↦ C(σ̄) for a one-constructor data type; total, so
+                                          -- global (kept across private copies and [Split] arms)
   depth : Nat := 0                        -- call depth (bounded, like fuel: the checker must terminate)
   effects : Array Effect := #[]           -- D41: assigns, borrows and moves so far (restored with the state)
   placeLog : Array (Nat × Nat × Place × Bool) := #[]  -- D53: every move (true) and assignment (false), at its
@@ -307,8 +312,11 @@ def restoreKeep (saved : MState) : M Unit :=
       match cur.recStack.find? (·.uid == fr.uid) with
       | some c => { fr with cands := c.cands }
       | none => fr
+    -- D62: η records made in this world are total in it: a private copy keeps them (an arm drops
+    -- its own, `restoreArm`)
     let s := { saved with fuel := cur.fuel, classCache := cur.classCache, constDecls := cur.constDecls,
-                          recStack := saved.recStack.map keepCands, nextRecUid := cur.nextRecUid }
+                          recStack := saved.recStack.map keepCands, nextRecUid := cur.nextRecUid,
+                          etas := cur.etas }
     -- D37 (v1.8): fresh names are never reused, and generalisation records are global. Only
     -- the types of abstract values created by the nested run are kept: a refinement of an
     -- older one's type ([Split] substitutes into every stored type) is that run's alone, and
@@ -326,7 +334,9 @@ arm `n := Z`, reused in the arm `n := S m`, where `g(())` is a `Box(Bool)`). D37
 across private copies, within one world, and that is unchanged. -/
 def restoreArm (saved : MState) : M Unit := do
   restoreKeep saved
-  modify fun s => { s with neutrals := saved.neutrals }
+  -- D62's η records are the arm's too: a type, hence whether σ has one constructor, can depend
+  -- on what the arm refined
+  modify fun s => { s with neutrals := saved.neutrals, etas := saved.etas }
 
 /-- D53: run `x` as an erased term, whose reads copy. -/
 def withErased {α : Type} (x : M α) : M α := do

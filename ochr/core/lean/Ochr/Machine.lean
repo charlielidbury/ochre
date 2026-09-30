@@ -238,7 +238,7 @@ partial def nfSealed (t : Term) : M Value := do
     match e with
     | .stuck f _ => do modify (fun s => { s with fuel := f }); pure none
     | e@(.error ..) => throw e
-  restoreKeep saved
+  restoreKeepE saved
   match r with
   | some v => pure v
   | none => canonNeutral (.sealed t)
@@ -397,6 +397,7 @@ by an erased term (D53 (a)) and when its type is a copy type; otherwise a runtim
 moves it out, leaving a ghost that erased terms still read (D53 (c)). A place partly
 moved out cannot be read at runtime (D53 (h)). -/
 partial def readPlace (p : Place) : M Value := do
+  etaPlace p
   accessPath p; accessInside p
   let v ← content p
   unsizedCheck p v "read"
@@ -456,6 +457,7 @@ partial def isCapture (p : Place) : M Bool := do
 /-- A match's scrutinee: a match inspects its place in place (no move). A place moved out
 (D53) can be matched only by an erased term, which sees its ghost. -/
 partial def matchContent (p : Place) : M Value := do
+  etaPlace p
   match ← content p with
   | .ghost w =>
     if (← get).erasedDepth > 0 && (← get).cfg.ghosts then pure w
@@ -532,7 +534,7 @@ partial def settleErased (start f0 n0 : Nat) : M Unit := do
     { s with effects := keep ++ outer }
 
 /-- D41: a type position is erased; run it on a private copy, confined. -/
-partial def confinedCopy {α : Type} (what : String) (x : M α) : M α := onCopy <| withErased do
+partial def confinedCopy {α : Type} (what : String) (x : M α) : M α := onCopyE <| withErased do
   let st ← get
   let start := st.effects.size
   let f0 := st.env.size - 1
@@ -552,6 +554,7 @@ partial def flushPending (start : Nat) : M Unit := do
 
 /-- [Borrow] `&p ⇓ borrow_ℓ v` with `p ↦ loan_ℓ`. -/
 partial def borrowPlace (p : Place) : M Value := do
+  etaPlace p
   accessPath p; accessInside p
   let v ← content p
   match v with
@@ -568,6 +571,7 @@ partial def borrowPlace (p : Place) : M Value := do
 /-- [Assign] with the value already computed: drop the old content, store the new. -/
 partial def assignPlace (p : Place) (v : Value) : M Unit := do
   pushTemp v
+  etaPlace p
   accessPath p; accessInside p
   let old ← content p
   unsizedCheck p old "assigned"
@@ -791,7 +795,7 @@ partial def valType (v : Value) : M Value := do
 /-- The type of a sealed program (neutral data, e.g. a captured one): its term typed as
 an ordinary term on a private copy, from the empty environment. Its head call is not
 marked, so a stuck body closes off; its [Call-type] is what gives the type. -/
-partial def sealedType (t : Term) : M Value := onCopy do
+partial def sealedType (t : Term) : M Value := onCopyE do
   modify fun s => { s with env := #[{}], recStack := [], goal := none }
   let (_, T) ← eval true t.unHead
   match T with
@@ -886,7 +890,7 @@ partial def fieldTypeAt (d : IndDecl) (sol : Array (Option Value)) (c i : Nat) (
   let k := fields.length
   unless FT.freeVars.all fun j => (j < np && (sol[np - 1 - j]!).isSome) ||
       (np ≤ j && j < np + k && np + k - 1 - j < earlier.length) do return none
-  tryCatch (onCopy do
+  tryCatch (onCopyE do
       pushFrame
       for jj in [0:k] do pushBind ⟨(fields[jj]!).1⟩ none (earlier.getD jj .bot)
       for ((h, PT), v) in d.params.zip sol.toList do
@@ -1011,7 +1015,7 @@ partial def sortOf (T : Value) : M Nat := do
   | .sealed t => match ← sealedSort? t with
     | some l => pure l
     | none => err s!"{T} is not known to be a type"
-  | .tPi cs (.pi hs ds c) => onCopy do
+  | .tPi cs (.pi hs ds c) => onCopyE do
     pushFrame
     pushCaps cs
     let (pds, _) ← paramDecls cs hs ds c
@@ -1300,9 +1304,38 @@ partial def genericValue (A : Value) : M Value := do
   | _ => absOf A
 
 /-- A fresh abstract value of type `T`, in η-normal form: at `Unit`, `()` (D59 refined: the
-readback at type `Unit` is `()`; a value of `Unit` carries nothing). -/
-partial def absOf (T : Value) : M Value := do
+readback at type `Unit` is `()`; a value of `Unit` carries nothing); at a non-recursive
+one-constructor data type, that constructor applied to fresh values of its fields (D62, of
+which D59 is the zero-field case), so every text that mentions the value mentions it expanded.
+A recursive one-constructor type is expanded on demand instead (`etaPlace`), one level. -/
+partial def absOf (T : Value) : M Value := absOfD T 8
+
+/-- `absOf` to a depth: an expansion whose computed field types mention the type itself (a
+recursion through a parameter or a type function) is not made, and nesting is bounded. -/
+partial def absOfD (T : Value) (depth : Nat) : M Value := do
   if (← get).cfg.unitEta && T == .tUnit then return .unit
+  if let .tInd n ps := T then
+    if (← get).cfg.etaData && depth > 0 then
+      let d ← lookupInd n
+      if let [(cn, fields)] := d.ctors then
+        if d.sort == 1 && !fields.any (fun (_, FT) => FT.mentionsTInd n) then
+          -- no re-entry: computing the field types can form a type that needs a generic value
+          -- of this same inductive (a negative field, with positivity off)
+          if !(← get).etaBusy.contains n then
+            let busy := (← get).etaBusy
+            modify fun s => { s with etaBusy := n :: busy }
+            let selfRef (FT : Value) := FT.anyAtom fun | .tInd m _ => m == n | _ => false
+            let r ← tryCatch (do
+                -- D64: each field's type from the earlier fields' values, as `fieldsGeneric`
+                let fs ← fieldTele d ps 0 fun _ FT => do
+                  if selfRef FT then pure (.abs (← freshAbs FT))
+                  else if (← get).cfg.p5 && (← isPropV FT) then pure .proof
+                  else absOfD FT (depth - 1)
+                if fs.any (fun (_, FT, _) => selfRef FT) then return none
+                pure (some (Value.ind n 0 ⟨cn⟩ ps (fs.map (·.2.2)))))
+              (fun e => do modify (fun s => { s with etaBusy := busy }); throw e)
+            modify fun s => { s with etaBusy := busy }
+            if let some v := r then return v
   pure (.abs (← freshAbs T))
 
 /-- Evaluate a type (P2: once, against the current Ω, on a private copy). -/
@@ -1331,6 +1364,7 @@ partial def capture (t : Term) : M (List Value × Term) := do
       (t.freeOccs.filter (·.1 == o)).all fun (_, q, _) => q.derefsRoot
     if viaRef then through := o :: through
     let p := if viaRef then Place.deref (.var o) else Place.var o
+    etaPlace p
     accessPath p; accessInside p
     let v ← content p
     match v with
@@ -1388,6 +1422,9 @@ observation of its generic call (its result and the final contents of the generi
 owned places) plus its captured values (D30). Structural everywhere else. -/
 partial def conv (v w : Value) : M Bool := do
   if v == w then return true
+  let v ← etaCanon v
+  let w ← etaCanon w
+  if v == w then return true
   -- D50: the unit laws And(True, P) ≡ P ≡ And(P, True) are conversion rules
   let v := unitTop v
   let w := unitTop w
@@ -1432,7 +1469,7 @@ partial def convPi (P Q : Value) : M Bool := do
     unless (← fnClass P) == (← fnClass Q) && ((← declKind P) == .ref) == ((← declKind Q) == .ref) do
       return false
   if (← get).convStack.contains (P, Q) then return false
-  tryCatch (onCopy do
+  tryCatch (onCopyE do
       modify fun s => { s with env := #[{}], convStack := (P, Q) :: s.convStack }
       pushFrame
       pushCaps cs
@@ -1513,7 +1550,7 @@ partial def convFn (f g : Value) : M Bool := do
 partial def convFnRun (f g pf : Value) (cs : List Value) (hs : List Hint) (ds : List Term) (c : Term) :
     M Bool := do
   let mode := (← get).cfg.closureConv
-  onCopy do
+  onCopyE do
     modify fun s => { s with env := #[{}], convStack := (f, g) :: s.convStack }
     pushFrame
     pushCaps cs
@@ -1542,7 +1579,7 @@ partial def convFnRun (f g pf : Value) (cs : List Value) (hs : List Hint) (ds : 
           | _ => pure none
         else pure none
       | _ => pure none
-    let obs (fv : Value) : M (Value × List Value) := onCopy do
+    let obs (fv : Value) : M (Value × List Value) := onCopyE do
       let (r, _) ← callFn false fv none args (args.map fun _ => none) false
       wholeReturned r
       match r, σw? with
@@ -1572,6 +1609,8 @@ field types instantiated at the parameters (v2.1, D52: injectivity; `S` is `Nat`
 constructor with one field; no fields: `True`); distinct constructors of one type are
 `False` (v2.0, D47). Proofs are all `⋆`, so an equation between proofs is reflexive. -/
 partial def mkEqM (A a b : Value) : M Value := do
+  let a ← etaCanon a
+  let b ← etaCanon b
   if ← conv a b then return vTrue
   let cfg := (← get).cfg
   match a, b with
@@ -1617,11 +1656,19 @@ allowed (its two sides are already equal). -/
 partial def rewriteGoal (rev : Bool) (h : Term) (G : Value) : M Value := do
   unless (← typeClass G) == 2 do err s!"rewrite: the goal {G} is not a proposition"
   let (_, Th) ← eval true h
+  -- the goal and the equation in normal form under the records made so far (generalisations
+  -- and D62's η records, some made while typing `h`), so that `b` is found as the goal has it
+  let G ← etaCanon (← renormV G)
+  let Th ← Th.mapM fun T => do etaCanon (← renormV T)
   match Th.map unitTop with
   | some (.tInd "True" []) => pure G
   | some (.tEq A a b) =>
+    let a ← etaCanon a
+    let b ← etaCanon b
     let (src, dst) := if rev then (a, b) else (b, a)
+    -- the placeholder stands for `b` while the goal re-normalises; η must not expand it (D62)
     let σ ← freshAbs A
+    modify fun s => { s with opaqueAbs := σ :: s.opaqueAbs }
     let G1 ← substV src (.abs σ) G
     -- [T-Rewrite] has no premise that `b` occurs: a rewrite that finds nothing leaves the goal
     -- as it is (G' = G), and `t` is checked against it (rule-audit C22)
@@ -1898,7 +1945,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
   | .pi _ ds c =>
     borrowParamCheck ds c
     -- a type former is erased: even its captures (which access places) run on a copy
-    let (cs, t') ← onCopy (withErased (capture t))
+    let (cs, t') ← onCopyE (withErased (capture t))
     let T := Value.tPi cs t'
     if typed then pure (T, some (.sort (← sortOf T))) else pure (T, none)
   | .fix _ hs ds c _ _ =>
@@ -1933,7 +1980,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
       | some (.tInd "Pair" [A, B]) => some (if first then A else B)
       | _ => none
     pure (r, R)
-  | .eq A a b => onCopy <| withErased do
+  | .eq A a b => onCopyE <| withErased do
     let A' ← evalType A
     let (va, Ta) ← eval typed a
     let (vb, Tb) ← eval typed b
@@ -1996,7 +2043,7 @@ partial def evalCore (typed : Bool) (t : Term) (hint : Option Value := none) : M
       let (_, Tu) ← eval true u (some Pa)
       expectTy "the transported term" Tu Pa
       let moved ← armMoves ((← get).placeLog.extract ls (← get).placeLog.size) f0 n0
-      restoreKeep saved
+      restoreKeepE saved
       -- the endpoints, motive and equation are erased positions, formed once here: the block
       -- embeds their values and captures only `t`'s places
       let tJ := Term.prim "J" [.val A', .val av, .val bv, .val Pv, .ascribe (.val .proof) (.val hT), u]
@@ -2099,7 +2146,7 @@ partial def evalParams (n : String) (as : List Term) (typed : Bool) :
 /-- Each parameter against its declared type, evaluated with the earlier ones bound; no
 borrow types (no borrows inside data). -/
 partial def checkParams (d : IndDecl) (n : String) (vs : Array Value) (tys : Array (Option Value)) : M Unit :=
-  onCopy do
+  onCopyE do
     pushFrame
     for (((h, PT), v), T) in (d.params.zip vs.toList).zip tys.toList do
       let A ← evalType PT
@@ -2199,7 +2246,7 @@ partial def argHint (fv : Value) (fT : Option Value) (ws : Array Value) : M (Opt
   tryCatch (do
       let .tPi cs (.pi hs ds c) ← funType fv fT | return none
       let some d := ds[ws.size]? | return none
-      onCopy do
+      onCopyE do
         pushFrame
         pushCaps cs
         let (pds, _) ← paramDecls cs hs ds c
@@ -2261,7 +2308,7 @@ partial def callType (piTy : Value) (ws : Array Value) (tys : Array (Option Valu
   if ds.length != ws.size then err s!"arity: {ds.length} parameters, {ws.size} arguments"
   let pf ← paramFlags cs ds
   let argLocs := (← get).locs.callArgs     -- the editor: the arguments' ranges
-  onCopy <| unlocated do     -- the callee's parameter types are not this point's code
+  onCopyE <| unlocated do     -- the callee's parameter types are not this point's code
     pushFrame
     pushCaps cs
     let (pds, _) ← paramDecls cs hs ds c
@@ -2312,7 +2359,7 @@ partial def runBodyCore (fv : Value) (cs : List Value) (t : Term) (ws : Array Va
   -- a proof parameter that a function or Π-type in the body may capture needs its type,
   -- which is all a captured proof records (`capture`): read it off the declared domain,
   -- at the arguments (arrays-library: a Π whose body uses a proof captured from outside it)
-  let ptys ← if body.formsFn && (pf.any id || pds.any (·.isProof)) then onCopy do
+  let ptys ← if body.formsFn && (pf.any id || pds.any (·.isProof)) then onCopyE do
       pushFrame
       pushCaps cs
       let mut out := #[]
@@ -2490,7 +2537,7 @@ partial def recCheck (fv : Value) (ws : Array Value) : M Unit := do
         match ctx.entries[j]?.join, ws[j]? with
         | some σ, some w =>
           let u := match w with | .borrow _ u => u | u => u
-          (strictSubterms (expandRefs st.refs (.abs σ))).contains u
+          (strictSubterms (expandRefs (st.refs ++ st.etas) (.abs σ))).contains u
         | _, _ => false
       -- fail at the offending call, before it is run (running it may not terminate)
       if cands.isEmpty then
@@ -2508,6 +2555,83 @@ partial def refine (σ : Nat) (r : Value) : M Unit := do
   substEnv (.abs σ) r true
   modify fun s => { s with refs := (σ, r) :: s.refs }
   if (← get).neutrals.any (·.2 == σ) then renormAll
+
+/-- `restoreKeep`, then the η records made by the run it restores away re-applied to the restored
+state (D62): they hold in this world, so the values, stored types and goal come back expanded. -/
+partial def restoreKeepE (saved : MState) : M Unit := do
+  let n0 := saved.etas.length
+  restoreKeep saved
+  let es := (← get).etas
+  for (σ, r) in (es.take (es.length - n0)).reverse do
+    substEnv (.abs σ) r true
+
+/-- `onCopy` with `restoreKeepE`: a private copy's effects are discarded, its η records kept. -/
+partial def onCopyE {α : Type} (x : M α) : M α := do
+  let saved ← get
+  let r ← tryCatch x (fun e => do restoreKeepE saved; throw e)
+  restoreKeepE saved
+  pure r
+
+/-- D62: can `σ` be η-expanded: its type is a data inductive with exactly one constructor? -/
+partial def etaEligible (σ : Nat) : M (Option (IndDecl × List Value)) := do
+  if !(← get).cfg.etaData || (← get).opaqueAbs.contains σ then return none
+  match ← tryCatch (absType σ) (fun _ => pure .bot) with
+  | .tInd n ps =>
+    let d ← lookupInd n
+    pure (if d.ctors.length == 1 && d.sort == 1 then some (d, ps) else none)
+  | _ => pure none
+
+/-- D62, η on demand: `σ := C(σ̄′)`, with fresh `σ̄′` at the field types, for `σ` of a
+one-constructor data type. It is [Split] with its one arm; being exhaustive, it holds in every
+world, so it is recorded globally (`etas`, kept across private copies and arms) and applied
+to the whole state, the goal and the stored types. A value that predates the record (restored
+by a copy) is brought up to it where it is next named or compared (`etaCanon`). -/
+partial def etaExpand (σ : Nat) (d : IndDecl) (ps : List Value) : M Value := do
+  if let some r := (← get).etas.lookup σ then
+    substEnv (.abs σ) r true
+    return r
+  let r ← ctorRefinement d ps 0
+  modify fun s => { s with etas := (σ, r) :: s.etas }
+  trace fun _ => s!"[Split] σ{σ} := {r} (η, D62)"
+  substEnv (.abs σ) r true
+  pure r
+
+/-- D62: before a place is used, every abstract value of a one-constructor data type on its
+path whose field the place names is η-expanded, so the sub-place exists. -/
+partial def etaPlace (p : Place) : M Unit := do
+  if !(← get).cfg.etaData then return
+  let (i, ss) := p.steps
+  let some pos ← tryCatch (some <$> varPos i) (fun _ => pure none) | return
+  if ← etaWalk (← getAt pos) ss then etaPlace p
+
+/-- `etaPlace`'s walk down the path: η-expand the first abstract value a named field step
+meets; true if it expanded one. -/
+partial def etaWalk (v : Value) : List Step → M Bool
+  | [] => pure false
+  | st :: rest => do
+    match stepV st v with
+    | some w => etaWalk w rest
+    | none =>
+      let σ? := match v with
+        | .abs σ | .ghost (.abs σ) => some σ
+        | _ => none
+      let some σ := σ? | return false
+      let named := match st with
+        | .field _ | .fst | .snd => true
+        | _ => false
+      if !named then return false
+      let some (d, ps) ← etaEligible σ | return false
+      discard (etaExpand σ d ps)
+      pure true
+
+/-- D62: a value brought up to the η records made since it was computed. -/
+partial def etaCanon (v : Value) : M Value := do
+  let es := (← get).etas
+  if es.isEmpty then return v
+  let mut v := v
+  for (σ, r) in es do
+    if v.hasAbs σ then v ← substV (.abs σ) r v
+  pure v
 
 partial def evalMatch (typed : Bool) (p : Place) (z s : Term) (expected : Option Value := none) :
     M (Value × Option Value) := do
@@ -2579,7 +2703,7 @@ partial def canonNeutral (v : Value) : M Value := do
   if !(← get).cfg.genConsistent then return v
   match v with
   | .sealed _ => match (← get).neutrals.lookup v with
-    | some σ => pure (expandRefs (← get).refs (.abs σ))
+    | some σ => pure (expandRefs ((← get).refs ++ (← get).etas) (.abs σ))
     | none => pure v
   | _ => pure v
 
@@ -2848,6 +2972,11 @@ partial def evalMatchInd (typed : Bool) (p : Place) (ty : String) (arms : List (
     | none => err s!"[Match] no arm for constructor {c}"
   | .bot => err s!"[Match] on {← ppPlace p}, which was moved out"
   | .abs σ =>
+    -- D62: a one-constructor data type is η-expanded (the one-arm split, total and global),
+    -- so the match takes its only arm, on every path
+    if let some (d, ps) ← etaEligible σ then
+      discard (etaExpand σ d ps)
+      return ← evalMatchInd typed p ty arms expected
     if !typed then stuckOn v
     else
       let (d, ps) ← scrutType p ty
@@ -2897,7 +3026,14 @@ partial def movedPlace (q : Place) : M Place := do
     match ← absType σ with
     | .tInd n ps =>
       let d ← lookupInd n
-      if d.ctors.length == 1 then
+      if (← get).cfg.etaData then
+        -- D62: η on demand makes the moved sub-place exist, globally, as on the direct path
+        if let some (d, ps) ← etaEligible σ then
+          discard (etaExpand σ d ps)
+          return ← movedPlace q
+        pure p
+      else if d.ctors.length == 1 then
+        -- counterfactual (no D62): the earlier local refinement (rule-audit item 3)
         refine σ (← ctorRefinement d ps 0)
         movedPlace q
       else pure p
@@ -3067,7 +3203,7 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
 /-- `⟦t⟧^W`: on a private copy of Ω, run `t`, end every borrow, and return the result
 and the final contents of the owners in `W` (a tuple of the machine, not a `Pair` value,
 D52). -/
-partial def observe (typed : Bool) (t : Term) (A : Value) (W : List Pos) : M (Value × List Value) := onCopy do
+partial def observe (typed : Bool) (t : Term) (A : Value) (W : List Pos) : M (Value × List Value) := onCopyE do
   let es := (← get).effects.size
   let (v, T) ← eval typed t A      -- A: a hint for a constructor's parameters
   if (← get).cfg.confine then flushPending es   -- D41: a side of Id is not an erased context
@@ -3139,7 +3275,7 @@ partial def stuckScrutinee (t : Term) : M (Option Value) := do
     match e with
     | .stuck f on => do modify (fun s => { s with fuel := f }); pure on
     | .error .. => pure none
-  restoreKeep saved
+  restoreKeepE saved
   pure r
 
 /-- D61: the sealed programs of a value, in pre-order, left to right. -/
@@ -3332,6 +3468,10 @@ partial def checkTailAt (t : Term) (k : Value → Value → M Unit) : M Unit := 
       | some (_, a) => checkTail a k
       | none => err s!"[Match] no arm for constructor {c}"
     | .abs σ =>
+      -- D62: η on demand for a one-constructor data type, then the match takes its arm
+      if let some (d, ps) ← etaEligible σ then
+        discard (etaExpand σ d ps)
+        return ← checkTail t k
       let (d, ps) ← scrutType p ty
       let saved ← get
       for (c, (_, a)) in (List.range d.ctors.length).zip arms do
@@ -3461,7 +3601,7 @@ partial def checkFix (fv : Value) (cs : List Value) (t : Term) : M Unit := do
     trace fun _ => s!"[Def] {self.name}: path ends with type {T} against goal {g}"
     unless ← conv T g do
       err s!"the body of {self.name} has type {T}, but the goal is {g}"
-  restoreKeep saved
+  restoreKeepE saved
 
 end
 

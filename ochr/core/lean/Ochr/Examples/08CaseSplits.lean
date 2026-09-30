@@ -227,10 +227,18 @@ ochr Splitting uses Std {
     let p : Eq Bool (IsZ(Pick(n))) false = (split IsZ in refl);
     p
   )
+
+  -- D62, η on demand: naming a field of an abstract value of a one-constructor data type
+  -- performs [Split] with its one arm, globally. `q.2` exists without a match (`EtaCtl`); a
+  -- block that moved `q.1` and the direct path agree (`EtaP`, rule-audit item 3); and a match
+  -- on `q` takes its only arm instead of closing off (`EtaStmt`).
+  def EtaCtl (q : Nat × Nat) : Nat := q.2
+  def EtaP (q : Nat × Nat) : Nat := (match q { Mk(a, b) => (let v = a; ()) }; q.2)
+  def EtaStmt (q : Nat × Nat) : Id Nat (q.2) (match q { Mk(a, b) => b }) := refl
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard Splitting.decls.length == 19
+#guard Splitting.decls.length == 22
 
 /-! ## What goes wrong without these rules
 
@@ -290,10 +298,13 @@ private copy of the environment, and names it with a fresh abstract value. That 
 and the counter of fresh names, must survive the copy. Otherwise the body's split issues
 the same name again, for the field `x`; `Esc` then proves that `Double(n)` is zero exactly
 when `x` is, for every `n` and `x`, and its instance `Bad5` is a closed proof of `1 = 0`
-(switch `globalRecords`). This is note 5 of the paper's appendix, as printed. -/
+(switch `globalRecords`). This is note 5 of the paper's appendix. `Box` has a second,
+impossible constructor so that `m` is split in the body: a one-constructor type is born
+expanded (D62), and its field's name would be issued before the goal is formed, not reused
+after it. -/
 
 ochr GlobalRecords {
-  inductive Box := MkBox(x : Nat)
+  inductive Box := MkBox(x : Nat) | NoBox(h : False)
 
   def Double (n : Nat) : Nat by n := (
     match n {
@@ -305,12 +316,13 @@ ochr GlobalRecords {
   reject def Esc (n : Nat) (m : Box) :
       Id Nat
         (let b = Double(n); match b { Z => 0, S _ => 1 })
-        (match m { MkBox(x) => match x { Z => 0, S _ => 1 } }) := (
+        (match m { MkBox(x) => match x { Z => 0, S _ => 1 }, NoBox(h) => 0 }) := (
     match m {
       MkBox(x) => match x {
         Z => refl,
         S _ => refl,
       },
+      NoBox(h) => match h {},
     }
   )
 

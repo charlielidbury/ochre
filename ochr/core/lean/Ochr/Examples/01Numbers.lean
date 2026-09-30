@@ -118,9 +118,10 @@ ochr Numbers uses Std {
     }
   )
 
-  -- ... and not by projection: until it is split, an abstract pair's components are not
-  -- known (there is no η rule), as for a field of any inductive value.
-  reject def SwapPairProj (p : Nat × Unit) : Unit × Nat := (p.2, p.1)
+  -- ... and by projection: naming a field of an abstract pair splits it with its one arm, on
+  -- demand (D62: η for one-constructor data types, of which D59's η for `Unit` is the
+  -- zero-field case), so `p.1` and `p.2` exist without a match.
+  def SwapPairProj (p : Nat × Unit) : Unit × Nat := (p.2, p.1)
 
   -- ## Calls and ascriptions
   -- Calls are saturated: every parameter gets an argument.

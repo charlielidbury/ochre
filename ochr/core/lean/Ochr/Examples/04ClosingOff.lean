@@ -168,17 +168,29 @@ ochr ClosingOff uses Std, Fixtures {
     }
   )
 
-  -- When an arm really writes a place, the block takes it by `&`. A closure in that arm that
-  -- reads the place would capture the block's borrow parameter when the block re-runs, and
-  -- [Fix] captures no borrow, so the re-run is a type error (D63, rule-audit item 7). The
-  -- earlier checker captured the value behind the parameter (fuzz-port R2 (ii), switch
-  -- `blockRefCapture`), which no printed rule does; the direct path captures the place itself.
-  reject def LamReadInWrittenBlock (q2 : Nat × Nat) :
+  -- A match on a pair takes its one arm (D62), so no block is formed, and a closure in the
+  -- arm captures the place itself (fuzz-port R2 (ii)'s shape, before D62 a block).
+  def LamReadInWrittenBlock (q2 : Nat × Nat) :
       Id Nat
         (let c = q2; let a0 = match c { Mk(p5, p6) => (let f = (λ(y7 : Nat) : Nat => p5); c := (1, 1); f) }; a0(0))
         (match q2 { Mk(p5, p6) => p5 }) := (
     match q2 {
       Mk(a, b) => refl,
+    }
+  )
+
+
+  -- When an arm of a stuck block writes a place, the block takes it by `&`. A closure in that
+  -- arm that reads the place would capture the block's borrow parameter when the block
+  -- re-runs, and [Fix] captures no borrow, so the re-run is a type error (D63, rule-audit item
+  -- 7). The earlier checker captured the value behind the parameter (fuzz-port R2 (ii), switch
+  -- `blockRefCapture`), which no printed rule does.
+  reject def LamReadInWrittenBlockNat (n : Nat) (x : Bool) :
+      Id Bool (match n { Z => (x := true; let f = (λ(u : Unit) : Bool => x); ()), S _ => () }; x)
+              (match n { Z => (x := true; ()), S _ => () }; x) := (
+    match n {
+      Z => refl,
+      S _ => refl,
     }
   )
 
@@ -356,7 +368,7 @@ ochr ClosingOff uses Std, Fixtures {
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard ClosingOff.decls.length == 49
+#guard ClosingOff.decls.length == 50
 
 /-! ## Symbolic checking is not the same as checking every instance
 

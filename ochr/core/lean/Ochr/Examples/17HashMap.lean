@@ -891,12 +891,17 @@ ochr HashMapLookup uses Std, HashMap {
 
   def GetMutFind (hm : &HashMap) (k : Word) (w : Nat) (h : IsSome(Find(*hm, k))) :
       Id Opt (let q = GetMut(&*hm, k, h); *q := w; Find(*hm, k)) (let q = GetMut(&*hm, k, h); *q := w; Some(w)) := (
-    rewrite ← GetMutIsInsert(&*hm, k, w, h) in InsertFind(&*hm, k, w)
+    match *hm {
+      HM(n, len, slots) => rewrite ← SlotGetMutIsInsert(&slots, Idx(k, n), k, w, h) in SlotInsertFind(&slots, Idx(k, n), k, w),
+    }
   )
 
   def GetMutFindOther (hm : &HashMap) (k : Word) (w : Nat) (h : IsSome(Find(*hm, k))) (k2 : Word) (ne : Eq Bool (EqB(k, k2)) false) :
       Id Opt (let q = GetMut(&*hm, k, h); *q := w; Find(*hm, k2)) (let r = Find(*hm, k2); let q = GetMut(&*hm, k, h); *q := w; r) := (
-    rewrite ← GetMutIsInsert(&*hm, k, w, h) in InsertFindOther(&*hm, k, w, k2, ne)
+    match *hm {
+      HM(n, len, slots) => rewrite ← SlotGetMutIsInsert(&slots, Idx(k, n), k, w, h) in
+        SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, w, k2, ne),
+    }
   )
 
   -- ## Get, through the borrow
@@ -1550,7 +1555,17 @@ ochr HashMapResize uses Std, HashMap, HashMapLookup, HashMapLength {
 
   def GetMutInv (m : HashMap) (k : Word) (w : Nat) (h : IsSome(Find(m, k))) (hi : Inv(m)) :
       (let c = m; let q = GetMut(&c, k, h); *q := w; Inv(c)) := (
-    rewrite ← GetMutIsInsert(&m, k, w, h) in InsertInv(m, k, w, hi)
+    match m {
+      HM(n, len, s) => (
+        let ⟨hl, hu, hp⟩ = hi;
+        let r = BFind(Nth(s, Idx(k, n)), k);
+        rewrite ← SlotGetMutIsInsert(&s, Idx(k, n), k, w, h) in match r {
+          None => match h {},
+          Some(_) => ⟨rewrite SlotInsertCount(&s, Idx(k, n), k, w) in hl,
+                      ⟨SlotInsertUnique(s, Idx(k, n), k, w, hu), SlotInsertPlaced(s, n, k, w, hp)⟩⟩,
+        }
+      ),
+    }
   )
 
   -- ## Resizing keeps the invariant
