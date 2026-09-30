@@ -320,11 +320,15 @@ partial def accessPath (p : Place) : M Unit := do
   | none => pure ()
 
 /-- [Access], content part: end every borrow whose loan occurs inside `content(p)`. -/
-partial def accessInside (p : Place) : M Unit := do
+partial def accessInside (p : Place) (owned : Bool := false) : M Unit := do
   if !(← get).cfg.accessInside then return
   let v ← content p
-  match liveLoansIn (← get).env v with
-  | l :: _ => endBorrow l; accessInside p
+  -- D67: before an assignment, only the part of the content the place owns (`owned`)
+  let ls := (if owned then liveOwnedLoansIn else liveLoansIn) (← get).env v
+  unless ls.isEmpty do
+    fire .Access fun _ => s!"loans {ls} inside {v}{if owned then " (the part the place owns: before an assignment, D67)" else ""}"
+  match ls with
+  | l :: _ => endBorrow l; accessInside p owned
   | [] => pure ()
 
 /-- [Access] for matching (v1.5, D29): a loan anywhere inside a neutral at the head of
@@ -568,7 +572,10 @@ partial def borrowPlace (p : Place) : M Value := do
 /-- [Assign] with the value already computed: drop the old content, store the new. -/
 partial def assignPlace (p : Place) (v : Value) : M Unit := do
   pushTemp v
-  accessPath p; accessInside p
+  -- D67: a loan behind a borrow the old content holds is not ended: [Drop] of the old borrow
+  -- ([End]) carries it back to its owner, where it stays live (reborrow-and-replace,
+  -- `x := &(*x).f`). Loans in the owned part, neutrals there included, still end
+  accessPath p; accessInside p (← get).cfg.reborrowSurvives
   let old ← content p
   unsizedCheck p old "assigned"
   match old with

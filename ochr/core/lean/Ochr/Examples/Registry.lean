@@ -31,7 +31,7 @@ open Ochr Ochr.Test Ochr.Surface
 namespace Ochr.Registry
 
 def programs : List (String × Block) :=
-  [("Prelude", Prelude), ("Std", Std), ("Fixtures", Fixtures), ("Numbers", Numbers), ("Borrows", Borrows), ("Drops", Drops), ("Moves", Moves), ("ReturnedBorrows", ReturnedBorrows),
+  [("Prelude", Prelude), ("Std", Std), ("Fixtures", Fixtures), ("Numbers", Numbers), ("Borrows", Borrows), ("Drops", Drops), ("Moves", Moves), ("ReturnedBorrows", ReturnedBorrows), ("Reborrows", Reborrows),
    ("ClosingOff", ClosingOff), ("Naturality", Naturality), ("Equality", Equality), ("Rewriting", Rewriting),
    ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion),
    ("CaseSplits", CaseSplits), ("GenType", GenType), ("RenormPi", RenormPi), ("Splitting", Splitting), ("ScrutineeTypes", ScrutineeTypes),
@@ -126,6 +126,7 @@ def switches : List (String × Config) :=
    ("D63: a match whose arms disagree about being proofs has no declared type", { armsAgree := false }),
    ("D63 (switched ON): a closure in a stuck block captures through the block's borrow parameter (fuzz-port R2 (ii))", { blockRefCapture := true }),
    ("D63: [Id] observes with the typing judgement in untyped runs too", { typedObs := false }),
+   ("D67: [Access] before an assignment ends only the loans the place owns (a reborrow behind a held borrow survives)", { reborrowSurvives := false }),
    ("D64 [Repack]: a value of a dependent type is of its telescope again at every whole-again point", { repack := false }),
    ("D64 (D52 restricted): Eq takes a dependent constructor apart only while its index fields are convertible", { depInj := false }),
    ("K4: a field type may call an earlier type function", { k4 := false }),
@@ -199,6 +200,7 @@ def rowClass : List (String × List String) :=
    ("policy", ["ErasureBySyntax.MixPos"]),
    ("policy", ["ClosingOff.LamReadInWrittenBlock"]),
    ("completeness", []),
+   ("completeness", []),
    ("soundness", ["DepFields.Boom"]),
    ("policy", ["DepFields.InjLen"]),
    ("completeness", []),
@@ -209,7 +211,7 @@ def rowClass : List (String × List String) :=
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1234
+def Ochr.Registry.expectedTotal : Nat := 1247
 
 open Ochr.Registry Ochr.Test in
 #guard ((programs ++ caseStudies).map (·.2.decls.length)).foldl (· + ·) 0 == expectedTotal

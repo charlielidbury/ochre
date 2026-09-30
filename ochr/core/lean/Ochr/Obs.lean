@@ -78,6 +78,10 @@ def liveLoan (env : Env) (l : Nat) : Bool := (findBorrow env l).isSome
 def liveLoansIn (env : Env) (v : Value) : List Nat :=
   v.loans.foldl (fun acc l => if !acc.contains l && liveLoan env l then acc ++ [l] else acc) []
 
+/-- D67: the live loans in the part of `v` its place owns (`Value.ownedLoans`). -/
+def liveOwnedLoansIn (env : Env) (v : Value) : List Nat :=
+  v.ownedLoans.foldl (fun acc l => if !acc.contains l && liveLoan env l then acc ++ [l] else acc) []
+
 def insertPos (p : Pos) : List Pos → List Pos
   | [] => [p]
   | q :: qs => if p == q then q :: qs else if p.lt q then p :: q :: qs else q :: insertPos p qs

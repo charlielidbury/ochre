@@ -54,7 +54,7 @@ def expectedIssues : List String := [
 ]
 
 /-- Rules already tagged with a `fire` call. -/
-def fired : List Rule := [.Open, .Repack, .IndDecl, .EqInj, .EqStuck]
+def fired : List Rule := [.Open, .Repack, .IndDecl, .EqInj, .EqStuck, .Access]
 
 /-- Rules and extensions not yet tagged with a `fire` call (the tagging is in progress). -/
 def notYetFired : List String :=
