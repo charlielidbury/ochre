@@ -129,7 +129,9 @@ def execOracle (o : Opts) (c : Case) (prep : Prepared) : List Finding × Nat := 
         let mut out := #[]
         for (d, h) in ds.zip hs do
           let A ← evalType d
+          -- a function parameter's inputs are the library functions of its type
           let vs ← if ← isPropV A then pure (if unitTop A == vTrue then [Value.proof] else [])
+            else if A matches .tPi .. then pure ((← fnInstances A).take 3)
             else pure ((groundVals prep.inds (match A with | .tRef T => T | A => A) 1).take 3)
           out := out.push vs
           pushBind h (some A) (.abs 0)
@@ -149,7 +151,9 @@ def execOracle (o : Opts) (c : Case) (prep : Prepared) : List Finding × Nat := 
           fs := push fs .exec g.name lbl s!"runtime run observes {x.pp}" s!"erased run observes {y.pp}"
       | .ok x, .error e => if !isResource e then
           fs := push fs .exec g.name lbl s!"runtime run observes {x.pp}" s!"erased run errors: {e}" s!"erased {errKey e}"
-      | _, _ => pure ()
+      -- an accepted function that goes wrong on a well-typed input, however it is run
+      | .error e, .error e2 => if !isResource e && !isResource e2 then
+          fs := push fs .exec g.name lbl s!"runtime run errors: {e}" s!"erased run errors: {e2}" s!"both {errKey e}"
   pure (fs.toList, acc)
 
 /-- Rename the variable `x` to `y` in a generated term (generated binders never reuse a
