@@ -1484,7 +1484,7 @@ Regressions, at the end of `Numbers`:
 - accepted: `UnitStill`.
 
 The `unitEta` row (D59) gains `Numbers.UnitStill:rejected`. 1277 verdicts.
-## 53. D67: reborrow and replace (dep-fields)
+## 54. D67: reborrow and replace (dep-fields)
 
 `x := &(*x).f`, moving a cursor down into what it borrows, was rejected. [Access] before an assignment ended every loan inside `content(x)`, and the new borrow's loan sits there, behind the borrow `x` held. So the new borrow ended before it was stored (lean-meta's F1).
 
