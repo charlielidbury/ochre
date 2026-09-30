@@ -1411,3 +1411,22 @@ A borrow type cannot instantiate `V`: `&Nat` is not a term (`Swap(&Nat, …)` do
   - `fnRule` gains the call through a borrow.
 
 60 rows: soundness 23, false lemma 1, model 4, policy 9, completeness 23. 1254 verdicts.
+
+## 51. A2: conversion under instantiation (reviewer-6), not exploitable
+
+reviewer-6's A2: `Π(x : &Nat). False` and `Π(x : &Nat). Id Unit (*x := 0) (*x := 1)` are convertible, since [Conv-pi] compares codomains at the generic call, where both are `False`. At `r = Pick(n, &a, &b)` the first gives `False`, and the second a conjunction of two equations between sealed programs, one per possible owner. So "convertible Π-types have convertible instances" fails.
+
+The question was whether this can be exploited: two Π-types convertible generically but told apart at an instance, so as to prove `False` or make a program go wrong. `Scratch/A2Probe.lean` (20 verdicts, self-checking) records the attempts. The argument that it cannot:
+
+1. At the generic call, a borrow parameter borrows one fresh place, and the codomain sees nothing else. Captures are values, and borrows are never captured, so the codomain's `Id` observes exactly that place.
+2. At an argument whose loan has several possible owners, the codomain's `Id` observes every one of them. That gives one conjunct per owner, an `Eq` between the two sides' final contents of that owner. Whether that owner is written is unknown, so each content is a sealed program.
+3. At every ground instance the argument borrows exactly one owner. The others are untouched on both sides, so their conjuncts are `⊤` and drop out. The real owner's conjunct is the generic codomain at that owner's content (`G5At0`, `G5At1`). This is the paper's containment (§meta, item 6). So Π-types convertible generically have instances that agree in truth at every ground instance.
+4. At an abstract instance the forms differ (`CPuse`, `G5Top`), but only by sealed programs. These expose no constructor, so disjointness (D47), injectivity (D52) and zero-arm matches (D58) cannot act on them (`G5RefuteL`, `G5RefuteR`). Getting anything from the difference requires splitting the argument's stuck scrutinee, which yields the ground forms of (3).
+
+So the difference can only make the checker reject a program (`CPuse`), never accept a false one: a completeness gap, not a soundness one.
+
+Two more observations from the probe:
+- Often there is no difference at all. A codomain whose two sides agree generically because a write is overwritten (`TopGen`, `PairGen`, `ReadGen`) normalises to `⊤` at the two-owner argument too.
+- The stuck forms come from codomains whose agreement needs a proof (`G5`, by `AddMZero`) or whose sides disagree (`CP`).
+
+No checker change.
