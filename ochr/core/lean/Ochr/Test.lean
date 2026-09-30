@@ -65,11 +65,10 @@ partial def libOf (cfg : Config) (fuel : Nat) (b : Block) : Program :=
 end
 
 /-- The blocks checked without D53 (reads copy, as before D53) until their lanes adapt them
-with `clone` and `Word`: the case studies, written before D53. A block's name goes once it
-checks with D53. -/
+with `clone` and `Word`: the array case study, written before D53. A block's name goes once
+it checks with D53 (the hash map's went with `Word` keys and one `clone`). -/
 def preD53 : List String :=
-  ["Arrays", "ArrayLemmas", "ArrayBench", "Quicksort",
-   "HashMap", "HashMapLookup", "HashMapLength", "HashMapResize"]
+  ["Arrays", "ArrayLemmas", "ArrayBench", "Quicksort"]
 
 /-- The configuration a block is checked under: `cfg`, without D53 for a `preD53` block. -/
 def blockCfg (b : Block) (cfg : Config) : Config :=
