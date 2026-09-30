@@ -264,6 +264,24 @@ ochr Moves uses Std {
   def J1Run : Nat := J1(1, refl)
   def I1 (n1 : Nat) : Nat := (let m = n1; let a0 = Id Unit () (n1 := 0); 0)
   def I1Run : Nat := I1(0)
+  -- A block's effect on its captures is read from its arms' moves and assignments, by place
+  -- (not by comparing values, which are abstract or sealed), so it composes through nested
+  -- blocks (N1), sees a borrow moved in whole by an inner block's capture (N2), and gives
+  -- each part of a captured place its own mode: `q1.1` moved, `q1.2` lent (N3). A move that
+  -- the arm restores, or that goes through a local borrow, counts as the owner's.
+  reject def N1 (x0 : &(Nat × Nat)) (n1 : Nat) : Nat := (
+    let a = match n1 { Z => match *x0 { Mk(p, _) => p }, S _ => 0 }; a)
+  reject def N2 (x0 : &Nat) : Nat := (
+    let a = match *x0 { Z => match *x0 { Z => 0, S _ => x0; 0 }, S _ => *x0 }; a)
+  reject def N3 (q1 : Nat × Nat) : Nat × Nat := (
+    let a = match q1 { Mk(p1, p2) => match p2 { Z => p1; &p2, S _ => &p2 } }; q1)
+  def N3Other (q1 : Nat × Nat) : Nat := (
+    let a = match q1 { Mk(p1, p2) => match p2 { Z => p1; &p2, S _ => &p2 } }; 0)
+  def MoveRestore (x0 : &Nat) (n1 : Nat) : Nat := (
+    let a = match n1 { Z => 0, S _ => (let v = *x0; *x0 := 0; v) }; a)
+  reject def ThroughLocal (q0 : Nat × Nat) (n1 : Nat) : Nat × Nat := (
+    let a = match n1 { Z => 0, S _ => (let r = &q0; match *r { Mk(u, _) => u }) }; q0)
+
   -- RN: a split in a data function re-normalises its hypotheses' types, as types (reads copy)
   def DataSplit (n : Nat) (h : Id (Nat × Nat) (match n { Z => (n, n), S p => (p, p) })
       (match n { Z => (0, 0), S p => (p, p) })) : Nat := (
@@ -273,4 +291,4 @@ ochr Moves uses Std {
 #eval IO.println (run "Moves" Moves).show
 
 #guard (run "Moves" Moves).allAsExpected
-#guard (run "Moves" Moves).count == 33
+#guard (run "Moves" Moves).count == 39
