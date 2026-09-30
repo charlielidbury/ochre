@@ -36,7 +36,7 @@ QS = {
     "B2 proof: headline": W("QSSortedFull QSCorrect"),
 }
 ORDER = ["Index", "Arrays", "ArrayLemmas", "ArrayBench"] + list(QS)
-DECL = re.compile(r"^  (?:reject )?(?:def|inductive) ([A-Za-z_][A-Za-z0-9_']*)")
+DECL = re.compile(r"^  (?:reject )?(?:(?:unsized|abstract|copy) )*(?:def|inductive) ([A-Za-z_][A-Za-z0-9_']*)")
 BLOCK = re.compile(r"^ochr (\w+)")
 
 

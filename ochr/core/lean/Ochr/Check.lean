@@ -18,6 +18,7 @@ structure Def where
   cod : Term
   dec : Option Nat := none     -- `by xⱼ`: the decreasing parameter
   body : Term
+  implBy : Option String := none   -- `implemented by "sym"` (K3): the compiler calls `sym`
 deriving Inhabited
 
 inductive Verdict where
@@ -61,12 +62,16 @@ def checkDef (d : Def) : M Unit := do
     unless (← match T with | some T => conv T goal | none => pure false) do
       err s!"the body of {d.name} has type {T.getD .bot}, but the goal is {goal}"
     let v ← if (← get).cfg.p5 && (← isPropV goal) then pure .proof else pure v
-    modify fun s => { s with env := #[{}], globals := s.globals ++ [⟨d.name, goal, none, v⟩] }
+    modify fun s => { s with env := #[{}], globals := s.globals ++ [{ name := d.name, ty := goal, fn? := none, val := v }] }
   else
     let fixT := Term.fix ⟨d.name⟩ d.hs d.doms d.cod d.dec d.body
     let ty := Value.tPi [] (.pi d.hs d.doms d.cod)
-    modify fun s => { s with globals := s.globals ++ [⟨d.name, ty, some fixT, .gfn d.name⟩] }
+    -- K2/K3: model code (native, or taking or returning an unsized value) never runs at runtime
+    let model ← if d.implBy.isSome then pure true else modelSignature d.hs d.doms d.cod
+    modify fun s => { s with globals := s.globals ++ [{ name := d.name, ty := ty, fn? := some fixT, val := .gfn d.name, model }] }
+    if model then modify fun s => { s with modelDepth := s.modelDepth + 1 }
     checkFix (.gfn d.name) [] fixT
+    if model then modify fun s => { s with modelDepth := s.modelDepth - 1 }
 
 /-- A program item: a definition, or an inductive type declaration. -/
 inductive Item where

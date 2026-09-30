@@ -34,11 +34,12 @@ def programs : List (String × Block) :=
    ("ClosingOff", ClosingOff), ("Naturality", Naturality), ("Equality", Equality), ("Rewriting", Rewriting),
    ("Owners", Owners), ("Snapshots", Snapshots), ("Recursion", Recursion),
    ("CaseSplits", CaseSplits), ("GenType", GenType), ("RenormPi", RenormPi), ("Splitting", Splitting), ("ScrutineeTypes", ScrutineeTypes),
-   ("GlobalRecords", GlobalRecords), ("ArmLocal", ArmLocal), ("ArmLocalBoom", ArmLocalBoom), ("Functions", Functions), ("Lists", Lists), ("Trees", Trees), ("InPlaceTrees", InPlaceTrees),
+   ("GlobalRecords", GlobalRecords), ("ArmLocal", ArmLocal), ("ArmLocalBoom", ArmLocalBoom), ("ArmRecords", ArmRecords), ("Functions", Functions), ("Lists", Lists), ("Trees", Trees), ("InPlaceTrees", InPlaceTrees),
    ("PolyLists", PolyLists), ("Positivity", Positivity), ("PositivityParams", PositivityParams),
    ("PositivityPaper", PositivityPaper), ("Propositions", Propositions), ("Destructuring", Destructuring),
    ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
-   ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("BorrowTypes", BorrowTypes)]
+   ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("BorrowTypes", BorrowTypes),
+   ("Abstraction", Abstraction)]
 
 /-- Case studies (`16Arrays`, `17HashMap`): checked and counted with the tour, and timed by `lake exe
 tests`, but not re-run by the counterfactual ledger, which is about the rules. A case study's
@@ -118,7 +119,9 @@ def switches : List (String × Config) :=
    ("D53: a runtime read of data whose type is not a copy type moves it", { moves := false }),
    ("D53 (c): a move leaves a ghost that erased terms still read", { ghosts := false }),
    ("D53 (e): the Fn rule (a call does not consume its function; closure bodies do not move their captures)", { fnRule := false }),
-   ("D59: η for Unit (any two values of Unit are equal; [Close] has no Unit row)", { unitEta := false })]
+   ("D59 (refined): η-normal forms at Unit (the readback at Unit is (); [Close] has no Unit row)", { unitEta := false }),
+   ("K3: an abstract type's constructors and matches only in erased positions and model code", { abstractTypes := false }),
+   ("K2: outside model code, a place of an unsized type is only borrowed at runtime", { unsizedTypes := false })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -140,7 +143,7 @@ def rowClass : List (String × List String) :=
    ("soundness", ["Erasure.N1Closed", "Erasure.QBoom", "ErasureBySyntax.BoomP"]),
    ("soundness", ["Owners.ClosedD18", "Owners.BadR"]),
    ("soundness", ["Recursion.KnotLBoom"]),
-   ("soundness", ["Borrows.V", "Borrows.W"]),
+   ("soundness", ["Borrows.BadA1", "Borrows.V", "Borrows.W"]),
    ("soundness", ["Recursion.KnotBoom"]),
    ("soundness", ["Borrows.Dead"]),
    ("completeness", []),
@@ -184,12 +187,15 @@ def rowClass : List (String × List String) :=
    ("cost", ["Moves.TwiceNat", "Moves.ClosureMovesCapture"]),
    ("completeness", []),
    ("completeness", []),
-   ("completeness", [])]
+   ("completeness", []),
+   ("policy", ["Abstraction.Peek"]),
+   ("policy", ["Abstraction.Take"])]
+
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1058
+def Ochr.Registry.expectedTotal : Nat := 1080
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal

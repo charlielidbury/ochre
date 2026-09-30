@@ -1,6 +1,9 @@
 import Ochr.Examples.«00Std»
 open Ochr Ochr.Test
-/-! D59 (η for `Unit`) moves a completeness gap rather than only closing one. Conversion has
+/-! Closed by D59 refined (η-normal forms at `Unit`, ochr-core-lean): the first two are accepted
+now, and are `ClosingOff.StuckResultUnit`/`StuckResultArgs`. The original note follows.
+
+D59 (η for `Unit`) moves a completeness gap rather than only closing one. Conversion has
 no η for `Unit` (an abstract `u : Unit` is not `()`), and since D59 a stuck call written to
 return `Unit` returns its sealed program instead of `()`. So a type that mentions such a
 result is compared by that program: the three `reject`s below are true statements (`Unit`
@@ -15,8 +18,10 @@ ochr D59ConvGap uses Std {
       S _ => Unit,
     }
   )
-  reject def StuckResultUnit (x : &Nat) (P : Unit → Prop) (h : P(())) : P(let c = *x; AddM(&c, 0)) := h
-  reject def StuckResultArgs (x : &Nat) (P : Unit → Prop) (h : P(let c = *x; AddM(&c, 0))) : P(let c = *x; AddM(&c, 1)) := h
+  def StuckResultUnit (x : &Nat) (P : Unit → Prop) (h : P(())) : P(let c = *x; AddM(&c, 0)) := h
+  def StuckResultArgs (x : &Nat) (P : Unit → Prop) (h : P(let c = *x; AddM(&c, 0))) : P(let c = *x; AddM(&c, 1)) := h
+  -- (since D53 `let c = *x` moves `*x` out of the parameter, which then ends partly moved;
+  -- with `clone(*x)` it is `ClosingOff.ConvUnitWritten`)
   reject def ConvUnitWrittenAddM :
       Eq (Π(x : &Nat). UU(Z)) (λ(x : &Nat) : UU(Z) => ()) (λ(x : &Nat) : UU(Z) => (let c = *x; AddM(&c, 0))) := (
     refl

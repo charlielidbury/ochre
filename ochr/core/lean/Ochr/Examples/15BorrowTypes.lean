@@ -77,3 +77,36 @@ ochr BorrowTypes uses Std {
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "BorrowTypes" BorrowTypes).allAsExpected
 #guard (run "BorrowTypes" BorrowTypes).count == 16
+
+/-! ## Abstract and unsized types (K2, K3)
+
+A library may keep a type's representation to itself. The constructors of an `abstract`
+type, and matches on them, occur at runtime only in model code: the body of a function
+`implemented by` native code (the checker runs the body, the compiler calls the native), or
+of a model function, one that takes or returns an `unsized` value, which runtime code never
+holds. In erased positions (types, statements, proofs) the model is unrestricted. At
+runtime outside model code, a place of an `unsized` type is only borrowed: never read, moved,
+assigned or matched. The arrays case study keeps its views this way (`16Arrays`,
+reviewer-7's `Suffix`, `TwoParts`, `Rebuild`). -/
+
+ochr Abstraction uses Std {
+  unsized abstract inductive View := MkView(v : Nat)
+  -- a model function (a view by value)
+  def ViewVal (w : View) : Nat := match w { MkView(v) => v }
+  -- natives: their bodies are the models the checker runs
+  def Get (s : &View) : Nat := ViewVal(clone(*s)) implemented by "view_get"
+  def Put (s : &View) (n : Nat) : Unit := (*s := MkView(n)) implemented by "view_put"
+  -- runtime code goes through the natives ...
+  def Bump (s : &View) : Unit := (let n = Get(&*s); Put(s, S n))
+  -- ... and statements see the model
+  def GetIs (s : &View) : Id Nat (Get(s)) (ViewVal(*s)) := refl
+  -- matching, building, reading or assigning a view at runtime is not allowed
+  reject def Peek (s : &View) : Nat := match *s { MkView(v) => clone(v) }
+  reject def Poke (s : &View) : Unit := *s := MkView(0)
+  reject def Take (s : &View) : Nat := ViewVal(clone(*s))
+}
+
+#eval IO.println (run "Abstraction" Abstraction).show
+
+#guard (run "Abstraction" Abstraction).allAsExpected
+#guard (run "Abstraction" Abstraction).count == 9

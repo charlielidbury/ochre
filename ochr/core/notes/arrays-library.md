@@ -447,7 +447,7 @@ Two changes are not D60 and are reported separately: `CountSet` now puts the ind
 **Checker findings** (for the checker lane; status after the batch):
 1. **⋆ incompleteness: mostly fixed.** Captured values, `Dec`/`And` parameters and Π-typed arguments that embed proofs now work; `PermOf`/`AllLeRec`/`AllGeRec` are gone. **One form remains:** a Π-type whose body uses a proof captured from outside the Π, e.g. `LeftOf(…, hk) := Π(t)(ht : Lt(t, k)). Le(Nth(…, LtTrans(t, k, n, ht, hk)), p)`. Calling such a hypothesis fails. A proof bound by the Π itself is fine. Workaround: add the needed bound as an extra Π binder.
 2. **Dead arms in borrow-returning functions: fixed** by the batch (`GetMutSet` accepted).
-3. **A type from a sibling arm: still present. I first reported it as a false rejection only; that is refuted (see the exploit attempts below).** In `AllGeJoin`/`SortedJoin`, an inferred `⟨p, q⟩` after the dead arm `n := Z` is typed with that arm's refinement (`SliceOf(CellsEnd)`). Workaround: `AndI` names the conjuncts.
+3. **A type from a sibling arm: fixed by the A1 fix (969e3254, generalisation records belong to their [Split] arm), and `AndI` is gone (§12). I first reported it as a false rejection only; that is refuted (see the exploit attempts below).** In `AllGeJoin`/`SortedJoin`, an inferred `⟨p, q⟩` after the dead arm `n := Z` is typed with that arm's refinement (`SliceOf(CellsEnd)`). Workaround: `AndI` names the conjuncts.
    - **Minimal repro** (standalone, `uses Std`, 55 lines with its own `Le`/`Sub`/`Cells`/`JoinS`/`AllGe`):
      ```
      def Leak (n : Nat) (k : Nat) (l : Slice(k)) (r : Slice(Sub(n, k))) (a : Nat) (hl : AllGe(k, l, a))
@@ -508,7 +508,7 @@ For after the soundness batch (D54–D56). Each rule is read from syntax and dec
 
 ## 12. Moves (D53)
 
-Since D53, a runtime read of data that is not a copy type moves it. The five blocks check with moves on (`Test.preD53` is empty): 170 declarations, all as expected.
+Since D53, a runtime read of data that is not a copy type moves it. The five blocks check with moves on (`Test.preD53` is empty), and with the array abstraction enforced (K2, K3, from ochr-core-lean 295882e4): 173 declarations, all as expected.
 
 - **`Word` for every number.** Indices, lengths, fuel, counts and quicksort's elements are `Word`s (Std's `copy inductive Word`), so reading one copies it. The switch was a rename (`Nat` → `Word`, `Z`/`S` → `Zero`/`Succ`, `Add` → `WAdd`, numerals → `Zero`, `Succ(Zero)` and `W(n)`), because the library had one number type throughout. `Index` gains `WAdd` and `W(n)` (the `Word` for a numeral, for the runs). Sorting `Word`s is sorting a copy type, as Rust's and Verus's quicksorts sort `i32`.
 - **Seven `clone`s**, where a generic element or a whole view is used twice:
@@ -518,22 +518,23 @@ Since D53, a runtime read of data that is not a copy type moves it. The five blo
     - `Replicate` and `FillFrom` each write one element `x` repeatedly (`clone(x)`);
     - the model `SwapS` reads the view three times (`clone(s)` twice);
   - quicksort, one: in `Recurse`, the first continuation calls `rec` and hands it on to the second, which would move it out of the first closure's captures. A closure may run again, so the second continuation gets `clone(rec)`.
-- **One new negative test:** `ReadMoves` is `Read` without the clone. It is rejected because the borrow of the view ends partly moved out.
+- **Negative tests:** `ReadModel` (examples-tour's, K2) is `Read` without the clone, outside model code. K2 rejects it: a view is read at runtime. The D53-only version of it, `ReadMoves`, was rejected because the borrow of the view ends partly moved out; K2 supersedes it, so it is gone. The clones in model code (`Read`, `WithSplit`, `SwapS`) are still needed: model bodies are checked with moves (measured by removing them).
+- **K2, K3 and the A1 fix, merged in.** examples-tour's K2/K3 adds these to 16Arrays: the `unsized abstract` / `abstract` modifiers, `implemented by` on the eight natives and `GetMutB`, reviewer-7's `Suffix`, `TwoParts` and `Rebuild` (rejected by K3), and `ReadIsNth`. They carried over unchanged apart from the `Word` rename. With the A1 fix (generalisation records belong to their [Split] arm, 969e3254), the sibling-arm leak of finding 3 is gone: `AllGeJoin` and `SortedJoin` build their conjunctions with `⟨…⟩`, and `AndI` is deleted.
 - **Proofs: unchanged**, apart from the rename. No proof needed a clone. Statements read places inside erased terms, which copy and see ghosts. Every negative test is still rejected for its original reason.
 
-Sizes after D53, measured as in §10 (lines / tokens; "before" is the D60 version with `Nat`):
+Sizes after D53, K2/K3 and the A1 fix, measured as in §10 (lines / tokens; "before" is the D60 version with `Nat`):
 
 | | before (D60, `Nat`) | after (D53, `Word`) |
 |---|---|---|
 | B2 program | 52 / 739 | 53 / 807 |
 | B2 spec (`AllLe`, `AllGe`, `Sorted`) | 30 / 229 | 30 / 235 |
 | B2 proof: permutation | 83 / 1,424 | 83 / 1,528 |
-| B2 proof: sortedness glue | 296 / 4,252 | 296 / 4,468 |
+| B2 proof: sortedness glue | 296 / 4,252 | 294 / 4,369 (`AndI` gone) |
 | B2 proof: the partition's contract | 392 / 7,205 | 392 / 7,587 |
 | B2 proof: `QSSortedFull`, `QSCorrect` | 9 / 201 | 9 / 201 |
-| **B2 proofs, total** | **780 / 13,082** | **780 / 13,784 (+5%)** |
-| `Index` / `Arrays` / `ArrayLemmas` | 123 / 947; 174 / 1,913; 224 / 2,301 | 135 / 1,102; 174 / 1,971; 224 / 2,360 |
-| `ArrayBench` | 171 / 2,749 | 172 / 3,029 |
-| whole file | 1,563 / 22,775 | 1,577 / 24,358 (+7%) |
+| **B2 proofs, total** | **780 / 13,082** | **778 / 13,685 (+5%)** |
+| `Index` / `Arrays` / `ArrayLemmas` | 123 / 947; 174 / 1,913; 224 / 2,301 | 135 / 1,102; 174 / 2,016; 224 / 2,360 |
+| `ArrayBench` | 171 / 2,749 | 179 / 3,274 (+ the K2/K3 tests) |
+| whole file | 1,563 / 22,775 | 1,582 / 24,549 |
 
-Moves themselves cost one line: `Recurse`'s `let rec2 = clone(rec)`. The other clones sit inside existing expressions. Most of the token growth is notation: `Succ(x)` is four tokens where `S x` was two, `Succ(Zero)` four where `1` was one, and `W(n)` three where a numeral was one. Quicksort's `Word` development (program, spec, proofs) is 863 lines and 14.8k tokens, against Verus's 108 lines and 1.1k tokens: 8 times the lines and 14 times the tokens (13 times before the switch to `Word`). `Quicksort` checks in 0.3–0.5 s with moves on (0.3 s before), and the five blocks in about 0.6 s.
+Moves themselves cost one line: `Recurse`'s `let rec2 = clone(rec)`. The other clones sit inside existing expressions. Most of the token growth is notation: `Succ(x)` is four tokens where `S x` was two, `Succ(Zero)` four where `1` was one, and `W(n)` three where a numeral was one. Quicksort's `Word` development (program, spec, proofs) is 861 lines and 14.7k tokens, against Verus's 108 lines and 1.1k tokens: 8 times the lines and 14 times the tokens (13 times before the switch to `Word`). `Quicksort` checks in 0.3–0.5 s with moves on (0.3 s before), and the five blocks in about 0.6 s.

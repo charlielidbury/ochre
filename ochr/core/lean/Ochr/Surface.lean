@@ -55,6 +55,9 @@ structure SDecl where
   indParams : List (String × STerm) := []                         -- its uniform parameters (v2.0)
   indSort : Option STerm := none                                  -- its sort (default Type₀)
   indCopy : Bool := false                                         -- declared `copy` (D53)
+  indAbstract : Bool := false                                     -- declared `abstract` (K3)
+  indUnsized : Bool := false                                      -- declared `unsized` (K2)
+  implBy : Option String := none                                  -- `implemented by "sym"` (K3)
   expectAccept : Bool
 deriving Inhabited, Repr
 
@@ -329,13 +332,15 @@ def resolveDecl (d : SDecl) : R Item := do
       | none | some (.sort 1) => pure 1
       | some (.sort 0) => pure 0
       | some _ => throw s!"{d.name}: an inductive type is in Prop or Type"
-    return .ind { name := d.name, params := hs.zip ps, sort := sort, ctors := cs', copy := d.indCopy }
+    return .ind { name := d.name, params := hs.zip ps, sort := sort, ctors := cs', copy := d.indCopy,
+                  abstract := d.indAbstract, unsized := d.indUnsized }
   let (ctx', hs, ds) ← binders [] d.params
   let cod ← resolve ctx' true d.ret
   let body ←
     if d.params.isEmpty then resolve [] false d.body
     else resolve ((d.params.reverse.map fun (x, _) => Entry.bound x) ++ [.bound d.name]) false d.body
-  pure (.defn { name := d.name, hs := hs, doms := ds, cod := cod, dec := ← decIndex d.params d.dec, body := body })
+  pure (.defn { name := d.name, hs := hs, doms := ds, cod := cod, dec := ← decIndex d.params d.dec, body := body,
+                implBy := d.implBy })
 
 /-- Resolve a whole program's declarations with its constructor table. -/
 def resolveProgram (p : List SDecl) (d : SDecl) : Except String Item :=

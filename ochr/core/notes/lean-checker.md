@@ -1169,3 +1169,61 @@ I also tried rejecting such matches statically. That is a D55-style check that a
 *Regressions:* `ErasureBySyntax.R9Arms` and `R9Nested` are accepted. fuzz-port's `R9PrePassArms` (`B`, `B6`) is accepted with and without D53.
 
 1030 verdicts.
+
+## 42. D59 refined: η-normal forms at `Unit`
+
+prop-checker found that D59 lost completeness. A stuck call written to return `Unit` returned its sealed program, and conversion had no η, so `P(()) ⊢ P(let c = *x; AddM(&c, 0))` was rejected (`Scratch/D59ConvGap.lean`).
+
+*Refinement (the lead's NbE-standard fix):* values are kept η-normal at `Unit`, and the readback at type `Unit` is `()`.
+- An abstract value of type `Unit` is `()` (`absOf`). This covers `genericValue`, `checkFix`'s parameters and borrowed cells, `convPi`/`convFn`'s generic arguments, and the fuzz harness's parameters.
+- A stuck call whose result has type `Unit` returns `()` (`resultIsUnit`), whether the declared codomain says `Unit` or the type computes to it (`UU(Z)`: `B` in a typed run, otherwise computed at the call). Its effects are in the borrowed places' fills, which are separate, so nothing is lost.
+- A borrowed place of type `Unit` is filled with `()`.
+- `mkEqM`'s `Eq Unit a b ≡ True` and `convFn`'s rule for results at a codomain written `Unit` are deleted. Both sides are now `()`, so both facts follow from reflexivity.
+
+*What flips (default rules):*
+- `ClosingOff.UnitNotConv` ("an abstract `u : Unit` is not `()`") and `ConvUnitWritten` (results at `UU(Z)`) are now accepted: they are true statements.
+- The D59ConvGap statements are in the suite as `StuckResultUnit` and `StuckResultArgs`, accepted.
+- `ConvUnitWrittenAddM` stays rejected, for a D53 reason: `let c = *x` moves `*x` out of the parameter.
+- `Borrows.BadA1` is D19's witness again: with the stuck `Unit` call's result `()`, only D19 catches it. It now joins `V` and `W` in the D19 row.
+
+*Ledger:* the D59 row (switch `unitEta`, completeness) flips `RowI`, `UnitEta`, `UnitEtaUU`, `UnitNotConv`, `ConvUnitRes` and `ConvUnitWritten`, all to rejected. With it off, values are not η-normal at `Unit`, and a call written to return `Unit` returns `()` (the old row). The D19 row gains `BadA1`.
+
+1045 verdicts.
+
+## 43. The array abstraction enforced (K2, K3)
+
+reviewer-7 showed that user code bypassed the array library's natives:
+- `Suffix` returns a borrow of a sub-view;
+- `TwoParts` holds two disjoint borrows without `WithSplit`;
+- `Rebuild` replaces the representation wholesale.
+The paper claims runtime code never owns a sub-array or sees the representation. This implements arrays-library's phase-B K2 and K3 (`notes/arrays-library.md` §11).
+
+*Declarations:*
+- `abstract inductive` (K3), `unsized inductive` (K2), and both together.
+- `def … := b implemented by "sym"`: the checker checks and runs `b`, and the compiler calls `sym`.
+- `copy` is now one of these modifiers too (the syntax takes any sequence of them).
+
+*Model code* never runs at runtime. It is:
+- the body of an `implemented by` function;
+- the body of a *model function*, one that takes or returns an unsized value by value. Runtime code can never hold such a value, so a model function never runs at runtime.
+
+Model functions are read from the declared types syntactically, through type functions' bodies (`Slice(E, n)` is `SliceOf(…)`). No evaluation is involved, so no fresh names are spent. `GDef.model` records it, and `modelDepth` is raised while checking or running model code.
+
+*The rules, at runtime* (not erased, and `modelDepth = 0`):
+- **K3:** an abstract type's constructor (`evalCtor`), or a match whose arms name its constructors (`evalMatchInd`, and `checkTail`'s split), is an error.
+- **K2:** a place whose content has an unsized type (a constructor value, or an abstract value's type) is only borrowed. Reading it (`readPlace`), assigning it (`assignPlace`) or cloning it is an error.
+- In erased positions (types, statements, proofs) the model is unrestricted. Statements go on seeing it (`ReadIsNth`, `GetIs`).
+- *Consequence:* the erasure depth is now tracked with or without D53: a term, a function body, or a proof function's body the pre-pass reads as erased. With moves off it changes nothing else.
+
+*The arrays:*
+- `SliceOf` is `unsized abstract`, and `Cell`, `CellsEnd` and `ArrayOf` are `abstract`.
+- The eight natives, and ArrayBench's `GetMutB`, are `implemented by "ochr_arr_…"`.
+- The case studies needed no other change: their runtime code already went through the natives, and their proofs are erased.
+- reviewer-7's `Suffix`, `TwoParts` and `Rebuild`, plus `ReadModel` (a model function called at runtime), are rejected in ArrayBench. `ReadIsNth` is accepted.
+
+*Tour and ledger:* a new block, `Abstraction` (15BorrowTypes), has a small unsized abstract `View`, a model function, two natives, and runtime code through them. There are two new rows, both class policy (programs true in the model, but not implementable by the compiled representation):
+- K3 (`abstractTypes`): witness `Peek`;
+- K2 (`unsizedTypes`): witness `Take`.
+`Poke` is caught by both.
+
+1059 verdicts: the case studies 358, the tour 701.
