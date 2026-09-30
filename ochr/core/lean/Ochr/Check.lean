@@ -107,7 +107,7 @@ partial def paramNestable (d : IndDecl) (i : Nat) : M Bool := do
     fields.allM fun (_, FT) => posOnly (np - 1 - i) FT
 where
   go (v : Nat) : Term → M Bool
-    | .place (.var j) => pure true
+    | .place (.var _) => pure true
     | .nat | .unit => pure true
     | .tind m as => as.zipIdx.allM fun (a, idx) => do
         if !(a.freeVars.contains v) then return true
@@ -115,6 +115,19 @@ where
         let dm ← lookupInd m
         pure ((← paramNestable dm idx) && (← go v a))
     | t => pure !(t.freeVars.contains v)
+
+/-- K4's nesting condition, for its message: an occurrence of the type being declared `n` at
+a parameter of an inductive that is not nestable there (`paramNestable`), as the inner
+inductive and the parameter's name. -/
+partial def nestViolation (n : String) : Term → M (Option (String × String))
+  | .tind m as => do
+    let dm ← lookupInd m
+    for (a, i) in as.zipIdx do
+      if m != n && a.mentionsType n && !(← paramNestable dm i) then
+        return some (m, (dm.params[i]!).1.name)
+      if let some r ← nestViolation n a then return some r
+    pure none
+  | _ => pure none
 
 /-- D36 (v1.7), with parameters (v2.0, D46), K4 and dependent fields (D64): a field type of
 the inductive `n` (with `np` parameters and, in this constructor, `k` fields) is first-order
@@ -166,6 +179,7 @@ def checkInd (d : IndDecl) : M Unit := do
   let np := d.params.length
   let pnames := (d.params.map (·.1.name)).reverse
   -- D64 [Ind]: a field's type mentions only the parameters and the earlier fields
+  -- rule: [Ind] (the telescope)
   for ((cn, fields), c) in d.ctors.zipIdx do
     for ((fname, FT), i) in fields.zipIdx do
       let late := (d.fieldRefs c FT).filter (· ≥ i)
@@ -191,6 +205,11 @@ def checkInd (d : IndDecl) : M Unit := do
       let (fname, FT) := fields[j]!
       if T.typeHasRef then err s!"field {fname} of {cn}: no borrows inside data"
       if (← sortOf T) > 1 then err s!"field {fname} of {cn}: its type must be in Prop or Type"
+      -- rule: [Ind] (K4's nesting condition)
+      if (← get).cfg.positivity && (← get).cfg.k4Nest then
+        if let some (m, a) ← nestViolation n FT then
+          err s!"field {fname} of {cn} : {FT.pp names}: {n} occurs at the parameter {a} of {m}, which {m} passes to a type function (one may use its argument negatively): not strictly positive (K4, D36)"
+      -- rule: [Ind] (D36, K4)
       if (← get).cfg.positivity && !(← firstOrderTerm n np fields.length FT) then
         err s!"field {fname} of {cn} : {FT.pp names}: fields are first-order data (inductive types, Nat, Unit, ×, earlier type functions) or parameters, D36"
       -- K4: a type function's result is first-order data too (at the generic telescope)

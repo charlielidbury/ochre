@@ -26,6 +26,13 @@ structure Report where
   rows : List Row
 
 def Report.allAsExpected (r : Report) : Bool := r.rows.all Row.asExpected
+
+/-- Each named declaration is rejected with a message that starts as given (the reason, not
+only the verdict). -/
+def Report.rejectedWith (r : Report) (exp : List (String × String)) : Bool :=
+  exp.all fun (n, pre) => match r.rows.find? (·.name == n) with
+    | some { verdict := .rejected m, .. } => pre.isPrefixOf m
+    | _ => false
 def Report.count (r : Report) : Nat := r.rows.length
 def Report.passed (r : Report) : Nat := (r.rows.filter Row.asExpected).length
 

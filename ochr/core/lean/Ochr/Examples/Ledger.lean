@@ -142,7 +142,8 @@ open Ochr.Registry in
    "Positivity.bad:accepted", "Positivity.Boom:accepted", "PositivityParams.Bad:accepted",
    "PositivityParams.L:accepted", "PositivityParams.K:accepted", "PositivityParams.bad:accepted",
    "PositivityParams.Boom:accepted", "PositivityParams.Neg:accepted", "PositivityPaper.Bad:accepted",
-   "PositivityPaper.L:accepted", "PositivityPaper.Bad4:accepted"]
+   "PositivityPaper.L:accepted", "PositivityPaper.Bad4:accepted", "DepFields.Bad:accepted", "DepFields.L:accepted", "DepFields.K:accepted", "DepFields.bad:accepted",
+   "DepFields.Boom2:accepted", "DepFields.NegBox:accepted"]
 open Ochr.Registry in
 #guard rowOk { globalRecords := false }
   ["GlobalRecords.Esc:accepted", "GlobalRecords.Bad5:accepted"]
@@ -174,7 +175,7 @@ open Ochr.Registry in
    "Owners.IdThroughRet:rejected", "Snapshots.CapS:rejected", "Snapshots.CapSId:rejected",
    "Snapshots.CapPi:rejected", "Snapshots.CapP:rejected", "Snapshots.CapP2:rejected",
    "Snapshots.CapOf:rejected", "Snapshots.UseCapOf:rejected", "RenormPi.InPi:rejected",
-   "RenormPi.InConj:rejected", "ArmLocal.JoinS:rejected", "ArmLocal.AllGe:rejected", "ArmLocal.Leak:rejected"]
+   "RenormPi.InConj:rejected", "ArmLocal.JoinS:rejected", "ArmLocal.AllGe:rejected", "ArmLocal.Leak:rejected", "DepFields.UseEx:rejected"]
 -- `genPlaceType` changes no verdict; 08CaseSplits.lean asserts its effect on the generalised σ's type
 -- v2.0 D45 by type, switched off: a match on a proof inspects its content (⋆) like data: completeness only
 open Ochr.Registry in
@@ -189,7 +190,7 @@ open Ochr.Registry in
    "Destructuring.DAnd:rejected", "Destructuring.DAnd3:rejected", "Destructuring.DNested:rejected",
    "Destructuring.DWild:rejected", "Destructuring.DCallField:rejected", "Destructuring.DTerm:rejected",
    "Subsingletons.OrComm:rejected", "Subsingletons.OrElim:rejected", "Subsingletons.OrLet:rejected",
-   "Subsingletons.SqTrue:rejected", "Subsingletons.SqSplit:rejected", "ErasureBySyntax.R8Field:rejected"]
+   "Subsingletons.SqTrue:rejected", "Subsingletons.SqSplit:rejected", "ErasureBySyntax.R8Field:rejected", "DepFields.UseEx:rejected"]
 -- v2.0 D45 subsingleton elimination, switched off: large elimination from Or and Sq is accepted (IsL, Get have no
 -- model; OrLie is Eq Bool tt ff in the model), but no closed False: D42 erases the constructor it would inspect
 open Ochr.Registry in
@@ -200,7 +201,7 @@ open Ochr.Registry in
 open Ochr.Registry in
 #guard rowOk { propValues := false }
   ["Subsingletons.OrComm:rejected", "Subsingletons.SqTrue:rejected", "Subsingletons.SqSplit:rejected",
-   "Erasure.LieP2:rejected", "ErasureBySyntax.R8Field:rejected"]
+   "Erasure.LieP2:rejected", "ErasureBySyntax.R8Field:rejected", "DepFields.UseEx:rejected"]
 -- both off: the closed proofs of False (Subsingletons.Boom, SqBoom) go through
 open Ochr.Registry in
 #guard rowOk { subsingleton := false, propValues := false }
@@ -214,13 +215,13 @@ open Ochr.Registry in
    "Equality.NotAdd01:rejected", "Equality.WriteNeq:rejected", "Equality.WriteDisj:rejected",
    "Equality.NoConf:rejected", "Equality.NoConfS:rejected", "Equality.NoConfMatch:rejected",
    "Equality.NoConfBack:rejected", "Equality.BoolDisj:rejected", "RenormPi.Plain:rejected",
-   "RenormPi.InPi:rejected", "RenormPi.InConj:rejected", "Splitting.PickTwo:rejected"]
+   "RenormPi.InPi:rejected", "RenormPi.InConj:rejected", "Splitting.PickTwo:rejected", "DepFields.Absurd:rejected"]
 -- v2.1 D52 switched off: equal constructors are not taken apart in Eq, so programs that
 -- need an equation between successors or pairs taken apart are rejected (completeness)
 open Ochr.Registry in
 #guard rowOk { injective := false }
   ["Equality.Inj:rejected", "Equality.PairInj:rejected", "Recursion.AddZeroCopy:rejected",
-   "Recursion.InjStep:rejected", "CurrentState.AddSubIdReborrow:rejected"]
+   "Recursion.InjStep:rejected", "CurrentState.AddSubIdReborrow:rejected", "DepFields.InjSame:rejected"]
 -- finding (v2.0 round): v1.9 assumed a data match's scrutinee type from its arms
 open Ochr.Registry in
 #guard rowOk { scrutTyped := false }
@@ -247,7 +248,7 @@ open Ochr.Registry in
 -- D49 (3) switched off: a data field of a matched proof is ⋆, and cannot be split
 open Ochr.Registry in
 #guard rowOk { proofDataFields := false }
-  ["Subsingletons.SqSplit:rejected", "ErasureBySyntax.R8Field:rejected"]
+  ["Subsingletons.SqSplit:rejected", "ErasureBySyntax.R8Field:rejected", "DepFields.UseEx:rejected"]
 -- D50 switched off (normalising unit laws, as v2.0 was first built): True ∧ P loses its And
 open Ochr.Registry in
 #guard rowOk { unitNorm := true }
@@ -314,6 +315,39 @@ open Ochr.Registry in
 #guard rowOk { unitEta := false }
   ["ClosingOff.RowI:rejected", "ClosingOff.UnitEta:rejected", "ClosingOff.UnitEtaUU:rejected",
    "ClosingOff.ConvUnitRes:rejected"]
+
+-- D64 [Repack] switched off: a value left open (its length changed, its array not) is returned,
+-- read, passed and observed as if it were of its type; `Absurd`, true of every packed `V`, then
+-- proves `Boom : False` from the lie's result
+open Ochr.Registry in
+#guard rowOk { repack := false }
+  ["DepFields.LieV:accepted", "DepFields.ReadBroken:accepted", "DepFields.PassBroken:accepted",
+   "DepFields.PassBrokenVar:accepted", "DepFields.IdBroken:accepted", "DepFields.IdMakesBroken:accepted",
+   "DepFields.Broken:accepted", "DepFields.Boom:accepted"]
+-- D64's restriction of injectivity switched off: `Eq V (MkV(a, x)) (MkV(b, y))` decomposes into
+-- `Eq Word a b ∧ Eq (Fin1(a)) x y`, whose second equation is between values of two types (`y :
+-- Fin1(b)`). No closed proof of False found: the index equation is a conjunct, so in every closed
+-- instance where the types differ the conjunction is already False (the heterogeneous reading is
+-- John Major equality, which the proof-irrelevant set model validates). A fail-safe, so the row
+-- is policy: `InjLen` (true, and provable by `cong VN h`) is accepted, and `cong`, which needs
+-- an equation, no longer applies
+open Ochr.Registry in
+#guard rowOk { depInj := false }
+  ["DepFields.InjLen:accepted", "DepFields.InjLenCong:rejected"]
+-- K4 switched off: a field type may not call a type function, so no dependent field can be written
+open Ochr.Registry in
+#guard rowOk { k4 := false }
+  ["DepFields.V:rejected", "DepFields.VN:rejected", "DepFields.One1:rejected", "DepFields.Refill:rejected",
+   "DepFields.RefillRev:rejected", "DepFields.Nop:rejected", "DepFields.Absurd:rejected",
+   "DepFields.InjSame:rejected", "DepFields.InjLenCong:rejected", "DepFields.Pos:rejected",
+   "DepFields.Grow:rejected", "DepFields.ExSucc:rejected", "DepFields.ExOne:rejected",
+   "DepFields.UseEx:rejected", "DepFields.NBox:rejected"]
+-- K4's nesting condition switched off: `Bad` nests itself in `NBox`, which passes its parameter to
+-- `NegIf`, a function type at 1, and the D36 attack goes through (`Boom2 : False`)
+open Ochr.Registry in
+#guard rowOk { k4Nest := false }
+  ["DepFields.Bad:accepted", "DepFields.L:accepted", "DepFields.K:accepted", "DepFields.bad:accepted",
+   "DepFields.Boom2:accepted"]
 
 -- every row of `switches` has a class
 open Ochr.Registry in

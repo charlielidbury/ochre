@@ -1171,3 +1171,32 @@ I also tried rejecting such matches statically. That is a D55-style check that a
 *Regressions:* `ErasureBySyntax.R9Arms` and `R9Nested` are accepted. fuzz-port's `R9PrePassArms` (`B`, `B6`) is accepted with and without D53.
 
 1030 verdicts.
+
+## 42. Dependent fields (D64, docs/06; dep-fields)
+
+A field's type may mention the fields before it: `Vec(E) := MkVec(n : Word, items : Array(E, n))`. Built from docs/06 at 51cc6ef5 (open/repack, which replaced the [Frozen] draft). Tests: `Ochr/Examples/18DependentFields.lean`, block `DepFields` (43, in the ledger) and case study `DepVec` (44). Rejections assert their messages (`Report.rejectedWith`).
+
+- *Representation.* A constructor's fields are in scope in its field types, after the parameters: the parameters are still `var 0 …`, and field `j` of `k` is `var (np + k - 1 - j)`. A field type that mentions no field reads exactly as before, so nothing that reads parameter variables in field types changed.
+- *[Ind].* A field type may mention only the earlier fields ("[Ind] field x of MkBT: its type mentions n, which is not an earlier field"). The field types are checked at generic parameters and generic earlier fields (`fieldTele`, which binds each field once its type is known).
+- *Rule 2.* A field place's type is computed from the parent's current field contents (`depFieldType`). [Split] mints `σ₁`, then `σ₂ : T₂[σ₁]`. [T-Ctor] checks each argument at the earlier arguments' values. A match on a proof binds every field of a dependent constructor as a local, so an existential's proof field is typed by its witness (`UseEx`).
+- *[Open]/[Repack].*
+  - While a value is open, a dependent field is typed by what it holds.
+  - Assigning such a data field is a strong update.
+  - A proof is `⋆` and carries no type, so it cannot be repacked by its content. A write or borrow through an index field therefore makes the proof fields whose types mention it `⊥`. Reading one is "[Open] … invalidated"; assigning one is checked at once.
+  - [Repack] walks every dependent constructor value inside a value at the whole-again points of the checked program. Untyped runs don't re-check (see the rule text).
+  - The user's `*v.0 := 2; *v.1 := [0,1]` is accepted in both orders (`SetTwo`, `SetTwoRev`), and so is pushing in place with either field first.
+- *Injectivity.* `mkEqM` takes a dependent constructor apart only while its index fields are convertible on both sides.
+- *K4 (a finding).* docs/06's own acceptance programs need `Array(E, n)` as a field type, which is a call, and D36 rejected calls. arrays-library §3 said K4 leaves positivity unaffected. It does not: `NBox(A) := MkNBox(f : Neg(A))` then `Bad := MkBad(b : NBox(Bad))` is D36's attack, and a closed `Boom : False` goes through with only `NBox` admitted (`Scratch/K4Positivity.lean`). K4 is built with a nesting condition: a parameter that an inductive passes to a type function is not nestable. A call field that computes to a Π-type at the generic telescope is rejected too. A type function that is a Π only at some index (`NegIf(1, A)`) still passes that second check, and the nesting condition is what stops it (`DepFields.Bad`).
+- *Ledger.* Four new rows:
+  - `repack`: soundness. The length lie `LieV` is accepted and `Boom : False` follows from `Absurd`, which is true of every packed `V`.
+  - `depInj`: policy. `InjLen` is accepted. No closed False was found: the index equation is a conjunct, so the heterogeneous second equation only matters where it is already implied (John Major equality in the set model).
+  - `k4`: completeness.
+  - `k4Nest`: soundness, `Boom2`.
+  - Seven existing rows gain `DepFields` flips: D36, capTypes, D45 by type, D42, D47, D52, D49 (3).
+- *Also changed.* [Assign] passes the place's type as a hint to a constructor or embedded value. That is how an inert loan in a fill's `*r := loan_k` gets typed when a vector holding an element borrow's fill is repacked (`VGetMut`).
+- *Not done.*
+  - The fuzzer family for index-field writes (docs/06 acceptance).
+  - D62's on-demand one-arm split (rule-audit's lane). Until it lands, a bound is written against `VLen(Word, *v)` rather than `(*v).n`.
+  - Proof fields that change in place beyond `Pos`/`Grow` (docs/06's second milestone).
+
+1145 verdicts.

@@ -16,6 +16,7 @@ import Ochr.Examples.«14Universes»
 import Ochr.Examples.«15BorrowTypes»
 import Ochr.Examples.«16Arrays»
 import Ochr.Examples.«17HashMap»
+import Ochr.Examples.«18DependentFields»
 import Ochr.Examples.Units
 
 /-! # Every example program, for the test runner and the counterfactual ledger
@@ -38,7 +39,8 @@ def programs : List (String × Block) :=
    ("PolyLists", PolyLists), ("Positivity", Positivity), ("PositivityParams", PositivityParams),
    ("PositivityPaper", PositivityPaper), ("Propositions", Propositions), ("Destructuring", Destructuring),
    ("Subsingletons", Subsingletons), ("CurrentState", CurrentState), ("Erasure", Erasure),
-   ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("BorrowTypes", BorrowTypes)]
+   ("ErasureBySyntax", ErasureBySyntax), ("Universes", Universes), ("Sorts", Sorts), ("BorrowTypes", BorrowTypes),
+   ("DepFields", DepFields)]
 
 /-- Case studies (`16Arrays`, `17HashMap`): checked and counted with the tour, and timed by `lake exe
 tests`, but not re-run by the counterfactual ledger, which is about the rules. A case study's
@@ -49,7 +51,8 @@ would re-check them twice; their flips are measured once instead, by
 def caseStudies : List (String × Block) :=
   [("Index", Index), ("Arrays", Arrays), ("ArrayLemmas", ArrayLemmas), ("ArrayBench", ArrayBench),
    ("Quicksort", Quicksort),
-   ("HashMap", HashMap), ("HashMapLookup", HashMapLookup), ("HashMapLength", HashMapLength), ("HashMapResize", HashMapResize)]
+   ("HashMap", HashMap), ("HashMapLookup", HashMapLookup), ("HashMapLength", HashMapLength), ("HashMapResize", HashMapResize),
+   ("DepVec", DepVec)]
 
 def reports (cfg : Config := {}) (fuel : Nat := 2000000) : List Report :=
   (programs ++ caseStudies).map fun (n, p) => run n p cfg fuel
@@ -118,7 +121,11 @@ def switches : List (String × Config) :=
    ("D53: a runtime read of data whose type is not a copy type moves it", { moves := false }),
    ("D53 (c): a move leaves a ghost that erased terms still read", { ghosts := false }),
    ("D53 (e): the Fn rule (a call does not consume its function; closure bodies do not move their captures)", { fnRule := false }),
-   ("D59: η for Unit (any two values of Unit are equal; [Close] has no Unit row)", { unitEta := false })]
+   ("D59: η for Unit (any two values of Unit are equal; [Close] has no Unit row)", { unitEta := false }),
+   ("D64 [Repack]: a value of a dependent type is of its telescope again at every whole-again point", { repack := false }),
+   ("D64 (D52 restricted): Eq takes a dependent constructor apart only while its index fields are convertible", { depInj := false }),
+   ("K4: a field type may call an earlier type function", { k4 := false }),
+   ("K4's nesting condition: no nesting at a parameter passed to a type function", { k4Nest := false })]
 
 
 /-- The class of each ledger row, in the order of `switches` (reviewer-3's request):
@@ -184,12 +191,16 @@ def rowClass : List (String × List String) :=
    ("cost", ["Moves.TwiceNat", "Moves.ClosureMovesCapture"]),
    ("completeness", []),
    ("completeness", []),
-   ("completeness", [])]
+   ("completeness", []),
+   ("soundness", ["DepFields.Boom"]),
+   ("policy", ["DepFields.InjLen"]),
+   ("completeness", []),
+   ("soundness", ["DepFields.Boom2"])]
 
 end Ochr.Registry
 
 /-- The total number of verdict assertions; a truncated example file changes it. -/
-def Ochr.Registry.expectedTotal : Nat := 1058
+def Ochr.Registry.expectedTotal : Nat := 1145
 
 open Ochr.Registry Ochr.Test in
 #guard ((reports {}).map Report.count).foldl (· + ·) 0 == expectedTotal
