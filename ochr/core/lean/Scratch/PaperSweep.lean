@@ -45,18 +45,18 @@ ochr SweepClear uses Std {
 }
 #eval IO.println (run "SweepClear" SweepClear).show
 ochr SweepHM uses Std, HashMap, HashMapLookup {
-  -- impl.typ:56
+  -- impl.typ:55
   def InsertFindOtherP (hm : &HashMap) (k : Word) (v : Nat) (k2 : Word) (h : Eq Bool (EqB(k, k2)) false) : Id Opt (InsertNoResize(&*hm, k, v); Find(*hm, k2)) (let r = Find(*hm, k2); InsertNoResize(&*hm, k, v); r) := match *hm { HM(n, len, slots) => split BInsert in SlotInsertFindOther(&slots, Idx(k, n), Idx(k2, n), k, v, k2, h) }
 }
 #eval IO.println (run "SweepHM" SweepHM).show
 ochr SweepQS uses Quicksort {
-  -- impl.typ:77
+  -- impl.typ:76
   def QSCorrectP (n : Word) (s : &Slice(Word, n)) (q : Word) : (let c = *s; QS(n, n, &c); Sorted(n, c)) ∧ (let old = *s; Eq Word (Count(q, n, (QS(n, n, &*s); *s))) (Count(q, n, old))) := ⟨QSSortedFull(n, n, s, LeRefl(n)), QSPerm(n, n, s, q)⟩
 }
 #eval IO.println (run "SweepQS" SweepQS).show
 ochr SweepApp1 {
   -- appendix.typ:558
-  def U (n : Nat) : Type := match n { Z => Prop, S _ => Prop }
+  def U (n : Nat) : Type₁ := match n { Z => Prop, S _ => Prop }
   -- appendix.typ:558
   def V (n : Nat) : U(n) := match n { Z => ⊤, S _ => ⊤ }
   -- appendix.typ:558
