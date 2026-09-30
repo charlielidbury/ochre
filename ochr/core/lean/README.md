@@ -82,20 +82,20 @@ Read in order, the numbered files teach the whole language; the order follows RU
 | `03ReturnedBorrows` | functions returning a borrow (`TailM`); a returned borrow must come from a borrow argument (D44) | §1, §3 [Close] | 20 |
 | `04ClosingOff` | stuck calls and matches, sealed programs, a borrow chosen by a branch, what a stuck match captures, [Close]'s rows and η for `Unit` (D59), typing a sealed program; closures inside a stuck block; naturality up to resolution | §3 | 47 |
 | `05Equality` | `Id` and `Eq`: observation, footprints, disjointness, injectivity (pairs included), `J` and its stuck casts (D56); `rewrite h in t` (D60); all owners of a returned borrow are observed (D18), in the order the sides reach them | §4 | 65 |
-| `06Snapshots` | types and closures are formed once; what a closure or Π-type captures (values, never borrows; capturing ends a live borrow; a Π-type formed by a call keeps its captured proofs' types) | P2, §1, §5 | 24 |
+| `06Snapshots` | types and closures are formed once; what a closure or Π-type captures (values, never borrows; capturing ends a live borrow; a Π-type formed by a call keeps its captured proofs' types) | P2, §1, §5 | 27 |
 | `07Recursion` | `by x`, entry-value recursion, induction hypotheses in the caller's environment; typing a sealed program keeps the [Rec] state | §5 [Def], [Rec] | 29 |
 | `08CaseSplits` | [Split], dependent matching on a computed type, generalising sealed programs, `split f` on a result the goal is stuck on (D61), scrutinee types, global generalisation records, a refinement belongs to its arm, re-normalising inside Π-types | §5 [Split] | 63 |
-| `09Functions` | opaque functions, closures, Π-types, comparing functions by observation (D30, D38, D48 (3)); a function type's class and row (D54) | P1, §1, §4 | 58 |
+| `09Functions` | opaque functions, closures, Π-types, comparing functions by observation (D30, D38, D48 (3)); a function type's class and row (D54) | P1, §1, §4 | 63 |
 | `10Inductives` | lists, binary search trees (keys are `Word`s) (and the paper's trees, whose pure insert runs the in-place one), parameters, strict positivity | §8 | 78 |
 | `11Propositions` | `False`, `True`, `And`, matching on proofs by type, a stuck zero-arm match (D58), destructuring `let` (D60), subsingleton elimination | §1, §8 | 76 |
-| `12CurrentState` | proofs about the current, mutated state (E5) | §7 | 14 |
+| `12CurrentState` | proofs about the current, mutated state (E5) | §7 | 16 |
 | `13Erasure` | erased terms run on a private copy, confinement, erasure decided by syntax (the pre-pass) | P2 | 66 |
 | `14Universes` | `Prop : Type`, no `Type : Type`, no cumulativity, why `&Type` is refused; sorts are syntactic (D55, reviewer-4's programs) | preamble, P2 | 25 |
 | `15BorrowTypes` | what may be borrowed and where `&` may appear (D48) | §1 | 16 |
 | `16Arrays` | case study: arrays as a library (slices, indices), its lemmas and benchmarks, and in-place quicksort proved sorted and a permutation (`notes/arrays-library.md`) | all | 167 |
 | `17HashMap` | case study: Aeneas's resizing hash map, its lookups, length, invariant, resizing and load factor, proved about the in-place code; keys and sizes are `Word`s (`notes/hashmap-case-study.md`) | all | 188 |
 
-1045 declarations in all, the `Prelude`'s 4 and the case studies' 355 included. D53 (reads of non-copy data move) applies everywhere except the arrays library and quicksort, which were written before it and are checked without it (reads copy) until they are adapted: `Ochr.Test.preD53` lists their blocks. The hash map checks with it. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
+1055 declarations in all, the `Prelude`'s 4 and the case studies' 355 included. D53 (reads of non-copy data move) applies everywhere except the arrays library and quicksort, which were written before it and are checked without it (reads copy) until they are adapted: `Ochr.Test.preD53` lists their blocks. The hash map checks with it. `notes/lean-checker.md` §17 maps the old file and program names (`E1`, `V17.LieL`, `Attacks.Knot`, …) to these.
 
 ## Rule → function
 

@@ -121,6 +121,24 @@ ochr Snapshots uses Std {
   def CapAfterBorrow :
       Id Nat (let a = 0; let r = &a; *r := 1; let f = (λ(y : Nat) : Nat => a); f(0)) 1 := refl
 
+  -- A closure that assigns a captured variable assigns its own copy, afresh at each call, so
+  -- calling twice a closure that increments its capture gives the same result twice (paper
+  -- §4.3), where Rust's `FnMut` would accumulate.
+  def CapAssign :
+      Id (Nat × Nat) (let n = 0; let f = (λ(u : Unit) : Nat => (n := S (clone(n)); clone(n))); (f(()), f(()))) (1, 1) := (
+    refl
+  )
+
+  reject def CapAssignAcc :
+      Id (Nat × Nat) (let n = 0; let f = (λ(u : Unit) : Nat => (n := S (clone(n)); clone(n))); (f(()), f(()))) (1, 2) := (
+    refl
+  )
+
+  def CapAssignRun (n : Nat) : Nat × Nat := (
+    let f = (λ(u : Unit) : Nat => (n := S (clone(n)); clone(n)));
+    (f(()), f(()))
+  )
+
   -- A borrow variable whose borrow was moved out holds nothing to capture.
   reject def CapMoved (x : &Nat) : Nat := (
     let y = x;
@@ -161,4 +179,4 @@ ochr Snapshots uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Snapshots" Snapshots).allAsExpected
-#guard (run "Snapshots" Snapshots).count == 24
+#guard (run "Snapshots" Snapshots).count == 27

@@ -76,6 +76,18 @@ ochr CurrentState uses Std {
     SubM(x, old, LeAdd(old, y))
   )
 
+  -- `LeAdd` is also the idiom for a postcondition (paper §2): what an in-place function
+  -- leaves behind is stated by running it on a copy inside the statement ...
+  def PostCopy (x : &Nat) (y : Nat) : Le(*x, (let c = *x; AddM(&c, y); c)) := LeAdd(*x, y)
+
+  -- ... since a type is formed before the body runs: here `Le(*x, *x)` is about the entry
+  -- value, and the proof about the value `AddM` leaves does not match it.
+  reject def PostInBody (x : &Nat) (y : Nat) : Le(*x, *x) := (
+    let old = clone(*x);
+    AddM(&*x, y);
+    LeAdd(old, y)
+  )
+
   -- ... it is not about `S old` ...
   reject def AddSubWrong (x : &Nat) (y : Nat) : Unit := (
     let old = clone(*x);
@@ -117,4 +129,4 @@ ochr CurrentState uses Std {
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "CurrentState" CurrentState).allAsExpected
-#guard (run "CurrentState" CurrentState).count == 14
+#guard (run "CurrentState" CurrentState).count == 16
