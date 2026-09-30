@@ -1,6 +1,6 @@
 # hashmap / aeneas: maintainer notes
 
-The `aeneas` condition of the hashmap assignment (`../SPEC.md`, protocol in `../../README.md`). The assessed agent reads `ASSIGNMENT.md`; this file is for whoever maintains or runs the package, and is not copied into a sandbox.
+The `aeneas` condition of the hashmap assignment (generic in the value type `V`) (`../SPEC.md`, protocol in `../../README.md`). The assessed agent reads `ASSIGNMENT.md`; this file is for whoever maintains or runs the package, and is not copied into a sandbox.
 
 ## Pins
 
@@ -56,7 +56,9 @@ Validated on 2026-09-30: a sandbox built by `make-sandbox.sh` grades on its own 
 
 ## Fairness notes for this condition
 
-- `get_mut` returns `&mut u64` and panics on an absent key, as the design requires (Ochr cannot return a borrow inside an `Option`). Aeneas handles `Option<&mut u64>` well, so the natural Rust API would differ; the panicking version costs Aeneas nothing extra (the precondition simply rules out the `fail` branch).
+- The map is generic in its value type `V` (no trait bounds), per the SPEC since 2adc7147. `get` returns `Option<&V>`, whose model is `Result (Option V)` (a shared borrow translates to its value), so no `Clone` is involved; `insert` and `remove` move the old value out; `new` takes `V` explicitly in the model (`HashMap.new V c`). Every statement is quantified over `{V : Type}`, and `Inv` is `{V : Type} → HashMap V → Prop`.
+- Generic values make the task closer to Aeneas's own published case study, `HashMap<T>` in `tests/src/hashmap.rs` with proofs in `tests/lean/Hashmap/` (which has resizing, `Option<&mut T>` for `get_mut` and a `usize`-keyed hash). Those proofs are outside every sandbox (the exclusion check greps for its definition names), but a model may remember them; `ochr/docs/05` records this as a threat to validity.
+- `get_mut` returns `&mut V` and panics on an absent key, as the design requires (Ochr cannot return a borrow inside an `Option`). Aeneas handles `Option<&mut V>` well, so the natural Rust API would differ; the panicking version costs Aeneas nothing extra (the precondition simply rules out the `fail` branch).
 - `new` takes `cap: usize`, not `u64`. Aeneas models `usize` with a platform width of 32 or 64 bits, so with `u64` the model's `Vec` could not hold `cap` buckets for every `cap`, and H1/H4/H11 would need an extra hypothesis `cap ≤ usize::MAX`, which the SPEC does not allow. `usize` is also the idiomatic Rust type for a capacity. `bucket_index` casts `cap` to `u64` (exact) and the remainder back to `usize` (exact, since it is below `cap`).
 - `len` is a `u64` field, so `insert` can overflow; the SPEC's allowance `len(m) < 2⁶⁴ − 1` is the hypothesis `hlen` on H2, H5–H7, H12, H14, H15. H16 is stated without it (and without running `insert`), which is stronger than the SPEC.
 - Aeneas renames the method `len` to `HashMap.impl.len`, because `HashMap.len` is the field's projection. The statements use the generated name; ASSIGNMENT.md explains it.

@@ -8,7 +8,7 @@
 
 *Borrows stored in data.* Borrow types never occur inside other types, which rules out an iterator `IterM : &(List Nat) → List (&Nat)`: the number of borrows it returns is unknown on symbolic input, so no fixed set of holes can stand for their final values. The natural generalisation is a hole for a whole structure of final values, the neutral form of an Aeneas region abstraction with a borrow projector. A fixed number of returned borrows is easier, and would give `split_at_mut`.
 
-*Other directions.* A generic `&A` for `A : Type₀`, which might be a universe or a proposition, needs a universe of data types below `Type₀`. A shared borrow needs no sealed program of its own, since its final value is its initial one, but its interaction with mutable borrows through reborrowing and two-phase borrows is not designed. A loop would be a tail-recursive local function whose type is its invariant. Global state, interior mutability and unsafe aliasing would each break the frame property, and would have to be confined behind interfaces. With indexed families, `Eq` could be declared rather than built in.
+*Other directions.* A shared borrow needs no sealed program of its own, since its final value is its initial one, but its interaction with mutable borrows through reborrowing and two-phase borrows is not designed. A loop would be a tail-recursive local function whose type is its invariant. Global state, interior mutability and unsafe aliasing would each break the frame property, and would have to be confined behind interfaces. With indexed families, `Eq` could be declared rather than built in.
 
 == The checked machine and the compiled program
 

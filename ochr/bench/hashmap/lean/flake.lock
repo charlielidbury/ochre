@@ -1,0 +1,112 @@
+{
+  "nodes": {
+    "flake-utils": {
+      "inputs": {
+        "systems": "systems"
+      },
+      "locked": {
+        "lastModified": 1731533236,
+        "narHash": "sha256-l0KFg5HjrsfsO/JpG+r7fRrqm12kzFHyUHqHCVpMMbI=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "11707dc2f618dd54ca8739b309ec4fc024de578b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
+    "fpil": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1786649468,
+        "narHash": "sha256-AOUU/lZokjSPHf3GrcYbO25rsGwBCo+GlMqufDFwmFU=",
+        "owner": "leanprover",
+        "repo": "fp-lean",
+        "rev": "0abeea545d560a324e2561f7210fbd6ed154fa02",
+        "type": "github"
+      },
+      "original": {
+        "owner": "leanprover",
+        "repo": "fp-lean",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1790689126,
+        "narHash": "sha256-ilerN1WLSvF+HMjziC/Wv99J5y02maDH+6hZPwsORKg=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "b4fd65b198c599cbe814fcb9f42d25d021595ec9",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "reference-manual": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1790555546,
+        "narHash": "sha256-a8LWjGE1VMZDlB7h+YMmrreyHOn63KBquRi4pPBE3I0=",
+        "owner": "leanprover",
+        "repo": "reference-manual",
+        "rev": "4f677697f1f86b7ea817746eba00d339e9f59d68",
+        "type": "github"
+      },
+      "original": {
+        "owner": "leanprover",
+        "repo": "reference-manual",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "flake-utils": "flake-utils",
+        "fpil": "fpil",
+        "nixpkgs": "nixpkgs",
+        "reference-manual": "reference-manual",
+        "tpil": "tpil"
+      }
+    },
+    "systems": {
+      "locked": {
+        "lastModified": 1681028828,
+        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
+        "owner": "nix-systems",
+        "repo": "default",
+        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-systems",
+        "repo": "default",
+        "type": "github"
+      }
+    },
+    "tpil": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1786681769,
+        "narHash": "sha256-SPe+vbLDq9j5pcbPR414SDL3bXvSaPw2572nTKm2qXU=",
+        "owner": "leanprover",
+        "repo": "theorem_proving_in_lean4",
+        "rev": "4e28129fdd58037f8f5857548d5e99fe4fb0cc57",
+        "type": "github"
+      },
+      "original": {
+        "owner": "leanprover",
+        "repo": "theorem_proving_in_lean4",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
