@@ -162,13 +162,20 @@ ochr Equality uses Std {
   -- there is an error ([Erase-err]; D63, rule-audit item 6). The earlier checker ran it in
   -- place, with copying reads.
   reject def JMotiveConf (x : Nat) : Nat := J(Nat, 0, 0, (x := 5; λ(z : Nat) : Type => Nat), refl, 7)
+
+  -- `Id` computes the same way wherever it is evaluated ([Obs] is stated with the typing
+  -- judgement): built in a function's body, run by the machine, its side's stuck match is
+  -- closed off as a block, as when the same `Id` is formed directly (D63, rule-audit item 9).
+  -- The earlier checker observed untyped there, so `FId(n, x)` was the stuck ⌈FId(σ0, σ1)⌉.
+  def FId (n : Nat) (x : Nat) : Prop := Id Nat (match n { Z => x, S _ => x }) x
+  def Conv1 (n : Nat) (x : Nat) (h : Id Nat (match n { Z => x, S _ => x }) x) : FId(n, x) := h
 }
 
 #eval IO.println (run "Equality" Equality).show
 
 -- every verdict as expected, and the exact number of declarations (a truncated file changes it)
 #guard (run "Equality" Equality).allAsExpected
-#guard (run "Equality" Equality).count == 34
+#guard (run "Equality" Equality).count == 36
 
 /-! ## Rewriting
 

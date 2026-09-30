@@ -140,6 +140,7 @@ structure Config where
   disjoint : Bool := true        -- v2.0 D47: `Eq D (C ā) (C' b̄) ≡ False` for distinct constructors C ≠ C'
   scrutTyped : Bool := true      -- finding (v2.0 round): a match's scrutinee must have the constructors' type
   armsAgree : Bool := true       -- D63: a match whose arms disagree about being proofs has no declared type (off: the arm that runs decides)
+  typedObs : Bool := true        -- D63: [Id] observes with the typing judgement in untyped runs too (off: a stuck side is stuck)
   blockRefCapture : Bool := false -- ON is the counterfactual: a closure in a stuck block captures through the block's
                                   -- borrow parameter (fuzz-port R2 (ii)); D63 follows [Fix], which captures no borrow
   refData : Bool := true         -- D48 (1): `&A` only for a data type A (never a universe, Π-type or proposition)
