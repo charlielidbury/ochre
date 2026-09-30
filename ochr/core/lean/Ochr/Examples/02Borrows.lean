@@ -293,6 +293,16 @@ ochr Moves uses Std {
   reject def P1 (x0 : &Nat) : Unit := (let a3 = *x0; G1(x0, a3))
   reject def P2 (x1 : &Nat) : Unit := ((let a0 = *x1; match a0 { Z => (), S _ => F5(x1); () }); ())
   def TakeRefill (x : &Nat) : Unit := (let v = *x; Refill(x, v))
+  -- reviewer-7's attacks (§4.1): a borrow moved whole, or partly, out of before a call that
+  -- closes off; `Thm1` was a false equation about an accepted program (`FullMove(&3, 0)`
+  -- errs when run)
+  def H (x : &Nat) (n : Nat) : Unit := (match n { Z => (), S _ => match *x { Z => (), S q => *x := q } })
+  reject def FullMove (x : &Nat) (n : Nat) : Nat := (let v = *x; H(x, n); v)
+  reject def PartMove (x : &Nat) (n : Nat) : Unit := (match *x { Z => (), S p => (let v = p; H(x, n)) })
+  reject def PartMoveOpaque (g : Π(y : &Nat). Unit) (x : &Nat) : Unit := (
+    match *x { Z => (), S p => (let v = p; g(x)) })
+  reject def Thm1 : Id Nat (let c = 3; FullMove(&c, 0)) 3 := refl
+  reject def TailMove (x : &Nat) (n : Nat) : Nat := (let t = TailM(x); let v = *t; H(t, n); v)
   -- A closure made in an arm that captures (moves) `q0` for its `q0.1` moves `q0` (Q); a
   -- move of `a4.2` in one arm and an inspection of `a4` in another split `a4`, whichever way
   -- the field is written (`.2` or a pattern's `snd`: K)
@@ -311,4 +321,4 @@ ochr Moves uses Std {
 #eval IO.println (run "Moves" Moves).show
 
 #guard (run "Moves" Moves).allAsExpected
-#guard (run "Moves" Moves).count == 48
+#guard (run "Moves" Moves).count == 54
