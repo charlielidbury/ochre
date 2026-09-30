@@ -68,11 +68,13 @@ open Ochr.Registry in
   ["Borrows.Dead:accepted", "Borrows.DeadTwice:accepted"]
 open Ochr.Registry in
 #guard rowOk { generalize := false }
-  ["ClosingOff.UseDec:rejected", "Equality.CastMatch:rejected", "CaseSplits.MatchAfterOpaque:rejected",
-   "GenType.GenL:rejected", "RenormPi.G:rejected", "RenormPi.Plain:rejected", "RenormPi.InPi:rejected",
-   "RenormPi.InConj:rejected", "Splitting.Pick:rejected", "Splitting.PickNotZero:rejected",
-   "Splitting.PickNotZeroCopy:rejected", "Splitting.Pick22:rejected", "Splitting.Pick22NotZero:rejected",
-   "Splitting.PickTwo:rejected", "Splitting.DoubleVal:rejected", "Trees.InsertM:rejected",
+  ["ClosingOff.UseDec:rejected", "Equality.CastMatch:rejected",
+   "CaseSplits.MatchAfterOpaque:rejected", "GenType.GenL:rejected", "RenormPi.G:rejected",
+   "RenormPi.Plain:rejected", "RenormPi.InPi:rejected", "RenormPi.InConj:rejected",
+   "Splitting.Pick:rejected", "Splitting.PickNotZero:rejected",
+   "Splitting.PickNotZeroCopy:rejected", "Splitting.Pick22:rejected",
+   "Splitting.Pick22NotZero:rejected", "Splitting.PickTwo:rejected",
+   "Splitting.DoubleVal:rejected", "ScrutineeTypes.M2Zero:rejected", "Trees.InsertM:rejected",
    "Trees.Insert:rejected", "Trees.InsertMEq:rejected", "Trees.InsertMSwap:rejected",
    "Trees.SizeInsert:rejected", "InPlaceTrees.InsertM:rejected", "InPlaceTrees.Insert:rejected",
    "InPlaceTrees.InsertMIsInsert:rejected", "InPlaceTrees.SizeInsert:rejected",
