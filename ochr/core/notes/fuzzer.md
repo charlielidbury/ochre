@@ -49,7 +49,7 @@ lake exe fuzz … --list                                             # also prin
 - Case `i` of seed `S` is a pure function of `(S, i)`.
 - `--switch X` names a ledger row: `D17`…`D59`, `P1`/`P2`/`P3`, `L1`–`L3`, `C5`, `C8`, `G1`, `capTypes`, `scrutTyped`, `confineBodies`, `D50on`, and D53's three: `moves`, `ghosts`, `fnRule`. D53 is on by default in ochr-core since the flip (728756a1); `--switch +D53`, which turned it on for the default and the `--diff` base alike while it was off, is kept for old command lines. D53's rows are `--switch moves`, `--switch ghosts` and `--switch fnRule`. The D35 rows were deleted with the erasure pre-pass.
 - `--diff` keeps only the findings a case shows with the switches on and not with the default rules. With `--list` it also prints `@FLIP i base>switched` when the switch changes the statement's verdict, and `@XFLIP i m>n` when it changes how many of the statement's two sides the checker accepts as data functions (the execution oracle's `ExecL`/`ExecR`). A row such as `moves` changes acceptance without changing any value, and this is how it is measured.
-- `--edep N` draws N percent of the cases from the E family with a dependent codomain, and `--rules N` gives N percent of the cases one declaration that a rule forbids (§v2.2). Like `--a1`, each draws on its own stream, and the default is 0.
+- `--edep N` draws N percent of the cases from the E family with a dependent codomain. `--rules N` gives N percent of the cases one declaration that a rule forbids, and `--drop N` gives them one Drop-family data function (§v2.2). Like `--a1`, each draws on its own stream, and the default is 0.
 - `--a1 N` draws N percent of the cases from reviewer-6's A1 family instead (§v2.2). Each case chooses on its own random stream, so every other case is the same as without the flag. The default is 0, so the headline numbers are unchanged.
 - `--runtime-refine` refines the generic observation at runtime depth instead of erased. It is a diagnostic for the RN class (§v2.6). The checker refines statements erased, so most of what it reports are artefacts.
 - `--jobs J` runs crash-isolated worker processes.
@@ -91,6 +91,11 @@ A finding at a refinement where some proof parameter's type is `False` is marked
 - about 45 templates, plus 0–2 random, sometimes recursive, functions.
 
 **The E family with a dependent codomain (`--edep N`, reviewer-6 W10).** It tests whether E can change a value. A stuck block returns a closure whose codomain mentions a value refined in the arm: `match q0 { Mk(p1, p2) => λ(u : Unit) : TF(p1) => h(clone(p1)) }`, or, over `n0 : Nat`, `Fam(n0)`, annotated or not. A later match's arms split or observe the closure's result. The family has A1-style proof candidates, and a data variant that matches the result of `h : Π(n : Nat). Fam(n)` with one family type's patterns. The templates `HG`/`HF` provide instances of `h`.
+
+**The Drop family (`--drop N`, meta-order's `Bad2`, `Scratch/DropProbe.lean`).** It adds a data function RD, run by the execution oracle, which does three things in turn:
+- It assigns a borrow into a variable `x` that outlives one of the borrowed places (`x` is a borrow parameter, or a local borrow declared before `a`). The borrow comes from a stuck call or block whose hole sits in two owners' fills: `Pick(n, &a, &b)`, `Pick(n, &b, &a)`, or `match n { Z => &a, S _ => &b }`; `PickX` is the not-stuck control.
+- It then makes zero to two accesses: a read, write or borrow of `b`, or a write or read through `x`.
+- `a` lives in the function's scope or in an inner block.
 
 **The rules family (`--rules N`, reviewer-6 W5).** It generates declarations that break two rules:
 - [T-Borrow]'s data premise, at the term level: a borrow of a proof, of a value of a type variable, of a type variable, or of a function, each with or without a write through it.
@@ -168,6 +173,12 @@ The cold reviewers' attack shapes are included:
     - a sort as an inductive parameter (72)
 
     A combined hunt (seed 3, 10⁵ cases, `--a1 5 --edep 5 --rules 5`) found nothing outside these classes and A1: 603 `truth` (all A1), 486 `exec` (item 9), the rule kinds, and 189 E. There were no `nat`, `false` or `verdict` findings and no crashes.
+11. **DropProbe's `Bad2` class, at scale (the Drop family, ochr-core 20a764c3).** With `--drop 100` (seed 1, 10⁵ cases) there are 36,091 `exec` findings "[Drop] a goes out of scope while it is borrowed", 36% of the family's cases; with `--drop 5` (seed 2) there are 1,768. Every variant hits:
+    - `x` a parameter or a local
+    - both `Pick` orders, and the stuck block alone, with no call
+    - a read, a write or a borrow of the other owner
+
+    Symbolically, accessing one owner ends the returned borrow; at a ground instance it may not, and the place goes out of scope while borrowed. `Scratch/DropVariants.lean` has four variants. The fix is being written by the checker lane: an uncertain [End] releases only the accessed owner, and the borrower becomes a ghost borrow. Its acceptance check is `--drop 100` with zero `exec` findings.
 6. **The cold reviewers' attacks**, re-found by the extended generator with their switch off (seeds 1 and 3, 2·10⁴ cases each):
 
 | attack | switch | found? | as | first shrunk example |
