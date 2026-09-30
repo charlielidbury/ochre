@@ -297,10 +297,82 @@ def genAudit : Gen (List (String × SDecl) × List SDecl × List (String × SDec
       let b := mk "EtaCtl" [("q", .prod nat nat)] nat rd true
       pure ([], [], [("a pair's field read with and without a block before it", a, b)])) ]
 
+/-- The template names the dependent-fields family needs. -/
+def depLib : List String := ["Empty0", "One", "Fin1", "DV", "DVN", "NopDV", "AbsurdDV", "IsSucc", "Pos", "PN", "AbsurdP"]
+
+/-- The dependent-fields family (D64): index-field writes in either order, writes through
+borrows of a field and of the whole value, an open value crossing a whole-again point
+(call, borrow, whole read, `Id`, stuck block, closure capture), proof-field invalidation and
+re-assignment, and `Eq` between dependent values with differing indices. The reject side is
+a closed `False` built from a mutator the checker accepts (`LieV`/`Boom`'s shape, over `DV := MkDV(n, x : Fin1(n))`), and
+`Eq` taken apart at differing indices; the execution oracle runs a data function that opens
+a local value, crosses points, and then relies on its invariant. Returns (rule decls,
+helper decls). -/
+def genDep : Gen (List (String × SDecl) × List SDecl) := do
+  let nat : STerm := .ident "Nat"
+  let c (k : Nat) : STerm := .num k
+  let mk (n : String) (ps : List (String × STerm)) (ret body : STerm) (acc : Bool := true) : SDecl :=
+    { name := n, params := ps, ret := ret, body := body, expectAccept := acc }
+  let seqAll (ts : List STerm) (last : STerm) : STerm := ts.foldr (fun t acc => .seq t acc) last
+  let proofSide ← chance 30
+  -- one operation inside `match *v { MkDV(n, x) => … }` (`whole` names the whole value)
+  let valTerm ← pick [c 0, c 1, c 2, .ident "k", .app "S" [.ident "n"]]
+  let op (whole : STerm) (wholeRef : STerm) : Gen STerm := do
+    let v ← pick [c 0, c 1, c 2, .ident "k", .app "S" [.ident "n"]]
+    if proofSide then
+      weighted [(4, pure (.assign (.ident "n") v)), (3, pure (.assign (.ident "h") (.ident "refl"))),
+        (1, pure (.letIn "hh" none (.ident "h") .unitLit)),
+        (1, pure (.letIn "r" none (.amp (.ident "n")) (.assign (.deref (.ident "r")) v))),
+        (1, pure (.letIn "w" none (.call (.ident "PN") [.call (.ident "clone") [whole]]) .unitLit))]
+    else
+      weighted [(4, pure (.assign (.ident "n") v)), (3, pure (.assign (.ident "x") (.ident "O"))),
+        (1, pure (.letIn "r" none (.amp (.ident "n")) (.assign (.deref (.ident "r")) v))),
+        (1, pure (.letIn "r" none (.amp (.ident "x")) (.assign (.deref (.ident "r")) (.ident "O")))),
+        (1, pure (.call (.ident "NopDV") [wholeRef])),
+        (1, pure (.letIn "w" none (.call (.ident "DVN") [.call (.ident "clone") [whole]]) .unitLit)),
+        (1, pure (.letIn "hi" (some (.app "Id" [nat, .call (.ident "DVN") [.call (.ident "clone") [whole]], .call (.ident "DVN") [.call (.ident "clone") [whole]]])) (.ident "refl") .unitLit)),
+        (1, pure (.letIn "t" none (.matchGen (.ident "k") [("Z", [], .call (.ident "DVN") [.call (.ident "clone") [whole]]), ("S", ["_"], c 0)]) .unitLit))]
+  let nOps ← weighted [(2, pure 1), (3, pure 2), (2, pure 3), (1, pure 4)]
+  let mut ops : Array STerm := #[]
+  for _ in [0:nOps] do ops := ops.push (← op (.deref (.ident "v")) (.amp (.deref (.ident "v"))))
+  -- sometimes repacked at the end
+  if ← chance 40 then
+    ops := ops ++ (if proofSide then #[.assign (.ident "n") (c 1), .assign (.ident "h") (.ident "refl")]
+      else #[.assign (.ident "n") (c 1), .assign (.ident "x") (.ident "O")])
+  let (ty, ctor, pat, absurd, fresh) := if proofSide
+    then ("Pos", "MkPos", ["n", "h"], "AbsurdP", STerm.call (.ident "MkPos") [c 1, .ident "refl"])
+    else ("DV", "MkDV", ["n", "x"], "AbsurdDV", STerm.call (.ident "MkDV") [c 1, .ident "O"])
+  let body := STerm.matchGen (.deref (.ident "v")) [(ctor, pat, seqAll ops.toList .unitLit)]
+  let lie := mk "LieX" [("v", .amp (.ident ty)), ("k", nat)] (.ident "Unit") body
+  let kArg ← pick [c 0, c 1]
+  let broken := mk "BrokenX" [] (.ident ty) (.letIn "v" none fresh (.seq (.call (.ident "LieX") [.amp (.ident "v"), kArg]) (.ident "v")))
+  let boom := mk "BoomX" [] (.ident "False") (.call (.ident absurd) [.ident "BrokenX", .ident "refl"]) false
+  let mut rds : List (String × SDecl) := [("a closed proof of False from a dependent-field mutator", boom)]
+  -- Eq between dependent values with differing indices, taken apart
+  if ← chance 30 then
+    let hTy := STerm.app "Eq" [.ident "DV", .call (.ident "MkDV") [.ident "a", .ident "x"], .call (.ident "MkDV") [.ident "b", .ident "y"]]
+    let ps := [("a", nat), ("b", nat), ("x", STerm.call (.ident "Fin1") [.ident "a"]), ("y", .call (.ident "Fin1") [.ident "b"]), ("h", hTy)]
+    let inj := mk "InjX" ps (.app "Eq" [nat, .ident "a", .ident "b"])
+      (.matchGen (.ident "h") [("Intro", ["h1", "h2"], .ident "h1")]) false
+    rds := rds ++ [("Eq takes apart dependent values with differing indices", inj)]
+  -- the execution oracle: a local value opened, points crossed, then its invariant relied on
+  let mut lops : Array STerm := #[]
+  for _ in [0:nOps] do
+    lops := lops.push (← (if proofSide then pure (.assign (.ident "n") valTerm)
+      else weighted [(3, pure (.assign (.ident "n") valTerm)), (2, pure (.assign (.ident "x") (.ident "O"))),
+        (1, pure (.letIn "f" none (.fix "_" [("u", .ident "Unit")] nat none (.call (.ident "DVN") [.call (.ident "clone") [.ident "v"]])) .unitLit)),
+        (1, pure (.call (.ident "NopDV") [.amp (.ident "v")]))]))
+  let rely := if proofSide
+    then STerm.matchGen (.ident "v") [("MkPos", ["n", "h"], .matchGen (.ident "n") [("Z", [], .matchGen (.ident "h") []), ("S", ["_"], .call (.ident "PN") [.call (.ident "clone") [.ident "v"]])])]
+    else STerm.matchGen (.ident "v") [("MkDV", ["n", "x"], .matchGen (.ident "n") [("Z", [], .matchGen (.ident "x") []), ("S", ["_"], .call (.ident "DVN") [.call (.ident "clone") [.ident "v"]])])]
+  let run := mk "RDep" [("k", nat)] nat (.letIn "v" none fresh
+    (.seq (.matchGen (.ident "v") [(ctor, pat, seqAll lops.toList .unitLit)]) rely))
+  pure (rds, [lie, broken, run])
+
 /-- The template names the A1 family needs. -/
 def a1Lib : List String := ["B2", "Bx", "TF", "TG", "CmpBx", "CmpB2", "HG", "HF"]
 
-def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) (edep : Nat := 0) (rules : Nat := 0) (drop : Nat := 0) (audit : Nat := 0) : Case × Rng := Id.run do
+def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) (edep : Nat := 0) (rules : Nat := 0) (drop : Nat := 0) (audit : Nat := 0) (dep : Nat := 0) : Case × Rng := Id.run do
   let phase1 : Gen (List String × List (SDecl × LibFn)) := do
     let lib ← genTemplates
     pure (lib, ← genExtras lib)
@@ -322,6 +394,10 @@ def mkCase (seed i : Nat) (fuel : Nat := 200000) (a1 : Nat := 0) (edep : Nat := 
     let ((ps, A, lhs, rhs, prf), g4) := genA1.run { rng := caseRng seed (i + 2000003) }
     return ({ c0 with lib := closeDeps (lib ++ a1Lib), params := ps, ty := A, lhs := lhs, rhs := rhs,
                       conv := none, extraProofs := prf }, g4.rng)
+  let (dd, _) := (caseRng seed (i + 11000027)).next
+  if dep > 0 && dd.toNat % 100 < dep then
+    let ((rds, helpers), g9) := genDep.run { rng := caseRng seed (i + 12000041) }
+    return ({ c0 with lib := closeDeps (lib ++ depLib), extra := c0.extra ++ helpers, ruleDecls := rds }, g9.rng)
   let (u, _) := (caseRng seed (i + 9000011)).next
   if audit > 0 && u.toNat % 100 < audit then
     let ((rds, helpers, agrees), g8) := genAudit.run { rng := caseRng seed (i + 10000019) }

@@ -185,6 +185,19 @@ ochr FuzzLib {
   -- instances of the families' dependent function parameters (`h : Π(n : Nat). TG(n)`)
   def HG (n : Nat) : TG(n) := match n { Z => 0, S _ => F }
   def HF (n : Nat) : TF(n) := match n { Z => MkBx[Unit](()), S _ => MkBx[B2](T) }
+  -- dependent fields (D64): a length-like index and a field whose type it determines, and a
+  -- proof field; `AbsurdDV`/`AbsurdP` are true of every packed value
+  inductive Empty0 : Type
+  inductive One := O
+  def Fin1 (n : Nat) : Type := match n { Z => Empty0, S _ => One }
+  inductive DV := MkDV(n : Nat, x : Fin1(n))
+  def DVN (v : DV) : Nat := match v { MkDV(n, x) => n }
+  def NopDV (v : &DV) : Unit := ()
+  def AbsurdDV (v : DV) (h : Eq Nat (DVN(v)) 0) : False := match v { MkDV(n, x) => match n { Z => match x {}, S m => match h {} } }
+  def IsSucc (n : Nat) : Prop := match n { Z => False, S _ => ⊤ }
+  inductive Pos := MkPos(n : Nat, h : IsSucc(n))
+  def PN (p : Pos) : Nat := match p { MkPos(n, h) => n }
+  def AbsurdP (p : Pos) (h : Eq Nat (PN(p)) 0) : False := match p { MkPos(n, hh) => match n { Z => match hh {}, S m => match h {} } }
 }
 
 /-- The codomain types written differently from what they evaluate to (D54, D55). -/
