@@ -75,7 +75,7 @@ runs for every concrete `n` but is rejected: `Pick`'s hole sits in the fills of 
 ]) <conj-nat>
 
 The run of $t alpha$ can fail where the run of $t$ succeeds: ending a borrow early on the symbolic path can let a later [Drop] succeed that fails at the instance (`DropProbe`).
-// TODO(prop-paper): DropProbe fix decided (an [End] with an uncertain target releases only the accessed owner; the borrower becomes a ghost borrow holding its other loans until its binding dies). When it lands: restore 'it ends without error' and the adequacy sentence in the naturality conjecture, drop the DropProbe sentence, restore Fig. claims row 9 and the section 10 sentence.
+// TODO(prop-paper): the DropProbe/Bad2 fix is amended D65 ([Drop] ends a borrower held in a binding; a borrower in flight is an error); the ghost-borrow plan is dead (refuted by Bad4). ONLY after fuzz-port's `--drop 100` acceptance shows 0 exec and 0 verdict findings (lead will say): revert 49801faf's wording, i.e. restore 'it ends without error' in conj-nat and the sentence on property 7 and accepted definitions after it, drop the DropProbe sentence, restore claims row 9 without 'where it computes', and drop section 10.2's 'though a probe has found one outside them'.
 
 == What is mechanised <sec-meta-mech>
 
