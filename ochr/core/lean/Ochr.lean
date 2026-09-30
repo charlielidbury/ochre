@@ -2,11 +2,13 @@ import Ochr.Syntax
 import Ochr.Basic
 import Ochr.Pretty
 import Ochr.Env
+import Ochr.Rules
 import Ochr.Obs
 import Ochr.Machine
 import Ochr.Check
 import Ochr.Surface
 import Ochr.Notation
 import Ochr.Test
+import Ochr.RuleGuard
 import Ochr.Examples.Registry
 import Ochr.Examples.Ledger
