@@ -3012,6 +3012,15 @@ partial def closeOffMatch (mt : Term) (B : Value) (moved : List Place) (allProof
         let m := under.foldl (fun m (_, k) => max m k) 0
         todo := todo ++ [(ch, if moved.any (placeEq · ch) then 2 else m)]
   caps := out
+  -- [Fix] captures no borrow (D63, rule-audit item 7): a closure or Π-type in an arm that
+  -- mentions a place the block takes by `&` would capture the block's borrow parameter when
+  -- the block re-runs, so the block is rejected where it is formed, alike on every path
+  -- (fuzz-port, seed 1, case 182: it failed only at re-normalisation)
+  if !(← get).cfg.blockRefCapture then
+    for (o, p) in mt.fnOccs 0 do
+      let q := p.mapRoot fun _ => .var o
+      if caps.any (fun (c, k) => k == 1 && placePrefix c q) then
+        err s!"a closure or Π-type in an arm of a stuck match captures {← ppPlace q}, which the block takes by borrow (closures capture no borrows, RULES §1)"
   -- D53 (fuzz-port M2b, N2): a borrow variable the block moves in whole is ended by the
   -- block's frame, so an arm that moves out through it (and does not restore it) leaves it
   -- partly moved when it ends

@@ -465,7 +465,7 @@ open Ochr.Registry in
 -- borrow parameter (fuzz-port R2 (ii)), where [Fix] captures no borrow
 open Ochr.Registry in
 #guard rowOk { blockRefCapture := true }
-  ["ClosingOff.LamReadInWrittenBlock:accepted"]
+  ["ClosingOff.LamReadInWrittenBlock:accepted", "ClosingOff.LamReadOtherArm:accepted"]
 -- D63 switched off (rule-audit item 9): an `Id` evaluated by the machine observes its sides
 -- untyped, so a side's stuck match makes the whole `Id` stuck instead of being closed off
 open Ochr.Registry in

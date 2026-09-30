@@ -266,6 +266,21 @@ partial def Term.blockOccs (inFn : Bool) (c : Nat) : Term → List (Nat × Place
   | .matchInd p _ as => (c, p, .scrut) :: as.flatMap (·.2.blockOccs inFn c)
   | _ => []
 
+/-- The free occurrences of a term that lie inside a function or Π-type it forms, the ones a
+closure captures (enclosing-frame index and place, as `freeOccsBlock` gives them). -/
+partial def Term.fnOccs (c : Nat) : Term → List (Nat × Place)
+  | t@(.pi ..) | t@(.fix ..) =>
+    (t.blockOccs true c).filterMap fun (c', p, _) => if p.root ≥ c' then some (p.root - c', p) else none
+  | .letIn _ t u => t.fnOccs c ++ u.fnOccs (c + 1)
+  | .assign _ t | .succ t | .fst t | .snd t | .ref t => t.fnOccs c
+  | .seq t u | .cong t u | .ascribe t u | .matchNat _ t u => t.fnOccs c ++ u.fnOccs c
+  | .call g as _ => g.fnOccs c ++ as.flatMap (·.fnOccs c)
+  | .eq a b d | .id a b d => a.fnOccs c ++ b.fnOccs c ++ d.fnOccs c
+  | .ctor _ _ _ ps as => (ps ++ as).flatMap (·.fnOccs c)
+  | .prim _ as | .tind _ as => as.flatMap (·.fnOccs c)
+  | .matchInd _ _ as => as.flatMap (·.2.fnOccs c)
+  | _ => []
+
 /-- The term forms a function or Π-type somewhere (which may capture its free variables). -/
 partial def Term.formsFn : Term → Bool
   | .pi .. | .fix .. => true

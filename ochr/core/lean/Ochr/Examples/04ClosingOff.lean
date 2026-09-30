@@ -168,11 +168,11 @@ ochr ClosingOff uses Std, Fixtures {
     }
   )
 
-  -- When an arm really writes a place, the block takes it by `&`. A closure in that arm that
+  -- When an arm really writes a place, the block takes it by `&`. A closure in an arm that
   -- reads the place would capture the block's borrow parameter when the block re-runs, and
-  -- [Fix] captures no borrow, so the re-run is a type error (D63, rule-audit item 7). The
-  -- earlier checker captured the value behind the parameter (fuzz-port R2 (ii), switch
-  -- `blockRefCapture`), which no printed rule does; the direct path captures the place itself.
+  -- [Fix] captures no borrow, so the block is a type error where it is formed (D63, rule-audit
+  -- item 7). The earlier checker captured the value behind the parameter (fuzz-port R2 (ii),
+  -- switch `blockRefCapture`), which no printed rule does; the direct path captures the place itself.
   reject def LamReadInWrittenBlock (q2 : Nat × Nat) :
       Id Nat
         (let c = q2; let a0 = match c { Mk(p5, p6) => (let f = (λ(y7 : Nat) : Nat => p5); c := (1, 1); f) }; a0(0))
@@ -181,6 +181,12 @@ ochr ClosingOff uses Std, Fixtures {
       Mk(a, b) => refl,
     }
   )
+
+  -- ... also when the closure is in another arm than the write, and the block is formed only in
+  -- a statement: rejected when the statement is typed, not later when a refinement re-runs the
+  -- block (fuzz-port, seed 1, case 182)
+  reject def LamReadOtherArm (n0 : Nat) : Prop :=
+    Id Nat (match n0 { Z => (n0 := S n0; 0), S _ => (let f = (λ(y : Nat) : Nat => n0); 0) }) 0
 
   -- Comparing two blocks' functions observes them at a generic argument, where a pattern's
   -- sub-place their arms read may not exist; that answers "not convertible", it is not an
@@ -356,7 +362,7 @@ ochr ClosingOff uses Std, Fixtures {
 }
 
 -- the exact number of declarations (a truncated file changes it)
-#guard ClosingOff.decls.length == 49
+#guard ClosingOff.decls.length == 50
 
 /-! ## Symbolic checking is not the same as checking every instance
 
